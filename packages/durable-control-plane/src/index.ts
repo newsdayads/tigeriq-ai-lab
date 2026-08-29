@@ -32,6 +32,13 @@ export class DurableControlPlane {
     return (await this.#load(id)).snapshot;
   }
 
+  async list(): Promise<WorkOrderSnapshot[]> {
+    const entries = await this.#journal.readAll();
+    const latest = new Map<string, WorkOrderSnapshot>();
+    for (const entry of entries) latest.set(entry.streamId, entry.payload as WorkOrderSnapshot);
+    return [...latest.values()].map((snapshot) => structuredClone(snapshot));
+  }
+
   async #mutate(
     id: string,
     actor: Actor,
