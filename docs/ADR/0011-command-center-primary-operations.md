@@ -13,6 +13,9 @@ Owner → TigerIQ Command Center → Model Router / PC01 execution → Independe
 ## Trello role
 Trello is optional only. It may be used for historical archive/manual planning/compatibility when explicitly requested, but failure or absence of Trello synchronization is never a blocker for Work Order execution or completion.
 
+## Performance rule
+Default execution must avoid redundant status replication. Command Center reads from the evidence-backed control plane and PC01 telemetry directly; no Trello write is required for milestone progression or DONE/REAL BLOCKER/EXTERNAL WAIT determination.
+
 ## Rationale
 The Command Center already owns the operational control plane and evidence-backed state. Removing mandatory Trello synchronization reduces tool calls, latency, duplicated state, and state-drift risk.
 
