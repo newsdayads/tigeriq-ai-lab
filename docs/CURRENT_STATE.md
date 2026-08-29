@@ -79,7 +79,7 @@ Evidence:
 - Independent GitHub Actions push run `33236926604`: PASS.
 - Independent GitHub Actions PR run `33236934501`: PASS.
 
-Next action: human review in dependency order PR #1 -> #3 -> #4 -> #5. No merge, public exposure, credential provisioning, or Production action is authorized.
+Next action: continue automatically with durable idempotency and operational safeguards. No merge or Production action is authorized.
 
 ## Phase 4 checkpoint
 
@@ -199,3 +199,18 @@ Evidence:
 - Independent GitHub Actions CI run `33243682544`: PASS.
 
 Next action: concrete provider network adapters and credential provisioning require a separately gated phase; no provider credentials, paid service, MAIN merge, or Production action is authorized.
+
+## WO-007 — PC Local AI Execution Worker checkpoint
+
+Status: IN PROGRESS — physical-PC execution evidence pending
+
+- Branch `wo007/pc-local-ai-worker`, stacked on verified Phase 9.
+- Draft PR #18; MAIN/Production remain untouched.
+- Adds a concrete Ollama provider adapter against loopback OpenAI-compatible `/v1/chat/completions`.
+- Adds bounded provider circuit-breaker state so repeated cloud/provider failure skips the open circuit and continues to fallback candidates.
+- Keeps the local model hardware-dependent through explicit configuration/`TIGERIQ_OLLAMA_MODEL`; no premature model hard-code.
+- Adds Windows PC audit and Ollama health/inference smoke scripts.
+- Adds router tests for cloud failure → local Ollama and open-circuit → local fallback.
+- Ollama installation on the physical PC is in progress; actual hardware/model-fit, endpoint inference, restart recovery and complete local Work Order proof remain pending physical-PC evidence.
+
+Next action: after Ollama installation completes, run the committed audit, select/pull a model from actual RAM/VRAM, smoke-test the local endpoint, then complete worker composition/restart recovery and the simulated-cloud-outage end-to-end Work Order gate. No MAIN/Production action is authorized.
