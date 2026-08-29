@@ -7,6 +7,7 @@ const actors: [string, Actor][] = [
   ['approver-secret', { id: 'approver-1', role: 'approver' }],
   ['coder-secret', { id: 'coder-1', role: 'coder' }],
   ['judge-secret', { id: 'judge-1', role: 'judge' }],
+  ['operator-secret', { id: 'operator-1', role: 'operator' }],
 ];
 const order = {
   id: 'WO-API-1', project: 'TigerIQ', goal: 'Exercise API', scope: ['api'],
@@ -33,7 +34,7 @@ describe('HTTP API', () => {
   it('exposes health without leaking protected state', async () => {
     const response = await call('/health');
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ status: 'ok', phase: 'phase-6' });
+    expect(await response.json()).toMatchObject({ status: 'ok', phase: 'phase-7' });
     expect(response.headers.get('x-request-id')).toBeTruthy();
     expect((await call('/ready')).status).toBe(200);
   });
@@ -97,5 +98,12 @@ describe('HTTP API', () => {
     api.drain();
     expect((await call('/ready')).status).toBe(503);
     expect((await call('/v1/work-orders/WO-API-1', 'planner-secret')).status).toBe(503);
+  });
+
+  it('restricts aggregate metrics to operators', async () => {
+    expect((await call('/metrics', 'planner-secret')).status).toBe(403);
+    const response = await call('/metrics', 'operator-secret');
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ requestsCompleted: expect.any(Number), activeRequests: 1 });
   });
 });

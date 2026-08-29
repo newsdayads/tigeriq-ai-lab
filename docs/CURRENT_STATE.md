@@ -141,3 +141,14 @@ Evidence:
 - Independent GitHub Actions PR run `33237739156`: PASS.
 
 Next action: continue automatically with metrics and overload protection. No merge or Production action is authorized.
+
+## Phase 7 checkpoint
+
+Status: IMPLEMENTED / GATE_PENDING
+
+- Branch `phase7/metrics-overload`, stacked on verified Phase 6.
+- Adds fail-closed configurable concurrency limiting.
+- Adds low-cardinality aggregate metrics without request or identity data.
+- Restricts metrics access to the operator role.
+
+Pending evidence: final local CI, commit/push, draft PR, and independent GitHub Actions. No merge or Production action is authorized.

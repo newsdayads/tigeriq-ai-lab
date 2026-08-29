@@ -6,6 +6,7 @@ import { DurableControlPlane } from '../../../packages/durable-control-plane/src
 import type { EvidenceRecord } from '../../../packages/evidence/src/index.js';
 import { FileJournal } from '../../../packages/event-store/src/index.js';
 import { JournalIdempotencyStore, MemoryIdempotencyStore, type IdempotencyStore } from '../../../packages/idempotency/src/index.js';
+import { ApiMetrics, ConcurrencyLimiter } from '../../../packages/runtime/src/index.js';
 import type { WorkOrder, WorkOrderStatus } from '../../../packages/work-orders/src/index.js';
 import { health } from './index.js';
 
@@ -19,6 +20,7 @@ interface ApiOptions {
   requestTimeoutMs?: number;
   shutdownGraceMs?: number;
   logger?: (event: ApiLogEvent) => void;
+  maxConcurrentRequests?: number;
 }
 
 export interface ApiLogEvent {
@@ -39,18 +41,27 @@ export async function startApi(options: ApiOptions) {
     ? new JournalIdempotencyStore(options.idempotencyPath ?? `${options.journalPath}.idempotency`)
     : new MemoryIdempotencyStore();
   const maxBodyBytes = options.maxBodyBytes ?? 64 * 1024;
+  const limiter = new ConcurrencyLimiter(options.maxConcurrentRequests ?? 100);
+  const metrics = new ApiMetrics();
   let draining = false;
   const server = createServer(async (request, response) => {
     const requestId = safeRequestId(header(request, 'x-request-id')) ?? randomUUID();
     const started = performance.now();
     response.setHeader('x-request-id', requestId);
-    response.once('finish', () => options.logger?.({
-      event: 'http.request.completed', requestId, method: request.method ?? 'GET',
-      path: new URL(request.url ?? '/', 'http://localhost').pathname,
-      status: response.statusCode, durationMs: Math.round((performance.now() - started) * 100) / 100,
-    }));
+    const acquired = limiter.acquire();
+    response.once('finish', () => {
+      const durationMs = Math.round((performance.now() - started) * 100) / 100;
+      if (acquired) limiter.release();
+      metrics.observe(response.statusCode, durationMs);
+      options.logger?.({ event: 'http.request.completed', requestId, method: request.method ?? 'GET',
+        path: new URL(request.url ?? '/', 'http://localhost').pathname, status: response.statusCode, durationMs });
+    });
+    if (!acquired) {
+      metrics.reject();
+      return send(response, 503, { error: 'overloaded' });
+    }
     try {
-      await route(request, response, plane, options.tokens, idempotency, maxBodyBytes, () => draining);
+      await route(request, response, plane, options.tokens, idempotency, maxBodyBytes, () => draining, metrics, limiter);
     } catch (error) {
       const status = error instanceof HttpError ? error.status : domainStatus(error);
       send(response, status, { error: status === 500 ? 'internal_error' : error instanceof Error ? error.message : 'request_failed' });
@@ -86,6 +97,8 @@ async function route(
   cache: IdempotencyStore,
   maxBodyBytes: number,
   isDraining: () => boolean,
+  metrics: ApiMetrics,
+  limiter: ConcurrencyLimiter,
 ): Promise<void> {
   const method = request.method ?? 'GET';
   const path = new URL(request.url ?? '/', 'http://localhost').pathname;
@@ -94,6 +107,10 @@ async function route(
   if (isDraining()) throw new HttpError(503, 'service_draining');
 
   const actor = authenticate(request, tokens);
+  if (method === 'GET' && path === '/metrics') {
+    if (actor.role !== 'operator') throw new HttpError(403, 'operator role required');
+    return send(response, 200, metrics.snapshot(limiter.active));
+  }
   const match = /^\/v1\/work-orders\/([^/]+)(?:\/(transitions|evidence|gates))?$/.exec(path);
   if (method === 'GET' && match?.[1] && !match[2]) return send(response, 200, await plane.get(decodeURIComponent(match[1])));
   if (method !== 'POST') throw new HttpError(404, 'not_found');
