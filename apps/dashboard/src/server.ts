@@ -1,5 +1,6 @@
 import { createServer } from 'node:http';
-import type { AddressInfo, ServerResponse } from 'node:http';
+import type { ServerResponse } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import type { WorkOrderSnapshot } from '../../../packages/control-plane/src/index.js';
 import { buildDashboard } from './index.js';
 
