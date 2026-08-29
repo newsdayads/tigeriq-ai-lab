@@ -1,7 +1,7 @@
 # WO-009 — Multi-AI Provider Mesh
 
 Priority: P0
-Status: IMPLEMENTED — CI / INDEPENDENT REVIEW GATE PENDING
+Status: CI PASS — INDEPENDENT REVIEW / LIVE CLOUD GATES PENDING
 Date: 2026-08-29
 
 ## Goal
@@ -23,7 +23,7 @@ Route TigerIQ execution through configurable cloud providers OpenAI → Claude/A
 3. Gemini cloud
 4. Ollama local on PC01
 
-Model IDs are not hard-coded because provider model catalogs change. Configure them with:
+Model IDs are intentionally not hard-coded. Configure them with:
 - `TIGERIQ_OPENAI_MODEL`
 - `TIGERIQ_ANTHROPIC_MODEL`
 - `TIGERIQ_GEMINI_MODEL`
@@ -44,6 +44,15 @@ Provider credentials remain outside the repository:
 - Total route exhaustion fails closed.
 - Typecheck, unit tests, Playwright smoke and build pass in GitHub Actions.
 - Independent review/judge gate is required before any merge or Production use.
+- Live cloud-provider validation requires separately supplied provider credentials and must not be simulated as real evidence.
+
+## Evidence
+- Branch: `wo009/multi-ai-provider-mesh`.
+- Draft PR: #21.
+- Implementation/CI head: `b1d04cbd1f0e234b033ecab87c067cbbc3fc5ea3`.
+- GitHub Actions CI run #72 / `33252476203`: PASS.
+- Automated tests cover route ordering, provider response parsing, secret placement, 429 quota fallback/circuit suppression, and 503 outage fallback.
+- Independent PC01 review gate: GitHub Issue #22 (in progress at this checkpoint).
 
 ## Safety
 No paid subscription or credential provisioning is authorized by this Work Order. No secret may enter source control, issue text, evidence, or Trello. No MAIN/Production mutation is authorized.
