@@ -48,11 +48,13 @@ try {
 Write-Host '[55%] LOCAL SECRET' -ForegroundColor Cyan
 if(-not (Test-Path $secretPath)) {
   $bytes = New-Object byte[] 32
-  [Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+  $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+  try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }
   [Convert]::ToBase64String($bytes) | Set-Content -Path $secretPath -NoNewline -Encoding ascii
 }
 try {
-  icacls $secretPath /inheritance:r /grant:r "$env:USERNAME:(R,W)" | Out-Null
+  $aclUser = "$($env:USERNAME):(R,W)"
+  icacls $secretPath /inheritance:r /grant:r $aclUser | Out-Null
 } catch {
   Write-Host 'Warning: could not tighten secret ACL automatically' -ForegroundColor Yellow
 }
@@ -82,7 +84,7 @@ Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
 Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
 $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$startScript`""
 $trigger = New-ScheduledTaskTrigger -AtLogOn
-$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit (New-TimeSpan -Days 0)
+$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero)
 Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -RunLevel Highest | Out-Null
 Start-ScheduledTask -TaskName $taskName
 Start-Sleep 5
