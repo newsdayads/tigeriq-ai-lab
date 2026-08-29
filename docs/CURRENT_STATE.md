@@ -19,7 +19,7 @@ Phase 0 branch status: VERIFIED. MAIN merge is intentionally not automatic and r
 
 ## Phase 1 checkpoint
 
-Status: IMPLEMENTED / GATE_PENDING
+Status: VERIFIED by independent CI
 
 - Adds an executable in-memory lifecycle authority for Work Orders.
 - Enforces authorized transitions and prevents direct coder verification.
@@ -28,4 +28,13 @@ Status: IMPLEMENTED / GATE_PENDING
 - Adds SHA-256 evidence digests and linked audit history.
 - Updates API capability reporting and makes CI use the committed lockfile.
 
-Pending evidence: full local CI, pushed commit, stacked draft PR, and independent GitHub Actions result. No merge or Production action is authorized.
+Evidence:
+
+- Implementation commit: `43545a5` on `phase1/control-plane`.
+- Local `npm run ci`: PASS (typecheck, 9 unit tests, Playwright smoke, build).
+- Local `git diff --check`: PASS.
+- Stacked draft PR: #3, <https://github.com/newsdayads/tigeriq-ai-lab/pull/3>.
+- Independent GitHub Actions push run `33236587386`: PASS.
+- Independent GitHub Actions PR run `33236595743`: PASS.
+
+Next action: human review of draft PR #1 followed by stacked draft PR #3. No merge or Production action is authorized.
