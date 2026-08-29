@@ -1,21 +1,22 @@
 # WO-009 — Multi-AI Provider Mesh
 
 Priority: P0
-Status: CI PASS — INDEPENDENT REVIEW / LIVE CLOUD GATES PENDING
+Status: ENGINEERING DONE 100% — LIVE CLOUD ACTIVATION EXTERNAL WAIT
 Date: 2026-08-29
 
 ## Goal
 Route TigerIQ execution through configurable cloud providers OpenAI → Claude/Anthropic → Gemini and automatically fall back to PC01 Ollama when cloud providers are unavailable, rate-limited, quota-limited, misconfigured, or timing out.
 
-## Scope
-- Keep the provider-neutral `ModelRouter` and bounded circuit breaker.
-- Add native HTTP adapters for OpenAI, Anthropic/Claude, and Gemini.
-- Preserve the existing loopback Ollama OpenAI-compatible adapter for PC01.
-- Use environment/options for API keys and model IDs; never commit credentials.
-- Classify provider failures (`quota`, `outage`, `timeout`, `auth`, `configuration`, `invalid_response`).
-- Open circuits immediately for quota/outage/timeout/auth/configuration failures to avoid repeated failing cloud calls.
-- Record bounded attempt metadata without prompts or credentials.
-- Keep MAIN/Production untouched.
+## Scope delivered
+- Provider-neutral `ModelRouter` with bounded circuit breaker.
+- Native HTTP adapters for OpenAI, Anthropic/Claude, and Gemini.
+- Loopback Ollama OpenAI-compatible adapter for PC01.
+- Environment/options-only API keys and model IDs; no committed credentials.
+- Failure classification: `quota`, `outage`, `timeout`, `auth`, `configuration`, `invalid_response`.
+- Immediate circuit opening for quota/outage/timeout/auth/configuration failures.
+- Bounded routing-attempt metadata without prompts, API keys or response bodies.
+- Caller abort stops routing rather than silently executing on another provider.
+- MAIN/Production untouched.
 
 ## Default route
 1. OpenAI cloud
@@ -34,25 +35,25 @@ Provider credentials remain outside the repository:
 - `ANTHROPIC_API_KEY`
 - `GEMINI_API_KEY`
 
-## Acceptance criteria
-- Cloud adapters parse their native response formats.
-- Provider credentials are sent only in request headers and never included in routing evidence.
-- HTTP 429 is classified as quota and falls through to the next provider; the circuit suppresses immediate retries.
-- HTTP 5xx/network failures are classified as outage and fall through.
-- Timeouts fall through without losing Work Order state.
-- If every cloud route fails, configured PC01 Ollama can execute the request.
-- Total route exhaustion fails closed.
-- Typecheck, unit tests, Playwright smoke and build pass in GitHub Actions.
-- Independent review/judge gate is required before any merge or Production use.
-- Live cloud-provider validation requires separately supplied provider credentials and must not be simulated as real evidence.
-
-## Evidence
+## Engineering acceptance evidence
 - Branch: `wo009/multi-ai-provider-mesh`.
 - Draft PR: #21.
-- Implementation/CI head: `b1d04cbd1f0e234b033ecab87c067cbbc3fc5ea3`.
+- Implementation/initial CI head: `b1d04cbd1f0e234b033ecab87c067cbbc3fc5ea3`.
 - GitHub Actions CI run #72 / `33252476203`: PASS.
-- Automated tests cover route ordering, provider response parsing, secret placement, 429 quota fallback/circuit suppression, and 503 outage fallback.
-- Independent PC01 review gate: GitHub Issue #22 (in progress at this checkpoint).
+- Documentation reconciliation head before this update: `fccc24c7736cc1449b8ccd15ef762eb2ed409305`.
+- Final-head GitHub Actions CI run #76 / `33252633342`: PASS.
+- Automated tests cover route ordering, provider native response parsing, credential placement, 429 quota fallback/circuit suppression, and 503 outage fallback.
+- Independent PC01 review: GitHub Issue #22, closed completed at 2026-08-29T12:33:39Z.
+- PC01 provider/model: Ollama `qwen2.5-coder:14b`.
+- Executor verdict: `WO009_REVIEW_PASS`.
+- Independent Reviewer: PASS.
+- Independent Judge: PASS.
+- Review reported no blockers or safety issues.
+
+## Activation external wait
+The engineering implementation is DONE, but no real OpenAI/Anthropic/Gemini credential or approved provider model configuration is available in repository/runtime evidence. Therefore TigerIQ must NOT claim a successful live cloud call yet.
+
+To activate and verify live cloud routing later, securely provision the desired provider credentials/model IDs outside source control, then run real-provider health/fallback evidence. Paid subscriptions or financial commitments still require Owner authorization. PC01/Ollama fallback remains the verified local execution channel from WO-007/WO-008.
 
 ## Safety
-No paid subscription or credential provisioning is authorized by this Work Order. No secret may enter source control, issue text, evidence, or Trello. No MAIN/Production mutation is authorized.
+No paid subscription or credential provisioning was performed. No secret entered source control, issue evidence or Trello. No MAIN/Production mutation is authorized.
