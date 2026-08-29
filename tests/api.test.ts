@@ -33,7 +33,9 @@ describe('HTTP API', () => {
   it('exposes health without leaking protected state', async () => {
     const response = await call('/health');
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ status: 'ok', phase: 'phase-4' });
+    expect(await response.json()).toMatchObject({ status: 'ok', phase: 'phase-5' });
+    expect(response.headers.get('x-request-id')).toBeTruthy();
+    expect((await call('/ready')).status).toBe(200);
   });
 
   it('requires authentication for Work Orders', async () => {

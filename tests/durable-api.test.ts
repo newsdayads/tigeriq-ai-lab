@@ -57,4 +57,24 @@ describe('durable HTTP API', () => {
     expect((await request()).status).toBe(409);
     await api.close();
   });
+
+  it('replays the recorded response after restart with the same idempotency key', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'tigeriq-durable-api-'));
+    directories.push(directory);
+    const journalPath = join(directory, 'events.jsonl');
+    const send = (url: string) => fetch(`${url}/v1/work-orders`, {
+      method: 'POST', headers: { authorization: 'Bearer planner-secret', 'content-type': 'application/json', 'idempotency-key': 'persistent-key' },
+      body: JSON.stringify(order),
+    });
+    let api = await startApi({ tokens, journalPath });
+    const first = await send(api.url);
+    const firstBody = await first.json();
+    expect(first.status).toBe(201);
+    await api.close();
+    api = await startApi({ tokens, journalPath });
+    const replay = await send(api.url);
+    expect(replay.status).toBe(201);
+    expect(await replay.json()).toEqual(firstBody);
+    await api.close();
+  });
 });

@@ -1,10 +1,11 @@
-import { createHash, timingSafeEqual } from 'node:crypto';
+import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { ControlPlane, type Actor, type GateDecision, type WorkOrderSnapshot } from '../../../packages/control-plane/src/index.js';
 import { DurableControlPlane } from '../../../packages/durable-control-plane/src/index.js';
 import type { EvidenceRecord } from '../../../packages/evidence/src/index.js';
 import { FileJournal } from '../../../packages/event-store/src/index.js';
+import { JournalIdempotencyStore, MemoryIdempotencyStore, type IdempotencyStore } from '../../../packages/idempotency/src/index.js';
 import type { WorkOrder, WorkOrderStatus } from '../../../packages/work-orders/src/index.js';
 import { health } from './index.js';
 
@@ -14,12 +15,7 @@ interface ApiOptions {
   host?: string;
   maxBodyBytes?: number;
   journalPath?: string;
-}
-
-interface CachedResponse {
-  fingerprint: string;
-  status: number;
-  body: unknown;
+  idempotencyPath?: string;
 }
 
 export async function startApi(options: ApiOptions) {
@@ -27,9 +23,12 @@ export async function startApi(options: ApiOptions) {
   const plane: Plane = options.journalPath
     ? new DurableControlPlane(new FileJournal(options.journalPath))
     : new ControlPlane();
-  const idempotency = new Map<string, CachedResponse>();
+  const idempotency: IdempotencyStore = options.journalPath
+    ? new JournalIdempotencyStore(options.idempotencyPath ?? `${options.journalPath}.idempotency`)
+    : new MemoryIdempotencyStore();
   const maxBodyBytes = options.maxBodyBytes ?? 64 * 1024;
   const server = createServer(async (request, response) => {
+    response.setHeader('x-request-id', safeRequestId(header(request, 'x-request-id')) ?? randomUUID());
     try {
       await route(request, response, plane, options.tokens, idempotency, maxBodyBytes);
     } catch (error) {
@@ -53,12 +52,13 @@ async function route(
   response: ServerResponse,
   plane: Plane,
   tokens: ReadonlyMap<string, Actor>,
-  cache: Map<string, CachedResponse>,
+  cache: IdempotencyStore,
   maxBodyBytes: number,
 ): Promise<void> {
   const method = request.method ?? 'GET';
   const path = new URL(request.url ?? '/', 'http://localhost').pathname;
   if (method === 'GET' && path === '/health') return send(response, 200, health());
+  if (method === 'GET' && path === '/ready') return send(response, 200, { status: 'ready' });
 
   const actor = authenticate(request, tokens);
   const match = /^\/v1\/work-orders\/([^/]+)(?:\/(transitions|evidence|gates))?$/.exec(path);
@@ -70,8 +70,7 @@ async function route(
   if (!header(request, 'content-type')?.toLowerCase().startsWith('application/json')) throw new HttpError(415, 'application/json is required');
   const raw = await readBody(request, maxBodyBytes);
   const fingerprint = createHash('sha256').update(`${method}\n${path}\n${raw}`).digest('hex');
-  const cacheKey = `${actor.id}:${idempotencyKey}`;
-  const cached = cache.get(cacheKey);
+  const cached = await cache.get(actor.id, idempotencyKey);
   if (cached) {
     if (cached.fingerprint !== fingerprint) throw new HttpError(409, 'idempotency-key reused with different request');
     return send(response, cached.status, cached.body);
@@ -91,7 +90,7 @@ async function route(
   } else {
     throw new HttpError(404, 'not_found');
   }
-  cache.set(cacheKey, { fingerprint, status, body: result });
+  await cache.put(actor.id, idempotencyKey, { fingerprint, status, body: result });
   send(response, status, result);
 }
 
@@ -187,6 +186,10 @@ function requiredString(body: Record<string, unknown>, key: string): string {
 function header(request: IncomingMessage, name: string): string | undefined {
   const value = request.headers[name];
   return Array.isArray(value) ? value[0] : value;
+}
+
+function safeRequestId(value: string | undefined): string | undefined {
+  return value && /^[A-Za-z0-9._-]{1,128}$/.test(value) ? value : undefined;
 }
 
 function send(response: ServerResponse, status: number, body: unknown): void {

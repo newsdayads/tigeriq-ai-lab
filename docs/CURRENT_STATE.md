@@ -101,3 +101,14 @@ Evidence:
 - Independent GitHub Actions PR run `33237117262`: PASS.
 
 Next action: continue automatically with durable idempotency and operational safeguards. No merge or Production action is authorized.
+
+## Phase 5 checkpoint
+
+Status: IMPLEMENTED / GATE_PENDING
+
+- Branch `phase5/operational-safety`, stacked on verified Phase 4.
+- Completed idempotency responses persist in a separate hash-chained journal.
+- Identical retries replay across restart; conflicting reuse is rejected.
+- Health/readiness are separate and every response receives a safe correlation ID.
+
+Pending evidence: final local CI, commit/push, draft PR, and independent GitHub Actions. No merge or Production action is authorized.
