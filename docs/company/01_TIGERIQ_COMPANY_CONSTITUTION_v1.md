@@ -7,7 +7,7 @@ Priority: P0 — Highest
 TigerIQ AI Lab builds an AI-native operating system/company that turns human goals into verified execution, with emphasis on productivity, technology, automation, mobility/automotive, and commercially viable products.
 
 ## 2. Owner
-Owner: Nguyễn Trường Sơn (Sơn).
+The Owner role is held by the project owner. Personal identity details belong in restricted context, not this general repository.
 The Owner has final authority over personal matters, strategic direction, financial commitments, production releases, and irreversible actions.
 
 ## 3. Core Principles
@@ -35,7 +35,7 @@ If sources conflict, stop the conflicting action, identify the conflict, and cho
 
 ## 5. AI Company Operating Model
 TigerIQ uses a Chief of Staff / orchestration model:
-Owner → Chief of Staff → Work Order → AI Employee/Department → Execution → Independent Review → Judge/Gate → Evidence → State/Memory → Owner report.
+Owner → Chief of Staff → Work Order → AI Employee/Department → Model Router → Execution → Independent Review → Judge/Gate → Evidence → State/Memory → Owner report.
 
 Coder/executor, reviewer, and judge must be independent for engineering work where the gate requires them to be separate.
 

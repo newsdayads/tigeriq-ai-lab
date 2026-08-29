@@ -27,9 +27,9 @@ Privacy rule verified: `04_TIGERIQ_OWNER_PROFILE_v1.md` is intentionally exclude
 ## Runtime engineering reality
 A separate stacked runtime implementation exists off MAIN.
 
-Verified branch stack:
-- Phase 0 foundation: `phase-0-foundation` / draft PR #1
-- Phase 0 evidence-first foundation: `phase0/foundation` / draft PR #2
+Audited off-MAIN runtime branches:
+- Primary stacked path starts at Phase 0 foundation: `phase-0-foundation` / draft PR #1
+- Separate alternative/duplicate Phase 0 branch: `phase0/foundation` / draft PR #2 (not part of the primary stack)
 - Phase 1 control plane: `phase1/control-plane` / draft PR #3
 - Phase 2 durable journal: `phase2/durable-journal` / draft PR #4
 - Phase 3 HTTP API: `phase3/http-api` / draft PR #5
@@ -57,8 +57,9 @@ Runtime evidence recorded in the stacked branch reports:
 These runtime components are implemented and verified on stacked branches only. They are not yet merged to MAIN and are not Production.
 
 ## Open integration/release gates
-- PR #11 Source-of-Truth bootstrap: open, mergeable, pending independent review/release gate.
-- PR #1–#10 runtime stack: open; runtime PRs remain draft and stacked.
+- PR #11 Source-of-Truth bootstrap: open and mergeable. Independent review Issue #12 initially returned FAIL on privacy, Model Router consistency, and unsupported provenance claims; fixes are pending retest and re-review before release gate.
+- Primary runtime path PR #1 and PR #3–#10: open, draft, and stacked in dependency order.
+- PR #2: open draft alternative/duplicate Phase 0 foundation; it is not a dependency of PR #3–#10.
 - No Production deployment has been found or authorized.
 - MAIN has not been modified by this audit/update.
 
