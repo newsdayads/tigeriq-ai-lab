@@ -34,3 +34,7 @@ This is not yet a network or Production boundary. Authentication, durable event 
 ## Phase 2 persistence slice
 
 `packages/event-store` provides a single-node durable journal. JSONL entries form one global SHA-256 chain while `streamId` and expected version provide per-Work-Order optimistic concurrency. An exclusive lock serializes writers; every read verifies sequence, previous hash, and content hash before returning events. This establishes recovery and tamper detection, but it is not authorization to use the filesystem store in Production.
+
+## Phase 3 API boundary
+
+`apps/api` exposes loopback HTTP endpoints for health and Work Order operations. Bearer credentials map to scoped actors; the domain layer still enforces role separation. Mutation requests require JSON, a bounded body, and an actor-scoped idempotency key. This boundary intentionally has no public listener configuration, credential store, TLS, or claim of Production readiness.

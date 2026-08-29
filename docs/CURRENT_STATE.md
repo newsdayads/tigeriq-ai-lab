@@ -59,3 +59,15 @@ Evidence:
 - Independent GitHub Actions PR run `33236748020`: PASS.
 
 Next action: human review in dependency order PR #1 -> PR #3 -> PR #4. No merge or Production action is authorized.
+
+## Phase 3 checkpoint
+
+Status: IMPLEMENTED / GATE_PENDING
+
+- Branch `phase3/http-api`, stacked on verified Phase 2.
+- Adds loopback-by-default authenticated HTTP endpoints.
+- Preserves planner/approver/coder/judge authorization and independent verification.
+- Adds bounded JSON validation and actor-scoped idempotency with conflict detection.
+- Adds full API integration coverage through the verified lifecycle.
+
+Pending evidence: final local CI, commit/push, stacked draft PR, and independent GitHub Actions. No merge, public exposure, credential provisioning, or Production action is authorized.
