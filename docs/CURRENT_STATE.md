@@ -2,215 +2,33 @@
 
 Date: 2026-08-29
 
-Phase 1 Control Plane is in progress on stacked branch `phase1/control-plane`, based on the verified Phase 0 branch `phase-0-foundation` from draft PR #1.
+TigerIQ AI Lab is operating as a stacked, evidence-gated Company OS. `main` and Production remain unchanged by the active stack; no automatic merge is authorized.
 
-Status:
-- Repository exists and is public.
-- `main` remains unchanged by Phase 0 implementation and auto-merge is disabled.
-- Agent governance, architecture, workflow, security baseline and ADR are defined.
-- Work Order, Evidence and Audit Log schemas are committed.
-- Gate Engine, agent role separation, Model Router, sandbox, GitHub adapter and Golden Dataset contracts are committed.
-- TypeScript, Vitest, Playwright smoke and GitHub Actions CI are configured.
-- CI run #6 passed Install, Typecheck, Unit tests, Playwright smoke and Build on commit `f344b4922f600aafc8c58cff139f6639f5d7b87f`.
-- No production deployment exists.
-- TigerIQ Driver has not been modified by AI Lab.
+## Verified foundation
 
-Phase 0 branch status: VERIFIED. MAIN merge is intentionally not automatic and remains outside this phase.
+Phases 0–9 are implemented on stacked branches with independent GitHub Actions evidence. The stack provides governance/contracts, Work Orders and evidence, lifecycle authorization, durable hash-chained journal/recovery, authenticated HTTP control plane, durable idempotency, runtime guardrails, overload/rate limits, and executable provider-neutral Model Router failover.
 
-## Phase 1 checkpoint
+Phase 9 branch: `phase9/model-router-execution`.
+Phase 9 CI evidence: run `33243682544` PASS.
 
-Status: VERIFIED by independent CI
+## WO-007 — PC Local AI Execution Worker
 
-- Adds an executable in-memory lifecycle authority for Work Orders.
-- Enforces authorized transitions and prevents direct coder verification.
-- Requires known evidence for gate decisions and fails closed.
-- Requires reviewer/judge independence from the implementer.
-- Adds SHA-256 evidence digests and linked audit history.
-- Updates API capability reporting and makes CI use the committed lockfile.
-
-Evidence:
-
-- Implementation commit: `43545a5` on `phase1/control-plane`.
-- Local `npm run ci`: PASS (typecheck, 9 unit tests, Playwright smoke, build).
-- Local `git diff --check`: PASS.
-- Stacked draft PR: #3, <https://github.com/newsdayads/tigeriq-ai-lab/pull/3>.
-- Independent GitHub Actions push run `33236587386`: PASS.
-- Independent GitHub Actions PR run `33236595743`: PASS.
-
-Next action: human review of draft PR #1 followed by stacked draft PR #3. No merge or Production action is authorized.
-
-## Phase 2 checkpoint
-
-Status: VERIFIED by independent CI
-
-- Branch `phase2/durable-journal`, stacked on verified Phase 1.
-- Adds a durable JSONL event journal with an exclusive writer lock.
-- Adds per-stream optimistic concurrency through expected version.
-- Adds a globally ordered SHA-256 chain verified on every read/recovery.
-- Adds restart recovery and tamper-detection tests.
-
-Evidence:
-
-- Implementation commit: `bfe6b4b` on `phase2/durable-journal`.
-- Local `npm run ci`: PASS (typecheck, 14 unit tests, Playwright smoke, build).
-- Local `git diff --check`: PASS; npm audit reports 0 vulnerabilities.
-- Stacked draft PR: #4, <https://github.com/newsdayads/tigeriq-ai-lab/pull/4>.
-- Independent GitHub Actions push run `33236740364`: PASS.
-- Independent GitHub Actions PR run `33236748020`: PASS.
-
-Next action: human review in dependency order PR #1 -> PR #3 -> PR #4. No merge or Production action is authorized.
-
-## Phase 3 checkpoint
-
-Status: VERIFIED by independent CI
-
-- Branch `phase3/http-api`, stacked on verified Phase 2.
-- Adds loopback-by-default authenticated HTTP endpoints.
-- Preserves planner/approver/coder/judge authorization and independent verification.
-- Adds bounded JSON validation and actor-scoped idempotency with conflict detection.
-- Adds full API integration coverage through the verified lifecycle.
-
-Evidence:
-
-- Implementation commit: `18c950d` on `phase3/http-api`.
-- Local `npm run ci`: PASS (typecheck, 21 unit/integration tests, Playwright smoke, build).
-- Local `git diff --check`: PASS; npm audit reports 0 vulnerabilities.
-- Stacked draft PR: #5, <https://github.com/newsdayads/tigeriq-ai-lab/pull/5>.
-- Independent GitHub Actions push run `33236926604`: PASS.
-- Independent GitHub Actions PR run `33236934501`: PASS.
-
-Next action: continue automatically with durable idempotency and operational safeguards. No merge or Production action is authorized.
-
-## Phase 4 checkpoint
-
-Status: VERIFIED by independent CI
-
-- Branch `phase4/durable-api`, stacked on verified Phase 3.
-- API can use journal-backed Control Plane state while retaining the in-memory test mode.
-- Every command reloads verified durable state and appends with expected version.
-- API restart recovers Work Order status and full domain audit history.
-- Duplicate creation after restart fails closed as a conflict.
-
-Evidence:
-
-- Implementation commit: `8390f73` on `phase4/durable-api`.
-- Local `npm run ci`: PASS (typecheck, 23 tests, Playwright smoke, build).
-- Local `git diff --check`: PASS; npm audit reports 0 vulnerabilities.
-- Stacked draft PR: #6, <https://github.com/newsdayads/tigeriq-ai-lab/pull/6>.
-- Independent GitHub Actions push run `33237110186`: PASS.
-- Independent GitHub Actions PR run `33237117262`: PASS.
-
-Next action: continue automatically with durable idempotency and operational safeguards. No merge or Production action is authorized.
-
-## Phase 5 checkpoint
-
-Status: VERIFIED by independent CI
-
-- Branch `phase5/operational-safety`, stacked on verified Phase 4.
-- Completed idempotency responses persist in a separate hash-chained journal.
-- Identical retries replay across restart; conflicting reuse is rejected.
-- Health/readiness are separate and every response receives a safe correlation ID.
-
-Evidence:
-
-- Implementation commit: `d3419a2` on `phase5/operational-safety`.
-- Local `npm run ci`: PASS (typecheck, 24 tests, Playwright smoke, build).
-- Local `git diff --check`: PASS; npm audit reports 0 vulnerabilities.
-- Stacked draft PR: #7, <https://github.com/newsdayads/tigeriq-ai-lab/pull/7>.
-- Independent GitHub Actions push run `33237419852`: PASS.
-- Independent GitHub Actions PR run `33237430178`: PASS.
-
-Next action: continue automatically with graceful draining, timeouts, and redacted structured observability. No merge or Production action is authorized.
-
-## Phase 6 checkpoint
-
-Status: VERIFIED by independent CI
-
-- Branch `phase6/runtime-guardrails`, stacked on verified Phase 5.
-- Adds finite request/header timeouts and bounded graceful shutdown.
-- Drain removes readiness and rejects new protected work.
-- Structured completion events include correlation/timing but omit credentials, bodies, and query strings.
-
-Evidence:
-
-- Implementation commit: `8ca8186` on `phase6/runtime-guardrails`.
-- Local `npm run ci`: PASS (typecheck, 25 tests, Playwright smoke, build).
-- Local `git diff --check`: PASS; npm audit reports 0 vulnerabilities.
-- Stacked draft PR: #8, <https://github.com/newsdayads/tigeriq-ai-lab/pull/8>.
-- Independent GitHub Actions push run `33237729863`: PASS.
-- Independent GitHub Actions PR run `33237739156`: PASS.
-
-Next action: continue automatically with metrics and overload protection. No merge or Production action is authorized.
-
-## Phase 7 checkpoint
-
-Status: VERIFIED by independent CI
-
-- Branch `phase7/metrics-overload`, stacked on verified Phase 6.
-- Adds fail-closed configurable concurrency limiting.
-- Adds low-cardinality aggregate metrics without request or identity data.
-- Restricts metrics access to the operator role.
-
-Evidence:
-
-- Implementation commit: `7fae473` on `phase7/metrics-overload`.
-- Local `npm run ci`: PASS (typecheck, 28 tests, Playwright smoke, build).
-- Local `git diff --check`: PASS; npm audit reports 0 vulnerabilities.
-- Stacked draft PR: #9, <https://github.com/newsdayads/tigeriq-ai-lab/pull/9>.
-- Independent GitHub Actions push run `33239601025`: PASS.
-- Independent GitHub Actions PR run `33239608264`: PASS.
-
-Next action: assess the next coherent non-Production phase from the verified stack. No merge or Production action is authorized.
-
-## Phase 8 checkpoint
-
-Status: VERIFIED by independent CI
-
-- Branch `phase8/actor-rate-limits`, stacked on verified Phase 7.
-- Adds configurable fixed-window quotas after authentication.
-- Actor quotas are isolated; exhaustion returns 429 with retry guidance before domain work.
-- Public health/readiness probes do not consume actor quota.
-
-Evidence:
-
-- Implementation commit: `96cac3c` on `phase8/actor-rate-limits`.
-- Local `npm run ci`: PASS (typecheck, 30 tests, Playwright smoke, build).
-- Local `git diff --check`: PASS; npm audit reports 0 vulnerabilities.
-- Stacked draft PR: #10, <https://github.com/newsdayads/tigeriq-ai-lab/pull/10>.
-- Independent GitHub Actions push run `33241941818`: PASS.
-- Independent GitHub Actions PR run `33241949117`: PASS.
-
-Next action: assess the next coherent non-Production phase from the verified stack. No merge or Production action is authorized.
-
-## Phase 9 checkpoint
-
-Status: VERIFIED by independent CI
-
-- Branch `phase9/model-router-execution`, stacked on verified Phase 8.
-- Converts the routing policy contract into executable provider-neutral failover.
-- Preserves deterministic free-first candidate order and injected replaceable adapters.
-- Missing adapters, provider failures, and empty output fail over; total exhaustion fails closed.
-- Attempt metadata excludes prompt and credential payloads.
-
-Evidence:
-
-- Implementation/docs head before evidence update: `ea8e75eb22fad5acf7ddff3c87c01af3e03a6ce3`.
-- Stacked draft PR: #13, <https://github.com/newsdayads/tigeriq-ai-lab/pull/13>.
-- Independent GitHub Actions CI run `33243682544`: PASS.
-
-Next action: concrete provider network adapters and credential provisioning require a separately gated phase; no provider credentials, paid service, MAIN merge, or Production action is authorized.
-
-## WO-007 — PC Local AI Execution Worker checkpoint
-
-Status: IN PROGRESS — physical-PC execution evidence pending
+Status: VERIFIED — repository + physical PC01 E2E PASS
 
 - Branch `wo007/pc-local-ai-worker`, stacked on verified Phase 9.
 - Draft PR #18; MAIN/Production remain untouched.
-- Adds a concrete Ollama provider adapter against loopback OpenAI-compatible `/v1/chat/completions`.
-- Adds bounded provider circuit-breaker state so repeated cloud/provider failure skips the open circuit and continues to fallback candidates.
-- Keeps the local model hardware-dependent through explicit configuration/`TIGERIQ_OLLAMA_MODEL`; no premature model hard-code.
-- Adds Windows PC audit and Ollama health/inference smoke scripts.
-- Adds router tests for cloud failure → local Ollama and open-circuit → local fallback.
-- Ollama installation on the physical PC is in progress; actual hardware/model-fit, endpoint inference, restart recovery and complete local Work Order proof remain pending physical-PC evidence.
+- Ollama OpenAI-compatible adapter and bounded provider circuit breaker are implemented.
+- Durable Work Order worker composition is implemented with fail-closed provider exhaustion.
+- Coder/reviewer/judge identities are required to be independent.
+- Passing execution evidence requires a real git commit SHA.
+- One-command physical E2E runner checks Ollama/model, Worker/Watchdog Scheduled Tasks, builds the repository, simulates cloud failure, executes through physical Ollama, and reconstructs durable state.
+- Repository source head used for physical E2E: `d579b79138b752ed30fad878bda249e2f096aede`.
+- GitHub Actions CI #65 / `33250476883`: PASS (Install, Typecheck, Unit tests, Playwright smoke, Build).
+- Physical PC01 E2E executed by Owner with Ollama `qwen2.5-coder:14b`: PASS.
+- Physical route selected `ollama/qwen2.5-coder:14b` and returned `TIGERIQ_WO007_LOCAL_FALLBACK_OK`.
+- Work Order status: `verified`; recovered status after durable control-plane reconstruction: `verified`.
+- REVIEW gate: PASS by `pc01-reviewer-e2e`.
+- DONE gate: PASS by `pc01-judge-e2e`.
+- Physical execution evidence is recorded in `docs/evidence/WO-007-REPOSITORY-GATE-2026-08-29.md`.
 
-Next action: after Ollama installation completes, run the committed audit, select/pull a model from actual RAM/VRAM, smoke-test the local endpoint, then complete worker composition/restart recovery and the simulated-cloud-outage end-to-end Work Order gate. No MAIN/Production action is authorized.
+Next action: run CI on the documentation/evidence reconciliation head, then move WO-007 through Company OS review/closure without merging MAIN/Production. Continue internal backlog with Source of Truth/stack review gates and WO-004 TigerIQ Driver hardening. WO-006 remains external-customer-evidence dependent and must not be simulated.
