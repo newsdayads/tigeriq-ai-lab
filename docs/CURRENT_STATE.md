@@ -124,11 +124,20 @@ Next action: continue automatically with graceful draining, timeouts, and redact
 
 ## Phase 6 checkpoint
 
-Status: IMPLEMENTED / GATE_PENDING
+Status: VERIFIED by independent CI
 
 - Branch `phase6/runtime-guardrails`, stacked on verified Phase 5.
 - Adds finite request/header timeouts and bounded graceful shutdown.
 - Drain removes readiness and rejects new protected work.
 - Structured completion events include correlation/timing but omit credentials, bodies, and query strings.
 
-Pending evidence: final local CI, commit/push, draft PR, and independent GitHub Actions. No merge or Production action is authorized.
+Evidence:
+
+- Implementation commit: `8ca8186` on `phase6/runtime-guardrails`.
+- Local `npm run ci`: PASS (typecheck, 25 tests, Playwright smoke, build).
+- Local `git diff --check`: PASS; npm audit reports 0 vulnerabilities.
+- Stacked draft PR: #8, <https://github.com/newsdayads/tigeriq-ai-lab/pull/8>.
+- Independent GitHub Actions push run `33237729863`: PASS.
+- Independent GitHub Actions PR run `33237739156`: PASS.
+
+Next action: continue automatically with metrics and overload protection. No merge or Production action is authorized.
