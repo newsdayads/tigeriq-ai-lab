@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "https://tigeriq.dev/schemas/evidence.schema.json",
+  "title": "Evidence", "type": "object", "additionalProperties": false,
+  "required": ["id", "workOrderId", "kind", "uri", "collectedAt", "collector"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 }, "workOrderId": { "type": "string", "minLength": 1 },
+    "kind": { "enum": ["command", "test-report", "build-artifact", "review", "external-check"] },
+    "uri": { "type": "string", "minLength": 1 }, "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "collectedAt": { "type": "string", "format": "date-time" }, "collector": { "type": "string", "minLength": 1 }
+  }
+}

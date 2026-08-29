@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "https://tigeriq.dev/schemas/audit-log.schema.json",
+  "title": "Audit Log Event", "type": "object", "additionalProperties": false,
+  "required": ["id", "timestamp", "actor", "action", "subject", "previousHash"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 }, "timestamp": { "type": "string", "format": "date-time" },
+    "actor": { "type": "string", "minLength": 1 }, "action": { "type": "string", "minLength": 1 },
+    "subject": { "type": "string", "minLength": 1 }, "details": { "type": "object" },
+    "previousHash": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" }
+  }
+}

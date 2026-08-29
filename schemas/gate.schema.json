@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "https://tigeriq.dev/schemas/gate.schema.json",
+  "title": "Gate", "type": "object", "additionalProperties": false,
+  "required": ["id", "workOrderId", "status", "checks", "evidenceIds", "evaluatedBy", "evaluatedAt"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 }, "workOrderId": { "type": "string", "minLength": 1 },
+    "status": { "enum": ["PENDING", "PASSED", "FAILED", "BLOCKED"] },
+    "checks": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+    "evidenceIds": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "evaluatedBy": { "type": "string", "minLength": 1 }, "evaluatedAt": { "type": "string", "format": "date-time" }
+  },
+  "allOf": [{ "if": { "properties": { "status": { "const": "PASSED" } } }, "then": { "properties": { "evidenceIds": { "type": "array", "minItems": 1 } } } }]
+}
