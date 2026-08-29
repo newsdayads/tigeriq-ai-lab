@@ -80,3 +80,15 @@ Evidence:
 - Independent GitHub Actions PR run `33236934501`: PASS.
 
 Next action: human review in dependency order PR #1 -> #3 -> #4 -> #5. No merge, public exposure, credential provisioning, or Production action is authorized.
+
+## Phase 4 checkpoint
+
+Status: IMPLEMENTED / GATE_PENDING
+
+- Branch `phase4/durable-api`, stacked on verified Phase 3.
+- API can use journal-backed Control Plane state while retaining the in-memory test mode.
+- Every command reloads verified durable state and appends with expected version.
+- API restart recovers Work Order status and full domain audit history.
+- Duplicate creation after restart fails closed as a conflict.
+
+Pending evidence: final local CI, commit/push, draft PR, and independent GitHub Actions. No merge or Production action is authorized.

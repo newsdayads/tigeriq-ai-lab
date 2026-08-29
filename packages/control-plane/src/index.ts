@@ -41,6 +41,13 @@ const allowedTransitions: Record<WorkOrderStatus, readonly WorkOrderStatus[]> = 
 export class ControlPlane {
   readonly #orders = new Map<string, WorkOrderSnapshot>();
 
+  constructor(snapshots: readonly WorkOrderSnapshot[] = []) {
+    for (const snapshot of snapshots) {
+      if (this.#orders.has(snapshot.order.id)) throw new Error(`duplicate snapshot ${snapshot.order.id}`);
+      this.#orders.set(snapshot.order.id, structuredClone(snapshot));
+    }
+  }
+
   create(order: WorkOrder, actor: Actor): WorkOrderSnapshot {
     if (actor.role !== 'planner') throw new Error('only a planner can create a work order');
     const errors = validateWorkOrder(order);

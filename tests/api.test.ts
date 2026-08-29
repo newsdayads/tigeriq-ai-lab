@@ -33,7 +33,7 @@ describe('HTTP API', () => {
   it('exposes health without leaking protected state', async () => {
     const response = await call('/health');
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ status: 'ok', phase: 'phase-3' });
+    expect(await response.json()).toMatchObject({ status: 'ok', phase: 'phase-4' });
   });
 
   it('requires authentication for Work Orders', async () => {

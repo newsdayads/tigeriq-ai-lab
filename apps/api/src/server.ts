@@ -1,8 +1,10 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { ControlPlane, type Actor, type GateDecision } from '../../../packages/control-plane/src/index.js';
+import { ControlPlane, type Actor, type GateDecision, type WorkOrderSnapshot } from '../../../packages/control-plane/src/index.js';
+import { DurableControlPlane } from '../../../packages/durable-control-plane/src/index.js';
 import type { EvidenceRecord } from '../../../packages/evidence/src/index.js';
+import { FileJournal } from '../../../packages/event-store/src/index.js';
 import type { WorkOrder, WorkOrderStatus } from '../../../packages/work-orders/src/index.js';
 import { health } from './index.js';
 
@@ -11,6 +13,7 @@ interface ApiOptions {
   port?: number;
   host?: string;
   maxBodyBytes?: number;
+  journalPath?: string;
 }
 
 interface CachedResponse {
@@ -21,7 +24,9 @@ interface CachedResponse {
 
 export async function startApi(options: ApiOptions) {
   if (options.tokens.size === 0) throw new Error('at least one API token is required');
-  const plane = new ControlPlane();
+  const plane: Plane = options.journalPath
+    ? new DurableControlPlane(new FileJournal(options.journalPath))
+    : new ControlPlane();
   const idempotency = new Map<string, CachedResponse>();
   const maxBodyBytes = options.maxBodyBytes ?? 64 * 1024;
   const server = createServer(async (request, response) => {
@@ -46,7 +51,7 @@ export async function startApi(options: ApiOptions) {
 async function route(
   request: IncomingMessage,
   response: ServerResponse,
-  plane: ControlPlane,
+  plane: Plane,
   tokens: ReadonlyMap<string, Actor>,
   cache: Map<string, CachedResponse>,
   maxBodyBytes: number,
@@ -57,7 +62,7 @@ async function route(
 
   const actor = authenticate(request, tokens);
   const match = /^\/v1\/work-orders\/([^/]+)(?:\/(transitions|evidence|gates))?$/.exec(path);
-  if (method === 'GET' && match?.[1] && !match[2]) return send(response, 200, plane.get(decodeURIComponent(match[1])));
+  if (method === 'GET' && match?.[1] && !match[2]) return send(response, 200, await plane.get(decodeURIComponent(match[1])));
   if (method !== 'POST') throw new HttpError(404, 'not_found');
 
   const idempotencyKey = header(request, 'idempotency-key');
@@ -75,14 +80,14 @@ async function route(
   let result: unknown;
   let status = 200;
   if (path === '/v1/work-orders') {
-    result = plane.create(asWorkOrder(body), actor);
+    result = await plane.create(asWorkOrder(body), actor);
     status = 201;
   } else if (match?.[1] && match[2] === 'transitions') {
-    result = plane.transition(decodeURIComponent(match[1]), asStatus(body.status), actor);
+    result = await plane.transition(decodeURIComponent(match[1]), asStatus(body.status), actor);
   } else if (match?.[1] && match[2] === 'evidence') {
-    result = plane.recordEvidence(decodeURIComponent(match[1]), asEvidence(body), actor);
+    result = await plane.recordEvidence(decodeURIComponent(match[1]), asEvidence(body), actor);
   } else if (match?.[1] && match[2] === 'gates') {
-    result = plane.recordGateDecision(decodeURIComponent(match[1]), asDecision(body), actor);
+    result = await plane.recordGateDecision(decodeURIComponent(match[1]), asDecision(body), actor);
   } else {
     throw new HttpError(404, 'not_found');
   }
@@ -196,11 +201,19 @@ class HttpError extends Error {
   }
 }
 
+interface Plane {
+  create(order: WorkOrder, actor: Actor): WorkOrderSnapshot | Promise<WorkOrderSnapshot>;
+  transition(id: string, status: WorkOrderStatus, actor: Actor): WorkOrderSnapshot | Promise<WorkOrderSnapshot>;
+  recordEvidence(id: string, evidence: EvidenceRecord, actor: Actor): WorkOrderSnapshot | Promise<WorkOrderSnapshot>;
+  recordGateDecision(id: string, decision: GateDecision, actor: Actor): WorkOrderSnapshot | Promise<WorkOrderSnapshot>;
+  get(id: string): WorkOrderSnapshot | Promise<WorkOrderSnapshot>;
+}
+
 function domainStatus(error: unknown): number {
   if (!(error instanceof Error)) return 500;
   if (/only a|requires an|requires reviewer|cannot evaluate/.test(error.message)) return 403;
   if (/not found/.test(error.message)) return 404;
-  if (/invalid transition|already exists|mismatch/.test(error.message)) return 409;
+  if (/invalid transition|already exists|mismatch|expected version|journal is locked/.test(error.message)) return 409;
   if (/invalid|required|must|unknown evidence|failing evidence/.test(error.message)) return 400;
   return 500;
 }

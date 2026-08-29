@@ -38,3 +38,7 @@ This is not yet a network or Production boundary. Authentication, durable event 
 ## Phase 3 API boundary
 
 `apps/api` exposes loopback HTTP endpoints for health and Work Order operations. Bearer credentials map to scoped actors; the domain layer still enforces role separation. Mutation requests require JSON, a bounded body, and an actor-scoped idempotency key. This boundary intentionally has no public listener configuration, credential store, TLS, or claim of Production readiness.
+
+## Phase 4 durable API
+
+When configured with a journal path, the API uses `packages/durable-control-plane`. Each command loads and verifies the latest snapshot, applies domain rules in a fresh Control Plane, then appends the result with expected-version concurrency. This makes persisted state authoritative and recoverable across restarts without weakening role or evidence gates.
