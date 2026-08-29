@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { ModelRouter, RoutingExhaustedError, type ProviderAdapter, type RoutingPolicy } from '../packages/model-router/src/index.js';
+import {
+  ModelRouter,
+  RoutingExhaustedError,
+  createOllamaAdapter,
+  type ProviderAdapter,
+  type RoutingPolicy,
+} from '../packages/model-router/src/index.js';
 
 const policy: RoutingPolicy = {
   primary: { provider: 'gemini', model: 'g' },
@@ -33,6 +39,58 @@ describe('model router execution', () => {
       ['gemini', false], ['openrouter', true],
     ]);
     expect(result.attempts[0]?.error).toBe('quota');
+  });
+
+  it('falls through cloud failures to the Ollama OpenAI-compatible adapter', async () => {
+    const local = createOllamaAdapter({
+      model: 'test-local-model',
+      fetchImpl: async (input, init) => {
+        expect(String(input)).toBe('http://127.0.0.1:11434/v1/chat/completions');
+        const request = JSON.parse(String(init?.body));
+        expect(request.model).toBe('l');
+        expect(request.messages[0].content).toBe('work locally');
+        return new Response(JSON.stringify({ choices: [{ message: { content: 'local result' } }] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      },
+    });
+    const router = new ModelRouter([
+      adapter('gemini', async () => { throw new Error('quota'); }),
+      adapter('openrouter', async () => { throw new Error('rate-limit'); }),
+      local,
+    ], policy);
+
+    const result = await router.execute({ prompt: 'work locally' });
+    expect(result.target.provider).toBe('ollama');
+    expect(result.text).toBe('local result');
+    expect(result.attempts.map((attempt) => [attempt.target.provider, attempt.ok])).toEqual([
+      ['gemini', false], ['openrouter', false], ['ollama', true],
+    ]);
+  });
+
+  it('opens a provider circuit after repeated failure and still falls back', async () => {
+    let now = 1000;
+    let primaryCalls = 0;
+    const p: RoutingPolicy = {
+      primary: { provider: 'gemini', model: 'g' },
+      fallbacks: [{ provider: 'ollama', model: 'l', local: true }],
+    };
+    const router = new ModelRouter([
+      adapter('gemini', async () => { primaryCalls += 1; throw new Error('outage'); }),
+      adapter('ollama', async () => 'local'),
+    ], p, { failureThreshold: 2, cooldownMs: 100, now: () => now });
+
+    await router.execute({ prompt: 'one' });
+    await router.execute({ prompt: 'two' });
+    const third = await router.execute({ prompt: 'three' });
+    expect(primaryCalls).toBe(2);
+    expect(third.attempts[0]).toMatchObject({ ok: false, circuitOpen: true, error: 'circuit open' });
+    expect(third.target.provider).toBe('ollama');
+
+    now += 101;
+    await router.execute({ prompt: 'four' });
+    expect(primaryCalls).toBe(3);
   });
 
   it('skips unavailable adapters and fails closed when every route fails', async () => {
