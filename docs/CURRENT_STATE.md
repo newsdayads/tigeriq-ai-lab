@@ -62,7 +62,7 @@ Next action: human review in dependency order PR #1 -> PR #3 -> PR #4. No merge 
 
 ## Phase 3 checkpoint
 
-Status: IMPLEMENTED / GATE_PENDING
+Status: VERIFIED by independent CI
 
 - Branch `phase3/http-api`, stacked on verified Phase 2.
 - Adds loopback-by-default authenticated HTTP endpoints.
@@ -70,4 +70,13 @@ Status: IMPLEMENTED / GATE_PENDING
 - Adds bounded JSON validation and actor-scoped idempotency with conflict detection.
 - Adds full API integration coverage through the verified lifecycle.
 
-Pending evidence: final local CI, commit/push, stacked draft PR, and independent GitHub Actions. No merge, public exposure, credential provisioning, or Production action is authorized.
+Evidence:
+
+- Implementation commit: `18c950d` on `phase3/http-api`.
+- Local `npm run ci`: PASS (typecheck, 21 unit/integration tests, Playwright smoke, build).
+- Local `git diff --check`: PASS; npm audit reports 0 vulnerabilities.
+- Stacked draft PR: #5, <https://github.com/newsdayads/tigeriq-ai-lab/pull/5>.
+- Independent GitHub Actions push run `33236926604`: PASS.
+- Independent GitHub Actions PR run `33236934501`: PASS.
+
+Next action: human review in dependency order PR #1 -> #3 -> #4 -> #5. No merge, public exposure, credential provisioning, or Production action is authorized.
