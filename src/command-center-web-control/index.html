@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Command Center</title>
+</head>
+<body>
+    <h1>Command Center</h1>
+    <form id="jobForm">
+        <label for="jobInput">Job Description:</label>
+        <input type="text" id="jobInput" name="jobInput" required>
+        <button type="submit">Submit Job</button>
+    </form>
+    <div id="status"></div>
+    <script>
+        document.getElementById('jobForm').addEventListener('submit', function(event) {
+            event.preventDefault();
+            const jobInput = document.getElementById('jobInput').value;
+            fetch('/submit-job', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ job: jobInput })
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('status').innerText = data.message;
+            })
+            .catch(error => {
+                document.getElementById('status').innerText = 'Error submitting job';
+            });
+        });
+    </script>
+</body>
+</html>
