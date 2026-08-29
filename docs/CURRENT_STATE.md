@@ -104,11 +104,20 @@ Next action: continue automatically with durable idempotency and operational saf
 
 ## Phase 5 checkpoint
 
-Status: IMPLEMENTED / GATE_PENDING
+Status: VERIFIED by independent CI
 
 - Branch `phase5/operational-safety`, stacked on verified Phase 4.
 - Completed idempotency responses persist in a separate hash-chained journal.
 - Identical retries replay across restart; conflicting reuse is rejected.
 - Health/readiness are separate and every response receives a safe correlation ID.
 
-Pending evidence: final local CI, commit/push, draft PR, and independent GitHub Actions. No merge or Production action is authorized.
+Evidence:
+
+- Implementation commit: `d3419a2` on `phase5/operational-safety`.
+- Local `npm run ci`: PASS (typecheck, 24 tests, Playwright smoke, build).
+- Local `git diff --check`: PASS; npm audit reports 0 vulnerabilities.
+- Stacked draft PR: #7, <https://github.com/newsdayads/tigeriq-ai-lab/pull/7>.
+- Independent GitHub Actions push run `33237419852`: PASS.
+- Independent GitHub Actions PR run `33237430178`: PASS.
+
+Next action: continue automatically with graceful draining, timeouts, and redacted structured observability. No merge or Production action is authorized.
