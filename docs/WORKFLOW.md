@@ -14,3 +14,7 @@
 Gate order: CODE -> REVIEW -> TEST -> TYPECHECK -> BUILD -> CI -> PREVIEW -> PREVIEW SMOKE -> MERGE MAIN -> PRODUCTION -> PRODUCTION SMOKE -> DOCS/CURRENT_STATE -> DONE.
 
 A pending/queued/running gate is not a blocker. On FAIL, root-cause, fix and retest. Stop only at DONE, REAL BLOCKER after safe fallbacks are exhausted, or EXTERNAL WAIT.
+
+## Phase 1 transition authority
+
+The executable path is `draft -> approved -> running -> verified`, with `failed` and `blocked` recovery states. Planner creates, approver approves, coder starts and records evidence, and an independent reviewer/judge evaluates it. Direct transition to `verified` is rejected; only a passing `DONE` gate decision backed by known passing evidence can produce it.

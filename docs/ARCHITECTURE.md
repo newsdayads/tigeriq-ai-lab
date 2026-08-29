@@ -24,3 +24,9 @@ AI output is advisory until backed by deterministic evidence. Tests, commit SHA,
 
 ## Project #001
 TigerIQ Driver is onboarded only through read/audit + isolated branch + PR. Direct production edits are forbidden.
+
+## Phase 1 executable slice
+
+`packages/control-plane` is the lifecycle authority around the Phase 0 contracts. It currently uses in-memory state so authorization and evidence invariants can be proven without infrastructure. Each accepted mutation appends an audit event; evidence receives a SHA-256 digest; only a distinct reviewer or judge can record a final passing `DONE` decision.
+
+This is not yet a network or Production boundary. Authentication, durable event storage, optimistic concurrency, schema validation at ingress, and recovery remain required before external clients can rely on it.
