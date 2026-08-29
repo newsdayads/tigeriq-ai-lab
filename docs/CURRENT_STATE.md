@@ -11,8 +11,8 @@ Status:
 - Work Order, Evidence and Audit Log schemas are committed.
 - Gate Engine, agent role separation, Model Router, sandbox, GitHub adapter and Golden Dataset contracts are committed.
 - TypeScript, Vitest, Playwright smoke and GitHub Actions CI are configured.
-- CI run #4 passed Typecheck, Unit tests, Playwright smoke and Build on the Phase 0 PR head before this documentation-only update.
+- CI run #6 passed Install, Typecheck, Unit tests, Playwright smoke and Build on commit `f344b4922f600aafc8c58cff139f6639f5d7b87f`.
 - No production deployment exists.
 - TigerIQ Driver has not been modified by AI Lab.
 
-Phase 0 branch status: VERIFIED pending final CI rerun for this documentation-only commit. MAIN merge is intentionally not automatic.
+Phase 0 branch status: VERIFIED. MAIN merge is intentionally not automatic and remains outside this phase.
