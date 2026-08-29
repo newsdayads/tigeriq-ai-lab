@@ -83,7 +83,7 @@ Next action: human review in dependency order PR #1 -> #3 -> #4 -> #5. No merge,
 
 ## Phase 4 checkpoint
 
-Status: IMPLEMENTED / GATE_PENDING
+Status: VERIFIED by independent CI
 
 - Branch `phase4/durable-api`, stacked on verified Phase 3.
 - API can use journal-backed Control Plane state while retaining the in-memory test mode.
@@ -91,4 +91,13 @@ Status: IMPLEMENTED / GATE_PENDING
 - API restart recovers Work Order status and full domain audit history.
 - Duplicate creation after restart fails closed as a conflict.
 
-Pending evidence: final local CI, commit/push, draft PR, and independent GitHub Actions. No merge or Production action is authorized.
+Evidence:
+
+- Implementation commit: `8390f73` on `phase4/durable-api`.
+- Local `npm run ci`: PASS (typecheck, 23 tests, Playwright smoke, build).
+- Local `git diff --check`: PASS; npm audit reports 0 vulnerabilities.
+- Stacked draft PR: #6, <https://github.com/newsdayads/tigeriq-ai-lab/pull/6>.
+- Independent GitHub Actions push run `33237110186`: PASS.
+- Independent GitHub Actions PR run `33237117262`: PASS.
+
+Next action: continue automatically with durable idempotency and operational safeguards. No merge or Production action is authorized.
