@@ -39,6 +39,16 @@ Audited off-MAIN runtime branches:
 - Phase 7 metrics/overload protection: `phase7/metrics-overload` / draft PR #9
 - Phase 8 actor rate limits: `phase8/actor-rate-limits` / draft PR #10
 
+Newly audited off-MAIN draft work created after the Phase 8 checkpoint:
+- Phase 9 provider-neutral model routing: `phase9/model-router-execution` / draft PR #13; CI PASS at `8bb6c5b7a99938a6b2e3cb16e7e05129ee2fd20c`.
+- Control Center MVP: `wo003/control-center-mvp` / draft PR #14; stacked on Phase 9; CI PASS at `4ba2270ff9d4f6cd33836696f5fca9c7e6f68e0b`.
+- Driver read-only onboarding: `wo004/driver-integration` / draft PR #15; stacked on PR #14; CI PASS at `e9fb98483fb7ac995d34681cfb03dcc64ec5a9c0`.
+- Revenue opportunity research: `wo005/revenue-opportunity-research` / draft PR #16; stacked on PR #15; CI PASS at `96513d51a3c72017d50429b41647ae3f025e378e`.
+- Driver Fleet customer discovery: `wo006/driver-fleet-customer-discovery` / draft PR #17; stacked on PR #16; CI PASS at `f1838fe623a47d8e0c8b5f8c1b0b3df94381d2b7`.
+- PC local AI execution worker: `wo007/pc-local-ai-worker` / draft PR #18; separate child of Phase 9; CI PASS at `8e0b58f88afb03230d0283547217dc22b5249b23`.
+
+These entries record branch/PR/check reality only. Their product claims and release eligibility have not been independently reviewed by PR #11's gate.
+
 Latest runtime head audited: `e29b9a32b49226075147f2168a7f0438665258b2` on `phase8/actor-rate-limits`.
 
 Runtime evidence recorded in the stacked branch reports:
@@ -60,6 +70,7 @@ These runtime components are implemented and verified on stacked branches only. 
 - PR #11 Source-of-Truth bootstrap: open and mergeable. Independent review Issue #12 initially returned FAIL, then PASS on corrected head `f34b8c672112eb38b5d7b0bb04c3af06609759d3`; no blocking privacy, consistency, topology, provenance, MAIN, or Production finding remains. Judge/release gate remains pending.
 - Primary runtime path PR #1 and PR #3–#10: open, draft, and stacked in dependency order.
 - PR #2: open draft alternative/duplicate Phase 0 foundation; it is not a dependency of PR #3–#10.
+- PR #13–#18: open, draft, off-MAIN work with successful CI checks; independent review/release gates remain open.
 - No Production deployment has been found or authorized.
 - MAIN has not been modified by this audit/update.
 
