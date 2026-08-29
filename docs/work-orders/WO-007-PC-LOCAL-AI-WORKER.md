@@ -1,7 +1,7 @@
 # WO-007 — PC Local AI Execution Worker
 
 Priority: P0
-Status: IN PROGRESS — REPOSITORY GATES ACTIVE; PHYSICAL-PC E2E EVIDENCE REMAINS
+Status: PHYSICAL GATES PASS — PC01 AUTO MODE READY; REPOSITORY RECONCILIATION/CI CLOSURE PENDING
 Date: 2026-08-29
 
 ## Objective
@@ -19,14 +19,21 @@ Make the existing PC a zero-cost local AI Execution Worker that preserves Work O
 - No MAIN/Production mutation before gate.
 - Demonstrate one sample Work Order end-to-end while cloud providers are deliberately simulated unavailable.
 
-## PC01 evidence supplied by Owner
-- PC01 bootstrap reports `AUTO MODE READY 100%`.
+## Physical PC01 result
 - Ollama model: `qwen2.5-coder:14b`.
+- Ollama local inference: PASS.
+- OpenAI-compatible/local API: PASS.
 - Worker and Watchdog are installed as Windows Scheduled Tasks.
-- GitHub CLI is installed.
-- Tailscale address: `100.97.23.87`.
-
-These are accepted as Owner-supplied operational evidence, but they do not replace repository CI or the final physical-PC end-to-end evidence required by this Work Order.
+- GitHub CLI authentication: PASS.
+- Tailscale address observed: `100.97.23.87`.
+- Duplicate Worker condition was found and reduced to exactly one Worker instance.
+- Physical cloud-outage → Ollama E2E: PASS.
+- Durable Work Order reconstructed/recovered status: `verified`.
+- Independent REVIEW: PASS.
+- Independent DONE judge: PASS.
+- Physical watchdog self-heal after deliberate Worker kill: PASS.
+- Post-recovery local inference returned `TIGERIQ_AUTO_MODE_PASS`.
+- Final physical gate output: `[100%] TIGERIQ PC01 AUTO MODE READY`.
 
 ## Routing policy
 Cloud providers remain policy-driven candidates. Provider failures open bounded circuit state after a configurable threshold and fall through without losing Work Order state. Local provider does not require cloud credentials. Total provider exhaustion fails closed with bounded attempt evidence.
@@ -47,18 +54,18 @@ Secrets only through local environment/secret store; never repository files, evi
 - Worker tests cover restart recovery, simulated cloud outage → local execution, independent reviewer/judge gate completion, fail-closed total exhaustion, and role independence.
 - `scripts/pc-worker/audit.ps1` provides secret-free Windows hardware/runtime audit.
 - `scripts/pc-worker/test-ollama.ps1` provides Ollama health/model/OpenAI-compatible inference smoke testing.
+- `scripts/pc-worker/e2e-wo007.ps1` provides the one-command physical E2E gate.
 
 ## Repository evidence
 - Draft PR #18; MAIN/Production remain untouched.
-- Composition commit: `17ca2c28a0838b585d80bbfc5e381ffa3a1ef0cd`.
-- Worker test commit: `fb9ce67256f54d560733843c17aadf0292331a9c`.
-- CI run `33250229767` validates the latest worker head; Install, Typecheck, Unit tests and Playwright smoke passed before the documentation refresh. Final Build/conclusion must be checked on the latest resulting head before repository verification is claimed.
+- Physical-E2E source head: `375e305b3c44f25ec076d9d2b4ada0d2c36f0fe6`.
+- GitHub Actions CI #67 / run `33250789420`: PASS.
+- Physical E2E evidence and watchdog recovery evidence are recorded in `docs/evidence/WO-007-REPOSITORY-GATE-2026-08-29.md`.
 
-## Remaining gate
-1. Confirm latest GitHub CI PASS after this documentation refresh.
-2. Capture/reconcile physical-PC audit and Ollama smoke output without secrets.
-3. Run one real PC01 sample Work Order with cloud providers deliberately unavailable and record route attempt → Ollama execution → evidence → independent review → judge/DONE.
-4. Restart Worker/Watchdog and prove durable Work Order recovery from persisted state.
-5. Update CURRENT_STATE/Trello/evidence with the final hashes/results.
+## Remaining closure gate
+1. Let CI validate the documentation/evidence reconciliation head.
+2. Reconcile CURRENT_STATE and PR metadata with the final physical evidence.
+3. Update Trello/Company OS state if connector access is available.
+4. Close WO-007 through the Company OS gate without merging MAIN/Production unless separately authorized.
 
-Do not mark DONE until all five are evidenced. No MAIN/Production action is authorized by this Work Order.
+PC01 itself is operationally ready. No MAIN/Production action is authorized by this Work Order.
