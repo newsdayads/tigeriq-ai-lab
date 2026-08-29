@@ -18,6 +18,7 @@ const approver = { id: 'owner-gate', role: 'approver' as const };
 const coder = { id: 'pc01-coder', role: 'coder' as const };
 const reviewer = { id: 'independent-reviewer', role: 'reviewer' as const };
 const judge = { id: 'independent-judge', role: 'judge' as const };
+const commitSha = '17ca2c28';
 
 function order(id: string): WorkOrder {
   return {
@@ -63,7 +64,7 @@ describe('WorkOrderWorker', () => {
       controlPlane: restartedPlane,
       router: new ModelRouter([cloud, local], policy),
       actors: { coder, reviewer, judge },
-      commitSha: '17ca2c28',
+      commitSha,
       reviewer: async ({ routed }) => ({ pass: routed.text === 'LOCAL_EXECUTION_OK' }),
       judge: async ({ workOrder, routed }) => ({
         pass: workOrder.evidence.length === 1 && routed.target.provider === 'ollama',
@@ -76,6 +77,7 @@ describe('WorkOrderWorker', () => {
     expect(result.snapshot.order.status).toBe('verified');
     expect(result.snapshot.implementerId).toBe(coder.id);
     expect(result.snapshot.evidence).toHaveLength(1);
+    expect(result.snapshot.evidence[0]?.commitSha).toBe(commitSha);
     expect(result.snapshot.decisions.map((decision) => [decision.gate, decision.status])).toEqual([
       ['REVIEW', 'pass'],
       ['DONE', 'pass'],
@@ -103,6 +105,7 @@ describe('WorkOrderWorker', () => {
       controlPlane: plane,
       router: new ModelRouter([failed], policy),
       actors: { coder, reviewer, judge },
+      commitSha,
       reviewer: async () => ({ pass: true }),
       judge: async () => ({ pass: true }),
     });
@@ -111,6 +114,7 @@ describe('WorkOrderWorker', () => {
     const snapshot = await plane.get('WO-LOCAL-2');
     expect(snapshot.order.status).toBe('failed');
     expect(snapshot.evidence[0]?.status).toBe('fail');
+    expect(snapshot.evidence[0]?.commitSha).toBe(commitSha);
   });
 
   it('rejects non-independent worker identities', async () => {
@@ -119,8 +123,21 @@ describe('WorkOrderWorker', () => {
       controlPlane: plane,
       router: new ModelRouter([]),
       actors: { coder, reviewer: { id: coder.id, role: 'reviewer' }, judge },
+      commitSha,
       reviewer: async () => ({ pass: true }),
       judge: async () => ({ pass: true }),
     })).toThrow('coder, reviewer and judge must be independent');
+  });
+
+  it('rejects placeholder or missing commit identity for evidence', async () => {
+    const { plane } = await durablePlane();
+    expect(() => new WorkOrderWorker({
+      controlPlane: plane,
+      router: new ModelRouter([]),
+      actors: { coder, reviewer, judge },
+      commitSha: 'local-worker',
+      reviewer: async () => ({ pass: true }),
+      judge: async () => ({ pass: true }),
+    })).toThrow('worker commitSha must be a real hexadecimal git commit SHA');
   });
 });
