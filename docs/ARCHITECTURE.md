@@ -30,3 +30,7 @@ TigerIQ Driver is onboarded only through read/audit + isolated branch + PR. Dire
 `packages/control-plane` is the lifecycle authority around the Phase 0 contracts. It currently uses in-memory state so authorization and evidence invariants can be proven without infrastructure. Each accepted mutation appends an audit event; evidence receives a SHA-256 digest; only a distinct reviewer or judge can record a final passing `DONE` decision.
 
 This is not yet a network or Production boundary. Authentication, durable event storage, optimistic concurrency, schema validation at ingress, and recovery remain required before external clients can rely on it.
+
+## Phase 2 persistence slice
+
+`packages/event-store` provides a single-node durable journal. JSONL entries form one global SHA-256 chain while `streamId` and expected version provide per-Work-Order optimistic concurrency. An exclusive lock serializes writers; every read verifies sequence, previous hash, and content hash before returning events. This establishes recovery and tamper detection, but it is not authorization to use the filesystem store in Production.

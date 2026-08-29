@@ -38,3 +38,15 @@ Evidence:
 - Independent GitHub Actions PR run `33236595743`: PASS.
 
 Next action: human review of draft PR #1 followed by stacked draft PR #3. No merge or Production action is authorized.
+
+## Phase 2 checkpoint
+
+Status: IMPLEMENTED / GATE_PENDING
+
+- Branch `phase2/durable-journal`, stacked on verified Phase 1.
+- Adds a durable JSONL event journal with an exclusive writer lock.
+- Adds per-stream optimistic concurrency through expected version.
+- Adds a globally ordered SHA-256 chain verified on every read/recovery.
+- Adds restart recovery and tamper-detection tests.
+
+Pending evidence: full local CI, commit/push, stacked draft PR, and independent GitHub Actions. No merge or Production action is authorized.
