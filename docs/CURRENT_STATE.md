@@ -164,11 +164,20 @@ Next action: assess the next coherent non-Production phase from the verified sta
 
 ## Phase 8 checkpoint
 
-Status: IMPLEMENTED / GATE_PENDING
+Status: VERIFIED by independent CI
 
 - Branch `phase8/actor-rate-limits`, stacked on verified Phase 7.
 - Adds configurable fixed-window quotas after authentication.
 - Actor quotas are isolated; exhaustion returns 429 with retry guidance before domain work.
 - Public health/readiness probes do not consume actor quota.
 
-Pending evidence: final local CI, commit/push, draft PR, and independent GitHub Actions. No merge or Production action is authorized.
+Evidence:
+
+- Implementation commit: `96cac3c` on `phase8/actor-rate-limits`.
+- Local `npm run ci`: PASS (typecheck, 30 tests, Playwright smoke, build).
+- Local `git diff --check`: PASS; npm audit reports 0 vulnerabilities.
+- Stacked draft PR: #10, <https://github.com/newsdayads/tigeriq-ai-lab/pull/10>.
+- Independent GitHub Actions push run `33241941818`: PASS.
+- Independent GitHub Actions PR run `33241949117`: PASS.
+
+Next action: assess the next coherent non-Production phase from the verified stack. No merge or Production action is authorized.
