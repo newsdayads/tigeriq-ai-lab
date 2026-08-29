@@ -2,37 +2,72 @@
 
 Last audited: 2026-08-29
 
-## Repository reality before this bootstrap branch
-Default branch `main` contained only:
-- `.gitignore`
-- `LICENSE`
-- `README.md`
+## MAIN reality
+Default branch: `main`.
 
-No Company Source of Truth, architecture, current-state record, or work-order structure was present on `main` at audit time.
+At the latest audit, `main` still contains only the initial repository baseline and does not yet contain the Company Source of Truth or runtime stack.
 
-## Bootstrap branch
-Branch: `chore/source-of-truth-bootstrap`
+## Company Source of Truth bootstrap
+Branch: `chore/source-of-truth-bootstrap`.
+PR: #11 — `docs: bootstrap TigerIQ Source of Truth and Company OS governance`.
 
-Added on this branch:
+This branch adds:
 - Company Constitution v1
 - Workflow v1
 - AI Employee & Department Model v1
 - Decision Log / Baseline v1
 - Source Index v1
 - Architecture baseline
+- Privacy boundary
 - Current State
-- Work Order for Source-of-Truth bootstrap
+- Source-of-Truth bootstrap Work Order
 
-## Privacy decision
-`04_TIGERIQ_OWNER_PROFILE_v1.md` is intentionally excluded from the general repository because it is classified restricted/private.
+Privacy rule verified: `04_TIGERIQ_OWNER_PROFILE_v1.md` is intentionally excluded from the general repository because it is restricted/private.
 
-## Release state
-- MAIN: unchanged by this work.
-- Production: unchanged.
-- Source bootstrap: pending review/release gate via pull request.
+## Runtime engineering reality
+A separate stacked runtime implementation exists off MAIN.
 
-## Next engineering priority after source bootstrap
-Audit actual runtime/code state and then implement/verify the Company OS / AI Execution Runtime flow:
-Owner → Chief of Staff → Work Order → AI Employee → Model Router → Execution → Independent Review → Judge/Gate → Evidence → State/Memory → Owner Report.
+Verified branch stack:
+- Phase 0 foundation: `phase-0-foundation` / draft PR #1
+- Phase 0 evidence-first foundation: `phase0/foundation` / draft PR #2
+- Phase 1 control plane: `phase1/control-plane` / draft PR #3
+- Phase 2 durable journal: `phase2/durable-journal` / draft PR #4
+- Phase 3 HTTP API: `phase3/http-api` / draft PR #5
+- Phase 4 durable API: `phase4/durable-api` / draft PR #6
+- Phase 5 operational safety: `phase5/operational-safety` / draft PR #7
+- Phase 6 runtime guardrails: `phase6/runtime-guardrails` / draft PR #8
+- Phase 7 metrics/overload protection: `phase7/metrics-overload` / draft PR #9
+- Phase 8 actor rate limits: `phase8/actor-rate-limits` / draft PR #10
 
-Do not claim any runtime component is implemented until repository and test evidence confirms it.
+Latest runtime head audited: `e29b9a32b49226075147f2168a7f0438665258b2` on `phase8/actor-rate-limits`.
+
+Runtime evidence recorded in the stacked branch reports:
+- executable Work Order lifecycle/control plane;
+- role separation and evidence-gated decisions;
+- tamper-evident durable journal and restart recovery;
+- authenticated/idempotent loopback HTTP API;
+- durable API state and idempotency;
+- health/readiness, correlation IDs, graceful draining and bounded timeouts;
+- redacted structured observability;
+- overload protection and low-cardinality operator metrics;
+- actor-scoped fixed-window rate limits;
+- latest Phase 8 CI: GitHub Actions PASS;
+- latest Phase 8 test baseline: typecheck, 30 tests, Playwright smoke and build PASS according to recorded evidence.
+
+These runtime components are implemented and verified on stacked branches only. They are not yet merged to MAIN and are not Production.
+
+## Open integration/release gates
+- PR #11 Source-of-Truth bootstrap: open, mergeable, pending independent review/release gate.
+- PR #1–#10 runtime stack: open; runtime PRs remain draft and stacked.
+- No Production deployment has been found or authorized.
+- MAIN has not been modified by this audit/update.
+
+## Current priority
+1. Keep repository governance aligned with the approved Company Source of Truth.
+2. Reconcile Source bootstrap with the verified runtime stack without exposing restricted Owner context.
+3. Review runtime PRs in dependency order and preserve independent Builder/Reviewer/Judge gates.
+4. Merge to MAIN only after applicable review/release gates pass.
+5. Do not deploy Production without explicit Owner authorization.
+
+## Completion rule
+Do not claim repository integration or Production readiness until the applicable review, CI, merge and release evidence exists.
