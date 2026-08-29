@@ -10,3 +10,13 @@ Implementation requirements:
 5. Preserve local/private bind, CSP/security headers, write auth, CSRF and idempotency behavior.
 6. Add tests for `/api/server` success, collector failure/unavailable, HTML escaping/safe rendering, no-secret behavior, and mobile presence.
 7. CI must PASS. Independent review must review exact SHA, not `HEAD~1`.
+
+## Operational path change
+TigerIQ Command Center is now the primary operational and reporting surface. Trello is removed from the default execution critical path.
+
+Work Orders MUST NOT wait for Trello card creation, card movement, checklist updates, or Trello reporting before execution, review, judge, evidence recording, or completion.
+
+Default runtime path:
+Owner → Command Center → Model Router / PC01 → Execution → Independent Review → Judge/Gate → Evidence/State → Command Center Owner Report.
+
+Trello is optional only for archive/compatibility when explicitly requested.
