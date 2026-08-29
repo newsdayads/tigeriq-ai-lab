@@ -37,3 +37,26 @@ export class ApiMetrics {
     });
   }
 }
+
+export interface RateLimitDecision { allowed: boolean; remaining: number; retryAfterMs: number; }
+
+export class FixedWindowRateLimiter {
+  readonly #buckets = new Map<string, { start: number; count: number }>();
+  constructor(readonly limit: number, readonly windowMs: number, readonly now: () => number = Date.now) {
+    if (!Number.isInteger(limit) || limit < 1) throw new Error('rate limit must be a positive integer');
+    if (!Number.isFinite(windowMs) || windowMs < 1) throw new Error('rate window must be positive');
+  }
+  consume(identity: string): RateLimitDecision {
+    const current = this.now();
+    let bucket = this.#buckets.get(identity);
+    if (!bucket || current - bucket.start >= this.windowMs) {
+      bucket = { start: current, count: 0 };
+      this.#buckets.set(identity, bucket);
+    }
+    if (bucket.count >= this.limit) {
+      return { allowed: false, remaining: 0, retryAfterMs: Math.max(1, bucket.start + this.windowMs - current) };
+    }
+    bucket.count += 1;
+    return { allowed: true, remaining: this.limit - bucket.count, retryAfterMs: 0 };
+  }
+}

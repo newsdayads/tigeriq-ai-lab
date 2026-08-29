@@ -34,7 +34,7 @@ describe('HTTP API', () => {
   it('exposes health without leaking protected state', async () => {
     const response = await call('/health');
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ status: 'ok', phase: 'phase-7' });
+    expect(await response.json()).toMatchObject({ status: 'ok', phase: 'phase-8' });
     expect(response.headers.get('x-request-id')).toBeTruthy();
     expect((await call('/ready')).status).toBe(200);
   });
@@ -105,5 +105,15 @@ describe('HTTP API', () => {
     const response = await call('/metrics', 'operator-secret');
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ requestsCompleted: expect.any(Number), activeRequests: 1 });
+  });
+
+  it('rate limits actors independently and returns retry guidance', async () => {
+    await api.close();
+    api = await startApi({ tokens: new Map(actors), actorRequestLimit: 1, actorRateWindowMs: 60_000 });
+    expect((await call('/v1/work-orders/missing', 'planner-secret')).status).toBe(404);
+    const limited = await call('/v1/work-orders/missing', 'planner-secret');
+    expect(limited.status).toBe(429);
+    expect(limited.headers.get('retry-after')).toBe('60');
+    expect((await call('/v1/work-orders/missing', 'operator-secret')).status).toBe(404);
   });
 });

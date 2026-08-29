@@ -6,7 +6,7 @@ import { DurableControlPlane } from '../../../packages/durable-control-plane/src
 import type { EvidenceRecord } from '../../../packages/evidence/src/index.js';
 import { FileJournal } from '../../../packages/event-store/src/index.js';
 import { JournalIdempotencyStore, MemoryIdempotencyStore, type IdempotencyStore } from '../../../packages/idempotency/src/index.js';
-import { ApiMetrics, ConcurrencyLimiter } from '../../../packages/runtime/src/index.js';
+import { ApiMetrics, ConcurrencyLimiter, FixedWindowRateLimiter } from '../../../packages/runtime/src/index.js';
 import type { WorkOrder, WorkOrderStatus } from '../../../packages/work-orders/src/index.js';
 import { health } from './index.js';
 
@@ -21,6 +21,8 @@ interface ApiOptions {
   shutdownGraceMs?: number;
   logger?: (event: ApiLogEvent) => void;
   maxConcurrentRequests?: number;
+  actorRequestLimit?: number;
+  actorRateWindowMs?: number;
 }
 
 export interface ApiLogEvent {
@@ -43,6 +45,7 @@ export async function startApi(options: ApiOptions) {
   const maxBodyBytes = options.maxBodyBytes ?? 64 * 1024;
   const limiter = new ConcurrencyLimiter(options.maxConcurrentRequests ?? 100);
   const metrics = new ApiMetrics();
+  const rateLimiter = new FixedWindowRateLimiter(options.actorRequestLimit ?? 120, options.actorRateWindowMs ?? 60_000);
   let draining = false;
   const server = createServer(async (request, response) => {
     const requestId = safeRequestId(header(request, 'x-request-id')) ?? randomUUID();
@@ -61,7 +64,7 @@ export async function startApi(options: ApiOptions) {
       return send(response, 503, { error: 'overloaded' });
     }
     try {
-      await route(request, response, plane, options.tokens, idempotency, maxBodyBytes, () => draining, metrics, limiter);
+      await route(request, response, plane, options.tokens, idempotency, maxBodyBytes, () => draining, metrics, limiter, rateLimiter);
     } catch (error) {
       const status = error instanceof HttpError ? error.status : domainStatus(error);
       send(response, status, { error: status === 500 ? 'internal_error' : error instanceof Error ? error.message : 'request_failed' });
@@ -99,6 +102,7 @@ async function route(
   isDraining: () => boolean,
   metrics: ApiMetrics,
   limiter: ConcurrencyLimiter,
+  rateLimiter: FixedWindowRateLimiter,
 ): Promise<void> {
   const method = request.method ?? 'GET';
   const path = new URL(request.url ?? '/', 'http://localhost').pathname;
@@ -107,6 +111,12 @@ async function route(
   if (isDraining()) throw new HttpError(503, 'service_draining');
 
   const actor = authenticate(request, tokens);
+  const rate = rateLimiter.consume(actor.id);
+  response.setHeader('x-ratelimit-remaining', String(rate.remaining));
+  if (!rate.allowed) {
+    response.setHeader('retry-after', String(Math.ceil(rate.retryAfterMs / 1000)));
+    throw new HttpError(429, 'rate_limit_exceeded');
+  }
   if (method === 'GET' && path === '/metrics') {
     if (actor.role !== 'operator') throw new HttpError(403, 'operator role required');
     return send(response, 200, metrics.snapshot(limiter.active));

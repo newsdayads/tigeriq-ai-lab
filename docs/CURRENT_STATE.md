@@ -161,3 +161,14 @@ Evidence:
 - Independent GitHub Actions PR run `33239608264`: PASS.
 
 Next action: assess the next coherent non-Production phase from the verified stack. No merge or Production action is authorized.
+
+## Phase 8 checkpoint
+
+Status: IMPLEMENTED / GATE_PENDING
+
+- Branch `phase8/actor-rate-limits`, stacked on verified Phase 7.
+- Adds configurable fixed-window quotas after authentication.
+- Actor quotas are isolated; exhaustion returns 429 with retry guidance before domain work.
+- Public health/readiness probes do not consume actor quota.
+
+Pending evidence: final local CI, commit/push, draft PR, and independent GitHub Actions. No merge or Production action is authorized.
