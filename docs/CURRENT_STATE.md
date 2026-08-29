@@ -181,3 +181,21 @@ Evidence:
 - Independent GitHub Actions PR run `33241949117`: PASS.
 
 Next action: assess the next coherent non-Production phase from the verified stack. No merge or Production action is authorized.
+
+## Phase 9 checkpoint
+
+Status: VERIFIED by independent CI
+
+- Branch `phase9/model-router-execution`, stacked on verified Phase 8.
+- Converts the routing policy contract into executable provider-neutral failover.
+- Preserves deterministic free-first candidate order and injected replaceable adapters.
+- Missing adapters, provider failures, and empty output fail over; total exhaustion fails closed.
+- Attempt metadata excludes prompt and credential payloads.
+
+Evidence:
+
+- Implementation/docs head before evidence update: `ea8e75eb22fad5acf7ddff3c87c01af3e03a6ce3`.
+- Stacked draft PR: #13, <https://github.com/newsdayads/tigeriq-ai-lab/pull/13>.
+- Independent GitHub Actions CI run `33243682544`: PASS.
+
+Next action: concrete provider network adapters and credential provisioning require a separately gated phase; no provider credentials, paid service, MAIN merge, or Production action is authorized.
