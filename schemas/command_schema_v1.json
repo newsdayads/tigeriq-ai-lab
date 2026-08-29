@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "TIGERIQ_COMMAND_V1",
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": ["read", "list", "write", "run", "finish"]
+    },
+    "path": {
+      "type": "string",
+      "pattern": "^F:\\TigerIQ\\Workspace\\tigeriq-ai-lab(\\[a-zA-Z0-9._-]+)*$"
+    },
+    "content": {
+      "type": "string"
+    },
+    "argv": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "timeout": {
+      "type": "integer",
+      "minimum": 1
+    }
+  },
+  "required": ["action"],
+  "additionalProperties": false
+}
