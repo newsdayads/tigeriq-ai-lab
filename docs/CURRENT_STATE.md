@@ -41,7 +41,7 @@ Next action: human review of draft PR #1 followed by stacked draft PR #3. No mer
 
 ## Phase 2 checkpoint
 
-Status: IMPLEMENTED / GATE_PENDING
+Status: VERIFIED by independent CI
 
 - Branch `phase2/durable-journal`, stacked on verified Phase 1.
 - Adds a durable JSONL event journal with an exclusive writer lock.
@@ -49,4 +49,13 @@ Status: IMPLEMENTED / GATE_PENDING
 - Adds a globally ordered SHA-256 chain verified on every read/recovery.
 - Adds restart recovery and tamper-detection tests.
 
-Pending evidence: full local CI, commit/push, stacked draft PR, and independent GitHub Actions. No merge or Production action is authorized.
+Evidence:
+
+- Implementation commit: `bfe6b4b` on `phase2/durable-journal`.
+- Local `npm run ci`: PASS (typecheck, 14 unit tests, Playwright smoke, build).
+- Local `git diff --check`: PASS; npm audit reports 0 vulnerabilities.
+- Stacked draft PR: #4, <https://github.com/newsdayads/tigeriq-ai-lab/pull/4>.
+- Independent GitHub Actions push run `33236740364`: PASS.
+- Independent GitHub Actions PR run `33236748020`: PASS.
+
+Next action: human review in dependency order PR #1 -> PR #3 -> PR #4. No merge or Production action is authorized.
