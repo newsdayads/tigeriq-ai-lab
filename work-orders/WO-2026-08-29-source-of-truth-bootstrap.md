@@ -13,20 +13,28 @@ Establish a repository-backed Company and Engineering Source of Truth without ex
 2. Add approved Company Source documents.
 3. Exclude restricted/private Owner Profile from general repository.
 4. Add architecture and current-state engineering records.
-5. Record evidence and open a PR for review/release gating.
+5. Reconcile CURRENT_STATE with the separately verified runtime branch stack.
+6. Record evidence and keep the change behind PR/review/release gating.
 
 ## Acceptance criteria
 - Constitution, Workflow, AI Employee Model, Decision Log, and Source Index exist in repo branch.
 - Owner Profile is not committed.
-- Architecture baseline reflects approved operating model without claiming unverified implementation.
-- CURRENT_STATE records real audited repository state.
+- Architecture baseline reflects approved operating model without overstating MAIN/Production state.
+- CURRENT_STATE records both MAIN reality and the verified off-MAIN runtime stack.
 - MAIN/Production remains unchanged until release gate.
-- PR exists with evidence of files added.
+- PR exists with evidence of files added and current-state reconciliation.
 
 ## Evidence
-- Audit: main contained only `.gitignore`, `LICENSE`, `README.md` before bootstrap.
+- Initial MAIN audit: `.gitignore`, `LICENSE`, `README.md` only before bootstrap.
 - Working branch: `chore/source-of-truth-bootstrap`.
-- Individual file commits recorded in branch history.
+- PR #11 is open against `main`.
+- Runtime audit found open stacked PRs #1–#10 through `phase8/actor-rate-limits`.
+- Latest audited runtime head: `e29b9a32b49226075147f2168a7f0438665258b2`.
+- GitHub Actions CI on the latest Phase 8 head is PASS.
+- Runtime CURRENT_STATE records 30 tests + Playwright smoke + build PASS for Phase 8.
+- Restricted `04_TIGERIQ_OWNER_PROFILE_v1.md` is not among PR #11 changed files.
+- `docs/CURRENT_STATE.md` was reconciled on this branch to distinguish MAIN, Source bootstrap, runtime branches, and Production state.
 
 ## Gate
 Pending independent review / PR review before merge to MAIN.
+No Production action is authorized by this Work Order.
