@@ -256,7 +256,7 @@ export async function startDashboard(source: DashboardSource, options: CommandCe
 }
 
 function statusText(status: string): string {
-  const labels: Record<string, string> = { draft: 'Việc mới', planned: 'Đã lên kế hoạch', active: 'Đang làm', review: 'Đang kiểm tra', blocked: 'Vướng / Chờ', verified: 'Hoàn thành' };
+  const labels: Record<string, string> = { draft: 'Việc mới', approved: 'Đã lên kế hoạch', running: 'Đang làm', failed: 'Lỗi / Cần sửa', blocked: 'Vướng / Chờ', verified: 'Hoàn thành' };
   return labels[status] ?? status;
 }
 function pct(value: number | null | undefined): string { return value === null || value === undefined ? '—' : `${Math.round(value)}%`; }
@@ -267,7 +267,7 @@ function uptime(seconds: number | null): string {
   return `${days}d ${hours}h ${mins}m`;
 }
 function activityText(summary: ReturnType<typeof buildDashboard>): string {
-  const active = summary.workOrders.find((item) => item.status === 'active' || item.status === 'review');
+  const active = summary.workOrders.find((item) => item.status === 'running');
   return active ? `${active.id} · ${statusText(active.status)}` : 'Chưa xác định';
 }
 
