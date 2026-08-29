@@ -18,6 +18,7 @@ export interface CommandCenterOptions {
   port?: number;
   commandSecret?: string;
   repo?: string;
+  submitJob?: (instruction: string, priority: string) => Promise<string>;
 }
 
 type Session = { csrf: string; createdAt: number };
@@ -114,6 +115,7 @@ export async function startDashboard(source: DashboardSource, options: CommandCe
   assertPrivateBind(host);
   const repo = options.repo ?? process.env.TIGERIQ_REPO ?? 'newsdayads/tigeriq-ai-lab';
   const commandSecret = options.commandSecret ?? process.env.TIGERIQ_COMMAND_SECRET ?? '';
+  const createJob = options.submitJob ?? ((instruction: string, priority: string) => submitGithubJob(repo, instruction, priority));
 
   const server = createServer(async (request, response) => {
     cleanExpiredState();
@@ -156,7 +158,7 @@ export async function startDashboard(source: DashboardSource, options: CommandCe
           return redirect(response, `/?submitted=${encodeURIComponent(previous.url)}`);
         }
 
-        const issueUrl = await submitGithubJob(repo, instruction, priority);
+        const issueUrl = await createJob(instruction, priority);
         submissions.set(idempotencyKey, { fingerprint, url: issueUrl });
         return redirect(response, `/?submitted=${encodeURIComponent(issueUrl)}`);
       }
