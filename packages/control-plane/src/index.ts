@@ -117,6 +117,10 @@ export class ControlPlane {
     return structuredClone(this.#require(id));
   }
 
+  list(): WorkOrderSnapshot[] {
+    return [...this.#orders.values()].map((snapshot) => structuredClone(snapshot));
+  }
+
   #require(id: string): WorkOrderSnapshot {
     const value = this.#orders.get(id);
     if (!value) throw new Error(`work order ${id} not found`);
