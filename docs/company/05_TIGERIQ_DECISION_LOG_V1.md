@@ -17,6 +17,7 @@ Version: 1.0
 ## Repository governance decisions
 - 2026-08-29: General repository governance documents use role names instead of personal identities and omit third-party names or private relationship details unless strictly required by an approved business process.
 - 2026-08-29: PR #11 may describe verified off-MAIN runtime evidence, but must distinguish the primary stacked path from the separate alternative Phase 0 branch and must not imply MAIN or Production integration.
+- 2026-08-29: Independent review Issue #12 passed corrected PR #11 head `f34b8c672112eb38b5d7b0bb04c3af06609759d3`; merge still requires a separate Judge/release decision.
 
 ## Baseline date
 2026-08-29

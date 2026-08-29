@@ -57,7 +57,7 @@ Runtime evidence recorded in the stacked branch reports:
 These runtime components are implemented and verified on stacked branches only. They are not yet merged to MAIN and are not Production.
 
 ## Open integration/release gates
-- PR #11 Source-of-Truth bootstrap: open and mergeable. Independent review Issue #12 initially returned FAIL on privacy, Model Router consistency, and unsupported provenance claims; fixes are pending retest and re-review before release gate.
+- PR #11 Source-of-Truth bootstrap: open and mergeable. Independent review Issue #12 initially returned FAIL, then PASS on corrected head `f34b8c672112eb38b5d7b0bb04c3af06609759d3`; no blocking privacy, consistency, topology, provenance, MAIN, or Production finding remains. Judge/release gate remains pending.
 - Primary runtime path PR #1 and PR #3–#10: open, draft, and stacked in dependency order.
 - PR #2: open draft alternative/duplicate Phase 0 foundation; it is not a dependency of PR #3–#10.
 - No Production deployment has been found or authorized.
