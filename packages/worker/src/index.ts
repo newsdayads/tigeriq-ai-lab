@@ -26,7 +26,7 @@ export interface WorkerOptions {
   actors: WorkerActors;
   reviewer: (context: WorkerReviewContext) => Promise<ReviewResult>;
   judge: (context: WorkerReviewContext) => Promise<ReviewResult>;
-  commitSha?: string;
+  commitSha: string;
   now?: () => Date;
 }
 
@@ -47,12 +47,13 @@ export class WorkOrderWorker {
 
   constructor(options: WorkerOptions) {
     validateActors(options.actors);
+    validateCommitSha(options.commitSha);
     this.#controlPlane = options.controlPlane;
     this.#router = options.router;
     this.#actors = options.actors;
     this.#reviewer = options.reviewer;
     this.#judge = options.judge;
-    this.#commitSha = options.commitSha ?? 'local-worker';
+    this.#commitSha = options.commitSha;
     this.#now = options.now ?? (() => new Date());
   }
 
@@ -112,6 +113,12 @@ function validateActors(actors: WorkerActors): void {
   if (actors.judge.role !== 'judge') throw new Error('worker judge actor must have judge role');
   const ids = new Set([actors.coder.id, actors.reviewer.id, actors.judge.id]);
   if (ids.size !== 3) throw new Error('coder, reviewer and judge must be independent');
+}
+
+function validateCommitSha(commitSha: string): void {
+  if (!/^[0-9a-f]{7,64}$/i.test(commitSha)) {
+    throw new Error('worker commitSha must be a real hexadecimal git commit SHA');
+  }
 }
 
 function createEvidence(input: {
