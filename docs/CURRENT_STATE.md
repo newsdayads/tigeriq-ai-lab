@@ -121,3 +121,14 @@ Evidence:
 - Independent GitHub Actions PR run `33237430178`: PASS.
 
 Next action: continue automatically with graceful draining, timeouts, and redacted structured observability. No merge or Production action is authorized.
+
+## Phase 6 checkpoint
+
+Status: IMPLEMENTED / GATE_PENDING
+
+- Branch `phase6/runtime-guardrails`, stacked on verified Phase 5.
+- Adds finite request/header timeouts and bounded graceful shutdown.
+- Drain removes readiness and rejects new protected work.
+- Structured completion events include correlation/timing but omit credentials, bodies, and query strings.
+
+Pending evidence: final local CI, commit/push, draft PR, and independent GitHub Actions. No merge or Production action is authorized.

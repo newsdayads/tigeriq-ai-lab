@@ -33,7 +33,7 @@ describe('HTTP API', () => {
   it('exposes health without leaking protected state', async () => {
     const response = await call('/health');
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ status: 'ok', phase: 'phase-5' });
+    expect(await response.json()).toMatchObject({ status: 'ok', phase: 'phase-6' });
     expect(response.headers.get('x-request-id')).toBeTruthy();
     expect((await call('/ready')).status).toBe(200);
   });
@@ -82,5 +82,20 @@ describe('HTTP API', () => {
     const response = await call('/v1/work-orders', 'planner-secret', { ...order, acceptanceCriteria: 'anything' });
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({ error: 'acceptanceCriteria must be an array of non-empty strings' });
+  });
+
+  it('drains safely and emits redacted structured request logs', async () => {
+    await api.close();
+    const events: unknown[] = [];
+    api = await startApi({ tokens: new Map(actors), logger: (event) => events.push(event) });
+    const response = await call('/v1/work-orders', 'planner-secret', order);
+    expect(response.status).toBe(201);
+    await response.arrayBuffer();
+    expect(JSON.stringify(events)).not.toContain('planner-secret');
+    expect(JSON.stringify(events)).not.toContain('Exercise API');
+    expect(events).toEqual([expect.objectContaining({ event: 'http.request.completed', method: 'POST', path: '/v1/work-orders', status: 201 })]);
+    api.drain();
+    expect((await call('/ready')).status).toBe(503);
+    expect((await call('/v1/work-orders/WO-API-1', 'planner-secret')).status).toBe(503);
   });
 });

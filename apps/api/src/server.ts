@@ -16,6 +16,18 @@ interface ApiOptions {
   maxBodyBytes?: number;
   journalPath?: string;
   idempotencyPath?: string;
+  requestTimeoutMs?: number;
+  shutdownGraceMs?: number;
+  logger?: (event: ApiLogEvent) => void;
+}
+
+export interface ApiLogEvent {
+  event: 'http.request.completed';
+  requestId: string;
+  method: string;
+  path: string;
+  status: number;
+  durationMs: number;
 }
 
 export async function startApi(options: ApiOptions) {
@@ -27,15 +39,25 @@ export async function startApi(options: ApiOptions) {
     ? new JournalIdempotencyStore(options.idempotencyPath ?? `${options.journalPath}.idempotency`)
     : new MemoryIdempotencyStore();
   const maxBodyBytes = options.maxBodyBytes ?? 64 * 1024;
+  let draining = false;
   const server = createServer(async (request, response) => {
-    response.setHeader('x-request-id', safeRequestId(header(request, 'x-request-id')) ?? randomUUID());
+    const requestId = safeRequestId(header(request, 'x-request-id')) ?? randomUUID();
+    const started = performance.now();
+    response.setHeader('x-request-id', requestId);
+    response.once('finish', () => options.logger?.({
+      event: 'http.request.completed', requestId, method: request.method ?? 'GET',
+      path: new URL(request.url ?? '/', 'http://localhost').pathname,
+      status: response.statusCode, durationMs: Math.round((performance.now() - started) * 100) / 100,
+    }));
     try {
-      await route(request, response, plane, options.tokens, idempotency, maxBodyBytes);
+      await route(request, response, plane, options.tokens, idempotency, maxBodyBytes, () => draining);
     } catch (error) {
       const status = error instanceof HttpError ? error.status : domainStatus(error);
       send(response, status, { error: status === 500 ? 'internal_error' : error instanceof Error ? error.message : 'request_failed' });
     }
   });
+  server.requestTimeout = options.requestTimeoutMs ?? 15_000;
+  server.headersTimeout = Math.min(server.requestTimeout, 10_000);
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
     server.listen(options.port ?? 0, options.host ?? '127.0.0.1', resolve);
@@ -43,7 +65,16 @@ export async function startApi(options: ApiOptions) {
   const address = server.address() as AddressInfo;
   return {
     url: `http://${address.address}:${address.port}`,
-    close: () => new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())),
+    drain: () => { draining = true; },
+    close: () => {
+      draining = true;
+      return new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => server.closeAllConnections(), options.shutdownGraceMs ?? 5_000);
+        timer.unref();
+        server.close((error) => { clearTimeout(timer); error ? reject(error) : resolve(); });
+        server.closeIdleConnections();
+      });
+    },
   };
 }
 
@@ -54,11 +85,13 @@ async function route(
   tokens: ReadonlyMap<string, Actor>,
   cache: IdempotencyStore,
   maxBodyBytes: number,
+  isDraining: () => boolean,
 ): Promise<void> {
   const method = request.method ?? 'GET';
   const path = new URL(request.url ?? '/', 'http://localhost').pathname;
   if (method === 'GET' && path === '/health') return send(response, 200, health());
-  if (method === 'GET' && path === '/ready') return send(response, 200, { status: 'ready' });
+  if (method === 'GET' && path === '/ready') return send(response, isDraining() ? 503 : 200, { status: isDraining() ? 'draining' : 'ready' });
+  if (isDraining()) throw new HttpError(503, 'service_draining');
 
   const actor = authenticate(request, tokens);
   const match = /^\/v1\/work-orders\/([^/]+)(?:\/(transitions|evidence|gates))?$/.exec(path);
