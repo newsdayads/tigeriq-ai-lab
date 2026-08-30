@@ -1,3 +1,5 @@
+export const FARM_GATEWAY_PROTOCOL_VERSION = 1 as const;
+
 export type FarmDeviceState = 'online' | 'unauthorized' | 'offline' | 'unknown';
 
 export interface CommandResult {
