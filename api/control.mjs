@@ -1,4 +1,5 @@
 import { timingSafeEqual, randomUUID } from 'node:crypto';
+import { decideWithChief } from './chief.mjs';
 
 const REPO = process.env.TIGERIQ_REPO || 'newsdayads/tigeriq-ai-lab';
 const COMMAND_SECRET = process.env.TIGERIQ_COMMAND_SECRET || '';
@@ -47,7 +48,7 @@ async function readBody(req) {
   for await (const chunk of req) {
     const part = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     total += part.length;
-    if (total > 32_768) throw new Error('payload_too_large');
+    if (total > 64_000) throw new Error('payload_too_large');
     chunks.push(part);
   }
   if (!chunks.length) return {};
@@ -117,6 +118,7 @@ async function statusSnapshot(token = '') {
       repository: repoInfo.full_name,
       serverWriteConfigured: Boolean(GITHUB_TOKEN && COMMAND_SECRET),
       clientTokenSupported: true,
+      chiefOfStaff: 'gpt',
     },
     execution: {
       pc01,
@@ -166,10 +168,13 @@ async function createWorkOrder(payload, token) {
     priority,
     '',
     '## Source',
-    'vercel-chat',
+    'vercel-chat-chief-of-staff',
     '',
     '## Request ID',
     id,
+    '',
+    '## Governance',
+    'Chief of Staff classified this as an explicit execution request. Execution still requires normal TigerIQ evidence/review/gate.',
   ].join('\n');
 
   const { owner, repo } = repoParts();
@@ -193,18 +198,15 @@ async function createCanary(token) {
   return { ok: true, idempotencyKey: id, issue: { number: issue.number, url: issue.html_url } };
 }
 
-function classifyChat(message) {
-  const text = String(message || '').trim().toLowerCase();
-  if (!text) return 'invalid';
-  if (/^(chào|xin chào|hello|hi)\b/.test(text)) return 'greeting';
-  if (/(làm được gì|làm đc gì|có thể làm gì|khả năng|giúp được gì|giúp đc gì)/.test(text)) return 'capabilities';
-  if (/(trạng thái|status|đang chạy|online|pc01.*(sao|thế nào|trạng thái)|github.*(sao|thế nào)|vercel.*(sao|thế nào))/.test(text)) return 'status';
-  return 'work-order';
-}
-
-function capabilitiesReply(snapshot) {
-  const pc = snapshot.execution.pc01 === 'online' ? 'đang trực tuyến' : snapshot.execution.pc01 === 'working' ? 'đang làm việc' : 'chưa nhận lệnh ổn định';
-  return `Web Control và GitHub đang trực tuyến. Em có thể nhận công việc, tạo Work Order trên GitHub, theo dõi hàng đợi và kiểm tra PC01. PC01 hiện ${pc}. OpenClaw/Ollama sẽ được nối lại sau khi kênh thực thi PC01 ổn định.`;
+function formatStatusReply(snapshot) {
+  const pc = snapshot.execution.pc01 === 'online'
+    ? 'trực tuyến'
+    : snapshot.execution.pc01 === 'working'
+      ? 'đang làm việc'
+      : snapshot.execution.pc01 === 'degraded'
+        ? 'có lỗi'
+        : 'ngắt kết nối';
+  return `Vercel: trực tuyến · GitHub: trực tuyến · PC01: ${pc} · OpenClaw: chưa xác định · Ollama: chưa xác định · Hàng đợi: ${snapshot.queue.count} công việc.`;
 }
 
 export default async function handler(req, res) {
@@ -223,25 +225,45 @@ export default async function handler(req, res) {
     if (operation === 'whoami') return json(res, 200, await githubIdentity(writeCredential(req).token));
 
     if (operation === 'chat') {
-      const kind = classifyChat(payload.message);
-      if (kind === 'invalid') return json(res, 400, { error: 'invalid_message' });
-      if (kind === 'greeting') return json(res, 200, { ok: true, mode: 'reply', reply: 'Chào Sếp. TigerIQ AI đang trực tuyến. Sếp có thể hỏi trạng thái hoặc giao việc trực tiếp tại đây.' });
-      if (kind === 'status') {
+      const decision = await decideWithChief({ message: payload.message, history: payload.history });
+
+      if (decision.mode === 'status') {
         const snapshot = await statusSnapshot(optionalToken);
         return json(res, 200, {
           ok: true,
           mode: 'status',
-          reply: `Vercel: trực tuyến · GitHub: trực tuyến · PC01: ${snapshot.execution.pc01 === 'online' ? 'trực tuyến' : snapshot.execution.pc01 === 'working' ? 'đang làm việc' : 'chưa sẵn sàng'} · Hàng đợi: ${snapshot.queue.count} công việc.`,
+          reply: formatStatusReply(snapshot),
           snapshot,
+          modelUsed: decision.modelUsed,
+          providerUsed: decision.providerUsed,
+          usage: decision.usage,
         });
       }
-      if (kind === 'capabilities') {
-        const snapshot = await statusSnapshot(optionalToken);
-        return json(res, 200, { ok: true, mode: 'capabilities', reply: capabilitiesReply(snapshot), snapshot });
+
+      if (decision.mode === 'reply' || decision.mode === 'clarify') {
+        return json(res, 200, {
+          ok: true,
+          mode: decision.mode,
+          reply: decision.reply,
+          modelUsed: decision.modelUsed,
+          providerUsed: decision.providerUsed,
+          usage: decision.usage,
+        });
       }
+
       const credential = writeCredential(req);
-      const result = await createWorkOrder(payload, credential.token);
-      return json(res, 201, { ...result, mode: 'work-order', reply: `Đã tạo công việc #${result.issue.number} trên GitHub. TigerIQ AI sẽ theo dõi trạng thái thực thi và evidence.` });
+      const result = await createWorkOrder({
+        instruction: decision.instruction,
+        priority: decision.priority,
+      }, credential.token);
+      return json(res, 201, {
+        ...result,
+        mode: 'work-order',
+        reply: `${decision.reply}\n\nĐã tạo công việc #${result.issue.number}. Em sẽ theo dõi execution → review → gate → evidence.`,
+        modelUsed: decision.modelUsed,
+        providerUsed: decision.providerUsed,
+        usage: decision.usage,
+      });
     }
 
     if (operation === 'work-order') return json(res, 201, await createWorkOrder(payload, writeCredential(req).token));
@@ -255,6 +277,6 @@ export default async function handler(req, res) {
     else if (name === 'github_authorization_required') status = 401;
     else if (name === 'github_401') status = 401;
     else if (name === 'github_403') status = 403;
-    return json(res, status, { error: name, details: error?.details?.message || undefined });
+    return json(res, status, { error: name, details: error?.details?.message || error?.details || undefined });
   }
 }
