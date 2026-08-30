@@ -22,9 +22,23 @@ function safeEqual(left, right) {
   return a.length === b.length && a.length > 0 && timingSafeEqual(a, b);
 }
 
-function authorized(req) {
+function authorizedByServerSecret(req) {
   if (!COMMAND_SECRET) return false;
   return safeEqual(req.headers['x-tigeriq-secret'], COMMAND_SECRET);
+}
+
+function clientGithubToken(req) {
+  const value = req.headers['x-tigeriq-github-token'];
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function writeCredential(req) {
+  const clientToken = clientGithubToken(req);
+  if (clientToken) return { token: clientToken, mode: 'client-token' };
+  if (GITHUB_TOKEN && authorizedByServerSecret(req)) return { token: GITHUB_TOKEN, mode: 'server-token' };
+  const error = new Error('github_authorization_required');
+  error.status = 401;
+  throw error;
 }
 
 async function readBody(req) {
@@ -46,14 +60,14 @@ function repoParts() {
   return { owner, repo };
 }
 
-async function gh(path, init = {}) {
+async function gh(path, init = {}, token = '') {
   const headers = {
     accept: 'application/vnd.github+json',
     'x-github-api-version': '2022-11-28',
-    'user-agent': 'tigeriq-command-center-vercel',
+    'user-agent': 'tigeriq-ai-vercel-control',
     ...(init.headers || {}),
   };
-  if (GITHUB_TOKEN) headers.authorization = `Bearer ${GITHUB_TOKEN}`;
+  if (token) headers.authorization = `Bearer ${token}`;
   const response = await fetch(`https://api.github.com${path}`, { ...init, headers });
   const text = await response.text();
   let data = null;
@@ -67,13 +81,13 @@ async function gh(path, init = {}) {
   return data;
 }
 
-async function statusSnapshot() {
+async function statusSnapshot(token = '') {
   const { owner, repo } = repoParts();
   const [repoInfo, openIssues, canary, comments] = await Promise.all([
-    gh(`/repos/${owner}/${repo}`),
-    gh(`/repos/${owner}/${repo}/issues?state=open&per_page=50&sort=updated&direction=desc`),
-    gh(`/repos/${owner}/${repo}/issues/${CANARY_ISSUE}`).catch(() => null),
-    gh(`/repos/${owner}/${repo}/issues/${CANARY_ISSUE}/comments?per_page=100`).catch(() => []),
+    gh(`/repos/${owner}/${repo}`, {}, token),
+    gh(`/repos/${owner}/${repo}/issues?state=open&per_page=50&sort=updated&direction=desc`, {}, token),
+    gh(`/repos/${owner}/${repo}/issues/${CANARY_ISSUE}`, {}, token).catch(() => null),
+    gh(`/repos/${owner}/${repo}/issues/${CANARY_ISSUE}/comments?per_page=100`, {}, token).catch(() => []),
   ]);
 
   const jobs = openIssues
@@ -97,15 +111,45 @@ async function statusSnapshot() {
   return {
     ok: true,
     generatedAt: new Date().toISOString(),
-    controlPlane: { vercel: 'online', github: 'online', repository: repoInfo.full_name },
-    execution: { pc01, openclaw: 'unknown', ollama: 'unknown', canaryIssue: CANARY_ISSUE, canaryState: canary?.state || 'unknown' },
+    controlPlane: {
+      vercel: 'online',
+      github: 'online',
+      repository: repoInfo.full_name,
+      serverWriteConfigured: Boolean(GITHUB_TOKEN && COMMAND_SECRET),
+      clientTokenSupported: true,
+    },
+    execution: {
+      pc01,
+      openclaw: 'unknown',
+      ollama: 'unknown',
+      canaryIssue: CANARY_ISSUE,
+      canaryState: canary?.state || 'unknown',
+    },
     queue: { count: jobs.length, jobs },
   };
 }
 
-async function createWorkOrder(payload) {
-  if (!GITHUB_TOKEN) throw new Error('github_write_not_configured');
-  const instruction = String(payload.instruction || '').trim();
+async function githubIdentity(token) {
+  if (!token) {
+    const error = new Error('github_authorization_required');
+    error.status = 401;
+    throw error;
+  }
+  const { owner, repo } = repoParts();
+  const [user, repoInfo] = await Promise.all([
+    gh('/user', {}, token),
+    gh(`/repos/${owner}/${repo}`, {}, token),
+  ]);
+  return {
+    ok: true,
+    login: user.login,
+    repository: repoInfo.full_name,
+    repositoryAccess: true,
+  };
+}
+
+async function createWorkOrder(payload, token) {
+  const instruction = String(payload.instruction || payload.message || '').trim();
   const priority = String(payload.priority || 'P1').toUpperCase();
   if (instruction.length < 3 || instruction.length > 4000) throw new Error('invalid_instruction');
   if (!ALLOWED_PRIORITIES.has(priority)) throw new Error('invalid_priority');
@@ -115,14 +159,14 @@ async function createWorkOrder(payload) {
   const body = [
     'TIGERIQ_JOB_V1',
     '',
-    `## Instruction`,
+    '## Instruction',
     instruction,
     '',
     '## Priority',
     priority,
     '',
     '## Source',
-    'vercel-online',
+    'vercel-chat',
     '',
     '## Request ID',
     id,
@@ -132,39 +176,85 @@ async function createWorkOrder(payload) {
   const issue = await gh(`/repos/${owner}/${repo}/issues`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ title: `[${priority}] [Command Center] ${titleText}`, body }),
-  });
+    body: JSON.stringify({ title: `[${priority}] [TigerIQ AI] ${titleText}`, body }),
+  }, token);
   return { ok: true, requestId: id, issue: { number: issue.number, url: issue.html_url, title: issue.title } };
 }
 
-async function createCanary() {
-  if (!GITHUB_TOKEN) throw new Error('github_write_not_configured');
+async function createCanary(token) {
   const id = `vercel-canary-${Date.now()}-${randomUUID().slice(0, 8)}`;
   const body = `TIGERIQ_COMMAND_V1\n\`\`\`json\n${JSON.stringify({ idempotency_key: id, action: 'system.status', args: {} }, null, 2)}\n\`\`\``;
   const { owner, repo } = repoParts();
   const issue = await gh(`/repos/${owner}/${repo}/issues`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ title: `[P0] PC01 Vercel canary ${new Date().toISOString()}`, body }),
-  });
+    body: JSON.stringify({ title: `[P0] PC01 Web Control canary ${new Date().toISOString()}`, body }),
+  }, token);
   return { ok: true, idempotencyKey: id, issue: { number: issue.number, url: issue.html_url } };
 }
 
-export default async function handler(req, res) {
-  if (req.method === 'GET') return json(res, 200, { ok: true, service: 'tigeriq-command-center', authRequired: true });
-  if (req.method !== 'POST') return json(res, 405, { error: 'method_not_allowed' });
-  if (!authorized(req)) return json(res, 401, { error: 'unauthorized' });
+function classifyChat(message) {
+  const text = String(message || '').trim().toLowerCase();
+  if (!text) return 'invalid';
+  if (/^(chào|xin chào|hello|hi)\b/.test(text)) return 'greeting';
+  if (/(làm được gì|làm đc gì|có thể làm gì|khả năng|giúp được gì|giúp đc gì)/.test(text)) return 'capabilities';
+  if (/(trạng thái|status|đang chạy|online|pc01.*(sao|thế nào|trạng thái)|github.*(sao|thế nào)|vercel.*(sao|thế nào))/.test(text)) return 'status';
+  return 'work-order';
+}
 
+function capabilitiesReply(snapshot) {
+  const pc = snapshot.execution.pc01 === 'online' ? 'đang trực tuyến' : snapshot.execution.pc01 === 'working' ? 'đang làm việc' : 'chưa nhận lệnh ổn định';
+  return `Web Control và GitHub đang trực tuyến. Em có thể nhận công việc, tạo Work Order trên GitHub, theo dõi hàng đợi và kiểm tra PC01. PC01 hiện ${pc}. OpenClaw/Ollama sẽ được nối lại sau khi kênh thực thi PC01 ổn định.`;
+}
+
+export default async function handler(req, res) {
   try {
+    if (req.method === 'GET') {
+      const snapshot = await statusSnapshot(clientGithubToken(req));
+      return json(res, 200, snapshot);
+    }
+    if (req.method !== 'POST') return json(res, 405, { error: 'method_not_allowed' });
+
     const payload = await readBody(req);
     const operation = String(payload.operation || 'status');
-    if (operation === 'status') return json(res, 200, await statusSnapshot());
-    if (operation === 'work-order') return json(res, 201, await createWorkOrder(payload));
-    if (operation === 'canary') return json(res, 201, await createCanary());
+    const optionalToken = clientGithubToken(req);
+
+    if (operation === 'status') return json(res, 200, await statusSnapshot(optionalToken));
+    if (operation === 'whoami') return json(res, 200, await githubIdentity(writeCredential(req).token));
+
+    if (operation === 'chat') {
+      const kind = classifyChat(payload.message);
+      if (kind === 'invalid') return json(res, 400, { error: 'invalid_message' });
+      if (kind === 'greeting') return json(res, 200, { ok: true, mode: 'reply', reply: 'Chào Sếp. TigerIQ AI đang trực tuyến. Sếp có thể hỏi trạng thái hoặc giao việc trực tiếp tại đây.' });
+      if (kind === 'status') {
+        const snapshot = await statusSnapshot(optionalToken);
+        return json(res, 200, {
+          ok: true,
+          mode: 'status',
+          reply: `Vercel: trực tuyến · GitHub: trực tuyến · PC01: ${snapshot.execution.pc01 === 'online' ? 'trực tuyến' : snapshot.execution.pc01 === 'working' ? 'đang làm việc' : 'chưa sẵn sàng'} · Hàng đợi: ${snapshot.queue.count} công việc.`,
+          snapshot,
+        });
+      }
+      if (kind === 'capabilities') {
+        const snapshot = await statusSnapshot(optionalToken);
+        return json(res, 200, { ok: true, mode: 'capabilities', reply: capabilitiesReply(snapshot), snapshot });
+      }
+      const credential = writeCredential(req);
+      const result = await createWorkOrder(payload, credential.token);
+      return json(res, 201, { ...result, mode: 'work-order', reply: `Đã tạo công việc #${result.issue.number} trên GitHub. TigerIQ AI sẽ theo dõi trạng thái thực thi và evidence.` });
+    }
+
+    if (operation === 'work-order') return json(res, 201, await createWorkOrder(payload, writeCredential(req).token));
+    if (operation === 'canary') return json(res, 201, await createCanary(writeCredential(req).token));
     return json(res, 400, { error: 'unsupported_operation' });
   } catch (error) {
     const name = error instanceof Error ? error.message : String(error);
-    const status = name === 'payload_too_large' ? 413 : name.startsWith('invalid_') ? 400 : name === 'github_write_not_configured' ? 503 : 502;
+    let status = Number(error?.status) || 502;
+    if (name === 'payload_too_large') status = 413;
+    else if (name.startsWith('invalid_')) status = 400;
+    else if (name === 'github_authorization_required') status = 401;
+    else if (name === 'github_401') status = 401;
+    else if (name === 'github_403') status = 403;
     return json(res, status, { error: name, details: error?.details?.message || undefined });
   }
 }
