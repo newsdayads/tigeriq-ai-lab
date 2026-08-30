@@ -8,7 +8,8 @@ WORKSPACE = Path(r'F:\TigerIQ\Workspace\tigeriq-ai-lab')
 SOURCE_DIR = WORKSPACE / 'scripts' / 'pc-worker'
 WORKER_DIR = Path(r'F:\TigerIQ\Worker')
 FILES = {
-    SOURCE_DIR / 'worker-github-queue.py': WORKER_DIR / 'worker.py',
+    SOURCE_DIR / 'worker_runtime_launcher.py': WORKER_DIR / 'worker.py',
+    SOURCE_DIR / 'worker-github-queue.py': WORKER_DIR / 'worker_impl.py',
     SOURCE_DIR / 'control_plane_v2.py': WORKER_DIR / 'control_plane_v2.py',
     SOURCE_DIR / 'test_control_plane_v2.py': WORKER_DIR / 'test_control_plane_v2.py',
 }
@@ -48,6 +49,11 @@ def main():
         tmp = dst.with_suffix(dst.suffix + '.new')
         shutil.copy2(src, tmp)
         tmp.replace(dst)
+
+    preflight = run([sys.executable, str(WORKER_DIR / 'worker.py'), '--preflight'], cwd=WORKER_DIR, timeout=60, check=False)
+    print('runtime_preflight=' + (preflight.stdout or preflight.stderr).strip())
+    if preflight.returncode != 0:
+        raise RuntimeError(f'worker runtime preflight failed rc={preflight.returncode}: {preflight.stderr or preflight.stdout}')
 
     run(['schtasks', '/End', '/TN', 'TigerIQ Worker'], timeout=30, check=False)
     time.sleep(2)
