@@ -58,7 +58,7 @@ public final class ForegroundWorkerService extends Service {
                 return;
             }
             ControllerClient client = new ControllerClient(store);
-            client.heartbeat(batteryPct(), null, BuildConfig.VERSION_NAME);
+            client.heartbeat(batteryPct(), null, WorkerVersion.NAME);
             writeRuntime("ONLINE", System.currentTimeMillis(), "");
         } catch (Exception error) {
             String message = error.getMessage();
