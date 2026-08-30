@@ -37,10 +37,14 @@ jobs:
       - name: Build debug and unsigned release APKs
         working-directory: apps/android-worker
         run: gradle --no-daemon :app:assembleDebug :app:assembleRelease
-      - name: Verify unsigned release boundary
+      - name: Preserve unsigned CI artifacts before signing-contract test
         run: |
+          set -euo pipefail
           test -f apps/android-worker/app/build/outputs/apk/debug/app-debug.apk
           test -f apps/android-worker/app/build/outputs/apk/release/app-release-unsigned.apk
+          mkdir -p .ci-artifacts
+          cp apps/android-worker/app/build/outputs/apk/debug/app-debug.apk .ci-artifacts/tigeriq-worker-debug.apk
+          cp apps/android-worker/app/build/outputs/apk/release/app-release-unsigned.apk .ci-artifacts/tigeriq-worker-unsigned-release.apk
       - name: Prove stable signing configuration with disposable CI identity
         working-directory: apps/android-worker
         env:
@@ -58,7 +62,6 @@ jobs:
           test -f app/build/outputs/apk/release/app-release.apk
           first="$(keytool -printcert -jarfile app/build/outputs/apk/release/app-release.apk | awk -F'SHA256: ' '/SHA256:/{print $2; exit}')"
           test -n "$first"
-          cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/tigeriq-first.apk"
           gradle --no-daemon :app:clean :app:assembleRelease
           second="$(keytool -printcert -jarfile app/build/outputs/apk/release/app-release.apk | awk -F'SHA256: ' '/SHA256:/{print $2; exit}')"
           test "$first" = "$second"
@@ -67,12 +70,12 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: tigeriq-worker-debug-apk
-          path: apps/android-worker/app/build/outputs/apk/debug/app-debug.apk
+          path: .ci-artifacts/tigeriq-worker-debug.apk
           if-no-files-found: error
           retention-days: 7
       - uses: actions/upload-artifact@v4
         with:
           name: tigeriq-worker-unsigned-release-apk
-          path: apps/android-worker/app/build/outputs/apk/release/app-release-unsigned.apk
+          path: .ci-artifacts/tigeriq-worker-unsigned-release.apk
           if-no-files-found: error
           retention-days: 7
