@@ -1,0 +1,49 @@
+import { FileJournal } from '../../../packages/event-store/src/index.js';
+import { CapabilityScheduler, TaskQueue, WorkforceRegistry } from '../../../packages/workforce/src/index.js';
+import { FileJournalWorkforceStateStore } from '../../../packages/workforce/src/journal-store.js';
+import { DurableNodeCredentialStore } from '../../../packages/workforce/src/node-credentials.js';
+import { NodePairingService, verifyAndroidP256PairingProof } from '../../../packages/workforce/src/pairing.js';
+import { DurableWorkforceRuntime } from '../../../packages/workforce/src/runtime.js';
+import { startWorkforceController } from './server.js';
+
+const journalPath = process.env.TIGERIQ_WORKFORCE_JOURNAL ?? 'F:\\TigerIQ\\State\\workforce.jsonl';
+const host = process.env.TIGERIQ_WORKFORCE_HOST ?? '127.0.0.1';
+const port = Number(process.env.TIGERIQ_WORKFORCE_PORT ?? '8790');
+const adminSecret = process.env.TIGERIQ_WORKFORCE_ADMIN_SECRET ?? '';
+
+if (!Number.isInteger(port) || port < 1 || port > 65535) {
+  throw new Error('TIGERIQ_WORKFORCE_PORT must be an integer between 1 and 65535');
+}
+
+const journal = new FileJournal(journalPath);
+const stateStore = new FileJournalWorkforceStateStore(journal);
+const credentialStore = new DurableNodeCredentialStore(journal);
+const registry = new WorkforceRegistry();
+const queue = new TaskQueue();
+const runtime = await DurableWorkforceRuntime.restore(
+  registry,
+  queue,
+  new CapabilityScheduler(registry),
+  stateStore,
+);
+const pairing = new NodePairingService(verifyAndroidP256PairingProof);
+const server = await startWorkforceController({
+  runtime,
+  pairing,
+  credentials: credentialStore,
+  adminSecret,
+  host,
+  port,
+});
+
+console.log(`TigerIQ Workforce Controller online: ${server.url}`);
+console.log(`Workforce journal: ${journalPath}`);
+console.log(adminSecret ? 'Pairing/admin writes enabled.' : 'Pairing/admin writes disabled: TIGERIQ_WORKFORCE_ADMIN_SECRET is not configured.');
+
+const shutdown = async () => {
+  await runtime.checkpoint();
+  await server.close();
+  process.exit(0);
+};
+process.once('SIGINT', shutdown);
+process.once('SIGTERM', shutdown);
