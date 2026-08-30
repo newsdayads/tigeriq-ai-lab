@@ -1,0 +1,50 @@
+name: WO-017 Apply Work Board
+
+on:
+  push:
+    branches:
+      - wo017/work-board
+    paths:
+      - scripts/wo017_apply.py
+      - .github/workflows/wo017-apply.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: wo017/work-board
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Apply bounded Work Board patch
+        run: python scripts/wo017_apply.py
+      - name: Syntax check control API
+        run: node --check api/control.mjs
+      - name: Verify lifecycle and Work Board helpers
+        run: node scripts/verify_queue_hygiene.mjs
+      - name: Verify Work Board UI
+        run: node scripts/verify_work_board_ui.mjs
+      - name: Existing build gate
+        run: npm run build
+      - name: Commit generated changes
+        run: |
+          if git diff --quiet && [ -z "$(git ls-files --others --exclude-standard scripts/verify_work_board_ui.mjs)" ]; then
+            echo "No generated changes to commit"
+            exit 0
+          fi
+          git config user.name "tigeriq-ci"
+          git config user.email "actions@users.noreply.github.com"
+          git add api/control.mjs public/index.html scripts/verify_queue_hygiene.mjs scripts/verify_work_board_ui.mjs .github/workflows/wo014-queue-hygiene.yml
+          git commit -m "WO-017: apply evidence-first Work Board"
+          git push origin HEAD:wo017/work-board
