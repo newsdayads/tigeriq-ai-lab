@@ -8,10 +8,8 @@ function json(res, status, body) {
 }
 
 export default async function handler(req, res) {
+  if (process.env.VERCEL_ENV === 'production') return json(res, 404, { error: 'not_found' });
   if (req.method !== 'GET') return json(res, 405, { error: 'method_not_allowed' });
-  if (process.env.VERCEL_ENV === 'production' && String(req.query?.verify || '') !== 'runtime') {
-    return json(res, 404, { error: 'not_found' });
-  }
   try {
     const decision = await decideWithChief({
       message: 'Bạn đang sử dụng mô hình nào để trao đổi với tôi?',
