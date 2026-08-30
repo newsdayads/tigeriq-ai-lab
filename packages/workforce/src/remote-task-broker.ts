@@ -13,6 +13,7 @@ export class RemoteTaskBroker {
   constructor(
     private readonly runtime: DurableWorkforceRuntime,
     private readonly mailbox: DurableTaskMailbox,
+    private readonly now: () => Date = () => new Date(),
   ) {}
 
   async enqueue(task: TaskPacket): Promise<TaskRuntimeRecord> {
@@ -47,7 +48,7 @@ export class RemoteTaskBroker {
         const lease = await this.mailbox.lease(record.task, nodeId, assigned.attempts);
         return { ...lease, employeeId: employee.employeeId };
       } catch (error) {
-        const failure = brokerFailure(record.task.taskId, employee.employeeId, error, 'LEASE_CREATE_FAILED');
+        const failure = brokerFailure(record.task.taskId, employee.employeeId, error, 'LEASE_CREATE_FAILED', this.now());
         this.runtime.queue.fail(record.task.taskId, failure);
         this.runtime.registry.release(employee.employeeId, record.task.taskId, false);
         if (this.runtime.queue.get(record.task.taskId).attempts < record.task.maxAttempts) {
@@ -93,9 +94,9 @@ export class RemoteTaskBroker {
       const employee = this.runtime.registry.getEmployee(record.assignedEmployeeId);
       if (!employee || employee.nodeId !== nodeId) continue;
       const current = await this.mailbox.current(record.task.taskId);
-      if (!current || current.acceptedResult || Date.parse(current.expiresAt) >= Date.now()) continue;
+      if (!current || current.acceptedResult || Date.parse(current.expiresAt) >= this.now().getTime()) continue;
       await this.mailbox.expire(record.task.taskId);
-      const failure = brokerFailure(record.task.taskId, employee.employeeId, new Error('remote task lease expired'), 'LEASE_EXPIRED');
+      const failure = brokerFailure(record.task.taskId, employee.employeeId, new Error('remote task lease expired'), 'LEASE_EXPIRED', this.now());
       this.runtime.queue.fail(record.task.taskId, failure);
       this.runtime.registry.release(employee.employeeId, record.task.taskId, false);
       const latest = this.runtime.queue.get(record.task.taskId);
@@ -105,7 +106,7 @@ export class RemoteTaskBroker {
   }
 }
 
-function brokerFailure(taskId: string, employeeId: string, error: unknown, code: string): WorkerResult {
+function brokerFailure(taskId: string, employeeId: string, error: unknown, code: string, now: Date): WorkerResult {
   return {
     taskId,
     employeeId,
@@ -114,7 +115,7 @@ function brokerFailure(taskId: string, employeeId: string, error: unknown, code:
     confidence: 0,
     artifacts: [],
     risks: ['remote-worker-lease'],
-    completedAt: new Date().toISOString(),
+    completedAt: now.toISOString(),
     failure: {
       code,
       message: error instanceof Error ? error.message : String(error),
