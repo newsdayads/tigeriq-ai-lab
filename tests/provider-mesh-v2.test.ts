@@ -128,7 +128,26 @@ describe('WO-019 provider mesh v2', () => {
     expect(result.text).toBe('local-ok');
   });
 
-  it('falls through missing cloud configuration without exposing secrets and reaches Ollama', async () => {
+  it('does not include configured credentials in routing failure evidence', async () => {
+    const secret = 'super-secret-provider-token';
+    const router = new ModelRouter([
+      createOpenAIAdapter({
+        apiKey: secret,
+        model: 'model',
+        fetchImpl: async () => new Response('unavailable', { status: 503 }),
+      }),
+      adapter('ollama', async () => 'local-ok'),
+    ], {
+      primary: { provider: 'openai', model: 'openai-default' },
+      fallbacks: [{ provider: 'ollama', model: 'local', local: true }],
+    });
+
+    const result = await router.execute({ prompt: 'work' });
+    expect(result.target.provider).toBe('ollama');
+    expect(JSON.stringify(result.attempts)).not.toContain(secret);
+  });
+
+  it('falls through missing cloud configuration and reaches Ollama', async () => {
     const old = {
       openai: process.env.OPENAI_API_KEY,
       anthropic: process.env.ANTHROPIC_API_KEY,
@@ -157,7 +176,6 @@ describe('WO-019 provider mesh v2', () => {
         'configuration',
         'configuration',
       ]);
-      expect(JSON.stringify(result.attempts)).not.toContain('key');
     } finally {
       if (old.openai === undefined) delete process.env.OPENAI_API_KEY;
       else process.env.OPENAI_API_KEY = old.openai;
