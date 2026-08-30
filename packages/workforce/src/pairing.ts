@@ -93,9 +93,11 @@ export class NodePairingService {
 
   async pair(request: PairingRequest): Promise<PairedNodeCredential> {
     const stored = this.#challenges.get(request.challengeId);
-    const challenge = this.#challengePlaintext.get(request.challengeId);
-    if (!stored || !challenge) throw new Error('pairing challenge not found');
+    if (!stored) throw new Error('pairing challenge not found');
     if (stored.used) throw new Error('pairing challenge already used');
+
+    const challenge = this.#challengePlaintext.get(request.challengeId);
+    if (!challenge) throw new Error('pairing challenge not found');
     if (this.now().getTime() > stored.expiresAtMs) throw new Error('pairing challenge expired');
     if (!safeHashEqual(stored.challengeHash, sha256(challenge))) throw new Error('pairing challenge integrity failure');
     if (!request.nodeId.trim()) throw new Error('nodeId is required');
