@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { normalizeInstruction, workFingerprint, issueStage, issueEvidenceSummary, issuePriority, issueType, workItemSummary } from '../api/control.mjs';
+import { normalizeInstruction, workFingerprint, issueStage, issueEvidenceSummary, issuePriority, issueType, workItemSummary, lifecycleEvents, latestLifecycleStage } from '../api/control.mjs';
 
 assert.equal(normalizeInstruction('  Kiểm tra   PC01\nngay  '), 'kiểm tra pc01 ngay');
 assert.equal(workFingerprint('Kiểm tra PC01'), workFingerprint('  kiểm tra   pc01  '));
@@ -14,6 +14,39 @@ assert.equal(issueStage({ state: 'closed', state_reason: 'not_planned' }, []), '
 assert.equal(issueStage({ state: 'closed', state_reason: 'duplicate' }, []), 'cancelled');
 assert.equal(issueStage({ state: 'open' }, [{ body: 'TIGERIQ_JOB_FAILED reason' }]), 'failed');
 assert.deepEqual(issueEvidenceSummary([{ body: 'TIGERIQ_JOB_CLAIMED\nREVIEW_PASS' }, { body: 'TIGERIQ_JOB_RESULT PASS\nJUDGE_PASS' }]), { claimed: true, result: true, failed: false, reviewPass: true, judgePass: true });
+
+const retryComments = [
+  { body: 'TIGERIQ_JOB_CLAIMED', created_at: '2026-08-30T10:00:00Z' },
+  { body: 'TIGERIQ_JOB_FAILED reason', created_at: '2026-08-30T10:05:00Z' },
+  { body: 'TIGERIQ_JOB_CLAIMED', created_at: '2026-08-30T10:10:00Z' },
+];
+assert.equal(issueStage({ state: 'open' }, retryComments), 'claimed');
+assert.equal(latestLifecycleStage(retryComments), 'claimed');
+assert.equal(issueEvidenceSummary(retryComments).failed, true);
+assert.equal(issueEvidenceSummary(retryComments).claimed, true);
+
+const recoveredComments = [
+  { body: 'TIGERIQ_JOB_FAILED reason', created_at: '2026-08-30T10:05:00Z' },
+  { body: 'TIGERIQ_JOB_RESULT PASS', created_at: '2026-08-30T10:15:00Z' },
+];
+assert.equal(issueStage({ state: 'open' }, recoveredComments), 'completed');
+
+const reverseOrdered = [
+  { body: 'TIGERIQ_JOB_CLAIMED', created_at: '2026-08-30T11:00:00Z' },
+  { body: 'TIGERIQ_JOB_FAILED reason', created_at: '2026-08-30T10:00:00Z' },
+];
+assert.equal(issueStage({ state: 'open' }, reverseOrdered), 'claimed');
+assert.equal(lifecycleEvents(reverseOrdered).at(-1).stage, 'claimed');
+
+const proseOnly = [
+  { body: 'Recovery note: previous TIGERIQ_JOB_FAILED marker was disproven.' },
+  { body: '`TIGERIQ_JOB_CLAIMED` is the marker name, not a claim.' },
+];
+assert.equal(issueStage({ state: 'open' }, proseOnly), 'queued');
+assert.deepEqual(issueEvidenceSummary(proseOnly), { claimed: false, result: false, failed: false, reviewPass: false, judgePass: false });
+
+assert.equal(issueStage({ state: 'closed', state_reason: 'not_planned' }, retryComments), 'cancelled');
+assert.equal(issueStage({ state: 'closed' }, [{ body: 'TIGERIQ_JOB_FAILED reason' }]), 'completed');
 
 const boardIssue = {
   number: 77,
