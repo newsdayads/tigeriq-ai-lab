@@ -90,11 +90,23 @@ export function workFingerprint(instruction) {
   return createHash('sha256').update(normalizeInstruction(instruction)).digest('hex').slice(0, 24);
 }
 
-export function issueStage(issue, comments = []) {
+export function issueEvidenceSummary(comments = []) {
   const bodies = Array.isArray(comments) ? comments.map((x) => String(x?.body || x || '')) : [];
-  if (bodies.some((x) => x.includes('TIGERIQ_PC01_FAILED') || x.includes('TIGERIQ_JOB_FAILED'))) return 'failed';
-  if (issue?.state === 'closed' || bodies.some((x) => x.includes('TIGERIQ_PC01_DONE') || x.includes('TIGERIQ_PC01_RESULT') || x.includes('TIGERIQ_JOB_DONE') || x.includes('TIGERIQ_JOB_RESULT'))) return 'completed';
-  if (bodies.some((x) => x.includes('TIGERIQ_PC01_CLAIMED') || x.includes('TIGERIQ_JOB_CLAIMED'))) return 'claimed';
+  return {
+    claimed: bodies.some((x) => x.includes('TIGERIQ_PC01_CLAIMED') || x.includes('TIGERIQ_JOB_CLAIMED') || x.includes('TIGERIQ_COMMAND_CLAIMED')),
+    result: bodies.some((x) => x.includes('TIGERIQ_PC01_DONE') || x.includes('TIGERIQ_PC01_RESULT') || x.includes('TIGERIQ_JOB_DONE') || x.includes('TIGERIQ_JOB_RESULT') || x.includes('TIGERIQ_COMMAND_RESULT')),
+    failed: bodies.some((x) => x.includes('TIGERIQ_PC01_FAILED') || x.includes('TIGERIQ_JOB_FAILED') || x.includes('TIGERIQ_COMMAND_FAILED')),
+    reviewPass: bodies.some((x) => x.includes('REVIEW_PASS')),
+    judgePass: bodies.some((x) => x.includes('JUDGE_PASS')),
+  };
+}
+
+export function issueStage(issue, comments = []) {
+  const evidence = issueEvidenceSummary(comments);
+  if (evidence.failed) return 'failed';
+  if (issue?.state === 'closed' && ['not_planned', 'duplicate'].includes(String(issue?.state_reason || ''))) return 'cancelled';
+  if (evidence.result || issue?.state === 'closed') return 'completed';
+  if (evidence.claimed) return 'claimed';
   return 'queued';
 }
 
@@ -143,6 +155,7 @@ async function statusSnapshot(token = '') {
       chiefOfStaff: 'gpt',
       workOrderDedupe: true,
       workOrderStatusTracking: true,
+      workOrderLifecycleEvidence: true,
     },
     execution: {
       pc01,
@@ -245,16 +258,19 @@ async function workOrderStatus(payload, token = '') {
     throw error;
   }
   const stage = issueStage(issue, comments);
+  const evidence = issueEvidenceSummary(comments);
   return {
     ok: true,
     issue: {
       number: issue.number,
       title: issue.title,
       state: issue.state,
+      stateReason: issue.state_reason || null,
       stage,
       url: issue.html_url,
       updatedAt: issue.updated_at,
       comments: Array.isArray(comments) ? comments.length : 0,
+      evidence,
     },
   };
 }
