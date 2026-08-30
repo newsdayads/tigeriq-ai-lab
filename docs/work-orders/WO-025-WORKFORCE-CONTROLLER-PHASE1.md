@@ -1,7 +1,7 @@
 # WO-025 — Workforce Controller Phase 1
 
 Priority: P0
-Status: IMPLEMENTING
+Status: DONE — REMOTE CONTROLLER VERIFIED
 Date: 2026-08-30
 
 ## Goal
@@ -15,7 +15,7 @@ Turn the WO-024 remote domain core into a zero-cost, restart-safe operational co
 - Vercel filesystem is never treated as durable state.
 - Controller binds only to loopback or an explicit private/Tailscale address; wildcard public bind is forbidden.
 
-## Implemented scope
+## Verified implementation
 1. `FileJournalWorkforceStateStore` for durable snapshot/checkpoint persistence and restart restore.
 2. Durable scoped node credential store with issue/authenticate/revoke and token-hash-only persistence.
 3. Android-compatible pairing proof verifier using EC P-256 / SHA256withECDSA over one-time pairing challenges.
@@ -35,17 +35,19 @@ Turn the WO-024 remote domain core into a zero-cost, restart-safe operational co
 - A phone cannot self-assign department, role or elevated authority.
 - Real Android provider-app automation remains out of scope until provider-specific policy and device tests pass.
 
-## Acceptance gates
-- TypeScript strict typecheck PASS.
-- All existing and new unit/integration tests PASS.
-- Existing Playwright/build PASS.
-- Exact-head CI, Queue Hygiene and Vercel Verify PASS.
-- No Tiger IQ Driver, PC01 live runtime, billing/provider activation or real-phone mutation.
-- Merge only after exact-head gates PASS.
+## Gate evidence
+- Final branch head: `d1c494c8ff5fc02325172548f6cc963ee714b80f`.
+- PR #83 exact-head CI `33324718822`: PASS.
+- PR #83 exact-head Queue Hygiene `33324718851`: PASS.
+- PR #83 exact-head Vercel Verify `33324718850`: PASS.
+- PR #83 merged to MAIN as `7e2a437f95f814bdd9a2de6a2287fce3a0e217fd`.
+- Production deployment `dpl_6pVY9C3P2hqqB9y1Uq62wq3PVdQE`: READY and aligned to merge SHA.
+- Canonical Production `/api/control`: HTTP 200 after deploy; existing Web Control capabilities preserved; queue remained exactly #57/#58.
+- No Tiger IQ Driver mutation, no live PC01 mutation, no provider/billing activation and no physical-phone execution claim.
 
-## Next after WO-025
-- Android Worker buildable MVP: Keystore identity, pairing, encrypted local credential storage, foreground heartbeat, task inbox/result protocol, AccessibilityService bridge and watchdog.
-- Durable remote task mailbox/lease protocol between controller and Android workers.
+## Next active phase
+- Durable remote task mailbox/lease/result protocol between Controller and Android workers.
+- Buildable TigerIQ Worker Android APK: Keystore identity, pairing, encrypted local credential storage, foreground heartbeat, task inbox/result protocol, AccessibilityService bridge and watchdog.
 - Mobile Workforce Board in Web Control.
 - Farm Gateway ADB/Appium/UiAutomator2 adapter.
 - Two-phone physical acceptance gate.
