@@ -160,7 +160,7 @@ public final class MainActivity extends Activity {
                         pairing.getString("challenge"),
                         nodeId,
                         Build.MANUFACTURER + " " + Build.MODEL + " / Android " + Build.VERSION.RELEASE,
-                        BuildConfig.VERSION_NAME,
+                        WorkerVersion.NAME,
                         new String[]{"android-ui", "research", "gemini"}
                     );
                 }
@@ -173,7 +173,7 @@ public final class MainActivity extends Activity {
                     profile.provider,
                     new String[]{"research", "gemini"}
                 );
-                client.heartbeat(batteryPct(), null, BuildConfig.VERSION_NAME);
+                client.heartbeat(batteryPct(), null, WorkerVersion.NAME);
                 writeControllerStatus("ONLINE", System.currentTimeMillis(), "");
                 runOnUiThread(() -> {
                     Toast.makeText(this, "Ghép thành công · " + profile.employeeId + " ONLINE", Toast.LENGTH_LONG).show();
