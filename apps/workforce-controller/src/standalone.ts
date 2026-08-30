@@ -12,6 +12,7 @@ const journalPath = process.env.TIGERIQ_WORKFORCE_JOURNAL ?? 'F:\\TigerIQ\\State
 const host = process.env.TIGERIQ_WORKFORCE_HOST ?? '127.0.0.1';
 const port = Number(process.env.TIGERIQ_WORKFORCE_PORT ?? '8790');
 const adminSecret = process.env.TIGERIQ_WORKFORCE_ADMIN_SECRET ?? '';
+const allowTailnetSelfPair = process.env.TIGERIQ_WORKFORCE_ALLOW_TAILNET_SELF_PAIR === '1';
 
 if (!Number.isInteger(port) || port < 1 || port > 65535) {
   throw new Error('TIGERIQ_WORKFORCE_PORT must be an integer between 1 and 65535');
@@ -37,13 +38,15 @@ const server = await startWorkforceController({
   credentials: credentialStore,
   remoteTasks,
   adminSecret,
+  allowTailnetSelfPair,
   host,
   port,
 });
 
 console.log(`TigerIQ Workforce Controller online: ${server.url}`);
 console.log(`Workforce journal: ${journalPath}`);
-console.log(adminSecret ? 'Pairing/admin writes enabled.' : 'Pairing/admin writes disabled: TIGERIQ_WORKFORCE_ADMIN_SECRET is not configured.');
+console.log(adminSecret ? 'Pairing/admin writes enabled.' : 'Admin writes disabled: TIGERIQ_WORKFORCE_ADMIN_SECRET is not configured.');
+console.log(allowTailnetSelfPair ? 'Tailnet self-pair enabled for 100.64.0.0/10 peers.' : 'Tailnet self-pair disabled.');
 
 const shutdown = async () => {
   await runtime.checkpoint();
