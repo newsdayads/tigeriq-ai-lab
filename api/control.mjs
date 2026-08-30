@@ -156,6 +156,7 @@ async function statusSnapshot(token = '') {
       workOrderDedupe: true,
       workOrderStatusTracking: true,
       workOrderLifecycleEvidence: true,
+      explicitDispatch: true,
     },
     execution: {
       pc01,
@@ -190,6 +191,10 @@ async function githubIdentity(token) {
 async function createWorkOrder(payload, token) {
   const instruction = String(payload.instruction || payload.message || '').trim();
   const priority = String(payload.priority || 'P1').toUpperCase();
+  const source = payload.source === 'vercel-explicit-dispatch' ? 'vercel-explicit-dispatch' : 'vercel-chat-chief-of-staff';
+  const governance = source === 'vercel-explicit-dispatch'
+    ? 'Owner explicitly dispatched this instruction from TigerIQ AI Web Control. Execution still requires normal TigerIQ evidence/review/gate.'
+    : 'Chief of Staff classified this as an explicit execution request. Execution still requires normal TigerIQ evidence/review/gate.';
   if (instruction.length < 3 || instruction.length > 4000) throw new Error('invalid_instruction');
   if (!ALLOWED_PRIORITIES.has(priority)) throw new Error('invalid_priority');
 
@@ -217,7 +222,7 @@ async function createWorkOrder(payload, token) {
     priority,
     '',
     '## Source',
-    'vercel-chat-chief-of-staff',
+    source,
     '',
     '## Request ID',
     id,
@@ -226,7 +231,7 @@ async function createWorkOrder(payload, token) {
     fingerprint,
     '',
     '## Governance',
-    'Chief of Staff classified this as an explicit execution request. Execution still requires normal TigerIQ evidence/review/gate.',
+    governance,
   ].join('\n');
 
   const { owner, repo } = repoParts();
@@ -360,7 +365,7 @@ export default async function handler(req, res) {
     }
 
     if (operation === 'work-order') {
-      const result = await createWorkOrder(payload, writeCredential(req).token);
+      const result = await createWorkOrder({ ...payload, source: 'vercel-explicit-dispatch' }, writeCredential(req).token);
       return json(res, result.deduplicated ? 200 : 201, result);
     }
     if (operation === 'canary') return json(res, 201, await createCanary(writeCredential(req).token));
