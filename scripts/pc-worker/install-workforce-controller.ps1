@@ -1,7 +1,7 @@
 param(
   [string]$RepoPath = 'F:\TigerIQ\Workspace\tigeriq-ai-lab',
   [string]$StatePath = 'F:\TigerIQ\State\workforce.jsonl',
-  [string]$ControllerHost = '100.97.23.87',
+  [string]$ControllerHost = '',
   [int]$ControllerPort = 8790
 )
 
@@ -21,14 +21,42 @@ function Fail([string]$Code, [string]$Message) {
   exit 1
 }
 
+function Test-TailscaleIPv4([string]$Address) {
+  if ($Address -notmatch '^100\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$') { return $false }
+  $parts = $Address.Split('.') | ForEach-Object { [int]$_ }
+  return $parts[1] -ge 64 -and $parts[1] -le 127 -and ($parts | Where-Object { $_ -lt 0 -or $_ -gt 255 }).Count -eq 0
+}
+
+function Get-TailscaleCli {
+  $command = Get-Command tailscale.exe -ErrorAction SilentlyContinue
+  if ($command) { return $command.Source }
+  $candidate = 'C:\Program Files\Tailscale\tailscale.exe'
+  if (Test-Path $candidate) { return $candidate }
+  return $null
+}
+
+function Resolve-ControllerHost([string]$Requested) {
+  $tailscale = Get-TailscaleCli
+  if (-not $tailscale) { Fail 'TAILSCALE_MISSING' 'tailscale.exe was not found.' }
+
+  $live = @(& $tailscale ip -4 2>$null | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+  if ($LASTEXITCODE -ne 0) { Fail 'TAILSCALE_OFFLINE' 'Could not read the live Tailscale IPv4 address.' }
+  $live = @($live | Where-Object { Test-TailscaleIPv4 $_ } | Select-Object -Unique)
+  if ($live.Count -ne 1) { Fail 'TAILSCALE_IP_AMBIGUOUS' "Expected exactly one live Tailscale IPv4; found $($live.Count)." }
+
+  $selected = if ($Requested.Trim()) { $Requested.Trim() } else { $live[0] }
+  if (-not (Test-TailscaleIPv4 $selected)) { Fail 'UNSAFE_BIND' 'ControllerHost must be a Tailscale IPv4 in 100.64.0.0/10.' }
+  if ($selected -ne $live[0]) { Fail 'TAILSCALE_IP_MISMATCH' "Requested $selected but live Tailscale IPv4 is $($live[0])." }
+  if (-not (Get-NetIPAddress -AddressFamily IPv4 -IPAddress $selected -ErrorAction SilentlyContinue)) {
+    Fail 'TAILSCALE_IP_NOT_PRESENT' "PC01 does not currently own $selected."
+  }
+  return $selected
+}
+
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = New-Object Security.Principal.WindowsPrincipal($identity)
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
   Fail 'ADMIN_REQUIRED' 'Run this installer once from an elevated PowerShell session.'
-}
-
-if ($ControllerHost -in @('0.0.0.0','::','127.0.0.1','localhost')) {
-  Fail 'UNSAFE_BIND' 'ControllerHost must be the explicit private/Tailscale address of PC01.'
 }
 if ($ControllerPort -lt 1024 -or $ControllerPort -gt 65535) {
   Fail 'INVALID_PORT' 'ControllerPort must be between 1024 and 65535.'
@@ -40,6 +68,8 @@ $git = Get-Command git.exe -ErrorAction SilentlyContinue
 if (-not $node) { Fail 'NODE_MISSING' 'node.exe was not found.' }
 if (-not $npm) { Fail 'NPM_MISSING' 'npm.cmd was not found.' }
 if (-not $git) { Fail 'GIT_MISSING' 'git.exe was not found.' }
+
+$ControllerHost = Resolve-ControllerHost $ControllerHost
 
 if (-not (Test-Path $RepoPath)) {
   New-Item -ItemType Directory -Force -Path (Split-Path $RepoPath -Parent) | Out-Null
@@ -61,11 +91,6 @@ if ($branch -ne 'main') {
 }
 & $git.Source -C $RepoPath pull --ff-only origin main
 if ($LASTEXITCODE -ne 0) { Fail 'MAIN_UPDATE_FAILED' 'main could not be fast-forwarded safely.' }
-
-$ipPresent = Get-NetIPAddress -IPAddress $ControllerHost -ErrorAction SilentlyContinue
-if (-not $ipPresent) {
-  Fail 'TAILSCALE_IP_NOT_PRESENT' "PC01 does not currently own $ControllerHost. Tailscale/private network must be online before installation."
-}
 
 $conflict = Get-NetTCPConnection -LocalAddress $ControllerHost -LocalPort $ControllerPort -State Listen -ErrorAction SilentlyContinue
 if ($conflict) { Fail 'PORT_IN_USE' "$ControllerHost`:$ControllerPort is already listening." }
@@ -108,6 +133,7 @@ Set-Location '$repoEscaped'
 `$env:TIGERIQ_WORKFORCE_JOURNAL = '$stateEscaped'
 `$env:TIGERIQ_WORKFORCE_HOST = '$hostEscaped'
 `$env:TIGERIQ_WORKFORCE_PORT = '$ControllerPort'
+`$env:TIGERIQ_WORKFORCE_ALLOW_TAILNET_SELF_PAIR = '1'
 `$env:TIGERIQ_WORKFORCE_ADMIN_SECRET = [IO.File]::ReadAllText('$secretEscaped').Trim()
 & '$nodePath' 'dist/apps/workforce-controller/src/standalone.js' *>> '$logEscaped'
 exit `$LASTEXITCODE
@@ -143,6 +169,7 @@ $result = [ordered]@{
   status = if ($httpOk) { 'READY' } else { 'STARTED_NOT_YET_HEALTHY' }
   task = $TaskName
   bind = "$ControllerHost`:$ControllerPort"
+  tailnetSelfPair = $true
   journal = $StatePath
   secret = 'STORED_LOCALLY_REDACTED'
   http = $httpOk
