@@ -13,6 +13,9 @@
     "command-center": "node dist/apps/dashboard/src/standalone.js",
     "ci": "npm run typecheck && npm run test && npm run test:e2e && npm run build"
   },
+  "dependencies": {
+    "@vercel/oidc": "3.8.5"
+  },
   "devDependencies": {
     "@playwright/test": "^1.55.0",
     "@types/node": "^22.0.0",
