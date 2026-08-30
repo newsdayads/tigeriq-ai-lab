@@ -1,8 +1,8 @@
 # Current State
 
-Date: 2026-08-29
+Date: 2026-08-30
 
-TigerIQ AI Lab is operating as a stacked, evidence-gated Company OS. `main` and Production remain unchanged by the active stack; no automatic merge is authorized.
+TigerIQ AI Lab is operating as an evidence-gated Company OS. Production Web Control is now online in the isolated `newsdayads/tigeriq-ai-lab` / Vercel `tigeriq-ai-lab` stack. Tiger IQ Driver remains isolated and unchanged.
 
 ## Verified foundation
 
@@ -13,25 +13,45 @@ Phase 9 CI evidence: run `33243682544` PASS.
 
 ## WO-007 — PC Local AI Execution Worker
 
-Status: PHYSICAL GATES PASS — PC01 AUTO MODE READY; reconciliation CI/closure pending
+Status: HISTORICAL PHYSICAL GATES PASSED; CURRENT REMOTE INGRESS NOT VERIFIED
 
 - Branch `wo007/pc-local-ai-worker`, stacked on verified Phase 9.
-- Draft PR #18; MAIN/Production remain untouched.
-- Ollama OpenAI-compatible adapter and bounded provider circuit breaker are implemented.
-- Durable Work Order worker composition is implemented with fail-closed provider exhaustion.
-- Coder/reviewer/judge identities are required to be independent.
-- Passing execution evidence requires a real git commit SHA.
-- Physical-E2E source head: `375e305b3c44f25ec076d9d2b4ada0d2c36f0fe6`.
-- GitHub Actions CI #67 / `33250789420`: PASS.
-- Physical PC01 E2E with Ollama `qwen2.5-coder:14b`: PASS.
-- Simulated cloud outage routed to `ollama/qwen2.5-coder:14b` and returned `TIGERIQ_WO007_LOCAL_FALLBACK_OK`.
-- Work Order status and reconstructed durable status: `verified`.
-- REVIEW gate: PASS by `pc01-reviewer-e2e`.
-- DONE gate: PASS by `pc01-judge-e2e`.
-- An initial physical recovery test exposed a real self-heal defect: killing the Python worker could leave the Scheduled Task logically running while no worker process existed.
-- Physical watchdog was hardened to inspect the real `worker.py` process, suppress duplicates, reset/start the Worker task when no process exists, and run on a recurring one-minute trigger.
-- Final deliberate-kill recovery test: exactly one Worker restored; post-recovery Ollama returned `TIGERIQ_AUTO_MODE_PASS`.
-- Final physical console gate: `[100%] TIGERIQ PC01 AUTO MODE READY`.
-- Physical evidence is recorded in `docs/evidence/WO-007-REPOSITORY-GATE-2026-08-29.md`.
+- Ollama OpenAI-compatible adapter and bounded provider circuit breaker were implemented.
+- Historical physical PC01 E2E with Ollama `qwen2.5-coder:14b`: PASS.
+- Historical simulated cloud outage routed to `ollama/qwen2.5-coder:14b` and returned `TIGERIQ_WO007_LOCAL_FALLBACK_OK`.
+- Historical watchdog recovery and `[100%] TIGERIQ PC01 AUTO MODE READY` evidence exists.
+- Current remote control evidence supersedes assumptions: PC01 queue ingress is presently not verified as operational and Web Control reports PC01 offline until fresh claim/result evidence exists.
 
-Next action: allow CI to validate the documentation/evidence reconciliation head, update PR/Trello state, then close WO-007 through the Company OS gate without merging MAIN/Production unless separately authorized. Continue internal backlog with Company OS control ingress/command dispatch and WO-004 TigerIQ Driver hardening. WO-006 remains external-customer-evidence dependent and must not be simulated.
+## WO-012 — TigerIQ AI Web Control Online
+
+Status: PRODUCTION ONLINE; READ/CHAT PATH PASS; WRITE PATH WAITING ONE-TIME GITHUB AUTHORIZATION
+
+- Repository: `newsdayads/tigeriq-ai-lab`.
+- Vercel project: `tigeriq-ai-lab`.
+- Production URL: `https://tigeriq-ai-lab.vercel.app`.
+- Production UI: Vietnamese, mobile-first, chat-first, branded `TigerIQ AI`.
+- Production `/api/control` public status: HTTP 200.
+- Verified live snapshot on 2026-08-30: Vercel `online`, GitHub `online`, PC01 `offline`, OpenClaw `unknown`, Ollama `unknown`.
+- Queue currently exposes PC01 control-plane issues #57 and #58.
+- Informational chat and status do not require secrets.
+- Web Control write operations support a browser-scoped fine-grained GitHub token limited to `tigeriq-ai-lab` Issues read/write; token is not persisted to repository or Vercel.
+- One-time user GitHub authorization remains required before a Web Control-created Work Order can be runtime-verified.
+- Tiger IQ Driver repository/project was not modified or linked.
+
+## PC01 control plane
+
+Current state: BLOCKED BEFORE RELIABLE REMOTE EXECUTION.
+
+- Worker V2 bootstrap previously passed with GitHub CLI/repository access preflight.
+- Scheduled Task was running, but deterministic GitHub canary #58 was not claimed.
+- Current Web Control therefore correctly reports PC01 `offline`.
+- OpenClaw and Ollama remain `unknown` until fresh runtime evidence exists.
+- No further PC-local PowerShell interaction is required for the current Web Control rollout; PC01 remediation is deferred to a separate execution-channel recovery step.
+
+## Next gate
+
+Complete one-time GitHub authorization in the TigerIQ AI Web Control browser and verify:
+
+Web chat → exactly one GitHub Work Order → queue refresh → evidence visible.
+
+After that, resume PC01 execution-channel recovery independently so a Web Control-created deterministic command can produce claim/result evidence without manual PC operation.
