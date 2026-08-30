@@ -1,6 +1,7 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { FileJournal } from '../../event-store/src/index.js';
 import type { NodeScope, PairedNodeCredential } from './pairing.js';
+export type { NodeScope } from './pairing.js';
 
 export interface NodeCredentialRecord {
   credentialId: string;
