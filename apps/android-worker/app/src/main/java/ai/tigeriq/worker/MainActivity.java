@@ -76,11 +76,11 @@ public final class MainActivity extends Activity {
         root.addView(subtitle);
 
         EmployeeProfileStore.Profile profile = profileStore.load();
-        employeeId = field("Mã nhân viên", profile.employeeId);
-        department = field("Phòng ban", profile.department);
-        role = field("Vai trò", profile.role);
-        provider = field("AI chính", profile.provider);
-        controllerUrl = field("Controller", currentControllerUrl());
+        employeeId = field("Mã nhân viên", profile.employeeId, false);
+        department = field("Phòng ban", profile.department, false);
+        role = field("Vai trò", profile.role, false);
+        provider = field("AI chính", profile.provider, false);
+        controllerUrl = field("Controller", currentControllerUrl(), true);
         root.addView(employeeId);
         root.addView(department);
         root.addView(role);
@@ -88,7 +88,11 @@ public final class MainActivity extends Activity {
         root.addView(controllerUrl);
 
         Button save = button("Lưu nhân viên");
-        save.setOnClickListener(v -> saveProfile());
+        save.setOnClickListener(v -> {
+            saveProfile();
+            Toast.makeText(this, "Đã lưu hồ sơ nhân viên", Toast.LENGTH_SHORT).show();
+            refreshStatus();
+        });
         root.addView(save);
 
         Button tailscale = button("Mở Tailscale");
@@ -132,33 +136,35 @@ public final class MainActivity extends Activity {
             role.getText().toString(),
             provider.getText().toString()
         );
-        Toast.makeText(this, "Đã lưu hồ sơ nhân viên", Toast.LENGTH_SHORT).show();
-        refreshStatus();
     }
 
     private void pairController(Button button) {
         saveProfile();
+        final String targetInput = controllerUrl.getText().toString();
         button.setEnabled(false);
         Toast.makeText(this, "Đang ghép Controller…", Toast.LENGTH_SHORT).show();
         networkExecutor.execute(() -> {
             try {
-                String target = ControllerUrlPolicy.requireTrusted(controllerUrl.getText().toString());
+                String target = ControllerUrlPolicy.requireTrusted(targetInput);
                 SecureCredentialStore secureStore = new SecureCredentialStore(this);
                 ControllerClient client = new ControllerClient(secureStore);
-                JSONObject challengeResponse = client.requestPairingChallenge(target);
-                JSONObject pairing = challengeResponse.getJSONObject("pairing");
                 String nodeId = new NodeIdentityStore(this).getOrCreate();
                 EmployeeProfileStore.Profile profile = profileStore.load();
-                String[] nodeCapabilities = new String[]{"android-ui", "research", "gemini"};
-                client.pair(
-                    target,
-                    pairing.getString("challengeId"),
-                    pairing.getString("challenge"),
-                    nodeId,
-                    Build.MANUFACTURER + " " + Build.MODEL + " / Android " + Build.VERSION.RELEASE,
-                    BuildConfig.VERSION_NAME,
-                    nodeCapabilities
-                );
+
+                if (secureStore.load() == null) {
+                    JSONObject challengeResponse = client.requestPairingChallenge(target);
+                    JSONObject pairing = challengeResponse.getJSONObject("pairing");
+                    client.pair(
+                        target,
+                        pairing.getString("challengeId"),
+                        pairing.getString("challenge"),
+                        nodeId,
+                        Build.MANUFACTURER + " " + Build.MODEL + " / Android " + Build.VERSION.RELEASE,
+                        BuildConfig.VERSION_NAME,
+                        new String[]{"android-ui", "research", "gemini"}
+                    );
+                }
+
                 client.registerEmployee(
                     profile.employeeId,
                     profile.employeeId + " · " + profile.role,
@@ -168,23 +174,16 @@ public final class MainActivity extends Activity {
                     new String[]{"research", "gemini"}
                 );
                 client.heartbeat(batteryPct(), null, BuildConfig.VERSION_NAME);
-                getSharedPreferences(ForegroundWorkerService.PREFS, Context.MODE_PRIVATE).edit()
-                    .putString(ForegroundWorkerService.KEY_CONTROLLER_STATE, "ONLINE")
-                    .putLong(ForegroundWorkerService.KEY_LAST_HEARTBEAT_AT, System.currentTimeMillis())
-                    .putString(ForegroundWorkerService.KEY_LAST_ERROR, "")
-                    .apply();
+                writeControllerStatus("ONLINE", System.currentTimeMillis(), "");
                 runOnUiThread(() -> {
-                    Toast.makeText(this, "Ghép thành công · EMP-001 ONLINE", Toast.LENGTH_LONG).show();
+                    Toast.makeText(this, "Ghép thành công · " + profile.employeeId + " ONLINE", Toast.LENGTH_LONG).show();
                     button.setEnabled(true);
                     refreshStatus();
                 });
             } catch (Exception error) {
                 String raw = error.getMessage();
                 final String message = raw == null || raw.trim().isEmpty() ? error.getClass().getSimpleName() : raw;
-                getSharedPreferences(ForegroundWorkerService.PREFS, Context.MODE_PRIVATE).edit()
-                    .putString(ForegroundWorkerService.KEY_CONTROLLER_STATE, "OFFLINE")
-                    .putString(ForegroundWorkerService.KEY_LAST_ERROR, message.length() > 160 ? message.substring(0, 160) : message)
-                    .apply();
+                writeControllerStatus("OFFLINE", 0L, message.length() > 160 ? message.substring(0, 160) : message);
                 runOnUiThread(() -> {
                     Toast.makeText(this, friendlyPairingError(message), Toast.LENGTH_LONG).show();
                     button.setEnabled(true);
@@ -194,10 +193,18 @@ public final class MainActivity extends Activity {
         });
     }
 
+    private void writeControllerStatus(String state, long heartbeatAt, String error) {
+        getSharedPreferences(ForegroundWorkerService.PREFS, Context.MODE_PRIVATE).edit()
+            .putString(ForegroundWorkerService.KEY_CONTROLLER_STATE, state)
+            .putLong(ForegroundWorkerService.KEY_LAST_HEARTBEAT_AT, heartbeatAt)
+            .putString(ForegroundWorkerService.KEY_LAST_ERROR, error)
+            .apply();
+    }
+
     private String friendlyPairingError(String message) {
         String lower = message.toLowerCase();
         if (lower.contains("failed to connect") || lower.contains("connect") || lower.contains("timeout") || lower.contains("unreachable")) {
-            return "Chưa thấy PC01 Controller · kiểm tra Tailscale rồi bấm Ghép lại";
+            return "Chưa thấy PC01 Controller · mở Tailscale rồi bấm Ghép lại";
         }
         if (lower.contains("tailnet")) return "Thiết bị chưa được Controller nhận là peer Tailscale";
         return "Ghép thất bại: " + (message.length() > 90 ? message.substring(0, 90) : message);
@@ -290,12 +297,12 @@ public final class MainActivity extends Activity {
         else startService(intent);
     }
 
-    private EditText field(String hint, String value) {
+    private EditText field(String hint, String value, boolean uri) {
         EditText edit = new EditText(this);
         edit.setHint(hint);
         edit.setText(value);
         edit.setSingleLine(true);
-        edit.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+        edit.setInputType(uri ? InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI : InputType.TYPE_CLASS_TEXT);
         edit.setPadding(dp(12), dp(10), dp(12), dp(10));
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         params.setMargins(0, 0, 0, dp(8));
