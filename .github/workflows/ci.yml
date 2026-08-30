@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [phase-0-foundation, phase1/control-plane, phase2/durable-journal, phase3/http-api, phase4/durable-api, phase5/operational-safety, phase6/runtime-guardrails, phase7/metrics-overload, phase8/actor-rate-limits]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Unit tests
+        run: npm test
+      - name: Playwright smoke
+        run: npm run test:e2e
+      - name: Build
+        run: npm run build

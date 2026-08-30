@@ -1,0 +1,22 @@
+{
+  "name": "tigeriq-ai-lab",
+  "version": "0.8.0",
+  "private": true,
+  "description": "Evidence-gated multi-agent AI development control center",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "build": "tsc -p tsconfig.build.json",
+    "command-center": "node dist/apps/dashboard/src/standalone.js",
+    "ci": "npm run typecheck && npm run test && npm run test:e2e && npm run build"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}

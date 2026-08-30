@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="color-scheme" content="dark" />
+  <title>TigerIQ Command Center</title>
+  <style>
+    :root{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#0a0d12;color:#f5f7fa}*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at top,#182233 0,#0a0d12 42%);padding:20px}.wrap{max-width:980px;margin:auto}.top{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:18px}.brand{font-size:22px;font-weight:800}.sub{color:#9aa8ba;font-size:13px}.card{background:rgba(19,25,36,.92);border:1px solid #263246;border-radius:18px;padding:16px;margin-bottom:14px;box-shadow:0 16px 40px rgba(0,0,0,.18)}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.stat{padding:14px;border:1px solid #2a374c;border-radius:14px;background:#111722}.label{font-size:12px;color:#8fa0b5;text-transform:uppercase;letter-spacing:.06em}.value{font-size:18px;font-weight:800;margin-top:5px}.online{color:#5ee69c}.offline{color:#ff6b78}.working{color:#ffd166}.unknown,.degraded{color:#a8b3c3}input,textarea,select,button{font:inherit}input,textarea,select{width:100%;background:#0d131d;color:#f5f7fa;border:1px solid #334158;border-radius:12px;padding:12px;outline:none}textarea{min-height:120px;resize:vertical}.row{display:grid;grid-template-columns:1fr 130px;gap:10px}.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}button{border:0;border-radius:12px;padding:11px 16px;font-weight:800;cursor:pointer;background:#f5f7fa;color:#0b0e13}button.secondary{background:#253247;color:#f5f7fa}button:disabled{opacity:.45;cursor:not-allowed}.queue{display:grid;gap:8px}.job{display:flex;justify-content:space-between;gap:12px;padding:11px 12px;background:#0e141f;border:1px solid #253247;border-radius:12px}.job a{color:#b9d6ff;text-decoration:none}.muted{color:#8fa0b5;font-size:12px}.message{white-space:pre-wrap;font-size:13px;color:#c6d1df;margin-top:10px}.auth{display:grid;grid-template-columns:1fr auto;gap:10px}@media(max-width:700px){body{padding:14px}.grid{grid-template-columns:1fr}.row{grid-template-columns:1fr}.top{align-items:flex-start;flex-direction:column}.auth{grid-template-columns:1fr}.actions button{flex:1 1 auto}}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><div><div class="brand">🐯 TigerIQ Command Center</div><div class="sub">Online Control Plane · GitHub + Vercel</div></div><div id="stamp" class="sub">Chưa kết nối</div></div>
+
+  <div class="card">
+    <div class="label">Access</div>
+    <div class="auth" style="margin-top:8px"><input id="secret" type="password" autocomplete="current-password" placeholder="TigerIQ command secret" /><button id="connect">Kết nối</button></div>
+    <div id="authMsg" class="message"></div>
+  </div>
+
+  <div class="card">
+    <div class="grid">
+      <div class="stat"><div class="label">Vercel</div><div id="vercel" class="value unknown">UNKNOWN</div></div>
+      <div class="stat"><div class="label">GitHub</div><div id="github" class="value unknown">UNKNOWN</div></div>
+      <div class="stat"><div class="label">PC01 Worker</div><div id="pc01" class="value unknown">UNKNOWN</div></div>
+      <div class="stat"><div class="label">OpenClaw</div><div id="openclaw" class="value unknown">UNKNOWN</div></div>
+      <div class="stat"><div class="label">Ollama</div><div id="ollama" class="value unknown">UNKNOWN</div></div>
+      <div class="stat"><div class="label">Queue</div><div id="queueCount" class="value unknown">—</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="label">Gửi Work Order</div>
+    <div class="row" style="margin-top:8px"><textarea id="instruction" placeholder="Nhập công việc cần TigerIQ thực hiện..."></textarea><select id="priority"><option>P0</option><option selected>P1</option><option>P2</option></select></div>
+    <div class="actions"><button id="send">Gửi Work Order</button><button id="canary" class="secondary">Test PC01</button><button id="refresh" class="secondary">Refresh</button></div>
+    <div id="actionMsg" class="message"></div>
+  </div>
+
+  <div class="card"><div class="label">Open Queue</div><div id="queue" class="queue" style="margin-top:10px"><div class="muted">Chưa tải dữ liệu.</div></div></div>
+</div>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const secretInput = $('secret');
+  secretInput.value = sessionStorage.getItem('tigeriq_secret') || '';
+  function setState(id, value){const el=$(id);const v=String(value||'unknown').toLowerCase();el.textContent=v.toUpperCase();el.className='value '+(['online','offline','working','degraded','unknown'].includes(v)?v:'unknown')}
+  async function api(payload){const secret=secretInput.value.trim();if(!secret)throw new Error('Nhập command secret trước.');sessionStorage.setItem('tigeriq_secret',secret);const r=await fetch('/api/control',{method:'POST',headers:{'content-type':'application/json','x-tigeriq-secret':secret},body:JSON.stringify(payload)});const data=await r.json().catch(()=>({error:'invalid_response'}));if(!r.ok)throw new Error(data.error+(data.details?': '+data.details:''));return data}
+  async function refresh(){try{$('authMsg').textContent='Đang tải trạng thái...';const d=await api({operation:'status'});setState('vercel',d.controlPlane.vercel);setState('github',d.controlPlane.github);setState('pc01',d.execution.pc01);setState('openclaw',d.execution.openclaw);setState('ollama',d.execution.ollama);$('queueCount').textContent=String(d.queue.count);$('queueCount').className='value '+(d.queue.count?'working':'online');$('stamp').textContent='Cập nhật '+new Date(d.generatedAt).toLocaleString('vi-VN');$('authMsg').textContent='Đã kết nối '+d.controlPlane.repository;const q=$('queue');q.innerHTML='';if(!d.queue.jobs.length){q.innerHTML='<div class="muted">Queue trống.</div>'}else d.queue.jobs.forEach(j=>{const div=document.createElement('div');div.className='job';const left=document.createElement('div');const a=document.createElement('a');a.href=j.url;a.target='_blank';a.rel='noopener noreferrer';a.textContent='#'+j.number+' · '+j.title;const m=document.createElement('div');m.className='muted';m.textContent=j.type+' · '+new Date(j.updatedAt).toLocaleString('vi-VN');left.append(a,m);const s=document.createElement('div');s.className='muted';s.textContent=j.state;div.append(left,s);q.append(div)})}catch(e){$('authMsg').textContent='Lỗi: '+e.message}}
+  $('connect').onclick=refresh;$('refresh').onclick=refresh;
+  $('send').onclick=async()=>{try{const text=$('instruction').value.trim();if(text.length<3)throw new Error('Nội dung quá ngắn.');$('actionMsg').textContent='Đang gửi...';const d=await api({operation:'work-order',instruction:text,priority:$('priority').value});$('actionMsg').textContent='Đã tạo issue #'+d.issue.number;window.open(d.issue.url,'_blank','noopener');$('instruction').value='';await refresh()}catch(e){$('actionMsg').textContent='Lỗi: '+e.message}};
+  $('canary').onclick=async()=>{try{$('actionMsg').textContent='Đang tạo deterministic canary...';const d=await api({operation:'canary'});$('actionMsg').textContent='Đã tạo PC01 canary #'+d.issue.number;window.open(d.issue.url,'_blank','noopener');await refresh()}catch(e){$('actionMsg').textContent='Lỗi: '+e.message}};
+  if(secretInput.value) refresh();
+</script>
+</body>
+</html>
