@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#0b1220" />
+  <title>TigerIQ Workforce Board</title>
+  <style>
+    :root{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#e5edf8;background:#08111f;color-scheme:dark}
+    *{box-sizing:border-box} body{margin:0;min-height:100vh;background:linear-gradient(180deg,#08111f,#0c1728);padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+    main{max-width:980px;margin:0 auto;padding:18px}.top{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}.title{font-size:1.3rem;font-weight:800}.sub{font-size:.82rem;color:#91a2bb;margin-top:4px}
+    a,button{color:inherit}button,.link{border:1px solid #2a3a52;background:#111d30;border-radius:12px;padding:10px 13px;text-decoration:none;font-weight:700}.status{display:inline-flex;gap:7px;align-items:center;font-weight:800;font-size:.8rem}.dot{width:9px;height:9px;border-radius:50%;background:#7d8ca3}.dot.ok{background:#38d996}.dot.warn{background:#f7bd55}.dot.bad{background:#ff6b6b}
+    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:16px}.card{background:#101c2e;border:1px solid #20314a;border-radius:16px;padding:14px;box-shadow:0 8px 28px #0003}.card h2{font-size:.88rem;margin:0 0 10px;color:#a9bad0}.metric{font-size:1.9rem;font-weight:900}.small{font-size:.78rem;color:#91a2bb}.row{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-top:1px solid #1d2c42;font-size:.84rem}.row:first-of-type{border-top:0}.wide{grid-column:1/-1}.bar{height:9px;background:#1b2b42;border-radius:999px;overflow:hidden;margin-top:9px}.fill{height:100%;background:#42d89d;width:0}.banner{margin-top:14px;padding:12px 14px;border-radius:14px;border:1px solid #654b22;background:#2a2114;color:#ffd68a;font-size:.84rem;display:none}.footer{margin-top:18px;font-size:.72rem;color:#71839c;text-align:center}
+    @media(min-width:760px){.grid{grid-template-columns:repeat(4,minmax(0,1fr))}.span2{grid-column:span 2}.wide{grid-column:1/-1}}
+  </style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <div><div class="title">TigerIQ Workforce</div><div class="sub">Read-only mobile operations board</div></div>
+    <div><a class="link" href="/">Web Control</a> <button id="refresh" type="button">Refresh</button></div>
+  </div>
+  <div id="banner" class="banner"></div>
+  <div class="grid">
+    <section class="card"><h2>Controller</h2><div id="controllerState" class="status"><span class="dot"></span>Checking</div><div id="controllerMode" class="small" style="margin-top:8px">—</div></section>
+    <section class="card"><h2>Nodes online</h2><div id="nodesOnline" class="metric">—</div><div id="nodesTotal" class="small">—</div></section>
+    <section class="card"><h2>Employees</h2><div id="employeeTotal" class="metric">—</div><div id="employeeBusy" class="small">—</div></section>
+    <section class="card"><h2>Active tasks</h2><div id="taskActive" class="metric">—</div><div id="taskFailed" class="small">—</div></section>
+    <section class="card span2"><h2>Capacity</h2><div class="row"><span>Active</span><strong id="capacityActive">—</strong></div><div class="row"><span>Total slots</span><strong id="capacityTotal">—</strong></div><div class="bar"><div id="utilization" class="fill"></div></div><div id="utilizationLabel" class="small" style="margin-top:7px">—</div></section>
+    <section class="card span2"><h2>Task lifecycle</h2><div id="taskStages"></div></section>
+    <section class="card span2"><h2>Node health</h2><div id="nodeHealth"></div></section>
+    <section class="card span2"><h2>Departments</h2><div id="departments"></div></section>
+    <section class="card wide"><h2>Remote Web Control</h2><div class="row"><span>Vercel</span><strong id="vercelState">—</strong></div><div class="row"><span>GitHub</span><strong id="githubState">—</strong></div><div class="row"><span>PC01 queue</span><strong id="queueCount">—</strong></div><div id="queueDetail" class="small" style="margin-top:8px">—</div></section>
+  </div>
+  <div id="updated" class="footer">Not loaded</div>
+</main>
+<script>
+const $=id=>document.getElementById(id); const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function rows(target,data,labels){const box=$(target);box.innerHTML='';for(const key of labels){const r=document.createElement('div');r.className='row';const a=document.createElement('span');a.textContent=key;const b=document.createElement('strong');b.textContent=String(data?.[key]??0);r.append(a,b);box.append(r)}}
+function namedRows(target,data){const entries=Object.entries(data||{}).sort((a,b)=>b[1]-a[1]);const box=$(target);box.innerHTML='';if(!entries.length){box.textContent='No data';box.className='small';return}box.className='';for(const [key,value] of entries){const r=document.createElement('div');r.className='row';const a=document.createElement('span');a.textContent=key;const b=document.createElement('strong');b.textContent=String(value);r.append(a,b);box.append(r)}}
+function setController(connected,mode){$('controllerState').innerHTML='';const dot=document.createElement('span');dot.className='dot '+(connected?'ok':'warn');const text=document.createTextNode(connected?'Connected':'Not connected');$('controllerState').append(dot,text);$('controllerMode').textContent=mode||'unknown'}
+async function load(){ $('refresh').disabled=true; $('banner').style.display='none'; try{const [wfRes,controlRes]=await Promise.all([fetch('/api/workforce-status',{cache:'no-store'}),fetch('/api/control',{cache:'no-store'})]);const wf=await wfRes.json();const control=await controlRes.json();setController(Boolean(wf.connected),wf.mode);if(!wf.connected){$('banner').textContent='PC01/Farm Controller status ingress is not connected yet. This board will not invent live Workforce data.';$('banner').style.display='block'}const s=wf.workforce;if(s){$('nodesOnline').textContent=s.nodes.byStatus.online;$('nodesTotal').textContent=s.nodes.total+' total';$('employeeTotal').textContent=s.employees.total;$('employeeBusy').textContent=(s.employees.byAvailability.busy||0)+' busy';$('taskActive').textContent=s.tasks.active;$('taskFailed').textContent=s.tasks.failed+' failed';$('capacityActive').textContent=s.employees.activeTasks;$('capacityTotal').textContent=s.employees.concurrencyCapacity;const pct=Math.round((s.employees.utilization||0)*100);$('utilization').style.width=pct+'%';$('utilizationLabel').textContent=pct+'% utilized';rows('taskStages',s.tasks.byStage,['queued','assigned','running','completed','failed','cancelled']);rows('nodeHealth',s.nodes.byStatus,['online','degraded','offline']);namedRows('departments',s.employees.departments)}else{for(const id of ['nodesOnline','nodesTotal','employeeTotal','employeeBusy','taskActive','taskFailed','capacityActive','capacityTotal','utilizationLabel'])$(id).textContent='—';$('utilization').style.width='0';$('taskStages').innerHTML='<div class="small">Awaiting controller status ingress</div>';$('nodeHealth').innerHTML='<div class="small">Awaiting controller status ingress</div>';$('departments').innerHTML='<div class="small">Awaiting controller status ingress</div>'}$('vercelState').textContent=control?.controlPlane?.vercel||'unknown';$('githubState').textContent=control?.controlPlane?.github||'unknown';$('queueCount').textContent=String(control?.queue?.count??0);$('queueDetail').textContent=(control?.queue?.jobs||[]).map(j=>'#'+j.number+' '+j.title).join(' · ')||'No queued work';$('updated').textContent='Updated '+new Date().toLocaleString()}catch(e){$('banner').textContent='Board refresh failed. No state was modified.';$('banner').style.display='block';$('updated').textContent='Refresh failed'}finally{$('refresh').disabled=false}}
+$('refresh').addEventListener('click',load);load();setInterval(load,30000);
+</script>
+</body>
+</html>
