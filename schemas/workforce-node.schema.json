@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tigeriq.local/schemas/workforce-node.schema.json",
+  "title": "TigerIQ Workforce Node",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["nodeId", "kind", "platform", "agentVersion", "capabilities", "status", "lastHeartbeatAt"],
+  "properties": {
+    "nodeId": { "type": "string", "minLength": 1 },
+    "kind": { "enum": ["android", "api", "local", "browser", "tool", "simulator"] },
+    "platform": { "type": "string", "minLength": 1 },
+    "agentVersion": { "type": "string", "minLength": 1 },
+    "capabilities": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+    "status": { "enum": ["online", "degraded", "offline"] },
+    "lastHeartbeatAt": { "type": "string", "format": "date-time" },
+    "deviceRef": { "type": "string" },
+    "batteryPct": { "type": "number", "minimum": 0, "maximum": 100 },
+    "temperatureC": { "type": "number" }
+  }
+}
