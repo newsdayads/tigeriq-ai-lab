@@ -1,0 +1,14 @@
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+const api=fs.readFileSync(new URL('../api/control.mjs', import.meta.url),'utf8');
+const ui=fs.readFileSync(new URL('../public/index.html', import.meta.url),'utf8');
+assert.match(api,/explicitDispatch: true/);
+assert.match(api,/vercel-explicit-dispatch/);
+assert.match(api,/Owner explicitly dispatched this instruction/);
+assert.match(api,/operation === 'work-order'/);
+assert.match(ui,/id="dispatch"/);
+assert.match(ui,/operation:'work-order'/);
+assert.match(ui,/id="quickWork"/);
+assert.match(ui,/pollTracked[(]true[)]/);
+assert.match(ui,/Não AI hiện chưa sẵn sàng nên em không tự biến câu này thành Work Order/);
+console.log('WO016_EXPLICIT_DISPATCH_PASS');
