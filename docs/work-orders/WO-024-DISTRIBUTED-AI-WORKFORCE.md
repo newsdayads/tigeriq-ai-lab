@@ -1,7 +1,7 @@
 # WO-024 — TigerIQ Distributed AI Workforce
 
 Priority: P0
-Status: REMOTE CORE IMPLEMENTED — FINAL EXACT-HEAD GATES PENDING
+Status: REMOTE CORE DONE — PHASE 1 ACTIVE
 Date: 2026-08-30
 
 ## Owner intent
@@ -10,7 +10,7 @@ Transform TigerIQ AI Lab from a single-agent execution pattern into a company-sc
 ## Operating model
 Owner -> Chief of Staff -> Department Head -> Team Lead -> AI Employees -> Independent Reviewer -> Judge/Gate -> Evidence -> Chief -> Owner.
 
-## Implemented remote core
+## Verified remote core
 1. Workforce Registry: employee identity, department/team/role, node binding, provider/model metadata, capabilities, health, availability, concurrency and outcome metrics.
 2. Worker Node Registry: Android/API/local/browser/tool/simulator node contract with heartbeat and device health metadata.
 3. Organization hierarchy: company, department and team units with logical manager agents.
@@ -38,14 +38,16 @@ Owner -> Chief of Staff -> Department Head -> Team Lead -> AI Employees -> Indep
 - Consumer-app automation remains isolated behind provider-specific adapters and may only be enabled where technically/account-policy appropriate.
 - No claim of live Android control is allowed until physical-device evidence exists.
 
-## Acceptance gates
-- TypeScript strict typecheck PASS.
-- Unit tests PASS for hierarchy, heartbeat, idempotency, capability scheduling, bounded retry/reassignment, independence, diversity fallback, status projection and pairing.
-- Restart-recovery tests PASS for completed-task dedupe and in-flight bounded requeue.
-- Integration test proves two primary employees execute concurrently and a different employee reviews; Judge is also independent.
-- Existing repository CI / Queue Hygiene / Vercel verification must PASS on one exact final head.
-- No Tiger IQ Driver mutation, no PC01 runtime mutation, no billing/provider activation.
-- Branch may merge only after exact-head gates PASS.
+## Gate evidence
+- Final exact branch head: `abd92ea5c2dd9d84f2c84f984897ac97b452223b`.
+- Replacement PR #81 was used because the GitHub connector Ready-for-review mutation failed on an unsupported GraphQL field; no code changed during PR replacement.
+- PR #81 exact-head CI run `33324214335`: PASS.
+- PR #81 exact-head Queue Hygiene run `33324214327`: PASS.
+- PR #81 exact-head Vercel Verify run `33324214405`: PASS.
+- PR #81 merged to MAIN as `295b0b17add37289104c1dc64739ee2694cb8443`.
+- Production deployment `dpl_9KBTs1QwkGqEQJuPvTES6eMDtxfv`: READY and aligned to merge SHA `295b0b17...`.
+- Canonical Production `GET /api/control`: HTTP 200 after deploy; Vercel/GitHub online, existing Web Control capabilities preserved, queue remained exactly #57/#58.
+- No Tiger IQ Driver mutation, no PC01 runtime mutation, no provider/billing activation.
 
 ## Not yet claimed
 - No physical Android phone has been paired or controlled by this Work Order.
@@ -54,7 +56,7 @@ Owner -> Chief of Staff -> Department Head -> Team Lead -> AI Employees -> Indep
 - No live provider credential or paid service is activated.
 - The state-store contract is implemented/tested in memory; a production durable backend must be selected/configured before 24/7 live worker state is claimed.
 
-## Next phase after remote-core merge
+## Active Phase 1
 1. Production-safe durable Workforce backend + Control Plane API integration + mobile Workforce Board.
 2. Buildable TigerIQ Worker Android APK and secure pairing endpoint.
 3. Farm Gateway adapter for ADB/Appium/UiAutomator2/device inventory.
