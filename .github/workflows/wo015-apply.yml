@@ -1,0 +1,38 @@
+name: WO-015 Apply Lifecycle Patch
+
+on:
+  push:
+    branches:
+      - wo015/web-control-lifecycle
+    paths:
+      - scripts/wo015_apply.py
+      - .github/workflows/wo015-apply.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: wo015/web-control-lifecycle
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply bounded lifecycle/mobile patch
+        run: python scripts/wo015_apply.py
+      - name: Verify lifecycle helpers
+        run: node scripts/verify_queue_hygiene.mjs
+      - name: Commit generated changes
+        run: |
+          if git diff --quiet && [ -z "$(git ls-files --others --exclude-standard public/manifest.webmanifest public/tigeriq-icon.svg public/sw.js)" ]; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git config user.name "tigeriq-ci"
+          git config user.email "actions@users.noreply.github.com"
+          git add api/control.mjs public/index.html public/manifest.webmanifest public/tigeriq-icon.svg public/sw.js scripts/verify_queue_hygiene.mjs
+          git commit -m "WO-015: apply lifecycle tracking and PWA hardening"
+          git push origin HEAD:wo015/web-control-lifecycle
