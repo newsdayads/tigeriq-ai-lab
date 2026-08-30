@@ -11,7 +11,7 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 
-/** Minimal HTTPS transport for pairing, heartbeat, lease polling and structured result publishing. */
+/** Controller transport for self-pairing, employee registration, heartbeat, task leasing and results. */
 public final class ControllerClient {
     private static final int CONNECT_TIMEOUT_MS = 10_000;
     private static final int READ_TIMEOUT_MS = 20_000;
@@ -20,6 +20,11 @@ public final class ControllerClient {
 
     public ControllerClient(SecureCredentialStore store) {
         this.store = store;
+    }
+
+    public JSONObject requestPairingChallenge(String controllerUrl) throws Exception {
+        controllerUrl = ControllerUrlPolicy.requireTrusted(controllerUrl);
+        return post(controllerUrl, "/api/node/pairing-challenge", new JSONObject(), null);
     }
 
     public JSONObject pair(
@@ -31,7 +36,7 @@ public final class ControllerClient {
         String agentVersion,
         String[] capabilities
     ) throws Exception {
-        requireHttps(controllerUrl);
+        controllerUrl = ControllerUrlPolicy.requireTrusted(controllerUrl);
         JSONObject request = new JSONObject();
         request.put("challengeId", required(challengeId, "challengeId"));
         request.put("nodeId", required(nodeId, "nodeId"));
@@ -46,6 +51,24 @@ public final class ControllerClient {
         JSONObject credential = response.getJSONObject("credential");
         store.save(controllerUrl, credential.getString("credentialId"), credential.getString("token"));
         return response;
+    }
+
+    public JSONObject registerEmployee(
+        String employeeId,
+        String displayName,
+        String department,
+        String role,
+        String provider,
+        String[] capabilities
+    ) throws Exception {
+        JSONObject request = new JSONObject();
+        request.put("employeeId", required(employeeId, "employeeId"));
+        request.put("displayName", required(displayName, "displayName"));
+        request.put("department", required(department, "department"));
+        request.put("role", required(role, "role"));
+        if (provider != null && !provider.trim().isEmpty()) request.put("provider", provider.trim());
+        request.put("capabilities", new JSONArray(capabilities));
+        return authenticatedPost("/api/node/employee", request);
     }
 
     public JSONObject heartbeat(int batteryPct, Double temperatureC, String agentVersion) throws Exception {
@@ -73,8 +96,7 @@ public final class ControllerClient {
     private JSONObject authenticatedPost(String path, JSONObject body) throws Exception {
         SecureCredentialStore.Credential credential = store.load();
         if (credential == null) throw new IllegalStateException("worker is not paired");
-        requireHttps(credential.controllerUrl);
-        return post(credential.controllerUrl, path, body, credential);
+        return post(ControllerUrlPolicy.requireTrusted(credential.controllerUrl), path, body, credential);
     }
 
     private static JSONObject post(
@@ -83,8 +105,8 @@ public final class ControllerClient {
         JSONObject body,
         SecureCredentialStore.Credential credential
     ) throws Exception {
+        controllerUrl = ControllerUrlPolicy.requireTrusted(controllerUrl);
         URL url = new URL(controllerUrl + path);
-        if (!"https".equalsIgnoreCase(url.getProtocol())) throw new IllegalArgumentException("controller transport must use HTTPS");
         HttpURLConnection connection = (HttpURLConnection) url.openConnection();
         connection.setRequestMethod("POST");
         connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
@@ -122,10 +144,6 @@ public final class ControllerClient {
             }
         }
         return out.toString();
-    }
-
-    private static void requireHttps(String url) {
-        if (url == null || !url.startsWith("https://")) throw new IllegalArgumentException("controller URL must use HTTPS");
     }
 
     private static String required(String value, String name) {
