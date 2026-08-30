@@ -57,7 +57,7 @@ function completed(lease: { taskId: string; employeeId: string }): WorkerResult 
 }
 
 describe('RemoteTaskBroker', () => {
-  it('prioritizes queued work, leases it to the scheduler-selected node and accepts one authoritative result', async () => {
+  it('prioritizes queued work and keeps authenticated result submission idempotent', async () => {
     const app = await fixture();
     await app.broker.enqueue(task('LOW', 'P2'));
     await app.broker.enqueue(task('HIGH', 'P0'));
@@ -68,10 +68,13 @@ describe('RemoteTaskBroker', () => {
     expect(app.queue.get('HIGH').stage).toBe('running');
 
     const result = completed(lease!);
-    await app.broker.acceptResult('PHONE-01', lease!.taskId, lease!.leaseId, lease!.leaseToken, result);
+    const first = await app.broker.acceptResult('PHONE-01', lease!.taskId, lease!.leaseId, lease!.leaseToken, result);
+    const duplicate = await app.broker.acceptResult('PHONE-01', lease!.taskId, lease!.leaseId, lease!.leaseToken, result);
+    expect(first.conclusion).toBe('done');
+    expect(duplicate.conclusion).toBe('done');
     expect(app.queue.get('HIGH').stage).toBe('completed');
     expect(app.registry.getEmployee('OPS-01')?.completedTasks).toBe(1);
-    await expect(app.broker.acceptResult('PHONE-01', lease!.taskId, lease!.leaseId, lease!.leaseToken, result)).rejects.toThrow('task is not running');
+    await expect(app.broker.acceptResult('PHONE-01', lease!.taskId, lease!.leaseId, 'wrong-token', result)).rejects.toThrow('invalid task lease token');
   });
 
   it('recovers an expired lease, consumes one bounded attempt and re-leases on the next poll', async () => {
