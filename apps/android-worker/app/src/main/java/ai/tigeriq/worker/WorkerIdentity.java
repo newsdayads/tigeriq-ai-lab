@@ -3,9 +3,12 @@ package ai.tigeriq.worker;
 import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyProperties;
 
+import java.nio.charset.StandardCharsets;
 import java.security.KeyPairGenerator;
 import java.security.KeyStore;
+import java.security.PrivateKey;
 import java.security.PublicKey;
+import java.security.Signature;
 import java.security.spec.ECGenParameterSpec;
 import java.util.Base64;
 
@@ -46,6 +49,22 @@ public final class WorkerIdentity {
             return Base64.getEncoder().encodeToString(publicKey.getEncoded());
         } catch (Exception error) {
             throw new IllegalStateException("Unable to read TigerIQ device public key", error);
+        }
+    }
+
+    public static String signChallengeBase64Url(String challenge) {
+        if (challenge == null || challenge.trim().isEmpty()) throw new IllegalArgumentException("challenge is required");
+        try {
+            ensureDeviceKey();
+            KeyStore keyStore = KeyStore.getInstance(KEYSTORE);
+            keyStore.load(null);
+            PrivateKey privateKey = (PrivateKey) keyStore.getKey(ALIAS, null);
+            Signature signature = Signature.getInstance("SHA256withECDSA");
+            signature.initSign(privateKey);
+            signature.update(challenge.getBytes(StandardCharsets.UTF_8));
+            return Base64.getUrlEncoder().withoutPadding().encodeToString(signature.sign());
+        } catch (Exception error) {
+            throw new IllegalStateException("Unable to sign TigerIQ pairing challenge", error);
         }
     }
 }
