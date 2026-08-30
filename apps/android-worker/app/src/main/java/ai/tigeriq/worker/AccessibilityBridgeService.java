@@ -17,8 +17,10 @@ public final class AccessibilityBridgeService extends AccessibilityService {
         // has an explicit allowlist and provider-specific evidence gate.
         CharSequence packageName = event == null ? null : event.getPackageName();
         if (packageName != null) {
+            String value = packageName.toString();
+            if (getPackageName().equals(value)) return;
             getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-                .putString(KEY_LAST_PACKAGE, packageName.toString())
+                .putString(KEY_LAST_PACKAGE, value)
                 .putLong(KEY_LAST_EVENT_AT, System.currentTimeMillis())
                 .apply();
         }
