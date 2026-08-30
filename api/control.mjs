@@ -110,6 +110,45 @@ export function issueStage(issue, comments = []) {
   return 'queued';
 }
 
+export function issuePriority(issue) {
+  const body = String(issue?.body || '');
+  const field = body.match(/(?:^|\n)## Priority\s*\n\s*(P[012])\s*(?:\n|$)/i);
+  if (field) return field[1].toUpperCase();
+  const title = String(issue?.title || '');
+  const titleMatch = title.match(/(?:^|[^A-Z0-9])(P[012])(?:[^A-Z0-9]|$)/i);
+  return titleMatch ? titleMatch[1].toUpperCase() : null;
+}
+
+export function issueType(issue) {
+  const body = String(issue?.body || '');
+  if (body.includes('TIGERIQ_COMMAND_V1')) return 'command';
+  if (body.includes('TIGERIQ_JOB_V1')) return 'work-order';
+  return 'unknown';
+}
+
+export function workItemSummary(issue, comments = [], nowMs = Date.now()) {
+  const stage = issueStage(issue, comments);
+  const evidence = issueEvidenceSummary(comments);
+  const updatedAt = issue?.updated_at || issue?.updatedAt || null;
+  const updatedMs = updatedAt ? Date.parse(updatedAt) : Number.NaN;
+  const ageMinutes = Number.isFinite(updatedMs) ? Math.max(0, Math.floor((nowMs - updatedMs) / 60000)) : null;
+  const stale = (stage === 'queued' || stage === 'claimed') && ageMinutes !== null && ageMinutes >= 30;
+  return {
+    number: Number(issue?.number || 0),
+    title: String(issue?.title || ''),
+    state: String(issue?.state || 'unknown'),
+    stateReason: issue?.state_reason || null,
+    stage,
+    priority: issuePriority(issue),
+    type: issueType(issue),
+    url: issue?.html_url || issue?.url || null,
+    updatedAt,
+    ageMinutes,
+    stale,
+    evidence,
+  };
+}
+
 async function findDuplicateOpenWorkOrder(fingerprint, token) {
   const { owner, repo } = repoParts();
   const issues = await gh(`/repos/${owner}/${repo}/issues?state=open&per_page=100&sort=updated&direction=desc`, {}, token);
@@ -157,6 +196,7 @@ async function statusSnapshot(token = '') {
       workOrderStatusTracking: true,
       workOrderLifecycleEvidence: true,
       explicitDispatch: true,
+      workBoard: true,
     },
     execution: {
       pc01,
@@ -166,6 +206,45 @@ async function statusSnapshot(token = '') {
       canaryState: canary?.state || 'unknown',
     },
     queue: { count: jobs.length, jobs },
+  };
+}
+
+async function workBoard(token = '') {
+  const { owner, repo } = repoParts();
+  const [issues, comments] = await Promise.all([
+    gh(`/repos/${owner}/${repo}/issues?state=all&per_page=50&sort=updated&direction=desc`, {}, token),
+    gh(`/repos/${owner}/${repo}/issues/comments?per_page=100&sort=updated&direction=desc`, {}, token).catch(() => []),
+  ]);
+  const commentsByIssue = new Map();
+  for (const comment of Array.isArray(comments) ? comments : []) {
+    const match = String(comment?.issue_url || '').match(/\/issues\/(\d+)$/);
+    if (!match) continue;
+    const number = Number(match[1]);
+    const rows = commentsByIssue.get(number) || [];
+    rows.push(comment);
+    commentsByIssue.set(number, rows);
+  }
+  const markerIssues = (Array.isArray(issues) ? issues : [])
+    .filter((item) => !item.pull_request && typeof item.body === 'string' && (item.body.includes('TIGERIQ_JOB_V1') || item.body.includes('TIGERIQ_COMMAND_V1')))
+    .slice(0, 20);
+  const nowMs = Date.now();
+  const items = markerIssues.map((item) => workItemSummary(item, commentsByIssue.get(item.number) || [], nowMs));
+  const count = (stage) => items.filter((item) => item.stage === stage).length;
+  return {
+    ok: true,
+    generatedAt: new Date(nowMs).toISOString(),
+    policy: { staleMinutes: 30, issueLimit: 20, commentLimit: 100, mutation: false },
+    summary: {
+      total: items.length,
+      active: items.filter((item) => item.stage === 'queued' || item.stage === 'claimed').length,
+      queued: count('queued'),
+      claimed: count('claimed'),
+      completed: count('completed'),
+      failed: count('failed'),
+      cancelled: count('cancelled'),
+      stale: items.filter((item) => item.stale).length,
+    },
+    items,
   };
 }
 
@@ -318,6 +397,7 @@ export default async function handler(req, res) {
     if (operation === 'status') return json(res, 200, await statusSnapshot(optionalToken));
     if (operation === 'whoami') return json(res, 200, await githubIdentity(writeCredential(req).token));
     if (operation === 'work-order-status') return json(res, 200, await workOrderStatus(payload, optionalToken));
+    if (operation === 'work-board') return json(res, 200, await workBoard(optionalToken));
 
     if (operation === 'chat') {
       const decision = await decideWithChief({ message: payload.message, history: payload.history });
