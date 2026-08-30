@@ -27,14 +27,29 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.7'
-      - name: Build debug APK
+      - name: Verify stable signing is not present in CI
         working-directory: apps/android-worker
-        run: gradle --no-daemon :app:assembleDebug
-      - name: Verify APK exists
-        run: test -f apps/android-worker/app/build/outputs/apk/debug/app-debug.apk
+        run: |
+          test -z "${TIGERIQ_ANDROID_KEYSTORE:-}"
+          test -z "${TIGERIQ_ANDROID_STORE_PASSWORD_FILE:-}"
+          test -z "${TIGERIQ_ANDROID_KEY_PASSWORD_FILE:-}"
+          gradle --no-daemon :app:tigerIqStableSigningStatus | grep TIGERIQ_STABLE_SIGNING_NOT_CONFIGURED
+      - name: Build debug and unsigned release APKs
+        working-directory: apps/android-worker
+        run: gradle --no-daemon :app:assembleDebug :app:assembleRelease
+      - name: Verify APKs exist
+        run: |
+          test -f apps/android-worker/app/build/outputs/apk/debug/app-debug.apk
+          test -f apps/android-worker/app/build/outputs/apk/release/app-release-unsigned.apk
       - uses: actions/upload-artifact@v4
         with:
           name: tigeriq-worker-debug-apk
           path: apps/android-worker/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tigeriq-worker-unsigned-release-apk
+          path: apps/android-worker/app/build/outputs/apk/release/app-release-unsigned.apk
           if-no-files-found: error
           retention-days: 7
