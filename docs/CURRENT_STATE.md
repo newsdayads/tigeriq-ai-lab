@@ -2,84 +2,81 @@
 
 Date: 2026-08-31
 
-TigerIQ AI Lab Production Web Control is online in the isolated `newsdayads/tigeriq-ai-lab` / Vercel `tigeriq-ai-lab` stack. Tiger IQ Driver remains isolated and unchanged.
+TigerIQ AI Lab is being operated as a continuous distributed AI company. Tiger IQ Driver (`newsdayads/drivetrack`) remains isolated and unchanged.
 
-## Production / MAIN baseline
-- Production URL: `https://tigeriq-ai-lab.vercel.app`.
-- Latest completed remote engineering Work Order in MAIN: WO-028 — Farm Gateway adapter boundary.
-- MAIN SHA after WO-028 merge: `53b191935277effe9121c3b807d5617f49d10db3`.
-- Latest Vercel-affecting Production deployment remains WO-027 deployment `dpl_4dQ8ngBi4ogiSraGJBHitkC1bLsQ`, READY at merge SHA `eeff17c2ffdea30d8c82fbab3ab8a7478dd64efa`.
-- WO-028 changed package/test code only; no newer Production deployment was observed. This is not treated as an error or as evidence that Vercel deployed WO-028.
-- Canonical Production `/api/control`: HTTP 200 after WO-028 merge; existing Web Control behavior remains healthy.
-- Canonical PC01 queue remains exactly #57/#58. No duplicate canary was created.
-- No live PC01/OpenClaw/Ollama recovery or physical Android execution is claimed.
+## Current MAIN baseline
+- Repository: `newsdayads/tigeriq-ai-lab`.
+- Production Web Control: `https://tigeriq-ai-lab.vercel.app`.
+- MAIN before active WO-036 branch: `8882d2ed8995ea4d4c6344b2e78a01a45dbdaeba` (WO-035 merge).
+- WO-035 made the installed Web Control/PWA entry prefer the executive Command Center; exact-head CI, Queue Hygiene and Vercel Verify passed before merge. Production deployment and the user's installed-PWA visual refresh remain separate gates until observed.
+- Canonical PC01 canary queue remains #57/#58; no test/canary issue should be created merely for smoke testing.
 
-## Company operating direction — P0
-TigerIQ is being developed as a continuous distributed AI company rather than a single assistant waiting for Owner commands.
+## Operating model — P0
+Owner -> Chief of Staff -> Department Heads -> Team Leads -> multiple AI/device employees -> Independent Reviewer -> Judge/Gate -> Evidence/State -> Chief -> Owner.
 
-Operating model:
-Owner -> Chief of Staff -> Department Heads -> Team Leads -> multiple AI/device employees -> Independent Reviewer -> Judge/Gate -> Evidence -> Chief -> Owner.
+Operational rule: audit actual state -> select highest-value safe work -> execute -> independent review/judge -> record evidence/state -> immediately take the next safe work. Owner intervention is reserved for priority/limit/stop or an unavoidable human authorization/device gate.
 
-Operational rule: audit real state -> select highest-value safe work -> execute -> review/judge -> record evidence/state -> immediately take the next work. Owner intervention is for priority changes, limits, gated authorization or stop.
+## Verified distributed-workforce software
+WO-024 through WO-030 established:
+- organization hierarchy, Workforce/Node Registry and capability-aware scheduling;
+- Task Packet + Result/Evidence contracts, concurrency, idempotency, retry/reassignment, lease timeout and restart recovery;
+- durable PC01-oriented FileJournal state and hash-chain evidence boundary;
+- scoped node credentials with raw bearer tokens never persisted;
+- Android-compatible P-256/SHA256 pairing proof;
+- private Workforce Controller API for pairing, employee enrollment, heartbeat, task lease and result return;
+- buildable Android Worker with Android Keystore identity, foreground runtime, secure credential store and Accessibility bridge skeleton;
+- Farm Gateway adapter boundary around ADB/UiAutomator-style primitives;
+- simulator/CI proof of parallel workers and independent Reviewer/Judge.
 
-## Verified Workforce capabilities in MAIN
-From WO-024:
-- organization hierarchy, Workforce/Node Registry, heartbeat and employee metrics;
-- Task Packet, Result/Evidence schemas, capability scheduling, concurrency, retry/reassignment and canonical idempotency;
-- state-store/restart boundary and simulator proof of two parallel workers -> independent Reviewer -> independent Judge;
-- read-only Workforce status projection;
-- secure pairing primitive and Android Worker execution contract.
+WO-031 added the executive Workforce/Company Command Center with evidence-based progress rather than AI-estimated percentages.
 
-From WO-025:
-- zero-cost FileJournal Workforce backend for PC01/Farm Controller with append-only JSONL, flush-to-disk, file locking, optimistic concurrency and SHA-256 hash chain;
-- file-backed restart recovery and duplicate suppression tests;
-- durable scoped node credential store; raw bearer token is never persisted, only its hash;
-- Android-compatible P-256/SHA256 ECDSA pairing proof verification;
-- private Workforce Controller API for status, pairing challenge, node pairing, employee provisioning and authenticated heartbeat;
-- standalone `workforce-controller` runtime using `F:\\TigerIQ\\State\\workforce.jsonl` by default;
-- wildcard public network bind is forbidden.
+WO-032 added the Z Flip 7 pilot employee UI/profile and produced an installable Android artifact.
 
-From WO-026:
-- durable Android/remote worker task mailbox with bounded attempts;
-- short-lived lease token and deadline; raw lease token is not persisted;
-- restart recovery, expired-lease requeue and re-lease within remaining attempts;
-- stale/expired lease results are rejected;
-- successful result acceptance is idempotent and single-result authoritative;
-- PR #85 exact head `09aeb3fc5b83ed04a09aad9bffa96efadccb6bdc` passed CI, Queue Hygiene and Vercel Verify before merge;
-- MAIN merge SHA `6c7b8510016f860db7631e481ca5ce87a72b109f`; Vercel Production deployment `dpl_FmiZLAVobDUruH7ehn7vNAmhvmgN` was READY at that SHA.
+WO-034 (PR #97, exact head `e47686ca699e00da4aeaec52771c5568ed9aef27`) passed CI + Android Worker + Queue Hygiene + Vercel Verify and merged as `731436be054e06cfdfe4b4d48e25507ab7adb35a`. It added:
+- one-tap trusted Controller pairing from the Android Worker;
+- default private Controller target `http://100.97.23.87:8790` with fail-closed URL policy;
+- cleartext HTTP permission limited to the exact PC01 Tailscale address while public/arbitrary HTTP remains blocked;
+- node-scoped employee self-enrollment without embedding the Controller admin secret in the phone;
+- periodic authenticated heartbeat once paired;
+- Worker version `0.3.0-pairing` and a successful APK artifact build.
 
-From WO-027:
-- buildable Android Worker MVP with applicationId `ai.tigeriq.worker`, Android 35/minSdk26;
-- device-local Android Keystore P-256 identity;
-- persistent foreground worker service skeleton and safe AccessibilityService semantic bridge skeleton;
-- explicit Android permissions/resources and dedicated Android CI APK artifact build;
-- original stacked PR #86 was closed without merge after WO-026 squash changed its base; clean replacement PR #87 contained only 11 Android Worker files;
-- PR #87 exact head `e824dddf577efd6bf378c9fbba760b4ddf6a9f78` passed CI, Queue Hygiene, Vercel Verify, Android Worker APK build and Preview READY;
-- MAIN merge SHA `eeff17c2ffdea30d8c82fbab3ab8a7478dd64efa`; Production deployment `dpl_4dQ8ngBi4ogiSraGJBHitkC1bLsQ` is READY at that SHA.
+WO-035 (PR #99, exact head `586e3358b883cc5b720717ad82415b7063b8a688`) passed CI + Queue Hygiene + Vercel Verify and merged as `8882d2ed8995ea4d4c6344b2e78a01a45dbdaeba`. It reconciles the installed PWA/legacy `/index.html` entry toward the executive Command Center while preserving the explicit Chat route and network-only service worker behavior.
 
-From WO-028:
-- typed Farm Gateway adapter boundary around ADB/UiAutomator2-style primitives;
-- deterministic `adb devices -l` inventory parsing and device-state/capability mapping;
-- command runner uses command + argv + bounded timeout rather than shell command strings;
-- fail-closed app restart and screenshot capture; evidence path constrained under `/sdcard/`;
-- tests cover inventory parsing, argv isolation, injection sanitization/path confinement and ADB failure;
-- protocol version `1` provides an explicit compatibility boundary;
-- PR #88 exact head `5d343a28dcf00bfd23872ee5d16582c7f5feb557` passed CI run `33332971625`, Queue Hygiene `33332971736` and Vercel Verify `33332971696` before merge;
-- MAIN merge SHA `53b191935277effe9121c3b807d5617f49d10db3`.
+## First physical Android evidence — EMP-001
+A real Samsung Z Flip 7 has run TigerIQ Worker. Physical screenshot evidence observed in the owner session confirms only these gates:
+- employee profile `EMP-001 / Research / Researcher / Gemini`;
+- Device identity `READY`;
+- Worker runtime `ACTIVE`;
+- Accessibility `ON`;
+- Controller pairing still `CHƯA GHÉP` at that evidence point.
 
-## External/deferred activation boundaries
-- Vercel AI Gateway conversational Chief still has the previously observed billing/card prerequisite; do not idle on it while other work exists.
-- Live cloud provider calls require authorized runtime credentials/model configuration and applicable financial authorization.
-- No physical Android worker is paired or controlled yet. Real-device activation needs a one-time install/pairing/Accessibility/login step on selected phones.
-- Consumer AI app automation must remain provider-specific and enabled only where technically/account-policy appropriate.
-- PC01 runtime installation of Workforce Controller/Farm Gateway is not claimed; those components are software/CI verified only.
+The private screenshot itself is not stored in the repository. This evidence does **not** prove Controller heartbeat, task execution or Gemini prompt/result automation.
 
-## Active next priority — Android Workforce execution
-Continue autonomously without waiting for Owner messages:
-1. implement Android Worker controller client: secure pairing flow, local encrypted/scoped credential handling, authenticated heartbeat, task lease polling/acknowledgement, result/evidence publishing and bounded watchdog/recovery;
-2. add mobile Workforce Board to Web Control using stateless Vercel status contracts, without making Vercel the durable Workforce authority;
-3. add a concrete PC01-side Farm Gateway command-runner/runtime wrapper as software/CI only, without interacting with PC01 during unattended work;
-4. prepare one bundled two-phone provisioning action and mark `READY_FOR_DEVICE_TEST` when remote prerequisites are complete;
-5. after physical PASS, scale-test 5/10/20 workers and add department planner/KPI/performance routing.
+## Active priority — WO-036
+Prepare a single-action PC01 Workforce Controller deployment package so the next physical gate can be performed without a chain of manual commands:
+1. explicit private/Tailscale bind on `100.97.23.87:8790`;
+2. durable journal under `F:\\TigerIQ\\State\\workforce.jsonl`;
+3. locally generated admin secret outside source control with restricted ACL;
+4. startup Scheduled Task under SYSTEM, independent of interactive logon;
+5. Tailscale-restricted Windows Firewall rule;
+6. redacted health/audit and non-destructive rollback scripts;
+7. CI syntax/security gates before merge.
 
-If one path reaches an unavoidable physical/login/2FA/billing/credential boundary, record it and continue another safe backlog path instead of idling.
+Merge of WO-036 will mean `READY_FOR_PC01_TEST`, not physical deployment PASS.
+
+## Next physical gate
+When the owner resumes, the intended bundled path is:
+1. deploy/verify the Workforce Controller on PC01 once;
+2. update the existing Z Flip 7 Worker to the successful `0.3.0-pairing` artifact;
+3. ensure phone and PC01 are reachable on the private/Tailscale network;
+4. press `Ghép Controller` on the Worker;
+5. require live heartbeat/status evidence before marking `EMP-001 ONLINE`.
+
+After that: lease one safe test task -> return structured result/evidence -> independently review it. Gemini UI prompt/result automation remains a separate provider-specific real-device gate and must not be claimed before evidence.
+
+## External/deferred boundaries
+- PC01 live status must be re-verified; software/CI does not equal PC01 runtime deployment.
+- Vercel AI Gateway conversational inference still has the previously observed billing/card prerequisite; do not idle on it while other safe work exists.
+- No provider credentials, owner credentials or secrets may enter source control.
+- Consumer AI app automation must remain provider-specific, narrowly scoped and enabled only where technically and contractually appropriate.
+- If one physical/login/2FA/billing path blocks, record the gate and continue another safe backlog item rather than idling.
