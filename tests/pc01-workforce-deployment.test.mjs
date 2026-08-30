@@ -6,17 +6,25 @@ const audit = readFileSync(new URL('../scripts/pc-worker/audit-workforce-control
 const uninstall = readFileSync(new URL('../scripts/pc-worker/uninstall-workforce-controller.ps1', import.meta.url), 'utf8');
 
 describe('WO-036 PC01 Workforce Controller deployment package', () => {
-  it('binds to the explicit PC01 tailnet address and never a wildcard', () => {
-    expect(install).toContain("[string]$ControllerHost = '100.97.23.87'");
-    expect(install).toContain("$ControllerHost -in @('0.0.0.0','::','127.0.0.1','localhost')");
+  it('discovers the live tailnet address, binds explicitly and never uses a wildcard', () => {
+    expect(install).toContain("[string]$ControllerHost = ''");
+    expect(install).toContain("& $tailscale ip -4");
+    expect(install).toContain("Test-TailscaleIPv4");
+    expect(install).toContain("Fail 'TAILSCALE_IP_AMBIGUOUS'");
+    expect(install).toContain("Fail 'TAILSCALE_IP_MISMATCH'");
     expect(install).toContain("-LocalAddress $ControllerHost");
     expect(install).toContain("-RemoteAddress '100.64.0.0/10'");
+    expect(install).not.toContain("[string]$ControllerHost = '100.97.23.87'");
+    expect(audit).toContain("wildcardListener");
   });
 
-  it('stores the admin secret outside the repo and never prints its value', () => {
+  it('enables tailnet self-pair explicitly without exposing the admin secret', () => {
+    expect(install).toContain("TIGERIQ_WORKFORCE_ALLOW_TAILNET_SELF_PAIR = '1'");
+    expect(install).toContain("tailnetSelfPair = $true");
     expect(install).toContain("$SecretsDir = 'F:\\TigerIQ\\Secrets'");
     expect(install).toContain("secret = 'STORED_LOCALLY_REDACTED'");
     expect(install).not.toMatch(/Write-(Host|Output).*workforce-admin\.secret.*ReadAllText/i);
+    expect(audit).toContain('tailnetSelfPairConfigured');
     expect(audit).toContain('secretPresent = Test-Path $SecretPath');
   });
 
