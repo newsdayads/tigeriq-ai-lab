@@ -1,0 +1,31 @@
+name: WO-012 Vercel Online Verify
+
+on:
+  push:
+    branches:
+      - wo012/command-center-vercel-online
+  pull_request:
+    branches:
+      - wo010/command-center-web-control
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Verify Vercel API syntax
+        run: node --check api/control.mjs
+      - name: Verify Vercel config
+        run: node -e "JSON.parse(require('fs').readFileSync('vercel.json','utf8')); console.log('vercel.json PASS')"
+      - name: Existing TigerIQ gates
+        run: npm run typecheck && npm run test && npm run build
