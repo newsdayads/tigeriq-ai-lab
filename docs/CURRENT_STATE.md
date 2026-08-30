@@ -2,56 +2,45 @@
 
 Date: 2026-08-30
 
-TigerIQ AI Lab is operating as an evidence-gated Company OS. Production Web Control is now online in the isolated `newsdayads/tigeriq-ai-lab` / Vercel `tigeriq-ai-lab` stack. Tiger IQ Driver remains isolated and unchanged.
+TigerIQ AI Lab Production Web Control is online in the isolated `newsdayads/tigeriq-ai-lab` / Vercel `tigeriq-ai-lab` stack. Tiger IQ Driver remains isolated and unchanged.
 
-## Verified foundation
+## Production baseline
 
-Phases 0–9 are implemented on stacked branches with independent GitHub Actions evidence. The stack provides governance/contracts, Work Orders and evidence, lifecycle authorization, durable hash-chained journal/recovery, authenticated HTTP control plane, durable idempotency, runtime guardrails, overload/rate limits, and executable provider-neutral Model Router failover.
+- MAIN: `1dd301187f0430f54c615110a87b3850125f6b77`.
+- Production deployment: `dpl_FyLgrc8Lx1vLzyg6uHKS6vRdrPwu`, READY.
+- Vietnamese mobile-first chat UI is preserved.
+- Browser-scoped GitHub authorization has been runtime verified by successful Web Control writes; issues #61 and #62 were created from the web flow.
+- Deterministic Vercel/GitHub/status operations remain tool-first and do not call an LLM.
+- PC01 remains offline and is outside WO-013.
 
-Phase 9 branch: `phase9/model-router-execution`.
-Phase 9 CI evidence: run `33243682544` PASS.
+## WO-013 — Vercel AI Gateway Model Router
 
-## WO-007 — PC Local AI Execution Worker
+Status: IMPLEMENTED ON PREVIEW; PRODUCTION NOT PROMOTED YET
 
-Status: HISTORICAL PHYSICAL GATES PASSED; CURRENT REMOTE INGRESS NOT VERIFIED
+Branch: `wo013/vercel-ai-model-router`.
+Latest implementation commit before this state update: `133991b2621b565cd980e1be7ea5a7ff0a6fe4ac`.
+Preview deployment: `dpl_8soRhwNDjzRp9x2hiXLLpfHrmtu8`, READY.
 
-- Branch `wo007/pc-local-ai-worker`, stacked on verified Phase 9.
-- Ollama OpenAI-compatible adapter and bounded provider circuit breaker were implemented.
-- Historical physical PC01 E2E with Ollama `qwen2.5-coder:14b`: PASS.
-- Historical simulated cloud outage routed to `ollama/qwen2.5-coder:14b` and returned `TIGERIQ_WO007_LOCAL_FALLBACK_OK`.
-- Historical watchdog recovery and `[100%] TIGERIQ PC01 AUTO MODE READY` evidence exists.
-- Current remote control evidence supersedes assumptions: PC01 queue ingress is presently not verified as operational and Web Control reports PC01 offline until fresh claim/result evidence exists.
+Implemented:
+- Vercel AI Gateway router using deployment `VERCEL_OIDC_TOKEN`; no provider secret committed.
+- Explicit bounded model fallbacks by role.
+- Cost-aware Chief of Staff route starts with a fast Google model; stronger implementation route is reserved for Executor.
+- Roles declared: Chief of Staff, Executor, Independent Reviewer, Judge/Gate.
+- Reviewer primary differs from Executor primary; Judge is a separate role and does not replace deterministic CI/test gates.
+- 20-second bounded model request timeout and explicit rate-limit error classification.
+- Model evidence includes role, requested model, fallback models, actual model returned by Gateway and usage when available.
+- `/api/control` exposes router configuration state and sends ordinary conversational chat through Chief of Staff while deterministic status/capability operations stay non-LLM.
+- Explicit execution verbs continue to create durable GitHub Work Orders rather than allowing an LLM to perform untracked writes.
+- ADR `0012-vercel-ai-gateway-router.md` records architecture, failure policy and promotion gate.
 
-## WO-012 — TigerIQ AI Web Control Online
-
-Status: PRODUCTION ONLINE; READ/CHAT PATH PASS; WRITE PATH WAITING ONE-TIME GITHUB AUTHORIZATION
-
-- Repository: `newsdayads/tigeriq-ai-lab`.
-- Vercel project: `tigeriq-ai-lab`.
-- Production URL: `https://tigeriq-ai-lab.vercel.app`.
-- Production UI: Vietnamese, mobile-first, chat-first, branded `TigerIQ AI`.
-- Production `/api/control` public status: HTTP 200.
-- Verified live snapshot on 2026-08-30: Vercel `online`, GitHub `online`, PC01 `offline`, OpenClaw `unknown`, Ollama `unknown`.
-- Queue currently exposes PC01 control-plane issues #57 and #58.
-- Informational chat and status do not require secrets.
-- Web Control write operations support a browser-scoped fine-grained GitHub token limited to `tigeriq-ai-lab` Issues read/write; token is not persisted to repository or Vercel.
-- One-time user GitHub authorization remains required before a Web Control-created Work Order can be runtime-verified.
-- Tiger IQ Driver repository/project was not modified or linked.
-
-## PC01 control plane
-
-Current state: BLOCKED BEFORE RELIABLE REMOTE EXECUTION.
-
-- Worker V2 bootstrap previously passed with GitHub CLI/repository access preflight.
-- Scheduled Task was running, but deterministic GitHub canary #58 was not claimed.
-- Current Web Control therefore correctly reports PC01 `offline`.
-- OpenClaw and Ollama remain `unknown` until fresh runtime evidence exists.
-- No further PC-local PowerShell interaction is required for the current Web Control rollout; PC01 remediation is deferred to a separate execution-channel recovery step.
+Not yet verified:
+- Preview is protected by Vercel Authentication; connector fetch cannot establish the browser SSO cookie, so a live POST through the protected Preview has not yet produced AI Gateway runtime evidence.
+- No GitHub Actions run exists for this branch yet because current workflow triggers do not cover this branch.
+- Therefore MAIN/Production promotion is intentionally blocked until runtime AI response plus applicable test/CI evidence are obtained.
 
 ## Next gate
 
-Complete one-time GitHub authorization in the TigerIQ AI Web Control browser and verify:
-
-Web chat → exactly one GitHub Work Order → queue refresh → evidence visible.
-
-After that, resume PC01 execution-channel recovery independently so a Web Control-created deterministic command can produce claim/result evidence without manual PC operation.
+1. Obtain live Preview runtime evidence for `/api/control` AI conversation and confirm OIDC AI Gateway authentication/provider routing.
+2. Add/execute branch test coverage for deterministic-vs-AI classification and bounded failure behavior.
+3. Add durable Work Order model metadata and independent Reviewer/Judge gate evidence for model-assisted execution.
+4. Promote to MAIN/Production only after Preview + tests + runtime all PASS.
