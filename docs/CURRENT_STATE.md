@@ -7,13 +7,13 @@ TigerIQ AI Lab Production Web Control is online in the isolated `newsdayads/tige
 ## Production baseline
 
 - Production URL: `https://tigeriq-ai-lab.vercel.app`.
-- MAIN includes PR #65 / WO-013 Chief-of-Staff chat, PR #66 / WO-014 queue hygiene, PR #67 / WO-015 lifecycle + PWA, PR #68 / WO-016 explicit dispatch fallback, and PR #73 / WO-017 evidence-first Work Board.
-- Current MAIN after WO-017: `d687e3d74eebc3c463d4fe943445857c19576e02`.
-- Production deployment `dpl_BeGwJ9BNpTNfueU4wLZ5UVyFkFGU`: READY.
+- MAIN includes PR #65 / WO-013 Chief-of-Staff chat, PR #66 / WO-014 queue hygiene, PR #67 / WO-015 lifecycle + PWA, PR #68 / WO-016 explicit dispatch fallback, PR #73 / WO-017 evidence-first Work Board, and PR #74 / WO-018 retry-safe lifecycle ordering.
+- Current MAIN after WO-018: `ba059c59dc13c91a4c7f2abc26b2a1ad8afd164b`.
+- Production deployment `dpl_5cjyVfkGJ2wPLsBLCXhGF9nU9Yuj`: READY.
 - Production `/api/control`: HTTP 200; Vercel and GitHub online.
 - Advertised deterministic capabilities: `workOrderDedupe=true`, `workOrderStatusTracking=true`, `workOrderLifecycleEvidence=true`, `explicitDispatch=true`, `workBoard=true`.
 - Current execution queue remains exactly canonical PC01 issues #57 and #58.
-- PC01 reports offline from current GitHub evidence; OpenClaw/Ollama remain unknown. WO-013 through WO-017 did not mutate PC01/OpenClaw/Ollama.
+- PC01 reports offline from current GitHub evidence; OpenClaw/Ollama remain unknown. WO-013 through WO-018 did not mutate PC01/OpenClaw/Ollama.
 
 ## WO-013 — Chief of Staff chat
 
@@ -82,7 +82,7 @@ Implemented:
 - Queued/claimed items become an attention signal after 30 minutes without issue activity; the signal performs no mutation.
 - `Công việc` now reads system GitHub Source of Truth instead of only browser-local tracking.
 - AI Gateway failure points to explicit `Giao việc` fallback without silently creating work.
-- Persistent Queue Hygiene CI now verifies the Work Board UI invariant.
+- Persistent Queue Hygiene CI verifies the Work Board UI invariant.
 
 Evidence:
 - Initial apply run `33312345949`: all product syntax/helper/UI/build checks PASS; only generated push failed because the GitHub Actions token lacked workflow-update permission.
@@ -96,6 +96,29 @@ Evidence:
 - Production `/api/control`: HTTP 200 with `workBoard=true`, `explicitDispatch=true`; queue remains exactly #57/#58.
 - Production `/`: HTTP 200 and contains the Work Board UI path plus the explicit `Giao việc` fallback hint.
 - A direct Production POST to `operation=work-board` was not performed by the available remote GET verifier; the operation is covered by exact-head helper/UI/build gates and deployed Production code.
+
+## WO-018 — Retry-safe lifecycle ordering
+
+Status: DONE — APPLY PASS + EXACT-HEAD PR GATES PASS + PREVIEW READY + PRODUCTION READY + STATUS RUNTIME PASS
+
+Implemented:
+- Lifecycle evidence now recognizes exact marker tokens at the beginning of trimmed comment lines instead of arbitrary substring mentions in diagnostic prose/code.
+- Lifecycle events are ordered by GitHub comment timestamp with stable input-order fallback when timestamps are unavailable.
+- Open issues use the latest real lifecycle event, so `claim → fail → claim` reports `claimed` and `fail → result` reports `completed`.
+- Historical evidence booleans still preserve whether claim/result/failure were ever observed; current `stage` no longer lets an old FAILED marker permanently dominate a later retry.
+- Closed duplicate/not_planned issues remain `cancelled`; other closed issues remain `completed`.
+- PC01 status now uses the same shared lifecycle classifier as `work-order-status` and Work Board.
+
+Evidence:
+- Real #57 history contains an initial claim, an historical failure and later recovery discussion, demonstrating why permanent historical-failure dominance was unsafe.
+- Apply run `33312826563`: PASS for syntax, retry-order tests, queue/Work Board invariants, UI and build.
+- Final exact head `f53a1d82a6bd570619b0ef3386aebaf951664fd9` contained only API/test/doc changes; one-time patcher/workflow were removed.
+- Exact-head Preview `dpl_FCQrP9EUu5ZSP6WLRB7WVPqoKT7P`: READY.
+- PR #74 exact-head gates: Queue Hygiene `33312960795` PASS; Vercel Verify `33312960796` PASS; CI `33312960802` PASS.
+- PR #74 merged as `ba059c59dc13c91a4c7f2abc26b2a1ad8afd164b`.
+- Production deployment `dpl_5cjyVfkGJ2wPLsBLCXhGF9nU9Yuj`: READY.
+- Production `/api/control`: HTTP 200; deterministic capabilities preserved; queue remains exactly #57/#58.
+- #58 still has no lifecycle comments, so PC01 correctly remains `offline`; WO-018 makes no PC recovery claim.
 
 ## External blocker
 
