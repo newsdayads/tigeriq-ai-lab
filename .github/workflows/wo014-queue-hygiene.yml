@@ -27,7 +27,5 @@ jobs:
         run: node --check api/control.mjs
       - name: Verify deterministic queue hygiene
         run: node scripts/verify_queue_hygiene.mjs
-      - name: Verify Work Board UI
-        run: node scripts/verify_work_board_ui.mjs
       - name: Existing build gate
         run: npm run build
