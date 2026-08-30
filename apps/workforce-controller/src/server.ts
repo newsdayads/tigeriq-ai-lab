@@ -25,6 +25,7 @@ export interface WorkforceControllerOptions {
   credentials: DurableNodeCredentialStore;
   remoteTasks?: RemoteTaskBroker;
   adminSecret?: string;
+  allowTailnetSelfPair?: boolean;
   host?: string;
   port?: number;
 }
@@ -80,6 +81,16 @@ function assertPrivateBind(host: string): void {
   }
 }
 
+export function isTailscaleAddress(value: string | undefined): boolean {
+  if (!value) return false;
+  const normalized = value.startsWith('::ffff:') ? value.slice(7) : value;
+  const parts = normalized.split('.');
+  if (parts.length !== 4) return false;
+  const numbers = parts.map((part) => Number(part));
+  if (numbers.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return false;
+  return numbers[0] === 100 && numbers[1] >= 64 && numbers[1] <= 127;
+}
+
 function adminAuthorized(request: IncomingMessage, secret: string): boolean {
   if (!secret) return false;
   const supplied = request.headers['x-tigeriq-admin-secret'];
@@ -122,6 +133,7 @@ export async function startWorkforceController(options: WorkforceControllerOptio
   const host = options.host ?? '127.0.0.1';
   const port = options.port ?? 0;
   const adminSecret = options.adminSecret ?? '';
+  const allowTailnetSelfPair = options.allowTailnetSelfPair === true;
   assertPrivateBind(host);
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('invalid port');
 
@@ -135,6 +147,12 @@ export async function startWorkforceController(options: WorkforceControllerOptio
       if (request.method === 'POST' && url.pathname === '/api/admin/pairing-challenge') {
         if (!adminSecret) throw new HttpError(503, 'admin_auth_not_configured');
         if (!adminAuthorized(request, adminSecret)) throw new HttpError(401, 'unauthorized');
+        return json(response, 201, { ok: true, pairing: options.pairing.issueChallenge() });
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/node/pairing-challenge') {
+        if (!allowTailnetSelfPair) throw new HttpError(403, 'tailnet_self_pair_disabled');
+        if (!isTailscaleAddress(request.socket.remoteAddress)) throw new HttpError(403, 'tailnet_peer_required');
         return json(response, 201, { ok: true, pairing: options.pairing.issueChallenge() });
       }
 
@@ -171,6 +189,40 @@ export async function startWorkforceController(options: WorkforceControllerOptio
           node: { nodeId, kind, platform, agentVersion, capabilities, status: 'online' },
           credential,
         });
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/node/employee') {
+        const authenticated = await authenticateNode(request, options.credentials, 'register');
+        const data = await body(request);
+        const employeeId = text(data.employeeId, 128);
+        const displayName = text(data.displayName, 128);
+        const department = text(data.department, 128);
+        const role = text(data.role, 128);
+        const provider = text(data.provider, 128) || undefined;
+        const capabilities = stringList(data.capabilities);
+        if (!employeeId || !displayName || !department || !role || !capabilities.length) {
+          throw new HttpError(400, 'invalid_employee');
+        }
+        if (!options.runtime.registry.getNode(authenticated.nodeId)) throw new HttpError(404, 'node_not_found');
+        const existing = options.runtime.registry.getEmployee(employeeId);
+        if (existing) {
+          if (existing.nodeId !== authenticated.nodeId) throw new HttpError(409, 'employee_owned_by_another_node');
+          return json(response, 200, { ok: true, employee: existing, idempotent: true });
+        }
+        options.runtime.registry.registerEmployee({
+          employeeId,
+          displayName,
+          department,
+          role,
+          nodeId: authenticated.nodeId,
+          provider,
+          capabilities,
+          availability: 'idle' satisfies EmployeeAvailability,
+          healthScore: 100,
+          concurrencyLimit: 1,
+        });
+        await options.runtime.checkpoint();
+        return json(response, 201, { ok: true, employee: options.runtime.registry.getEmployee(employeeId) });
       }
 
       if (request.method === 'POST' && url.pathname === '/api/admin/employees') {

@@ -4,33 +4,34 @@ import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.Service;
+import android.content.Context;
 import android.content.Intent;
+import android.os.BatteryManager;
 import android.os.Build;
-import android.os.Handler;
 import android.os.IBinder;
-import android.os.Looper;
+
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 public final class ForegroundWorkerService extends Service {
+    public static final String PREFS = "tigeriq-worker-runtime-status";
+    public static final String KEY_CONTROLLER_STATE = "controllerState";
+    public static final String KEY_LAST_HEARTBEAT_AT = "lastHeartbeatAt";
+    public static final String KEY_LAST_ERROR = "lastError";
+
     private static final String CHANNEL_ID = "tigeriq-worker-runtime";
     private static final int NOTIFICATION_ID = 24027;
-    private static final long HEARTBEAT_INTERVAL_MS = 30_000L;
-    private final Handler handler = new Handler(Looper.getMainLooper());
-
-    private final Runnable heartbeat = new Runnable() {
-        @Override public void run() {
-            // Network transport is intentionally not activated until a paired controller URL
-            // and scoped credential are provisioned on the real device.
-            WorkerIdentity.ensureDeviceKey();
-            handler.postDelayed(this, HEARTBEAT_INTERVAL_MS);
-        }
-    };
+    private ScheduledExecutorService executor;
 
     @Override
     public void onCreate() {
         super.onCreate();
+        WorkerIdentity.ensureDeviceKey();
         ensureChannel();
         startForeground(NOTIFICATION_ID, buildNotification());
-        handler.post(heartbeat);
+        executor = Executors.newSingleThreadScheduledExecutor();
+        executor.scheduleWithFixedDelay(this::heartbeat, 2, 30, TimeUnit.SECONDS);
     }
 
     @Override
@@ -40,13 +41,45 @@ public final class ForegroundWorkerService extends Service {
 
     @Override
     public void onDestroy() {
-        handler.removeCallbacks(heartbeat);
+        if (executor != null) executor.shutdownNow();
         super.onDestroy();
     }
 
     @Override
     public IBinder onBind(Intent intent) {
         return null;
+    }
+
+    private void heartbeat() {
+        try {
+            SecureCredentialStore store = new SecureCredentialStore(this);
+            if (store.load() == null) {
+                writeRuntime("UNPAIRED", 0L, "");
+                return;
+            }
+            ControllerClient client = new ControllerClient(store);
+            client.heartbeat(batteryPct(), null, WorkerVersion.NAME);
+            writeRuntime("ONLINE", System.currentTimeMillis(), "");
+        } catch (Exception error) {
+            String message = error.getMessage();
+            if (message == null || message.trim().isEmpty()) message = error.getClass().getSimpleName();
+            writeRuntime("OFFLINE", 0L, message.length() > 160 ? message.substring(0, 160) : message);
+        }
+    }
+
+    private int batteryPct() {
+        BatteryManager manager = (BatteryManager) getSystemService(Context.BATTERY_SERVICE);
+        if (manager == null) return 0;
+        int value = manager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY);
+        return Math.max(0, Math.min(100, value));
+    }
+
+    private void writeRuntime(String state, long heartbeatAt, String error) {
+        getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString(KEY_CONTROLLER_STATE, state)
+            .putLong(KEY_LAST_HEARTBEAT_AT, heartbeatAt)
+            .putString(KEY_LAST_ERROR, error)
+            .apply();
     }
 
     private void ensureChannel() {
