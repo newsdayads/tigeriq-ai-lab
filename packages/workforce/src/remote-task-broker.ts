@@ -69,12 +69,15 @@ export class RemoteTaskBroker {
     result: WorkerResult,
   ): Promise<WorkerResult> {
     const record = this.runtime.queue.get(taskId);
-    if (record.stage !== 'running' || !record.assignedEmployeeId) throw new Error('task is not running');
+    if (!record.assignedEmployeeId) throw new Error('task has no assigned employee');
     const employee = this.runtime.registry.getEmployee(record.assignedEmployeeId);
     if (!employee || employee.nodeId !== nodeId) throw new Error('task is assigned to another node');
     if (result.employeeId !== employee.employeeId) throw new Error('result employee mismatch');
 
     const accepted = await this.mailbox.acceptResult(taskId, nodeId, leaseId, leaseToken, result);
+    if (record.stage === 'completed') return accepted;
+    if (record.stage !== 'running') throw new Error('task is not running');
+
     if (accepted.status === 'completed') {
       this.runtime.queue.complete(taskId, accepted);
       this.runtime.registry.release(employee.employeeId, taskId, true);
