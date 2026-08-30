@@ -7,10 +7,13 @@ TigerIQ AI Lab Production Web Control is online in the isolated `newsdayads/tige
 ## Production baseline
 
 - Production URL: `https://tigeriq-ai-lab.vercel.app`.
-- MAIN includes PR #65 / WO-013 Chief-of-Staff chat, PR #66 / WO-014 queue hygiene, and PR #67 / WO-015 lifecycle + PWA hardening.
+- MAIN includes PR #65 / WO-013 Chief-of-Staff chat, PR #66 / WO-014 queue hygiene, PR #67 / WO-015 lifecycle + PWA, PR #68 / WO-016 explicit dispatch fallback, and PR #73 / WO-017 evidence-first Work Board.
+- Current MAIN after WO-017: `d687e3d74eebc3c463d4fe943445857c19576e02`.
+- Production deployment `dpl_BeGwJ9BNpTNfueU4wLZ5UVyFkFGU`: READY.
 - Production `/api/control`: HTTP 200; Vercel and GitHub online.
-- Current queue is exactly canonical PC01 issues #57 and #58.
-- PC01 reports offline from current GitHub evidence; OpenClaw/Ollama remain unknown and were not modified by WO-013/014/015.
+- Advertised deterministic capabilities: `workOrderDedupe=true`, `workOrderStatusTracking=true`, `workOrderLifecycleEvidence=true`, `explicitDispatch=true`, `workBoard=true`.
+- Current execution queue remains exactly canonical PC01 issues #57 and #58.
+- PC01 reports offline from current GitHub evidence; OpenClaw/Ollama remain unknown. WO-013 through WO-017 did not mutate PC01/OpenClaw/Ollama.
 
 ## WO-013 — Chief of Staff chat
 
@@ -19,11 +22,10 @@ Status: CODE + CI + PRODUCTION DEPLOY PASS; AI GATEWAY RUNTIME BLOCKED BY VERCEL
 Implemented:
 - TigerIQ AI is the single Chief-of-Staff chat entry point.
 - Ordinary questions/discussion/planning route to an OpenAI-first Chief model through Vercel AI Gateway.
-- Conversation history is provided to the Chief for contextual confirmations such as `Làm` / `Tiếp`.
+- Conversation history is provided for contextual confirmations such as `Làm` / `Tiếp`.
 - Status remains deterministic/tool-first and does not call an LLM.
 - Ambiguous execution intent returns clarification instead of creating a Work Order.
-- Only an explicit executable instruction can create one GitHub Work Order.
-- AI failure is fail-safe: it does not create a Work Order.
+- AI failure is fail-safe and never silently creates a Work Order.
 - Vercel OIDC uses the official `@vercel/oidc` runtime helper; no provider secret is committed.
 
 Runtime evidence:
@@ -33,40 +35,70 @@ Runtime evidence:
 
 ## WO-014 — Web Control queue hygiene
 
-Status: DONE — CI PASS + PREVIEW READY + PRODUCTION READY + RUNTIME STATUS PASS
+Status: DONE
 
-Implemented:
 - Deterministic Work Order fingerprinting and duplicate prevention.
-- Repeated identical open requests return the existing Work Order instead of creating another issue.
-- Read-only `work-order-status` tracks queued / claimed / completed / failed.
+- Repeated identical open requests return the existing Work Order.
+- Read-only `work-order-status` tracks lifecycle from GitHub issue/evidence state.
 - Test/misclassified/duplicate issues #61, #62, #63 and duplicate canary #64 were closed with evidence.
 - Canonical PC01 tracking remains #57/#58.
-- PR #66 merged; Production verified HTTP 200.
 
-## WO-015 — Web Control lifecycle + mobile/PWA hardening
+## WO-015 — Lifecycle + mobile/PWA hardening
 
-Status: DONE — EXACT-HEAD CI PASS + PREVIEW READY + PRODUCTION READY + RUNTIME PASS
+Status: DONE
+
+- Lifecycle stages: queued / claimed / completed / failed / cancelled.
+- Read-only status returns sanitized evidence booleans and never raw comment bodies.
+- Recently created Work Orders are tracked locally and polled for stage changes.
+- `Kiểm tra PC01` reads canonical canary #58 and never creates a duplicate canary.
+- PWA/mobile metadata, manifest, standalone mode and network-only service worker are in Production.
+
+## WO-016 — Explicit dispatch fallback + work view
+
+Status: DONE — EXACT-HEAD GATES PASS + PREVIEW READY + PRODUCTION READY + STATUS/UI RUNTIME PASS
 
 Implemented:
-- Lifecycle stages expanded to queued / claimed / completed / failed / cancelled.
-- Read-only status returns sanitized lifecycle evidence booleans (`claimed`, `result`, `failed`, `reviewPass`, `judgePass`) and never returns raw comment bodies.
-- Recently created Work Orders are tracked locally in Web Control and polled every 30 seconds; stage changes appear automatically in Vietnamese chat bubbles.
-- `Kiểm tra PC01` reads canonical canary #58 and never creates another canary.
-- PWA/mobile metadata, manifest, standalone mode, mobile title/icon and network-only service worker added without changing Production domain.
-- WO-014 dedupe/idempotency remains intact.
-- No PC01/OpenClaw/Ollama mutation; no Tiger IQ Driver changes; no AI Gateway billing retry.
+- Explicit `Giao việc` action bypasses GPT classification only when the owner deliberately selects it.
+- Direct dispatch reuses existing GitHub authorization, fingerprint dedupe and lifecycle tracking.
+- Direct Work Orders are truthfully marked `vercel-explicit-dispatch`; Chief-classified work remains `vercel-chat-chief-of-staff`.
+- Normal chat remains fail-safe when AI Gateway is unavailable.
+- `Công việc` action was introduced for operational visibility.
 
 Evidence:
-- Lifecycle verification run `33311306234`: PASS.
-- Final exact head `de44326a8e5ba6528e6f9f9ddea31e11224ba367`: CI `33311507558` PASS; Queue Hygiene `33311507578` PASS; Vercel Verify `33311507577` PASS.
-- Exact-head Preview `dpl_3uamS5mzVwHLLy5m54CmSaEWDGWN`: READY.
-- PR #67 merged as `7f3e2bf4f0bfdd5978d94bb08e3abef63570cac6`.
-- Production `dpl_3GpKncedLZRwoiGRMm4htgx4rEJZ`: READY.
-- Production `/`, `/api/control`, `/manifest.webmanifest`, and `/sw.js`: HTTP 200.
-- Production `/api/control` advertises `workOrderDedupe=true`, `workOrderStatusTracking=true`, `workOrderLifecycleEvidence=true`; queue remains #57/#58.
+- PR #68 merged to MAIN as `c483d24dc18c70494c8d64468b93e908f3763e36` after exact-head CI / Queue Hygiene / Vercel Verify and Preview gates PASS.
+- Production deployment `dpl_GqmDmm1R4V2Rxs7TMMcaqLRZU1Je`: READY.
+- Production `/api/control`: HTTP 200 with `explicitDispatch=true`; canonical queue remained #57/#58.
+- Production UI contains `Giao việc` and `Công việc` controls.
+- No test Work Order was created in Production solely for smoke verification; therefore direct write runtime was not artificially exercised.
+
+## WO-017 — Evidence-first Work Board
+
+Status: DONE — APPLY PASS + EXACT-HEAD PR GATES PASS + PREVIEW READY + PRODUCTION READY + STATUS/UI RUNTIME PASS
+
+Implemented:
+- Added deterministic read-only `work-board` operation backed by bounded GitHub issue/comment reads.
+- Work Board returns sanitized issue identity/title/url, priority/type, lifecycle stage, age/stale signal and evidence booleans; no raw issue body or comment text is returned.
+- Aggregates total/active/queued/claimed/completed/failed/cancelled/stale counts.
+- Queued/claimed items become an attention signal after 30 minutes without issue activity; the signal performs no mutation.
+- `Công việc` now reads system GitHub Source of Truth instead of only browser-local tracking.
+- AI Gateway failure points to explicit `Giao việc` fallback without silently creating work.
+- Persistent Queue Hygiene CI now verifies the Work Board UI invariant.
+
+Evidence:
+- Initial apply run `33312345949`: all product syntax/helper/UI/build checks PASS; only generated push failed because the GitHub Actions token lacked workflow-update permission.
+- Root cause fixed by separating persistent workflow mutation into the connected GitHub control channel.
+- Apply run `33312474076`: PASS.
+- Final exact head `451773d1da6d03a5f102f19a7adc4336891bd25d` contained only product/test/doc/persistent-gate changes; one-time bootstrap files were removed.
+- Exact-head Preview `dpl_8paVtUvu5bYTtY4cNttvUmiAMnvP`: READY.
+- PR #73 exact-head gates: CI `33312567412` PASS; Queue Hygiene `33312567395` PASS; Vercel Verify `33312567410` PASS.
+- PR #73 merged as `d687e3d74eebc3c463d4fe943445857c19576e02`.
+- Production deployment `dpl_BeGwJ9BNpTNfueU4wLZ5UVyFkFGU`: READY.
+- Production `/api/control`: HTTP 200 with `workBoard=true`, `explicitDispatch=true`; queue remains exactly #57/#58.
+- Production `/`: HTTP 200 and contains the Work Board UI path plus the explicit `Giao việc` fallback hint.
+- A direct Production POST to `operation=work-board` was not performed by the available remote GET verifier; the operation is covered by exact-head helper/UI/build gates and deployed Production code.
 
 ## External blocker
 
-One Vercel account action is still required only for conversational GPT inference: add/confirm a valid credit card for the Vercel AI Gateway. This does not block deterministic Web Control, GitHub queue management, dedupe, lifecycle tracking, PWA operation, or status reads.
+One Vercel account action is still required only for conversational GPT inference: add/confirm a valid credit card for the Vercel AI Gateway. This does not block deterministic Web Control, explicit Work Order dispatch, GitHub queue management, dedupe, lifecycle tracking, Work Board, PWA operation, or status reads.
 
 After billing is later confirmed, rerun the Production Chief smoke. Required evidence: `mode=reply` for `Bạn đang sử dụng mô hình nào để trao đổi với tôi?` + real `modelUsed/providerUsed` + no GitHub Work Order created.
