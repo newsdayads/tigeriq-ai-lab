@@ -7,8 +7,8 @@ TigerIQ AI Lab Production Web Control is online in the isolated `newsdayads/tige
 ## Production baseline
 
 - Production URL: `https://tigeriq-ai-lab.vercel.app`.
-- Current MAIN merge SHA: `19802a65370e53024de295e81098a5da07ef9403` (PR #77 / WO-022).
-- Vercel project `tigeriq-ai-lab` latest Production deployment is READY.
+- Latest completed remote Work Order: WO-023 — Stale PR Hygiene.
+- Vercel project `tigeriq-ai-lab` Production is READY.
 - MAIN retains Chief-of-Staff chat, queue hygiene, lifecycle/PWA, explicit dispatch, evidence-first Work Board, retry-safe lifecycle ordering, Provider Mesh v2, Source-of-Truth reconciliation, and remote governance hygiene.
 - Canonical PC01 execution queue remains exactly issues #57 and #58. No duplicate canary was created.
 - PC01 remains outside remote-only scope; no PC01/OpenClaw/Ollama runtime recovery is claimed.
@@ -22,17 +22,12 @@ DONE and retained in MAIN:
 - evidence-first Work Board;
 - mobile/PWA Web Control;
 - Provider Mesh v2 engineering path: OpenAI -> Anthropic -> Gemini -> PC01/Ollama, with bounded failure classification and credential-safe evidence;
-- governance reconciliation and stale-metadata cleanup.
+- governance reconciliation and stale-metadata cleanup;
+- obsolete draft dependency-chain PR cleanup (#15/#16/#17 closed without merge).
 
-## WO-022 — Current State Reconciliation
+## Latest verified evidence
 
-Status: DONE — EXACT-HEAD GATES PASS + PREVIEW READY + MERGED
-
-Evidence:
-- PR #77 merged to MAIN as `19802a65370e53024de295e81098a5da07ef9403`.
-- Exact-head CI, Queue Hygiene, and Vercel verification passed before merge.
-- Vercel Preview was READY before merge; Production is READY after merge.
-- Canonical PC01 issues #57/#58 were preserved; no canary, Driver mutation, provider credential action, or Vercel AI Gateway billing/card action occurred.
+WO-023 completed with exact-head CI, Queue Hygiene and Vercel verification PASS, Preview READY, merge through PR #78, and Production READY. Immutable commit/run identifiers are recorded in `docs/work-orders/WO-023-STALE-PR-HYGIENE.md` rather than duplicated here so this state file does not become stale after every safe merge.
 
 ## External blockers / deferred activation
 
@@ -42,4 +37,4 @@ Evidence:
 
 ## Next remote-only priority
 
-Reduce operator burden and governance drift. Retire obsolete draft dependency-chain PRs that no longer represent MAIN truth, then continue Work Order/evidence reliability and mobile Web Control improvements on dedicated off-MAIN branches with exact-head gates and Vercel Preview verification.
+Continue operator-burden reduction and Work Order/evidence reliability. Prefer mobile Web Control/PWA, safe GitHub/Vercel automation, idempotency, error handling and governance improvements that can be implemented and verified fully without PC01, secrets, billing/card actions or Driver changes.
