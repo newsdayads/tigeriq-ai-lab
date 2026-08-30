@@ -68,9 +68,9 @@ export class DurableTaskMailbox {
   async acceptResult(taskId: string, nodeId: string, leaseId: string, leaseToken: string, result: WorkerResult): Promise<WorkerResult> {
     const current = await this.current(taskId);
     if (!current || current.leaseId !== leaseId || current.nodeId !== nodeId) throw new Error('stale task lease');
+    if ((await sha256(leaseToken)) !== current.leaseTokenHash) throw new Error('invalid task lease token');
     if (current.acceptedResult) return cloneResult(current.acceptedResult);
     if (this.now().getTime() > Date.parse(current.expiresAt)) throw new Error('task lease expired');
-    if ((await sha256(leaseToken)) !== current.leaseTokenHash) throw new Error('invalid task lease token');
     if (result.taskId !== taskId) throw new Error('result task mismatch');
     const acceptedAt = this.now().toISOString();
     const streamId = this.stream(taskId);
