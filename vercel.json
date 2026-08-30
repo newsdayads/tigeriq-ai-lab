@@ -3,11 +3,18 @@
   "cleanUrls": true,
   "trailingSlash": false,
   "rewrites": [
+    { "source": "/", "destination": "/command-center.html" },
     { "source": "/workforce", "destination": "/workforce.html" }
   ],
   "headers": [
     {
       "source": "/",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, max-age=0" }
+      ]
+    },
+    {
+      "source": "/command-center.html",
       "headers": [
         { "key": "Cache-Control", "value": "no-store, max-age=0" }
       ]
