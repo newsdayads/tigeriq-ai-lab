@@ -1,3 +1,5 @@
+import { getVercelOidcToken } from '@vercel/oidc';
+
 const PRIMARY_MODEL = process.env.TIGERIQ_CHIEF_MODEL || 'openai/gpt-5.6-sol';
 const FALLBACK_MODELS = (process.env.TIGERIQ_CHIEF_FALLBACKS || 'google/gemini-3.6-flash').split(',').map((x) => x.trim()).filter(Boolean);
 const GATEWAY_URL = 'https://ai-gateway.vercel.sh/v1/chat/completions';
@@ -80,8 +82,14 @@ export function parseChiefDecision(raw) {
   return { mode, reply, instruction, priority };
 }
 
-function gatewayCredential() {
-  return String(process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN || '').trim();
+async function gatewayCredential() {
+  const apiKey = String(process.env.AI_GATEWAY_API_KEY || '').trim();
+  if (apiKey) return apiKey;
+  try {
+    return String((await getVercelOidcToken()) || '').trim();
+  } catch {
+    return '';
+  }
 }
 
 export async function decideWithChief({ message, history = [] }) {
@@ -91,7 +99,7 @@ export async function decideWithChief({ message, history = [] }) {
     error.status = 400;
     throw error;
   }
-  const credential = gatewayCredential();
+  const credential = await gatewayCredential();
   if (!credential) {
     const error = new Error('ai_gateway_authorization_unavailable');
     error.status = 503;
