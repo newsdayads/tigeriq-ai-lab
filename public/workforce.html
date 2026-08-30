@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#07101d" />
+  <title>Trung tâm điều hành TigerIQ</title>
+  <style>
+    :root{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#eef5ff;background:#07101d;color-scheme:dark}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;background:linear-gradient(180deg,#07101d,#0d192a);padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+    main{max-width:1040px;margin:0 auto;padding:16px}.top{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}.brand{font-size:1.28rem;font-weight:900}.sub{font-size:.78rem;color:#8fa2bd;margin-top:4px}.actions{display:flex;gap:8px}.btn{border:1px solid #29405e;background:#101f34;color:#eef5ff;border-radius:12px;padding:9px 12px;text-decoration:none;font-weight:800;font-size:.78rem}
+    .live{margin-top:14px;border:1px solid #214565;background:#0d2033;border-radius:14px;padding:11px 13px;display:flex;align-items:center;gap:9px;font-size:.82rem;font-weight:800}.dot{width:9px;height:9px;border-radius:50%;background:#75859b;flex:0 0 auto}.dot.ok{background:#34d99b}.dot.warn{background:#f7be58}.dot.bad{background:#ff6b6b}.dot.run{background:#62a7ff}
+    .grid{display:grid;grid-template-columns:1fr;gap:12px;margin-top:12px}.card{background:#101c2e;border:1px solid #20334d;border-radius:17px;padding:15px;box-shadow:0 10px 30px #0003}.card h2{font-size:.78rem;text-transform:uppercase;letter-spacing:.06em;margin:0 0 11px;color:#9fb2cc}.hero{background:linear-gradient(145deg,#11263e,#101c2e);border-color:#2a4f70}.work-title{font-size:1.08rem;font-weight:900;line-height:1.35}.work-meta{font-size:.76rem;color:#90a5c0;margin-top:5px}.progress-row{display:flex;justify-content:space-between;gap:12px;align-items:end;margin-top:16px}.pct{font-size:2rem;font-weight:950}.bar{height:11px;background:#1c2d44;border-radius:999px;overflow:hidden;margin-top:8px}.fill{height:100%;background:linear-gradient(90deg,#39d49b,#62a7ff);width:0}.focus{margin-top:13px;padding:11px;border-radius:12px;background:#0b1727;border:1px solid #1c3552;font-size:.82rem}.focus strong{display:block;margin-bottom:4px}.next{color:#91a9c7;margin-top:5px}
+    .gate{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid #1d2d43;font-size:.81rem}.gate:first-child{border-top:0}.badge{font-size:.7rem;font-weight:900;border-radius:999px;padding:4px 8px;background:#1d2a3c;color:#b8c6d9}.badge.pass{background:#103829;color:#69e7b5}.badge.running{background:#15345a;color:#80bbff}.badge.fail{background:#481e28;color:#ff8d9d}.badge.pending{background:#3b3017;color:#f4ca6b}
+    .metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.metricbox{background:#0c1828;border:1px solid #1c3048;border-radius:13px;padding:11px}.metric{font-size:1.65rem;font-weight:950}.small{font-size:.73rem;color:#8fa2bd}.row{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-top:1px solid #1d2d43;font-size:.81rem}.row:first-of-type{border-top:0}.activity{display:flex;gap:9px;padding:8px 0;border-top:1px solid #1d2d43;font-size:.8rem}.activity:first-child{border-top:0}.time{color:#7088a6;min-width:44px}.owner-ok{border:1px solid #20543e;background:#0d2b20;color:#8ce9bd;border-radius:12px;padding:11px;font-size:.82rem;font-weight:800}.owner-warn{border:1px solid #6a4e20;background:#2c2111;color:#ffd687;border-radius:12px;padding:11px;font-size:.82rem;font-weight:800}.banner{margin-top:12px;padding:11px 13px;border-radius:13px;border:1px solid #6a4e20;background:#2c2111;color:#ffd687;font-size:.8rem;display:none}.footer{margin:16px 0 6px;text-align:center;color:#687f9c;font-size:.69rem}
+    @media(min-width:760px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.hero,.wide{grid-column:1/-1}.metrics{grid-template-columns:repeat(4,minmax(0,1fr))}}
+  </style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <div><div class="brand">TigerIQ · Trung tâm điều hành</div><div class="sub">Mở ra là biết công ty đang làm gì · tiến độ có evidence, không đoán</div></div>
+    <div class="actions"><a class="btn" href="/">Chat</a><button class="btn" id="refresh" type="button">Làm mới</button></div>
+  </div>
+
+  <div class="live" id="liveBar"><span class="dot run"></span><span id="liveText">Đang đọc trạng thái công ty…</span></div>
+  <div id="banner" class="banner"></div>
+
+  <div class="grid">
+    <section class="card hero">
+      <h2>🎯 Công việc đang ưu tiên</h2>
+      <div id="workTitle" class="work-title">Đang tải…</div>
+      <div id="workMeta" class="work-meta">—</div>
+      <div class="progress-row"><div><div class="small">Tiến độ theo gate kiểm chứng</div><div id="progressPct" class="pct">—</div></div><div id="progressGateCount" class="small">—</div></div>
+      <div class="bar"><div id="progressFill" class="fill"></div></div>
+      <div class="focus"><strong id="currentStep">—</strong><div id="nextStep" class="next">—</div></div>
+    </section>
+
+    <section class="card">
+      <h2>✅ Gate công việc</h2>
+      <div id="gates"><div class="small">Đang tải…</div></div>
+    </section>
+
+    <section class="card">
+      <h2>🕐 Hoạt động gần nhất</h2>
+      <div id="activity"><div class="small">Đang tải…</div></div>
+    </section>
+
+    <section class="card wide">
+      <h2>👥 Workforce · Nhân sự AI</h2>
+      <div class="metrics">
+        <div class="metricbox"><div class="small">Nhân viên</div><div id="employeeTotal" class="metric">—</div><div id="employeeBusy" class="small">—</div></div>
+        <div class="metricbox"><div class="small">Node online</div><div id="nodesOnline" class="metric">—</div><div id="nodesTotal" class="small">—</div></div>
+        <div class="metricbox"><div class="small">Task đang chạy</div><div id="taskActive" class="metric">—</div><div id="taskFailed" class="small">—</div></div>
+        <div class="metricbox"><div class="small">Mức sử dụng</div><div id="utilizationPct" class="metric">—</div><div id="capacityLabel" class="small">—</div></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>🏢 Phòng ban</h2>
+      <div id="departments"><div class="small">Chưa có dữ liệu live</div></div>
+    </section>
+
+    <section class="card">
+      <h2>📋 Vòng đời task</h2>
+      <div id="taskStages"><div class="small">Chưa có dữ liệu live</div></div>
+    </section>
+
+    <section class="card wide">
+      <h2>⚠️ Cần Sếp</h2>
+      <div id="ownerAction" class="owner-ok">✅ Không có việc cần Sếp thao tác</div>
+    </section>
+
+    <section class="card wide">
+      <h2>🖥️ Hạ tầng</h2>
+      <div class="row"><span>Vercel Web Control</span><strong id="vercelState">—</strong></div>
+      <div class="row"><span>GitHub</span><strong id="githubState">—</strong></div>
+      <div class="row"><span>PC01</span><strong id="pcState">—</strong></div>
+      <div class="row"><span>Queue PC01</span><strong id="queueCount">—</strong></div>
+      <div id="queueDetail" class="small" style="margin-top:8px">—</div>
+    </section>
+  </div>
+  <div id="updated" class="footer">Chưa tải</div>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+function badge(status){const labels={pass:'PASS',running:'RUNNING',fail:'FAIL',pending:'PENDING'};return `<span class="badge ${status}">${labels[status]||status}</span>`}
+function gateRows(gates){const box=$('gates');box.innerHTML='';if(!gates?.length){box.innerHTML='<div class="small">Không có gate đang hoạt động</div>';return}for(const gate of gates){const row=document.createElement('div');row.className='gate';const name=document.createElement('span');name.textContent=gate.label||gate.name;const b=document.createElement('span');b.className='badge '+gate.status;b.textContent={pass:'PASS',running:'RUNNING',fail:'FAIL',pending:'PENDING'}[gate.status]||gate.status;row.append(name,b);box.append(row)}}
+function namedRows(target,data){const box=$(target);box.innerHTML='';const entries=Object.entries(data||{}).sort((a,b)=>b[1]-a[1]);if(!entries.length){box.innerHTML='<div class="small">Chưa có dữ liệu live</div>';return}for(const [key,value] of entries){const row=document.createElement('div');row.className='row';const a=document.createElement('span');a.textContent=key;const b=document.createElement('strong');b.textContent=value;row.append(a,b);box.append(row)}}
+function taskRows(data){const labels={queued:'Đang chờ',assigned:'Đã giao',running:'Đang làm',completed:'Hoàn tất',failed:'Lỗi',cancelled:'Đã hủy'};const box=$('taskStages');box.innerHTML='';for(const key of ['queued','assigned','running','completed','failed','cancelled']){const row=document.createElement('div');row.className='row';const a=document.createElement('span');a.textContent=labels[key];const b=document.createElement('strong');b.textContent=String(data?.[key]??0);row.append(a,b);box.append(row)}}
+function renderActivity(items){const box=$('activity');box.innerHTML='';if(!items?.length){box.innerHTML='<div class="small">Chưa có activity ở exact head hiện tại</div>';return}for(const item of items){const row=document.createElement('div');row.className='activity';const t=document.createElement('span');t.className='time';t.textContent=item.at?new Date(item.at).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'}):'—';const text=document.createElement('span');text.style.flex='1';text.textContent=item.name;const b=document.createElement('span');b.className='badge '+item.status;b.textContent={pass:'PASS',running:'RUN',fail:'FAIL',pending:'WAIT'}[item.status]||item.status;row.append(t,text,b);box.append(row)}}
+function setBanner(message){$('banner').textContent=message;$('banner').style.display=message?'block':'none'}
+async function load(){
+  $('refresh').disabled=true;setBanner('');
+  try{
+    const [progressRes,wfRes,controlRes]=await Promise.all([
+      fetch('/api/company-progress',{cache:'no-store'}),
+      fetch('/api/workforce-status',{cache:'no-store'}),
+      fetch('/api/control',{cache:'no-store'})
+    ]);
+    const progress=await progressRes.json();const wf=await wfRes.json();const control=await controlRes.json();
+    const work=progress?.activeWork;
+    if(work?.active){
+      $('workTitle').textContent=`#${work.number} · ${work.title}`;
+      $('workMeta').textContent=`${work.branch||'—'} · ${(work.headSha||'').slice(0,10)}`;
+      $('progressPct').textContent=(work.progressPct??0)+'%';$('progressFill').style.width=(work.progressPct??0)+'%';
+      const passed=(work.gates||[]).filter(g=>g.status==='pass').length;$('progressGateCount').textContent=`${passed}/${work.gates?.length||0} gate PASS`;
+      $('currentStep').textContent=work.currentStep||'—';$('nextStep').textContent='Tiếp theo: '+(work.nextStep||'—');gateRows(work.gates);renderActivity(progress.activity);
+    }else{
+      $('workTitle').textContent='Không có PR kỹ thuật đang mở';$('workMeta').textContent='Chief sẽ tự lấy backlog tiếp theo';$('progressPct').textContent='100%';$('progressFill').style.width='100%';$('progressGateCount').textContent='Không có gate mở';$('currentStep').textContent='Đang chọn việc tiếp theo';$('nextStep').textContent='Không chờ lệnh nếu còn safe backlog';gateRows([]);renderActivity([]);
+    }
+    const owner=progress?.ownerAction||{required:false,summary:'Không có việc cần Sếp thao tác'};$('ownerAction').className=owner.required?'owner-warn':'owner-ok';$('ownerAction').textContent=(owner.required?'⚠️ ':'✅ ')+(owner.summary||'');
+    const s=wf?.workforce;if(s){$('employeeTotal').textContent=s.employees.total;$('employeeBusy').textContent=`${s.employees.byAvailability.busy||0} đang làm`;$('nodesOnline').textContent=s.nodes.byStatus.online;$('nodesTotal').textContent=`${s.nodes.total} tổng node`;$('taskActive').textContent=s.tasks.active;$('taskFailed').textContent=`${s.tasks.failed} lỗi`;$('utilizationPct').textContent=Math.round((s.employees.utilization||0)*100)+'%';$('capacityLabel').textContent=`${s.employees.activeTasks}/${s.employees.concurrencyCapacity} slot`;namedRows('departments',s.employees.departments);taskRows(s.tasks.byStage)}else{$('employeeTotal').textContent='—';$('employeeBusy').textContent='Controller chưa kết nối';$('nodesOnline').textContent='—';$('nodesTotal').textContent='Chưa có dữ liệu live';$('taskActive').textContent='—';$('taskFailed').textContent='—';$('utilizationPct').textContent='—';$('capacityLabel').textContent='—';namedRows('departments',{});taskRows({});}
+    $('vercelState').textContent=control?.controlPlane?.vercel==='online'?'🟢 Online':control?.controlPlane?.vercel||'Unknown';$('githubState').textContent=control?.controlPlane?.github==='online'?'🟢 Online':control?.controlPlane?.github||'Unknown';$('pcState').textContent=control?.execution?.pc01==='online'?'🟢 Online':control?.execution?.pc01==='working'?'🔵 Đang làm':control?.execution?.pc01==='degraded'?'🟠 Degraded':'🔴 Offline';$('queueCount').textContent=String(control?.queue?.count??0);$('queueDetail').textContent=(control?.queue?.jobs||[]).map(j=>'#'+j.number+' '+j.title).join(' · ')||'Không có queue';
+    const activeCount=(s?.employees?.byAvailability?.busy||0);const errorCount=(s?.tasks?.failed||0);$('liveText').textContent=`TigerIQ 24/7 · ${work?.active?'1 công việc kỹ thuật đang chạy':'đang lấy việc tiếp theo'} · ${activeCount} AI/device busy · ${errorCount} lỗi Workforce`;
+    if(!wf?.connected)setBanner('Workforce live chưa nối PC01/Farm Controller. Tiến độ engineering phía GitHub vẫn là dữ liệu thật; hệ thống không bịa trạng thái phone.');
+    $('updated').textContent='Cập nhật '+new Date().toLocaleString('vi-VN');
+  }catch(e){setBanner('Không tải được dashboard. Không có trạng thái nào được suy đoán.');$('updated').textContent='Làm mới thất bại'}finally{$('refresh').disabled=false}}
+$('refresh').addEventListener('click',load);load();setInterval(load,60000);
+</script>
+</body>
+</html>
