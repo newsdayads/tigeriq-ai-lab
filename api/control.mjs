@@ -1,4 +1,4 @@
-import { timingSafeEqual, randomUUID } from 'node:crypto';
+import { timingSafeEqual, randomUUID, createHash } from 'node:crypto';
 import { decideWithChief } from './chief.mjs';
 
 const REPO = process.env.TIGERIQ_REPO || 'newsdayads/tigeriq-ai-lab';
@@ -82,6 +82,28 @@ async function gh(path, init = {}, token = '') {
   return data;
 }
 
+export function normalizeInstruction(value) {
+  return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+export function workFingerprint(instruction) {
+  return createHash('sha256').update(normalizeInstruction(instruction)).digest('hex').slice(0, 24);
+}
+
+export function issueStage(issue, comments = []) {
+  const bodies = Array.isArray(comments) ? comments.map((x) => String(x?.body || x || '')) : [];
+  if (bodies.some((x) => x.includes('TIGERIQ_PC01_FAILED') || x.includes('TIGERIQ_JOB_FAILED'))) return 'failed';
+  if (issue?.state === 'closed' || bodies.some((x) => x.includes('TIGERIQ_PC01_DONE') || x.includes('TIGERIQ_PC01_RESULT') || x.includes('TIGERIQ_JOB_DONE') || x.includes('TIGERIQ_JOB_RESULT'))) return 'completed';
+  if (bodies.some((x) => x.includes('TIGERIQ_PC01_CLAIMED') || x.includes('TIGERIQ_JOB_CLAIMED'))) return 'claimed';
+  return 'queued';
+}
+
+async function findDuplicateOpenWorkOrder(fingerprint, token) {
+  const { owner, repo } = repoParts();
+  const issues = await gh(`/repos/${owner}/${repo}/issues?state=open&per_page=100&sort=updated&direction=desc`, {}, token);
+  return issues.find((item) => !item.pull_request && typeof item.body === 'string' && item.body.includes('TIGERIQ_JOB_V1') && item.body.includes(`## Fingerprint\n${fingerprint}`)) || null;
+}
+
 async function statusSnapshot(token = '') {
   const { owner, repo } = repoParts();
   const [repoInfo, openIssues, canary, comments] = await Promise.all([
@@ -119,6 +141,8 @@ async function statusSnapshot(token = '') {
       serverWriteConfigured: Boolean(GITHUB_TOKEN && COMMAND_SECRET),
       clientTokenSupported: true,
       chiefOfStaff: 'gpt',
+      workOrderDedupe: true,
+      workOrderStatusTracking: true,
     },
     execution: {
       pc01,
@@ -156,6 +180,18 @@ async function createWorkOrder(payload, token) {
   if (instruction.length < 3 || instruction.length > 4000) throw new Error('invalid_instruction');
   if (!ALLOWED_PRIORITIES.has(priority)) throw new Error('invalid_priority');
 
+  const fingerprint = workFingerprint(instruction);
+  const duplicate = await findDuplicateOpenWorkOrder(fingerprint, token);
+  if (duplicate) {
+    return {
+      ok: true,
+      deduplicated: true,
+      fingerprint,
+      requestId: null,
+      issue: { number: duplicate.number, url: duplicate.html_url, title: duplicate.title },
+    };
+  }
+
   const id = randomUUID();
   const titleText = instruction.replace(/\s+/g, ' ').slice(0, 72);
   const body = [
@@ -173,6 +209,9 @@ async function createWorkOrder(payload, token) {
     '## Request ID',
     id,
     '',
+    '## Fingerprint',
+    fingerprint,
+    '',
     '## Governance',
     'Chief of Staff classified this as an explicit execution request. Execution still requires normal TigerIQ evidence/review/gate.',
   ].join('\n');
@@ -183,7 +222,41 @@ async function createWorkOrder(payload, token) {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ title: `[${priority}] [TigerIQ AI] ${titleText}`, body }),
   }, token);
-  return { ok: true, requestId: id, issue: { number: issue.number, url: issue.html_url, title: issue.title } };
+  return {
+    ok: true,
+    deduplicated: false,
+    fingerprint,
+    requestId: id,
+    issue: { number: issue.number, url: issue.html_url, title: issue.title },
+  };
+}
+
+async function workOrderStatus(payload, token = '') {
+  const number = Number(payload.issueNumber || payload.number || 0);
+  if (!Number.isInteger(number) || number <= 0) throw new Error('invalid_issue_number');
+  const { owner, repo } = repoParts();
+  const [issue, comments] = await Promise.all([
+    gh(`/repos/${owner}/${repo}/issues/${number}`, {}, token),
+    gh(`/repos/${owner}/${repo}/issues/${number}/comments?per_page=100`, {}, token).catch(() => []),
+  ]);
+  if (issue.pull_request || typeof issue.body !== 'string' || !(issue.body.includes('TIGERIQ_JOB_V1') || issue.body.includes('TIGERIQ_COMMAND_V1'))) {
+    const error = new Error('invalid_work_order_issue');
+    error.status = 400;
+    throw error;
+  }
+  const stage = issueStage(issue, comments);
+  return {
+    ok: true,
+    issue: {
+      number: issue.number,
+      title: issue.title,
+      state: issue.state,
+      stage,
+      url: issue.html_url,
+      updatedAt: issue.updated_at,
+      comments: Array.isArray(comments) ? comments.length : 0,
+    },
+  };
 }
 
 async function createCanary(token) {
@@ -223,6 +296,7 @@ export default async function handler(req, res) {
 
     if (operation === 'status') return json(res, 200, await statusSnapshot(optionalToken));
     if (operation === 'whoami') return json(res, 200, await githubIdentity(writeCredential(req).token));
+    if (operation === 'work-order-status') return json(res, 200, await workOrderStatus(payload, optionalToken));
 
     if (operation === 'chat') {
       const decision = await decideWithChief({ message: payload.message, history: payload.history });
@@ -256,17 +330,23 @@ export default async function handler(req, res) {
         instruction: decision.instruction,
         priority: decision.priority,
       }, credential.token);
-      return json(res, 201, {
+      const workReply = result.deduplicated
+        ? `${decision.reply}\n\nCông việc này đang được theo dõi ở #${result.issue.number}; em không tạo bản trùng.`
+        : `${decision.reply}\n\nĐã tạo công việc #${result.issue.number}. Em sẽ theo dõi execution → review → gate → evidence.`;
+      return json(res, result.deduplicated ? 200 : 201, {
         ...result,
         mode: 'work-order',
-        reply: `${decision.reply}\n\nĐã tạo công việc #${result.issue.number}. Em sẽ theo dõi execution → review → gate → evidence.`,
+        reply: workReply,
         modelUsed: decision.modelUsed,
         providerUsed: decision.providerUsed,
         usage: decision.usage,
       });
     }
 
-    if (operation === 'work-order') return json(res, 201, await createWorkOrder(payload, writeCredential(req).token));
+    if (operation === 'work-order') {
+      const result = await createWorkOrder(payload, writeCredential(req).token);
+      return json(res, result.deduplicated ? 200 : 201, result);
+    }
     if (operation === 'canary') return json(res, 201, await createCanary(writeCredential(req).token));
     return json(res, 400, { error: 'unsupported_operation' });
   } catch (error) {
