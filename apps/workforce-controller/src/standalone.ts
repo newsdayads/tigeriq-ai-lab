@@ -3,7 +3,9 @@ import { CapabilityScheduler, TaskQueue, WorkforceRegistry } from '../../../pack
 import { FileJournalWorkforceStateStore } from '../../../packages/workforce/src/journal-store.js';
 import { DurableNodeCredentialStore } from '../../../packages/workforce/src/node-credentials.js';
 import { NodePairingService, verifyAndroidP256PairingProof } from '../../../packages/workforce/src/pairing.js';
+import { RemoteTaskBroker } from '../../../packages/workforce/src/remote-task-broker.js';
 import { DurableWorkforceRuntime } from '../../../packages/workforce/src/runtime.js';
+import { DurableTaskMailbox } from '../../../packages/workforce/src/task-mailbox.js';
 import { startWorkforceController } from './server.js';
 
 const journalPath = process.env.TIGERIQ_WORKFORCE_JOURNAL ?? 'F:\\TigerIQ\\State\\workforce.jsonl';
@@ -27,10 +29,13 @@ const runtime = await DurableWorkforceRuntime.restore(
   stateStore,
 );
 const pairing = new NodePairingService(verifyAndroidP256PairingProof);
+const mailbox = new DurableTaskMailbox(journal);
+const remoteTasks = new RemoteTaskBroker(runtime, mailbox);
 const server = await startWorkforceController({
   runtime,
   pairing,
   credentials: credentialStore,
+  remoteTasks,
   adminSecret,
   host,
   port,

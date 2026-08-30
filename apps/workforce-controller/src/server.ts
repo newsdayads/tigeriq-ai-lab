@@ -2,10 +2,12 @@ import { timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { DurableWorkforceRuntime } from '../../../packages/workforce/src/runtime.js';
-import type { DurableNodeCredentialStore } from '../../../packages/workforce/src/node-credentials.js';
+import type { DurableNodeCredentialStore, NodeScope } from '../../../packages/workforce/src/node-credentials.js';
 import type { NodePairingService } from '../../../packages/workforce/src/pairing.js';
+import type { RemoteTaskBroker } from '../../../packages/workforce/src/remote-task-broker.js';
 import { buildWorkforceStatus } from '../../../packages/workforce/src/status.js';
 import type { EmployeeAvailability, NodeStatus, WorkerKind } from '../../../packages/workforce/src/index.js';
+import { parseTaskPacket, parseWorkerResult } from './task-contract.js';
 
 const MAX_BODY_BYTES = 32_768;
 const securityHeaders = {
@@ -21,6 +23,7 @@ export interface WorkforceControllerOptions {
   runtime: DurableWorkforceRuntime;
   pairing: NodePairingService;
   credentials: DurableNodeCredentialStore;
+  remoteTasks?: RemoteTaskBroker;
   adminSecret?: string;
   host?: string;
   port?: number;
@@ -87,6 +90,26 @@ function bearer(request: IncomingMessage): string {
   const value = request.headers.authorization;
   if (!value?.startsWith('Bearer ')) return '';
   return value.slice(7).trim();
+}
+
+async function authenticateNode(
+  request: IncomingMessage,
+  credentials: DurableNodeCredentialStore,
+  scope: NodeScope,
+) {
+  const credentialId = text(request.headers['x-tigeriq-credential-id'], 128);
+  const authenticated = await credentials.authenticate(credentialId, bearer(request), scope);
+  if (!authenticated) throw new HttpError(401, 'unauthorized');
+  return authenticated;
+}
+
+function contract<T>(parse: () => T): T {
+  try {
+    return parse();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'invalid_contract';
+    throw new HttpError(400, message);
+  }
 }
 
 class HttpError extends Error {
@@ -179,10 +202,7 @@ export async function startWorkforceController(options: WorkforceControllerOptio
       }
 
       if (request.method === 'POST' && url.pathname === '/api/node/heartbeat') {
-        const credentialId = text(request.headers['x-tigeriq-credential-id'], 128);
-        const token = bearer(request);
-        const authenticated = await options.credentials.authenticate(credentialId, token, 'heartbeat');
-        if (!authenticated) throw new HttpError(401, 'unauthorized');
+        const authenticated = await authenticateNode(request, options.credentials, 'heartbeat');
         const data = await body(request);
         const requestedStatus = text(data.status, 32);
         const status: NodeStatus = requestedStatus === 'degraded' ? 'degraded' : 'online';
@@ -201,6 +221,36 @@ export async function startWorkforceController(options: WorkforceControllerOptio
         return json(response, 200, { ok: true, node });
       }
 
+      if (request.method === 'POST' && url.pathname === '/api/admin/tasks') {
+        if (!options.remoteTasks) throw new HttpError(503, 'remote_tasks_not_configured');
+        if (!adminSecret) throw new HttpError(503, 'admin_auth_not_configured');
+        if (!adminAuthorized(request, adminSecret)) throw new HttpError(401, 'unauthorized');
+        const data = await body(request);
+        const task = contract(() => parseTaskPacket(data.task ?? data));
+        const queued = await options.remoteTasks.enqueue(task);
+        return json(response, 201, { ok: true, task: { taskId: queued.task.taskId, stage: queued.stage, attempts: queued.attempts } });
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/node/tasks/lease') {
+        if (!options.remoteTasks) throw new HttpError(503, 'remote_tasks_not_configured');
+        const authenticated = await authenticateNode(request, options.credentials, 'task:read');
+        const lease = await options.remoteTasks.poll(authenticated.nodeId);
+        return json(response, 200, { ok: true, lease: lease ?? null });
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/node/tasks/result') {
+        if (!options.remoteTasks) throw new HttpError(503, 'remote_tasks_not_configured');
+        const authenticated = await authenticateNode(request, options.credentials, 'task:result');
+        const data = await body(request);
+        const taskId = text(data.taskId, 128);
+        const leaseId = text(data.leaseId, 128);
+        const leaseToken = text(data.leaseToken, 256);
+        if (!taskId || !leaseId || !leaseToken) throw new HttpError(400, 'invalid_task_result_envelope');
+        const result = contract(() => parseWorkerResult(data.result));
+        const accepted = await options.remoteTasks.acceptResult(authenticated.nodeId, taskId, leaseId, leaseToken, result);
+        return json(response, 200, { ok: true, result: accepted });
+      }
+
       return json(response, 404, { error: 'not_found' });
     } catch (error) {
       if (error instanceof HttpError) return json(response, error.status, { error: error.message });
@@ -208,6 +258,9 @@ export async function startWorkforceController(options: WorkforceControllerOptio
       const known = new Set([
         'pairing challenge not found', 'pairing challenge already used', 'pairing challenge expired',
         'pairing proof verification failed', 'node already exists', 'employee already exists',
+        'task is not running', 'task has no assigned employee', 'task is assigned to another node',
+        'result employee mismatch', 'stale task lease', 'task lease expired', 'invalid task lease token',
+        'result task mismatch', 'task already leased',
       ]);
       return json(response, known.has(message) ? 400 : 503, { error: known.has(message) ? message.replace(/ /g, '_') : 'workforce_controller_unavailable' });
     }
