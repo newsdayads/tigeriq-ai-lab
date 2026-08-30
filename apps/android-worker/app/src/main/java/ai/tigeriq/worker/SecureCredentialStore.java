@@ -30,9 +30,7 @@ public final class SecureCredentialStore {
     }
 
     public void save(String controllerUrl, String credentialId, String token) throws Exception {
-        if (controllerUrl == null || !controllerUrl.startsWith("https://")) {
-            throw new IllegalArgumentException("controller URL must use HTTPS");
-        }
+        controllerUrl = ControllerUrlPolicy.requireTrusted(controllerUrl);
         if (credentialId == null || credentialId.trim().isEmpty() || token == null || token.isEmpty()) {
             throw new IllegalArgumentException("credentialId and token are required");
         }
@@ -50,7 +48,11 @@ public final class SecureCredentialStore {
         String credential = prefs.getString(KEY_CREDENTIAL, null);
         String token = prefs.getString(KEY_TOKEN, null);
         if (controller == null || credential == null || token == null) return null;
-        return new Credential(decrypt(controller), decrypt(credential), decrypt(token));
+        return new Credential(
+            ControllerUrlPolicy.requireTrusted(decrypt(controller)),
+            decrypt(credential),
+            decrypt(token)
+        );
     }
 
     public void clear() {
