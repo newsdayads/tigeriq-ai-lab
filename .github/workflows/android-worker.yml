@@ -1,0 +1,40 @@
+name: Android Worker
+
+on:
+  pull_request:
+    paths:
+      - 'apps/android-worker/**'
+      - '.github/workflows/android-worker.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/android-worker/**'
+      - '.github/workflows/android-worker.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+      - name: Build debug APK
+        working-directory: apps/android-worker
+        run: gradle --no-daemon :app:assembleDebug
+      - name: Verify APK exists
+        run: test -f apps/android-worker/app/build/outputs/apk/debug/app-debug.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tigeriq-worker-debug-apk
+          path: apps/android-worker/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
