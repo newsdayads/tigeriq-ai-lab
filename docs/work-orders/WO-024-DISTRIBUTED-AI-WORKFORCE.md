@@ -1,7 +1,7 @@
 # WO-024 — TigerIQ Distributed AI Workforce
 
 Priority: P0
-Status: IMPLEMENTING
+Status: REMOTE CORE IMPLEMENTED — FINAL EXACT-HEAD GATES PENDING
 Date: 2026-08-30
 
 ## Owner intent
@@ -10,42 +10,53 @@ Transform TigerIQ AI Lab from a single-agent execution pattern into a company-sc
 ## Operating model
 Owner -> Chief of Staff -> Department Head -> Team Lead -> AI Employees -> Independent Reviewer -> Judge/Gate -> Evidence -> Chief -> Owner.
 
-## P0 scope
+## Implemented remote core
 1. Workforce Registry: employee identity, department/team/role, node binding, provider/model metadata, capabilities, health, availability, concurrency and outcome metrics.
-2. Worker Node Registry: Android/API/local/browser/tool/simulator nodes with heartbeat and device health metadata.
+2. Worker Node Registry: Android/API/local/browser/tool/simulator node contract with heartbeat and device health metadata.
 3. Organization hierarchy: company, department and team units with logical manager agents.
 4. Task Packet contract: objective, constraints, inputs, required capabilities, expected artifacts, deadline, bounded attempts, review policy and idempotency key.
-5. Capability-aware scheduler: health/success/load/department/team scoring, concurrency limits, exclusion rules and reviewer independence.
-6. Task lifecycle: queued -> assigned -> running -> completed/failed with bounded retry/reassignment and duplicate suppression.
-7. Structured Result/Evidence contract: conclusion, confidence, verdict, artifacts, risks and bounded failure metadata.
-8. Independent assurance: primary workers cannot review/judge their own work; provider diversity is preferred when capacity allows.
-9. Worker adapter boundary: Android/API/local/browser/tool/simulator implementations are replaceable.
-10. Simulator gate proving Chief/manager fan-out to at least two parallel workers, then independent Reviewer and Judge, before physical-device claims are allowed.
+5. Capability-aware scheduler: health/success/load/department/team scoring, concurrency limits and exclusion rules.
+6. Durable runtime boundary: checkpoint snapshot/store interface, restart restore, in-flight fail-safe requeue and duplicate suppression.
+7. Canonical idempotency: a duplicate request with a different taskId executes/returns the original canonical task and never creates a second execution.
+8. Structured Result/Evidence contract: conclusion, confidence, verdict, artifacts, risks and bounded failure metadata.
+9. Independent assurance: primary workers cannot review/judge their own work. Provider/model diversity is preferred but falls back to another independent employee when no diverse provider is available, preventing workforce deadlock.
+10. Worker adapter boundary: Android/API/local/browser/tool/simulator implementations are replaceable.
+11. Simulator gate: two primary employees execute concurrently, then an independent Reviewer and Judge evaluate the result.
+12. Read-only Workforce status projection: node status/kind counts, employee availability/capacity/utilization, department/provider distribution and task lifecycle counts.
+13. Secure worker-node pairing primitive: short-lived one-time challenge, proof-verification boundary, scoped revocable node credential and token-hash-only storage.
+14. Android Worker MVP contract: identity, foreground service, task inbox, Accessibility bridge, evidence collection, watchdog, result publisher, secure pairing and real-device acceptance criteria.
+15. JSON schemas for node, task and result contracts.
 
-## Android strategy
-- One physical phone may represent one persistent AI employee identity, while the company hierarchy remains logical and independent of hardware.
-- The future TigerIQ Worker APK owns employee/node identity, secure pairing, heartbeat, task inbox, foreground execution, Accessibility bridge, evidence capture, watchdog and result return.
-- ADB/Appium/UiAutomator2/scrcpy are infrastructure capabilities and should be reused rather than reimplemented.
-- Legacy Android can be controlled through a farm gateway; newer Android can additionally run a more autonomous Worker APK.
-- No claim of live Android control is allowed until real-device evidence exists.
-
-## Provider policy
+## Hardened invariants
+- One physical phone may represent one persistent AI employee identity; hardware never becomes the company hierarchy.
 - AI providers are replaceable brains/tools, not employee identities.
-- Official APIs and local models are preferred for stable structured execution.
-- Consumer-app automation must be isolated behind provider-specific adapters and used only where technically and contractually appropriate.
-- No credentials, account passwords, tokens or private Owner data may be committed.
+- Duplicate Task Packets are canonicalized by idempotency key across restart.
+- In-flight work is never assumed DONE after restart; it is recovered/requeued only within remaining maxAttempts.
+- Reviewer/Judge must be different employees from the work being evaluated.
+- Provider diversity is a preference, not a reason to halt if an independent same-provider employee is the only eligible reviewer.
+- No credentials, account passwords, tokens or private Owner data may be committed or returned in evidence.
+- Consumer-app automation remains isolated behind provider-specific adapters and may only be enabled where technically/account-policy appropriate.
+- No claim of live Android control is allowed until physical-device evidence exists.
 
 ## Acceptance gates
-- TypeScript domain model compiles under strict mode.
-- Unit tests cover hierarchy, node heartbeat, idempotency, capability scheduling, bounded retry/reassignment and independence.
-- Integration test proves two primary employees execute concurrently and a different employee reviews the combined result; Judge is also independent when required.
-- Existing repository CI remains PASS.
+- TypeScript strict typecheck PASS.
+- Unit tests PASS for hierarchy, heartbeat, idempotency, capability scheduling, bounded retry/reassignment, independence, diversity fallback, status projection and pairing.
+- Restart-recovery tests PASS for completed-task dedupe and in-flight bounded requeue.
+- Integration test proves two primary employees execute concurrently and a different employee reviews; Judge is also independent.
+- Existing repository CI / Queue Hygiene / Vercel verification must PASS on one exact final head.
 - No Tiger IQ Driver mutation, no PC01 runtime mutation, no billing/provider activation.
-- Branch may merge only after exact-head CI/gates PASS.
+- Branch may merge only after exact-head gates PASS.
 
-## Next phases after P0
-- Persistent workforce store + status API + mobile Workforce Board.
-- Android Worker APK buildable MVP and secure pairing endpoint.
-- Farm Gateway adapter for ADB/Appium/device inventory.
-- Two-phone real-device gate.
-- Department planner, performance routing and scale test at 5/10/20 workers.
+## Not yet claimed
+- No physical Android phone has been paired or controlled by this Work Order.
+- No Accessibility permission has been granted on a real device.
+- No ChatGPT/Gemini/Claude consumer app automation is claimed.
+- No live provider credential or paid service is activated.
+- The state-store contract is implemented/tested in memory; a production durable backend must be selected/configured before 24/7 live worker state is claimed.
+
+## Next phase after remote-core merge
+1. Production-safe durable Workforce backend + Control Plane API integration + mobile Workforce Board.
+2. Buildable TigerIQ Worker Android APK and secure pairing endpoint.
+3. Farm Gateway adapter for ADB/Appium/UiAutomator2/device inventory.
+4. Two-phone real-device gate: pair + heartbeat + two concurrent tasks + result/evidence + independent review + disconnect/restart recovery.
+5. Department planner, performance/KPI routing and scale tests at 5/10/20 workers.
