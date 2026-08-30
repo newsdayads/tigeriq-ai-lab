@@ -1,4 +1,4 @@
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, createPublicKey, randomBytes, timingSafeEqual, verify } from 'node:crypto';
 
 export type NodeScope = 'register' | 'heartbeat' | 'task:read' | 'task:result';
 
@@ -11,7 +11,9 @@ export interface PairingChallenge {
 export interface PairingRequest {
   challengeId: string;
   nodeId: string;
+  /** Base64-encoded X.509 SubjectPublicKeyInfo DER. */
   publicKey: string;
+  /** Base64url-encoded ECDSA signature over the UTF-8 challenge. */
   proof: string;
 }
 
@@ -57,6 +59,27 @@ function safeHashEqual(leftHex: string, rightHex: string): boolean {
   const left = Buffer.from(leftHex, 'hex');
   const right = Buffer.from(rightHex, 'hex');
   return left.length === right.length && timingSafeEqual(left, right);
+}
+
+/** Verify Android Keystore EC secp256r1 / SHA256withECDSA proof. */
+export function verifyAndroidP256PairingProof(input: {
+  publicKey: string;
+  challenge: string;
+  proof: string;
+}): boolean {
+  try {
+    const der = Buffer.from(input.publicKey, 'base64');
+    if (der.length < 64 || der.length > 2048) return false;
+    const signature = Buffer.from(input.proof, 'base64url');
+    if (signature.length < 48 || signature.length > 256) return false;
+    const key = createPublicKey({ key: der, format: 'der', type: 'spki' });
+    if (key.asymmetricKeyType !== 'ec') return false;
+    const details = key.asymmetricKeyDetails;
+    if (details?.namedCurve && details.namedCurve !== 'prime256v1') return false;
+    return verify('sha256', Buffer.from(input.challenge, 'utf8'), key, signature);
+  } catch {
+    return false;
+  }
 }
 
 export class NodePairingService {
