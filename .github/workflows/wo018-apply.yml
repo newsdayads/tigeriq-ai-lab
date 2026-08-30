@@ -1,0 +1,50 @@
+name: WO-018 Apply Retry-Safe Lifecycle
+
+on:
+  push:
+    branches:
+      - wo018/lifecycle-order
+    paths:
+      - scripts/wo018_apply.py
+      - .github/workflows/wo018-apply.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: wo018/lifecycle-order
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Apply retry-safe lifecycle patch
+        run: python scripts/wo018_apply.py
+      - name: Syntax check control API
+        run: node --check api/control.mjs
+      - name: Verify queue/lifecycle/work-board invariants
+        run: node scripts/verify_queue_hygiene.mjs
+      - name: Verify Work Board UI
+        run: node scripts/verify_work_board_ui.mjs
+      - name: Existing build gate
+        run: npm run build
+      - name: Commit generated changes
+        run: |
+          if git diff --quiet; then
+            echo "No generated changes to commit"
+            exit 0
+          fi
+          git config user.name "tigeriq-ci"
+          git config user.email "actions@users.noreply.github.com"
+          git add api/control.mjs scripts/verify_queue_hygiene.mjs
+          git commit -m "WO-018: apply retry-safe lifecycle ordering"
+          git push origin HEAD:wo018/lifecycle-order
