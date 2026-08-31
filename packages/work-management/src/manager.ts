@@ -96,14 +96,15 @@ export class AutonomousWorkManager {
       const selected = this.#selectWorker(work, 'executor', at);
       if (!selected) continue;
       let claimed: ManagedWorkRecord;
+      let claimAt: string;
       try {
-        const claimAt = now();
+        claimAt = now();
         claimed = this.store.claim(work.work.workId, selected.worker, 'executor', this.leaseMs, claimAt);
         this.store.startExecution(work.work.workId, selected.worker.workerId, claimAt);
-        await this.#checkpoint(claimAt);
       } catch {
         continue;
       }
+      await this.#checkpoint(claimAt);
       capacity -= 1;
       jobs.push((async () => {
         const driver = selected.driver.execute;
@@ -141,13 +142,14 @@ export class AutonomousWorkManager {
     for (const work of goal.work.filter((item) => item.stage === 'reviewing')) {
       const selected = this.#selectWorker(work, 'reviewer', at);
       if (!selected || !work.execution) continue;
+      let claimAt: string;
       try {
-        const claimAt = now();
+        claimAt = now();
         this.store.claim(work.work.workId, selected.worker, 'reviewer', this.leaseMs, claimAt);
-        await this.#checkpoint(claimAt);
       } catch {
         continue;
       }
+      await this.#checkpoint(claimAt);
       jobs.push((async () => {
         const driver = selected.driver.review;
         if (!driver) throw new Error(`worker ${selected.worker.workerId} has no review driver`);
@@ -178,13 +180,14 @@ export class AutonomousWorkManager {
     for (const work of goal.work.filter((item) => item.stage === 'judging')) {
       const selected = this.#selectWorker(work, 'judge', at);
       if (!selected || !work.execution || !work.review) continue;
+      let claimAt: string;
       try {
-        const claimAt = now();
+        claimAt = now();
         this.store.claim(work.work.workId, selected.worker, 'judge', this.leaseMs, claimAt);
-        await this.#checkpoint(claimAt);
       } catch {
         continue;
       }
+      await this.#checkpoint(claimAt);
       jobs.push((async () => {
         const driver = selected.driver.judge;
         if (!driver) throw new Error(`worker ${selected.worker.workerId} has no judge driver`);
