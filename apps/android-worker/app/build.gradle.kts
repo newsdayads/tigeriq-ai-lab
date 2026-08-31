@@ -62,6 +62,9 @@ dependencies {
     implementation("androidx.work:work-runtime:2.9.1")
     implementation("com.google.firebase:firebase-messaging:24.0.0")
     testImplementation("junit:junit:4.13.2")
+    // Android's org.json classes are method stubs in local JVM tests. Use the
+    // compatible JSON implementation only in the unit-test runtime.
+    testImplementation("org.json:json:20240303")
 }
 
 tasks.register("tigerIqStableSigningStatus") {
