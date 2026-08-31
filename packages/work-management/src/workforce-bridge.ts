@@ -37,6 +37,7 @@ export class WorkforceRegistryBridge {
         capabilities: [...employee.capabilities],
         concurrencyLimit: Math.max(1, remainingConcurrency),
         allowedScopes: this.options.allowedScopesForEmployee?.(employee, node),
+        independenceKey: independenceKeyFor(employee, node),
         online:
           node.status === 'online' &&
           employee.availability !== 'offline' &&
@@ -48,6 +49,15 @@ export class WorkforceRegistryBridge {
     }
     return registered;
   }
+}
+
+function independenceKeyFor(employee: EmployeeRecord, node: WorkerNodeRecord): string {
+  const provider = employee.provider?.trim().toLowerCase();
+  const model = employee.model?.trim().toLowerCase();
+  if (provider && model) return `${provider}:${model}:${node.nodeId}`;
+  // If provider/model metadata is unavailable, fail conservatively by grouping
+  // all workers on the same runtime node into one independence identity.
+  return `${node.kind}:${node.nodeId}`.toLowerCase();
 }
 
 export function defaultManagedWorkerKind(node: WorkerNodeRecord): WorkerKind {
