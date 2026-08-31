@@ -1,11 +1,11 @@
 package ai.tigeriq.worker.v07;
 
+import android.os.Build;
 import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyInfo;
 import android.security.keystore.KeyProperties;
 
 import java.security.KeyFactory;
-import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.KeyStore;
 import java.security.PrivateKey;
@@ -27,28 +27,19 @@ public final class DeviceKeyStore {
         if (store.containsAlias(alias)) return;
 
         KeyPairGenerator generator = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC, ANDROID_KEYSTORE);
-        KeyGenParameterSpec spec = new KeyGenParameterSpec.Builder(
-                alias,
-                KeyProperties.PURPOSE_SIGN | KeyProperties.PURPOSE_VERIFY)
-                .setAlgorithmParameterSpec(new ECGenParameterSpec("secp256r1"))
-                .setDigests(KeyProperties.DIGEST_SHA256)
-                .setUserAuthenticationRequired(false)
-                .setIsStrongBoxBacked(true)
-                .build();
-        try {
-            generator.initialize(spec);
-            generator.generateKeyPair();
-        } catch (Exception strongBoxUnavailable) {
-            KeyGenParameterSpec fallback = new KeyGenParameterSpec.Builder(
-                    alias,
-                    KeyProperties.PURPOSE_SIGN | KeyProperties.PURPOSE_VERIFY)
-                    .setAlgorithmParameterSpec(new ECGenParameterSpec("secp256r1"))
-                    .setDigests(KeyProperties.DIGEST_SHA256)
-                    .setUserAuthenticationRequired(false)
-                    .build();
-            generator.initialize(fallback);
-            generator.generateKeyPair();
+        KeyGenParameterSpec.Builder builder = baseBuilder();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            try {
+                builder.setIsStrongBoxBacked(true);
+                generator.initialize(builder.build());
+                generator.generateKeyPair();
+                return;
+            } catch (Exception ignored) {
+                // StrongBox is optional. Fall through to the TEE/default AndroidKeyStore path.
+            }
         }
+        generator.initialize(baseBuilder().build());
+        generator.generateKeyPair();
     }
 
     public synchronized String signChallenge(byte[] challenge) throws Exception {
@@ -77,6 +68,15 @@ public final class DeviceKeyStore {
         KeyFactory factory = KeyFactory.getInstance(key.getAlgorithm(), ANDROID_KEYSTORE);
         KeyInfo info = factory.getKeySpec(key, KeyInfo.class);
         return info.isInsideSecureHardware();
+    }
+
+    private KeyGenParameterSpec.Builder baseBuilder() {
+        return new KeyGenParameterSpec.Builder(
+                alias,
+                KeyProperties.PURPOSE_SIGN | KeyProperties.PURPOSE_VERIFY)
+                .setAlgorithmParameterSpec(new ECGenParameterSpec("secp256r1"))
+                .setDigests(KeyProperties.DIGEST_SHA256)
+                .setUserAuthenticationRequired(false);
     }
 
     private static String safe(String value) {
