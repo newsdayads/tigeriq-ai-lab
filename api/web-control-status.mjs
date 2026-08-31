@@ -1,4 +1,5 @@
 import { isOwnerAuthorized } from './owner-auth.mjs';
+import { issueEvidenceSummary, issueStage, issueType, issuePriority } from './control.mjs';
 
 const REPO = process.env.TIGERIQ_REPO || 'newsdayads/tigeriq-ai-lab';
 const GITHUB_TOKEN = String(process.env.TIGERIQ_GITHUB_TOKEN || '').trim();
@@ -10,20 +11,6 @@ const OWNER_AUTH_CONFIGURED = Boolean(
   && String(process.env.TIGERIQ_OWNER_OAUTH_REDIRECT_URI || '').trim()
   && String(process.env.TIGERIQ_OWNER_SESSION_SECRET || '').trim()
 );
-
-const LIFECYCLE = new Map([
-  ['TIGERIQ_PC01_CLAIMED', 'claimed'],
-  ['TIGERIQ_JOB_CLAIMED', 'claimed'],
-  ['TIGERIQ_COMMAND_CLAIMED', 'claimed'],
-  ['TIGERIQ_PC01_DONE', 'completed'],
-  ['TIGERIQ_PC01_RESULT', 'completed'],
-  ['TIGERIQ_JOB_DONE', 'completed'],
-  ['TIGERIQ_JOB_RESULT', 'completed'],
-  ['TIGERIQ_COMMAND_RESULT', 'completed'],
-  ['TIGERIQ_PC01_FAILED', 'failed'],
-  ['TIGERIQ_JOB_FAILED', 'failed'],
-  ['TIGERIQ_COMMAND_FAILED', 'failed'],
-]);
 
 function json(res, status, body) {
   res.statusCode = status;
@@ -60,63 +47,16 @@ async function gh(path) {
   return data;
 }
 
-function lines(body) {
-  return String(body || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-}
-
-function lifecycle(comments = []) {
-  const events = [];
-  for (const comment of Array.isArray(comments) ? comments : []) {
-    const createdAt = comment?.created_at || null;
-    for (const line of lines(comment?.body)) {
-      const marker = line.split(/\s+/, 1)[0];
-      const stage = LIFECYCLE.get(marker);
-      if (stage) events.push({ marker, stage, createdAt });
-    }
-  }
-  events.sort((a, b) => Date.parse(a.createdAt || 0) - Date.parse(b.createdAt || 0));
-  return events;
-}
-
-function evidence(comments = []) {
-  const events = lifecycle(comments);
-  const allLines = (Array.isArray(comments) ? comments : []).flatMap((comment) => lines(comment?.body));
-  return {
-    claimed: events.some((event) => event.stage === 'claimed'),
-    result: events.some((event) => event.stage === 'completed'),
-    failed: events.some((event) => event.stage === 'failed'),
-    reviewPass: allLines.includes('REVIEW_PASS'),
-    judgePass: allLines.includes('JUDGE_PASS'),
-    latestStage: events.length ? events[events.length - 1].stage : null,
-  };
-}
-
-function issueType(issue) {
-  const body = String(issue?.body || '');
-  if (body.includes('TIGERIQ_COMMAND_V1')) return 'command';
-  if (body.includes('TIGERIQ_JOB_V1')) return 'work-order';
-  return null;
-}
-
-function priority(issue) {
-  const body = String(issue?.body || '');
-  const field = body.match(/(?:^|\n)## Priority\s*\n\s*(P[012])\s*(?:\n|$)/i);
-  if (field) return field[1].toUpperCase();
-  const title = String(issue?.title || '');
-  const match = title.match(/(?:^|[^A-Z0-9])(P[012])(?:[^A-Z0-9]|$)/i);
-  return match ? match[1].toUpperCase() : null;
-}
-
 function pc01State(canary, canaryComments) {
-  const proof = evidence(canaryComments);
-  const stage = proof.latestStage;
-  if (stage === 'completed') return { channel: 'verified', label: 'ĐÃ CÓ KẾT QUẢ', reason: `#${CANARY_ISSUE} có RESULT`, proof };
+  const proof = issueEvidenceSummary(canaryComments);
+  const stage = issueStage(canary, canaryComments);
+  if (stage === 'completed') return { channel: 'verified', label: 'ĐÃ QUA BẰNG CHỨNG + REVIEW/GATE', reason: `#${CANARY_ISSUE} đủ RESULT + evidence + REVIEW_PASS + JUDGE_PASS`, proof };
   if (stage === 'claimed') return { channel: 'working', label: 'ĐANG THỰC THI', reason: `#${CANARY_ISSUE} đã CLAIM`, proof };
-  if (stage === 'failed') return { channel: 'degraded', label: 'LỖI THỰC THI', reason: `#${CANARY_ISSUE} có FAILED`, proof };
+  if (stage === 'failed') return { channel: 'degraded', label: 'LỖI THỰC THI', reason: `#${CANARY_ISSUE} có FAILED mới nhất`, proof };
   return {
     channel: 'unverified',
-    label: 'CHƯA XÁC NHẬN',
-    reason: canary?.state === 'open' ? `#${CANARY_ISSUE} chưa có CLAIM/RESULT` : `#${CANARY_ISSUE} chưa có bằng chứng runtime`,
+    label: 'CHƯA ĐỦ BẰNG CHỨNG',
+    reason: `#${CANARY_ISSUE} stage=${stage}; không coi Issue đóng/RESULT đơn lẻ là hoàn tất`,
     proof,
   };
 }
@@ -144,27 +84,25 @@ export default async function handler(req, res) {
     }
 
     const work = (Array.isArray(issues) ? issues : [])
-      .filter((issue) => !issue.pull_request && issueType(issue))
+      .filter((issue) => !issue.pull_request && issueType(issue) !== 'unknown')
       .slice(0, 20)
       .map((issue) => {
-        const proof = evidence(commentsByIssue.get(issue.number) || []);
-        let stage = proof.latestStage || (issue.state === 'closed' ? 'closed' : 'queued');
-        if (issue.state === 'closed' && !proof.result && !proof.failed) stage = 'closed';
+        const issueComments = commentsByIssue.get(issue.number) || [];
         return {
           number: issue.number,
           title: issue.title,
           type: issueType(issue),
-          priority: priority(issue),
+          priority: issuePriority(issue),
           state: issue.state,
-          stage,
+          stage: issueStage(issue, issueComments),
           updatedAt: issue.updated_at,
           url: issue.html_url,
-          evidence: proof,
+          evidence: issueEvidenceSummary(issueComments),
         };
       });
 
     const ownerAuthenticated = OWNER_AUTH_CONFIGURED && isOwnerAuthorized(req);
-    const openWork = work.filter((item) => item.state === 'open');
+    const activeWork = work.filter((item) => !['completed', 'failed', 'cancelled'].includes(item.stage));
     return json(res, 200, {
       ok: true,
       generatedAt: new Date().toISOString(),
@@ -174,6 +112,8 @@ export default async function handler(req, res) {
         authenticated: ownerAuthenticated,
         serverWriteConfigured: Boolean(GITHUB_TOKEN),
         writeReady: Boolean(ownerAuthenticated && GITHUB_TOKEN),
+        browserWriteRequiresOwner: true,
+        clientGithubTokenAcceptedForWrite: false,
       },
       deployment: {
         environment: process.env.VERCEL_ENV || 'unknown',
@@ -184,11 +124,9 @@ export default async function handler(req, res) {
         ...pc01State(canary, canaryComments),
         physicalState: 'unknown',
         canaryIssue: CANARY_ISSUE,
+        canaryCreationPolicy: 'canonical-existing-issue-only',
       },
-      queue: {
-        count: openWork.length,
-        items: openWork.slice(0, 12),
-      },
+      queue: { count: activeWork.length, items: activeWork.slice(0, 12) },
       work,
     });
   } catch (error) {
