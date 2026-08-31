@@ -11,7 +11,7 @@ public final class SessionManager {
     }
 
     public synchronized String validToken(EmployeeDeviceStore.Profile profile) throws Exception {
-        if (profile == null || !profile.enrolled) throw new ApiException(401, "REENROLL_REQUIRED", "TigerIQ device enrollment required", false, null);
+        if (profile == null) throw new ApiException(401, "REENROLL_REQUIRED", "TigerIQ device enrollment required", false, null);
         String token = secrets.get(SecureSecretStore.SESSION_TOKEN);
         long expiresAt = secrets.getLong(SecureSecretStore.SESSION_EXPIRES_AT, 0L);
         if (SessionLifecycle.usable(expiresAt, System.currentTimeMillis(), REFRESH_SKEW_MS) && token != null && !token.isBlank()) return token;
