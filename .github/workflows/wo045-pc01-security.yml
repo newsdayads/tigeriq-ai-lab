@@ -26,10 +26,30 @@ jobs:
           python-version: '3.12'
       - name: Compile PC01 runtime
         run: |
-          python -m py_compile scripts/pc-worker/control_plane_v2.py scripts/pc-worker/worker_secure_v3.py scripts/pc-worker/bootstrap_worker_v2.py
+          python -m py_compile scripts/pc-worker/control_plane_v2.py scripts/pc-worker/worker_secure_v3.py scripts/pc-worker/bootstrap_worker_v2.py scripts/pc-worker/test_worker_secure_v3.py scripts/pc-worker/test_watchdog_v3_contract.py
       - name: Control plane tests
         working-directory: scripts/pc-worker
         run: python test_control_plane_v2.py
       - name: Secure worker bypass regression tests
         working-directory: scripts/pc-worker
         run: python test_worker_secure_v3.py
+      - name: Watchdog recovery contract tests
+        working-directory: scripts/pc-worker
+        run: python test_watchdog_v3_contract.py
+
+  watchdog-powershell-parse:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse watchdog with Windows PowerShell
+        shell: powershell
+        run: |
+          $errors = $null
+          $tokens = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path 'scripts/pc-worker/worker-watchdog-v3.ps1'), [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            exit 1
+          }
+          Write-Host 'WATCHDOG_V3_POWERSHELL_PARSE_PASS'
