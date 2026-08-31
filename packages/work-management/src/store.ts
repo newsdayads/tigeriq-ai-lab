@@ -1,4 +1,4 @@
-import type { ExecutionResult, GoalPlan, GoalStatus, ManagedGoalRecord, ManagedWorkRecord, ManagedWorker, ReviewResult, WorkHistoryEvent, WorkManagementSnapshot, WorkRole, WorkStage } from './types.js';
+import type { ExecutionResult, GoalPlan, GoalRequest, GoalStatus, ManagedGoalRecord, ManagedWorkRecord, ManagedWorker, PlannedWorkItem, ReviewResult, WorkHistoryEvent, WorkManagementSnapshot, WorkRole, WorkStage } from './types.js';
 import { assertIso, cloneExecution, cloneGoal, cloneGoalRecord, cloneReview, cloneWorkDefinition, cloneWorkRecord, isoNow, normalizeExecutionResult, normalizeReviewResult, scopeKeysConflict, validatePlan } from './helpers.js';
 
 export class WorkManagementStore {
@@ -26,6 +26,10 @@ export class WorkManagementStore {
         }
       }
       if (this.#goals.has(record.goal.goalId)) throw new Error(`duplicate goal ${record.goal.goalId} in snapshot`);
+      const existingGoalId = this.#goalIdempotency.get(record.goal.idempotencyKey);
+      if (existingGoalId && existingGoalId !== record.goal.goalId) {
+        throw new Error(`duplicate idempotency key ${record.goal.idempotencyKey} in snapshot`);
+      }
       this.#goals.set(record.goal.goalId, record);
       this.#goalIdempotency.set(record.goal.idempotencyKey, record.goal.goalId);
       for (const work of record.work) {
@@ -38,7 +42,13 @@ export class WorkManagementStore {
   submit(plan: GoalPlan, at = isoNow()): ManagedGoalRecord {
     validatePlan(plan);
     const canonicalGoalId = this.#goalIdempotency.get(plan.goal.idempotencyKey);
-    if (canonicalGoalId) return this.getGoal(canonicalGoalId);
+    if (canonicalGoalId) {
+      const canonical = this.#mustGetGoal(canonicalGoalId);
+      if (!sameGoalRequest(canonical.goal, plan.goal) || !sameWorkPlan(canonical.work.map((item) => item.work), plan.items)) {
+        throw new Error(`idempotency conflict for goal key ${plan.goal.idempotencyKey}`);
+      }
+      return cloneGoalRecord(canonical);
+    }
     if (this.#goals.has(plan.goal.goalId)) throw new Error(`goal ${plan.goal.goalId} already exists`);
     for (const item of plan.items) {
       if (this.#workToGoal.has(item.workId)) throw new Error(`work ${item.workId} already exists in another goal`);
@@ -252,10 +262,11 @@ export class WorkManagementStore {
     if (!worker.roles.includes(role)) return false;
     if (record.work.allowedWorkerKinds?.length && !record.work.allowedWorkerKinds.includes(worker.kind)) return false;
     if (!record.work.requiredCapabilities.every((capability) => worker.capabilities.includes(capability))) return false;
-    if (role === 'executor' && worker.allowedScopes?.length && record.work.scopeKeys.length) {
-      if (!record.work.scopeKeys.every((scope) => worker.allowedScopes!.some((allowed) => scopeKeysConflict(scope, allowed)))) return false;
+    if (role === 'executor' && worker.allowedScopes !== undefined && record.work.scopeKeys.length) {
+      if (!record.work.scopeKeys.every((scope) => worker.allowedScopes!.some((allowed) => scopeWithinAllowed(allowed, scope)))) return false;
     }
-    if (role === 'reviewer' && record.executorIds.includes(worker.workerId)) return false;
+    if (role === 'executor' && (record.reviewerIds.includes(worker.workerId) || record.judgeIds.includes(worker.workerId))) return false;
+    if (role === 'reviewer' && (record.executorIds.includes(worker.workerId) || record.judgeIds.includes(worker.workerId))) return false;
     if (role === 'judge' && (record.executorIds.includes(worker.workerId) || record.reviewerIds.includes(worker.workerId))) return false;
     return true;
   }
@@ -333,4 +344,56 @@ export class WorkManagementStore {
     this.#sequence += 1;
     this.#history.push({ sequence: this.#sequence, ...input });
   }
+}
+
+function normalizePathScope(value: string): string {
+  return value.trim().replaceAll('\\', '/').replace(/\/+$/, '').toLowerCase();
+}
+
+function scopeWithinAllowed(allowed: string, requested: string): boolean {
+  const root = normalizePathScope(allowed);
+  const target = normalizePathScope(requested);
+  if (!root || !target) return false;
+  return target === root || target.startsWith(`${root}/`);
+}
+
+function sorted(values: string[]): string[] {
+  return [...values].sort((a, b) => a.localeCompare(b));
+}
+
+function sameGoalRequest(left: GoalRequest, right: GoalRequest): boolean {
+  return JSON.stringify({
+    objective: left.objective,
+    priority: left.priority,
+    constraints: sorted(left.constraints),
+    maxParallelism: left.maxParallelism,
+  }) === JSON.stringify({
+    objective: right.objective,
+    priority: right.priority,
+    constraints: sorted(right.constraints),
+    maxParallelism: right.maxParallelism,
+  });
+}
+
+function workSignature(work: PlannedWorkItem): string {
+  return JSON.stringify({
+    workId: work.workId,
+    title: work.title,
+    objective: work.objective,
+    dependencies: sorted(work.dependencies),
+    scopeKeys: sorted(work.scopeKeys.map(normalizePathScope)),
+    requiredCapabilities: sorted(work.requiredCapabilities),
+    allowedWorkerKinds: work.allowedWorkerKinds ? sorted(work.allowedWorkerKinds) : undefined,
+    expectedEvidence: sorted(work.expectedEvidence),
+    maxAttempts: work.maxAttempts,
+    independentReview: work.independentReview,
+    judgeRequired: work.judgeRequired,
+  });
+}
+
+function sameWorkPlan(left: PlannedWorkItem[], right: PlannedWorkItem[]): boolean {
+  if (left.length !== right.length) return false;
+  const a = left.map(workSignature).sort();
+  const b = right.map(workSignature).sort();
+  return a.every((value, index) => value === b[index]);
 }
