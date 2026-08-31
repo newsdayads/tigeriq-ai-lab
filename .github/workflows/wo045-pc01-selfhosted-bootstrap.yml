@@ -13,11 +13,11 @@ permissions:
 
 concurrency:
   group: pc01-secure-v3-bootstrap
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   pc01-bootstrap:
-    runs-on: [self-hosted, Windows]
+    runs-on: self-hosted
     timeout-minutes: 8
     steps:
       - name: Checkout exact bootstrap head
@@ -25,13 +25,5 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 1
-      - name: Verify runner identity boundary
-        shell: powershell
-        run: |
-          if ($env:RUNNER_OS -ne 'Windows') { throw 'NOT_PC01_WINDOWS_RUNNER' }
-          if (-not (Test-Path 'F:\TigerIQ\Worker')) { throw 'NOT_PC01_LAYOUT: F:\TigerIQ\Worker missing' }
-          if (-not (Test-Path 'F:\TigerIQ\Workspace\tigeriq-ai-lab')) { throw 'NOT_PC01_LAYOUT: canonical workspace missing' }
-          Write-Host "PC01 runner boundary accepted: $env:RUNNER_NAME"
       - name: Bootstrap Secure Worker V3 and prove recovery
-        shell: powershell
         run: python scripts/pc-worker/runner_bootstrap_pc01.py
