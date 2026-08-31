@@ -34,6 +34,9 @@ jobs:
           test -z "${TIGERIQ_ANDROID_STORE_PASSWORD_FILE:-}"
           test -z "${TIGERIQ_ANDROID_KEY_PASSWORD_FILE:-}"
           gradle --no-daemon :app:tigerIqStableSigningStatus | grep TIGERIQ_STABLE_SIGNING_NOT_CONFIGURED
+      - name: Run Android v0.7 unit tests
+        working-directory: apps/android-worker
+        run: gradle --no-daemon :app:testDebugUnitTest
       - name: Build debug and unsigned release APKs
         working-directory: apps/android-worker
         run: gradle --no-daemon :app:assembleDebug :app:assembleRelease

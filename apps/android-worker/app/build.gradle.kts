@@ -20,8 +20,8 @@ android {
         applicationId = "ai.tigeriq.worker"
         minSdk = 26
         targetSdk = 35
-        versionCode = 9
-        versionName = "0.6.2-phone-first"
+        versionCode = 10
+        versionName = "0.7.0-api-first"
     }
 
     if (stableSigningEnabled) {
@@ -56,6 +56,12 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+}
+
+dependencies {
+    implementation("androidx.work:work-runtime:2.9.1")
+    implementation("com.google.firebase:firebase-messaging:24.0.0")
+    testImplementation("junit:junit:4.13.2")
 }
 
 tasks.register("tigerIqStableSigningStatus") {
