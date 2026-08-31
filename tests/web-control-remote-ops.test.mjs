@@ -8,16 +8,35 @@ const ownerAuth = readFileSync(new URL('../api/owner-auth.mjs', import.meta.url)
 const vercel = readFileSync(new URL('../vercel.json', import.meta.url), 'utf8');
 
 describe('WO-045 Web Control remote operations', () => {
-  it('keeps the actually deployed root entry on the secure Web Control including after Owner login', () => {
+  it('keeps the actually deployed root entry on the secure TigerIQ AI Web Control including after Owner login', () => {
     expect(vercel).toContain('"source": "/", "destination": "/command-center.html"');
     expect(deployedEntry).toContain("location.replace('/command-center')");
     expect(deployedEntry).toContain('url=/command-center');
     expect(deployedEntry).not.toContain('githubToken');
     expect(deployedEntry).not.toContain('github_pat_');
-    expect(ui).toContain('TigerIQ · Web Control');
+    expect(ui).toContain('TigerIQ AI · Web Control');
+    expect(ui).toContain('🐯 TigerIQ AI');
+    expect(ui).toContain('Web Control · theo dõi');
     expect(ui).toContain('/api/web-control-status');
     expect(ownerAuth).toContain("return redirect(res, '/?owner=connected')");
     expect(ownerAuth).not.toContain("return redirect(res, '/index.html?owner=connected')");
+  });
+
+  it('renders account identity separately from TigerIQ authorization and keeps login visible before OAuth configuration', () => {
+    expect(ui).toContain('id="accountAvatar"');
+    expect(ui).toContain('id="accountName"');
+    expect(ui).toContain('id="accountRole"');
+    expect(ui).toContain('Google xác thực danh tính · TigerIQ cấp quyền');
+    expect(ui).toContain('<button id="authBtn" class="btn orange">Đăng nhập</button>');
+    expect(ui).toContain("OAuth chưa cấu hình. Nút Đăng nhập vẫn hiển thị");
+    expect(ownerAuth).toContain('identity');
+    expect(ownerAuth).toContain("authority: 'TigerIQ'");
+    expect(ownerAuth).toContain("implementedRoles: ['Owner']");
+    expect(ownerAuth).toContain("requestedRoles: ['Owner', 'Admin', 'Nhân viên', 'Chỉ xem']");
+    expect(ownerAuth).toContain("providerInterface: '06-work-management-rbac-required'");
+    expect(ownerAuth).toContain('googleControlsAuthorization: false');
+    expect(statusApi).toContain("role: ownerAuthenticated ? 'Owner' : null");
+    expect(statusApi).toContain("providerInterface: '06-work-management-rbac-required'");
   });
 
   it('supports Owner-authenticated gated dispatch without browser credentials', () => {
@@ -31,12 +50,22 @@ describe('WO-045 Web Control remote operations', () => {
     expect(ui).not.toContain('TIGERIQ_COMMAND_SECRET');
   });
 
-  it('fails closed unless Owner auth and server-side GitHub write are both ready', () => {
+  it('fails closed unless Owner identity and server-side GitHub write are both ready', () => {
     expect(statusApi).toContain('authenticated: ownerAuthenticated');
     expect(statusApi).toContain('serverWriteConfigured: Boolean(GITHUB_TOKEN)');
     expect(statusApi).toContain('writeReady: Boolean(ownerAuthenticated && GITHUB_TOKEN)');
     expect(ui).toContain("$('dispatchBtn').disabled=!owner.writeReady||busy");
     expect(ui).toContain("$('canaryBtn').disabled=!owner.writeReady||busy");
+    expect(ui).toContain('TigerIQ fail-closed ở Chỉ xem');
+  });
+
+  it('moves workforce into an internal module and refresh into a mobile-friendly floating control', () => {
+    expect(ui).toContain('id="workforceModuleBtn"');
+    expect(ui).toContain('href="/workforce"');
+    expect(ui).toContain('Module · Nhân sự AI & thiết bị');
+    expect(ui).not.toContain('<div class="top-actions"><a class="btn" href="/workforce">Nhân sự AI</a>');
+    expect(ui).toContain('.refresh-fab{position:fixed');
+    expect(ui).toContain('id="refreshBtn" class="btn refresh-fab"');
   });
 
   it('separates PC01 execution evidence from physical-device assumptions', () => {
