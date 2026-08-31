@@ -8,12 +8,23 @@ assert.equal(workFingerprint('Kiểm tra PC01').length, 24);
 
 assert.equal(issueStage({ state: 'open' }, []), 'queued');
 assert.equal(issueStage({ state: 'open' }, [{ body: 'TIGERIQ_JOB_CLAIMED' }]), 'claimed');
-assert.equal(issueStage({ state: 'open' }, [{ body: 'TIGERIQ_JOB_RESULT PASS' }]), 'completed');
-assert.equal(issueStage({ state: 'closed' }, []), 'completed');
+assert.equal(issueStage({ state: 'open' }, [{ body: 'TIGERIQ_JOB_RESULT PASS' }]), 'review_pending');
+assert.equal(issueStage({ state: 'closed' }, []), 'closed_unverified');
 assert.equal(issueStage({ state: 'closed', state_reason: 'not_planned' }, []), 'cancelled');
 assert.equal(issueStage({ state: 'closed', state_reason: 'duplicate' }, []), 'cancelled');
 assert.equal(issueStage({ state: 'open' }, [{ body: 'TIGERIQ_JOB_FAILED reason' }]), 'failed');
-assert.deepEqual(issueEvidenceSummary([{ body: 'TIGERIQ_JOB_CLAIMED\nREVIEW_PASS' }, { body: 'TIGERIQ_JOB_RESULT PASS\nJUDGE_PASS' }]), { claimed: true, result: true, failed: false, reviewPass: true, judgePass: true });
+
+const complete = [{ body: 'TIGERIQ_JOB_CLAIMED' }, { body: 'TIGERIQ_JOB_RESULT\nstatus=ok\nREVIEW_PASS\nJUDGE_PASS' }];
+assert.equal(issueStage({ state: 'open' }, complete), 'completed');
+assert.deepEqual(issueEvidenceSummary(complete), {
+  claimed: true, result: true, resultEvidence: true, failed: false,
+  reviewPass: true, judgePass: true, completionReady: true,
+});
+
+assert.equal(issueStage({ state: 'open' }, [{ body: 'TIGERIQ_JOB_RESULT\nREVIEW_PASS\nJUDGE_PASS' }]), 'evidence_pending');
+assert.equal(issueStage({ state: 'open' }, [{ body: 'TIGERIQ_JOB_RESULT status=ok\nREVIEW_PASS' }]), 'gate_pending');
+assert.equal(issueStage({ state: 'closed' }, [{ body: 'TIGERIQ_JOB_RESULT status=ok\nREVIEW_PASS' }]), 'closed_unverified');
+assert.equal(issueStage({ state: 'closed' }, complete), 'completed');
 
 const retryComments = [
   { body: 'TIGERIQ_JOB_CLAIMED', created_at: '2026-08-30T10:00:00Z' },
@@ -27,7 +38,7 @@ assert.equal(issueEvidenceSummary(retryComments).claimed, true);
 
 const recoveredComments = [
   { body: 'TIGERIQ_JOB_FAILED reason', created_at: '2026-08-30T10:05:00Z' },
-  { body: 'TIGERIQ_JOB_RESULT PASS', created_at: '2026-08-30T10:15:00Z' },
+  { body: 'TIGERIQ_JOB_RESULT status=ok\nREVIEW_PASS\nJUDGE_PASS', created_at: '2026-08-30T10:15:00Z' },
 ];
 assert.equal(issueStage({ state: 'open' }, recoveredComments), 'completed');
 
@@ -43,10 +54,13 @@ const proseOnly = [
   { body: '`TIGERIQ_JOB_CLAIMED` is the marker name, not a claim.' },
 ];
 assert.equal(issueStage({ state: 'open' }, proseOnly), 'queued');
-assert.deepEqual(issueEvidenceSummary(proseOnly), { claimed: false, result: false, failed: false, reviewPass: false, judgePass: false });
+assert.deepEqual(issueEvidenceSummary(proseOnly), {
+  claimed: false, result: false, resultEvidence: false, failed: false,
+  reviewPass: false, judgePass: false, completionReady: false,
+});
 
 assert.equal(issueStage({ state: 'closed', state_reason: 'not_planned' }, retryComments), 'cancelled');
-assert.equal(issueStage({ state: 'closed' }, [{ body: 'TIGERIQ_JOB_FAILED reason' }]), 'completed');
+assert.equal(issueStage({ state: 'closed' }, [{ body: 'TIGERIQ_JOB_FAILED reason' }]), 'failed');
 
 const boardIssue = {
   number: 77,
@@ -63,7 +77,7 @@ const boardSummary = workItemSummary(boardIssue, [{ body: 'TIGERIQ_JOB_CLAIMED\n
 assert.equal(boardSummary.stage, 'claimed');
 assert.equal(boardSummary.ageMinutes, 60);
 assert.equal(boardSummary.stale, true);
-assert.equal(boardSummary.evidence.reviewPass, true);
+assert.equal(boardSummary.evidence.reviewPass, false);
 assert.equal(Object.hasOwn(boardSummary, 'body'), false);
 assert.equal(Object.hasOwn(boardSummary, 'comments'), false);
 
