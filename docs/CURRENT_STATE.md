@@ -7,7 +7,7 @@ TigerIQ AI Lab is being operated as a continuous distributed AI company. Tiger I
 ## Current MAIN baseline
 - Repository: `newsdayads/tigeriq-ai-lab`.
 - Production Web Control: `https://tigeriq-ai-lab.vercel.app`.
-- MAIN before active WO-038 branch: `793899a628be46d0d4e9292804ad674379b2a42e` (WO-037 merge).
+- MAIN before active WO-039 branch: `0d25210488bff58ee9902da203bb2b08697749cd` (WO-038 merge).
 - Canonical PC01 real deployment job remains issue #100. It has no claim/result evidence at this state point; do not create duplicates and do not infer PC01/Tailscale runtime state.
 - Vercel Hobby has the known daily deployment quota condition `api-deployments-free-per-day`; do not retry/spam deployments or pay/upgrade. Non-Vercel work continues.
 
@@ -32,13 +32,9 @@ WO-031 added the executive Workforce/Company Command Center with evidence-based 
 
 WO-036 merged as `68fd2bedea380321c7d7ac77c0b7481fdda20e75`. It provides the single-action PC01 Workforce Controller deployment package and is software-gated `READY_FOR_PC01_TEST` only. Issue #100 is the single canonical physical execution job.
 
-WO-037 PR #102 exact head `b5b91936cc5e372ae85cf85c2832f40cbcd03602` passed CI, Android Worker stable-signing proof, Queue Hygiene and applicable Vercel Verify, then merged as `793899a628be46d0d4e9292804ad674379b2a42e`. It establishes:
-- private stable signing material only under `F:\TigerIQ\Secrets\android-worker-signing`;
-- Gradle path-only signing inputs with fail-closed partial configuration;
-- keyless normal CI plus a disposable CI-only identity proving two consecutive signed builds reuse one certificate;
-- a PC01 provisioning script that creates/pins the real stable certificate without printing secrets.
+WO-037 merged as `793899a628be46d0d4e9292804ad674379b2a42e`. It establishes private stable signing paths, fail-closed Gradle signing configuration, keyless normal CI, disposable CI certificate-continuity proof, and a PC01 stable-key provisioning script. It does not prove the physical stable key exists.
 
-WO-037 merge means `READY_FOR_STABLE_SIGNING_PROVISION`; it does not prove the physical TigerIQ keystore exists or any device uses it.
+WO-038 merged as `0d25210488bff58ee9902da203bb2b08697749cd`. It adds the fail-closed stable-signed Android Worker release bundle: private signing inputs only, `assembleRelease`, `apksigner` certificate verification against the pinned fingerprint, and redacted APK/source/certificate manifest output. It means `READY_FOR_STABLE_SIGNED_RELEASE_BUILD`, not physical build/install PASS.
 
 ## First physical Android evidence — EMP-001
 A real Samsung Z Flip 7 has run TigerIQ Worker. Physical screenshot evidence observed in the owner session confirms only:
@@ -50,27 +46,27 @@ A real Samsung Z Flip 7 has run TigerIQ Worker. Physical screenshot evidence obs
 
 This does not prove Controller heartbeat, task execution or Gemini prompt/result automation.
 
-## Active priority — WO-038
-Build the stable-signed Worker release path without requiring PC01 interaction during unattended work:
-1. consume only WO-037 private signing paths;
-2. build Android `assembleRelease` locally on PC01 when the key exists;
-3. verify APK signature/certificate with `apksigner` against the pinned SHA-256 fingerprint;
-4. reject any identity mismatch;
-5. emit only the APK plus a redacted SHA-256/certificate/source manifest under `F:\TigerIQ\Releases\android-worker\<version>`;
-6. never copy passwords or keystore material into release output.
+## Active priority — WO-039
+Repository-prove the generic EMP-001 Controller protocol as one deterministic E2E flow using a real P-256 pairing proof and the exact credential issued by pairing:
+1. pair Android identity;
+2. self-enroll EMP-001;
+3. send authenticated heartbeat;
+4. enqueue one bounded provider-independent safe task;
+5. lease it using `task:read`;
+6. publish structured result/evidence using `task:result`;
+7. verify completed Workforce status projection.
 
-Merge of WO-038 will mean `READY_FOR_STABLE_SIGNED_RELEASE_BUILD`, not physical build/install PASS.
+This proof is deliberately provider-independent. It must never be reported as real PC01, real-device pairing, stable-signed install or Gemini execution evidence.
 
 ## Physical/next gates
 When physical access resumes, the intended evidence sequence is:
 1. execute canonical #100 and require real private listener/status evidence from PC01;
 2. provision the stable Android signing identity once if absent;
 3. build the stable-signed Worker release through the WO-038 bundle;
-4. install/update the pilot device(s) and verify the installed certificate/application continuity;
+4. install/update the pilot device(s) and verify installed certificate/application continuity;
 5. pair EMP-001 to Controller and require live heartbeat/status evidence;
-6. lease one safe task -> return structured result/evidence -> independent review.
-
-A narrowly scoped Gemini adapter remains after the generic task/evidence path is proven. Never claim Gemini prompt/result automation before real-device evidence and provider-policy checks.
+6. lease one safe generic task -> return structured result/evidence -> independent review;
+7. only then evaluate a narrowly scoped Gemini adapter under provider policy and real-device gates.
 
 ## External/deferred boundaries
 - PC01/Tailscale live state must always be re-verified; repository software/CI is not runtime proof.
