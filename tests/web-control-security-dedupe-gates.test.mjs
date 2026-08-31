@@ -39,6 +39,48 @@ function configureEnv() {
   });
 }
 
+function installGitHubMock({ issueDelayMs = 0 } = {}) {
+  const issues = [];
+  const comments = new Map([[58, []]]);
+  const labels = new Map();
+  let issueWrites = 0;
+  const canary = { number: 58, title: 'PC01 canonical canary', state: 'open', state_reason: null, body: 'TIGERIQ_COMMAND_V1', updated_at: '2026-08-31T05:00:00Z', html_url: 'https://github.com/newsdayads/tigeriq-ai-lab/issues/58' };
+  vi.stubGlobal('fetch', async (input, init = {}) => {
+    const url = new URL(String(input));
+    const method = String(init.method || 'GET').toUpperCase();
+    const base = '/repos/newsdayads/tigeriq-ai-lab';
+    if (url.pathname === base && method === 'GET') return response({ full_name: 'newsdayads/tigeriq-ai-lab' });
+    if (url.pathname === `${base}/labels` && method === 'POST') {
+      const payload = JSON.parse(String(init.body || '{}'));
+      if (labels.has(payload.name)) return response({ message: 'Validation Failed' }, 422);
+      const label = { name: payload.name, description: payload.description || '' };
+      labels.set(payload.name, label);
+      return response(label, 201);
+    }
+    if (url.pathname.startsWith(`${base}/labels/`)) {
+      const name = decodeURIComponent(url.pathname.slice(`${base}/labels/`.length));
+      if (method === 'GET') return labels.has(name) ? response(labels.get(name)) : response({ message: 'not found' }, 404);
+      if (method === 'DELETE') { labels.delete(name); return new Response('', { status: 204 }); }
+    }
+    if (url.pathname === `${base}/issues` && method === 'GET') return response(url.searchParams.get('state') === 'open' ? issues.filter((x) => x.state === 'open') : issues);
+    if (url.pathname === `${base}/issues` && method === 'POST') {
+      issueWrites += 1;
+      if (issueDelayMs) await new Promise((resolve) => setTimeout(resolve, issueDelayMs));
+      const payload = JSON.parse(String(init.body || '{}'));
+      const issue = { number: 900 + issueWrites, title: payload.title, body: payload.body, state: 'open', state_reason: null, updated_at: new Date().toISOString(), html_url: `https://github.com/newsdayads/tigeriq-ai-lab/issues/${900 + issueWrites}` };
+      issues.unshift(issue); comments.set(issue.number, []); return response(issue, 201);
+    }
+    if (url.pathname === `${base}/issues/58` && method === 'GET') return response(canary);
+    if (url.pathname === `${base}/issues/58/comments` && method === 'GET') return response(comments.get(58));
+    const issueMatch = url.pathname.match(new RegExp(`^${base}/issues/(\\d+)$`));
+    if (issueMatch && method === 'GET') { const number = Number(issueMatch[1]); const hit = issues.find((x) => x.number === number); return response(hit || { message: 'not found' }, hit ? 200 : 404); }
+    const commentsMatch = url.pathname.match(new RegExp(`^${base}/issues/(\\d+)/comments$`));
+    if (commentsMatch && method === 'GET') return response(comments.get(Number(commentsMatch[1])) || []);
+    return response({ message: `unhandled ${method} ${url.pathname}` }, 404);
+  });
+  return { issues, labels, getIssueWrites: () => issueWrites };
+}
+
 describe('Web Control security, dedupe and completion gates', () => {
   afterEach(() => { vi.unstubAllGlobals(); vi.resetModules(); });
 
@@ -78,90 +120,102 @@ describe('Web Control security, dedupe and completion gates', () => {
     } finally { restoreEnv(saved); }
   });
 
-  it('blocks all unauthenticated browser writes, dedupes sequential/concurrent Work Orders, and reuses canonical canary', async () => {
+  it('blocks unauthenticated browser writes, dedupes sequential/same-process work and reuses canonical canary', async () => {
     const saved = saveEnv(); configureEnv();
-    const issues = []; const comments = new Map([[58, []]]); let issueWrites = 0;
-    const canary = { number: 58, title: 'PC01 canonical canary', state: 'open', state_reason: null, body: 'TIGERIQ_COMMAND_V1', updated_at: '2026-08-31T05:00:00Z', html_url: 'https://github.com/newsdayads/tigeriq-ai-lab/issues/58' };
-    vi.stubGlobal('fetch', async (input, init = {}) => {
-      const url = new URL(String(input)); const method = String(init.method || 'GET').toUpperCase(); const base = '/repos/newsdayads/tigeriq-ai-lab';
-      if (url.pathname === base && method === 'GET') return response({ full_name: 'newsdayads/tigeriq-ai-lab' });
-      if (url.pathname === `${base}/issues` && method === 'GET') return response(url.searchParams.get('state') === 'open' ? issues.filter((x) => x.state === 'open') : issues);
-      if (url.pathname === `${base}/issues` && method === 'POST') {
-        issueWrites += 1; const payload = JSON.parse(String(init.body || '{}'));
-        const issue = { number: 900 + issueWrites, title: payload.title, body: payload.body, state: 'open', state_reason: null, updated_at: new Date().toISOString(), html_url: `https://github.com/newsdayads/tigeriq-ai-lab/issues/${900 + issueWrites}` };
-        issues.unshift(issue); comments.set(issue.number, []); return response(issue, 201);
-      }
-      if (url.pathname === `${base}/issues/58` && method === 'GET') return response(canary);
-      if (url.pathname === `${base}/issues/58/comments` && method === 'GET') return response(comments.get(58));
-      const issueMatch = url.pathname.match(new RegExp(`^${base}/issues/(\\d+)$`));
-      if (issueMatch && method === 'GET') { const number = Number(issueMatch[1]); const hit = issues.find((x) => x.number === number); return response(hit || { message: 'not found' }, hit ? 200 : 404); }
-      const commentsMatch = url.pathname.match(new RegExp(`^${base}/issues/(\\d+)/comments$`));
-      if (commentsMatch && method === 'GET') return response(comments.get(Number(commentsMatch[1])) || []);
-      return response({ message: `unhandled ${method} ${url.pathname}` }, 404);
-    });
+    const mock = installGitHubMock();
     try {
       vi.resetModules(); const { default: handler } = await import('../api/control.mjs');
       const browserHeaders = { origin: 'https://tigeriq.example', 'sec-fetch-site': 'same-origin' };
       const tokenAttempt = makeRes();
       await handler(postReq({ operation: 'work-order', priority: 'P0', instruction: 'Do one deterministic browser write test.' }, { ...browserHeaders, 'x-tigeriq-github-token': 'attacker-client-token' }), tokenAttempt);
-      expect(tokenAttempt.statusCode).toBe(401); expect(issueWrites).toBe(0);
+      expect(tokenAttempt.statusCode).toBe(401); expect(mock.getIssueWrites()).toBe(0);
       const secretAttempt = makeRes();
       await handler(postReq({ operation: 'work-order', priority: 'P0', instruction: 'Do one deterministic browser write test.' }, { ...browserHeaders, 'x-tigeriq-secret': process.env.TIGERIQ_COMMAND_SECRET }), secretAttempt);
-      expect(secretAttempt.statusCode).toBe(401); expect(issueWrites).toBe(0);
+      expect(secretAttempt.statusCode).toBe(401); expect(mock.getIssueWrites()).toBe(0);
       const cookie = ownerCookie(process.env.TIGERIQ_OWNER_SESSION_SECRET); const ownerHeaders = { ...browserHeaders, cookie };
       const first = makeRes();
       await handler(postReq({ operation: 'work-order', priority: 'P0', instruction: 'Do one deterministic browser write test.' }, ownerHeaders), first);
-      expect(first.statusCode).toBe(201); expect(issueWrites).toBe(1); const firstBody = JSON.parse(first.body);
+      expect(first.statusCode).toBe(201); expect(mock.getIssueWrites()).toBe(1); const firstBody = JSON.parse(first.body);
       const duplicate = makeRes();
       await handler(postReq({ operation: 'work-order', priority: 'P0', instruction: '  do ONE deterministic browser write test.  ' }, ownerHeaders), duplicate);
-      expect(duplicate.statusCode).toBe(200); expect(JSON.parse(duplicate.body).deduplicated).toBe(true); expect(JSON.parse(duplicate.body).issue.number).toBe(firstBody.issue.number); expect(issueWrites).toBe(1);
+      expect(duplicate.statusCode).toBe(200); expect(JSON.parse(duplicate.body).deduplicated).toBe(true); expect(JSON.parse(duplicate.body).issue.number).toBe(firstBody.issue.number); expect(mock.getIssueWrites()).toBe(1);
       const concurrentA = makeRes(); const concurrentB = makeRes();
       await Promise.all([
         handler(postReq({ operation: 'work-order', priority: 'P1', instruction: 'Concurrent same fingerprint probe.' }, ownerHeaders), concurrentA),
         handler(postReq({ operation: 'work-order', priority: 'P1', instruction: ' concurrent SAME fingerprint probe. ' }, ownerHeaders), concurrentB),
       ]);
       expect([concurrentA.statusCode, concurrentB.statusCode].sort()).toEqual([200, 201]);
-      expect(JSON.parse(concurrentA.body).issue.number).toBe(JSON.parse(concurrentB.body).issue.number); expect(issueWrites).toBe(2);
+      expect(JSON.parse(concurrentA.body).issue.number).toBe(JSON.parse(concurrentB.body).issue.number); expect(mock.getIssueWrites()).toBe(2);
       for (let i = 0; i < 2; i += 1) {
         const canaryRes = makeRes(); await handler(postReq({ operation: 'canary' }, ownerHeaders), canaryRes);
         expect(canaryRes.statusCode).toBe(200); const body = JSON.parse(canaryRes.body);
         expect(body.deduplicated).toBe(true); expect(body.canonical).toBe(true); expect(body.issue.number).toBe(58);
       }
-      expect(issueWrites).toBe(2);
+      expect(mock.getIssueWrites()).toBe(2);
+      expect(mock.labels.size).toBe(0);
     } finally { restoreEnv(saved); }
   });
 
-  it('requires trusted, separate, ordered RESULT evidence then REVIEW_PASS then JUDGE_PASS before completed', async () => {
+  it('dedupes a race across two isolated handler module instances using the GitHub distributed lock', async () => {
+    const saved = saveEnv(); configureEnv();
+    const mock = installGitHubMock({ issueDelayMs: 60 });
+    try {
+      const browserHeaders = { origin: 'https://tigeriq.example', 'sec-fetch-site': 'same-origin', cookie: ownerCookie(process.env.TIGERIQ_OWNER_SESSION_SECRET) };
+      vi.resetModules(); const { default: handlerA } = await import('../api/control.mjs');
+      vi.resetModules(); const { default: handlerB } = await import('../api/control.mjs');
+      const a = makeRes(); const b = makeRes();
+      await Promise.all([
+        handlerA(postReq({ operation: 'work-order', priority: 'P1', instruction: 'Cross instance fingerprint race.' }, browserHeaders), a),
+        handlerB(postReq({ operation: 'work-order', priority: 'P1', instruction: ' cross INSTANCE fingerprint race. ' }, browserHeaders), b),
+      ]);
+      expect([a.statusCode, b.statusCode].sort()).toEqual([200, 201]);
+      expect(JSON.parse(a.body).issue.number).toBe(JSON.parse(b.body).issue.number);
+      expect(mock.getIssueWrites()).toBe(1);
+      expect(mock.labels.size).toBe(0);
+    } finally { restoreEnv(saved); }
+  });
+
+  it('requires one typed evidence ref, trusted separate ordered REVIEW/JUDGE, and the same ref throughout', async () => {
     const { issueStage, issueEvidenceSummary } = await import('../api/control.mjs');
     const closed = { state: 'closed', state_reason: 'completed' };
+    const ref = `sha256:${'a'.repeat(64)}`;
+    const otherRef = `sha256:${'b'.repeat(64)}`;
     expect(issueStage(closed, [])).toBe('closed_unverified');
     expect(issueStage(closed, [{ body: 'TIGERIQ_JOB_RESULT' }])).toBe('closed_unverified');
-    expect(issueStage(closed, [{ body: 'TIGERIQ_JOB_RESULT status=ok' }])).toBe('closed_unverified');
-    expect(issueStage(closed, [{ body: 'TIGERIQ_JOB_RESULT status=ok\nREVIEW_PASS\nJUDGE_PASS' }])).toBe('closed_unverified');
+    expect(issueStage(closed, [{ body: 'TIGERIQ_JOB_RESULT\nlooks good' }])).toBe('closed_unverified');
+    expect(issueStage(closed, [{ body: `TIGERIQ_JOB_RESULT\nEVIDENCE_REF ${ref}` }, gate(2, 'REVIEW_PASS\nreviewed it', '2026-08-31T06:01:00Z'), gate(3, 'JUDGE_PASS\nlooks valid', '2026-08-31T06:02:00Z')])).toBe('closed_unverified');
 
     const complete = [
-      { id: 1, body: 'TIGERIQ_JOB_RESULT\nartifact=sha256:abc', created_at: '2026-08-31T06:00:00Z' },
-      gate(2, 'REVIEW_PASS\nreviewed artifact=sha256:abc', '2026-08-31T06:01:00Z'),
-      gate(3, 'JUDGE_PASS\nverified review and artifact', '2026-08-31T06:02:00Z'),
+      { id: 1, body: `TIGERIQ_JOB_RESULT\nEVIDENCE_REF ${ref}`, created_at: '2026-08-31T06:00:00Z' },
+      gate(2, `REVIEW_PASS\nEVIDENCE_REF ${ref}`, '2026-08-31T06:01:00Z'),
+      gate(3, `JUDGE_PASS\nEVIDENCE_REF ${ref}`, '2026-08-31T06:02:00Z'),
     ];
     expect(issueStage(closed, complete)).toBe('completed');
     expect(issueEvidenceSummary(complete)).toEqual(expect.objectContaining({
-      result: true, resultEvidence: true, reviewPass: true, judgePass: true,
+      result: true, resultEvidence: true, resultEvidenceRef: ref, reviewPass: true, judgePass: true,
       trustedReviewApp: 'chatgpt-codex-connector', trustedJudgeApp: 'chatgpt-codex-connector', completionReady: true,
     }));
 
+    const mismatched = [
+      { id: 4, body: `TIGERIQ_JOB_RESULT\nEVIDENCE_REF ${ref}`, created_at: '2026-08-31T06:00:00Z' },
+      gate(5, `REVIEW_PASS\nEVIDENCE_REF ${otherRef}`, '2026-08-31T06:01:00Z'),
+      gate(6, `JUDGE_PASS\nEVIDENCE_REF ${otherRef}`, '2026-08-31T06:02:00Z'),
+    ];
+    expect(issueStage(closed, mismatched)).toBe('closed_unverified');
+    expect(issueEvidenceSummary(mismatched).completionReady).toBe(false);
+
     const untrusted = [
-      { id: 4, body: 'TIGERIQ_JOB_RESULT artifact=sha256:abc', created_at: '2026-08-31T06:00:00Z' },
-      { id: 5, body: 'REVIEW_PASS\nself-reviewed', created_at: '2026-08-31T06:01:00Z' },
-      { id: 6, body: 'JUDGE_PASS\nself-judged', created_at: '2026-08-31T06:02:00Z' },
+      { id: 7, body: `TIGERIQ_JOB_RESULT\nEVIDENCE_REF ${ref}`, created_at: '2026-08-31T06:00:00Z' },
+      { id: 8, body: `REVIEW_PASS\nEVIDENCE_REF ${ref}`, created_at: '2026-08-31T06:01:00Z' },
+      { id: 9, body: `JUDGE_PASS\nEVIDENCE_REF ${ref}`, created_at: '2026-08-31T06:02:00Z' },
     ];
     expect(issueStage(closed, untrusted)).toBe('closed_unverified');
     expect(issueEvidenceSummary(untrusted).completionReady).toBe(false);
 
     const wrongOrder = [
-      gate(7, 'REVIEW_PASS\nreviewed early', '2026-08-31T05:59:00Z'),
-      gate(8, 'JUDGE_PASS\njudged early', '2026-08-31T05:59:30Z'),
-      { id: 9, body: 'TIGERIQ_JOB_RESULT artifact=sha256:abc', created_at: '2026-08-31T06:00:00Z' },
+      gate(10, `REVIEW_PASS\nEVIDENCE_REF ${ref}`, '2026-08-31T05:59:00Z'),
+      gate(11, `JUDGE_PASS\nEVIDENCE_REF ${ref}`, '2026-08-31T05:59:30Z'),
+      { id: 12, body: `TIGERIQ_JOB_RESULT\nEVIDENCE_REF ${ref}`, created_at: '2026-08-31T06:00:00Z' },
     ];
     expect(issueStage(closed, wrongOrder)).toBe('closed_unverified');
     expect(issueEvidenceSummary(wrongOrder).completionReady).toBe(false);
