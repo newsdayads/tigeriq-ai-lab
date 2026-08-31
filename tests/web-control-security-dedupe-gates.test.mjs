@@ -94,7 +94,7 @@ describe('Web Control security, dedupe and completion gates', () => {
     }
   });
 
-  it('never accepts a browser GitHub token as write authorization, dedupes Work Orders, and reuses canonical canary', async () => {
+  it('blocks all unauthenticated browser writes, dedupes sequential/concurrent Work Orders, and reuses canonical canary', async () => {
     const saved = saveEnv();
     configureEnv();
 
@@ -136,39 +136,57 @@ describe('Web Control security, dedupe and completion gates', () => {
     try {
       vi.resetModules();
       const { default: handler } = await import('../api/control.mjs');
-      const untrusted = makeRes();
+      const browserHeaders = { origin: 'https://tigeriq.example', 'sec-fetch-site': 'same-origin' };
+
+      const tokenAttempt = makeRes();
       await handler(postReq({ operation: 'work-order', priority: 'P0', instruction: 'Do one deterministic browser write test.' }, {
-        origin: 'https://tigeriq.example',
-        'sec-fetch-site': 'same-origin',
-        'x-tigeriq-github-token': 'attacker-client-token',
-      }), untrusted);
-      expect(untrusted.statusCode).toBe(401);
+        ...browserHeaders, 'x-tigeriq-github-token': 'attacker-client-token',
+      }), tokenAttempt);
+      expect(tokenAttempt.statusCode).toBe(401);
+      expect(issueWrites).toBe(0);
+
+      const secretAttempt = makeRes();
+      await handler(postReq({ operation: 'work-order', priority: 'P0', instruction: 'Do one deterministic browser write test.' }, {
+        ...browserHeaders, 'x-tigeriq-secret': process.env.TIGERIQ_COMMAND_SECRET,
+      }), secretAttempt);
+      expect(secretAttempt.statusCode).toBe(401);
       expect(issueWrites).toBe(0);
 
       const cookie = ownerCookie(process.env.TIGERIQ_OWNER_SESSION_SECRET);
+      const ownerHeaders = { ...browserHeaders, cookie };
       const first = makeRes();
-      await handler(postReq({ operation: 'work-order', priority: 'P0', instruction: 'Do one deterministic browser write test.' }, { cookie, origin: 'https://tigeriq.example', 'sec-fetch-site': 'same-origin' }), first);
+      await handler(postReq({ operation: 'work-order', priority: 'P0', instruction: 'Do one deterministic browser write test.' }, ownerHeaders), first);
       expect(first.statusCode).toBe(201);
       expect(issueWrites).toBe(1);
       const firstBody = JSON.parse(first.body);
 
       const duplicate = makeRes();
-      await handler(postReq({ operation: 'work-order', priority: 'P0', instruction: '  do ONE deterministic browser write test.  ' }, { cookie, origin: 'https://tigeriq.example', 'sec-fetch-site': 'same-origin' }), duplicate);
+      await handler(postReq({ operation: 'work-order', priority: 'P0', instruction: '  do ONE deterministic browser write test.  ' }, ownerHeaders), duplicate);
       expect(duplicate.statusCode).toBe(200);
       expect(JSON.parse(duplicate.body).deduplicated).toBe(true);
       expect(JSON.parse(duplicate.body).issue.number).toBe(firstBody.issue.number);
       expect(issueWrites).toBe(1);
 
+      const concurrentA = makeRes();
+      const concurrentB = makeRes();
+      await Promise.all([
+        handler(postReq({ operation: 'work-order', priority: 'P1', instruction: 'Concurrent same fingerprint probe.' }, ownerHeaders), concurrentA),
+        handler(postReq({ operation: 'work-order', priority: 'P1', instruction: ' concurrent SAME fingerprint probe. ' }, ownerHeaders), concurrentB),
+      ]);
+      expect([concurrentA.statusCode, concurrentB.statusCode].sort()).toEqual([200, 201]);
+      expect(JSON.parse(concurrentA.body).issue.number).toBe(JSON.parse(concurrentB.body).issue.number);
+      expect(issueWrites).toBe(2);
+
       for (let i = 0; i < 2; i += 1) {
         const canaryRes = makeRes();
-        await handler(postReq({ operation: 'canary' }, { cookie, origin: 'https://tigeriq.example', 'sec-fetch-site': 'same-origin' }), canaryRes);
+        await handler(postReq({ operation: 'canary' }, ownerHeaders), canaryRes);
         expect(canaryRes.statusCode).toBe(200);
         const body = JSON.parse(canaryRes.body);
         expect(body.deduplicated).toBe(true);
         expect(body.canonical).toBe(true);
         expect(body.issue.number).toBe(58);
       }
-      expect(issueWrites).toBe(1);
+      expect(issueWrites).toBe(2);
     } finally {
       restoreEnv(saved);
     }
