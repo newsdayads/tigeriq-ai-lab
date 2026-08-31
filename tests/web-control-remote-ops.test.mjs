@@ -41,11 +41,24 @@ describe('WO-045 Web Control remote operations', () => {
 
   it('separates PC01 execution evidence from physical-device assumptions', () => {
     expect(statusApi).toContain("physicalState: 'unknown'");
-    expect(statusApi).toContain('chưa có CLAIM/RESULT');
     expect(ui).toContain('Trạng thái vật lý PC01');
     expect(ui).toContain('KHÔNG SUY ĐOÁN');
     expect(ui).toContain('REVIEW PASS');
     expect(ui).toContain('JUDGE PASS');
+  });
+
+  it('renders lifecycle truthfully and never says a canonical canary was newly created', () => {
+    expect(ui).toContain("closed_unverified:'ĐÓNG NHƯNG CHƯA XÁC MINH'");
+    expect(ui).toContain("evidence_pending:'CHỜ BẰNG CHỨNG'");
+    expect(ui).toContain("review_pending:'CHỜ REVIEW'");
+    expect(ui).toContain("gate_pending:'CHỜ GATE'");
+    expect(ui).toContain("completed:'HOÀN TẤT ĐÃ XÁC MINH'");
+    expect(ui).toContain('RESULT · THIẾU EVIDENCE');
+    expect(ui).toContain('RESULT + EVIDENCE');
+    expect(ui).toContain('DONE VERIFIED');
+    expect(ui).toContain('Đã dùng canary chuẩn #');
+    expect(ui).toContain('không tạo Issue mới');
+    expect(ui).not.toContain("'Đã tạo canary #'");
   });
 
   it('uses server-side GitHub credentials only for read/write plumbing and never returns them', () => {
