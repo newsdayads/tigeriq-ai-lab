@@ -7,6 +7,10 @@ const COMMAND_SECRET = process.env.TIGERIQ_COMMAND_SECRET || '';
 const GITHUB_TOKEN = process.env.TIGERIQ_GITHUB_TOKEN || '';
 const CANARY_ISSUE = Number(process.env.TIGERIQ_PC01_CANARY_ISSUE || '58');
 const ALLOWED_PRIORITIES = new Set(['P0', 'P1', 'P2']);
+const TRUSTED_GATE_APP_SLUGS = new Set(
+  String(process.env.TIGERIQ_REVIEW_GATE_APP_SLUGS || 'chatgpt-codex-connector')
+    .split(',').map((value) => value.trim()).filter(Boolean),
+);
 const workCreationLocks = new Map();
 
 function json(res, status, body) {
@@ -134,6 +138,16 @@ function isAfterOrSame(a, b) {
   return eventSort(a, b) >= 0;
 }
 
+function trustedGateApp(comment) {
+  const slug = String(comment?.performed_via_github_app?.slug || '').trim();
+  return slug && TRUSTED_GATE_APP_SLUGS.has(slug) ? slug : null;
+}
+
+function meaningfulEvidenceLine(line) {
+  if (!line || GATE_MARKERS.has(line) || lifecycleMarker(line) || /^```/.test(line)) return false;
+  return line.length >= 3;
+}
+
 export function lifecycleEvents(comments = []) {
   const rows = Array.isArray(comments) ? comments : [];
   const events = [];
@@ -158,12 +172,23 @@ function gateEvents(comments = []) {
   const rows = Array.isArray(comments) ? comments : [];
   const events = [];
   rows.forEach((comment, commentIndex) => {
-    const body = typeof comment === 'string' ? comment : String(comment?.body || '');
-    const createdAt = typeof comment === 'string' ? null : (comment?.created_at || comment?.createdAt || null);
+    if (!comment || typeof comment === 'string') return;
+    const appSlug = trustedGateApp(comment);
+    const commentId = Number(comment?.id || 0);
+    if (!appSlug || !Number.isInteger(commentId) || commentId <= 0) return;
+    const body = String(comment?.body || '');
+    const lines = exactMarkerLines(body);
+    const createdAt = comment?.created_at || comment?.createdAt || null;
     const timestamp = createdAt ? Date.parse(createdAt) : Number.NaN;
-    exactMarkerLines(body).forEach((line, lineIndex) => {
+    lines.forEach((line, lineIndex) => {
       if (!GATE_MARKERS.has(line)) return;
-      events.push({ marker: line, createdAt, timestamp: Number.isFinite(timestamp) ? timestamp : null, commentIndex, lineIndex });
+      const evidence = lines.some((candidate, index) => index !== lineIndex && meaningfulEvidenceLine(candidate));
+      if (!evidence) return;
+      events.push({
+        marker: line, appSlug, commentId, createdAt,
+        timestamp: Number.isFinite(timestamp) ? timestamp : null,
+        commentIndex, lineIndex,
+      });
     });
   });
   return events.sort(eventSort);
@@ -176,13 +201,7 @@ function resultHasEvidence(comments, resultEvent) {
   if (inline) return true;
   const comment = (Array.isArray(comments) ? comments : [])[resultEvent.commentIndex];
   const body = typeof comment === 'string' ? comment : String(comment?.body || '');
-  return exactMarkerLines(body).some((line, index) => {
-    if (index === resultEvent.lineIndex) return false;
-    if (GATE_MARKERS.has(line)) return false;
-    if (lifecycleMarker(line)) return false;
-    if (/^```/.test(line)) return false;
-    return line.length > 0;
-  });
+  return exactMarkerLines(body).some((line, index) => index !== resultEvent.lineIndex && meaningfulEvidenceLine(line));
 }
 
 export function latestLifecycleStage(comments = []) {
@@ -196,8 +215,10 @@ export function issueEvidenceSummary(comments = []) {
   const gates = gateEvents(rows);
   const stages = new Set(events.map((event) => event.stage));
   const latestResult = [...events].reverse().find((event) => event.stage === 'completed') || null;
-  const reviewEvent = latestResult ? gates.find((event) => event.marker === 'REVIEW_PASS' && isAfterOrSame(event, latestResult)) || null : null;
-  const judgeEvent = reviewEvent ? gates.find((event) => event.marker === 'JUDGE_PASS' && isAfterOrSame(event, reviewEvent)) || null : null;
+  const reviewEvent = latestResult ? gates.find((event) => event.marker === 'REVIEW_PASS'
+    && event.commentIndex !== latestResult.commentIndex && isAfterOrSame(event, latestResult)) || null : null;
+  const judgeEvent = reviewEvent ? gates.find((event) => event.marker === 'JUDGE_PASS'
+    && event.commentIndex !== reviewEvent.commentIndex && isAfterOrSame(event, reviewEvent)) || null : null;
   const resultEvidence = resultHasEvidence(rows, latestResult);
   const latestStage = events.length ? events[events.length - 1].stage : null;
   const reviewPass = Boolean(reviewEvent);
@@ -209,6 +230,8 @@ export function issueEvidenceSummary(comments = []) {
     failed: stages.has('failed'),
     reviewPass,
     judgePass,
+    trustedReviewApp: reviewEvent?.appSlug || null,
+    trustedJudgeApp: judgeEvent?.appSlug || null,
     completionReady: Boolean(latestStage === 'completed' && latestResult && resultEvidence && reviewPass && judgePass),
   };
 }
@@ -291,7 +314,8 @@ async function statusSnapshot(token = '') {
       serverWriteConfigured: Boolean(GITHUB_TOKEN), clientTokenSupported: false,
       browserWriteRequiresOwner: true, chiefOfStaff: 'gpt', workOrderDedupe: true,
       canaryDedupe: true, workOrderStatusTracking: true, workOrderLifecycleEvidence: true,
-      completionRequiresResultEvidenceReviewGate: true, explicitDispatch: true, workBoard: true,
+      completionRequiresResultEvidenceReviewGate: true, trustedGateApps: [...TRUSTED_GATE_APP_SLUGS],
+      explicitDispatch: true, workBoard: true,
     },
     execution: { pc01, openclaw: 'unknown', ollama: 'unknown', canaryIssue: CANARY_ISSUE, canaryState: canary?.state || 'unknown' },
     queue: { count: jobs.length, jobs },
@@ -320,7 +344,10 @@ async function workBoard(token = '') {
   const count = (stage) => items.filter((item) => item.stage === stage).length;
   return {
     ok: true, generatedAt: new Date(nowMs).toISOString(),
-    policy: { staleMinutes: 30, issueLimit: 20, commentLimit: 100, mutation: false, completionEvidenceGated: true },
+    policy: {
+      staleMinutes: 30, issueLimit: 20, commentLimit: 100, mutation: false,
+      completionEvidenceGated: true, trustedGateApps: [...TRUSTED_GATE_APP_SLUGS],
+    },
     summary: {
       total: items.length,
       active: items.filter((item) => !['completed', 'failed', 'cancelled'].includes(item.stage)).length,
