@@ -12,6 +12,8 @@ const TRUSTED_GATE_APP_SLUGS = new Set(
     .split(',').map((value) => value.trim()).filter(Boolean),
 );
 const workCreationLocks = new Map();
+const WORK_LOCK_PREFIX = 'tigeriq-work-lock-';
+const WORK_LOCK_TTL_MS = 120_000;
 
 function json(res, status, body) {
   res.statusCode = status;
@@ -143,9 +145,14 @@ function trustedGateApp(comment) {
   return slug && TRUSTED_GATE_APP_SLUGS.has(slug) ? slug : null;
 }
 
-function meaningfulEvidenceLine(line) {
-  if (!line || GATE_MARKERS.has(line) || lifecycleMarker(line) || /^```/.test(line)) return false;
-  return line.length >= 3;
+function parseEvidenceRef(line) {
+  const match = String(line || '').trim().match(/^EVIDENCE_REF\s+(github:(?:issue|pr):\d+|commit:[0-9a-f]{40}|sha256:[0-9a-f]{64}|url:https:\/\/\S+|evidence:[A-Za-z0-9._\/-]{6,128})$/i);
+  return match ? match[1].toLowerCase() : null;
+}
+
+function evidenceRefFromResultLine(line, marker) {
+  const inline = String(line || '').slice(String(marker || '').length).trim();
+  return inline ? parseEvidenceRef(inline) : null;
 }
 
 export function lifecycleEvents(comments = []) {
@@ -180,12 +187,11 @@ function gateEvents(comments = []) {
     const lines = exactMarkerLines(body);
     const createdAt = comment?.created_at || comment?.createdAt || null;
     const timestamp = createdAt ? Date.parse(createdAt) : Number.NaN;
+    const evidenceRefs = [...new Set(lines.map(parseEvidenceRef).filter(Boolean))];
     lines.forEach((line, lineIndex) => {
-      if (!GATE_MARKERS.has(line)) return;
-      const evidence = lines.some((candidate, index) => index !== lineIndex && meaningfulEvidenceLine(candidate));
-      if (!evidence) return;
+      if (!GATE_MARKERS.has(line) || evidenceRefs.length !== 1) return;
       events.push({
-        marker: line, appSlug, commentId, createdAt,
+        marker: line, appSlug, commentId, createdAt, evidenceRef: evidenceRefs[0],
         timestamp: Number.isFinite(timestamp) ? timestamp : null,
         commentIndex, lineIndex,
       });
@@ -194,14 +200,16 @@ function gateEvents(comments = []) {
   return events.sort(eventSort);
 }
 
-function resultHasEvidence(comments, resultEvent) {
-  if (!resultEvent) return false;
-  const marker = resultEvent.marker;
-  const inline = String(resultEvent.line || '').slice(marker.length).trim();
-  if (inline) return true;
+function resultEvidenceRef(comments, resultEvent) {
+  if (!resultEvent) return null;
+  const inline = evidenceRefFromResultLine(resultEvent.line, resultEvent.marker);
+  if (inline) return inline;
   const comment = (Array.isArray(comments) ? comments : [])[resultEvent.commentIndex];
   const body = typeof comment === 'string' ? comment : String(comment?.body || '');
-  return exactMarkerLines(body).some((line, index) => index !== resultEvent.lineIndex && meaningfulEvidenceLine(line));
+  const refs = [...new Set(exactMarkerLines(body)
+    .filter((line, index) => index !== resultEvent.lineIndex)
+    .map(parseEvidenceRef).filter(Boolean))];
+  return refs.length === 1 ? refs[0] : null;
 }
 
 export function latestLifecycleStage(comments = []) {
@@ -215,24 +223,25 @@ export function issueEvidenceSummary(comments = []) {
   const gates = gateEvents(rows);
   const stages = new Set(events.map((event) => event.stage));
   const latestResult = [...events].reverse().find((event) => event.stage === 'completed') || null;
-  const reviewEvent = latestResult ? gates.find((event) => event.marker === 'REVIEW_PASS'
-    && event.commentIndex !== latestResult.commentIndex && isAfterOrSame(event, latestResult)) || null : null;
+  const evidenceRef = resultEvidenceRef(rows, latestResult);
+  const reviewEvent = latestResult && evidenceRef ? gates.find((event) => event.marker === 'REVIEW_PASS'
+    && event.evidenceRef === evidenceRef && event.commentIndex !== latestResult.commentIndex && isAfterOrSame(event, latestResult)) || null : null;
   const judgeEvent = reviewEvent ? gates.find((event) => event.marker === 'JUDGE_PASS'
-    && event.commentIndex !== reviewEvent.commentIndex && isAfterOrSame(event, reviewEvent)) || null : null;
-  const resultEvidence = resultHasEvidence(rows, latestResult);
+    && event.evidenceRef === evidenceRef && event.commentIndex !== reviewEvent.commentIndex && isAfterOrSame(event, reviewEvent)) || null : null;
   const latestStage = events.length ? events[events.length - 1].stage : null;
   const reviewPass = Boolean(reviewEvent);
   const judgePass = Boolean(judgeEvent);
   return {
     claimed: stages.has('claimed'),
     result: stages.has('completed'),
-    resultEvidence,
+    resultEvidence: Boolean(evidenceRef),
+    resultEvidenceRef: evidenceRef,
     failed: stages.has('failed'),
     reviewPass,
     judgePass,
     trustedReviewApp: reviewEvent?.appSlug || null,
     trustedJudgeApp: judgeEvent?.appSlug || null,
-    completionReady: Boolean(latestStage === 'completed' && latestResult && resultEvidence && reviewPass && judgePass),
+    completionReady: Boolean(latestStage === 'completed' && latestResult && evidenceRef && reviewPass && judgePass),
   };
 }
 
@@ -290,6 +299,50 @@ async function findDuplicateOpenWorkOrder(fingerprint, token) {
     && item.body.includes('TIGERIQ_JOB_V1') && item.body.includes(`## Fingerprint\n${fingerprint}`)) || null;
 }
 
+function distributedLockName(fingerprint) {
+  return `${WORK_LOCK_PREFIX}${fingerprint}`;
+}
+
+function lockCreatedAt(label) {
+  const match = String(label?.description || '').match(/^TigerIQ distributed work lock (\d{13})$/);
+  return match ? Number(match[1]) : null;
+}
+
+async function acquireDistributedWorkLock(fingerprint, token, retried = false) {
+  const { owner, repo } = repoParts();
+  const name = distributedLockName(fingerprint);
+  try {
+    await gh(`/repos/${owner}/${repo}/labels`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name, color: 'ededed', description: `TigerIQ distributed work lock ${Date.now()}` }),
+    }, token);
+    return { name, acquired: true };
+  } catch (error) {
+    if (error?.status !== 422) throw error;
+    const existing = await gh(`/repos/${owner}/${repo}/labels/${encodeURIComponent(name)}`, {}, token).catch(() => null);
+    const createdAt = lockCreatedAt(existing);
+    if (!retried && createdAt && Date.now() - createdAt > WORK_LOCK_TTL_MS) {
+      await gh(`/repos/${owner}/${repo}/labels/${encodeURIComponent(name)}`, { method: 'DELETE' }, token).catch(() => null);
+      return acquireDistributedWorkLock(fingerprint, token, true);
+    }
+    return { name, acquired: false };
+  }
+}
+
+async function releaseDistributedWorkLock(name, token) {
+  const { owner, repo } = repoParts();
+  await gh(`/repos/${owner}/${repo}/labels/${encodeURIComponent(name)}`, { method: 'DELETE' }, token).catch(() => null);
+}
+
+async function waitForDistributedDuplicate(fingerprint, token) {
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const duplicate = await findDuplicateOpenWorkOrder(fingerprint, token);
+    if (duplicate) return duplicate;
+    if (attempt < 5) await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return null;
+}
+
 async function statusSnapshot(token = '') {
   const { owner, repo } = repoParts();
   const [repoInfo, openIssues, canary, comments] = await Promise.all([
@@ -313,9 +366,10 @@ async function statusSnapshot(token = '') {
       vercel: 'online', github: 'online', repository: repoInfo.full_name,
       serverWriteConfigured: Boolean(GITHUB_TOKEN), clientTokenSupported: false,
       browserWriteRequiresOwner: true, chiefOfStaff: 'gpt', workOrderDedupe: true,
-      canaryDedupe: true, workOrderStatusTracking: true, workOrderLifecycleEvidence: true,
-      completionRequiresResultEvidenceReviewGate: true, trustedGateApps: [...TRUSTED_GATE_APP_SLUGS],
-      explicitDispatch: true, workBoard: true,
+      workOrderDedupeScope: 'github-distributed-lock', canaryDedupe: true,
+      workOrderStatusTracking: true, workOrderLifecycleEvidence: true,
+      completionRequiresResultEvidenceReviewGate: true, evidenceContract: 'EVIDENCE_REF',
+      trustedGateApps: [...TRUSTED_GATE_APP_SLUGS], explicitDispatch: true, workBoard: true,
     },
     execution: { pc01, openclaw: 'unknown', ollama: 'unknown', canaryIssue: CANARY_ISSUE, canaryState: canary?.state || 'unknown' },
     queue: { count: jobs.length, jobs },
@@ -346,7 +400,7 @@ async function workBoard(token = '') {
     ok: true, generatedAt: new Date(nowMs).toISOString(),
     policy: {
       staleMinutes: 30, issueLimit: 20, commentLimit: 100, mutation: false,
-      completionEvidenceGated: true, trustedGateApps: [...TRUSTED_GATE_APP_SLUGS],
+      completionEvidenceGated: true, evidenceContract: 'EVIDENCE_REF', trustedGateApps: [...TRUSTED_GATE_APP_SLUGS],
     },
     summary: {
       total: items.length,
@@ -377,19 +431,39 @@ async function createWorkOrderUnlocked({ instruction, priority, source, governan
     return { ok: true, deduplicated: true, fingerprint, requestId: null,
       issue: { number: duplicate.number, url: duplicate.html_url, title: duplicate.title } };
   }
-  const id = randomUUID();
-  const titleText = instruction.replace(/\s+/g, ' ').slice(0, 72);
-  const body = [
-    'TIGERIQ_JOB_V1', '', '## Instruction', instruction, '', '## Priority', priority, '', '## Source', source,
-    '', '## Request ID', id, '', '## Fingerprint', fingerprint, '', '## Governance', governance,
-  ].join('\n');
-  const { owner, repo } = repoParts();
-  const issue = await gh(`/repos/${owner}/${repo}/issues`, {
-    method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ title: `[${priority}] [TigerIQ AI] ${titleText}`, body }),
-  }, token);
-  return { ok: true, deduplicated: false, fingerprint, requestId: id,
-    issue: { number: issue.number, url: issue.html_url, title: issue.title } };
+  const lock = await acquireDistributedWorkLock(fingerprint, token);
+  if (!lock.acquired) {
+    const racedDuplicate = await waitForDistributedDuplicate(fingerprint, token);
+    if (racedDuplicate) {
+      return { ok: true, deduplicated: true, fingerprint, requestId: null,
+        issue: { number: racedDuplicate.number, url: racedDuplicate.html_url, title: racedDuplicate.title } };
+    }
+    const error = new Error('work_order_inflight');
+    error.status = 409;
+    throw error;
+  }
+  try {
+    const duplicateAfterLock = await findDuplicateOpenWorkOrder(fingerprint, token);
+    if (duplicateAfterLock) {
+      return { ok: true, deduplicated: true, fingerprint, requestId: null,
+        issue: { number: duplicateAfterLock.number, url: duplicateAfterLock.html_url, title: duplicateAfterLock.title } };
+    }
+    const id = randomUUID();
+    const titleText = instruction.replace(/\s+/g, ' ').slice(0, 72);
+    const body = [
+      'TIGERIQ_JOB_V1', '', '## Instruction', instruction, '', '## Priority', priority, '', '## Source', source,
+      '', '## Request ID', id, '', '## Fingerprint', fingerprint, '', '## Governance', governance,
+    ].join('\n');
+    const { owner, repo } = repoParts();
+    const issue = await gh(`/repos/${owner}/${repo}/issues`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ title: `[${priority}] [TigerIQ AI] ${titleText}`, body }),
+    }, token);
+    return { ok: true, deduplicated: false, fingerprint, requestId: id,
+      issue: { number: issue.number, url: issue.html_url, title: issue.title } };
+  } finally {
+    await releaseDistributedWorkLock(lock.name, token);
+  }
 }
 
 async function createWorkOrder(payload, token) {
@@ -484,6 +558,7 @@ export default async function handler(req, res) {
     let status = Number(error?.status) || 502;
     if (name === 'payload_too_large') status = 413;
     else if (name.startsWith('invalid_')) status = 400;
+    else if (name === 'work_order_inflight') status = 409;
     else if (name === 'github_authorization_required' || name === 'github_401') status = 401;
     else if (name === 'github_403') status = 403;
     return json(res, status, { error: name, details: error?.details?.message || error?.details || undefined });
