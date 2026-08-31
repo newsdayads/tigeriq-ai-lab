@@ -22,8 +22,9 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-/** First-run setup that sends the user directly to each Android permission screen. */
+/** One-time phone-first setup. Completed devices skip directly to HomeActivity on later launches. */
 public final class PermissionWizardActivity extends Activity {
+    public static final String EXTRA_FORCE_SETUP = "forceSetup";
     private static final int NOTIFICATION_REQUEST = 7001;
     private static final String GEMINI_PACKAGE = "com.google.android.apps.bard";
     private static final int NAVY = Color.rgb(17, 24, 39);
@@ -41,16 +42,29 @@ public final class PermissionWizardActivity extends Activity {
     private TextView batteryState;
     private TextView geminiState;
     private Button continueButton;
+    private boolean forceSetup;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        forceSetup = getIntent() != null && getIntent().getBooleanExtra(EXTRA_FORCE_SETUP, false);
+        startWorkerService();
+        if (!forceSetup && SetupStateStore.completed(this) && ready()) {
+            openHome();
+            return;
+        }
         setContentView(buildScreen());
         refresh();
     }
 
     @Override protected void onResume() {
         super.onResume();
-        refresh();
+        SetupStateStore.confirmGeminiReturn(this);
+        if (summary != null) refresh();
+    }
+
+    @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == NOTIFICATION_REQUEST) refresh();
     }
 
     private View buildScreen() {
@@ -86,14 +100,13 @@ public final class PermissionWizardActivity extends Activity {
         shell.addView(scroll, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
 
         LinearLayout intro = card();
-        TextView title = text("Cấp quyền để TigerIQ tự làm việc", 20, true);
-        intro.addView(title);
-        summary = text("Làm theo từng bước. TigerIQ sẽ mở đúng màn hình cần bấm và tự kiểm tra khi quay lại.", 13, false);
+        intro.addView(text("Cấp quyền một lần", 20, true));
+        summary = text("TigerIQ sẽ mở đúng màn hình cần xác nhận và tự kiểm tra khi quay lại.", 13, false);
         summary.setTextColor(MUTED);
         intro.addView(summary, margin(0, dp(7), 0, 0));
         root.addView(intro);
 
-        TextView note = text("Không cần tìm trong Cài đặt. Mỗi bước bên dưới chỉ có một nút hành động.", 13, false);
+        TextView note = text("Sau khi đủ 4 bước, những lần mở sau sẽ vào thẳng màn hình GIAO VIỆC. Không cần PC01.", 13, false);
         note.setTextColor(MUTED);
         root.addView(note, margin(0, dp(16), 0, dp(10)));
 
@@ -102,25 +115,25 @@ public final class PermissionWizardActivity extends Activity {
         batteryState = addStep(root, "3", "Cho phép chạy liên tục", "Đang kiểm tra…", "BỎ GIỚI HẠN PIN", v -> requestBattery());
         geminiState = addStep(root, "4", "Xác nhận Gemini", "Đang kiểm tra…", "MỞ GEMINI", v -> openGemini());
 
-        Button restrictedHelp = secondaryButton("NẾU SAMSUNG CHẶN QUYỀN → MỞ TRANG ỨNG DỤNG");
+        Button restrictedHelp = secondaryButton("SAMSUNG CHẶN QUYỀN? MỞ TRANG ỨNG DỤNG");
         restrictedHelp.setOnClickListener(v -> {
-            Toast.makeText(this, "Nếu thấy 'Cài đặt bị hạn chế': bấm ⋮ ở góc trên → Cho phép cài đặt bị hạn chế, rồi quay lại bước 2.", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Nếu thấy Cài đặt bị hạn chế: bấm ⋮ ở góc trên → Cho phép cài đặt bị hạn chế → quay lại bước 2.", Toast.LENGTH_LONG).show();
             openAppDetails();
         });
         root.addView(restrictedHelp, margin(0, dp(8), 0, dp(16)));
 
-        continueButton = primaryButton("HOÀN TẤT — VÀO TIGERIQ");
+        continueButton = primaryButton("BẮT ĐẦU LÀM VIỆC");
         continueButton.setOnClickListener(v -> {
             if (!ready()) {
                 Toast.makeText(this, "Còn bước chưa hoàn tất", Toast.LENGTH_SHORT).show();
                 return;
             }
-            startActivity(new Intent(this, MainActivity.class));
-            finish();
+            SetupStateStore.markCompleted(this);
+            openHome();
         });
         root.addView(continueButton);
 
-        TextView privacy = text("TigerIQ không tự bật Accessibility thay bạn vì Android bắt buộc chủ thiết bị xác nhận quyền này. Ứng dụng chỉ mở đúng trang và tự kiểm tra sau khi bạn quay lại.", 11, false);
+        TextView privacy = text("Android bắt buộc chủ thiết bị tự xác nhận Accessibility. TigerIQ không thể tự bật quyền này, nhưng sau khi bật một lần ứng dụng sẽ ghi nhớ trạng thái và không bắt thiết lập lại nếu quyền vẫn còn.", 11, false);
         privacy.setTextColor(MUTED);
         root.addView(privacy, margin(0, dp(14), 0, 0));
         return shell;
@@ -154,14 +167,21 @@ public final class PermissionWizardActivity extends Activity {
         boolean n = notificationGranted();
         boolean a = accessibilityEnabled();
         boolean b = batteryGranted();
-        boolean g = geminiInstalled() && geminiObserved();
+        boolean installed = geminiInstalled();
+        boolean g = installed && SetupStateStore.geminiConfirmed(this);
+
+        if (!installed && SetupStateStore.geminiConfirmed(this)) SetupStateStore.clearGeminiConfirmation(this);
+
         setState(notificationState, n, n ? "✓ Đã cấp quyền" : "Chưa cấp — bấm nút bên dưới");
-        setState(accessibilityState, a, a ? "✓ Đã bật TigerIQ Worker" : "Chưa bật — Android sẽ mở trang Accessibility");
+        setState(accessibilityState, a, a ? "✓ Đã bật TigerIQ AI Worker" : "Chưa bật — Android sẽ mở trang Accessibility");
         setState(batteryState, b, b ? "✓ Đã cho phép chạy liên tục" : "Chưa bỏ giới hạn pin");
-        if (!geminiInstalled()) setState(geminiState, false, "Chưa tìm thấy Gemini trên máy");
-        else setState(geminiState, g, g ? "✓ Gemini đã được xác nhận" : "Bấm mở Gemini một lần, rồi quay lại");
-        boolean ready = n && a && b && g;
-        summary.setText(ready ? "✓ ĐÃ ĐỦ QUYỀN — điện thoại sẵn sàng làm việc." : "Hoàn tất các bước màu cam. Bước xong sẽ tự chuyển sang dấu ✓ xanh.");
+        if (!installed) setState(geminiState, false, "Chưa tìm thấy Gemini trên máy");
+        else setState(geminiState, g, g ? "✓ Đã mở Gemini và quay lại TigerIQ" : "Bấm MỞ GEMINI, sau đó quay lại TigerIQ");
+
+        boolean ready = n && a && b && installed && g;
+        summary.setText(ready
+            ? "✓ ĐÃ ĐỦ QUYỀN — bấm BẮT ĐẦU LÀM VIỆC."
+            : "Hoàn tất các bước màu cam. Bước xong sẽ tự chuyển sang dấu ✓ xanh.");
         summary.setTextColor(ready ? GREEN : MUTED);
         continueButton.setEnabled(ready);
         continueButton.setAlpha(ready ? 1f : 0.42f);
@@ -175,9 +195,8 @@ public final class PermissionWizardActivity extends Activity {
 
     private void openAccessibility() {
         try {
-            Intent intent = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
-            startActivity(intent);
-            Toast.makeText(this, "Chọn TigerIQ AI Worker → bật 'Cho phép'", Toast.LENGTH_LONG).show();
+            startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
+            Toast.makeText(this, "Chọn TigerIQ AI Worker → bật Cho phép → quay lại TigerIQ", Toast.LENGTH_LONG).show();
         } catch (Exception e) {
             openAppDetails();
         }
@@ -196,20 +215,21 @@ public final class PermissionWizardActivity extends Activity {
     }
 
     private void openAppDetails() {
-        Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()));
-        startActivity(intent);
+        startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName())));
     }
 
     private void openGemini() {
         Intent launch = getPackageManager().getLaunchIntentForPackage(GEMINI_PACKAGE);
         if (launch == null) {
+            SetupStateStore.clearGeminiConfirmation(this);
             try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=" + GEMINI_PACKAGE))); }
             catch (Exception ignored) { Toast.makeText(this, "Chưa cài Gemini", Toast.LENGTH_LONG).show(); }
             return;
         }
+        SetupStateStore.markGeminiLaunch(this);
         launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         startActivity(launch);
-        Toast.makeText(this, "Nếu Gemini đã đăng nhập, chờ 2 giây rồi quay lại TigerIQ", Toast.LENGTH_LONG).show();
+        Toast.makeText(this, "Gemini đã mở. Chỉ cần quay lại TigerIQ.", Toast.LENGTH_LONG).show();
     }
 
     private boolean notificationGranted() {
@@ -225,8 +245,7 @@ public final class PermissionWizardActivity extends Activity {
         ComponentName expected = new ComponentName(this, AccessibilityBridgeService.class);
         String enabled = Settings.Secure.getString(getContentResolver(), Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
         if (enabled == null) return false;
-        String[] entries = enabled.split(":");
-        for (String entry : entries) {
+        for (String entry : enabled.split(":")) {
             ComponentName value = ComponentName.unflattenFromString(entry);
             if (expected.equals(value)) return true;
         }
@@ -237,14 +256,19 @@ public final class PermissionWizardActivity extends Activity {
         return getPackageManager().getLaunchIntentForPackage(GEMINI_PACKAGE) != null;
     }
 
-    private boolean geminiObserved() {
-        String last = getSharedPreferences(AccessibilityBridgeService.PREFS, MODE_PRIVATE)
-            .getString(AccessibilityBridgeService.KEY_LAST_PACKAGE, "");
-        return GEMINI_PACKAGE.equals(last);
+    private boolean ready() {
+        return notificationGranted() && accessibilityEnabled() && batteryGranted()
+            && geminiInstalled() && SetupStateStore.geminiConfirmed(this);
     }
 
-    private boolean ready() {
-        return notificationGranted() && accessibilityEnabled() && batteryGranted() && geminiInstalled() && geminiObserved();
+    private void openHome() {
+        startActivity(new Intent(this, HomeActivity.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP));
+        finish();
+    }
+
+    private void startWorkerService() {
+        Intent service = new Intent(this, ForegroundWorkerService.class);
+        if (Build.VERSION.SDK_INT >= 26) startForegroundService(service); else startService(service);
     }
 
     private void setState(TextView view, boolean pass, String value) {
@@ -273,10 +297,11 @@ public final class PermissionWizardActivity extends Activity {
         Button b = new Button(this);
         b.setText(label);
         b.setTextColor(Color.WHITE);
-        b.setTextSize(12);
+        b.setTextSize(13);
         b.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        b.setAllCaps(false);
         b.setBackground(roundRect(ORANGE, 14));
-        b.setPadding(dp(12), dp(11), dp(12), dp(11));
+        b.setPadding(dp(12), dp(12), dp(12), dp(12));
         return b;
     }
 
@@ -286,6 +311,7 @@ public final class PermissionWizardActivity extends Activity {
         b.setTextColor(INK);
         b.setTextSize(11);
         b.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        b.setAllCaps(false);
         b.setBackground(roundRect(Color.rgb(234, 237, 243), 14));
         b.setPadding(dp(12), dp(11), dp(12), dp(11));
         return b;
