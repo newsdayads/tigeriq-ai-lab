@@ -54,6 +54,16 @@ Add a narrow fail-closed provider-policy boundary for the future `gemini-android
 
 The gate permits only bounded `research.prompt` tasks. It rejects unattended login/2FA, payment/billing, credential mutation and unsupported task kinds. WO-040 does not perform third-party UI actions and must never be reported as Gemini execution proof.
 
+## Web Control — WO-045 active candidate
+- Scope remains Web Control only; APP, AI Coordinator, PC01 runtime and Work Management are excluded except for interface compatibility.
+- Active PR is #117 on `wo045/web-control-remote-ops`; MAIN/Production are not modified by this candidate.
+- Web runtime candidate is commit `1d920b0a865a3b8ee35d3c4d4d5ea8a966e8f7ba`; its Vercel Preview is READY. Changes after that commit through `b98b6630b333ddc34f73880b54a2860ce3230091` are test/queue-verification only, not runtime code.
+- Repository gates on `b98b6630b333ddc34f73880b54a2860ce3230091`: CI #250 PASS, Queue Hygiene #177 PASS, WO-012/013 Vercel Online Verify #151 PASS.
+- Security/correctness fixes implemented on the branch include Owner-authenticated browser writes with server-side GitHub credential only, OAuth multi-cookie preservation, Work Order dedupe, canonical canary reuse, and fail-closed completion requiring RESULT evidence -> REVIEW_PASS -> JUDGE_PASS.
+- The only independent Web review currently recorded is an earlier FAIL on `0988c2cecc21583ae3e6c9b53d650198325f7d9e`; its actionable findings were fixed afterward. A fresh independent review on the current exact head is still required before release.
+- Real external Owner OAuth provider/environment smoke is still required before release. PC01 physical/runtime evidence is explicitly deferred and is not a blocker for this Web-only gate.
+- Vercel Hobby daily deployment quota is an external transient constraint; do not spam retries. Existing READY preview evidence remains valid for the runtime commit while later exact-head changes are non-runtime verification/state changes.
+
 ## Physical/next gates
 When physical access resumes, the intended evidence sequence is:
 1. execute canonical #100 and require real private listener/status evidence from PC01;
