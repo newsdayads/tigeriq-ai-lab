@@ -53,5 +53,14 @@ public final class TigerIqApiClient {
     private static String sha256(byte[] bytes) throws Exception { byte[] digest = MessageDigest.getInstance("SHA-256").digest(bytes); StringBuilder out = new StringBuilder(digest.length * 2); for (byte b : digest) out.append(String.format(Locale.ROOT, "%02x", b)); return out.toString(); }
     public static final class Session { public final String accessToken; public final long expiresAtEpochMs; Session(String accessToken, long expiresAtEpochMs) { this.accessToken = accessToken; this.expiresAtEpochMs = expiresAtEpochMs; } }
     public static final class PullResult { public final boolean empty; public final DurableCheckpointStore.JobLease lease; private PullResult(boolean empty, DurableCheckpointStore.JobLease lease) { this.empty = empty; this.lease = lease; } static PullResult empty() { return new PullResult(true, null); } static PullResult job(DurableCheckpointStore.JobLease lease) { return new PullResult(false, lease); } }
-    private static final class Headers { final JSONObject values = new JSONObject(); static Headers bootstrap(String credentialId, String bearer) { return new Headers().put("Authorization", "Bearer " + requireSecret(bearer)).put("X-TigerIQ-Credential-Id", requireSecret(credentialId)); } static Headers session(String bearer) { return new Headers().put("Authorization", "Bearer " + requireSecret(bearer)); } Headers put(String name, String value) { values.put(name, value); return this; } private static String requireSecret(String value) { if (value == null || value.trim().isEmpty()) throw new IllegalArgumentException("credential is required"); return value.trim(); } }
+    private static final class Headers {
+        final JSONObject values = new JSONObject();
+        static Headers bootstrap(String credentialId, String bearer) { return new Headers().put("Authorization", "Bearer " + requireSecret(bearer)).put("X-TigerIQ-Credential-Id", requireSecret(credentialId)); }
+        static Headers session(String bearer) { return new Headers().put("Authorization", "Bearer " + requireSecret(bearer)); }
+        Headers put(String name, String value) {
+            try { values.put(name, value); return this; }
+            catch (org.json.JSONException error) { throw new IllegalStateException("cannot build HTTP headers", error); }
+        }
+        private static String requireSecret(String value) { if (value == null || value.trim().isEmpty()) throw new IllegalArgumentException("credential is required"); return value.trim(); }
+    }
 }
