@@ -39,7 +39,14 @@ function safeEqual(left, right) {
 }
 
 function setCookie(res, name, value, maxAge = MAX_AGE_SECONDS) {
-  res.setHeader('set-cookie', `${name}=${encodeURIComponent(value)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}`);
+  const cookie = `${name}=${encodeURIComponent(value)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}`;
+  const current = typeof res.getHeader === 'function' ? res.getHeader('set-cookie') : undefined;
+  const next = current === undefined
+    ? [cookie]
+    : Array.isArray(current)
+      ? [...current, cookie]
+      : [String(current), cookie];
+  res.setHeader('set-cookie', next);
 }
 
 function sessionValue(email) {
