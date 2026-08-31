@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { normalizeInstruction, workFingerprint, issueStage, issueEvidenceSummary, issuePriority, issueType, workItemSummary, lifecycleEvents, latestLifecycleStage } from '../api/control.mjs';
 
+const gate = (id, body, created_at) => ({ id, body, created_at, performed_via_github_app: { slug: 'chatgpt-codex-connector' } });
+
 assert.equal(normalizeInstruction('  Kiểm tra   PC01\nngay  '), 'kiểm tra pc01 ngay');
 assert.equal(workFingerprint('Kiểm tra PC01'), workFingerprint('  kiểm tra   pc01  '));
 assert.notEqual(workFingerprint('Kiểm tra PC01'), workFingerprint('Kiểm tra Vercel'));
@@ -14,17 +16,42 @@ assert.equal(issueStage({ state: 'closed', state_reason: 'not_planned' }, []), '
 assert.equal(issueStage({ state: 'closed', state_reason: 'duplicate' }, []), 'cancelled');
 assert.equal(issueStage({ state: 'open' }, [{ body: 'TIGERIQ_JOB_FAILED reason' }]), 'failed');
 
-const complete = [{ body: 'TIGERIQ_JOB_CLAIMED' }, { body: 'TIGERIQ_JOB_RESULT\nstatus=ok\nREVIEW_PASS\nJUDGE_PASS' }];
+const complete = [
+  { id: 1, body: 'TIGERIQ_JOB_CLAIMED', created_at: '2026-08-30T10:00:00Z' },
+  { id: 2, body: 'TIGERIQ_JOB_RESULT\nstatus=ok', created_at: '2026-08-30T10:01:00Z' },
+  gate(3, 'REVIEW_PASS\nreviewed exact RESULT evidence', '2026-08-30T10:02:00Z'),
+  gate(4, 'JUDGE_PASS\nverified review and terminal evidence', '2026-08-30T10:03:00Z'),
+];
 assert.equal(issueStage({ state: 'open' }, complete), 'completed');
 assert.deepEqual(issueEvidenceSummary(complete), {
   claimed: true, result: true, resultEvidence: true, failed: false,
-  reviewPass: true, judgePass: true, completionReady: true,
+  reviewPass: true, judgePass: true,
+  trustedReviewApp: 'chatgpt-codex-connector', trustedJudgeApp: 'chatgpt-codex-connector',
+  completionReady: true,
 });
 
 assert.equal(issueStage({ state: 'open' }, [{ body: 'TIGERIQ_JOB_RESULT\nREVIEW_PASS\nJUDGE_PASS' }]), 'evidence_pending');
-assert.equal(issueStage({ state: 'open' }, [{ body: 'TIGERIQ_JOB_RESULT status=ok\nREVIEW_PASS' }]), 'gate_pending');
+assert.equal(issueStage({ state: 'open' }, [{ body: 'TIGERIQ_JOB_RESULT status=ok\nREVIEW_PASS\nJUDGE_PASS' }]), 'review_pending');
+assert.equal(issueStage({ state: 'open' }, [
+  { id: 11, body: 'TIGERIQ_JOB_RESULT status=ok', created_at: '2026-08-30T10:00:00Z' },
+  gate(12, 'REVIEW_PASS\nreview evidence', '2026-08-30T10:01:00Z'),
+]), 'gate_pending');
 assert.equal(issueStage({ state: 'closed' }, [{ body: 'TIGERIQ_JOB_RESULT status=ok\nREVIEW_PASS' }]), 'closed_unverified');
 assert.equal(issueStage({ state: 'closed' }, complete), 'completed');
+
+const untrustedSelfGate = [
+  { id: 20, body: 'TIGERIQ_JOB_RESULT\nstatus=ok', created_at: '2026-08-30T10:00:00Z' },
+  { id: 21, body: 'REVIEW_PASS\nworker says review passed', created_at: '2026-08-30T10:01:00Z' },
+  { id: 22, body: 'JUDGE_PASS\nworker says judge passed', created_at: '2026-08-30T10:02:00Z' },
+];
+assert.equal(issueStage({ state: 'open' }, untrustedSelfGate), 'review_pending');
+assert.equal(issueEvidenceSummary(untrustedSelfGate).reviewPass, false);
+assert.equal(issueEvidenceSummary(untrustedSelfGate).judgePass, false);
+
+const sameCommentSelfGate = [
+  gate(30, 'TIGERIQ_JOB_RESULT\nstatus=ok\nREVIEW_PASS\nreviewed\nJUDGE_PASS\njudged', '2026-08-30T10:00:00Z'),
+];
+assert.equal(issueStage({ state: 'open' }, sameCommentSelfGate), 'review_pending');
 
 const retryComments = [
   { body: 'TIGERIQ_JOB_CLAIMED', created_at: '2026-08-30T10:00:00Z' },
@@ -37,8 +64,10 @@ assert.equal(issueEvidenceSummary(retryComments).failed, true);
 assert.equal(issueEvidenceSummary(retryComments).claimed, true);
 
 const recoveredComments = [
-  { body: 'TIGERIQ_JOB_FAILED reason', created_at: '2026-08-30T10:05:00Z' },
-  { body: 'TIGERIQ_JOB_RESULT status=ok\nREVIEW_PASS\nJUDGE_PASS', created_at: '2026-08-30T10:15:00Z' },
+  { id: 40, body: 'TIGERIQ_JOB_FAILED reason', created_at: '2026-08-30T10:05:00Z' },
+  { id: 41, body: 'TIGERIQ_JOB_RESULT status=ok', created_at: '2026-08-30T10:15:00Z' },
+  gate(42, 'REVIEW_PASS\nrecovery reviewed', '2026-08-30T10:16:00Z'),
+  gate(43, 'JUDGE_PASS\nrecovery judged', '2026-08-30T10:17:00Z'),
 ];
 assert.equal(issueStage({ state: 'open' }, recoveredComments), 'completed');
 
@@ -56,7 +85,8 @@ const proseOnly = [
 assert.equal(issueStage({ state: 'open' }, proseOnly), 'queued');
 assert.deepEqual(issueEvidenceSummary(proseOnly), {
   claimed: false, result: false, resultEvidence: false, failed: false,
-  reviewPass: false, judgePass: false, completionReady: false,
+  reviewPass: false, judgePass: false, trustedReviewApp: null, trustedJudgeApp: null,
+  completionReady: false,
 });
 
 assert.equal(issueStage({ state: 'closed', state_reason: 'not_planned' }, retryComments), 'cancelled');
