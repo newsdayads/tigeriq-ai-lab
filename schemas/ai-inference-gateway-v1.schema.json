@@ -112,11 +112,11 @@
     "attemptEvidence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["sequence", "backendIdentity", "outcome"],
+      "required": ["sequence", "backendIdentity", "outcome", "failureKind"],
       "properties": {
         "sequence": { "type": "integer", "minimum": 1 },
         "backendIdentity": { "type": "string", "minLength": 3, "maxLength": 256 },
-        "outcome": { "type": "string", "enum": ["success", "failure", "skipped"] },
+        "outcome": { "type": "string", "enum": ["success", "failure"] },
         "failureKind": {
           "type": ["string", "null"],
           "enum": ["quota", "outage", "timeout", "auth", "invalid_response", "configuration", "budget", "health", null]
@@ -202,7 +202,12 @@
             },
             "message": { "type": "string", "maxLength": 256 },
             "retryable": { "type": "boolean" },
-            "retryAfterMs": { "type": ["integer", "null"], "minimum": 0 }
+            "retryAfterMs": { "type": ["integer", "null"], "minimum": 0 },
+            "attempts": {
+              "type": "array",
+              "maxItems": 3,
+              "items": { "$ref": "#/$defs/attemptEvidence" }
+            }
           }
         }
       }
