@@ -1,7 +1,7 @@
 # WO-044 — Hệ thống quản lý công việc
 
 Priority: P0
-Status: IMPLEMENTED ON ISOLATED BRANCH — GATES PENDING
+Status: READY FOR INDEPENDENT REVIEW — FINAL HEAD GATES REQUIRED
 Date: 2026-08-31
 Tracking: GitHub issue #112
 Branch: `wo044/work-management-system`
@@ -22,6 +22,8 @@ TigerIQ đã có Work Order cơ bản, Task Packet, hàng đợi chống trùng,
 - Scope lock theo cây đường dẫn ngăn hai executor sửa cùng phạm vi hoặc phạm vi cha/con cùng lúc.
 - Chỉ việc không còn dependency mới được READY; dependency thất bại làm việc sau BLOCKED.
 - Executor lease hết hạn sau restart được requeue hữu hạn; reviewer/judge lease hết hạn được giao lại mà không giả DONE.
+- Kết quả trả về sau khi lease hết hạn bị từ chối như stale result, không thể đóng việc bằng kết quả quá hạn.
+- Manager tự checkpoint trạng thái trước khi gọi worker bên ngoài và sau khi nhận kết quả; lỗi checkpoint fail-closed thay vì âm thầm tiếp tục.
 - Reviewer không thể là executor; Judge không thể là executor hoặc reviewer của cùng việc.
 - PASS/DONE không được chấp nhận nếu thiếu bằng chứng có ref hợp lệ.
 - Runtime có snapshot đầy đủ goal/work/lease/result/history và adapter lưu snapshot vào `FileJournal` hiện hữu trên PC01/Farm Controller. Vercel không dùng làm durable storage.
@@ -32,10 +34,10 @@ TigerIQ đã có Work Order cơ bản, Task Packet, hàng đợi chống trùng,
 - `packages/work-management/src/types.ts` — Goal/Work/Worker/Evidence contracts.
 - `packages/work-management/src/helpers.ts` — validation, DAG cycle check, evidence gate, scope conflict.
 - `packages/work-management/src/store.ts` — state machine, dependency readiness, locks, leases, retry/recovery, history.
-- `packages/work-management/src/manager.ts` — safe parallel execution + independent Reviewer/Judge loop.
+- `packages/work-management/src/manager.ts` — safe parallel execution + durable checkpoint + stale-result rejection + independent Reviewer/Judge loop.
 - `packages/work-management/src/journal-store.ts` — checkpoint vào FileJournal append-only/hash-chain.
 - `schemas/work-management-plan.schema.json` — contract trao đổi GoalPlan.
-- `tests/work-management.test.ts` — dedupe, DAG/cycle, lock, parallelism, dependency order, retry, evidence gate, role independence, durable restore.
+- `tests/work-management.test.ts` — dedupe, DAG/cycle, lock, parallelism, dependency order, retry, evidence gate, stale lease, auto-checkpoint, role independence, durable restore.
 
 ## Definition of Done
 - Typecheck PASS.
@@ -43,4 +45,5 @@ TigerIQ đã có Work Order cơ bản, Task Packet, hàng đợi chống trùng,
 - Build PASS.
 - PR CI PASS trên exact head.
 - Không thay đổi App/Web/AI Coordinator/PC01 runtime.
+- Independent review PASS trước merge.
 - Không merge MAIN/Production nếu chưa có quyền release.
