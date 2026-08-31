@@ -31,6 +31,8 @@ function registerNodeAndEmployee(
     nodeId: string;
     kind: 'local' | 'api';
     employeeId: string;
+    provider?: string;
+    model?: string;
     activeTaskCount?: number;
     concurrencyLimit?: number;
   },
@@ -50,6 +52,8 @@ function registerNodeAndEmployee(
     department: 'Engineering',
     role: 'test',
     nodeId: input.nodeId,
+    provider: input.provider,
+    model: input.model,
     capabilities: ['work-management'],
     availability: 'idle',
     healthScore: 100,
@@ -69,8 +73,20 @@ describe('WO-044 Workforce Registry bridge', () => {
       concurrencyLimit: 1,
     });
     registerNodeAndEmployee(registry, { nodeId: 'NODE-PC01', kind: 'local', employeeId: 'EMP-PC01' });
-    registerNodeAndEmployee(registry, { nodeId: 'NODE-REV', kind: 'api', employeeId: 'EMP-REV' });
-    registerNodeAndEmployee(registry, { nodeId: 'NODE-JUDGE', kind: 'api', employeeId: 'EMP-JUDGE' });
+    registerNodeAndEmployee(registry, {
+      nodeId: 'NODE-REV',
+      kind: 'api',
+      employeeId: 'EMP-REV',
+      provider: 'anthropic',
+      model: 'claude-review',
+    });
+    registerNodeAndEmployee(registry, {
+      nodeId: 'NODE-JUDGE',
+      kind: 'api',
+      employeeId: 'EMP-JUDGE',
+      provider: 'openai',
+      model: 'gpt-judge',
+    });
 
     const manager = new AutonomousWorkManager(new WorkManagementStore(), 60_000);
     const seen: string[] = [];
@@ -144,5 +160,19 @@ describe('WO-044 Workforce Registry bridge', () => {
     expect(result.goal.work[0].reviewerIds).toEqual(['EMP-REV']);
     expect(result.goal.work[0].judgeIds).toEqual(['EMP-JUDGE']);
     expect(seen).toEqual(['execute:EMP-PC01', 'review:EMP-REV', 'judge:EMP-JUDGE']);
+  });
+
+  it('fails closed when cloud AI identity metadata is missing across assurance roles', () => {
+    const registry = new WorkforceRegistry();
+    registerNodeAndEmployee(registry, { nodeId: 'NODE-UNKNOWN-1', kind: 'api', employeeId: 'EMP-UNKNOWN-REV' });
+    registerNodeAndEmployee(registry, { nodeId: 'NODE-UNKNOWN-2', kind: 'api', employeeId: 'EMP-UNKNOWN-JUDGE' });
+    const manager = new AutonomousWorkManager(new WorkManagementStore());
+    const bridge = new WorkforceRegistryBridge(registry, manager, {
+      rolesForEmployee: (employee) => employee.employeeId.endsWith('REV') ? ['reviewer'] : ['judge'],
+      driverForEmployee: (employee): WorkDriver => employee.employeeId.endsWith('REV')
+        ? { review: async () => ({ verdict: 'pass', conclusion: 'review', evidence: [{ kind: 'text', ref: 'review' }] }) }
+        : { judge: async () => ({ verdict: 'pass', conclusion: 'judge', evidence: [{ kind: 'text', ref: 'judge' }] }) },
+    });
+    expect(() => bridge.sync()).toThrow(/unidentified-ai cannot span multiple assurance roles/i);
   });
 });
