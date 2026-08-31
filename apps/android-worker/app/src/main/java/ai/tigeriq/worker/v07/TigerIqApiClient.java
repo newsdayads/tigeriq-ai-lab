@@ -25,14 +25,14 @@ public final class TigerIqApiClient {
         if (!profile.employeeId.equals(employeeId) || !profile.nodeId.equals(nodeId) || !profile.deviceId.equals(deviceId)) throw new ApiException(409, "IDENTITY_MISMATCH", "session identity mismatch", false, null);
         return new Session(accessToken, parseInstant(required(session, "expiresAt")));
     }
-    public PullResult pullJob(String bootstrapToken) throws Exception {
-        JSONObject response = request("POST", PULL_PATH, new JSONObject().put("employeeId", profile.employeeId).put("deviceId", profile.deviceId), Headers.bootstrap(profile.credentialId, bootstrapToken), 30_000); JSONObject payload = unwrapData(response); String kind = payload.optString("kind", ""); if ("empty".equals(kind)) return PullResult.empty(); JSONObject lease = payload.optJSONObject("lease"); if (!"job".equals(kind) || lease == null) throw new ApiException(502, "INVALID_RESPONSE", "invalid pull response", false, null);
+    public PullResult pullJob(String sessionToken) throws Exception {
+        JSONObject response = request("POST", PULL_PATH, new JSONObject().put("employeeId", profile.employeeId).put("deviceId", profile.deviceId), Headers.session(sessionToken), 30_000); JSONObject payload = unwrapData(response); String kind = payload.optString("kind", ""); if ("empty".equals(kind)) return PullResult.empty(); JSONObject lease = payload.optJSONObject("lease"); if (!"job".equals(kind) || lease == null) throw new ApiException(502, "INVALID_RESPONSE", "invalid pull response", false, null);
         if (!profile.employeeId.equals(required(lease, "employeeId")) || !profile.deviceId.equals(required(lease, "deviceId"))) throw new ApiException(409, "IDENTITY_MISMATCH", "job lease identity mismatch", false, null);
         JSONObject job = lease.optJSONObject("job"); if (job == null) throw new ApiException(502, "INVALID_RESPONSE", "lease missing job", false, null); String jobId = required(lease, "jobId"); if (!jobId.equals(required(job, "jobId"))) throw new ApiException(409, "IDENTITY_MISMATCH", "lease job mismatch", false, null);
         return PullResult.job(new DurableCheckpointStore.JobLease(jobId, required(job, "idempotencyKey"), required(lease, "bindingId"), required(lease, "leaseId"), required(lease, "leaseToken"), parseInstant(required(lease, "expiresAt")), lease.optInt("attempt", 1), job.toString()));
     }
     public JSONObject invokeInference(String accessToken, JSONObject inferenceRequest, String idempotencyKey) throws Exception { if (idempotencyKey == null || idempotencyKey.isBlank()) throw new IllegalArgumentException("idempotency key required"); JSONObject response = request("POST", INFERENCE_PATH, inferenceRequest, Headers.session(accessToken).put("Idempotency-Key", idempotencyKey), 135_000); if (!response.optBoolean("ok", true)) throw errorFromBody(502, response, false); return response; }
-    public JSONObject submitResult(String bootstrapToken, JSONObject submitRequest) throws Exception { JSONObject response = request("POST", SUBMIT_PATH, submitRequest, Headers.bootstrap(profile.credentialId, bootstrapToken), 30_000); JSONObject payload = unwrapData(response); if (payload.has("accepted") && !payload.optBoolean("accepted")) throw new ApiException(409, "RESULT_REJECTED", "result was not accepted", false, null); return payload; }
+    public JSONObject submitResult(String sessionToken, JSONObject submitRequest) throws Exception { JSONObject response = request("POST", SUBMIT_PATH, submitRequest, Headers.session(sessionToken), 30_000); JSONObject payload = unwrapData(response); if (payload.has("accepted") && !payload.optBoolean("accepted")) throw new ApiException(409, "RESULT_REJECTED", "result was not accepted", false, null); return payload; }
     private JSONObject request(String method, String path, JSONObject body, Headers headers, int readTimeoutMs) throws Exception {
         URL url = new URL(GatewayUrlPolicy.requireHttps(profile.gatewayUrl) + path); byte[] bodyBytes = body == null ? new byte[0] : body.toString().getBytes(StandardCharsets.UTF_8); HttpURLConnection connection = (HttpURLConnection) url.openConnection(); connection.setRequestMethod(method); connection.setConnectTimeout(CONNECT_TIMEOUT_MS); connection.setReadTimeout(readTimeoutMs); connection.setUseCaches(false); connection.setDoInput(true); connection.setRequestProperty("Accept", "application/json"); connection.setRequestProperty("Content-Type", "application/json; charset=utf-8"); connection.setRequestProperty("Cache-Control", "no-store");
         for (java.util.Iterator<String> it = headers.values.keys(); it.hasNext();) { String name = it.next(); connection.setRequestProperty(name, headers.values.optString(name)); }
@@ -57,10 +57,7 @@ public final class TigerIqApiClient {
         final JSONObject values = new JSONObject();
         static Headers bootstrap(String credentialId, String bearer) { return new Headers().put("Authorization", "Bearer " + requireSecret(bearer)).put("X-TigerIQ-Credential-Id", requireSecret(credentialId)); }
         static Headers session(String bearer) { return new Headers().put("Authorization", "Bearer " + requireSecret(bearer)); }
-        Headers put(String name, String value) {
-            try { values.put(name, value); return this; }
-            catch (org.json.JSONException error) { throw new IllegalStateException("cannot build HTTP headers", error); }
-        }
+        Headers put(String name, String value) { try { values.put(name, value); return this; } catch (org.json.JSONException error) { throw new IllegalStateException("cannot build HTTP headers", error); } }
         private static String requireSecret(String value) { if (value == null || value.trim().isEmpty()) throw new IllegalArgumentException("credential is required"); return value.trim(); }
     }
 }
