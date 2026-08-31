@@ -54,23 +54,19 @@ The extended role provider is intentionally not fabricated in WO-045. Required i
 - Completion requires bound typed `EVIDENCE_REF` through RESULT -> trusted REVIEW_PASS -> trusted JUDGE_PASS.
 - Issue closure alone is never DONE.
 
-## Current release candidate evidence — 2026-08-31
-Exact branch head: `0f2f0d4f296ec0582451f6238840a45755481e14`.
-
+## Verified implementation evidence — 2026-08-31
 Latest runtime-changing UI/Auth commit: `952da55c7fc2c584433c39cb74bfe1782d8292be`.
 READY Vercel Preview for that runtime commit: `dpl_FrjAbGboNV4FMUG7RcGGtLciHMxV`.
 Branch alias: `https://tigeriq-ai-lab-git-wo045-web-control-remote-ops-nguyn-trng-sn.vercel.app`.
 
-Compare `952da55c...` -> `0f2f0d4f...` changes only:
+Implementation/test head `0f2f0d4f296ec0582451f6238840a45755481e14` passed:
+- CI #274 / run `33383717396`.
+- Queue Hygiene #189 / run `33383717406`.
+- WO-012/013 Vercel Online Verify #163 / run `33383717415`.
+
+Compare runtime `952da55c...` -> implementation/test head `0f2f0d4f...` changes only:
 - `tests/web-control-account-auth.test.mjs`
 - `tests/web-control-remote-ops.test.mjs`
-
-Therefore the READY Preview is runtime-equivalent to the exact branch head.
-
-Exact-head automated gates:
-- CI #274 / run `33383717396`: PASS.
-- Queue Hygiene #189 / run `33383717406`: PASS.
-- WO-012/013 Vercel Online Verify #163 / run `33383717415`: PASS.
 
 Executable tests prove:
 - unauthenticated account has no assigned TigerIQ role and remains fail-closed;
@@ -80,11 +76,13 @@ Executable tests prove:
 - account/login/floating-refresh/workforce-module UI contract;
 - previous security, dedupe and evidence gates remain intact.
 
+The exact current PR head is intentionally not embedded in this file because updating a tracked evidence file creates a new commit. PR #117 body and the 07 handoff are the authoritative exact-head pointers and must be refreshed without source commits.
+
 ## Preview evidence boundary
-Deployment `dpl_FrjAbGboNV4FMUG7RcGGtLciHMxV` is READY and tied to the exact UI runtime commit `952da55c...`. Vercel Preview Protection currently redirects unauthenticated machine fetches through Vercel SSO, so this stream does not falsely claim a completed external browser/OAuth smoke from machine fetch alone.
+Deployment `dpl_FrjAbGboNV4FMUG7RcGGtLciHMxV` is READY and tied to UI runtime commit `952da55c...`. Vercel Preview Protection redirects unauthenticated machine fetches through Vercel SSO, so this stream does not falsely claim a completed external browser/OAuth smoke from machine fetch alone.
 
 ## Remaining gates
-- Fresh independent 07 review on exact head `0f2f0d4f296ec0582451f6238840a45755481e14` after this UI/Auth change.
+- Fresh independent 07 review on the exact PR #117 head after this UI/Auth change.
 - Real configured Google Owner OAuth browser smoke, recorded as `OWNER_OAUTH_SMOKE_PASS`.
 - Explicit Owner publish/release instruction.
 
