@@ -99,4 +99,21 @@ describe('TigerIQ account identity and authorization boundary', () => {
       }));
     } finally { restoreEnv(saved); }
   });
+
+  it('logs out by clearing both Owner session and OAuth-state cookies', async () => {
+    const saved = saveEnv(); configureEnv();
+    try {
+      vi.resetModules();
+      const { default: handler } = await import('../api/owner-auth.mjs');
+      const logout = makeRes();
+      await handler({ method: 'GET', url: '/api/owner-auth?action=logout', headers: { cookie: 'tigeriq_owner_session=stale-session' } }, logout);
+      expect(logout.statusCode).toBe(302);
+      expect(logout.headers.location).toBe('/?owner=disconnected');
+      expect(logout.headers['set-cookie']).toEqual(expect.arrayContaining([
+        expect.stringContaining('tigeriq_owner_session=;'),
+        expect.stringContaining('tigeriq_owner_oauth_state=;'),
+      ]));
+      for (const cookie of logout.headers['set-cookie']) expect(cookie).toContain('Max-Age=0');
+    } finally { restoreEnv(saved); }
+  });
 });
