@@ -7,9 +7,10 @@ TigerIQ AI Lab is being operated as a continuous distributed AI company. Tiger I
 ## Current MAIN baseline
 - Repository: `newsdayads/tigeriq-ai-lab`.
 - Production Web Control: `https://tigeriq-ai-lab.vercel.app`.
-- MAIN before active WO-039 branch: `0d25210488bff58ee9902da203bb2b08697749cd` (WO-038 merge).
+- MAIN before active WO-040 branch: `d01dcd2483d2f6b91c4c8282927e009e7416a18b` (WO-039 merge).
 - Canonical PC01 real deployment job remains issue #100. It has no claim/result evidence at this state point; do not create duplicates and do not infer PC01/Tailscale runtime state.
 - Vercel Hobby has the known daily deployment quota condition `api-deployments-free-per-day`; do not retry/spam deployments or pay/upgrade. Non-Vercel work continues.
+- Latest observed Production deployment remains behind MAIN; no promotion is claimed while the quota condition is active.
 
 ## Operating model — P0
 Owner -> Chief of Staff -> Department Heads -> Team Leads -> multiple AI/device employees -> Independent Reviewer -> Judge/Gate -> Evidence/State -> Chief -> Owner.
@@ -36,6 +37,8 @@ WO-037 merged as `793899a628be46d0d4e9292804ad674379b2a42e`. It establishes priv
 
 WO-038 merged as `0d25210488bff58ee9902da203bb2b08697749cd`. It adds the fail-closed stable-signed Android Worker release bundle: private signing inputs only, `assembleRelease`, `apksigner` certificate verification against the pinned fingerprint, and redacted APK/source/certificate manifest output. It means `READY_FOR_STABLE_SIGNED_RELEASE_BUILD`, not physical build/install PASS.
 
+WO-039 merged as `d01dcd2483d2f6b91c4c8282927e009e7416a18b`. It deterministically proves the generic EMP-001 Controller protocol in software: P-256 pairing proof, employee enrollment, authenticated heartbeat, bounded task enqueue/lease, structured result/evidence publication and completed status projection. It is simulator/repository evidence only and is not proof of real PC01, real-device pairing, stable-signed installation or Gemini execution.
+
 ## First physical Android evidence — EMP-001
 A real Samsung Z Flip 7 has run TigerIQ Worker. Physical screenshot evidence observed in the owner session confirms only:
 - employee profile `EMP-001 / Research / Researcher / Gemini`;
@@ -46,17 +49,10 @@ A real Samsung Z Flip 7 has run TigerIQ Worker. Physical screenshot evidence obs
 
 This does not prove Controller heartbeat, task execution or Gemini prompt/result automation.
 
-## Active priority — WO-039
-Repository-prove the generic EMP-001 Controller protocol as one deterministic E2E flow using a real P-256 pairing proof and the exact credential issued by pairing:
-1. pair Android identity;
-2. self-enroll EMP-001;
-3. send authenticated heartbeat;
-4. enqueue one bounded provider-independent safe task;
-5. lease it using `task:read`;
-6. publish structured result/evidence using `task:result`;
-7. verify completed Workforce status projection.
+## Active priority — WO-040
+Add a narrow fail-closed provider-policy boundary for the future `gemini-android-ui` adapter. The policy may return `READY_FOR_REAL_DEVICE_PROVIDER_TEST` only after evidence flags show a verified physical Controller, real device pairing, fresh heartbeat, stable-signed Worker continuity, Accessibility enabled, an already-authenticated provider session and explicit provider-automation authorization.
 
-This proof is deliberately provider-independent. It must never be reported as real PC01, real-device pairing, stable-signed install or Gemini execution evidence.
+The gate permits only bounded `research.prompt` tasks. It rejects unattended login/2FA, payment/billing, credential mutation and unsupported task kinds. WO-040 does not perform third-party UI actions and must never be reported as Gemini execution proof.
 
 ## Physical/next gates
 When physical access resumes, the intended evidence sequence is:
@@ -66,7 +62,7 @@ When physical access resumes, the intended evidence sequence is:
 4. install/update the pilot device(s) and verify installed certificate/application continuity;
 5. pair EMP-001 to Controller and require live heartbeat/status evidence;
 6. lease one safe generic task -> return structured result/evidence -> independent review;
-7. only then evaluate a narrowly scoped Gemini adapter under provider policy and real-device gates.
+7. only then evaluate the WO-040 provider-policy gate and, if eligible, test a narrowly scoped Gemini adapter under provider policy and real-device gates.
 
 ## External/deferred boundaries
 - PC01/Tailscale live state must always be re-verified; repository software/CI is not runtime proof.
