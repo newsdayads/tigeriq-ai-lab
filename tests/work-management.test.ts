@@ -11,6 +11,8 @@ import {
   type ManagedWorker,
   type PlannedWorkItem,
   type WorkDriver,
+  type WorkManagementSnapshot,
+  type WorkManagementStateStore,
 } from '../packages/work-management/src/index.js';
 import { FileJournalWorkManagementStateStore } from '../packages/work-management/src/journal-store.js';
 
@@ -57,6 +59,18 @@ const judgeDriver: WorkDriver = {
 
 function worker(workerId: string, roles: ManagedWorker['roles'], kind: ManagedWorker['kind'] = 'ai'): ManagedWorker {
   return { workerId, kind, roles, capabilities: ['code'], concurrencyLimit: 2, online: true };
+}
+
+class CapturingStateStore implements WorkManagementStateStore {
+  readonly saves: WorkManagementSnapshot[] = [];
+
+  async load(): Promise<WorkManagementSnapshot | undefined> {
+    return this.saves.at(-1) ? structuredClone(this.saves.at(-1)) : undefined;
+  }
+
+  async save(snapshot: WorkManagementSnapshot): Promise<void> {
+    this.saves.push(structuredClone(snapshot));
+  }
 }
 
 describe('WO-044 work management system', () => {
@@ -150,6 +164,39 @@ describe('WO-044 work management system', () => {
     expect(result.goal.work[0].execution?.evidence).toHaveLength(1);
     expect(result.goal.work[0].executorIds).toEqual(['E-R']);
     expect(manager.store.history('G-R').some((event) => event.detail === 'execution_failed_retry')).toBe(true);
+  });
+
+  it('rejects stale worker results returned after lease expiry and exhausts bounded retries', async () => {
+    const staleItem = { ...item('S'), independentReview: false, judgeRequired: false };
+    const manager = new AutonomousWorkManager(new WorkManagementStore(), 1_000);
+    await manager.submitGoal({ ...baseGoal, goalId: 'G-S', idempotencyKey: 'goal-s', maxParallelism: 1 }, { decompose: async () => [staleItem] });
+    manager.registerWorker({ ...worker('E-S', ['executor']), concurrencyLimit: 1 }, {
+      execute: async () => ({ status: 'completed', conclusion: 'late result', evidence: [{ kind: 'commit', ref: 'late-sha' }] }),
+    });
+    let tick = 0;
+    const result = await manager.runUntilQuiescent('G-S', {
+      maxCycles: 10,
+      now: () => new Date(Date.parse('2026-08-31T00:00:00.000Z') + tick++ * 2_000).toISOString(),
+    });
+    expect(result.goal.status).toBe('failed');
+    expect(result.goal.work[0].attempts).toBe(2);
+    expect(result.goal.work[0].execution).toBeUndefined();
+    expect(manager.store.history('G-S').some((event) => event.detail === 'execution_lease_expired_exhausted')).toBe(true);
+  });
+
+  it('automatically checkpoints running and terminal states before and after external work', async () => {
+    const persistence = new CapturingStateStore();
+    const terminalItem = { ...item('P'), independentReview: false, judgeRequired: false };
+    const manager = new AutonomousWorkManager(new WorkManagementStore(), 60_000, persistence);
+    await manager.submitGoal({ ...baseGoal, goalId: 'G-P', idempotencyKey: 'goal-p', maxParallelism: 1 }, { decompose: async () => [terminalItem] }, '2026-08-31T00:00:00.000Z');
+    manager.registerWorker(worker('E-P', ['executor']), {
+      execute: async () => ({ status: 'completed', conclusion: 'persisted', evidence: [{ kind: 'commit', ref: 'persisted-sha' }] }),
+    });
+    const result = await manager.runUntilQuiescent('G-P', { maxCycles: 5, now: () => '2026-08-31T00:00:10.000Z' });
+    expect(result.goal.status).toBe('completed');
+    const stages = persistence.saves.flatMap((snapshot) => snapshot.goals.flatMap((goal) => goal.work.map((work) => work.stage)));
+    expect(stages).toContain('running');
+    expect(stages).toContain('completed');
   });
 
   it('persists snapshots in the existing hash-chained FileJournal and restores them', async () => {
