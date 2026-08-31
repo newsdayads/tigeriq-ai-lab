@@ -22,12 +22,13 @@ public final class V07WorkScheduler {
                 .enqueueUniqueWork(RECOVERY_WORK, ExistingWorkPolicy.KEEP, request);
     }
 
-    public static void enqueueJob(Context context, String jobId, String idempotencyKey) {
-        String unique = WorkNames.uniqueJobWorkName(jobId, idempotencyKey);
+    public static void enqueueJob(Context context, String employeeId, String jobId, String idempotencyKey) {
+        String unique = WorkNames.execute(employeeId, idempotencyKey);
         Constraints network = new Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build();
         OneTimeWorkRequest request = new OneTimeWorkRequest.Builder(V07JobWorker.class)
                 .setConstraints(network)
                 .addTag("tigeriq-v07-job")
+                .addTag(jobId == null ? unique : jobId)
                 .addTag(unique)
                 .build();
         WorkManager.getInstance(context.getApplicationContext())
