@@ -149,6 +149,8 @@ describe('EMP-001 generic Controller protocol', () => {
     const status = await json(statusResponse);
     expect(status.workforce.nodes.total).toBe(1);
     expect(status.workforce.employees.total).toBe(1);
-    expect(status.workforce.tasks.completed).toBe(1);
+    expect(status.workforce.tasks.total).toBe(1);
+    expect(status.workforce.tasks.byStage.completed).toBe(1);
+    expect(status.workforce.tasks.terminal).toBe(1);
   });
 });
