@@ -1,4 +1,4 @@
-import { isOwnerAuthorized } from './owner-auth.mjs';
+import { getOwnerSession } from './owner-auth.mjs';
 import { issueEvidenceSummary, issueStage, issueType, issuePriority } from './control.mjs';
 
 const REPO = process.env.TIGERIQ_REPO || 'newsdayads/tigeriq-ai-lab';
@@ -101,7 +101,8 @@ export default async function handler(req, res) {
         };
       });
 
-    const ownerAuthenticated = OWNER_AUTH_CONFIGURED && isOwnerAuthorized(req);
+    const ownerIdentity = OWNER_AUTH_CONFIGURED ? getOwnerSession(req) : null;
+    const ownerAuthenticated = Boolean(ownerIdentity);
     const activeWork = work.filter((item) => !['completed', 'failed', 'cancelled'].includes(item.stage));
     return json(res, 200, {
       ok: true,
@@ -110,6 +111,15 @@ export default async function handler(req, res) {
       owner: {
         configured: OWNER_AUTH_CONFIGURED,
         authenticated: ownerAuthenticated,
+        identity: ownerIdentity,
+        authorization: {
+          authority: 'TigerIQ',
+          role: ownerAuthenticated ? 'Owner' : null,
+          implementedRoles: ['Owner'],
+          requestedRoles: ['Owner', 'Admin', 'Nhân viên', 'Chỉ xem'],
+          providerInterface: '06-work-management-rbac-required',
+          googleControlsAuthorization: false,
+        },
         serverWriteConfigured: Boolean(GITHUB_TOKEN),
         writeReady: Boolean(ownerAuthenticated && GITHUB_TOKEN),
         browserWriteRequiresOwner: true,
