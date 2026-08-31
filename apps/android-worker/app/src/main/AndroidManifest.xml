@@ -6,6 +6,13 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
+    <supports-screens
+        android:smallScreens="true"
+        android:normalScreens="true"
+        android:largeScreens="true"
+        android:xlargeScreens="true"
+        android:anyDensity="true" />
+
     <queries>
         <package android:name="com.google.android.apps.bard" />
         <package android:name="com.tailscale.ipn" />
@@ -14,13 +21,15 @@
     <application
         android:allowBackup="false"
         android:label="TigerIQ AI Worker"
+        android:resizeableActivity="true"
         android:theme="@style/TigerIQTheme"
         android:usesCleartextTraffic="false"
         android:networkSecurityConfig="@xml/network_security_config">
 
         <activity
             android:name=".PermissionWizardActivity"
-            android:exported="true">
+            android:exported="true"
+            android:resizeableActivity="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -29,11 +38,13 @@
 
         <activity
             android:name=".HomeActivity"
-            android:exported="false" />
+            android:exported="false"
+            android:resizeableActivity="true" />
 
         <activity
             android:name=".MainActivity"
-            android:exported="false" />
+            android:exported="false"
+            android:resizeableActivity="true" />
 
         <service
             android:name=".ForegroundWorkerService"
