@@ -68,11 +68,11 @@ export async function startInferenceGatewayServer(options: InferenceGatewayServe
         const existing = idempotency.get(cacheKey);
         if (existing) {
           if (existing.fingerprint !== fingerprint) throw new HttpInputError(400, 'Idempotency-Key reused for different request');
-          return json(response, 200, successBody(existing.response, true));
+          return json(response, 200, successBody(existing.response));
         }
         const result = await options.gateway.infer(data);
         idempotency.set(cacheKey, { fingerprint, response: result });
-        return json(response, 200, successBody(result, false));
+        return json(response, 200, successBody(result));
       }
 
       if (request.method === 'GET' && url.pathname === '/v1/inference/health') {
@@ -105,7 +105,7 @@ export async function startInferenceGatewayServer(options: InferenceGatewayServe
   };
 }
 
-function successBody(result: GatewayResult, idempotent: boolean) {
+function successBody(result: GatewayResult) {
   return {
     ok: true,
     requestId: result.requestId,
@@ -118,7 +118,6 @@ function successBody(result: GatewayResult, idempotent: boolean) {
       budget: result.budget,
       gatewayVersion: result.gatewayVersion,
     },
-    idempotent,
   };
 }
 
