@@ -1,5 +1,6 @@
 import { timingSafeEqual, randomUUID, createHash } from 'node:crypto';
 import { decideWithChief } from './chief.mjs';
+import { isOwnerAuthorized } from './owner-auth.mjs';
 
 const REPO = process.env.TIGERIQ_REPO || 'newsdayads/tigeriq-ai-lab';
 const COMMAND_SECRET = process.env.TIGERIQ_COMMAND_SECRET || '';
@@ -33,10 +34,10 @@ function clientGithubToken(req) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-function writeCredential(req) {
+async function writeCredential(req) {
   const clientToken = clientGithubToken(req);
   if (clientToken) return { token: clientToken, mode: 'client-token' };
-  if (GITHUB_TOKEN && authorizedByServerSecret(req)) return { token: GITHUB_TOKEN, mode: 'server-token' };
+  if (GITHUB_TOKEN && (authorizedByServerSecret(req) || isOwnerAuthorized(req))) return { token: GITHUB_TOKEN, mode: 'owner-session' };
   const error = new Error('github_authorization_required');
   error.status = 401;
   throw error;
@@ -452,7 +453,7 @@ export default async function handler(req, res) {
     const optionalToken = clientGithubToken(req);
 
     if (operation === 'status') return json(res, 200, await statusSnapshot(optionalToken));
-    if (operation === 'whoami') return json(res, 200, await githubIdentity(writeCredential(req).token));
+    if (operation === 'whoami') return json(res, 200, await githubIdentity((await writeCredential(req)).token));
     if (operation === 'work-order-status') return json(res, 200, await workOrderStatus(payload, optionalToken));
     if (operation === 'work-board') return json(res, 200, await workBoard(optionalToken));
 
@@ -483,7 +484,7 @@ export default async function handler(req, res) {
         });
       }
 
-      const credential = writeCredential(req);
+      const credential = await writeCredential(req);
       const result = await createWorkOrder({
         instruction: decision.instruction,
         priority: decision.priority,
@@ -502,10 +503,10 @@ export default async function handler(req, res) {
     }
 
     if (operation === 'work-order') {
-      const result = await createWorkOrder({ ...payload, source: 'vercel-explicit-dispatch' }, writeCredential(req).token);
+      const result = await createWorkOrder({ ...payload, source: 'vercel-explicit-dispatch' }, (await writeCredential(req)).token);
       return json(res, result.deduplicated ? 200 : 201, result);
     }
-    if (operation === 'canary') return json(res, 201, await createCanary(writeCredential(req).token));
+    if (operation === 'canary') return json(res, 201, await createCanary((await writeCredential(req)).token));
     return json(res, 400, { error: 'unsupported_operation' });
   } catch (error) {
     const name = error instanceof Error ? error.message : String(error);
