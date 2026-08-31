@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tigeriq.ai/schemas/work-management-plan.schema.json",
+  "title": "TigerIQ Goal Work Plan",
+  "type": "object",
+  "required": ["goal", "items"],
+  "additionalProperties": false,
+  "properties": {
+    "goal": {
+      "type": "object",
+      "required": ["goalId", "idempotencyKey", "objective", "priority", "constraints", "maxParallelism", "createdAt"],
+      "additionalProperties": false,
+      "properties": {
+        "goalId": { "type": "string", "minLength": 1 },
+        "idempotencyKey": { "type": "string", "minLength": 1 },
+        "objective": { "type": "string", "minLength": 1 },
+        "priority": { "enum": ["P0", "P1", "P2", "P3"] },
+        "constraints": { "type": "array", "items": { "type": "string" } },
+        "maxParallelism": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "items": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["workId", "title", "objective", "dependencies", "scopeKeys", "requiredCapabilities", "expectedEvidence", "maxAttempts", "independentReview", "judgeRequired"],
+        "additionalProperties": false,
+        "properties": {
+          "workId": { "type": "string", "minLength": 1 },
+          "title": { "type": "string", "minLength": 1 },
+          "objective": { "type": "string", "minLength": 1 },
+          "dependencies": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+          "scopeKeys": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+          "requiredCapabilities": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+          "allowedWorkerKinds": { "type": "array", "uniqueItems": true, "items": { "enum": ["ai", "pc01", "device", "tool", "human"] } },
+          "expectedEvidence": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+          "maxAttempts": { "type": "integer", "minimum": 1, "maximum": 10 },
+          "independentReview": { "type": "boolean" },
+          "judgeRequired": { "type": "boolean" }
+        }
+      }
+    }
+  }
+}
