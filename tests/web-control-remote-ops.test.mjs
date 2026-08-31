@@ -3,13 +3,16 @@ import { describe, expect, it } from 'vitest';
 
 const ui = readFileSync(new URL('../public/command-center.html', import.meta.url), 'utf8');
 const statusApi = readFileSync(new URL('../api/web-control-status.mjs', import.meta.url), 'utf8');
+const ownerAuth = readFileSync(new URL('../api/owner-auth.mjs', import.meta.url), 'utf8');
 const vercel = readFileSync(new URL('../vercel.json', import.meta.url), 'utf8');
 
 describe('WO-045 Web Control remote operations', () => {
-  it('keeps the executive Web Control as the primary root entry', () => {
+  it('keeps the executive Web Control as the primary root entry including after Owner login', () => {
     expect(vercel).toContain('"source": "/", "destination": "/command-center.html"');
     expect(ui).toContain('TigerIQ · Web Control');
     expect(ui).toContain('/api/web-control-status');
+    expect(ownerAuth).toContain("return redirect(res, '/?owner=connected')");
+    expect(ownerAuth).not.toContain("return redirect(res, '/index.html?owner=connected')");
   });
 
   it('supports Owner-authenticated gated dispatch without browser credentials', () => {
