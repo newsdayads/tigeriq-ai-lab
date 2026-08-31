@@ -79,19 +79,83 @@ describe('WO-044 work management system', () => {
     expect(scopeKeysConflict('packages/workforce', 'packages/work-orders')).toBe(false);
   });
 
-  it('deduplicates goals, resolves dependencies, and rejects dependency cycles', () => {
+  it('deduplicates goals, rejects conflicting idempotency replays, and resolves dependencies', () => {
     const plan: GoalPlan = { goal: baseGoal, items: [item('A'), item('B'), item('C', ['A', 'B'])] };
     const store = new WorkManagementStore();
     const first = store.submit(plan, '2026-08-31T00:00:00.000Z');
     const duplicate = store.submit({ ...plan, goal: { ...baseGoal, goalId: 'G-duplicate' } }, '2026-08-31T00:00:01.000Z');
     expect(first.goal.goalId).toBe('G-1');
     expect(duplicate.goal.goalId).toBe('G-1');
+    expect(() => store.submit({
+      ...plan,
+      goal: { ...baseGoal, goalId: 'G-conflict', objective: 'Different objective' },
+    })).toThrow(/idempotency conflict/i);
+    expect(() => store.submit({
+      goal: { ...baseGoal, goalId: 'G-conflict-plan' },
+      items: [item('A'), item('B'), { ...item('C', ['A', 'B']), objective: 'Different work' }],
+    })).toThrow(/idempotency conflict/i);
     expect(store.readyWork('G-1', '2026-08-31T00:00:01.000Z').map((work) => work.work.workId)).toEqual(['A', 'B']);
 
     expect(() => new WorkManagementStore().submit({
       goal: { ...baseGoal, goalId: 'G-CYCLE', idempotencyKey: 'goal-cycle' },
       items: [item('X', ['Y']), item('Y', ['X'])],
     })).toThrow(/dependency cycle/i);
+  });
+
+  it('rejects duplicate idempotency keys while restoring a snapshot', () => {
+    const store = new WorkManagementStore();
+    store.submit({ goal: baseGoal, items: [item('A')] });
+    const snapshot = store.exportSnapshot();
+    snapshot.goals.push({
+      ...structuredClone(snapshot.goals[0]),
+      goal: { ...structuredClone(snapshot.goals[0].goal), goalId: 'G-duplicate-key' },
+      work: snapshot.goals[0].work.map((record) => ({
+        ...structuredClone(record),
+        work: { ...structuredClone(record.work), workId: `${record.work.workId}-2` },
+      })),
+    });
+    expect(() => new WorkManagementStore(snapshot)).toThrow(/duplicate idempotency key/i);
+  });
+
+  it('enforces allowed scope containment instead of symmetric overlap', () => {
+    const store = new WorkManagementStore();
+    store.submit({
+      goal: { ...baseGoal, goalId: 'G-SCOPE', idempotencyKey: 'goal-scope' },
+      items: [
+        item('W-BROAD', [], ['packages']),
+        item('W-CHILD', [], ['packages/work-management/src']),
+      ],
+    });
+    const limited = { ...worker('E-SCOPE', ['executor']), allowedScopes: ['packages/work-management'] };
+    expect(store.workerEligible(limited, 'W-BROAD', 'executor')).toBe(false);
+    expect(store.workerEligible(limited, 'W-CHILD', 'executor')).toBe(true);
+    expect(store.workerEligible({ ...limited, allowedScopes: [] }, 'W-CHILD', 'executor')).toBe(false);
+  });
+
+  it('preserves role independence across retry attempts', () => {
+    const store = new WorkManagementStore();
+    store.submit({
+      goal: { ...baseGoal, goalId: 'G-ROLE', idempotencyKey: 'goal-role', maxParallelism: 1 },
+      items: [item('ROLE')],
+    });
+    const exec = worker('EXEC', ['executor']);
+    const mixed = worker('MIXED', ['executor', 'reviewer', 'judge']);
+    store.claim('ROLE', exec, 'executor', 60_000, '2026-08-31T00:00:01.000Z');
+    store.startExecution('ROLE', 'EXEC', '2026-08-31T00:00:02.000Z');
+    store.finishExecution('ROLE', 'EXEC', {
+      status: 'completed',
+      conclusion: 'done',
+      evidence: [{ kind: 'commit', ref: 'sha-1' }],
+    }, '2026-08-31T00:00:03.000Z');
+    store.claim('ROLE', mixed, 'reviewer', 60_000, '2026-08-31T00:00:04.000Z');
+    store.finishReview('ROLE', 'MIXED', {
+      verdict: 'needs-work',
+      conclusion: 'fix it',
+      evidence: [{ kind: 'text', ref: 'review://needs-work' }],
+      retriable: true,
+    }, '2026-08-31T00:00:05.000Z');
+    expect(store.getWork('ROLE').stage).toBe('ready');
+    expect(store.workerEligible(mixed, 'ROLE', 'executor')).toBe(false);
   });
 
   it('locks overlapping scopes and safely requeues an expired execution lease after restart', () => {
