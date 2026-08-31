@@ -54,9 +54,15 @@ export class WorkforceRegistryBridge {
 function independenceKeyFor(employee: EmployeeRecord, node: WorkerNodeRecord): string {
   const provider = employee.provider?.trim().toLowerCase();
   const model = employee.model?.trim().toLowerCase();
-  if (provider && model) return `${provider}:${model}:${node.nodeId}`;
-  // If provider/model metadata is unavailable, fail conservatively by grouping
-  // all workers on the same runtime node into one independence identity.
+  // Same provider/model is the same assurance identity even when reached through
+  // different runtime nodes; aliases must not spoof independent review.
+  if (provider && model) return `${provider}:${model}`;
+  if (provider) return `${provider}:unknown-model`;
+  if (model) return `unknown-provider:${model}`;
+  // Unknown cloud/browser AI identity cannot safely be treated as independent.
+  if (node.kind === 'api' || node.kind === 'browser' || node.kind === 'simulator') return 'unidentified-ai';
+  // Physical/local/tool runtimes have a concrete node identity when no model
+  // identity exists. Workers sharing that node remain the same assurance identity.
   return `${node.kind}:${node.nodeId}`.toLowerCase();
 }
 
