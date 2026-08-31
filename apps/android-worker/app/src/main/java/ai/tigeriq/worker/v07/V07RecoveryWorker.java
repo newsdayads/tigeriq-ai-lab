@@ -39,12 +39,14 @@ public final class V07RecoveryWorker extends Worker {
             V07WorkScheduler.enqueueJob(app, profile.employeeId, pulled.lease.jobId, pulled.lease.idempotencyKey);
             return Result.success();
         } catch (ApiException error) {
-            WorkerState state = error.isTokenExpired() || error.isUnauthorized() || "REENROLL_REQUIRED".equals(error.code) ? WorkerState.NEED_ATTENTION : (error.retryable ? WorkerState.WORKING : WorkerState.NEED_ATTENTION);
+            boolean canRetry = RetryPolicy.canRetry(getRunAttemptCount(), error.retryable);
+            WorkerState state = error.isTokenExpired() || error.isUnauthorized() || "REENROLL_REQUIRED".equals(error.code) ? WorkerState.NEED_ATTENTION : (canRetry ? WorkerState.WORKING : WorkerState.NEED_ATTENTION);
             status.setState(state, "Recovery API: " + error.code, null);
-            return error.retryable ? Result.retry() : Result.failure();
+            return canRetry ? Result.retry() : Result.failure();
         } catch (Exception error) {
-            status.setState(WorkerState.NEED_ATTENTION, "Recovery lỗi cục bộ", null);
-            return Result.retry();
+            boolean canRetry = RetryPolicy.canRetry(getRunAttemptCount(), true);
+            status.setState(canRetry ? WorkerState.WORKING : WorkerState.NEED_ATTENTION, canRetry ? "Recovery lỗi cục bộ; sẽ thử lại hữu hạn" : "Recovery dừng sau giới hạn retry", null);
+            return canRetry ? Result.retry() : Result.failure();
         }
     }
 }
