@@ -40,6 +40,7 @@
 
         <activity android:name=".HomeActivity" android:exported="false" android:resizeableActivity="true" />
         <activity android:name=".MainActivity" android:exported="false" android:resizeableActivity="true" />
+        <activity android:name=".v07.V07StatusActivity" android:exported="false" android:resizeableActivity="true" />
 
         <service
             android:name=".ForegroundWorkerService"
