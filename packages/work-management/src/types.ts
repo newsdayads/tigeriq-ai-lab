@@ -14,6 +14,7 @@ export type WorkStage =
 export type WorkRole = 'executor' | 'reviewer' | 'judge';
 export type WorkerKind = 'ai' | 'pc01' | 'device' | 'tool' | 'human';
 export type ReviewVerdict = 'pass' | 'needs-work' | 'fail';
+export type EvidenceKind = 'text' | 'json' | 'log' | 'commit' | 'url' | 'screenshot';
 
 export interface GoalRequest {
   goalId: string;
@@ -33,7 +34,7 @@ export interface PlannedWorkItem {
   scopeKeys: string[];
   requiredCapabilities: string[];
   allowedWorkerKinds?: WorkerKind[];
-  expectedEvidence: string[];
+  expectedEvidence: EvidenceKind[];
   maxAttempts: number;
   independentReview: boolean;
   judgeRequired: boolean;
@@ -45,7 +46,7 @@ export interface GoalPlan {
 }
 
 export interface EvidenceRef {
-  kind: 'text' | 'json' | 'log' | 'commit' | 'url' | 'screenshot';
+  kind: EvidenceKind;
   ref: string;
   summary?: string;
   sha256?: string;
@@ -73,6 +74,8 @@ export interface ManagedWorker {
   capabilities: string[];
   concurrencyLimit: number;
   allowedScopes?: string[];
+  /** Stable identity for independence checks, e.g. provider:model or a hardware/runtime fingerprint. */
+  independenceKey: string;
   online: boolean;
 }
 
@@ -87,6 +90,8 @@ export interface WorkExecutionContext {
   work: PlannedWorkItem;
   worker: ManagedWorker;
   attempt: number;
+  /** Drivers should stop promptly when aborted; the manager still bounds waiting if they ignore it. */
+  signal?: AbortSignal;
 }
 
 export interface WorkReviewContext extends WorkExecutionContext {
