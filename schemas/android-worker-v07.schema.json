@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tigeriq.local/schemas/android-worker-v07.schema.json",
+  "title": "TigerIQ Android Thin Worker v0.7 Contract",
+  "type": "object",
+  "$defs": {
+    "employeeId": { "type": "string", "pattern": "^[A-Z0-9][A-Z0-9._:-]{2,63}$" },
+    "deviceId": { "type": "string", "pattern": "^[A-Z0-9][A-Z0-9._:-]{2,63}$" },
+    "permission": {
+      "type": "string",
+      "enum": ["job:pull", "job:submit", "evidence:write", "memory:read", "memory:write"]
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "ref"],
+      "properties": {
+        "kind": { "enum": ["text", "json", "screenshot", "log", "commit", "url"] },
+        "ref": { "type": "string", "minLength": 1 },
+        "summary": { "type": "string" },
+        "sha256": { "type": "string", "pattern": "^[a-fA-F0-9]{64}$" }
+      }
+    },
+    "job": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["jobId", "idempotencyKey", "employeeId", "objective", "requiredPermissions", "payload", "expectedEvidence", "maxAttempts", "createdAt"],
+      "properties": {
+        "jobId": { "$ref": "#/$defs/employeeId" },
+        "idempotencyKey": { "type": "string", "minLength": 1 },
+        "employeeId": { "$ref": "#/$defs/employeeId" },
+        "objective": { "type": "string", "minLength": 1 },
+        "requiredPermissions": {
+          "type": "array",
+          "minItems": 2,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/permission" },
+          "allOf": [
+            { "contains": { "const": "job:pull" } },
+            { "contains": { "const": "job:submit" } }
+          ]
+        },
+        "payload": { "type": "object" },
+        "expectedEvidence": { "type": "array", "items": { "type": "string" } },
+        "maxAttempts": { "type": "integer", "minimum": 1, "maximum": 10 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "lease": {
+      "type": "object",
+      "required": ["jobId", "employeeId", "deviceId", "bindingId", "leaseId", "leaseToken", "attempt", "leasedAt", "expiresAt", "job"],
+      "properties": {
+        "jobId": { "$ref": "#/$defs/employeeId" },
+        "employeeId": { "$ref": "#/$defs/employeeId" },
+        "deviceId": { "$ref": "#/$defs/deviceId" },
+        "bindingId": { "type": "string", "minLength": 1 },
+        "leaseId": { "type": "string", "minLength": 1 },
+        "leaseToken": { "type": "string", "minLength": 20 },
+        "attempt": { "type": "integer", "minimum": 1 },
+        "leasedAt": { "type": "string", "format": "date-time" },
+        "expiresAt": { "type": "string", "format": "date-time" },
+        "job": { "$ref": "#/$defs/job" }
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["jobId", "employeeId", "deviceId", "bindingId", "status", "evidence", "completedAt"],
+      "properties": {
+        "jobId": { "$ref": "#/$defs/employeeId" },
+        "employeeId": { "$ref": "#/$defs/employeeId" },
+        "deviceId": { "$ref": "#/$defs/deviceId" },
+        "bindingId": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["completed", "failed"] },
+        "output": { "type": "object" },
+        "evidence": { "type": "array", "items": { "$ref": "#/$defs/evidence" } },
+        "completedAt": { "type": "string", "format": "date-time" },
+        "failure": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["code", "message", "retriable"],
+          "properties": {
+            "code": { "type": "string", "minLength": 1 },
+            "message": { "type": "string", "minLength": 1 },
+            "retriable": { "type": "boolean" }
+          }
+        }
+      }
+    }
+  },
+  "properties": {
+    "pullRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["employeeId", "deviceId"],
+      "properties": {
+        "employeeId": { "$ref": "#/$defs/employeeId" },
+        "deviceId": { "$ref": "#/$defs/deviceId" }
+      }
+    },
+    "pullResponse": {
+      "oneOf": [
+        { "type": "object", "required": ["kind"], "properties": { "kind": { "const": "empty" } }, "additionalProperties": false },
+        { "type": "object", "required": ["kind", "lease"], "properties": { "kind": { "const": "job" }, "lease": { "$ref": "#/$defs/lease" } }, "additionalProperties": false }
+      ]
+    },
+    "submitRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["employeeId", "deviceId", "leaseId", "leaseToken", "result"],
+      "properties": {
+        "employeeId": { "$ref": "#/$defs/employeeId" },
+        "deviceId": { "$ref": "#/$defs/deviceId" },
+        "leaseId": { "type": "string", "minLength": 1 },
+        "leaseToken": { "type": "string", "minLength": 20 },
+        "result": { "$ref": "#/$defs/result" }
+      }
+    }
+  }
+}
