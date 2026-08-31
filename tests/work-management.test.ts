@@ -58,7 +58,7 @@ const judgeDriver: WorkDriver = {
 };
 
 function worker(workerId: string, roles: ManagedWorker['roles'], kind: ManagedWorker['kind'] = 'ai'): ManagedWorker {
-  return { workerId, kind, roles, capabilities: ['code'], concurrencyLimit: 2, online: true };
+  return { workerId, kind, roles, capabilities: ['code'], concurrencyLimit: 2, independenceKey: workerId, online: true };
 }
 
 class CapturingStateStore implements WorkManagementStateStore {
