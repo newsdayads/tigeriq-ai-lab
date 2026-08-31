@@ -1,0 +1,35 @@
+name: WO-045 PC01 Secure Worker
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/pc-worker/**'
+      - '.github/workflows/wo045-pc01-security.yml'
+  push:
+    branches:
+      - 'wo045/pc01-autonomy-hardening'
+    paths:
+      - 'scripts/pc-worker/**'
+      - '.github/workflows/wo045-pc01-security.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  security-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile PC01 runtime
+        run: |
+          python -m py_compile scripts/pc-worker/control_plane_v2.py scripts/pc-worker/worker_secure_v3.py scripts/pc-worker/bootstrap_worker_v2.py
+      - name: Control plane tests
+        working-directory: scripts/pc-worker
+        run: python test_control_plane_v2.py
+      - name: Secure worker bypass regression tests
+        working-directory: scripts/pc-worker
+        run: python test_worker_secure_v3.py
