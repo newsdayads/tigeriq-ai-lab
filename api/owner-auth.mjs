@@ -92,6 +92,11 @@ function redirect(res, location) {
   res.end();
 }
 
+function clearOwnerCookies(res) {
+  setCookie(res, SESSION_COOKIE, '', 0);
+  setCookie(res, STATE_COOKIE, '', 0);
+}
+
 async function exchangeCode(code) {
   const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
@@ -121,6 +126,7 @@ async function exchangeCode(code) {
 export default async function handler(req, res) {
   const action = String(new URL(req.url || '/', 'https://localhost').searchParams.get('action') || 'status');
   if (req.method !== 'GET') return json(res, 405, { error: 'method_not_allowed' });
+
   if (action === 'status') {
     const identity = getOwnerSession(req);
     return json(res, 200, {
@@ -138,6 +144,12 @@ export default async function handler(req, res) {
       },
     });
   }
+
+  if (action === 'logout') {
+    clearOwnerCookies(res);
+    return redirect(res, '/?owner=disconnected');
+  }
+
   if (!configured()) return json(res, 503, { error: 'owner_auth_not_configured' });
 
   if (action === 'login') {
@@ -171,5 +183,6 @@ export default async function handler(req, res) {
       return json(res, 403, { error: String(error instanceof Error ? error.message : error).slice(0, 96) });
     }
   }
+
   return json(res, 400, { error: 'unsupported_action' });
 }
