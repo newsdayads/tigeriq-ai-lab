@@ -49,22 +49,40 @@ function setCookie(res, name, value, maxAge = MAX_AGE_SECONDS) {
   res.setHeader('set-cookie', next);
 }
 
-function sessionValue(email) {
-  const payload = Buffer.from(JSON.stringify({ email, exp: Math.floor(Date.now() / 1000) + MAX_AGE_SECONDS })).toString('base64url');
+function safeIdentity(input = {}) {
+  const email = String(input?.email || '').trim().toLowerCase();
+  const name = String(input?.name || '').trim().slice(0, 120);
+  const pictureRaw = String(input?.picture || '').trim();
+  const picture = /^https:\/\//i.test(pictureRaw) ? pictureRaw.slice(0, 1000) : '';
+  return { email, name: name || email, picture: picture || null };
+}
+
+function sessionValue(identity) {
+  const safe = safeIdentity(identity);
+  const payload = Buffer.from(JSON.stringify({
+    ...safe,
+    exp: Math.floor(Date.now() / 1000) + MAX_AGE_SECONDS,
+  })).toString('base64url');
   return `${payload}.${sign(payload)}`;
 }
 
-export function isOwnerAuthorized(req) {
-  if (!configured()) return false;
+export function getOwnerSession(req) {
+  if (!configured()) return null;
   const raw = cookies(req)[SESSION_COOKIE] || '';
   const [payload, signature] = raw.split('.');
-  if (!payload || !signature || !safeEqual(sign(payload), signature)) return false;
+  if (!payload || !signature || !safeEqual(sign(payload), signature)) return null;
   try {
     const value = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
-    return value?.email === OWNER_EMAIL && Number(value?.exp || 0) > Math.floor(Date.now() / 1000);
+    if (String(value?.email || '').trim().toLowerCase() !== OWNER_EMAIL) return null;
+    if (Number(value?.exp || 0) <= Math.floor(Date.now() / 1000)) return null;
+    return safeIdentity(value);
   } catch {
-    return false;
+    return null;
   }
+}
+
+export function isOwnerAuthorized(req) {
+  return Boolean(getOwnerSession(req));
 }
 
 function redirect(res, location) {
@@ -95,15 +113,31 @@ async function exchangeCode(code) {
   });
   if (!userResponse.ok) throw new Error('google_userinfo_failed');
   const user = await userResponse.json();
-  const email = String(user?.email || '').trim().toLowerCase();
-  if (email !== OWNER_EMAIL || user?.email_verified !== true) throw new Error('owner_email_not_authorized');
-  return email;
+  const identity = safeIdentity(user);
+  if (identity.email !== OWNER_EMAIL || user?.email_verified !== true) throw new Error('owner_email_not_authorized');
+  return identity;
 }
 
 export default async function handler(req, res) {
   const action = String(new URL(req.url || '/', 'https://localhost').searchParams.get('action') || 'status');
   if (req.method !== 'GET') return json(res, 405, { error: 'method_not_allowed' });
-  if (action === 'status') return json(res, 200, { ok: true, configured: configured(), authenticated: isOwnerAuthorized(req), owner: OWNER_EMAIL });
+  if (action === 'status') {
+    const identity = getOwnerSession(req);
+    return json(res, 200, {
+      ok: true,
+      configured: configured(),
+      authenticated: Boolean(identity),
+      identity,
+      authorization: {
+        authority: 'TigerIQ',
+        role: identity ? 'Owner' : null,
+        implementedRoles: ['Owner'],
+        requestedRoles: ['Owner', 'Admin', 'Nhân viên', 'Chỉ xem'],
+        providerInterface: '06-work-management-rbac-required',
+        googleControlsAuthorization: false,
+      },
+    });
+  }
   if (!configured()) return json(res, 503, { error: 'owner_auth_not_configured' });
 
   if (action === 'login') {
@@ -129,8 +163,8 @@ export default async function handler(req, res) {
     const [nonce, signature] = state.split('.');
     if (!nonce || !signature || !safeEqual(state, expected) || !safeEqual(sign(nonce), signature)) return json(res, 400, { error: 'invalid_oauth_state' });
     try {
-      const email = await exchangeCode(String(url.searchParams.get('code') || ''));
-      setCookie(res, SESSION_COOKIE, sessionValue(email));
+      const identity = await exchangeCode(String(url.searchParams.get('code') || ''));
+      setCookie(res, SESSION_COOKIE, sessionValue(identity));
       setCookie(res, STATE_COOKIE, '', 0);
       return redirect(res, '/?owner=connected');
     } catch (error) {
