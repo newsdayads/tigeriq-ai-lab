@@ -6,6 +6,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.QUERY_ADVANCED_PROTECTION_MODE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <supports-screens
         android:smallScreens="true"
@@ -37,20 +38,28 @@
             </intent-filter>
         </activity>
 
-        <activity
-            android:name=".HomeActivity"
-            android:exported="false"
-            android:resizeableActivity="true" />
-
-        <activity
-            android:name=".MainActivity"
-            android:exported="false"
-            android:resizeableActivity="true" />
+        <activity android:name=".HomeActivity" android:exported="false" android:resizeableActivity="true" />
+        <activity android:name=".MainActivity" android:exported="false" android:resizeableActivity="true" />
 
         <service
             android:name=".ForegroundWorkerService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+
+        <service
+            android:name=".v07.TigerIqMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
+        <receiver android:name=".v07.V07BootReceiver" android:enabled="true" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
 
         <service
             android:name=".AccessibilityBridgeService"
@@ -59,9 +68,7 @@
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />
             </intent-filter>
-            <meta-data
-                android:name="android.accessibilityservice"
-                android:resource="@xml/accessibility_service_config" />
+            <meta-data android:name="android.accessibilityservice" android:resource="@xml/accessibility_service_config" />
         </service>
     </application>
 </manifest>
