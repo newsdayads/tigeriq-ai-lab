@@ -14,16 +14,11 @@ public final class V07RecoveryWorker extends Worker {
         WorkerStatusStore status = new WorkerStatusStore(app);
         try {
             EmployeeDeviceStore.Profile profile = new EmployeeDeviceStore(app).load();
-            if (profile == null) {
+            if (profile == null || !profile.enrolled) {
                 status.setState(WorkerState.NEED_ATTENTION, "Thiết bị chưa enrollment", null);
                 return Result.success();
             }
-            SecureSecretStore secrets = new SecureSecretStore(app);
-            String bootstrap = secrets.get(SecureSecretStore.BOOTSTRAP_TOKEN);
-            if (bootstrap == null || bootstrap.isBlank()) {
-                status.setState(WorkerState.NEED_ATTENTION, "Thiếu bootstrap credential", null);
-                return Result.success();
-            }
+            String sessionToken = new SessionManager(app).validToken(profile);
             DurableCheckpointStore checkpoints = new DurableCheckpointStore(app);
             DurableCheckpointStore.Snapshot snapshot = checkpoints.load();
             if (snapshot.hasInFlightWork()) {
@@ -34,7 +29,7 @@ public final class V07RecoveryWorker extends Worker {
                 }
                 checkpoints.clear();
             }
-            TigerIqApiClient.PullResult pulled = new TigerIqApiClient(profile).pullJob(bootstrap);
+            TigerIqApiClient.PullResult pulled = new TigerIqApiClient(profile).pullJob(sessionToken);
             if (pulled.empty) {
                 status.setState(WorkerState.READY, "Sẵn sàng nhận việc", null);
                 return Result.success();
@@ -44,7 +39,8 @@ public final class V07RecoveryWorker extends Worker {
             V07WorkScheduler.enqueueJob(app, profile.employeeId, pulled.lease.jobId, pulled.lease.idempotencyKey);
             return Result.success();
         } catch (ApiException error) {
-            status.setState(error.retryable ? WorkerState.WORKING : WorkerState.NEED_ATTENTION, "Recovery API: " + error.code, null);
+            WorkerState state = error.isTokenExpired() || error.isUnauthorized() || "REENROLL_REQUIRED".equals(error.code) ? WorkerState.NEED_ATTENTION : (error.retryable ? WorkerState.WORKING : WorkerState.NEED_ATTENTION);
+            status.setState(state, "Recovery API: " + error.code, null);
             return error.retryable ? Result.retry() : Result.failure();
         } catch (Exception error) {
             status.setState(WorkerState.NEED_ATTENTION, "Recovery lỗi cục bộ", null);
