@@ -23,12 +23,13 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.lang.reflect.Method;
+
 /** One-time phone-first setup. Completed devices skip directly to HomeActivity on later launches. */
 public final class PermissionWizardActivity extends Activity {
     public static final String EXTRA_FORCE_SETUP = "forceSetup";
     private static final int NOTIFICATION_REQUEST = 7001;
     private static final String GEMINI_PACKAGE = "com.google.android.apps.bard";
-    private static final String ACTION_ACCESSIBILITY_DETAILS = "android.settings.ACCESSIBILITY_DETAILS_SETTINGS";
     private static final int NAVY = Color.rgb(17, 24, 39);
     private static final int ORANGE = Color.rgb(244, 113, 31);
     private static final int GOLD = Color.rgb(250, 190, 58);
@@ -39,6 +40,7 @@ public final class PermissionWizardActivity extends Activity {
     private static final int RED = Color.rgb(190, 54, 54);
 
     private TextView summary;
+    private TextView securityState;
     private TextView notificationState;
     private TextView accessibilityState;
     private TextView batteryState;
@@ -46,8 +48,7 @@ public final class PermissionWizardActivity extends Activity {
     private Button continueButton;
     private boolean forceSetup;
     private boolean accessibilitySettingsLaunched;
-    private boolean openAccessibilityAfterAppDetails;
-    private boolean restrictedDialogShown;
+    private boolean diagnosticDialogShown;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -66,18 +67,10 @@ public final class PermissionWizardActivity extends Activity {
         SetupStateStore.confirmGeminiReturn(this);
         if (summary != null) refresh();
 
-        if (openAccessibilityAfterAppDetails) {
-            openAccessibilityAfterAppDetails = false;
-            if (!accessibilityEnabled()) {
-                getWindow().getDecorView().postDelayed(this::openAccessibilitySettingsOnly, 350);
-            }
-            return;
-        }
-
         if (accessibilitySettingsLaunched) {
             accessibilitySettingsLaunched = false;
-            if (!accessibilityEnabled() && isSamsungRestrictedSettingsRelevant() && !restrictedDialogShown) {
-                getWindow().getDecorView().postDelayed(this::showRestrictedSettingsHelp, 350);
+            if (!accessibilityEnabled() && !diagnosticDialogShown) {
+                getWindow().getDecorView().postDelayed(this::showAccessibilityDiagnosis, 350);
             }
         }
     }
@@ -121,26 +114,29 @@ public final class PermissionWizardActivity extends Activity {
 
         LinearLayout intro = card();
         intro.addView(text("Cấp quyền một lần", 20, true));
-        summary = text("TigerIQ sẽ mở đúng màn hình cần xác nhận và tự kiểm tra khi quay lại.", 13, false);
+        summary = text("TigerIQ sẽ mở đúng màn hình hệ thống và tự kiểm tra khi quay lại.", 13, false);
         summary.setTextColor(MUTED);
         intro.addView(summary, margin(0, dp(7), 0, 0));
-        TextView device = text("Tương thích Samsung Z Flip / Z Fold · Android 8 trở lên", 12, true);
+        TextView device = text("Samsung Z Flip / Z Fold · Android 8 trở lên", 12, true);
         device.setTextColor(GREEN);
         intro.addView(device, margin(0, dp(9), 0, 0));
+        securityState = text("Đang kiểm tra lớp bảo vệ Android…", 12, true);
+        securityState.setTextColor(MUTED);
+        intro.addView(securityState, margin(0, dp(7), 0, 0));
         root.addView(intro);
 
-        TextView note = text("Sau khi đủ 4 bước, những lần mở sau sẽ vào thẳng màn hình GIAO VIỆC. Không cần PC01.", 13, false);
+        TextView note = text("Không cần PC01. Nếu Android 16 bật Bảo vệ nâng cao, TigerIQ sẽ báo đúng nguyên nhân thay vì bắt tìm một nút không tồn tại.", 13, false);
         note.setTextColor(MUTED);
         root.addView(note, margin(0, dp(16), 0, dp(10)));
 
         notificationState = addStep(root, "1", "Cho phép thông báo", "Đang kiểm tra…", "CHO PHÉP", v -> requestNotifications());
-        accessibilityState = addStep(root, "2", "Cho phép điều khiển màn hình", "Đang kiểm tra…", "BẬT ĐIỀU KHIỂN", v -> openAccessibility());
+        accessibilityState = addStep(root, "2", "Cho phép điều khiển màn hình", "Đang kiểm tra…", "MỞ TRỢ NĂNG", v -> openAccessibility());
         batteryState = addStep(root, "3", "Cho phép chạy liên tục", "Đang kiểm tra…", "BỎ GIỚI HẠN PIN", v -> requestBattery());
         geminiState = addStep(root, "4", "Xác nhận Gemini", "Đang kiểm tra…", "MỞ GEMINI", v -> openGemini());
 
-        Button restrictedHelp = secondaryButton("SAMSUNG CHẶN QUYỀN? XỬ LÝ NGAY");
-        restrictedHelp.setOnClickListener(v -> showRestrictedSettingsHelp());
-        root.addView(restrictedHelp, margin(0, dp(8), 0, dp(16)));
+        Button blockerHelp = secondaryButton("QUYỀN ĐIỀU KHIỂN BỊ CHẶN? CHẨN ĐOÁN");
+        blockerHelp.setOnClickListener(v -> showAccessibilityDiagnosis());
+        root.addView(blockerHelp, margin(0, dp(8), 0, dp(16)));
 
         continueButton = primaryButton("BẮT ĐẦU LÀM VIỆC");
         continueButton.setOnClickListener(v -> {
@@ -153,7 +149,7 @@ public final class PermissionWizardActivity extends Activity {
         });
         root.addView(continueButton);
 
-        TextView privacy = text("Android bắt buộc chủ thiết bị tự xác nhận Accessibility. TigerIQ không thể tự bật quyền này. Nếu Samsung chặn APK cài ngoài, ứng dụng sẽ hướng dẫn đúng mục 'Cho phép cài đặt bị hạn chế', sau đó tự đưa trở lại trang Trợ năng.", 11, false);
+        TextView privacy = text("TigerIQ không tự bật hoặc vượt qua quyền Accessibility. Android bắt buộc chủ thiết bị xác nhận. Ứng dụng chỉ mở đúng trang, kiểm tra trạng thái và giải thích chính xác lớp bảo vệ đang chặn.", 11, false);
         privacy.setTextColor(MUTED);
         root.addView(privacy, margin(0, dp(14), 0, 0));
         return shell;
@@ -189,11 +185,34 @@ public final class PermissionWizardActivity extends Activity {
         boolean b = batteryGranted();
         boolean installed = geminiInstalled();
         boolean g = installed && SetupStateStore.geminiConfirmed(this);
+        Boolean advanced = advancedProtectionEnabled();
 
         if (!installed && SetupStateStore.geminiConfirmed(this)) SetupStateStore.clearGeminiConfirmation(this);
 
+        if (Build.VERSION.SDK_INT >= 36) {
+            if (Boolean.TRUE.equals(advanced)) {
+                securityState.setText("⚠ Android 16: Bảo vệ nâng cao đang BẬT");
+                securityState.setTextColor(RED);
+            } else if (Boolean.FALSE.equals(advanced)) {
+                securityState.setText("✓ Android 16: Bảo vệ nâng cao đang TẮT");
+                securityState.setTextColor(GREEN);
+            } else {
+                securityState.setText("Android 16: chưa đọc được trạng thái Bảo vệ nâng cao");
+                securityState.setTextColor(MUTED);
+            }
+        } else {
+            securityState.setText("✓ Không dùng lớp Bảo vệ nâng cao Android 16");
+            securityState.setTextColor(GREEN);
+        }
+
         setState(notificationState, n, n ? "✓ Đã cấp quyền" : "Chưa cấp — bấm nút bên dưới");
-        setState(accessibilityState, a, a ? "✓ Đã bật TigerIQ AI Worker" : "Chưa bật — TigerIQ sẽ mở đúng trang Trợ năng");
+        if (a) {
+            setState(accessibilityState, true, "✓ Đã bật TigerIQ AI Worker");
+        } else if (Boolean.TRUE.equals(advanced)) {
+            setState(accessibilityState, false, "Bị Android 16 Bảo vệ nâng cao chặn — bấm CHẨN ĐOÁN");
+        } else {
+            setState(accessibilityState, false, "Chưa bật — bấm MỞ TRỢ NĂNG và thử bật TigerIQ");
+        }
         setState(batteryState, b, b ? "✓ Đã cho phép chạy liên tục" : "Chưa bỏ giới hạn pin");
         if (!installed) setState(geminiState, false, "Chưa tìm thấy Gemini trên máy");
         else setState(geminiState, g, g ? "✓ Đã mở Gemini và quay lại TigerIQ" : "Bấm MỞ GEMINI, sau đó quay lại TigerIQ");
@@ -201,7 +220,7 @@ public final class PermissionWizardActivity extends Activity {
         boolean ready = n && a && b && installed && g;
         summary.setText(ready
             ? "✓ ĐÃ ĐỦ QUYỀN — bấm BẮT ĐẦU LÀM VIỆC."
-            : "Hoàn tất các bước màu cam. Bước xong sẽ tự chuyển sang dấu ✓ xanh.");
+            : "Hoàn tất các bước màu cam. TigerIQ sẽ tự kiểm tra lại khi quay về ứng dụng.");
         summary.setTextColor(ready ? GREEN : MUTED);
         continueButton.setEnabled(ready);
         continueButton.setAlpha(ready ? 1f : 0.42f);
@@ -215,50 +234,71 @@ public final class PermissionWizardActivity extends Activity {
 
     private void openAccessibility() {
         accessibilitySettingsLaunched = true;
-        openAccessibilitySettingsOnly();
-    }
-
-    private void openAccessibilitySettingsOnly() {
-        try {
-            Intent direct = new Intent(ACTION_ACCESSIBILITY_DETAILS);
-            direct.setData(Uri.parse("package:" + getPackageName()));
-            direct.putExtra(Intent.EXTRA_PACKAGE_NAME, getPackageName());
-            startActivity(direct);
-            Toast.makeText(this, "Bật TigerIQ AI Worker → Cho phép → quay lại TigerIQ", Toast.LENGTH_LONG).show();
-            return;
-        } catch (Exception ignored) {
-            // Samsung/older Android may not support the direct service details action.
-        }
-
         try {
             startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
-            Toast.makeText(this, "Chọn TigerIQ AI Worker → bật Cho phép → quay lại TigerIQ", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Trong Trợ năng, chọn TigerIQ AI Worker và thử bật Cho phép.", Toast.LENGTH_LONG).show();
         } catch (Exception e) {
-            showRestrictedSettingsHelp();
+            showAccessibilityDiagnosis();
         }
     }
 
-    private void showRestrictedSettingsHelp() {
-        if (isFinishing()) return;
-        restrictedDialogShown = true;
+    private void showAccessibilityDiagnosis() {
+        if (isFinishing() || diagnosticDialogShown) return;
+        diagnosticDialogShown = true;
+        Boolean advanced = advancedProtectionEnabled();
+
+        if (Boolean.TRUE.equals(advanced)) {
+            new AlertDialog.Builder(this)
+                .setTitle("Android 16 đang chặn Accessibility")
+                .setMessage("Bảo vệ nâng cao (Advanced Protection) đang BẬT. Android 16 có thể chặn dịch vụ Accessibility của ứng dụng tự động hóa cài ngoài Store. TigerIQ không thể và không nên tự vượt qua lớp bảo vệ này.\n\nNếu Sếp chấp nhận giảm lớp bảo vệ trên thiết bị này: mở Bảo mật & riêng tư → Bảo vệ nâng cao → tắt Bảo vệ thiết bị, rồi quay lại TigerIQ và bấm MỞ TRỢ NĂNG.")
+                .setNegativeButton("ĐÓNG", (dialog, which) -> diagnosticDialogShown = false)
+                .setPositiveButton("MỞ BẢO MẬT", (dialog, which) -> {
+                    diagnosticDialogShown = false;
+                    openSecuritySettings();
+                })
+                .setOnCancelListener(dialog -> diagnosticDialogShown = false)
+                .show();
+            return;
+        }
+
         new AlertDialog.Builder(this)
-            .setTitle("Samsung đang chặn quyền?")
-            .setMessage("Nếu TigerIQ bị mờ hoặc Android báo 'Cài đặt bị hạn chế':\n\n1. Bấm MỞ TRANG ỨNG DỤNG.\n2. Trong Thông tin ứng dụng, bấm ⋮ góc trên bên phải.\n3. Chọn 'Cho phép cài đặt bị hạn chế'.\n4. Quay lại TigerIQ.\n\nTigerIQ sẽ tự mở lại đúng trang Trợ năng để Sếp bật quyền điều khiển.")
-            .setNegativeButton("THỬ TRỢ NĂNG", (dialog, which) -> {
-                restrictedDialogShown = false;
-                openAccessibility();
-            })
-            .setPositiveButton("MỞ TRANG ỨNG DỤNG", (dialog, which) -> {
-                restrictedDialogShown = false;
-                openAccessibilityAfterAppDetails = true;
+            .setTitle("Không thấy 'Cho phép cài đặt bị hạn chế'?")
+            .setMessage("Không tiếp tục giả định menu đó luôn tồn tại. Trên một số bản Android/Samsung, mục này chỉ xuất hiện sau khi hệ thống đã chặn một lần.\n\nLàm theo thứ tự:\n1. Bấm THỬ BẬT TRỢ NĂNG và thử bật TigerIQ AI Worker.\n2. Nếu Android hiện 'Cài đặt bị hạn chế', đóng cảnh báo.\n3. Quay lại đây → MỞ THÔNG TIN APP → ⋮. Nếu Android có mục 'Cho phép cài đặt bị hạn chế' thì chọn nó.\n4. Nếu menu vẫn không có, quay lại TigerIQ; không gỡ ứng dụng.\n\nTigerIQ v0.6.2 không còn coi việc thiếu menu này là lỗi APK.")
+            .setNeutralButton("THÔNG TIN APP", (dialog, which) -> {
+                diagnosticDialogShown = false;
                 openAppDetails();
             })
-            .setOnCancelListener(dialog -> restrictedDialogShown = false)
+            .setNegativeButton("ĐÓNG", (dialog, which) -> diagnosticDialogShown = false)
+            .setPositiveButton("THỬ BẬT TRỢ NĂNG", (dialog, which) -> {
+                diagnosticDialogShown = false;
+                openAccessibility();
+            })
+            .setOnCancelListener(dialog -> diagnosticDialogShown = false)
             .show();
     }
 
-    private boolean isSamsungRestrictedSettingsRelevant() {
-        return Build.VERSION.SDK_INT >= 33 && "samsung".equalsIgnoreCase(Build.MANUFACTURER);
+    private Boolean advancedProtectionEnabled() {
+        if (Build.VERSION.SDK_INT < 36) return Boolean.FALSE;
+        try {
+            Class<?> managerClass = Class.forName("android.security.advancedprotection.AdvancedProtectionManager");
+            Method getSystemService = Context.class.getMethod("getSystemService", Class.class);
+            Object manager = getSystemService.invoke(this, managerClass);
+            if (manager == null) return null;
+            Method isEnabled = managerClass.getMethod("isAdvancedProtectionEnabled");
+            Object value = isEnabled.invoke(manager);
+            return value instanceof Boolean ? (Boolean) value : null;
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private void openSecuritySettings() {
+        try {
+            startActivity(new Intent(Settings.ACTION_SECURITY_SETTINGS));
+            Toast.makeText(this, "Mở Bảo vệ nâng cao nếu máy có mục này.", Toast.LENGTH_LONG).show();
+        } catch (Exception ignored) {
+            startActivity(new Intent(Settings.ACTION_SETTINGS));
+        }
     }
 
     private void requestBattery() {
