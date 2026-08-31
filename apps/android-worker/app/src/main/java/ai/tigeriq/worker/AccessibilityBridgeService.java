@@ -2,6 +2,7 @@ package ai.tigeriq.worker;
 
 import android.accessibilityservice.AccessibilityService;
 import android.content.Context;
+import android.content.Intent;
 import android.os.Bundle;
 import android.text.TextUtils;
 import android.view.accessibility.AccessibilityEvent;
@@ -14,11 +15,15 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
+/** Bounded semantic Gemini adapter for phone-first local tasks. */
 public final class AccessibilityBridgeService extends AccessibilityService {
     public static final String PREFS = "tigeriq-accessibility-pilot";
     public static final String KEY_LAST_PACKAGE = "lastPackage";
     public static final String KEY_LAST_EVENT_AT = "lastEventAt";
     private static final String GEMINI_PACKAGE = "com.google.android.apps.bard";
+    private static final long INPUT_DISCOVERY_TIMEOUT_MS = 15_000L;
+    private static final long SEND_DISCOVERY_TIMEOUT_MS = 12_000L;
+    private static final long RESPONSE_TIMEOUT_MS = 120_000L;
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
@@ -44,33 +49,66 @@ public final class AccessibilityBridgeService extends AccessibilityService {
         if (root == null) return;
 
         try {
+            String screen = collectScreenText(root);
             if (LocalTaskStore.QUEUED.equals(task.state)) {
+                if (containsAny(screen, "sign in", "đăng nhập", "choose an account", "chọn một tài khoản")) {
+                    failAndReturn("LOGIN_REQUIRED");
+                    return;
+                }
+                if (containsAny(screen, "try again later", "thử lại sau", "too many requests", "you've reached your limit", "đã đạt giới hạn")) {
+                    failAndReturn("PROVIDER_LIMIT");
+                    return;
+                }
+
                 AccessibilityNodeInfo input = findEditable(root);
-                if (input == null) return;
+                if (input == null) {
+                    if (System.currentTimeMillis() - task.updatedAt > INPUT_DISCOVERY_TIMEOUT_MS) failAndReturn("UI_CHANGED");
+                    return;
+                }
                 Bundle args = new Bundle();
                 args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, task.prompt);
-                if (!input.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) return;
+                if (!input.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
+                    if (System.currentTimeMillis() - task.updatedAt > INPUT_DISCOVERY_TIMEOUT_MS) failAndReturn("UI_CHANGED");
+                    return;
+                }
                 LocalTaskStore.updateState(this, LocalTaskStore.INPUT_SET);
                 task = LocalTaskStore.load(this);
             }
 
             if (LocalTaskStore.INPUT_SET.equals(task.state)) {
                 AccessibilityNodeInfo send = findSendControl(root);
-                if (send == null) return;
-                if (!clickNodeOrParent(send)) return;
+                if (send == null) {
+                    if (System.currentTimeMillis() - task.updatedAt > SEND_DISCOVERY_TIMEOUT_MS) failAndReturn("UI_CHANGED");
+                    return;
+                }
+                if (!clickNodeOrParent(send)) {
+                    if (System.currentTimeMillis() - task.updatedAt > SEND_DISCOVERY_TIMEOUT_MS) failAndReturn("UI_CHANGED");
+                    return;
+                }
                 LocalTaskStore.updateState(this, LocalTaskStore.SUBMITTED);
                 return;
             }
 
             if (LocalTaskStore.SUBMITTED.equals(task.state)) {
                 long age = System.currentTimeMillis() - task.updatedAt;
-                if (age < 5000L) return;
+                if (containsAny(screen, "try again later", "thử lại sau", "too many requests", "you've reached your limit", "đã đạt giới hạn")) {
+                    failAndReturn("PROVIDER_LIMIT");
+                    return;
+                }
+                if (age > RESPONSE_TIMEOUT_MS) {
+                    failAndReturn("TIMEOUT");
+                    return;
+                }
+                if (age < 4500L) return;
                 if (!hasCompletionMarker(root)) return;
                 String result = extractLikelyResponse(root, task.prompt);
-                if (result.length() >= 40) LocalTaskStore.complete(this, result);
+                if (result.length() >= 40) {
+                    LocalTaskStore.complete(this, result);
+                    returnToTigerIQ();
+                }
             }
         } catch (Exception error) {
-            LocalTaskStore.fail(this, "UI_CHANGED");
+            failAndReturn("UI_CHANGED");
         }
     }
 
@@ -81,7 +119,8 @@ public final class AccessibilityBridgeService extends AccessibilityService {
             AccessibilityNodeInfo node = queue.removeFirst();
             if (node.isVisibleToUser() && node.isEnabled() && node.isEditable()) return node;
             CharSequence klass = node.getClassName();
-            if (node.isVisibleToUser() && node.isEnabled() && klass != null && klass.toString().toLowerCase(Locale.ROOT).contains("edittext")) return node;
+            if (node.isVisibleToUser() && node.isEnabled() && klass != null
+                && klass.toString().toLowerCase(Locale.ROOT).contains("edittext")) return node;
             addChildren(queue, node);
         }
         return null;
@@ -111,6 +150,21 @@ public final class AccessibilityBridgeService extends AccessibilityService {
             addChildren(queue, node);
         }
         return false;
+    }
+
+    private String collectScreenText(AccessibilityNodeInfo root) {
+        ArrayDeque<AccessibilityNodeInfo> queue = new ArrayDeque<>();
+        StringBuilder out = new StringBuilder();
+        queue.add(root);
+        while (!queue.isEmpty() && out.length() < 8000) {
+            AccessibilityNodeInfo node = queue.removeFirst();
+            CharSequence text = node.getText();
+            CharSequence desc = node.getContentDescription();
+            if (text != null) out.append(' ').append(text);
+            if (desc != null) out.append(' ').append(desc);
+            addChildren(queue, node);
+        }
+        return out.toString().toLowerCase(Locale.ROOT);
     }
 
     private String extractLikelyResponse(AccessibilityNodeInfo root, String prompt) {
@@ -158,6 +212,21 @@ public final class AccessibilityBridgeService extends AccessibilityService {
             current = current.getParent();
         }
         return false;
+    }
+
+    private void failAndReturn(String reason) {
+        LocalTaskStore.fail(this, reason);
+        returnToTigerIQ();
+    }
+
+    private void returnToTigerIQ() {
+        try {
+            Intent intent = new Intent(this, HomeActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            startActivity(intent);
+        } catch (Exception ignored) {
+            performGlobalAction(GLOBAL_ACTION_BACK);
+        }
     }
 
     private void addChildren(ArrayDeque<AccessibilityNodeInfo> queue, AccessibilityNodeInfo node) {
