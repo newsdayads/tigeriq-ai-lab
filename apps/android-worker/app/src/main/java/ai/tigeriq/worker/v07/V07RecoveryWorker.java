@@ -14,7 +14,7 @@ public final class V07RecoveryWorker extends Worker {
         WorkerStatusStore status = new WorkerStatusStore(app);
         try {
             EmployeeDeviceStore.Profile profile = new EmployeeDeviceStore(app).load();
-            if (profile == null || !profile.enrolled) {
+            if (profile == null) {
                 status.setState(WorkerState.NEED_ATTENTION, "Thiết bị chưa enrollment", null);
                 return Result.success();
             }
