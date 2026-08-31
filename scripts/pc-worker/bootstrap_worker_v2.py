@@ -7,11 +7,13 @@ from pathlib import Path
 WORKSPACE = Path(r'F:\TigerIQ\Workspace\tigeriq-ai-lab')
 SOURCE_DIR = WORKSPACE / 'scripts' / 'pc-worker'
 WORKER_DIR = Path(r'F:\TigerIQ\Worker')
+BRANCH = 'wo045/pc01-autonomy-hardening'
 FILES = {
     SOURCE_DIR / 'worker_runtime_launcher.py': WORKER_DIR / 'worker.py',
-    SOURCE_DIR / 'worker-github-queue.py': WORKER_DIR / 'worker_impl.py',
+    SOURCE_DIR / 'worker_secure_v3.py': WORKER_DIR / 'worker_impl.py',
     SOURCE_DIR / 'control_plane_v2.py': WORKER_DIR / 'control_plane_v2.py',
     SOURCE_DIR / 'test_control_plane_v2.py': WORKER_DIR / 'test_control_plane_v2.py',
+    SOURCE_DIR / 'test_worker_secure_v3.py': WORKER_DIR / 'test_worker_secure_v3.py',
 }
 
 
@@ -26,10 +28,10 @@ def main():
     if not (WORKSPACE / '.git').exists():
         raise RuntimeError('workspace git repository missing')
     branch = run(['git', 'branch', '--show-current'], cwd=WORKSPACE, timeout=30).stdout.strip()
-    if branch != 'wo011/pc01-remote-exec':
-        raise RuntimeError(f'wrong branch: {branch}')
+    if branch != BRANCH:
+        raise RuntimeError(f'wrong branch: {branch}; expected {BRANCH}')
     head = run(['git', 'rev-parse', 'HEAD'], cwd=WORKSPACE, timeout=30).stdout.strip()
-    remote = run(['git', 'rev-parse', 'origin/wo011/pc01-remote-exec'], cwd=WORKSPACE, timeout=30).stdout.strip()
+    remote = run(['git', 'rev-parse', f'origin/{BRANCH}'], cwd=WORKSPACE, timeout=30).stdout.strip()
     if head != remote:
         raise RuntimeError(f'HEAD {head} does not match remote {remote}')
 
@@ -38,13 +40,16 @@ def main():
             raise RuntimeError(f'missing source: {src}')
     run([sys.executable, '-m', 'py_compile', *[str(x) for x in FILES]], cwd=WORKSPACE)
     run([sys.executable, str(SOURCE_DIR / 'test_control_plane_v2.py')], cwd=SOURCE_DIR)
+    run([sys.executable, str(SOURCE_DIR / 'test_worker_secure_v3.py')], cwd=SOURCE_DIR)
 
     WORKER_DIR.mkdir(parents=True, exist_ok=True)
-    old_worker = WORKER_DIR / 'worker.py'
-    if old_worker.exists():
-        backup = WORKER_DIR / f'worker.py.bak-{int(time.time())}'
-        shutil.copy2(old_worker, backup)
-        print(f'backup={backup}')
+    for existing in ('worker.py', 'worker_impl.py', 'control_plane_v2.py'):
+        path = WORKER_DIR / existing
+        if path.exists():
+            backup = WORKER_DIR / f'{existing}.bak-{int(time.time())}'
+            shutil.copy2(path, backup)
+            print(f'backup={backup}')
+
     for src, dst in FILES.items():
         tmp = dst.with_suffix(dst.suffix + '.new')
         shutil.copy2(src, tmp)
@@ -62,7 +67,7 @@ def main():
         raise RuntimeError(f'worker scheduled task restart failed: {start.stderr or start.stdout}')
     time.sleep(5)
     query = run(['schtasks', '/Query', '/TN', 'TigerIQ Worker', '/FO', 'LIST', '/V'], timeout=30)
-    print('PC01_WORKER_V2_BOOTSTRAP_PASS')
+    print('PC01_WORKER_SECURE_V3_BOOTSTRAP_PASS')
     print(f'branch={branch}')
     print(f'head={head}')
     print(query.stdout[-4000:])
