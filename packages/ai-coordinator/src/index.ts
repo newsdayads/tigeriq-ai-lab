@@ -223,21 +223,31 @@ export class AICoordinator {
       const ok = await this.runStage(work, checkpoint, 'executor', this.executorPrompt(work), new Set(), request.signal);
       if (!ok) return checkpoint;
     }
+    const executor = checkpoint.executor;
+    if (!executor) {
+      await this.markBlocked(checkpoint, 'executor completed without a persisted artifact');
+      return checkpoint;
+    }
 
     if (!checkpoint.reviewer) {
       checkpoint.status = 'reviewing';
       checkpoint.updatedAt = this.timestamp();
       await this.store.save(checkpoint);
-      const excluded = new Set([identity(checkpoint.executor.target)]);
+      const excluded = new Set([identity(executor.target)]);
       const ok = await this.runStage(
         work,
         checkpoint,
         'reviewer',
-        this.reviewerPrompt(work, checkpoint.executor),
+        this.reviewerPrompt(work, executor),
         excluded,
         request.signal,
       );
       if (!ok) return checkpoint;
+    }
+    const reviewer = checkpoint.reviewer;
+    if (!reviewer) {
+      await this.markBlocked(checkpoint, 'reviewer completed without a persisted artifact');
+      return checkpoint;
     }
 
     if (!checkpoint.judge) {
@@ -246,25 +256,26 @@ export class AICoordinator {
       await this.store.save(checkpoint);
       const strict = requiresStrictIndependence(work);
       const excluded = new Set<string>();
-      if (strict) {
-        excluded.add(identity(checkpoint.executor.target));
-        excluded.add(identity(checkpoint.reviewer.target));
-      } else {
-        excluded.add(identity(checkpoint.executor.target));
-      }
+      excluded.add(identity(executor.target));
+      if (strict) excluded.add(identity(reviewer.target));
       const ok = await this.runStage(
         work,
         checkpoint,
         'judge',
-        this.judgePrompt(work, checkpoint.executor, checkpoint.reviewer),
+        this.judgePrompt(work, executor, reviewer),
         excluded,
         request.signal,
       );
       if (!ok) return checkpoint;
     }
+    const judge = checkpoint.judge;
+    if (!judge) {
+      await this.markBlocked(checkpoint, 'judge completed without a persisted artifact');
+      return checkpoint;
+    }
 
-    const reviewPass = checkpoint.reviewer.decision === 'PASS';
-    const judgePass = checkpoint.judge.decision === 'PASS';
+    const reviewPass = reviewer.decision === 'PASS';
+    const judgePass = judge.decision === 'PASS';
     checkpoint.status = reviewPass && judgePass ? 'verified' : 'failed';
     checkpoint.blocker = reviewPass && judgePass ? undefined : 'independent verification did not pass';
     checkpoint.updatedAt = this.timestamp();
@@ -313,14 +324,16 @@ export class AICoordinator {
     const alreadyTried = new Set(previous.map((attempt) => identity(attempt.target)));
     const remainingBudget = this.maxAttemptsPerStage - previous.length;
     if (remainingBudget <= 0) {
-      return this.block(checkpoint, `${role} attempt limit exhausted`);
+      await this.markBlocked(checkpoint, `${role} attempt limit exhausted`);
+      return false;
     }
 
     const candidates = this.selectCandidates(work, role, excludedIdentities)
       .filter((profile) => !alreadyTried.has(identity(profile.target)))
       .slice(0, remainingBudget);
     if (candidates.length === 0) {
-      return this.block(checkpoint, `${role} has no eligible independent model`);
+      await this.markBlocked(checkpoint, `${role} has no eligible independent model`);
+      return false;
     }
 
     for (const profile of candidates) {
@@ -365,7 +378,8 @@ export class AICoordinator {
       }
     }
 
-    return this.block(checkpoint, `${role} routes exhausted within retry limit`);
+    await this.markBlocked(checkpoint, `${role} routes exhausted within retry limit`);
+    return false;
   }
 
   private selectCandidates(work: AIWorkItem, role: CoordinatorRole, excluded: Set<string>): ModelProfile[] {
@@ -411,12 +425,11 @@ export class AICoordinator {
     await this.store.save(checkpoint);
   }
 
-  private async block(checkpoint: CoordinatorCheckpoint, blocker: string): Promise<false> {
+  private async markBlocked(checkpoint: CoordinatorCheckpoint, blocker: string): Promise<void> {
     checkpoint.status = 'blocked';
     checkpoint.blocker = blocker;
     checkpoint.updatedAt = this.timestamp();
     await this.store.save(checkpoint);
-    return false;
   }
 
   private timestamp(): string {
@@ -453,7 +466,9 @@ function parseDecision(text: string): GateDecision | undefined {
 }
 
 function criteria(work: AIWorkItem): string {
-  return work.acceptanceCriteria?.length ? work.acceptanceCriteria.map((item) => `- ${item}`).join('\n') : '- Produce a correct, complete result for the stated task.';
+  return work.acceptanceCriteria?.length
+    ? work.acceptanceCriteria.map((item) => `- ${item}`).join('\n')
+    : '- Produce a correct, complete result for the stated task.';
 }
 
 function identity(target: ModelTarget): string {
