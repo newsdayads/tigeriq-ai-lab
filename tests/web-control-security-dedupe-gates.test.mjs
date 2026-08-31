@@ -5,7 +5,14 @@ function response(body, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 }
 function makeRes() {
-  return { statusCode: 0, headers: {}, body: '', setHeader(name, value) { this.headers[String(name).toLowerCase()] = value; }, end(value = '') { this.body = String(value); } };
+  return {
+    statusCode: 0,
+    headers: {},
+    body: '',
+    setHeader(name, value) { this.headers[String(name).toLowerCase()] = value; },
+    getHeader(name) { return this.headers[String(name).toLowerCase()]; },
+    end(value = '') { this.body = String(value); },
+  };
 }
 function postReq(payload, headers = {}) {
   const chunk = Buffer.from(JSON.stringify(payload));
@@ -17,22 +24,79 @@ function ownerCookie(secret) {
   return `tigeriq_owner_session=${encodeURIComponent(`${payload}.${sig}`)}`;
 }
 
+function saveEnv() { return { ...process.env }; }
+function restoreEnv(saved) {
+  for (const key of Object.keys(process.env)) if (!(key in saved)) delete process.env[key];
+  Object.assign(process.env, saved);
+}
+function configureEnv() {
+  Object.assign(process.env, {
+    TIGERIQ_REPO: 'newsdayads/tigeriq-ai-lab',
+    TIGERIQ_GITHUB_TOKEN: 'server-only-token',
+    TIGERIQ_COMMAND_SECRET: 'internal-secret',
+    TIGERIQ_OWNER_EMAIL: 'newsdayads@gmail.com',
+    TIGERIQ_OWNER_GOOGLE_CLIENT_ID: 'client',
+    TIGERIQ_OWNER_GOOGLE_CLIENT_SECRET: 'client-secret',
+    TIGERIQ_OWNER_OAUTH_REDIRECT_URI: 'https://example.invalid/api/owner-auth?action=callback',
+    TIGERIQ_OWNER_SESSION_SECRET: 'session-secret',
+    TIGERIQ_PC01_CANARY_ISSUE: '58',
+  });
+}
+
 describe('Web Control security, dedupe and completion gates', () => {
   afterEach(() => { vi.unstubAllGlobals(); vi.resetModules(); });
 
-  it('never accepts a browser GitHub token as write authorization, dedupes Work Orders, and reuses canonical canary', async () => {
-    const saved = { ...process.env };
-    Object.assign(process.env, {
-      TIGERIQ_REPO: 'newsdayads/tigeriq-ai-lab',
-      TIGERIQ_GITHUB_TOKEN: 'server-only-token',
-      TIGERIQ_COMMAND_SECRET: 'internal-secret',
-      TIGERIQ_OWNER_EMAIL: 'newsdayads@gmail.com',
-      TIGERIQ_OWNER_GOOGLE_CLIENT_ID: 'client',
-      TIGERIQ_OWNER_GOOGLE_CLIENT_SECRET: 'client-secret',
-      TIGERIQ_OWNER_OAUTH_REDIRECT_URI: 'https://example.invalid/api/owner-auth?action=callback',
-      TIGERIQ_OWNER_SESSION_SECRET: 'session-secret',
-      TIGERIQ_PC01_CANARY_ISSUE: '58',
+  it('preserves both OAuth session and state-clear cookies and authorizes the resulting Owner session', async () => {
+    const saved = saveEnv();
+    configureEnv();
+    vi.stubGlobal('fetch', async (input) => {
+      const url = String(input);
+      if (url === 'https://oauth2.googleapis.com/token') return response({ access_token: 'google-access-token' });
+      if (url === 'https://openidconnect.googleapis.com/v1/userinfo') {
+        return response({ email: 'newsdayads@gmail.com', email_verified: true });
+      }
+      return response({ message: `unexpected ${url}` }, 404);
     });
+
+    try {
+      vi.resetModules();
+      const { default: authHandler } = await import('../api/owner-auth.mjs');
+      const loginRes = makeRes();
+      await authHandler({ method: 'GET', url: '/api/owner-auth?action=login', headers: {} }, loginRes);
+      expect(loginRes.statusCode).toBe(302);
+      const loginCookies = loginRes.headers['set-cookie'];
+      expect(Array.isArray(loginCookies)).toBe(true);
+      expect(loginCookies).toHaveLength(1);
+      const stateCookiePair = loginCookies[0].split(';')[0];
+      const state = decodeURIComponent(stateCookiePair.slice(stateCookiePair.indexOf('=') + 1));
+
+      const callbackRes = makeRes();
+      await authHandler({
+        method: 'GET',
+        url: `/api/owner-auth?action=callback&code=ok&state=${encodeURIComponent(state)}`,
+        headers: { cookie: stateCookiePair },
+      }, callbackRes);
+      expect(callbackRes.statusCode).toBe(302);
+      expect(callbackRes.headers.location).toBe('/?owner=connected');
+      const callbackCookies = callbackRes.headers['set-cookie'];
+      expect(Array.isArray(callbackCookies)).toBe(true);
+      expect(callbackCookies).toHaveLength(2);
+      expect(callbackCookies.some((cookie) => cookie.startsWith('tigeriq_owner_session=') && cookie.includes('Max-Age=28800'))).toBe(true);
+      expect(callbackCookies.some((cookie) => cookie.startsWith('tigeriq_owner_oauth_state=') && cookie.includes('Max-Age=0'))).toBe(true);
+
+      const sessionPair = callbackCookies.find((cookie) => cookie.startsWith('tigeriq_owner_session=')).split(';')[0];
+      const statusRes = makeRes();
+      await authHandler({ method: 'GET', url: '/api/owner-auth?action=status', headers: { cookie: sessionPair } }, statusRes);
+      expect(statusRes.statusCode).toBe(200);
+      expect(JSON.parse(statusRes.body)).toEqual(expect.objectContaining({ configured: true, authenticated: true }));
+    } finally {
+      restoreEnv(saved);
+    }
+  });
+
+  it('never accepts a browser GitHub token as write authorization, dedupes Work Orders, and reuses canonical canary', async () => {
+    const saved = saveEnv();
+    configureEnv();
 
     const issues = [];
     const comments = new Map([[58, []]]);
@@ -106,8 +170,7 @@ describe('Web Control security, dedupe and completion gates', () => {
       }
       expect(issueWrites).toBe(1);
     } finally {
-      for (const key of Object.keys(process.env)) if (!(key in saved)) delete process.env[key];
-      Object.assign(process.env, saved);
+      restoreEnv(saved);
     }
   });
 
