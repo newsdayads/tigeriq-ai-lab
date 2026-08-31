@@ -2,6 +2,7 @@ package ai.tigeriq.worker;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
@@ -27,6 +28,7 @@ public final class PermissionWizardActivity extends Activity {
     public static final String EXTRA_FORCE_SETUP = "forceSetup";
     private static final int NOTIFICATION_REQUEST = 7001;
     private static final String GEMINI_PACKAGE = "com.google.android.apps.bard";
+    private static final String ACTION_ACCESSIBILITY_DETAILS = "android.settings.ACCESSIBILITY_DETAILS_SETTINGS";
     private static final int NAVY = Color.rgb(17, 24, 39);
     private static final int ORANGE = Color.rgb(244, 113, 31);
     private static final int GOLD = Color.rgb(250, 190, 58);
@@ -43,6 +45,9 @@ public final class PermissionWizardActivity extends Activity {
     private TextView geminiState;
     private Button continueButton;
     private boolean forceSetup;
+    private boolean accessibilitySettingsLaunched;
+    private boolean openAccessibilityAfterAppDetails;
+    private boolean restrictedDialogShown;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -60,6 +65,21 @@ public final class PermissionWizardActivity extends Activity {
         super.onResume();
         SetupStateStore.confirmGeminiReturn(this);
         if (summary != null) refresh();
+
+        if (openAccessibilityAfterAppDetails) {
+            openAccessibilityAfterAppDetails = false;
+            if (!accessibilityEnabled()) {
+                getWindow().getDecorView().postDelayed(this::openAccessibilitySettingsOnly, 350);
+            }
+            return;
+        }
+
+        if (accessibilitySettingsLaunched) {
+            accessibilitySettingsLaunched = false;
+            if (!accessibilityEnabled() && isSamsungRestrictedSettingsRelevant() && !restrictedDialogShown) {
+                getWindow().getDecorView().postDelayed(this::showRestrictedSettingsHelp, 350);
+            }
+        }
     }
 
     @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
@@ -104,6 +124,9 @@ public final class PermissionWizardActivity extends Activity {
         summary = text("TigerIQ sẽ mở đúng màn hình cần xác nhận và tự kiểm tra khi quay lại.", 13, false);
         summary.setTextColor(MUTED);
         intro.addView(summary, margin(0, dp(7), 0, 0));
+        TextView device = text("Tương thích Samsung Z Flip / Z Fold · Android 8 trở lên", 12, true);
+        device.setTextColor(GREEN);
+        intro.addView(device, margin(0, dp(9), 0, 0));
         root.addView(intro);
 
         TextView note = text("Sau khi đủ 4 bước, những lần mở sau sẽ vào thẳng màn hình GIAO VIỆC. Không cần PC01.", 13, false);
@@ -115,11 +138,8 @@ public final class PermissionWizardActivity extends Activity {
         batteryState = addStep(root, "3", "Cho phép chạy liên tục", "Đang kiểm tra…", "BỎ GIỚI HẠN PIN", v -> requestBattery());
         geminiState = addStep(root, "4", "Xác nhận Gemini", "Đang kiểm tra…", "MỞ GEMINI", v -> openGemini());
 
-        Button restrictedHelp = secondaryButton("SAMSUNG CHẶN QUYỀN? MỞ TRANG ỨNG DỤNG");
-        restrictedHelp.setOnClickListener(v -> {
-            Toast.makeText(this, "Nếu thấy Cài đặt bị hạn chế: bấm ⋮ ở góc trên → Cho phép cài đặt bị hạn chế → quay lại bước 2.", Toast.LENGTH_LONG).show();
-            openAppDetails();
-        });
+        Button restrictedHelp = secondaryButton("SAMSUNG CHẶN QUYỀN? XỬ LÝ NGAY");
+        restrictedHelp.setOnClickListener(v -> showRestrictedSettingsHelp());
         root.addView(restrictedHelp, margin(0, dp(8), 0, dp(16)));
 
         continueButton = primaryButton("BẮT ĐẦU LÀM VIỆC");
@@ -133,7 +153,7 @@ public final class PermissionWizardActivity extends Activity {
         });
         root.addView(continueButton);
 
-        TextView privacy = text("Android bắt buộc chủ thiết bị tự xác nhận Accessibility. TigerIQ không thể tự bật quyền này, nhưng sau khi bật một lần ứng dụng sẽ ghi nhớ trạng thái và không bắt thiết lập lại nếu quyền vẫn còn.", 11, false);
+        TextView privacy = text("Android bắt buộc chủ thiết bị tự xác nhận Accessibility. TigerIQ không thể tự bật quyền này. Nếu Samsung chặn APK cài ngoài, ứng dụng sẽ hướng dẫn đúng mục 'Cho phép cài đặt bị hạn chế', sau đó tự đưa trở lại trang Trợ năng.", 11, false);
         privacy.setTextColor(MUTED);
         root.addView(privacy, margin(0, dp(14), 0, 0));
         return shell;
@@ -173,7 +193,7 @@ public final class PermissionWizardActivity extends Activity {
         if (!installed && SetupStateStore.geminiConfirmed(this)) SetupStateStore.clearGeminiConfirmation(this);
 
         setState(notificationState, n, n ? "✓ Đã cấp quyền" : "Chưa cấp — bấm nút bên dưới");
-        setState(accessibilityState, a, a ? "✓ Đã bật TigerIQ AI Worker" : "Chưa bật — Android sẽ mở trang Accessibility");
+        setState(accessibilityState, a, a ? "✓ Đã bật TigerIQ AI Worker" : "Chưa bật — TigerIQ sẽ mở đúng trang Trợ năng");
         setState(batteryState, b, b ? "✓ Đã cho phép chạy liên tục" : "Chưa bỏ giới hạn pin");
         if (!installed) setState(geminiState, false, "Chưa tìm thấy Gemini trên máy");
         else setState(geminiState, g, g ? "✓ Đã mở Gemini và quay lại TigerIQ" : "Bấm MỞ GEMINI, sau đó quay lại TigerIQ");
@@ -194,12 +214,51 @@ public final class PermissionWizardActivity extends Activity {
     }
 
     private void openAccessibility() {
+        accessibilitySettingsLaunched = true;
+        openAccessibilitySettingsOnly();
+    }
+
+    private void openAccessibilitySettingsOnly() {
+        try {
+            Intent direct = new Intent(ACTION_ACCESSIBILITY_DETAILS);
+            direct.setData(Uri.parse("package:" + getPackageName()));
+            direct.putExtra(Intent.EXTRA_PACKAGE_NAME, getPackageName());
+            startActivity(direct);
+            Toast.makeText(this, "Bật TigerIQ AI Worker → Cho phép → quay lại TigerIQ", Toast.LENGTH_LONG).show();
+            return;
+        } catch (Exception ignored) {
+            // Samsung/older Android may not support the direct service details action.
+        }
+
         try {
             startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
             Toast.makeText(this, "Chọn TigerIQ AI Worker → bật Cho phép → quay lại TigerIQ", Toast.LENGTH_LONG).show();
         } catch (Exception e) {
-            openAppDetails();
+            showRestrictedSettingsHelp();
         }
+    }
+
+    private void showRestrictedSettingsHelp() {
+        if (isFinishing()) return;
+        restrictedDialogShown = true;
+        new AlertDialog.Builder(this)
+            .setTitle("Samsung đang chặn quyền?")
+            .setMessage("Nếu TigerIQ bị mờ hoặc Android báo 'Cài đặt bị hạn chế':\n\n1. Bấm MỞ TRANG ỨNG DỤNG.\n2. Trong Thông tin ứng dụng, bấm ⋮ góc trên bên phải.\n3. Chọn 'Cho phép cài đặt bị hạn chế'.\n4. Quay lại TigerIQ.\n\nTigerIQ sẽ tự mở lại đúng trang Trợ năng để Sếp bật quyền điều khiển.")
+            .setNegativeButton("THỬ TRỢ NĂNG", (dialog, which) -> {
+                restrictedDialogShown = false;
+                openAccessibility();
+            })
+            .setPositiveButton("MỞ TRANG ỨNG DỤNG", (dialog, which) -> {
+                restrictedDialogShown = false;
+                openAccessibilityAfterAppDetails = true;
+                openAppDetails();
+            })
+            .setOnCancelListener(dialog -> restrictedDialogShown = false)
+            .show();
+    }
+
+    private boolean isSamsungRestrictedSettingsRelevant() {
+        return Build.VERSION.SDK_INT >= 33 && "samsung".equalsIgnoreCase(Build.MANUFACTURER);
     }
 
     private void requestBattery() {
