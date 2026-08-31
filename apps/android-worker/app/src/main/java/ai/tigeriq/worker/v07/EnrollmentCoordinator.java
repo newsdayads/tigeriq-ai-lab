@@ -17,15 +17,20 @@ public final class EnrollmentCoordinator {
     public EmployeeDeviceStore.Profile enroll(String gatewayUrl, String employeeId, String credentialId, String bootstrapToken) throws Exception {
         if (bootstrapToken == null || bootstrapToken.trim().isEmpty()) throw new IllegalArgumentException("TigerIQ bootstrap token is required");
         EmployeeDeviceStore.Profile draft = identities.draft(gatewayUrl, employeeId, credentialId);
+        String oneTimeBootstrap = bootstrapToken.trim();
         try {
             DeviceKeyStore deviceKey = new DeviceKeyStore(draft.employeeId, draft.deviceId);
             deviceKey.ensureKey();
             if (!deviceKey.isHardwareBacked()) throw new DeviceKeyStore.HardwareBackingUnavailableException();
             String fingerprint = deviceKey.publicKeyFingerprintSha256();
-            secrets.put(SecureSecretStore.BOOTSTRAP_TOKEN, bootstrapToken.trim());
-            TigerIqApiClient.Session session = new TigerIqApiClient(draft).mintSession(bootstrapToken.trim());
+
+            // Bootstrap material is enrollment-only. It is never persisted for normal runtime
+            // session renewal; successful enrollment keeps only the short-lived session token.
+            TigerIqApiClient.Session session = new TigerIqApiClient(draft).mintSession(oneTimeBootstrap);
             secrets.put(SecureSecretStore.SESSION_TOKEN, session.accessToken);
             secrets.putLong(SecureSecretStore.SESSION_EXPIRES_AT, session.expiresAtEpochMs);
+            secrets.remove(SecureSecretStore.BOOTSTRAP_TOKEN);
+
             EmployeeDeviceStore.Profile enrolled = new EmployeeDeviceStore.Profile(
                     draft.gatewayUrl, draft.employeeId, draft.nodeId, draft.deviceId, draft.credentialId,
                     fingerprint, true, System.currentTimeMillis());
