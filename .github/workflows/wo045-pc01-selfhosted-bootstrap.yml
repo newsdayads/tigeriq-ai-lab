@@ -1,0 +1,37 @@
+name: WO-045 PC01 Self-hosted Bootstrap
+
+on:
+  push:
+    branches:
+      - 'wo045/pc01-autonomy-hardening'
+    paths:
+      - '.github/workflows/wo045-pc01-selfhosted-bootstrap.yml'
+      - 'scripts/pc-worker/runner_bootstrap_pc01.py'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pc01-secure-v3-bootstrap
+  cancel-in-progress: false
+
+jobs:
+  pc01-bootstrap:
+    runs-on: [self-hosted, Windows]
+    timeout-minutes: 8
+    steps:
+      - name: Checkout exact bootstrap head
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify runner identity boundary
+        shell: powershell
+        run: |
+          if ($env:RUNNER_OS -ne 'Windows') { throw 'NOT_PC01_WINDOWS_RUNNER' }
+          if (-not (Test-Path 'F:\TigerIQ\Worker')) { throw 'NOT_PC01_LAYOUT: F:\TigerIQ\Worker missing' }
+          if (-not (Test-Path 'F:\TigerIQ\Workspace\tigeriq-ai-lab')) { throw 'NOT_PC01_LAYOUT: canonical workspace missing' }
+          Write-Host "PC01 runner boundary accepted: $env:RUNNER_NAME"
+      - name: Bootstrap Secure Worker V3 and prove recovery
+        shell: powershell
+        run: python scripts/pc-worker/runner_bootstrap_pc01.py
