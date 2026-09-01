@@ -86,7 +86,7 @@ Deployment `dpl_FrjAbGboNV4FMUG7RcGGtLciHMxV` is READY and tied to UI runtime co
 2026-09-01: Owner replaced the Google OAuth Client ID and Client Secret pair in Vercel Preview after token exchange failure; this documentation-only update triggers another fresh Preview build so the new credential pair is loaded. No credential value is stored in GitHub and no runtime source, MAIN, or Production mutation is introduced by this note.
 
 ## P0 Single Door runtime evidence — 2026-09-01
-The current PR now contains the bounded serverless Single Door path required for `WEB_CONTROL_SINGLE_DOOR_E2E_PASS`:
+The current PR contains the bounded serverless Single Door path required for `WEB_CONTROL_SINGLE_DOOR_E2E_PASS`:
 - one canonical GitHub-backed Work Order with distributed fingerprint dedupe across open and closed states;
 - Vercel serverless cloud executor that does not require PC01;
 - concrete `TIGERIQ_JOB_RESULT`, `EVIDENCE_REF`, Expected Evidence and Evidence Summary;
@@ -95,22 +95,35 @@ The current PR now contains the bounded serverless Single Door path required for
 - Web Control work projection exposes the concrete result and evidence instead of badges only;
 - legacy `/api/control-legacy` external routing is forced back through `/api/control` so it cannot bypass Single Door.
 
-A temporary Preview-build diagnostic was used only to isolate the AI Gateway failure and was removed from the final PR diff after evidence capture. The diagnostic proved:
-- Vercel OIDC credential is present and accepted by AI Gateway;
-- `GET /v1/credits` returned HTTP `200` with `balance: "0"` and `total_used: "0"`;
-- a minimal inference request returned HTTP `403` with `type: "customer_verification_required"` and the explicit Vercel message that AI Gateway requires a valid credit card on file before requests are serviced and free credits are unlocked.
+A temporary Preview-build diagnostic isolated the previous Vercel AI Gateway failure and was removed after evidence capture. It proved Vercel OIDC worked, but inference was blocked by `customer_verification_required` because Vercel required a payment card on file. Under TigerIQ's free/low-cost-first and Owner-controlled-finance rules, that billing-gated route is no longer the default P0 dependency.
 
-Therefore the current AI Gateway blocker is **account/billing verification**, not repository code, model routing, missing OIDC, build failure or PC01. TigerIQ must not fabricate an E2E PASS while this external authorization gate remains unresolved.
+### No-card cloud workforce path
+The branch now defaults the bounded cloud workforce to the Groq API when `GROQ_API_KEY` is present and does **not** automatically fall back to Vercel OIDC. Vercel AI Gateway remains available only when explicitly selected/keyed.
 
-A second fail-closed prerequisite also remains for actual browser dispatch: the server-side GitHub write credential is not configured in the Vercel Preview environment. Browser PAT/internal-secret bypass remains rejected by design.
+Default no-card role split:
+- Executor: `openai/gpt-oss-120b`
+- Reviewer: `qwen/qwen3.8-27b`
+- Judge: `openai/gpt-oss-20b`
+
+Official Groq documentation currently exposes a `Free Plan` with per-model limits, while a payment method is required when upgrading from Free to the paid Developer tier. The API is OpenAI-compatible at `https://api.groq.com/openai/v1/chat/completions`, so no new runtime package dependency is required.
+
+Automated branch evidence for the no-card provider change:
+- unit/integration tests exercise exactly three Groq calls for Executor -> Reviewer -> Judge;
+- tests assert three distinct default role models;
+- tests assert the Groq endpoint and `GROQ_API_KEY` bearer credential path;
+- tests preserve the explicit Vercel AI Gateway compatibility path;
+- existing HMAC gate tamper rejection remains intact.
+
+A second fail-closed prerequisite remains for actual browser dispatch: the server-side GitHub write credential is not configured in the Vercel Preview environment. Browser PAT/internal-secret bypass remains rejected by design.
 
 ## Remaining P0 gates
-1. Owner performs the unavoidable Vercel AI Gateway card verification/account authorization. No card or billing action is performed automatically by TigerIQ.
-2. Re-run a minimal cloud executor canary and require real Executor -> Reviewer -> Judge PASS.
-3. Configure the minimum-scope server GitHub write credential for `newsdayads/tigeriq-ai-lab` (`Issues: Read/Write`, `Metadata: Read`) in Vercel Preview.
-4. Run the real Owner Web Control flow: Google sign-in -> submit one harmless goal -> exactly one canonical Work Order -> executor result/evidence -> reviewer -> judge -> Web Control result/evidence projection.
-5. Verify duplicate submission reuses the same canonical Work Order.
-6. Fresh independent 07 review must target the final exact runtime/head after the P0 canary.
+1. Create one Groq Free-tier API key; do not upgrade to Developer and do not add a payment method.
+2. Configure only `GROQ_API_KEY` in Vercel Preview and redeploy the branch.
+3. Run a minimal cloud canary and require real Executor -> Reviewer -> Judge PASS.
+4. Configure the minimum-scope server GitHub write credential for `newsdayads/tigeriq-ai-lab` (`Issues: Read/Write`, `Metadata: Read`) in Vercel Preview.
+5. Run the real Owner Web Control flow: Google sign-in -> submit one harmless goal -> exactly one canonical Work Order -> executor result/evidence -> reviewer -> judge -> Web Control result/evidence projection.
+6. Verify duplicate submission reuses the same canonical Work Order.
+7. Fresh independent 07 review must target the final exact runtime/head after the P0 canary.
 
 02 APP remains paused. Governance #113 remains recorded but must not occupy the P0 critical path before Single Door usability. MAIN/Production remain unchanged.
 
