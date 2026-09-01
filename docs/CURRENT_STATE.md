@@ -10,92 +10,94 @@ TigerIQ AI Lab is operated as a continuous distributed AI company. Tiger IQ Driv
 - WO-040 merged as `69ef75149155c09d4618afef941e54cf02feaf79`.
 - WO-041 merged as `d0b085c10a691d7c1dd41a2861253c96f5f85215`.
 - WO-042 merged as `4d73bd923526aa3396a4f436332a9b863c66e172`.
-- Latest observed Vercel Production deployment remains `69ef75149155c09d4618afef941e54cf02feaf79` (WO-040). MAIN is ahead of Production; do not claim later Web/APP/Governance work is live until a real Production deployment is observed.
-- MAIN is still reported `protected:false`; repository rulesets remain absent. This is the canonical P0 governance defect tracked by #113.
+- Latest previously observed Vercel Production deployment remains behind MAIN; no later Web/APP/Governance branch work is claimed live without direct Production evidence.
+- Fresh GitHub branch evidence reports `main` as `protected:true`, but the branch summary exposes no required status checks (`contexts: []`, `checks: []`). Repository rulesets are still `[]`.
+- Therefore global governance issue #113 remains FAIL: protection exists, but PR-only mutation, required checks, bypass behavior, force-push and deletion policy are not yet independently proven sufficient.
+
+## Canonical autonomous operation feed — #138
+- Issue #138 is the single canonical `TIGERIQ_AUTONOMY_FEED_V1` status feed.
+- It is state-only and is intentionally excluded from cloud auto-work consumption.
+- Each autonomous cycle must update Current Action, Execution Channel, Last Progress, Next Action, Blocker and Updated At from real evidence only.
 
 ## Governance enforcement work — #113 / PR #118
 PR #118 (`wo046/current-state-governance-reconcile`) is the governance implementation branch.
 
 Implemented on the branch:
-- `.github/workflows/ci.yml` includes `push` to `main` and `merge_group`, so after merge it can provide full post-merge/main-SHA CI evidence and support merge-queue exact-merge verification.
+- `.github/workflows/ci.yml` includes `push` to `main` and `merge_group`, enabling post-merge/main-SHA CI evidence after authorized integration.
 - `.github/workflows/governance-independent-review.yml` adds a machine-verifiable independent-review status gate for non-draft PRs.
-- `scripts/verify-independent-review-gate.mjs` requires a structured exact-head PASS marker containing `TIGERIQ_INDEPENDENT_REVIEW_PASS`, `REVIEW_ROLE: 07`, exact HEAD SHA and typed `EVIDENCE_REF`.
-- `docs/governance/MAIN_PROTECTION_V1.md` defines the required `main` protection/ruleset policy and the one-time bootstrap behavior for the first governance PR.
+- `scripts/verify-independent-review-gate.mjs` requires structured exact-head `TIGERIQ_INDEPENDENT_REVIEW_PASS`, `REVIEW_ROLE: 07`, exact HEAD SHA and typed `EVIDENCE_REF`.
+- `docs/governance/MAIN_PROTECTION_V1.md` defines required MAIN protection and the one-time bootstrap procedure.
 
-Bootstrap evidence already proven on prior exact head `71329b3321d9b736a9bbb3c16e7c65507486cad2`:
-- 07 submitted structured exact-head review PASS (`TIGERIQ_INDEPENDENT_REVIEW_PASS`).
-- CI #320, Queue Hygiene #207 and Vercel Verify #181 were PASS.
-- `Governance Independent Review Gate` run #7 / `33455971386` was re-run after the review and completed PASS on attempt 2; job `independent-review` verified the exact-head review evidence successfully.
-- This proves the verifier/gate logic can be bootstrapped without bypassing review. It does NOT make global #113 PASS and does NOT authorize MAIN/Production.
+Verified prior bootstrap behavior:
+- On prior exact head `71329b3321d9b736a9bbb3c16e7c65507486cad2`, structured 07 exact-head review existed and Governance Independent Review Gate run `33455971386` succeeded on rerun against the same head.
+- This proves verifier/bootstrap behavior only; it does not make #113 PASS and does not authorize MAIN/Production.
 
-Still external / not yet enforced:
-- GitHub repository policy must protect `main` via branch protection or ruleset and make PR-only mutation mandatory.
-- Required checks must include full `CI / verify`, `Governance Independent Review Gate / independent-review`, and `WO-014 Queue Hygiene / verify` (plus any additional release checks selected by 07/Owner).
-- The new `pull_request_review` trigger becomes normal default-branch behavior only after the governance workflow itself lands on `main`; until then the bootstrap procedure requires exact-head 07 review plus successful re-run of the same exact-head gate.
-- Any commit after a PASS supersedes that PASS and requires fresh exact-head 07 review/gate evidence.
-- Until repository policy is actually enabled and independently re-audited, #113 remains FAIL and MAIN/Production release stays fail-closed.
+Fresh governance state:
+- Prior PR #118 review on `24b74b39f698dda96ff6938009f2eb46d3b5ecdd` was FAIL because this file was stale versus live repository state.
+- This reconciliation commit intentionally invalidates every prior exact-head PASS; fresh CI/Queue/Governance review evidence is required on the new exact head.
+- Global #113 must remain fail-closed until repository policy is independently proven to enforce PR-only mutation, required checks, no unsafe bypass, no force-push/delete, and final CURRENT_STATE freshness.
 
 ## Web Control — PR #117
 - Canonical branch: `wo045/web-control-remote-ops`.
-- Current exact head observed: `1324830e8737f3395e51fa33107f9cce81aac708`.
-- Exact-head Preview: `dpl_x3Q7HLNiV9Kj1JB6m3zHsSzzA6Tf` on the stable branch alias.
-- UI uses primary brand `TigerIQ AI`; `Web Control` is a module/subtitle.
-- Top-right account UX is app-style; signed-in view shows Google avatar/name/email plus TigerIQ role; logout is supported; floating refresh remains below the account region on mobile.
-- Google Identity Services is identity-only. TigerIQ validates the Google ID token server-side and assigns application authorization; current implemented role is Owner only.
-- Current configuration contract uses `TIGERIQ_OWNER_EMAIL`, `TIGERIQ_OWNER_GOOGLE_CLIENT_ID`, and `TIGERIQ_OWNER_SESSION_SECRET`; Google Client Secret/code-flow redirect are retired for the current GIS flow.
-- Exact-head repository gates: CI #341 / `33466167298` PASS; Queue Hygiene #217 / `33466167322` PASS; Vercel Verify #191 / `33466167309` PASS.
-- Real Owner browser smoke is PASS: `OWNER_OAUTH_SMOKE_PASS` review ID `5073768562` on this exact head/runtime.
-- Fresh 07 independent review after the GIS migration is PASS on this exact head/runtime.
-- The same Web UI truthfully reports that the server-side GitHub write credential is not configured, so mutation controls remain fail-closed. This is an operational write-readiness item, not an auth failure.
-- Owner publication intent is recorded, but release remains blocked by global governance #113 until accepted.
+- Current exact head observed: `9ae2c998ccbb1222dd57eb4264955888904f4666`.
+- Exact-head repository gates are PASS: CI `33497322162`, Queue Hygiene `33497322166`, WO-012/013 Vercel Online Verify `33497322161`.
+- Vercel commit status on this exact head is still FAIL because the Hobby deployment quota is exhausted. No paid upgrade or retry-spam is authorized.
+- A READY Preview exists for an older branch head, but it is not exact-head runtime proof for `9ae2c998...`; therefore `WEB_CONTROL_SINGLE_DOOR_E2E_PASS` is not emitted yet.
+- Web Control implements Owner/TigerIQ auth separation, server-only write credential path, canonical Work Order dedupe, server-owned evidence reference, independent Reviewer/Judge gates, mobile status UI and bounded autonomous backlog processing.
+- Groq Free remains the verified cloud runtime path. Gemini is permitted only when a real free-tier key/config exists; OpenRouter is restricted to free routing by default. No paid provider fallback is automatic.
+- Remaining P0 runtime sequence: wait for zero-cost exact-head READY Preview; run authenticated harmless Single Door canary; prove duplicate reuse, result/evidence, Reviewer/Judge and status projection on the exact runtime; then obtain fresh runtime-aware independent review.
+- MAIN/Production remains unchanged.
+
+## PC01 security — #114 / PR #116
+- Canonical hardening branch: `wo045/pc01-autonomy-hardening` on top of `wo011/pc01-remote-exec`.
+- Current exact head observed: `5b07e5865265376f4e380142ac5c2ca4a048792b`.
+- Existing repository CI/Secure Worker gates are green, but fresh independent security review `5077674476` is FAIL on this exact head.
+- Raw model-controlled shell/argv is removed and `repo.test` is exact-allowlisted, but remaining blockers are material:
+  1. AI read scope is still workspace-wide minus filename heuristics and allows protected/local configuration surfaces such as `.git/**`;
+  2. public evidence can include raw tool/file output and current redaction is not a fail-closed sensitive-data boundary;
+  3. model-role independence is based on distinct configured model-name strings rather than immutable model digest/fingerprint where available.
+- #114 must not close and Secure Worker V3 must not be activated as autonomous-safe until these blockers are remediated and fresh exact-head security review PASS exists.
 
 ## Work Management / AI Gateway / shared Android v0.7 contract
 - PR #126 (`wo047/android-worker-core-v07`) is the frozen Employee/Device/Job Core contract branch at exact `7bbaec2e503f579f876d6af96c59911d3a618b84`.
 - PR #127 (`wo047/api-first-inference-gateway`) is the frozen server-side inference Gateway branch at exact `6c8d006054c04330d353a61acacc7107d53bf4e7`.
-- Gate #130 / PR #131 provides the cross-stream integration proof and emitted canonical `CONTRACT_V07_READY`; APP implementation is therefore unlocked.
-- These components do not authorize MAIN/Production release by themselves.
+- Gate #130 / PR #131 provides the cross-stream integration proof and emitted canonical `CONTRACT_V07_READY`.
+- Parent Work Management PR #115 remains open/release-staged; its canonical issue was closed only after independent repository gate evidence. Do not create duplicate implementation streams.
+- These branches do not authorize MAIN/Production release by themselves.
 
 ## Android APP v0.7 — PR #132
-- Canonical branch: `wo048/android-v07-api-first-worker` stacked on the phone-first Android baseline.
-- Current exact head observed: `a5a10c9e6d5039ef38577727e077c5ca82d26bf8`.
-- 02 emitted a fresh `READY_FOR_INDEPENDENT_REVIEW` after remediating the authoritative review blockers.
-- Remediated on this head:
-  1. authoritative `bindingId` is persisted and bound to enrolled Employee/Device/key fingerprint; changed/stale binding fails closed across lease/result/submit;
-  2. authoritative Job `expectedEvidence` is enforced before `status:"completed"`; unmet/wrong evidence fails closed;
-  3. raw lease authority is process-memory-only and is no longer durably persisted; durable checkpoint retains only non-secret lease identity/hash/expiry and recovery reacquires authority after process/reboot loss.
-- Exact-head gates: CI #331 / `33460742327` PASS; Android Worker #81 / `33460742290` PASS.
-- Fresh 07 independent review is `APP_V07_INDEPENDENT_REVIEW_PASS` on exact head `a5a10c9...`.
-- Repository/software gate is therefore PASS. Physical-device enrollment/Keystore hardware behavior, reboot/network smoke, stable-signed install/update continuity and real end-to-end execution remain required before APP release.
-- No provider API key, GitHub PAT or Owner credential may be embedded in APK/source/resources/logs/evidence. v0.7 execution must not use Accessibility as the AI execution engine.
+- Canonical branch: `wo048/android-v07-api-first-worker`, stacked on the phone-first Android baseline.
+- Current exact head observed: `76197e75517adf4c6eb4a965f16af7b318a10a1d`.
+- Exact-head gates: CI `33489016994` PASS; Android Worker `33489016990` PASS.
+- Fresh independent repository/build review `5077718726` emitted `APP_V07_INDEPENDENT_REVIEW_PASS` on this exact head.
+- The current v0.7 APK surface is API-first and bank-safety hardened: source manifest declares only `INTERNET`, `POST_NOTIFICATIONS`, `RECEIVE_BOOT_COMPLETED`; Accessibility/overlay/package automation/legacy foreground controller surfaces are absent from the v0.7 manifest; direct legacy v0.6 worker sources are excluded from packaging; the exact-run APK artifact was independently inspected for expected v0.7 classes and absence of the known legacy automation/provider-key markers.
+- Prior security/correctness remediation remains in branch history: collision-resistant Employee+Device key identity, verified hardware-backed key policy, one-time enrollment bootstrap material, short-lived TigerIQ session use, authoritative bindingId, expectedEvidence enforcement, non-persistent raw lease authority, unique WorkManager and bounded retry/recovery.
+- Repository/software gate is PASS only. Physical Z Flip/Z Fold enrollment, real hardware-backed Keystore behavior, reboot/network recovery, stable-signed install/update continuity and real Job -> Inference -> Result/Evidence execution remain mandatory before APP release/DONE.
+- Banking-app anti-fraud compatibility is external/proprietary and is not claimed from repository tests.
 
-## Work Management parent
-- PR #115 remains the parent Work Management stream. Its exact head `97641f6895e829aa72f252fdfd03d7b4dc8e6364` has `WO044_INDEPENDENT_REVIEW_PASS` with exact-head CI/Queue/Vercel evidence.
-- Do not create a duplicate Work Management implementation stream.
+## Multi-AI subscription orchestration — #133 / PR #134
+- P1 branch `wo048/multi-ai-subscription-orchestration` prepares a safe PC01 capability probe for Gemini CLI, Claude CLI, Ollama and git without adding API billing or provider secrets.
+- Repository code can be audited remotely, but actual installed/authenticated capability and cached subscription login state can only be proven on PC01.
+- No subscription CLI is assumed unlimited; quota/auth failures must fail closed or use an already-configured free/local fallback.
 
-## Canonical PC01 / device truth
-- PC01 is currently deferred by Owner instruction and is not a blocker for current Web/API-first Android work.
-- Issue #100 remains the canonical physical Workforce Controller deployment job; historical lack of CLAIM/RESULT must not be converted into a runtime PASS.
-- Issue #58 remains the canonical deterministic PC01 autonomy canary; issue #57 remains the canonical PC01 recovery work order. Do not create duplicate PC01 recovery/canary streams.
-- Repository/CI evidence is never PC01/Tailscale runtime evidence. Never infer a live listener, heartbeat, pairing or durable PC01 state without direct runtime evidence.
-
-## Verified historical Workforce software baseline
-WO-024 through WO-030 established durable Workforce contracts and Controller/Worker foundations: organization hierarchy, node registry/capability scheduling, Task Packet/Result/Evidence contracts, concurrency/idempotency/bounded retries/lease recovery, PC01 FileJournal durability/hash-chain evidence, scoped credentials, P-256 pairing proof, private Controller API, Android Worker identity/runtime/secure-store foundations, Farm Gateway adapter boundary, and simulator/CI proof of parallel workers plus independent Reviewer/Judge behavior.
-
-WO-031 added the executive Workforce/Company Command Center. WO-032 added the Z Flip 7 pilot employee UI/profile and buildable Android artifact. WO-034 added trusted Controller pairing, tailnet-scoped Controller URL policy, employee self-enrollment and authenticated heartbeat. WO-035 made the Command Center the preferred installed-PWA entry.
-
-WO-036 through WO-042 are repository/software milestones only unless separately backed by physical/runtime/Production evidence.
+## Canonical PC01 / physical-device truth
+- Issue #57 is the single canonical PC01 ingress recovery work order.
+- Issue #58 is the single deterministic `system.status` canary.
+- Issue #100 is the single canonical Workforce Controller deployment job.
+- Issue #137 asks whether PC01 is operating and therefore requires actual PC/device evidence; cloud AI must not fabricate the answer.
+- Current repository evidence records `REAL_BLOCKER_BOOTSTRAP_DEADLOCK`: neither the GitHub issue worker nor attempted self-hosted runner ingress accepted the recovery workload at the recorded audit point.
+- Repository/CI evidence is never PC01/Tailscale runtime evidence. Do not create duplicate recovery/canary issues and do not retry physical jobs through cloud AI without a real ingress.
 
 ## Release path from current state
-1. Keep Web PR #117 frozen on exact head `1324830e...`: Owner OAuth smoke PASS + fresh 07 Web PASS are already satisfied.
-2. Configure the server-side GitHub write credential outside source control so authenticated Owner Web Control can create/update Work Orders; verify with one harmless canary before normal use.
-3. Keep APP PR #132 frozen on exact head `a5a10c9...`: repository/software 07 PASS is satisfied; run physical-device smoke before APP release.
-4. Complete governance #113: enable `main` branch protection/ruleset with PR-only mutation and required checks.
-5. Refresh CURRENT_STATE on the final governance head; obtain fresh exact-head 07 repository-scope PASS and a successful Governance Independent Review Gate on that same exact head.
-6. After governance workflow lands on `main`, verify full CI on the resulting main/merge SHA and verify the `pull_request_review` gate activates normally from default-branch workflow state.
-7. Only when all applicable release gates are simultaneously PASS may Owner-authorized Web/APP release proceed.
+1. Remediate PR #116 on its owning security branch; run exact-head regression/security gates; obtain fresh independent PASS for #114.
+2. Keep PR #118 on its governance branch; after this CURRENT_STATE refresh, require fresh exact-head CI/Queue/Governance independent review. Keep global #113 FAIL until live repository policy itself is sufficient.
+3. Keep PR #117 unchanged while Vercel Hobby quota blocks exact-head runtime; continue repo-side work rather than retry-spam. When exact-head Preview exists, run the full Single Door runtime gate.
+4. Keep PR #132 repository-frozen at the reviewed head unless an owning APP fix is required; run physical-device/stable-signing/E2E gates before APP release.
+5. Continue P1 #133/PR #134 and other non-conflicting repo work while P0 paths wait on CI/external/physical gates.
+6. Do not merge MAIN or promote Production unless all applicable gates are simultaneously PASS and Owner release authorization applies.
 
 ## External / deferred boundaries
 - Vercel filesystem is stateless and is never durable Workforce storage.
 - Paid provider/billing activation is not authorized by repository implementation alone.
 - No provider credentials, Owner credentials, signing secrets or private keys may enter source control, logs or public artifacts.
-- If physical install/login/2FA or GitHub Settings policy is the only blocker for one path, record it explicitly and continue all other safe remote work.
+- If physical install/login/2FA, repository Settings, or deployment quota is the only blocker for one path, record it explicitly and continue all other safe work.
