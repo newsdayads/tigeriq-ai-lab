@@ -3,7 +3,7 @@
 Status: IN_PROGRESS — DEVICE-SMOKE USABLE / BACKEND JOB HTTP INTEGRATION BLOCKED
 
 Branch: `wo048/android-v07-api-first-worker`  
-Current Android head: `92a8b4f3aa78cee8e4f45e8bd11cc67924d818cb`  
+Current Android head: `75bec04526b5338f03d560a0461fd85dc69ca44d`  
 PR: #132
 
 ## Scope
@@ -32,11 +32,11 @@ v0.7.1 replaces that flow with:
 - The one-time activation value is cleared from UI state before network enrollment and is not durably persisted.
 - No new Android permission, Accessibility, overlay, provider key or external-app automation is introduced.
 
-Exact-head gates for `92a8b4f3...`:
-- CI run `33537761361`: PASS.
-- Android Worker run `33537761430`: PASS — bank-safe source gate, Android unit tests, debug + unsigned release build, merged APK manifest/DEX audit, signing continuity, artifacts.
-- Debug artifact `9812458793`.
-- Unsigned release artifact `9812459508`.
+Exact-head gates for `75bec045...`:
+- CI run `33538342552`: PASS.
+- Android Worker run `33538342649`: PASS — bank-safe source gate, Android unit tests, debug + unsigned release build, merged APK manifest/DEX audit, signing continuity, artifacts.
+- Debug artifact `9812663263`.
+- Unsigned release artifact `9812663854`.
 
 ## Real integration blocker found during physical-test audit
 
