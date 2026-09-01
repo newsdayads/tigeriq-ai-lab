@@ -24,6 +24,7 @@ Assert-True ([bool]$config.providers.gemini_cli.forbidApiKeyRoute) 'gemini_api_k
 Assert-True ([bool]$config.providers.gemini_cli.forbidVertexRoute) 'gemini_vertex_route_forbidden'
 Assert-True ([bool]$config.providers.claude_code.forbidApiKeyRoute) 'claude_api_route_forbidden'
 Assert-True ([bool]$config.providers.claude_code.forbidCloudGatewayRoutes) 'claude_gateway_routes_forbidden'
+Assert-True (-not [bool]$config.providers.groq.enabled) 'groq_disabled_until_zero_cost_proven'
 
 Assert-True ([string]$config.routing.selectionMode -eq 'capability_then_zero_cost_rank') 'capability_cost_selection'
 Assert-True ([bool]$config.routing.dedupeByWorkOrder) 'dedupe_required'
@@ -31,6 +32,8 @@ Assert-True ([bool]$config.routing.leaseRequired) 'lease_required'
 Assert-True ([bool]$config.routing.independentReviewRequired) 'review_required'
 Assert-True ([bool]$config.routing.independentJudgeRequired) 'judge_required'
 Assert-True ([int]$config.routing.requiredDistinctBackendIdentities -eq 3) 'three_distinct_identities_required'
+Assert-True ([string]$config.routing.fallbackOrder[0] -eq 'ollama') 'local_first_fallback'
+Assert-True (-not (@($config.routing.fallbackOrder) -contains 'groq')) 'unproven_groq_not_routable'
 
 $requiredRoles = @('executor', 'reviewer', 'judge')
 $enabledProviders = @($config.providers.PSObject.Properties | Where-Object { [bool]$_.Value.enabled })
@@ -52,6 +55,8 @@ Assert-True (-not ($serialized -match '(?i)"allowNonFreeModels"\s*:\s*true')) 'n
   billingMode = 'ZERO_COST_ONLY'
   requiredDistinctBackendIdentities = 3
   enabledProviderCandidates = $enabledProviders.Count
+  firstFallback = [string]$config.routing.fallbackOrder[0]
+  groqEnabled = [bool]$config.providers.groq.enabled
   maxAttemptsPerRole = [int]$config.policy.maxAttemptsPerRole
   timestampUtc = [DateTime]::UtcNow.ToString('o')
 } | ConvertTo-Json
