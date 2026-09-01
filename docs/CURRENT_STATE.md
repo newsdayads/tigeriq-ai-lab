@@ -28,18 +28,18 @@ Implemented on the branch:
 - `scripts/verify-independent-review-gate.mjs` requires structured exact-head `TIGERIQ_INDEPENDENT_REVIEW_PASS`, `REVIEW_ROLE: 07`, exact HEAD SHA and typed `EVIDENCE_REF`.
 - `docs/governance/MAIN_PROTECTION_V1.md` defines required MAIN protection and the one-time bootstrap procedure.
 
-Verified governance-branch behavior before this refresh:
-- Exact head `c1a8cb8d699fd03c40698036520a8fd07690f2cc` had CI, Queue Hygiene, Vercel Verify and Governance Independent Review Gate PASS after fresh structured 07 review.
-- This proves repository verifier/bootstrap behavior only; it does not make global #113 PASS and does not authorize MAIN/Production.
-- This CURRENT_STATE reconciliation creates a newer exact head and intentionally invalidates the prior exact-head review. Fresh exact-head gates and structured 07 review are required again.
+Fresh governance-branch behavior:
+- Prior exact head `c1a8cb8d699fd03c40698036520a8fd07690f2cc` had CI, Queue Hygiene, Vercel Verify and Governance Independent Review Gate PASS after fresh structured 07 review.
+- Subsequent state-reconciliation head `05a71e9b94336ab0adfa103ebd89fabff34af4c1` had CI/Queue/Vercel PASS; its Governance gate failed because no exact-head structured review was intentionally submitted before APP state changed again.
+- This CURRENT_STATE reconciliation creates a newer exact head and invalidates every prior exact-head review. Fresh exact-head gates and structured 07 review are required again.
 - Global #113 remains fail-closed until live repository policy itself is independently proven to enforce PR-only mutation, required checks, safe bypass policy, no force-push/delete, and final CURRENT_STATE freshness.
 
 ## Web Control — PR #117
 - Canonical branch: `wo045/web-control-remote-ops`.
 - Current exact head: `9ae2c998ccbb1222dd57eb4264955888904f4666`.
 - Exact-head repository gates are PASS: CI `33497322162`, Queue Hygiene `33497322166`, WO-012/013 Vercel Online Verify `33497322161`.
-- Vercel commit status on this exact head remains blocked by Hobby deployment quota. No paid upgrade or retry-spam is authorized.
-- The READY Preview observed for this branch is bound to stale commit `890456ccfdce9d9f681520b22d1e79250d802096`, not current exact head `9ae2c998...`; therefore `WEB_CONTROL_SINGLE_DOOR_E2E_PASS` is not emitted.
+- Fresh status still reports Vercel failure with Hobby `build-rate-limit`; no paid upgrade or retry-spam is authorized.
+- The READY Preview previously observed for this branch is bound to stale commit `890456ccfdce9d9f681520b22d1e79250d802096`, not current exact head `9ae2c998...`; therefore `WEB_CONTROL_SINGLE_DOOR_E2E_PASS` is not emitted.
 - Web Control repository implementation includes Owner/TigerIQ auth separation, server-only write credential path, canonical Work Order dedupe, server-owned evidence reference, independent Reviewer/Judge gates, mobile status UI and bounded autonomous backlog processing.
 - Groq Free remains the verified cloud runtime path. No paid provider fallback is automatic.
 - Remaining P0 runtime sequence: wait for a zero-cost READY Preview whose `githubCommitSha` equals the exact head; run authenticated harmless Single Door canary; prove duplicate reuse, result/evidence, Reviewer/Judge, auto-work lock/fail-closed and status projection; then obtain fresh runtime-aware independent review.
@@ -55,13 +55,15 @@ Verified governance-branch behavior before this refresh:
 
 ## Android phone-first worker — #108 / PR #109
 - Canonical branch: `wo012/android-phone-first-worker`.
-- Current exact head: `96819b4c960d7930c5f5d2105c4df07d4bfcbd00`; PR #109 remains draft and unmerged.
-- Exact-head repository workflows are green and the branch contains the phone-first setup, foldable support and bounded Gemini Accessibility adapter.
-- Fresh independent APP re-audit is still FAIL at repository/code scope for two non-physical blockers:
-  1. `LocalTaskStore` keeps only one current snapshot and does not provide bounded multi-task history with `startedAt` + `finishedAt` + terminal result/error per task;
-  2. Gemini completion/result extraction has no persisted current-turn boundary: stale completion controls and prior conversation text can be mistaken for the just-submitted result.
-- Required repo-side remediation before physical smoke: persist a privacy-safe before-submit/current-turn boundary, accept only response evidence newer than that boundary, add bounded local task history, and add executable regressions for stale markers/prior chat/duplicate events/restart while SUBMITTED/timeout/login/provider-limit/unrelated text.
-- Physical Z Flip/Z Fold smoke remains a separate runtime gate after code PASS. No MAIN release.
+- Current exact head: `2c65ab71c331964a69ca418d4450c10ef3b067c2`; PR #109 remains draft and unmerged.
+- Exact-head gates PASS: CI `33519326741`; Queue Hygiene `33519326892`; Vercel Verify `33519326831`; Android Worker `33519326746`.
+- Fresh exact-head independent APP re-audit `5079279419` is PASS for repository/code scope.
+- The prior code blockers are remediated:
+  1. `LocalTaskStore` keeps bounded terminal history (12 records) with prompt/state/result-or-error + `startedAt`/`finishedAt`; Home renders the five newest records.
+  2. Gemini result extraction now captures a privacy-safe pre-submit boundary using SHA-256 hashes of prior candidate text plus completion-marker count; raw prior chat is not persisted. Result acceptance requires the current prompt anchor, excludes baseline hashes, requires a newer completion-marker count and bounded age/length; SUBMITTED state without a persisted boundary fails closed after restart.
+  3. Executable regressions cover prior-chat exclusion, stale marker, duplicate text/events, missing prompt anchor, restart boundary, login, provider limit, timeout and response evidence thresholds; Android CI runs `:app:testDebugUnitTest` before build/signing-contract checks.
+- Previously documented pilot APK SHA/certificate proof belongs to an older head and is not valid physical evidence for this exact head.
+- Physical Z Flip/Z Fold smoke, exact-head stable-signed install/update, Samsung restricted-setting/Advanced Protection behavior, one harmless real Gemini task and background/restart reliability remain mandatory before release/DONE.
 
 ## Work Management / AI Gateway / shared Android v0.7 contract
 - PR #126 (`wo047/android-worker-core-v07`) is the frozen Employee/Device/Job Core contract branch at exact `7bbaec2e503f579f876d6af96c59911d3a618b84`.
@@ -84,7 +86,7 @@ Verified governance-branch behavior before this refresh:
 - Current exact head: `1d808ce46135a7427711608c2dec8cfdbd46810e`.
 - Exact-head gates PASS: CI `33518393104`; Queue Hygiene `33518392985`; WO-048 Multi-AI Probe Guard `33518393107`; Vercel Verify `33518392986`.
 - Fresh independent cost/security re-review `5079166931` is PASS for repository zero-cost/fail-closed scope.
-- Repository policy now explicitly fails closed on detected Gemini API/Vertex/ADC/base-url routes and scans user/project Gemini config for non-account routes; Claude accepts only independently proven Claude App Pro/Max auth and rejects API/gateway/Bedrock/Vertex/Foundry; OpenRouter is hard-coded to `openrouter/free` with non-free models/paid fallback disabled; Ollama remains local zero-cost fallback.
+- Repository policy fails closed on detected Gemini API/Vertex/ADC/base-url routes and scans user/project Gemini config for non-account routes; Claude accepts only independently proven Claude App Pro/Max auth and rejects API/gateway/Bedrock/Vertex/Foundry; OpenRouter is hard-coded to `openrouter/free` with non-free models/paid fallback disabled; Ollama remains local zero-cost fallback.
 - Deterministic no-network self-test covers Gemini/Claude billing-route refusal, persisted Gemini route classification, secret redaction and bounded timeout/kill behavior.
 - This PASS does not prove real PC01 provider readiness or complete #133: Gemini/Claude/OpenRouter login/quota/capability, parallel executor/reviewer scheduling, reboot recovery and Ollama fallback still require physical PC01 E2E evidence.
 
@@ -100,7 +102,7 @@ Verified governance-branch behavior before this refresh:
 1. Keep PR #116 repository-frozen at its reviewed PASS head unless an owning security fix is required; wait for physical #57/#58/#100 runtime proof before closing #114 or claiming PC01 autonomous-safe.
 2. Re-run exact-head governance CI/Queue/Governance gate and obtain fresh structured 07 review after this CURRENT_STATE refresh. Keep global #113 FAIL until repository Settings policy itself is sufficient.
 3. Keep PR #117 unchanged while Vercel Hobby quota blocks exact-head runtime; continue safe repo-side work instead of retry-spam. When exact-head Preview exists, run the full Single Door runtime gate.
-4. Remediate the two repository blockers on #108/PR #109, add executable regressions, then rerun exact-head APP build/review; physical smoke remains separate.
+4. Keep #108/PR #109 repository-frozen at its exact-head code PASS unless an owning fix is required; perform exact-head stable-signed Z Flip/Z Fold physical smoke before release.
 5. Keep PR #132 repository-frozen at the reviewed head unless an owning APP fix is required; run physical-device/stable-signing/E2E gates before APP release.
 6. Keep PR #134 repository-frozen at zero-cost guard PASS while full #133 waits on PC01 runtime/provider E2E.
 7. Do not merge MAIN or promote Production unless all applicable gates are simultaneously PASS and Owner release authorization applies.
