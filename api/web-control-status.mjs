@@ -4,6 +4,7 @@ import { issueEvidenceSummary, issueStage, issueType, issuePriority } from './co
 const REPO = process.env.TIGERIQ_REPO || 'newsdayads/tigeriq-ai-lab';
 const GITHUB_TOKEN = String(process.env.TIGERIQ_GITHUB_TOKEN || '').trim();
 const CANARY_ISSUE = Number(process.env.TIGERIQ_PC01_CANARY_ISSUE || '58');
+// UI-facing title is Vietnamese; RBAC remains Owner internally.
 
 function json(res, status, body) {
   res.statusCode = status;
