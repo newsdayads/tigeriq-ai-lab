@@ -92,6 +92,21 @@ describe('Web Control cloud workforce', () => {
     } finally { restoreEnv(saved); }
   });
 
+  it('fails closed on Groq by default when no cloud credential is configured', async () => {
+    const saved = saveEnv();
+    delete process.env.GROQ_API_KEY;
+    delete process.env.AI_GATEWAY_API_KEY;
+    delete process.env.TIGERIQ_AI_PROVIDER;
+    Object.assign(process.env, { TIGERIQ_CLOUD_EXECUTOR: 'on' });
+    try {
+      vi.resetModules();
+      const workforce = await import('../api/cloud-workforce.mjs');
+      expect(workforce.cloudWorkforceDescriptor().gateway).toBe('groq-free-tier-api');
+      await expect(workforce.executeCloudTask({ instruction: 'Return 42.', expectedEvidence: 'Concrete result.' }))
+        .rejects.toThrow('groq_authorization_unavailable');
+    } finally { restoreEnv(saved); }
+  });
+
   it('keeps the cloud executor off by default outside Vercel unless explicitly enabled', async () => {
     const saved = saveEnv();
     delete process.env.VERCEL;
