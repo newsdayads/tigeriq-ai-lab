@@ -58,6 +58,10 @@ android {
     }
 }
 
+dependencies {
+    testImplementation("junit:junit:4.13.2")
+}
+
 tasks.register("tigerIqStableSigningStatus") {
     doLast {
         println(if (stableSigningEnabled) "TIGERIQ_STABLE_SIGNING_CONFIGURED" else "TIGERIQ_STABLE_SIGNING_NOT_CONFIGURED")
