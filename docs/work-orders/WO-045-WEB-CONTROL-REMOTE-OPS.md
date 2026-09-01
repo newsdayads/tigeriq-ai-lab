@@ -81,6 +81,8 @@ The exact current PR head is intentionally not embedded in this file because upd
 ## Preview evidence boundary
 Deployment `dpl_FrjAbGboNV4FMUG7RcGGtLciHMxV` is READY and tied to UI runtime commit `952da55c...`. Vercel Preview Protection redirects unauthenticated machine fetches through Vercel SSO, so this stream does not falsely claim a completed external browser/OAuth smoke from machine fetch alone.
 
+2026-09-01: Preview environment variables for Owner OAuth were configured in Vercel; this documentation-only commit intentionally triggers a fresh Preview build from the current branch tree. No runtime source, MAIN, or Production mutation is introduced by this note.
+
 ## Remaining gates
 - Fresh independent 07 review on the exact PR #117 head after this UI/Auth change.
 - Real configured Google Owner OAuth browser smoke, recorded as `OWNER_OAUTH_SMOKE_PASS`.
