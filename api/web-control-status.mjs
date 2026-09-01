@@ -4,6 +4,7 @@ import { issueEvidenceSummary, issueStage, issueType, issuePriority } from './co
 const REPO = process.env.TIGERIQ_REPO || 'newsdayads/tigeriq-ai-lab';
 const GITHUB_TOKEN = String(process.env.TIGERIQ_GITHUB_TOKEN || '').trim();
 const CANARY_ISSUE = Number(process.env.TIGERIQ_PC01_CANARY_ISSUE || '58');
+const COMMENT_FALLBACK_LIMIT = 6;
 // UI-facing title is Vietnamese; RBAC remains Owner internally.
 
 function json(res, status, body) {
@@ -82,6 +83,27 @@ export function workDisplayTitle(title, presentation) {
   return `${base} · KẾT QUẢ: ${cleanPresentation(presentation.result, 120)}`;
 }
 
+function summarizeIssue(issue, issueComments = []) {
+  const resultPresentation = workResultPresentation(issueComments);
+  return {
+    number: issue.number,
+    title: workDisplayTitle(issue.title, resultPresentation),
+    sourceTitle: issue.title,
+    type: issueType(issue),
+    priority: issuePriority(issue),
+    state: issue.state,
+    stage: issueStage(issue, issueComments),
+    updatedAt: issue.updated_at,
+    url: issue.html_url,
+    result: resultPresentation,
+    evidence: issueEvidenceSummary(issueComments),
+  };
+}
+
+export function needsIssueCommentFallback(item) {
+  return ['closed_unverified', 'evidence_pending', 'review_pending', 'gate_pending'].includes(String(item?.stage || ''));
+}
+
 function pc01State(canary, canaryComments) {
   const proof = issueEvidenceSummary(canaryComments);
   const stage = issueStage(canary, canaryComments);
@@ -118,26 +140,28 @@ export default async function handler(req, res) {
       commentsByIssue.set(number, rows);
     }
 
-    const work = (Array.isArray(issues) ? issues : [])
+    const workIssues = (Array.isArray(issues) ? issues : [])
       .filter((issue) => !issue.pull_request && issueType(issue) !== 'unknown')
-      .slice(0, 20)
-      .map((issue) => {
-        const issueComments = commentsByIssue.get(issue.number) || [];
-        const resultPresentation = workResultPresentation(issueComments);
-        return {
-          number: issue.number,
-          title: workDisplayTitle(issue.title, resultPresentation),
-          sourceTitle: issue.title,
-          type: issueType(issue),
-          priority: issuePriority(issue),
-          state: issue.state,
-          stage: issueStage(issue, issueComments),
-          updatedAt: issue.updated_at,
-          url: issue.html_url,
-          result: resultPresentation,
-          evidence: issueEvidenceSummary(issueComments),
-        };
-      });
+      .slice(0, 20);
+
+    let work = workIssues.map((issue) => summarizeIssue(issue, commentsByIssue.get(issue.number) || []));
+
+    const fallbackNumbers = work
+      .filter(needsIssueCommentFallback)
+      .slice(0, COMMENT_FALLBACK_LIMIT)
+      .map((item) => item.number);
+
+    if (fallbackNumbers.length) {
+      const fullCommentRows = await Promise.all(fallbackNumbers.map(async (number) => {
+        const rows = await gh(`/repos/${owner}/${repo}/issues/${number}/comments?per_page=100`).catch(() => null);
+        return [number, Array.isArray(rows) ? rows : null];
+      }));
+      const fullCommentsByIssue = new Map(fullCommentRows.filter(([, rows]) => rows));
+      work = workIssues.map((issue) => summarizeIssue(
+        issue,
+        fullCommentsByIssue.get(issue.number) || commentsByIssue.get(issue.number) || [],
+      ));
+    }
 
     const configured = ownerAuthConfigured();
     const ownerIdentity = configured ? getOwnerSession(req) : null;
