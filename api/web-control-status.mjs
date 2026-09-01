@@ -1,16 +1,9 @@
-import { getOwnerSession } from './owner-auth.mjs';
+import { getOwnerSession, ownerAuthConfigured, ownerGoogleClientId } from './owner-auth.mjs';
 import { issueEvidenceSummary, issueStage, issueType, issuePriority } from './control.mjs';
 
 const REPO = process.env.TIGERIQ_REPO || 'newsdayads/tigeriq-ai-lab';
 const GITHUB_TOKEN = String(process.env.TIGERIQ_GITHUB_TOKEN || '').trim();
 const CANARY_ISSUE = Number(process.env.TIGERIQ_PC01_CANARY_ISSUE || '58');
-const OWNER_AUTH_CONFIGURED = Boolean(
-  String(process.env.TIGERIQ_OWNER_EMAIL || 'newsdayads@gmail.com').trim()
-  && String(process.env.TIGERIQ_OWNER_GOOGLE_CLIENT_ID || '').trim()
-  && String(process.env.TIGERIQ_OWNER_GOOGLE_CLIENT_SECRET || '').trim()
-  && String(process.env.TIGERIQ_OWNER_OAUTH_REDIRECT_URI || '').trim()
-  && String(process.env.TIGERIQ_OWNER_SESSION_SECRET || '').trim()
-);
 
 function json(res, status, body) {
   res.statusCode = status;
@@ -101,7 +94,8 @@ export default async function handler(req, res) {
         };
       });
 
-    const ownerIdentity = OWNER_AUTH_CONFIGURED ? getOwnerSession(req) : null;
+    const configured = ownerAuthConfigured();
+    const ownerIdentity = configured ? getOwnerSession(req) : null;
     const ownerAuthenticated = Boolean(ownerIdentity);
     const activeWork = work.filter((item) => !['completed', 'failed', 'cancelled'].includes(item.stage));
     return json(res, 200, {
@@ -109,7 +103,10 @@ export default async function handler(req, res) {
       generatedAt: new Date().toISOString(),
       repository: repoInfo.full_name,
       owner: {
-        configured: OWNER_AUTH_CONFIGURED,
+        configured,
+        identityMode: 'google_id_token',
+        clientSecretRequired: false,
+        googleClientId: ownerGoogleClientId() || null,
         authenticated: ownerAuthenticated,
         identity: ownerIdentity,
         authorization: {
