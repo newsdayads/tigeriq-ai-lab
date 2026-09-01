@@ -1,0 +1,63 @@
+{
+  "version": "TIGERIQ_AI_FREE_PROVIDERS_V1",
+  "policy": {
+    "billingMode": "ZERO_COST_ONLY",
+    "paidFallback": false,
+    "failClosedOnUnknownBilling": true,
+    "maxParallelCloudWorkers": 3,
+    "localFallbackAlwaysAllowed": true
+  },
+  "providers": {
+    "groq": {
+      "enabled": true,
+      "mode": "configured_free_quota",
+      "credentialEnv": "GROQ_API_KEY",
+      "role": ["executor", "reviewer"],
+      "onQuota": "fallback"
+    },
+    "openrouter": {
+      "enabled": true,
+      "mode": "free_router_only",
+      "credentialEnv": "OPENROUTER_API_KEY",
+      "model": "openrouter/free",
+      "allowNonFreeModels": false,
+      "role": ["executor", "reviewer"],
+      "onQuota": "fallback"
+    },
+    "gemini_cli": {
+      "enabled": true,
+      "mode": "google_account_login_only",
+      "forbidApiKeyRoute": true,
+      "forbidVertexRoute": true,
+      "role": ["executor", "reviewer"],
+      "onQuota": "fallback"
+    },
+    "gemini_api": {
+      "enabled": false,
+      "mode": "disabled_until_free_tier_is_independently_proven",
+      "credentialEnv": "GEMINI_API_KEY",
+      "reason": "An API key alone does not prove that the backing project cannot incur paid-tier charges."
+    },
+    "claude_code": {
+      "enabled": true,
+      "mode": "pro_max_subscription_login_only",
+      "forbidApiKeyRoute": true,
+      "forbidCloudGatewayRoutes": true,
+      "role": ["executor", "reviewer"],
+      "onQuota": "fallback"
+    },
+    "ollama": {
+      "enabled": true,
+      "mode": "local_zero_cost",
+      "role": ["executor", "reviewer", "fallback"],
+      "onQuota": "continue_local"
+    }
+  },
+  "routing": {
+    "preferParallel": true,
+    "dedupeByWorkOrder": true,
+    "leaseRequired": true,
+    "independentReviewPreferred": true,
+    "fallbackOrder": ["groq", "gemini_cli", "openrouter", "claude_code", "ollama"]
+  }
+}
