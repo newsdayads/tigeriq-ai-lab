@@ -232,10 +232,12 @@ function conciseError(error) {
 async function runCloudPipeline({ issue, instruction, fingerprint }, token) {
   const issueNumber = Number(issue.number);
   const runId = randomUUID();
+  const workforce = cloudWorkforceDescriptor();
   await postIssueComment(issueNumber, [
     'TIGERIQ_JOB_CLAIMED',
     `RUN_ID ${runId}`,
     'EXECUTOR vercel-serverless',
+    `EXECUTOR_GATEWAY ${workforce.gateway}`,
     'PC01_REQUIRED false',
   ].join('\n'), token);
 
@@ -248,6 +250,7 @@ async function runCloudPipeline({ issue, instruction, fingerprint }, token) {
         'FAILURE_KIND bounded_executor_blocked',
         `BLOCKER ${execution.blocker || 'required capability is outside non-mutating cloud scope'}`,
         `MODEL ${execution.modelUsed}`,
+        `PROVIDER ${execution.providerUsed || workforce.gateway}`,
       ].join('\n'), token);
       return { stage: 'failed', runId, blocker: execution.blocker || 'bounded_executor_blocked', modelUsed: execution.modelUsed };
     }
@@ -261,6 +264,7 @@ async function runCloudPipeline({ issue, instruction, fingerprint }, token) {
       `EVIDENCE_REF ${evidenceRef}`,
       `RUN_ID ${runId}`,
       `EXECUTOR_MODEL ${execution.modelUsed}`,
+      `EXECUTOR_PROVIDER ${execution.providerUsed || workforce.gateway}`,
       '', '## Expected Evidence', EXPECTED_EVIDENCE,
       '', '## Result', execution.result || '(empty result)',
       '', '## Evidence Summary', execution.evidenceSummary || '(empty evidence summary)',
@@ -273,13 +277,13 @@ async function runCloudPipeline({ issue, instruction, fingerprint }, token) {
     if (!review.pass) {
       await postIssueComment(issueNumber, [
         'TIGERIQ_JOB_FAILED', `RUN_ID ${runId}`, 'FAILURE_KIND independent_review_failed',
-        `EVIDENCE_REF ${evidenceRef}`, `REVIEW_MODEL ${review.modelUsed}`, '', review.rationale || 'Reviewer did not pass.',
+        `EVIDENCE_REF ${evidenceRef}`, `REVIEW_MODEL ${review.modelUsed}`, `REVIEW_PROVIDER ${review.providerUsed || workforce.gateway}`, '', review.rationale || 'Reviewer did not pass.',
       ].join('\n'), token);
       return { stage: 'failed', runId, evidenceRef, blocker: 'independent_review_failed', review };
     }
     const reviewBody = signServerGateComment([
       'REVIEW_PASS', `EVIDENCE_REF ${evidenceRef}`, `RUN_ID ${runId}`,
-      'REVIEW_ROLE independent-cloud-reviewer', `REVIEW_MODEL ${review.modelUsed}`,
+      'REVIEW_ROLE independent-cloud-reviewer', `REVIEW_MODEL ${review.modelUsed}`, `REVIEW_PROVIDER ${review.providerUsed || workforce.gateway}`,
       '', review.rationale || 'Independent reviewer passed.',
     ].join('\n'));
     await postIssueComment(issueNumber, reviewBody, token);
@@ -291,13 +295,13 @@ async function runCloudPipeline({ issue, instruction, fingerprint }, token) {
     if (!judge.pass) {
       await postIssueComment(issueNumber, [
         'TIGERIQ_JOB_FAILED', `RUN_ID ${runId}`, 'FAILURE_KIND judge_failed',
-        `EVIDENCE_REF ${evidenceRef}`, `JUDGE_MODEL ${judge.modelUsed}`, '', judge.rationale || 'Judge did not pass.',
+        `EVIDENCE_REF ${evidenceRef}`, `JUDGE_MODEL ${judge.modelUsed}`, `JUDGE_PROVIDER ${judge.providerUsed || workforce.gateway}`, '', judge.rationale || 'Judge did not pass.',
       ].join('\n'), token);
       return { stage: 'failed', runId, evidenceRef, blocker: 'judge_failed', review, judge };
     }
     const judgeBody = signServerGateComment([
       'JUDGE_PASS', `EVIDENCE_REF ${evidenceRef}`, `RUN_ID ${runId}`,
-      'JUDGE_ROLE cloud-judge', `JUDGE_MODEL ${judge.modelUsed}`,
+      'JUDGE_ROLE cloud-judge', `JUDGE_MODEL ${judge.modelUsed}`, `JUDGE_PROVIDER ${judge.providerUsed || workforce.gateway}`,
       '', judge.rationale || 'Judge passed.',
     ].join('\n'));
     await postIssueComment(issueNumber, judgeBody, token);
@@ -365,12 +369,13 @@ async function createCanonicalWorkOrder(payload, token) {
 
     const requestId = randomUUID();
     const titleText = instruction.replace(/\s+/g, ' ').slice(0, 72);
+    const workforce = cloudWorkforceDescriptor();
     const body = [
       'TIGERIQ_JOB_V1', '', '## Instruction', instruction, '', '## Priority', priority,
       '', '## Source', String(payload.source || 'vercel-explicit-dispatch'),
       '', '## Request ID', requestId, '', '## Fingerprint', fingerprint,
       '', '## Expected Evidence', EXPECTED_EVIDENCE,
-      '', '## Executor', 'vercel-serverless / Vercel AI Gateway OIDC / PC01_REQUIRED=false',
+      '', '## Executor', `${workforce.runtime} / ${workforce.gateway} / executor=${workforce.executorModel} / PC01_REQUIRED=${String(workforce.pc01Required)}`,
       '', '## Governance', 'Owner-authenticated; evidence-gated; no MAIN/Production mutation; fail closed on unsupported external action.',
     ].join('\n');
     const { owner, repo } = repoParts();
