@@ -33,7 +33,7 @@ describe('Web Control autonomous backlog worker policy', () => {
     expect(sortAutonomousCandidates(rows).map((row) => row.priority)).toEqual(['P0', 'P1', 'P2']);
   });
 
-  it('runs queued work, recovers only stale claims, and never loops non-retryable blocked work', async () => {
+  it('runs queued work, recovers only stale claims, and never loops ordinary non-retryable blocked work', async () => {
     const { autonomousStageDecision } = await import('../api/auto-work.mjs');
     const issue = makeIssue({ updatedAt: '2026-09-01T00:00:00Z' });
     expect(autonomousStageDecision(issue, [], Date.parse('2026-09-01T00:05:00Z'))).toEqual({ runnable: true, reason: 'queued' });
@@ -42,8 +42,23 @@ describe('Web Control autonomous backlog worker policy', () => {
     expect(autonomousStageDecision(issue, claimed, Date.parse('2026-09-01T00:05:00Z')).runnable).toBe(false);
     expect(autonomousStageDecision(issue, claimed, Date.parse('2026-09-01T00:31:00Z'))).toEqual({ runnable: true, reason: 'stale_claim_recovery' });
 
-    const blocked = [{ body: 'TIGERIQ_JOB_FAILED\nRUN_ID x\nFAILURE_KIND bounded_executor_blocked' }];
+    const blocked = [{ body: 'TIGERIQ_JOB_FAILED\nRUN_ID x\nFAILURE_KIND bounded_executor_blocked\nBLOCKER repository mutation required' }];
     expect(autonomousStageDecision(issue, blocked, Date.parse('2026-09-01T00:31:00Z'))).toEqual({ runnable: false, reason: 'non_retryable_failure' });
+  });
+
+  it('permits exactly one migration retry for the legacy model-side SHA256 blocker', async () => {
+    const { autonomousStageDecision } = await import('../api/auto-work.mjs');
+    const issue = makeIssue();
+    const legacy = {
+      body: [
+        'TIGERIQ_JOB_FAILED',
+        'RUN_ID legacy-1',
+        'FAILURE_KIND bounded_executor_blocked',
+        'BLOCKER Unable to generate a verifiable SHA256 hash bound to the result text as required for expectedEvidence; computing cryptographic hashes is not supported in this environment.',
+      ].join('\n'),
+    };
+    expect(autonomousStageDecision(issue, [legacy])).toEqual({ runnable: true, reason: 'legacy_server_evidence_migration_retry' });
+    expect(autonomousStageDecision(issue, [legacy, { ...legacy, body: legacy.body.replace('legacy-1', 'legacy-2') }])).toEqual({ runnable: false, reason: 'non_retryable_failure' });
   });
 
   it('allows only a bounded retry for transient cloud pipeline errors', async () => {
