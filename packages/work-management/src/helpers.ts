@@ -142,6 +142,7 @@ export function validateWorkItem(work: PlannedWorkItem): void {
   assertNonEmpty(work.workId, 'workId');
   assertNonEmpty(work.title, 'title');
   assertNonEmpty(work.objective, 'objective');
+  if (work.scopeKeys.length === 0) throw new Error(`work ${work.workId} scopeKeys is required`);
   for (const scope of work.scopeKeys) {
     if (!normalizeScope(scope)) throw new Error(`work ${work.workId} has invalid scopeKey ${scope}`);
   }

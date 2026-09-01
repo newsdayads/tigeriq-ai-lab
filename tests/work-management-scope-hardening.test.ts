@@ -32,6 +32,13 @@ function work(scopeKey: string): PlannedWorkItem {
 }
 
 describe('WO-044 scope-key hardening', () => {
+  it('requires every work item to declare at least one conflict scope', () => {
+    expect(() => new WorkManagementStore().submit({
+      goal,
+      items: [{ ...work('packages/work-management'), scopeKeys: [] }],
+    })).toThrow(/scopeKeys is required/i);
+  });
+
   it('rejects traversal, absolute, drive-qualified, and ambiguous scope keys at plan intake', () => {
     for (const scope of [
       'packages/work-management/../web',

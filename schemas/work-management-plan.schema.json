@@ -32,7 +32,7 @@
           "title": { "type": "string", "minLength": 1 },
           "objective": { "type": "string", "minLength": 1 },
           "dependencies": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
-          "scopeKeys": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+          "scopeKeys": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
           "requiredCapabilities": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
           "allowedWorkerKinds": { "type": "array", "uniqueItems": true, "items": { "enum": ["ai", "pc01", "device", "tool", "human"] } },
           "expectedEvidence": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
