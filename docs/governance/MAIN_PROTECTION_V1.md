@@ -35,6 +35,20 @@ Accepted evidence refs are constrained by `scripts/verify-independent-review-gat
 
 Any new commit invalidates the previous exact-head review because the gate re-runs against the new SHA.
 
+## One-time bootstrap for the first governance PR
+PR #118 introduces `.github/workflows/governance-independent-review.yml`, so before that workflow exists on default `main`, GitHub cannot be relied upon to create a fresh `pull_request_review`-triggered run merely because 07 submits a review. This is a bootstrap condition only; it must not become a permanent bypass.
+
+Safe bootstrap procedure:
+1. Freeze the exact PR head.
+2. Require exact-head CI, Queue Hygiene and all existing repository checks to PASS.
+3. 07 submits the structured independent-review PASS bound to that exact head.
+4. Re-run the already-created `Governance Independent Review Gate` run for that same exact head. The verifier reads current GitHub review evidence and must complete PASS.
+5. Any commit after step 3 invalidates the review; repeat from step 1 on the new exact head.
+6. Do not treat the bootstrap gate as global #113 PASS. `main` protection/ruleset must still be configured and independently verified before release governance is accepted.
+7. After this workflow lands on `main`, future review submissions must trigger the normal gate from default-branch workflow state; prove this with a harmless governance canary/PR before declaring the bootstrap condition retired.
+
+Bootstrap proof already observed on PR #118 prior head `71329b3321d9b736a9bbb3c16e7c65507486cad2`: structured 07 PASS existed, and Governance Independent Review Gate run #7 / `33455971386` completed PASS on attempt 2 after re-run. This proves the bootstrap mechanism without bypassing the exact-head reviewer contract.
+
 ## Post-configuration acceptance
 07 must verify through GitHub API evidence that:
 - `main` reports `protected:true` or an active ruleset applies equivalent enforcement;
