@@ -1,0 +1,57 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+function makeIssue({ number = 1, state = 'open', priority = 'P1', source = 'vercel-explicit-dispatch', instruction = 'Tóm tắt kế hoạch', updatedAt = '2026-09-01T00:00:00Z' } = {}) {
+  return {
+    number,
+    state,
+    updated_at: updatedAt,
+    created_at: '2026-09-01T00:00:00Z',
+    title: `[${priority}] [TigerIQ AI] ${instruction}`,
+    body: [
+      'TIGERIQ_JOB_V1', '', '## Instruction', instruction, '', '## Priority', priority,
+      '', '## Source', source, '', '## Fingerprint', 'abc123', '', '## Expected Evidence', 'Concrete result plus server gates.',
+    ].join('\n'),
+  };
+}
+
+describe('Web Control autonomous backlog worker policy', () => {
+  afterEach(() => { vi.resetModules(); });
+
+  it('accepts only canonical Web Control work sources and extracts the instruction', async () => {
+    const { parseAutonomousCandidate } = await import('../api/auto-work.mjs');
+    expect(parseAutonomousCandidate(makeIssue())).toEqual(expect.objectContaining({
+      instruction: 'Tóm tắt kế hoạch', priority: 'P1', source: 'vercel-explicit-dispatch', fingerprint: 'abc123',
+    }));
+    expect(parseAutonomousCandidate(makeIssue({ source: 'pc01-recovery' }))).toBeNull();
+    expect(parseAutonomousCandidate({ ...makeIssue(), pull_request: { url: 'x' } })).toBeNull();
+    expect(parseAutonomousCandidate(makeIssue({ state: 'closed' }))).toBeNull();
+  });
+
+  it('orders P0 before P1 before P2 instead of letting low priority backlog starve urgent work', async () => {
+    const { parseAutonomousCandidate, sortAutonomousCandidates } = await import('../api/auto-work.mjs');
+    const rows = ['P2', 'P0', 'P1'].map((priority, index) => parseAutonomousCandidate(makeIssue({ number: index + 1, priority })));
+    expect(sortAutonomousCandidates(rows).map((row) => row.priority)).toEqual(['P0', 'P1', 'P2']);
+  });
+
+  it('runs queued work, recovers only stale claims, and never loops non-retryable blocked work', async () => {
+    const { autonomousStageDecision } = await import('../api/auto-work.mjs');
+    const issue = makeIssue({ updatedAt: '2026-09-01T00:00:00Z' });
+    expect(autonomousStageDecision(issue, [], Date.parse('2026-09-01T00:05:00Z'))).toEqual({ runnable: true, reason: 'queued' });
+
+    const claimed = [{ body: 'TIGERIQ_JOB_CLAIMED\nRUN_ID x' }];
+    expect(autonomousStageDecision(issue, claimed, Date.parse('2026-09-01T00:05:00Z')).runnable).toBe(false);
+    expect(autonomousStageDecision(issue, claimed, Date.parse('2026-09-01T00:31:00Z'))).toEqual({ runnable: true, reason: 'stale_claim_recovery' });
+
+    const blocked = [{ body: 'TIGERIQ_JOB_FAILED\nRUN_ID x\nFAILURE_KIND bounded_executor_blocked' }];
+    expect(autonomousStageDecision(issue, blocked, Date.parse('2026-09-01T00:31:00Z'))).toEqual({ runnable: false, reason: 'non_retryable_failure' });
+  });
+
+  it('allows only a bounded retry for transient cloud pipeline errors', async () => {
+    const { autonomousStageDecision } = await import('../api/auto-work.mjs');
+    const issue = makeIssue();
+    const once = [{ body: 'TIGERIQ_JOB_FAILED\nFAILURE_KIND cloud_pipeline_error' }];
+    expect(autonomousStageDecision(issue, once)).toEqual({ runnable: true, reason: 'bounded_transient_retry' });
+    const twice = [...once, { body: 'TIGERIQ_JOB_FAILED\nFAILURE_KIND cloud_pipeline_error' }];
+    expect(autonomousStageDecision(issue, twice)).toEqual({ runnable: false, reason: 'retry_limit_reached' });
+  });
+});
