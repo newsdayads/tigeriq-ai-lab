@@ -113,13 +113,18 @@ export function cloneGoalRecord(record: ManagedGoalRecord): ManagedGoalRecord {
 }
 
 export function normalizeScope(scope: string): string {
-  return scope.trim().replaceAll('\\', '/').replace(/\/+$/, '').toLowerCase();
+  const normalized = scope.trim().replaceAll('\\', '/').replace(/\/+$/, '').toLowerCase();
+  if (!normalized || normalized.startsWith('/') || /^[a-z]:\//.test(normalized)) return '';
+  const segments = normalized.split('/');
+  if (segments.some((segment) => !segment || segment === '.' || segment === '..')) return '';
+  return segments.join('/');
 }
 
 export function scopeKeysConflict(left: string, right: string): boolean {
   const a = normalizeScope(left);
   const b = normalizeScope(right);
-  if (!a || !b) return false;
+  // Invalid scopes fail closed: they must never be treated as safely parallel.
+  if (!a || !b) return true;
   return a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`);
 }
 
@@ -137,6 +142,9 @@ export function validateWorkItem(work: PlannedWorkItem): void {
   assertNonEmpty(work.workId, 'workId');
   assertNonEmpty(work.title, 'title');
   assertNonEmpty(work.objective, 'objective');
+  for (const scope of work.scopeKeys) {
+    if (!normalizeScope(scope)) throw new Error(`work ${work.workId} has invalid scopeKey ${scope}`);
+  }
   if (!Number.isInteger(work.maxAttempts) || work.maxAttempts < 1 || work.maxAttempts > 10) {
     throw new Error(`work ${work.workId} maxAttempts must be between 1 and 10`);
   }
