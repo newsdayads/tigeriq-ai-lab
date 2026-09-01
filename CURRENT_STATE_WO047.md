@@ -1,7 +1,7 @@
 # CURRENT STATE — WO-047 API-FIRST INFERENCE GATEWAY
 
 Date: 2026-09-01  
-Status: COORDINATOR DEPENDENCY REFRESHED — AUTOMATED GATE PASS AT MERGE HEAD — FINAL DOC HEAD REGATE / INDEPENDENT REVIEW PENDING  
+Status: FINAL COORDINATOR DEPENDENCY REFRESHED — EXACT-HEAD REGATE / GENUINE INDEPENDENT REVIEW PENDING  
 Branch: `wo047/api-first-inference-gateway`  
 PR: #127  
 Issue: #125
@@ -10,7 +10,6 @@ Issue: #125
 - TigerIQ Employee Identity is independent from provider/model backend identity.
 - Contract exists for APP and Work Management consumers without modifying their implementations.
 - Short-lived authenticated TigerIQ device sessions protect inference calls.
-- Gemini + Groq are primary configured backend families in this Gateway; OpenRouter is bounded fallback.
 - Provider credentials stay server-side.
 - Provider quota/429, outage, timeout, auth/configuration and invalid responses are classified.
 - Health/cooldown and request-unit budgets affect selection.
@@ -18,30 +17,36 @@ Issue: #125
 - Reviewer/Judge backend identity independence excludes prior identities and fails closed when unavailable or prior identity context is missing.
 - Mock-device E2E proves session -> inference -> sanitized evidence and idempotent replay.
 
-## 2026-09-01 coordinator dependency refresh
-PR #111 changed after the prior WO-047 gate to require three distinct Executor/Reviewer/Judge provider-model identities for every coordinated work item.
+## 2026-09-01 final coordinator dependency refresh
+PR #111 final engineering head `b204e6cb581feebc10ff400aa5a5bcc1296bbc74` now requires three distinct Executor/Reviewer/Judge identities for every Work Order and defaults to Ollama local + `openrouter/free`, failing closed instead of auto-selecting generic paid/unproven API routes.
 
-WO-047 was refreshed without force/rebase by merge commit `83fe3c05e6b8d40e36a3fca8ae3c167676df0f96` with parents:
-- prior WO-047 head `6c8d006054c04330d353a61acacc7107d53bf4e7`;
-- current WO-043 coordinator head `9f517c12168ffc9f69c62c18da711b1de9bf6efc`.
+WO-047 was refreshed without force/rebase by merge commit `f748276f0441f99108a6ec53ec94a1790bf478f0` with parents:
+- prior WO-047 head `56fe223629d9994f25723cd6b20265868de901a5`;
+- current WO-043 head `b204e6cb581feebc10ff400aa5a5bcc1296bbc74`.
 
-The old WO-047 side added 11 Gateway-only files and did not overlap the five files changed by the WO-043 three-way remediation. The merge therefore preserved both sides without modifying Android, Web Control, PC01 runtime, MAIN or Production.
+Compare evidence showed the WO-047 side only adds its 11 Gateway-owned files relative to the current WO-043 base; no WO-043 remediation file is overwritten. The merge therefore preserves both sides without modifying Android, Web Control, PC01 runtime, MAIN or Production.
 
-Automated evidence at merge head `83fe3c0...`:
-- CI `33532723535`: PASS.
+Historical refresh evidence:
+- first merge `83fe3c05e6b8d40e36a3fca8ae3c167676df0f96`: CI `33532723535` PASS;
+- first doc head `56fe223629d9994f25723cd6b20265868de901a5`: CI `33532871570` PASS.
 
-This CURRENT_STATE synchronization is a new documentation commit, so the final exact documentation head must pass CI again before automated gate status is final.
+The final merge/documentation head created after `f748276...` must receive a fresh exact-head CI. Historical PASS is not used as substitute.
 
 ## Independent review boundary
-The independent review that passed the former exact WO-047 head is historical after the dependency refresh. A genuinely independent review bound to the final exact refreshed head is required. Same-author/self-review is not independent evidence.
+Earlier independent review results are historical after dependency refresh. A genuinely independent review bound to the final exact refreshed head is required. Same-author/self-review is not independent evidence.
 
-## Not claimed
-- No live Gemini/Groq/OpenRouter credentials or cloud inference proof.
-- No live PC01 provider/auth/quota result.
-- No global/multi-instance durable provider budget, health or idempotency state.
-- No cryptographically signed chain of prior Reviewer/Judge backend evidence.
-- No APP/Android/PC01/Web Control implementation change.
-- No MAIN/Production release.
+## Billing/runtime truth boundary
+- WO-047 does not prove billing-safe Gemini/Claude account login by itself; that policy/probe belongs to #133/#134.
+- No live Gemini/Claude/OpenRouter/Ollama result is claimed.
+- No PC01 auth/quota/scheduler/restart result is claimed.
+- Provider budget/health/idempotency remain process-local in this Gateway implementation.
+
+## Not changed
+- No APP/Android implementation.
+- No PC01 runtime.
+- No Web Control.
+- No MAIN/Production.
+- No credential/key/payment method.
 
 ## Integration boundaries
 - APP consumes the documented session/inference contract and never receives provider credentials.
