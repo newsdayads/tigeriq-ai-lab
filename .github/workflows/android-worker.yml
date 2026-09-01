@@ -19,6 +19,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -34,6 +36,9 @@ jobs:
           test -z "${TIGERIQ_ANDROID_STORE_PASSWORD_FILE:-}"
           test -z "${TIGERIQ_ANDROID_KEY_PASSWORD_FILE:-}"
           gradle --no-daemon :app:tigerIqStableSigningStatus | grep TIGERIQ_STABLE_SIGNING_NOT_CONFIGURED
+      - name: Run deterministic phone-first policy regression tests
+        working-directory: apps/android-worker
+        run: gradle --no-daemon :app:testDebugUnitTest
       - name: Build debug and unsigned release APKs
         working-directory: apps/android-worker
         run: gradle --no-daemon :app:assembleDebug :app:assembleRelease
