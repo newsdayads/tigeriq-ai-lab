@@ -1,5 +1,6 @@
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import { decideWithChief } from './chief.mjs';
+import { executionRequirementForInstruction } from './execution-routing.mjs';
 import { isOwnerAuthorized } from './owner-auth.mjs';
 import legacyHandler, {
   issuePriority,
@@ -333,10 +334,11 @@ function validateWorkOrder(payload = {}) {
 
 async function createCanonicalWorkOrder(payload, token) {
   const { instruction, priority, fingerprint } = validateWorkOrder(payload);
+  const routing = executionRequirementForInstruction(instruction);
   const duplicate = await findCanonicalWorkOrder(fingerprint, token);
   if (duplicate) {
     return {
-      ok: true, deduplicated: true, fingerprint, requestId: null,
+      ok: true, deduplicated: true, fingerprint, requestId: null, routing,
       issue: { number: duplicate.number, url: duplicate.html_url, title: duplicate.title, state: duplicate.state },
       execution: { stage: duplicate.state === 'closed' ? 'canonical-reused' : 'existing' },
     };
@@ -347,7 +349,7 @@ async function createCanonicalWorkOrder(payload, token) {
     const raced = await waitForCanonical(fingerprint, token);
     if (raced) {
       return {
-        ok: true, deduplicated: true, fingerprint, requestId: null,
+        ok: true, deduplicated: true, fingerprint, requestId: null, routing,
         issue: { number: raced.number, url: raced.html_url, title: raced.title, state: raced.state },
         execution: { stage: raced.state === 'closed' ? 'canonical-reused' : 'existing' },
       };
@@ -361,7 +363,7 @@ async function createCanonicalWorkOrder(payload, token) {
     const afterLock = await findCanonicalWorkOrder(fingerprint, token);
     if (afterLock) {
       return {
-        ok: true, deduplicated: true, fingerprint, requestId: null,
+        ok: true, deduplicated: true, fingerprint, requestId: null, routing,
         issue: { number: afterLock.number, url: afterLock.html_url, title: afterLock.title, state: afterLock.state },
         execution: { stage: afterLock.state === 'closed' ? 'canonical-reused' : 'existing' },
       };
@@ -370,13 +372,20 @@ async function createCanonicalWorkOrder(payload, token) {
     const requestId = randomUUID();
     const titleText = instruction.replace(/\s+/g, ' ').slice(0, 72);
     const workforce = cloudWorkforceDescriptor();
+    const issueSource = routing.source || String(payload.source || 'vercel-explicit-dispatch');
+    const executorDescription = routing.cloudExecutorAllowed
+      ? `${workforce.runtime} / ${workforce.gateway} / executor=${workforce.executorModel} / PC01_REQUIRED=false`
+      : `${routing.kind === 'pc01-runtime' ? 'PC01 secure worker/runtime only' : 'physical device runtime only'} / PC01_REQUIRED=${String(routing.pc01Required)} / CLOUD_EXECUTOR_ALLOWED=false`;
+    const governance = routing.cloudExecutorAllowed
+      ? 'Owner-authenticated; evidence-gated; no MAIN/Production mutation; fail closed on unsupported external action.'
+      : `Owner-authenticated; physical/runtime evidence required; cloud executor blocked before model invocation; reason=${routing.reason}; no MAIN/Production mutation.`;
     const body = [
       'TIGERIQ_JOB_V1', '', '## Instruction', instruction, '', '## Priority', priority,
-      '', '## Source', String(payload.source || 'vercel-explicit-dispatch'),
+      '', '## Source', issueSource,
       '', '## Request ID', requestId, '', '## Fingerprint', fingerprint,
       '', '## Expected Evidence', EXPECTED_EVIDENCE,
-      '', '## Executor', `${workforce.runtime} / ${workforce.gateway} / executor=${workforce.executorModel} / PC01_REQUIRED=${String(workforce.pc01Required)}`,
-      '', '## Governance', 'Owner-authenticated; evidence-gated; no MAIN/Production mutation; fail closed on unsupported external action.',
+      '', '## Executor', executorDescription,
+      '', '## Governance', governance,
     ].join('\n');
     const { owner, repo } = repoParts();
     const issue = await gh(`/repos/${owner}/${repo}/issues`, {
@@ -384,11 +393,13 @@ async function createCanonicalWorkOrder(payload, token) {
       body: JSON.stringify({ title: `[${priority}] [TigerIQ AI] ${titleText}`, body }),
     }, token);
 
-    const execution = cloudExecutorEnabled()
-      ? await runCloudPipeline({ issue, instruction, fingerprint }, token)
-      : { stage: 'queued', reason: 'cloud_executor_disabled_outside_vercel' };
+    const execution = !routing.cloudExecutorAllowed
+      ? { stage: 'physical-runtime-required', reason: routing.reason, executionKind: routing.kind, pc01Required: routing.pc01Required }
+      : cloudExecutorEnabled()
+        ? await runCloudPipeline({ issue, instruction, fingerprint }, token)
+        : { stage: 'queued', reason: 'cloud_executor_disabled_outside_vercel' };
     return {
-      ok: true, deduplicated: false, fingerprint, requestId,
+      ok: true, deduplicated: false, fingerprint, requestId, routing,
       issue: { number: issue.number, url: issue.html_url, title: issue.title, state: execution.stage === 'completed' ? 'closed' : 'open' },
       execution,
     };
@@ -449,7 +460,7 @@ async function workBoard(token) {
 
 function formatStatusReply(snapshot) {
   const count = Number(snapshot?.queue?.count || 0);
-  return `Vercel: trực tuyến · GitHub: trực tuyến · Cloud executor: ${cloudExecutorEnabled() ? 'sẵn sàng phần mềm' : 'tắt'} · PC01 không bắt buộc cho Single Door · Hàng đợi: ${count} công việc.`;
+  return `Vercel: trực tuyến · GitHub: trực tuyến · Cloud executor: ${cloudExecutorEnabled() ? 'sẵn sàng phần mềm' : 'tắt'} · PC01 chỉ bắt buộc cho việc cần runtime vật lý · Hàng đợi: ${count} công việc.`;
 }
 
 async function handleChat(req, payload) {
@@ -470,7 +481,9 @@ async function handleChat(req, payload) {
       ? `${decision.reply}\n\nCông việc #${result.issue.number} đã qua executor → evidence → reviewer → judge.`
       : stage === 'failed'
         ? `${decision.reply}\n\nCông việc #${result.issue.number} đã dừng fail-closed: ${result.execution?.blocker || 'gate failed'}.`
-        : `${decision.reply}\n\nĐã tạo công việc #${result.issue.number}; trạng thái ${stage || 'queued'}.`;
+        : stage === 'physical-runtime-required'
+          ? `${decision.reply}\n\nCông việc #${result.issue.number} cần runtime vật lý (${result.execution?.executionKind || 'device'}); TigerIQ đã chặn cloud executor trước khi gọi AI.`
+          : `${decision.reply}\n\nĐã tạo công việc #${result.issue.number}; trạng thái ${stage || 'queued'}.`;
   return { status: result.deduplicated ? 200 : 201, body: { ...result, mode: 'work-order', reply, modelUsed: decision.modelUsed, providerUsed: decision.providerUsed, usage: decision.usage } };
 }
 
