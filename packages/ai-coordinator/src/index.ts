@@ -147,6 +147,8 @@ export interface AICoordinatorOptions {
   now?: () => Date;
 }
 
+// Safe defaults never opt into generic paid API backends. Cloud/subscription
+// adapters must be explicitly injected only after the zero-cost policy gate.
 export const defaultModelProfiles: ModelProfile[] = [
   {
     target: { provider: 'ollama', model: 'local-coder', local: true },
@@ -155,21 +157,9 @@ export const defaultModelProfiles: ModelProfile[] = [
     kinds: ['general', 'coding', 'analysis'],
   },
   {
-    target: { provider: 'gemini', model: 'gemini-default' },
+    target: { provider: 'openrouter', model: 'openrouter/free' },
     costRank: 1,
-    qualityRank: 4,
-    kinds: ['general', 'coding', 'analysis', 'research'],
-  },
-  {
-    target: { provider: 'openai', model: 'openai-default' },
-    costRank: 2,
-    qualityRank: 4,
-    kinds: ['general', 'coding', 'analysis', 'research'],
-  },
-  {
-    target: { provider: 'anthropic', model: 'anthropic-default' },
-    costRank: 2,
-    qualityRank: 4,
+    qualityRank: 3,
     kinds: ['general', 'coding', 'analysis', 'research'],
   },
 ];

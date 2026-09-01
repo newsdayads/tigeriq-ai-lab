@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   AICoordinator,
   InMemoryCheckpointStore,
+  defaultModelProfiles,
   fingerprintWorkItem,
   type AIWorkItem,
   type CoordinatorCheckpoint,
@@ -159,6 +160,27 @@ describe('WO-043 AI coordinator', () => {
 
     expect(result.status).toBe('blocked');
     expect(result.blocker).toBe('judge has no eligible independent model');
+  });
+
+  it('defaults only to zero-cost routes and blocks rather than auto-selecting paid API providers', async () => {
+    expect(defaultModelProfiles.map((profile) => profile.target.provider)).toEqual(['ollama', 'openrouter']);
+    expect(defaultModelProfiles.find((profile) => profile.target.provider === 'openrouter')?.target.model).toBe('openrouter/free');
+    expect(defaultModelProfiles.some((profile) => ['openai', 'anthropic', 'gemini'].includes(profile.target.provider))).toBe(false);
+
+    const store = new InMemoryCheckpointStore();
+    const coordinator = new AICoordinator([
+      adapter('ollama', async () => 'local executor result'),
+      adapter('openrouter', async () => 'PASS free review'),
+      adapter('openai', async () => 'PAID API MUST NOT RUN'),
+      adapter('anthropic', async () => 'PAID API MUST NOT RUN'),
+      adapter('gemini', async () => 'PAID OR UNPROVEN ROUTE MUST NOT RUN'),
+    ], store);
+
+    const result = await coordinator.run(work({ id: 'WO-ZERO-COST-DEFAULT' }));
+
+    expect(result.status).toBe('blocked');
+    expect(result.blocker).toBe('judge has no eligible independent model');
+    expect(result.attempts.map((attempt) => attempt.target.provider)).toEqual(['ollama', 'openrouter']);
   });
 
   it('emits bounded evidence without raw prompts, outputs or secret-like error messages', async () => {
