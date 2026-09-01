@@ -1,8 +1,8 @@
 # WO-043 — AI Coordinator
 
 Priority: P0
-Status: REMEDIATED AFTER INDEPENDENT REVIEW — REGATE REQUIRED
-Date: 2026-08-31
+Status: THREE-WAY INDEPENDENCE REMEDIATED — EXACT-HEAD REGATE REQUIRED
+Date: 2026-09-01
 Issue: #110
 PR: #111
 Branch: `wo043/ai-coordinator`
@@ -13,17 +13,17 @@ Bộ Điều Phối AI only. No App UI, Web Control UI, PC01 runtime implementat
 ## Source-of-Truth constraints
 - Free/low-cost first, but never below the capability required by the task.
 - Stable behavior must be preserved.
-- Engineering/high-impact work must not let the executor review or judge itself.
+- Executor, Reviewer and Judge must use three distinct concrete provider/model identities for every coordinated work item under the current Owner instruction.
 - No paid-service activation, automatic purchase, credential commit, or Production release.
 - Cross-stream ownership must be respected; PC01 runtime/security belongs to the PC01 stream.
 
 ## Real-state audit
-1. `packages/model-router` already had provider adapters, static ordered failover, circuit breaking and sanitized attempt metadata for OpenAI, Anthropic, Gemini and Ollama.
+1. `packages/model-router` already has provider adapters, ordered failover, circuit breaking and sanitized attempt metadata.
 2. `packages/orchestrator` already checked distinct actor IDs, but it did not select models by task/risk/cost, persist task-level checkpoints, or bind executor/reviewer/judge model identity.
 3. `api/chief.mjs` uses Vercel AI Gateway for Chief intake; it is not the Work Order execution/review/judge coordinator.
-4. The existing MAIN PC01 worker used one `TIGERIQ_OLLAMA_MODEL` for Executor, Reviewer and Judge, which is not independent AI.
-5. Independent review of PR #111 then found that WO-043 had crossed ownership by directly editing `scripts/pc-worker/worker-github-queue.py` while canonical PC01 recovery/security work was active on another branch. Security issue #114 also applies to that worker surface.
-6. PC01 stream now has its own hardening candidate PR #116 based on `wo011/pc01-remote-exec`. WO-043 therefore must not own or overwrite PC01 runtime code.
+4. WO-043 originally separated Executor and Reviewer for all work but required a third distinct Judge only for coding/high-risk work.
+5. Current Owner instruction on 2026-09-01 makes three-way independence universal, so the lower-risk reuse path was an owning defect and has been removed.
+6. PC01 implementation remains outside WO-043 and is governed separately by #114/#116; zero-cost runtime provider policy/probing is tracked in #133/#134.
 
 ## Delivered in WO-043 scope
 - [x] Task-aware selection by work kind, risk, minimum quality and cost rank.
@@ -31,27 +31,25 @@ Bộ Điều Phối AI only. No App UI, Web Control UI, PC01 runtime implementat
 - [x] Provider/model failover across configured adapters on quota/outage/timeout/auth/configuration/invalid response/unknown failure.
 - [x] Bounded attempts per stage; no infinite retry loop.
 - [x] Persistent checkpoint contract plus atomic JSON file store for restart recovery without repeating completed stages.
-- [x] Executor/reviewer model identity separation for all coordinated work.
-- [x] Strict three-way Executor/Reviewer/Judge model identity separation for coding or high-risk work.
+- [x] Executor/Reviewer/Judge use three distinct concrete provider/model identities for every coordinated work item.
+- [x] Judge always excludes both prior identities and fails closed if no third eligible identity exists.
 - [x] Evidence records role/provider/model/attempt/outcome/failure class/output digest without raw prompt/output/credential values.
-- [x] Unit tests cover low-cost routing, fallback, retry bound, strict independence, restart recovery and evidence privacy.
-- [x] Cross-stream remediation: direct PC01 worker modification and PC01-specific test removed from PR #111; PC01 runtime/security dependency is handed to #114/#116.
+- [x] Unit tests cover low-cost routing, provider fallback, retry bound, universal three-way independence, restart recovery and evidence privacy.
+- [x] Cross-stream remediation retained: direct PC01 worker modification and PC01-specific test are not owned by PR #111.
 
-## Independent review finding and remediation
-Independent audit on 2026-08-31 marked PR #111 FAIL because:
-- WO-043 modified the PC01 worker concurrently with canonical PC01 recovery changes;
-- that worker also had command-isolation security blocker #114;
-- Issue #110 had been closed before the independent review completed.
+## 2026-09-01 remediation evidence
+Implementation/test head `f7fb806544134e443212729491cb2ff24930b956` passed:
+- CI `33532040523`.
+- Queue Hygiene `33532040524`.
+- Vercel Online Verify `33532040600`.
 
-Remediation performed:
-- Issue #110 reopened.
-- `scripts/pc-worker/worker-github-queue.py` restored to the exact MAIN blob so PR #111 no longer owns that file.
-- `tests/pc01-independent-ai-policy.test.ts` removed from PR #111 because it tested another stream's implementation.
-- PC01 hardening remains with PR #116 / issue #114.
-- PR #111 requires fresh exact-head CI and a new independent review after this remediation.
+These runs prove the implementation/test head only. Documentation synchronization commits after that head require fresh exact-head gates before repository PASS can be restored.
 
 ## Runtime activation boundary
-WO-043 defines coordinator policy and recovery mechanics but does not activate provider credentials or claim live three-provider semantic review. A runtime adapter must supply genuinely distinct model identities for strict coding/high-risk work. PC01-specific model configuration is owned by the PC01 stream.
+WO-043 defines coordinator policy and recovery mechanics but does not activate provider credentials or claim live three-provider semantic review. Runtime must supply three genuinely distinct eligible backend identities. Billing-safe/free/subscription provider activation is governed by #133/#134. PC01-specific runtime execution remains outside this branch.
+
+## Independent review boundary
+The earlier independent PASS at the previous head became stale when the three-way policy changed. A genuinely independent review bound to the final exact head is required. Same-author/self-review must not be presented as independent evidence.
 
 ## Release boundary
-PR #111 remains open and unmerged. MAIN/Production is untouched by WO-043. Merge/deployment requires fresh exact-head gates plus independent PASS and normal release authorization.
+PR #111 remains open and unmerged. MAIN/Production is untouched by WO-043. Merge/deployment requires fresh exact-head gates, independent PASS and normal Owner release authorization.
