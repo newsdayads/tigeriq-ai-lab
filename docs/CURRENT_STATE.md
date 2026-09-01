@@ -6,12 +6,12 @@ TigerIQ AI Lab is operated as a continuous distributed AI company. Tiger IQ Driv
 
 ## Current MAIN / Production truth
 - Repository: `newsdayads/tigeriq-ai-lab`.
-- Audited MAIN head: `4d73bd923526aa3396a4f436332a9b863c66e172` (WO-042 secure Owner Web Control login).
+- Audited MAIN head remains `4d73bd923526aa3396a4f436332a9b863c66e172` (WO-042 secure Owner Web Control login).
 - WO-040 merged as `69ef75149155c09d4618afef941e54cf02feaf79`.
 - WO-041 merged as `d0b085c10a691d7c1dd41a2861253c96f5f85215`.
 - WO-042 merged as `4d73bd923526aa3396a4f436332a9b863c66e172`.
-- Latest previously observed Vercel Production deployment remains behind MAIN; no later Web/APP/Governance branch work is claimed live without direct Production evidence.
-- Fresh GitHub branch evidence reports `main` as `protected:true`, but the branch summary exposes no required status checks (`contexts: []`, `checks: []`). Repository rulesets are still `[]`.
+- No later Web/APP/Governance/PC01/Multi-AI branch work is claimed live on MAIN/Production without direct runtime evidence and Owner release authorization.
+- Fresh GitHub branch evidence reports `main` as `protected:true`, but the branch summary exposes no required status checks (`contexts: []`, `checks: []`). Repository rulesets remain `[]`.
 - Therefore global governance issue #113 remains FAIL: protection exists, but PR-only mutation, required checks, bypass behavior, force-push and deletion policy are not yet independently proven sufficient.
 
 ## Canonical autonomous operation feed — #138
@@ -28,35 +28,40 @@ Implemented on the branch:
 - `scripts/verify-independent-review-gate.mjs` requires structured exact-head `TIGERIQ_INDEPENDENT_REVIEW_PASS`, `REVIEW_ROLE: 07`, exact HEAD SHA and typed `EVIDENCE_REF`.
 - `docs/governance/MAIN_PROTECTION_V1.md` defines required MAIN protection and the one-time bootstrap procedure.
 
-Verified prior bootstrap behavior:
-- On prior exact head `71329b3321d9b736a9bbb3c16e7c65507486cad2`, structured 07 exact-head review existed and Governance Independent Review Gate run `33455971386` succeeded on rerun against the same head.
-- This proves verifier/bootstrap behavior only; it does not make #113 PASS and does not authorize MAIN/Production.
-
-Fresh governance state:
-- Prior PR #118 review on `24b74b39f698dda96ff6938009f2eb46d3b5ecdd` was FAIL because this file was stale versus live repository state.
-- This reconciliation commit intentionally invalidates every prior exact-head PASS; fresh CI/Queue/Governance review evidence is required on the new exact head.
-- Global #113 must remain fail-closed until repository policy is independently proven to enforce PR-only mutation, required checks, no unsafe bypass, no force-push/delete, and final CURRENT_STATE freshness.
+Verified governance-branch behavior before this refresh:
+- Exact head `c1a8cb8d699fd03c40698036520a8fd07690f2cc` had CI, Queue Hygiene, Vercel Verify and Governance Independent Review Gate PASS after fresh structured 07 review.
+- This proves repository verifier/bootstrap behavior only; it does not make global #113 PASS and does not authorize MAIN/Production.
+- This CURRENT_STATE reconciliation creates a newer exact head and intentionally invalidates the prior exact-head review. Fresh exact-head gates and structured 07 review are required again.
+- Global #113 remains fail-closed until live repository policy itself is independently proven to enforce PR-only mutation, required checks, safe bypass policy, no force-push/delete, and final CURRENT_STATE freshness.
 
 ## Web Control — PR #117
 - Canonical branch: `wo045/web-control-remote-ops`.
-- Current exact head observed: `9ae2c998ccbb1222dd57eb4264955888904f4666`.
+- Current exact head: `9ae2c998ccbb1222dd57eb4264955888904f4666`.
 - Exact-head repository gates are PASS: CI `33497322162`, Queue Hygiene `33497322166`, WO-012/013 Vercel Online Verify `33497322161`.
-- Vercel commit status on this exact head is still FAIL because the Hobby deployment quota is exhausted. No paid upgrade or retry-spam is authorized.
-- A READY Preview exists for an older branch head, but it is not exact-head runtime proof for `9ae2c998...`; therefore `WEB_CONTROL_SINGLE_DOOR_E2E_PASS` is not emitted yet.
-- Web Control implements Owner/TigerIQ auth separation, server-only write credential path, canonical Work Order dedupe, server-owned evidence reference, independent Reviewer/Judge gates, mobile status UI and bounded autonomous backlog processing.
-- Groq Free remains the verified cloud runtime path. Gemini is permitted only when a real free-tier key/config exists; OpenRouter is restricted to free routing by default. No paid provider fallback is automatic.
-- Remaining P0 runtime sequence: wait for zero-cost exact-head READY Preview; run authenticated harmless Single Door canary; prove duplicate reuse, result/evidence, Reviewer/Judge and status projection on the exact runtime; then obtain fresh runtime-aware independent review.
+- Vercel commit status on this exact head remains blocked by Hobby deployment quota. No paid upgrade or retry-spam is authorized.
+- The READY Preview observed for this branch is bound to stale commit `890456ccfdce9d9f681520b22d1e79250d802096`, not current exact head `9ae2c998...`; therefore `WEB_CONTROL_SINGLE_DOOR_E2E_PASS` is not emitted.
+- Web Control repository implementation includes Owner/TigerIQ auth separation, server-only write credential path, canonical Work Order dedupe, server-owned evidence reference, independent Reviewer/Judge gates, mobile status UI and bounded autonomous backlog processing.
+- Groq Free remains the verified cloud runtime path. No paid provider fallback is automatic.
+- Remaining P0 runtime sequence: wait for a zero-cost READY Preview whose `githubCommitSha` equals the exact head; run authenticated harmless Single Door canary; prove duplicate reuse, result/evidence, Reviewer/Judge, auto-work lock/fail-closed and status projection; then obtain fresh runtime-aware independent review.
 - MAIN/Production remains unchanged.
 
 ## PC01 security — #114 / PR #116
 - Canonical hardening branch: `wo045/pc01-autonomy-hardening` on top of `wo011/pc01-remote-exec`.
-- Current exact head observed: `5b07e5865265376f4e380142ac5c2ca4a048792b`.
-- Existing repository CI/Secure Worker gates are green, but fresh independent security review `5077674476` is FAIL on this exact head.
-- Raw model-controlled shell/argv is removed and `repo.test` is exact-allowlisted, but remaining blockers are material:
-  1. AI read scope is still workspace-wide minus filename heuristics and allows protected/local configuration surfaces such as `.git/**`;
-  2. public evidence can include raw tool/file output and current redaction is not a fail-closed sensitive-data boundary;
-  3. model-role independence is based on distinct configured model-name strings rather than immutable model digest/fingerprint where available.
-- #114 must not close and Secure Worker V3 must not be activated as autonomous-safe until these blockers are remediated and fresh exact-head security review PASS exists.
+- Current exact head: `2b941450f541643b9f4b952493dfd2fc612f30f2`.
+- Exact-head CI `33506910934` PASS and WO-045 PC01 Secure Worker `33506910959` PASS.
+- Fresh 07 independent repository-security re-review is PASS on this exact head.
+- Verified remediation: raw model-controlled shell/argv is absent; AI read scope is explicit and limited to repository-tracked/AI-created safe paths; `.git/**`, `.github/**`, `scripts/pc-worker/**`, sensitive-name and untracked local configuration paths are denied; public evidence excludes raw file content and applies final secret redaction/fail-closed suppression; Executor/Reviewer/Judge independence is bound to three distinct immutable Ollama model digests and rechecked after execution.
+- Repository/security implementation scope for #114 is PASS only. #114 remains open until least-privilege OS execution, live PC01 activation, network/runtime behavior and #57/#58/#100 are proven on the physical machine.
+
+## Android phone-first worker — #108 / PR #109
+- Canonical branch: `wo012/android-phone-first-worker`.
+- Current exact head: `96819b4c960d7930c5f5d2105c4df07d4bfcbd00`; PR #109 remains draft and unmerged.
+- Exact-head repository workflows are green and the branch contains the phone-first setup, foldable support and bounded Gemini Accessibility adapter.
+- Fresh independent APP re-audit is still FAIL at repository/code scope for two non-physical blockers:
+  1. `LocalTaskStore` keeps only one current snapshot and does not provide bounded multi-task history with `startedAt` + `finishedAt` + terminal result/error per task;
+  2. Gemini completion/result extraction has no persisted current-turn boundary: stale completion controls and prior conversation text can be mistaken for the just-submitted result.
+- Required repo-side remediation before physical smoke: persist a privacy-safe before-submit/current-turn boundary, accept only response evidence newer than that boundary, add bounded local task history, and add executable regressions for stale markers/prior chat/duplicate events/restart while SUBMITTED/timeout/login/provider-limit/unrelated text.
+- Physical Z Flip/Z Fold smoke remains a separate runtime gate after code PASS. No MAIN release.
 
 ## Work Management / AI Gateway / shared Android v0.7 contract
 - PR #126 (`wo047/android-worker-core-v07`) is the frozen Employee/Device/Job Core contract branch at exact `7bbaec2e503f579f876d6af96c59911d3a618b84`.
@@ -67,34 +72,38 @@ Fresh governance state:
 
 ## Android APP v0.7 — PR #132
 - Canonical branch: `wo048/android-v07-api-first-worker`, stacked on the phone-first Android baseline.
-- Current exact head observed: `76197e75517adf4c6eb4a965f16af7b318a10a1d`.
+- Current exact head: `76197e75517adf4c6eb4a965f16af7b318a10a1d`.
 - Exact-head gates: CI `33489016994` PASS; Android Worker `33489016990` PASS.
 - Fresh independent repository/build review `5077718726` emitted `APP_V07_INDEPENDENT_REVIEW_PASS` on this exact head.
-- The current v0.7 APK surface is API-first and bank-safety hardened: source manifest declares only `INTERNET`, `POST_NOTIFICATIONS`, `RECEIVE_BOOT_COMPLETED`; Accessibility/overlay/package automation/legacy foreground controller surfaces are absent from the v0.7 manifest; direct legacy v0.6 worker sources are excluded from packaging; the exact-run APK artifact was independently inspected for expected v0.7 classes and absence of the known legacy automation/provider-key markers.
-- Prior security/correctness remediation remains in branch history: collision-resistant Employee+Device key identity, verified hardware-backed key policy, one-time enrollment bootstrap material, short-lived TigerIQ session use, authoritative bindingId, expectedEvidence enforcement, non-persistent raw lease authority, unique WorkManager and bounded retry/recovery.
-- Repository/software gate is PASS only. Physical Z Flip/Z Fold enrollment, real hardware-backed Keystore behavior, reboot/network recovery, stable-signed install/update continuity and real Job -> Inference -> Result/Evidence execution remain mandatory before APP release/DONE.
+- The current v0.7 APK surface is API-first and bank-safety hardened: source manifest declares only `INTERNET`, `POST_NOTIFICATIONS`, `RECEIVE_BOOT_COMPLETED`; Accessibility/overlay/package automation/legacy foreground controller surfaces are absent from the v0.7 manifest; direct legacy v0.6 worker sources are excluded from packaging; the exact-run APK artifact was independently inspected for expected v0.7 classes and absence of known legacy automation/provider-key markers.
+- Repository/software gate is PASS only. Physical Z Flip/Z Fold enrollment, hardware-backed Keystore behavior, reboot/network recovery, stable-signed install/update continuity and real Job -> Inference -> Result/Evidence execution remain mandatory before APP release/DONE.
 - Banking-app anti-fraud compatibility is external/proprietary and is not claimed from repository tests.
 
-## Multi-AI subscription orchestration — #133 / PR #134
-- P1 branch `wo048/multi-ai-subscription-orchestration` prepares a safe PC01 capability probe for Gemini CLI, Claude CLI, Ollama and git without adding API billing or provider secrets.
-- Repository code can be audited remotely, but actual installed/authenticated capability and cached subscription login state can only be proven on PC01.
-- No subscription CLI is assumed unlimited; quota/auth failures must fail closed or use an already-configured free/local fallback.
+## Multi-AI zero-cost orchestration — #133 / PR #134
+- Canonical branch: `wo048/multi-ai-subscription-orchestration`.
+- Current exact head: `1d808ce46135a7427711608c2dec8cfdbd46810e`.
+- Exact-head gates PASS: CI `33518393104`; Queue Hygiene `33518392985`; WO-048 Multi-AI Probe Guard `33518393107`; Vercel Verify `33518392986`.
+- Fresh independent cost/security re-review `5079166931` is PASS for repository zero-cost/fail-closed scope.
+- Repository policy now explicitly fails closed on detected Gemini API/Vertex/ADC/base-url routes and scans user/project Gemini config for non-account routes; Claude accepts only independently proven Claude App Pro/Max auth and rejects API/gateway/Bedrock/Vertex/Foundry; OpenRouter is hard-coded to `openrouter/free` with non-free models/paid fallback disabled; Ollama remains local zero-cost fallback.
+- Deterministic no-network self-test covers Gemini/Claude billing-route refusal, persisted Gemini route classification, secret redaction and bounded timeout/kill behavior.
+- This PASS does not prove real PC01 provider readiness or complete #133: Gemini/Claude/OpenRouter login/quota/capability, parallel executor/reviewer scheduling, reboot recovery and Ollama fallback still require physical PC01 E2E evidence.
 
 ## Canonical PC01 / physical-device truth
 - Issue #57 is the single canonical PC01 ingress recovery work order.
 - Issue #58 is the single deterministic `system.status` canary.
 - Issue #100 is the single canonical Workforce Controller deployment job.
 - Issue #137 asks whether PC01 is operating and therefore requires actual PC/device evidence; cloud AI must not fabricate the answer.
-- Current repository evidence records `REAL_BLOCKER_BOOTSTRAP_DEADLOCK`: neither the GitHub issue worker nor attempted self-hosted runner ingress accepted the recovery workload at the recorded audit point.
+- Current evidence records a bootstrap deadlock / missing active ingress: repository-side work cannot prove that the physical worker is consuming GitHub jobs.
 - Repository/CI evidence is never PC01/Tailscale runtime evidence. Do not create duplicate recovery/canary issues and do not retry physical jobs through cloud AI without a real ingress.
 
 ## Release path from current state
-1. Remediate PR #116 on its owning security branch; run exact-head regression/security gates; obtain fresh independent PASS for #114.
-2. Keep PR #118 on its governance branch; after this CURRENT_STATE refresh, require fresh exact-head CI/Queue/Governance independent review. Keep global #113 FAIL until live repository policy itself is sufficient.
-3. Keep PR #117 unchanged while Vercel Hobby quota blocks exact-head runtime; continue repo-side work rather than retry-spam. When exact-head Preview exists, run the full Single Door runtime gate.
-4. Keep PR #132 repository-frozen at the reviewed head unless an owning APP fix is required; run physical-device/stable-signing/E2E gates before APP release.
-5. Continue P1 #133/PR #134 and other non-conflicting repo work while P0 paths wait on CI/external/physical gates.
-6. Do not merge MAIN or promote Production unless all applicable gates are simultaneously PASS and Owner release authorization applies.
+1. Keep PR #116 repository-frozen at its reviewed PASS head unless an owning security fix is required; wait for physical #57/#58/#100 runtime proof before closing #114 or claiming PC01 autonomous-safe.
+2. Re-run exact-head governance CI/Queue/Governance gate and obtain fresh structured 07 review after this CURRENT_STATE refresh. Keep global #113 FAIL until repository Settings policy itself is sufficient.
+3. Keep PR #117 unchanged while Vercel Hobby quota blocks exact-head runtime; continue safe repo-side work instead of retry-spam. When exact-head Preview exists, run the full Single Door runtime gate.
+4. Remediate the two repository blockers on #108/PR #109, add executable regressions, then rerun exact-head APP build/review; physical smoke remains separate.
+5. Keep PR #132 repository-frozen at the reviewed head unless an owning APP fix is required; run physical-device/stable-signing/E2E gates before APP release.
+6. Keep PR #134 repository-frozen at zero-cost guard PASS while full #133 waits on PC01 runtime/provider E2E.
+7. Do not merge MAIN or promote Production unless all applicable gates are simultaneously PASS and Owner release authorization applies.
 
 ## External / deferred boundaries
 - Vercel filesystem is stateless and is never durable Workforce storage.
