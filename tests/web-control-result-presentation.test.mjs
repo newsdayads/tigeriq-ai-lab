@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { workDisplayTitle, workResultPresentation } from '../api/web-control-status.mjs';
+import { needsIssueCommentFallback, workDisplayTitle, workResultPresentation } from '../api/web-control-status.mjs';
 
 describe('Web Control result presentation', () => {
   it('extracts the latest concrete result, expected evidence, evidence summary, and ref', () => {
@@ -38,6 +38,15 @@ describe('Web Control result presentation', () => {
     });
     expect(title).toBe('[P0] [TigerIQ AI] Tính 6 × 7 và trả kết quả số. · KẾT QUẢ: 42');
     expect(title).not.toContain('sha256:');
+  });
+
+  it('falls back to exact issue comments only for incomplete gate projections', () => {
+    for (const stage of ['closed_unverified', 'evidence_pending', 'review_pending', 'gate_pending']) {
+      expect(needsIssueCommentFallback({ stage })).toBe(true);
+    }
+    for (const stage of ['queued', 'claimed', 'completed', 'failed', 'cancelled']) {
+      expect(needsIssueCommentFallback({ stage })).toBe(false);
+    }
   });
 
   it('does not fabricate a result when no result comment exists', () => {
