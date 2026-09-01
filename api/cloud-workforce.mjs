@@ -1,10 +1,8 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { getVercelOidcToken } from '@vercel/oidc';
 
-const GATEWAY_URL = 'https://ai-gateway.vercel.sh/v1/chat/completions';
-const EXECUTOR_MODEL = process.env.TIGERIQ_EXECUTOR_MODEL || 'google/gemini-3.6-flash';
-const REVIEWER_MODEL = process.env.TIGERIQ_REVIEWER_MODEL || 'openai/gpt-5.6-sol';
-const JUDGE_MODEL = process.env.TIGERIQ_JUDGE_MODEL || 'google/gemini-3.6-flash';
+const VERCEL_GATEWAY_URL = 'https://ai-gateway.vercel.sh/v1/chat/completions';
+const GROQ_GATEWAY_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const REQUEST_TIMEOUT_MS = 12_000;
 const MAX_TEXT = 8_000;
 
@@ -56,6 +54,27 @@ export function verifyServerGateComment(body) {
   return safeEqual(gateSignature(body), signatures[0]);
 }
 
+function aiProvider() {
+  const explicit = String(process.env.TIGERIQ_AI_PROVIDER || '').trim().toLowerCase();
+  if (explicit === 'groq' || explicit === 'vercel') return explicit;
+  if (String(process.env.GROQ_API_KEY || '').trim()) return 'groq';
+  if (String(process.env.AI_GATEWAY_API_KEY || '').trim()) return 'vercel';
+  return 'groq';
+}
+
+function roleModel(role) {
+  const key = `TIGERIQ_${String(role || '').toUpperCase()}_MODEL`;
+  const configured = String(process.env[key] || '').trim();
+  if (configured) return configured;
+  if (aiProvider() === 'groq') {
+    if (role === 'reviewer') return 'qwen/qwen3.8-27b';
+    if (role === 'judge') return 'openai/gpt-oss-20b';
+    return 'openai/gpt-oss-120b';
+  }
+  if (role === 'reviewer') return 'openai/gpt-5.6-sol';
+  return 'google/gemini-3.6-flash';
+}
+
 export function cloudExecutorEnabled() {
   const mode = String(process.env.TIGERIQ_CLOUD_EXECUTOR || '').trim().toLowerCase();
   if (mode === 'off' || mode === '0' || mode === 'false') return false;
@@ -64,21 +83,24 @@ export function cloudExecutorEnabled() {
 }
 
 export function cloudWorkforceDescriptor() {
+  const provider = aiProvider();
   return {
     enabled: cloudExecutorEnabled(),
     runtime: 'vercel-serverless',
-    gateway: 'vercel-ai-gateway-oidc',
+    gateway: provider === 'groq' ? 'groq-free-tier-api' : 'vercel-ai-gateway',
     pc01Required: false,
-    executorModel: EXECUTOR_MODEL,
-    reviewerModel: REVIEWER_MODEL,
-    judgeModel: JUDGE_MODEL,
+    executorModel: roleModel('executor'),
+    reviewerModel: roleModel('reviewer'),
+    judgeModel: roleModel('judge'),
     safeScope: 'non-mutating-cloud-task-v1',
   };
 }
 
-async function gatewayCredential() {
+async function providerCredential(provider) {
+  if (provider === 'groq') return String(process.env.GROQ_API_KEY || '').trim();
   const explicit = String(process.env.AI_GATEWAY_API_KEY || '').trim();
   if (explicit) return explicit;
+  if (String(process.env.TIGERIQ_AI_PROVIDER || '').trim().toLowerCase() !== 'vercel') return '';
   try {
     return String((await getVercelOidcToken()) || '').trim();
   } catch {
@@ -101,16 +123,17 @@ function parseJsonContent(value, errorName) {
 }
 
 async function gatewayJson({ model, system, payload, timeoutMs = REQUEST_TIMEOUT_MS }) {
-  const credential = await gatewayCredential();
+  const provider = aiProvider();
+  const credential = await providerCredential(provider);
   if (!credential) {
-    const error = new Error('ai_gateway_authorization_unavailable');
+    const error = new Error(provider === 'groq' ? 'groq_authorization_unavailable' : 'ai_gateway_authorization_unavailable');
     error.status = 503;
     throw error;
   }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(GATEWAY_URL, {
+    const response = await fetch(provider === 'groq' ? GROQ_GATEWAY_URL : VERCEL_GATEWAY_URL, {
       method: 'POST',
       headers: {
         authorization: `Bearer ${credential}`,
@@ -134,21 +157,21 @@ async function gatewayJson({ model, system, payload, timeoutMs = REQUEST_TIMEOUT
     let data;
     try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text.slice(0, 500) }; }
     if (!response.ok) {
-      const error = new Error(`ai_gateway_${response.status}`);
+      const error = new Error(`${provider === 'groq' ? 'groq_api' : 'ai_gateway'}_${response.status}`);
       error.status = response.status === 401 || response.status === 403 ? 503 : 502;
-      error.details = data?.error?.message || data?.message || 'AI Gateway request failed';
+      error.details = data?.error?.message || data?.message || 'Cloud AI request failed';
       throw error;
     }
     const content = data?.choices?.[0]?.message?.content;
     return {
       value: parseJsonContent(content, 'cloud_workforce_invalid_json'),
       modelUsed: String(data?.model || model),
-      providerUsed: String(data?.provider || data?.provider_name || 'vercel-ai-gateway'),
+      providerUsed: String(data?.provider || data?.provider_name || provider),
       usage: data?.usage || null,
     };
   } catch (error) {
     if (error?.name === 'AbortError') {
-      const timeout = new Error('ai_gateway_timeout');
+      const timeout = new Error('cloud_ai_timeout');
       timeout.status = 504;
       throw timeout;
     }
@@ -166,7 +189,7 @@ const JUDGE_SYSTEM = `You are the TigerIQ Judge/Gate. You did not execute or rev
 
 export async function executeCloudTask({ instruction, expectedEvidence }) {
   const call = await gatewayJson({
-    model: EXECUTOR_MODEL,
+    model: roleModel('executor'),
     system: EXECUTOR_SYSTEM,
     payload: { instruction: clean(instruction, 6_000), expectedEvidence: clean(expectedEvidence, 3_000) },
   });
@@ -185,7 +208,7 @@ export async function executeCloudTask({ instruction, expectedEvidence }) {
 
 export async function reviewCloudTask(input) {
   const call = await gatewayJson({
-    model: REVIEWER_MODEL,
+    model: roleModel('reviewer'),
     system: REVIEWER_SYSTEM,
     payload: {
       instruction: clean(input?.instruction, 6_000),
@@ -205,7 +228,7 @@ export async function reviewCloudTask(input) {
 
 export async function judgeCloudTask(input) {
   const call = await gatewayJson({
-    model: JUDGE_MODEL,
+    model: roleModel('judge'),
     system: JUDGE_SYSTEM,
     payload: {
       instruction: clean(input?.instruction, 6_000),
