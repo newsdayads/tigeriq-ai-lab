@@ -4,7 +4,8 @@
   "trailingSlash": false,
   "rewrites": [
     { "source": "/", "destination": "/command-center.html" },
-    { "source": "/workforce", "destination": "/workforce.html" }
+    { "source": "/workforce", "destination": "/workforce.html" },
+    { "source": "/api/control-legacy", "destination": "/api/control" }
   ],
   "headers": [
     {
