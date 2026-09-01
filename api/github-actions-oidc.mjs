@@ -34,7 +34,7 @@ export function validateGitHubActionsClaims(claims, {
   if (!workflowRef || claims.workflow_ref !== workflowRef) throw new Error('github_oidc_bad_workflow_ref');
   if (claims.ref !== ref) throw new Error('github_oidc_bad_ref');
   if (!eventNames.includes(String(claims.event_name || ''))) throw new Error('github_oidc_bad_event');
-  if (claims.runner_environment && claims.runner_environment !== 'github-hosted') throw new Error('github_oidc_bad_runner');
+  if (claims.runner_environment !== 'github-hosted') throw new Error('github_oidc_bad_runner');
   if (!Number.isFinite(Number(claims.exp)) || Number(claims.exp) < now - CLOCK_SKEW_SECONDS) throw new Error('github_oidc_expired');
   if (Number.isFinite(Number(claims.nbf)) && Number(claims.nbf) > now + CLOCK_SKEW_SECONDS) throw new Error('github_oidc_not_yet_valid');
   if (Number.isFinite(Number(claims.iat)) && Number(claims.iat) > now + CLOCK_SKEW_SECONDS) throw new Error('github_oidc_future_issued');
