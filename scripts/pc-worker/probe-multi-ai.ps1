@@ -27,11 +27,11 @@ function Resolve-Tool([string[]]$Names) {
   return $null
 }
 
-function Invoke-External([string]$Exe, [string[]]$Args, [int]$Timeout) {
+function Invoke-External([string]$Exe, [string[]]$ArgumentList, [int]$Timeout) {
   $stdout = Join-Path $env:TEMP ("tigeriq-probe-out-{0}.txt" -f [guid]::NewGuid().ToString('N'))
   $stderr = Join-Path $env:TEMP ("tigeriq-probe-err-{0}.txt" -f [guid]::NewGuid().ToString('N'))
   try {
-    $p = Start-Process -FilePath $Exe -ArgumentList $Args -PassThru -WindowStyle Hidden -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+    $p = Start-Process -FilePath $Exe -ArgumentList $ArgumentList -PassThru -WindowStyle Hidden -RedirectStandardOutput $stdout -RedirectStandardError $stderr
     if (-not $p.WaitForExit($Timeout * 1000)) {
       try { $p.Kill() } catch {}
       return [ordered]@{ exitCode = $null; timeout = $true; output = ''; error = 'TIMEOUT' }
@@ -67,7 +67,7 @@ function New-StaticResult([string]$Name, [string[]]$CommandNames, [string[]]$Ver
   if (-not $exe) {
     return [ordered]@{ name=$Name; installed=$false; versionOk=$false; liveTested=$false; liveOk=$false; status='NOT_INSTALLED' }
   }
-  $version = Invoke-External -Exe $exe -Args $VersionArgs -Timeout ([Math]::Min($TimeoutSeconds, 15))
+  $version = Invoke-External -Exe $exe -ArgumentList $VersionArgs -Timeout ([Math]::Min($TimeoutSeconds, 15))
   return [ordered]@{
     name = $Name
     installed = $true
@@ -147,7 +147,7 @@ function Invoke-GeminiSubscriptionProbe([string]$Exe) {
     'GOOGLE_GEMINI_BASE_URL','GOOGLE_VERTEX_BASE_URL','GOOGLE_APPLICATION_CREDENTIALS'
   )
   return Invoke-WithTemporaryEnvironment -SetValues $set -ClearNames $clear -Action {
-    Invoke-External -Exe $Exe -Args @('-p','"Return exactly TIGERIQ_GEMINI_READY"') -Timeout $TimeoutSeconds
+    Invoke-External -Exe $Exe -ArgumentList @('-p','"Return exactly TIGERIQ_GEMINI_READY"') -Timeout $TimeoutSeconds
   }
 }
 
@@ -157,7 +157,7 @@ function Invoke-ClaudeSubscriptionProbe([string]$Exe) {
     return [ordered]@{ exitCode=2; timeout=$false; output=''; error=('BILLING_ROUTE_BLOCKED ' + ($blockers -join ',')); subscriptionAuth=$false }
   }
 
-  $auth = Invoke-External -Exe $Exe -Args @('auth','status') -Timeout ([Math]::Min($TimeoutSeconds, 15))
+  $auth = Invoke-External -Exe $Exe -ArgumentList @('auth','status') -Timeout ([Math]::Min($TimeoutSeconds, 15))
   if ($auth.timeout -or $auth.exitCode -ne 0 -or -not (Test-ClaudeSubscriptionStatus $auth.output)) {
     return [ordered]@{ exitCode=3; timeout=$false; output=''; error='CLAUDE_SUBSCRIPTION_AUTH_UNPROVEN'; subscriptionAuth=$false }
   }
@@ -168,7 +168,7 @@ function Invoke-ClaudeSubscriptionProbe([string]$Exe) {
     'CLAUDE_CODE_USE_BEDROCK','CLAUDE_CODE_USE_VERTEX','CLAUDE_CODE_USE_FOUNDRY'
   )
   $result = Invoke-WithTemporaryEnvironment -SetValues @{} -ClearNames $clear -Action {
-    Invoke-External -Exe $Exe -Args @('-p','"Return exactly TIGERIQ_CLAUDE_READY"') -Timeout $TimeoutSeconds
+    Invoke-External -Exe $Exe -ArgumentList @('-p','"Return exactly TIGERIQ_CLAUDE_READY"') -Timeout $TimeoutSeconds
   }
   $result.subscriptionAuth = $true
   return $result
@@ -205,7 +205,7 @@ function Run-SelfTest {
 
   $shell = Resolve-Tool @('powershell.exe','pwsh.exe','pwsh')
   if ($shell) {
-    $timed = Invoke-External -Exe $shell -Args @('-NoProfile','-Command','"Start-Sleep -Seconds 2"') -Timeout 1
+    $timed = Invoke-External -Exe $shell -ArgumentList @('-NoProfile','-Command','"Start-Sleep -Seconds 2"') -Timeout 1
     Assert-True ([bool]$timed.timeout) 'timeout'
   }
 
