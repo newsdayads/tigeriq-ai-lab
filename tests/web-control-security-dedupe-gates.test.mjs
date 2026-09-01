@@ -1,8 +1,8 @@
-import { createHmac } from 'node:crypto';
+import { createHmac, generateKeyPairSync, sign as cryptoSign } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-function response(body, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+function response(body, status = 200, headers = {}) {
+  return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...headers } });
 }
 function makeRes() {
   return {
@@ -30,13 +30,28 @@ function restoreEnv(saved) {
   Object.assign(process.env, saved);
 }
 function configureEnv() {
+  delete process.env.TIGERIQ_OWNER_GOOGLE_CLIENT_SECRET;
+  delete process.env.TIGERIQ_OWNER_OAUTH_REDIRECT_URI;
   Object.assign(process.env, {
     TIGERIQ_REPO: 'newsdayads/tigeriq-ai-lab', TIGERIQ_GITHUB_TOKEN: 'server-only-token',
     TIGERIQ_COMMAND_SECRET: 'internal-secret', TIGERIQ_OWNER_EMAIL: 'newsdayads@gmail.com',
-    TIGERIQ_OWNER_GOOGLE_CLIENT_ID: 'client', TIGERIQ_OWNER_GOOGLE_CLIENT_SECRET: 'client-secret',
-    TIGERIQ_OWNER_OAUTH_REDIRECT_URI: 'https://example.invalid/api/owner-auth?action=callback',
+    TIGERIQ_OWNER_GOOGLE_CLIENT_ID: 'client.apps.googleusercontent.com',
     TIGERIQ_OWNER_SESSION_SECRET: 'session-secret', TIGERIQ_PC01_CANARY_ISSUE: '58',
   });
+}
+function googleFixture() {
+  const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const jwk = publicKey.export({ format: 'jwk' });
+  Object.assign(jwk, { kid: 'security-test-key', alg: 'RS256', use: 'sig' });
+  const now = Math.floor(Date.now() / 1000);
+  const header = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT', kid: jwk.kid })).toString('base64url');
+  const payload = Buffer.from(JSON.stringify({
+    iss: 'https://accounts.google.com', aud: 'client.apps.googleusercontent.com', sub: '123',
+    email: 'newsdayads@gmail.com', email_verified: true, iat: now, exp: now + 3600,
+  })).toString('base64url');
+  const signingInput = `${header}.${payload}`;
+  const signature = cryptoSign('RSA-SHA256', Buffer.from(signingInput), privateKey).toString('base64url');
+  return { jwk, token: `${signingInput}.${signature}` };
 }
 
 function installGitHubMock({ issueDelayMs = 0 } = {}) {
@@ -84,39 +99,34 @@ function installGitHubMock({ issueDelayMs = 0 } = {}) {
 describe('Web Control security, dedupe and completion gates', () => {
   afterEach(() => { vi.unstubAllGlobals(); vi.resetModules(); });
 
-  it('preserves both OAuth session and state-clear cookies and authorizes the resulting Owner session', async () => {
+  it('verifies Google ID-token identity, preserves session cookie, and clears legacy OAuth state', async () => {
     const saved = saveEnv(); configureEnv();
+    const fixture = googleFixture();
     vi.stubGlobal('fetch', async (input) => {
       const url = String(input);
-      if (url === 'https://oauth2.googleapis.com/token') return response({ access_token: 'google-access-token' });
-      if (url === 'https://openidconnect.googleapis.com/v1/userinfo') return response({ email: 'newsdayads@gmail.com', email_verified: true });
+      if (url === 'https://www.googleapis.com/oauth2/v3/certs') return response({ keys: [fixture.jwk] }, 200, { 'cache-control': 'public, max-age=3600' });
       return response({ message: `unexpected ${url}` }, 404);
     });
     try {
       vi.resetModules();
       const { default: authHandler } = await import('../api/owner-auth.mjs');
-      const loginRes = makeRes();
-      await authHandler({ method: 'GET', url: '/api/owner-auth?action=login', headers: {} }, loginRes);
-      expect(loginRes.statusCode).toBe(302);
-      const loginCookies = loginRes.headers['set-cookie'];
-      expect(Array.isArray(loginCookies)).toBe(true);
-      expect(loginCookies).toHaveLength(1);
-      const stateCookiePair = loginCookies[0].split(';')[0];
-      const state = decodeURIComponent(stateCookiePair.slice(stateCookiePair.indexOf('=') + 1));
-      const callbackRes = makeRes();
-      await authHandler({ method: 'GET', url: `/api/owner-auth?action=callback&code=ok&state=${encodeURIComponent(state)}`, headers: { cookie: stateCookiePair } }, callbackRes);
-      expect(callbackRes.statusCode).toBe(302);
-      expect(callbackRes.headers.location).toBe('/?owner=connected');
-      const callbackCookies = callbackRes.headers['set-cookie'];
-      expect(Array.isArray(callbackCookies)).toBe(true);
-      expect(callbackCookies).toHaveLength(2);
-      expect(callbackCookies.some((cookie) => cookie.startsWith('tigeriq_owner_session=') && cookie.includes('Max-Age=28800'))).toBe(true);
-      expect(callbackCookies.some((cookie) => cookie.startsWith('tigeriq_owner_oauth_state=') && cookie.includes('Max-Age=0'))).toBe(true);
-      const sessionPair = callbackCookies.find((cookie) => cookie.startsWith('tigeriq_owner_session=')).split(';')[0];
+      const identityRes = makeRes();
+      await authHandler({
+        method: 'POST', url: '/api/owner-auth?action=identity',
+        headers: { host: 'preview.example', origin: 'https://preview.example', 'sec-fetch-site': 'same-origin' },
+        body: { credential: fixture.token },
+      }, identityRes);
+      expect(identityRes.statusCode).toBe(200);
+      const cookies = identityRes.headers['set-cookie'];
+      expect(Array.isArray(cookies)).toBe(true);
+      expect(cookies).toHaveLength(2);
+      expect(cookies.some((cookie) => cookie.startsWith('tigeriq_owner_session=') && cookie.includes('Max-Age=28800'))).toBe(true);
+      expect(cookies.some((cookie) => cookie.startsWith('tigeriq_owner_oauth_state=') && cookie.includes('Max-Age=0'))).toBe(true);
+      const sessionPair = cookies.find((cookie) => cookie.startsWith('tigeriq_owner_session=')).split(';')[0];
       const statusRes = makeRes();
       await authHandler({ method: 'GET', url: '/api/owner-auth?action=status', headers: { cookie: sessionPair } }, statusRes);
       expect(statusRes.statusCode).toBe(200);
-      expect(JSON.parse(statusRes.body)).toEqual(expect.objectContaining({ configured: true, authenticated: true }));
+      expect(JSON.parse(statusRes.body)).toEqual(expect.objectContaining({ configured: true, identityMode: 'google_id_token', clientSecretRequired: false, authenticated: true }));
     } finally { restoreEnv(saved); }
   });
 
