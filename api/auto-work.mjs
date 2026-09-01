@@ -22,6 +22,7 @@ const LOCK_PREFIX = 'tigeriq-auto-run-';
 const LOCK_TTL_MS = 15 * 60 * 1000;
 const MAX_BATCH = Math.max(1, Math.min(3, Number(process.env.TIGERIQ_AUTO_WORK_BATCH || 2) || 2));
 const MAX_TRANSIENT_RETRIES = 2;
+const LEGACY_SERVER_EVIDENCE_BLOCKER = /(?:sha256|cryptographic\s+hash(?:es)?)[\s\S]{0,180}(?:not\s+supported|unsupported|cannot|unable)|computing\s+cryptographic\s+hashes\s+is\s+not\s+supported/i;
 
 function json(res, status, body) {
   res.statusCode = status;
@@ -122,9 +123,20 @@ function failureInfo(comments = []) {
     const body = String(comment?.body || comment || '');
     if (!/(?:^|\n)TIGERIQ_JOB_FAILED(?:\n|$)/.test(body)) continue;
     const kind = body.match(/(?:^|\n)FAILURE_KIND\s+([^\s]+)(?:\n|$)/)?.[1] || 'unknown';
-    failures.push({ kind });
+    const blocker = body.match(/(?:^|\n)BLOCKER\s+([^\n]+)(?:\n|$)/)?.[1] || '';
+    failures.push({ kind, blocker, body });
   }
-  return { count: failures.length, latest: failures.at(-1)?.kind || null };
+  const latest = failures.at(-1) || null;
+  const legacyServerEvidenceFailures = failures.filter((failure) => (
+    failure.kind === 'bounded_executor_blocked'
+    && LEGACY_SERVER_EVIDENCE_BLOCKER.test(`${failure.blocker}\n${failure.body}`)
+  ));
+  return {
+    count: failures.length,
+    latest: latest?.kind || null,
+    latestFailure: latest,
+    legacyServerEvidenceCount: legacyServerEvidenceFailures.length,
+  };
 }
 
 export function autonomousStageDecision(issue, comments = [], nowMs = Date.now()) {
@@ -138,6 +150,11 @@ export function autonomousStageDecision(issue, comments = [], nowMs = Date.now()
   if (stage === 'failed') {
     const info = failureInfo(comments);
     const transient = info.latest === 'cloud_pipeline_error';
+    const legacyServerEvidence = info.latestFailure?.kind === 'bounded_executor_blocked'
+      && LEGACY_SERVER_EVIDENCE_BLOCKER.test(`${info.latestFailure.blocker}\n${info.latestFailure.body}`);
+    if (legacyServerEvidence && info.legacyServerEvidenceCount === 1) {
+      return { runnable: true, reason: 'legacy_server_evidence_migration_retry' };
+    }
     if (transient && info.count < MAX_TRANSIENT_RETRIES) return { runnable: true, reason: 'bounded_transient_retry' };
     return { runnable: false, reason: transient ? 'retry_limit_reached' : 'non_retryable_failure' };
   }
