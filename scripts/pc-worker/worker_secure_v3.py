@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+import re
 import time
 import urllib.request
 import subprocess
@@ -31,13 +32,38 @@ HEARTBEAT = 'TIGERIQ_PC01_HEARTBEAT'
 DONE = 'TIGERIQ_PC01_DONE'
 FAILED = 'TIGERIQ_PC01_FAILED'
 NEEDS_REVIEW = 'TIGERIQ_PC01_NEEDS_EXTERNAL_REVIEW'
+PUBLIC_EVIDENCE_SUPPRESSED = 'TIGERIQ_PUBLIC_EVIDENCE_SUPPRESSED'
 
 AI_ACTIONS = {'read', 'list', 'write', 'repo_status', 'repo_test', 'finish'}
-PROTECTED_WRITE_PREFIXES = (
-    '.git', '.github/workflows', 'scripts/pc-worker',
+PROTECTED_PATH_PREFIXES = ('.git', '.github', 'scripts/pc-worker')
+READABLE_PREFIXES = ('apps', 'docs', 'packages', 'schemas', 'src', 'tests', 'scripts', 'scratch')
+WRITABLE_PREFIXES = ('apps', 'docs', 'packages', 'schemas', 'src', 'tests', 'scripts', 'scratch')
+READABLE_ROOT_FILES = {
+    'README.md', 'AGENTS.md', 'LICENSE', '.gitignore', 'package.json', 'package-lock.json',
+    'playwright.config.ts', 'tsconfig.json', 'vite.config.ts', 'vitest.config.ts',
+}
+WRITABLE_ROOT_FILES = {
+    'README.md', 'AGENTS.md', '.gitignore', 'package.json', 'package-lock.json',
+    'playwright.config.ts', 'tsconfig.json', 'vite.config.ts', 'vitest.config.ts',
+}
+SENSITIVE_NAME_PARTS = ('secret', 'credential', 'token', 'password', '.env', '.netrc', '.npmrc', '.pypirc')
+
+PEM_RE = re.compile(r'-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?-----END [A-Z0-9 ]*PRIVATE KEY-----', re.I | re.S)
+AUTH_RE = re.compile(r'\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=:-]+', re.I)
+CRED_URL_RE = re.compile(r'(https?://)[^/\s:@]+:[^@\s/]+@', re.I)
+KEY_VALUE_RE = re.compile(
+    r'(?im)(["\']?(?:api[_-]?key|token|secret|authorization|password|private[_-]?key|cookie)["\']?\s*[:=]\s*["\']?)([^\s,"\'}\r\n]+)'
 )
-SENSITIVE_NAME_PARTS = ('secret', 'credential', 'token', 'password', '.env')
-REDACT_TOKENS = ('authorization:', 'cookie:', 'api_key=', 'api-key=', 'token=', 'password=', 'secret=')
+TOKEN_PATTERNS = (
+    re.compile(r'\bgithub_pat_[A-Za-z0-9_]{20,}\b'),
+    re.compile(r'\bgh[pousr]_[A-Za-z0-9_]{20,}\b'),
+    re.compile(r'\bAIza[0-9A-Za-z_-]{20,}\b'),
+    re.compile(r'\bsk-[A-Za-z0-9_-]{16,}\b'),
+)
+DIGEST_RE = re.compile(r'^(?:sha256:)?([0-9a-fA-F]{64})$')
+
+_TRACKED_CACHE = None
+AI_CREATED_FILES = set()
 
 
 def now_dt():
@@ -48,21 +74,68 @@ def now():
     return now_dt().isoformat()
 
 
+def _normalize_rel(path):
+    return str(path).replace('\\', '/').lstrip('./').lower() or '.'
+
+
+def _is_prefix(rel, prefixes):
+    return any(rel == prefix or rel.startswith(prefix + '/') for prefix in prefixes)
+
+
 def redact(value):
     text = '' if value is None else str(value)
-    lowered = text.lower()
-    if any(marker in lowered for marker in REDACT_TOKENS):
-        return '[REDACTED SENSITIVE OUTPUT]'
-    return text[-MAX_OUTPUT:]
+    text = PEM_RE.sub('[REDACTED PRIVATE KEY]', text)
+    text = AUTH_RE.sub(lambda match: match.group(1) + ' REDACTED', text)
+    text = CRED_URL_RE.sub(r'\1REDACTED@', text)
+    text = KEY_VALUE_RE.sub(lambda match: match.group(1) + 'REDACTED', text)
+    for pattern in TOKEN_PATTERNS:
+        text = pattern.sub('[REDACTED TOKEN]', text)
+    if len(text) > MAX_OUTPUT:
+        text = text[:MAX_OUTPUT] + '\n[TRUNCATED]'
+    return text
+
+
+def _contains_sensitive(text):
+    if PEM_RE.search(text) or CRED_URL_RE.search(text):
+        return True
+    for pattern in TOKEN_PATTERNS:
+        if pattern.search(text):
+            return True
+    auth = AUTH_RE.search(text)
+    if auth and 'REDACTED' not in auth.group(0).upper():
+        return True
+    for match in KEY_VALUE_RE.finditer(text):
+        if 'REDACTED' not in match.group(2).upper():
+            return True
+    return False
+
+
+def sanitize_value(value):
+    if isinstance(value, str):
+        return redact(value)
+    if isinstance(value, dict):
+        return {str(key): sanitize_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [sanitize_value(item) for item in value]
+    return value
+
+
+def public_json(value):
+    text = json.dumps(sanitize_value(value), ensure_ascii=False, indent=2)
+    text = redact(text)
+    if _contains_sensitive(text):
+        return json.dumps({'status': PUBLIC_EVIDENCE_SUPPRESSED}, ensure_ascii=False, indent=2)
+    return text
 
 
 def append_audit(event):
     AUDIT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    safe = {}
-    for key, value in event.items():
-        safe[key] = redact(value) if isinstance(value, str) else value
+    safe = sanitize_value(event)
+    text = redact(json.dumps(safe, ensure_ascii=False))
+    if _contains_sensitive(text):
+        text = json.dumps({'event': PUBLIC_EVIDENCE_SUPPRESSED, 'timestamp': now()}, ensure_ascii=False)
     with AUDIT_PATH.open('a', encoding='utf-8') as handle:
-        handle.write(json.dumps(safe, ensure_ascii=False) + '\n')
+        handle.write(text + '\n')
 
 
 def gh(*args):
@@ -73,6 +146,54 @@ def gh(*args):
     if proc.returncode != 0:
         raise RuntimeError(redact(proc.stderr or proc.stdout))
     return proc.stdout
+
+
+def tracked_files():
+    global _TRACKED_CACHE
+    if _TRACKED_CACHE is not None:
+        return set(_TRACKED_CACHE)
+    proc = subprocess.run(
+        ['git', '-C', str(WORKSPACE), 'ls-files', '-z'],
+        text=False, capture_output=True, timeout=60,
+    )
+    if proc.returncode != 0:
+        _TRACKED_CACHE = set()
+        append_audit({'event': 'tracked_scope_unavailable', 'returncode': proc.returncode})
+        return set()
+    rows = proc.stdout.decode('utf-8', errors='replace').split('\x00')
+    _TRACKED_CACHE = {_normalize_rel(row) for row in rows if row}
+    return set(_TRACKED_CACHE)
+
+
+def _scope_allowed(rel, write=False, directory=False):
+    if rel == '.':
+        return not write and directory
+    if _is_prefix(rel, PROTECTED_PATH_PREFIXES):
+        return False
+    root = rel.split('/', 1)[0]
+    if '/' not in rel:
+        if directory:
+            prefixes = WRITABLE_PREFIXES if write else READABLE_PREFIXES
+            return root in prefixes
+        roots = WRITABLE_ROOT_FILES if write else READABLE_ROOT_FILES
+        return rel in {item.lower() for item in roots}
+    prefixes = WRITABLE_PREFIXES if write else READABLE_PREFIXES
+    return root in prefixes
+
+
+def _resolve_ai_path(value, write=False, directory=False):
+    raw = str(value or '').strip()
+    if not raw or Path(raw).is_absolute():
+        raise ValueError('relative workspace path required')
+    candidate = (WORKSPACE / raw).resolve()
+    if candidate != WORKSPACE and WORKSPACE not in candidate.parents:
+        raise ValueError('path outside workspace')
+    rel = _normalize_rel(candidate.relative_to(WORKSPACE)) if candidate != WORKSPACE else '.'
+    if any(part in rel for part in SENSITIVE_NAME_PARTS):
+        raise ValueError('sensitive path denied')
+    if not _scope_allowed(rel, write=write, directory=directory):
+        raise ValueError('path outside AI scope')
+    return candidate, rel
 
 
 def load_state():
@@ -98,9 +219,11 @@ def save_state(state):
 def list_jobs():
     raw = gh('issue', 'list', '--repo', REPO, '--state', 'open', '--limit', '100', '--json', 'number,title,body,url')
     jobs = [row for row in json.loads(raw or '[]') if JOB_MARKER in (row.get('body') or '') or COMMAND_MARKER in (row.get('body') or '')]
+
     def rank(row):
         text = ((row.get('title') or '') + '\n' + (row.get('body') or '')).upper()
         return (0 if 'P0' in text else 1, row.get('number', 0))
+
     return sorted(jobs, key=rank)
 
 
@@ -109,7 +232,11 @@ def issue_state(number):
 
 
 def comment(number, body):
-    gh('issue', 'comment', str(number), '--repo', REPO, '--body', body)
+    safe = redact(body)
+    if _contains_sensitive(safe):
+        safe = f'{PUBLIC_EVIDENCE_SUPPRESSED}\ntime={now()}'
+        append_audit({'event': 'public_comment_suppressed', 'issue': number})
+    gh('issue', 'comment', str(number), '--repo', REPO, '--body', safe)
 
 
 def close_issue(number):
@@ -127,46 +254,59 @@ def body_key(job):
     return f"{job['number']}:{digest}"
 
 
-def safe_path(value, write=False):
-    candidate = (WORKSPACE / value).resolve() if not Path(value).is_absolute() else Path(value).resolve()
-    if candidate != WORKSPACE and WORKSPACE not in candidate.parents:
-        raise ValueError('path outside workspace')
-    rel = str(candidate.relative_to(WORKSPACE)).replace('\\', '/').lower() if candidate != WORKSPACE else '.'
-    if any(part in rel for part in SENSITIVE_NAME_PARTS):
-        raise ValueError('sensitive path denied')
-    if write and any(rel == prefix or rel.startswith(prefix + '/') for prefix in PROTECTED_WRITE_PREFIXES):
-        raise ValueError('protected runtime/governance path is read-only to AI')
-    return candidate
-
-
 def tool_read(path):
-    target = safe_path(path)
+    target, rel = _resolve_ai_path(path, write=False, directory=False)
+    if rel not in tracked_files() and rel not in AI_CREATED_FILES:
+        raise ValueError('read denied: file is not repository-tracked or AI-created')
     if not target.exists() or not target.is_file():
         return {'error': 'file not found'}
     data = target.read_text(encoding='utf-8', errors='replace')
-    return {'content': redact(data[:20000]), 'truncated': len(data) > 20000}
+    bounded = data[:20000]
+    return {
+        'content': bounded,
+        'truncated': len(data) > 20000,
+        'path': rel,
+        'bytes': len(data.encode('utf-8', errors='replace')),
+        'sha256': hashlib.sha256(data.encode('utf-8', errors='replace')).hexdigest(),
+    }
 
 
 def tool_list(path='.'):
-    target = safe_path(path)
+    target, rel = _resolve_ai_path(path, write=False, directory=True)
     if not target.exists() or not target.is_dir():
         return {'error': 'directory not found'}
-    rows = []
-    for child in sorted(target.iterdir(), key=lambda item: item.name.lower())[:200]:
-        name = child.name
-        if any(part in name.lower() for part in SENSITIVE_NAME_PARTS):
+    known = tracked_files() | set(AI_CREATED_FILES)
+    prefix = '' if rel == '.' else rel + '/'
+    names = {}
+    for item in known:
+        if not item.startswith(prefix):
             continue
-        rows.append({'name': name, 'type': 'dir' if child.is_dir() else 'file'})
+        tail = item[len(prefix):]
+        if not tail:
+            continue
+        name = tail.split('/', 1)[0]
+        child_rel = name if rel == '.' else rel + '/' + name
+        child_is_dir = '/' in tail
+        if any(part in child_rel for part in SENSITIVE_NAME_PARTS):
+            continue
+        if not _scope_allowed(child_rel, write=False, directory=child_is_dir):
+            continue
+        names[name] = 'dir' if child_is_dir else 'file'
+    rows = [{'name': name, 'type': names[name]} for name in sorted(names, key=str.lower)[:200]]
     return {'entries': rows}
 
 
 def tool_write(path, content):
     if not isinstance(content, str):
         raise ValueError('content must be string')
-    target = safe_path(path, write=True)
+    target, rel = _resolve_ai_path(path, write=True, directory=False)
+    if target.exists() and rel not in tracked_files() and rel not in AI_CREATED_FILES:
+        raise ValueError('write denied: existing untracked file')
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content, encoding='utf-8')
-    return {'written': str(target.relative_to(WORKSPACE)), 'bytes': len(content.encode('utf-8'))}
+    AI_CREATED_FILES.add(rel)
+    digest = hashlib.sha256(content.encode('utf-8')).hexdigest()
+    return {'written': rel, 'bytes': len(content.encode('utf-8')), 'sha256': digest}
 
 
 def validate_ai_action(obj):
@@ -199,6 +339,27 @@ def dispatch_ai_tool(obj):
     raise ValueError('unsupported action')
 
 
+def _public_tool_metadata(step, obj, result):
+    action = obj.get('action') if isinstance(obj, dict) else 'invalid'
+    meta = {'step': step, 'action': action, 'ok': not (isinstance(result, dict) and result.get('error'))}
+    if isinstance(obj, dict) and action in {'read', 'list', 'write'}:
+        meta['path'] = redact(obj.get('path', '.'))
+    if isinstance(result, dict):
+        for key in ('bytes', 'sha256', 'truncated', 'written', 'returncode'):
+            if key in result:
+                meta[key] = result[key]
+        if action == 'list' and isinstance(result.get('entries'), list):
+            meta['entry_count'] = len(result['entries'])
+        if action in {'repo_status', 'repo_test'}:
+            nested = result.get('result') if isinstance(result.get('result'), dict) else {}
+            meta['returncode'] = nested.get('returncode')
+            combined = str(nested.get('stdout', '')) + '\n' + str(nested.get('stderr', ''))
+            meta['output_sha256'] = hashlib.sha256(combined.encode('utf-8', errors='replace')).hexdigest()
+        if result.get('error'):
+            meta['error'] = redact(result.get('error'))
+    return sanitize_value(meta)
+
+
 def ollama_chat(model, messages, json_mode=False, timeout=None):
     if not model:
         raise RuntimeError('model not configured')
@@ -214,9 +375,47 @@ def ollama_chat(model, messages, json_mode=False, timeout=None):
     return data['message']['content'].strip()
 
 
-def model_independence_ready():
-    models = [EXECUTOR_MODEL, REVIEWER_MODEL, JUDGE_MODEL]
-    return all(models) and len(set(models)) == 3
+def ollama_model_catalog():
+    request = urllib.request.Request(OLLAMA + '/api/tags', method='GET')
+    with urllib.request.urlopen(request, timeout=min(MODEL_TIMEOUT, 30)) as response:
+        data = json.loads(response.read().decode('utf-8'))
+    catalog = {}
+    for row in data.get('models', []):
+        digest = str(row.get('digest', '')).strip().lower()
+        match = DIGEST_RE.match(digest)
+        if not match:
+            continue
+        normalized = match.group(1).lower()
+        for key in (row.get('name'), row.get('model')):
+            if key:
+                catalog[str(key).strip()] = normalized
+    return catalog
+
+
+def model_identities():
+    models = {'executor': EXECUTOR_MODEL, 'reviewer': REVIEWER_MODEL, 'judge': JUDGE_MODEL}
+    if not all(models.values()):
+        return None
+    try:
+        catalog = ollama_model_catalog()
+    except Exception as exc:
+        append_audit({'event': 'model_identity_probe_failed', 'error': f'{type(exc).__name__}: {exc}'})
+        return None
+    identities = {}
+    for role, model in models.items():
+        digest = catalog.get(model)
+        if not digest:
+            return None
+        identities[role] = {'model': model, 'digest': digest}
+    return identities
+
+
+def model_independence_ready(identities=None):
+    identities = identities if identities is not None else model_identities()
+    if not identities or set(identities) != {'executor', 'reviewer', 'judge'}:
+        return False
+    digests = [identities[role].get('digest') for role in ('executor', 'reviewer', 'judge')]
+    return all(digests) and len(set(digests)) == 3
 
 
 def acquire_lease(state, number, key):
@@ -254,13 +453,14 @@ def execute_ai_tools(instruction, deadline, state, number):
         '{"action":"write","path":"relative/path","content":"full text"}, '
         '{"action":"repo_status"}, {"action":"repo_test","script":"approved exact script"}, '
         '{"action":"finish","summary":"evidence-backed result"}. '
-        'Never request raw commands, argv, shell, credentials, protected worker files, .git internals or workflow files.'
+        'Reads are limited to repository-tracked files in an explicit scope; writes cannot touch worker/governance/runtime internals. '
+        'Never request raw commands, argv, shell, credentials, .git internals, workflow files or PC worker files.'
     )
     messages = [{'role': 'system', 'content': system}, {'role': 'user', 'content': instruction}]
-    trace = []
+    public_trace = []
     for step in range(1, MAX_STEPS + 1):
         if time.monotonic() >= deadline:
-            return 'WO_EXECUTOR_DEADLINE_EXCEEDED\n' + '\n'.join(trace[-12:])
+            return {'summary': 'WO_EXECUTOR_DEADLINE_EXCEEDED', 'trace': public_trace[-12:]}
         heartbeat(state, number, step)
         raw = ollama_chat(EXECUTOR_MODEL, messages, json_mode=True, timeout=min(MODEL_TIMEOUT, max(10, int(deadline - time.monotonic()))))
         try:
@@ -269,17 +469,20 @@ def execute_ai_tools(instruction, deadline, state, number):
         except Exception as exc:
             obj = None
             result = {'error': f'{type(exc).__name__}: {exc}'}
-        trace.append(f'step={step} result={json.dumps(result, ensure_ascii=False)[:1200]}')
+        public_trace.append(_public_tool_metadata(step, obj, result))
         if isinstance(result, dict) and result.get('finish'):
-            return result.get('summary', '') + '\n\nTOOL TRACE SUMMARY:\n' + '\n'.join(trace[-12:])
-        messages.extend([{'role': 'assistant', 'content': raw}, {'role': 'user', 'content': 'TOOL_RESULT ' + json.dumps(result, ensure_ascii=False)}])
-    return 'WO_EXECUTOR_BLOCKED: maximum tool steps reached\n' + '\n'.join(trace[-12:])
+            return {'summary': redact(result.get('summary', '')), 'trace': public_trace[-12:]}
+        messages.extend([
+            {'role': 'assistant', 'content': raw},
+            {'role': 'user', 'content': 'TOOL_RESULT ' + json.dumps(result, ensure_ascii=False)},
+        ])
+    return {'summary': 'WO_EXECUTOR_BLOCKED: maximum tool steps reached', 'trace': public_trace[-12:]}
 
 
 def parse_pass(raw):
     try:
         obj = json.loads(raw)
-        return bool(obj.get('pass')), str(obj.get('reason', ''))
+        return bool(obj.get('pass')), redact(obj.get('reason', ''))
     except Exception:
         return False, 'invalid reviewer/judge JSON'
 
@@ -292,7 +495,8 @@ def execute_command_job(job):
     comment(number, f'{CLAIM}\nPC01 deterministic claim at {now()}\nmode=secure-v3-command')
     result = execute_control_once(number, command)
     marker = DONE if result.get('ok') else FAILED
-    comment(number, marker + '\n```json\n' + json.dumps({'timestamp': now(), 'worker': 'pc01', 'mode': 'secure-v3-command', 'result': result}, ensure_ascii=False, indent=2) + '\n```')
+    evidence = {'timestamp': now(), 'worker': 'pc01', 'mode': 'secure-v3-command', 'result': sanitize_value(result)}
+    comment(number, marker + '\n```json\n' + public_json(evidence) + '\n```')
     append_audit({'event': 'command_result', 'issue': number, 'ok': bool(result.get('ok')), 'action': command.get('action')})
     if result.get('ok') and issue_state(number).get('state') == 'OPEN':
         close_issue(number)
@@ -306,9 +510,10 @@ def execute_ai_job(job, state):
     attempt = int(state['attempts'].get(key, 0))
     if attempt >= MAX_RETRIES:
         return False
-    if not model_independence_ready():
-        comment(number, f'{NEEDS_REVIEW}\nPC01 secure-v3 refused AI execution: three distinct local model identities are not configured.')
-        append_audit({'event': 'ai_refused', 'issue': number, 'reason': 'independent_models_not_configured'})
+    identities = model_identities()
+    if not model_independence_ready(identities):
+        comment(number, f'{NEEDS_REVIEW}\nPC01 secure-v3 refused AI execution: three distinct immutable local model digests are not configured/proven.')
+        append_audit({'event': 'ai_refused', 'issue': number, 'reason': 'independent_model_digests_not_proven'})
         return False
     if not acquire_lease(state, number, key):
         return False
@@ -320,30 +525,39 @@ def execute_ai_job(job, state):
     executor = execute_ai_tools(instruction, deadline, state, number)
     review_raw = ollama_chat(REVIEWER_MODEL, [
         {'role': 'system', 'content': 'Independent reviewer. Reject unsupported claims. JSON only: {"pass":true|false,"reason":"..."}.'},
-        {'role': 'user', 'content': json.dumps({'instruction': instruction, 'executor_result': executor}, ensure_ascii=False)},
+        {'role': 'user', 'content': json.dumps({'instruction': redact(instruction), 'executor_result': executor}, ensure_ascii=False)},
     ], json_mode=True)
     review_pass, review_reason = parse_pass(review_raw)
     judge_raw = ollama_chat(JUDGE_MODEL, [
         {'role': 'system', 'content': 'Independent judge. DONE requires concrete evidence and reviewer PASS. JSON only: {"pass":true|false,"reason":"..."}.'},
-        {'role': 'user', 'content': json.dumps({'instruction': instruction, 'executor_result': executor, 'review_pass': review_pass, 'review_reason': review_reason}, ensure_ascii=False)},
+        {'role': 'user', 'content': json.dumps({
+            'instruction': redact(instruction), 'executor_result': executor,
+            'review_pass': review_pass, 'review_reason': review_reason,
+        }, ensure_ascii=False)},
     ], json_mode=True)
     judge_pass, judge_reason = parse_pass(judge_raw)
-    passed = review_pass and judge_pass
+
+    # Tags/aliases can move while a job is executing. Re-resolve and require the same immutable digests.
+    identities_after = model_identities()
+    identity_stable = model_independence_ready(identities_after) and identities_after == identities
+    passed = review_pass and judge_pass and identity_stable
     evidence = {
         'timestamp': now(), 'worker': 'pc01', 'mode': 'secure-v3-typed-tools',
-        'models': {'executor': EXECUTOR_MODEL, 'reviewer': REVIEWER_MODEL, 'judge': JUDGE_MODEL},
-        'attempt': attempt + 1, 'executor': executor,
+        'models': identities,
+        'model_identity_stable': identity_stable,
+        'attempt': attempt + 1,
+        'executor': executor,
         'review': {'pass': review_pass, 'reason': review_reason},
         'judge': {'pass': judge_pass, 'reason': judge_reason},
     }
-    comment(number, (DONE if passed else FAILED) + '\n```json\n' + json.dumps(evidence, ensure_ascii=False, indent=2) + '\n```')
+    comment(number, (DONE if passed else FAILED) + '\n```json\n' + public_json(evidence) + '\n```')
     state['leases'].pop(str(number), None)
     if passed:
         state['done'] = sorted(set(state['done']) | {str(number)}, key=lambda item: int(item))
         if issue_state(number).get('state') == 'OPEN':
             close_issue(number)
     save_state(state)
-    append_audit({'event': 'ai_result', 'issue': number, 'pass': passed})
+    append_audit({'event': 'ai_result', 'issue': number, 'pass': passed, 'model_identity_stable': identity_stable})
     return passed
 
 
@@ -362,7 +576,7 @@ def main():
                 execute_ai_job(job, state)
         except Exception as exc:
             append_audit({'event': 'worker_error', 'error': f'{type(exc).__name__}: {exc}'})
-            print(f'{now()} WORKER ERROR {type(exc).__name__}: {exc}', flush=True)
+            print(f'{now()} WORKER ERROR {type(exc).__name__}: {redact(exc)}', flush=True)
         time.sleep(POLL_SECONDS)
 
 
