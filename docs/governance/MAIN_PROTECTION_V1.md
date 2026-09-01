@@ -2,27 +2,35 @@
 
 Canonical governance gate: Issue #113.
 
-This policy is the minimum repository-level enforcement required before TigerIQ may treat MAIN as release-governed. Repository code cannot enable these GitHub Settings by itself; the Owner must apply them once, then 07 independently verifies the resulting API state.
+This policy is the minimum repository-level enforcement required before TigerIQ may treat MAIN as release-governed. Repository code cannot enable these GitHub Settings by itself; the Owner must apply them once, then an independent reviewer verifies the resulting API state.
 
 ## Target branch
 - Branch name pattern: `main`
 
-## Required settings
+## Required live settings
 1. Enable **Require a pull request before merging**.
-   - Do not require a second GitHub-account approval solely for TigerIQ logical AI independence; the independent-review workflow below is the machine gate.
-2. Enable **Require status checks to pass before merging**.
-3. Enable **Require branches to be up to date before merging** unless merge queue is used for the repository.
-4. Require these checks:
+2. Enable **Require pull request reviews before merging** with at least 1 approving review from an authorized GitHub identity other than the PR author.
+3. Enable **Dismiss stale pull request approvals when new commits are pushed**. If available, also enable **Require approval of the most recent reviewable push** so the latest pushed content cannot inherit an older approval.
+4. Enable **Require status checks to pass before merging** and require at minimum:
    - `CI / verify`
-   - `Governance Independent Review Gate / independent-review`
    - `WO-014 Queue Hygiene / verify`
-5. Enable **Require conversation resolution before merging**.
-6. Enable **Do not allow bypassing the above settings** so repository administrators/Owner cannot silently bypass normal gates.
-7. Keep **Allow force pushes** disabled.
-8. Keep **Allow deletions** disabled.
+5. Enable **Require branches to be up to date before merging** unless an approved merge queue provides equivalent exact-resulting-SHA protection.
+6. Enable **Require conversation resolution before merging**.
+7. Enable **Do not allow bypassing the above settings** so repository administrators/Owner cannot silently bypass normal gates.
+8. Keep **Allow force pushes** disabled.
+9. Keep **Allow deletions** disabled.
+10. Keep GitHub Actions workflow/token permissions least-privilege; no PR-controlled workflow may receive secrets or privileged write authority merely to satisfy review governance.
+
+GitHub documents that PR authors cannot approve their own pull requests and that stale approvals can be dismissed after new commits. TigerIQ relies on those native controls as a mandatory layer; logical AI role labels alone are not sufficient identity proof.
 
 ## Machine-verifiable independent review contract
-The required workflow `.github/workflows/governance-independent-review.yml` runs on PR changes and submitted/edited/dismissed PR reviews. It accepts a PASS only when the current exact PR head has structured evidence containing all of:
+The hardened `.github/workflows/governance-independent-review.yml` uses `pull_request_target` so its workflow definition comes from the trusted base context. It must never checkout or execute PR-head code.
+
+The verifier accepts a review only when all of these are simultaneously true:
+- GitHub review state is formal `APPROVED`;
+- `review.commit_id` equals the current exact PR head SHA;
+- reviewer GitHub login exists and differs from PR author login;
+- review body contains:
 
 ```text
 TIGERIQ_INDEPENDENT_REVIEW_PASS
@@ -31,32 +39,35 @@ Exact head: <40-char PR head SHA>
 EVIDENCE_REF: <typed evidence ref>
 ```
 
-Accepted evidence refs are constrained by `scripts/verify-independent-review-gate.mjs`.
+Issue comments, `COMMENTED` reviews, self-authored reviews, stale-SHA approvals and missing evidence are rejected. Accepted evidence refs remain constrained by `scripts/verify-independent-review-gate.mjs`.
 
-Any new commit invalidates the previous exact-head review because the gate re-runs against the new SHA.
+Any new commit invalidates exact-head review evidence and must require a fresh formal approval.
 
-## One-time bootstrap for the first governance PR
-PR #118 introduces `.github/workflows/governance-independent-review.yml`, so before that workflow exists on default `main`, GitHub cannot be relied upon to create a fresh `pull_request_review`-triggered run merely because 07 submits a review. This is a bootstrap condition only; it must not become a permanent bypass.
+## Trusted-base activation rule
+`pull_request_target` is safe here only because the workflow remains base-controlled and does not execute PR code. The hardened gate is NOT considered active merely because it exists on PR #118. It becomes an enforceable repository control only after:
+1. the hardened workflow/verifier is explicitly authorized and integrated onto trusted MAIN;
+2. a separate reviewer identity/App can submit formal exact-head APPROVED reviews;
+3. a harmless canary PR proves the gate reads the trusted base workflow and rejects self/comment/stale-review bypasses;
+4. live MAIN Settings enforce the native review/status/PR-only/no-bypass/no-force-push-delete controls above.
 
-Safe bootstrap procedure:
-1. Freeze the exact PR head.
-2. Require exact-head CI, Queue Hygiene and all existing repository checks to PASS.
-3. 07 submits the structured independent-review PASS bound to that exact head.
-4. Re-run the already-created `Governance Independent Review Gate` run for that same exact head. The verifier reads current GitHub review evidence and must complete PASS.
-5. Any commit after step 3 invalidates the review; repeat from step 1 on the new exact head.
-6. Do not treat the bootstrap gate as global #113 PASS. `main` protection/ruleset must still be configured and independently verified before release governance is accepted.
-7. After this workflow lands on `main`, future review submissions must trigger the normal gate from default-branch workflow state; prove this with a harmless governance canary/PR before declaring the bootstrap condition retired.
+The prior bootstrap method that re-ran a PR-head governance workflow after same-account structured comments/reviews is RETIRED and INVALID for release evidence.
 
-Bootstrap proof already observed on PR #118 prior head `71329b3321d9b736a9bbb3c16e7c65507486cad2`: structured 07 PASS existed, and Governance Independent Review Gate run #7 / `33455971386` completed PASS on attempt 2 after re-run. This proves the bootstrap mechanism without bypassing the exact-head reviewer contract.
+## About the custom gate status
+A required status check must succeed on the latest required commit SHA. Because `pull_request_target` executes in base context, do not assume its ordinary Actions check-run context is automatically a valid latest-head required status. During activation, prove this behavior with a canary. If it does not bind to the PR head as required, publish the machine-verifier result to the exact PR head through a trusted reviewer GitHub App/status publisher before adding that custom context to required checks.
+
+Until that exact-head trusted status publication path is proven, native required approving review + stale-review invalidation + CI + Queue Hygiene remain mandatory, while the structured TigerIQ verifier is an additional fail-closed audit gate rather than a falsely claimed required head status.
 
 ## Post-configuration acceptance
-07 must verify through GitHub API evidence that:
+An independent reviewer must verify through GitHub API evidence that:
 - `main` reports `protected:true` or an active ruleset applies equivalent enforcement;
 - PR-only mutation is enforced;
-- required checks above are present and enforced;
+- at least one authorized distinct approving review is required;
+- stale/latest-push review controls are active as configured;
+- required CI/Queue checks are present and enforced on the latest required SHA;
+- any TigerIQ custom review status is only required after its trusted exact-head publisher is proven;
 - full CI runs on `main`/merge-group exact resulting SHA;
-- no force-push/delete bypass is enabled;
+- no unsafe bypass, force-push or deletion is enabled;
 - final `docs/CURRENT_STATE.md` is refreshed;
-- 07 records `GOVERNANCE_INDEPENDENT_REVIEW_PASS` only after all acceptance items are true.
+- `GOVERNANCE_INDEPENDENT_REVIEW_PASS` is recorded only after all acceptance items are true.
 
-Do not merge/release MAIN or Production merely because PR-head CI is green.
+Do not merge/release MAIN or Production merely because PR-head CI is green or because a comment claims review PASS.
