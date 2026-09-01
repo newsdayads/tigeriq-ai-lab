@@ -4,13 +4,11 @@ import android.accessibilityservice.AccessibilityService;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
-import android.text.TextUtils;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -23,7 +21,6 @@ public final class AccessibilityBridgeService extends AccessibilityService {
     private static final String GEMINI_PACKAGE = "com.google.android.apps.bard";
     private static final long INPUT_DISCOVERY_TIMEOUT_MS = 15_000L;
     private static final long SEND_DISCOVERY_TIMEOUT_MS = 12_000L;
-    private static final long RESPONSE_TIMEOUT_MS = 120_000L;
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
@@ -49,26 +46,24 @@ public final class AccessibilityBridgeService extends AccessibilityService {
         if (root == null) return;
 
         try {
+            long age = System.currentTimeMillis() - task.updatedAt;
             String screen = collectScreenText(root);
-            if (LocalTaskStore.QUEUED.equals(task.state)) {
-                if (containsAny(screen, "sign in", "đăng nhập", "choose an account", "chọn một tài khoản")) {
-                    failAndReturn("LOGIN_REQUIRED");
-                    return;
-                }
-                if (containsAny(screen, "try again later", "thử lại sau", "too many requests", "you've reached your limit", "đã đạt giới hạn")) {
-                    failAndReturn("PROVIDER_LIMIT");
-                    return;
-                }
+            String failure = GeminiTaskPolicy.immediateFailure(screen, task.state, age);
+            if (!failure.isEmpty()) {
+                failAndReturn(failure);
+                return;
+            }
 
+            if (LocalTaskStore.QUEUED.equals(task.state)) {
                 AccessibilityNodeInfo input = findEditable(root);
                 if (input == null) {
-                    if (System.currentTimeMillis() - task.updatedAt > INPUT_DISCOVERY_TIMEOUT_MS) failAndReturn("UI_CHANGED");
+                    if (age > INPUT_DISCOVERY_TIMEOUT_MS) failAndReturn("UI_CHANGED");
                     return;
                 }
                 Bundle args = new Bundle();
                 args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, task.prompt);
                 if (!input.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
-                    if (System.currentTimeMillis() - task.updatedAt > INPUT_DISCOVERY_TIMEOUT_MS) failAndReturn("UI_CHANGED");
+                    if (age > INPUT_DISCOVERY_TIMEOUT_MS) failAndReturn("UI_CHANGED");
                     return;
                 }
                 LocalTaskStore.updateState(this, LocalTaskStore.INPUT_SET);
@@ -81,27 +76,39 @@ public final class AccessibilityBridgeService extends AccessibilityService {
                     if (System.currentTimeMillis() - task.updatedAt > SEND_DISCOVERY_TIMEOUT_MS) failAndReturn("UI_CHANGED");
                     return;
                 }
+
+                // Capture only privacy-safe hashes of the pre-submit screen. Raw prior chat content is never persisted.
+                List<String> beforeSubmitTexts = collectOrderedTexts(root);
+                Set<String> baselineHashes = GeminiTaskPolicy.baselineHashes(beforeSubmitTexts, task.prompt);
+                int baselineMarkerCount = countCompletionMarkers(root);
+
                 if (!clickNodeOrParent(send)) {
                     if (System.currentTimeMillis() - task.updatedAt > SEND_DISCOVERY_TIMEOUT_MS) failAndReturn("UI_CHANGED");
                     return;
                 }
-                LocalTaskStore.updateState(this, LocalTaskStore.SUBMITTED);
+                LocalTaskStore.markSubmitted(this, baselineHashes, baselineMarkerCount);
                 return;
             }
 
             if (LocalTaskStore.SUBMITTED.equals(task.state)) {
-                long age = System.currentTimeMillis() - task.updatedAt;
-                if (containsAny(screen, "try again later", "thử lại sau", "too many requests", "you've reached your limit", "đã đạt giới hạn")) {
-                    failAndReturn("PROVIDER_LIMIT");
+                if (!GeminiTaskPolicy.resumableSubmitted(task.state, task.boundaryCaptured)) {
+                    failAndReturn("UI_CHANGED");
                     return;
                 }
-                if (age > RESPONSE_TIMEOUT_MS) {
-                    failAndReturn("TIMEOUT");
+
+                long submittedAge = System.currentTimeMillis() - task.updatedAt;
+                String submittedFailure = GeminiTaskPolicy.immediateFailure(screen, task.state, submittedAge);
+                if (!submittedFailure.isEmpty()) {
+                    failAndReturn(submittedFailure);
                     return;
                 }
-                if (age < 4500L) return;
-                if (!hasCompletionMarker(root)) return;
-                String result = extractLikelyResponse(root, task.prompt);
+
+                List<String> currentTexts = collectOrderedTexts(root);
+                List<String> currentTurn = GeminiTaskPolicy.currentTurnCandidates(currentTexts, task.prompt, task.baselineHashes);
+                int currentMarkerCount = countCompletionMarkers(root);
+                if (!GeminiTaskPolicy.completionReady(submittedAge, task.baselineMarkerCount, currentMarkerCount, currentTurn)) return;
+
+                String result = GeminiTaskPolicy.joinBounded(currentTurn, 6000);
                 if (result.length() >= 40) {
                     LocalTaskStore.complete(this, result);
                     returnToTigerIQ();
@@ -138,18 +145,19 @@ public final class AccessibilityBridgeService extends AccessibilityService {
         return null;
     }
 
-    private boolean hasCompletionMarker(AccessibilityNodeInfo root) {
+    private int countCompletionMarkers(AccessibilityNodeInfo root) {
         ArrayDeque<AccessibilityNodeInfo> queue = new ArrayDeque<>();
         queue.add(root);
+        int count = 0;
         while (!queue.isEmpty()) {
             AccessibilityNodeInfo node = queue.removeFirst();
             String joined = normalized(node.getText()) + " " + normalized(node.getContentDescription()) + " " + normalized(node.getViewIdResourceName());
             if (containsAny(joined,
                 "copy", "sao chép", "share", "chia sẻ", "good response", "bad response",
-                "listen", "nghe", "regenerate", "tạo lại")) return true;
+                "listen", "nghe", "regenerate", "tạo lại")) count++;
             addChildren(queue, node);
         }
-        return false;
+        return count;
     }
 
     private String collectScreenText(AccessibilityNodeInfo root) {
@@ -167,42 +175,20 @@ public final class AccessibilityBridgeService extends AccessibilityService {
         return out.toString().toLowerCase(Locale.ROOT);
     }
 
-    private String extractLikelyResponse(AccessibilityNodeInfo root, String prompt) {
+    private List<String> collectOrderedTexts(AccessibilityNodeInfo root) {
         ArrayDeque<AccessibilityNodeInfo> queue = new ArrayDeque<>();
-        List<String> texts = new ArrayList<>();
-        Set<String> seen = new HashSet<>();
+        ArrayList<String> texts = new ArrayList<>();
         queue.add(root);
-        String normalizedPrompt = prompt == null ? "" : prompt.trim();
-
-        while (!queue.isEmpty()) {
+        while (!queue.isEmpty() && texts.size() < 500) {
             AccessibilityNodeInfo node = queue.removeFirst();
             CharSequence text = node.getText();
             if (text != null) {
-                String candidate = text.toString().trim();
-                if (isUsefulResultText(candidate, normalizedPrompt) && seen.add(candidate)) texts.add(candidate);
+                String value = text.toString().trim();
+                if (!value.isEmpty()) texts.add(value);
             }
             addChildren(queue, node);
         }
-
-        StringBuilder out = new StringBuilder();
-        for (String candidate : texts) {
-            if (out.length() > 0) out.append("\n\n");
-            out.append(candidate);
-            if (out.length() >= 6000) break;
-        }
-        if (out.length() > 6000) out.setLength(6000);
-        return out.toString().trim();
-    }
-
-    private boolean isUsefulResultText(String candidate, String prompt) {
-        if (TextUtils.isEmpty(candidate) || candidate.length() < 20) return false;
-        if (!TextUtils.isEmpty(prompt) && candidate.equals(prompt)) return false;
-        String n = candidate.toLowerCase(Locale.ROOT);
-        if (containsAny(n,
-            "gemini", "new chat", "cuộc trò chuyện mới", "send", "gửi", "copy", "sao chép",
-            "share", "chia sẻ", "listen", "nghe", "good response", "bad response",
-            "google", "menu", "history", "lịch sử")) return false;
-        return true;
+        return texts;
     }
 
     private boolean clickNodeOrParent(AccessibilityNodeInfo node) {
