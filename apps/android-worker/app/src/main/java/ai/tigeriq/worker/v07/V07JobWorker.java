@@ -28,15 +28,23 @@ public final class V07JobWorker extends Worker {
                 status.setState(WorkerState.READY, "Không có checkpoint đang chạy", null);
                 return Result.success();
             }
+            ApiFirstJobAdapter.requireBinding(profile, snapshot);
             if (snapshot.leaseExpired(System.currentTimeMillis())) {
                 checkpoints.clear();
-                status.setState(WorkerState.READY, "Lease hết hạn; chờ nhận lại từ server", null);
+                status.setState(WorkerState.READY, "Lease hết hạn; reacquire từ server", null);
                 V07WorkScheduler.enqueueRecovery(app);
                 return Result.success();
             }
             String sessionToken = new SessionManager(app).validToken(profile);
             TigerIqApiClient api = new TigerIqApiClient(profile);
             String leaseToken = checkpoints.leaseToken(snapshot);
+            if (leaseToken == null || leaseToken.isBlank()) {
+                // Process/reboot recovery deliberately cannot replay raw lease authority. Keep only
+                // non-secret checkpoint metadata until the server lease expires, then reacquire.
+                status.setState(WorkerState.WORKING, "Lease authority không còn trong RAM; chờ reacquire", snapshot.jobId);
+                V07WorkScheduler.enqueueRecovery(app);
+                return Result.success();
+            }
 
             JSONObject result;
             if (DurableCheckpointStore.PHASE_RESULT_READY.equals(snapshot.phase) || DurableCheckpointStore.PHASE_SUBMITTING.equals(snapshot.phase)) {
@@ -46,13 +54,14 @@ public final class V07JobWorker extends Worker {
             } else {
                 String jobJson = checkpoints.jobJson(snapshot);
                 if (jobJson == null || jobJson.isBlank()) throw new ApiException(409, "JOB_MISSING", "persisted job missing", false, null);
+                JSONObject job = new JSONObject(jobJson);
                 String requestId = snapshot.requestId == null ? "REQ-" + UUID.randomUUID() : snapshot.requestId;
                 String inferenceKey = snapshot.inferenceIdempotencyKey == null ? "INF-" + WorkNames.sha256(profile.employeeId + "\n" + snapshot.idempotencyKey) : snapshot.inferenceIdempotencyKey;
                 checkpoints.markPhase(DurableCheckpointStore.PHASE_INFERENCE, requestId, inferenceKey);
                 status.setState(WorkerState.WORKING, "Đang thực thi qua TigerIQ API", snapshot.jobId);
-                JSONObject inference = api.invokeInference(sessionToken, ApiFirstJobAdapter.inferenceRequest(profile, new JSONObject(jobJson), requestId), inferenceKey);
+                JSONObject inference = api.invokeInference(sessionToken, ApiFirstJobAdapter.inferenceRequest(profile, job, requestId), inferenceKey);
                 DurableCheckpointStore.Snapshot afterInference = checkpoints.load();
-                result = ApiFirstJobAdapter.result(profile, afterInference, inference);
+                result = ApiFirstJobAdapter.result(profile, afterInference, job, inference);
                 String evidenceSha = result.getJSONArray("evidence").getJSONObject(0).getString("sha256");
                 checkpoints.saveResult(result.toString(), evidenceSha);
                 snapshot = checkpoints.load();
@@ -67,7 +76,7 @@ public final class V07JobWorker extends Worker {
             return Result.success();
         } catch (ApiException error) {
             boolean canRetry = RetryPolicy.canRetry(getRunAttemptCount(), error.retryable);
-            WorkerState state = error.isTokenExpired() || error.isUnauthorized() || "REENROLL_REQUIRED".equals(error.code) ? WorkerState.NEED_ATTENTION : (canRetry ? WorkerState.WORKING : WorkerState.NEED_ATTENTION);
+            WorkerState state = error.isTokenExpired() || error.isUnauthorized() || "REENROLL_REQUIRED".equals(error.code) || "STALE_BINDING".equals(error.code) || "BINDING_REQUIRED".equals(error.code) || "EXPECTED_EVIDENCE_UNMET".equals(error.code) ? WorkerState.NEED_ATTENTION : (canRetry ? WorkerState.WORKING : WorkerState.NEED_ATTENTION);
             status.setState(state, "Job API: " + error.code, checkpoints.load().jobId);
             return canRetry ? Result.retry() : Result.failure();
         } catch (Exception error) {
