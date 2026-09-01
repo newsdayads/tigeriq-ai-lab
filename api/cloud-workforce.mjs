@@ -133,6 +133,18 @@ async function gatewayJson({ model, system, payload, timeoutMs = REQUEST_TIMEOUT
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
+    const body = {
+      model,
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: JSON.stringify(payload) },
+      ],
+      response_format: { type: 'json_object' },
+      max_tokens: 1600,
+      temperature: 0,
+      stream: false,
+    };
+    if (provider === 'groq') body.reasoning_format = 'hidden';
     const response = await fetch(provider === 'groq' ? GROQ_GATEWAY_URL : VERCEL_GATEWAY_URL, {
       method: 'POST',
       headers: {
@@ -140,17 +152,7 @@ async function gatewayJson({ model, system, payload, timeoutMs = REQUEST_TIMEOUT
         'content-type': 'application/json',
         'x-title': 'TigerIQ Cloud Workforce',
       },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: 'system', content: system },
-          { role: 'user', content: JSON.stringify(payload) },
-        ],
-        response_format: { type: 'json_object' },
-        max_tokens: 1600,
-        temperature: 0,
-        stream: false,
-      }),
+      body: JSON.stringify(body),
       signal: controller.signal,
     });
     const text = await response.text();
