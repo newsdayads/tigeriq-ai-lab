@@ -40,6 +40,49 @@ async function gh(path) {
   return data;
 }
 
+function cleanPresentation(value, max = 700) {
+  return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
+}
+
+function section(body, heading) {
+  const text = String(body || '').replace(/\r/g, '');
+  const marker = `## ${heading}`;
+  const start = text.indexOf(marker);
+  if (start < 0) return '';
+  const contentStart = start + marker.length;
+  const rest = text.slice(contentStart).replace(/^\s*\n/, '');
+  const nextHeading = rest.search(/\n##\s+/);
+  return cleanPresentation(nextHeading >= 0 ? rest.slice(0, nextHeading) : rest);
+}
+
+export function workResultPresentation(comments = []) {
+  const rows = Array.isArray(comments) ? comments : [];
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    const body = String(rows[index]?.body || rows[index] || '');
+    if (!/(?:^|\n)TIGERIQ_JOB_RESULT(?:\n|$)/.test(body)) continue;
+    const evidenceRef = body.match(/(?:^|\n)EVIDENCE_REF\s+([^\s]+)(?:\n|$)/)?.[1] || '';
+    const result = section(body, 'Result');
+    const expectedEvidence = section(body, 'Expected Evidence');
+    const evidenceSummary = section(body, 'Evidence Summary');
+    return {
+      result,
+      expectedEvidence,
+      evidenceSummary,
+      evidenceRef: cleanPresentation(evidenceRef, 160),
+      createdAt: rows[index]?.created_at || null,
+    };
+  }
+  return null;
+}
+
+function workDisplayTitle(title, presentation) {
+  const base = cleanPresentation(title, 260);
+  if (!presentation?.result) return base;
+  const parts = [base, `KẾT QUẢ: ${presentation.result}`];
+  if (presentation.evidenceRef) parts.push(`EVIDENCE: ${presentation.evidenceRef}`);
+  return parts.join(' · ');
+}
+
 function pc01State(canary, canaryComments) {
   const proof = issueEvidenceSummary(canaryComments);
   const stage = issueStage(canary, canaryComments);
@@ -81,15 +124,18 @@ export default async function handler(req, res) {
       .slice(0, 20)
       .map((issue) => {
         const issueComments = commentsByIssue.get(issue.number) || [];
+        const resultPresentation = workResultPresentation(issueComments);
         return {
           number: issue.number,
-          title: issue.title,
+          title: workDisplayTitle(issue.title, resultPresentation),
+          sourceTitle: issue.title,
           type: issueType(issue),
           priority: issuePriority(issue),
           state: issue.state,
           stage: issueStage(issue, issueComments),
           updatedAt: issue.updated_at,
           url: issue.html_url,
+          result: resultPresentation,
           evidence: issueEvidenceSummary(issueComments),
         };
       });
