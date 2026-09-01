@@ -39,12 +39,15 @@
       "reason": "An API key alone does not prove that the backing project cannot incur paid-tier charges."
     },
     "claude_code": {
-      "enabled": true,
-      "mode": "pro_max_subscription_login_only",
+      "enabled": false,
+      "mode": "disabled_until_subscription_no_usage_credits_is_independently_proven",
       "forbidApiKeyRoute": true,
       "forbidCloudGatewayRoutes": true,
+      "forbidUsageCredits": true,
+      "requiredAuth": "claude_ai_pro_or_max_subscription",
       "role": ["executor", "reviewer", "judge"],
-      "onQuota": "fallback"
+      "onQuota": "fallback",
+      "reason": "Claude Code subscription usage is acceptable only when API credentials and usage-credit/PAYG continuation are both proven unavailable; otherwise quota exhaustion must fall back or stop."
     },
     "ollama": {
       "enabled": true,
@@ -61,6 +64,6 @@
     "independentReviewRequired": true,
     "independentJudgeRequired": true,
     "requiredDistinctBackendIdentities": 3,
-    "fallbackOrder": ["ollama", "gemini_cli", "claude_code", "openrouter"]
+    "fallbackOrder": ["ollama", "gemini_cli", "openrouter"]
   }
 }
