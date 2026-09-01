@@ -28,11 +28,11 @@ jobs:
           python-version: '3.12'
       - name: Compile PC01 runtime
         run: |
-          python -m py_compile scripts/pc-worker/control_plane_v2.py scripts/pc-worker/worker_secure_v3.py scripts/pc-worker/bootstrap_worker_v2.py scripts/pc-worker/test_worker_secure_v3.py scripts/pc-worker/test_watchdog_v3_contract.py
+          python -m py_compile scripts/pc-worker/control_plane_v2.py scripts/pc-worker/worker_secure_v3.py scripts/pc-worker/live_upgrade_secure_v3.py scripts/pc-worker/bootstrap_worker_v2.py scripts/pc-worker/test_control_plane_v2.py scripts/pc-worker/test_worker_secure_v3.py scripts/pc-worker/test_watchdog_v3_contract.py
       - name: Control plane tests
         working-directory: scripts/pc-worker
         run: python test_control_plane_v2.py
-      - name: Secure worker exfiltration and bypass regression tests
+      - name: Secure worker scope and typed-tool regression tests
         working-directory: scripts/pc-worker
         run: python test_worker_secure_v3.py
       - name: Watchdog recovery contract tests
