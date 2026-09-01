@@ -24,6 +24,10 @@ android {
         versionName = "0.7.0-api-first"
     }
 
+    // v0.7 is a clean API-first APK. The direct children of ai/tigeriq/worker are
+    // legacy v0.6 UI/Accessibility/controller sources and must not be packaged.
+    sourceSets.getByName("main").java.exclude("ai/tigeriq/worker/*.java")
+
     if (stableSigningEnabled) {
         signingConfigs {
             create("tigeriqStable") {
