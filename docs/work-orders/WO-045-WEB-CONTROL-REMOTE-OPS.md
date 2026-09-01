@@ -83,6 +83,8 @@ Deployment `dpl_FrjAbGboNV4FMUG7RcGGtLciHMxV` is READY and tied to UI runtime co
 
 2026-09-01: Preview environment variables for Owner OAuth were configured in Vercel; this documentation-only commit intentionally triggers a fresh Preview build from the current branch tree. No runtime source, MAIN, or Production mutation is introduced by this note.
 
+2026-09-01: Owner replaced the Google OAuth Client ID and Client Secret pair in Vercel Preview after token exchange failure; this documentation-only update triggers another fresh Preview build so the new credential pair is loaded. No credential value is stored in GitHub and no runtime source, MAIN, or Production mutation is introduced by this note.
+
 ## Remaining gates
 - Fresh independent 07 review on the exact PR #117 head after this UI/Auth change.
 - Real configured Google Owner OAuth browser smoke, recorded as `OWNER_OAUTH_SMOKE_PASS`.
