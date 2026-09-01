@@ -9,7 +9,6 @@ import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
-import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -24,6 +23,11 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.List;
+import java.util.Locale;
 
 /** Primary phone-first work surface shown after one-time setup. */
 public final class HomeActivity extends Activity {
@@ -47,6 +51,7 @@ public final class HomeActivity extends Activity {
     private TextView taskState;
     private TextView resultView;
     private TextView timingView;
+    private TextView historyView;
 
     private final Runnable refreshLoop = new Runnable() {
         @Override public void run() {
@@ -141,11 +146,19 @@ public final class HomeActivity extends Activity {
         resultCard.addView(inspectGemini, margin(0, dp(12), 0, 0));
         root.addView(resultCard);
 
+        TextView historyTitle = text("Lịch sử công việc", 19, true);
+        root.addView(historyTitle, margin(0, dp(22), 0, dp(8)));
+        LinearLayout historyCard = card();
+        historyView = text("Chưa có lịch sử.", 12, false);
+        historyView.setTextColor(MUTED);
+        historyCard.addView(historyView);
+        root.addView(historyCard);
+
         Button setup = secondaryButton("THIẾT LẬP & QUYỀN");
         setup.setOnClickListener(v -> openSetup(true));
         root.addView(setup, margin(0, dp(20), 0, 0));
 
-        TextView footer = text("PHONE-FIRST · PC01/Tailscale không bắt buộc. TigerIQ chỉ đọc phần giao diện Gemini cần thiết cho công việc đang chạy.", 11, false);
+        TextView footer = text("PHONE-FIRST · PC01/Tailscale không bắt buộc. TigerIQ chỉ đọc phần giao diện Gemini cần thiết cho công việc đang chạy; nội dung chat cũ chỉ được lưu dạng hash ranh giới, không lưu vào lịch sử.", 11, false);
         footer.setTextColor(MUTED);
         root.addView(footer, margin(0, dp(10), 0, 0));
         return shell;
@@ -218,6 +231,45 @@ public final class HomeActivity extends Activity {
             resultView.setText("Chưa có kết quả.");
             resultView.setTextColor(MUTED);
         }
+        renderHistory();
+    }
+
+    private void renderHistory() {
+        List<LocalTaskStore.TaskRecord> history = LocalTaskStore.loadHistory(this);
+        if (history.isEmpty()) {
+            historyView.setText("Chưa có lịch sử.");
+            historyView.setTextColor(MUTED);
+            return;
+        }
+        StringBuilder out = new StringBuilder();
+        int limit = Math.min(5, history.size());
+        for (int i = 0; i < limit; i++) {
+            LocalTaskStore.TaskRecord record = history.get(i);
+            if (out.length() > 0) out.append("\n\n");
+            out.append(i + 1).append(". ")
+                .append(LocalTaskStore.RESULT_READY.equals(record.state) ? "HOÀN TẤT" : "DỪNG AN TOÀN")
+                .append(" · ").append(formatTimestamp(record.startedAt))
+                .append(" → ").append(formatTimestamp(record.finishedAt))
+                .append("\n").append(shorten(record.prompt, 120));
+            if (LocalTaskStore.RESULT_READY.equals(record.state) && !record.result.isEmpty()) {
+                out.append("\nKQ: ").append(shorten(record.result, 180));
+            } else if (!record.error.isEmpty()) {
+                out.append("\nLỗi: ").append(friendlyError(record.error));
+            }
+        }
+        historyView.setText(out.toString());
+        historyView.setTextColor(INK);
+    }
+
+    private String formatTimestamp(long value) {
+        if (value <= 0L) return "--";
+        return new SimpleDateFormat("dd/MM HH:mm:ss", Locale.getDefault()).format(new Date(value));
+    }
+
+    private String shorten(String value, int max) {
+        if (value == null) return "";
+        String normalized = value.trim().replaceAll("\\s+", " ");
+        return normalized.length() <= max ? normalized : normalized.substring(0, max) + "…";
     }
 
     private void submitTask() {
@@ -251,7 +303,7 @@ public final class HomeActivity extends Activity {
 
     private String taskTiming(LocalTaskStore.Snapshot task) {
         if (task.startedAt <= 0L) return "";
-        long end = task.active() ? System.currentTimeMillis() : task.updatedAt;
+        long end = task.active() ? System.currentTimeMillis() : (task.finishedAt > 0L ? task.finishedAt : task.updatedAt);
         long seconds = Math.max(0L, (end - task.startedAt) / 1000L);
         return "Thời gian: " + seconds + " giây";
     }
@@ -263,8 +315,9 @@ public final class HomeActivity extends Activity {
             case "ACCESSIBILITY_DISABLED": return "Quyền điều khiển đã bị tắt";
             case "APP_NOT_INSTALLED": return "Chưa cài Gemini";
             case "LOGIN_REQUIRED": return "Gemini yêu cầu đăng nhập";
-            case "UI_CHANGED": return "TigerIQ chưa nhận diện được giao diện Gemini hiện tại";
+            case "UI_CHANGED": return "TigerIQ chưa nhận diện an toàn được lượt trả lời Gemini hiện tại";
             case "PROVIDER_LIMIT": return "Gemini đang giới hạn sử dụng hoặc yêu cầu thử lại sau";
+            case "SUPERSEDED": return "Công việc đã được thay bởi yêu cầu mới";
             default: return error;
         }
     }
