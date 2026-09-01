@@ -3,13 +3,17 @@ name: WO-048 Multi-AI Probe Guard
 on:
   pull_request:
     paths:
+      - 'config/ai-free-providers-v1.json'
       - 'scripts/pc-worker/probe-multi-ai.ps1'
+      - 'scripts/pc-worker/test-ai-free-policy.ps1'
       - '.github/workflows/wo048-multi-ai-probe.yml'
   push:
     branches:
       - 'wo048/multi-ai-subscription-orchestration'
     paths:
+      - 'config/ai-free-providers-v1.json'
       - 'scripts/pc-worker/probe-multi-ai.ps1'
+      - 'scripts/pc-worker/test-ai-free-policy.ps1'
       - '.github/workflows/wo048-multi-ai-probe.yml'
 
 permissions:
@@ -23,17 +27,22 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Parse probe with Windows PowerShell
+      - name: Parse PowerShell guards
         shell: powershell
         run: |
-          $errors = $null
-          $tokens = $null
-          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path 'scripts/pc-worker/probe-multi-ai.ps1'), [ref]$tokens, [ref]$errors) | Out-Null
-          if ($errors.Count -gt 0) {
-            $errors | ForEach-Object { Write-Error $_.Message }
-            exit 1
+          foreach ($path in @('scripts/pc-worker/probe-multi-ai.ps1', 'scripts/pc-worker/test-ai-free-policy.ps1')) {
+            $errors = $null
+            $tokens = $null
+            [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path), [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error $_.Message }
+              exit 1
+            }
           }
-          Write-Host 'MULTI_AI_PROBE_PARSE_PASS'
-      - name: Run no-provider self-test
+          Write-Host 'MULTI_AI_POWERSHELL_PARSE_PASS'
+      - name: Run zero-cost three-way policy test
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/pc-worker/test-ai-free-policy.ps1
+      - name: Run no-provider probe self-test
         shell: powershell
         run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/pc-worker/probe-multi-ai.ps1 -SelfTest
