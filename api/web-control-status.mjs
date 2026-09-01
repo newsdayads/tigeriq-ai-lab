@@ -75,12 +75,10 @@ export function workResultPresentation(comments = []) {
   return null;
 }
 
-function workDisplayTitle(title, presentation) {
+export function workDisplayTitle(title, presentation) {
   const base = cleanPresentation(title, 260);
   if (!presentation?.result) return base;
-  const parts = [base, `KẾT QUẢ: ${presentation.result}`];
-  if (presentation.evidenceRef) parts.push(`EVIDENCE: ${presentation.evidenceRef}`);
-  return parts.join(' · ');
+  return `${base} · KẾT QUẢ: ${cleanPresentation(presentation.result, 120)}`;
 }
 
 function pc01State(canary, canaryComments) {
@@ -157,7 +155,9 @@ export default async function handler(req, res) {
         identity: ownerIdentity,
         authorization: {
           authority: 'TigerIQ',
-          role: ownerAuthenticated ? 'Owner' : null,
+          role: ownerAuthenticated ? 'Founder & CEO' : null,
+          rbacRole: ownerAuthenticated ? 'Owner' : null,
+          title: ownerAuthenticated ? 'Founder & CEO · TigerIQ AI Lab' : null,
           implementedRoles: ['Owner'],
           requestedRoles: ['Owner', 'Admin', 'Nhân viên', 'Chỉ xem'],
           providerInterface: '06-work-management-rbac-required',
