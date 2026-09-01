@@ -1,6 +1,6 @@
 # Current State
 
-Date: 2026-08-31
+Date: 2026-09-01
 
 TigerIQ AI Lab is operated as a continuous distributed AI company. Tiger IQ Driver (`newsdayads/drivetrack`) remains isolated and unchanged.
 
@@ -49,14 +49,15 @@ Still external / not yet enforced:
 
 ## Android APP v0.7 — PR #132
 - Canonical branch: `wo048/android-v07-api-first-worker` stacked on the phone-first Android baseline.
-- Current exact head observed: `c561ac687c7482355185b9b02655fda79e31e3d6`.
-- Current implementation includes v0.7 worker state, enrollment/device identity/session client work, AndroidKeyStore signing, durable checkpointing, unique WorkManager scheduling, FCM wake-up service and reboot recovery wiring.
-- Exact-head Android Worker and CI workflows are green at the current observed head.
-- PR remains draft / IN_PROGRESS and is not yet `READY_FOR_INDEPENDENT_REVIEW`.
-- 07 pre-review found two actionable security/correctness items that 02 must fix before READY:
-  1. AndroidKeyStore alias derivation currently normalizes allowed identity characters in a collision-prone way (`EMP:001` vs `EMP_001`); replace with collision-resistant canonical encoding/hash and add regression tests.
-  2. Hardware-backed truth must be fail-closed/truthful: StrongBox may be preferred, but any fallback may only claim hardware-backed when `KeyInfo.isInsideSecureHardware()` verifies it; otherwise surface NEED_ATTENTION or an explicitly accepted policy, never a false hardware-backed claim.
-- Remaining APP completion path includes final result/evidence submit, bounded retry/recovery hardening, user-facing READY/WORKING/NEED_ATTENTION wiring, exact-head tests, 07 independent review and physical-device smoke.
+- Current exact head observed: `74b388467ee0a21a7a653e4c8bdda1fd66249ac4`.
+- PR remains draft. 02 emitted `READY_FOR_INDEPENDENT_REVIEW` on this exact head; CI #319 / `33409005834` and Android Worker #70 / `33409005762` are PASS.
+- 07 first emitted a repository/software PASS, then a later review on the same exact head superseded that result with `APP_V07_INDEPENDENT_REVIEW_FAIL`; this later FAIL is authoritative until remediated and re-reviewed.
+- Latest 07 blockers on exact head `74b388...`:
+  1. Enrolled authoritative `bindingId` is not persisted/bound to the device profile/key and therefore session/lease/result paths cannot fail closed on wrong/replaced/stale binding identity.
+  2. Authoritative Job `expectedEvidence` is not enforced before submitting `status:"completed"`; generic evidence can currently satisfy code paths without proving the declared evidence contract.
+  3. Raw lease credential is persisted across process/reboot in local encrypted storage, conflicting with the prepared v0.7 contract that durable checkpoint state retain only non-secret lease identity/hash/expiry and reacquire authority after recovery.
+- Earlier KeyStore alias collision, hardware-backing truth, bootstrap/session-lifecycle, FCM wake-only, WorkManager/retry and core API-first findings were reported remediated on this head, but do not override the three later blockers.
+- No APP release is authorized. Physical-device enrollment/Keystore behavior, reboot/network smoke, stable-signed install/update continuity and real end-to-end execution remain required after repository/software 07 PASS.
 - No provider API key, GitHub PAT or Owner credential may be embedded in APK/source/resources/logs/evidence. v0.7 execution must not use Accessibility as the AI execution engine.
 
 ## Work Management parent
@@ -77,11 +78,11 @@ WO-036 through WO-042 are repository/software milestones only unless separately 
 
 ## Release path from current state
 1. 07 independently reviews Web PR #117 exact current head after the account/auth UX runtime delta.
-2. 02 fixes APP #132 KeyStore alias + hardware-backing truth findings, completes v0.7 and emits `READY_FOR_INDEPENDENT_REVIEW` only after exact-head Android Worker + CI PASS.
-3. 07 performs full APP independent review; then execute physical-device smoke.
+2. 02 fixes APP #132 authoritative bindingId enforcement, expectedEvidence enforcement and lease-credential recovery semantics; then emits a new `READY_FOR_INDEPENDENT_REVIEW` only after exact-head Android Worker + CI PASS.
+3. 07 performs fresh APP independent review on the new exact head; then execute physical-device smoke.
 4. Configure Google Owner OAuth outside source control, run real browser smoke and record `OWNER_OAUTH_SMOKE_PASS` without exposing credentials.
 5. Enable GitHub `main` branch protection/ruleset with PR-only mutation and required status checks, then prove full CI on merge/main SHA.
-6. Refresh CURRENT_STATE on the final governance head and obtain fresh 07 `GOVERNANCE_INDEPENDENT_REVIEW_PASS`.
+6. Refresh CURRENT_STATE on the final governance head and obtain fresh exact-head 07 repository-scope PASS; global #113 remains blocked until repository policy is actually enforced and independently proven.
 7. Only when all applicable release gates are simultaneously PASS may Owner-authorized Web/APP release proceed.
 
 ## External / deferred boundaries
