@@ -28,26 +28,27 @@ describe('WO-045 Web Control remote operations', () => {
     expect(ui).toContain('/api/owner-auth?action=identity');
     expect(ui).toContain('/api/owner-auth?action=logout');
     expect(ui).not.toContain('/api/owner-auth?action=login');
-    expect(ui).toContain('Google xác thực danh tính · TigerIQ cấp quyền');
+    expect(ui).toContain('Google xác thực danh tính · TigerIQ quyết định quyền quản trị nội bộ.');
     expect(ui).toContain('ID token');
     expect(ownerAuth).toContain("action === 'identity'");
     expect(ownerAuth).toContain('verifyGoogleIdToken');
     expect(ownerAuth).toContain("error: 'oauth_code_flow_retired'");
   });
 
-  it('keeps Google identity and TigerIQ authorization separate and requires no client secret', () => {
+  it('keeps Google identity, executive title, and TigerIQ authorization separate', () => {
     expect(ownerAuth).toContain("identityMode: 'google_id_token'");
     expect(ownerAuth).toContain('clientSecretRequired: false');
     expect(ownerAuth).not.toContain('TIGERIQ_OWNER_GOOGLE_CLIENT_SECRET');
     expect(ownerAuth).not.toContain('oauth2.googleapis.com/token');
-    expect(ownerAuth).toContain("authority: 'TigerIQ'");
-    expect(ownerAuth).toContain("implementedRoles: ['Owner']");
-    expect(ownerAuth).toContain("requestedRoles: ['Owner', 'Admin', 'Nhân viên', 'Chỉ xem']");
-    expect(ownerAuth).toContain("providerInterface: '06-work-management-rbac-required'");
-    expect(ownerAuth).toContain('googleControlsAuthorization: false');
-    expect(statusApi).toContain("role: ownerAuthenticated ? 'Owner' : null");
-    expect(statusApi).toContain("identityMode: 'google_id_token'");
-    expect(statusApi).toContain('clientSecretRequired: false');
+    expect(statusApi).toContain("authority: 'TigerIQ'");
+    expect(statusApi).toContain("role: ownerAuthenticated ? 'Founder & CEO' : null");
+    expect(statusApi).toContain("rbacRole: ownerAuthenticated ? 'Owner' : null");
+    expect(statusApi).toContain("title: ownerAuthenticated ? 'Founder & CEO · TigerIQ AI Lab' : null");
+    expect(statusApi).toContain("implementedRoles: ['Owner']");
+    expect(statusApi).toContain("requestedRoles: ['Owner', 'Admin', 'Nhân viên', 'Chỉ xem']");
+    expect(statusApi).toContain("providerInterface: '06-work-management-rbac-required'");
+    expect(statusApi).toContain('googleControlsAuthorization: false');
+    expect(ui).toContain('<div class="pill"><div class="k">Chức danh</div>');
   });
 
   it('allows only GIS resources needed by the identity-only flow in CSP', () => {
@@ -71,6 +72,14 @@ describe('WO-045 Web Control remote operations', () => {
     expect(ui).toContain('.refresh-fab{position:fixed');
     expect(ui).toContain('id="refreshBtn" class="btn refresh-fab"');
     expect(ui).toContain('top:calc(max(14px,env(safe-area-inset-top)) + 126px)');
+  });
+
+  it('prevents long evidence or status strings from widening the mobile viewport', () => {
+    expect(ui).toContain('overflow-x:hidden');
+    expect(ui).toContain('.work a{min-width:0');
+    expect(ui).toContain('overflow-wrap:anywhere');
+    expect(ui).toContain('.work{min-width:0;overflow:hidden');
+    expect(ui).toContain('.work-top{display:grid;grid-template-columns:minmax(0,1fr)');
   });
 
   it('renders lifecycle evidence truthfully', () => {
