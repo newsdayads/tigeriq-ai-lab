@@ -31,7 +31,8 @@ public final class ApiFirstJobAdapter {
                 .put("budgetClass", payload.optString("budgetClass", "free-first"));
     }
 
-    public static JSONObject result(EmployeeDeviceStore.Profile profile, DurableCheckpointStore.Snapshot snapshot, JSONObject inferenceResponse) throws Exception {
+    public static JSONObject result(EmployeeDeviceStore.Profile profile, DurableCheckpointStore.Snapshot snapshot, JSONObject job, JSONObject inferenceResponse) throws Exception {
+        requireBinding(profile, snapshot);
         JSONObject resultBody = inferenceResponse.optJSONObject("result");
         JSONObject gatewayEvidence = inferenceResponse.optJSONObject("evidence");
         if (resultBody == null || gatewayEvidence == null) throw new ApiException(502, "INVALID_RESPONSE", "inference result/evidence missing", false, null);
@@ -46,13 +47,39 @@ public final class ApiFirstJobAdapter {
                 .put("ref", "tigeriq://" + profile.employeeId + "/" + snapshot.jobId + "/gateway-result.json")
                 .put("summary", "Sanitized TigerIQ inference evidence")
                 .put("sha256", outputSha));
+        enforceExpectedEvidence(job, evidence);
         return new JSONObject().put("jobId", snapshot.jobId).put("employeeId", profile.employeeId).put("deviceId", profile.deviceId)
-                .put("bindingId", snapshot.bindingId).put("status", "completed").put("output", output).put("evidence", evidence).put("completedAt", Instant.now().toString());
+                .put("bindingId", profile.bindingId).put("status", "completed").put("output", output).put("evidence", evidence).put("completedAt", Instant.now().toString());
     }
 
     public static JSONObject submitRequest(EmployeeDeviceStore.Profile profile, DurableCheckpointStore.Snapshot snapshot, String leaseToken, JSONObject result) throws Exception {
-        if (leaseToken == null || leaseToken.isBlank()) throw new ApiException(409, "STALE_LEASE", "lease token missing", false, null);
+        requireBinding(profile, snapshot);
+        if (leaseToken == null || leaseToken.isBlank()) throw new ApiException(409, "LEASE_REACQUIRE_REQUIRED", "process lease authority missing; reacquire from server", false, null);
+        if (!profile.bindingId.equals(result.optString("bindingId", ""))) throw new ApiException(409, "STALE_BINDING", "result binding mismatch", false, null);
         return new JSONObject().put("employeeId", profile.employeeId).put("deviceId", profile.deviceId).put("leaseId", snapshot.leaseId).put("leaseToken", leaseToken).put("result", result);
+    }
+
+    static void enforceExpectedEvidence(JSONObject job, JSONArray evidence) throws ApiException {
+        JSONArray expected = job == null ? null : job.optJSONArray("expectedEvidence");
+        if (expected == null) throw new ApiException(422, "EXPECTED_EVIDENCE_MISSING", "job expectedEvidence required", false, null);
+        for (int i = 0; i < expected.length(); i++) {
+            String requirement = expected.optString(i, "").trim();
+            if (requirement.isEmpty()) continue;
+            boolean matched = false;
+            for (int j = 0; j < evidence.length(); j++) {
+                JSONObject artifact = evidence.optJSONObject(j);
+                if (artifact == null) continue;
+                String kind = artifact.optString("kind", "");
+                String ref = artifact.optString("ref", "");
+                if (requirement.equals(kind) || ref.contains(requirement)) { matched = true; break; }
+            }
+            if (!matched) throw new ApiException(422, "EXPECTED_EVIDENCE_UNMET", "missing expected evidence " + requirement, false, null);
+        }
+    }
+
+    static void requireBinding(EmployeeDeviceStore.Profile profile, DurableCheckpointStore.Snapshot snapshot) throws ApiException {
+        if (profile == null || profile.bindingId == null || profile.bindingId.isBlank()) throw new ApiException(409, "BINDING_REQUIRED", "authoritative binding is not established", false, null);
+        if (snapshot == null || snapshot.bindingId == null || !profile.bindingId.equals(snapshot.bindingId)) throw new ApiException(409, "STALE_BINDING", "checkpoint binding mismatch", false, null);
     }
 
     private static String required(JSONObject object, String key) throws ApiException {
