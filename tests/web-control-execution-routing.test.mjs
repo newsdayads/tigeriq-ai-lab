@@ -9,6 +9,9 @@ describe('Web Control execution routing', () => {
     expect(executionRequirementForInstruction('Khởi động lại Windows worker và kiểm tra Scheduled Task')).toEqual(expect.objectContaining({
       kind: 'pc01-runtime', cloudExecutorAllowed: false,
     }));
+    expect(executionRequirementForInstruction('Audit PC01 worker/watchdog/Ollama/Tailscale runtime và đọc log hiện tại')).toEqual(expect.objectContaining({
+      kind: 'pc01-runtime', cloudExecutorAllowed: false,
+    }));
   });
 
   it('routes physical phone smoke/install work away from cloud', () => {
@@ -20,11 +23,12 @@ describe('Web Control execution routing', () => {
     }));
   });
 
-  it('keeps bounded reasoning and documentation work cloud-eligible', () => {
+  it('keeps bounded reasoning and repository/documentation work cloud-eligible', () => {
     for (const instruction of [
       'Tóm tắt báo cáo tuần này thành 5 ý.',
       'Phân tích kiến trúc Android worker và đề xuất checklist code review.',
       'Viết tài liệu mô tả PC01 recovery flow từ dữ liệu đã cung cấp.',
+      'Audit code/repo PC01 worker và review logic watchdog trong source.',
     ]) {
       expect(executionRequirementForInstruction(instruction)).toEqual(expect.objectContaining({
         kind: 'cloud-bounded', pc01Required: false, cloudExecutorAllowed: true,
