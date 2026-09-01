@@ -29,6 +29,11 @@ export default async function handler(req, res) {
       pc01Required: false,
     });
   } catch (error) {
-    return send(res, Number(error?.status) || 502, { ok: false, stage: 'error', error: String(error?.message || error).slice(0, 120) });
+    return send(res, Number(error?.status) || 502, {
+      ok: false,
+      stage: 'error',
+      error: String(error?.message || error).slice(0, 120),
+      details: String(error?.details || '').slice(0, 400),
+    });
   }
 }
