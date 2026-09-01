@@ -84,6 +84,25 @@ export function workDisplayTitle(title, presentation) {
   return `${base} · KẾT QUẢ: ${cleanPresentation(presentation.result, 120)}`;
 }
 
+export function autonomyFeedPresentation(issue) {
+  if (!issue || issue.pull_request) return null;
+  const body = String(issue.body || '');
+  if (!body.includes('TIGERIQ_AUTONOMY_FEED_V1')) return null;
+  return {
+    number: Number(issue.number),
+    title: cleanPresentation(issue.title, 260),
+    state: String(issue.state || 'open'),
+    url: issue.html_url || null,
+    currentAction: section(body, 'Current Action'),
+    currentScope: section(body, 'Current Scope'),
+    executionChannel: section(body, 'Execution Channel'),
+    lastProgress: section(body, 'Last Progress'),
+    nextAction: section(body, 'Next Action'),
+    blocker: section(body, 'Blocker'),
+    updatedAt: section(body, 'Updated At') || issue.updated_at || null,
+  };
+}
+
 function summarizeIssue(issue, issueComments = []) {
   const resultPresentation = workResultPresentation(issueComments);
   return {
@@ -131,6 +150,7 @@ export default async function handler(req, res) {
       gh(`/repos/${owner}/${repo}/issues/${CANARY_ISSUE}/comments?per_page=100`).catch(() => []),
     ]);
 
+    const issueRows = Array.isArray(issues) ? issues : [];
     const commentsByIssue = new Map();
     for (const comment of Array.isArray(comments) ? comments : []) {
       const match = String(comment?.issue_url || '').match(/\/issues\/(\d+)$/);
@@ -141,7 +161,9 @@ export default async function handler(req, res) {
       commentsByIssue.set(number, rows);
     }
 
-    const workIssues = (Array.isArray(issues) ? issues : [])
+    const autonomy = autonomyFeedPresentation(issueRows.find((issue) => String(issue?.body || '').includes('TIGERIQ_AUTONOMY_FEED_V1')));
+
+    const workIssues = issueRows
       .filter((issue) => !issue.pull_request && issueType(issue) !== 'unknown')
       .slice(0, 20);
 
@@ -167,7 +189,7 @@ export default async function handler(req, res) {
     const configured = ownerAuthConfigured();
     const ownerIdentity = configured ? getOwnerSession(req) : null;
     const ownerAuthenticated = Boolean(ownerIdentity);
-    const activeWork = work.filter((item) => !['completed', 'failed', 'cancelled'].includes(item.stage));
+    const activeWork = work.filter((item) => item.number !== autonomy?.number && !['completed', 'failed', 'cancelled'].includes(item.stage));
     return json(res, 200, {
       ok: true,
       generatedAt: new Date().toISOString(),
@@ -195,6 +217,7 @@ export default async function handler(req, res) {
         clientGithubTokenAcceptedForWrite: false,
       },
       cloudWorkforce: cloudWorkforceDescriptor(),
+      autonomy,
       deployment: {
         environment: process.env.VERCEL_ENV || 'unknown',
         gitRef: process.env.VERCEL_GIT_COMMIT_REF || null,
