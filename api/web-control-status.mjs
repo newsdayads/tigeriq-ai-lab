@@ -1,5 +1,6 @@
 import { getOwnerSession, ownerAuthConfigured, ownerGoogleClientId } from './owner-auth.mjs';
 import { issueEvidenceSummary, issueStage, issueType, issuePriority } from './control.mjs';
+import { cloudWorkforceDescriptor } from './cloud-workforce.mjs';
 
 const REPO = process.env.TIGERIQ_REPO || 'newsdayads/tigeriq-ai-lab';
 const GITHUB_TOKEN = String(process.env.TIGERIQ_GITHUB_TOKEN || '').trim();
@@ -193,6 +194,7 @@ export default async function handler(req, res) {
         browserWriteRequiresOwner: true,
         clientGithubTokenAcceptedForWrite: false,
       },
+      cloudWorkforce: cloudWorkforceDescriptor(),
       deployment: {
         environment: process.env.VERCEL_ENV || 'unknown',
         gitRef: process.env.VERCEL_GIT_COMMIT_REF || null,
