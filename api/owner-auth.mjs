@@ -97,6 +97,11 @@ function clearOwnerCookies(res) {
   setCookie(res, STATE_COOKIE, '', 0);
 }
 
+function safeProviderErrorCode(value) {
+  const code = String(value || 'unknown_error').trim().toLowerCase();
+  return code.replace(/[^a-z0-9_.-]/g, '_').slice(0, 64) || 'unknown_error';
+}
+
 async function exchangeCode(code) {
   const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
@@ -109,8 +114,10 @@ async function exchangeCode(code) {
       grant_type: 'authorization_code',
     }),
   });
-  if (!tokenResponse.ok) throw new Error('google_token_exchange_failed');
-  const tokens = await tokenResponse.json();
+  const tokens = await tokenResponse.json().catch(() => ({}));
+  if (!tokenResponse.ok) {
+    throw new Error(`google_token_exchange_failed:${safeProviderErrorCode(tokens?.error)}`);
+  }
   const accessToken = String(tokens?.access_token || '');
   if (!accessToken) throw new Error('google_access_token_missing');
   const userResponse = await fetch('https://openidconnect.googleapis.com/v1/userinfo', {
