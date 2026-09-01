@@ -1,0 +1,35 @@
+name: P0 Preview Cloud Smoke
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Mint GitHub OIDC token
+        id: oidc
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const token = await core.getIDToken();
+            core.setSecret(token);
+            core.setOutput('token', token);
+      - name: Call protected Vercel Preview smoke
+        env:
+          OIDC_TOKEN: ${{ steps.oidc.outputs.token }}
+        run: |
+          set -euo pipefail
+          url='https://tigeriq-ai-lab-git-wo045-web-control-remote-ops-nguyn-trng-sn.vercel.app/api/p0-cloud-smoke-7f91a2?key=p0-20260901-7f91a2'
+          code=$(curl -sS -o /tmp/body.txt -w '%{http_code}' "$url" -H "x-vercel-trusted-oidc-idp-token: $OIDC_TOKEN")
+          echo "HTTP_STATUS=$code"
+          cat /tmp/body.txt
+          test "$code" = "200"
