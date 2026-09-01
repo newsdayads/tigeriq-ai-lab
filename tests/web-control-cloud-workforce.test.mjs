@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-function responseJson(value, model) {
+function responseJson(value, model, provider = 'groq') {
   return new Response(JSON.stringify({
     model,
-    provider: model.startsWith('google/') ? 'google' : 'openai',
+    provider,
     choices: [{ message: { content: JSON.stringify(value) } }],
     usage: { total_tokens: 10 },
   }), { status: 200, headers: { 'content-type': 'application/json' } });
@@ -18,18 +18,21 @@ function restoreEnv(saved) {
 describe('Web Control cloud workforce', () => {
   afterEach(() => { vi.unstubAllGlobals(); vi.resetModules(); });
 
-  it('executes, independently reviews, judges, and cryptographically attests server gates', async () => {
+  it('uses the no-card Groq path to execute, independently review, judge, and attest gates', async () => {
     const saved = saveEnv();
+    delete process.env.AI_GATEWAY_API_KEY;
     Object.assign(process.env, {
-      AI_GATEWAY_API_KEY: 'test-only-gateway-key',
+      GROQ_API_KEY: 'test-only-groq-key',
       TIGERIQ_OWNER_SESSION_SECRET: 'test-owner-session-secret',
       TIGERIQ_CLOUD_EXECUTOR: 'on',
     });
     let calls = 0;
-    vi.stubGlobal('fetch', async (_input, init = {}) => {
+    const seen = [];
+    vi.stubGlobal('fetch', async (input, init = {}) => {
       calls += 1;
       const request = JSON.parse(String(init.body || '{}'));
       const model = String(request.model || 'unknown');
+      seen.push({ url: String(input), model, auth: init.headers?.authorization });
       if (calls === 1) return responseJson({ status: 'completed', result: '42', evidenceSummary: 'Computed answer is present in the result.' }, model);
       if (calls === 2) return responseJson({ pass: true, rationale: 'Result answers the bounded instruction and evidence is present.' }, model);
       if (calls === 3) return responseJson({ pass: true, rationale: 'Reviewer passed and evidence is concrete.' }, model);
@@ -39,6 +42,12 @@ describe('Web Control cloud workforce', () => {
       vi.resetModules();
       const workforce = await import('../api/cloud-workforce.mjs');
       expect(workforce.cloudExecutorEnabled()).toBe(true);
+      expect(workforce.cloudWorkforceDescriptor()).toEqual(expect.objectContaining({
+        gateway: 'groq-free-tier-api',
+        executorModel: 'openai/gpt-oss-120b',
+        reviewerModel: 'qwen/qwen3.8-27b',
+        judgeModel: 'openai/gpt-oss-20b',
+      }));
       const execution = await workforce.executeCloudTask({ instruction: 'Return the result of 6 * 7.', expectedEvidence: 'Concrete result.' });
       expect(execution).toEqual(expect.objectContaining({ status: 'completed', result: '42' }));
       const review = await workforce.reviewCloudTask({ instruction: 'Return the result of 6 * 7.', expectedEvidence: 'Concrete result.', result: execution.result, evidenceSummary: execution.evidenceSummary });
@@ -46,12 +55,38 @@ describe('Web Control cloud workforce', () => {
       const judge = await workforce.judgeCloudTask({ instruction: 'Return the result of 6 * 7.', expectedEvidence: 'Concrete result.', result: execution.result, evidenceSummary: execution.evidenceSummary, review });
       expect(judge.pass).toBe(true);
       expect(calls).toBe(3);
+      expect(seen.map((entry) => entry.url)).toEqual(Array(3).fill('https://api.groq.com/openai/v1/chat/completions'));
+      expect(seen.map((entry) => entry.model)).toEqual(['openai/gpt-oss-120b', 'qwen/qwen3.8-27b', 'openai/gpt-oss-20b']);
+      expect(seen.every((entry) => entry.auth === 'Bearer test-only-groq-key')).toBe(true);
 
       const ref = `sha256:${'a'.repeat(64)}`;
       const signed = workforce.signServerGateComment(`REVIEW_PASS\nEVIDENCE_REF ${ref}\nREVIEW_ROLE independent-cloud-reviewer`);
       expect(workforce.verifyServerGateComment(signed)).toBe(true);
       expect(workforce.verifyServerGateComment(signed.replace('REVIEW_PASS', 'JUDGE_PASS'))).toBe(false);
       expect(workforce.verifyServerGateComment(`REVIEW_PASS\nEVIDENCE_REF ${ref}`)).toBe(false);
+    } finally { restoreEnv(saved); }
+  });
+
+  it('keeps Vercel AI Gateway available only when explicitly selected or keyed', async () => {
+    const saved = saveEnv();
+    delete process.env.GROQ_API_KEY;
+    Object.assign(process.env, {
+      AI_GATEWAY_API_KEY: 'test-only-vercel-key',
+      TIGERIQ_AI_PROVIDER: 'vercel',
+      TIGERIQ_CLOUD_EXECUTOR: 'on',
+    });
+    vi.stubGlobal('fetch', async (input, init = {}) => {
+      const request = JSON.parse(String(init.body || '{}'));
+      expect(String(input)).toBe('https://ai-gateway.vercel.sh/v1/chat/completions');
+      expect(init.headers?.authorization).toBe('Bearer test-only-vercel-key');
+      return responseJson({ status: 'completed', result: '42', evidenceSummary: 'Concrete result.' }, request.model, 'vercel-ai-gateway');
+    });
+    try {
+      vi.resetModules();
+      const workforce = await import('../api/cloud-workforce.mjs');
+      expect(workforce.cloudWorkforceDescriptor().gateway).toBe('vercel-ai-gateway');
+      const execution = await workforce.executeCloudTask({ instruction: 'Return 42.', expectedEvidence: 'Concrete result.' });
+      expect(execution.result).toBe('42');
     } finally { restoreEnv(saved); }
   });
 
