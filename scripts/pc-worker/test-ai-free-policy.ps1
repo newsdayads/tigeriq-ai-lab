@@ -22,9 +22,11 @@ Assert-True (-not [bool]$config.providers.openrouter.allowNonFreeModels) 'openro
 Assert-True (-not [bool]$config.providers.gemini_api.enabled) 'gemini_api_disabled'
 Assert-True ([bool]$config.providers.gemini_cli.forbidApiKeyRoute) 'gemini_api_key_route_forbidden'
 Assert-True ([bool]$config.providers.gemini_cli.forbidVertexRoute) 'gemini_vertex_route_forbidden'
+Assert-True (-not [bool]$config.providers.groq.enabled) 'groq_disabled_until_zero_cost_proven'
+Assert-True (-not [bool]$config.providers.claude_code.enabled) 'claude_disabled_until_no_usage_credits_proven'
 Assert-True ([bool]$config.providers.claude_code.forbidApiKeyRoute) 'claude_api_route_forbidden'
 Assert-True ([bool]$config.providers.claude_code.forbidCloudGatewayRoutes) 'claude_gateway_routes_forbidden'
-Assert-True (-not [bool]$config.providers.groq.enabled) 'groq_disabled_until_zero_cost_proven'
+Assert-True ([bool]$config.providers.claude_code.forbidUsageCredits) 'claude_usage_credits_forbidden'
 
 Assert-True ([string]$config.routing.selectionMode -eq 'capability_then_zero_cost_rank') 'capability_cost_selection'
 Assert-True ([bool]$config.routing.dedupeByWorkOrder) 'dedupe_required'
@@ -34,6 +36,7 @@ Assert-True ([bool]$config.routing.independentJudgeRequired) 'judge_required'
 Assert-True ([int]$config.routing.requiredDistinctBackendIdentities -eq 3) 'three_distinct_identities_required'
 Assert-True ([string]$config.routing.fallbackOrder[0] -eq 'ollama') 'local_first_fallback'
 Assert-True (-not (@($config.routing.fallbackOrder) -contains 'groq')) 'unproven_groq_not_routable'
+Assert-True (-not (@($config.routing.fallbackOrder) -contains 'claude_code')) 'unproven_claude_credits_not_routable'
 
 $requiredRoles = @('executor', 'reviewer', 'judge')
 $enabledProviders = @($config.providers.PSObject.Properties | Where-Object { [bool]$_.Value.enabled })
@@ -57,6 +60,8 @@ Assert-True (-not ($serialized -match '(?i)"allowNonFreeModels"\s*:\s*true')) 'n
   enabledProviderCandidates = $enabledProviders.Count
   firstFallback = [string]$config.routing.fallbackOrder[0]
   groqEnabled = [bool]$config.providers.groq.enabled
+  claudeEnabled = [bool]$config.providers.claude_code.enabled
+  claudeUsageCreditsForbidden = [bool]$config.providers.claude_code.forbidUsageCredits
   maxAttemptsPerRole = [int]$config.policy.maxAttemptsPerRole
   timestampUtc = [DateTime]::UtcNow.ToString('o')
 } | ConvertTo-Json
