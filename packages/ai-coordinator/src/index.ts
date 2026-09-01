@@ -254,10 +254,10 @@ export class AICoordinator {
       checkpoint.status = 'judging';
       checkpoint.updatedAt = this.timestamp();
       await this.store.save(checkpoint);
-      const strict = requiresStrictIndependence(work);
-      const excluded = new Set<string>();
-      excluded.add(identity(executor.target));
-      if (strict) excluded.add(identity(reviewer.target));
+      const excluded = new Set<string>([
+        identity(executor.target),
+        identity(reviewer.target),
+      ]);
       const ok = await this.runStage(
         work,
         checkpoint,
@@ -450,8 +450,8 @@ export function fingerprintWorkItem(work: AIWorkItem): string {
     .digest('hex');
 }
 
-export function requiresStrictIndependence(work: AIWorkItem): boolean {
-  return work.kind === 'coding' || work.risk === 'high';
+export function requiresStrictIndependence(_work: AIWorkItem): boolean {
+  return true;
 }
 
 function minimumQuality(risk: WorkRisk): number {
