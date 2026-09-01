@@ -32,7 +32,7 @@ describe('Web Control cloud workforce', () => {
       calls += 1;
       const request = JSON.parse(String(init.body || '{}'));
       const model = String(request.model || 'unknown');
-      seen.push({ url: String(input), model, auth: init.headers?.authorization });
+      seen.push({ url: String(input), model, auth: init.headers?.authorization, reasoningFormat: request.reasoning_format });
       if (calls === 1) return responseJson({ status: 'completed', result: '42', evidenceSummary: 'Computed answer is present in the result.' }, model);
       if (calls === 2) return responseJson({ pass: true, rationale: 'Result answers the bounded instruction and evidence is present.' }, model);
       if (calls === 3) return responseJson({ pass: true, rationale: 'Reviewer passed and evidence is concrete.' }, model);
@@ -58,6 +58,7 @@ describe('Web Control cloud workforce', () => {
       expect(seen.map((entry) => entry.url)).toEqual(Array(3).fill('https://api.groq.com/openai/v1/chat/completions'));
       expect(seen.map((entry) => entry.model)).toEqual(['openai/gpt-oss-120b', 'qwen/qwen3.8-27b', 'openai/gpt-oss-20b']);
       expect(seen.every((entry) => entry.auth === 'Bearer test-only-groq-key')).toBe(true);
+      expect(seen.every((entry) => entry.reasoningFormat === 'hidden')).toBe(true);
 
       const ref = `sha256:${'a'.repeat(64)}`;
       const signed = workforce.signServerGateComment(`REVIEW_PASS\nEVIDENCE_REF ${ref}\nREVIEW_ROLE independent-cloud-reviewer`);
@@ -79,6 +80,7 @@ describe('Web Control cloud workforce', () => {
       const request = JSON.parse(String(init.body || '{}'));
       expect(String(input)).toBe('https://ai-gateway.vercel.sh/v1/chat/completions');
       expect(init.headers?.authorization).toBe('Bearer test-only-vercel-key');
+      expect(request.reasoning_format).toBeUndefined();
       return responseJson({ status: 'completed', result: '42', evidenceSummary: 'Concrete result.' }, request.model, 'vercel-ai-gateway');
     });
     try {
