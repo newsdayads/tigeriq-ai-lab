@@ -1,4 +1,4 @@
-import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
+import { createHash, createPublicKey, randomUUID, timingSafeEqual, verify as verifySignature } from 'node:crypto';
 import { isOwnerAuthorized } from './owner-auth.mjs';
 import { issuePriority, issueStage, issueType, workFingerprint } from './control.mjs';
 import {
@@ -23,6 +23,11 @@ const LOCK_TTL_MS = 15 * 60 * 1000;
 const MAX_BATCH = Math.max(1, Math.min(3, Number(process.env.TIGERIQ_AUTO_WORK_BATCH || 2) || 2));
 const MAX_TRANSIENT_RETRIES = 2;
 const LEGACY_SERVER_EVIDENCE_BLOCKER = /(?:sha256|cryptographic\s+hash(?:es)?)[\s\S]{0,180}(?:not\s+supported|unsupported|cannot|unable)|computing\s+cryptographic\s+hashes\s+is\s+not\s+supported/i;
+const OIDC_ISSUER = 'https://token.actions.githubusercontent.com';
+const OIDC_JWKS_URL = 'https://token.actions.githubusercontent.com/.well-known/jwks';
+const OIDC_MAX_TOKEN_BYTES = 20_000;
+const OIDC_CLOCK_SKEW_SECONDS = 30;
+const EXPECTED_WORKFLOW_REF = `${REPO}/.github/workflows/auto-work.yml@refs/heads/main`;
 
 function json(res, status, body) {
   res.statusCode = status;
@@ -76,6 +81,76 @@ async function gh(path, init = {}, token = '') {
   return data;
 }
 
+function decodeJsonPart(value, label) {
+  try {
+    return JSON.parse(Buffer.from(String(value || ''), 'base64url').toString('utf8'));
+  } catch {
+    throw new Error(`github_oidc_invalid_${label}`);
+  }
+}
+
+function audienceMatches(value, expected) {
+  if (typeof value === 'string') return value === expected;
+  return Array.isArray(value) && value.includes(expected);
+}
+
+export function validateGitHubActionsClaims(claims, {
+  repository,
+  audience = 'tigeriq-auto-work',
+  workflowRef,
+  ref = 'refs/heads/main',
+  eventNames = ['schedule', 'workflow_dispatch'],
+  nowMs = Date.now(),
+} = {}) {
+  if (!claims || typeof claims !== 'object') throw new Error('github_oidc_claims_required');
+  const now = Math.floor(Number(nowMs) / 1000);
+  if (claims.iss !== OIDC_ISSUER) throw new Error('github_oidc_bad_issuer');
+  if (!audienceMatches(claims.aud, audience)) throw new Error('github_oidc_bad_audience');
+  if (!repository || claims.repository !== repository) throw new Error('github_oidc_bad_repository');
+  if (!workflowRef || claims.workflow_ref !== workflowRef) throw new Error('github_oidc_bad_workflow_ref');
+  if (claims.ref !== ref) throw new Error('github_oidc_bad_ref');
+  if (!eventNames.includes(String(claims.event_name || ''))) throw new Error('github_oidc_bad_event');
+  if (claims.runner_environment !== 'github-hosted') throw new Error('github_oidc_bad_runner');
+  if (!Number.isFinite(Number(claims.exp)) || Number(claims.exp) < now - OIDC_CLOCK_SKEW_SECONDS) throw new Error('github_oidc_expired');
+  if (Number.isFinite(Number(claims.nbf)) && Number(claims.nbf) > now + OIDC_CLOCK_SKEW_SECONDS) throw new Error('github_oidc_not_yet_valid');
+  if (Number.isFinite(Number(claims.iat)) && Number(claims.iat) > now + OIDC_CLOCK_SKEW_SECONDS) throw new Error('github_oidc_future_issued');
+  return claims;
+}
+
+export async function verifyGitHubActionsOidc(token, options = {}) {
+  const text = String(token || '').trim();
+  if (!text || Buffer.byteLength(text) > OIDC_MAX_TOKEN_BYTES) throw new Error('github_oidc_invalid_token');
+  const parts = text.split('.');
+  if (parts.length !== 3 || parts.some((part) => !part)) throw new Error('github_oidc_invalid_token');
+  const [encodedHeader, encodedClaims, encodedSignature] = parts;
+  const header = decodeJsonPart(encodedHeader, 'header');
+  const claims = decodeJsonPart(encodedClaims, 'claims');
+  if (header.alg !== 'RS256' || !header.kid) throw new Error('github_oidc_bad_header');
+
+  const fetchImpl = options.fetchImpl || fetch;
+  const response = await fetchImpl(OIDC_JWKS_URL, {
+    method: 'GET',
+    headers: { accept: 'application/json', 'user-agent': 'tigeriq-github-oidc' },
+    signal: AbortSignal.timeout(5_000),
+  });
+  if (!response?.ok) throw new Error('github_oidc_jwks_unavailable');
+  const jwks = await response.json();
+  const jwk = Array.isArray(jwks?.keys) ? jwks.keys.find((item) => item?.kid === header.kid && item?.kty === 'RSA') : null;
+  if (!jwk) throw new Error('github_oidc_unknown_key');
+
+  let key;
+  try { key = createPublicKey({ key: jwk, format: 'jwk' }); }
+  catch { throw new Error('github_oidc_invalid_key'); }
+  const verified = verifySignature(
+    'RSA-SHA256',
+    Buffer.from(`${encodedHeader}.${encodedClaims}`),
+    key,
+    Buffer.from(encodedSignature, 'base64url'),
+  );
+  if (!verified) throw new Error('github_oidc_bad_signature');
+  return validateGitHubActionsClaims(claims, options);
+}
+
 export function section(body, heading) {
   const text = String(body || '').replace(/\r/g, '');
   const marker = `## ${heading}`;
@@ -87,9 +162,10 @@ export function section(body, heading) {
 }
 
 export function booleanExecutionMarker(body, name) {
-  const escaped = String(name || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  if (!escaped) return null;
-  const pattern = new RegExp(`(?:^|[\\s/])${escaped}\\s*(?:=|:)?\\s*(true|false)\\b`, 'gi');
+  const allowed = new Set(['PC01_REQUIRED', 'CLOUD_EXECUTOR_ALLOWED']);
+  const marker = String(name || '');
+  if (!allowed.has(marker)) return null;
+  const pattern = new RegExp(`(?:^|[\\s/])${marker}\\s*(?:=|:)?\\s*(true|false)\\b`, 'gi');
   const values = new Set([...String(body || '').matchAll(pattern)].map((match) => String(match[1]).toLowerCase()));
   if (values.size !== 1) return null;
   return [...values][0] === 'true';
@@ -302,7 +378,7 @@ async function runPipeline(candidate, token, reason) {
   }
 }
 
-function schedulerCredential(req) {
+async function schedulerCredential(req) {
   const auth = bearer(req);
   if (isOwnerAuthorized(req) && GITHUB_TOKEN) return { token: GITHUB_TOKEN, mode: 'owner-session' };
   if (!looksLikeBrowser(req) && COMMAND_SECRET && safeEqual(req.headers?.['x-tigeriq-secret'], COMMAND_SECRET) && GITHUB_TOKEN) {
@@ -311,7 +387,16 @@ function schedulerCredential(req) {
   if (!looksLikeBrowser(req) && CRON_SECRET && safeEqual(auth, CRON_SECRET) && GITHUB_TOKEN) {
     return { token: GITHUB_TOKEN, mode: 'vercel-cron' };
   }
-  if (!looksLikeBrowser(req) && auth) return { token: auth, mode: 'github-bearer' };
+  if (!looksLikeBrowser(req) && auth && GITHUB_TOKEN) {
+    await verifyGitHubActionsOidc(auth, {
+      repository: REPO,
+      audience: 'tigeriq-auto-work',
+      workflowRef: EXPECTED_WORKFLOW_REF,
+      ref: 'refs/heads/main',
+      eventNames: ['schedule', 'workflow_dispatch'],
+    });
+    return { token: GITHUB_TOKEN, mode: 'github-oidc' };
+  }
   const error = new Error('auto_work_authorization_required');
   error.status = 401;
   throw error;
@@ -321,7 +406,7 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return json(res, 405, { error: 'method_not_allowed' });
   try {
     if (!cloudExecutorEnabled()) return json(res, 503, { error: 'cloud_executor_disabled' });
-    const credential = schedulerCredential(req);
+    const credential = await schedulerCredential(req);
     const { owner, repo } = repoParts();
     const issues = await gh(`/repos/${owner}/${repo}/issues?state=open&per_page=100&sort=created&direction=asc`, {}, credential.token);
     const candidates = sortAutonomousCandidates((Array.isArray(issues) ? issues : []).map(parseAutonomousCandidate).filter(Boolean));
@@ -360,6 +445,7 @@ export default async function handler(req, res) {
     });
   } catch (error) {
     const name = error instanceof Error ? error.message : String(error);
-    return json(res, Number(error?.status) || 502, { error: name, details: error?.details?.message || undefined });
+    const status = name.startsWith('github_oidc_') ? 401 : Number(error?.status) || 502;
+    return json(res, status, { error: name, details: error?.details?.message || undefined });
   }
 }

@@ -1,7 +1,7 @@
 import { generateKeyPairSync, sign } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { validateGitHubActionsClaims, verifyGitHubActionsOidc } from '../api/github-actions-oidc.mjs';
+import { validateGitHubActionsClaims, verifyGitHubActionsOidc } from '../api/auto-work.mjs';
 
 const REPO = 'newsdayads/tigeriq-ai-lab';
 const WORKFLOW_REF = `${REPO}/.github/workflows/auto-work.yml@refs/heads/main`;
@@ -79,18 +79,19 @@ describe('GitHub Actions OIDC Auto Work wake', () => {
     await expect(verifyGitHubActionsOidc(token(claims(), true), options)).rejects.toThrow('github_oidc_bad_signature');
   });
 
-  it('never exports the GitHub repository-write token to Vercel', () => {
+  it('keeps the wake path inside the existing auto-work function without exporting a repository-write token', () => {
     const workflow = readFileSync(new URL('../.github/workflows/auto-work.yml', import.meta.url), 'utf8');
-    const wake = readFileSync(new URL('../api/auto-work-wake.mjs', import.meta.url), 'utf8');
+    const autoWork = readFileSync(new URL('../api/auto-work.mjs', import.meta.url), 'utf8');
     expect(workflow).toContain('id-token: write');
-    expect(workflow).toContain('/api/auto-work-wake');
+    expect(workflow).toContain('/api/auto-work');
+    expect(workflow).not.toContain('/api/auto-work-wake');
     expect(workflow).toContain('ACTIONS_ID_TOKEN_REQUEST_TOKEN');
     expect(workflow).toContain('TIGERIQ_OIDC_AUDIENCE: tigeriq-auto-work');
     expect(workflow).not.toContain('issues: write');
     expect(workflow).not.toContain('github.token');
     expect(workflow).not.toContain('GITHUB_JOB_TOKEN');
-    expect(wake).toContain("@refs/heads/main`");
-    expect(wake).toContain("headers['x-tigeriq-secret'] = COMMAND_SECRET");
-    expect(wake).toContain("headers.authorization = ''");
+    expect(autoWork).toContain("@refs/heads/main`");
+    expect(autoWork).toContain("mode: 'github-oidc'");
+    expect(autoWork).not.toContain("mode: 'github-bearer'");
   });
 });

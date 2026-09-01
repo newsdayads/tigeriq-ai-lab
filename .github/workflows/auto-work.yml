@@ -20,7 +20,7 @@ jobs:
     steps:
       - name: Wake bounded Web Control backlog worker with GitHub OIDC
         env:
-          TIGERIQ_AUTO_WORK_URL: https://tigeriq-ai-lab.vercel.app/api/auto-work-wake
+          TIGERIQ_AUTO_WORK_URL: https://tigeriq-ai-lab.vercel.app/api/auto-work
           TIGERIQ_OIDC_AUDIENCE: tigeriq-auto-work
         run: |
           set -euo pipefail
