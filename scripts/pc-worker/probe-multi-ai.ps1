@@ -52,9 +52,7 @@ function Invoke-External([string]$Exe, [string[]]$Args, [int]$Timeout) {
 function Invoke-WithTemporaryEnvironment([hashtable]$SetValues, [string[]]$ClearNames, [scriptblock]$Action) {
   $names = @($SetValues.Keys) + @($ClearNames) | Select-Object -Unique
   $before = @{}
-  foreach ($name in $names) {
-    $before[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
-  }
+  foreach ($name in $names) { $before[$name] = [Environment]::GetEnvironmentVariable($name, 'Process') }
   try {
     foreach ($name in $ClearNames) { [Environment]::SetEnvironmentVariable($name, $null, 'Process') }
     foreach ($name in $SetValues.Keys) { [Environment]::SetEnvironmentVariable($name, [string]$SetValues[$name], 'Process') }
@@ -69,7 +67,7 @@ function New-StaticResult([string]$Name, [string[]]$CommandNames, [string[]]$Ver
   if (-not $exe) {
     return [ordered]@{ name=$Name; installed=$false; versionOk=$false; liveTested=$false; liveOk=$false; status='NOT_INSTALLED' }
   }
-  $version = Invoke-External $exe $VersionArgs ([Math]::Min($TimeoutSeconds, 15))
+  $version = Invoke-External -Exe $exe -Args $VersionArgs -Timeout ([Math]::Min($TimeoutSeconds, 15))
   return [ordered]@{
     name = $Name
     installed = $true
@@ -92,7 +90,7 @@ function Set-LiveResult([System.Collections.IDictionary]$Result, [System.Collect
   } elseif ($Result.liveOk) {
     'READY'
   } elseif ($LiveResult.exitCode -ne 0) {
-    'AUTH_OR_INVOCATION_ERROR'
+    if ($combined -match '^BILLING_ROUTE_BLOCKED|CLAUDE_SUBSCRIPTION_AUTH_UNPROVEN') { 'BILLING_ROUTE_BLOCKED' } else { 'AUTH_OR_INVOCATION_ERROR' }
   } else {
     'UNEXPECTED_RESPONSE'
   }
@@ -148,8 +146,8 @@ function Invoke-GeminiSubscriptionProbe([string]$Exe) {
     'GEMINI_API_KEY','GOOGLE_API_KEY','GOOGLE_GENAI_USE_VERTEXAI','GEMINI_CLI_USE_COMPUTE_ADC',
     'GOOGLE_GEMINI_BASE_URL','GOOGLE_VERTEX_BASE_URL','GOOGLE_APPLICATION_CREDENTIALS'
   )
-  return Invoke-WithTemporaryEnvironment $set $clear {
-    Invoke-External $Exe @('-p','"Return exactly TIGERIQ_GEMINI_READY"') $TimeoutSeconds
+  return Invoke-WithTemporaryEnvironment -SetValues $set -ClearNames $clear -Action {
+    Invoke-External -Exe $Exe -Args @('-p','"Return exactly TIGERIQ_GEMINI_READY"') -Timeout $TimeoutSeconds
   }
 }
 
@@ -159,7 +157,7 @@ function Invoke-ClaudeSubscriptionProbe([string]$Exe) {
     return [ordered]@{ exitCode=2; timeout=$false; output=''; error=('BILLING_ROUTE_BLOCKED ' + ($blockers -join ',')); subscriptionAuth=$false }
   }
 
-  $auth = Invoke-External $Exe @('auth','status') ([Math]::Min($TimeoutSeconds, 15))
+  $auth = Invoke-External -Exe $Exe -Args @('auth','status') -Timeout ([Math]::Min($TimeoutSeconds, 15))
   if ($auth.timeout -or $auth.exitCode -ne 0 -or -not (Test-ClaudeSubscriptionStatus $auth.output)) {
     return [ordered]@{ exitCode=3; timeout=$false; output=''; error='CLAUDE_SUBSCRIPTION_AUTH_UNPROVEN'; subscriptionAuth=$false }
   }
@@ -169,8 +167,8 @@ function Invoke-ClaudeSubscriptionProbe([string]$Exe) {
     'ANTHROPIC_BEDROCK_BASE_URL','ANTHROPIC_VERTEX_BASE_URL',
     'CLAUDE_CODE_USE_BEDROCK','CLAUDE_CODE_USE_VERTEX','CLAUDE_CODE_USE_FOUNDRY'
   )
-  $result = Invoke-WithTemporaryEnvironment @{} $clear {
-    Invoke-External $Exe @('-p','"Return exactly TIGERIQ_CLAUDE_READY"') $TimeoutSeconds
+  $result = Invoke-WithTemporaryEnvironment -SetValues @{} -ClearNames $clear -Action {
+    Invoke-External -Exe $Exe -Args @('-p','"Return exactly TIGERIQ_CLAUDE_READY"') -Timeout $TimeoutSeconds
   }
   $result.subscriptionAuth = $true
   return $result
@@ -207,7 +205,7 @@ function Run-SelfTest {
 
   $shell = Resolve-Tool @('powershell.exe','pwsh.exe','pwsh')
   if ($shell) {
-    $timed = Invoke-External $shell @('-NoProfile','-Command','"Start-Sleep -Seconds 2"') 1
+    $timed = Invoke-External -Exe $shell -Args @('-NoProfile','-Command','"Start-Sleep -Seconds 2"') -Timeout 1
     Assert-True ([bool]$timed.timeout) 'timeout'
   }
 
@@ -219,19 +217,19 @@ if ($SelfTest) {
   exit 0
 }
 
-$gemini = New-StaticResult 'gemini' @('gemini.cmd','gemini.exe','gemini') @('--version')
-$claude = New-StaticResult 'claude' @('claude.exe','claude.cmd','claude') @('--version')
-$ollama = New-StaticResult 'ollama' @('ollama.exe','ollama') @('--version')
-$git = New-StaticResult 'git' @('git.exe','git') @('--version')
+$gemini = New-StaticResult -Name 'gemini' -CommandNames @('gemini.cmd','gemini.exe','gemini') -VersionArgs @('--version')
+$claude = New-StaticResult -Name 'claude' -CommandNames @('claude.exe','claude.cmd','claude') -VersionArgs @('--version')
+$ollama = New-StaticResult -Name 'ollama' -CommandNames @('ollama.exe','ollama') -VersionArgs @('--version')
+$git = New-StaticResult -Name 'git' -CommandNames @('git.exe','git') -VersionArgs @('--version')
 
 if ($Live -and $gemini.installed -and $gemini.versionOk) {
-  Set-LiveResult $gemini (Invoke-GeminiSubscriptionProbe $gemini.path) 'TIGERIQ_GEMINI_READY'
+  Set-LiveResult -Result $gemini -LiveResult (Invoke-GeminiSubscriptionProbe $gemini.path) -ExpectedMarker 'TIGERIQ_GEMINI_READY'
 }
 if ($Live -and $claude.installed -and $claude.versionOk) {
-  Set-LiveResult $claude (Invoke-ClaudeSubscriptionProbe $claude.path) 'TIGERIQ_CLAUDE_READY'
+  Set-LiveResult -Result $claude -LiveResult (Invoke-ClaudeSubscriptionProbe $claude.path) -ExpectedMarker 'TIGERIQ_CLAUDE_READY'
 }
 
-$readyProviders = @($gemini, $claude | Where-Object { $_.status -eq 'READY' })
+$readyProviders = @(@($gemini, $claude) | Where-Object { $_.status -eq 'READY' })
 $summary = [ordered]@{
   probeCompleted = $true
   live = [bool]$Live
