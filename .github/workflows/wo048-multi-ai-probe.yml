@@ -1,0 +1,37 @@
+name: WO-048 Multi-AI Probe Guard
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/pc-worker/probe-multi-ai.ps1'
+      - '.github/workflows/wo048-multi-ai-probe.yml'
+  push:
+    branches:
+      - 'wo048/multi-ai-subscription-orchestration'
+    paths:
+      - 'scripts/pc-worker/probe-multi-ai.ps1'
+      - '.github/workflows/wo048-multi-ai-probe.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  subscription-only-probe-guard:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse probe with Windows PowerShell
+        shell: powershell
+        run: |
+          $errors = $null
+          $tokens = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path 'scripts/pc-worker/probe-multi-ai.ps1'), [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            exit 1
+          }
+          Write-Host 'MULTI_AI_PROBE_PARSE_PASS'
+      - name: Run no-provider self-test
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/pc-worker/probe-multi-ai.ps1 -SelfTest
