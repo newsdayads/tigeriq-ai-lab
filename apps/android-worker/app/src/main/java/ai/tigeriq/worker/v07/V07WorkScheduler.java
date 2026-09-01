@@ -8,18 +8,23 @@ import androidx.work.NetworkType;
 import androidx.work.OneTimeWorkRequest;
 import androidx.work.WorkManager;
 
+import java.util.concurrent.TimeUnit;
+
 public final class V07WorkScheduler {
     private static final String RECOVERY_WORK = "tigeriq-v07-recovery";
     private V07WorkScheduler() {}
 
-    public static void enqueueRecovery(Context context) {
+    public static void enqueueRecovery(Context context) { enqueueRecoveryAfter(context, 0L); }
+
+    public static void enqueueRecoveryAfter(Context context, long delayMs) {
         Constraints network = new Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build();
         OneTimeWorkRequest request = new OneTimeWorkRequest.Builder(V07RecoveryWorker.class)
                 .setConstraints(network)
+                .setInitialDelay(Math.max(0L, delayMs), TimeUnit.MILLISECONDS)
                 .addTag(RECOVERY_WORK)
                 .build();
         WorkManager.getInstance(context.getApplicationContext())
-                .enqueueUniqueWork(RECOVERY_WORK, ExistingWorkPolicy.KEEP, request);
+                .enqueueUniqueWork(RECOVERY_WORK, ExistingWorkPolicy.REPLACE, request);
     }
 
     public static void enqueueJob(Context context, String employeeId, String jobId, String idempotencyKey) {
