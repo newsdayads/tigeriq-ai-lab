@@ -54,16 +54,21 @@ describe('GitHub Actions OIDC Auto Work wake', () => {
       workflow_ref: WORKFLOW_REF,
       ref: 'refs/heads/main',
       aud: 'tigeriq-auto-work',
+      runner_environment: 'github-hosted',
     }));
   });
 
-  it('rejects wrong audience/repository/workflow/ref/event and expired claims', () => {
+  it('rejects wrong audience/repository/workflow/ref/event/runner and expired claims', () => {
+    const missingRunner = claims();
+    delete missingRunner.runner_environment;
     for (const payload of [
       claims({ aud: 'wrong-audience' }),
       claims({ repository: 'attacker/repo' }),
       claims({ workflow_ref: `${REPO}/.github/workflows/other.yml@refs/heads/main` }),
       claims({ ref: 'refs/heads/feature' }),
       claims({ event_name: 'pull_request' }),
+      claims({ runner_environment: 'self-hosted' }),
+      missingRunner,
       claims({ exp: NOW - 60 }),
     ]) {
       expect(() => validateGitHubActionsClaims(payload, options)).toThrow(/github_oidc_/);
