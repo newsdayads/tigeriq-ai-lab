@@ -13,20 +13,21 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.work.WorkManager;
+
 /**
- * Secure v0.7 entry point. This screen performs TigerIQ Employee/Device enrollment only.
- * It never asks for Accessibility, never opens another AI app, and never stores provider credentials.
+ * Secure v0.7 entry point.
+ * Normal operation uses one TigerIQ activation code; technical gateway/credential fields are not exposed to the owner.
  */
 public final class V07EnrollmentActivity extends Activity {
     private static final int NAVY = Color.rgb(17, 24, 39);
     private static final int ORANGE = Color.rgb(244, 113, 31);
     private static final int MUTED = Color.rgb(92, 105, 125);
 
-    private EditText gatewayInput;
-    private EditText employeeInput;
-    private EditText credentialInput;
-    private EditText bootstrapInput;
-    private Button enrollButton;
+    private EditText activationInput;
+    private Button connectButton;
+    private Button checkButton;
+    private TextView readinessView;
     private TextView statusView;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
@@ -48,80 +49,123 @@ public final class V07EnrollmentActivity extends Activity {
         root.setPadding(dp(22), dp(26), dp(22), dp(26));
         root.setBackgroundColor(Color.rgb(246, 247, 251));
 
-        TextView title = text("TigerIQ AI · Nhân viên v0.7", 23, true);
+        TextView title = text("TigerIQ AI · Nhân viên v0.7.1", 23, true);
         title.setTextColor(NAVY);
         root.addView(title);
-        TextView subtitle = text("API-FIRST · Không Accessibility · Không điều khiển màn hình", 12, true);
+
+        TextView subtitle = text("Mở APP → kiểm tra máy → kết nối bằng 1 mã", 12, true);
         subtitle.setTextColor(ORANGE);
         root.addView(subtitle);
 
-        TextView safety = text("Chỉ đăng ký danh tính Employee/Device với TigerIQ. API key của Gemini/Groq/OpenRouter không bao giờ nằm trong APP.", 13, false);
+        TextView safety = text("Không Trợ năng · Không điều khiển màn hình · Không chứa API key Gemini/Groq/OpenRouter.", 13, false);
         safety.setTextColor(MUTED);
         safety.setPadding(0, dp(12), 0, dp(18));
         root.addView(safety);
 
-        gatewayInput = field("TigerIQ Gateway HTTPS, ví dụ https://...");
-        employeeInput = field("Employee ID, ví dụ EMP-001");
-        credentialInput = field("Credential ID do TigerIQ cấp");
-        bootstrapInput = field("Mã enrollment một lần");
-        bootstrapInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        bootstrapInput.setSaveEnabled(false);
-        bootstrapInput.setImportantForAutofill(EditText.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
+        checkButton = new Button(this);
+        checkButton.setText("KIỂM TRA MÁY NÀY");
+        checkButton.setAllCaps(false);
+        checkButton.setOnClickListener(v -> runDeviceCheck());
+        root.addView(checkButton);
 
-        root.addView(gatewayInput);
-        root.addView(employeeInput);
-        root.addView(credentialInput);
-        root.addView(bootstrapInput);
+        readinessView = text("Chưa kiểm tra phần cứng", 12, false);
+        readinessView.setTextColor(MUTED);
+        readinessView.setPadding(0, dp(8), 0, dp(18));
+        root.addView(readinessView);
 
-        enrollButton = new Button(this);
-        enrollButton.setText("ĐĂNG KÝ THIẾT BỊ");
-        enrollButton.setAllCaps(false);
-        enrollButton.setTextColor(Color.WHITE);
-        enrollButton.setBackgroundColor(ORANGE);
-        enrollButton.setOnClickListener(v -> enroll());
-        root.addView(enrollButton);
+        TextView activationTitle = text("Kết nối TigerIQ", 16, true);
+        activationTitle.setTextColor(NAVY);
+        root.addView(activationTitle);
 
-        statusView = text("Chưa đăng ký", 12, false);
+        TextView activationHelp = text("Dán 1 mã kích hoạt do TigerIQ cấp. APP tự lấy Gateway, Employee và Credential từ mã này.", 12, false);
+        activationHelp.setTextColor(MUTED);
+        activationHelp.setPadding(0, dp(6), 0, dp(8));
+        root.addView(activationHelp);
+
+        activationInput = field("Mã kích hoạt TigerIQ · TIQ1.…");
+        activationInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        activationInput.setSaveEnabled(false);
+        activationInput.setImportantForAutofill(EditText.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
+        root.addView(activationInput);
+
+        connectButton = new Button(this);
+        connectButton.setText("KẾT NỐI TIGERIQ");
+        connectButton.setAllCaps(false);
+        connectButton.setTextColor(Color.WHITE);
+        connectButton.setBackgroundColor(ORANGE);
+        connectButton.setOnClickListener(v -> connect());
+        root.addView(connectButton);
+
+        statusView = text("Chưa kết nối hệ thống", 12, false);
         statusView.setTextColor(MUTED);
         statusView.setPadding(0, dp(10), 0, 0);
         root.addView(statusView);
 
-        TextView footer = text("Bản v0.7 không yêu cầu quyền Trợ năng, không đọc ứng dụng ngân hàng, không dùng overlay và không mở Gemini để thực thi.", 11, false);
+        TextView footer = text("Nếu chưa có mã kích hoạt, nút KIỂM TRA MÁY NÀY vẫn xác minh được khóa bảo mật phần cứng và WorkManager trên chính điện thoại này.", 11, false);
         footer.setTextColor(MUTED);
         footer.setPadding(0, dp(20), 0, 0);
         root.addView(footer);
         return root;
     }
 
-    private void enroll() {
-        String gateway = gatewayInput.getText().toString().trim();
-        String employee = employeeInput.getText().toString().trim();
-        String credential = credentialInput.getText().toString().trim();
-        String bootstrap = bootstrapInput.getText().toString();
-        if (gateway.isEmpty() || employee.isEmpty() || credential.isEmpty() || bootstrap.isEmpty()) {
-            Toast.makeText(this, "Điền đủ thông tin enrollment", Toast.LENGTH_SHORT).show();
+    private void runDeviceCheck() {
+        checkButton.setEnabled(false);
+        readinessView.setText("Đang kiểm tra khóa bảo mật phần cứng và bộ lập lịch…");
+        new Thread(() -> {
+            try {
+                DeviceKeyStore keyStore = new DeviceKeyStore("SELFTEST-EMP", "SELFTEST-DEVICE");
+                keyStore.ensureKey();
+                if (!keyStore.isHardwareBacked()) throw new DeviceKeyStore.HardwareBackingUnavailableException();
+                String fingerprint = keyStore.publicKeyFingerprintSha256();
+                WorkManager.getInstance(this);
+                runOnUiThread(() -> {
+                    readinessView.setText("ĐẠT · Khóa phần cứng + WorkManager sẵn sàng · " + fingerprint.substring(0, 12));
+                    readinessView.setTextColor(Color.rgb(22, 101, 52));
+                    checkButton.setEnabled(true);
+                });
+            } catch (Exception error) {
+                runOnUiThread(() -> {
+                    readinessView.setText("LỖI · " + safeError(error));
+                    readinessView.setTextColor(Color.rgb(185, 28, 28));
+                    checkButton.setEnabled(true);
+                });
+            }
+        }, "tigeriq-v07-device-check").start();
+    }
+
+    private void connect() {
+        ActivationCode.Bundle activation;
+        try {
+            activation = ActivationCode.parse(activationInput.getText().toString());
+        } catch (Exception error) {
+            Toast.makeText(this, "Mã kích hoạt không hợp lệ", Toast.LENGTH_SHORT).show();
+            statusView.setText("Kết nối thất bại · mã kích hoạt không hợp lệ");
             return;
         }
-        enrollButton.setEnabled(false);
+
+        // Remove one-time material from UI state before network enrollment begins.
+        activationInput.setText("");
+        connectButton.setEnabled(false);
         statusView.setText("Đang xác minh thiết bị và tạo khóa phần cứng…");
 
         new Thread(() -> {
             try {
-                new EnrollmentCoordinator(this).enroll(gateway, employee, credential, bootstrap);
-                // Minimize lifetime of one-time enrollment material in Java/UI state.
-                bootstrapInput.post(() -> bootstrapInput.setText(""));
+                new EnrollmentCoordinator(this).enroll(
+                        activation.gateway,
+                        activation.employeeId,
+                        activation.credentialId,
+                        activation.bootstrapToken);
                 V07WorkScheduler.ensurePeriodicRecovery(this);
                 V07WorkScheduler.enqueueRecovery(this);
                 new WorkerStatusStore(this).setPushState("PUSH_OR_POLL_READY");
                 runOnUiThread(() -> {
-                    statusView.setText("Đăng ký thành công");
+                    statusView.setText("Kết nối thành công");
                     openStatus();
                 });
             } catch (Exception error) {
                 runOnUiThread(() -> {
-                    bootstrapInput.setText("");
-                    enrollButton.setEnabled(true);
-                    statusView.setText("Đăng ký thất bại · " + safeError(error));
+                    connectButton.setEnabled(true);
+                    statusView.setText("Kết nối thất bại · " + safeError(error));
                 });
             }
         }, "tigeriq-v07-enrollment").start();
@@ -158,6 +202,7 @@ public final class V07EnrollmentActivity extends Activity {
 
     private static String safeError(Exception error) {
         if (error instanceof ApiException api) return api.code;
+        if (error instanceof DeviceKeyStore.HardwareBackingUnavailableException) return "SECURE_HARDWARE_UNAVAILABLE";
         return error.getClass().getSimpleName();
     }
 }
