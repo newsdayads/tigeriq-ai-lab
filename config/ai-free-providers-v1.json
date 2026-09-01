@@ -5,14 +5,15 @@
     "paidFallback": false,
     "failClosedOnUnknownBilling": true,
     "maxParallelCloudWorkers": 3,
-    "localFallbackAlwaysAllowed": true
+    "localFallbackAlwaysAllowed": true,
+    "maxAttemptsPerRole": 3
   },
   "providers": {
     "groq": {
       "enabled": true,
       "mode": "configured_free_quota",
       "credentialEnv": "GROQ_API_KEY",
-      "role": ["executor", "reviewer"],
+      "role": ["executor", "reviewer", "judge"],
       "onQuota": "fallback"
     },
     "openrouter": {
@@ -21,7 +22,7 @@
       "credentialEnv": "OPENROUTER_API_KEY",
       "model": "openrouter/free",
       "allowNonFreeModels": false,
-      "role": ["executor", "reviewer"],
+      "role": ["executor", "reviewer", "judge"],
       "onQuota": "fallback"
     },
     "gemini_cli": {
@@ -29,7 +30,7 @@
       "mode": "google_account_login_only",
       "forbidApiKeyRoute": true,
       "forbidVertexRoute": true,
-      "role": ["executor", "reviewer"],
+      "role": ["executor", "reviewer", "judge"],
       "onQuota": "fallback"
     },
     "gemini_api": {
@@ -43,21 +44,24 @@
       "mode": "pro_max_subscription_login_only",
       "forbidApiKeyRoute": true,
       "forbidCloudGatewayRoutes": true,
-      "role": ["executor", "reviewer"],
+      "role": ["executor", "reviewer", "judge"],
       "onQuota": "fallback"
     },
     "ollama": {
       "enabled": true,
       "mode": "local_zero_cost",
-      "role": ["executor", "reviewer", "fallback"],
+      "role": ["executor", "reviewer", "judge", "fallback"],
       "onQuota": "continue_local"
     }
   },
   "routing": {
+    "selectionMode": "capability_then_zero_cost_rank",
     "preferParallel": true,
     "dedupeByWorkOrder": true,
     "leaseRequired": true,
-    "independentReviewPreferred": true,
-    "fallbackOrder": ["groq", "gemini_cli", "openrouter", "claude_code", "ollama"]
+    "independentReviewRequired": true,
+    "independentJudgeRequired": true,
+    "requiredDistinctBackendIdentities": 3,
+    "fallbackOrder": ["gemini_cli", "claude_code", "openrouter", "ollama", "groq"]
   }
 }
