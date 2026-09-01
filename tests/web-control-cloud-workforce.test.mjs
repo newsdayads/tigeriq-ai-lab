@@ -32,7 +32,13 @@ describe('Web Control cloud workforce', () => {
       calls += 1;
       const request = JSON.parse(String(init.body || '{}'));
       const model = String(request.model || 'unknown');
-      seen.push({ url: String(input), model, auth: init.headers?.authorization, reasoningFormat: request.reasoning_format });
+      seen.push({
+        url: String(input),
+        model,
+        auth: init.headers?.authorization,
+        reasoningFormat: request.reasoning_format,
+        system: String(request.messages?.[0]?.content || ''),
+      });
       if (calls === 1) return responseJson({ status: 'completed', result: '42', evidenceSummary: 'Computed answer is present in the result.' }, model);
       if (calls === 2) return responseJson({ pass: true, rationale: 'Result answers the bounded instruction and evidence is present.' }, model);
       if (calls === 3) return responseJson({ pass: true, rationale: 'Reviewer passed and evidence is concrete.' }, model);
@@ -48,7 +54,7 @@ describe('Web Control cloud workforce', () => {
         reviewerModel: 'qwen/qwen3.8-27b',
         judgeModel: 'openai/gpt-oss-20b',
       }));
-      const execution = await workforce.executeCloudTask({ instruction: 'Return the result of 6 * 7.', expectedEvidence: 'Concrete result.' });
+      const execution = await workforce.executeCloudTask({ instruction: 'Return the result of 6 * 7.', expectedEvidence: 'Concrete result plus server-generated SHA256, reviewer and judge.' });
       expect(execution).toEqual(expect.objectContaining({ status: 'completed', result: '42' }));
       const review = await workforce.reviewCloudTask({ instruction: 'Return the result of 6 * 7.', expectedEvidence: 'Concrete result.', result: execution.result, evidenceSummary: execution.evidenceSummary });
       expect(review.pass).toBe(true);
@@ -59,6 +65,8 @@ describe('Web Control cloud workforce', () => {
       expect(seen.map((entry) => entry.model)).toEqual(['openai/gpt-oss-120b', 'qwen/qwen3.8-27b', 'openai/gpt-oss-20b']);
       expect(seen.every((entry) => entry.auth === 'Bearer test-only-groq-key')).toBe(true);
       expect(seen.every((entry) => entry.reasoningFormat === 'hidden')).toBe(true);
+      expect(seen[0].system).toContain('TigerIQ SERVER responsibilities');
+      expect(seen[0].system).toContain('Never attempt to create, verify, or block on those server-side artifacts');
 
       const ref = `sha256:${'a'.repeat(64)}`;
       const signed = workforce.signServerGateComment(`REVIEW_PASS\nEVIDENCE_REF ${ref}\nREVIEW_ROLE independent-cloud-reviewer`);
