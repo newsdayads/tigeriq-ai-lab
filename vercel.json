@@ -3,13 +3,27 @@
   "cleanUrls": true,
   "trailingSlash": false,
   "rewrites": [
-    { "source": "/", "destination": "/command-center.html" },
+    { "source": "/", "destination": "/operations.html" },
+    { "source": "/operations", "destination": "/operations.html" },
+    { "source": "/command-center", "destination": "/command-center.html" },
     { "source": "/workforce", "destination": "/workforce.html" },
     { "source": "/api/control-legacy", "destination": "/api/control" }
   ],
   "headers": [
     {
       "source": "/",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, max-age=0" }
+      ]
+    },
+    {
+      "source": "/operations",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, max-age=0" }
+      ]
+    },
+    {
+      "source": "/operations.html",
       "headers": [
         { "key": "Cache-Control", "value": "no-store, max-age=0" }
       ]
