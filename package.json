@@ -10,7 +10,7 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "test:chief": "node scripts/test-chief-router.mjs",
-    "build": "tsc -p tsconfig.build.json",
+    "build": "node scripts/p0-preview-runtime-diagnostic.mjs && tsc -p tsconfig.build.json",
     "command-center": "node dist/apps/dashboard/src/standalone.js",
     "workforce-controller": "node dist/apps/workforce-controller/src/standalone.js",
     "ci": "npm run typecheck && npm run test && npm run test:e2e && npm run build"
