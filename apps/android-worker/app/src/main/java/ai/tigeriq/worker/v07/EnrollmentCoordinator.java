@@ -24,8 +24,6 @@ public final class EnrollmentCoordinator {
             if (!deviceKey.isHardwareBacked()) throw new DeviceKeyStore.HardwareBackingUnavailableException();
             String fingerprint = deviceKey.publicKeyFingerprintSha256();
 
-            // Bootstrap material is enrollment-only. It is never persisted for normal runtime
-            // session renewal; successful enrollment keeps only the short-lived session token.
             TigerIqApiClient.Session session = new TigerIqApiClient(draft).mintSession(oneTimeBootstrap);
             secrets.put(SecureSecretStore.SESSION_TOKEN, session.accessToken);
             secrets.putLong(SecureSecretStore.SESSION_EXPIRES_AT, session.expiresAtEpochMs);
@@ -33,9 +31,9 @@ public final class EnrollmentCoordinator {
 
             EmployeeDeviceStore.Profile enrolled = new EmployeeDeviceStore.Profile(
                     draft.gatewayUrl, draft.employeeId, draft.nodeId, draft.deviceId, draft.credentialId,
-                    fingerprint, true, System.currentTimeMillis());
+                    "", fingerprint, true, System.currentTimeMillis());
             identities.saveEnrolled(enrolled, fingerprint, true, enrolled.enrolledAtEpochMs);
-            status.setState(WorkerState.READY, "Đã đăng ký · khóa thiết bị hardware-backed", "");
+            status.setState(WorkerState.READY, "Đã đăng ký · chờ binding authoritative từ TigerIQ", "");
             return identities.load();
         } catch (Exception error) {
             secrets.remove(SecureSecretStore.BOOTSTRAP_TOKEN);
