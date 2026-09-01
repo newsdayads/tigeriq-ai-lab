@@ -1,39 +1,60 @@
 # WO-048 — Android v0.7 API-first thin worker
 
-Status: IN_PROGRESS
+Status: IN_PROGRESS — DEVICE-SMOKE USABLE / BACKEND JOB HTTP INTEGRATION BLOCKED
 
-Unlock evidence: Gate #130 emitted `CONTRACT_V07_INDEPENDENT_REVIEW_PASS` and `CONTRACT_V07_READY` for exact head `9ce2aea4967c6986601f136b3f7491f8fea8c9ff` on PR #131; CI run `33378194824` PASS.
-
-Baseline: APP PR #109 / `wo012/android-phone-first-worker` exact `96819b4c960d7930c5f5d2105c4df07d4bfcbd00`.
-
-Branch: `wo048/android-v07-api-first-worker`.
+Branch: `wo048/android-v07-api-first-worker`  
+Current Android head: `92a8b4f3aa78cee8e4f45e8bd11cc67924d818cb`  
+PR: #132
 
 ## Scope
 
-Implement only Android thin-worker client responsibilities against the locked v0.7 contract. No provider API key, no AI Router ownership, no Web/PC01/Work Management implementation, no MAIN/Production release.
+Implement only Android thin-worker client responsibilities against the locked v0.7 contract. No provider API key, no AI Router ownership, no Web/PC01 implementation, no MAIN/Production release.
 
-## Required runtime
+## Current Android runtime
 
 - Employee/Device enrollment client.
 - Hardware-backed Android Keystore signing key; StrongBox preferred when available, TEE/default AndroidKeyStore fallback.
 - Challenge signing and short-lived TigerIQ session token lifecycle.
-- FCM receiver feeding unique durable work.
+- FCM wake receiver plus 15-minute WorkManager polling fallback.
 - Unique WorkManager execution per job/idempotency identity.
 - Durable local checkpoint for retry, reboot and network recovery without assuming in-flight work completed.
-- Result/evidence submit through TigerIQ API contract.
+- Result/evidence submit client through TigerIQ API contract.
 - Operator state limited to READY / WORKING / NEED_ATTENTION.
 - Accessibility automation is not the v0.7 execution engine.
 
-## Started in M1
+## v0.7.1 owner-usable onboarding
 
-- `WorkerState` state contract added.
-- `DeviceKeyStore` added with Employee+Device-scoped EC signing identity, AndroidKeyStore hardware backing, StrongBox on Android 9+ when available and safe fallback.
-- `DurableCheckpointStore` added for local in-flight job/lease-hash/phase checkpointing.
+Physical install of v0.7 on Samsung proved the APK launched but exposed four backend-oriented fields (Gateway, Employee ID, Credential ID, bootstrap token). That was not owner-usable.
 
-## Next
+v0.7.1 replaces that flow with:
+- `KIỂM TRA MÁY NÀY`: immediately verifies hardware-backed Android Keystore and WorkManager on the real phone without requiring a Gateway.
+- One-field activation: `TIQ1.<base64url(JSON)>` containing HTTPS gateway, Employee ID, Credential ID and one-time bootstrap token.
+- The one-time activation value is cleared from UI state before network enrollment and is not durably persisted.
+- No new Android permission, Accessibility, overlay, provider key or external-app automation is introduced.
 
-1. Enrollment/session API client and token store.
-2. WorkManager + FCM integration and dedupe.
-3. Result/evidence submit + retry/recovery.
-4. UI state wiring; remove Accessibility from readiness/execution path.
-5. Android build/tests, exact-head CI, independent review, then physical smoke only. 
+Exact-head gates for `92a8b4f3...`:
+- CI run `33537761361`: PASS.
+- Android Worker run `33537761430`: PASS — bank-safe source gate, Android unit tests, debug + unsigned release build, merged APK manifest/DEX audit, signing continuity, artifacts.
+- Debug artifact `9812458793`.
+- Unsigned release artifact `9812459508`.
+
+## Real integration blocker found during physical-test audit
+
+The Android client calls:
+- `POST /v1/android/jobs/pull`
+- `POST /v1/android/jobs/submit`
+
+The current Inference Gateway HTTP server branch exposes session/inference/health routes, while the cross-stream Android package currently provides `AndroidThinWorkerApi` as a TypeScript class but not a deployed HTTP route surface for these two Android endpoints.
+
+Therefore a successful enrollment alone would still not prove real Job → Inference → Result/Evidence end-to-end. This is a backend integration dependency, not an Android UI problem. Android must not fake READY until authoritative deployed endpoints exist.
+
+## Remaining release gates
+
+1. Backend owning stream must expose authoritative authenticated Android job pull/submit HTTP routes compatible with the v0.7 contract and current coordinator/gateway stack.
+2. Generate a real one-time TigerIQ activation code from that deployed environment.
+3. Z Flip smoke: `KIỂM TRA MÁY NÀY`, activation, real Job → Inference → Result/Evidence, reboot/network recovery, no duplicate job.
+4. Z Fold smoke with the same exact candidate lineage.
+5. Fresh independent exact-head review.
+6. Approved stable TigerIQ signing identity for final pilot candidate.
+
+Keep PR draft / do-not-merge. No MAIN/Production release without the remaining gates and explicit Owner authorization.
