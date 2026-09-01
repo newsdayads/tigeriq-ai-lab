@@ -35,15 +35,15 @@ describe('WO-045 Web Control remote operations', () => {
     expect(ownerAuth).toContain("error: 'oauth_code_flow_retired'");
   });
 
-  it('keeps Google identity, executive title, and TigerIQ authorization separate', () => {
+  it('keeps Google identity, chairman title, and TigerIQ authorization separate', () => {
     expect(ownerAuth).toContain("identityMode: 'google_id_token'");
     expect(ownerAuth).toContain('clientSecretRequired: false');
     expect(ownerAuth).not.toContain('TIGERIQ_OWNER_GOOGLE_CLIENT_SECRET');
     expect(ownerAuth).not.toContain('oauth2.googleapis.com/token');
     expect(statusApi).toContain("authority: 'TigerIQ'");
-    expect(statusApi).toContain("role: ownerAuthenticated ? 'Founder & CEO' : null");
+    expect(statusApi).toContain("role: ownerAuthenticated ? 'Chủ tịch' : null");
     expect(statusApi).toContain("rbacRole: ownerAuthenticated ? 'Owner' : null");
-    expect(statusApi).toContain("title: ownerAuthenticated ? 'Founder & CEO · TigerIQ AI Lab' : null");
+    expect(statusApi).toContain("title: ownerAuthenticated ? 'Chủ tịch · TigerIQ AI Lab' : null");
     expect(statusApi).toContain("implementedRoles: ['Owner']");
     expect(statusApi).toContain("requestedRoles: ['Owner', 'Admin', 'Nhân viên', 'Chỉ xem']");
     expect(statusApi).toContain("providerInterface: '06-work-management-rbac-required'");
@@ -66,12 +66,13 @@ describe('WO-045 Web Control remote operations', () => {
     expect(ui).toContain('TigerIQ fail-closed ở Chỉ xem');
   });
 
-  it('keeps workforce internal and refresh floating below account on mobile', () => {
+  it('keeps workforce internal and refresh thumb-friendly at the bottom on mobile', () => {
     expect(ui).toContain('id="workforceModuleBtn"');
     expect(ui).toContain('Module · Nhân sự AI & thiết bị');
     expect(ui).toContain('.refresh-fab{position:fixed');
     expect(ui).toContain('id="refreshBtn" class="btn refresh-fab"');
-    expect(ui).toContain('top:calc(max(14px,env(safe-area-inset-top)) + 126px)');
+    expect(ui).toContain('bottom:calc(max(18px,env(safe-area-inset-bottom)) + 8px)');
+    expect(ui).toContain('.refresh-fab{top:auto;bottom:calc(max(16px,env(safe-area-inset-bottom)) + 6px)');
   });
 
   it('prevents long evidence or status strings from widening the mobile viewport', () => {
