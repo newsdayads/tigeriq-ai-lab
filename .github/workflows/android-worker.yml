@@ -34,6 +34,31 @@ jobs:
           test -z "${TIGERIQ_ANDROID_STORE_PASSWORD_FILE:-}"
           test -z "${TIGERIQ_ANDROID_KEY_PASSWORD_FILE:-}"
           gradle --no-daemon :app:tigerIqStableSigningStatus | grep TIGERIQ_STABLE_SIGNING_NOT_CONFIGURED
+      - name: Enforce v0.7 bank-safe Android surface
+        run: |
+          set -euo pipefail
+          manifest='apps/android-worker/app/src/main/AndroidManifest.xml'
+          build='apps/android-worker/app/build.gradle.kts'
+          v07='apps/android-worker/app/src/main/java/ai/tigeriq/worker/v07'
+          test "$(grep -c '<uses-permission ' "$manifest")" -eq 3
+          grep -q 'android.permission.INTERNET' "$manifest"
+          grep -q 'android.permission.POST_NOTIFICATIONS' "$manifest"
+          grep -q 'android.permission.RECEIVE_BOOT_COMPLETED' "$manifest"
+          grep -q 'java.exclude("ai/tigeriq/worker/\*.java")' "$build"
+          test ! -e apps/android-worker/app/src/main/res/xml/accessibility_service_config.xml
+          if grep -E 'BIND_ACCESSIBILITY_SERVICE|REQUEST_IGNORE_BATTERY_OPTIMIZATIONS|QUERY_ADVANCED_PROTECTION_MODE|SYSTEM_ALERT_WINDOW|READ_SMS|RECEIVE_SMS|READ_CALL_LOG|READ_CONTACTS|ACCESS_FINE_LOCATION|AccessibilityBridgeService|ForegroundWorkerService|com\.google\.android\.apps\.bard|com\.tailscale\.ipn' "$manifest"; then
+            echo 'BANK_SAFE_MANIFEST_FAIL: forbidden capability in v0.7 manifest' >&2
+            exit 1
+          fi
+          if grep -R -n -E 'AccessibilityBridgeService|com\.google\.android\.apps\.bard|ProcessBuilder|Runtime\.getRuntime|DexClassLoader' "$v07"; then
+            echo 'BANK_SAFE_EXECUTION_FAIL: forbidden execution primitive in v0.7 runtime' >&2
+            exit 1
+          fi
+          if grep -R -n -E 'GEMINI_API_KEY|GROQ_API_KEY|OPENROUTER_API_KEY|AIza[0-9A-Za-z_-]{20,}' apps/android-worker/app/src/main; then
+            echo 'BANK_SAFE_SECRET_FAIL: provider credential material found in Android source/resources' >&2
+            exit 1
+          fi
+          echo 'BANK_SAFE_V07_SOURCE_GATE_PASS'
       - name: Run Android v0.7 unit tests
         working-directory: apps/android-worker
         run: gradle --no-daemon :app:testDebugUnitTest
