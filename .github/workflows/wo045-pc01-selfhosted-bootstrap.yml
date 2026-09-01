@@ -1,4 +1,4 @@
-name: WO-045 PC01 Self-hosted Bootstrap
+name: WO-045 PC01 Self-hosted Runtime Repair
 
 on:
   push:
@@ -6,24 +6,46 @@ on:
       - 'wo045/pc01-autonomy-hardening'
     paths:
       - '.github/workflows/wo045-pc01-selfhosted-bootstrap.yml'
-      - 'scripts/pc-worker/runner_bootstrap_pc01.py'
+      - 'scripts/pc-worker/runner_prepare_workforce_pc01.py'
 
 permissions:
   contents: read
 
 concurrency:
-  group: pc01-secure-v3-bootstrap
+  group: pc01-workforce-runtime-repair
   cancel-in-progress: true
 
 jobs:
-  pc01-bootstrap:
-    runs-on: self-hosted
-    timeout-minutes: 8
+  validate-repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - name: Checkout exact bootstrap head
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate bounded PC01 repair helper
+        run: python -m py_compile scripts/pc-worker/runner_prepare_workforce_pc01.py
+
+  pc01-workforce-runtime:
+    needs: validate-repair
+    runs-on: self-hosted
+    timeout-minutes: 12
+    steps:
+      - name: Checkout reviewed PC01 control helper
         uses: actions/checkout@v4
         with:
           persist-credentials: false
           fetch-depth: 1
-      - name: Bootstrap Secure Worker V3 and prove recovery
-        run: python scripts/pc-worker/runner_bootstrap_pc01.py
+          path: pc01-control
+      - name: Checkout exact reviewed Workforce Controller source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          ref: 731436be054e06cfdfe4b4d48e25507ab7adb35a
+          path: workforce-source
+      - name: Prepare bounded Workforce runtime on PC01
+        run: python pc01-control/scripts/pc-worker/runner_prepare_workforce_pc01.py workforce-source
