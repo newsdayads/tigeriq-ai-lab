@@ -1,6 +1,19 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-function makeIssue({ number = 1, state = 'open', priority = 'P1', source = 'vercel-explicit-dispatch', instruction = 'Tóm tắt kế hoạch', updatedAt = '2026-09-01T00:00:00Z' } = {}) {
+function makeIssue({
+  number = 1,
+  state = 'open',
+  priority = 'P1',
+  source = 'vercel-explicit-dispatch',
+  instruction = 'Tóm tắt kế hoạch',
+  updatedAt = '2026-09-01T00:00:00Z',
+  pc01Required = false,
+  cloudExecutorAllowed = true,
+  includeExecutionMarker = true,
+} = {}) {
+  const executor = includeExecutionMarker
+    ? `vercel-serverless / bounded cloud executor / PC01_REQUIRED=${String(pc01Required)} / CLOUD_EXECUTOR_ALLOWED=${String(cloudExecutorAllowed)}`
+    : 'vercel-serverless / bounded cloud executor';
   return {
     number,
     state,
@@ -10,6 +23,7 @@ function makeIssue({ number = 1, state = 'open', priority = 'P1', source = 'verc
     body: [
       'TIGERIQ_JOB_V1', '', '## Instruction', instruction, '', '## Priority', priority,
       '', '## Source', source, '', '## Fingerprint', 'abc123', '', '## Expected Evidence', 'Concrete result plus server gates.',
+      '', '## Executor', executor,
     ].join('\n'),
   };
 }
@@ -17,14 +31,26 @@ function makeIssue({ number = 1, state = 'open', priority = 'P1', source = 'verc
 describe('Web Control autonomous backlog worker policy', () => {
   afterEach(() => { vi.resetModules(); });
 
-  it('accepts only canonical Web Control work sources and extracts the instruction', async () => {
+  it('accepts only canonical Web Control cloud work with explicit PC01_REQUIRED=false', async () => {
     const { parseAutonomousCandidate } = await import('../api/auto-work.mjs');
     expect(parseAutonomousCandidate(makeIssue())).toEqual(expect.objectContaining({
       instruction: 'Tóm tắt kế hoạch', priority: 'P1', source: 'vercel-explicit-dispatch', fingerprint: 'abc123',
     }));
     expect(parseAutonomousCandidate(makeIssue({ source: 'pc01-recovery' }))).toBeNull();
+    expect(parseAutonomousCandidate(makeIssue({ source: 'tigeriq-autonomy-feed' }))).toBeNull();
+    expect(parseAutonomousCandidate(makeIssue({ pc01Required: true }))).toBeNull();
+    expect(parseAutonomousCandidate(makeIssue({ cloudExecutorAllowed: false }))).toBeNull();
+    expect(parseAutonomousCandidate(makeIssue({ includeExecutionMarker: false }))).toBeNull();
     expect(parseAutonomousCandidate({ ...makeIssue(), pull_request: { url: 'x' } })).toBeNull();
     expect(parseAutonomousCandidate(makeIssue({ state: 'closed' }))).toBeNull();
+  });
+
+  it('fails closed on contradictory execution markers', async () => {
+    const { booleanExecutionMarker, parseAutonomousCandidate } = await import('../api/auto-work.mjs');
+    const issue = makeIssue();
+    issue.body += '\nPC01_REQUIRED=true';
+    expect(booleanExecutionMarker(issue.body, 'PC01_REQUIRED')).toBeNull();
+    expect(parseAutonomousCandidate(issue)).toBeNull();
   });
 
   it('orders P0 before P1 before P2 instead of letting low priority backlog starve urgent work', async () => {

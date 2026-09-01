@@ -86,12 +86,24 @@ export function section(body, heading) {
   return String(next >= 0 ? rest.slice(0, next) : rest).trim();
 }
 
+export function booleanExecutionMarker(body, name) {
+  const escaped = String(name || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  if (!escaped) return null;
+  const pattern = new RegExp(`(?:^|[\\s/])${escaped}\\s*(?:=|:)?\\s*(true|false)\\b`, 'gi');
+  const values = new Set([...String(body || '').matchAll(pattern)].map((match) => String(match[1]).toLowerCase()));
+  if (values.size !== 1) return null;
+  return [...values][0] === 'true';
+}
+
 export function parseAutonomousCandidate(issue) {
   if (!issue || issue.pull_request || String(issue.state) !== 'open' || issueType(issue) !== 'work-order') return null;
   const body = String(issue.body || '');
   if (!body.includes('TIGERIQ_JOB_V1')) return null;
   const source = section(body, 'Source');
   if (!SAFE_SOURCES.has(source)) return null;
+  const pc01Required = booleanExecutionMarker(body, 'PC01_REQUIRED');
+  const cloudExecutorAllowed = booleanExecutionMarker(body, 'CLOUD_EXECUTOR_ALLOWED');
+  if (pc01Required !== false || cloudExecutorAllowed === false) return null;
   const instruction = section(body, 'Instruction').slice(0, 6000);
   if (instruction.length < 3) return null;
   const fingerprint = section(body, 'Fingerprint') || workFingerprint(instruction);
