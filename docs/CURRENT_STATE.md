@@ -17,33 +17,35 @@ TigerIQ AI Lab is operated as a continuous distributed AI company. Tiger IQ Driv
 
 ## Canonical autonomous operation feed — #138
 - Issue #138 is the single canonical `TIGERIQ_AUTONOMY_FEED_V1` status feed.
-- It is state-only and is intentionally excluded from cloud auto-work consumption.
-- Each autonomous cycle must update Current Action, Execution Channel, Last Progress, Next Action, Blocker and Updated At from real evidence only.
+- It is state-only and intentionally excluded from cloud auto-work consumption.
+- Each autonomous cycle updates Current Action, Execution Channel, Last Progress, Next Action, Blocker and Updated At from real evidence only.
 
 ## Governance enforcement work — #113 / PR #118
 PR #118 (`wo046/current-state-governance-reconcile`) owns governance implementation/state reconciliation.
 
-### Security finding discovered after the prior PASS
+### Security finding discovered after the former PASS
 The former independent-review gate is INVALIDATED for release purposes. It had two architectural weaknesses:
 1. the workflow checked out PR-head code before running the verifier, so a PR could modify the verifier/workflow it was being judged by;
-2. the verifier accepted structured PASS text from comments/reviews without proving a formal approval by a reviewer identity distinct from the PR author.
+2. the verifier accepted structured PASS text from comments/reviews without proving a formal approval by a reviewer GitHub identity distinct from the PR author.
 
 The former exact `558de5227e74fb3fdfa61c378b5e64c7912758f4`, review `5079723679` and Governance run `33523704318` are historical evidence only and MUST NOT be reused as a secure merge gate.
 
-### Hardened design now implemented on PR #118
+### Hardened repository design now verified
 - `.github/workflows/governance-independent-review.yml` uses `pull_request_target`, so the workflow definition executes from trusted base context rather than PR-controlled code.
 - Checkout is pinned to `${{ github.event.pull_request.base.sha }}` with `persist-credentials: false`; the gate never executes PR-head verifier/workflow code.
 - `scripts/verify-independent-review-gate.mjs` accepts pull-request reviews only; issue comments are not independent evidence.
 - A qualifying review must be formal `APPROVED`, have `review.commit_id == HEAD_SHA`, come from a GitHub login different from the PR author, and include `TIGERIQ_INDEPENDENT_REVIEW_PASS`, `REVIEW_ROLE: 07`, exact head SHA and typed `EVIDENCE_REF`.
 - Regression tests reject self-forged markers, COMMENTED/DISMISSED review states, stale-SHA approvals, missing evidence and PR-head checkout.
-- Security implementation head `6dda88e646fa67a2aad09d3ea1b4da6a7ea8f06c` passed CI `33527235293`, Queue Hygiene `33527235245` and Vercel Verify `33527235246`; CI included the new security regressions, Playwright smoke and build.
-- Official GitHub Actions behavior confirms `pull_request_target` uses trusted base context; executing PR code from that context must remain forbidden.
+- `docs/governance/MAIN_PROTECTION_V1.md` now requires native approving review, stale-approval dismissal, latest-reviewable-push approval, CI + Queue required checks, conversation resolution, no unsafe bypass/force-push/delete and least-privilege Actions.
+- The policy explicitly forbids assuming that a base-context `pull_request_target` Actions check satisfies a latest-head required status. Activation must prove exact-head binding with a canary or use a trusted reviewer App/status publisher before such a custom context is required.
+- Final security/policy implementation head `6a136c5ed318141520b57e99a188f0c801047163` passed CI `33527679987`, Queue Hygiene `33527680063` and Vercel Verify `33527680140`; CI included the governance security/policy regressions, Playwright smoke and build.
+- Official GitHub behavior supports this design: `pull_request_target` runs from trusted base context, while required checks must pass on the latest required commit SHA; PR authors cannot approve their own PRs and stale/latest-push review protections are available.
 
 ### Activation boundary
 - The hardened workflow is not authoritative merely because it exists on PR #118. `pull_request_target` trusted behavior must come from a workflow already present on trusted MAIN.
-- Therefore activation requires an explicitly authorized integration of the hardened governance code to MAIN, followed by live repository Settings that require the intended checks/policies.
-- A genuinely distinct reviewer GitHub identity/App must be available to submit the formal exact-head APPROVED review; same-account COMMENT text is intentionally rejected.
-- Until activation and live Settings proof exist, global #113 remains FAIL. Do not claim a secure Governance PASS from the old gate.
+- Activation therefore requires an explicitly Owner-authorized integration of the hardened governance code to MAIN, followed by live repository Settings enforcing the native review/status/PR-only/no-bypass/no-force-push-delete policy.
+- A genuinely distinct reviewer GitHub identity/App must be available to submit formal exact-head APPROVED reviews; same-account COMMENT text is intentionally rejected.
+- Until activation and live Settings proof exist, global #113 remains FAIL. No secure Governance PASS is claimed from the retired gate.
 
 ## Web Control — PR #117
 - Canonical branch: `wo045/web-control-remote-ops`.
@@ -51,8 +53,7 @@ The former exact `558de5227e74fb3fdfa61c378b5e64c7912758f4`, review `5079723679`
 - Exact-head repository gates PASS: CI `33523361282` (typecheck, unit tests, Playwright smoke, build), Queue Hygiene `33523361514`, Vercel Verify `33523361238`.
 - Fresh independent Web routing review `5079682318` is PASS for repository scope / runtime pending.
 - Exact-head Vercel commit status remains FAIL with Hobby `build-rate-limit`; no paid upgrade or retry-spam is authorized and no READY deployment is claimed for `4f9014a...`.
-- Web Control retains Owner/TigerIQ auth separation, server-only write credential path, canonical Work Order dedupe, server-owned SHA256 evidence reference, mobile status UI and bounded autonomous backlog processing.
-- Historical #135 is handled at repository level: server owns SHA256 `EVIDENCE_REF`; the scheduler allows exactly one migration retry only for the old model-side SHA/cryptographic-hash blocker; generic bounded blockers remain non-retryable and a second matching legacy blocker fails closed. #135 metadata now points to final Web head `4f9014a...` and remains open until the logic runs on an exact-head READY runtime.
+- Historical #135 is handled at repository level: server owns SHA256 `EVIDENCE_REF`; the scheduler allows exactly one migration retry only for the old model-side SHA/cryptographic-hash blocker; generic bounded blockers remain non-retryable and a second matching legacy blocker fails closed. #135 metadata points to final Web head `4f9014a...` and remains open until this logic runs on an exact-head READY runtime.
 - Single Door classifies execution before any cloud model invocation. PC01/Windows/Scheduled Task/Watchdog/Tailscale/Ollama operational status, runtime audit/log, reboot/deploy/connect actions route to `pc01-runtime-required` with `CLOUD_EXECUTOR_ALLOWED=false`. Z Flip/Z Fold/phone/device install/smoke work routes to `device-runtime-required`, also cloud-blocked.
 - Explicit code/repo/docs/architecture analysis remains cloud-eligible when no hard runtime action is requested; regression tests cover runtime audit versus repo audit.
 - Issue #137 is explicitly `pc01-runtime-required`, `PC01_REQUIRED=true`, `CLOUD_EXECUTOR_ALLOWED=false`.
@@ -71,19 +72,17 @@ The former exact `558de5227e74fb3fdfa61c378b5e64c7912758f4`, review `5079723679`
 - Reviewed exact head: `2b941450f541643b9f4b952493dfd2fc612f30f2`.
 - CI `33506910934` PASS; WO-045 Secure Worker `33506910959` PASS; independent security review `5078356652` reports repository security PASS.
 - Raw model-controlled shell/argv is absent; AI reads are explicit repository-tracked/AI-created safe paths; protected/local credential surfaces are denied; public evidence excludes raw file content and uses final secret redaction/fail-closed suppression; Executor/Reviewer/Judge require three distinct immutable Ollama digests and identities are rechecked after execution.
-- Reviewed secure bootstrap validates Windows, exact branch/SHA, tests, watchdog syntax, Scheduled Task persistence, backups, preflight, Worker restart and watchdog smoke before any secure-bootstrap PASS claim.
 - Repository/security scope PASS only. #114 stays open until least-privilege OS execution, live activation, #57 ingress, #58 deterministic CLAIM+RESULT and #100 Controller evidence exist on PC01.
 
 ## Android phone-first worker — #108 / PR #109
 - Canonical branch: `wo012/android-phone-first-worker`; exact head `2c65ab71c331964a69ca418d4450c10ef3b067c2`; draft/unmerged.
 - Gates PASS: CI `33519326741`, Queue `33519326892`, Vercel Verify `33519326831`, Android Worker `33519326746`; review `5079279419` repository/code PASS.
-- Local task history is bounded; Gemini extraction uses privacy-safe pre-submit boundary hashes/marker count and current-prompt evidence; regression coverage includes stale/prior/duplicate/restart/login/provider-limit/timeout cases.
 - Physical exact-head stable-signed Z Flip/Z Fold install/smoke, Samsung restrictions, one harmless Gemini task and restart/background behavior remain mandatory; stale APK evidence cannot be reused.
 
 ## Android APP v0.7 — PR #132
 - Canonical branch: `wo048/android-v07-api-first-worker`; exact head `76197e75517adf4c6eb4a965f16af7b318a10a1d`.
 - CI `33489016994` PASS; Android Worker `33489016990` PASS; independent repository/build review `5077718726` emitted `APP_V07_INDEPENDENT_REVIEW_PASS`.
-- API-first/bank-safety surface declares only `INTERNET`, `POST_NOTIFICATIONS`, `RECEIVE_BOOT_COMPLETED`; legacy Accessibility/overlay/package automation surfaces are excluded from v0.7 packaging and known provider-key markers are absent from inspected exact-run APK artifact.
+- API-first/bank-safety surface excludes known legacy automation/provider-key surfaces from v0.7 packaging.
 - PR metadata is reconciled to repository/build PASS rather than stale “M1 started” text.
 - Physical enrollment, hardware-backed Keystore behavior, reboot/network recovery, stable-signed update continuity and real Job -> Inference -> Result/Evidence remain mandatory before release. External banking-app compatibility is not claimed from repository tests.
 
@@ -91,7 +90,6 @@ The former exact `558de5227e74fb3fdfa61c378b5e64c7912758f4`, review `5079723679`
 - Canonical branch: `wo048/multi-ai-subscription-orchestration`; exact head `1d808ce46135a7427711608c2dec8cfdbd46810e`.
 - CI `33518393104`, Queue `33518392985`, Probe Guard `33518393107`, Vercel Verify `33518392986` PASS; independent cost/security review `5079166931` PASS for repository zero-cost scope.
 - Gemini blocks API/Vertex/ADC/base-url/persisted non-account routes; Claude accepts only independently proven Claude App Pro/Max and rejects API/gateway/Bedrock/Vertex/Foundry; OpenRouter is hard-coded to `openrouter/free`; Ollama is local zero-cost fallback.
-- No-network self-test covers billing-route denial, config classification, redaction and bounded timeout/kill.
 - Real PC01 provider login/quota/capability, parallel executor/reviewer scheduling, reboot recovery and Ollama fallback still require physical E2E evidence.
 
 ## Canonical PC01 / physical-device truth
@@ -102,9 +100,9 @@ The former exact `558de5227e74fb3fdfa61c378b5e64c7912758f4`, review `5079723679`
 - Current evidence still records missing active ingress/bootstrap deadlock. Repository/CI evidence is never PC01/Tailscale runtime evidence; do not create duplicate physical jobs or retry them through cloud AI.
 
 ## Release path from current state
-1. Complete exact-head CI/Queue verification for this CURRENT_STATE commit and keep PR #118 `do-not-merge`; the trusted-review design is repository-hardened but cannot become authoritative until explicitly integrated to trusted MAIN.
+1. This final state reconciliation creates a new PR #118 head; require exact-head CI/Queue/Vercel Verify to PASS but do not fake a formal independent approval with the PR author identity.
 2. Obtain/configure a genuinely separate reviewer identity/App for formal exact-head APPROVED reviews; same-author/self-comment review must fail closed.
-3. After explicit Owner authorization, integrate governance hardening, then configure/audit live MAIN Settings: required checks, PR-only, trusted review, safe bypass, no force-push/delete. Only then can #113 close.
+3. Only after explicit Owner authorization may governance hardening be integrated to trusted MAIN; then configure/audit live MAIN Settings and run a harmless canary proving trusted review behavior on the latest PR head. Only then can #113 close.
 4. Freeze Web PR #117 at `4f9014a...`; wait for exact-head zero-cost Vercel READY, then prove physical pre-routing, #135 one-time migration and full Single Door runtime gate.
 5. Freeze PR #116 until physical #57/#58/#100 evidence; freeze #108/#109 and #132 until exact-head device smoke; freeze #134 until PC01 provider E2E.
 6. Do not merge MAIN or promote Production unless applicable gates are simultaneously PASS and explicit Owner release authorization applies.
