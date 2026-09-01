@@ -1,11 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- v0.7 thin-worker minimum permission surface. -->
     <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-    <uses-permission android:name="android.permission.QUERY_ADVANCED_PROTECTION_MODE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <supports-screens
@@ -15,11 +12,6 @@
         android:xlargeScreens="true"
         android:anyDensity="true" />
 
-    <queries>
-        <package android:name="com.google.android.apps.bard" />
-        <package android:name="com.tailscale.ipn" />
-    </queries>
-
     <application
         android:allowBackup="false"
         android:label="TigerIQ AI Worker"
@@ -28,8 +20,9 @@
         android:usesCleartextTraffic="false"
         android:networkSecurityConfig="@xml/network_security_config">
 
+        <!-- The only launcher in v0.7: API-first Employee/Device enrollment. -->
         <activity
-            android:name=".PermissionWizardActivity"
+            android:name=".v07.V07EnrollmentActivity"
             android:exported="true"
             android:resizeableActivity="true">
             <intent-filter>
@@ -38,15 +31,12 @@
             </intent-filter>
         </activity>
 
-        <activity android:name=".HomeActivity" android:exported="false" android:resizeableActivity="true" />
-        <activity android:name=".MainActivity" android:exported="false" android:resizeableActivity="true" />
-        <activity android:name=".v07.V07StatusActivity" android:exported="false" android:resizeableActivity="true" />
-
-        <service
-            android:name=".ForegroundWorkerService"
+        <activity
+            android:name=".v07.V07StatusActivity"
             android:exported="false"
-            android:foregroundServiceType="dataSync" />
+            android:resizeableActivity="true" />
 
+        <!-- FCM is wake-only. It carries no provider/session/lease secret. -->
         <service
             android:name=".v07.TigerIqMessagingService"
             android:exported="false">
@@ -55,21 +45,18 @@
             </intent-filter>
         </service>
 
-        <receiver android:name=".v07.V07BootReceiver" android:enabled="true" android:exported="false">
+        <!-- Re-enqueue authoritative recovery after reboot/app update. -->
+        <receiver
+            android:name=".v07.V07BootReceiver"
+            android:enabled="true"
+            android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
 
-        <service
-            android:name=".AccessibilityBridgeService"
-            android:exported="true"
-            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
-            <intent-filter>
-                <action android:name="android.accessibilityservice.AccessibilityService" />
-            </intent-filter>
-            <meta-data android:name="android.accessibilityservice" android:resource="@xml/accessibility_service_config" />
-        </service>
+        <!-- Intentionally absent in v0.7: AccessibilityService, overlay, package queries,
+             foreground controller service, battery-optimization bypass and AI-app automation. -->
     </application>
 </manifest>
