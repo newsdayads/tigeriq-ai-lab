@@ -20,8 +20,8 @@ android {
         applicationId = "ai.tigeriq.worker"
         minSdk = 26
         targetSdk = 35
-        versionCode = 10
-        versionName = "0.7.0-api-first"
+        versionCode = 11
+        versionName = "0.7.1-api-first"
     }
 
     // v0.7 is a clean API-first APK. The direct children of ai/tigeriq/worker are
