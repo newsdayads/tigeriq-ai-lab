@@ -10,11 +10,10 @@
   },
   "providers": {
     "groq": {
-      "enabled": true,
-      "mode": "configured_free_quota",
+      "enabled": false,
+      "mode": "disabled_until_zero_cost_billing_is_independently_proven",
       "credentialEnv": "GROQ_API_KEY",
-      "role": ["executor", "reviewer", "judge"],
-      "onQuota": "fallback"
+      "reason": "An API key or stated free quota does not prove that the backing account cannot incur paid usage."
     },
     "openrouter": {
       "enabled": true,
@@ -62,6 +61,6 @@
     "independentReviewRequired": true,
     "independentJudgeRequired": true,
     "requiredDistinctBackendIdentities": 3,
-    "fallbackOrder": ["gemini_cli", "claude_code", "openrouter", "ollama", "groq"]
+    "fallbackOrder": ["ollama", "gemini_cli", "claude_code", "openrouter"]
   }
 }
