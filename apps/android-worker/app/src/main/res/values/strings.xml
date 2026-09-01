@@ -1,5 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">TigerIQ Worker</string>
-    <string name="accessibility_description">TigerIQ Worker semantic execution bridge. Enable only on dedicated worker devices.</string>
 </resources>
