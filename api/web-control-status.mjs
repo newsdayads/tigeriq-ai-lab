@@ -155,9 +155,9 @@ export default async function handler(req, res) {
         identity: ownerIdentity,
         authorization: {
           authority: 'TigerIQ',
-          role: ownerAuthenticated ? 'Founder & CEO' : null,
+          role: ownerAuthenticated ? 'Chủ tịch' : null,
           rbacRole: ownerAuthenticated ? 'Owner' : null,
-          title: ownerAuthenticated ? 'Founder & CEO · TigerIQ AI Lab' : null,
+          title: ownerAuthenticated ? 'Chủ tịch · TigerIQ AI Lab' : null,
           implementedRoles: ['Owner'],
           requestedRoles: ['Owner', 'Admin', 'Nhân viên', 'Chỉ xem'],
           providerInterface: '06-work-management-rbac-required',
