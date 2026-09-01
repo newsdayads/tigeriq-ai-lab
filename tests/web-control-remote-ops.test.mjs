@@ -17,27 +17,45 @@ describe('WO-045 Web Control remote operations', () => {
     expect(ui).toContain('/api/web-control-status');
   });
 
-  it('renders familiar account UX with Google sign-in and logout', () => {
-    for (const id of ['accountBox','accountMenu','accountAvatar','accountName','accountEmail','accountRole','accountMenuAvatar','accountMenuName','accountMenuEmail','accountMenuRole','authBtn','logoutBtn']) {
+  it('renders familiar account UX with official Google Identity Services and logout', () => {
+    for (const id of ['accountBox','accountMenu','accountAvatar','accountName','accountEmail','accountRole','accountMenuAvatar','accountMenuName','accountMenuEmail','accountMenuRole','googleButton','logoutBtn']) {
       expect(ui).toContain(`id="${id}"`);
     }
-    expect(ui).toContain('Tiếp tục với Google');
-    expect(ui).toContain('class="google-icon"');
-    expect(ui).toContain('Google xác thực danh tính · TigerIQ cấp quyền');
-    expect(ui).toContain('/api/owner-auth?action=login');
+    expect(ui).toContain('https://accounts.google.com/gsi/client?hl=vi');
+    expect(ui).toContain('window.google.accounts.id.initialize');
+    expect(ui).toContain('window.google.accounts.id.renderButton');
+    expect(ui).toContain("text:'continue_with'");
+    expect(ui).toContain('/api/owner-auth?action=identity');
     expect(ui).toContain('/api/owner-auth?action=logout');
-    expect(ownerAuth).toContain("action === 'logout'");
-    expect(ownerAuth).toContain('clearOwnerCookies(res)');
+    expect(ui).not.toContain('/api/owner-auth?action=login');
+    expect(ui).toContain('Google xác thực danh tính · TigerIQ cấp quyền');
+    expect(ui).toContain('ID token');
+    expect(ownerAuth).toContain("action === 'identity'");
+    expect(ownerAuth).toContain('verifyGoogleIdToken');
+    expect(ownerAuth).toContain("error: 'oauth_code_flow_retired'");
   });
 
-  it('keeps identity and TigerIQ authorization separate and truthful', () => {
-    expect(ui).toContain('OAuth chưa cấu hình · TigerIQ đang fail-closed ở Chỉ xem');
+  it('keeps Google identity and TigerIQ authorization separate and requires no client secret', () => {
+    expect(ownerAuth).toContain("identityMode: 'google_id_token'");
+    expect(ownerAuth).toContain('clientSecretRequired: false');
+    expect(ownerAuth).not.toContain('TIGERIQ_OWNER_GOOGLE_CLIENT_SECRET');
+    expect(ownerAuth).not.toContain('oauth2.googleapis.com/token');
     expect(ownerAuth).toContain("authority: 'TigerIQ'");
     expect(ownerAuth).toContain("implementedRoles: ['Owner']");
     expect(ownerAuth).toContain("requestedRoles: ['Owner', 'Admin', 'Nhân viên', 'Chỉ xem']");
     expect(ownerAuth).toContain("providerInterface: '06-work-management-rbac-required'");
     expect(ownerAuth).toContain('googleControlsAuthorization: false');
     expect(statusApi).toContain("role: ownerAuthenticated ? 'Owner' : null");
+    expect(statusApi).toContain("identityMode: 'google_id_token'");
+    expect(statusApi).toContain('clientSecretRequired: false');
+  });
+
+  it('allows only GIS resources needed by the identity-only flow in CSP', () => {
+    expect(vercel).toContain("script-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/client");
+    expect(vercel).toContain('https://accounts.google.com/gsi/style');
+    expect(vercel).toContain('https://accounts.google.com/gsi/');
+    expect(vercel).toContain('Cross-Origin-Opener-Policy');
+    expect(vercel).toContain('same-origin-allow-popups');
   });
 
   it('keeps write controls fail-closed until server reports writeReady', () => {
