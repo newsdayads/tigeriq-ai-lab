@@ -1,6 +1,7 @@
 param(
   [switch]$Live,
   [switch]$SelfTest,
+  [switch]$ClaudeNoUsageCreditsVerified,
   [int]$TimeoutSeconds = 45
 )
 
@@ -69,7 +70,7 @@ function Set-LiveResult([System.Collections.IDictionary]$Result, [System.Collect
   $combined = (([string]$LiveResult.output) + "`n" + ([string]$LiveResult.error)).Trim()
   $markerOk = $combined -match [regex]::Escape($ExpectedMarker)
   $Result.liveOk = (-not $LiveResult.timeout -and $LiveResult.exitCode -eq 0 -and $markerOk)
-  $Result.status = if ($LiveResult.timeout) { 'LIVE_TIMEOUT' } elseif ($Result.liveOk) { 'READY' } elseif ($LiveResult.exitCode -ne 0) { if ($combined -match '^BILLING_ROUTE_BLOCKED|CLAUDE_SUBSCRIPTION_AUTH_UNPROVEN') { 'BILLING_ROUTE_BLOCKED' } else { 'AUTH_OR_INVOCATION_ERROR' } } else { 'UNEXPECTED_RESPONSE' }
+  $Result.status = if ($LiveResult.timeout) { 'LIVE_TIMEOUT' } elseif ($Result.liveOk) { 'READY' } elseif ($LiveResult.exitCode -ne 0) { if ($combined -match '^BILLING_ROUTE_BLOCKED|CLAUDE_SUBSCRIPTION_AUTH_UNPROVEN|CLAUDE_USAGE_CREDITS_STATUS_UNPROVEN') { 'BILLING_ROUTE_BLOCKED' } else { 'AUTH_OR_INVOCATION_ERROR' } } else { 'UNEXPECTED_RESPONSE' }
   $Result.liveOutput = Sanitize $combined
 }
 
@@ -154,6 +155,7 @@ function Invoke-GeminiSubscriptionProbe([string]$Exe) {
 function Invoke-ClaudeSubscriptionProbe([string]$Exe) {
   $blockers=@(Get-ClaudeBillingRouteBlockers)
   if($blockers.Count -gt 0){ return [ordered]@{exitCode=2;timeout=$false;output='';error=('BILLING_ROUTE_BLOCKED '+($blockers -join ','));subscriptionAuth=$false} }
+  if(-not $ClaudeNoUsageCreditsVerified){ return [ordered]@{exitCode=7;timeout=$false;output='';error='CLAUDE_USAGE_CREDITS_STATUS_UNPROVEN';subscriptionAuth=$false} }
   $auth=Invoke-External -Exe $Exe -ArgumentList @('auth','status') -Timeout ([Math]::Min($TimeoutSeconds,15))
   if($auth.timeout -or $auth.exitCode -ne 0 -or -not(Test-ClaudeSubscriptionStatus $auth.output)){ return [ordered]@{exitCode=3;timeout=$false;output='';error='CLAUDE_SUBSCRIPTION_AUTH_UNPROVEN';subscriptionAuth=$false} }
   $clear=@('ANTHROPIC_API_KEY','ANTHROPIC_AUTH_TOKEN','ANTHROPIC_BASE_URL','ANTHROPIC_BEDROCK_BASE_URL','ANTHROPIC_VERTEX_BASE_URL','CLAUDE_CODE_USE_BEDROCK','CLAUDE_CODE_USE_VERTEX','CLAUDE_CODE_USE_FOUNDRY')
@@ -189,6 +191,7 @@ function Run-SelfTest {
   Assert-True (Test-GeminiConfigHasBillingRoute '{"security":{"auth":{"selectedType":"gemini-api-key"}}}') 'gemini_config_api_route_detect'
   Assert-True (Test-GeminiConfigHasBillingRoute '{"security":{"auth":{"selectedType":"vertex-ai"}}}') 'gemini_config_vertex_route_detect'
   Assert-True (-not(Test-GeminiConfigHasBillingRoute '{"security":{"auth":{"selectedType":"oauth-personal"}}}')) 'gemini_account_route_allow'
+  Assert-True (-not [bool]$ClaudeNoUsageCreditsVerified) 'claude_usage_credits_unverified_by_default'
 
   $oldGeminiKey=[Environment]::GetEnvironmentVariable('GEMINI_API_KEY','Process')
   $oldAnthropicKey=[Environment]::GetEnvironmentVariable('ANTHROPIC_API_KEY','Process')
@@ -211,7 +214,7 @@ function Run-SelfTest {
     Assert-True ([bool]$timed.timeout) 'bounded_timeout_kill'
   }
 
-  [ordered]@{selfTest='PASS';billingRouteDenial='PASS';timeoutKill='PASS';openRouterModel='openrouter/free';geminiApiPaidFallback=$false;timestampUtc=[DateTime]::UtcNow.ToString('o')} | ConvertTo-Json
+  [ordered]@{selfTest='PASS';billingRouteDenial='PASS';timeoutKill='PASS';openRouterModel='openrouter/free';geminiApiPaidFallback=$false;claudeUsageCreditsRequiredProof=$true;timestampUtc=[DateTime]::UtcNow.ToString('o')} | ConvertTo-Json
 }
 
 if($SelfTest){ Run-SelfTest; exit 0 }
@@ -234,7 +237,7 @@ $summary=[ordered]@{
   timestampUtc=[DateTime]::UtcNow.ToString('o')
   tools=@($gemini,$claude,$openrouter,$ollama,$git)
   readyCount=$readyProviders.Count
-  policy=[ordered]@{ billingMode='ZERO_COST_ONLY'; openRouterModel='openrouter/free'; geminiApiKeyRoute='DISABLED'; paidFallback=$false }
-  note=if($Live){'Live mode allows Gemini Google-account login, independently proven Claude Pro/Max login, OpenRouter openrouter/free only, and local Ollama fallback. Any detected metered/provider route fails closed. No paid/API fallback.'}else{'Static probe only. Real provider calls require PC01/runtime credentials; unknown billing routes fail closed.'}
+  policy=[ordered]@{ billingMode='ZERO_COST_ONLY'; openRouterModel='openrouter/free'; geminiApiKeyRoute='DISABLED'; claudeUsageCredits='REQUIRE_EXTERNAL_DISABLED_PROOF'; paidFallback=$false }
+  note=if($Live){'Live mode allows Gemini Google-account login and OpenRouter openrouter/free only; Claude is blocked unless no-usage-credit status was externally verified and the explicit switch is supplied. Any metered/provider route fails closed. Local Ollama remains zero-cost fallback.'}else{'Static probe only. Real provider calls require PC01/runtime credentials; unknown billing routes fail closed.'}
 }
 $summary | ConvertTo-Json -Depth 7
