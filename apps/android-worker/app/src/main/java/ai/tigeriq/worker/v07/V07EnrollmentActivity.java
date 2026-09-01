@@ -20,7 +20,6 @@ import android.widget.Toast;
 public final class V07EnrollmentActivity extends Activity {
     private static final int NAVY = Color.rgb(17, 24, 39);
     private static final int ORANGE = Color.rgb(244, 113, 31);
-    private static final int GOLD = Color.rgb(250, 190, 58);
     private static final int MUTED = Color.rgb(92, 105, 125);
 
     private EditText gatewayInput;
@@ -36,6 +35,7 @@ public final class V07EnrollmentActivity extends Activity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
 
         if (new EmployeeDeviceStore(this).isEnrolled()) {
+            V07WorkScheduler.ensurePeriodicRecovery(this);
             openStatus();
             return;
         }
@@ -110,7 +110,9 @@ public final class V07EnrollmentActivity extends Activity {
                 new EnrollmentCoordinator(this).enroll(gateway, employee, credential, bootstrap);
                 // Minimize lifetime of one-time enrollment material in Java/UI state.
                 bootstrapInput.post(() -> bootstrapInput.setText(""));
+                V07WorkScheduler.ensurePeriodicRecovery(this);
                 V07WorkScheduler.enqueueRecovery(this);
+                new WorkerStatusStore(this).setPushState("PUSH_OR_POLL_READY");
                 runOnUiThread(() -> {
                     statusView.setText("Đăng ký thành công");
                     openStatus();

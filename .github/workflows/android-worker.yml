@@ -48,6 +48,10 @@ jobs:
           grep -q 'android.permission.RECEIVE_BOOT_COMPLETED' "$manifest"
           grep -q 'java.exclude("ai/tigeriq/worker/\*.java")' "$build"
           test ! -e apps/android-worker/app/src/main/res/xml/accessibility_service_config.xml
+          test -e "$v07/V07PeriodicWakeWorker.java"
+          grep -q 'PeriodicWorkRequest' "$v07/V07WorkScheduler.java"
+          grep -q 'ExistingPeriodicWorkPolicy.KEEP' "$v07/V07WorkScheduler.java"
+          grep -q 'V07WorkScheduler.enqueueRecovery' "$v07/V07PeriodicWakeWorker.java"
           forbidden='BIND_ACCESSIBILITY_SERVICE|REQUEST_IGNORE_BATTERY_OPTIMIZATIONS|QUERY_ADVANCED_PROTECTION_MODE|SYSTEM_ALERT_WINDOW|QUERY_ALL_PACKAGES|REQUEST_INSTALL_PACKAGES|REQUEST_DELETE_PACKAGES|PACKAGE_USAGE_STATS|BIND_NOTIFICATION_LISTENER_SERVICE|BIND_VPN_SERVICE|BIND_DEVICE_ADMIN|MANAGE_EXTERNAL_STORAGE|READ_EXTERNAL_STORAGE|WRITE_EXTERNAL_STORAGE|READ_MEDIA_|READ_SMS|RECEIVE_SMS|SEND_SMS|READ_CALL_LOG|WRITE_CALL_LOG|READ_CONTACTS|WRITE_CONTACTS|ACCESS_FINE_LOCATION|ACCESS_BACKGROUND_LOCATION|RECORD_AUDIO|CAMERA|AccessibilityBridgeService|ForegroundWorkerService|com\.google\.android\.apps\.bard|com\.tailscale\.ipn'
           if grep -E "$forbidden" "$manifest"; then
             echo 'BANK_SAFE_MANIFEST_FAIL: forbidden capability in v0.7 source manifest' >&2

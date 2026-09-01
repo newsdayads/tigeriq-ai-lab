@@ -6,6 +6,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.Gravity;
+import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -16,6 +17,7 @@ public final class V07StatusActivity extends Activity {
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        V07WorkScheduler.ensurePeriodicRecovery(this);
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(48, 48, 48, 48);
@@ -27,7 +29,15 @@ public final class V07StatusActivity extends Activity {
         jobView = text("", 14); root.addView(jobView);
         pushView = text("", 14); root.addView(pushView);
         evidenceView = text("", 12); root.addView(evidenceView);
-        TextView safety = text("Thực thi qua TigerIQ API. Không dùng Accessibility làm execution engine.", 12); root.addView(safety);
+        Button scanNow = new Button(this);
+        scanNow.setText("QUÉT VIỆC NGAY");
+        scanNow.setAllCaps(false);
+        scanNow.setOnClickListener(v -> {
+            V07WorkScheduler.enqueueRecovery(this);
+            new WorkerStatusStore(this).setState(WorkerState.WORKING, "Đã yêu cầu quét việc ngay", null);
+        });
+        root.addView(scanNow);
+        TextView safety = text("Thực thi qua TigerIQ API. Không dùng Accessibility làm execution engine. Push không sẵn sàng vẫn có polling fallback.", 12); root.addView(safety);
         setContentView(root);
     }
 
@@ -40,7 +50,7 @@ public final class V07StatusActivity extends Activity {
         stateView.setTextColor(s.state == WorkerState.READY ? Color.rgb(20,137,97) : s.state == WorkerState.WORKING ? Color.rgb(177,111,0) : Color.rgb(190,54,54));
         messageView.setText(s.message == null ? "" : s.message);
         jobView.setText(s.jobId == null || s.jobId.isBlank() ? "Không có job đang chạy" : "Job: " + s.jobId);
-        pushView.setText("FCM: " + (s.pushState == null ? "UNKNOWN" : s.pushState));
+        pushView.setText("Wake: " + (s.pushState == null ? "POLL_FALLBACK" : s.pushState));
         evidenceView.setText(s.lastEvidence == null || s.lastEvidence.isBlank() ? "Chưa có evidence gần nhất" : "Evidence: " + s.lastEvidence);
     }
 
