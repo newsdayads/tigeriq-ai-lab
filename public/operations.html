@@ -25,7 +25,7 @@
 </section>
 <div class="grid">
   <section class="card wide live">
-    <h2>⚡ Đang làm ngay bây giờ</h2>
+    <h2>⚡ Trạng thái điều phối hiện tại</h2>
     <div id="liveTitle" class="headline"><span class="live-dot"></span>Đang tải trạng thái…</div>
     <div class="rows">
       <div class="row"><span>Công việc hiện tại</span><strong id="currentAction">—</strong></div>
@@ -34,7 +34,8 @@
       <div class="row"><span>Vừa hoàn tất</span><strong id="lastProgress">—</strong></div>
       <div class="row"><span>Bước tiếp theo</span><strong id="nextAction">—</strong></div>
       <div class="row"><span>Đang chờ / blocker</span><strong id="blocker">—</strong></div>
-      <div class="row"><span>Cập nhật cuối</span><strong id="updatedAt">—</strong></div>
+      <div class="row"><span>Feed cập nhật</span><strong id="updatedAt">—</strong></div>
+      <div class="row"><span>Web runtime</span><strong id="runtimeState">—</strong></div>
     </div>
   </section>
   <section class="card">
@@ -64,22 +65,31 @@ function text(id,value){$(id).textContent=value||'—'}
 function cls(id,kind){$(id).className='v '+kind}
 function ago(value){if(!value)return '—';const d=new Date(value);return Number.isNaN(d.getTime())?value:d.toLocaleString('vi-VN')}
 function chip(label,kind=''){return `<span class="chip ${kind}">${String(label).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}</span>`}
+function feedState(a){
+  if(!a?.number)return {label:'CHƯA CÓ FEED',kind:'warn'};
+  if(a.state==='closed')return {label:'FEED ĐÃ ĐÓNG',kind:'warn'};
+  const title=String(a.title||'').toUpperCase();
+  if(title.includes('ĐANG CHỜ')||title.includes('EXTERNAL WAIT')||title.includes('BLOCKED'))return {label:'ĐANG CHỜ',kind:'warn'};
+  if(title.includes('ĐANG LÀM')||title.includes('ĐANG CHẠY'))return {label:'ĐANG LÀM',kind:'good'};
+  return {label:'THEO DÕI',kind:'blue'};
+}
 function render(data){
   const a=data.autonomy||{};
-  const active=Boolean(a.number&&a.state!=='closed');
-  text('autoState',active?'ĐANG CHẠY':'CHƯA CÓ FEED');cls('autoState',active?'good':'warn');
+  const f=feedState(a);text('autoState',f.label);cls('autoState',f.kind);
   text('queueState',String(data.queue?.count??0)+' việc');cls('queueState',(data.queue?.count??0)>0?'blue':'good');
   const w=data.cloudWorkforce||{};
   text('aiState',w.enabled?(w.providers||[]).join(' + ')||w.gateway:'TẮT');cls('aiState',w.enabled?'good':'warn');
   text('pcState',data.pc01?.label||'CHƯA RÕ');cls('pcState',data.pc01?.channel==='verified'?'good':data.pc01?.channel==='degraded'?'bad':'warn');
   text('liveTitle',a.title||'Chưa có trạng thái tự vận hành');
-  text('currentAction',a.currentAction);text('currentScope',a.currentScope);text('channel',a.executionChannel);text('lastProgress',a.lastProgress);text('nextAction',a.nextAction);text('blocker',a.blocker||'Không có blocker');text('updatedAt',ago(a.updatedAt));
+  text('currentAction',a.currentAction);text('currentScope',a.currentScope);text('channel',a.executionChannel);text('lastProgress',a.lastProgress);text('nextAction',a.nextAction);
+  text('blocker',a.blocker?'Feed điều phối (không phải runtime live): '+a.blocker:'Không có blocker trong feed');text('updatedAt',ago(a.updatedAt));
+  const dep=data.deployment||{};text('runtimeState',`${dep.environment||'unknown'} · ${dep.gitRef||'—'} · ${String(dep.gitSha||'—').slice(0,12)}`);
   text('executor',`${w.executorProvider||'—'} · ${w.executorModel||'—'}`);text('reviewer',`${w.reviewerProvider||'—'} · ${w.reviewerModel||'—'}`);text('judge',`${w.judgeProvider||'—'} · ${w.judgeModel||'—'}`);text('cost',w.zeroCostPolicy||'—');
   const pc=data.pc01||{};$('pcNotice').textContent=(pc.channel==='verified'?'✅ ':'⚠️ ')+(pc.reason||'Chưa có bằng chứng runtime')+(pc.physicalState==='unknown'?' · Không suy đoán nguồn điện/Tailscale.':'');
   const box=$('queue');box.innerHTML='';const rows=Array.isArray(data.queue?.items)?data.queue.items:[];
   if(!rows.length){box.innerHTML='<div class="empty">Không còn Work Order chưa đạt terminal gate.</div>'}
   for(const item of rows){const e=item.evidence||{};let kind=item.stage==='completed'?'pass':item.stage==='failed'?'fail':item.stage==='claimed'?'run':'wait';const div=document.createElement('div');div.className='work';div.innerHTML=`<div class="work-top"><div class="work-title">#${item.number} · ${String(item.title||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}</div><div class="stage ${kind==='pass'?'good':kind==='fail'?'bad':kind==='run'?'blue':'warn'}">${stageText[item.stage]||item.stage||'—'}</div></div><div class="chips">${item.priority?chip(item.priority):''}${chip(item.type==='command'?'PC/LỆNH':'WORK ORDER')}${e.claimed?chip('CLAIM','run'):''}${e.failed?chip('FAILED','fail'):''}${e.reviewPass?chip('REVIEW PASS','pass'):''}${e.judgePass?chip('JUDGE PASS','pass'):''}</div>`;box.append(div)}
-  $('footer').textContent='Cập nhật '+new Date().toLocaleString('vi-VN')+' · Preview '+String(data.deployment?.gitSha||'—').slice(0,10)+' · dữ liệu không cache';
+  $('footer').textContent='Cập nhật '+new Date().toLocaleString('vi-VN')+' · Preview '+String(data.deployment?.gitSha||'—').slice(0,10)+' · feed GitHub tách biệt runtime live';
 }
 async function load(){const b=$('refresh');b.disabled=true;try{const r=await fetch('/api/web-control-status',{cache:'no-store'});const d=await r.json();if(!r.ok)throw new Error(d.error||('HTTP '+r.status));render(d)}catch(e){text('autoState','LỖI API');cls('autoState','bad');text('liveTitle','Không đọc được trạng thái: '+e.message)}finally{b.disabled=false}}
 $('refresh').onclick=load;load();setInterval(load,20000);

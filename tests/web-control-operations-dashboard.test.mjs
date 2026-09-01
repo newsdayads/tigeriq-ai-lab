@@ -56,17 +56,22 @@ describe('Web Control autonomous operations dashboard', () => {
     expect(autonomyFeedPresentation({ body: 'TIGERIQ_JOB_V1' })).toBeNull();
   });
 
-  it('makes the operations dashboard the landing page and preserves the command center', async () => {
+  it('makes operations the landing page and never equates an open feed with active execution', async () => {
     const config = JSON.parse(await readFile(new URL('../vercel.json', import.meta.url), 'utf8'));
     expect(config.rewrites).toContainEqual({ source: '/', destination: '/operations.html' });
     expect(config.rewrites).toContainEqual({ source: '/command-center', destination: '/command-center.html' });
 
     const html = await readFile(new URL('../public/operations.html', import.meta.url), 'utf8');
-    expect(html).toContain('Đang làm ngay bây giờ');
+    expect(html).toContain('Trạng thái điều phối hiện tại');
     expect(html).toContain('AI / kênh thực hiện');
     expect(html).toContain('Vừa hoàn tất');
     expect(html).toContain('Bước tiếp theo');
     expect(html).toContain('Đang chờ / blocker');
+    expect(html).toContain('Web runtime');
+    expect(html).toContain('function feedState(a)');
+    expect(html).toContain("label:'ĐANG CHỜ'");
+    expect(html).toContain('Feed điều phối (không phải runtime live)');
+    expect(html).not.toContain("active?'ĐANG CHẠY'");
     expect(html).toContain("fetch('/api/web-control-status'");
   });
 });
