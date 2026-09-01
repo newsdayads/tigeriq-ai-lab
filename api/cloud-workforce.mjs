@@ -3,8 +3,11 @@ import { getVercelOidcToken } from '@vercel/oidc';
 
 const VERCEL_GATEWAY_URL = 'https://ai-gateway.vercel.sh/v1/chat/completions';
 const GROQ_GATEWAY_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const OPENROUTER_GATEWAY_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
 const REQUEST_TIMEOUT_MS = 12_000;
 const MAX_TEXT = 8_000;
+const ZERO_COST_PROVIDERS = new Set(['groq', 'gemini', 'openrouter']);
 
 function clean(value, max = MAX_TEXT) {
   return String(value || '').replace(/\u0000/g, '').trim().slice(0, max);
@@ -54,25 +57,57 @@ export function verifyServerGateComment(body) {
   return safeEqual(gateSignature(body), signatures[0]);
 }
 
-function aiProvider() {
-  const explicit = String(process.env.TIGERIQ_AI_PROVIDER || '').trim().toLowerCase();
-  if (explicit === 'groq' || explicit === 'vercel') return explicit;
-  if (String(process.env.GROQ_API_KEY || '').trim()) return 'groq';
-  if (String(process.env.AI_GATEWAY_API_KEY || '').trim()) return 'vercel';
-  return 'groq';
+function enabledFlag(value) {
+  return ['1', 'true', 'on', 'yes'].includes(String(value || '').trim().toLowerCase());
+}
+
+function providerConfigured(provider) {
+  if (provider === 'groq') return Boolean(String(process.env.GROQ_API_KEY || '').trim());
+  if (provider === 'openrouter') return Boolean(String(process.env.OPENROUTER_API_KEY || '').trim());
+  if (provider === 'gemini') {
+    return Boolean(String(process.env.GEMINI_API_KEY || '').trim()) && enabledFlag(process.env.TIGERIQ_GEMINI_FREE_TIER);
+  }
+  if (provider === 'vercel') return Boolean(String(process.env.AI_GATEWAY_API_KEY || '').trim()) || String(process.env.TIGERIQ_AI_PROVIDER || '').trim().toLowerCase() === 'vercel';
+  return false;
+}
+
+function roleProvider(role) {
+  const normalizedRole = String(role || 'executor').trim().toLowerCase();
+  const roleExplicit = String(process.env[`TIGERIQ_${normalizedRole.toUpperCase()}_PROVIDER`] || '').trim().toLowerCase();
+  if (ZERO_COST_PROVIDERS.has(roleExplicit) || roleExplicit === 'vercel') return roleExplicit;
+
+  const globalExplicit = String(process.env.TIGERIQ_AI_PROVIDER || '').trim().toLowerCase();
+  if (ZERO_COST_PROVIDERS.has(globalExplicit) || globalExplicit === 'vercel') return globalExplicit;
+
+  const preference = normalizedRole === 'executor'
+    ? ['gemini', 'groq', 'openrouter']
+    : normalizedRole === 'reviewer'
+      ? ['groq', 'openrouter', 'gemini']
+      : ['openrouter', 'groq', 'gemini'];
+  return preference.find(providerConfigured) || 'groq';
 }
 
 function roleModel(role) {
   const key = `TIGERIQ_${String(role || '').toUpperCase()}_MODEL`;
   const configured = String(process.env[key] || '').trim();
   if (configured) return configured;
-  if (aiProvider() === 'groq') {
+  const provider = roleProvider(role);
+  if (provider === 'gemini') return 'gemini-3.7-flash';
+  if (provider === 'openrouter') return 'openrouter/free';
+  if (provider === 'groq') {
     if (role === 'reviewer') return 'qwen/qwen3.8-27b';
     if (role === 'judge') return 'openai/gpt-oss-20b';
     return 'openai/gpt-oss-120b';
   }
   if (role === 'reviewer') return 'openai/gpt-5.6-sol';
   return 'google/gemini-3.6-flash';
+}
+
+function providerLabel(provider) {
+  if (provider === 'gemini') return 'gemini-free-tier-api';
+  if (provider === 'openrouter') return 'openrouter-free-router';
+  if (provider === 'groq') return 'groq-free-tier-api';
+  return 'vercel-ai-gateway';
 }
 
 export function cloudExecutorEnabled() {
@@ -83,21 +118,34 @@ export function cloudExecutorEnabled() {
 }
 
 export function cloudWorkforceDescriptor() {
-  const provider = aiProvider();
+  const executorProvider = roleProvider('executor');
+  const reviewerProvider = roleProvider('reviewer');
+  const judgeProvider = roleProvider('judge');
+  const providers = [...new Set([executorProvider, reviewerProvider, judgeProvider])];
   return {
     enabled: cloudExecutorEnabled(),
     runtime: 'vercel-serverless',
-    gateway: provider === 'groq' ? 'groq-free-tier-api' : 'vercel-ai-gateway',
+    gateway: providers.length > 1 ? 'multi-provider-zero-cost' : providerLabel(providers[0]),
+    providers,
+    executorProvider,
+    reviewerProvider,
+    judgeProvider,
     pc01Required: false,
     executorModel: roleModel('executor'),
     reviewerModel: roleModel('reviewer'),
     judgeModel: roleModel('judge'),
     safeScope: 'non-mutating-cloud-task-v1',
+    zeroCostPolicy: 'free-tier-or-free-router-only; no automatic paid upgrade',
   };
 }
 
 async function providerCredential(provider) {
   if (provider === 'groq') return String(process.env.GROQ_API_KEY || '').trim();
+  if (provider === 'openrouter') return String(process.env.OPENROUTER_API_KEY || '').trim();
+  if (provider === 'gemini') {
+    if (!enabledFlag(process.env.TIGERIQ_GEMINI_FREE_TIER)) return '';
+    return String(process.env.GEMINI_API_KEY || '').trim();
+  }
   const explicit = String(process.env.AI_GATEWAY_API_KEY || '').trim();
   if (explicit) return explicit;
   if (String(process.env.TIGERIQ_AI_PROVIDER || '').trim().toLowerCase() !== 'vercel') return '';
@@ -122,36 +170,79 @@ function parseJsonContent(value, errorName) {
   }
 }
 
-async function gatewayJson({ model, system, payload, timeoutMs = REQUEST_TIMEOUT_MS }) {
-  const provider = aiProvider();
+function authorizationError(provider) {
+  if (provider === 'gemini') return 'gemini_free_tier_authorization_unavailable';
+  if (provider === 'openrouter') return 'openrouter_authorization_unavailable';
+  if (provider === 'groq') return 'groq_authorization_unavailable';
+  return 'ai_gateway_authorization_unavailable';
+}
+
+function apiErrorPrefix(provider) {
+  if (provider === 'gemini') return 'gemini_api';
+  if (provider === 'openrouter') return 'openrouter_api';
+  if (provider === 'groq') return 'groq_api';
+  return 'ai_gateway';
+}
+
+function geminiContent(data) {
+  const parts = data?.candidates?.[0]?.content?.parts;
+  if (!Array.isArray(parts)) return '';
+  return parts.map((part) => String(part?.text || '')).join('').trim();
+}
+
+async function gatewayJson({ role, model, system, payload, timeoutMs = REQUEST_TIMEOUT_MS }) {
+  const provider = roleProvider(role);
   const credential = await providerCredential(provider);
   if (!credential) {
-    const error = new Error(provider === 'groq' ? 'groq_authorization_unavailable' : 'ai_gateway_authorization_unavailable');
+    const error = new Error(authorizationError(provider));
     error.status = 503;
     throw error;
   }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const body = {
-      model,
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: JSON.stringify(payload) },
-      ],
-      response_format: { type: 'json_object' },
-      max_tokens: 1600,
-      temperature: 0,
-      stream: false,
-    };
-    if (provider === 'groq') body.reasoning_format = 'hidden';
-    const response = await fetch(provider === 'groq' ? GROQ_GATEWAY_URL : VERCEL_GATEWAY_URL, {
-      method: 'POST',
-      headers: {
+    let url;
+    let headers;
+    let body;
+    if (provider === 'gemini') {
+      url = `${GEMINI_BASE_URL}/${encodeURIComponent(model)}:generateContent`;
+      headers = {
+        'x-goog-api-key': credential,
+        'x-goog-api-client': 'tigeriq-web-control/1.0',
+        'content-type': 'application/json',
+      };
+      body = {
+        systemInstruction: { parts: [{ text: system }] },
+        contents: [{ role: 'user', parts: [{ text: JSON.stringify(payload) }] }],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          maxOutputTokens: 1600,
+          temperature: 0,
+        },
+      };
+    } else {
+      url = provider === 'groq' ? GROQ_GATEWAY_URL : provider === 'openrouter' ? OPENROUTER_GATEWAY_URL : VERCEL_GATEWAY_URL;
+      headers = {
         authorization: `Bearer ${credential}`,
         'content-type': 'application/json',
         'x-title': 'TigerIQ Cloud Workforce',
-      },
+      };
+      body = {
+        model,
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: JSON.stringify(payload) },
+        ],
+        response_format: { type: 'json_object' },
+        max_tokens: 1600,
+        temperature: 0,
+        stream: false,
+      };
+      if (provider === 'groq') body.reasoning_format = 'hidden';
+    }
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
       body: JSON.stringify(body),
       signal: controller.signal,
     });
@@ -159,17 +250,17 @@ async function gatewayJson({ model, system, payload, timeoutMs = REQUEST_TIMEOUT
     let data;
     try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text.slice(0, 500) }; }
     if (!response.ok) {
-      const error = new Error(`${provider === 'groq' ? 'groq_api' : 'ai_gateway'}_${response.status}`);
+      const error = new Error(`${apiErrorPrefix(provider)}_${response.status}`);
       error.status = response.status === 401 || response.status === 403 ? 503 : 502;
       error.details = data?.error?.message || data?.message || 'Cloud AI request failed';
       throw error;
     }
-    const content = data?.choices?.[0]?.message?.content;
+    const content = provider === 'gemini' ? geminiContent(data) : data?.choices?.[0]?.message?.content;
     return {
       value: parseJsonContent(content, 'cloud_workforce_invalid_json'),
-      modelUsed: String(data?.model || model),
-      providerUsed: String(data?.provider || data?.provider_name || provider),
-      usage: data?.usage || null,
+      modelUsed: String(data?.modelVersion || data?.model || model),
+      providerUsed: provider,
+      usage: provider === 'gemini' ? (data?.usageMetadata || null) : (data?.usage || null),
     };
   } catch (error) {
     if (error?.name === 'AbortError') {
@@ -191,6 +282,7 @@ const JUDGE_SYSTEM = `You are the TigerIQ Judge/Gate. You did not execute or rev
 
 export async function executeCloudTask({ instruction, expectedEvidence }) {
   const call = await gatewayJson({
+    role: 'executor',
     model: roleModel('executor'),
     system: EXECUTOR_SYSTEM,
     payload: { instruction: clean(instruction, 6_000), expectedEvidence: clean(expectedEvidence, 3_000) },
@@ -210,6 +302,7 @@ export async function executeCloudTask({ instruction, expectedEvidence }) {
 
 export async function reviewCloudTask(input) {
   const call = await gatewayJson({
+    role: 'reviewer',
     model: roleModel('reviewer'),
     system: REVIEWER_SYSTEM,
     payload: {
@@ -230,6 +323,7 @@ export async function reviewCloudTask(input) {
 
 export async function judgeCloudTask(input) {
   const call = await gatewayJson({
+    role: 'judge',
     model: roleModel('judge'),
     system: JUDGE_SYSTEM,
     payload: {
