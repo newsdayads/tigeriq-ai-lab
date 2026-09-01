@@ -98,12 +98,12 @@ for path in (
 ):
     expect_read_denied(path)
 
-root_entries = {row['name'] for row in worker.tool_list('.')['entries']}
-assert 'README.md' in root_entries
+root_entries = {row['name'].lower() for row in worker.tool_list('.')['entries']}
+assert 'readme.md' in root_entries
 assert 'apps' in root_entries
 assert '.git' not in root_entries
 assert '.github' not in root_entries
-script_entries = {row['name'] for row in worker.tool_list('scripts')['entries']}
+script_entries = {row['name'].lower() for row in worker.tool_list('scripts')['entries']}
 assert 'tool.py' in script_entries
 assert 'pc-worker' not in script_entries
 
