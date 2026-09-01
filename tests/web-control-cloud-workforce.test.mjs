@@ -9,10 +9,25 @@ function responseJson(value, model, provider = 'groq') {
   }), { status: 200, headers: { 'content-type': 'application/json' } });
 }
 
+function geminiResponse(value, model = 'gemini-3.7-flash') {
+  return new Response(JSON.stringify({
+    modelVersion: model,
+    candidates: [{ content: { parts: [{ text: JSON.stringify(value) }] } }],
+    usageMetadata: { totalTokenCount: 10 },
+  }), { status: 200, headers: { 'content-type': 'application/json' } });
+}
+
 function saveEnv() { return { ...process.env }; }
 function restoreEnv(saved) {
   for (const key of Object.keys(process.env)) if (!(key in saved)) delete process.env[key];
   Object.assign(process.env, saved);
+}
+function clearProviderEnv() {
+  for (const key of [
+    'GROQ_API_KEY','GEMINI_API_KEY','OPENROUTER_API_KEY','AI_GATEWAY_API_KEY',
+    'TIGERIQ_AI_PROVIDER','TIGERIQ_EXECUTOR_PROVIDER','TIGERIQ_REVIEWER_PROVIDER','TIGERIQ_JUDGE_PROVIDER',
+    'TIGERIQ_GEMINI_FREE_TIER','TIGERIQ_EXECUTOR_MODEL','TIGERIQ_REVIEWER_MODEL','TIGERIQ_JUDGE_MODEL',
+  ]) delete process.env[key];
 }
 
 describe('Web Control cloud workforce', () => {
@@ -20,7 +35,7 @@ describe('Web Control cloud workforce', () => {
 
   it('uses the no-card Groq path to execute, independently review, judge, and attest gates', async () => {
     const saved = saveEnv();
-    delete process.env.AI_GATEWAY_API_KEY;
+    clearProviderEnv();
     Object.assign(process.env, {
       GROQ_API_KEY: 'test-only-groq-key',
       TIGERIQ_OWNER_SESSION_SECRET: 'test-owner-session-secret',
@@ -50,12 +65,16 @@ describe('Web Control cloud workforce', () => {
       expect(workforce.cloudExecutorEnabled()).toBe(true);
       expect(workforce.cloudWorkforceDescriptor()).toEqual(expect.objectContaining({
         gateway: 'groq-free-tier-api',
+        providers: ['groq'],
+        executorProvider: 'groq',
+        reviewerProvider: 'groq',
+        judgeProvider: 'groq',
         executorModel: 'openai/gpt-oss-120b',
         reviewerModel: 'qwen/qwen3.8-27b',
         judgeModel: 'openai/gpt-oss-20b',
       }));
       const execution = await workforce.executeCloudTask({ instruction: 'Return the result of 6 * 7.', expectedEvidence: 'Concrete result plus server-generated SHA256, reviewer and judge.' });
-      expect(execution).toEqual(expect.objectContaining({ status: 'completed', result: '42' }));
+      expect(execution).toEqual(expect.objectContaining({ status: 'completed', result: '42', providerUsed: 'groq' }));
       const review = await workforce.reviewCloudTask({ instruction: 'Return the result of 6 * 7.', expectedEvidence: 'Concrete result.', result: execution.result, evidenceSummary: execution.evidenceSummary });
       expect(review.pass).toBe(true);
       const judge = await workforce.judgeCloudTask({ instruction: 'Return the result of 6 * 7.', expectedEvidence: 'Concrete result.', result: execution.result, evidenceSummary: execution.evidenceSummary, review });
@@ -76,9 +95,85 @@ describe('Web Control cloud workforce', () => {
     } finally { restoreEnv(saved); }
   });
 
+  it('spreads Executor, Reviewer, and Judge across Gemini Free, Groq Free, and OpenRouter Free when all are configured', async () => {
+    const saved = saveEnv();
+    clearProviderEnv();
+    Object.assign(process.env, {
+      GEMINI_API_KEY: 'test-only-gemini-key',
+      TIGERIQ_GEMINI_FREE_TIER: '1',
+      GROQ_API_KEY: 'test-only-groq-key',
+      OPENROUTER_API_KEY: 'test-only-openrouter-key',
+      TIGERIQ_CLOUD_EXECUTOR: 'on',
+    });
+    const seen = [];
+    vi.stubGlobal('fetch', async (input, init = {}) => {
+      const url = String(input);
+      const request = JSON.parse(String(init.body || '{}'));
+      seen.push({ url, headers: init.headers, request });
+      if (url.includes('generativelanguage.googleapis.com')) {
+        return geminiResponse({ status: 'completed', result: '42', evidenceSummary: 'Gemini computed 6 × 7.' });
+      }
+      if (url.includes('api.groq.com')) {
+        return responseJson({ pass: true, rationale: 'Groq reviewer confirms the result.' }, request.model, 'groq');
+      }
+      if (url.includes('openrouter.ai')) {
+        return responseJson({ pass: true, rationale: 'OpenRouter free judge confirms the gated result.' }, request.model, 'openrouter');
+      }
+      throw new Error(`unexpected URL ${url}`);
+    });
+    try {
+      vi.resetModules();
+      const workforce = await import('../api/cloud-workforce.mjs');
+      expect(workforce.cloudWorkforceDescriptor()).toEqual(expect.objectContaining({
+        gateway: 'multi-provider-zero-cost',
+        providers: ['gemini', 'groq', 'openrouter'],
+        executorProvider: 'gemini',
+        reviewerProvider: 'groq',
+        judgeProvider: 'openrouter',
+        executorModel: 'gemini-3.7-flash',
+        reviewerModel: 'qwen/qwen3.8-27b',
+        judgeModel: 'openrouter/free',
+        zeroCostPolicy: 'free-tier-or-free-router-only; no automatic paid upgrade',
+      }));
+      const execution = await workforce.executeCloudTask({ instruction: 'Return the result of 6 * 7.', expectedEvidence: 'Concrete result.' });
+      const review = await workforce.reviewCloudTask({ instruction: 'Return the result of 6 * 7.', expectedEvidence: 'Concrete result.', result: execution.result, evidenceSummary: execution.evidenceSummary });
+      const judge = await workforce.judgeCloudTask({ instruction: 'Return the result of 6 * 7.', expectedEvidence: 'Concrete result.', result: execution.result, evidenceSummary: execution.evidenceSummary, review });
+      expect(execution).toEqual(expect.objectContaining({ result: '42', providerUsed: 'gemini', modelUsed: 'gemini-3.7-flash' }));
+      expect(review).toEqual(expect.objectContaining({ pass: true, providerUsed: 'groq' }));
+      expect(judge).toEqual(expect.objectContaining({ pass: true, providerUsed: 'openrouter' }));
+      expect(seen).toHaveLength(3);
+      expect(seen[0].url).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent');
+      expect(seen[0].headers['x-goog-api-key']).toBe('test-only-gemini-key');
+      expect(seen[0].request.generationConfig.responseMimeType).toBe('application/json');
+      expect(seen[1].url).toBe('https://api.groq.com/openai/v1/chat/completions');
+      expect(seen[1].headers.authorization).toBe('Bearer test-only-groq-key');
+      expect(seen[1].request.model).toBe('qwen/qwen3.8-27b');
+      expect(seen[2].url).toBe('https://openrouter.ai/api/v1/chat/completions');
+      expect(seen[2].headers.authorization).toBe('Bearer test-only-openrouter-key');
+      expect(seen[2].request.model).toBe('openrouter/free');
+    } finally { restoreEnv(saved); }
+  });
+
+  it('does not auto-use Gemini unless the key is explicitly marked Free Tier', async () => {
+    const saved = saveEnv();
+    clearProviderEnv();
+    Object.assign(process.env, {
+      GEMINI_API_KEY: 'gemini-key-with-unknown-billing-state',
+      GROQ_API_KEY: 'test-only-groq-key',
+      TIGERIQ_CLOUD_EXECUTOR: 'on',
+    });
+    try {
+      vi.resetModules();
+      const workforce = await import('../api/cloud-workforce.mjs');
+      const descriptor = workforce.cloudWorkforceDescriptor();
+      expect(descriptor.executorProvider).toBe('groq');
+      expect(descriptor.providers).toEqual(['groq']);
+    } finally { restoreEnv(saved); }
+  });
+
   it('keeps Vercel AI Gateway available only when explicitly selected or keyed', async () => {
     const saved = saveEnv();
-    delete process.env.GROQ_API_KEY;
+    clearProviderEnv();
     Object.assign(process.env, {
       AI_GATEWAY_API_KEY: 'test-only-vercel-key',
       TIGERIQ_AI_PROVIDER: 'vercel',
@@ -102,9 +197,7 @@ describe('Web Control cloud workforce', () => {
 
   it('fails closed on Groq by default when no cloud credential is configured', async () => {
     const saved = saveEnv();
-    delete process.env.GROQ_API_KEY;
-    delete process.env.AI_GATEWAY_API_KEY;
-    delete process.env.TIGERIQ_AI_PROVIDER;
+    clearProviderEnv();
     Object.assign(process.env, { TIGERIQ_CLOUD_EXECUTOR: 'on' });
     try {
       vi.resetModules();
@@ -117,6 +210,7 @@ describe('Web Control cloud workforce', () => {
 
   it('keeps the cloud executor off by default outside Vercel unless explicitly enabled', async () => {
     const saved = saveEnv();
+    clearProviderEnv();
     delete process.env.VERCEL;
     delete process.env.TIGERIQ_CLOUD_EXECUTOR;
     try {
