@@ -1,0 +1,57 @@
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
+
+function Assert-True([bool]$Condition, [string]$Name) {
+  if (-not $Condition) { throw "AI_FREE_POLICY_FAIL:$Name" }
+}
+
+$repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..\..')
+$configPath = Join-Path $repoRoot 'config\ai-free-providers-v1.json'
+Assert-True (Test-Path $configPath) 'config_exists'
+
+$config = Get-Content -Raw -Path $configPath | ConvertFrom-Json
+Assert-True ([string]$config.version -eq 'TIGERIQ_AI_FREE_PROVIDERS_V1') 'version'
+Assert-True ([string]$config.policy.billingMode -eq 'ZERO_COST_ONLY') 'zero_cost_only'
+Assert-True (-not [bool]$config.policy.paidFallback) 'paid_fallback_disabled'
+Assert-True ([bool]$config.policy.failClosedOnUnknownBilling) 'unknown_billing_fail_closed'
+Assert-True ([int]$config.policy.maxAttemptsPerRole -ge 1 -and [int]$config.policy.maxAttemptsPerRole -le 3) 'bounded_role_attempts'
+
+Assert-True ([string]$config.providers.openrouter.mode -eq 'free_router_only') 'openrouter_free_mode'
+Assert-True ([string]$config.providers.openrouter.model -eq 'openrouter/free') 'openrouter_free_model'
+Assert-True (-not [bool]$config.providers.openrouter.allowNonFreeModels) 'openrouter_nonfree_disabled'
+Assert-True (-not [bool]$config.providers.gemini_api.enabled) 'gemini_api_disabled'
+Assert-True ([bool]$config.providers.gemini_cli.forbidApiKeyRoute) 'gemini_api_key_route_forbidden'
+Assert-True ([bool]$config.providers.gemini_cli.forbidVertexRoute) 'gemini_vertex_route_forbidden'
+Assert-True ([bool]$config.providers.claude_code.forbidApiKeyRoute) 'claude_api_route_forbidden'
+Assert-True ([bool]$config.providers.claude_code.forbidCloudGatewayRoutes) 'claude_gateway_routes_forbidden'
+
+Assert-True ([string]$config.routing.selectionMode -eq 'capability_then_zero_cost_rank') 'capability_cost_selection'
+Assert-True ([bool]$config.routing.dedupeByWorkOrder) 'dedupe_required'
+Assert-True ([bool]$config.routing.leaseRequired) 'lease_required'
+Assert-True ([bool]$config.routing.independentReviewRequired) 'review_required'
+Assert-True ([bool]$config.routing.independentJudgeRequired) 'judge_required'
+Assert-True ([int]$config.routing.requiredDistinctBackendIdentities -eq 3) 'three_distinct_identities_required'
+
+$requiredRoles = @('executor', 'reviewer', 'judge')
+$enabledProviders = @($config.providers.PSObject.Properties | Where-Object { [bool]$_.Value.enabled })
+Assert-True ($enabledProviders.Count -ge 3) 'at_least_three_enabled_provider_candidates'
+
+foreach ($provider in $enabledProviders) {
+  $roles = @($provider.Value.role)
+  foreach ($role in $requiredRoles) {
+    Assert-True ($roles -contains $role) ("provider_{0}_supports_{1}" -f $provider.Name, $role)
+  }
+}
+
+$serialized = $config | ConvertTo-Json -Depth 10
+Assert-True (-not ($serialized -match '(?i)"paidFallback"\s*:\s*true')) 'no_paid_fallback_true'
+Assert-True (-not ($serialized -match '(?i)"allowNonFreeModels"\s*:\s*true')) 'no_nonfree_openrouter_model'
+
+[ordered]@{
+  policyTest = 'PASS'
+  billingMode = 'ZERO_COST_ONLY'
+  requiredDistinctBackendIdentities = 3
+  enabledProviderCandidates = $enabledProviders.Count
+  maxAttemptsPerRole = [int]$config.policy.maxAttemptsPerRole
+  timestampUtc = [DateTime]::UtcNow.ToString('o')
+} | ConvertTo-Json
