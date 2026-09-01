@@ -58,4 +58,16 @@ describe('Governance independent review security policy', () => {
     expect(workflow).not.toContain('issues: write');
     expect(workflow).not.toContain('contents: write');
   });
+
+  it('keeps MAIN policy aligned with native distinct/stale review protection', () => {
+    const policy = readFileSync(new URL('../docs/governance/MAIN_PROTECTION_V1.md', import.meta.url), 'utf8');
+    expect(policy).toContain('Require pull request reviews before merging');
+    expect(policy).toContain('Dismiss stale pull request approvals when new commits are pushed');
+    expect(policy).toContain('Require approval of the most recent reviewable push');
+    expect(policy).toContain('reviewer GitHub login exists and differs from PR author login');
+    expect(policy).toContain('pull_request_target');
+    expect(policy).toContain('must never checkout or execute PR-head code');
+    expect(policy).toContain('RETIRED and INVALID');
+    expect(policy).not.toContain('Do not require a second GitHub-account approval');
+  });
 });
