@@ -1,4 +1,4 @@
-name: WO-045 PC01 Self-hosted Runtime Repair
+name: WO-045 PC01 Repository-only Guard
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
       - 'wo045/pc01-autonomy-hardening'
     paths:
       - '.github/workflows/wo045-pc01-selfhosted-bootstrap.yml'
-      - 'scripts/pc-worker/runner_prepare_workforce_pc01.py'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  validate-repair:
+  repository-only-guard:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -26,26 +26,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Validate bounded PC01 repair helper
-        run: python -m py_compile scripts/pc-worker/runner_prepare_workforce_pc01.py
-
-  pc01-workforce-runtime:
-    needs: validate-repair
-    runs-on: self-hosted
-    timeout-minutes: 12
-    steps:
-      - name: Checkout reviewed PC01 control helper
-        uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-          fetch-depth: 1
-          path: pc01-control
-      - name: Checkout exact reviewed Workforce Controller source
-        uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-          fetch-depth: 1
-          ref: 731436be054e06cfdfe4b4d48e25507ab7adb35a
-          path: workforce-source
-      - name: Prepare bounded Workforce runtime on PC01
-        run: python pc01-control/scripts/pc-worker/runner_prepare_workforce_pc01.py workforce-source
+      - name: Validate Controller V1 package without touching PC01
+        run: |
+          python -m py_compile scripts/pc-worker/workforce-controller-v1/workforce_controller_v1.py scripts/pc-worker/workforce-controller-v1/workforce_controller_recovery_v1.py scripts/pc-worker/workforce-controller-v1/run_workforce_controller_v1.py scripts/pc-worker/workforce-controller-v1/prepare_workforce_controller_v1.py scripts/pc-worker/workforce-controller-v1/health_workforce_controller_v1.py
+          cd scripts/pc-worker/workforce-controller-v1
+          python test_workforce_controller_v1.py
+          python test_workforce_recovery_v1.py
+      - name: Confirm no self-hosted deployment in this workflow
+        run: echo 'PC01_REPOSITORY_ONLY_GUARD_PASS'
