@@ -111,13 +111,13 @@ integration('PC01 Android -> Controller -> PostgreSQL -> Result integration',()=
   });
 
   it('recovers an expired Android lease after simulated PC01 restart',async()=>{
-    const createdAt=new Date().toISOString();
+    const simulatedLeaseAt=Date.now()-120_000;
+    const createdAt=new Date(simulatedLeaseAt-5_000).toISOString();
     await service.createJob({jobId:'JOB-ANDROID-RECOVERY',idempotencyKey:'android-recovery-001',title:'Android recovery',objective:'Prove restart recovery',payload:{prompt:'recovery'},targetEmployeeId:employeeId,requiredPermissions:['jobs:lease'],requiredCapabilities:['ai-direct'],allowedWorkerKinds:['device'],expectedEvidence:['json'],scopeKeys:['pc01/android/recovery'],dependencies:[],maxAttempts:3,independentReview:false,judgeRequired:false,priority:'P1',createdAt});
     const leaseBody=json({leaseTtlMs:60_000});
-    const leased=await controller.handle(signedRequest('POST','/api/v1/jobs/lease',leaseBody));
+    const leased=await controller.handle(signedRequest('POST','/api/v1/jobs/lease',leaseBody,simulatedLeaseAt));
     expect(leased.status).toBe(200);
     expect((leased.body.lease as Record<string,unknown>).jobId).toBe('JOB-ANDROID-RECOVERY');
-    await pool.query(`UPDATE leases SET expires_at=now()-interval '5 seconds' WHERE job_id='JOB-ANDROID-RECOVERY' AND status='active'`);
 
     const restartedRepo=new PostgresOperationalStateRepository(pool);
     const restartedService=new OperationalWorkService(restartedRepo);
