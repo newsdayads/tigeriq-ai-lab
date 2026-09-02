@@ -93,6 +93,24 @@ describe('Company Control Tower Business State V2 adapter', () => {
     expect(vm.goals).toEqual([]); expect(vm.kpis).toEqual([]); expect(vm.signals).toEqual([]); expect(vm.missions).toEqual([]); expect(vm.ownerActions).toEqual([]); expect(vm.outcomes).toEqual([]);
   });
 
+  it('only shows Trello coordination cards from an explicit read-only, provenance-bearing Controller projection', () => {
+    const absent = buildCompanyControlTowerViewModel(MOCK_CONTROLLER_SNAPSHOT, { previewBusiness: MOCK_CONTROL_TOWER_PREVIEW });
+    expect(absent.workCoordination).toEqual(expect.objectContaining({ available:false, reason:'NON_AUTHORITATIVE_SOURCE', cards:[] }));
+
+    const live = buildCompanyControlTowerViewModel(liveSnapshot({
+      workCoordination: {
+        schemaVersion:'tigeriq.work-coordination.trello-readonly.v1', sourceSystem:'trello', readOnly:true,
+        provenance:{source_system:'trello',source_ref:'trello://board/company',observed_at:'2026-09-02T10:00:00Z'},
+        cards:[{cardId:'trello-1',title:'Chốt nhận diện thương hiệu',status:'in_progress',due_at:'2026-09-05T10:00:00Z',board_name:'Company',list_name:'Đang làm',members:['Sơn'],provenance:{source_system:'trello',source_ref:'trello://card/1'}}],
+      },
+    }));
+    expect(live.workCoordination).toEqual(expect.objectContaining({ available:true, sourceSystem:'trello', readOnly:true }));
+    expect(live.workCoordination.cards[0]).toEqual(expect.objectContaining({ cardId:'trello-1',title:'Chốt nhận diện thương hiệu' }));
+
+    const rejected = buildCompanyControlTowerViewModel(liveSnapshot({ workCoordination:{ sourceSystem:'trello', readOnly:false, cards:live.workCoordination.cards } }));
+    expect(rejected.workCoordination).toEqual(expect.objectContaining({ available:false, cards:[] }));
+  });
+
   it('computes aggregate KPI health only from explicit read-model health values', () => {
     expect(kpiHealthScore([{healthPct:100},{healthPct:67},{healthPct:null}])).toBe(84);
     expect(kpiHealthScore([])).toBeNull();
