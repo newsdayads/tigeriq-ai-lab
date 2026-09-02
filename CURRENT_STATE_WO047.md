@@ -1,55 +1,81 @@
-# CURRENT STATE — WO-047 API-FIRST INFERENCE GATEWAY
+# CURRENT STATE — WO-047 OPTIONAL INFERENCE GATEWAY ADAPTER
 
-Date: 2026-09-01  
-Status: FINAL COORDINATOR DEPENDENCY REFRESHED — EXACT-HEAD REGATE / GENUINE INDEPENDENT REVIEW PENDING  
+Date: 2026-09-02  
+Status: DISTRIBUTED AI RUNTIME V1 INTEGRATED — MERGE HEAD CI PASS — FINAL DOC HEAD REGATE / INDEPENDENT REVIEW PENDING  
 Branch: `wo047/api-first-inference-gateway`  
 PR: #127  
 Issue: #125
 
-## Working repository capability
-- TigerIQ Employee Identity is independent from provider/model backend identity.
-- Contract exists for APP and Work Management consumers without modifying their implementations.
-- Short-lived authenticated TigerIQ device sessions protect inference calls.
-- Provider credentials stay server-side.
+## V1 role
+PR #127 is an **optional `pc01-server` inference adapter**. It is no longer interpreted as the mandatory provider-call path for every AI Employee.
+
+TigerIQ V1 supports:
+- `pc01-local` — local model/runtime on PC01;
+- `pc01-server` — explicitly selected server-side provider call through an adapter such as this Gateway;
+- `employee-device` — phone/device keeps its own provider authentication, calls its provider itself and returns standardized result/evidence to PC01.
+
+The Coordinator does not require possession of provider credentials.
+
+## Gateway capability retained for `pc01-server`
+- TigerIQ Employee Identity remains independent from provider/model backend identity.
+- Provider credentials used by this explicit server adapter remain server-side and are not returned to clients.
+- Short-lived authenticated sessions protect Gateway calls.
 - Provider quota/429, outage, timeout, auth/configuration and invalid responses are classified.
 - Health/cooldown and request-unit budgets affect selection.
-- Route retries are bounded to a maximum of 3.
-- Reviewer/Judge backend identity independence excludes prior identities and fails closed when unavailable or prior identity context is missing.
-- Mock-device E2E proves session -> inference -> sanitized evidence and idempotent replay.
+- Route retries are bounded to maximum 3.
+- Reviewer/Judge backend identity exclusions fail closed when an independent backend is unavailable.
+- Mock-device Gateway tests cover session -> inference -> sanitized evidence and idempotent replay.
 
-## 2026-09-01 final coordinator dependency refresh
-PR #111 final engineering head `b204e6cb581feebc10ff400aa5a5bcc1296bbc74` now requires three distinct Executor/Reviewer/Judge identities for every Work Order and defaults to Ollama local + `openrouter/free`, failing closed instead of auto-selecting generic paid/unproven API routes.
+## Device-direct boundary
+For `employee-device` jobs:
+- PC01/Server transports JOB + rendered Prompt only;
+- device provider credential remains on the device;
+- device calls its own provider directly;
+- standardized `TIGERIQ_JOB_EXECUTION_V1` result/evidence returns to PC01;
+- #127 is bypassed as the provider-call path.
 
-WO-047 was refreshed without force/rebase by merge commit `f748276f0441f99108a6ec53ec94a1790bf478f0` with parents:
-- prior WO-047 head `56fe223629d9994f25723cd6b20265868de901a5`;
-- current WO-043 head `b204e6cb581feebc10ff400aa5a5bcc1296bbc74`.
+No provider secret exists in the distributed execution request/result contract.
 
-Compare evidence showed the WO-047 side only adds its 11 Gateway-owned files relative to the current WO-043 base; no WO-043 remediation file is overwritten. The merge therefore preserves both sides without modifying Android, Web Control, PC01 runtime, MAIN or Production.
+## 2026-09-02 final Coordinator/Prompt Architect refresh
+Current #111 exact head: `b989a2599ae17ef50ee397a7bae2dd174701f340`.
 
-Historical refresh evidence:
-- first merge `83fe3c05e6b8d40e36a3fca8ae3c167676df0f96`: CI `33532723535` PASS;
-- first doc head `56fe223629d9994f25723cd6b20265868de901a5`: CI `33532871570` PASS.
+#127 was refreshed using union tree + two-parent merge `264dfb6147149edf58966ce33a5525a4aec200ba`:
+- first parent: prior #127 head `50bf1fbc9024c2c82331358f1aefec298d8990e6`;
+- second parent: #111 final head `b989a2599ae17ef50ee397a7bae2dd174701f340`;
+- branch ref updated with `force=false`.
 
-The final merge/documentation head created after `f748276...` must receive a fresh exact-head CI. Historical PASS is not used as substitute.
+Compare against #111 proves `behind_by=0` and the effective #127 layer adds only 12 Gateway-owned files, including the optional-adapter addendum. AI Runtime V1 / Prompt Architect files from #111 are preserved.
 
-## Independent review boundary
-Earlier independent review results are historical after dependency refresh. A genuinely independent review bound to the final exact refreshed head is required. Same-author/self-review is not independent evidence.
+Automated evidence at merge head `264dfb6...`:
+- CI `33584355276`: PASS.
 
-## Billing/runtime truth boundary
-- WO-047 does not prove billing-safe Gemini/Claude account login by itself; that policy/probe belongs to #133/#134.
-- No live Gemini/Claude/OpenRouter/Ollama result is claimed.
-- No PC01 auth/quota/scheduler/restart result is claimed.
+This CURRENT_STATE synchronization creates a new exact head, so CI must run once more before final repository automated PASS is claimed.
+
+## Prompt Architect / JOB-001 integration
+Canonical distributed contract lives in the #111 base:
+- `packages/ai-runtime-v1/src/index.ts`;
+- `schemas/ai-execution-v1.schema.json`;
+- `docs/contracts/AI_COORDINATION_PROMPT_ARCHITECT_V1.md`.
+
+The expected JOB-001 path may use a phone directly:
+`PC01 Coordinator -> Prompt Architect -> employee-device -> device-owned provider -> standardized result -> independent Reviewer -> independent Judge`.
+
+Gateway remains available only when routing intentionally selects a `pc01-server` endpoint.
+
+## Zero-cost / runtime boundary
+- Billing-safe execution policy belongs to #133/#134.
+- No live Gemini/Claude/OpenRouter/Ollama credential/auth/quota result is claimed here.
+- No physical PC01/Tailscale/phone/JOB-001 E2E result is claimed.
 - Provider budget/health/idempotency remain process-local in this Gateway implementation.
 
 ## Not changed
-- No APP/Android implementation.
-- No PC01 runtime.
+- No Android implementation.
 - No Web Control.
+- No PC01 runtime implementation.
 - No MAIN/Production.
-- No credential/key/payment method.
+- No payment method/paid service.
 
-## Integration boundaries
-- APP consumes the documented session/inference contract and never receives provider credentials.
-- Work Management carries trusted prior `provider/model` evidence via `requiredDistinctFrom`; it does not own provider credentials or mutate Gateway health/budget state.
-- Existing Workforce NodeScope does not yet include `inference:invoke`; deployment integrates through the injected bootstrap-authentication boundary under the owning stream's authorization.
-- PR #131 remains owned by its cross-stream/Android integration gate and must not be mutated by this AI Coordinator stream.
+## Remaining gates
+1. Final exact documentation head CI PASS.
+2. Genuine independent exact-head review; same-author/self-review is invalid.
+3. Physical JOB-001 runtime acceptance remains with the owning PC01/device streams.
