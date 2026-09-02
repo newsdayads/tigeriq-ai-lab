@@ -8,7 +8,7 @@ import static org.junit.Assert.*;
 
 public final class DirectAiJobAdapterTest {
     private static EmployeeDeviceStore.Profile profile() {
-        return new EmployeeDeviceStore.Profile("https://pc01.tigeriq.example", "EMP:001", "NODE-DEV-001", "DEV-001", "CONTROLLER-V1", "BIND-1", "a".repeat(64), true, 1L);
+        return new EmployeeDeviceStore.Profile(ControllerV1Contract.CONTROLLER_TAILSCALE_HTTP_BASE, "EMP:001", "NODE-DEV-001", "DEV-001", "CONTROLLER-V1", "BIND-1", "a".repeat(64), true, 1L);
     }
 
     private static DurableCheckpointStore.Snapshot snapshot() {
