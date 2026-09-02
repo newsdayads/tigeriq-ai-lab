@@ -50,14 +50,17 @@ jobs:
       - name: Watchdog recovery contract tests
         working-directory: scripts/pc-worker
         run: python test_watchdog_v3_contract.py
-      - name: Controller transport typecheck and single-store guard
+      - name: Controller transport typecheck single-store and durable-replay guard
         run: |
           npm ci
           npm run typecheck
           test -f db/migrations/001_operational_state_v1.sql
+          test -f db/migrations/002_device_proof_replay_v1.sql
           test ! -f scripts/pc-worker/workforce-controller-v1/workforce_controller_v1.sql
           ! grep -R '/v1/android/sessions\|/v1/android/jobs/pull\|/v1/android/jobs/submit' apps/workforce-controller packages/work-state
-          echo 'PC01_CONTROLLER_SINGLE_STORE_PROTOCOL_PASS'
+          grep -q 'device_proof_replay_state' apps/workforce-controller/src/device-auth.ts
+          ! grep -q 'seenNonces' apps/workforce-controller/src/device-auth.ts
+          echo 'PC01_CONTROLLER_SINGLE_STORE_DURABLE_REPLAY_PASS'
 
   watchdog-powershell-parse:
     runs-on: windows-latest
