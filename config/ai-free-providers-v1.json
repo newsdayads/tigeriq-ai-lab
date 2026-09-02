@@ -8,6 +8,13 @@
     "localFallbackAlwaysAllowed": true,
     "maxAttemptsPerRole": 3
   },
+  "execution": {
+    "coordinatorRequiresProviderCredential": false,
+    "serverProviderCallRequired": false,
+    "allowedLocations": ["pc01-local", "pc01-server", "employee-device"],
+    "employeeDeviceCredentialOwner": "employee-device",
+    "providerSecretsInEvidence": false
+  },
   "providers": {
     "groq": {
       "enabled": false,
