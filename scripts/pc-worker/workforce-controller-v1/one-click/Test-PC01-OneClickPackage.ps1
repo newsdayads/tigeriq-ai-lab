@@ -1,7 +1,7 @@
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..\..\..')).Path
+$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..\..')).Path
 $ManifestPath = Join-Path $PSScriptRoot 'bootstrap-manifest.json'
 $BootstrapPath = Join-Path $PSScriptRoot 'Invoke-PC01-OneClickGoLive.ps1'
 $RollbackPath = Join-Path $PSScriptRoot 'Invoke-PC01-OneClickRollback.ps1'
@@ -60,6 +60,6 @@ Assert-True ($launcher -match 'Invoke-PC01-OneClickGoLive\.ps1' -and $launcher -
 Assert-True ($allScripts -notmatch '(?i)winget\s+uninstall|Uninstall-Package|DROP\s+(TABLE|DATABASE)|Remove-WindowsFeature|git\s+(checkout|switch)\s+main') 'Destructive or MAIN mutation command detected.'
 Assert-True ($allScripts -notmatch '(?i)openclaw\s+(connect|login|auth|enable|start)') 'OpenClaw reconnect/enable command detected.'
 Assert-True ($allScripts -notmatch '(?i)/v1/android/sessions|/v1/android/jobs/pull|/v1/android/jobs/submit') 'Retired Android route detected.'
-Assert-True ($rollback -match 'databaseRollback.*NOT_PERFORMED_NON_DESTRUCTIVE' -or $rollback -match 'NOT_PERFORMED_NON_DESTRUCTIVE') 'Rollback must remain non-destructive for PostgreSQL.'
+Assert-True ($rollback -match 'NOT_PERFORMED_NON_DESTRUCTIVE') 'Rollback must remain non-destructive for PostgreSQL.'
 
 Write-Host 'PC01_ONE_CLICK_STATIC_CONTRACT_PASS'
