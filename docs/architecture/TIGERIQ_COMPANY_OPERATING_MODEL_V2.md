@@ -17,14 +17,15 @@ Engineering chỉ là một bộ phận. PC01, Android, PostgreSQL, AI Router, P
 2. Công ty phải có khả năng tự phát hiện việc cần làm; không phụ thuộc hoàn toàn vào việc Owner giao từng task.
 3. Mỗi công việc tự động phải nằm trong một phạm vi quyền rõ ràng.
 4. Việc có thể đảo ngược, rủi ro thấp và nằm trong quyền được phép thì hệ thống tự thực hiện.
-5. Việc tài chính, pháp lý, bảo mật cao, không thể đảo ngược hoặc vượt quyền phải đưa lên Owner theo Constitution.
-6. Mỗi nhiệm vụ phải gắn với một mục tiêu/KPI hoặc một nghĩa vụ vận hành rõ ràng.
-7. Kết quả kinh doanh quan trọng hơn hoạt động của agent.
-8. Không đánh đồng AI Employee với model. Employee giữ vai trò và trách nhiệm; model chỉ là năng lực có thể thay đổi.
-9. Không bắt buộc Reviewer/Judge cho mọi việc. Mức kiểm tra phụ thuộc rủi ro.
-10. Hệ thống phải lưu được trạng thái vận hành để tiếp tục sau restart, lỗi mạng hoặc đổi model.
-11. Hệ thống phải ưu tiên ngoại lệ cần xử lý, không bắt Owner theo dõi mọi hoạt động bình thường.
-12. Mỗi tính năng kỹ thuật mới phải trả lời được nó cải thiện bước nào trong vòng vận hành công ty.
+5. Mọi purchase, paid subscription, borrowing, investment hoặc financial commitment đều thuộc Owner authority bất kể số tiền. Budget limit chỉ là giới hạn của authorization đã được phê duyệt, không tự tạo quyền chi.
+6. Việc pháp lý trọng yếu, bảo mật cao, Production release, không thể đảo ngược hoặc vượt quyền phải đưa lên Owner theo Constitution.
+7. Mỗi nhiệm vụ phải gắn với một mục tiêu/KPI hoặc một nghĩa vụ vận hành rõ ràng.
+8. Kết quả kinh doanh quan trọng hơn hoạt động của agent.
+9. Không đánh đồng AI Employee với model. Employee giữ vai trò và trách nhiệm; model chỉ là năng lực có thể thay đổi.
+10. Không bắt buộc Reviewer/Judge cho mọi việc. Mức kiểm tra phụ thuộc rủi ro của từng action.
+11. Hệ thống phải lưu được trạng thái vận hành để tiếp tục sau restart, lỗi mạng hoặc đổi model.
+12. Hệ thống phải ưu tiên ngoại lệ cần xử lý, không bắt Owner theo dõi mọi hoạt động bình thường.
+13. Mỗi tính năng kỹ thuật mới phải trả lời được nó cải thiện bước nào trong vòng vận hành công ty.
 
 ## 3. Vòng vận hành chuẩn
 
@@ -39,17 +40,23 @@ PLAN — tạo Mission và kết quả mong đợi
         ↓
 ASSIGN — giao bộ phận / AI Employee
         ↓
+AUTHORIZE / POLICY GATE — kiểm tra quyền + policy + risk + approval
+        ↓
 EXECUTE — thực hiện bằng công cụ/runtime được phép
         ↓
-VERIFY — kiểm tra theo mức rủi ro
+VERIFY — kiểm tra theo mức rủi ro của action
         ↓
 MEASURE — cập nhật KPI / business outcome
         ↓
-LEARN / CORRECT — điều chỉnh trong phạm vi quyền
-        ↓
-ESCALATE — chỉ đưa ngoại lệ cần Owner quyết định
+LEARN / CORRECT — điều chỉnh trong cùng authority envelope
         ↺
 ```
+
+`Exception / CẦN SẾP` là side-channel có thể phát sinh từ bất kỳ bước nào, không chỉ cuối vòng.
+
+Một action chỉ được EXECUTE khi toàn bộ lớp ràng buộc tương ứng đều cho phép theo thứ tự ưu tiên hiện hành: Owner instruction → Constitution → security/architecture policy đã phê duyệt → Process/Mission scope → Employee permission → Tool permission → risk/approval policy.
+
+Effective authority luôn là giao của các quyền, không phải hợp: `Owner delegation ∩ Process/Mission policy ∩ Employee permissions ∩ Tool permissions ∩ Risk/approval policy`.
 
 ## 4. Các lớp của công ty
 
@@ -75,6 +82,15 @@ Chief of Staff chịu trách nhiệm:
 - báo cáo ngắn gọn cho Owner.
 
 Chief of Staff không phải nơi lưu trạng thái duy nhất, không trực tiếp sở hữu mọi credential, không tự review/judge việc của chính mình và không thay thế các hệ thống nghiệp vụ.
+
+Chief of Staff và mọi A5 bị cấm:
+- tự cấp hoặc phân phối credential/permission;
+- tự nâng autonomy của chính mình;
+- thay đổi approval/risk policy;
+- ủy quyền quyền mà nó không sở hữu;
+- tự review/judge output của chính mình khi policy yêu cầu độc lập;
+- che giấu mandatory escalation;
+- tự authorize Production release, financial/legal commitment hoặc irreversible action thuộc Owner authority.
 
 ### 4.3. Bộ phận
 Các bộ phận là nhóm năng lực ổn định:
@@ -181,9 +197,12 @@ Mission có:
 - risk level;
 - deadline;
 - budget limit;
-- jobs;
+- job_refs;
+- decision/approval_ref khi có;
 - current status;
 - business outcome.
+
+`job_refs` chỉ là quan hệ/tham chiếu tới runtime Job; không tạo một danh sách Job authoritative thứ hai.
 
 ### Exception / Owner Action
 Ngoại lệ không nên tự giải quyết hoặc vượt quyền hiện tại.
@@ -194,7 +213,8 @@ Phải ghi rõ:
 - hệ thống đã thử gì;
 - phương án đề xuất;
 - Owner cần quyết định cụ thể điều gì;
-- thời hạn nếu có.
+- thời hạn nếu có;
+- immutable `decision/approval_ref` khi Owner đã quyết định, ưu tiên tái sử dụng Evidence/Decision Log.
 
 ### Business Outcome
 Kết quả thực tế sau khi Mission/Process hoàn tất.
@@ -202,6 +222,8 @@ Kết quả thực tế sau khi Mission/Process hoàn tất.
 Không chỉ ghi `job done`; phải ghi được ảnh hưởng tới KPI hoặc mục tiêu khi có thể.
 
 ## 6. Mức tự chủ của AI Employee
+
+Autonomy chỉ quyết định mức độ độc lập khi thực hiện một action đã được phép. Autonomy không mở rộng permission, không hạ risk floor và không bỏ qua approval requirement.
 
 ### A0 — Quan sát
 Chỉ đọc dữ liệu, không thay đổi gì.
@@ -216,14 +238,16 @@ Chỉ đọc dữ liệu, không thay đổi gì.
 Được thực hiện hành động có thể đảo ngược, nằm trong quyền và giới hạn đã định.
 
 ### A4 — Tự quản một quy trình trong giới hạn
-Được tự chạy quy trình, tự retry/sửa lỗi thông thường và chỉ đưa ngoại lệ lên cấp trên.
+Được tự chạy quy trình, retry/sửa lỗi thông thường chỉ trong cùng approved authority envelope và đưa ngoại lệ lên cấp trên khi vượt envelope.
 
 ### A5 — Tự điều phối một phạm vi nghiệp vụ
-Chỉ áp dụng sau khi đã có lịch sử đủ tin cậy. Có thể tạo Mission và phân việc trong phạm vi được ủy quyền; vẫn không vượt các quyền Constitution dành cho Owner.
+Chỉ áp dụng sau khi đã có lịch sử đủ tin cậy. Có thể tạo Mission và phân việc trong phạm vi được ủy quyền; không được tạo thêm permission, thay risk/approval policy hoặc vượt các quyền Constitution dành cho Owner.
 
 Mức tự chủ phải gắn với phạm vi, không gán một mức chung cho mọi hành động của Employee.
 
 ## 7. Mức kiểm tra theo rủi ro
+
+Risk được phân loại theo từng action, không theo Employee hoặc toàn Mission. Policy định nghĩa hard minimum floor theo loại action và không được downgrade dưới floor.
 
 ### R0 — Rủi ro rất thấp
 Ví dụ: đọc, tóm tắt, nghiên cứu sơ bộ.  
@@ -234,16 +258,23 @@ Ví dụ: chuẩn bị báo cáo, cập nhật dữ liệu có thể sửa lại
 Xử lý: tự thực hiện + kiểm tra quy tắc; có thể lấy mẫu review.
 
 ### R2 — Rủi ro trung bình
-Ví dụ: gửi thông tin ra ngoài, thay đổi dữ liệu nghiệp vụ có tác động.  
-Xử lý: validation mạnh hơn hoặc independent Reviewer tùy process.
+Ví dụ: communication ra ngoài hoặc data mutation có tác động nhưng vẫn reversible và không chạm hard floor cao hơn.  
+Xử lý: validation mạnh hơn hoặc independent Reviewer theo process policy.
 
 ### R3 — Rủi ro cao
-Ví dụ: thay đổi quan trọng, security, quyết định có tác động lớn.  
+Ví dụ: high-impact security/engineering hoặc thay đổi quan trọng.  
 Xử lý: independent Reviewer bắt buộc; Judge khi policy yêu cầu.
 
 ### R4 — Rủi ro rất cao / Owner authority
-Ví dụ: chi tiền đáng kể, hợp đồng, release chính thức, hành động không thể đảo ngược.  
-Xử lý: Reviewer/Judge theo policy + Owner phê duyệt khi Constitution yêu cầu.
+Ví dụ: mọi financial commitment, Production release, material legal action, hợp đồng, hành động không thể đảo ngược.  
+Xử lý: Reviewer/Judge theo policy + Owner approval bắt buộc khi thuộc Owner authority.
+
+Hard floors tối thiểu:
+- mọi purchase/subscription/borrowing/investment/financial commitment = R4 + Owner;
+- Production release = R4 + Owner;
+- material legal/irreversible action = R4;
+- high-impact security/engineering = ít nhất R3 + independent review;
+- external/customer communication và business data mutation không được hạ dưới floor mà process policy quy định.
 
 ## 8. Quản lý theo ngoại lệ
 
@@ -269,7 +300,12 @@ Nguyên tắc:
 - accounting là nguồn thật về kế toán khi hệ thống kế toán tồn tại;
 - Drive là nguồn thật về tài liệu;
 - Calendar là nguồn thật về lịch;
-- PostgreSQL TigerIQ là nguồn thật về trạng thái điều phối/mission/job/runtime và các bản chiếu cần thiết cho vận hành.
+- PostgreSQL TigerIQ là nguồn thật về trạng thái điều phối/mission/job/runtime và các bản chiếu cần thiết cho vận hành;
+- restricted/private personal hoặc sensitive information bị loại khỏi general Company Context trừ khi một Business Process xác định rõ nhu cầu và authority cho phép;
+- credential/secret không được copy vào Business Context;
+- mỗi external projection phải có tối thiểu `source_system`, `source_ref`, `observed_at` và khi có thì `source_version`/etag;
+- projection là read-only/cacheable view; khi xung đột, authoritative source thắng;
+- chỉ giữ minimum necessary metadata/summary.
 
 TigerIQ giữ liên kết, metadata, quyền và bản tóm tắt cần thiết để Chief/Employee hiểu ngữ cảnh nhưng tránh tạo nguồn dữ liệu song song không cần thiết.
 
@@ -356,9 +392,9 @@ Tạo danh sách cơ hội kinh doanh thực tế, có căn cứ, phù hợp ngu
 ### Mission
 1. Research tìm cơ hội.
 2. Product đánh giá khả năng tạo sản phẩm/dịch vụ.
-3. Finance ước tính chi phí và thời gian hoàn vốn sơ bộ.
-4. Sales đánh giá khả năng tìm khách.
-5. Chief xếp hạng TOP cơ hội.
+3. Finance ước tính chi phí và thời gian hoàn vốn sơ bộ, không tạo financial commitment.
+4. Sales đánh giá khả năng tìm khách, không liên hệ khách hàng trong pilot.
+5. Chief xếp hạng TOP cơ hội bằng fixed scoring rubric.
 
 ### Kết quả bắt buộc
 Mỗi cơ hội phải có:
@@ -370,29 +406,47 @@ Mỗi cơ hội phải có:
 - chi phí thử nghiệm sơ bộ;
 - thời gian thử nghiệm;
 - rủi ro;
-- điểm ưu tiên.
+- điểm ưu tiên;
+- source refs cho mọi material factual claim;
+- evidence freshness/confidence;
+- deduplication với cơ hội tương đương;
+- reversible next experiment proposal không phát sinh paid commitment/customer contact.
+
+### Fixed scoring rubric cho TOP 3
+- customer problem;
+- TigerIQ fit / asset leverage;
+- evidence strength;
+- monetization path;
+- estimated test effort/cost;
+- risk;
+- time-to-test.
 
 ### KPI Pilot
-- ít nhất 5 cơ hội đủ dữ liệu;
-- ít nhất 3 nguồn bằng chứng cho mỗi cơ hội quan trọng khi phù hợp;
+- coverage target: ít nhất 5 cơ hội đủ dữ liệu, nhưng không dùng số lượng làm KPI chính;
+- all material factual claims có source refs; không invented market/financial facts;
+- bằng chứng có freshness/confidence;
 - không phát sinh chi phí trả phí;
 - không liên hệ khách hàng hoặc cam kết bên ngoài ở pilot này;
-- xuất TOP 3 cho Owner;
+- xuất TOP 3 evidence-traceable bằng fixed rubric;
+- mỗi TOP 3 có reversible next experiment proposal;
+- primary KPI: quality/traceability + closed-loop autonomous completion;
 - Web sau này phải hiển thị Goal → Mission → Jobs → Outcome.
 
 ### Mức rủi ro
-R1. Nghiên cứu và đề xuất; không có hành động tài chính/khách hàng.
+R1 cho research/proposal actions của pilot. Bất kỳ action nào vượt research/proposal phải phân loại lại theo action-level risk floor.
 
 ### Điều kiện PASS
 - vòng Goal → Signal → Mission → Work → Result/Evidence → Outcome chạy được;
-- Chief có thể tổng hợp và xếp hạng;
+- Chief có thể tổng hợp và xếp hạng bằng fixed rubric;
+- TOP 3 có evidence traceable và reversible next experiment;
 - không cần Owner can thiệp giữa vòng trừ khi có exception thật;
-- kết quả có thể dùng để quyết định bước thử nghiệm tiếp theo.
+- không có paid commitment/customer contact;
+- kết quả đủ chất lượng để Owner quyết định bước thử nghiệm tiếp theo.
 
 ## 14. Điều kiện khóa thiết kế WO-049
 
 Trước khi mở rộng feature kỹ thuật lớn, cần:
-1. Review độc lập tài liệu này.
+1. Review độc lập tài liệu này ở exact head sau reconciliation.
 2. Chốt data model tầng business.
 3. Chốt autonomy/risk policy.
 4. Chốt Company Control Tower information architecture.
