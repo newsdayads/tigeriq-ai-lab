@@ -11,7 +11,7 @@ $client = Join-Path $root 'client'
 $branch = 'wo056/pc01-one-click-bootstrap'
 
 function Invoke-Git([string]$Path,[Parameter(ValueFromRemainingArguments=$true)][string[]]$GitArgs) {
-  & $git -C $Path @Args | Out-Null
+  & $git -C $Path @GitArgs | Out-Null
   if ($LASTEXITCODE -ne 0) { throw "git failed: $($GitArgs -join ' ')" }
 }
 function Assert-Fails([scriptblock]$Action,[string]$Code) {
