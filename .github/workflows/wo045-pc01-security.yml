@@ -4,12 +4,20 @@ on:
   pull_request:
     paths:
       - 'scripts/pc-worker/**'
+      - 'scripts/install-work-state-postgres.ps1'
+      - 'apps/workforce-controller/**'
+      - 'packages/work-state/**'
+      - 'db/migrations/**'
       - '.github/workflows/wo045-pc01-security.yml'
   push:
     branches:
       - 'wo045/pc01-autonomy-hardening'
     paths:
       - 'scripts/pc-worker/**'
+      - 'scripts/install-work-state-postgres.ps1'
+      - 'apps/workforce-controller/**'
+      - 'packages/work-state/**'
+      - 'db/migrations/**'
       - '.github/workflows/wo045-pc01-security.yml'
 
 permissions:
@@ -26,10 +34,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Compile PC01 runtime
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - name: Compile PC01 worker runtime
         run: |
           python -m py_compile scripts/pc-worker/control_plane_v2.py scripts/pc-worker/worker_secure_v3.py scripts/pc-worker/live_upgrade_secure_v3.py scripts/pc-worker/runner_prepare_workforce_pc01.py scripts/pc-worker/bootstrap_worker_v2.py scripts/pc-worker/test_control_plane_v2.py scripts/pc-worker/test_worker_secure_v3.py scripts/pc-worker/test_watchdog_v3_contract.py
-          python -m py_compile scripts/pc-worker/workforce-controller-v1/workforce_controller_v1.py scripts/pc-worker/workforce-controller-v1/workforce_controller_recovery_v1.py scripts/pc-worker/workforce-controller-v1/run_workforce_controller_v1.py scripts/pc-worker/workforce-controller-v1/prepare_workforce_controller_v1.py scripts/pc-worker/workforce-controller-v1/health_workforce_controller_v1.py scripts/pc-worker/workforce-controller-v1/test_workforce_controller_v1.py scripts/pc-worker/workforce-controller-v1/test_workforce_recovery_v1.py
       - name: Control plane tests
         working-directory: scripts/pc-worker
         run: python test_control_plane_v2.py
@@ -39,11 +50,14 @@ jobs:
       - name: Watchdog recovery contract tests
         working-directory: scripts/pc-worker
         run: python test_watchdog_v3_contract.py
-      - name: Workforce Controller V1 contract tests
-        working-directory: scripts/pc-worker/workforce-controller-v1
+      - name: Controller transport typecheck and single-store guard
         run: |
-          python test_workforce_controller_v1.py
-          python test_workforce_recovery_v1.py
+          npm ci
+          npm run typecheck
+          test -f db/migrations/001_operational_state_v1.sql
+          test ! -f scripts/pc-worker/workforce-controller-v1/workforce_controller_v1.sql
+          ! grep -R '/v1/android/sessions\|/v1/android/jobs/pull\|/v1/android/jobs/submit' apps/workforce-controller packages/work-state
+          echo 'PC01_CONTROLLER_SINGLE_STORE_PROTOCOL_PASS'
 
   watchdog-powershell-parse:
     runs-on: windows-latest
@@ -57,7 +71,9 @@ jobs:
         run: |
           $paths = @(
             'scripts/pc-worker/worker-watchdog-v3.ps1',
-            'scripts/pc-worker/workforce-controller-v1/install-workforce-controller-v1.ps1'
+            'scripts/install-work-state-postgres.ps1',
+            'scripts/pc-worker/workforce-controller-v1/install-workforce-controller-v1.ps1',
+            'scripts/pc-worker/workforce-controller-v1/health-workforce-controller-v1.ps1'
           )
           foreach ($path in $paths) {
             $errors = $null
