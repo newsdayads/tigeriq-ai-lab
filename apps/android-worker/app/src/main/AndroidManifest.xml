@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- v0.7 thin-worker minimum permission surface. -->
+    <!-- TigerIQ V1 independent phone AI employee: minimum permission surface. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
@@ -14,13 +14,12 @@
 
     <application
         android:allowBackup="false"
-        android:label="TigerIQ AI Worker"
+        android:label="TigerIQ AI Employee"
         android:resizeableActivity="true"
         android:theme="@style/TigerIQTheme"
         android:usesCleartextTraffic="false"
         android:networkSecurityConfig="@xml/network_security_config">
 
-        <!-- The only launcher in v0.7: API-first Employee/Device enrollment. -->
         <activity
             android:name=".v07.V07EnrollmentActivity"
             android:exported="true"
@@ -36,6 +35,11 @@
             android:exported="false"
             android:resizeableActivity="true" />
 
+        <activity
+            android:name=".v07.V1AiSetupActivity"
+            android:exported="false"
+            android:resizeableActivity="true" />
+
         <!-- FCM is wake-only. It carries no provider/session/lease secret. -->
         <service
             android:name=".v07.TigerIqMessagingService"
@@ -45,7 +49,6 @@
             </intent-filter>
         </service>
 
-        <!-- Re-enqueue authoritative recovery after reboot/app update. -->
         <receiver
             android:name=".v07.V07BootReceiver"
             android:enabled="true"
@@ -56,7 +59,7 @@
             </intent-filter>
         </receiver>
 
-        <!-- Intentionally absent in v0.7: AccessibilityService, overlay, package queries,
-             foreground controller service, battery-optimization bypass and AI-app automation. -->
+        <!-- Frozen/absent from V1 execution: AccessibilityService, overlay, package queries,
+             foreground UI automation, banking access, Gemini-app automation. -->
     </application>
 </manifest>
