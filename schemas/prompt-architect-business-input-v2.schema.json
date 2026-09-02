@@ -86,6 +86,7 @@
         "employee_permission_ref",
         "tool_permission_ref",
         "risk_policy_ref",
+        "owner_reserved_action",
         "allowed_actions",
         "allowed_tools"
       ],
@@ -97,6 +98,10 @@
         "employee_permission_ref": { "type": "string", "minLength": 1, "maxLength": 256 },
         "tool_permission_ref": { "type": "string", "minLength": 1, "maxLength": 256 },
         "risk_policy_ref": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "owner_reserved_action": {
+          "type": "boolean",
+          "description": "Explicit action-level classification. Must be true for any action reserved to Owner by current Owner instruction, Constitution or approved policy."
+        },
         "allowed_actions": {
           "type": "array",
           "minItems": 1,
@@ -108,7 +113,13 @@
           "items": { "type": "string", "minLength": 1, "maxLength": 256 },
           "uniqueItems": true
         },
-        "owner_approval_ref": { "type": "string", "minLength": 1, "maxLength": 256 }
+        "owner_approval_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "description": "Immutable reference to explicit Owner approval/decision evidence for this authorized action. The referenced evidence must not be rewritten to change the authorization meaning.",
+          "x-tigeriq-immutable": true
+        }
       }
     },
     "risk": {
@@ -165,6 +176,63 @@
     {
       "required": ["work_intent_ref"],
       "not": { "required": ["job_ref"] }
+    }
+  ],
+  "allOf": [
+    {
+      "if": {
+        "anyOf": [
+          {
+            "required": ["risk"],
+            "properties": {
+              "risk": {
+                "required": ["level"],
+                "properties": {
+                  "level": { "const": "R4" }
+                }
+              }
+            }
+          },
+          {
+            "required": ["risk"],
+            "properties": {
+              "risk": {
+                "required": ["assurance"],
+                "properties": {
+                  "assurance": {
+                    "required": ["owner_required"],
+                    "properties": {
+                      "owner_required": { "const": true }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "required": ["authority"],
+            "properties": {
+              "authority": {
+                "required": ["owner_reserved_action"],
+                "properties": {
+                  "owner_reserved_action": { "const": true }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "then": {
+        "required": ["authority"],
+        "properties": {
+          "authority": {
+            "required": ["owner_approval_ref"],
+            "properties": {
+              "owner_approval_ref": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
     }
   ]
 }
