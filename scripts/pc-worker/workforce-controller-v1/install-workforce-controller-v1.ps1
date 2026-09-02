@@ -66,8 +66,9 @@ if ($existing) { Fail 'PORT_IN_USE' 'Port 8790 already has a listener; installer
 
 New-Item -ItemType Directory -Force -Path $RuntimeDir, $LogDir | Out-Null
 $required = @(
-  'workforce_controller_v1.py', 'workforce_controller_v1.sql', 'run_workforce_controller_v1.py',
-  'prepare_workforce_controller_v1.py', 'health_workforce_controller_v1.py', 'requirements-workforce-controller-v1.txt'
+  'workforce_controller_v1.py', 'workforce_controller_recovery_v1.py', 'workforce_controller_v1.sql',
+  'run_workforce_controller_v1.py', 'prepare_workforce_controller_v1.py',
+  'health_workforce_controller_v1.py', 'requirements-workforce-controller-v1.txt'
 )
 foreach ($name in $required) {
   $source = Join-Path $SourceDir $name
@@ -93,10 +94,11 @@ $existingTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyConti
 if ($existingTask) { Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false }
 $actionArgs = "`"$Runner`""
 $action = New-ScheduledTaskAction -Execute $PythonExe -Argument $actionArgs -WorkingDirectory $RuntimeDir
-$trigger = New-ScheduledTaskTrigger -AtStartup
+$startupTrigger = New-ScheduledTaskTrigger -AtStartup
+$recoveryTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 5) -RepetitionDuration (New-TimeSpan -Days 3650)
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -RestartCount 10 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit (New-TimeSpan -Days 3650) -MultipleInstances IgnoreNew
 $taskPrincipal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
-Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Settings $settings -Principal $taskPrincipal | Out-Null
+Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger @($startupTrigger, $recoveryTrigger) -Settings $settings -Principal $taskPrincipal | Out-Null
 
 $oldRule = Get-NetFirewallRule -DisplayName $FirewallName -ErrorAction SilentlyContinue
 if ($oldRule) { Remove-NetFirewallRule -DisplayName $FirewallName }
@@ -117,6 +119,7 @@ if ($StartNow) {
   postgres = 'MIGRATED_READY'
   firewall = 'TAILSCALE_ONLY'
   autostart = $true
+  recoveryProbeMinutes = 5
   startNow = $false
   secrets = 'LOCAL_FILES_ACL_RESTRICTED'
 } | ConvertTo-Json -Compress
