@@ -97,12 +97,12 @@ public final class V07JobWorker extends Worker {
                 ? Instant.ofEpochMilli(snapshot.updatedAtEpochMs).toString()
                 : Instant.now().toString();
         checkpoints.markPhase(DurableCheckpointStore.PHASE_AI_EXECUTION, executionId, executionKey);
-        status.setState(WorkerState.WORKING, "Đang kiểm tra ZERO-COST trước khi gọi " + provider, snapshot.jobId);
+        status.setState(WorkerState.WORKING, "Đang kiểm tra zero-cost authority độc lập trước khi gọi " + provider, snapshot.jobId);
 
         String attemptStartedAt = Instant.now().toString();
         try {
-            ProviderExecution execution = ZeroCostPolicy.executeIfAllowed(
-                    providerConfig.geminiBillingState(), connector, prompt, model);
+            ProviderExecution execution = ZeroCostPolicy.executeIfAuthorized(
+                    providerConfig.zeroCostAuthority(), connector, prompt, model);
             checkpoints.appendProviderAttempt(execution.provider, execution.model, getRunAttemptCount() + 1,
                     "success", execution.startedAt, execution.finishedAt, "");
             snapshot = checkpoints.load();
