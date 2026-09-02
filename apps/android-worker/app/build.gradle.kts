@@ -27,7 +27,7 @@ fun signingCertificateSha256(keystorePath: String, storePassword: String, alias:
                 ?: throw GradleException("TigerIQ stable signing alias not found")
             return MessageDigest.getInstance("SHA-256")
                 .digest(certificate.encoded)
-                .joinToString("") { "%02x".format(it) }
+                .joinToString("") { "%02x".format(it.toInt() and 0xff) }
         } catch (error: Exception) {
             lastError = error
         }

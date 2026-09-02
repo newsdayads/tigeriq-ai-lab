@@ -70,8 +70,12 @@ jobs:
           grep -Fq 'TIGERIQ_SOURCE_SHA' "$build"
           test ! -e apps/android-worker/app/src/main/res/xml/accessibility_service_config.xml
           test ! -e "$v1/TigerIqMessagingService.java"
-          if grep -R -n -E 'FirebaseMessagingService|firebase-messaging|POST_NOTIFICATIONS|com\.google\.android\.c2dm' apps/android-worker; then
-            echo 'V1_PERMISSION_FAIL: unused FCM/notification surface remains' >&2
+          if grep -R -n -E 'FirebaseMessagingService|POST_NOTIFICATIONS|com\.google\.android\.c2dm' "$v1" "$manifest"; then
+            echo 'V1_PERMISSION_FAIL: FCM/notification surface remains in packaged V1 source' >&2
+            exit 1
+          fi
+          if grep -n -E 'firebase-messaging' "$build"; then
+            echo 'V1_PERMISSION_FAIL: Firebase messaging dependency remains in V1 build' >&2
             exit 1
           fi
 
