@@ -2,6 +2,7 @@ package ai.tigeriq.worker.v07;
 
 import android.content.Context;
 
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -11,7 +12,7 @@ import java.util.List;
 public final class LocalAiProviderRegistry {
     private LocalAiProviderRegistry() {}
 
-    public static List<String> supportedProviders() { return List.of(ProviderConfigStore.GEMINI); }
+    public static List<String> supportedProviders() { return Collections.singletonList(ProviderConfigStore.GEMINI); }
 
     public static AiProviderConnector connector(Context context, String providerId) throws ProviderException {
         String provider = providerId == null ? "" : providerId.trim().toLowerCase();
