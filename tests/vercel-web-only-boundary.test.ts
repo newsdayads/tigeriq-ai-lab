@@ -23,7 +23,7 @@ describe('Vercel Web-only boundary', () => {
     expect(controller).toContain("snapshot.source?.mode!=='controller'||snapshot.source?.authoritative!==true");
   });
 
-  it('disables Git auto-deploy and requires explicit manual release approval', () => {
+  it('disables Git auto-deploy and gates explicit releases to exact Web-only diffs', () => {
     const config = JSON.parse(read('vercel.json'));
     expect(config.git?.deploymentEnabled).toBe(false);
     const workflow = read('.github/workflows/web-release-vercel.yml');
@@ -31,7 +31,11 @@ describe('Vercel Web-only boundary', () => {
     expect(workflow).not.toMatch(/^\s*(push|pull_request):/m);
     expect(workflow).toContain('WEB_RELEASE_CANDIDATE_APPROVED');
     expect(workflow).toContain('OWNER_APPROVED_PRODUCTION');
+    expect(workflow).toContain('release_base_sha');
     expect(workflow).toContain('release_sha');
+    expect(workflow).toContain('git merge-base --is-ancestor');
+    expect(workflow).toContain('Non-Web paths cannot enter a Vercel release');
+    expect(workflow).toContain('Docs/tests/workflow-only diff is not a Web Release Candidate');
   });
 
   it('contains no active Web/Vercel AI provider call path', () => {

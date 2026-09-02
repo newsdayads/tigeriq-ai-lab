@@ -17,7 +17,6 @@ function walk(root) {
 
 const apiFiles = readdirSync('api').filter(name => name.endsWith('.mjs')).sort();
 assert.deepEqual(apiFiles, ['owner-auth.mjs'], 'Vercel api/ must expose owner-auth only');
-
 for (const retired of ['chief.mjs','chief-smoke.mjs','control.mjs','company-progress.mjs','workforce-status.mjs']) {
   assert.equal(existsSync(`api/${retired}`), false, `${retired} must be retired from Vercel execution path`);
 }
@@ -55,9 +54,6 @@ assert.equal(config.git?.deploymentEnabled, false, 'Ordinary Git commits must no
 const releaseWorkflow = readFileSync('.github/workflows/web-release-vercel.yml','utf8');
 assert.match(releaseWorkflow, /^on:\n  workflow_dispatch:/m);
 assert.doesNotMatch(releaseWorkflow, /^\s*(push|pull_request):/m);
-assert.match(releaseWorkflow, /WEB_RELEASE_CANDIDATE_APPROVED/);
-assert.match(releaseWorkflow, /OWNER_APPROVED_PRODUCTION/);
-assert.match(releaseWorkflow, /release_sha/);
-assert.match(releaseWorkflow, /--prebuilt/);
+for (const required of ['WEB_RELEASE_CANDIDATE_APPROVED','OWNER_APPROVED_PRODUCTION','release_base_sha','release_sha','git merge-base --is-ancestor','Non-Web paths cannot enter a Vercel release','Docs/tests/workflow-only diff is not a Web Release Candidate','--prebuilt']) assert.match(releaseWorkflow, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')));
 
 console.log('VERCEL_WEB_ONLY_BOUNDARY_PASS');

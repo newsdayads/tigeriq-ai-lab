@@ -3,6 +3,10 @@ name: WEB Release Vercel
 on:
   workflow_dispatch:
     inputs:
+      release_base_sha:
+        description: Reviewed base SHA for the Web Release Candidate diff
+        required: true
+        type: string
       release_sha:
         description: Exact Web Release Candidate commit SHA
         required: true
@@ -56,12 +60,31 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.release_sha }}
-          fetch-depth: 1
-      - name: Prove exact release SHA
+          fetch-depth: 0
+      - name: Prove exact SHA and Web-only Release Candidate diff
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "${{ inputs.release_sha }}"
+          head_sha="$(git rev-parse HEAD)"
+          test "$head_sha" = "${{ inputs.release_sha }}"
+          base_sha="${{ inputs.release_base_sha }}"
+          git cat-file -e "${base_sha}^{commit}"
+          git merge-base --is-ancestor "$base_sha" "$head_sha"
+          changed="$(git diff --name-only "$base_sha" "$head_sha")"
+          test -n "$changed"
+          printf '%s\n' "$changed"
+          allowed='^(public/|api/(owner-auth\.mjs|chief\.mjs|chief-smoke\.mjs|control\.mjs|company-progress\.mjs|workforce-status\.mjs)$|vercel\.json$|\.github/workflows/(web-release-vercel\.yml|wo014-queue-hygiene\.yml|wo012-vercel-verify\.yml)$|scripts/(verify_vercel_web_only_boundary\.mjs|queue-hygiene-contract\.mjs|verify_queue_hygiene\.mjs|verify_work_board_ui\.mjs)$|tests/(vercel-web-only-boundary\.test\.ts|e2e/.*|web-control-v1-ui-contract\.test\.mjs)$|docs/work-orders/WO-158.*$)'
+          invalid="$(printf '%s\n' "$changed" | grep -Ev "$allowed" || true)"
+          if [[ -n "$invalid" ]]; then
+            echo "Non-Web paths cannot enter a Vercel release:" >&2
+            printf '%s\n' "$invalid" >&2
+            exit 1
+          fi
+          material="$(printf '%s\n' "$changed" | grep -E '^(public/|api/owner-auth\.mjs$|vercel\.json$)' || true)"
+          if [[ -z "$material" ]]; then
+            echo "Docs/tests/workflow-only diff is not a Web Release Candidate" >&2
+            exit 1
+          fi
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
