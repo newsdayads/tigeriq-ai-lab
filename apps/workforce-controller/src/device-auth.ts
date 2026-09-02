@@ -1,4 +1,4 @@
-import { createHash, createPublicKey, verify as verifySignature } from 'node:crypto';
+import { createHash, createPublicKey, timingSafeEqual, verify as verifySignature } from 'node:crypto';
 import type { SqlPoolLike } from '../../../packages/work-state/src/postgres-repository.js';
 
 export interface DeviceAuthRequest {
@@ -25,7 +25,7 @@ export class DeviceAuthError extends Error {
 
 const PROOF_VERSION='1';
 const DEFAULT_MAX_SKEW_MS=60_000;
-const NONCE_TTL_MS=120_000;
+const REPLAY_CLEANUP_BATCH=1_000;
 
 function sha256Bytes(value:Buffer|string):string{return createHash('sha256').update(value).digest('hex');}
 function requiredHeader(headers:Record<string,string|undefined>,name:string):string{
@@ -35,14 +35,10 @@ function requiredHeader(headers:Record<string,string|undefined>,name:string):str
 }
 function timingSafeTextEqual(left:string,right:string):boolean{
   const a=Buffer.from(left,'utf8'),b=Buffer.from(right,'utf8');
-  if(a.length!==b.length)return false;
-  return (awaitImportTimingSafeEqual())(a,b);
+  return a.length===b.length&&timingSafeEqual(a,b);
 }
-function awaitImportTimingSafeEqual(){return requireTimingSafeEqual;}
-import { timingSafeEqual as requireTimingSafeEqual } from 'node:crypto';
 
 export class VerifiedDeviceAuthenticator {
-  private readonly seenNonces=new Map<string,number>();
   constructor(private readonly pool:SqlPoolLike,private readonly maxSkewMs=DEFAULT_MAX_SKEW_MS){}
 
   async verify(request:DeviceAuthRequest):Promise<DeviceAuthContext>{
@@ -61,9 +57,6 @@ export class VerifiedDeviceAuthenticator {
     const timestamp=Number(timestampText),now=request.nowMs??Date.now();
     if(!Number.isSafeInteger(timestamp)||Math.abs(now-timestamp)>this.maxSkewMs)throw new DeviceAuthError(401,'DEVICE_PROOF_EXPIRED','device proof timestamp outside allowed skew');
     if(nonce.length<16||nonce.length>128)throw new DeviceAuthError(401,'DEVICE_NONCE_INVALID','invalid device nonce');
-    this.pruneNonces(now);
-    const nonceKey=`${deviceId}:${nonce}`;
-    if(this.seenNonces.has(nonceKey))throw new DeviceAuthError(409,'DEVICE_PROOF_REPLAY','device proof nonce already used');
 
     const rows=await this.pool.query<{
       employee_id:string;device_id:string;binding_id:string;permissions:string[];capabilities:string[];
@@ -97,9 +90,36 @@ export class VerifiedDeviceAuthenticator {
       if(error instanceof DeviceAuthError)throw error;
       throw new DeviceAuthError(401,'DEVICE_SIGNATURE_INVALID','device signature invalid');
     }
-    this.seenNonces.set(nonceKey,now+NONCE_TTL_MS);
+
+    await this.claimNonce(deviceId,nonce,timestamp,now);
     return {employeeId:row.employee_id,nodeId,deviceId:row.device_id,bindingId:row.binding_id,capabilities:row.capabilities??[],permissions:row.permissions??[],publicKeyFingerprint:storedFingerprint};
   }
 
-  private pruneNonces(now:number):void{for(const [key,expires] of this.seenNonces)if(expires<=now)this.seenNonces.delete(key);}
+  private async claimNonce(deviceId:string,nonce:string,proofTimestampMs:number,acceptedAtMs:number):Promise<void>{
+    const client=await this.pool.connect();
+    const acceptedAt=new Date(acceptedAtMs).toISOString();
+    const proofTimestamp=new Date(proofTimestampMs).toISOString();
+    const retentionMs=Math.max((this.maxSkewMs*2)+1_000,1_000);
+    const expiresAt=new Date(acceptedAtMs+retentionMs).toISOString();
+    try{
+      await client.query('BEGIN');
+      await client.query(`DELETE FROM device_proof_replay_state
+        WHERE ctid IN (
+          SELECT ctid FROM device_proof_replay_state
+          WHERE expires_at <= $1
+          ORDER BY expires_at
+          LIMIT $2
+        )`,[acceptedAt,REPLAY_CLEANUP_BATCH]);
+      const claimed=await client.query<{device_id:string}>(`INSERT INTO device_proof_replay_state
+        (device_id,nonce,proof_timestamp,accepted_at,expires_at)
+        VALUES ($1,$2,$3,$4,$5)
+        ON CONFLICT (device_id,nonce) DO NOTHING
+        RETURNING device_id`,[deviceId,nonce,proofTimestamp,acceptedAt,expiresAt]);
+      if(!claimed.rows[0])throw new DeviceAuthError(409,'DEVICE_PROOF_REPLAY','device proof nonce already used');
+      await client.query('COMMIT');
+    }catch(error){
+      try{await client.query('ROLLBACK');}catch{}
+      throw error;
+    }finally{client.release();}
+  }
 }
