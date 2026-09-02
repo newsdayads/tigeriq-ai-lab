@@ -29,7 +29,7 @@ Response MUST be authoritative and use:
   "generatedAt": "ISO-8601",
   "source": { "mode": "controller", "authoritative": true, "label": "PC01 Workforce Controller" },
   "controller": {},
-  "company": {},
+  "company": { "readiness": [{ "key": "job001", "label": "JOB-001", "state": "PENDING|READY|RUNNING|PASS|FAIL|BLOCKED", "evidence": null }] },
   "jobs": [],
   "employees": [],
   "devices": [],
@@ -50,6 +50,8 @@ If this endpoint is absent, invalid, unauthenticated or returns a schema mismatc
 
 Web must not directly create TaskPacket internals that duplicate Work Management logic.
 
+Job stages in the Web snapshot should be normalized by the Controller adapter (recommended: `QUEUED`, `ASSIGNED`, `RUNNING`, `WAITING_REVIEW`, `WAITING_JUDGE`, `COMPLETED`, `FAILED`, `BLOCKED`, `CANCELLED`). Web treats stage text as data and never upgrades a state on its own.
+
 ## Authentication boundary
 
 - Existing Google Owner auth may remain as optional UI identity on Vercel.
@@ -61,6 +63,7 @@ Web must not directly create TaskPacket internals that duplicate Work Management
 - Preferred remote UI path: HTTPS Tailscale/MagicDNS URL such as `https://pc01.<tailnet>.ts.net`.
 - `http://100.64.0.0/10:8790` is accepted only when the Web page itself is served over HTTP/local context. An HTTPS Vercel page cannot safely call an HTTP Controller because browsers block mixed content.
 - Public Internet Controller URLs are rejected by the Web client policy.
+- If UI and Controller are cross-origin (for example Vercel UI → `https://pc01.<tailnet>.ts.net`), the Controller-owned Web API must explicitly allow only the approved Web origin(s) with narrow CORS and browser-safe authorization. Alternatively serve Web locally/same-origin on PC01. CHAT 01 does not add this backend policy itself.
 
 ## Truthful state rules
 

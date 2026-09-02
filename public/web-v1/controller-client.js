@@ -1,5 +1,6 @@
 export const WEB_SNAPSHOT_SCHEMA = 'tigeriq.web-control.snapshot.v1';
 export const WEB_GOAL_SCHEMA = 'tigeriq.web-control.goal.v1';
+export const WEB_PROMPT_VERSION_SCHEMA = 'tigeriq.web-control.prompt-version.v1';
 export const CONTROLLER_ENDPOINTS = Object.freeze({
   health: '/api/workforce/status',
   snapshot: '/api/web/v1/snapshot',
@@ -106,7 +107,7 @@ export class WorkforceControllerClient {
     return this.request(CONTROLLER_ENDPOINTS.promptVersions, {
       ...options,
       method: 'POST',
-      body: { schemaVersion: WEB_SNAPSHOT_SCHEMA, promptVersion },
+      body: { schemaVersion: WEB_PROMPT_VERSION_SCHEMA, promptVersion },
     });
   }
 

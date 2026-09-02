@@ -21,6 +21,8 @@ describe('Web Control V1 UI architecture', () => {
       expect(client).not.toContain(forbidden);
       expect(app).not.toContain(forbidden);
     }
+    expect(app).toContain('s.company?.readiness');
+    expect(app).toContain('toUpperCase()');
   });
 
   it('makes root/operations/workforce views static Web V1 while keeping Vercel outside the control-plane contract', async () => {

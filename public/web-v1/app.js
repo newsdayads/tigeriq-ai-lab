@@ -103,16 +103,16 @@ function renderModeBanner() {
 
 function renderOverview(s) {
   const jobs=s.jobs||[], employees=s.employees||[];
-  const active=jobs.filter(j=>['QUEUED','ASSIGNED','RUNNING','WAITING_REVIEW','WAITING_JUDGE'].includes(j.stage)).length;
+  const active=jobs.filter(j=>['QUEUED','ASSIGNED','RUNNING','WAITING_REVIEW','WAITING_JUDGE'].includes(String(j.stage||'').toUpperCase())).length;
   const available=employees.filter(e=>['idle','busy'].includes(String(e.availability).toLowerCase()) && e.lastHeartbeatAt).length;
   $('controllerState').textContent = state.mode==='mock'?'MOCK':state.controllerError?'OFFLINE':String(s.controller?.state||'CONNECTED').toUpperCase();
   $('controllerState').className=`metric ${state.mode==='mock'||state.controllerError?'warn':'good'}`;
   $('controllerSub').textContent = s.controller?.baseUrl || s.source?.label || '—';
   $('activeJobs').textContent=String(active); $('availableEmployees').textContent=String(available);
   $('objective').textContent=s.company?.currentObjective||'—'; $('objectivePolicy').textContent=s.company?.truthPolicy||'—';
-  const checks=[['Web code','READY'],['Controller','PENDING'],['Tailscale','PENDING'],['Phone employee','PENDING'],['JOB-001','PENDING']];
-  $('readiness').innerHTML=checks.map(([a,b])=>`<span class="status ${b==='READY'?'good':'warn'}">${a}: ${b}</span>`).join('');
-  $('readinessNote').textContent=state.mode==='mock'?'Mock không phải PASS. Ngày mai chỉ Controller runtime được quyền chuyển các gate sang PASS.':'Readiness được dựng từ snapshot Controller.';
+  const checks=Array.isArray(s.company?.readiness)?s.company.readiness:[];
+  $('readiness').innerHTML=checks.length?checks.map(row=>`<span class="status ${statusClass(row.state)}">${esc(row.label||row.key)}: ${esc(row.state||'UNKNOWN')}</span>`).join(''):'<span class="status warn">CONTRACT_PENDING</span>';
+  $('readinessNote').textContent=state.mode==='mock'?'Mock không phải PASS. Ngày mai chỉ Controller runtime được quyền chuyển các gate sang PASS.':checks.length?'Readiness phản ánh nguyên trạng snapshot Controller.':'Controller chưa cung cấp readiness trong snapshot.';
   $('overviewJobs').innerHTML=jobs.length?jobs.slice(0,5).map(renderJobItem).join(''):'<div class="empty">Controller chưa trả Jobs.</div>';
 }
 
@@ -129,7 +129,7 @@ function renderPrompts(s){$('promptList').innerHTML=(s.prompts||[]).map(p=>`<div
 
 function renderResults(s){$('resultsList').innerHTML=(s.results||[]).map(r=>`<div class="item"><div class="item-head"><div><div class="item-title mono">${esc(r.jobId)} · ${esc(r.resultId)}</div><p>${esc(r.conclusion||'Chưa có result')}</p></div>${badge(r.status)}</div><div class="detail-grid" style="margin-top:8px"><div class="callout"><b>Evidence</b><p>${badge(r.evidence?.state)} · refs ${(r.evidence?.refs||[]).length}</p>${(r.artifacts||[]).map(a=>`<div class="mono">${esc(a.kind)} · ${esc(a.ref)}</div>`).join('')}</div><div class="callout"><b>Review</b><p>${badge(r.review?.state)} · ${esc(r.review?.verdict||'—')}</p><p>${esc(r.review?.rationale||'—')}</p></div><div class="callout"><b>Judge</b><p>${badge(r.judge?.state)} · ${esc(r.judge?.verdict||'—')}</p><p>${esc(r.judge?.rationale||'—')}</p></div><div class="callout"><b>Execution</b><p>${esc(r.provider||'—')} / ${esc(r.model||'—')} · confidence ${r.confidence??'—'}</p></div></div><div class="chips">${mockMark(r)}</div></div>`).join('')||'<div class="empty">Chưa có Result/Evidence từ Controller.</div>'}
 
-function renderRecovery(s){const rows=(s.jobs||[]).filter(j=>j.blocker||['FAILED','BLOCKED'].includes(j.stage));$('recoveryList').innerHTML=rows.map(j=>`<div class="item"><div class="item-head"><div><div class="item-title mono">${esc(j.jobId)}</div><p>${esc(j.objective)}</p></div>${badge(j.stage)}</div><p><b>Blocker:</b> ${esc(j.blocker?.code||'—')} · ${esc(j.blocker?.message||'—')}</p><p><b>Recovery:</b> ${esc(j.recovery?.strategy||'—')} · next ${fmt(j.recovery?.nextEligibleAt)}</p><div class="chips">${mockMark(j)}<span class="chip">attempt ${j.attempts}/${j.maxAttempts}</span></div><button class="btn warn retry-btn" data-job="${esc(j.jobId)}" style="margin-top:8px">Gửi retry intent</button></div>`).join('')||'<div class="empty">Không có blocker/recovery record.</div>';document.querySelectorAll('.retry-btn').forEach(b=>b.onclick=()=>retryJob(b.dataset.job))}
+function renderRecovery(s){const rows=(s.jobs||[]).filter(j=>j.blocker||['FAILED','BLOCKED'].includes(String(j.stage||'').toUpperCase()));$('recoveryList').innerHTML=rows.map(j=>`<div class="item"><div class="item-head"><div><div class="item-title mono">${esc(j.jobId)}</div><p>${esc(j.objective)}</p></div>${badge(j.stage)}</div><p><b>Blocker:</b> ${esc(j.blocker?.code||'—')} · ${esc(j.blocker?.message||'—')}</p><p><b>Recovery:</b> ${esc(j.recovery?.strategy||'—')} · next ${fmt(j.recovery?.nextEligibleAt)}</p><div class="chips">${mockMark(j)}<span class="chip">attempt ${j.attempts}/${j.maxAttempts}</span></div><button class="btn warn retry-btn" data-job="${esc(j.jobId)}" style="margin-top:8px">Gửi retry intent</button></div>`).join('')||'<div class="empty">Không có blocker/recovery record.</div>';document.querySelectorAll('.retry-btn').forEach(b=>b.onclick=()=>retryJob(b.dataset.job))}
 
 function renderActivity(s){$('activityList').innerHTML=(s.activity||[]).map(e=>`<div class="event"><span>${fmt(e.at)}</span><b>${esc(e.type)}</b><span>${esc(e.message)} ${e.jobId?`<span class="mono">${esc(e.jobId)}</span>`:''} ${mockMark(e)}</span></div>`).join('')||'<div class="empty">Chưa có audit event.</div>'}
 

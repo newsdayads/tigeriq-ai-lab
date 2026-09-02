@@ -51,6 +51,7 @@ Browser Web V1 must never use `x-tigeriq-admin-secret`. The existing `POST /api/
 - Controller URL must resolve to a local/Tailscale target; public Internet Controller targets are rejected by the Web client.
 - HTTPS-hosted Web cannot call an HTTP Controller URL because browsers block mixed content. Remote use should expose the Controller through a Tailscale HTTPS/MagicDNS address such as `https://pc01.<tailnet>.ts.net`.
 - Browser Controller authorization must use a short-lived Controller-issued browser capability/session, not the Controller admin secret.
+- Cross-origin Vercel → Tailscale Controller access requires a narrow Controller-owned CORS allowlist; same-origin/local Web is also supported. CHAT 01 only consumes this contract.
 - No paid service/billing path is introduced.
 
 ## Current gate

@@ -30,6 +30,13 @@ export const MOCK_CONTROLLER_SNAPSHOT = Object.freeze({
     operatingMode: 'local-first',
     currentObjective: 'PC01 → Tailscale → điện thoại → Gemini API → PC01 → reviewer',
     truthPolicy: 'Controller/PostgreSQL only; Web does not infer runtime from GitHub/Vercel.',
+    readiness: [
+      { key: 'web', label: 'Web code', state: 'READY', evidence: 'CHAT-01 mock/code gate only' },
+      { key: 'controller', label: 'Controller', state: 'PENDING', evidence: null },
+      { key: 'tailscale', label: 'Tailscale', state: 'PENDING', evidence: null },
+      { key: 'phone', label: 'Phone employee', state: 'PENDING', evidence: null },
+      { key: 'job001', label: 'JOB-001', state: 'PENDING', evidence: null },
+    ],
     workforceSummary: {
       nodes: { total: 0, online: 0, degraded: 0, offline: 0 },
       employees: { total: 0, idle: 0, busy: 0, degraded: 0, offline: 0 },
