@@ -82,7 +82,7 @@ public final class DirectAiJobAdapter {
 
     private static JSONObject output(String text, String provider, String model, String jobStartedAt,
                                      String providerStartedAt, String providerFinishedAt, String completedAt,
-                                     JSONArray attempts) {
+                                     JSONArray attempts) throws Exception {
         JSONObject timestamps = new JSONObject()
                 .put("jobStartedAt", safe(jobStartedAt))
                 .put("providerStartedAt", safe(providerStartedAt))
@@ -102,7 +102,7 @@ public final class DirectAiJobAdapter {
     }
 
     private static JSONArray evidence(EmployeeDeviceStore.Profile profile, DurableCheckpointStore.Snapshot snapshot,
-                                      String provider, String model, String material, String completedAt, String summary) {
+                                      String provider, String model, String material, String completedAt, String summary) throws Exception {
         String canonical = snapshot.jobId + "\n" + safe(provider) + "\n" + safe(model) + "\n" + safe(material) + "\n" + completedAt;
         return new JSONArray().put(new JSONObject()
                 .put("kind", "json")
@@ -111,7 +111,7 @@ public final class DirectAiJobAdapter {
                 .put("sha256", WorkNames.sha256(canonical)));
     }
 
-    private static JSONArray errors(JSONArray attempts) {
+    private static JSONArray errors(JSONArray attempts) throws Exception {
         JSONArray errors = new JSONArray();
         for (int i = 0; i < attempts.length(); i++) {
             JSONObject attempt = attempts.optJSONObject(i);
