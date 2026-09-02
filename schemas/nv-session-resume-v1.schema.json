@@ -1,0 +1,154 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tigeriq.ai/schemas/nv-session-resume-v1.schema.json",
+  "title": "TigerIQ NV Session Resume V1",
+  "description": "Governance/evidence contract for restoring an NV session; not a runtime lock or transport implementation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "employee_id",
+    "identity_registered",
+    "queue_audit_complete",
+    "result",
+    "candidate_count",
+    "observed_at",
+    "source_refs"
+  ],
+  "x-tigeriq-cross-field-invariants": [
+    {
+      "id": "NV-RESUME-MUTATION-GUARD-BINDING-V1",
+      "applies_when": "result=CONTINUE",
+      "rules": [
+        "mutation_guard.expected_work_ref MUST equal selected_work_ref",
+        "mutation_guard.expected_work_state MUST equal work_state",
+        "when exact_head_or_artifact_version is present, mutation_guard.expected_exact_head_or_artifact_version MUST be present and equal it",
+        "when exact_head_or_artifact_version is absent, mutation_guard.expected_exact_head_or_artifact_version MUST be absent"
+      ],
+      "enforcement": "mandatory deterministic contract validator; JSON Schema structural validation alone is insufficient for cross-field equality"
+    }
+  ],
+  "properties": {
+    "contract_version": { "const": "TIGERIQ_NV_SESSION_RESUME_V1" },
+    "employee_id": { "type": "string", "pattern": "^NV0[0-6]$" },
+    "identity_registered": { "const": true },
+    "queue_audit_complete": { "type": "boolean" },
+    "result": { "enum": ["CONTINUE", "BLOCKED", "WAITING", "IDLE"] },
+    "candidate_count": { "type": "integer", "minimum": 0 },
+    "selected_work_ref": { "type": "string", "minLength": 1, "maxLength": 512 },
+    "work_state": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "priority": { "enum": ["P0", "P1", "P2", "P3", "UNSPECIFIED"] },
+    "exact_head_or_artifact_version": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "handoff_ref": { "type": "string", "minLength": 1, "maxLength": 512 },
+    "dependency_gate_status": { "type": "string", "minLength": 1, "maxLength": 2000 },
+    "next_safe_action": { "type": "string", "minLength": 1, "maxLength": 2000 },
+    "wait_reason": { "type": "string", "minLength": 1, "maxLength": 2000 },
+    "resume_condition": { "type": "string", "minLength": 1, "maxLength": 2000 },
+    "blocker": { "type": "string", "minLength": 1, "maxLength": 2000 },
+    "observed_at": { "type": "string", "format": "date-time" },
+    "source_refs": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1, "maxLength": 1024 }
+    },
+    "mutation_guard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reread_before_mutation",
+        "snapshot_binding",
+        "expected_work_ref",
+        "expected_work_state",
+        "duplicate_state_check"
+      ],
+      "properties": {
+        "reread_before_mutation": { "const": true },
+        "snapshot_binding": { "const": "NV-RESUME-MUTATION-GUARD-BINDING-V1" },
+        "expected_work_ref": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "expected_work_state": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "expected_exact_head_or_artifact_version": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "duplicate_state_check": { "const": true }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": ["exact_head_or_artifact_version"]
+      },
+      "then": {
+        "properties": {
+          "mutation_guard": {
+            "required": ["expected_exact_head_or_artifact_version"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "result": { "const": "IDLE" } },
+        "required": ["result"]
+      },
+      "then": {
+        "properties": {
+          "queue_audit_complete": { "const": true },
+          "candidate_count": { "const": 0 }
+        },
+        "not": {
+          "anyOf": [
+            { "required": ["selected_work_ref"] },
+            { "required": ["next_safe_action"] },
+            { "required": ["wait_reason"] },
+            { "required": ["blocker"] }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "result": { "const": "CONTINUE" } },
+        "required": ["result"]
+      },
+      "then": {
+        "required": [
+          "selected_work_ref",
+          "work_state",
+          "priority",
+          "next_safe_action",
+          "mutation_guard"
+        ],
+        "properties": {
+          "queue_audit_complete": { "const": true },
+          "candidate_count": { "minimum": 1 }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "result": { "const": "BLOCKED" } },
+        "required": ["result"]
+      },
+      "then": {
+        "required": ["selected_work_ref", "work_state", "blocker", "resume_condition"],
+        "properties": {
+          "queue_audit_complete": { "const": true },
+          "candidate_count": { "minimum": 1 }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "result": { "const": "WAITING" } },
+        "required": ["result"]
+      },
+      "then": {
+        "required": ["selected_work_ref", "work_state", "wait_reason", "resume_condition"],
+        "properties": {
+          "queue_audit_complete": { "const": true },
+          "candidate_count": { "minimum": 1 }
+        }
+      }
+    }
+  ]
+}
