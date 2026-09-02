@@ -20,12 +20,12 @@ android {
         applicationId = "ai.tigeriq.worker"
         minSdk = 26
         targetSdk = 35
-        versionCode = 11
-        versionName = "0.7.1-api-first"
+        versionCode = 12
+        versionName = "1.0.0-ai-employee"
     }
 
-    // v0.7 is a clean API-first APK. The direct children of ai/tigeriq/worker are
-    // legacy v0.6 UI/Accessibility/controller sources and must not be packaged.
+    // V1 is an independent phone AI employee. Direct children of ai/tigeriq/worker
+    // are legacy v0.6 UI/Accessibility/controller sources and must never be packaged.
     sourceSets.getByName("main").java.exclude("ai/tigeriq/worker/*.java")
 
     if (stableSigningEnabled) {
@@ -48,7 +48,7 @@ android {
 
     buildTypes {
         getByName("debug") {
-            // CI/debug remains disposable and must never use the production/pilot signing identity.
+            // CI/debug remains disposable and must never use the stable pilot signing identity.
         }
         getByName("release") {
             isMinifyEnabled = false
