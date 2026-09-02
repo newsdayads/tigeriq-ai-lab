@@ -95,12 +95,14 @@ The following always require Owner authority regardless of autonomy or Mission b
 - overriding a mandatory independent gate;
 - any action explicitly reserved by current Owner instruction or Constitution.
 
+Owner approval never arises from inference, budget, autonomy or prior success. When an Owner-reserved action is later eligible for `AUTHORIZE`, the authorization evidence must already exist as a non-empty immutable `owner_approval_ref` pointing to explicit Owner decision/approval evidence. The referenced approval evidence must not be rewritten to broaden or change the authorization meaning.
+
 ## 5. AUTHORIZE / POLICY GATE
 
 Every action receives one deterministic gate result:
 
 ### `AUTHORIZE`
-All required authority layers intersect, no Owner-reserved action is present, risk classification is valid, required assurance can be satisfied, and no unresolved blocker exists.
+All required authority layers intersect, risk classification is valid, required assurance can be satisfied, and no unresolved blocker exists. Additionally, if `risk.level = R4`, `risk.assurance.owner_required = true`, or the action is Owner-reserved, `AUTHORIZE` is valid only when a non-empty immutable `owner_approval_ref` is already present. Missing Owner approval evidence fails closed to `CẦN_SẾP`/block rather than inferred authorization.
 
 ### `POLICY_BLOCK`
 Action conflicts with policy, permission or a hard risk floor. It must not execute. Chief may generate a safer bounded alternative if that alternative remains inside current authority.
@@ -115,7 +117,10 @@ The gate record must include:
 - action-level risk R0-R4;
 - required assurance;
 - reason codes;
-- Owner decision/approval ref when applicable.
+- explicit action-level Owner-reserved classification;
+- `owner_approval_ref` whenever `risk.level = R4`, `risk.assurance.owner_required = true`, or an Owner-reserved action is `AUTHORIZE`.
+
+For those Owner-gated authorizations, `owner_approval_ref` must be non-empty and immutable as an evidence reference. An authorization record without that ref is invalid and must not reach Prompt Architect/runtime execution.
 
 Chief of Staff may not mutate these source authority refs merely to make an action pass.
 
@@ -213,13 +218,17 @@ Required business input:
 - Department;
 - AI Employee ref + role + capabilities;
 - effective authority gate ref and allowed action/tool scope;
+- explicit `owner_reserved_action` classification;
 - action-level `risk_level`;
 - assurance requirement;
+- non-empty immutable `owner_approval_ref` whenever `risk.level = R4`, `risk.assurance.owner_required = true`, or `owner_reserved_action = true` under `AUTHORIZE`;
 - acceptance criteria;
 - evidence requirements;
 - constraints/prohibitions;
 - deadline/time sensitivity when applicable;
 - source/provenance requirements for factual work.
+
+The business-input schema must fail validation if any Owner-gated `AUTHORIZE` trigger above lacks `owner_approval_ref` or supplies an empty ref. This fail-closed invariant is required before Prompt Architect may receive the work.
 
 Prompt Architect output remains a Prompt artifact with PROMPT-ID/version/template/history governed by #111. It must preserve the authority/risk/acceptance envelope and must not add permissions, paid actions, customer contact, Production release or legal/financial commitments absent an explicit authorized input.
 
@@ -372,7 +381,7 @@ PASS proposal-level Mission when:
 - each TOP 3 includes one reversible next experiment proposal;
 - Outcome is recorded as a business decision artifact, not merely `job done`.
 
-If a recommended next experiment would require money, customer contact, Production or another Owner-reserved action, the Mission output is a **proposal only** and creates `CẦN SẾP` for authorization before execution.
+If a recommended next experiment would require money, customer contact, Production or another Owner-reserved action, the Mission output is a **proposal only** and creates `CẦN SẾP` for authorization before execution. COMPANY-001 itself remains bounded to no paid service, no customer/prospect contact and no Production action even after this generic Owner-approval invariant is added; any later authorized execution belongs to a separately approved Mission/process.
 
 ## 12. Integration boundaries
 
