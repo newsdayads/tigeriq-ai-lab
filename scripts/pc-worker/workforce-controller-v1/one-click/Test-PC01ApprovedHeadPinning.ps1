@@ -10,8 +10,10 @@ $source = Join-Path $root 'source'
 $client = Join-Path $root 'client'
 $branch = 'wo056/pc01-one-click-bootstrap'
 
-function Invoke-Git([string]$Path,[Parameter(ValueFromRemainingArguments=$true)][string[]]$GitArgs) {
-  & $git -C $Path @GitArgs | Out-Null
+function Invoke-Git([string]$RepoPath,[string[]]$GitArgs) {
+  $commandArgs = @('-C', $RepoPath) + $GitArgs
+  $global:LASTEXITCODE = 0
+  & $git @commandArgs | Out-Null
   if ($LASTEXITCODE -ne 0) { throw "git failed: $($GitArgs -join ' ')" }
 }
 function Assert-Fails([scriptblock]$Action,[string]$Code) {
@@ -23,24 +25,24 @@ try {
   New-Item -ItemType Directory -Force -Path $root | Out-Null
   & $git init --bare $remote | Out-Null
   & $git init $source | Out-Null
-  Invoke-Git $source @('config','user.email','pc01-test@invalid')
-  Invoke-Git $source @('config','user.name','PC01 test')
-  Invoke-Git $source @('checkout','-b',$branch)
+  Invoke-Git -RepoPath $source -GitArgs @('config','user.email','pc01-test@invalid')
+  Invoke-Git -RepoPath $source -GitArgs @('config','user.name','PC01 test')
+  Invoke-Git -RepoPath $source -GitArgs @('checkout','-b',$branch)
   Set-Content -Path (Join-Path $source 'state.txt') -Value 'approved' -NoNewline
-  Invoke-Git $source @('add','state.txt'); Invoke-Git $source @('commit','-m','approved')
+  Invoke-Git -RepoPath $source -GitArgs @('add','state.txt'); Invoke-Git -RepoPath $source -GitArgs @('commit','-m','approved')
   $approved = (& $git -C $source rev-parse HEAD).Trim()
-  Invoke-Git $source @('remote','add','origin',$remote); Invoke-Git $source @('push','origin',$branch)
+  Invoke-Git -RepoPath $source -GitArgs @('remote','add','origin',$remote); Invoke-Git -RepoPath $source -GitArgs @('push','origin',$branch)
   & $git clone --branch $branch $remote $client | Out-Null
   & $VerifierPath -RepoPath $client -GitExecutable $git -ExpectedBranch $branch -ApprovedHeadSha $approved -ApprovedRemoteRef "refs/heads/$branch" | Out-Null
 
   Set-Content -Path (Join-Path $client 'local.txt') -Value 'unreviewed' -NoNewline
-  Invoke-Git $client @('add','local.txt'); Invoke-Git $client @('commit','-m','local unreviewed')
+  Invoke-Git -RepoPath $client -GitArgs @('add','local.txt'); Invoke-Git -RepoPath $client -GitArgs @('commit','-m','local unreviewed')
   Assert-Fails { & $VerifierPath -RepoPath $client -GitExecutable $git -ExpectedBranch $branch -ApprovedHeadSha $approved -ApprovedRemoteRef "refs/heads/$branch" | Out-Null } 'APPROVED_LOCAL_HEAD_MISMATCH'
 
   Set-Content -Path (Join-Path $source 'state.txt') -Value 'advanced' -NoNewline
-  Invoke-Git $source @('add','state.txt'); Invoke-Git $source @('commit','-m','advanced'); Invoke-Git $source @('push','origin',$branch)
+  Invoke-Git -RepoPath $source -GitArgs @('add','state.txt'); Invoke-Git -RepoPath $source -GitArgs @('commit','-m','advanced'); Invoke-Git -RepoPath $source -GitArgs @('push','origin',$branch)
   Assert-Fails { & $VerifierPath -RepoPath $client -GitExecutable $git -ExpectedBranch $branch -ApprovedHeadSha $approved -ApprovedRemoteRef "refs/heads/$branch" | Out-Null } 'APPROVED_LOCAL_HEAD_MISMATCH'
-  Invoke-Git $client @('reset','--hard',$approved)
+  Invoke-Git -RepoPath $client -GitArgs @('reset','--hard',$approved)
   Assert-Fails { & $VerifierPath -RepoPath $client -GitExecutable $git -ExpectedBranch $branch -ApprovedHeadSha $approved -ApprovedRemoteRef "refs/heads/$branch" | Out-Null } 'APPROVED_REMOTE_HEAD_MISMATCH'
   Write-Host 'PC01_APPROVED_HEAD_PINNING_REGRESSION_PASS'
 } finally {
