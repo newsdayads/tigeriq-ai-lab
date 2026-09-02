@@ -88,5 +88,5 @@ jobs:
       - name: Run focused Android contract tests
         working-directory: apps/android-worker
         run: |
-          gradle --no-daemon :app:testDebugUnitTest --tests ai.tigeriq.worker.v07.ControllerV1ContractTest --tests ai.tigeriq.worker.v07.DirectAiJobAdapterTest --tests ai.tigeriq.worker.v07.ActivationCodeTest
+          gradle --no-daemon :app:testDebugUnitTest --tests ai.tigeriq.worker.v07.ControllerV1ContractTest --tests ai.tigeriq.worker.v07.DirectAiJobAdapterTest --tests ai.tigeriq.worker.v07.ActivationCodeTest --tests ai.tigeriq.worker.v07.ZeroCostPolicyTest
           echo 'ANDROID_CONTROLLER_V1_PROTOCOL_GATE_PASS'
