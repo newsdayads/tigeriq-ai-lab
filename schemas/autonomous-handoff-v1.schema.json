@@ -1,0 +1,260 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tigeriq.ai/schemas/autonomous-handoff-v1.schema.json",
+  "title": "TigerIQ Autonomous Handoff V1",
+  "description": "Governance contract only; not a runtime transport implementation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "handoff_id",
+    "work_ref",
+    "from_role",
+    "to_role",
+    "accountable_executor",
+    "stage",
+    "risk_level",
+    "gate_reason",
+    "scope",
+    "acceptance_criteria",
+    "exact_head_or_artifact_version",
+    "evidence_refs",
+    "evidence_set_hash",
+    "review_fingerprint",
+    "requested_verdict",
+    "constraints",
+    "next_state_on_pass",
+    "return_to_on_fail"
+  ],
+  "properties": {
+    "contract_version": { "const": "TIGERIQ_AUTONOMOUS_HANDOFF_V1" },
+    "handoff_id": { "type": "string", "minLength": 1, "maxLength": 160 },
+    "work_ref": { "type": "string", "minLength": 1, "maxLength": 512 },
+    "from_role": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "to_role": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "accountable_executor": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "stage": {
+      "enum": [
+        "HANDOFF_READY",
+        "REVIEWING",
+        "JUDGING",
+        "REWORK_REQUIRED",
+        "AWAITING_OWNER",
+        "EXTERNAL_WAIT",
+        "NEXT_STAGE"
+      ]
+    },
+    "risk_level": { "enum": ["R0", "R1", "R2", "R3", "R4"] },
+    "gate_reason": { "type": "string", "minLength": 1, "maxLength": 2000 },
+    "scope": { "type": "string", "minLength": 1, "maxLength": 4000 },
+    "acceptance_criteria": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1, "maxLength": 2000 }
+    },
+    "exact_head_or_artifact_version": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "evidence_refs": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1, "maxLength": 1024 },
+      "uniqueItems": true
+    },
+    "evidence_set_hash": {
+      "type": "string",
+      "pattern": "^(sha256:)?[a-fA-F0-9]{64}$"
+    },
+    "review_fingerprint": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "description": "Stable identifier derived from scope + exact version + evidence-set hash + policy/risk refs."
+    },
+    "acceptance_policy_ref": { "type": "string", "minLength": 1, "maxLength": 512 },
+    "prior_verdict_ref": { "type": "string", "minLength": 1, "maxLength": 512 },
+    "changed_since_last_review": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1, "maxLength": 2000 },
+      "uniqueItems": true
+    },
+    "requested_verdict": { "enum": ["REVIEW_PASS_FAIL", "JUDGE_PASS_FAIL", "OWNER_DECISION"] },
+    "constraints": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1, "maxLength": 2000 },
+      "uniqueItems": true
+    },
+    "next_state_on_pass": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "return_to_on_fail": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "review_required": { "type": "boolean" },
+    "reviewability": { "enum": ["REVIEWABLE", "NOT_REVIEWABLE"] },
+    "non_reviewable_reason": { "type": "string", "minLength": 1, "maxLength": 2000 },
+    "independent_review_hard_floor": { "type": "boolean" },
+    "independent_review_hard_floor_reason": { "enum": ["PRODUCTION", "SECURITY", "RELEASE", "MULTIPLE"] },
+    "judge_required": { "type": "boolean" },
+    "owner_gate_required": { "type": "boolean" },
+    "owner_gate_status": { "enum": ["NOT_REQUIRED", "PENDING", "APPROVED", "DENIED"] },
+    "owner_approval_ref": { "type": "string", "minLength": 1, "maxLength": 512, "x-tigeriq-immutable": true },
+    "wait_reason": { "type": "string", "minLength": 1, "maxLength": 2000 },
+    "resume_condition": { "type": "string", "minLength": 1, "maxLength": 2000 },
+    "last_checked_at": { "type": "string", "format": "date-time" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "risk_level": { "const": "R3" } },
+        "required": ["risk_level"]
+      },
+      "then": {
+        "properties": { "review_required": { "const": true } },
+        "required": ["review_required"]
+      }
+    },
+    {
+      "if": {
+        "properties": { "risk_level": { "const": "R4" } },
+        "required": ["risk_level"]
+      },
+      "then": {
+        "required": ["reviewability", "independent_review_hard_floor"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "risk_level": { "const": "R4" },
+          "reviewability": { "const": "REVIEWABLE" }
+        },
+        "required": ["risk_level", "reviewability"]
+      },
+      "then": {
+        "properties": { "review_required": { "const": true } },
+        "required": ["review_required"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "risk_level": { "const": "R4" },
+          "reviewability": { "const": "NOT_REVIEWABLE" }
+        },
+        "required": ["risk_level", "reviewability"]
+      },
+      "then": {
+        "properties": {
+          "review_required": { "const": false },
+          "independent_review_hard_floor": { "const": false }
+        },
+        "required": ["review_required", "non_reviewable_reason", "independent_review_hard_floor"]
+      }
+    },
+    {
+      "if": {
+        "properties": { "independent_review_hard_floor": { "const": true } },
+        "required": ["independent_review_hard_floor"]
+      },
+      "then": {
+        "properties": {
+          "reviewability": { "const": "REVIEWABLE" },
+          "review_required": { "const": true }
+        },
+        "required": ["reviewability", "review_required", "independent_review_hard_floor_reason"]
+      }
+    },
+    {
+      "if": {
+        "properties": { "stage": { "const": "EXTERNAL_WAIT" } },
+        "required": ["stage"]
+      },
+      "then": {
+        "required": ["wait_reason", "resume_condition", "last_checked_at"]
+      }
+    },
+    {
+      "if": {
+        "properties": { "owner_gate_required": { "const": true } },
+        "required": ["owner_gate_required"]
+      },
+      "then": {
+        "properties": { "owner_gate_status": { "enum": ["PENDING", "APPROVED", "DENIED"] } },
+        "required": ["owner_gate_status"]
+      }
+    },
+    {
+      "if": {
+        "properties": { "owner_gate_required": { "const": false } },
+        "required": ["owner_gate_required"]
+      },
+      "then": {
+        "properties": { "owner_gate_status": { "const": "NOT_REQUIRED" } },
+        "required": ["owner_gate_status"]
+      }
+    },
+    {
+      "if": {
+        "properties": { "owner_gate_status": { "const": "PENDING" } },
+        "required": ["owner_gate_status"]
+      },
+      "then": {
+        "not": { "required": ["owner_approval_ref"] }
+      }
+    },
+    {
+      "if": {
+        "properties": { "owner_gate_status": { "const": "APPROVED" } },
+        "required": ["owner_gate_status"]
+      },
+      "then": {
+        "required": ["owner_approval_ref"]
+      }
+    },
+    {
+      "if": {
+        "properties": { "stage": { "const": "AWAITING_OWNER" } },
+        "required": ["stage"]
+      },
+      "then": {
+        "properties": {
+          "owner_gate_required": { "const": true },
+          "owner_gate_status": { "const": "PENDING" },
+          "requested_verdict": { "const": "OWNER_DECISION" }
+        },
+        "required": ["owner_gate_required", "owner_gate_status", "requested_verdict"],
+        "not": { "required": ["owner_approval_ref"] }
+      }
+    },
+    {
+      "if": {
+        "properties": { "requested_verdict": { "const": "OWNER_DECISION" } },
+        "required": ["requested_verdict"]
+      },
+      "then": {
+        "properties": {
+          "stage": { "const": "AWAITING_OWNER" },
+          "owner_gate_required": { "const": true },
+          "owner_gate_status": { "const": "PENDING" }
+        },
+        "required": ["stage", "owner_gate_required", "owner_gate_status"],
+        "not": { "required": ["owner_approval_ref"] }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "stage": { "const": "NEXT_STAGE" },
+          "owner_gate_required": { "const": true }
+        },
+        "required": ["stage", "owner_gate_required"]
+      },
+      "then": {
+        "properties": { "owner_gate_status": { "const": "APPROVED" } },
+        "required": ["owner_gate_status", "owner_approval_ref"]
+      }
+    },
+    {
+      "if": { "required": ["prior_verdict_ref"] },
+      "then": {
+        "required": ["changed_since_last_review"],
+        "properties": { "changed_since_last_review": { "minItems": 1 } }
+      }
+    }
+  ]
+}
