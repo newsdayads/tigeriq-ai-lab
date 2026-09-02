@@ -3,12 +3,14 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 EXPECTED_IP = "100.97.23.87"
 PORT = "8790"
 DEFAULT_DSN_FILE = Path(r"F:\TigerIQ\Secrets\postgres-workforce.dsn")
 DEFAULT_ADMIN_FILE = Path(r"F:\TigerIQ\Secrets\workforce-controller-v1-admin.secret")
+DEFAULT_LOG_FILE = Path(r"F:\TigerIQ\Logs\workforce-controller-v1.log")
 
 
 def resolve_tailscale() -> str:
@@ -36,6 +38,14 @@ def read_nonempty(path: Path, label: str) -> str:
     return value
 
 
+def redirect_logs() -> None:
+    path = Path(os.environ.get("TIGERIQ_WORKFORCE_LOG", str(DEFAULT_LOG_FILE)))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    stream = path.open("a", encoding="utf-8", buffering=1)
+    sys.stdout = stream
+    sys.stderr = stream
+
+
 def main() -> int:
     base = Path(__file__).resolve().parent
     host = tailscale_ipv4()
@@ -52,8 +62,11 @@ def main() -> int:
     os.environ["TIGERIQ_WORKFORCE_SCHEMA"] = str(base / "workforce_controller_v1.sql")
     os.environ.setdefault("TIGERIQ_WORKFORCE_AUTO_MIGRATE", "0")
 
-    from workforce_controller_v1 import main as controller_main
-    return controller_main()
+    redirect_logs()
+    import workforce_controller_v1 as controller_module
+    from workforce_controller_recovery_v1 import install_recovery_patch
+    install_recovery_patch()
+    return controller_module.main()
 
 
 if __name__ == "__main__":
