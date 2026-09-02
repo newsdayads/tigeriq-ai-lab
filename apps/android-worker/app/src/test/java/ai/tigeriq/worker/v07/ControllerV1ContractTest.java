@@ -8,7 +8,7 @@ import static org.junit.Assert.assertEquals;
 public final class ControllerV1ContractTest {
     @Test public void pinsApproved116ProtocolAndRoutes() throws Exception {
         assertEquals("116", ControllerV1Contract.SOURCE_PR);
-        assertEquals("44543e7690591b6e053672e895ba5e810acb281e", ControllerV1Contract.SOURCE_HEAD);
+        assertEquals("c0632bc110ea0d26925d3657ac485cb90b5ee010", ControllerV1Contract.SOURCE_HEAD);
         assertEquals("controller-v1", ControllerV1Contract.PROTOCOL);
         assertEquals("001_operational_state_v1", ControllerV1Contract.MIGRATION);
         assertEquals("/api/v1/status", ControllerV1Contract.STATUS_PATH);
