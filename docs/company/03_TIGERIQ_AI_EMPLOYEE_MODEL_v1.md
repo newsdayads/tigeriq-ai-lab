@@ -1,5 +1,5 @@
 # TIGERIQ — AI EMPLOYEE & DEPARTMENT MODEL
-Version: 1.1
+Version: 1.2
 Status: Source of Truth
 
 ## Chief of Staff / CHAT00
@@ -12,6 +12,16 @@ CHAT00 is the orchestration authority for the Autonomous Handoff Loop:
 - returns FAIL directly to the accountable Executor;
 - watches stale evidence, duplicate review, correction budget, external wait and real blockers;
 - does not use Sếp as a message bus between AI Employees.
+
+CHAT00 must resolve assignment and execution state from authoritative TigerIQ sources. It must not infer AI Employee work state from an external human workboard.
+
+Trello boundary:
+- Trello is `HUMAN WORKBOARD / READ-ONLY EXTERNAL SOURCE` by default;
+- CHAT00/NV00 must not audit Trello during startup merely to determine current TigerIQ work;
+- Trello card/list state cannot establish or override AI Employee `ACTIVE / BLOCKED / WAITING / DONE` state;
+- Trello may be read for explicit Owner requests, approved external-input processes, or Owner Cockpit human-work projections;
+- Trello writes require explicit Owner instruction for that change or approved bounded process authority;
+- canonical boundary is `docs/architecture/TIGERIQ_EXTERNAL_WORKBOARD_BOUNDARY_V1.md`.
 
 CHAT00 does not satisfy an independent review/judge requirement for work it authored when independence is required.
 
@@ -76,3 +86,4 @@ CHAT05:
 - The accountable Executor owns fix/retest until PASS or accepted REAL BLOCKER.
 - A Reviewer/Judge verdict must be bound to exact scope/evidence; stale or changed evidence requires a new fingerprint.
 - Sếp is involved only for genuine Owner authority/decision, irreversible/financial/security/legal/Production gates, or an unavoidable physical action.
+- External human workboards do not become TigerIQ execution authority merely because they are connected.

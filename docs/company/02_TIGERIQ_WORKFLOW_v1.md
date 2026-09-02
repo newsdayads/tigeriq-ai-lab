@@ -1,5 +1,5 @@
 # TIGERIQ — WORKFLOW V1
-Version: 1.1
+Version: 1.2
 Status: Source of Truth
 Priority: P0
 
@@ -31,6 +31,22 @@ Responsibilities:
 - CHAT05 is an independent quality gate only where risk/process requires it; it is not the implementation owner or general work queue.
 - Reviewer/Judge must return verdicts to CHAT00/accountable Executor, not ask Sếp to relay them.
 - Sếp is never used to forward routine status, PASS, FAIL, evidence or blocker messages between AI Employees.
+
+## Control Plane and external workboards
+Canonical boundary: `docs/architecture/TIGERIQ_EXTERNAL_WORKBOARD_BOUNDARY_V1.md`.
+
+For CHAT00/NV session startup, assignment recovery and execution-state decisions, use the applicable authoritative TigerIQ sources: Company Source of Truth, current orchestration policy, GitHub Issues/PR/exact evidence/current-state for repository work, canonical runtime/company state when applicable, and approved domain Sources of Truth.
+
+Trello is classified as `HUMAN WORKBOARD / READ-ONLY EXTERNAL SOURCE`.
+
+Rules:
+- Do **not** open/search/audit Trello merely because `NV 00`/`CHAT00` starts or resumes.
+- Do **not** use Trello to decide AI Employee assignment or `ACTIVE / BLOCKED / WAITING / DONE` state.
+- Trello may be read when Sếp explicitly asks, when an approved process declares it as an external input, or when Owner Cockpit needs a human-work projection.
+- Trello-derived projections are non-authoritative for TigerIQ internal execution state and must preserve provenance where available.
+- Default Trello integration is read-only. Writes require an explicit Owner request for that Trello change or bounded write authority in an approved process.
+- An authorized Trello write never makes Trello the Control Plane and must not create a shadow copy of authoritative Job/Lease/Result/Evidence/runtime state.
+- On conflict, the higher-precedence TigerIQ Source of Truth wins.
 
 ## Risk-based assurance
 Use action-level R0-R4 from approved Company Operating Model / Chief of Staff policy:

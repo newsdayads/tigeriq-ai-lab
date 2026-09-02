@@ -1,5 +1,5 @@
 # TIGERIQ — DECISION LOG / BASELINE
-Version: 1.1
+Version: 1.2
 
 ## Confirmed operating decisions
 - TigerIQ is intended to become an AI-native company/operating system, not merely a chatbot.
@@ -13,6 +13,17 @@ Version: 1.1
 - Existing assets should be evaluated for monetization, but no asset should be activated without economic justification.
 - TigerIQ Driver is an important real-world product/use case and originated from an operational need to record rides and settle revenue sharing.
 - The Owner wants the system to progressively control personal/business workflows while preserving explicit privacy boundaries.
+
+## External workboard governance — 2026-09-03
+- Trello is classified as `HUMAN WORKBOARD / READ-ONLY EXTERNAL SOURCE` by default.
+- Trello is not Company Control Plane, Company Source of Truth, AI Employee queue, runtime state store, engineering evidence store or AI memory.
+- CHAT00/NV00 startup must recover company work from authoritative TigerIQ state and must not automatically open/audit Trello to determine current assignments.
+- Trello card/list position must not establish or override AI Employee `ACTIVE / BLOCKED / WAITING / DONE` state.
+- Trello may be read when Sếp explicitly asks, when an approved process declares it as an external input, or when Owner Cockpit projects human/manual work.
+- Trello-derived Owner Cockpit data is a non-authoritative projection for TigerIQ internal execution state and should retain source provenance where available.
+- Default Trello integration is read-only. A Trello write is allowed only by explicit Owner request for that Trello change or by bounded write authority in an approved process.
+- An authorized Trello write does not elevate Trello into Control Plane and must not create a shadow copy of canonical Job/Lease/Result/Evidence/runtime state.
+- Canonical contract: `docs/architecture/TIGERIQ_EXTERNAL_WORKBOARD_BOUNDARY_V1.md`.
 
 ## Autonomous handoff governance — 2026-09-02
 - Owner gives a goal/constraint once; Sếp must not be used as a message bus between AI Employees.
@@ -35,4 +46,4 @@ Version: 1.1
 - 2026-08-29: First Judge evaluation at head `627f2b8999e6fbe94ff4cecf9110d7d91dd2d6c7` returned FAIL because review evidence was not yet recorded on Issue #12, Source Index precedence was inconsistent, and CURRENT_STATE omitted PR #13–#18. Merge remains blocked pending fixes and re-judgment.
 
 ## Baseline date
-2026-09-02
+2026-09-03
