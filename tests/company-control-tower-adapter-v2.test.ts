@@ -2,13 +2,15 @@
 import { describe, expect, it } from 'vitest';
 import {
   BUSINESS_STATE_V2_CONTRACT_SHA,
+  CHIEF_OF_STAFF_POLICY_V2_SHA,
   buildCompanyControlTowerViewModel,
   controlTowerTruthCheck,
   kpiHealthScore,
 } from '../public/web-v1/company-control-tower-adapter.js';
 import { MOCK_CONTROLLER_SNAPSHOT, MOCK_CONTROL_TOWER_PREVIEW } from '../public/web-v1/mock-data.js';
 
-const CONTRACT_SHA = '3b8323b788f40a964d9415140aba2e7ac9e92870';
+const CONTRACT_SHA = '4bccf71d73c8d8cf100c65b935b3474f97f24459';
+const CHIEF_POLICY_SHA = '0f673f92b703c8c67e8a89cb23a0c5f7307db3f2';
 
 function liveSnapshot(extra: Record<string, unknown> = {}) {
   return {
@@ -20,16 +22,18 @@ function liveSnapshot(extra: Record<string, unknown> = {}) {
 }
 
 describe('Company Control Tower Business State V2 adapter', () => {
-  it('binds the read model to PR153 exact contract and keeps preview non-authoritative', () => {
+  it('binds the read model to final reviewed PR153 and PR154 baselines while keeping preview non-authoritative', () => {
     const vm = buildCompanyControlTowerViewModel(MOCK_CONTROLLER_SNAPSHOT, { previewBusiness: MOCK_CONTROL_TOWER_PREVIEW });
     expect(BUSINESS_STATE_V2_CONTRACT_SHA).toBe(CONTRACT_SHA);
-    expect(vm.contract).toEqual(expect.objectContaining({ sourcePr: 153, exactSha: CONTRACT_SHA }));
+    expect(CHIEF_OF_STAFF_POLICY_V2_SHA).toBe(CHIEF_POLICY_SHA);
+    expect(vm.contract).toEqual(expect.objectContaining({ sourcePr: 153, exactSha: CONTRACT_SHA, chiefPolicy: expect.objectContaining({ sourcePr:154, exactSha:CHIEF_POLICY_SHA }) }));
     expect(vm.source).toEqual(expect.objectContaining({ mode: 'mock', authoritative: false, businessAvailable: true }));
     expect(vm.goals[0]).toEqual(expect.objectContaining({ goalId: 'GOAL-COMPANY-001', status: 'RUNNING', lifecycleSource: 'PR141_OPERATIONAL_GOAL', isMock: true }));
     expect(vm.signals[0]).toEqual(expect.objectContaining({ signalId: 'SIGNAL-MOCK-001', status: 'CONSUMED', isMock: true }));
     expect(vm.departments.find((row: any) => row.departmentId === 'DEP-RESEARCH')?.employeeCount).toBe(1);
     expect(vm.employees.find((row: any) => row.employeeId === 'EMP-CHIEF-001')).toEqual(expect.objectContaining({ businessRole: 'Chief of Staff AI', autonomyLevel: 'A2', isMock: true }));
-    expect(vm.ownerActions[0]).toEqual(expect.objectContaining({ exceptionId: 'EXC-MOCK-001', status: 'AWAITING_OWNER', requiredOwnerAction: expect.stringContaining('Quyết định') }));
+    expect(vm.ownerActions[0]).toEqual(expect.objectContaining({ exceptionId: 'EXC-MOCK-001', status: 'AWAITING_OWNER', requiredOwnerAction: expect.stringContaining('Quyết định'), authorizationState:'BLOCKED_PENDING_OWNER_DECISION' }));
+    expect(vm.ownerActions[0].ownerApprovalProof).toEqual({ state:'NOT_ESTABLISHED', ref:null, rule:'decision_ref_is_not_owner_approval_ref' });
     expect(vm.outcomes[0].provenance[0]).toEqual(expect.objectContaining({ source_system: 'web-preview-mock' }));
     expect(() => controlTowerTruthCheck(vm)).not.toThrow();
   });
@@ -91,6 +95,25 @@ describe('Company Control Tower Business State V2 adapter', () => {
     expect(vm.source.businessAvailable).toBe(false);
     expect(vm.source.businessReason).toBe('BUSINESS_STATE_V2_PROJECTION_PENDING');
     expect(vm.goals).toEqual([]); expect(vm.kpis).toEqual([]); expect(vm.signals).toEqual([]); expect(vm.missions).toEqual([]); expect(vm.ownerActions).toEqual([]); expect(vm.outcomes).toEqual([]);
+  });
+
+  it('maps CẦN SẾP fail-closed: only OPEN/AWAITING_OWNER and never treats decision_ref as owner_approval_ref', () => {
+    const preview = {
+      ...MOCK_CONTROL_TOWER_PREVIEW,
+      exceptions: [
+        ...MOCK_CONTROL_TOWER_PREVIEW.exceptions,
+        { exception_id:'EXC-OPEN-DECISION-REF',severity:'high',category:'authority',summary:'Owner decision still pending',impact:'blocked',attempted_actions:[],proposed_action:null,required_owner_action:'Sếp quyết định tiếp tục hay dừng',related_refs:[],due_at:null,status:'open',decision_ref:'DECISION-HISTORY-ONLY',created_at:'2026-09-02T10:00:00Z',updated_at:'2026-09-02T10:00:00Z' },
+        { exception_id:'EXC-DECIDED',severity:'high',category:'authority',summary:'Already decided',impact:'none',attempted_actions:[],proposed_action:null,required_owner_action:'stale text',related_refs:[],due_at:null,status:'decided',decision_ref:'DECISION-IMMUTABLE-REF',created_at:'2026-09-02T10:00:00Z',updated_at:'2026-09-02T10:00:00Z' },
+      ],
+    };
+    const vm = buildCompanyControlTowerViewModel(MOCK_CONTROLLER_SNAPSHOT,{previewBusiness:preview});
+    expect(vm.ownerActions.map((row:any)=>row.exceptionId)).toContain('EXC-OPEN-DECISION-REF');
+    expect(vm.ownerActions.map((row:any)=>row.exceptionId)).not.toContain('EXC-DECIDED');
+    const pending = vm.ownerActions.find((row:any)=>row.exceptionId==='EXC-OPEN-DECISION-REF');
+    expect(pending.decisionRef).toBe('DECISION-HISTORY-ONLY');
+    expect(pending.ownerApprovalProof).toEqual({state:'NOT_ESTABLISHED',ref:null,rule:'decision_ref_is_not_owner_approval_ref'});
+    expect(pending.authorizationState).toBe('BLOCKED_PENDING_OWNER_DECISION');
+    expect(() => controlTowerTruthCheck(vm)).not.toThrow();
   });
 
   it('only shows Trello coordination cards from an explicit read-only, provenance-bearing Controller projection', () => {
