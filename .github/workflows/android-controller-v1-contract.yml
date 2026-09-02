@@ -1,0 +1,92 @@
+name: Android ↔ Controller V1 Contract
+
+on:
+  pull_request:
+    paths:
+      - 'apps/android-worker/**'
+      - '.github/workflows/android-controller-v1-contract.yml'
+      - '.github/workflows/android-worker.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  protocol:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Android candidate
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Checkout live PR 116 Controller contract
+        uses: actions/checkout@v4
+        with:
+          ref: refs/pull/116/head
+          path: controller116
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+      - name: Verify Android against current PR 116 contract
+        run: |
+          set -euo pipefail
+          android='apps/android-worker/app/src/main/java/ai/tigeriq/worker/v07'
+          contract="$android/ControllerV1Contract.java"
+          client="$android/TigerIqApiClient.java"
+          controller='controller116/apps/workforce-controller/src/protocol.ts'
+          readme='controller116/scripts/pc-worker/workforce-controller-v1/README.md'
+
+          controller_head="$(git -C controller116 rev-parse HEAD)"
+          android_pinned_head="$(sed -n 's/.*SOURCE_HEAD = "\([0-9a-f]*\)";.*/\1/p' "$contract")"
+          test -n "$android_pinned_head"
+          test "$controller_head" = "$android_pinned_head"
+
+          grep -Fq "name: 'controller-v1'" "$controller"
+          grep -Fq "statusPath: '/api/v1/status'" "$controller"
+          grep -Fq "leasePath: '/api/v1/jobs/lease'" "$controller"
+          grep -Fq '/api/v1/jobs/${encodeURIComponent(jobId)}/result' "$controller"
+          grep -Fq '/api/v1/devices/${encodeURIComponent(deviceId)}/heartbeat' "$controller"
+          grep -Fq "migration: '001_operational_state_v1'" "$controller"
+          for header in \
+            X-TigerIQ-Device-Proof-V X-TigerIQ-Employee-Id X-TigerIQ-Node-Id \
+            X-TigerIQ-Device-Id X-TigerIQ-Device-Key-Fingerprint X-TigerIQ-Device-Public-Key \
+            X-TigerIQ-Device-Timestamp X-TigerIQ-Device-Nonce X-TigerIQ-Device-Challenge X-TigerIQ-Device-Signature; do
+            grep -Fq "$header" "$controller"
+            grep -Fq "$header" "$client"
+          done
+          grep -Fq 'result.output` is an **object**' "$readme"
+          grep -Fq '"provider": "gemini"' "$readme"
+          grep -Fq '"attempts": []' "$readme"
+          grep -Fq '"evidence": [' "$readme"
+
+          grep -Fq 'PROTOCOL = "controller-v1"' "$contract"
+          grep -Fq 'MIGRATION = "001_operational_state_v1"' "$contract"
+          grep -Fq 'STATUS_PATH = "/api/v1/status"' "$contract"
+          grep -Fq 'LEASE_PATH = "/api/v1/jobs/lease"' "$contract"
+          grep -Fq '"/api/v1/jobs/"' "$contract"
+          grep -Fq '"/api/v1/devices/"' "$contract"
+          grep -Fq 'leaseNextJob()' "$client"
+          grep -Fq 'submitResult(String jobId' "$client"
+          grep -Fq 'heartbeat(String health' "$client"
+
+          if grep -R -n -E '/v1/android/sessions|/v1/android/jobs/pull|/v1/android/jobs/submit|/v1/inference|SessionManager|SessionLifecycle' "$android"; then
+            echo 'ANDROID_CONTROLLER_V1_PROTOCOL_FAIL: Android contains retired protocol' >&2
+            exit 1
+          fi
+          if grep -R -n -E '/v1/android/sessions|/v1/android/jobs/pull|/v1/android/jobs/submit' controller116/apps/workforce-controller/src; then
+            echo 'ANDROID_CONTROLLER_V1_PROTOCOL_FAIL: Controller implements retired Android route' >&2
+            exit 1
+          fi
+          echo "PR116_HEAD=$controller_head"
+          echo 'ANDROID_CONTROLLER_V1_STATIC_CONTRACT_MATCH'
+      - name: Run focused Android contract tests
+        working-directory: apps/android-worker
+        run: |
+          gradle --no-daemon :app:testDebugUnitTest --tests ai.tigeriq.worker.v07.ControllerV1ContractTest --tests ai.tigeriq.worker.v07.DirectAiJobAdapterTest --tests ai.tigeriq.worker.v07.ActivationCodeTest
+          echo 'ANDROID_CONTROLLER_V1_PROTOCOL_GATE_PASS'

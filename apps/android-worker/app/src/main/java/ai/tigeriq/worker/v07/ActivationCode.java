@@ -6,9 +6,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
 /**
- * One-field TigerIQ V1 activation bundle.
- * Canonical format: TIQ1.<base64url(JSON)> with controller, employeeId, credentialId, bootstrapToken.
- * `gateway` remains accepted only for migration from v0.7 activation generators.
+ * Non-secret Controller V1 activation bundle.
+ * Canonical format: TIQ1.<base64url(JSON)> with controller + employeeId.
+ * Legacy gateway/credential/bootstrap fields may be present in old generators but are ignored.
  */
 public final class ActivationCode {
     private static final String PREFIX = "TIQ1.";
@@ -34,9 +34,7 @@ public final class ActivationCode {
             if (endpoint.isEmpty()) endpoint = required(object, "gateway");
             String controller = GatewayUrlPolicy.requireControllerUrl(endpoint);
             String employeeId = IdentityRules.requireId("employeeId", required(object, "employeeId"));
-            String credentialId = IdentityRules.requireId("credentialId", required(object, "credentialId"));
-            String bootstrapToken = required(object, "bootstrapToken");
-            return new Bundle(controller, employeeId, credentialId, bootstrapToken);
+            return new Bundle(controller, employeeId);
         } catch (IllegalArgumentException error) {
             throw error;
         } catch (Exception error) {
@@ -54,15 +52,11 @@ public final class ActivationCode {
         public final String controller;
         public final String gateway;
         public final String employeeId;
-        public final String credentialId;
-        public final String bootstrapToken;
 
-        Bundle(String controller, String employeeId, String credentialId, String bootstrapToken) {
+        Bundle(String controller, String employeeId) {
             this.controller = controller;
             this.gateway = controller;
             this.employeeId = employeeId;
-            this.credentialId = credentialId;
-            this.bootstrapToken = bootstrapToken;
         }
     }
 }

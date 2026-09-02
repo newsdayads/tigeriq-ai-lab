@@ -2,53 +2,31 @@ package ai.tigeriq.worker.v07;
 
 import android.content.Context;
 
+/** Creates the phone-owned Keystore identity and verifies Controller V1 health; PC01 binding is provisioned separately. */
 public final class EnrollmentCoordinator {
-    private final EmployeeDeviceStore identities;
-    private final SecureSecretStore secrets;
-    private final WorkerStatusStore status;
+    private static final String CONTROLLER_V1_CREDENTIAL_MARKER = "CONTROLLER-V1";
 
-    public EnrollmentCoordinator(Context context) {
-        Context app = context.getApplicationContext();
-        identities = new EmployeeDeviceStore(app);
-        secrets = new SecureSecretStore(app);
-        status = new WorkerStatusStore(app);
-    }
+    private final Context app;
 
-    public EmployeeDeviceStore.Profile enroll(String gatewayUrl, String employeeId, String credentialId, String bootstrapToken) throws Exception {
-        if (bootstrapToken == null || bootstrapToken.trim().isEmpty()) throw new IllegalArgumentException("TigerIQ bootstrap token is required");
-        EmployeeDeviceStore.Profile draft = identities.draft(gatewayUrl, employeeId, credentialId);
-        String oneTimeBootstrap = bootstrapToken.trim();
-        try {
-            DeviceKeyStore deviceKey = new DeviceKeyStore(draft.employeeId, draft.deviceId);
-            deviceKey.ensureKey();
-            if (!deviceKey.isHardwareBacked()) throw new DeviceKeyStore.HardwareBackingUnavailableException();
-            String fingerprint = deviceKey.publicKeyFingerprintSha256();
+    public EnrollmentCoordinator(Context context) { this.app = context.getApplicationContext(); }
 
-            TigerIqApiClient.Session session = new TigerIqApiClient(draft).mintSession(oneTimeBootstrap);
-            secrets.put(SecureSecretStore.SESSION_TOKEN, session.accessToken);
-            secrets.putLong(SecureSecretStore.SESSION_EXPIRES_AT, session.expiresAtEpochMs);
-            secrets.remove(SecureSecretStore.BOOTSTRAP_TOKEN);
+    public EmployeeDeviceStore.Profile enroll(String controllerUrl, String employeeId) throws Exception {
+        EmployeeDeviceStore identities = new EmployeeDeviceStore(app);
+        EmployeeDeviceStore.Profile draft = identities.draft(controllerUrl, employeeId, CONTROLLER_V1_CREDENTIAL_MARKER);
+        DeviceKeyStore keyStore = new DeviceKeyStore(draft.employeeId, draft.deviceId);
+        keyStore.ensureKey();
+        if (!keyStore.isHardwareBacked()) throw new DeviceKeyStore.HardwareBackingUnavailableException();
+        String fingerprint = keyStore.publicKeyFingerprintSha256();
 
-            EmployeeDeviceStore.Profile enrolled = new EmployeeDeviceStore.Profile(
-                    draft.gatewayUrl, draft.employeeId, draft.nodeId, draft.deviceId, draft.credentialId,
-                    "", fingerprint, true, System.currentTimeMillis());
-            identities.saveEnrolled(enrolled, fingerprint, true, enrolled.enrolledAtEpochMs);
-            status.setState(WorkerState.READY, "Đã đăng ký · chờ binding authoritative từ TigerIQ", "");
-            return identities.load();
-        } catch (Exception error) {
-            secrets.remove(SecureSecretStore.BOOTSTRAP_TOKEN);
-            secrets.remove(SecureSecretStore.SESSION_TOKEN);
-            secrets.remove(SecureSecretStore.SESSION_EXPIRES_AT);
-            String detail = error instanceof DeviceKeyStore.HardwareBackingUnavailableException
-                    ? "Thiết bị không xác nhận secure-hardware Keystore"
-                    : "Đăng ký thiết bị thất bại: " + safeMessage(error);
-            status.setState(WorkerState.NEED_ATTENTION, detail, "");
-            throw error;
-        }
-    }
+        // Status is deliberately the only unauthenticated compatibility probe in Controller V1.
+        new TigerIqApiClient(draft).requireControllerV1Ready();
 
-    private static String safeMessage(Exception error) {
-        if (error instanceof ApiException api) return api.code;
-        return error.getClass().getSimpleName();
+        EmployeeDeviceStore.Profile local = new EmployeeDeviceStore.Profile(
+                draft.controllerUrl, draft.employeeId, draft.nodeId, draft.deviceId,
+                CONTROLLER_V1_CREDENTIAL_MARKER, "", fingerprint, true, System.currentTimeMillis());
+        identities.saveEnrolled(local, fingerprint, true, local.enrolledAtEpochMs);
+        new WorkerStatusStore(app).setState(WorkerState.NEED_ATTENTION,
+                "Danh tính Controller V1 đã sẵn sàng · chờ PC01 provision/binding", null);
+        return identities.load();
     }
 }

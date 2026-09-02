@@ -13,10 +13,8 @@ import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.GCMParameterSpec;
 
+/** Keystore-backed encrypted local secrets. Controller V1 has no Android bootstrap/session secret. */
 public final class SecureSecretStore {
-    public static final String BOOTSTRAP_TOKEN = "bootstrap_token";
-    public static final String SESSION_TOKEN = "session_token";
-    public static final String SESSION_EXPIRES_AT = "session_expires_at";
     public static final String FCM_TOKEN = "fcm_token";
     private static final String PREFS = "tigeriq_v07_secure";
     private static final String KEY_ALIAS = "tigeriq.v07.secure.aes";

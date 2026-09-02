@@ -1,88 +1,83 @@
-# TigerIQ Android — Independent AI Employee V1
+# TigerIQ AI Employee V1 — Android
 
-Status: REPO/BUILD/TEST CANDIDATE · PHYSICAL PC01/JOB-001 PENDING
+Status: repository/build candidate only. Physical PC01/Tailscale/Gemini/Z Flip/Z Fold E2E is not claimed.
 
-## Purpose
-One Android phone is one independent TigerIQ AI Employee. PC01 is the control plane: it activates the Employee/Device, assigns JOBs through Tailscale and receives RESULT/EVIDENCE. The phone performs AI inference itself using a provider credential stored only on that phone.
+## Canonical Controller contract
 
-Canonical runtime:
+Android V1 follows the single Controller V1 contract maintained in PR #116. The Android source pins the exact approved Controller head in `ControllerV1Contract.SOURCE_HEAD`, and CI fails if PR #116 moves without a matching Android update.
 
-`PC01 -> Tailscale -> Android JOB -> phone-owned AI API -> Android RESULT/EVIDENCE -> PC01`
+Work transport is only:
 
-The Android V1 runtime MUST NOT forward a JOB prompt to PC01 so PC01 calls the AI provider on its behalf.
+- `GET /api/v1/status` — compatibility/health check only.
+- `POST /api/v1/jobs/lease` — receive the next job lease.
+- `POST /api/v1/jobs/{jobId}/result` — submit result + evidence atomically.
+- `POST /api/v1/devices/{deviceId}/heartbeat` — device health.
 
-## V1 responsibilities
+Retired and forbidden in V1 runtime:
 
-### PC01 / TigerIQ control plane
-- issue one-time activation material;
-- bind Employee ↔ Device;
-- queue and lease JOBs;
-- dedupe/idempotency authority;
-- accept RESULT/EVIDENCE;
-- coordinate review/retry/reassignment.
+- `/v1/android/sessions`
+- `/v1/android/jobs/pull`
+- `/v1/android/jobs/submit`
+- `/v1/inference`
 
-### Android AI Employee
-- keep hardware-backed device identity in Android Keystore;
-- keep its own AI provider API credential encrypted on-device;
-- pull only JOBs leased to its Employee/Device/Binding;
-- call the configured AI provider directly;
-- checkpoint attempts/result before submission;
-- submit standardized RESULT/EVIDENCE to PC01;
-- recover after network loss/reboot without falsely marking work complete.
+There is no Android Controller session token.
 
-## AI/provider model
-Provider access is not part of Employee identity. `AiProviderConnector` + `LocalAiProviderRegistry` form the provider-neutral boundary.
+## Device identity and authentication
 
-V1 first connector: Gemini API.
-- API key is stored through `SecureSecretStore` backed by Android Keystore AES/GCM.
-- Provider/model configuration is local to the phone.
-- Direct request target: Google Gemini Generative Language API.
-- Provider secret must not appear in activation, JOB, RESULT, evidence, logs or repository source.
+The phone creates an EC P-256 private key in hardware-backed Android Keystore. Every protected lease/result/heartbeat request signs the PR #116 canonical string with `SHA256withECDSA` and sends the required `X-TigerIQ-Device-*` proof headers. The private key never leaves Android Keystore.
 
-Future provider connectors such as OpenRouter/Claude/Groq can implement the same interface without changing the PC01 JOB/RESULT contract.
+Activation is deliberately non-secret: controller URL + Employee ID. The app verifies `/api/v1/status`, creates the phone identity and exposes only a copyable public provisioning record (`employeeId`, `nodeId`, `deviceId`, fingerprint, public key) for PC01 to register in PostgreSQL. Gemini credentials are not part of Controller provisioning.
 
-## PC01 Android endpoints
-- `POST /v1/android/sessions`
-- `POST /v1/android/jobs/pull`
-- `POST /v1/android/jobs/submit`
+## Phone-owned AI
 
-No `/v1/inference` Android execution dependency is permitted in V1.
+PC01 is the work control plane; it does not execute the provider prompt for this Android employee.
 
-## Standard result
-A completed phone RESULT includes:
-- `jobId`
-- `output`
-- `provider`
-- `model`
-- `timestamps`
-- `attempts`
-- `failover`
-- `errors`
-- `evidence`
-- Employee/Device/Binding identity and completion status.
+`Controller lease -> Android durable checkpoint -> phone-local provider connector -> Gemini API -> Android result/evidence -> Controller result endpoint`
 
-## Recovery and duplicate protection
-- WorkManager periodic wake and reboot/app-update recovery are retained.
-- Durable checkpoint stores JOB/result material encrypted locally.
-- Lease and binding are validated before execution/submission.
-- Provider attempt metadata is sanitized and bounded.
-- Once a provider result is persisted, retry resumes submission instead of calling AI again.
-- If process death loses volatile lease authority, the phone waits for lease expiry/reacquire instead of forging or reusing authority.
+Gemini is the first provider. `LocalAiProviderRegistry` and `AiProviderConnector` keep a provider-neutral boundary for future phone-local providers. The Gemini API key is stored only through Android Keystore-backed encrypted local storage and is excluded from Controller requests, result/evidence and logs.
 
-## Frozen from V1 execution
-The following legacy mechanisms are not packaged as V1 execution capabilities:
-- Accessibility Service;
-- overlay/screen control;
-- Gemini consumer-app UI automation;
-- legacy foreground UI worker;
-- package-query automation.
+## Result contract
 
-If future JOB classes require Android UI actions, that must be a separately approved capability with its own security/review gate; it is not part of V1 JOB-001.
+Completed result uses the PR #116 shape:
 
-## Transport
-Public cleartext HTTP is rejected. Pilot PC01 may use HTTP only over allowed Tailscale CGNAT address policy; current Android network-security config pins the pilot PC01 address used for the integration candidate. HTTPS remains valid.
+```json
+{
+  "status": "completed",
+  "completedAt": "...",
+  "output": {
+    "text": "...",
+    "provider": "gemini",
+    "model": "...",
+    "timestamps": {},
+    "attempts": [],
+    "failover": {"used": false},
+    "errors": []
+  },
+  "evidence": []
+}
+```
 
-## Current acceptance boundary
-Repo/CI can prove architecture, unit tests, APK build, manifest/DEX surface and secret-source exclusions. It cannot prove live Gemini credentials, real Tailscale reachability, physical PC01 activation, JOB-001, reboot/network behavior on Samsung hardware, or independent exact-head review without those external systems/devices.
+Terminal provider failures use `status=failed` and `failure={code,message,retriable}` while still returning sanitized output metadata and evidence.
 
-No MAIN/Production release is implied by a passing build.
+## Reliability
+
+- WorkManager wake/recovery is periodic and network-constrained.
+- Job/lease/idempotency/binding/attempt/result metadata is checkpointed locally.
+- Provider retry is bounded by `RetryPolicy`.
+- Once a result is persisted, a submit retry reuses that persisted result and does not call Gemini again.
+- If Android process/reboot loses the in-process raw lease token, the app does not fabricate authority; it waits for lease expiry/requeue and reacquires through `/api/v1/jobs/lease`.
+- Controller duplicate semantics remain authoritative: identical result replay is idempotent; conflicting duplicate is rejected.
+
+## Frozen capability surface
+
+The V1 APK excludes legacy direct-package Android sources from compilation and the merged-manifest/DEX CI gate rejects Accessibility, overlay/screen control, Gemini consumer-app automation, raw process/runtime loaders and privileged data/device permissions. The runtime needs only Internet, notification and boot-recovery permissions.
+
+## Repository readiness gate
+
+`ANDROID_CONTROLLER_V1_CONTRACT_READY` may be posted to PR #140 only after the same exact Android head has all three green:
+
+1. General `CI`.
+2. `Android Worker` build/unit/manifest/DEX/signing-continuity workflow.
+3. `Android ↔ Controller V1 Contract`, which checks Android against the live PR #116 head and runs focused contract tests.
+
+This marker is repository compatibility evidence only; it is not physical E2E or Production approval.
