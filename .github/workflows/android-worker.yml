@@ -38,7 +38,7 @@ jobs:
           test -z "${TIGERIQ_ANDROID_STORE_PASSWORD_FILE:-}"
           test -z "${TIGERIQ_ANDROID_KEY_PASSWORD_FILE:-}"
           gradle --no-daemon :app:tigerIqStableSigningStatus | grep TIGERIQ_STABLE_SIGNING_NOT_CONFIGURED
-      - name: Enforce V1 phone AI + Controller #116 contract
+      - name: Enforce V1 phone AI + Controller #116 + ZERO-COST contract
         run: |
           set -euo pipefail
           manifest='apps/android-worker/app/src/main/AndroidManifest.xml'
@@ -47,6 +47,11 @@ jobs:
           contract="$v1/ControllerV1Contract.java"
           client="$v1/TigerIqApiClient.java"
           result="$v1/DirectAiJobAdapter.java"
+          zero="$v1/ZeroCostPolicy.java"
+          config="$v1/ProviderConfigStore.java"
+          gemini="$v1/GeminiDirectClient.java"
+          worker="$v1/V07JobWorker.java"
+          registry="$v1/LocalAiProviderRegistry.java"
 
           test "$(grep -c '<uses-permission ' "$manifest")" -eq 3
           grep -q 'android.permission.INTERNET' "$manifest"
@@ -55,9 +60,17 @@ jobs:
           grep -q 'java.exclude("ai/tigeriq/worker/\*.java")' "$build"
           test ! -e apps/android-worker/app/src/main/res/xml/accessibility_service_config.xml
 
-          grep -q 'LocalAiProviderRegistry.connector' "$v1/V07JobWorker.java"
-          grep -q 'x-goog-api-key' "$v1/GeminiDirectClient.java"
-          grep -q 'SecureSecretStore' "$v1/ProviderConfigStore.java"
+          grep -q 'LocalAiProviderRegistry.connector' "$worker"
+          grep -q 'x-goog-api-key' "$gemini"
+          grep -q 'SecureSecretStore' "$config"
+          grep -Fq 'FREE_CONFIRMED = "free_confirmed"' "$zero"
+          grep -Fq 'PAID = "paid"' "$zero"
+          grep -Fq 'UNKNOWN = "unknown"' "$zero"
+          grep -Fq 'ZeroCostPolicy.executeIfAllowed(' "$worker"
+          grep -Fq 'providerConfig.geminiBillingState()' "$worker"
+          grep -Fq 'ZeroCostPolicy.requireExecutionAllowed(PROVIDER, config.geminiBillingState())' "$gemini"
+          grep -Fq '.putString(GEMINI_BILLING_STATE, normalizedBilling)' "$config"
+          grep -Fq 'Collections.singletonList(ProviderConfigStore.GEMINI)' "$registry"
           grep -q 'SOURCE_PR = "116"' "$contract"
           grep -q 'PROTOCOL = "controller-v1"' "$contract"
           grep -q 'MIGRATION = "001_operational_state_v1"' "$contract"
@@ -92,7 +105,12 @@ jobs:
             echo 'V1_SECRET_FAIL: provider credential material found in source/resources' >&2
             exit 1
           fi
-          echo 'ANDROID_V1_CONTROLLER116_SOURCE_GATE_PASS'
+          echo 'ANDROID_V1_CONTROLLER116_ZERO_COST_SOURCE_GATE_PASS'
+      - name: Prove ZERO-COST fail-closed offline
+        working-directory: apps/android-worker
+        run: |
+          gradle --no-daemon :app:testDebugUnitTest --tests ai.tigeriq.worker.v07.ZeroCostPolicyTest
+          echo 'ANDROID_ZERO_COST_OFFLINE_GATE_PASS'
       - name: Run Android V1 unit tests
         working-directory: apps/android-worker
         run: gradle --no-daemon :app:testDebugUnitTest
@@ -128,7 +146,10 @@ jobs:
           grep -q '/api/v1/devices/' /tmp/tigeriq-v1-dex-strings.txt
           grep -q 'controller-v1' /tmp/tigeriq-v1-dex-strings.txt
           grep -q '001_operational_state_v1' /tmp/tigeriq-v1-dex-strings.txt
-          echo 'ANDROID_V1_BUILT_APK_GATE_PASS'
+          grep -q 'free_confirmed' /tmp/tigeriq-v1-dex-strings.txt
+          grep -q 'ZERO_COST_PAID_BLOCKED' /tmp/tigeriq-v1-dex-strings.txt
+          grep -q 'ZERO_COST_BILLING_UNKNOWN' /tmp/tigeriq-v1-dex-strings.txt
+          echo 'ANDROID_V1_BUILT_APK_ZERO_COST_GATE_PASS'
       - name: Preserve unsigned CI artifacts before signing-contract test
         run: |
           set -euo pipefail
