@@ -40,6 +40,7 @@
         "JUDGING",
         "REWORK_REQUIRED",
         "AWAITING_OWNER",
+        "EXTERNAL_WAIT",
         "NEXT_STAGE"
       ]
     },
@@ -84,8 +85,13 @@
     "next_state_on_pass": { "type": "string", "minLength": 1, "maxLength": 128 },
     "return_to_on_fail": { "type": "string", "minLength": 1, "maxLength": 128 },
     "review_required": { "type": "boolean" },
+    "reviewability": { "enum": ["REVIEWABLE", "NOT_REVIEWABLE"] },
+    "non_reviewable_reason": { "type": "string", "minLength": 1, "maxLength": 2000 },
+    "independent_review_hard_floor": { "type": "boolean" },
+    "independent_review_hard_floor_reason": { "enum": ["PRODUCTION", "SECURITY", "RELEASE", "MULTIPLE"] },
     "judge_required": { "type": "boolean" },
     "owner_gate_required": { "type": "boolean" },
+    "owner_gate_status": { "enum": ["NOT_REQUIRED", "PENDING", "APPROVED", "DENIED"] },
     "owner_approval_ref": { "type": "string", "minLength": 1, "maxLength": 512, "x-tigeriq-immutable": true },
     "wait_reason": { "type": "string", "minLength": 1, "maxLength": 2000 },
     "resume_condition": { "type": "string", "minLength": 1, "maxLength": 2000 },
@@ -108,8 +114,58 @@
         "required": ["risk_level"]
       },
       "then": {
+        "required": ["reviewability", "independent_review_hard_floor"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "risk_level": { "const": "R4" },
+          "reviewability": { "const": "REVIEWABLE" }
+        },
+        "required": ["risk_level", "reviewability"]
+      },
+      "then": {
         "properties": { "review_required": { "const": true } },
         "required": ["review_required"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "risk_level": { "const": "R4" },
+          "reviewability": { "const": "NOT_REVIEWABLE" }
+        },
+        "required": ["risk_level", "reviewability"]
+      },
+      "then": {
+        "properties": {
+          "review_required": { "const": false },
+          "independent_review_hard_floor": { "const": false }
+        },
+        "required": ["review_required", "non_reviewable_reason", "independent_review_hard_floor"]
+      }
+    },
+    {
+      "if": {
+        "properties": { "independent_review_hard_floor": { "const": true } },
+        "required": ["independent_review_hard_floor"]
+      },
+      "then": {
+        "properties": {
+          "reviewability": { "const": "REVIEWABLE" },
+          "review_required": { "const": true }
+        },
+        "required": ["reviewability", "review_required", "independent_review_hard_floor_reason"]
+      }
+    },
+    {
+      "if": {
+        "properties": { "stage": { "const": "EXTERNAL_WAIT" } },
+        "required": ["stage"]
+      },
+      "then": {
+        "required": ["wait_reason", "resume_condition", "last_checked_at"]
       }
     },
     {
@@ -117,7 +173,81 @@
         "properties": { "owner_gate_required": { "const": true } },
         "required": ["owner_gate_required"]
       },
-      "then": { "required": ["owner_approval_ref"] }
+      "then": {
+        "properties": { "owner_gate_status": { "enum": ["PENDING", "APPROVED", "DENIED"] } },
+        "required": ["owner_gate_status"]
+      }
+    },
+    {
+      "if": {
+        "properties": { "owner_gate_required": { "const": false } },
+        "required": ["owner_gate_required"]
+      },
+      "then": {
+        "properties": { "owner_gate_status": { "const": "NOT_REQUIRED" } },
+        "required": ["owner_gate_status"]
+      }
+    },
+    {
+      "if": {
+        "properties": { "owner_gate_status": { "const": "PENDING" } },
+        "required": ["owner_gate_status"]
+      },
+      "then": {
+        "not": { "required": ["owner_approval_ref"] }
+      }
+    },
+    {
+      "if": {
+        "properties": { "owner_gate_status": { "const": "APPROVED" } },
+        "required": ["owner_gate_status"]
+      },
+      "then": {
+        "required": ["owner_approval_ref"]
+      }
+    },
+    {
+      "if": {
+        "properties": { "stage": { "const": "AWAITING_OWNER" } },
+        "required": ["stage"]
+      },
+      "then": {
+        "properties": {
+          "owner_gate_required": { "const": true },
+          "owner_gate_status": { "const": "PENDING" },
+          "requested_verdict": { "const": "OWNER_DECISION" }
+        },
+        "required": ["owner_gate_required", "owner_gate_status", "requested_verdict"],
+        "not": { "required": ["owner_approval_ref"] }
+      }
+    },
+    {
+      "if": {
+        "properties": { "requested_verdict": { "const": "OWNER_DECISION" } },
+        "required": ["requested_verdict"]
+      },
+      "then": {
+        "properties": {
+          "stage": { "const": "AWAITING_OWNER" },
+          "owner_gate_required": { "const": true },
+          "owner_gate_status": { "const": "PENDING" }
+        },
+        "required": ["stage", "owner_gate_required", "owner_gate_status"],
+        "not": { "required": ["owner_approval_ref"] }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "stage": { "const": "NEXT_STAGE" },
+          "owner_gate_required": { "const": true }
+        },
+        "required": ["stage", "owner_gate_required"]
+      },
+      "then": {
+        "properties": { "owner_gate_status": { "const": "APPROVED" } },
+        "required": ["owner_gate_status", "owner_approval_ref"]
+      }
     },
     {
       "if": { "required": ["prior_verdict_ref"] },
