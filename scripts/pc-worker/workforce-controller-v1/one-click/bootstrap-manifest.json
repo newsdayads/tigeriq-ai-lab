@@ -30,7 +30,7 @@
     "database": "tigeriq",
     "user": "tigeriq_runtime",
     "databaseUrlFile": "F:\\TigerIQ\\Secrets\\workforce-controller-v1.database-url",
-    "databasePasswordFile": "F:\\TigerIQ\\Secrets\\workforce-controller-v1.database-password.secure",
+    "pgPassFile": "F:\\TigerIQ\\Secrets\\workforce-controller-v1.pgpass",
     "policy": "REUSE_CONFIGURED_CANONICAL_OR_INSTALL_IF_ABSENT_FAIL_CLOSED_ON_AMBIGUOUS_EXISTING_POSTGRES"
   },
   "network": {
