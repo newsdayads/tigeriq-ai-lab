@@ -97,11 +97,12 @@ public final class V07JobWorker extends Worker {
                 ? Instant.ofEpochMilli(snapshot.updatedAtEpochMs).toString()
                 : Instant.now().toString();
         checkpoints.markPhase(DurableCheckpointStore.PHASE_AI_EXECUTION, executionId, executionKey);
-        status.setState(WorkerState.WORKING, "Điện thoại đang gọi " + provider + " trực tiếp", snapshot.jobId);
+        status.setState(WorkerState.WORKING, "Đang kiểm tra ZERO-COST trước khi gọi " + provider, snapshot.jobId);
 
         String attemptStartedAt = Instant.now().toString();
         try {
-            ProviderExecution execution = connector.execute(prompt, model);
+            ProviderExecution execution = ZeroCostPolicy.executeIfAllowed(
+                    providerConfig.geminiBillingState(), connector, prompt, model);
             checkpoints.appendProviderAttempt(execution.provider, execution.model, getRunAttemptCount() + 1,
                     "success", execution.startedAt, execution.finishedAt, "");
             snapshot = checkpoints.load();
@@ -121,7 +122,7 @@ public final class V07JobWorker extends Worker {
                     checkpoints.providerAttempts(), jobStartedAt, attemptStartedAt, finishedAt,
                     error.code, error.getMessage(), error.retryable);
             persistResult(checkpoints, failed);
-            status.setState(WorkerState.WORKING, "AI thất bại hữu hạn; đang báo Controller V1", snapshot.jobId);
+            status.setState(WorkerState.WORKING, "AI bị chặn/thất bại; đang báo Controller V1", snapshot.jobId);
             return failed;
         }
     }
