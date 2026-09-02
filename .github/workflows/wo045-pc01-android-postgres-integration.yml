@@ -52,7 +52,7 @@ jobs:
       - name: Install repository dependencies
         run: npm ci
       - name: Install free PostgreSQL runtime adapter for integration only
-        run: npm install --no-save --ignore-scripts pg@8.16.3
+        run: npm install --no-save --ignore-scripts --package-lock=false pg@8.16.3
       - name: Typecheck canonical integration
         run: npm run typecheck
       - name: Build canonical integration
