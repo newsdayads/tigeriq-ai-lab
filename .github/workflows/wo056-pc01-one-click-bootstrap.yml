@@ -38,17 +38,24 @@ jobs:
           test "$(git rev-parse HEAD:db/migrations/002_device_proof_replay_v1.sql)" = '90e842318f3cf47caf671890e4bbe435cd35e8b6'
           test ! -f db/migrations/003_business_state_v2.sql
           echo 'PC01_ONE_CLICK_RUNTIME_BASIS_PASS'
-      - name: Guard against destructive or retired paths
+      - name: Guard one-click safety and datastore contract
         shell: bash
         run: |
           set -euo pipefail
           target='scripts/pc-worker/workforce-controller-v1'
+          provisioner="$target/one-click/Ensure-PC01PostgresRuntime.ps1"
           ! grep -R -E -i 'winget[[:space:]]+uninstall|Uninstall-Package|DROP[[:space:]]+(TABLE|DATABASE)|git[[:space:]]+(checkout|switch)[[:space:]]+main' "$target"
           ! grep -R -E -i 'openclaw[[:space:]]+(connect|login|auth|enable|start)' "$target"
           ! grep -R -E '/v1/android/sessions|/v1/android/jobs/pull|/v1/android/jobs/submit' "$target"
-          grep -q '001_operational_state_v1' scripts/pc-worker/workforce-controller-v1/one-click/Invoke-PC01-OneClickGoLive.ps1
-          grep -q '002_device_proof_replay_v1' scripts/pc-worker/workforce-controller-v1/one-click/Invoke-PC01-OneClickGoLive.ps1
-          grep -q '003_business_state_v2' scripts/pc-worker/workforce-controller-v1/health-workforce-controller-v1.ps1
+          grep -q 'PostgreSQL.PostgreSQL.16' "$provisioner"
+          grep -q -- '--optionfile' "$provisioner"
+          grep -q 'POSTGRES_EXISTING_UNMANAGED' "$provisioner"
+          grep -q 'workforce-controller-v1.pgpass' "$provisioner"
+          grep -q 'PGPASSFILE' "$target/install-workforce-controller-v1.ps1"
+          grep -q '001_operational_state_v1' "$target/one-click/Invoke-PC01-OneClickGoLive.ps1"
+          grep -q '002_device_proof_replay_v1' "$target/one-click/Invoke-PC01-OneClickGoLive.ps1"
+          grep -q 'migrationsVerifiedFromSamePostgres' "$target/health-workforce-controller-v1.ps1"
+          grep -q '003_business_state_v2' "$target/health-workforce-controller-v1.ps1"
           echo 'PC01_ONE_CLICK_SAFETY_GUARD_PASS'
 
   windows-package-contract:
