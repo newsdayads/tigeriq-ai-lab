@@ -24,7 +24,7 @@ Vercel is not an AI authority, runtime controller, work database, business datab
 `controllerUrlPolicy()` constrains the Controller host to Tailscale/local forms and the snapshot validator requires `source.mode=controller` plus `authoritative=true`. There is no same-origin fallback to Vercel for Controller data.
 
 ## Retired Vercel serverless execution paths
-Repository/runtime call-graph audit found no Owner Cockpit V3 frontend consumer for the following functions. Legacy tests/docs are historical evidence, not runtime consumers. They are removed from `api/`, so Vercel cannot deploy them as Production/Preview functions:
+Repository/runtime call-graph audit found no Owner Cockpit V3 frontend consumer for the following functions. Legacy tests/docs are historical evidence, not runtime consumers. They are removed from `api/`, so a deployment built from this review branch cannot expose them as Vercel functions:
 
 | Previous function | Consumer proof | Retirement reason |
 |---|---|---|
@@ -39,14 +39,14 @@ Git history preserves the retired source. No source is copied into another deplo
 ## AI authority removal
 Before cleanup, `chief.mjs` used `https://ai-gateway.vercel.sh/v1/chat/completions`, defaulted to an OpenAI model, configured Gemini fallback, and `control.mjs` delegated operation `chat` to `decideWithChief()`.
 
-After cleanup:
+After this PR is the deployed source:
 - `api/` contains only `owner-auth.mjs`;
 - no active V3 Web or Vercel serverless source references Vercel AI Gateway, OpenAI API, Gemini API, AI Gateway credentials, `getVercelOidcToken`, or `decideWithChief`;
 - AI/model/runtime authority stays outside Vercel.
 
 ## Deployment trigger matrix
 
-### Before
+### Before policy adoption
 | Change/event | Vercel behavior |
 |---|---|
 | ordinary Git commit on connected branch | automatic deployment attempt |
@@ -57,20 +57,25 @@ After cleanup:
 | Web Release Candidate | automatic Preview attempt mixed with ordinary commits |
 | Production branch update | could create Production deployment through Git integration |
 
-### After
+### After this policy is adopted by the deployed branch lineage
 `vercel.json` sets `git.deploymentEnabled=false`.
 
 | Change/event | Vercel behavior |
 |---|---|
 | ordinary Git commit | NO deployment |
 | PR synchronize | NO automatic Preview |
-| PC01-only changes | NO deployment |
-| Android-only changes | NO deployment |
-| docs-only / non-Web changes | NO deployment |
+| PC01-only changes | NO deployment once branch includes the boundary config |
+| Android-only changes | NO deployment once branch includes the boundary config |
+| docs-only / non-Web changes | NO deployment once branch includes the boundary config |
 | approved Web Release Candidate | manual `WEB Release Vercel` workflow only; exact `release_sha` + `WEB_RELEASE_CANDIDATE_APPROVED` |
 | Production | manual workflow only; exact `release_sha` + `OWNER_APPROVED_PRODUCTION` + non-empty `owner_approval_ref`; Production environment gate remains separate |
 
 The release workflow has only `workflow_dispatch`; it has no `push` or `pull_request` deployment trigger. Validation reruns the Web boundary, Typecheck, Unit, desktop+iPhone Playwright and Build before any explicit Vercel command.
+
+## Current activation truth
+This P0 is intentionally off MAIN/Production. Therefore repository branches that were created before this policy and have not adopted the new `vercel.json` can still trigger the existing Vercel Git integration. During review, fresh PC01 branch commits were observed creating Vercel deployment attempts, while exact P0 head `42ec9b4b8dd2016a02bcdda5274e8c71a2d772ec` did not create a deployment.
+
+This is not treated as Production activation. Global suppression for all long-lived pre-policy branches becomes enforceable only after an Owner-approved adoption path (merge/rebase/project-level Git provider setting). No such MAIN/project Production mutation is performed by CHAT01 under this task.
 
 ## Automated enforcement
 - `tests/vercel-web-only-boundary.test.ts` — Unit/contract gate.
