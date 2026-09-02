@@ -16,48 +16,51 @@ public final class ZeroCostPolicyTest {
         }
     }
 
-    @Test public void paidBillingCannotExecuteProvider() throws Exception {
+    @Test public void currentAuthorityIsUnverifiedAndNonExecutable() {
+        ZeroCostAuthority authority = ZeroCostAuthority.current();
+        assertEquals(ZeroCostAuthority.UNVERIFIED, authority.state());
+        assertEquals(ZeroCostAuthority.REASON_NO_ENFORCEABLE_PROOF, authority.reason());
+        assertFalse(authority.executionAllowed());
+    }
+
+    @Test public void legacyLocalFreeConfirmedClaimCannotElevateCredential() throws Exception {
         CountingConnector connector = new CountingConnector();
+        ZeroCostAuthority authority = ZeroCostAuthority.fromLocalClaim("free_confirmed");
         try {
-            ZeroCostPolicy.executeIfAllowed(ZeroCostPolicy.PAID, connector, "hello", "gemini-2.5-flash");
-            fail("paid billing must fail closed");
+            ZeroCostPolicy.executeIfAuthorized(authority, connector, "hello", "gemini-2.5-flash");
+            fail("local free_confirmed claim must never authorize provider execution");
         } catch (ProviderException error) {
-            assertEquals("ZERO_COST_PAID_BLOCKED", error.code);
+            assertEquals("ZERO_COST_AUTHORITY_UNVERIFIED", error.code);
             assertFalse(error.retryable);
         }
         assertEquals(0, connector.executeCalls);
     }
 
-    @Test public void unknownBillingCannotExecuteProvider() throws Exception {
-        CountingConnector connector = new CountingConnector();
-        try {
-            ZeroCostPolicy.executeIfAllowed(ZeroCostPolicy.UNKNOWN, connector, "hello", "gemini-2.5-flash");
-            fail("unknown billing must fail closed");
-        } catch (ProviderException error) {
-            assertEquals("ZERO_COST_BILLING_UNKNOWN", error.code);
-            assertFalse(error.retryable);
-        }
-        assertEquals(0, connector.executeCalls);
-    }
-
-    @Test public void missingOrMalformedBillingIsUnknownAndCannotExecute() throws Exception {
-        for (String state : new String[]{null, "", "maybe", "trial?"}) {
+    @Test public void anyLocalBillingStringRemainsUnverifiedAndCannotExecute() throws Exception {
+        for (String claim : new String[]{null, "", "paid", "unknown", "free", "trial", "0-cost", "free_confirmed"}) {
             CountingConnector connector = new CountingConnector();
+            ZeroCostAuthority authority = ZeroCostAuthority.fromLocalClaim(claim);
+            assertFalse(authority.executionAllowed());
             try {
-                ZeroCostPolicy.executeIfAllowed(state, connector, "hello", "gemini-2.5-flash");
-                fail("missing/malformed billing must fail closed");
+                ZeroCostPolicy.executeIfAuthorized(authority, connector, "hello", "gemini-2.5-flash");
+                fail("local state cannot become billing authority");
             } catch (ProviderException error) {
-                assertEquals("ZERO_COST_BILLING_UNKNOWN", error.code);
+                assertEquals("ZERO_COST_AUTHORITY_UNVERIFIED", error.code);
+                assertFalse(error.retryable);
             }
             assertEquals(0, connector.executeCalls);
         }
     }
 
-    @Test public void explicitlyConfirmedFreeExecutesExactlyOnce() throws Exception {
+    @Test public void missingAuthorityFailsClosedWithoutConnectorCall() throws Exception {
         CountingConnector connector = new CountingConnector();
-        ProviderExecution execution = ZeroCostPolicy.executeIfAllowed(
-                ZeroCostPolicy.FREE_CONFIRMED, connector, "hello", "gemini-2.5-flash");
-        assertEquals(1, connector.executeCalls);
-        assertEquals("ok", execution.text);
+        try {
+            ZeroCostPolicy.executeIfAuthorized(null, connector, "hello", "gemini-2.5-flash");
+            fail("missing independent authority must fail closed");
+        } catch (ProviderException error) {
+            assertEquals("ZERO_COST_AUTHORITY_UNVERIFIED", error.code);
+            assertFalse(error.retryable);
+        }
+        assertEquals(0, connector.executeCalls);
     }
 }
