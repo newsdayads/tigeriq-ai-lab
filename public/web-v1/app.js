@@ -1,6 +1,6 @@
 import { MockControllerClient, WorkforceControllerClient } from './controller-client.js';
 import { MOCK_CONTROLLER_SNAPSHOT, MOCK_CONTROL_TOWER_PREVIEW } from './mock-data.js';
-import { buildCompanyControlTowerViewModel, controlTowerTruthCheck, kpiHealthScore } from './company-control-tower-adapter.js';
+import { BUSINESS_STATE_V2_CONTRACT_SHA, buildCompanyControlTowerViewModel, controlTowerTruthCheck, kpiHealthScore } from './company-control-tower-adapter.js';
 
 const $ = id => document.getElementById(id);
 const state = {
@@ -30,9 +30,11 @@ const fmt = value => {
   return Number.isNaN(d.getTime()) ? esc(value) : d.toLocaleString('vi-VN', { hour12: false });
 };
 const clamp = value => Math.max(0, Math.min(100, Number(value || 0)));
+const percent = value => Number.isFinite(Number(value)) && value !== null && value !== '' ? `${Math.round(Number(value))}%` : '—';
+const progressWidth = value => Number.isFinite(Number(value)) && value !== null && value !== '' ? clamp(value) : 0;
 const statusClass = value => {
   const text = String(value || '').toLowerCase();
-  if (/pass|completed|healthy|online|on_track|ready|active/.test(text)) return 'good';
+  if (/pass|completed|healthy|online|on_track|ready|active|verified|resolved|closed/.test(text)) return 'good';
   if (/fail|failed|error|offline|blocked|critical/.test(text)) return 'bad';
   if (/running|assigned|busy|in_progress/.test(text)) return 'blue';
   return 'warn';
@@ -42,8 +44,10 @@ const statusLabel = value => {
   const map = {
     PASS: 'Đạt', READY: 'Sẵn sàng', COMPLETED: 'Hoàn tất', RUNNING: 'Đang chạy', QUEUED: 'Đang chờ',
     PENDING: 'Chờ', BLOCKED: 'Bị chặn', FAILED: 'Lỗi', UNKNOWN: 'Chưa rõ', ON_TRACK: 'Đúng hướng',
-    AT_RISK: 'Cần chú ý', NEEDS_OWNER: 'Cần Sếp', NO_SOURCE: 'Chưa có nguồn', PREVIEW_SAMPLE: 'Mẫu', BRANCH_ONLY: 'Branch',
-    HEALTHY: 'Tốt', ONLINE: 'Online', OFFLINE: 'Offline', ACTIVE: 'Hoạt động', SUSPENDED: 'Tạm dừng',
+    AT_RISK: 'Cần chú ý', NEEDS_OWNER: 'Cần Sếp', AWAITING_OWNER: 'Chờ Sếp', NO_SOURCE: 'Chưa có nguồn',
+    PREVIEW_SAMPLE: 'Mẫu', BRANCH_ONLY: 'Branch', HEALTHY: 'Tốt', ONLINE: 'Online', OFFLINE: 'Offline',
+    ACTIVE: 'Hoạt động', SUSPENDED: 'Tạm dừng', RECORDED: 'Đã ghi nhận', VERIFIED: 'Đã xác minh',
+    REFERENCED: 'Có tham chiếu', NO_REFERENCE: 'Chưa có tham chiếu', CONSUMED: 'Đã tiếp nhận',
   };
   return map[key] || key.replaceAll('_', ' ');
 };
@@ -94,7 +98,7 @@ function emptySnapshot(reason) {
     source: { mode: 'controller', authoritative: false, label: 'CONTROLLER UNAVAILABLE' },
     controller: { state: 'unavailable', contractState: reason || 'UNAVAILABLE', baseUrl: localStorage.getItem('tigeriq.controller.url') || null },
     company: { name: 'TigerIQ AI Lab', version: 'V2', truthPolicy: 'Không có dữ liệu live khi Controller lỗi.' },
-    departments: [], jobs: [], employees: [], devices: [], providers: [], prompts: [], results: [], checks: [], activity: [], build: {}, leases: [],
+    goals: [], departments: [], jobs: [], employees: [], devices: [], providers: [], prompts: [], results: [], checks: [], activity: [], build: {}, leases: [],
   };
 }
 
@@ -124,7 +128,7 @@ function renderTruth(vm) {
   const pill = $('sourcePill');
   if (state.mode === 'mock') {
     banner.className = 'truth-banner';
-    banner.innerHTML = '<div><b>DỮ LIỆU MẪU · authoritative=false</b><span>Em đang dùng adapter/view-model tạm trong khi #146 chốt business contract. Không có dữ liệu live nào được suy diễn từ Job.</span></div><button class="text-btn" data-view-jump="technical">Xem nguồn dữ liệu →</button>';
+    banner.innerHTML = `<div><b>DỮ LIỆU MẪU · authoritative=false</b><span>Adapter đã map Business State V2 PR #153 exact ${esc(BUSINESS_STATE_V2_CONTRACT_SHA.slice(0,8))}…; dữ liệu hiện tại vẫn là MẪU, không phải live.</span></div><button class="text-btn" data-view-jump="technical">Xem nguồn dữ liệu →</button>`;
     pill.innerHTML = '<span></span><b>MẪU · KHÔNG LIVE</b>';
   } else if (state.controllerError) {
     banner.className = 'truth-banner error';
@@ -132,11 +136,11 @@ function renderTruth(vm) {
     pill.innerHTML = '<span></span><b>CONTROLLER OFFLINE</b>';
   } else if (!vm.source.businessAvailable) {
     banner.className = 'truth-banner controller';
-    banner.innerHTML = '<div><b>RUNTIME LIVE · BUSINESS CONTRACT CHƯA MAP</b><span>Controller có dữ liệu runtime authoritative, nhưng #146 chưa cung cấp business-state projection nên Goal/KPI/Mission không được tự suy diễn.</span></div><button class="text-btn" data-view-jump="technical">Xem runtime →</button>';
+    banner.innerHTML = '<div><b>RUNTIME LIVE · BUSINESS STATE V2 CHƯA CÓ PROJECTION</b><span>Controller runtime authoritative đang hoạt động nhưng chưa trả Business State V2; Web không suy diễn Goal/KPI/Mission/Outcome từ Job hoặc Result.</span></div><button class="text-btn" data-view-jump="technical">Xem runtime →</button>';
     pill.innerHTML = '<span></span><b>RUNTIME LIVE</b>';
   } else {
     banner.className = 'truth-banner controller';
-    banner.innerHTML = `<div><b>COMPANY DATA LIVE</b><span>${esc(vm.source.label)} · cập nhật ${fmt(vm.generatedAt)}</span></div>`;
+    banner.innerHTML = `<div><b>COMPANY DATA LIVE</b><span>${esc(vm.source.label)} · Business State V2 · cập nhật ${fmt(vm.generatedAt)}</span></div>`;
     pill.innerHTML = '<span></span><b>AUTHORITATIVE</b>';
   }
 }
@@ -148,30 +152,30 @@ function renderOverview(vm) {
   const goal = primaryGoal(vm);
   const kpis = goalKpis(vm, goal).slice(0, 4);
   const health = kpiHealthScore(kpis);
-  $('primaryGoalTitle').textContent = goal?.title || (vm.source.businessAvailable ? 'Chưa có mục tiêu ưu tiên' : 'Chưa có business contract authoritative');
-  $('primaryGoalObjective').textContent = goal?.objective || 'Em không suy diễn Goal/KPI từ Job runtime khi #146 chưa map dữ liệu.';
-  $('primaryGoalMeta').innerHTML = goal ? `${mockChip(goal)}<span>${esc(goal.priority || '—')}</span><span>${esc(statusLabel(goal.status))}</span><span>Hạn ${fmt(goal.deadline)}</span>` : '<span>Contract #146 pending</span>';
-  const goalProgress = health ?? clamp(goal?.progressPct || 0);
+  $('primaryGoalTitle').textContent = goal?.title || (vm.source.businessAvailable ? 'Chưa có mục tiêu ưu tiên' : 'Chưa có Business State V2 authoritative');
+  $('primaryGoalObjective').textContent = goal?.objective || 'Em không suy diễn Goal/KPI từ Job runtime khi Business State V2 projection chưa có.';
+  $('primaryGoalMeta').innerHTML = goal ? `${mockChip(goal)}<span>${esc(goal.priority || '—')}</span><span>${esc(statusLabel(goal.status))}</span><span>Hạn ${fmt(goal.deadline)}</span>` : '<span>Business State V2 projection pending</span>';
+  const goalProgress = health ?? (Number.isFinite(Number(goal?.progressPct)) && goal?.progressPct !== null ? clamp(goal.progressPct) : 0);
   $('goalProgressRing').style.setProperty('--progress', goalProgress);
-  $('goalProgress').textContent = health === null ? '—' : `${goalProgress}%`;
+  $('goalProgress').textContent = health === null && goal?.progressPct == null ? '—' : `${goalProgress}%`;
 
-  $('homeKpis').innerHTML = kpis.length ? kpis.map(kpi => `<article class="kpi-card"><div class="kpi-card-head"><span>${esc(kpi.name)}</span>${badge(kpi.state)}</div><strong>${kpi.currentValue ?? '—'}${kpi.unit === '%' ? '%' : ''}</strong><small>Mục tiêu ${kpi.target ?? '—'} ${kpi.unit && kpi.unit !== '%' ? esc(kpi.unit) : ''}</small><div class="kpi-line"><i style="width:${clamp(kpi.healthPct)}%"></i></div><div class="chip-row">${mockChip(kpi)}</div></article>`).join('') : unavailable('Chưa có KPI authoritative.');
+  $('homeKpis').innerHTML = kpis.length ? kpis.map(kpi => `<article class="kpi-card"><div class="kpi-card-head"><span>${esc(kpi.name)}</span>${badge(kpi.state)}</div><strong>${kpi.currentValue ?? '—'}${kpi.unit === '%' ? '%' : ''}</strong><small>Mục tiêu ${kpi.target ?? '—'} ${kpi.unit && kpi.unit !== '%' ? esc(kpi.unit) : ''}</small><div class="kpi-line"><i style="width:${progressWidth(kpi.healthPct)}%"></i></div><div class="chip-row">${mockChip(kpi)}${kpi.provenance?.source_system ? `<span class="chip">Nguồn ${esc(kpi.provenance.source_system)}</span>` : ''}</div></article>`).join('') : unavailable('Chưa có KPI authoritative.');
 
   const performance = vm.performance || {};
   $('businessDataState').textContent = performance.availability === 'available' ? 'CÓ NGUỒN' : 'CHƯA CÓ NGUỒN';
   $('businessMetrics').innerHTML = performance.metrics?.length ? performance.metrics.map(metric => `<div class="business-metric"><span>${esc(metric.label)}</span><strong>${metric.value ?? '—'}${metric.value !== null && metric.unit ? ` ${esc(metric.unit)}` : ''}</strong><small>${esc(statusLabel(metric.state))}</small>${mockChip(metric)}</div>`).join('') : unavailable('Chưa có doanh thu/chi phí/outcome authoritative.');
   $('businessDataNote').textContent = performance.note || '—';
 
-  $('homeOwnerActions').innerHTML = vm.ownerActions.length ? vm.ownerActions.slice(0, 2).map(action => `<div class="owner-action-mini"><div class="row-top"><b>${esc(action.title)}</b>${badge(action.status)}</div><p>${esc(action.decisionNeeded || action.issue)}</p><div class="chip-row">${mockChip(action)}<span class="chip">${esc(action.severity || '—')}</span></div></div>`).join('') : '<div class="empty">Không có ngoại lệ cần Sếp.</div>';
+  $('homeOwnerActions').innerHTML = vm.ownerActions.length ? vm.ownerActions.slice(0, 2).map(action => `<div class="owner-action-mini"><div class="row-top"><b>${esc(action.title)}</b>${badge(action.status)}</div><p>${esc(action.requiredOwnerAction || action.decisionNeeded || action.issue)}</p><div class="chip-row">${mockChip(action)}<span class="chip">${esc(action.severity || '—')}</span></div></div>`).join('') : '<div class="empty">Không có ngoại lệ cần Sếp.</div>';
 
-  $('homeMissions').innerHTML = vm.missions.length ? vm.missions.slice(0, 3).map(mission => `<div class="mission-row"><div class="row-top"><b>${esc(mission.title)}</b>${badge(mission.status)}</div><p>${esc(mission.expectedOutcome)}</p><div class="progress-track"><i style="width:${clamp(mission.progressPct)}%"></i></div><div class="chip-row">${mockChip(mission)}<span class="chip">${mission.progressPct ?? 0}%</span><span class="chip">${esc(mission.riskLevel || '—')}</span></div></div>`).join('') : unavailable('Chưa có Mission authoritative.');
+  $('homeMissions').innerHTML = vm.missions.length ? vm.missions.slice(0, 3).map(mission => `<div class="mission-row"><div class="row-top"><b>${esc(mission.title)}</b>${badge(mission.status)}</div><p>${esc(mission.expectedOutcome)}</p>${mission.progressPct == null ? '' : `<div class="progress-track"><i style="width:${progressWidth(mission.progressPct)}%"></i></div>`}<div class="chip-row">${mockChip(mission)}<span class="chip">Tiến độ ${percent(mission.progressPct)}</span><span class="chip">${esc(mission.riskLevel || '—')}</span></div></div>`).join('') : unavailable('Chưa có Mission authoritative.');
 
-  const activeEmployees = vm.employees.filter(row => String(row.availability || '').toLowerCase() === 'online' || String(row.availability || '').toLowerCase() === 'idle' || String(row.availability || '').toLowerCase() === 'busy').length;
-  $('homeOrganization').innerHTML = `<div class="org-row"><div class="row-top"><b>${vm.departments.length} phòng ban</b><span class="chip">${vm.employees.length} AI Employee</span></div><p>${activeEmployees ? `${activeEmployees} có trạng thái hoạt động từ nguồn hiện tại.` : 'Chưa có heartbeat live; trạng thái nhân viên không được giả online.'}</p></div>`;
+  const activeEmployees = vm.employees.filter(row => ['online','idle','busy'].includes(String(row.availability || '').toLowerCase())).length;
+  $('homeOrganization').innerHTML = `<div class="org-row"><div class="row-top"><b>${vm.departments.length} phòng ban</b><span class="chip">${vm.employees.length} AI Employee</span></div><p>${activeEmployees ? `${activeEmployees} có trạng thái hoạt động từ nguồn runtime hiện tại.` : 'Chưa có heartbeat live; trạng thái nhân viên không được giả online.'}</p></div>`;
 
-  $('homeOutcomes').innerHTML = vm.outcomes.length ? vm.outcomes.slice(0, 3).map(outcome => `<div class="outcome-row"><div class="row-top"><b>${esc(outcome.title)}</b><span class="chip">${fmt(outcome.completedAt)}</span></div><p>${esc(outcome.summary)}</p><div class="chip-row">${mockChip(outcome)}${(outcome.kpiEffects || []).slice(0, 2).map(effect => `<span class="chip">${esc(effect.delta)}</span>`).join('')}</div></div>`).join('') : unavailable('Chưa có Business Outcome authoritative.');
+  $('homeOutcomes').innerHTML = vm.outcomes.length ? vm.outcomes.slice(0, 3).map(outcome => `<div class="outcome-row"><div class="row-top"><b>${esc(outcome.title)}</b><span class="chip">${fmt(outcome.completedAt)}</span></div><p>${esc(outcome.summary)}</p><div class="chip-row">${mockChip(outcome)}${(outcome.kpiEffects || []).slice(0, 2).map(effect => `<span class="chip">${esc(effect.name || effect.kpiId || 'KPI')}: ${esc(effect.displayValue || '—')}</span>`).join('')}</div></div>`).join('') : unavailable('Chưa có Business Outcome authoritative.');
 
-  $('homeProcesses').innerHTML = vm.processes.length ? vm.processes.slice(0, 3).map(process => `<div class="process-health-row"><div class="row-top"><b>${esc(process.name)}</b>${badge(process.health || process.status)}</div><p>${(process.steps || []).filter(step => ['RUNNING','PENDING','BLOCKED'].includes(String(step.state || '').toUpperCase())).slice(0, 2).map(step => `${step.label}: ${statusLabel(step.state)}`).join(' · ') || 'Không có bước cần chú ý.'}</p><div class="chip-row">${mockChip(process)}<span class="chip">${process.exceptionCount ?? 0} ngoại lệ</span></div></div>`).join('') : unavailable('Chưa có Business Process authoritative.');
+  $('homeProcesses').innerHTML = vm.processes.length ? vm.processes.slice(0, 3).map(process => `<div class="process-health-row"><div class="row-top"><b>${esc(process.name)}</b>${badge(process.health || process.status)}</div><p>${esc(process.completionCondition || process.trigger || '—')}</p><div class="chip-row">${mockChip(process)}<span class="chip">${process.exceptionCount ?? 0} ngoại lệ</span><span class="chip">Risk ${esc(process.riskFloor || '—')}</span></div></div>`).join('') : unavailable('Chưa có Business Process authoritative.');
 
   $('runtimeSummary').innerHTML = vm.runtimeSummary.map(row => `<span class="runtime-pill"><b>${esc(row.label)}:</b>&nbsp;${esc(row.value)}</span>`).join('');
 }
@@ -179,29 +183,29 @@ function renderOverview(vm) {
 function renderGoals(vm) {
   $('goalGrid').innerHTML = vm.goals.length ? vm.goals.map(goal => {
     const rows = goalKpis(vm, goal);
-    return `<article class="goal-card"><div class="row-top"><div><div class="job-id">${esc(goal.goalId)}</div><h4>${esc(goal.title)}</h4></div>${badge(goal.status)}</div><p>${esc(goal.objective)}</p><div class="metric-grid"><div class="metric-box"><span>Ưu tiên</span><b>${esc(goal.priority || '—')}</b></div><div class="metric-box"><span>Tiến độ</span><b>${goal.progressPct ?? '—'}%</b></div><div class="metric-box"><span>KPI</span><b>${rows.length}</b></div></div><div class="chip-row">${mockChip(goal)}${(goal.constraints || []).slice(0, 2).map(item => `<span class="chip">${esc(item)}</span>`).join('')}</div>${rows.map(kpi => `<div class="prompt-version"><div class="row-top"><b>${esc(kpi.name)}</b>${badge(kpi.state)}</div><p>${kpi.currentValue ?? '—'} ${esc(kpi.unit || '')} / target ${kpi.target ?? '—'}</p></div>`).join('')}</article>`;
-  }).join('') : unavailable('Business contract chưa trả Goal/KPI.');
+    return `<article class="goal-card"><div class="row-top"><div><div class="job-id">${esc(goal.goalId)}</div><h4>${esc(goal.title)}</h4></div>${badge(goal.status)}</div><p>${esc(goal.objective || 'Chưa có mô tả từ operational Goal.')}</p><div class="metric-grid"><div class="metric-box"><span>Ưu tiên</span><b>${esc(goal.priority || '—')}</b></div><div class="metric-box"><span>KPI health</span><b>${percent(goal.progressPct)}</b></div><div class="metric-box"><span>KPI</span><b>${rows.length}</b></div></div><div class="chip-row">${mockChip(goal)}<span class="chip">Lifecycle ${esc(statusLabel(goal.status))}</span>${goal.lifecycleSource ? `<span class="chip">${esc(goal.lifecycleSource)}</span>` : ''}</div>${rows.map(kpi => `<div class="prompt-version"><div class="row-top"><b>${esc(kpi.name)}</b>${badge(kpi.state)}</div><p>${kpi.currentValue ?? '—'} ${esc(kpi.unit || '')} / target ${kpi.target ?? '—'}${kpi.observedAt ? ` · ${fmt(kpi.observedAt)}` : ''}</p></div>`).join('')}</article>`;
+  }).join('') : unavailable('Business State V2 chưa trả Goal/KPI projection.');
 }
 
 function renderMissions(vm) {
-  $('missionBoard').innerHTML = vm.missions.length ? vm.missions.map(mission => `<article class="mission-card"><div class="row-top"><div><div class="job-id">${esc(mission.missionId)}</div><h4>${esc(mission.title)}</h4></div>${badge(mission.status)}</div><p>${esc(mission.expectedOutcome)}</p><div class="progress-track"><i style="width:${clamp(mission.progressPct)}%"></i></div><div class="metric-grid"><div class="metric-box"><span>Tiến độ</span><b>${mission.progressPct ?? '—'}%</b></div><div class="metric-box"><span>Risk</span><b>${esc(mission.riskLevel || '—')}</b></div><div class="metric-box"><span>Job refs</span><b>${mission.jobRefs?.length ?? 0}</b></div></div><div class="chip-row">${mockChip(mission)}${(mission.departments || []).map(dep => `<span class="chip">${esc(dep)}</span>`).join('')}</div><p><b>Authority:</b> ${esc(mission.autonomyEnvelope || '—')}</p></article>`).join('') : unavailable('Chưa có Mission authoritative.');
+  $('missionBoard').innerHTML = vm.missions.length ? vm.missions.map(mission => `<article class="mission-card"><div class="row-top"><div><div class="job-id">${esc(mission.missionId)}</div><h4>${esc(mission.title)}</h4></div>${badge(mission.status)}</div><p>${esc(mission.expectedOutcome)}</p>${mission.progressPct == null ? '' : `<div class="progress-track"><i style="width:${progressWidth(mission.progressPct)}%"></i></div>`}<div class="metric-grid"><div class="metric-box"><span>Tiến độ</span><b>${percent(mission.progressPct)}</b></div><div class="metric-box"><span>Risk</span><b>${esc(mission.riskLevel || '—')}</b></div><div class="metric-box"><span>Job refs</span><b>${mission.jobRefs?.length ?? 0}</b></div></div><div class="chip-row">${mockChip(mission)}${(mission.departments || []).map(dep => `<span class="chip">${esc(dep)}</span>`).join('')}</div><p><b>Job reference:</b> ${(mission.jobRefs || []).map(ref => `${esc(ref.jobId)} · ${esc(ref.relation)}`).join(' | ') || '—'}</p></article>`).join('') : unavailable('Chưa có Mission authoritative.');
 }
 
 function renderOrganization(vm) {
-  $('departmentGrid').innerHTML = vm.departments.length ? vm.departments.map(dep => `<article class="department-card"><div class="department-top"><div class="department-icon">${esc(dep.icon || '•')}</div>${badge(dep.health)}</div><h4 style="margin-top:8px">${esc(dep.name)}</h4><p>${esc(dep.purpose)}</p><div class="chip-row">${mockChip(dep)}<span class="chip">${dep.employeeCount ?? 0} nhân viên</span><span class="chip">${dep.activeJobs ?? 0} job runtime</span></div></article>`).join('') : '<div class="empty">Chưa có phòng ban.</div>';
-  $('employeeGrid').innerHTML = vm.employees.length ? vm.employees.map(emp => `<article class="employee-card"><div class="employee-top"><div class="avatar-box">${esc((emp.displayName || 'AI').split(' ').slice(-1)[0].slice(0,2).toUpperCase())}</div>${badge(emp.availability)}</div><h4 style="margin-top:8px">${esc(emp.displayName)}</h4><div class="employee-role">${esc(emp.role || '—')} · ${esc(emp.department || '—')}</div><span class="autonomy-badge">${esc(emp.autonomyLevel || 'Autonomy chưa map')}</span><p>Quản lý: <b>${esc(emp.supervisor || '—')}</b></p><p>AI kỹ thuật: ${esc(emp.provider || '—')} / ${esc(emp.model || '—')}</p><div class="chip-row">${mockChip(emp)}${(emp.capabilities || []).slice(0,3).map(item => `<span class="chip">${esc(item)}</span>`).join('')}</div></article>`).join('') : '<div class="empty">Chưa có AI Employee.</div>';
+  $('departmentGrid').innerHTML = vm.departments.length ? vm.departments.map(dep => `<article class="department-card"><div class="department-top"><div class="department-icon">•</div>${badge(dep.health || dep.status)}</div><h4 style="margin-top:8px">${esc(dep.name)}</h4><p>${dep.supervisorEmployeeId ? `Quản lý: ${esc(dep.supervisorEmployeeId)}` : 'Chưa gán quản lý.'}</p><div class="chip-row">${mockChip(dep)}<span class="chip">${dep.employeeCount ?? 0} nhân viên</span><span class="chip">${dep.activeMissions ?? 0} Mission đang mở</span></div></article>`).join('') : '<div class="empty">Chưa có phòng ban.</div>';
+  $('employeeGrid').innerHTML = vm.employees.length ? vm.employees.map(emp => `<article class="employee-card"><div class="employee-top"><div class="avatar-box">${esc((emp.displayName || 'AI').split(' ').slice(-1)[0].slice(0,2).toUpperCase())}</div>${badge(emp.availability)}</div><h4 style="margin-top:8px">${esc(emp.displayName)}</h4><div class="employee-role">${esc(emp.businessRole || emp.role || '—')} · ${esc(emp.department || '—')}</div><span class="autonomy-badge">${esc(emp.autonomyLevel || 'Autonomy chưa cấp')}</span><p>Quản lý: <b>${esc(emp.supervisor || '—')}</b></p><p>AI kỹ thuật: ${esc(emp.provider || '—')} / ${esc(emp.model || '—')}</p><div class="chip-row">${mockChip(emp)}${(emp.capabilities || []).slice(0,3).map(item => `<span class="chip">${esc(item)}</span>`).join('')}</div></article>`).join('') : '<div class="empty">Chưa có AI Employee.</div>';
 }
 
 function renderOwnerActions(vm) {
-  $('ownerActionBoard').innerHTML = vm.ownerActions.length ? vm.ownerActions.map(action => `<article class="owner-action-card"><div class="row-top"><div><div class="job-id">${esc(action.exceptionId)}</div><h4>${esc(action.title)}</h4></div>${badge(action.status)}</div><p><b>Vấn đề:</b> ${esc(action.issue)}</p><p><b>Ảnh hưởng:</b> ${esc(action.impact)}</p><p><b>Em/hệ thống đã làm:</b> ${esc(action.attempted)}</p><p><b>Đề xuất:</b> ${esc(action.recommendation)}</p><div class="decision-box"><span>SẾP CẦN QUYẾT ĐỊNH</span><b>${esc(action.decisionNeeded)}</b></div><div class="chip-row">${mockChip(action)}<span class="chip">${esc(action.severity || '—')}</span><span class="chip">Goal ${esc(action.goalId || '—')}</span></div></article>`).join('') : '<div class="empty">Hiện không có ngoại lệ cần Sếp.</div>';
+  $('ownerActionBoard').innerHTML = vm.ownerActions.length ? vm.ownerActions.map(action => `<article class="owner-action-card"><div class="row-top"><div><div class="job-id">${esc(action.exceptionId)}</div><h4>${esc(action.title)}</h4></div>${badge(action.status)}</div><p><b>Vấn đề:</b> ${esc(action.issue)}</p><p><b>Ảnh hưởng:</b> ${esc(action.impact)}</p><p><b>Em/hệ thống đã làm:</b> ${esc(action.attempted || '—')}</p><p><b>Đề xuất:</b> ${esc(action.recommendation || '—')}</p><div class="decision-box"><span>SẾP CẦN QUYẾT ĐỊNH</span><b>${esc(action.requiredOwnerAction || action.decisionNeeded || '—')}</b></div><div class="chip-row">${mockChip(action)}<span class="chip">${esc(action.severity || '—')}</span>${action.decisionRef ? `<span class="chip">Decision ${esc(action.decisionRef)}</span>` : ''}</div></article>`).join('') : '<div class="empty">Hiện không có ngoại lệ cần Sếp.</div>';
 }
 
 function renderOutcomes(vm) {
-  $('outcomeBoard').innerHTML = vm.outcomes.length ? vm.outcomes.map(outcome => `<article class="outcome-card"><div class="row-top"><div><div class="job-id">${esc(outcome.outcomeId)}</div><h4>${esc(outcome.title)}</h4></div><span class="chip">${fmt(outcome.completedAt)}</span></div><p>${esc(outcome.summary)}</p><div class="chip-row">${mockChip(outcome)}<span class="chip">Mission ${esc(outcome.missionId || '—')}</span>${(outcome.kpiEffects || []).map(effect => `<span class="chip">${esc(effect.delta)}</span>`).join('')}</div><p><b>Evidence:</b> ${esc(statusLabel(outcome.evidenceState))}</p></article>`).join('') : unavailable('Chưa có Business Outcome authoritative.');
+  $('outcomeBoard').innerHTML = vm.outcomes.length ? vm.outcomes.map(outcome => `<article class="outcome-card"><div class="row-top"><div><div class="job-id">${esc(outcome.outcomeId)}</div><h4>${esc(outcome.title)}</h4></div>${badge(outcome.status)}</div><p>${esc(outcome.summary)}</p><div class="chip-row">${mockChip(outcome)}${outcome.missionId ? `<span class="chip">Mission ${esc(outcome.missionId)}</span>` : ''}${(outcome.kpiEffects || []).map(effect => `<span class="chip">${esc(effect.name || effect.kpiId || 'KPI')}: ${esc(effect.displayValue || '—')}</span>`).join('')}</div><p><b>Evidence:</b> ${esc(statusLabel(outcome.evidenceState))} · <b>Provenance:</b> ${outcome.provenance?.length ?? 0}</p></article>`).join('') : unavailable('Chưa có Business Outcome authoritative.');
 }
 
 function renderProcesses(vm) {
-  $('processBoard').innerHTML = vm.processes.length ? vm.processes.map(process => `<article class="process-card"><div class="row-top"><div><div class="job-id">${esc(process.processId)}</div><h4>${esc(process.name)}</h4></div>${badge(process.health || process.status)}</div><p>Trigger: ${esc(process.trigger || '—')}</p><div class="process-steps">${(process.steps || []).map(step => `<span class="process-step ${statusClass(step.state)}">${esc(step.label)} · ${esc(statusLabel(step.state))}</span>`).join('')}</div><div class="chip-row">${mockChip(process)}<span class="chip">${process.exceptionCount ?? 0} ngoại lệ</span></div></article>`).join('') : unavailable('Chưa có Business Process authoritative.');
+  $('processBoard').innerHTML = vm.processes.length ? vm.processes.map(process => `<article class="process-card"><div class="row-top"><div><div class="job-id">${esc(process.processId)}</div><h4>${esc(process.name)}</h4></div>${badge(process.health || process.status)}</div><p>Trigger: ${esc(process.trigger || '—')}</p><p>Hoàn tất khi: ${esc(process.completionCondition || '—')}</p><div class="chip-row">${mockChip(process)}<span class="chip">Risk ${esc(process.riskFloor || '—')}</span><span class="chip">${process.exceptionCount ?? 0} ngoại lệ</span><span class="chip">${process.kpiIds?.length ?? 0} KPI</span></div></article>`).join('') : unavailable('Chưa có Business Process authoritative.');
 }
 
 function renderTechnical(vm) {
@@ -224,7 +228,7 @@ function renderTechnical(vm) {
 
   $('deviceTechnical').innerHTML = tech.devices.length ? tech.devices.map(device => `<article class="device-card"><div class="row-top"><div><div class="job-id">${esc(device.nodeId)}</div><h4>${esc(device.displayName || device.platform)}</h4></div>${badge(device.status)}</div><div class="metric-grid"><div class="metric-box"><span>Port</span><b>${device.controllerPort ?? '—'}</b></div><div class="metric-box"><span>Lease</span><b>${esc(device.leaseState || 'unknown')}</b></div><div class="metric-box"><span>Heartbeat</span><b>${fmt(device.lastHeartbeatAt)}</b></div></div><div class="chip-row">${mockChip(device)}<span class="chip">Tailscale ${esc(device.tailscaleIp || '—')}</span></div></article>`).join('') : '<div class="empty">Chưa có thiết bị.</div>';
 
-  $('jobBoard').innerHTML = tech.jobs.length ? tech.jobs.map(job => `<article class="job-card"><div class="job-top"><div><div class="job-id">${esc(job.jobId)}</div><h4>${esc(job.objective)}</h4></div>${badge(job.stage)}</div><p>${esc(job.department || '—')} · ${esc(job.assignedEmployeeId || '—')}</p><div class="progress-track"><i style="width:${clamp(job.progress)}%"></i></div><div class="metric-grid"><div class="metric-box"><span>Tiến độ</span><b>${job.progress ?? 0}%</b></div><div class="metric-box"><span>Attempts</span><b>${job.attempts ?? 0}/${job.maxAttempts ?? 0}</b></div><div class="metric-box"><span>Blocker</span><b>${esc(job.blocker?.code || '—')}</b></div></div><div class="chip-row">${mockChip(job)}</div>${job.blocker ? `<p>${esc(job.blocker.message)}</p><button class="secondary-btn retry-btn" data-job="${esc(job.jobId)}">Gửi retry intent</button>` : ''}</article>`).join('') : '<div class="empty">Chưa có Job runtime.</div>';
+  $('jobBoard').innerHTML = tech.jobs.length ? tech.jobs.map(job => `<article class="job-card"><div class="job-top"><div><div class="job-id">${esc(job.jobId)}</div><h4>${esc(job.objective)}</h4></div>${badge(job.stage)}</div><p>${esc(job.department || '—')} · ${esc(job.assignedEmployeeId || '—')}</p><div class="progress-track"><i style="width:${progressWidth(job.progress)}%"></i></div><div class="metric-grid"><div class="metric-box"><span>Tiến độ</span><b>${percent(job.progress)}</b></div><div class="metric-box"><span>Attempts</span><b>${job.attempts ?? 0}/${job.maxAttempts ?? 0}</b></div><div class="metric-box"><span>Blocker</span><b>${esc(job.blocker?.code || '—')}</b></div></div><div class="chip-row">${mockChip(job)}</div>${job.blocker ? `<p>${esc(job.blocker.message)}</p><button class="secondary-btn retry-btn" data-job="${esc(job.jobId)}">Gửi retry intent</button>` : ''}</article>`).join('') : '<div class="empty">Chưa có Job runtime.</div>';
 
   $('providerGrid').innerHTML = tech.providers.length ? tech.providers.map(provider => `<article class="provider-card"><div class="provider-top"><div><div class="job-id">${esc(provider.providerId)}</div><h4>${esc(provider.displayName)}</h4></div>${badge(provider.health)}</div><p>${esc(provider.role || '—')}</p><div class="metric-grid"><div class="metric-box"><span>Credential</span><b>${esc(provider.credentialPresent || '—')}</b></div><div class="metric-box"><span>Billing</span><b>${esc(provider.billingMode || '—')}</b></div><div class="metric-box"><span>Latency</span><b>${provider.latencyP50Ms ?? '—'} ms</b></div></div><div class="chip-row">${mockChip(provider)}${(provider.models || []).map(model => `<span class="chip">${esc(model)}</span>`).join('')}</div></article>`).join('') : '<div class="empty">Chưa có provider.</div>';
 
@@ -261,7 +265,7 @@ async function connectController() {
     state.mode = 'controller';
     sessionStorage.setItem('tigeriq.controller.token', $('controllerToken').value);
     localStorage.setItem('tigeriq.controller.url', client.baseUrl);
-    showConnection({ ok: true, mode: 'controller', baseUrl: client.baseUrl, note: 'Business fields chỉ hiển thị khi #146 contract có dữ liệu; Web không suy diễn từ Job.' });
+    showConnection({ ok: true, mode: 'controller', baseUrl: client.baseUrl, note: 'Web đã map PR #153; business fields chỉ hiển thị khi Controller trả Business State V2 projection, không suy diễn từ Job.' });
     await refresh();
   } catch (error) {
     showConnection({ ok: false, error: error.message, hint: error.hint || null });
@@ -281,7 +285,7 @@ async function useMock() {
   state.client = new MockControllerClient(MOCK_CONTROLLER_SNAPSHOT);
   state.mode = 'mock';
   state.controllerError = null;
-  showConnection({ ok: true, mode: 'mock', authoritative: false, businessPreview: true });
+  showConnection({ ok: true, mode: 'mock', authoritative: false, businessStateV2Preview: true, contractSha: BUSINESS_STATE_V2_CONTRACT_SHA });
   await refresh();
 }
 
