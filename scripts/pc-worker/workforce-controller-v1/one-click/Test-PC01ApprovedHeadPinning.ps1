@@ -33,6 +33,8 @@ try {
   $approved = (& $git -C $source rev-parse HEAD).Trim()
   Invoke-Git -RepoPath $source -GitArgs @('remote','add','origin',$remote); Invoke-Git -RepoPath $source -GitArgs @('push','origin',$branch)
   & $git clone --branch $branch $remote $client | Out-Null
+  Invoke-Git -RepoPath $client -GitArgs @('config','user.email','pc01-test@invalid')
+  Invoke-Git -RepoPath $client -GitArgs @('config','user.name','PC01 test')
   & $VerifierPath -RepoPath $client -GitExecutable $git -ExpectedBranch $branch -ApprovedHeadSha $approved -ApprovedRemoteRef "refs/heads/$branch" | Out-Null
 
   Set-Content -Path (Join-Path $client 'local.txt') -Value 'unreviewed' -NoNewline
