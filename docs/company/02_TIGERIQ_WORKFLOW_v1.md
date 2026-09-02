@@ -38,7 +38,9 @@ Use action-level R0-R4 from approved Company Operating Model / Chief of Staff po
 - R1: self-check + applicable CI/rules; no independent review by default.
 - R2: stronger validation; independent review only when process/action policy requires it.
 - R3: independent Reviewer mandatory; Judge only when the applicable gate requires it.
-- R4: critical/Owner-reserved assurance; independent review when reviewable, Judge per policy, and Owner approval for Owner-reserved actions.
+- R4: critical/Owner-reserved assurance; independent review only when the action is explicitly `REVIEWABLE`, Judge per policy, and Owner approval for Owner-reserved actions. A legitimately `NOT_REVIEWABLE` R4 action must record a non-reviewable reason and must not fabricate a review requirement.
+
+For machine-readable R4 handoffs, `reviewability` is explicit. `independent_review_hard_floor=true` forces `REVIEWABLE` + `review_required=true`; Production, security and release assurance are hard-floor reasons and cannot be represented as non-reviewable merely to bypass independent assurance.
 
 Do not create review work merely for activity. An owning Issue/process may raise assurance; it may not lower hard floors.
 
@@ -49,6 +51,7 @@ Do not create review work merely for activity. An owning Issue/process may raise
 - Choose the technically and economically optimal option when authority is delegated.
 - Ask only when a genuine Owner decision/authority is needed, the action is irreversible/materially financial/security-sensitive/legally consequential/Production-gated, or an unavoidable physical step requires the Owner.
 - CI/provider/Vercel waiting, reviewer routing, retry/retest and executor↔reviewer communication are **not** Owner decisions.
+- `AWAITING_OWNER` / `OWNER_DECISION` means the Owner gate is pending and must not contain a fabricated `owner_approval_ref`. The exact immutable approval ref becomes mandatory only after approval is actually obtained and before the workflow advances beyond the Owner gate.
 
 ## Anti-loop / review staleness
 - Default correction budget is bounded by the applicable policy; Chief Policy V2 default is 2 correction cycles after initial submission.
@@ -56,7 +59,7 @@ Do not create review work merely for activity. An owning Issue/process may raise
 - Same exact-evidence fingerprint must not be reviewed repeatedly after a complete verdict.
 - If evidence/head/scope changes, prior review becomes stale for the changed scope.
 - Reviewer unavailability is routed by CHAT00 to another eligible independent reviewer before any Owner escalation.
-- External waits carry a resume condition; do not blind-retry.
+- `EXTERNAL_WAIT` is an explicit non-terminal state and must carry `wait_reason`, `resume_condition`, and `last_checked_at`; do not blind-retry.
 
 ## Reporting
 Use milestone reporting, concise status, blockers, exact evidence and next state.
