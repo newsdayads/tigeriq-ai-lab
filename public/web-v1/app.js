@@ -1,57 +1,342 @@
-import {MockControllerClient,WorkforceControllerClient} from './controller-client.js';
-import {MOCK_CONTROLLER_SNAPSHOT} from './mock-data.js';
+import { MockControllerClient, WorkforceControllerClient } from './controller-client.js';
+import { MOCK_CONTROLLER_SNAPSHOT, MOCK_CONTROL_TOWER_PREVIEW } from './mock-data.js';
+import { buildCompanyControlTowerViewModel, controlTowerTruthCheck, kpiHealthScore } from './company-control-tower-adapter.js';
 
-const $=id=>document.getElementById(id);
-const state={mode:'mock',client:new MockControllerClient(MOCK_CONTROLLER_SNAPSHOT),snapshot:null,controllerError:null,owner:{configured:false,authenticated:false,identity:null,googleClientId:null}};
-const pageMeta={
-  overview:['BẢNG ĐIỀU HÀNH CÔNG TY','Tổng quan TigerIQ V1','Một nơi để Sếp nhìn tiến độ, nhân sự AI, công việc, kết quả và lỗi vận hành.'],
-  goal:['MỤC TIÊU CỦA SẾP','Giao mục tiêu','Web gửi mục tiêu; Controller và Work Management chịu trách nhiệm điều phối.'],
-  jobs:['CÔNG VIỆC','Công việc & trạng thái','Theo dõi hàng đợi, tiến độ, số lần thử và lỗi từ Controller.'],
-  workforce:['TỔ CHỨC','Phòng ban & nhân viên AI','Cấu trúc công ty, vai trò, thiết bị và năng lực của từng nhân viên.'],
-  providers:['LỚP AI','AI đang dùng','Provider, model, hạn mức, độ ổn định và trạng thái thông tin xác thực.'],
-  prompts:['KIẾN TRÚC PROMPT','Prompt Architect','Thư viện Prompt, phiên bản, PASS/FAIL và hiệu suất.'],
-  quality:['LUỒNG KẾT QUẢ','Kết quả & kiểm tra','Kết quả → Bằng chứng → Kiểm tra → Phán quyết trước khi chấp nhận hoàn tất.'],
-  recovery:['TRUNG TÂM KHÔI PHỤC','Lỗi & khôi phục','Lỗi, số lần thử, điều kiện thử lại và chiến lược phục hồi.'],
-  activity:['NHẬT KÝ VẬN HÀNH','Nhật ký hoạt động','Lịch sử sự kiện vận hành từ Workforce Controller.'],
-  settings:['KẾT NỐI PC01','Kết nối Workforce Controller','Web → Tailscale → PC01; không lưu admin secret trong trình duyệt.'],
+const $ = id => document.getElementById(id);
+const state = {
+  mode: 'mock',
+  client: new MockControllerClient(MOCK_CONTROLLER_SNAPSHOT),
+  snapshot: null,
+  viewModel: null,
+  controllerError: null,
+  owner: { configured: false, authenticated: false, identity: null, googleClientId: null },
 };
-const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const fmt=v=>{if(!v)return'—';const d=new Date(v);return Number.isNaN(d.getTime())?esc(v):d.toLocaleString('vi-VN',{hour12:false});};
-const pct=v=>Number.isFinite(v)?`${Math.round(v*100)}%`:'—';
-const stage=v=>String(v||'UNKNOWN').toUpperCase();
-const statusClass=v=>{const x=String(v||'').toLowerCase();if(/ready|pass|completed|online|healthy/.test(x))return'good';if(/failed|fail|error|offline|blocked/.test(x))return'bad';if(/running|assigned|waiting_review|waiting_judge|busy/.test(x))return'blue';return'warn';};
-const badge=v=>`<span class="status ${statusClass(v)}">${esc(v||'UNKNOWN')}</span>`;
-const mockChip=row=>row?.isMock?'<span class="chip mock-chip">MẪU</span>':'';
 
-async function loadOwnerAuth(){try{const r=await fetch('/api/owner-auth?action=status',{cache:'no-store',credentials:'include'});if(!r.ok)throw new Error();state.owner=await r.json();}catch{state.owner={configured:false,authenticated:false,identity:null,googleClientId:null,unavailable:true};}renderOwner();}
-function renderOwner(){const o=state.owner;if(o.authenticated&&o.identity){$('ownerAccount').innerHTML=`${o.identity.picture?`<img class="owner-avatar" src="${esc(o.identity.picture)}" alt="">`:'<span class="owner-avatar">S</span>'}<span>${esc(o.identity.name||o.identity.email)} · Sếp</span>`;}else{$('ownerAccount').innerHTML='<span class="owner-avatar">S</span><span>Sếp</span>';}}
-async function ownerGoogleLogin(){if(!state.owner.configured||!state.owner.googleClientId)return showConnection({ok:false,error:'OWNER_AUTH_NOT_CONFIGURED'});if(!globalThis.google?.accounts?.id)return showConnection({ok:false,error:'GOOGLE_IDENTITY_SCRIPT_NOT_READY'});globalThis.google.accounts.id.initialize({client_id:state.owner.googleClientId,callback:async({credential})=>{const r=await fetch('/api/owner-auth?action=identity',{method:'POST',headers:{'content-type':'application/json'},credentials:'include',body:JSON.stringify({credential})});showConnection(await r.json().catch(()=>({})));await loadOwnerAuth();}});globalThis.google.accounts.id.prompt();}
+const pageMeta = {
+  overview: ['COMPANY CONTROL TOWER', 'Tổng quan công ty', 'Sếp nhìn mục tiêu, KPI, Mission, kết quả và ngoại lệ trước.'],
+  goals: ['OWNER GOAL / KPI', 'Mục tiêu & KPI', 'Quản trị bằng mục tiêu và kết quả, không bằng số lượng task.'],
+  missions: ['PLAN → ASSIGN → EXECUTE', 'Mission cấp công ty', 'Mission nối Goal/Signal với outcome; Job chỉ là runtime reference.'],
+  organization: ['DEPARTMENT / AI EMPLOYEE', 'Phòng ban & nhân viên AI', 'Employee là vai trò và trách nhiệm; model/provider chỉ là năng lực.'],
+  'owner-actions': ['EXCEPTION / OWNER ACTION', 'CẦN SẾP', 'Chỉ đưa lên Sếp các ngoại lệ quan trọng hoặc việc vượt quyền.'],
+  outcomes: ['BUSINESS OUTCOME', 'Kết quả kinh doanh', 'Outcome phải cho biết tác động tới Goal/KPI khi có thể.'],
+  processes: ['BUSINESS PROCESS', 'Sức khỏe quy trình', 'Theo dõi vòng Sense → Interpret → Plan → Authorize → Execute → Verify → Measure.'],
+  technical: ['TECHNICAL OPERATIONS', 'Vận hành kỹ thuật', 'SHA/CI/lease/port, Controller, Job, provider và Prompt nằm ở đây.'],
+};
 
-function emptySnapshot(reason){return{schemaVersion:'tigeriq.web-control.snapshot.v1',generatedAt:new Date().toISOString(),source:{mode:'controller',authoritative:false,label:'CONTROLLER UNAVAILABLE'},controller:{state:'unavailable',contractState:reason||'UNAVAILABLE',baseUrl:localStorage.getItem('tigeriq.controller.url')||null},company:{name:'TigerIQ AI Lab',version:'V1',phase:'Chưa có dữ liệu',currentObjective:'—',truthPolicy:'Không có dữ liệu vận hành.',progress:{percent:0,label:'Chưa có dữ liệu',note:'Controller unavailable'},readiness:[],workforceSummary:{}},departments:[],jobs:[],employees:[],devices:[],providers:[],prompts:[],results:[],checks:[],activity:[]};}
-async function refresh(){if($('refreshBtn'))$('refreshBtn').disabled=true;state.controllerError=null;try{state.snapshot=await state.client.snapshot();}catch(e){state.controllerError=e;state.snapshot=state.mode==='controller'?emptySnapshot(e.message):MOCK_CONTROLLER_SNAPSHOT;}finally{if($('refreshBtn'))$('refreshBtn').disabled=false;render();}}
+const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+const fmt = value => {
+  if (!value) return '—';
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? esc(value) : d.toLocaleString('vi-VN', { hour12: false });
+};
+const clamp = value => Math.max(0, Math.min(100, Number(value || 0)));
+const statusClass = value => {
+  const text = String(value || '').toLowerCase();
+  if (/pass|completed|healthy|online|on_track|ready|active/.test(text)) return 'good';
+  if (/fail|failed|error|offline|blocked|critical/.test(text)) return 'bad';
+  if (/running|assigned|busy|in_progress/.test(text)) return 'blue';
+  return 'warn';
+};
+const statusLabel = value => {
+  const key = String(value || 'UNKNOWN').toUpperCase();
+  const map = {
+    PASS: 'Đạt', READY: 'Sẵn sàng', COMPLETED: 'Hoàn tất', RUNNING: 'Đang chạy', QUEUED: 'Đang chờ',
+    PENDING: 'Chờ', BLOCKED: 'Bị chặn', FAILED: 'Lỗi', UNKNOWN: 'Chưa rõ', ON_TRACK: 'Đúng hướng',
+    AT_RISK: 'Cần chú ý', NEEDS_OWNER: 'Cần Sếp', NO_SOURCE: 'Chưa có nguồn', PREVIEW_SAMPLE: 'Mẫu', BRANCH_ONLY: 'Branch',
+    HEALTHY: 'Tốt', ONLINE: 'Online', OFFLINE: 'Offline', ACTIVE: 'Hoạt động', SUSPENDED: 'Tạm dừng',
+  };
+  return map[key] || key.replaceAll('_', ' ');
+};
+const badge = value => `<span class="status ${statusClass(value)}">${esc(statusLabel(value))}</span>`;
+const mockChip = row => row?.isMock ? '<span class="chip mock-chip">MẪU</span>' : '';
+const unavailable = text => `<div class="unavailable">${esc(text)}</div>`;
 
-function renderTruth(s){const banner=$('modeBanner'),pill=$('sourcePill');if(state.mode==='mock'){banner.className='truth-banner';banner.innerHTML='<div><b>DỮ LIỆU MẪU V1</b><span>Giao diện đang mô phỏng đúng giao thức. Không có RUNNING/DONE thật từ PC01.</span></div><button class="text-btn" data-view-jump="settings">Kết nối Controller →</button>';pill.innerHTML='<span></span><b>DỮ LIỆU MẪU</b>';pill.className='source-pill';}else if(state.controllerError){banner.className='truth-banner error';banner.innerHTML=`<div><b>CONTROLLER MẤT KẾT NỐI</b><span>${esc(state.controllerError.message)} · Web không lấy GitHub/Vercel để thay thế.</span></div><button class="text-btn" data-view-jump="settings">Kiểm tra kết nối →</button>`;pill.innerHTML='<span></span><b>CONTROLLER OFFLINE</b>';pill.className='source-pill';}else{banner.className='truth-banner controller';banner.innerHTML=`<div><b>CONTROLLER LIVE</b><span>${esc(s.source?.label||'PC01 Workforce Controller')} · cập nhật ${fmt(s.generatedAt)}</span></div>`;pill.innerHTML='<span></span><b>PC01 LIVE</b>';pill.className='source-pill';}}
-function renderReadiness(s){const rows=Array.isArray(s.company?.readiness)?s.company.readiness:[];$('readinessList').innerHTML=rows.length?rows.map((r,i)=>`<div class="readiness-row"><div class="readiness-icon">${String(i+1).padStart(2,'0')}</div><div><b>${esc(r.label||r.key)}</b><small>${esc(r.evidence||'Chưa có bằng chứng vận hành')}</small></div>${badge(r.state)}</div>`).join(''):'<div class="empty">Controller chưa trả mốc sẵn sàng.</div>';}
-function renderDepartments(target,rows){$(target).innerHTML=rows.length?rows.map(d=>`<div class="department-card"><div class="department-top"><div class="department-icon">${esc(d.icon||'•')}</div>${badge(d.health)}</div><h4 style="margin-top:8px">${esc(d.name)}</h4><p>${esc(d.purpose)}</p><div class="meta-row">${mockChip(d)}<span class="chip">${d.employeeCount??0} nhân sự</span><span class="chip">${d.activeJobs??0} việc</span></div></div>`).join(''):'<div class="empty">Chưa có dữ liệu phòng ban.</div>';}
-function renderOverview(s){const p=Math.max(0,Math.min(100,Number(s.company?.progress?.percent||0)));$('progressRing').style.setProperty('--progress',p);$('overallProgress').textContent=`${p}%`;$('statProgress').textContent=`${p}%`;$('statProgressNote').textContent=s.company?.progress?.label||'—';$('currentObjective').textContent=s.company?.currentObjective||'—';$('phaseBadge').textContent=s.company?.phase||'—';$('operatingMode').textContent=s.company?.operatingMode||'—';$('statDepartments').textContent=String((s.departments||[]).length);$('statEmployees').textContent=String((s.employees||[]).length);$('statJobs').textContent=String((s.jobs||[]).length);const blockers=(s.jobs||[]).filter(j=>j.blocker||['BLOCKED','FAILED'].includes(stage(j.stage))).length;$('statBlockers').textContent=String(blockers);const active=(s.jobs||[]).filter(j=>['QUEUED','ASSIGNED','RUNNING','WAITING_REVIEW','WAITING_JUDGE'].includes(stage(j.stage))).length;$('statJobsMeta').textContent=`${active} đang mở · ${(s.jobs||[]).filter(j=>stage(j.stage)==='COMPLETED').length} hoàn tất mẫu`;renderReadiness(s);renderDepartments('overviewDepartments',(s.departments||[]).slice(0,4));$('overviewProviders').innerHTML=(s.providers||[]).slice(0,4).map(p=>`<div class="provider-mini"><div><b>${esc(p.displayName)}</b><small>${esc(p.role||'—')}</small></div>${badge(p.health)}</div>`).join('')||'<div class="empty">Chưa có AI provider.</div>';$('overviewJobs').innerHTML=(s.jobs||[]).slice(0,4).map(j=>`<div class="job-row"><div><b>${esc(j.jobId)}</b><p>${esc(j.objective)}</p><div class="job-progress"><i style="width:${Math.max(0,Math.min(100,Number(j.progress||0)))}%"></i></div></div>${badge(j.stage)}</div>`).join('')||'<div class="empty">Chưa có công việc.</div>';$('overviewChecks').innerHTML=(s.checks||[]).slice(0,5).map(c=>`<div class="check-item"><div class="check-icon">${statusClass(c.state)==='good'?'✓':'•'}</div><div><b>${esc(c.name)}</b><small>${esc(c.jobId||'—')}</small></div>${badge(c.state)}</div>`).join('')||'<div class="empty">Chưa có kiểm tra.</div>';}
-function renderJobs(s){$('jobBoard').innerHTML=(s.jobs||[]).map(j=>`<article class="job-card"><div class="job-top"><div><div class="job-id">${esc(j.jobId)}</div><h4>${esc(j.objective)}</h4></div>${badge(j.stage)}</div><p>${esc(j.department||'Chưa gán phòng ban')}</p><div class="job-progress"><i style="width:${Math.max(0,Math.min(100,Number(j.progress||0)))}%"></i></div><div class="job-meta"><div><span>Ưu tiên</span><b>${esc(j.priority)}</b></div><div><span>Nhân viên</span><b>${esc(j.assignedEmployeeId||'—')}</b></div><div><span>Số lần thử</span><b>${j.attempts??0}/${j.maxAttempts??0}</b></div><div><span>Tiến độ</span><b>${j.progress??0}%</b></div></div><div class="chip-row">${mockChip(j)}${(j.requiredCapabilities||[]).slice(0,3).map(x=>`<span class="chip">${esc(x)}</span>`).join('')}</div>${j.blocker?`<p class="bad"><b>${esc(j.blocker.code)}</b> · ${esc(j.blocker.message)}</p>`:''}</article>`).join('')||'<div class="empty">Controller chưa trả công việc.</div>';}
-function renderWorkforce(s){renderDepartments('departmentGrid',s.departments||[]);$('employeeGrid').innerHTML=(s.employees||[]).map(e=>`<article class="employee-card"><div class="employee-top"><div class="avatar-box">${esc((e.displayName||'AI').split(' ').slice(-1)[0].slice(0,2).toUpperCase())}</div>${badge(e.availability)}</div><h4 style="margin-top:8px">${esc(e.displayName)}</h4><div class="employee-role">${esc(e.role)} · ${esc(e.department)}</div><p>AI: <b>${esc(e.provider||'—')}</b> · ${esc(e.model||'—')}</p><div class="health-line"><span>Heartbeat</span><b>${fmt(e.lastHeartbeatAt)}</b></div><div class="chip-row">${mockChip(e)}${(e.capabilities||[]).slice(0,3).map(x=>`<span class="chip">${esc(x)}</span>`).join('')}</div></article>`).join('')||'<div class="empty">Chưa có nhân viên.</div>';$('deviceGrid').innerHTML=(s.devices||[]).map(d=>`<article class="device-card"><div class="department-top"><div><div class="job-id">${esc(d.nodeId)}</div><h4>${esc(d.displayName||d.platform)}</h4></div>${badge(d.status)}</div><p>${esc(d.platform)} · ${esc(d.kind)} · Tailscale ${esc(d.tailscaleIp||'chưa có')}</p><div class="meta-row">${mockChip(d)}<span class="chip">Cổng ${esc(d.controllerPort||'—')}</span><span class="chip">Agent ${esc(d.agentVersion||'—')}</span><span class="chip">Heartbeat ${fmt(d.lastHeartbeatAt)}</span></div></article>`).join('')||'<div class="empty">Chưa có thiết bị.</div>';}
-function renderProviders(s){$('providerGrid').innerHTML=(s.providers||[]).map(p=>`<article class="provider-card"><div class="provider-top"><div><div class="job-id">${esc(p.providerId)}</div><h4>${esc(p.displayName)}</h4></div>${badge(p.health)}</div><p>${esc(p.role||'—')}</p><div class="metric-pair"><div><span>Thông tin xác thực</span><b>${esc(p.credentialPresent||'—')}</b></div><div><span>Tỷ lệ đạt</span><b>${pct(p.successRate)}</b></div><div><span>p50</span><b>${p.latencyP50Ms??'—'} ms</b></div></div><div class="quota"><div class="health-line"><span>Hạn mức</span><b>${p.quota?`${p.quota.remaining??'—'} / ${p.quota.limit??'—'}`:'Không áp dụng'}</b></div><div class="quota-bar"><i style="width:${Number.isFinite(p.quota?.remaining)&&Number.isFinite(p.quota?.limit)&&p.quota.limit>0?Math.max(0,Math.min(100,p.quota.remaining/p.quota.limit*100)):0}%"></i></div></div><div class="chip-row">${mockChip(p)}<span class="chip">${esc(p.billingMode||'—')}</span>${(p.models||[]).map(m=>`<span class="chip">${esc(m)}</span>`).join('')}</div></article>`).join('')||'<div class="empty">Controller chưa trả AI provider.</div>';}
-function renderPrompts(s){$('promptGrid').innerHTML=(s.prompts||[]).map(p=>`<article class="prompt-card"><div class="provider-top"><div><div class="job-id">${esc(p.promptId)}</div><h4>${esc(p.name)}</h4></div><span class="chip">đang dùng ${esc(p.activeVersion)}</span></div><p>${esc(p.purpose)}</p>${(p.versions||[]).map(v=>`<div class="prompt-version"><div class="prompt-version-head"><b>${esc(v.version)}</b>${badge(v.status)}</div><p>${esc(v.content)}</p><div class="metric-inline"><span>lượt ${v.metrics?.runs??0}</span><span>PASS ${v.metrics?.pass??0}</span><span>FAIL ${v.metrics?.fail??0}</span><span>tỷ lệ ${pct(v.metrics?.passRate)}</span><span>${v.metrics?.avgLatencyMs??'—'} ms</span></div></div>`).join('')}</article>`).join('')||'<div class="empty">Chưa có Prompt.</div>';}
-function renderQuality(s){$('resultList').innerHTML=(s.results||[]).map(r=>`<article class="result-card"><div class="result-top"><div><div class="job-id">${esc(r.jobId)} · ${esc(r.resultId)}</div><h4>${esc(r.conclusion||'Chưa có kết luận')}</h4></div>${badge(r.status)}</div><p>Nhân viên thực hiện: ${esc(r.employeeId)} · ${esc(r.provider||'—')} / ${esc(r.model||'—')} · độ tin cậy ${r.confidence??'—'}</p><div class="gate-grid"><div class="gate-box"><span>Kết quả</span><b>${esc(r.status||'PENDING')}</b></div><div class="gate-box"><span>Bằng chứng</span><b class="${statusClass(r.evidence?.state)}">${esc(r.evidence?.state||'PENDING')}</b></div><div class="gate-box"><span>Kiểm tra</span><b class="${statusClass(r.review?.state)}">${esc(r.review?.state||'PENDING')}</b></div><div class="gate-box"><span>Phán quyết</span><b class="${statusClass(r.judge?.state)}">${esc(r.judge?.state||'PENDING')}</b></div></div><div class="artifact-list">${(r.artifacts||[]).map(a=>`<div class="artifact-row">${esc(a.kind)} · ${esc(a.ref)} · ${esc(a.summary||'')}</div>`).join('')}</div><div class="chip-row">${mockChip(r)}</div></article>`).join('')||'<div class="empty">Chưa có kết quả.</div>';$('checkTable').innerHTML=(s.checks||[]).map(c=>`<tr><td><b>${esc(c.name)}</b>${mockChip(c)}</td><td>${esc(c.jobId||'—')}</td><td>${badge(c.state)}</td><td>${esc(c.detail||'—')}</td><td>${fmt(c.at)}</td></tr>`).join('')||'<tr><td colspan="5" class="empty">Chưa có kiểm tra.</td></tr>';}
-function renderRecovery(s){const rows=(s.jobs||[]).filter(j=>j.blocker||['BLOCKED','FAILED'].includes(stage(j.stage)));$('recoveryGrid').innerHTML=rows.length?rows.map(j=>`<article class="recovery-card"><div class="job-top"><div><div class="job-id">${esc(j.jobId)}</div><h4>${esc(j.objective)}</h4></div>${badge(j.stage)}</div><p class="blocker-code">${esc(j.blocker?.code||'NO_CODE')}</p><p>${esc(j.blocker?.message||'Không có mô tả lỗi.')}</p><div class="metric-pair"><div><span>Số lần thử</span><b>${j.attempts??0}/${j.maxAttempts??0}</b></div><div><span>Có thể thử lại</span><b>${j.blocker?.retriable===true?'CÓ':'—'}</b></div><div><span>Chiến lược</span><b>${esc(j.recovery?.strategy||'—')}</b></div></div><div class="chip-row">${mockChip(j)}</div><button class="secondary-btn retry-btn" data-job="${esc(j.jobId)}">Gửi yêu cầu thử lại</button></article>`).join(''):'<div class="empty">Không có lỗi / khôi phục.</div>';document.querySelectorAll('.retry-btn').forEach(b=>b.onclick=()=>retryJob(b.dataset.job));}
-function renderActivity(s){$('activityTimeline').innerHTML=(s.activity||[]).map(e=>`<div class="timeline-row"><time>${fmt(e.at)}</time><b>${esc(e.type)}</b><p>${esc(e.message)} ${e.jobId?`· <span class="job-id">${esc(e.jobId)}</span>`:''} ${mockChip(e)}</p></div>`).join('')||'<div class="empty">Chưa có nhật ký.</div>';}
-function render(){const s=state.snapshot||MOCK_CONTROLLER_SNAPSHOT;renderTruth(s);renderOverview(s);renderJobs(s);renderWorkforce(s);renderProviders(s);renderPrompts(s);renderQuality(s);renderRecovery(s);renderActivity(s);$('goalModeNote').textContent=state.mode==='mock'?'Dữ liệu mẫu: nút gửi chỉ tạo bản nháp, không đẩy việc tới PC01.':'Chế độ Controller: gửi mục tiêu của Sếp; Web không tự điều phối.';bindJumpButtons();}
-function showConnection(v){$('connectionResult').textContent=JSON.stringify(v,null,2);}
-async function connectController(){const url=$('controllerUrl').value.trim(),token=$('controllerToken').value;try{const client=new WorkforceControllerClient({baseUrl:url,accessToken:token});state.client=client;state.mode='controller';sessionStorage.setItem('tigeriq.controller.token',token);localStorage.setItem('tigeriq.controller.url',client.baseUrl);showConnection({ok:true,mode:'controller',baseUrl:client.baseUrl,note:'Chỉ dữ liệu đúng giao thức và được Controller xác nhận mới được hiển thị live.'});await refresh();}catch(e){showConnection({ok:false,error:e.message,hint:e.hint||null});}}
-async function probeController(){try{const client=new WorkforceControllerClient({baseUrl:$('controllerUrl').value.trim(),accessToken:$('controllerToken').value});showConnection(await client.health());}catch(e){showConnection({ok:false,error:e.message,hint:e.hint||null});}}
-async function useMock(){state.client=new MockControllerClient(MOCK_CONTROLLER_SNAPSHOT);state.mode='mock';state.controllerError=null;showConnection({ok:true,mode:'mock',authoritative:false});await refresh();}
-async function submitGoal(e){e.preventDefault();const goal={objective:$('goalObjective').value.trim(),priority:$('goalPriority').value,deadline:$('goalDeadline').value?new Date($('goalDeadline').value).toISOString():null,constraints:$('goalConstraints').value.split('\n').map(x=>x.trim()).filter(Boolean),expectedEvidence:$('goalEvidence').value.split('\n').map(x=>x.trim()).filter(Boolean),requestedBy:'owner-web-control'};const out=$('goalResult');out.hidden=false;try{out.textContent=JSON.stringify(await state.client.submitGoal(goal),null,2);if(state.mode==='controller')await refresh();}catch(err){out.textContent=JSON.stringify({ok:false,error:err.message},null,2);}}
-async function savePrompt(){const out=$('promptSaveResult');out.hidden=false;try{out.textContent=JSON.stringify(await state.client.savePromptVersion({promptId:$('promptId').value.trim(),version:$('promptVersion').value.trim(),content:$('promptContent').value,status:'DRAFT'}),null,2);}catch(e){out.textContent=JSON.stringify({ok:false,error:e.message},null,2);}}
-async function retryJob(jobId){try{showConnection(await state.client.retryJob(jobId,'owner_web_retry_intent'));if(state.mode==='controller')await refresh();}catch(e){showConnection({ok:false,error:e.message,jobId});}}
-function switchView(view){const meta=pageMeta[view]||pageMeta.overview;document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===view));document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.dataset.section===view));$('pageEyebrow').textContent=meta[0];$('pageTitle').textContent=meta[1];$('pageSubtitle').textContent=meta[2];history.replaceState(null,'',`#${view}`);window.scrollTo({top:0,behavior:'instant'});}
-function bindJumpButtons(){document.querySelectorAll('[data-view-jump]').forEach(b=>b.onclick=()=>switchView(b.dataset.viewJump));}
-document.querySelectorAll('.nav button').forEach(b=>b.onclick=()=>switchView(b.dataset.view));$('refreshBtn').onclick=refresh;$('connectBtn').onclick=connectController;$('probeBtn').onclick=probeController;$('mockBtn').onclick=useMock;$('ownerLoginBtn').onclick=ownerGoogleLogin;$('goalForm').onsubmit=submitGoal;$('savePromptBtn').onclick=savePrompt;
-$('controllerUrl').value=localStorage.getItem('tigeriq.controller.url')||'';$('controllerToken').value=sessionStorage.getItem('tigeriq.controller.token')||'';
-switchView(location.hash.slice(1) in pageMeta?location.hash.slice(1):'overview');
-await Promise.all([loadOwnerAuth(),refresh()]);
+async function loadOwnerAuth() {
+  try {
+    const response = await fetch('/api/owner-auth?action=status', { cache: 'no-store', credentials: 'include' });
+    if (!response.ok) throw new Error('OWNER_AUTH_UNAVAILABLE');
+    state.owner = await response.json();
+  } catch {
+    state.owner = { configured: false, authenticated: false, identity: null, googleClientId: null, unavailable: true };
+  }
+  renderOwner();
+}
+
+function renderOwner() {
+  const owner = state.owner;
+  if (owner.authenticated && owner.identity) {
+    $('ownerAccount').innerHTML = `${owner.identity.picture ? `<img class="owner-avatar" src="${esc(owner.identity.picture)}" alt="">` : '<span class="owner-avatar">S</span>'}<span>${esc(owner.identity.name || owner.identity.email)} · Sếp</span>`;
+  } else {
+    $('ownerAccount').innerHTML = '<span class="owner-avatar">S</span><span>Sếp</span>';
+  }
+}
+
+async function ownerGoogleLogin() {
+  if (!state.owner.configured || !state.owner.googleClientId) return showConnection({ ok: false, error: 'OWNER_AUTH_NOT_CONFIGURED' });
+  if (!globalThis.google?.accounts?.id) return showConnection({ ok: false, error: 'GOOGLE_IDENTITY_SCRIPT_NOT_READY' });
+  globalThis.google.accounts.id.initialize({
+    client_id: state.owner.googleClientId,
+    callback: async ({ credential }) => {
+      const response = await fetch('/api/owner-auth?action=identity', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'include', body: JSON.stringify({ credential }),
+      });
+      showConnection(await response.json().catch(() => ({})));
+      await loadOwnerAuth();
+    },
+  });
+  globalThis.google.accounts.id.prompt();
+}
+
+function emptySnapshot(reason) {
+  return {
+    schemaVersion: 'tigeriq.web-control.snapshot.v1',
+    generatedAt: new Date().toISOString(),
+    source: { mode: 'controller', authoritative: false, label: 'CONTROLLER UNAVAILABLE' },
+    controller: { state: 'unavailable', contractState: reason || 'UNAVAILABLE', baseUrl: localStorage.getItem('tigeriq.controller.url') || null },
+    company: { name: 'TigerIQ AI Lab', version: 'V2', truthPolicy: 'Không có dữ liệu live khi Controller lỗi.' },
+    departments: [], jobs: [], employees: [], devices: [], providers: [], prompts: [], results: [], checks: [], activity: [], build: {}, leases: [],
+  };
+}
+
+function buildViewModel() {
+  const previewBusiness = state.mode === 'mock' ? MOCK_CONTROL_TOWER_PREVIEW : null;
+  state.viewModel = controlTowerTruthCheck(buildCompanyControlTowerViewModel(state.snapshot || MOCK_CONTROLLER_SNAPSHOT, { previewBusiness }));
+  return state.viewModel;
+}
+
+async function refresh() {
+  $('refreshBtn').disabled = true;
+  state.controllerError = null;
+  try {
+    state.snapshot = await state.client.snapshot();
+  } catch (error) {
+    state.controllerError = error;
+    state.snapshot = state.mode === 'controller' ? emptySnapshot(error.message) : MOCK_CONTROLLER_SNAPSHOT;
+  } finally {
+    $('refreshBtn').disabled = false;
+    buildViewModel();
+    render();
+  }
+}
+
+function renderTruth(vm) {
+  const banner = $('modeBanner');
+  const pill = $('sourcePill');
+  if (state.mode === 'mock') {
+    banner.className = 'truth-banner';
+    banner.innerHTML = '<div><b>DỮ LIỆU MẪU · authoritative=false</b><span>Em đang dùng adapter/view-model tạm trong khi #146 chốt business contract. Không có dữ liệu live nào được suy diễn từ Job.</span></div><button class="text-btn" data-view-jump="technical">Xem nguồn dữ liệu →</button>';
+    pill.innerHTML = '<span></span><b>MẪU · KHÔNG LIVE</b>';
+  } else if (state.controllerError) {
+    banner.className = 'truth-banner error';
+    banner.innerHTML = `<div><b>CONTROLLER MẤT KẾT NỐI</b><span>${esc(state.controllerError.message)} · Em không dùng GitHub/Vercel hay mock để thay thế dữ liệu live.</span></div><button class="text-btn" data-view-jump="technical">Kiểm tra kết nối →</button>`;
+    pill.innerHTML = '<span></span><b>CONTROLLER OFFLINE</b>';
+  } else if (!vm.source.businessAvailable) {
+    banner.className = 'truth-banner controller';
+    banner.innerHTML = '<div><b>RUNTIME LIVE · BUSINESS CONTRACT CHƯA MAP</b><span>Controller có dữ liệu runtime authoritative, nhưng #146 chưa cung cấp business-state projection nên Goal/KPI/Mission không được tự suy diễn.</span></div><button class="text-btn" data-view-jump="technical">Xem runtime →</button>';
+    pill.innerHTML = '<span></span><b>RUNTIME LIVE</b>';
+  } else {
+    banner.className = 'truth-banner controller';
+    banner.innerHTML = `<div><b>COMPANY DATA LIVE</b><span>${esc(vm.source.label)} · cập nhật ${fmt(vm.generatedAt)}</span></div>`;
+    pill.innerHTML = '<span></span><b>AUTHORITATIVE</b>';
+  }
+}
+
+function primaryGoal(vm) { return vm.goals[0] || null; }
+function goalKpis(vm, goal) { return goal ? vm.kpis.filter(kpi => !goal.kpiIds?.length || goal.kpiIds.includes(kpi.kpiId)) : vm.kpis; }
+
+function renderOverview(vm) {
+  const goal = primaryGoal(vm);
+  const kpis = goalKpis(vm, goal).slice(0, 4);
+  const health = kpiHealthScore(kpis);
+  $('primaryGoalTitle').textContent = goal?.title || (vm.source.businessAvailable ? 'Chưa có mục tiêu ưu tiên' : 'Chưa có business contract authoritative');
+  $('primaryGoalObjective').textContent = goal?.objective || 'Em không suy diễn Goal/KPI từ Job runtime khi #146 chưa map dữ liệu.';
+  $('primaryGoalMeta').innerHTML = goal ? `${mockChip(goal)}<span>${esc(goal.priority || '—')}</span><span>${esc(statusLabel(goal.status))}</span><span>Hạn ${fmt(goal.deadline)}</span>` : '<span>Contract #146 pending</span>';
+  const goalProgress = health ?? clamp(goal?.progressPct || 0);
+  $('goalProgressRing').style.setProperty('--progress', goalProgress);
+  $('goalProgress').textContent = health === null ? '—' : `${goalProgress}%`;
+
+  $('homeKpis').innerHTML = kpis.length ? kpis.map(kpi => `<article class="kpi-card"><div class="kpi-card-head"><span>${esc(kpi.name)}</span>${badge(kpi.state)}</div><strong>${kpi.currentValue ?? '—'}${kpi.unit === '%' ? '%' : ''}</strong><small>Mục tiêu ${kpi.target ?? '—'} ${kpi.unit && kpi.unit !== '%' ? esc(kpi.unit) : ''}</small><div class="kpi-line"><i style="width:${clamp(kpi.healthPct)}%"></i></div><div class="chip-row">${mockChip(kpi)}</div></article>`).join('') : unavailable('Chưa có KPI authoritative.');
+
+  const performance = vm.performance || {};
+  $('businessDataState').textContent = performance.availability === 'available' ? 'CÓ NGUỒN' : 'CHƯA CÓ NGUỒN';
+  $('businessMetrics').innerHTML = performance.metrics?.length ? performance.metrics.map(metric => `<div class="business-metric"><span>${esc(metric.label)}</span><strong>${metric.value ?? '—'}${metric.value !== null && metric.unit ? ` ${esc(metric.unit)}` : ''}</strong><small>${esc(statusLabel(metric.state))}</small>${mockChip(metric)}</div>`).join('') : unavailable('Chưa có doanh thu/chi phí/outcome authoritative.');
+  $('businessDataNote').textContent = performance.note || '—';
+
+  $('homeOwnerActions').innerHTML = vm.ownerActions.length ? vm.ownerActions.slice(0, 2).map(action => `<div class="owner-action-mini"><div class="row-top"><b>${esc(action.title)}</b>${badge(action.status)}</div><p>${esc(action.decisionNeeded || action.issue)}</p><div class="chip-row">${mockChip(action)}<span class="chip">${esc(action.severity || '—')}</span></div></div>`).join('') : '<div class="empty">Không có ngoại lệ cần Sếp.</div>';
+
+  $('homeMissions').innerHTML = vm.missions.length ? vm.missions.slice(0, 3).map(mission => `<div class="mission-row"><div class="row-top"><b>${esc(mission.title)}</b>${badge(mission.status)}</div><p>${esc(mission.expectedOutcome)}</p><div class="progress-track"><i style="width:${clamp(mission.progressPct)}%"></i></div><div class="chip-row">${mockChip(mission)}<span class="chip">${mission.progressPct ?? 0}%</span><span class="chip">${esc(mission.riskLevel || '—')}</span></div></div>`).join('') : unavailable('Chưa có Mission authoritative.');
+
+  const activeEmployees = vm.employees.filter(row => String(row.availability || '').toLowerCase() === 'online' || String(row.availability || '').toLowerCase() === 'idle' || String(row.availability || '').toLowerCase() === 'busy').length;
+  $('homeOrganization').innerHTML = `<div class="org-row"><div class="row-top"><b>${vm.departments.length} phòng ban</b><span class="chip">${vm.employees.length} AI Employee</span></div><p>${activeEmployees ? `${activeEmployees} có trạng thái hoạt động từ nguồn hiện tại.` : 'Chưa có heartbeat live; trạng thái nhân viên không được giả online.'}</p></div>`;
+
+  $('homeOutcomes').innerHTML = vm.outcomes.length ? vm.outcomes.slice(0, 3).map(outcome => `<div class="outcome-row"><div class="row-top"><b>${esc(outcome.title)}</b><span class="chip">${fmt(outcome.completedAt)}</span></div><p>${esc(outcome.summary)}</p><div class="chip-row">${mockChip(outcome)}${(outcome.kpiEffects || []).slice(0, 2).map(effect => `<span class="chip">${esc(effect.delta)}</span>`).join('')}</div></div>`).join('') : unavailable('Chưa có Business Outcome authoritative.');
+
+  $('homeProcesses').innerHTML = vm.processes.length ? vm.processes.slice(0, 3).map(process => `<div class="process-health-row"><div class="row-top"><b>${esc(process.name)}</b>${badge(process.health || process.status)}</div><p>${(process.steps || []).filter(step => ['RUNNING','PENDING','BLOCKED'].includes(String(step.state || '').toUpperCase())).slice(0, 2).map(step => `${step.label}: ${statusLabel(step.state)}`).join(' · ') || 'Không có bước cần chú ý.'}</p><div class="chip-row">${mockChip(process)}<span class="chip">${process.exceptionCount ?? 0} ngoại lệ</span></div></div>`).join('') : unavailable('Chưa có Business Process authoritative.');
+
+  $('runtimeSummary').innerHTML = vm.runtimeSummary.map(row => `<span class="runtime-pill"><b>${esc(row.label)}:</b>&nbsp;${esc(row.value)}</span>`).join('');
+}
+
+function renderGoals(vm) {
+  $('goalGrid').innerHTML = vm.goals.length ? vm.goals.map(goal => {
+    const rows = goalKpis(vm, goal);
+    return `<article class="goal-card"><div class="row-top"><div><div class="job-id">${esc(goal.goalId)}</div><h4>${esc(goal.title)}</h4></div>${badge(goal.status)}</div><p>${esc(goal.objective)}</p><div class="metric-grid"><div class="metric-box"><span>Ưu tiên</span><b>${esc(goal.priority || '—')}</b></div><div class="metric-box"><span>Tiến độ</span><b>${goal.progressPct ?? '—'}%</b></div><div class="metric-box"><span>KPI</span><b>${rows.length}</b></div></div><div class="chip-row">${mockChip(goal)}${(goal.constraints || []).slice(0, 2).map(item => `<span class="chip">${esc(item)}</span>`).join('')}</div>${rows.map(kpi => `<div class="prompt-version"><div class="row-top"><b>${esc(kpi.name)}</b>${badge(kpi.state)}</div><p>${kpi.currentValue ?? '—'} ${esc(kpi.unit || '')} / target ${kpi.target ?? '—'}</p></div>`).join('')}</article>`;
+  }).join('') : unavailable('Business contract chưa trả Goal/KPI.');
+}
+
+function renderMissions(vm) {
+  $('missionBoard').innerHTML = vm.missions.length ? vm.missions.map(mission => `<article class="mission-card"><div class="row-top"><div><div class="job-id">${esc(mission.missionId)}</div><h4>${esc(mission.title)}</h4></div>${badge(mission.status)}</div><p>${esc(mission.expectedOutcome)}</p><div class="progress-track"><i style="width:${clamp(mission.progressPct)}%"></i></div><div class="metric-grid"><div class="metric-box"><span>Tiến độ</span><b>${mission.progressPct ?? '—'}%</b></div><div class="metric-box"><span>Risk</span><b>${esc(mission.riskLevel || '—')}</b></div><div class="metric-box"><span>Job refs</span><b>${mission.jobRefs?.length ?? 0}</b></div></div><div class="chip-row">${mockChip(mission)}${(mission.departments || []).map(dep => `<span class="chip">${esc(dep)}</span>`).join('')}</div><p><b>Authority:</b> ${esc(mission.autonomyEnvelope || '—')}</p></article>`).join('') : unavailable('Chưa có Mission authoritative.');
+}
+
+function renderOrganization(vm) {
+  $('departmentGrid').innerHTML = vm.departments.length ? vm.departments.map(dep => `<article class="department-card"><div class="department-top"><div class="department-icon">${esc(dep.icon || '•')}</div>${badge(dep.health)}</div><h4 style="margin-top:8px">${esc(dep.name)}</h4><p>${esc(dep.purpose)}</p><div class="chip-row">${mockChip(dep)}<span class="chip">${dep.employeeCount ?? 0} nhân viên</span><span class="chip">${dep.activeJobs ?? 0} job runtime</span></div></article>`).join('') : '<div class="empty">Chưa có phòng ban.</div>';
+  $('employeeGrid').innerHTML = vm.employees.length ? vm.employees.map(emp => `<article class="employee-card"><div class="employee-top"><div class="avatar-box">${esc((emp.displayName || 'AI').split(' ').slice(-1)[0].slice(0,2).toUpperCase())}</div>${badge(emp.availability)}</div><h4 style="margin-top:8px">${esc(emp.displayName)}</h4><div class="employee-role">${esc(emp.role || '—')} · ${esc(emp.department || '—')}</div><span class="autonomy-badge">${esc(emp.autonomyLevel || 'Autonomy chưa map')}</span><p>Quản lý: <b>${esc(emp.supervisor || '—')}</b></p><p>AI kỹ thuật: ${esc(emp.provider || '—')} / ${esc(emp.model || '—')}</p><div class="chip-row">${mockChip(emp)}${(emp.capabilities || []).slice(0,3).map(item => `<span class="chip">${esc(item)}</span>`).join('')}</div></article>`).join('') : '<div class="empty">Chưa có AI Employee.</div>';
+}
+
+function renderOwnerActions(vm) {
+  $('ownerActionBoard').innerHTML = vm.ownerActions.length ? vm.ownerActions.map(action => `<article class="owner-action-card"><div class="row-top"><div><div class="job-id">${esc(action.exceptionId)}</div><h4>${esc(action.title)}</h4></div>${badge(action.status)}</div><p><b>Vấn đề:</b> ${esc(action.issue)}</p><p><b>Ảnh hưởng:</b> ${esc(action.impact)}</p><p><b>Em/hệ thống đã làm:</b> ${esc(action.attempted)}</p><p><b>Đề xuất:</b> ${esc(action.recommendation)}</p><div class="decision-box"><span>SẾP CẦN QUYẾT ĐỊNH</span><b>${esc(action.decisionNeeded)}</b></div><div class="chip-row">${mockChip(action)}<span class="chip">${esc(action.severity || '—')}</span><span class="chip">Goal ${esc(action.goalId || '—')}</span></div></article>`).join('') : '<div class="empty">Hiện không có ngoại lệ cần Sếp.</div>';
+}
+
+function renderOutcomes(vm) {
+  $('outcomeBoard').innerHTML = vm.outcomes.length ? vm.outcomes.map(outcome => `<article class="outcome-card"><div class="row-top"><div><div class="job-id">${esc(outcome.outcomeId)}</div><h4>${esc(outcome.title)}</h4></div><span class="chip">${fmt(outcome.completedAt)}</span></div><p>${esc(outcome.summary)}</p><div class="chip-row">${mockChip(outcome)}<span class="chip">Mission ${esc(outcome.missionId || '—')}</span>${(outcome.kpiEffects || []).map(effect => `<span class="chip">${esc(effect.delta)}</span>`).join('')}</div><p><b>Evidence:</b> ${esc(statusLabel(outcome.evidenceState))}</p></article>`).join('') : unavailable('Chưa có Business Outcome authoritative.');
+}
+
+function renderProcesses(vm) {
+  $('processBoard').innerHTML = vm.processes.length ? vm.processes.map(process => `<article class="process-card"><div class="row-top"><div><div class="job-id">${esc(process.processId)}</div><h4>${esc(process.name)}</h4></div>${badge(process.health || process.status)}</div><p>Trigger: ${esc(process.trigger || '—')}</p><div class="process-steps">${(process.steps || []).map(step => `<span class="process-step ${statusClass(step.state)}">${esc(step.label)} · ${esc(statusLabel(step.state))}</span>`).join('')}</div><div class="chip-row">${mockChip(process)}<span class="chip">${process.exceptionCount ?? 0} ngoại lệ</span></div></article>`).join('') : unavailable('Chưa có Business Process authoritative.');
+}
+
+function renderTechnical(vm) {
+  const tech = vm.technical;
+  const build = tech.build || {};
+  $('buildFacts').innerHTML = [
+    ['Commit SHA', build.sha || 'Chưa có runtime/preview metadata trong snapshot'],
+    ['CI', build.ci || 'unknown'],
+    ['Preview', build.preview || 'unknown'],
+    ['Ghi chú', 'GitHub/Vercel là bằng chứng kỹ thuật, không phải business state'],
+  ].map(([label,value]) => `<div class="technical-fact"><span>${esc(label)}</span><b>${esc(value)}</b></div>`).join('');
+
+  const controller = tech.controller || {};
+  $('runtimeFacts').innerHTML = [
+    ['Controller', controller.state || 'unknown'],
+    ['Tailscale', controller.tailscale || 'unknown'],
+    ['Database', controller.database || 'unknown'],
+    ['Contract', controller.contractState || 'unknown'],
+  ].map(([label,value]) => `<div class="technical-fact"><span>${esc(label)}</span><b>${esc(value)}</b></div>`).join('');
+
+  $('deviceTechnical').innerHTML = tech.devices.length ? tech.devices.map(device => `<article class="device-card"><div class="row-top"><div><div class="job-id">${esc(device.nodeId)}</div><h4>${esc(device.displayName || device.platform)}</h4></div>${badge(device.status)}</div><div class="metric-grid"><div class="metric-box"><span>Port</span><b>${device.controllerPort ?? '—'}</b></div><div class="metric-box"><span>Lease</span><b>${esc(device.leaseState || 'unknown')}</b></div><div class="metric-box"><span>Heartbeat</span><b>${fmt(device.lastHeartbeatAt)}</b></div></div><div class="chip-row">${mockChip(device)}<span class="chip">Tailscale ${esc(device.tailscaleIp || '—')}</span></div></article>`).join('') : '<div class="empty">Chưa có thiết bị.</div>';
+
+  $('jobBoard').innerHTML = tech.jobs.length ? tech.jobs.map(job => `<article class="job-card"><div class="job-top"><div><div class="job-id">${esc(job.jobId)}</div><h4>${esc(job.objective)}</h4></div>${badge(job.stage)}</div><p>${esc(job.department || '—')} · ${esc(job.assignedEmployeeId || '—')}</p><div class="progress-track"><i style="width:${clamp(job.progress)}%"></i></div><div class="metric-grid"><div class="metric-box"><span>Tiến độ</span><b>${job.progress ?? 0}%</b></div><div class="metric-box"><span>Attempts</span><b>${job.attempts ?? 0}/${job.maxAttempts ?? 0}</b></div><div class="metric-box"><span>Blocker</span><b>${esc(job.blocker?.code || '—')}</b></div></div><div class="chip-row">${mockChip(job)}</div>${job.blocker ? `<p>${esc(job.blocker.message)}</p><button class="secondary-btn retry-btn" data-job="${esc(job.jobId)}">Gửi retry intent</button>` : ''}</article>`).join('') : '<div class="empty">Chưa có Job runtime.</div>';
+
+  $('providerGrid').innerHTML = tech.providers.length ? tech.providers.map(provider => `<article class="provider-card"><div class="provider-top"><div><div class="job-id">${esc(provider.providerId)}</div><h4>${esc(provider.displayName)}</h4></div>${badge(provider.health)}</div><p>${esc(provider.role || '—')}</p><div class="metric-grid"><div class="metric-box"><span>Credential</span><b>${esc(provider.credentialPresent || '—')}</b></div><div class="metric-box"><span>Billing</span><b>${esc(provider.billingMode || '—')}</b></div><div class="metric-box"><span>Latency</span><b>${provider.latencyP50Ms ?? '—'} ms</b></div></div><div class="chip-row">${mockChip(provider)}${(provider.models || []).map(model => `<span class="chip">${esc(model)}</span>`).join('')}</div></article>`).join('') : '<div class="empty">Chưa có provider.</div>';
+
+  $('promptGrid').innerHTML = tech.prompts.length ? tech.prompts.map(prompt => `<article class="prompt-card"><div class="row-top"><div><div class="job-id">${esc(prompt.promptId)}</div><h4>${esc(prompt.name)}</h4></div><span class="chip">${esc(prompt.activeVersion || '—')}</span></div><p>${esc(prompt.purpose)}</p>${(prompt.versions || []).map(version => `<div class="prompt-version"><div class="row-top"><b>${esc(version.version)}</b>${badge(version.status)}</div><p>${esc(version.content)}</p><div class="chip-row"><span class="chip">runs ${version.metrics?.runs ?? 0}</span><span class="chip">PASS ${version.metrics?.pass ?? 0}</span><span class="chip">FAIL ${version.metrics?.fail ?? 0}</span></div></div>`).join('')}</article>`).join('') : '<div class="empty">Chưa có Prompt.</div>';
+
+  $('technicalResults').innerHTML = tech.results.length ? tech.results.map(result => `<article class="result-card"><div class="result-top"><div><div class="job-id">${esc(result.jobId)} · ${esc(result.resultId)}</div><h4>${esc(result.conclusion || '—')}</h4></div>${badge(result.status)}</div><p>AI: ${esc(result.provider || '—')} / ${esc(result.model || '—')}</p><div class="metric-grid"><div class="metric-box"><span>Evidence</span><b>${esc(statusLabel(result.evidence?.state))}</b></div><div class="metric-box"><span>Review</span><b>${esc(statusLabel(result.review?.state))}</b></div><div class="metric-box"><span>Judge</span><b>${esc(statusLabel(result.judge?.state))}</b></div></div><div class="chip-row">${mockChip(result)}</div></article>`).join('') : '<div class="empty">Chưa có Result kỹ thuật.</div>';
+
+  document.querySelectorAll('.retry-btn').forEach(button => { button.onclick = () => retryJob(button.dataset.job); });
+}
+
+function render() {
+  const vm = state.viewModel || buildViewModel();
+  renderTruth(vm);
+  renderOverview(vm);
+  renderGoals(vm);
+  renderMissions(vm);
+  renderOrganization(vm);
+  renderOwnerActions(vm);
+  renderOutcomes(vm);
+  renderProcesses(vm);
+  renderTechnical(vm);
+  $('goalModeNote').textContent = state.mode === 'mock'
+    ? 'Mẫu: em chỉ tạo draft phản hồi; không dispatch Job thật.'
+    : 'Controller mode: Web gửi Owner intent; Work Management mới được quyền chia việc.';
+  bindJumpButtons();
+}
+
+function showConnection(value) { $('connectionResult').textContent = JSON.stringify(value, null, 2); }
+
+async function connectController() {
+  try {
+    const client = new WorkforceControllerClient({ baseUrl: $('controllerUrl').value.trim(), accessToken: $('controllerToken').value });
+    state.client = client;
+    state.mode = 'controller';
+    sessionStorage.setItem('tigeriq.controller.token', $('controllerToken').value);
+    localStorage.setItem('tigeriq.controller.url', client.baseUrl);
+    showConnection({ ok: true, mode: 'controller', baseUrl: client.baseUrl, note: 'Business fields chỉ hiển thị khi #146 contract có dữ liệu; Web không suy diễn từ Job.' });
+    await refresh();
+  } catch (error) {
+    showConnection({ ok: false, error: error.message, hint: error.hint || null });
+  }
+}
+
+async function probeController() {
+  try {
+    const client = new WorkforceControllerClient({ baseUrl: $('controllerUrl').value.trim(), accessToken: $('controllerToken').value });
+    showConnection(await client.health());
+  } catch (error) {
+    showConnection({ ok: false, error: error.message, hint: error.hint || null });
+  }
+}
+
+async function useMock() {
+  state.client = new MockControllerClient(MOCK_CONTROLLER_SNAPSHOT);
+  state.mode = 'mock';
+  state.controllerError = null;
+  showConnection({ ok: true, mode: 'mock', authoritative: false, businessPreview: true });
+  await refresh();
+}
+
+async function submitGoal(event) {
+  event.preventDefault();
+  const goal = {
+    objective: $('goalObjective').value.trim(),
+    priority: $('goalPriority').value,
+    deadline: $('goalDeadline').value ? new Date($('goalDeadline').value).toISOString() : null,
+    constraints: $('goalConstraints').value.split('\n').map(item => item.trim()).filter(Boolean),
+    expectedEvidence: $('goalEvidence').value.split('\n').map(item => item.trim()).filter(Boolean),
+    requestedBy: 'owner-company-control-tower',
+  };
+  const out = $('goalResult');
+  out.hidden = false;
+  try {
+    out.textContent = JSON.stringify(await state.client.submitGoal(goal), null, 2);
+    if (state.mode === 'controller') await refresh();
+  } catch (error) {
+    out.textContent = JSON.stringify({ ok: false, error: error.message }, null, 2);
+  }
+}
+
+async function retryJob(jobId) {
+  try {
+    showConnection(await state.client.retryJob(jobId, 'owner_web_retry_intent'));
+    if (state.mode === 'controller') await refresh();
+  } catch (error) {
+    showConnection({ ok: false, error: error.message, jobId });
+  }
+}
+
+function switchView(view) {
+  const meta = pageMeta[view] || pageMeta.overview;
+  document.querySelectorAll('.nav button').forEach(button => button.classList.toggle('active', button.dataset.view === view));
+  document.querySelectorAll('.view').forEach(section => section.classList.toggle('active', section.dataset.section === view));
+  $('pageEyebrow').textContent = meta[0];
+  $('pageTitle').textContent = meta[1];
+  $('pageSubtitle').textContent = meta[2];
+  history.replaceState(null, '', `#${view}`);
+  window.scrollTo({ top: 0, behavior: 'auto' });
+}
+
+function bindJumpButtons() {
+  document.querySelectorAll('[data-view-jump]').forEach(button => { button.onclick = () => switchView(button.dataset.viewJump); });
+}
+
+document.querySelectorAll('.nav button').forEach(button => { button.onclick = () => switchView(button.dataset.view); });
+$('refreshBtn').onclick = refresh;
+$('connectBtn').onclick = connectController;
+$('probeBtn').onclick = probeController;
+$('mockBtn').onclick = useMock;
+$('ownerLoginBtn').onclick = ownerGoogleLogin;
+$('goalForm').onsubmit = submitGoal;
+$('controllerUrl').value = localStorage.getItem('tigeriq.controller.url') || '';
+$('controllerToken').value = sessionStorage.getItem('tigeriq.controller.token') || '';
+switchView(location.hash.slice(1) in pageMeta ? location.hash.slice(1) : 'overview');
+await Promise.all([loadOwnerAuth(), refresh()]);
