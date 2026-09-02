@@ -1,0 +1,41 @@
+name: WO-045 PC01 Repository-only Guard
+
+on:
+  push:
+    branches:
+      - 'wo045/pc01-autonomy-hardening'
+    paths:
+      - '.github/workflows/wo045-pc01-selfhosted-bootstrap.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pc01-workforce-runtime-repair
+  cancel-in-progress: true
+
+jobs:
+  repository-only-guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - name: Validate Controller V1 package without touching PC01
+        run: |
+          npm ci
+          npm run typecheck
+          npm run build
+          test -f db/migrations/001_operational_state_v1.sql
+          test -f apps/workforce-controller/src/controller.ts
+          test -f apps/workforce-controller/src/device-auth.ts
+          test ! -f scripts/pc-worker/workforce-controller-v1/workforce_controller_v1.sql
+          ! grep -R '/v1/android/sessions\|/v1/android/jobs/pull\|/v1/android/jobs/submit' apps/workforce-controller packages/work-state
+      - name: Confirm no self-hosted deployment in this workflow
+        run: echo 'PC01_REPOSITORY_ONLY_GUARD_PASS'
