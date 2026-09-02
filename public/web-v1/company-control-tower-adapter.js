@@ -9,29 +9,10 @@ const isoTime = value => Number.isFinite(Date.parse(String(value || ''))) ? Date
 const upper = value => String(value || 'unknown').toUpperCase();
 const clamp = value => Math.max(0, Math.min(100, Number(value || 0)));
 
-const BUSINESS_STATE_KEYS = Object.freeze([
-  'goal_profiles','kpis','kpi_observations','signals','processes','missions','mission_job_refs','departments','employee_profiles','autonomy_grants','exceptions','outcomes',
-]);
+const BUSINESS_STATE_KEYS = Object.freeze(['goal_profiles','kpis','kpi_observations','signals','processes','missions','mission_job_refs','departments','employee_profiles','autonomy_grants','exceptions','outcomes']);
 
 function emptyBusiness(reason = 'BUSINESS_STATE_V2_PROJECTION_PENDING') {
-  return {
-    available: false,
-    reason,
-    raw: {},
-    goals: [],
-    kpis: [],
-    signals: [],
-    performance: {
-      availability: 'unavailable',
-      metrics: [
-        { key: 'revenue', label: 'Doanh thu', value: null, unit: '₫', state: 'NO_SOURCE' },
-        { key: 'cost', label: 'Chi phí', value: null, unit: '₫', state: 'NO_SOURCE' },
-        { key: 'businessOutcome', label: 'Outcome định lượng', value: null, unit: null, state: 'NO_SOURCE' },
-      ],
-      note: 'Business State V2 không tạo shadow CRM/accounting. Chỉ hiển thị số tài chính khi projection có provenance từ nguồn authoritative tương ứng.',
-    },
-    missions: [], departments: [], employees: [], autonomyGrants: [], exceptions: [], ownerActions: [], outcomes: [], processes: [],
-  };
+  return { available:false, reason, raw:{}, goals:[], kpis:[], signals:[], performance:{ availability:'unavailable', metrics:[{key:'revenue',label:'Doanh thu',value:null,unit:'₫',state:'NO_SOURCE'},{key:'cost',label:'Chi phí',value:null,unit:'₫',state:'NO_SOURCE'},{key:'businessOutcome',label:'Outcome định lượng',value:null,unit:null,state:'NO_SOURCE'}], note:'Business State V2 không tạo shadow CRM/accounting. Chỉ hiển thị số tài chính khi projection có provenance từ nguồn authoritative tương ứng.' }, missions:[], departments:[], employees:[], autonomyGrants:[], exceptions:[], ownerActions:[], outcomes:[], processes:[] };
 }
 
 function contractCandidate(snapshot) {
@@ -40,271 +21,67 @@ function contractCandidate(snapshot) {
   const snake = asObject(snapshot?.business_state_v2);
   if (Object.keys(snake).length || snapshot?.business_state_v2) return snake;
   const compatibility = asObject(snapshot?.businessState);
-  if (BUSINESS_STATE_KEYS.some(key => Object.prototype.hasOwnProperty.call(compatibility, key))) return compatibility;
+  const unmistakable = ['goal_profiles','kpi_observations','mission_job_refs','employee_profiles','autonomy_grants'];
+  if (unmistakable.some(key => Object.prototype.hasOwnProperty.call(compatibility,key))) return compatibility;
+  const idKeys = { kpis:'kpi_id', signals:'signal_id', processes:'process_id', missions:'mission_id', departments:'department_id', exceptions:'exception_id', outcomes:'outcome_id' };
+  if (Object.entries(idKeys).some(([key,idKey]) => asArray(compatibility[key]).some(row => Boolean(row?.[idKey])))) return compatibility;
   return null;
 }
 
-function latestObservation(observations, kpiId) {
-  return asArray(observations).filter(row => row?.kpi_id === kpiId).sort((a,b) => isoTime(b?.observed_at) - isoTime(a?.observed_at))[0] || null;
+function latestObservation(observations,kpiId) { return asArray(observations).filter(row => row?.kpi_id===kpiId).sort((a,b)=>isoTime(b?.observed_at)-isoTime(a?.observed_at))[0] || null; }
+function kpiHealth(definition,observation) {
+  if (!observation) return {healthPct:null,state:'UNKNOWN'};
+  const current=finite(observation.value), target=finite(definition?.target), baseline=finite(definition?.baseline);
+  if (current===null || target===null) return {healthPct:null,state:'UNKNOWN'};
+  let healthPct=null;
+  if (definition.direction==='increase') healthPct=target===0?(current>=0?100:0):clamp((current/target)*100);
+  else if (definition.direction==='decrease') { if (current<=target) healthPct=100; else if (baseline!==null && baseline>target) healthPct=clamp(((baseline-current)/(baseline-target))*100); else if (target===0) healthPct=0; else healthPct=clamp((target/current)*100); }
+  if (healthPct===null) return {healthPct:null,state:'UNKNOWN'};
+  return {healthPct:Math.round(healthPct),state:healthPct>=90?'ON_TRACK':healthPct>=60?'AT_RISK':'CRITICAL'};
 }
 
-function kpiHealth(definition, observation) {
-  if (!observation) return { healthPct: null, state: 'UNKNOWN' };
-  const current = finite(observation.value);
-  const target = finite(definition?.target);
-  const baseline = finite(definition?.baseline);
-  if (current === null || target === null) return { healthPct: null, state: 'UNKNOWN' };
-  let healthPct = null;
-  if (definition.direction === 'increase') healthPct = target === 0 ? (current >= 0 ? 100 : 0) : clamp((current / target) * 100);
-  else if (definition.direction === 'decrease') {
-    if (current <= target) healthPct = 100;
-    else if (baseline !== null && baseline > target) healthPct = clamp(((baseline - current) / (baseline - target)) * 100);
-    else if (target === 0) healthPct = 0;
-    else healthPct = clamp((target / current) * 100);
-  }
-  if (healthPct === null) return { healthPct: null, state: 'UNKNOWN' };
-  return { healthPct: Math.round(healthPct), state: healthPct >= 90 ? 'ON_TRACK' : healthPct >= 60 ? 'AT_RISK' : 'CRITICAL' };
+function mapKpis(raw,isMock) {
+  const observations=asArray(raw.kpi_observations);
+  return asArray(raw.kpis).map(definition=>{ const latest=latestObservation(observations,definition.kpi_id), health=kpiHealth(definition,latest); return { kpiId:definition.kpi_id,name:definition.name,unit:definition.unit,direction:definition.direction,baseline:definition.baseline??null,target:definition.target??null,warningThreshold:definition.warning_threshold??null,criticalThreshold:definition.critical_threshold??null,definitionStatus:definition.status,goalIds:asArray(definition.goal_ids),processIds:asArray(definition.process_ids),currentValue:latest?.value??null,observedAt:latest?.observed_at||null,provenance:latest?asObject(latest.provenance):null,evidenceRefs:latest?asArray(latest.evidence_refs):[],observationId:latest?.observation_id||null,healthPct:health.healthPct,state:definition.status==='active'?health.state:upper(definition.status),isMock }; });
 }
 
-function mapKpis(raw, isMock) {
-  const observations = asArray(raw.kpi_observations);
-  return asArray(raw.kpis).map(definition => {
-    const latest = latestObservation(observations, definition.kpi_id);
-    const health = kpiHealth(definition, latest);
-    return {
-      kpiId: definition.kpi_id, name: definition.name, unit: definition.unit, direction: definition.direction,
-      baseline: definition.baseline ?? null, target: definition.target ?? null,
-      warningThreshold: definition.warning_threshold ?? null, criticalThreshold: definition.critical_threshold ?? null,
-      definitionStatus: definition.status, goalIds: asArray(definition.goal_ids), processIds: asArray(definition.process_ids),
-      currentValue: latest?.value ?? null, observedAt: latest?.observed_at || null,
-      provenance: latest ? asObject(latest.provenance) : null, evidenceRefs: latest ? asArray(latest.evidence_refs) : [],
-      observationId: latest?.observation_id || null, healthPct: health.healthPct,
-      state: definition.status === 'active' ? health.state : upper(definition.status), isMock,
-    };
-  });
+function mapGoals(raw,snapshot,kpis,isMock) {
+  const runtimeGoals=asArray(snapshot?.goals);
+  return asArray(raw.goal_profiles).map(profile=>{ const runtime=runtimeGoals.find(row=>idOf(row,'goalId','goal_id','id')===profile.goal_id)||null; const relatedKpis=asArray(profile.related_kpi_ids); return { goalId:profile.goal_id,title:profile.title,objective:runtime?.objective||runtime?.description||null,ownerRef:profile.owner_ref,priority:runtime?.priority||null,status:runtime?.status?upper(runtime.status):'UNKNOWN',lifecycleSource:runtime?'PR141_OPERATIONAL_GOAL':'PR141_GOAL_UNAVAILABLE',progressPct:kpiHealthScore(kpis.filter(row=>relatedKpis.includes(row.kpiId))),startAt:profile.start_at||null,deadline:profile.end_at||null,decisionRef:profile.decision_ref||null,updatedAt:profile.updated_at||null,constraints:asArray(runtime?.constraints),kpiIds:relatedKpis,isMock }; });
 }
 
-function mapGoals(raw, snapshot, kpis, isMock) {
-  const runtimeGoals = asArray(snapshot?.goals);
-  return asArray(raw.goal_profiles).map(profile => {
-    const runtime = runtimeGoals.find(row => idOf(row,'goalId','goal_id','id') === profile.goal_id) || null;
-    const relatedKpis = asArray(profile.related_kpi_ids);
-    return {
-      goalId: profile.goal_id, title: profile.title, objective: runtime?.objective || runtime?.description || null,
-      ownerRef: profile.owner_ref, priority: runtime?.priority || null,
-      status: runtime?.status ? upper(runtime.status) : 'UNKNOWN', lifecycleSource: runtime ? 'PR141_OPERATIONAL_GOAL' : 'PR141_GOAL_UNAVAILABLE',
-      progressPct: kpiHealthScore(kpis.filter(row => relatedKpis.includes(row.kpiId))),
-      startAt: profile.start_at || null, deadline: profile.end_at || null, decisionRef: profile.decision_ref || null,
-      updatedAt: profile.updated_at || null, constraints: asArray(runtime?.constraints), kpiIds: relatedKpis, isMock,
-    };
-  });
+function mapSignals(raw,isMock) { return asArray(raw.signals).map(signal=>({signalId:signal.signal_id,type:signal.signal_type,title:signal.title,severity:signal.severity,status:upper(signal.status),dedupeKey:signal.dedupe_key||null,relatedRefs:asArray(signal.related_refs),provenance:asObject(signal.provenance),createdAt:signal.created_at,updatedAt:signal.updated_at,isMock})); }
+function mapDepartments(raw,missions,employeeProfiles,isMock) { return asArray(raw.departments).map(department=>({departmentId:department.department_id,name:department.name,parentDepartmentId:department.parent_department_id||null,supervisorEmployeeId:department.supervisor_employee_id||null,status:upper(department.status),health:upper(department.status),purpose:null,employeeCount:employeeProfiles.filter(row=>row.department_id===department.department_id).length,activeMissions:missions.filter(row=>asArray(row.participating_department_ids).includes(department.department_id)&&!['completed','cancelled'].includes(row.status)).length,createdAt:department.created_at,updatedAt:department.updated_at,isMock})); }
+function mapAutonomy(raw,isMock) { return asArray(raw.autonomy_grants).map(grant=>({autonomyGrantId:grant.autonomy_grant_id,employeeId:grant.employee_id,scopeType:grant.scope_type,scopeRef:grant.scope_ref,level:grant.level,status:upper(grant.status),constraints:asArray(grant.constraints),validFrom:grant.valid_from,validUntil:grant.valid_until||null,decisionRef:grant.decision_ref,createdAt:grant.created_at,isMock})); }
+function highestAutonomy(grants) { const active=grants.filter(row=>row.status==='ACTIVE'); if(!active.length)return null; return active.map(row=>row.level).sort((a,b)=>Number(String(b).replace(/\D/g,''))-Number(String(a).replace(/\D/g,'')))[0]||null; }
+
+function mapEmployees(raw,snapshot,departments,autonomyGrants,isMock) {
+  const runtimeEmployees=asArray(snapshot?.employees), runtimeById=new Map(runtimeEmployees.map(row=>[idOf(row,'employeeId','employee_id','id'),row])), departmentById=new Map(departments.map(row=>[row.departmentId,row]));
+  return asArray(raw.employee_profiles).map(profile=>{ const runtime=runtimeById.get(profile.employee_id)||{}, supervisorRuntime=runtimeById.get(profile.supervisor_employee_id)||{}, grants=autonomyGrants.filter(row=>row.employeeId===profile.employee_id); return { employeeId:profile.employee_id,displayName:runtime.displayName||runtime.name||profile.employee_id,departmentId:profile.department_id||null,department:departmentById.get(profile.department_id)?.name||null,role:profile.business_role||null,businessRole:profile.business_role||null,supervisorEmployeeId:profile.supervisor_employee_id||null,supervisor:supervisorRuntime.displayName||supervisorRuntime.name||profile.supervisor_employee_id||null,autonomyLevel:highestAutonomy(grants),autonomyScopes:grants.filter(row=>row.status==='ACTIVE').map(row=>({scopeType:row.scopeType,scopeRef:row.scopeRef,level:row.level,decisionRef:row.decisionRef})),availability:runtime.availability||'unknown',provider:runtime.provider||null,model:runtime.model||null,capabilities:asArray(runtime.capabilities),lastHeartbeatAt:runtime.lastHeartbeatAt||runtime.last_heartbeat_at||null,updatedAt:profile.updated_at,isMock }; });
 }
 
-function mapSignals(raw, isMock) {
-  return asArray(raw.signals).map(signal => ({
-    signalId: signal.signal_id, type: signal.signal_type, title: signal.title, severity: signal.severity,
-    status: upper(signal.status), dedupeKey: signal.dedupe_key || null, relatedRefs: asArray(signal.related_refs),
-    provenance: asObject(signal.provenance), createdAt: signal.created_at, updatedAt: signal.updated_at, isMock,
-  }));
+function mapMissions(raw,departments,isMock) { const departmentById=new Map(departments.map(row=>[row.departmentId,row.name])),refs=asArray(raw.mission_job_refs); return asArray(raw.missions).map(mission=>({missionId:mission.mission_id,title:mission.title,expectedOutcome:mission.expected_outcome,goalId:mission.goal_id||null,processId:mission.process_id||null,triggerSignalIds:asArray(mission.trigger_signal_ids),supervisorEmployeeId:mission.supervisor_employee_id||null,participatingDepartmentIds:asArray(mission.participating_department_ids),departments:asArray(mission.participating_department_ids).map(id=>departmentById.get(id)||id),riskLevel:mission.risk_context||null,deadline:mission.deadline||null,approvedBudgetCeiling:mission.approved_budget_ceiling??null,budgetDecisionRef:mission.budget_decision_ref||null,decisionRef:mission.decision_ref||null,status:upper(mission.status),progressPct:null,autonomyEnvelope:null,jobRefs:refs.filter(ref=>ref.mission_id===mission.mission_id).map(ref=>({jobId:ref.job_id,relation:ref.relation,createdAt:ref.created_at})),createdAt:mission.created_at,updatedAt:mission.updated_at,isMock})); }
+function mapExceptions(raw,isMock) { return asArray(raw.exceptions).map(exception=>({exceptionId:exception.exception_id,title:exception.summary,severity:exception.severity,category:exception.category,issue:exception.summary,impact:exception.impact,attempted:asArray(exception.attempted_actions).join(' · '),attemptedActions:asArray(exception.attempted_actions),recommendation:exception.proposed_action||null,decisionNeeded:exception.required_owner_action||null,requiredOwnerAction:exception.required_owner_action||null,relatedRefs:asArray(exception.related_refs),dueAt:exception.due_at||null,status:upper(exception.status),lifecycleStatus:exception.status,decisionRef:exception.decision_ref||null,createdAt:exception.created_at,updatedAt:exception.updated_at,isMock})); }
+
+function mapOutcomes(raw,kpis,isMock) {
+  const observations=asArray(raw.kpi_observations),kpiById=new Map(kpis.map(row=>[row.kpiId,row])),observationById=new Map(observations.map(row=>[row.observation_id,row]));
+  return asArray(raw.outcomes).map(outcome=>{ const effects=asArray(outcome.kpi_observation_ids).map(observationId=>{ const observation=observationById.get(observationId),kpi=observation?kpiById.get(observation.kpi_id):null; return {observationId,kpiId:observation?.kpi_id||null,name:kpi?.name||observation?.kpi_id||'KPI',value:observation?.value??null,unit:kpi?.unit||null,displayValue:observation?`${observation.value}${kpi?.unit?` ${kpi.unit}`:''}`:'Chưa có observation',provenance:observation?asObject(observation.provenance):null}; }); const subject=asObject(outcome.subject_ref); return {outcomeId:outcome.outcome_id,title:`Outcome · ${subject.entity_type||'business'} ${subject.entity_id||''}`.trim(),subjectRef:subject,missionId:subject.entity_type==='mission'?subject.entity_id:null,summary:outcome.summary,status:upper(outcome.status),completedAt:outcome.achieved_at||outcome.updated_at||outcome.created_at,kpiObservationIds:asArray(outcome.kpi_observation_ids),kpiEffects:effects,evidenceRefs:asArray(outcome.evidence_refs),evidenceState:asArray(outcome.evidence_refs).length?'REFERENCED':'NO_REFERENCE',provenance:asArray(outcome.provenance),createdAt:outcome.created_at,updatedAt:outcome.updated_at,isMock}; });
 }
 
-function mapDepartments(raw, missions, employeeProfiles, isMock) {
-  return asArray(raw.departments).map(department => ({
-    departmentId: department.department_id, name: department.name, parentDepartmentId: department.parent_department_id || null,
-    supervisorEmployeeId: department.supervisor_employee_id || null, status: upper(department.status), health: upper(department.status), purpose: null,
-    employeeCount: employeeProfiles.filter(row => row.department_id === department.department_id).length,
-    activeMissions: missions.filter(row => asArray(row.participating_department_ids).includes(department.department_id) && !['completed','cancelled'].includes(row.status)).length,
-    createdAt: department.created_at, updatedAt: department.updated_at, isMock,
-  }));
+function mapProcesses(raw,kpis,exceptions,isMock) {
+  return asArray(raw.processes).map(process=>{ const relatedKpis=kpis.filter(row=>asArray(process.kpi_ids).includes(row.kpiId)),relatedExceptions=exceptions.filter(row=>row.relatedRefs.some(ref=>ref?.entity_type==='process'&&ref?.entity_id===process.process_id)&&!['RESOLVED','CLOSED'].includes(row.status)),score=kpiHealthScore(relatedKpis); let health=upper(process.status); if(process.status==='active')health=relatedExceptions.some(row=>row.severity==='critical')?'CRITICAL':relatedExceptions.length?'AT_RISK':score===null?'UNKNOWN':score>=90?'ON_TRACK':score>=60?'AT_RISK':'CRITICAL'; return {processId:process.process_id,name:process.name,departmentId:process.department_id||null,trigger:process.trigger_summary,inputContract:asObject(process.input_contract),completionCondition:process.completion_condition,requiredPermissions:asArray(process.required_permissions),approvalPoints:asArray(process.approval_points),riskFloor:process.risk_floor,kpiIds:asArray(process.kpi_ids),status:upper(process.status),health,healthSource:'READ_MODEL_FROM_KPI_AND_EXCEPTION',decisionRef:process.decision_ref||null,updatedAt:process.updated_at,steps:[],exceptionCount:relatedExceptions.length,isMock}; });
 }
 
-function mapAutonomy(raw, isMock) {
-  return asArray(raw.autonomy_grants).map(grant => ({
-    autonomyGrantId: grant.autonomy_grant_id, employeeId: grant.employee_id, scopeType: grant.scope_type, scopeRef: grant.scope_ref,
-    level: grant.level, status: upper(grant.status), constraints: asArray(grant.constraints), validFrom: grant.valid_from,
-    validUntil: grant.valid_until || null, decisionRef: grant.decision_ref, createdAt: grant.created_at, isMock,
-  }));
-}
+function businessProjection(raw,snapshot,isMock) { const kpis=mapKpis(raw,isMock),goals=mapGoals(raw,snapshot,kpis,isMock),signals=mapSignals(raw,isMock),rawMissions=asArray(raw.missions),rawProfiles=asArray(raw.employee_profiles),departments=mapDepartments(raw,rawMissions,rawProfiles,isMock),autonomyGrants=mapAutonomy(raw,isMock),employees=mapEmployees(raw,snapshot,departments,autonomyGrants,isMock),missions=mapMissions(raw,departments,isMock),exceptions=mapExceptions(raw,isMock),outcomes=mapOutcomes(raw,kpis,isMock),processes=mapProcesses(raw,kpis,exceptions,isMock); return {available:true,reason:null,raw,goals,kpis,signals,performance:emptyBusiness().performance,missions,departments,employees,autonomyGrants,exceptions,ownerActions:exceptions.filter(row=>Boolean(row.requiredOwnerAction)&&!['RESOLVED','CLOSED'].includes(row.status)),outcomes,processes}; }
+function technicalProjection(snapshot) { return {controller:asObject(snapshot.controller),goals:asArray(snapshot.goals),jobs:asArray(snapshot.jobs),devices:asArray(snapshot.devices),providers:asArray(snapshot.providers),prompts:asArray(snapshot.prompts),results:asArray(snapshot.results),checks:asArray(snapshot.checks),activity:asArray(snapshot.activity),build:asObject(snapshot.build),leases:asArray(snapshot.leases)}; }
+function runtimeSummary(snapshot) { const controller=asObject(snapshot.controller),devices=asArray(snapshot.devices),providers=asArray(snapshot.providers),onlineDevices=devices.filter(row=>String(row.status||'').toLowerCase()==='online').length,healthyProviders=providers.filter(row=>String(row.health||'').toLowerCase()==='healthy').length; return [{key:'controller',label:'Controller',value:controller.state||'unknown'},{key:'devices',label:'Thiết bị',value:devices.length?`${onlineDevices}/${devices.length} online`:'unknown'},{key:'providers',label:'AI',value:providers.length?`${healthyProviders}/${providers.length} healthy`:'unknown'}]; }
 
-function highestAutonomy(grants) {
-  const active = grants.filter(row => row.status === 'ACTIVE');
-  if (!active.length) return null;
-  return active.map(row => row.level).sort((a,b) => Number(String(b).replace(/\D/g,'')) - Number(String(a).replace(/\D/g,'')))[0] || null;
+export function buildCompanyControlTowerViewModel(snapshot,options={}) {
+  const source=asObject(snapshot?.source),liveAuthoritative=source.mode==='controller'&&source.authoritative===true,previewBusiness=options.previewBusiness&&typeof options.previewBusiness==='object'?options.previewBusiness:null,liveContract=liveAuthoritative?contractCandidate(snapshot):null,previewContract=!liveAuthoritative?previewBusiness:null;
+  let business=emptyBusiness();
+  if(liveAuthoritative&&liveContract)business=businessProjection(liveContract,snapshot,false); else if(liveAuthoritative)business=emptyBusiness('BUSINESS_STATE_V2_PROJECTION_PENDING'); else if(previewContract)business=businessProjection(previewContract,snapshot,true); else business=emptyBusiness(source.mode==='mock'?'MOCK_WITHOUT_BUSINESS_STATE_V2':'NON_AUTHORITATIVE_SOURCE');
+  const company=asObject(snapshot?.company);
+  return {version:CONTROL_TOWER_VIEW_MODEL_VERSION,contract:{name:'TigerIQ Business State V2',sourcePr:153,exactSha:BUSINESS_STATE_V2_CONTRACT_SHA},generatedAt:snapshot?.generatedAt||null,source:{mode:source.mode||'unknown',authoritative:liveAuthoritative,label:source.label||'Nguồn chưa xác định',businessAvailable:Boolean(business.available),businessReason:business.reason||null},company:{name:company.name||'TigerIQ AI Lab',version:company.version||'V2',phase:company.phase||null,operatingMode:company.operatingMode||null,currentObjective:company.currentObjective||null,truthPolicy:company.truthPolicy||null},goals:business.goals,kpis:business.kpis,signals:business.signals,performance:business.performance,missions:business.missions,departments:business.departments,employees:business.employees,autonomyGrants:business.autonomyGrants,exceptions:business.exceptions,ownerActions:business.ownerActions,outcomes:business.outcomes,processes:business.processes,runtimeSummary:runtimeSummary(snapshot||{}),technical:technicalProjection(snapshot||{})};
 }
-
-function mapEmployees(raw, snapshot, departments, autonomyGrants, isMock) {
-  const runtimeEmployees = asArray(snapshot?.employees);
-  const runtimeById = new Map(runtimeEmployees.map(row => [idOf(row,'employeeId','employee_id','id'), row]));
-  const departmentById = new Map(departments.map(row => [row.departmentId, row]));
-  return asArray(raw.employee_profiles).map(profile => {
-    const runtime = runtimeById.get(profile.employee_id) || {};
-    const supervisorRuntime = runtimeById.get(profile.supervisor_employee_id) || {};
-    const grants = autonomyGrants.filter(row => row.employeeId === profile.employee_id);
-    return {
-      employeeId: profile.employee_id, displayName: runtime.displayName || runtime.name || profile.employee_id,
-      departmentId: profile.department_id || null, department: departmentById.get(profile.department_id)?.name || null,
-      role: profile.business_role || null, businessRole: profile.business_role || null,
-      supervisorEmployeeId: profile.supervisor_employee_id || null,
-      supervisor: supervisorRuntime.displayName || supervisorRuntime.name || profile.supervisor_employee_id || null,
-      autonomyLevel: highestAutonomy(grants),
-      autonomyScopes: grants.filter(row => row.status === 'ACTIVE').map(row => ({ scopeType: row.scopeType, scopeRef: row.scopeRef, level: row.level, decisionRef: row.decisionRef })),
-      availability: runtime.availability || 'unknown', provider: runtime.provider || null, model: runtime.model || null,
-      capabilities: asArray(runtime.capabilities), lastHeartbeatAt: runtime.lastHeartbeatAt || runtime.last_heartbeat_at || null,
-      updatedAt: profile.updated_at, isMock,
-    };
-  });
-}
-
-function mapMissions(raw, departments, isMock) {
-  const departmentById = new Map(departments.map(row => [row.departmentId, row.name]));
-  const refs = asArray(raw.mission_job_refs);
-  return asArray(raw.missions).map(mission => ({
-    missionId: mission.mission_id, title: mission.title, expectedOutcome: mission.expected_outcome,
-    goalId: mission.goal_id || null, processId: mission.process_id || null, triggerSignalIds: asArray(mission.trigger_signal_ids),
-    supervisorEmployeeId: mission.supervisor_employee_id || null, participatingDepartmentIds: asArray(mission.participating_department_ids),
-    departments: asArray(mission.participating_department_ids).map(id => departmentById.get(id) || id),
-    riskLevel: mission.risk_context || null, deadline: mission.deadline || null,
-    approvedBudgetCeiling: mission.approved_budget_ceiling ?? null, budgetDecisionRef: mission.budget_decision_ref || null,
-    decisionRef: mission.decision_ref || null, status: upper(mission.status), progressPct: null, autonomyEnvelope: null,
-    jobRefs: refs.filter(ref => ref.mission_id === mission.mission_id).map(ref => ({ jobId: ref.job_id, relation: ref.relation, createdAt: ref.created_at })),
-    createdAt: mission.created_at, updatedAt: mission.updated_at, isMock,
-  }));
-}
-
-function mapExceptions(raw, isMock) {
-  return asArray(raw.exceptions).map(exception => ({
-    exceptionId: exception.exception_id, title: exception.summary, severity: exception.severity, category: exception.category,
-    issue: exception.summary, impact: exception.impact, attempted: asArray(exception.attempted_actions).join(' · '),
-    attemptedActions: asArray(exception.attempted_actions), recommendation: exception.proposed_action || null,
-    decisionNeeded: exception.required_owner_action || null, requiredOwnerAction: exception.required_owner_action || null,
-    relatedRefs: asArray(exception.related_refs), dueAt: exception.due_at || null, status: upper(exception.status), lifecycleStatus: exception.status,
-    decisionRef: exception.decision_ref || null, createdAt: exception.created_at, updatedAt: exception.updated_at, isMock,
-  }));
-}
-
-function mapOutcomes(raw, kpis, isMock) {
-  const observations = asArray(raw.kpi_observations);
-  const kpiById = new Map(kpis.map(row => [row.kpiId,row]));
-  const observationById = new Map(observations.map(row => [row.observation_id,row]));
-  return asArray(raw.outcomes).map(outcome => {
-    const effects = asArray(outcome.kpi_observation_ids).map(observationId => {
-      const observation = observationById.get(observationId);
-      const kpi = observation ? kpiById.get(observation.kpi_id) : null;
-      return {
-        observationId, kpiId: observation?.kpi_id || null, name: kpi?.name || observation?.kpi_id || 'KPI',
-        value: observation?.value ?? null, unit: kpi?.unit || null,
-        displayValue: observation ? `${observation.value}${kpi?.unit ? ` ${kpi.unit}` : ''}` : 'Chưa có observation',
-        provenance: observation ? asObject(observation.provenance) : null,
-      };
-    });
-    const subject = asObject(outcome.subject_ref);
-    return {
-      outcomeId: outcome.outcome_id, title: `Outcome · ${subject.entity_type || 'business'} ${subject.entity_id || ''}`.trim(), subjectRef: subject,
-      missionId: subject.entity_type === 'mission' ? subject.entity_id : null, summary: outcome.summary, status: upper(outcome.status),
-      completedAt: outcome.achieved_at || outcome.updated_at || outcome.created_at,
-      kpiObservationIds: asArray(outcome.kpi_observation_ids), kpiEffects: effects, evidenceRefs: asArray(outcome.evidence_refs),
-      evidenceState: asArray(outcome.evidence_refs).length ? 'REFERENCED' : 'NO_REFERENCE', provenance: asArray(outcome.provenance),
-      createdAt: outcome.created_at, updatedAt: outcome.updated_at, isMock,
-    };
-  });
-}
-
-function mapProcesses(raw, kpis, exceptions, isMock) {
-  return asArray(raw.processes).map(process => {
-    const relatedKpis = kpis.filter(row => asArray(process.kpi_ids).includes(row.kpiId));
-    const relatedExceptions = exceptions.filter(row => row.relatedRefs.some(ref => ref?.entity_type === 'process' && ref?.entity_id === process.process_id) && !['RESOLVED','CLOSED'].includes(row.status));
-    const score = kpiHealthScore(relatedKpis);
-    let health = upper(process.status);
-    if (process.status === 'active') health = relatedExceptions.some(row => row.severity === 'critical') ? 'CRITICAL' : relatedExceptions.length ? 'AT_RISK' : score === null ? 'UNKNOWN' : score >= 90 ? 'ON_TRACK' : score >= 60 ? 'AT_RISK' : 'CRITICAL';
-    return {
-      processId: process.process_id, name: process.name, departmentId: process.department_id || null, trigger: process.trigger_summary,
-      inputContract: asObject(process.input_contract), completionCondition: process.completion_condition,
-      requiredPermissions: asArray(process.required_permissions), approvalPoints: asArray(process.approval_points), riskFloor: process.risk_floor,
-      kpiIds: asArray(process.kpi_ids), status: upper(process.status), health, healthSource: 'READ_MODEL_FROM_KPI_AND_EXCEPTION',
-      decisionRef: process.decision_ref || null, updatedAt: process.updated_at, steps: [], exceptionCount: relatedExceptions.length, isMock,
-    };
-  });
-}
-
-function businessProjection(raw, snapshot, isMock) {
-  const kpis = mapKpis(raw,isMock);
-  const goals = mapGoals(raw,snapshot,kpis,isMock);
-  const signals = mapSignals(raw,isMock);
-  const rawMissions = asArray(raw.missions);
-  const rawProfiles = asArray(raw.employee_profiles);
-  const departments = mapDepartments(raw,rawMissions,rawProfiles,isMock);
-  const autonomyGrants = mapAutonomy(raw,isMock);
-  const employees = mapEmployees(raw,snapshot,departments,autonomyGrants,isMock);
-  const missions = mapMissions(raw,departments,isMock);
-  const exceptions = mapExceptions(raw,isMock);
-  const outcomes = mapOutcomes(raw,kpis,isMock);
-  const processes = mapProcesses(raw,kpis,exceptions,isMock);
-  return {
-    available: true, reason: null, raw, goals, kpis, signals, performance: emptyBusiness().performance,
-    missions, departments, employees, autonomyGrants, exceptions,
-    ownerActions: exceptions.filter(row => Boolean(row.requiredOwnerAction) && !['RESOLVED','CLOSED'].includes(row.status)),
-    outcomes, processes,
-  };
-}
-
-function technicalProjection(snapshot) {
-  return {
-    controller: asObject(snapshot.controller), goals: asArray(snapshot.goals), jobs: asArray(snapshot.jobs), devices: asArray(snapshot.devices),
-    providers: asArray(snapshot.providers), prompts: asArray(snapshot.prompts), results: asArray(snapshot.results), checks: asArray(snapshot.checks),
-    activity: asArray(snapshot.activity), build: asObject(snapshot.build), leases: asArray(snapshot.leases),
-  };
-}
-
-function runtimeSummary(snapshot) {
-  const controller = asObject(snapshot.controller);
-  const devices = asArray(snapshot.devices);
-  const providers = asArray(snapshot.providers);
-  const onlineDevices = devices.filter(row => String(row.status || '').toLowerCase() === 'online').length;
-  const healthyProviders = providers.filter(row => String(row.health || '').toLowerCase() === 'healthy').length;
-  return [
-    { key: 'controller', label: 'Controller', value: controller.state || 'unknown' },
-    { key: 'devices', label: 'Thiết bị', value: devices.length ? `${onlineDevices}/${devices.length} online` : 'unknown' },
-    { key: 'providers', label: 'AI', value: providers.length ? `${healthyProviders}/${providers.length} healthy` : 'unknown' },
-  ];
-}
-
-export function buildCompanyControlTowerViewModel(snapshot, options = {}) {
-  const source = asObject(snapshot?.source);
-  const liveAuthoritative = source.mode === 'controller' && source.authoritative === true;
-  const previewBusiness = options.previewBusiness && typeof options.previewBusiness === 'object' ? options.previewBusiness : null;
-  const liveContract = liveAuthoritative ? contractCandidate(snapshot) : null;
-  const previewContract = !liveAuthoritative ? previewBusiness : null;
-  let business = emptyBusiness();
-  if (liveAuthoritative && liveContract) business = businessProjection(liveContract,snapshot,false);
-  else if (liveAuthoritative) business = emptyBusiness('BUSINESS_STATE_V2_PROJECTION_PENDING');
-  else if (previewContract) business = businessProjection(previewContract,snapshot,true);
-  else business = emptyBusiness(source.mode === 'mock' ? 'MOCK_WITHOUT_BUSINESS_STATE_V2' : 'NON_AUTHORITATIVE_SOURCE');
-  const company = asObject(snapshot?.company);
-  return {
-    version: CONTROL_TOWER_VIEW_MODEL_VERSION,
-    contract: { name: 'TigerIQ Business State V2', sourcePr: 153, exactSha: BUSINESS_STATE_V2_CONTRACT_SHA },
-    generatedAt: snapshot?.generatedAt || null,
-    source: { mode: source.mode || 'unknown', authoritative: liveAuthoritative, label: source.label || 'Nguồn chưa xác định', businessAvailable: Boolean(business.available), businessReason: business.reason || null },
-    company: { name: company.name || 'TigerIQ AI Lab', version: company.version || 'V2', phase: company.phase || null, operatingMode: company.operatingMode || null, currentObjective: company.currentObjective || null, truthPolicy: company.truthPolicy || null },
-    goals: business.goals, kpis: business.kpis, signals: business.signals, performance: business.performance, missions: business.missions,
-    departments: business.departments, employees: business.employees, autonomyGrants: business.autonomyGrants,
-    exceptions: business.exceptions, ownerActions: business.ownerActions, outcomes: business.outcomes, processes: business.processes,
-    runtimeSummary: runtimeSummary(snapshot || {}), technical: technicalProjection(snapshot || {}),
-  };
-}
-
-export function controlTowerTruthCheck(viewModel) {
-  const vm = asObject(viewModel);
-  if (vm.source?.authoritative === true && vm.source?.mode !== 'controller') throw new Error('CONTROL_TOWER_AUTHORITATIVE_SOURCE_INVALID');
-  if (vm.source?.authoritative === true && vm.source?.businessReason === 'PREVIEW_ONLY') throw new Error('CONTROL_TOWER_PREVIEW_CANNOT_BE_AUTHORITATIVE');
-  if (vm.source?.authoritative === true) {
-    for (const row of [...asArray(vm.goals),...asArray(vm.kpis),...asArray(vm.missions),...asArray(vm.outcomes)]) if (row?.isMock === true) throw new Error('CONTROL_TOWER_MOCK_ROW_IN_AUTHORITATIVE_VIEW');
-  }
-  return vm;
-}
-
-export function kpiHealthScore(kpis = []) {
-  const rows = asArray(kpis).filter(row => finite(row.healthPct) !== null);
-  if (!rows.length) return null;
-  return Math.round(rows.reduce((sum,row) => sum + Math.max(0,Math.min(100,finite(row.healthPct))),0) / rows.length);
-}
+export function controlTowerTruthCheck(viewModel) { const vm=asObject(viewModel); if(vm.source?.authoritative===true&&vm.source?.mode!=='controller')throw new Error('CONTROL_TOWER_AUTHORITATIVE_SOURCE_INVALID'); if(vm.source?.authoritative===true&&vm.source?.businessReason==='PREVIEW_ONLY')throw new Error('CONTROL_TOWER_PREVIEW_CANNOT_BE_AUTHORITATIVE'); if(vm.source?.authoritative===true){for(const row of [...asArray(vm.goals),...asArray(vm.kpis),...asArray(vm.missions),...asArray(vm.outcomes)])if(row?.isMock===true)throw new Error('CONTROL_TOWER_MOCK_ROW_IN_AUTHORITATIVE_VIEW');} return vm; }
+export function kpiHealthScore(kpis=[]) { const rows=asArray(kpis).filter(row=>finite(row.healthPct)!==null); if(!rows.length)return null; return Math.round(rows.reduce((sum,row)=>sum+Math.max(0,Math.min(100,finite(row.healthPct))),0)/rows.length); }
