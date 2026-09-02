@@ -1,69 +1,82 @@
-# TigerIQ Android Worker — MVP Contract
+# TigerIQ AI Lab — Android Worker V1
 
-Status: SOURCE SKELETON / NOT YET REAL-DEVICE VERIFIED
+Status: repository/build preflight candidate only. Physical PC01/Tailscale/pairing/JOB-001 E2E is not claimed until `PC01_PHYSICAL_GO_LIVE_PASS`.
 
-## Purpose
-One Android device can act as one persistent TigerIQ employee workstation. The Android app does not own company hierarchy or business decisions. It is an execution runtime that receives bounded Task Packets from TigerIQ Control Plane and returns structured Result/Evidence.
+## Canonical Controller contract
 
-## Required components
-- `WorkerIdentity`: employeeId + nodeId + paired Control Plane identity.
-- `ForegroundWorkerService`: persistent heartbeat/task-poll loop subject to Android background limits.
-- `TaskInbox`: accepts only schema-valid signed/authorized Task Packets.
-- `ExecutionRouter`: dispatches to allowed adapters (Accessibility, browser, approved provider app adapter, local utility).
-- `AccessibilityBridge`: semantic UI discovery/actions; coordinate-only macros are fallback diagnostics, not primary automation.
-- `EvidenceCollector`: screenshots/log metadata/task timestamps; secrets and unrelated user content must be redacted/excluded.
-- `Watchdog`: bounded timeout, app restart/recovery and failure classification.
-- `ResultPublisher`: returns structured result; never reports DONE without required artifacts.
+Android V1 follows the single Controller V1 contract maintained in PR #116 and pins exact head `c0632bc110ea0d26925d3657ac485cb90b5ee010`. CI fails if PR #116 moves without a matching Android update.
 
-## Secure pairing
-1. Control Plane creates one short-lived pairing challenge for a new node.
-2. Worker generates a device-local keypair in Android Keystore when available.
-3. Worker submits public key + challenge + node metadata.
-4. Control Plane binds `nodeId` to that public key and returns a scoped node credential/token.
-5. Long-lived private key never leaves device storage.
-6. Node credentials are revocable and scoped to register/heartbeat/task/result operations only.
-7. AI account passwords, Gmail passwords, provider tokens and Owner private profile are never uploaded into repository or task evidence.
+The current physical endpoint is also fail-closed and pinned to Controller #116:
 
-## Heartbeat
-Recommended interval while active: 15-60 seconds, adaptive to battery/thermal state.
+- Tailscale host `100.97.23.87`
+- port `8790`
+- canonical pilot URL `http://100.97.23.87:8790`
 
-Worker reports only operational metadata required for scheduling:
-- nodeId, app version, Android version/model class;
-- online/degraded state;
-- battery percentage and optional thermal state;
-- allowed capabilities and installed adapter availability;
-- active task count;
-- last task outcome category.
+Work transport is only:
 
-## Task execution states
-`RECEIVED -> VALIDATED -> RUNNING -> RESULT_READY -> ACKNOWLEDGED`
+- `GET /api/v1/status` — compatibility/health check only.
+- `POST /api/v1/jobs/lease` — receive the next job lease.
+- `POST /api/v1/jobs/{jobId}/result` — submit result + evidence atomically.
+- `POST /api/v1/devices/{deviceId}/heartbeat` — device health.
 
-Failure states are explicit, e.g.:
-- `NETWORK_UNAVAILABLE`
-- `APP_NOT_INSTALLED`
-- `LOGIN_REQUIRED`
-- `UI_CHANGED`
-- `ACCESSIBILITY_DISABLED`
-- `PROVIDER_LIMIT`
-- `TIMEOUT`
-- `DEVICE_THERMAL`
-- `POLICY_DENIED`
+Retired and forbidden in V1 runtime:
 
-The Control Plane decides whether a failure is retriable/reassignable.
+- `/v1/android/sessions`
+- `/v1/android/jobs/pull`
+- `/v1/android/jobs/submit`
+- `/v1/inference`
 
-## Device-control layers
-1. Worker APK + Accessibility Service for autonomous semantic interaction where appropriate.
-2. Farm Gateway through ADB/Appium/UiAutomator2 for inventory, fallback control, restart, screen capture and legacy-device support.
-3. scrcpy for human diagnostics only; not a task protocol dependency.
+There is no Android Controller session token.
 
-## AI/provider adapters
-A phone employee may have a fixed provider/account setup, but provider access is an adapter capability rather than the employee identity. API/local model adapters are preferred where available. Consumer-app automation must be provider-specific and enabled only when allowed by the applicable technical/account policy.
+## Device identity and authentication
 
-## Real-device acceptance gate
-No Android execution claim is valid until two physical phones prove:
-1. pairing and heartbeat;
-2. two different tasks received concurrently;
-3. task execution without Owner touching each phone;
-4. structured result + screenshot/evidence returned;
-5. one independent reviewer worker evaluates combined evidence;
-6. disconnect/restart produces bounded recovery rather than duplicate execution.
+The phone creates an EC P-256 private key in hardware-backed Android Keystore. Every protected lease/result/heartbeat request signs the PR #116 canonical string with `SHA256withECDSA` and sends the required `X-TigerIQ-Device-*` proof headers. The private key never leaves Android Keystore.
+
+Activation is non-secret: canonical Controller URL + Employee ID. The app verifies `/api/v1/status`, creates the phone identity and exposes only a copyable public provisioning record (`employeeId`, `nodeId`, `deviceId`, fingerprint, public key) for PC01 to register in PostgreSQL. A Controller URL that does not match PR #116 fails closed before enrollment.
+
+## Phone-owned AI / zero-cost gate
+
+PC01 is the work control plane; it does not execute the provider prompt for this Android employee. The intended future path remains:
+
+`Controller lease -> Android durable checkpoint -> phone-local provider connector -> provider API -> Android result/evidence -> Controller result endpoint`
+
+Gemini is the first connector implementation, but Gemini direct execution is currently **DISABLED/fail-closed**. A local checkbox, preference, string, stored key or user statement cannot make a credential executable. `ZeroCostAuthority.current()` remains `unverified`; `ZeroCostPolicy` blocks before the API key is read or any provider network connection is opened. There is no paid fallback.
+
+Issue #160 preflight additionally disables the credential-entry controls in the UI so the Owner is not asked to enter a provider secret while direct execution is forbidden.
+
+## Result contract
+
+Completed result uses the PR #116 shape with `output.text/provider/model/timestamps/attempts/failover/errors` plus evidence. Terminal provider/policy failures use `status=failed` and `failure={code,message,retriable}` while still returning sanitized output metadata and evidence. A zero-cost authority denial is non-retryable provider execution and must not call Gemini.
+
+## Reliability
+
+- WorkManager polling/recovery is periodic and network-constrained; the preflight candidate does not depend on Firebase/FCM.
+- Job/lease/idempotency/binding/attempt/result metadata is checkpointed locally.
+- Provider retry is bounded by `RetryPolicy`.
+- Once a result is persisted, a submit retry reuses that persisted result and does not call the provider again.
+- If Android process/reboot loses the in-process raw lease token, the app does not fabricate authority; it waits for lease expiry/requeue and reacquires through `/api/v1/jobs/lease`.
+- Controller duplicate semantics remain authoritative: identical result replay is idempotent; conflicting duplicate is rejected.
+
+## Permissions and frozen capability surface
+
+The app source declares only `INTERNET` and `RECEIVE_BOOT_COMPLETED`; neither requires an Owner runtime permission prompt. WorkManager may merge its standard internal scheduling permissions into the APK. CI rejects notification/FCM, Accessibility, overlay/screen control, Gemini consumer-app automation, raw process/runtime loaders and privileged data/device permissions.
+
+## Signing / update-in-place
+
+Pilot package identity is fixed at `ai.tigeriq.worker`. Every installable pilot release must use the approved stable certificate SHA-256:
+
+`A1:36:5F:07:F4:25:92:60:A0:6F:A0:33:F7:F8:78:52:1A:3B:08:BD:29:44:FC:16:07:49:46:64:93:7C:C1:AC`
+
+Gradle now rejects any configured `TIGERIQ_ANDROID_KEYSTORE` whose certificate does not match that pinned pilot identity. CI intentionally has no pilot private key and proves a disposable/wrong identity is rejected. Physical install remains fail-closed: if the currently installed APK signer differs, do not uninstall or clear data.
+
+The current preflight version is `versionCode=13`, `versionName=1.0.1-ai-employee-preflight`. The APK embeds the exact Git commit SHA in `BuildConfig.TIGERIQ_SOURCE_SHA` for physical provenance checking.
+
+## Repository readiness gate
+
+Issue #160 can reach `ANDROID_WORKER_PREFLIGHT_READY_WAITING_PC01` only when the same exact Android head has all three green:
+
+1. General `CI`.
+2. `Android Worker` build/unit/manifest/DEX/provenance/wrong-signer rejection workflow.
+3. `Android ↔ Controller V1 Contract`, including exact Controller head + host/port + route matching.
+
+This status is repository compatibility and install-candidate evidence only; it is not physical pairing, JOB-001, provider billing proof, MAIN or Production approval.

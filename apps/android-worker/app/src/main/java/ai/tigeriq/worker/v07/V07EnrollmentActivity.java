@@ -4,7 +4,6 @@ import android.app.Activity;
 import android.content.Intent;
 import android.graphics.Color;
 import android.os.Bundle;
-import android.text.InputType;
 import android.view.Gravity;
 import android.view.WindowManager;
 import android.widget.Button;
@@ -15,10 +14,7 @@ import android.widget.Toast;
 
 import androidx.work.WorkManager;
 
-/**
- * Secure v0.7 entry point.
- * Normal operation uses one TigerIQ activation code; technical gateway/credential fields are not exposed to the owner.
- */
+/** TigerIQ V1 entry: create phone identity and verify the canonical Controller before PC01 provisions the binding. */
 public final class V07EnrollmentActivity extends Activity {
     private static final int NAVY = Color.rgb(17, 24, 39);
     private static final int ORANGE = Color.rgb(244, 113, 31);
@@ -32,9 +28,7 @@ public final class V07EnrollmentActivity extends Activity {
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        // Enrollment material must never be captured in screenshots, recents thumbnails or screen sharing.
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
-
         if (new EmployeeDeviceStore(this).isEnrolled()) {
             V07WorkScheduler.ensurePeriodicRecovery(this);
             openStatus();
@@ -49,68 +43,38 @@ public final class V07EnrollmentActivity extends Activity {
         root.setPadding(dp(22), dp(26), dp(22), dp(26));
         root.setBackgroundColor(Color.rgb(246, 247, 251));
 
-        TextView title = text("TigerIQ AI · Nhân viên v0.7.1", 23, true);
-        title.setTextColor(NAVY);
-        root.addView(title);
-
-        TextView subtitle = text("Mở APP → kiểm tra máy → kết nối bằng 1 mã", 12, true);
-        subtitle.setTextColor(ORANGE);
-        root.addView(subtitle);
-
-        TextView safety = text("Không Trợ năng · Không điều khiển màn hình · Không chứa API key Gemini/Groq/OpenRouter.", 13, false);
-        safety.setTextColor(MUTED);
-        safety.setPadding(0, dp(12), 0, dp(18));
-        root.addView(safety);
+        TextView title = text("TigerIQ AI Lab · Android Worker V1", 23, true);
+        title.setTextColor(NAVY); root.addView(title);
+        TextView subtitle = text("Controller V1 · nhận JOB từ PC01 · trả RESULT + evidence", 12, true);
+        subtitle.setTextColor(ORANGE); root.addView(subtitle);
+        TextView safety = text("Gemini direct: DISABLED theo policy 0đ. Không Accessibility/UI automation; preflight không gọi provider.", 13, false);
+        safety.setTextColor(MUTED); safety.setPadding(0, dp(12), 0, dp(18)); root.addView(safety);
 
         checkButton = new Button(this);
-        checkButton.setText("KIỂM TRA MÁY NÀY");
-        checkButton.setAllCaps(false);
-        checkButton.setOnClickListener(v -> runDeviceCheck());
-        root.addView(checkButton);
+        checkButton.setText("KIỂM TRA MÁY NÀY"); checkButton.setAllCaps(false); checkButton.setOnClickListener(v -> runDeviceCheck()); root.addView(checkButton);
+        readinessView = text("Chưa kiểm tra phần cứng", 12, false); readinessView.setTextColor(MUTED); readinessView.setPadding(0, dp(8), 0, dp(18)); root.addView(readinessView);
 
-        readinessView = text("Chưa kiểm tra phần cứng", 12, false);
-        readinessView.setTextColor(MUTED);
-        readinessView.setPadding(0, dp(8), 0, dp(18));
-        root.addView(readinessView);
+        TextView activationTitle = text("Kết nối Controller V1 trên PC01", 16, true); activationTitle.setTextColor(NAVY); root.addView(activationTitle);
+        TextView activationHelp = text("Dán mã TIQ1 chứa Controller + Employee ID. APP chỉ nhận endpoint đúng PR #116; URL sai sẽ fail-closed.", 12, false);
+        activationHelp.setTextColor(MUTED); activationHelp.setPadding(0, dp(6), 0, dp(8)); root.addView(activationHelp);
 
-        TextView activationTitle = text("Kết nối TigerIQ", 16, true);
-        activationTitle.setTextColor(NAVY);
-        root.addView(activationTitle);
-
-        TextView activationHelp = text("Dán 1 mã kích hoạt do TigerIQ cấp. APP tự lấy Gateway, Employee và Credential từ mã này.", 12, false);
-        activationHelp.setTextColor(MUTED);
-        activationHelp.setPadding(0, dp(6), 0, dp(8));
-        root.addView(activationHelp);
-
-        activationInput = field("Mã kích hoạt TigerIQ · TIQ1.…");
-        activationInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        activationInput = field("Mã TigerIQ V1 · TIQ1.…");
         activationInput.setSaveEnabled(false);
         activationInput.setImportantForAutofill(EditText.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
         root.addView(activationInput);
 
         connectButton = new Button(this);
-        connectButton.setText("KẾT NỐI TIGERIQ");
-        connectButton.setAllCaps(false);
-        connectButton.setTextColor(Color.WHITE);
-        connectButton.setBackgroundColor(ORANGE);
-        connectButton.setOnClickListener(v -> connect());
-        root.addView(connectButton);
+        connectButton.setText("TẠO DANH TÍNH & KIỂM TRA CONTROLLER"); connectButton.setAllCaps(false); connectButton.setTextColor(Color.WHITE); connectButton.setBackgroundColor(ORANGE); connectButton.setOnClickListener(v -> connect()); root.addView(connectButton);
+        statusView = text("Chưa kết nối Controller V1", 12, false); statusView.setTextColor(MUTED); statusView.setPadding(0, dp(10), 0, 0); root.addView(statusView);
 
-        statusView = text("Chưa kết nối hệ thống", 12, false);
-        statusView.setTextColor(MUTED);
-        statusView.setPadding(0, dp(10), 0, 0);
-        root.addView(statusView);
-
-        TextView footer = text("Nếu chưa có mã kích hoạt, nút KIỂM TRA MÁY NÀY vẫn xác minh được khóa bảo mật phần cứng và WorkManager trên chính điện thoại này.", 11, false);
-        footer.setTextColor(MUTED);
-        footer.setPadding(0, dp(20), 0, 0);
-        root.addView(footer);
+        TextView footer = text("Private key Android Keystore không rời điện thoại. Pairing/JOB-001 chỉ chạy sau PC01_PHYSICAL_GO_LIVE_PASS.", 11, false);
+        footer.setTextColor(MUTED); footer.setPadding(0, dp(20), 0, 0); root.addView(footer);
         return root;
     }
 
     private void runDeviceCheck() {
         checkButton.setEnabled(false);
-        readinessView.setText("Đang kiểm tra khóa bảo mật phần cứng và bộ lập lịch…");
+        readinessView.setText("Đang kiểm tra Android Keystore phần cứng và WorkManager…");
         new Thread(() -> {
             try {
                 DeviceKeyStore keyStore = new DeviceKeyStore("SELFTEST-EMP", "SELFTEST-DEVICE");
@@ -118,91 +82,34 @@ public final class V07EnrollmentActivity extends Activity {
                 if (!keyStore.isHardwareBacked()) throw new DeviceKeyStore.HardwareBackingUnavailableException();
                 String fingerprint = keyStore.publicKeyFingerprintSha256();
                 WorkManager.getInstance(this);
-                runOnUiThread(() -> {
-                    readinessView.setText("ĐẠT · Khóa phần cứng + WorkManager sẵn sàng · " + fingerprint.substring(0, 12));
-                    readinessView.setTextColor(Color.rgb(22, 101, 52));
-                    checkButton.setEnabled(true);
-                });
+                runOnUiThread(() -> { readinessView.setText("ĐẠT · Keystore + WorkManager · " + fingerprint.substring(0, 12)); readinessView.setTextColor(Color.rgb(22, 101, 52)); checkButton.setEnabled(true); });
             } catch (Exception error) {
-                runOnUiThread(() -> {
-                    readinessView.setText("LỖI · " + safeError(error));
-                    readinessView.setTextColor(Color.rgb(185, 28, 28));
-                    checkButton.setEnabled(true);
-                });
+                runOnUiThread(() -> { readinessView.setText("LỖI · " + safeError(error)); readinessView.setTextColor(Color.rgb(185, 28, 28)); checkButton.setEnabled(true); });
             }
-        }, "tigeriq-v07-device-check").start();
+        }, "tigeriq-v1-device-check").start();
     }
 
     private void connect() {
         ActivationCode.Bundle activation;
-        try {
-            activation = ActivationCode.parse(activationInput.getText().toString());
-        } catch (Exception error) {
-            Toast.makeText(this, "Mã kích hoạt không hợp lệ", Toast.LENGTH_SHORT).show();
-            statusView.setText("Kết nối thất bại · mã kích hoạt không hợp lệ");
-            return;
-        }
-
-        // Remove one-time material from UI state before network enrollment begins.
-        activationInput.setText("");
+        try { activation = ActivationCode.parse(activationInput.getText().toString()); }
+        catch (Exception error) { Toast.makeText(this, "Mã V1/endpoint không hợp lệ", Toast.LENGTH_SHORT).show(); statusView.setText("Kết nối thất bại · mã/endpoint không hợp lệ"); return; }
         connectButton.setEnabled(false);
-        statusView.setText("Đang xác minh thiết bị và tạo khóa phần cứng…");
-
+        statusView.setText("Đang tạo danh tính Keystore và kiểm tra /api/v1/status…");
         new Thread(() -> {
             try {
-                new EnrollmentCoordinator(this).enroll(
-                        activation.gateway,
-                        activation.employeeId,
-                        activation.credentialId,
-                        activation.bootstrapToken);
+                new EnrollmentCoordinator(this).enroll(activation.controller, activation.employeeId);
                 V07WorkScheduler.ensurePeriodicRecovery(this);
-                V07WorkScheduler.enqueueRecovery(this);
-                new WorkerStatusStore(this).setPushState("PUSH_OR_POLL_READY");
-                runOnUiThread(() -> {
-                    statusView.setText("Kết nối thành công");
-                    openStatus();
-                });
+                new WorkerStatusStore(this).setPushState("POLL_FALLBACK_READY");
+                runOnUiThread(() -> { activationInput.setText(""); statusView.setText("Controller V1 tương thích · cần provision thiết bị trên PC01"); openStatus(); });
             } catch (Exception error) {
-                runOnUiThread(() -> {
-                    connectButton.setEnabled(true);
-                    statusView.setText("Kết nối thất bại · " + safeError(error));
-                });
+                runOnUiThread(() -> { connectButton.setEnabled(true); statusView.setText("Kết nối thất bại · " + safeError(error)); });
             }
-        }, "tigeriq-v07-enrollment").start();
+        }, "tigeriq-v1-enrollment").start();
     }
 
-    private void openStatus() {
-        startActivity(new Intent(this, V07StatusActivity.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP));
-        finish();
-    }
-
-    private EditText field(String hint) {
-        EditText input = new EditText(this);
-        input.setHint(hint);
-        input.setTextSize(14);
-        input.setSingleLine(true);
-        input.setSaveEnabled(false);
-        input.setPadding(dp(12), dp(10), dp(12), dp(10));
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        params.setMargins(0, 0, 0, dp(10));
-        input.setLayoutParams(params);
-        return input;
-    }
-
-    private TextView text(String value, int sp, boolean bold) {
-        TextView view = new TextView(this);
-        view.setText(value);
-        view.setTextSize(sp);
-        view.setGravity(Gravity.START);
-        if (bold) view.setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD);
-        return view;
-    }
-
+    private void openStatus() { startActivity(new Intent(this, V07StatusActivity.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)); finish(); }
+    private EditText field(String hint) { EditText input = new EditText(this); input.setHint(hint); input.setTextSize(14); input.setSingleLine(true); input.setSaveEnabled(false); input.setPadding(dp(12), dp(10), dp(12), dp(10)); LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT); params.setMargins(0, 0, 0, dp(10)); input.setLayoutParams(params); return input; }
+    private TextView text(String value, int sp, boolean bold) { TextView view = new TextView(this); view.setText(value); view.setTextSize(sp); view.setGravity(Gravity.START); if (bold) view.setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD); return view; }
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
-
-    private static String safeError(Exception error) {
-        if (error instanceof ApiException api) return api.code;
-        if (error instanceof DeviceKeyStore.HardwareBackingUnavailableException) return "SECURE_HARDWARE_UNAVAILABLE";
-        return error.getClass().getSimpleName();
-    }
+    private static String safeError(Exception error) { if (error instanceof ApiException api) return api.code; if (error instanceof DeviceKeyStore.HardwareBackingUnavailableException) return "SECURE_HARDWARE_UNAVAILABLE"; return error.getClass().getSimpleName(); }
 }

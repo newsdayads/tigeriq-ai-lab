@@ -6,8 +6,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
 /**
- * One-field TigerIQ activation bundle. The bootstrap token remains one-time material and is never persisted.
- * Canonical format: TIQ1.<base64url(JSON)> where JSON contains gateway, employeeId, credentialId, bootstrapToken.
+ * Non-secret Controller V1 activation bundle.
+ * Canonical format: TIQ1.<base64url(JSON)> with controller + employeeId.
+ * Legacy gateway/credential/bootstrap fields may be present in old generators but are ignored.
  */
 public final class ActivationCode {
     private static final String PREFIX = "TIQ1.";
@@ -24,17 +25,16 @@ public final class ActivationCode {
                 if (payload.isEmpty()) throw new IllegalArgumentException("activation payload is empty");
                 json = new String(Base64.getUrlDecoder().decode(payload), StandardCharsets.UTF_8);
             } else if (value.startsWith("{")) {
-                // Raw JSON is accepted only as an operator/dev convenience; the normal UI still uses one field.
                 json = value;
             } else {
                 throw new IllegalArgumentException("unsupported activation code format");
             }
             JSONObject object = new JSONObject(json);
-            String gateway = GatewayUrlPolicy.requireHttps(required(object, "gateway"));
+            String endpoint = object.optString("controller", "").trim();
+            if (endpoint.isEmpty()) endpoint = required(object, "gateway");
+            String controller = GatewayUrlPolicy.requireControllerUrl(endpoint);
             String employeeId = IdentityRules.requireId("employeeId", required(object, "employeeId"));
-            String credentialId = IdentityRules.requireId("credentialId", required(object, "credentialId"));
-            String bootstrapToken = required(object, "bootstrapToken");
-            return new Bundle(gateway, employeeId, credentialId, bootstrapToken);
+            return new Bundle(controller, employeeId);
         } catch (IllegalArgumentException error) {
             throw error;
         } catch (Exception error) {
@@ -49,16 +49,14 @@ public final class ActivationCode {
     }
 
     public static final class Bundle {
+        public final String controller;
         public final String gateway;
         public final String employeeId;
-        public final String credentialId;
-        public final String bootstrapToken;
 
-        Bundle(String gateway, String employeeId, String credentialId, String bootstrapToken) {
-            this.gateway = gateway;
+        Bundle(String controller, String employeeId) {
+            this.controller = controller;
+            this.gateway = controller;
             this.employeeId = employeeId;
-            this.credentialId = credentialId;
-            this.bootstrapToken = bootstrapToken;
         }
     }
 }

@@ -17,19 +17,15 @@ public final class EmployeeDeviceStore {
         return generated;
     }
 
-    public synchronized Profile draft(String gatewayUrl, String employeeId, String credentialId) {
+    public synchronized Profile draft(String controllerUrl, String employeeId, String credentialId) {
         String deviceId = ensureDeviceId();
-        return new Profile(GatewayUrlPolicy.requireHttps(gatewayUrl), IdentityRules.requireId("employeeId", employeeId), IdentityRules.nodeIdFor(deviceId), IdentityRules.requireId("deviceId", deviceId), requireText("credentialId", credentialId), "", prefs.getString("publicKeyFingerprint", ""), prefs.getBoolean("hardwareBacked", false), prefs.getLong("enrolledAt", 0L));
+        return new Profile(GatewayUrlPolicy.requireControllerUrl(controllerUrl), IdentityRules.requireId("employeeId", employeeId), IdentityRules.nodeIdFor(deviceId), IdentityRules.requireId("deviceId", deviceId), requireText("credentialId", credentialId), "", prefs.getString("publicKeyFingerprint", ""), prefs.getBoolean("hardwareBacked", false), prefs.getLong("enrolledAt", 0L));
     }
 
     public synchronized void saveEnrolled(Profile profile, String publicKeyFingerprint, boolean hardwareBacked, long enrolledAt) {
-        if (!prefs.edit().putString("gatewayUrl", GatewayUrlPolicy.requireHttps(profile.gatewayUrl)).putString("employeeId", IdentityRules.requireId("employeeId", profile.employeeId)).putString("nodeId", IdentityRules.requireId("nodeId", profile.nodeId)).putString("deviceId", IdentityRules.requireId("deviceId", profile.deviceId)).putString("credentialId", requireText("credentialId", profile.credentialId)).putString("bindingId", normalizeBinding(profile.bindingId)).putString("publicKeyFingerprint", requireText("publicKeyFingerprint", publicKeyFingerprint)).putBoolean("hardwareBacked", hardwareBacked).putLong("enrolledAt", enrolledAt).putBoolean("enrolled", true).commit()) throw new IllegalStateException("cannot persist employee/device enrollment");
+        if (!prefs.edit().putString("gatewayUrl", GatewayUrlPolicy.requireControllerUrl(profile.controllerUrl)).putString("employeeId", IdentityRules.requireId("employeeId", profile.employeeId)).putString("nodeId", IdentityRules.requireId("nodeId", profile.nodeId)).putString("deviceId", IdentityRules.requireId("deviceId", profile.deviceId)).putString("credentialId", requireText("credentialId", profile.credentialId)).putString("bindingId", normalizeBinding(profile.bindingId)).putString("publicKeyFingerprint", requireText("publicKeyFingerprint", publicKeyFingerprint)).putBoolean("hardwareBacked", hardwareBacked).putLong("enrolledAt", enrolledAt).putBoolean("enrolled", true).commit()) throw new IllegalStateException("cannot persist employee/device enrollment");
     }
 
-    /**
-     * Persist the authoritative server binding observed on the first valid lease. Once bound,
-     * any changed binding is fail-closed. The binding is also tied to the enrolled key fingerprint.
-     */
     public synchronized Profile bindAuthoritativeBinding(Profile profile, String bindingId) throws ApiException {
         if (profile == null) throw new IllegalArgumentException("profile required");
         String authoritative = requireText("bindingId", bindingId);
@@ -48,9 +44,9 @@ public final class EmployeeDeviceStore {
 
     public synchronized Profile load() {
         if (!prefs.getBoolean("enrolled", false)) return null;
-        String gatewayUrl = prefs.getString("gatewayUrl", null), employeeId = prefs.getString("employeeId", null), nodeId = prefs.getString("nodeId", null), deviceId = prefs.getString("deviceId", null), credentialId = prefs.getString("credentialId", null), fingerprint = prefs.getString("publicKeyFingerprint", null);
-        if (gatewayUrl == null || employeeId == null || nodeId == null || deviceId == null || credentialId == null || fingerprint == null) return null;
-        return new Profile(gatewayUrl, employeeId, nodeId, deviceId, credentialId, prefs.getString("bindingId", ""), fingerprint, prefs.getBoolean("hardwareBacked", false), prefs.getLong("enrolledAt", 0L));
+        String controllerUrl = prefs.getString("gatewayUrl", null), employeeId = prefs.getString("employeeId", null), nodeId = prefs.getString("nodeId", null), deviceId = prefs.getString("deviceId", null), credentialId = prefs.getString("credentialId", null), fingerprint = prefs.getString("publicKeyFingerprint", null);
+        if (controllerUrl == null || employeeId == null || nodeId == null || deviceId == null || credentialId == null || fingerprint == null) return null;
+        return new Profile(controllerUrl, employeeId, nodeId, deviceId, credentialId, prefs.getString("bindingId", ""), fingerprint, prefs.getBoolean("hardwareBacked", false), prefs.getLong("enrolledAt", 0L));
     }
 
     public synchronized boolean isEnrolled() { return load() != null; }
@@ -66,11 +62,20 @@ public final class EmployeeDeviceStore {
     }
 
     public static final class Profile {
-        public final String gatewayUrl, employeeId, nodeId, deviceId, credentialId, bindingId, publicKeyFingerprint;
+        public final String controllerUrl, gatewayUrl, employeeId, nodeId, deviceId, credentialId, bindingId, publicKeyFingerprint;
         public final boolean hardwareBacked;
         public final long enrolledAtEpochMs;
-        public Profile(String gatewayUrl, String employeeId, String nodeId, String deviceId, String credentialId, String bindingId, String publicKeyFingerprint, boolean hardwareBacked, long enrolledAtEpochMs) {
-            this.gatewayUrl = gatewayUrl; this.employeeId = employeeId; this.nodeId = nodeId; this.deviceId = deviceId; this.credentialId = credentialId; this.bindingId = normalizeBinding(bindingId); this.publicKeyFingerprint = publicKeyFingerprint; this.hardwareBacked = hardwareBacked; this.enrolledAtEpochMs = enrolledAtEpochMs;
+        public Profile(String controllerUrl, String employeeId, String nodeId, String deviceId, String credentialId, String bindingId, String publicKeyFingerprint, boolean hardwareBacked, long enrolledAtEpochMs) {
+            this.controllerUrl = GatewayUrlPolicy.requireControllerUrl(controllerUrl);
+            this.gatewayUrl = this.controllerUrl; // compatibility alias for the prior v0.7 storage field name.
+            this.employeeId = employeeId;
+            this.nodeId = nodeId;
+            this.deviceId = deviceId;
+            this.credentialId = credentialId;
+            this.bindingId = normalizeBinding(bindingId);
+            this.publicKeyFingerprint = publicKeyFingerprint;
+            this.hardwareBacked = hardwareBacked;
+            this.enrolledAtEpochMs = enrolledAtEpochMs;
         }
     }
 }

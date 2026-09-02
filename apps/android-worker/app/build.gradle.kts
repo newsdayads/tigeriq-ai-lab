@@ -1,5 +1,10 @@
+import java.io.FileInputStream
+import java.security.KeyStore
+import java.security.MessageDigest
+
 plugins { id("com.android.application") }
 
+val expectedPilotSigningCertSha256 = "a1365f07f4259260a06fa033f7f878521a3b08bd2944fc1607494664937cc1ac"
 val stableSigning = mapOf(
     "keystore" to System.getenv("TIGERIQ_ANDROID_KEYSTORE"),
     "alias" to System.getenv("TIGERIQ_ANDROID_KEY_ALIAS"),
@@ -12,6 +17,41 @@ if (stableSigningProvided != 0 && stableSigningProvided != stableSigning.size) {
 }
 val stableSigningEnabled = stableSigningProvided == stableSigning.size
 
+fun signingCertificateSha256(keystorePath: String, storePassword: String, alias: String): String {
+    var lastError: Exception? = null
+    for (type in listOf("PKCS12", "JKS")) {
+        try {
+            val store = KeyStore.getInstance(type)
+            FileInputStream(keystorePath).use { input -> store.load(input, storePassword.toCharArray()) }
+            val certificate = store.getCertificate(alias)
+                ?: throw GradleException("TigerIQ stable signing alias not found")
+            return MessageDigest.getInstance("SHA-256")
+                .digest(certificate.encoded)
+                .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+        } catch (error: Exception) {
+            lastError = error
+        }
+    }
+    throw GradleException("TigerIQ stable signing keystore could not be read", lastError)
+}
+
+val stableSigningFingerprint = if (stableSigningEnabled) {
+    signingCertificateSha256(
+        stableSigning.getValue("keystore")!!,
+        file(stableSigning.getValue("storePasswordFile")!!).readText().trim(),
+        stableSigning.getValue("alias")!!,
+    ).also { actual ->
+        if (!actual.equals(expectedPilotSigningCertSha256, ignoreCase = true)) {
+            throw GradleException("TigerIQ stable signing certificate mismatch; refusing pilot release signing")
+        }
+    }
+} else null
+
+val sourceSha = (System.getenv("TIGERIQ_SOURCE_SHA") ?: "LOCAL_UNVERIFIED").trim().lowercase()
+if (sourceSha != "local_unverified" && !Regex("^[0-9a-f]{40}$").matches(sourceSha)) {
+    throw GradleException("TIGERIQ_SOURCE_SHA must be a 40-character commit SHA")
+}
+
 android {
     namespace = "ai.tigeriq.worker"
     compileSdk = 35
@@ -20,12 +60,15 @@ android {
         applicationId = "ai.tigeriq.worker"
         minSdk = 26
         targetSdk = 35
-        versionCode = 11
-        versionName = "0.7.1-api-first"
+        versionCode = 13
+        versionName = "1.0.1-ai-employee-preflight"
+        buildConfigField("String", "TIGERIQ_SOURCE_SHA", "\"$sourceSha\"")
     }
 
-    // v0.7 is a clean API-first APK. The direct children of ai/tigeriq/worker are
-    // legacy v0.6 UI/Accessibility/controller sources and must not be packaged.
+    buildFeatures { buildConfig = true }
+
+    // V1 is an independent phone AI employee. Direct children of ai/tigeriq/worker
+    // are legacy v0.6 UI/Accessibility/controller sources and must never be packaged.
     sourceSets.getByName("main").java.exclude("ai/tigeriq/worker/*.java")
 
     if (stableSigningEnabled) {
@@ -48,7 +91,7 @@ android {
 
     buildTypes {
         getByName("debug") {
-            // CI/debug remains disposable and must never use the production/pilot signing identity.
+            // CI/debug remains disposable and must never use the stable pilot signing identity.
         }
         getByName("release") {
             isMinifyEnabled = false
@@ -64,7 +107,6 @@ android {
 
 dependencies {
     implementation("androidx.work:work-runtime:2.9.1")
-    implementation("com.google.firebase:firebase-messaging:24.0.0")
     testImplementation("junit:junit:4.13.2")
     // Android's org.json classes are method stubs in local JVM tests. Use the
     // compatible JSON implementation only in the unit-test runtime.
@@ -73,6 +115,10 @@ dependencies {
 
 tasks.register("tigerIqStableSigningStatus") {
     doLast {
-        println(if (stableSigningEnabled) "TIGERIQ_STABLE_SIGNING_CONFIGURED" else "TIGERIQ_STABLE_SIGNING_NOT_CONFIGURED")
+        if (stableSigningEnabled) {
+            println("TIGERIQ_STABLE_SIGNING_VERIFIED:$stableSigningFingerprint")
+        } else {
+            println("TIGERIQ_STABLE_SIGNING_NOT_CONFIGURED")
+        }
     }
 }

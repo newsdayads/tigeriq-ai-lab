@@ -9,52 +9,41 @@ import java.util.Base64;
 import static org.junit.Assert.assertEquals;
 
 public class ActivationCodeTest {
-    @Test public void parsesCanonicalSingleFieldBundle() throws Exception {
+    @Test public void parsesCanonicalControllerV1BundleWithoutSessionSecret() throws Exception {
         JSONObject object = new JSONObject()
-                .put("gateway", "https://gateway.tigeriq.test")
-                .put("employeeId", "emp-001")
-                .put("credentialId", "cred-001")
-                .put("bootstrapToken", "one-time-secret");
-        String encoded = Base64.getUrlEncoder().withoutPadding()
-                .encodeToString(object.toString().getBytes(StandardCharsets.UTF_8));
-
+                .put("controller", "http://100.97.23.87:8790")
+                .put("employeeId", "emp-001");
+        String encoded = Base64.getUrlEncoder().withoutPadding().encodeToString(object.toString().getBytes(StandardCharsets.UTF_8));
         ActivationCode.Bundle bundle = ActivationCode.parse("TIQ1." + encoded);
-        assertEquals("https://gateway.tigeriq.test", bundle.gateway);
+        assertEquals("http://100.97.23.87:8790", bundle.controller);
         assertEquals("EMP-001", bundle.employeeId);
-        assertEquals("CRED-001", bundle.credentialId);
-        assertEquals("one-time-secret", bundle.bootstrapToken);
     }
 
-    @Test public void acceptsRawJsonForOperatorDiagnostics() throws Exception {
+    @Test public void ignoresLegacyCredentialAndBootstrapFieldsDuringMigration() throws Exception {
         String raw = new JSONObject()
-                .put("gateway", "https://gateway.tigeriq.test/")
+                .put("gateway", "http://100.97.23.87:8790/")
                 .put("employeeId", "EMP-002")
-                .put("credentialId", "CRED-002")
-                .put("bootstrapToken", "token")
+                .put("credentialId", "OLD-CRED")
+                .put("bootstrapToken", "OLD-UNUSED-SECRET")
                 .toString();
         ActivationCode.Bundle bundle = ActivationCode.parse(raw);
-        assertEquals("https://gateway.tigeriq.test", bundle.gateway);
+        assertEquals("http://100.97.23.87:8790", bundle.controller);
+        assertEquals(bundle.controller, bundle.gateway);
         assertEquals("EMP-002", bundle.employeeId);
     }
 
     @Test(expected = IllegalArgumentException.class)
-    public void rejectsNonHttpsGateway() throws Exception {
-        String raw = new JSONObject()
-                .put("gateway", "http://example.test")
+    public void rejectsOtherControllerEndpoint() throws Exception {
+        ActivationCode.parse(new JSONObject()
+                .put("controller", "http://100.100.20.30:8790")
                 .put("employeeId", "EMP-003")
-                .put("credentialId", "CRED-003")
-                .put("bootstrapToken", "token")
-                .toString();
-        ActivationCode.parse(raw);
+                .toString());
     }
 
     @Test(expected = IllegalArgumentException.class)
-    public void rejectsMissingBootstrap() throws Exception {
-        String raw = new JSONObject()
-                .put("gateway", "https://gateway.tigeriq.test")
-                .put("employeeId", "EMP-004")
-                .put("credentialId", "CRED-004")
-                .toString();
-        ActivationCode.parse(raw);
+    public void rejectsMissingEmployee() throws Exception {
+        ActivationCode.parse(new JSONObject()
+                .put("controller", "http://100.97.23.87:8790")
+                .toString());
     }
 }
