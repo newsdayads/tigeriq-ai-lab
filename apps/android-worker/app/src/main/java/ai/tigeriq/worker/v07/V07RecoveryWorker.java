@@ -16,7 +16,7 @@ public final class V07RecoveryWorker extends Worker {
             EmployeeDeviceStore identities = new EmployeeDeviceStore(app);
             EmployeeDeviceStore.Profile profile = identities.load();
             if (profile == null) {
-                status.setState(WorkerState.NEED_ATTENTION, "Thiết bị chưa enrollment", null);
+                status.setState(WorkerState.NEED_ATTENTION, "Thiết bị chưa activation với PC01", null);
                 return Result.success();
             }
             String sessionToken = new SessionManager(app).validToken(profile);
@@ -26,12 +26,12 @@ public final class V07RecoveryWorker extends Worker {
                 if (!snapshot.leaseExpired(System.currentTimeMillis())) {
                     String authority = checkpoints.leaseToken(snapshot);
                     if (authority != null && !authority.isBlank()) {
-                        ApiFirstJobAdapter.requireBinding(profile, snapshot);
-                        status.setState(WorkerState.WORKING, "Khôi phục công việc đang dở", snapshot.jobId);
+                        DirectAiJobAdapter.requireBinding(profile, snapshot);
+                        status.setState(WorkerState.WORKING, "Khôi phục JOB đang dở trên điện thoại", snapshot.jobId);
                         V07WorkScheduler.enqueueJob(app, profile.employeeId, snapshot.jobId, snapshot.idempotencyKey);
                     } else {
                         long delay = Math.max(1_000L, snapshot.leaseExpiresAtEpochMs - System.currentTimeMillis() + 1_000L);
-                        status.setState(WorkerState.WORKING, "Chờ lease cũ hết hạn để reacquire", snapshot.jobId);
+                        status.setState(WorkerState.WORKING, "Sau reboot: chờ lease cũ hết hạn để xin lại JOB", snapshot.jobId);
                         V07WorkScheduler.enqueueRecoveryAfter(app, delay);
                     }
                     return Result.success();
@@ -40,19 +40,19 @@ public final class V07RecoveryWorker extends Worker {
             }
             TigerIqApiClient.PullResult pulled = new TigerIqApiClient(profile).pullJob(sessionToken);
             if (pulled.empty) {
-                status.setState(WorkerState.READY, "Sẵn sàng nhận việc", null);
+                status.setState(WorkerState.READY, "Sẵn sàng nhận JOB từ PC01", null);
                 return Result.success();
             }
             profile = identities.bindAuthoritativeBinding(profile, pulled.lease.bindingId);
             identities.requireBinding(profile, pulled.lease.bindingId);
             checkpoints.saveLease(pulled.lease);
-            status.setState(WorkerState.WORKING, "Đã nhận việc · binding verified", pulled.lease.jobId);
+            status.setState(WorkerState.WORKING, "Đã nhận JOB từ PC01 · binding verified", pulled.lease.jobId);
             V07WorkScheduler.enqueueJob(app, profile.employeeId, pulled.lease.jobId, pulled.lease.idempotencyKey);
             return Result.success();
         } catch (ApiException error) {
             boolean canRetry = RetryPolicy.canRetry(getRunAttemptCount(), error.retryable);
             WorkerState state = error.isTokenExpired() || error.isUnauthorized() || "REENROLL_REQUIRED".equals(error.code) || "STALE_BINDING".equals(error.code) || "BINDING_IDENTITY_MISMATCH".equals(error.code) ? WorkerState.NEED_ATTENTION : (canRetry ? WorkerState.WORKING : WorkerState.NEED_ATTENTION);
-            status.setState(state, "Recovery API: " + error.code, null);
+            status.setState(state, "PC01 recovery: " + error.code, null);
             return canRetry ? Result.retry() : Result.failure();
         } catch (Exception error) {
             boolean canRetry = RetryPolicy.canRetry(getRunAttemptCount(), true);
