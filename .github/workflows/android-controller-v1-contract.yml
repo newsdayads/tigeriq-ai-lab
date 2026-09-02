@@ -39,6 +39,8 @@ jobs:
           android='apps/android-worker/app/src/main/java/ai/tigeriq/worker/v07'
           contract="$android/ControllerV1Contract.java"
           client="$android/TigerIqApiClient.java"
+          authority="$android/ZeroCostAuthority.java"
+          policy="$android/ZeroCostPolicy.java"
           controller='controller116/apps/workforce-controller/src/protocol.ts'
           readme='controller116/scripts/pc-worker/workforce-controller-v1/README.md'
 
@@ -75,6 +77,14 @@ jobs:
           grep -Fq 'submitResult(String jobId' "$client"
           grep -Fq 'heartbeat(String health' "$client"
 
+          grep -Fq 'NO_ENFORCEABLE_PROVIDER_BILLING_PROOF' "$authority"
+          grep -Fq 'public boolean executionAllowed() { return false; }' "$authority"
+          grep -Fq 'ZERO_COST_AUTHORITY_UNVERIFIED' "$policy"
+          if grep -R -n -E 'FREE_CONFIRMED|free_confirmed|geminiBillingState\(|setGeminiBillingState|CheckBox.*zeroCost' "$android"; then
+            echo 'ANDROID_ZERO_COST_AUTHORITY_FAIL: local billing assertion remains executable' >&2
+            exit 1
+          fi
+
           if grep -R -n -E '/v1/android/sessions|/v1/android/jobs/pull|/v1/android/jobs/submit|/v1/inference|SessionManager|SessionLifecycle' "$android"; then
             echo 'ANDROID_CONTROLLER_V1_PROTOCOL_FAIL: Android contains retired protocol' >&2
             exit 1
@@ -85,6 +95,7 @@ jobs:
           fi
           echo "PR116_HEAD=$controller_head"
           echo 'ANDROID_CONTROLLER_V1_STATIC_CONTRACT_MATCH'
+          echo 'ANDROID_ZERO_COST_AUTHORITY_STATIC_GATE_PASS'
       - name: Run focused Android contract tests
         working-directory: apps/android-worker
         run: |
