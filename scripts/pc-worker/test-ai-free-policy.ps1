@@ -16,6 +16,14 @@ Assert-True (-not [bool]$config.policy.paidFallback) 'paid_fallback_disabled'
 Assert-True ([bool]$config.policy.failClosedOnUnknownBilling) 'unknown_billing_fail_closed'
 Assert-True ([int]$config.policy.maxAttemptsPerRole -ge 1 -and [int]$config.policy.maxAttemptsPerRole -le 3) 'bounded_role_attempts'
 
+Assert-True (-not [bool]$config.execution.coordinatorRequiresProviderCredential) 'coordinator_does_not_require_provider_credential'
+Assert-True (-not [bool]$config.execution.serverProviderCallRequired) 'server_provider_call_not_required'
+Assert-True (@($config.execution.allowedLocations) -contains 'pc01-local') 'pc01_local_allowed'
+Assert-True (@($config.execution.allowedLocations) -contains 'pc01-server') 'pc01_server_allowed'
+Assert-True (@($config.execution.allowedLocations) -contains 'employee-device') 'employee_device_allowed'
+Assert-True ([string]$config.execution.employeeDeviceCredentialOwner -eq 'employee-device') 'device_owns_device_provider_credential'
+Assert-True (-not [bool]$config.execution.providerSecretsInEvidence) 'provider_secrets_not_in_evidence'
+
 Assert-True ([string]$config.providers.openrouter.mode -eq 'free_router_only') 'openrouter_free_mode'
 Assert-True ([string]$config.providers.openrouter.model -eq 'openrouter/free') 'openrouter_free_model'
 Assert-True (-not [bool]$config.providers.openrouter.allowNonFreeModels) 'openrouter_nonfree_disabled'
@@ -59,6 +67,9 @@ Assert-True (-not ($serialized -match '(?i)"allowNonFreeModels"\s*:\s*true')) 'n
   requiredDistinctBackendIdentities = 3
   enabledProviderCandidates = $enabledProviders.Count
   firstFallback = [string]$config.routing.fallbackOrder[0]
+  serverProviderCallRequired = [bool]$config.execution.serverProviderCallRequired
+  employeeDeviceAllowed = @($config.execution.allowedLocations) -contains 'employee-device'
+  employeeDeviceCredentialOwner = [string]$config.execution.employeeDeviceCredentialOwner
   groqEnabled = [bool]$config.providers.groq.enabled
   claudeEnabled = [bool]$config.providers.claude_code.enabled
   claudeUsageCreditsForbidden = [bool]$config.providers.claude_code.forbidUsageCredits
