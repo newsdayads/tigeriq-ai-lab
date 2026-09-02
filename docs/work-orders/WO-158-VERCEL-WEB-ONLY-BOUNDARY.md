@@ -1,9 +1,8 @@
 # P0 — Vercel Web-only Boundary Cleanup
 
-Status: `VERCEL_WEB_ONLY_BOUNDARY_READY_FOR_REVIEW` · PR #159 · NO MAIN / NO PRODUCTION
+Status: REVIEW CANDIDATE ONLY · PR #159 · NO MAIN / NO PRODUCTION
 
-Exact review head: `ec6d9150bc2c5facaff467fb302bfcd048eaa6a6`.
-Baseline before boundary cleanup: `4c03113762e987597cc4b71bdd877fbfafc82347`.
+Exact review head and exact-head workflow run IDs are recorded in PR #159 conversation after all gates complete. This file intentionally does not embed a mutable “final SHA”.
 
 ## Boundary decision
 Vercel is Cloud Web only for TigerIQ Owner Cockpit V3:
@@ -42,7 +41,7 @@ Git history preserves the retired source. No source is copied into another deplo
 ## AI authority removal
 Before cleanup, `chief.mjs` used `https://ai-gateway.vercel.sh/v1/chat/completions`, defaulted to an OpenAI model, configured Gemini fallback, and `control.mjs` delegated operation `chat` to `decideWithChief()`.
 
-After this PR is the deployed source:
+After this boundary source is adopted:
 - `api/` contains only `owner-auth.mjs`;
 - no active V3 Web or Vercel serverless source references Vercel AI Gateway, OpenAI API, Gemini API, AI Gateway credentials, `getVercelOidcToken`, or `decideWithChief`;
 - AI/model/runtime authority stays outside Vercel.
@@ -76,26 +75,16 @@ After this PR is the deployed source:
 The release workflow has only `workflow_dispatch`; it has no `push` or `pull_request` deployment trigger. It rejects non-Web paths and rejects docs/tests/workflow-only diffs as release candidates. Validation reruns the Web boundary, Typecheck, Unit, desktop+iPhone Playwright and Build before any explicit Vercel command.
 
 ## Current activation truth
-This P0 is intentionally off MAIN/Production. Therefore repository branches that were created before this policy and have not adopted the new `vercel.json` can still trigger the existing Vercel Git integration. During review, fresh PC01 branch commits were observed creating Vercel deployment attempts, while exact P0 heads did not create deployments.
+This P0 is intentionally off MAIN/Production. Therefore repository branches that were created before this policy and have not adopted the new `vercel.json` can still trigger the existing Vercel Git integration. During review, fresh PC01 branch commits were observed creating Vercel deployment attempts, while P0 Web boundary commits did not create deployments.
 
 Global suppression for all long-lived pre-policy branches becomes enforceable only after an Owner-approved adoption path (merge/rebase/project-level Git provider setting). No such MAIN/project Production mutation is performed by CHAT01 under this task.
-
-For final exact head `ec6d9150bc2c5facaff467fb302bfcd048eaa6a6`, the Vercel deployment ledger returned zero deployments after the commit timestamp.
-
-## Exact-head gates
-- CI run `33652680967`, job `100323367907`: PASS.
-  - Typecheck PASS.
-  - Unit: 25 files / 107 tests PASS.
-  - `tests/vercel-web-only-boundary.test.ts`: 4/4 PASS.
-  - Chromium Playwright: 3/3 PASS — foundation + iPhone V3 + desktop V3.
-  - Build PASS.
-- Queue Hygiene run `33652681016`, job `100323368124`: PASS, including `VERCEL_WEB_ONLY_BOUNDARY_PASS` and Work Board UI/build gates.
-- Vercel Web Boundary Verify run `33652680965`: PASS — Owner auth syntax, boundary/release policy, `vercel.json`, Typecheck/Unit/Build.
 
 ## Automated enforcement
 - `tests/vercel-web-only-boundary.test.ts` — Unit/contract gate.
 - `scripts/verify_vercel_web_only_boundary.mjs` — static call-graph + deploy-trigger gate.
 - Queue Hygiene executes the boundary verifier.
-- Vercel Verify no longer tests Chief/AI functions; it verifies Owner auth + Web-only boundary + normal repo gates.
+- Vercel Web Boundary Verify no longer tests Chief/AI functions; it verifies Owner auth + Web-only boundary + normal repo gates.
+
+Release-review evidence must show exact-head PASS for Typecheck, Unit/contract, Chromium desktop+iPhone, Build, Queue Hygiene and Vercel Web Boundary Verify before `VERCEL_WEB_ONLY_BOUNDARY_READY_FOR_REVIEW` is emitted.
 
 No VPS, Cloudflare, paid service, PC01 runtime, Android runtime or PostgreSQL runtime change is part of this cleanup.
