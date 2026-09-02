@@ -1,85 +1,177 @@
-# TigerIQ Workforce Controller V1 — PC01 local-first
+# TigerIQ Workforce Controller V1 — PC01 ↔ Android canonical contract
 
-Status: repository-prepared only. This package does **not** claim that port 8790 is listening on PC01.
+Status: repository integration only. This document does **not** claim that PC01 is physically listening on port 8790 today.
 
-## Fixed deployment boundary
+## One communication path
+
+Android must use the Controller V1 routes below. The legacy Android-only routes are retired for V1 integration and must not be implemented on PC01:
+
+- retired: `/v1/android/sessions`
+- retired: `/v1/android/jobs/pull`
+- retired: `/v1/android/jobs/submit`
+
+Canonical Android ↔ PC01 routes:
+
+- `POST /api/v1/jobs/lease` — receive the next job lease.
+- `POST /api/v1/jobs/{jobId}/result` — return result and evidence in one atomic submission.
+- `POST /api/v1/devices/{deviceId}/heartbeat` — employee/device health.
+- `GET /api/v1/status` — Controller/PostgreSQL health; not an Android work-authorization endpoint.
+
+There is no Android session store and no separate Android evidence store.
+
+## One operational datastore
+
+The production persistence contract is the PostgreSQL operational-state model from PR #141:
+
+- migration: `db/migrations/001_operational_state_v1.sql`
+- service: `packages/work-state/src/service.ts`
+- repository: `packages/work-state/src/postgres-repository.ts`
+- driver boundary: `packages/work-state/src/pg-driver.ts`
+
+Canonical tables include `employees`, `devices`, `employee_device_bindings`, `jobs`, `leases`, `results`, `evidence`, `heartbeats`, `prompts`, and related operational tables from migration `001_operational_state_v1`.
+
+The former #116 `workforce_*` Python schema/store has been removed. Controller startup fails closed when PostgreSQL or migration `001_operational_state_v1` is unavailable.
+
+## Device authentication contract for CHAT 02
+
+Every Android work request is authenticated directly; no session mint is required.
+
+Android keeps its EC P-256 private key in Android Keystore and signs with `SHA256withECDSA`. The Controller requires these headers on every protected request:
+
+- `X-TigerIQ-Device-Proof-V: 1`
+- `X-TigerIQ-Employee-Id`
+- `X-TigerIQ-Node-Id`
+- `X-TigerIQ-Device-Id`
+- `X-TigerIQ-Device-Key-Fingerprint`
+- `X-TigerIQ-Device-Public-Key` — X.509/SPKI DER encoded as standard Base64
+- `X-TigerIQ-Device-Timestamp` — epoch milliseconds
+- `X-TigerIQ-Device-Nonce`
+- `X-TigerIQ-Device-Challenge`
+- `X-TigerIQ-Device-Signature` — Base64URL ECDSA signature
+
+Canonical string, byte-for-byte:
+
+`METHOD\nPATH\nEMPLOYEE_ID\nNODE_ID\nDEVICE_ID\nTIMESTAMP_MS\nNONCE\nSHA256(BODY_BYTES)`
+
+`X-TigerIQ-Device-Challenge` is the lowercase SHA-256 hex of that canonical UTF-8 string. The signature is over the canonical UTF-8 string itself.
+
+PC01 authorizes only when PostgreSQL has:
+
+- active `employees.employee_id`;
+- active `devices.device_id`;
+- active `employee_device_bindings` for that exact employee/device pair;
+- matching `devices.public_key_fingerprint`;
+- matching `devices.metadata.publicKeyBase64`.
+
+Capabilities and permissions used for job assignment come from PostgreSQL, never from Android request claims. Timestamp skew is bounded and duplicate nonce use in the running Controller process is rejected.
+
+## Lease request
+
+`POST /api/v1/jobs/lease`
+
+Body may be empty or contain only:
+
+```json
+{"leaseTtlMs":120000}
+```
+
+Allowed TTL is 15 seconds to 15 minutes. PC01 derives employee/device/binding/capabilities/permissions from authenticated PostgreSQL state and calls PR #141 `OperationalWorkService.assignNextJob()` with `workerKind=device`.
+
+Success returns:
+
+```json
+{
+  "ok": true,
+  "lease": {
+    "leaseId": "...",
+    "leaseToken": "...",
+    "jobId": "...",
+    "employeeId": "...",
+    "deviceId": "...",
+    "bindingId": "...",
+    "attempt": 1,
+    "expiresAt": "...",
+    "job": {"jobId":"...","idempotencyKey":"...","payload":{}}
+  }
+}
+```
+
+`lease=null` means no eligible job. Android must checkpoint `jobId`, `idempotencyKey`, `bindingId`, `leaseId`, attempt and expiry. Lease authority must not be submitted after expiry.
+
+## Result + evidence submission
+
+`POST /api/v1/jobs/{jobId}/result`
+
+Body:
+
+```json
+{
+  "leaseId": "...",
+  "leaseToken": "...",
+  "result": {
+    "status": "completed",
+    "completedAt": "2026-09-02T00:00:00.000Z",
+    "output": {
+      "text": "AI output",
+      "provider": "gemini",
+      "model": "...",
+      "timestamps": {},
+      "attempts": [],
+      "failover": {"used": false},
+      "errors": []
+    },
+    "evidence": [
+      {
+        "kind": "json",
+        "ref": "tigeriq://EMP/JOB/phone-ai-result.json",
+        "summary": "Phone executed provider directly; secret excluded",
+        "sha256": "64-lowercase-hex"
+      }
+    ]
+  }
+}
+```
+
+Important for CHAT 02: `result.output` is an **object**, not the old plain string. Provider/model/timestamps/provider attempts/failover/errors belong inside that output object. Evidence is submitted inline with the result and PR #141 persists it in canonical `evidence` within the same result transaction.
+
+For failure, use `status=failed` plus `failure={code,message,retriable}`.
+
+## Duplicate/expiry/restart semantics
+
+PR #141 is authoritative:
+
+- job creation uses idempotency keys;
+- assignment uses PostgreSQL transaction locking and `FOR UPDATE SKIP LOCKED`;
+- one active lease per job is enforced;
+- device lease requires the active employee/device binding;
+- lease token is stored only as SHA-256;
+- an identical result retry for the same job attempt returns the existing persisted result;
+- a conflicting duplicate result is rejected;
+- stale/invalid/expired lease submissions are rejected;
+- expired leases are marked expired and their jobs requeued when attempts remain;
+- Controller startup calls `recoverAfterRestart()` before listening, so PostgreSQL reconstructs operational authority after PC01 restart.
+
+Android should retain its encrypted durable checkpoint from #140. If its in-process lease token is lost after Android process/reboot, it must not fabricate authority; it waits for/reacquires work after the old lease expires and PC01 recovery requeues the job.
+
+## PC01 network/deployment boundary
 
 - Host: PC01 only.
 - Bind: exactly `100.97.23.87`.
 - Port: exactly `8790`.
-- Allowed inbound network: Tailscale CGNAT `100.64.0.0/10` only.
-- Persistence: PostgreSQL only; startup fails closed when PostgreSQL is unavailable.
-- No public/wildcard bind (`0.0.0.0`/`::`).
-- No model-controlled raw command/shell endpoint.
-- No MAIN/Production checkout, pull or merge in the installer.
+- Firewall inbound remote range: Tailscale `100.64.0.0/10` only.
+- No `0.0.0.0`, `::`, LAN/public alternate listener.
+- No model-controlled raw shell/PowerShell endpoint.
+- No MAIN/Production checkout/pull/merge in the installer.
+- No paid service.
 
-## CHAT 03 PostgreSQL handoff contract
+`install-workforce-controller-v1.ps1` prepares the Node Controller, free `pg@8` runtime adapter, canonical PR #141 migration, SYSTEM Scheduled Task, startup/retry recovery and Tailscale-only firewall. It does not start the Controller unless `-StartNow` is explicitly supplied.
 
-No concrete PostgreSQL adapter/schema from CHAT 03 is present in the currently accessible work-management branch. V1 therefore isolates persistence behind `PostgresStore` and expects CHAT 03 to provide only the local DSN handoff file:
+`health-workforce-controller-v1.ps1` passes only when Tailscale is exactly `100.97.23.87`, the Scheduled Task exists, port 8790 has exactly the expected listener and no other listener, migration `001_operational_state_v1` is present, and `/api/v1/status` reports `protocol=controller-v1` and `postgres=true`.
 
-`F:\TigerIQ\Secrets\postgres-workforce.dsn`
+## Repository integration gate
 
-The file contains one PostgreSQL DSN line, is never committed, and the installer restricts its ACL to SYSTEM and local Administrators. Replacing `PostgresStore` with the final CHAT 03 adapter must not require changing the HTTP API or Scheduled Task contract.
+`.github/workflows/wo045-pc01-android-postgres-integration.yml` boots PostgreSQL 16 in CI and simulates:
 
-## API V1
+Android EC device proof → Controller authentication → PostgreSQL binding → job lease → heartbeat → result + evidence → duplicate retry/conflict checks → simulated PC01 restart → expired-lease recovery → status.
 
-- `GET /api/v1/status` and compatibility `GET /api/workforce/status`
-- `GET /api/v1/employees`
-- `POST /api/v1/employees`
-- `POST /api/v1/devices`
-- `POST /api/v1/devices/{deviceId}/heartbeat`
-- `POST /api/v1/jobs`
-- `POST /api/v1/jobs/{jobId}/prompts`
-- `POST /api/v1/jobs/lease`
-- `POST /api/v1/jobs/{jobId}/lease/heartbeat`
-- `POST /api/v1/jobs/{jobId}/evidence`
-- `POST /api/v1/jobs/{jobId}/result`
-
-Admin endpoints require `X-TigerIQ-Admin-Secret`. Device endpoints require `X-TigerIQ-Device-Id` plus a bearer token. Device credentials are returned once and only their SHA-256 digest is persisted. Lease credentials are also persisted only as SHA-256 digests.
-
-## PostgreSQL model
-
-Schema creates the bounded operational tables:
-
-`workforce_employee`, `workforce_device`, `workforce_job`, `workforce_prompt`, `workforce_lease`, `workforce_heartbeat`, `workforce_result`, `workforce_evidence`.
-
-Job creation has a unique idempotency key. Leasing uses `FOR UPDATE SKIP LOCKED`. Expired leases are marked expired and their jobs are requeued before the next lease operation. Lease heartbeat has a bounded TTL of 30–900 seconds. Result submission is retry-safe for the same job/lease/device and evidence IDs are idempotent.
-
-## Install/autostart/recovery
-
-`install-workforce-controller-v1.ps1` is a reviewed static installer. It:
-
-1. refuses any host except PC01;
-2. verifies the live Tailscale IPv4 is exactly `100.97.23.87`;
-3. refuses installation if port 8790 already has an unknown listener;
-4. requires the local CHAT 03 PostgreSQL DSN handoff;
-5. creates a versioned Python virtual environment and installs pinned `psycopg[binary]`;
-6. migrates/checks PostgreSQL before registering runtime;
-7. registers `TigerIQ Workforce Controller` as SYSTEM with AtStartup, bounded one-minute restarts, `IgnoreNew`, and a five-minute recovery trigger for late network/Tailscale availability;
-8. creates an inbound firewall rule only for local address `100.97.23.87`, port 8790, remote `100.64.0.0/10`;
-9. does not start the service unless `-StartNow` is explicitly supplied.
-
-## Deterministic health gate
-
-`health_workforce_controller_v1.py` returns PASS only when all are true:
-
-- Tailscale reports exactly `100.97.23.87`;
-- exactly one listener exists on port 8790 and it is bound to `100.97.23.87`;
-- there is no wildcard or other-address listener on 8790;
-- Scheduled Task `TigerIQ Workforce Controller` exists;
-- `GET http://100.97.23.87:8790/api/v1/status` returns HTTP 200 with `ok=true` and `postgres=true`.
-
-## Physical deployment gate for the next PC01 session
-
-Do not close Issue #100 or advance #137 until the following evidence is collected from PC01 in order:
-
-1. Secure Worker V3 + Watchdog status still healthy.
-2. Tailscale IPv4 is still exactly `100.97.23.87`.
-3. CHAT 03 PostgreSQL DSN handoff file exists locally; PostgreSQL readiness succeeds without exposing the DSN.
-4. Run the reviewed installer from the PR #116 branch with explicit start enabled under an authorized SYSTEM/elevated context.
-5. Scheduled Task exists and is running or ready with the expected triggers/restart policy.
-6. Health gate returns PASS for exact bind, no wildcard/public listener, HTTP 200 and PostgreSQL readiness.
-7. Restart the task and repeat the health gate.
-8. Only then run reboot/network-loss recovery and physical JOB E2E; record immutable evidence before changing #100/#137 status.
-
-No physical PC01 port, PostgreSQL, reboot or E2E result is asserted by this repository-only preparation.
+Repository READY does not equal physical PC01 READY. Physical installation/listener/reboot/E2E remains a later explicit gate.
