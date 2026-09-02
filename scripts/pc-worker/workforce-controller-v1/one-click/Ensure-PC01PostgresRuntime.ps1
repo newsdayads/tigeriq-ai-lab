@@ -2,13 +2,14 @@ param(
   [string]$SecretsRoot = 'F:\TigerIQ\Secrets',
   [string]$EvidenceDir = 'F:\TigerIQ\Evidence\pc01-one-click',
   [string]$DatabaseUrl = $env:TIGERIQ_DATABASE_URL,
+  [string]$RuntimeTaskUser = "$env:USERDOMAIN\$env:USERNAME",
   [switch]$AllowInstall
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $DatabaseUrlFile = Join-Path $SecretsRoot 'workforce-controller-v1.database-url'
-$PgPassFile = Join-Path $SecretsRoot 'workforce-controller-v1.pgpass'
+$DatabasePasswordFile = Join-Path $SecretsRoot 'workforce-controller-v1.database-password.secure'
 $AdminSecretFile = Join-Path $SecretsRoot 'postgres-bootstrap-admin.secret'
 $InstallOptionFile = Join-Path $SecretsRoot 'postgres-install-options.conf'
 $BootstrapSqlFile = Join-Path $SecretsRoot 'postgres-bootstrap-runtime.sql'
@@ -30,7 +31,8 @@ function Resolve-Executable([string]$Name,[string[]]$Candidates) {
 function Protect-LocalFile([string]$Path) {
   $acl = New-Object Security.AccessControl.FileSecurity
   $acl.SetAccessRuleProtection($true,$false)
-  $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule('SYSTEM','FullControl','Allow')))
+  if ([string]::IsNullOrWhiteSpace($RuntimeTaskUser)) { Fail 'RUNTIME_TASK_USER_MISSING' 'A named non-SYSTEM task user is required.' }
+  $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($RuntimeTaskUser,'FullControl','Allow')))
   $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule('BUILTIN\Administrators','FullControl','Allow')))
   Set-Acl -Path $Path -AclObject $acl
 }
@@ -57,30 +59,39 @@ function Get-ConfiguredDatabaseUrl {
   if (Test-Path $DatabaseUrlFile) { return [IO.File]::ReadAllText($DatabaseUrlFile).Trim() }
   return $null
 }
-function Assert-SafeDatabaseUrl([string]$Url) {
+function Assert-CanonicalReuseUrl([string]$Url) {
   if ([string]::IsNullOrWhiteSpace($Url)) { Fail 'DATABASE_URL_MISSING' 'Canonical TigerIQ database URL is missing.' }
-  if ($Url -match '://[^/@:]+:[^/@]+@' -or $Url -match '(?i)password=') { Fail 'DATABASE_URL_SECRET' 'Inline database passwords are forbidden.' }
-  try { $uri = [Uri]$Url } catch { Fail 'DATABASE_URL_INVALID' 'Canonical database URL is invalid.' }
-  if ($uri.Scheme -notin @('postgres','postgresql')) { Fail 'DATABASE_URL_SCHEME' 'Canonical datastore must be PostgreSQL.' }
-  if ($uri.Host -notin @('127.0.0.1','localhost')) { Fail 'DATABASE_NOT_LOCAL' 'TigerIQ operational PostgreSQL must remain local to PC01.' }
+  if ($Url -match '://[^/@:]+:[^/@]+@' -or $Url -match '(?i)password=') { Fail 'POSTGRES_EXISTING_UNMANAGED' 'Configured PostgreSQL URL contains an inline secret and cannot prove the canonical datastore.' }
+  try { $uri = [Uri]$Url } catch { Fail 'POSTGRES_EXISTING_UNMANAGED' 'Configured PostgreSQL URL is ambiguous; refusing to reuse an unmanaged datastore.' }
+  $port = if ($uri.Port -gt 0) { $uri.Port } else { 5432 }
+  $database = $uri.AbsolutePath.Trim('/')
+  $role = $uri.UserInfo
+  if (
+    $uri.Scheme -notin @('postgres','postgresql') -or
+    $uri.Host -ne $CanonicalHost -or
+    $port -ne $CanonicalPort -or
+    $database -ne $CanonicalDatabase -or
+    $role -ne $CanonicalUser -or
+    -not [string]::IsNullOrWhiteSpace($uri.Query) -or
+    -not [string]::IsNullOrWhiteSpace($uri.Fragment)
+  ) {
+    Fail 'POSTGRES_EXISTING_UNMANAGED' 'Configured PostgreSQL is not exactly 127.0.0.1:5432/tigeriq as tigeriq_runtime; refusing to reuse or migrate an unmanaged datastore.'
+  }
   return $uri
 }
-function Ensure-PgPassFromEnvironment([Uri]$Uri) {
-  if (Test-Path $PgPassFile) { Protect-LocalFile $PgPassFile; return $true }
-  if ([string]::IsNullOrWhiteSpace($env:PGPASSWORD)) { return $false }
-  $user = ($Uri.UserInfo -split ':')[0]
-  if ([string]::IsNullOrWhiteSpace($user)) { Fail 'DATABASE_USER_MISSING' 'Database URL must name the runtime role.' }
-  $port = if ($Uri.Port -gt 0) { $Uri.Port } else { 5432 }
-  $database = $Uri.AbsolutePath.TrimStart('/')
-  if ([string]::IsNullOrWhiteSpace($database)) { Fail 'DATABASE_NAME_MISSING' 'Database URL must name the runtime database.' }
-  Write-ProtectedText $PgPassFile "$($Uri.Host):$port`:$database`:$user`:$($env:PGPASSWORD)`r`n"
-  $env:PGPASSWORD = $null
-  return $true
+function Write-EncryptedDatabasePassword([string]$Password) {
+  if ([string]::IsNullOrWhiteSpace($Password)) { Fail 'DATABASE_PASSWORD_MISSING' 'A runtime database password is required.' }
+  $encrypted = (ConvertTo-SecureString $Password -AsPlainText -Force | ConvertFrom-SecureString)
+  Write-ProtectedText $DatabasePasswordFile $encrypted
 }
-function Test-RuntimeConnection([string]$Url,[string]$Psql) {
-  $env:PGPASSFILE = $PgPassFile
-  $probe = (& $Psql $Url -v ON_ERROR_STOP=1 -Atc 'SELECT 1;' 2>$null).Trim()
-  return ($LASTEXITCODE -eq 0 -and $probe -eq '1')
+function Get-EncryptedDatabasePassword {
+  if (-not (Test-Path $DatabasePasswordFile)) { return $null }
+  Protect-LocalFile $DatabasePasswordFile
+  try { return (New-Object System.Net.NetworkCredential('',(ConvertTo-SecureString ([IO.File]::ReadAllText($DatabasePasswordFile).Trim())))).Password } catch { Fail 'DATABASE_PASSWORD_DECRYPT_FAILED' 'Encrypted runtime database credential is not usable by the named task user.' }
+}
+function Test-RuntimeConnection([string]$Url,[string]$Psql,[string]$Password) {
+  $env:PGPASSWORD = $Password
+  try { $probe = (& $Psql $Url -v ON_ERROR_STOP=1 -Atc 'SELECT 1;' 2>$null).Trim(); return ($LASTEXITCODE -eq 0 -and $probe -eq '1') } finally { $env:PGPASSWORD = $null }
 }
 function Wait-Postgres([string]$Psql,[string]$AdminPassword) {
   $env:PGPASSWORD = $AdminPassword
@@ -165,10 +176,9 @@ ALTER ROLE $CanonicalUser WITH LOGIN PASSWORD '$runtimeSecret' NOSUPERUSER NOCRE
   }
 
   $url = "postgresql://$CanonicalUser@$CanonicalHost`:$CanonicalPort/$CanonicalDatabase"
-  Write-ProtectedText $PgPassFile "$CanonicalHost`:$CanonicalPort`:$CanonicalDatabase`:$CanonicalUser`:$runtimeSecret`r`n"
+  Write-EncryptedDatabasePassword $runtimeSecret
   Write-ProtectedText $DatabaseUrlFile $url
-  $env:PGPASSFILE = $PgPassFile
-  if (-not (Test-RuntimeConnection $url $Psql)) { Fail 'POSTGRES_RUNTIME_AUTH_FAILED' 'Canonical TigerIQ runtime role/database probe failed.' }
+  if (-not (Test-RuntimeConnection $url $Psql $runtimeSecret)) { Fail 'POSTGRES_RUNTIME_AUTH_FAILED' 'Canonical TigerIQ runtime role/database probe failed.' }
   Remove-Item $AdminSecretFile -Force -ErrorAction SilentlyContinue
   return $url
 }
@@ -178,14 +188,14 @@ $configuredUrl = Get-ConfiguredDatabaseUrl
 $psql = Resolve-Psql
 
 if (-not [string]::IsNullOrWhiteSpace($configuredUrl)) {
-  $uri = Assert-SafeDatabaseUrl $configuredUrl
+  $uri = Assert-CanonicalReuseUrl $configuredUrl
   if (-not $psql) { Fail 'PSQL_MISSING_FOR_CONFIGURED_DB' 'Canonical database is configured but psql is unavailable; refusing to install a parallel PostgreSQL instance.' }
-  $durableCredential = Ensure-PgPassFromEnvironment $uri
-  if (-not $durableCredential) { Fail 'DATABASE_CREDENTIAL_NOT_DURABLE' 'Canonical database URL exists but no SYSTEM-readable protected .pgpass is available.' }
-  if (-not (Test-RuntimeConnection $configuredUrl $psql)) { Fail 'POSTGRES_CONNECTION_FAILED' 'Configured canonical TigerIQ PostgreSQL is not reachable.' }
+  $durableCredential = Get-EncryptedDatabasePassword
+  if ([string]::IsNullOrWhiteSpace($durableCredential)) { Fail 'DATABASE_CREDENTIAL_NOT_DURABLE' 'Canonical database URL exists but no protected encrypted credential is available for the named task user.' }
+  if (-not (Test-RuntimeConnection $configuredUrl $psql $durableCredential)) { Fail 'POSTGRES_CONNECTION_FAILED' 'Configured canonical TigerIQ PostgreSQL is not reachable.' }
   [pscustomobject]@{
     ok=$true; action='pc01.postgres.ensure'; installedPostgres=$false; reusedConfiguredDatastore=$true;
-    databaseUrl=$configuredUrl; pgPassFile=$PgPassFile; serviceNames=@((Get-PostgresServices | ForEach-Object { $_.Name })); secretsPrinted=$false
+    databaseUrl=$configuredUrl; databasePasswordFile=$DatabasePasswordFile; serviceNames=@((Get-PostgresServices | ForEach-Object { $_.Name })); secretsPrinted=$false
   }
   exit 0
 }
@@ -214,5 +224,5 @@ if (-not $psql) {
 $runtimeUrl = Provision-RuntimeDatabase $psql $installState.adminPassword
 [pscustomobject]@{
   ok=$true; action='pc01.postgres.ensure'; installedPostgres=[bool]$installState.installed; reusedConfiguredDatastore=$false;
-  databaseUrl=$runtimeUrl; pgPassFile=$PgPassFile; serviceNames=@($CanonicalService); secretsPrinted=$false
+  databaseUrl=$runtimeUrl; databasePasswordFile=$DatabasePasswordFile; serviceNames=@($CanonicalService); secretsPrinted=$false
 }

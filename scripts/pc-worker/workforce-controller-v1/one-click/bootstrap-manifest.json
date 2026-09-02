@@ -2,6 +2,11 @@
   "schema": "tigeriq.pc01.one-click.v1",
   "issue": 156,
   "bootstrapBranch": "wo056/pc01-one-click-bootstrap",
+  "approvedBootstrap": {
+    "sha": "4f2aaf6e57095d98059ee4e73fac7af201ce2679",
+    "remoteRef": "refs/heads/wo056/pc01-one-click-bootstrap",
+    "policy": "LOCAL_HEAD_AND_REMOTE_REF_MUST_EXACTLY_MATCH_THIS_REVIEWED_SHA"
+  },
   "controllerBasis": {
     "pr": 116,
     "sha": "c0632bc110ea0d26925d3657ac485cb90b5ee010"
@@ -25,7 +30,7 @@
     "database": "tigeriq",
     "user": "tigeriq_runtime",
     "databaseUrlFile": "F:\\TigerIQ\\Secrets\\workforce-controller-v1.database-url",
-    "pgPassFile": "F:\\TigerIQ\\Secrets\\workforce-controller-v1.pgpass",
+    "databasePasswordFile": "F:\\TigerIQ\\Secrets\\workforce-controller-v1.database-password.secure",
     "policy": "REUSE_CONFIGURED_CANONICAL_OR_INSTALL_IF_ABSENT_FAIL_CLOSED_ON_AMBIGUOUS_EXISTING_POSTGRES"
   },
   "network": {

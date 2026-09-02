@@ -16,6 +16,8 @@ $PostgresBasisSha = [string]$Manifest.postgresBasis.sha
 $Expected001Blob = [string]$Manifest.postgresBasis.migration001BlobSha
 $Expected002Blob = [string]$Manifest.migration002BlobSha
 $ExpectedBranch = [string]$Manifest.bootstrapBranch
+$ApprovedBootstrapHead = [string]$Manifest.approvedBootstrap.sha
+$ApprovedRemoteRef = [string]$Manifest.approvedBootstrap.remoteRef
 $ExpectedHost = [string]$Manifest.network.host
 $ControllerPort = [int]$Manifest.network.port
 $ExpectedRemoteCidr = [string]$Manifest.network.tailscaleRemoteCidr
@@ -35,8 +37,9 @@ $InstallerScript = Join-Path (Split-Path $PSScriptRoot -Parent) 'install-workfor
 $RestartVerifier = Join-Path $PSScriptRoot 'verify-controller-restart.ps1'
 $RollbackScript = Join-Path $PSScriptRoot 'Invoke-PC01-OneClickRollback.ps1'
 $PostgresProvisioner = Join-Path $PSScriptRoot 'Ensure-PC01PostgresRuntime.ps1'
+$ApprovedHeadVerifier = Join-Path $PSScriptRoot 'Assert-PC01ApprovedHead.ps1'
 $DatabaseUrlFile = Join-Path $SecretsRoot 'workforce-controller-v1.database-url'
-$PgPassFile = Join-Path $SecretsRoot 'workforce-controller-v1.pgpass'
+$DatabasePasswordFile = Join-Path $SecretsRoot 'workforce-controller-v1.database-password.secure'
 
 $Keep = @()
 $Disable = @()
@@ -51,6 +54,10 @@ $ChangesStarted = $false
 $PostgresRuntime = $null
 
 function Fail([string]$Code,[string]$Message) { throw "$Code`: $Message" }
+function Get-DatabasePassword([string]$Path) {
+  if (-not (Test-Path $Path)) { Fail 'DATABASE_CREDENTIAL_MISSING' 'Protected encrypted PostgreSQL credential is missing.' }
+  try { return (New-Object System.Net.NetworkCredential('',(ConvertTo-SecureString ([IO.File]::ReadAllText($Path).Trim())))).Password } catch { Fail 'DATABASE_PASSWORD_DECRYPT_FAILED' 'Encrypted PostgreSQL credential cannot be decrypted by the approved runtime user.' }
+}
 function Save-Json([object]$Value,[string]$Path) { $Value | ConvertTo-Json -Depth 8 | Set-Content -Path $Path -Encoding UTF8 }
 function Resolve-Executable([string]$Name,[string[]]$Candidates) {
   $cmd = Get-Command $Name -ErrorAction SilentlyContinue
@@ -107,7 +114,7 @@ function Stop-KnownPortConflict([int]$Pid) {
 
 if (-not $ExecutePhysical) { $AuditOnly = $true }
 New-Item -ItemType Directory -Force -Path $EvidenceDir,$EvidenceRoot,$SecretsRoot | Out-Null
-foreach ($requiredScript in @($HealthScript,$InstallerScript,$RestartVerifier,$RollbackScript,$PostgresProvisioner)) { if (-not (Test-Path $requiredScript)) { Fail 'PACKAGE_INCOMPLETE' "Missing one-click component: $requiredScript" } }
+foreach ($requiredScript in @($HealthScript,$InstallerScript,$RestartVerifier,$RollbackScript,$PostgresProvisioner,$ApprovedHeadVerifier)) { if (-not (Test-Path $requiredScript)) { Fail 'PACKAGE_INCOMPLETE' "Missing one-click component: $requiredScript" } }
 
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = New-Object Security.Principal.WindowsPrincipal($identity)
@@ -119,16 +126,14 @@ $git = Resolve-Executable 'git.exe' @('C:\Program Files\Git\cmd\git.exe')
 if (-not $git -and $ExecutePhysical) { Install-FreePackage 'Git' 'Git.Git'; $git = Resolve-Executable 'git.exe' @('C:\Program Files\Git\cmd\git.exe') }
 if (-not $git) { Fail 'GIT_MISSING' 'Git is required to verify branch/SHA.' }
 if (-not (Test-Path (Join-Path $RepoPath '.git'))) { Fail 'REPO_MISSING' "TigerIQ repository not found at $RepoPath." }
-
-$branch = (& $git -C $RepoPath branch --show-current).Trim()
-$localHead = (& $git -C $RepoPath rev-parse HEAD).Trim()
+$approvedHead = & $ApprovedHeadVerifier -RepoPath $RepoPath -GitExecutable $git -ExpectedBranch $ExpectedBranch -ApprovedHeadSha $ApprovedBootstrapHead -ApprovedRemoteRef $ApprovedRemoteRef
+if ($LASTEXITCODE -ne 0 -or -not $approvedHead) { Fail 'APPROVED_HEAD_VERIFY_FAILED' 'Reviewed bootstrap HEAD verification did not return an approved result.' }
+$branch = [string]$approvedHead.branch
+$localHead = [string]$approvedHead.head
 $dirty = @(& $git -C $RepoPath status --porcelain)
 if ($branch -ne $ExpectedBranch) { Fail 'WRONG_BRANCH' "Expected bootstrap branch $ExpectedBranch; current branch is $branch." }
 if ($dirty.Count -gt 0) { Fail 'REPO_DIRTY' 'Repository is dirty; physical bootstrap is fail-closed.' }
-& $git -C $RepoPath fetch --quiet origin $ExpectedBranch
-if ($LASTEXITCODE -ne 0) { Fail 'GIT_FETCH_FAILED' 'Could not refresh the approved bootstrap branch.' }
-$remoteHead = (& $git -C $RepoPath rev-parse "origin/$ExpectedBranch").Trim()
-if ($localHead -ne $remoteHead) { Fail 'WRONG_SHA' 'Local bootstrap HEAD is not the exact remote approved branch HEAD.' }
+$remoteHead = [string]$approvedHead.remoteHead
 & $git -C $RepoPath merge-base --is-ancestor $RuntimeBasisSha $localHead
 if ($LASTEXITCODE -ne 0) { Fail 'RUNTIME_BASIS_MISSING' 'Bootstrap HEAD is not descended from the reviewed Controller basis SHA.' }
 $runtimePaths=@('apps/workforce-controller','packages/work-state','db/migrations/001_operational_state_v1.sql','db/migrations/002_device_proof_replay_v1.sql','tests/pc01-android-postgres-integration.test.ts')
@@ -182,9 +187,10 @@ try {
   if($LASTEXITCODE -ne 0 -or $ips.Count -ne 1 -or $ips[0] -ne $ExpectedHost){Fail 'TAILSCALE_IP_MISMATCH' "Expected PC01 Tailscale IPv4 $ExpectedHost; bootstrap will not reconfigure identity automatically."}
   $Keep += "Tailscale existing identity $ExpectedHost"; if($ollama){$Keep+='Ollama retained as optional local fallback; not Controller authority'}; if($openclaw -or @($taskAudit|Where-Object{$_.classification -eq 'keep-disconnected-never-enable'}).Count -gt 0){$Keep+='OpenClaw observed but not enabled/reconnected'}
 
-  $PostgresRuntime = & $PostgresProvisioner -SecretsRoot $SecretsRoot -EvidenceDir $EvidenceDir -DatabaseUrl $DatabaseUrl -AllowInstall:(-not $SkipPrerequisiteInstall)
+  $runtimeTaskUser="$env:USERDOMAIN\$env:USERNAME"
+  $PostgresRuntime = & $PostgresProvisioner -SecretsRoot $SecretsRoot -EvidenceDir $EvidenceDir -DatabaseUrl $DatabaseUrl -RuntimeTaskUser $runtimeTaskUser -AllowInstall:(-not $SkipPrerequisiteInstall)
   if(-not $PostgresRuntime -or -not $PostgresRuntime.ok){Fail 'POSTGRES_PROVISION_FAILED' 'Canonical TigerIQ PostgreSQL provisioning failed.'}
-  $effectiveDatabaseUrl=[string]$PostgresRuntime.databaseUrl; $PgPassFile=[string]$PostgresRuntime.pgPassFile; $env:PGPASSFILE=$PgPassFile
+  $effectiveDatabaseUrl=[string]$PostgresRuntime.databaseUrl; $DatabasePasswordFile=[string]$PostgresRuntime.databasePasswordFile; $env:PGPASSWORD=Get-DatabasePassword $DatabasePasswordFile
   $psql=Resolve-Executable 'psql.exe' @('C:\Program Files\PostgreSQL\17\bin\psql.exe','C:\Program Files\PostgreSQL\16\bin\psql.exe')
   if(-not $psql){Fail 'PSQL_UNRESOLVED' 'psql is unavailable after PostgreSQL provisioning.'}
   if([bool]$PostgresRuntime.installedPostgres){$NewPrerequisites+='PostgreSQL 16';$Installed+='PostgreSQL 16 local canonical service'}else{$Keep+='Existing canonical TigerIQ PostgreSQL datastore reused'}
@@ -199,17 +205,18 @@ try {
   foreach($listener in @(Get-NetTCPConnection -LocalPort $ControllerPort -State Listen -ErrorAction SilentlyContinue)){Stop-KnownPortConflict ([int]$listener.OwningProcess);$ChangesStarted=$true}
   Start-Sleep -Seconds 1; if(@(Get-NetTCPConnection -LocalPort $ControllerPort -State Listen -ErrorAction SilentlyContinue).Count -gt 0){Fail 'PORT_8790_STILL_BUSY' 'Port 8790 remains occupied after resolving known conflicts.'}; Write-RollbackManifest
 
-  & $InstallerScript -RepoPath $RepoPath -DatabaseUrl $effectiveDatabaseUrl -PgPassFilePath $PgPassFile -ExpectedBranch $ExpectedBranch -ExpectedHeadSha $localHead -HealthScriptPath $HealthScript -StartNow
+  & $InstallerScript -RepoPath $RepoPath -DatabaseUrl $effectiveDatabaseUrl -DatabasePasswordFilePath $DatabasePasswordFile -RuntimeTaskUser $runtimeTaskUser -ExpectedBranch $ExpectedBranch -ExpectedHeadSha $localHead -HealthScriptPath $HealthScript -StartNow
   if($LASTEXITCODE -ne 0){Fail 'CANONICAL_INSTALL_FAILED' 'Canonical Controller installer failed.'}
-  $ChangesStarted=$true; $Installed+='TigerIQ Workforce Controller SYSTEM Scheduled Task';$Installed+="Tailscale-only firewall $ExpectedRemoteCidr -> $ExpectedHost`:$ControllerPort";$Installed+='PostgreSQL migrations 001_operational_state_v1 + 002_device_proof_replay_v1'
-  $healthOutput=& $HealthScript -DatabaseUrl $effectiveDatabaseUrl -PgPassFile $PgPassFile; if($LASTEXITCODE -ne 0){Fail 'HEALTH_GATE_FAILED' 'Canonical Controller health gate failed.'}
-  $restartOutput=& $RestartVerifier -DatabaseUrl $effectiveDatabaseUrl -PgPassFile $PgPassFile -HealthScript $HealthScript; if($LASTEXITCODE -ne 0){Fail 'RESTART_VERIFICATION_FAILED' 'Controller restart verification failed.'}
+  $ChangesStarted=$true; $Installed+='TigerIQ Workforce Controller named-user Scheduled Task';$Installed+="Tailscale-only firewall $ExpectedRemoteCidr -> $ExpectedHost`:$ControllerPort";$Installed+='PostgreSQL migrations 001_operational_state_v1 + 002_device_proof_replay_v1'
+  $healthOutput=& $HealthScript -DatabaseUrl $effectiveDatabaseUrl -DatabasePasswordFile $DatabasePasswordFile -RuntimeTaskUser $runtimeTaskUser; if($LASTEXITCODE -ne 0){Fail 'HEALTH_GATE_FAILED' 'Canonical Controller health gate failed.'}
+  $restartOutput=& $RestartVerifier -DatabaseUrl $effectiveDatabaseUrl -DatabasePasswordFile $DatabasePasswordFile -RuntimeTaskUser $runtimeTaskUser -HealthScript $HealthScript; if($LASTEXITCODE -ne 0){Fail 'RESTART_VERIFICATION_FAILED' 'Controller restart verification failed.'}
   $allVersions=@(& $psql $effectiveDatabaseUrl -v ON_ERROR_STOP=1 -Atc 'SELECT version FROM tigeriq_schema_migrations ORDER BY version;' 2>$null | ForEach-Object {$_.Trim()} | Where-Object {$_}); if($allVersions.Count -ne 2 -or $allVersions[0] -ne '001_operational_state_v1' -or $allVersions[1] -ne '002_device_proof_replay_v1'){Fail 'MIGRATION_EXACT_STATE_BREACH' 'PostgreSQL migration state is not exactly reviewed 001+002.'}
 
-  Write-RollbackManifest
+  $env:PGPASSWORD=$null; Write-RollbackManifest
   $summary=[ordered]@{ok=$true;action='pc01.one-click.go-live';issue=156;bootstrapHead=$localHead;controllerBasis=$RuntimeBasisSha;postgresBasis=$PostgresBasisSha;keep=@($Keep|Select-Object -Unique);disable=@($Disable|Select-Object -Unique);installed=@($Installed|Select-Object -Unique);blocked=@();auditEvidence=$AuditPath;rollbackEvidence=$RollbackManifestPath;postgres=[ordered]@{installedPostgres=[bool]$PostgresRuntime.installedPostgres;reusedConfiguredDatastore=[bool]$PostgresRuntime.reusedConfiguredDatastore;serviceNames=@($PostgresRuntime.serviceNames)};healthVerified=$true;restartVerified=$true;migrations=@('001_operational_state_v1','002_device_proof_replay_v1');migration003Applied=$false;openClawReconnected=$false;destructiveUninstall=$false;paidServiceUsed=$false;mainProductionTouched=$false;secretsPrinted=$false;marker='PC01_ONE_CLICK_GO_LIVE_PASS'}
   Save-Json $summary (Join-Path $EvidenceDir 'result.json'); Write-Host ('KEEP: '+(@($summary.keep)-join '; '));Write-Host ('DISABLE: '+(@($summary.disable)-join '; '));Write-Host ('INSTALLED: '+(@($summary.installed)-join '; '));Write-Host 'BLOCKED: none';$summary|ConvertTo-Json -Depth 6 -Compress
 } catch {
+  $env:PGPASSWORD=$null
   $Blocked += $_.Exception.Message; try{Write-RollbackManifest}catch{}; if($ChangesStarted -and (Test-Path $RollbackScript) -and (Test-Path $RollbackManifestPath)){try{& $RollbackScript -ManifestPath $RollbackManifestPath|Out-Null}catch{$Blocked+='AUTOMATIC_ROLLBACK_INCOMPLETE'}}
   $failure=[ordered]@{ok=$false;action='pc01.one-click.go-live';keep=@($Keep|Select-Object -Unique);disable=@($Disable|Select-Object -Unique);installed=@($Installed|Select-Object -Unique);blocked=@($Blocked|Select-Object -Unique);auditEvidence=$AuditPath;rollbackEvidence=if(Test-Path $RollbackManifestPath){$RollbackManifestPath}else{$null};physicalExecutionStopped=$true;secretsPrinted=$false}
   Save-Json $failure (Join-Path $EvidenceDir 'result.json');Write-Host ('KEEP: '+(@($failure.keep)-join '; '));Write-Host ('DISABLE: '+(@($failure.disable)-join '; '));Write-Host ('INSTALLED: '+(@($failure.installed)-join '; '));Write-Host ('BLOCKED: '+(@($failure.blocked)-join '; '));$failure|ConvertTo-Json -Depth 6 -Compress;exit 1
