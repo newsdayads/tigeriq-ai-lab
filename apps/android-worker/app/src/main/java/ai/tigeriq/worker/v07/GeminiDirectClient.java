@@ -24,8 +24,8 @@ public final class GeminiDirectClient implements AiProviderConnector {
     @Override public String providerId() { return PROVIDER; }
 
     @Override public ProviderExecution execute(String prompt, String model) throws ProviderException {
-        // Defense in depth: no code path may reach Gemini unless zero-cost is explicitly confirmed.
-        ZeroCostPolicy.requireExecutionAllowed(PROVIDER, config.geminiBillingState());
+        // Defense in depth: authority is checked before key read or network connection.
+        ZeroCostPolicy.requireExecutionAllowed(PROVIDER, config.zeroCostAuthority());
         String safeModel = ProviderConfigStore.requireModel(model);
         String textPrompt = prompt == null ? "" : prompt.trim();
         if (textPrompt.isEmpty()) throw new ProviderException(PROVIDER, "EMPTY_PROMPT", "job prompt is empty", false, 0);
