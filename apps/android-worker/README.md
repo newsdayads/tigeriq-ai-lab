@@ -32,9 +32,19 @@ Activation is deliberately non-secret: controller URL + Employee ID. The app ver
 
 PC01 is the work control plane; it does not execute the provider prompt for this Android employee.
 
-`Controller lease -> Android durable checkpoint -> phone-local provider connector -> Gemini API -> Android result/evidence -> Controller result endpoint`
+Intended runtime path:
 
-Gemini is the first provider. `LocalAiProviderRegistry` and `AiProviderConnector` keep a provider-neutral boundary for future phone-local providers. The Gemini API key is stored only through Android Keystore-backed encrypted local storage and is excluded from Controller requests, result/evidence and logs.
+`Controller lease -> Android durable checkpoint -> phone-local provider connector -> provider API -> Android result/evidence -> Controller result endpoint`
+
+Gemini is the first connector implementation. `LocalAiProviderRegistry` and `AiProviderConnector` keep a provider-neutral boundary for future phone-local providers. The Gemini API key is stored only through Android Keystore-backed encrypted local storage and is excluded from Controller requests, result/evidence and logs.
+
+### Zero-cost authority — Issue #150
+
+Gemini direct execution is currently **disabled/fail-closed**. A local checkbox, preference, string or user statement cannot make a credential executable. The former locally mutable billing confirmation has been removed and legacy billing state is deleted/ignored.
+
+Android will only allow provider execution when TigerIQ can establish an **independent, enforceable non-billable/zero-spend authority** for that provider configuration. No such authority is wired in the current architecture, so `ZeroCostAuthority.current()` remains `unverified` and `ZeroCostPolicy` blocks the connector before the API key is read or any provider network connection is opened.
+
+There is no paid fallback. This is deliberate: repository readiness must not fabricate billing evidence.
 
 ## Result contract
 
@@ -57,14 +67,14 @@ Completed result uses the PR #116 shape:
 }
 ```
 
-Terminal provider failures use `status=failed` and `failure={code,message,retriable}` while still returning sanitized output metadata and evidence.
+Terminal provider/policy failures use `status=failed` and `failure={code,message,retriable}` while still returning sanitized output metadata and evidence. A zero-cost authority denial is non-retryable provider execution and must not call Gemini.
 
 ## Reliability
 
 - WorkManager wake/recovery is periodic and network-constrained.
 - Job/lease/idempotency/binding/attempt/result metadata is checkpointed locally.
 - Provider retry is bounded by `RetryPolicy`.
-- Once a result is persisted, a submit retry reuses that persisted result and does not call Gemini again.
+- Once a result is persisted, a submit retry reuses that persisted result and does not call the provider again.
 - If Android process/reboot loses the in-process raw lease token, the app does not fabricate authority; it waits for lease expiry/requeue and reacquires through `/api/v1/jobs/lease`.
 - Controller duplicate semantics remain authoritative: identical result replay is idempotent; conflicting duplicate is rejected.
 
@@ -74,10 +84,10 @@ The V1 APK excludes legacy direct-package Android sources from compilation and t
 
 ## Repository readiness gate
 
-`ANDROID_CONTROLLER_V1_CONTRACT_READY` may be posted to PR #140 only after the same exact Android head has all three green:
+`ANDROID_ZERO_COST_AUTHORITY_READY_FOR_REVIEW` may be posted to PR #140 only after the same exact Android head has all three green:
 
 1. General `CI`.
-2. `Android Worker` build/unit/manifest/DEX/signing-continuity workflow.
-3. `Android ↔ Controller V1 Contract`, which checks Android against the live PR #116 head and runs focused contract tests.
+2. `Android Worker` build/unit/manifest/DEX/signing-continuity workflow, including zero-cost authority regression.
+3. `Android ↔ Controller V1 Contract`, which checks Android against the live PR #116 head and runs focused contract + zero-cost authority tests.
 
-This marker is repository compatibility evidence only; it is not physical E2E or Production approval.
+This marker is repository compatibility/review evidence only; it is not physical E2E, provider billing proof, or Production approval.
