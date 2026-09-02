@@ -26,6 +26,8 @@ jobs:
         run: npm run typecheck
       - name: Unit tests
         run: npm test
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
       - name: Playwright smoke
         run: npm run test:e2e
       - name: Build
