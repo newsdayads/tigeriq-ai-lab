@@ -1,14 +1,14 @@
 import { test, expect } from '@playwright/test';
-import { createServer } from 'node:http';
+import { createServer, type Server } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const publicDir = fileURLToPath(new URL('../../public/', import.meta.url));
-let server;
+let server: Server | null = null;
 let baseUrl = '';
 
-const contentType = path => ({ '.html':'text/html; charset=utf-8', '.js':'text/javascript; charset=utf-8', '.css':'text/css; charset=utf-8', '.json':'application/json' }[extname(path)] || 'text/plain; charset=utf-8');
+const contentType = (path: string) => ({ '.html':'text/html; charset=utf-8', '.js':'text/javascript; charset=utf-8', '.css':'text/css; charset=utf-8', '.json':'application/json' }[extname(path)] || 'text/plain; charset=utf-8');
 
 test.beforeAll(async () => {
   server = createServer(async (req, res) => {
@@ -29,7 +29,7 @@ test.beforeAll(async () => {
       res.end('not found');
     }
   });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  await new Promise<void>(resolve => server!.listen(0, '127.0.0.1', resolve));
   const address = server.address();
   if (!address || typeof address === 'string') throw new Error('E2E_SERVER_ADDRESS_INVALID');
   baseUrl = `http://127.0.0.1:${address.port}`;
@@ -37,7 +37,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   if (!server) return;
-  await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+  await new Promise<void>(resolve => server!.close(() => resolve()));
 });
 
 test('Company Control Tower is iPhone-first, business-first and mock-truthful', async ({ page }) => {
@@ -50,13 +50,18 @@ test('Company Control Tower is iPhone-first, business-first and mock-truthful', 
   await expect(page.getByText('Doanh thu · chi phí · outcome')).toBeVisible();
   await expect(page.getByText('SHA & CI')).not.toBeVisible();
 
-  const mobile = await page.evaluate(() => ({
-    innerWidth: window.innerWidth,
-    bodyScrollWidth: document.body.scrollWidth,
-    sidebarPosition: getComputedStyle(document.querySelector('.sidebar')).position,
-    sidebarBottom: getComputedStyle(document.querySelector('.sidebar')).bottom,
-    navMinHeight: getComputedStyle(document.querySelector('.nav button')).minHeight,
-  }));
+  const mobile = await page.evaluate(() => {
+    const sidebar = document.querySelector('.sidebar');
+    const navButton = document.querySelector('.nav button');
+    if (!sidebar || !navButton) throw new Error('MOBILE_LAYOUT_ELEMENTS_MISSING');
+    return {
+      innerWidth: window.innerWidth,
+      bodyScrollWidth: document.body.scrollWidth,
+      sidebarPosition: getComputedStyle(sidebar).position,
+      sidebarBottom: getComputedStyle(sidebar).bottom,
+      navMinHeight: getComputedStyle(navButton).minHeight,
+    };
+  });
   expect(mobile.bodyScrollWidth).toBeLessThanOrEqual(mobile.innerWidth + 1);
   expect(mobile.sidebarPosition).toBe('fixed');
   expect(mobile.sidebarBottom).toBe('0px');
