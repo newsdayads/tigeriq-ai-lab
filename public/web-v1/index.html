@@ -5,42 +5,41 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#07111f">
 <meta name="robots" content="noindex">
-<title>TigerIQ AI Lab · Company Control Tower</title>
+<title>TIG · TigerIQ AI Lab · Owner Cockpit</title>
+<link rel="manifest" href="/manifest.webmanifest">
 <link rel="stylesheet" href="/web-v1/styles.css">
 <link rel="stylesheet" href="/web-v1/brand.css">
+<link rel="stylesheet" href="/web-v1/cockpit-v3.css">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
 <div class="app-shell">
-  <aside class="sidebar">
+  <aside class="sidebar" aria-label="Điều hướng TIG Owner Cockpit">
     <div class="brand-block">
-      <div class="brand-mark">TQ</div>
-      <div><div class="brand-title">TigerIQ</div><div class="brand-sub">AI LAB · COMPANY V2</div></div>
+      <div class="brand-mark">TIG</div>
+      <div><div class="brand-title">TigerIQ</div><div class="brand-sub">AI LAB · OWNER COCKPIT</div></div>
     </div>
-    <div class="edition-badge"><span></span> COMPANY CONTROL TOWER</div>
-    <nav class="nav" aria-label="Điều hướng Company Control Tower">
+    <div class="edition-badge"><span></span> OWNER COCKPIT V3</div>
+    <nav class="nav" aria-label="Điều hướng chính">
       <button class="active" data-view="overview"><i>⌂</i><span>Tổng quan</span></button>
-      <button data-view="goals"><i>◎</i><span>Mục tiêu & KPI</span></button>
-      <button data-view="missions"><i>◫</i><span>Mission</span></button>
-      <button data-view="organization"><i>◉</i><span>Phòng ban</span></button>
       <button data-view="owner-actions"><i>!</i><span>CẦN SẾP</span></button>
-      <button data-view="outcomes"><i>✓</i><span>Kết quả</span></button>
-      <button data-view="processes"><i>↻</i><span>Quy trình</span></button>
-      <button data-view="technical"><i>⚙</i><span>Vận hành kỹ thuật</span></button>
+      <button data-view="missions"><i>◫</i><span>Công việc</span></button>
+      <button data-view="organization"><i>◉</i><span>Công ty</span></button>
+      <button data-view="technical"><i>⚙</i><span>Hệ thống</span></button>
     </nav>
-    <div class="sidebar-note">Em ưu tiên cho Sếp thấy <b>mục tiêu, KPI, Mission, kết quả và ngoại lệ</b>. SHA/CI/lease/port chỉ nằm trong Vận hành kỹ thuật.</div>
+    <div class="sidebar-note">Sếp thấy <b>tình hình công ty, quyết định cần xử lý và kết quả</b> trước. Chi tiết SHA/CI/lease/port nằm trong Hệ thống.</div>
   </aside>
 
   <main class="main">
     <header class="topbar">
       <div>
-        <div class="brand-lockup" aria-label="TigerIQ AI Lab">
-          <div class="brand-sigil" aria-hidden="true"><i></i><b>TQ</b></div>
-          <div><strong>TIGERIQ</strong><span>AI LAB · COMPANY OPERATING SYSTEM</span></div>
+        <div class="brand-lockup" aria-label="TIG TigerIQ AI Lab">
+          <div class="brand-sigil" aria-hidden="true"><i></i><b>TIG</b></div>
+          <div><strong>TIGERIQ</strong><span>AI LAB · OWNER COCKPIT</span></div>
         </div>
-        <div class="eyebrow" id="pageEyebrow">COMPANY CONTROL TOWER</div>
-        <h1 id="pageTitle">Tổng quan công ty</h1>
-        <p id="pageSubtitle">Sếp nhìn kết quả công ty trước, kỹ thuật sau.</p>
+        <div class="eyebrow" id="pageEyebrow">TIG OWNER COCKPIT</div>
+        <h1 id="pageTitle">Tổng quan</h1>
+        <p id="pageSubtitle">Tình hình công ty, quyết định cần Sếp và kết quả quan trọng.</p>
       </div>
       <div class="top-actions">
         <div class="source-pill" id="sourcePill"><span></span><b>MẪU · KHÔNG LIVE</b></div>
@@ -49,127 +48,141 @@
       </div>
     </header>
 
-    <div class="truth-banner" id="modeBanner">
-      <div><b>DỮ LIỆU MẪU · authoritative=false</b><span>Em đang dùng view-model tạm để Sếp duyệt Company Control Tower. Không có dữ liệu business live nào được giả lập thành sự thật.</span></div>
-      <button class="text-btn" data-view-jump="technical">Xem nguồn dữ liệu →</button>
-    </div>
-
     <section class="view active" data-section="overview">
-      <article class="owner-hero">
-        <div class="owner-hero-copy">
-          <span class="kicker">MỤC TIÊU QUAN TRỌNG NHẤT</span>
-          <h2 id="primaryGoalTitle">—</h2>
-          <p id="primaryGoalObjective">—</p>
-          <div class="hero-meta" id="primaryGoalMeta"></div>
+      <article class="cockpit-hero" id="companySummary">
+        <div class="cockpit-hero-copy">
+          <span class="kicker">TÌNH HÌNH CÔNG TY</span>
+          <h2 id="cockpitHealth">Đang tổng hợp…</h2>
+          <p id="cockpitHealthSummary">Em chỉ tổng hợp từ projection hiện có; không suy diễn business truth từ runtime kỹ thuật.</p>
+          <div class="cockpit-health-line"><span class="cockpit-health-dot"></span><b>Owner Cockpit · business-first</b></div>
         </div>
-        <div class="hero-progress">
-          <div class="progress-ring" id="goalProgressRing"><strong id="goalProgress">0%</strong><span>KPI sức khỏe</span></div>
+        <div class="cockpit-stats" aria-label="Tóm tắt điều hành">
+          <div class="cockpit-stat"><strong id="cockpitMissionCount">0</strong><span>Mission đang hiển thị</span></div>
+          <div class="cockpit-stat attention"><strong id="cockpitOwnerCount">0</strong><span>CẦN SẾP</span></div>
+          <div class="cockpit-stat"><strong id="cockpitOutcomeCount">0</strong><span>Kết quả mới</span></div>
         </div>
       </article>
 
-      <div class="kpi-strip" id="homeKpis"></div>
+      <div class="truth-banner" id="modeBanner">
+        <div><b>DỮ LIỆU MẪU · authoritative=false</b><span>Không có dữ liệu business live nào được giả lập thành sự thật.</span></div>
+        <button class="text-btn" data-view-jump="technical">Xem nguồn dữ liệu →</button>
+      </div>
 
-      <div class="control-grid">
-        <article class="card business-card span7">
+      <div class="owner-cockpit-grid">
+        <article class="card owner-attention span4 mobile-priority-owner">
+          <div class="card-head"><div><span class="kicker">QUYẾT ĐỊNH / NGOẠI LỆ</span><h3>CẦN SẾP</h3></div><button class="text-btn" data-view-jump="owner-actions">Mở →</button></div>
+          <div id="homeOwnerActions" class="owner-action-list"></div>
+        </article>
+
+        <article class="card span8 mobile-priority-kpi">
+          <div class="card-head"><div><span class="kicker">GOAL / KPI</span><h3>Mục tiêu quan trọng</h3></div><button class="text-btn" data-view-jump="missions">Công việc →</button></div>
+          <div class="goal-focus">
+            <div><h3 id="primaryGoalTitle">—</h3><p id="primaryGoalObjective">—</p><div class="hero-meta" id="primaryGoalMeta"></div></div>
+            <div class="progress-ring" id="goalProgressRing"><strong id="goalProgress">0%</strong><span>KPI health</span></div>
+          </div>
+          <div class="kpi-strip" id="homeKpis"></div>
+        </article>
+
+        <article class="card business-card compact-business span6 mobile-priority-finance">
           <div class="card-head"><div><span class="kicker">KẾT QUẢ KINH DOANH</span><h3>Doanh thu · chi phí · outcome</h3></div><span class="mini-tag" id="businessDataState">—</span></div>
           <div class="business-metrics" id="businessMetrics"></div>
           <p class="data-note" id="businessDataNote">—</p>
         </article>
 
-        <article class="card owner-attention span5">
-          <div class="card-head"><div><span class="kicker">ƯU TIÊN NGOẠI LỆ</span><h3>CẦN SẾP</h3></div><button class="text-btn" data-view-jump="owner-actions">Mở hàng đợi →</button></div>
-          <div id="homeOwnerActions" class="owner-action-list"></div>
-        </article>
-
-        <article class="card span7">
-          <div class="card-head"><div><span class="kicker">MISSION ĐANG CHẠY</span><h3>Việc cấp công ty</h3></div><button class="text-btn" data-view-jump="missions">Xem Mission →</button></div>
+        <article class="card span6 mobile-priority-mission">
+          <div class="card-head"><div><span class="kicker">MISSION ĐANG CHẠY</span><h3>Việc cấp công ty</h3></div><button class="text-btn" data-view-jump="missions">Xem →</button></div>
           <div class="mission-list" id="homeMissions"></div>
         </article>
 
-        <article class="card span5">
-          <div class="card-head"><div><span class="kicker">PHỐI HỢP ĐỘI NGŨ</span><h3>Việc &amp; hạn</h3></div><span class="mini-tag">TRELLO · READ-ONLY</span></div>
-          <div class="mission-list" id="workCoordinationSummary"></div>
-        </article>
-
-        <article class="card span5">
-          <div class="card-head"><div><span class="kicker">TỔ CHỨC</span><h3>Phòng ban & AI Employee</h3></div><button class="text-btn" data-view-jump="organization">Xem tổ chức →</button></div>
-          <div class="org-summary" id="homeOrganization"></div>
-        </article>
-
-        <article class="card span7">
-          <div class="card-head"><div><span class="kicker">KẾT QUẢ VỪA HOÀN TẤT</span><h3>Business Outcome mới</h3></div><button class="text-btn" data-view-jump="outcomes">Xem tất cả →</button></div>
+        <article class="card span8 mobile-priority-outcome">
+          <div class="card-head"><div><span class="kicker">KẾT QUẢ MỚI</span><h3>Business Outcome</h3></div><button class="text-btn" data-view-jump="missions">Chi tiết →</button></div>
           <div class="outcome-list" id="homeOutcomes"></div>
         </article>
 
-        <article class="card span5">
-          <div class="card-head"><div><span class="kicker">SỨC KHỎE QUY TRÌNH</span><h3>Sense → Measure</h3></div><button class="text-btn" data-view-jump="processes">Chi tiết →</button></div>
+        <article class="card span4 mobile-priority-company">
+          <div class="card-head"><div><span class="kicker">CÔNG TY</span><h3>Phòng ban & AI Employee</h3></div><button class="text-btn" data-view-jump="organization">Mở →</button></div>
+          <div class="org-summary" id="homeOrganization"></div>
+        </article>
+
+        <article class="card span6 mobile-priority-system system-low-priority">
+          <div class="card-head"><div><span class="kicker">QUY TRÌNH</span><h3>Sức khỏe vận hành</h3></div><button class="text-btn" data-view-jump="missions">Chi tiết →</button></div>
           <div class="process-health-list" id="homeProcesses"></div>
         </article>
+
+        <article class="card span6 mobile-priority-system system-low-priority">
+          <div class="card-head"><div><span class="kicker">HỆ THỐNG · THỨ CẤP</span><h3>Runtime health</h3></div><button class="text-btn" data-view-jump="technical">Hệ thống →</button></div>
+          <div class="runtime-pills" id="runtimeSummary"></div>
+        </article>
       </div>
-
-      <article class="runtime-summary-card">
-        <div><span class="kicker">TÓM TẮT RUNTIME</span><h3>Hạ tầng phục vụ công ty</h3><p>Trang chủ chỉ giữ sức khỏe tổng hợp. Chi tiết SHA/CI/lease/port không xuất hiện ở đây.</p></div>
-        <div class="runtime-pills" id="runtimeSummary"></div>
-        <button class="secondary-btn compact" data-view-jump="technical">Vận hành kỹ thuật</button>
-      </article>
-    </section>
-
-    <section class="view" data-section="goals">
-      <div class="section-head"><div><span class="kicker">OWNER GOAL / KPI</span><h2>Mục tiêu & KPI</h2><p>Quản trị bằng mục tiêu và kết quả, không bằng số lượng task.</p></div></div>
-      <div class="goal-grid" id="goalGrid"></div>
-      <article class="card goal-submit-card">
-        <div class="card-head"><div><span class="kicker">GIAO MỤC TIÊU</span><h3>Sếp giao mục tiêu mới</h3></div><span class="mini-tag">INTENT</span></div>
-        <form id="goalForm" class="form-grid">
-          <label class="full">Mục tiêu của Sếp<textarea id="goalObjective" required placeholder="Ví dụ: Tìm TOP 3 cơ hội kinh doanh có bằng chứng, không phát sinh chi phí hay liên hệ khách hàng."></textarea></label>
-          <label>Ưu tiên<select id="goalPriority"><option>P0</option><option selected>P1</option><option>P2</option><option>P3</option></select></label>
-          <label>Hạn hoàn thành<input id="goalDeadline" type="datetime-local"></label>
-          <label class="full">Giới hạn / ràng buộc<textarea id="goalConstraints" placeholder="Mỗi dòng một giới hạn"></textarea></label>
-          <label class="full">Kết quả / bằng chứng mong đợi<textarea id="goalEvidence" placeholder="Outcome, KPI, source refs, evidence, review khi policy yêu cầu..."></textarea></label>
-          <div class="full intent-warning" id="goalModeNote">Mẫu: em không tạo việc thật từ nút này.</div>
-          <button class="primary-btn full" type="submit">Gửi mục tiêu</button>
-        </form>
-        <pre id="goalResult" class="raw-box" hidden></pre>
-      </article>
-    </section>
-
-    <section class="view" data-section="missions">
-      <div class="section-head"><div><span class="kicker">PLAN → ASSIGN → EXECUTE</span><h2>Mission cấp công ty</h2><p>Mission gắn Goal/Signal với outcome mong đợi; Job chỉ là runtime reference.</p></div></div>
-      <div class="mission-board" id="missionBoard"></div>
-    </section>
-
-    <section class="view" data-section="organization">
-      <div class="section-head"><div><span class="kicker">DEPARTMENT / AI EMPLOYEE</span><h2>Phòng ban & nhân viên AI</h2><p>AI Employee là vai trò và trách nhiệm; model/provider chỉ là năng lực có thể đổi.</p></div></div>
-      <div class="department-grid" id="departmentGrid"></div>
-      <div class="section-divider"></div>
-      <div class="employee-grid" id="employeeGrid"></div>
     </section>
 
     <section class="view" data-section="owner-actions">
-      <div class="section-head"><div><span class="kicker">EXCEPTION / OWNER ACTION</span><h2>CẦN SẾP</h2><p>Chỉ đẩy ngoại lệ quan trọng hoặc việc vượt quyền; hoạt động bình thường được tổng hợp.</p></div></div>
+      <div class="section-head"><div><span class="kicker">OWNER ACTION</span><h2>CẦN SẾP</h2><p>Chỉ OPEN/AWAITING_OWNER cần quyết định; Web không suy diễn AUTHORIZE và decision_ref không phải owner_approval_ref.</p></div></div>
       <div class="owner-action-board" id="ownerActionBoard"></div>
     </section>
 
-    <section class="view" data-section="outcomes">
-      <div class="section-head"><div><span class="kicker">BUSINESS OUTCOME</span><h2>Kết quả kinh doanh</h2><p>Không dừng ở “job done”; outcome phải cho biết tác động tới Goal/KPI khi có thể.</p></div></div>
-      <div class="outcome-board" id="outcomeBoard"></div>
+    <section class="view" data-section="missions">
+      <div class="section-head"><div><span class="kicker">WORK</span><h2>Công việc</h2><p>Goal/KPI → Trello read-only → Mission → Outcome → Process. Runtime Job vẫn chỉ là reference.</p></div></div>
+
+      <div class="work-section-block">
+        <div class="section-label"><div><span class="kicker">TRELLO · READ-ONLY</span><h3>Việc & hạn</h3><p>Chỉ nhận projection Controller có provenance; không writeback, không shadow work database.</p></div></div>
+        <article class="card"><div class="mission-list" id="workCoordinationSummary"></div></article>
+      </div>
+
+      <div class="work-section-block">
+        <div class="section-label"><div><span class="kicker">GOAL / KPI</span><h3>Mục tiêu & KPI</h3><p>Lifecycle Goal giữ ở operational state; KPI current value chỉ từ observation mới nhất có provenance.</p></div></div>
+        <div class="goal-grid" id="goalGrid"></div>
+        <article class="card goal-submit-card">
+          <div class="card-head"><div><span class="kicker">GIAO MỤC TIÊU</span><h3>Sếp giao mục tiêu mới</h3></div><span class="mini-tag">INTENT</span></div>
+          <form id="goalForm" class="form-grid">
+            <label class="full">Mục tiêu của Sếp<textarea id="goalObjective" required placeholder="Ví dụ: Tìm TOP 3 cơ hội kinh doanh có bằng chứng, không phát sinh chi phí hay liên hệ khách hàng."></textarea></label>
+            <label>Ưu tiên<select id="goalPriority"><option>P0</option><option selected>P1</option><option>P2</option><option>P3</option></select></label>
+            <label>Hạn hoàn thành<input id="goalDeadline" type="datetime-local"></label>
+            <label class="full">Giới hạn / ràng buộc<textarea id="goalConstraints" placeholder="Mỗi dòng một giới hạn"></textarea></label>
+            <label class="full">Kết quả / bằng chứng mong đợi<textarea id="goalEvidence" placeholder="Outcome, KPI, source refs, evidence, review khi policy yêu cầu..."></textarea></label>
+            <div class="full intent-warning" id="goalModeNote">Mẫu: em không tạo việc thật từ nút này.</div>
+            <button class="primary-btn full" type="submit">Gửi mục tiêu</button>
+          </form>
+          <pre id="goalResult" class="raw-box" hidden></pre>
+        </article>
+      </div>
+
+      <div class="work-section-block">
+        <div class="section-label"><div><span class="kicker">MISSION</span><h3>Mission cấp công ty</h3><p>Mission→Job reference-only; không copy Job/Lease/Result/Evidence.</p></div></div>
+        <div class="mission-board" id="missionBoard"></div>
+      </div>
+
+      <div class="work-section-block">
+        <div class="section-label"><div><span class="kicker">BUSINESS OUTCOME</span><h3>Kết quả</h3><p>Outcome giữ KPI observation refs, Evidence refs và provenance.</p></div></div>
+        <div class="outcome-board" id="outcomeBoard"></div>
+      </div>
+
+      <div class="work-section-block">
+        <div class="section-label"><div><span class="kicker">BUSINESS PROCESS</span><h3>Quy trình</h3><p>Process health là read-model từ KPI + Exception; không tạo lifecycle thứ hai.</p></div></div>
+        <div class="process-board" id="processBoard"></div>
+      </div>
     </section>
 
-    <section class="view" data-section="processes">
-      <div class="section-head"><div><span class="kicker">BUSINESS PROCESS</span><h2>Sức khỏe quy trình</h2><p>Theo dõi trigger, bước chính, policy gate, exception và điều kiện hoàn tất.</p></div></div>
-      <div class="process-board" id="processBoard"></div>
+    <section class="view" data-section="organization">
+      <div class="section-head"><div><span class="kicker">COMPANY</span><h2>Công ty</h2><p>Phòng ban và AI Employee theo vai trò kinh doanh; autonomy chỉ là scope-bound context.</p></div></div>
+      <div class="company-section-block">
+        <div class="section-label"><div><span class="kicker">DEPARTMENT</span><h3>Phòng ban</h3></div></div>
+        <div class="department-grid" id="departmentGrid"></div>
+      </div>
+      <div class="company-section-block">
+        <div class="section-label"><div><span class="kicker">AI EMPLOYEE</span><h3>Nhân viên AI</h3><p>Employee identity tách biệt model/provider.</p></div></div>
+        <div class="employee-grid" id="employeeGrid"></div>
+      </div>
     </section>
 
     <section class="view" data-section="technical">
-      <div class="section-head"><div><span class="kicker">TECHNICAL OPERATIONS</span><h2>Vận hành kỹ thuật</h2><p>Drill-down cho Controller, Job, AI provider, thiết bị, Prompt, CI/SHA/lease/port. Đây không phải trang điều hành công ty.</p></div></div>
-
+      <div class="section-head"><div><span class="kicker">SYSTEM</span><h2>Hệ thống</h2><p>Chi tiết kỹ thuật phục vụ công ty: Controller, SHA/CI, Job, lease, provider, device, Prompt và Result/Evidence.</p></div></div>
       <div class="technical-grid">
         <article class="card"><div class="card-head"><div><span class="kicker">KẾT NỐI PC01</span><h3>Workforce Controller</h3></div></div><div class="form-grid"><label class="full">Địa chỉ Controller<input id="controllerUrl" placeholder="https://pc01.<tailnet>.ts.net"></label><label class="full">Browser token tạm thời<input id="controllerToken" type="password" autocomplete="off" placeholder="Không phải admin secret"></label><button class="primary-btn" id="connectBtn">Kết nối</button><button class="secondary-btn" id="probeBtn">Kiểm tra kết nối</button><button class="secondary-btn" id="mockBtn">Dùng dữ liệu mẫu</button><button class="secondary-btn" id="ownerLoginBtn">Đăng nhập Sếp bằng Google</button></div><pre id="connectionResult" class="raw-box"></pre></article>
-
         <article class="card"><div class="card-head"><div><span class="kicker">BUILD / RELEASE</span><h3>SHA & CI</h3></div></div><div class="technical-facts" id="buildFacts"></div></article>
         <article class="card"><div class="card-head"><div><span class="kicker">RUNTIME</span><h3>Controller / Tailscale / Database</h3></div></div><div class="technical-facts" id="runtimeFacts"></div></article>
         <article class="card"><div class="card-head"><div><span class="kicker">LEASE / PORT</span><h3>Thiết bị & lease</h3></div></div><div id="deviceTechnical"></div></article>
       </div>
-
       <div class="section-divider"></div>
       <div class="technical-section"><div class="card-head"><div><span class="kicker">RUNTIME JOBS</span><h3>Job / lỗi / retry</h3></div></div><div class="job-board" id="jobBoard"></div></div>
       <div class="section-divider"></div>
@@ -181,6 +194,6 @@
     </section>
   </main>
 </div>
-<script type="module" src="/web-v1/app.js"></script>
+<script type="module" src="/web-v1/cockpit-v3.js"></script>
 </body>
 </html>
