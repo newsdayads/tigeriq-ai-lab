@@ -311,10 +311,17 @@ CHAT 01 must not infer authority from UI controls or business-state fields. Muta
 
 ## 9. Migration plan from PR #141 — design only
 
-A future separate implementation work order may create additive migration `002_business_state_v2`; Issue #146 does not implement it.
+A future separate implementation work order may create additive migration `003_business_state_v2`; Issue #146 does not implement it.
+
+Canonical migration ordering for the single PC01 PostgreSQL operational datastore:
+- `001_operational_state_v1` — PR #141 canonical operational-state foundation.
+- `002_device_proof_replay_v1` — PR #116 canonical durable device-proof replay extension.
+- `003_business_state_v2` — reserved planned identifier for the future Business State V2 additive implementation defined by this contract.
+
+Ordering rule: the three-digit migration sequence is global across the canonical PC01 operational datastore, not scoped per Chat, PR, package or feature. Before implementing any future migration, the owning stream must inspect the integration target's canonical `db/migrations/*.sql` set and allocate the next unused sequence; duplicate sequence numbers fail integration. A design plan must not assume its branch-local migration list is complete.
 
 Planned sequence:
-1. Preserve all existing PR #141 tables/constraints/APIs unchanged.
+1. Preserve all existing PR #141 tables/constraints/APIs unchanged and preserve canonical PR #116 migration `002_device_proof_replay_v1` when present in the integration target.
 2. Add only new side tables/relations for GoalBusinessProfile, KPI/KPIObservation, Signal, BusinessProcess, Mission/MissionJobRef, Department, EmployeeBusinessProfile, AutonomyGrant, BusinessException and BusinessOutcome.
 3. Reuse existing `goals.goal_id`, `employees.employee_id`, `jobs.job_id`, `evidence.evidence_id`; do not clone these entities.
 4. Backfill only known local metadata. Do not manufacture KPI values, source refs, decisions, missions or external facts.
@@ -331,5 +338,6 @@ Design is ready only when:
 - PR #141 base head is pinned to `6f12d3c5f3da1616041fa48fadf8a4e8b41e7ad9`;
 - Mission->Job is reference-only;
 - provenance/decision/source-authority boundaries are explicit;
+- future Business State migration planning uses the global canonical PC01 datastore sequence and does not collide with PR #116 `002_device_proof_replay_v1`;
 - no migration implementation or runtime mutation is included;
 - exact-head repository checks pass before reporting `BUSINESS_STATE_V2_DESIGN_READY`.
