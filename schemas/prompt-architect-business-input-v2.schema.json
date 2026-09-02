@@ -1,0 +1,170 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tigeriq.ai/schemas/prompt-architect-business-input-v2.schema.json",
+  "title": "TigerIQ Prompt Architect Business Input V2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "mission_ref",
+    "action_ref",
+    "goal_ref",
+    "business_objective",
+    "department",
+    "employee",
+    "authority",
+    "risk",
+    "acceptance_criteria",
+    "evidence_requirements",
+    "constraints"
+  ],
+  "properties": {
+    "contract_version": {
+      "const": "TIGERIQ_PROMPT_ARCHITECT_BUSINESS_INPUT_V2"
+    },
+    "mission_ref": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "job_ref": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "work_intent_ref": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "action_ref": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "goal_ref": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "kpi_refs": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1, "maxLength": 128 },
+      "uniqueItems": true,
+      "default": []
+    },
+    "signal_refs": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1, "maxLength": 128 },
+      "uniqueItems": true,
+      "default": []
+    },
+    "business_objective": { "type": "string", "minLength": 1, "maxLength": 4000 },
+    "expected_outcome": { "type": "string", "minLength": 1, "maxLength": 4000 },
+    "context_refs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["source_system", "source_ref", "observed_at"],
+        "properties": {
+          "source_system": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "source_ref": { "type": "string", "minLength": 1, "maxLength": 512 },
+          "observed_at": { "type": "string", "format": "date-time" },
+          "source_version": { "type": "string", "maxLength": 256 },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+        }
+      },
+      "default": []
+    },
+    "context_summary": { "type": "string", "maxLength": 12000 },
+    "department": {
+      "enum": ["Research", "Product", "Finance", "Sales", "Marketing", "Operations", "Engineering", "Chief"]
+    },
+    "employee": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["employee_ref", "role", "capabilities"],
+      "properties": {
+        "employee_ref": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "role": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "capabilities": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "uniqueItems": true
+        }
+      }
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authority_gate_ref",
+        "decision",
+        "owner_delegation_ref",
+        "mission_policy_ref",
+        "employee_permission_ref",
+        "tool_permission_ref",
+        "risk_policy_ref",
+        "allowed_actions",
+        "allowed_tools"
+      ],
+      "properties": {
+        "authority_gate_ref": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "decision": { "const": "AUTHORIZE" },
+        "owner_delegation_ref": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "mission_policy_ref": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "employee_permission_ref": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "tool_permission_ref": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "risk_policy_ref": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "allowed_actions": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1, "maxLength": 256 },
+          "uniqueItems": true
+        },
+        "allowed_tools": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "maxLength": 256 },
+          "uniqueItems": true
+        },
+        "owner_approval_ref": { "type": "string", "minLength": 1, "maxLength": 256 }
+      }
+    },
+    "risk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["level", "hard_floor_reason", "assurance"],
+      "properties": {
+        "level": { "enum": ["R0", "R1", "R2", "R3", "R4"] },
+        "hard_floor_reason": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "assurance": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["reviewer_required", "judge_required", "owner_required"],
+          "properties": {
+            "reviewer_required": { "type": "boolean" },
+            "judge_required": { "type": "boolean" },
+            "owner_required": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "acceptance_criteria": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1, "maxLength": 1000 }
+    },
+    "evidence_requirements": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1, "maxLength": 1000 }
+    },
+    "constraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["prohibitions"],
+      "properties": {
+        "prohibitions": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "maxLength": 500 },
+          "uniqueItems": true
+        },
+        "deadline": { "type": "string", "format": "date-time" },
+        "max_business_attempts": { "type": "integer", "minimum": 1, "maximum": 3, "default": 3 },
+        "max_correction_cycles": { "type": "integer", "minimum": 0, "maximum": 2, "default": 2 },
+        "source_provenance_required": { "type": "boolean", "default": true }
+      }
+    }
+  },
+  "oneOf": [
+    {
+      "required": ["job_ref"],
+      "not": { "required": ["work_intent_ref"] }
+    },
+    {
+      "required": ["work_intent_ref"],
+      "not": { "required": ["job_ref"] }
+    }
+  ]
+}
