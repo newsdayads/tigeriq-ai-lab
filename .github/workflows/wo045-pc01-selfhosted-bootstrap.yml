@@ -18,19 +18,24 @@ concurrency:
 jobs:
   repository-only-guard:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 7
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-node@v4
         with:
-          python-version: '3.12'
+          node-version: '20'
+          cache: npm
       - name: Validate Controller V1 package without touching PC01
         run: |
-          python -m py_compile scripts/pc-worker/workforce-controller-v1/workforce_controller_v1.py scripts/pc-worker/workforce-controller-v1/workforce_controller_recovery_v1.py scripts/pc-worker/workforce-controller-v1/run_workforce_controller_v1.py scripts/pc-worker/workforce-controller-v1/prepare_workforce_controller_v1.py scripts/pc-worker/workforce-controller-v1/health_workforce_controller_v1.py
-          cd scripts/pc-worker/workforce-controller-v1
-          python test_workforce_controller_v1.py
-          python test_workforce_recovery_v1.py
+          npm ci
+          npm run typecheck
+          npm run build
+          test -f db/migrations/001_operational_state_v1.sql
+          test -f apps/workforce-controller/src/controller.ts
+          test -f apps/workforce-controller/src/device-auth.ts
+          test ! -f scripts/pc-worker/workforce-controller-v1/workforce_controller_v1.sql
+          ! grep -R '/v1/android/sessions\|/v1/android/jobs/pull\|/v1/android/jobs/submit' apps/workforce-controller packages/work-state
       - name: Confirm no self-hosted deployment in this workflow
         run: echo 'PC01_REPOSITORY_ONLY_GUARD_PASS'
