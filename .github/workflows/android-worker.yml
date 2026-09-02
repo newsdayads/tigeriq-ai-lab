@@ -19,6 +19,8 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      TIGERIQ_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -45,6 +47,7 @@ jobs:
           build='apps/android-worker/app/build.gradle.kts'
           v1='apps/android-worker/app/src/main/java/ai/tigeriq/worker/v07'
           contract="$v1/ControllerV1Contract.java"
+          gateway="$v1/GatewayUrlPolicy.java"
           client="$v1/TigerIqApiClient.java"
           result="$v1/DirectAiJobAdapter.java"
           zero="$v1/ZeroCostPolicy.java"
@@ -53,14 +56,24 @@ jobs:
           gemini="$v1/GeminiDirectClient.java"
           worker="$v1/V07JobWorker.java"
           setup="$v1/V1AiSetupActivity.java"
+          status="$v1/V07StatusActivity.java"
           registry="$v1/LocalAiProviderRegistry.java"
 
-          test "$(grep -c '<uses-permission ' "$manifest")" -eq 3
+          test "$(grep -c '<uses-permission ' "$manifest")" -eq 2
           grep -q 'android.permission.INTERNET' "$manifest"
-          grep -q 'android.permission.POST_NOTIFICATIONS' "$manifest"
           grep -q 'android.permission.RECEIVE_BOOT_COMPLETED' "$manifest"
+          ! grep -q 'android.permission.POST_NOTIFICATIONS' "$manifest"
           grep -q 'java.exclude("ai/tigeriq/worker/\*.java")' "$build"
+          grep -Fq 'versionCode = 13' "$build"
+          grep -Fq 'versionName = "1.0.1-ai-employee-preflight"' "$build"
+          grep -Fq 'expectedPilotSigningCertSha256 = "a1365f07f4259260a06fa033f7f878521a3b08bd2944fc1607494664937cc1ac"' "$build"
+          grep -Fq 'TIGERIQ_SOURCE_SHA' "$build"
           test ! -e apps/android-worker/app/src/main/res/xml/accessibility_service_config.xml
+          test ! -e "$v1/TigerIqMessagingService.java"
+          if grep -R -n -E 'FirebaseMessagingService|firebase-messaging|POST_NOTIFICATIONS|com\.google\.android\.c2dm' apps/android-worker; then
+            echo 'V1_PERMISSION_FAIL: unused FCM/notification surface remains' >&2
+            exit 1
+          fi
 
           grep -q 'LocalAiProviderRegistry.connector' "$worker"
           grep -q 'x-goog-api-key' "$gemini"
@@ -73,15 +86,21 @@ jobs:
           grep -Fq 'ZeroCostPolicy.requireExecutionAllowed(PROVIDER, config.zeroCostAuthority())' "$gemini"
           grep -Fq 'public synchronized ZeroCostAuthority zeroCostAuthority() { return ZeroCostAuthority.current(); }' "$config"
           grep -Fq '.remove(LEGACY_GEMINI_BILLING_STATE)' "$config"
-          grep -Fq 'Gemini still DISABLED' "$setup" || grep -Fq 'Gemini vẫn DISABLED' "$setup"
+          grep -Fq 'GEMINI DIRECT · DISABLED' "$setup"
+          grep -Fq 'Gemini direct: DISABLED' "$status"
           grep -Fq 'Collections.singletonList(ProviderConfigStore.GEMINI)' "$registry"
           if grep -R -n -E 'FREE_CONFIRMED|free_confirmed|setGeminiBillingState|geminiBillingState\(|saveGemini\([^;]*billingState|CheckBox.*zeroCost' "$v1"; then
             echo 'ZERO_COST_AUTHORITY_FAIL: local/user billing self-assertion remains in production runtime' >&2
             exit 1
           fi
           grep -q 'SOURCE_PR = "116"' "$contract"
+          grep -q 'SOURCE_HEAD = "c0632bc110ea0d26925d3657ac485cb90b5ee010"' "$contract"
           grep -q 'PROTOCOL = "controller-v1"' "$contract"
           grep -q 'MIGRATION = "001_operational_state_v1"' "$contract"
+          grep -q 'CONTROLLER_HOST = "100.97.23.87"' "$contract"
+          grep -q 'CONTROLLER_PORT = 8790' "$contract"
+          grep -Fq 'ControllerV1Contract.CONTROLLER_HOST.equals(host)' "$gateway"
+          grep -Fq 'uri.getPort() != ControllerV1Contract.CONTROLLER_PORT' "$gateway"
           grep -q 'STATUS_PATH = "/api/v1/status"' "$contract"
           grep -q 'LEASE_PATH = "/api/v1/jobs/lease"' "$contract"
           grep -q '"/api/v1/jobs/"' "$contract"
@@ -114,6 +133,7 @@ jobs:
             exit 1
           fi
           echo 'ANDROID_V1_CONTROLLER116_ZERO_COST_AUTHORITY_SOURCE_GATE_PASS'
+          echo 'ANDROID_V1_ENDPOINT_SIGNING_PERMISSION_PREFLIGHT_SOURCE_GATE_PASS'
       - name: Prove local billing state cannot authorize provider offline
         working-directory: apps/android-worker
         run: |
@@ -125,7 +145,7 @@ jobs:
       - name: Build debug and unsigned release APKs
         working-directory: apps/android-worker
         run: gradle --no-daemon :app:assembleDebug :app:assembleRelease
-      - name: Audit merged APK manifest and DEX surface
+      - name: Audit merged APK manifest, provenance and DEX surface
         run: |
           set -euo pipefail
           apk='apps/android-worker/app/build/outputs/apk/debug/app-debug.apk'
@@ -134,7 +154,9 @@ jobs:
           if [ -z "$analyzer" ]; then analyzer="$(find "$ANDROID_HOME" -type f -name apkanalyzer 2>/dev/null | head -1)"; fi
           test -n "$analyzer"
           "$analyzer" manifest print "$apk" > /tmp/tigeriq-v1-merged-manifest.xml
-          forbidden='BIND_ACCESSIBILITY_SERVICE|REQUEST_IGNORE_BATTERY_OPTIMIZATIONS|QUERY_ADVANCED_PROTECTION_MODE|SYSTEM_ALERT_WINDOW|QUERY_ALL_PACKAGES|REQUEST_INSTALL_PACKAGES|REQUEST_DELETE_PACKAGES|PACKAGE_USAGE_STATS|BIND_NOTIFICATION_LISTENER_SERVICE|BIND_VPN_SERVICE|BIND_DEVICE_ADMIN|MANAGE_EXTERNAL_STORAGE|READ_EXTERNAL_STORAGE|WRITE_EXTERNAL_STORAGE|READ_MEDIA_|READ_SMS|RECEIVE_SMS|SEND_SMS|READ_CALL_LOG|WRITE_CALL_LOG|READ_CONTACTS|WRITE_CONTACTS|ACCESS_FINE_LOCATION|ACCESS_BACKGROUND_LOCATION|RECORD_AUDIO|CAMERA|AccessibilityBridgeService|ForegroundWorkerService|com\.google\.android\.apps\.bard|com\.tailscale\.ipn'
+          grep -q 'android.permission.INTERNET' /tmp/tigeriq-v1-merged-manifest.xml
+          grep -q 'android.permission.RECEIVE_BOOT_COMPLETED' /tmp/tigeriq-v1-merged-manifest.xml
+          forbidden='POST_NOTIFICATIONS|com\.google\.android\.c2dm\.permission\.RECEIVE|FirebaseMessagingService|BIND_ACCESSIBILITY_SERVICE|REQUEST_IGNORE_BATTERY_OPTIMIZATIONS|QUERY_ADVANCED_PROTECTION_MODE|SYSTEM_ALERT_WINDOW|QUERY_ALL_PACKAGES|REQUEST_INSTALL_PACKAGES|REQUEST_DELETE_PACKAGES|PACKAGE_USAGE_STATS|BIND_NOTIFICATION_LISTENER_SERVICE|BIND_VPN_SERVICE|BIND_DEVICE_ADMIN|MANAGE_EXTERNAL_STORAGE|READ_EXTERNAL_STORAGE|WRITE_EXTERNAL_STORAGE|READ_MEDIA_|READ_SMS|RECEIVE_SMS|SEND_SMS|READ_CALL_LOG|WRITE_CALL_LOG|READ_CONTACTS|WRITE_CONTACTS|ACCESS_FINE_LOCATION|ACCESS_BACKGROUND_LOCATION|RECORD_AUDIO|CAMERA|AccessibilityBridgeService|ForegroundWorkerService|com\.google\.android\.apps\.bard|com\.tailscale\.ipn'
           if grep -E "$forbidden" /tmp/tigeriq-v1-merged-manifest.xml; then
             echo 'V1_MERGED_MANIFEST_FAIL' >&2
             exit 1
@@ -143,10 +165,12 @@ jobs:
           while IFS= read -r dex; do
             unzip -p "$apk" "$dex" | strings >> /tmp/tigeriq-v1-dex-strings.txt
           done < <(unzip -Z1 "$apk" | grep -E '^classes([0-9]+)?\.dex$')
-          if grep -E 'ai/tigeriq/worker/AccessibilityBridgeService|ai/tigeriq/worker/ForegroundWorkerService|com/google/android/apps/bard|com\.google\.android\.apps\.bard|/v1/android/sessions|/v1/android/jobs/pull|/v1/android/jobs/submit|/v1/inference|ai/tigeriq/worker/v07/SessionManager|ai/tigeriq/worker/v07/SessionLifecycle|ai\.tigeriq\.worker\.v07\.SessionManager|ai\.tigeriq\.worker\.v07\.SessionLifecycle|free_confirmed' /tmp/tigeriq-v1-dex-strings.txt; then
-            echo 'V1_DEX_FAIL: retired/session/UI-automation/local-zero-cost-assertion code packaged in APK' >&2
+          if grep -E 'ai/tigeriq/worker/AccessibilityBridgeService|ai/tigeriq/worker/ForegroundWorkerService|com/google/android/apps/bard|com\.google\.android\.apps\.bard|FirebaseMessagingService|com/google/firebase/messaging|/v1/android/sessions|/v1/android/jobs/pull|/v1/android/jobs/submit|/v1/inference|ai/tigeriq/worker/v07/SessionManager|ai/tigeriq/worker/v07/SessionLifecycle|ai\.tigeriq\.worker\.v07\.SessionManager|ai\.tigeriq\.worker\.v07\.SessionLifecycle|free_confirmed' /tmp/tigeriq-v1-dex-strings.txt; then
+            echo 'V1_DEX_FAIL: retired/session/UI-automation/FCM/local-zero-cost-assertion code packaged in APK' >&2
             exit 1
           fi
+          grep -q "$TIGERIQ_SOURCE_SHA" /tmp/tigeriq-v1-dex-strings.txt
+          grep -q '100.97.23.87' /tmp/tigeriq-v1-dex-strings.txt
           grep -q 'generativelanguage.googleapis.com' /tmp/tigeriq-v1-dex-strings.txt
           grep -q '/api/v1/status' /tmp/tigeriq-v1-dex-strings.txt
           grep -q '/api/v1/jobs/lease' /tmp/tigeriq-v1-dex-strings.txt
@@ -157,6 +181,7 @@ jobs:
           grep -q 'ZERO_COST_AUTHORITY_UNVERIFIED' /tmp/tigeriq-v1-dex-strings.txt
           grep -q 'NO_ENFORCEABLE_PROVIDER_BILLING_PROOF' /tmp/tigeriq-v1-dex-strings.txt
           echo 'ANDROID_V1_BUILT_APK_ZERO_COST_AUTHORITY_GATE_PASS'
+          echo 'ANDROID_V1_BUILT_APK_EXACT_PROVENANCE_GATE_PASS'
       - name: Preserve unsigned CI artifacts before signing-contract test
         run: |
           set -euo pipefail
@@ -165,27 +190,25 @@ jobs:
           mkdir -p .ci-artifacts
           cp apps/android-worker/app/build/outputs/apk/debug/app-debug.apk .ci-artifacts/tigeriq-android-v1-debug.apk
           cp apps/android-worker/app/build/outputs/apk/release/app-release-unsigned.apk .ci-artifacts/tigeriq-android-v1-unsigned-release.apk
-      - name: Prove stable signing configuration with disposable CI identity
+      - name: Prove wrong stable signing identity is rejected
         working-directory: apps/android-worker
         env:
-          TIGERIQ_ANDROID_KEYSTORE: ${{ github.workspace }}/.ci-signing/ci-test.jks
-          TIGERIQ_ANDROID_KEY_ALIAS: ci-test
+          TIGERIQ_ANDROID_KEYSTORE: ${{ github.workspace }}/.ci-signing/wrong-ci-test.jks
+          TIGERIQ_ANDROID_KEY_ALIAS: ci-wrong
           TIGERIQ_ANDROID_STORE_PASSWORD_FILE: ${{ github.workspace }}/.ci-signing/store-password.txt
           TIGERIQ_ANDROID_KEY_PASSWORD_FILE: ${{ github.workspace }}/.ci-signing/key-password.txt
         run: |
           set -euo pipefail
           mkdir -p "$GITHUB_WORKSPACE/.ci-signing"
-          printf '%s' 'CI_ONLY_NOT_TIGERIQ_PRIVATE_KEY' > "$TIGERIQ_ANDROID_STORE_PASSWORD_FILE"
-          printf '%s' 'CI_ONLY_NOT_TIGERIQ_PRIVATE_KEY' > "$TIGERIQ_ANDROID_KEY_PASSWORD_FILE"
-          keytool -genkeypair -keystore "$TIGERIQ_ANDROID_KEYSTORE" -storepass 'CI_ONLY_NOT_TIGERIQ_PRIVATE_KEY' -keypass 'CI_ONLY_NOT_TIGERIQ_PRIVATE_KEY' -alias "$TIGERIQ_ANDROID_KEY_ALIAS" -keyalg RSA -keysize 3072 -validity 2 -dname 'CN=TigerIQ CI Disposable' >/dev/null 2>&1
-          gradle --no-daemon :app:clean :app:assembleRelease
-          test -f app/build/outputs/apk/release/app-release.apk
-          first="$(keytool -printcert -jarfile app/build/outputs/apk/release/app-release.apk | awk -F'SHA256: ' '/SHA256:/{print $2; exit}')"
-          test -n "$first"
-          gradle --no-daemon :app:clean :app:assembleRelease
-          second="$(keytool -printcert -jarfile app/build/outputs/apk/release/app-release.apk | awk -F'SHA256: ' '/SHA256:/{print $2; exit}')"
-          test "$first" = "$second"
-          echo "STABLE_SIGNING_CERTIFICATE_REUSE_PASS"
+          printf '%s' 'CI_ONLY_WRONG_TIGERIQ_PRIVATE_KEY' > "$TIGERIQ_ANDROID_STORE_PASSWORD_FILE"
+          printf '%s' 'CI_ONLY_WRONG_TIGERIQ_PRIVATE_KEY' > "$TIGERIQ_ANDROID_KEY_PASSWORD_FILE"
+          keytool -genkeypair -keystore "$TIGERIQ_ANDROID_KEYSTORE" -storepass 'CI_ONLY_WRONG_TIGERIQ_PRIVATE_KEY' -keypass 'CI_ONLY_WRONG_TIGERIQ_PRIVATE_KEY' -alias "$TIGERIQ_ANDROID_KEY_ALIAS" -keyalg RSA -keysize 3072 -validity 2 -dname 'CN=TigerIQ Wrong CI Identity' >/dev/null 2>&1
+          if gradle --no-daemon :app:tigerIqStableSigningStatus >/tmp/tigeriq-wrong-signing.log 2>&1; then
+            echo 'STABLE_SIGNING_FAIL: wrong certificate was accepted' >&2
+            exit 1
+          fi
+          grep -q 'TigerIQ stable signing certificate mismatch' /tmp/tigeriq-wrong-signing.log
+          echo 'STABLE_SIGNING_WRONG_CERT_REJECTED'
           rm -rf "$GITHUB_WORKSPACE/.ci-signing"
       - uses: actions/upload-artifact@v4
         with:

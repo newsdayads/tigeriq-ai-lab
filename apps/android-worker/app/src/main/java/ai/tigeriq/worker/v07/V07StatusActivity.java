@@ -1,5 +1,7 @@
 package ai.tigeriq.worker.v07;
 
+import ai.tigeriq.worker.BuildConfig;
+
 import android.app.Activity;
 import android.content.ClipData;
 import android.content.ClipboardManager;
@@ -19,7 +21,7 @@ import org.json.JSONObject;
 
 public final class V07StatusActivity extends Activity {
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private TextView stateView, messageView, jobView, pushView, aiView, evidenceView, identityView, contractView;
+    private TextView stateView, messageView, jobView, pushView, aiView, evidenceView, identityView, contractView, buildView;
     private final Runnable refresh = new Runnable() { @Override public void run() { render(); handler.postDelayed(this, 1000L); } };
 
     @Override protected void onCreate(Bundle savedInstanceState) {
@@ -29,12 +31,13 @@ public final class V07StatusActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(48, 48, 48, 48);
         root.setGravity(Gravity.TOP);
-        root.addView(text("TigerIQ AI · Nhân viên điện thoại V1", 22));
-        contractView = text("Controller: " + ControllerV1Contract.PROTOCOL + " · PR #" + ControllerV1Contract.SOURCE_PR, 13); root.addView(contractView);
+        root.addView(text("TigerIQ AI Lab · Android Worker V1", 22));
+        contractView = text("Controller: " + ControllerV1Contract.PROTOCOL + " · PR #" + ControllerV1Contract.SOURCE_PR + " @ " + ControllerV1Contract.SOURCE_HEAD.substring(0, 8), 13); root.addView(contractView);
+        buildView = text("Build: " + BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ") · " + shortSha(BuildConfig.TIGERIQ_SOURCE_SHA), 12); root.addView(buildView);
         stateView = text("NEED_ATTENTION", 28); root.addView(stateView);
         messageView = text("Đang kiểm tra trạng thái", 16); root.addView(messageView);
         identityView = text("Thiết bị: —", 12); root.addView(identityView);
-        aiView = text("AI: chưa cấu hình", 14); root.addView(aiView);
+        aiView = text("Gemini direct: DISABLED", 14); root.addView(aiView);
         jobView = text("", 14); root.addView(jobView);
         pushView = text("", 14); root.addView(pushView);
         evidenceView = text("", 12); root.addView(evidenceView);
@@ -46,7 +49,7 @@ public final class V07StatusActivity extends Activity {
         root.addView(copyIdentity);
 
         Button aiSetup = new Button(this);
-        aiSetup.setText("AI CỦA MÁY NÀY");
+        aiSetup.setText("AI CỦA MÁY NÀY · ĐANG KHÓA");
         aiSetup.setAllCaps(false);
         aiSetup.setOnClickListener(v -> startActivity(new Intent(this, V1AiSetupActivity.class)));
         root.addView(aiSetup);
@@ -59,7 +62,7 @@ public final class V07StatusActivity extends Activity {
             new WorkerStatusStore(this).setState(WorkerState.WORKING, "Đã yêu cầu heartbeat + lease từ Controller V1", null);
         });
         root.addView(scanNow);
-        root.addView(text("Chỉ dùng /api/v1/status + lease/result/heartbeat. Gemini chạy trực tiếp trên điện thoại. Không session Android, không Accessibility/UI automation.", 12));
+        root.addView(text("Chỉ dùng /api/v1/status + lease/result/heartbeat. Gemini direct đang DISABLED theo zero-cost policy; không provider call, không Accessibility/UI automation.", 12));
         setContentView(root);
     }
 
@@ -79,9 +82,12 @@ public final class V07StatusActivity extends Activity {
         else identityView.setText("Employee: " + profile.employeeId + " · Device: " + profile.deviceId + " · Binding: " + (profile.bindingId.isBlank() ? "CHỜ PC01" : profile.bindingId));
         try {
             ProviderConfigStore config = new ProviderConfigStore(this);
-            aiView.setText(config.hasGeminiKey() ? "AI: Gemini · " + config.geminiModel() + " · ĐÃ CẤU HÌNH" : "AI: Gemini · CHƯA CÓ API KEY");
+            String credential = config.hasGeminiKey() ? "credential đã lưu cục bộ" : "chưa lưu credential";
+            aiView.setText("Gemini direct: DISABLED · " + credential + " · " + config.zeroCostAuthority().reason());
+            aiView.setTextColor(Color.rgb(185, 28, 28));
         } catch (Exception error) {
-            aiView.setText("AI: lỗi đọc credential cục bộ");
+            aiView.setText("Gemini direct: DISABLED · lỗi đọc cấu hình cục bộ");
+            aiView.setTextColor(Color.rgb(185, 28, 28));
         }
     }
 
@@ -109,6 +115,11 @@ public final class V07StatusActivity extends Activity {
                 runOnUiThread(() -> Toast.makeText(this, "Không đọc được hồ sơ thiết bị", Toast.LENGTH_SHORT).show());
             }
         }, "tigeriq-v1-public-profile").start();
+    }
+
+    private static String shortSha(String value) {
+        if (value == null || value.isBlank()) return "SHA: UNKNOWN";
+        return "SHA: " + (value.length() > 12 ? value.substring(0, 12) : value);
     }
 
     private TextView text(String value, int sp) { TextView v = new TextView(this); v.setText(value); v.setTextSize(sp); v.setTextColor(Color.rgb(22,31,46)); v.setPadding(0,12,0,12); return v; }

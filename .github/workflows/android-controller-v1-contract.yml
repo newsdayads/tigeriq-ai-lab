@@ -39,6 +39,7 @@ jobs:
           android='apps/android-worker/app/src/main/java/ai/tigeriq/worker/v07'
           contract="$android/ControllerV1Contract.java"
           client="$android/TigerIqApiClient.java"
+          gateway="$android/GatewayUrlPolicy.java"
           authority="$android/ZeroCostAuthority.java"
           policy="$android/ZeroCostPolicy.java"
           controller='controller116/apps/workforce-controller/src/protocol.ts'
@@ -50,6 +51,8 @@ jobs:
           test "$controller_head" = "$android_pinned_head"
 
           grep -Fq "name: 'controller-v1'" "$controller"
+          grep -Fq "host: '100.97.23.87'" "$controller"
+          grep -Fq "port: 8790" "$controller"
           grep -Fq "statusPath: '/api/v1/status'" "$controller"
           grep -Fq "leasePath: '/api/v1/jobs/lease'" "$controller"
           grep -Fq '/api/v1/jobs/${encodeURIComponent(jobId)}/result' "$controller"
@@ -67,6 +70,10 @@ jobs:
           grep -Fq '"attempts": []' "$readme"
           grep -Fq '"evidence": [' "$readme"
 
+          grep -Fq 'CONTROLLER_HOST = "100.97.23.87"' "$contract"
+          grep -Fq 'CONTROLLER_PORT = 8790' "$contract"
+          grep -Fq 'ControllerV1Contract.CONTROLLER_HOST.equals(host)' "$gateway"
+          grep -Fq 'uri.getPort() != ControllerV1Contract.CONTROLLER_PORT' "$gateway"
           grep -Fq 'PROTOCOL = "controller-v1"' "$contract"
           grep -Fq 'MIGRATION = "001_operational_state_v1"' "$contract"
           grep -Fq 'STATUS_PATH = "/api/v1/status"' "$contract"
@@ -95,9 +102,10 @@ jobs:
           fi
           echo "PR116_HEAD=$controller_head"
           echo 'ANDROID_CONTROLLER_V1_STATIC_CONTRACT_MATCH'
+          echo 'ANDROID_CONTROLLER_V1_ENDPOINT_PIN_PASS'
           echo 'ANDROID_ZERO_COST_AUTHORITY_STATIC_GATE_PASS'
       - name: Run focused Android contract tests
         working-directory: apps/android-worker
         run: |
-          gradle --no-daemon :app:testDebugUnitTest --tests ai.tigeriq.worker.v07.ControllerV1ContractTest --tests ai.tigeriq.worker.v07.DirectAiJobAdapterTest --tests ai.tigeriq.worker.v07.ActivationCodeTest --tests ai.tigeriq.worker.v07.ZeroCostPolicyTest
+          gradle --no-daemon :app:testDebugUnitTest --tests ai.tigeriq.worker.v07.ControllerV1ContractTest --tests ai.tigeriq.worker.v07.GatewayUrlPolicyTest --tests ai.tigeriq.worker.v07.DirectAiJobAdapterTest --tests ai.tigeriq.worker.v07.ActivationCodeTest --tests ai.tigeriq.worker.v07.ZeroCostPolicyTest
           echo 'ANDROID_CONTROLLER_V1_PROTOCOL_GATE_PASS'

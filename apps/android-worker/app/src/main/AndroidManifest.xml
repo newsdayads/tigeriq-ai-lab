@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- TigerIQ V1 independent phone AI employee: minimum permission surface. -->
+    <!-- TigerIQ V1 independent phone AI employee: no dangerous runtime permission. -->
     <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <supports-screens
@@ -14,7 +13,7 @@
 
     <application
         android:allowBackup="false"
-        android:label="TigerIQ AI Employee"
+        android:label="TigerIQ AI Lab · Worker V1"
         android:resizeableActivity="true"
         android:theme="@style/TigerIQTheme"
         android:usesCleartextTraffic="false"
@@ -40,15 +39,6 @@
             android:exported="false"
             android:resizeableActivity="true" />
 
-        <!-- FCM is wake-only. It carries no provider/session/lease secret. -->
-        <service
-            android:name=".v07.TigerIqMessagingService"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="com.google.firebase.MESSAGING_EVENT" />
-            </intent-filter>
-        </service>
-
         <receiver
             android:name=".v07.V07BootReceiver"
             android:enabled="true"
@@ -60,6 +50,6 @@
         </receiver>
 
         <!-- Frozen/absent from V1 execution: AccessibilityService, overlay, package queries,
-             foreground UI automation, banking access, Gemini-app automation. -->
+             foreground UI automation, banking access, Gemini-app automation and FCM dependency. -->
     </application>
 </manifest>

@@ -43,11 +43,11 @@ public final class V07EnrollmentActivity extends Activity {
         root.setPadding(dp(22), dp(26), dp(22), dp(26));
         root.setBackgroundColor(Color.rgb(246, 247, 251));
 
-        TextView title = text("TigerIQ AI · Nhân viên điện thoại V1", 23, true);
+        TextView title = text("TigerIQ AI Lab · Android Worker V1", 23, true);
         title.setTextColor(NAVY); root.addView(title);
-        TextView subtitle = text("Controller V1 lease JOB · điện thoại tự gọi Gemini · trả RESULT + evidence", 12, true);
+        TextView subtitle = text("Controller V1 · nhận JOB từ PC01 · trả RESULT + evidence", 12, true);
         subtitle.setTextColor(ORANGE); root.addView(subtitle);
-        TextView safety = text("Không session Android · Không Trợ năng · Không điều khiển màn hình. Khóa Gemini chỉ nằm trên máy này.", 13, false);
+        TextView safety = text("Gemini direct: DISABLED theo policy 0đ. Không Accessibility/UI automation; preflight không gọi provider.", 13, false);
         safety.setTextColor(MUTED); safety.setPadding(0, dp(12), 0, dp(18)); root.addView(safety);
 
         checkButton = new Button(this);
@@ -55,7 +55,7 @@ public final class V07EnrollmentActivity extends Activity {
         readinessView = text("Chưa kiểm tra phần cứng", 12, false); readinessView.setTextColor(MUTED); readinessView.setPadding(0, dp(8), 0, dp(18)); root.addView(readinessView);
 
         TextView activationTitle = text("Kết nối Controller V1 trên PC01", 16, true); activationTitle.setTextColor(NAVY); root.addView(activationTitle);
-        TextView activationHelp = text("Dán mã TIQ1 chứa địa chỉ Controller và Employee ID. Mã V1 không chứa session token hay khóa Gemini.", 12, false);
+        TextView activationHelp = text("Dán mã TIQ1 chứa Controller + Employee ID. APP chỉ nhận endpoint đúng PR #116; URL sai sẽ fail-closed.", 12, false);
         activationHelp.setTextColor(MUTED); activationHelp.setPadding(0, dp(6), 0, dp(8)); root.addView(activationHelp);
 
         activationInput = field("Mã TigerIQ V1 · TIQ1.…");
@@ -67,7 +67,7 @@ public final class V07EnrollmentActivity extends Activity {
         connectButton.setText("TẠO DANH TÍNH & KIỂM TRA CONTROLLER"); connectButton.setAllCaps(false); connectButton.setTextColor(Color.WHITE); connectButton.setBackgroundColor(ORANGE); connectButton.setOnClickListener(v -> connect()); root.addView(connectButton);
         statusView = text("Chưa kết nối Controller V1", 12, false); statusView.setTextColor(MUTED); statusView.setPadding(0, dp(10), 0, 0); root.addView(statusView);
 
-        TextView footer = text("Sau bước này, APP hiển thị hồ sơ công khai của thiết bị để PC01 provision Employee/Device/Binding. Private key Android Keystore không rời điện thoại.", 11, false);
+        TextView footer = text("Private key Android Keystore không rời điện thoại. Pairing/JOB-001 chỉ chạy sau PC01_PHYSICAL_GO_LIVE_PASS.", 11, false);
         footer.setTextColor(MUTED); footer.setPadding(0, dp(20), 0, 0); root.addView(footer);
         return root;
     }
@@ -92,7 +92,7 @@ public final class V07EnrollmentActivity extends Activity {
     private void connect() {
         ActivationCode.Bundle activation;
         try { activation = ActivationCode.parse(activationInput.getText().toString()); }
-        catch (Exception error) { Toast.makeText(this, "Mã V1 không hợp lệ", Toast.LENGTH_SHORT).show(); statusView.setText("Kết nối thất bại · mã không hợp lệ"); return; }
+        catch (Exception error) { Toast.makeText(this, "Mã V1/endpoint không hợp lệ", Toast.LENGTH_SHORT).show(); statusView.setText("Kết nối thất bại · mã/endpoint không hợp lệ"); return; }
         connectButton.setEnabled(false);
         statusView.setText("Đang tạo danh tính Keystore và kiểm tra /api/v1/status…");
         new Thread(() -> {

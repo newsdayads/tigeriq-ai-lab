@@ -10,6 +10,9 @@ public final class ControllerV1Contract {
     public static final String SOURCE_HEAD = "c0632bc110ea0d26925d3657ac485cb90b5ee010";
     public static final String PROTOCOL = "controller-v1";
     public static final String MIGRATION = "001_operational_state_v1";
+    public static final String CONTROLLER_HOST = "100.97.23.87";
+    public static final int CONTROLLER_PORT = 8790;
+    public static final String CONTROLLER_TAILSCALE_HTTP_BASE = "http://" + CONTROLLER_HOST + ":" + CONTROLLER_PORT;
     public static final String STATUS_PATH = "/api/v1/status";
     public static final String LEASE_PATH = "/api/v1/jobs/lease";
     private static final Pattern ROUTE_ID = Pattern.compile("^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$");

@@ -15,7 +15,6 @@ import javax.crypto.spec.GCMParameterSpec;
 
 /** Keystore-backed encrypted local secrets. Controller V1 has no Android bootstrap/session secret. */
 public final class SecureSecretStore {
-    public static final String FCM_TOKEN = "fcm_token";
     private static final String PREFS = "tigeriq_v07_secure";
     private static final String KEY_ALIAS = "tigeriq.v07.secure.aes";
     private static final String ANDROID_KEYSTORE = "AndroidKeyStore";

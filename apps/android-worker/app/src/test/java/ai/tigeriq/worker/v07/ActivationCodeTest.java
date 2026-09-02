@@ -21,21 +21,21 @@ public class ActivationCodeTest {
 
     @Test public void ignoresLegacyCredentialAndBootstrapFieldsDuringMigration() throws Exception {
         String raw = new JSONObject()
-                .put("gateway", "https://pc01.tigeriq.test/")
+                .put("gateway", "http://100.97.23.87:8790/")
                 .put("employeeId", "EMP-002")
                 .put("credentialId", "OLD-CRED")
                 .put("bootstrapToken", "OLD-UNUSED-SECRET")
                 .toString();
         ActivationCode.Bundle bundle = ActivationCode.parse(raw);
-        assertEquals("https://pc01.tigeriq.test", bundle.controller);
+        assertEquals("http://100.97.23.87:8790", bundle.controller);
         assertEquals(bundle.controller, bundle.gateway);
         assertEquals("EMP-002", bundle.employeeId);
     }
 
     @Test(expected = IllegalArgumentException.class)
-    public void rejectsPublicHttpController() throws Exception {
+    public void rejectsOtherControllerEndpoint() throws Exception {
         ActivationCode.parse(new JSONObject()
-                .put("controller", "http://example.test:8790")
+                .put("controller", "http://100.100.20.30:8790")
                 .put("employeeId", "EMP-003")
                 .toString());
     }
@@ -43,7 +43,7 @@ public class ActivationCodeTest {
     @Test(expected = IllegalArgumentException.class)
     public void rejectsMissingEmployee() throws Exception {
         ActivationCode.parse(new JSONObject()
-                .put("controller", "https://pc01.tigeriq.test")
+                .put("controller", "http://100.97.23.87:8790")
                 .toString());
     }
 }

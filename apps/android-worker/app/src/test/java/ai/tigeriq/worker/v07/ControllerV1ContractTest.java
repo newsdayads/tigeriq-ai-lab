@@ -6,11 +6,14 @@ import org.junit.Test;
 import static org.junit.Assert.assertEquals;
 
 public final class ControllerV1ContractTest {
-    @Test public void pinsApproved116ProtocolAndRoutes() throws Exception {
+    @Test public void pinsApproved116ProtocolEndpointAndRoutes() throws Exception {
         assertEquals("116", ControllerV1Contract.SOURCE_PR);
         assertEquals("c0632bc110ea0d26925d3657ac485cb90b5ee010", ControllerV1Contract.SOURCE_HEAD);
         assertEquals("controller-v1", ControllerV1Contract.PROTOCOL);
         assertEquals("001_operational_state_v1", ControllerV1Contract.MIGRATION);
+        assertEquals("100.97.23.87", ControllerV1Contract.CONTROLLER_HOST);
+        assertEquals(8790, ControllerV1Contract.CONTROLLER_PORT);
+        assertEquals("http://100.97.23.87:8790", ControllerV1Contract.CONTROLLER_TAILSCALE_HTTP_BASE);
         assertEquals("/api/v1/status", ControllerV1Contract.STATUS_PATH);
         assertEquals("/api/v1/jobs/lease", ControllerV1Contract.LEASE_PATH);
         assertEquals("/api/v1/jobs/JOB-001/result", ControllerV1Contract.resultPath("JOB-001"));
