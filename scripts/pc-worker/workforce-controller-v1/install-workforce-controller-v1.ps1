@@ -2,6 +2,8 @@ param(
   [string]$RepoPath = 'F:\TigerIQ\Workspace\tigeriq-ai-lab',
   [string]$DatabaseUrl = $env:TIGERIQ_DATABASE_URL,
   [string]$ExpectedBranch = 'wo045/pc01-autonomy-hardening',
+  [string]$ExpectedHeadSha = '',
+  [string]$HealthScriptPath = '',
   [switch]$StartNow
 )
 
@@ -16,7 +18,10 @@ $ConfigDir = 'F:\TigerIQ\Secrets'
 $DatabaseUrlFile = Join-Path $ConfigDir 'workforce-controller-v1.database-url'
 $RunnerPath = Join-Path $RuntimeDir 'run-workforce-controller-v1.ps1'
 $LogPath = 'F:\TigerIQ\Logs\workforce-controller-v1.log'
-$HealthScript = Join-Path $RepoPath 'scripts\pc-worker\workforce-controller-v1\health-workforce-controller-v1.ps1'
+$Migration001 = Join-Path $RepoPath 'db\migrations\001_operational_state_v1.sql'
+$Migration002 = Join-Path $RepoPath 'db\migrations\002_device_proof_replay_v1.sql'
+$ForbiddenMigration = Join-Path $RepoPath 'db\migrations\003_business_state_v2.sql'
+if ([string]::IsNullOrWhiteSpace($HealthScriptPath)) { $HealthScriptPath = Join-Path $RepoPath 'scripts\pc-worker\workforce-controller-v1\health-workforce-controller-v1.ps1' }
 
 function Fail([string]$Code, [string]$Message) { Write-Error "$Code`: $Message"; exit 1 }
 function Resolve-Executable([string]$Name, [string[]]$Candidates) {
@@ -40,6 +45,8 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 if ([string]::IsNullOrWhiteSpace($DatabaseUrl)) { Fail 'DATABASE_URL_MISSING' 'TIGERIQ_DATABASE_URL or -DatabaseUrl is required.' }
 if ($DatabaseUrl -match '://[^/@:]+:[^/@]+@' -or $DatabaseUrl -match '(?i)password=') { Fail 'DATABASE_URL_SECRET' 'Database URL must not contain a password; use local SSPI/.pgpass/PGPASSWORD according to PC01 policy.' }
 if (-not (Test-Path (Join-Path $RepoPath '.git'))) { Fail 'REPO_MISSING' "TigerIQ repository not found at $RepoPath." }
+if (Test-Path $ForbiddenMigration) { Fail 'MIGRATION_003_FORBIDDEN' '003_business_state_v2.sql is not authorized for physical apply.' }
+foreach ($requiredMigration in @($Migration001,$Migration002)) { if (-not (Test-Path $requiredMigration)) { Fail 'MIGRATION_MISSING' "Required migration missing: $requiredMigration" } }
 
 $git = Resolve-Executable 'git.exe' @('C:\Program Files\Git\cmd\git.exe')
 $node = Resolve-Executable 'node.exe' @('C:\Program Files\nodejs\node.exe')
@@ -49,11 +56,13 @@ $tailscale = Resolve-Executable 'tailscale.exe' @('C:\Program Files\Tailscale\ta
 if (-not $git) { Fail 'GIT_MISSING' 'git.exe not found.' }
 if (-not $node) { Fail 'NODE_MISSING' 'node.exe not found.' }
 if (-not $npm) { Fail 'NPM_MISSING' 'npm.cmd not found.' }
-if (-not $psql) { Fail 'POSTGRES_MISSING' 'psql.exe not found; install local PostgreSQL first.' }
+if (-not $psql) { Fail 'POSTGRES_MISSING' 'psql.exe not found; local PostgreSQL is required.' }
 if (-not $tailscale) { Fail 'TAILSCALE_MISSING' 'tailscale.exe not found.' }
 
 $branch = (& $git -C $RepoPath branch --show-current).Trim()
+$headSha = (& $git -C $RepoPath rev-parse HEAD).Trim()
 if ($LASTEXITCODE -ne 0 -or $branch -ne $ExpectedBranch) { Fail 'WRONG_BRANCH' "Expected reviewed branch $ExpectedBranch; current branch is $branch." }
+if (-not [string]::IsNullOrWhiteSpace($ExpectedHeadSha) -and $headSha -ne $ExpectedHeadSha) { Fail 'WRONG_SHA' 'Repository HEAD does not match the approved bootstrap SHA.' }
 $dirty = & $git -C $RepoPath status --porcelain
 if ($LASTEXITCODE -ne 0) { Fail 'GIT_STATUS_FAILED' 'Could not inspect repository state.' }
 if ($dirty) { Fail 'REPO_DIRTY' 'Refusing install from a dirty workspace.' }
@@ -61,27 +70,36 @@ if ($dirty) { Fail 'REPO_DIRTY' 'Refusing install from a dirty workspace.' }
 $ips = @(& $tailscale ip -4 2>$null | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Select-Object -Unique)
 if ($LASTEXITCODE -ne 0 -or $ips.Count -ne 1 -or $ips[0] -ne $ExpectedHost) { Fail 'TAILSCALE_IP_MISMATCH' "Expected live PC01 Tailscale IPv4 $ExpectedHost." }
 if (-not (Get-NetIPAddress -AddressFamily IPv4 -IPAddress $ExpectedHost -ErrorAction SilentlyContinue)) { Fail 'TAILSCALE_IP_NOT_PRESENT' "$ExpectedHost is not assigned locally." }
-$existing = Get-NetTCPConnection -LocalPort $ControllerPort -State Listen -ErrorAction SilentlyContinue
-if ($existing) { Fail 'PORT_IN_USE' 'Port 8790 already has a listener; installer will not replace an unknown process.' }
+
+$existingTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+if ($existingTask) {
+  Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+  Start-Sleep -Seconds 2
+}
+$existing = @(Get-NetTCPConnection -LocalPort $ControllerPort -State Listen -ErrorAction SilentlyContinue)
+if ($existing.Count -gt 0) { Fail 'PORT_IN_USE' 'Port 8790 still has a listener after stopping the canonical task; wrapper must resolve the conflict first.' }
 
 Push-Location $RepoPath
 try {
   & $npm ci --no-audit --no-fund
   if ($LASTEXITCODE -ne 0) { Fail 'NPM_CI_FAILED' 'npm ci failed.' }
-  & $npm install --no-save --ignore-scripts pg@8.16.3
+  & $npm install --no-save --ignore-scripts --package-lock=false pg@8.16.3
   if ($LASTEXITCODE -ne 0) { Fail 'PG_ADAPTER_FAILED' 'Free pg@8 runtime adapter install failed.' }
   & $npm run build
   if ($LASTEXITCODE -ne 0) { Fail 'BUILD_FAILED' 'TigerIQ build failed.' }
   $env:TIGERIQ_DATABASE_URL = $DatabaseUrl
-  & (Join-Path $RepoPath 'scripts\install-work-state-postgres.ps1') -DatabaseUrl $DatabaseUrl -Migration (Join-Path $RepoPath 'db\migrations\001_operational_state_v1.sql')
-  if ($LASTEXITCODE -ne 0) { Fail 'POSTGRES_MIGRATION_FAILED' 'Operational-state migration failed.' }
+  & (Join-Path $RepoPath 'scripts\install-work-state-postgres.ps1') -DatabaseUrl $DatabaseUrl -Migration $Migration001 -ReplayMigration $Migration002
+  if ($LASTEXITCODE -ne 0) { Fail 'POSTGRES_MIGRATION_FAILED' 'Operational-state migrations 001+002 failed.' }
+  $versions = @(& $psql $DatabaseUrl -v ON_ERROR_STOP=1 -Atc "SELECT version FROM tigeriq_schema_migrations WHERE version IN ('001_operational_state_v1','002_device_proof_replay_v1') ORDER BY version;" 2>$null | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+  $forbidden = (& $psql $DatabaseUrl -v ON_ERROR_STOP=1 -Atc "SELECT count(*) FROM tigeriq_schema_migrations WHERE version='003_business_state_v2';" 2>$null).Trim()
+  if ($versions.Count -ne 2 -or $forbidden -ne '0') { Fail 'POSTGRES_MIGRATION_VERIFY_FAILED' 'Required 001+002 state is not exact or forbidden 003 is present.' }
 } finally {
   Pop-Location
 }
 
 $entry = Join-Path $RepoPath 'dist\apps\workforce-controller\src\standalone.js'
 if (-not (Test-Path $entry)) { Fail 'CONTROLLER_BUILD_MISSING' 'Built Controller entry is missing.' }
-if (-not (Test-Path $HealthScript)) { Fail 'HEALTH_SCRIPT_MISSING' 'Controller health script is missing.' }
+if (-not (Test-Path $HealthScriptPath)) { Fail 'HEALTH_SCRIPT_MISSING' 'Controller health script is missing.' }
 New-Item -ItemType Directory -Force -Path $RuntimeDir,$ConfigDir,(Split-Path $LogPath -Parent) | Out-Null
 [IO.File]::WriteAllText($DatabaseUrlFile,$DatabaseUrl.Trim(),(New-Object Text.UTF8Encoding($false)))
 Protect-LocalFile $DatabaseUrlFile
@@ -103,7 +121,6 @@ exit `$LASTEXITCODE
 [IO.File]::WriteAllText($RunnerPath,$runner,(New-Object Text.UTF8Encoding($false)))
 Protect-LocalFile $RunnerPath
 
-$existingTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 if ($existingTask) { Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false }
 $powershell = (Get-Command powershell.exe).Source
 $action = New-ScheduledTaskAction -Execute $powershell -Argument "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$RunnerPath`""
@@ -120,7 +137,7 @@ New-NetFirewallRule -DisplayName $FirewallName -Direction Inbound -Action Allow 
 if ($StartNow) {
   Start-ScheduledTask -TaskName $TaskName
   Start-Sleep -Seconds 4
-  & $HealthScript -DatabaseUrl $DatabaseUrl
+  & $HealthScriptPath -DatabaseUrl $DatabaseUrl
   exit $LASTEXITCODE
 }
 
@@ -128,10 +145,12 @@ if ($StartNow) {
   ok = $true
   status = 'INSTALLED_NOT_STARTED'
   branch = $branch
+  headSha = $headSha
   task = $TaskName
   bind = "$ExpectedHost`:$ControllerPort"
   datastore = 'PostgreSQL operational-state-v1'
-  migration = '001_operational_state_v1'
+  migrations = @('001_operational_state_v1','002_device_proof_replay_v1')
+  forbiddenMigrationApplied = $false
   firewall = 'TAILSCALE_ONLY'
   autostart = $true
   recoveryProbeMinutes = 5
