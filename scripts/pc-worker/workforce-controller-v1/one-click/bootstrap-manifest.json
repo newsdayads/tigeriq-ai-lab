@@ -1,0 +1,31 @@
+{
+  "schema": "tigeriq.pc01.one-click.v1",
+  "issue": 156,
+  "bootstrapBranch": "wo056/pc01-one-click-bootstrap",
+  "controllerBasis": {
+    "pr": 116,
+    "sha": "c0632bc110ea0d26925d3657ac485cb90b5ee010"
+  },
+  "postgresBasis": {
+    "pr": 141,
+    "sha": "6f12d3c5f3da1616041fa48fadf8a4e8b41e7ad9",
+    "migration001BlobSha": "33445fd07133b5e58f2b33ee3996bf49e6547fa3"
+  },
+  "migration002BlobSha": "90e842318f3cf47caf671890e4bbe435cd35e8b6",
+  "allowedMigrations": [
+    "001_operational_state_v1",
+    "002_device_proof_replay_v1"
+  ],
+  "forbiddenMigration": "003_business_state_v2",
+  "network": {
+    "host": "100.97.23.87",
+    "port": 8790,
+    "tailscaleRemoteCidr": "100.64.0.0/10"
+  },
+  "scheduledTask": "TigerIQ Workforce Controller",
+  "firewallRule": "TigerIQ Workforce Controller V1 (Tailscale only)",
+  "runtimeRepoPath": "F:\\TigerIQ\\Workspace\\tigeriq-ai-lab",
+  "evidenceRoot": "F:\\TigerIQ\\Evidence\\pc01-one-click",
+  "secretsRoot": "F:\\TigerIQ\\Secrets",
+  "physicalExecutionAuthorized": false
+}
