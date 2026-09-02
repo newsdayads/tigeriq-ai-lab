@@ -8,7 +8,7 @@ Base lineage: PR #132 exact `21bbb09875a171d5b6003a188e70230c4e87b6d2`
 
 PC01 is the control plane and operating-data authority. Each Android phone is an independent AI employee.
 
-Runtime path:
+Intended runtime path:
 
 `PC01 -> Tailscale -> Android JOB -> phone-owned AI provider API -> Android RESULT/EVIDENCE -> Tailscale -> PC01`
 
@@ -19,7 +19,7 @@ The phone MUST NOT forward the prompt to PC01/TigerIQ so PC01 calls the AI provi
 Keep:
 - Android Keystore device identity and hardware-backed proof;
 - Employee/Device identity and authoritative binding;
-- one-time activation;
+- activation/provisioning;
 - durable checkpoint and encrypted local job/result material;
 - lease authority, dedupe/idempotency boundary and bounded retry;
 - WorkManager periodic recovery, reboot/app-update recovery and network retry;
@@ -31,80 +31,85 @@ Frozen from execution:
 - Gemini-app UI automation;
 - legacy foreground UI worker.
 
+## Controller V1 contract — PR #116
+
+The only V1 work protocol is:
+- `GET /api/v1/status` — health/compatibility only;
+- `POST /api/v1/jobs/lease` — lease next JOB;
+- `POST /api/v1/jobs/{jobId}/result` — submit RESULT + evidence;
+- `POST /api/v1/devices/{deviceId}/heartbeat` — device heartbeat.
+
+Retired from V1 Android runtime:
+- `/v1/android/sessions`;
+- `/v1/android/jobs/pull`;
+- `/v1/android/jobs/submit`;
+- `/v1/inference`.
+
+Authentication uses Android Keystore EC P-256 + `SHA256withECDSA` device proof per PR #116. There is no Android Controller session token.
+
 ## V1 phone-owned AI
 
 Provider connector boundary is `AiProviderConnector` + `LocalAiProviderRegistry`.
 
-First connector: Gemini API.
+First connector implementation: Gemini API.
 - Gemini API key is stored only in `SecureSecretStore`, encrypted with Android Keystore AES/GCM.
 - Provider/model config is local to the phone.
-- Gemini is called directly at `generativelanguage.googleapis.com` with `x-goog-api-key`.
-- Provider credential is never included in PC01 activation, JOB, RESULT, evidence or logs.
+- Provider credential is never included in PC01 activation/provisioning, JOB, RESULT, evidence or logs.
 
-Future connectors may implement the same interface for OpenRouter/Claude/Groq without changing the PC01 JOB/RESULT contract.
+### Issue #150 — zero-cost authority
 
-## PC01 Android control contract required for physical integration
+A locally mutable `free_confirmed`/billing flag is not valid billing authority and has been removed from the execution path.
 
-Activation bundle `TIQ1.<base64url JSON>`:
-- `controller`: PC01 URL (HTTPS, or Tailscale `100.64.0.0/10` HTTP allowed by policy; current Android network config pins `100.97.23.87` for cleartext pilot transport);
-- `employeeId`;
-- `credentialId`;
-- `bootstrapToken` one-time only.
+Current repository truth:
+- no local checkbox/string/preference can make an unverified credential executable;
+- legacy local billing state is removed/ignored;
+- `ZeroCostAuthority.current()` is `unverified` because no independently verifiable provider-side zero-spend boundary is wired;
+- `ZeroCostPolicy` blocks execution before Gemini key read/network connection;
+- no paid fallback exists;
+- Gemini direct remains implemented but **disabled/fail-closed** until an independent enforceable non-billable authority can be added without fabricating billing evidence.
 
-HTTP routes expected from PC01:
-- `POST /v1/android/sessions` — short-lived Android control-plane session;
-- `POST /v1/android/jobs/pull` — returns `empty` or a device/binding-bound lease + JOB;
-- `POST /v1/android/jobs/submit` — accepts the standard RESULT with lease authority and idempotent replay handling.
-
-No `/v1/inference` Android execution dependency remains.
+Regression must prove a legacy/local `free_confirmed` claim still produces zero provider calls.
 
 ## Standard RESULT payload
 
-Android returns:
-- `jobId`;
-- `output`;
+Controller V1 receives `result.output` as an object containing:
+- `text`;
 - `provider`;
 - `model`;
 - `timestamps`;
 - `attempts`;
 - `failover`;
 - `errors`;
-- `evidence`;
-- plus Employee/Device/Binding identity and completed status.
+- plus inline `evidence[]` in the same result request.
 
 Provider-attempt metadata is sanitized and checkpointed across bounded retry. Provider secret is excluded.
 
-## Today's gates
+## Repository gates
 
 Can prove without physical PC01:
 - source architecture gate;
+- zero-cost authority fail-closed regression without network;
+- Controller V1 compatibility against live PR #116 head;
 - unit tests;
 - debug + unsigned release APK build;
 - merged manifest/DEX audit;
 - no Accessibility/UI automation packaged;
-- no server inference path packaged;
+- no server inference/retired Android work protocol packaged;
 - no hard-coded provider secret;
 - stable-signing continuity mechanism with disposable CI identity.
 
-Cannot honestly prove today without physical PC01/phone/provider credential:
+Cannot honestly prove without physical PC01/phone/provider-side authority:
 - Tailscale reachability;
-- real activation/session;
-- real JOB-001 pull;
+- live Controller provisioning;
+- real JOB-001 lease/result acceptance;
+- enforceable provider zero-spend billing authority;
 - live Gemini auth/quota/provider result;
-- RESULT accepted into PC01/PostgreSQL;
 - reboot/network physical recovery;
 - Z Flip/Z Fold behavior;
 - independent exact-head review.
 
-## JOB-001 physical acceptance for tomorrow
+## Physical acceptance remains blocked on zero-cost authority
 
-1. Activate one Samsung against PC01 through Tailscale.
-2. Configure that phone's Gemini API key locally.
-3. PC01 queues JOB-001 with a harmless prompt.
-4. Phone pulls JOB-001 and calls Gemini directly.
-5. Phone submits standard RESULT/EVIDENCE to PC01.
-6. Verify PC01 stores one authoritative completion and rejects duplicate submit safely.
-7. Repeat after network interruption/reboot to verify resume/no duplicate.
-8. Independent reviewer verifies exact candidate evidence before any release decision.
+Physical Gemini JOB execution MUST NOT be attempted until an enforceable independent zero-cost authority exists. Once that separate prerequisite exists, physical acceptance can verify Controller lease -> phone provider execution -> RESULT/evidence -> dedupe/recovery.
 
 No MAIN/Production and no paid-service activation in this work order.
