@@ -104,6 +104,7 @@ Assert-True ($restart -match 'PGPASSFILE' -and $restart -match 'device_proof_rep
 Assert-True ($launcher -match 'Invoke-PC01-OneClickGoLive\.ps1' -and $launcher -match 'ExecutePhysical') 'One-click launcher does not invoke the canonical wrapper.'
 Assert-True ($launcher -match 'Start-Process' -and $launcher -match 'PassThru' -and $launcher -match 'ExitCode') 'One-click launcher does not capture and return the elevated child exit code.'
 Test-LauncherChildExitCodePropagation
+$global:LASTEXITCODE = 0
 Assert-True ($bootstrap -match 'Assert-PC01ApprovedHead\.ps1' -and $bootstrap -match 'ApprovedBootstrapHead') 'Bootstrap does not enforce immutable approved-head pinning.'
 Assert-True ($allScripts -notmatch '(?i)winget\s+uninstall|Uninstall-Package|DROP\s+(TABLE|DATABASE)|Remove-WindowsFeature|git\s+(checkout|switch)\s+main') 'Destructive or MAIN mutation command detected.'
 Assert-True ($allScripts -notmatch '(?i)openclaw\s+(connect|login|auth|enable|start)') 'OpenClaw reconnect/enable command detected.'
