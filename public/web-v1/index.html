@@ -12,11 +12,8 @@
 <body>
 <div class="app-shell">
   <aside class="sidebar">
-    <div class="brand-block">
-      <div class="brand-mark">TQ</div>
-      <div><div class="brand-title">TigerIQ</div><div class="brand-sub">AI LAB · V1</div></div>
-    </div>
-    <div class="edition-badge"><span></span> WEB CONTROL V1</div>
+    <div class="brand-block"><div class="brand-mark">TQ</div><div><div class="brand-title">TigerIQ</div><div class="brand-sub">AI LAB · V1</div></div></div>
+    <div class="edition-badge"><span></span> BẢNG ĐIỀU HÀNH V1</div>
     <nav class="nav">
       <button class="active" data-view="overview"><i>⌂</i><span>Tổng quan</span></button>
       <button data-view="goal"><i>◎</i><span>Giao mục tiêu</span></button>
@@ -31,142 +28,50 @@
     </nav>
     <div class="sidebar-note">Nguồn vận hành thật: <b>Workforce Controller trên PC01</b>. GitHub/Vercel không phải hàng đợi hay trung tâm điều hành.</div>
   </aside>
-
   <main class="main">
     <header class="topbar">
-      <div>
-        <div class="eyebrow" id="pageEyebrow">BẢNG ĐIỀU HÀNH CÔNG TY</div>
-        <h1 id="pageTitle">Tổng quan TigerIQ V1</h1>
-        <p id="pageSubtitle">Một nơi để Sếp nhìn tiến độ, nhân sự AI, công việc, kết quả và lỗi vận hành.</p>
-      </div>
-      <div class="top-actions">
-        <div class="source-pill" id="sourcePill"><span></span><b>DỮ LIỆU MẪU</b></div>
-        <div class="owner-pill" id="ownerAccount"><span class="owner-avatar">S</span><span>Owner</span></div>
-        <button class="icon-btn" id="refreshBtn" title="Làm mới">↻</button>
-      </div>
+      <div><div class="eyebrow" id="pageEyebrow">BẢNG ĐIỀU HÀNH CÔNG TY</div><h1 id="pageTitle">Tổng quan TigerIQ V1</h1><p id="pageSubtitle">Một nơi để Sếp nhìn tiến độ, nhân sự AI, công việc, kết quả và lỗi vận hành.</p></div>
+      <div class="top-actions"><div class="source-pill" id="sourcePill"><span></span><b>DỮ LIỆU MẪU</b></div><div class="owner-pill" id="ownerAccount"><span class="owner-avatar">S</span><span>Sếp</span></div><button class="icon-btn" id="refreshBtn" title="Làm mới">↻</button></div>
     </header>
-
-    <div class="truth-banner" id="modeBanner">
-      <div><b>DỮ LIỆU MẪU V1</b><span>Giao diện đang mô phỏng dữ liệu theo contract. Không có trạng thái RUNNING/DONE thật từ PC01.</span></div>
-      <button class="text-btn" data-view-jump="settings">Kết nối Controller →</button>
-    </div>
+    <div class="truth-banner" id="modeBanner"><div><b>DỮ LIỆU MẪU V1</b><span>Giao diện đang mô phỏng dữ liệu theo giao thức. Không có trạng thái RUNNING/DONE thật từ PC01.</span></div><button class="text-btn" data-view-jump="settings">Kết nối Controller →</button></div>
 
     <section class="view active" data-section="overview">
       <div class="hero-grid">
-        <article class="hero-card">
-          <div class="hero-copy">
-            <div class="eyebrow">TIGERIQ AI LAB · V1</div>
-            <h2>Bảng điều hành công ty</h2>
-            <p id="currentObjective">—</p>
-            <div class="hero-meta"><span id="phaseBadge">—</span><span id="operatingMode">—</span></div>
-          </div>
-          <div class="hero-progress">
-            <div class="progress-ring" id="progressRing"><strong id="overallProgress">0%</strong><span>Web V1</span></div>
-          </div>
-        </article>
-        <article class="card readiness-card">
-          <div class="card-head"><div><span class="kicker">MỐC SẴN SÀNG</span><h3>Đường tới JOB-001 thật</h3></div><span class="mini-tag">V1</span></div>
-          <div class="readiness-list" id="readinessList"></div>
-        </article>
+        <article class="hero-card"><div class="hero-copy"><div class="eyebrow">TIGERIQ AI LAB · V1</div><h2>Bảng điều hành công ty</h2><p id="currentObjective">—</p><div class="hero-meta"><span id="phaseBadge">—</span><span id="operatingMode">—</span></div></div><div class="hero-progress"><div class="progress-ring" id="progressRing"><strong id="overallProgress">0%</strong><span>Web V1</span></div></div></article>
+        <article class="card readiness-card"><div class="card-head"><div><span class="kicker">MỐC SẴN SÀNG</span><h3>Đường tới JOB-001 thật</h3></div><span class="mini-tag">V1</span></div><div class="readiness-list" id="readinessList"></div></article>
       </div>
-
       <div class="stat-grid">
         <article class="stat-card"><span>Tiến độ Web V1</span><strong id="statProgress">—</strong><small id="statProgressNote">—</small></article>
         <article class="stat-card"><span>Phòng ban</span><strong id="statDepartments">0</strong><small>cấu trúc điều hành mẫu</small></article>
         <article class="stat-card"><span>Nhân viên AI</span><strong id="statEmployees">0</strong><small>chờ heartbeat Controller</small></article>
         <article class="stat-card"><span>Công việc</span><strong id="statJobs">0</strong><small id="statJobsMeta">—</small></article>
-        <article class="stat-card"><span>Lỗi cần xử lý</span><strong id="statBlockers">0</strong><small>blocker/recovery</small></article>
+        <article class="stat-card"><span>Lỗi cần xử lý</span><strong id="statBlockers">0</strong><small>lỗi / khôi phục</small></article>
       </div>
-
       <div class="content-grid">
-        <article class="card span8">
-          <div class="card-head"><div><span class="kicker">TỔ CHỨC</span><h3>Phòng ban TigerIQ</h3></div><button class="text-btn" data-view-jump="workforce">Xem nhân sự →</button></div>
-          <div class="department-grid" id="overviewDepartments"></div>
-        </article>
-        <article class="card span4">
-          <div class="card-head"><div><span class="kicker">AI PROVIDERS</span><h3>AI đang dùng</h3></div><button class="text-btn" data-view-jump="providers">Chi tiết →</button></div>
-          <div class="provider-mini-list" id="overviewProviders"></div>
-        </article>
-        <article class="card span8">
-          <div class="card-head"><div><span class="kicker">WORK QUEUE</span><h3>Công việc gần nhất</h3></div><button class="text-btn" data-view-jump="jobs">Mở danh sách →</button></div>
-          <div class="job-list" id="overviewJobs"></div>
-        </article>
-        <article class="card span4">
-          <div class="card-head"><div><span class="kicker">QUALITY GATES</span><h3>Kiểm tra gần nhất</h3></div><button class="text-btn" data-view-jump="quality">Xem kiểm tra →</button></div>
-          <div class="check-list" id="overviewChecks"></div>
-        </article>
+        <article class="card span8"><div class="card-head"><div><span class="kicker">TỔ CHỨC</span><h3>Phòng ban TigerIQ</h3></div><button class="text-btn" data-view-jump="workforce">Xem nhân sự →</button></div><div class="department-grid" id="overviewDepartments"></div></article>
+        <article class="card span4"><div class="card-head"><div><span class="kicker">HỆ THỐNG AI</span><h3>AI đang dùng</h3></div><button class="text-btn" data-view-jump="providers">Chi tiết →</button></div><div class="provider-mini-list" id="overviewProviders"></div></article>
+        <article class="card span8"><div class="card-head"><div><span class="kicker">CÔNG VIỆC</span><h3>Công việc gần nhất</h3></div><button class="text-btn" data-view-jump="jobs">Mở danh sách →</button></div><div class="job-list" id="overviewJobs"></div></article>
+        <article class="card span4"><div class="card-head"><div><span class="kicker">KIỂM TRA CHẤT LƯỢNG</span><h3>Kiểm tra gần nhất</h3></div><button class="text-btn" data-view-jump="quality">Xem kiểm tra →</button></div><div class="check-list" id="overviewChecks"></div></article>
       </div>
     </section>
 
-    <section class="view" data-section="goal">
-      <div class="section-head"><div><span class="kicker">OWNER INTENT</span><h2>Giao mục tiêu</h2><p>Web chỉ gửi mục tiêu. Controller/Work Management mới được quyền chia việc và phân công.</p></div></div>
-      <div class="two-col">
-        <article class="card">
-          <form id="goalForm" class="form-grid">
-            <label class="full">Mục tiêu của Sếp<textarea id="goalObjective" required placeholder="Ví dụ: Chạy JOB-001 thật qua điện thoại Gemini, trả kết quả có evidence và reviewer."></textarea></label>
-            <label>Ưu tiên<select id="goalPriority"><option>P0</option><option selected>P1</option><option>P2</option><option>P3</option></select></label>
-            <label>Deadline<input id="goalDeadline" type="datetime-local"></label>
-            <label class="full">Ràng buộc<textarea id="goalConstraints" placeholder="Mỗi dòng một ràng buộc"></textarea></label>
-            <label class="full">Bằng chứng mong đợi<textarea id="goalEvidence" placeholder="Output, provider/model, timestamps, attempts, evidence, review/judge..."></textarea></label>
-            <div class="full intent-warning" id="goalModeNote">Dữ liệu mẫu: nút gửi không tạo job thật.</div>
-            <button class="primary-btn full" type="submit">Gửi mục tiêu tới Controller</button>
-          </form>
-          <pre id="goalResult" class="raw-box" hidden></pre>
-        </article>
-        <article class="card"><span class="kicker">NGUYÊN TẮC V1</span><h3>Web không tự điều phối</h3><div class="rule-list"><div><b>1</b><span>Sếp nhập mục tiêu</span></div><div><b>2</b><span>Controller nhận intent</span></div><div><b>3</b><span>Work Management chia việc</span></div><div><b>4</b><span>Nhân viên AI thực hiện</span></div><div><b>5</b><span>Result → Evidence → Review → Judge</span></div></div></article>
-      </div>
-    </section>
+    <section class="view" data-section="goal"><div class="section-head"><div><span class="kicker">MỤC TIÊU CỦA SẾP</span><h2>Giao mục tiêu</h2><p>Web chỉ gửi mục tiêu. Controller/Work Management mới được quyền chia việc và phân công.</p></div></div><div class="two-col"><article class="card"><form id="goalForm" class="form-grid"><label class="full">Mục tiêu của Sếp<textarea id="goalObjective" required placeholder="Ví dụ: Chạy JOB-001 thật qua điện thoại Gemini, trả kết quả có bằng chứng và người kiểm tra."></textarea></label><label>Ưu tiên<select id="goalPriority"><option>P0</option><option selected>P1</option><option>P2</option><option>P3</option></select></label><label>Hạn hoàn thành<input id="goalDeadline" type="datetime-local"></label><label class="full">Ràng buộc<textarea id="goalConstraints" placeholder="Mỗi dòng một ràng buộc"></textarea></label><label class="full">Bằng chứng mong đợi<textarea id="goalEvidence" placeholder="Kết quả, AI/model, thời gian, số lần thử, bằng chứng, kiểm tra/phán quyết..."></textarea></label><div class="full intent-warning" id="goalModeNote">Dữ liệu mẫu: nút gửi không tạo job thật.</div><button class="primary-btn full" type="submit">Gửi mục tiêu tới Controller</button></form><pre id="goalResult" class="raw-box" hidden></pre></article><article class="card"><span class="kicker">NGUYÊN TẮC V1</span><h3>Web không tự điều phối</h3><div class="rule-list"><div><b>1</b><span>Sếp nhập mục tiêu</span></div><div><b>2</b><span>Controller nhận yêu cầu</span></div><div><b>3</b><span>Work Management chia việc</span></div><div><b>4</b><span>Nhân viên AI thực hiện</span></div><div><b>5</b><span>Kết quả → Bằng chứng → Kiểm tra → Phán quyết</span></div></div></article></div></section>
 
-    <section class="view" data-section="jobs">
-      <div class="section-head"><div><span class="kicker">WORK QUEUE</span><h2>Công việc & trạng thái</h2><p>Chỉ hiển thị trạng thái mà Controller cung cấp; Web không tự đổi stage.</p></div></div>
-      <div class="job-board" id="jobBoard"></div>
-    </section>
+    <section class="view" data-section="jobs"><div class="section-head"><div><span class="kicker">CÔNG VIỆC</span><h2>Công việc & trạng thái</h2><p>Chỉ hiển thị trạng thái mà Controller cung cấp; Web không tự đổi trạng thái.</p></div></div><div class="job-board" id="jobBoard"></div></section>
 
-    <section class="view" data-section="workforce">
-      <div class="section-head"><div><span class="kicker">ORGANIZATION</span><h2>Phòng ban & nhân viên AI</h2><p>Nhìn theo cấu trúc công ty, vai trò, provider, thiết bị và heartbeat.</p></div></div>
-      <div class="department-grid large" id="departmentGrid"></div>
-      <div class="section-divider"></div>
-      <div class="employee-grid" id="employeeGrid"></div>
-      <div class="section-divider"></div>
-      <div class="device-grid" id="deviceGrid"></div>
-    </section>
+    <section class="view" data-section="workforce"><div class="section-head"><div><span class="kicker">TỔ CHỨC</span><h2>Phòng ban & nhân viên AI</h2><p>Nhìn theo cấu trúc công ty, vai trò, AI đang dùng, thiết bị và heartbeat.</p></div></div><div class="department-grid large" id="departmentGrid"></div><div class="section-divider"></div><div class="employee-grid" id="employeeGrid"></div><div class="section-divider"></div><div class="device-grid" id="deviceGrid"></div></section>
 
-    <section class="view" data-section="providers">
-      <div class="section-head"><div><span class="kicker">AI LAYER</span><h2>AI Providers / quota / health</h2><p>Gemini là AI đầu tiên dự kiến cho điện thoại. Health và quota thật phải do Controller đo.</p></div></div>
-      <div class="provider-grid" id="providerGrid"></div>
-    </section>
+    <section class="view" data-section="providers"><div class="section-head"><div><span class="kicker">LỚP AI</span><h2>AI Providers / hạn mức / sức khỏe</h2><p>Gemini là AI đầu tiên dự kiến cho điện thoại. Sức khỏe và hạn mức thật phải do Controller đo.</p></div></div><div class="provider-grid" id="providerGrid"></div></section>
 
-    <section class="view" data-section="prompts">
-      <div class="section-head"><div><span class="kicker">PROMPT ARCHITECT</span><h2>Thư viện Prompt & phiên bản</h2><p>Theo dõi version, PASS/FAIL, tốc độ và so sánh chất lượng.</p></div></div>
-      <div class="prompt-grid" id="promptGrid"></div>
-      <article class="card prompt-editor-card"><div class="card-head"><div><span class="kicker">DRAFT</span><h3>Soạn phiên bản mới</h3></div></div><div class="form-grid"><label>Prompt ID<input id="promptId" value="PROMPT-JOB-001"></label><label>Version<input id="promptVersion" value="v2-draft"></label><label class="full">Nội dung Prompt<textarea id="promptContent" class="prompt-editor"></textarea></label><button class="secondary-btn full" id="savePromptBtn">Lưu version intent</button></div><pre id="promptSaveResult" class="raw-box" hidden></pre></article>
-    </section>
+    <section class="view" data-section="prompts"><div class="section-head"><div><span class="kicker">KIẾN TRÚC PROMPT</span><h2>Thư viện Prompt & phiên bản</h2><p>Theo dõi phiên bản, PASS/FAIL, tốc độ và so sánh chất lượng.</p></div></div><div class="prompt-grid" id="promptGrid"></div><article class="card prompt-editor-card"><div class="card-head"><div><span class="kicker">BẢN NHÁP</span><h3>Soạn phiên bản mới</h3></div></div><div class="form-grid"><label>Prompt ID<input id="promptId" value="PROMPT-JOB-001"></label><label>Phiên bản<input id="promptVersion" value="v2-draft"></label><label class="full">Nội dung Prompt<textarea id="promptContent" class="prompt-editor"></textarea></label><button class="secondary-btn full" id="savePromptBtn">Lưu yêu cầu phiên bản</button></div><pre id="promptSaveResult" class="raw-box" hidden></pre></article></section>
 
-    <section class="view" data-section="quality">
-      <div class="section-head"><div><span class="kicker">RESULT PIPELINE</span><h2>Kết quả & kiểm tra</h2><p>DONE chỉ có giá trị khi Result, Evidence, Review và Judge đều đủ theo contract.</p></div></div>
-      <div class="quality-pipeline"><span>01 · Thực hiện</span><i>→</i><span>02 · Evidence</span><i>→</i><span>03 · Review</span><i>→</i><span>04 · Judge</span></div>
-      <div class="result-list" id="resultList"></div>
-      <div class="section-divider"></div>
-      <div class="check-table-wrap"><table><thead><tr><th>Kiểm tra</th><th>Job</th><th>Trạng thái</th><th>Chi tiết</th><th>Thời gian</th></tr></thead><tbody id="checkTable"></tbody></table></div>
-    </section>
+    <section class="view" data-section="quality"><div class="section-head"><div><span class="kicker">LUỒNG KẾT QUẢ</span><h2>Kết quả & kiểm tra</h2><p>Chỉ coi là HOÀN TẤT khi kết quả, bằng chứng, kiểm tra và phán quyết đều đủ theo giao thức.</p></div></div><div class="quality-pipeline"><span>01 · Thực hiện</span><i>→</i><span>02 · Bằng chứng</span><i>→</i><span>03 · Kiểm tra</span><i>→</i><span>04 · Phán quyết</span></div><div class="result-list" id="resultList"></div><div class="section-divider"></div><div class="check-table-wrap"><table><thead><tr><th>Kiểm tra</th><th>Job</th><th>Trạng thái</th><th>Chi tiết</th><th>Thời gian</th></tr></thead><tbody id="checkTable"></tbody></table></div></section>
 
-    <section class="view" data-section="recovery">
-      <div class="section-head"><div><span class="kicker">RECOVERY CENTER</span><h2>Lỗi & khôi phục</h2><p>Web chỉ hiển thị blocker và gửi retry intent; Controller quyết định có được retry hay không.</p></div></div>
-      <div class="recovery-grid" id="recoveryGrid"></div>
-    </section>
+    <section class="view" data-section="recovery"><div class="section-head"><div><span class="kicker">TRUNG TÂM KHÔI PHỤC</span><h2>Lỗi & khôi phục</h2><p>Web chỉ hiển thị lỗi và gửi yêu cầu thử lại; Controller quyết định có được thử lại hay không.</p></div></div><div class="recovery-grid" id="recoveryGrid"></div></section>
 
-    <section class="view" data-section="activity">
-      <div class="section-head"><div><span class="kicker">AUDIT TRAIL</span><h2>Nhật ký hoạt động</h2><p>Lịch sử sự kiện do Controller trả về; không lấy GitHub Issue làm nhật ký runtime.</p></div></div>
-      <article class="card"><div class="timeline" id="activityTimeline"></div></article>
-    </section>
+    <section class="view" data-section="activity"><div class="section-head"><div><span class="kicker">NHẬT KÝ VẬN HÀNH</span><h2>Nhật ký hoạt động</h2><p>Lịch sử sự kiện do Controller trả về; không lấy GitHub Issue làm nhật ký runtime.</p></div></div><article class="card"><div class="timeline" id="activityTimeline"></div></article></section>
 
-    <section class="view" data-section="settings">
-      <div class="section-head"><div><span class="kicker">PC01 CONNECTIVITY</span><h2>Kết nối Workforce Controller</h2><p>Đường chính: Web → Tailscale → PC01. Browser không lưu admin secret.</p></div></div>
-      <div class="two-col">
-        <article class="card"><div class="form-grid"><label class="full">Controller URL<input id="controllerUrl" placeholder="https://pc01.<tailnet>.ts.net"></label><label class="full">Browser token tạm thời<input id="controllerToken" type="password" autocomplete="off" placeholder="Không phải admin secret"></label><button class="primary-btn" id="connectBtn">Kết nối Controller</button><button class="secondary-btn" id="probeBtn">Kiểm tra kết nối</button><button class="secondary-btn" id="mockBtn">Quay lại dữ liệu mẫu</button><button class="secondary-btn" id="ownerLoginBtn">Owner Google</button></div><pre id="connectionResult" class="raw-box"></pre></article>
-        <article class="card"><span class="kicker">BOUNDARY</span><h3>Vercel không phải hệ thống lõi</h3><div class="boundary-list"><div><b>PC01</b><span>Controller + trạng thái + hàng đợi + bằng chứng</span></div><div><b>Tailscale</b><span>Đường kết nối riêng</span></div><div><b>Web</b><span>Giao diện + Owner intent</span></div><div><b>Vercel</b><span>Chỉ phục vụ UI nếu dùng Preview</span></div><div><b>GitHub</b><span>Mã nguồn / review / CI</span></div></div></article>
-      </div>
-    </section>
+    <section class="view" data-section="settings"><div class="section-head"><div><span class="kicker">KẾT NỐI PC01</span><h2>Kết nối Workforce Controller</h2><p>Đường chính: Web → Tailscale → PC01. Trình duyệt không lưu admin secret.</p></div></div><div class="two-col"><article class="card"><div class="form-grid"><label class="full">Địa chỉ Controller<input id="controllerUrl" placeholder="https://pc01.<tailnet>.ts.net"></label><label class="full">Mã phiên trình duyệt tạm thời<input id="controllerToken" type="password" autocomplete="off" placeholder="Không phải admin secret"></label><button class="primary-btn" id="connectBtn">Kết nối Controller</button><button class="secondary-btn" id="probeBtn">Kiểm tra kết nối</button><button class="secondary-btn" id="mockBtn">Quay lại dữ liệu mẫu</button><button class="secondary-btn" id="ownerLoginBtn">Đăng nhập Sếp bằng Google</button></div><pre id="connectionResult" class="raw-box"></pre></article><article class="card"><span class="kicker">RANH GIỚI HỆ THỐNG</span><h3>Vercel không phải hệ thống lõi</h3><div class="boundary-list"><div><b>PC01</b><span>Controller + trạng thái + hàng đợi + bằng chứng</span></div><div><b>Tailscale</b><span>Đường kết nối riêng</span></div><div><b>Web</b><span>Giao diện + mục tiêu của Sếp</span></div><div><b>Vercel</b><span>Chỉ phục vụ giao diện nếu dùng Preview</span></div><div><b>GitHub</b><span>Mã nguồn / kiểm tra / CI</span></div></div></article></div></section>
   </main>
 </div>
 <script type="module" src="/web-v1/app.js"></script>
