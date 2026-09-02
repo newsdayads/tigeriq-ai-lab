@@ -42,9 +42,10 @@ integration('PC01 Android -> Controller -> PostgreSQL -> Result integration',()=
 
   beforeAll(async()=>{
     pool=await createPgPool(databaseUrl!,4);
-    const migration=await readFile('db/migrations/001_operational_state_v1.sql','utf8');
-    await pool.query(migration);
-    await pool.query(`TRUNCATE heartbeats,prompt_metrics,prompts,evidence,reviews,results,leases,job_scopes,job_dependencies,jobs,goals,ai_providers,employee_device_bindings,devices,employees RESTART IDENTITY CASCADE`);
+    for(const path of ['db/migrations/001_operational_state_v1.sql','db/migrations/002_device_proof_replay_v1.sql']){
+      await pool.query(await readFile(path,'utf8'));
+    }
+    await pool.query(`TRUNCATE device_proof_replay_state,heartbeats,prompt_metrics,prompts,evidence,reviews,results,leases,job_scopes,job_dependencies,jobs,goals,ai_providers,employee_device_bindings,devices,employees RESTART IDENTITY CASCADE`);
     repo=new PostgresOperationalStateRepository(pool);
     service=new OperationalWorkService(repo);
     controller=new WorkforceControllerV1(pool,service);
@@ -108,6 +109,32 @@ integration('PC01 Android -> Controller -> PostgreSQL -> Result integration',()=
 
     const counts=await pool.query<{results:string;evidence:string;stage:string;lease_status:string}>(`SELECT (SELECT count(*) FROM results WHERE job_id='JOB-ANDROID-001')::text results,(SELECT count(*) FROM evidence WHERE job_id='JOB-ANDROID-001')::text evidence,(SELECT stage FROM jobs WHERE job_id='JOB-ANDROID-001') stage,(SELECT status FROM leases WHERE job_id='JOB-ANDROID-001' ORDER BY attempt DESC LIMIT 1) lease_status`);
     expect(counts.rows[0]).toMatchObject({results:'1',evidence:'1',stage:'done',lease_status:'completed'});
+  });
+
+  it('rejects the exact signed request after Controller reconstruction with no duplicate side effect',async()=>{
+    const heartbeatBody=json({health:'ok',metadata:{source:'restart-replay-regression'}});
+    const requestNow=Date.now();
+    const request=signedRequest('POST',`/api/v1/devices/${deviceId}/heartbeat`,heartbeatBody,requestNow);
+    const before=await pool.query<{leases:string;results:string;heartbeats:string}>(`SELECT (SELECT count(*) FROM leases)::text leases,(SELECT count(*) FROM results)::text results,(SELECT count(*) FROM heartbeats)::text heartbeats`);
+
+    const first=await controller.handle(request);
+    expect(first.status).toBe(200);
+    const accepted=await pool.query<{leases:string;results:string;heartbeats:string}>(`SELECT (SELECT count(*) FROM leases)::text leases,(SELECT count(*) FROM results)::text results,(SELECT count(*) FROM heartbeats)::text heartbeats`);
+    expect(Number(accepted.rows[0].heartbeats)).toBe(Number(before.rows[0].heartbeats)+1);
+
+    const nonce=request.headers['x-tigeriq-device-nonce'];
+    const durable=await pool.query<{count:string}>(`SELECT count(*)::text count FROM device_proof_replay_state WHERE device_id=$1 AND nonce=$2 AND expires_at>now()`,[deviceId,nonce]);
+    expect(durable.rows[0].count).toBe('1');
+
+    const restartedRepo=new PostgresOperationalStateRepository(pool);
+    const restartedService=new OperationalWorkService(restartedRepo);
+    const restartedController=new WorkforceControllerV1(pool,restartedService);
+    const replay=await restartedController.handle(request);
+    expect(replay.status).toBe(409);
+    expect((replay.body.error as Record<string,unknown>).code).toBe('DEVICE_PROOF_REPLAY');
+
+    const after=await pool.query<{leases:string;results:string;heartbeats:string}>(`SELECT (SELECT count(*) FROM leases)::text leases,(SELECT count(*) FROM results)::text results,(SELECT count(*) FROM heartbeats)::text heartbeats`);
+    expect(after.rows[0]).toEqual(accepted.rows[0]);
   });
 
   it('recovers an expired Android lease after simulated PC01 restart',async()=>{
