@@ -1,85 +1,61 @@
-# COMPANY CONTROL TOWER — PREVIEW VIEW-MODEL V2
+# COMPANY CONTROL TOWER — BUSINESS STATE V2 VIEW-MODEL
 
-Status: CHAT 01 UI ADAPTER ONLY · NON-AUTHORITATIVE CONTRACT PLACEHOLDER  
-Work Order: WO-049 / Issue #147  
+Status: CHAT 01 UI ADAPTER · PR #117 · RELEASE-CANDIDATE MAPPING  
+Issue: #147 / WO-049  
 Operating Model basis: PR #144 exact `5589f61b9123d49681ab62a71c1f7728a3c6cd99`  
-Business-state owner: Issue #146 / CHAT 03  
+Business State V2 contract: PR #153 exact `3b8323b788f40a964d9415140aba2e7ac9e92870`  
 Release boundary: no MAIN/Production, no paid service.
 
-## Purpose
+## Authority boundary
 
-Cho phép Web Control dựng ngay Company Control Tower theo Company Operating Model V2 trong khi #146 chốt business-state contract tối thiểu. Tài liệu này KHÔNG định nghĩa schema authoritative mới và KHÔNG thay thế PostgreSQL/Work Management/business-state design của CHAT 03.
+`company-control-tower-adapter.js` is a read-model adapter. It does not own or mutate Business State V2.
 
-## Owner home information architecture
+- PR #141 operational Goal/Job/Lease/Result/Evidence/Review semantics remain authoritative.
+- PR #153 Business State V2 supplies business context through `goal_profiles`, `kpis`, `kpi_observations`, `signals`, `processes`, `missions`, `mission_job_refs`, `departments`, `employee_profiles`, `autonomy_grants`, `exceptions`, and `outcomes`.
+- External CRM/accounting/Drive/Calendar/etc. remain authoritative for their domains. Web never creates a competing copy.
+- Mock is accepted only when the snapshot is non-authoritative and is always surfaced as `authoritative=false`.
 
-Thứ tự ưu tiên:
-1. Goal quan trọng + KPI health.
-2. Kết quả kinh doanh/doanh thu/chi phí khi có nguồn authoritative.
-3. Mission đang chạy + tiến độ/outcome mong đợi.
-4. Department + AI Employee.
-5. `CẦN SẾP` / Exception / Owner Action.
-6. Business Outcome mới hoàn tất.
-7. Business Process health.
-8. Runtime health ở mức tóm tắt.
+## Mapping rules
 
-SHA/CI/lease/port, Controller detail, Job detail, provider/quota, device, Prompt và Result/Evidence trace chuyển xuống `Vận hành kỹ thuật`.
+### Goal
+`goal_profiles` is joined by `goal_id` to the operational Goal collection when present. The profile provides title/Owner/KPI/date/decision context only. Lifecycle status and runtime constraints stay on the operational Goal. If the operational Goal is absent, the view displays lifecycle as unknown rather than inventing one.
 
-## Truth rule
+### KPI
+`kpis` defines metadata/target. `currentValue` is a read-model projection from the newest `kpi_observations.observed_at` for the KPI. The adapter carries `provenance`, `evidence_refs`, and `observation_id` with that value. It never writes a shadow authoritative `current_value`.
 
-`buildCompanyControlTowerViewModel(snapshot, { previewBusiness })` có hai nhánh:
+### Signal
+Signals preserve lifecycle, related refs, and required provenance. Signal state is not treated as authorization.
 
-### Mock / preview
-- `source.authoritative` bắt buộc là `false`.
-- Có thể nạp `previewBusiness` để hoàn thiện UX/IA.
-- Tất cả record mẫu phải gắn `isMock=true` và UI hiển thị `MẪU`.
-- Không được dùng mock để xác nhận Goal/KPI/Mission/Outcome live.
+### Process
+Process policy fields are mapped directly. The UI health badge is explicitly a read-model derived from linked KPI health plus unresolved related exceptions; it is not a new Process lifecycle field.
 
-### Controller authoritative
-- Chỉ authoritative khi `source.mode='controller'` và `source.authoritative=true`.
-- Preview business data bị bỏ qua hoàn toàn.
-- Nếu snapshot chưa có business projection từ contract #146, business view trả `BUSINESS_CONTRACT_PENDING` và các collection Goal/KPI/Mission/OwnerAction/Outcome/Process rỗng.
-- Web KHÔNG suy diễn Mission/KPI/Outcome từ Job/Result runtime.
+### Mission
+Mission lifecycle comes only from `missions.status`. `mission_job_refs` becomes reference-only `{jobId, relation, createdAt}`. Job stage, attempts, lease, Result, and Evidence bodies are never copied into Mission. Runtime Job details remain under Technical Operations.
 
-## Compatibility projection only
+### Department / AI Employee
+Business Departments come from `departments`. `employee_profiles` is joined by `employee_id` to the operational Employee for display name, heartbeat/provider/model/capabilities. `autonomy_grants` is shown as scope-bound context only and never expands permissions or approval authority.
 
-Trong giai đoạn #146 chưa chốt tên trường, adapter chỉ có thể đọc optional projection từ một trong các container tạm:
-- `businessState`
-- `business`
-- `companyBusiness`
+### Exception / CẦN SẾP
+All `exceptions` are preserved in the view-model. `CẦN SẾP` is the subset with `required_owner_action` and a non-terminal lifecycle. `decision_ref` remains a reference only.
 
-Các key được UI đọc nếu tồn tại:
-- `goals[]`
-- `kpis[]`
-- `performance.metrics[]`
-- `missions[]`
-- `ownerActions[]` hoặc `exceptions[]`
-- `outcomes[]`
-- `processes[]`
+### Outcome
+Outcomes preserve `subject_ref`, `kpi_observation_ids`, `evidence_refs`, and provenance. KPI effect display resolves referenced observations; it does not manufacture deltas.
 
-Đây là compatibility adapter, không phải yêu cầu backend. Khi #146 có contract cuối, CHAT 01 phải map adapter sang contract đó và xóa alias không cần thiết mà không phá IA/UI.
+## Finance / external systems
 
-## Existing runtime contract retained
+Business State V2 does not by itself create an authoritative revenue/cost ledger. Until a valid externally sourced projection exists, Company Control Tower shows `Chưa có nguồn` for revenue/cost. GitHub/Vercel build evidence is technical evidence only.
 
-Web vẫn dùng Controller client hiện tại:
-- `GET /api/workforce/status` — probe.
-- `GET /api/web/v1/snapshot` — runtime snapshot.
-- `POST /api/web/v1/goals` — Owner goal intent.
-- `POST /api/web/v1/prompts/versions` — Prompt version intent.
-- `POST /api/web/v1/jobs/:jobId/retry` — retry intent.
+## Supported snapshot container
 
-Browser không dùng Controller admin secret. Public Controller URL và HTTPS→HTTP mixed content tiếp tục fail closed.
-
-## Operating Model invariants surfaced in UI
-
-- Goal/KPI/outcome quan trọng hơn task count.
-- AI Employee identity tách khỏi model/provider.
-- Mission `jobRefs` chỉ là reference tới runtime Job, không tạo queue authoritative thứ hai.
-- `CẦN SẾP` ưu tiên ngoại lệ cần quyết định cụ thể.
-- Business finance metrics phải hiện `chưa có nguồn` khi chưa map accounting/CRM authoritative; không tự điền số để tạo cảm giác live.
-- Technical Operations không được trở thành homepage mặc định.
+The adapter accepts the PR #153 contract from `businessStateV2` or `business_state_v2`. A `businessState` compatibility container is accepted only when it contains PR #153 snake_case contract keys. Legacy Web aliases such as `goals`, `ownerActions`, or `companyBusiness` are not accepted as live business truth.
 
 ## Test gates
 
-- Unit: mock preview không thể trở thành authoritative; live Controller thiếu business projection không được nhận mock fallback.
-- UI contract: đủ 8 vùng Owner home và Technical Operations drill-down.
-- Mobile Playwright: viewport 390×844, không horizontal overflow, bottom nav fixed, touch target >=44px, business-first home, technical SHA/lease labels ẩn cho tới khi mở Technical Operations.
+- Vitest `.test.ts` exercises the adapter in the actual Unit test suite.
+- Exact contract SHA is asserted.
+- Latest KPI observation + provenance is asserted.
+- Authoritative Controller cannot inherit preview mock.
+- Legacy Web aliases fail closed.
+- Mission→Job remains reference-only.
+- Finance remains unavailable without an authoritative external source.
+- Chromium Playwright uses 390×844 and verifies iPhone-first business home plus Technical Operations drill-down.
