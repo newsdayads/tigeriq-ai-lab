@@ -1,63 +1,80 @@
-# CURRENT STATE — WO-043 AI COORDINATOR
+# CURRENT STATE — WO-043 AI COORDINATOR + PROMPT ARCHITECT
 
-Date: 2026-09-01
-Status: THREE-WAY INDEPENDENCE + ZERO-COST SAFE DEFAULTS REMEDIATED — FINAL EXACT-HEAD REGATE REQUIRED
+Date: 2026-09-02
+Status: AI RUNTIME V1 + PROMPT ARCHITECT IMPLEMENTED — IMPLEMENTATION HEAD AUTOMATED PASS — FINAL DOC HEAD REGATE / INDEPENDENT REVIEW PENDING
 Branch: `wo043/ai-coordinator`
 PR: #111
 Issue: #110
 
-## Working capability in WO-043 scope
-- Work item carries kind/risk/acceptance criteria.
-- Coordinator chooses the lowest-cost configured model that meets the required quality profile.
-- Provider failures fall through to another eligible model with a bounded attempt count.
-- Completed stages are checkpointed so restart resumes from persisted progress instead of repeating completed execution.
-- Every attempt records role, provider/model identity, outcome and failure class.
-- Exported evidence omits raw prompt/output and uses an output SHA-256 digest.
-- Reviewer cannot use Executor identity.
-- Judge cannot use Executor or Reviewer identity.
-- Every coordinated work item requires three distinct Executor/Reviewer/Judge provider-model identities and fails closed if a third identity is unavailable.
+## V1 architecture now implemented
+- Coordinator selects an execution endpoint; it does not imply where provider credentials live.
+- Supported execution locations: `pc01-local`, `pc01-server`, `employee-device`.
+- Device execution may keep provider authentication on the device and return only standardized result/evidence to PC01.
+- `AIExecutionAdapterV1` has no provider-secret field.
+- `TIGERIQ_JOB_EXECUTION_V1` request/result contract carries JOB-ID, PROMPT-ID/version, employee/endpoint, provider/model result metadata, timestamps, attempts/failover/errors/evidence and `credentialExposure=false`.
 
-## 2026-09-01 corrections
-### Universal three-way independence
-The prior implementation required a third distinct Judge only for coding/high-risk work. Current Owner instruction requires `AI làm -> AI khác kiểm tra -> AI thứ ba phán quyết` for every coordinated work item.
+## Routing
+`AIRouterV1` filters/ranks by:
+- work kind and capabilities;
+- risk-dependent capability floor;
+- quota state;
+- stability;
+- speed;
+- historical quality;
+- cost rank;
+- local execution preference;
+- billing safety;
+- concrete provider/model identity exclusions for independent stages.
 
-Remediation:
-- Judge always excludes both prior concrete provider/model identities.
-- Low-risk/general work with only two eligible identities blocks rather than reusing Reviewer as Judge.
-- Regression coverage proves three-way separation, restart recovery and evidence privacy.
+`unknown`/`paid` billing and exhausted quota fail closed under zero-cost mode.
 
-### Zero-cost safe defaults
-Audit found the AI Coordinator default profile still included generic OpenAI/Anthropic API backends and a generic Gemini route, which could not be assumed billing-safe.
+## Independent chain
+- Existing Coordinator keeps Executor -> independent Reviewer -> independent Judge.
+- New V1 router can select each stage while excluding prior concrete `provider/model` identities.
+- Different endpoints using the same provider/model do not count as independent backend identities.
+- Risk changes capability threshold/model strength, not the independence rule.
 
-Remediation:
-- Default Coordinator profiles are now only Ollama local and `openrouter/free`.
-- Generic OpenAI, Anthropic and Gemini routes are not selected by default.
-- If only those two safe default identities are available, the third Judge fails closed rather than auto-selecting a paid/unproven API route.
-- Billing-safe Gemini CLI / Claude subscription routes must be explicitly injected only after the zero-cost policy gate in #133/#134 proves the route.
+## AI KIẾN TRÚC SƯ PROMPT
+Implemented in `packages/ai-runtime-v1/src/index.ts`:
+- input: goal + context + employee + target provider/model/endpoint + work kind/risk + acceptance criteria + completion standard;
+- output: `PROMPT-ID`, version, template ID/version, rendered specialized Prompt, target metadata, PASS/FAIL status, repair count and history;
+- model-oriented templates for Gemini, Claude, OpenRouter, Ollama and generic fallback;
+- template selection improves from real independent PASS/FAIL + latency history;
+- bounded repair loop keeps the same PROMPT-ID and increments version/repair count;
+- Prompt Architect is forbidden from Reviewer/Judge self-evaluation of its own Prompt outcome.
 
-Implementation/test head `02e0524debd5167fd7e611729d70e266a7f393b1`:
-- Queue Hygiene `33533312758` — PASS.
-- Vercel Online Verify `33533312736` — PASS.
-- CI `33533312748` — running at documentation synchronization time; final documentation head must be gated again regardless.
+## JOB-001 contract candidate
+- Human-readable contract: `docs/contracts/AI_COORDINATION_PROMPT_ARCHITECT_V1.md`.
+- Machine schema: `schemas/ai-execution-v1.schema.json`.
+- Unit coverage: `tests/ai-runtime-v1.test.ts`.
+- PR #127 Inference Gateway is now treated as an optional `pc01-server` execution adapter; device-direct execution does not require that provider-call path.
 
-## Cross-stream boundary retained
-- WO-043 does not own PC01 runtime.
-- PC01 recovery/security remains delegated to #114/#116.
-- Runtime zero-cost provider policy/probe remains governed by #133/#134.
-- PR #127 must be refreshed onto the final WO-043 head after this remediation.
-- PR #131 contains Android v0.7 integration and remains outside this stream.
+## Automated evidence
+Implementation/test head `92b9df06117f0e4576a66d63e57a78cc8fad5404`:
+- CI `33584061099`: PASS.
+- Queue Hygiene `33584061058`: PASS.
+- Vercel Online Verify `33584061082`: PASS.
 
-## Not claimed / not changed
-- No App/Android change.
-- No Web Control change.
-- No PC01 runtime implementation or live provider result.
-- No MAIN/Production merge or deployment.
-- No paid-provider activation, purchase or payment method.
-- No new secret/token in source control.
-- No genuine independent exact-head review claim after the 2026-09-01 changes.
+The first implementation head `37a7fed...` correctly failed one unit assertion because local-first routing ranked PC01-local before the phone. Test expectation was corrected without changing routing logic.
 
-## Current next gate
-1. Fresh exact-head CI, Queue Hygiene and Vercel Verify after documentation synchronization.
-2. Refresh #127 onto this final coordinator head and re-run its exact-head gate.
-3. Genuinely independent exact-head review; same-author/self-review is not accepted as independent evidence.
-4. Merge/release remains blocked without normal Owner authorization.
+## Related zero-cost policy
+PR #134 exact head `4a3a1af0a6d2c86df8b0419eae3c041f91a3ad97` now explicitly states:
+- Coordinator does not require provider credentials;
+- server provider call is not mandatory;
+- employee-device owns its own provider credential;
+- provider secrets are not evidence.
+Its CI/Queue/Probe Guard/Vercel gates all PASS.
+
+## Cross-stream boundary
+- No Android implementation changed.
+- No Web Control changed.
+- No PC01 runtime implementation or physical provider call is claimed.
+- PR #127 must be refreshed onto the final #111 head after doc synchronization.
+- No MAIN/Production and no paid service/payment method.
+
+## Truth / remaining gates
+NOT DONE.
+1. Final doc head requires fresh exact-head CI/Queue/Vercel.
+2. PR #127 must be refreshed onto that final head and re-gated.
+3. Genuine independent exact-head review is required; same-author/self-review is invalid.
+4. Physical JOB-001 PC01 -> Tailscale -> phone -> provider -> PC01 -> Reviewer remains a runtime/device acceptance gate and is not claimed by repository tests.
