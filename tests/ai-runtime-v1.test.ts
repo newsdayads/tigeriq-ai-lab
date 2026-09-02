@@ -49,8 +49,9 @@ describe('AI Runtime V1', () => {
       endpoint({ endpointId: 'EMPTY', provider: 'openrouter', model: 'openrouter/free', quotaState: 'exhausted' }),
     ]);
     const ranked = router.rank({ kind: 'coding', risk: 'high', role: 'executor', requiredCapabilities: ['code'], zeroCostOnly: true });
-    expect(ranked.map((item) => item.endpoint.endpointId)).toEqual(['PHONE-GEMINI', 'PC01-LOCAL']);
-    expect(ranked[0]?.endpoint.credentialOwner).toBe('employee-device');
+    expect(ranked.map((item) => item.endpoint.endpointId)).toEqual(['PC01-LOCAL', 'PHONE-GEMINI']);
+    expect(ranked[0]?.endpoint.location).toBe('pc01-local');
+    expect(ranked[1]?.endpoint.credentialOwner).toBe('employee-device');
   });
 
   it('keeps executor reviewer judge backend identities independent', () => {
