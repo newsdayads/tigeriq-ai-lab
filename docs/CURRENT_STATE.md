@@ -6,11 +6,11 @@ TigerIQ AI Lab is being operated as a continuous distributed AI company. Tiger I
 
 ## Current MAIN baseline
 - Repository: `newsdayads/tigeriq-ai-lab`.
-- Current MAIN: `4d73bd923526aa3396a4f436332a9b863c66e172` (WO-042 merge).
 - Production Web Control: `https://tigeriq-ai-lab.vercel.app`.
-- Latest verified Production deployment is still MAIN SHA `69ef75149155c09d4618afef941e54cf02feaf79`; no WO-045 promotion/release is claimed.
-- Canonical PC01 real deployment job remains issue #100. PC01 runtime is currently deferred by Owner instruction for Web-only hardening; do not create duplicates and do not infer PC01/Tailscale runtime state.
+- MAIN before active WO-040 branch: `d01dcd2483d2f6b91c4c8282927e009e7416a18b` (WO-039 merge).
+- Canonical PC01 real deployment job remains issue #100. It has no claim/result evidence at this state point; do not create duplicates and do not infer PC01/Tailscale runtime state.
 - Vercel Hobby has the known daily deployment quota condition `api-deployments-free-per-day`; do not retry/spam deployments or pay/upgrade. Non-Vercel work continues.
+- Latest observed Production deployment remains behind MAIN; no promotion is claimed while the quota condition is active.
 
 ## Operating model — P0
 Owner -> Chief of Staff -> Department Heads -> Team Leads -> multiple AI/device employees -> Independent Reviewer -> Judge/Gate -> Evidence/State -> Chief -> Owner.
@@ -49,32 +49,10 @@ A real Samsung Z Flip 7 has run TigerIQ Worker. Physical screenshot evidence obs
 
 This does not prove Controller heartbeat, task execution or Gemini prompt/result automation.
 
-## Active priority — WO-040 baseline retained on MAIN history
-WO-040 added a narrow fail-closed provider-policy boundary for the future `gemini-android-ui` adapter. The policy may return `READY_FOR_REAL_DEVICE_PROVIDER_TEST` only after evidence flags show a verified physical Controller, real device pairing, fresh heartbeat, stable-signed Worker continuity, Accessibility enabled, an already-authenticated provider session and explicit provider-automation authorization.
+## Active priority — WO-040
+Add a narrow fail-closed provider-policy boundary for the future `gemini-android-ui` adapter. The policy may return `READY_FOR_REAL_DEVICE_PROVIDER_TEST` only after evidence flags show a verified physical Controller, real device pairing, fresh heartbeat, stable-signed Worker continuity, Accessibility enabled, an already-authenticated provider session and explicit provider-automation authorization.
 
 The gate permits only bounded `research.prompt` tasks. It rejects unattended login/2FA, payment/billing, credential mutation and unsupported task kinds. WO-040 does not perform third-party UI actions and must never be reported as Gemini execution proof.
-
-## Web Control — WO-045 release candidate hardening
-- Scope remains Web Control only; APP, AI Coordinator, PC01 runtime and Work Management are excluded except for interface compatibility.
-- Active PR is #117 on `wo045/web-control-remote-ops`; MAIN/Production are unchanged by this candidate.
-- Latest Web runtime-changing commit is `1d920b0a865a3b8ee35d3c4d4d5ea8a966e8f7ba`. Vercel Preview `dpl_BR7C7U4KhpnRbbFnF5c5U5ai5rZw` is READY for that commit.
-- Repository compare from runtime commit `1d920b0a865a3b8ee35d3c4d4d5ea8a966e8f7ba` through pre-state-update head `3d1f6a77cc76e131c2c9f18434dca7e6894b5a69` changes only `docs/CURRENT_STATE.md`, `scripts/verify_queue_hygiene.mjs`, `tests/web-control-pc01-contract.test.mjs`, and `tests/web-control-security-dedupe-gates.test.mjs`; no `api/`, `public/`, `vercel.json`, or other Web runtime source changed after `1d920b0a...`.
-- Pre-state-update exact head `3d1f6a77cc76e131c2c9f18434dca7e6894b5a69` passed CI #251, Queue Hygiene #178 and WO-012/013 Vercel Online Verify #152. This documentation reconciliation is non-runtime and intentionally retriggers final exact-head gates.
-- Security/correctness fixes implemented on the branch include Owner-authenticated browser writes with server-side GitHub credential only, OAuth multi-cookie preservation, Work Order dedupe including concurrent same-process double-submit, canonical canary reuse, and fail-closed completion requiring concrete RESULT evidence followed by trusted independent REVIEW_PASS and trusted JUDGE_PASS.
-- Issue closure alone is never completion. Closed work lacking the required proof remains `closed_unverified`; open work may remain `evidence_pending`, `review_pending`, or `gate_pending`.
-- The only previously recorded independent Web review was a FAIL on historical head `0988c2cecc21583ae3e6c9b53d650198325f7d9e`; its two actionable findings (OAuth Set-Cookie overwrite and browser GitHub-token write bypass) were fixed afterward. That historical FAIL is not a PASS for the current branch.
-- Fresh independent review must target the final exact PR head after this evidence reconciliation and must independently verify Owner auth boundary, OAuth callback/session continuity, dedupe, canary reuse, lifecycle proof ordering/provenance, and the non-runtime-only delta after `1d920b0a...`.
-- Real external Owner Google OAuth provider/environment smoke is still required before release. Repository/unit tests do not substitute for that runtime smoke.
-- PC01 physical/runtime work is explicitly deferred and is not a blocker for this Web-only release-candidate hardening pass.
-
-## Web Control release gate
-Do not merge PR #117, modify MAIN, promote Production, or release WO-045 until all of the following are true on the final exact PR head:
-1. CI PASS;
-2. Queue Hygiene PASS;
-3. WO-012/013 Vercel invariant PASS;
-4. fresh independent Web Control review PASS on that exact head;
-5. real Owner Google OAuth runtime smoke PASS in an actually configured provider/environment;
-6. explicit Owner instruction to publish/release.
 
 ## Physical/next gates
 When physical access resumes, the intended evidence sequence is:

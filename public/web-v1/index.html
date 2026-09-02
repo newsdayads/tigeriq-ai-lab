@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#07101b">
+<meta name="robots" content="noindex">
+<title>TigerIQ AI · Web Control V1</title>
+<link rel="stylesheet" href="/web-v1/styles.css">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+<div class="shell">
+  <aside>
+    <div class="brand"><div class="logo">🐯</div><div><b>TigerIQ AI</b><small>Web Control V1</small></div></div>
+    <nav class="nav" id="nav">
+      <button data-view="overview" class="active">🏢 Tổng quan</button>
+      <button data-view="goal">🎯 Giao mục tiêu</button>
+      <button data-view="jobs">📋 Jobs</button>
+      <button data-view="employees">👥 Employees</button>
+      <button data-view="providers">🧠 AI Providers</button>
+      <button data-view="prompts">✍️ Prompt Architect</button>
+      <button data-view="evidence">✅ Result & Evidence</button>
+      <button data-view="recovery">🛟 Blocker & Recovery</button>
+      <button data-view="activity">🕘 Lịch sử</button>
+      <button data-view="settings">⚙️ Kết nối</button>
+    </nav>
+    <div class="aside-foot">Nguồn vận hành: Workforce Controller trên PC01. GitHub/Vercel không phải queue hay runtime Source of Truth.</div>
+  </aside>
+  <main>
+    <header class="topbar">
+      <div class="title"><h1 id="pageTitle">Tổng quan công ty</h1><p id="pageSubtitle">Dữ liệu vận hành chỉ có giá trị khi đến từ Workforce Controller.</p></div>
+      <div class="top-actions">
+        <div class="account" id="ownerAccount"><span class="avatar"></span><span>Owner auth…</span></div>
+        <button class="btn" id="refreshBtn">↻ Làm mới</button>
+      </div>
+    </header>
+    <div id="modeBanner" class="mode-banner"><strong>MOCK MODE</strong><span>Không có trạng thái PC01 thật.</span></div>
+
+    <section class="section active" data-section="overview">
+      <div class="grid">
+        <article class="card"><h2>Workforce Controller</h2><div id="controllerState" class="metric warn">MOCK</div><div id="controllerSub" class="metric-sub">Chưa kết nối PC01</div></article>
+        <article class="card"><h2>Jobs đang hoạt động</h2><div id="activeJobs" class="metric">0</div><div class="metric-sub">QUEUED + ASSIGNED + RUNNING</div></article>
+        <article class="card"><h2>Nhân viên khả dụng</h2><div id="availableEmployees" class="metric">0</div><div class="metric-sub">idle + busy có heartbeat hợp lệ</div></article>
+        <article class="card span6"><h2>Mục tiêu hiện tại</h2><div id="objective" class="item-title">—</div><p id="objectivePolicy" class="muted">—</p></article>
+        <article class="card span6"><h2>JOB-001 readiness</h2><div class="pillline" id="readiness"></div><div class="metric-sub" id="readinessNote">Chỉ hiển thị bằng chứng Controller; mock không phải PASS.</div></article>
+        <article class="card wide"><h2>Jobs gần nhất</h2><div id="overviewJobs" class="stack"></div></article>
+      </div>
+    </section>
+
+    <section class="section" data-section="goal">
+      <div class="toolbar"><div><h2>Giao mục tiêu</h2><div class="hint">Web chỉ gửi intent; CHAT 03 quyết định decomposition/scheduling.</div></div></div>
+      <div class="card wide">
+        <form id="goalForm" class="form-grid">
+          <div class="field full"><label>Mục tiêu của Sếp</label><textarea id="goalObjective" required placeholder="Ví dụ: Chạy JOB-001 thật qua điện thoại Gemini và trả kết quả có reviewer."></textarea></div>
+          <div class="field"><label>Ưu tiên</label><select id="goalPriority"><option>P0</option><option selected>P1</option><option>P2</option><option>P3</option></select></div>
+          <div class="field"><label>Deadline</label><input id="goalDeadline" type="datetime-local"></div>
+          <div class="field full"><label>Ràng buộc</label><textarea id="goalConstraints" placeholder="Mỗi dòng một constraint; Web không tự chia việc."></textarea></div>
+          <div class="field full"><label>Expected evidence</label><textarea id="goalEvidence" placeholder="Kết quả, provider/model, timestamps, attempts, evidence, review/judge..."></textarea></div>
+          <div class="field full"><div class="callout warn" id="goalModeNote">MOCK: nút gửi chỉ tạo draft, không đẩy việc tới PC01.</div></div>
+          <div class="field full"><button class="btn primary" type="submit">Gửi intent tới Controller</button></div>
+        </form>
+        <div id="goalResult" class="raw" hidden></div>
+      </div>
+    </section>
+
+    <section class="section" data-section="jobs">
+      <div class="toolbar"><div><h2>Jobs / Queue</h2><div class="hint">Không đọc GitHub Issue/PR để suy ra trạng thái.</div></div></div>
+      <div class="table-wrap"><table class="table"><thead><tr><th>Job</th><th>Stage</th><th>Objective</th><th>Employee</th><th>Attempts</th><th>Blocker</th><th>Updated</th></tr></thead><tbody id="jobsTable"></tbody></table></div>
+    </section>
+
+    <section class="section" data-section="employees">
+      <div class="toolbar"><div><h2>Employees / Devices</h2><div class="hint">Heartbeat và capability do Controller cung cấp.</div></div></div>
+      <div class="grid"><article class="card span6"><h2>Employees</h2><div id="employeesList" class="stack"></div></article><article class="card span6"><h2>Devices / Nodes</h2><div id="devicesList" class="stack"></div></article></div>
+    </section>
+
+    <section class="section" data-section="providers">
+      <div class="toolbar"><div><h2>AI Providers / Quota / Health</h2><div class="hint">Không tự suy quota từ lỗi hoặc dashboard ngoài Controller.</div></div></div>
+      <div id="providersGrid" class="grid"></div>
+    </section>
+
+    <section class="section" data-section="prompts">
+      <div class="toolbar"><div><h2>Prompt Architect</h2><div class="hint">Thư viện Prompt, version và PASS/FAIL metrics — Web chỉ quản lý giao diện/intent.</div></div></div>
+      <div class="detail-grid"><div class="card wide"><div id="promptList" class="stack"></div></div><div class="card wide"><h2>Soạn phiên bản mới</h2><div class="form-grid"><div class="field"><label>Prompt ID</label><input id="promptId" value="PROMPT-JOB-001"></div><div class="field"><label>Version</label><input id="promptVersion" value="v2-draft"></div><div class="field full"><label>Prompt</label><textarea id="promptContent" class="prompt-editor"></textarea></div><div class="field full"><button class="btn" id="savePromptBtn">Lưu version intent</button></div></div><div id="promptSaveResult" class="raw" hidden></div></div></div>
+    </section>
+
+    <section class="section" data-section="evidence">
+      <div class="toolbar"><div><h2>Result / Evidence / Review / Judge</h2><div class="hint">DONE chỉ khi Controller trả terminal state + evidence/gates theo contract.</div></div></div>
+      <div id="resultsList" class="stack"></div>
+    </section>
+
+    <section class="section" data-section="recovery">
+      <div class="toolbar"><div><h2>Blocker / Retry / Recovery</h2><div class="hint">Web hiển thị và gửi retry intent; không tự quyết retry policy.</div></div></div>
+      <div id="recoveryList" class="stack"></div>
+    </section>
+
+    <section class="section" data-section="activity">
+      <div class="toolbar"><div><h2>Lịch sử hoạt động</h2><div class="hint">Audit events do Controller cung cấp.</div></div></div>
+      <div class="card wide"><div id="activityList" class="timeline"></div></div>
+    </section>
+
+    <section class="section" data-section="settings">
+      <div class="toolbar"><div><h2>Kết nối Workforce Controller</h2><div class="hint">Tailscale là đường chính. Không lưu admin secret trong browser.</div></div></div>
+      <div class="card wide">
+        <div class="connection-panel">
+          <div class="field"><label>Controller URL</label><input id="controllerUrl" placeholder="https://pc01.<tailnet>.ts.net hoặc local http://100.x.x.x:8790"></div>
+          <div class="field"><label>Controller browser token (session only)</label><input id="controllerToken" type="password" autocomplete="off" placeholder="Không phải admin secret"></div>
+          <button class="btn primary" id="connectBtn">Kết nối</button>
+        </div>
+        <div class="pillline" style="margin-top:10px"><button class="btn" id="mockBtn">Dùng Mock</button><button class="btn" id="probeBtn">Probe /api/workforce/status</button><button class="btn" id="ownerLoginBtn">Owner Google</button></div>
+        <div id="connectionResult" class="raw" style="margin-top:10px"></div>
+      </div>
+      <div class="card wide" style="margin-top:10px"><h2>Boundary</h2><div class="callout">Vercel chỉ phục vụ UI/Owner UI auth. Workforce Controller + PostgreSQL trên PC01 mới là nguồn vận hành. Nếu Vercel lỗi, PC01/worker/job pipeline vẫn phải tiếp tục; Web có thể được phục vụ local/tailnet và trỏ cùng Controller.</div></div>
+    </section>
+  </main>
+</div>
+<script type="module" src="/web-v1/app.js"></script>
+</body>
+</html>
