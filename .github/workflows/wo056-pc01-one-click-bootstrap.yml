@@ -1,0 +1,66 @@
+name: WO-056 PC01 One-Click Bootstrap
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/pc-worker/workforce-controller-v1/**'
+      - 'scripts/install-work-state-postgres.ps1'
+      - '.github/workflows/wo056-pc01-one-click-bootstrap.yml'
+  push:
+    branches:
+      - 'wo056/pc01-one-click-bootstrap'
+
+permissions:
+  contents: read
+
+jobs:
+  runtime-basis-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact reviewed runtime basis is unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          basis='c0632bc110ea0d26925d3657ac485cb90b5ee010'
+          git merge-base --is-ancestor "$basis" HEAD
+          git diff --quiet "$basis" HEAD -- \
+            apps/workforce-controller \
+            packages/work-state \
+            db/migrations/001_operational_state_v1.sql \
+            db/migrations/002_device_proof_replay_v1.sql \
+            tests/pc01-android-postgres-integration.test.ts
+          test "$(git rev-parse HEAD:db/migrations/001_operational_state_v1.sql)" = '33445fd07133b5e58f2b33ee3996bf49e6547fa3'
+          test "$(git rev-parse HEAD:db/migrations/002_device_proof_replay_v1.sql)" = '90e842318f3cf47caf671890e4bbe435cd35e8b6'
+          test ! -f db/migrations/003_business_state_v2.sql
+          echo 'PC01_ONE_CLICK_RUNTIME_BASIS_PASS'
+      - name: Guard against destructive or retired paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          target='scripts/pc-worker/workforce-controller-v1'
+          ! grep -R -E -i 'winget[[:space:]]+uninstall|Uninstall-Package|DROP[[:space:]]+(TABLE|DATABASE)|git[[:space:]]+(checkout|switch)[[:space:]]+main' "$target"
+          ! grep -R -E -i 'openclaw[[:space:]]+(connect|login|auth|enable|start)' "$target"
+          ! grep -R -E '/v1/android/sessions|/v1/android/jobs/pull|/v1/android/jobs/submit' "$target"
+          grep -q '001_operational_state_v1' scripts/pc-worker/workforce-controller-v1/one-click/Invoke-PC01-OneClickGoLive.ps1
+          grep -q '002_device_proof_replay_v1' scripts/pc-worker/workforce-controller-v1/one-click/Invoke-PC01-OneClickGoLive.ps1
+          grep -q '003_business_state_v2' scripts/pc-worker/workforce-controller-v1/health-workforce-controller-v1.ps1
+          echo 'PC01_ONE_CLICK_SAFETY_GUARD_PASS'
+
+  windows-package-contract:
+    runs-on: windows-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Parse and verify one-click PowerShell package
+        shell: powershell
+        run: |
+          & 'scripts/pc-worker/workforce-controller-v1/one-click/Test-PC01-OneClickPackage.ps1'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
