@@ -1,6 +1,7 @@
 param(
   [string]$RepoPath = 'F:\TigerIQ\Workspace\tigeriq-ai-lab',
   [string]$DatabaseUrl = $env:TIGERIQ_DATABASE_URL,
+  [string]$PgPassFilePath = $env:PGPASSFILE,
   [string]$ExpectedBranch = 'wo045/pc01-autonomy-hardening',
   [string]$ExpectedHeadSha = '',
   [string]$HealthScriptPath = '',
@@ -16,6 +17,7 @@ $FirewallName = 'TigerIQ Workforce Controller V1 (Tailscale only)'
 $RuntimeDir = 'F:\TigerIQ\Runtime\workforce-controller-v1'
 $ConfigDir = 'F:\TigerIQ\Secrets'
 $DatabaseUrlFile = Join-Path $ConfigDir 'workforce-controller-v1.database-url'
+if ([string]::IsNullOrWhiteSpace($PgPassFilePath)) { $PgPassFilePath = Join-Path $ConfigDir 'workforce-controller-v1.pgpass' }
 $RunnerPath = Join-Path $RuntimeDir 'run-workforce-controller-v1.ps1'
 $LogPath = 'F:\TigerIQ\Logs\workforce-controller-v1.log'
 $Migration001 = Join-Path $RepoPath 'db\migrations\001_operational_state_v1.sql'
@@ -42,8 +44,11 @@ if ($env:COMPUTERNAME -ne 'PC01') { Fail 'WRONG_HOST' 'This installer is pinned 
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = New-Object Security.Principal.WindowsPrincipal($identity)
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { Fail 'ADMIN_REQUIRED' 'An authorized elevated install context is required.' }
-if ([string]::IsNullOrWhiteSpace($DatabaseUrl)) { Fail 'DATABASE_URL_MISSING' 'TIGERIQ_DATABASE_URL or -DatabaseUrl is required.' }
-if ($DatabaseUrl -match '://[^/@:]+:[^/@]+@' -or $DatabaseUrl -match '(?i)password=') { Fail 'DATABASE_URL_SECRET' 'Database URL must not contain a password; use local SSPI/.pgpass/PGPASSWORD according to PC01 policy.' }
+if ([string]::IsNullOrWhiteSpace($DatabaseUrl)) { Fail 'DATABASE_URL_MISSING' 'Canonical local PostgreSQL URL is required.' }
+if ($DatabaseUrl -match '://[^/@:]+:[^/@]+@' -or $DatabaseUrl -match '(?i)password=') { Fail 'DATABASE_URL_SECRET' 'Database URL must not contain a password.' }
+if (-not (Test-Path $PgPassFilePath)) { Fail 'PGPASS_MISSING' 'Protected PostgreSQL credential file is required for SYSTEM runtime.' }
+Protect-LocalFile $PgPassFilePath
+$env:PGPASSFILE = $PgPassFilePath
 if (-not (Test-Path (Join-Path $RepoPath '.git'))) { Fail 'REPO_MISSING' "TigerIQ repository not found at $RepoPath." }
 if (Test-Path $ForbiddenMigration) { Fail 'MIGRATION_003_FORBIDDEN' '003_business_state_v2.sql is not authorized for physical apply.' }
 foreach ($requiredMigration in @($Migration001,$Migration002)) { if (-not (Test-Path $requiredMigration)) { Fail 'MIGRATION_MISSING' "Required migration missing: $requiredMigration" } }
@@ -72,10 +77,7 @@ if ($LASTEXITCODE -ne 0 -or $ips.Count -ne 1 -or $ips[0] -ne $ExpectedHost) { Fa
 if (-not (Get-NetIPAddress -AddressFamily IPv4 -IPAddress $ExpectedHost -ErrorAction SilentlyContinue)) { Fail 'TAILSCALE_IP_NOT_PRESENT' "$ExpectedHost is not assigned locally." }
 
 $existingTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-if ($existingTask) {
-  Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-  Start-Sleep -Seconds 2
-}
+if ($existingTask) { Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue; Start-Sleep -Seconds 2 }
 $existing = @(Get-NetTCPConnection -LocalPort $ControllerPort -State Listen -ErrorAction SilentlyContinue)
 if ($existing.Count -gt 0) { Fail 'PORT_IN_USE' 'Port 8790 still has a listener after stopping the canonical task; wrapper must resolve the conflict first.' }
 
@@ -90,12 +92,9 @@ try {
   $env:TIGERIQ_DATABASE_URL = $DatabaseUrl
   & (Join-Path $RepoPath 'scripts\install-work-state-postgres.ps1') -DatabaseUrl $DatabaseUrl -Migration $Migration001 -ReplayMigration $Migration002
   if ($LASTEXITCODE -ne 0) { Fail 'POSTGRES_MIGRATION_FAILED' 'Operational-state migrations 001+002 failed.' }
-  $versions = @(& $psql $DatabaseUrl -v ON_ERROR_STOP=1 -Atc "SELECT version FROM tigeriq_schema_migrations WHERE version IN ('001_operational_state_v1','002_device_proof_replay_v1') ORDER BY version;" 2>$null | ForEach-Object { $_.Trim() } | Where-Object { $_ })
-  $forbidden = (& $psql $DatabaseUrl -v ON_ERROR_STOP=1 -Atc "SELECT count(*) FROM tigeriq_schema_migrations WHERE version='003_business_state_v2';" 2>$null).Trim()
-  if ($versions.Count -ne 2 -or $forbidden -ne '0') { Fail 'POSTGRES_MIGRATION_VERIFY_FAILED' 'Required 001+002 state is not exact or forbidden 003 is present.' }
-} finally {
-  Pop-Location
-}
+  $versions = @(& $psql $DatabaseUrl -v ON_ERROR_STOP=1 -Atc "SELECT version FROM tigeriq_schema_migrations ORDER BY version;" 2>$null | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+  if ($versions.Count -ne 2 -or $versions[0] -ne '001_operational_state_v1' -or $versions[1] -ne '002_device_proof_replay_v1') { Fail 'POSTGRES_MIGRATION_VERIFY_FAILED' 'PostgreSQL migration state must be exactly reviewed 001+002.' }
+} finally { Pop-Location }
 
 $entry = Join-Path $RepoPath 'dist\apps\workforce-controller\src\standalone.js'
 if (-not (Test-Path $entry)) { Fail 'CONTROLLER_BUILD_MISSING' 'Built Controller entry is missing.' }
@@ -103,15 +102,13 @@ if (-not (Test-Path $HealthScriptPath)) { Fail 'HEALTH_SCRIPT_MISSING' 'Controll
 New-Item -ItemType Directory -Force -Path $RuntimeDir,$ConfigDir,(Split-Path $LogPath -Parent) | Out-Null
 [IO.File]::WriteAllText($DatabaseUrlFile,$DatabaseUrl.Trim(),(New-Object Text.UTF8Encoding($false)))
 Protect-LocalFile $DatabaseUrlFile
+Protect-LocalFile $PgPassFilePath
 
-$nodeEscaped = $node.Replace("'", "''")
-$repoEscaped = $RepoPath.Replace("'", "''")
-$urlFileEscaped = $DatabaseUrlFile.Replace("'", "''")
-$logEscaped = $LogPath.Replace("'", "''")
-$entryEscaped = $entry.Replace("'", "''")
+$nodeEscaped=$node.Replace("'","''"); $repoEscaped=$RepoPath.Replace("'","''"); $urlFileEscaped=$DatabaseUrlFile.Replace("'","''"); $pgPassEscaped=$PgPassFilePath.Replace("'","''"); $logEscaped=$LogPath.Replace("'","''"); $entryEscaped=$entry.Replace("'","''")
 $runner = @"
 `$ErrorActionPreference = 'Stop'
 `$env:TIGERIQ_DATABASE_URL = [IO.File]::ReadAllText('$urlFileEscaped').Trim()
+`$env:PGPASSFILE = '$pgPassEscaped'
 `$env:TIGERIQ_WORKFORCE_HOST = '$ExpectedHost'
 `$env:TIGERIQ_WORKFORCE_PORT = '$ControllerPort'
 Set-Location '$repoEscaped'
@@ -134,26 +131,6 @@ $existingFirewall = Get-NetFirewallRule -DisplayName $FirewallName -ErrorAction 
 if ($existingFirewall) { Remove-NetFirewallRule -DisplayName $FirewallName }
 New-NetFirewallRule -DisplayName $FirewallName -Direction Inbound -Action Allow -Protocol TCP -LocalAddress $ExpectedHost -LocalPort $ControllerPort -RemoteAddress '100.64.0.0/10' -Profile Any | Out-Null
 
-if ($StartNow) {
-  Start-ScheduledTask -TaskName $TaskName
-  Start-Sleep -Seconds 4
-  & $HealthScriptPath -DatabaseUrl $DatabaseUrl
-  exit $LASTEXITCODE
-}
+if ($StartNow) { Start-ScheduledTask -TaskName $TaskName; Start-Sleep -Seconds 4; & $HealthScriptPath -DatabaseUrl $DatabaseUrl -PgPassFile $PgPassFilePath; exit $LASTEXITCODE }
 
-[ordered]@{
-  ok = $true
-  status = 'INSTALLED_NOT_STARTED'
-  branch = $branch
-  headSha = $headSha
-  task = $TaskName
-  bind = "$ExpectedHost`:$ControllerPort"
-  datastore = 'PostgreSQL operational-state-v1'
-  migrations = @('001_operational_state_v1','002_device_proof_replay_v1')
-  forbiddenMigrationApplied = $false
-  firewall = 'TAILSCALE_ONLY'
-  autostart = $true
-  recoveryProbeMinutes = 5
-  startNow = $false
-  mainProductionTouched = $false
-} | ConvertTo-Json -Compress
+[ordered]@{ok=$true;status='INSTALLED_NOT_STARTED';branch=$branch;headSha=$headSha;task=$TaskName;bind="$ExpectedHost`:$ControllerPort";datastore='PostgreSQL operational-state-v1';migrations=@('001_operational_state_v1','002_device_proof_replay_v1');forbiddenMigrationApplied=$false;firewall='TAILSCALE_ONLY';autostart=$true;recoveryProbeMinutes=5;startNow=$false;mainProductionTouched=$false;secretsPrinted=$false} | ConvertTo-Json -Compress
