@@ -117,7 +117,7 @@ jobs:
           while IFS= read -r dex; do
             unzip -p "$apk" "$dex" | strings >> /tmp/tigeriq-v1-dex-strings.txt
           done < <(unzip -Z1 "$apk" | grep -E '^classes([0-9]+)?\.dex$')
-          if grep -E 'ai/tigeriq/worker/AccessibilityBridgeService|ai/tigeriq/worker/ForegroundWorkerService|com/google/android/apps/bard|com\.google\.android\.apps\.bard|/v1/android/sessions|/v1/android/jobs/pull|/v1/android/jobs/submit|/v1/inference|SessionManager|SessionLifecycle' /tmp/tigeriq-v1-dex-strings.txt; then
+          if grep -E 'ai/tigeriq/worker/AccessibilityBridgeService|ai/tigeriq/worker/ForegroundWorkerService|com/google/android/apps/bard|com\.google\.android\.apps\.bard|/v1/android/sessions|/v1/android/jobs/pull|/v1/android/jobs/submit|/v1/inference|ai/tigeriq/worker/v07/SessionManager|ai/tigeriq/worker/v07/SessionLifecycle|ai\.tigeriq\.worker\.v07\.SessionManager|ai\.tigeriq\.worker\.v07\.SessionLifecycle' /tmp/tigeriq-v1-dex-strings.txt; then
             echo 'V1_DEX_FAIL: retired/session/UI-automation code packaged in APK' >&2
             exit 1
           fi
