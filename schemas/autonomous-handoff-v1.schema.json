@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tigeriq.ai/schemas/autonomous-handoff-v1.schema.json",
+  "title": "TigerIQ Autonomous Handoff V1",
+  "description": "Governance contract only; not a runtime transport implementation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "handoff_id",
+    "work_ref",
+    "from_role",
+    "to_role",
+    "accountable_executor",
+    "stage",
+    "risk_level",
+    "gate_reason",
+    "scope",
+    "acceptance_criteria",
+    "exact_head_or_artifact_version",
+    "evidence_refs",
+    "evidence_set_hash",
+    "review_fingerprint",
+    "requested_verdict",
+    "constraints",
+    "next_state_on_pass",
+    "return_to_on_fail"
+  ],
+  "properties": {
+    "contract_version": { "const": "TIGERIQ_AUTONOMOUS_HANDOFF_V1" },
+    "handoff_id": { "type": "string", "minLength": 1, "maxLength": 160 },
+    "work_ref": { "type": "string", "minLength": 1, "maxLength": 512 },
+    "from_role": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "to_role": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "accountable_executor": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "stage": {
+      "enum": [
+        "HANDOFF_READY",
+        "REVIEWING",
+        "JUDGING",
+        "REWORK_REQUIRED",
+        "AWAITING_OWNER",
+        "NEXT_STAGE"
+      ]
+    },
+    "risk_level": { "enum": ["R0", "R1", "R2", "R3", "R4"] },
+    "gate_reason": { "type": "string", "minLength": 1, "maxLength": 2000 },
+    "scope": { "type": "string", "minLength": 1, "maxLength": 4000 },
+    "acceptance_criteria": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1, "maxLength": 2000 }
+    },
+    "exact_head_or_artifact_version": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "evidence_refs": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1, "maxLength": 1024 },
+      "uniqueItems": true
+    },
+    "evidence_set_hash": {
+      "type": "string",
+      "pattern": "^(sha256:)?[a-fA-F0-9]{64}$"
+    },
+    "review_fingerprint": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "description": "Stable identifier derived from scope + exact version + evidence-set hash + policy/risk refs."
+    },
+    "acceptance_policy_ref": { "type": "string", "minLength": 1, "maxLength": 512 },
+    "prior_verdict_ref": { "type": "string", "minLength": 1, "maxLength": 512 },
+    "changed_since_last_review": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1, "maxLength": 2000 },
+      "uniqueItems": true
+    },
+    "requested_verdict": { "enum": ["REVIEW_PASS_FAIL", "JUDGE_PASS_FAIL", "OWNER_DECISION"] },
+    "constraints": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1, "maxLength": 2000 },
+      "uniqueItems": true
+    },
+    "next_state_on_pass": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "return_to_on_fail": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "review_required": { "type": "boolean" },
+    "judge_required": { "type": "boolean" },
+    "owner_gate_required": { "type": "boolean" },
+    "owner_approval_ref": { "type": "string", "minLength": 1, "maxLength": 512, "x-tigeriq-immutable": true },
+    "wait_reason": { "type": "string", "minLength": 1, "maxLength": 2000 },
+    "resume_condition": { "type": "string", "minLength": 1, "maxLength": 2000 },
+    "last_checked_at": { "type": "string", "format": "date-time" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "risk_level": { "const": "R3" } },
+        "required": ["risk_level"]
+      },
+      "then": {
+        "properties": { "review_required": { "const": true } },
+        "required": ["review_required"]
+      }
+    },
+    {
+      "if": {
+        "properties": { "risk_level": { "const": "R4" } },
+        "required": ["risk_level"]
+      },
+      "then": {
+        "properties": { "review_required": { "const": true } },
+        "required": ["review_required"]
+      }
+    },
+    {
+      "if": {
+        "properties": { "owner_gate_required": { "const": true } },
+        "required": ["owner_gate_required"]
+      },
+      "then": { "required": ["owner_approval_ref"] }
+    },
+    {
+      "if": { "required": ["prior_verdict_ref"] },
+      "then": {
+        "required": ["changed_since_last_review"],
+        "properties": { "changed_since_last_review": { "minItems": 1 } }
+      }
+    }
+  ]
+}
