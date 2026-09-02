@@ -2,8 +2,16 @@
 
 Date: 2026-09-02
 
-PR #117 is being refactored to the approved TigerIQ V1 architecture. Web Control is a client of the PC01 Workforce Controller through Tailscale; GitHub/Vercel are not operational queue/state sources. The branch is CODE/TEST scope only and does not prove a live PC01 Controller connection or JOB-001 execution.
+CHAT 01 scope: Web Control only on PR #117. MAIN/Production remain unchanged.
 
-Current Web truth rules: mock is non-authoritative; Controller snapshots must be authoritative and schema-valid; no fallback to GitHub/Vercel for live state; no browser admin secret; no MAIN/Production or paid-service action.
+## Current target
 
-See `docs/contracts/WEB_CONTROL_CONTROLLER_CONTRACT_V1.md` and `docs/work-orders/WO-045-WEB-CONTROL-REMOTE-OPS.md`.
+Deliver an unmistakable TigerIQ V1 company operations dashboard before PC01 is physically available. The UI includes company progress, departments, AI employees, providers, jobs, results, quality gates, recovery and audit history using a non-authoritative mock snapshot that matches the Controller contract.
+
+## Truth boundary
+
+- PC01 Workforce Controller/PostgreSQL will be the live Source of Truth.
+- GitHub/Vercel are not runtime queue/state sources.
+- Mock data is always `authoritative=false` and visibly marked as sample data.
+- No `WEB_CONTROL_V1_VISUAL_PREVIEW_READY` may be recorded until an exact-head Vercel Free Preview is READY and fetchable as the actual V1 dashboard.
+- No paid Vercel action or retry spam.

@@ -1,72 +1,138 @@
 # TigerIQ Web Control ↔ Workforce Controller Contract V1
 
-Status: Web-side contract candidate for CHAT 01. Backend implementation belongs to CHAT 03/06 as applicable.
+Status: Web-side contract owned by CHAT 01. Controller implementation remains with the backend/runtime streams.
 
-## Architecture boundary
+## 1. Architecture boundary
 
-- PC01 + PostgreSQL are the operational state authority.
-- Tailscale is the primary network path.
-- Workforce Controller is the only operational API source for Web Control.
-- Vercel may serve static UI and optional Owner UI identity only. Vercel/GitHub are not the job queue, scheduler, controller, durable state store, or runtime truth source.
-- If Vercel is unavailable, PC01/Controller/workers continue. The same Web bundle can be served locally/tailnet and pointed at the Controller.
-- Web Control does not decompose goals, select providers, lease work, judge results, or decide retry policy. It sends intents and renders Controller state.
+- `PC01 + PostgreSQL + Workforce Controller` are the operational Source of Truth.
+- `Tailscale` is the primary private network path.
+- Web Control is the Owner-facing company dashboard and intent client.
+- Vercel may host the static Web UI and optional Owner UI identity only. It is not queue, scheduler, controller, retry engine, evidence store, reviewer or judge.
+- GitHub is source/version/review/CI evidence only. Web V1 never derives live job state from Issues, PRs, Actions or deployments.
+- If Vercel is unavailable, PC01/Controller/workers/jobs continue. The same Web bundle may be served locally/tailnet and point to the same Controller.
 
-## Confirmed existing Controller endpoint
+## 2. Confirmed existing Controller probe
 
-`GET /api/workforce/status` exists today and returns aggregate nodes/employees/tasks status. Web V1 uses it only as a connection probe because it does not contain the complete data required by the Owner console.
+`GET /api/workforce/status`
 
-Existing task enqueue `POST /api/admin/tasks` is intentionally NOT called from browser Web V1 because it requires an admin secret. Browser code must never store or transmit the Workforce Controller admin secret.
+This is only a connectivity/aggregate probe. It is not rich enough to drive the complete Web V1 company dashboard.
 
-## Required Web read contract (backend pending)
+The existing `POST /api/admin/tasks` is intentionally not called by browser Web V1 because it requires Controller admin authority. The browser must never hold or send `x-tigeriq-admin-secret`.
+
+## 3. Authoritative dashboard snapshot
 
 `GET /api/web/v1/snapshot`
 
-Response MUST be authoritative and use:
+Required response envelope:
 
 ```json
 {
   "schemaVersion": "tigeriq.web-control.snapshot.v1",
   "generatedAt": "ISO-8601",
-  "source": { "mode": "controller", "authoritative": true, "label": "PC01 Workforce Controller" },
+  "source": {"mode":"controller","authoritative":true,"label":"PC01 Workforce Controller"},
   "controller": {},
-  "company": { "readiness": [{ "key": "job001", "label": "JOB-001", "state": "PENDING|READY|RUNNING|PASS|FAIL|BLOCKED", "evidence": null }] },
+  "owner": {},
+  "company": {},
+  "departments": [],
   "jobs": [],
   "employees": [],
   "devices": [],
   "providers": [],
   "prompts": [],
   "results": [],
+  "checks": [],
   "activity": []
 }
 ```
 
-If this endpoint is absent, invalid, unauthenticated or returns a schema mismatch, Controller mode must fail closed. It MUST NOT fallback to GitHub Issues, PRs, Vercel deployment metadata, or mock data while still claiming live mode.
+Web Controller mode fails closed unless `schemaVersion` matches exactly, `source.mode=controller`, `source.authoritative=true`, `generatedAt` is valid and every required dashboard collection is an array.
 
-## Required Web write intents (backend pending)
+## 4. Company / progress model
 
-- `POST /api/web/v1/goals` — Owner goal intent. Controller/orchestration layer owns decomposition and dispatch.
-- `POST /api/web/v1/prompts/versions` — prompt version intent/storage contract.
-- `POST /api/web/v1/jobs/:jobId/retry` — retry request intent only. Controller decides eligibility, dedupe, attempt count, policy and execution.
+Recommended `company` shape:
 
-Web must not directly create TaskPacket internals that duplicate Work Management logic.
+```json
+{
+  "name": "TigerIQ AI Lab",
+  "version": "V1",
+  "phase": "...",
+  "operatingMode": "...",
+  "currentObjective": "...",
+  "truthPolicy": "...",
+  "progress": {"percent":0,"label":"...","note":"..."},
+  "readiness": [{"key":"job001","label":"JOB-001","state":"PENDING|READY|RUNNING|PASS|FAIL|BLOCKED","evidence":null}],
+  "workforceSummary": {}
+}
+```
 
-Job stages in the Web snapshot should be normalized by the Controller adapter (recommended: `QUEUED`, `ASSIGNED`, `RUNNING`, `WAITING_REVIEW`, `WAITING_JUDGE`, `COMPLETED`, `FAILED`, `BLOCKED`, `CANCELLED`). Web treats stage text as data and never upgrades a state on its own.
+Progress/readiness are Controller data. Web must not calculate a company runtime PASS from GitHub/Vercel metadata.
 
-## Authentication boundary
+## 5. Departments / workforce
 
-- Existing Google Owner auth may remain as optional UI identity on Vercel.
-- Controller itself must enforce operational authorization. The browser must not be trusted merely because the UI says Owner.
-- Browser Web V1 supports a future short-lived Controller-issued bearer/capability or same-origin secure cookie. Token is session-only in the current client; admin secret is forbidden.
+`departments[]` supports `departmentId`, `name`, `purpose`, `leadEmployeeId`, `employeeCount`, `activeJobs`, `health`.
 
-## Tailscale / browser transport
+`employees[]` supports `employeeId`, `displayName`, `department`, `role`, `nodeId`, `provider`, `model`, `availability`, `healthScore`, `activeTaskCount`, `concurrencyLimit`, `capabilities`, `lastHeartbeatAt`.
 
-- Preferred remote UI path: HTTPS Tailscale/MagicDNS URL such as `https://pc01.<tailnet>.ts.net`.
-- `http://100.64.0.0/10:8790` is accepted only when the Web page itself is served over HTTP/local context. An HTTPS Vercel page cannot safely call an HTTP Controller because browsers block mixed content.
-- Public Internet Controller URLs are rejected by the Web client policy.
-- If UI and Controller are cross-origin (for example Vercel UI → `https://pc01.<tailnet>.ts.net`), the Controller-owned Web API must explicitly allow only the approved Web origin(s) with narrow CORS and browser-safe authorization. Alternatively serve Web locally/same-origin on PC01. CHAT 01 does not add this backend policy itself.
+`devices[]` supports `nodeId`, `displayName`, `kind`, `platform`, `status`, `tailscaleIp`, `controllerPort`, `agentVersion`, `lastHeartbeatAt`, optional battery/temperature.
 
-## Truthful state rules
+Online/idle/busy status is valid only when Controller supplies it. Web never promotes `unknown` to online.
 
-- `RUNNING`, `COMPLETED`, provider quota/health, employee online state, evidence, review, judge, blocker and retry state are displayed only from the Controller snapshot.
-- Mock mode is always visibly marked `MOCK`, `authoritative=false`; mock submit/retry actions never dispatch.
-- Controller mode does not infer state from GitHub/Vercel and does not silently downgrade to mock on a failed connection.
+## 6. Jobs / queue / recovery
+
+Recommended normalized stages: `QUEUED`, `ASSIGNED`, `RUNNING`, `WAITING_REVIEW`, `WAITING_JUDGE`, `COMPLETED`, `FAILED`, `BLOCKED`, `CANCELLED`.
+
+`jobs[]` may include `department`, `priority`, `assignedEmployeeId`, `requiredCapabilities`, `attempts`, `maxAttempts`, `blocker`, `recovery`, `progress`, timestamps.
+
+Web treats stage/progress/blocker as display data only. Retry policy, dedupe, leases and recovery eligibility remain Controller/orchestration responsibilities.
+
+## 7. AI providers
+
+`providers[]` supports `providerId`, `displayName`, `role`, `health`, `billingMode`, `credentialPresent`, `quota`, `models`, `successRate`, `latencyP50Ms`, `lastCheckedAt`.
+
+Provider health/quota must come from Controller telemetry. Web must not infer health from a previous request failure or external dashboard.
+
+## 8. Prompt Architect
+
+`prompts[]` contains prompt library records, active version and version metrics. Versions may include `runs`, `pass`, `fail`, `passRate`, `avgLatencyMs`.
+
+Write intent: `POST /api/web/v1/prompts/versions`, schema `tigeriq.web-control.prompt-version.v1`.
+
+## 9. Result / Evidence / Review / Judge
+
+`results[]` is the job output projection with `resultId`, `jobId`, `employeeId`, `status`, `conclusion`, `provider`, `model`, `confidence`, `artifacts`, `evidence`, `review`, `judge`, `completedAt`.
+
+`checks[]` is the explicit QA/audit projection with `checkId`, `jobId`, `name`, `state`, `detail`, `at`.
+
+Web must never call a job DONE solely because result text exists. Terminal presentation comes from Controller data and the evidence/review/judge gates defined by Work Management.
+
+## 10. Activity history
+
+`activity[]` contains runtime audit events (`eventId`, `at`, `type`, `actor`, `message`, optional `jobId`). This replaces the old practice of treating GitHub Issue comments as runtime activity.
+
+## 11. Owner write intents
+
+- `POST /api/web/v1/goals` — Owner goal intent. Controller/Work Management owns decomposition and dispatch.
+- `POST /api/web/v1/prompts/versions` — prompt version intent/storage.
+- `POST /api/web/v1/jobs/:jobId/retry` — retry request intent only; Controller decides eligibility, attempts, dedupe and execution.
+
+Web must not generate internal TaskPacket decomposition that duplicates CHAT 03/04/06 logic.
+
+## 12. Authentication / Tailscale / CORS
+
+- Existing Google Owner login can remain UI identity on Vercel; it does not itself authorize Controller operations.
+- Controller must enforce operational authorization using a browser-safe short-lived capability/session. Current Web client stores optional bearer only in `sessionStorage`; admin secret is forbidden.
+- Controller targets are restricted to local/Tailscale hostnames or CGNAT `100.64.0.0/10` addresses.
+- An HTTPS-hosted UI rejects an HTTP Controller target due browser mixed-content rules.
+- Preferred remote target: `https://pc01.<tailnet>.ts.net`.
+- Cross-origin Vercel → Tailscale Controller requires a narrow allowlist CORS policy and browser-safe authorization. Same-origin/local Web on PC01 is also valid.
+
+## 13. Mock mode
+
+Mock mode exists only to complete/test UI before PC01 is physically available:
+
+- `source.mode=mock`
+- `source.authoritative=false`
+- mock entities are visibly labeled `MẪU`
+- mock submit/retry actions return local draft responses and never dispatch
+- mock RUNNING/COMPLETED/PASS examples are demonstrations only and must never be surfaced as real PC01 state
+- a failed live Controller connection must show `CONTROLLER OFFLINE`; Web must not silently fall back to mock while claiming live
