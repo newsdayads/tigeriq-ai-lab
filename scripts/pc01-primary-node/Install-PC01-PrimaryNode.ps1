@@ -64,7 +64,7 @@ $workerEntry=Join-Path $RepoPath 'dist\apps\pc01-native-worker\src\standalone.js
 New-Item -ItemType Directory -Force -Path $RuntimeDir,$StateDir,$SecretDir,(Split-Path $WorkerLog -Parent)|Out-Null
 Protect-Directory $RuntimeDir $userName
 if(-not (Test-Path $TokenFile)){
-  $bytes=New-Object byte[] 48;[Security.Cryptography.RandomNumberGenerator]::Fill($bytes);$token=[Convert]::ToBase64String($bytes);[IO.File]::WriteAllText($TokenFile,$token,(New-Object Text.UTF8Encoding($false)))
+  $bytes=New-Object byte[] 48;$rng=[Security.Cryptography.RandomNumberGenerator]::Create();try{$rng.GetBytes($bytes)}finally{$rng.Dispose()};$token=[Convert]::ToBase64String($bytes);[IO.File]::WriteAllText($TokenFile,$token,(New-Object Text.UTF8Encoding($false)))
 }
 Protect-File $TokenFile $userName
 $token=[IO.File]::ReadAllText($TokenFile).Trim();if($token.Length -lt 32){Fail 'INGRESS_TOKEN_INVALID' 'Stored ingress token is invalid.'}
