@@ -1,34 +1,57 @@
 # Current State
 
-Date: 2026-09-03
+Date: 2026-09-04
 
-TigerIQ AI Lab remains evidence-gated. MAIN/Production are unchanged; no automatic merge or production release is authorized.
+TigerIQ AI Lab remains evidence-gated. MAIN/Production are unchanged; no automatic merge or production release is authorized. OpenClaw is explicitly suspended from the current scope.
 
-## Active priority — WO-060..064 PC01 Autonomy Completion Pack
+## Active priority — WO-065 Continuous Operations V1
 
-Status: IMPLEMENTED — REPOSITORY/FINAL PHYSICAL GATES PENDING
+Status: IMPLEMENTED — REPOSITORY CI/REVIEW + PHYSICAL PC01 GATE PENDING
 
-Branch: `wo060/mission-decomposition-v1`
-Base: verified WO-059 Authorization Engine V1
-Work Order: `docs/work-orders/WO-060-064-PC01-AUTONOMY-COMPLETION.md`
+Branch: `wo065/continuous-operations-v1`
+Base: verified WO-060..064 PC01 Autonomy Completion Pack
+Work Order: `docs/work-orders/WO-065-CONTINUOUS-OPERATIONS-V1.md`
+Draft review: PR #228, targeted to `wo060/mission-decomposition-v1`; not authorized for merge.
 
 Implemented:
-- Mission Orchestrator V1 with natural-language mission decomposition through local `qwen3:8b` and strict JSON DAG validation.
-- AI-generated child plan safety: 2-6 tasks, acyclic dependencies, known routes, mission-scoped safe file paths, no generated git/main/production/network-write/delete/credential operations.
-- Acceptance mission graph with independent Analyst A + Analyst B, Builder, Reviewer and a RED authorization-held child.
-- Closed mission state loop derived from Planner runtime state: planning/running/waiting_authorization/done/failed/blocked_plan.
-- Existing WO-059 GREEN/YELLOW/RED policy remains the authorization boundary for every child Work Order.
-- New 24/7 Scheduled Task `TigerIQ Mission Orchestrator`.
-- New 24/7 Scheduled Task `TigerIQ Autonomy Supervisor` that checks/restarts Controller, PC01 Native Worker, Autonomous Planner and Mission Orchestrator and writes health state.
-- One consolidated installer and one final physical E2E script prepared.
+- Durable top-level explicit goal queue above Mission Orchestrator.
+- P0/P1/P2/P3 priority selection and dependency validation with cycle/unknown dependency fail-closed behavior.
+- One active injected/running goal at a time; completed or authorization-held missions free the execution slot for independent queued goals.
+- Durable continuous state and deterministic mission IDs prevent duplicate mission injection across restart windows.
+- Global pause switch blocks new injections while reconciliation continues.
+- Empty queue never synthesizes/invents work.
+- Existing Mission Orchestrator and WO-059 Authorization Engine remain authoritative; this layer does not bypass policy.
+- PC01 installer prepared to register `TigerIQ Continuous Operations` and add it to the existing Autonomy Supervisor guarded task list.
+- Unit coverage added for empty queue/no invention, priority, dependencies, authorization-held continuation, deterministic injection, terminal reconciliation and pause.
+- Standard CI branch gate extended for WO-065 and PowerShell installer parser verification.
 
-Gate still required:
-- Linux typecheck/tests/build/safety contract PASS.
-- Windows typecheck/tests/build/PowerShell parser PASS.
-- One final physical PC01 E2E proving Mission → Decompose → Dispatch → Build → Review → Closed State → RED Hold → Supervisor with machine-readable evidence.
+Repository gates:
+- CI/typecheck/tests/Playwright/build/PowerShell parser must pass on final WO-065 head.
+- Review is against verified WO-060 base only; MAIN is not the integration target for this Work Order.
+
+Physical gate still required:
+- Install the WO-065 runtime on physical PC01.
+- Prove two queued safe goals execute sequentially without manual per-goal action.
+- Prove authorization-held work does not block an independent GREEN goal.
+- Prove pause/resume and supervisor restart recovery without duplicate injection.
+- Record machine-readable evidence with Controller/PostgreSQL/PC01/Ollama/Supervisor healthy and no MAIN/Production/financial action.
 
 Next action:
-Wait for consolidated CI. If PASS, run exactly one final PowerShell command on PC01. Do not claim final PC01 autonomy DONE before physical evidence exists.
+Finish repository CI/review. If PASS, physical PC01 installation/E2E becomes the only remaining gate. Do not claim WO-065 DONE before physical evidence exists.
+
+## Completed — WO-060..064 PC01 Autonomy Completion Pack
+
+Status: DONE — REPOSITORY + PHYSICAL PC01 GATES PASS
+Physical evidence: `docs/evidence/WO-060-064-PC01-AUTONOMY-QUICK-FINAL-20260903T104820Z.json`
+Repository evidence: GitHub Actions run `33746442244` success on `fd42ade412fc4beded95ec19b0ab215d6796b847`.
+
+Verified:
+- safe mission children completed;
+- RED financial-class child remained authorization-held;
+- mission closed-loop state correctly became `waiting_authorization` rather than false DONE;
+- Controller/PostgreSQL/PC01/Ollama/Supervisor healthy;
+- `qwen3:8b` GPU offload confirmed;
+- MAIN/Production untouched; no financial action; no secret printed.
 
 ## Completed — WO-059 Authorization Engine V1
 
