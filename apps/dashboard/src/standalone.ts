@@ -4,7 +4,7 @@ import { promisify } from 'node:util';
 import { FileJournal } from '../../../packages/event-store/src/index.js';
 import { DurableControlPlane } from '../../../packages/durable-control-plane/src/index.js';
 import { startDashboard } from './server.js';
-import { startOwnerCockpitV3 } from './server-v3.js';
+import { startOwnerCockpitV4 } from './server-v4.js';
 
 const execFileAsync = promisify(execFile);
 const journalPath = process.env.TIGERIQ_JOURNAL ?? 'F:\\TigerIQ\\State\\control-plane.jsonl';
@@ -55,7 +55,6 @@ async function submitPc01WorkOrder(instruction: string, priority: string): Promi
   }
 }
 
-// Keep the proven security/auth/telemetry server as an internal loopback backend.
 const backend = await startDashboard(plane, {
   host: '127.0.0.1',
   port: 0,
@@ -63,10 +62,9 @@ const backend = await startDashboard(plane, {
   submitJob: submitPc01WorkOrder,
 });
 
-// Owner Cockpit V3 is the only externally bound PC01 WebControl surface.
-const server = await startOwnerCockpitV3({ backendUrl: backend.url, host, port });
+const server = await startOwnerCockpitV4({ backendUrl: backend.url, host, port });
 
-console.log(`TigerIQ Owner Cockpit V3 online: ${server.url}`);
+console.log(`TigerIQ Owner Cockpit V4 online: ${server.url}`);
 console.log(`Internal Command Center backend: ${backend.url}`);
 console.log(`Journal: ${journalPath}`);
 console.log('Write actions require TIGERIQ_COMMAND_SECRET.');
