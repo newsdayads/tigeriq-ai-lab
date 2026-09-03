@@ -21,7 +21,8 @@ Owner overview priority is company summary → CẦN SẾP → Goal/KPI → Miss
 - Mock remains `authoritative=false` and visibly MẪU.
 - CẦN SẾP remains fail-closed; `decision_ref != owner_approval_ref`; Web does not infer AUTHORIZE.
 - Mission→Job remains reference-only; Job/Lease/Result/Evidence are not duplicated into Mission.
-- Trello remains read-only and provenance-gated; no writeback or shadow work database.
+- Trello is removed from TigerIQ by Owner decision 2026-09-03; Owner Cockpit must not parse, project, display, or depend on Trello state.
+- Internal work/state remains sourced from current TigerIQ authoritative state and GitHub where applicable; no external workboard may become a shadow control plane.
 - Finance/business values remain unavailable unless an authoritative projection with provenance exists.
 - Owner OAuth/write boundary, Controller contract, Business State adapter and PC01/Android/PostgreSQL runtime are unchanged by WO-158.
 
