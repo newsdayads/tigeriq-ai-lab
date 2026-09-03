@@ -1,6 +1,6 @@
 import { createHash, generateKeyPairSync, sign } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { DeviceAuthError, VerifiedDeviceAuthenticator } from '../apps/workforce-controller/src/device-auth.js';
+import { VerifiedDeviceAuthenticator } from '../apps/workforce-controller/src/device-auth.js';
 import type { SqlClientLike, SqlPoolLike, SqlQueryResult } from '../packages/work-state/src/postgres-repository.js';
 
 function sha256(value:Buffer|string):string{return createHash('sha256').update(value).digest('hex');}
@@ -55,14 +55,14 @@ describe('Controller device proof node binding',()=>{
     const fake=poolWithMetadata({publicKeyBase64,nodeId:provisionedNodeId});
     const auth=new VerifiedDeviceAuthenticator(fake.pool);
     const request=signedRequest('NODE-IMPOSTOR-999');
-    await expect(auth.verify(request)).rejects.toMatchObject<DeviceAuthError>({status:401,code:'DEVICE_NODE_ID_MISMATCH'});
+    await expect(auth.verify(request)).rejects.toMatchObject({status:401,code:'DEVICE_NODE_ID_MISMATCH'});
     expect(fake.getConnectCalls()).toBe(0);
   });
 
   it('fails closed when a device key exists but no node identity was provisioned',async()=>{
     const fake=poolWithMetadata({publicKeyBase64});
     const auth=new VerifiedDeviceAuthenticator(fake.pool);
-    await expect(auth.verify(signedRequest(provisionedNodeId))).rejects.toMatchObject<DeviceAuthError>({status:401,code:'DEVICE_NODE_NOT_PROVISIONED'});
+    await expect(auth.verify(signedRequest(provisionedNodeId))).rejects.toMatchObject({status:401,code:'DEVICE_NODE_NOT_PROVISIONED'});
     expect(fake.getConnectCalls()).toBe(0);
   });
 });
