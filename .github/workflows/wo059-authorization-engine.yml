@@ -1,0 +1,75 @@
+name: WO-059 Authorization Engine V1
+
+on:
+  push:
+    branches:
+      - 'wo059/authorization-engine-v1'
+  pull_request:
+    paths:
+      - 'apps/autonomous-planner/**'
+      - 'scripts/pc01-autonomy/**'
+      - 'tests/autonomous-planner.test.ts'
+      - '.github/workflows/wo059-authorization-engine.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  linux-quality-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Authorization safety contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "'GREEN'|'YELLOW'|'RED'" apps/autonomous-planner/src/policy.ts
+          grep -q "approvedBy:'OWNER'" apps/autonomous-planner/src/policy.ts
+          grep -q "unclassified_fail_closed" apps/autonomous-planner/src/policy.ts
+          grep -q "POLICY_DOWNGRADE_DENIED" apps/autonomous-planner/src/policy.ts
+          grep -q "HELD_AUTHORIZATION" apps/autonomous-planner/src/policy.ts
+          grep -q "MAIN_PRODUCTION:'RED'" apps/autonomous-planner/src/policy.ts
+          grep -q "FINANCIAL:'RED'" apps/autonomous-planner/src/policy.ts
+          grep -q "SECURITY_SENSITIVE:'RED'" apps/autonomous-planner/src/policy.ts
+          grep -q "IRREVERSIBLE:'RED'" apps/autonomous-planner/src/policy.ts
+          echo 'WO059_AUTHORIZATION_POLICY_CONTRACT_PASS'
+
+  windows-build-gate:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Confirm planner artifact and PowerShell syntax
+        shell: powershell
+        run: |
+          if (-not (Test-Path 'dist\apps\autonomous-planner\src\standalone.js')) { throw 'Autonomous planner artifact missing' }
+          if (-not (Test-Path 'dist\apps\autonomous-planner\src\policy.js')) { throw 'Authorization policy artifact missing' }
+          $scripts = @('scripts\pc01-autonomy\Install-PC01-AutonomousPlanner.ps1','scripts\pc01-autonomy\Invoke-WO059-Physical-E2E.ps1')
+          $failed = $false
+          foreach ($script in $scripts) {
+            $tokens = $null; $errors = $null
+            [Management.Automation.Language.Parser]::ParseFile((Resolve-Path $script),[ref]$tokens,[ref]$errors) | Out-Null
+            foreach ($parseError in @($errors)) {
+              $failed = $true
+              Write-Host ("PARSER_ERROR {0}:{1}:{2} token=[{3}] message={4}" -f $script,$parseError.Extent.StartLineNumber,$parseError.Extent.StartColumnNumber,$parseError.Extent.Text,$parseError.Message)
+            }
+          }
+          if ($failed) { throw 'PowerShell parse gate failed' }
+          Write-Host 'WO059_WINDOWS_BUILD_AND_POWERSHELL_PASS'
