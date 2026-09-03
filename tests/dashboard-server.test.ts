@@ -15,6 +15,7 @@ const telemetry: ServerTelemetry = {
   disk: { drive: 'F:', freeBytes: 412 * 1024 ** 3, totalBytes: 1000 * 1024 ** 3, utilizationPercent: 58.8 },
   worker: { online: true, pid: 15340, instances: 1 },
   controller: { online: true, ip: '100.97.23.87', port: 8790 },
+  workforce: { employeesTotal: 5, idle: 3, busy: 1, offline: 1, degraded: 0, activeTasks: 1, tasksActive: 2, tasksFailed: 1 },
   postgresql: { online: true, service: 'postgresql-x64-17', port: 5432 },
   ollama: { online: true, models: ['qwen3:8b'] },
   tailscale: { online: true, ip: '100.97.23.87' },
@@ -71,6 +72,9 @@ describe('TigerIQ Command Center', () => {
     expect(html).toContain('PostgreSQL');
     expect(html).toContain('postgresql-x64-17');
     expect(html).toContain('Workforce Controller');
+    expect(html).toContain('AI Employees');
+    expect(html).toContain('5 total · 3 idle · 1 busy · 1 offline · 0 degraded');
+    expect(html).toContain('2 active · 1 failed · 1 assigned');
     expect(html).toContain('NVIDIA Test GPU');
   });
 
@@ -85,6 +89,7 @@ describe('TigerIQ Command Center', () => {
     expect(body.available).toBe(true);
     expect(body.worker?.pid).toBe(15340);
     expect(body.controller).toMatchObject({ online: true, port: 8790 });
+    expect(body.workforce).toMatchObject({ employeesTotal: 5, idle: 3, busy: 1, tasksActive: 2, tasksFailed: 1 });
     expect(body.postgresql).toMatchObject({ online: true, port: 5432 });
     expect(body.ollama?.models).toEqual(['qwen3:8b']);
     expect(body.tailscale?.ip).toBe('100.97.23.87');
@@ -94,7 +99,7 @@ describe('TigerIQ Command Center', () => {
 
   it('keeps the web healthy when telemetry is unavailable and does not leak raw errors', async () => {
     const plane = new ControlPlane();
-    const unavailable: ServerTelemetry = { available: false, server: 'PC01', generatedAt: new Date().toISOString(), cpu: null, memory: null, uptimeSeconds: null, disk: null, worker: null, controller: null, postgresql: null, ollama: null, tailscale: null, gpu: null };
+    const unavailable: ServerTelemetry = { available: false, server: 'PC01', generatedAt: new Date().toISOString(), cpu: null, memory: null, uptimeSeconds: null, disk: null, worker: null, controller: null, workforce: null, postgresql: null, ollama: null, tailscale: null, gpu: null };
     const server = await startDashboard(plane, { serverTelemetry: async () => unavailable });
     closeCurrent = server.close;
     const api = await fetch(`${server.url}/api/server`);
@@ -104,6 +109,8 @@ describe('TigerIQ Command Center', () => {
     expect(page.status).toBe(200);
     const html = await page.text();
     expect(html).toContain('PC01 Server: Chưa có telemetry');
+    expect(html).toContain('AI Workforce Registry');
+    expect(html).toContain('Chưa có dữ liệu');
     expect(html).not.toContain('stderr');
     expect(html).not.toContain('stack trace');
   });
