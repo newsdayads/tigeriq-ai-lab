@@ -8,7 +8,7 @@ class StatusPool implements SqlPoolLike {
   constructor(private readonly versions:string[]){}
   async query<Row=Record<string,unknown>>(text:string,_values?:readonly unknown[]):Promise<SqlQueryResult<Row>>{
     this.queries.push(text);
-    if(text.includes('tigeriq_schema_migrations'))return{rows:this.versions.map(version=>({version})) as unknown as Row[]};
+    if(text.includes('tigeriq_schema_migrations'))return{rows:[...this.versions].sort().map(version=>({version})) as unknown as Row[]};
     if(text.includes('count(*)'))return{rows:[{employees:'1',devices:'1',queued_jobs:'0',active_leases:'0'}] as unknown as Row[]};
     throw new Error(`unexpected status query: ${text}`);
   }
