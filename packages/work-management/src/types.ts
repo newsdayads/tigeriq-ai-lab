@@ -116,6 +116,10 @@ export interface ManagedWorkRecord {
   executorIds: string[];
   reviewerIds: string[];
   judgeIds: string[];
+  /** Persisted stable assurance identities. Optional for backward-compatible V1 snapshots; clones normalize to arrays. */
+  executorIndependenceKeys?: string[];
+  reviewerIndependenceKeys?: string[];
+  judgeIndependenceKeys?: string[];
   lease?: WorkLease;
   execution?: ExecutionResult;
   review?: ReviewResult;

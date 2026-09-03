@@ -51,4 +51,14 @@ function validateSnapshot(snapshot: WorkManagementSnapshot): void {
   if (!snapshot || snapshot.version !== 1) throw new Error('invalid work-management snapshot version');
   if (!Number.isInteger(snapshot.sequence) || snapshot.sequence < 0) throw new Error('invalid work-management sequence');
   if (!Array.isArray(snapshot.goals) || !Array.isArray(snapshot.history)) throw new Error('invalid work-management collections');
+
+  let previous = 0;
+  for (const event of snapshot.history) {
+    if (!Number.isInteger(event.sequence) || event.sequence < 1 || event.sequence !== previous + 1) {
+      throw new Error('invalid work-management history sequence');
+    }
+    if (!Number.isFinite(Date.parse(event.at))) throw new Error('invalid work-management history timestamp');
+    previous = event.sequence;
+  }
+  if (snapshot.sequence !== previous) throw new Error('work-management snapshot sequence/history mismatch');
 }

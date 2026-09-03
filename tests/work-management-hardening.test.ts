@@ -55,6 +55,56 @@ describe('WO-044 independent hardening gate', () => {
     })).toThrow(/cannot span multiple assurance roles/i);
   });
 
+  it('does not leave a ghost assurance identity after base registration validation fails', () => {
+    const manager = new AutonomousWorkManager(new WorkManagementStore());
+    expect(() => manager.registerWorker({ ...worker('BAD-EXEC', 'executor', 'shared:identity'), concurrencyLimit: 0 }, {
+      execute: async () => ({ status: 'completed', conclusion: 'invalid worker', evidence: [{ kind: 'commit', ref: 'bad' }] }),
+    })).toThrow(/concurrencyLimit/i);
+
+    expect(() => manager.registerWorker(worker('VALID-REVIEW', 'reviewer', 'shared:identity'), {
+      review: async () => ({ verdict: 'pass', conclusion: 'valid reviewer after rejected worker', evidence: [{ kind: 'text', ref: 'review' }] }),
+    })).not.toThrow();
+  });
+
+  it('persists stable assurance identities so aliases cannot self-review or self-judge after restart', () => {
+    const store = new WorkManagementStore();
+    store.submit({
+      goal: { ...goal, goalId: 'G-RESTART', idempotencyKey: 'g-restart' },
+      items: [work({ workId: 'W-RESTART', independentReview: true, judgeRequired: true })],
+    }, '2026-09-03T08:00:00.000Z');
+
+    const executor = worker('EXEC-A', 'executor', 'openai:gpt-x');
+    store.claim('W-RESTART', executor, 'executor', 60_000, '2026-09-03T08:00:01.000Z');
+    store.startExecution('W-RESTART', executor.workerId, '2026-09-03T08:00:02.000Z');
+    store.finishExecution('W-RESTART', executor.workerId, {
+      status: 'completed',
+      conclusion: 'executor result',
+      evidence: [{ kind: 'commit', ref: 'sha-executor' }],
+    }, '2026-09-03T08:00:03.000Z');
+
+    const restoredAfterExecution = new WorkManagementStore(store.exportSnapshot());
+    const reviewerAlias = worker('REVIEW-ALIAS', 'reviewer', 'OPENAI:GPT-X');
+    const independentReviewer = worker('REVIEW-B', 'reviewer', 'anthropic:claude');
+    expect(restoredAfterExecution.workerEligible(reviewerAlias, 'W-RESTART', 'reviewer')).toBe(false);
+    expect(() => restoredAfterExecution.claim('W-RESTART', reviewerAlias, 'reviewer', 60_000, '2026-09-03T08:00:04.000Z')).toThrow(/not eligible/i);
+    expect(restoredAfterExecution.workerEligible(independentReviewer, 'W-RESTART', 'reviewer')).toBe(true);
+
+    restoredAfterExecution.claim('W-RESTART', independentReviewer, 'reviewer', 60_000, '2026-09-03T08:00:05.000Z');
+    restoredAfterExecution.finishReview('W-RESTART', independentReviewer.workerId, {
+      verdict: 'pass',
+      conclusion: 'independent review pass',
+      evidence: [{ kind: 'text', ref: 'review://pass' }],
+    }, '2026-09-03T08:00:06.000Z');
+
+    const restoredAfterReview = new WorkManagementStore(restoredAfterExecution.exportSnapshot());
+    const judgeExecutorAlias = worker('JUDGE-EXEC-ALIAS', 'judge', 'openai:gpt-x');
+    const judgeReviewerAlias = worker('JUDGE-REVIEW-ALIAS', 'judge', 'ANTHROPIC:CLAUDE');
+    const independentJudge = worker('JUDGE-C', 'judge', 'google:gemini');
+    expect(restoredAfterReview.workerEligible(judgeExecutorAlias, 'W-RESTART', 'judge')).toBe(false);
+    expect(restoredAfterReview.workerEligible(judgeReviewerAlias, 'W-RESTART', 'judge')).toBe(false);
+    expect(restoredAfterReview.workerEligible(independentJudge, 'W-RESTART', 'judge')).toBe(true);
+  });
+
   it('fails closed when execution evidence does not satisfy expectedEvidence', async () => {
     const manager = new AutonomousWorkManager(new WorkManagementStore());
     await manager.submitGoal(goal, { decompose: async () => [work()] });

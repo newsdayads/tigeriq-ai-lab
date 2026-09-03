@@ -46,9 +46,12 @@ export class AutonomousWorkManager extends BaseAutonomousWorkManager {
     next.set(worker.workerId, { independenceKey, roles: [...worker.roles] });
     assertIndependentRoleRegistration(next);
 
+    // Base registration performs workerId/concurrency validation. Do not mutate
+    // the assurance registry until that validation succeeds; otherwise a failed
+    // registration would leave a ghost identity that can block valid workers.
+    super.registerWorker(worker, this.#wrapDriver(driver));
     this.#registrations.clear();
     for (const [workerId, registration] of next) this.#registrations.set(workerId, registration);
-    super.registerWorker(worker, this.#wrapDriver(driver));
   }
 
   #wrapDriver(driver: WorkDriver): WorkDriver {
