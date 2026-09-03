@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "models": [
+    {
+      "modelId": "qwen3:8b",
+      "providerId": "ollama",
+      "enabled": true,
+      "capabilities": ["reasoning", "coding", "review", "fast"],
+      "quality": 72,
+      "speed": 85,
+      "contextTokens": 4096,
+      "costWeight": 0
+    }
+  ]
+}
