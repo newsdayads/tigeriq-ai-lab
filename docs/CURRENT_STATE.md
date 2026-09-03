@@ -4,14 +4,43 @@ Date: 2026-09-03
 
 TigerIQ AI Lab remains evidence-gated. MAIN/Production are unchanged; no automatic merge or production release is authorized.
 
+## Active priority — WO-059 Authorization Engine V1
+
+Status: IMPLEMENTED — REPOSITORY/PHYSICAL GATES PENDING
+
+Branch: `wo059/authorization-engine-v1`
+Base: `wo058/autonomous-planner-v1`
+Work Order: `docs/work-orders/WO-059-AUTHORIZATION-ENGINE-V1.md`
+
+### Implemented
+- Deterministic action classification for local AI, workspace read/write, feature-branch work, test/build, local control, script execution, external write and protected RED classes.
+- GREEN/YELLOW/RED risk model.
+- Unknown/unclassified actions fail closed.
+- `POLICY_DOWNGRADE_DENIED` prevents a task from declaring a lower-risk class than inferred execution.
+- Scoped runtime authorization store at `F:\TigerIQ\Runtime\autonomous-planner-v1\authorizations.json`.
+- Exact active grant requires task ID + action class + `approvedBy=OWNER` + valid time window + non-revoked state.
+- Expired/revoked/wrong-task/wrong-class/non-Owner grants do not release work.
+- Per-task policy decision persisted in planner state.
+- Held YELLOW/RED tasks do not create Controller Work Orders.
+- Independent GREEN tasks continue while other work is held.
+- Existing protected branch/path/tool allowlists remain in force.
+- Installer upgraded to provision the authorization store and pass it to the 24/7 Planner Scheduled Task.
+- Unit test expansion and Linux/Windows WO-059 CI workflow added.
+- Physical policy E2E prepared at `scripts/pc01-autonomy/Invoke-WO059-Physical-E2E.ps1`.
+
+### Gate still required
+- Linux repository quality gate PASS.
+- Windows build + PowerShell parser gate PASS.
+- Physical PC01 policy E2E PASS with evidence.
+
+### Next action
+Wait for repository gates. If PASS, run the prepared one-command physical WO-059 E2E on PC01. Do not claim Authorization Engine DONE before physical evidence exists.
+
 ## Completed — WO-058 Autonomous Planner V1
 
 Status: DONE — PHYSICAL AUTONOMOUS E2E PASS
 
-Branch: `wo058/autonomous-planner-v1`
-Work Order: `docs/work-orders/WO-058-AUTONOMOUS-PLANNER-V1.md`
 Physical evidence: `docs/evidence/WO-058-AUTONOMOUS-PLANNER-E2E-20260903T092538Z.json`
-Physical evidence commit: `63e13a2619c07a61afbb5736020eebf68da42702`
 
 Verified:
 - Planner Scheduled Task installed and running on PC01.
@@ -22,25 +51,6 @@ Verified:
 - Authorization-required task held with no Controller job and no blocked artifact.
 - Controller/PostgreSQL/PC01 Native Worker remained healthy/online.
 - Evidence `allPass=true`; MAIN/Production untouched; no secret printed.
-
-## Active priority — WO-059 Authorization Engine V1
-
-Status: PLANNED — IMPLEMENTATION NEXT
-
-Objective:
-Expand the WO-058 boolean authorization hold into a deterministic fail-closed policy engine so PC01 can distinguish safe autonomous work from actions that require explicit authorization.
-
-Required behavior:
-- GREEN: safe/reversible/local work may dispatch automatically.
-- YELLOW: higher-risk but reversible actions remain held until an explicit scoped authorization exists.
-- RED: MAIN/Production, financial commitment, destructive/irreversible and security-sensitive actions remain held and cannot be silently inferred as authorized.
-- Unknown/unclassified actions fail closed.
-- Authorization decisions are machine-readable and evidence-producing.
-- A held task must not prevent independent GREEN tasks from continuing.
-- Existing WO-057/WO-058 physical baseline must remain healthy.
-
-### Next action
-Implement WO-059 on a new feature branch from the verified WO-058 head; run Linux + Windows repository gates; then run a physical PC01 policy E2E before claiming DONE.
 
 ## Completed foundation — WO-057 PC01 Primary AI Compute & Control Node
 
