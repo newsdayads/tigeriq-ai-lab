@@ -1,24 +1,17 @@
 import { describe,expect,it } from 'vitest';
-import { appendEvent,emptyJournal,parseSecretReference,projectPaths,recoveryDecision,redactSensitiveText,verifyJournal } from '../apps/runtime-foundation/src/core.js';
+import { FileJournal } from '../packages/event-store/src/index.js';
+import { createProjectJournal,parseSecretReference,projectPaths,recoveryDecision,redactSensitiveText } from '../apps/runtime-foundation/src/core.js';
 
 describe('runtime foundation',()=>{
-  it('creates isolated project paths',()=>{
+  it('creates isolated project paths backed by the canonical durable journal',()=>{
     const ai=projectPaths('ai-lab');
     const driver=projectPaths('driver');
     expect(ai.root).not.toBe(driver.root);
     expect(ai.queue).toContain('ai-lab');
     expect(driver.evidence).toContain('driver');
-  });
-
-  it('appends ordered idempotent events and verifies journal integrity',()=>{
-    let journal=emptyJournal();
-    journal=appendEvent(journal,{projectId:'ai-lab',entity:'goal',entityId:'G-1',kind:'created',at:'2026-09-04T00:00:00.000Z',idempotencyKey:'create-G-1'});
-    const duplicate=appendEvent(journal,{projectId:'ai-lab',entity:'goal',entityId:'G-1',kind:'created',at:'2026-09-04T00:00:01.000Z',idempotencyKey:'create-G-1'});
-    expect(duplicate).toBe(journal);
-    journal=appendEvent(journal,{projectId:'ai-lab',entity:'goal',entityId:'G-1',kind:'started',at:'2026-09-04T00:00:02.000Z'});
-    expect(journal.events.map(event=>event.sequence)).toEqual([1,2]);
-    expect(verifyJournal(journal)).toBe(true);
-    expect(verifyJournal({...journal,lastSequence:99})).toBe(false);
+    expect(ai.journal).toContain('ai-lab');
+    expect(driver.journal).toContain('driver');
+    expect(createProjectJournal('ai-lab')).toBeInstanceOf(FileJournal);
   });
 
   it('detects stuck workers and bounds retry attempts',()=>{
