@@ -1,70 +1,54 @@
+import { ModelRouter, type CircuitBreakerOptions, type ModelTarget, type Provider, type ProviderAdapter, type RoutingPolicy } from '../../../packages/model-router/src/index.js';
 import type { RouteCandidate } from './core.js';
 
 export interface AiGatewayRequest {
   requestId:string;
   taskId:string;
-  modelId:string;
-  providerId:string;
-  system?:string;
   prompt:string;
-  maxOutputTokens?:number;
-  temperature?:number;
-  metadata?:Record<string,string|number|boolean>;
+  signal?:AbortSignal;
 }
 
-export interface AiGatewayResponse {
-  requestId:string;
-  providerId:string;
-  modelId:string;
-  output:string;
-  inputTokens?:number;
-  outputTokens?:number;
-  latencyMs:number;
-  finishReason:'stop'|'length'|'tool'|'error';
-}
-
-export interface AiProviderAdapter {
-  providerId:string;
-  invoke(request:AiGatewayRequest):Promise<AiGatewayResponse>;
-}
-
-export interface GatewayAttempt {providerId:string;modelId:string;ok:boolean;reason?:string;}
-export interface GatewayExecution {response?:AiGatewayResponse;attempts:GatewayAttempt[];}
+export interface GatewayAttempt {providerId:string;modelId:string;ok:boolean;reason?:string;circuitOpen?:boolean;}
+export interface GatewayExecution {requestId:string;taskId:string;providerId:string;modelId:string;output:string;attempts:GatewayAttempt[];}
 
 const idPattern=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$/;
+const providers=new Set<Provider>(['gemini','openrouter','ollama','openai','anthropic','xai','deepseek']);
+
+function canonicalProvider(value:string):Provider{
+  if(!providers.has(value as Provider))throw new Error(`UNSUPPORTED_PROVIDER:${value}`);
+  return value as Provider;
+}
 function assertRequest(request:AiGatewayRequest):void{
-  if(!idPattern.test(request.requestId)||!idPattern.test(request.taskId)||!idPattern.test(request.modelId)||!idPattern.test(request.providerId))throw new Error('INVALID_GATEWAY_REQUEST_ID');
+  if(!idPattern.test(request.requestId)||!idPattern.test(request.taskId))throw new Error('INVALID_GATEWAY_REQUEST_ID');
   if(!request.prompt.trim()||request.prompt.length>200_000)throw new Error('INVALID_GATEWAY_PROMPT');
-  if(request.maxOutputTokens!==undefined&&(!Number.isInteger(request.maxOutputTokens)||request.maxOutputTokens<1||request.maxOutputTokens>200_000))throw new Error('INVALID_MAX_OUTPUT_TOKENS');
-  if(request.temperature!==undefined&&(!Number.isFinite(request.temperature)||request.temperature<0||request.temperature>2))throw new Error('INVALID_TEMPERATURE');
+}
+function target(route:RouteCandidate):ModelTarget{return {provider:canonicalProvider(route.provider.providerId),model:route.model.modelId,local:route.provider.kind==='local'||undefined};}
+
+/** Converts capability/cost/quota-ranked AI Gateway candidates into the single canonical ModelRouter execution policy. */
+export function routingPolicyFromRoutes(routes:RouteCandidate[],maxAttempts=3):RoutingPolicy{
+  if(!Number.isInteger(maxAttempts)||maxAttempts<1||maxAttempts>8)throw new Error('INVALID_GATEWAY_MAX_ATTEMPTS');
+  const selected=routes.slice(0,maxAttempts).map(target);
+  if(selected.length===0)throw new Error('NO_GATEWAY_ROUTES');
+  return {primary:selected[0],fallbacks:selected.slice(1)};
 }
 
-export class AdapterRegistry {
-  private readonly adapters=new Map<string,AiProviderAdapter>();
-  register(adapter:AiProviderAdapter):void{
-    if(!idPattern.test(adapter.providerId)||this.adapters.has(adapter.providerId))throw new Error('INVALID_OR_DUPLICATE_ADAPTER');
-    this.adapters.set(adapter.providerId,adapter);
+/** One execution layer only: AI Gateway ranks workforce routes; packages/model-router performs adapters, fallback and circuit breaking. */
+export class AiGatewayExecutor {
+  private readonly router:ModelRouter;
+  constructor(adapters:ProviderAdapter[],circuitBreaker: CircuitBreakerOptions={}){
+    this.router=new ModelRouter(adapters,undefined,circuitBreaker);
   }
-  get(providerId:string):AiProviderAdapter|undefined{return this.adapters.get(providerId);}
-  list():string[]{return [...this.adapters.keys()].sort();}
-}
-
-export async function executeWithRoutes(input:{routes:RouteCandidate[];request:Omit<AiGatewayRequest,'providerId'|'modelId'>;registry:AdapterRegistry;maxAttempts?:number}):Promise<GatewayExecution>{
-  const maxAttempts=Math.max(1,Math.min(input.maxAttempts??3,8));
-  const attempts:GatewayAttempt[]=[];
-  for(const route of input.routes.slice(0,maxAttempts)){
-    const adapter=input.registry.get(route.provider.providerId);
-    if(!adapter){attempts.push({providerId:route.provider.providerId,modelId:route.model.modelId,ok:false,reason:'adapter_missing'});continue;}
-    const request:AiGatewayRequest={...input.request,providerId:route.provider.providerId,modelId:route.model.modelId};
+  async execute(routes:RouteCandidate[],request:AiGatewayRequest,maxAttempts=3):Promise<GatewayExecution>{
     assertRequest(request);
-    try{
-      const response=await adapter.invoke(request);
-      if(response.providerId!==request.providerId||response.modelId!==request.modelId||response.requestId!==request.requestId)throw new Error('ADAPTER_RESPONSE_MISMATCH');
-      attempts.push({providerId:request.providerId,modelId:request.modelId,ok:true});
-      return {response,attempts};
-    }catch(error){
-      attempts.push({providerId:request.providerId,modelId:request.modelId,ok:false,reason:error instanceof Error?error.message:'adapter_failed'});
-    }
+    const policy=routingPolicyFromRoutes(routes,maxAttempts);
+    const result=await this.router.execute({prompt:request.prompt,signal:request.signal},policy);
+    return {
+      requestId:request.requestId,
+      taskId:request.taskId,
+      providerId:result.target.provider,
+      modelId:result.target.model,
+      output:result.text,
+      attempts:result.attempts.map(attempt=>({providerId:attempt.target.provider,modelId:attempt.target.model,ok:attempt.ok,reason:attempt.error,circuitOpen:attempt.circuitOpen}))
+    };
   }
-  return {attempts};
 }
