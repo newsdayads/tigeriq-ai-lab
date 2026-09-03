@@ -1,5 +1,5 @@
 # TIGERIQ — WORKFLOW V1
-Version: 1.0
+Version: 1.1
 Status: Source of Truth
 Priority: P0
 
@@ -23,6 +23,13 @@ Priority: P0
 - When the Owner says “LÀM”, execute the applicable work order continuously.
 - Choose the technically and economically optimal option when authority is delegated.
 - Ask only when a decision is genuinely irreversible, materially financial, security-sensitive, legally consequential, or impossible to infer safely.
+
+## Project tool boundary
+- Trello is not used by TigerIQ AI Lab for project operation.
+- Do not query, read, write, synchronize, project, report from, or depend on Trello during TigerIQ startup, orchestration, Owner Cockpit rendering, AI Employee execution, engineering work, or state recovery.
+- GitHub Issues/PR/CI/evidence and canonical TigerIQ runtime/company state are the applicable project-operational sources according to their authority boundaries.
+- A historical/open branch that contains Trello-specific integration is stale for integration and must not merge until the Trello dependency is removed and applicable gates pass on the resulting exact head.
+- Only a later explicit Owner instruction may re-enable Trello.
 
 ## Reporting
 Use milestone reporting, concise status, blockers, and next action.
