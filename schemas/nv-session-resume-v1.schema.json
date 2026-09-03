@@ -26,6 +26,15 @@
         "when exact_head_or_artifact_version is absent, mutation_guard.expected_exact_head_or_artifact_version MUST be absent"
       ],
       "enforcement": "mandatory deterministic contract validator; JSON Schema structural validation alone is insufficient for cross-field equality"
+    },
+    {
+      "id": "NV-RESUME-MUTATION-AUTHORITY-SCOPE-V1",
+      "applies_when": "all results",
+      "rules": [
+        "mutation_guard MUST be present when result=CONTINUE",
+        "mutation_guard MUST be absent when result is IDLE, WAITING, or BLOCKED"
+      ],
+      "enforcement": "JSON Schema fail-closed structural gate plus deterministic contract validation"
     }
   ],
   "properties": {
@@ -87,6 +96,15 @@
     },
     {
       "if": {
+        "properties": { "result": { "enum": ["IDLE", "WAITING", "BLOCKED"] } },
+        "required": ["result"]
+      },
+      "then": {
+        "not": { "required": ["mutation_guard"] }
+      }
+    },
+    {
+      "if": {
         "properties": { "result": { "const": "IDLE" } },
         "required": ["result"]
       },
@@ -100,7 +118,8 @@
             { "required": ["selected_work_ref"] },
             { "required": ["next_safe_action"] },
             { "required": ["wait_reason"] },
-            { "required": ["blocker"] }
+            { "required": ["blocker"] },
+            { "required": ["mutation_guard"] }
           ]
         }
       }
@@ -121,6 +140,13 @@
         "properties": {
           "queue_audit_complete": { "const": true },
           "candidate_count": { "minimum": 1 }
+        },
+        "not": {
+          "anyOf": [
+            { "required": ["wait_reason"] },
+            { "required": ["blocker"] },
+            { "required": ["resume_condition"] }
+          ]
         }
       }
     },
