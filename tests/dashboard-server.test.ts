@@ -73,7 +73,7 @@ describe('TigerIQ Command Center', () => {
     expect(html).toContain('postgresql-x64-17');
     expect(html).toContain('Workforce Controller');
     expect(html).toContain('AI Employees');
-    expect(html).toContain('5 total · 3 idle · 1 busy · 1 offline · 0 degraded');
+    expect(html).toContain('5 tổng · 1 đang làm · 3 rảnh');
     expect(html).toContain('2 active · 1 failed · 1 assigned');
     expect(html).toContain('NVIDIA Test GPU');
   });
