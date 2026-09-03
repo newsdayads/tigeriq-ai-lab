@@ -1,5 +1,6 @@
 param(
   [string]$Branch = 'main',
+  [string]$Commit = '',
   [int]$Port = 8787,
   [string]$CommandHost = ''
 )
@@ -13,9 +14,11 @@ $secretDir = 'F:\TigerIQ\Secrets'
 $secretPath = Join-Path $secretDir 'command-center.secret'
 $githubTokenPath = Join-Path $secretDir 'github-command-center.token'
 $startScript = Join-Path $runtimeDir 'start-command-center.ps1'
+$updaterScript = Join-Path $runtimeDir 'auto-update-command-center.ps1'
 $stdout = Join-Path $runtimeDir 'command-center.log'
 $stderr = Join-Path $runtimeDir 'command-center.err.log'
 $taskName = 'TigerIQ Command Center'
+$updaterTaskName = 'TigerIQ Command Center Updater'
 $firewallName = 'TigerIQ Command Center (Tailscale)'
 
 function Fail([string]$Code, [string]$Message) {
@@ -73,6 +76,7 @@ foreach($cmd in @('git.exe','gh.exe','node.exe','npm.cmd','powershell.exe')) {
 gh auth status | Out-Null
 if($LASTEXITCODE -ne 0){ Fail 'GH_AUTH_MISSING' 'GitHub CLI is not authenticated.' }
 if($Port -lt 1024 -or $Port -gt 65535) { Fail 'INVALID_PORT' 'Port must be between 1024 and 65535.' }
+if($Commit -and $Commit -notmatch '^[0-9a-fA-F]{40}$'){ Fail 'INVALID_COMMIT' 'Commit must be an exact 40-character Git SHA.' }
 $hostIp = Resolve-PrivateHost $CommandHost
 
 Write-Host '[20%] WORKSPACE' -ForegroundColor Cyan
@@ -86,8 +90,19 @@ if($LASTEXITCODE -ne 0){ Fail 'GIT_STATUS_FAILED' 'Could not inspect workspace.'
 if($dirty){ Fail 'REPO_DIRTY' 'Workspace has local changes; refusing to overwrite.' }
 git -C $workspace fetch origin $Branch --prune
 if($LASTEXITCODE -ne 0) { Fail 'GIT_FETCH_FAILED' "Could not fetch origin/$Branch" }
-git -C $workspace checkout -B $Branch "origin/$Branch"
-if($LASTEXITCODE -ne 0) { Fail 'CHECKOUT_FAILED' "Could not checkout origin/$Branch" }
+if($Commit){
+  git -C $workspace fetch origin $Commit --prune
+  if($LASTEXITCODE -ne 0){ Fail 'COMMIT_FETCH_FAILED' "Could not fetch exact commit $Commit" }
+  $fetched = (git -C $workspace rev-parse FETCH_HEAD).Trim()
+  if($LASTEXITCODE -ne 0 -or $fetched -ne $Commit){ Fail 'COMMIT_MISMATCH' "Expected $Commit but fetched $fetched" }
+  git -C $workspace checkout --detach $Commit
+  if($LASTEXITCODE -ne 0) { Fail 'CHECKOUT_FAILED' "Could not checkout exact commit $Commit" }
+} else {
+  git -C $workspace checkout -B $Branch "origin/$Branch"
+  if($LASTEXITCODE -ne 0) { Fail 'CHECKOUT_FAILED' "Could not checkout origin/$Branch" }
+}
+$head = (git -C $workspace rev-parse HEAD).Trim()
+if($Commit -and $head -ne $Commit){ Fail 'HEAD_MISMATCH' "Expected HEAD $Commit but got $head" }
 $dirty = git -C $workspace status --porcelain
 if($dirty) { Fail 'REPO_DIRTY_AFTER_CHECKOUT' 'Workspace is dirty after checkout.' }
 
@@ -110,11 +125,18 @@ if(-not (Test-Path $secretPath)) {
   [Convert]::ToBase64String($bytes) | Set-Content -Path $secretPath -NoNewline -Encoding ascii
 }
 Protect-SecretFile $secretPath
-$ghToken = (& gh auth token 2>$null | Out-String).Trim()
+$ghToken = if($env:GH_TOKEN){ $env:GH_TOKEN.Trim() } else { (& gh auth token 2>$null | Out-String).Trim() }
 if(-not $ghToken){ Fail 'GH_TOKEN_UNAVAILABLE' 'Existing GitHub auth could not be materialized for the SYSTEM startup task.' }
 [IO.File]::WriteAllText($githubTokenPath, $ghToken, (New-Object Text.UTF8Encoding($false)))
 Protect-SecretFile $githubTokenPath
 Remove-Variable ghToken -ErrorAction SilentlyContinue
+
+$updaterSource = Join-Path $workspace 'scripts\pc-worker\auto-update-command-center.ps1'
+if(Test-Path $updaterSource){
+  $updaterTemp = "$updaterScript.new"
+  Copy-Item -Force -LiteralPath $updaterSource -Destination $updaterTemp
+  Move-Item -Force -LiteralPath $updaterTemp -Destination $updaterScript
+}
 
 Write-Host '[65%] PRIVATE BIND + FIREWALL' -ForegroundColor Cyan
 $existingFirewall = Get-NetFirewallRule -DisplayName $firewallName -ErrorAction SilentlyContinue
@@ -153,6 +175,20 @@ $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -RestartCount 999 -
 $taskPrincipal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
 Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Principal $taskPrincipal | Out-Null
 Start-ScheduledTask -TaskName $taskName
+
+$updaterRegistered = $false
+if(Test-Path $updaterScript){
+  $existingUpdater = Get-ScheduledTask -TaskName $updaterTaskName -ErrorAction SilentlyContinue
+  if(-not $existingUpdater){
+    $updaterArgs = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$updaterScript`" -Branch `"$Branch`" -Port $Port -CommandHost `"$hostIp`""
+    $updaterAction = New-ScheduledTaskAction -Execute (Get-Command powershell.exe).Source -Argument $updaterArgs
+    $updaterTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(5) -RepetitionInterval (New-TimeSpan -Minutes 5) -RepetitionDuration (New-TimeSpan -Days 3650)
+    $updaterSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 30)
+    Register-ScheduledTask -TaskName $updaterTaskName -Action $updaterAction -Trigger $updaterTrigger -Settings $updaterSettings -Principal $taskPrincipal | Out-Null
+    $existingUpdater = Get-ScheduledTask -TaskName $updaterTaskName -ErrorAction SilentlyContinue
+  }
+  $updaterRegistered = [bool]$existingUpdater
+}
 Start-Sleep 5
 
 Write-Host '[90%] HEALTH + EXPOSURE CHECK' -ForegroundColor Cyan
@@ -174,11 +210,13 @@ $result = [ordered]@{
   bind = "$hostIp`:$Port"
   wildcardExposure = $false
   task = [ordered]@{ name=$taskName; state=$task.State.ToString(); trigger='AtStartup'; principal='SYSTEM' }
+  autoUpdate = [ordered]@{ enabled=$updaterRegistered; task=$updaterTaskName; intervalMinutes=5; ciGate='CI success + exact SHA' }
   branch = $Branch
+  commit = $head
   journal = 'F:\TigerIQ\State\control-plane.jsonl'
   commandAuth = 'STORED_LOCALLY_REDACTED'
   githubAuth = 'STORED_LOCALLY_REDACTED'
   health = $true
 }
 Write-Host '[100%] TIGERIQ COMMAND CENTER READY' -ForegroundColor Green
-$result | ConvertTo-Json -Depth 5 -Compress
+$result | ConvertTo-Json -Depth 6 -Compress
