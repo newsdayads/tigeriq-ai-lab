@@ -49,10 +49,24 @@ if($tailscale){
 
 $controllerOnline = $false
 $controllerPort = 8790
+$workforce = $null
 if($tailscaleIp){
   try {
     $controllerStatus = Invoke-RestMethod -Uri "http://$tailscaleIp`:$controllerPort/api/workforce/status" -TimeoutSec 2
     $controllerOnline = [bool]$controllerStatus.ok
+    if($controllerOnline -and $controllerStatus.workforce){
+      $wf = $controllerStatus.workforce
+      $workforce = [ordered]@{
+        employeesTotal = [int]$wf.employees.total
+        idle = [int]$wf.employees.byAvailability.idle
+        busy = [int]$wf.employees.byAvailability.busy
+        offline = [int]$wf.employees.byAvailability.offline
+        degraded = [int]$wf.employees.byAvailability.degraded
+        activeTasks = [int]$wf.employees.activeTasks
+        tasksActive = [int]$wf.tasks.active
+        tasksFailed = [int]$wf.tasks.failed
+      }
+    }
   } catch {}
 }
 
@@ -89,10 +103,11 @@ $result = [ordered]@{
   disk = if($disk){ [ordered]@{ drive=$disk.DeviceID; freeBytes=[double]$disk.FreeSpace; totalBytes=[double]$disk.Size; utilizationPercent=(Percent ([double]$disk.Size-[double]$disk.FreeSpace) ([double]$disk.Size)) } } else { $null }
   worker = [ordered]@{ online=($workers.Count -gt 0); pid=if($worker){[int]$worker.ProcessId}else{$null}; instances=$workers.Count }
   controller = [ordered]@{ online=$controllerOnline; ip=$tailscaleIp; port=$controllerPort }
+  workforce = $workforce
   postgresql = [ordered]@{ online=$postgresOnline; service=$postgresService; port=$postgresPort }
   ollama = [ordered]@{ online=$ollamaOnline; models=$ollamaModels }
   tailscale = [ordered]@{ online=$tailscaleOnline; ip=$tailscaleIp }
   gpu = $gpu
 }
 
-$result | ConvertTo-Json -Depth 6 -Compress
+$result | ConvertTo-Json -Depth 8 -Compress
