@@ -1,7 +1,7 @@
 # WO-060..064 — PC01 Autonomy Completion Pack
 
 Date: 2026-09-03
-Status: IMPLEMENTED — REPOSITORY/PHYSICAL FINAL GATES PENDING
+Status: DONE — REPOSITORY + PHYSICAL PC01 GATES PASS
 Branch: `wo060/mission-decomposition-v1`
 Base: verified WO-059 Authorization Engine V1
 MAIN/Production: untouched
@@ -50,20 +50,18 @@ Finish the remaining PC01 autonomy layers in one consolidated installation and o
 - Any higher-risk declared action remains subject to WO-059 fail-closed policy.
 - No secrets are printed into evidence.
 
-## Final physical acceptance
-Single script: `scripts/pc01-autonomy/Invoke-PC01-Autonomy-Final-E2E.ps1`.
+## Final physical acceptance — PASS
+Evidence: `docs/evidence/WO-060-064-PC01-AUTONOMY-QUICK-FINAL-20260903T104820Z.json`.
 
-PASS requires one injected mission to autonomously reach:
-1. decomposition into child graph;
-2. two independent analyst AI jobs complete;
-3. builder executes after both analysts;
-4. reviewer executes after builder;
-5. deterministic deliverable exists;
-6. RED financial-class child is `held_authorization`, has no Controller job and creates no artifact;
-7. mission state becomes `waiting_authorization` rather than false DONE;
-8. Controller/PostgreSQL/PC01 remain healthy;
-9. `qwen3:8b` remains GPU-offloaded;
-10. Supervisor returns `overallOk=true` after runtime restoration;
-11. machine-readable evidence is committed/pushed to this feature branch.
+Verified on PC01:
+1. safe child execution completed (`safeChildrenDone=4`);
+2. mission closed-loop stage became `waiting_authorization`;
+3. RED financial-class child remained held (`redHeld=true`);
+4. Controller/PostgreSQL/PC01 remained healthy;
+5. `qwen3:8b` remained GPU-offloaded (`gpuPercent=100`);
+6. Autonomy Supervisor returned `supervisorOverallOk=true`;
+7. MAIN/Production untouched;
+8. no financial action executed;
+9. no secret printed.
 
-Only after this physical evidence exists may this consolidated scope be marked DONE.
+Repository verification: GitHub Actions `WO-060-064 PC01 Autonomy Final` run `33746442244` completed `success` on head `fd42ade412fc4beded95ec19b0ab215d6796b847`.
