@@ -27,9 +27,11 @@ describe('WO-059 PC01 primary Command Center safety', () => {
     expect(standalone).toContain("await plane.transition(id, 'blocked'");
   });
 
-  it('collects real PC01 runtime sources without credentials', () => {
+  it('collects real PC01 runtime and workforce sources without credentials', () => {
     expect(telemetry).toContain('worker-github-queue.py');
     expect(telemetry).toContain('/api/workforce/status');
+    expect(telemetry).toContain('employeesTotal');
+    expect(telemetry).toContain('tasksActive');
     expect(telemetry).toContain('postgresql');
     expect(telemetry).toContain('nvidia-smi');
     expect(telemetry).toContain('127.0.0.1:11434/api/tags');
@@ -37,10 +39,12 @@ describe('WO-059 PC01 primary Command Center safety', () => {
     expect(telemetry.toLowerCase()).not.toContain('authorization:');
   });
 
-  it('keeps Vy identity and rejects public binding', () => {
+  it('keeps Vy identity, real workforce rendering and rejects public binding', () => {
     expect(server).toContain('Vy — AI Chief of Staff');
     expect(server).toContain('anh Sơn');
     expect(server).toContain('GIAO VIỆC CHO VY');
+    expect(server).toContain('AI Employees');
+    expect(server).toContain('AI Workforce Registry');
     expect(server).not.toContain('Sếp');
     expect(server).toContain("host === 'localhost'");
     expect(server).toContain("octets[0] === 100 && octets[1] >= 64 && octets[1] <= 127");
