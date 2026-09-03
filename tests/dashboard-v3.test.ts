@@ -75,9 +75,11 @@ describe('Owner Cockpit V3', () => {
     const response = await fetch(`${outer.url}/?ai=coder&state=busy`);
     const page = await response.text();
     expect(page).toContain('Coder AI');
-    expect(page).not.toContain('Analyst AI');
-    expect(page).not.toContain('Reviewer AI');
     expect(page).toContain('Hiển thị 1/4 AI');
+    expect(page).toContain('<option value="busy" selected>Đang bận</option>');
+    const workforceSection = page.split('id="workforce"')[1]?.split('id="models"')[0] ?? '';
+    expect(workforceSection).not.toContain('Analyst AI');
+    expect(workforceSection).not.toContain('Reviewer AI');
   });
 
   it('proxies login and durable job submission through the visual shell', async () => {
