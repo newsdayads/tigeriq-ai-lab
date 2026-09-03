@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import os from 'node:os';
+import { pathToFileURL } from 'node:url';
 import { createPgPool } from '../../../packages/work-state/src/pg-driver.js';
 import { PostgresOperationalStateRepository, type SqlPoolLike } from '../../../packages/work-state/src/postgres-repository.js';
 import { OperationalWorkService } from '../../../packages/work-state/src/service.js';
@@ -70,4 +71,5 @@ export async function startController():Promise<void>{
   process.once('SIGTERM',()=>void shutdown('SIGTERM'));
 }
 
-if(import.meta.url===`file://${process.argv[1]}`)startController().catch(error=>{console.error(JSON.stringify({event:'WORKFORCE_CONTROLLER_V1_FATAL',message:error instanceof Error?error.message:'startup failed'}));process.exit(1);});
+const invokedAsMain = Boolean(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]).href;
+if(invokedAsMain)startController().catch(error=>{console.error(JSON.stringify({event:'WORKFORCE_CONTROLLER_V1_FATAL',message:error instanceof Error?error.message:'startup failed'}));process.exit(1);});
