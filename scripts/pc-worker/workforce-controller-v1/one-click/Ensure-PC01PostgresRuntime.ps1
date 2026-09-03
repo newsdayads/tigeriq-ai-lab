@@ -91,7 +91,7 @@ function Ensure-PgPassFromEnvironment([Uri]$Uri) {
 }
 function Test-RuntimeConnection([string]$Url,[string]$Psql) {
   $env:PGPASSFILE = $PgPassFile
-  $probe = (& $Psql $Url -vON_ERROR_STOP=1 -Atc 'SELECT 1;' 2>$null).Trim()
+  $probe = (& $Psql -w $Url -vON_ERROR_STOP=1 -Atc 'SELECT 1;' 2>$null).Trim()
   return ($LASTEXITCODE -eq 0 -and $probe -eq '1')
 }
 function Wait-Postgres([string]$Psql,[string]$AdminPassword) {
@@ -100,7 +100,7 @@ function Wait-Postgres([string]$Psql,[string]$AdminPassword) {
     $deadline = (Get-Date).AddSeconds(60)
     do {
       Start-Sleep -Seconds 1
-      $probe = (& $Psql -h $CanonicalHost -p $CanonicalPort -U postgres -d postgres -vON_ERROR_STOP=1 -Atc 'SELECT 1;' 2>$null).Trim()
+      $probe = (& $Psql -w -h $CanonicalHost -p $CanonicalPort -U postgres -d postgres -vON_ERROR_STOP=1 -Atc 'SELECT 1;' 2>$null).Trim()
       if ($LASTEXITCODE -eq 0 -and $probe -eq '1') { return }
     } while ((Get-Date) -lt $deadline)
   } finally { $env:PGPASSWORD = $null }
@@ -163,9 +163,9 @@ ALTER ROLE $CanonicalUser WITH LOGIN PASSWORD '$runtimeSecret' NOSUPERUSER NOCRE
   Write-ProtectedText $BootstrapSqlFile $sql
   $env:PGPASSWORD = $AdminPassword
   try {
-    & $Psql -h $CanonicalHost -p $CanonicalPort -U postgres -d postgres -vON_ERROR_STOP=1 -f $BootstrapSqlFile | Out-Null
+    & $Psql -w -h $CanonicalHost -p $CanonicalPort -U postgres -d postgres -vON_ERROR_STOP=1 -f $BootstrapSqlFile | Out-Null
     if ($LASTEXITCODE -ne 0) { Fail 'POSTGRES_ROLE_PROVISION_FAILED' 'Could not provision the TigerIQ runtime role.' }
-    $exists = (& $Psql -h $CanonicalHost -p $CanonicalPort -U postgres -d postgres -vON_ERROR_STOP=1 -Atc "SELECT count(*) FROM pg_database WHERE datname='$CanonicalDatabase';" 2>$null).Trim()
+    $exists = (& $Psql -w -h $CanonicalHost -p $CanonicalPort -U postgres -d postgres -vON_ERROR_STOP=1 -Atc "SELECT count(*) FROM pg_database WHERE datname='$CanonicalDatabase';" 2>$null).Trim()
     if ($LASTEXITCODE -ne 0) { Fail 'POSTGRES_DATABASE_PROBE_FAILED' 'Could not inspect the TigerIQ database.' }
     if ($exists -eq '0') {
       & $createdb -h $CanonicalHost -p $CanonicalPort -U postgres -O $CanonicalUser $CanonicalDatabase
