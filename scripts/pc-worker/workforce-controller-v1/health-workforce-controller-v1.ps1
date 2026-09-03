@@ -8,14 +8,18 @@ $ControllerPort = 8790
 $TaskName = 'TigerIQ Workforce Controller'
 $FirewallName = 'TigerIQ Workforce Controller V1 (Tailscale only)'
 $ExpectedRemoteCidr = '100.64.0.0/10'
-$ExpectedMigrations = @('001_operational_state_v1','002_device_proof_replay_v1')
 $ForbiddenMigration = '003_business_state_v2'
 if ([string]::IsNullOrWhiteSpace($PgPassFile)) { $PgPassFile = 'F:\TigerIQ\Secrets\workforce-controller-v1.pgpass' }
 if (Test-Path $PgPassFile) { $env:PGPASSFILE = $PgPassFile }
+$env:PGCONNECT_TIMEOUT = '5'
 
 function Resolve-Executable([string]$Name,[string[]]$Candidates) {
   $cmd = Get-Command $Name -ErrorAction SilentlyContinue
-  if ($cmd) { return $cmd.Source }
+  if ($cmd) {
+    if ($cmd.Path) { return [string]$cmd.Path }
+    if ($cmd.Definition) { return [string]$cmd.Definition }
+    if ($cmd.Source) { return [string]$cmd.Source }
+  }
   foreach ($candidate in $Candidates) { if (Test-Path $candidate) { return $candidate } }
   return $null
 }
@@ -44,9 +48,10 @@ $firewallOk = [bool]$firewall -and ([string]$firewall.Enabled -eq 'True') -and (
 
 $dbVersions = @(); $replayTablePresent = $false; $dbOk = $false
 if ($psql -and -not [string]::IsNullOrWhiteSpace($DatabaseUrl) -and (Test-Path $PgPassFile)) {
-  $dbVersions = @(& $psql -w $DatabaseUrl -vON_ERROR_STOP=1 -Atc "SELECT version FROM tigeriq_schema_migrations ORDER BY version;" 2>$null | ForEach-Object { $_.Trim() } | Where-Object { $_ })
-  $replayTable = (& $psql -w $DatabaseUrl -vON_ERROR_STOP=1 -Atc "SELECT to_regclass('public.device_proof_replay_state') IS NOT NULL;" 2>$null).Trim()
-  $replayTablePresent = $replayTable -eq 't'
+  $dbVersions = @(& $psql -w --dbname=$DatabaseUrl -v ON_ERROR_STOP=1 -Atc "SELECT version FROM tigeriq_schema_migrations ORDER BY version;" 2>$null | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+  $replayRaw = @(& $psql -w --dbname=$DatabaseUrl -v ON_ERROR_STOP=1 -Atc "SELECT to_regclass('public.device_proof_replay_state') IS NOT NULL;" 2>$null)
+  $replayTable = if ($replayRaw.Count -gt 0) { [string]$replayRaw[0] } else { '' }
+  $replayTablePresent = $replayTable.Trim() -eq 't'
   $dbOk = $dbVersions.Count -eq 2 -and $dbVersions[0] -eq '001_operational_state_v1' -and $dbVersions[1] -eq '002_device_proof_replay_v1' -and $replayTablePresent
 }
 $forbiddenApplied = $dbVersions -contains $ForbiddenMigration
