@@ -95,10 +95,10 @@ try {
   $bytes = [Convert]::FromBase64String($payload)
   $text = [Text.Encoding]::UTF8.GetString($bytes)
 
-  $workspaceNeedle = "`$workspace = 'F:\TigerIQ\Workspace\tigeriq-ai-lab'"
-  $workspaceReplacement = "`$workspace = '$releaseDir'"
-  if(-not $text.Contains($workspaceNeedle)){ throw 'INSTALLER_LAYOUT_CHANGED' }
-  $text = $text.Replace($workspaceNeedle,$workspaceReplacement)
+  $needle = "`$workspace = 'F:\TigerIQ\Workspace\tigeriq-ai-lab'"
+  $replacement = "`$workspace = '$releaseDir'"
+  if(-not $text.Contains($needle)){ throw 'INSTALLER_LAYOUT_CHANGED' }
+  $text = $text.Replace($needle,$replacement)
 
   # Exact SHA already passed GitHub CI. Re-running Playwright under SYSTEM is redundant
   # and depends on a user-scoped browser cache, so the physical updater performs only
@@ -117,11 +117,8 @@ try {
     ciRunId=$ciPass.id; updaterVersion='V2'; installMode='CI_GATED_BUILD_ONLY'
   }
 
-  $arguments = @(
-    '-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$inner,
-    '-Branch',$Branch,'-Commit',$head,'-Port',[string]$Port,'-CommandHost',$CommandHost
-  )
-  $process = Start-Process -FilePath $powershellExe -ArgumentList $arguments -Wait -PassThru -RedirectStandardOutput $installOut -RedirectStandardError $installErr
+  $argumentLine = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File $inner -Branch $Branch -Commit $head -Port $Port -CommandHost $CommandHost"
+  $process = Start-Process -FilePath $powershellExe -ArgumentList $argumentLine -Wait -PassThru -RedirectStandardOutput $installOut -RedirectStandardError $installErr
   if($process.ExitCode -ne 0){
     $stderrTail = Read-Tail $installErr
     $stdoutTail = Read-Tail $installOut
