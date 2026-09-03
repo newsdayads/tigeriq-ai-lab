@@ -1,0 +1,65 @@
+name: WO-057 PC01 Primary AI Compute Node
+
+on:
+  push:
+    branches:
+      - 'wo057/pc01-primary-ai-compute-node'
+  pull_request:
+    paths:
+      - 'apps/pc01-native-worker/**'
+      - 'apps/workforce-controller/**'
+      - 'packages/work-state/**'
+      - 'scripts/pc01-primary-node/**'
+      - 'tests/pc01-native-worker.test.ts'
+      - '.github/workflows/wo057-pc01-primary-node.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  linux-quality-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Unit tests
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Security contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! grep -R -E -i 'openclaw[[:space:]]+(connect|login|auth|enable|start)' apps/pc01-native-worker scripts/pc01-primary-node 2>/dev/null || false
+          ! grep -R -E 'shell:[[:space:]]*true|exec\(' apps/pc01-native-worker/src
+          grep -q "think:false" apps/pc01-native-worker/src/core.ts
+          grep -q "4096" apps/pc01-native-worker/src/core.ts
+          grep -q "new Semaphore(maxConcurrency)" apps/pc01-native-worker/src/core.ts
+          grep -q "maxConcurrency=2" apps/pc01-native-worker/src/core.ts
+          echo 'PC01_PRIMARY_NODE_SECURITY_CONTRACT_PASS'
+
+  windows-build-gate:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Confirm Windows worker artifact
+        shell: powershell
+        run: |
+          if (-not (Test-Path 'dist\apps\pc01-native-worker\src\standalone.js')) { throw 'PC01 worker build artifact missing' }
+          Write-Host 'PC01_NATIVE_WORKER_WINDOWS_BUILD_PASS'
