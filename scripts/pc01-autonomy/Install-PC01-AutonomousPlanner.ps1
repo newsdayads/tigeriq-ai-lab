@@ -1,6 +1,6 @@
-param([string]$RepoPath='F:\TigerIQ\Workspace\tigeriq-ai-lab',[string]$ExpectedBranch='wo058/autonomous-planner-v1',[switch]$SkipRepositoryTests)
+param([string]$RepoPath='F:\TigerIQ\Workspace\tigeriq-ai-lab',[string]$ExpectedBranch='wo059/authorization-engine-v1',[switch]$SkipRepositoryTests)
 $ErrorActionPreference='Stop';Set-StrictMode -Version Latest
-$TaskName='TigerIQ Autonomous Planner';$RuntimeDir='F:\TigerIQ\Runtime\autonomous-planner-v1';$Backlog=Join-Path $RuntimeDir 'backlog.json';$State=Join-Path $RuntimeDir 'planner-state.json';$Runner=Join-Path $RuntimeDir 'run-autonomous-planner-v1.ps1';$Log='F:\TigerIQ\Logs\autonomous-planner-v1.log';$TokenFile='F:\TigerIQ\Secrets\pc01-primary-node.ingress-token';$ControllerUrl='http://100.97.23.87:8790';$Template=Join-Path $RepoPath 'config\autonomy\backlog.template.json'
+$TaskName='TigerIQ Autonomous Planner';$RuntimeDir='F:\TigerIQ\Runtime\autonomous-planner-v1';$Backlog=Join-Path $RuntimeDir 'backlog.json';$State=Join-Path $RuntimeDir 'planner-state.json';$Authorizations=Join-Path $RuntimeDir 'authorizations.json';$Runner=Join-Path $RuntimeDir 'run-autonomous-planner-v1.ps1';$Log='F:\TigerIQ\Logs\autonomous-planner-v1.log';$TokenFile='F:\TigerIQ\Secrets\pc01-primary-node.ingress-token';$ControllerUrl='http://100.97.23.87:8790';$Template=Join-Path $RepoPath 'config\autonomy\backlog.template.json'
 function Fail([string]$Code,[string]$Message){throw "$Code`: $Message"}
 function Status(){try{return Invoke-RestMethod -Uri "$ControllerUrl/api/v1/status" -Method Get -TimeoutSec 10}catch{return $null}}
 if($env:COMPUTERNAME -ne 'PC01'){Fail 'WRONG_HOST' 'Installer is pinned to PC01'}
@@ -20,13 +20,15 @@ try{
 $Entry=Join-Path $RepoPath 'dist\apps\autonomous-planner\src\standalone.js';if(-not(Test-Path $Entry)){Fail 'PLANNER_BUILD_MISSING' $Entry}
 New-Item -ItemType Directory -Force -Path $RuntimeDir,(Split-Path $Log -Parent)|Out-Null
 if(-not(Test-Path $Backlog)){Copy-Item $Template $Backlog -Force}
-$repoEsc=$RepoPath.Replace("'","''");$entryEsc=$Entry.Replace("'","''");$backlogEsc=$Backlog.Replace("'","''");$stateEsc=$State.Replace("'","''");$tokenEsc=$TokenFile.Replace("'","''");$logEsc=$Log.Replace("'","''");$nodeEsc=$node.Replace("'","''")
+if(-not(Test-Path $Authorizations)){[IO.File]::WriteAllText($Authorizations,'{"version":1,"grants":[]}',(New-Object Text.UTF8Encoding($false)))}
+$repoEsc=$RepoPath.Replace("'","''");$entryEsc=$Entry.Replace("'","''");$backlogEsc=$Backlog.Replace("'","''");$stateEsc=$State.Replace("'","''");$authEsc=$Authorizations.Replace("'","''");$tokenEsc=$TokenFile.Replace("'","''");$logEsc=$Log.Replace("'","''");$nodeEsc=$node.Replace("'","''")
 $content=@"
 `$ErrorActionPreference='Stop'
 `$env:TIGERIQ_WORKSPACE='$repoEsc'
 `$env:TIGERIQ_CONTROLLER_URL='$ControllerUrl'
 `$env:TIGERIQ_AUTONOMY_BACKLOG='$backlogEsc'
 `$env:TIGERIQ_AUTONOMY_STATE='$stateEsc'
+`$env:TIGERIQ_AUTONOMY_AUTHORIZATIONS='$authEsc'
 `$env:TIGERIQ_INGRESS_TOKEN_FILE='$tokenEsc'
 `$env:TIGERIQ_AUTONOMY_INTERVAL_MS='30000'
 `$env:TIGERIQ_AUTONOMY_DISPATCH_LIMIT='2'
@@ -41,4 +43,4 @@ Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $startup -Se
 $deadline=(Get-Date).AddSeconds(90);do{if(Test-Path $State){try{$ps=Get-Content $State -Raw|ConvertFrom-Json;if($ps.lastCycleAt){break}}catch{}};Start-Sleep -Seconds 2}while((Get-Date)-lt $deadline)
 if(-not(Test-Path $State)){Fail 'PLANNER_START_TIMEOUT' 'Planner state was not created'}
 $after=Status;if($null -eq $after -or -not $after.ok -or -not $after.postgres -or -not $after.pc01.online){Fail 'PC01_REGRESSION' 'Controller/Worker unhealthy after planner install'}
-[ordered]@{ok=$true;status='AUTONOMOUS_PLANNER_INSTALLED';branch=$branch;task=$TaskName;plannerState=$State;backlog=$Backlog;controllerHealthy=$after.ok;postgresHealthy=$after.postgres;pc01Online=$after.pc01.online;mainProductionTouched=$false;secretPrinted=$false}|ConvertTo-Json -Compress
+[ordered]@{ok=$true;status='AUTHORIZATION_ENGINE_INSTALLED';branch=$branch;task=$TaskName;plannerState=$State;backlog=$Backlog;authorizations=$Authorizations;controllerHealthy=$after.ok;postgresHealthy=$after.postgres;pc01Online=$after.pc01.online;mainProductionTouched=$false;secretPrinted=$false}|ConvertTo-Json -Compress
