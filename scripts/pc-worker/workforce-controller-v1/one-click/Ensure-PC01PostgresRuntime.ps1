@@ -168,7 +168,8 @@ ALTER ROLE $CanonicalUser WITH LOGIN PASSWORD '$runtimeSecret' NOSUPERUSER NOCRE
     $exists = (& $Psql -w -h $CanonicalHost -p $CanonicalPort -U postgres -d postgres -vON_ERROR_STOP=1 -Atc "SELECT count(*) FROM pg_database WHERE datname='$CanonicalDatabase';" 2>$null).Trim()
     if ($LASTEXITCODE -ne 0) { Fail 'POSTGRES_DATABASE_PROBE_FAILED' 'Could not inspect the TigerIQ database.' }
     if ($exists -eq '0') {
-      & $createdb -h $CanonicalHost -p $CanonicalPort -U postgres -O $CanonicalUser $CanonicalDatabase
+      $env:PGPASSWORD = $AdminPassword
+      & $createdb -w -h $CanonicalHost -p $CanonicalPort -U postgres -O $CanonicalUser $CanonicalDatabase
       if ($LASTEXITCODE -ne 0) { Fail 'POSTGRES_DATABASE_CREATE_FAILED' 'Could not create the TigerIQ operational database.' }
     } elseif ($exists -ne '1') { Fail 'POSTGRES_DATABASE_STATE_INVALID' 'Unexpected TigerIQ database state.' }
   } finally {
