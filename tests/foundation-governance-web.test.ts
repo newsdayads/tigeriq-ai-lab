@@ -1,6 +1,6 @@
 import { describe,expect,it } from 'vitest';
 import { canDispatchRateLimited,checkUsage,rateCapacity } from '../apps/ai-governance/src/core.js';
-import { addReview,appendEvidence,evaluateEvidence,finalDoneAllowed } from '../apps/evidence-engine/src/core.js';
+import { addReview,appendEvidenceRecord,evaluateEvidence,finalDoneAllowed } from '../apps/evidence-engine/src/core.js';
 import { buildWebControlSnapshot } from '../apps/web-control/src/core.js';
 import type { EvidenceBundle } from '../apps/evidence-engine/src/core.js';
 import type { ProviderDefinition,EmployeeDefinition,WorkTask } from '../apps/ai-gateway/src/core.js';
@@ -22,16 +22,23 @@ describe('governance evidence and web control projection',()=>{
     expect(rateCapacity(window,Date.parse('2026-09-04T00:11:00.000Z'))).toBe(10);
   });
 
-  it('requires evidence, independent review and judge before DONE',()=>{
-    let bundle:EvidenceBundle={version:1,subjectId:'T1',items:[],reviews:[]};
-    bundle=appendEvidence(bundle,{evidenceId:'E1',kind:'test',subjectId:'T1',passed:true,source:'vitest',recordedAt:'2026-09-04T00:00:00.000Z',summary:'tests pass'});
-    bundle=appendEvidence(bundle,{evidenceId:'E2',kind:'artifact',subjectId:'T1',passed:true,source:'repo',recordedAt:'2026-09-04T00:00:01.000Z',summary:'artifact exists'});
-    bundle=addReview(bundle,{reviewerId:'R1',reviewerModelId:'gemini-pro',authorModelId:'qwen3-8b',passed:true,findings:[]});
-    const policy={requiredKinds:['test','artifact'] as const,minIndependentReviews:1,requireJudge:true};
-    expect(evaluateEvidence(bundle,{...policy,requiredKinds:[...policy.requiredKinds]}).reason).toBe('judge_missing');
-    bundle={...bundle,judge:{decision:'pass',reason:'all gates pass'}};
-    expect(finalDoneAllowed(bundle,{...policy,requiredKinds:[...policy.requiredKinds]})).toBe(true);
-    expect(()=>addReview(bundle,{reviewerId:'R2',reviewerModelId:'qwen3-8b',authorModelId:'qwen3-8b',passed:true,findings:[]})).toThrow('SELF_REVIEW_FORBIDDEN');
+  it('layers independent review and judge on canonical machine evidence before DONE',()=>{
+    let bundle:EvidenceBundle={version:1,subjectId:'T1',records:[],reviews:[]};
+    bundle=appendEvidenceRecord(bundle,{id:'E1',workOrderId:'T1',gate:'TEST',commitSha:'abcdef123',command:'npm test',exitCode:0,status:'pass',timestamp:'2026-09-04T00:00:00.000Z'});
+    bundle=appendEvidenceRecord(bundle,{id:'E2',workOrderId:'T1',gate:'BUILD',commitSha:'abcdef123',command:'npm run build',exitCode:0,status:'pass',timestamp:'2026-09-04T00:00:01.000Z'});
+    bundle=addReview(bundle,{reviewerId:'R1',reviewerModelId:'gemini-pro',authorModelId:'qwen3-8b',passed:true,findings:[],recordedAt:'2026-09-04T00:00:02.000Z'});
+    const policy={requiredGates:['TEST','BUILD'],minIndependentReviews:1,requireJudge:true};
+    expect(evaluateEvidence(bundle,policy).reason).toBe('judge_missing');
+    bundle={...bundle,judge:{decision:'pass',reason:'all gates pass',recordedAt:'2026-09-04T00:00:03.000Z'}};
+    expect(finalDoneAllowed(bundle,policy)).toBe(true);
+    expect(()=>addReview(bundle,{reviewerId:'R2',reviewerModelId:'qwen3-8b',authorModelId:'qwen3-8b',passed:true,findings:[],recordedAt:'2026-09-04T00:00:04.000Z'})).toThrow('SELF_REVIEW_FORBIDDEN');
+  });
+
+  it('uses the latest canonical gate record so a later failure prevents false DONE',()=>{
+    let bundle:EvidenceBundle={version:1,subjectId:'T9',records:[],reviews:[],judge:{decision:'pass',reason:'judge pass',recordedAt:'2026-09-04T00:00:05.000Z'}};
+    bundle=appendEvidenceRecord(bundle,{id:'PASS1',workOrderId:'T9',gate:'TEST',commitSha:'abcdef123',command:'npm test',exitCode:0,status:'pass',timestamp:'2026-09-04T00:00:00.000Z'});
+    bundle=appendEvidenceRecord(bundle,{id:'FAIL2',workOrderId:'T9',gate:'TEST',commitSha:'abcdef124',command:'npm test',exitCode:1,status:'fail',timestamp:'2026-09-04T00:00:04.000Z'});
+    expect(evaluateEvidence(bundle,{requiredGates:['TEST'],minIndependentReviews:0,requireJudge:true})).toEqual({ready:false,reason:'failed_evidence:TEST'});
   });
 
   it('projects real queue/workforce/provider/authorization data for Web Control',()=>{
@@ -47,7 +54,7 @@ describe('governance evidence and web control projection',()=>{
     ];
     const providers:ProviderDefinition[]=[{providerId:'ollama',kind:'local',enabled:true,healthy:true,costClass:'free',maxConcurrency:2}];
     const employees:EmployeeDefinition[]=[{employeeId:'coder-01',role:'coder',enabled:true,requiredCapabilities:['coding']}];
-    const evidence:EvidenceBundle[]=[{version:1,subjectId:'T3',items:[],reviews:[],judge:{decision:'pass',reason:'pass'}}];
+    const evidence:EvidenceBundle[]=[{version:1,subjectId:'T3',records:[],reviews:[],judge:{decision:'pass',reason:'pass',recordedAt:'2026-09-04T00:00:00.000Z'}}];
     const snapshot=buildWebControlSnapshot({continuous,tasks,workers:[{workerId:'W1',employeeId:'coder-01',status:'busy',currentTaskId:'T1'}],providers,employees,evidence,now:'2026-09-04T00:05:00.000Z'});
     expect(snapshot.goals).toMatchObject({running:1,waitingAuthorization:1,done:1});
     expect(snapshot.tasks.authorization).toBe(1);
