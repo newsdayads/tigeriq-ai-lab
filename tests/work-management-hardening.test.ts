@@ -55,6 +55,17 @@ describe('WO-044 independent hardening gate', () => {
     })).toThrow(/cannot span multiple assurance roles/i);
   });
 
+  it('does not leave a ghost assurance identity after base registration validation fails', () => {
+    const manager = new AutonomousWorkManager(new WorkManagementStore());
+    expect(() => manager.registerWorker({ ...worker('BAD-EXEC', 'executor', 'shared:identity'), concurrencyLimit: 0 }, {
+      execute: async () => ({ status: 'completed', conclusion: 'invalid worker', evidence: [{ kind: 'commit', ref: 'bad' }] }),
+    })).toThrow(/concurrencyLimit/i);
+
+    expect(() => manager.registerWorker(worker('VALID-REVIEW', 'reviewer', 'shared:identity'), {
+      review: async () => ({ verdict: 'pass', conclusion: 'valid reviewer after rejected worker', evidence: [{ kind: 'text', ref: 'review' }] }),
+    })).not.toThrow();
+  });
+
   it('fails closed when execution evidence does not satisfy expectedEvidence', async () => {
     const manager = new AutonomousWorkManager(new WorkManagementStore());
     await manager.submitGoal(goal, { decompose: async () => [work()] });
