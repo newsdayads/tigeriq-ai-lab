@@ -92,7 +92,7 @@ try {
   $env:TIGERIQ_DATABASE_URL = $DatabaseUrl
   & (Join-Path $RepoPath 'scripts\install-work-state-postgres.ps1') -DatabaseUrl $DatabaseUrl -Migration $Migration001 -ReplayMigration $Migration002
   if ($LASTEXITCODE -ne 0) { Fail 'POSTGRES_MIGRATION_FAILED' 'Operational-state migrations 001+002 failed.' }
-$versions = @(& $psql -w $DatabaseUrl -vON_ERROR_STOP=1 -Atc "SELECT version FROM tigeriq_schema_migrations ORDER BY version;" 2>$null | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+  $versions = @(& $psql -w --dbname=$DatabaseUrl -vON_ERROR_STOP=1 -Atc "SELECT version FROM tigeriq_schema_migrations ORDER BY version;" 2>$null | ForEach-Object { $_.Trim() } | Where-Object { $_ })
   if ($versions.Count -ne 2 -or $versions[0] -ne '001_operational_state_v1' -or $versions[1] -ne '002_device_proof_replay_v1') { Fail 'POSTGRES_MIGRATION_VERIFY_FAILED' 'PostgreSQL migration state must be exactly reviewed 001+002.' }
 } finally { Pop-Location }
 
