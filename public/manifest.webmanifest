@@ -1,7 +1,7 @@
 {
   "name": "TigerIQ AI Lab — Owner Cockpit",
   "short_name": "TIG",
-  "description": "TIG Owner Cockpit — điều hành TigerIQ AI Lab",
+  "description": "TIG Owner Cockpit V3 — điều hành TigerIQ AI Lab",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
