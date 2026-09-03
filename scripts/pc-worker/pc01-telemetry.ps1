@@ -71,6 +71,37 @@ if($tailscaleIp){
     $controllerOnline = [bool]$controllerStatus.ok
     if($controllerOnline -and $controllerStatus.workforce){
       $wf = $controllerStatus.workforce
+      $roster = @()
+      if($wf.roster){
+        $roster = @($wf.roster | ForEach-Object {
+          [ordered]@{
+            employeeId = [string]$_.employeeId
+            displayName = [string]$_.displayName
+            department = [string]$_.department
+            role = [string]$_.role
+            nodeId = [string]$_.nodeId
+            provider = if($_.provider){[string]$_.provider}else{$null}
+            model = if($_.model){[string]$_.model}else{$null}
+            availability = [string]$_.availability
+            healthScore = [double]$_.healthScore
+            concurrencyLimit = [int]$_.concurrencyLimit
+            activeTaskCount = [int]$_.activeTaskCount
+            currentTaskIds = @($_.currentTaskIds | ForEach-Object { [string]$_ })
+          }
+        })
+      }
+      $taskList = @()
+      if($wf.taskList){
+        $taskList = @($wf.taskList | ForEach-Object {
+          [ordered]@{
+            taskId = [string]$_.taskId
+            objective = [string]$_.objective
+            stage = [string]$_.stage
+            priority = [string]$_.priority
+            assignedEmployeeId = if($_.assignedEmployeeId){[string]$_.assignedEmployeeId}else{$null}
+          }
+        })
+      }
       $workforce = [ordered]@{
         employeesTotal = [int]$wf.employees.total
         idle = [int]$wf.employees.byAvailability.idle
@@ -80,6 +111,8 @@ if($tailscaleIp){
         activeTasks = [int]$wf.employees.activeTasks
         tasksActive = [int]$wf.tasks.active
         tasksFailed = [int]$wf.tasks.failed
+        roster = $roster
+        taskList = $taskList
       }
     }
   } catch {}
@@ -128,4 +161,4 @@ $result = [ordered]@{
   gpu = $gpu
 }
 
-$result | ConvertTo-Json -Depth 8 -Compress
+$result | ConvertTo-Json -Depth 10 -Compress
