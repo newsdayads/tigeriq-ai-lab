@@ -27,4 +27,13 @@ describe('TigerIQ NV Role Map V1', () => {
     expect(roleMap).toContain('Only report `RẢNH` after a complete authoritative zero-work audit');
     expect(resumePolicy).toContain('Current registered identities are `NV00` through `NV06`');
   });
+
+  it('enforces one-copy-block Owner prompt presentation', () => {
+    expect(roleMap).toContain('Owner-facing prompt presentation contract — MANDATORY');
+    expect(roleMap).toContain('exactly ONE complete prompt/instruction inside ONE fenced code block');
+    expect(roleMap).toContain('Prefer one line when technically possible');
+    expect(roleMap).toContain('MUST execute instead of asking Sếp to copy a prompt');
+    expect(roleMap).toContain('do not make Sếp copy shell/PowerShell fragments');
+    expect(roleMap).toContain('RESULT / BLOCKER / NEXT');
+  });
 });
