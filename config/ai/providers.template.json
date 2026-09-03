@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "providers": [
+    {"providerId":"ollama","kind":"local","enabled":true,"healthy":false,"costClass":"free","maxConcurrency":2,"endpoint":"http://127.0.0.1:11434","secretRef":null},
+    {"providerId":"openai","kind":"external","enabled":false,"healthy":false,"costClass":"paid","maxConcurrency":4,"secretRef":"env:OPENAI_API_KEY"},
+    {"providerId":"gemini","kind":"external","enabled":false,"healthy":false,"costClass":"metered","maxConcurrency":4,"secretRef":"env:GEMINI_API_KEY"},
+    {"providerId":"anthropic","kind":"external","enabled":false,"healthy":false,"costClass":"paid","maxConcurrency":4,"secretRef":"env:ANTHROPIC_API_KEY"},
+    {"providerId":"xai","kind":"external","enabled":false,"healthy":false,"costClass":"paid","maxConcurrency":4,"secretRef":"env:XAI_API_KEY"},
+    {"providerId":"deepseek","kind":"external","enabled":false,"healthy":false,"costClass":"paid","maxConcurrency":4,"secretRef":"env:DEEPSEEK_API_KEY"},
+    {"providerId":"openrouter","kind":"external","enabled":false,"healthy":false,"costClass":"paid","maxConcurrency":4,"secretRef":"env:OPENROUTER_API_KEY"}
+  ]
+}
