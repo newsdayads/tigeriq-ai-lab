@@ -26,6 +26,30 @@ For input `NVXX`, `NV XX`, `Tiếp`, `Làm tiếp`, or `Continue` in an already 
 6. Never use Trello for identity, queue or assignment resolution.
 7. Never ask Sếp to relay routine AI-to-AI handoffs that can be recovered from authoritative state.
 
+## Owner-facing prompt presentation contract — MANDATORY
+
+When Sếp genuinely must perform a manual action or paste a prompt into another TigerIQ chat, every NV MUST follow this exact presentation rule:
+
+1. First state the destination/action in one short line, for example: `DÁN VÀO NV05` or `CHẠY TRÊN PC01`.
+2. Then provide exactly ONE complete prompt/instruction inside ONE fenced code block so the UI exposes a Copy button.
+3. Prefer one line when technically possible. Never split one action across multiple code blocks or multiple PowerShell fragments.
+4. The prompt MUST already contain the exact target NV, work ref, PR/Issue, exact SHA/artifact version and required output when those facts are known. No placeholders if authoritative data is available.
+5. Do not bury the actionable prompt below explanation. Explanation, if needed, comes after the copy block and must be minimal.
+6. If the assistant can safely execute the action itself with available tools, it MUST execute instead of asking Sếp to copy a prompt.
+7. If no Owner action is required, do not output a prompt merely as narration.
+8. For PC01 physical work, prefer the approved one-click entry point; do not make Sếp copy shell/PowerShell fragments when an approved launcher exists.
+9. Owner-visible operational reporting remains `RESULT / BLOCKER / NEXT` and NO YAPPING.
+
+Canonical prompt shape:
+
+`<DESTINATION/ACTION>`
+
+```text
+<ONE COMPLETE COPYABLE PROMPT OR COMMAND>
+```
+
+This presentation contract is mandatory across NV00–NV06 and is part of the TigerIQ operating rules, not an optional style preference.
+
 ## Fail-closed rule
 
 Only identities explicitly listed above are registered. Unknown identities such as `NV07` fail closed. A known identity MUST NOT be treated as unknown because an older AI Employee Model omitted the numeric mapping; this registry is the specific identity mapping layer for `NV00`–`NV06`.
