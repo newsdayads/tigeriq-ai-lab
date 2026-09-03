@@ -23,9 +23,18 @@ describe('Vercel Web-only boundary', () => {
     expect(controller).toContain("snapshot.source?.mode!=='controller'||snapshot.source?.authoritative!==true");
   });
 
-  it('disables Git auto-deploy and gates explicit releases to exact Web-only diffs', () => {
+  it('allows native Git Preview only for the bounded Owner Cockpit branch and gates explicit releases to exact Web-only diffs', () => {
     const config = JSON.parse(read('vercel.json'));
-    expect(config.git?.deploymentEnabled).toBe(false);
+    const deploymentEnabled = config.git?.deploymentEnabled;
+    expect(deploymentEnabled).toEqual({
+      '**': false,
+      'wo158/tig-owner-cockpit-v3': true,
+    });
+    expect(Object.entries(deploymentEnabled).filter(([, enabled]) => enabled === true)).toEqual([
+      ['wo158/tig-owner-cockpit-v3', true],
+    ]);
+    expect(deploymentEnabled.main).not.toBe(true);
+
     const workflow = read('.github/workflows/web-release-vercel.yml');
     expect(workflow).toContain('workflow_dispatch:');
     expect(workflow).not.toMatch(/^\s*(push|pull_request):/m);
