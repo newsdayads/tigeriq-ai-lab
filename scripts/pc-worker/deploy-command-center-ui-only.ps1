@@ -95,10 +95,11 @@ Write-Host '[85%] PHYSICAL VERIFY' -ForegroundColor Cyan
 $deadline=(Get-Date).AddSeconds(60);$root=$null
 do { Start-Sleep -Seconds 2; try{$root=Invoke-WebRequest -UseBasicParsing -Uri "http://$CommandHost`:$Port/" -TimeoutSec 5}catch{$root=$null}; if($root -and $root.StatusCode -eq 200){break} } while((Get-Date)-lt $deadline)
 if(-not $root -or $root.StatusCode -ne 200){ Fail 'WEB_NOT_200' "http://$CommandHost`:$Port/" }
-if($root.Content -notlike '*OWNER COCKPIT V3*VISUAL REBUILD*'){ Fail 'V3_MARKER_MISSING' 'Physical page is not Owner Cockpit V3.' }
+if($root.Content -notlike '*OWNER COCKPIT V4*MOCKUP IMPLEMENTATION*'){ Fail 'V4_MARKER_MISSING' 'Physical page is not Owner Cockpit V4 mockup implementation.' }
+if($root.Content -like '*class="side"*'){ Fail 'OLD_SIDEBAR_STILL_PRESENT' 'Old sidebar layout detected.' }
 $api=Invoke-RestMethod -Uri "http://$CommandHost`:$Port/api/server" -TimeoutSec 10
 $task=Get-ScheduledTask -TaskName $taskName -ErrorAction Stop
 if($task.State -ne 'Running'){ Fail 'COMMAND_CENTER_NOT_RUNNING' $task.State.ToString() }
 
-Write-Host '[100%] OWNER COCKPIT V3 PHYSICAL PASS' -ForegroundColor Green
-[ordered]@{status='PASS';web="http://$CommandHost`:$Port/";commit=$Commit;releaseDir=$releaseDir;commandCenter=$task.State.ToString();telemetryAvailable=$api.available;autoUpdaterTouched=$false;mainProductionTouched=$false}|ConvertTo-Json -Depth 5 -Compress
+Write-Host '[100%] OWNER COCKPIT V4 PHYSICAL PASS' -ForegroundColor Green
+[ordered]@{status='PASS';web="http://$CommandHost`:$Port/";commit=$Commit;releaseDir=$releaseDir;commandCenter=$task.State.ToString();telemetryAvailable=$api.available;oldSidebarPresent=$false;autoUpdaterTouched=$false;mainProductionTouched=$false}|ConvertTo-Json -Depth 5 -Compress
