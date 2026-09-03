@@ -29,11 +29,15 @@ if($CommandHost -notmatch '^100\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$' -and $Command
 foreach($p in @($GhPath,$GitPath,$NodePath,$NpmPath,$updaterScript,$tokenPath)){ if(-not (Test-Path -LiteralPath $p)){ Fail 'REQUIRED_PATH_MISSING' $p } }
 
 Write-Host '[25%] BUILD SYSTEM TOOLCHAIN WRAPPER' -ForegroundColor Cyan
+$powershellDir = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0'
+$powershellExe = Join-Path $powershellDir 'powershell.exe'
+if(-not (Test-Path -LiteralPath $powershellExe)){ Fail 'POWERSHELL_NOT_FOUND' $powershellExe }
 $toolDirs = @(
   (Split-Path -Parent $GhPath),
   (Split-Path -Parent $GitPath),
   (Split-Path -Parent $NodePath),
   (Split-Path -Parent $NpmPath),
+  $powershellDir,
   "$env:SystemRoot\System32",
   $env:SystemRoot
 ) | Where-Object { $_ } | Select-Object -Unique
@@ -41,10 +45,11 @@ $runtimePath = ($toolDirs -join ';').Replace("'","''")
 $updaterEscaped = $updaterScript.Replace("'","''")
 $branchEscaped = $Branch.Replace("'","''")
 $hostEscaped = $CommandHost.Replace("'","''")
+$powershellEscaped = $powershellExe.Replace("'","''")
 $wrapper = @"
 `$ErrorActionPreference = 'Stop'
 `$env:PATH = '$runtimePath'
-& '$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -NonInteractive -ExecutionPolicy Bypass -File '$updaterEscaped' -Branch '$branchEscaped' -Port $Port -CommandHost '$hostEscaped'
+& '$powershellEscaped' -NoProfile -NonInteractive -ExecutionPolicy Bypass -File '$updaterEscaped' -Branch '$branchEscaped' -Port $Port -CommandHost '$hostEscaped'
 exit `$LASTEXITCODE
 "@
 [IO.File]::WriteAllText($wrapperScript,$wrapper,(New-Object Text.UTF8Encoding($false)))
@@ -55,7 +60,7 @@ $previousLastRun = if($previousInfo){ $previousInfo.LastRunTime } else { [dateti
 Stop-ScheduledTask -TaskName $updaterTaskName -ErrorAction SilentlyContinue
 Unregister-ScheduledTask -TaskName $updaterTaskName -Confirm:$false -ErrorAction SilentlyContinue
 $principalSystem = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
-$action = New-ScheduledTaskAction -Execute "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -Argument "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$wrapperScript`""
+$action = New-ScheduledTaskAction -Execute $powershellExe -Argument "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$wrapperScript`""
 $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(5) -RepetitionInterval (New-TimeSpan -Minutes 5) -RepetitionDuration (New-TimeSpan -Days 3650)
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 30)
 Register-ScheduledTask -TaskName $updaterTaskName -Action $action -Trigger $trigger -Settings $settings -Principal $principalSystem | Out-Null
@@ -98,4 +103,5 @@ Write-Host '[100%] AUTO-UPDATER RUNTIME VERIFIED' -ForegroundColor Green
   web="http://$CommandHost`:$Port/"
   intervalMinutes=5
   systemToolchain=$true
+  powershellPath=$powershellExe
 } | ConvertTo-Json -Depth 5 -Compress
