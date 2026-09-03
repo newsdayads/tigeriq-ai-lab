@@ -44,8 +44,8 @@ $firewallOk = [bool]$firewall -and ([string]$firewall.Enabled -eq 'True') -and (
 
 $dbVersions = @(); $replayTablePresent = $false; $dbOk = $false
 if ($psql -and -not [string]::IsNullOrWhiteSpace($DatabaseUrl) -and (Test-Path $PgPassFile)) {
-  $dbVersions = @(& $psql $DatabaseUrl -v ON_ERROR_STOP=1 -Atc "SELECT version FROM tigeriq_schema_migrations ORDER BY version;" 2>$null | ForEach-Object { $_.Trim() } | Where-Object { $_ })
-  $replayTable = (& $psql $DatabaseUrl -v ON_ERROR_STOP=1 -Atc "SELECT to_regclass('public.device_proof_replay_state') IS NOT NULL;" 2>$null).Trim()
+  $dbVersions = @(& $psql -w $DatabaseUrl -vON_ERROR_STOP=1 -Atc "SELECT version FROM tigeriq_schema_migrations ORDER BY version;" 2>$null | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+  $replayTable = (& $psql -w $DatabaseUrl -vON_ERROR_STOP=1 -Atc "SELECT to_regclass('public.device_proof_replay_state') IS NOT NULL;" 2>$null).Trim()
   $replayTablePresent = $replayTable -eq 't'
   $dbOk = $dbVersions.Count -eq 2 -and $dbVersions[0] -eq '001_operational_state_v1' -and $dbVersions[1] -eq '002_device_proof_replay_v1' -and $replayTablePresent
 }

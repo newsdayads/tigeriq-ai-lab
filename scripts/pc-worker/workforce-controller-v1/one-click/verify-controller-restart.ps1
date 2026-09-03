@@ -29,7 +29,7 @@ $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 if (-not $task) { Fail 'TASK_MISSING' 'Canonical Controller task is missing.' }
 if ([string]$task.Principal.UserId -ne 'SYSTEM') { Fail 'TASK_PRINCIPAL_INVALID' 'Canonical Controller task must run as SYSTEM.' }
 
-$beforeReplay = (& $psql $DatabaseUrl -vON_ERROR_STOP=1 -Atc "SELECT count(*) FROM device_proof_replay_state;" 2>$null).Trim()
+$beforeReplay = (& $psql -w $DatabaseUrl -vON_ERROR_STOP=1 -Atc "SELECT count(*) FROM device_proof_replay_state;" 2>$null).Trim()
 if ($LASTEXITCODE -ne 0) { Fail 'REPLAY_STATE_QUERY_FAILED' 'Could not query durable replay state before restart.' }
 $beforeMigrations = @(& $psql $DatabaseUrl -vON_ERROR_STOP=1 -Atc "SELECT version FROM tigeriq_schema_migrations ORDER BY version;" 2>$null | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 if ($beforeMigrations.Count -ne 2 -or $beforeMigrations[0] -ne '001_operational_state_v1' -or $beforeMigrations[1] -ne '002_device_proof_replay_v1') { Fail 'MIGRATION_STATE_INVALID' 'Required migration state must be exactly reviewed 001+002 before restart.' }
