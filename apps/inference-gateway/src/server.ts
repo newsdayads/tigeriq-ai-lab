@@ -11,6 +11,7 @@ import {
 } from '../../../packages/inference-gateway/src/index.js';
 
 const MAX_BODY_BYTES = 256_000;
+const MAX_IDEMPOTENCY_RECORDS = 4_096;
 const securityHeaders = {
   'cache-control': 'no-store',
   'content-security-policy': "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
@@ -79,6 +80,14 @@ export async function startInferenceGatewayServer(options: InferenceGatewayServe
         if (existing) {
           if (existing.fingerprint !== fingerprint) throw new HttpInputError(400, 'Idempotency-Key reused for different request');
           return json(response, 200, successBody(existing.response));
+        }
+        if (idempotency.size >= MAX_IDEMPOTENCY_RECORDS) {
+          throw new InferenceGatewayError(
+            'PROVIDER_UNAVAILABLE',
+            503,
+            'gateway idempotency capacity exhausted; refusing new unique request keys',
+            true,
+          );
         }
         const result = await options.gateway.infer(data);
         idempotency.set(cacheKey, { fingerprint, response: result });
