@@ -26,6 +26,7 @@ export class DeviceAuthError extends Error {
 const PROOF_VERSION='1';
 const DEFAULT_MAX_SKEW_MS=60_000;
 const REPLAY_CLEANUP_BATCH=1_000;
+const MAX_NODE_ID_LENGTH=128;
 
 function sha256Bytes(value:Buffer|string):string{return createHash('sha256').update(value).digest('hex');}
 function requiredHeader(headers:Record<string,string|undefined>,name:string):string{
@@ -53,6 +54,7 @@ export class VerifiedDeviceAuthenticator {
     const nonce=requiredHeader(headers,'X-TigerIQ-Device-Nonce');
     const challenge=requiredHeader(headers,'X-TigerIQ-Device-Challenge').toLowerCase();
     const signature=requiredHeader(headers,'X-TigerIQ-Device-Signature');
+    if(nodeId.length>MAX_NODE_ID_LENGTH)throw new DeviceAuthError(401,'DEVICE_NODE_ID_INVALID','device node id is too long');
     if(!/^[a-f0-9]{64}$/.test(claimedFingerprint))throw new DeviceAuthError(401,'DEVICE_FINGERPRINT_INVALID','invalid device key fingerprint');
     const timestamp=Number(timestampText),now=request.nowMs??Date.now();
     if(!Number.isSafeInteger(timestamp)||Math.abs(now-timestamp)>this.maxSkewMs)throw new DeviceAuthError(401,'DEVICE_PROOF_EXPIRED','device proof timestamp outside allowed skew');
@@ -71,7 +73,10 @@ export class VerifiedDeviceAuthenticator {
     if(!row)throw new DeviceAuthError(401,'DEVICE_BINDING_INACTIVE','active employee/device binding required');
     const storedFingerprint=(row.public_key_fingerprint??'').toLowerCase();
     const storedPublicKey=typeof row.metadata?.publicKeyBase64==='string'?String(row.metadata.publicKeyBase64):'';
+    const storedNodeId=typeof row.metadata?.nodeId==='string'?String(row.metadata.nodeId).trim():'';
     if(!storedFingerprint||!storedPublicKey)throw new DeviceAuthError(401,'DEVICE_KEY_NOT_PROVISIONED','device public key is not provisioned');
+    if(!storedNodeId)throw new DeviceAuthError(401,'DEVICE_NODE_NOT_PROVISIONED','device node id is not provisioned');
+    if(!timingSafeTextEqual(storedNodeId,nodeId))throw new DeviceAuthError(401,'DEVICE_NODE_ID_MISMATCH','device node id does not match provisioned identity');
     if(!timingSafeTextEqual(storedFingerprint,claimedFingerprint))throw new DeviceAuthError(401,'DEVICE_FINGERPRINT_MISMATCH','device key fingerprint mismatch');
     if(!timingSafeTextEqual(storedPublicKey,publicKeyBase64))throw new DeviceAuthError(401,'DEVICE_PUBLIC_KEY_MISMATCH','device public key mismatch');
 
@@ -92,7 +97,7 @@ export class VerifiedDeviceAuthenticator {
     }
 
     await this.claimNonce(deviceId,nonce,timestamp,now);
-    return {employeeId:row.employee_id,nodeId,deviceId:row.device_id,bindingId:row.binding_id,capabilities:row.capabilities??[],permissions:row.permissions??[],publicKeyFingerprint:storedFingerprint};
+    return {employeeId:row.employee_id,nodeId:storedNodeId,deviceId:row.device_id,bindingId:row.binding_id,capabilities:row.capabilities??[],permissions:row.permissions??[],publicKeyFingerprint:storedFingerprint};
   }
 
   private async claimNonce(deviceId:string,nonce:string,proofTimestampMs:number,acceptedAtMs:number):Promise<void>{
