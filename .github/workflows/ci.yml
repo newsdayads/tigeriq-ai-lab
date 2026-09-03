@@ -22,6 +22,8 @@ jobs:
         run: ./scripts/verify-powershell.ps1
       - name: Install
         run: npm ci
+      - name: Vercel deployment policy
+        run: npm run test:vercel-policy
       - name: Typecheck
         run: npm run typecheck
       - name: Unit tests
