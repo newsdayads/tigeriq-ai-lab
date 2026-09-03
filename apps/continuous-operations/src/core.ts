@@ -1,7 +1,7 @@
 import type { Mission, MissionInbox, MissionMode, MissionRuntimeRecord, MissionRuntimeState } from '../../mission-orchestrator/src/core.js';
 import type { PlannerPriority } from '../../autonomous-planner/src/core.js';
 
-export type ContinuousGoalStage='queued'|'waiting_dependency'|'injected'|'running'|'waiting_authorization'|'done'|'failed'|'blocked_plan'|'disabled';
+export type ContinuousGoalStage='queued'|'waiting_dependency'|'blocked_dependency'|'injected'|'running'|'waiting_authorization'|'done'|'failed'|'blocked_plan'|'disabled';
 
 export interface ContinuousGoal {
   goalId:string;
@@ -74,10 +74,13 @@ export function reconcileContinuousState(queue:ContinuousGoalQueue,prior:Continu
     const fromMission=stageFromMission(missions.missions[missionId]);
     if(fromMission){next.goals[goal.goalId]={stage:fromMission,updatedAt:now,missionId,reason:missions.missions[missionId]?.reason};continue;}
     const previous=prior?.goals[goal.goalId];
-    const unresolved=goal.dependencies.some(id=>next.goals[id]?.stage!=='done'&&(prior?.goals[id]?.stage!=='done'));
+    const dependencyStage=(id:string)=>next.goals[id]?.stage??prior?.goals[id]?.stage;
+    const terminalDependency=goal.dependencies.find(id=>['failed','blocked_plan','blocked_dependency','disabled'].includes(dependencyStage(id)??''));
+    if(terminalDependency){next.goals[goal.goalId]={stage:'blocked_dependency',updatedAt:now,missionId,reason:`dependency_terminal:${terminalDependency}:${dependencyStage(terminalDependency)}`};continue;}
+    const unresolved=goal.dependencies.some(id=>dependencyStage(id)!=='done');
     if(unresolved){next.goals[goal.goalId]={stage:'waiting_dependency',updatedAt:now,missionId};continue;}
     if(previous?.stage==='injected'||previous?.stage==='running'){next.goals[goal.goalId]={...previous,missionId};continue;}
-    if(previous&&['done','failed','blocked_plan','waiting_authorization'].includes(previous.stage)){next.goals[goal.goalId]={...previous,missionId};continue;}
+    if(previous&&['done','failed','blocked_plan','blocked_dependency','waiting_authorization'].includes(previous.stage)){next.goals[goal.goalId]={...previous,missionId};continue;}
     next.goals[goal.goalId]={stage:'queued',updatedAt:now,missionId};
   }
   return next;
