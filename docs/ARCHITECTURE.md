@@ -42,3 +42,31 @@ This is not yet a network or Production boundary. Authentication, durable event 
 ## Phase 4 durable API
 
 When configured with a journal path, the API uses `packages/durable-control-plane`. Each command loads and verifies the latest snapshot, applies domain rules in a fresh Control Plane, then appends the result with expected-version concurrency. This makes persisted state authoritative and recoverable across restarts without weakening role or evidence gates.
+
+## Multi-project runtime model — PC01
+
+PC01 is the shared primary compute/control node, not a single-project application server. Multiple TigerIQ-managed projects may use the same physical PC01 while remaining operationally isolated.
+
+Isolation rules:
+- one repository and release lifecycle per product/project unless an explicit monorepo decision says otherwise;
+- one service identity, process/service name, port allocation and runtime directory per project;
+- separate application data/database/schema boundaries; no implicit cross-project writes;
+- separate environment/config/secrets per project; credentials are least-privilege and never shared merely for convenience;
+- separate Work Order/evidence namespace so one project's state cannot satisfy another project's gates;
+- shared infrastructure such as Ollama, PostgreSQL host, Tailscale and telemetry may be reused only behind explicit adapters/connection configuration;
+- shared GPU/CPU resources are scheduled with bounded concurrency and project-aware quotas/priority so one workload cannot starve the control plane;
+- every project must support independent stop/start/update/rollback without requiring unrelated projects to restart.
+
+Hosting strategy:
+- PC01/local-first runtime is the preferred primary path for actively developed TigerIQ services when safe private access is sufficient;
+- Vercel is optional secondary/backup hosting for web surfaces that materially need Internet reach; automatic Git deployments remain disabled;
+- GitHub remains the repository/CI/evidence coordination layer and must not be treated as runtime proof;
+- Work mode, Vercel or any single AI provider must not be a hard dependency of the orchestration contract.
+
+Project onboarding minimum:
+1. register project identity, repository and owner-approved scope;
+2. allocate runtime/service/data boundaries;
+3. define build/test/review/release gates;
+4. define PC01 resource budget and required shared services;
+5. define private access/exposure policy;
+6. prove isolated start/stop, state persistence and rollback before Production eligibility.
