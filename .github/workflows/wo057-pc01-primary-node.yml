@@ -64,9 +64,14 @@ jobs:
         run: |
           if (-not (Test-Path 'dist\apps\pc01-native-worker\src\standalone.js')) { throw 'PC01 worker build artifact missing' }
           $scripts = @('scripts\pc01-primary-node\Install-PC01-PrimaryNode.ps1','scripts\pc01-primary-node\Invoke-PC01-PrimaryNode-E2E.ps1')
+          $failed = $false
           foreach ($script in $scripts) {
             $tokens = $null; $errors = $null
             [Management.Automation.Language.Parser]::ParseFile((Resolve-Path $script),[ref]$tokens,[ref]$errors) | Out-Null
-            if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error $_.Message }; throw "PowerShell parse failed: $script" }
+            foreach ($parseError in @($errors)) {
+              $failed = $true
+              Write-Host ("PARSER_ERROR {0}:{1}:{2} token=[{3}] message={4}" -f $script,$parseError.Extent.StartLineNumber,$parseError.Extent.StartColumnNumber,$parseError.Extent.Text,$parseError.Message)
+            }
           }
+          if ($failed) { throw 'PowerShell parse gate failed' }
           Write-Host 'PC01_NATIVE_WORKER_WINDOWS_BUILD_PASS'
