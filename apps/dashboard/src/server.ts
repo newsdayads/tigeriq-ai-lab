@@ -23,6 +23,9 @@ export type ServerTelemetry = {
   uptimeSeconds: number | null;
   disk: { drive: string; freeBytes: number; totalBytes: number; utilizationPercent: number | null } | null;
   worker: { online: boolean; pid: number | null; instances: number } | null;
+  controller: { online: boolean; ip: string | null; port: number | null } | null;
+  workforce: { employeesTotal: number; idle: number; busy: number; offline: number; degraded: number; activeTasks: number; tasksActive: number; tasksFailed: number } | null;
+  postgresql: { online: boolean; service: string | null; port: number | null } | null;
   ollama: { online: boolean; models: string[] } | null;
   tailscale: { online: boolean; ip: string | null } | null;
   gpu: { name: string; utilizationPercent: number | null; memoryUsedMiB: number | null; memoryTotalMiB: number | null } | null;
@@ -134,7 +137,39 @@ function objectOrNull(value: unknown): Record<string, unknown> | null {
 }
 
 function unavailableTelemetry(): ServerTelemetry {
-  return { available: false, server: 'PC01', generatedAt: new Date().toISOString(), cpu: null, memory: null, uptimeSeconds: null, disk: null, worker: null, ollama: null, tailscale: null, gpu: null };
+  return {
+    available: false,
+    server: 'PC01',
+    generatedAt: new Date().toISOString(),
+    cpu: null,
+    memory: null,
+    uptimeSeconds: null,
+    disk: null,
+    worker: null,
+    controller: null,
+    workforce: null,
+    postgresql: null,
+    ollama: null,
+    tailscale: null,
+    gpu: null,
+  };
+}
+
+function normalizeWorkforce(value: Record<string, unknown> | null): ServerTelemetry['workforce'] {
+  if (!value) return null;
+  const keys = ['employeesTotal', 'idle', 'busy', 'offline', 'degraded', 'activeTasks', 'tasksActive', 'tasksFailed'] as const;
+  const numbers = Object.fromEntries(keys.map((key) => [key, numberOrNull(value[key])])) as Record<(typeof keys)[number], number | null>;
+  if (keys.some((key) => numbers[key] === null || numbers[key]! < 0)) return null;
+  return {
+    employeesTotal: numbers.employeesTotal!,
+    idle: numbers.idle!,
+    busy: numbers.busy!,
+    offline: numbers.offline!,
+    degraded: numbers.degraded!,
+    activeTasks: numbers.activeTasks!,
+    tasksActive: numbers.tasksActive!,
+    tasksFailed: numbers.tasksFailed!,
+  };
 }
 
 function normalizeTelemetry(raw: unknown): ServerTelemetry {
@@ -144,6 +179,9 @@ function normalizeTelemetry(raw: unknown): ServerTelemetry {
   const memory = objectOrNull(data.memory);
   const disk = objectOrNull(data.disk);
   const worker = objectOrNull(data.worker);
+  const controller = objectOrNull(data.controller);
+  const workforce = normalizeWorkforce(objectOrNull(data.workforce));
+  const postgresql = objectOrNull(data.postgresql);
   const ollama = objectOrNull(data.ollama);
   const tailscale = objectOrNull(data.tailscale);
   const gpu = objectOrNull(data.gpu);
@@ -157,6 +195,9 @@ function normalizeTelemetry(raw: unknown): ServerTelemetry {
     uptimeSeconds: numberOrNull(data.uptimeSeconds),
     disk: disk && stringOrNull(disk.drive) && numberOrNull(disk.freeBytes) !== null && numberOrNull(disk.totalBytes) !== null ? { drive: stringOrNull(disk.drive)!, freeBytes: numberOrNull(disk.freeBytes)!, totalBytes: numberOrNull(disk.totalBytes)!, utilizationPercent: numberOrNull(disk.utilizationPercent) } : null,
     worker: worker ? { online: worker.online === true, pid: numberOrNull(worker.pid), instances: numberOrNull(worker.instances) ?? 0 } : null,
+    controller: controller ? { online: controller.online === true, ip: stringOrNull(controller.ip), port: numberOrNull(controller.port) } : null,
+    workforce,
+    postgresql: postgresql ? { online: postgresql.online === true, service: stringOrNull(postgresql.service), port: numberOrNull(postgresql.port) } : null,
     ollama: ollama ? { online: ollama.online === true, models } : null,
     tailscale: tailscale ? { online: tailscale.online === true, ip: stringOrNull(tailscale.ip) } : null,
     gpu: gpu && stringOrNull(gpu.name) ? { name: stringOrNull(gpu.name)!, utilizationPercent: numberOrNull(gpu.utilizationPercent), memoryUsedMiB: numberOrNull(gpu.memoryUsedMiB), memoryTotalMiB: numberOrNull(gpu.memoryTotalMiB) } : null,
@@ -179,8 +220,22 @@ async function collectPc01Telemetry(): Promise<ServerTelemetry> {
   }
 }
 
+function isPrivateIpv4(host: string): boolean {
+  const parts = host.split('.');
+  if (parts.length !== 4 || parts.some((part) => !/^\d{1,3}$/.test(part))) return false;
+  const octets = parts.map(Number);
+  if (octets.some((value) => value < 0 || value > 255)) return false;
+  if (octets[0] === 127) return true;
+  if (octets[0] === 10) return true;
+  if (octets[0] === 192 && octets[1] === 168) return true;
+  if (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) return true;
+  if (octets[0] === 100 && octets[1] >= 64 && octets[1] <= 127) return true;
+  return false;
+}
+
 function assertPrivateBind(host: string): void {
-  if (host === '0.0.0.0' || host === '::') throw new Error('public wildcard bind is forbidden; use 127.0.0.1 or an explicit private/Tailscale address');
+  if (host === 'localhost' || host === '::1' || isPrivateIpv4(host)) return;
+  throw new Error('public bind is forbidden; use localhost, RFC1918, or an explicit Tailscale address');
 }
 
 export async function startDashboard(source: DashboardSource, options: CommandCenterOptions = {}) {
@@ -270,18 +325,29 @@ function activityText(summary: ReturnType<typeof buildDashboard>): string {
   const active = summary.workOrders.find((item) => item.status === 'running');
   return active ? `${active.id} · ${statusText(active.status)}` : 'Chưa xác định';
 }
+function healthText(value: { online: boolean } | null | undefined): string {
+  if (!value) return 'Chưa có dữ liệu';
+  return value.online ? 'ONLINE' : 'OFFLINE';
+}
+function healthClass(value: { online: boolean } | null | undefined): string {
+  return value?.online ? 'good' : 'wait';
+}
 
 function render(summary: ReturnType<typeof buildDashboard>, telemetry: ServerTelemetry, session: Session | null, writeConfigured: boolean, submitted: string | null): string {
   const workCards = summary.workOrders.map((item) => `<article class="work"><div class="work-top"><b>${escapeHtml(item.id)}</b><span class="status">${escapeHtml(statusText(item.status))}</span></div><h3>${escapeHtml(item.goal)}</h3><div class="meta">Gate: ${escapeHtml(item.latestGate ?? 'chưa có')} · ${escapeHtml(item.latestGateStatus ?? '-')} · Evidence: ${item.evidenceCount}</div></article>`).join('');
-  const submittedNotice = submitted && /^https:\/\/github\.com\//.test(submitted) ? `<div class="notice">✅ Đã đưa việc vào hàng đợi PC01: <a href="${escapeHtml(submitted)}">xem evidence</a></div>` : '';
-  const taskPanel = session ? `<form class="task" method="post" action="/jobs"><input type="hidden" name="csrf" value="${escapeHtml(session.csrf)}"><input type="hidden" name="idempotency" value="${randomBytes(24).toString('base64url')}"><label>GIAO VIỆC CHO AI</label><textarea name="instruction" maxlength="8000" required placeholder="Ví dụ: Kiểm tra Tiger IQ Driver và tối ưu phần quyết toán Tùng"></textarea><div class="task-actions"><select name="priority"><option>Bình thường</option><option>Cao</option><option>Khẩn cấp</option><option>Thấp</option></select><button type="submit">🚀 GIAO VIỆC</button></div></form>` : writeConfigured ? `<form class="login" method="post" action="/login"><b>Mở quyền giao việc</b><input type="password" name="secret" autocomplete="current-password" placeholder="Mã điều khiển local" required><button type="submit">ĐĂNG NHẬP</button></form>` : `<div class="notice warn">🔒 Chế độ chỉ xem. Cần cấu hình TIGERIQ_COMMAND_SECRET trên PC01 để bật giao việc.</div>`;
-  const serverPanel = telemetry.available ? `<div class="server-grid"><div><small>CPU</small><b>${pct(telemetry.cpu?.utilizationPercent)}</b></div><div><small>RAM</small><b>${pct(telemetry.memory?.utilizationPercent)}</b><span>${gb(telemetry.memory?.usedBytes)} / ${gb(telemetry.memory?.totalBytes)}</span></div><div><small>Disk ${escapeHtml(telemetry.disk?.drive ?? '')}</small><b>${pct(telemetry.disk?.utilizationPercent)}</b><span>${gb(telemetry.disk?.freeBytes)} trống</span></div><div><small>Uptime</small><b>${escapeHtml(uptime(telemetry.uptimeSeconds))}</b></div><div><small>Worker</small><b class="${telemetry.worker?.online ? 'good' : 'wait'}">${telemetry.worker?.online ? 'ONLINE' : 'OFFLINE'}</b><span>PID ${telemetry.worker?.pid ?? '—'} · ${telemetry.worker?.instances ?? 0} instance</span></div><div><small>Ollama</small><b class="${telemetry.ollama?.online ? 'good' : 'wait'}">${telemetry.ollama?.online ? 'ONLINE' : 'OFFLINE'}</b><span>${escapeHtml(telemetry.ollama?.models.join(', ') || '—')}</span></div><div><small>Tailscale</small><b class="${telemetry.tailscale?.online ? 'good' : 'wait'}">${telemetry.tailscale?.online ? 'ONLINE' : 'OFFLINE'}</b><span>${escapeHtml(telemetry.tailscale?.ip ?? '—')}</span></div><div><small>GPU</small><b>${telemetry.gpu ? pct(telemetry.gpu.utilizationPercent) : 'Chưa có telemetry'}</b><span>${escapeHtml(telemetry.gpu?.name ?? '')}</span></div><div class="activity"><small>Đang làm gì</small><b>${escapeHtml(activityText(summary))}</b><span>Chỉ hiển thị từ state/evidence hiện có</span></div></div>` : `<div class="notice warn">PC01 Server: Chưa có telemetry. Web vẫn hoạt động ở chế độ an toàn.</div>`;
+  const submittedNotice = submitted && /^https:\/\/github\.com\//.test(submitted) ? `<div class="notice">✅ Vy đã đưa Work Order vào hàng đợi PC01: <a href="${escapeHtml(submitted)}">xem evidence</a></div>` : '';
+  const taskPanel = session ? `<form class="task" method="post" action="/jobs"><input type="hidden" name="csrf" value="${escapeHtml(session.csrf)}"><input type="hidden" name="idempotency" value="${randomBytes(24).toString('base64url')}"><label>GIAO VIỆC CHO VY</label><small>Vy — AI Chief of Staff · em nhận mục tiêu từ anh Sơn và đưa vào pipeline PC01.</small><textarea name="instruction" maxlength="8000" required placeholder="Ví dụ: Kiểm tra Tiger IQ Driver và tối ưu phần quyết toán Tùng"></textarea><div class="task-actions"><select name="priority"><option>Bình thường</option><option>Cao</option><option>Khẩn cấp</option><option>Thấp</option></select><button type="submit">🚀 GIAO VIỆC</button></div></form>` : writeConfigured ? `<form class="login" method="post" action="/login"><b>Mở quyền giao việc cho Vy</b><input type="password" name="secret" autocomplete="current-password" placeholder="Mã điều khiển local" required><button type="submit">ĐĂNG NHẬP</button></form>` : `<div class="notice warn">🔒 Chế độ chỉ xem. Cần cấu hình TIGERIQ_COMMAND_SECRET trên PC01 để bật giao việc.</div>`;
+  const serverPanel = telemetry.available ? `<div class="server-grid"><div><small>CPU</small><b>${pct(telemetry.cpu?.utilizationPercent)}</b></div><div><small>RAM</small><b>${pct(telemetry.memory?.utilizationPercent)}</b><span>${gb(telemetry.memory?.usedBytes)} / ${gb(telemetry.memory?.totalBytes)}</span></div><div><small>Disk ${escapeHtml(telemetry.disk?.drive ?? '')}</small><b>${pct(telemetry.disk?.utilizationPercent)}</b><span>${gb(telemetry.disk?.freeBytes)} trống</span></div><div><small>Uptime</small><b>${escapeHtml(uptime(telemetry.uptimeSeconds))}</b></div><div><small>Native Worker</small><b class="${healthClass(telemetry.worker)}">${healthText(telemetry.worker)}</b><span>${telemetry.worker ? `PID ${telemetry.worker.pid ?? '—'} · ${telemetry.worker.instances} instance` : 'Unavailable'}</span></div><div><small>Controller</small><b class="${healthClass(telemetry.controller)}">${healthText(telemetry.controller)}</b><span>${escapeHtml(telemetry.controller?.ip ?? '—')}:${telemetry.controller?.port ?? '—'}</span></div><div><small>PostgreSQL</small><b class="${healthClass(telemetry.postgresql)}">${healthText(telemetry.postgresql)}</b><span>${escapeHtml(telemetry.postgresql?.service ?? 'Unavailable')} · port ${telemetry.postgresql?.port ?? '—'}</span></div><div><small>Ollama</small><b class="${healthClass(telemetry.ollama)}">${healthText(telemetry.ollama)}</b><span>${escapeHtml(telemetry.ollama?.models.join(', ') || 'Unavailable')}</span></div><div><small>Tailscale</small><b class="${healthClass(telemetry.tailscale)}">${healthText(telemetry.tailscale)}</b><span>${escapeHtml(telemetry.tailscale?.ip ?? 'Unavailable')}</span></div><div><small>GPU</small><b>${telemetry.gpu ? pct(telemetry.gpu.utilizationPercent) : 'Chưa có dữ liệu'}</b><span>${escapeHtml(telemetry.gpu?.name ?? 'Unavailable')}</span></div><div class="activity"><small>Đang làm gì</small><b>${escapeHtml(activityText(summary))}</b><span>Chỉ hiển thị từ state/evidence hiện có</span></div></div>` : `<div class="notice warn">PC01 Server: Chưa có telemetry. Web vẫn hoạt động ở chế độ an toàn.</div>`;
+  const workforceSummary = telemetry.workforce
+    ? `<div class="ai-row"><span>AI Employees</span><small>${telemetry.workforce.employeesTotal} total · ${telemetry.workforce.idle} idle · ${telemetry.workforce.busy} busy · ${telemetry.workforce.offline} offline · ${telemetry.workforce.degraded} degraded</small></div><div class="ai-row"><span>AI Tasks</span><small>${telemetry.workforce.tasksActive} active · ${telemetry.workforce.tasksFailed} failed · ${telemetry.workforce.activeTasks} assigned</small></div>`
+    : `<div class="ai-row"><span>AI Workforce Registry</span><small class="wait">Chưa có dữ liệu</small></div>`;
+  const workforcePanel = `<div class="ai"><div class="ai-row"><span>Vy — AI Chief of Staff</span><small>Điều phối Work Order</small></div><div class="ai-row"><span>PC01 Native Worker</span><small class="${healthClass(telemetry.worker)}">${healthText(telemetry.worker)}</small></div><div class="ai-row"><span>Workforce Controller</span><small class="${healthClass(telemetry.controller)}">${healthText(telemetry.controller)}</small></div>${workforceSummary}<div class="ai-row"><span>Ollama local models</span><small class="${healthClass(telemetry.ollama)}">${escapeHtml(telemetry.ollama?.models.join(', ') || 'Chưa có dữ liệu')}</small></div><div class="ai-row"><span>Cloud AI providers</span><small class="wait">Chưa có dữ liệu runtime</small></div></div>`;
 
   return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta http-equiv="refresh" content="15"><title>TigerIQ Command Center</title><style>
-:root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#edf2f7;background:#090d12}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 90% 0,#18202c 0,#0b1017 36%,#070a0f 100%);color:#edf2f7}.shell{min-height:100vh;display:grid;grid-template-columns:230px 1fr}.side{border-right:1px solid #222b36;padding:24px 18px;background:#0b1016;position:sticky;top:0;height:100vh}.brand{font-weight:900;font-size:20px;color:#ff9418;margin-bottom:28px}.brand span{color:#fff}.nav{display:grid;gap:8px}.nav div{padding:11px 12px;border-radius:10px;color:#9ba9b9}.nav .on{background:#2a2118;color:#ff9f2e}.main{padding:24px;max-width:1500px;width:100%;margin:auto}header{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:18px}h1{font-size:22px;margin:0}.health{display:flex;gap:8px;flex-wrap:wrap}.pill{border:1px solid #273444;border-radius:10px;padding:8px 10px;background:#101720;color:#9de7ba}.panel,.task,.login,.work,.kpi{background:linear-gradient(180deg,#131a23,#0f151d);border:1px solid #25303d;border-radius:16px;box-shadow:0 14px 36px #0005}.task,.login{padding:18px;margin-bottom:14px}.task label{font-size:12px;color:#9aa9ba;font-weight:800}.task textarea{display:block;width:100%;min-height:96px;margin:10px 0;background:#0d131a;color:#fff;border:1px solid #2a3542;border-radius:12px;padding:14px;font:inherit;resize:vertical}.task-actions{display:flex;gap:10px;justify-content:flex-end}.task select,.login input{background:#0d131a;color:#fff;border:1px solid #2a3542;border-radius:10px;padding:11px 12px}.task button,.login button{border:0;border-radius:10px;background:#ff8a00;color:#fff;font-weight:900;padding:11px 22px}.login{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.login input{flex:1;min-width:220px}.notice{padding:12px 14px;margin-bottom:14px;border:1px solid #285d43;background:#10241b;border-radius:12px;color:#b9f6d0}.notice.warn{border-color:#705122;background:#2b2111;color:#ffd28b}.notice a{color:#8bc7ff}.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:14px 0}.kpi{padding:16px}.kpi small{color:#91a0b1}.kpi b{display:block;font-size:28px;margin-top:5px}.layout{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(300px,.8fr);gap:14px}.panel{padding:16px;margin-bottom:14px}.panel h2{font-size:14px;margin:0 0 12px;color:#bec9d6}.works{display:grid;gap:10px}.work{padding:14px;box-shadow:none}.work-top{display:flex;justify-content:space-between;gap:8px}.status{font-size:12px;color:#7fc8ff}.work h3{margin:9px 0 8px;font-size:15px}.meta{font-size:12px;color:#8d9baa}.ai{display:grid;gap:9px}.ai-row{display:flex;justify-content:space-between;gap:10px;border:1px solid #25303d;border-radius:12px;padding:12px;background:#101720}.ai-row small{color:#8493a5}.good{color:#65e6a0}.wait{color:#ffc15c}.server-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.server-grid>div{border:1px solid #25303d;border-radius:12px;padding:12px;background:#101720;min-width:0}.server-grid small,.server-grid span{display:block;color:#8493a5;font-size:12px}.server-grid b{display:block;margin:5px 0;overflow-wrap:anywhere}.server-grid .activity{grid-column:span 4}.footer{padding:18px 0 4px;color:#607082;font-size:12px}
+:root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#edf2f7;background:#090d12}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 90% 0,#18202c 0,#0b1017 36%,#070a0f 100%);color:#edf2f7}.shell{min-height:100vh;display:grid;grid-template-columns:230px 1fr}.side{border-right:1px solid #222b36;padding:24px 18px;background:#0b1016;position:sticky;top:0;height:100vh}.brand{font-weight:900;font-size:20px;color:#ff9418;margin-bottom:28px}.brand span{color:#fff}.nav{display:grid;gap:8px}.nav div{padding:11px 12px;border-radius:10px;color:#9ba9b9}.nav .on{background:#2a2118;color:#ff9f2e}.main{padding:24px;max-width:1500px;width:100%;margin:auto}header{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:18px}h1{font-size:22px;margin:0}.health{display:flex;gap:8px;flex-wrap:wrap}.pill{border:1px solid #273444;border-radius:10px;padding:8px 10px;background:#101720;color:#9de7ba}.panel,.task,.login,.work,.kpi{background:linear-gradient(180deg,#131a23,#0f151d);border:1px solid #25303d;border-radius:16px;box-shadow:0 14px 36px #0005}.task,.login{padding:18px;margin-bottom:14px}.task label{display:block;font-size:12px;color:#9aa9ba;font-weight:800}.task>small{display:block;color:#8493a5;margin-top:5px}.task textarea{display:block;width:100%;min-height:96px;margin:10px 0;background:#0d131a;color:#fff;border:1px solid #2a3542;border-radius:12px;padding:14px;font:inherit;resize:vertical}.task-actions{display:flex;gap:10px;justify-content:flex-end}.task select,.login input{background:#0d131a;color:#fff;border:1px solid #2a3542;border-radius:10px;padding:11px 12px}.task button,.login button{border:0;border-radius:10px;background:#ff8a00;color:#fff;font-weight:900;padding:11px 22px}.login{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.login input{flex:1;min-width:220px}.notice{padding:12px 14px;margin-bottom:14px;border:1px solid #285d43;background:#10241b;border-radius:12px;color:#b9f6d0}.notice.warn{border-color:#705122;background:#2b2111;color:#ffd28b}.notice a{color:#8bc7ff}.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:14px 0}.kpi{padding:16px}.kpi small{color:#91a0b1}.kpi b{display:block;font-size:28px;margin-top:5px}.layout{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(300px,.8fr);gap:14px}.panel{padding:16px;margin-bottom:14px}.panel h2{font-size:14px;margin:0 0 12px;color:#bec9d6}.works{display:grid;gap:10px}.work{padding:14px;box-shadow:none}.work-top{display:flex;justify-content:space-between;gap:8px}.status{font-size:12px;color:#7fc8ff}.work h3{margin:9px 0 8px;font-size:15px}.meta{font-size:12px;color:#8d9baa}.ai{display:grid;gap:9px}.ai-row{display:flex;justify-content:space-between;gap:10px;border:1px solid #25303d;border-radius:12px;padding:12px;background:#101720}.ai-row small{color:#8493a5;text-align:right}.good{color:#65e6a0!important}.wait{color:#ffc15c!important}.server-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.server-grid>div{border:1px solid #25303d;border-radius:12px;padding:12px;background:#101720;min-width:0}.server-grid small,.server-grid span{display:block;color:#8493a5;font-size:12px}.server-grid b{display:block;margin:5px 0;overflow-wrap:anywhere}.server-grid .activity{grid-column:span 4}.footer{padding:18px 0 4px;color:#607082;font-size:12px}
 @media(max-width:900px){.shell{display:block}.side{display:none}.main{padding:14px 12px 82px}.layout{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,1fr)}.server-grid{grid-template-columns:repeat(2,1fr)}.server-grid .activity{grid-column:span 2}header{align-items:flex-start}.health{justify-content:flex-end}.task-actions{position:sticky;bottom:10px}.task button{flex:1}.task select{width:40%}.work h3{font-size:14px}.panel{border-radius:14px}}
 @media(max-width:520px){h1{font-size:18px}.health .pill:nth-child(n+2){display:none}.kpi{padding:13px}.kpi b{font-size:23px}.task textarea{min-height:120px}.login{display:grid}.login input{min-width:0;width:100%}.ai-row{font-size:13px}.server-grid{grid-template-columns:1fr}.server-grid .activity{grid-column:auto}}
-</style></head><body><div class="shell"><aside class="side"><div class="brand">🐯 TIGERIQ <span>AI LAB</span></div><div class="nav"><div class="on">⌂ Tổng quan</div><div>▣ Work Order</div><div>✦ AI System</div><div>▥ Evidence</div><div>▤ Báo cáo</div><div>⚙ Cài đặt</div></div></aside><main class="main"><header><div><h1>Tổng quan Command Center</h1><small>Local First · PC01 là trung tâm điều phối & thực thi</small></div><div class="health"><span class="pill">● PC01 / Private</span><span class="pill">Tự làm mới 15s</span></div></header>${submittedNotice}${taskPanel}<section class="kpis"><div class="kpi"><small>Đang xử lý</small><b>${summary.activeWorkOrders}</b></div><div class="kpi"><small>Vướng / Chờ</small><b>${summary.blockedWorkOrders}</b></div><div class="kpi"><small>Gate lỗi/chặn</small><b>${summary.failingGates}</b></div><div class="kpi"><small>Evidence</small><b>${summary.evidenceCount}</b></div></section><section class="panel"><h2>PC01 SERVER</h2>${serverPanel}</section><section class="layout"><div class="panel"><h2>WORK ORDER</h2><div class="works">${workCards || '<div class="notice">Chưa có Work Order trong datasource hiện tại.</div>'}</div></div><div class="panel"><h2>AI SYSTEM</h2><div class="ai"><div class="ai-row"><span>ChatGPT</span><small class="wait">Chưa kết nối account automation</small></div><div class="ai-row"><span>Gemini</span><small class="wait">Chưa kết nối account automation</small></div><div class="ai-row"><span>Claude</span><small class="wait">Chưa kết nối</small></div><div class="ai-row"><span>Ollama · qwen2.5-coder:14b</span><small class="good">Local worker</small></div><div class="ai-row"><span>Model Router</span><small>Cloud mesh đã chuẩn bị · live credential còn gate</small></div></div></div></section><div class="footer">TigerIQ AI Lab Command Center · private/local-first · MAIN/Production không tự động thay đổi</div></main></div></body></html>`;
+</style></head><body><div class="shell"><aside class="side"><div class="brand">🐯 TIGERIQ <span>AI LAB</span></div><div class="nav"><div class="on">⌂ Tổng quan</div><div>▣ Work Order</div><div>✦ AI Workforce</div><div>▥ Evidence</div><div>▤ Báo cáo</div><div>⚙ Cài đặt</div></div></aside><main class="main"><header><div><h1>Tổng quan Command Center</h1><small>Vy — AI Chief of Staff · PRIMARY Web Control trên PC01 · anh Sơn điều khiển qua private tailnet</small></div><div class="health"><span class="pill">● PC01 / Private</span><span class="pill">Tự làm mới 15s</span></div></header>${submittedNotice}${taskPanel}<section class="kpis"><div class="kpi"><small>Đang xử lý</small><b>${summary.activeWorkOrders}</b></div><div class="kpi"><small>Vướng / Chờ</small><b>${summary.blockedWorkOrders}</b></div><div class="kpi"><small>Gate lỗi/chặn</small><b>${summary.failingGates}</b></div><div class="kpi"><small>Evidence</small><b>${summary.evidenceCount}</b></div></section><section class="panel"><h2>PC01 SERVER</h2>${serverPanel}</section><section class="layout"><div class="panel"><h2>WORK ORDER · EVIDENCE/GATE</h2><div class="works">${workCards || '<div class="notice">Chưa có Work Order trong datasource hiện tại.</div>'}</div></div><div class="panel"><h2>AI WORKFORCE</h2>${workforcePanel}</div></section><div class="footer">TigerIQ AI Lab Command Center · PRIMARY PC01/private · Vercel SECONDARY/BACKUP · MAIN/Production không tự động thay đổi</div></main></div></body></html>`;
 }
 
 function renderMessage(title: string, message: string): string {
