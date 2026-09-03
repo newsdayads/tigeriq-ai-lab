@@ -17,6 +17,8 @@ public final class GeminiDirectClient implements AiProviderConnector {
     private static final String PROVIDER = ProviderConfigStore.GEMINI;
     private static final String API_ROOT = "https://generativelanguage.googleapis.com/v1beta/models/";
     private static final int MAX_RESPONSE_BYTES = 1_000_000;
+    // Controller V1 request body is capped at 512 KB. Keep material output below that with room for RESULT/evidence metadata.
+    static final int MAX_CONTROLLER_RESULT_TEXT_BYTES = 400_000;
     private final ProviderConfigStore config;
 
     public GeminiDirectClient(Context context) { config = new ProviderConfigStore(context); }
@@ -40,6 +42,8 @@ public final class GeminiDirectClient implements AiProviderConnector {
         try {
             URL url = new URL(API_ROOT + safeModel + ":generateContent");
             connection = (HttpURLConnection) url.openConnection();
+            // Never forward x-goog-api-key to an automatic redirect target.
+            connection.setInstanceFollowRedirects(false);
             connection.setRequestMethod("POST");
             connection.setConnectTimeout(15_000);
             connection.setReadTimeout(135_000);
@@ -65,6 +69,7 @@ public final class GeminiDirectClient implements AiProviderConnector {
             JSONObject response = responseBytes.length == 0 ? new JSONObject() : new JSONObject(new String(responseBytes, StandardCharsets.UTF_8));
             String output = parseText(response);
             if (output.isBlank()) throw new ProviderException(PROVIDER, "EMPTY_PROVIDER_OUTPUT", "Gemini returned no text output", true, status);
+            requireOutputWithinControllerBudget(output);
             return new ProviderExecution(PROVIDER, safeModel, output, startedAt, Instant.now().toString());
         } catch (ProviderException error) {
             throw error;
@@ -97,6 +102,14 @@ public final class GeminiDirectClient implements AiProviderConnector {
             if (!value.isEmpty()) { if (out.length() > 0) out.append('\n'); out.append(value); }
         }
         return out.toString().trim();
+    }
+
+    static void requireOutputWithinControllerBudget(String output) throws ProviderException {
+        int bytes = output == null ? 0 : output.getBytes(StandardCharsets.UTF_8).length;
+        if (bytes > MAX_CONTROLLER_RESULT_TEXT_BYTES) {
+            throw new ProviderException(PROVIDER, "PROVIDER_OUTPUT_TOO_LARGE",
+                    "provider output cannot fit Controller result envelope", false, 0);
+        }
     }
 
     private static byte[] readLimited(InputStream stream) throws Exception {

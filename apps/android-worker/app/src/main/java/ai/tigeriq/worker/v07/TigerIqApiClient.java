@@ -16,6 +16,8 @@ import java.util.UUID;
 public final class TigerIqApiClient {
     private static final int CONNECT_TIMEOUT_MS = 12_000;
     private static final int READ_TIMEOUT_MS = 30_000;
+    static final int MAX_REQUEST_BYTES = 512_000;
+    static final int MAX_RESPONSE_BYTES = 512_000;
     private static final long LEASE_TTL_MS = 120_000L;
 
     private final EmployeeDeviceStore.Profile profile;
@@ -87,7 +89,9 @@ public final class TigerIqApiClient {
 
     private JSONObject request(String method, String path, JSONObject body, boolean protectedRequest) throws Exception {
         byte[] bodyBytes = body == null ? new byte[0] : body.toString().getBytes(StandardCharsets.UTF_8);
+        requireRequestWithinLimit(bodyBytes);
         HttpURLConnection connection = (HttpURLConnection) new URL(profile.controllerUrl + path).openConnection();
+        connection.setInstanceFollowRedirects(false);
         connection.setRequestMethod(method);
         connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
         connection.setReadTimeout(READ_TIMEOUT_MS);
@@ -98,16 +102,22 @@ public final class TigerIqApiClient {
         if (bodyBytes.length > 0) {
             connection.setDoOutput(true);
             connection.setFixedLengthStreamingMode(bodyBytes.length);
-            connection.getOutputStream().write(bodyBytes);
-            connection.getOutputStream().flush();
-            connection.getOutputStream().close();
+            try (java.io.OutputStream output = connection.getOutputStream()) {
+                output.write(bodyBytes);
+                output.flush();
+            }
         }
 
         int status = connection.getResponseCode();
         InputStream stream = status >= 200 && status < 300 ? connection.getInputStream() : connection.getErrorStream();
-        String raw = stream == null ? "" : new String(readAll(stream), StandardCharsets.UTF_8);
         Long retryAfterMs = retryAfterMs(connection.getHeaderField("Retry-After"));
-        connection.disconnect();
+        byte[] responseBytes;
+        try {
+            responseBytes = stream == null ? new byte[0] : readLimited(stream);
+        } finally {
+            connection.disconnect();
+        }
+        String raw = new String(responseBytes, StandardCharsets.UTF_8);
         JSONObject decoded;
         try { decoded = raw.isBlank() ? new JSONObject() : new JSONObject(raw); }
         catch (Exception error) { throw new ApiException(status, "INVALID_RESPONSE", "Controller returned non-JSON response", status >= 500, retryAfterMs); }
@@ -151,11 +161,23 @@ public final class TigerIqApiClient {
         return value;
     }
 
-    private static byte[] readAll(InputStream stream) throws Exception {
+    static void requireRequestWithinLimit(byte[] bytes) throws ApiException {
+        int length = bytes == null ? 0 : bytes.length;
+        if (length > MAX_REQUEST_BYTES) throw new ApiException(413, "REQUEST_TOO_LARGE", "Controller request exceeds safe limit", false, null);
+    }
+
+    static byte[] readLimited(InputStream stream) throws Exception {
         try (InputStream input = stream; ByteArrayOutputStream output = new ByteArrayOutputStream()) {
             byte[] buffer = new byte[8192];
+            int total = 0;
             int read;
-            while ((read = input.read(buffer)) >= 0) output.write(buffer, 0, read);
+            while ((read = input.read(buffer)) >= 0) {
+                total += read;
+                if (total > MAX_RESPONSE_BYTES) {
+                    throw new ApiException(502, "RESPONSE_TOO_LARGE", "Controller response exceeds safe limit", false, null);
+                }
+                output.write(buffer, 0, read);
+            }
             return output.toByteArray();
         }
     }

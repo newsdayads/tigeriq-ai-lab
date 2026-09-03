@@ -16,11 +16,49 @@ public final class DurableCheckpointStore {
         if (lease == null) throw new IllegalArgumentException("lease required");
         LeaseAuthorityCache.put(lease);
         secrets.put(SecureSecretStore.jobKey(lease.jobId), lease.jobJson);
-        if (!prefs.edit().putString("jobId", lease.jobId).putString("idempotencyKey", lease.idempotencyKey).putString("bindingId", lease.bindingId).putString("leaseId", lease.leaseId).putString("leaseTokenHash", WorkNames.sha256(lease.leaseToken)).putString("phase", PHASE_LEASED).putLong("leaseExpiresAt", lease.expiresAtEpochMs).putInt("attempt", lease.attempt).putString("providerAttempts", "[]").putLong("updatedAt", System.currentTimeMillis()).commit()) throw new IllegalStateException("cannot persist job checkpoint");
+        if (!prefs.edit().putString("jobId", lease.jobId).putString("idempotencyKey", lease.idempotencyKey).putString("bindingId", lease.bindingId).putString("leaseId", lease.leaseId).putString("leaseTokenHash", WorkNames.sha256(lease.leaseToken)).putString("phase", PHASE_LEASED).putLong("leaseExpiresAt", lease.expiresAtEpochMs).putInt("attempt", lease.attempt).putString("providerAttempts", "[]").remove("requestId").remove("inferenceIdempotencyKey").remove("evidenceSha256").putLong("updatedAt", System.currentTimeMillis()).commit()) throw new IllegalStateException("cannot persist job checkpoint");
+    }
+
+    /** Rebinds fresh in-process lease authority to an already-computed result without re-running the provider. */
+    public synchronized void rebindLeasePreservingResult(Snapshot previous, JobLease lease) throws Exception {
+        ResultReacquirePolicy.requireSameWork(previous, lease);
+        if (!ResultReacquirePolicy.isPersistedResultPhase(previous.phase)) throw new ApiException(409, "RESULT_REACQUIRE_MISMATCH", "checkpoint has no completed result phase", false, null);
+        String persisted = resultJson(previous);
+        if (persisted == null || persisted.isBlank()) throw new ApiException(409, "RESULT_MISSING", "persisted result missing", false, null);
+        // Validate before mutating lease authority. A corrupt result must never be rebound to a fresh lease.
+        new JSONObject(persisted);
+        LeaseAuthorityCache.put(lease);
+        secrets.put(SecureSecretStore.jobKey(lease.jobId), lease.jobJson);
+        if (!prefs.edit()
+                .putString("jobId", lease.jobId)
+                .putString("idempotencyKey", lease.idempotencyKey)
+                .putString("bindingId", lease.bindingId)
+                .putString("leaseId", lease.leaseId)
+                .putString("leaseTokenHash", WorkNames.sha256(lease.leaseToken))
+                .putString("phase", PHASE_RESULT_READY)
+                .putLong("leaseExpiresAt", lease.expiresAtEpochMs)
+                .putInt("attempt", lease.attempt)
+                .putLong("updatedAt", System.currentTimeMillis())
+                .commit()) throw new IllegalStateException("cannot rebind persisted result to fresh lease");
+    }
+
+    public synchronized boolean hasPersistedResult(Snapshot snapshot) throws Exception {
+        if (snapshot == null || !ResultReacquirePolicy.isPersistedResultPhase(snapshot.phase)) return false;
+        String persisted = resultJson(snapshot);
+        if (persisted == null || persisted.isBlank()) return false;
+        try { new JSONObject(persisted); return true; }
+        catch (Exception error) { throw new ApiException(409, "RESULT_CORRUPT", "persisted result is invalid", false, null); }
     }
 
     public synchronized void markPhase(String phase, String requestId, String executionIdempotencyKey) {
-        prefs.edit().putString("phase", phase).putString("requestId", nullToEmpty(requestId)).putString("inferenceIdempotencyKey", nullToEmpty(executionIdempotencyKey)).putLong("updatedAt", System.currentTimeMillis()).commit();
+        if (phase == null || phase.isBlank()) throw new IllegalArgumentException("phase required");
+        boolean persisted = prefs.edit()
+                .putString("phase", phase)
+                .putString("requestId", nullToEmpty(requestId))
+                .putString("inferenceIdempotencyKey", nullToEmpty(executionIdempotencyKey))
+                .putLong("updatedAt", System.currentTimeMillis())
+                .commit();
+        if (!persisted) throw new IllegalStateException("cannot persist checkpoint phase");
     }
 
     public synchronized void appendProviderAttempt(String provider, String model, int workerAttempt, String status, String startedAt, String finishedAt, String errorCode) {
@@ -39,7 +77,7 @@ public final class DurableCheckpointStore {
                     .put("errorCode", errorCode == null ? "" : errorCode));
             prefs.edit().putString("providerAttempts", bounded.toString()).putLong("updatedAt", System.currentTimeMillis()).commit();
         } catch (Exception ignored) {
-            // Provider audit is evidence metadata only; never crash the worker because this metadata is malformed.
+            // Provider-attempt metadata is supplementary audit evidence only; never crash the worker for it.
         }
     }
 
@@ -52,7 +90,12 @@ public final class DurableCheckpointStore {
         Snapshot snapshot = load();
         if (!snapshot.hasInFlightWork()) throw new IllegalStateException("no active checkpoint");
         secrets.put(SecureSecretStore.resultKey(snapshot.jobId), resultJson);
-        prefs.edit().putString("evidenceSha256", nullToEmpty(evidenceSha256)).putString("phase", PHASE_RESULT_READY).putLong("updatedAt", System.currentTimeMillis()).commit();
+        boolean persisted = prefs.edit()
+                .putString("evidenceSha256", nullToEmpty(evidenceSha256))
+                .putString("phase", PHASE_RESULT_READY)
+                .putLong("updatedAt", System.currentTimeMillis())
+                .commit();
+        if (!persisted) throw new IllegalStateException("cannot persist result checkpoint");
     }
 
     public synchronized Snapshot load() {
@@ -63,7 +106,16 @@ public final class DurableCheckpointStore {
     public synchronized String leaseToken(Snapshot snapshot) { return LeaseAuthorityCache.token(snapshot, System.currentTimeMillis()); }
     public synchronized String jobJson(Snapshot snapshot) throws Exception { return snapshot == null || snapshot.jobId == null ? null : secrets.get(SecureSecretStore.jobKey(snapshot.jobId)); }
     public synchronized String resultJson(Snapshot snapshot) throws Exception { return snapshot == null || snapshot.jobId == null ? null : secrets.get(SecureSecretStore.resultKey(snapshot.jobId)); }
-    public synchronized void clear() { Snapshot snapshot = load(); if (snapshot.jobId != null) { LeaseAuthorityCache.remove(snapshot.jobId); secrets.removeJobSecrets(snapshot.jobId); } prefs.edit().clear().commit(); }
+
+    public synchronized void clear() {
+        Snapshot snapshot = load();
+        // Durable authority/state is cleared first. If this fails, leave in-memory authority and encrypted evidence intact for recovery.
+        if (!prefs.edit().clear().commit()) throw new IllegalStateException("cannot clear job checkpoint");
+        if (snapshot.jobId != null) {
+            LeaseAuthorityCache.remove(snapshot.jobId);
+            secrets.removeJobSecrets(snapshot.jobId);
+        }
+    }
 
     public static final class Snapshot {
         public final String jobId, idempotencyKey, bindingId, leaseId, leaseTokenHash, phase, requestId, inferenceIdempotencyKey, evidenceSha256;
