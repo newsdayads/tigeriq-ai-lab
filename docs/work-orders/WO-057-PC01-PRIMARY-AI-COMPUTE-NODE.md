@@ -1,9 +1,11 @@
 # WO-057 — PC01 Primary AI Compute & Control Node
 
 Date: 2026-09-03
-Status: IMPLEMENTED IN FEATURE BRANCH — REPOSITORY GATES RUNNING; PHYSICAL PC01 E2E REQUIRED
+Status: REPOSITORY IMPLEMENTATION GATE PASS — PHYSICAL PC01 E2E REAL BLOCKER
 Branch: `wo057/pc01-primary-ai-compute-node`
 Base: `wo056/pc01-one-click-bootstrap`
+Repository gate: GitHub Actions `33720417131` PASS
+Repository evidence: `docs/evidence/WO-057-REPOSITORY-GATE-2026-09-03.md`
 MAIN/Production: untouched
 OpenClaw dependency: none
 
@@ -20,8 +22,19 @@ Make PC01 self-sufficient as Control Plane + Primary AI Compute + Native Worker 
 - Structured tool executor using `spawn(..., shell:false)` and bounded local HTTP; workspace boundary, secret-path deny, protected-branch checkout deny, command timeout, exit/stdout/stderr capture and output truncation.
 - Resource policy: free-RAM guard, CPU/RAM heartbeat metrics, bounded worker concurrency, local AI semaphore = 2.
 - Evidence documents under `.tigeriq-runtime/evidence/<job>/` and durable result/evidence references in PostgreSQL.
-- Reversible PC01 installer using the existing canonical Controller task plus one Native Worker scheduled task; generated local ingress secret is protected and never printed.
+- Reversible PC01 installer using the existing canonical Controller task plus one Native Worker Scheduled Task; generated local ingress secret is protected and never printed.
 - Physical E2E gate A–G covering health, workforce, local AI/GPU, safe tool execution, intentional failure, concurrency=2 and service restart recovery.
+
+## Repository verification
+PASS:
+- Linux typecheck, 58 unit tests, build and security/resource contract.
+- Windows typecheck, 58 unit tests, build, Native Worker artifact and Windows PowerShell 5.1 parser gate.
+- Authenticated ingress registration/intake tests.
+- Ollama defaults/metrics mock contract tests.
+- Tool executor policy tests.
+- Router and local-AI concurrency=2 tests.
+
+Not counted as PASS: 3 existing hosted PostgreSQL/device integration tests were skipped because their external integration environment was not configured.
 
 ## No database reset/migration
 WO-057 reuses migrations `001_operational_state_v1` and `002_device_proof_replay_v1`. No destructive migration is introduced.
@@ -38,4 +51,4 @@ This ChatGPT session has GitHub access but no direct PC01 terminal/browser execu
 The physical gate writes machine-readable evidence to `docs/evidence/WO-057-PC01-PRIMARY-NODE-E2E-<timestamp>.json`.
 
 ## DONE gate
-DONE only after repository CI PASS + physical A–G PASS + employees/devices >= 1 + PC01 online/healthy + qwen3:8b GPU evidence + Current State reconciliation. No cloud/reviewer capability may be claimed unless independently configured/tested.
+DONE only after physical A–G PASS + employees/devices >= 1 + PC01 online/healthy + qwen3:8b GPU evidence + post-recovery Work Order PASS. No cloud/reviewer capability may be claimed unless independently configured/tested.
