@@ -97,7 +97,7 @@ describe('TigerIQ Command Center', () => {
     expect(html).toContain('MÔ HÌNH AI HIỆN CÓ');
     expect(html).toContain('2 model Ollama local');
     expect(html).toContain('PC01 SERVER & SERVICES');
-    expect(html).toContain('Workforce Controller');
+    expect(html).toContain('WORKFORCE CONTROLLER');
     expect(html).toContain('PostgreSQL');
     expect(html).toContain('postgresql-x64-17');
     expect(html).toContain('100.97.23.87');
