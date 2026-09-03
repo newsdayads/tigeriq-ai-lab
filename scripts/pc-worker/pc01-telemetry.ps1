@@ -5,27 +5,42 @@ function Percent([double]$used,[double]$total) {
   return [math]::Round(($used / $total) * 100, 1)
 }
 
-$os = Get-CimInstance Win32_OperatingSystem
-$cpu = Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average
+function Test-TcpPort([string]$HostName,[int]$Port,[int]$TimeoutMs = 250) {
+  $client = New-Object System.Net.Sockets.TcpClient
+  try {
+    $async = $client.BeginConnect($HostName,$Port,$null,$null)
+    if(-not $async.AsyncWaitHandle.WaitOne($TimeoutMs,$false)){ return $false }
+    $client.EndConnect($async)
+    return $true
+  } catch { return $false } finally { $client.Close() }
+}
+
+$os = Get-CimInstance Win32_OperatingSystem -Property TotalVisibleMemorySize,FreePhysicalMemory,LastBootUpTime
+$cpuRows = @(Get-CimInstance Win32_Processor -Property LoadPercentage)
+$cpuValues = @($cpuRows | ForEach-Object { if($_.LoadPercentage -ne $null){ [double]$_.LoadPercentage } })
+$cpuAverage = if($cpuValues.Count -gt 0){ ($cpuValues | Measure-Object -Average).Average } else { $null }
 $memTotal = [double]$os.TotalVisibleMemorySize * 1KB
 $memFree = [double]$os.FreePhysicalMemory * 1KB
 $memUsed = $memTotal - $memFree
-$boot = $os.LastBootUpTime
-$uptimeSeconds = [math]::Floor(((Get-Date) - $boot).TotalSeconds)
+$uptimeSeconds = [math]::Floor(((Get-Date) - $os.LastBootUpTime).TotalSeconds)
 
-$driveLetter = 'F:'
-$disk = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='$driveLetter'" -ErrorAction SilentlyContinue
-if(-not $disk){ $disk = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='C:'" }
+$driveName = if(Test-Path 'F:\'){ 'F' } else { 'C' }
+$driveInfo = New-Object System.IO.DriveInfo($driveName)
+$diskTotal = [double]$driveInfo.TotalSize
+$diskFree = [double]$driveInfo.AvailableFreeSpace
 
-$workers = @(Get-CimInstance Win32_Process | Where-Object {
-  $_.CommandLine -like '*worker-github-queue.py*' -or $_.CommandLine -like '*TigerIQ*Worker*worker.py*'
-})
+$workers = @()
+try {
+  $workers = @(Get-CimInstance Win32_Process -Filter "Name='python.exe' OR Name='pythonw.exe'" -Property ProcessId,CommandLine | Where-Object {
+    $_.CommandLine -and ($_.CommandLine -like '*worker-github-queue.py*' -or $_.CommandLine -like '*TigerIQ*Worker*worker.py*' -or $_.CommandLine -like '*worker_impl.py*')
+  })
+} catch {}
 $worker = $workers | Select-Object -First 1
 
 $ollamaOnline = $false
 $ollamaModels = @()
 try {
-  $tags = Invoke-RestMethod 'http://127.0.0.1:11434/api/tags' -TimeoutSec 3
+  $tags = Invoke-RestMethod 'http://127.0.0.1:11434/api/tags' -TimeoutSec 1
   $ollamaOnline = $true
   if($tags.models){ $ollamaModels = @($tags.models | ForEach-Object { $_.name }) }
 } catch {}
@@ -52,7 +67,7 @@ $controllerPort = 8790
 $workforce = $null
 if($tailscaleIp){
   try {
-    $controllerStatus = Invoke-RestMethod -Uri "http://$tailscaleIp`:$controllerPort/api/workforce/status" -TimeoutSec 2
+    $controllerStatus = Invoke-RestMethod -Uri "http://$tailscaleIp`:$controllerPort/api/workforce/status" -TimeoutSec 1
     $controllerOnline = [bool]$controllerStatus.ok
     if($controllerOnline -and $controllerStatus.workforce){
       $wf = $controllerStatus.workforce
@@ -74,10 +89,13 @@ $postgresService = $null
 $postgresOnline = $false
 $postgresPort = 5432
 try {
-  $svc = Get-Service -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'postgresql*' -or $_.DisplayName -like 'PostgreSQL*' } | Select-Object -First 1
-  if($svc){ $postgresService = $svc.Name }
-  $listener = Get-NetTCPConnection -LocalPort $postgresPort -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
-  $postgresOnline = [bool]$listener -or ($svc -and $svc.Status -eq 'Running')
+  $svc = Get-Service -Name 'postgresql*' -ErrorAction SilentlyContinue | Select-Object -First 1
+  if($svc){
+    $postgresService = $svc.Name
+    $postgresOnline = ($svc.Status -eq 'Running')
+  } else {
+    $postgresOnline = Test-TcpPort '127.0.0.1' $postgresPort 250
+  }
 } catch {}
 
 $gpu = $null
@@ -97,10 +115,10 @@ try {
 $result = [ordered]@{
   server = 'PC01'
   generatedAt = (Get-Date).ToUniversalTime().ToString('o')
-  cpu = [ordered]@{ utilizationPercent = if($cpu.Average -ne $null){ [math]::Round([double]$cpu.Average,1) } else { $null } }
+  cpu = [ordered]@{ utilizationPercent = if($cpuAverage -ne $null){ [math]::Round([double]$cpuAverage,1) } else { $null } }
   memory = [ordered]@{ usedBytes=[math]::Round($memUsed); totalBytes=[math]::Round($memTotal); utilizationPercent=(Percent $memUsed $memTotal) }
   uptimeSeconds = $uptimeSeconds
-  disk = if($disk){ [ordered]@{ drive=$disk.DeviceID; freeBytes=[double]$disk.FreeSpace; totalBytes=[double]$disk.Size; utilizationPercent=(Percent ([double]$disk.Size-[double]$disk.FreeSpace) ([double]$disk.Size)) } } else { $null }
+  disk = [ordered]@{ drive="$driveName`:"; freeBytes=$diskFree; totalBytes=$diskTotal; utilizationPercent=(Percent ($diskTotal-$diskFree) $diskTotal) }
   worker = [ordered]@{ online=($workers.Count -gt 0); pid=if($worker){[int]$worker.ProcessId}else{$null}; instances=$workers.Count }
   controller = [ordered]@{ online=$controllerOnline; ip=$tailscaleIp; port=$controllerPort }
   workforce = $workforce
