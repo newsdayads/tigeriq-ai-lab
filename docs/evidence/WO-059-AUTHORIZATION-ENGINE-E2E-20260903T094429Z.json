@@ -1,0 +1,83 @@
+{
+    "workOrder":  "WO-059",
+    "runId":  "20260903T094429Z",
+    "host":  "PC01",
+    "branch":  "wo059/authorization-engine-v1",
+    "allPass":  true,
+    "tests":  [
+                  {
+                      "test":  "A_GREEN_AUTO_DISPATCH",
+                      "pass":  true,
+                      "taskId":  "WO059-A-20260903T094429Z",
+                      "jobId":  "JOB-F192ED8F-2786-4C98-9846-A34CDEBFB947",
+                      "policy":  {
+                                     "actionClass":  "WORKSPACE_WRITE",
+                                     "riskLevel":  "GREEN",
+                                     "decision":  "AUTO_DISPATCH",
+                                     "reason":  "green_auto"
+                                 }
+                  },
+                  {
+                      "test":  "B_YELLOW_FAIL_CLOSED",
+                      "pass":  true,
+                      "taskId":  "WO059-B-20260903T094429Z",
+                      "controllerJobId":  null,
+                      "policy":  {
+                                     "actionClass":  "SCRIPT_EXECUTION",
+                                     "riskLevel":  "YELLOW",
+                                     "decision":  "HELD_AUTHORIZATION",
+                                     "reason":  "yellow_owner_authorization_required"
+                                 },
+                      "artifactAbsent":  true
+                  },
+                  {
+                      "test":  "C_SCOPED_OWNER_GRANT",
+                      "pass":  true,
+                      "taskId":  "WO059-C-20260903T094429Z",
+                      "jobId":  "JOB-5250E98B-50DC-418C-8484-2BD9724C0A26",
+                      "policy":  {
+                                     "actionClass":  "SCRIPT_EXECUTION",
+                                     "riskLevel":  "YELLOW",
+                                     "decision":  "AUTO_DISPATCH",
+                                     "reason":  "owner_grant",
+                                     "grantId":  "GRANT-WO059-20260903T094429Z"
+                                 }
+                  },
+                  {
+                      "test":  "D_RED_FAIL_CLOSED",
+                      "pass":  true,
+                      "taskId":  "WO059-D-20260903T094429Z",
+                      "controllerJobId":  null,
+                      "policy":  {
+                                     "actionClass":  "FINANCIAL",
+                                     "riskLevel":  "RED",
+                                     "decision":  "HELD_AUTHORIZATION",
+                                     "reason":  "red_owner_authorization_required"
+                                 },
+                      "artifactAbsent":  true
+                  },
+                  {
+                      "test":  "E_HELD_DOES_NOT_BLOCK_GREEN",
+                      "pass":  true,
+                      "taskId":  "WO059-E-20260903T094429Z",
+                      "jobId":  "JOB-1C6AB730-40C6-476E-BABB-7029CDB754AF"
+                  },
+                  {
+                      "test":  "F_PC01_BASELINE_HEALTHY",
+                      "pass":  true,
+                      "controller":  "TigerIQ Workforce Controller V1",
+                      "postgres":  true,
+                      "pc01":  {
+                                   "employeeId":  "EMP-PC01-NATIVE",
+                                   "deviceId":  "DEV-PC01",
+                                   "health":  "ok",
+                                   "lastHeartbeatAt":  "2026-09-03T09:46:11.113Z",
+                                   "online":  true
+                               }
+                  }
+              ],
+    "mainProductionTouched":  false,
+    "financialActionExecuted":  false,
+    "securitySensitiveActionExecuted":  false,
+    "secretPrinted":  false
+}
