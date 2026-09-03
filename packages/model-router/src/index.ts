@@ -1,4 +1,4 @@
-export type Provider = 'gemini' | 'openrouter' | 'ollama' | 'openai' | 'anthropic';
+export type Provider = 'gemini' | 'openrouter' | 'ollama' | 'openai' | 'anthropic' | 'xai' | 'deepseek';
 
 export interface ModelTarget {
   provider: Provider;
@@ -88,11 +88,12 @@ export class ModelRouter {
     this.now = circuitBreaker.now ?? Date.now;
   }
 
-  async execute(request: ModelRequest): Promise<RoutedResult> {
+  /** Executes through the canonical adapter/circuit-breaker stack. A request may supply a scored policy from AI Gateway without creating a second router implementation. */
+  async execute(request: ModelRequest, policyOverride?: RoutingPolicy): Promise<RoutedResult> {
     if (!request.prompt.trim()) throw new Error('prompt is required');
     const attempts: RoutingAttempt[] = [];
 
-    for (const target of routeCandidates(this.policy)) {
+    for (const target of routeCandidates(policyOverride ?? this.policy)) {
       if (request.signal?.aborted) throw new Error('model request aborted');
       const adapter = this.adapters.get(target.provider);
       if (!adapter) {

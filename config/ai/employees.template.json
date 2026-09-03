@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "employees": [
+    {"employeeId":"chief-01","role":"chief","enabled":true,"requiredCapabilities":["reasoning"]},
+    {"employeeId":"architect-01","role":"architect","enabled":true,"requiredCapabilities":["reasoning","coding"]},
+    {"employeeId":"research-01","role":"researcher","enabled":true,"requiredCapabilities":["research"]},
+    {"employeeId":"research-02","role":"researcher","enabled":true,"requiredCapabilities":["research"]},
+    {"employeeId":"coder-01","role":"coder","enabled":true,"requiredCapabilities":["coding"]},
+    {"employeeId":"coder-02","role":"coder","enabled":true,"requiredCapabilities":["coding"]},
+    {"employeeId":"tester-01","role":"tester","enabled":true,"requiredCapabilities":["reasoning","coding"]},
+    {"employeeId":"reviewer-01","role":"reviewer","enabled":true,"requiredCapabilities":["review"]},
+    {"employeeId":"reviewer-02","role":"reviewer","enabled":true,"requiredCapabilities":["review"]},
+    {"employeeId":"judge-01","role":"judge","enabled":true,"requiredCapabilities":["judge","reasoning"]},
+    {"employeeId":"operator-01","role":"operator","enabled":true,"requiredCapabilities":["fast"]}
+  ]
+}
