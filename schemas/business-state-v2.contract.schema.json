@@ -1,0 +1,260 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tigeriq.local/schemas/business-state-v2.contract.schema.json",
+  "title": "TigerIQ Business State V2 Contract",
+  "description": "Design-only additive business-state contract. PR141 Job/Lease/Result/Evidence remain authoritative runtime entities.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "goal_profiles": { "type": "array", "items": { "$ref": "#/$defs/goalProfile" } },
+    "kpis": { "type": "array", "items": { "$ref": "#/$defs/kpi" } },
+    "kpi_observations": { "type": "array", "items": { "$ref": "#/$defs/kpiObservation" } },
+    "signals": { "type": "array", "items": { "$ref": "#/$defs/signal" } },
+    "processes": { "type": "array", "items": { "$ref": "#/$defs/process" } },
+    "missions": { "type": "array", "items": { "$ref": "#/$defs/mission" } },
+    "mission_job_refs": { "type": "array", "items": { "$ref": "#/$defs/missionJobRef" } },
+    "departments": { "type": "array", "items": { "$ref": "#/$defs/department" } },
+    "employee_profiles": { "type": "array", "items": { "$ref": "#/$defs/employeeProfile" } },
+    "autonomy_grants": { "type": "array", "items": { "$ref": "#/$defs/autonomyGrant" } },
+    "exceptions": { "type": "array", "items": { "$ref": "#/$defs/exception" } },
+    "outcomes": { "type": "array", "items": { "$ref": "#/$defs/outcome" } }
+  },
+  "$defs": {
+    "id": { "type": "string", "minLength": 1, "maxLength": 160 },
+    "isoDateTime": { "type": "string", "format": "date-time" },
+    "decisionRef": { "type": "string", "minLength": 1, "description": "Immutable reference to Owner/policy/approval decision content held in its authoritative source." },
+    "businessRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entity_type", "entity_id"],
+      "properties": {
+        "entity_type": { "enum": ["goal", "kpi", "signal", "process", "mission", "department", "employee", "job", "evidence", "exception", "outcome"] },
+        "entity_id": { "$ref": "#/$defs/id" }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_system", "source_ref", "observed_at"],
+      "properties": {
+        "source_system": { "type": "string", "minLength": 1 },
+        "source_ref": { "type": "string", "minLength": 1 },
+        "source_version": { "type": "string", "minLength": 1 },
+        "observed_at": { "$ref": "#/$defs/isoDateTime" },
+        "confidence": { "enum": ["low", "medium", "high"] }
+      }
+    },
+    "goalProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["goal_id", "title", "owner_ref", "related_kpi_ids", "updated_at"],
+      "properties": {
+        "goal_id": { "$ref": "#/$defs/id", "description": "Reference to PR141 Goal; lifecycle is not duplicated here." },
+        "title": { "type": "string", "minLength": 1 },
+        "owner_ref": { "type": "string", "minLength": 1 },
+        "start_at": { "$ref": "#/$defs/isoDateTime" },
+        "end_at": { "$ref": "#/$defs/isoDateTime" },
+        "related_kpi_ids": { "type": "array", "items": { "$ref": "#/$defs/id" }, "uniqueItems": true },
+        "decision_ref": { "$ref": "#/$defs/decisionRef" },
+        "updated_at": { "$ref": "#/$defs/isoDateTime" }
+      }
+    },
+    "kpi": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kpi_id", "name", "unit", "direction", "status", "goal_ids", "process_ids", "updated_at"],
+      "properties": {
+        "kpi_id": { "$ref": "#/$defs/id" },
+        "name": { "type": "string", "minLength": 1 },
+        "unit": { "type": "string", "minLength": 1 },
+        "direction": { "enum": ["increase", "decrease", "range"] },
+        "baseline": { "type": ["number", "string", "null"] },
+        "target": { "type": ["number", "string", "null"] },
+        "warning_threshold": { "type": ["number", "string", "null"] },
+        "critical_threshold": { "type": ["number", "string", "null"] },
+        "status": { "enum": ["active", "paused", "retired"] },
+        "goal_ids": { "type": "array", "items": { "$ref": "#/$defs/id" }, "uniqueItems": true },
+        "process_ids": { "type": "array", "items": { "$ref": "#/$defs/id" }, "uniqueItems": true },
+        "updated_at": { "$ref": "#/$defs/isoDateTime" }
+      }
+    },
+    "kpiObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["observation_id", "kpi_id", "value", "observed_at", "provenance", "evidence_refs"],
+      "properties": {
+        "observation_id": { "$ref": "#/$defs/id" },
+        "kpi_id": { "$ref": "#/$defs/id" },
+        "value": { "type": ["number", "string", "boolean"] },
+        "observed_at": { "$ref": "#/$defs/isoDateTime" },
+        "provenance": { "$ref": "#/$defs/provenance" },
+        "evidence_refs": { "type": "array", "items": { "$ref": "#/$defs/id" }, "uniqueItems": true, "description": "References to PR141 Evidence only." }
+      }
+    },
+    "signal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["signal_id", "signal_type", "title", "severity", "status", "related_refs", "provenance", "created_at", "updated_at"],
+      "properties": {
+        "signal_id": { "$ref": "#/$defs/id" },
+        "signal_type": { "type": "string", "minLength": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "severity": { "enum": ["info", "warning", "critical"] },
+        "status": { "enum": ["observed", "triaged", "consumed", "dismissed", "closed"] },
+        "dedupe_key": { "type": "string", "minLength": 1 },
+        "related_refs": { "type": "array", "items": { "$ref": "#/$defs/businessRef" } },
+        "provenance": { "$ref": "#/$defs/provenance" },
+        "created_at": { "$ref": "#/$defs/isoDateTime" },
+        "updated_at": { "$ref": "#/$defs/isoDateTime" }
+      }
+    },
+    "process": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["process_id", "name", "trigger_summary", "input_contract", "completion_condition", "required_permissions", "approval_points", "risk_floor", "kpi_ids", "status", "updated_at"],
+      "properties": {
+        "process_id": { "$ref": "#/$defs/id" },
+        "name": { "type": "string", "minLength": 1 },
+        "department_id": { "$ref": "#/$defs/id" },
+        "trigger_summary": { "type": "string", "minLength": 1 },
+        "input_contract": { "type": "object" },
+        "completion_condition": { "type": "string", "minLength": 1 },
+        "required_permissions": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+        "approval_points": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+        "risk_floor": { "enum": ["R0", "R1", "R2", "R3", "R4"] },
+        "kpi_ids": { "type": "array", "items": { "$ref": "#/$defs/id" }, "uniqueItems": true },
+        "status": { "enum": ["draft", "active", "paused", "retired"] },
+        "decision_ref": { "$ref": "#/$defs/decisionRef" },
+        "updated_at": { "$ref": "#/$defs/isoDateTime" }
+      }
+    },
+    "mission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mission_id", "title", "expected_outcome", "trigger_signal_ids", "participating_department_ids", "status", "created_at", "updated_at"],
+      "properties": {
+        "mission_id": { "$ref": "#/$defs/id" },
+        "title": { "type": "string", "minLength": 1 },
+        "expected_outcome": { "type": "string", "minLength": 1 },
+        "goal_id": { "$ref": "#/$defs/id" },
+        "process_id": { "$ref": "#/$defs/id" },
+        "trigger_signal_ids": { "type": "array", "items": { "$ref": "#/$defs/id" }, "uniqueItems": true },
+        "supervisor_employee_id": { "$ref": "#/$defs/id" },
+        "participating_department_ids": { "type": "array", "items": { "$ref": "#/$defs/id" }, "uniqueItems": true },
+        "risk_context": { "type": "string" },
+        "deadline": { "$ref": "#/$defs/isoDateTime" },
+        "approved_budget_ceiling": { "type": ["number", "null"], "minimum": 0, "description": "Informational ceiling for an already approved authorization; never creates spending authority." },
+        "budget_decision_ref": { "$ref": "#/$defs/decisionRef" },
+        "decision_ref": { "$ref": "#/$defs/decisionRef" },
+        "status": { "enum": ["planned", "authorized", "running", "blocked", "completed", "cancelled"] },
+        "created_at": { "$ref": "#/$defs/isoDateTime" },
+        "updated_at": { "$ref": "#/$defs/isoDateTime" }
+      },
+      "allOf": [
+        {
+          "if": { "required": ["approved_budget_ceiling"], "properties": { "approved_budget_ceiling": { "type": "number" } } },
+          "then": { "required": ["budget_decision_ref"] }
+        }
+      ]
+    },
+    "missionJobRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mission_id", "job_id", "relation", "created_at"],
+      "properties": {
+        "mission_id": { "$ref": "#/$defs/id" },
+        "job_id": { "$ref": "#/$defs/id", "description": "Reference to PR141 Job. No copied job lifecycle/result/evidence state is allowed." },
+        "relation": { "enum": ["execution", "verification", "support"] },
+        "created_at": { "$ref": "#/$defs/isoDateTime" }
+      }
+    },
+    "department": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["department_id", "name", "status", "created_at", "updated_at"],
+      "properties": {
+        "department_id": { "$ref": "#/$defs/id" },
+        "name": { "type": "string", "minLength": 1 },
+        "parent_department_id": { "$ref": "#/$defs/id" },
+        "supervisor_employee_id": { "$ref": "#/$defs/id" },
+        "status": { "enum": ["active", "paused", "retired"] },
+        "created_at": { "$ref": "#/$defs/isoDateTime" },
+        "updated_at": { "$ref": "#/$defs/isoDateTime" }
+      }
+    },
+    "employeeProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["employee_id", "updated_at"],
+      "properties": {
+        "employee_id": { "$ref": "#/$defs/id", "description": "Reference to PR141 Employee; identity/permissions/capabilities/state remain operationally authoritative there." },
+        "department_id": { "$ref": "#/$defs/id" },
+        "supervisor_employee_id": { "$ref": "#/$defs/id" },
+        "business_role": { "type": "string" },
+        "updated_at": { "$ref": "#/$defs/isoDateTime" }
+      }
+    },
+    "autonomyGrant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["autonomy_grant_id", "employee_id", "scope_type", "scope_ref", "level", "status", "constraints", "valid_from", "decision_ref", "created_at"],
+      "properties": {
+        "autonomy_grant_id": { "$ref": "#/$defs/id" },
+        "employee_id": { "$ref": "#/$defs/id" },
+        "scope_type": { "enum": ["department", "process", "mission", "action_class"] },
+        "scope_ref": { "type": "string", "minLength": 1 },
+        "level": { "enum": ["A0", "A1", "A2", "A3", "A4", "A5"] },
+        "status": { "enum": ["active", "revoked", "expired"] },
+        "constraints": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "valid_from": { "$ref": "#/$defs/isoDateTime" },
+        "valid_until": { "$ref": "#/$defs/isoDateTime" },
+        "decision_ref": { "$ref": "#/$defs/decisionRef" },
+        "created_at": { "$ref": "#/$defs/isoDateTime" }
+      }
+    },
+    "exception": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["exception_id", "severity", "category", "summary", "impact", "attempted_actions", "related_refs", "status", "created_at", "updated_at"],
+      "properties": {
+        "exception_id": { "$ref": "#/$defs/id" },
+        "severity": { "enum": ["warning", "high", "critical"] },
+        "category": { "type": "string", "minLength": 1 },
+        "summary": { "type": "string", "minLength": 1 },
+        "impact": { "type": "string", "minLength": 1 },
+        "attempted_actions": { "type": "array", "items": { "type": "string" } },
+        "proposed_action": { "type": "string" },
+        "required_owner_action": { "type": "string" },
+        "related_refs": { "type": "array", "items": { "$ref": "#/$defs/businessRef" } },
+        "due_at": { "$ref": "#/$defs/isoDateTime" },
+        "status": { "enum": ["open", "awaiting_owner", "decided", "resolved", "closed"] },
+        "decision_ref": { "$ref": "#/$defs/decisionRef" },
+        "created_at": { "$ref": "#/$defs/isoDateTime" },
+        "updated_at": { "$ref": "#/$defs/isoDateTime" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "decided" } }, "required": ["status"] },
+          "then": { "required": ["decision_ref"] }
+        }
+      ]
+    },
+    "outcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["outcome_id", "subject_ref", "summary", "status", "kpi_observation_ids", "evidence_refs", "provenance", "created_at", "updated_at"],
+      "properties": {
+        "outcome_id": { "$ref": "#/$defs/id" },
+        "subject_ref": { "$ref": "#/$defs/businessRef" },
+        "summary": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["recorded", "verified", "superseded"] },
+        "achieved_at": { "$ref": "#/$defs/isoDateTime" },
+        "kpi_observation_ids": { "type": "array", "items": { "$ref": "#/$defs/id" }, "uniqueItems": true },
+        "evidence_refs": { "type": "array", "items": { "$ref": "#/$defs/id" }, "uniqueItems": true },
+        "provenance": { "type": "array", "items": { "$ref": "#/$defs/provenance" } },
+        "created_at": { "$ref": "#/$defs/isoDateTime" },
+        "updated_at": { "$ref": "#/$defs/isoDateTime" }
+      }
+    }
+  }
+}
