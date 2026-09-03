@@ -26,7 +26,8 @@ function Fail([string]$Code, [string]$Message) {
 function Test-TailscaleIPv4([string]$Address) {
   if ($Address -notmatch '^100\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$') { return $false }
   $parts = $Address.Split('.') | ForEach-Object { [int]$_ }
-  return $parts[1] -ge 64 -and $parts[1] -le 127 -and ($parts | Where-Object { $_ -lt 0 -or $_ -gt 255 }).Count -eq 0
+  $invalidParts = @($parts | Where-Object { $_ -lt 0 -or $_ -gt 255 })
+  return $parts[1] -ge 64 -and $parts[1] -le 127 -and $invalidParts.Count -eq 0
 }
 
 function Get-TailscaleCli {
