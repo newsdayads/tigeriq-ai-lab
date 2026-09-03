@@ -16,7 +16,38 @@ public final class DurableCheckpointStore {
         if (lease == null) throw new IllegalArgumentException("lease required");
         LeaseAuthorityCache.put(lease);
         secrets.put(SecureSecretStore.jobKey(lease.jobId), lease.jobJson);
-        if (!prefs.edit().putString("jobId", lease.jobId).putString("idempotencyKey", lease.idempotencyKey).putString("bindingId", lease.bindingId).putString("leaseId", lease.leaseId).putString("leaseTokenHash", WorkNames.sha256(lease.leaseToken)).putString("phase", PHASE_LEASED).putLong("leaseExpiresAt", lease.expiresAtEpochMs).putInt("attempt", lease.attempt).putString("providerAttempts", "[]").putLong("updatedAt", System.currentTimeMillis()).commit()) throw new IllegalStateException("cannot persist job checkpoint");
+        if (!prefs.edit().putString("jobId", lease.jobId).putString("idempotencyKey", lease.idempotencyKey).putString("bindingId", lease.bindingId).putString("leaseId", lease.leaseId).putString("leaseTokenHash", WorkNames.sha256(lease.leaseToken)).putString("phase", PHASE_LEASED).putLong("leaseExpiresAt", lease.expiresAtEpochMs).putInt("attempt", lease.attempt).putString("providerAttempts", "[]").remove("requestId").remove("inferenceIdempotencyKey").remove("evidenceSha256").putLong("updatedAt", System.currentTimeMillis()).commit()) throw new IllegalStateException("cannot persist job checkpoint");
+    }
+
+    /** Rebinds fresh in-process lease authority to an already-computed result without re-running the provider. */
+    public synchronized void rebindLeasePreservingResult(Snapshot previous, JobLease lease) throws Exception {
+        ResultReacquirePolicy.requireSameWork(previous, lease);
+        if (!ResultReacquirePolicy.isPersistedResultPhase(previous.phase)) throw new ApiException(409, "RESULT_REACQUIRE_MISMATCH", "checkpoint has no completed result phase", false, null);
+        String persisted = resultJson(previous);
+        if (persisted == null || persisted.isBlank()) throw new ApiException(409, "RESULT_MISSING", "persisted result missing", false, null);
+        // Validate before mutating lease authority. A corrupt result must never be rebound to a fresh lease.
+        new JSONObject(persisted);
+        LeaseAuthorityCache.put(lease);
+        secrets.put(SecureSecretStore.jobKey(lease.jobId), lease.jobJson);
+        if (!prefs.edit()
+                .putString("jobId", lease.jobId)
+                .putString("idempotencyKey", lease.idempotencyKey)
+                .putString("bindingId", lease.bindingId)
+                .putString("leaseId", lease.leaseId)
+                .putString("leaseTokenHash", WorkNames.sha256(lease.leaseToken))
+                .putString("phase", PHASE_RESULT_READY)
+                .putLong("leaseExpiresAt", lease.expiresAtEpochMs)
+                .putInt("attempt", lease.attempt)
+                .putLong("updatedAt", System.currentTimeMillis())
+                .commit()) throw new IllegalStateException("cannot rebind persisted result to fresh lease");
+    }
+
+    public synchronized boolean hasPersistedResult(Snapshot snapshot) throws Exception {
+        if (snapshot == null || !ResultReacquirePolicy.isPersistedResultPhase(snapshot.phase)) return false;
+        String persisted = resultJson(snapshot);
+        if (persisted == null || persisted.isBlank()) return false;
+        try { new JSONObject(persisted); return true; }
+        catch (Exception error) { throw new ApiException(409, "RESULT_CORRUPT", "persisted result is invalid", false, null); }
     }
 
     public synchronized void markPhase(String phase, String requestId, String executionIdempotencyKey) {
@@ -52,7 +83,7 @@ public final class DurableCheckpointStore {
         Snapshot snapshot = load();
         if (!snapshot.hasInFlightWork()) throw new IllegalStateException("no active checkpoint");
         secrets.put(SecureSecretStore.resultKey(snapshot.jobId), resultJson);
-        prefs.edit().putString("evidenceSha256", nullToEmpty(evidenceSha256)).putString("phase", PHASE_RESULT_READY).putLong("updatedAt", System.currentTimeMillis()).commit();
+        if (!prefs.edit().putString("evidenceSha256", nullToEmpty(evidenceSha256)).putString("phase", PHASE_RESULT_READY).putLong("updatedAt", System.currentTimeMillis()).commit()) throw new IllegalStateException("cannot persist result checkpoint");
     }
 
     public synchronized Snapshot load() {
