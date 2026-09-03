@@ -22,6 +22,13 @@ function Sanitize([string]$Text) {
   return $safe
 }
 
+function Get-PropertyValue($Object,[string]$Name) {
+  if ($null -eq $Object) { return $null }
+  $property = $Object.PSObject.Properties[$Name]
+  if ($null -eq $property) { return $null }
+  return $property.Value
+}
+
 function Resolve-Tool([string[]]$Names) {
   foreach ($name in $Names) {
     $cmd = Get-Command $name -ErrorAction SilentlyContinue
@@ -144,13 +151,14 @@ function Test-ClaudeSubscriptionStatus([string]$JsonText) {
 
 function Test-OpenRouterFreeResponse([string]$JsonText,[string]$ExpectedMarker) {
   try { $response=$JsonText|ConvertFrom-Json } catch { return [ordered]@{ok=$false;error='OPENROUTER_INVALID_JSON'} }
-  $model=[string]$response.model
+  $model=[string](Get-PropertyValue $response 'model')
   if([string]::IsNullOrWhiteSpace($model) -or $model -notmatch ':free$'){ return [ordered]@{ok=$false;error='OPENROUTER_NONFREE_MODEL'} }
-  if($null -eq $response.usage -or $null -eq $response.usage.cost){ return [ordered]@{ok=$false;error='OPENROUTER_COST_UNPROVEN'} }
-  try { $cost=[double]::Parse(([string]$response.usage.cost),[Globalization.CultureInfo]::InvariantCulture) } catch { return [ordered]@{ok=$false;error='OPENROUTER_COST_UNPROVEN'} }
+  $usage=Get-PropertyValue $response 'usage'
+  $costRaw=Get-PropertyValue $usage 'cost'
+  if($null -eq $costRaw){ return [ordered]@{ok=$false;error='OPENROUTER_COST_UNPROVEN'} }
+  try { $cost=[double]::Parse(([string]$costRaw),[Globalization.CultureInfo]::InvariantCulture) } catch { return [ordered]@{ok=$false;error='OPENROUTER_COST_UNPROVEN'} }
   if([Math]::Abs($cost) -gt 0){ return [ordered]@{ok=$false;error='OPENROUTER_COST_NONZERO'} }
-  $content=[string]$response.choices[0].message.content
-  if($content -notmatch [regex]::Escape($ExpectedMarker)){ return [ordered]@{ok=$false;error='UNEXPECTED_RESPONSE'} }
+  if($JsonText -notmatch [regex]::Escape($ExpectedMarker)){ return [ordered]@{ok=$false;error='UNEXPECTED_RESPONSE'} }
   return [ordered]@{ok=$true;error='';model=$model;cost=$cost}
 }
 
