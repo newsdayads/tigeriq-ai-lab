@@ -20,5 +20,17 @@ Version: 1.0
 - 2026-08-29: Independent review Issue #12 passed corrected PR #11 head `f34b8c672112eb38b5d7b0bb04c3af06609759d3`; merge still requires a separate Judge/release decision.
 - 2026-08-29: First Judge evaluation at head `627f2b8999e6fbe94ff4cecf9110d7d91dd2d6c7` returned FAIL because review evidence was not yet recorded on Issue #12, Source Index precedence was inconsistent, and CURRENT_STATE omitted PR #13–#18. Merge remains blocked pending fixes and re-judgment.
 
+## 2026-09-03 operational decisions
+- PRIMARY Web Control = **PC01 Command Center**, using the existing `apps/dashboard` Command Center implementation.
+- SECONDARY/BACKUP = **Vercel**. Vercel is removed from the normal daily execution critical path and remains a fallback surface.
+- Vercel Git deployment stays disabled (`git.deploymentEnabled=false`) while the known quota blocker is active. Do not retry/spam deploys or purchase an upgrade automatically.
+- PC01 Command Center remote access is private-only via explicit Tailscale/private addressing. Router port forwarding, public Internet exposure, `0.0.0.0` and `::` binds are forbidden.
+- Command Center runtime data must be evidence-backed. Missing Work Order/workforce/evidence/telemetry/provider data is shown as unavailable rather than mocked.
+- UI operating identity is `Vy — AI Chief of Staff`; user-facing address is `anh Sơn` and direct `Sếp` address is not used.
+- These decisions define architecture/behavior but do not constitute physical deployment evidence. WO-059 remains subject to A–K runtime verification before DONE.
+
 ## Baseline date
 2026-08-29
+
+## Latest decision update
+2026-09-03
