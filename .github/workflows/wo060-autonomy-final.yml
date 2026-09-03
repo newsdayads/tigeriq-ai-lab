@@ -1,0 +1,44 @@
+name: WO-060-064 PC01 Autonomy Final
+on:
+  push:
+    branches: ["wo060/mission-decomposition-v1"]
+  workflow_dispatch:
+jobs:
+  linux-quality-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Autonomy safety contract
+        shell: bash
+        run: |
+          test -f dist/apps/mission-orchestrator/src/standalone.js
+          grep -q "MAIN_PRODUCTION" apps/autonomous-planner/src/policy.ts
+          grep -q "FINANCIAL" apps/autonomous-planner/src/policy.ts
+          grep -q "waiting_authorization" apps/mission-orchestrator/src/core.ts
+          grep -q "Mission Orchestrator" scripts/pc01-autonomy/Install-PC01-Autonomy-Final.ps1
+  windows-build-gate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: PowerShell parser and final artifact gate
+        shell: powershell
+        run: |
+          if(-not (Test-Path 'dist\apps\mission-orchestrator\src\standalone.js')){throw 'MISSION_BUILD_MISSING'}
+          $files=@('scripts\pc01-autonomy\Install-PC01-Autonomy-Final.ps1','scripts\pc01-autonomy\Invoke-PC01-Autonomy-Final-E2E.ps1')
+          foreach($f in $files){$tokens=$null;$errors=$null;[System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $f),[ref]$tokens,[ref]$errors)|Out-Null;if($errors.Count -gt 0){$errors|ForEach-Object{Write-Error $_.Message};throw "POWERSHELL_PARSE_FAILED: $f"}}
