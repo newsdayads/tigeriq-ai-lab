@@ -1,0 +1,20 @@
+import { renderWebControlCenter } from './render.js';
+import type { WebControlSnapshot } from './core.js';
+
+export interface WebControlRenderOptions {writeConfigured:boolean;authenticated:boolean;csrf?:string;message?:string;}
+function esc(value:unknown):string{return String(value??'').replace(/[&<>'"]/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]??char));}
+
+export function renderWebControlWithControls(snapshot:WebControlSnapshot|null,options:WebControlRenderOptions):string{
+  const message=options.message?`<div class="warning">${esc(options.message)}</div>`:'';
+  let controls='';
+  if(!options.writeConfigured){
+    controls='<div class="warning">🔒 Chế độ chỉ xem. PC01 chưa cấu hình TIGERIQ_COMMAND_SECRET.</div>';
+  }else if(!options.authenticated){
+    controls=`<section class="card" style="margin-top:14px"><div class="section-head"><h2>Owner Control</h2><span>AUTH REQUIRED</span></div><div class="body"><form method="post" action="/login" style="display:flex;gap:8px;flex-wrap:wrap"><input name="secret" type="password" autocomplete="current-password" required placeholder="Mã điều khiển PC01" style="flex:1;min-width:220px;padding:11px;border-radius:8px;border:1px solid #23435d;background:#07121d;color:#fff"><button type="submit" style="padding:10px 16px;border-radius:8px;border:1px solid #28617e;background:#0b3144;color:#dff9ff;font-weight:800">ĐĂNG NHẬP</button></form></div></section>`;
+  }else{
+    const csrf=esc(options.csrf??'');
+    controls=`<section class="grid two" style="margin-top:14px"><div class="card"><div class="section-head"><h2>Continuous Operations Control</h2><span>OWNER SESSION</span></div><div class="body"><div style="display:flex;gap:8px;flex-wrap:wrap"><form method="post" action="/control/pause"><input type="hidden" name="csrf" value="${csrf}"><button type="submit" style="padding:10px 14px;border-radius:8px;border:1px solid #745d22;background:#2d2510;color:#ffd76c;font-weight:800">⏸ PAUSE</button></form><form method="post" action="/control/resume"><input type="hidden" name="csrf" value="${csrf}"><button type="submit" style="padding:10px 14px;border-radius:8px;border:1px solid #1d6e52;background:#0b2b22;color:#7ff0b9;font-weight:800">▶ RESUME</button></form><form method="post" action="/logout"><input type="hidden" name="csrf" value="${csrf}"><button type="submit" style="padding:10px 14px;border-radius:8px;border:1px solid #33485a;background:#111f2c;color:#b5c7d8">LOGOUT</button></form></div></div></div><div class="card"><div class="section-head"><h2>Giao Goal mới</h2><span>QUEUE INPUT</span></div><div class="body"><form method="post" action="/goals"><input type="hidden" name="csrf" value="${csrf}"><div style="display:grid;grid-template-columns:1fr 100px 110px;gap:8px"><input name="goalId" required maxlength="48" placeholder="Goal ID" style="padding:9px;border-radius:7px;border:1px solid #23435d;background:#07121d;color:#fff"><select name="priority" style="padding:9px;border-radius:7px;border:1px solid #23435d;background:#07121d;color:#fff"><option>P0</option><option selected>P1</option><option>P2</option><option>P3</option></select><select name="mode" style="padding:9px;border-radius:7px;border:1px solid #23435d;background:#07121d;color:#fff"><option selected>ai</option><option>acceptance</option></select></div><textarea name="goal" required maxlength="12000" placeholder="Mục tiêu cần TigerIQ thực hiện" style="width:100%;min-height:88px;margin-top:8px;padding:10px;border-radius:7px;border:1px solid #23435d;background:#07121d;color:#fff;resize:vertical"></textarea><input name="dependencies" maxlength="512" placeholder="Dependencies, cách nhau dấu phẩy (tuỳ chọn)" style="width:100%;margin-top:8px;padding:9px;border-radius:7px;border:1px solid #23435d;background:#07121d;color:#fff"><button type="submit" style="margin-top:8px;padding:10px 16px;border-radius:8px;border:1px solid #28617e;background:#0b3144;color:#dff9ff;font-weight:800">+ ADD TO QUEUE</button></form></div></div></section>`;
+  }
+  const base=renderWebControlCenter(snapshot);
+  return base.replace('<footer class="footer">',`${message}${controls}<footer class="footer">`);
+}
