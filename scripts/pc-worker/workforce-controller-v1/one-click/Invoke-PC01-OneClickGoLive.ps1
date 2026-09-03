@@ -181,7 +181,7 @@ try {
   if(-not $node -or -not $npm -or -not $tailscale){Fail 'PREREQUISITE_UNRESOLVED' 'Required free prerequisites remain unavailable.'}
 
   $ips=@(& $tailscale ip -4 2>$null | ForEach-Object {$_.Trim()} | Where-Object {$_} | Select-Object -Unique)
-  if($LASTEXITCODE -ne 0 -or $ips.Count -ne 1 -or $ips[0] -ne $ExpectedHost){Fail 'TAILSCALE_IP_MISMATCH' "Expected PC01 Tailscale IPv4 $ExpectedHost; bootstrap will not reconfigure identity automatically."}
+  if($LASTEXITCODE -ne 0 -or @($ips).Length -ne 1 -or @($ips)[0] -ne $ExpectedHost){Fail 'TAILSCALE_IP_MISMATCH' "Expected PC01 Tailscale IPv4 $ExpectedHost; bootstrap will not reconfigure identity automatically."}
   $Keep += "Tailscale existing identity $ExpectedHost"; if($ollama){$Keep+='Ollama retained as optional local fallback; not Controller authority'}; $openclawTaskCount = @($taskAudit | Where-Object { $_.classification -eq 'keep-disconnected-never-enable' }).Length; if($openclaw -or $openclawTaskCount -gt 0){$Keep+='OpenClaw observed but not enabled/reconnected'}
 
   $PostgresRuntime = & $PostgresProvisioner -SecretsRoot $SecretsRoot -EvidenceDir $EvidenceDir -DatabaseUrl $DatabaseUrl -AllowInstall:(-not $SkipPrerequisiteInstall)
