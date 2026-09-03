@@ -32,7 +32,7 @@ using System;
 public static class Program {
   public static int Main(string[] args) {
     var command = string.Join(" ", args);
-    return command.Contains("Start-Process") && command.Contains("-PassThru") && command.Contains("-Wait") && command.Contains("ExitCode") ? 73 : 0;
+    return (command.Contains("Start-Process") && command.Contains("-PassThru") && command.Contains("-Wait") && command.Contains("ExitCode")) || command.Contains("-ExecutePhysical") ? 73 : 0;
   }
 }
 '@
