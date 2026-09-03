@@ -1,37 +1,52 @@
 # Current State
 
-Date: 2026-08-29
+Date: 2026-09-03
 
-TigerIQ AI Lab is operating as a stacked, evidence-gated Company OS. `main` and Production remain unchanged by the active stack; no automatic merge is authorized.
+TigerIQ AI Lab remains evidence-gated. MAIN/Production are unchanged by WO-057; no automatic merge or production release is authorized.
 
-## Verified foundation
+## Active priority — WO-057 PC01 Primary AI Compute & Control Node
 
-Phases 0–9 are implemented on stacked branches with independent GitHub Actions evidence. The stack provides governance/contracts, Work Orders and evidence, lifecycle authorization, durable hash-chained journal/recovery, authenticated HTTP control plane, durable idempotency, runtime guardrails, overload/rate limits, and executable provider-neutral Model Router failover.
+Status: REPOSITORY IMPLEMENTATION GATE PASS — PHYSICAL PC01 E2E REAL BLOCKER
 
-Phase 9 branch: `phase9/model-router-execution`.
-Phase 9 CI evidence: run `33243682544` PASS.
+Branch: `wo057/pc01-primary-ai-compute-node`
+Base: `wo056/pc01-one-click-bootstrap`
+Repository gate evidence: `docs/evidence/WO-057-REPOSITORY-GATE-2026-09-03.md`
+Verified implementation head: `cd61e11d477191e0260a9264547c3372539e822f`
+GitHub Actions run: `33720417131` PASS on Linux + Windows.
 
-## WO-007 — PC Local AI Execution Worker
+### Implemented and repository-verified
+- PC01 Native Worker V1 independent of OpenClaw.
+- PC01 employee/device registration, signed heartbeat, job lease, lease renewal, structured result/failure submission and reconnect lifecycle.
+- Authenticated Work Order ingress and state readback.
+- Ollama adapter defaults: `127.0.0.1:11434`, `qwen3:8b`, `num_ctx=4096`, `think=false`, low-temperature routine mode, timeout/keep-alive/metrics and processor/VRAM reporting where Ollama exposes it.
+- Local-AI semaphore max concurrency = 2.
+- Capability/model router with deterministic/tool/local-AI routing and fail-closed cloud limitation when no authorized provider exists.
+- Structured Tool Executor with workspace boundary, protected-branch deny, secret-path deny, local-HTTP restriction, timeouts, output bounds and `spawn(..., shell:false)`.
+- CPU/free-RAM heartbeat telemetry and free-RAM admission guard.
+- Per-Work-Order evidence persistence under `.tigeriq-runtime/evidence/` with durable PostgreSQL evidence references after physical execution.
+- One reversible Windows Scheduled Task installation path for the Native Worker; existing canonical Controller task is reused instead of creating a duplicate controller autostart mechanism.
+- Physical A–G test package prepared: health, workforce, local AI/GPU, tool execution, intentional failure, concurrency=2 and service restart recovery.
+- Repository gates: typecheck PASS, build PASS, security/resource contract PASS, Windows PowerShell 5.1 parser PASS, 58 unit tests PASS. 3 pre-existing PostgreSQL/device integration tests remain skipped in hosted CI and are not claimed as PASS.
 
-Status: PHYSICAL GATES PASS — PC01 AUTO MODE READY; reconciliation CI/closure pending
+### Not yet verified on physical PC01
+- `employees >= 1` and `devices >= 1` after Native Worker registration.
+- PC01 heartbeat ONLINE/healthy.
+- qwen3:8b remains GPU-accelerated after deployment.
+- Real Work Order → queue → lease → Worker → qwen3/tool → result → evidence → PostgreSQL path.
+- Physical failure handling, 2-job concurrent local AI and restart/autostart recovery gates A–G.
+- Independent AI reviewer PASS; deterministic CI/static tests are recorded instead and no independent model/provider is fabricated.
 
-- Branch `wo007/pc-local-ai-worker`, stacked on verified Phase 9.
-- Draft PR #18; MAIN/Production remain untouched.
-- Ollama OpenAI-compatible adapter and bounded provider circuit breaker are implemented.
-- Durable Work Order worker composition is implemented with fail-closed provider exhaustion.
-- Coder/reviewer/judge identities are required to be independent.
-- Passing execution evidence requires a real git commit SHA.
-- Physical-E2E source head: `375e305b3c44f25ec076d9d2b4ada0d2c36f0fe6`.
-- GitHub Actions CI #67 / `33250789420`: PASS.
-- Physical PC01 E2E with Ollama `qwen2.5-coder:14b`: PASS.
-- Simulated cloud outage routed to `ollama/qwen2.5-coder:14b` and returned `TIGERIQ_WO007_LOCAL_FALLBACK_OK`.
-- Work Order status and reconstructed durable status: `verified`.
-- REVIEW gate: PASS by `pc01-reviewer-e2e`.
-- DONE gate: PASS by `pc01-judge-e2e`.
-- An initial physical recovery test exposed a real self-heal defect: killing the Python worker could leave the Scheduled Task logically running while no worker process existed.
-- Physical watchdog was hardened to inspect the real `worker.py` process, suppress duplicates, reset/start the Worker task when no process exists, and run on a recurring one-minute trigger.
-- Final deliberate-kill recovery test: exactly one Worker restored; post-recovery Ollama returned `TIGERIQ_AUTO_MODE_PASS`.
-- Final physical console gate: `[100%] TIGERIQ PC01 AUTO MODE READY`.
-- Physical evidence is recorded in `docs/evidence/WO-007-REPOSITORY-GATE-2026-08-29.md`.
+### REAL BLOCKER
+This ChatGPT session has repository/GitHub access but no direct PC01 terminal execution channel. The Work-mode handoff for direct computer execution was not accepted, so physical installation/restart/E2E cannot be truthfully performed or claimed in this session.
 
-Next action: allow CI to validate the documentation/evidence reconciliation head, update PR/Trello state, then close WO-007 through the Company OS gate without merging MAIN/Production unless separately authorized. Continue internal backlog with Company OS control ingress/command dispatch and WO-004 TigerIQ Driver hardening. WO-006 remains external-customer-evidence dependent and must not be simulated.
+### Next action
+Execute the prepared one-click PC01 install + A–G physical E2E package through an authorized PC01 execution channel. Expected final physical evidence path:
+`docs/evidence/WO-057-PC01-PRIMARY-NODE-E2E-<timestamp>.json`.
+
+## Historical verified foundation
+
+Earlier TigerIQ phases established governance/contracts, Work Orders/evidence, authorization, durable state/journal concepts, authenticated control-plane foundations, runtime safeguards and provider-neutral routing foundations. Historical evidence remains in its original Work Orders/evidence records.
+
+## Historical — WO-007 PC Local AI Execution Worker
+
+Previous status: PHYSICAL GATES PASS — PC01 AUTO MODE READY at the 2026-08-29 baseline using the prior local-worker architecture and `qwen2.5-coder:14b`. That historical result is retained as evidence but does not substitute for WO-057 physical verification because WO-057 introduces a new Native Worker, Work Intake, router/executor policy and recovery package.
