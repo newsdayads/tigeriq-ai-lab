@@ -24,6 +24,7 @@ function validatesJsonSchema(value: any, node: any): boolean {
     if (node.minLength != null && value.length < node.minLength) return false;
     if (node.maxLength != null && value.length > node.maxLength) return false;
     if (node.pattern != null && !(new RegExp(node.pattern).test(value))) return false;
+    if (node.format === 'date-time' && !Number.isFinite(Date.parse(value))) return false;
   }
   if (typeof value === 'number') {
     if (node.minimum != null && value < node.minimum) return false;
@@ -88,6 +89,14 @@ function makeContinue() {
   };
 }
 
+function makeWaiting() {
+  return { contract_version: 'TIGERIQ_NV_SESSION_RESUME_V1', employee_id: 'NV06', identity_registered: true,
+    queue_audit_complete: true, result: 'WAITING', candidate_count: 1, selected_work_ref: 'Issue #156',
+    work_state: 'WAITING_PHYSICAL_GATE', wait_reason: 'Physical gate is not yet satisfied.',
+    resume_condition: 'Resume when authoritative physical-gate evidence is present.', observed_at: '2026-09-03T00:30:00+07:00',
+    source_refs: ['Issue #156'] };
+}
+
 describe('NV Session Auto-Resume V1 governance contract', () => {
   it('anchors fresh NV identity and immediate continuation', () => {
     expect(policy).toContain('NV 04` → `NV04');
@@ -107,6 +116,7 @@ describe('NV Session Auto-Resume V1 governance contract', () => {
   it('accepts a bound mutation guard', () => {
     expect(validatesResumeContract(makeContinue())).toBe(true);
     expect(schema['x-tigeriq-cross-field-invariants'][0].id).toBe('NV-RESUME-MUTATION-GUARD-BINDING-V1');
+    expect(schema['x-tigeriq-cross-field-invariants'][1].id).toBe('NV-RESUME-MUTATION-AUTHORITY-SCOPE-V1');
   });
 
   it('rejects missing whole guard', () => {
@@ -154,6 +164,30 @@ describe('NV Session Auto-Resume V1 governance contract', () => {
     expect(validatesResumeContract(candidate)).toBe(true);
   });
 
+  it('rejects stale mutation authority on IDLE, WAITING, and BLOCKED states', () => {
+    const guard = makeContinue().mutation_guard;
+    const idle = { contract_version: 'TIGERIQ_NV_SESSION_RESUME_V1', employee_id: 'NV03', identity_registered: true,
+      queue_audit_complete: true, result: 'IDLE', candidate_count: 0, observed_at: '2026-09-03T00:30:00+07:00',
+      source_refs: ['authoritative queue audit'], mutation_guard: guard };
+    expect(validatesResumeContract(idle)).toBe(false);
+    expect(validatesResumeContract({ ...makeWaiting(), mutation_guard: guard })).toBe(false);
+    const blocked = { contract_version: 'TIGERIQ_NV_SESSION_RESUME_V1', employee_id: 'NV05', identity_registered: true,
+      queue_audit_complete: true, result: 'BLOCKED', candidate_count: 1, selected_work_ref: 'Issue #200', work_state: 'BLOCKED',
+      blocker: 'External authorization required.', resume_condition: 'Resume after explicit authorization.',
+      observed_at: '2026-09-03T00:30:00+07:00', source_refs: ['Issue #200'], mutation_guard: guard };
+    expect(validatesResumeContract(blocked)).toBe(false);
+  });
+
+  it('rejects contradictory wait/block fields on CONTINUE', () => {
+    expect(validatesResumeContract({ ...makeContinue(), wait_reason: 'still waiting' })).toBe(false);
+    expect(validatesResumeContract({ ...makeContinue(), blocker: 'still blocked' })).toBe(false);
+    expect(validatesResumeContract({ ...makeContinue(), resume_condition: 'later' })).toBe(false);
+  });
+
+  it('rejects invalid observed_at timestamp instead of treating format as documentation only', () => {
+    expect(validatesResumeContract({ ...makeContinue(), observed_at: 'not-a-date' })).toBe(false);
+  });
+
   it('rejects unregistered NV identity', () => {
     const candidate = makeContinue();
     candidate.employee_id = 'NV07';
@@ -170,11 +204,7 @@ describe('NV Session Auto-Resume V1 governance contract', () => {
   });
 
   it('preserves waiting work with resume condition', () => {
-    const waiting = { contract_version: 'TIGERIQ_NV_SESSION_RESUME_V1', employee_id: 'NV06', identity_registered: true,
-      queue_audit_complete: true, result: 'WAITING', candidate_count: 1, selected_work_ref: 'Issue #156',
-      work_state: 'WAITING_PHYSICAL_GATE', wait_reason: 'Physical gate is not yet satisfied.',
-      resume_condition: 'Resume when authoritative physical-gate evidence is present.', observed_at: '2026-09-03T00:30:00+07:00',
-      source_refs: ['Issue #156'] };
+    const waiting = makeWaiting();
     expect(validatesResumeContract(waiting)).toBe(true);
     expect(validatesResumeContract({ ...waiting, resume_condition: undefined })).toBe(false);
   });
