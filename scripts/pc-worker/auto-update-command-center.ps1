@@ -1,3 +1,4 @@
+# TIGERIQ_AUTO_UPDATER_V2
 param(
   [string]$Branch = 'wo196/pc01-command-center-ui-v2',
   [int]$Port = 8787,
@@ -13,7 +14,9 @@ $secretDir = 'F:\TigerIQ\Secrets'
 $githubTokenPath = Join-Path $secretDir 'github-command-center.token'
 $statePath = Join-Path $runtimeDir 'auto-update-state.json'
 $powershellExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-$mutexName = 'Global\TigerIQCommandCenterUpdaterV1'
+$installOut = Join-Path $runtimeDir 'auto-update-install.out.log'
+$installErr = Join-Path $runtimeDir 'auto-update-install.err.log'
+$mutexName = 'Global\TigerIQCommandCenterUpdaterV2'
 $mutex = New-Object System.Threading.Mutex($false,$mutexName)
 $locked = $false
 
@@ -23,9 +26,7 @@ function Read-StateHashtable {
   try {
     $object = Get-Content -Raw -LiteralPath $statePath | ConvertFrom-Json
     if($null -ne $object){
-      foreach($property in $object.PSObject.Properties){
-        $result[$property.Name] = $property.Value
-      }
+      foreach($property in $object.PSObject.Properties){ $result[$property.Name] = $property.Value }
     }
   } catch {}
   return $result
@@ -41,12 +42,22 @@ function Save-State([hashtable]$Data) {
   Move-Item -Force -LiteralPath $tmp -Destination $statePath
 }
 
+function Read-Tail([string]$Path,[int]$MaxChars=3000) {
+  if(-not (Test-Path -LiteralPath $Path)){ return '' }
+  try {
+    $text = [IO.File]::ReadAllText($Path)
+    if($text.Length -le $MaxChars){ return $text }
+    return $text.Substring($text.Length - $MaxChars)
+  } catch { return '' }
+}
+
 try {
   $locked = $mutex.WaitOne(0)
   if(-not $locked){ exit 0 }
   if($Port -lt 1024 -or $Port -gt 65535){ throw 'INVALID_PORT' }
   if(-not (Test-Path $githubTokenPath)){ throw 'GITHUB_TOKEN_FILE_MISSING' }
   if(-not (Test-Path -LiteralPath $powershellExe)){ throw 'POWERSHELL_NOT_FOUND' }
+
   $token = [IO.File]::ReadAllText($githubTokenPath).Trim()
   if(-not $token){ throw 'GITHUB_TOKEN_EMPTY' }
   $env:GH_TOKEN = $token
@@ -59,7 +70,7 @@ try {
   $state = Read-StateHashtable
   $installedSha = if($state.ContainsKey('installedSha')){ [string]$state['installedSha'] } else { $null }
   if($installedSha -eq $head){
-    Save-State @{ lastResult='NO_CHANGE'; lastSeenSha=$head; branch=$Branch }
+    Save-State @{ lastResult='NO_CHANGE'; lastSeenSha=$head; branch=$Branch; updaterVersion='V2' }
     exit 0
   }
 
@@ -68,7 +79,7 @@ try {
   $runs = $runsRaw | ConvertFrom-Json
   $ciPass = @($runs.workflow_runs | Where-Object { $_.name -eq 'CI' -and $_.conclusion -eq 'success' }) | Select-Object -First 1
   if(-not $ciPass){
-    Save-State @{ lastResult='WAIT_CI_PASS'; lastSeenSha=$head; branch=$Branch }
+    Save-State @{ lastResult='WAIT_CI_PASS'; lastSeenSha=$head; branch=$Branch; updaterVersion='V2' }
     exit 0
   }
 
@@ -83,22 +94,53 @@ try {
   if($LASTEXITCODE -ne 0 -or -not $payload){ throw 'INSTALLER_FETCH_FAILED' }
   $bytes = [Convert]::FromBase64String($payload)
   $text = [Text.Encoding]::UTF8.GetString($bytes)
-  $needle = "`$workspace = 'F:\TigerIQ\Workspace\tigeriq-ai-lab'"
-  $replacement = "`$workspace = '$releaseDir'"
-  if(-not $text.Contains($needle)){ throw 'INSTALLER_LAYOUT_CHANGED' }
-  $text = $text.Replace($needle,$replacement)
+
+  $workspaceNeedle = "`$workspace = 'F:\TigerIQ\Workspace\tigeriq-ai-lab'"
+  $workspaceReplacement = "`$workspace = '$releaseDir'"
+  if(-not $text.Contains($workspaceNeedle)){ throw 'INSTALLER_LAYOUT_CHANGED' }
+  $text = $text.Replace($workspaceNeedle,$workspaceReplacement)
+
+  # Exact SHA already passed GitHub CI. Re-running Playwright under SYSTEM is redundant
+  # and depends on a user-scoped browser cache, so the physical updater performs only
+  # deterministic dependency install + build before the installer's health checks.
+  $ciNeedle = 'cmd /c npm run ci'
+  $ciReplacement = 'cmd /c npm run build'
+  if(-not $text.Contains($ciNeedle)){ throw 'INSTALLER_CI_LAYOUT_CHANGED' }
+  $text = $text.Replace($ciNeedle,$ciReplacement)
+
   $inner = Join-Path $env:TEMP "tigeriq-command-center-update-$short.ps1"
   [IO.File]::WriteAllText($inner,$text,(New-Object Text.UTF8Encoding($false)))
+  Remove-Item -Force -ErrorAction SilentlyContinue $installOut,$installErr
 
-  Save-State @{ lastResult='INSTALLING'; lastSeenSha=$head; branch=$Branch; releaseDir=$releaseDir; ciRunId=$ciPass.id }
-  & $powershellExe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $inner -Branch $Branch -Commit $head -Port $Port -CommandHost $CommandHost
-  if($LASTEXITCODE -ne 0){ throw "INSTALL_FAILED_$LASTEXITCODE" }
+  Save-State @{
+    lastResult='INSTALLING'; lastSeenSha=$head; branch=$Branch; releaseDir=$releaseDir;
+    ciRunId=$ciPass.id; updaterVersion='V2'; installMode='CI_GATED_BUILD_ONLY'
+  }
 
-  Save-State @{ lastResult='UPDATED'; installedSha=$head; lastSeenSha=$head; branch=$Branch; releaseDir=$releaseDir; ciRunId=$ciPass.id }
+  $arguments = @(
+    '-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$inner,
+    '-Branch',$Branch,'-Commit',$head,'-Port',[string]$Port,'-CommandHost',$CommandHost
+  )
+  $process = Start-Process -FilePath $powershellExe -ArgumentList $arguments -Wait -PassThru -RedirectStandardOutput $installOut -RedirectStandardError $installErr
+  if($process.ExitCode -ne 0){
+    $stderrTail = Read-Tail $installErr
+    $stdoutTail = Read-Tail $installOut
+    throw "INSTALL_FAILED_$($process.ExitCode) STDERR=[$stderrTail] STDOUT=[$stdoutTail]"
+  }
+
+  Save-State @{
+    lastResult='UPDATED'; installedSha=$head; lastSeenSha=$head; branch=$Branch;
+    releaseDir=$releaseDir; ciRunId=$ciPass.id; updaterVersion='V2'; installMode='CI_GATED_BUILD_ONLY'; errorMessage=$null
+  }
   exit 0
 }
 catch {
-  try { Save-State @{ lastResult='FAILED'; errorType=$_.Exception.GetType().Name; errorMessage=$_.Exception.Message; branch=$Branch } } catch {}
+  try {
+    Save-State @{
+      lastResult='FAILED'; errorType=$_.Exception.GetType().Name; errorMessage=$_.Exception.Message;
+      branch=$Branch; updaterVersion='V2'; installStdoutTail=(Read-Tail $installOut); installStderrTail=(Read-Tail $installErr)
+    }
+  } catch {}
   exit 1
 }
 finally {
