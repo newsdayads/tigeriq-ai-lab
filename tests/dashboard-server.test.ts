@@ -15,9 +15,29 @@ const telemetry: ServerTelemetry = {
   disk: { drive: 'F:', freeBytes: 412 * 1024 ** 3, totalBytes: 1000 * 1024 ** 3, utilizationPercent: 58.8 },
   worker: { online: true, pid: 15340, instances: 1 },
   controller: { online: true, ip: '100.97.23.87', port: 8790 },
-  workforce: { employeesTotal: 5, idle: 3, busy: 1, offline: 1, degraded: 0, activeTasks: 1, tasksActive: 2, tasksFailed: 1 },
+  workforce: {
+    employeesTotal: 2,
+    idle: 1,
+    busy: 1,
+    offline: 0,
+    degraded: 0,
+    activeTasks: 1,
+    tasksActive: 1,
+    tasksFailed: 0,
+    roster: [
+      {
+        employeeId: 'coder-01', displayName: 'Coder AI', department: 'Engineering', role: 'Code & Script', nodeId: 'pc01', provider: 'ollama', model: 'qwen2.5-coder:14b', availability: 'busy', healthScore: 98, concurrencyLimit: 1, activeTaskCount: 1, currentTaskIds: ['WO-059'],
+      },
+      {
+        employeeId: 'analyst-01', displayName: 'Analyst AI', department: 'Research', role: 'Analysis', nodeId: 'pc01', provider: 'ollama', model: 'qwen3:8b', availability: 'idle', healthScore: 97, concurrencyLimit: 1, activeTaskCount: 0, currentTaskIds: [],
+      },
+    ],
+    taskList: [
+      { taskId: 'WO-059', objective: 'Sửa Command Center', stage: 'running', priority: 'P0', assignedEmployeeId: 'coder-01' },
+    ],
+  },
   postgresql: { online: true, service: 'postgresql-x64-17', port: 5432 },
-  ollama: { online: true, models: ['qwen3:8b'] },
+  ollama: { online: true, models: ['qwen3:8b', 'qwen2.5-coder:14b'] },
   tailscale: { online: true, ip: '100.97.23.87' },
   gpu: { name: 'NVIDIA Test GPU', utilizationPercent: 42, memoryUsedMiB: 2048, memoryTotalMiB: 8192 },
 };
@@ -40,7 +60,7 @@ async function login(url: string, secret = 'local-test-secret') {
 }
 
 describe('TigerIQ Command Center', () => {
-  it('serves responsive owner-facing HTML and machine-readable status from real snapshots with XSS escaping', async () => {
+  it('serves the Owner Cockpit v2 contract, scalable AI view, model registry and escaped owner-facing HTML', async () => {
     const plane = new ControlPlane();
     plane.create({ id: 'WO-059', project: 'TigerIQ', goal: 'Command Center <script>alert(1)</script>', scope: ['dashboard'], invariants: ['no production'], acceptanceCriteria: ['visible status'], status: 'draft' }, { id: 'planner', role: 'planner' });
     const server = await startDashboard(plane, { serverTelemetry: async () => telemetry });
@@ -61,24 +81,29 @@ describe('TigerIQ Command Center', () => {
     expect(html).toContain('TigerIQ Command Center');
     expect(html).toContain('viewport-fit=cover');
     expect(html).toContain('@media(max-width:520px)');
+    expect(html).toContain('.server-grid{grid-template-columns:1fr}');
+    expect(html).toContain('OWNER COCKPIT V2');
     expect(html).toContain('Command Center &lt;script&gt;alert(1)&lt;/script&gt;');
     expect(html).not.toContain('<script>alert(1)</script>');
     expect(html).toContain('Vy — AI Chief of Staff');
     expect(html).toContain('anh Sơn');
     expect(html).not.toContain('Sếp');
-    expect(html).toContain('PC01 SERVER');
+    expect(html).toContain('CÔNG VIỆC ĐANG CHẠY');
+    expect(html).toContain('AI WORKFORCE — AI ĐANG LÀM GÌ');
+    expect(html).toContain('Coder AI');
+    expect(html).toContain('Sửa Command Center');
+    expect(html).toContain('qwen2.5-coder:14b');
     expect(html).toContain('qwen3:8b');
-    expect(html).toContain('100.97.23.87');
+    expect(html).toContain('MÔ HÌNH AI HIỆN CÓ');
+    expect(html).toContain('2 model Ollama local');
+    expect(html).toContain('PC01 SERVER & SERVICES');
+    expect(html).toContain('Workforce Controller');
     expect(html).toContain('PostgreSQL');
     expect(html).toContain('postgresql-x64-17');
-    expect(html).toContain('Workforce Controller');
-    expect(html).toContain('AI Employees');
-    expect(html).toContain('5 tổng · 1 đang làm · 3 rảnh');
-    expect(html).toContain('2 active · 1 failed · 1 assigned');
-    expect(html).toContain('NVIDIA Test GPU');
+    expect(html).toContain('100.97.23.87');
   });
 
-  it('serves allowlisted PC01 telemetry through /api/server', async () => {
+  it('serves allowlisted PC01 telemetry through /api/server including safe workforce roster', async () => {
     const plane = new ControlPlane();
     const server = await startDashboard(plane, { serverTelemetry: async () => telemetry });
     closeCurrent = server.close;
@@ -89,15 +114,17 @@ describe('TigerIQ Command Center', () => {
     expect(body.available).toBe(true);
     expect(body.worker?.pid).toBe(15340);
     expect(body.controller).toMatchObject({ online: true, port: 8790 });
-    expect(body.workforce).toMatchObject({ employeesTotal: 5, idle: 3, busy: 1, tasksActive: 2, tasksFailed: 1 });
+    expect(body.workforce).toMatchObject({ employeesTotal: 2, idle: 1, busy: 1, tasksActive: 1, tasksFailed: 0 });
+    expect(body.workforce?.roster?.[0]).toMatchObject({ employeeId: 'coder-01', model: 'qwen2.5-coder:14b', availability: 'busy' });
+    expect(body.workforce?.taskList?.[0]).toMatchObject({ taskId: 'WO-059', assignedEmployeeId: 'coder-01' });
     expect(body.postgresql).toMatchObject({ online: true, port: 5432 });
-    expect(body.ollama?.models).toEqual(['qwen3:8b']);
+    expect(body.ollama?.models).toEqual(['qwen3:8b', 'qwen2.5-coder:14b']);
     expect(body.tailscale?.ip).toBe('100.97.23.87');
     expect(JSON.stringify(body)).not.toContain('secret');
     expect(JSON.stringify(body)).not.toContain('stderr');
   });
 
-  it('keeps the web healthy when telemetry is unavailable and does not leak raw errors', async () => {
+  it('keeps the web healthy when telemetry is unavailable and does not fabricate AI/model data', async () => {
     const plane = new ControlPlane();
     const unavailable: ServerTelemetry = { available: false, server: 'PC01', generatedAt: new Date().toISOString(), cpu: null, memory: null, uptimeSeconds: null, disk: null, worker: null, controller: null, workforce: null, postgresql: null, ollama: null, tailscale: null, gpu: null };
     const server = await startDashboard(plane, { serverTelemetry: async () => unavailable });
@@ -109,19 +136,23 @@ describe('TigerIQ Command Center', () => {
     expect(page.status).toBe(200);
     const html = await page.text();
     expect(html).toContain('PC01 Server: Chưa có telemetry');
-    expect(html).toContain('AI Workforce Registry');
-    expect(html).toContain('Chưa có dữ liệu');
+    expect(html).toContain('AI WORKFORCE — AI ĐANG LÀM GÌ');
+    expect(html).toContain('Chưa đọc được danh sách model Ollama');
     expect(html).not.toContain('stderr');
     expect(html).not.toContain('stack trace');
   });
 
-  it('escapes telemetry-controlled strings before rendering the mobile panel', async () => {
+  it('escapes telemetry-controlled strings before rendering workforce, models and PC01 details', async () => {
     const plane = new ControlPlane();
     const malicious = {
       ...telemetry,
       ollama: { online: true, models: ['<img src=x onerror=alert(1)>'] },
       tailscale: { online: true, ip: '<script>x</script>' },
       postgresql: { online: true, service: '<script>db</script>', port: 5432 },
+      workforce: {
+        ...telemetry.workforce!,
+        roster: [{ ...telemetry.workforce!.roster![0]!, displayName: '<script>AI</script>' }],
+      },
     } satisfies ServerTelemetry;
     const server = await startDashboard(plane, { serverTelemetry: async () => malicious });
     closeCurrent = server.close;
@@ -130,8 +161,21 @@ describe('TigerIQ Command Center', () => {
     expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;');
     expect(html).toContain('&lt;script&gt;x&lt;/script&gt;');
     expect(html).toContain('&lt;script&gt;db&lt;/script&gt;');
+    expect(html).toContain('&lt;script&gt;AI&lt;/script&gt;');
     expect(html).not.toContain('<img src=x onerror=alert(1)>');
-    expect(html).toContain('.server-grid{grid-template-columns:1fr}');
+    expect(html).not.toContain('<script>AI</script>');
+  });
+
+  it('supports scalable AI search/filter without client-side scripts', async () => {
+    const plane = new ControlPlane();
+    const server = await startDashboard(plane, { serverTelemetry: async () => telemetry });
+    closeCurrent = server.close;
+    const response = await fetch(`${server.url}/?ai=Analyst&state=idle`);
+    const html = await response.text();
+    expect(html).toContain('Analyst AI');
+    expect(html).not.toContain('<b>Coder AI</b>');
+    expect(html).toContain('Tất cả trạng thái');
+    expect(html).toContain('value="idle" selected');
   });
 
   it('fails closed for write actions when auth is missing', async () => {
@@ -157,6 +201,7 @@ describe('TigerIQ Command Center', () => {
     const page = await fetch(server.url, { headers: { cookie } });
     const html = await page.text();
     expect(html).toContain('GIAO VIỆC CHO VY');
+    expect(html).toContain('Anh Sơn chỉ cần nhập mục tiêu');
 
     const badCsrf = await fetch(`${server.url}/jobs`, {
       method: 'POST', headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' }, redirect: 'manual',
