@@ -1,0 +1,13 @@
+# TigerIQ PC01 Cloudflare Tunnel template
+# Copy to a machine-local path outside the repository before inserting real IDs/paths.
+# Do not commit the real tunnel UUID credentials file or hostnames if private.
+
+tunnel: <TUNNEL_UUID>
+credentials-file: <ABSOLUTE_PATH_TO_TUNNEL_CREDENTIALS_JSON>
+
+ingress:
+  - hostname: <AI_LAB_HOSTNAME>
+    service: http://127.0.0.1:8787
+  - hostname: <DRIVER_HOSTNAME>
+    service: http://127.0.0.1:<DRIVER_PORT>
+  - service: http_status:404
