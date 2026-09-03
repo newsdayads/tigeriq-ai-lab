@@ -11,6 +11,7 @@
     "test:e2e": "playwright test",
     "build": "tsc -p tsconfig.build.json",
     "command-center": "node dist/apps/dashboard/src/standalone.js",
+    "web-control": "node dist/apps/web-control/src/standalone.js",
     "workforce-controller": "node dist/apps/workforce-controller/src/standalone.js",
     "pc01-native-worker": "node dist/apps/pc01-native-worker/src/standalone.js",
     "autonomous-planner": "node dist/apps/autonomous-planner/src/standalone.js",
