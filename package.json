@@ -1,6 +1,6 @@
 {
   "name": "tigeriq-ai-lab",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "private": true,
   "description": "Evidence-gated multi-agent AI development control center",
   "type": "module",
@@ -12,6 +12,7 @@
     "build": "tsc -p tsconfig.build.json",
     "command-center": "node dist/apps/dashboard/src/standalone.js",
     "workforce-controller": "node dist/apps/workforce-controller/src/standalone.js",
+    "pc01-native-worker": "node dist/apps/pc01-native-worker/src/standalone.js",
     "ci": "npm run typecheck && npm run test && npm run test:e2e && npm run build"
   },
   "devDependencies": {
