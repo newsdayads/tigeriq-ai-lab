@@ -4,39 +4,43 @@ Date: 2026-09-03
 
 TigerIQ AI Lab remains evidence-gated. MAIN/Production are unchanged; no automatic merge or production release is authorized.
 
-## Active priority — WO-059 Authorization Engine V1
+## Completed — WO-059 Authorization Engine V1
 
-Status: REPOSITORY GATE PASS — PHYSICAL PC01 E2E PENDING
+Status: DONE — PHYSICAL PC01 POLICY E2E PASS
 
 Branch: `wo059/authorization-engine-v1`
 Base: `wo058/autonomous-planner-v1`
 Work Order: `docs/work-orders/WO-059-AUTHORIZATION-ENGINE-V1.md`
 Repository gate baseline: GitHub Actions run `33739656364` PASS
+Physical evidence: `docs/evidence/WO-059-AUTHORIZATION-ENGINE-E2E-20260903T094429Z.json`
 
-### Implemented
-- Deterministic action classification for local AI, workspace read/write, feature-branch work, test/build, local control, script execution, external write and protected RED classes.
-- GREEN/YELLOW/RED risk model.
-- Unknown/unclassified actions fail closed.
-- `POLICY_DOWNGRADE_DENIED` prevents a task from declaring a lower-risk class than inferred execution.
-- Scoped runtime authorization store at `F:\TigerIQ\Runtime\autonomous-planner-v1\authorizations.json`.
-- Exact active grant requires task ID + action class + `approvedBy=OWNER` + valid time window + non-revoked state.
-- Expired/revoked/wrong-task/wrong-class/non-Owner grants do not release work.
-- Per-task policy decision persisted in planner state.
-- Held YELLOW/RED tasks do not create Controller Work Orders.
-- Independent GREEN tasks continue while other work is held.
-- Existing protected branch/path/tool allowlists remain in force.
-- Installer upgraded to provision the authorization store and pass it to the 24/7 Planner Scheduled Task.
-- Physical policy E2E prepared at `scripts/pc01-autonomy/Invoke-WO059-Physical-E2E.ps1`.
+Verified:
+- GREEN workspace work auto-dispatches.
+- YELLOW work without a scoped grant is held with no Controller job and no artifact.
+- Exact active OWNER grant releases only the matching YELLOW task.
+- RED financial-class work remains held with no Controller job and no artifact.
+- Held YELLOW/RED work does not block independent GREEN work.
+- Controller/PostgreSQL/PC01 Native Worker remained healthy/online.
+- Evidence `allPass=true`; MAIN/Production untouched; no financial/security-sensitive action executed; no secret printed.
 
-### Repository verification — PASS
-- Linux: typecheck, unit tests, build and authorization safety contract PASS.
-- Windows: typecheck, unit tests, build and PowerShell parser PASS.
+## Active priority — WO-060 Mission Decomposition V1
 
-### Gate still required
-- Physical PC01 WO-059 E2E PASS with evidence.
+Status: NEXT
+
+Objective:
+Allow PC01 to take one high-level machine-readable mission and deterministically decompose it into multiple policy-gated Work Orders with dependency ordering, bounded parallelism, evidence requirements, and explicit authorization boundaries.
+
+Required behavior:
+- One mission becomes an auditable task graph rather than a single opaque prompt.
+- Dependencies are explicit and validated; cycles/unknown dependencies fail closed.
+- Independent GREEN tasks may run in parallel subject to controller capacity.
+- YELLOW/RED child tasks inherit WO-059 authorization policy and remain held when not authorized.
+- No MAIN/Production, financial, destructive, irreversible, or security-sensitive action is silently generated or executed.
+- Decomposition result is machine-readable and evidence-producing.
+- Existing WO-057/058/059 physical baseline remains healthy.
 
 ### Next action
-Run the prepared one-command physical WO-059 E2E on PC01. Do not claim Authorization Engine DONE before physical evidence exists.
+Implement WO-060 on a new feature branch from the verified WO-059 head, run repository gates, then physical PC01 mission-decomposition E2E before claiming DONE.
 
 ## Completed — WO-058 Autonomous Planner V1
 
@@ -70,8 +74,7 @@ Verified foundation retained:
 - Safe Tool Executor, durable evidence, failure capture and restart recovery.
 - MAIN/Production untouched; OpenClaw unused.
 
-## Autonomy roadmap after WO-059
-- Natural-language mission decomposition into multiple Work Orders.
+## Autonomy roadmap after WO-060
 - Reviewer/Verifier/Judge loop.
 - Closed State/Evidence loop that unblocks subsequent work automatically.
 - Multi-AI/worker routing.
