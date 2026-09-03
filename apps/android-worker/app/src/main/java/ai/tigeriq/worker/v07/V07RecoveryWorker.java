@@ -43,6 +43,35 @@ public final class V07RecoveryWorker extends Worker {
                     }
                     return Result.success();
                 }
+
+                if (ResultReacquirePolicy.isPersistedResultPhase(snapshot.phase)) {
+                    if (!checkpoints.hasPersistedResult(snapshot)) {
+                        throw new ApiException(409, "RESULT_MISSING", "persisted result missing after lease expiry", false, null);
+                    }
+                    DirectAiJobAdapter.requireBinding(profile, snapshot);
+                    sendHeartbeat(api, app, "working", snapshot.jobId);
+                    TigerIqApiClient.LeaseResult reacquired = api.leaseNextJob();
+                    if (reacquired.empty) {
+                        status.setState(WorkerState.WORKING, "RESULT đã lưu · chờ Controller requeue đúng JOB", snapshot.jobId);
+                        V07WorkScheduler.enqueueRecoveryAfter(app, 5_000L);
+                        return Result.success();
+                    }
+                    try {
+                        ResultReacquirePolicy.requireSameWork(snapshot, reacquired.lease);
+                    } catch (ApiException mismatch) {
+                        long delay = Math.max(1_000L, reacquired.lease.expiresAtEpochMs - System.currentTimeMillis() + 1_000L);
+                        status.setState(WorkerState.WORKING, "RESULT cũ được giữ; lease mới không cùng JOB nên không thực thi", snapshot.jobId);
+                        V07WorkScheduler.enqueueRecoveryAfter(app, delay);
+                        return Result.success();
+                    }
+                    profile = identities.bindAuthoritativeBinding(profile, reacquired.lease.bindingId);
+                    identities.requireBinding(profile, reacquired.lease.bindingId);
+                    checkpoints.rebindLeasePreservingResult(snapshot, reacquired.lease);
+                    status.setState(WorkerState.WORKING, "Đã reacquire đúng JOB · submit RESULT đã lưu, không gọi AI lại", snapshot.jobId);
+                    V07WorkScheduler.enqueueJob(app, profile.employeeId, snapshot.jobId, snapshot.idempotencyKey);
+                    return Result.success();
+                }
+
                 checkpoints.clear();
             }
 
