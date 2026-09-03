@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [phase-0-foundation, phase1/control-plane, phase2/durable-journal, phase3/http-api, phase4/durable-api, phase5/operational-safety, phase6/runtime-guardrails, phase7/metrics-overload, phase8/actor-rate-limits]
+    branches: [phase-0-foundation, phase1/control-plane, phase2/durable-journal, phase3/http-api, phase4/durable-api, phase5/operational-safety, phase6/runtime-guardrails, phase7/metrics-overload, phase8/actor-rate-limits, wo065/continuous-operations-v1]
 
 permissions:
   contents: read
@@ -27,3 +27,13 @@ jobs:
         run: npm run test:e2e
       - name: Build
         run: npm run build
+      - name: Parse WO-065 PC01 scripts
+        shell: pwsh
+        run: |
+          $files=@('scripts/pc01-autonomy/Install-PC01-ContinuousOperations.ps1','scripts/pc01-autonomy/Invoke-PC01-ContinuousOperations-E2E.ps1')
+          foreach($file in $files){
+            $tokens=$null; $errors=$null
+            [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $file),[ref]$tokens,[ref]$errors) | Out-Null
+            if($errors.Count -gt 0){$errors | ForEach-Object { Write-Error ("{0}:{1} {2}" -f $_.Extent.StartLineNumber,$_.Extent.StartColumnNumber,$_.Message) }; throw "POWERSHELL_PARSE_FAILED: $file"}
+          }
+          Write-Host 'WO065_POWERSHELL_PARSE_PASS'

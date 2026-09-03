@@ -1,69 +1,110 @@
 # Current State
 
-Date: 2026-09-03
+Date: 2026-09-04
 
-TigerIQ AI Lab remains evidence-gated. MAIN/Production are unchanged; no automatic merge or production release is authorized.
+TigerIQ AI Lab remains evidence-gated. MAIN/Production are unchanged; no automatic merge or Production release is authorized. OpenClaw remains explicitly suspended from the current scope.
 
-## Active priority — WO-060..064 PC01 Autonomy Completion Pack
+## Owner-locked architecture direction — 2026-09-04
 
-Status: IMPLEMENTED — REPOSITORY/FINAL PHYSICAL GATES PENDING
+The active development direction is now defined by `docs/roadmap/TIGERIQ-CONTINUOUS-DEVELOPMENT-FLOW-V2.md`.
 
-Branch: `wo060/mission-decomposition-v1`
-Base: verified WO-059 Authorization Engine V1
-Work Order: `docs/work-orders/WO-060-064-PC01-AUTONOMY-COMPLETION.md`
+Architecture decisions:
+- PC01 = primary Source/runtime node for TigerIQ AI Lab and TigerIQ Driver.
+- Core loop retained: Goal → Decompose → Queue → Mission → Worker → Verify → Evidence → DONE → auto-claim next eligible goal.
+- Cloudflare Tunnel + Access = preferred external browser access path; daily phone use should not require Tailscale/VPN.
+- Tailscale = trusted technical/emergency access only.
+- Vercel = preview/backup/launcher only, not primary runtime.
+- Web Control = PC01 control plane over real queue/state/workers/providers/evidence.
+- Multi-AI architecture = Provider Registry → AI Gateway → Model Router → AI Employee Pool → Parallel Scheduler → Reviewer Swarm → Judge → Evidence.
+- API secrets remain PC01/server-side only; no frontend/GitHub/Vercel secret exposure.
+- Paid, financial, irreversible, security-sensitive and Production actions remain authorization-gated.
+
+## Active priority — WO-065 Continuous Operations V1
+
+Status: REPOSITORY IMPLEMENTATION/CI PASS ON CODE HEAD — PHYSICAL PC01 GATE PENDING
+
+Branch: `wo065/continuous-operations-v1`
+Base: verified WO-060..064 PC01 Autonomy Completion Pack
+Work Order: `docs/work-orders/WO-065-CONTINUOUS-OPERATIONS-V1.md`
+Draft review: PR #228, targeted to `wo060/mission-decomposition-v1`; not authorized for merge.
 
 Implemented:
-- Mission Orchestrator V1 with natural-language mission decomposition through local `qwen3:8b` and strict JSON DAG validation.
-- AI-generated child plan safety: 2-6 tasks, acyclic dependencies, known routes, mission-scoped safe file paths, no generated git/main/production/network-write/delete/credential operations.
-- Acceptance mission graph with independent Analyst A + Analyst B, Builder, Reviewer and a RED authorization-held child.
-- Closed mission state loop derived from Planner runtime state: planning/running/waiting_authorization/done/failed/blocked_plan.
-- Existing WO-059 GREEN/YELLOW/RED policy remains the authorization boundary for every child Work Order.
-- New 24/7 Scheduled Task `TigerIQ Mission Orchestrator`.
-- New 24/7 Scheduled Task `TigerIQ Autonomy Supervisor` that checks/restarts Controller, PC01 Native Worker, Autonomous Planner and Mission Orchestrator and writes health state.
-- One consolidated installer and one final physical E2E script prepared.
+- Durable explicit top-level goal queue.
+- P0/P1/P2/P3 priority and dependency validation.
+- Dependency terminal failure propagates to `blocked_dependency` instead of hanging forever.
+- One active injected/running goal at a time; authorization-held work frees the slot for independent safe work.
+- Deterministic mission IDs and durable state prevent duplicate injection across restart windows.
+- Global pause blocks new injections while reconciliation continues.
+- Empty queue never invents work.
+- Existing Mission Orchestrator and WO-059 Authorization Engine remain authoritative.
+- PC01 installer + one-command physical E2E script prepared.
 
-Gate still required:
-- Linux typecheck/tests/build/safety contract PASS.
-- Windows typecheck/tests/build/PowerShell parser PASS.
-- One final physical PC01 E2E proving Mission → Decompose → Dispatch → Build → Review → Closed State → RED Hold → Supervisor with machine-readable evidence.
+Repository evidence before roadmap documentation update:
+- exact code head `81dd0ae326017d94efc719e81adecd55510fd930`;
+- GitHub Actions run `33784226498` SUCCESS;
+- 79 tests PASS, 3 integration tests skipped by environment;
+- Continuous Operations suite 9 PASS;
+- Playwright 1/1 PASS;
+- build PASS;
+- PowerShell parser gate PASS.
 
-Next action:
-Wait for consolidated CI. If PASS, run exactly one final PowerShell command on PC01. Do not claim final PC01 autonomy DONE before physical evidence exists.
+Physical gate still required:
+- install WO-065 on physical PC01;
+- prove two queued safe goals continue without per-goal Owner action;
+- prove authorization-held work does not block an independent GREEN goal;
+- prove pause/resume + restart recovery without duplicate injection;
+- record machine-readable allPass=true evidence with runtime health checks and no MAIN/Production/financial action.
+
+## Continuous development sequence after WO-065 physical PASS
+
+1. Durable State + Event Journal.
+2. Recovery + Watchdog + stuck detection.
+3. Project Isolation for AI Lab vs Driver.
+4. Secret Vault.
+5. Provider Registry.
+6. AI Gateway.
+7. Model Router.
+8. AI Employee Registry.
+9. Massive Parallel Scheduler.
+10. Concurrency/Quota/Cost Guard.
+11. Reviewer Swarm.
+12. Judge / Final Gate.
+13. Evidence Engine.
+14. Web Control backend over live PC01 state.
+15. Web Control UI target >=95% approved mockup visual fidelity with 100% real data/function paths.
+16. Mobile PWA.
+17. Cloudflare Tunnel + Access.
+18. Vercel/Tailscale role reduction.
+19. PC02 standby design.
+20. One-shot PC01 Foundation E2E.
+21. Real API provider onboarding through Gateway.
+22. Massive-AI real-project E2E and stabilization.
+
+## Completed — WO-060..064 PC01 Autonomy Completion Pack
+
+Status: DONE — REPOSITORY + PHYSICAL PC01 GATES PASS
+Physical evidence: `docs/evidence/WO-060-064-PC01-AUTONOMY-QUICK-FINAL-20260903T104820Z.json`
+Repository evidence: GitHub Actions run `33746442244` SUCCESS on `fd42ade412fc4beded95ec19b0ab215d6796b847`.
+
+Verified:
+- safe mission children completed;
+- RED financial-class child remained authorization-held;
+- mission closed-loop state correctly became `waiting_authorization`;
+- Controller/PostgreSQL/PC01/Ollama/Supervisor healthy;
+- `qwen3:8b` GPU offload confirmed;
+- MAIN/Production untouched; no financial action; no secret printed.
 
 ## Completed — WO-059 Authorization Engine V1
 
 Status: DONE — PHYSICAL PC01 POLICY E2E PASS
 Physical evidence: `docs/evidence/WO-059-AUTHORIZATION-ENGINE-E2E-20260903T094429Z.json`
 
-Verified:
-- GREEN workspace work auto-dispatches.
-- YELLOW work without a scoped grant is held with no Controller job and no artifact.
-- Exact active OWNER grant releases only the matching YELLOW task.
-- RED financial-class work remains held with no Controller job and no artifact.
-- Held YELLOW/RED work does not block independent GREEN work.
-- Controller/PostgreSQL/PC01 Native Worker remained healthy/online.
-
 ## Completed — WO-058 Autonomous Planner V1
 
 Status: DONE — PHYSICAL AUTONOMOUS E2E PASS
 Physical evidence: `docs/evidence/WO-058-AUTONOMOUS-PLANNER-E2E-20260903T092538Z.json`
 
-Verified:
-- Planner Scheduled Task installed/running.
-- Priority/dependency/bounded dispatch operational.
-- Safe tool auto-execution and dependent local AI operational.
-- Authorization-required task held.
-- `qwen3:8b` physically verified on GPU.
-
 ## Completed foundation — WO-057 PC01 Primary AI Compute & Control Node
 
 Status: DONE — PHYSICAL PC01 E2E A→G PASS
 Physical evidence: `docs/evidence/WO-057-PC01-PRIMARY-NODE-E2E-20260903T084302Z.json`
-
-Verified foundation retained:
-- Controller + PostgreSQL healthy.
-- PC01 Native Worker online/healthy.
-- Work Order intake/lease/renew/result/evidence operational.
-- Ollama `qwen3:8b`, `num_ctx=4096`, `think=false`, physical GPU evidence.
-- Local AI concurrency=2, Tool Executor, failure capture and restart recovery PASS.
-- MAIN/Production untouched; OpenClaw unused.
