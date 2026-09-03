@@ -6,11 +6,12 @@ TigerIQ AI Lab remains evidence-gated. MAIN/Production are unchanged; no automat
 
 ## Active priority — WO-059 Authorization Engine V1
 
-Status: IMPLEMENTED — REPOSITORY/PHYSICAL GATES PENDING
+Status: REPOSITORY GATE PASS — PHYSICAL PC01 E2E PENDING
 
 Branch: `wo059/authorization-engine-v1`
 Base: `wo058/autonomous-planner-v1`
 Work Order: `docs/work-orders/WO-059-AUTHORIZATION-ENGINE-V1.md`
+Repository gate baseline: GitHub Actions run `33739656364` PASS
 
 ### Implemented
 - Deterministic action classification for local AI, workspace read/write, feature-branch work, test/build, local control, script execution, external write and protected RED classes.
@@ -25,16 +26,17 @@ Work Order: `docs/work-orders/WO-059-AUTHORIZATION-ENGINE-V1.md`
 - Independent GREEN tasks continue while other work is held.
 - Existing protected branch/path/tool allowlists remain in force.
 - Installer upgraded to provision the authorization store and pass it to the 24/7 Planner Scheduled Task.
-- Unit test expansion and Linux/Windows WO-059 CI workflow added.
 - Physical policy E2E prepared at `scripts/pc01-autonomy/Invoke-WO059-Physical-E2E.ps1`.
 
+### Repository verification — PASS
+- Linux: typecheck, unit tests, build and authorization safety contract PASS.
+- Windows: typecheck, unit tests, build and PowerShell parser PASS.
+
 ### Gate still required
-- Linux repository quality gate PASS.
-- Windows build + PowerShell parser gate PASS.
-- Physical PC01 policy E2E PASS with evidence.
+- Physical PC01 WO-059 E2E PASS with evidence.
 
 ### Next action
-Wait for repository gates. If PASS, run the prepared one-command physical WO-059 E2E on PC01. Do not claim Authorization Engine DONE before physical evidence exists.
+Run the prepared one-command physical WO-059 E2E on PC01. Do not claim Authorization Engine DONE before physical evidence exists.
 
 ## Completed — WO-058 Autonomous Planner V1
 
