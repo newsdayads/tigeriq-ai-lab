@@ -42,3 +42,10 @@ jobs:
           if(-not (Test-Path 'dist\apps\mission-orchestrator\src\standalone.js')){throw 'MISSION_BUILD_MISSING'}
           $files=@('scripts\pc01-autonomy\Install-PC01-Autonomy-Final.ps1','scripts\pc01-autonomy\Invoke-PC01-Autonomy-Final-E2E.ps1','scripts\pc01-autonomy\Invoke-PC01-Autonomy-Quick-Final.ps1')
           foreach($f in $files){$tokens=$null;$errors=$null;[System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $f),[ref]$tokens,[ref]$errors)|Out-Null;if($errors.Count -gt 0){$errors|ForEach-Object{Write-Error $_.Message};throw "POWERSHELL_PARSE_FAILED: $f"}}
+          Set-StrictMode -Version Latest
+          $stages=@('pending','pending','pending','pending')
+          if(@($stages|Where-Object{$_ -eq 'done'}).Count -ne 0){throw 'STRICTMODE_COUNT_ZERO_FAILED'}
+          $stages=@('done','pending','pending','pending')
+          if(@($stages|Where-Object{$_ -eq 'done'}).Count -ne 1){throw 'STRICTMODE_COUNT_ONE_FAILED'}
+          $quick=Get-Content 'scripts\pc01-autonomy\Invoke-PC01-Autonomy-Quick-Final.ps1' -Raw
+          if($quick -notmatch [regex]::Escape('$safeDone=@($stages|Where-Object{$_ -eq ''done''}).Count')){throw 'QUICK_FINAL_SAFE_COUNT_GUARD_MISSING'}
