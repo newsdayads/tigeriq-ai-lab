@@ -15,6 +15,8 @@ function Sanitize([string]$Text) {
   $safe = [regex]::Replace($safe, '(?i)\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=:-]+', '$1 REDACTED')
   $safe = [regex]::Replace($safe, '(?i)(https?://)[^/\s:@]+:[^@\s/]+@', '$1REDACTED@')
   $safe = [regex]::Replace($safe, '(?im)(["'']?(?:api[_-]?key|token|secret|authorization|password|private[_-]?key)["'']?\s*[:=]\s*["'']?)[^\s,"''}\r\n]+', '$1REDACTED')
+  $safe = [regex]::Replace($safe, '(?i)\b(?:sk-or-v1-[A-Za-z0-9_-]{12,}|sk-ant-[A-Za-z0-9_-]{12,}|AIza[0-9A-Za-z_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|ya29\.[A-Za-z0-9._-]{20,})\b', '[REDACTED TOKEN]')
+  $safe = [regex]::Replace($safe, '(?i)\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b', '[REDACTED JWT]')
   $safe = $safe.Trim()
   if ($safe.Length -gt 600) { $safe = $safe.Substring(0, 600) + '…' }
   return $safe
@@ -70,7 +72,7 @@ function Set-LiveResult([System.Collections.IDictionary]$Result, [System.Collect
   $combined = (([string]$LiveResult.output) + "`n" + ([string]$LiveResult.error)).Trim()
   $markerOk = $combined -match [regex]::Escape($ExpectedMarker)
   $Result.liveOk = (-not $LiveResult.timeout -and $LiveResult.exitCode -eq 0 -and $markerOk)
-  $Result.status = if ($LiveResult.timeout) { 'LIVE_TIMEOUT' } elseif ($Result.liveOk) { 'READY' } elseif ($LiveResult.exitCode -ne 0) { if ($combined -match '^BILLING_ROUTE_BLOCKED|CLAUDE_SUBSCRIPTION_AUTH_UNPROVEN|CLAUDE_USAGE_CREDITS_STATUS_UNPROVEN') { 'BILLING_ROUTE_BLOCKED' } else { 'AUTH_OR_INVOCATION_ERROR' } } else { 'UNEXPECTED_RESPONSE' }
+  $Result.status = if ($LiveResult.timeout) { 'LIVE_TIMEOUT' } elseif ($Result.liveOk) { 'READY' } elseif ($LiveResult.exitCode -ne 0) { if ($combined -match '^BILLING_ROUTE_BLOCKED|CLAUDE_SUBSCRIPTION_AUTH_UNPROVEN|CLAUDE_USAGE_CREDITS_STATUS_UNPROVEN|OPENROUTER_(NONFREE_MODEL|COST_UNPROVEN|COST_NONZERO)') { 'BILLING_ROUTE_BLOCKED' } else { 'AUTH_OR_INVOCATION_ERROR' } } else { 'UNEXPECTED_RESPONSE' }
   $Result.liveOutput = Sanitize $combined
 }
 
@@ -140,6 +142,18 @@ function Test-ClaudeSubscriptionStatus([string]$JsonText) {
   } catch { return $false }
 }
 
+function Test-OpenRouterFreeResponse([string]$JsonText,[string]$ExpectedMarker) {
+  try { $response=$JsonText|ConvertFrom-Json } catch { return [ordered]@{ok=$false;error='OPENROUTER_INVALID_JSON'} }
+  $model=[string]$response.model
+  if([string]::IsNullOrWhiteSpace($model) -or $model -notmatch ':free$'){ return [ordered]@{ok=$false;error='OPENROUTER_NONFREE_MODEL'} }
+  if($null -eq $response.usage -or $null -eq $response.usage.cost){ return [ordered]@{ok=$false;error='OPENROUTER_COST_UNPROVEN'} }
+  try { $cost=[double]::Parse(([string]$response.usage.cost),[Globalization.CultureInfo]::InvariantCulture) } catch { return [ordered]@{ok=$false;error='OPENROUTER_COST_UNPROVEN'} }
+  if([Math]::Abs($cost) -gt 0){ return [ordered]@{ok=$false;error='OPENROUTER_COST_NONZERO'} }
+  $content=[string]$response.choices[0].message.content
+  if($content -notmatch [regex]::Escape($ExpectedMarker)){ return [ordered]@{ok=$false;error='UNEXPECTED_RESPONSE'} }
+  return [ordered]@{ok=$true;error='';model=$model;cost=$cost}
+}
+
 function Invoke-GeminiSubscriptionProbe([string]$Exe) {
   $blockers = @(Get-GeminiBillingRouteBlockers)
   if ($blockers.Count -gt 0) {
@@ -173,18 +187,40 @@ function Invoke-OpenRouterFreeProbe {
     $job=Start-Job -ScriptBlock { param($h,$b) Invoke-RestMethod -Method Post -Uri 'https://openrouter.ai/api/v1/chat/completions' -Headers $h -Body $b -TimeoutSec 30 | ConvertTo-Json -Depth 8 } -ArgumentList $headers,$body
     if(-not(Wait-Job $job -Timeout $TimeoutSeconds)){ Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue; return [ordered]@{exitCode=$null;timeout=$true;output='';error='TIMEOUT'} }
     $raw=(Receive-Job $job -ErrorAction SilentlyContinue | Out-String); Remove-Job $job -Force -ErrorAction SilentlyContinue
-    $safe=Sanitize $raw
-    return [ordered]@{exitCode=if($safe -match 'TIGERIQ_OPENROUTER_FREE_READY'){0}else{5};timeout=$false;output=$safe;error=if($safe -match 'TIGERIQ_OPENROUTER_FREE_READY'){''}else{'UNEXPECTED_RESPONSE'} }
+    $validation=Test-OpenRouterFreeResponse $raw 'TIGERIQ_OPENROUTER_FREE_READY'
+    if(-not $validation.ok){ return [ordered]@{exitCode=8;timeout=$false;output='';error=[string]$validation.error} }
+    return [ordered]@{exitCode=0;timeout=$false;output=("TIGERIQ_OPENROUTER_FREE_READY model={0} cost=0" -f (Sanitize ([string]$validation.model)));error='' }
   } catch { return [ordered]@{exitCode=6;timeout=$false;output='';error=(Sanitize $_.Exception.Message)} }
 }
 
 function Assert-True([bool]$Condition,[string]$Name){ if(-not $Condition){ throw "SELFTEST_FAIL:$Name" } }
 
 function Run-SelfTest {
-  foreach($sample in @('Authorization: Bearer abc.def.ghi','password: supersecret','https://user:pass@example.com/path','{"private_key":"DO_NOT_PRINT"}',"-----BEGIN PRIVATE KEY-----`nABCDEF`n-----END PRIVATE KEY-----")){
+  foreach($sample in @(
+    'Authorization: Bearer abc.def.ghi',
+    'password: supersecret',
+    'https://user:pass@example.com/path',
+    '{"private_key":"DO_NOT_PRINT"}',
+    "-----BEGIN PRIVATE KEY-----`nABCDEF`n-----END PRIVATE KEY-----",
+    'sk-or-v1-ABCDEFGHIJKLMNOPQRSTUVWXYZ123456',
+    'sk-ant-ABCDEFGHIJKLMNOPQRSTUVWXYZ123456',
+    'AIzaABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890',
+    'ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890',
+    'ya29.ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890',
+    'eyJabcdefghijk.abcdefghijklmnop.abcdefghijklmnop'
+  )){
     $safe=Sanitize $sample
-    Assert-True (-not($safe -match 'abc\.def\.ghi|supersecret|user:pass|DO_NOT_PRINT|ABCDEF')) 'redaction'
+    Assert-True (-not($safe -match 'abc\.def\.ghi|supersecret|user:pass|DO_NOT_PRINT|ABCDEF|sk-or-v1-|sk-ant-|AIza|ghp_|ya29\.|eyJabcdefghijk')) 'redaction'
   }
+
+  $free='{"model":"meta-llama/example:free","choices":[{"message":{"content":"TIGERIQ_OPENROUTER_FREE_READY"}}],"usage":{"cost":0}}'
+  $nonFree='{"model":"paid/model","choices":[{"message":{"content":"TIGERIQ_OPENROUTER_FREE_READY"}}],"usage":{"cost":0}}'
+  $missingCost='{"model":"meta-llama/example:free","choices":[{"message":{"content":"TIGERIQ_OPENROUTER_FREE_READY"}}],"usage":{}}'
+  $paid='{"model":"meta-llama/example:free","choices":[{"message":{"content":"TIGERIQ_OPENROUTER_FREE_READY"}}],"usage":{"cost":0.001}}'
+  Assert-True ([bool](Test-OpenRouterFreeResponse $free 'TIGERIQ_OPENROUTER_FREE_READY').ok) 'openrouter_free_cost_zero_accept'
+  Assert-True ((Test-OpenRouterFreeResponse $nonFree 'TIGERIQ_OPENROUTER_FREE_READY').error -eq 'OPENROUTER_NONFREE_MODEL') 'openrouter_nonfree_reject'
+  Assert-True ((Test-OpenRouterFreeResponse $missingCost 'TIGERIQ_OPENROUTER_FREE_READY').error -eq 'OPENROUTER_COST_UNPROVEN') 'openrouter_missing_cost_reject'
+  Assert-True ((Test-OpenRouterFreeResponse $paid 'TIGERIQ_OPENROUTER_FREE_READY').error -eq 'OPENROUTER_COST_NONZERO') 'openrouter_nonzero_cost_reject'
 
   Assert-True (Test-ClaudeSubscriptionStatus '{"loggedIn":true,"authMethod":"claude.ai","apiProvider":"firstParty","subscriptionType":"max"}') 'claude_subscription_accept'
   Assert-True (-not(Test-ClaudeSubscriptionStatus '{"loggedIn":true,"authMethod":"api_key","apiProvider":"firstParty","subscriptionType":"max"}')) 'claude_api_auth_reject'
@@ -214,7 +250,7 @@ function Run-SelfTest {
     Assert-True ([bool]$timed.timeout) 'bounded_timeout_kill'
   }
 
-  [ordered]@{selfTest='PASS';billingRouteDenial='PASS';timeoutKill='PASS';openRouterModel='openrouter/free';geminiApiPaidFallback=$false;claudeUsageCreditsRequiredProof=$true;timestampUtc=[DateTime]::UtcNow.ToString('o')} | ConvertTo-Json
+  [ordered]@{selfTest='PASS';billingRouteDenial='PASS';timeoutKill='PASS';openRouterModel='openrouter/free';openRouterResponseCostMustBeZero=$true;geminiApiPaidFallback=$false;claudeUsageCreditsRequiredProof=$true;timestampUtc=[DateTime]::UtcNow.ToString('o')} | ConvertTo-Json
 }
 
 if($SelfTest){ Run-SelfTest; exit 0 }
@@ -237,7 +273,7 @@ $summary=[ordered]@{
   timestampUtc=[DateTime]::UtcNow.ToString('o')
   tools=@($gemini,$claude,$openrouter,$ollama,$git)
   readyCount=$readyProviders.Count
-  policy=[ordered]@{ billingMode='ZERO_COST_ONLY'; openRouterModel='openrouter/free'; geminiApiKeyRoute='DISABLED'; claudeUsageCredits='REQUIRE_EXTERNAL_DISABLED_PROOF'; paidFallback=$false }
-  note=if($Live){'Live mode allows Gemini Google-account login and OpenRouter openrouter/free only; Claude is blocked unless no-usage-credit status was externally verified and the explicit switch is supplied. Any metered/provider route fails closed. Local Ollama remains zero-cost fallback.'}else{'Static probe only. Real provider calls require PC01/runtime credentials; unknown billing routes fail closed.'}
+  policy=[ordered]@{ billingMode='ZERO_COST_ONLY'; openRouterModel='openrouter/free'; openRouterResponseCostMustBeZero=$true; geminiApiKeyRoute='DISABLED'; claudeUsageCredits='REQUIRE_EXTERNAL_DISABLED_PROOF'; paidFallback=$false }
+  note=if($Live){'Live mode allows Gemini Google-account login and OpenRouter openrouter/free only; OpenRouter is READY only when the returned model is :free and response usage.cost is exactly 0. Claude is blocked unless no-usage-credit status was externally verified and the explicit switch is supplied. Any metered/provider route fails closed. Local Ollama remains zero-cost fallback.'}else{'Static probe only. Real provider calls require PC01/runtime credentials; unknown billing routes fail closed.'}
 }
 $summary | ConvertTo-Json -Depth 7
