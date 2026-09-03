@@ -63,6 +63,9 @@ export class WorkManagementStore {
         executorIds: [],
         reviewerIds: [],
         judgeIds: [],
+        executorIndependenceKeys: [],
+        reviewerIndependenceKeys: [],
+        judgeIndependenceKeys: [],
       })),
     };
     this.#goals.set(record.goal.goalId, record);
@@ -118,6 +121,8 @@ export class WorkManagementStore {
     if (!worker.online) throw new Error(`worker ${worker.workerId} is offline`);
     if (!worker.roles.includes(role)) throw new Error(`worker ${worker.workerId} cannot act as ${role}`);
     if (!Number.isFinite(leaseMs) || leaseMs < 1_000) throw new Error('leaseMs must be >= 1000');
+    const independenceKey = worker.independenceKey.trim().toLowerCase();
+    if (!independenceKey) throw new Error(`worker ${worker.workerId} independenceKey is required`);
     const { goal, work } = this.#mustGetWork(workId);
     if (!this.#workerEligible(worker, work, role)) throw new Error(`worker ${worker.workerId} is not eligible for ${workId} as ${role}`);
     if (this.#activeLeaseCount(worker.workerId, at) >= worker.concurrencyLimit) {
@@ -129,14 +134,20 @@ export class WorkManagementStore {
       if (!this.canLockScopes(workId, work.work.scopeKeys, at)) throw new Error(`scope lock conflict for work ${workId}`);
       work.attempts += 1;
       if (!work.executorIds.includes(worker.workerId)) work.executorIds.push(worker.workerId);
+      work.executorIndependenceKeys ??= [];
+      if (!work.executorIndependenceKeys.includes(independenceKey)) work.executorIndependenceKeys.push(independenceKey);
       this.#transition(goal, work, 'leased', at, 'executor_claimed', worker.workerId, work.attempts);
     } else if (role === 'reviewer') {
       if (work.stage !== 'reviewing') throw new Error(`work ${workId} cannot be claimed for review from ${work.stage}`);
       if (!work.reviewerIds.includes(worker.workerId)) work.reviewerIds.push(worker.workerId);
+      work.reviewerIndependenceKeys ??= [];
+      if (!work.reviewerIndependenceKeys.includes(independenceKey)) work.reviewerIndependenceKeys.push(independenceKey);
       this.#event({ at, goalId: goal.goal.goalId, workId, type: 'reviewer_claimed', actorId: worker.workerId, attempt: work.attempts });
     } else {
       if (work.stage !== 'judging') throw new Error(`work ${workId} cannot be claimed for judgment from ${work.stage}`);
       if (!work.judgeIds.includes(worker.workerId)) work.judgeIds.push(worker.workerId);
+      work.judgeIndependenceKeys ??= [];
+      if (!work.judgeIndependenceKeys.includes(independenceKey)) work.judgeIndependenceKeys.push(independenceKey);
       this.#event({ at, goalId: goal.goal.goalId, workId, type: 'judge_claimed', actorId: worker.workerId, attempt: work.attempts });
     }
     work.lease = {
@@ -260,14 +271,31 @@ export class WorkManagementStore {
 
   #workerEligible(worker: ManagedWorker, record: ManagedWorkRecord, role: WorkRole): boolean {
     if (!worker.roles.includes(role)) return false;
+    const independenceKey = worker.independenceKey.trim().toLowerCase();
+    if (!independenceKey) return false;
     if (record.work.allowedWorkerKinds?.length && !record.work.allowedWorkerKinds.includes(worker.kind)) return false;
     if (!record.work.requiredCapabilities.every((capability) => worker.capabilities.includes(capability))) return false;
     if (role === 'executor' && worker.allowedScopes !== undefined && record.work.scopeKeys.length) {
       if (!record.work.scopeKeys.every((scope) => worker.allowedScopes!.some((allowed) => scopeWithinAllowed(allowed, scope)))) return false;
     }
+
+    const executorKeys = record.executorIndependenceKeys ?? [];
+    const reviewerKeys = record.reviewerIndependenceKeys ?? [];
+    const judgeKeys = record.judgeIndependenceKeys ?? [];
+
+    // Legacy V1 snapshots without persisted stable identities cannot safely prove
+    // cross-role independence. Fail closed rather than accept an alias after restart.
+    if (role === 'executor' && ((record.reviewerIds.length > 0 && reviewerKeys.length === 0) || (record.judgeIds.length > 0 && judgeKeys.length === 0))) return false;
+    if (role === 'reviewer' && ((record.executorIds.length > 0 && executorKeys.length === 0) || (record.judgeIds.length > 0 && judgeKeys.length === 0))) return false;
+    if (role === 'judge' && ((record.executorIds.length > 0 && executorKeys.length === 0) || (record.reviewerIds.length > 0 && reviewerKeys.length === 0))) return false;
+
     if (role === 'executor' && (record.reviewerIds.includes(worker.workerId) || record.judgeIds.includes(worker.workerId))) return false;
     if (role === 'reviewer' && (record.executorIds.includes(worker.workerId) || record.judgeIds.includes(worker.workerId))) return false;
     if (role === 'judge' && (record.executorIds.includes(worker.workerId) || record.reviewerIds.includes(worker.workerId))) return false;
+
+    if (role === 'executor' && (reviewerKeys.includes(independenceKey) || judgeKeys.includes(independenceKey))) return false;
+    if (role === 'reviewer' && (executorKeys.includes(independenceKey) || judgeKeys.includes(independenceKey))) return false;
+    if (role === 'judge' && (executorKeys.includes(independenceKey) || reviewerKeys.includes(independenceKey))) return false;
     return true;
   }
 
