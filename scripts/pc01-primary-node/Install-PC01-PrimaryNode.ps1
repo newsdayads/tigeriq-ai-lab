@@ -56,6 +56,7 @@ $modelNames=@($ollamaTags.models|ForEach-Object{$_.name});if($modelNames -notcon
 Push-Location $RepoPath
 try{
   & $npm ci --no-audit --no-fund;if($LASTEXITCODE -ne 0){Fail 'NPM_CI_FAILED' 'npm ci failed'}
+  & $npm install --no-save --ignore-scripts --package-lock=false --no-audit --no-fund pg@8.16.3;if($LASTEXITCODE -ne 0){Fail 'PG_RUNTIME_INSTALL_FAILED' 'pg@8.16.3 runtime dependency install failed'}
   if(-not $SkipRepositoryTests){& $npm run typecheck;if($LASTEXITCODE -ne 0){Fail 'TYPECHECK_FAILED' 'typecheck failed'};& $npm test;if($LASTEXITCODE -ne 0){Fail 'UNIT_TEST_FAILED' 'unit tests failed'}}
   & $npm run build;if($LASTEXITCODE -ne 0){Fail 'BUILD_FAILED' 'build failed'}
 }finally{Pop-Location}
