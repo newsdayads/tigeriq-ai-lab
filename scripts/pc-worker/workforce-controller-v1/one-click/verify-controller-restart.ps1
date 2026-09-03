@@ -31,7 +31,7 @@ if ([string]$task.Principal.UserId -ne 'SYSTEM') { Fail 'TASK_PRINCIPAL_INVALID'
 
 $beforeReplay = (& $psql -w $DatabaseUrl -vON_ERROR_STOP=1 -Atc "SELECT count(*) FROM device_proof_replay_state;" 2>$null).Trim()
 if ($LASTEXITCODE -ne 0) { Fail 'REPLAY_STATE_QUERY_FAILED' 'Could not query durable replay state before restart.' }
-$beforeMigrations = @(& $psql $DatabaseUrl -vON_ERROR_STOP=1 -Atc "SELECT version FROM tigeriq_schema_migrations ORDER BY version;" 2>$null | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+$beforeMigrations = @(& $psql -w $DatabaseUrl -vON_ERROR_STOP=1 -Atc "SELECT version FROM tigeriq_schema_migrations ORDER BY version;" 2>$null | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 if ($beforeMigrations.Count -ne 2 -or $beforeMigrations[0] -ne '001_operational_state_v1' -or $beforeMigrations[1] -ne '002_device_proof_replay_v1') { Fail 'MIGRATION_STATE_INVALID' 'Required migration state must be exactly reviewed 001+002 before restart.' }
 
 Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
@@ -48,9 +48,9 @@ do {
 } while ((Get-Date) -lt $deadline)
 if (-not $healthy) { Fail 'RESTART_HEALTH_FAILED' 'Controller did not return healthy after task restart.' }
 
-$afterReplay = (& $psql $DatabaseUrl -vON_ERROR_STOP=1 -Atc "SELECT count(*) FROM device_proof_replay_state;" 2>$null).Trim()
+$afterReplay = (& $psql -w $DatabaseUrl -vON_ERROR_STOP=1 -Atc "SELECT count(*) FROM device_proof_replay_state;" 2>$null).Trim()
 if ($LASTEXITCODE -ne 0) { Fail 'REPLAY_STATE_QUERY_FAILED' 'Could not query durable replay state after restart.' }
-$afterMigrations = @(& $psql $DatabaseUrl -vON_ERROR_STOP=1 -Atc "SELECT version FROM tigeriq_schema_migrations ORDER BY version;" 2>$null | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+$afterMigrations = @(& $psql -w $DatabaseUrl -vON_ERROR_STOP=1 -Atc "SELECT version FROM tigeriq_schema_migrations ORDER BY version;" 2>$null | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 if ($afterMigrations.Count -ne 2 -or $afterMigrations[0] -ne '001_operational_state_v1' -or $afterMigrations[1] -ne '002_device_proof_replay_v1') { Fail 'MIGRATION_STATE_LOST' 'Required exact migration state changed across restart.' }
 if ($afterReplay -ne $beforeReplay) { Fail 'REPLAY_STATE_CHANGED' 'Durable replay state row count changed during Controller-only restart.' }
 
