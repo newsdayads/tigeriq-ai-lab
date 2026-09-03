@@ -97,6 +97,9 @@ export function cloneWorkRecord(record: ManagedWorkRecord): ManagedWorkRecord {
     executorIds: [...record.executorIds],
     reviewerIds: [...record.reviewerIds],
     judgeIds: [...record.judgeIds],
+    executorIndependenceKeys: [...(record.executorIndependenceKeys ?? [])],
+    reviewerIndependenceKeys: [...(record.reviewerIndependenceKeys ?? [])],
+    judgeIndependenceKeys: [...(record.judgeIndependenceKeys ?? [])],
     lease: record.lease ? { ...record.lease } : undefined,
     execution: cloneExecution(record.execution),
     review: cloneReview(record.review),
@@ -123,7 +126,6 @@ export function normalizeScope(scope: string): string {
 export function scopeKeysConflict(left: string, right: string): boolean {
   const a = normalizeScope(left);
   const b = normalizeScope(right);
-  // Invalid scopes fail closed: they must never be treated as safely parallel.
   if (!a || !b) return true;
   return a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`);
 }
