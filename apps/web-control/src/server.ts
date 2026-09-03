@@ -9,15 +9,7 @@ import { readWebControlSnapshot,defaultWebControlSnapshotPath } from './file-sou
 import { pwaIcon,pwaManifest,pwaRegister,serviceWorker } from './pwa.js';
 import { renderWebControlWithControls } from './render-controls.js';
 
-export interface WebControlServerOptions {
-  host?:string;
-  port?:number;
-  commandSecret?:string;
-  snapshotPath?:string;
-  continuousControlPath?:string;
-  continuousGoalsPath?:string;
-  secureCookies?:boolean;
-}
+export interface WebControlServerOptions {host?:string;port?:number;commandSecret?:string;snapshotPath?:string;continuousControlPath?:string;continuousGoalsPath?:string;secureCookies?:boolean;}
 type Session={csrf:string;createdAt:number};
 const sessions=new Map<string,Session>();
 const SESSION_TTL_MS=12*60*60*1000;
@@ -27,10 +19,7 @@ const goalsDefault='F:\\TigerIQ\\Runtime\\continuous-operations-v1\\goals.json';
 const headers={
   'cache-control':'no-store',
   'content-security-policy':"default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; worker-src 'self'; manifest-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
-  'referrer-policy':'no-referrer',
-  'x-content-type-options':'nosniff',
-  'x-frame-options':'DENY',
-  'permissions-policy':'camera=(), microphone=(), geolocation=()'
+  'referrer-policy':'no-referrer','x-content-type-options':'nosniff','x-frame-options':'DENY','permissions-policy':'camera=(), microphone=(), geolocation=()'
 };
 function respond(response:ServerResponse,status:number,type:string,body:string,extra:Record<string,string>={}):void{response.writeHead(status,{...headers,...extra,'content-type':type});response.end(body);}
 function redirect(response:ServerResponse,location:string,extra:Record<string,string>={}):void{response.writeHead(303,{...headers,...extra,location});response.end();}
@@ -44,62 +33,47 @@ async function atomicJson(file:string,value:unknown):Promise<void>{await mkdir(p
 function assertLoopback(host:string):void{if(!['127.0.0.1','::1','localhost'].includes(host))throw new Error('WEB_CONTROL_LOOPBACK_ONLY');}
 function requireCsrf(request:IncomingMessage,body:URLSearchParams):Session{const session=sessionFor(request);if(!session)throw new Error('UNAUTHORIZED');if(!equal(body.get('csrf')??'',session.csrf))throw new Error('CSRF_REJECTED');return session;}
 function messageCode(value:string|null):string|undefined{const messages:Record<string,string>={paused:'Continuous Operations đã PAUSE.',resumed:'Continuous Operations đã RESUME.',goal_added:'Goal đã được thêm vào Queue.',logged_out:'Đã đăng xuất.'};return value?messages[value]:undefined;}
+function decoratePwa(html:string):string{return html.replace('</head>','<link rel="manifest" href="/manifest.webmanifest"><link rel="icon" href="/pwa-icon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/pwa-icon.svg"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="TigerIQ"><meta name="mobile-web-app-capable" content="yes"><script defer src="/pwa-register.js"></script></head>');}
 
 export async function startWebControlServer(options:WebControlServerOptions={}){
-  const host=options.host??'127.0.0.1';assertLoopback(host);
-  const port=options.port??8788;
+  const host=options.host??'127.0.0.1';assertLoopback(host);const port=options.port??8788;
   const secret=options.commandSecret??process.env.TIGERIQ_COMMAND_SECRET??'';
   const snapshotPath=options.snapshotPath??process.env.TIGERIQ_WEB_CONTROL_SNAPSHOT??defaultWebControlSnapshotPath;
   const controlPath=options.continuousControlPath??process.env.TIGERIQ_CONTINUOUS_CONTROL??controlDefault;
   const goalsPath=options.continuousGoalsPath??process.env.TIGERIQ_CONTINUOUS_GOALS??goalsDefault;
   const secureCookies=options.secureCookies??process.env.TIGERIQ_SECURE_COOKIES!=='0';
-
   const server=createServer(async(request,response)=>{
-    cleanSessions();
-    const url=new URL(request.url??'/','http://localhost');
+    cleanSessions();const url=new URL(request.url??'/','http://localhost');
     try{
       if(request.method==='GET'&&url.pathname==='/health')return respond(response,200,'application/json; charset=utf-8',JSON.stringify({ok:true,service:'tigeriq-web-control',bind:'loopback'}));
       if(request.method==='GET'&&url.pathname==='/manifest.webmanifest')return respond(response,200,'application/manifest+json; charset=utf-8',pwaManifest,{'cache-control':'public, max-age=3600'});
       if(request.method==='GET'&&url.pathname==='/pwa-icon.svg')return respond(response,200,'image/svg+xml; charset=utf-8',pwaIcon,{'cache-control':'public, max-age=86400, immutable'});
       if(request.method==='GET'&&url.pathname==='/pwa-register.js')return respond(response,200,'text/javascript; charset=utf-8',pwaRegister,{'cache-control':'public, max-age=86400, immutable'});
       if(request.method==='GET'&&url.pathname==='/sw.js')return respond(response,200,'text/javascript; charset=utf-8',serviceWorker,{'cache-control':'no-cache','service-worker-allowed':'/'});
-      if(request.method==='GET'&&url.pathname==='/api/control'){
-        const snapshot=await readWebControlSnapshot(snapshotPath);
-        return respond(response,200,'application/json; charset=utf-8',JSON.stringify(snapshot?{available:true,snapshot}:{available:false}));
-      }
+      if(request.method==='GET'&&url.pathname==='/api/control'){const snapshot=await readWebControlSnapshot(snapshotPath);return respond(response,200,'application/json; charset=utf-8',JSON.stringify(snapshot?{available:true,snapshot}:{available:false}));}
       if(request.method==='POST'&&url.pathname==='/login'){
         if(!secret)return respond(response,503,'application/json; charset=utf-8',JSON.stringify({error:'write_auth_not_configured'}));
         const body=await form(request);if(!equal(body.get('secret')??'',secret))return respond(response,401,'application/json; charset=utf-8',JSON.stringify({error:'invalid_credentials'}));
-        const id=randomBytes(32).toString('base64url');sessions.set(id,{csrf:randomBytes(24).toString('base64url'),createdAt:Date.now()});
-        const secure=secureCookies?'; Secure':'';
+        const id=randomBytes(32).toString('base64url');sessions.set(id,{csrf:randomBytes(24).toString('base64url'),createdAt:Date.now()});const secure=secureCookies?'; Secure':'';
         return redirect(response,'/',{'set-cookie':`tigeriq_web_session=${encodeURIComponent(id)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200${secure}`});
       }
       if(request.method==='POST'&&url.pathname==='/logout'){
-        const body=await form(request);requireCsrf(request,body);const id=cookies(request).tigeriq_web_session;if(id)sessions.delete(id);
-        const secure=secureCookies?'; Secure':'';return redirect(response,'/?message=logged_out',{'set-cookie':`tigeriq_web_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${secure}`});
+        const body=await form(request);requireCsrf(request,body);const id=cookies(request).tigeriq_web_session;if(id)sessions.delete(id);const secure=secureCookies?'; Secure':'';
+        return redirect(response,'/?message=logged_out',{'set-cookie':`tigeriq_web_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${secure}`});
       }
       if(request.method==='POST'&&(url.pathname==='/control/pause'||url.pathname==='/control/resume')){
         if(!secret)return respond(response,503,'application/json; charset=utf-8',JSON.stringify({error:'write_auth_not_configured'}));
-        const body=await form(request);requireCsrf(request,body);
-        const current=parseContinuousControl(await readJson(controlPath));
-        const paused=url.pathname.endsWith('/pause');
-        await atomicJson(controlPath,{...current,paused});
-        return redirect(response,`/?message=${paused?'paused':'resumed'}`);
+        const body=await form(request);requireCsrf(request,body);const current=parseContinuousControl(await readJson(controlPath));const paused=url.pathname.endsWith('/pause');await atomicJson(controlPath,{...current,paused});return redirect(response,`/?message=${paused?'paused':'resumed'}`);
       }
       if(request.method==='POST'&&url.pathname==='/goals'){
         if(!secret)return respond(response,503,'application/json; charset=utf-8',JSON.stringify({error:'write_auth_not_configured'}));
-        const body=await form(request);requireCsrf(request,body);
-        const queue=parseContinuousGoalQueue(await readJson(goalsPath));
-        const dependencies=(body.get('dependencies')??'').split(',').map(value=>value.trim()).filter(Boolean);
+        const body=await form(request);requireCsrf(request,body);const queue=parseContinuousGoalQueue(await readJson(goalsPath));const dependencies=(body.get('dependencies')??'').split(',').map(value=>value.trim()).filter(Boolean);
         const candidate:ContinuousGoalQueue={version:1,goals:[...queue.goals,{goalId:(body.get('goalId')??'').trim(),goal:(body.get('goal')??'').trim(),priority:(body.get('priority')??'P1').trim() as 'P0'|'P1'|'P2'|'P3',mode:(body.get('mode')??'ai').trim() as 'ai'|'acceptance',enabled:true,dependencies}]};
-        const validated=parseContinuousGoalQueue(candidate);
-        await atomicJson(goalsPath,validated);
-        return redirect(response,'/?message=goal_added');
+        await atomicJson(goalsPath,parseContinuousGoalQueue(candidate));return redirect(response,'/?message=goal_added');
       }
       if(request.method==='GET'&&url.pathname==='/'){
-        const snapshot=await readWebControlSnapshot(snapshotPath);
-        const session=sessionFor(request);
-        return respond(response,200,'text/html; charset=utf-8',renderWebControlWithControls(snapshot,{writeConfigured:Boolean(secret),authenticated:Boolean(session),csrf:session?.csrf,message:messageCode(url.searchParams.get('message'))}));
+        const snapshot=await readWebControlSnapshot(snapshotPath);const session=sessionFor(request);const html=renderWebControlWithControls(snapshot,{writeConfigured:Boolean(secret),authenticated:Boolean(session),csrf:session?.csrf,message:messageCode(url.searchParams.get('message'))});
+        return respond(response,200,'text/html; charset=utf-8',decoratePwa(html));
       }
       return respond(response,404,'application/json; charset=utf-8',JSON.stringify({error:'not_found'}));
     }catch(error){
@@ -110,8 +84,6 @@ export async function startWebControlServer(options:WebControlServerOptions={}){
       return respond(response,503,'application/json; charset=utf-8',JSON.stringify({error:'web_control_unavailable'}));
     }
   });
-
-  await new Promise<void>((resolve,reject)=>{server.once('error',reject);server.listen(port,host,resolve);});
-  const address=server.address() as AddressInfo;
+  await new Promise<void>((resolve,reject)=>{server.once('error',reject);server.listen(port,host,resolve);});const address=server.address() as AddressInfo;
   return {url:`http://${address.address}:${address.port}`,close:()=>new Promise<void>((resolve,reject)=>server.close(error=>error?reject(error):resolve()))};
 }
