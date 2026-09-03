@@ -39,8 +39,9 @@ describe('TIG Owner Cockpit V3 UI contract',()=>{
     for(const id of ['workCoordinationSummary','goalGrid','goalForm','missionBoard','outcomeBoard','processBoard','departmentGrid','employeeGrid','buildFacts','runtimeFacts','deviceTechnical','jobBoard','providerGrid','promptGrid','technicalResults'])expect(html).toContain(`id="${id}"`);
   });
 
-  it('preserves reviewed truth and authority boundaries',async()=>{
+  it('preserves reviewed truth and authority boundaries and removes external workboard projection',async()=>{
     const adapter=await read('public/web-v1/company-control-tower-adapter.js');
+    const cockpit=await read('public/web-v1/cockpit-v3.js');
     const mock=await read('public/web-v1/mock-data.js');
     const app=await read('public/web-v1/app.js');
     expect(adapter).toContain('4bccf71d73c8d8cf100c65b935b3474f97f24459');
@@ -48,8 +49,9 @@ describe('TIG Owner Cockpit V3 UI contract',()=>{
     expect(adapter).toContain("['OPEN','AWAITING_OWNER']");
     expect(adapter).toContain('decision_ref_is_not_owner_approval_ref');
     expect(adapter).toContain('BLOCKED_PENDING_OWNER_DECISION');
-    expect(adapter).toContain('tigeriq.work-coordination.trello-readonly.v1');
-    expect(adapter).toContain("readOnly:true");
+    expect(adapter).toContain('EXTERNAL_WORKBOARD_REMOVED_BY_OWNER_DECISION');
+    expect(adapter.toLowerCase()).not.toContain('trello');
+    expect(cockpit.toLowerCase()).not.toContain('trello');
     expect(mock).toContain('authoritative:false');
     expect(mock).toContain("source_system:'web-preview-mock'");
     expect(app).not.toContain('api.github.com');
