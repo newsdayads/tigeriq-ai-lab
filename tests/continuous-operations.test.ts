@@ -44,6 +44,18 @@ describe('continuous operations queue',()=>{
     expect(selectNextGoal(queue,next)?.goalId).toBe('second');
   });
 
+  it('propagates a terminal dependency as a blocker instead of waiting forever',()=>{
+    const queue=parseContinuousGoalQueue({version:1,goals:[
+      {goalId:'first',goal:'First',priority:'P0',mode:'ai'},
+      {goalId:'second',goal:'Second',priority:'P1',mode:'ai',dependencies:['first']}
+    ]});
+    const missions:MissionRuntimeState={version:1,missions:{[missionIdForGoal('first')]:{stage:'failed',updatedAt:'2026-09-04T00:00:00.000Z',childTaskIds:['x'],reason:'executor_failed'}}};
+    const state=reconcileContinuousState(queue,undefined,missions,'2026-09-04T00:01:00.000Z');
+    expect(state.goals.first.stage).toBe('failed');
+    expect(state.goals.second.stage).toBe('blocked_dependency');
+    expect(state.goals.second.reason).toBe('dependency_terminal:first:failed');
+  });
+
   it('does not let authorization-held work block the next independent goal',()=>{
     const queue=parseContinuousGoalQueue({version:1,goals:[
       {goalId:'held',goal:'Held',priority:'P0',mode:'ai'},
