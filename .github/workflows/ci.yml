@@ -27,13 +27,20 @@ jobs:
         run: npm run test:e2e
       - name: Build
         run: npm run build
-      - name: Parse WO-065 PC01 scripts
+      - name: Parse PC01 PowerShell packages
         shell: pwsh
         run: |
-          $files=@('scripts/pc01-autonomy/Install-PC01-ContinuousOperations.ps1','scripts/pc01-autonomy/Invoke-PC01-ContinuousOperations-E2E.ps1')
+          $files=@(
+            'scripts/pc01-autonomy/Install-PC01-ContinuousOperations.ps1',
+            'scripts/pc01-autonomy/Invoke-PC01-ContinuousOperations-E2E.ps1',
+            'scripts/pc01-remote-access/Prepare-PC01-CloudflareAccess.ps1'
+          )
           foreach($file in $files){
             $tokens=$null; $errors=$null
             [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $file),[ref]$tokens,[ref]$errors) | Out-Null
             if($errors.Count -gt 0){$errors | ForEach-Object { Write-Error ("{0}:{1} {2}" -f $_.Extent.StartLineNumber,$_.Extent.StartColumnNumber,$_.Message) }; throw "POWERSHELL_PARSE_FAILED: $file"}
           }
-          Write-Host 'WO065_POWERSHELL_PARSE_PASS'
+          $dryRun = & ./scripts/pc01-remote-access/Prepare-PC01-CloudflareAccess.ps1 -TunnelUuid '11111111-1111-4111-8111-111111111111' -CredentialsFile 'C:\TigerIQ\Secrets\tunnel.json' -AiLabHostname 'ai.example.com'
+          $plan = $dryRun | ConvertFrom-Json
+          if($plan.mode -ne 'dry-run' -or $plan.origin -ne 'http://127.0.0.1:8788' -or $plan.ingressFailClosed -ne $true -or $plan.productionMutation -ne $false){ throw 'CLOUDFLARE_DRY_RUN_CONTRACT_FAILED' }
+          Write-Host 'PC01_POWERSHELL_AND_CLOUDFLARE_DRY_RUN_PASS'
