@@ -30,7 +30,7 @@ $content=@"
 `$env:TIGERIQ_AUTONOMY_STATE='$stateEsc'
 `$env:TIGERIQ_AUTONOMY_AUTHORIZATIONS='$authEsc'
 `$env:TIGERIQ_INGRESS_TOKEN_FILE='$tokenEsc'
-`$env:TIGERIQ_AUTONOMY_INTERVAL_MS='30000'
+`$env:TIGERIQ_AUTONOMY_INTERVAL_MS='5000'
 `$env:TIGERIQ_AUTONOMY_DISPATCH_LIMIT='2'
 Set-Location '$executionEsc'
 & '$nodeEsc' '$entryEsc' *>> '$logEsc'
