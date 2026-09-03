@@ -1,12 +1,13 @@
 # WO-059 — Authorization Engine V1
 
 Date: 2026-09-03
-Status: REPOSITORY GATE PASS — PHYSICAL PC01 E2E PENDING
+Status: DONE — PHYSICAL PC01 POLICY E2E PASS
 Branch: `wo059/authorization-engine-v1`
 Base: `wo058/autonomous-planner-v1`
 MAIN/Production: untouched
 OpenClaw dependency: none
 Repository gate: GitHub Actions run `33739656364` PASS
+Physical evidence: `docs/evidence/WO-059-AUTHORIZATION-ENGINE-E2E-20260903T094429Z.json`
 
 ## Objective
 Replace the WO-058 boolean authorization hold with a deterministic fail-closed policy layer that lets PC01 run safe work autonomously while holding higher-risk work until explicit scoped Owner authorization exists.
@@ -44,17 +45,17 @@ GitHub Actions run `33739656364` completed successfully.
 - Linux: npm ci, typecheck, unit tests, build, authorization safety contract PASS.
 - Windows: npm ci, typecheck, unit tests, build, planner/policy build artifacts and PowerShell parser PASS.
 
-## Physical acceptance — PENDING
-Prepared script: `scripts/pc01-autonomy/Invoke-WO059-Physical-E2E.ps1`.
+## Physical acceptance — PASS
+Evidence: `docs/evidence/WO-059-AUTHORIZATION-ENGINE-E2E-20260903T094429Z.json`.
 
-Physical E2E injects five isolated tasks with unique IDs:
-1. GREEN workspace write → must auto-dispatch and create artifact.
-2. YELLOW task without grant → must remain held, no Controller job, no artifact.
-3. YELLOW task with exact active OWNER grant → must dispatch and complete.
-4. RED financial-class task without grant → must remain held, no Controller job, no artifact.
-5. Independent GREEN task → must complete despite held YELLOW/RED work.
-
-PASS also requires Controller/PostgreSQL/PC01 Native Worker healthy after the test, machine-readable evidence under `docs/evidence/WO-059-AUTHORIZATION-ENGINE-E2E-<timestamp>.json`, MAIN/Production untouched, no financial/security-sensitive action executed and no secret printed.
+Verified physical behavior:
+1. GREEN workspace write auto-dispatched and completed.
+2. YELLOW task without grant remained held; no Controller job and no artifact.
+3. YELLOW task with exact active OWNER grant dispatched and completed.
+4. RED financial-class task remained held; no Controller job and no artifact.
+5. Independent GREEN task completed despite held YELLOW/RED work.
+6. Controller/PostgreSQL/PC01 Native Worker remained healthy/online.
+7. MAIN/Production untouched; no financial/security-sensitive action executed; no secret printed.
 
 ## Boundary
-WO-059 controls authorization of explicit backlog tasks. Natural-language mission decomposition remains outside this Work Order and is the next autonomy layer after WO-059 is physically verified.
+WO-059 controls authorization of explicit backlog tasks. Natural-language/high-level mission decomposition remains outside this Work Order and is the next autonomy layer under WO-060.
