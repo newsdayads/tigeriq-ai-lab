@@ -27,6 +27,20 @@ public final class GeminiDirectClientTest {
         assertEquals("", GeminiDirectClient.parseText(new JSONObject()));
     }
 
+    @Test public void acceptsProviderTextAtControllerBudget() throws Exception {
+        GeminiDirectClient.requireOutputWithinControllerBudget("a".repeat(GeminiDirectClient.MAX_CONTROLLER_RESULT_TEXT_BYTES));
+    }
+
+    @Test public void rejectsProviderTextThatCannotFitControllerResult() throws Exception {
+        try {
+            GeminiDirectClient.requireOutputWithinControllerBudget("a".repeat(GeminiDirectClient.MAX_CONTROLLER_RESULT_TEXT_BYTES + 1));
+            fail("expected provider output boundary failure");
+        } catch (ProviderException error) {
+            assertEquals("PROVIDER_OUTPUT_TOO_LARGE", error.code);
+            assertFalse(error.retryable);
+        }
+    }
+
     @Test(expected = IllegalArgumentException.class) public void rejectsModelPathInjection() {
         ProviderConfigStore.requireModel("../../bad:model");
     }
