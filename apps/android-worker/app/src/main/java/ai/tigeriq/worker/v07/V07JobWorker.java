@@ -32,6 +32,14 @@ public final class V07JobWorker extends Worker {
             }
             DirectAiJobAdapter.requireBinding(profile, snapshot);
             if (snapshot.leaseExpired(System.currentTimeMillis())) {
+                if (ResultReacquirePolicy.isPersistedResultPhase(snapshot.phase)) {
+                    if (!checkpoints.hasPersistedResult(snapshot)) {
+                        throw new ApiException(409, "RESULT_MISSING", "persisted result missing after lease expiry", false, null);
+                    }
+                    status.setState(WorkerState.WORKING, "Lease hết hạn nhưng RESULT đã lưu; reacquire đúng JOB trước khi submit", snapshot.jobId);
+                    V07WorkScheduler.enqueueRecovery(app);
+                    return Result.success();
+                }
                 checkpoints.clear();
                 status.setState(WorkerState.READY, "Lease hết hạn; chờ Controller V1 requeue", null);
                 V07WorkScheduler.enqueueRecovery(app);
