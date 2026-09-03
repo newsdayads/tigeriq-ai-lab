@@ -14,6 +14,7 @@
     "workforce-controller": "node dist/apps/workforce-controller/src/standalone.js",
     "pc01-native-worker": "node dist/apps/pc01-native-worker/src/standalone.js",
     "autonomous-planner": "node dist/apps/autonomous-planner/src/standalone.js",
+    "mission-orchestrator": "node dist/apps/mission-orchestrator/src/standalone.js",
     "ci": "npm run typecheck && npm run test && npm run test:e2e && npm run build"
   },
   "devDependencies": {
