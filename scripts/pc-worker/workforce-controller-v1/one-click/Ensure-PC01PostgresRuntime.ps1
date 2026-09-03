@@ -91,7 +91,7 @@ function Ensure-PgPassFromEnvironment([Uri]$Uri) {
 }
 function Test-RuntimeConnection([string]$Url,[string]$Psql) {
   $env:PGPASSFILE = $PgPassFile
-  $probe = (& $Psql -w $Url -vON_ERROR_STOP=1 -Atc 'SELECT 1;' 2>$null).Trim()
+  $probe = (& $Psql -w -vON_ERROR_STOP=1 -Atc 'SELECT 1;' --dbname=$Url 2>$null).Trim()
   return ($LASTEXITCODE -eq 0 -and $probe -eq '1')
 }
 function Wait-Postgres([string]$Psql,[string]$AdminPassword) {
