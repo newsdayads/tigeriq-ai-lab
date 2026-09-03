@@ -1,31 +1,14 @@
+import { FileJournal } from '../../../packages/event-store/src/index.js';
+
 export type ProjectId='ai-lab'|'driver';
-export type RuntimeEntity='goal'|'mission'|'task'|'worker'|'evidence'|'provider';
-export type RuntimeEventKind='created'|'updated'|'started'|'heartbeat'|'retry_scheduled'|'paused'|'resumed'|'completed'|'failed'|'blocked'|'recovered';
-
-export interface RuntimeEvent {
-  version:1;
-  eventId:string;
-  projectId:ProjectId;
-  entity:RuntimeEntity;
-  entityId:string;
-  kind:RuntimeEventKind;
-  at:string;
-  sequence:number;
-  idempotencyKey?:string;
-  metadata?:Record<string,string|number|boolean|null>;
-}
-
-export interface EventJournal {version:1;events:RuntimeEvent[];lastSequence:number;}
 export interface HeartbeatRecord {id:string;projectId:ProjectId;lastSeenAt:string;status:'running'|'idle'|'waiting'|'failed';attempt:number;}
 export interface RecoveryPolicy {stuckAfterMs:number;maxAttempts:number;baseRetryMs:number;maxRetryMs:number;}
 export type RecoveryAction='healthy'|'retry'|'restart'|'blocked';
 export interface RecoveryDecision {action:RecoveryAction;reason:string;retryAfterMs?:number;}
-export interface ProjectPaths {projectId:ProjectId;root:string;queue:string;state:string;evidence:string;secrets:string;}
+export interface ProjectPaths {projectId:ProjectId;root:string;queue:string;state:string;evidence:string;secrets:string;journal:string;}
 export interface SecretReference {version:1;providerId:string;keyName:string;source:'env'|'windows-credential-manager'|'file-ref';reference:string;}
 
 const projectIds:ProjectId[]=['ai-lab','driver'];
-const eventKinds:RuntimeEventKind[]=['created','updated','started','heartbeat','retry_scheduled','paused','resumed','completed','failed','blocked','recovered'];
-const entityKinds:RuntimeEntity[]=['goal','mission','task','worker','evidence','provider'];
 const idPattern=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$/;
 
 function requireId(value:string,name:string):string{
@@ -36,37 +19,12 @@ function requireId(value:string,name:string):string{
 export function projectPaths(projectId:ProjectId,base='F:\\TigerIQ\\Runtime'):ProjectPaths{
   if(!projectIds.includes(projectId))throw new Error('INVALID_PROJECT_ID');
   const root=`${base}\\${projectId}`;
-  return {projectId,root,queue:`${root}\\queue`,state:`${root}\\state`,evidence:`${root}\\evidence`,secrets:`${root}\\secrets`};
+  return {projectId,root,queue:`${root}\\queue`,state:`${root}\\state`,evidence:`${root}\\evidence`,secrets:`${root}\\secrets`,journal:`${root}\\state\\events.jsonl`};
 }
 
-export function emptyJournal():EventJournal{return {version:1,events:[],lastSequence:0};}
-
-export function appendEvent(journal:EventJournal,input:Omit<RuntimeEvent,'version'|'eventId'|'sequence'> & {eventId?:string}):EventJournal{
-  if(journal.version!==1||journal.lastSequence<0)throw new Error('INVALID_EVENT_JOURNAL');
-  if(!projectIds.includes(input.projectId)||!entityKinds.includes(input.entity)||!eventKinds.includes(input.kind))throw new Error('INVALID_RUNTIME_EVENT');
-  requireId(input.entityId,'entity_id');
-  if(Number.isNaN(Date.parse(input.at)))throw new Error('INVALID_EVENT_TIME');
-  if(input.idempotencyKey){
-    requireId(input.idempotencyKey,'idempotency_key');
-    const duplicate=journal.events.find(event=>event.projectId===input.projectId&&event.idempotencyKey===input.idempotencyKey);
-    if(duplicate)return journal;
-  }
-  const sequence=journal.lastSequence+1;
-  const eventId=input.eventId?requireId(input.eventId,'event_id'):`evt:${input.projectId}:${sequence}`;
-  if(journal.events.some(event=>event.eventId===eventId))throw new Error('DUPLICATE_EVENT_ID');
-  const event:RuntimeEvent={version:1,eventId,projectId:input.projectId,entity:input.entity,entityId:input.entityId,kind:input.kind,at:input.at,sequence,idempotencyKey:input.idempotencyKey,metadata:input.metadata};
-  return {version:1,events:[...journal.events,event],lastSequence:sequence};
-}
-
-export function verifyJournal(journal:EventJournal):boolean{
-  if(journal.version!==1||journal.lastSequence!==journal.events.length)return false;
-  const ids=new Set<string>();
-  for(let index=0;index<journal.events.length;index++){
-    const event=journal.events[index];
-    if(event.version!==1||event.sequence!==index+1||ids.has(event.eventId))return false;
-    ids.add(event.eventId);
-  }
-  return true;
+/** The repository's existing SHA-256 chained FileJournal is the only durable journal implementation. */
+export function createProjectJournal(projectId:ProjectId,base='F:\\TigerIQ\\Runtime'):FileJournal{
+  return new FileJournal(projectPaths(projectId,base).journal);
 }
 
 export function recoveryDecision(heartbeat:HeartbeatRecord,nowMs:number,policy:RecoveryPolicy):RecoveryDecision{
