@@ -1,0 +1,31 @@
+{
+    "scope":  "WO-060..WO-064",
+    "runId":  "20260903T104820Z",
+    "host":  "PC01",
+    "branch":  "wo060/mission-decomposition-v1",
+    "allPass":  true,
+    "mission":  {
+                    "missionId":  "FINAL-20260903T104820Z",
+                    "safeChildrenDone":  4,
+                    "closedLoopStage":  "waiting_authorization",
+                    "redHeld":  true
+                },
+    "runtime":  {
+                    "codeRepo":  "F:\\TigerIQ\\AutonomyRuntime\\tigeriq-fast-20260903-174812",
+                    "executionWorkspace":  "F:\\TigerIQ\\Workspace\\tigeriq-ai-lab",
+                    "plannerIntervalMs":  5000,
+                    "missionIntervalMs":  5000,
+                    "controller":  "TigerIQ Workforce Controller V1",
+                    "postgres":  true,
+                    "pc01Online":  true,
+                    "pc01Health":  "ok",
+                    "model":  "qwen3:8b",
+                    "gpuPercent":  100,
+                    "supervisorOverallOk":  true
+                },
+    "security":  {
+                     "mainProductionTouched":  false,
+                     "financialActionExecuted":  false,
+                     "secretPrinted":  false
+                 }
+}
