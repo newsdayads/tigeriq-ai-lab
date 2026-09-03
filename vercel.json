@@ -1,10 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "git": {
-    "deploymentEnabled": {
-      "**": false,
-      "wo158/tig-owner-cockpit-v3": true
-    }
+    "deploymentEnabled": false
   },
   "cleanUrls": true,
   "trailingSlash": false,
