@@ -33,16 +33,17 @@ jobs:
         run: npm test
       - name: Build
         run: npm run build
-      - name: Security contract
+      - name: Security and resource contract
         shell: bash
         run: |
           set -euo pipefail
-          ! grep -R -E -i 'openclaw[[:space:]]+(connect|login|auth|enable|start)' apps/pc01-native-worker scripts/pc01-primary-node 2>/dev/null || false
+          ! grep -R -E -i 'openclaw[[:space:]]+(connect|login|auth|enable|start)' apps/pc01-native-worker scripts/pc01-primary-node
           ! grep -R -E 'shell:[[:space:]]*true|exec\(' apps/pc01-native-worker/src
-          grep -q "think:false" apps/pc01-native-worker/src/core.ts
-          grep -q "4096" apps/pc01-native-worker/src/core.ts
-          grep -q "new Semaphore(maxConcurrency)" apps/pc01-native-worker/src/core.ts
-          grep -q "maxConcurrency=2" apps/pc01-native-worker/src/core.ts
+          grep -q 'think:false' apps/pc01-native-worker/src/ollama.ts
+          grep -q 'numCtx=4096' apps/pc01-native-worker/src/ollama.ts
+          grep -q 'maxConcurrency=2' apps/pc01-native-worker/src/ollama.ts
+          grep -q 'new OllamaProvider(config.ollamaEndpoint,config.ollamaModel,4096,2)' apps/pc01-native-worker/src/worker.ts
+          grep -q "'main','master','production','prod'" apps/pc01-native-worker/src/executor.ts
           echo 'PC01_PRIMARY_NODE_SECURITY_CONTRACT_PASS'
 
   windows-build-gate:
@@ -58,8 +59,14 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-      - name: Confirm Windows worker artifact
+      - name: Confirm Windows worker artifact and PowerShell syntax
         shell: powershell
         run: |
           if (-not (Test-Path 'dist\apps\pc01-native-worker\src\standalone.js')) { throw 'PC01 worker build artifact missing' }
+          $scripts = @('scripts\pc01-primary-node\Install-PC01-PrimaryNode.ps1','scripts\pc01-primary-node\Invoke-PC01-PrimaryNode-E2E.ps1')
+          foreach ($script in $scripts) {
+            $tokens = $null; $errors = $null
+            [Management.Automation.Language.Parser]::ParseFile((Resolve-Path $script),[ref]$tokens,[ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error $_.Message }; throw "PowerShell parse failed: $script" }
+          }
           Write-Host 'PC01_NATIVE_WORKER_WINDOWS_BUILD_PASS'
