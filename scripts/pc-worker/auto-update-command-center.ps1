@@ -12,6 +12,7 @@ $releaseRoot = Join-Path $runtimeDir 'releases'
 $secretDir = 'F:\TigerIQ\Secrets'
 $githubTokenPath = Join-Path $secretDir 'github-command-center.token'
 $statePath = Join-Path $runtimeDir 'auto-update-state.json'
+$powershellExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
 $mutexName = 'Global\TigerIQCommandCenterUpdaterV1'
 $mutex = New-Object System.Threading.Mutex($false,$mutexName)
 $locked = $false
@@ -45,6 +46,7 @@ try {
   if(-not $locked){ exit 0 }
   if($Port -lt 1024 -or $Port -gt 65535){ throw 'INVALID_PORT' }
   if(-not (Test-Path $githubTokenPath)){ throw 'GITHUB_TOKEN_FILE_MISSING' }
+  if(-not (Test-Path -LiteralPath $powershellExe)){ throw 'POWERSHELL_NOT_FOUND' }
   $token = [IO.File]::ReadAllText($githubTokenPath).Trim()
   if(-not $token){ throw 'GITHUB_TOKEN_EMPTY' }
   $env:GH_TOKEN = $token
@@ -89,7 +91,7 @@ try {
   [IO.File]::WriteAllText($inner,$text,(New-Object Text.UTF8Encoding($false)))
 
   Save-State @{ lastResult='INSTALLING'; lastSeenSha=$head; branch=$Branch; releaseDir=$releaseDir; ciRunId=$ciPass.id }
-  & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $inner -Branch $Branch -Commit $head -Port $Port -CommandHost $CommandHost
+  & $powershellExe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $inner -Branch $Branch -Commit $head -Port $Port -CommandHost $CommandHost
   if($LASTEXITCODE -ne 0){ throw "INSTALL_FAILED_$LASTEXITCODE" }
 
   Save-State @{ lastResult='UPDATED'; installedSha=$head; lastSeenSha=$head; branch=$Branch; releaseDir=$releaseDir; ciRunId=$ciPass.id }
