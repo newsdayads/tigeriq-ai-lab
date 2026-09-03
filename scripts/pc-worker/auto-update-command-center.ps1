@@ -16,12 +16,23 @@ $mutexName = 'Global\TigerIQCommandCenterUpdaterV1'
 $mutex = New-Object System.Threading.Mutex($false,$mutexName)
 $locked = $false
 
+function Read-StateHashtable {
+  $result = @{}
+  if(-not (Test-Path -LiteralPath $statePath)){ return $result }
+  try {
+    $object = Get-Content -Raw -LiteralPath $statePath | ConvertFrom-Json
+    if($null -ne $object){
+      foreach($property in $object.PSObject.Properties){
+        $result[$property.Name] = $property.Value
+      }
+    }
+  } catch {}
+  return $result
+}
+
 function Save-State([hashtable]$Data) {
   New-Item -ItemType Directory -Force -Path $runtimeDir | Out-Null
-  $current = @{}
-  if(Test-Path $statePath){
-    try { $current = Get-Content -Raw -LiteralPath $statePath | ConvertFrom-Json -AsHashtable } catch { $current = @{} }
-  }
+  $current = Read-StateHashtable
   foreach($key in $Data.Keys){ $current[$key] = $Data[$key] }
   $current['updatedAt'] = (Get-Date).ToUniversalTime().ToString('o')
   $tmp = "$statePath.tmp"
@@ -43,10 +54,8 @@ try {
   $head = (& gh api "repos/$repo/commits/$encodedBranch" --jq .sha 2>$null | Out-String).Trim()
   if($LASTEXITCODE -ne 0 -or $head -notmatch '^[0-9a-f]{40}$'){ throw 'REMOTE_HEAD_UNAVAILABLE' }
 
-  $installedSha = $null
-  if(Test-Path $statePath){
-    try { $installedSha = (Get-Content -Raw -LiteralPath $statePath | ConvertFrom-Json).installedSha } catch {}
-  }
+  $state = Read-StateHashtable
+  $installedSha = if($state.ContainsKey('installedSha')){ [string]$state['installedSha'] } else { $null }
   if($installedSha -eq $head){
     Save-State @{ lastResult='NO_CHANGE'; lastSeenSha=$head; branch=$Branch }
     exit 0
