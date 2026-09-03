@@ -6,6 +6,7 @@ import { mkdir,readFile,rename,writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { parseContinuousControl,parseContinuousGoalQueue,type ContinuousGoalQueue } from '../../continuous-operations/src/core.js';
 import { readWebControlSnapshot,defaultWebControlSnapshotPath } from './file-source.js';
+import { pwaIcon,pwaManifest,pwaRegister,serviceWorker } from './pwa.js';
 import { renderWebControlWithControls } from './render-controls.js';
 
 export interface WebControlServerOptions {
@@ -25,7 +26,7 @@ const controlDefault='F:\\TigerIQ\\Runtime\\continuous-operations-v1\\control.js
 const goalsDefault='F:\\TigerIQ\\Runtime\\continuous-operations-v1\\goals.json';
 const headers={
   'cache-control':'no-store',
-  'content-security-policy':"default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+  'content-security-policy':"default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; worker-src 'self'; manifest-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
   'referrer-policy':'no-referrer',
   'x-content-type-options':'nosniff',
   'x-frame-options':'DENY',
@@ -58,6 +59,10 @@ export async function startWebControlServer(options:WebControlServerOptions={}){
     const url=new URL(request.url??'/','http://localhost');
     try{
       if(request.method==='GET'&&url.pathname==='/health')return respond(response,200,'application/json; charset=utf-8',JSON.stringify({ok:true,service:'tigeriq-web-control',bind:'loopback'}));
+      if(request.method==='GET'&&url.pathname==='/manifest.webmanifest')return respond(response,200,'application/manifest+json; charset=utf-8',pwaManifest,{'cache-control':'public, max-age=3600'});
+      if(request.method==='GET'&&url.pathname==='/pwa-icon.svg')return respond(response,200,'image/svg+xml; charset=utf-8',pwaIcon,{'cache-control':'public, max-age=86400, immutable'});
+      if(request.method==='GET'&&url.pathname==='/pwa-register.js')return respond(response,200,'text/javascript; charset=utf-8',pwaRegister,{'cache-control':'public, max-age=86400, immutable'});
+      if(request.method==='GET'&&url.pathname==='/sw.js')return respond(response,200,'text/javascript; charset=utf-8',serviceWorker,{'cache-control':'no-cache','service-worker-allowed':'/'});
       if(request.method==='GET'&&url.pathname==='/api/control'){
         const snapshot=await readWebControlSnapshot(snapshotPath);
         return respond(response,200,'application/json; charset=utf-8',JSON.stringify(snapshot?{available:true,snapshot}:{available:false}));
