@@ -40,5 +40,5 @@ jobs:
         shell: powershell
         run: |
           if(-not (Test-Path 'dist\apps\mission-orchestrator\src\standalone.js')){throw 'MISSION_BUILD_MISSING'}
-          $files=@('scripts\pc01-autonomy\Install-PC01-Autonomy-Final.ps1','scripts\pc01-autonomy\Invoke-PC01-Autonomy-Final-E2E.ps1')
+          $files=@('scripts\pc01-autonomy\Install-PC01-Autonomy-Final.ps1','scripts\pc01-autonomy\Invoke-PC01-Autonomy-Final-E2E.ps1','scripts\pc01-autonomy\Invoke-PC01-Autonomy-Quick-Final.ps1')
           foreach($f in $files){$tokens=$null;$errors=$null;[System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $f),[ref]$tokens,[ref]$errors)|Out-Null;if($errors.Count -gt 0){$errors|ForEach-Object{Write-Error $_.Message};throw "POWERSHELL_PARSE_FAILED: $f"}}
