@@ -12,6 +12,7 @@ export class ControllerError extends Error {
 
 const MAX_LEASE_TTL_MS=900_000;
 const MIN_LEASE_TTL_MS=15_000;
+const REQUIRED_CONTROLLER_MIGRATIONS=['001_operational_state_v1','002_device_proof_replay_v1'] as const;
 
 function jsonBody(raw:Buffer):Record<string,unknown>{
   if(raw.length===0)return {};
@@ -126,11 +127,13 @@ export class WorkforceControllerV1 {
   }
 
   private async status():Promise<ControllerResponse>{
-    const migration=await this.pool.query<{version:string}>(`SELECT version FROM tigeriq_schema_migrations WHERE version='001_operational_state_v1'`);
-    if(migration.rows[0]?.version!=='001_operational_state_v1')return {status:503,body:{ok:false,controller:'TigerIQ Workforce Controller V1',postgres:false,migration:null}};
+    const migrationRows=await this.pool.query<{version:string}>(`SELECT version FROM tigeriq_schema_migrations WHERE version = ANY($1::text[]) ORDER BY version`,[REQUIRED_CONTROLLER_MIGRATIONS]);
+    const applied=[...new Set(migrationRows.rows.map(row=>row.version))].filter(version=>REQUIRED_CONTROLLER_MIGRATIONS.includes(version as typeof REQUIRED_CONTROLLER_MIGRATIONS[number]));
+    const missing=REQUIRED_CONTROLLER_MIGRATIONS.filter(version=>!applied.includes(version));
+    if(missing.length>0)return {status:503,body:{ok:false,controller:'TigerIQ Workforce Controller V1',protocol:'controller-v1',postgres:false,migration:applied.includes('001_operational_state_v1')?'001_operational_state_v1':null,migrations:applied,requiredMigrations:[...REQUIRED_CONTROLLER_MIGRATIONS],missingMigrations:missing}};
     const counts=await this.pool.query<{employees:string;devices:string;queued_jobs:string;active_leases:string}>(`SELECT (SELECT count(*) FROM employees)::text employees,(SELECT count(*) FROM devices)::text devices,(SELECT count(*) FROM jobs WHERE stage='queued')::text queued_jobs,(SELECT count(*) FROM leases WHERE status='active' AND expires_at>now())::text active_leases`);
     const row=counts.rows[0]??{employees:'0',devices:'0',queued_jobs:'0',active_leases:'0'};
-    return {status:200,body:{ok:true,controller:'TigerIQ Workforce Controller V1',protocol:'controller-v1',postgres:true,migration:'001_operational_state_v1',workforce:{employees:Number(row.employees),devices:Number(row.devices),queuedJobs:Number(row.queued_jobs),activeLeases:Number(row.active_leases)}}};
+    return {status:200,body:{ok:true,controller:'TigerIQ Workforce Controller V1',protocol:'controller-v1',postgres:true,migration:'001_operational_state_v1',migrations:applied,requiredMigrations:[...REQUIRED_CONTROLLER_MIGRATIONS],workforce:{employees:Number(row.employees),devices:Number(row.devices),queuedJobs:Number(row.queued_jobs),activeLeases:Number(row.active_leases)}}};
   }
 
   private errorResponse(error:unknown):ControllerResponse{
