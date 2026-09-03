@@ -10,7 +10,7 @@ const backlogPath=(process.env.TIGERIQ_AUTONOMY_BACKLOG??'F:\\TigerIQ\\Runtime\\
 const statePath=(process.env.TIGERIQ_AUTONOMY_STATE??'F:\\TigerIQ\\Runtime\\autonomous-planner-v1\\planner-state.json').trim();
 const authorizationPath=(process.env.TIGERIQ_AUTONOMY_AUTHORIZATIONS??'F:\\TigerIQ\\Runtime\\autonomous-planner-v1\\authorizations.json').trim();
 const tokenPath=(process.env.TIGERIQ_INGRESS_TOKEN_FILE??'F:\\TigerIQ\\Secrets\\pc01-primary-node.ingress-token').trim();
-const intervalMs=Math.max(15_000,Number(process.env.TIGERIQ_AUTONOMY_INTERVAL_MS??60_000));
+const intervalMs=Math.max(2_000,Number(process.env.TIGERIQ_AUTONOMY_INTERVAL_MS??5_000));
 const dispatchLimit=Math.max(1,Math.min(4,Number(process.env.TIGERIQ_AUTONOMY_DISPATCH_LIMIT??2)));
 let stopped=false;
 
