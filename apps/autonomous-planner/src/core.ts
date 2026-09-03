@@ -81,14 +81,14 @@ export function actionable(backlog:PlannerBacklog,state:PlannerRuntimeState,limi
   const done=(id:string)=>backlog.tasks.find(t=>t.taskId===id)?.status==='done'||state.tasks[id]?.stage==='done';
   return backlog.tasks.filter(task=>{
     if(!task.enabled||task.status!=='pending'||task.requiresAuthorization)return false;
-    const stage=state.tasks[task.taskId]?.stage;if(stage&&['dispatched','done'].includes(stage))return false;
+    const stage=state.tasks[task.taskId]?.stage;if(stage&&['dispatched','done','failed'].includes(stage))return false;
     return task.dependencies.every(done);
   }).sort((a,b)=>priorities[a.priority]-priorities[b.priority]||a.taskId.localeCompare(b.taskId)).slice(0,Math.max(1,limit));
 }
 
 export function waitingDependencies(backlog:PlannerBacklog,state:PlannerRuntimeState):string[]{
   const done=(id:string)=>backlog.tasks.find(t=>t.taskId===id)?.status==='done'||state.tasks[id]?.stage==='done';
-  return backlog.tasks.filter(t=>t.enabled&&t.status==='pending'&&!t.requiresAuthorization&&!['dispatched','done'].includes(state.tasks[t.taskId]?.stage??'')&&t.dependencies.some(d=>!done(d))).map(t=>t.taskId);
+  return backlog.tasks.filter(t=>t.enabled&&t.status==='pending'&&!t.requiresAuthorization&&!['dispatched','done','failed'].includes(state.tasks[t.taskId]?.stage??'')&&t.dependencies.some(d=>!done(d))).map(t=>t.taskId);
 }
 
 export function toControllerBody(task:BacklogTask):Record<string,unknown>{
