@@ -12,7 +12,7 @@ const intervalMs=Math.max(15_000,Number(process.env.TIGERIQ_AUTONOMY_INTERVAL_MS
 const dispatchLimit=Math.max(1,Math.min(4,Number(process.env.TIGERIQ_AUTONOMY_DISPATCH_LIMIT??2)));
 let stopped=false;
 
-async function readJson(file:string):Promise<unknown>{return JSON.parse(await readFile(file,'utf8'));}
+async function readJson(file:string):Promise<unknown>{const raw=await readFile(file,'utf8');return JSON.parse(raw.replace(/^\uFEFF/,''));}
 async function writeJson(file:string,value:unknown):Promise<void>{await mkdir(path.dirname(file),{recursive:true});await writeFile(file,JSON.stringify(value,null,2),'utf8');}
 async function token():Promise<string>{const value=(await readFile(tokenPath,'utf8')).trim();if(value.length<32)throw new Error('INGRESS_TOKEN_INVALID');return value;}
 async function request(method:string,endpoint:string,body?:Record<string,unknown>):Promise<any>{
