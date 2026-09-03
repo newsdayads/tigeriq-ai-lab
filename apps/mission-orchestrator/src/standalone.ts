@@ -11,7 +11,7 @@ const backlogPath=(process.env.TIGERIQ_AUTONOMY_BACKLOG??'F:\\TigerIQ\\Runtime\\
 const plannerStatePath=(process.env.TIGERIQ_AUTONOMY_STATE??'F:\\TigerIQ\\Runtime\\autonomous-planner-v1\\planner-state.json').trim();
 const ollamaUrl=(process.env.TIGERIQ_OLLAMA_URL??'http://127.0.0.1:11434').replace(/\/$/,'');
 const model=(process.env.TIGERIQ_MISSION_MODEL??'qwen3:8b').trim();
-const intervalMs=Math.max(15_000,Number(process.env.TIGERIQ_MISSION_INTERVAL_MS??30_000));
+const intervalMs=Math.max(2_000,Number(process.env.TIGERIQ_MISSION_INTERVAL_MS??5_000));
 let stopped=false;
 
 async function readJson(file:string):Promise<unknown>{const raw=await readFile(file,'utf8');return JSON.parse(raw.replace(/^\uFEFF/,''));}
