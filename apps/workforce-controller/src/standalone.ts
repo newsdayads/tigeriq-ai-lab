@@ -10,14 +10,16 @@ const EXPECTED_HOST='100.97.23.87';
 const EXPECTED_PORT=8790;
 const MAX_BODY_BYTES=512_000;
 
-function requireProductionConfig():{host:string;port:number;databaseUrl:string}{
+function requireProductionConfig():{host:string;port:number;databaseUrl:string;ingressToken:string}{
   const host=(process.env.TIGERIQ_WORKFORCE_HOST??'').trim();
   const port=Number(process.env.TIGERIQ_WORKFORCE_PORT??EXPECTED_PORT);
   const databaseUrl=(process.env.TIGERIQ_DATABASE_URL??'').trim();
+  const ingressToken=(process.env.TIGERIQ_INGRESS_TOKEN??'').trim();
   if(host!==EXPECTED_HOST)throw new Error(`TIGERIQ_WORKFORCE_HOST must equal ${EXPECTED_HOST}`);
   if(port!==EXPECTED_PORT)throw new Error(`TIGERIQ_WORKFORCE_PORT must equal ${EXPECTED_PORT}`);
   if(!databaseUrl)throw new Error('TIGERIQ_DATABASE_URL is required for local PC01 PostgreSQL');
-  return {host,port,databaseUrl};
+  if(ingressToken.length<32)throw new Error('TIGERIQ_INGRESS_TOKEN must contain at least 32 characters');
+  return {host,port,databaseUrl,ingressToken};
 }
 
 async function readBody(request:IncomingMessage):Promise<Buffer>{
@@ -41,12 +43,12 @@ function send(response:ServerResponse,status:number,body:Record<string,unknown>)
 }
 
 export async function startController():Promise<void>{
-  const {host,port,databaseUrl}=requireProductionConfig();
+  const {host,port,databaseUrl,ingressToken}=requireProductionConfig();
   const pool=await createPgPool(databaseUrl,10);
   const repository=new PostgresOperationalStateRepository(pool);
   const service=new OperationalWorkService(repository);
   const recovery=await service.recoverAfterRestart(new Date().toISOString());
-  const controller=new WorkforceControllerV1(pool,service);
+  const controller=new WorkforceControllerV1(pool,service,ingressToken);
   const server=createServer(async(request,response)=>{
     try{
       const body=await readBody(request);
@@ -59,7 +61,7 @@ export async function startController():Promise<void>{
   });
   server.on('error',error=>{console.error(JSON.stringify({event:'WORKFORCE_CONTROLLER_ERROR',message:error.message}));});
   await new Promise<void>((resolve,reject)=>{server.once('error',reject);server.listen(port,host,()=>resolve());});
-  console.log(JSON.stringify({event:'WORKFORCE_CONTROLLER_V1_START',host,port,hostname:os.hostname(),postgres:'operational-state-v1',recovery}));
+  console.log(JSON.stringify({event:'WORKFORCE_CONTROLLER_V1_START',host,port,hostname:os.hostname(),postgres:'operational-state-v1',ingress:'authenticated',recovery}));
   const shutdown=async(signal:string)=>{
     console.log(JSON.stringify({event:'WORKFORCE_CONTROLLER_V1_STOP',signal}));
     await new Promise<void>(resolve=>server.close(()=>resolve()));
