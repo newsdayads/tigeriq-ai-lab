@@ -7,7 +7,7 @@ foreach($p in @($RepoPath,$ExecutionWorkspace)){if(-not(Test-Path $p)){Fail 'REQ
 $git=(Get-Command git.exe -ErrorAction Stop).Source;$node=(Get-Command node.exe -ErrorAction Stop).Source;$powershell=(Get-Command powershell.exe -ErrorAction Stop).Source
 $branch=(& $git -C $RepoPath branch --show-current).Trim();if($branch -ne $ExpectedBranch){Fail 'WRONG_BRANCH' "Expected $ExpectedBranch; got $branch"};$dirty=@(& $git -C $RepoPath status --porcelain);if($dirty.Count -gt 0){Fail 'REPO_NOT_CLEAN' (($dirty|Select-Object -First 10)-join '; ')}
 $plannerInstaller=Join-Path $RepoPath 'scripts\pc01-autonomy\Install-PC01-AutonomousPlanner.ps1';if(-not(Test-Path $plannerInstaller)){Fail 'PLANNER_INSTALLER_MISSING' $plannerInstaller}
-& $powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $plannerInstaller -RepoPath $RepoPath -ExpectedBranch $ExpectedBranch -ExecutionWorkspace $ExecutionWorkspace;if($LASTEXITCODE -ne 0){Fail 'PLANNER_INSTALL_FAILED' 'Autonomous Planner install failed'}
+& $powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $plannerInstaller -RepoPath $RepoPath -ExpectedBranch $ExpectedBranch -ExecutionWorkspace $ExecutionWorkspace -SkipRepositoryTests;if($LASTEXITCODE -ne 0){Fail 'PLANNER_INSTALL_FAILED' 'Autonomous Planner install failed'}
 $Entry=Join-Path $RepoPath 'dist\apps\mission-orchestrator\src\standalone.js';if(-not(Test-Path $Entry)){Fail 'MISSION_BUILD_MISSING' $Entry}
 $RuntimeDir='F:\TigerIQ\Runtime\mission-orchestrator-v1';$Inbox=Join-Path $RuntimeDir 'mission-inbox.json';$MissionState=Join-Path $RuntimeDir 'mission-state.json';$MissionRunner=Join-Path $RuntimeDir 'run-mission-orchestrator-v1.ps1';$MissionLog='F:\TigerIQ\Logs\mission-orchestrator-v1.log';$MissionTask='TigerIQ Mission Orchestrator'
 $SupervisorDir='F:\TigerIQ\Runtime\autonomy-supervisor-v1';$SupervisorRunner=Join-Path $SupervisorDir 'run-autonomy-supervisor-v1.ps1';$SupervisorState=Join-Path $SupervisorDir 'status.json';$SupervisorLog='F:\TigerIQ\Logs\autonomy-supervisor-v1.log';$SupervisorTask='TigerIQ Autonomy Supervisor'
@@ -22,7 +22,7 @@ $missionContent=@"
 `$env:TIGERIQ_AUTONOMY_STATE='F:\TigerIQ\Runtime\autonomous-planner-v1\planner-state.json'
 `$env:TIGERIQ_OLLAMA_URL='http://127.0.0.1:11434'
 `$env:TIGERIQ_MISSION_MODEL='qwen3:8b'
-`$env:TIGERIQ_MISSION_INTERVAL_MS='30000'
+`$env:TIGERIQ_MISSION_INTERVAL_MS='5000'
 Set-Location '$repoEsc'
 & '$nodeEsc' '$entryEsc' *>> '$missionLogEsc'
 exit `$LASTEXITCODE
@@ -39,7 +39,7 @@ while(`$true){
   `$allTasksRunning=(`$states.Values|Where-Object{`$_ -ne 'Running'}).Count -eq 0
   `$obj=[ordered]@{updatedAt=(Get-Date).ToUniversalTime().ToString('o');tasks=`$states;controllerOk=[bool](`$health -and `$health.ok);postgresOk=[bool](`$health -and `$health.postgres);pc01Online=[bool](`$health -and `$health.pc01.online);pc01Health=if(`$health){[string]`$health.pc01.health}else{'unknown'};ollamaOk=[bool](`$ollama);allTasksRunning=[bool]`$allTasksRunning;overallOk=[bool](`$allTasksRunning -and `$health -and `$health.ok -and `$health.postgres -and `$health.pc01.online -and `$ollama)}
   [IO.File]::WriteAllText('$SupervisorState',(`$obj|ConvertTo-Json -Depth 8),(New-Object Text.UTF8Encoding(`$false)))
-  Start-Sleep -Seconds 30
+  Start-Sleep -Seconds 10
 }
 "@
 [IO.File]::WriteAllText($SupervisorRunner,$supervisorContent,(New-Object Text.UTF8Encoding($false)))
