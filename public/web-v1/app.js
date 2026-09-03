@@ -177,10 +177,7 @@ function renderOverview(vm) {
 
   $('homeProcesses').innerHTML = vm.processes.length ? vm.processes.slice(0, 3).map(process => `<div class="process-health-row"><div class="row-top"><b>${esc(process.name)}</b>${badge(process.health || process.status)}</div><p>${esc(process.completionCondition || process.trigger || '—')}</p><div class="chip-row">${mockChip(process)}<span class="chip">${process.exceptionCount ?? 0} ngoại lệ</span><span class="chip">Risk ${esc(process.riskFloor || '—')}</span></div></div>`).join('') : unavailable('Chưa có Business Process authoritative.');
 
-  const work = vm.workCoordination;
-  $('workCoordinationSummary').innerHTML = !work?.available
-    ? unavailable('Trello: Chưa có nguồn Controller đã xác minh. TigerIQ không tự tạo hoặc suy diễn việc và deadline.')
-    : (work.cards.length ? work.cards.slice(0, 4).map(card => `<div class="mission-row"><div class="row-top"><b>${esc(card.title)}</b>${badge(card.status)}</div><p>${esc([card.boardName, card.listName].filter(Boolean).join(' · ') || 'Trello')} · ${card.dueAt ? `Hạn ${fmt(card.dueAt)}` : 'Chưa có hạn'}</p><div class="chip-row"><span class="chip">Trello · read-only</span>${card.members.map(member => `<span class="chip">${esc(member)}</span>`).join('')}</div></div>`).join('') : unavailable('Trello đã kết nối nhưng chưa có thẻ hợp lệ trong snapshot.'));
+  $('workCoordinationSummary').innerHTML = unavailable('External workboard đã được loại khỏi TigerIQ; Công việc chỉ dùng TigerIQ/GitHub state theo Source of Truth hiện hành.');
 
   $('runtimeSummary').innerHTML = vm.runtimeSummary.map(row => `<span class="runtime-pill"><b>${esc(row.label)}:</b>&nbsp;${esc(row.value)}</span>`).join('');
 }

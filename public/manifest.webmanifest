@@ -1,12 +1,12 @@
 {
-  "name": "TigerIQ AI",
-  "short_name": "TigerIQ AI",
-  "description": "Trợ lý điều hành TigerIQ AI",
+  "name": "TigerIQ AI Lab — Owner Cockpit",
+  "short_name": "TIG",
+  "description": "TIG Owner Cockpit V3 — điều hành TigerIQ AI Lab",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#0b0f16",
-  "theme_color": "#0b0f16",
+  "background_color": "#07111f",
+  "theme_color": "#07111f",
   "lang": "vi",
   "icons": [{"src":"/tigeriq-icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]
 }

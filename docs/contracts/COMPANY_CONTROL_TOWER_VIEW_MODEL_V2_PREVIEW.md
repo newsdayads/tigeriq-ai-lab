@@ -1,7 +1,7 @@
 # COMPANY CONTROL TOWER — BUSINESS STATE V2 VIEW-MODEL
 
-Status: CHAT 01 UI ADAPTER · PR #117 · RELEASE-CANDIDATE MAPPING  
-Issue: #147 / WO-049  
+Status: CHAT 01 UI ADAPTER · PR #117 BASELINE EXTENDED BY WO-158 · RELEASE-CANDIDATE MAPPING  
+Issue: #147 / #158 / WO-049  
 Operating Model basis: PR #144 exact `5589f61b9123d49681ab62a71c1f7728a3c6cd99`  
 Business State V2 contract: PR #153 exact `4bccf71d73c8d8cf100c65b935b3474f97f24459` · `BUSINESS_STATE_V2_INDEPENDENT_REVIEW_PASS`  
 Chief of Staff Policy V2: PR #154 exact `0f673f92b703c8c67e8a89cb23a0c5f7307db3f2` · `CHIEF_OF_STAFF_POLICY_V2_INDEPENDENT_REVIEW_PASS`  
@@ -14,7 +14,8 @@ Release boundary: no MAIN/Production, no paid service.
 - PR #141 operational Goal/Job/Lease/Result/Evidence/Review semantics remain authoritative.
 - PR #153 Business State V2 supplies business context through `goal_profiles`, `kpis`, `kpi_observations`, `signals`, `processes`, `missions`, `mission_job_refs`, `departments`, `employee_profiles`, `autonomy_grants`, `exceptions`, and `outcomes`.
 - PR #154 Chief of Staff Policy V2 is the authority/escalation baseline. Web never turns UI state, Mission budget, autonomy, historical success, or a Business State `decision_ref` into authorization.
-- External CRM/accounting/Drive/Calendar/Trello/etc. remain authoritative for their domains. Web never creates a competing copy.
+- External CRM/accounting/Drive/Calendar systems remain authoritative for their domains. Web never creates a competing copy.
+- External workboard projection is removed from TigerIQ by Owner decision 2026-09-03 and is not accepted by the Owner Cockpit adapter.
 - Mock is accepted only when the snapshot is non-authoritative and is always surfaced as `authoritative=false`.
 
 ## Mapping rules
@@ -56,18 +57,11 @@ Outcomes preserve `subject_ref`, `kpi_observation_ids`, `evidence_refs`, and pro
 
 Business State V2 does not by itself create an authoritative revenue/cost ledger. Until a valid externally sourced projection exists, Company Control Tower shows `Chưa có nguồn` for revenue/cost. GitHub/Vercel build evidence is technical evidence only.
 
-## Trello work coordination boundary
+## Work coordination boundary
 
-Trello remains the work/deadline system and TigerIQ remains read-only for this Web scope.
+Owner decision 2026-09-03 removes Trello from TigerIQ project operation. The Owner Cockpit therefore does not parse, project, display, or depend on Trello cards, deadlines, schema, provenance, or writeback state.
 
-The adapter accepts Trello work coordination only from an authoritative Controller snapshot with:
-- schema `tigeriq.work-coordination.trello-readonly.v1`;
-- `sourceSystem=trello`;
-- `readOnly=true`;
-- Trello provenance with source ref and observed timestamp;
-- per-card Trello provenance/source ref.
-
-Mock, missing provenance, or a non-read-only projection fails closed to no work-coordination data. Web never creates a shadow task database or writes back to Trello from this projection.
+The adapter returns a fail-closed `EXTERNAL_WORKBOARD_REMOVED_BY_OWNER_DECISION` state for the legacy `workCoordination` surface. Current work/queue truth remains in TigerIQ authoritative state and GitHub where applicable. No external workboard may become a shadow control plane or override AI Employee/work lifecycle state.
 
 ## Supported Business State snapshot container
 
@@ -83,5 +77,5 @@ The adapter accepts the PR #153 contract from `businessStateV2` or `business_sta
 - Mission→Job remains reference-only.
 - Finance remains unavailable without an authoritative external source.
 - `CẦN SẾP` admits only OPEN/AWAITING_OWNER and does not treat `decision_ref` as `owner_approval_ref`.
-- Trello is read-only and provenance-gated.
+- External workboard projection is fail-closed removed from the adapter and Owner Cockpit.
 - Chromium Playwright uses 390×844 and verifies iPhone-first business home plus Technical Operations drill-down.

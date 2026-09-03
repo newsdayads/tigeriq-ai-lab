@@ -1,0 +1,154 @@
+name: WEB Release Vercel
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_base_sha:
+        description: Reviewed base SHA for the Web Release Candidate diff
+        required: true
+        type: string
+      release_sha:
+        description: Exact Web Release Candidate commit SHA
+        required: true
+        type: string
+      release_kind:
+        description: Release destination
+        required: true
+        type: choice
+        options:
+          - preview
+          - production
+      approval:
+        description: WEB_RELEASE_CANDIDATE_APPROVED or OWNER_APPROVED_PRODUCTION
+        required: true
+        type: string
+      owner_approval_ref:
+        description: Required Owner decision/evidence ref for production
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-release-vercel-${{ inputs.release_sha }}-${{ inputs.release_kind }}
+  cancel-in-progress: false
+
+env:
+  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Validate explicit release authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ inputs.release_kind }}" == "preview" && "${{ inputs.approval }}" != "WEB_RELEASE_CANDIDATE_APPROVED" ]]; then
+            echo "Preview requires WEB_RELEASE_CANDIDATE_APPROVED" >&2
+            exit 1
+          fi
+          if [[ "${{ inputs.release_kind }}" == "production" ]]; then
+            if [[ "${{ inputs.approval }}" != "OWNER_APPROVED_PRODUCTION" || -z "${{ inputs.owner_approval_ref }}" ]]; then
+              echo "Production requires explicit Owner approval plus owner_approval_ref" >&2
+              exit 1
+            fi
+          fi
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_sha }}
+          fetch-depth: 0
+      - name: Prove exact SHA and Web-only Release Candidate diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          head_sha="$(git rev-parse HEAD)"
+          test "$head_sha" = "${{ inputs.release_sha }}"
+          base_sha="${{ inputs.release_base_sha }}"
+          git cat-file -e "${base_sha}^{commit}"
+          git merge-base --is-ancestor "$base_sha" "$head_sha"
+          changed="$(git diff --name-only "$base_sha" "$head_sha")"
+          test -n "$changed"
+          printf '%s\n' "$changed"
+          allowed='^(public/|api/(owner-auth\.mjs|chief\.mjs|chief-smoke\.mjs|control\.mjs|company-progress\.mjs|workforce-status\.mjs)$|vercel\.json$|\.github/workflows/(web-release-vercel\.yml|wo014-queue-hygiene\.yml|wo012-vercel-verify\.yml)$|scripts/(verify_vercel_web_only_boundary\.mjs|queue-hygiene-contract\.mjs|verify_queue_hygiene\.mjs|verify_work_board_ui\.mjs)$|tests/(vercel-web-only-boundary\.test\.ts|e2e/.*|web-control-v1-ui-contract\.test\.mjs)$|docs/work-orders/WO-158.*$)'
+          invalid="$(printf '%s\n' "$changed" | grep -Ev "$allowed" || true)"
+          if [[ -n "$invalid" ]]; then
+            echo "Non-Web paths cannot enter a Vercel release:" >&2
+            printf '%s\n' "$invalid" >&2
+            exit 1
+          fi
+          material="$(printf '%s\n' "$changed" | grep -E '^(public/|api/owner-auth\.mjs$|vercel\.json$)' || true)"
+          if [[ -z "$material" ]]; then
+            echo "Docs/tests/workflow-only diff is not a Web Release Candidate" >&2
+            exit 1
+          fi
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Vercel Web-only boundary
+        run: node scripts/verify_vercel_web_only_boundary.mjs
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Unit tests
+        run: npm test
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Desktop and iPhone Playwright
+        run: npm run test:e2e
+      - name: Build
+        run: npm run build
+
+  preview:
+    needs: validate
+    if: ${{ inputs.release_kind == 'preview' && inputs.approval == 'WEB_RELEASE_CANDIDATE_APPROVED' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: tigeriq-web-preview
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_sha }}
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm install --global vercel@latest
+      - name: Pull Preview environment
+        run: vercel pull --yes --environment=preview --token="${{ secrets.VERCEL_TOKEN }}"
+      - name: Build Preview artifact
+        run: vercel build --token="${{ secrets.VERCEL_TOKEN }}"
+      - name: Deploy exact Web RC Preview
+        run: vercel deploy --prebuilt --token="${{ secrets.VERCEL_TOKEN }}"
+
+  production:
+    needs: validate
+    if: ${{ inputs.release_kind == 'production' && inputs.approval == 'OWNER_APPROVED_PRODUCTION' && inputs.owner_approval_ref != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: tigeriq-web-production-owner-approval
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_sha }}
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm install --global vercel@latest
+      - name: Re-prove Web boundary before Production
+        run: node scripts/verify_vercel_web_only_boundary.mjs
+      - name: Pull Production environment
+        run: vercel pull --yes --environment=production --token="${{ secrets.VERCEL_TOKEN }}"
+      - name: Build Production artifact
+        run: vercel build --prod --token="${{ secrets.VERCEL_TOKEN }}"
+      - name: Deploy exact Owner-approved Web artifact
+        run: vercel deploy --prebuilt --prod --token="${{ secrets.VERCEL_TOKEN }}"

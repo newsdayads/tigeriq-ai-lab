@@ -1,14 +1,9 @@
-name: WO-012/013 Vercel Online Verify
+name: Vercel Web Boundary Verify
 
 on:
-  push:
-    branches:
-      - wo012/command-center-vercel-online
-      - wo013/chief-of-staff-chat
   pull_request:
     branches:
       - main
-      - wo010/command-center-web-control
   workflow_dispatch:
 
 permissions:
@@ -22,14 +17,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
           cache: npm
       - run: npm ci
-      - name: Verify Vercel API syntax
-        run: node --check api/control.mjs && node --check api/chief.mjs && node --check api/chief-smoke.mjs
-      - name: Verify Chief router invariants
-        run: node scripts/test-chief-router.mjs
+      - name: Verify Owner auth serverless syntax
+        run: node --check api/owner-auth.mjs
+      - name: Verify Vercel Web-only boundary and release trigger policy
+        run: node scripts/verify_vercel_web_only_boundary.mjs
       - name: Verify Vercel config
-        run: node -e "JSON.parse(require('fs').readFileSync('vercel.json','utf8')); console.log('vercel.json PASS')"
+        run: node -e "const c=JSON.parse(require('fs').readFileSync('vercel.json','utf8')); if(c.git?.deploymentEnabled!==false) process.exit(1); console.log('vercel.json WEB_ONLY PASS')"
       - name: Existing TigerIQ gates
         run: npm run typecheck && npm run test && npm run build
