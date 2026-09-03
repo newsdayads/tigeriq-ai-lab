@@ -38,6 +38,16 @@ class HttpInputError extends Error {
   }
 }
 
+export function idempotencyCacheKey(
+  claims: { sub: string; nodeId: string; deviceId?: string },
+  idempotencyKey: string,
+): string {
+  const device = claims.deviceId?.trim() || 'NO_DEVICE';
+  return [claims.sub, claims.nodeId, device, idempotencyKey]
+    .map((value) => `${Buffer.byteLength(value, 'utf8')}:${value}`)
+    .join('|');
+}
+
 export async function startInferenceGatewayServer(options: InferenceGatewayServerOptions) {
   const host = options.host ?? '127.0.0.1';
   const port = options.port ?? 0;
@@ -63,7 +73,7 @@ export async function startInferenceGatewayServer(options: InferenceGatewayServe
         if (data.employeeId !== claims.sub) {
           throw new InferenceGatewayError('IDENTITY_MISMATCH', 409, 'session employee identity does not match inference request', false);
         }
-        const cacheKey = `${claims.sub}:${claims.nodeId}:${idempotencyKey}`;
+        const cacheKey = idempotencyCacheKey(claims, idempotencyKey);
         const fingerprint = requestFingerprint(data);
         const existing = idempotency.get(cacheKey);
         if (existing) {
