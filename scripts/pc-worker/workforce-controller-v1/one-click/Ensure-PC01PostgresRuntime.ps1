@@ -109,9 +109,9 @@ function Wait-Postgres([string]$Psql,[string]$AdminPassword) {
 function Install-CanonicalPostgres {
   if (-not $AllowInstall) { Fail 'POSTGRES_MISSING' 'PostgreSQL is missing and automatic free installation is disabled.' }
   $services = Get-PostgresServices
-  if ($services.Count -gt 0) { Fail 'POSTGRES_EXISTING_UNMANAGED' 'PostgreSQL service already exists but no canonical TigerIQ datastore configuration was found; refusing to create a parallel datastore.' }
+  if (@($services).Length -gt 0) { Fail 'POSTGRES_EXISTING_UNMANAGED' 'PostgreSQL service already exists but no canonical TigerIQ datastore configuration was found; refusing to create a parallel datastore.' }
   $portUsers = @(Get-NetTCPConnection -LocalPort $CanonicalPort -State Listen -ErrorAction SilentlyContinue)
-  if ($portUsers.Count -gt 0) { Fail 'POSTGRES_PORT_IN_USE' 'Port 5432 is already occupied; refusing to install another datastore.' }
+  if (@($portUsers).Length -gt 0) { Fail 'POSTGRES_PORT_IN_USE' 'Port 5432 is already occupied; refusing to install another datastore.' }
   $winget = Resolve-Executable 'winget.exe' @("$env:LOCALAPPDATA\Microsoft\WindowsApps\winget.exe")
   if (-not $winget) { Fail 'WINGET_MISSING' 'PostgreSQL is missing and WinGet is unavailable.' }
 
@@ -203,7 +203,7 @@ if (-not [string]::IsNullOrWhiteSpace($configuredUrl)) {
 }
 
 $servicesBefore = Get-PostgresServices
-if ($servicesBefore.Count -gt 0 -and -not (Test-Path $AdminSecretFile)) {
+if (@($servicesBefore).Length -gt 0 -and -not (Test-Path $AdminSecretFile)) {
   Fail 'POSTGRES_EXISTING_UNMANAGED' 'PostgreSQL exists but no canonical TigerIQ datastore/credential is configured; fail-closed prevents a second datastore.'
 }
 
