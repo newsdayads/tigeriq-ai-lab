@@ -3,9 +3,10 @@
   "issue": 156,
   "bootstrapBranch": "wo056/pc01-one-click-bootstrap",
   "approvedBootstrap": {
-    "sha": "4f2aaf6e57095d98059ee4e73fac7af201ce2679",
+    "sha": "EXTERNAL_AFTER_REVIEW",
     "remoteRef": "refs/heads/wo056/pc01-one-click-bootstrap",
-    "policy": "LOCAL_HEAD_AND_REMOTE_REF_MUST_EXACTLY_MATCH_THIS_REVIEWED_SHA"
+    "externalApprovalFile": "F:\\TigerIQ\\Evidence\\pc01-one-click\\approved-head.json",
+    "policy": "EXTERNAL_APPROVAL_RECORD_CREATED_AFTER_REVIEW_MUST_BIND_LOCAL_HEAD_AND_REMOTE_REF"
   },
   "controllerBasis": {
     "pr": 116,

@@ -54,7 +54,7 @@ foreach ($path in @($PostgresReuseGuardTestPath)) { Assert-True (Test-Path $path
 $manifest = Get-Content -Raw $ManifestPath | ConvertFrom-Json
 Assert-True ($manifest.controllerBasis.sha -eq 'c0632bc110ea0d26925d3657ac485cb90b5ee010') 'Controller basis SHA drifted.'
 Assert-True ($manifest.postgresBasis.sha -eq '6f12d3c5f3da1616041fa48fadf8a4e8b41e7ad9') 'PostgreSQL basis SHA drifted.'
-Assert-True ($manifest.approvedBootstrap.sha -eq '4f2aaf6e57095d98059ee4e73fac7af201ce2679') 'Approved bootstrap SHA drifted.'
+Assert-True ($manifest.approvedBootstrap.sha -eq 'EXTERNAL_AFTER_REVIEW') 'Approved bootstrap SHA must remain external to the reviewed commit.'
 Assert-True ($manifest.approvedBootstrap.remoteRef -eq 'refs/heads/wo056/pc01-one-click-bootstrap') 'Approved bootstrap remote ref drifted.'
 Assert-True ($manifest.postgresBasis.migration001BlobSha -eq '33445fd07133b5e58f2b33ee3996bf49e6547fa3') 'Migration 001 blob drifted.'
 Assert-True ($manifest.migration002BlobSha -eq '90e842318f3cf47caf671890e4bbe435cd35e8b6') 'Migration 002 blob drifted.'

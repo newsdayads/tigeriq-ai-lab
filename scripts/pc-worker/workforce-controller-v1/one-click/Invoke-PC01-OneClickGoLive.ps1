@@ -16,8 +16,9 @@ $PostgresBasisSha = [string]$Manifest.postgresBasis.sha
 $Expected001Blob = [string]$Manifest.postgresBasis.migration001BlobSha
 $Expected002Blob = [string]$Manifest.migration002BlobSha
 $ExpectedBranch = [string]$Manifest.bootstrapBranch
-$ApprovedBootstrapHead = [string]$Manifest.approvedBootstrap.sha
 $ApprovedRemoteRef = [string]$Manifest.approvedBootstrap.remoteRef
+$ApprovalFilePath = [string]$Manifest.approvedBootstrap.externalApprovalFile
+$ApprovedBootstrapHead = if (Test-Path -LiteralPath $ApprovalFilePath) { [string](Get-Content -Raw -LiteralPath $ApprovalFilePath | ConvertFrom-Json).head } else { '' }
 $ExpectedHost = [string]$Manifest.network.host
 $ControllerPort = [int]$Manifest.network.port
 $ExpectedRemoteCidr = [string]$Manifest.network.tailscaleRemoteCidr
@@ -122,7 +123,7 @@ $git = Resolve-Executable 'git.exe' @('C:\Program Files\Git\cmd\git.exe')
 if (-not $git -and $ExecutePhysical) { Install-FreePackage 'Git' 'Git.Git'; $git = Resolve-Executable 'git.exe' @('C:\Program Files\Git\cmd\git.exe') }
 if (-not $git) { Fail 'GIT_MISSING' 'Git is required to verify branch/SHA.' }
 if (-not (Test-Path (Join-Path $RepoPath '.git'))) { Fail 'REPO_MISSING' "TigerIQ repository not found at $RepoPath." }
-$approvedHead = & $ApprovedHeadVerifier -RepoPath $RepoPath -GitExecutable $git -ExpectedBranch $ExpectedBranch -ApprovedHeadSha $ApprovedBootstrapHead -ApprovedRemoteRef $ApprovedRemoteRef
+$approvedHead = & $ApprovedHeadVerifier -RepoPath $RepoPath -GitExecutable $git -ExpectedBranch $ExpectedBranch -ApprovedHeadSha $ApprovedBootstrapHead -ApprovedRemoteRef $ApprovedRemoteRef -ApprovalFilePath $ApprovalFilePath
 if ($LASTEXITCODE -ne 0 -or -not $approvedHead) { Fail 'APPROVED_HEAD_VERIFY_FAILED' 'Reviewed bootstrap HEAD verification did not return an approved result.' }
 $branch = [string]$approvedHead.branch
 $localHead = [string]$approvedHead.head
