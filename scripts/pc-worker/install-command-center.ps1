@@ -11,6 +11,7 @@ $workspace = 'F:\TigerIQ\Workspace\tigeriq-ai-lab'
 $runtimeDir = 'F:\TigerIQ\CommandCenter'
 $secretDir = 'F:\TigerIQ\Secrets'
 $secretPath = Join-Path $secretDir 'command-center.secret'
+$githubTokenPath = Join-Path $secretDir 'github-command-center.token'
 $startScript = Join-Path $runtimeDir 'start-command-center.ps1'
 $stdout = Join-Path $runtimeDir 'command-center.log'
 $stderr = Join-Path $runtimeDir 'command-center.err.log'
@@ -53,6 +54,14 @@ function Resolve-PrivateHost([string]$Requested) {
   return $selected
 }
 
+function Protect-SecretFile([string]$Path) {
+  $acl = New-Object Security.AccessControl.FileSecurity
+  $acl.SetAccessRuleProtection($true, $false)
+  $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule('SYSTEM','FullControl','Allow')))
+  $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule('BUILTIN\Administrators','FullControl','Allow')))
+  Set-Acl -Path $Path -AclObject $acl
+}
+
 Write-Host '[10%] PRECHECK' -ForegroundColor Cyan
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = New-Object Security.Principal.WindowsPrincipal($identity)
@@ -92,18 +101,19 @@ try {
   Pop-Location
 }
 
-Write-Host '[55%] LOCAL SECRET' -ForegroundColor Cyan
+Write-Host '[55%] LOCAL SECRETS' -ForegroundColor Cyan
 if(-not (Test-Path $secretPath)) {
   $bytes = New-Object byte[] 32
   $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
   try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }
   [Convert]::ToBase64String($bytes) | Set-Content -Path $secretPath -NoNewline -Encoding ascii
 }
-$acl = New-Object Security.AccessControl.FileSecurity
-$acl.SetAccessRuleProtection($true, $false)
-$acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule('SYSTEM','FullControl','Allow')))
-$acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule('BUILTIN\Administrators','FullControl','Allow')))
-Set-Acl -Path $secretPath -AclObject $acl
+Protect-SecretFile $secretPath
+$ghToken = (& gh auth token 2>$null | Out-String).Trim()
+if(-not $ghToken){ Fail 'GH_TOKEN_UNAVAILABLE' 'Existing GitHub auth could not be materialized for the SYSTEM startup task.' }
+[IO.File]::WriteAllText($githubTokenPath, $ghToken, (New-Object Text.UTF8Encoding($false)))
+Protect-SecretFile $githubTokenPath
+Remove-Variable ghToken -ErrorAction SilentlyContinue
 
 Write-Host '[65%] PRIVATE BIND + FIREWALL' -ForegroundColor Cyan
 $existingFirewall = Get-NetFirewallRule -DisplayName $firewallName -ErrorAction SilentlyContinue
@@ -115,15 +125,18 @@ if($hostIp -ne '127.0.0.1') {
 $nodePath = (Get-Command node.exe).Source.Replace("'", "''")
 $repoEscaped = $workspace.Replace("'", "''")
 $secretEscaped = $secretPath.Replace("'", "''")
+$githubTokenEscaped = $githubTokenPath.Replace("'", "''")
 $stdoutEscaped = $stdout.Replace("'", "''")
 $stderrEscaped = $stderr.Replace("'", "''")
 $launcher = @"
 `$ErrorActionPreference = 'Stop'
 `$env:TIGERIQ_COMMAND_SECRET = [IO.File]::ReadAllText('$secretEscaped').Trim()
+`$env:GH_TOKEN = [IO.File]::ReadAllText('$githubTokenEscaped').Trim()
 `$env:TIGERIQ_COMMAND_HOST = '$hostIp'
 `$env:TIGERIQ_COMMAND_PORT = '$Port'
 `$env:TIGERIQ_JOURNAL = 'F:\TigerIQ\State\control-plane.jsonl'
 `$env:TIGERIQ_REPO_ROOT = '$repoEscaped'
+`$env:TIGERIQ_REPO = '$repo'
 Set-Location '$repoEscaped'
 & '$nodePath' 'dist/apps/dashboard/src/standalone.js' 1>> '$stdoutEscaped' 2>> '$stderrEscaped'
 exit `$LASTEXITCODE
@@ -162,7 +175,8 @@ $result = [ordered]@{
   task = [ordered]@{ name=$taskName; state=$task.State.ToString(); trigger='AtStartup'; principal='SYSTEM' }
   branch = $Branch
   journal = 'F:\TigerIQ\State\control-plane.jsonl'
-  secret = 'STORED_LOCALLY_REDACTED'
+  commandAuth = 'STORED_LOCALLY_REDACTED'
+  githubAuth = 'STORED_LOCALLY_REDACTED'
   health = $true
 }
 Write-Host '[100%] TIGERIQ COMMAND CENTER READY' -ForegroundColor Green
