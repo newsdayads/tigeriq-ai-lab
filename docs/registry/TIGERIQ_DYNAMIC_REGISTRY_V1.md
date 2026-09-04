@@ -2,6 +2,7 @@
 
 Status: P0 candidate / off-MAIN
 Source issue: #335
+Stable sync: 2026-09-05 after command-3 Acceptance E
 
 ## Canonical locators
 - `docs/registry/COMMAND_REGISTRY.json`
@@ -24,19 +25,25 @@ When a NEW CHAT contains only an integer `N`:
 - `OWNER_HOLD` blocks takeover.
 - Registry entries never override core Production, financial, credential/security, irreversible, privacy, or physical-device authorization boundaries.
 
-## Current authoritative mappings
-- `1` -> `NV-EXEC-01` -> Minh — Thực thi trực tiếp.
-- `2` -> `NV-OPS-01` -> Khoa — Vận hành tự động.
+## Current stable mappings
+- `1` -> `NV01` -> Minh — Thực thi trực tiếp — enabled.
+- `2` -> `NV02` -> Khoa — Vận hành tự động — enabled.
+- `3` -> `NV03` -> Huy — AI PC01 / Kỹ sư Hệ thống Local — disabled regression record.
+
+Legacy IDs `NV-EXEC-01`, `NV-OPS-01`, `NV-SYS-01` are retained only for historical/evidence lookup. New authoritative writes use `NV01`, `NV02`, `NV03`.
+
+## Regression result
+1. NEW CHAT `1` resolved Minh from dynamic registry — ĐẠT.
+2. NEW CHAT `2` resolved Khoa from dynamic registry — ĐẠT.
+3. NEW CHAT `3` while unregistered failed closed — ĐẠT.
+4. Temporary command `3` was enabled dynamically and NEW CHAT `3` resolved Huy in `REGRESSION_ONLY` / `test_only_no_runtime_mutation` mode — ĐẠT.
+5. Command `3` was disabled dynamically and NEW CHAT `3` failed closed again as `COMMAND_UNREGISTERED` — ĐẠT.
+6. No Project Source replacement was required for enable/disable/remap of command `3`.
 
 ## Dynamic-change rule
 Adding/removing/disabling a normal command or employee, changing UI labels, runtime binding, lease timeout, role/capability inside the existing authority envelope, or remapping command -> employee is a dynamic registry change and does not require Project Source replacement.
 
 Project Source replacement is required only when the generic resolver/source locator/core safety contract itself changes.
 
-## Regression contract
-After the one-time Bootstrap migration to this resolver:
-1. NEW CHAT `1` resolves Minh from registry.
-2. NEW CHAT `2` resolves Khoa from registry.
-3. Add a temporary enabled command `3` + test employee in registry; NEW CHAT `3` resolves it without Project Source change.
-4. Disable/remove test `3`; NEW CHAT `3` fails closed without Project Source change.
-5. No MAIN/Production/paid/credential/security/irreversible action is authorized by this registry.
+## Safety
+This registry does not authorize MAIN/Production, paid/financial commitments, credential/security-boundary changes, irreversible actions, or physical reboot/device actions.
