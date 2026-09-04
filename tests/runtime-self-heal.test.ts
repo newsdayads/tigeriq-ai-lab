@@ -42,7 +42,7 @@ describe('PC01 runtime self-heal', () => {
       run: async (file, args) => {
         calls.push({ file, args });
         const joined=args.join(' ');
-        if(joined.includes('repair-control-plane-controller-diagnose.ps1')) return {stdout:'{"status":"PASS","diagnose":"READY","patched":false}',stderr:''};
+        if(joined.includes('-File') && joined.includes('repair-control-plane-controller-diagnose.ps1')) return {stdout:'{"status":"PASS","diagnose":"READY","patched":false}',stderr:''};
         return { stdout: 'Running', stderr: '' };
       },
     });
