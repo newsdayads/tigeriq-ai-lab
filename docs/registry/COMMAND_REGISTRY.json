@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0",
+  "registry_id": "TIGERIQ_COMMAND_REGISTRY",
+  "updated_at": "2026-09-04T21:31:00+07:00",
+  "source_issue": 335,
+  "fail_closed": true,
+  "commands": {
+    "1": {
+      "command": 1,
+      "employee_id": "NV-EXEC-01",
+      "mode": "interactive",
+      "priority_class": "OWNER_FOREGROUND",
+      "owner_policy": "owner_controlled",
+      "lease_timeout_seconds": 600,
+      "takeover_policy": "NV-OPS-01 may take over only after lease is stale, no mutation is in flight, no OWNER_HOLD exists, and checkpoint/evidence is current",
+      "ui_label": "Minh — Thực thi trực tiếp",
+      "runtime_binding": "chat_foreground",
+      "enabled": true
+    },
+    "2": {
+      "command": 2,
+      "employee_id": "NV-OPS-01",
+      "mode": "autonomous",
+      "priority_class": "AUTONOMOUS_P0_FIRST",
+      "owner_policy": "authoritative_queue_autonomous",
+      "lease_timeout_seconds": null,
+      "takeover_policy": "skip active foreign leases; takeover only under the current stale/hold/idempotency policy",
+      "ui_label": "Khoa — Vận hành tự động",
+      "runtime_binding": "auto_worker",
+      "enabled": true
+    }
+  }
+}
