@@ -35,9 +35,9 @@ describe('GitHub Work Source projection', () => {
     expect(byId.get('WO-WEB-248')?.evidence[0]?.status).toBe('fail');
     expect(byId.get('WO-WEB-251')?.order.status).toBe('blocked');
     expect(byId.get('WO-WEB-251')?.decisions[0]?.status).toBe('blocked');
-    expect(byId.get('CMD-GH-249')?.order.status).toBe('verified');
-    expect(byId.get('CMD-GH-249')?.order.goal).toBe('Lệnh kiểm tra PC01: system.status');
-    expect(byId.get('CMD-GH-249')?.evidence[0]?.status).toBe('pass');
+    expect(byId.get('WO-GH-249')?.order.status).toBe('verified');
+    expect(byId.get('WO-GH-249')?.order.goal).toBe('Lệnh kiểm tra PC01: system.status');
+    expect(byId.get('WO-GH-249')?.evidence[0]?.status).toBe('pass');
     expect(byId.has('WO-GH-250')).toBe(false);
   });
 
