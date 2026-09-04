@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { projectGitHubWorkOrders } from '../apps/dashboard/src/github-work-source.js';
 
 describe('GitHub Work Source projection', () => {
-  it('projects jobs and deterministic commands without inventing terminal state', () => {
+  it('projects jobs and groups deterministic commands under one executive initiative', () => {
     const issues = [
       { number: 235, title: 'repair', state: 'open', html_url: 'https://github.com/newsdayads/tigeriq-ai-lab/issues/235', updated_at: '2026-09-04T00:03:57Z', body: 'TIGERIQ_JOB_V1\n\n## Instruction\nRepair Web Control\n\n## Priority\nP0' },
       { number: 246, title: 'running', state: 'open', html_url: 'https://github.com/newsdayads/tigeriq-ai-lab/issues/246', updated_at: '2026-09-04T00:10:00Z', body: 'TIGERIQ_JOB_V1\n\n## Work Order\nWO-WEB-246\n\n## Instruction\nRun current task\n\n## Priority\nCao' },
@@ -10,6 +10,7 @@ describe('GitHub Work Source projection', () => {
       { number: 248, title: 'failed', state: 'open', html_url: 'https://github.com/newsdayads/tigeriq-ai-lab/issues/248', updated_at: '2026-09-04T00:12:00Z', body: 'TIGERIQ_JOB_V1\n\n## Work Order\nWO-WEB-248\n\n## Instruction\nFail current task' },
       { number: 251, title: 'blocked', state: 'open', html_url: 'https://github.com/newsdayads/tigeriq-ai-lab/issues/251', updated_at: '2026-09-04T00:13:00Z', body: 'TIGERIQ_JOB_V1\n\n## Work Order\nWO-WEB-251\n\n## Instruction\nNeeds independent review' },
       { number: 249, title: 'system check', state: 'closed', html_url: 'https://github.com/newsdayads/tigeriq-ai-lab/issues/249', updated_at: '2026-09-04T00:14:00Z', body: 'PC01_REQUIRED=true\n\nTIGERIQ_COMMAND_V1\n```json\n{"idempotency_key":"cmd-test-12345678","action":"system.status","args":{}}\n```' },
+      { number: 252, title: 'capability check', state: 'closed', html_url: 'https://github.com/newsdayads/tigeriq-ai-lab/issues/252', updated_at: '2026-09-04T00:15:00Z', body: 'PC01_REQUIRED=true\n\nTIGERIQ_COMMAND_V1\n```json\n{"idempotency_key":"cmd-test-87654321","action":"system.capabilities","args":{}}\n```' },
       { number: 250, title: 'ambiguous closed job', state: 'closed', body: 'TIGERIQ_JOB_V1\n\n## Instruction\nNo terminal evidence' },
     ];
     const comments = [
@@ -20,6 +21,7 @@ describe('GitHub Work Source projection', () => {
       { issue_url: 'https://api.github.com/repos/newsdayads/tigeriq-ai-lab/issues/251', created_at: '2026-09-04T00:13:01Z', body: 'TIGERIQ_PC01_NEEDS_EXTERNAL_REVIEW\nthree distinct models required' },
       { issue_url: 'https://api.github.com/repos/newsdayads/tigeriq-ai-lab/issues/249', created_at: '2026-09-04T00:14:01Z', body: 'TIGERIQ_PC01_CLAIMED\nmode=secure-v3-command' },
       { issue_url: 'https://api.github.com/repos/newsdayads/tigeriq-ai-lab/issues/249', created_at: '2026-09-04T00:14:02Z', body: 'TIGERIQ_PC01_DONE\n```json\n{"result":{"ok":true,"action":"system.status"}}\n```' },
+      { issue_url: 'https://api.github.com/repos/newsdayads/tigeriq-ai-lab/issues/252', created_at: '2026-09-04T00:15:01Z', body: 'TIGERIQ_PC01_DONE\n```json\n{"result":{"ok":true,"action":"system.capabilities"}}\n```' },
     ];
 
     const rows = projectGitHubWorkOrders(issues, comments);
@@ -35,10 +37,38 @@ describe('GitHub Work Source projection', () => {
     expect(byId.get('WO-WEB-248')?.evidence[0]?.status).toBe('fail');
     expect(byId.get('WO-WEB-251')?.order.status).toBe('blocked');
     expect(byId.get('WO-WEB-251')?.decisions[0]?.status).toBe('blocked');
-    expect(byId.get('WO-GH-249')?.order.status).toBe('verified');
-    expect(byId.get('WO-GH-249')?.order.goal).toBe('Lệnh kiểm tra PC01: system.status');
-    expect(byId.get('WO-GH-249')?.evidence[0]?.status).toBe('pass');
+
+    const executive = byId.get('INITIATIVE-PC01-AUTOMATION');
+    expect(executive?.order.status).toBe('verified');
+    expect(executive?.order.goal).toContain('Mục tiêu:');
+    expect(executive?.order.goal).toContain('Hạng mục:');
+    expect(executive?.order.goal).toContain('Bước hiện tại: Kiểm tra năng lực hệ thống');
+    expect(executive?.order.goal).toContain('Mốc kế tiếp:');
+    expect(executive?.evidence).toHaveLength(2);
+    expect(executive?.evidence.map((item) => item.artifactUris[0])).toEqual([
+      'https://github.com/newsdayads/tigeriq-ai-lab/issues/249',
+      'https://github.com/newsdayads/tigeriq-ai-lab/issues/252',
+    ]);
+    expect(byId.has('WO-GH-249')).toBe(false);
+    expect(byId.has('WO-GH-252')).toBe(false);
     expect(byId.has('WO-GH-250')).toBe(false);
+  });
+
+  it('keeps an active technical command as the single parent initiative instead of a second executive goal', () => {
+    const issues = [
+      { number: 260, state: 'open', updated_at: '2026-09-04T00:20:00Z', body: 'TIGERIQ_COMMAND_V1\n```json\n{"idempotency_key":"cmd-running-12345678","action":"tigeriq.task.status","args":{}}\n```' },
+      { number: 261, state: 'closed', updated_at: '2026-09-04T00:19:00Z', body: 'TIGERIQ_COMMAND_V1\n```json\n{"idempotency_key":"cmd-done-12345678","action":"system.status","args":{}}\n```' },
+    ];
+    const comments = [
+      { issue_url: 'https://api.github.com/repos/newsdayads/tigeriq-ai-lab/issues/260', created_at: '2026-09-04T00:20:01Z', body: 'TIGERIQ_PC01_CLAIMED' },
+      { issue_url: 'https://api.github.com/repos/newsdayads/tigeriq-ai-lab/issues/261', created_at: '2026-09-04T00:19:01Z', body: 'TIGERIQ_PC01_DONE' },
+    ];
+
+    const rows = projectGitHubWorkOrders(issues, comments);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.order.id).toBe('INITIATIVE-PC01-AUTOMATION');
+    expect(rows[0]?.order.status).toBe('running');
+    expect(rows[0]?.order.goal).toContain('Bước hiện tại: Đọc trạng thái công việc');
   });
 
   it('uses the latest exact lifecycle marker instead of keyword matches inside evidence prose', () => {
