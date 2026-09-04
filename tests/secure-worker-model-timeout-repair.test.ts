@@ -13,6 +13,23 @@ describe('Secure Worker V3 model-timeout repair contract', () => {
     expect(source).toContain("$text = $text.Replace($legacy,\"$marker`n$desired\")");
   });
 
+  it('fails closed when an effective timeout override can keep the Worker below 300 seconds', () => {
+    expect(source).toContain("GetEnvironmentVariable('TIGERIQ_MODEL_TIMEOUT',$Scope)");
+    expect(source).toContain("Fail \"TIMEOUT_OVERRIDE_INVALID_$($Scope.ToUpperInvariant())\"");
+    expect(source).toContain("if($parsed -lt 300){ Fail \"TIMEOUT_OVERRIDE_TOO_LOW_$($Scope.ToUpperInvariant())\"");
+    expect(source).toContain("$processOverride = Get-TimeoutOverride 'Process'");
+    expect(source).toContain("$userOverride = Get-TimeoutOverride 'User'");
+    expect(source).toContain("$machineOverride = Get-TimeoutOverride 'Machine'");
+    expect(source).toContain("Fail 'WORKER_PRINCIPAL_CONTEXT_MISMATCH'");
+  });
+
+  it('requires the reviewed direct worker launcher so task wrappers cannot inject a hidden timeout', () => {
+    expect(source).toContain("$workerLauncher = Join-Path $workerDir 'worker.py'");
+    expect(source).toContain("if($arguments -match '(?i)TIGERIQ_MODEL_TIMEOUT'){ Fail 'WORKER_TASK_TIMEOUT_WRAPPER_UNREVIEWED'");
+    expect(source).toContain("Fail 'WORKER_TASK_LAUNCHER_UNEXPECTED'");
+    expect(source).toContain('[StringComparison]::OrdinalIgnoreCase');
+  });
+
   it('backs up, compiles, restarts, verifies persistence and rolls back on post-write failure', () => {
     expect(source).toContain('Copy-Item -LiteralPath $workerImpl -Destination $backup -Force');
     expect(source).toContain('& $python -m py_compile $tmp');
