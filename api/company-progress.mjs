@@ -95,10 +95,10 @@ function issueGoal(issue) {
 
 function laneStatusFromText(text) {
   const value = String(text || '');
-  if (/BỊ CHẶN|KHÔNG ĐẠT|\bLỖI\b/i.test(value)) return 'fail';
+  if (/BỊ CHẶN|KHÔNG ĐẠT|LỖI/i.test(value)) return 'fail';
   if (/ĐANG XỬ LÝ|IN PROGRESS|STATE=ACTIVE/i.test(value)) return 'running';
-  if (/\bCHỜ\b|\bCHƯA\b|không mở|cần explicit|cần Owner|authorization/i.test(value)) return 'pending';
-  if (/\bĐẠT\b|\bHOÀN TẤT\b/i.test(value)) return 'pass';
+  if (/CHỜ|CHƯA|CÒN|CẦN|không mở|authorization|remaining|pending/i.test(value)) return 'pending';
+  if (/ĐẠT|HOÀN TẤT/i.test(value)) return 'pass';
   return 'pending';
 }
 
