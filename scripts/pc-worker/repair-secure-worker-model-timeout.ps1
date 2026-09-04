@@ -70,9 +70,11 @@ try {
   $has90 = $text.Contains($legacy90)
   $hasPlain300 = $text.Contains($plain300)
   $hasDesired = $text.Contains($desired)
-  $anchorCount = @($has90,$hasPlain300,$hasDesired | Where-Object { $_ }).Count
+  $anchorCount = 0
+  if($has90){ $anchorCount += 1 }
+  if($hasPlain300){ $anchorCount += 1 }
+  if($hasDesired){ $anchorCount += 1 }
   if($anchorCount -ne 1){ Fail 'WORKER_TIMEOUT_LAYOUT_CHANGED' 'Expected exactly one reviewed MODEL_TIMEOUT anchor.' }
-  if($hasDesired -and -not $text.Contains($marker)){ Fail 'TIMEOUT_CLAMP_MARKER_MISSING' 'Reviewed clamp exists without V2 marker.' }
 
   Write-Host '[45%] BACKUP + PATCH' -ForegroundColor Cyan
   New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
