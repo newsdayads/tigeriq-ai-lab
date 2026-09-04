@@ -10,15 +10,27 @@ Bootstrap 2.2 generic numeric-command resolver has been applied in ChatGPT Proje
 Current authoritative registry root: GitHub issue #335.
 - `1 -> NV-EXEC-01 / Minh — Thực thi trực tiếp / interactive / OWNER_FOREGROUND`.
 - `2 -> NV-OPS-01 / Khoa — Vận hành tự động / autonomous / AUTONOMOUS_P0_FIRST`.
+- `NV-SYS-01 -> AI PC01 — Kỹ sư Hệ thống Local / pc01-local / active=true / aliases=[]`.
 - `3/4/5/...` are currently unregistered. Unknown/disabled/malformed commands must fail closed with `COMMAND_UNREGISTERED`; do not infer semantics from chat history.
 
-Regression state:
-- Genuine NEW CHAT `2`: ĐẠT — resolved from CENTRAL #280 -> Registry Root #335 to `NV-OPS-01 / Khoa / autonomous` without relying on chat history.
-- Repeated `2` messages in the same chat do not count as new NEW CHAT regressions.
-- Remaining #334/#320 acceptance: genuine NEW CHAT `1`; genuine NEW CHAT `3` while unregistered must fail closed; only then enable test `3` dynamically -> genuine NEW CHAT `3` resolve; disable `3` -> genuine NEW CHAT `3` fail closed; ownership SKIP/TAKEOVER/OWNER_HOLD + browser/runtime acceptance.
+Regression / continuity state:
+- Genuine NEW CHAT `1`: ĐẠT — resolved from CENTRAL #280 -> Registry Root #335 to `NV-EXEC-01 / Minh / interactive / OWNER_FOREGROUND`.
+- Genuine NEW CHAT `2`: ĐẠT — resolved from CENTRAL #280 -> Registry Root #335 to `NV-OPS-01 / Khoa / autonomous / AUTONOMOUS_P0_FIRST`.
+- Repeated `1`/`2` messages in the same chat do not count as new NEW CHAT regressions.
+- #319 continuity acceptance A/B/C/D/E now has explicit evidence, including a three-NEW-CHAT `2` chain for D. #319 remains open because default-branch `docs/CURRENT_STATE.md` is still stale until this off-MAIN candidate passes its gate and is authorized for integration.
+- Remaining #334/#320 acceptance: genuine NEW CHAT `3` while unregistered must fail closed; only then enable test `3` dynamically -> genuine NEW CHAT `3` resolve; disable `3` -> genuine NEW CHAT `3` fail closed; ownership/browser/runtime acceptance remains separate.
 - Bootstrap/Project Source must not be replaced for ordinary command/employee/mapping/role/capability changes that remain inside the existing authority envelope.
 
-Ownership contract remains one active owner per Work Order/resource scope. Current policy allows Khoa takeover only after the foreign lease is stale beyond policy, with no mutation in-flight, no `OWNER_HOLD`, and a current idempotent checkpoint/evidence trail.
+Ownership contract remains one active owner per Work Order/resource scope. Khoa must SKIP any active foreign lease/resource. Current policy allows Khoa takeover only after the foreign lease is stale beyond policy, with no mutation in-flight, no `OWNER_HOLD`, and a current idempotent checkpoint/evidence trail.
+
+## Owner foreground — Web Control three-layer status / issue #338
+- #338 is `OWNER_FOREGROUND` for Minh / `NV-EXEC-01`, with `OWNER_HOLD=true`.
+- Claimed resources: `public/index.html`, `public/command-center.html`, `command-center.html`, `tests/pc01-three-layer-status.test.ts` on branch `feat/338-pc01-three-layer-status-v1`.
+- Khoa must not mutate those resources.
+- Draft PR #339 exact head `e187a2ff1b7c7fcaa21818765da5ba0090ac488b`: repo UI tests ĐẠT, CI #976 ĐẠT, Vercel Verify #385 ĐẠT; still CHỜ independent review/gate and physical E2E.
+- Khoa's independent verifier remains isolated in PR #337, one changed file `scripts/verify_work_board_ui.mjs`.
+- Draft stacked integration PR #340 proved the #337 verifier compatible with the exact #338 UI head without modifying Minh resources; CI #977 ĐẠT across typecheck, unit tests, Playwright smoke and build.
+- No MAIN/Production integration is authorized by this repo-only evidence.
 
 ## P0 — PC01 self-operation / issue #318
 Current technical parent initiative: #318 `PC01 tự vận hành — bỏ thao tác PowerShell thủ công`.
@@ -50,11 +62,13 @@ Current architecture authority:
 ## Auto Worker — issue #306
 Issue #306 remains OPEN.
 
-Current field evidence supersedes the older V9.8-only summary:
-- V10.0/V10.1 created mixed-state behavior: V9.8 core and V10 overlay could disagree on version/UI/runtime ownership.
-- Current chosen direction is **V10.2 CLEAN REBUILD**: restore the proven V9.8 outer lifecycle core, remove V10.0/V10.1 secondary state-machine modules, add only one `v102_turn_follower.js` for post-response next-turn dispatch, and expose one canonical Khoa/Auto Worker UI/state source.
-- Preserve V9.8 proven safety behaviors: URL-derived verify key, unexpected-window self-heal, bounded VERIFY watchdog/retry, no fake completion, silent notifications, transactional backup/rollback and fail-closed installer gates.
-- Do not claim HOÀN TẤT until physical Chrome Reload confirms one canonical Version 10.2.0/UI without overlap and runtime regression proves continuous `1/6 -> 2/6 -> ...`, lifecycle/tail behavior and ownership acceptance A-M.
+Current field evidence supersedes the V10.2 summary:
+- V10.0/V10.1 produced mixed-state UI/runtime ownership; V10.2 then motivated a clean-unified architecture rather than additional overlays.
+- Current candidate family is V11 unified worker platform: restore the proven clean V9.8 outer lifecycle/recovery/VERIFY watchdog core, remove V10.x competing overlays/state machines, and expose one canonical Khoa / `NV-OPS-01` runtime state/UI controller.
+- V11.0.0 physical installer attempt was rejected and rolled back at `POST_FREE_VERIFYKEY_PRESENT`; no V11.0.0 deployment was accepted. Root cause was a false-positive installer gate scanning human-readable popup/version-history text for a historical executable token.
+- Current corrective candidate is **V11.0.1**. Its safety gate checks executable runtime pattern only, while preserving clean V9.8 restore, transactional safety backup/rollback, unified counter/UI/state, Pause/Safe Stop/Emergency Stop semantics, stable node identity, silent notifications and outer recovery/VERIFY watchdog.
+- Local validation for V11.0.1: runtime syntax ĐẠT, popup syntax ĐẠT, installer payload syntax ĐẠT, no executable free verify-key pattern, no `chrome.notifications.create`.
+- Do not claim HOÀN TẤT until physical Chrome install/reload confirms one canonical V11.0.1 UI/state and runtime regression proves counter `1/6 -> 2/6 -> ...`, 3–8s post-response dispatch without duplicate send, stop modes, unexpected-window recovery, tail watchdog and ownership acceptance A–M.
 
 ## OpenClaw — deferred
 OpenClaw 2026.9.1 had a verified working online path using `openai/gpt-5.6-sol`, loopback Control UI and TigerIQ policy/skill behavior. Historical evidence remains in `docs/evidence/OPENCLAW-PC01-HANDOFF-2026-09-04.md`.
@@ -64,7 +78,8 @@ That lane is intentionally `TẠM GÁC` by the newer #318/#319 authority. Do not
 ## Web Control / physical E2E
 - #322 Web Control repo-only preparation exists off-MAIN and must remain subordinate to current P0 gates. Repo-only CI evidence is not physical E2E proof.
 - #261 remains the canonical physical acceptance tracker for real queue/state -> Web Control E2E; it is not itself a broad executable job.
-- UI/evidence must eventually show employee/owner/scope and `SKIP/TAKEOVER` reason from authoritative registry/state, not invented activity.
+- #337 fixes the stale legacy UI verifier; #340 proves integration compatibility with the current #338 branch at repo level.
+- UI/evidence must show employee/owner/scope and `SKIP/TAKEOVER/OWNER_HOLD` reason only from authoritative registry/state, not invented activity.
 
 ## Current MAIN baseline
 - Repository: `newsdayads/tigeriq-ai-lab`.
