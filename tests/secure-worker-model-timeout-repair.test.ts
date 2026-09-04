@@ -10,9 +10,15 @@ describe('Secure Worker V3 model-timeout repair contract', () => {
     expect(source).toContain("MODEL_TIMEOUT = int(os.getenv('TIGERIQ_MODEL_TIMEOUT', '90'))");
     expect(source).toContain("MODEL_TIMEOUT = int(os.getenv('TIGERIQ_MODEL_TIMEOUT', '300'))");
     expect(source).toContain("MODEL_TIMEOUT = max(300, int(os.getenv('TIGERIQ_MODEL_TIMEOUT', '300')))" );
+    expect(source).toContain('$anchorCount = 0');
+    expect(source).toContain('if($has90){ $anchorCount += 1 }');
+    expect(source).toContain('if($hasPlain300){ $anchorCount += 1 }');
+    expect(source).toContain('if($hasDesired){ $anchorCount += 1 }');
     expect(source).toContain("if($anchorCount -ne 1){ Fail 'WORKER_TIMEOUT_LAYOUT_CHANGED'");
     expect(source).toContain("$text = $text.Replace($legacy90,\"$marker`n$desired\")");
     expect(source).toContain("$text = $text.Replace($plain300,\"$marker`n$desired\")");
+    expect(source).toContain("$text = $text.Replace($desired,\"$marker`n$desired\")");
+    expect(source).not.toContain('TIMEOUT_CLAMP_MARKER_MISSING');
   });
 
   it('prevents future low environment overrides from reducing effective timeout below 300', () => {
