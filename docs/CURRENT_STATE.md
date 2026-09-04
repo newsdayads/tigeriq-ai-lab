@@ -20,14 +20,17 @@ Current architecture authority:
 - #329 `workforce.controller.status` proved listener `100.97.23.87:8790` with no wildcard/public listener, but HTTP status probe returned `404 Not Found`.
 - #330 is the canonical completed read-only Controller diagnostic: `diagnostic_version=3`; Controller entry + `pg` module + database/pgpass/ingress-token files exist and are readable; the expected runner exists, parses, and sets required runtime variables; task is Running as SYSTEM; self-heal result is `FAILED`; ensure-log error class is `DATABASE_URL_MISSING`; listener remains Tailscale-only.
 - #333 was closed as a duplicate diagnostic; do not re-create or re-run equivalent work without new evidence.
+- PR #314 exact head `ac43b0aca31f039cdd7ca4b04ade3666ee8d539d`: exact-head CI PASS and technical exact-head review found the timeout repair bounded/fail-closed, including Process/User/Machine override and principal/task-wrapper checks. This review is not a genuinely independent GitHub-account approval because the connector uses the same repository identity; no merge/deploy is authorized from it.
+- Draft PR #328 exact head `7164a643216c2edc09796f86616b82f8153c9d1f`: repository/doc gate PASS; it records the Secure Worker reboot identity decision tree and explicitly forbids silently converting Worker/Watchdog to SYSTEM, copying GitHub credentials, enabling auto-logon or otherwise widening credential scope.
 - Physical reboot E2E is not authorized under normal command `2`; explicit Owner authorization is required before reboot.
 
 ### Immediate safe continuation
 1. Preserve single-worker/idempotency/resource-lock semantics around #318/#282.
-2. Do not issue another blind Controller diagnostic: consume #330 evidence and continue only through the existing reviewed/reversible off-MAIN recovery/updater lane after exact freshness/ownership checks.
-3. Harden Worker/Watchdog boot persistence through reviewed/reversible off-MAIN work before live mutation.
-4. After Controller + Secure Worker path is stable, verify Executor -> independent Reviewer -> Judge and Web Control physical E2E.
-5. Keep physical reboot, credential/security boundary changes, MAIN/Production and paid services behind their required gates.
+2. Do not issue another blind Controller diagnostic or open another PC01 mutation lane: #330/#333 already provide the current bounded diagnostic evidence.
+3. #314 remains gated on a genuinely independent approval/authorization path before activation; after activation it still requires runtime acceptance proving model review no longer times out around 90 seconds.
+4. #328 defines the boot-recovery gate: first perform the current-config physical reboot E2E only after explicit Owner authorization; only if that fails may a credential/principal design be proposed through its own security gate.
+5. After Controller + Secure Worker path is stable, verify Executor -> independent Reviewer -> Judge and Web Control physical E2E.
+6. Keep credential/security boundary changes, MAIN/Production and paid services behind their required gates.
 
 ## OpenClaw — deferred
 OpenClaw 2026.9.1 had a verified working online path using `openai/gpt-5.6-sol`, loopback Control UI and TigerIQ policy/skill behavior. Historical evidence remains in `docs/evidence/OPENCLAW-PC01-HANDOFF-2026-09-04.md`.
