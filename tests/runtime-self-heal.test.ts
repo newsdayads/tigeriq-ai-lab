@@ -10,8 +10,10 @@ afterEach(async () => { while (roots.length) await rm(roots.pop()!, { recursive:
 const readyRoles = "REVIEWER_MODEL = os.getenv('TIGERIQ_REVIEWER_MODEL', 'qwen3:8b').strip()\nJUDGE_MODEL = os.getenv('TIGERIQ_JUDGE_MODEL', 'gemma3:4b').strip()";
 const oldRoles = "REVIEWER_MODEL = os.getenv('TIGERIQ_REVIEWER_MODEL', '').strip()\nJUDGE_MODEL = os.getenv('TIGERIQ_JUDGE_MODEL', '').strip()";
 const queueMarker = '# TIGERIQ_QUEUE_RESILIENCE_V1';
-const timeoutMarker = '# TIGERIQ_MODEL_TIMEOUT_300_V1';
-const timeout300 = "MODEL_TIMEOUT = int(os.getenv('TIGERIQ_MODEL_TIMEOUT', '300'))";
+const timeoutMarker = '# TIGERIQ_MODEL_TIMEOUT_MIN300_V2';
+const oldTimeoutMarker = '# TIGERIQ_MODEL_TIMEOUT_300_V1';
+const timeout300 = "MODEL_TIMEOUT = max(300, int(os.getenv('TIGERIQ_MODEL_TIMEOUT', '300')))";
+const plainTimeout300 = "MODEL_TIMEOUT = int(os.getenv('TIGERIQ_MODEL_TIMEOUT', '300'))";
 const timeout90 = "MODEL_TIMEOUT = int(os.getenv('TIGERIQ_MODEL_TIMEOUT', '90'))";
 const readyTimeout = `${timeoutMarker}\n${timeout300}`;
 
@@ -130,7 +132,7 @@ describe('PC01 runtime self-heal', () => {
         const joined = args.join(' ');
         if (joined.includes('repair-secure-worker-model-timeout.ps1')) {
           await writeFile(f.worker, `${readyRoles}\n${queueMarker}\n${readyTimeout}`, 'utf8');
-          return { stdout: '{"status":"PASS","modelTimeout":"REPAIRED","seconds":300}', stderr: '' };
+          return { stdout: '{"status":"PASS","modelTimeout":"REPAIRED","secondsMin":300,"policy":"MIN_300_CLAMP"}', stderr: '' };
         }
         if (joined.includes('repair-control-plane-controller-diagnose.ps1')) return { stdout: '{"status":"PASS","diagnose":"READY","patched":false}', stderr: '' };
         if (joined.includes('repair-workforce-controller-runtime-deps.ps1')) return { stdout: '{"status":"PASS","runtime":"READY","pgImport":true,"http":true,"postgres":true,"migration":"001_operational_state_v1"}', stderr: '' };
@@ -147,6 +149,28 @@ describe('PC01 runtime self-heal', () => {
     const persisted = JSON.parse(await readFile(f.state, 'utf8')) as { modelTimeout: string; modelTimeoutRepairScript: string };
     expect(persisted.modelTimeout).toBe('REPAIRED');
     expect(persisted.modelTimeoutRepairScript).toContain('repair-secure-worker-model-timeout.ps1');
+  });
+
+  it('does not treat the old 300 source marker as effective-ready', async () => {
+    const f = await fixture(`${readyRoles}\n${queueMarker}\n${oldTimeoutMarker}\n${plainTimeout300}`);
+    const calls: Array<{ file: string; args: string[] }> = [];
+    const result = await selfHealPc01Runtime({
+      host: '100.97.23.87', repo: 'newsdayads/tigeriq-ai-lab', repoRoot: f.root, workerImpl: f.worker, statePath: f.state,
+      run: async (file, args) => {
+        calls.push({ file, args });
+        const joined = args.join(' ');
+        if (joined.includes('repair-secure-worker-model-timeout.ps1')) {
+          await writeFile(f.worker, `${readyRoles}\n${queueMarker}\n${readyTimeout}`, 'utf8');
+          return { stdout: '{"status":"PASS","modelTimeout":"REPAIRED","secondsMin":300,"policy":"MIN_300_CLAMP"}', stderr: '' };
+        }
+        if (joined.includes('repair-control-plane-controller-diagnose.ps1')) return { stdout: '{"status":"PASS","diagnose":"READY","patched":false}', stderr: '' };
+        if (joined.includes('repair-workforce-controller-runtime-deps.ps1')) return { stdout: '{"status":"PASS","runtime":"READY","pgImport":true,"http":true,"postgres":true,"migration":"001_operational_state_v1"}', stderr: '' };
+        return { stdout: 'Running', stderr: '' };
+      },
+    });
+    expect(result.result).toBe('REPAIRED');
+    expect(result.modelTimeout).toBe('REPAIRED');
+    expect(calls[0]?.args.join(' ')).toContain('repair-secure-worker-model-timeout.ps1');
   });
 
   it('fails closed when the model timeout repair does not pass', async () => {

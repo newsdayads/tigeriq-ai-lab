@@ -36,8 +36,8 @@ const NEW_REVIEWER = "REVIEWER_MODEL = os.getenv('TIGERIQ_REVIEWER_MODEL', 'qwen
 const OLD_JUDGE = "JUDGE_MODEL = os.getenv('TIGERIQ_JUDGE_MODEL', '').strip()";
 const NEW_JUDGE = "JUDGE_MODEL = os.getenv('TIGERIQ_JUDGE_MODEL', 'gemma3:4b').strip()";
 const QUEUE_RESILIENCE_MARKER = '# TIGERIQ_QUEUE_RESILIENCE_V1';
-const MODEL_TIMEOUT_MARKER = '# TIGERIQ_MODEL_TIMEOUT_300_V1';
-const MODEL_TIMEOUT_300 = "MODEL_TIMEOUT = int(os.getenv('TIGERIQ_MODEL_TIMEOUT', '300'))";
+const MODEL_TIMEOUT_MARKER = '# TIGERIQ_MODEL_TIMEOUT_MIN300_V2';
+const MODEL_TIMEOUT_300 = "MODEL_TIMEOUT = max(300, int(os.getenv('TIGERIQ_MODEL_TIMEOUT', '300')))";
 
 function livePc01Host(host: string): boolean {
   return host !== '127.0.0.1' && host !== 'localhost' && host !== '::1';
