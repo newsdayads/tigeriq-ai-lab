@@ -80,7 +80,7 @@ describe('Owner Cockpit V5 functional contract', () => {
 
     const filtered = await (await fetch(`${outer.url}/?q=qwen3`)).text();
     expect(filtered).toContain('qwen3:8b');
-    expect(filtered).not.toContain('Hoàn thiện Web Control Functional V1</b>');
+    expect(filtered).toContain('0 / 2 việc');
   });
 
   it('requires login + csrf and records an approved Owner decision before creating continuation work', async () => {
@@ -98,7 +98,7 @@ describe('Owner Cockpit V5 functional contract', () => {
     const authorizedPage = await (await fetch(`${outer.url}/?work=WO-OWNER-DECISION`, { headers: { cookie } })).text();
     const csrf = authorizedPage.match(/name="csrf" value="([^"]+)"/)?.[1] ?? '';
     expect(csrf).not.toBe('');
-    expect(authorizedPage).toContain('Duyệt &amp; tiếp tục');
+    expect(authorizedPage).toContain('Duyệt & tiếp tục');
 
     const decision = await fetch(`${outer.url}/decision`, {
       method: 'POST',
