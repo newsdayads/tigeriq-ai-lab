@@ -3,6 +3,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { FileJournal } from '../../../packages/event-store/src/index.js';
 import { DurableControlPlane } from '../../../packages/durable-control-plane/src/index.js';
+import { GitHubWorkSource } from './github-work-source.js';
 import { startDashboard } from './server.js';
 import { startOwnerCockpitV4 } from './server-v4.js';
 
@@ -17,6 +18,7 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) {
 }
 
 const plane = new DurableControlPlane(new FileJournal(journalPath));
+const dashboardSource = new GitHubWorkSource(plane, repo);
 
 function workOrderId(instruction: string, priority: string): string {
   const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14);
@@ -55,7 +57,7 @@ async function submitPc01WorkOrder(instruction: string, priority: string): Promi
   }
 }
 
-const backend = await startDashboard(plane, {
+const backend = await startDashboard(dashboardSource, {
   host: '127.0.0.1',
   port: 0,
   repo,
@@ -67,6 +69,7 @@ const server = await startOwnerCockpitV4({ backendUrl: backend.url, host, port }
 console.log(`TigerIQ Owner Cockpit V4 online: ${server.url}`);
 console.log(`Internal Command Center backend: ${backend.url}`);
 console.log(`Journal: ${journalPath}`);
+console.log('Dashboard source: local journal + live GitHub TIGERIQ_JOB_V1 lifecycle projection.');
 console.log('Write actions require TIGERIQ_COMMAND_SECRET.');
 
 const shutdown = async () => {
