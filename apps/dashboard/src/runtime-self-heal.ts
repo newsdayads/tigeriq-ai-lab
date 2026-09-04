@@ -11,8 +11,10 @@ export type RuntimeSelfHealState = {
   workerTask?: string;
   modelRoles?: 'READY' | 'REPAIRED' | 'UNKNOWN';
   queueResilience?: 'READY' | 'REPAIRED' | 'UNKNOWN';
+  controllerDiagnose?: 'READY' | 'REPAIRED' | 'UNKNOWN';
   repairScript?: string;
   queueRepairScript?: string;
+  controllerDiagnoseRepairScript?: string;
   error?: string;
 };
 
@@ -77,6 +79,7 @@ export async function selfHealPc01Runtime(options: RuntimeSelfHealOptions): Prom
   const workerImpl = options.workerImpl ?? 'F:\\TigerIQ\\Worker\\worker_impl.py';
   const repairScript = resolve(repoRoot, 'scripts', 'pc-worker', 'repair-secure-worker-model-roles.ps1');
   const queueRepairScript = resolve(repoRoot, 'scripts', 'pc-worker', 'repair-secure-worker-queue-resilience.ps1');
+  const controllerDiagnoseRepairScript = resolve(repoRoot, 'scripts', 'pc-worker', 'repair-control-plane-controller-diagnose.ps1');
 
   try {
     let workerText = await readFile(workerImpl, 'utf8');
@@ -86,6 +89,7 @@ export async function selfHealPc01Runtime(options: RuntimeSelfHealOptions): Prom
 
     let modelRoles: 'READY' | 'REPAIRED' = readyRoles ? 'READY' : 'REPAIRED';
     let queueResilience: 'READY' | 'REPAIRED' = workerText.includes(QUEUE_RESILIENCE_MARKER) ? 'READY' : 'REPAIRED';
+    let controllerDiagnose: 'READY' | 'REPAIRED' = 'READY';
     let repaired = false;
 
     if (oldRoles) {
@@ -118,11 +122,23 @@ export async function selfHealPc01Runtime(options: RuntimeSelfHealOptions): Prom
       if (!workerText.includes(QUEUE_RESILIENCE_MARKER)) throw new Error('QUEUE_PATCH_NOT_PERSISTED');
     }
 
+    await readFile(controllerDiagnoseRepairScript, 'utf8');
+    const diagnoseRepair = await run('powershell.exe', [
+      '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', controllerDiagnoseRepairScript,
+    ], 3 * 60 * 1000);
+    if (!diagnoseRepair.stdout.includes('"status":"PASS"') && !diagnoseRepair.stdout.includes('"status": "PASS"')) {
+      throw new Error(`CONTROLLER_DIAGNOSE_REPAIR_NO_PASS: ${clipped(diagnoseRepair.stdout || diagnoseRepair.stderr)}`);
+    }
+    if (/"patched"\s*:\s*true/i.test(diagnoseRepair.stdout)) {
+      repaired = true;
+      controllerDiagnose = 'REPAIRED';
+    }
+
     if (!hasReadyRoles(workerText)) throw new Error('ROLE_PATCH_NOT_PERSISTED');
 
     if (repaired) {
       const state: RuntimeSelfHealState = {
-        result: 'REPAIRED', updatedAt: timestamp(), workerTask: 'Running', modelRoles, queueResilience, repairScript, queueRepairScript,
+        result: 'REPAIRED', updatedAt: timestamp(), workerTask: 'Running', modelRoles, queueResilience, controllerDiagnose, repairScript, queueRepairScript, controllerDiagnoseRepairScript,
       };
       await save(statePath, state);
       return state;
@@ -132,13 +148,13 @@ export async function selfHealPc01Runtime(options: RuntimeSelfHealOptions): Prom
     const status = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', fixed], 30_000);
     if (!/Running/i.test(status.stdout)) throw new Error(`WORKER_TASK_NOT_RUNNING: ${clipped(status.stdout || status.stderr)}`);
     const state: RuntimeSelfHealState = {
-      result: 'READY', updatedAt: timestamp(), workerTask: 'Running', modelRoles: 'READY', queueResilience: 'READY', repairScript, queueRepairScript,
+      result: 'READY', updatedAt: timestamp(), workerTask: 'Running', modelRoles: 'READY', queueResilience: 'READY', controllerDiagnose: 'READY', repairScript, queueRepairScript, controllerDiagnoseRepairScript,
     };
     await save(statePath, state);
     return state;
   } catch (error) {
     const state: RuntimeSelfHealState = {
-      result: 'FAILED', updatedAt: timestamp(), modelRoles: 'UNKNOWN', queueResilience: 'UNKNOWN', repairScript, queueRepairScript,
+      result: 'FAILED', updatedAt: timestamp(), modelRoles: 'UNKNOWN', queueResilience: 'UNKNOWN', controllerDiagnose: 'UNKNOWN', repairScript, queueRepairScript, controllerDiagnoseRepairScript,
       error: clipped(error instanceof Error ? error.message : error),
     };
     await save(statePath, state).catch(() => undefined);
