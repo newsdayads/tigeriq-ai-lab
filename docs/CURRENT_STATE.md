@@ -1,16 +1,25 @@
 # Current State
 
-Date: 2026-08-31
+Date: 2026-09-04
 
 TigerIQ AI Lab is being operated as a continuous distributed AI company. Tiger IQ Driver (`newsdayads/drivetrack`) remains isolated and unchanged.
 
+## 2026-09-04 PC01 OpenClaw Control state — P0 BLOCKER
+- OpenClaw Control UI is reachable in Chrome at `http://127.0.0.1:18789/chat`.
+- The UI targets `ws://127.0.0.1:18789` but reports that the browser cannot complete the Gateway connection.
+- A working authenticated Control session is **not verified**.
+- Token persistence, browser/device pairing persistence, auto-login, Gateway RPC health, and reboot recovery for this path are **not verified**.
+- Multiple helper-script/dashboard attempts did not produce a successful session. The read-only audit attempt produced only its header, so it is not valid runtime/config evidence.
+- Operational decision: stop blind trial-and-error on PC01 for this issue. Preserve current state and do not repeatedly restart services, regenerate tokens, create duplicate Gateway launch paths, or ask the Owner to continue interactive testing without a targeted fix backed by direct runtime evidence.
+- Evidence: `docs/evidence/2026-09-04-openclaw-control-blocker.md`.
+- Status: `BLOCKED / NOT PASS`.
+
 ## Current MAIN baseline
 - Repository: `newsdayads/tigeriq-ai-lab`.
+- MAIN observed on 2026-09-04: `011161f0b8263bdc534d12c1101bd1d55a76f8ea` (`safety(vercel): relock automatic production deployments`).
 - Production Web Control: `https://tigeriq-ai-lab.vercel.app`.
-- MAIN before active WO-040 branch: `d01dcd2483d2f6b91c4c8282927e009e7416a18b` (WO-039 merge).
-- Canonical PC01 real deployment job remains issue #100. It has no claim/result evidence at this state point; do not create duplicates and do not infer PC01/Tailscale runtime state.
-- Vercel Hobby has the known daily deployment quota condition `api-deployments-free-per-day`; do not retry/spam deployments or pay/upgrade. Non-Vercel work continues.
-- Latest observed Production deployment remains behind MAIN; no promotion is claimed while the quota condition is active.
+- Canonical PC01 real deployment job remains issue #100. PC01/Tailscale/runtime state must not be inferred from repository state alone.
+- Vercel automatic production deployment remains safety-locked unless an explicitly authorized release/verification path requires otherwise.
 
 ## Operating model — P0
 Owner -> Chief of Staff -> Department Heads -> Team Leads -> multiple AI/device employees -> Independent Reviewer -> Judge/Gate -> Evidence/State -> Chief -> Owner.
@@ -49,7 +58,7 @@ A real Samsung Z Flip 7 has run TigerIQ Worker. Physical screenshot evidence obs
 
 This does not prove Controller heartbeat, task execution or Gemini prompt/result automation.
 
-## Active priority — WO-040
+## Active software priority baseline — WO-040
 Add a narrow fail-closed provider-policy boundary for the future `gemini-android-ui` adapter. The policy may return `READY_FOR_REAL_DEVICE_PROVIDER_TEST` only after evidence flags show a verified physical Controller, real device pairing, fresh heartbeat, stable-signed Worker continuity, Accessibility enabled, an already-authenticated provider session and explicit provider-automation authorization.
 
 The gate permits only bounded `research.prompt` tasks. It rejects unattended login/2FA, payment/billing, credential mutation and unsupported task kinds. WO-040 does not perform third-party UI actions and must never be reported as Gemini execution proof.
@@ -65,7 +74,7 @@ When physical access resumes, the intended evidence sequence is:
 7. only then evaluate the WO-040 provider-policy gate and, if eligible, test a narrowly scoped Gemini adapter under provider policy and real-device gates.
 
 ## External/deferred boundaries
-- PC01/Tailscale live state must always be re-verified; repository software/CI is not runtime proof.
+- PC01/Tailscale/OpenClaw live state must always be re-verified; repository software/CI is not runtime proof.
 - Vercel filesystem is stateless and is never durable Workforce storage.
 - Vercel AI Gateway billing/card and paid/provider credential activation are not authorized work items.
 - No provider credentials, owner credentials, signing secrets or private keys may enter source control.
