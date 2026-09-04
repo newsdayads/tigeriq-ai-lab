@@ -7,7 +7,8 @@ $task='TigerIQ Worker'
 $markerV1='# TIGERIQ_CONTROLLER_DIAGNOSE_V1'
 $markerV2='# TIGERIQ_CONTROLLER_DIAGNOSE_V2'
 $markerV3='# TIGERIQ_CONTROLLER_DIAGNOSE_V3'
-$backupDir=Join-Path 'F:\TigerIQ\Worker\backup' ("controller-diagnose-v3-{0}" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
+$markerV4='# TIGERIQ_CONTROLLER_DIAGNOSE_V4'
+$backupDir=Join-Path 'F:\TigerIQ\Worker\backup' ("controller-diagnose-v4-{0}" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
 $backup=Join-Path $backupDir 'control_plane_v2.py'
 $patched=$false
 
@@ -34,11 +35,21 @@ def workforce_diagnose():
     scheduled_log = Path(r'F:\TigerIQ\Logs\workforce-controller-v1.log')
     ensure_log = WORKER_DIR / 'workforce-controller.log'
     self_heal_state = Path(r'F:\TigerIQ\CommandCenter\worker-self-heal-v1.json')
+    updater_state = Path(r'F:\TigerIQ\CommandCenter\updater-v3-state.json')
+    current_release = Path(r'F:\TigerIQ\CommandCenter\current-release.txt')
     pg_package = WORKSPACE / 'node_modules' / 'pg' / 'package.json'
 
     def classify_text(text):
         lowered = str(text or '').lower()
         classes = (
+            ('STATUS_CONTRACT_REPAIR_FAILED', 'status_contract_repair_failed'),
+            ('STATUS_FUNCTION_MISSING', 'status_function_missing'),
+            ('STATUS_PATH_UNKNOWN', 'status_path_unknown'),
+            ('STATUS_PATH_PATCH_FAILED', 'status_path_patch_failed'),
+            ('PATCH_NOT_PERSISTED', 'patch_not_persisted'),
+            ('WORKER_RESTART_TIMEOUT', 'worker_restart_timeout'),
+            ('CONTROLLER_STATUS_NOT_OK', 'controller_status_not_ok'),
+            ('CONTROLLER_WORKFORCE_STATUS_MISSING', 'controller_workforce_status_missing'),
             ('PASSWORD_AUTH_FAILED', 'password authentication failed'),
             ('DATABASE_URL_MISSING', 'tigeriq_database_url is required'),
             ('INGRESS_TOKEN_MISSING', 'ingress token'),
@@ -58,6 +69,12 @@ def workforce_diagnose():
         )
         found = [name for name, needle in classes if needle in lowered]
         return found[0] if found else 'UNCLASSIFIED'
+
+    def error_meta(error):
+        text = str(error or '')
+        code = text.split(':', 1)[0].strip()[:120] if text else None
+        digest = hashlib.sha256(text.encode('utf-8', errors='replace')).hexdigest() if text else None
+        return {'error_class': classify_text(text), 'error_code': code, 'error_sha256': digest}
 
     def classify(path):
         if not path.exists():
@@ -122,23 +139,76 @@ def workforce_diagnose():
 
     def self_heal_meta():
         if not self_heal_state.exists():
-            return {'exists': False, 'result': None, 'error_class': 'MISSING'}
+            return {'exists': False, 'result': None, 'controller_runtime': None, 'updated_at': None, 'error_class': 'MISSING', 'error_code': None, 'error_sha256': None}
         try:
             data = json.loads(self_heal_state.read_text(encoding='utf-8', errors='replace'))
             error = data.get('error') if isinstance(data, dict) else None
+            meta = error_meta(error)
             return {
                 'exists': True,
                 'result': data.get('result') if isinstance(data, dict) else None,
                 'controller_runtime': data.get('controllerRuntime') if isinstance(data, dict) else None,
-                'error_class': classify_text(error),
+                'updated_at': data.get('updatedAt') if isinstance(data, dict) else None,
+                **meta,
             }
         except Exception as exc:
-            return {'exists': True, 'result': None, 'error_class': f'SELF_HEAL_READ_FAILED:{type(exc).__name__}'}
+            return {'exists': True, 'result': None, 'controller_runtime': None, 'updated_at': None, 'error_class': f'SELF_HEAL_READ_FAILED:{type(exc).__name__}', 'error_code': None, 'error_sha256': None}
+
+    def updater_meta():
+        if not updater_state.exists():
+            return {'exists': False, 'result': None, 'installed_sha': None, 'run_id': None, 'updated_at': None, 'error_class': 'MISSING', 'error_code': None, 'error_sha256': None}
+        try:
+            data = json.loads(updater_state.read_text(encoding='utf-8', errors='replace'))
+            error = data.get('error') if isinstance(data, dict) else None
+            meta = error_meta(error)
+            return {
+                'exists': True,
+                'result': data.get('result') if isinstance(data, dict) else None,
+                'installed_sha': data.get('installedSha') if isinstance(data, dict) else None,
+                'run_id': str(data.get('runId')) if isinstance(data, dict) and data.get('runId') is not None else None,
+                'updated_at': data.get('updatedAt') if isinstance(data, dict) else None,
+                **meta,
+            }
+        except Exception as exc:
+            return {'exists': True, 'result': None, 'installed_sha': None, 'run_id': None, 'updated_at': None, 'error_class': f'UPDATER_STATE_READ_FAILED:{type(exc).__name__}', 'error_code': None, 'error_sha256': None}
+
+    def current_release_meta():
+        if not current_release.exists():
+            return {'exists': False, 'installed_sha': None}
+        try:
+            raw = current_release.read_text(encoding='utf-8', errors='replace').strip()
+            leaf = Path(raw).name.lower() if raw else ''
+            valid = len(leaf) == 40 and all(ch in '0123456789abcdef' for ch in leaf)
+            return {'exists': True, 'installed_sha': leaf if valid else None}
+        except Exception as exc:
+            return {'exists': True, 'installed_sha': None, 'error_class': f'CURRENT_RELEASE_READ_FAILED:{type(exc).__name__}'}
+
+    def status_contract_meta():
+        try:
+            control_path = Path(__file__)
+            text = control_path.read_text(encoding='utf-8', errors='replace').replace('\r\n', '\n')
+            start = text.find('def workforce_status():')
+            if start < 0:
+                return {'function_exists': False, 'health_path': None, 'expected': False, 'segment_sha256': None}
+            finish = text.find('\ndef ', start + 1)
+            if finish < 0:
+                finish = len(text)
+            segment = text[start:finish]
+            known = ('/api/workforce/status', '/api/v1/status', '/api/status', '/status')
+            health_path = next((candidate for candidate in known if candidate in segment), None)
+            return {
+                'function_exists': True,
+                'health_path': health_path,
+                'expected': health_path == '/api/workforce/status',
+                'segment_sha256': hashlib.sha256(segment.encode('utf-8', errors='replace')).hexdigest(),
+            }
+        except Exception as exc:
+            return {'function_exists': None, 'health_path': None, 'expected': False, 'segment_sha256': None, 'error_class': f'STATUS_CONTRACT_READ_FAILED:{type(exc).__name__}'}
 
     return {
         'ok': True,
         'action': 'workforce.controller.diagnose',
-        'diagnostic_version': 3,
+        'diagnostic_version': 4,
         'workspace': str(WORKSPACE),
         'entry_exists': entry.exists(),
         'pg_module_exists': pg_package.exists(),
@@ -157,6 +227,9 @@ def workforce_diagnose():
         'scheduled_log_writable_by_worker': scheduled_log.exists() and os.access(scheduled_log, os.W_OK),
         'ensure_log': classify(ensure_log),
         'self_heal': self_heal_meta(),
+        'updater': updater_meta(),
+        'current_release': current_release_meta(),
+        'status_contract': status_contract_meta(),
         'listener': listener_status(),
     }
 
@@ -180,9 +253,9 @@ try {
   $python=[string]$t.Actions[0].Execute
   if(-not $python -or -not (Test-Path -LiteralPath $python)){ Fail 'PYTHON_MISSING' $python }
   $text=[IO.File]::ReadAllText($control).Replace("`r`n","`n")
-  if($text.Contains($markerV3)){
+  if($text.Contains($markerV4)){
     if($t.State -ne 'Running'){ Start-ScheduledTask -TaskName $task -ErrorAction Stop; Start-Sleep 2 }
-    [ordered]@{status='PASS';diagnose='READY';version=3;patched=$false}|ConvertTo-Json -Compress
+    [ordered]@{status='PASS';diagnose='READY';version=4;patched=$false}|ConvertTo-Json -Compress
     exit 0
   }
 
@@ -194,18 +267,18 @@ try {
   New-Item -ItemType Directory -Force -Path $backupDir|Out-Null
   Copy-Item -LiteralPath $control -Destination $backup -Force
 
-  if($text.Contains($markerV1) -or $text.Contains($markerV2)){
+  if($text.Contains($markerV1) -or $text.Contains($markerV2) -or $text.Contains($markerV3)){
     $start=$text.IndexOf('def workforce_diagnose():')
     $finish=$text.IndexOf('def workforce_build():',$start)
     if($start -lt 0 -or $finish -le $start){ Fail 'OLD_LAYOUT_CHANGED' 'Could not locate existing diagnose function boundaries.' }
     if(-not $text.Contains("if action == 'workforce.controller.diagnose':")){ Fail 'OLD_ACTION_MISSING' 'Existing diagnose action missing.' }
     $text=$text.Substring(0,$start)+$diagnose+$text.Substring($finish)
-    $text=$text.Replace($markerV1,$markerV3).Replace($markerV2,$markerV3)
+    $text=$text.Replace($markerV1,$markerV4).Replace($markerV2,$markerV4).Replace($markerV3,$markerV4)
   } else {
     if(-not $text.Contains('WORKFORCE_PORT = 8790')){ Fail 'CONTROL_LAYOUT_CHANGED' 'WORKFORCE_PORT anchor missing.' }
     if(-not $text.Contains($functionAnchor)){ Fail 'CONTROL_FUNCTION_ANCHOR_CHANGED' 'workforce_build anchor missing.' }
     if(-not $text.Contains($actionAnchor)){ Fail 'CONTROL_ACTION_ANCHOR_CHANGED' 'workforce build action anchor missing.' }
-    $text=$text.Replace('WORKFORCE_PORT = 8790',"WORKFORCE_PORT = 8790`n$markerV3")
+    $text=$text.Replace('WORKFORCE_PORT = 8790',"WORKFORCE_PORT = 8790`n$markerV4")
     $text=$text.Replace($functionAnchor,$diagnose+$functionAnchor)
     $text=$text.Replace($actionAnchor,$actionInsert)
   }
@@ -218,8 +291,8 @@ try {
   $patched=$true
   Restart-Worker
   $after=[IO.File]::ReadAllText($control)
-  if(-not $after.Contains($markerV3) -or -not $after.Contains("'diagnostic_version': 3") -or -not $after.Contains("'ingress_token_file_exists'") -or -not $after.Contains("workforce.controller.diagnose")){ Fail 'PATCH_NOT_PERSISTED' 'Diagnostic V3 action missing after restart.' }
-  [ordered]@{status='PASS';diagnose='REPAIRED';version=3;patched=$true;backup=$backup}|ConvertTo-Json -Compress
+  if(-not $after.Contains($markerV4) -or -not $after.Contains("'diagnostic_version': 4") -or -not $after.Contains("'updater': updater_meta()") -or -not $after.Contains("'status_contract': status_contract_meta()") -or -not $after.Contains("workforce.controller.diagnose")){ Fail 'PATCH_NOT_PERSISTED' 'Diagnostic V4 action missing after restart.' }
+  [ordered]@{status='PASS';diagnose='REPAIRED';version=4;patched=$true;backup=$backup}|ConvertTo-Json -Compress
   exit 0
 } catch {
   $msg=$_.Exception.Message
