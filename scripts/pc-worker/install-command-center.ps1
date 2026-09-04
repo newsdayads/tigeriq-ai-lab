@@ -20,7 +20,7 @@ $tokenPath = 'F:\TigerIQ\Secrets\github-command-center.token'
 $bootstrapPath = Join-Path $env:TEMP 'TigerIQ-install-command-center-updater-v3.ps1'
 $statePath = Join-Path $runtimeDir 'updater-v3-state.json'
 $evidenceIssue = 252
-$oldUpdaterTask = 'TigerIQ Command Center Updater'
+$updaterTaskName = 'TigerIQ Command Center Updater'
 
 function Fail([string]$Code,[string]$Message) {
   Write-Error "$Code`: $Message"
@@ -53,6 +53,17 @@ if(-not $env:GH_TOKEN){
 }
 if(-not $env:GH_TOKEN){ Fail 'GITHUB_TOKEN_EMPTY' 'Existing local GitHub token is empty.' }
 
+# The V2 updater passes the exact old-channel SHA after CI. Refuse any drift.
+$sourceEncoded = [uri]::EscapeDataString($Branch)
+$head = (& $gh api "repos/$repo/commits/$sourceEncoded" --jq .sha 2>$null | Out-String).Trim()
+if($LASTEXITCODE -ne 0 -or $head -notmatch '^[0-9a-f]{40}$'){
+  Fail 'SOURCE_HEAD_UNAVAILABLE' $Branch
+}
+if(-not $Commit){ Fail 'EXACT_COMMIT_REQUIRED' 'Migration bridge requires the V2 updater exact SHA.' }
+if($Commit -and $head -ne $Commit){
+  Fail 'SOURCE_HEAD_MISMATCH' "Expected $Commit but branch head is $head"
+}
+
 Write-Host '[25%] VERIFY V3 RELEASE CHANNEL' -ForegroundColor Cyan
 $encoded = [uri]::EscapeDataString($targetBranch)
 $targetHead = (& $gh api "repos/$repo/commits/$encoded" --jq .sha 2>$null | Out-String).Trim()
@@ -82,7 +93,8 @@ $powershell = (Get-Command powershell.exe -ErrorAction Stop).Source
 $output = (& $powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $bootstrapPath -Repo $repo -Branch $targetBranch -HostIp $hostIp -Port $Port 2>&1 | Out-String)
 $bootstrapRc = $LASTEXITCODE
 if($bootstrapRc -ne 0){
-  Fail 'V3_BOOTSTRAP_FAILED' ($output[-([Math]::Min($output.Length,3000))..-1] -join '')
+  $tail = if($output.Length -gt 3000){ $output.Substring($output.Length - 3000) } else { $output }
+  Fail 'V3_BOOTSTRAP_FAILED' $tail
 }
 
 Write-Host '[80%] VERIFY LIVE V3 STATE' -ForegroundColor Cyan
@@ -102,7 +114,7 @@ try {
 }
 
 # Retire the old polling task only after V3 has proved healthy.
-Disable-ScheduledTask -TaskName $oldUpdaterTask -ErrorAction SilentlyContinue | Out-Null
+Disable-ScheduledTask -TaskName $updaterTaskName -ErrorAction SilentlyContinue | Out-Null
 
 Write-Host '[95%] POST RUNTIME EVIDENCE' -ForegroundColor Cyan
 $evidence = @"
