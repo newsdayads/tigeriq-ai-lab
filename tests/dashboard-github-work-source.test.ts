@@ -45,7 +45,7 @@ describe('GitHub Work Source projection', () => {
     expect(executive?.order.goal).toContain('Bước hiện tại: Kiểm tra năng lực hệ thống');
     expect(executive?.order.goal).toContain('Mốc kế tiếp:');
     expect(executive?.evidence).toHaveLength(2);
-    expect(executive?.evidence.map((item) => item.artifactUris[0])).toEqual([
+    expect(executive?.evidence.map((item) => item.artifactUris?.[0])).toEqual([
       'https://github.com/newsdayads/tigeriq-ai-lab/issues/249',
       'https://github.com/newsdayads/tigeriq-ai-lab/issues/252',
     ]);
