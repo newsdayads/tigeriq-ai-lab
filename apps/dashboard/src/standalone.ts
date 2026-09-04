@@ -4,6 +4,7 @@ import { promisify } from 'node:util';
 import { FileJournal } from '../../../packages/event-store/src/index.js';
 import { DurableControlPlane } from '../../../packages/durable-control-plane/src/index.js';
 import { GitHubWorkSource } from './github-work-source.js';
+import { schedulePc01RuntimeSelfHeal } from './runtime-self-heal.js';
 import { startDashboard } from './server.js';
 import { startOwnerCockpitV5 } from './server-v5.js';
 
@@ -65,12 +66,14 @@ const backend = await startDashboard(dashboardSource, {
 });
 
 const server = await startOwnerCockpitV5({ backendUrl: backend.url, repo, host, port });
+schedulePc01RuntimeSelfHeal({ host, repo, repoRoot: process.env.TIGERIQ_REPO_ROOT });
 
 console.log(`TigerIQ Owner Cockpit V5 online: ${server.url}`);
 console.log(`Internal Command Center backend: ${backend.url}`);
 console.log(`Journal: ${journalPath}`);
 console.log('Dashboard source: local journal + live GitHub TIGERIQ_JOB_V1 lifecycle projection.');
 console.log('Write actions require TIGERIQ_COMMAND_SECRET + CSRF + bounded allowlist.');
+console.log('Live PC01 runtime performs bounded Worker self-heal; candidate localhost releases never mutate Worker runtime.');
 
 const shutdown = async () => {
   await server.close();
