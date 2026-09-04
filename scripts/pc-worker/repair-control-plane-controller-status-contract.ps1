@@ -54,7 +54,7 @@ try {
   Copy-Item -LiteralPath $control -Destination $backup -Force
 
   $patchedSegment=$segment.Replace([string]$legacy,$expectedPath)
-  if(-not $patchedSegment.Contains($expectedPath) -or $patchedSegment.Contains([string]$legacy)){ Fail 'STATUS_PATH_PATCH_FAILED' 'Could not normalize Controller status path.' }
+  if(-not $patchedSegment.Contains($expectedPath)){ Fail 'STATUS_PATH_PATCH_FAILED' 'Could not normalize Controller status path.' }
   $patchedText=$text.Substring(0,$start)+$patchedSegment+$text.Substring($next)
 
   $tmp="$control.new"
