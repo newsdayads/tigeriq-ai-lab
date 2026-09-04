@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 const contract = readFileSync('scripts/pc-worker/repair-control-plane-controller-status-contract.ps1', 'utf8');
 const runtime = readFileSync('scripts/pc-worker/repair-workforce-controller-runtime-deps.ps1', 'utf8');
 const server = readFileSync('apps/workforce-controller/src/server.ts', 'utf8');
+const releaseWorkflow = readFileSync('.github/workflows/command-center-release.yml', 'utf8');
 
 describe('PC01 Workforce Controller status contract repair', () => {
   it('aligns physical probes with the live Controller route', () => {
@@ -41,5 +42,12 @@ describe('PC01 Workforce Controller status contract repair', () => {
     expect(runtime).toContain("$StatusContractRepair = Join-Path $PSScriptRoot 'repair-control-plane-controller-status-contract.ps1'");
     expect(runtime).toContain("Fail 'STATUS_CONTRACT_REPAIR_FAILED'");
     expect(runtime.indexOf('$contractOutput =')).toBeLessThan(runtime.indexOf('$health = $null'));
+  });
+
+  it('ships the status-contract repair in the immutable PC01 runtime bundle', () => {
+    const asset = 'scripts/pc-worker/repair-control-plane-controller-status-contract.ps1';
+    expect(releaseWorkflow).toContain(`cp ${asset} .release/runtime/scripts/pc-worker/`);
+    expect(releaseWorkflow).toContain(`test -s .release/runtime/${asset}`);
+    expect(releaseWorkflow).toContain(`'${asset}'`);
   });
 });
