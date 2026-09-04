@@ -1,0 +1,42 @@
+{
+  "schema_version": "1.0",
+  "registry_id": "TIGERIQ_AI_EMPLOYEE_REGISTRY",
+  "updated_at": "2026-09-04T21:31:00+07:00",
+  "source_issue": 335,
+  "employees": {
+    "NV-EXEC-01": {
+      "employee_id": "NV-EXEC-01",
+      "name": "Minh",
+      "role": "Thực thi trực tiếp",
+      "capabilities": ["owner_foreground_execution", "goal_intake", "work_claim", "verify", "evidence", "state_update"],
+      "max_authority_envelope": {
+        "main_production": false,
+        "paid_financial_commitment": false,
+        "credential_security_boundary_change": false,
+        "irreversible_action": false,
+        "physical_reboot": false
+      },
+      "runtime_binding": "chat_foreground",
+      "active": true,
+      "command_aliases": [1],
+      "reporting_line": "Chief of Staff / Owner"
+    },
+    "NV-OPS-01": {
+      "employee_id": "NV-OPS-01",
+      "name": "Khoa",
+      "role": "Vận hành tự động",
+      "capabilities": ["authoritative_queue_execution", "resource_lock_check", "idempotent_resume", "bounded_recovery", "verify", "evidence", "state_update"],
+      "max_authority_envelope": {
+        "main_production": false,
+        "paid_financial_commitment": false,
+        "credential_security_boundary_change": false,
+        "irreversible_action": false,
+        "physical_reboot": false
+      },
+      "runtime_binding": "auto_worker",
+      "active": true,
+      "command_aliases": [2],
+      "reporting_line": "Chief of Staff / Owner"
+    }
+  }
+}
