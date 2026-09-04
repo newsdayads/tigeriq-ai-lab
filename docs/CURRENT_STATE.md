@@ -65,12 +65,22 @@ Current architecture authority:
 ## Auto Worker — issue #306
 Issue #306 remains OPEN and is owned by Khoa/NV02.
 
-Current candidate family is V11 unified worker platform:
-- V11.0.0 physical installer attempt was rejected and rolled back at `POST_FREE_VERIFYKEY_PRESENT`; no V11.0.0 deployment was accepted.
-- Root cause was a false-positive installer gate scanning human-readable popup/version-history text for a historical executable token.
-- Current corrective candidate is **V11.0.1**. Its safety gate checks executable runtime pattern only, while preserving clean V9.8 restore, transactional safety backup/rollback, unified counter/UI/state, Pause/Safe Stop/Emergency Stop semantics, stable node identity, silent notifications and outer recovery/VERIFY watchdog.
-- Local validation for V11.0.1: runtime syntax ĐẠT, popup syntax ĐẠT, installer payload syntax ĐẠT, no executable free verify-key pattern, no `chrome.notifications.create`.
-- Do not claim HOÀN TẤT until physical Chrome install/reload confirms one canonical V11.0.1 UI/state and runtime regression proves counter `1/6 -> 2/6 -> ...`, 3–8s post-response dispatch without duplicate send, stop modes, unexpected-window recovery, tail watchdog and ownership acceptance A–M.
+Current corrective candidate is **V12.4.2** according to the latest physical/runtime evidence in #306. V11.0.1 and earlier V12.x candidates are superseded by subsequent field failures and corrective builds.
+
+Latest field chain:
+- V12.4.1 physical updater failed closed with `SOURCE_NOT_FOUND`; rollback/no-change behavior was preserved.
+- Root cause: the generated JavaScript contained an incorrectly escaped Windows source-path literal, so source resolution failed before UI mutation.
+- V12.4.2 removes that fixed-string dependency: it first checks the canonical path using `String.raw`, then scans Chrome Default/Profile Preferences + Secure Preferences for canonical extension ID `leidfhbpdillakmcbijagelghhilbnpc`, and fails closed on ambiguity.
+- The V12.4.2 payload preserves the legacy-header killer + Tiger icon taskbar design, backup/rollback, syntax checks and on-disk version/content-script verification.
+- No physical V12.4.2 PASS has been recorded yet.
+
+Acceptance N is now mandatory in addition to A–M:
+- `NO_MUTABLE_SCOPE` must not terminal-stop Auto Worker or leave it stuck on the first turn.
+- Required transition: `SKIP -> SCAN_NEXT_SAFE -> READ_ONLY_VERIFY/WAIT_BOUNDED -> ADVANCE_CYCLE`.
+- Safe fallback order: missing verification/gate -> state hygiene -> review preparation -> independent regression/audit -> safe backlog.
+- Do not touch `OWNER_HOLD` scope, do not duplicate completed work, and only conclude global `EXTERNAL_WAIT` after a full authoritative audit.
+
+Do not claim HOÀN TẤT until physical Chrome update/reload confirms V12.4.2 and runtime regression proves recovery, turn progression, no duplicate send, stop modes, unexpected-window recovery, tail watchdog, canonical UI/identity, ownership/failover and Acceptance A–N.
 
 ## OpenClaw — deferred
 OpenClaw 2026.9.1 had a verified working online path using `openai/gpt-5.6-sol`, loopback Control UI and TigerIQ policy/skill behavior. Historical evidence remains in `docs/evidence/OPENCLAW-PC01-HANDOFF-2026-09-04.md`.
@@ -93,7 +103,7 @@ WO-024 through WO-039 established the software foundations for hierarchy, schedu
 
 ## External/deferred boundaries
 - PC01/Tailscale/live Controller state must be re-verified; repository/CI is not runtime proof.
-- Physical Chrome V11.0.1 regression remains a real-device gate for #306.
+- Physical Chrome V12.4.2 update/reload + regression A–N remains a real-device gate for #306.
 - Physical reboot/principal/security changes remain explicit Owner gates.
 - Protected PC01 services must not be restarted/reconfigured merely to make another lane pass.
 - No provider/owner/signing secret may enter source control or issue evidence.
