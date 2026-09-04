@@ -10,6 +10,10 @@ afterEach(async () => { while (roots.length) await rm(roots.pop()!, { recursive:
 const readyRoles = "REVIEWER_MODEL = os.getenv('TIGERIQ_REVIEWER_MODEL', 'qwen3:8b').strip()\nJUDGE_MODEL = os.getenv('TIGERIQ_JUDGE_MODEL', 'gemma3:4b').strip()";
 const oldRoles = "REVIEWER_MODEL = os.getenv('TIGERIQ_REVIEWER_MODEL', '').strip()\nJUDGE_MODEL = os.getenv('TIGERIQ_JUDGE_MODEL', '').strip()";
 const queueMarker = '# TIGERIQ_QUEUE_RESILIENCE_V1';
+const timeoutMarker = '# TIGERIQ_MODEL_TIMEOUT_300_V1';
+const timeout300 = "MODEL_TIMEOUT = int(os.getenv('TIGERIQ_MODEL_TIMEOUT', '300'))";
+const timeout90 = "MODEL_TIMEOUT = int(os.getenv('TIGERIQ_MODEL_TIMEOUT', '90'))";
+const readyTimeout = `${timeoutMarker}\n${timeout300}`;
 
 async function fixture(workerText: string) {
   const root = await mkdtemp(join(tmpdir(), 'tigeriq-self-heal-'));
@@ -21,6 +25,7 @@ async function fixture(workerText: string) {
   await writeFile(worker, workerText, 'utf8');
   await writeFile(join(scriptDir, 'repair-secure-worker-model-roles.ps1'), '# reviewed model repair fixture', 'utf8');
   await writeFile(join(scriptDir, 'repair-secure-worker-queue-resilience.ps1'), '# reviewed queue repair fixture', 'utf8');
+  await writeFile(join(scriptDir, 'repair-secure-worker-model-timeout.ps1'), '# reviewed timeout repair fixture', 'utf8');
   await writeFile(join(scriptDir, 'repair-control-plane-controller-diagnose.ps1'), '# reviewed diagnose repair fixture', 'utf8');
   await writeFile(join(scriptDir, 'repair-workforce-controller-runtime-deps.ps1'), '# reviewed controller runtime repair fixture', 'utf8');
   return { root, worker, state };
@@ -36,7 +41,7 @@ describe('PC01 runtime self-heal', () => {
   });
 
   it('ensures Controller runtime and allowlisted TigerIQ Worker task are healthy when all repair markers are ready', async () => {
-    const f = await fixture(`${readyRoles}\n${queueMarker}`);
+    const f = await fixture(`${readyRoles}\n${queueMarker}\n${readyTimeout}`);
     const calls: Array<{ file: string; args: string[] }> = [];
     const result = await selfHealPc01Runtime({
       host: '100.97.23.87', repo: 'newsdayads/tigeriq-ai-lab', repoRoot: f.root, workerImpl: f.worker, statePath: f.state,
@@ -51,6 +56,7 @@ describe('PC01 runtime self-heal', () => {
     expect(result.result).toBe('READY');
     expect(result.workerTask).toBe('Running');
     expect(result.queueResilience).toBe('READY');
+    expect(result.modelTimeout).toBe('READY');
     expect(result.controllerDiagnose).toBe('READY');
     expect(result.controllerRuntime).toBe('READY');
     expect(calls).toHaveLength(3);
@@ -60,14 +66,14 @@ describe('PC01 runtime self-heal', () => {
   });
 
   it('repairs deterministic-command queue resilience, installs diagnose action, then verifies Controller runtime', async () => {
-    const f = await fixture(readyRoles);
+    const f = await fixture(`${readyRoles}\n${readyTimeout}`);
     const calls: Array<{ file: string; args: string[]; timeout: number }> = [];
     const result = await selfHealPc01Runtime({
       host: '100.97.23.87', repo: 'newsdayads/tigeriq-ai-lab', repoRoot: f.root, workerImpl: f.worker, statePath: f.state,
       run: async (file, args, timeout) => {
         calls.push({ file, args, timeout });
         const joined=args.join(' ');
-        if (joined.includes('repair-secure-worker-queue-resilience.ps1')) await writeFile(f.worker, `${readyRoles}\n${queueMarker}`, 'utf8');
+        if (joined.includes('repair-secure-worker-queue-resilience.ps1')) await writeFile(f.worker, `${readyRoles}\n${queueMarker}\n${readyTimeout}`, 'utf8');
         if (joined.includes('repair-control-plane-controller-diagnose.ps1')) return { stdout: '{"status":"PASS","diagnose":"REPAIRED","patched":true}', stderr: '' };
         if (joined.includes('repair-workforce-controller-runtime-deps.ps1')) return { stdout: '{"status":"PASS","runtime":"READY","pgImport":true,"http":true,"postgres":true,"migration":"001_operational_state_v1"}', stderr: '' };
         return { stdout: '[100%]\n{"status":"PASS"}', stderr: '' };
@@ -76,6 +82,7 @@ describe('PC01 runtime self-heal', () => {
     expect(result.result).toBe('REPAIRED');
     expect(result.modelRoles).toBe('READY');
     expect(result.queueResilience).toBe('REPAIRED');
+    expect(result.modelTimeout).toBe('READY');
     expect(result.controllerDiagnose).toBe('REPAIRED');
     expect(result.controllerRuntime).toBe('READY');
     expect(calls).toHaveLength(3);
@@ -85,15 +92,15 @@ describe('PC01 runtime self-heal', () => {
   });
 
   it('repairs missing model roles first, then queue resilience, diagnose action and Controller runtime', async () => {
-    const f = await fixture(oldRoles);
+    const f = await fixture(`${oldRoles}\n${readyTimeout}`);
     const calls: Array<{ file: string; args: string[]; timeout: number }> = [];
     const result = await selfHealPc01Runtime({
       host: '100.97.23.87', repo: 'newsdayads/tigeriq-ai-lab', repoRoot: f.root, workerImpl: f.worker, statePath: f.state,
       run: async (file, args, timeout) => {
         calls.push({ file, args, timeout });
         const joined = args.join(' ');
-        if (joined.includes('repair-secure-worker-model-roles.ps1')) await writeFile(f.worker, readyRoles, 'utf8');
-        if (joined.includes('repair-secure-worker-queue-resilience.ps1')) await writeFile(f.worker, `${readyRoles}\n${queueMarker}`, 'utf8');
+        if (joined.includes('repair-secure-worker-model-roles.ps1')) await writeFile(f.worker, `${readyRoles}\n${readyTimeout}`, 'utf8');
+        if (joined.includes('repair-secure-worker-queue-resilience.ps1')) await writeFile(f.worker, `${readyRoles}\n${queueMarker}\n${readyTimeout}`, 'utf8');
         if (joined.includes('repair-control-plane-controller-diagnose.ps1')) return { stdout: '{"status":"PASS","diagnose":"REPAIRED","patched":true}', stderr: '' };
         if (joined.includes('repair-workforce-controller-runtime-deps.ps1')) return { stdout: '{"status":"PASS","runtime":"REPAIRED","pgImport":true,"http":true,"postgres":true,"migration":"001_operational_state_v1"}', stderr: '' };
         return { stdout: '[100%]\n{"status":"PASS"}', stderr: '' };
@@ -102,6 +109,7 @@ describe('PC01 runtime self-heal', () => {
     expect(result.result).toBe('REPAIRED');
     expect(result.modelRoles).toBe('REPAIRED');
     expect(result.queueResilience).toBe('REPAIRED');
+    expect(result.modelTimeout).toBe('READY');
     expect(result.controllerDiagnose).toBe('REPAIRED');
     expect(result.controllerRuntime).toBe('REPAIRED');
     expect(calls).toHaveLength(4);
@@ -112,8 +120,53 @@ describe('PC01 runtime self-heal', () => {
     expect(calls[3]?.args.join(' ')).toContain('repair-workforce-controller-runtime-deps.ps1');
   });
 
+  it('repairs the legacy 90 second Secure V3 model timeout before Controller work', async () => {
+    const f = await fixture(`${readyRoles}\n${queueMarker}\n${timeout90}`);
+    const calls: Array<{ file: string; args: string[]; timeout: number }> = [];
+    const result = await selfHealPc01Runtime({
+      host: '100.97.23.87', repo: 'newsdayads/tigeriq-ai-lab', repoRoot: f.root, workerImpl: f.worker, statePath: f.state,
+      run: async (file, args, timeout) => {
+        calls.push({ file, args, timeout });
+        const joined = args.join(' ');
+        if (joined.includes('repair-secure-worker-model-timeout.ps1')) {
+          await writeFile(f.worker, `${readyRoles}\n${queueMarker}\n${readyTimeout}`, 'utf8');
+          return { stdout: '{"status":"PASS","modelTimeout":"REPAIRED","seconds":300}', stderr: '' };
+        }
+        if (joined.includes('repair-control-plane-controller-diagnose.ps1')) return { stdout: '{"status":"PASS","diagnose":"READY","patched":false}', stderr: '' };
+        if (joined.includes('repair-workforce-controller-runtime-deps.ps1')) return { stdout: '{"status":"PASS","runtime":"READY","pgImport":true,"http":true,"postgres":true,"migration":"001_operational_state_v1"}', stderr: '' };
+        return { stdout: 'Running', stderr: '' };
+      },
+    });
+    expect(result.result).toBe('REPAIRED');
+    expect(result.modelTimeout).toBe('REPAIRED');
+    expect(calls).toHaveLength(3);
+    expect(calls[0]?.args.join(' ')).toContain('repair-secure-worker-model-timeout.ps1');
+    expect(calls[0]?.timeout).toBe(3 * 60 * 1000);
+    expect(calls[1]?.args.join(' ')).toContain('repair-control-plane-controller-diagnose.ps1');
+    expect(calls[2]?.args.join(' ')).toContain('repair-workforce-controller-runtime-deps.ps1');
+    const persisted = JSON.parse(await readFile(f.state, 'utf8')) as { modelTimeout: string; modelTimeoutRepairScript: string };
+    expect(persisted.modelTimeout).toBe('REPAIRED');
+    expect(persisted.modelTimeoutRepairScript).toContain('repair-secure-worker-model-timeout.ps1');
+  });
+
+  it('fails closed when the model timeout repair does not pass', async () => {
+    const f = await fixture(`${readyRoles}\n${queueMarker}\n${timeout90}`);
+    const result = await selfHealPc01Runtime({
+      host: '100.97.23.87', repo: 'newsdayads/tigeriq-ai-lab', repoRoot: f.root, workerImpl: f.worker, statePath: f.state,
+      run: async (_file, args) => {
+        if (args.join(' ').includes('repair-secure-worker-model-timeout.ps1')) return { stdout: '{"status":"FAIL","error":"WORKER_TIMEOUT_LAYOUT_CHANGED"}', stderr: '' };
+        return { stdout: 'Running', stderr: '' };
+      },
+    });
+    expect(result.result).toBe('FAILED');
+    expect(result.modelTimeout).toBe('UNKNOWN');
+    const persisted = JSON.parse(await readFile(f.state, 'utf8')) as { result: string; error: string };
+    expect(persisted.result).toBe('FAILED');
+    expect(persisted.error).toContain('MODEL_TIMEOUT_REPAIR_NO_PASS');
+  });
+
   it('fails closed when Controller runtime health does not pass', async () => {
-    const f = await fixture(`${readyRoles}\n${queueMarker}`);
+    const f = await fixture(`${readyRoles}\n${queueMarker}\n${readyTimeout}`);
     const result = await selfHealPc01Runtime({
       host: '100.97.23.87', repo: 'newsdayads/tigeriq-ai-lab', repoRoot: f.root, workerImpl: f.worker, statePath: f.state,
       run: async (_file, args) => {
