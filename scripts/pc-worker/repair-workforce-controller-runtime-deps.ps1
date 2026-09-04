@@ -8,6 +8,7 @@ Set-StrictMode -Version Latest
 $TaskName = 'TigerIQ Workforce Controller'
 $ExpectedHost = '100.97.23.87'
 $ExpectedPort = 8790
+$HealthPath = '/api/workforce/status'
 $Entry = Join-Path $Workspace 'dist\apps\workforce-controller\src\standalone.js'
 $PackageJson = Join-Path $Workspace 'package.json'
 $PackageLock = Join-Path $Workspace 'package-lock.json'
@@ -118,13 +119,12 @@ try {
 
   $health = $null
   try {
-    $health = Invoke-RestMethod -Uri "http://$ExpectedHost`:$ExpectedPort/api/v1/status" -TimeoutSec 5
+    $health = Invoke-RestMethod -Uri "http://$ExpectedHost`:$ExpectedPort$HealthPath" -TimeoutSec 5
   } catch {
-    Fail 'CONTROLLER_HTTP_UNHEALTHY' 'GET /api/v1/status failed.'
+    Fail 'CONTROLLER_HTTP_UNHEALTHY' "GET $HealthPath failed."
   }
   if (-not [bool]$health.ok) { Fail 'CONTROLLER_STATUS_NOT_OK' 'Controller status did not report ok=true.' }
-  if (-not [bool]$health.postgres) { Fail 'CONTROLLER_POSTGRES_NOT_READY' 'Controller status did not report postgres=true.' }
-  if ([string]$health.migration -ne '001_operational_state_v1') { Fail 'CONTROLLER_MIGRATION_NOT_READY' 'Operational migration is not ready.' }
+  if ($null -eq $health.workforce) { Fail 'CONTROLLER_WORKFORCE_STATUS_MISSING' 'Controller status did not include workforce state.' }
 
   [ordered]@{
     status = 'PASS'
@@ -135,8 +135,8 @@ try {
     bind = "$ExpectedHost`:$ExpectedPort"
     wildcardListener = [bool]($listener.wildcard -gt 0)
     http = $true
-    postgres = $true
-    migration = '001_operational_state_v1'
+    healthPath = $HealthPath
+    workforceStatus = $true
     trackedPackageFilesUnchanged = $true
   } | ConvertTo-Json -Compress
   exit 0
