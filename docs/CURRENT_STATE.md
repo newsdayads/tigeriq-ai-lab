@@ -4,51 +4,67 @@ Date: 2026-09-04
 
 TigerIQ AI Lab is being operated as a continuous distributed AI company. Tiger IQ Driver (`newsdayads/drivetrack`) remains isolated and unchanged.
 
+## P0 — Dynamic command router / state continuity — #334/#335/#320/#319
+Bootstrap 2.2 generic numeric-command resolver has been applied in ChatGPT Project Source.
+
+Current authoritative registry root: GitHub issue #335.
+- `1 -> NV-EXEC-01 / Minh — Thực thi trực tiếp / interactive / OWNER_FOREGROUND`.
+- `2 -> NV-OPS-01 / Khoa — Vận hành tự động / autonomous / AUTONOMOUS_P0_FIRST`.
+- `3/4/5/...` are currently unregistered. Unknown/disabled/malformed commands must fail closed with `COMMAND_UNREGISTERED`; do not infer semantics from chat history.
+
+Regression state:
+- Genuine NEW CHAT `2`: ĐẠT — resolved from CENTRAL #280 -> Registry Root #335 to `NV-OPS-01 / Khoa / autonomous` without relying on chat history.
+- Repeated `2` messages in the same chat do not count as new NEW CHAT regressions.
+- Remaining #334/#320 acceptance: genuine NEW CHAT `1`; genuine NEW CHAT `3` while unregistered must fail closed; only then enable test `3` dynamically -> genuine NEW CHAT `3` resolve; disable `3` -> genuine NEW CHAT `3` fail closed; ownership SKIP/TAKEOVER/OWNER_HOLD + browser/runtime acceptance.
+- Bootstrap/Project Source must not be replaced for ordinary command/employee/mapping/role/capability changes that remain inside the existing authority envelope.
+
+Ownership contract remains one active owner per Work Order/resource scope. Current policy allows Khoa takeover only after the foreign lease is stale beyond policy, with no mutation in-flight, no `OWNER_HOLD`, and a current idempotent checkpoint/evidence trail.
+
 ## P0 — PC01 self-operation / issue #318
-Current active parent initiative: #318 `PC01 tự vận hành — bỏ thao tác PowerShell thủ công`.
+Current technical parent initiative: #318 `PC01 tự vận hành — bỏ thao tác PowerShell thủ công`.
 
 Current architecture authority:
 - `TigerIQ Workforce Controller` = primary PC01 control authority.
 - `PC01 Secure Worker` = bounded background executor/command-mailbox worker.
 - `OpenClaw` = optional downstream AI/operations worker only; currently `TẠM GÁC` and not a P0 selection target.
-- NEW CHAT command `1`/`2` must read this file + #318/#319 + CENTRAL #280 and must not resume the old OpenClaw benchmark/fallback lane unless a newer Owner decision reactivates it.
 
 ### Verified current evidence
-- Remote mailbox canaries #321/#323/#324: 3/3 consecutive PASS for `Vy/ChatGPT -> GitHub mailbox -> PC01 claim -> bounded action -> evidence -> auto-close`, without manual PowerShell/restart/port-check work by anh Sơn.
+- Remote mailbox canaries #321/#323/#324: 3/3 consecutive ĐẠT for `Vy/ChatGPT -> GitHub mailbox -> PC01 claim -> bounded action -> evidence -> auto-close`, without manual PowerShell/restart/port-check work by anh Sơn.
 - `TigerIQ Workforce Controller` Scheduled Task is enabled/running as `SYSTEM` with startup/repeating triggers.
 - `TigerIQ Worker` and `TigerIQ Worker Watchdog` were observed enabled but logon-only; boot-before-login self-recovery is not yet proven.
 - #329 `workforce.controller.status` proved listener `100.97.23.87:8790` with no wildcard/public listener, but HTTP status probe returned `404 Not Found`.
 - #330 is the canonical completed read-only Controller diagnostic: `diagnostic_version=3`; Controller entry + `pg` module + database/pgpass/ingress-token files exist and are readable; the expected runner exists, parses, and sets required runtime variables; task is Running as SYSTEM; self-heal result is `FAILED`; ensure-log error class is `DATABASE_URL_MISSING`; listener remains Tailscale-only.
 - #333 was closed as a duplicate diagnostic; do not re-create or re-run equivalent work without new evidence.
-- PR #314 exact head `ac43b0aca31f039cdd7ca4b04ade3666ee8d539d`: exact-head CI PASS and technical exact-head review found the timeout repair bounded/fail-closed, including Process/User/Machine override and principal/task-wrapper checks. This review is not a genuinely independent GitHub-account approval because the connector uses the same repository identity; no merge/deploy is authorized from it.
-- Draft PR #328 exact head `7164a643216c2edc09796f86616b82f8153c9d1f`: repository/doc gate PASS; it records the Secure Worker reboot identity decision tree and explicitly forbids silently converting Worker/Watchdog to SYSTEM, copying GitHub credentials, enabling auto-logon or otherwise widening credential scope.
+- PR #314 current exact head `ac43b0aca31f039cdd7ca4b04ade3666ee8d539d`: exact-head CI and technical review evidence exist for the bounded 90s->300s timeout repair, but that is not a genuinely independent approval and does not authorize merge/deploy/runtime activation.
+- Draft PR #328 current exact head `7164a643216c2edc09796f86616b82f8153c9d1f`: documents the Secure Worker reboot identity gate and explicitly forbids silently converting Worker/Watchdog to SYSTEM, copying GitHub credentials, enabling auto-logon, or otherwise widening credential scope.
 - Physical reboot E2E is not authorized under normal command `2`; explicit Owner authorization is required before reboot.
 
 ### Immediate safe continuation
 1. Preserve single-worker/idempotency/resource-lock semantics around #318/#282.
 2. Do not issue another blind Controller diagnostic or open another PC01 mutation lane: #330/#333 already provide the current bounded diagnostic evidence.
 3. #314 remains gated on a genuinely independent approval/authorization path before activation; after activation it still requires runtime acceptance proving model review no longer times out around 90 seconds.
-4. #328 defines the boot-recovery gate: first perform the current-config physical reboot E2E only after explicit Owner authorization; only if that fails may a credential/principal design be proposed through its own security gate.
+4. #328 keeps reboot/principal/security work behind explicit Owner/security gates.
 5. After Controller + Secure Worker path is stable, verify Executor -> independent Reviewer -> Judge and Web Control physical E2E.
 6. Keep credential/security boundary changes, MAIN/Production and paid services behind their required gates.
+
+## Auto Worker — issue #306
+Issue #306 remains OPEN.
+
+Current field evidence supersedes the older V9.8-only summary:
+- V10.0/V10.1 created mixed-state behavior: V9.8 core and V10 overlay could disagree on version/UI/runtime ownership.
+- Current chosen direction is **V10.2 CLEAN REBUILD**: restore the proven V9.8 outer lifecycle core, remove V10.0/V10.1 secondary state-machine modules, add only one `v102_turn_follower.js` for post-response next-turn dispatch, and expose one canonical Khoa/Auto Worker UI/state source.
+- Preserve V9.8 proven safety behaviors: URL-derived verify key, unexpected-window self-heal, bounded VERIFY watchdog/retry, no fake completion, silent notifications, transactional backup/rollback and fail-closed installer gates.
+- Do not claim HOÀN TẤT until physical Chrome Reload confirms one canonical Version 10.2.0/UI without overlap and runtime regression proves continuous `1/6 -> 2/6 -> ...`, lifecycle/tail behavior and ownership acceptance A-M.
 
 ## OpenClaw — deferred
 OpenClaw 2026.9.1 had a verified working online path using `openai/gpt-5.6-sol`, loopback Control UI and TigerIQ policy/skill behavior. Historical evidence remains in `docs/evidence/OPENCLAW-PC01-HANDOFF-2026-09-04.md`.
 
 That lane is intentionally `TẠM GÁC` by the newer #318/#319 authority. Do not continue local fallback benchmarking, gateway-owner migration or Ollama/OpenClaw mutation under command `1`/`2` until a newer explicit Owner decision reactivates it.
 
-## P0 process/state continuity — issues #319/#320
-- Chat is not authoritative state.
-- CENTRAL #280 now carries Workflow V2 command `1`/`2` semantics and the current safe execution queue.
-- Actionable Owner goals/fixes/decision changes must be reflected in GitHub/TigerIQ state/queue.
-- Work selection precedence for current operations: latest explicit Owner instruction -> Bootstrap contracts -> active parent initiative/CENTRAL queue/current issue evidence -> older issue titles/history.
-- #156/#161/#196 are superseded as independent P0 lanes; #282 is an active dependency only under #318.
-- #319 acceptance A/B/C/E has recorded evidence; D remains CHỜ three consecutive chat-switch consistency checks.
-- #320 Source V2 has command `2` continuation evidence; `vy` / `bc` / `đưa prompt làm việc` regressions remain CHỜ user-driven NEW CHAT checks.
-- Bootstrap V2 governs command semantics; stale dynamic text cannot override Workflow V2.
-
-## Auto Worker — issue #306
-Issue #306 remains OPEN. Repository comments record local repair iterations through V9.8. Current evidence is not enough to claim HOÀN TẤT: physical Chrome reload/regression on PC01 is still required for A–G acceptance. Do not fake PASS from mock/offline checks alone.
+## Web Control / physical E2E
+- #322 Web Control repo-only preparation exists off-MAIN and must remain subordinate to current P0 gates. Repo-only CI evidence is not physical E2E proof.
+- #261 remains the canonical physical acceptance tracker for real queue/state -> Web Control E2E; it is not itself a broad executable job.
+- UI/evidence must eventually show employee/owner/scope and `SKIP/TAKEOVER` reason from authoritative registry/state, not invented activity.
 
 ## Current MAIN baseline
 - Repository: `newsdayads/tigeriq-ai-lab`.
