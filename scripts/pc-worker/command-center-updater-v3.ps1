@@ -117,10 +117,14 @@ try {
   Start-Sleep -Seconds 2
   Start-ScheduledTask -TaskName $taskName -ErrorAction Stop
   if(-not (Wait-Health "http://$HostIp`:$Port/api/status" 50)) {
-    if($previous){ [IO.File]::WriteAllText($currentPath,$previous,(New-Object Text.UTF8Encoding($false))) }
     Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 2
-    Start-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+    if($previous){
+      [IO.File]::WriteAllText($currentPath,$previous,(New-Object Text.UTF8Encoding($false)))
+      Start-Sleep -Seconds 2
+      Start-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+    } else {
+      Remove-Item -Force -LiteralPath $currentPath -ErrorAction SilentlyContinue
+    }
     throw 'LIVE_HEALTH_FAILED_ROLLED_BACK'
   }
 
