@@ -1,7 +1,7 @@
 # TIGERIQ — SOURCE INDEX
 Version: 1.1
 
-## Upload to ChatGPT Project “Nguồn”
+## ChatGPT Project “Nguồn”
 Upload these files in order:
 1. 01_TIGERIQ_COMPANY_CONSTITUTION_v1.md
 2. 02_TIGERIQ_WORKFLOW_v1.md
@@ -17,8 +17,13 @@ Upload these files in order:
 5. 04_TIGERIQ_OWNER_PROFILE_v1.md
 Only upload this to a private/restricted source if the project supports appropriate access controls. Do not distribute it as company-wide source.
 
-## Repository-only candidates
-Architecture, implementation ADRs, work orders, CI records, CURRENT_STATE, test evidence, and deployment records should remain in the repository as engineering Source of Truth and be referenced by the project source rather than duplicated unnecessarily.
+## Repository policy
+Architecture, implementation ADRs, work orders, CI records, CURRENT_STATE, test evidence, and deployment records remain in the repository as engineering Source of Truth and should be referenced rather than duplicated unnecessarily.
+
+The private Owner Profile is intentionally NOT committed to the general repository.
 
 ## Precedence
-Constitution > Workflow > AI Employee Model > Decision Log > engineering implementation docs, unless a newer explicitly approved decision supersedes them.
+Constitution > approved Architecture/Security constraints > Workflow > AI Employee Model > Decision Log > other engineering implementation docs, unless a newer explicitly approved decision supersedes them.
+
+## Provenance and baseline
+These general Company Source documents become the repository baseline only through reviewed and gated repository changes. The repository does not claim that repository mirrors alone modify ChatGPT Project behavior. Project-behavior acceptance requires replacing the canonical Project Source copies and passing the required NEW CHAT regression in the same Project.
