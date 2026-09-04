@@ -65,22 +65,33 @@ Current architecture authority:
 ## Auto Worker — issue #306
 Issue #306 remains OPEN and is owned by Khoa/NV02.
 
-Current corrective candidate is **V12.4.2** according to the latest physical/runtime evidence in #306. V11.0.1 and earlier V12.x candidates are superseded by subsequent field failures and corrective builds.
+Current corrective candidate is **V13.3.5 — Drain Watchdog Integrity**. V12.x and V13.0–V13.3.4 were superseded before physical acceptance.
 
-Latest field chain:
-- V12.4.1 physical updater failed closed with `SOURCE_NOT_FOUND`; rollback/no-change behavior was preserved.
-- Root cause: the generated JavaScript contained an incorrectly escaped Windows source-path literal, so source resolution failed before UI mutation.
-- V12.4.2 removes that fixed-string dependency: it first checks the canonical path using `String.raw`, then scans Chrome Default/Profile Preferences + Secure Preferences for canonical extension ID `leidfhbpdillakmcbijagelghhilbnpc`, and fails closed on ambiguity.
-- The V12.4.2 payload preserves the legacy-header killer + Tiger icon taskbar design, backup/rollback, syntax checks and on-disk version/content-script verification.
-- No physical V12.4.2 PASS has been recorded yet.
+Current candidate contract:
+- clean standalone manifest/runtime/popup; no V9–V12 legacy content-script/header stack;
+- page UI = small Tiger icon only; taskbar appears on click;
+- canonical TigerIQ Project root is kept separate from the exact managed conversation recovery URL;
+- persisted cycle/session/turn/phase + single-launch mutex + bounded recovery; 3 launch failures -> `BỊ CHẶN` with evidence;
+- dispatch intent is persisted before submit; recovery/reload reconciles physical `2` history before any resend to reduce duplicate-send risk;
+- turns are unbounded; >5 minutes while generating is wait-only;
+- at minute 29 no new turns are started; no-progress watchdog remains active even during drain;
+- once generation ends: tail = `LƯU TRỮ -> XÁC MINH -> ĐÓNG`; if no stable assistant appears, bounded drain 30 seconds stores an unverified snapshot and safe-resets instead of hanging forever;
+- tail watchdog = 30 seconds, max 2 verify attempts; no fake ĐẠT;
+- `Tạm dừng`, `Dừng an toàn`, `Dừng khẩn cấp` remain authoritative;
+- no Windows notification permission/call or sound path.
 
-Acceptance N is now mandatory in addition to A–M:
+Current evidence:
+- Packaged installer/static syntax/mock install for V13.3.5: ĐẠT.
+- Canonical extension ID remains `leidfhbpdillakmcbijagelghhilbnpc`.
+- No physical Chrome V13.3.5 acceptance evidence has been recorded yet.
+
+Acceptance N remains mandatory in addition to A–M:
 - `NO_MUTABLE_SCOPE` must not terminal-stop Auto Worker or leave it stuck on the first turn.
 - Required transition: `SKIP -> SCAN_NEXT_SAFE -> READ_ONLY_VERIFY/WAIT_BOUNDED -> ADVANCE_CYCLE`.
 - Safe fallback order: missing verification/gate -> state hygiene -> review preparation -> independent regression/audit -> safe backlog.
 - Do not touch `OWNER_HOLD` scope, do not duplicate completed work, and only conclude global `EXTERNAL_WAIT` after a full authoritative audit.
 
-Do not claim HOÀN TẤT until physical Chrome update/reload confirms V12.4.2 and runtime regression proves recovery, turn progression, no duplicate send, stop modes, unexpected-window recovery, tail watchdog, canonical UI/identity, ownership/failover and Acceptance A–N.
+Do not claim HOÀN TẤT until physical Chrome update/reload confirms V13.3.5 and runtime regression proves recovery, turn progression, no duplicate send, stop modes, unexpected-window recovery, tail watchdog, canonical UI/identity, ownership/failover and Acceptance A–N.
 
 ## OpenClaw — deferred
 OpenClaw 2026.9.1 had a verified working online path using `openai/gpt-5.6-sol`, loopback Control UI and TigerIQ policy/skill behavior. Historical evidence remains in `docs/evidence/OPENCLAW-PC01-HANDOFF-2026-09-04.md`.
@@ -103,7 +114,7 @@ WO-024 through WO-039 established the software foundations for hierarchy, schedu
 
 ## External/deferred boundaries
 - PC01/Tailscale/live Controller state must be re-verified; repository/CI is not runtime proof.
-- Physical Chrome V12.4.2 update/reload + regression A–N remains a real-device gate for #306.
+- Physical Chrome V13.3.5 update/reload + regression A–N remains a real-device gate for #306.
 - Physical reboot/principal/security changes remain explicit Owner gates.
 - Protected PC01 services must not be restarted/reconfigured merely to make another lane pass.
 - No provider/owner/signing secret may enter source control or issue evidence.
