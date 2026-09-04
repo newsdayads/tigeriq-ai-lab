@@ -5,7 +5,7 @@ import { FileJournal } from '../../../packages/event-store/src/index.js';
 import { DurableControlPlane } from '../../../packages/durable-control-plane/src/index.js';
 import { GitHubWorkSource } from './github-work-source.js';
 import { startDashboard } from './server.js';
-import { startOwnerCockpitV4 } from './server-v4.js';
+import { startOwnerCockpitV5 } from './server-v5.js';
 
 const execFileAsync = promisify(execFile);
 const journalPath = process.env.TIGERIQ_JOURNAL ?? 'F:\\TigerIQ\\State\\control-plane.jsonl';
@@ -64,13 +64,13 @@ const backend = await startDashboard(dashboardSource, {
   submitJob: submitPc01WorkOrder,
 });
 
-const server = await startOwnerCockpitV4({ backendUrl: backend.url, host, port });
+const server = await startOwnerCockpitV5({ backendUrl: backend.url, repo, host, port });
 
-console.log(`TigerIQ Owner Cockpit V4 online: ${server.url}`);
+console.log(`TigerIQ Owner Cockpit V5 online: ${server.url}`);
 console.log(`Internal Command Center backend: ${backend.url}`);
 console.log(`Journal: ${journalPath}`);
 console.log('Dashboard source: local journal + live GitHub TIGERIQ_JOB_V1 lifecycle projection.');
-console.log('Write actions require TIGERIQ_COMMAND_SECRET.');
+console.log('Write actions require TIGERIQ_COMMAND_SECRET + CSRF + bounded allowlist.');
 
 const shutdown = async () => {
   await server.close();
