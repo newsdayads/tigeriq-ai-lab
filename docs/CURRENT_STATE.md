@@ -1,14 +1,34 @@
 # Current State
 
-Date: 2026-08-31
+Date: 2026-09-04
 
 TigerIQ AI Lab is being operated as a continuous distributed AI company. Tiger IQ Driver (`newsdayads/drivetrack`) remains isolated and unchanged.
+
+## P0 — PC01 OpenClaw runtime / 2026-09-04
+OpenClaw is currently an ACTIVE TigerIQ PC01 workstream. Detailed handoff/evidence: `docs/evidence/OPENCLAW-PC01-HANDOFF-2026-09-04.md`.
+
+Verified working state from the owner session:
+- OpenClaw version `2026.9.1`; local Control UI at `http://127.0.0.1:18789/`.
+- Gateway is intended to remain loopback-only; browser no-login flow was verified.
+- State/config dir: `D:\TigerIQ\OpenClaw`; workspace: `D:\TigerIQ-OpenClaw\workspace`.
+- Workspace skill `tigeriq-pc01-operator` is discovered/enabled.
+- TigerIQ-optimized `AGENTS.md` is installed; browser policy test confirms OpenClaw identifies itself as `PC01 Operations / Execution Worker`, not Chief of Staff, and respects protected PC01 services.
+- Current working model path is `openai/gpt-5.6-sol` with model-scoped `agentRuntime.id=openclaw`; browser E2E returned `TIGERIQ_OPENCLAW_PASS`.
+- Current fallback chain is empty. The working path is online and quota-dependent, so hybrid/offline resilience is NOT DONE.
+
+Local-model root-cause evidence observed `qwen3:4b` loaded by Ollama at about 9.5 GB, 100% CPU, context 32768 on PC01 with Radeon RX 5500 XT 4 GB; OpenClaw timed out under this path. Do not reconfigure/restart shared Ollama merely to make OpenClaw pass. The next safe P0 is an isolated local-model benchmark, measuring GPU/Vulkan offload if any, latency/tokens-per-second, RAM/VRAM and stable context/model profile. Require three consecutive local PASS runs before enabling a local fallback.
+
+Gateway ownership remains a separate unresolved work item. Both a custom `TigerIQ OpenClaw Runtime` task and an official `OpenClaw Gateway` task have existed; ownership-normalization attempts did not produce a healthy official gateway and were rolled back. Do not rerun prior recovery scripts automatically and do not combine gateway-owner migration with model changes. Re-audit the currently working launcher before any mutation.
+
+Protected PC01 runtimes remain out of OpenClaw mutation scope unless explicitly authorized: PostgreSQL 5432; Command Center 8787; Workforce Controller 8790; Ollama 11434; Planner; Worker; Mission Orchestrator; Autonomy Supervisor; other AI runtimes already operating on PC01.
+
+NEW CHAT continuation: command `1` or `2` must treat this OpenClaw item as ACTIVE P0, read this file plus the OpenClaw handoff, and continue without asking anh Sơn to restate the history.
 
 ## Current MAIN baseline
 - Repository: `newsdayads/tigeriq-ai-lab`.
 - Production Web Control: `https://tigeriq-ai-lab.vercel.app`.
 - MAIN before active WO-040 branch: `d01dcd2483d2f6b91c4c8282927e009e7416a18b` (WO-039 merge).
-- Canonical PC01 real deployment job remains issue #100. It has no claim/result evidence at this state point; do not create duplicates and do not infer PC01/Tailscale runtime state.
+- Canonical PC01 real deployment job remains issue #100. It has no claim/result evidence at this state point; do not create duplicates and do not infer PC01/Tailscale runtime state from that older repository checkpoint.
 - Vercel Hobby has the known daily deployment quota condition `api-deployments-free-per-day`; do not retry/spam deployments or pay/upgrade. Non-Vercel work continues.
 - Latest observed Production deployment remains behind MAIN; no promotion is claimed while the quota condition is active.
 
