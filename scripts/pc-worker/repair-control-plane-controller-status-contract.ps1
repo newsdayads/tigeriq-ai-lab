@@ -44,15 +44,17 @@ try {
     exit 0
   }
 
-  $matches=@($legacyPaths | Where-Object { $segment.Contains($_) })
-  if($matches.Count -ne 1){ Fail 'STATUS_PATH_AMBIGUOUS' ("Expected exactly one recognized legacy path; found {0}." -f $matches.Count) }
+  $legacy=$null
+  foreach($candidate in $legacyPaths){
+    if($segment.Contains($candidate)){ $legacy=$candidate; break }
+  }
+  if(-not $legacy){ Fail 'STATUS_PATH_UNKNOWN' 'No recognized legacy Controller status path found.' }
 
   New-Item -ItemType Directory -Force -Path $backupDir|Out-Null
   Copy-Item -LiteralPath $control -Destination $backup -Force
 
-  $legacy=[string]$matches[0]
-  $patchedSegment=$segment.Replace($legacy,$expectedPath)
-  if(-not $patchedSegment.Contains($expectedPath) -or $patchedSegment.Contains($legacy)){ Fail 'STATUS_PATH_PATCH_FAILED' 'Could not normalize Controller status path.' }
+  $patchedSegment=$segment.Replace([string]$legacy,$expectedPath)
+  if(-not $patchedSegment.Contains($expectedPath) -or $patchedSegment.Contains([string]$legacy)){ Fail 'STATUS_PATH_PATCH_FAILED' 'Could not normalize Controller status path.' }
   $patchedText=$text.Substring(0,$start)+$patchedSegment+$text.Substring($next)
 
   $tmp="$control.new"
