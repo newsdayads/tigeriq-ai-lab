@@ -33,11 +33,13 @@ jobs:
           cp scripts/pc-worker/repair-secure-worker-model-roles.ps1 .release/runtime/scripts/pc-worker/
           cp scripts/pc-worker/repair-secure-worker-queue-resilience.ps1 .release/runtime/scripts/pc-worker/
           cp scripts/pc-worker/repair-control-plane-controller-diagnose.ps1 .release/runtime/scripts/pc-worker/
+          cp scripts/pc-worker/repair-control-plane-controller-status-contract.ps1 .release/runtime/scripts/pc-worker/
           cp scripts/pc-worker/repair-workforce-controller-runtime-deps.ps1 .release/runtime/scripts/pc-worker/
           test -s .release/runtime/scripts/pc-worker/pc01-telemetry.ps1
           test -s .release/runtime/scripts/pc-worker/repair-secure-worker-model-roles.ps1
           test -s .release/runtime/scripts/pc-worker/repair-secure-worker-queue-resilience.ps1
           test -s .release/runtime/scripts/pc-worker/repair-control-plane-controller-diagnose.ps1
+          test -s .release/runtime/scripts/pc-worker/repair-control-plane-controller-status-contract.ps1
           test -s .release/runtime/scripts/pc-worker/repair-workforce-controller-runtime-deps.ps1
           (cd .release/runtime && zip -qr ../command-center.zip .)
           sha256sum .release/command-center.zip | awk '{print $1}' > .release/bundle.sha256
@@ -56,6 +58,7 @@ jobs:
               'scripts/pc-worker/repair-secure-worker-model-roles.ps1',
               'scripts/pc-worker/repair-secure-worker-queue-resilience.ps1',
               'scripts/pc-worker/repair-control-plane-controller-diagnose.ps1',
+              'scripts/pc-worker/repair-control-plane-controller-status-contract.ps1',
               'scripts/pc-worker/repair-workforce-controller-runtime-deps.ps1'
             ],
             builtAt: new Date().toISOString(),

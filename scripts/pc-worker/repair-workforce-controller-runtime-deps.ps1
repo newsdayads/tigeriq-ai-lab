@@ -8,6 +8,8 @@ Set-StrictMode -Version Latest
 $TaskName = 'TigerIQ Workforce Controller'
 $ExpectedHost = '100.97.23.87'
 $ExpectedPort = 8790
+$HealthPath = '/api/workforce/status'
+$StatusContractRepair = Join-Path $PSScriptRoot 'repair-control-plane-controller-status-contract.ps1'
 $Entry = Join-Path $Workspace 'dist\apps\workforce-controller\src\standalone.js'
 $PackageJson = Join-Path $Workspace 'package.json'
 $PackageLock = Join-Path $Workspace 'package-lock.json'
@@ -17,6 +19,7 @@ $BackupDir = Join-Path 'F:\TigerIQ\Worker\backup' ("controller-runtime-deps-{0}"
 $InstallLog = 'F:\TigerIQ\Worker\controller-runtime-deps.log'
 $PgInstalled = $false
 $TaskRestarted = $false
+$StatusContract = 'READY'
 
 function Fail([string]$Code, [string]$Message) {
   throw "$Code`: $Message"
@@ -61,12 +64,23 @@ try {
   if (-not (Test-Path -LiteralPath $PackageLock)) { Fail 'PACKAGE_LOCK_MISSING' $PackageLock }
   if (-not (Test-Path -LiteralPath $DbUrlFile)) { Fail 'DATABASE_URL_FILE_MISSING' 'Controller database URL file is missing.' }
   if (-not (Test-Path -LiteralPath $PgPassFile)) { Fail 'PGPASS_FILE_MISSING' 'Controller pgpass file is missing.' }
+  if (-not (Test-Path -LiteralPath $StatusContractRepair)) { Fail 'STATUS_CONTRACT_REPAIR_MISSING' $StatusContractRepair }
 
   $node = Get-Command node.exe -ErrorAction SilentlyContinue
   $npm = Get-Command npm.cmd -ErrorAction SilentlyContinue
+  $powershell = Get-Command powershell.exe -ErrorAction SilentlyContinue
   if (-not $node) { Fail 'NODE_MISSING' 'node.exe was not found.' }
   if (-not $npm) { Fail 'NPM_MISSING' 'npm.cmd was not found.' }
+  if (-not $powershell) { Fail 'POWERSHELL_MISSING' 'powershell.exe was not found.' }
   $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction Stop
+
+  $contractOutput = @(& $powershell.Source -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $StatusContractRepair 2>&1)
+  $contractExit = $LASTEXITCODE
+  $contractText = ($contractOutput | ForEach-Object { [string]$_ }) -join "`n"
+  if ($contractExit -ne 0 -or ($contractText -notmatch '"status"\s*:\s*"PASS"')) {
+    Fail 'STATUS_CONTRACT_REPAIR_FAILED' ($contractText.Substring(0,[Math]::Min(800,$contractText.Length)))
+  }
+  if ($contractText -match '"contract"\s*:\s*"REPAIRED"') { $StatusContract = 'REPAIRED' }
 
   New-Item -ItemType Directory -Force -Path $BackupDir, (Split-Path $InstallLog -Parent) | Out-Null
   $packageHashBefore = Hash-File $PackageJson
@@ -118,25 +132,25 @@ try {
 
   $health = $null
   try {
-    $health = Invoke-RestMethod -Uri "http://$ExpectedHost`:$ExpectedPort/api/v1/status" -TimeoutSec 5
+    $health = Invoke-RestMethod -Uri "http://$ExpectedHost`:$ExpectedPort$HealthPath" -TimeoutSec 5
   } catch {
-    Fail 'CONTROLLER_HTTP_UNHEALTHY' 'GET /api/v1/status failed.'
+    Fail 'CONTROLLER_HTTP_UNHEALTHY' "GET $HealthPath failed."
   }
   if (-not [bool]$health.ok) { Fail 'CONTROLLER_STATUS_NOT_OK' 'Controller status did not report ok=true.' }
-  if (-not [bool]$health.postgres) { Fail 'CONTROLLER_POSTGRES_NOT_READY' 'Controller status did not report postgres=true.' }
-  if ([string]$health.migration -ne '001_operational_state_v1') { Fail 'CONTROLLER_MIGRATION_NOT_READY' 'Operational migration is not ready.' }
+  if ($null -eq $health.workforce) { Fail 'CONTROLLER_WORKFORCE_STATUS_MISSING' 'Controller status did not include workforce state.' }
 
   [ordered]@{
     status = 'PASS'
-    runtime = if ($PgInstalled -or $TaskRestarted) { 'REPAIRED' } else { 'READY' }
+    runtime = if ($PgInstalled -or $TaskRestarted -or $StatusContract -eq 'REPAIRED') { 'REPAIRED' } else { 'READY' }
+    statusContract = $StatusContract
     pgImport = $true
     pgInstalled = $PgInstalled
     taskRestarted = $TaskRestarted
     bind = "$ExpectedHost`:$ExpectedPort"
     wildcardListener = [bool]($listener.wildcard -gt 0)
     http = $true
-    postgres = $true
-    migration = '001_operational_state_v1'
+    healthPath = $HealthPath
+    workforceStatus = $true
     trackedPackageFilesUnchanged = $true
   } | ConvertTo-Json -Compress
   exit 0
@@ -152,6 +166,7 @@ try {
   [ordered]@{
     status = 'FAIL'
     error = $_.Exception.Message
+    statusContract = $StatusContract
     pgInstalled = $PgInstalled
     taskRestarted = $TaskRestarted
     trackedPackageFilesRestored = $true
