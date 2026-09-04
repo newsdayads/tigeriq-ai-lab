@@ -5,7 +5,7 @@ const updater = readFileSync('scripts/pc-worker/auto-update-command-center.ps1',
 const installer = readFileSync('scripts/pc-worker/install-command-center.ps1', 'utf8');
 
 describe('Command Center automatic updater safety contract', () => {
-  it('is Windows PowerShell 5.1 compatible and uses isolated immutable releases', () => {
+  it('keeps the installed V2 updater isolated and non-destructive', () => {
     expect(updater).not.toContain('ConvertFrom-Json -AsHashtable');
     expect(updater).toContain("$releaseRoot = Join-Path $runtimeDir 'releases'");
     expect(updater).toContain("$releaseDir = Join-Path $releaseRoot");
@@ -16,21 +16,31 @@ describe('Command Center automatic updater safety contract', () => {
     expect(updater).not.toContain('Remove-Item -Recurse');
   });
 
-  it('requires an exact branch head with successful CI before installing', () => {
+  it('requires exact old-channel SHA and successful CI before invoking the bridge', () => {
     expect(updater).toContain("$head -notmatch '^[0-9a-f]{40}$'");
-    expect(updater).toContain("head_sha=$head&status=completed");
+    expect(updater).toContain('head_sha=$head&status=completed');
     expect(updater).toContain("$_.name -eq 'CI' -and $_.conclusion -eq 'success'");
-    expect(updater).toContain("-Commit $head");
+    expect(updater).toContain('-Commit $head');
     expect(installer).toContain("[string]$Commit = ''");
-    expect(installer).toContain("if($Commit -and $head -ne $Commit)");
+    expect(installer).toContain("if(-not $Commit){ Fail 'EXACT_COMMIT_REQUIRED'");
+    expect(installer).toContain('if($Commit -and $head -ne $Commit)');
   });
 
-  it('bootstraps a SYSTEM updater task without weakening the private runtime boundary', () => {
-    expect(installer).toContain("$updaterTaskName = 'TigerIQ Command Center Updater'");
-    expect(installer).toContain("-RepetitionInterval (New-TimeSpan -Minutes 5)");
-    expect(installer).toContain("-MultipleInstances IgnoreNew");
-    expect(installer).toContain("-RemoteAddress '100.64.0.0/10'");
-    expect(installer).toContain("wildcardExposure = $false");
-    expect(installer).toContain("ciGate='CI success + exact SHA'");
+  it('migrates only to a CI + bundle verified V3 release channel', () => {
+    expect(installer).toContain("$targetBranch = 'wo250/command-center-artifact-updater-v3'");
+    expect(installer).toContain("$_.name -eq 'CI' -and $_.conclusion -eq 'success'");
+    expect(installer).toContain("$_.name -eq 'Command Center Release Bundle' -and $_.conclusion -eq 'success'");
+    expect(installer).toContain('TIGERIQ_COMMAND_CENTER_UPDATER_V3_BOOTSTRAP');
+    expect(installer).toContain("Disable-ScheduledTask -TaskName $updaterTaskName");
+  });
+
+  it('retires V2 only after live V3 health and posts physical runtime evidence', () => {
+    const healthIndex = installer.indexOf('Invoke-RestMethod -UseBasicParsing -Uri $healthUrl');
+    const disableIndex = installer.indexOf('Disable-ScheduledTask -TaskName $updaterTaskName');
+    expect(healthIndex).toBeGreaterThan(-1);
+    expect(disableIndex).toBeGreaterThan(healthIndex);
+    expect(installer).toContain('TIGERIQ_ZERO_TOUCH_DEPLOY_READY');
+    expect(installer).toContain('ownerAction=false');
+    expect(installer).toContain('mainProductionChanged=false');
   });
 });
