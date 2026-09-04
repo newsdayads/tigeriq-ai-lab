@@ -4,23 +4,23 @@ import { describe, expect, it } from 'vitest';
 const source = readFileSync('scripts/pc-worker/repair-secure-worker-model-timeout.ps1', 'utf8');
 
 describe('Secure Worker V3 model-timeout repair contract', () => {
-  it('replaces only the reviewed 90 second default with the reviewed 300 second default', () => {
-    expect(source).toContain("$marker = '# TIGERIQ_MODEL_TIMEOUT_300_V1'");
+  it('migrates reviewed 90/300 assignments to a minimum-300 clamp', () => {
+    expect(source).toContain("$marker = '# TIGERIQ_MODEL_TIMEOUT_MIN300_V2'");
+    expect(source).toContain("$oldMarker = '# TIGERIQ_MODEL_TIMEOUT_300_V1'");
     expect(source).toContain("MODEL_TIMEOUT = int(os.getenv('TIGERIQ_MODEL_TIMEOUT', '90'))");
     expect(source).toContain("MODEL_TIMEOUT = int(os.getenv('TIGERIQ_MODEL_TIMEOUT', '300'))");
-    expect(source).toContain("if($hasLegacy -and $hasDesired){ Fail 'AMBIGUOUS_TIMEOUT_LAYOUT'");
-    expect(source).toContain("if(-not $hasLegacy -and -not $hasDesired){ Fail 'WORKER_TIMEOUT_LAYOUT_CHANGED'");
-    expect(source).toContain("$text = $text.Replace($legacy,\"$marker`n$desired\")");
+    expect(source).toContain("MODEL_TIMEOUT = max(300, int(os.getenv('TIGERIQ_MODEL_TIMEOUT', '300')))" );
+    expect(source).toContain("if($anchorCount -ne 1){ Fail 'WORKER_TIMEOUT_LAYOUT_CHANGED'");
+    expect(source).toContain("$text = $text.Replace($legacy90,\"$marker`n$desired\")");
+    expect(source).toContain("$text = $text.Replace($plain300,\"$marker`n$desired\")");
   });
 
-  it('fails closed when an effective timeout override can keep the Worker below 300 seconds', () => {
-    expect(source).toContain("GetEnvironmentVariable('TIGERIQ_MODEL_TIMEOUT',$Scope)");
-    expect(source).toContain("Fail \"TIMEOUT_OVERRIDE_INVALID_$($Scope.ToUpperInvariant())\"");
-    expect(source).toContain("if($parsed -lt 300){ Fail \"TIMEOUT_OVERRIDE_TOO_LOW_$($Scope.ToUpperInvariant())\"");
-    expect(source).toContain("$processOverride = Get-TimeoutOverride 'Process'");
-    expect(source).toContain("$userOverride = Get-TimeoutOverride 'User'");
-    expect(source).toContain("$machineOverride = Get-TimeoutOverride 'Machine'");
-    expect(source).toContain("Fail 'WORKER_PRINCIPAL_CONTEXT_MISMATCH'");
+  it('prevents future low environment overrides from reducing effective timeout below 300', () => {
+    expect(source).toContain("MODEL_TIMEOUT = max(300, int(os.getenv('TIGERIQ_MODEL_TIMEOUT', '300')))" );
+    expect(source).toContain("policy='MIN_300_CLAMP'");
+    expect(source).toContain('secondsMin=300');
+    expect(source).not.toContain('GetEnvironmentVariable');
+    expect(source).not.toContain('WORKER_PRINCIPAL_CONTEXT_MISMATCH');
   });
 
   it('requires the reviewed direct worker launcher so task wrappers cannot inject a hidden timeout', () => {
@@ -36,8 +36,8 @@ describe('Secure Worker V3 model-timeout repair contract', () => {
     expect(source).toContain('Move-Item -Force -LiteralPath $tmp -Destination $workerImpl');
     expect(source).toContain('Restart-Worker');
     expect(source).toContain("Fail 'TIMEOUT_PATCH_NOT_PERSISTED'");
-    expect(source).toContain("Fail 'TIMEOUT_300_NOT_PERSISTED'");
-    expect(source).toContain("Fail 'TIMEOUT_90_STILL_PRESENT'");
+    expect(source).toContain("Fail 'TIMEOUT_MIN300_NOT_PERSISTED'");
+    expect(source).toContain("Fail 'TIMEOUT_UNCLAMPED_STILL_PRESENT'");
     expect(source).toContain('ROLLBACK_OK');
   });
 
