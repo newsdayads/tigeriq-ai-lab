@@ -24,6 +24,27 @@ export interface WorkforceStatusSnapshot {
     terminal: number;
     failed: number;
   };
+  roster: Array<{
+    employeeId: string;
+    displayName: string;
+    department: string;
+    role: string;
+    nodeId: string;
+    provider: string | null;
+    model: string | null;
+    availability: EmployeeAvailability;
+    healthScore: number;
+    concurrencyLimit: number;
+    activeTaskCount: number;
+    currentTaskIds: string[];
+  }>;
+  taskList: Array<{
+    taskId: string;
+    objective: string;
+    stage: TaskStage;
+    priority: string;
+    assignedEmployeeId: string | null;
+  }>;
 }
 
 const NODE_STATUSES: NodeStatus[] = ['online', 'degraded', 'offline'];
@@ -93,5 +114,26 @@ export function buildWorkforceStatus(
       terminal,
       failed: byStage.failed,
     },
+    roster: employees.map((employee) => ({
+      employeeId: employee.employeeId,
+      displayName: employee.displayName,
+      department: employee.department,
+      role: employee.role,
+      nodeId: employee.nodeId,
+      provider: employee.provider ?? null,
+      model: employee.model ?? null,
+      availability: employee.availability,
+      healthScore: employee.healthScore,
+      concurrencyLimit: employee.concurrencyLimit,
+      activeTaskCount: employee.activeTaskCount,
+      currentTaskIds: [...employee.currentTaskIds],
+    })),
+    taskList: tasks.map((record) => ({
+      taskId: record.task.taskId,
+      objective: record.task.objective,
+      stage: record.stage,
+      priority: record.task.priority,
+      assignedEmployeeId: record.assignedEmployeeId ?? null,
+    })),
   };
 }

@@ -14,6 +14,29 @@ export interface DashboardSource {
   list(): WorkOrderSnapshot[] | Promise<WorkOrderSnapshot[]>;
 }
 
+export type WorkforceEmployeeTelemetry = {
+  employeeId: string;
+  displayName: string;
+  department: string;
+  role: string;
+  nodeId: string;
+  provider: string | null;
+  model: string | null;
+  availability: 'idle' | 'busy' | 'offline' | 'degraded';
+  healthScore: number | null;
+  concurrencyLimit: number;
+  activeTaskCount: number;
+  currentTaskIds: string[];
+};
+
+export type WorkforceTaskTelemetry = {
+  taskId: string;
+  objective: string;
+  stage: string;
+  priority: string;
+  assignedEmployeeId: string | null;
+};
+
 export type ServerTelemetry = {
   available: boolean;
   server: string;
@@ -24,7 +47,18 @@ export type ServerTelemetry = {
   disk: { drive: string; freeBytes: number; totalBytes: number; utilizationPercent: number | null } | null;
   worker: { online: boolean; pid: number | null; instances: number } | null;
   controller: { online: boolean; ip: string | null; port: number | null } | null;
-  workforce: { employeesTotal: number; idle: number; busy: number; offline: number; degraded: number; activeTasks: number; tasksActive: number; tasksFailed: number } | null;
+  workforce: {
+    employeesTotal: number;
+    idle: number;
+    busy: number;
+    offline: number;
+    degraded: number;
+    activeTasks: number;
+    tasksActive: number;
+    tasksFailed: number;
+    roster?: WorkforceEmployeeTelemetry[];
+    taskList?: WorkforceTaskTelemetry[];
+  } | null;
   postgresql: { online: boolean; service: string | null; port: number | null } | null;
   ollama: { online: boolean; models: string[] } | null;
   tailscale: { online: boolean; ip: string | null } | null;
@@ -42,6 +76,8 @@ export interface CommandCenterOptions {
 
 type Session = { csrf: string; createdAt: number };
 type IdempotentResult = { fingerprint: string; url: string };
+
+type AiFilter = 'all' | 'busy' | 'idle' | 'offline' | 'degraded';
 
 const sessions = new Map<string, Session>();
 const submissions = new Map<string, IdempotentResult>();
@@ -73,6 +109,12 @@ function safeEqual(left: string, right: string): boolean {
   const a = Buffer.from(left);
   const b = Buffer.from(right);
   return a.length === b.length && timingSafeEqual(a, b);
+}
+
+function escapeHtml(value: unknown): string {
+  return String(value ?? '').replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[character] ?? character));
 }
 
 function parseCookies(request: IncomingMessage): Record<string, string> {
@@ -129,11 +171,18 @@ async function submitGithubJob(repo: string, instruction: string, priority: stri
 function numberOrNull(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
-function stringOrNull(value: unknown): string | null {
-  return typeof value === 'string' && value.length <= 256 ? value : null;
+
+function stringOrNull(value: unknown, max = 256): string | null {
+  return typeof value === 'string' && value.length <= max ? value : null;
 }
+
 function objectOrNull(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+function safeStringList(value: unknown, maxItems = 32, maxLength = 128): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, maxItems).filter((item): item is string => typeof item === 'string').map((item) => item.slice(0, maxLength));
 }
 
 function unavailableTelemetry(): ServerTelemetry {
@@ -155,11 +204,56 @@ function unavailableTelemetry(): ServerTelemetry {
   };
 }
 
+function normalizeEmployee(value: unknown): WorkforceEmployeeTelemetry | null {
+  const row = objectOrNull(value);
+  if (!row) return null;
+  const employeeId = stringOrNull(row.employeeId, 128);
+  const displayName = stringOrNull(row.displayName, 128);
+  const department = stringOrNull(row.department, 128);
+  const role = stringOrNull(row.role, 128);
+  const nodeId = stringOrNull(row.nodeId, 128);
+  const availability = stringOrNull(row.availability, 32);
+  if (!employeeId || !displayName || !department || !role || !nodeId || !['idle', 'busy', 'offline', 'degraded'].includes(availability ?? '')) return null;
+  return {
+    employeeId,
+    displayName,
+    department,
+    role,
+    nodeId,
+    provider: stringOrNull(row.provider, 128),
+    model: stringOrNull(row.model, 128),
+    availability: availability as WorkforceEmployeeTelemetry['availability'],
+    healthScore: numberOrNull(row.healthScore),
+    concurrencyLimit: Math.max(1, numberOrNull(row.concurrencyLimit) ?? 1),
+    activeTaskCount: Math.max(0, numberOrNull(row.activeTaskCount) ?? 0),
+    currentTaskIds: safeStringList(row.currentTaskIds, 32, 128),
+  };
+}
+
+function normalizeTask(value: unknown): WorkforceTaskTelemetry | null {
+  const row = objectOrNull(value);
+  if (!row) return null;
+  const taskId = stringOrNull(row.taskId, 128);
+  const objective = stringOrNull(row.objective, 512);
+  const stage = stringOrNull(row.stage, 32);
+  const priority = stringOrNull(row.priority, 16);
+  if (!taskId || !objective || !stage || !priority) return null;
+  return {
+    taskId,
+    objective,
+    stage,
+    priority,
+    assignedEmployeeId: stringOrNull(row.assignedEmployeeId, 128),
+  };
+}
+
 function normalizeWorkforce(value: Record<string, unknown> | null): ServerTelemetry['workforce'] {
   if (!value) return null;
   const keys = ['employeesTotal', 'idle', 'busy', 'offline', 'degraded', 'activeTasks', 'tasksActive', 'tasksFailed'] as const;
   const numbers = Object.fromEntries(keys.map((key) => [key, numberOrNull(value[key])])) as Record<(typeof keys)[number], number | null>;
   if (keys.some((key) => numbers[key] === null || numbers[key]! < 0)) return null;
+  const roster = Array.isArray(value.roster) ? value.roster.map(normalizeEmployee).filter((row): row is WorkforceEmployeeTelemetry => Boolean(row)).slice(0, 200) : [];
+  const taskList = Array.isArray(value.taskList) ? value.taskList.map(normalizeTask).filter((row): row is WorkforceTaskTelemetry => Boolean(row)).slice(0, 500) : [];
   return {
     employeesTotal: numbers.employeesTotal!,
     idle: numbers.idle!,
@@ -169,6 +263,8 @@ function normalizeWorkforce(value: Record<string, unknown> | null): ServerTeleme
     activeTasks: numbers.activeTasks!,
     tasksActive: numbers.tasksActive!,
     tasksFailed: numbers.tasksFailed!,
+    roster,
+    taskList,
   };
 }
 
@@ -180,27 +276,40 @@ function normalizeTelemetry(raw: unknown): ServerTelemetry {
   const disk = objectOrNull(data.disk);
   const worker = objectOrNull(data.worker);
   const controller = objectOrNull(data.controller);
-  const workforce = normalizeWorkforce(objectOrNull(data.workforce));
   const postgresql = objectOrNull(data.postgresql);
   const ollama = objectOrNull(data.ollama);
   const tailscale = objectOrNull(data.tailscale);
   const gpu = objectOrNull(data.gpu);
-  const models = Array.isArray(ollama?.models) ? ollama.models.filter((x): x is string => typeof x === 'string').slice(0, 16).map((x) => x.slice(0, 128)) : [];
+  const models = safeStringList(ollama?.models, 64, 128);
   return {
     available: true,
     server: stringOrNull(data.server) ?? 'PC01',
     generatedAt: stringOrNull(data.generatedAt) ?? new Date().toISOString(),
     cpu: cpu ? { utilizationPercent: numberOrNull(cpu.utilizationPercent) } : null,
-    memory: memory && numberOrNull(memory.usedBytes) !== null && numberOrNull(memory.totalBytes) !== null ? { usedBytes: numberOrNull(memory.usedBytes)!, totalBytes: numberOrNull(memory.totalBytes)!, utilizationPercent: numberOrNull(memory.utilizationPercent) } : null,
+    memory: memory && numberOrNull(memory.usedBytes) !== null && numberOrNull(memory.totalBytes) !== null ? {
+      usedBytes: numberOrNull(memory.usedBytes)!,
+      totalBytes: numberOrNull(memory.totalBytes)!,
+      utilizationPercent: numberOrNull(memory.utilizationPercent),
+    } : null,
     uptimeSeconds: numberOrNull(data.uptimeSeconds),
-    disk: disk && stringOrNull(disk.drive) && numberOrNull(disk.freeBytes) !== null && numberOrNull(disk.totalBytes) !== null ? { drive: stringOrNull(disk.drive)!, freeBytes: numberOrNull(disk.freeBytes)!, totalBytes: numberOrNull(disk.totalBytes)!, utilizationPercent: numberOrNull(disk.utilizationPercent) } : null,
+    disk: disk && stringOrNull(disk.drive) && numberOrNull(disk.freeBytes) !== null && numberOrNull(disk.totalBytes) !== null ? {
+      drive: stringOrNull(disk.drive)!,
+      freeBytes: numberOrNull(disk.freeBytes)!,
+      totalBytes: numberOrNull(disk.totalBytes)!,
+      utilizationPercent: numberOrNull(disk.utilizationPercent),
+    } : null,
     worker: worker ? { online: worker.online === true, pid: numberOrNull(worker.pid), instances: numberOrNull(worker.instances) ?? 0 } : null,
     controller: controller ? { online: controller.online === true, ip: stringOrNull(controller.ip), port: numberOrNull(controller.port) } : null,
-    workforce,
+    workforce: normalizeWorkforce(objectOrNull(data.workforce)),
     postgresql: postgresql ? { online: postgresql.online === true, service: stringOrNull(postgresql.service), port: numberOrNull(postgresql.port) } : null,
     ollama: ollama ? { online: ollama.online === true, models } : null,
     tailscale: tailscale ? { online: tailscale.online === true, ip: stringOrNull(tailscale.ip) } : null,
-    gpu: gpu && stringOrNull(gpu.name) ? { name: stringOrNull(gpu.name)!, utilizationPercent: numberOrNull(gpu.utilizationPercent), memoryUsedMiB: numberOrNull(gpu.memoryUsedMiB), memoryTotalMiB: numberOrNull(gpu.memoryTotalMiB) } : null,
+    gpu: gpu && stringOrNull(gpu.name) ? {
+      name: stringOrNull(gpu.name)!,
+      utilizationPercent: numberOrNull(gpu.utilizationPercent),
+      memoryUsedMiB: numberOrNull(gpu.memoryUsedMiB),
+      memoryTotalMiB: numberOrNull(gpu.memoryTotalMiB),
+    } : null,
   };
 }
 
@@ -212,7 +321,7 @@ async function collectPc01Telemetry(): Promise<ServerTelemetry> {
       timeout: TELEMETRY_TIMEOUT_MS,
       windowsHide: true,
       encoding: 'utf8',
-      maxBuffer: 256 * 1024,
+      maxBuffer: 512 * 1024,
     });
     return normalizeTelemetry(JSON.parse(stdout.trim()));
   } catch {
@@ -225,8 +334,7 @@ function isPrivateIpv4(host: string): boolean {
   if (parts.length !== 4 || parts.some((part) => !/^\d{1,3}$/.test(part))) return false;
   const octets = parts.map(Number);
   if (octets.some((value) => value < 0 || value > 255)) return false;
-  if (octets[0] === 127) return true;
-  if (octets[0] === 10) return true;
+  if (octets[0] === 127 || octets[0] === 10) return true;
   if (octets[0] === 192 && octets[1] === 168) return true;
   if (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) return true;
   if (octets[0] === 100 && octets[1] >= 64 && octets[1] <= 127) return true;
@@ -250,7 +358,6 @@ export async function startDashboard(source: DashboardSource, options: CommandCe
     cleanExpiredState();
     const url = new URL(request.url ?? '/', 'http://localhost');
     const path = url.pathname;
-
     try {
       if (request.method === 'GET' && path === '/api/status') {
         return respond(response, 200, 'application/json; charset=utf-8', JSON.stringify(buildDashboard(await source.list())));
@@ -294,7 +401,10 @@ export async function startDashboard(source: DashboardSource, options: CommandCe
         const telemetry = await getTelemetry();
         const session = getSession(request);
         const submitted = url.searchParams.get('submitted');
-        return respond(response, 200, 'text/html; charset=utf-8', render(summary, telemetry, session, Boolean(commandSecret), submitted));
+        const aiQuery = (url.searchParams.get('ai') ?? '').trim().slice(0, 100);
+        const requestedState = (url.searchParams.get('state') ?? 'all') as AiFilter;
+        const aiState: AiFilter = ['all', 'busy', 'idle', 'offline', 'degraded'].includes(requestedState) ? requestedState : 'all';
+        return respond(response, 200, 'text/html; charset=utf-8', render(summary, telemetry, session, Boolean(commandSecret), submitted, aiQuery, aiState));
       }
       return respond(response, 404, 'application/json; charset=utf-8', JSON.stringify({ error: 'not_found' }));
     } catch {
@@ -307,53 +417,127 @@ export async function startDashboard(source: DashboardSource, options: CommandCe
     server.listen(options.port ?? 0, host, resolveListen);
   });
   const address = server.address() as AddressInfo;
-  return { url: `http://${address.address}:${address.port}`, close: () => new Promise<void>((resolveClose, reject) => server.close((error) => error ? reject(error) : resolveClose())) };
+  return {
+    url: `http://${address.address}:${address.port}`,
+    close: () => new Promise<void>((resolveClose, reject) => server.close((error) => error ? reject(error) : resolveClose())),
+  };
 }
 
 function statusText(status: string): string {
-  const labels: Record<string, string> = { draft: 'Việc mới', approved: 'Đã lên kế hoạch', running: 'Đang làm', failed: 'Lỗi / Cần sửa', blocked: 'Vướng / Chờ', verified: 'Hoàn thành' };
+  const labels: Record<string, string> = {
+    draft: 'Việc mới', approved: 'Đã duyệt', running: 'Đang làm', failed: 'Lỗi', blocked: 'Vướng / Chờ', verified: 'Hoàn thành',
+  };
   return labels[status] ?? status;
 }
-function pct(value: number | null | undefined): string { return value === null || value === undefined ? '—' : `${Math.round(value)}%`; }
-function gb(bytes: number | null | undefined): string { return bytes === null || bytes === undefined ? '—' : `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`; }
-function uptime(seconds: number | null): string {
-  if (seconds === null) return '—';
-  const days = Math.floor(seconds / 86400); const hours = Math.floor((seconds % 86400) / 3600); const mins = Math.floor((seconds % 3600) / 60);
-  return `${days}d ${hours}h ${mins}m`;
+
+function statusClass(status: string): string {
+  if (status === 'verified' || status === 'idle') return 'good';
+  if (status === 'failed' || status === 'offline') return 'danger';
+  if (status === 'blocked' || status === 'degraded') return 'wait';
+  if (status === 'running' || status === 'busy') return 'active';
+  return 'muted';
 }
-function activityText(summary: ReturnType<typeof buildDashboard>): string {
-  const active = summary.workOrders.find((item) => item.status === 'running');
-  return active ? `${active.id} · ${statusText(active.status)}` : 'Chưa xác định';
-}
+
 function healthText(value: { online: boolean } | null | undefined): string {
   if (!value) return 'Chưa có dữ liệu';
   return value.online ? 'ONLINE' : 'OFFLINE';
 }
+
 function healthClass(value: { online: boolean } | null | undefined): string {
-  return value?.online ? 'good' : 'wait';
+  return value?.online ? 'good' : 'danger';
 }
 
-function render(summary: ReturnType<typeof buildDashboard>, telemetry: ServerTelemetry, session: Session | null, writeConfigured: boolean, submitted: string | null): string {
-  const workCards = summary.workOrders.map((item) => `<article class="work"><div class="work-top"><b>${escapeHtml(item.id)}</b><span class="status">${escapeHtml(statusText(item.status))}</span></div><h3>${escapeHtml(item.goal)}</h3><div class="meta">Gate: ${escapeHtml(item.latestGate ?? 'chưa có')} · ${escapeHtml(item.latestGateStatus ?? '-')} · Evidence: ${item.evidenceCount}</div></article>`).join('');
-  const submittedNotice = submitted && /^https:\/\/github\.com\//.test(submitted) ? `<div class="notice">✅ Vy đã đưa Work Order vào hàng đợi PC01: <a href="${escapeHtml(submitted)}">xem evidence</a></div>` : '';
-  const taskPanel = session ? `<form class="task" method="post" action="/jobs"><input type="hidden" name="csrf" value="${escapeHtml(session.csrf)}"><input type="hidden" name="idempotency" value="${randomBytes(24).toString('base64url')}"><label>GIAO VIỆC CHO VY</label><small>Vy — AI Chief of Staff · em nhận mục tiêu từ anh Sơn và đưa vào pipeline PC01.</small><textarea name="instruction" maxlength="8000" required placeholder="Ví dụ: Kiểm tra Tiger IQ Driver và tối ưu phần quyết toán Tùng"></textarea><div class="task-actions"><select name="priority"><option>Bình thường</option><option>Cao</option><option>Khẩn cấp</option><option>Thấp</option></select><button type="submit">🚀 GIAO VIỆC</button></div></form>` : writeConfigured ? `<form class="login" method="post" action="/login"><b>Mở quyền giao việc cho Vy</b><input type="password" name="secret" autocomplete="current-password" placeholder="Mã điều khiển local" required><button type="submit">ĐĂNG NHẬP</button></form>` : `<div class="notice warn">🔒 Chế độ chỉ xem. Cần cấu hình TIGERIQ_COMMAND_SECRET trên PC01 để bật giao việc.</div>`;
-  const serverPanel = telemetry.available ? `<div class="server-grid"><div><small>CPU</small><b>${pct(telemetry.cpu?.utilizationPercent)}</b></div><div><small>RAM</small><b>${pct(telemetry.memory?.utilizationPercent)}</b><span>${gb(telemetry.memory?.usedBytes)} / ${gb(telemetry.memory?.totalBytes)}</span></div><div><small>Disk ${escapeHtml(telemetry.disk?.drive ?? '')}</small><b>${pct(telemetry.disk?.utilizationPercent)}</b><span>${gb(telemetry.disk?.freeBytes)} trống</span></div><div><small>Uptime</small><b>${escapeHtml(uptime(telemetry.uptimeSeconds))}</b></div><div><small>Native Worker</small><b class="${healthClass(telemetry.worker)}">${healthText(telemetry.worker)}</b><span>${telemetry.worker ? `PID ${telemetry.worker.pid ?? '—'} · ${telemetry.worker.instances} instance` : 'Unavailable'}</span></div><div><small>Controller</small><b class="${healthClass(telemetry.controller)}">${healthText(telemetry.controller)}</b><span>${escapeHtml(telemetry.controller?.ip ?? '—')}:${telemetry.controller?.port ?? '—'}</span></div><div><small>PostgreSQL</small><b class="${healthClass(telemetry.postgresql)}">${healthText(telemetry.postgresql)}</b><span>${escapeHtml(telemetry.postgresql?.service ?? 'Unavailable')} · port ${telemetry.postgresql?.port ?? '—'}</span></div><div><small>Ollama</small><b class="${healthClass(telemetry.ollama)}">${healthText(telemetry.ollama)}</b><span>${escapeHtml(telemetry.ollama?.models.join(', ') || 'Unavailable')}</span></div><div><small>Tailscale</small><b class="${healthClass(telemetry.tailscale)}">${healthText(telemetry.tailscale)}</b><span>${escapeHtml(telemetry.tailscale?.ip ?? 'Unavailable')}</span></div><div><small>GPU</small><b>${telemetry.gpu ? pct(telemetry.gpu.utilizationPercent) : 'Chưa có dữ liệu'}</b><span>${escapeHtml(telemetry.gpu?.name ?? 'Unavailable')}</span></div><div class="activity"><small>Đang làm gì</small><b>${escapeHtml(activityText(summary))}</b><span>Chỉ hiển thị từ state/evidence hiện có</span></div></div>` : `<div class="notice warn">PC01 Server: Chưa có telemetry. Web vẫn hoạt động ở chế độ an toàn.</div>`;
-  const workforceSummary = telemetry.workforce
-    ? `<div class="ai-row"><span>AI Employees</span><small>${telemetry.workforce.employeesTotal} total · ${telemetry.workforce.idle} idle · ${telemetry.workforce.busy} busy · ${telemetry.workforce.offline} offline · ${telemetry.workforce.degraded} degraded</small></div><div class="ai-row"><span>AI Tasks</span><small>${telemetry.workforce.tasksActive} active · ${telemetry.workforce.tasksFailed} failed · ${telemetry.workforce.activeTasks} assigned</small></div>`
-    : `<div class="ai-row"><span>AI Workforce Registry</span><small class="wait">Chưa có dữ liệu</small></div>`;
-  const workforcePanel = `<div class="ai"><div class="ai-row"><span>Vy — AI Chief of Staff</span><small>Điều phối Work Order</small></div><div class="ai-row"><span>PC01 Native Worker</span><small class="${healthClass(telemetry.worker)}">${healthText(telemetry.worker)}</small></div><div class="ai-row"><span>Workforce Controller</span><small class="${healthClass(telemetry.controller)}">${healthText(telemetry.controller)}</small></div>${workforceSummary}<div class="ai-row"><span>Ollama local models</span><small class="${healthClass(telemetry.ollama)}">${escapeHtml(telemetry.ollama?.models.join(', ') || 'Chưa có dữ liệu')}</small></div><div class="ai-row"><span>Cloud AI providers</span><small class="wait">Chưa có dữ liệu runtime</small></div></div>`;
+function pct(value: number | null | undefined): string {
+  return value === null || value === undefined ? '—' : `${Math.round(value)}%`;
+}
 
-  return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta http-equiv="refresh" content="15"><title>TigerIQ Command Center</title><style>
-:root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#edf2f7;background:#090d12}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 90% 0,#18202c 0,#0b1017 36%,#070a0f 100%);color:#edf2f7}.shell{min-height:100vh;display:grid;grid-template-columns:230px 1fr}.side{border-right:1px solid #222b36;padding:24px 18px;background:#0b1016;position:sticky;top:0;height:100vh}.brand{font-weight:900;font-size:20px;color:#ff9418;margin-bottom:28px}.brand span{color:#fff}.nav{display:grid;gap:8px}.nav div{padding:11px 12px;border-radius:10px;color:#9ba9b9}.nav .on{background:#2a2118;color:#ff9f2e}.main{padding:24px;max-width:1500px;width:100%;margin:auto}header{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:18px}h1{font-size:22px;margin:0}.health{display:flex;gap:8px;flex-wrap:wrap}.pill{border:1px solid #273444;border-radius:10px;padding:8px 10px;background:#101720;color:#9de7ba}.panel,.task,.login,.work,.kpi{background:linear-gradient(180deg,#131a23,#0f151d);border:1px solid #25303d;border-radius:16px;box-shadow:0 14px 36px #0005}.task,.login{padding:18px;margin-bottom:14px}.task label{display:block;font-size:12px;color:#9aa9ba;font-weight:800}.task>small{display:block;color:#8493a5;margin-top:5px}.task textarea{display:block;width:100%;min-height:96px;margin:10px 0;background:#0d131a;color:#fff;border:1px solid #2a3542;border-radius:12px;padding:14px;font:inherit;resize:vertical}.task-actions{display:flex;gap:10px;justify-content:flex-end}.task select,.login input{background:#0d131a;color:#fff;border:1px solid #2a3542;border-radius:10px;padding:11px 12px}.task button,.login button{border:0;border-radius:10px;background:#ff8a00;color:#fff;font-weight:900;padding:11px 22px}.login{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.login input{flex:1;min-width:220px}.notice{padding:12px 14px;margin-bottom:14px;border:1px solid #285d43;background:#10241b;border-radius:12px;color:#b9f6d0}.notice.warn{border-color:#705122;background:#2b2111;color:#ffd28b}.notice a{color:#8bc7ff}.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:14px 0}.kpi{padding:16px}.kpi small{color:#91a0b1}.kpi b{display:block;font-size:28px;margin-top:5px}.layout{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(300px,.8fr);gap:14px}.panel{padding:16px;margin-bottom:14px}.panel h2{font-size:14px;margin:0 0 12px;color:#bec9d6}.works{display:grid;gap:10px}.work{padding:14px;box-shadow:none}.work-top{display:flex;justify-content:space-between;gap:8px}.status{font-size:12px;color:#7fc8ff}.work h3{margin:9px 0 8px;font-size:15px}.meta{font-size:12px;color:#8d9baa}.ai{display:grid;gap:9px}.ai-row{display:flex;justify-content:space-between;gap:10px;border:1px solid #25303d;border-radius:12px;padding:12px;background:#101720}.ai-row small{color:#8493a5;text-align:right}.good{color:#65e6a0!important}.wait{color:#ffc15c!important}.server-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.server-grid>div{border:1px solid #25303d;border-radius:12px;padding:12px;background:#101720;min-width:0}.server-grid small,.server-grid span{display:block;color:#8493a5;font-size:12px}.server-grid b{display:block;margin:5px 0;overflow-wrap:anywhere}.server-grid .activity{grid-column:span 4}.footer{padding:18px 0 4px;color:#607082;font-size:12px}
-@media(max-width:900px){.shell{display:block}.side{display:none}.main{padding:14px 12px 82px}.layout{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,1fr)}.server-grid{grid-template-columns:repeat(2,1fr)}.server-grid .activity{grid-column:span 2}header{align-items:flex-start}.health{justify-content:flex-end}.task-actions{position:sticky;bottom:10px}.task button{flex:1}.task select{width:40%}.work h3{font-size:14px}.panel{border-radius:14px}}
-@media(max-width:520px){h1{font-size:18px}.health .pill:nth-child(n+2){display:none}.kpi{padding:13px}.kpi b{font-size:23px}.task textarea{min-height:120px}.login{display:grid}.login input{min-width:0;width:100%}.ai-row{font-size:13px}.server-grid{grid-template-columns:1fr}.server-grid .activity{grid-column:auto}}
-</style></head><body><div class="shell"><aside class="side"><div class="brand">🐯 TIGERIQ <span>AI LAB</span></div><div class="nav"><div class="on">⌂ Tổng quan</div><div>▣ Work Order</div><div>✦ AI Workforce</div><div>▥ Evidence</div><div>▤ Báo cáo</div><div>⚙ Cài đặt</div></div></aside><main class="main"><header><div><h1>Tổng quan Command Center</h1><small>Vy — AI Chief of Staff · PRIMARY Web Control trên PC01 · anh Sơn điều khiển qua private tailnet</small></div><div class="health"><span class="pill">● PC01 / Private</span><span class="pill">Tự làm mới 15s</span></div></header>${submittedNotice}${taskPanel}<section class="kpis"><div class="kpi"><small>Đang xử lý</small><b>${summary.activeWorkOrders}</b></div><div class="kpi"><small>Vướng / Chờ</small><b>${summary.blockedWorkOrders}</b></div><div class="kpi"><small>Gate lỗi/chặn</small><b>${summary.failingGates}</b></div><div class="kpi"><small>Evidence</small><b>${summary.evidenceCount}</b></div></section><section class="panel"><h2>PC01 SERVER</h2>${serverPanel}</section><section class="layout"><div class="panel"><h2>WORK ORDER · EVIDENCE/GATE</h2><div class="works">${workCards || '<div class="notice">Chưa có Work Order trong datasource hiện tại.</div>'}</div></div><div class="panel"><h2>AI WORKFORCE</h2>${workforcePanel}</div></section><div class="footer">TigerIQ AI Lab Command Center · PRIMARY PC01/private · Vercel SECONDARY/BACKUP · MAIN/Production không tự động thay đổi</div></main></div></body></html>`;
+function gb(bytes: number | null | undefined): string {
+  return bytes === null || bytes === undefined ? '—' : `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`;
+}
+
+function uptime(seconds: number | null): string {
+  if (seconds === null) return '—';
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  return `${days} ngày ${hours} giờ ${mins} phút`;
+}
+
+function displayTime(value: string): string {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return value;
+  return date.toLocaleString('vi-VN', { hour12: false });
+}
+
+function ownerForWorkOrder(workOrderId: string, telemetry: ServerTelemetry): string {
+  const task = telemetry.workforce?.taskList?.find((row) => row.taskId === workOrderId || row.taskId.includes(workOrderId));
+  if (!task?.assignedEmployeeId) return 'Vy · điều phối';
+  const employee = telemetry.workforce?.roster?.find((row) => row.employeeId === task.assignedEmployeeId);
+  return employee ? employee.displayName : task.assignedEmployeeId;
+}
+
+function workOrderStage(workOrderId: string, telemetry: ServerTelemetry): string | null {
+  return telemetry.workforce?.taskList?.find((row) => row.taskId === workOrderId || row.taskId.includes(workOrderId))?.stage ?? null;
+}
+
+function taskObjective(taskId: string, telemetry: ServerTelemetry): string {
+  return telemetry.workforce?.taskList?.find((row) => row.taskId === taskId)?.objective ?? taskId;
+}
+
+function render(summary: ReturnType<typeof buildDashboard>, telemetry: ServerTelemetry, session: Session | null, writeConfigured: boolean, submitted: string | null, aiQuery: string, aiState: AiFilter): string {
+  const activeWork = summary.workOrders.filter((item) => !['verified'].includes(item.status));
+  const completed = summary.workOrders.filter((item) => item.status === 'verified').length;
+  const needsOwner = summary.workOrders.filter((item) => item.status === 'blocked' || item.latestGateStatus === 'fail' || item.latestGateStatus === 'blocked');
+  const blockers = summary.workOrders.filter((item) => item.status === 'failed' || item.latestGateStatus === 'fail').length;
+  const roster = telemetry.workforce?.roster ?? [];
+  const rosterWithVy: WorkforceEmployeeTelemetry[] = [{
+    employeeId: 'vy-chief-of-staff', displayName: 'Vy', department: 'Điều hành', role: 'AI Chief of Staff', nodeId: 'web-control', provider: 'TigerIQ', model: null,
+    availability: activeWork.length > 0 ? 'busy' : 'idle', healthScore: 100, concurrencyLimit: 99, activeTaskCount: activeWork.length, currentTaskIds: activeWork.map((item) => item.id),
+  }, ...roster.filter((row) => row.employeeId !== 'vy-chief-of-staff')];
+  const query = aiQuery.toLocaleLowerCase('vi-VN');
+  const filteredRoster = rosterWithVy.filter((employee) => {
+    const stateMatch = aiState === 'all' || employee.availability === aiState;
+    const text = `${employee.displayName} ${employee.employeeId} ${employee.role} ${employee.department} ${employee.provider ?? ''} ${employee.model ?? ''}`.toLocaleLowerCase('vi-VN');
+    return stateMatch && (!query || text.includes(query));
+  });
+  const modelList = telemetry.ollama?.models ?? [];
+  const submittedNotice = submitted && /^https:\/\/github\.com\//.test(submitted)
+    ? `<div class="notice good-note">✓ Vy đã nhận Work Order và đưa vào hàng đợi PC01. <a href="${escapeHtml(submitted)}">Xem evidence</a></div>` : '';
+
+  const workRows = activeWork.length ? activeWork.map((item) => {
+    const stage = workOrderStage(item.id, telemetry);
+    return `<tr><td><b>${escapeHtml(item.id)}</b><small>${escapeHtml(item.project)}</small></td><td><strong>${escapeHtml(item.goal)}</strong><small>${item.evidenceCount} evidence · Gate ${escapeHtml(item.latestGateStatus ?? 'chưa có')}</small></td><td>${escapeHtml(ownerForWorkOrder(item.id, telemetry))}</td><td>${stage ? `<span class="chip ${statusClass(stage)}">${escapeHtml(stage)}</span>` : '<span class="muted">Chưa có % thực</span>'}</td><td><span class="chip ${statusClass(item.status)}">${escapeHtml(statusText(item.status))}</span></td></tr>`;
+  }).join('') : `<tr><td colspan="5" class="empty">Chưa có Work Order đang chạy.</td></tr>`;
+
+  const ownerRows = needsOwner.length ? needsOwner.slice(0, 8).map((item) => `<article class="decision"><div><span class="decision-id">${escapeHtml(item.id)}</span><h3>${escapeHtml(item.goal)}</h3><p>${item.status === 'blocked' ? 'Work Order đang bị chặn.' : 'Gate đang FAIL / BLOCKED.'} · ${item.evidenceCount} evidence</p></div><span class="chip wait">Cần xem</span></article>`).join('') : `<div class="empty-card">✓ Hiện không có việc bắt buộc anh Sơn xử lý.</div>`;
+
+  const aiRows = filteredRoster.length ? filteredRoster.map((employee) => {
+    const current = employee.currentTaskIds.length ? employee.currentTaskIds.slice(0, 2).map((id) => taskObjective(id, telemetry)).join(' · ') : 'Đang rảnh';
+    const load = `${employee.activeTaskCount}/${employee.concurrencyLimit}`;
+    return `<tr><td><div class="person"><span class="avatar">${escapeHtml(employee.displayName.slice(0, 2).toUpperCase())}</span><div><b>${escapeHtml(employee.displayName)}</b><small>${escapeHtml(employee.employeeId)}</small></div></div></td><td>${escapeHtml(employee.role)}<small>${escapeHtml(employee.department)}</small></td><td>${escapeHtml(employee.model ?? employee.provider ?? 'Chưa gán model')}</td><td><strong>${escapeHtml(current)}</strong><small>${employee.currentTaskIds.length ? employee.currentTaskIds.map(escapeHtml).join(', ') : 'Không có task active'}</small></td><td><span class="chip ${statusClass(employee.availability)}">${escapeHtml(employee.availability.toUpperCase())}</span></td><td>${escapeHtml(load)}</td></tr>`;
+  }).join('') : `<tr><td colspan="6" class="empty">Không có AI phù hợp bộ lọc. Workforce Controller ${telemetry.controller?.online ? 'đang online' : 'đang offline'}.</td></tr>`;
+
+  const modelRows = modelList.length ? modelList.map((model) => {
+    const users = roster.filter((employee) => employee.model?.toLowerCase() === model.toLowerCase());
+    return `<tr><td><b>${escapeHtml(model)}</b></td><td>Ollama Local</td><td><span class="chip ${telemetry.ollama?.online ? 'good' : 'danger'}">${telemetry.ollama?.online ? 'ONLINE' : 'OFFLINE'}</span></td><td>${users.length ? escapeHtml(users.map((employee) => employee.displayName).join(', ')) : '<span class="muted">Chưa gán</span>'}</td></tr>`;
+  }).join('') : `<tr><td colspan="4" class="empty">Chưa đọc được danh sách model Ollama.</td></tr>`;
+
+  const taskPanel = session ? `<form class="task-form" method="post" action="/jobs"><input type="hidden" name="csrf" value="${escapeHtml(session.csrf)}"><input type="hidden" name="idempotency" value="${randomBytes(24).toString('base64url')}"><div><span class="eyebrow">GIAO VIỆC CHO VY</span><h2>Anh Sơn chỉ cần nhập mục tiêu</h2><p>Vy tự tạo Work Order → chọn AI/model → theo dõi evidence → chỉ gọi anh khi cần quyết định.</p></div><textarea name="instruction" maxlength="8000" required placeholder="Ví dụ: Hoàn thiện WebControl, kiểm tra toàn bộ luồng và báo khi cần tôi phê duyệt."></textarea><div class="task-actions"><select name="priority" aria-label="Mức ưu tiên"><option>Bình thường</option><option>Cao</option><option>Khẩn cấp</option><option>Thấp</option></select><button type="submit">GIAO VIỆC CHO VY →</button></div></form>`
+    : writeConfigured ? `<form class="login" method="post" action="/login"><div><span class="eyebrow">MỞ QUYỀN ĐIỀU KHIỂN</span><b>Đăng nhập để giao việc cho Vy</b></div><input type="password" name="secret" autocomplete="current-password" placeholder="Mã điều khiển local" required><button type="submit">ĐĂNG NHẬP</button></form>`
+      : `<div class="notice warn">Web đang ở chế độ chỉ xem. Chưa cấu hình mã điều khiển local.</div>`;
+
+  const healthItems = [
+    ['PC01', telemetry.available], ['Worker', telemetry.worker?.online], ['Ollama', telemetry.ollama?.online], ['Tailscale', telemetry.tailscale?.online], ['Controller', telemetry.controller?.online],
+  ] as Array<[string, boolean | undefined]>;
+  const healthStrip = healthItems.map(([name, online]) => `<span class="health-chip ${online ? 'good' : 'danger'}"><i></i>${escapeHtml(name)} ${online ? 'ONLINE' : 'OFFLINE'}</span>`).join('');
+  const generatedAt = telemetry.available ? displayTime(telemetry.generatedAt) : 'Chưa có telemetry';
+  const refreshMeta = session ? '' : '<meta http-equiv="refresh" content="30">';
+
+  return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">${refreshMeta}<title>TigerIQ Command Center</title><style>
+:root{font-family:"Segoe UI Variable","Segoe UI",Tahoma,Arial,sans-serif;color:#f4f7fb;background:#071019;--orange:#ff9418;--green:#39d98a;--blue:#5ca8ff;--yellow:#ffc35c;--red:#ff6574;--line:#263444;--panel:#101a25;--panel2:#0b141d;--muted:#8b9aab}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 76% -12%,#1a2b3d 0,#0b141e 37%,#061019 76%);font-size:14px;line-height:1.45}.shell{min-height:100vh;display:grid;grid-template-columns:230px minmax(0,1fr)}.side{position:sticky;top:0;height:100vh;background:#08111a;border-right:1px solid #202d3a;padding:22px 15px;display:flex;flex-direction:column}.brand{display:flex;align-items:center;gap:10px;font-size:18px;font-weight:900;color:var(--orange);padding:5px 8px 24px}.brand-mark{width:36px;height:36px;border-radius:11px;background:linear-gradient(145deg,#ffac3c,#ff7a00);display:grid;place-items:center;color:#111;font-size:20px}.brand em{font-style:normal;color:#fff}.nav-label{font-size:10px;letter-spacing:.12em;color:#617285;font-weight:800;padding:8px 10px}.nav{display:grid;gap:5px}.nav a{color:#9caabb;text-decoration:none;padding:11px 12px;border-radius:11px;border:1px solid transparent}.nav a.on{color:#ffad52;background:#251c13;border-color:#513820}.side-foot{margin-top:auto;border-top:1px solid #1e2a36;padding:15px 8px;color:#7d8da0;font-size:11px}.side-foot b{display:block;color:#fff;margin-top:6px}.main{width:100%;max-width:1600px;margin:auto;padding:22px 26px 36px}.topbar{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;margin-bottom:16px}.eyebrow{display:block;font-size:10px;font-weight:900;letter-spacing:.12em;color:#7890a6}.topbar h1{font-size:25px;line-height:1.15;margin:4px 0}.topbar p{margin:0;color:var(--muted)}.system-state{display:flex;align-items:center;gap:8px;border:1px solid #2a4839;background:#0b2118;color:#83e8b1;border-radius:999px;padding:8px 11px;font-size:12px}.system-state.warn{border-color:#664a23;background:#2a1e10;color:#ffd184}.panel,.kpi,.task-form,.login,.runtime{background:linear-gradient(180deg,#111d29,#0c1620);border:1px solid var(--line);border-radius:15px;box-shadow:0 14px 34px #0003}.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:11px;margin-bottom:14px}.kpi{padding:15px 16px}.kpi small{color:#8395a8}.kpi b{display:block;font-size:29px;margin-top:4px}.kpi .blue{color:var(--blue)}.kpi .yellow{color:var(--yellow)}.kpi .green{color:var(--green)}.kpi .red{color:var(--red)}.task-form{padding:17px;margin-bottom:14px;display:grid;grid-template-columns:minmax(250px,.75fr) minmax(360px,1.25fr);gap:14px;align-items:center}.task-form h2{margin:3px 0;font-size:19px}.task-form p{margin:0;color:var(--muted);font-size:12px}.task-form textarea{min-height:88px;width:100%;resize:vertical;background:#071019;color:#fff;border:1px solid #304155;border-radius:11px;padding:12px 13px;font:inherit}.task-actions{grid-column:2;display:flex;justify-content:flex-end;gap:8px}.task-actions select,.login input{background:#071019;color:#fff;border:1px solid #304155;border-radius:10px;padding:10px 12px}.task-actions button,.login button{border:0;border-radius:10px;background:linear-gradient(135deg,#ffa529,#ff7d00);font-weight:900;color:#171009;padding:10px 16px;cursor:pointer}.login{padding:14px 16px;margin-bottom:14px;display:flex;align-items:center;gap:10px}.login>div{min-width:230px}.login b{display:block}.login input{flex:1}.notice{padding:11px 13px;border-radius:11px;margin-bottom:14px;border:1px solid #285f45;background:#10261c;color:#bdf5d2}.notice.warn{border-color:#705123;background:#2a2012;color:#ffd494}.notice a{color:#8bcaff}.grid-main{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(330px,.72fr);gap:12px;margin-bottom:14px}.panel{padding:15px;min-width:0}.panel-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:11px}.panel-head h2{font-size:13px;margin:0;letter-spacing:.05em}.panel-head small{color:#73869a}.table-wrap{overflow:auto;border:1px solid #243240;border-radius:11px;max-height:440px}.data{width:100%;border-collapse:collapse;min-width:760px}.data th{position:sticky;top:0;background:#0c1620;color:#7e90a4;text-align:left;font-size:10px;letter-spacing:.05em;padding:10px 11px;border-bottom:1px solid #263545}.data td{padding:11px;border-bottom:1px solid #202d39;vertical-align:top}.data tr:last-child td{border-bottom:0}.data td small{display:block;color:#78899b;font-size:11px;margin-top:3px}.data td strong,.data td b{font-weight:700}.chip{display:inline-flex;align-items:center;border:1px solid #314153;border-radius:999px;padding:4px 7px;font-size:10px;font-weight:800;white-space:nowrap}.chip.good{color:#7feab1;border-color:#2c684c;background:#0d251a}.chip.active{color:#85c4ff;border-color:#305b83;background:#0d1e2e}.chip.wait{color:#ffd080;border-color:#6c5227;background:#2a2010}.chip.danger{color:#ff98a2;border-color:#6e3640;background:#2a1419}.chip.muted{color:#9ba9b7}.muted{color:#7e8d9e}.empty{padding:24px!important;text-align:center;color:#7c8c9d}.decisions{display:grid;gap:9px}.decision{display:flex;justify-content:space-between;gap:12px;align-items:center;border:1px solid #2b3947;background:#0b151f;border-radius:11px;padding:12px}.decision h3{font-size:13px;margin:3px 0}.decision p{font-size:11px;color:#8091a3;margin:0}.decision-id{font-size:10px;color:#ffb35e}.empty-card{border:1px solid #27543e;background:#0e2118;color:#a8f0c6;border-radius:11px;padding:18px}.section-stack{display:grid;gap:12px;margin-bottom:14px}.filters{display:flex;gap:8px;flex-wrap:wrap}.filters input,.filters select{background:#08121b;color:#fff;border:1px solid #2b3b4b;border-radius:9px;padding:8px 10px}.filters button{border:1px solid #59401f;background:#261b10;color:#ffb75e;border-radius:9px;padding:8px 11px;cursor:pointer}.person{display:flex;align-items:center;gap:9px}.avatar{width:34px;height:34px;border-radius:9px;background:#172536;border:1px solid #30445a;color:#9ec7ef;display:grid;place-items:center;font-size:10px;font-weight:900}.model-summary{display:flex;gap:8px;flex-wrap:wrap}.model-pill{border:1px solid #314153;border-radius:999px;padding:6px 9px;color:#aab8c6;background:#0b151f;font-size:11px}.runtime{overflow:hidden}.runtime summary{cursor:pointer;list-style:none;padding:14px 15px;display:flex;align-items:center;justify-content:space-between;gap:12px}.runtime summary::-webkit-details-marker{display:none}.runtime-title{display:flex;align-items:center;gap:10px}.runtime-title b{font-size:13px}.health-strip{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}.health-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #314153;border-radius:999px;padding:5px 8px;font-size:10px}.health-chip i{width:6px;height:6px;border-radius:50%;background:currentColor}.health-chip.good{color:#72e7a7;border-color:#2c664b}.health-chip.danger{color:#ff8994;border-color:#65343c}.runtime-body{border-top:1px solid #263646;padding:13px}.server-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.metric{border:1px solid #273646;background:#0a141e;border-radius:10px;padding:10px}.metric small{display:block;color:#74879b}.metric b{display:block;font-size:18px;margin-top:3px}.metric span{display:block;color:#7d8ea0;font-size:10px;margin-top:2px}.footer{margin-top:14px;color:#66788b;font-size:10px;text-align:right}@media(max-width:1100px){.shell{grid-template-columns:1fr}.side{position:static;height:auto;border-right:0;border-bottom:1px solid #202d3a;padding:12px 16px}.brand{padding:2px 4px 10px}.nav-label,.side-foot{display:none}.nav{display:flex;overflow:auto}.nav a{white-space:nowrap}.main{padding:16px}.grid-main{grid-template-columns:1fr}.task-form{grid-template-columns:1fr}.task-actions{grid-column:1}.server-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:700px){body{font-size:14px}.topbar{display:block}.system-state{margin-top:10px;width:max-content}.kpis{grid-template-columns:repeat(2,1fr)}.login{display:grid}.login>div{min-width:0}.task-form textarea{min-height:110px}.data{min-width:700px}.health-strip{justify-content:flex-start}.runtime summary{display:block}.runtime-title{margin-bottom:9px}}@media(max-width:520px){.main{padding:12px}.kpis{grid-template-columns:1fr 1fr}.kpi{padding:12px}.kpi b{font-size:24px}.task-actions{display:grid}.task-actions select,.task-actions button{width:100%}.server-grid{grid-template-columns:1fr}.panel{padding:11px}.side{padding:10px}.nav a{padding:9px}.topbar h1{font-size:22px}}
+</style></head><body><div class="shell"><aside class="side"><div class="brand"><span class="brand-mark">🐯</span><span>TIGERIQ <em>AI LAB</em></span></div><div class="nav-label">WEB CONTROL</div><nav class="nav"><a class="on" href="#overview">⌂ Tổng quan</a><a href="#work">▣ Work Order</a><a href="#workforce">✦ AI Workforce</a><a href="#models">◈ Mô hình AI</a><a href="#runtime">◇ PC01 Runtime</a></nav><div class="side-foot">PRIMARY RUNTIME<b>● PC01 · PRIVATE</b></div></aside><main class="main"><header class="topbar" id="overview"><div><span class="eyebrow">OWNER COCKPIT V2</span><h1>Web Control / Command Center</h1><p>Vy — AI Chief of Staff · anh Sơn điều khiển mục tiêu, AI tự xử lý phần còn lại.</p></div><div class="system-state ${telemetry.controller?.online === false ? 'warn' : ''}">${telemetry.controller?.online === false ? '⚠ Hệ thống có cảnh báo' : '✓ Hệ thống hoạt động'} · ${escapeHtml(generatedAt)}</div></header>${submittedNotice}${taskPanel}<section class="kpis"><div class="kpi"><small>ĐANG CHẠY</small><b class="blue">${summary.activeWorkOrders}</b><span>Work Order đang xử lý</span></div><div class="kpi"><small>CẦN ANH SƠN</small><b class="yellow">${needsOwner.length}</b><span>Blocker / Gate cần xem</span></div><div class="kpi"><small>HOÀN THÀNH</small><b class="green">${completed}</b><span>Work Order đã verified</span></div><div class="kpi"><small>LỖI / BLOCKER</small><b class="red">${blockers}</b><span>Không claim PASS khi còn lỗi</span></div></section><section class="grid-main"><div class="panel" id="work"><div class="panel-head"><h2>CÔNG VIỆC ĐANG CHẠY</h2><small>${activeWork.length} Work Order</small></div><div class="table-wrap"><table class="data"><thead><tr><th>WORK ORDER</th><th>MỤC TIÊU</th><th>AI PHỤ TRÁCH</th><th>GIAI ĐOẠN</th><th>TRẠNG THÁI</th></tr></thead><tbody>${workRows}</tbody></table></div></div><div class="panel"><div class="panel-head"><h2>CẦN ANH SƠN</h2><small>Chỉ hiện việc cần quyết định / xử lý</small></div><div class="decisions">${ownerRows}</div></div></section><section class="section-stack"><div class="panel" id="workforce"><div class="panel-head"><div><h2>AI WORKFORCE — AI ĐANG LÀM GÌ</h2><small>${rosterWithVy.length} AI · ${telemetry.workforce?.busy ?? 0} bận · ${telemetry.workforce?.idle ?? 0} rảnh · ${telemetry.workforce?.offline ?? 0} offline</small></div><form class="filters" method="get" action="/"><input name="ai" value="${escapeHtml(aiQuery)}" placeholder="Tìm AI / role / model"><select name="state"><option value="all"${aiState === 'all' ? ' selected' : ''}>Tất cả trạng thái</option><option value="busy"${aiState === 'busy' ? ' selected' : ''}>Đang bận</option><option value="idle"${aiState === 'idle' ? ' selected' : ''}>Đang rảnh</option><option value="offline"${aiState === 'offline' ? ' selected' : ''}>Offline</option><option value="degraded"${aiState === 'degraded' ? ' selected' : ''}>Degraded</option></select><button type="submit">LỌC</button></form></div><div class="table-wrap"><table class="data"><thead><tr><th>AI</th><th>VAI TRÒ</th><th>MODEL / PROVIDER</th><th>ĐANG LÀM GÌ</th><th>TRẠNG THÁI</th><th>TẢI</th></tr></thead><tbody>${aiRows}</tbody></table></div></div><div class="panel" id="models"><div class="panel-head"><div><h2>MÔ HÌNH AI HIỆN CÓ</h2><small>${modelList.length} model Ollama local được phát hiện</small></div><div class="model-summary"><span class="model-pill">Ollama ${healthText(telemetry.ollama)}</span><span class="model-pill">${modelList.length} model</span></div></div><div class="table-wrap"><table class="data"><thead><tr><th>MODEL</th><th>LOẠI</th><th>TRẠNG THÁI</th><th>AI ĐANG DÙNG</th></tr></thead><tbody>${modelRows}</tbody></table></div></div></section><details class="runtime" id="runtime"><summary><div class="runtime-title"><span>▦</span><div><b>PC01 SERVER & SERVICES</b><div class="muted">Hạ tầng kỹ thuật — chỉ mở khi cần kiểm tra</div></div></div><div class="health-strip">${healthStrip}</div></summary><div class="runtime-body">${telemetry.available ? `<div class="server-grid"><div class="metric"><small>CPU</small><b>${pct(telemetry.cpu?.utilizationPercent)}</b></div><div class="metric"><small>RAM</small><b>${pct(telemetry.memory?.utilizationPercent)}</b><span>${gb(telemetry.memory?.usedBytes)} / ${gb(telemetry.memory?.totalBytes)}</span></div><div class="metric"><small>DISK ${escapeHtml(telemetry.disk?.drive ?? '')}</small><b>${pct(telemetry.disk?.utilizationPercent)}</b><span>${gb(telemetry.disk?.freeBytes)} trống</span></div><div class="metric"><small>UPTIME</small><b>${escapeHtml(uptime(telemetry.uptimeSeconds))}</b></div><div class="metric"><small>WORKER</small><b class="${healthClass(telemetry.worker)}">${healthText(telemetry.worker)}</b><span>PID ${telemetry.worker?.pid ?? '—'} · ${telemetry.worker?.instances ?? 0} instance</span></div><div class="metric"><small>WORKFORCE CONTROLLER</small><b class="${healthClass(telemetry.controller)}">${healthText(telemetry.controller)}</b><span>${escapeHtml(telemetry.controller?.ip ?? '—')}:${telemetry.controller?.port ?? '—'}</span></div><div class="metric"><small>PostgreSQL</small><b class="${healthClass(telemetry.postgresql)}">${healthText(telemetry.postgresql)}</b><span>${escapeHtml(telemetry.postgresql?.service ?? 'Unavailable')} · ${telemetry.postgresql?.port ?? '—'}</span></div><div class="metric"><small>Tailscale</small><b class="${healthClass(telemetry.tailscale)}">${healthText(telemetry.tailscale)}</b><span>${escapeHtml(telemetry.tailscale?.ip ?? 'Unavailable')}</span></div></div>` : '<div class="notice warn">PC01 Server: Chưa có telemetry. Web vẫn hoạt động ở chế độ an toàn.</div>'}</div></details><div class="footer">Evidence-first · Private PC01 · Không MAIN/Production nếu chưa được phép</div></main></div></body></html>`;
 }
 
 function renderMessage(title: string, message: string): string {
-  return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title></head><body><h1>${escapeHtml(title)}</h1><p>${escapeHtml(message)}</p><p><a href="/">Quay lại</a></p></body></html>`;
-}
-
-function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character] ?? character);
+  return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title><style>body{font-family:"Segoe UI Variable","Segoe UI",Tahoma,Arial,sans-serif;background:#071019;color:#fff;padding:40px}main{max-width:560px;margin:auto;background:#101a25;border:1px solid #263444;border-radius:14px;padding:24px}p{color:#9aa9b8}</style></head><body><main><h1>${escapeHtml(title)}</h1><p>${escapeHtml(message)}</p></main></body></html>`;
 }

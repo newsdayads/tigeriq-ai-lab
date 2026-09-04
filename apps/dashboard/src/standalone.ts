@@ -3,7 +3,9 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { FileJournal } from '../../../packages/event-store/src/index.js';
 import { DurableControlPlane } from '../../../packages/durable-control-plane/src/index.js';
+import { GitHubWorkSource } from './github-work-source.js';
 import { startDashboard } from './server.js';
+import { startOwnerCockpitV4 } from './server-v4.js';
 
 const execFileAsync = promisify(execFile);
 const journalPath = process.env.TIGERIQ_JOURNAL ?? 'F:\\TigerIQ\\State\\control-plane.jsonl';
@@ -16,6 +18,7 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) {
 }
 
 const plane = new DurableControlPlane(new FileJournal(journalPath));
+const dashboardSource = new GitHubWorkSource(plane, repo);
 
 function workOrderId(instruction: string, priority: string): string {
   const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14);
@@ -37,7 +40,7 @@ async function submitPc01WorkOrder(instruction: string, priority: string): Promi
   await plane.transition(id, 'approved', { id: 'vy-web-approver', role: 'approver' });
 
   const title = `[Command Center][${id}] ${instruction.replace(/\s+/g, ' ').slice(0, 60)}`;
-  const body = `TIGERIQ_JOB_V1\n\n## Work Order\n${id}\n\n## Instruction\n${instruction}\n\n## Priority\n${priority}`;
+  const body = `PC01_REQUIRED=true\nCLOUD_EXECUTOR_ALLOWED=false\n\nTIGERIQ_JOB_V1\n\n## Work Order\n${id}\n\n## Instruction\n${instruction}\n\n## Priority\n${priority}`;
   try {
     const { stdout } = await execFileAsync('gh', ['issue', 'create', '--repo', repo, '--title', title, '--body', body], {
       timeout: 30_000,
@@ -54,14 +57,24 @@ async function submitPc01WorkOrder(instruction: string, priority: string): Promi
   }
 }
 
-const server = await startDashboard(plane, { host, port, repo, submitJob: submitPc01WorkOrder });
+const backend = await startDashboard(dashboardSource, {
+  host: '127.0.0.1',
+  port: 0,
+  repo,
+  submitJob: submitPc01WorkOrder,
+});
 
-console.log(`TigerIQ Command Center online: ${server.url}`);
+const server = await startOwnerCockpitV4({ backendUrl: backend.url, host, port });
+
+console.log(`TigerIQ Owner Cockpit V4 online: ${server.url}`);
+console.log(`Internal Command Center backend: ${backend.url}`);
 console.log(`Journal: ${journalPath}`);
+console.log('Dashboard source: local journal + live GitHub TIGERIQ_JOB_V1 lifecycle projection.');
 console.log('Write actions require TIGERIQ_COMMAND_SECRET.');
 
 const shutdown = async () => {
   await server.close();
+  await backend.close();
   process.exit(0);
 };
 process.once('SIGINT', shutdown);
