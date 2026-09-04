@@ -36,6 +36,13 @@ describe('Owner Cockpit Vietnamese management visual contract', () => {
     plane.create({ id: 'WO-214', project: 'TigerIQ', goal: 'Hoàn thiện WebControl theo mockup', scope: ['dashboard'], invariants: ['private'], acceptanceCriteria: ['visual'], status: 'draft' }, { id: 'planner', role: 'planner' });
     plane.transition('WO-214', 'approved', { id: 'approver', role: 'approver' });
     plane.transition('WO-214', 'running', { id: 'coder', role: 'coder' });
+
+    plane.create({ id: 'WO-TECH-BLOCK', project: 'TigerIQ', goal: 'Thiếu mô hình đánh giá độc lập, hệ thống tự xử lý', scope: ['worker'], invariants: ['private'], acceptanceCriteria: ['runtime'], status: 'draft' }, { id: 'planner', role: 'planner' });
+    plane.transition('WO-TECH-BLOCK', 'blocked', { id: 'operator', role: 'operator' });
+
+    plane.create({ id: 'WO-OWNER-DECISION', project: 'TigerIQ', goal: 'Cần anh Sơn phê duyệt thay đổi quyền truy cập', scope: ['security'], invariants: ['private'], acceptanceCriteria: ['owner decision'], status: 'draft' }, { id: 'planner', role: 'planner' });
+    plane.transition('WO-OWNER-DECISION', 'blocked', { id: 'operator', role: 'operator' });
+
     const backend = await startDashboard(plane, { serverTelemetry: async () => telemetry });
     closers.push(backend.close);
     const outer = await startOwnerCockpitV4({ backendUrl: backend.url });
@@ -58,9 +65,15 @@ describe('Owner Cockpit Vietnamese management visual contract', () => {
     expect(page).not.toContain('AI WORKFORCE — AI ĐANG LÀM GÌ');
     expect(page).not.toContain('🐯');
     expect(page).not.toContain('class="topnav"');
+    expect(page).not.toContain('>TQ</div>');
     expect(page).toContain('<svg class="ico"');
     expect(page).toContain('Coder AI');
+    expect(page).toContain('Lập trình &amp; tự động hóa');
+    expect(page).toContain('Kỹ thuật');
     expect(page).toContain('qwen2.5-coder:14b');
+    expect(page).toContain('Chờ anh quyết định</span><strong>1</strong>');
+    expect(page).toContain('Lỗi / đang vướng</span><strong>2</strong>');
+    expect(page).toContain('Cần anh quyết định hoặc phê duyệt để tiếp tục');
     expect(page).toContain('@media(max-width:760px)');
     expect(page).toContain('Segoe UI Variable');
   });
