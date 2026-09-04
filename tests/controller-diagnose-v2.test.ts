@@ -43,6 +43,13 @@ describe('Workforce Controller diagnostic V4 repair contract', () => {
     expect(source).not.toContain("'error': error");
   });
 
+  it('derives error_code only from the fixed classifier allowlist', () => {
+    expect(source).not.toContain("text.split(':', 1)[0]");
+    expect(source).toContain("classification = classify_text(text)");
+    expect(source).toContain("code = classification if classification != 'UNCLASSIFIED' else None");
+    expect(source).toContain("return {'error_class': classification, 'error_code': code, 'error_sha256': digest}");
+  });
+
   it('does not widen network, rotate credentials or redefine the Controller task', () => {
     expect(source).not.toContain('New-NetFirewallRule');
     expect(source).not.toContain('Set-NetFirewallRule');
