@@ -8,7 +8,9 @@ const execFileAsync = promisify(execFile);
 const CACHE_MS = 8_000;
 const JOB_MARKER = 'TIGERIQ_JOB_V1';
 const COMMAND_MARKER = 'TIGERIQ_COMMAND_V1';
+const COMMAND_PARENT_ID = 'INITIATIVE-PC01-AUTOMATION';
 type ProjectedStatus = 'running' | 'verified' | 'failed' | 'blocked';
+type ProjectionStatus = ProjectedStatus | 'approved';
 
 const LIFECYCLE = new Map<string, ProjectedStatus>([
   ['TIGERIQ_PC01_CLAIMED', 'running'],
@@ -48,6 +50,14 @@ type LifecycleEvent = {
   order: number;
 };
 
+type CommandChild = {
+  action: string;
+  status: ProjectionStatus;
+  timestamp: string;
+  evidence: EvidenceRecord[];
+  decisions: GateDecision[];
+};
+
 function section(body: string, heading: string): string {
   const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const match = body.match(new RegExp(`(?:^|\\n)##\\s+${escaped}\\s*\\n([\\s\\S]*?)(?=\\n##\\s+|$)`, 'i'));
@@ -68,6 +78,16 @@ function commandAction(body: string): string | null {
   } catch {
     return null;
   }
+}
+
+function commandStep(action: string): string {
+  const map: Record<string, string> = {
+    'system.status': 'Kiểm tra sức khỏe PC01',
+    'system.capabilities': 'Kiểm tra năng lực hệ thống',
+    'tigeriq.task.status': 'Đọc trạng thái công việc',
+    'ollama.status': 'Kiểm tra mô hình AI cục bộ',
+  };
+  return map[action] ?? `Kiểm tra kỹ thuật: ${action}`;
 }
 
 function issueNumberFromUrl(value: string): number | null {
@@ -93,6 +113,17 @@ function lifecycleEvents(comments: readonly GitHubComment[]): LifecycleEvent[] {
   return events.sort((a, b) => a.timestampMs - b.timestampMs || a.order - b.order);
 }
 
+function latestCommand(children: readonly CommandChild[]): CommandChild {
+  return [...children].sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp)).at(-1) ?? children[0]!;
+}
+
+function commandParentStatus(children: readonly CommandChild[]): ProjectionStatus {
+  if (children.some((child) => child.status === 'blocked')) return 'blocked';
+  if (children.some((child) => child.status === 'running')) return 'running';
+  if (children.some((child) => child.status === 'approved')) return 'approved';
+  return latestCommand(children).status;
+}
+
 export function projectGitHubWorkOrders(
   issues: readonly GitHubIssue[],
   comments: readonly GitHubComment[],
@@ -107,6 +138,7 @@ export function projectGitHubWorkOrders(
   }
 
   const projected = new Map<string, WorkOrderSnapshot>();
+  const commandChildren: CommandChild[] = [];
   for (const issue of issues) {
     const number = Number(issue.number ?? 0);
     const body = String(issue.body ?? '');
@@ -118,21 +150,52 @@ export function projectGitHubWorkOrders(
     const latest = events.at(-1) ?? null;
     if (issue.state === 'closed' && !latest) continue;
 
-    const explicitId = compact(section(body, 'Work Order'), 128);
-    const id = explicitId || `WO-GH-${number}`;
-    if (projected.has(id)) continue;
-
-    const instruction = compact(section(body, 'Instruction'), 8_000);
-    const action = commandAction(body);
-    const goal = instruction || (action ? `Lệnh kiểm tra PC01: ${action}` : compact(String(issue.title ?? `GitHub Work Order #${number}`), 8_000));
-    const priority = compact(section(body, 'Priority'), 32) || 'Bình thường';
-    const status = latest?.status ?? 'approved';
+    const status: ProjectionStatus = latest?.status ?? 'approved';
     const issueUrl = String(issue.html_url ?? issue.url ?? `https://github.com/newsdayads/tigeriq-ai-lab/issues/${number}`);
     const terminal = status === 'verified' || status === 'failed';
     const blocked = status === 'blocked';
     const evidenceId = `github-lifecycle-${number}`;
     const timestamp = latest?.timestamp || String(issue.updated_at ?? new Date(0).toISOString());
 
+    if (isCommand) {
+      const action = commandAction(body) ?? 'technical.command';
+      const evidence: EvidenceRecord[] = terminal ? [{
+        id: evidenceId,
+        workOrderId: COMMAND_PARENT_ID,
+        gate: 'DONE',
+        commitSha: `github-issue-${number}`,
+        command: `PC01 lifecycle marker ${latest?.marker ?? 'UNKNOWN'} / ${action}`,
+        exitCode: status === 'verified' ? 0 : 1,
+        status: status === 'verified' ? 'pass' : 'fail',
+        artifactUris: [issueUrl],
+        timestamp,
+      }] : [];
+      const decisions: GateDecision[] = terminal ? [{
+        gate: 'DONE',
+        status: status === 'verified' ? 'pass' : 'fail',
+        evaluatorId: 'pc01-lifecycle-projection',
+        evidenceIds: [evidenceId],
+        timestamp,
+        reason: `Projected from exact PC01 lifecycle marker ${latest?.marker ?? 'UNKNOWN'} for ${action}`,
+      }] : blocked ? [{
+        gate: 'REVIEW',
+        status: 'blocked',
+        evaluatorId: 'pc01-lifecycle-projection',
+        evidenceIds: [],
+        timestamp,
+        reason: `Projected from exact PC01 lifecycle marker ${latest?.marker ?? 'UNKNOWN'} for ${action}`,
+      }] : [];
+      commandChildren.push({ action, status, timestamp, evidence, decisions });
+      continue;
+    }
+
+    const explicitId = compact(section(body, 'Work Order'), 128);
+    const id = explicitId || `WO-GH-${number}`;
+    if (projected.has(id)) continue;
+
+    const instruction = compact(section(body, 'Instruction'), 8_000);
+    const goal = instruction || compact(String(issue.title ?? `GitHub Work Order #${number}`), 8_000);
+    const priority = compact(section(body, 'Priority'), 32) || 'Bình thường';
     const evidence: EvidenceRecord[] = terminal ? [{
       id: evidenceId,
       workOrderId: id,
@@ -144,7 +207,6 @@ export function projectGitHubWorkOrders(
       artifactUris: [issueUrl],
       timestamp,
     }] : [];
-
     const decisions: GateDecision[] = terminal ? [{
       gate: 'DONE',
       status: status === 'verified' ? 'pass' : 'fail',
@@ -166,7 +228,7 @@ export function projectGitHubWorkOrders(
         id,
         project: 'TigerIQ',
         goal,
-        scope: [isCommand ? 'PC01 deterministic command queue' : 'PC01 GitHub work queue'],
+        scope: ['PC01 GitHub work queue'],
         invariants: ['Evidence-first', 'No MAIN/Production without authorization', `Priority: ${priority}`],
         acceptanceCriteria: ['PC01 terminal lifecycle evidence is recorded'],
         status,
@@ -177,6 +239,29 @@ export function projectGitHubWorkOrders(
       audit: [],
     });
   }
+
+  if (commandChildren.length) {
+    const current = latestCommand(commandChildren);
+    const status = commandParentStatus(commandChildren);
+    const terminal = status === 'verified' || status === 'failed';
+    const blocked = status === 'blocked';
+    projected.set(COMMAND_PARENT_ID, {
+      order: {
+        id: COMMAND_PARENT_ID,
+        project: 'TigerIQ · Vận hành PC01',
+        goal: `Mục tiêu: TigerIQ tự vận hành có bằng chứng · Hạng mục: Vận hành PC01 · Bước hiện tại: ${commandStep(current.action)} · Mốc kế tiếp: Xác minh kết quả và tự chuyển bước`,
+        scope: ['Web executive projection', 'PC01 deterministic command queue'],
+        invariants: ['Evidence-first', 'Low-level commands are child evidence, not executive goals', 'No MAIN/Production without authorization'],
+        acceptanceCriteria: ['Low-level command issues do not appear as independent executive goals'],
+        status,
+      },
+      ...(status === 'running' || terminal || blocked ? { implementerId: 'pc01-worker' } : {}),
+      evidence: commandChildren.flatMap((child) => child.evidence),
+      decisions: commandChildren.flatMap((child) => child.decisions),
+      audit: [],
+    });
+  }
+
   return [...projected.values()];
 }
 
