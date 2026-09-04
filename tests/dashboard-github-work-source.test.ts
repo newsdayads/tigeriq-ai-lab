@@ -81,4 +81,24 @@ describe('GitHub Work Source projection', () => {
     expect(row?.order.status).toBe('running');
     expect(row?.evidence).toHaveLength(0);
   });
+
+  it('does not let stale closed nonterminal commands override the current executive step', () => {
+    const issues = [
+      { number: 270, state: 'closed', html_url: 'https://github.com/newsdayads/tigeriq-ai-lab/issues/270', updated_at: '2026-09-04T00:20:00Z', body: 'TIGERIQ_COMMAND_V1\n```json\n{"idempotency_key":"cmd-blocked-12345678","action":"ollama.status","args":{}}\n```' },
+      { number: 271, state: 'closed', html_url: 'https://github.com/newsdayads/tigeriq-ai-lab/issues/271', updated_at: '2026-09-04T00:21:00Z', body: 'TIGERIQ_COMMAND_V1\n```json\n{"idempotency_key":"cmd-current-12345678","action":"system.status","args":{}}\n```' },
+    ];
+    const comments = [
+      { issue_url: 'https://api.github.com/repos/newsdayads/tigeriq-ai-lab/issues/270', created_at: '2026-09-04T00:20:01Z', body: 'TIGERIQ_PC01_NEEDS_EXTERNAL_REVIEW' },
+      { issue_url: 'https://api.github.com/repos/newsdayads/tigeriq-ai-lab/issues/271', created_at: '2026-09-04T00:21:01Z', body: 'TIGERIQ_PC01_DONE' },
+    ];
+
+    const rows = projectGitHubWorkOrders(issues, comments);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.order.id).toBe('INITIATIVE-PC01-AUTOMATION');
+    expect(rows[0]?.order.status).toBe('verified');
+    expect(rows[0]?.order.goal).toContain('Bước hiện tại: Kiểm tra sức khỏe PC01');
+    expect(rows[0]?.evidence.map((item) => item.artifactUris?.[0])).toEqual([
+      'https://github.com/newsdayads/tigeriq-ai-lab/issues/271',
+    ]);
+  });
 });
