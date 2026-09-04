@@ -26,9 +26,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p .release/runtime
+          mkdir -p .release/runtime/scripts/pc-worker
           cp -R dist .release/runtime/dist
           cp package.json package-lock.json .release/runtime/
+          cp scripts/pc-worker/pc01-telemetry.ps1 .release/runtime/scripts/pc-worker/
+          cp scripts/pc-worker/repair-secure-worker-model-roles.ps1 .release/runtime/scripts/pc-worker/
+          test -s .release/runtime/scripts/pc-worker/pc01-telemetry.ps1
+          test -s .release/runtime/scripts/pc-worker/repair-secure-worker-model-roles.ps1
           (cd .release/runtime && zip -qr ../command-center.zip .)
           sha256sum .release/command-center.zip | awk '{print $1}' > .release/bundle.sha256
           node - <<'NODE'
@@ -41,6 +45,10 @@ jobs:
             bundle: 'command-center.zip',
             bundleSha256: digest,
             entry: 'dist/apps/dashboard/src/standalone.js',
+            runtimeAssets: [
+              'scripts/pc-worker/pc01-telemetry.ps1',
+              'scripts/pc-worker/repair-secure-worker-model-roles.ps1'
+            ],
             builtAt: new Date().toISOString(),
             deploymentModel: 'artifact-pull-atomic-switch'
           };
