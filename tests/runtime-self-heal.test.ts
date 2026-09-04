@@ -41,7 +41,7 @@ describe('PC01 runtime self-heal', () => {
     expect(state.result).toBe('READY');
   });
 
-  it('invokes only the reviewed repair script when reviewer/judge roles are still empty', async () => {
+  it('repairs roles without an inline AI canary that can be starved by the existing queue', async () => {
     const f = await fixture("REVIEWER_MODEL = os.getenv('TIGERIQ_REVIEWER_MODEL', '').strip()\nJUDGE_MODEL = os.getenv('TIGERIQ_JUDGE_MODEL', '').strip()");
     const calls: Array<{ file: string; args: string[]; timeout: number }> = [];
     const result = await selfHealPc01Runtime({ host: '100.97.23.87', repo: 'newsdayads/tigeriq-ai-lab', repoRoot: f.root, workerImpl: f.worker, statePath: f.state, run: async (file, args, timeout) => { calls.push({ file, args, timeout }); return { stdout: '[100%]\n{"status":"PASS"}', stderr: '' }; } });
@@ -51,5 +51,7 @@ describe('PC01 runtime self-heal', () => {
     expect(calls[0]?.args).toContain('-File');
     expect(calls[0]?.args.join(' ')).toContain('repair-secure-worker-model-roles.ps1');
     expect(calls[0]?.args).toContain('newsdayads/tigeriq-ai-lab');
+    expect(calls[0]?.args).toContain('-SkipCanary');
+    expect(calls[0]?.timeout).toBeLessThanOrEqual(3 * 60 * 1000);
   });
 });
