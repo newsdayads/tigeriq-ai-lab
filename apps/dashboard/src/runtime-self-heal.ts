@@ -80,8 +80,8 @@ export async function selfHealPc01Runtime(options: RuntimeSelfHealOptions): Prom
       await readFile(repairScript, 'utf8');
       const result = await run('powershell.exe', [
         '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', repairScript,
-        '-Repo', options.repo,
-      ], 15 * 60 * 1000);
+        '-Repo', options.repo, '-SkipCanary',
+      ], 3 * 60 * 1000);
       if (!result.stdout.includes('"status":"PASS"') && !result.stdout.includes('"status": "PASS"')) {
         throw new Error(`MODEL_ROLE_REPAIR_NO_PASS: ${clipped(result.stdout || result.stderr)}`);
       }

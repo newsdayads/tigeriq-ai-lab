@@ -7,6 +7,7 @@ import type { DashboardSource } from './server.js';
 const execFileAsync = promisify(execFile);
 const CACHE_MS = 8_000;
 const JOB_MARKER = 'TIGERIQ_JOB_V1';
+const COMMAND_MARKER = 'TIGERIQ_COMMAND_V1';
 type ProjectedStatus = 'running' | 'verified' | 'failed' | 'blocked';
 
 const LIFECYCLE = new Map<string, ProjectedStatus>([
@@ -57,6 +58,18 @@ function compact(value: string, max: number): string {
   return value.replace(/\s+/g, ' ').trim().slice(0, max);
 }
 
+function commandAction(body: string): string | null {
+  if (!body.includes(COMMAND_MARKER)) return null;
+  try {
+    const tail = body.split(COMMAND_MARKER, 2)[1]?.trim() ?? '';
+    const fenced = tail.startsWith('```') ? tail.replace(/^```(?:json)?\s*/i, '').replace(/```[\s\S]*$/m, '').trim() : tail;
+    const parsed = JSON.parse(fenced) as { action?: unknown };
+    return typeof parsed.action === 'string' ? parsed.action.slice(0, 128) : null;
+  } catch {
+    return null;
+  }
+}
+
 function issueNumberFromUrl(value: string): number | null {
   const match = value.match(/\/issues\/(\d+)$/);
   return match ? Number(match[1]) : null;
@@ -97,7 +110,9 @@ export function projectGitHubWorkOrders(
   for (const issue of issues) {
     const number = Number(issue.number ?? 0);
     const body = String(issue.body ?? '');
-    if (!number || issue.pull_request || !body.includes(JOB_MARKER)) continue;
+    const isJob = body.includes(JOB_MARKER);
+    const isCommand = body.includes(COMMAND_MARKER);
+    if (!number || issue.pull_request || (!isJob && !isCommand)) continue;
 
     const events = lifecycleEvents(commentsByIssue.get(number) ?? []);
     const latest = events.at(-1) ?? null;
@@ -108,7 +123,8 @@ export function projectGitHubWorkOrders(
     if (projected.has(id)) continue;
 
     const instruction = compact(section(body, 'Instruction'), 8_000);
-    const goal = instruction || compact(String(issue.title ?? `GitHub Work Order #${number}`), 8_000);
+    const action = commandAction(body);
+    const goal = instruction || (action ? `Lệnh kiểm tra PC01: ${action}` : compact(String(issue.title ?? `GitHub Work Order #${number}`), 8_000));
     const priority = compact(section(body, 'Priority'), 32) || 'Bình thường';
     const status = latest?.status ?? 'approved';
     const issueUrl = String(issue.html_url ?? issue.url ?? `https://github.com/newsdayads/tigeriq-ai-lab/issues/${number}`);
@@ -150,7 +166,7 @@ export function projectGitHubWorkOrders(
         id,
         project: 'TigerIQ',
         goal,
-        scope: ['PC01 GitHub work queue'],
+        scope: [isCommand ? 'PC01 deterministic command queue' : 'PC01 GitHub work queue'],
         invariants: ['Evidence-first', 'No MAIN/Production without authorization', `Priority: ${priority}`],
         acceptanceCriteria: ['PC01 terminal lifecycle evidence is recorded'],
         status,
