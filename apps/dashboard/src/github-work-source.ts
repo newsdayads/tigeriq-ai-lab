@@ -7,8 +7,9 @@ import type { DashboardSource } from './server.js';
 const execFileAsync = promisify(execFile);
 const CACHE_MS = 8_000;
 const JOB_MARKER = 'TIGERIQ_JOB_V1';
+type ProjectedStatus = 'running' | 'verified' | 'failed' | 'blocked';
 
-const LIFECYCLE = new Map<string, 'running' | 'verified' | 'failed'>([
+const LIFECYCLE = new Map<string, ProjectedStatus>([
   ['TIGERIQ_PC01_CLAIMED', 'running'],
   ['TIGERIQ_JOB_CLAIMED', 'running'],
   ['TIGERIQ_PC01_DONE', 'verified'],
@@ -17,6 +18,7 @@ const LIFECYCLE = new Map<string, 'running' | 'verified' | 'failed'>([
   ['TIGERIQ_JOB_RESULT', 'verified'],
   ['TIGERIQ_PC01_FAILED', 'failed'],
   ['TIGERIQ_JOB_FAILED', 'failed'],
+  ['TIGERIQ_PC01_NEEDS_EXTERNAL_REVIEW', 'blocked'],
 ]);
 
 type GitHubIssue = {
@@ -39,7 +41,7 @@ type GitHubComment = {
 
 type LifecycleEvent = {
   marker: string;
-  status: 'running' | 'verified' | 'failed';
+  status: ProjectedStatus;
   timestamp: string;
   timestampMs: number;
   order: number;
@@ -111,6 +113,7 @@ export function projectGitHubWorkOrders(
     const status = latest?.status ?? 'approved';
     const issueUrl = String(issue.html_url ?? issue.url ?? `https://github.com/newsdayads/tigeriq-ai-lab/issues/${number}`);
     const terminal = status === 'verified' || status === 'failed';
+    const blocked = status === 'blocked';
     const evidenceId = `github-lifecycle-${number}`;
     const timestamp = latest?.timestamp || String(issue.updated_at ?? new Date(0).toISOString());
 
@@ -133,6 +136,13 @@ export function projectGitHubWorkOrders(
       evidenceIds: [evidenceId],
       timestamp,
       reason: `Projected from exact PC01 lifecycle marker ${latest?.marker ?? 'UNKNOWN'}`,
+    }] : blocked ? [{
+      gate: 'REVIEW',
+      status: 'blocked',
+      evaluatorId: 'pc01-lifecycle-projection',
+      evidenceIds: [],
+      timestamp,
+      reason: `Projected from exact PC01 lifecycle marker ${latest?.marker ?? 'UNKNOWN'}`,
     }] : [];
 
     projected.set(id, {
@@ -145,7 +155,7 @@ export function projectGitHubWorkOrders(
         acceptanceCriteria: ['PC01 terminal lifecycle evidence is recorded'],
         status,
       },
-      ...(status === 'running' || terminal ? { implementerId: 'pc01-worker' } : {}),
+      ...(status === 'running' || terminal || blocked ? { implementerId: 'pc01-worker' } : {}),
       evidence,
       decisions,
       audit: [],
