@@ -11,18 +11,20 @@ Current architecture authority:
 - `TigerIQ Workforce Controller` = primary PC01 control authority.
 - `PC01 Secure Worker` = bounded background executor/command-mailbox worker.
 - `OpenClaw` = optional downstream AI/operations worker only; currently `TẠM GÁC` and not a P0 selection target.
-- NEW CHAT command `1`/`2` must read this file + #318/#319 + CENTRAL queue and must not resume the old OpenClaw benchmark/fallback lane unless a newer Owner decision reactivates it.
+- NEW CHAT command `1`/`2` must read this file + #318/#319 + CENTRAL #280 and must not resume the old OpenClaw benchmark/fallback lane unless a newer Owner decision reactivates it.
 
 ### Verified current evidence
 - Remote mailbox canaries #321/#323/#324: 3/3 consecutive PASS for `Vy/ChatGPT -> GitHub mailbox -> PC01 claim -> bounded action -> evidence -> auto-close`, without manual PowerShell/restart/port-check work by anh Sơn.
 - `TigerIQ Workforce Controller` Scheduled Task is enabled/running as `SYSTEM` with startup/repeating triggers.
 - `TigerIQ Worker` and `TigerIQ Worker Watchdog` were observed enabled but logon-only; boot-before-login self-recovery is not yet proven.
-- #329 `workforce.controller.status` was claimed by PC01 and proved listener `100.97.23.87:8790` with no wildcard/public listener, but HTTP status probe returned `404 Not Found`; Controller live health remains NOT PASS.
+- #329 `workforce.controller.status` proved listener `100.97.23.87:8790` with no wildcard/public listener, but HTTP status probe returned `404 Not Found`.
+- #330 is the canonical completed read-only Controller diagnostic: `diagnostic_version=3`; Controller entry + `pg` module + database/pgpass/ingress-token files exist and are readable; the expected runner exists, parses, and sets required runtime variables; task is Running as SYSTEM; self-heal result is `FAILED`; ensure-log error class is `DATABASE_URL_MISSING`; listener remains Tailscale-only.
+- #333 was closed as a duplicate diagnostic; do not re-create or re-run equivalent work without new evidence.
 - Physical reboot E2E is not authorized under normal command `2`; explicit Owner authorization is required before reboot.
 
 ### Immediate safe continuation
 1. Preserve single-worker/idempotency/resource-lock semantics around #318/#282.
-2. Resolve the Controller 404 via bounded deterministic diagnostics/fix on the existing off-MAIN recovery lane; do not duplicate an already claimed/in-flight command.
+2. Do not issue another blind Controller diagnostic: consume #330 evidence and continue only through the existing reviewed/reversible off-MAIN recovery/updater lane after exact freshness/ownership checks.
 3. Harden Worker/Watchdog boot persistence through reviewed/reversible off-MAIN work before live mutation.
 4. After Controller + Secure Worker path is stable, verify Executor -> independent Reviewer -> Judge and Web Control physical E2E.
 5. Keep physical reboot, credential/security boundary changes, MAIN/Production and paid services behind their required gates.
@@ -32,11 +34,14 @@ OpenClaw 2026.9.1 had a verified working online path using `openai/gpt-5.6-sol`,
 
 That lane is intentionally `TẠM GÁC` by the newer #318/#319 authority. Do not continue local fallback benchmarking, gateway-owner migration or Ollama/OpenClaw mutation under command `1`/`2` until a newer explicit Owner decision reactivates it.
 
-## P0 process/state continuity — issue #319
+## P0 process/state continuity — issues #319/#320
 - Chat is not authoritative state.
+- CENTRAL #280 now carries Workflow V2 command `1`/`2` semantics and the current safe execution queue.
 - Actionable Owner goals/fixes/decision changes must be reflected in GitHub/TigerIQ state/queue.
 - Work selection precedence for current operations: latest explicit Owner instruction -> Bootstrap contracts -> active parent initiative/CENTRAL queue/current issue evidence -> older issue titles/history.
-- Old P0-labelled issues such as #156/#161/#196/#282 are not automatically independent active P0s; treat them as dependencies/history unless the current parent queue/authority explicitly activates them.
+- #156/#161/#196 are superseded as independent P0 lanes; #282 is an active dependency only under #318.
+- #319 acceptance A/B/C/E has recorded evidence; D remains CHỜ three consecutive chat-switch consistency checks.
+- #320 Source V2 has command `2` continuation evidence; `vy` / `bc` / `đưa prompt làm việc` regressions remain CHỜ user-driven NEW CHAT checks.
 - Bootstrap V2 governs command semantics; stale dynamic text cannot override Workflow V2.
 
 ## Auto Worker — issue #306
