@@ -1,34 +1,39 @@
 # Current State
 
-Date: 2026-09-03
+Date: 2026-09-04
 
 TigerIQ AI Lab remains evidence-gated. MAIN/Production are unchanged; no automatic merge or production release is authorized.
 
-## Active priority — WO-060..064 PC01 Autonomy Completion Pack
+## Completed — WO-060..064 PC01 Autonomy Completion Pack
 
-Status: IMPLEMENTED — REPOSITORY/FINAL PHYSICAL GATES PENDING
+Status: DONE — PHYSICAL PC01 AUTONOMY E2E PASS
 
 Branch: `wo060/mission-decomposition-v1`
 Base: verified WO-059 Authorization Engine V1
 Work Order: `docs/work-orders/WO-060-064-PC01-AUTONOMY-COMPLETION.md`
+Physical evidence: `docs/evidence/WO-060-064-PC01-AUTONOMY-QUICK-FINAL-20260903T104820Z.json`
+Evidence commit: `fd42ade412fc4beded95ec19b0ab215d6796b847`
+Evidence-head CI: GitHub Actions run `33746442244` — Linux quality gate PASS, Windows build gate PASS.
 
-Implemented:
-- Mission Orchestrator V1 with natural-language mission decomposition through local `qwen3:8b` and strict JSON DAG validation.
-- AI-generated child plan safety: 2-6 tasks, acyclic dependencies, known routes, mission-scoped safe file paths, no generated git/main/production/network-write/delete/credential operations.
-- Acceptance mission graph with independent Analyst A + Analyst B, Builder, Reviewer and a RED authorization-held child.
-- Closed mission state loop derived from Planner runtime state: planning/running/waiting_authorization/done/failed/blocked_plan.
-- Existing WO-059 GREEN/YELLOW/RED policy remains the authorization boundary for every child Work Order.
-- New 24/7 Scheduled Task `TigerIQ Mission Orchestrator`.
-- New 24/7 Scheduled Task `TigerIQ Autonomy Supervisor` that checks/restarts Controller, PC01 Native Worker, Autonomous Planner and Mission Orchestrator and writes health state.
-- One consolidated installer and one final physical E2E script prepared.
+Verified on PC01:
+- One acceptance mission decomposed into separate Analyst A, Analyst B, Builder, Reviewer and RED-held child jobs.
+- Both analyst local-AI roles completed; Builder completed after both analysts; Reviewer completed after Builder according to the deterministic acceptance DAG.
+- Builder deliverable physically existed and contained the required `BUILDER_PASS` marker.
+- RED financial-class child remained `held_authorization`, received no executable authorization path, and created no blocked artifact.
+- Mission closed-loop state reached `waiting_authorization` rather than false DONE.
+- Controller/PostgreSQL/PC01 remained healthy and online.
+- Ollama `qwen3:8b` remained physically GPU-offloaded at 100% in the recorded run.
+- Autonomy Supervisor recovered to `overallOk=true` after runtime restoration.
+- Machine-readable physical evidence was committed and pushed to the feature branch.
+- MAIN/Production untouched; no financial action executed; no secret printed.
 
-Gate still required:
-- Linux typecheck/tests/build/safety contract PASS.
-- Windows typecheck/tests/build/PowerShell parser PASS.
-- One final physical PC01 E2E proving Mission → Decompose → Dispatch → Build → Review → Closed State → RED Hold → Supervisor with machine-readable evidence.
-
-Next action:
-Wait for consolidated CI. If PASS, run exactly one final PowerShell command on PC01. Do not claim final PC01 autonomy DONE before physical evidence exists.
+Operational result:
+- WO-060 Mission Decomposition: DONE.
+- WO-061 Reviewer / Verifier V1: DONE.
+- WO-062 Closed State Loop: DONE.
+- WO-063 Multi-agent Routing Baseline: DONE.
+- WO-064 24/7 Supervisor: DONE.
+- PC01 autonomous operating core acceptance scope is complete on the feature branch. Production release remains a separate Owner-authorized gate.
 
 ## Completed — WO-059 Authorization Engine V1
 
