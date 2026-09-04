@@ -158,6 +158,7 @@ export function projectGitHubWorkOrders(
     const timestamp = latest?.timestamp || String(issue.updated_at ?? new Date(0).toISOString());
 
     if (isCommand) {
+      if (issue.state === 'closed' && !terminal) continue;
       const action = commandAction(body) ?? 'technical.command';
       const evidence: EvidenceRecord[] = terminal ? [{
         id: evidenceId,
