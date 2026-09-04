@@ -1,93 +1,111 @@
 # Current State
 
-Date: 2026-09-04
+Date: 2026-09-05
+Status: repo-side mirror of the current dynamic authority. This file is not runtime proof and must not override fresher CENTRAL/Registry/exact-target evidence.
 
 TigerIQ AI Lab is being operated as a continuous distributed AI company. Tiger IQ Driver (`newsdayads/drivetrack`) remains isolated and unchanged.
 
-## P0 — PC01 OpenClaw runtime / 2026-09-04
-OpenClaw is currently an ACTIVE TigerIQ PC01 workstream. Detailed handoff/evidence: `docs/evidence/OPENCLAW-PC01-HANDOFF-2026-09-04.md`.
+## Authority / loading order
+For current execution state use:
+1. explicit current instruction from anh Sơn;
+2. Dynamic Command + AI Employee Registry #335;
+3. CENTRAL authoritative queue/router #280;
+4. exact current target/ownership/evidence issues;
+5. this file only as a repo-side mirror.
 
-Verified working state from the owner session:
-- OpenClaw version `2026.9.1`; local Control UI at `http://127.0.0.1:18789/`.
-- Gateway is intended to remain loopback-only; browser no-login flow was verified.
-- State/config dir: `D:\TigerIQ\OpenClaw`; workspace: `D:\TigerIQ-OpenClaw\workspace`.
-- Workspace skill `tigeriq-pc01-operator` is discovered/enabled.
-- TigerIQ-optimized `AGENTS.md` is installed; browser policy test confirms OpenClaw identifies itself as `PC01 Operations / Execution Worker`, not Chief of Staff, and respects protected PC01 services.
-- Current working model path is `openai/gpt-5.6-sol` with model-scoped `agentRuntime.id=openclaw`; browser E2E returned `TIGERIQ_OPENCLAW_PASS`.
-- Current fallback chain is empty. The working path is online and quota-dependent, so hybrid/offline resilience is NOT DONE.
+If this file becomes stale, fail closed to the fresher dynamic authority instead of inferring runtime state from repository text.
 
-Local-model root-cause evidence observed `qwen3:4b` loaded by Ollama at about 9.5 GB, 100% CPU, context 32768 on PC01 with Radeon RX 5500 XT 4 GB; OpenClaw timed out under this path. Do not reconfigure/restart shared Ollama merely to make OpenClaw pass. The next safe P0 is an isolated local-model benchmark, measuring GPU/Vulkan offload if any, latency/tokens-per-second, RAM/VRAM and stable context/model profile. Require three consecutive local PASS runs before enabling a local fallback.
+## Command Registry — current
+- `1` -> **Minh (NV01 — Thực thi trực tiếp)** / `OWNER_FOREGROUND` / enabled.
+- `2` -> **Khoa (NV02 — Vận hành tự động)** / `AUTONOMOUS_P0_FIRST` / enabled.
+- `3` -> **Huy (NV03 — AI PC01 / Kỹ sư Hệ thống Local)** / regression-only / disabled.
+- Unknown/disabled command -> `COMMAND_UNREGISTERED`.
 
-Gateway ownership remains a separate unresolved work item. Both a custom `TigerIQ OpenClaw Runtime` task and an official `OpenClaw Gateway` task have existed; ownership-normalization attempts did not produce a healthy official gateway and were rolled back. Do not rerun prior recovery scripts automatically and do not combine gateway-owner migration with model changes. Re-audit the currently working launcher before any mutation.
+Bootstrap 2.2 dynamic-command regression is complete. Ordinary command/employee mapping changes stay in the dynamic Registry and do not require Project Source replacement.
 
-Protected PC01 runtimes remain out of OpenClaw mutation scope unless explicitly authorized: PostgreSQL 5432; Command Center 8787; Workforce Controller 8790; Ollama 11434; Planner; Worker; Mission Orchestrator; Autonomy Supervisor; other AI runtimes already operating on PC01.
+## Current P0 ownership
+### #338 — Minh/NV01
+- Scope: PC01 Server / TigerIQ Control Plane / AI PC01 Web Control separation.
+- `OWNER_HOLD=true`.
+- Khoa/NV02 must SKIP this resource scope and must not create a second mutation owner.
 
-NEW CHAT continuation: command `1` or `2` must treat this OpenClaw item as ACTIVE P0, read this file plus the OpenClaw handoff, and continue without asking anh Sơn to restate the history.
+### #306 — Khoa/NV02 / Auto Worker
+Current corrective candidate: **V13.3.6 — Managed Window Layout Integrity**.
 
-## Current MAIN baseline
-- Repository: `newsdayads/tigeriq-ai-lab`.
-- Production Web Control: `https://tigeriq-ai-lab.vercel.app`.
-- MAIN before active WO-040 branch: `d01dcd2483d2f6b91c4c8282927e009e7416a18b` (WO-039 merge).
-- Canonical PC01 real deployment job remains issue #100. It has no claim/result evidence at this state point; do not create duplicates and do not infer PC01/Tailscale runtime state from that older repository checkpoint.
-- Vercel Hobby has the known daily deployment quota condition `api-deployments-free-per-day`; do not retry/spam deployments or pay/upgrade. Non-Vercel work continues.
-- Latest observed Production deployment remains behind MAIN; no promotion is claimed while the quota condition is active.
+Repo/library/static/mock evidence:
+- candidate artifact: `TIGERIQ_AUTO_WORKER_V13_3_6_MANAGED_WINDOW_LAYOUT_INTEGRITY_UPDATE.cmd`;
+- SHA-256: `af99de40ae75606e88454c5d2805db33c616976a1bb46e2c6029b9c3c21438ed`;
+- adaptive initial layout ~26% width × 60% height, clamp 340–520 × 480–760, right-anchored;
+- committed normal bounds persist through `chrome.windows.onBoundsChanged`;
+- maximize does not overwrite prior normal bounds;
+- unexpected-close recovery prefers `lastWindowBounds` for the same cycle/session;
+- Tiger icon is visible by default while the managed session is active and the detail taskbar opens/closes only when the icon is pressed;
+- static/package/mock checks are **ĐẠT**.
 
-## Operating model — P0
-Owner -> Chief of Staff -> Department Heads -> Team Leads -> multiple AI/device employees -> Independent Reviewer -> Judge/Gate -> Evidence/State -> Chief -> Owner.
+Physical Chrome acceptance is still **CHỜ**:
+- update/reload V13.3.6 on real Chrome;
+- run regression A–N;
+- verify small default managed window, visible Tiger icon, user resize/maximize integrity, recovery bounds and no legacy/full-width header.
 
-Operational rule: audit actual state -> select highest-value safe work -> execute -> independent review/judge -> record evidence/state -> immediately take the next safe work. Owner intervention is reserved for priority/limit/stop or an unavoidable human authorization/device gate.
+V13.3.5 and earlier are superseded for runtime acceptance. Do not create another version without a new physical/runtime finding or a real contract change.
 
-## Verified Workforce software
-WO-024 through WO-030 established:
-- organization hierarchy, Workforce/Node Registry and capability-aware scheduling;
-- Task Packet + Result/Evidence contracts, concurrency, idempotency, retry/reassignment, lease timeout and restart recovery;
-- durable PC01-oriented FileJournal state and hash-chain evidence boundary;
-- scoped node credentials with raw bearer tokens never persisted;
-- Android-compatible P-256/SHA256 pairing proof;
-- private Workforce Controller API for pairing, employee enrollment, heartbeat, task lease and result return;
-- buildable Android Worker with Android Keystore identity, foreground runtime, secure credential store and Accessibility bridge skeleton;
-- Farm Gateway adapter boundary around ADB/UiAutomator-style primitives;
-- simulator/CI proof of parallel workers and independent Reviewer/Judge.
+### #318 — PC01 self-operation
+Current architecture:
+- `TigerIQ Workforce Controller` = primary authority;
+- `PC01 Secure Worker` = bounded executor;
+- GitHub command mailbox = current remote bridge from Vy/ChatGPT to PC01;
+- OpenClaw = **TẠM GÁC** and is not the current P0 authority.
 
-WO-031 added the executive Workforce/Company Command Center with evidence-based progress. WO-032 added the Z Flip 7 pilot employee UI/profile and installable Android artifact. WO-034 added one-tap trusted Controller pairing, tailnet-scoped Controller URL policy, employee self-enrollment and periodic authenticated heartbeat. WO-035 made the executive Command Center the preferred installed-PWA entry.
+Verified evidence:
+- remote mailbox `Vy -> PC01 -> execute -> evidence`: **ĐẠT 3/3** via #321/#323/#324;
+- Workforce Controller: Running/Enabled/SYSTEM with `At system startup`; boot authority **ĐẠT at current config/runtime evidence level**;
+- Secure Worker + Watchdog remain logon-only; pre-login reboot autonomy is **CHƯA ĐẠT/CHƯA XÁC MINH**.
 
-WO-036 merged as `68fd2bedea380321c7d7ac77c0b7481fdda20e75`. It provides the single-action PC01 Workforce Controller deployment package and is software-gated `READY_FOR_PC01_TEST` only. Issue #100 is the single canonical physical execution job.
+P0 correctness #347 / Draft PR #348 exact `80544151b418346d3df38374534f0466cd39c43d`:
+- MIN_300 model-timeout clamp + marker V2;
+- SYSTEM-safe self-heal path without unsafe caller-principal dependency;
+- backup -> `py_compile` -> atomic replace -> restart -> verify -> rollback retained;
+- deterministic regressions included;
+- CI #988 **ĐẠT**;
+- technical review scope **ĐẠT**, but not genuinely independent approval;
+- integration and live-runtime acceptance remain gated.
 
-WO-037 merged as `793899a628be46d0d4e9292804ad674379b2a42e`. It establishes private stable signing paths, fail-closed Gradle signing configuration, keyless normal CI, disposable CI certificate-continuity proof, and a PC01 stable-key provisioning script. It does not prove the physical stable key exists.
+Physical reboot E2E remains an explicit Owner gate. Do not reboot PC01 automatically.
 
-WO-038 merged as `0d25210488bff58ee9902da203bb2b08697749cd`. It adds the fail-closed stable-signed Android Worker release bundle: private signing inputs only, `assembleRelease`, `apksigner` certificate verification against the pinned fingerprint, and redacted APK/source/certificate manifest output. It means `READY_FOR_STABLE_SIGNED_RELEASE_BUILD`, not physical build/install PASS.
+## Continuity / state hygiene — #319
+- Continuity acceptance A–E has evidence.
+- CENTRAL #280 and #306 are reconciled to V13.3.6.
+- PR #332 is a superseded historical V13.3.5 state mirror and must not be merged or used to lower the current candidate.
+- The previous default-branch `docs/CURRENT_STATE.md` snapshot was materially stale because it still treated OpenClaw as active P0 and contained older priority/Android/WO state.
+- Until a repo-side mirror is integrated through the proper gate, dynamic authority remains authoritative.
 
-WO-039 merged as `d01dcd2483d2f6b91c4c8282927e009e7416a18b`. It deterministically proves the generic EMP-001 Controller protocol in software: P-256 pairing proof, employee enrollment, authenticated heartbeat, bounded task enqueue/lease, structured result/evidence publication and completed status projection. It is simulator/repository evidence only and is not proof of real PC01, real-device pairing, stable-signed installation or Gemini execution.
+## Dynamic Registry / Source — #320/#334/#335
+- Bootstrap 2.2 is applied.
+- NEW CHAT command `1` and `2` regression: **ĐẠT**.
+- Command `3` enable/disable regression completed; current command `3` is disabled and must fail closed.
+- Registry/state changes inside the existing authority envelope do not require Project Source replacement.
 
-## First physical Android evidence — EMP-001
-A real Samsung Z Flip 7 has run TigerIQ Worker. Physical screenshot evidence observed in the owner session confirms only:
-- employee profile `EMP-001 / Research / Researcher / Gemini`;
-- Device identity `READY`;
-- Worker runtime `ACTIVE`;
-- Accessibility `ON`;
-- Controller pairing was `CHƯA GHÉP` at that evidence point.
+## Deferred / Owner-gated work — #343
+Highest-priority manual/authorization gates are collected at #343 so they do not stop autonomous safe work:
+1. #306 physical Chrome V13.3.6 update/reload + regression A–N + layout/icon acceptance.
+2. #318 physical reboot E2E only after explicit Owner authorization.
+3. #261/#322 physical Web E2E when dependencies are ready.
+4. Android/device interaction only after a fresh installed package/version/signer + exact candidate + Controller readiness audit.
+5. MAIN/Production/security/paid actions only with the applicable authorization.
 
-This does not prove Controller heartbeat, task execution or Gemini prompt/result automation.
+## Historical/deferred boundaries
+Do not select historical trackers as current execution targets only because their titles still contain P0 or old readiness markers.
+- #156/#161: historical PC01 bootstrap/review provenance only.
+- #160: deferred Android preflight reference; old physical markers do not authorize current device mutation.
+- #165/#167: historical Auto-Resume governance provenance; old NV04/NV05 identities are not active Registry employees.
+- #176: historical release-train planning reference.
+- #196/#282: historical PC01 recovery/foundation evidence; current PC01 authority is #318/#280.
+- #148 COMPANY-001: design-ready but deferred until current runtime acceptance re-activates it.
 
-## Active priority — WO-040
-Add a narrow fail-closed provider-policy boundary for the future `gemini-android-ui` adapter. The policy may return `READY_FOR_REAL_DEVICE_PROVIDER_TEST` only after evidence flags show a verified physical Controller, real device pairing, fresh heartbeat, stable-signed Worker continuity, Accessibility enabled, an already-authenticated provider session and explicit provider-automation authorization.
+## Safety boundary
+No autonomous MAIN/Production/release, paid/payment, credential/security/firewall widening, destructive/irreversible action, physical reboot/device mutation or secret exposure.
 
-The gate permits only bounded `research.prompt` tasks. It rejects unattended login/2FA, payment/billing, credential mutation and unsupported task kinds. WO-040 does not perform third-party UI actions and must never be reported as Gemini execution proof.
+When a current scope is blocked by physical/security/MAIN/external gates, command `2` continues with:
+`SKIP -> SCAN_NEXT_SAFE -> READ_ONLY_VERIFY -> STATE_HYGIENE -> REVIEW_PREP -> REGRESSION/BACKLOG`.
 
-## Physical/next gates
-When physical access resumes, the intended evidence sequence is:
-1. execute canonical #100 and require real private listener/status evidence from PC01;
-2. provision the stable Android signing identity once if absent;
-3. build the stable-signed Worker release through the WO-038 bundle;
-4. install/update the pilot device(s) and verify installed certificate/application continuity;
-5. pair EMP-001 to Controller and require live heartbeat/status evidence;
-6. lease one safe generic task -> return structured result/evidence -> independent review;
-7. only then evaluate the WO-040 provider-policy gate and, if eligible, test a narrowly scoped Gemini adapter under provider policy and real-device gates.
-
-## External/deferred boundaries
-- PC01/Tailscale live state must always be re-verified; repository software/CI is not runtime proof.
-- Vercel filesystem is stateless and is never durable Workforce storage.
-- Vercel AI Gateway billing/card and paid/provider credential activation are not authorized work items.
-- No provider credentials, owner credentials, signing secrets or private keys may enter source control.
-- Consumer AI app automation must remain provider-specific, narrowly scoped and enabled only where technically and contractually appropriate.
-- If one physical/login/2FA/billing path blocks, record the gate and continue another safe backlog item.
+Do not claim **ĐẠT/HOÀN TẤT** without applicable evidence.
