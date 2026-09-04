@@ -16,11 +16,13 @@ describe('PC01 Workforce Controller status contract repair', () => {
     expect(runtime).not.toContain('$health.migration');
   });
 
-  it('patches only the workforce_status function with guarded legacy-path matching', () => {
+  it('patches only the workforce_status function with longest-known legacy-path precedence', () => {
     expect(contract).toContain("$start=$text.IndexOf('def workforce_status():')");
     expect(contract).toContain('$next=$text.IndexOf("`ndef ",$start+1)');
     expect(contract).toContain("$legacyPaths=@('/api/v1/status','/api/status','/status')");
-    expect(contract).toContain("Fail 'STATUS_PATH_AMBIGUOUS'");
+    expect(contract).toContain('foreach($candidate in $legacyPaths)');
+    expect(contract).toContain("Fail 'STATUS_PATH_UNKNOWN'");
+    expect(contract).not.toContain("Fail 'STATUS_PATH_AMBIGUOUS'");
     expect(contract).toContain('& $python -m py_compile $tmp');
     expect(contract).toContain('ROLLBACK_OK');
   });
