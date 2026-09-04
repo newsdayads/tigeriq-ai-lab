@@ -1,11 +1,12 @@
 {
   "schema_version": "1.0",
   "registry_id": "TIGERIQ_AI_EMPLOYEE_REGISTRY",
-  "updated_at": "2026-09-04T21:31:00+07:00",
+  "updated_at": "2026-09-05T00:26:00+07:00",
   "source_issue": 335,
   "employees": {
-    "NV-EXEC-01": {
-      "employee_id": "NV-EXEC-01",
+    "NV01": {
+      "employee_id": "NV01",
+      "legacy_ids": ["NV-EXEC-01"],
       "name": "Minh",
       "role": "Thực thi trực tiếp",
       "capabilities": ["owner_foreground_execution", "goal_intake", "work_claim", "verify", "evidence", "state_update"],
@@ -19,10 +20,11 @@
       "runtime_binding": "chat_foreground",
       "active": true,
       "command_aliases": [1],
-      "reporting_line": "Chief of Staff / Owner"
+      "reporting_line": "Vy (Trợ lý)"
     },
-    "NV-OPS-01": {
-      "employee_id": "NV-OPS-01",
+    "NV02": {
+      "employee_id": "NV02",
+      "legacy_ids": ["NV-OPS-01"],
       "name": "Khoa",
       "role": "Vận hành tự động",
       "capabilities": ["authoritative_queue_execution", "resource_lock_check", "idempotent_resume", "bounded_recovery", "verify", "evidence", "state_update"],
@@ -36,7 +38,25 @@
       "runtime_binding": "auto_worker",
       "active": true,
       "command_aliases": [2],
-      "reporting_line": "Chief of Staff / Owner"
+      "reporting_line": "Vy (Trợ lý)"
+    },
+    "NV03": {
+      "employee_id": "NV03",
+      "legacy_ids": ["NV-SYS-01"],
+      "name": "Huy",
+      "role": "AI PC01 / Kỹ sư Hệ thống Local",
+      "capabilities": ["system_diagnostics", "log_analysis", "root_cause_analysis", "code_config_review", "local_batch_inference", "pc01_triage", "bounded_executor_reviewer_judge_support"],
+      "max_authority_envelope": {
+        "main_production": false,
+        "paid_financial_commitment": false,
+        "credential_security_boundary_change": false,
+        "irreversible_action": false,
+        "physical_reboot": false
+      },
+      "runtime_binding": "pc01-local",
+      "active": true,
+      "command_aliases": [],
+      "reporting_line": "Vy (Trợ lý)"
     }
   }
 }
