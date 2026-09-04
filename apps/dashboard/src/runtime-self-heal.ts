@@ -11,7 +11,7 @@ export type RuntimeSelfHealState = {
   workerTask?: string;
   modelRoles?: 'READY' | 'REPAIRED' | 'UNKNOWN';
   queueResilience?: 'READY' | 'REPAIRED' | 'UNKNOWN';
-  controllerDiagnose?: 'READY' | 'UNKNOWN';
+  controllerDiagnose?: 'READY' | 'REPAIRED' | 'UNKNOWN';
   repairScript?: string;
   queueRepairScript?: string;
   controllerDiagnoseRepairScript?: string;
@@ -89,6 +89,7 @@ export async function selfHealPc01Runtime(options: RuntimeSelfHealOptions): Prom
 
     let modelRoles: 'READY' | 'REPAIRED' = readyRoles ? 'READY' : 'REPAIRED';
     let queueResilience: 'READY' | 'REPAIRED' = workerText.includes(QUEUE_RESILIENCE_MARKER) ? 'READY' : 'REPAIRED';
+    let controllerDiagnose: 'READY' | 'REPAIRED' = 'READY';
     let repaired = false;
 
     if (oldRoles) {
@@ -128,13 +129,16 @@ export async function selfHealPc01Runtime(options: RuntimeSelfHealOptions): Prom
     if (!diagnoseRepair.stdout.includes('"status":"PASS"') && !diagnoseRepair.stdout.includes('"status": "PASS"')) {
       throw new Error(`CONTROLLER_DIAGNOSE_REPAIR_NO_PASS: ${clipped(diagnoseRepair.stdout || diagnoseRepair.stderr)}`);
     }
-    if (/"patched"\s*:\s*true/i.test(diagnoseRepair.stdout)) repaired = true;
+    if (/"patched"\s*:\s*true/i.test(diagnoseRepair.stdout)) {
+      repaired = true;
+      controllerDiagnose = 'REPAIRED';
+    }
 
     if (!hasReadyRoles(workerText)) throw new Error('ROLE_PATCH_NOT_PERSISTED');
 
     if (repaired) {
       const state: RuntimeSelfHealState = {
-        result: 'REPAIRED', updatedAt: timestamp(), workerTask: 'Running', modelRoles, queueResilience, controllerDiagnose: 'READY', repairScript, queueRepairScript, controllerDiagnoseRepairScript,
+        result: 'REPAIRED', updatedAt: timestamp(), workerTask: 'Running', modelRoles, queueResilience, controllerDiagnose, repairScript, queueRepairScript, controllerDiagnoseRepairScript,
       };
       await save(statePath, state);
       return state;
