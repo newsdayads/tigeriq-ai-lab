@@ -72,9 +72,10 @@ def workforce_diagnose():
 
     def error_meta(error):
         text = str(error or '')
-        code = text.split(':', 1)[0].strip()[:120] if text else None
+        classification = classify_text(text)
+        code = classification if classification != 'UNCLASSIFIED' else None
         digest = hashlib.sha256(text.encode('utf-8', errors='replace')).hexdigest() if text else None
-        return {'error_class': classify_text(text), 'error_code': code, 'error_sha256': digest}
+        return {'error_class': classification, 'error_code': code, 'error_sha256': digest}
 
     def classify(path):
         if not path.exists():
