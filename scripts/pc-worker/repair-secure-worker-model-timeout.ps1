@@ -6,23 +6,17 @@ $workerDir = 'F:\TigerIQ\Worker'
 $workerImpl = Join-Path $workerDir 'worker_impl.py'
 $workerLauncher = Join-Path $workerDir 'worker.py'
 $workerTask = 'TigerIQ Worker'
-$marker = '# TIGERIQ_MODEL_TIMEOUT_300_V1'
-$legacy = "MODEL_TIMEOUT = int(os.getenv('TIGERIQ_MODEL_TIMEOUT', '90'))"
-$desired = "MODEL_TIMEOUT = int(os.getenv('TIGERIQ_MODEL_TIMEOUT', '300'))"
-$backupDir = Join-Path $workerDir ("backup\model-timeout-300-{0}" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
+$marker = '# TIGERIQ_MODEL_TIMEOUT_MIN300_V2'
+$oldMarker = '# TIGERIQ_MODEL_TIMEOUT_300_V1'
+$legacy90 = "MODEL_TIMEOUT = int(os.getenv('TIGERIQ_MODEL_TIMEOUT', '90'))"
+$plain300 = "MODEL_TIMEOUT = int(os.getenv('TIGERIQ_MODEL_TIMEOUT', '300'))"
+$desired = "MODEL_TIMEOUT = max(300, int(os.getenv('TIGERIQ_MODEL_TIMEOUT', '300')))"
+$backupDir = Join-Path $workerDir ("backup\model-timeout-min300-{0}" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
 $backup = Join-Path $backupDir 'worker_impl.py'
 $patched = $false
 
 function Fail([string]$Code,[string]$Message) { throw "$Code`: $Message" }
-function Get-TimeoutOverride([string]$Scope) {
-  $raw = [Environment]::GetEnvironmentVariable('TIGERIQ_MODEL_TIMEOUT',$Scope)
-  if([string]::IsNullOrWhiteSpace($raw)){ return $null }
-  $parsed = 0
-  if(-not [int]::TryParse($raw,[ref]$parsed)){ Fail "TIMEOUT_OVERRIDE_INVALID_$($Scope.ToUpperInvariant())" "TIGERIQ_MODEL_TIMEOUT in $Scope scope is not an integer." }
-  if($parsed -lt 300){ Fail "TIMEOUT_OVERRIDE_TOO_LOW_$($Scope.ToUpperInvariant())" "TIGERIQ_MODEL_TIMEOUT in $Scope scope is below reviewed minimum 300 seconds." }
-  return $parsed
-}
-function Assert-EffectiveTimeoutContract($Task) {
+function Assert-WorkerTaskContract($Task) {
   if(-not $Task.Actions -or $Task.Actions.Count -ne 1){ Fail 'WORKER_TASK_ACTION_COUNT' 'TigerIQ Worker must have exactly one reviewed action.' }
   $action = $Task.Actions[0]
   $python = [string]$action.Execute
@@ -33,23 +27,7 @@ function Assert-EffectiveTimeoutContract($Task) {
   if(-not [string]::Equals($normalizedArgs,$workerLauncher,[StringComparison]::OrdinalIgnoreCase)){
     Fail 'WORKER_TASK_LAUNCHER_UNEXPECTED' 'Task must execute the reviewed F:\TigerIQ\Worker\worker.py launcher directly.'
   }
-
-  $principal = [string]$Task.Principal.UserId
-  $current = [Security.Principal.WindowsIdentity]::GetCurrent().Name
-  $principalLeaf = ($principal -split '\\')[-1]
-  $currentLeaf = ($current -split '\\')[-1]
-  if(-not $principalLeaf -or -not [string]::Equals($principalLeaf,$currentLeaf,[StringComparison]::OrdinalIgnoreCase)){
-    Fail 'WORKER_PRINCIPAL_CONTEXT_MISMATCH' 'Repair must run under the same Windows user principal as TigerIQ Worker before user-scoped environment can be trusted.'
-  }
-
-  $processOverride = Get-TimeoutOverride 'Process'
-  $userOverride = Get-TimeoutOverride 'User'
-  $machineOverride = Get-TimeoutOverride 'Machine'
-  return [ordered]@{
-    process = $processOverride
-    user = $userOverride
-    machine = $machineOverride
-  }
+  return $python
 }
 function Restart-Worker {
   Stop-ScheduledTask -TaskName $workerTask -ErrorAction SilentlyContinue
@@ -70,39 +48,39 @@ try {
   if(-not (Test-Path -LiteralPath $workerImpl)){ Fail 'WORKER_IMPL_MISSING' $workerImpl }
   if(-not (Test-Path -LiteralPath $workerLauncher)){ Fail 'WORKER_LAUNCHER_MISSING' $workerLauncher }
   $task = Get-ScheduledTask -TaskName $workerTask -ErrorAction Stop
-  $python = [string]$task.Actions[0].Execute
-  $effectiveOverrides = Assert-EffectiveTimeoutContract $task
+  $python = Assert-WorkerTaskContract $task
 
   $text = [IO.File]::ReadAllText($workerImpl).Replace("`r`n","`n")
   if($text -notlike '*TIGERIQ PC01 SECURE WORKER V3 ONLINE*'){ Fail 'UNEXPECTED_WORKER_IMPL' 'Secure Worker V3 marker missing.' }
 
   if($text.Contains($marker)){
-    if(-not $text.Contains($desired)){ Fail 'TIMEOUT_MARKER_INCONSISTENT' 'Timeout marker exists without reviewed 300 second default.' }
-    if($text.Contains($legacy)){ Fail 'TIMEOUT_LEGACY_STILL_PRESENT' 'Legacy 90 second default remains beside timeout marker.' }
+    if(-not $text.Contains($desired)){ Fail 'TIMEOUT_MARKER_INCONSISTENT' 'Minimum-timeout marker exists without reviewed clamp.' }
+    if($text.Contains($legacy90) -or $text.Contains($plain300)){ Fail 'TIMEOUT_LEGACY_STILL_PRESENT' 'Legacy unclamped timeout assignment remains beside minimum-timeout marker.' }
     if($task.State -ne 'Running'){
       Start-ScheduledTask -TaskName $workerTask -ErrorAction Stop
       Start-Sleep -Seconds 2
       $task = Get-ScheduledTask -TaskName $workerTask -ErrorAction Stop
     }
     if($task.State -ne 'Running'){ Fail 'WORKER_NOT_RUNNING' ([string]$task.State) }
-    [ordered]@{ status='PASS'; modelTimeout='READY'; seconds=300; effectiveOverrides=$effectiveOverrides; workerTask=$task.State.ToString(); patched=$false; backup=$null } | ConvertTo-Json -Compress -Depth 5
+    [ordered]@{ status='PASS'; modelTimeout='READY'; secondsMin=300; policy='MIN_300_CLAMP'; workerTask=$task.State.ToString(); patched=$false; backup=$null } | ConvertTo-Json -Compress
     exit 0
   }
 
   Write-Host '[30%] XAC MINH LAYOUT' -ForegroundColor Cyan
-  $hasLegacy = $text.Contains($legacy)
+  $has90 = $text.Contains($legacy90)
+  $hasPlain300 = $text.Contains($plain300)
   $hasDesired = $text.Contains($desired)
-  if($hasLegacy -and $hasDesired){ Fail 'AMBIGUOUS_TIMEOUT_LAYOUT' 'Both legacy and desired timeout defaults are present.' }
-  if(-not $hasLegacy -and -not $hasDesired){ Fail 'WORKER_TIMEOUT_LAYOUT_CHANGED' 'Reviewed MODEL_TIMEOUT anchor not found.' }
+  $anchorCount = @($has90,$hasPlain300,$hasDesired | Where-Object { $_ }).Count
+  if($anchorCount -ne 1){ Fail 'WORKER_TIMEOUT_LAYOUT_CHANGED' 'Expected exactly one reviewed MODEL_TIMEOUT anchor.' }
+  if($hasDesired -and -not $text.Contains($marker)){ Fail 'TIMEOUT_CLAMP_MARKER_MISSING' 'Reviewed clamp exists without V2 marker.' }
 
   Write-Host '[45%] BACKUP + PATCH' -ForegroundColor Cyan
   New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
   Copy-Item -LiteralPath $workerImpl -Destination $backup -Force
-  if($hasLegacy){
-    $text = $text.Replace($legacy,"$marker`n$desired")
-  } else {
-    $text = $text.Replace($desired,"$marker`n$desired")
-  }
+  $text = $text.Replace("$oldMarker`n",'').Replace("$oldMarker`r`n",'')
+  if($has90){ $text = $text.Replace($legacy90,"$marker`n$desired") }
+  elseif($hasPlain300){ $text = $text.Replace($plain300,"$marker`n$desired") }
+  else { $text = $text.Replace($desired,"$marker`n$desired") }
   $tmp = "$workerImpl.new"
   [IO.File]::WriteAllText($tmp,$text,(New-Object Text.UTF8Encoding($false)))
 
@@ -117,15 +95,15 @@ try {
 
   Write-Host '[90%] VERIFY PATCH + TASK' -ForegroundColor Cyan
   $after = [IO.File]::ReadAllText($workerImpl)
-  if(-not $after.Contains($marker)){ Fail 'TIMEOUT_PATCH_NOT_PERSISTED' 'Timeout repair marker missing after restart.' }
-  if(-not $after.Contains($desired)){ Fail 'TIMEOUT_300_NOT_PERSISTED' 'Reviewed 300 second default missing after restart.' }
-  if($after.Contains($legacy)){ Fail 'TIMEOUT_90_STILL_PRESENT' 'Legacy 90 second default remains after repair.' }
+  if(-not $after.Contains($marker)){ Fail 'TIMEOUT_PATCH_NOT_PERSISTED' 'Minimum-timeout repair marker missing after restart.' }
+  if(-not $after.Contains($desired)){ Fail 'TIMEOUT_MIN300_NOT_PERSISTED' 'Reviewed minimum-300 clamp missing after restart.' }
+  if($after.Contains($legacy90) -or $after.Contains($plain300)){ Fail 'TIMEOUT_UNCLAMPED_STILL_PRESENT' 'Unclamped timeout assignment remains after repair.' }
   $task = Get-ScheduledTask -TaskName $workerTask -ErrorAction Stop
-  $effectiveOverrides = Assert-EffectiveTimeoutContract $task
+  [void](Assert-WorkerTaskContract $task)
   if($task.State -ne 'Running'){ Fail 'WORKER_NOT_RUNNING_AFTER_REPAIR' ([string]$task.State) }
 
   Write-Host '[100%] MODEL TIMEOUT READY' -ForegroundColor Green
-  [ordered]@{ status='PASS'; modelTimeout='REPAIRED'; seconds=300; effectiveOverrides=$effectiveOverrides; workerTask=$task.State.ToString(); patched=$patched; backup=$backup } | ConvertTo-Json -Compress -Depth 5
+  [ordered]@{ status='PASS'; modelTimeout='REPAIRED'; secondsMin=300; policy='MIN_300_CLAMP'; workerTask=$task.State.ToString(); patched=$patched; backup=$backup } | ConvertTo-Json -Compress
   exit 0
 }
 catch {
