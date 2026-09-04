@@ -6,7 +6,8 @@ $control='F:\TigerIQ\Worker\control_plane_v2.py'
 $task='TigerIQ Worker'
 $markerV1='# TIGERIQ_CONTROLLER_DIAGNOSE_V1'
 $markerV2='# TIGERIQ_CONTROLLER_DIAGNOSE_V2'
-$backupDir=Join-Path 'F:\TigerIQ\Worker\backup' ("controller-diagnose-v2-{0}" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
+$markerV3='# TIGERIQ_CONTROLLER_DIAGNOSE_V3'
+$backupDir=Join-Path 'F:\TigerIQ\Worker\backup' ("controller-diagnose-v3-{0}" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
 $backup=Join-Path $backupDir 'control_plane_v2.py'
 $patched=$false
 
@@ -28,6 +29,7 @@ def workforce_diagnose():
     entry = WORKSPACE / 'dist' / 'apps' / 'workforce-controller' / 'src' / 'standalone.js'
     db_url_file = Path(r'F:\TigerIQ\Secrets\workforce-controller-v1.database-url')
     pgpass_file = Path(r'F:\TigerIQ\Secrets\workforce-controller-v1.pgpass')
+    ingress_token_file = Path(r'F:\TigerIQ\Secrets\pc01-primary-node.ingress-token')
     runner = Path(r'F:\TigerIQ\Runtime\workforce-controller-v1\run-workforce-controller-v1.ps1')
     scheduled_log = Path(r'F:\TigerIQ\Logs\workforce-controller-v1.log')
     ensure_log = WORKER_DIR / 'workforce-controller.log'
@@ -39,12 +41,15 @@ def workforce_diagnose():
         classes = (
             ('PASSWORD_AUTH_FAILED', 'password authentication failed'),
             ('DATABASE_URL_MISSING', 'tigeriq_database_url is required'),
+            ('INGRESS_TOKEN_MISSING', 'ingress token'),
             ('MODULE_NOT_FOUND', 'cannot find module'),
             ('ERR_MODULE_NOT_FOUND', 'err_module_not_found'),
             ('ECONNREFUSED', 'econnrefused'),
             ('CONNECTION_REFUSED', 'connection refused'),
             ('PGPASS_PERMISSION', 'password file'),
             ('ACCESS_DENIED', 'access is denied'),
+            ('PATH_NOT_FOUND', 'cannot find path'),
+            ('FILE_NOT_FOUND', 'could not find file'),
             ('CONTROLLER_LISTENER_NOT_READY', 'controller_listener_not_ready'),
             ('CONTROLLER_HTTP_UNHEALTHY', 'controller_http_unhealthy'),
             ('PG_IMPORT_FAILED', 'pg_import_failed'),
@@ -83,6 +88,7 @@ def workforce_diagnose():
                 'sets_expected_host': "TIGERIQ_WORKFORCE_HOST" in text and '100.97.23.87' in text,
                 'sets_expected_port': "TIGERIQ_WORKFORCE_PORT" in text and '8790' in text,
                 'sets_pgpassfile': 'PGPASSFILE' in text,
+                'sets_ingress_token': 'TIGERIQ_INGRESS_TOKEN' in text and 'pc01-primary-node.ingress-token' in text,
                 'redirects_controller_log': 'workforce-controller-v1.log' in text,
             }
         except Exception as exc:
@@ -92,6 +98,8 @@ def workforce_diagnose():
         result = _run(['schtasks', '/Query', '/TN', 'TigerIQ Workforce Controller', '/FO', 'LIST', '/V'], timeout=20, cwd=WORKER_DIR)
         status = None
         last_result = None
+        run_as = None
+        task_to_run = None
         if result.get('returncode') == 0:
             for raw in result.get('stdout', '').splitlines():
                 line = raw.strip()
@@ -100,7 +108,17 @@ def workforce_diagnose():
                     status = line.split(':', 1)[1].strip()
                 if lowered.startswith('last result:') and last_result is None:
                     last_result = line.split(':', 1)[1].strip()
-        return {'query_ok': result.get('returncode') == 0, 'status': status, 'last_result': last_result}
+                if lowered.startswith('run as user:') and run_as is None:
+                    run_as = line.split(':', 1)[1].strip()
+                if lowered.startswith('task to run:') and task_to_run is None:
+                    task_to_run = line.split(':', 1)[1].strip()
+        return {
+            'query_ok': result.get('returncode') == 0,
+            'status': status,
+            'last_result': last_result,
+            'run_as_system': bool(run_as and run_as.upper() in ('SYSTEM', 'NT AUTHORITY\\SYSTEM')),
+            'task_uses_expected_runner': bool(task_to_run and 'run-workforce-controller-v1.ps1' in task_to_run),
+        }
 
     def self_heal_meta():
         if not self_heal_state.exists():
@@ -120,7 +138,7 @@ def workforce_diagnose():
     return {
         'ok': True,
         'action': 'workforce.controller.diagnose',
-        'diagnostic_version': 2,
+        'diagnostic_version': 3,
         'workspace': str(WORKSPACE),
         'entry_exists': entry.exists(),
         'pg_module_exists': pg_package.exists(),
@@ -128,8 +146,11 @@ def workforce_diagnose():
         'database_url_readable_by_worker': db_url_file.exists() and os.access(db_url_file, os.R_OK),
         'pgpass_file_exists': pgpass_file.exists(),
         'pgpass_readable_by_worker': pgpass_file.exists() and os.access(pgpass_file, os.R_OK),
+        'ingress_token_file_exists': ingress_token_file.exists(),
+        'ingress_token_readable_by_worker': ingress_token_file.exists() and os.access(ingress_token_file, os.R_OK),
         'worker_env_database_url_present': bool(os.environ.get('TIGERIQ_DATABASE_URL')),
         'worker_env_pgpassfile_present': bool(os.environ.get('PGPASSFILE')),
+        'worker_env_ingress_token_present': bool(os.environ.get('TIGERIQ_INGRESS_TOKEN')),
         'runner': runner_meta(),
         'task': task_meta(),
         'scheduled_log': classify(scheduled_log),
@@ -159,9 +180,9 @@ try {
   $python=[string]$t.Actions[0].Execute
   if(-not $python -or -not (Test-Path -LiteralPath $python)){ Fail 'PYTHON_MISSING' $python }
   $text=[IO.File]::ReadAllText($control).Replace("`r`n","`n")
-  if($text.Contains($markerV2)){
+  if($text.Contains($markerV3)){
     if($t.State -ne 'Running'){ Start-ScheduledTask -TaskName $task -ErrorAction Stop; Start-Sleep 2 }
-    [ordered]@{status='PASS';diagnose='READY';version=2;patched=$false}|ConvertTo-Json -Compress
+    [ordered]@{status='PASS';diagnose='READY';version=3;patched=$false}|ConvertTo-Json -Compress
     exit 0
   }
 
@@ -173,18 +194,18 @@ try {
   New-Item -ItemType Directory -Force -Path $backupDir|Out-Null
   Copy-Item -LiteralPath $control -Destination $backup -Force
 
-  if($text.Contains($markerV1)){
+  if($text.Contains($markerV1) -or $text.Contains($markerV2)){
     $start=$text.IndexOf('def workforce_diagnose():')
     $finish=$text.IndexOf('def workforce_build():',$start)
-    if($start -lt 0 -or $finish -le $start){ Fail 'V1_LAYOUT_CHANGED' 'Could not locate existing diagnose function boundaries.' }
-    if(-not $text.Contains("if action == 'workforce.controller.diagnose':")){ Fail 'V1_ACTION_MISSING' 'Existing diagnose action missing.' }
+    if($start -lt 0 -or $finish -le $start){ Fail 'OLD_LAYOUT_CHANGED' 'Could not locate existing diagnose function boundaries.' }
+    if(-not $text.Contains("if action == 'workforce.controller.diagnose':")){ Fail 'OLD_ACTION_MISSING' 'Existing diagnose action missing.' }
     $text=$text.Substring(0,$start)+$diagnose+$text.Substring($finish)
-    $text=$text.Replace($markerV1,$markerV2)
+    $text=$text.Replace($markerV1,$markerV3).Replace($markerV2,$markerV3)
   } else {
     if(-not $text.Contains('WORKFORCE_PORT = 8790')){ Fail 'CONTROL_LAYOUT_CHANGED' 'WORKFORCE_PORT anchor missing.' }
     if(-not $text.Contains($functionAnchor)){ Fail 'CONTROL_FUNCTION_ANCHOR_CHANGED' 'workforce_build anchor missing.' }
     if(-not $text.Contains($actionAnchor)){ Fail 'CONTROL_ACTION_ANCHOR_CHANGED' 'workforce build action anchor missing.' }
-    $text=$text.Replace('WORKFORCE_PORT = 8790',"WORKFORCE_PORT = 8790`n$markerV2")
+    $text=$text.Replace('WORKFORCE_PORT = 8790',"WORKFORCE_PORT = 8790`n$markerV3")
     $text=$text.Replace($functionAnchor,$diagnose+$functionAnchor)
     $text=$text.Replace($actionAnchor,$actionInsert)
   }
@@ -197,8 +218,8 @@ try {
   $patched=$true
   Restart-Worker
   $after=[IO.File]::ReadAllText($control)
-  if(-not $after.Contains($markerV2) -or -not $after.Contains('diagnostic_version') -or -not $after.Contains("workforce.controller.diagnose")){ Fail 'PATCH_NOT_PERSISTED' 'Diagnostic V2 action missing after restart.' }
-  [ordered]@{status='PASS';diagnose='REPAIRED';version=2;patched=$true;backup=$backup}|ConvertTo-Json -Compress
+  if(-not $after.Contains($markerV3) -or -not $after.Contains("'diagnostic_version': 3") -or -not $after.Contains("'ingress_token_file_exists'") -or -not $after.Contains("workforce.controller.diagnose")){ Fail 'PATCH_NOT_PERSISTED' 'Diagnostic V3 action missing after restart.' }
+  [ordered]@{status='PASS';diagnose='REPAIRED';version=3;patched=$true;backup=$backup}|ConvertTo-Json -Compress
   exit 0
 } catch {
   $msg=$_.Exception.Message
