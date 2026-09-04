@@ -71,7 +71,7 @@ describe('PC01 runtime self-heal', () => {
     expect(result.result).toBe('REPAIRED');
     expect(result.modelRoles).toBe('READY');
     expect(result.queueResilience).toBe('REPAIRED');
-    expect(result.controllerDiagnose).toBe('READY');
+    expect(result.controllerDiagnose).toBe('REPAIRED');
     expect(calls).toHaveLength(2);
     expect(calls[0]?.args.join(' ')).toContain('repair-secure-worker-queue-resilience.ps1');
     expect(calls[1]?.args.join(' ')).toContain('repair-control-plane-controller-diagnose.ps1');
@@ -94,7 +94,7 @@ describe('PC01 runtime self-heal', () => {
     expect(result.result).toBe('REPAIRED');
     expect(result.modelRoles).toBe('REPAIRED');
     expect(result.queueResilience).toBe('REPAIRED');
-    expect(result.controllerDiagnose).toBe('READY');
+    expect(result.controllerDiagnose).toBe('REPAIRED');
     expect(calls).toHaveLength(3);
     expect(calls[0]?.args.join(' ')).toContain('repair-secure-worker-model-roles.ps1');
     expect(calls[0]?.args).toContain('-SkipCanary');
