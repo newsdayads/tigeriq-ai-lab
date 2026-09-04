@@ -119,7 +119,7 @@ export function projectGitHubWorkOrders(
     if (issue.state === 'closed' && !latest) continue;
 
     const explicitId = compact(section(body, 'Work Order'), 128);
-    const id = explicitId || `${isCommand ? 'CMD' : 'WO'}-GH-${number}`;
+    const id = explicitId || `WO-GH-${number}`;
     if (projected.has(id)) continue;
 
     const instruction = compact(section(body, 'Instruction'), 8_000);
