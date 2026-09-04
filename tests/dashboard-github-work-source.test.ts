@@ -1,0 +1,46 @@
+import { describe, expect, it } from 'vitest';
+import { projectGitHubWorkOrders } from '../apps/dashboard/src/github-work-source.js';
+
+describe('GitHub Work Source projection', () => {
+  it('projects queued, running, done and failed TIGERIQ jobs without inventing terminal state', () => {
+    const issues = [
+      { number: 235, title: 'repair', state: 'open', html_url: 'https://github.com/newsdayads/tigeriq-ai-lab/issues/235', updated_at: '2026-09-04T00:03:57Z', body: 'TIGERIQ_JOB_V1\n\n## Instruction\nRepair Web Control\n\n## Priority\nP0' },
+      { number: 246, title: 'running', state: 'open', html_url: 'https://github.com/newsdayads/tigeriq-ai-lab/issues/246', updated_at: '2026-09-04T00:10:00Z', body: 'TIGERIQ_JOB_V1\n\n## Work Order\nWO-WEB-246\n\n## Instruction\nRun current task\n\n## Priority\nCao' },
+      { number: 247, title: 'done', state: 'closed', html_url: 'https://github.com/newsdayads/tigeriq-ai-lab/issues/247', updated_at: '2026-09-04T00:11:00Z', body: 'TIGERIQ_JOB_V1\n\n## Work Order\nWO-WEB-247\n\n## Instruction\nFinish current task' },
+      { number: 248, title: 'failed', state: 'open', html_url: 'https://github.com/newsdayads/tigeriq-ai-lab/issues/248', updated_at: '2026-09-04T00:12:00Z', body: 'TIGERIQ_JOB_V1\n\n## Work Order\nWO-WEB-248\n\n## Instruction\nFail current task' },
+      { number: 249, title: 'command only', state: 'open', body: 'TIGERIQ_COMMAND_V1\n{}' },
+      { number: 250, title: 'ambiguous closed job', state: 'closed', body: 'TIGERIQ_JOB_V1\n\n## Instruction\nNo terminal evidence' },
+    ];
+    const comments = [
+      { issue_url: 'https://api.github.com/repos/newsdayads/tigeriq-ai-lab/issues/246', created_at: '2026-09-04T00:10:01Z', body: 'TIGERIQ_PC01_CLAIMED\nworker=pc01' },
+      { issue_url: 'https://api.github.com/repos/newsdayads/tigeriq-ai-lab/issues/247', created_at: '2026-09-04T00:11:01Z', body: 'TIGERIQ_PC01_CLAIMED' },
+      { issue_url: 'https://api.github.com/repos/newsdayads/tigeriq-ai-lab/issues/247', created_at: '2026-09-04T00:11:02Z', body: 'TIGERIQ_PC01_DONE\n```json\n{"ok":true}\n```' },
+      { issue_url: 'https://api.github.com/repos/newsdayads/tigeriq-ai-lab/issues/248', created_at: '2026-09-04T00:12:01Z', body: 'TIGERIQ_PC01_FAILED\nreason=test' },
+    ];
+
+    const rows = projectGitHubWorkOrders(issues, comments);
+    const byId = new Map(rows.map((row) => [row.order.id, row]));
+
+    expect(byId.get('WO-GH-235')?.order.status).toBe('approved');
+    expect(byId.get('WO-GH-235')?.order.goal).toBe('Repair Web Control');
+    expect(byId.get('WO-WEB-246')?.order.status).toBe('running');
+    expect(byId.get('WO-WEB-247')?.order.status).toBe('verified');
+    expect(byId.get('WO-WEB-247')?.evidence[0]?.status).toBe('pass');
+    expect(byId.get('WO-WEB-247')?.decisions[0]?.status).toBe('pass');
+    expect(byId.get('WO-WEB-248')?.order.status).toBe('failed');
+    expect(byId.get('WO-WEB-248')?.evidence[0]?.status).toBe('fail');
+    expect(byId.has('WO-GH-249')).toBe(false);
+    expect(byId.has('WO-GH-250')).toBe(false);
+  });
+
+  it('uses the latest exact lifecycle marker instead of keyword matches inside evidence prose', () => {
+    const issues = [{ number: 300, state: 'open', body: 'TIGERIQ_JOB_V1\n\n## Instruction\nLifecycle test' }];
+    const comments = [
+      { issue_url: 'https://api.github.com/repos/newsdayads/tigeriq-ai-lab/issues/300', created_at: '2026-09-04T01:00:00Z', body: 'TIGERIQ_PC01_DONE' },
+      { issue_url: 'https://api.github.com/repos/newsdayads/tigeriq-ai-lab/issues/300', created_at: '2026-09-04T01:01:00Z', body: 'TIGERIQ_PC01_CLAIMED\nprose mentions TIGERIQ_PC01_FAILED but not as an exact marker line' },
+    ];
+    const [row] = projectGitHubWorkOrders(issues, comments);
+    expect(row?.order.status).toBe('running');
+    expect(row?.evidence).toHaveLength(0);
+  });
+});
