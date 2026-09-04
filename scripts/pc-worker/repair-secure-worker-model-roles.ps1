@@ -1,5 +1,6 @@
 param(
-  [string]$Repo = 'newsdayads/tigeriq-ai-lab'
+  [string]$Repo = 'newsdayads/tigeriq-ai-lab',
+  [switch]$SkipCanary
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -14,17 +15,12 @@ $oldReviewer = "REVIEWER_MODEL = os.getenv('TIGERIQ_REVIEWER_MODEL', '').strip()
 $newReviewer = "REVIEWER_MODEL = os.getenv('TIGERIQ_REVIEWER_MODEL', 'qwen3:8b').strip()"
 $oldJudge = "JUDGE_MODEL = os.getenv('TIGERIQ_JUDGE_MODEL', '').strip()"
 $newJudge = "JUDGE_MODEL = os.getenv('TIGERIQ_JUDGE_MODEL', 'gemma3:4b').strip()"
-$alreadyReviewer = $newReviewer
-$alreadyJudge = $newJudge
 $backupDir = Join-Path $workerDir ("backup\webcontrol-model-roles-{0}" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
 $backup = Join-Path $backupDir 'worker_impl.py'
 $patched = $false
 $canaryNumber = $null
 
-function Fail([string]$Code,[string]$Message) {
-  throw "$Code`: $Message"
-}
-
+function Fail([string]$Code,[string]$Message) { throw "$Code`: $Message" }
 function Restart-Worker {
   Stop-ScheduledTask -TaskName $workerTask -ErrorAction SilentlyContinue
   Start-Sleep -Seconds 2
@@ -46,7 +42,6 @@ try {
   $python = [string]$task.Actions[0].Execute
   if(-not $python -or -not (Test-Path -LiteralPath $python)){ Fail 'PYTHON_FROM_TASK_MISSING' $python }
   $gh = (Get-Command gh -ErrorAction Stop).Source
-  $ollama = (Get-Command ollama -ErrorAction Stop).Source
   & $gh auth status | Out-Null
   if($LASTEXITCODE -ne 0){ Fail 'GH_AUTH_REQUIRED' 'GitHub CLI is not authenticated.' }
 
@@ -69,8 +64,8 @@ try {
   if($text -notlike '*TIGERIQ PC01 SECURE WORKER V3 ONLINE*'){ Fail 'UNEXPECTED_WORKER_IMPL' 'Secure Worker V3 marker missing.' }
   $hasOldReviewer = $text.Contains($oldReviewer)
   $hasOldJudge = $text.Contains($oldJudge)
-  $hasNewReviewer = $text.Contains($alreadyReviewer)
-  $hasNewJudge = $text.Contains($alreadyJudge)
+  $hasNewReviewer = $text.Contains($newReviewer)
+  $hasNewJudge = $text.Contains($newJudge)
   if((-not $hasOldReviewer -and -not $hasNewReviewer) -or (-not $hasOldJudge -and -not $hasNewJudge)){
     Fail 'WORKER_LAYOUT_CHANGED' 'Model role lines do not match the reviewed Secure Worker V3 layout.'
   }
@@ -84,10 +79,24 @@ try {
   & $python -m py_compile $tmp
   if($LASTEXITCODE -ne 0){ Fail 'PATCH_PY_COMPILE_FAILED' 'Patched worker did not compile.' }
   Move-Item -Force -LiteralPath $tmp -Destination $workerImpl
-  $patched = $true
+  $patched = $hasOldReviewer -or $hasOldJudge
 
   Write-Host '[50%] KHOI DONG LAI WORKER' -ForegroundColor Cyan
   Restart-Worker
+
+  if($SkipCanary){
+    Write-Host '[85%] XAC MINH ROLE + TASK, CANARY DEFERRED' -ForegroundColor Cyan
+    $after = [IO.File]::ReadAllText($workerImpl)
+    if(-not $after.Contains($newReviewer) -or -not $after.Contains($newJudge)){ Fail 'ROLE_PATCH_NOT_PERSISTED' 'Reviewer/Judge defaults are not present after restart.' }
+    $task = Get-ScheduledTask -TaskName $workerTask -ErrorAction Stop
+    if($task.State -ne 'Running'){ Fail 'WORKER_NOT_RUNNING_AFTER_REPAIR' ([string]$task.State) }
+    Write-Host '[100%] WEB CONTROL AI WORKER ROLE REPAIR READY' -ForegroundColor Green
+    [ordered]@{
+      status='PASS'; workerTask=$task.State.ToString(); executor=$executorModel; reviewer=$reviewerModel; judge=$judgeModel;
+      distinctDigests=3; canary='DEFERRED_SEPARATE_QUEUE_VERIFY'; backup=$backup; patched=$patched
+    } | ConvertTo-Json -Compress
+    exit 0
+  }
 
   Write-Host '[60%] TAO CANARY AI E2E' -ForegroundColor Cyan
   $nonce = [Guid]::NewGuid().ToString('N').Substring(0,12)
@@ -132,15 +141,8 @@ P0
 
   Write-Host '[100%] WEB CONTROL AI WORKER SAN SANG' -ForegroundColor Green
   [ordered]@{
-    status='PASS'
-    workerTask=$task.State.ToString()
-    executor=$executorModel
-    reviewer=$reviewerModel
-    judge=$judgeModel
-    distinctDigests=3
-    canaryIssue=$canaryNumber
-    canary='TIGERIQ_PC01_DONE'
-    backup=$backup
+    status='PASS'; workerTask=$task.State.ToString(); executor=$executorModel; reviewer=$reviewerModel; judge=$judgeModel;
+    distinctDigests=3; canaryIssue=$canaryNumber; canary='TIGERIQ_PC01_DONE'; backup=$backup; patched=$patched
   } | ConvertTo-Json -Compress
   exit 0
 }
@@ -156,11 +158,6 @@ catch {
     }
   }
   Write-Host '[KHONG DAT] REPAIR FAILED' -ForegroundColor Red
-  [ordered]@{
-    status='FAIL'
-    error=$message
-    canaryIssue=$canaryNumber
-    backup=$backup
-  } | ConvertTo-Json -Compress
+  [ordered]@{ status='FAIL'; error=$message; canaryIssue=$canaryNumber; backup=$backup } | ConvertTo-Json -Compress
   exit 1
 }
