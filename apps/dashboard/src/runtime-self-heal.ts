@@ -11,10 +11,12 @@ export type RuntimeSelfHealState = {
   workerTask?: string;
   modelRoles?: 'READY' | 'REPAIRED' | 'UNKNOWN';
   queueResilience?: 'READY' | 'REPAIRED' | 'UNKNOWN';
+  modelTimeout?: 'READY' | 'REPAIRED' | 'UNKNOWN';
   controllerDiagnose?: 'READY' | 'REPAIRED' | 'UNKNOWN';
   controllerRuntime?: 'READY' | 'REPAIRED' | 'UNKNOWN';
   repairScript?: string;
   queueRepairScript?: string;
+  modelTimeoutRepairScript?: string;
   controllerDiagnoseRepairScript?: string;
   controllerRuntimeRepairScript?: string;
   error?: string;
@@ -34,6 +36,8 @@ const NEW_REVIEWER = "REVIEWER_MODEL = os.getenv('TIGERIQ_REVIEWER_MODEL', 'qwen
 const OLD_JUDGE = "JUDGE_MODEL = os.getenv('TIGERIQ_JUDGE_MODEL', '').strip()";
 const NEW_JUDGE = "JUDGE_MODEL = os.getenv('TIGERIQ_JUDGE_MODEL', 'gemma3:4b').strip()";
 const QUEUE_RESILIENCE_MARKER = '# TIGERIQ_QUEUE_RESILIENCE_V1';
+const MODEL_TIMEOUT_MARKER = '# TIGERIQ_MODEL_TIMEOUT_300_V1';
+const MODEL_TIMEOUT_300 = "MODEL_TIMEOUT = int(os.getenv('TIGERIQ_MODEL_TIMEOUT', '300'))";
 
 function livePc01Host(host: string): boolean {
   return host !== '127.0.0.1' && host !== 'localhost' && host !== '::1';
@@ -62,6 +66,10 @@ function hasReadyRoles(workerText: string): boolean {
   return workerText.includes(NEW_REVIEWER) && workerText.includes(NEW_JUDGE);
 }
 
+function hasReadyModelTimeout(workerText: string): boolean {
+  return workerText.includes(MODEL_TIMEOUT_MARKER) && workerText.includes(MODEL_TIMEOUT_300);
+}
+
 export async function selfHealPc01Runtime(options: RuntimeSelfHealOptions): Promise<RuntimeSelfHealState> {
   const statePath = options.statePath ?? 'F:\\TigerIQ\\CommandCenter\\worker-self-heal-v1.json';
   const timestamp = () => new Date().toISOString();
@@ -81,6 +89,7 @@ export async function selfHealPc01Runtime(options: RuntimeSelfHealOptions): Prom
   const workerImpl = options.workerImpl ?? 'F:\\TigerIQ\\Worker\\worker_impl.py';
   const repairScript = resolve(repoRoot, 'scripts', 'pc-worker', 'repair-secure-worker-model-roles.ps1');
   const queueRepairScript = resolve(repoRoot, 'scripts', 'pc-worker', 'repair-secure-worker-queue-resilience.ps1');
+  const modelTimeoutRepairScript = resolve(repoRoot, 'scripts', 'pc-worker', 'repair-secure-worker-model-timeout.ps1');
   const controllerDiagnoseRepairScript = resolve(repoRoot, 'scripts', 'pc-worker', 'repair-control-plane-controller-diagnose.ps1');
   const controllerRuntimeRepairScript = resolve(repoRoot, 'scripts', 'pc-worker', 'repair-workforce-controller-runtime-deps.ps1');
 
@@ -92,6 +101,7 @@ export async function selfHealPc01Runtime(options: RuntimeSelfHealOptions): Prom
 
     let modelRoles: 'READY' | 'REPAIRED' = readyRoles ? 'READY' : 'REPAIRED';
     let queueResilience: 'READY' | 'REPAIRED' = workerText.includes(QUEUE_RESILIENCE_MARKER) ? 'READY' : 'REPAIRED';
+    let modelTimeout: 'READY' | 'REPAIRED' = hasReadyModelTimeout(workerText) ? 'READY' : 'REPAIRED';
     let controllerDiagnose: 'READY' | 'REPAIRED' = 'READY';
     let controllerRuntime: 'READY' | 'REPAIRED' = 'READY';
     let repaired = false;
@@ -126,6 +136,20 @@ export async function selfHealPc01Runtime(options: RuntimeSelfHealOptions): Prom
       if (!workerText.includes(QUEUE_RESILIENCE_MARKER)) throw new Error('QUEUE_PATCH_NOT_PERSISTED');
     }
 
+    if (!hasReadyModelTimeout(workerText)) {
+      await readFile(modelTimeoutRepairScript, 'utf8');
+      const result = await run('powershell.exe', [
+        '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', modelTimeoutRepairScript,
+      ], 3 * 60 * 1000);
+      if (!result.stdout.includes('"status":"PASS"') && !result.stdout.includes('"status": "PASS"')) {
+        throw new Error(`MODEL_TIMEOUT_REPAIR_NO_PASS: ${clipped(result.stdout || result.stderr)}`);
+      }
+      repaired = true;
+      modelTimeout = 'REPAIRED';
+      workerText = await readFile(workerImpl, 'utf8');
+      if (!hasReadyModelTimeout(workerText)) throw new Error('MODEL_TIMEOUT_PATCH_NOT_PERSISTED');
+    }
+
     await readFile(controllerDiagnoseRepairScript, 'utf8');
     const diagnoseRepair = await run('powershell.exe', [
       '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', controllerDiagnoseRepairScript,
@@ -151,11 +175,12 @@ export async function selfHealPc01Runtime(options: RuntimeSelfHealOptions): Prom
     }
 
     if (!hasReadyRoles(workerText)) throw new Error('ROLE_PATCH_NOT_PERSISTED');
+    if (!hasReadyModelTimeout(workerText)) throw new Error('MODEL_TIMEOUT_PATCH_NOT_PERSISTED');
 
     if (repaired) {
       const state: RuntimeSelfHealState = {
-        result: 'REPAIRED', updatedAt: timestamp(), workerTask: 'Running', modelRoles, queueResilience, controllerDiagnose, controllerRuntime,
-        repairScript, queueRepairScript, controllerDiagnoseRepairScript, controllerRuntimeRepairScript,
+        result: 'REPAIRED', updatedAt: timestamp(), workerTask: 'Running', modelRoles, queueResilience, modelTimeout, controllerDiagnose, controllerRuntime,
+        repairScript, queueRepairScript, modelTimeoutRepairScript, controllerDiagnoseRepairScript, controllerRuntimeRepairScript,
       };
       await save(statePath, state);
       return state;
@@ -165,15 +190,15 @@ export async function selfHealPc01Runtime(options: RuntimeSelfHealOptions): Prom
     const status = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', fixed], 30_000);
     if (!/Running/i.test(status.stdout)) throw new Error(`WORKER_TASK_NOT_RUNNING: ${clipped(status.stdout || status.stderr)}`);
     const state: RuntimeSelfHealState = {
-      result: 'READY', updatedAt: timestamp(), workerTask: 'Running', modelRoles: 'READY', queueResilience: 'READY', controllerDiagnose: 'READY', controllerRuntime: 'READY',
-      repairScript, queueRepairScript, controllerDiagnoseRepairScript, controllerRuntimeRepairScript,
+      result: 'READY', updatedAt: timestamp(), workerTask: 'Running', modelRoles: 'READY', queueResilience: 'READY', modelTimeout: 'READY', controllerDiagnose: 'READY', controllerRuntime: 'READY',
+      repairScript, queueRepairScript, modelTimeoutRepairScript, controllerDiagnoseRepairScript, controllerRuntimeRepairScript,
     };
     await save(statePath, state);
     return state;
   } catch (error) {
     const state: RuntimeSelfHealState = {
-      result: 'FAILED', updatedAt: timestamp(), modelRoles: 'UNKNOWN', queueResilience: 'UNKNOWN', controllerDiagnose: 'UNKNOWN', controllerRuntime: 'UNKNOWN',
-      repairScript, queueRepairScript, controllerDiagnoseRepairScript, controllerRuntimeRepairScript,
+      result: 'FAILED', updatedAt: timestamp(), modelRoles: 'UNKNOWN', queueResilience: 'UNKNOWN', modelTimeout: 'UNKNOWN', controllerDiagnose: 'UNKNOWN', controllerRuntime: 'UNKNOWN',
+      repairScript, queueRepairScript, modelTimeoutRepairScript, controllerDiagnoseRepairScript, controllerRuntimeRepairScript,
       error: clipped(error instanceof Error ? error.message : error),
     };
     await save(statePath, state).catch(() => undefined);
