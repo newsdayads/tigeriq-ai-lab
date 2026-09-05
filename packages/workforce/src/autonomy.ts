@@ -41,10 +41,11 @@ export interface AutonomyTaskDescriptor {
   constraints: string[];
 }
 
-export type SelfAuditFindingKind = 'bug' | 'manual_work' | 'self_heal' | 'observability' | 'small_improvement';
+export type SelfAuditFindingKind = 'bug' | 'self_heal' | 'manual_work' | 'observability' | 'small_improvement';
 
 export interface SelfAuditFinding {
   workId: string;
+  objective: string;
   kind: SelfAuditFindingKind;
   level: WorkSafetyLevel;
   resourceScope: string;
@@ -52,6 +53,7 @@ export interface SelfAuditFinding {
   acceptanceCriteria: string[];
   rollback: string;
   ownerConflict?: boolean;
+  duplicateExisting?: boolean;
 }
 
 export interface NearEmptyAuditInput {
@@ -71,8 +73,8 @@ export interface NearEmptyAuditPlan {
 const PRIORITY_ORDER = { P0: 0, P1: 1, P2: 2, P3: 3 } as const;
 const SELF_AUDIT_PRIORITY: Record<SelfAuditFindingKind, number> = {
   bug: 0,
-  manual_work: 1,
-  self_heal: 2,
+  self_heal: 1,
+  manual_work: 2,
   observability: 3,
   small_improvement: 4,
 };
@@ -138,8 +140,8 @@ export function planNearEmptyAudit(input: NearEmptyAuditInput): NearEmptyAuditPl
   const maxNewWork = Math.max(0, Math.min(3, input.maxNewWork ?? 3));
   const selected = input.findings
     .filter((finding) => finding.level === 'A')
-    .filter((finding) => !finding.ownerConflict)
-    .filter((finding) => finding.workId.trim().length > 0 && finding.resourceScope.trim().length > 0)
+    .filter((finding) => !finding.ownerConflict && !finding.duplicateExisting)
+    .filter((finding) => finding.workId.trim().length > 0 && finding.objective.trim().length > 0 && finding.resourceScope.trim().length > 0)
     .filter((finding) => finding.evidenceRefs.length > 0 && finding.acceptanceCriteria.length > 0 && finding.rollback.trim().length > 0)
     .sort((a, b) => SELF_AUDIT_PRIORITY[a.kind] - SELF_AUDIT_PRIORITY[b.kind] || a.workId.localeCompare(b.workId))
     .slice(0, maxNewWork);
