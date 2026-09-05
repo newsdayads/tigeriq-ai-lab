@@ -1,0 +1,42 @@
+import { describe, it, beforeAll } from 'vitest';
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+import path from 'node:path';
+
+let C:any; let raw:any; let reg:any; let pm:Record<string,any>; const central={issue_number:280,queue_ref:'#306'};
+beforeAll(async()=>{ await import('../artifacts/auto-worker/v14.2.0/tigeriq_aw_core.js'); C=(globalThis as any).TigerIQCore; raw=JSON.parse(fs.readFileSync(path.resolve('artifacts/auto-worker/v14.2.0/registry_seed.json'),'utf8')); reg=C.validateRegistry(raw); pm=Object.fromEntries(reg.employees.map((x:any)=>[x.employee_id,x])); });
+
+describe('TigerIQ Auto Worker V14.2 successor core',()=>{
+it('only NV02 background preactivation',()=>assert.deepEqual(C.autoEmployees(reg).map((x:any)=>x.employee_id),['NV02']));
+it('2 Khoa',()=>{const r=C.resolveCommand('2',reg,central);assert.equal(r.ok,true);assert.equal(r.employee_id,'NV02');assert.equal(r.background,true)});
+it('4 Khai specialized nonbackground',()=>{const r=C.resolveCommand('4',reg,central);assert.equal(r.ok,true);assert.equal(r.employee_id,'NV04');assert.equal(r.background,false)});
+it('5 pending',()=>assert.equal(C.resolveCommand('5',reg,central).error,'COMMAND_PENDING_ACTIVATION'));
+it('3 paused',()=>assert.match(C.resolveCommand('3',reg,central).error,/TẠM_NGƯNG/));
+it('central fail closed',()=>assert.equal(C.resolveCommand('2',reg,{issue_number:999}).error,'CENTRAL_UNAVAILABLE'));
+it('dynamic queue ref',()=>assert.equal(C.resolveCommand('2',reg,{issue_number:280,queue_ref:'#999'}).queue_ref,'#999'));
+it('window NV02 1920',()=>assert.deepEqual(C.windowPlacement(pm.NV02,{left:0,top:0,width:1920,height:1080}),{ok:true,left:1411,top:5,width:504,height:834,right:5,gap:5,order:0}));
+it('post windows exact gap',()=>{const a=C.activateAfterOwner(reg,'TIGERIQ_ACTIVATION_READY gate=440 state=READY_FOR_OWNER_ACTIVATION');const p=C.backgroundWindowPlan(a,{left:0,top:0,width:1920,height:1080});assert.deepEqual(p.map((x:any)=>[x.employee_id,x.left]),[['NV02',1411],['NV04',902],['NV05',393]]);assert.equal(p[0].left-(p[1].left+p[1].width),5);assert.equal(p[1].left-(p[2].left+p[2].width),5)});
+it('insufficient display fail closed',()=>assert.equal(C.windowPlacement(2,{left:0,top:0,width:1200,height:900}).ok,false));
+it('no recovery expected',()=>assert.equal(C.shouldRecoverClose('EXPECTED_CLOSE'),false));
+it('no recovery archive',()=>assert.equal(C.shouldRecoverClose('ARCHIVE_CLOSE'),false));
+it('no recovery stop',()=>assert.equal(C.shouldRecoverClose('STOP_CLOSE'),false));
+it('crash retry bounded',()=>{assert.equal(C.closeDisposition('CRASH_CLOSE',0).delay_ms,5000);assert.equal(C.closeDisposition('CRASH_CLOSE',1).delay_ms,15000);assert.equal(C.closeDisposition('CRASH_CLOSE',2).recover,false)});
+it('migration resets stale elevation',()=>{const stale=structuredClone(raw); for(const p of stale.employees) if(['NV04','NV05'].includes(p.employee_id)){p.mode='background_auto';p.enabled=true;p.runtime_active=true;p.activation_state='ACTIVE'}; const m=C.migrateAuthorityV2(stale); assert.deepEqual(C.autoEmployees(m).map((x:any)=>x.employee_id),['NV02'])});
+it('owner activation token required',()=>assert.throws(()=>C.activateAfterOwner(reg,'x'),/OWNER_ACTIVATION_REQUIRED/));
+it('activation exact set',()=>{const a=C.activateAfterOwner(reg,'TIGERIQ_ACTIVATION_READY gate=440 state=READY_FOR_OWNER_ACTIVATION');assert.deepEqual(C.autoEmployees(a).map((x:any)=>x.employee_id),['NV02','NV04','NV05'])});
+it('lease collision',()=>{const a=C.acquireLeases({},'NV02',['shared'],90000,'a',1000),b=C.acquireLeases(a.leases,'NV04',['shared'],90000,'b',1001);assert.equal(b.ok,false)});
+it('lease stale reap',()=>{const a=C.acquireLeases({},'NV02',['x'],30000,'a',1000);assert.equal(C.reapStaleLeases(a.leases,40000).stale.length,1)});
+it('restart running waits',()=>assert.equal(C.recoverQueueAfterRestart([{id:'x',state:'RUNNING'}],1000)[0].waiting_reason,'SERVICE_WORKER_RESTART'));
+it('governor owner heavy zero',()=>assert.equal(C.governorDecision({owner_foreground:true}).heavy_slots,0));
+it('governor soft one',()=>assert.equal(C.governorDecision({cpu_pct:80}).heavy_slots,1));
+it('governor hard zero',()=>assert.equal(C.governorDecision({cpu_pct:95}).heavy_slots,0));
+it('near empty only NV02',()=>{const r=C.ensureNearEmpty([],reg,{});assert.deepEqual(r.queue.map((x:any)=>x.employee_id),['NV02'])});
+it('resource-driven routing no text hardcode',()=>assert.equal(C.routeWorkOrder({resource_keys:['ai_api']},reg),null));
+it('post activation AI resource routes NV04',()=>{const a=C.activateAfterOwner(reg,'TIGERIQ_ACTIVATION_READY gate=440 state=READY_FOR_OWNER_ACTIVATION');assert.equal(C.routeWorkOrder({resource_keys:['ai_api']},a),'NV04')});
+it('archive fail keeps window',()=>{const r=C.archiveCloseGate({archived:false,verified:false});assert.equal(r.keep_window_open,true);assert.equal(r.error,'BỊ_CHẶN_LƯU_TRỮ')});
+it('archive ack allows close',()=>assert.equal(C.archiveCloseGate({archived:true,verified:true}).ok,true));
+it('duplicate command rejected',()=>{const x=structuredClone(raw);x.employees.push({...x.employees.find((e:any)=>e.employee_id==='NV02'),employee_id:'NV99'});assert.throws(()=>C.validateRegistry(x),/DUP_COMMAND/)});
+it('unknown command fail closed',()=>assert.equal(C.resolveCommand('99',reg,central).error,'COMMAND_UNREGISTERED'));
+it('reviewer inactive does not count',()=>assert.equal(C.routeReviewer('NV02',reg),null));
+it('post reviewer NV04',()=>{const a=C.activateAfterOwner(reg,'TIGERIQ_ACTIVATION_READY gate=440 state=READY_FOR_OWNER_ACTIVATION');assert.equal(C.routeReviewer('NV02',a),'NV04')});
+});

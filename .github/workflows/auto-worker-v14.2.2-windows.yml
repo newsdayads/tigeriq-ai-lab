@@ -1,0 +1,24 @@
+name: Auto Worker V14.2.2 Windows owner-CMD preflight
+
+on:
+  pull_request:
+    paths:
+      - 'artifacts/auto-worker/v14.2.2/**'
+      - 'scripts/pc-worker/TigerIQ_AW_14.2.2_installer.ps1'
+      - '.github/workflows/auto-worker-v14.2.2-windows.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  owner-cmd-preflight:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Execute exact owner CMD through Windows PowerShell preflight
+        shell: cmd
+        env:
+          TIQ_PREFLIGHT_ONLY: '1'
+        run: call artifacts\auto-worker\v14.2.2\TigerIQ_AW_14.2.2.cmd

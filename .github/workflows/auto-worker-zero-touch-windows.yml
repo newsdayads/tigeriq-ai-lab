@@ -1,0 +1,121 @@
+name: Auto Worker zero-touch updater Windows
+
+on:
+  pull_request:
+    paths:
+      - 'artifacts/auto-worker/zero-touch/**'
+      - 'scripts/pc-worker/auto-worker-zero-touch-updater.ps1'
+      - 'scripts/pc-worker/autoworker-deploy-status.ps1'
+      - 'tests/auto-worker-zero-touch.test.ts'
+      - '.github/workflows/auto-worker-zero-touch-windows.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  zero-touch-three-upgrades:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Three consecutive no-touch updates + rollback
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $logDir=Join-Path $env:RUNNER_TEMP 'zt-logs'
+          New-Item -ItemType Directory -Force -Path $logDir|Out-Null
+          function Get-KeyId([string]$Key){
+            $b=[Convert]::FromBase64String($Key)
+            $h=[Security.Cryptography.SHA256]::Create().ComputeHash($b)
+            $c='abcdefghijklmnop'
+            $s=New-Object Text.StringBuilder
+            for($i=0;$i-lt16;$i++){[void]$s.Append($c[($h[$i]-shr4)-band15]);[void]$s.Append($c[$h[$i]-band15])}
+            $s.ToString()
+          }
+          $root='C:\TigerIQ\AutoWorker\extension'
+          if(Test-Path 'C:\TigerIQ'){Remove-Item -LiteralPath 'C:\TigerIQ' -Recurse -Force}
+          New-Item -ItemType Directory -Force -Path $root|Out-Null
+          $key=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('TigerIQ zero touch CI fixture public key material v1'))
+          $id=Get-KeyId $key
+          $fixtureManifest=[ordered]@{
+            manifest_version=3
+            name='TigerIQ Auto Worker'
+            version='14.2.1'
+            key=$key
+            description='fixture'
+            permissions=@('storage','tabs','windows','scripting')
+            host_permissions=@('https://chatgpt.com/*')
+            background=[ordered]@{service_worker='bg.js'}
+            content_scripts=@([ordered]@{matches=@('https://chatgpt.com/*');js=@('runtime.js');run_at='document_idle'})
+          }
+          [IO.File]::WriteAllText((Join-Path $root 'manifest.json'),($fixtureManifest|ConvertTo-Json -Depth 20),(New-Object Text.UTF8Encoding($false)))
+          [IO.File]::WriteAllText((Join-Path $root 'bg.js'),"'use strict'; console.log('legacy fixture');",(New-Object Text.UTF8Encoding($false)))
+          [IO.File]::WriteAllText((Join-Path $root 'runtime.js'),"'use strict';",(New-Object Text.UTF8Encoding($false)))
+
+          function New-LocalManifest([string]$Version,[string]$GuardMarker){
+            $m=Get-Content -Raw -LiteralPath 'artifacts/auto-worker/zero-touch/v1/manifest.v14.2.2.json'|ConvertFrom-Json
+            $m.extension_id=$id
+            $m.target_version=$Version
+            $m.manifest_patch.description=('TigerIQ Auto Worker '+$Version+' CI FIXTURE')
+            $m.health.guard_marker=$GuardMarker
+            foreach($p in @($m.payloads)){
+              foreach($r in @($p.replacements)){
+                if(([string]$r.from)-eq"const VERSION = '14.2.1';"){$r.to=("const VERSION = '"+$Version+"';")}
+              }
+            }
+            $path=Join-Path $env:RUNNER_TEMP ('zt-'+$Version+'.json')
+            [IO.File]::WriteAllText($path,($m|ConvertTo-Json -Depth 30),(New-Object Text.UTF8Encoding($false)))
+            $sha=(Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash.ToLowerInvariant()
+            return @($path,$sha)
+          }
+
+          function Invoke-Updater([string]$Version,[string]$Marker,[int]$ExpectedCode){
+            $pair=New-LocalManifest $Version $Marker
+            $out=Join-Path $logDir ($Version+'.stdout.txt')
+            $err=Join-Path $logDir ($Version+'.stderr.txt')
+            $args=@('-NoProfile','-ExecutionPolicy','Bypass','-File',(Resolve-Path 'scripts/pc-worker/auto-worker-zero-touch-updater.ps1').Path,'-ManifestUri',$pair[0],'-ExpectedManifestSha256',$pair[1])
+            $p=Start-Process -FilePath 'powershell.exe' -ArgumentList $args -Wait -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
+            if(Test-Path $out){Get-Content -LiteralPath $out}
+            if(Test-Path $err){Get-Content -LiteralPath $err}
+            $statusPath=Join-Path $env:LOCALAPPDATA 'TigerIQ\AutoWorker\zero-touch-status.json'
+            if(Test-Path $statusPath){Copy-Item -LiteralPath $statusPath -Destination (Join-Path $logDir ($Version+'.status.json')) -Force}
+            if($p.ExitCode-ne$ExpectedCode){throw "UPDATER_EXIT_$($p.ExitCode)_EXPECTED_$ExpectedCode"}
+          }
+
+          Invoke-Updater '14.2.2' '14.2.2' 0
+          Invoke-Updater '14.2.3' '14.2.3' 0
+          Invoke-Updater '14.2.4' '14.2.4' 0
+          $after=Get-Content -Raw -LiteralPath (Join-Path $root 'manifest.json')|ConvertFrom-Json
+          if([string]$after.version-ne'14.2.4'){throw 'THREE_UPGRADES_VERSION_FAIL'}
+          if([string]$after.key-ne$key){throw 'THREE_UPGRADES_KEY_CHANGED'}
+          $legacy=@(Get-ChildItem -LiteralPath $root -Filter '*.tigeriq_legacy_zt_*.js' -File)
+          if($legacy.Count-lt1){throw 'LEGACY_ROLLBACK_PAYLOAD_MISSING'}
+
+          # Force a real post-swap failure without weakening production code: a harmless dummy
+          # process named chrome.exe makes the updater take its Chrome-running reload path, but
+          # exposes no UI Automation document/button, so reload fails only after the swap.
+          $dummyChrome=Join-Path $env:RUNNER_TEMP 'chrome.exe'
+          Copy-Item -LiteralPath 'C:\Windows\System32\timeout.exe' -Destination $dummyChrome -Force
+          $dummy=Start-Process -FilePath $dummyChrome -ArgumentList '/T','60','/NOBREAK' -PassThru -WindowStyle Hidden
+          try{
+            Invoke-Updater '14.2.5' '14.2.5' 41
+          }finally{
+            if($dummy -and -not $dummy.HasExited){Stop-Process -Id $dummy.Id -Force -ErrorAction SilentlyContinue}
+          }
+          $rolled=Get-Content -Raw -LiteralPath (Join-Path $root 'manifest.json')|ConvertFrom-Json
+          if([string]$rolled.version-ne'14.2.4'){throw 'ROLLBACK_DID_NOT_RESTORE_VERSION'}
+          if([string]$rolled.key-ne$key){throw 'ROLLBACK_KEY_CHANGED'}
+          $statusPath=Join-Path $env:LOCALAPPDATA 'TigerIQ\AutoWorker\zero-touch-status.json'
+          if(-not(Test-Path $statusPath)){throw 'STATUS_EVIDENCE_MISSING'}
+          $status=Get-Content -Raw -LiteralPath $statusPath|ConvertFrom-Json
+          if(-not[bool]$status.rolled_back){throw 'ROLLBACK_STATUS_NOT_RECORDED'}
+          Copy-Item -LiteralPath $statusPath -Destination (Join-Path $logDir 'final-status.json') -Force
+          Write-Host 'PASS: three consecutive zero-touch fixture upgrades + post-swap reload-fail rollback.'
+      - name: Upload zero-touch diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zero-touch-diagnostics
+          path: ${{ runner.temp }}/zt-logs
+          if-no-files-found: warn
