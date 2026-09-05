@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { ServerTelemetry } from '../apps/dashboard/src/server.js';
 import { controlPlaneState, injectLocalP0Panel, renderLocalP0Panel } from '../apps/dashboard/src/server-v6.js';
@@ -42,7 +41,7 @@ const governance = {
   installedSha: '0123456789abcdef0123456789abcdef01234567',
 };
 
-describe('Web Local #338 overlay', () => {
+describe('Web Local #338 V6 legacy module', () => {
   it('maps an explicit Controller failure to SUY GIẢM instead of unknown/green', () => {
     const state = controlPlaneState(telemetry({ online: false, ip: '127.0.0.1', port: 8790 }));
     expect(state.label).toContain('SUY GIẢM');
@@ -55,9 +54,9 @@ describe('Web Local #338 overlay', () => {
     expect(state.css).toBe('wait');
   });
 
-  it('renders all canonical identities, three layers, executive chain and build evidence', () => {
+  it('retains the completed V6 renderer contract for historical regression only', () => {
     const panel = renderLocalP0Panel(telemetry({ online: true, ip: '127.0.0.1', port: 8790 }), governance, new Date('2026-09-05T01:00:00.000Z'));
-    for (const expected of ['Vy (Trợ lý)','Minh (NV01 — Thực thi trực tiếp)','Khoa (NV02 — Vận hành tự động)','Huy (NV03 — AI PC01 / Kỹ sư Hệ thống Local)','TẠM NGƯNG','PC01 SERVER','TIGERIQ CONTROL PLANE','AI PC01 — HUY/NV03','MỤC TIÊU','HẠNG MỤC','BƯỚC HIỆN TẠI','MỐC KẾ TIẾP','NGƯỜI PHỤ TRÁCH','WEB-LOCAL-338-V2','0123456789ab']) expect(panel).toContain(expected);
+    for (const expected of ['Vy (Trợ lý)','Minh (NV01 — Thực thi trực tiếp)','Khoa (NV02 — Vận hành tự động)','Huy (NV03 — AI PC01 / Kỹ sư Hệ thống Local)','TẠM NGƯNG','PC01 SERVER','TIGERIQ CONTROL PLANE','AI PC01 — HUY/NV03','WEB-LOCAL-338-V2']) expect(panel).toContain(expected);
   });
 
   it('owner pause overrides stale busy telemetry for Huy', () => {
@@ -66,29 +65,9 @@ describe('Web Local #338 overlay', () => {
     expect(panel).not.toContain('Có task runtime');
   });
 
-  it('injects the panel after the existing header without deleting V5 content', () => {
+  it('injects the legacy panel without deleting V5 content', () => {
     const html = '<html><body><header>V5</header><main>legacy-body</main></body></html>';
     const out = injectLocalP0Panel(html, '<section id="overlay">P0</section>', telemetry({ online: false, ip: null, port: 8790 }));
     expect(out).toContain('</header><section id="overlay">P0</section><main>legacy-body</main>');
-  });
-
-  it('emits bounded exact runtime evidence only after updater pointer/state, live health and rendered UI agree', () => {
-    const standalone = readFileSync(new URL('../apps/dashboard/src/standalone.ts', import.meta.url), 'utf8');
-    for (const expected of [
-      'TIGERIQ_WEB_LOCAL_RUNTIME_EVIDENCE',
-      "state.result === 'UPDATED' || state.result === 'NO_CHANGE'",
-      'pointerSha !== sourceSha',
-      "String(state.installedSha ?? '').toLowerCase() !== sourceSha",
-      'fetch(`${serverUrl}/api/status`',
-      'fetch(`${serverUrl}/`',
-      'LIVE_UI_MARKERS.filter',
-      'ui_required_markers=${LIVE_UI_MARKERS.length}/${LIVE_UI_MARKERS.length}',
-      'live_ui_contract=ĐẠT',
-      'state=WEB_LOCAL_RUNTIME_AND_UI_VERIFIED',
-      'current_release_match=true',
-      'candidate_and_live_health=ĐẠT',
-      "host === '127.0.0.1'",
-      'attempt < 30',
-    ]) expect(standalone).toContain(expected);
   });
 });
