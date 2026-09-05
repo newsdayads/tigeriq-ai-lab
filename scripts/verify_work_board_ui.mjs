@@ -1,12 +1,15 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
-const redirect = readFileSync('public/index.html', 'utf8');
 const publicView = readFileSync('command-center.html', 'utf8');
+const config = JSON.parse(readFileSync('vercel.json', 'utf8'));
 
-// Public surface is intentionally read-only under #423. Legacy Work Board/write
-// controls belong to the authenticated/local functional surface, not Internet view.
-assert.match(redirect, /url=\//);
+// Public surface is intentionally read-only under #423. Root must route directly
+// to the clean command-center path; a public/index.html redirect shim would shadow
+// the rewrite and can self-loop at `/`.
+assert.equal(existsSync('public/index.html'), false);
+assert.equal(config?.cleanUrls, true);
+assert.equal(config?.rewrites?.find((route) => route?.source === '/')?.destination, '/command-center');
 assert.match(publicView, /Bảng điều hành/);
 assert.match(publicView, /CHỈ XEM/);
 assert.match(publicView, /Cần anh Sơn/);
