@@ -113,3 +113,17 @@ function Invoke-TigerIQControllerHealthProbe {
     attempts = $attempts
   }
 }
+
+function Get-TigerIQControllerProjection {
+  [CmdletBinding()]
+  param(
+    $Health,
+    [bool]$WildcardListener,
+    [bool]$TaskExists
+  )
+
+  $contractHealthy = $null -ne $Health -and [bool]$Health.health_ok -and [string]::IsNullOrEmpty([string]$Health.health_error)
+  if ($contractHealthy -and -not $WildcardListener) { return 'ONLINE' }
+  if ($TaskExists) { return 'NOT_HEALTHY' }
+  return 'NOT_INSTALLED'
+}
