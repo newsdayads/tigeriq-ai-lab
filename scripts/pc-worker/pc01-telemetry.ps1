@@ -66,10 +66,15 @@ $controllerOnline = $false
 $controllerPort = 8790
 $workforce = $null
 if($tailscaleIp){
+  $controllerStatus = $null
   try {
-    $controllerStatus = Invoke-RestMethod -Uri "http://$tailscaleIp`:$controllerPort/api/workforce/status" -TimeoutSec 1
+    $controllerStatus = Invoke-RestMethod -Uri "http://$tailscaleIp`:$controllerPort/api/v1/status" -TimeoutSec 1
+  } catch {
+    try { $controllerStatus = Invoke-RestMethod -Uri "http://$tailscaleIp`:$controllerPort/api/workforce/status" -TimeoutSec 1 } catch {}
+  }
+  try {
     $controllerOnline = [bool]$controllerStatus.ok
-    if($controllerOnline -and $controllerStatus.workforce){
+    if($controllerOnline -and $controllerStatus.workforce -and ([string]$controllerStatus.protocol -ne 'controller-v1')){
       $wf = $controllerStatus.workforce
       $roster = @()
       if($wf.roster){
