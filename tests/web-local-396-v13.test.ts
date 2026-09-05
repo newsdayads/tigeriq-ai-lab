@@ -37,8 +37,10 @@ describe('Web Local #396 Fluent Executive V3.4', () => {
     for (const expected of ['tq34-owner-highlight good', 'Không có việc cần anh Sơn', 'Mọi thứ đang trong tầm kiểm soát.', 'grid-template-columns:repeat(5,minmax(0,1fr))', '@media(max-width:1350px)', '@media(max-width:980px)', '@media(max-width:760px)', '@media(max-width:500px)', 'linear-gradient(135deg,#0755b0,#0a83e8)', 'linear-gradient(135deg,#3e20a8,#6f32e7)', 'linear-gradient(135deg,#087b6d,#08a77e)']) expect(html).toContain(expected);
   });
 
-  it('wires the real runtime to V13 and the physical evidence contract', () => {
+  it('retains V13 as the approved Fluent Executive base while V14 is the final repaired runtime', () => {
     const standalone = readFileSync(new URL('../apps/dashboard/src/standalone.ts', import.meta.url), 'utf8');
-    for (const expected of ['startOwnerCockpitV13', 'WEB-LOCAL-396-V3.4', 'fluent_executive_visual_contract=ĐẠT', 'visual_reference=APPROVED_FLUENT_EXECUTIVE_MOCKUP', 'minimum_readable_text=13px', 'donut_visual=ĐẠT', 'team_avatar_cards=ĐẠT', 'owner_highlight=ĐẠT', 'state=WEB_LOCAL_396_V34_FLUENT_EXECUTIVE_VERIFIED']) expect(standalone).toContain(expected);
+    const v13 = readFileSync(new URL('../apps/dashboard/src/server-v13.ts', import.meta.url), 'utf8');
+    for (const expected of ['WEB-LOCAL-396-V3.4', 'fluent-executive-v34', 'data-visual-spec="fluent-executive-mockup"']) expect(v13).toContain(expected);
+    for (const expected of ['startOwnerCockpitV13', 'startOwnerCockpitV14', 'WEB-LOCAL-396-V3.5', 'fluent_executive_visual_contract=ĐẠT', 'visual_reference=APPROVED_FLUENT_EXECUTIVE_MOCKUP', 'minimum_readable_text=13px', 'donut_visual=ĐẠT', 'team_avatar_cards=ĐẠT', 'owner_highlight=ĐẠT', 'state=WEB_LOCAL_396_V35_LAYOUT_REPAIR_VERIFIED']) expect(standalone).toContain(expected);
   });
 });
