@@ -1,0 +1,94 @@
+name: Auto Worker zero-touch updater Windows
+
+on:
+  pull_request:
+    paths:
+      - 'artifacts/auto-worker/zero-touch/**'
+      - 'scripts/pc-worker/auto-worker-zero-touch-updater.ps1'
+      - 'scripts/pc-worker/autoworker-deploy-status.ps1'
+      - 'tests/auto-worker-zero-touch.test.ts'
+      - '.github/workflows/auto-worker-zero-touch-windows.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  zero-touch-three-upgrades:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Three consecutive no-touch updates + rollback
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          function Get-KeyId([string]$Key){
+            $b=[Convert]::FromBase64String($Key)
+            $h=[Security.Cryptography.SHA256]::Create().ComputeHash($b)
+            $c='abcdefghijklmnop'
+            $s=New-Object Text.StringBuilder
+            for($i=0;$i-lt16;$i++){[void]$s.Append($c[($h[$i]-shr4)-band15]);[void]$s.Append($c[$h[$i]-band15])}
+            $s.ToString()
+          }
+          $root=Join-Path $env:RUNNER_TEMP 'tiq-aw-extension'
+          New-Item -ItemType Directory -Force -Path $root|Out-Null
+          $key=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('TigerIQ zero touch CI fixture public key material v1'))
+          $id=Get-KeyId $key
+          $fixtureManifest=[ordered]@{
+            manifest_version=3
+            name='TigerIQ Auto Worker'
+            version='14.2.1'
+            key=$key
+            description='fixture'
+            permissions=@('storage','tabs','windows','scripting')
+            host_permissions=@('https://chatgpt.com/*')
+            background=[ordered]@{service_worker='bg.js'}
+            content_scripts=@([ordered]@{matches=@('https://chatgpt.com/*');js=@('runtime.js');run_at='document_idle'})
+          }
+          $fixtureManifest|ConvertTo-Json -Depth 20|Set-Content -LiteralPath (Join-Path $root 'manifest.json') -Encoding UTF8
+          "'use strict'; console.log('legacy fixture');"|Set-Content -LiteralPath (Join-Path $root 'bg.js') -Encoding UTF8
+          "'use strict';"|Set-Content -LiteralPath (Join-Path $root 'runtime.js') -Encoding UTF8
+
+          function New-LocalManifest([string]$Version,[string]$GuardMarker){
+            $m=Get-Content -Raw -LiteralPath 'artifacts/auto-worker/zero-touch/v1/manifest.v14.2.2.json'|ConvertFrom-Json
+            $m.extension_id=$id
+            $m.target_version=$Version
+            $m.manifest_patch.description=('TigerIQ Auto Worker '+$Version+' CI FIXTURE')
+            $m.health.guard_marker=$GuardMarker
+            foreach($p in @($m.payloads)){
+              foreach($r in @($p.replacements)){
+                if(([string]$r.from)-eq"const VERSION = '14.2.1';"){$r.to=("const VERSION = '"+$Version+"';")}
+              }
+            }
+            $path=Join-Path $env:RUNNER_TEMP ('zt-'+$Version+'.json')
+            [IO.File]::WriteAllText($path,($m|ConvertTo-Json -Depth 30),(New-Object Text.UTF8Encoding($false)))
+            $sha=(Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash.ToLowerInvariant()
+            return @($path,$sha)
+          }
+
+          function Invoke-Updater([string]$Version,[string]$Marker,[int]$ExpectedCode){
+            $pair=New-LocalManifest $Version $Marker
+            $args=@('-NoProfile','-ExecutionPolicy','Bypass','-File',(Resolve-Path 'scripts/pc-worker/auto-worker-zero-touch-updater.ps1').Path,'-ManifestUri',$pair[0],'-ExpectedManifestSha256',$pair[1],'-ExtensionPath',$root)
+            $p=Start-Process -FilePath 'powershell.exe' -ArgumentList $args -Wait -PassThru -NoNewWindow
+            if($p.ExitCode-ne$ExpectedCode){throw "UPDATER_EXIT_$($p.ExitCode)_EXPECTED_$ExpectedCode"}
+          }
+
+          Invoke-Updater '14.2.2' '14.2.2' 0
+          Invoke-Updater '14.2.3' '14.2.3' 0
+          Invoke-Updater '14.2.4' '14.2.4' 0
+          $after=Get-Content -Raw -LiteralPath (Join-Path $root 'manifest.json')|ConvertFrom-Json
+          if([string]$after.version-ne'14.2.4'){throw 'THREE_UPGRADES_VERSION_FAIL'}
+          if([string]$after.key-ne$key){throw 'THREE_UPGRADES_KEY_CHANGED'}
+          $legacy=@(Get-ChildItem -LiteralPath $root -Filter '*.tigeriq_legacy_zt_*.js' -File)
+          if($legacy.Count-lt1){throw 'LEGACY_ROLLBACK_PAYLOAD_MISSING'}
+
+          Invoke-Updater '14.2.5' 'NEVER_PRESENT_HEALTH_MARKER' 41
+          $rolled=Get-Content -Raw -LiteralPath (Join-Path $root 'manifest.json')|ConvertFrom-Json
+          if([string]$rolled.version-ne'14.2.4'){throw 'ROLLBACK_DID_NOT_RESTORE_VERSION'}
+          if([string]$rolled.key-ne$key){throw 'ROLLBACK_KEY_CHANGED'}
+          $statusPath=Join-Path $env:LOCALAPPDATA 'TigerIQ\AutoWorker\zero-touch-status.json'
+          if(-not(Test-Path $statusPath)){throw 'STATUS_EVIDENCE_MISSING'}
+          $status=Get-Content -Raw -LiteralPath $statusPath|ConvertFrom-Json
+          if(-not[bool]$status.rolled_back){throw 'ROLLBACK_STATUS_NOT_RECORDED'}
+          Write-Host 'PASS: three consecutive zero-touch fixture upgrades + health-fail rollback.'
