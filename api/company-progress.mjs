@@ -2,6 +2,7 @@ const REPO = process.env.TIGERIQ_REPO || 'newsdayads/tigeriq-ai-lab';
 const FETCH_TIMEOUT_MS = 5000;
 const CENTRAL_ISSUE = 280;
 const REGISTRY_ISSUE = 335;
+const BASE_GATES = ['CI', 'WO-014 Queue Hygiene', 'WO-012/013 Vercel Online Verify'];
 
 function json(res, status, body) {
   res.statusCode = status;
@@ -34,6 +35,74 @@ async function gh(path, fetchImpl = fetch) {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function runState(run) {
+  if (!run) return 'pending';
+  if (run.status !== 'completed') return 'running';
+  return run.conclusion === 'success' ? 'pass' : 'fail';
+}
+
+function latestRunByName(runs, name) {
+  return (Array.isArray(runs) ? runs : [])
+    .filter((run) => run?.name === name)
+    .sort((a, b) => Date.parse(b.updated_at || b.created_at || 0) - Date.parse(a.updated_at || a.created_at || 0))[0] || null;
+}
+
+function vietnameseGate(name) {
+  if (name === 'Code / PR') return 'Code / PR';
+  if (name === 'CI') return 'Kiểm thử tự động (CI)';
+  if (name === 'WO-014 Queue Hygiene') return 'Kiểm tra hàng đợi';
+  if (name === 'WO-012/013 Vercel Online Verify') return 'Kiểm tra Web/Vercel';
+  if (name === 'Android Worker') return 'Build Android Worker';
+  if (name === 'Merge + Production') return 'Merge + Production';
+  return name;
+}
+
+// Compatibility helper: unit tests and internal callers still rely on this
+// evidence-gate calculation. The public projection below no longer uses PR
+// recency as its source of truth.
+export function projectProgress({ pull, runs = [] }) {
+  if (!pull) {
+    return {
+      active: false,
+      progressPct: 100,
+      gates: [],
+      currentStep: 'Không có PR kỹ thuật đang mở',
+      nextStep: 'Chief sẽ tự chọn việc ưu tiên tiếp theo',
+    };
+  }
+
+  const names = [...BASE_GATES];
+  const text = `${pull.title || ''}\n${pull.body || ''}`.toLowerCase();
+  if (text.includes('android worker') || text.includes('android')) names.push('Android Worker');
+
+  const gates = [
+    { name: 'Code / PR', status: 'pass' },
+    ...names.map((name) => ({ name, status: runState(latestRunByName(runs, name)) })),
+    { name: 'Merge + Production', status: 'pending' },
+  ].map((gate) => ({ ...gate, label: vietnameseGate(gate.name) }));
+
+  const passed = gates.filter((gate) => gate.status === 'pass').length;
+  const progressPct = Math.round((passed / gates.length) * 100);
+  const blocking = gates.find((gate) => gate.status === 'fail');
+  const running = gates.find((gate) => gate.status === 'running');
+  const pending = gates.find((gate) => gate.status === 'pending');
+  const focus = blocking || running || pending;
+
+  let currentStep = 'Đang hoàn thiện';
+  if (blocking) currentStep = `Đang sửa lỗi: ${blocking.label}`;
+  else if (running) currentStep = `Đang chạy: ${running.label}`;
+  else if (pending?.name === 'Merge + Production') currentStep = 'Các gate kỹ thuật đã PASS · chuẩn bị merge/Production';
+  else if (pending) currentStep = `Chuẩn bị: ${pending.label}`;
+
+  return {
+    active: true,
+    progressPct,
+    gates,
+    currentStep,
+    nextStep: focus?.name === 'Merge + Production' ? 'Merge → kiểm tra Production → tự lấy việc tiếp theo' : `Hoàn thành ${focus?.label || 'gate hiện tại'}`,
+  };
 }
 
 function cleanTitle(value = '') {
@@ -75,8 +144,6 @@ export function parseEmployees(body = '') {
 
 export function inferOwnerAction(text = '') {
   const normalized = String(text).toUpperCase();
-  // Chỉ nhận marker trạng thái rõ ràng; không coi câu mô tả UI kiểu
-  // "có cần anh Sơn làm gì không" là một yêu cầu thao tác thật.
   const required = /(^|\n)\s*(?:[-*]\s*)?(?:STATE\s*[:=]\s*)?(?:CHỜ ANH SƠN|OWNER[_ ]ACTION[_ ]REQUIRED)\b/m.test(normalized);
   return {
     required,
@@ -104,12 +171,6 @@ async function comments(number, owner, repo, fetchImpl) {
   } catch {
     return [];
   }
-}
-
-// Giữ export cũ để không phá các kiểm thử/unit đã dùng helper này.
-export function projectProgress({ pull }) {
-  if (!pull) return { active: false, progressPct: null, gates: [], currentStep: 'Không có PR kỹ thuật đang mở', nextStep: 'Đọc CENTRAL để chọn việc tiếp theo' };
-  return { active: true, progressPct: null, gates: [], currentStep: 'Đang xử lý theo Nguồn Sự Thật', nextStep: 'Tiếp tục tới điều kiện chốt có bằng chứng' };
 }
 
 export async function buildCompanyProgress(fetchImpl = fetch) {
