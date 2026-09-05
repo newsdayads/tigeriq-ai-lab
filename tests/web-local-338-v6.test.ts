@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { ServerTelemetry } from '../apps/dashboard/src/server.js';
 import { controlPlaneState, injectLocalP0Panel, renderLocalP0Panel } from '../apps/dashboard/src/server-v6.js';
@@ -69,5 +70,21 @@ describe('Web Local #338 overlay', () => {
     const html = '<html><body><header>V5</header><main>legacy-body</main></body></html>';
     const out = injectLocalP0Panel(html, '<section id="overlay">P0</section>', telemetry({ online: false, ip: null, port: 8790 }));
     expect(out).toContain('</header><section id="overlay">P0</section><main>legacy-body</main>');
+  });
+
+  it('emits bounded exact runtime evidence only after updater pointer/state and live health agree', () => {
+    const standalone = readFileSync(new URL('../apps/dashboard/src/standalone.ts', import.meta.url), 'utf8');
+    for (const expected of [
+      'TIGERIQ_WEB_LOCAL_RUNTIME_EVIDENCE',
+      "state.result === 'UPDATED' || state.result === 'NO_CHANGE'",
+      'pointerSha !== sourceSha',
+      "String(state.installedSha ?? '').toLowerCase() !== sourceSha",
+      'fetch(`${serverUrl}/api/status`',
+      'current_release_match=true',
+      'candidate_and_live_health=ĐẠT',
+      'state=WEB_LOCAL_RUNTIME_VERIFIED',
+      "host === '127.0.0.1'",
+      'attempt < 30',
+    ]) expect(standalone).toContain(expected);
   });
 });
