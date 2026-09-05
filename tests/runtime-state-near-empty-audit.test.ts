@@ -111,4 +111,24 @@ describe('RuntimeStateNearEmptyAuditProvider', () => {
     const proposals = await app.provider.inspect({ nodeId: 'PHONE-01', eligibleWorkCount: 0, primaryWaiting: false });
     expect(proposals).toEqual([]);
   });
+
+  it('keeps generated repair ids distinct when long source ids share the same prefix', async () => {
+    const app = await fixture();
+    const prefix = 'SAME-PREFIX-'.padEnd(64, 'X');
+    await app.autonomy.record({
+      workId: `${prefix}-A`, nodeId: 'PHONE-01', employeeId: 'OPS-01', blocker: 'external_dependency',
+      dependencyKey: 'dep-a', resourceScope: 'scope-a', state: 'waiting_condition', dependencyWatch: true,
+      ownerActionRequired: false, retry: { maxAttempts: 1, backoffSeconds: [300] },
+    });
+    await app.autonomy.record({
+      workId: `${prefix}-B`, nodeId: 'PHONE-01', employeeId: 'OPS-01', blocker: 'external_dependency',
+      dependencyKey: 'dep-b', resourceScope: 'scope-b', state: 'waiting_condition', dependencyWatch: true,
+      ownerActionRequired: false, retry: { maxAttempts: 1, backoffSeconds: [300] },
+    });
+
+    const proposals = await app.provider.inspect({ nodeId: 'PHONE-01', eligibleWorkCount: 0, primaryWaiting: true });
+    expect(proposals).toHaveLength(2);
+    expect(new Set(proposals.map((proposal) => proposal.task.taskId)).size).toBe(2);
+    expect(new Set(proposals.map((proposal) => proposal.finding.resourceScope)).size).toBe(2);
+  });
 });
