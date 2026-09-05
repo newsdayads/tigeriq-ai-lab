@@ -7,13 +7,13 @@ import { promisify } from 'node:util';
 import type { ServerTelemetry } from './server.js';
 
 const execFileAsync = promisify(execFile);
-const WEB_LOCAL_VERSION = 'WEB-LOCAL-338-V1';
+const WEB_LOCAL_VERSION = 'WEB-LOCAL-338-V2';
 const WEB_LOCAL_SOURCE = 'wo250/command-center-artifact-updater-v3';
 const MAX_BODY_BYTES = 64 * 1024;
 
 type Issue = { number?: number; title?: string; body?: string | null; state?: string; html_url?: string; updated_at?: string };
 type Comment = { body?: string | null; created_at?: string | null; updated_at?: string | null; html_url?: string };
-type Governance = { issue338: Issue | null; latest338: Comment | null; central: Issue | null; installedSha: string | null };
+type Governance = { issue338: Issue | null; latest338: Comment | null; central: Issue | null; registry: Issue | null; installedSha: string | null };
 
 export interface OwnerCockpitV6Options {
   cockpitUrl: string;
@@ -75,14 +75,15 @@ async function installedSha(): Promise<string | null> {
 }
 
 async function defaultGovernance(repo: string): Promise<Governance> {
-  const [issue338, comments338, central, sha] = await Promise.all([
+  const [issue338, comments338, central, registry, sha] = await Promise.all([
     ghJson<Issue>(repo, 'issues/338').catch(() => null),
     ghJson<Comment[]>(repo, 'issues/338/comments?per_page=100').catch(() => []),
     ghJson<Issue>(repo, 'issues/280').catch(() => null),
+    ghJson<Issue>(repo, 'issues/335').catch(() => null),
     installedSha(),
   ]);
   const latest338 = [...(Array.isArray(comments338) ? comments338 : [])].sort((a, b) => Date.parse(b.updated_at || b.created_at || '1970-01-01') - Date.parse(a.updated_at || a.created_at || '1970-01-01'))[0] ?? null;
-  return { issue338, latest338, central, installedSha: sha };
+  return { issue338, latest338, central, registry, installedSha: sha };
 }
 
 function compact(value: string, max = 180): string {
@@ -114,7 +115,17 @@ function serverState(telemetry: ServerTelemetry): { label: string; css: string; 
   return { label: 'ONLINE', css: 'ok', note: note || 'Host telemetry có phản hồi' };
 }
 
-function huyState(telemetry: ServerTelemetry): { label: string; css: string; note: string } {
+function nv03Paused(governance: Governance): boolean {
+  const registry = String(governance.registry?.body ?? '');
+  const central = String(governance.central?.body ?? '');
+  return /NV03[^\n]*active=false[^\n]*TẠM NGƯNG/i.test(registry)
+    || /`3`[^\n]*false[^\n]*TẠM NGƯNG/i.test(registry)
+    || /Huy[^\n]*NV03[^\n]*TẠM NGƯNG/i.test(central)
+    || /command\s*`?3`?[^\n]*TẠM (?:TẮT|NGƯNG)/i.test(`${registry}\n${central}`);
+}
+
+function huyState(governance: Governance, telemetry: ServerTelemetry): { label: string; css: string; note: string } {
+  if (nv03Paused(governance)) return { label: 'TẠM NGƯNG', css: 'muted', note: 'Command 3 tạm tắt theo Registry #335 / chỉ đạo Owner; telemetry PC01/Ollama không được suy diễn Huy đang active' };
   const roster = telemetry.workforce?.roster ?? [];
   const huy = roster.find((row) => /^(NV03|NV-SYS-01)$/i.test(row.employeeId) || /^Huy\b/i.test(row.displayName));
   if (!huy) return { label: 'CHƯA CÓ BẰNG CHỨNG ACTIVE', css: 'wait', note: `Ollama inventory ${telemetry.ollama?.models?.length ?? 0} model không đồng nghĩa Huy đang làm` };
@@ -129,7 +140,7 @@ function employeeCards(governance: Governance, telemetry: ServerTelemetry): stri
   const minh = issue338Open && ownerHold
     ? { label: 'SỞ HỮU #338', css: 'run', note: latestState(governance.latest338) }
     : { label: 'CHƯA CÓ BẰNG CHỨNG ACTIVE', css: 'wait', note: 'Không suy diễn trạng thái' };
-  const huy = huyState(telemetry);
+  const huy = huyState(governance, telemetry);
   const rows = [
     ['Vy (Trợ lý)', 'Điều phối / Chief of Staff', 'ĐIỀU PHỐI', 'muted', 'Không dùng trạng thái này để suy diễn executor'],
     ['Minh (NV01 — Thực thi trực tiếp)', 'Command 1 · Owner foreground', minh.label, minh.css, minh.note],
@@ -142,7 +153,7 @@ function employeeCards(governance: Governance, telemetry: ServerTelemetry): stri
 export function renderLocalP0Panel(telemetry: ServerTelemetry, governance: Governance, now = new Date()): string {
   const server = serverState(telemetry);
   const control = controlPlaneState(telemetry);
-  const ai = huyState(telemetry);
+  const ai = huyState(governance, telemetry);
   const body338 = String(governance.issue338?.body ?? '');
   const goal = compact(section(body338, 'Mục tiêu') || 'Hoàn thiện Web Local PC01 để nhìn rõ Server / Control Plane / AI PC01.', 240);
   const step = latestState(governance.latest338);
