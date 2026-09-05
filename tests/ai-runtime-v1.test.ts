@@ -6,6 +6,7 @@ import {
   PromptArchitectV1,
   PromptTemplateLibraryV1,
   type AIExecutionEndpointV1,
+  type JobExecutionRequestV1,
   type PromptArchitectInputV1,
   type PromptOutcomeV1,
 } from '../packages/ai-runtime-v1/src/index.js';
@@ -37,6 +38,14 @@ function outcome(overrides: Partial<PromptOutcomeV1> = {}): PromptOutcomeV1 {
   return {
     decision: 'PASS', evaluatorRole: 'reviewer', evaluatorBackendIdentity: 'claude/reviewer',
     outputSha256: digest('result'), latencyMs: 1000, feedback: 'Meets criteria.', ...overrides,
+  };
+}
+
+function executionRequest(target: AIExecutionEndpointV1): JobExecutionRequestV1 {
+  return {
+    contractVersion: 'TIGERIQ_JOB_EXECUTION_V1', jobId: 'JOB-001', promptId: 'PROMPT-X', promptVersion: 1,
+    employeeId: target.employeeId, endpointId: target.endpointId, role: 'executor', idempotencyKey: 'JOB-001:executor:1',
+    prompt: 'work', createdAt: '2026-09-02T02:00:00.000Z',
   };
 }
 
@@ -74,13 +83,20 @@ describe('AI Runtime V1', () => {
       startedAt: '2026-09-02T02:00:00.000Z', completedAt: '2026-09-02T02:00:02.000Z', attempts: 1, failoverCount: 0,
       errors: [], evidence: [{ kind: 'output-sha256', ref: digest('device-result') }], credentialExposure: false,
     }) }]);
-    const result = await dispatcher.execute(target, {
-      contractVersion: 'TIGERIQ_JOB_EXECUTION_V1', jobId: 'JOB-001', promptId: 'PROMPT-X', promptVersion: 1,
-      employeeId: target.employeeId, endpointId: target.endpointId, role: 'executor', idempotencyKey: 'JOB-001:executor:1',
-      prompt: 'work', createdAt: '2026-09-02T02:00:00.000Z',
-    });
+    const result = await dispatcher.execute(target, executionRequest(target));
     expect(result.output).toBe('device-result');
     expect(result.credentialExposure).toBe(false);
+  });
+
+  it('rejects an adapter result that is not bound to the exact JOB/PROMPT request', async () => {
+    const target = endpoint();
+    const dispatcher = new AIExecutionDispatcherV1([{ endpointId: target.endpointId, execute: async (request) => ({
+      contractVersion: 'TIGERIQ_JOB_EXECUTION_V1', jobId: 'JOB-OTHER', promptId: request.promptId, promptVersion: request.promptVersion,
+      employeeId: request.employeeId, endpointId: request.endpointId, provider: target.provider, model: target.model, output: 'wrong-job-result',
+      startedAt: '2026-09-02T02:00:00.000Z', completedAt: '2026-09-02T02:00:02.000Z', attempts: 1, failoverCount: 0,
+      errors: [], evidence: [{ kind: 'output-sha256', ref: digest('wrong-job-result') }], credentialExposure: false,
+    }) }]);
+    await expect(dispatcher.execute(target, executionRequest(target))).rejects.toThrow(/job\/prompt binding mismatch/i);
   });
 });
 
@@ -112,6 +128,16 @@ describe('Prompt Architect V1', () => {
     expect(repaired.version).toBe(2);
     expect(repaired.repairCount).toBe(1);
     expect(() => architect.repair(repaired, input(), fail)).toThrow('prompt repair limit exhausted');
+  });
+
+  it('rejects prompt repair input that drifts to another job, employee, endpoint or acceptance contract', () => {
+    const architect = new PromptArchitectV1('ollama/prompt-architect');
+    const artifact = architect.create(input());
+    const fail = outcome({ decision: 'FAIL', feedback: 'Needs correction.' });
+    expect(() => architect.repair(artifact, { ...input(), jobId: 'JOB-OTHER' }, fail)).toThrow(/repair input does not match artifact identity/i);
+    expect(() => architect.repair(artifact, { ...input(), employee: { ...input().employee, employeeId: 'EMP-OTHER' } }, fail)).toThrow(/repair input does not match artifact identity/i);
+    expect(() => architect.repair(artifact, { ...input(), target: { ...input().target, endpointId: 'PHONE-OTHER' } }, fail)).toThrow(/repair input does not match artifact identity/i);
+    expect(() => architect.repair(artifact, { ...input(), acceptanceCriteria: ['Different acceptance'] }, fail)).toThrow(/repair input does not match artifact identity/i);
   });
 
   it('improves template selection from independent observed PASS/FAIL history', () => {

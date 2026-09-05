@@ -316,6 +316,8 @@ export class PromptArchitectV1 {
 
   repair(artifact: PromptArtifactV1, input: PromptArchitectInputV1, feedback: PromptOutcomeV1): PromptArtifactV1 {
     validateIndependentOutcome(artifact, feedback);
+    validatePromptInput(input);
+    validatePromptRepairBinding(artifact, input);
     if (feedback.decision !== 'FAIL') throw new Error('prompt repair requires FAIL feedback');
     if (!feedback.feedback?.trim()) throw new Error('prompt repair requires concrete independent feedback');
     if (artifact.repairCount >= this.maxRepairs) throw new Error('prompt repair limit exhausted');
@@ -367,6 +369,19 @@ function validatePromptInput(input: PromptArchitectInputV1): void {
   if (!input.target.endpointId.trim()) throw new Error('endpoint id is required');
   if (!input.target.provider.trim() || !input.target.model.trim()) throw new Error('provider/model is required');
   if (!input.acceptanceCriteria.length || input.acceptanceCriteria.some((item) => !item.trim())) throw new Error('acceptance criteria are required');
+}
+
+function validatePromptRepairBinding(artifact: PromptArtifactV1, input: PromptArchitectInputV1): void {
+  const sameIdentity =
+    artifact.jobId === input.jobId &&
+    artifact.employeeId === input.employee.employeeId &&
+    artifact.endpointId === input.target.endpointId &&
+    artifact.provider.toLowerCase() === input.target.provider.toLowerCase() &&
+    artifact.model.toLowerCase() === input.target.model.toLowerCase() &&
+    artifact.kind === input.kind &&
+    artifact.risk === input.risk &&
+    JSON.stringify(artifact.acceptanceCriteria) === JSON.stringify(input.acceptanceCriteria);
+  if (!sameIdentity) throw new Error('prompt repair input does not match artifact identity');
 }
 
 function makePromptId(input: PromptArchitectInputV1, template: PromptTemplateV1): string {
@@ -531,6 +546,7 @@ export class AIExecutionDispatcherV1 {
     const adapter = this.adapters.get(endpoint.endpointId);
     if (!adapter) throw new Error(`execution adapter unavailable: ${endpoint.endpointId}`);
     const result = await adapter.execute(request, signal);
+    if (result.contractVersion !== request.contractVersion || result.jobId !== request.jobId || result.promptId !== request.promptId || result.promptVersion !== request.promptVersion) throw new Error('execution result job/prompt binding mismatch');
     if (result.endpointId !== endpoint.endpointId || result.employeeId !== endpoint.employeeId) throw new Error('execution result endpoint/employee mismatch');
     if (result.provider !== endpoint.provider || result.model !== endpoint.model) throw new Error('execution result backend mismatch');
     if (result.credentialExposure !== false) throw new Error('execution result must prove credentialExposure=false');
