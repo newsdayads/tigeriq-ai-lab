@@ -1,12 +1,21 @@
 import { readFileSync } from 'node:fs';
 
+const PREVIEW_BRANCH = 'nv02/433b-exact-main-vercel-preview';
 const config = JSON.parse(readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'));
+const policy = config?.git?.deploymentEnabled;
 
-if (config?.git?.deploymentEnabled !== false) {
+const globallyDisabled = policy === false;
+const boundedPreview = policy && typeof policy === 'object' && !Array.isArray(policy)
+  && policy['**'] === false
+  && policy[PREVIEW_BRANCH] === true
+  && Object.keys(policy).length === 2;
+
+if (!globallyDisabled && !boundedPreview) {
   throw new Error(
-    'TigerIQ Vercel policy violation: vercel.json must keep git.deploymentEnabled=false. ' +
-      'Deploy previews/production explicitly only when needed.'
+    'TigerIQ Vercel policy violation: Git deployment must be globally disabled or limited to the exact #433b Preview branch.'
   );
 }
 
-console.log('Vercel deployment policy PASS: automatic Git deployments are disabled.');
+console.log(globallyDisabled
+  ? 'Vercel deployment policy PASS: automatic Git deployments are disabled.'
+  : `Vercel deployment policy PASS: only ${PREVIEW_BRANCH} is enabled; all other Git deployments are disabled.`);
