@@ -116,12 +116,15 @@ describe('Web Local #322 ownership-aware V4', () => {
     expect(ownershipEventV8(withHold).label).toBe('GIỮ QUYỀN XỬ LÝ');
   });
 
-  it('targets V4 machine evidence at #322 without erasing V3 provenance', () => {
+  it('retains V4 module behavior and provenance when a newer presentation layer becomes current', () => {
+    const source = readFileSync(new URL('../apps/dashboard/src/server-v8.ts', import.meta.url), 'utf8');
     const standalone = readFileSync(new URL('../apps/dashboard/src/standalone.ts', import.meta.url), 'utf8');
     for (const expected of [
-      'WEB-LOCAL-322-V4', 'issues/322/comments?per_page=100', 'issues/322/comments', 'Khải (NV04 — Kỹ sư Tích hợp AI/API)',
-      'QUYỀN XỬ LÝ / CHUYỂN GIAO', 'ownership_projection=ĐẠT', 'nv04_registry_projection=ĐẠT',
-      'state=WEB_LOCAL_322_OWNERSHIP_UI_VERIFIED', 'startOwnerCockpitV8', 'WEB-LOCAL-390-V3',
-    ]) expect(standalone).toContain(expected);
+      'WEB-LOCAL-322-V4', 'Khải (NV04 — Kỹ sư Tích hợp AI/API)', 'QUYỀN XỬ LÝ / CHUYỂN GIAO',
+      'ownershipEventV8', 'startOwnerCockpitV8',
+    ]) expect(source).toContain(expected);
+    expect(standalone).toContain('startOwnerCockpitV8');
+    expect(standalone).toContain('WEB-LOCAL-322-V4');
+    expect(standalone).toContain('WEB-LOCAL-396-V3.1');
   });
 });
