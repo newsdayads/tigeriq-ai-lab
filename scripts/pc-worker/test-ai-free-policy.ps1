@@ -39,6 +39,9 @@ Assert-True ([bool]$config.scheduler.leaseRequired) 'scheduler_lease_required'
 Assert-True ([int]$config.scheduler.maxAttemptsPerRole -eq [int]$config.policy.maxAttemptsPerRole) 'scheduler_attempts_match_policy'
 Assert-True ([int]$config.scheduler.leaseSeconds -ge 5 -and [int]$config.scheduler.leaseSeconds -le 3600) 'scheduler_lease_bounds'
 Assert-True ([int]$config.scheduler.lockWaitMs -ge 100 -and [int]$config.scheduler.lockWaitMs -le 10000) 'scheduler_lock_wait_bounds'
+Assert-True ([bool]$config.scheduler.candidateEligibilityRequired) 'scheduler_candidate_eligibility_required'
+Assert-True ([string]$config.scheduler.eligibilitySource -eq 'guarded_live_probe_READY') 'scheduler_eligibility_source'
+Assert-True ([bool]$config.scheduler.failClosedOnMissingEligibility) 'scheduler_missing_eligibility_fail_closed'
 Assert-True (@($config.scheduler.retryableFailures) -contains 'timeout') 'scheduler_timeout_retryable'
 Assert-True (@($config.scheduler.retryableFailures) -contains 'rate_limit') 'scheduler_rate_limit_retryable'
 Assert-True (@($config.scheduler.retryableFailures) -contains 'outage') 'scheduler_outage_retryable'
@@ -75,6 +78,8 @@ Assert-True ($probeText -match 'function\s+Invoke-OllamaLocalProbe') 'ollama_liv
 Assert-True ($probeText -match 'Invoke-OllamaLocalProbe\s+\$ollama\.path') 'ollama_live_probe_wired'
 Assert-True ($probeText -match 'ExpectedMarker\s+''TIGERIQ_OLLAMA_READY''') 'ollama_ready_marker_required'
 Assert-True ($schedulerText -match 'function\s+Invoke-SchedulerAction') 'scheduler_action_exists'
+Assert-True ($schedulerText -match 'EligibleBackendIdentities') 'scheduler_eligibility_parameter_exists'
+Assert-True ($schedulerText -match 'BLOCKED_NO_ELIGIBLE_BACKEND') 'scheduler_unproven_backend_block_exists'
 Assert-True ($schedulerText -match 'STALE_LEASE_REJECTED') 'scheduler_stale_lease_guard_exists'
 Assert-True ($schedulerText -match 'ATTEMPTS_EXHAUSTED') 'scheduler_bounded_attempt_guard_exists'
 Assert-True ($schedulerText -match 'billing_unknown') 'scheduler_billing_unknown_fail_closed_exists'
@@ -103,6 +108,8 @@ Assert-True (-not ($serialized -match '(?i)"allowNonFreeModels"\s*:\s*true')) 'n
   schedulerDedupeScope = [string]$config.scheduler.dedupeScope
   schedulerLeaseSeconds = [int]$config.scheduler.leaseSeconds
   schedulerMaxAttemptsPerRole = [int]$config.scheduler.maxAttemptsPerRole
+  schedulerCandidateEligibilityRequired = [bool]$config.scheduler.candidateEligibilityRequired
+  schedulerEligibilitySource = [string]$config.scheduler.eligibilitySource
   firstFallback = [string]$config.routing.fallbackOrder[0]
   serverProviderCallRequired = [bool]$config.execution.serverProviderCallRequired
   employeeDeviceAllowed = @($config.execution.allowedLocations) -contains 'employee-device'
