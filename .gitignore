@@ -22,7 +22,7 @@ lib-cov
 coverage
 *.lcov
 
-# nyc output
+# nyc test coverage
 .nyc_output
 
 # Grunt intermediate storage (https://gruntjs.com/creating-plugins#storing-task-files)
@@ -73,7 +73,7 @@ web_modules/
 # Vercel local project link
 .vercel/
 
-# parcel-bundler cache (https://snowpack.dev/)
+# parcel-bundler cache (https://parceljs.org/)
 .cache
 .parcel-cache
 
@@ -114,7 +114,7 @@ dist
 .serverless/
 
 # FuseBox cache
-.fusebox
+.fusebox/
 
 # DynamoDB Local files
 .dynamodb/
