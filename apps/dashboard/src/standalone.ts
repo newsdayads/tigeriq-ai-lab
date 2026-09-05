@@ -9,7 +9,7 @@ import { schedulePc01RuntimeSelfHeal } from './runtime-self-heal.js';
 import { startDashboard } from './server.js';
 import { startOwnerCockpitV5 } from './server-v5.js';
 import { startOwnerCockpitV8 } from './server-v8.js';
-import { startOwnerCockpitV9 } from './server-v9.js';
+import { startOwnerCockpitV10 } from './server-v10.js';
 
 const execFileAsync = promisify(execFile);
 const journalPath = process.env.TIGERIQ_JOURNAL ?? 'F:\\TigerIQ\\State\\control-plane.jsonl';
@@ -40,7 +40,8 @@ const LIVE_UI_MARKERS = [
   'Tải theo nhân sự',
   'Trạng thái hệ thống',
   'Quyền xử lý / chuyển giao',
-  'fonts.googleapis.com/css2?family=Inter',
+  'fonts.googleapis.com/css2?family=Open+Sans',
+  'font-family:"Open Sans"',
   'tq31-button',
   'tigeriq-management-v31',
   WEB_LOCAL_VERSION,
@@ -113,7 +114,7 @@ async function emitWebLocalRuntimeEvidence(serverUrl: string): Promise<void> {
         `updater_run_id=${state.runId ?? 'unknown'}`,
         `updater_updated_at=${state.updatedAt ?? 'unknown'}`,
         'current_release_match=true',
-        'inter_font_contract=ĐẠT',
+        'open_sans_font_contract=ĐẠT',
         'button_interaction_states=ĐẠT',
         'management_layout_v31=ĐẠT',
         'visualizations_real_data=3',
@@ -177,17 +178,17 @@ const backend = await startDashboard(dashboardSource, {
 
 const cockpitV5 = await startOwnerCockpitV5({ backendUrl: backend.url, repo, host: '127.0.0.1', port: 0 });
 const cockpitV8 = await startOwnerCockpitV8({ cockpitUrl: cockpitV5.url, backendUrl: backend.url, repo, host: '127.0.0.1', port: 0 });
-const server = await startOwnerCockpitV9({ cockpitUrl: cockpitV8.url, host, port });
+const server = await startOwnerCockpitV10({ cockpitUrl: cockpitV8.url, host, port });
 void emitWebLocalRuntimeEvidence(server.url);
 schedulePc01RuntimeSelfHeal({ host, repo, repoRoot: process.env.TIGERIQ_REPO_ROOT });
 
-console.log(`TigerIQ Owner Cockpit V9 / UI V3.1 online: ${server.url}`);
+console.log(`TigerIQ Owner Cockpit V10 / UI V3.1 Open Sans online: ${server.url}`);
 console.log(`Internal Owner Cockpit V8: ${cockpitV8.url}`);
 console.log(`Internal Owner Cockpit V5: ${cockpitV5.url}`);
 console.log(`Internal Command Center backend: ${backend.url}`);
 console.log(`Journal: ${journalPath}`);
 console.log('Dashboard source: local journal + live GitHub lifecycle projection.');
-console.log('Web Local V9 preserves V8 dynamic governance and applies compact management UI V3.1 with real-data visualizations.');
+console.log('Web Local V10 preserves V9 management UI V3.1 and switches typography to Google Open Sans.');
 console.log('Write actions require TIGERIQ_COMMAND_SECRET + CSRF + bounded allowlist.');
 console.log('Live PC01 runtime performs bounded Worker self-heal; candidate localhost releases never mutate Worker runtime.');
 
