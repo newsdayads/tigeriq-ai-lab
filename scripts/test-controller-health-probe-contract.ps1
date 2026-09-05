@@ -43,29 +43,37 @@ Assert-Equal $generic.controller_contract 'generic' 'auto-generic-contract'
 Assert-Equal $generic.health_path '/api/workforce/status' 'auto-generic-path'
 Assert-Equal $generic.health_ok $true 'auto-generic-health'
 Assert-Equal $generic.health_error $null 'auto-generic-error'
+Assert-Equal (Get-TigerIQControllerProjection -Health $generic -WildcardListener $false -TaskExists $true) 'ONLINE' 'projection-generic-online'
 
 $v1 = Invoke-TigerIQControllerHealthProbe -BaseUri 'http://100.64.0.1:8790' -ExpectedContract auto -Request $v1Request
 Assert-Equal $v1.controller_contract 'v1' 'auto-v1-contract'
 Assert-Equal $v1.health_path '/api/v1/status' 'auto-v1-path'
 Assert-Equal $v1.health_ok $true 'auto-v1-health'
 Assert-Equal $v1.health_error $null 'auto-v1-error'
+Assert-Equal (Get-TigerIQControllerProjection -Health $v1 -WildcardListener $false -TaskExists $true) 'ONLINE' 'projection-v1-online'
 
 $mismatch = Invoke-TigerIQControllerHealthProbe -BaseUri 'http://100.64.0.1:8790' -ExpectedContract generic -Request $v1Request
 Assert-Equal $mismatch.controller_contract 'v1' 'mismatch-detected-contract'
 Assert-Equal $mismatch.health_path '/api/v1/status' 'mismatch-detected-path'
 Assert-Equal $mismatch.health_ok $true 'mismatch-health'
 Assert-Equal $mismatch.health_error 'CONTROLLER_CONTRACT_MISMATCH' 'mismatch-classification'
+Assert-Equal (Get-TigerIQControllerProjection -Health $mismatch -WildcardListener $false -TaskExists $true) 'NOT_HEALTHY' 'projection-mismatch-fail-closed'
 
 $unhealthy = Invoke-TigerIQControllerHealthProbe -BaseUri 'http://100.64.0.1:8790' -ExpectedContract auto -Request $v1UnhealthyRequest
 Assert-Equal $unhealthy.controller_contract 'v1' 'unhealthy-detected-contract'
 Assert-Equal $unhealthy.health_path '/api/v1/status' 'unhealthy-detected-path'
 Assert-Equal $unhealthy.health_ok $false 'unhealthy-health'
 Assert-Equal $unhealthy.health_error 'CONTROLLER_HEALTH_UNAVAILABLE' 'unhealthy-classification'
+Assert-Equal (Get-TigerIQControllerProjection -Health $unhealthy -WildcardListener $false -TaskExists $true) 'NOT_HEALTHY' 'projection-unhealthy-not-healthy'
 
 $unknown = Invoke-TigerIQControllerHealthProbe -BaseUri 'http://100.64.0.1:8790' -ExpectedContract auto -Request $unknownRequest
 Assert-Equal $unknown.controller_contract $null 'unknown-contract'
 Assert-Equal $unknown.health_path $null 'unknown-path'
 Assert-Equal $unknown.health_ok $false 'unknown-health'
 Assert-Equal $unknown.health_error 'CONTROLLER_CONTRACT_MISMATCH' 'unknown-classification'
+Assert-Equal (Get-TigerIQControllerProjection -Health $unknown -WildcardListener $false -TaskExists $false) 'NOT_INSTALLED' 'projection-unknown-no-task'
 
-Write-Output 'CONTROLLER_HEALTH_PROBE_CONTRACT_PASS cases=5'
+$wildcard = Get-TigerIQControllerProjection -Health $generic -WildcardListener $true -TaskExists $true
+Assert-Equal $wildcard 'NOT_HEALTHY' 'projection-wildcard-fail-closed'
+
+Write-Output 'CONTROLLER_HEALTH_PROBE_CONTRACT_PASS cases=5 projection_cases=6'
