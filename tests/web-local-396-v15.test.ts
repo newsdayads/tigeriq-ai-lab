@@ -47,16 +47,11 @@ describe('Web Local #396 UI V3.6 incremental live overview', () => {
     for (const expected of ['function sync(cur,next)', "a.innerHTML=b.innerHTML", "a.classList.add('tq36-flash','tq36-updated')", 'tq36-live-age', 'visibilitychange']) expect(html).toContain(expected);
   });
 
-  it('wires final runtime evidence to V3.6 while preserving V3.5 underneath', () => {
+  it('retains V3.6 as historical provenance while V4 replaces it in the final runtime', () => {
     const standalone = readFileSync(new URL('../apps/dashboard/src/standalone.ts', import.meta.url), 'utf8');
-    for (const expected of [
-      'WEB-LOCAL-396-V3.6', 'startOwnerCockpitV15', 'incremental_refresh=ĐẠT',
-      'incremental_refresh_interval_seconds=10', 'full_page_meta_refresh_removed=ĐẠT',
-      'changed_section_flash=ĐẠT', 'manual_refresh_button=ĐẠT', 'live_age_indicator=ĐẠT',
-      'independent_dashboard_columns=ĐẠT', 'work_table_gap_removed=ĐẠT',
-      'brand_icon_polish=ĐẠT', 'team_avatar_alignment=ĐẠT',
-      'state=WEB_LOCAL_396_V36_INCREMENTAL_LIVE_VERIFIED',
-    ]) expect(standalone).toContain(expected);
-    expect(standalone).toContain('startOwnerCockpitV14');
+    const v15 = readFileSync(new URL('../apps/dashboard/src/server-v15.ts', import.meta.url), 'utf8');
+    for (const expected of ['WEB-LOCAL-396-V3.6', 'data-refresh="incremental-10s"', 'tq36-live-overview', 'tq36-columns']) expect(v15).toContain(expected);
+    for (const expected of ['WEB-LOCAL-396-V4.0', 'startOwnerCockpitV17', 'overview_live_incremental_10s=ĐẠT', 'legacy_presentation_runtime_v13_v14_v15=REMOVED', 'state=WEB_LOCAL_396_V40_EXECUTIVE_RUNTIME_AND_FUNCTIONS_VERIFIED']) expect(standalone).toContain(expected);
+    for (const retired of ['startOwnerCockpitV13', 'startOwnerCockpitV14', 'startOwnerCockpitV15']) expect(standalone).not.toContain(retired);
   });
 });
