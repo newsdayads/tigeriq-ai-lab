@@ -13,13 +13,14 @@ describe('Web Local #396 UI V3.3 Segoe UI layer', () => {
     expect(html).not.toContain('fonts.googleapis.com');
   });
 
-  it('retains Segoe UI as the font contract while V3.6 is the current live runtime', () => {
+  it('retains V12 Segoe UI as the stable functional base while V4 is the current renderer', () => {
     const standalone = readFileSync(new URL('../apps/dashboard/src/standalone.ts', import.meta.url), 'utf8');
     for (const expected of [
-      'WEB-LOCAL-396-V3.6', 'startOwnerCockpitV12', 'startOwnerCockpitV13', 'startOwnerCockpitV14', 'startOwnerCockpitV15', 'segoe_ui_font_contract=ĐẠT',
-      'segoe_ui_whole_site=ĐẠT', 'google_font_removed=ĐẠT', 'fluent_executive_visual_contract=ĐẠT',
-      'layout_repair_v35=ĐẠT', 'incremental_refresh=ĐẠT', 'state=WEB_LOCAL_396_V36_INCREMENTAL_LIVE_VERIFIED',
+      'WEB-LOCAL-396-V4.0', 'startOwnerCockpitV12', 'startOwnerCockpitV17', 'segoe_ui=ĐẠT',
+      'architecture_reset=V12_STABLE_DATA_AND_FUNCTIONS_TO_SINGLE_V17_RENDERER',
+      'legacy_presentation_runtime_v13_v14_v15=REMOVED', 'state=WEB_LOCAL_396_V40_EXECUTIVE_RUNTIME_AND_FUNCTIONS_VERIFIED',
     ]) expect(standalone).toContain(expected);
+    for (const retired of ['startOwnerCockpitV13', 'startOwnerCockpitV14', 'startOwnerCockpitV15']) expect(standalone).not.toContain(retired);
     expect(standalone).not.toContain('open_sans_font_contract=ĐẠT');
     expect(standalone).not.toContain('open_sans_whole_site=ĐẠT');
   });

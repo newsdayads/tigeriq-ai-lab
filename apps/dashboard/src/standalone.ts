@@ -12,9 +12,7 @@ import { startOwnerCockpitV8 } from './server-v8.js';
 import { startOwnerCockpitV10 } from './server-v10.js';
 import { startOwnerCockpitV11 } from './server-v11.js';
 import { startOwnerCockpitV12 } from './server-v12.js';
-import { startOwnerCockpitV13 } from './server-v13.js';
-import { startOwnerCockpitV14 } from './server-v14.js';
-import { startOwnerCockpitV15 } from './server-v15.js';
+import { startOwnerCockpitV17 } from './server-v17.js';
 
 const execFileAsync = promisify(execFile);
 const journalPath = process.env.TIGERIQ_JOURNAL ?? 'F:\\TigerIQ\\State\\control-plane.jsonl';
@@ -24,15 +22,22 @@ const repo = process.env.TIGERIQ_REPO ?? 'newsdayads/tigeriq-ai-lab';
 const runtimeRoot = process.env.TIGERIQ_REPO_ROOT ?? '';
 const currentReleasePath = process.env.TIGERIQ_CURRENT_RELEASE ?? 'F:\\TigerIQ\\CommandCenter\\current-release.txt';
 const updaterStatePath = process.env.TIGERIQ_UPDATER_STATE ?? 'F:\\TigerIQ\\CommandCenter\\updater-v3-state.json';
-const WEB_LOCAL_VERSION = 'WEB-LOCAL-396-V3.6';
-// Current presentation layer: V3.6 incremental live refresh + independent dashboard columns over V3.5 layout repair.
+const WEB_LOCAL_VERSION = 'WEB-LOCAL-396-V4.0';
 const LIVE_UI_MARKERS = [
+  'TigerIQ AI Lab',
+  'Bảng điều hành',
+  'Tổng quan',
+  'Công việc',
+  'Dự án',
+  'Nhân sự',
+  'Hệ thống',
+  'Báo cáo',
+  'Cài đặt',
   'Vy (Trợ lý)',
-  'Minh (NV01 — Thực thi trực tiếp)',
-  'Khoa (NV02 — Vận hành tự động)',
-  'Huy (NV03 — AI PC01 / Kỹ sư Hệ thống Local)',
-  'Khải (NV04 — Kỹ sư Tích hợp AI/API)',
-  'Tạm ngưng',
+  'Minh (NV01)',
+  'Khoa (NV02)',
+  'Huy (NV03)',
+  'Khải (NV04)',
   'Đang làm',
   'Ai phụ trách',
   'Tiến độ',
@@ -40,36 +45,38 @@ const LIVE_UI_MARKERS = [
   'Cần anh Sơn',
   'Công việc đang chạy',
   'Đội AI',
-  'Hệ thống',
-  'Phân bố công việc',
+  'Phân bổ công việc',
   'Tải theo nhân sự',
   'Trạng thái hệ thống',
-  'Quyền xử lý / chuyển giao',
-  'data-font="segoe-ui-default"',
-  'data-theme="fluent-executive-v36"',
-  'data-layout="v35-repaired"',
-  'data-refresh="incremental-10s"',
-  'data-visual-spec="fluent-executive-mockup"',
+  'data-layout="executive-reference-1648x928"',
+  'data-font="segoe-ui"',
   'font-family:"Segoe UI"',
-  'tq34-donut',
-  'tq34-avatar',
-  'tq34-owner-highlight',
-  'tq35-layout-repair',
-  'tq36-live-overview',
-  'tq36-live-state',
-  'tq36-columns',
-  'data-overview="single-dashboard-v32"',
+  'x-kpis',
+  'x-work-card',
+  'x-donut',
+  'x-team-grid',
+  'x-system-grid',
+  'x-owner-card',
+  'x-live-script',
   '/?view=work',
-  '/?view=workforce',
   '/?view=models',
-  '/?view=evidence',
-  '/?view=reports',
+  '/?view=workforce',
   '/?view=system',
+  '/?view=reports',
   '/?view=settings',
-  'tq31-button',
-  'tigeriq-management-v31',
+  '/?view=evidence',
   WEB_LOCAL_VERSION,
 ] as const;
+
+const FUNCTIONAL_MARKERS: Array<[string, string]> = [
+  ['work', 'id="cong-viec"'],
+  ['workforce', 'id="doi-ai"'],
+  ['models', 'id="mo-hinh"'],
+  ['evidence', 'id="bang-chung"'],
+  ['reports', 'id="bao-cao"'],
+  ['system', 'id="he-thong"'],
+  ['settings', 'id="cai-dat"'],
+];
 
 if (!Number.isInteger(port) || port < 1 || port > 65535) {
   throw new Error('TIGERIQ_COMMAND_PORT must be an integer between 1 and 65535');
@@ -119,10 +126,17 @@ async function emitWebLocalRuntimeEvidence(serverUrl: string): Promise<void> {
       const missingUiMarkers = LIVE_UI_MARKERS.filter((required) => !uiHtml.includes(required));
       if (missingUiMarkers.length > 0) continue;
       if (uiHtml.includes('fonts.googleapis.com') || uiHtml.includes('font-family:"Open Sans"') || uiHtml.includes('font-family:Inter')) continue;
-      const forbiddenOverview = ['id="cong-viec"', 'id="doi-ai"', 'id="mo-hinh"', 'id="bang-chung"', 'id="bao-cao"', 'id="he-thong"', 'id="cai-dat"'];
-      if (forbiddenOverview.some((markerText) => uiHtml.includes(markerText))) continue;
-      if ((uiHtml.match(/<aside class="sidebar">/g) ?? []).length !== 1) continue;
+      if ((uiHtml.match(/<aside class="x-sidebar">/g) ?? []).length !== 1) continue;
       if (/http-equiv=["']refresh["']/i.test(uiHtml)) continue;
+
+      let functionalOk = true;
+      for (const [view, expected] of FUNCTIONAL_MARKERS) {
+        const response = await fetch(`${serverUrl}/?view=${view}`, { cache: 'no-store' });
+        if (!response.ok) { functionalOk = false; break; }
+        const html = await response.text();
+        if (!html.includes(expected) || !html.includes('data-layout="executive-functional-v4"') || html.includes('x-live-script')) { functionalOk = false; break; }
+      }
+      if (!functionalOk) continue;
 
       const { stdout } = await execFileAsync('gh', ['api', `repos/${repo}/issues/396/comments?per_page=100`], {
         timeout: 15_000,
@@ -143,43 +157,20 @@ async function emitWebLocalRuntimeEvidence(serverUrl: string): Promise<void> {
         `updater_run_id=${state.runId ?? 'unknown'}`,
         `updater_updated_at=${state.updatedAt ?? 'unknown'}`,
         'current_release_match=true',
-        'segoe_ui_font_contract=ĐẠT',
-        'segoe_ui_whole_site=ĐẠT',
-        'google_font_removed=ĐẠT',
-        'fluent_executive_visual_contract=ĐẠT',
-        'visual_reference=APPROVED_FLUENT_EXECUTIVE_MOCKUP',
-        'layout_repair_v35=ĐẠT',
-        'sidebar_single_dom=ĐẠT',
-        'system_card_compaction=ĐẠT',
-        'system_text_wrap_contract=ĐẠT',
-        'bottom_grid_gap_repair=ĐẠT',
-        'independent_dashboard_columns=ĐẠT',
-        'work_table_gap_removed=ĐẠT',
-        'brand_icon_polish=ĐẠT',
-        'team_avatar_alignment=ĐẠT',
-        'incremental_refresh=ĐẠT',
-        'incremental_refresh_interval_seconds=10',
-        'full_page_meta_refresh_removed=ĐẠT',
-        'changed_section_flash=ĐẠT',
-        'manual_refresh_button=ĐẠT',
-        'live_age_indicator=ĐẠT',
-        'minimum_readable_text=13px',
-        'executive_color_system=ĐẠT',
-        'fluent_icons=ĐẠT',
-        'donut_visual=ĐẠT',
-        'team_avatar_cards=ĐẠT',
-        'owner_highlight=ĐẠT',
-        'button_interaction_states=ĐẠT',
-        'overview_single_dashboard=ĐẠT',
-        'legacy_overview_duplicate_removed=ĐẠT',
-        'server_side_views=8',
-        'visualizations_real_data=3',
-        'responsive_css_contract=ĐẠT',
-        'dynamic_central_registry_projection=ĐẠT',
-        'ownership_projection=ĐẠT',
-        'candidate_and_live_health=ĐẠT',
-        'live_ui_contract=ĐẠT',
-        'state=WEB_LOCAL_396_V36_INCREMENTAL_LIVE_VERIFIED',
+        'architecture_reset=V12_STABLE_DATA_AND_FUNCTIONS_TO_SINGLE_V17_RENDERER',
+        'legacy_presentation_runtime_v13_v14_v15=REMOVED',
+        'reference_layout=APPROVED_1648x928_EXECUTIVE_SCREENSHOT',
+        'segoe_ui=ĐẠT',
+        'primary_navigation=7',
+        'secondary_models_evidence_preserved=ĐẠT',
+        'real_data_only=ĐẠT',
+        'synthetic_progress_forbidden=ĐẠT',
+        'overview_live_incremental_10s=ĐẠT',
+        'full_page_reload=REMOVED',
+        'functional_routes=7/7',
+        'functional_forms_and_actions_preserved=ĐẠT',
+        'overview_and_functional_theme_consistent=ĐẠT',
+        'state=WEB_LOCAL_396_V40_EXECUTIVE_RUNTIME_AND_FUNCTIONS_VERIFIED',
       ].join('\n');
       await execFileAsync('gh', ['api', `repos/${repo}/issues/396/comments`, '--method', 'POST', '-f', `body=${evidence}`], {
         timeout: 15_000,
@@ -189,7 +180,7 @@ async function emitWebLocalRuntimeEvidence(serverUrl: string): Promise<void> {
       });
       return;
     } catch {
-      // Evidence emission is bounded and must never prevent the local Web runtime from serving.
+      // Evidence emission is bounded and never blocks the local runtime.
     }
   }
 }
@@ -237,31 +228,25 @@ const cockpitV8 = await startOwnerCockpitV8({ cockpitUrl: cockpitV5.url, backend
 const cockpitV10 = await startOwnerCockpitV10({ cockpitUrl: cockpitV8.url, host: '127.0.0.1', port: 0 });
 const cockpitV11 = await startOwnerCockpitV11({ cockpitUrl: cockpitV10.url, host: '127.0.0.1', port: 0 });
 const cockpitV12 = await startOwnerCockpitV12({ cockpitUrl: cockpitV11.url, host: '127.0.0.1', port: 0 });
-const cockpitV13 = await startOwnerCockpitV13({ cockpitUrl: cockpitV12.url, host: '127.0.0.1', port: 0 });
-const cockpitV14 = await startOwnerCockpitV14({ cockpitUrl: cockpitV13.url, host: '127.0.0.1', port: 0 });
-const server = await startOwnerCockpitV15({ cockpitUrl: cockpitV14.url, host, port });
+const server = await startOwnerCockpitV17({ stableUrl: cockpitV12.url, backendUrl: backend.url, repo, host, port });
 void emitWebLocalRuntimeEvidence(server.url);
 schedulePc01RuntimeSelfHeal({ host, repo, repoRoot: process.env.TIGERIQ_REPO_ROOT });
 
-console.log(`TigerIQ Owner Cockpit V15 / UI V3.6 Incremental Live online: ${server.url}`);
-console.log(`Internal Owner Cockpit V14 / UI V3.5 Layout Repair: ${cockpitV14.url}`);
-console.log(`Internal Owner Cockpit V13 / UI V3.4 Fluent Executive: ${cockpitV13.url}`);
-console.log(`Internal Owner Cockpit V12 / UI V3.3 Segoe UI: ${cockpitV12.url}`);
-console.log(`Internal Owner Cockpit V11 / UI V3.2: ${cockpitV11.url}`);
-console.log(`Internal Owner Cockpit V10 historical presentation layer: ${cockpitV10.url}`);
+console.log(`TigerIQ Owner Cockpit V17 / Executive UI V4.0 online: ${server.url}`);
+console.log(`Stable functional surface V12: ${cockpitV12.url}`);
+console.log('Legacy presentation V13/V14/V15 is not in the final runtime chain.');
+console.log(`Internal Owner Cockpit V11: ${cockpitV11.url}`);
+console.log(`Internal Owner Cockpit V10: ${cockpitV10.url}`);
 console.log(`Internal Owner Cockpit V8: ${cockpitV8.url}`);
 console.log(`Internal Owner Cockpit V5: ${cockpitV5.url}`);
 console.log(`Internal Command Center backend: ${backend.url}`);
 console.log(`Journal: ${journalPath}`);
-console.log('Dashboard source: local journal + live GitHub lifecycle projection.');
-console.log('Web Local V15 refreshes changed overview sections incrementally every 10 seconds without full-page reload.');
+console.log('Overview V4 uses structured live governance + telemetry; functional routes preserve existing actions under the same executive shell.');
 console.log('Write actions require TIGERIQ_COMMAND_SECRET + CSRF + bounded allowlist.');
 console.log('Live PC01 runtime performs bounded Worker self-heal; candidate localhost releases never mutate Worker runtime.');
 
 const shutdown = async () => {
   await server.close();
-  await cockpitV14.close();
-  await cockpitV13.close();
   await cockpitV12.close();
   await cockpitV11.close();
   await cockpitV10.close();

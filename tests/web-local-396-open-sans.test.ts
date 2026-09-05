@@ -14,10 +14,11 @@ describe('Web Local #396 historical Open Sans layer', () => {
 
   it('does not expose Open Sans as the current final runtime contract', () => {
     const standalone = readFileSync(new URL('../apps/dashboard/src/standalone.ts', import.meta.url), 'utf8');
-    expect(standalone).toContain('startOwnerCockpitV13');
-    expect(standalone).toContain('segoe_ui_font_contract=ĐẠT');
-    expect(standalone).toContain('google_font_removed=ĐẠT');
-    expect(standalone).toContain('fluent_executive_visual_contract=ĐẠT');
+    expect(standalone).toContain('startOwnerCockpitV17');
+    expect(standalone).toContain('WEB-LOCAL-396-V4.0');
+    expect(standalone).toContain('segoe_ui=ĐẠT');
+    expect(standalone).toContain('legacy_presentation_runtime_v13_v14_v15=REMOVED');
+    for (const retired of ['startOwnerCockpitV13', 'startOwnerCockpitV14', 'startOwnerCockpitV15']) expect(standalone).not.toContain(retired);
     expect(standalone).not.toContain('open_sans_font_contract=ĐẠT');
     expect(standalone).not.toContain('open_sans_whole_site=ĐẠT');
   });

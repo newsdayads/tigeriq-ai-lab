@@ -37,14 +37,13 @@ describe('Web Local #396 UI V3.2', () => {
     expect(html).toContain('<input type="hidden" name="view" value="workforce">');
   });
 
-  it('retains V3.2 single-overview semantics under the current V3.6 live runtime', () => {
+  it('retains V3.2 router provenance while the current final runtime is Executive V4', () => {
     const standalone = readFileSync(new URL('../apps/dashboard/src/standalone.ts', import.meta.url), 'utf8');
     for (const expected of [
-      'WEB-LOCAL-396-V3.6', 'startOwnerCockpitV11', 'startOwnerCockpitV13', 'startOwnerCockpitV14', 'startOwnerCockpitV15', 'overview_single_dashboard=ĐẠT',
-      'legacy_overview_duplicate_removed=ĐẠT', 'server_side_views=8', 'segoe_ui_whole_site=ĐẠT',
-      'fluent_executive_visual_contract=ĐẠT', 'layout_repair_v35=ĐẠT', 'incremental_refresh=ĐẠT', 'state=WEB_LOCAL_396_V36_INCREMENTAL_LIVE_VERIFIED',
-      'data-overview="single-dashboard-v32"',
+      'WEB-LOCAL-396-V4.0', 'startOwnerCockpitV11', 'startOwnerCockpitV12', 'startOwnerCockpitV17',
+      'architecture_reset=V12_STABLE_DATA_AND_FUNCTIONS_TO_SINGLE_V17_RENDERER',
+      'functional_routes=7/7', 'state=WEB_LOCAL_396_V40_EXECUTIVE_RUNTIME_AND_FUNCTIONS_VERIFIED',
     ]) expect(standalone).toContain(expected);
-    expect(standalone).not.toContain('open_sans_whole_site=ĐẠT');
+    for (const retired of ['startOwnerCockpitV13', 'startOwnerCockpitV14', 'startOwnerCockpitV15']) expect(standalone).not.toContain(retired);
   });
 });
