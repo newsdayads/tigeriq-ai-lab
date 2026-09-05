@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { promisify } from 'node:util';
-import type { ServerTelemetry, WorkforceEmployeeTelemetry } from './server.js';
+import type { ServerTelemetry } from './server.js';
 
 const execFileAsync = promisify(execFile);
 const WEB_LOCAL_VERSION = 'WEB-LOCAL-338-V1';
@@ -35,7 +35,7 @@ function isPrivateHost(host: string): boolean {
   return p[0] === 127 || p[0] === 10 || (p[0] === 192 && p[1] === 168) || (p[0] === 172 && p[1] >= 16 && p[1] <= 31) || (p[0] === 100 && p[1] >= 64 && p[1] <= 127);
 }
 
-async function body(req: IncomingMessage): Promise<Buffer | undefined> {
+async function body(req: IncomingMessage): Promise<string | undefined> {
   if (req.method === 'GET' || req.method === 'HEAD') return undefined;
   const chunks: Buffer[] = [];
   let total = 0;
@@ -45,7 +45,7 @@ async function body(req: IncomingMessage): Promise<Buffer | undefined> {
     if (total > MAX_BODY_BYTES) throw new Error('payload_too_large');
     chunks.push(part);
   }
-  return Buffer.concat(chunks);
+  return Buffer.concat(chunks).toString('utf8');
 }
 
 function copyHeaders(upstream: Response, res: ServerResponse, contentType?: string): void {
