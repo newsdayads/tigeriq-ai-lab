@@ -14,6 +14,7 @@ $script:BackupPath=$null
 $script:StagePath=$null
 $script:ExtensionPath=$null
 $script:Swapped=$false
+$script:InPlaceApplied=$false
 $script:ReloadAttempted=$false
 $script:RollbackPerformed=$false
 $script:StatusPath=Join-Path $env:LOCALAPPDATA 'TigerIQ\AutoWorker\zero-touch-status.json'
@@ -160,16 +161,23 @@ function Get-ChromeDocuments{
     if($p.MainWindowHandle-eq0){continue}
     try{
       $w=[Windows.Automation.AutomationElement]::FromHandle($p.MainWindowHandle)
-      $cond=New-Object Windows.Automation.PropertyCondition -ArgumentList @([Windows.Automation.AutomationElement]::ControlTypeProperty,[Windows.Automation.ControlType]::Document)
-      foreach($d in $w.FindAll([Windows.Automation.TreeScope]::Subtree,$cond)){$docs.Add($d)}
+      $docs.Add($w)
     }catch{}
   }
-  return @($docs)
+  return $docs.ToArray()
 }
 function Invoke-ReloadAndConfirm([string]$ExpectedVersion){
   if(-not$script:ChromeWasRunning){return @{Ok=$true;Mode='CHROME_NOT_RUNNING_ON_DISK_ONLY'}}
   if([string]::IsNullOrWhiteSpace($script:ChromeExe)-or-not(Test-Path $script:ChromeExe)){return @{Ok=$false;Mode='CHROME_EXE_NOT_FOUND'}}
-  Start-Process -FilePath $script:ChromeExe -ArgumentList ('chrome://extensions/?id='+$script:ExtensionId)|Out-Null
+  $target=@(Get-Process chrome -ErrorAction SilentlyContinue|Where-Object{$_.MainWindowHandle-ne0}|Select-Object -First 1)
+  if($target.Count-eq0){return @{Ok=$false;Mode='CHROME_WINDOW_NOT_FOUND'}}
+  try{
+    $ws=New-Object -ComObject WScript.Shell
+    if(-not$ws.AppActivate($target[0].Id)){return @{Ok=$false;Mode='CHROME_WINDOW_ACTIVATE_FAILED'}}
+    Start-Sleep -Milliseconds 350
+    $ws.SendKeys('^l');Start-Sleep -Milliseconds 150
+    $ws.SendKeys('chrome://extensions/?id='+$script:ExtensionId);$ws.SendKeys('{ENTER}')
+  }catch{return @{Ok=$false;Mode='CHROME_INTERNAL_NAV_FAILED'}}
   $script:ReloadAttempted=$true
   Start-Sleep -Seconds 2
   $clicked=$false
@@ -177,11 +185,14 @@ function Invoke-ReloadAndConfirm([string]$ExpectedVersion){
     foreach($doc in @(Get-ChromeDocuments)){
       try{
         $cond=New-Object Windows.Automation.PropertyCondition -ArgumentList @([Windows.Automation.AutomationElement]::ControlTypeProperty,[Windows.Automation.ControlType]::Button)
+        $reloadCandidates=New-Object Collections.Generic.List[object]
         foreach($b in $doc.FindAll([Windows.Automation.TreeScope]::Subtree,$cond)){
           $n=[string]$b.Current.Name
-          if($n-match'(?i)^\s*(reload|reload extension|tải lại|tai lai|tải lại tiện ích|tai lai tien ich)\s*$'){
-            try{$b.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke();$clicked=$true;break}catch{}
-          }
+          $aid=[string]$b.Current.AutomationId
+          if($aid-eq'dev-reload-button'-or$n-match'(?i)^\s*(reload|reload extension|tai lai|tai lai tien ich)\s*$'){$reloadCandidates.Add($b)}
+        }
+        foreach($b in @($reloadCandidates.ToArray()|Sort-Object { $_.Current.BoundingRectangle.Y } -Descending)){
+          try{$b.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke();$clicked=$true;break}catch{}
         }
       }catch{}
       if($clicked){break}
@@ -260,12 +271,23 @@ function Assert-Health([string]$Path,$Spec,[string]$ExpectedId,[string]$Expected
     if($null-eq$p -or $p.runtime_active -or $p.active){throw ('HEALTH_INACTIVE_EMPLOYEE_INVALID '+$id)}
   }
 }
+function Sync-Tree([string]$Source,[string]$Destination){
+  if(-not(Test-Path -LiteralPath $Destination)){New-Item -ItemType Directory -Force -Path $Destination|Out-Null}
+  & robocopy $Source $Destination /MIR /R:2 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null
+  $rc=$LASTEXITCODE
+  if($rc-ge8){throw ('ROBOCOPY_SYNC_FAILED exit='+$rc)}
+}
 function Restore-Backup{
-  if(-not$script:Swapped-or[string]::IsNullOrWhiteSpace($script:BackupPath)-or[string]::IsNullOrWhiteSpace($script:ExtensionPath)){return}
-  $failed=$script:ExtensionPath+'.failed.'+(Get-Date -Format 'yyyyMMddHHmmssfff')
-  if(Test-Path -LiteralPath $script:ExtensionPath){Move-Item -LiteralPath $script:ExtensionPath -Destination $failed -Force}
-  Move-Item -LiteralPath $script:BackupPath -Destination $script:ExtensionPath -Force
-  $script:Swapped=$false
+  if([string]::IsNullOrWhiteSpace($script:BackupPath)-or[string]::IsNullOrWhiteSpace($script:ExtensionPath)){return}
+  if($script:InPlaceApplied){
+    Sync-Tree $script:BackupPath $script:ExtensionPath
+    $script:InPlaceApplied=$false
+  }elseif($script:Swapped){
+    $failed=$script:ExtensionPath+'.failed.'+(Get-Date -Format 'yyyyMMddHHmmssfff')
+    if(Test-Path -LiteralPath $script:ExtensionPath){Move-Item -LiteralPath $script:ExtensionPath -Destination $failed -Force}
+    Move-Item -LiteralPath $script:BackupPath -Destination $script:ExtensionPath -Force
+    $script:Swapped=$false
+  }else{return}
   $script:RollbackPerformed=$true
   if($script:ChromeWasRunning-and$script:ReloadAttempted){try{[void](Invoke-ReloadAndConfirm '')}catch{}}
 }
@@ -361,14 +383,20 @@ try{
   $script:ChromeWasRunning=@(Get-Process chrome -ErrorAction SilentlyContinue).Count-gt0
   $script:ChromeExe=Get-ChromeExecutable
 
-  Move-Item -LiteralPath $script:ExtensionPath -Destination $script:BackupPath
-  try{
-    Move-Item -LiteralPath $script:StagePath -Destination $script:ExtensionPath
-    $script:StagePath=$null
-    $script:Swapped=$true
-  }catch{
-    Move-Item -LiteralPath $script:BackupPath -Destination $script:ExtensionPath -Force
-    throw
+  if($script:ChromeWasRunning){
+    Copy-Item -LiteralPath $script:ExtensionPath -Destination $script:BackupPath -Recurse -Force
+    Sync-Tree $script:StagePath $script:ExtensionPath
+    $script:InPlaceApplied=$true
+  }else{
+    Move-Item -LiteralPath $script:ExtensionPath -Destination $script:BackupPath
+    try{
+      Move-Item -LiteralPath $script:StagePath -Destination $script:ExtensionPath
+      $script:StagePath=$null
+      $script:Swapped=$true
+    }catch{
+      Move-Item -LiteralPath $script:BackupPath -Destination $script:ExtensionPath -Force
+      throw
+    }
   }
 
   Assert-Health $script:ExtensionPath $manifest.health $script:ExtensionId $script:TargetVersion
@@ -376,6 +404,7 @@ try{
   if(-not$reload.Ok){throw ('RELOAD_HEALTH_FAILED '+$reload.Mode)}
   Assert-Health $script:ExtensionPath $manifest.health $script:ExtensionId $script:TargetVersion
   $script:Swapped=$false
+  $script:InPlaceApplied=$false
 
   Write-Status $true 'APPLIED' ([string]$reload.Mode) ('updated '+$oldVersion+' -> '+$script:TargetVersion) $ExpectedManifestSha256.ToLowerInvariant() ([string]$manifest.source_commit) $script:TargetVersion
   Write-Host ('PASS: zero-touch update '+$oldVersion+' -> '+$script:TargetVersion+'; chrome_running='+$script:ChromeWasRunning+'; reload='+$reload.Mode)
