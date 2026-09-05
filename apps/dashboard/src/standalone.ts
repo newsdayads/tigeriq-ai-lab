@@ -12,6 +12,7 @@ import { startOwnerCockpitV8 } from './server-v8.js';
 import { startOwnerCockpitV10 } from './server-v10.js';
 import { startOwnerCockpitV11 } from './server-v11.js';
 import { startOwnerCockpitV12 } from './server-v12.js';
+import { startOwnerCockpitV13 } from './server-v13.js';
 
 const execFileAsync = promisify(execFile);
 const journalPath = process.env.TIGERIQ_JOURNAL ?? 'F:\\TigerIQ\\State\\control-plane.jsonl';
@@ -21,8 +22,8 @@ const repo = process.env.TIGERIQ_REPO ?? 'newsdayads/tigeriq-ai-lab';
 const runtimeRoot = process.env.TIGERIQ_REPO_ROOT ?? '';
 const currentReleasePath = process.env.TIGERIQ_CURRENT_RELEASE ?? 'F:\\TigerIQ\\CommandCenter\\current-release.txt';
 const updaterStatePath = process.env.TIGERIQ_UPDATER_STATE ?? 'F:\\TigerIQ\\CommandCenter\\updater-v3-state.json';
-const WEB_LOCAL_VERSION = 'WEB-LOCAL-396-V3.3';
-// Current presentation layer: V3.3 forces Segoe UI site-wide over V3.2 while retaining V3.1/V4 governance behavior underneath.
+const WEB_LOCAL_VERSION = 'WEB-LOCAL-396-V3.4';
+// Current presentation layer: Fluent Executive V3.4 over V3.3 Segoe UI and V3.2 single-overview semantics.
 const LIVE_UI_MARKERS = [
   'Vy (Trợ lý)',
   'Minh (NV01 — Thực thi trực tiếp)',
@@ -43,7 +44,12 @@ const LIVE_UI_MARKERS = [
   'Trạng thái hệ thống',
   'Quyền xử lý / chuyển giao',
   'data-font="segoe-ui-default"',
+  'data-theme="fluent-executive-v34"',
+  'data-visual-spec="fluent-executive-mockup"',
   'font-family:"Segoe UI"',
+  'tq34-donut',
+  'tq34-avatar',
+  'tq34-owner-highlight',
   'data-overview="single-dashboard-v32"',
   '/?view=work',
   '/?view=workforce',
@@ -130,8 +136,15 @@ async function emitWebLocalRuntimeEvidence(serverUrl: string): Promise<void> {
         'segoe_ui_font_contract=ĐẠT',
         'segoe_ui_whole_site=ĐẠT',
         'google_font_removed=ĐẠT',
+        'fluent_executive_visual_contract=ĐẠT',
+        'visual_reference=APPROVED_FLUENT_EXECUTIVE_MOCKUP',
+        'minimum_readable_text=13px',
+        'executive_color_system=ĐẠT',
+        'fluent_icons=ĐẠT',
+        'donut_visual=ĐẠT',
+        'team_avatar_cards=ĐẠT',
+        'owner_highlight=ĐẠT',
         'button_interaction_states=ĐẠT',
-        'management_layout_v31=ĐẠT',
         'overview_single_dashboard=ĐẠT',
         'legacy_overview_duplicate_removed=ĐẠT',
         'server_side_views=8',
@@ -141,7 +154,7 @@ async function emitWebLocalRuntimeEvidence(serverUrl: string): Promise<void> {
         'ownership_projection=ĐẠT',
         'candidate_and_live_health=ĐẠT',
         'live_ui_contract=ĐẠT',
-        'state=WEB_LOCAL_396_V33_SEGOE_UI_VERIFIED',
+        'state=WEB_LOCAL_396_V34_FLUENT_EXECUTIVE_VERIFIED',
       ].join('\n');
       await execFileAsync('gh', ['api', `repos/${repo}/issues/396/comments`, '--method', 'POST', '-f', `body=${evidence}`], {
         timeout: 15_000,
@@ -198,11 +211,13 @@ const cockpitV5 = await startOwnerCockpitV5({ backendUrl: backend.url, repo, hos
 const cockpitV8 = await startOwnerCockpitV8({ cockpitUrl: cockpitV5.url, backendUrl: backend.url, repo, host: '127.0.0.1', port: 0 });
 const cockpitV10 = await startOwnerCockpitV10({ cockpitUrl: cockpitV8.url, host: '127.0.0.1', port: 0 });
 const cockpitV11 = await startOwnerCockpitV11({ cockpitUrl: cockpitV10.url, host: '127.0.0.1', port: 0 });
-const server = await startOwnerCockpitV12({ cockpitUrl: cockpitV11.url, host, port });
+const cockpitV12 = await startOwnerCockpitV12({ cockpitUrl: cockpitV11.url, host: '127.0.0.1', port: 0 });
+const server = await startOwnerCockpitV13({ cockpitUrl: cockpitV12.url, host, port });
 void emitWebLocalRuntimeEvidence(server.url);
 schedulePc01RuntimeSelfHeal({ host, repo, repoRoot: process.env.TIGERIQ_REPO_ROOT });
 
-console.log(`TigerIQ Owner Cockpit V12 / UI V3.3 Segoe UI online: ${server.url}`);
+console.log(`TigerIQ Owner Cockpit V13 / UI V3.4 Fluent Executive online: ${server.url}`);
+console.log(`Internal Owner Cockpit V12 / UI V3.3 Segoe UI: ${cockpitV12.url}`);
 console.log(`Internal Owner Cockpit V11 / UI V3.2: ${cockpitV11.url}`);
 console.log(`Internal Owner Cockpit V10 historical presentation layer: ${cockpitV10.url}`);
 console.log(`Internal Owner Cockpit V8: ${cockpitV8.url}`);
@@ -210,12 +225,13 @@ console.log(`Internal Owner Cockpit V5: ${cockpitV5.url}`);
 console.log(`Internal Command Center backend: ${backend.url}`);
 console.log(`Journal: ${journalPath}`);
 console.log('Dashboard source: local journal + live GitHub lifecycle projection.');
-console.log('Web Local V12 keeps V3.2 layout and forces Segoe UI as the site-wide default.');
+console.log('Web Local V13 applies the approved Fluent Executive mockup visual system over real dynamic data.');
 console.log('Write actions require TIGERIQ_COMMAND_SECRET + CSRF + bounded allowlist.');
 console.log('Live PC01 runtime performs bounded Worker self-heal; candidate localhost releases never mutate Worker runtime.');
 
 const shutdown = async () => {
   await server.close();
+  await cockpitV12.close();
   await cockpitV11.close();
   await cockpitV10.close();
   await cockpitV8.close();

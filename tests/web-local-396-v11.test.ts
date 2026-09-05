@@ -31,18 +31,19 @@ describe('Web Local #396 UI V3.2', () => {
     expect(system).toContain('class="on" href="/?view=system"');
   });
 
-  it('retains historical V3.2 Open Sans layer before the final Segoe UI wrapper', () => {
+  it('retains historical V3.2 Open Sans layer before final wrappers', () => {
     const html = applyOverviewV32(base, 'workforce');
     expect(html).toContain(':root{font-family:"Open Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;');
     expect(html).toContain('<input type="hidden" name="view" value="workforce">');
   });
 
-  it('wires current machine-real acceptance to V3.3 Segoe UI while retaining V3.2 layout', () => {
+  it('retains V3.2 single-overview semantics under V3.4 Fluent Executive', () => {
     const standalone = readFileSync(new URL('../apps/dashboard/src/standalone.ts', import.meta.url), 'utf8');
     for (const expected of [
-      'WEB-LOCAL-396-V3.3', 'startOwnerCockpitV12', 'overview_single_dashboard=ĐẠT',
+      'WEB-LOCAL-396-V3.4', 'startOwnerCockpitV11', 'startOwnerCockpitV13', 'overview_single_dashboard=ĐẠT',
       'legacy_overview_duplicate_removed=ĐẠT', 'server_side_views=8', 'segoe_ui_whole_site=ĐẠT',
-      'state=WEB_LOCAL_396_V33_SEGOE_UI_VERIFIED', 'data-overview="single-dashboard-v32"',
+      'fluent_executive_visual_contract=ĐẠT', 'state=WEB_LOCAL_396_V34_FLUENT_EXECUTIVE_VERIFIED',
+      'data-overview="single-dashboard-v32"',
     ]) expect(standalone).toContain(expected);
     expect(standalone).not.toContain('open_sans_whole_site=ĐẠT');
   });
