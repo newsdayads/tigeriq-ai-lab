@@ -33,6 +33,8 @@ jobs:
           cp scripts/pc-worker/repair-secure-worker-model-roles.ps1 .release/runtime/scripts/pc-worker/
           cp scripts/pc-worker/repair-secure-worker-queue-resilience.ps1 .release/runtime/scripts/pc-worker/
           cp scripts/pc-worker/hide-worker-watchdog-console.ps1 .release/runtime/scripts/pc-worker/
+          cp scripts/pc-worker/install-autoworker-zero-touch-hook.ps1 .release/runtime/scripts/pc-worker/
+          cp scripts/pc-worker/autoworker-zero-touch-deploy.py .release/runtime/scripts/pc-worker/
           cp scripts/pc-worker/repair-control-plane-controller-diagnose.ps1 .release/runtime/scripts/pc-worker/
           cp scripts/pc-worker/repair-control-plane-controller-status-contract.ps1 .release/runtime/scripts/pc-worker/
           cp scripts/pc-worker/repair-workforce-controller-runtime-deps.ps1 .release/runtime/scripts/pc-worker/
@@ -40,6 +42,8 @@ jobs:
           test -s .release/runtime/scripts/pc-worker/repair-secure-worker-model-roles.ps1
           test -s .release/runtime/scripts/pc-worker/repair-secure-worker-queue-resilience.ps1
           test -s .release/runtime/scripts/pc-worker/hide-worker-watchdog-console.ps1
+          test -s .release/runtime/scripts/pc-worker/install-autoworker-zero-touch-hook.ps1
+          test -s .release/runtime/scripts/pc-worker/autoworker-zero-touch-deploy.py
           test -s .release/runtime/scripts/pc-worker/repair-control-plane-controller-diagnose.ps1
           test -s .release/runtime/scripts/pc-worker/repair-control-plane-controller-status-contract.ps1
           test -s .release/runtime/scripts/pc-worker/repair-workforce-controller-runtime-deps.ps1
@@ -60,6 +64,8 @@ jobs:
               'scripts/pc-worker/repair-secure-worker-model-roles.ps1',
               'scripts/pc-worker/repair-secure-worker-queue-resilience.ps1',
               'scripts/pc-worker/hide-worker-watchdog-console.ps1',
+              'scripts/pc-worker/install-autoworker-zero-touch-hook.ps1',
+              'scripts/pc-worker/autoworker-zero-touch-deploy.py',
               'scripts/pc-worker/repair-control-plane-controller-diagnose.ps1',
               'scripts/pc-worker/repair-control-plane-controller-status-contract.ps1',
               'scripts/pc-worker/repair-workforce-controller-runtime-deps.ps1'
