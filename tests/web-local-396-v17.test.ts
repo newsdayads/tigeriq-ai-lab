@@ -55,8 +55,10 @@ describe('Web Local #396 Executive V4 renderer', () => {
 
   it('renders exactly seven primary navigation items while preserving evidence as a secondary route', () => {
     const html = renderExecutiveOverviewV4(data);
-    expect((html.match(/class="(?:on )?" href="\/\?view=/g) ?? []).length).toBe(0);
-    for (const route of ['overview', 'work', 'models', 'workforce', 'system', 'reports', 'settings']) expect(html).toContain(`href="/?view=${route}"`);
+    const nav = html.match(/<nav class="x-nav">([\s\S]*?)<\/nav>/)?.[1] ?? '';
+    expect((nav.match(/href="\/\?view=/g) ?? []).length).toBe(7);
+    for (const route of ['overview', 'work', 'models', 'workforce', 'system', 'reports', 'settings']) expect(nav).toContain(`href="/?view=${route}"`);
+    expect(nav).not.toContain('href="/?view=evidence"');
     expect(html).toContain('href="/?view=evidence"');
   });
 
