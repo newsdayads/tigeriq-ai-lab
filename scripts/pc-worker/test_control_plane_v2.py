@@ -1,6 +1,7 @@
 import json
 import os
 import tempfile
+import urllib.error
 from pathlib import Path
 
 root = Path(tempfile.mkdtemp())
@@ -64,6 +65,74 @@ finally:
     cp._run = original_run
     cp._tailscale_exe = original_tail
     cp._netstat_exe = original_netstat
+
+
+class FakeResponse:
+    def __init__(self, status, payload):
+        self.status = status
+        self._body = json.dumps(payload).encode('utf-8')
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def read(self, _limit):
+        return self._body
+
+
+original_ipv4 = cp.tailscale_ipv4
+original_listener = cp.listener_status
+original_urlopen = cp.urllib.request.urlopen
+try:
+    cp.tailscale_ipv4 = lambda: '100.97.23.87'
+    cp.listener_status = lambda port=cp.WORKFORCE_PORT: {
+        'ok': True,
+        'action': 'listener.status',
+        'port': cp.WORKFORCE_PORT,
+        'listeners': [{'address':'100.97.23.87','pid':1234}],
+        'wildcard_listener': False,
+        'public_listener': [],
+    }
+    seen_urls = []
+
+    def good_urlopen(url, timeout=5):
+        seen_urls.append(url)
+        assert timeout == 5
+        return FakeResponse(200, {
+            'ok': True,
+            'protocol': 'controller-v1',
+            'postgres': True,
+            'migration': '001_operational_state_v1',
+        })
+
+    cp.urllib.request.urlopen = good_urlopen
+    status = cp.workforce_status()
+    assert status['ok'] is True
+    assert status['contract_ok'] is True
+    assert seen_urls == ['http://100.97.23.87:8790/api/v1/status']
+
+    for payload in (
+        {'ok': True, 'protocol': 'wrong-controller', 'postgres': True, 'migration': '001_operational_state_v1'},
+        {'ok': False, 'protocol': 'controller-v1', 'postgres': True, 'migration': '001_operational_state_v1'},
+        {'ok': True, 'protocol': 'controller-v1', 'postgres': False, 'migration': '001_operational_state_v1'},
+        {'ok': True, 'protocol': 'controller-v1', 'postgres': True, 'migration': 'unexpected'},
+    ):
+        cp.urllib.request.urlopen = lambda url, timeout=5, payload=payload: FakeResponse(200, payload)
+        status = cp.workforce_status()
+        assert status['ok'] is False and status['contract_ok'] is False
+
+    def not_found(url, timeout=5):
+        raise urllib.error.HTTPError(url, 404, 'Not Found', hdrs=None, fp=None)
+
+    cp.urllib.request.urlopen = not_found
+    status = cp.workforce_status()
+    assert status['ok'] is False and status['http_status'] == 404
+finally:
+    cp.tailscale_ipv4 = original_ipv4
+    cp.listener_status = original_listener
+    cp.urllib.request.urlopen = original_urlopen
 
 state = cp.load_state()
 lease = cp.acquire_lease(state, 1, 'idem-1')
