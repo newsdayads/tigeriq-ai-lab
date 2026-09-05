@@ -72,7 +72,7 @@ describe('Web Local #338 overlay', () => {
     expect(out).toContain('</header><section id="overlay">P0</section><main>legacy-body</main>');
   });
 
-  it('emits bounded exact runtime evidence only after updater pointer/state and live health agree', () => {
+  it('emits bounded exact runtime evidence only after updater pointer/state, live health and rendered UI agree', () => {
     const standalone = readFileSync(new URL('../apps/dashboard/src/standalone.ts', import.meta.url), 'utf8');
     for (const expected of [
       'TIGERIQ_WEB_LOCAL_RUNTIME_EVIDENCE',
@@ -80,9 +80,13 @@ describe('Web Local #338 overlay', () => {
       'pointerSha !== sourceSha',
       "String(state.installedSha ?? '').toLowerCase() !== sourceSha",
       'fetch(`${serverUrl}/api/status`',
+      'fetch(`${serverUrl}/`',
+      'LIVE_UI_MARKERS.filter',
+      'ui_required_markers=${LIVE_UI_MARKERS.length}/${LIVE_UI_MARKERS.length}',
+      'live_ui_contract=ĐẠT',
+      'state=WEB_LOCAL_RUNTIME_AND_UI_VERIFIED',
       'current_release_match=true',
       'candidate_and_live_health=ĐẠT',
-      'state=WEB_LOCAL_RUNTIME_VERIFIED',
       "host === '127.0.0.1'",
       'attempt < 30',
     ]) expect(standalone).toContain(expected);
