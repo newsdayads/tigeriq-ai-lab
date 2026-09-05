@@ -26,100 +26,95 @@ Bootstrap 2.2 dynamic resolver đã áp dụng. NEW CHAT `1`/`2` đã có regres
 ### #338 — Minh/NV01
 - Scope: PC01 Server / TigerIQ Control Plane / AI PC01 Web Control.
 - `OWNER_HOLD=true`.
-- Khoa/NV02 và Huy/NV03 phải SKIP resource này; không tạo mutation owner thứ hai.
+- Khoa/NV02 và Huy/NV03 phải SKIP resource này.
 
 ### #306 — Khoa/NV02 / Auto Worker
 Current corrective candidate: **V13.4.4 — Exact 504×834 / Top5 / Right5 / DPI-safe screen hint**.
-
-Nguyên nhân supersede V13.4.3:
-- physical evidence xác nhận size nhỏ nhưng window có thể lệch/mất một phần màn hình;
-- `system.display.workArea` và `chrome.windows` có thể không cùng coordinate space trên Windows DPI/scaling.
 
 V13.4.4 contract/evidence:
 - Tiger control lấy `screen.availLeft/Top/Width/Height`, truyền `screenHint` sang background.
 - Mỗi explicit START normalize + verify exact **504×834, Top 5, Right 5**.
 - `windows.update` + `windows.get` verify tối đa 3 lần, tolerance 8 px; fail => **BỊ CHẶN**, không dispatch `2`.
-- Sau START, user move/resize được giữ; recovery dùng prior normal bounds.
 - Installer không tự mở Chrome.
 - Exact Project: `https://chatgpt.com/g/g-p-6a925c470aa08191a10595e215d04f4e-tigeriq-ai-lab/project`.
 - Readiness trước `2`: đúng Project + document complete + composer enabled + URL stable 5×500ms + grace 1500ms; timeout 90s.
 - Artifact `TigerIQ_AW_13.4.4.cmd`, SHA-256 `e9959c1fdc2202eed90dc292bbe7baf917f333e4b8d898a92ac0b542c8eea180`.
-- Static/mock/regression **22/22 ĐẠT**; exact layout/background smoke/node syntax/mock update ĐẠT.
+- Source/tests ZIP SHA-256 `77585fb81511b1130286eeb8bdf9f0b05a9a849930e02d852956c8c4750c16f8`.
+- Static/mock/regression **22/22 ĐẠT**.
 
-Physical Chrome A–N + exact placement/Project/readiness/icon/status vẫn **CHỜ** tại #343. Không tạo version mới nếu chưa có physical/runtime finding hoặc contract change mới.
+### Physical placement evidence mới
+Owner-confirmed comment `#306 issuecomment-5548193153` xác nhận riêng hạng mục **WINDOW_PLACEMENT = PHYSICAL_PASS / LOCKED**:
+- size **504 × 834**;
+- **Top 5**;
+- **Right 5**;
+- explicit START phải giữ placement trước dispatch;
+- candidate sau phải retest baseline này.
+
+Không suy diễn toàn #306 đã ĐẠT. Project/readiness/icon/status/lifecycle và các acceptance A–N còn lại tiếp tục theo evidence riêng / #343.
 
 ### #362 — Khoa/NV02 / Controller health probe
-Nguyên nhân gốc đã xác minh:
-- Controller V1 dùng `/api/v1/status`.
-- Generic Controller dùng `/api/workforce/status`.
-- probe cũ hardcode generic nên có thể báo HTTP 404 giả.
+- Controller V1 dùng `/api/v1/status`; generic dùng `/api/workforce/status`; probe cũ hardcode generic gây 404 giả.
+- Draft PR #363 exact `d78ac91d48352acba759e02d72b31981bb809ea8`.
+- Regression PowerShell **5 case ĐẠT**; CI #1001 **ĐẠT**; Vercel #402 **ĐẠT**.
+- Integration proof #369: Queue #441 + CI #1002 + Vercel **ĐẠT**; #369 đóng không merge.
+- Independent review finite/read-only **#376** đã xếp P0; chưa có PASS marker thì không suy diễn independent approval/MAIN/live.
 
-Candidate Draft PR #363 exact `d78ac91d48352acba759e02d72b31981bb809ea8`:
-- auto-detect V1/generic;
-- xuất `controller_contract`, `health_path`, `health_ok`, `health_error` và giữ legacy `http`;
-- đã sửa false-classification khi một path 404 nhưng contract thực tế tồn tại và unhealthy;
-- regression PowerShell **5 case ĐẠT**;
-- CI #1001 **ĐẠT**;
-- Vercel Verify #402 **ĐẠT**.
+### #347 — Khoa/NV02 / Secure Worker timeout self-heal
+- Current Draft PR #348 exact `80544151b418346d3df38374534f0466cd39c43d`; CI #988 **ĐẠT**.
+- MIN_300 clamp + marker V2; chống false READY và caller-principal mismatch.
+- PR #314 cũ đã đóng **SUPERSEDED / không merge**; branch/commit giữ làm provenance/base.
+- Independent review finite/read-only **#378** đã xếp sau state review.
+- Chưa integration/live runtime.
 
-Integration proof #369 exact `cd2636de836804b3b1b3be1c1826d3b581658214` stack #363 + current verifier #337:
-- Queue Hygiene #441 **ĐẠT**, gồm `Verify Work Board UI`;
-- CI #1002 **ĐẠT**;
-- Vercel Online Verify **ĐẠT**;
-- #369 đã đóng không merge.
-
-Kết luận: Queue đỏ cũ trên #363 là stale verifier baseline, không phải health-probe regression. #362 đang `REPO_READY_FOR_INDEPENDENT_REVIEW`; #363 vẫn Draft/off-MAIN, chưa independent approval, chưa MAIN/live.
+### #337 — Khoa/NV02 / Queue Hygiene verifier
+- Exact `23e95b390be5eb81c990492bf76c2019189bca46`, chỉ sửa `scripts/verify_work_board_ui.mjs`.
+- Queue #422 + CI #972 + Vercel #384 **ĐẠT**.
+- Independent review finite/read-only **#379** đã xếp; không suy diễn release authorization.
 
 ### #318 — PC01 tự vận hành
-Architecture hiện hành:
-- `TigerIQ Workforce Controller` = authority chính.
-- `PC01 Secure Worker` = bounded executor.
-- GitHub command mailbox = bridge từ Vy/ChatGPT đến PC01.
-- OpenClaw = **TẠM GÁC**, không phải P0 hiện hành.
-
-Bằng chứng đã có:
-- remote mailbox `Vy -> PC01 -> execute -> evidence`: **ĐẠT 3/3** qua #321/#323/#324;
-- Workforce Controller chạy SYSTEM + AtStartup, có boot authority ở mức config/runtime đã quan sát;
-- Worker + Watchdog vẫn logon-only theo fresh #364/#365, nên pre-login recovery **CHƯA ĐẠT/CHƯA XÁC MINH**;
-- #347/#348 repo-only timeout/self-heal correction có CI ĐẠT nhưng chưa integration/live.
+- `TigerIQ Workforce Controller` = authority chính; `PC01 Secure Worker` = bounded executor; GitHub command mailbox = bridge.
+- OpenClaw = **TẠM GÁC**.
+- Remote mailbox `Vy -> PC01 -> execute -> evidence`: **ĐẠT 3/3** qua #321/#323/#324.
+- Controller có boot authority ở mức config/runtime đã quan sát.
+- Worker + Watchdog vẫn logon-only theo fresh #364/#365, nên pre-login recovery chưa runtime-accepted.
+- Physical reboot E2E cần explicit Owner authorization.
 
 ### #368 — Huy/NV03 / Worker + Watchdog pre-login autostart
-- Anh Sơn có Owner priority override cho Huy/NV03.
-- Active owner scope: `pc01-worker-watchdog-prelogin-autostart`.
-- Khoa/NV02 phải SKIP mutation trên resource này.
-- Fresh evidence #364/#365: Worker và Watchdog đều `Interactive only`; Worker AtLogon, Watchdog chạy user session dù lặp 1 phút.
-- Draft PR #370 exact `a971eff16a53a090ed05906c287e23f3738c46a8` đang mở/off-MAIN, scope repo-only hardening SYSTEM + AtStartup + backup/rollback/idempotency; chưa tự áp dụng live.
+- Huy/NV03 active owner scope `pc01-worker-watchdog-prelogin-autostart`; Khoa SKIP mutation.
+- Draft PR #370 exact `a971eff16a53a090ed05906c287e23f3738c46a8`.
+- Independent review #372 đã được PC01 claim và có heartbeat thật; chưa có terminal result thì không suy diễn PASS.
 - Live principal/trigger change và physical reboot E2E vẫn cần gate phù hợp theo #318/#343.
 
 ## Continuity / state hygiene — #319
 - Continuity A–E có evidence.
-- CENTRAL #280 + Registry #335 + exact #306 hiện chọn **V13.4.4**.
-- PR #332 = historical V13.3.5 mirror.
-- PR #351/#352 = V13.3.6-era mirror/evidence, superseded.
-- PR #353/#354 = V13.4.0-era mirror/evidence, chỉ còn provenance.
+- CENTRAL #280 + Registry #335 + exact #306 chọn V13.4.4.
+- State hygiene đã đóng không merge các stale/superseded PR #332, #336, #349, #353, #361, #314; provenance giữ nguyên.
 - Default-branch `docs/CURRENT_STATE.md` vẫn materially stale cho tới integration hợp lệ; dynamic authority tiếp tục precedence.
+- Mirror branch/PR hiện hành #373 phải được retest mỗi khi exact state thay đổi; CI/review của head cũ không tự chuyển sang head mới.
+
+## Review queue PC01
+Theo CENTRAL hiện hành:
+1. #372 — Huy/#368 — đang xử lý khi còn heartbeat thật.
+2. #376 — Khoa/#362 — P0 chờ claim.
+3. state mirror review phải bám exact head mới của #373 sau fresh CI.
+4. #378 — Khoa/#347.
+5. #379 — Khoa/#337.
+
+Independence phải được chứng minh bằng immutable local model identities/digests; nếu không chứng minh được thì fail closed `TIGERIQ_PC01_NEEDS_EXTERNAL_REVIEW`.
 
 ## Web / acceptance trackers
 - #261/#322 repo-prep/verifier đã có evidence; physical Web E2E vẫn gate riêng.
-- #337 exact `23e95b390be5eb81c990492bf76c2019189bca46` là current Command Center Queue Hygiene verifier replacement với Queue/CI/Vercel evidence ĐẠT.
 - Không dùng legacy `quickWork`/old Work Board assertions làm current contract.
 
 ## Hàng đợi cần anh Sơn — #343
-Các gate cần thao tác/authorization thật được gom và đẩy ra sau để không chặn lane tự động:
-1. #306 physical Chrome **V13.4.4** update/reload + A–N + exact 504×834 / Top5 / Right5 + Project/readiness/icon/status.
+1. #306: placement 504×834 / Top5 / Right5 đã **ĐẠT vật lý / LOCKED**; chỉ còn các physical acceptance khác như Project/readiness/icon/status/lifecycle/A–N theo evidence riêng.
 2. #318/#368 live principal/trigger change và physical reboot E2E chỉ khi có explicit authorization phù hợp.
 3. #261/#322 physical Web E2E khi dependencies sẵn sàng.
 4. Android/device chỉ sau fresh installed package/version/signer + current candidate + Controller contract audit.
 5. MAIN/Production/security/paid chỉ khi có authorization riêng.
 
 ## Historical / deferred boundaries
-Không chọn historical tracker làm current job chỉ vì title còn P0 hoặc marker cũ:
-- #156/#161: historical PC01 bootstrap/review provenance.
-- #160: deferred Android preflight reference.
-- #165/#167: historical Auto-Resume governance provenance.
-- #176: historical release-train planning reference.
-- #196/#282: historical PC01 recovery/foundation evidence; current PC01 authority là #318/#280.
-- #341 Gemini Web Multi-AI Worker vẫn deferred cho tới Auto Worker physical acceptance hoặc Owner explicit re-activate.
+Không chọn historical tracker làm current job chỉ vì title còn P0 hoặc marker cũ. OpenClaw tiếp tục TẠM GÁC. #341 Gemini Web Multi-AI Worker vẫn deferred cho tới Auto Worker acceptance phù hợp hoặc Owner explicit re-activate.
 
 ## Safety boundary
 Không autonomous MAIN/Production/release, paid/payment, credential/security/firewall widening, destructive/irreversible action, physical reboot/device mutation hoặc secret exposure.
