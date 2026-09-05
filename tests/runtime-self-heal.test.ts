@@ -71,7 +71,7 @@ describe('PC01 runtime self-heal', () => {
     expect(calls[4]?.args.join(' ')).toContain('TigerIQ Worker');
   });
 
-  it('repairs queue resilience before zero-touch Auto Worker and Watchdog then Controller verification', async () => {
+  it('runs zero-touch Auto Worker before repairing queue resilience', async () => {
     const f = await fixture(readyRoles);
     const calls: Array<{ file: string; args: string[]; timeout: number }> = [];
     const result = await selfHealPc01Runtime({
@@ -79,11 +79,11 @@ describe('PC01 runtime self-heal', () => {
       run: async (file, args, timeout) => {
         calls.push({ file, args, timeout });
         const joined = args.join(' ');
+        if (joined.includes('install-autoworker-zero-touch-hook.ps1')) return { stdout: zeroTouchReady, stderr: '' };
         if (joined.includes('repair-secure-worker-queue-resilience.ps1')) {
           await writeFile(f.worker, `${readyRoles}\n${queueMarker}`, 'utf8');
           return { stdout: '{"status":"PASS"}', stderr: '' };
         }
-        if (joined.includes('install-autoworker-zero-touch-hook.ps1')) return { stdout: zeroTouchReady, stderr: '' };
         if (joined.includes('hide-worker-watchdog-console.ps1')) return { stdout: '{"status":"PASS","mutated":true,"principalPreserved":true,"triggerPreserved":true,"physicalVerified":false}', stderr: '' };
         if (joined.includes('repair-control-plane-controller-diagnose.ps1')) return { stdout: '{"status":"PASS","diagnose":"REPAIRED","patched":true}', stderr: '' };
         if (joined.includes('repair-workforce-controller-runtime-deps.ps1')) return { stdout: '{"status":"PASS","runtime":"READY","pgImport":true,"http":true,"postgres":true,"migration":"001_operational_state_v1"}', stderr: '' };
@@ -99,16 +99,16 @@ describe('PC01 runtime self-heal', () => {
     expect(result.controllerDiagnose).toBe('REPAIRED');
     expect(result.controllerRuntime).toBe('READY');
     expect(calls).toHaveLength(5);
-    expect(calls[0]?.args.join(' ')).toContain('repair-secure-worker-queue-resilience.ps1');
-    expect(calls[1]?.args.join(' ')).toContain('install-autoworker-zero-touch-hook.ps1');
-    expect(calls[1]?.args).toContain('-Apply');
+    expect(calls[0]?.args.join(' ')).toContain('install-autoworker-zero-touch-hook.ps1');
+    expect(calls[0]?.args).toContain('-Apply');
+    expect(calls[1]?.args.join(' ')).toContain('repair-secure-worker-queue-resilience.ps1');
     expect(calls[2]?.args.join(' ')).toContain('hide-worker-watchdog-console.ps1');
     expect(calls[2]?.args).toContain('-Apply');
     expect(calls[3]?.args.join(' ')).toContain('repair-control-plane-controller-diagnose.ps1');
     expect(calls[4]?.args.join(' ')).toContain('repair-workforce-controller-runtime-deps.ps1');
   });
 
-  it('repairs missing model roles, queue resilience, zero-touch Auto Worker and Watchdog in bounded order', async () => {
+  it('runs zero-touch Auto Worker before model-role and queue repairs', async () => {
     const f = await fixture(oldRoles);
     const calls: Array<{ file: string; args: string[]; timeout: number }> = [];
     const result = await selfHealPc01Runtime({
@@ -116,6 +116,7 @@ describe('PC01 runtime self-heal', () => {
       run: async (file, args, timeout) => {
         calls.push({ file, args, timeout });
         const joined = args.join(' ');
+        if (joined.includes('install-autoworker-zero-touch-hook.ps1')) return { stdout: zeroTouchReady, stderr: '' };
         if (joined.includes('repair-secure-worker-model-roles.ps1')) {
           await writeFile(f.worker, readyRoles, 'utf8');
           return { stdout: '{"status":"PASS"}', stderr: '' };
@@ -124,7 +125,6 @@ describe('PC01 runtime self-heal', () => {
           await writeFile(f.worker, `${readyRoles}\n${queueMarker}`, 'utf8');
           return { stdout: '{"status":"PASS"}', stderr: '' };
         }
-        if (joined.includes('install-autoworker-zero-touch-hook.ps1')) return { stdout: zeroTouchReady, stderr: '' };
         if (joined.includes('hide-worker-watchdog-console.ps1')) return { stdout: '{"status":"PASS","mutated":true,"principalPreserved":true,"triggerPreserved":true,"physicalVerified":false}', stderr: '' };
         if (joined.includes('repair-control-plane-controller-diagnose.ps1')) return { stdout: '{"status":"PASS","diagnose":"REPAIRED","patched":true}', stderr: '' };
         if (joined.includes('repair-workforce-controller-runtime-deps.ps1')) return { stdout: '{"status":"PASS","runtime":"REPAIRED","pgImport":true,"http":true,"postgres":true,"migration":"001_operational_state_v1"}', stderr: '' };
@@ -140,15 +140,37 @@ describe('PC01 runtime self-heal', () => {
     expect(result.controllerDiagnose).toBe('REPAIRED');
     expect(result.controllerRuntime).toBe('REPAIRED');
     expect(calls).toHaveLength(6);
-    expect(calls[0]?.args.join(' ')).toContain('repair-secure-worker-model-roles.ps1');
-    expect(calls[0]?.args).toContain('-SkipCanary');
-    expect(calls[1]?.args.join(' ')).toContain('repair-secure-worker-queue-resilience.ps1');
-    expect(calls[2]?.args.join(' ')).toContain('install-autoworker-zero-touch-hook.ps1');
-    expect(calls[2]?.args).toContain('-Apply');
+    expect(calls[0]?.args.join(' ')).toContain('install-autoworker-zero-touch-hook.ps1');
+    expect(calls[0]?.args).toContain('-Apply');
+    expect(calls[1]?.args.join(' ')).toContain('repair-secure-worker-model-roles.ps1');
+    expect(calls[1]?.args).toContain('-SkipCanary');
+    expect(calls[2]?.args.join(' ')).toContain('repair-secure-worker-queue-resilience.ps1');
     expect(calls[3]?.args.join(' ')).toContain('hide-worker-watchdog-console.ps1');
-    expect(calls[3]?.args).toContain('-Apply');
     expect(calls[4]?.args.join(' ')).toContain('repair-control-plane-controller-diagnose.ps1');
     expect(calls[5]?.args.join(' ')).toContain('repair-workforce-controller-runtime-deps.ps1');
+  });
+
+  it('still attempts zero-touch Auto Worker when legacy Worker layout is incompatible', async () => {
+    const f = await fixture('UNRELATED_WORKER_LAYOUT_V9');
+    const calls: string[] = [];
+    const result = await selfHealPc01Runtime({
+      host: '100.97.23.87', repo: 'newsdayads/tigeriq-ai-lab', repoRoot: f.root, workerImpl: f.worker, statePath: f.state,
+      run: async (_file, args) => {
+        calls.push(args.join(' '));
+        if (args.join(' ').includes('install-autoworker-zero-touch-hook.ps1')) return { stdout: zeroTouchReady, stderr: '' };
+        return { stdout: 'Running', stderr: '' };
+      },
+    });
+    expect(result.result).toBe('FAILED');
+    expect(result.autoWorkerDeploy).toBe('READY');
+    expect(result.autoWorkerPhysical).toBe('CONFIRMED');
+    expect(result.error).toContain('WORKER_LAYOUT_CHANGED');
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toContain('install-autoworker-zero-touch-hook.ps1');
+    const persisted = JSON.parse(await readFile(f.state, 'utf8')) as { autoWorkerDeploy: string; autoWorkerPhysical: string; error: string };
+    expect(persisted.autoWorkerDeploy).toBe('READY');
+    expect(persisted.autoWorkerPhysical).toBe('CONFIRMED');
+    expect(persisted.error).toContain('WORKER_LAYOUT_CHANGED');
   });
 
   it('fails closed before Watchdog when zero-touch Auto Worker deploy does not return PASS or READY', async () => {
@@ -185,10 +207,13 @@ describe('PC01 runtime self-heal', () => {
       },
     });
     expect(result.result).toBe('FAILED');
+    expect(result.autoWorkerDeploy).toBe('READY');
+    expect(result.autoWorkerPhysical).toBe('CONFIRMED');
     expect(result.watchdogConsole).toBe('UNKNOWN');
     expect(calls).toBe(2);
-    const persisted = JSON.parse(await readFile(f.state, 'utf8')) as { result: string; error: string };
+    const persisted = JSON.parse(await readFile(f.state, 'utf8')) as { result: string; error: string; autoWorkerDeploy: string };
     expect(persisted.result).toBe('FAILED');
+    expect(persisted.autoWorkerDeploy).toBe('READY');
     expect(persisted.error).toContain('WATCHDOG_CONSOLE_REPAIR_NO_PASS');
   });
 
@@ -206,9 +231,12 @@ describe('PC01 runtime self-heal', () => {
       },
     });
     expect(result.result).toBe('FAILED');
+    expect(result.autoWorkerDeploy).toBe('READY');
+    expect(result.autoWorkerPhysical).toBe('CONFIRMED');
     expect(result.controllerRuntime).toBe('UNKNOWN');
-    const persisted = JSON.parse(await readFile(f.state, 'utf8')) as { result: string; error: string };
+    const persisted = JSON.parse(await readFile(f.state, 'utf8')) as { result: string; error: string; autoWorkerDeploy: string };
     expect(persisted.result).toBe('FAILED');
+    expect(persisted.autoWorkerDeploy).toBe('READY');
     expect(persisted.error).toContain('CONTROLLER_RUNTIME_REPAIR_NO_PASS');
   });
 });

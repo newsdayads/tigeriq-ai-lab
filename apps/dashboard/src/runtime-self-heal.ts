@@ -101,20 +101,36 @@ export async function selfHealPc01Runtime(options: RuntimeSelfHealOptions): Prom
   const controllerDiagnoseRepairScript = resolve(repoRoot, 'scripts', 'pc-worker', 'repair-control-plane-controller-diagnose.ps1');
   const controllerRuntimeRepairScript = resolve(repoRoot, 'scripts', 'pc-worker', 'repair-workforce-controller-runtime-deps.ps1');
 
+  let modelRoles: 'READY' | 'REPAIRED' | 'UNKNOWN' = 'UNKNOWN';
+  let queueResilience: 'READY' | 'REPAIRED' | 'UNKNOWN' = 'UNKNOWN';
+  let autoWorkerDeploy: 'READY' | 'DEPLOYED' | 'UNKNOWN' = 'UNKNOWN';
+  let autoWorkerPhysicalState: 'CONFIRMED' | 'PENDING' | 'UNKNOWN' = 'UNKNOWN';
+  let watchdogConsole: 'READY' | 'REPAIRED' | 'UNKNOWN' = 'UNKNOWN';
+  let controllerDiagnose: 'READY' | 'REPAIRED' | 'UNKNOWN' = 'UNKNOWN';
+  let controllerRuntime: 'READY' | 'REPAIRED' | 'UNKNOWN' = 'UNKNOWN';
+  let repaired = false;
+
   try {
+    // #441 P0: Auto Worker deployment is independent of legacy Worker/Controller repair gates.
+    // Run it first so a stale model-role/queue/controller condition cannot prevent V14.2.x delivery.
+    await readFile(autoWorkerDeployScript, 'utf8');
+    const autoWorkerRepair = await run('powershell.exe', [
+      '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', autoWorkerDeployScript, '-Apply',
+    ], 5 * 60 * 1000);
+    if (!repairPassed(autoWorkerRepair.stdout)) {
+      throw new Error(`AUTOWORKER_ZERO_TOUCH_DEPLOY_NO_PASS: ${clipped(autoWorkerRepair.stdout || autoWorkerRepair.stderr)}`);
+    }
+    autoWorkerPhysicalState = autoWorkerPhysical(autoWorkerRepair.stdout);
+    autoWorkerDeploy = /"deploy"\s*:\s*"DEPLOYED"/i.test(autoWorkerRepair.stdout) ? 'DEPLOYED' : 'READY';
+    if (autoWorkerDeploy === 'DEPLOYED' || /"mutated"\s*:\s*true/i.test(autoWorkerRepair.stdout)) repaired = true;
+
     let workerText = await readFile(workerImpl, 'utf8');
     const oldRoles = workerText.includes(OLD_REVIEWER) || workerText.includes(OLD_JUDGE);
     const readyRoles = hasReadyRoles(workerText);
     if (!oldRoles && !readyRoles) throw new Error('WORKER_LAYOUT_CHANGED');
 
-    let modelRoles: 'READY' | 'REPAIRED' = readyRoles ? 'READY' : 'REPAIRED';
-    let queueResilience: 'READY' | 'REPAIRED' = workerText.includes(QUEUE_RESILIENCE_MARKER) ? 'READY' : 'REPAIRED';
-    let autoWorkerDeploy: 'READY' | 'DEPLOYED' = 'READY';
-    let autoWorkerPhysicalState: 'CONFIRMED' | 'PENDING' | 'UNKNOWN' = 'UNKNOWN';
-    let watchdogConsole: 'READY' | 'REPAIRED' = 'READY';
-    let controllerDiagnose: 'READY' | 'REPAIRED' = 'READY';
-    let controllerRuntime: 'READY' | 'REPAIRED' = 'READY';
-    let repaired = false;
+    modelRoles = readyRoles ? 'READY' : 'UNKNOWN';
+    queueResilience = workerText.includes(QUEUE_RESILIENCE_MARKER) ? 'READY' : 'UNKNOWN';
 
     if (oldRoles) {
       await readFile(repairScript, 'utf8');
@@ -146,20 +162,6 @@ export async function selfHealPc01Runtime(options: RuntimeSelfHealOptions): Prom
       if (!workerText.includes(QUEUE_RESILIENCE_MARKER)) throw new Error('QUEUE_PATCH_NOT_PERSISTED');
     }
 
-    await readFile(autoWorkerDeployScript, 'utf8');
-    const autoWorkerRepair = await run('powershell.exe', [
-      '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', autoWorkerDeployScript, '-Apply',
-    ], 5 * 60 * 1000);
-    if (!repairPassed(autoWorkerRepair.stdout)) {
-      throw new Error(`AUTOWORKER_ZERO_TOUCH_DEPLOY_NO_PASS: ${clipped(autoWorkerRepair.stdout || autoWorkerRepair.stderr)}`);
-    }
-    autoWorkerPhysicalState = autoWorkerPhysical(autoWorkerRepair.stdout);
-    if (/"deploy"\s*:\s*"DEPLOYED"/i.test(autoWorkerRepair.stdout)) {
-      autoWorkerDeploy = 'DEPLOYED';
-      repaired = true;
-    }
-    if (/"mutated"\s*:\s*true/i.test(autoWorkerRepair.stdout)) repaired = true;
-
     await readFile(watchdogRepairScript, 'utf8');
     const watchdogRepair = await run('powershell.exe', [
       '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', watchdogRepairScript, '-Apply',
@@ -167,10 +169,8 @@ export async function selfHealPc01Runtime(options: RuntimeSelfHealOptions): Prom
     if (!repairPassed(watchdogRepair.stdout)) {
       throw new Error(`WATCHDOG_CONSOLE_REPAIR_NO_PASS: ${clipped(watchdogRepair.stdout || watchdogRepair.stderr)}`);
     }
-    if (/"mutated"\s*:\s*true/i.test(watchdogRepair.stdout)) {
-      repaired = true;
-      watchdogConsole = 'REPAIRED';
-    }
+    watchdogConsole = /"mutated"\s*:\s*true/i.test(watchdogRepair.stdout) ? 'REPAIRED' : 'READY';
+    if (watchdogConsole === 'REPAIRED') repaired = true;
 
     await readFile(controllerDiagnoseRepairScript, 'utf8');
     const diagnoseRepair = await run('powershell.exe', [
@@ -179,10 +179,8 @@ export async function selfHealPc01Runtime(options: RuntimeSelfHealOptions): Prom
     if (!diagnoseRepair.stdout.includes('"status":"PASS"') && !diagnoseRepair.stdout.includes('"status": "PASS"')) {
       throw new Error(`CONTROLLER_DIAGNOSE_REPAIR_NO_PASS: ${clipped(diagnoseRepair.stdout || diagnoseRepair.stderr)}`);
     }
-    if (/"patched"\s*:\s*true/i.test(diagnoseRepair.stdout)) {
-      repaired = true;
-      controllerDiagnose = 'REPAIRED';
-    }
+    controllerDiagnose = /"patched"\s*:\s*true/i.test(diagnoseRepair.stdout) ? 'REPAIRED' : 'READY';
+    if (controllerDiagnose === 'REPAIRED') repaired = true;
 
     await readFile(controllerRuntimeRepairScript, 'utf8');
     const runtimeRepair = await run('powershell.exe', [
@@ -191,10 +189,8 @@ export async function selfHealPc01Runtime(options: RuntimeSelfHealOptions): Prom
     if (!runtimeRepair.stdout.includes('"status":"PASS"') && !runtimeRepair.stdout.includes('"status": "PASS"')) {
       throw new Error(`CONTROLLER_RUNTIME_REPAIR_NO_PASS: ${clipped(runtimeRepair.stdout || runtimeRepair.stderr)}`);
     }
-    if (/"runtime"\s*:\s*"REPAIRED"/i.test(runtimeRepair.stdout)) {
-      repaired = true;
-      controllerRuntime = 'REPAIRED';
-    }
+    controllerRuntime = /"runtime"\s*:\s*"REPAIRED"/i.test(runtimeRepair.stdout) ? 'REPAIRED' : 'READY';
+    if (controllerRuntime === 'REPAIRED') repaired = true;
 
     if (!hasReadyRoles(workerText)) throw new Error('ROLE_PATCH_NOT_PERSISTED');
 
@@ -211,14 +207,14 @@ export async function selfHealPc01Runtime(options: RuntimeSelfHealOptions): Prom
     const status = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', fixed], 30_000);
     if (!/Running/i.test(status.stdout)) throw new Error(`WORKER_TASK_NOT_RUNNING: ${clipped(status.stdout || status.stderr)}`);
     const state: RuntimeSelfHealState = {
-      result: 'READY', updatedAt: timestamp(), workerTask: 'Running', modelRoles: 'READY', queueResilience: 'READY', autoWorkerDeploy: 'READY', autoWorkerPhysical: autoWorkerPhysicalState, watchdogConsole: 'READY', controllerDiagnose: 'READY', controllerRuntime: 'READY',
+      result: 'READY', updatedAt: timestamp(), workerTask: 'Running', modelRoles, queueResilience, autoWorkerDeploy, autoWorkerPhysical: autoWorkerPhysicalState, watchdogConsole, controllerDiagnose, controllerRuntime,
       repairScript, queueRepairScript, autoWorkerDeployScript, watchdogRepairScript, controllerDiagnoseRepairScript, controllerRuntimeRepairScript,
     };
     await save(statePath, state);
     return state;
   } catch (error) {
     const state: RuntimeSelfHealState = {
-      result: 'FAILED', updatedAt: timestamp(), modelRoles: 'UNKNOWN', queueResilience: 'UNKNOWN', autoWorkerDeploy: 'UNKNOWN', autoWorkerPhysical: 'UNKNOWN', watchdogConsole: 'UNKNOWN', controllerDiagnose: 'UNKNOWN', controllerRuntime: 'UNKNOWN',
+      result: 'FAILED', updatedAt: timestamp(), modelRoles, queueResilience, autoWorkerDeploy, autoWorkerPhysical: autoWorkerPhysicalState, watchdogConsole, controllerDiagnose, controllerRuntime,
       repairScript, queueRepairScript, autoWorkerDeployScript, watchdogRepairScript, controllerDiagnoseRepairScript, controllerRuntimeRepairScript,
       error: clipped(error instanceof Error ? error.message : error),
     };
