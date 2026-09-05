@@ -37,12 +37,12 @@ describe('Web Local #396 UI V3.2', () => {
     expect(html).toContain('<input type="hidden" name="view" value="workforce">');
   });
 
-  it('retains V3.2 single-overview semantics under V3.4 Fluent Executive', () => {
+  it('retains V3.2 single-overview semantics under V3.5 layout repair', () => {
     const standalone = readFileSync(new URL('../apps/dashboard/src/standalone.ts', import.meta.url), 'utf8');
     for (const expected of [
-      'WEB-LOCAL-396-V3.4', 'startOwnerCockpitV11', 'startOwnerCockpitV13', 'overview_single_dashboard=ĐẠT',
+      'WEB-LOCAL-396-V3.5', 'startOwnerCockpitV11', 'startOwnerCockpitV13', 'startOwnerCockpitV14', 'overview_single_dashboard=ĐẠT',
       'legacy_overview_duplicate_removed=ĐẠT', 'server_side_views=8', 'segoe_ui_whole_site=ĐẠT',
-      'fluent_executive_visual_contract=ĐẠT', 'state=WEB_LOCAL_396_V34_FLUENT_EXECUTIVE_VERIFIED',
+      'fluent_executive_visual_contract=ĐẠT', 'layout_repair_v35=ĐẠT', 'state=WEB_LOCAL_396_V35_LAYOUT_REPAIR_VERIFIED',
       'data-overview="single-dashboard-v32"',
     ]) expect(standalone).toContain(expected);
     expect(standalone).not.toContain('open_sans_whole_site=ĐẠT');
