@@ -34,14 +34,14 @@ bower_components
 # node-waf configuration
 .lock-wscript
 
-# Compiled binary addons
+# Compiled binary addons (https://nodejs.org/api/addons.html)
 build/Release
 
 # Dependency directories
 node_modules/
 jspm_packages/
 
-# Snowpack dependency directory
+# Snowpack dependency directory (https://snowpack.dev/)
 web_modules/
 
 # TypeScript cache
@@ -59,7 +59,7 @@ web_modules/
 # Optional REPL history
 .node_repl_history
 
-# Output of npm pack
+# Output of 'npm pack'
 *.tgz
 
 # Yarn Integrity file
@@ -73,7 +73,7 @@ web_modules/
 # Vercel local project link
 .vercel/
 
-# parcel-bundler cache
+# parcel-bundler cache (https://snowpack.dev/)
 .cache
 .parcel-cache
 
@@ -88,6 +88,8 @@ dist
 
 # Gatsby files
 .cache/
+# Comment in the public line in if your project uses Gatsby and not Next.js
+# https://nextjs.org/blog/next-9-1#public-directory-support
 # public
 
 # vuepress build output
