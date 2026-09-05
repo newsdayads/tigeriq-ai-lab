@@ -39,9 +39,17 @@ function copyHeaders(upstream: Response, res: ServerResponse, contentType?: stri
 }
 
 const BRAND_MARK = `<div class="mark tq36-brand-mark"><svg class="tq36-brand-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 19 6v6c0 4.6-2.8 7.7-7 9-4.2-1.3-7-4.4-7-9V6l7-3Z"/><path d="M7.7 9.2 10.4 11 12 9.5l1.6 1.5 2.7-1.8M12 7.2V12M8.8 14.2c2 1.7 4.4 1.7 6.4 0"/></svg></div>`;
+const WORK_TAB = `<a href="/?view=work" data-tq-work-tab="persistent"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4.5V3h6v1.5"/><path d="m9 10 1.5 1.5L14 8"/><path d="M9 16h6"/></svg><span>Công việc</span></a>`;
+
+function ensureWorkTab(input: string): string {
+  if (input.includes('href="/?view=work"')) {
+    return input.replace(/<a([^>]*?)href="\/\?view=work"([^>]*)>/, (full, before: string, after: string) => full.includes('data-tq-work-tab=') ? full : `<a${before}href="/?view=work"${after} data-tq-work-tab="persistent">`);
+  }
+  return input.replace(/(<nav class="nav">[\s\S]*?<\/a>)/, `$1${WORK_TAB}`);
+}
 
 export function applyLiveOverviewV36(input: string): string {
-  let html = input
+  let html = ensureWorkTab(input)
     .replace(/<meta\s+http-equiv=["']refresh["'][^>]*>/gi, '')
     .replace('data-version="WEB-LOCAL-396-V3.5"', `data-version="${WEB_LOCAL_VERSION_V15}" data-refresh="incremental-10s"`)
     .replace('data-theme="fluent-executive-v35"', 'data-theme="fluent-executive-v36"')
@@ -49,6 +57,7 @@ export function applyLiveOverviewV36(input: string): string {
 
   const css = `<style id="tq36-live-overview">
 .tq36-brand-mark{width:42px!important;height:42px!important;border-radius:13px!important;background:linear-gradient(145deg,#ffbd52,#ff8b16)!important;color:#07182c!important;box-shadow:0 8px 22px rgba(255,145,28,.23),inset 0 1px 0 rgba(255,255,255,.36)!important}.tq36-brand-svg{width:27px;height:27px;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
+.nav a[href="/?view=work"]{display:flex!important;visibility:visible!important;opacity:1!important}.nav a[href="/?view=work"] .ico{display:block!important;flex:0 0 auto}.nav a[href="/?view=work"] span{visibility:visible!important;opacity:1!important}@media(min-width:761px){.nav a[href="/?view=work"] span{display:inline!important}}
 .tq34-avatar{position:relative!important;display:flex!important;align-items:center!important;justify-content:center!important;line-height:1!important;overflow:visible!important;border:2px solid rgba(255,255,255,.18);box-shadow:0 6px 18px rgba(0,0,0,.24),inset 0 1px 0 rgba(255,255,255,.2)!important}.tq34-avatar::after{content:"";position:absolute;inset:-4px;border-radius:50%;border:1px solid rgba(255,255,255,.08);pointer-events:none}.tq31-people .tq-person{overflow:visible!important}
 #tigeriq-management-v31{display:block!important}.tq31-kpis{margin-bottom:12px!important}.tq31-grid{display:none!important}.tq36-columns{display:grid;grid-template-columns:minmax(0,2.15fr) minmax(330px,.9fr);gap:12px;align-items:start}.tq36-left,.tq36-right{display:flex;flex-direction:column;gap:12px;min-width:0}.tq36-left>.tq31-card,.tq36-right>.tq31-chart-stack,.tq36-left>.tq31-section,.tq36-right>.tq31-section{width:100%;margin:0!important}.tq36-left>.tq31-card{height:auto!important;min-height:0!important;align-self:flex-start}.tq36-left .tq31-table{table-layout:fixed;width:100%}.tq36-left .tq31-table th,.tq36-left .tq31-table td{overflow-wrap:break-word;word-break:normal}.tq36-left .tq31-step{margin-bottom:0!important}.tq36-right .tq31-chart-stack{display:flex!important;flex-direction:column;gap:12px!important}.tq34-team-section,.tq34-system-section,.tq34-owner-section,.tq34-rights-section{grid-column:auto!important;align-self:auto!important}.tq34-rights-section{order:20}.tq34-owner-section{order:20}
 .tq36-livebox{display:flex;align-items:center;gap:8px;margin-left:auto}.tq36-live-state{display:inline-flex;align-items:center;gap:7px;min-height:34px;padding:6px 10px;border:1px solid #285783;border-radius:9px;background:rgba(8,35,66,.88);color:#b9cde1;font-size:12px;white-space:nowrap}.tq36-live-dot{width:8px;height:8px;border-radius:50%;background:#17d894;box-shadow:0 0 0 4px rgba(23,216,148,.1)}.tq36-live-state[data-state="loading"] .tq36-live-dot{background:#29b8ff;animation:tq36pulse .85s infinite alternate}.tq36-live-state[data-state="error"] .tq36-live-dot{background:#ff9f43}.tq36-refresh{width:34px;height:34px;padding:0;border:1px solid #2a5b8c;border-radius:9px;background:#0b2c51;color:#dcecff;display:grid;place-items:center;cursor:pointer;transition:.16s ease}.tq36-refresh:hover{background:#103a69;border-color:#3b82c8;box-shadow:0 6px 16px rgba(0,0,0,.18)}.tq36-refresh:active{transform:translateY(1px)}.tq36-refresh:focus-visible{outline:2px solid #38bdf8;outline-offset:2px}.tq36-refresh svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.tq36-refresh[aria-busy="true"] svg{animation:tq36spin .8s linear infinite}.tq36-flash{animation:tq36flash .75s ease}.tq36-updated{position:relative}.tq36-updated::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;box-shadow:inset 0 0 0 1px rgba(45,200,255,.5);opacity:0;animation:tq36edge .8s ease}
