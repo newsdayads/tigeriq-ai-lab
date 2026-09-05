@@ -15,4 +15,7 @@ foreach ($target in $targets) {
   }
 }
 if ($failed) { exit 1 }
+
+& (Join-Path $PSScriptRoot 'test-controller-health-probe-contract.ps1')
+
 Write-Output ("POWERSHELL_SYNTAX_PASS files={0}" -f $targets.Count)
