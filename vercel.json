@@ -6,8 +6,7 @@
   "cleanUrls": true,
   "trailingSlash": false,
   "rewrites": [
-    { "source": "/", "destination": "/command-center.html" },
-    { "source": "/workforce", "destination": "/workforce.html" }
+    { "source": "/", "destination": "/command-center" }
   ],
   "headers": [
     {
@@ -17,13 +16,13 @@
       ]
     },
     {
-      "source": "/command-center.html",
+      "source": "/command-center",
       "headers": [
         { "key": "Cache-Control", "value": "no-store, max-age=0" }
       ]
     },
     {
-      "source": "/index.html",
+      "source": "/index",
       "headers": [
         { "key": "Cache-Control", "value": "no-store, max-age=0" }
       ]
