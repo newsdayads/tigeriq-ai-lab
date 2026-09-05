@@ -92,7 +92,17 @@ jobs:
           $legacy=@(Get-ChildItem -LiteralPath $root -Filter '*.tigeriq_legacy_zt_*.js' -File)
           if($legacy.Count-lt1){throw 'LEGACY_ROLLBACK_PAYLOAD_MISSING'}
 
-          Invoke-Updater '14.2.5' 'NEVER_PRESENT_HEALTH_MARKER' 41
+          # Force a real post-swap failure without weakening production code: a harmless dummy
+          # process named chrome.exe makes the updater take its Chrome-running reload path, but
+          # exposes no UI Automation document/button, so reload fails only after the swap.
+          $dummyChrome=Join-Path $env:RUNNER_TEMP 'chrome.exe'
+          Copy-Item -LiteralPath 'C:\Windows\System32\timeout.exe' -Destination $dummyChrome -Force
+          $dummy=Start-Process -FilePath $dummyChrome -ArgumentList '/T','60','/NOBREAK' -PassThru -WindowStyle Hidden
+          try{
+            Invoke-Updater '14.2.5' '14.2.5' 41
+          }finally{
+            if($dummy -and -not $dummy.HasExited){Stop-Process -Id $dummy.Id -Force -ErrorAction SilentlyContinue}
+          }
           $rolled=Get-Content -Raw -LiteralPath (Join-Path $root 'manifest.json')|ConvertFrom-Json
           if([string]$rolled.version-ne'14.2.4'){throw 'ROLLBACK_DID_NOT_RESTORE_VERSION'}
           if([string]$rolled.key-ne$key){throw 'ROLLBACK_KEY_CHANGED'}
@@ -101,7 +111,7 @@ jobs:
           $status=Get-Content -Raw -LiteralPath $statusPath|ConvertFrom-Json
           if(-not[bool]$status.rolled_back){throw 'ROLLBACK_STATUS_NOT_RECORDED'}
           Copy-Item -LiteralPath $statusPath -Destination (Join-Path $logDir 'final-status.json') -Force
-          Write-Host 'PASS: three consecutive zero-touch fixture upgrades + health-fail rollback.'
+          Write-Host 'PASS: three consecutive zero-touch fixture upgrades + post-swap reload-fail rollback.'
       - name: Upload zero-touch diagnostics
         if: always()
         uses: actions/upload-artifact@v4
