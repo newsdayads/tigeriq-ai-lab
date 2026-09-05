@@ -29,12 +29,12 @@ describe('Web Local #396 UI V3.5 machine-real layout repair', () => {
     ]) expect(html).toContain(expected);
   });
 
-  it('wires final runtime evidence to V3.5 and preserves V3.4 visual layer underneath', () => {
+  it('retains V3.5 repair as provenance while V3.6 is the current final runtime', () => {
     const standalone = readFileSync(new URL('../apps/dashboard/src/standalone.ts', import.meta.url), 'utf8');
     for (const expected of [
-      'WEB-LOCAL-396-V3.5', 'startOwnerCockpitV14', 'layout_repair_v35=ĐẠT',
+      'WEB-LOCAL-396-V3.6', 'startOwnerCockpitV14', 'startOwnerCockpitV15', 'layout_repair_v35=ĐẠT',
       'sidebar_single_dom=ĐẠT', 'system_card_compaction=ĐẠT', 'system_text_wrap_contract=ĐẠT',
-      'bottom_grid_gap_repair=ĐẠT', 'state=WEB_LOCAL_396_V35_LAYOUT_REPAIR_VERIFIED',
+      'bottom_grid_gap_repair=ĐẠT', 'state=WEB_LOCAL_396_V36_INCREMENTAL_LIVE_VERIFIED',
     ]) expect(standalone).toContain(expected);
     expect(standalone).toContain('startOwnerCockpitV13');
   });
