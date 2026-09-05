@@ -19,6 +19,17 @@ export interface ContextReader {
   read<T = unknown>(ref: ContextRef): Promise<ContextRead<T>>;
 }
 
+export type StartupError =
+  | 'GLOBAL_INDEX_INVALID'
+  | 'COMMAND_UNREGISTERED'
+  | 'COMMAND_UNREGISTERED/TẠM_NGƯNG'
+  | 'COMMAND_PENDING_ACTIVATION'
+  | 'EMPLOYEE_DISABLED'
+  | 'HOT_STATE_INVALID'
+  | 'HOT_STATE_EMPLOYEE_MISMATCH'
+  | 'HOT_STATE_AUTHORITY_STALE'
+  | 'DEEP_READ_REQUIRED';
+
 export interface GlobalHotIndex {
   schema: 'tigeriq-context-plane/v3';
   revision: string;
@@ -33,6 +44,7 @@ export interface GlobalHotIndex {
     enabled: boolean;
     background: boolean;
     activation_state: string;
+    unavailable_error?: StartupError;
   }>;
   generated_at: number;
 }
@@ -60,15 +72,6 @@ export interface WorkerHotState {
   deep_read_required?: boolean;
   deep_read_reason?: string | null;
 }
-
-export type StartupError =
-  | 'GLOBAL_INDEX_INVALID'
-  | 'COMMAND_UNREGISTERED'
-  | 'EMPLOYEE_DISABLED'
-  | 'HOT_STATE_INVALID'
-  | 'HOT_STATE_EMPLOYEE_MISMATCH'
-  | 'HOT_STATE_AUTHORITY_STALE'
-  | 'DEEP_READ_REQUIRED';
 
 export interface StartupResult {
   ok: boolean;
@@ -209,7 +212,7 @@ export class ContextPlane {
     const existing = this.#inflight.get(key);
     if (!options.force && existing) {
       this.#metrics.coalesced_reads++;
-      return clone(await existing as ContextRead<T>);
+      return clone(await (existing as Promise<ContextRead<T>>));
     }
 
     const pending = this.#reader.read<T>(ref).then((read) => {
@@ -240,7 +243,7 @@ export class ContextPlane {
 
     const profile = index.employees[employeeId];
     if (!profile || profile.employee_id !== employeeId || !validRef(profile.state)) return this.#fail(cmd, 'GLOBAL_INDEX_INVALID');
-    if (!profile.enabled) return this.#fail(cmd, 'EMPLOYEE_DISABLED', employeeId, profile.background, profile.activation_state);
+    if (!profile.enabled) return this.#fail(cmd, profile.unavailable_error ?? 'EMPLOYEE_DISABLED', employeeId, profile.background, profile.activation_state);
 
     const stateRead = await this.read<WorkerHotState>(profile.state);
     if (!validWorkerHotState(stateRead.value)) return this.#fail(cmd, 'HOT_STATE_INVALID', employeeId, profile.background, profile.activation_state);
