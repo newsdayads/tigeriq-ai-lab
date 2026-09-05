@@ -16,11 +16,9 @@ describe('Web Local #396 UI V3.1', () => {
     expect(html).not.toContain('id="tigeriq-management-v4"');
   });
 
-  it('renders three real-data visual surfaces without fabricated workload numbers', () => {
+  it('retains the historical three visualization structures and real derived counts', () => {
     const html = transformManagementUiV31(sample);
-    expect(html).toContain('Phân bổ công việc');
-    expect(html).toContain('Tải theo nhân sự');
-    expect(html).toContain('Trạng thái hệ thống');
+    for (const marker of ['class="tq31-chart-stack"', 'class="tq31-segments"', 'class="tq31-bar-row"', 'class="tq31-system-visual"']) expect(html).toContain(marker);
     expect(html).toContain('1 việc đang xử lý');
     expect(html).toContain('0 việc đang xử lý');
     expect(html).toContain('<b>1</b> ổn định');
