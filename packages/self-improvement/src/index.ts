@@ -251,10 +251,16 @@ export function assessPerformance(sample: PerformanceSample, budget: Performance
 }
 
 function maxCheck(name: string, value: number | undefined, limit: number | undefined, violations: string[]): void {
-  if (value !== undefined && limit !== undefined && value > limit) violations.push(`${name}:${value}>${limit}`);
+  if (limit === undefined) return;
+  if (!Number.isFinite(limit)) { violations.push(`${name}:BUDGET_INVALID`); return; }
+  if (value === undefined || !Number.isFinite(value)) { violations.push(`${name}:MISSING`); return; }
+  if (value > limit) violations.push(`${name}:${value}>${limit}`);
 }
 function minCheck(name: string, value: number | undefined, limit: number | undefined, violations: string[]): void {
-  if (value !== undefined && limit !== undefined && value < limit) violations.push(`${name}:${value}<${limit}`);
+  if (limit === undefined) return;
+  if (!Number.isFinite(limit)) { violations.push(`${name}:BUDGET_INVALID`); return; }
+  if (value === undefined || !Number.isFinite(value)) { violations.push(`${name}:MISSING`); return; }
+  if (value < limit) violations.push(`${name}:${value}<${limit}`);
 }
 
 export type ResourceClass = 'github' | 'browser' | 'api' | 'pc01' | 'cpu' | 'io';
