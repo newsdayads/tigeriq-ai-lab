@@ -7,9 +7,12 @@ function Assert-True([bool]$Condition, [string]$Name) {
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..\..')
 $configPath = Join-Path $repoRoot 'config\ai-free-providers-v1.json'
+$probePath = Join-Path $repoRoot 'scripts\pc-worker\probe-multi-ai.ps1'
 Assert-True (Test-Path $configPath) 'config_exists'
+Assert-True (Test-Path $probePath) 'probe_exists'
 
 $config = Get-Content -Raw -Path $configPath | ConvertFrom-Json
+$probeText = Get-Content -Raw -Path $probePath
 Assert-True ([string]$config.version -eq 'TIGERIQ_AI_FREE_PROVIDERS_V1') 'version'
 Assert-True ([string]$config.policy.billingMode -eq 'ZERO_COST_ONLY') 'zero_cost_only'
 Assert-True (-not [bool]$config.policy.paidFallback) 'paid_fallback_disabled'
@@ -46,6 +49,12 @@ Assert-True ([string]$config.routing.fallbackOrder[0] -eq 'ollama') 'local_first
 Assert-True (-not (@($config.routing.fallbackOrder) -contains 'groq')) 'unproven_groq_not_routable'
 Assert-True (-not (@($config.routing.fallbackOrder) -contains 'claude_code')) 'unproven_claude_credits_not_routable'
 
+Assert-True ($probeText -match 'function\s+Set-SubscriptionAuthFromInvocation') 'truthful_subscription_auth_helper_exists'
+Assert-True ($probeText -match "Set-SubscriptionAuthFromInvocation\s+-Result\s+\$result\s+-ExpectedMarker\s+'TIGERIQ_GEMINI_READY'") 'gemini_uses_truthful_subscription_auth_helper'
+Assert-True ($probeText -match 'function\s+Invoke-OllamaLocalProbe') 'ollama_live_probe_exists'
+Assert-True ($probeText -match 'Invoke-OllamaLocalProbe\s+\$ollama\.path') 'ollama_live_probe_wired'
+Assert-True ($probeText -match "ExpectedMarker\s+'TIGERIQ_OLLAMA_READY'") 'ollama_ready_marker_required'
+
 $requiredRoles = @('executor', 'reviewer', 'judge')
 $enabledProviders = @($config.providers.PSObject.Properties | Where-Object { [bool]$_.Value.enabled })
 Assert-True ($enabledProviders.Count -ge 3) 'at_least_three_enabled_provider_candidates'
@@ -73,6 +82,8 @@ Assert-True (-not ($serialized -match '(?i)"allowNonFreeModels"\s*:\s*true')) 'n
   groqEnabled = [bool]$config.providers.groq.enabled
   claudeEnabled = [bool]$config.providers.claude_code.enabled
   claudeUsageCreditsForbidden = [bool]$config.providers.claude_code.forbidUsageCredits
+  truthfulGeminiSubscriptionAuthGuard = $true
+  ollamaLiveProbeGuard = $true
   maxAttemptsPerRole = [int]$config.policy.maxAttemptsPerRole
   timestampUtc = [DateTime]::UtcNow.ToString('o')
 } | ConvertTo-Json
