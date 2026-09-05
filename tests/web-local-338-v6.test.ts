@@ -14,8 +14,17 @@ function telemetry(controller: ServerTelemetry['controller'], available = true):
     worker: { online: true, pid: 123, instances: 1 },
     controller,
     workforce: {
-      source: 'controller',
-      roster: [{ employeeId: 'NV03', displayName: 'Huy', activeTaskCount: 1, currentTaskIds: ['#372'], availability: 'busy' }],
+      employeesTotal: 1,
+      idle: 0,
+      busy: 1,
+      offline: 0,
+      degraded: 0,
+      activeTasks: 1,
+      tasksActive: 1,
+      tasksFailed: 0,
+      roster: [{
+        employeeId: 'NV03', displayName: 'Huy', department: 'AI PC01', role: 'Kỹ sư Hệ thống Local', nodeId: 'pc01', provider: 'ollama', model: 'qwen3:8b', availability: 'busy', healthScore: 100, concurrencyLimit: 1, activeTaskCount: 1, currentTaskIds: ['#372'],
+      }],
     },
     postgresql: { online: true, service: 'postgresql', port: 5432 },
     ollama: { online: true, models: ['qwen3:8b'] },
@@ -47,23 +56,7 @@ describe('Web Local #338 overlay', () => {
 
   it('renders all canonical identities, three layers, executive chain and build evidence', () => {
     const panel = renderLocalP0Panel(telemetry({ online: true, ip: '127.0.0.1', port: 8790 }), governance, new Date('2026-09-05T01:00:00.000Z'));
-    for (const expected of [
-      'Vy (Trợ lý)',
-      'Minh (NV01 — Thực thi trực tiếp)',
-      'Khoa (NV02 — Vận hành tự động)',
-      'Huy (NV03 — AI PC01 / Kỹ sư Hệ thống Local)',
-      'TẠM NGƯNG',
-      'PC01 SERVER',
-      'TIGERIQ CONTROL PLANE',
-      'AI PC01 — HUY/NV03',
-      'MỤC TIÊU',
-      'HẠNG MỤC',
-      'BƯỚC HIỆN TẠI',
-      'MỐC KẾ TIẾP',
-      'NGƯỜI PHỤ TRÁCH',
-      'WEB-LOCAL-338-V2',
-      '0123456789ab',
-    ]) expect(panel).toContain(expected);
+    for (const expected of ['Vy (Trợ lý)','Minh (NV01 — Thực thi trực tiếp)','Khoa (NV02 — Vận hành tự động)','Huy (NV03 — AI PC01 / Kỹ sư Hệ thống Local)','TẠM NGƯNG','PC01 SERVER','TIGERIQ CONTROL PLANE','AI PC01 — HUY/NV03','MỤC TIÊU','HẠNG MỤC','BƯỚC HIỆN TẠI','MỐC KẾ TIẾP','NGƯỜI PHỤ TRÁCH','WEB-LOCAL-338-V2','0123456789ab']) expect(panel).toContain(expected);
   });
 
   it('owner pause overrides stale busy telemetry for Huy', () => {
