@@ -8,11 +8,16 @@ function Assert-True([bool]$Condition, [string]$Name) {
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..\..')
 $configPath = Join-Path $repoRoot 'config\ai-free-providers-v1.json'
 $probePath = Join-Path $repoRoot 'scripts\pc-worker\probe-multi-ai.ps1'
+$schedulerPath = Join-Path $repoRoot 'scripts\pc-worker\ai-provider-scheduler.ps1'
+$schedulerTestPath = Join-Path $repoRoot 'scripts\pc-worker\test-ai-provider-scheduler.ps1'
 Assert-True (Test-Path $configPath) 'config_exists'
 Assert-True (Test-Path $probePath) 'probe_exists'
+Assert-True (Test-Path $schedulerPath) 'scheduler_exists'
+Assert-True (Test-Path $schedulerTestPath) 'scheduler_test_exists'
 
 $config = Get-Content -Raw -Path $configPath | ConvertFrom-Json
 $probeText = Get-Content -Raw -Path $probePath
+$schedulerText = Get-Content -Raw -Path $schedulerPath
 Assert-True ([string]$config.version -eq 'TIGERIQ_AI_FREE_PROVIDERS_V1') 'version'
 Assert-True ([string]$config.policy.billingMode -eq 'ZERO_COST_ONLY') 'zero_cost_only'
 Assert-True (-not [bool]$config.policy.paidFallback) 'paid_fallback_disabled'
@@ -26,6 +31,21 @@ Assert-True (@($config.execution.allowedLocations) -contains 'pc01-server') 'pc0
 Assert-True (@($config.execution.allowedLocations) -contains 'employee-device') 'employee_device_allowed'
 Assert-True ([string]$config.execution.employeeDeviceCredentialOwner -eq 'employee-device') 'device_owns_device_provider_credential'
 Assert-True (-not [bool]$config.execution.providerSecretsInEvidence) 'provider_secrets_not_in_evidence'
+
+Assert-True ([string]$config.scheduler.version -eq 'TIGERIQ_AI_PROVIDER_SCHEDULER_V1') 'scheduler_version'
+Assert-True ([string]$config.scheduler.stateMode -eq 'file_backed_exclusive_lock') 'scheduler_file_backed_lock'
+Assert-True ([string]$config.scheduler.dedupeScope -eq 'work_order_role') 'scheduler_dedupe_scope'
+Assert-True ([bool]$config.scheduler.leaseRequired) 'scheduler_lease_required'
+Assert-True ([int]$config.scheduler.maxAttemptsPerRole -eq [int]$config.policy.maxAttemptsPerRole) 'scheduler_attempts_match_policy'
+Assert-True ([int]$config.scheduler.leaseSeconds -ge 5 -and [int]$config.scheduler.leaseSeconds -le 3600) 'scheduler_lease_bounds'
+Assert-True ([int]$config.scheduler.lockWaitMs -ge 100 -and [int]$config.scheduler.lockWaitMs -le 10000) 'scheduler_lock_wait_bounds'
+Assert-True (@($config.scheduler.retryableFailures) -contains 'timeout') 'scheduler_timeout_retryable'
+Assert-True (@($config.scheduler.retryableFailures) -contains 'rate_limit') 'scheduler_rate_limit_retryable'
+Assert-True (@($config.scheduler.retryableFailures) -contains 'outage') 'scheduler_outage_retryable'
+Assert-True (@($config.scheduler.terminalFailures) -contains 'billing_unknown') 'scheduler_unknown_billing_terminal'
+Assert-True (@($config.scheduler.terminalFailures) -contains 'billing_nonzero') 'scheduler_nonzero_billing_terminal'
+Assert-True ([bool]$config.scheduler.staleLeaseTokenFailsClosed) 'scheduler_stale_token_fail_closed'
+Assert-True ([bool]$config.scheduler.expiredLeaseRecoverable) 'scheduler_expired_lease_recoverable'
 
 Assert-True ([string]$config.providers.openrouter.mode -eq 'free_router_only') 'openrouter_free_mode'
 Assert-True ([string]$config.providers.openrouter.model -eq 'openrouter/free') 'openrouter_free_model'
@@ -54,11 +74,15 @@ Assert-True ($probeText -match 'Set-SubscriptionAuthFromInvocation\s+-Result\s+\
 Assert-True ($probeText -match 'function\s+Invoke-OllamaLocalProbe') 'ollama_live_probe_exists'
 Assert-True ($probeText -match 'Invoke-OllamaLocalProbe\s+\$ollama\.path') 'ollama_live_probe_wired'
 Assert-True ($probeText -match 'ExpectedMarker\s+''TIGERIQ_OLLAMA_READY''') 'ollama_ready_marker_required'
+Assert-True ($schedulerText -match 'function\s+Invoke-SchedulerAction') 'scheduler_action_exists'
+Assert-True ($schedulerText -match 'STALE_LEASE_REJECTED') 'scheduler_stale_lease_guard_exists'
+Assert-True ($schedulerText -match 'ATTEMPTS_EXHAUSTED') 'scheduler_bounded_attempt_guard_exists'
+Assert-True ($schedulerText -match 'billing_unknown') 'scheduler_billing_unknown_fail_closed_exists'
+Assert-True ($schedulerText -match 'System\.IO\.FileShare\]::None') 'scheduler_exclusive_file_lock_exists'
 
 $requiredRoles = @('executor', 'reviewer', 'judge')
 $enabledProviders = @($config.providers.PSObject.Properties | Where-Object { [bool]$_.Value.enabled })
 Assert-True ($enabledProviders.Count -ge 3) 'at_least_three_enabled_provider_candidates'
-
 foreach ($provider in $enabledProviders) {
   $roles = @($provider.Value.role)
   foreach ($role in $requiredRoles) {
@@ -75,15 +99,17 @@ Assert-True (-not ($serialized -match '(?i)"allowNonFreeModels"\s*:\s*true')) 'n
   billingMode = 'ZERO_COST_ONLY'
   requiredDistinctBackendIdentities = 3
   enabledProviderCandidates = $enabledProviders.Count
+  schedulerVersion = [string]$config.scheduler.version
+  schedulerDedupeScope = [string]$config.scheduler.dedupeScope
+  schedulerLeaseSeconds = [int]$config.scheduler.leaseSeconds
+  schedulerMaxAttemptsPerRole = [int]$config.scheduler.maxAttemptsPerRole
   firstFallback = [string]$config.routing.fallbackOrder[0]
   serverProviderCallRequired = [bool]$config.execution.serverProviderCallRequired
   employeeDeviceAllowed = @($config.execution.allowedLocations) -contains 'employee-device'
   employeeDeviceCredentialOwner = [string]$config.execution.employeeDeviceCredentialOwner
   groqEnabled = [bool]$config.providers.groq.enabled
   claudeEnabled = [bool]$config.providers.claude_code.enabled
-  claudeUsageCreditsForbidden = [bool]$config.providers.claude_code.forbidUsageCredits
   truthfulGeminiSubscriptionAuthGuard = $true
   ollamaLiveProbeGuard = $true
-  maxAttemptsPerRole = [int]$config.policy.maxAttemptsPerRole
   timestampUtc = [DateTime]::UtcNow.ToString('o')
 } | ConvertTo-Json
