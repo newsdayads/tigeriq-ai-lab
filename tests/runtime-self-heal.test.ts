@@ -21,13 +21,14 @@ async function fixture(workerText: string) {
   await writeFile(worker, workerText, 'utf8');
   await writeFile(join(scriptDir, 'repair-secure-worker-model-roles.ps1'), '# reviewed model repair fixture', 'utf8');
   await writeFile(join(scriptDir, 'repair-secure-worker-queue-resilience.ps1'), '# reviewed queue repair fixture', 'utf8');
+  await writeFile(join(scriptDir, 'hide-worker-watchdog-console.ps1'), '# reviewed watchdog repair fixture', 'utf8');
   await writeFile(join(scriptDir, 'repair-control-plane-controller-diagnose.ps1'), '# reviewed diagnose repair fixture', 'utf8');
   await writeFile(join(scriptDir, 'repair-workforce-controller-runtime-deps.ps1'), '# reviewed controller runtime repair fixture', 'utf8');
   return { root, worker, state };
 }
 
 describe('PC01 runtime self-heal', () => {
-  it('never mutates Worker or Controller while artifact updater runs localhost candidate health', async () => {
+  it('never mutates Worker, Watchdog or Controller while artifact updater runs localhost candidate health', async () => {
     const f = await fixture(oldRoles);
     let calls = 0;
     const result = await selfHealPc01Runtime({ host: '127.0.0.1', repo: 'newsdayads/tigeriq-ai-lab', repoRoot: f.root, workerImpl: f.worker, statePath: f.state, run: async () => { calls += 1; return { stdout: '', stderr: '' }; } });
@@ -35,7 +36,7 @@ describe('PC01 runtime self-heal', () => {
     expect(calls).toBe(0);
   });
 
-  it('ensures Controller runtime and allowlisted TigerIQ Worker task are healthy when all repair markers are ready', async () => {
+  it('keeps an already-hidden Watchdog READY and then verifies Controller + Worker health', async () => {
     const f = await fixture(`${readyRoles}\n${queueMarker}`);
     const calls: Array<{ file: string; args: string[] }> = [];
     const result = await selfHealPc01Runtime({
@@ -43,23 +44,27 @@ describe('PC01 runtime self-heal', () => {
       run: async (file, args) => {
         calls.push({ file, args });
         const joined=args.join(' ');
-        if(joined.includes('-File') && joined.includes('repair-control-plane-controller-diagnose.ps1')) return {stdout:'{"status":"PASS","diagnose":"READY","patched":false}',stderr:''};
-        if(joined.includes('-File') && joined.includes('repair-workforce-controller-runtime-deps.ps1')) return {stdout:'{"status":"PASS","runtime":"READY","pgImport":true,"http":true,"postgres":true,"migration":"001_operational_state_v1"}',stderr:''};
+        if(joined.includes('hide-worker-watchdog-console.ps1')) return {stdout:'{"status":"READY","mutated":false,"principalPreserved":true,"triggerPreserved":true,"physicalVerified":false}',stderr:''};
+        if(joined.includes('repair-control-plane-controller-diagnose.ps1')) return {stdout:'{"status":"PASS","diagnose":"READY","patched":false}',stderr:''};
+        if(joined.includes('repair-workforce-controller-runtime-deps.ps1')) return {stdout:'{"status":"PASS","runtime":"READY","pgImport":true,"http":true,"postgres":true,"migration":"001_operational_state_v1"}',stderr:''};
         return { stdout: 'Running', stderr: '' };
       },
     });
     expect(result.result).toBe('READY');
     expect(result.workerTask).toBe('Running');
     expect(result.queueResilience).toBe('READY');
+    expect(result.watchdogConsole).toBe('READY');
     expect(result.controllerDiagnose).toBe('READY');
     expect(result.controllerRuntime).toBe('READY');
-    expect(calls).toHaveLength(3);
-    expect(calls[0]?.args.join(' ')).toContain('repair-control-plane-controller-diagnose.ps1');
-    expect(calls[1]?.args.join(' ')).toContain('repair-workforce-controller-runtime-deps.ps1');
-    expect(calls[2]?.args.join(' ')).toContain('TigerIQ Worker');
+    expect(calls).toHaveLength(4);
+    expect(calls[0]?.args.join(' ')).toContain('hide-worker-watchdog-console.ps1');
+    expect(calls[0]?.args).toContain('-Apply');
+    expect(calls[1]?.args.join(' ')).toContain('repair-control-plane-controller-diagnose.ps1');
+    expect(calls[2]?.args.join(' ')).toContain('repair-workforce-controller-runtime-deps.ps1');
+    expect(calls[3]?.args.join(' ')).toContain('TigerIQ Worker');
   });
 
-  it('repairs deterministic-command queue resilience, installs diagnose action, then verifies Controller runtime', async () => {
+  it('repairs queue resilience and Watchdog console before Controller verification', async () => {
     const f = await fixture(readyRoles);
     const calls: Array<{ file: string; args: string[]; timeout: number }> = [];
     const result = await selfHealPc01Runtime({
@@ -67,7 +72,11 @@ describe('PC01 runtime self-heal', () => {
       run: async (file, args, timeout) => {
         calls.push({ file, args, timeout });
         const joined=args.join(' ');
-        if (joined.includes('repair-secure-worker-queue-resilience.ps1')) await writeFile(f.worker, `${readyRoles}\n${queueMarker}`, 'utf8');
+        if (joined.includes('repair-secure-worker-queue-resilience.ps1')) {
+          await writeFile(f.worker, `${readyRoles}\n${queueMarker}`, 'utf8');
+          return { stdout: '{"status":"PASS"}', stderr: '' };
+        }
+        if (joined.includes('hide-worker-watchdog-console.ps1')) return { stdout: '{"status":"PASS","mutated":true,"principalPreserved":true,"triggerPreserved":true,"physicalVerified":false}', stderr: '' };
         if (joined.includes('repair-control-plane-controller-diagnose.ps1')) return { stdout: '{"status":"PASS","diagnose":"REPAIRED","patched":true}', stderr: '' };
         if (joined.includes('repair-workforce-controller-runtime-deps.ps1')) return { stdout: '{"status":"PASS","runtime":"READY","pgImport":true,"http":true,"postgres":true,"migration":"001_operational_state_v1"}', stderr: '' };
         return { stdout: '[100%]\n{"status":"PASS"}', stderr: '' };
@@ -76,15 +85,18 @@ describe('PC01 runtime self-heal', () => {
     expect(result.result).toBe('REPAIRED');
     expect(result.modelRoles).toBe('READY');
     expect(result.queueResilience).toBe('REPAIRED');
+    expect(result.watchdogConsole).toBe('REPAIRED');
     expect(result.controllerDiagnose).toBe('REPAIRED');
     expect(result.controllerRuntime).toBe('READY');
-    expect(calls).toHaveLength(3);
+    expect(calls).toHaveLength(4);
     expect(calls[0]?.args.join(' ')).toContain('repair-secure-worker-queue-resilience.ps1');
-    expect(calls[1]?.args.join(' ')).toContain('repair-control-plane-controller-diagnose.ps1');
-    expect(calls[2]?.args.join(' ')).toContain('repair-workforce-controller-runtime-deps.ps1');
+    expect(calls[1]?.args.join(' ')).toContain('hide-worker-watchdog-console.ps1');
+    expect(calls[1]?.args).toContain('-Apply');
+    expect(calls[2]?.args.join(' ')).toContain('repair-control-plane-controller-diagnose.ps1');
+    expect(calls[3]?.args.join(' ')).toContain('repair-workforce-controller-runtime-deps.ps1');
   });
 
-  it('repairs missing model roles first, then queue resilience, diagnose action and Controller runtime', async () => {
+  it('repairs missing model roles, queue resilience and Watchdog in bounded order', async () => {
     const f = await fixture(oldRoles);
     const calls: Array<{ file: string; args: string[]; timeout: number }> = [];
     const result = await selfHealPc01Runtime({
@@ -92,8 +104,15 @@ describe('PC01 runtime self-heal', () => {
       run: async (file, args, timeout) => {
         calls.push({ file, args, timeout });
         const joined = args.join(' ');
-        if (joined.includes('repair-secure-worker-model-roles.ps1')) await writeFile(f.worker, readyRoles, 'utf8');
-        if (joined.includes('repair-secure-worker-queue-resilience.ps1')) await writeFile(f.worker, `${readyRoles}\n${queueMarker}`, 'utf8');
+        if (joined.includes('repair-secure-worker-model-roles.ps1')) {
+          await writeFile(f.worker, readyRoles, 'utf8');
+          return { stdout: '{"status":"PASS"}', stderr: '' };
+        }
+        if (joined.includes('repair-secure-worker-queue-resilience.ps1')) {
+          await writeFile(f.worker, `${readyRoles}\n${queueMarker}`, 'utf8');
+          return { stdout: '{"status":"PASS"}', stderr: '' };
+        }
+        if (joined.includes('hide-worker-watchdog-console.ps1')) return { stdout: '{"status":"PASS","mutated":true,"principalPreserved":true,"triggerPreserved":true,"physicalVerified":false}', stderr: '' };
         if (joined.includes('repair-control-plane-controller-diagnose.ps1')) return { stdout: '{"status":"PASS","diagnose":"REPAIRED","patched":true}', stderr: '' };
         if (joined.includes('repair-workforce-controller-runtime-deps.ps1')) return { stdout: '{"status":"PASS","runtime":"REPAIRED","pgImport":true,"http":true,"postgres":true,"migration":"001_operational_state_v1"}', stderr: '' };
         return { stdout: '[100%]\n{"status":"PASS"}', stderr: '' };
@@ -102,22 +121,45 @@ describe('PC01 runtime self-heal', () => {
     expect(result.result).toBe('REPAIRED');
     expect(result.modelRoles).toBe('REPAIRED');
     expect(result.queueResilience).toBe('REPAIRED');
+    expect(result.watchdogConsole).toBe('REPAIRED');
     expect(result.controllerDiagnose).toBe('REPAIRED');
     expect(result.controllerRuntime).toBe('REPAIRED');
-    expect(calls).toHaveLength(4);
+    expect(calls).toHaveLength(5);
     expect(calls[0]?.args.join(' ')).toContain('repair-secure-worker-model-roles.ps1');
     expect(calls[0]?.args).toContain('-SkipCanary');
     expect(calls[1]?.args.join(' ')).toContain('repair-secure-worker-queue-resilience.ps1');
-    expect(calls[2]?.args.join(' ')).toContain('repair-control-plane-controller-diagnose.ps1');
-    expect(calls[3]?.args.join(' ')).toContain('repair-workforce-controller-runtime-deps.ps1');
+    expect(calls[2]?.args.join(' ')).toContain('hide-worker-watchdog-console.ps1');
+    expect(calls[2]?.args).toContain('-Apply');
+    expect(calls[3]?.args.join(' ')).toContain('repair-control-plane-controller-diagnose.ps1');
+    expect(calls[4]?.args.join(' ')).toContain('repair-workforce-controller-runtime-deps.ps1');
   });
 
-  it('fails closed when Controller runtime health does not pass', async () => {
+  it('fails closed when Watchdog repair does not return PASS or READY', async () => {
+    const f = await fixture(`${readyRoles}\n${queueMarker}`);
+    let calls = 0;
+    const result = await selfHealPc01Runtime({
+      host: '100.97.23.87', repo: 'newsdayads/tigeriq-ai-lab', repoRoot: f.root, workerImpl: f.worker, statePath: f.state,
+      run: async (_file, args) => {
+        calls += 1;
+        if (args.join(' ').includes('hide-worker-watchdog-console.ps1')) return { stdout: '{"status":"FAIL","error":"WATCHDOG_ARGUMENTS_UNEXPECTED"}', stderr: '' };
+        return { stdout: 'Running', stderr: '' };
+      },
+    });
+    expect(result.result).toBe('FAILED');
+    expect(result.watchdogConsole).toBe('UNKNOWN');
+    expect(calls).toBe(1);
+    const persisted = JSON.parse(await readFile(f.state, 'utf8')) as { result: string; error: string };
+    expect(persisted.result).toBe('FAILED');
+    expect(persisted.error).toContain('WATCHDOG_CONSOLE_REPAIR_NO_PASS');
+  });
+
+  it('fails closed when Controller runtime health does not pass after Watchdog is READY', async () => {
     const f = await fixture(`${readyRoles}\n${queueMarker}`);
     const result = await selfHealPc01Runtime({
       host: '100.97.23.87', repo: 'newsdayads/tigeriq-ai-lab', repoRoot: f.root, workerImpl: f.worker, statePath: f.state,
       run: async (_file, args) => {
         const joined = args.join(' ');
+        if (joined.includes('hide-worker-watchdog-console.ps1')) return { stdout: '{"status":"READY","mutated":false}', stderr: '' };
         if (joined.includes('repair-control-plane-controller-diagnose.ps1')) return { stdout: '{"status":"PASS","diagnose":"READY","patched":false}', stderr: '' };
         if (joined.includes('repair-workforce-controller-runtime-deps.ps1')) return { stdout: '{"status":"FAIL","error":"CONTROLLER_LISTENER_NOT_READY"}', stderr: '' };
         return { stdout: 'Running', stderr: '' };
