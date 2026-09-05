@@ -1,7 +1,7 @@
 param(
   [Parameter(Mandatory=$true)][string]$ManifestUri,
   [Parameter(Mandatory=$true)][ValidatePattern('^[0-9a-fA-F]{64}$')][string]$ExpectedManifestSha256,
-  [string]$ExtensionPath = '',
+  [string]$ExtensionPathOverride = '',
   [switch]$PreflightOnly
 )
 $ErrorActionPreference='Stop'
@@ -106,7 +106,8 @@ function Test-ExtensionPath([string]$Path,[string]$ExpectedId){
     if(([string]$m.name)-notmatch'TigerIQ Auto Worker'){return $false}
     $kp=$m.PSObject.Properties['key']
     if($null-eq$kp){return $false}
-    return (Get-KeyDerivedId([string]$kp.Value)-eq$ExpectedId)
+    $derivedId=Get-KeyDerivedId ([string]$kp.Value)
+    return ($derivedId-eq$ExpectedId)
   }catch{return $false}
 }
 function Find-ExtensionPath([string]$ExpectedId){
@@ -168,7 +169,6 @@ function Get-ChromeDocuments{
 function Invoke-ReloadAndConfirm([string]$ExpectedVersion){
   if(-not$script:ChromeWasRunning){return @{Ok=$true;Mode='CHROME_NOT_RUNNING_ON_DISK_ONLY'}}
   if([string]::IsNullOrWhiteSpace($script:ChromeExe)-or-not(Test-Path $script:ChromeExe)){return @{Ok=$false;Mode='CHROME_EXE_NOT_FOUND'}}
-  # Chrome is already running. This opens only an internal extension-management tab; it never launches Chrome from a stopped state.
   Start-Process -FilePath $script:ChromeExe -ArgumentList ('chrome://extensions/?id='+$script:ExtensionId)|Out-Null
   $script:ReloadAttempted=$true
   Start-Sleep -Seconds 2
@@ -238,7 +238,9 @@ function Assert-Health([string]$Path,$Spec,[string]$ExpectedId,[string]$Expected
   $m=Get-Content -Raw -LiteralPath $mp|ConvertFrom-Json
   if([string]$m.version-ne$ExpectedVersion){throw 'HEALTH_VERSION_MISMATCH'}
   $keyProp=$m.PSObject.Properties['key']
-  if($null-eq$keyProp -or (Get-KeyDerivedId([string]$keyProp.Value)-ne$ExpectedId)){throw 'HEALTH_EXTENSION_ID_MISMATCH'}
+  if($null-eq$keyProp){throw 'HEALTH_EXTENSION_KEY_MISSING'}
+  $derivedId=Get-KeyDerivedId ([string]$keyProp.Value)
+  if($derivedId-ne$ExpectedId){throw ('HEALTH_EXTENSION_ID_MISMATCH expected='+$ExpectedId+' derived='+$derivedId)}
   $swRel=([string]$m.background.service_worker).Replace('/',[IO.Path]::DirectorySeparatorChar)
   $sw=Join-Path $Path $swRel
   if(-not(Test-Path -LiteralPath $sw -PathType Leaf)){throw 'HEALTH_SERVICE_WORKER_MISSING'}
@@ -283,12 +285,13 @@ try{
   $script:TargetVersion=[string]$manifest.target_version
   Write-Status $false 'STAGING' '' 'validated pinned manifest' $ExpectedManifestSha256.ToLowerInvariant() ([string]$manifest.source_commit) $script:TargetVersion
 
-  $script:ExtensionPath=if([string]::IsNullOrWhiteSpace($ExtensionPath)){Find-ExtensionPath $script:ExtensionId}else{[IO.Path]::GetFullPath($ExtensionPath)}
+  $script:ExtensionPath=if([string]::IsNullOrWhiteSpace($ExtensionPathOverride)){Find-ExtensionPath $script:ExtensionId}else{[IO.Path]::GetFullPath($ExtensionPathOverride)}
   if(-not(Test-ExtensionPath $script:ExtensionPath $script:ExtensionId)){throw 'EXTENSION_PATH_ID_VALIDATION_FAILED'}
   $currentManifest=Get-Content -Raw -LiteralPath (Join-Path $script:ExtensionPath 'manifest.json')|ConvertFrom-Json
   $oldVersion=[string]$currentManifest.version
   $oldKey=[string]$currentManifest.key
-  if((Get-KeyDerivedId $oldKey)-ne$script:ExtensionId){throw 'CURRENT_EXTENSION_KEY_ID_MISMATCH'}
+  $currentDerivedId=Get-KeyDerivedId $oldKey
+  if($currentDerivedId-ne$script:ExtensionId){throw ('CURRENT_EXTENSION_KEY_ID_MISMATCH expected='+$script:ExtensionId+' derived='+$currentDerivedId)}
 
   $parent=Split-Path -Parent $script:ExtensionPath
   $leaf=Split-Path -Leaf $script:ExtensionPath
