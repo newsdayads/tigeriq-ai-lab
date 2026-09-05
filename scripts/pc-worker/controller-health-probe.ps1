@@ -91,14 +91,22 @@ function Invoke-TigerIQControllerHealthProbe {
     }
   }
 
-  $hasNotFound = @($attempts | Where-Object { $_.status_code -eq 404 }).Count -gt 0
-  $fallbackContract = if ($ExpectedContract -eq 'auto') { $null } else { $ExpectedContract }
-  $fallbackPath = if ($fallbackContract) { $contracts[$fallbackContract] } else { $null }
-  $failureError = if ($hasNotFound) { 'CONTROLLER_CONTRACT_MISMATCH' } else { 'CONTROLLER_HEALTH_UNAVAILABLE' }
+  $routeEvidence = @($attempts | Where-Object { $null -ne $_.status_code -and $_.status_code -ne 404 })
+  $allNotFound = $attempts.Count -gt 0 -and @($attempts | Where-Object { $_.status_code -ne 404 }).Count -eq 0
+  $detected = if ($routeEvidence.Count -gt 0) { $routeEvidence[0] } else { $null }
+  $detectedContract = if ($detected) { $detected.controller_contract } else { $null }
+  $detectedPath = if ($detected) { $detected.health_path } else { $null }
+
+  $explicitMismatch = $ExpectedContract -ne 'auto' -and $detectedContract -and $detectedContract -ne $ExpectedContract
+  $failureError = if ($explicitMismatch -or $allNotFound) {
+    'CONTROLLER_CONTRACT_MISMATCH'
+  } else {
+    'CONTROLLER_HEALTH_UNAVAILABLE'
+  }
 
   [pscustomobject]@{
-    controller_contract = $fallbackContract
-    health_path = $fallbackPath
+    controller_contract = if ($detectedContract) { $detectedContract } elseif ($ExpectedContract -ne 'auto') { $ExpectedContract } else { $null }
+    health_path = if ($detectedPath) { $detectedPath } elseif ($ExpectedContract -ne 'auto') { $contracts[$ExpectedContract] } else { $null }
     health_ok = $false
     health_error = $failureError
     response = $null
