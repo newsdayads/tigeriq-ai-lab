@@ -47,6 +47,19 @@ function Restore-Launcher {
   }
 }
 
+function Rollback-NewHook {
+  if(-not $backup){ return }
+  Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+  Restore-Launcher
+  if(Test-Path -LiteralPath $requestPath -PathType Leaf){
+    try {
+      $pending = Get-Content -Raw -LiteralPath $requestPath | ConvertFrom-Json
+      if([string]$pending.request_id -eq $requestId){ Remove-Item -LiteralPath $requestPath -Force -ErrorAction SilentlyContinue }
+    } catch {}
+  }
+  Start-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+}
+
 try {
   if($env:COMPUTERNAME -ne 'PC01'){ Fail 'WRONG_HOST' 'Zero-touch Auto Worker deploy is restricted to PC01.' }
   if(-not (Test-Path -LiteralPath $launcher -PathType Leaf)){ Fail 'WORKER_LAUNCHER_MISSING' $launcher }
@@ -166,9 +179,9 @@ try {
 }
 catch {
   $message = $_.Exception.Message
-  if($backup -and -not $hookActivated){
-    try { Restore-Launcher } catch {}
+  if($backup){
+    try { Rollback-NewHook } catch {}
   }
-  JsonResult @{status='FAIL'; deploy='FAILED'; physical='UNKNOWN'; version=$version; request_id=$requestId; mutated=$mutated; error=$message}
+  JsonResult @{status='FAIL'; deploy='FAILED'; physical='UNKNOWN'; version=$version; request_id=$requestId; mutated=$mutated; rollback=([bool]$backup); error=$message}
   exit 41
 }
