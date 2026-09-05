@@ -10,6 +10,7 @@ import { startDashboard } from './server.js';
 import { startOwnerCockpitV5 } from './server-v5.js';
 import { startOwnerCockpitV8 } from './server-v8.js';
 import { startOwnerCockpitV10 } from './server-v10.js';
+import { startOwnerCockpitV11 } from './server-v11.js';
 
 const execFileAsync = promisify(execFile);
 const journalPath = process.env.TIGERIQ_JOURNAL ?? 'F:\\TigerIQ\\State\\control-plane.jsonl';
@@ -19,8 +20,8 @@ const repo = process.env.TIGERIQ_REPO ?? 'newsdayads/tigeriq-ai-lab';
 const runtimeRoot = process.env.TIGERIQ_REPO_ROOT ?? '';
 const currentReleasePath = process.env.TIGERIQ_CURRENT_RELEASE ?? 'F:\\TigerIQ\\CommandCenter\\current-release.txt';
 const updaterStatePath = process.env.TIGERIQ_UPDATER_STATE ?? 'F:\\TigerIQ\\CommandCenter\\updater-v3-state.json';
-const WEB_LOCAL_VERSION = 'WEB-LOCAL-396-V3.1';
-// Verified provenance retained: WEB-LOCAL-322-V4 wraps WEB-LOCAL-390-V3 dynamic governance projection.
+const WEB_LOCAL_VERSION = 'WEB-LOCAL-396-V3.2';
+// Verified provenance retained: V3.2 wraps V3.1/Open Sans and V4 dynamic governance projection.
 const LIVE_UI_MARKERS = [
   'Vy (Trợ lý)',
   'Minh (NV01 — Thực thi trực tiếp)',
@@ -42,6 +43,14 @@ const LIVE_UI_MARKERS = [
   'Quyền xử lý / chuyển giao',
   'fonts.googleapis.com/css2?family=Open+Sans',
   'font-family:"Open Sans"',
+  'data-overview="single-dashboard-v32"',
+  '/?view=work',
+  '/?view=workforce',
+  '/?view=models',
+  '/?view=evidence',
+  '/?view=reports',
+  '/?view=system',
+  '/?view=settings',
   'tq31-button',
   'tigeriq-management-v31',
   WEB_LOCAL_VERSION,
@@ -94,6 +103,8 @@ async function emitWebLocalRuntimeEvidence(serverUrl: string): Promise<void> {
       const uiHtml = await ui.text();
       const missingUiMarkers = LIVE_UI_MARKERS.filter((required) => !uiHtml.includes(required));
       if (missingUiMarkers.length > 0) continue;
+      const forbiddenOverview = ['id="cong-viec"', 'id="doi-ai"', 'id="mo-hinh"', 'id="bang-chung"', 'id="bao-cao"', 'id="he-thong"', 'id="cai-dat"'];
+      if (forbiddenOverview.some((markerText) => uiHtml.includes(markerText))) continue;
 
       const { stdout } = await execFileAsync('gh', ['api', `repos/${repo}/issues/396/comments?per_page=100`], {
         timeout: 15_000,
@@ -115,15 +126,19 @@ async function emitWebLocalRuntimeEvidence(serverUrl: string): Promise<void> {
         `updater_updated_at=${state.updatedAt ?? 'unknown'}`,
         'current_release_match=true',
         'open_sans_font_contract=ĐẠT',
+        'open_sans_whole_site=ĐẠT',
         'button_interaction_states=ĐẠT',
         'management_layout_v31=ĐẠT',
+        'overview_single_dashboard=ĐẠT',
+        'legacy_overview_duplicate_removed=ĐẠT',
+        'server_side_views=8',
         'visualizations_real_data=3',
         'responsive_css_contract=ĐẠT',
         'dynamic_central_registry_projection=ĐẠT',
         'ownership_projection=ĐẠT',
         'candidate_and_live_health=ĐẠT',
         'live_ui_contract=ĐẠT',
-        'state=WEB_LOCAL_396_V31_RUNTIME_AND_UI_VERIFIED',
+        'state=WEB_LOCAL_396_V32_SINGLE_OVERVIEW_VERIFIED',
       ].join('\n');
       await execFileAsync('gh', ['api', `repos/${repo}/issues/396/comments`, '--method', 'POST', '-f', `body=${evidence}`], {
         timeout: 15_000,
@@ -178,22 +193,25 @@ const backend = await startDashboard(dashboardSource, {
 
 const cockpitV5 = await startOwnerCockpitV5({ backendUrl: backend.url, repo, host: '127.0.0.1', port: 0 });
 const cockpitV8 = await startOwnerCockpitV8({ cockpitUrl: cockpitV5.url, backendUrl: backend.url, repo, host: '127.0.0.1', port: 0 });
-const server = await startOwnerCockpitV10({ cockpitUrl: cockpitV8.url, host, port });
+const cockpitV10 = await startOwnerCockpitV10({ cockpitUrl: cockpitV8.url, host: '127.0.0.1', port: 0 });
+const server = await startOwnerCockpitV11({ cockpitUrl: cockpitV10.url, host, port });
 void emitWebLocalRuntimeEvidence(server.url);
 schedulePc01RuntimeSelfHeal({ host, repo, repoRoot: process.env.TIGERIQ_REPO_ROOT });
 
-console.log(`TigerIQ Owner Cockpit V10 / UI V3.1 Open Sans online: ${server.url}`);
+console.log(`TigerIQ Owner Cockpit V11 / UI V3.2 single-overview online: ${server.url}`);
+console.log(`Internal Owner Cockpit V10 Open Sans: ${cockpitV10.url}`);
 console.log(`Internal Owner Cockpit V8: ${cockpitV8.url}`);
 console.log(`Internal Owner Cockpit V5: ${cockpitV5.url}`);
 console.log(`Internal Command Center backend: ${backend.url}`);
 console.log(`Journal: ${journalPath}`);
 console.log('Dashboard source: local journal + live GitHub lifecycle projection.');
-console.log('Web Local V10 preserves V9 management UI V3.1 and switches typography to Google Open Sans.');
+console.log('Web Local V11 keeps one dashboard on Tổng quan and routes legacy functions to server-side views.');
 console.log('Write actions require TIGERIQ_COMMAND_SECRET + CSRF + bounded allowlist.');
 console.log('Live PC01 runtime performs bounded Worker self-heal; candidate localhost releases never mutate Worker runtime.');
 
 const shutdown = async () => {
   await server.close();
+  await cockpitV10.close();
   await cockpitV8.close();
   await cockpitV5.close();
   await backend.close();
