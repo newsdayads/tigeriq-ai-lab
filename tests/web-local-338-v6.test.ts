@@ -1,0 +1,69 @@
+import { describe, expect, it } from 'vitest';
+import type { ServerTelemetry } from '../apps/dashboard/src/server.js';
+import { controlPlaneState, injectLocalP0Panel, renderLocalP0Panel } from '../apps/dashboard/src/server-v6.js';
+
+function telemetry(controller: ServerTelemetry['controller'], available = true): ServerTelemetry {
+  return {
+    available,
+    server: 'PC01',
+    generatedAt: '2026-09-05T01:00:00.000Z',
+    cpu: null,
+    memory: null,
+    uptimeSeconds: 7200,
+    disk: null,
+    worker: { online: true, pid: 123, instances: 1 },
+    controller,
+    workforce: null,
+    postgresql: { online: true, service: 'postgresql', port: 5432 },
+    ollama: { online: true, models: ['qwen3:8b'] },
+    tailscale: { online: true, ip: '100.97.23.87' },
+    gpu: null,
+  };
+}
+
+const governance = {
+  issue338: { number: 338, state: 'open', body: '## Mục tiêu\nTách Web Local thành ba lớp thật.\n\nOWNER_HOLD=true' },
+  latest338: { body: 'TIGERIQ_JOB_PROGRESS\nstate=ĐANG_XỬ_LÝ_WEB_LOCAL' },
+  central: { number: 280, state: 'open', body: '## P0 hiện hành' },
+  installedSha: '0123456789abcdef0123456789abcdef01234567',
+};
+
+describe('Web Local #338 overlay', () => {
+  it('maps an explicit Controller failure to SUY GIẢM instead of unknown/green', () => {
+    const state = controlPlaneState(telemetry({ online: false, ip: '127.0.0.1', port: 8790 }));
+    expect(state.label).toContain('SUY GIẢM');
+    expect(state.css).toBe('bad');
+  });
+
+  it('keeps missing Controller telemetry fail-closed as CHƯA XÁC MINH', () => {
+    const state = controlPlaneState(telemetry(null));
+    expect(state.label).toBe('CHƯA XÁC MINH');
+    expect(state.css).toBe('wait');
+  });
+
+  it('renders all canonical identities, three layers, executive chain and build evidence', () => {
+    const panel = renderLocalP0Panel(telemetry({ online: true, ip: '127.0.0.1', port: 8790 }), governance, new Date('2026-09-05T01:00:00.000Z'));
+    for (const expected of [
+      'Vy (Trợ lý)',
+      'Minh (NV01 — Thực thi trực tiếp)',
+      'Khoa (NV02 — Vận hành tự động)',
+      'Huy (NV03 — AI PC01 / Kỹ sư Hệ thống Local)',
+      'PC01 SERVER',
+      'TIGERIQ CONTROL PLANE',
+      'AI PC01 — HUY/NV03',
+      'MỤC TIÊU',
+      'HẠNG MỤC',
+      'BƯỚC HIỆN TẠI',
+      'MỐC KẾ TIẾP',
+      'NGƯỜI PHỤ TRÁCH',
+      'WEB-LOCAL-338-V1',
+      '0123456789ab',
+    ]) expect(panel).toContain(expected);
+  });
+
+  it('injects the panel after the existing header without deleting V5 content', () => {
+    const html = '<html><body><header>V5</header><main>legacy-body</main></body></html>';
+    const out = injectLocalP0Panel(html, '<section id="overlay">P0</section>', telemetry({ online: false, ip: null, port: 8790 }));
+    expect(out).toContain('</header><section id="overlay">P0</section><main>legacy-body</main>');
+  });
+});

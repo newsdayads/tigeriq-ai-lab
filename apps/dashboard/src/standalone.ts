@@ -7,6 +7,7 @@ import { GitHubWorkSource } from './github-work-source.js';
 import { schedulePc01RuntimeSelfHeal } from './runtime-self-heal.js';
 import { startDashboard } from './server.js';
 import { startOwnerCockpitV5 } from './server-v5.js';
+import { startOwnerCockpitV6 } from './server-v6.js';
 
 const execFileAsync = promisify(execFile);
 const journalPath = process.env.TIGERIQ_JOURNAL ?? 'F:\\TigerIQ\\State\\control-plane.jsonl';
@@ -65,18 +66,22 @@ const backend = await startDashboard(dashboardSource, {
   submitJob: submitPc01WorkOrder,
 });
 
-const server = await startOwnerCockpitV5({ backendUrl: backend.url, repo, host, port });
+const cockpitV5 = await startOwnerCockpitV5({ backendUrl: backend.url, repo, host: '127.0.0.1', port: 0 });
+const server = await startOwnerCockpitV6({ cockpitUrl: cockpitV5.url, backendUrl: backend.url, repo, host, port });
 schedulePc01RuntimeSelfHeal({ host, repo, repoRoot: process.env.TIGERIQ_REPO_ROOT });
 
-console.log(`TigerIQ Owner Cockpit V5 online: ${server.url}`);
+console.log(`TigerIQ Owner Cockpit V6 online: ${server.url}`);
+console.log(`Internal Owner Cockpit V5: ${cockpitV5.url}`);
 console.log(`Internal Command Center backend: ${backend.url}`);
 console.log(`Journal: ${journalPath}`);
 console.log('Dashboard source: local journal + live GitHub TIGERIQ_JOB_V1 lifecycle projection.');
+console.log('Web Local V6 overlays #338 governance + PC01 three-layer status without weakening V5 auth/CSRF.');
 console.log('Write actions require TIGERIQ_COMMAND_SECRET + CSRF + bounded allowlist.');
 console.log('Live PC01 runtime performs bounded Worker self-heal; candidate localhost releases never mutate Worker runtime.');
 
 const shutdown = async () => {
   await server.close();
+  await cockpitV5.close();
   await backend.close();
   process.exit(0);
 };
