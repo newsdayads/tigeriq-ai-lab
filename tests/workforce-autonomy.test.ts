@@ -67,8 +67,9 @@ describe('blocked-not-idle routing', () => {
 });
 
 describe('near-empty-not-idle self audit', () => {
-  const valid = (workId: string, kind: 'bug' | 'manual_work' | 'self_heal' | 'observability' | 'small_improvement') => ({
+  const valid = (workId: string, kind: 'bug' | 'self_heal' | 'manual_work' | 'observability' | 'small_improvement') => ({
     workId,
+    objective: `Improve ${workId}`,
     kind,
     level: 'A' as const,
     resourceScope: `scope-${workId}`,
@@ -77,31 +78,33 @@ describe('near-empty-not-idle self audit', () => {
     rollback: `revert ${workId}`,
   });
 
-  it('triggers at one eligible work item and selects at most three evidenced Level A findings by value order', () => {
+  it('triggers at one eligible work item and selects at most three evidenced Level A findings in owner-defined value order', () => {
     const plan = planNearEmptyAudit({
       eligibleWorkCount: 1,
       primaryWaiting: false,
       mutationInFlight: false,
       findings: [
         valid('obs', 'observability'),
-        valid('heal', 'self_heal'),
-        valid('bug', 'bug'),
         valid('manual', 'manual_work'),
+        valid('bug', 'bug'),
+        valid('heal', 'self_heal'),
       ],
     });
     expect(plan.triggered).toBe(true);
     expect(plan.reason).toBe('near_empty');
-    expect(plan.selected.map((item) => item.workId)).toEqual(['bug', 'manual', 'heal']);
+    expect(plan.selected.map((item) => item.workId)).toEqual(['bug', 'heal', 'manual']);
   });
 
-  it('does not invent work: rejects missing evidence, owner conflicts, and non-Level-A findings', () => {
+  it('does not invent or duplicate work: rejects missing goal/evidence, owner conflicts, duplicates, and non-Level-A findings', () => {
     const plan = planNearEmptyAudit({
       eligibleWorkCount: 0,
       primaryWaiting: true,
       mutationInFlight: false,
       findings: [
+        { ...valid('no-goal', 'bug'), objective: '' },
         { ...valid('no-evidence', 'bug'), evidenceRefs: [] },
         { ...valid('conflict', 'manual_work'), ownerConflict: true },
+        { ...valid('duplicate', 'self_heal'), duplicateExisting: true },
         { ...valid('level-b', 'self_heal'), level: 'B' as const },
       ],
     });
