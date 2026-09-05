@@ -9,9 +9,19 @@ describe('#338 PC01 three-layer Web Control', () => {
   it('separates Server, Control Plane, and AI PC01 in the active UI', () => {
     expect(html).toContain('1. PC01 SERVER');
     expect(html).toContain('2. TIGERIQ CONTROL PLANE');
-    expect(html).toContain('3. AI PC01 — NV-SYS-01');
+    expect(html).toContain('3. AI PC01 — Huy (NV03)');
     expect(html).toContain('Không có host telemetry');
     expect(html).toContain('không phải machine health');
+  });
+
+  it('uses current Registry identities without legacy IDs as human-facing labels', () => {
+    expect(html).toContain('Vy (Trợ lý)');
+    expect(html).toContain('Minh (NV01 — Thực thi trực tiếp)');
+    expect(html).toContain('Khoa (NV02 — Vận hành tự động)');
+    expect(html).toContain('Huy (NV03 — AI PC01 / Kỹ sư Hệ thống Local)');
+    expect(html).not.toContain('<small>NV-EXEC-01 · Thực thi trực tiếp</small>');
+    expect(html).not.toContain('<small>NV-OPS-01 · Vận hành tự động</small>');
+    expect(html).not.toContain('3. AI PC01 — NV-SYS-01');
   });
 
   it('fails closed for missing telemetry and degrades Control Plane when Controller fails', () => {
