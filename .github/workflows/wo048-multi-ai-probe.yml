@@ -6,6 +6,8 @@ on:
       - 'config/ai-free-providers-v1.json'
       - 'scripts/pc-worker/probe-multi-ai.ps1'
       - 'scripts/pc-worker/test-ai-free-policy.ps1'
+      - 'scripts/pc-worker/ai-provider-scheduler.ps1'
+      - 'scripts/pc-worker/test-ai-provider-scheduler.ps1'
       - '.github/workflows/wo048-multi-ai-probe.yml'
   push:
     branches:
@@ -14,6 +16,8 @@ on:
       - 'config/ai-free-providers-v1.json'
       - 'scripts/pc-worker/probe-multi-ai.ps1'
       - 'scripts/pc-worker/test-ai-free-policy.ps1'
+      - 'scripts/pc-worker/ai-provider-scheduler.ps1'
+      - 'scripts/pc-worker/test-ai-provider-scheduler.ps1'
       - '.github/workflows/wo048-multi-ai-probe.yml'
 
 permissions:
@@ -30,7 +34,12 @@ jobs:
       - name: Parse PowerShell guards
         shell: powershell
         run: |
-          foreach ($path in @('scripts/pc-worker/probe-multi-ai.ps1', 'scripts/pc-worker/test-ai-free-policy.ps1')) {
+          foreach ($path in @(
+            'scripts/pc-worker/probe-multi-ai.ps1',
+            'scripts/pc-worker/test-ai-free-policy.ps1',
+            'scripts/pc-worker/ai-provider-scheduler.ps1',
+            'scripts/pc-worker/test-ai-provider-scheduler.ps1'
+          )) {
             $errors = $null
             $tokens = $null
             [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path), [ref]$tokens, [ref]$errors) | Out-Null
@@ -43,6 +52,9 @@ jobs:
       - name: Run zero-cost three-way policy test
         shell: powershell
         run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/pc-worker/test-ai-free-policy.ps1
+      - name: Run scheduler lease-dedupe regression
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/pc-worker/test-ai-provider-scheduler.ps1
       - name: Run no-provider probe self-test
         shell: powershell
         run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/pc-worker/probe-multi-ai.ps1 -SelfTest
