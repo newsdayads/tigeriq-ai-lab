@@ -1,13 +1,15 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "git": {
-    "deploymentEnabled": false
+    "deploymentEnabled": {
+      "**": false,
+      "nv02/433b-exact-main-vercel-preview": true
+    }
   },
   "cleanUrls": true,
   "trailingSlash": false,
   "rewrites": [
-    { "source": "/", "destination": "/command-center.html" },
-    { "source": "/workforce", "destination": "/workforce.html" }
+    { "source": "/", "destination": "/command-center" }
   ],
   "headers": [
     {
@@ -17,7 +19,7 @@
       ]
     },
     {
-      "source": "/command-center.html",
+      "source": "/command-center",
       "headers": [
         { "key": "Cache-Control", "value": "no-store, max-age=0" }
       ]
