@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "employee_id": "NV02",
+  "display_name": "Khoa",
+  "command": "2",
+  "mode": "background_auto",
+  "background_auto": true,
+  "activation_state": "ACTIVE",
+  "authority": {
+    "central_issue": 280,
+    "registry_issue": 335,
+    "app_issue": 441,
+    "activation_gate_issue": 440,
+    "baseline_issue": 306
+  },
+  "current_work": {
+    "issue": 441,
+    "candidate": "14.2.0",
+    "branch": "auto-worker/v14.2.0-clean-successor",
+    "pr": 443,
+    "checkpoint": "artifacts/auto-worker/v14.2.0/CHECKPOINT.md",
+    "phase": "REPO_CANDIDATE_READY_PHYSICAL_PENDING"
+  },
+  "next_action": "Use exact current head of PR #443; require exact-head CI + Queue Hygiene + Vercel success; recover checkpoint-matching installer/runtime payload or rebuild only missing V14.2 installer/runtime delta; then machine-test on PC01.",
+  "open_gates": [
+    "PC01 Chrome-open in-place update without taskkill/forced close",
+    "preserve extension ID/key",
+    "no auto-open/reopen-loop",
+    "managed window 504x834 Top5 Right5 for NV02 before activation",
+    "Archive-before-close",
+    "routing 2->NV02, 4->NV04 specialized non-background, 5->COMMAND_PENDING_ACTIVATION",
+    "restart/crash/lease/governor",
+    "NV01 preempt/yield/resume"
+  ],
+  "hard_guards": [
+    "OFF-MAIN only",
+    "do not activate NV04/NV05",
+    "no MAIN/Production",
+    "no paid/credential/security-sensitive/OS reboot/irreversible action without authorization",
+    "one active owner per resource",
+    "do not rebuild baseline behavior already evidenced PASS"
+  ],
+  "fast_start": {
+    "required_reads": [
+      "CENTRAL #280 current router state",
+      "Registry #335 current command/authority record",
+      "this HOT STATE"
+    ],
+    "default_deep_reads": false,
+    "deep_read_only_when": [
+      "HOT STATE missing/stale/contradictory",
+      "ownership/lease conflict",
+      "acceptance detail not represented here",
+      "new physical finding",
+      "evidence needed for a gate decision"
+    ],
+    "never_on_startup": [
+      "bulk-fetch issue comment history",
+      "re-read all parent issues 306/395/401/440/441",
+      "re-read superseded PR #442",
+      "rebuild completed baseline work"
+    ]
+  },
+  "updated_at": "2026-09-05T19:45:00+07:00"
+}
