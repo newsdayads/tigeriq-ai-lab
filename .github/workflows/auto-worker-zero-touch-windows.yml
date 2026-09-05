@@ -23,6 +23,8 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
+          $logDir=Join-Path $env:RUNNER_TEMP 'zt-logs'
+          New-Item -ItemType Directory -Force -Path $logDir|Out-Null
           function Get-KeyId([string]$Key){
             $b=[Convert]::FromBase64String($Key)
             $h=[Security.Cryptography.SHA256]::Create().ComputeHash($b)
@@ -46,9 +48,9 @@ jobs:
             background=[ordered]@{service_worker='bg.js'}
             content_scripts=@([ordered]@{matches=@('https://chatgpt.com/*');js=@('runtime.js');run_at='document_idle'})
           }
-          $fixtureManifest|ConvertTo-Json -Depth 20|Set-Content -LiteralPath (Join-Path $root 'manifest.json') -Encoding UTF8
-          "'use strict'; console.log('legacy fixture');"|Set-Content -LiteralPath (Join-Path $root 'bg.js') -Encoding UTF8
-          "'use strict';"|Set-Content -LiteralPath (Join-Path $root 'runtime.js') -Encoding UTF8
+          [IO.File]::WriteAllText((Join-Path $root 'manifest.json'),($fixtureManifest|ConvertTo-Json -Depth 20),(New-Object Text.UTF8Encoding($false)))
+          [IO.File]::WriteAllText((Join-Path $root 'bg.js'),"'use strict'; console.log('legacy fixture');",(New-Object Text.UTF8Encoding($false)))
+          [IO.File]::WriteAllText((Join-Path $root 'runtime.js'),"'use strict';",(New-Object Text.UTF8Encoding($false)))
 
           function New-LocalManifest([string]$Version,[string]$GuardMarker){
             $m=Get-Content -Raw -LiteralPath 'artifacts/auto-worker/zero-touch/v1/manifest.v14.2.2.json'|ConvertFrom-Json
@@ -69,8 +71,14 @@ jobs:
 
           function Invoke-Updater([string]$Version,[string]$Marker,[int]$ExpectedCode){
             $pair=New-LocalManifest $Version $Marker
+            $out=Join-Path $logDir ($Version+'.stdout.txt')
+            $err=Join-Path $logDir ($Version+'.stderr.txt')
             $args=@('-NoProfile','-ExecutionPolicy','Bypass','-File',(Resolve-Path 'scripts/pc-worker/auto-worker-zero-touch-updater.ps1').Path,'-ManifestUri',$pair[0],'-ExpectedManifestSha256',$pair[1],'-ExtensionPath',$root)
-            $p=Start-Process -FilePath 'powershell.exe' -ArgumentList $args -Wait -PassThru -NoNewWindow
+            $p=Start-Process -FilePath 'powershell.exe' -ArgumentList $args -Wait -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
+            if(Test-Path $out){Get-Content -LiteralPath $out}
+            if(Test-Path $err){Get-Content -LiteralPath $err}
+            $statusPath=Join-Path $env:LOCALAPPDATA 'TigerIQ\AutoWorker\zero-touch-status.json'
+            if(Test-Path $statusPath){Copy-Item -LiteralPath $statusPath -Destination (Join-Path $logDir ($Version+'.status.json')) -Force}
             if($p.ExitCode-ne$ExpectedCode){throw "UPDATER_EXIT_$($p.ExitCode)_EXPECTED_$ExpectedCode"}
           }
 
@@ -91,4 +99,12 @@ jobs:
           if(-not(Test-Path $statusPath)){throw 'STATUS_EVIDENCE_MISSING'}
           $status=Get-Content -Raw -LiteralPath $statusPath|ConvertFrom-Json
           if(-not[bool]$status.rolled_back){throw 'ROLLBACK_STATUS_NOT_RECORDED'}
+          Copy-Item -LiteralPath $statusPath -Destination (Join-Path $logDir 'final-status.json') -Force
           Write-Host 'PASS: three consecutive zero-touch fixture upgrades + health-fail rollback.'
+      - name: Upload zero-touch diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zero-touch-diagnostics
+          path: ${{ runner.temp }}/zt-logs
+          if-no-files-found: warn
