@@ -9,6 +9,7 @@
   "authority": {
     "central_issue": 280,
     "registry_issue": 335,
+    "hot_state_issue": 458,
     "app_issue": 441,
     "activation_gate_issue": 440,
     "baseline_issue": 306,
@@ -45,14 +46,18 @@
     "Archive-before-close",
     "routing 2->NV02, 4->NV04 specialized non-background, 5->COMMAND_PENDING_ACTIVATION",
     "restart/crash/lease/governor",
-    "NV01 preempt/yield/resume"
+    "NV01 preempt/yield/resume",
+    "fast-start physical latency verification"
   ],
   "evidence_pointers": {
-    "pr_443_exact_head": "c380b51ab38907dd63f53e6914b6c616160bcdb9",
+    "pr_443": 443,
+    "pr_443_head_policy": "Read current PR head only when exact-head gate evidence is needed; do not self-pin branch head inside a file committed on that same branch.",
+    "hot_state_adoption_merge_commit": "08157336f377ce7beea95756b1b662598aad6889",
     "bundle_42_source": "b007a9c6219f8e23214fbd7cefff0bbc6fc3e015",
     "command_center_probe_issue": 455,
     "worker_probe_issue": 456,
-    "latest_owner_auth_watch_comment": 5551913518
+    "latest_owner_auth_watch_comment": 5551913518,
+    "migration_archive_issue": 459
   },
   "hard_guards": [
     "OFF-MAIN only",
@@ -67,7 +72,7 @@
     "required_reads": [
       "CENTRAL #280 current router state",
       "Registry #335 current command/authority record",
-      "this HOT STATE"
+      "HOT STATE #458 / this compact state"
     ],
     "default_deep_reads": false,
     "deep_read_only_when": [
@@ -85,5 +90,5 @@
       "rebuild completed baseline work"
     ]
   },
-  "updated_at": "2026-09-05T19:50:05+07:00"
+  "updated_at": "2026-09-05T19:53:01+07:00"
 }
