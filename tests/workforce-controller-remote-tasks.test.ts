@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { startWorkforceController } from '../apps/workforce-controller/src/server.js';
 import { FileJournal } from '../packages/event-store/src/index.js';
 import { CapabilityScheduler, TaskQueue, WorkforceRegistry, type TaskPacket, type WorkerResult } from '../packages/workforce/src/index.js';
+import { DurableAutonomyStore } from '../packages/workforce/src/autonomy-store.js';
 import { DurableNodeCredentialStore } from '../packages/workforce/src/node-credentials.js';
 import { NodePairingService } from '../packages/workforce/src/pairing.js';
 import { RemoteTaskBroker } from '../packages/workforce/src/remote-task-broker.js';
@@ -14,10 +15,12 @@ import { DurableTaskMailbox } from '../packages/workforce/src/task-mailbox.js';
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => { while (cleanups.length) await cleanups.pop()?.(); });
 
-function task(): TaskPacket {
+function task(taskId = 'REMOTE-01', autonomy = false): TaskPacket {
+  const constraints = ['no secrets'];
+  if (autonomy) constraints.push('autonomy:level=B', 'autonomy:resource=pc01-watchdog', 'autonomy:authorized=true');
   return {
-    taskId: 'REMOTE-01', idempotencyKey: 'remote-01', objective: 'Execute one bounded Android task',
-    department: 'ops', priority: 'P0', requiredCapabilities: ['android-ui'], constraints: ['no secrets'],
+    taskId, idempotencyKey: `remote-${taskId.toLowerCase()}`, objective: 'Execute one bounded Android task',
+    department: 'ops', priority: 'P0', requiredCapabilities: ['android-ui'], constraints,
     inputs: [], expectedArtifacts: ['structured-result'], deadline: '2030-01-01T00:00:00.000Z', maxAttempts: 2,
     reviewPolicy: { independentReview: true, judgeRequired: false, preferProviderDiversity: true },
   };
@@ -36,8 +39,10 @@ async function fixture() {
     credentialId: 'CRED-01', nodeId: 'PHONE-01', token: 'node-secret',
     scopes: ['register', 'heartbeat', 'task:read', 'task:result'], createdAt: new Date().toISOString(),
   }, Buffer.from('test-public-key').toString('base64'));
-  const mailbox = new DurableTaskMailbox(new FileJournal(join(dir, 'mailbox.jsonl')));
-  const remoteTasks = new RemoteTaskBroker(runtime, mailbox);
+  const journal = new FileJournal(join(dir, 'remote.jsonl'));
+  const mailbox = new DurableTaskMailbox(journal);
+  const autonomy = new DurableAutonomyStore(journal);
+  const remoteTasks = new RemoteTaskBroker(runtime, mailbox, () => new Date(), autonomy);
   const controller = await startWorkforceController({
     runtime,
     credentials,
@@ -48,12 +53,23 @@ async function fixture() {
     port: 0,
   });
   cleanups.push(controller.close);
-  return { ...controller, queue };
+  return { ...controller, queue, autonomy };
 }
 
 async function json(response: Response) { return await response.json() as any; }
 function nodeHeaders(token = 'node-secret') {
   return { 'content-type': 'application/json', 'x-tigeriq-credential-id': 'CRED-01', authorization: `Bearer ${token}` };
+}
+function adminHeaders(secret = 'admin-secret') {
+  return { 'content-type': 'application/json', 'x-tigeriq-admin-secret': secret };
+}
+
+function failedResult(taskId: string, employeeId: string): WorkerResult {
+  return {
+    taskId, employeeId, status: 'failed', conclusion: 'dependency unavailable', confidence: 1,
+    artifacts: [{ kind: 'json', ref: 'evidence://blocked' }], risks: ['dependency-wait'], completedAt: new Date().toISOString(),
+    failure: { code: 'CAPABILITY_GAP', message: 'waiting for verified capability', retriable: false },
+  };
 }
 
 describe('Workforce Controller remote task API', () => {
@@ -64,8 +80,7 @@ describe('Workforce Controller remote task API', () => {
     expect(unauthorizedAdmin.status).toBe(401);
 
     const enqueue = await fetch(`${app.url}/api/admin/tasks`, {
-      method: 'POST', headers: { 'content-type': 'application/json', 'x-tigeriq-admin-secret': 'admin-secret' },
-      body: JSON.stringify({ task: task() }),
+      method: 'POST', headers: adminHeaders(), body: JSON.stringify({ task: task() }),
     });
     expect(enqueue.status).toBe(201);
     expect((await json(enqueue)).task.stage).toBe('queued');
@@ -96,10 +111,73 @@ describe('Workforce Controller remote task API', () => {
     expect((await json(duplicate)).result.conclusion).toBe('remote done');
   });
 
+  it('accepts an explicit blocked result and persists waiting_condition without claiming completion', async () => {
+    const app = await fixture();
+    const enqueue = await fetch(`${app.url}/api/admin/tasks`, {
+      method: 'POST', headers: adminHeaders(), body: JSON.stringify({ task: task('BLOCKED-HTTP', true) }),
+    });
+    expect(enqueue.status).toBe(201);
+
+    const leaseResponse = await fetch(`${app.url}/api/node/tasks/lease`, { method: 'POST', headers: nodeHeaders() });
+    const lease = (await json(leaseResponse)).lease;
+    const envelope = {
+      taskId: lease.taskId,
+      leaseId: lease.leaseId,
+      leaseToken: lease.leaseToken,
+      result: failedResult(lease.taskId, lease.employeeId),
+      blocked: { blocker: 'capability_gap', dependencyKey: 'pc01.task-action-ready', mutationInFlight: false },
+    };
+    const accepted = await fetch(`${app.url}/api/node/tasks/result`, { method: 'POST', headers: nodeHeaders(), body: JSON.stringify(envelope) });
+    expect(accepted.status).toBe(200);
+    const payload = await json(accepted);
+    expect(payload.result.status).toBe('failed');
+    expect(payload.blocked.state).toBe('waiting_condition');
+    expect(payload.blocked.dependencyWatch).toBe(true);
+    expect(app.queue.get('BLOCKED-HTTP').stage).toBe('failed');
+    expect((await app.autonomy.get('BLOCKED-HTTP'))?.dependencyKey).toBe('pc01.task-action-ready');
+  });
+
+  it('requires admin authority to reopen a dependency and requeues only the matching bounded task', async () => {
+    const app = await fixture();
+    await fetch(`${app.url}/api/admin/tasks`, {
+      method: 'POST', headers: adminHeaders(), body: JSON.stringify({ task: task('WAIT-HTTP', true) }),
+    });
+    const leaseResponse = await fetch(`${app.url}/api/node/tasks/lease`, { method: 'POST', headers: nodeHeaders() });
+    const lease = (await json(leaseResponse)).lease;
+    await fetch(`${app.url}/api/node/tasks/result`, {
+      method: 'POST', headers: nodeHeaders(), body: JSON.stringify({
+        taskId: lease.taskId, leaseId: lease.leaseId, leaseToken: lease.leaseToken,
+        result: failedResult(lease.taskId, lease.employeeId),
+        blocked: { blocker: 'external_dependency', dependencyKey: 'dependency-http', mutationInFlight: false },
+      }),
+    });
+
+    const denied = await fetch(`${app.url}/api/admin/tasks/dependency-ready`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ dependencyKey: 'dependency-http' }),
+    });
+    expect(denied.status).toBe(401);
+    expect(app.queue.get('WAIT-HTTP').stage).toBe('failed');
+
+    const unrelated = await fetch(`${app.url}/api/admin/tasks/dependency-ready`, {
+      method: 'POST', headers: adminHeaders(), body: JSON.stringify({ dependencyKey: 'other' }),
+    });
+    expect((await json(unrelated)).resumed).toEqual([]);
+
+    const reopened = await fetch(`${app.url}/api/admin/tasks/dependency-ready`, {
+      method: 'POST', headers: adminHeaders(), body: JSON.stringify({ dependencyKey: 'dependency-http' }),
+    });
+    expect(reopened.status).toBe(200);
+    expect((await json(reopened)).resumed).toEqual(['WAIT-HTTP']);
+    expect(app.queue.get('WAIT-HTTP').stage).toBe('queued');
+
+    const retry = await fetch(`${app.url}/api/node/tasks/lease`, { method: 'POST', headers: nodeHeaders() });
+    expect((await json(retry)).lease.attempt).toBe(2);
+  });
+
   it('rejects malformed task contracts instead of enqueueing ambiguous work', async () => {
     const app = await fixture();
     const invalid = await fetch(`${app.url}/api/admin/tasks`, {
-      method: 'POST', headers: { 'content-type': 'application/json', 'x-tigeriq-admin-secret': 'admin-secret' },
+      method: 'POST', headers: adminHeaders(),
       body: JSON.stringify({ task: { taskId: 'BAD', priority: 'P9' } }),
     });
     expect(invalid.status).toBe(400);

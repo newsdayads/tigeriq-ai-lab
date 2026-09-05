@@ -4,7 +4,7 @@ import type { AddressInfo } from 'node:net';
 import type { DurableWorkforceRuntime } from '../../../packages/workforce/src/runtime.js';
 import type { DurableNodeCredentialStore, NodeScope } from '../../../packages/workforce/src/node-credentials.js';
 import type { NodePairingService } from '../../../packages/workforce/src/pairing.js';
-import type { RemoteTaskBroker } from '../../../packages/workforce/src/remote-task-broker.js';
+import type { BlockedResultContext, RemoteTaskBroker } from '../../../packages/workforce/src/remote-task-broker.js';
 import { buildWorkforceStatus } from '../../../packages/workforce/src/status.js';
 import type { EmployeeAvailability, NodeStatus, WorkerKind } from '../../../packages/workforce/src/index.js';
 import { parseTaskPacket, parseWorkerResult } from './task-contract.js';
@@ -73,6 +73,23 @@ function stringList(value: unknown, maxItems = 32): string[] {
 function numberInRange(value: unknown, min: number, max: number): number | undefined {
   if (value === undefined || value === null) return undefined;
   return typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max ? value : undefined;
+}
+
+function blockedContext(value: unknown): BlockedResultContext | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new HttpError(400, 'invalid_blocked_context');
+  const row = value as Record<string, unknown>;
+  const blocker = text(row.blocker, 64);
+  if (!['external_dependency', 'transient', 'capability_gap', 'authorization'].includes(blocker)) {
+    throw new HttpError(400, 'invalid_blocker_kind');
+  }
+  if (typeof row.mutationInFlight !== 'boolean') throw new HttpError(400, 'invalid_mutation_state');
+  const dependencyKey = text(row.dependencyKey, 128) || undefined;
+  return {
+    blocker: blocker as BlockedResultContext['blocker'],
+    dependencyKey,
+    mutationInFlight: row.mutationInFlight,
+  };
 }
 
 function assertPrivateBind(host: string): void {
@@ -283,6 +300,17 @@ export async function startWorkforceController(options: WorkforceControllerOptio
         return json(response, 201, { ok: true, task: { taskId: queued.task.taskId, stage: queued.stage, attempts: queued.attempts } });
       }
 
+      if (request.method === 'POST' && url.pathname === '/api/admin/tasks/dependency-ready') {
+        if (!options.remoteTasks) throw new HttpError(503, 'remote_tasks_not_configured');
+        if (!adminSecret) throw new HttpError(503, 'admin_auth_not_configured');
+        if (!adminAuthorized(request, adminSecret)) throw new HttpError(401, 'unauthorized');
+        const data = await body(request);
+        const dependencyKey = text(data.dependencyKey, 128);
+        if (!dependencyKey) throw new HttpError(400, 'invalid_dependency_key');
+        const resumed = await options.remoteTasks.resumeDependency(dependencyKey);
+        return json(response, 200, { ok: true, dependencyKey, resumed });
+      }
+
       if (request.method === 'POST' && url.pathname === '/api/node/tasks/lease') {
         if (!options.remoteTasks) throw new HttpError(503, 'remote_tasks_not_configured');
         const authenticated = await authenticateNode(request, options.credentials, 'task:read');
@@ -299,6 +327,11 @@ export async function startWorkforceController(options: WorkforceControllerOptio
         const leaseToken = text(data.leaseToken, 256);
         if (!taskId || !leaseId || !leaseToken) throw new HttpError(400, 'invalid_task_result_envelope');
         const result = contract(() => parseWorkerResult(data.result));
+        const blocked = blockedContext(data.blocked);
+        if (blocked) {
+          const accepted = await options.remoteTasks.acceptBlockedResult(authenticated.nodeId, taskId, leaseId, leaseToken, result, blocked);
+          return json(response, 200, { ok: true, result: accepted.result, blocked: accepted.plan });
+        }
         const accepted = await options.remoteTasks.acceptResult(authenticated.nodeId, taskId, leaseId, leaseToken, result);
         return json(response, 200, { ok: true, result: accepted });
       }
@@ -312,7 +345,8 @@ export async function startWorkforceController(options: WorkforceControllerOptio
         'pairing proof verification failed', 'node already exists', 'employee already exists',
         'task is not running', 'task has no assigned employee', 'task is assigned to another node',
         'result employee mismatch', 'stale task lease', 'task lease expired', 'invalid task lease token',
-        'result task mismatch', 'task already leased',
+        'result task mismatch', 'task already leased', 'blocked result cannot release an in-flight mutation',
+        'blocked result must have failed status', 'blocked task is missing autonomy metadata',
       ]);
       return json(response, known.has(message) ? 400 : 503, { error: known.has(message) ? message.replace(/ /g, '_') : 'workforce_controller_unavailable' });
     }
