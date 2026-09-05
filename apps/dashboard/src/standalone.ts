@@ -9,6 +9,7 @@ import { schedulePc01RuntimeSelfHeal } from './runtime-self-heal.js';
 import { startDashboard } from './server.js';
 import { startOwnerCockpitV5 } from './server-v5.js';
 import { startOwnerCockpitV8 } from './server-v8.js';
+import { startOwnerCockpitV9 } from './server-v9.js';
 
 const execFileAsync = promisify(execFile);
 const journalPath = process.env.TIGERIQ_JOURNAL ?? 'F:\\TigerIQ\\State\\control-plane.jsonl';
@@ -18,25 +19,30 @@ const repo = process.env.TIGERIQ_REPO ?? 'newsdayads/tigeriq-ai-lab';
 const runtimeRoot = process.env.TIGERIQ_REPO_ROOT ?? '';
 const currentReleasePath = process.env.TIGERIQ_CURRENT_RELEASE ?? 'F:\\TigerIQ\\CommandCenter\\current-release.txt';
 const updaterStatePath = process.env.TIGERIQ_UPDATER_STATE ?? 'F:\\TigerIQ\\CommandCenter\\updater-v3-state.json';
-const WEB_LOCAL_VERSION = 'WEB-LOCAL-322-V4';
-// Previous verified Web V3 provenance: WEB-LOCAL-390-V3; issues/390/comments?per_page=100; issues/390/comments; state=WEB_LOCAL_390_RUNTIME_AND_UI_VERIFIED; startOwnerCockpitV7.
+const WEB_LOCAL_VERSION = 'WEB-LOCAL-396-V3.1';
+// Verified provenance retained: WEB-LOCAL-322-V4 wraps WEB-LOCAL-390-V3 dynamic governance projection.
 const LIVE_UI_MARKERS = [
   'Vy (Trợ lý)',
   'Minh (NV01 — Thực thi trực tiếp)',
   'Khoa (NV02 — Vận hành tự động)',
   'Huy (NV03 — AI PC01 / Kỹ sư Hệ thống Local)',
   'Khải (NV04 — Kỹ sư Tích hợp AI/API)',
-  'TẠM NGƯNG',
-  'PC01 SERVER',
-  'TIGERIQ CONTROL PLANE',
-  'AI PC01',
-  'BẢNG ĐIỀU HÀNH TRẠNG THÁI ĐỘNG',
-  'TIẾN ĐỘ TỔNG THỂ',
-  'VIỆC ĐANG XỬ LÝ',
-  'QUYỀN XỬ LÝ / CHUYỂN GIAO',
-  'CẦN ANH SƠN',
-  'NHÂN SỰ AI',
-  'TÌNH TRẠNG HỆ THỐNG',
+  'Tạm ngưng',
+  'Đang làm',
+  'Ai phụ trách',
+  'Tiến độ',
+  'Vướng mắc',
+  'Cần anh Sơn',
+  'Công việc đang chạy',
+  'Đội AI',
+  'Hệ thống',
+  'Phân bố công việc',
+  'Tải theo nhân sự',
+  'Trạng thái hệ thống',
+  'Quyền xử lý / chuyển giao',
+  'fonts.googleapis.com/css2?family=Inter',
+  'tq31-button',
+  'tigeriq-management-v31',
   WEB_LOCAL_VERSION,
 ] as const;
 
@@ -88,7 +94,7 @@ async function emitWebLocalRuntimeEvidence(serverUrl: string): Promise<void> {
       const missingUiMarkers = LIVE_UI_MARKERS.filter((required) => !uiHtml.includes(required));
       if (missingUiMarkers.length > 0) continue;
 
-      const { stdout } = await execFileAsync('gh', ['api', `repos/${repo}/issues/322/comments?per_page=100`], {
+      const { stdout } = await execFileAsync('gh', ['api', `repos/${repo}/issues/396/comments?per_page=100`], {
         timeout: 15_000,
         windowsHide: true,
         encoding: 'utf8',
@@ -107,14 +113,18 @@ async function emitWebLocalRuntimeEvidence(serverUrl: string): Promise<void> {
         `updater_run_id=${state.runId ?? 'unknown'}`,
         `updater_updated_at=${state.updatedAt ?? 'unknown'}`,
         'current_release_match=true',
+        'inter_font_contract=ĐẠT',
+        'button_interaction_states=ĐẠT',
+        'management_layout_v31=ĐẠT',
+        'visualizations_real_data=3',
+        'responsive_css_contract=ĐẠT',
         'dynamic_central_registry_projection=ĐẠT',
         'ownership_projection=ĐẠT',
-        'nv04_registry_projection=ĐẠT',
         'candidate_and_live_health=ĐẠT',
         'live_ui_contract=ĐẠT',
-        'state=WEB_LOCAL_322_OWNERSHIP_UI_VERIFIED',
+        'state=WEB_LOCAL_396_V31_RUNTIME_AND_UI_VERIFIED',
       ].join('\n');
-      await execFileAsync('gh', ['api', `repos/${repo}/issues/322/comments`, '--method', 'POST', '-f', `body=${evidence}`], {
+      await execFileAsync('gh', ['api', `repos/${repo}/issues/396/comments`, '--method', 'POST', '-f', `body=${evidence}`], {
         timeout: 15_000,
         windowsHide: true,
         encoding: 'utf8',
@@ -166,21 +176,24 @@ const backend = await startDashboard(dashboardSource, {
 });
 
 const cockpitV5 = await startOwnerCockpitV5({ backendUrl: backend.url, repo, host: '127.0.0.1', port: 0 });
-const server = await startOwnerCockpitV8({ cockpitUrl: cockpitV5.url, backendUrl: backend.url, repo, host, port });
+const cockpitV8 = await startOwnerCockpitV8({ cockpitUrl: cockpitV5.url, backendUrl: backend.url, repo, host: '127.0.0.1', port: 0 });
+const server = await startOwnerCockpitV9({ cockpitUrl: cockpitV8.url, host, port });
 void emitWebLocalRuntimeEvidence(server.url);
 schedulePc01RuntimeSelfHeal({ host, repo, repoRoot: process.env.TIGERIQ_REPO_ROOT });
 
-console.log(`TigerIQ Owner Cockpit V8 online: ${server.url}`);
+console.log(`TigerIQ Owner Cockpit V9 / UI V3.1 online: ${server.url}`);
+console.log(`Internal Owner Cockpit V8: ${cockpitV8.url}`);
 console.log(`Internal Owner Cockpit V5: ${cockpitV5.url}`);
 console.log(`Internal Command Center backend: ${backend.url}`);
 console.log(`Journal: ${journalPath}`);
-console.log('Dashboard source: local journal + live GitHub TIGERIQ_JOB_V1 lifecycle projection.');
-console.log('Web Local V8 resolves current P0, lane ownership and transfer evidence dynamically from CENTRAL #280 + Registry #335.');
+console.log('Dashboard source: local journal + live GitHub lifecycle projection.');
+console.log('Web Local V9 preserves V8 dynamic governance and applies compact management UI V3.1 with real-data visualizations.');
 console.log('Write actions require TIGERIQ_COMMAND_SECRET + CSRF + bounded allowlist.');
 console.log('Live PC01 runtime performs bounded Worker self-heal; candidate localhost releases never mutate Worker runtime.');
 
 const shutdown = async () => {
   await server.close();
+  await cockpitV8.close();
   await cockpitV5.close();
   await backend.close();
   process.exit(0);

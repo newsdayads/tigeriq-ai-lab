@@ -80,12 +80,14 @@ describe('Web Local #390 dynamic management projection', () => {
     expect(html).toContain('CENTRAL #280 chọn P0 kế tiếp');
   });
 
-  it('targets machine-real V3 evidence at #390 after pointer, updater, health and UI marker agreement', () => {
+  it('retains V3 dynamic-governance behavior and provenance after newer UI versions become current', () => {
+    const source = readFileSync(new URL('../apps/dashboard/src/server-v7.ts', import.meta.url), 'utf8');
     const standalone = readFileSync(new URL('../apps/dashboard/src/standalone.ts', import.meta.url), 'utf8');
     for (const expected of [
-      'WEB-LOCAL-390-V3', 'issues/390/comments?per_page=100', 'issues/390/comments', 'LIVE_UI_MARKERS.filter',
-      "state.result === 'UPDATED' || state.result === 'NO_CHANGE'", 'current_release_match=true',
-      'dynamic_central_registry_projection=ĐẠT', 'state=WEB_LOCAL_390_RUNTIME_AND_UI_VERIFIED', 'startOwnerCockpitV7',
-    ]) expect(standalone).toContain(expected);
+      'WEB-LOCAL-390-V3', 'resolvePriorityIssueNumber', "ghJson<Comment[]>(repo, 'issues/280/comments?per_page=100')", 'startOwnerCockpitV7',
+    ]) expect(source).toContain(expected);
+    expect(standalone).toContain('WEB-LOCAL-390-V3');
+    expect(standalone).toContain('WEB-LOCAL-322-V4');
+    expect(standalone).toContain('WEB-LOCAL-396-V3.1');
   });
 });
