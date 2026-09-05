@@ -1,5 +1,6 @@
 import { FileJournal } from '../../../packages/event-store/src/index.js';
 import { CapabilityScheduler, TaskQueue, WorkforceRegistry } from '../../../packages/workforce/src/index.js';
+import { DurableAutonomyStore } from '../../../packages/workforce/src/autonomy-store.js';
 import { FileJournalWorkforceStateStore } from '../../../packages/workforce/src/journal-store.js';
 import { DurableNodeCredentialStore } from '../../../packages/workforce/src/node-credentials.js';
 import { NodePairingService, verifyAndroidP256PairingProof } from '../../../packages/workforce/src/pairing.js';
@@ -31,7 +32,8 @@ const runtime = await DurableWorkforceRuntime.restore(
 );
 const pairing = new NodePairingService(verifyAndroidP256PairingProof);
 const mailbox = new DurableTaskMailbox(journal);
-const remoteTasks = new RemoteTaskBroker(runtime, mailbox);
+const autonomy = new DurableAutonomyStore(journal);
+const remoteTasks = new RemoteTaskBroker(runtime, mailbox, () => new Date(), autonomy);
 const server = await startWorkforceController({
   runtime,
   pairing,
