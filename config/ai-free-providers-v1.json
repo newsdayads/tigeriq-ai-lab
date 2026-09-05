@@ -15,6 +15,19 @@
     "employeeDeviceCredentialOwner": "employee-device",
     "providerSecretsInEvidence": false
   },
+  "scheduler": {
+    "version": "TIGERIQ_AI_PROVIDER_SCHEDULER_V1",
+    "stateMode": "file_backed_exclusive_lock",
+    "dedupeScope": "work_order_role",
+    "leaseRequired": true,
+    "leaseSeconds": 120,
+    "lockWaitMs": 1500,
+    "maxAttemptsPerRole": 3,
+    "retryableFailures": ["timeout", "rate_limit", "outage"],
+    "terminalFailures": ["auth", "config", "invalid_response", "billing_unknown", "billing_nonzero"],
+    "staleLeaseTokenFailsClosed": true,
+    "expiredLeaseRecoverable": true
+  },
   "providers": {
     "groq": {
       "enabled": false,
