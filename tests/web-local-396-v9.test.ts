@@ -41,7 +41,7 @@ describe('Web Local #396 UI V3.1', () => {
     for (const expected of ['box-sizing:border-box', ':hover', ':active', ':focus-visible', ':disabled', 'transition:', '@media(max-width:1100px)', '@media(max-width:760px)', '@media(max-width:500px)']) expect(html).toContain(expected);
   });
 
-  it('retains V3.1 and Open Sans module provenance while newer runtime becomes current', () => {
+  it('retains V3.1/Open Sans module provenance but Segoe UI is the current final runtime', () => {
     const v9 = readFileSync(new URL('../apps/dashboard/src/server-v9.ts', import.meta.url), 'utf8');
     const v10 = readFileSync(new URL('../apps/dashboard/src/server-v10.ts', import.meta.url), 'utf8');
     const standalone = readFileSync(new URL('../apps/dashboard/src/standalone.ts', import.meta.url), 'utf8');
@@ -49,8 +49,9 @@ describe('Web Local #396 UI V3.1', () => {
     expect(v9).toContain('tigeriq-management-v31');
     expect(v10).toContain('family=Open+Sans:wght@400;500;600;700;800');
     expect(v10).toContain('font-family:"Open Sans"');
-    expect(standalone).toContain('startOwnerCockpitV10');
-    expect(standalone).toContain('open_sans_font_contract=ĐẠT');
+    expect(standalone).toContain('startOwnerCockpitV12');
+    expect(standalone).toContain('segoe_ui_font_contract=ĐẠT');
+    expect(standalone).not.toContain('open_sans_font_contract=ĐẠT');
     expect(standalone).toContain('issues/396/comments');
   });
 });

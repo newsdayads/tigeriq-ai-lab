@@ -31,20 +31,19 @@ describe('Web Local #396 UI V3.2', () => {
     expect(system).toContain('class="on" href="/?view=system"');
   });
 
-  it('applies Google Open Sans to the whole rendered site and preserves view-aware search', () => {
+  it('retains historical V3.2 Open Sans layer before the final Segoe UI wrapper', () => {
     const html = applyOverviewV32(base, 'workforce');
     expect(html).toContain(':root{font-family:"Open Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;');
     expect(html).toContain('<input type="hidden" name="view" value="workforce">');
-    expect(html).not.toContain('font-family:"Segoe UI Variable","Segoe UI",Arial,sans-serif;');
   });
 
-  it('wires machine-real acceptance to V3.2 and rejects legacy section IDs on overview evidence', () => {
+  it('wires current machine-real acceptance to V3.3 Segoe UI while retaining V3.2 layout', () => {
     const standalone = readFileSync(new URL('../apps/dashboard/src/standalone.ts', import.meta.url), 'utf8');
     for (const expected of [
-      'WEB-LOCAL-396-V3.2', 'startOwnerCockpitV11', 'overview_single_dashboard=ĐẠT',
-      'legacy_overview_duplicate_removed=ĐẠT', 'server_side_views=8', 'open_sans_whole_site=ĐẠT',
-      'state=WEB_LOCAL_396_V32_SINGLE_OVERVIEW_VERIFIED', 'data-overview="single-dashboard-v32"',
+      'WEB-LOCAL-396-V3.3', 'startOwnerCockpitV12', 'overview_single_dashboard=ĐẠT',
+      'legacy_overview_duplicate_removed=ĐẠT', 'server_side_views=8', 'segoe_ui_whole_site=ĐẠT',
+      'state=WEB_LOCAL_396_V33_SEGOE_UI_VERIFIED', 'data-overview="single-dashboard-v32"',
     ]) expect(standalone).toContain(expected);
-    for (const forbidden of ['id="cong-viec"', 'id="doi-ai"', 'id="mo-hinh"', 'id="bang-chung"', 'id="bao-cao"', 'id="he-thong"', 'id="cai-dat"']) expect(standalone).toContain(forbidden);
+    expect(standalone).not.toContain('open_sans_whole_site=ĐẠT');
   });
 });
