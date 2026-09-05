@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "channel": "nv02-off-main-zero-touch",
+  "repo": "newsdayads/tigeriq-ai-lab",
+  "source_commit": "47e687488d57132ba8ee567f760b8bd38fcf74ca",
+  "extension_id": "leidfhbpdillakmcbijagelghhilbnpc",
+  "target_version": "14.2.2",
+  "payloads": [
+    {
+      "kind": "service_worker_template",
+      "source_path": "artifacts/auto-worker/v14.2.1/tigeriq_aw_v142_wrapper.js",
+      "git_blob_sha1": "1b769a043cfadfce2006ac2a2c5f96163746b3a0",
+      "replacements": [
+        {
+          "from": "const VERSION = '14.2.1';",
+          "to": "const VERSION = '14.2.2';"
+        }
+      ]
+    },
+    {
+      "kind": "file",
+      "target": "tigeriq_aw_v142_runtime_guard.js",
+      "source_path": "artifacts/auto-worker/v14.2.1/tigeriq_aw_v142_runtime_guard.js",
+      "git_blob_sha1": "46894f6d24417a759877f7bd7edbd1e129f662c2",
+      "replacements": [
+        {
+          "from": "const VERSION = '14.2.1';",
+          "to": "const VERSION = '14.2.2';"
+        }
+      ]
+    },
+    {
+      "kind": "file",
+      "target": "registry_seed.json",
+      "source_path": "artifacts/auto-worker/v14.2.1/registry_seed.json",
+      "git_blob_sha1": "7c19c56899ebf7fbb6ceab9f6030e69982502bf3",
+      "replacements": []
+    }
+  ],
+  "manifest_patch": {
+    "description": "TigerIQ Auto Worker 14.2.2 TEST CANDIDATE - PHYSICAL PENDING",
+    "ensure_content_script_match": "https://chatgpt.com/*",
+    "prepend_js": [
+      "tigeriq_aw_v142_runtime_guard.js"
+    ]
+  },
+  "health": {
+    "service_worker_marker": "TIQ142_WRAPPER",
+    "guard_file": "tigeriq_aw_v142_runtime_guard.js",
+    "guard_marker": "14.2.2",
+    "registry_file": "registry_seed.json",
+    "registry_authority": {
+      "source_issue": 335,
+      "central_issue": 280,
+      "activation_gate_issue": 440
+    },
+    "active_background_employee_ids": [
+      "NV02"
+    ],
+    "inactive_background_employee_ids": [
+      "NV04",
+      "NV05"
+    ]
+  }
+}
