@@ -10,14 +10,19 @@ $configPath = Join-Path $repoRoot 'config\ai-free-providers-v1.json'
 $probePath = Join-Path $repoRoot 'scripts\pc-worker\probe-multi-ai.ps1'
 $schedulerPath = Join-Path $repoRoot 'scripts\pc-worker\ai-provider-scheduler.ps1'
 $schedulerTestPath = Join-Path $repoRoot 'scripts\pc-worker\test-ai-provider-scheduler.ps1'
+$orchestratorPath = Join-Path $repoRoot 'scripts\pc-worker\ai-job-orchestrator.ps1'
+$orchestratorTestPath = Join-Path $repoRoot 'scripts\pc-worker\test-ai-job-orchestration.ps1'
 Assert-True (Test-Path $configPath) 'config_exists'
 Assert-True (Test-Path $probePath) 'probe_exists'
 Assert-True (Test-Path $schedulerPath) 'scheduler_exists'
 Assert-True (Test-Path $schedulerTestPath) 'scheduler_test_exists'
+Assert-True (Test-Path $orchestratorPath) 'orchestrator_exists'
+Assert-True (Test-Path $orchestratorTestPath) 'orchestrator_test_exists'
 
 $config = Get-Content -Raw -Path $configPath | ConvertFrom-Json
 $probeText = Get-Content -Raw -Path $probePath
 $schedulerText = Get-Content -Raw -Path $schedulerPath
+$orchestratorText = Get-Content -Raw -Path $orchestratorPath
 Assert-True ([string]$config.version -eq 'TIGERIQ_AI_FREE_PROVIDERS_V1') 'version'
 Assert-True ([string]$config.policy.billingMode -eq 'ZERO_COST_ONLY') 'zero_cost_only'
 Assert-True (-not [bool]$config.policy.paidFallback) 'paid_fallback_disabled'
@@ -39,9 +44,6 @@ Assert-True ([bool]$config.scheduler.leaseRequired) 'scheduler_lease_required'
 Assert-True ([int]$config.scheduler.maxAttemptsPerRole -eq [int]$config.policy.maxAttemptsPerRole) 'scheduler_attempts_match_policy'
 Assert-True ([int]$config.scheduler.leaseSeconds -ge 5 -and [int]$config.scheduler.leaseSeconds -le 3600) 'scheduler_lease_bounds'
 Assert-True ([int]$config.scheduler.lockWaitMs -ge 100 -and [int]$config.scheduler.lockWaitMs -le 10000) 'scheduler_lock_wait_bounds'
-Assert-True ([bool]$config.scheduler.candidateEligibilityRequired) 'scheduler_candidate_eligibility_required'
-Assert-True ([string]$config.scheduler.eligibilitySource -eq 'guarded_live_probe_READY') 'scheduler_eligibility_source'
-Assert-True ([bool]$config.scheduler.failClosedOnMissingEligibility) 'scheduler_missing_eligibility_fail_closed'
 Assert-True (@($config.scheduler.retryableFailures) -contains 'timeout') 'scheduler_timeout_retryable'
 Assert-True (@($config.scheduler.retryableFailures) -contains 'rate_limit') 'scheduler_rate_limit_retryable'
 Assert-True (@($config.scheduler.retryableFailures) -contains 'outage') 'scheduler_outage_retryable'
@@ -49,6 +51,8 @@ Assert-True (@($config.scheduler.terminalFailures) -contains 'billing_unknown') 
 Assert-True (@($config.scheduler.terminalFailures) -contains 'billing_nonzero') 'scheduler_nonzero_billing_terminal'
 Assert-True ([bool]$config.scheduler.staleLeaseTokenFailsClosed) 'scheduler_stale_token_fail_closed'
 Assert-True ([bool]$config.scheduler.expiredLeaseRecoverable) 'scheduler_expired_lease_recoverable'
+Assert-True ([bool]$config.scheduler.candidateEligibilityRequired) 'scheduler_candidate_eligibility_required'
+Assert-True ([string]$config.scheduler.eligibilitySource -eq 'guarded_live_probe_READY') 'scheduler_eligibility_source'
 
 Assert-True ([string]$config.providers.openrouter.mode -eq 'free_router_only') 'openrouter_free_mode'
 Assert-True ([string]$config.providers.openrouter.model -eq 'openrouter/free') 'openrouter_free_model'
@@ -78,12 +82,16 @@ Assert-True ($probeText -match 'function\s+Invoke-OllamaLocalProbe') 'ollama_liv
 Assert-True ($probeText -match 'Invoke-OllamaLocalProbe\s+\$ollama\.path') 'ollama_live_probe_wired'
 Assert-True ($probeText -match 'ExpectedMarker\s+''TIGERIQ_OLLAMA_READY''') 'ollama_ready_marker_required'
 Assert-True ($schedulerText -match 'function\s+Invoke-SchedulerAction') 'scheduler_action_exists'
-Assert-True ($schedulerText -match 'EligibleBackendIdentities') 'scheduler_eligibility_parameter_exists'
-Assert-True ($schedulerText -match 'BLOCKED_NO_ELIGIBLE_BACKEND') 'scheduler_unproven_backend_block_exists'
 Assert-True ($schedulerText -match 'STALE_LEASE_REJECTED') 'scheduler_stale_lease_guard_exists'
 Assert-True ($schedulerText -match 'ATTEMPTS_EXHAUSTED') 'scheduler_bounded_attempt_guard_exists'
 Assert-True ($schedulerText -match 'billing_unknown') 'scheduler_billing_unknown_fail_closed_exists'
 Assert-True ($schedulerText -match 'System\.IO\.FileShare\]::None') 'scheduler_exclusive_file_lock_exists'
+Assert-True ($schedulerText -match 'EligibleBackendIdentities') 'scheduler_probe_eligibility_input_exists'
+Assert-True ($schedulerText -match 'BLOCKED_NO_ELIGIBLE_BACKEND') 'scheduler_unproven_backend_fail_closed_exists'
+Assert-True ($orchestratorText -match "Status 'INVOKING'") 'orchestrator_invoking_journal_exists'
+Assert-True ($orchestratorText -match "Status 'COMMITTING'") 'orchestrator_committing_journal_exists'
+Assert-True ($orchestratorText -match 'recovery_provider_outcome_unknown') 'orchestrator_ambiguous_outcome_fail_closed_exists'
+Assert-True ($orchestratorText -match 'EVIDENCE_SCHEDULER_DIGEST_MISMATCH') 'orchestrator_evidence_scheduler_binding_exists'
 
 $requiredRoles = @('executor', 'reviewer', 'judge')
 $enabledProviders = @($config.providers.PSObject.Properties | Where-Object { [bool]$_.Value.enabled })
@@ -118,5 +126,6 @@ Assert-True (-not ($serialized -match '(?i)"allowNonFreeModels"\s*:\s*true')) 'n
   claudeEnabled = [bool]$config.providers.claude_code.enabled
   truthfulGeminiSubscriptionAuthGuard = $true
   ollamaLiveProbeGuard = $true
+  crashSafeOrchestrationGuard = $true
   timestampUtc = [DateTime]::UtcNow.ToString('o')
 } | ConvertTo-Json
