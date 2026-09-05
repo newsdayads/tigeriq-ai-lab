@@ -1,0 +1,58 @@
+import { readFileSync } from 'node:fs';
+import { describe, expect, it } from 'vitest';
+import { transformManagementUiV31, WEB_LOCAL_VERSION_V9 } from '../apps/dashboard/src/server-v9.js';
+
+const sample = `<!doctype html><html><head><title>TigerIQ</title></head><body><header>Header</header><section class="tq322" id="tigeriq-management-v4"><div class="tq-section"><div class="tq-cell"><span>CÔNG VIỆC HIỆN HÀNH</span><b>#306 · Auto Worker V13.4.6</b></div><div class="tq-cell"><span>TIẾN ĐỘ</span><b>Đang xử lý</b></div><div class="tq-cell"><span>TRẠNG THÁI</span><b><span class="tq-badge run">ĐANG XỬ LÝ</span></b></div><div class="tq-cell"><span>NGƯỜI PHỤ TRÁCH</span><b>Khoa (NV02 — Vận hành tự động)</b></div></div><div class="tq-section"><table><tbody><tr><td data-label="Mốc kế tiếp">Kiểm thử Chrome thật</td><td data-label="Cập nhật cuối">05/09/2026 10:00:00</td></tr></tbody></table><div class="tq-cell"><span>BƯỚC HIỆN TẠI</span><b>Đang chờ kiểm thử máy thật</b></div></div><div class="tq-section"><h3>🔐 QUYỀN XỬ LÝ / CHUYỂN GIAO</h3><div class="tq-cell"><span class="tq-badge neutral">KHÔNG CÓ SỰ KIỆN MỚI</span><b>Không tự suy diễn</b></div></div><div class="tq-section"><h3>🔴 CẦN ANH SƠN</h3><div class="tq-owner ok">Không có việc nào đang cần anh Sơn duyệt hoặc thao tác thật.</div></div><div class="tq-section"><h3>👥 NHÂN SỰ AI</h3><div class="tq-people"><article class="tq-person"><div><b>Vy (Trợ lý)</b><small>Điều phối</small></div><span class="tq-badge neutral">ĐIỀU PHỐI</span></article><article class="tq-person"><div><b>Minh (NV01 — Thực thi trực tiếp)</b><small>Lệnh 1</small></div><span class="tq-badge neutral">CHỜ VIỆC</span></article><article class="tq-person"><div><b>Khoa (NV02 — Vận hành tự động)</b><small>Lệnh 2</small></div><span class="tq-badge run">ĐANG XỬ LÝ #306</span></article><article class="tq-person"><div><b>Huy (NV03 — AI PC01 / Kỹ sư Hệ thống Local)</b><small>Lệnh 3</small></div><span class="tq-badge neutral">TẠM NGƯNG</span></article><article class="tq-person"><div><b>Khải (NV04 — Kỹ sư Tích hợp AI/API)</b><small>Lệnh 4</small></div><span class="tq-badge neutral">CHỜ VIỆC</span></article></div></div><div class="tq-section"><h3>🖥️ TÌNH TRẠNG HỆ THỐNG</h3><div class="tq-systems"><article class="tq-system"><div><b>PC01 SERVER</b><span class="tq-badge ok">TRỰC TUYẾN</span></div></article><article class="tq-system"><div><b>TIGERIQ CONTROL PLANE</b><span class="tq-badge bad">SUY GIẢM / BỊ LỖI</span></div></article><article class="tq-system"><div><b>AI PC01</b><span class="tq-badge neutral">TẠM NGƯNG</span></div></article></div></div><div class="tq-section"><details class="tq-tech"><summary>Bằng chứng kỹ thuật</summary><p>build abc123</p></details></div></section></body></html>`;
+
+describe('Web Local #396 UI V3.1', () => {
+  it('replaces V4 management panel with compact five-KPI layout and Inter base layer', () => {
+    const html = transformManagementUiV31(sample);
+    for (const expected of [
+      'tigeriq-management-v31', WEB_LOCAL_VERSION_V9, 'fonts.googleapis.com/css2?family=Inter',
+      'Đang làm', 'Ai phụ trách', 'Tiến độ', 'Vướng mắc', 'Cần anh Sơn', 'Công việc đang chạy',
+      'Vy (Trợ lý)', 'Minh (NV01 — Thực thi trực tiếp)', 'Khoa (NV02 — Vận hành tự động)',
+      'Huy (NV03 — AI PC01 / Kỹ sư Hệ thống Local)', 'Khải (NV04 — Kỹ sư Tích hợp AI/API)',
+    ]) expect(html).toContain(expected);
+    expect(html).not.toContain('id="tigeriq-management-v4"');
+  });
+
+  it('retains the historical three visualization structures and real derived counts', () => {
+    const html = transformManagementUiV31(sample);
+    for (const marker of ['class="tq31-chart-stack"', 'class="tq31-segments"', 'class="tq31-bar-row"', 'class="tq31-system-visual"']) expect(html).toContain(marker);
+    expect(html).toContain('1 việc đang xử lý');
+    expect(html).toContain('0 việc đang xử lý');
+    expect(html).toContain('<b>1</b> ổn định');
+    expect(html).toContain('<b>1</b> cảnh báo');
+  });
+
+  it('uses one SVG icon system and removes management-heading emoji dependency', () => {
+    const html = transformManagementUiV31(sample);
+    expect(html).toContain('class="tq31-icon"');
+    expect(html).not.toContain('🐯');
+    expect(html).not.toContain('📊');
+    expect(html).not.toContain('👥');
+    expect(html).not.toContain('🖥️');
+  });
+
+  it('has responsive CSS plus complete button interaction states', () => {
+    const html = transformManagementUiV31(sample);
+    for (const expected of ['box-sizing:border-box', ':hover', ':active', ':focus-visible', ':disabled', 'transition:', '@media(max-width:1100px)', '@media(max-width:760px)', '@media(max-width:500px)']) expect(html).toContain(expected);
+  });
+
+  it('retains V3.1/Open Sans as historical provenance while Executive V4 is the current final runtime', () => {
+    const v9 = readFileSync(new URL('../apps/dashboard/src/server-v9.ts', import.meta.url), 'utf8');
+    const v10 = readFileSync(new URL('../apps/dashboard/src/server-v10.ts', import.meta.url), 'utf8');
+    const standalone = readFileSync(new URL('../apps/dashboard/src/standalone.ts', import.meta.url), 'utf8');
+    expect(v9).toContain('WEB-LOCAL-396-V3.1');
+    expect(v9).toContain('tigeriq-management-v31');
+    expect(v10).toContain('family=Open+Sans:wght@400;500;600;700;800');
+    expect(v10).toContain('font-family:"Open Sans"');
+    expect(standalone).toContain('startOwnerCockpitV17');
+    expect(standalone).toContain('WEB-LOCAL-396-V4.0');
+    expect(standalone).toContain('segoe_ui=ĐẠT');
+    expect(standalone).toContain('reference_layout=APPROVED_1648x928_EXECUTIVE_SCREENSHOT');
+    for (const retired of ['startOwnerCockpitV13', 'startOwnerCockpitV14', 'startOwnerCockpitV15']) expect(standalone).not.toContain(retired);
+    expect(standalone).not.toContain('open_sans_font_contract=ĐẠT');
+    expect(standalone).toContain('issues/396/comments');
+  });
+});

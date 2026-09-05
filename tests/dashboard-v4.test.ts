@@ -30,12 +30,19 @@ const telemetry: ServerTelemetry = {
   gpu: { name: 'Radeon RX 5500 XT', utilizationPercent: 5, memoryUsedMiB: 256, memoryTotalMiB: 8192 },
 };
 
-describe('Owner Cockpit V4 mockup-first visual contract', () => {
-  it('is visibly distinct from the old sidebar dashboard and keeps owner-first sections', async () => {
+describe('Owner Cockpit Vietnamese management visual contract', () => {
+  it('uses sidebar navigation, compact management tables, one font system and Vietnamese labels', async () => {
     const plane = new ControlPlane();
     plane.create({ id: 'WO-214', project: 'TigerIQ', goal: 'Hoàn thiện WebControl theo mockup', scope: ['dashboard'], invariants: ['private'], acceptanceCriteria: ['visual'], status: 'draft' }, { id: 'planner', role: 'planner' });
     plane.transition('WO-214', 'approved', { id: 'approver', role: 'approver' });
     plane.transition('WO-214', 'running', { id: 'coder', role: 'coder' });
+
+    plane.create({ id: 'WO-TECH-BLOCK', project: 'TigerIQ', goal: 'Thiếu mô hình đánh giá độc lập, hệ thống tự xử lý', scope: ['worker'], invariants: ['private'], acceptanceCriteria: ['runtime'], status: 'draft' }, { id: 'planner', role: 'planner' });
+    plane.transition('WO-TECH-BLOCK', 'blocked', { id: 'operator', role: 'operator' });
+
+    plane.create({ id: 'WO-OWNER-DECISION', project: 'TigerIQ', goal: 'Cần anh Sơn phê duyệt thay đổi quyền truy cập', scope: ['security'], invariants: ['private'], acceptanceCriteria: ['owner decision'], status: 'draft' }, { id: 'planner', role: 'planner' });
+    plane.transition('WO-OWNER-DECISION', 'blocked', { id: 'operator', role: 'operator' });
+
     const backend = await startDashboard(plane, { serverTelemetry: async () => telemetry });
     closers.push(backend.close);
     const outer = await startOwnerCockpitV4({ backendUrl: backend.url });
@@ -44,18 +51,30 @@ describe('Owner Cockpit V4 mockup-first visual contract', () => {
     const response = await fetch(outer.url);
     expect(response.status).toBe(200);
     const page = await response.text();
-    expect(page).toContain('OWNER COCKPIT V4 · MOCKUP IMPLEMENTATION');
-    expect(page).toContain('Hôm nay TigerIQ đang làm gì cho anh Sơn?');
-    expect(page).toContain('CÔNG VIỆC ĐANG CHẠY');
-    expect(page).toContain('CẦN ANH SƠN');
-    expect(page).toContain('AI WORKFORCE — AI ĐANG LÀM GÌ');
-    expect(page).toContain('MÔ HÌNH AI HIỆN CÓ');
-    expect(page).toContain('PC01 SERVER & SERVICES — HẠ TẦNG KỸ THUẬT');
-    expect(page).toContain('class="topnav"');
-    expect(page).not.toContain('class="side"');
+    expect(page).toContain('TigerIQ — Bảng điều hành');
+    expect(page).toContain('Xin chào anh Sơn');
+    expect(page).toContain('Công việc đang xử lý');
+    expect(page).toContain('Cần anh Sơn');
+    expect(page).toContain('Đội AI đang làm gì');
+    expect(page).toContain('Mô hình AI');
+    expect(page).toContain('Bằng chứng & kiểm tra');
+    expect(page).toContain('Trạng thái hệ thống PC01');
+    expect(page).toContain('class="sidebar"');
+    expect(page).toContain('class="nav"');
+    expect(page).not.toContain('OWNER COCKPIT V4 · MOCKUP IMPLEMENTATION');
+    expect(page).not.toContain('AI WORKFORCE — AI ĐANG LÀM GÌ');
+    expect(page).not.toContain('🐯');
+    expect(page).not.toContain('class="topnav"');
+    expect(page).not.toContain('>TQ</div>');
+    expect(page).toContain('<svg class="ico"');
     expect(page).toContain('Coder AI');
+    expect(page).toContain('Lập trình &amp; tự động hóa');
+    expect(page).toContain('Kỹ thuật');
     expect(page).toContain('qwen2.5-coder:14b');
-    expect(page).toContain('@media(max-width:520px)');
+    expect(page).toContain('Chờ anh quyết định</span><strong>1</strong>');
+    expect(page).toContain('Lỗi / đang vướng</span><strong>2</strong>');
+    expect(page).toContain('Cần anh quyết định hoặc phê duyệt để tiếp tục');
+    expect(page).toContain('@media(max-width:760px)');
     expect(page).toContain('Segoe UI Variable');
   });
 });

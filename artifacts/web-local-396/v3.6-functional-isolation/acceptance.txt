@@ -1,0 +1,12 @@
+OVERVIEW=Fluent Executive V3.6 only
+WORK=stable V12 isolated
+WORKFORCE=stable V12 isolated
+MODELS=stable V12 isolated
+EVIDENCE=stable V12 isolated
+REPORTS=stable V12 isolated
+SYSTEM=stable V12 isolated
+SETTINGS=stable V12 isolated
+WRITE_REQUESTS=stable V12 isolated
+REDIRECTS=functional-view preserved
+REGRESSION_GUARD=8 views
+PC01_MACHINE_REAL=required

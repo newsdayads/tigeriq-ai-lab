@@ -1,0 +1,85 @@
+name: Command Center Release Bundle
+
+on:
+  push:
+    branches:
+      - wo250/command-center-artifact-updater-v3
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install
+        run: npm ci --no-audit --no-fund
+      - name: Verify
+        run: npm run ci
+      - name: Build immutable runtime bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .release/runtime/scripts/pc-worker
+          cp -R dist .release/runtime/dist
+          cp package.json package-lock.json .release/runtime/
+          cp scripts/pc-worker/pc01-telemetry.ps1 .release/runtime/scripts/pc-worker/
+          cp scripts/pc-worker/repair-secure-worker-model-roles.ps1 .release/runtime/scripts/pc-worker/
+          cp scripts/pc-worker/repair-secure-worker-queue-resilience.ps1 .release/runtime/scripts/pc-worker/
+          cp scripts/pc-worker/hide-worker-watchdog-console.ps1 .release/runtime/scripts/pc-worker/
+          cp scripts/pc-worker/install-autoworker-zero-touch-hook.ps1 .release/runtime/scripts/pc-worker/
+          cp scripts/pc-worker/autoworker-zero-touch-deploy.py .release/runtime/scripts/pc-worker/
+          cp scripts/pc-worker/repair-control-plane-controller-diagnose.ps1 .release/runtime/scripts/pc-worker/
+          cp scripts/pc-worker/repair-control-plane-controller-status-contract.ps1 .release/runtime/scripts/pc-worker/
+          cp scripts/pc-worker/repair-workforce-controller-runtime-deps.ps1 .release/runtime/scripts/pc-worker/
+          test -s .release/runtime/scripts/pc-worker/pc01-telemetry.ps1
+          test -s .release/runtime/scripts/pc-worker/repair-secure-worker-model-roles.ps1
+          test -s .release/runtime/scripts/pc-worker/repair-secure-worker-queue-resilience.ps1
+          test -s .release/runtime/scripts/pc-worker/hide-worker-watchdog-console.ps1
+          test -s .release/runtime/scripts/pc-worker/install-autoworker-zero-touch-hook.ps1
+          test -s .release/runtime/scripts/pc-worker/autoworker-zero-touch-deploy.py
+          test -s .release/runtime/scripts/pc-worker/repair-control-plane-controller-diagnose.ps1
+          test -s .release/runtime/scripts/pc-worker/repair-control-plane-controller-status-contract.ps1
+          test -s .release/runtime/scripts/pc-worker/repair-workforce-controller-runtime-deps.ps1
+          (cd .release/runtime && zip -qr ../command-center.zip .)
+          sha256sum .release/command-center.zip | awk '{print $1}' > .release/bundle.sha256
+          node - <<'NODE'
+          const fs = require('fs');
+          const sha = process.env.GITHUB_SHA;
+          const digest = fs.readFileSync('.release/bundle.sha256','utf8').trim();
+          const manifest = {
+            schema: 5,
+            sourceSha: sha,
+            bundle: 'command-center.zip',
+            bundleSha256: digest,
+            entry: 'dist/apps/dashboard/src/standalone.js',
+            runtimeAssets: [
+              'scripts/pc-worker/pc01-telemetry.ps1',
+              'scripts/pc-worker/repair-secure-worker-model-roles.ps1',
+              'scripts/pc-worker/repair-secure-worker-queue-resilience.ps1',
+              'scripts/pc-worker/hide-worker-watchdog-console.ps1',
+              'scripts/pc-worker/install-autoworker-zero-touch-hook.ps1',
+              'scripts/pc-worker/autoworker-zero-touch-deploy.py',
+              'scripts/pc-worker/repair-control-plane-controller-diagnose.ps1',
+              'scripts/pc-worker/repair-control-plane-controller-status-contract.ps1',
+              'scripts/pc-worker/repair-workforce-controller-runtime-deps.ps1'
+            ],
+            builtAt: new Date().toISOString(),
+            deploymentModel: 'artifact-pull-atomic-switch'
+          };
+          fs.writeFileSync('.release/manifest.json', JSON.stringify(manifest, null, 2));
+          NODE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: command-center-bundle
+          path: |
+            .release/command-center.zip
+            .release/manifest.json
+          if-no-files-found: error
+          retention-days: 30

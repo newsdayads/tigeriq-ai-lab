@@ -1,0 +1,73 @@
+import { describe, expect, it } from 'vitest';
+import type { ServerTelemetry } from '../apps/dashboard/src/server.js';
+import { controlPlaneState, injectLocalP0Panel, renderLocalP0Panel } from '../apps/dashboard/src/server-v6.js';
+
+function telemetry(controller: ServerTelemetry['controller'], available = true): ServerTelemetry {
+  return {
+    available,
+    server: 'PC01',
+    generatedAt: '2026-09-05T01:00:00.000Z',
+    cpu: null,
+    memory: null,
+    uptimeSeconds: 7200,
+    disk: null,
+    worker: { online: true, pid: 123, instances: 1 },
+    controller,
+    workforce: {
+      employeesTotal: 1,
+      idle: 0,
+      busy: 1,
+      offline: 0,
+      degraded: 0,
+      activeTasks: 1,
+      tasksActive: 1,
+      tasksFailed: 0,
+      roster: [{
+        employeeId: 'NV03', displayName: 'Huy', department: 'AI PC01', role: 'Kỹ sư Hệ thống Local', nodeId: 'pc01', provider: 'ollama', model: 'qwen3:8b', availability: 'busy', healthScore: 100, concurrencyLimit: 1, activeTaskCount: 1, currentTaskIds: ['#372'],
+      }],
+    },
+    postgresql: { online: true, service: 'postgresql', port: 5432 },
+    ollama: { online: true, models: ['qwen3:8b'] },
+    tailscale: { online: true, ip: '100.97.23.87' },
+    gpu: null,
+  };
+}
+
+const governance = {
+  issue338: { number: 338, state: 'open', body: '## Mục tiêu\nTách Web Local thành ba lớp thật.\n\nOWNER_HOLD=true' },
+  latest338: { body: 'TIGERIQ_JOB_PROGRESS\nstate=ĐANG_XỬ_LÝ_WEB_LOCAL' },
+  central: { number: 280, state: 'open', body: 'Huy (NV03 — AI PC01 / Kỹ sư Hệ thống Local) tạm ngưng' },
+  registry: { number: 335, state: 'open', body: '`3` | `NV03` | specialized | LOCAL_SYSTEM_FIRST | pc01_local_specialist | Huy | false — TẠM NGƯNG\nNV03 active=false (TẠM NGƯNG)' },
+  installedSha: '0123456789abcdef0123456789abcdef01234567',
+};
+
+describe('Web Local #338 V6 legacy module', () => {
+  it('maps an explicit Controller failure to SUY GIẢM instead of unknown/green', () => {
+    const state = controlPlaneState(telemetry({ online: false, ip: '127.0.0.1', port: 8790 }));
+    expect(state.label).toContain('SUY GIẢM');
+    expect(state.css).toBe('bad');
+  });
+
+  it('keeps missing Controller telemetry fail-closed as CHƯA XÁC MINH', () => {
+    const state = controlPlaneState(telemetry(null));
+    expect(state.label).toBe('CHƯA XÁC MINH');
+    expect(state.css).toBe('wait');
+  });
+
+  it('retains the completed V6 renderer contract for historical regression only', () => {
+    const panel = renderLocalP0Panel(telemetry({ online: true, ip: '127.0.0.1', port: 8790 }), governance, new Date('2026-09-05T01:00:00.000Z'));
+    for (const expected of ['Vy (Trợ lý)','Minh (NV01 — Thực thi trực tiếp)','Khoa (NV02 — Vận hành tự động)','Huy (NV03 — AI PC01 / Kỹ sư Hệ thống Local)','TẠM NGƯNG','PC01 SERVER','TIGERIQ CONTROL PLANE','AI PC01 — HUY/NV03','WEB-LOCAL-338-V2']) expect(panel).toContain(expected);
+  });
+
+  it('owner pause overrides stale busy telemetry for Huy', () => {
+    const panel = renderLocalP0Panel(telemetry({ online: true, ip: '127.0.0.1', port: 8790 }), governance, new Date('2026-09-05T01:00:00.000Z'));
+    expect(panel).toContain('TẠM NGƯNG');
+    expect(panel).not.toContain('Có task runtime');
+  });
+
+  it('injects the legacy panel without deleting V5 content', () => {
+    const html = '<html><body><header>V5</header><main>legacy-body</main></body></html>';
+    const out = injectLocalP0Panel(html, '<section id="overlay">P0</section>', telemetry({ online: false, ip: null, port: 8790 }));
+    expect(out).toContain('</header><section id="overlay">P0</section><main>legacy-body</main>');
+  });
+});
