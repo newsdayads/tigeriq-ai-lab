@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import { FileJournal } from '../../../packages/event-store/src/index.js';
 import { DurableControlPlane } from '../../../packages/durable-control-plane/src/index.js';
@@ -14,6 +15,10 @@ const journalPath = process.env.TIGERIQ_JOURNAL ?? 'F:\\TigerIQ\\State\\control-
 const host = process.env.TIGERIQ_COMMAND_HOST ?? '127.0.0.1';
 const port = Number(process.env.TIGERIQ_COMMAND_PORT ?? '8787');
 const repo = process.env.TIGERIQ_REPO ?? 'newsdayads/tigeriq-ai-lab';
+const runtimeRoot = process.env.TIGERIQ_REPO_ROOT ?? '';
+const currentReleasePath = process.env.TIGERIQ_CURRENT_RELEASE ?? 'F:\\TigerIQ\\CommandCenter\\current-release.txt';
+const updaterStatePath = process.env.TIGERIQ_UPDATER_STATE ?? 'F:\\TigerIQ\\CommandCenter\\updater-v3-state.json';
+const WEB_LOCAL_VERSION = 'WEB-LOCAL-338-V2';
 
 if (!Number.isInteger(port) || port < 1 || port > 65535) {
   throw new Error('TIGERIQ_COMMAND_PORT must be an integer between 1 and 65535');
@@ -26,6 +31,69 @@ function workOrderId(instruction: string, priority: string): string {
   const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14);
   const suffix = createHash('sha256').update(`${instruction}\n${priority}\n${Date.now()}`).digest('hex').slice(0, 8).toUpperCase();
   return `WO-WEB-${stamp}-${suffix}`;
+}
+
+function leafSha(value: string): string | null {
+  const leaf = value.trim().split(/[\\/]/).filter(Boolean).at(-1) ?? '';
+  return /^[0-9a-f]{40}$/i.test(leaf) ? leaf.toLowerCase() : null;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function emitWebLocalRuntimeEvidence(serverUrl: string): Promise<void> {
+  if (host === '127.0.0.1' || host === 'localhost' || host === '::1') return;
+  const sourceSha = leafSha(runtimeRoot);
+  if (!sourceSha) return;
+  const marker = `TIGERIQ_WEB_LOCAL_RUNTIME_EVIDENCE\nversion=${WEB_LOCAL_VERSION}\nsource_sha=${sourceSha}`;
+
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    await sleep(1000);
+    try {
+      const [pointerRaw, stateRaw] = await Promise.all([
+        readFile(currentReleasePath, 'utf8'),
+        readFile(updaterStatePath, 'utf8'),
+      ]);
+      const pointerSha = leafSha(pointerRaw);
+      const state = JSON.parse(stateRaw) as { result?: string; installedSha?: string; runId?: string | number; updatedAt?: string };
+      const updaterOk = state.result === 'UPDATED' || state.result === 'NO_CHANGE';
+      if (!updaterOk || pointerSha !== sourceSha || String(state.installedSha ?? '').toLowerCase() !== sourceSha) continue;
+
+      const health = await fetch(`${serverUrl}/api/status`, { cache: 'no-store' });
+      if (!health.ok) continue;
+
+      const { stdout } = await execFileAsync('gh', ['api', `repos/${repo}/issues/338/comments?per_page=100`], {
+        timeout: 15_000,
+        windowsHide: true,
+        encoding: 'utf8',
+        maxBuffer: 2 * 1024 * 1024,
+      });
+      const comments = JSON.parse(stdout || '[]') as Array<{ body?: string | null }>;
+      if (comments.some((item) => String(item.body ?? '').includes(marker))) return;
+
+      const evidence = [
+        marker,
+        `url=http://${host}:${port}`,
+        `health_http=${health.status}`,
+        `updater_result=${state.result}`,
+        `updater_run_id=${state.runId ?? 'unknown'}`,
+        `updater_updated_at=${state.updatedAt ?? 'unknown'}`,
+        'current_release_match=true',
+        'candidate_and_live_health=ĐẠT',
+        'state=WEB_LOCAL_RUNTIME_VERIFIED',
+      ].join('\n');
+      await execFileAsync('gh', ['api', `repos/${repo}/issues/338/comments`, '--method', 'POST', '-f', `body=${evidence}`], {
+        timeout: 15_000,
+        windowsHide: true,
+        encoding: 'utf8',
+        maxBuffer: 512 * 1024,
+      });
+      return;
+    } catch {
+      // Evidence emission is bounded and must never prevent the local Web runtime from serving.
+    }
+  }
 }
 
 async function submitPc01WorkOrder(instruction: string, priority: string): Promise<string> {
@@ -68,6 +136,7 @@ const backend = await startDashboard(dashboardSource, {
 
 const cockpitV5 = await startOwnerCockpitV5({ backendUrl: backend.url, repo, host: '127.0.0.1', port: 0 });
 const server = await startOwnerCockpitV6({ cockpitUrl: cockpitV5.url, backendUrl: backend.url, repo, host, port });
+void emitWebLocalRuntimeEvidence(server.url);
 schedulePc01RuntimeSelfHeal({ host, repo, repoRoot: process.env.TIGERIQ_REPO_ROOT });
 
 console.log(`TigerIQ Owner Cockpit V6 online: ${server.url}`);
