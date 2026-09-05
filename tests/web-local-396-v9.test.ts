@@ -18,7 +18,7 @@ describe('Web Local #396 UI V3.1', () => {
 
   it('renders three real-data visual surfaces without fabricated workload numbers', () => {
     const html = transformManagementUiV31(sample);
-    expect(html).toContain('Phân bố công việc');
+    expect(html).toContain('Phân bổ công việc');
     expect(html).toContain('Tải theo nhân sự');
     expect(html).toContain('Trạng thái hệ thống');
     expect(html).toContain('1 việc đang xử lý');
@@ -41,7 +41,7 @@ describe('Web Local #396 UI V3.1', () => {
     for (const expected of ['box-sizing:border-box', ':hover', ':active', ':focus-visible', ':disabled', 'transition:', '@media(max-width:1100px)', '@media(max-width:760px)', '@media(max-width:500px)']) expect(html).toContain(expected);
   });
 
-  it('retains V3.1/Open Sans provenance while V3.4 is the current final runtime', () => {
+  it('retains V3.1/Open Sans as historical provenance while Executive V4 is the current final runtime', () => {
     const v9 = readFileSync(new URL('../apps/dashboard/src/server-v9.ts', import.meta.url), 'utf8');
     const v10 = readFileSync(new URL('../apps/dashboard/src/server-v10.ts', import.meta.url), 'utf8');
     const standalone = readFileSync(new URL('../apps/dashboard/src/standalone.ts', import.meta.url), 'utf8');
@@ -49,9 +49,11 @@ describe('Web Local #396 UI V3.1', () => {
     expect(v9).toContain('tigeriq-management-v31');
     expect(v10).toContain('family=Open+Sans:wght@400;500;600;700;800');
     expect(v10).toContain('font-family:"Open Sans"');
-    expect(standalone).toContain('startOwnerCockpitV13');
-    expect(standalone).toContain('segoe_ui_font_contract=ĐẠT');
-    expect(standalone).toContain('fluent_executive_visual_contract=ĐẠT');
+    expect(standalone).toContain('startOwnerCockpitV17');
+    expect(standalone).toContain('WEB-LOCAL-396-V4.0');
+    expect(standalone).toContain('segoe_ui=ĐẠT');
+    expect(standalone).toContain('reference_layout=APPROVED_1648x928_EXECUTIVE_SCREENSHOT');
+    for (const retired of ['startOwnerCockpitV13', 'startOwnerCockpitV14', 'startOwnerCockpitV15']) expect(standalone).not.toContain(retired);
     expect(standalone).not.toContain('open_sans_font_contract=ĐẠT');
     expect(standalone).toContain('issues/396/comments');
   });
