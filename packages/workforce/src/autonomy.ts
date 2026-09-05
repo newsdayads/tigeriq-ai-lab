@@ -29,6 +29,46 @@ export interface BlockedWorkPlan {
   retry: { maxAttempts: number; backoffSeconds: number[] };
 }
 
+export interface AutonomyTaskPolicy {
+  level: WorkSafetyLevel;
+  resourceScope: string;
+  authorized: boolean;
+}
+
+export interface AutonomyTaskDescriptor {
+  taskId: string;
+  priority: 'P0' | 'P1' | 'P2' | 'P3';
+  constraints: string[];
+}
+
+const PRIORITY_ORDER = { P0: 0, P1: 1, P2: 2, P3: 3 } as const;
+const LEVEL_PREFIX = 'autonomy:level=';
+const RESOURCE_PREFIX = 'autonomy:resource=';
+const AUTHORIZED = 'autonomy:authorized=true';
+
+export function parseAutonomyPolicy(constraints: string[]): AutonomyTaskPolicy | undefined {
+  const levelValue = constraints.find((value) => value.startsWith(LEVEL_PREFIX))?.slice(LEVEL_PREFIX.length);
+  const resourceScope = constraints.find((value) => value.startsWith(RESOURCE_PREFIX))?.slice(RESOURCE_PREFIX.length).trim();
+  if (!levelValue || !resourceScope || !['A', 'B', 'C'].includes(levelValue)) return undefined;
+  return {
+    level: levelValue as WorkSafetyLevel,
+    resourceScope,
+    authorized: constraints.includes(AUTHORIZED),
+  };
+}
+
+export function safeCandidateFromTask(task: AutonomyTaskDescriptor): SafeWorkCandidate | undefined {
+  const policy = parseAutonomyPolicy(task.constraints);
+  if (!policy) return undefined;
+  return {
+    workId: task.taskId,
+    priority: PRIORITY_ORDER[task.priority],
+    level: policy.level,
+    authorized: policy.authorized,
+    resourceScope: policy.resourceScope,
+  };
+}
+
 function isRunnable(candidate: SafeWorkCandidate, blockedScope: string): boolean {
   if (candidate.resourceScope === blockedScope) return false;
   if (candidate.level === 'A') return true;
