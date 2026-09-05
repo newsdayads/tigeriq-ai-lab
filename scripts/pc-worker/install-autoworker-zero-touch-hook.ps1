@@ -16,7 +16,9 @@ $sidecarSha = '83dc8e2c8cb13cf1eb379237d8fb74539926b1173dee1c12949f8dd850f831e0'
 $version = '14.2.2'
 $installerUrl = 'https://raw.githubusercontent.com/newsdayads/tigeriq-ai-lab/8f0a45c57588a9abb846192517240fb21153f5de/scripts/pc-worker/TigerIQ_AW_14.2.2_installer.ps1'
 $installerSha = '57be6bcfea2cea8afb375842b4b825d13689b7e59afc9bf6e41e7e1b8109fc2e'
-$requestId = 'nv02-v14.2.2-zero-touch-57be6bcf-v1'
+# Deployment generation v2 intentionally invalidates a cached v1 success left behind by the Owner rollback to V13.4.9.
+# Keep the request stable after recovery so subsequent Command Center restarts remain idempotent.
+$requestId = 'nv02-v14.2.2-zero-touch-57be6bcf-v2'
 $taskName = 'TigerIQ Worker'
 $backupRoot = Join-Path $WorkerDir 'backup\autoworker-zero-touch-v1'
 $mutated = $false
