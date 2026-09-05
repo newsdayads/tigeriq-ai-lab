@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { EmployeeRecord, TaskPacket, TaskRuntimeRecord } from './index.js';
 import type { DurableAutonomyStore, BlockedWorkRecord } from './autonomy-store.js';
 import type { DurableWorkforceRuntime } from './runtime.js';
@@ -152,6 +153,7 @@ export class RuntimeStateNearEmptyAuditProvider implements NearEmptyAuditProvide
 }
 
 function stableId(value: string): string {
-  const normalized = value.toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-  return (normalized || 'WORK').slice(0, 48);
+  const normalized = value.toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'WORK';
+  const digest = createHash('sha256').update(value, 'utf8').digest('hex').slice(0, 16).toUpperCase();
+  return `${normalized.slice(0, 32)}-${digest}`;
 }
