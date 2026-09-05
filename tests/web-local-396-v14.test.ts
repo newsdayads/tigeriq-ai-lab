@@ -29,13 +29,11 @@ describe('Web Local #396 UI V3.5 machine-real layout repair', () => {
     ]) expect(html).toContain(expected);
   });
 
-  it('retains V3.5 repair as provenance while V3.6 is the current final runtime', () => {
+  it('retains V3.5 repair only as provenance while V4 is the final runtime', () => {
     const standalone = readFileSync(new URL('../apps/dashboard/src/standalone.ts', import.meta.url), 'utf8');
-    for (const expected of [
-      'WEB-LOCAL-396-V3.6', 'startOwnerCockpitV14', 'startOwnerCockpitV15', 'layout_repair_v35=ĐẠT',
-      'sidebar_single_dom=ĐẠT', 'system_card_compaction=ĐẠT', 'system_text_wrap_contract=ĐẠT',
-      'bottom_grid_gap_repair=ĐẠT', 'state=WEB_LOCAL_396_V36_INCREMENTAL_LIVE_VERIFIED',
-    ]) expect(standalone).toContain(expected);
-    expect(standalone).toContain('startOwnerCockpitV13');
+    const v14 = readFileSync(new URL('../apps/dashboard/src/server-v14.ts', import.meta.url), 'utf8');
+    for (const expected of ['WEB-LOCAL-396-V3.5', 'data-layout="v35-repaired"', 'tq35-layout-repair']) expect(v14).toContain(expected);
+    for (const expected of ['WEB-LOCAL-396-V4.0', 'startOwnerCockpitV17', 'architecture_reset=V12_STABLE_DATA_AND_FUNCTIONS_TO_SINGLE_V17_RENDERER']) expect(standalone).toContain(expected);
+    for (const retired of ['startOwnerCockpitV13', 'startOwnerCockpitV14', 'startOwnerCockpitV15']) expect(standalone).not.toContain(retired);
   });
 });
