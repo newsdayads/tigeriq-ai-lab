@@ -35,5 +35,16 @@ Successor branch: `auto-worker/v14.2.0-clean-successor`, created from exact V14 
 ## Not physically verified
 PC01/Chrome physical install/reload of 14.2.0, no-reopen-loop observation, exact multi-window placement, archive-before-close, routing E2E `2/4/5`, restart/crash/lease/governor and NV01 preempt/yield remain open. Before activation, physical routing acceptance is: `2` -> NV02 current CENTRAL queue; `4` -> NV04 specialized/non-background; `5` -> `COMMAND_PENDING_ACTIVATION`. Do not claim PHYSICAL PASS or activate NV04/NV05 without evidence.
 
+## Successor execution — 2026-09-05
+- Ownership takeover recorded on #441 after the previous lane had RELEASED/YIELDED at this safe checkpoint; scope stayed #441/off-MAIN only.
+- Reconstructed only the uncommitted V14.2 authority/routing/window/close/restart/lease/governor/archive delta on `auto-worker/v14.2.0-clean-successor`; V13.4.10 completed behavior remains baseline/no-rework.
+- Added current `registry_seed.json`, successor `tigeriq_aw_core.js`, TypeScript declaration shims, README verification boundary and `tests/auto-worker-v14.2.test.ts`; historical V14 test coverage was retained.
+- Local reconstruction harness on the committed core contract: `32/32 PASS` plus `node --check PASS`.
+- Minimal stale Typecheck repair: declaration shim only; no test removal/coverage reduction.
+- Draft successor PR: #443. Pre-checkpoint source head `cd043446094144d26ec108eae80b68300a49ceb1` ran CI #1149, Queue Hygiene #521 and Vercel Verify #481 successfully; Typecheck, Unit, Playwright and Build all passed. This checkpoint documentation commit changes HEAD, so final exact-head gates must be read from the PR after this commit rather than reusing the pre-checkpoint SHA.
+- PR #442 remains stale historical V14.0 evidence and is superseded for V14.2 candidate gating by #443; no merge/release/Production action was taken.
+- The checkpoint-reported local installer/background/runtime bytes are not present in GitHub, only hashes are authoritative. No replacement `.cmd` is published from reconstructed bytes because that would not be machine evidence.
+- Physical status remains `PHYSICAL PENDING`; NV04/NV05 remain not background-active.
+
 ## Safe next action
-Take over from this checkpoint, first verify branch/SoT freshness and whether exact local V14.2.0 source/artifacts are available. If available, do not rebuild: run installer/machine gate and fix only new findings. If only GitHub is available, reconstruct only the uncommitted V14.2 delta above from V14 source, fix stale Typecheck test without weakening coverage, commit on this successor branch, run exact-head CI/Queue/Vercel gates, then physical test. No MAIN/Production/paid/security/reboot mutation.
+Use the exact current head of PR #443. Require exact-head CI + Queue Hygiene + Vercel success. Then recover the checkpoint-matching real extension/installer payload or equivalently rebuild only the missing V14.2 installer/runtime delta and machine-test it on PC01. Physical acceptance must prove Chrome-open in-place update without taskkill/forced close, preserved extension ID/key, no auto-open/reopen-loop, correct managed windows, Archive-before-close, dynamic `2/4/5` routing, restart/crash/lease/governor and NV01 preempt/yield. Until then state is `REPO_CANDIDATE_READY_PHYSICAL_PENDING`; no MAIN/Production and no NV04/NV05 activation.
