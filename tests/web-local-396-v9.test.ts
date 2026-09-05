@@ -47,7 +47,7 @@ describe('Web Local #396 UI V3.1', () => {
     const standalone = readFileSync(new URL('../apps/dashboard/src/standalone.ts', import.meta.url), 'utf8');
     expect(v9).toContain('WEB-LOCAL-396-V3.1');
     expect(v9).toContain('tigeriq-management-v31');
-    expect(v10).toContain('fonts.googleapis.com/css2?family=Open+Sans');
+    expect(v10).toContain('family=Open+Sans:wght@400;500;600;700;800');
     expect(v10).toContain('font-family:"Open Sans"');
     expect(standalone).toContain('startOwnerCockpitV10');
     expect(standalone).toContain('open_sans_font_contract=ĐẠT');
