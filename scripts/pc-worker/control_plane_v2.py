@@ -240,21 +240,34 @@ def listener_status(port=WORKFORCE_PORT):
 
 def workforce_status():
     ip = tailscale_ipv4()
-    url = f'http://{ip}:{WORKFORCE_PORT}/api/workforce/status'
+    url = f'http://{ip}:{WORKFORCE_PORT}/api/v1/status'
     try:
         with urllib.request.urlopen(url, timeout=5) as response:
             body = response.read(256000)
             code = int(response.status)
     except Exception as exc:
-        return {'ok': False, 'action': 'workforce.controller.status', 'host': ip, 'port': WORKFORCE_PORT, 'http_status': None, 'error': f'{type(exc).__name__}: {exc}', 'listener': listener_status()}
+        return {'ok': False, 'action': 'workforce.controller.status', 'host': ip, 'port': WORKFORCE_PORT, 'http_status': getattr(exc, 'code', None), 'error': f'{type(exc).__name__}: {exc}', 'listener': listener_status()}
+    try:
+        payload = json.loads(body.decode('utf-8'))
+    except Exception:
+        payload = None
+    contract_ok = (
+        isinstance(payload, dict)
+        and payload.get('ok') is True
+        and payload.get('protocol') == 'controller-v1'
+        and payload.get('postgres') is True
+        and payload.get('migration') == '001_operational_state_v1'
+    )
     listeners = listener_status()
     expected = [row for row in listeners.get('listeners', []) if row.get('address') == ip]
     return {
-        'ok': code == 200 and bool(expected) and listeners.get('ok') and not listeners.get('wildcard_listener'),
+        'ok': code == 200 and contract_ok and bool(expected) and listeners.get('ok') and not listeners.get('wildcard_listener'),
         'action': 'workforce.controller.status',
         'host': ip,
         'port': WORKFORCE_PORT,
         'http_status': code,
+        'contract': 'controller-v1',
+        'contract_ok': contract_ok,
         'body_sha256': hashlib.sha256(body).hexdigest(),
         'listener': listeners,
     }
