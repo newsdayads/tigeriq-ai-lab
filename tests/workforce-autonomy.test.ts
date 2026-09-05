@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { planBlockedWork } from '../packages/workforce/src/autonomy.js';
+import { planBlockedWork, planNearEmptyAudit } from '../packages/workforce/src/autonomy.js';
 
 describe('blocked-not-idle routing', () => {
   it('releases lease and selects next safe Level A work when dependency blocks current scope', () => {
@@ -63,5 +63,70 @@ describe('blocked-not-idle routing', () => {
       ],
     });
     expect(plan.nextWorkId).toBe('b-yes');
+  });
+});
+
+describe('near-empty-not-idle self audit', () => {
+  const valid = (workId: string, kind: 'bug' | 'manual_work' | 'self_heal' | 'observability' | 'small_improvement') => ({
+    workId,
+    kind,
+    level: 'A' as const,
+    resourceScope: `scope-${workId}`,
+    evidenceRefs: [`evidence:${workId}`],
+    acceptanceCriteria: [`${workId} regression passes`],
+    rollback: `revert ${workId}`,
+  });
+
+  it('triggers at one eligible work item and selects at most three evidenced Level A findings by value order', () => {
+    const plan = planNearEmptyAudit({
+      eligibleWorkCount: 1,
+      primaryWaiting: false,
+      mutationInFlight: false,
+      findings: [
+        valid('obs', 'observability'),
+        valid('heal', 'self_heal'),
+        valid('bug', 'bug'),
+        valid('manual', 'manual_work'),
+      ],
+    });
+    expect(plan.triggered).toBe(true);
+    expect(plan.reason).toBe('near_empty');
+    expect(plan.selected.map((item) => item.workId)).toEqual(['bug', 'manual', 'heal']);
+  });
+
+  it('does not invent work: rejects missing evidence, owner conflicts, and non-Level-A findings', () => {
+    const plan = planNearEmptyAudit({
+      eligibleWorkCount: 0,
+      primaryWaiting: true,
+      mutationInFlight: false,
+      findings: [
+        { ...valid('no-evidence', 'bug'), evidenceRefs: [] },
+        { ...valid('conflict', 'manual_work'), ownerConflict: true },
+        { ...valid('level-b', 'self_heal'), level: 'B' as const },
+      ],
+    });
+    expect(plan.triggered).toBe(true);
+    expect(plan.reason).toBe('waiting');
+    expect(plan.selected).toEqual([]);
+  });
+
+  it('does not start a self-audit work transition while a mutation is in flight', () => {
+    const plan = planNearEmptyAudit({
+      eligibleWorkCount: 0,
+      primaryWaiting: true,
+      mutationInFlight: true,
+      findings: [valid('bug', 'bug')],
+    });
+    expect(plan).toEqual({ triggered: false, reason: 'mutation_in_flight', selected: [] });
+  });
+
+  it('does nothing when more than one eligible work item remains and the primary item is not waiting', () => {
+    const plan = planNearEmptyAudit({
+      eligibleWorkCount: 2,
+      primaryWaiting: false,
+      mutationInFlight: false,
+      findings: [valid('bug', 'bug')],
+    });
+    expect(plan).toEqual({ triggered: false, reason: 'not_needed', selected: [] });
   });
 });
