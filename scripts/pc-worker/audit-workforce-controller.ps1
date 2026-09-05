@@ -1,7 +1,9 @@
 param(
   [string]$StatePath = 'F:\TigerIQ\State\workforce.jsonl',
   [string]$ControllerHost = '',
-  [int]$ControllerPort = 8790
+  [int]$ControllerPort = 8790,
+  [ValidateSet('auto','generic','v1')]
+  [string]$ControllerContract = 'auto'
 )
 
 $ErrorActionPreference = 'SilentlyContinue'
@@ -9,6 +11,8 @@ $TaskName = 'TigerIQ Workforce Controller'
 $FirewallName = 'TigerIQ Workforce Controller (Tailscale)'
 $SecretPath = 'F:\TigerIQ\Secrets\workforce-admin.secret'
 $RunnerPath = 'F:\TigerIQ\Worker\run-workforce-controller.ps1'
+
+. (Join-Path $PSScriptRoot 'controller-health-probe.ps1')
 
 function Test-TailscaleIPv4([string]$Address) {
   if ($Address -notmatch '^100\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$') { return $false }
@@ -33,27 +37,32 @@ $ipPresent = if ($ControllerHost) { [bool](Get-NetIPAddress -AddressFamily IPv4 
 $listener = if ($ControllerHost) { [bool](Get-NetTCPConnection -LocalAddress $ControllerHost -LocalPort $ControllerPort -State Listen) } else { $false }
 $wildcardListener = [bool](Get-NetTCPConnection -LocalPort $ControllerPort -State Listen | Where-Object { $_.LocalAddress -in @('0.0.0.0','::') })
 $firewall = [bool](Get-NetFirewallRule -DisplayName $FirewallName)
+$health = $null
 $httpOk = $false
 $nodes = $null
 $employees = $null
 if ($ControllerHost) {
-  try {
-    $response = Invoke-RestMethod -Uri "http://$ControllerHost`:$ControllerPort/api/workforce/status" -TimeoutSec 4
-    $httpOk = [bool]$response.ok
-    if ($response.workforce) {
-      $nodes = $response.workforce.nodes.total
-      $employees = $response.workforce.employees.total
-    }
-  } catch {}
+  $health = Invoke-TigerIQControllerHealthProbe -BaseUri "http://$ControllerHost`:$ControllerPort" -ExpectedContract $ControllerContract -TimeoutSec 4
+  $httpOk = [bool]$health.health_ok
+  $response = $health.response
+  if ($response -and $response.workforce) {
+    $nodes = $response.workforce.nodes.total
+    $employees = $response.workforce.employees.total
+  }
 }
+$controllerProjection = Get-TigerIQControllerProjection -Health $health -WildcardListener $wildcardListener -TaskExists ([bool]$task)
 
 [ordered]@{
-  controller = if ($httpOk -and -not $wildcardListener) { 'ONLINE' } elseif ($task) { 'NOT_HEALTHY' } else { 'NOT_INSTALLED' }
+  controller = $controllerProjection
   bind = if ($ControllerHost) { "$ControllerHost`:$ControllerPort" } else { $null }
   tailscaleIpResolved = [bool]$ControllerHost
   privateIpPresent = $ipPresent
   listening = $listener
   wildcardListener = $wildcardListener
+  controller_contract = if ($health) { $health.controller_contract } else { $null }
+  health_path = if ($health) { $health.health_path } else { $null }
+  health_ok = $httpOk
+  health_error = if ($health) { $health.health_error } else { $null }
   http = $httpOk
   scheduledTask = [ordered]@{
     exists = [bool]$task
