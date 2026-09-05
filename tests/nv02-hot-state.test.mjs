@@ -1,0 +1,16 @@
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+const p='artifacts/auto-worker/hot-state/NV02_HOT_STATE.json';
+const s=JSON.parse(fs.readFileSync(p,'utf8'));
+assert.equal(s.employee_id,'NV02');
+assert.equal(s.command,'2');
+assert.equal(s.mode,'background_auto');
+assert.equal(s.background_auto,true);
+assert.equal(s.authority.central_issue,280);
+assert.equal(s.authority.registry_issue,335);
+assert.equal(s.current_work.issue,441);
+assert.equal(s.current_work.pr,443);
+assert.equal(s.fast_start.default_deep_reads,false);
+assert.ok(s.fast_start.never_on_startup.includes('bulk-fetch issue comment history'));
+assert.ok(s.fast_start.never_on_startup.includes('re-read all parent issues 306/395/401/440/441'));
+console.log('NV02_HOT_STATE_FAST_START_PASS');
