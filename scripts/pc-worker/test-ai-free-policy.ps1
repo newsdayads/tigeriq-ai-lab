@@ -50,10 +50,10 @@ Assert-True (-not (@($config.routing.fallbackOrder) -contains 'groq')) 'unproven
 Assert-True (-not (@($config.routing.fallbackOrder) -contains 'claude_code')) 'unproven_claude_credits_not_routable'
 
 Assert-True ($probeText -match 'function\s+Set-SubscriptionAuthFromInvocation') 'truthful_subscription_auth_helper_exists'
-Assert-True ($probeText -match "Set-SubscriptionAuthFromInvocation\s+-Result\s+\$result\s+-ExpectedMarker\s+'TIGERIQ_GEMINI_READY'") 'gemini_uses_truthful_subscription_auth_helper'
+Assert-True ($probeText -match 'Set-SubscriptionAuthFromInvocation\s+-Result\s+\$result\s+-ExpectedMarker\s+''TIGERIQ_GEMINI_READY''') 'gemini_uses_truthful_subscription_auth_helper'
 Assert-True ($probeText -match 'function\s+Invoke-OllamaLocalProbe') 'ollama_live_probe_exists'
 Assert-True ($probeText -match 'Invoke-OllamaLocalProbe\s+\$ollama\.path') 'ollama_live_probe_wired'
-Assert-True ($probeText -match "ExpectedMarker\s+'TIGERIQ_OLLAMA_READY'") 'ollama_ready_marker_required'
+Assert-True ($probeText -match 'ExpectedMarker\s+''TIGERIQ_OLLAMA_READY''') 'ollama_ready_marker_required'
 
 $requiredRoles = @('executor', 'reviewer', 'judge')
 $enabledProviders = @($config.providers.PSObject.Properties | Where-Object { [bool]$_.Value.enabled })
