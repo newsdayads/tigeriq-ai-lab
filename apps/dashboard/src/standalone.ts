@@ -19,6 +19,22 @@ const runtimeRoot = process.env.TIGERIQ_REPO_ROOT ?? '';
 const currentReleasePath = process.env.TIGERIQ_CURRENT_RELEASE ?? 'F:\\TigerIQ\\CommandCenter\\current-release.txt';
 const updaterStatePath = process.env.TIGERIQ_UPDATER_STATE ?? 'F:\\TigerIQ\\CommandCenter\\updater-v3-state.json';
 const WEB_LOCAL_VERSION = 'WEB-LOCAL-338-V2';
+const LIVE_UI_MARKERS = [
+  'Vy (Trợ lý)',
+  'Minh (NV01 — Thực thi trực tiếp)',
+  'Khoa (NV02 — Vận hành tự động)',
+  'Huy (NV03 — AI PC01 / Kỹ sư Hệ thống Local)',
+  'TẠM NGƯNG',
+  'PC01 SERVER',
+  'TIGERIQ CONTROL PLANE',
+  'AI PC01 — HUY/NV03',
+  'MỤC TIÊU',
+  'HẠNG MỤC',
+  'BƯỚC HIỆN TẠI',
+  'MỐC KẾ TIẾP',
+  'NGƯỜI PHỤ TRÁCH',
+  WEB_LOCAL_VERSION,
+] as const;
 
 if (!Number.isInteger(port) || port < 1 || port > 65535) {
   throw new Error('TIGERIQ_COMMAND_PORT must be an integer between 1 and 65535');
@@ -62,6 +78,11 @@ async function emitWebLocalRuntimeEvidence(serverUrl: string): Promise<void> {
 
       const health = await fetch(`${serverUrl}/api/status`, { cache: 'no-store' });
       if (!health.ok) continue;
+      const ui = await fetch(`${serverUrl}/`, { cache: 'no-store' });
+      if (!ui.ok) continue;
+      const uiHtml = await ui.text();
+      const missingUiMarkers = LIVE_UI_MARKERS.filter((required) => !uiHtml.includes(required));
+      if (missingUiMarkers.length > 0) continue;
 
       const { stdout } = await execFileAsync('gh', ['api', `repos/${repo}/issues/338/comments?per_page=100`], {
         timeout: 15_000,
@@ -76,12 +97,15 @@ async function emitWebLocalRuntimeEvidence(serverUrl: string): Promise<void> {
         marker,
         `url=http://${host}:${port}`,
         `health_http=${health.status}`,
+        `ui_http=${ui.status}`,
+        `ui_required_markers=${LIVE_UI_MARKERS.length}/${LIVE_UI_MARKERS.length}`,
         `updater_result=${state.result}`,
         `updater_run_id=${state.runId ?? 'unknown'}`,
         `updater_updated_at=${state.updatedAt ?? 'unknown'}`,
         'current_release_match=true',
         'candidate_and_live_health=ĐẠT',
-        'state=WEB_LOCAL_RUNTIME_VERIFIED',
+        'live_ui_contract=ĐẠT',
+        'state=WEB_LOCAL_RUNTIME_AND_UI_VERIFIED',
       ].join('\n');
       await execFileAsync('gh', ['api', `repos/${repo}/issues/338/comments`, '--method', 'POST', '-f', `body=${evidence}`], {
         timeout: 15_000,
