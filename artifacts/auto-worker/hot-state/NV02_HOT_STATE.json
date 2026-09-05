@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "employee_id": "NV02",
+  "display_name": "Khoa",
+  "command": "2",
+  "mode": "background_auto",
+  "background_auto": true,
+  "activation_state": "ACTIVE",
+  "authority": {
+    "central_issue": 280,
+    "registry_issue": 335,
+    "app_issue": 441,
+    "activation_gate_issue": 440,
+    "baseline_issue": 306,
+    "owner_queue_issue": 343
+  },
+  "current_work": {
+    "issue": 441,
+    "candidate": "14.2.2",
+    "branch": "auto-worker/v14.2.0-clean-successor",
+    "pr": 443,
+    "checkpoint": "artifacts/auto-worker/v14.2.0/CHECKPOINT.md",
+    "owner_artifact": "artifacts/auto-worker/v14.2.2/TigerIQ_AW_14.2.2.cmd",
+    "owner_cmd_sha256": "58212950cdbecc88f29a6bd555703b825f7e756783e5ffbe52f1a8243b8fec91",
+    "installer_source_commit": "8f0a45c57588a9abb846192517240fb21153f5de",
+    "installer_sha256": "57be6bcfea2cea8afb375842b4b825d13689b7e59afc9bf6e41e7e1b8109fc2e",
+    "phase": "WAIT_OWNER_AUTH_NARROW_TYPED_DEPLOY_STATUS_ACTION"
+  },
+  "blockers": [
+    {
+      "kind": "OWNER_AUTH_REQUIRED",
+      "scope": "Add one narrow sanitized read-only typed action autoworker.deploy.status to Secure Worker",
+      "reason": "Bundle #42 restarted Command Center but TigerIQ Worker did not restart; current typed lane cannot distinguish stale cached ok=true from another zero-touch hook preflight failure.",
+      "owner_queue_issue": 343,
+      "authorization_comment_id": 5551897564
+    }
+  ],
+  "next_action": "Wait for explicit Owner authorization of the narrow typed read-only deploy-status action. If authorized, implement only that bounded sanitized primitive, read exact Auto Worker deploy/self-heal state, then fix the proven physical branch only and retest zero-touch. Do not guess-fix stale-cache semantics before machine evidence.",
+  "open_gates": [
+    "typed Auto Worker deploy/self-heal machine evidence",
+    "PC01 Chrome-open in-place update without taskkill/forced close",
+    "preserve extension ID/key",
+    "no auto-open/reopen-loop",
+    "managed window 504x834 Top5 Right5 for NV02 before activation",
+    "Archive-before-close",
+    "routing 2->NV02, 4->NV04 specialized non-background, 5->COMMAND_PENDING_ACTIVATION",
+    "restart/crash/lease/governor",
+    "NV01 preempt/yield/resume"
+  ],
+  "evidence_pointers": {
+    "pr_443_exact_head": "c380b51ab38907dd63f53e6914b6c616160bcdb9",
+    "bundle_42_source": "b007a9c6219f8e23214fbd7cefff0bbc6fc3e015",
+    "command_center_probe_issue": 455,
+    "worker_probe_issue": 456,
+    "latest_owner_auth_watch_comment": 5551913518
+  },
+  "hard_guards": [
+    "OFF-MAIN only",
+    "do not activate NV04/NV05",
+    "no MAIN/Production",
+    "no arbitrary file-read/raw shell/security widening",
+    "no paid/credential/security-sensitive/OS reboot/irreversible action without authorization",
+    "one active owner per resource",
+    "do not rebuild baseline behavior already evidenced PASS"
+  ],
+  "fast_start": {
+    "required_reads": [
+      "CENTRAL #280 current router state",
+      "Registry #335 current command/authority record",
+      "this HOT STATE"
+    ],
+    "default_deep_reads": false,
+    "deep_read_only_when": [
+      "HOT STATE missing/stale/contradictory",
+      "ownership/lease conflict",
+      "acceptance detail not represented here",
+      "new physical finding",
+      "new Owner authorization",
+      "evidence needed for a gate decision"
+    ],
+    "never_on_startup": [
+      "bulk-fetch issue comment history",
+      "re-read all parent issues 306/395/401/440/441",
+      "re-read superseded PR #442",
+      "rebuild completed baseline work"
+    ]
+  },
+  "updated_at": "2026-09-05T19:50:05+07:00"
+}
