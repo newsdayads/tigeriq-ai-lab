@@ -32,6 +32,13 @@ describe('#338 PC01 three-layer Web Control', () => {
     expect(html).not.toContain("healthy=(pc==='online'||pc==='working')&&gh==='online'");
   });
 
+  it('maps Controller unavailable to failed while keeping not-configured unknown', () => {
+    expect(html).toContain("const mode=safe(w?.mode,'unknown'),failed=mode==='unavailable'");
+    expect(html).toContain("$('controllerState').dataset.state=failed?'failed':'unknown'");
+    expect(html).toContain("mode==='not-configured'?'Controller status chưa cấu hình'");
+    expect(html).toContain("failed?'Controller lỗi: '+safe(w?.reason,'không phản hồi')");
+  });
+
   it('does not mark AI PC01 active merely because Ollama/model inventory exists', () => {
     expect(html).toContain("$('aiPc01State').textContent='CHƯA XÁC MINH'");
     expect(html).toContain("$('aiJob').textContent='Không có evidence job'");
