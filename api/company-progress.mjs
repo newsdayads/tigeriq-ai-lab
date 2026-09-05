@@ -73,9 +73,11 @@ export function parseEmployees(body = '') {
   return rows;
 }
 
-function inferOwnerAction(text = '') {
+export function inferOwnerAction(text = '') {
   const normalized = String(text).toUpperCase();
-  const required = normalized.includes('CHỜ ANH SƠN') || normalized.includes('CẦN ANH SƠN') || normalized.includes('OWNER ACTION REQUIRED');
+  // Chỉ nhận marker trạng thái rõ ràng; không coi câu mô tả UI kiểu
+  // "có cần anh Sơn làm gì không" là một yêu cầu thao tác thật.
+  const required = /(^|\n)\s*(?:[-*]\s*)?(?:STATE\s*[:=]\s*)?(?:CHỜ ANH SƠN|OWNER[_ ]ACTION[_ ]REQUIRED)\b/m.test(normalized);
   return {
     required,
     summary: required ? 'Có hạng mục đang chờ anh Sơn theo Nguồn Sự Thật.' : 'Không có việc bắt buộc anh Sơn thao tác ở ưu tiên hiện tại.',
@@ -92,7 +94,7 @@ async function issue(number, owner, repo, fetchImpl) {
 
 async function comments(number, owner, repo, fetchImpl) {
   try {
-    const rows = await gh(`/repos/${owner}/${repo}/issues/${number}/comments?per_page=8&sort=created&direction=desc`, fetchImpl);
+    const rows = await gh(`/repos/${owner}/${repo}/issues/${number}/comments?per_page=8`, fetchImpl);
     return (Array.isArray(rows) ? rows : []).slice(-6).reverse().map((row) => ({
       name: firstLine(row.body).replace(/^#+\s*/, '').slice(0, 160) || `Cập nhật #${number}`,
       status: 'ĐÃ GHI NHẬN',
