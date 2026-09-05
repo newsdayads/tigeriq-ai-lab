@@ -4,9 +4,11 @@ import { DurableTaskMailbox, type TaskLease } from './task-mailbox.js';
 import {
   parseAutonomyPolicy,
   planBlockedWork,
+  planNearEmptyAudit,
   safeCandidateFromTask,
   type BlockedWorkPlan,
   type BlockerKind,
+  type SelfAuditFinding,
 } from './autonomy.js';
 import { DurableAutonomyStore, type BlockedWorkRecord } from './autonomy-store.js';
 
@@ -25,6 +27,21 @@ export interface AcceptedBlockedResult {
   plan: BlockedWorkPlan;
 }
 
+export interface NearEmptyAuditProposal {
+  finding: SelfAuditFinding;
+  task: TaskPacket;
+}
+
+export interface NearEmptyAuditContext {
+  nodeId: string;
+  eligibleWorkCount: number;
+  primaryWaiting: boolean;
+}
+
+export interface NearEmptyAuditProvider {
+  inspect(context: NearEmptyAuditContext): Promise<NearEmptyAuditProposal[]>;
+}
+
 const PRIORITY_ORDER = { P0: 0, P1: 1, P2: 2, P3: 3 } as const;
 
 /** Bridges the canonical Workforce queue/scheduler to durable pull-based remote worker leases. */
@@ -34,6 +51,7 @@ export class RemoteTaskBroker {
     private readonly mailbox: DurableTaskMailbox,
     private readonly now: () => Date = () => new Date(),
     private readonly autonomy?: DurableAutonomyStore,
+    private readonly nearEmptyAudit?: NearEmptyAuditProvider,
   ) {}
 
   async enqueue(task: TaskPacket): Promise<TaskRuntimeRecord> {
@@ -46,6 +64,8 @@ export class RemoteTaskBroker {
     if (!nodeId.trim()) throw new Error('nodeId is required');
     await this.#recoverExpiredForNode(nodeId);
     await this.#refreshContinuations(nodeId);
+    const created = await this.runNearEmptyAudit(nodeId);
+    if (created.length) await this.#refreshContinuations(nodeId);
 
     const waits = this.autonomy ? await this.autonomy.listForNode(nodeId) : [];
     const preferredNext = new Set(waits.map((row) => row.nextWorkId).filter((value): value is string => Boolean(value)));
@@ -90,6 +110,58 @@ export class RemoteTaskBroker {
       }
     }
     return undefined;
+  }
+
+  async runNearEmptyAudit(nodeId: string): Promise<string[]> {
+    if (!nodeId.trim()) throw new Error('nodeId is required');
+    if (!this.nearEmptyAudit) return [];
+
+    const records = this.runtime.queue.list();
+    const mutationInFlight = records.some((record) => {
+      if (record.stage !== 'running' || !record.assignedEmployeeId) return false;
+      return this.runtime.registry.getEmployee(record.assignedEmployeeId)?.nodeId === nodeId;
+    });
+    if (mutationInFlight) return [];
+
+    const waiting = this.autonomy ? await this.autonomy.listForNode(nodeId) : [];
+    const eligible = records.filter((record) => {
+      if (record.stage !== 'queued') return false;
+      return this.runtime.scheduler.select(record.task)?.nodeId === nodeId;
+    });
+    const primaryWaiting = waiting.length > 0;
+    if (eligible.length > 1 && !primaryWaiting) return [];
+
+    const proposals = await this.nearEmptyAudit.inspect({
+      nodeId,
+      eligibleWorkCount: eligible.length,
+      primaryWaiting,
+    });
+    const existing = this.runtime.queue.list();
+    const safeProposals = proposals.filter((proposal) => this.#validNearEmptyProposal(nodeId, proposal));
+    const plan = planNearEmptyAudit({
+      eligibleWorkCount: eligible.length,
+      primaryWaiting,
+      mutationInFlight: false,
+      findings: safeProposals.map((proposal) => ({
+        ...proposal.finding,
+        duplicateExisting: proposal.finding.duplicateExisting || existing.some((record) =>
+          record.task.taskId === proposal.task.taskId || record.task.idempotencyKey === proposal.task.idempotencyKey),
+      })),
+    });
+    if (!plan.triggered || plan.selected.length === 0) return [];
+
+    const selectedIds = new Set(plan.selected.map((finding) => finding.workId));
+    const created: string[] = [];
+    for (const proposal of safeProposals) {
+      if (!selectedIds.has(proposal.finding.workId)) continue;
+      const before = this.runtime.queue.list().some((record) =>
+        record.task.taskId === proposal.task.taskId || record.task.idempotencyKey === proposal.task.idempotencyKey);
+      if (before) continue;
+      this.runtime.queue.enqueue(proposal.task);
+      created.push(proposal.task.taskId);
+    }
+    if (created.length) await this.runtime.checkpoint();
+    return created;
   }
 
   async acceptResult(
@@ -209,6 +281,15 @@ export class RemoteTaskBroker {
       .filter((record) => record.stage === 'queued')
       .map((record) => safeCandidateFromTask(record.task))
       .filter((candidate): candidate is NonNullable<typeof candidate> => Boolean(candidate));
+  }
+
+  #validNearEmptyProposal(nodeId: string, proposal: NearEmptyAuditProposal): boolean {
+    const { finding, task } = proposal;
+    if (finding.workId !== task.taskId || finding.objective.trim() !== task.objective.trim()) return false;
+    const policy = parseAutonomyPolicy(task.constraints);
+    if (!policy || policy.level !== 'A' || finding.level !== 'A') return false;
+    if (policy.resourceScope !== finding.resourceScope) return false;
+    return this.runtime.scheduler.select(task)?.nodeId === nodeId;
   }
 
   async #refreshContinuations(nodeId: string): Promise<void> {
