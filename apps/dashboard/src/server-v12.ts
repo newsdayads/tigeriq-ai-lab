@@ -3,6 +3,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
 export const WEB_LOCAL_VERSION_V12 = 'WEB-LOCAL-396-V3.3';
+export const TIGERIQ_FUNCTIONAL_SURFACE_ENV = 'TIGERIQ_INTERNAL_V12_URL';
 const MAX_BODY_BYTES = 64 * 1024;
 
 export interface OwnerCockpitV12Options {
@@ -82,5 +83,13 @@ export async function startOwnerCockpitV12(options: OwnerCockpitV12Options) {
   });
   await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(options.port ?? 0, host, resolve); });
   const address = server.address() as AddressInfo;
-  return { url: `http://${address.address}:${address.port}`, close: () => new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())) };
+  const url = `http://${address.address}:${address.port}`;
+  process.env[TIGERIQ_FUNCTIONAL_SURFACE_ENV] = url;
+  return {
+    url,
+    close: () => new Promise<void>((resolve, reject) => server.close((error) => {
+      if (process.env[TIGERIQ_FUNCTIONAL_SURFACE_ENV] === url) delete process.env[TIGERIQ_FUNCTIONAL_SURFACE_ENV];
+      error ? reject(error) : resolve();
+    })),
+  };
 }

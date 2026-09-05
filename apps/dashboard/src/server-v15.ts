@@ -1,9 +1,11 @@
 import { createServer } from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { TIGERIQ_FUNCTIONAL_SURFACE_ENV } from './server-v12.js';
 
 export const WEB_LOCAL_VERSION_V15 = 'WEB-LOCAL-396-V3.6';
 const MAX_BODY_BYTES = 64 * 1024;
+const FUNCTIONAL_VIEWS = new Set(['work', 'workforce', 'models', 'evidence', 'reports', 'system', 'settings']);
 
 export interface OwnerCockpitV15Options {
   cockpitUrl: string;
@@ -31,9 +33,41 @@ async function readBody(req: IncomingMessage): Promise<string | undefined> {
   return Buffer.concat(chunks).toString('utf8');
 }
 
+export function isFunctionalRequest(method: string | undefined, urlValue: string | undefined): boolean {
+  if (method !== 'GET' && method !== 'HEAD') return true;
+  const url = new URL(urlValue ?? '/', 'http://local');
+  if (url.pathname !== '/') return false;
+  return FUNCTIONAL_VIEWS.has(url.searchParams.get('view') ?? 'overview');
+}
+
+export function rewriteFunctionalLocation(value: string): string {
+  if (!value.startsWith('/')) return value;
+  const hashIndex = value.indexOf('#');
+  const pathAndQuery = hashIndex >= 0 ? value.slice(0, hashIndex) : value;
+  const hash = hashIndex >= 0 ? value.slice(hashIndex + 1) : '';
+  const url = new URL(pathAndQuery || '/', 'http://local');
+  if (url.searchParams.has('view')) return value;
+  const fragment = hash.toLowerCase();
+  let view: string | null = null;
+  if (fragment === 'cong-viec' || fragment === 'chi-tiet' || url.searchParams.has('work')) view = 'work';
+  else if (fragment === 'doi-ai') view = 'workforce';
+  else if (fragment === 'mo-hinh') view = 'models';
+  else if (fragment === 'bang-chung') view = 'evidence';
+  else if (fragment === 'bao-cao') view = 'reports';
+  else if (fragment === 'he-thong') view = 'system';
+  else if (fragment === 'cai-dat') view = 'settings';
+  if (!view) return value;
+  url.searchParams.set('view', view);
+  const query = url.searchParams.toString();
+  return `${url.pathname}${query ? `?${query}` : ''}${hash ? `#${hash}` : ''}`;
+}
+
 function copyHeaders(upstream: Response, res: ServerResponse, contentType?: string): void {
   const blocked = new Set(['content-length', 'transfer-encoding', 'connection', 'content-encoding']);
-  for (const [key, value] of upstream.headers.entries()) if (!blocked.has(key.toLowerCase())) res.setHeader(key, value);
+  for (const [key, value] of upstream.headers.entries()) {
+    if (blocked.has(key.toLowerCase())) continue;
+    res.setHeader(key, key.toLowerCase() === 'location' ? rewriteFunctionalLocation(value) : value);
+  }
   if (contentType) res.setHeader('content-type', contentType);
   res.setHeader('cache-control', 'no-store');
 }
@@ -48,10 +82,15 @@ function ensureWorkTab(input: string): string {
   return input.replace(/(<nav class="nav">[\s\S]*?<\/a>)/, `$1${WORK_TAB}`);
 }
 
+export function markFunctionalSurface(input: string): string {
+  if (input.includes('data-functional-surface="stable-v12-isolated"')) return input;
+  return input.replace('<body', '<body data-functional-surface="stable-v12-isolated"');
+}
+
 export function applyLiveOverviewV36(input: string): string {
   let html = ensureWorkTab(input)
     .replace(/<meta\s+http-equiv=["']refresh["'][^>]*>/gi, '')
-    .replace('data-version="WEB-LOCAL-396-V3.5"', `data-version="${WEB_LOCAL_VERSION_V15}" data-refresh="incremental-10s"`)
+    .replace('data-version="WEB-LOCAL-396-V3.5"', `data-version="${WEB_LOCAL_VERSION_V15}" data-refresh="incremental-10s" data-functional-isolation="v37"`)
     .replace('data-theme="fluent-executive-v35"', 'data-theme="fluent-executive-v36"')
     .replace(/<div class="mark">[\s\S]*?<\/div>(?=<div><b>)/, BRAND_MARK);
 
@@ -75,23 +114,28 @@ export function applyLiveOverviewV36(input: string): string {
 }
 
 async function proxy(options: OwnerCockpitV15Options, req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const functional = isFunctionalRequest(req.method, req.url);
+  const stableFunctionalUrl = process.env[TIGERIQ_FUNCTIONAL_SURFACE_ENV];
+  if (functional && !stableFunctionalUrl) throw new Error('stable_functional_surface_unavailable');
+  const target = functional ? stableFunctionalUrl as string : options.cockpitUrl;
   const headers = new Headers();
   if (req.headers.cookie) headers.set('cookie', req.headers.cookie);
   const contentType = req.headers['content-type'];
   if (typeof contentType === 'string') headers.set('content-type', contentType);
-  const upstream = await fetch(`${options.cockpitUrl}${req.url ?? '/'}`, { method: req.method, headers, body: await readBody(req), redirect: 'manual' });
+  const upstream = await fetch(`${target}${req.url ?? '/'}`, { method: req.method, headers, body: await readBody(req), redirect: 'manual' });
   const upstreamType = upstream.headers.get('content-type') ?? 'text/plain; charset=utf-8';
-  if (req.method === 'GET' && upstream.ok && upstreamType.includes('text/html')) {
-    const html = applyLiveOverviewV36(await upstream.text());
+  if ((req.method === 'GET' || req.method === 'HEAD') && upstream.ok && upstreamType.includes('text/html')) {
+    const source = await upstream.text();
+    const html = functional ? markFunctionalSurface(source) : applyLiveOverviewV36(source);
     copyHeaders(upstream, res, 'text/html; charset=utf-8');
     res.statusCode = upstream.status;
-    res.end(html);
+    res.end(req.method === 'HEAD' ? undefined : html);
     return;
   }
   const payload = Buffer.from(await upstream.arrayBuffer());
   copyHeaders(upstream, res);
   res.statusCode = upstream.status;
-  res.end(payload);
+  res.end(req.method === 'HEAD' ? undefined : payload);
 }
 
 export async function startOwnerCockpitV15(options: OwnerCockpitV15Options) {
