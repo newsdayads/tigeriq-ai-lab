@@ -5,6 +5,7 @@ import { FileJournalWorkforceStateStore } from '../../../packages/workforce/src/
 import { DurableNodeCredentialStore } from '../../../packages/workforce/src/node-credentials.js';
 import { NodePairingService, verifyAndroidP256PairingProof } from '../../../packages/workforce/src/pairing.js';
 import { RemoteTaskBroker } from '../../../packages/workforce/src/remote-task-broker.js';
+import { RuntimeStateNearEmptyAuditProvider } from '../../../packages/workforce/src/runtime-state-near-empty-audit.js';
 import { DurableWorkforceRuntime } from '../../../packages/workforce/src/runtime.js';
 import { DurableTaskMailbox } from '../../../packages/workforce/src/task-mailbox.js';
 import { startWorkforceController } from './server.js';
@@ -33,7 +34,8 @@ const runtime = await DurableWorkforceRuntime.restore(
 const pairing = new NodePairingService(verifyAndroidP256PairingProof);
 const mailbox = new DurableTaskMailbox(journal);
 const autonomy = new DurableAutonomyStore(journal);
-const remoteTasks = new RemoteTaskBroker(runtime, mailbox, () => new Date(), autonomy);
+const nearEmptyAudit = new RuntimeStateNearEmptyAuditProvider(runtime, autonomy);
+const remoteTasks = new RemoteTaskBroker(runtime, mailbox, () => new Date(), autonomy, nearEmptyAudit);
 const server = await startWorkforceController({
   runtime,
   pairing,
@@ -47,6 +49,7 @@ const server = await startWorkforceController({
 
 console.log(`TigerIQ Workforce Controller online: ${server.url}`);
 console.log(`Workforce journal: ${journalPath}`);
+console.log('Near-empty runtime-state self-audit enabled (zero-cost, evidence-only, fail-closed).');
 console.log(adminSecret ? 'Pairing/admin writes enabled.' : 'Admin writes disabled: TIGERIQ_WORKFORCE_ADMIN_SECRET is not configured.');
 console.log(allowTailnetSelfPair ? 'Tailnet self-pair enabled for 100.64.0.0/10 peers.' : 'Tailnet self-pair disabled.');
 
