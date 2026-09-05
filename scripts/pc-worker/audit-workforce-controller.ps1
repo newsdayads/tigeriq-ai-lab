@@ -50,9 +50,10 @@ if ($ControllerHost) {
     $employees = $response.workforce.employees.total
   }
 }
+$controllerProjection = Get-TigerIQControllerProjection -Health $health -WildcardListener $wildcardListener -TaskExists ([bool]$task)
 
 [ordered]@{
-  controller = if ($httpOk -and -not $wildcardListener) { 'ONLINE' } elseif ($task) { 'NOT_HEALTHY' } else { 'NOT_INSTALLED' }
+  controller = $controllerProjection
   bind = if ($ControllerHost) { "$ControllerHost`:$ControllerPort" } else { $null }
   tailscaleIpResolved = [bool]$ControllerHost
   privateIpPresent = $ipPresent
