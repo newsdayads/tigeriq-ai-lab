@@ -8,7 +8,7 @@ import { GitHubWorkSource } from './github-work-source.js';
 import { schedulePc01RuntimeSelfHeal } from './runtime-self-heal.js';
 import { startDashboard } from './server.js';
 import { startOwnerCockpitV5 } from './server-v5.js';
-import { startOwnerCockpitV6 } from './server-v6.js';
+import { startOwnerCockpitV7 } from './server-v7.js';
 
 const execFileAsync = promisify(execFile);
 const journalPath = process.env.TIGERIQ_JOURNAL ?? 'F:\\TigerIQ\\State\\control-plane.jsonl';
@@ -18,7 +18,7 @@ const repo = process.env.TIGERIQ_REPO ?? 'newsdayads/tigeriq-ai-lab';
 const runtimeRoot = process.env.TIGERIQ_REPO_ROOT ?? '';
 const currentReleasePath = process.env.TIGERIQ_CURRENT_RELEASE ?? 'F:\\TigerIQ\\CommandCenter\\current-release.txt';
 const updaterStatePath = process.env.TIGERIQ_UPDATER_STATE ?? 'F:\\TigerIQ\\CommandCenter\\updater-v3-state.json';
-const WEB_LOCAL_VERSION = 'WEB-LOCAL-338-V2';
+const WEB_LOCAL_VERSION = 'WEB-LOCAL-390-V3';
 const LIVE_UI_MARKERS = [
   'Vy (Trợ lý)',
   'Minh (NV01 — Thực thi trực tiếp)',
@@ -27,12 +27,13 @@ const LIVE_UI_MARKERS = [
   'TẠM NGƯNG',
   'PC01 SERVER',
   'TIGERIQ CONTROL PLANE',
-  'AI PC01 — HUY/NV03',
-  'MỤC TIÊU',
-  'HẠNG MỤC',
-  'BƯỚC HIỆN TẠI',
-  'MỐC KẾ TIẾP',
-  'NGƯỜI PHỤ TRÁCH',
+  'AI PC01',
+  'BẢNG ĐIỀU HÀNH TRẠNG THÁI ĐỘNG',
+  'TIẾN ĐỘ TỔNG THỂ',
+  'VIỆC ĐANG XỬ LÝ',
+  'CẦN ANH SƠN',
+  'NHÂN SỰ AI',
+  'TÌNH TRẠNG HỆ THỐNG',
   WEB_LOCAL_VERSION,
 ] as const;
 
@@ -84,7 +85,7 @@ async function emitWebLocalRuntimeEvidence(serverUrl: string): Promise<void> {
       const missingUiMarkers = LIVE_UI_MARKERS.filter((required) => !uiHtml.includes(required));
       if (missingUiMarkers.length > 0) continue;
 
-      const { stdout } = await execFileAsync('gh', ['api', `repos/${repo}/issues/338/comments?per_page=100`], {
+      const { stdout } = await execFileAsync('gh', ['api', `repos/${repo}/issues/390/comments?per_page=100`], {
         timeout: 15_000,
         windowsHide: true,
         encoding: 'utf8',
@@ -103,11 +104,12 @@ async function emitWebLocalRuntimeEvidence(serverUrl: string): Promise<void> {
         `updater_run_id=${state.runId ?? 'unknown'}`,
         `updater_updated_at=${state.updatedAt ?? 'unknown'}`,
         'current_release_match=true',
+        'dynamic_central_registry_projection=ĐẠT',
         'candidate_and_live_health=ĐẠT',
         'live_ui_contract=ĐẠT',
-        'state=WEB_LOCAL_RUNTIME_AND_UI_VERIFIED',
+        'state=WEB_LOCAL_390_RUNTIME_AND_UI_VERIFIED',
       ].join('\n');
-      await execFileAsync('gh', ['api', `repos/${repo}/issues/338/comments`, '--method', 'POST', '-f', `body=${evidence}`], {
+      await execFileAsync('gh', ['api', `repos/${repo}/issues/390/comments`, '--method', 'POST', '-f', `body=${evidence}`], {
         timeout: 15_000,
         windowsHide: true,
         encoding: 'utf8',
@@ -159,16 +161,16 @@ const backend = await startDashboard(dashboardSource, {
 });
 
 const cockpitV5 = await startOwnerCockpitV5({ backendUrl: backend.url, repo, host: '127.0.0.1', port: 0 });
-const server = await startOwnerCockpitV6({ cockpitUrl: cockpitV5.url, backendUrl: backend.url, repo, host, port });
+const server = await startOwnerCockpitV7({ cockpitUrl: cockpitV5.url, backendUrl: backend.url, repo, host, port });
 void emitWebLocalRuntimeEvidence(server.url);
 schedulePc01RuntimeSelfHeal({ host, repo, repoRoot: process.env.TIGERIQ_REPO_ROOT });
 
-console.log(`TigerIQ Owner Cockpit V6 online: ${server.url}`);
+console.log(`TigerIQ Owner Cockpit V7 online: ${server.url}`);
 console.log(`Internal Owner Cockpit V5: ${cockpitV5.url}`);
 console.log(`Internal Command Center backend: ${backend.url}`);
 console.log(`Journal: ${journalPath}`);
 console.log('Dashboard source: local journal + live GitHub TIGERIQ_JOB_V1 lifecycle projection.');
-console.log('Web Local V6 overlays #338 governance + PC01 three-layer status without weakening V5 auth/CSRF.');
+console.log('Web Local V7 resolves current P0 dynamically from CENTRAL #280 + Registry #335 + current lifecycle evidence.');
 console.log('Write actions require TIGERIQ_COMMAND_SECRET + CSRF + bounded allowlist.');
 console.log('Live PC01 runtime performs bounded Worker self-heal; candidate localhost releases never mutate Worker runtime.');
 
