@@ -34,7 +34,7 @@ function New-StringSet([string[]]$Values) {
       [void]$set.Add($item.Trim())
     }
   }
-  return $set
+  return ,$set
 }
 
 function New-SchedulerState {
