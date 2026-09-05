@@ -1,6 +1,7 @@
 const REPO = process.env.TIGERIQ_REPO || 'newsdayads/tigeriq-ai-lab';
 const FETCH_TIMEOUT_MS = 5000;
-const BASE_GATES = ['CI', 'WO-014 Queue Hygiene', 'WO-012/013 Vercel Online Verify'];
+const CENTRAL_ISSUE = 280;
+const REGISTRY_ISSUE = 335;
 
 function json(res, status, body) {
   res.statusCode = status;
@@ -35,112 +36,154 @@ async function gh(path, fetchImpl = fetch) {
   }
 }
 
-function runState(run) {
-  if (!run) return 'pending';
-  if (run.status !== 'completed') return 'running';
-  return run.conclusion === 'success' ? 'pass' : 'fail';
+function cleanTitle(value = '') {
+  return String(value).replace(/^\[[^\]]+\]\s*/g, '').replace(/\s+/g, ' ').trim().slice(0, 180);
 }
 
-function latestRunByName(runs, name) {
-  return (Array.isArray(runs) ? runs : [])
-    .filter((run) => run?.name === name)
-    .sort((a, b) => Date.parse(b.updated_at || b.created_at || 0) - Date.parse(a.updated_at || a.created_at || 0))[0] || null;
+function firstLine(value = '') {
+  return String(value).split(/\r?\n/).map((line) => line.trim()).find(Boolean) || '';
 }
 
-function vietnameseGate(name) {
-  if (name === 'Code / PR') return 'Code / PR';
-  if (name === 'CI') return 'Kiểm thử tự động (CI)';
-  if (name === 'WO-014 Queue Hygiene') return 'Kiểm tra hàng đợi';
-  if (name === 'WO-012/013 Vercel Online Verify') return 'Kiểm tra Web/Vercel';
-  if (name === 'Android Worker') return 'Build Android Worker';
-  if (name === 'Merge + Production') return 'Merge + Production';
-  return name;
-}
-
-export function projectProgress({ pull, runs = [] }) {
-  if (!pull) {
-    return {
-      active: false,
-      progressPct: 100,
-      gates: [],
-      currentStep: 'Không có PR kỹ thuật đang mở',
-      nextStep: 'Chief sẽ tự chọn việc ưu tiên tiếp theo',
-    };
+export function parseCentralPriorities(body = '') {
+  const rows = [];
+  const seen = new Set();
+  const regex = /###\s+\d+\.\s+(P[0-2])\s+#(\d+)\s+—\s+([^\n]+)/g;
+  for (const match of String(body).matchAll(regex)) {
+    const number = Number(match[2]);
+    if (!number || seen.has(number)) continue;
+    seen.add(number);
+    rows.push({ priority: match[1], number, label: cleanTitle(match[3]) });
   }
+  return rows;
+}
 
-  const names = [...BASE_GATES];
-  const text = `${pull.title || ''}\n${pull.body || ''}`.toLowerCase();
-  if (text.includes('android worker') || text.includes('android')) names.push('Android Worker');
+export function parseEmployees(body = '') {
+  const rows = [];
+  const regex = /\|\s*`(\d+)`\s*\|\s*`(NV\d+)`\s*\|[^|]*\|[^|]*\|[^|]*\|\s*`([^`]+)`\s*\|\s*([^|]+)\|/g;
+  for (const match of String(body).matchAll(regex)) {
+    const enabledRaw = match[4].replace(/\*/g, '').trim().toLowerCase();
+    rows.push({
+      command: Number(match[1]),
+      employeeId: match[2],
+      label: match[3].trim(),
+      active: enabledRaw.startsWith('true'),
+      state: enabledRaw.startsWith('true') ? 'Sẵn sàng theo danh mục' : 'Tạm ngưng',
+    });
+  }
+  return rows;
+}
 
-  const gates = [
-    { name: 'Code / PR', status: 'pass' },
-    ...names.map((name) => ({ name, status: runState(latestRunByName(runs, name)) })),
-    { name: 'Merge + Production', status: 'pending' },
-  ].map((gate) => ({ ...gate, label: vietnameseGate(gate.name) }));
-
-  const passed = gates.filter((gate) => gate.status === 'pass').length;
-  const progressPct = Math.round((passed / gates.length) * 100);
-  const blocking = gates.find((gate) => gate.status === 'fail');
-  const running = gates.find((gate) => gate.status === 'running');
-  const pending = gates.find((gate) => gate.status === 'pending');
-  const focus = blocking || running || pending;
-
-  let currentStep = 'Đang hoàn thiện';
-  if (blocking) currentStep = `Đang sửa lỗi: ${blocking.label}`;
-  else if (running) currentStep = `Đang chạy: ${running.label}`;
-  else if (pending?.name === 'Merge + Production') currentStep = 'Các gate kỹ thuật đã PASS · chuẩn bị merge/Production';
-  else if (pending) currentStep = `Chuẩn bị: ${pending.label}`;
-
+function inferOwnerAction(text = '') {
+  const normalized = String(text).toUpperCase();
+  const required = normalized.includes('CHỜ ANH SƠN') || normalized.includes('CẦN ANH SƠN') || normalized.includes('OWNER ACTION REQUIRED');
   return {
-    active: true,
-    progressPct,
-    gates,
-    currentStep,
-    nextStep: focus?.name === 'Merge + Production' ? 'Merge → kiểm tra Production → tự lấy việc tiếp theo' : `Hoàn thành ${focus?.label || 'gate hiện tại'}`,
+    required,
+    summary: required ? 'Có hạng mục đang chờ anh Sơn theo Nguồn Sự Thật.' : 'Không có việc bắt buộc anh Sơn thao tác ở ưu tiên hiện tại.',
   };
 }
 
-function recentActivity(runs) {
-  return (Array.isArray(runs) ? runs : [])
-    .slice()
-    .sort((a, b) => Date.parse(b.updated_at || b.created_at || 0) - Date.parse(a.updated_at || a.created_at || 0))
-    .slice(0, 8)
-    .map((run) => ({
-      name: vietnameseGate(run.name),
-      status: runState(run),
-      at: run.updated_at || run.created_at || null,
-      url: run.html_url || null,
+function issueStatus(issue) {
+  return issue?.state === 'closed' ? 'HOÀN TẤT' : 'ĐANG XỬ LÝ';
+}
+
+async function issue(number, owner, repo, fetchImpl) {
+  return gh(`/repos/${owner}/${repo}/issues/${number}`, fetchImpl);
+}
+
+async function comments(number, owner, repo, fetchImpl) {
+  try {
+    const rows = await gh(`/repos/${owner}/${repo}/issues/${number}/comments?per_page=8&sort=created&direction=desc`, fetchImpl);
+    return (Array.isArray(rows) ? rows : []).slice(-6).reverse().map((row) => ({
+      name: firstLine(row.body).replace(/^#+\s*/, '').slice(0, 160) || `Cập nhật #${number}`,
+      status: 'ĐÃ GHI NHẬN',
+      at: row.created_at || row.updated_at || null,
+      url: row.html_url || null,
     }));
+  } catch {
+    return [];
+  }
+}
+
+// Giữ export cũ để không phá các kiểm thử/unit đã dùng helper này.
+export function projectProgress({ pull }) {
+  if (!pull) return { active: false, progressPct: null, gates: [], currentStep: 'Không có PR kỹ thuật đang mở', nextStep: 'Đọc CENTRAL để chọn việc tiếp theo' };
+  return { active: true, progressPct: null, gates: [], currentStep: 'Đang xử lý theo Nguồn Sự Thật', nextStep: 'Tiếp tục tới điều kiện chốt có bằng chứng' };
 }
 
 export async function buildCompanyProgress(fetchImpl = fetch) {
   const { owner, repo } = repoParts();
-  const pulls = await gh(`/repos/${owner}/${repo}/pulls?state=open&sort=updated&direction=desc&per_page=20`, fetchImpl);
-  const activePull = (Array.isArray(pulls) ? pulls : []).find((pull) => /^WO-\d+/i.test(String(pull.title || ''))) || null;
-  let runs = [];
-  if (activePull?.head?.sha) {
-    const response = await gh(`/repos/${owner}/${repo}/actions/runs?head_sha=${encodeURIComponent(activePull.head.sha)}&per_page=50`, fetchImpl);
-    runs = Array.isArray(response?.workflow_runs) ? response.workflow_runs : [];
+  const [central, registry] = await Promise.all([
+    issue(CENTRAL_ISSUE, owner, repo, fetchImpl),
+    issue(REGISTRY_ISSUE, owner, repo, fetchImpl),
+  ]);
+
+  const declared = parseCentralPriorities(central.body);
+  const priorityIssues = [];
+  for (const row of declared.slice(0, 6)) {
+    try {
+      const live = await issue(row.number, owner, repo, fetchImpl);
+      priorityIssues.push({
+        ...row,
+        title: cleanTitle(live.title || row.label),
+        status: issueStatus(live),
+        open: live.state === 'open',
+        updatedAt: live.updated_at || null,
+        url: live.html_url || null,
+      });
+    } catch {
+      priorityIssues.push({ ...row, title: row.label, status: 'CHƯA XÁC MINH', open: null, updatedAt: null, url: null });
+    }
   }
-  const progress = projectProgress({ pull: activePull, runs });
+
+  const active = priorityIssues.find((row) => row.open === true) || null;
+  let activeIssue = null;
+  if (active) {
+    try { activeIssue = await issue(active.number, owner, repo, fetchImpl); } catch { activeIssue = null; }
+  }
+  const activity = active ? await comments(active.number, owner, repo, fetchImpl) : [];
+  const employees = parseEmployees(registry.body);
+  const ownerAction = inferOwnerAction(`${central.body}\n${activeIssue?.body || ''}`);
+  const openCount = priorityIssues.filter((row) => row.open === true).length;
+  const closedCount = priorityIssues.filter((row) => row.open === false).length;
+
   return {
     ok: true,
     generatedAt: new Date().toISOString(),
-    mode: 'evidence-based',
-    activeWork: activePull ? {
-      number: activePull.number,
-      title: String(activePull.title || '').slice(0, 160),
-      branch: activePull.head?.ref || null,
-      headSha: activePull.head?.sha || null,
-      updatedAt: activePull.updated_at || null,
-      url: activePull.html_url || null,
-      ...progress,
-    } : progress,
-    activity: recentActivity(runs),
-    ownerAction: {
-      required: false,
-      summary: 'Không có việc cần Sếp thao tác ở gate kỹ thuật hiện tại',
+    mode: 'authoritative-central-registry',
+    source: { centralIssue: CENTRAL_ISSUE, registryIssue: REGISTRY_ISSUE, centralUpdatedAt: central.updated_at || null, registryUpdatedAt: registry.updated_at || null },
+    activeWork: active ? {
+      active: true,
+      number: active.number,
+      title: active.title,
+      priority: active.priority,
+      status: active.status,
+      progressPct: null,
+      progressText: 'Đang xử lý · chỉ chốt khi đủ bằng chứng',
+      currentStep: cleanTitle(activeIssue?.body?.match(/## Trạng thái[^\n]*\n([^\n]+)/i)?.[1] || active.label || active.title),
+      nextStep: 'Tiếp tục theo điều kiện ĐẠT của issue hiện hành',
+      updatedAt: active.updatedAt,
+      url: active.url,
+    } : {
+      active: false,
+      number: null,
+      title: 'Không có P0/P1/P2 mở trong danh sách ưu tiên CENTRAL đã đọc',
+      status: 'CHỜ VIỆC TIẾP THEO',
+      progressPct: null,
+      progressText: 'Không suy đoán',
+      currentStep: 'Đọc CENTRAL để chọn việc tiếp theo',
+      nextStep: 'Tự rà việc an toàn theo chính sách hiện hành',
     },
+    priorityIssues,
+    summary: { total: priorityIssues.length, open: openCount, completed: closedCount },
+    employees,
+    employeeSummary: { total: employees.length, active: employees.filter((x) => x.active).length, paused: employees.filter((x) => !x.active).length },
+    activity,
+    ownerAction,
+    systems: [
+      { name: 'Vercel View', state: 'TRỰC TUYẾN', detail: 'API công khai đang phản hồi' },
+      { name: 'GitHub', state: 'TRỰC TUYẾN', detail: `Đã đọc CENTRAL #${CENTRAL_ISSUE} + danh mục #${REGISTRY_ISSUE}` },
+      { name: 'PC01', state: 'CHƯA CÓ DỮ LIỆU', detail: 'View công khai không suy đoán trạng thái máy nội bộ' },
+    ],
   };
 }
 
@@ -154,8 +197,10 @@ export default async function handler(req, res) {
       generatedAt: new Date().toISOString(),
       mode: 'unavailable',
       activeWork: null,
+      priorityIssues: [],
+      employees: [],
       activity: [],
-      ownerAction: { required: false, summary: 'Chưa lấy được tiến độ GitHub; không suy đoán trạng thái.' },
+      ownerAction: { required: false, summary: 'Chưa lấy được Nguồn Sự Thật; hệ thống không suy đoán trạng thái.' },
       reason: String(error instanceof Error ? error.message : error).slice(0, 96),
     });
   }
