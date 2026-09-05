@@ -33,7 +33,8 @@ jobs:
             for($i=0;$i-lt16;$i++){[void]$s.Append($c[($h[$i]-shr4)-band15]);[void]$s.Append($c[$h[$i]-band15])}
             $s.ToString()
           }
-          $root=Join-Path $env:RUNNER_TEMP 'tiq-aw-extension'
+          $root='C:\TigerIQ\AutoWorker\extension'
+          if(Test-Path 'C:\TigerIQ'){Remove-Item -LiteralPath 'C:\TigerIQ' -Recurse -Force}
           New-Item -ItemType Directory -Force -Path $root|Out-Null
           $key=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('TigerIQ zero touch CI fixture public key material v1'))
           $id=Get-KeyId $key
@@ -73,7 +74,7 @@ jobs:
             $pair=New-LocalManifest $Version $Marker
             $out=Join-Path $logDir ($Version+'.stdout.txt')
             $err=Join-Path $logDir ($Version+'.stderr.txt')
-            $args=@('-NoProfile','-ExecutionPolicy','Bypass','-File',(Resolve-Path 'scripts/pc-worker/auto-worker-zero-touch-updater.ps1').Path,'-ManifestUri',$pair[0],'-ExpectedManifestSha256',$pair[1],'-ExtensionPath',$root)
+            $args=@('-NoProfile','-ExecutionPolicy','Bypass','-File',(Resolve-Path 'scripts/pc-worker/auto-worker-zero-touch-updater.ps1').Path,'-ManifestUri',$pair[0],'-ExpectedManifestSha256',$pair[1])
             $p=Start-Process -FilePath 'powershell.exe' -ArgumentList $args -Wait -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
             if(Test-Path $out){Get-Content -LiteralPath $out}
             if(Test-Path $err){Get-Content -LiteralPath $err}
