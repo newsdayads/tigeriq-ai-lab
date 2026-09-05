@@ -13,12 +13,12 @@ describe('Web Local #396 UI V3.3 Segoe UI layer', () => {
     expect(html).not.toContain('fonts.googleapis.com');
   });
 
-  it('retains Segoe UI as the font contract while V3.5 is the current repaired runtime', () => {
+  it('retains Segoe UI as the font contract while V3.6 is the current live runtime', () => {
     const standalone = readFileSync(new URL('../apps/dashboard/src/standalone.ts', import.meta.url), 'utf8');
     for (const expected of [
-      'WEB-LOCAL-396-V3.5', 'startOwnerCockpitV12', 'startOwnerCockpitV13', 'startOwnerCockpitV14', 'segoe_ui_font_contract=ĐẠT',
+      'WEB-LOCAL-396-V3.6', 'startOwnerCockpitV12', 'startOwnerCockpitV13', 'startOwnerCockpitV14', 'startOwnerCockpitV15', 'segoe_ui_font_contract=ĐẠT',
       'segoe_ui_whole_site=ĐẠT', 'google_font_removed=ĐẠT', 'fluent_executive_visual_contract=ĐẠT',
-      'layout_repair_v35=ĐẠT', 'state=WEB_LOCAL_396_V35_LAYOUT_REPAIR_VERIFIED',
+      'layout_repair_v35=ĐẠT', 'incremental_refresh=ĐẠT', 'state=WEB_LOCAL_396_V36_INCREMENTAL_LIVE_VERIFIED',
     ]) expect(standalone).toContain(expected);
     expect(standalone).not.toContain('open_sans_font_contract=ĐẠT');
     expect(standalone).not.toContain('open_sans_whole_site=ĐẠT');
