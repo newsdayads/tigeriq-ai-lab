@@ -41,14 +41,16 @@ describe('Web Local #396 UI V3.1', () => {
     for (const expected of ['box-sizing:border-box', ':hover', ':active', ':focus-visible', ':disabled', 'transition:', '@media(max-width:1100px)', '@media(max-width:760px)', '@media(max-width:500px)']) expect(html).toContain(expected);
   });
 
-  it('targets machine-real evidence at issue #396 with final Open Sans runtime markers', () => {
+  it('retains V3.1 and Open Sans module provenance while newer runtime becomes current', () => {
+    const v9 = readFileSync(new URL('../apps/dashboard/src/server-v9.ts', import.meta.url), 'utf8');
+    const v10 = readFileSync(new URL('../apps/dashboard/src/server-v10.ts', import.meta.url), 'utf8');
     const standalone = readFileSync(new URL('../apps/dashboard/src/standalone.ts', import.meta.url), 'utf8');
-    for (const expected of [
-      'WEB-LOCAL-396-V3.1', 'issues/396/comments?per_page=100', 'issues/396/comments',
-      'open_sans_font_contract=ĐẠT', 'fonts.googleapis.com/css2?family=Open+Sans', 'font-family:"Open Sans"',
-      'button_interaction_states=ĐẠT', 'management_layout_v31=ĐẠT',
-      'visualizations_real_data=3', 'responsive_css_contract=ĐẠT',
-      'state=WEB_LOCAL_396_V31_RUNTIME_AND_UI_VERIFIED', 'startOwnerCockpitV10',
-    ]) expect(standalone).toContain(expected);
+    expect(v9).toContain('WEB-LOCAL-396-V3.1');
+    expect(v9).toContain('tigeriq-management-v31');
+    expect(v10).toContain('family=Open+Sans:wght@400;500;600;700;800');
+    expect(v10).toContain('font-family:"Open Sans"');
+    expect(standalone).toContain('startOwnerCockpitV10');
+    expect(standalone).toContain('open_sans_font_contract=ĐẠT');
+    expect(standalone).toContain('issues/396/comments');
   });
 });

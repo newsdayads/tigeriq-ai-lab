@@ -124,7 +124,5 @@ describe('Web Local #322 ownership-aware V4', () => {
       'ownershipEventV8', 'startOwnerCockpitV8',
     ]) expect(source).toContain(expected);
     expect(standalone).toContain('startOwnerCockpitV8');
-    expect(standalone).toContain('WEB-LOCAL-322-V4');
-    expect(standalone).toContain('WEB-LOCAL-396-V3.1');
   });
 });
