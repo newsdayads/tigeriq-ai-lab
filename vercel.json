@@ -6,10 +6,11 @@
       "nv02/433b-exact-main-vercel-preview": true
     }
   },
-  "cleanUrls": true,
+  "cleanUrls": false,
   "trailingSlash": false,
   "rewrites": [
-    { "source": "/", "destination": "/command-center" }
+    { "source": "/", "destination": "/command-center.html" },
+    { "source": "/workforce", "destination": "/workforce.html" }
   ],
   "headers": [
     {
@@ -19,7 +20,7 @@
       ]
     },
     {
-      "source": "/command-center",
+      "source": "/command-center.html",
       "headers": [
         { "key": "Cache-Control", "value": "no-store, max-age=0" }
       ]
