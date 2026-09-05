@@ -196,11 +196,11 @@ export class OwnerContextStore {
       stableByPriorityAndId(items.filter((item) => overlapScore(item.tags, tags) > 0 || item.tags.includes('global')),
         (item) => overlapScore(item.tags, tags) * 100 + extra(item));
 
-    const rules = relevant([...this.#rules.values()], (x) => x.priority).map(structuredClone);
-    const decisions = relevant([...this.#decisions.values()].filter((x) => x.state === 'ACTIVE')).map(structuredClone);
-    const goals = relevant([...this.#goals.values()].filter((x) => x.state === 'ACTIVE'), (x) => x.priority).map(structuredClone);
-    const rejections = relevant([...this.#rejections.values()].filter((x) => !x.expiresAt || x.expiresAt > now)).map(structuredClone);
-    const lessons = relevant([...this.#learning.values()].filter((x) => x.state === 'VERIFIED')).map(structuredClone);
+    const rules = relevant([...this.#rules.values()], (x) => x.priority).map((x) => structuredClone(x));
+    const decisions = relevant([...this.#decisions.values()].filter((x) => x.state === 'ACTIVE')).map((x) => structuredClone(x));
+    const goals = relevant([...this.#goals.values()].filter((x) => x.state === 'ACTIVE'), (x) => x.priority).map((x) => structuredClone(x));
+    const rejections = relevant([...this.#rejections.values()].filter((x) => !x.expiresAt || x.expiresAt > now)).map((x) => structuredClone(x));
+    const lessons = relevant([...this.#learning.values()].filter((x) => x.state === 'VERIFIED')).map((x) => structuredClone(x));
 
     const buckets = [rules, decisions, goals, rejections, lessons] as Array<Array<{ id: string }>>;
     let remaining = maxItems;
