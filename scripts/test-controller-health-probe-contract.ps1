@@ -25,6 +25,19 @@ $v1Request = {
   return [pscustomobject]@{ transport_ok = $false; status_code = 404; body = $null }
 }
 
+$v1UnhealthyRequest = {
+  param([string]$Uri, [int]$TimeoutSec)
+  if ($Uri.EndsWith('/api/v1/status')) {
+    return [pscustomobject]@{ transport_ok = $false; status_code = 503; body = $null }
+  }
+  return [pscustomobject]@{ transport_ok = $false; status_code = 404; body = $null }
+}
+
+$unknownRequest = {
+  param([string]$Uri, [int]$TimeoutSec)
+  return [pscustomobject]@{ transport_ok = $false; status_code = 404; body = $null }
+}
+
 $generic = Invoke-TigerIQControllerHealthProbe -BaseUri 'http://100.64.0.1:8790' -ExpectedContract auto -Request $genericRequest
 Assert-Equal $generic.controller_contract 'generic' 'auto-generic-contract'
 Assert-Equal $generic.health_path '/api/workforce/status' 'auto-generic-path'
@@ -43,4 +56,16 @@ Assert-Equal $mismatch.health_path '/api/v1/status' 'mismatch-detected-path'
 Assert-Equal $mismatch.health_ok $true 'mismatch-health'
 Assert-Equal $mismatch.health_error 'CONTROLLER_CONTRACT_MISMATCH' 'mismatch-classification'
 
-Write-Output 'CONTROLLER_HEALTH_PROBE_CONTRACT_PASS cases=3'
+$unhealthy = Invoke-TigerIQControllerHealthProbe -BaseUri 'http://100.64.0.1:8790' -ExpectedContract auto -Request $v1UnhealthyRequest
+Assert-Equal $unhealthy.controller_contract 'v1' 'unhealthy-detected-contract'
+Assert-Equal $unhealthy.health_path '/api/v1/status' 'unhealthy-detected-path'
+Assert-Equal $unhealthy.health_ok $false 'unhealthy-health'
+Assert-Equal $unhealthy.health_error 'CONTROLLER_HEALTH_UNAVAILABLE' 'unhealthy-classification'
+
+$unknown = Invoke-TigerIQControllerHealthProbe -BaseUri 'http://100.64.0.1:8790' -ExpectedContract auto -Request $unknownRequest
+Assert-Equal $unknown.controller_contract $null 'unknown-contract'
+Assert-Equal $unknown.health_path $null 'unknown-path'
+Assert-Equal $unknown.health_ok $false 'unknown-health'
+Assert-Equal $unknown.health_error 'CONTROLLER_CONTRACT_MISMATCH' 'unknown-classification'
+
+Write-Output 'CONTROLLER_HEALTH_PROBE_CONTRACT_PASS cases=5'
