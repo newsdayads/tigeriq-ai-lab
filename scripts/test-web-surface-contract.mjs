@@ -10,12 +10,13 @@ const required = [
   'RUNNING',
   'EXTERNAL_WAIT',
   'EVIDENCE',
+  'Main/Production',
+  'paid action',
+  'reboot',
+  'credential/security',
 ];
 for (const marker of required) {
   if (!html.includes(marker)) throw new Error(`WEB_SURFACE_CONTRACT_FAILED: missing ${marker}`);
-}
-for (const forbidden of ['Production deploy', 'paid action', 'reboot', 'credential/security']) {
-  if (!html.toLowerCase().includes(forbidden.toLowerCase())) throw new Error(`WEB_SURFACE_CONTRACT_FAILED: safety disclosure missing ${forbidden}`);
 }
 if (/<form/i.test(html)) throw new Error('WEB_SURFACE_CONTRACT_FAILED: unexpected form surface');
 console.log('WEB_SURFACE_CONTRACT_PASS');
