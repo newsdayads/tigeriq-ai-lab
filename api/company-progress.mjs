@@ -116,27 +116,37 @@ function firstLine(value = '') {
 export function parseCentralPriorities(body = '') {
   const rows = [];
   const seen = new Set();
-  const regex = /###\s+\d+\.\s+(P[0-2])\s+#(\d+)\s+—\s+([^\n]+)/g;
-  for (const match of String(body).matchAll(regex)) {
-    const number = Number(match[2]);
-    if (!number || seen.has(number)) continue;
+  const headingRegex = /###\s+(?:(\d+)\.\s+)?(P[0-2])\s+#(\d+)\s+—\s+([^\n]+)|###\s+([^\n]*?)\s+—\s+(P[0-2])\s*$/g;
+  for (const match of String(body).matchAll(headingRegex)) {
+    const priority = match[2] || match[6];
+    const number = Number(match[3] || (match[5] || '').match(/#(\d+)/)?.[1]);
+    const label = match[4] || match[5] || '';
+    if (!priority || !number || seen.has(number)) continue;
     seen.add(number);
-    rows.push({ priority: match[1], number, label: cleanTitle(match[3]) });
+    rows.push({ priority, number, label: cleanTitle(label.replace(/\s+#\d+\s*$/, '')) });
   }
   return rows;
 }
 
 export function parseEmployees(body = '') {
   const rows = [];
-  const regex = /\|\s*`(\d+)`\s*\|\s*`(NV\d+)`\s*\|[^|]*\|[^|]*\|[^|]*\|\s*`([^`]+)`\s*\|\s*([^|]+)\|/g;
+  const regex = /^\|\s*`?(\d+)`?\s*\|\s*`?(NV\d+)\s*\/\s*([^`|]+)`?\s*\|\s*([^|]+)\|\s*(\*?true\*?|\*?false\*?)\s*\|\s*(true|false)\s*\|\s*([^|]+)\|/gim;
   for (const match of String(body).matchAll(regex)) {
-    const enabledRaw = match[4].replace(/\*/g, '').trim().toLowerCase();
+    const backgroundRaw = match[5].replace(/\*/g, '').trim().toLowerCase();
+    const enabledRaw = match[6].replace(/\*/g, '').trim().toLowerCase();
+    const activation = match[7].trim();
+    const background = backgroundRaw === 'true';
+    const enabled = enabledRaw === 'true';
     rows.push({
       command: Number(match[1]),
       employeeId: match[2],
-      label: match[3].trim(),
-      active: enabledRaw.startsWith('true'),
-      state: enabledRaw.startsWith('true') ? 'Sẵn sàng theo danh mục' : 'Tạm ngưng',
+      label: `${match[3].trim()} (${match[2]})`,
+      mode: match[4].trim(),
+      background,
+      active: enabled && activation === 'ACTIVE',
+      enabled,
+      activation,
+      state: enabled && activation === 'ACTIVE' ? 'Sẵn sàng theo danh mục' : 'Tạm ngưng',
     });
   }
   return rows;
