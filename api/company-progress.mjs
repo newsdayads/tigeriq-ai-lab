@@ -116,27 +116,51 @@ function firstLine(value = '') {
 export function parseCentralPriorities(body = '') {
   const rows = [];
   const seen = new Set();
-  const headingRegex = /###\s+(?:(\d+)\.\s+)?(P[0-2])\s+#(\d+)\s+—\s+([^\n]+)|###\s+([^\n]*?)\s+—\s+(P[0-2])\s*$/g;
-  for (const match of String(body).matchAll(headingRegex)) {
-    const priority = match[2] || match[6];
-    const number = Number(match[3] || (match[5] || '').match(/#(\d+)/)?.[1]);
-    const label = match[4] || match[5] || '';
-    if (!priority || !number || seen.has(number)) continue;
+  const text = String(body);
+
+  // Legacy ordered format: `### 1. P0 #423 — Website`.
+  const legacyRegex = /###\s+\d+\.\s+(P[0-2])\s+#(\d+)\s+—\s+([^\n]+)/g;
+  for (const match of text.matchAll(legacyRegex)) {
+    const number = Number(match[2]);
+    if (!number || seen.has(number)) continue;
     seen.add(number);
-    rows.push({ priority, number, label: cleanTitle(label.replace(/\s+#\d+\s*$/, '')) });
+    rows.push({ priority: match[1], number, label: cleanTitle(match[3]) });
   }
+
+  // Current dynamic format: `### Khoa/NV02 — P0` followed by `APP issue: **#441**`.
+  const lines = text.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i += 1) {
+    const heading = lines[i].match(/^###\s+(.+?)\s+—\s+(P[0-2])\s*$/);
+    if (!heading) continue;
+    const priority = heading[2];
+    let number = null;
+    let label = heading[1];
+    for (let j = i + 1; j < Math.min(lines.length, i + 10); j += 1) {
+      if (/^###\s+/.test(lines[j])) break;
+      const issueMatch = lines[j].match(/\b(?:APP issue|issue|Work Order|P0 framework)\b[^#\n]*#(\d+)/i) || lines[j].match(/\*\*#(\d+)\*\*/);
+      if (issueMatch) {
+        number = Number(issueMatch[1]);
+        break;
+      }
+    }
+    if (!number || seen.has(number)) continue;
+    seen.add(number);
+    rows.push({ priority, number, label: cleanTitle(label) });
+  }
+
   return rows;
 }
 
 export function parseEmployees(body = '') {
   const rows = [];
-  const regex = /^\|\s*`?(\d+)`?\s*\|\s*`?(NV\d+)\s*\/\s*([^`|]+)`?\s*\|\s*([^|]+)\|\s*(\*?true\*?|\*?false\*?)\s*\|\s*(true|false)\s*\|\s*([^|]+)\|/gim;
-  for (const match of String(body).matchAll(regex)) {
-    const backgroundRaw = match[5].replace(/\*/g, '').trim().toLowerCase();
-    const enabledRaw = match[6].replace(/\*/g, '').trim().toLowerCase();
+  const text = String(body);
+
+  // Current registry: | `1` | `NV01 / Minh` | `foreground_interactive` | false | true | ACTIVE |
+  const currentRegex = /^\|\s*`?(\d+)`?\s*\|\s*`?(NV\d+)\s*\/\s*([^`|]+)`?\s*\|\s*`?([^`|]+)`?\s*\|\s*(\*?true\*?|\*?false\*?)\s*\|\s*(\*?true\*?|\*?false\*?)\s*\|\s*([^|]+)\|/gim;
+  for (const match of text.matchAll(currentRegex)) {
+    const background = match[5].replace(/\*/g, '').trim().toLowerCase() === 'true';
+    const enabled = match[6].replace(/\*/g, '').trim().toLowerCase() === 'true';
     const activation = match[7].trim();
-    const background = backgroundRaw === 'true';
-    const enabled = enabledRaw === 'true';
     rows.push({
       command: Number(match[1]),
       employeeId: match[2],
@@ -147,6 +171,24 @@ export function parseEmployees(body = '') {
       enabled,
       activation,
       state: enabled && activation === 'ACTIVE' ? 'Sẵn sàng theo danh mục' : 'Tạm ngưng',
+    });
+  }
+  if (rows.length) return rows;
+
+  // Legacy compatibility: | `2` | `NV02` | ... | `Khoa (...)` | true |
+  const legacyRegex = /^\|\s*`?(\d+)`?\s*\|\s*`?(NV\d+)`?\s*\|\s*([^|]+)\|\s*([^|]+)\|\s*([^|]+)\|\s*`?([^`|]+)`?\s*\|\s*(\*?true\*?|\*?false\*?[^|]*)\|/gim;
+  for (const match of text.matchAll(legacyRegex)) {
+    const enabled = match[7].replace(/\*/g, '').trim().toLowerCase().startsWith('true');
+    rows.push({
+      command: Number(match[1]),
+      employeeId: match[2],
+      label: match[6].trim(),
+      mode: match[3].trim(),
+      background: false,
+      active: enabled,
+      enabled,
+      activation: enabled ? 'ACTIVE' : 'PAUSED',
+      state: enabled ? 'Sẵn sàng theo danh mục' : 'Tạm ngưng',
     });
   }
   return rows;
