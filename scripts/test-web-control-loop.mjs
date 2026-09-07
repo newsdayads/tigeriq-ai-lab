@@ -26,12 +26,16 @@ assert.equal(plan.priority, 'P0');
 assert.equal(plan.requiresVerification, true);
 assert.equal(plan.requiresEvidence, true);
 
-const oneCommand = oneCommandWebControlPlan({ command: '1', findings });
-assert.equal(oneCommand.accepted, true);
-assert.equal(oneCommand.lane, 'web-control');
-assert.equal(oneCommand.cycle.state, WEB_LOOP_STATES.FIXING);
-assert.equal(oneCommand.cycle.action, 'fix-off-main');
-assert.equal(oneCommand.cycle.workId, 'p0');
+for (const command of ['1', 'L', 'l', '  L ']) {
+  const oneCommand = oneCommandWebControlPlan({ command, findings });
+  assert.equal(oneCommand.accepted, true);
+  assert.equal(oneCommand.lane, 'web-control');
+  assert.equal(oneCommand.command, '1');
+  assert.equal(oneCommand.inputCommand, command);
+  assert.equal(oneCommand.cycle.state, WEB_LOOP_STATES.FIXING);
+  assert.equal(oneCommand.cycle.action, 'fix-off-main');
+  assert.equal(oneCommand.cycle.workId, 'p0');
+}
 
 const rejectedCommand = oneCommandWebControlPlan({ command: '  2  ', findings });
 assert.equal(rejectedCommand.accepted, false);
