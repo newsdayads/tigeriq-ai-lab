@@ -1,8 +1,8 @@
 import { isOwnerAuthorized } from './owner-auth.mjs';
-import { oneCommandWebControlPlan } from './web-control-loop.mjs';
+import { oneCommandWebControlPlan, normalizeWebControlCommand } from './web-control-loop.mjs';
 
 export function isExactWebControlCommand(value) {
-  return String(value ?? '').trim() === '1';
+  return normalizeWebControlCommand(value) === '1';
 }
 
 function json(res, status, body) {
@@ -57,7 +57,8 @@ export default async function handler(req, res) {
   return json(res, 200, {
     ok: true,
     lane: 'web-control',
-    command,
+    command: plan.command,
+    inputCommand: plan.inputCommand,
     state: plan.cycle?.state || 'done',
     plan,
     evidence: { source: 'web-control-loop', deterministic: true, offMain: true },
