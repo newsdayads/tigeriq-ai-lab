@@ -30,6 +30,8 @@ jobs:
         run: npm test
       - name: Web self-healing loop
         run: npm run test:web-loop
+      - name: Web command routing
+        run: npm run test:web-command
       - name: Playwright smoke
         run: npm run test:e2e
       - name: Build
