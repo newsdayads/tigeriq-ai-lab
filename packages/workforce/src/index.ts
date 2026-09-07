@@ -6,6 +6,8 @@ export type TaskStage = 'queued' | 'assigned' | 'running' | 'completed' | 'faile
 export type ResultStatus = 'completed' | 'failed';
 export type Verdict = 'pass' | 'fail' | 'needs-work';
 
+export { VyAuthorityBridge, type ActiveAuthorityLease, type AuthorityAction, type AuthorityContext, type AuthorityState } from './authority-bridge.js';
+
 export interface OrganizationUnit {
   id: string;
   name: string;
