@@ -11,6 +11,7 @@
     "test:e2e": "playwright test",
     "test:chief": "node scripts/test-chief-router.mjs",
     "test:web-loop": "node scripts/test-web-control-loop.mjs",
+    "test:web-command": "node scripts/test-web-control-command.mjs",
     "test:vercel-policy": "node scripts/verify-vercel-deployment-policy.mjs",
     "build": "tsc -p tsconfig.build.json",
     "command-center": "node dist/apps/dashboard/src/standalone.js",
@@ -23,6 +24,7 @@
   "devDependencies": {
     "@playwright/test": "^1.55.0",
     "@types/node": "^22.0.0",
+    "@playwright/test": "^1.55.0",
     "typescript": "^5.9.0",
     "vitest": "^3.2.0"
   }
