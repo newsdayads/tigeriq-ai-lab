@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {
   WEB_LOOP_STATES,
   nextSafeWork,
+  oneCommandWebControlPlan,
   planWebSelfHealingCycle,
   prioritizeSafeFindings,
   transitionWebSelfHealing,
@@ -22,6 +23,17 @@ assert.equal(plan.state, WEB_LOOP_STATES.FIXING);
 assert.equal(plan.action, 'fix-off-main');
 assert.equal(plan.requiresVerification, true);
 assert.equal(plan.requiresEvidence, true);
+
+const oneCommand = oneCommandWebControlPlan({ command: '1', findings });
+assert.equal(oneCommand.accepted, true);
+assert.equal(oneCommand.lane, 'web-control');
+assert.equal(oneCommand.cycle.state, WEB_LOOP_STATES.FIXING);
+assert.equal(oneCommand.cycle.action, 'fix-off-main');
+assert.equal(oneCommand.cycle.selected.id, 'p0');
+
+const rejectedCommand = oneCommandWebControlPlan({ command: '  2  ', findings });
+assert.equal(rejectedCommand.accepted, false);
+assert.equal(rejectedCommand.code, 'INVALID_COMMAND');
 
 const mainPlan = planWebSelfHealingCycle({ authorization: { mainMutation: true }, findings });
 assert.equal(mainPlan.ok, false);
