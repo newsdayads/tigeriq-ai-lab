@@ -1,5 +1,6 @@
 import { timingSafeEqual, randomUUID, createHash } from 'node:crypto';
 import { decideWithChief } from './chief.mjs';
+import { oneCommandWebControlPlan } from './web-control-loop.mjs';
 import { isOwnerAuthorized } from './owner-auth.mjs';
 
 const REPO = process.env.TIGERIQ_REPO || 'newsdayads/tigeriq-ai-lab';
@@ -458,6 +459,25 @@ export default async function handler(req, res) {
     if (operation === 'work-board') return json(res, 200, await workBoard(optionalToken));
 
     if (operation === 'chat') {
+      const message = String(payload.message || '').trim();
+      if (message === '1') {
+        const plan = oneCommandWebControlPlan({
+          command: message,
+          findings: [],
+          backlog: [],
+          authorization: { owner: true, offMain: true },
+          currentStage: 'queued',
+        });
+        return json(res, 200, {
+          ok: true,
+          mode: 'web-control',
+          lane: 'web-control',
+          command: '1',
+          plan,
+          reply: 'Web Control lane đã nhận lệnh 1; không tạo Generic Work Order.',
+        });
+      }
+
       const decision = await decideWithChief({ message: payload.message, history: payload.history });
 
       if (decision.mode === 'status') {
