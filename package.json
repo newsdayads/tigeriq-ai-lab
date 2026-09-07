@@ -13,6 +13,7 @@
     "test:web-loop": "node scripts/test-web-control-loop.mjs",
     "test:web-command": "node scripts/test-web-control-command.mjs",
     "test:web-http": "node scripts/test-web-control-http.mjs",
+    "test:web-routing": "node scripts/test-web-control-routing.mjs",
     "test:vercel-policy": "node scripts/verify-vercel-deployment-policy.mjs",
     "build": "tsc -p tsconfig.build.json",
     "command-center": "node dist/apps/dashboard/src/standalone.js",
