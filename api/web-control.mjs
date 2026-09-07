@@ -1,5 +1,5 @@
 import { isOwnerAuthorized } from './owner-auth.mjs';
-import { oneCommandWebControlPlan, normalizeWebControlCommand } from './web-control-loop.mjs';
+import { executeWebSelfHealingCycle, normalizeWebControlCommand } from './web-control-loop.mjs';
 
 export function isExactWebControlCommand(value) {
   return normalizeWebControlCommand(value) === '1';
@@ -29,7 +29,6 @@ export default async function handler(req, res) {
     });
   }
   if (req.method !== 'POST') return json(res, 405, { error: 'method_not_allowed' });
-
   if (!isOwnerAuthorized(req) && !serverSecretAuthorized(req)) {
     return json(res, 401, { ok: false, lane: 'web-control', state: 'authorization-required', error: 'owner_authorization_required' });
   }
@@ -42,38 +41,27 @@ export default async function handler(req, res) {
   }
 
   const command = String(payload.command ?? payload.message ?? '').trim();
-  if (!isExactWebControlCommand(command)) {
-    return json(res, 400, { ok: false, lane: 'web-control', state: 'blocked', error: 'unsupported_command' });
-  }
+  if (!isExactWebControlCommand(command)) return json(res, 400, { ok: false, lane: 'web-control', state: 'blocked', error: 'unsupported_command' });
 
-  const plan = oneCommandWebControlPlan({
-    command,
+  const result = executeWebSelfHealingCycle({
     findings: Array.isArray(payload.findings) ? payload.findings : [],
     backlog: Array.isArray(payload.backlog) ? payload.backlog : [],
     authorization: { owner: true, offMain: true },
     currentStage: String(payload.currentStage || 'queued'),
+    runtimeExecutorAvailable: payload.runtimeExecutorAvailable === true,
+    verificationEvidence: payload.verificationEvidence || {},
   });
 
-  // This API endpoint is currently a control/plan surface, not the machine runtime.
-  // Never expose a plan state as execution success. Until a real executor is attached,
-  // an accepted command must stop at EXTERNAL_WAIT with explicit evidence.
-  return json(res, 202, {
-    ok: true,
+  return json(res, result.ok ? 200 : 409, {
+    ok: result.ok,
     lane: 'web-control',
-    command: plan.command,
-    inputCommand: plan.inputCommand,
-    state: 'external-wait',
-    plan,
-    execution: {
-      started: false,
-      verified: false,
-      reason: 'runtime_executor_unavailable',
-    },
-    evidence: {
-      source: 'web-control-loop',
-      deterministic: true,
-      offMain: true,
-      executionVerified: false,
-    },
+    command: '1',
+    inputCommand: command,
+    state: result.state,
+    workId: result.workId || null,
+    trace: result.trace || [],
+    error: result.ok ? undefined : result.code,
+    detail: result.message || result.evidence?.reason || 'cycle-complete',
+    evidence: result.evidence,
   });
 }
