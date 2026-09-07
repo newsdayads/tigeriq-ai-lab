@@ -1,6 +1,6 @@
 import { timingSafeEqual, randomUUID, createHash } from 'node:crypto';
 import { decideWithChief } from './chief.mjs';
-import { oneCommandWebControlPlan } from './web-control-loop.mjs';
+import { oneCommandWebControlPlan, normalizeWebControlCommand } from './web-control-loop.mjs';
 import { isOwnerAuthorized } from './owner-auth.mjs';
 
 const REPO = process.env.TIGERIQ_REPO || 'newsdayads/tigeriq-ai-lab';
@@ -460,7 +460,11 @@ export default async function handler(req, res) {
 
     if (operation === 'chat') {
       const message = String(payload.message || '').trim();
-      if (message === '1') {
+      const command = normalizeWebControlCommand(message);
+      if (command === '1') {
+        if (!(authorizedByServerSecret(req) || isOwnerAuthorized(req))) {
+          return json(res, 401, { error: 'owner_authorization_required' });
+        }
         const plan = oneCommandWebControlPlan({
           command: message,
           findings: [],
@@ -474,7 +478,7 @@ export default async function handler(req, res) {
           lane: 'web-control',
           command: '1',
           plan,
-          reply: 'Web Control lane đã nhận lệnh 1; không tạo Generic Work Order.',
+          reply: `Web Control lane đã nhận lệnh ${message}; không tạo Generic Work Order.`,
         });
       }
 
