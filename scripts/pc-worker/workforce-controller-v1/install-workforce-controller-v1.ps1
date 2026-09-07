@@ -94,6 +94,7 @@ $entryEscaped = $entry.Replace("'", "''")
 $runner = @"
 `$ErrorActionPreference = 'Stop'
 `$env:TIGERIQ_DATABASE_URL = [IO.File]::ReadAllText('$urlFileEscaped').Trim()
+$env:PGPASSFILE = 'D:\TigerIQ\Secrets\workforce-controller-v1.pgpass'
 `$env:TIGERIQ_WORKFORCE_HOST = '$ExpectedHost'
 `$env:TIGERIQ_WORKFORCE_PORT = '$ControllerPort'
 Set-Location '$repoEscaped'

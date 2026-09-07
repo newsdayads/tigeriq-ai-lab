@@ -70,4 +70,4 @@ export async function startController():Promise<void>{
   process.once('SIGTERM',()=>void shutdown('SIGTERM'));
 }
 
-if(import.meta.url===`file://${process.argv[1]}`)startController().catch(error=>{console.error(JSON.stringify({event:'WORKFORCE_CONTROLLER_V1_FATAL',message:error instanceof Error?error.message:'startup failed'}));process.exit(1);});
+startController().catch(error=>{console.error(JSON.stringify({event:'WORKFORCE_CONTROLLER_V1_FATAL',message:error instanceof Error?error.message:'startup failed'}));process.exit(1);});
