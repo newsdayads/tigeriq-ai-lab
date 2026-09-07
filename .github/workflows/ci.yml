@@ -28,6 +28,8 @@ jobs:
         run: npm run typecheck
       - name: Unit tests
         run: npm test
+      - name: Web self-healing loop
+        run: npm run test:web-loop
       - name: Playwright smoke
         run: npm run test:e2e
       - name: Build
