@@ -31,7 +31,7 @@ for (const command of ['1', 'L', 'l', '  L ']) {
   assert.equal(oneCommand.accepted, true);
   assert.equal(oneCommand.lane, 'web-control');
   assert.equal(oneCommand.command, '1');
-  assert.equal(oneCommand.inputCommand, command);
+  assert.equal(oneCommand.inputCommand, String(command).trim());
   assert.equal(oneCommand.cycle.state, WEB_LOOP_STATES.FIXING);
   assert.equal(oneCommand.cycle.action, 'fix-off-main');
   assert.equal(oneCommand.cycle.workId, 'p0');
