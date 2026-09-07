@@ -34,6 +34,8 @@ jobs:
         run: npm run test:web-command
       - name: Web HTTP routing
         run: npm run test:web-http
+      - name: Web surface contract
+        run: npm run test:web-surface
       - name: Playwright smoke
         run: npm run test:e2e
       - name: Build
