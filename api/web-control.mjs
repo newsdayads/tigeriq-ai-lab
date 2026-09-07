@@ -54,13 +54,26 @@ export default async function handler(req, res) {
     currentStage: String(payload.currentStage || 'queued'),
   });
 
-  return json(res, 200, {
+  // This API endpoint is currently a control/plan surface, not the machine runtime.
+  // Never expose a plan state as execution success. Until a real executor is attached,
+  // an accepted command must stop at EXTERNAL_WAIT with explicit evidence.
+  return json(res, 202, {
     ok: true,
     lane: 'web-control',
     command: plan.command,
     inputCommand: plan.inputCommand,
-    state: plan.cycle?.state || 'done',
+    state: 'external-wait',
     plan,
-    evidence: { source: 'web-control-loop', deterministic: true, offMain: true },
+    execution: {
+      started: false,
+      verified: false,
+      reason: 'runtime_executor_unavailable',
+    },
+    evidence: {
+      source: 'web-control-loop',
+      deterministic: true,
+      offMain: true,
+      executionVerified: false,
+    },
   });
 }
