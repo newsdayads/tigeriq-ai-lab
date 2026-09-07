@@ -25,7 +25,7 @@ $unsafe = @($listeners | Where-Object { $_.LocalAddress -ne $ExpectedHost })
 $listenerOk = $exact.Count -eq 1 -and $unsafe.Count -eq 0
 $dbMigration = $null
 if ($psql -and -not [string]::IsNullOrWhiteSpace($DatabaseUrl)) {
-  $dbMigration = (& $psql $DatabaseUrl -v ON_ERROR_STOP=1 -Atc "SELECT version FROM tigeriq_schema_migrations WHERE version='001_operational_state_v1';" 2>$null).Trim()
+  $dbMigration = (& $psql -w "--dbname=$DatabaseUrl" -v "ON_ERROR_STOP=1" -Atc "SELECT version FROM tigeriq_schema_migrations WHERE version='001_operational_state_v1';" 2>$null).Trim()
 }
 $dbOk = $dbMigration -eq '001_operational_state_v1'
 $httpOk = $false

@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 
-$workerDir = 'F:\TigerIQ\Worker'
+$workerDir = 'D:\TigerIQ\Worker'
 $workerPath = Join-Path $workerDir 'worker.py'
 $logPath = Join-Path $workerDir 'watchdog-v3.jsonl'
 $workerTask = 'TigerIQ Worker'

@@ -10,11 +10,11 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-WORKSPACE = Path(os.getenv('TIGERIQ_WORKSPACE', r'F:\TigerIQ\Workspace\tigeriq-ai-lab')).resolve()
-WORKER_DIR = Path(os.getenv('TIGERIQ_WORKER_DIR', r'F:\TigerIQ\Worker')).resolve()
-STATE_PATH = Path(os.getenv('TIGERIQ_CONTROL_STATE', r'F:\TigerIQ\Worker\control-plane-state.json'))
-AUDIT_PATH = Path(os.getenv('TIGERIQ_CONTROL_AUDIT', r'F:\TigerIQ\Worker\control-plane-audit.jsonl'))
-WORKFORCE_JOURNAL = Path(os.getenv('TIGERIQ_WORKFORCE_JOURNAL', r'F:\TigerIQ\State\workforce.jsonl'))
+WORKSPACE = Path(os.getenv('TIGERIQ_WORKSPACE', r'D:\TigerIQ\Workspace\tigeriq-ai-lab')).resolve()
+WORKER_DIR = Path(os.getenv('TIGERIQ_WORKER_DIR', r'D:\TigerIQ\Worker')).resolve()
+STATE_PATH = Path(os.getenv('TIGERIQ_CONTROL_STATE', r'D:\TigerIQ\Worker\control-plane-state.json'))
+AUDIT_PATH = Path(os.getenv('TIGERIQ_CONTROL_AUDIT', r'D:\TigerIQ\Worker\control-plane-audit.jsonl'))
+WORKFORCE_JOURNAL = Path(os.getenv('TIGERIQ_WORKFORCE_JOURNAL', r'D:\TigerIQ\State\workforce.jsonl'))
 LEASE_SECONDS = int(os.getenv('TIGERIQ_LEASE_SECONDS', '300'))
 COMMAND_MARKER = 'TIGERIQ_COMMAND_V1'
 WORKFORCE_PORT = 8790

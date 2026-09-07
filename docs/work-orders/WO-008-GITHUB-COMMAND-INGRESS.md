@@ -12,7 +12,7 @@ Allow the Chief of Staff to turn Owner chat instructions into a durable GitHub-b
 - A job is an open issue containing marker `TIGERIQ_JOB_V1` and an `## Instruction` section.
 - PC01 polls every 30 seconds using authenticated `gh` CLI.
 - Claim/result markers are recorded as issue comments: `TIGERIQ_PC01_CLAIMED`, `TIGERIQ_PC01_DONE`, `TIGERIQ_PC01_FAILED`.
-- Local durable state at `F:\TigerIQ\Worker\queue-state.json` suppresses duplicate completed jobs after restart.
+- Local durable state at `D:\TigerIQ\Worker\queue-state.json` suppresses duplicate completed jobs after restart.
 - Executor/reviewer/judge are separate agent roles. Reviewer and judge use structured JSON gates.
 - Default model is `qwen2.5-coder:14b` over loopback Ollama; no non-loopback Ollama exposure is required.
 - Successful jobs are closed only after REVIEW + DONE gates pass.

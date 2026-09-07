@@ -5,9 +5,9 @@ import sys
 import time
 from pathlib import Path
 
-WORKSPACE = Path(r'F:\TigerIQ\Workspace\tigeriq-ai-lab')
+WORKSPACE = Path(r'D:\TigerIQ\Workspace\tigeriq-ai-lab')
 SOURCE_DIR = WORKSPACE / 'scripts' / 'pc-worker'
-WORKER_DIR = Path(r'F:\TigerIQ\Worker')
+WORKER_DIR = Path(r'D:\TigerIQ\Worker')
 BRANCH = 'wo045/pc01-autonomy-hardening'
 WORKER_TASK = 'TigerIQ Worker'
 WATCHDOG_TASK = 'TigerIQ Worker Watchdog'

@@ -7,7 +7,7 @@ import sys
 import time
 from pathlib import Path
 
-WORKER_DIR = Path(r'F:\TigerIQ\Worker')
+WORKER_DIR = Path(r'D:\TigerIQ\Worker')
 IMPL = WORKER_DIR / 'worker_impl.py'
 LOG_PATH = WORKER_DIR / 'worker-runtime.log'
 REPO = os.getenv('TIGERIQ_REPO', 'newsdayads/tigeriq-ai-lab')

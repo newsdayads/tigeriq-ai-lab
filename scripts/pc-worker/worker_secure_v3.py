@@ -11,9 +11,9 @@ from pathlib import Path
 from control_plane_v2 import execute_once as execute_control_once, execute_command as execute_control_command, parse_command_body
 
 REPO = os.getenv('TIGERIQ_REPO', 'newsdayads/tigeriq-ai-lab')
-STATE_PATH = Path(os.getenv('TIGERIQ_QUEUE_STATE', r'F:\TigerIQ\Worker\queue-state-v3.json'))
-AUDIT_PATH = Path(os.getenv('TIGERIQ_WORKER_AUDIT', r'F:\TigerIQ\Worker\worker-audit-v3.jsonl'))
-INSTANCE_LOCK = Path(os.getenv('TIGERIQ_WORKER_LOCK', r'F:\TigerIQ\Worker\worker-v3.lock'))
+STATE_PATH = Path(os.getenv('TIGERIQ_QUEUE_STATE', r'D:\TigerIQ\Worker\queue-state-v3.json'))
+AUDIT_PATH = Path(os.getenv('TIGERIQ_WORKER_AUDIT', r'D:\TigerIQ\Worker\worker-audit-v3.jsonl'))
+INSTANCE_LOCK = Path(os.getenv('TIGERIQ_WORKER_LOCK', r'D:\TigerIQ\Worker\worker-v3.lock'))
 OLLAMA = os.getenv('TIGERIQ_OLLAMA_URL', 'http://127.0.0.1:11434')
 EXECUTOR_MODEL = os.getenv('TIGERIQ_EXECUTOR_MODEL', os.getenv('TIGERIQ_OLLAMA_MODEL', 'qwen2.5-coder:14b')).strip()
 REVIEWER_MODEL = os.getenv('TIGERIQ_REVIEWER_MODEL', '').strip()

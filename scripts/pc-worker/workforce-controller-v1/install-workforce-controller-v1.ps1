@@ -1,5 +1,5 @@
 param(
-  [string]$RepoPath = 'F:\TigerIQ\Workspace\tigeriq-ai-lab',
+  [string]$RepoPath = 'D:\TigerIQ\Workspace\tigeriq-ai-lab',
   [string]$DatabaseUrl = $env:TIGERIQ_DATABASE_URL,
   [string]$ExpectedBranch = 'wo045/pc01-autonomy-hardening',
   [switch]$StartNow
@@ -11,11 +11,11 @@ $ExpectedHost = '100.97.23.87'
 $ControllerPort = 8790
 $TaskName = 'TigerIQ Workforce Controller'
 $FirewallName = 'TigerIQ Workforce Controller V1 (Tailscale only)'
-$RuntimeDir = 'F:\TigerIQ\Runtime\workforce-controller-v1'
-$ConfigDir = 'F:\TigerIQ\Secrets'
+$RuntimeDir = 'D:\TigerIQ\Runtime\workforce-controller-v1'
+$ConfigDir = 'D:\TigerIQ\Secrets'
 $DatabaseUrlFile = Join-Path $ConfigDir 'workforce-controller-v1.database-url'
 $RunnerPath = Join-Path $RuntimeDir 'run-workforce-controller-v1.ps1'
-$LogPath = 'F:\TigerIQ\Logs\workforce-controller-v1.log'
+$LogPath = 'D:\TigerIQ\Logs\workforce-controller-v1.log'
 $HealthScript = Join-Path $RepoPath 'scripts\pc-worker\workforce-controller-v1\health-workforce-controller-v1.ps1'
 
 function Fail([string]$Code, [string]$Message) { Write-Error "$Code`: $Message"; exit 1 }

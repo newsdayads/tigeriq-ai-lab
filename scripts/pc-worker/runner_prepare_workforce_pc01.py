@@ -8,9 +8,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 EXPECTED_SOURCE_SHA = '731436be054e06cfdfe4b4d48e25507ab7adb35a'
-PC01_WORKSPACE = Path(r'F:\TigerIQ\Workspace\tigeriq-ai-lab')
-STATE_DIR = Path(r'F:\TigerIQ\State')
-RUNTIME_DIR = Path(r'F:\TigerIQ\Runtime')
+PC01_WORKSPACE = Path(r'D:\TigerIQ\Workspace\tigeriq-ai-lab')
+STATE_DIR = Path(r'D:\TigerIQ\State')
+RUNTIME_DIR = Path(r'D:\TigerIQ\Runtime')
 MANIFEST = STATE_DIR / 'workforce-runtime-manifest.json'
 ENTRY_REL = Path('apps/workforce-controller/src/standalone.js')
 

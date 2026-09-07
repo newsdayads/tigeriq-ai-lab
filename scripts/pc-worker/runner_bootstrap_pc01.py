@@ -10,8 +10,8 @@ from pathlib import Path
 REPO = 'newsdayads/tigeriq-ai-lab'
 CANARY_ISSUE = 58
 SOURCE_DIR = Path(__file__).resolve().parent
-WORKER_DIR = Path(r'F:\TigerIQ\Worker')
-PC01_WORKSPACE = Path(r'F:\TigerIQ\Workspace\tigeriq-ai-lab')
+WORKER_DIR = Path(r'D:\TigerIQ\Worker')
+PC01_WORKSPACE = Path(r'D:\TigerIQ\Workspace\tigeriq-ai-lab')
 WORKER_TASK = 'TigerIQ Worker'
 WATCHDOG_TASK = 'TigerIQ Worker Watchdog'
 EXPECTED_FILES = {

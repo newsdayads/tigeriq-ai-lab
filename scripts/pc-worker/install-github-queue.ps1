@@ -1,6 +1,6 @@
 param([string]$Branch='wo011/pc01-remote-exec')
 $ErrorActionPreference='Stop'
-$workerDir='F:\TigerIQ\Worker'
+$workerDir='D:\TigerIQ\Worker'
 $worker=Join-Path $workerDir 'worker.py'
 $control=Join-Path $workerDir 'control_plane_v2.py'
 $test=Join-Path $workerDir 'test_control_plane_v2.py'
