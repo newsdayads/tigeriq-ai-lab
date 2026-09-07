@@ -21,6 +21,8 @@ const plan = planWebSelfHealingCycle({ findings });
 assert.equal(plan.ok, true);
 assert.equal(plan.state, WEB_LOOP_STATES.FIXING);
 assert.equal(plan.action, 'fix-off-main');
+assert.equal(plan.workId, 'p0');
+assert.equal(plan.priority, 'P0');
 assert.equal(plan.requiresVerification, true);
 assert.equal(plan.requiresEvidence, true);
 
@@ -29,11 +31,11 @@ assert.equal(oneCommand.accepted, true);
 assert.equal(oneCommand.lane, 'web-control');
 assert.equal(oneCommand.cycle.state, WEB_LOOP_STATES.FIXING);
 assert.equal(oneCommand.cycle.action, 'fix-off-main');
-assert.equal(oneCommand.cycle.selected.id, 'p0');
+assert.equal(oneCommand.cycle.workId, 'p0');
 
 const rejectedCommand = oneCommandWebControlPlan({ command: '  2  ', findings });
 assert.equal(rejectedCommand.accepted, false);
-assert.equal(rejectedCommand.code, 'INVALID_COMMAND');
+assert.equal(rejectedCommand.reason, 'unsupported_command');
 
 const mainPlan = planWebSelfHealingCycle({ authorization: { mainMutation: true }, findings });
 assert.equal(mainPlan.ok, false);
