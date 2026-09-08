@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>TigerIQ CopyBox</title>
+  <style>
+    :root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color-scheme:light dark}
+    *{box-sizing:border-box}body{margin:0;padding:6px;background:transparent}
+    .box{border:1px solid color-mix(in srgb,currentColor 18%,transparent);border-radius:12px;overflow:hidden;background:color-mix(in srgb,Canvas 96%,transparent)}
+    .bar{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border-bottom:1px solid color-mix(in srgb,currentColor 14%,transparent)}
+    .title{font-size:12px;font-weight:800;opacity:.78}.actions{display:flex;gap:7px}
+    button{border:1px solid color-mix(in srgb,currentColor 18%,transparent);border-radius:8px;background:Canvas;color:CanvasText;padding:6px 9px;font:inherit;font-size:12px;font-weight:700;cursor:pointer}
+    button.primary{background:#ff9418;border-color:#ff9418;color:#17110a}
+    textarea{display:block;width:100%;height:190px;min-height:190px;max-height:190px;resize:none;overflow:auto;overscroll-behavior:contain;border:0;outline:0;background:transparent;color:inherit;padding:10px 11px;font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;white-space:pre-wrap;overflow-wrap:anywhere;tab-size:2}
+    .foot{display:flex;justify-content:space-between;gap:8px;padding:7px 10px;border-top:1px solid color-mix(in srgb,currentColor 12%,transparent);font-size:11px;opacity:.7}.ok{color:#22a35a;opacity:1}
+    @media(max-width:520px){body{padding:3px}textarea{height:160px;min-height:160px;max-height:160px}.title{font-size:11px}}
+  </style>
+</head>
+<body>
+  <main class="box" aria-label="TigerIQ CopyBox">
+    <div class="bar"><div class="title">TigerIQ CopyBox</div><div class="actions"><button id="copy" class="primary" type="button">Sao chép</button></div></div>
+    <textarea id="text" wrap="soft" spellcheck="false" readonly aria-label="Nội dung cần sao chép"></textarea>
+    <div class="foot"><span id="count">0 ký tự</span><span id="status" role="status" aria-live="polite"></span></div>
+  </main>
+  <script type="module">
+    const textEl=document.querySelector('#text');
+    const copyEl=document.querySelector('#copy');
+    const countEl=document.querySelector('#count');
+    const statusEl=document.querySelector('#status');
+    let value='';
+    const render=(next)=>{value=typeof next==='string'?next:'';textEl.value=value;countEl.textContent=`${value.length.toLocaleString('vi-VN')} ký tự`;};
+    const applyResult=(result)=>{const next=result?.structuredContent?.text;if(typeof next==='string')render(next);};
+    copyEl.addEventListener('click',async()=>{try{await navigator.clipboard.writeText(value);statusEl.textContent='Đã sao chép toàn bộ.';statusEl.className='ok';}catch{textEl.removeAttribute('readonly');textEl.focus();textEl.select();textEl.setAttribute('readonly','');statusEl.textContent='Đã chọn toàn bộ. Nhấn Ctrl+C.';}setTimeout(()=>{statusEl.textContent='';statusEl.className='';},2200);});
+    let rpcId=0;const pending=new Map();
+    const notify=(method,params)=>window.parent.postMessage({jsonrpc:'2.0',method,params},'*');
+    const request=(method,params)=>new Promise((resolve,reject)=>{const id=++rpcId;pending.set(id,{resolve,reject});window.parent.postMessage({jsonrpc:'2.0',id,method,params},'*');});
+    window.addEventListener('message',(event)=>{if(event.source!==window.parent)return;const message=event.data;if(!message||message.jsonrpc!=='2.0')return;if(typeof message.id==='number'){const p=pending.get(message.id);if(!p)return;pending.delete(message.id);message.error?p.reject(message.error):p.resolve(message.result);return;}if(message.method==='ui/notifications/tool-result')applyResult(message.params);},{passive:true});
+    try{const initial=await request('ui/initialize',{appInfo:{name:'tigeriq-copybox',version:'0.1.0'},appCapabilities:{},protocolVersion:'2026-01-26'});notify('ui/notifications/initialized',{});applyResult(initial);}catch{statusEl.textContent='CopyBox chưa kết nối được dữ liệu.';}
+  </script>
+</body>
+</html>
