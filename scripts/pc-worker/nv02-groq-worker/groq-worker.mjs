@@ -50,16 +50,24 @@ async function invokeOllama(model,prompt){
 async function assure(job,prompt,content){
   const needReview=job.payload?.requireAssurance!==false;
   const needJudge=job.payload?.requireJudge!==false;
+  const analysisOnly=job.payload?.analysisOnly===true;
   if(!needReview) return {required:false};
-  const reviewerPrompt=`You are an independent reviewer. Check whether OUTPUT satisfies TASK. Return exactly PASS or FAIL.\nTASK:\n${prompt}\nOUTPUT:\n${content}`;
+  if(analysisOnly){
+    const clean=content.trim().replace(/^```json\s*/i,'').replace(/```\s*$/,'').trim();
+    let parsed;try{parsed=JSON.parse(clean);}catch{throw new Error('ANALYSIS_JSON_INVALID');}
+    for(const key of ['status','diagnosis','concreteWork','verification','nextSafeAction'])if(!(key in parsed))throw new Error('ANALYSIS_SCHEMA_INVALID');
+    if(!parsed.verification||!Array.isArray(parsed.verification.verifiedNow)||parsed.verification.verifiedNow.length!==0)throw new Error('ANALYSIS_VERIFICATION_BOUNDARY');
+  }
+  const reviewerPrompt=analysisOnly
+    ? `Independent reviewer. Return exactly PASS or FAIL. PASS only if OUTPUT is analysis/synthesis, does not claim unexecuted edits/tests/commands/system changes, and clearly separates source claims from verifiedNow.\nTASK:\n${prompt}\nOUTPUT:\n${content}`
+    : `You are an independent reviewer. Check whether OUTPUT satisfies TASK. Return exactly PASS or FAIL.\nTASK:\n${prompt}\nOUTPUT:\n${content}`;
   const reviewerText=await invokeOllama('gemma3:4b',reviewerPrompt);
   const reviewerVerdict=reviewerText.toUpperCase()==='PASS'?'PASS':'FAIL';
   if(reviewerVerdict!=='PASS') throw new Error('INDEPENDENT_REVIEW_FAILED');
   let judgeVerdict='NOT_REQUIRED';
   if(needJudge){
-    const judgePrompt=`You are the final independent judge. TASK, OUTPUT and REVIEW are below. Return exactly PASS or FAIL.\nTASK:\n${prompt}\nOUTPUT:\n${content}\nREVIEW:${reviewerVerdict}`;
-    const judgeText=await invokeOllama('qwen3:8b',judgePrompt);
-    judgeVerdict=judgeText.toUpperCase()==='PASS'?'PASS':'FAIL';
+    const judgePrompt=analysisOnly?`Final judge. Return exactly PASS or FAIL. PASS only if REVIEW=PASS and OUTPUT makes no unverified execution claims.\nOUTPUT:\n${content}\nREVIEW:${reviewerVerdict}`:`You are the final independent judge. TASK, OUTPUT and REVIEW are below. Return exactly PASS or FAIL.\nTASK:\n${prompt}\nOUTPUT:\n${content}\nREVIEW:${reviewerVerdict}`;
+    const judgeText=await invokeOllama('qwen3:8b',judgePrompt);judgeVerdict=judgeText.toUpperCase()==='PASS'?'PASS':'FAIL';
     if(judgeVerdict!=='PASS') throw new Error('INDEPENDENT_JUDGE_FAILED');
   }
   return {required:true,reviewer:{identity:'ollama:gemma3:4b',verdict:reviewerVerdict},judge:{identity:'ollama:qwen3:8b',verdict:judgeVerdict}};
