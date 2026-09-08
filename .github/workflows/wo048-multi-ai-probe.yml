@@ -10,6 +10,7 @@ on:
       - 'scripts/pc-worker/test-ai-provider-scheduler.ps1'
       - 'scripts/pc-worker/ai-job-orchestrator.ps1'
       - 'scripts/pc-worker/test-ai-job-orchestration.ps1'
+      - 'scripts/pc-worker/run-ai-job001-mixed.ps1'
       - '.github/workflows/wo048-multi-ai-probe.yml'
   push:
     branches:
@@ -22,6 +23,7 @@ on:
       - 'scripts/pc-worker/test-ai-provider-scheduler.ps1'
       - 'scripts/pc-worker/ai-job-orchestrator.ps1'
       - 'scripts/pc-worker/test-ai-job-orchestration.ps1'
+      - 'scripts/pc-worker/run-ai-job001-mixed.ps1'
       - '.github/workflows/wo048-multi-ai-probe.yml'
 
 permissions:
@@ -45,6 +47,7 @@ jobs:
             'scripts/pc-worker/test-ai-provider-scheduler.ps1',
             'scripts/pc-worker/ai-job-orchestrator.ps1',
             'scripts/pc-worker/test-ai-job-orchestration.ps1'
+            'scripts/pc-worker/run-ai-job001-mixed.ps1'
           )) {
             $errors = $null
             $tokens = $null
@@ -64,6 +67,9 @@ jobs:
       - name: Run JOB-001 orchestration regression
         shell: powershell
         run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/pc-worker/test-ai-job-orchestration.ps1
+      - name: Run mixed Groq-Ollama harness self-test
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/pc-worker/run-ai-job001-mixed.ps1 -SelfTest
       - name: Run no-provider probe self-test
         shell: powershell
         run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/pc-worker/probe-multi-ai.ps1 -SelfTest

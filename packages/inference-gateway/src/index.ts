@@ -597,7 +597,8 @@ export function createGroqBackendAdapter(options: GroqBackendOptions = {}): Back
   const allowedModel = 'openai/gpt-oss-120b';
   const freeTierVerified = options.freeTierVerified
     ?? process.env.TIGERIQ_GROQ_FREE_TIER_VERIFIED?.trim().toLowerCase() === 'true';
-  return {    provider: 'groq',
+  return {
+    provider: 'groq',
     async execute(target, request) {
       if (!freeTierVerified) {
         throw new BackendRequestError('groq', 'configuration', 'groq free tier proof not configured');
@@ -621,7 +622,8 @@ export function createGroqBackendAdapter(options: GroqBackendOptions = {}): Back
         }),
       }, request.signal, timeoutMs);
       const body = await response.json() as { model?: string; choices?: Array<{ message?: { content?: string } }> };
-      if (body.model && body.model !== allowedModel) {        throw new BackendRequestError('groq', 'invalid_response', 'groq returned unexpected model');
+      if (body.model && body.model !== allowedModel) {
+        throw new BackendRequestError('groq', 'invalid_response', 'groq returned unexpected model');
       }
       const text = body.choices?.[0]?.message?.content ?? '';
       if (!text.trim()) throw new BackendRequestError('groq', 'invalid_response', 'empty groq response');
@@ -631,45 +633,37 @@ export function createGroqBackendAdapter(options: GroqBackendOptions = {}): Back
 }
 
 export function createOpenRouterBackendAdapter(options: OpenRouterBackendOptions = {}): BackendAdapter {
-  const adapter = createOpenAICompatibleAdapter('openrouter', {
-    ...options,
-    baseUrl: options.baseUrl ?? 'https://openrouter.ai/api/v1',
-  }, {
-    ...(options.appUrl ? { 'HTTP-Referer': options.appUrl } : {}),
-    ...(options.appName ? { 'X-Title': options.appName } : {}),
-  });
-  return adapter;
-}
-
-function createOpenAICompatibleAdapter(
-  provider: 'groq' | 'openrouter',
-  options: ProviderHttpOptions,
-  extraHeaders: Record<string, string> = {},
-): BackendAdapter {
   const fetchImpl = options.fetchImpl ?? fetch;
-  const baseUrl = (options.baseUrl ?? '').replace(/\/$/, '');
+  const baseUrl = (options.baseUrl ?? 'https://openrouter.ai/api/v1').replace(/\/$/, '');
   const timeoutMs = Math.max(1, options.timeoutMs ?? 120_000);
+  const allowedModel = 'openrouter/free';
   return {
-    provider,
+    provider: 'openrouter',
     async execute(target, request) {
-      const apiKey = options.apiKey ?? (provider === 'groq' ? process.env.GROQ_API_KEY : process.env.OPENROUTER_API_KEY);
-      if (!apiKey) throw new BackendRequestError(provider, 'configuration', `${provider} api key not configured`);
-      const response = await providerFetch(provider, fetchImpl, `${baseUrl}/chat/completions`, {
+      if (target.model !== allowedModel) {
+        throw new BackendRequestError('openrouter', 'configuration', 'openrouter model is not zero-cost allowlisted');
+      }
+      const apiKey = options.apiKey ?? process.env.OPENROUTER_API_KEY;
+      if (!apiKey) throw new BackendRequestError('openrouter', 'configuration', 'openrouter api key not configured');
+      const response = await providerFetch('openrouter', fetchImpl, `${baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
           authorization: `Bearer ${apiKey}`,
-          ...extraHeaders,
+          ...(options.appUrl ? { 'HTTP-Referer': options.appUrl } : {}),
+          ...(options.appName ? { 'X-Title': options.appName } : {}),
         },
-        body: JSON.stringify({
-          model: target.model,
-          messages: [{ role: 'user', content: request.prompt }],
-          stream: false,
-        }),
+        body: JSON.stringify({ model: allowedModel, messages: [{ role: 'user', content: request.prompt }], stream: false, usage: { include: true } }),
       }, request.signal, timeoutMs);
-      const body = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+      const body = await response.json() as { model?: string; choices?: Array<{ message?: { content?: string } }>; usage?: { cost?: number | string } };
+      const routedModel = body.model ?? '';
+      if (!routedModel.endsWith(':free')) throw new BackendRequestError('openrouter', 'invalid_response', 'openrouter returned non-free or unknown model');
+      const rawCost = body.usage?.cost;
+      const cost = typeof rawCost === 'number' ? rawCost : Number(rawCost);
+      if (rawCost === undefined || !Number.isFinite(cost)) throw new BackendRequestError('openrouter', 'invalid_response', 'openrouter response cost unproven');
+      if (Math.abs(cost) > 0) throw new BackendRequestError('openrouter', 'invalid_response', 'openrouter response cost nonzero');
       const text = body.choices?.[0]?.message?.content ?? '';
-      if (!text.trim()) throw new BackendRequestError(provider, 'invalid_response', `empty ${provider} response`);
+      if (!text.trim()) throw new BackendRequestError('openrouter', 'invalid_response', 'empty openrouter response');
       return text;
     },
   };
@@ -684,22 +678,25 @@ export function defaultServerTargets(env: NodeJS.ProcessEnv = process.env): Back
       costRank: 0,
       qualityRank: 4,
       kinds: ['general', 'coding', 'analysis', 'research'],
+      enabled: false,
     },
     {
       provider: 'groq',
-      model: env.TIGERIQ_GROQ_MODEL?.trim() || 'openai/gpt-oss-120b',
+      model: 'openai/gpt-oss-120b',
       tier: 'primary',
       costRank: 0,
       qualityRank: 4,
       kinds: ['general', 'coding', 'analysis', 'research'],
+      enabled: env.TIGERIQ_GROQ_FREE_TIER_VERIFIED?.trim().toLowerCase() === 'true' && Boolean(env.GROQ_API_KEY?.trim()),
     },
     {
       provider: 'openrouter',
-      model: env.TIGERIQ_OPENROUTER_MODEL?.trim() || 'openai/gpt-oss-20b',
+      model: 'openrouter/free',
       tier: 'fallback',
       costRank: 1,
       qualityRank: 4,
       kinds: ['general', 'coding', 'analysis', 'research'],
+      enabled: Boolean(env.OPENROUTER_API_KEY?.trim()),
     },
   ];
 }

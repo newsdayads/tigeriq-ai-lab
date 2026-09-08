@@ -15,16 +15,16 @@ Provider/model names may appear only as non-secret backend identity metadata in 
 
 ## 2. Provider policy
 
-Primary tier:
-1. Gemini
-2. Groq
+TigerIQ runtime default is `ZERO_COST_ONLY`.
 
-Fallback tier:
-3. OpenRouter
+Default Gateway routing:
+1. Gemini API target is disabled until an independently verified zero-cost API route is approved.
+2. Groq is primary only when `GROQ_API_KEY` exists **and** `TIGERIQ_GROQ_FREE_TIER_VERIFIED=true`; the model is fixed to `openai/gpt-oss-120b` and requests force `service_tier=on_demand`.
+3. OpenRouter is bounded fallback only through `openrouter/free`; responses must identify a `:free` routed model and return `usage.cost=0`, otherwise the call fails closed.
 
-The Gateway may choose between healthy primary candidates using capability, role, budget and recent provider health. OpenRouter is a bounded fallback, not an employee identity.
+The Gateway may choose only healthy, enabled candidates using capability, role, budget and recent provider health. Provider/model identity is evidence metadata, not employee identity.
 
-No client may send a provider API key. No request field may override a server credential.
+No client may send a provider API key. No request field may override a server credential, model allowlist, billing proof, or service tier.
 
 ## 3. Authentication model
 
@@ -226,9 +226,6 @@ Expected environment variables are server-side only:
 - `GROQ_API_KEY`
 - `TIGERIQ_GROQ_FREE_TIER_VERIFIED=true` (explicit runtime proof that the Groq organization remains on Free Tier)
 - `OPENROUTER_API_KEY`
-- `TIGERIQ_GEMINI_MODEL`
-- `TIGERIQ_GROQ_MODEL`
-- `TIGERIQ_OPENROUTER_MODEL`
 - `TIGERIQ_INFERENCE_SESSION_SECRET`
 
 They MUST NOT be prefixed or packaged as public/client environment variables.

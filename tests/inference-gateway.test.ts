@@ -7,6 +7,7 @@ import {
   createGeminiBackendAdapter,
   createGroqBackendAdapter,
   createOpenRouterBackendAdapter,
+  defaultServerTargets,
   type BackendAdapter,
   type BackendTarget,
   type GatewayProvider,
@@ -276,15 +277,54 @@ describe('WO-047 server-only provider adapters', () => {
     });
     const openrouter = createOpenRouterBackendAdapter({
       apiKey: 'openrouter-provider-secret',
-      fetchImpl: async (input) => {
+      fetchImpl: async (input, init) => {
         calls.push(String(input));
-        return new Response(JSON.stringify({ choices: [{ message: { content: 'openrouter ok' } }] }), { status: 200 });
+        const sent = JSON.parse(String(init?.body ?? '{}')) as { model?: string; usage?: { include?: boolean } };
+        expect(sent.model).toBe('openrouter/free');
+        expect(sent.usage?.include).toBe(true);
+        return new Response(JSON.stringify({
+          model: 'meta-llama/example:free',
+          choices: [{ message: { content: 'openrouter ok' } }],
+          usage: { cost: 0 },
+        }), { status: 200 });
       },
     });
 
     await expect(gemini.execute(targets[0], { prompt: 'x' })).resolves.toBe('gemini ok');
-    await expect(openrouter.execute(targets[2], { prompt: 'x' })).resolves.toBe('openrouter ok');
+    await expect(openrouter.execute({ ...targets[2], model: 'openrouter/free' }, { prompt: 'x' })).resolves.toBe('openrouter ok');
     expect(calls[0]).toContain('/models/gemini-test:generateContent');
     expect(calls[1]).toBe('https://openrouter.ai/api/v1/chat/completions');
+  });
+
+  it('fails closed for OpenRouter unless the routed model is free and response cost is proven zero', async () => {
+    let calls = 0;
+    const responseBody = { model: 'meta-llama/example:free', choices: [{ message: { content: 'ok' } }], usage: { cost: 0 } };
+    const openrouter = createOpenRouterBackendAdapter({
+      apiKey: 'secret',
+      fetchImpl: async () => { calls += 1; return new Response(JSON.stringify(responseBody), { status: 200 }); },
+    });
+    await expect(openrouter.execute({ ...targets[2], model: 'paid/model' }, { prompt: 'x' })).rejects.toMatchObject({ kind: 'configuration' });
+    expect(calls).toBe(0);
+    responseBody.usage = {} as { cost: number };
+    await expect(openrouter.execute({ ...targets[2], model: 'openrouter/free' }, { prompt: 'x' })).rejects.toMatchObject({ kind: 'invalid_response' });
+    responseBody.usage = { cost: 0.01 };
+    await expect(openrouter.execute({ ...targets[2], model: 'openrouter/free' }, { prompt: 'x' })).rejects.toMatchObject({ kind: 'invalid_response' });
+    responseBody.usage = { cost: 0 };
+    responseBody.model = 'paid/model';
+    await expect(openrouter.execute({ ...targets[2], model: 'openrouter/free' }, { prompt: 'x' })).rejects.toMatchObject({ kind: 'invalid_response' });
+  });
+
+  it('builds zero-cost-safe default server targets without trusting unsafe model overrides', () => {
+    const defaults = defaultServerTargets({
+      GEMINI_API_KEY: 'present-but-api-route-disabled',
+      GROQ_API_KEY: 'groq',
+      TIGERIQ_GROQ_FREE_TIER_VERIFIED: 'true',
+      TIGERIQ_GROQ_MODEL: 'unsafe/override',
+      OPENROUTER_API_KEY: 'openrouter',
+      TIGERIQ_OPENROUTER_MODEL: 'unsafe/override',
+    });
+    expect(defaults.find((item) => item.provider === 'gemini')?.enabled).toBe(false);
+    expect(defaults.find((item) => item.provider === 'groq')).toMatchObject({ model: 'openai/gpt-oss-120b', enabled: true });
+    expect(defaults.find((item) => item.provider === 'openrouter')).toMatchObject({ model: 'openrouter/free', enabled: true });
   });
 });

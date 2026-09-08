@@ -65,3 +65,16 @@ Local Multi-AI orchestration is now physically proven on PC01. Cloud API integra
 - Groq default server target updated from `openai/gpt-oss-20b` to `openai/gpt-oss-120b`.
 - Contract test proves missing Free Tier proof and wrong model produce zero upstream requests; 429 remains quota-classified with bounded retry metadata.
 - Full regression after hardening: 28 files / 127 tests PASS; TypeScript build PASS; live probe remains `KEY_MISSING` and performs no Groq cloud call.
+
+## Zero-cost Gateway convergence + mixed harness — 2026-09-08
+- OpenRouter Gateway is now fixed to `openrouter/free`; unsafe model overrides are ignored.
+- Request explicitly asks OpenRouter for usage accounting; response must identify a routed `:free` model and prove `usage.cost=0` or fail closed.
+- Gemini API target is disabled in default server targets under `ZERO_COST_ONLY`.
+- Groq default target is fixed to `openai/gpt-oss-120b` and only enabled when API key + explicit Free Tier proof are both present.
+- Removed the generic OpenAI-compatible adapter path that could bypass provider-specific zero-cost guards.
+- Added `run-ai-job001-mixed.ps1`: real Groq + Ollama harness with no-key preflight, bounded Groq timeout, 3 distinct backend identities, evidence digests only.
+- Mixed harness self-test: Groq-success path PASS; Groq-timeout -> Ollama fallback PASS in 2 attempts; raw provider output absent from evidence.
+- Live no-key preflight: BLOCKED with `networkCallMade=false`; no provider request is attempted.
+- Full local gate: typecheck PASS; Vitest 28 files / 129 tests PASS; Playwright E2E 1/1 PASS; build PASS.
+- PowerShell policy/scheduler/orchestration/probe/mixed-harness guards PASS.
+- External cloud E2E remains intentionally blocked until `GROQ_API_KEY` plus verified Free Tier evidence are supplied.
