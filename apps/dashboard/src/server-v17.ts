@@ -219,22 +219,51 @@ function copyHeaders(upstream: Response, res: ServerResponse, overview = false):
     : "default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
 }
 
-async function loadOverviewData(options: OwnerCockpitV17Options): Promise<ExecutiveDashboardV4> {
+async function loadOverviewDataFresh(options: OwnerCockpitV17Options): Promise<ExecutiveDashboardV4> {
   const telemetryResponse = await fetch(`${options.backendUrl}/api/server`, { cache: 'no-store' });
   if (!telemetryResponse.ok) throw new Error('telemetry_unavailable');
   const telemetry = await telemetryResponse.json() as ServerTelemetry;
   return options.loadData ? options.loadData(telemetry) : loadExecutiveDashboardV4(options.repo, telemetry);
 }
 
+type OverviewCacheV5 = { data: ExecutiveDashboardV4 | null; refreshedAt: number; loading: Promise<ExecutiveDashboardV4> | null };
+const overviewCachesV5 = new WeakMap<OwnerCockpitV17Options, OverviewCacheV5>();
+function overviewCacheV5(options: OwnerCockpitV17Options): OverviewCacheV5 {
+  let cache = overviewCachesV5.get(options);
+  if (!cache) { cache = { data: null, refreshedAt: 0, loading: null }; overviewCachesV5.set(options, cache); }
+  return cache;
+}
+async function refreshOverviewData(options: OwnerCockpitV17Options): Promise<ExecutiveDashboardV4> {
+  const cache = overviewCacheV5(options);
+  if (cache.loading) return cache.loading;
+  cache.loading = loadOverviewDataFresh(options).then((data) => { cache.data = data; cache.refreshedAt = Date.now(); return data; }).finally(() => { cache.loading = null; });
+  return cache.loading;
+}
+async function loadOverviewData(options: OwnerCockpitV17Options): Promise<ExecutiveDashboardV4> {
+  const cache = overviewCacheV5(options);
+  if (!cache.data) return refreshOverviewData(options);
+  if (Date.now() - cache.refreshedAt > 5_000) void refreshOverviewData(options);
+  return cache.data;
+}
+
 async function relay(options: OwnerCockpitV17Options, req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const path = new URL(req.url ?? '/', 'http://local').pathname;
+  const view = viewFrom(req.url);
+  if (req.method === 'GET' && path === '/' && view === 'overview') {
+    const data = await loadOverviewData(options);
+    res.statusCode = 200;
+    res.setHeader('content-type', 'text/html; charset=utf-8');
+    res.setHeader('cache-control', 'no-store');
+    res.setHeader('content-security-policy', "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
+    res.end(renderExecutiveOverviewV4(data));
+    return;
+  }
   const headers = new Headers();
   if (req.headers.cookie) headers.set('cookie', req.headers.cookie);
   const contentType = req.headers['content-type'];
   if (typeof contentType === 'string') headers.set('content-type', contentType);
   const upstream = await fetch(`${options.stableUrl}${req.url ?? '/'}`, { method: req.method, headers, body: await readBody(req), redirect: 'manual' });
   const type = upstream.headers.get('content-type') ?? 'text/plain; charset=utf-8';
-  const path = new URL(req.url ?? '/', 'http://local').pathname;
-  const view = viewFrom(req.url);
   if (req.method === 'GET' && path === '/' && upstream.ok && type.includes('text/html')) {
     const stableHtml = await upstream.text();
     if (/class="login"/.test(stableHtml)) {
@@ -268,14 +297,8 @@ function writeLiveEvent(res: ServerResponse, event: LiveEventV5): void {
   res.write(`id: ${event.event_id}\nevent: tigeriq\ndata: ${JSON.stringify(event)}\n\n`);
 }
 
-async function streamAuthorized(options: OwnerCockpitV17Options, req: IncomingMessage): Promise<boolean> {
-  const headers = new Headers();
-  if (req.headers.cookie) headers.set('cookie', req.headers.cookie);
-  const response = await fetch(`${options.stableUrl}/`, { headers, redirect: 'manual' });
-  if (!response.ok && response.status !== 200) return false;
-  const type = response.headers.get('content-type') ?? '';
-  if (!type.includes('text/html')) return false;
-  return !/class="login"/.test(await response.text());
+function streamAuthorized(options: OwnerCockpitV17Options): boolean {
+  return isPrivateHost(options.host ?? '127.0.0.1');
 }
 
 export async function startOwnerCockpitV17(options: OwnerCockpitV17Options) {
@@ -289,18 +312,19 @@ export async function startOwnerCockpitV17(options: OwnerCockpitV17Options) {
     if (polling || clients.size === 0) return;
     polling = true;
     try {
-      const events = buffer.append(projection.ingest(await loadOverviewData(options)));
+      const events = buffer.append(projection.ingest(await refreshOverviewData(options)));
       for (const event of events) for (const client of clients) writeLiveEvent(client, event);
     } catch {}
     finally { polling = false; }
   };
   const pollTimer = setInterval(() => { void pollLive(); }, Math.max(1000, options.livePollMs ?? 5000));
   const heartbeatTimer = setInterval(() => { for (const client of clients) client.write(`: heartbeat ${Date.now()}\n\n`); }, 15000);
+  try { await refreshOverviewData(options); } catch {}
   const server = createServer(async (req, res) => {
     try {
       const url = new URL(req.url ?? '/', 'http://local');
       if (req.method === 'GET' && url.pathname === '/api/events') {
-        if (!await streamAuthorized(options, req)) { res.statusCode = 401; res.end(); return; }
+        if (!streamAuthorized(options)) { res.statusCode = 401; res.end(); return; }
         if (clients.size === 0) {
           try { buffer.append(projection.ingest(await loadOverviewData(options))); } catch {}
         }

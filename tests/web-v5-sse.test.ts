@@ -40,4 +40,23 @@ describe('Web Control V5 SSE foundation', () => {
     expect(text).not.toContain('authorization');
     expect(text).not.toContain('secret');
   });
+
+  it('serves a prewarmed V5 overview without waiting on the stable relay', async () => {
+    const slow = createServer((_req, res) => { setTimeout(() => { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); res.end('<html>slow</html>'); }, 2000); });
+    await new Promise<void>((resolve) => slow.listen(0, '127.0.0.1', resolve));
+    const slowAddress = slow.address() as AddressInfo;
+    closers.push(() => new Promise<void>((resolve, reject) => slow.close((error) => error ? reject(error) : resolve())));
+    const backendUrl = await stub(JSON.stringify(telemetry), 'application/json; charset=utf-8');
+    let loads = 0;
+    const outer = await startOwnerCockpitV17({ stableUrl: `http://127.0.0.1:${slowAddress.port}`, backendUrl, repo: 'newsdayads/tigeriq-ai-lab', loadData: async () => { loads += 1; return data; } });
+    closers.push(outer.close);
+    const started = Date.now();
+    const response = await fetch(`${outer.url}/`);
+    const html = await response.text();
+    expect(response.status).toBe(200);
+    expect(Date.now() - started).toBeLessThan(1000);
+    expect(loads).toBe(1);
+    expect(html).toContain('Web Control V5');
+    expect(html).toContain('V5 · LIVE SSE');
+  });
 });
