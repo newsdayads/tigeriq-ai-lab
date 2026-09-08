@@ -11,6 +11,9 @@ on:
       - 'scripts/pc-worker/ai-job-orchestrator.ps1'
       - 'scripts/pc-worker/test-ai-job-orchestration.ps1'
       - 'scripts/pc-worker/run-ai-job001-mixed.ps1'
+      - 'scripts/pc-worker/install-groq-runtime-secret.ps1'
+      - 'scripts/pc-worker/invoke-groq-runtime.ps1'
+      - 'scripts/pc-worker/deploy-ai-api-runtime.ps1'
       - '.github/workflows/wo048-multi-ai-probe.yml'
   push:
     branches:
@@ -24,6 +27,9 @@ on:
       - 'scripts/pc-worker/ai-job-orchestrator.ps1'
       - 'scripts/pc-worker/test-ai-job-orchestration.ps1'
       - 'scripts/pc-worker/run-ai-job001-mixed.ps1'
+      - 'scripts/pc-worker/install-groq-runtime-secret.ps1'
+      - 'scripts/pc-worker/invoke-groq-runtime.ps1'
+      - 'scripts/pc-worker/deploy-ai-api-runtime.ps1'
       - '.github/workflows/wo048-multi-ai-probe.yml'
 
 permissions:
@@ -46,8 +52,11 @@ jobs:
             'scripts/pc-worker/ai-provider-scheduler.ps1',
             'scripts/pc-worker/test-ai-provider-scheduler.ps1',
             'scripts/pc-worker/ai-job-orchestrator.ps1',
-            'scripts/pc-worker/test-ai-job-orchestration.ps1'
-            'scripts/pc-worker/run-ai-job001-mixed.ps1'
+            'scripts/pc-worker/test-ai-job-orchestration.ps1',
+            'scripts/pc-worker/run-ai-job001-mixed.ps1',
+            'scripts/pc-worker/install-groq-runtime-secret.ps1',
+            'scripts/pc-worker/invoke-groq-runtime.ps1',
+            'scripts/pc-worker/deploy-ai-api-runtime.ps1'
           )) {
             $errors = $null
             $tokens = $null

@@ -87,3 +87,12 @@ Local Multi-AI orchestration is now physically proven on PC01. Cloud API integra
 - PowerShell parse, scheduler regression, orchestration regression, mixed self-test PASS.
 - Full local CI: 129/129 unit tests PASS; Playwright E2E 1/1 PASS; build/typecheck PASS.
 - Live Groq rerun still required because the API key is intentionally removed from process memory after each Owner-entered test.
+## Persistent Groq runtime preparation — 2026-09-08
+- Owner authorized continuation after live Groq JOB-001 PASS.
+- Added DPAPI LocalMachine secret installer; key is not stored plaintext and ACL is SYSTEM/Administrators only.
+- Free Tier proof is explicit, priceUsd=0, paidFallbackAllowed=false, and expires after a bounded proof window.
+- Added persistent runtime invoker that decrypts only in-process, sets Groq env only for the child job, then clears it.
+- Added `D:\TigerIQ\Runtime\ai-api-v1` deploy wrapper; no active service was restarted or modified.
+- Pre-secret runtime verification: parser PASS, zero-cost policy PASS, scheduler PASS, orchestration PASS, mixed self-test PASS.
+- Missing secret path fails closed with `GROQ_RUNTIME_SECRET_MISSING`; no network call is made.
+- Runtime deployment before commit is explicitly marked `:DIRTY` and must be redeployed after exact-head commit.
