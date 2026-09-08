@@ -24,15 +24,15 @@ $memFree = [double]$os.FreePhysicalMemory * 1KB
 $memUsed = $memTotal - $memFree
 $uptimeSeconds = [math]::Floor(((Get-Date) - $os.LastBootUpTime).TotalSeconds)
 
-$driveName = if(Test-Path 'F:\'){ 'F' } else { 'C' }
+$driveName = if(Test-Path 'D:\'){ 'D' } elseif(Test-Path 'F:\'){ 'F' } else { 'C' }
 $driveInfo = New-Object System.IO.DriveInfo($driveName)
 $diskTotal = [double]$driveInfo.TotalSize
 $diskFree = [double]$driveInfo.AvailableFreeSpace
 
 $workers = @()
 try {
-  $workers = @(Get-CimInstance Win32_Process -Filter "Name='python.exe' OR Name='pythonw.exe'" -Property ProcessId,CommandLine | Where-Object {
-    $_.CommandLine -and ($_.CommandLine -like '*worker-github-queue.py*' -or $_.CommandLine -like '*TigerIQ*Worker*worker.py*' -or $_.CommandLine -like '*worker_impl.py*')
+  $workers = @(Get-CimInstance Win32_Process -Filter "Name='python.exe' OR Name='pythonw.exe' OR Name='node.exe'" -Property ProcessId,CommandLine | Where-Object {
+    $_.CommandLine -and ($_.CommandLine -like '*worker-github-queue.py*' -or $_.CommandLine -like '*TigerIQ*Worker*worker.py*' -or $_.CommandLine -like '*worker_impl.py*' -or $_.CommandLine -like '*pc01-native-worker*standalone.js*')
   })
 } catch {}
 $worker = $workers | Select-Object -First 1

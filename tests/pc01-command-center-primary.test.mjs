@@ -29,6 +29,8 @@ describe('WO-059 PC01 primary Command Center safety', () => {
 
   it('collects real PC01 runtime and workforce sources without credentials', () => {
     expect(telemetry).toContain('worker-github-queue.py');
+    expect(telemetry).toContain('pc01-native-worker');
+    expect(telemetry).toContain("Test-Path 'D:\\'");
     expect(telemetry).toContain('/api/workforce/status');
     expect(telemetry).toContain('employeesTotal');
     expect(telemetry).toContain('tasksActive');

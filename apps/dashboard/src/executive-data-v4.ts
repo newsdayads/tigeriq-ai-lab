@@ -215,19 +215,30 @@ function ownerAction(comments: Comment[]): { required: boolean; text: string } {
   return { required: false, text: 'Không có việc cần anh Sơn' };
 }
 
-function systemRows(telemetry: ServerTelemetry): ExecutiveSystemV4[] {
+export function systemRows(telemetry: ServerTelemetry): ExecutiveSystemV4[] {
   const cpu = telemetry.cpu?.utilizationPercent;
   const ram = telemetry.memory?.utilizationPercent;
   const serverNote = telemetry.available
-    ? [typeof cpu === 'number' ? `CPU ${Math.round(cpu)}%` : null, typeof ram === 'number' ? `RAM ${Math.round(ram)}%` : null, telemetry.tailscale?.ip ? `Tailscale ${telemetry.tailscale.ip}` : null].filter(Boolean).join(' · ') || 'Máy chủ có phản hồi'
+    ? [typeof cpu === 'number' ? `CPU ${Math.round(cpu)}%` : null, typeof ram === 'number' ? `RAM ${Math.round(ram)}%` : null, telemetry.disk?.drive ? `Disk ${telemetry.disk.drive}` : null].filter(Boolean).join(' · ') || 'Máy chủ có phản hồi'
     : 'Chưa có telemetry máy chủ';
-  const controlOnline = telemetry.controller?.online === true;
-  const workerOnline = telemetry.worker?.online === true;
+  const state = (online: boolean | null | undefined, ok: string, missing: string): Pick<ExecutiveSystemV4,'status'|'tone'|'note'> => online === true ? { status: 'Hoạt động', tone: 'active', note: ok } : online === false ? { status: 'Không hoạt động', tone: 'blocked', note: missing } : { status: 'Chưa xác minh', tone: 'unknown', note: missing };
+  const control = state(telemetry.controller?.online, telemetry.controller?.port ? `Cổng ${telemetry.controller.port} phản hồi` : 'Controller phản hồi', 'Chưa có phản hồi Controller');
+  const worker = state(telemetry.worker?.online, `${telemetry.worker?.instances ?? 0} instance · PID ${telemetry.worker?.pid ?? '—'}`, 'Chưa xác minh Native Worker');
+  const postgres = state(telemetry.postgresql?.online, `Cổng ${telemetry.postgresql?.port ?? 5432} phản hồi`, 'Chưa xác minh PostgreSQL');
+  const ollama = state(telemetry.ollama?.online, `${telemetry.ollama?.models?.length ?? 0} model local`, 'Chưa xác minh Ollama');
   return [
     { key: 'pc01', name: 'PC01 Server', status: telemetry.available ? 'Hoạt động' : 'Chưa xác minh', tone: telemetry.available ? 'active' : 'unknown', note: serverNote },
-    { key: 'control', name: 'Control Plane', status: controlOnline ? 'Hoạt động' : 'Chưa xác minh', tone: controlOnline ? 'active' : 'unknown', note: controlOnline ? (telemetry.controller?.port ? `Cổng ${telemetry.controller.port} phản hồi` : 'Controller phản hồi') : 'Chưa có phản hồi Controller' },
-    { key: 'web', name: 'Web Local', status: 'Hoạt động', tone: 'active', note: 'Renderer hiện hành đang phục vụ trang này' },
-    { key: 'worker', name: 'Auto Worker', status: workerOnline ? 'Hoạt động' : 'Chưa xác minh', tone: workerOnline ? 'active' : 'unknown', note: workerOnline ? `${telemetry.worker?.instances ?? 0} instance đang chạy` : 'Chưa xác minh Worker' },
+    { key: 'control', name: 'Workforce Controller', ...control },
+    { key: 'worker', name: 'Native Worker', ...worker },
+    { key: 'planner', name: 'Autonomous Planner', status: 'Chưa xác minh', tone: 'unknown', note: 'Chưa có telemetry contract trong Web V5' },
+    { key: 'orchestrator', name: 'Mission Orchestrator', status: 'Chưa xác minh', tone: 'unknown', note: 'Chưa có telemetry contract trong Web V5' },
+    { key: 'supervisor', name: 'Autonomy Supervisor', status: 'Chưa xác minh', tone: 'unknown', note: 'Chưa có telemetry contract trong Web V5' },
+    { key: 'web', name: 'Command Center / Web Control', status: 'Hoạt động', tone: 'active', note: 'Renderer V5 hiện hành đang phục vụ trang này' },
+    { key: 'postgresql', name: 'PostgreSQL', ...postgres },
+    { key: 'ollama', name: 'Ollama', ...ollama },
+    { key: 'openclaw', name: 'OpenClaw', status: 'Chưa xác minh', tone: 'unknown', note: 'Chưa có telemetry contract trong Web V5' },
+    { key: 'browser', name: 'Browser Lane', status: 'Chưa xác minh', tone: 'unknown', note: 'Chưa có telemetry contract trong Web V5' },
+    { key: 'remote', name: 'Remote CMD', status: 'Chưa xác minh', tone: 'unknown', note: 'Chưa có telemetry contract trong Web V5' },
   ];
 }
 
