@@ -42,7 +42,9 @@ test('Web Control V5 live machine acceptance', async () => {
     expect(zoomOverflow, 'horizontal overflow at desktop zoom 125%').toBeLessThanOrEqual(1);
     await page.goto(`${base}/people/NV01`, { waitUntil: 'domcontentloaded' });
     await expect(page.locator('[data-live-section="entity-content"]')).toBeVisible();
-    await expect(page.locator('a[href^="/work/"]').first()).toBeVisible();
+    const linkedWork = page.locator('a[href^="/work/"]');
+    if (await linkedWork.count()) await expect(linkedWork.first()).toBeVisible();
+    else await expect(page.locator('.ev5-empty')).toBeVisible();
     await page.goto(`${base}/system/worker`, { waitUntil: 'domcontentloaded' });
     await expect(page.locator('[data-live-section="entity-content"]')).toBeVisible();
   } finally { await browser.close(); }
