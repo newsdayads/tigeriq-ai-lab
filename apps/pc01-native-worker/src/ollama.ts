@@ -2,7 +2,7 @@ import { numberValue, Semaphore, stringValue, type OllamaMetrics } from './types
 
 export class OllamaProvider {
   readonly semaphore:Semaphore;
-  constructor(readonly endpoint='http://127.0.0.1:11434',readonly model='qwen3:8b',readonly numCtx=4096,maxConcurrency=2,readonly timeoutMs=120_000){this.semaphore=new Semaphore(maxConcurrency);}
+  constructor(readonly endpoint='http://127.0.0.1:11434',readonly model='qwen3:4b',readonly numCtx=4096,maxConcurrency=2,readonly timeoutMs=120_000){this.semaphore=new Semaphore(maxConcurrency);}
   async health():Promise<Record<string,unknown>>{
     const response=await this.fetchWithTimeout('/api/tags',{method:'GET'},10_000);if(!response.ok)throw new Error(`OLLAMA_HEALTH_${response.status}`);
     const body=await response.json() as Record<string,unknown>;return {ok:true,model:this.model,models:Array.isArray(body.models)?body.models.length:undefined};
