@@ -7,6 +7,7 @@ import type { AddressInfo } from 'node:net';
 import { resolve } from 'node:path';
 import type { WorkOrderSnapshot } from '../../../packages/control-plane/src/index.js';
 import { buildDashboard } from './index.js';
+import { listTypedCapabilities, WorkforceControllerV1Client, type ExecutionSubmitter, type TypedExecutionRequest } from './typed-execution.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -72,6 +73,9 @@ export interface CommandCenterOptions {
   repo?: string;
   submitJob?: (instruction: string, priority: string) => Promise<string>;
   serverTelemetry?: () => Promise<ServerTelemetry>;
+  executionSubmitter?: ExecutionSubmitter;
+  workforceControllerUrl?: string;
+  workforceIngressToken?: string;
 }
 
 type Session = { csrf: string; createdAt: number };
@@ -134,6 +138,14 @@ function getSession(request: IncomingMessage): Session | null {
     return null;
   }
   return session;
+}
+
+async function readJsonObject(request: IncomingMessage): Promise<Record<string, unknown>> {
+  const chunks: Buffer[] = []; let total = 0;
+  for await (const chunk of request) { const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk); total += buffer.length; if (total > MAX_BODY_BYTES) throw new Error('payload_too_large'); chunks.push(buffer); }
+  const parsed = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}') as unknown;
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('invalid_json_object');
+  return parsed as Record<string, unknown>;
 }
 
 async function readForm(request: IncomingMessage): Promise<URLSearchParams> {
@@ -353,6 +365,9 @@ export async function startDashboard(source: DashboardSource, options: CommandCe
   const commandSecret = options.commandSecret ?? process.env.TIGERIQ_COMMAND_SECRET ?? '';
   const createJob = options.submitJob ?? ((instruction: string, priority: string) => submitGithubJob(repo, instruction, priority));
   const getTelemetry = options.serverTelemetry ?? collectPc01Telemetry;
+  const workforceControllerUrl = options.workforceControllerUrl ?? process.env.TIGERIQ_WORKFORCE_CONTROLLER_URL ?? '';
+  const workforceIngressToken = options.workforceIngressToken ?? process.env.TIGERIQ_WORKFORCE_INGRESS_TOKEN ?? '';
+  const executionSubmitter = options.executionSubmitter ?? (workforceControllerUrl && workforceIngressToken ? new WorkforceControllerV1Client(workforceControllerUrl, workforceIngressToken) : undefined);
 
   const server = createServer(async (request, response) => {
     cleanExpiredState();
@@ -364,6 +379,25 @@ export async function startDashboard(source: DashboardSource, options: CommandCe
       }
       if (request.method === 'GET' && path === '/api/server') {
         return respond(response, 200, 'application/json; charset=utf-8', JSON.stringify(await getTelemetry()));
+      }
+      if (request.method === 'GET' && path === '/api/execution-capabilities') {
+        return respond(response, 200, 'application/json; charset=utf-8', JSON.stringify({ configured: Boolean(executionSubmitter), capabilities: listTypedCapabilities() }));
+      }
+      if (request.method === 'POST' && path === '/api/executions') {
+        const session = getSession(request);
+        if (!commandSecret || !session) return respond(response, 401, 'application/json; charset=utf-8', JSON.stringify({ error: 'unauthorized' }));
+        if (!executionSubmitter) return respond(response, 503, 'application/json; charset=utf-8', JSON.stringify({ error: 'typed_execution_not_configured' }));
+        const data = await readJsonObject(request);
+        const csrf = typeof data.csrf === 'string' ? data.csrf : '';
+        if (!safeEqual(csrf, session.csrf)) return respond(response, 403, 'application/json; charset=utf-8', JSON.stringify({ error: 'csrf_rejected' }));
+        const capability = typeof data.capability === 'string' ? data.capability : '';
+        if (!listTypedCapabilities().includes(capability as never)) return respond(response, 400, 'application/json; charset=utf-8', JSON.stringify({ error: 'capability_unregistered' }));
+        const idempotencyKey = typeof data.idempotencyKey === 'string' ? data.idempotencyKey : '';
+        const objective = typeof data.objective === 'string' ? data.objective : undefined;
+        const priority = typeof data.priority === 'string' ? data.priority : undefined;
+        const input = data.input && typeof data.input === 'object' && !Array.isArray(data.input) ? data.input as Record<string, unknown> : undefined;
+        const receipt = await executionSubmitter.submit({ capability, idempotencyKey, objective, priority, input } as TypedExecutionRequest);
+        return respond(response, 202, 'application/json; charset=utf-8', JSON.stringify({ ok: true, receipt }));
       }
       if (request.method === 'POST' && path === '/login') {
         if (!commandSecret) return respond(response, 503, 'application/json; charset=utf-8', JSON.stringify({ error: 'write_auth_not_configured' }));
