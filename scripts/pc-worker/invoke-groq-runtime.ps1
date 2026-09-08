@@ -6,6 +6,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+Add-Type -AssemblyName System.Security
 $secretPath = 'D:\TigerIQ\Secrets\groq-api-key.dpapi'
 $proofPath = 'D:\TigerIQ\Secrets\groq-free-tier-proof.json'
 $harness = Join-Path $PSScriptRoot 'run-ai-job001-mixed.ps1'

@@ -3,6 +3,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+Add-Type -AssemblyName System.Security
 if ([Environment]::MachineName -ne 'PC01') { throw 'GROQ_SECRET_WRONG_HOST' }
 if ($ProofDays -lt 1 -or $ProofDays -gt 90) { throw 'GROQ_SECRET_PROOF_DAYS_OUT_OF_RANGE' }
 $secretDir = 'D:\TigerIQ\Secrets'
