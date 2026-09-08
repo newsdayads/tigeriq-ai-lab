@@ -49,3 +49,11 @@ Final state: `COMPLETED`.
 
 ## Truth boundary / remaining work
 Local Multi-AI orchestration is now physically proven on PC01. Cloud API integration is NOT yet proven because no eligible cloud credential/auth route is currently available on PC01. Next work is to preserve zero-cost fail-closed policy, complete an eligible cloud provider route when credentials/auth are available, then run mixed local/cloud JOB-001 E2E and publish evidence. PC01 reboot recovery and Web Control are separate gates; they do not block OFF-MAIN AI/API integration work.
+## Groq Free guard — 2026-09-08
+- Official Groq docs confirm a Free Plan with model-specific limits; upgrading to Developer requires a payment method.
+- Guarded route added for `openai/gpt-oss-120b` with `service_tier=on_demand` only.
+- Runtime requires BOTH `GROQ_API_KEY` and explicit `TIGERIQ_GROQ_FREE_TIER_VERIFIED=true`; API key alone fails closed.
+- Paid tier is forbidden by config; missing/stale account-tier proof keeps Groq out of the eligible backend set.
+- PowerShell policy/self-test PASS, including exact-model validation and no-network refusal when free-tier proof is absent.
+- Full Vitest regression: 28 files / 126 tests PASS; TypeScript build PASS.
+- Current PC01 live state: Groq `KEY_MISSING`, therefore no cloud request was made and `cloudReadyCount` remains 0.

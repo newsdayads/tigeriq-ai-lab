@@ -11,7 +11,11 @@
   "execution": {
     "coordinatorRequiresProviderCredential": false,
     "serverProviderCallRequired": false,
-    "allowedLocations": ["pc01-local", "pc01-server", "employee-device"],
+    "allowedLocations": [
+      "pc01-local",
+      "pc01-server",
+      "employee-device"
+    ],
     "employeeDeviceCredentialOwner": "employee-device",
     "providerSecretsInEvidence": false
   },
@@ -26,17 +30,38 @@
     "candidateEligibilityRequired": true,
     "eligibilitySource": "guarded_live_probe_READY",
     "failClosedOnMissingEligibility": true,
-    "retryableFailures": ["timeout", "rate_limit", "outage"],
-    "terminalFailures": ["auth", "config", "invalid_response", "billing_unknown", "billing_nonzero"],
+    "retryableFailures": [
+      "timeout",
+      "rate_limit",
+      "outage"
+    ],
+    "terminalFailures": [
+      "auth",
+      "config",
+      "invalid_response",
+      "billing_unknown",
+      "billing_nonzero"
+    ],
     "staleLeaseTokenFailsClosed": true,
     "expiredLeaseRecoverable": true
   },
   "providers": {
     "groq": {
-      "enabled": false,
-      "mode": "disabled_until_zero_cost_billing_is_independently_proven",
+      "enabled": true,
+      "mode": "free_tier_only_explicit_account_proof",
       "credentialEnv": "GROQ_API_KEY",
-      "reason": "An API key or stated free quota does not prove that the backing account cannot incur paid usage."
+      "accountTierProofEnv": "TIGERIQ_GROQ_FREE_TIER_VERIFIED",
+      "requireFreeTierProof": true,
+      "model": "openai/gpt-oss-120b",
+      "serviceTier": "on_demand",
+      "allowPaidTier": false,
+      "role": [
+        "executor",
+        "reviewer",
+        "judge"
+      ],
+      "onQuota": "fallback",
+      "reason": "Groq Free Plan is routable only when the runtime explicitly proves the backing organization is still Free Tier; API key alone is insufficient."
     },
     "openrouter": {
       "enabled": true,
@@ -44,7 +69,11 @@
       "credentialEnv": "OPENROUTER_API_KEY",
       "model": "openrouter/free",
       "allowNonFreeModels": false,
-      "role": ["executor", "reviewer", "judge"],
+      "role": [
+        "executor",
+        "reviewer",
+        "judge"
+      ],
       "onQuota": "fallback"
     },
     "gemini_cli": {
@@ -52,7 +81,11 @@
       "mode": "google_account_login_only",
       "forbidApiKeyRoute": true,
       "forbidVertexRoute": true,
-      "role": ["executor", "reviewer", "judge"],
+      "role": [
+        "executor",
+        "reviewer",
+        "judge"
+      ],
       "onQuota": "fallback"
     },
     "gemini_api": {
@@ -68,14 +101,23 @@
       "forbidCloudGatewayRoutes": true,
       "forbidUsageCredits": true,
       "requiredAuth": "claude_ai_pro_or_max_subscription",
-      "role": ["executor", "reviewer", "judge"],
+      "role": [
+        "executor",
+        "reviewer",
+        "judge"
+      ],
       "onQuota": "fallback",
       "reason": "Claude Code subscription usage is acceptable only when API credentials and usage-credit/PAYG continuation are both proven unavailable; otherwise quota exhaustion must fall back or stop."
     },
     "ollama": {
       "enabled": true,
       "mode": "local_zero_cost",
-      "role": ["executor", "reviewer", "judge", "fallback"],
+      "role": [
+        "executor",
+        "reviewer",
+        "judge",
+        "fallback"
+      ],
       "onQuota": "continue_local"
     }
   },
@@ -87,6 +129,11 @@
     "independentReviewRequired": true,
     "independentJudgeRequired": true,
     "requiredDistinctBackendIdentities": 3,
-    "fallbackOrder": ["ollama", "gemini_cli", "openrouter"]
+    "fallbackOrder": [
+      "ollama",
+      "groq",
+      "openrouter",
+      "gemini_cli"
+    ]
   }
 }

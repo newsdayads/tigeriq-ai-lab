@@ -208,6 +208,36 @@ function Invoke-ClaudeSubscriptionProbe([string]$Exe) {
   return $result
 }
 
+function Test-GroqFreeResponse([string]$JsonText,[string]$ExpectedMarker,[string]$ExpectedModel) {
+  try { $response=$JsonText|ConvertFrom-Json } catch { return [ordered]@{ok=$false;error='GROQ_INVALID_JSON'} }
+  $model=[string](Get-PropertyValue $response 'model')
+  if([string]::IsNullOrWhiteSpace($model) -or $model -ne $ExpectedModel){ return [ordered]@{ok=$false;error='GROQ_MODEL_MISMATCH'} }
+  $choices=@(Get-PropertyValue $response 'choices')
+  if($choices.Count -lt 1){ return [ordered]@{ok=$false;error='GROQ_MISSING_CHOICE'} }
+  $message=Get-PropertyValue $choices[0] 'message'
+  $content=[string](Get-PropertyValue $message 'content')
+  if($content.Trim() -ne $ExpectedMarker){ return [ordered]@{ok=$false;error='UNEXPECTED_RESPONSE'} }
+  return [ordered]@{ok=$true;error='';model=$model}
+}
+
+function Invoke-GroqFreeProbe {
+  $proof=[Environment]::GetEnvironmentVariable('TIGERIQ_GROQ_FREE_TIER_VERIFIED','Process')
+  if($proof -notmatch '^(?i:true|1|yes|on)$'){ return [ordered]@{exitCode=9;timeout=$false;output='';error='GROQ_FREE_TIER_UNPROVEN'} }
+  $key=[Environment]::GetEnvironmentVariable('GROQ_API_KEY','Process')
+  if([string]::IsNullOrWhiteSpace($key)){ return [ordered]@{exitCode=4;timeout=$false;output='';error='GROQ_KEY_MISSING'} }
+  try {
+    $headers=@{Authorization=('Bearer '+$key);'Content-Type'='application/json'}
+    $body=@{model='openai/gpt-oss-120b';service_tier='on_demand';messages=@(@{role='user';content='Return exactly TIGERIQ_GROQ_FREE_READY'});max_tokens=20;temperature=0} | ConvertTo-Json -Depth 5
+    $job=Start-Job -ScriptBlock { param($h,$b) Invoke-RestMethod -Method Post -Uri 'https://api.groq.com/openai/v1/chat/completions' -Headers $h -Body $b -TimeoutSec 30 | ConvertTo-Json -Depth 8 } -ArgumentList $headers,$body
+    if(-not (Wait-Job $job -Timeout $TimeoutSeconds)){ Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue; return [ordered]@{exitCode=$null;timeout=$true;output='';error='TIMEOUT'} }
+    $raw=(Receive-Job $job -ErrorAction SilentlyContinue | Out-String)
+    Remove-Job $job -Force -ErrorAction SilentlyContinue
+    $validation=Test-GroqFreeResponse $raw 'TIGERIQ_GROQ_FREE_READY' 'openai/gpt-oss-120b'
+    if(-not $validation.ok){ return [ordered]@{exitCode=8;timeout=$false;output='';error=[string]$validation.error} }
+    return [ordered]@{exitCode=0;timeout=$false;output=("TIGERIQ_GROQ_FREE_READY model={0} freeTierProof=true" -f (Sanitize ([string]$validation.model)));error=''}
+  } catch { return [ordered]@{exitCode=6;timeout=$false;output='';error=(Sanitize $_.Exception.Message)} }
+}
+
 function Invoke-OpenRouterFreeProbe {
   $key = [Environment]::GetEnvironmentVariable('OPENROUTER_API_KEY','Process')
   if ([string]::IsNullOrWhiteSpace($key)) { return [ordered]@{exitCode=4;timeout=$false;output='';error='OPENROUTER_KEY_MISSING'} }
@@ -256,6 +286,10 @@ function Run-SelfTest {
   $nonFree='{"model":"paid/model","choices":[{"message":{"content":"TIGERIQ_OPENROUTER_FREE_READY"}}],"usage":{"cost":0}}'
   $missingCost='{"model":"meta-llama/example:free","choices":[{"message":{"content":"TIGERIQ_OPENROUTER_FREE_READY"}}],"usage":{}}'
   $paid='{"model":"meta-llama/example:free","choices":[{"message":{"content":"TIGERIQ_OPENROUTER_FREE_READY"}}],"usage":{"cost":0.001}}'
+  $groqOk='{"model":"openai/gpt-oss-120b","choices":[{"message":{"content":"TIGERIQ_GROQ_FREE_READY"}}]}'
+  $groqWrongModel='{"model":"openai/gpt-oss-20b","choices":[{"message":{"content":"TIGERIQ_GROQ_FREE_READY"}}]}'
+  Assert-True ([bool](Test-GroqFreeResponse $groqOk 'TIGERIQ_GROQ_FREE_READY' 'openai/gpt-oss-120b').ok) 'groq_expected_model_accept'
+  Assert-True ((Test-GroqFreeResponse $groqWrongModel 'TIGERIQ_GROQ_FREE_READY' 'openai/gpt-oss-120b').error -eq 'GROQ_MODEL_MISMATCH') 'groq_wrong_model_reject'
   Assert-True ([bool](Test-OpenRouterFreeResponse $free 'TIGERIQ_OPENROUTER_FREE_READY').ok) 'openrouter_free_cost_zero_accept'
   Assert-True ((Test-OpenRouterFreeResponse $nonFree 'TIGERIQ_OPENROUTER_FREE_READY').error -eq 'OPENROUTER_NONFREE_MODEL') 'openrouter_nonfree_reject'
   Assert-True ((Test-OpenRouterFreeResponse $missingCost 'TIGERIQ_OPENROUTER_FREE_READY').error -eq 'OPENROUTER_COST_UNPROVEN') 'openrouter_missing_cost_reject'
@@ -277,7 +311,13 @@ function Run-SelfTest {
 
   $oldGeminiKey = [Environment]::GetEnvironmentVariable('GEMINI_API_KEY','Process')
   $oldAnthropicKey = [Environment]::GetEnvironmentVariable('ANTHROPIC_API_KEY','Process')
+  $oldGroqKey = [Environment]::GetEnvironmentVariable('GROQ_API_KEY','Process')
+  $oldGroqProof = [Environment]::GetEnvironmentVariable('TIGERIQ_GROQ_FREE_TIER_VERIFIED','Process')
   try {
+    [Environment]::SetEnvironmentVariable('GROQ_API_KEY','SELFTEST_NO_NETWORK','Process')
+    [Environment]::SetEnvironmentVariable('TIGERIQ_GROQ_FREE_TIER_VERIFIED',$null,'Process')
+    $groqBlocked = Invoke-GroqFreeProbe
+    Assert-True ($groqBlocked.exitCode -eq 9 -and $groqBlocked.error -eq 'GROQ_FREE_TIER_UNPROVEN') 'groq_requires_explicit_free_tier_proof'
     [Environment]::SetEnvironmentVariable('GEMINI_API_KEY','SELFTEST_BLOCK','Process')
     $geminiBlocked = Invoke-GeminiSubscriptionProbe 'SHOULD_NOT_EXECUTE.exe'
     Assert-True ($geminiBlocked.exitCode -eq 2 -and $geminiBlocked.error -match '^BILLING_ROUTE_BLOCKED') 'gemini_billing_route_refusal'
@@ -287,6 +327,8 @@ function Run-SelfTest {
   } finally {
     [Environment]::SetEnvironmentVariable('GEMINI_API_KEY',$oldGeminiKey,'Process')
     [Environment]::SetEnvironmentVariable('ANTHROPIC_API_KEY',$oldAnthropicKey,'Process')
+    [Environment]::SetEnvironmentVariable('GROQ_API_KEY',$oldGroqKey,'Process')
+    [Environment]::SetEnvironmentVariable('TIGERIQ_GROQ_FREE_TIER_VERIFIED',$oldGroqProof,'Process')
   }
 
   $shell = Resolve-Tool @('powershell.exe','pwsh.exe','pwsh')
@@ -300,7 +342,7 @@ function Run-SelfTest {
     $exitSeven = Invoke-External -Exe $cmd -ArgumentList @('/d','/s','/c','"exit 7"') -Timeout 5
     Assert-True (-not [bool]$exitZero.timeout -and [int]$exitZero.exitCode -eq 0) 'external_exit_zero_capture'
     Assert-True (-not [bool]$exitSeven.timeout -and [int]$exitSeven.exitCode -eq 7) 'external_exit_nonzero_capture'
-  }  [ordered]@{selfTest='PASS';billingRouteDenial='PASS';truthfulSubscriptionAuth='PASS';ollamaLiveProbeImplemented='PASS';timeoutKill='PASS';exitCodeCapture='PASS';openRouterModel='openrouter/free';openRouterResponseCostMustBeZero=$true;geminiApiPaidFallback=$false;claudeUsageCreditsRequiredProof=$true;timestampUtc=[DateTime]::UtcNow.ToString('o')} | ConvertTo-Json
+  }  [ordered]@{selfTest='PASS';billingRouteDenial='PASS';truthfulSubscriptionAuth='PASS';ollamaLiveProbeImplemented='PASS';timeoutKill='PASS';exitCodeCapture='PASS';groqFreeTierGuard='PASS';openRouterModel='openrouter/free';openRouterResponseCostMustBeZero=$true;geminiApiPaidFallback=$false;claudeUsageCreditsRequiredProof=$true;timestampUtc=[DateTime]::UtcNow.ToString('o')} | ConvertTo-Json
 }
 
 if ($SelfTest) { Run-SelfTest; exit 0 }
@@ -309,25 +351,29 @@ $gemini = New-StaticResult -Name 'gemini' -CommandNames @('gemini.cmd','gemini.e
 $claude = New-StaticResult -Name 'claude' -CommandNames @('claude.exe','claude.cmd','claude') -VersionArgs @('--version')
 $ollama = New-StaticResult -Name 'ollama' -CommandNames @('ollama.exe','ollama') -VersionArgs @('--version')
 $git = New-StaticResult -Name 'git' -CommandNames @('git.exe','git') -VersionArgs @('--version')
+$groqKey=[Environment]::GetEnvironmentVariable('GROQ_API_KEY','Process')
+$groqProof=[Environment]::GetEnvironmentVariable('TIGERIQ_GROQ_FREE_TIER_VERIFIED','Process')
+$groq=[ordered]@{name='groq';installed=$true;versionOk=$true;liveTested=$false;liveOk=$false;status=if([string]::IsNullOrWhiteSpace($groqKey)){'KEY_MISSING'}elseif($groqProof -notmatch '^(?i:true|1|yes|on)$'){'FREE_TIER_UNPROVEN'}else{'CONFIGURED_FREE_TIER_ONLY'};model='openai/gpt-oss-120b';serviceTier='on_demand'}
 $openrouter = [ordered]@{name='openrouter';installed=$true;versionOk=$true;liveTested=$false;liveOk=$false;status=if([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable('OPENROUTER_API_KEY','Process'))){'KEY_MISSING'}else{'CONFIGURED_FREE_ONLY'};model='openrouter/free'}
 
 if ($Live -and $gemini.installed -and $gemini.versionOk) { Set-LiveResult -Result $gemini -LiveResult (Invoke-GeminiSubscriptionProbe $gemini.path) -ExpectedMarker 'TIGERIQ_GEMINI_READY' }
 if ($Live -and $claude.installed -and $claude.versionOk) { Set-LiveResult -Result $claude -LiveResult (Invoke-ClaudeSubscriptionProbe $claude.path) -ExpectedMarker 'TIGERIQ_CLAUDE_READY' }
+if ($Live -and $groq.status -eq 'CONFIGURED_FREE_TIER_ONLY') { Set-LiveResult -Result $groq -LiveResult (Invoke-GroqFreeProbe) -ExpectedMarker 'TIGERIQ_GROQ_FREE_READY' }
 if ($Live -and $openrouter.status -eq 'CONFIGURED_FREE_ONLY') { Set-LiveResult -Result $openrouter -LiveResult (Invoke-OpenRouterFreeProbe) -ExpectedMarker 'TIGERIQ_OPENROUTER_FREE_READY' }
 if ($Live -and $ollama.installed -and $ollama.versionOk) { Set-LiveResult -Result $ollama -LiveResult (Invoke-OllamaLocalProbe $ollama.path) -ExpectedMarker 'TIGERIQ_OLLAMA_READY' }
 
-$cloudReady = @(@($gemini,$claude,$openrouter) | Where-Object { $_.status -eq 'READY' })
-$allReady = @(@($gemini,$claude,$openrouter,$ollama) | Where-Object { $_.status -eq 'READY' })
+$cloudReady = @(@($gemini,$claude,$groq,$openrouter) | Where-Object { $_.status -eq 'READY' })
+$allReady = @(@($gemini,$claude,$groq,$openrouter,$ollama) | Where-Object { $_.status -eq 'READY' })
 $summary = [ordered]@{
   probeCompleted=$true
   live=[bool]$Live
   subscriptionReady=([bool]$Live -and $cloudReady.Count -gt 0)
   localReady=([bool]$Live -and $ollama.status -eq 'READY')
   timestampUtc=[DateTime]::UtcNow.ToString('o')
-  tools=@($gemini,$claude,$openrouter,$ollama,$git)
+  tools=@($gemini,$claude,$groq,$openrouter,$ollama,$git)
   cloudReadyCount=$cloudReady.Count
   readyCount=$allReady.Count
-  policy=[ordered]@{billingMode='ZERO_COST_ONLY';openRouterModel='openrouter/free';openRouterResponseCostMustBeZero=$true;geminiApiKeyRoute='DISABLED';claudeUsageCredits='REQUIRE_EXTERNAL_DISABLED_PROOF';paidFallback=$false}
-  note=if($Live){'Live mode probes only guarded zero-cost routes. Gemini auth evidence is true only after a successful expected-marker response. OpenRouter is READY only when the returned model is :free and response usage.cost is exactly 0. Ollama local daemon capability is probed with `ollama list`; JOB-001 inference E2E remains separate. Any metered/provider route fails closed.'}else{'Static probe only. Real provider calls require eligible runtime credentials; unknown billing routes fail closed.'}
+  policy=[ordered]@{billingMode='ZERO_COST_ONLY';groqModel='openai/gpt-oss-120b';groqFreeTierProofRequired=$true;groqServiceTier='on_demand';openRouterModel='openrouter/free';openRouterResponseCostMustBeZero=$true;geminiApiKeyRoute='DISABLED';claudeUsageCredits='REQUIRE_EXTERNAL_DISABLED_PROOF';paidFallback=$false}
+  note=if($Live){'Live mode probes only guarded zero-cost routes. Groq is READY only with explicit Free Tier proof, a configured API key, exact allowed model, and on_demand service tier. Gemini auth evidence is true only after a successful expected-marker response. OpenRouter is READY only when the returned model is :free and response usage.cost is exactly 0. Ollama local daemon capability is probed with `ollama list`; JOB-001 inference E2E remains separate. Any metered/provider route fails closed.'}else{'Static probe only. Real provider calls require eligible runtime credentials; unknown billing routes fail closed.'}
 }
 $summary | ConvertTo-Json -Depth 7
