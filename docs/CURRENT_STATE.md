@@ -83,3 +83,13 @@ Satisfy the existing Secure V3 three-distinct-model review requirement through a
 Owner → Vy / Chief of Staff → Work Order → AI/Device Employee → Execution → Independent Review → Judge/Gate → Evidence/State → concise Owner report.
 
 No task is DONE solely because code or documentation changed. Runtime/deployment work requires applicable physical evidence and gates.
+
+## 2026-09-09 update — GitHub-first PC01 deployment
+- Preferred runtime update path is now: code → GitHub branch → CI/release artifact → PC01 artifact pull → candidate health check → atomic switch → rollback on failure.
+- PC01 live Command Center is verified on immutable release `21445a147e4351a43682afe46edd9667cfd0cd56`; HTTP health 200.
+- Updater V3 is enabled on a 2-minute cadence and last verified state is `NO_CHANGE` with successful task result.
+- GitHub service authentication is healthy; the stale interactive `gh` session is not a blocker for runtime automation.
+- Source/runtime path drift (`F:\TigerIQ` in repo vs `D:\TigerIQ` on PC01) was corrected on branch `vy/web-v5-release-channel-20260909`.
+- MAIN/Production remains untouched by this change.
+- Remaining P0: eliminate the legacy free-form GitHub queue execution path from Web Control after typed/controller E2E regression evidence. Until then do not claim the PC01 command path fully consolidated.
+- Evidence: `docs/evidence/PC01-GITHUB-RELEASE-CHANNEL-2026-09-09.md`.
