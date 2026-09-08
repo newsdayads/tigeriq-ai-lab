@@ -60,7 +60,7 @@ function Invoke-GroqMarker([string]$Marker) {
   if ([string]::IsNullOrWhiteSpace($key)) { return New-ProviderOutcome $false '' 'config' }
   try {
     $headers = @{ Authorization=('Bearer '+$key); 'Content-Type'='application/json' }
-    $payload = @{model='openai/gpt-oss-120b';service_tier='on_demand';messages=@(@{role='user';content=("Return exactly {0} and nothing else." -f $Marker)});stream=$false;max_tokens=32} | ConvertTo-Json -Depth 6
+    $payload = @{model='openai/gpt-oss-120b';service_tier='on_demand';messages=@(@{role='user';content=("Return exactly {0} and nothing else." -f $Marker)});stream=$false;reasoning_effort='low';max_completion_tokens=256} | ConvertTo-Json -Depth 6
     $job = Start-Job -ScriptBlock {
       param($h,$b,$timeout)
       try {

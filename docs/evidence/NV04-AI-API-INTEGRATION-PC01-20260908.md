@@ -79,3 +79,11 @@ Local Multi-AI orchestration is now physically proven on PC01. Cloud API integra
 - PowerShell policy/scheduler/orchestration/probe/mixed-harness guards PASS.
 - External cloud E2E remains intentionally blocked until `GROQ_API_KEY` plus verified Free Tier evidence are supplied.
 - WO-048 CI now also asserts `-Live` without credentials exits blocked with `networkCallMade=false`, preventing accidental cloud calls from CI.
+
+## Groq live test repair — 2026-09-08 evening
+- First Owner-entered live key attempt reached JOB-001 but executor stopped with sanitized `invalid_response`; no credential was persisted in evidence.
+- Groq verification marker request changed from deprecated `max_tokens=32` to `reasoning_effort=low` + `max_completion_tokens=256`, matching current Groq GPT-OSS reasoning API behavior.
+- Scheduler now treats `invalid_response` as bounded failover (max 3) instead of terminal; billing/auth/config remain terminal fail-closed.
+- PowerShell parse, scheduler regression, orchestration regression, mixed self-test PASS.
+- Full local CI: 129/129 unit tests PASS; Playwright E2E 1/1 PASS; build/typecheck PASS.
+- Live Groq rerun still required because the API key is intentionally removed from process memory after each Owner-entered test.

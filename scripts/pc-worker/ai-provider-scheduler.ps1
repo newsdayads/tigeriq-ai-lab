@@ -18,8 +18,8 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $script:SchedulerVersion = 'TIGERIQ_AI_PROVIDER_SCHEDULER_V1'
-$script:RetryableFailures = @('timeout','rate_limit','outage')
-$script:TerminalFailures = @('auth','config','invalid_response','billing_unknown','billing_nonzero')
+$script:RetryableFailures = @('timeout','rate_limit','outage','invalid_response')
+$script:TerminalFailures = @('auth','config','billing_unknown','billing_nonzero')
 
 function Assert-SchedulerId([string]$Value, [string]$Name) {
   if ([string]::IsNullOrWhiteSpace($Value) -or $Value -notmatch '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$') {

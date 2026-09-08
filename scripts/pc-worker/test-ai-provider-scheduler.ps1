@@ -61,6 +61,10 @@ try {
   $deduped = Invoke-SchedulerAction -State $state -Action Acquire -WorkOrderId 'WO-TEST-2' -Role reviewer -Candidates @('gemini:account') -EligibleBackendIdentities $eligible -MaxAttempts 3 -LeaseSeconds 30 -NowUtc $t0.AddSeconds(2)
   Assert-True ($deduped.status -eq 'DEDUPED_COMPLETED') 'completed_work_deduped'
 
+  $invalid1 = Invoke-SchedulerAction -State $state -Action Acquire -WorkOrderId 'WO-INVALID' -Role executor -Candidates @('openrouter:free','ollama:qwen') -EligibleBackendIdentities $eligible -MaxAttempts 3 -LeaseSeconds 30 -NowUtc $t0
+  $invalidRetry = Invoke-SchedulerAction -State $state -Action Fail -WorkOrderId 'WO-INVALID' -Role executor -LeaseToken $invalid1.leaseToken -FailureClass invalid_response -MaxAttempts 3 -LeaseSeconds 30 -NowUtc $t0.AddSeconds(1)
+  Assert-True ($invalidRetry.status -eq 'RETRY_READY') 'invalid_response_bounded_failover_ready'
+
   $expired1 = Invoke-SchedulerAction -State $state -Action Acquire -WorkOrderId 'WO-TEST-3' -Role judge -Candidates @('ollama:qwen') -EligibleBackendIdentities $eligible -MaxAttempts 3 -LeaseSeconds 5 -NowUtc $t0
   Assert-True ($expired1.status -eq 'LEASE_ACQUIRED') 'expiring_lease_acquired'
   $expired2 = Invoke-SchedulerAction -State $state -Action Acquire -WorkOrderId 'WO-TEST-3' -Role judge -Candidates @('gemini:account') -EligibleBackendIdentities $eligible -MaxAttempts 3 -LeaseSeconds 5 -NowUtc $t0.AddSeconds(6)
