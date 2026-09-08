@@ -9,7 +9,8 @@ $files = @(
   'ai-provider-scheduler.ps1',
   'ai-job-orchestrator.ps1',
   'run-ai-job001-mixed.ps1',
-  'invoke-groq-runtime.ps1'
+  'invoke-groq-runtime.ps1',
+  'install-groq-runtime-secret.ps1'
 )
 New-Item -ItemType Directory -Path $RuntimeDir -Force | Out-Null
 foreach ($file in $files) {
