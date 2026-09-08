@@ -239,4 +239,18 @@ describe('PC01 runtime self-heal', () => {
     expect(persisted.autoWorkerDeploy).toBe('READY');
     expect(persisted.error).toContain('CONTROLLER_RUNTIME_REPAIR_NO_PASS');
   });
+  it('uses the current native PC01 stack without touching legacy Worker/OpenClaw', async () => {
+    const f = await fixture(`${readyRoles}\n${queueMarker}`); const calls:string[]=[];
+    const tasks = {
+      'TigerIQ PC01 Native Worker':'Running','TigerIQ Workforce Controller':'Running','TigerIQ Autonomous Planner':'Running',
+      'TigerIQ Mission Orchestrator':'Running','TigerIQ Autonomy Supervisor':'Running','TigerIQ Desktop Commander Remote':'Running','TigerIQ Ollama Runtime':'Running',
+    };
+    const result = await selfHealPc01Runtime({ host:'100.97.23.87', repo:'newsdayads/tigeriq-ai-lab', repoRoot:f.root,
+      statePath:f.state, runtimeMode:'native', run:async(_file,args)=>{ calls.push(args.join(' ')); return { stdout:JSON.stringify({status:'PASS',mutated:false,tasks,ports:{'8787':true,'8790':true,'5432':true,'11434':true}}), stderr:'' }; } });
+    expect(result.result).toBe('READY'); expect(result.runtimeMode).toBe('NATIVE');
+    expect(result.workerTask).toBe('Running'); expect(result.nativePorts?.['8787']).toBe(true);
+    expect(calls).toHaveLength(1); expect(calls[0]).toContain('TigerIQ PC01 Native Worker');
+    expect(calls[0]).not.toContain('TigerIQ Worker\''); expect(calls[0]).not.toContain('OpenClaw');
+  });
+
 });

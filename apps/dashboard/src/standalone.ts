@@ -223,14 +223,14 @@ const backend = await startDashboard(dashboardSource, {
   submitJob: submitPc01WorkOrder,
 });
 
-const cockpitV5 = await startOwnerCockpitV5({ backendUrl: backend.url, repo, host: '127.0.0.1', port: 0, runSelfHeal: () => selfHealPc01Runtime({ host, repo, repoRoot: process.env.TIGERIQ_REPO_ROOT }) });
+const cockpitV5 = await startOwnerCockpitV5({ backendUrl: backend.url, repo, host: '127.0.0.1', port: 0, runSelfHeal: () => selfHealPc01Runtime({ host, repo, repoRoot: process.env.TIGERIQ_REPO_ROOT, runtimeMode: 'native', statePath: 'D:\\TigerIQ\\CommandCenter\\worker-self-heal-v1.json' }) });
 const cockpitV8 = await startOwnerCockpitV8({ cockpitUrl: cockpitV5.url, backendUrl: backend.url, repo, host: '127.0.0.1', port: 0 });
 const cockpitV10 = await startOwnerCockpitV10({ cockpitUrl: cockpitV8.url, host: '127.0.0.1', port: 0 });
 const cockpitV11 = await startOwnerCockpitV11({ cockpitUrl: cockpitV10.url, host: '127.0.0.1', port: 0 });
 const cockpitV12 = await startOwnerCockpitV12({ cockpitUrl: cockpitV11.url, host: '127.0.0.1', port: 0 });
 const server = await startOwnerCockpitV17({ stableUrl: cockpitV12.url, backendUrl: backend.url, repo, host, port });
 void emitWebLocalRuntimeEvidence(server.url);
-schedulePc01RuntimeSelfHeal({ host, repo, repoRoot: process.env.TIGERIQ_REPO_ROOT });
+schedulePc01RuntimeSelfHeal({ host, repo, repoRoot: process.env.TIGERIQ_REPO_ROOT, runtimeMode: 'native', statePath: 'D:\\TigerIQ\\CommandCenter\\worker-self-heal-v1.json' });
 
 console.log(`TigerIQ Owner Cockpit V17 / Executive UI V4.0 online: ${server.url}`);
 console.log(`Stable functional surface V12: ${cockpitV12.url}`);

@@ -22,6 +22,9 @@ export type RuntimeSelfHealState = {
   watchdogRepairScript?: string;
   controllerDiagnoseRepairScript?: string;
   controllerRuntimeRepairScript?: string;
+  runtimeMode?: 'LEGACY' | 'NATIVE';
+  nativeTasks?: Record<string, string>;
+  nativePorts?: Record<string, boolean>;
   error?: string;
 };
 
@@ -32,6 +35,7 @@ export interface RuntimeSelfHealOptions {
   workerImpl?: string;
   statePath?: string;
   run?: (file: string, args: string[], timeoutMs: number) => Promise<{ stdout: string; stderr: string }>;
+  runtimeMode?: 'legacy' | 'native';
 }
 
 const OLD_REVIEWER = "REVIEWER_MODEL = os.getenv('TIGERIQ_REVIEWER_MODEL', '').strip()";
@@ -77,8 +81,19 @@ function autoWorkerPhysical(stdout: string): 'CONFIRMED' | 'PENDING' | 'UNKNOWN'
   return 'UNKNOWN';
 }
 
+function nativeRuntimePowerShell(): string {
+  return [
+    "$ErrorActionPreference='Stop'",
+    "$names=@('TigerIQ PC01 Native Worker','TigerIQ Workforce Controller','TigerIQ Autonomous Planner','TigerIQ Mission Orchestrator','TigerIQ Autonomy Supervisor','TigerIQ Desktop Commander Remote','TigerIQ Ollama Runtime')",
+    "$states=[ordered]@{};$mutated=$false",
+    "foreach($name in $names){$t=Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue;if(-not $t){$states[$name]='MISSING';continue};if([string]$t.State -eq 'Disabled'){$states[$name]='Disabled';continue};if([string]$t.State -ne 'Running'){Start-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue;Start-Sleep -Milliseconds 800;$mutated=$true};$t=Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue;$states[$name]=if($t){[string]$t.State}else{'MISSING'}}",
+    "$ports=[ordered]@{};foreach($p in @(8787,8790,5432,11434)){$ports[[string]$p]=[bool](Get-NetTCPConnection -State Listen -LocalPort $p -ErrorAction SilentlyContinue)}",
+    "[ordered]@{status='PASS';mutated=$mutated;tasks=$states;ports=$ports}|ConvertTo-Json -Compress -Depth 6",
+  ].join(';');
+}
+
 export async function selfHealPc01Runtime(options: RuntimeSelfHealOptions): Promise<RuntimeSelfHealState> {
-  const statePath = options.statePath ?? 'F:\\TigerIQ\\CommandCenter\\worker-self-heal-v1.json';
+  const statePath = options.statePath ?? 'D:\\TigerIQ\\CommandCenter\\worker-self-heal-v1.json';
   const timestamp = () => new Date().toISOString();
   if (!livePc01Host(options.host) || process.env.TIGERIQ_DISABLE_RUNTIME_SELF_HEAL === '1') {
     const state: RuntimeSelfHealState = { result: 'SKIPPED', updatedAt: timestamp(), error: 'candidate_or_disabled' };
@@ -93,7 +108,25 @@ export async function selfHealPc01Runtime(options: RuntimeSelfHealOptions): Prom
 
   const run = options.run ?? defaultRun;
   const repoRoot = options.repoRoot ?? process.env.TIGERIQ_REPO_ROOT ?? process.cwd();
-  const workerImpl = options.workerImpl ?? 'F:\\TigerIQ\\Worker\\worker_impl.py';
+  if (options.runtimeMode === 'native') {
+    try {
+      const response = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', nativeRuntimePowerShell()], 60_000);
+      const line = response.stdout.split(/\r?\n/).map((value) => value.trim()).filter(Boolean).at(-1) ?? '{}';
+      const parsed = JSON.parse(line) as { mutated?: boolean; tasks?: Record<string, string>; ports?: Record<string, boolean> };
+      const tasks = parsed.tasks ?? {}; const ports = parsed.ports ?? {};
+      const taskNames = ['TigerIQ PC01 Native Worker','TigerIQ Workforce Controller','TigerIQ Autonomous Planner','TigerIQ Mission Orchestrator','TigerIQ Autonomy Supervisor','TigerIQ Desktop Commander Remote','TigerIQ Ollama Runtime'];
+      const portNames = ['8787','8790','5432','11434'];
+      const badTasks = taskNames.filter((name) => tasks[name] !== 'Running');
+      const badPorts = portNames.filter((name) => ports[name] !== true);
+      if (badTasks.length || badPorts.length) throw new Error(`NATIVE_RUNTIME_NOT_READY tasks=${badTasks.join(',') || 'none'} ports=${badPorts.join(',') || 'none'}`);
+      const state: RuntimeSelfHealState = { result: parsed.mutated ? 'REPAIRED' : 'READY', updatedAt: timestamp(), workerTask: tasks['TigerIQ PC01 Native Worker'] ?? 'UNKNOWN', runtimeMode: 'NATIVE', nativeTasks: tasks, nativePorts: ports };
+      await save(statePath, state); return state;
+    } catch (error) {
+      const state: RuntimeSelfHealState = { result: 'FAILED', updatedAt: timestamp(), runtimeMode: 'NATIVE', error: clipped(error instanceof Error ? error.message : error) };
+      await save(statePath, state).catch(() => undefined); return state;
+    }
+  }
+  const workerImpl = options.workerImpl ?? 'D:\\TigerIQ\\Worker\\worker_impl.py';
   const repairScript = resolve(repoRoot, 'scripts', 'pc-worker', 'repair-secure-worker-model-roles.ps1');
   const queueRepairScript = resolve(repoRoot, 'scripts', 'pc-worker', 'repair-secure-worker-queue-resilience.ps1');
   const autoWorkerDeployScript = resolve(repoRoot, 'scripts', 'pc-worker', 'install-autoworker-zero-touch-hook.ps1');
