@@ -559,7 +559,9 @@ interface ProviderHttpOptions {
   fetchImpl?: typeof fetch;
 }
 
-export interface GeminiBackendOptions extends ProviderHttpOptions {}
+export interface GeminiBackendOptions extends ProviderHttpOptions {
+  freeTierVerified?: boolean;
+}
 export interface GroqBackendOptions extends ProviderHttpOptions {
   freeTierVerified?: boolean;
 }
@@ -572,15 +574,24 @@ export function createGeminiBackendAdapter(options: GeminiBackendOptions = {}): 
   const fetchImpl = options.fetchImpl ?? fetch;
   const baseUrl = (options.baseUrl ?? 'https://generativelanguage.googleapis.com/v1beta').replace(/\/$/, '');
   const timeoutMs = Math.max(1, options.timeoutMs ?? 120_000);
+  const allowedModel = 'gemini-2.5-flash';
+  const freeTierVerified = options.freeTierVerified
+    ?? process.env.TIGERIQ_GEMINI_FREE_TIER_VERIFIED?.trim().toLowerCase() === 'true';
   return {
     provider: 'gemini',
     async execute(target, request) {
+      if (!freeTierVerified) {
+        throw new BackendRequestError('gemini', 'configuration', 'gemini free tier proof not configured');
+      }
+      if (target.model !== allowedModel) {
+        throw new BackendRequestError('gemini', 'configuration', 'gemini model is not zero-cost allowlisted');
+      }
       const apiKey = options.apiKey ?? process.env.GEMINI_API_KEY;
       if (!apiKey) throw new BackendRequestError('gemini', 'configuration', 'gemini api key not configured');
-      const response = await providerFetch('gemini', fetchImpl, `${baseUrl}/models/${encodeURIComponent(target.model)}:generateContent`, {
+      const response = await providerFetch('gemini', fetchImpl, `${baseUrl}/models/${encodeURIComponent(allowedModel)}:generateContent`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
-        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: request.prompt }] }] }),
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: request.prompt }] }], generationConfig: { maxOutputTokens: 512 } }),
       }, request.signal, timeoutMs);
       const body = await response.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
       const text = body.candidates?.[0]?.content?.parts?.map((part) => part.text ?? '').join('\n') ?? '';
@@ -673,12 +684,12 @@ export function defaultServerTargets(env: NodeJS.ProcessEnv = process.env): Back
   return [
     {
       provider: 'gemini',
-      model: env.TIGERIQ_GEMINI_MODEL?.trim() || 'gemini-3.7-flash',
+      model: 'gemini-2.5-flash',
       tier: 'primary',
       costRank: 0,
       qualityRank: 4,
       kinds: ['general', 'coding', 'analysis', 'research'],
-      enabled: false,
+      enabled: env.TIGERIQ_GEMINI_FREE_TIER_VERIFIED?.trim().toLowerCase() === 'true' && Boolean(env.GEMINI_API_KEY?.trim()),
     },
     {
       provider: 'groq',

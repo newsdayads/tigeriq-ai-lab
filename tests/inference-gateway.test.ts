@@ -266,10 +266,23 @@ describe('WO-047 server-only provider adapters', () => {
     expect(calls).toBe(0);
   });
 
+  it('fails closed before network when Gemini Free Tier proof or allowlisted model is missing', async () => {
+    let calls = 0;
+    const fetchImpl: typeof fetch = async () => { calls += 1; return new Response('{}', { status: 200 }); };
+    const safeTarget = { ...targets[0], model: 'gemini-2.5-flash' };
+    const missingProof = createGeminiBackendAdapter({ apiKey: 'secret', fetchImpl });
+    await expect(missingProof.execute(safeTarget, { prompt: 'x' })).rejects.toMatchObject({ kind: 'configuration' });
+    expect(calls).toBe(0);
+    const wrongModel = createGeminiBackendAdapter({ apiKey: 'secret', freeTierVerified: true, fetchImpl });
+    await expect(wrongModel.execute({ ...safeTarget, model: 'gemini-3.7-flash' }, { prompt: 'x' })).rejects.toMatchObject({ kind: 'configuration' });
+    expect(calls).toBe(0);
+  });
+
   it('uses official Gemini and OpenRouter HTTP shapes with server-side authorization', async () => {
     const calls: string[] = [];
     const gemini = createGeminiBackendAdapter({
       apiKey: 'gemini-provider-secret',
+      freeTierVerified: true,
       fetchImpl: async (input) => {
         calls.push(String(input));
         return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'gemini ok' }] } }] }), { status: 200 });
@@ -290,9 +303,9 @@ describe('WO-047 server-only provider adapters', () => {
       },
     });
 
-    await expect(gemini.execute(targets[0], { prompt: 'x' })).resolves.toBe('gemini ok');
+    await expect(gemini.execute({ ...targets[0], model: 'gemini-2.5-flash' }, { prompt: 'x' })).resolves.toBe('gemini ok');
     await expect(openrouter.execute({ ...targets[2], model: 'openrouter/free' }, { prompt: 'x' })).resolves.toBe('openrouter ok');
-    expect(calls[0]).toContain('/models/gemini-test:generateContent');
+    expect(calls[0]).toContain('/models/gemini-2.5-flash:generateContent');
     expect(calls[1]).toBe('https://openrouter.ai/api/v1/chat/completions');
   });
 
@@ -316,14 +329,16 @@ describe('WO-047 server-only provider adapters', () => {
 
   it('builds zero-cost-safe default server targets without trusting unsafe model overrides', () => {
     const defaults = defaultServerTargets({
-      GEMINI_API_KEY: 'present-but-api-route-disabled',
+      GEMINI_API_KEY: 'gemini',
+      TIGERIQ_GEMINI_FREE_TIER_VERIFIED: 'true',
+      TIGERIQ_GEMINI_MODEL: 'unsafe/override',
       GROQ_API_KEY: 'groq',
       TIGERIQ_GROQ_FREE_TIER_VERIFIED: 'true',
       TIGERIQ_GROQ_MODEL: 'unsafe/override',
       OPENROUTER_API_KEY: 'openrouter',
       TIGERIQ_OPENROUTER_MODEL: 'unsafe/override',
     });
-    expect(defaults.find((item) => item.provider === 'gemini')?.enabled).toBe(false);
+    expect(defaults.find((item) => item.provider === 'gemini')).toMatchObject({ model: 'gemini-2.5-flash', enabled: true });
     expect(defaults.find((item) => item.provider === 'groq')).toMatchObject({ model: 'openai/gpt-oss-120b', enabled: true });
     expect(defaults.find((item) => item.provider === 'openrouter')).toMatchObject({ model: 'openrouter/free', enabled: true });
   });

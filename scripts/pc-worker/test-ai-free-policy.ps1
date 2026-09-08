@@ -12,17 +12,23 @@ $schedulerPath = Join-Path $repoRoot 'scripts\pc-worker\ai-provider-scheduler.ps
 $schedulerTestPath = Join-Path $repoRoot 'scripts\pc-worker\test-ai-provider-scheduler.ps1'
 $orchestratorPath = Join-Path $repoRoot 'scripts\pc-worker\ai-job-orchestrator.ps1'
 $orchestratorTestPath = Join-Path $repoRoot 'scripts\pc-worker\test-ai-job-orchestration.ps1'
+$geminiInstallerPath = Join-Path $repoRoot 'scripts\pc-worker\install-gemini-runtime-secret.ps1'
+$geminiInvokePath = Join-Path $repoRoot 'scripts\pc-worker\invoke-gemini-runtime.ps1'
 Assert-True (Test-Path $configPath) 'config_exists'
 Assert-True (Test-Path $probePath) 'probe_exists'
 Assert-True (Test-Path $schedulerPath) 'scheduler_exists'
 Assert-True (Test-Path $schedulerTestPath) 'scheduler_test_exists'
 Assert-True (Test-Path $orchestratorPath) 'orchestrator_exists'
 Assert-True (Test-Path $orchestratorTestPath) 'orchestrator_test_exists'
+Assert-True (Test-Path $geminiInstallerPath) 'gemini_installer_exists'
+Assert-True (Test-Path $geminiInvokePath) 'gemini_runtime_invoke_exists'
 
 $config = Get-Content -Raw -Path $configPath | ConvertFrom-Json
 $probeText = Get-Content -Raw -Path $probePath
 $schedulerText = Get-Content -Raw -Path $schedulerPath
 $orchestratorText = Get-Content -Raw -Path $orchestratorPath
+$geminiInstallerText = Get-Content -Raw -Path $geminiInstallerPath
+$geminiInvokeText = Get-Content -Raw -Path $geminiInvokePath
 Assert-True ([string]$config.version -eq 'TIGERIQ_AI_FREE_PROVIDERS_V1') 'version'
 Assert-True ([string]$config.policy.billingMode -eq 'ZERO_COST_ONLY') 'zero_cost_only'
 Assert-True (-not [bool]$config.policy.paidFallback) 'paid_fallback_disabled'
@@ -57,8 +63,20 @@ Assert-True ([string]$config.scheduler.eligibilitySource -eq 'guarded_live_probe
 Assert-True ([string]$config.providers.openrouter.mode -eq 'free_router_only') 'openrouter_free_mode'
 Assert-True ([string]$config.providers.openrouter.model -eq 'openrouter/free') 'openrouter_free_model'
 Assert-True (-not [bool]$config.providers.openrouter.allowNonFreeModels) 'openrouter_nonfree_disabled'
-Assert-True (-not [bool]$config.providers.gemini_api.enabled) 'gemini_api_disabled'
-Assert-True ([bool]$config.providers.gemini_cli.forbidApiKeyRoute) 'gemini_api_key_route_forbidden'
+Assert-True ([bool]$config.providers.gemini_api.enabled) 'gemini_api_guarded_free_tier_enabled'
+Assert-True ([string]$config.providers.gemini_api.mode -eq 'free_tier_only_explicit_project_proof') 'gemini_free_tier_mode'
+Assert-True ([bool]$config.providers.gemini_api.requireFreeTierProof) 'gemini_free_tier_proof_required'
+Assert-True (-not [bool]$config.providers.gemini_api.allowPaidTier) 'gemini_paid_tier_forbidden'
+Assert-True ([string]$config.providers.gemini_api.model -eq 'gemini-2.5-flash') 'gemini_model_pinned'
+Assert-True ($geminiInstallerText -match 'ProtectedData\]::Protect') 'gemini_installer_dpapi_protect'
+Assert-True ($geminiInstallerText -match 'DataProtectionScope\]::LocalMachine') 'gemini_installer_local_machine_scope'
+Assert-True ($geminiInstallerText -match 'billingLinked=\$false') 'gemini_installer_billing_unlinked_proof'
+Assert-True ($geminiInstallerText -match 'paidFallbackAllowed=\$false') 'gemini_installer_paid_fallback_forbidden'
+Assert-True ($geminiInvokeText -match 'GEMINI_RUNTIME_SECRET_MISSING') 'gemini_runtime_missing_secret_guard'
+Assert-True ($geminiInvokeText -match 'GEMINI_RUNTIME_BILLING_POLICY_INVALID') 'gemini_runtime_billing_guard'
+Assert-True ($geminiInvokeText -match 'gemini-2\.5-flash:generateContent') 'gemini_runtime_model_pinned'
+Assert-True ($geminiInvokeText.IndexOf('GEMINI_RUNTIME_SECRET_MISSING') -lt $geminiInvokeText.IndexOf('Invoke-RestMethod')) 'gemini_secret_guard_before_network'
+Assert-True ([bool]$config.providers.gemini_cli.forbidApiKeyRoute) 'gemini_cli_api_key_route_forbidden'
 Assert-True ([bool]$config.providers.gemini_cli.forbidVertexRoute) 'gemini_vertex_route_forbidden'
 Assert-True ([bool]$config.providers.groq.enabled) 'groq_guarded_free_tier_enabled'
 Assert-True ([string]$config.providers.groq.mode -eq 'free_tier_only_explicit_account_proof') 'groq_free_tier_mode'

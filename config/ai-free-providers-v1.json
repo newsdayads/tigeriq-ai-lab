@@ -89,10 +89,20 @@
       "onQuota": "fallback"
     },
     "gemini_api": {
-      "enabled": false,
-      "mode": "disabled_until_free_tier_is_independently_proven",
+      "enabled": true,
+      "mode": "free_tier_only_explicit_project_proof",
       "credentialEnv": "GEMINI_API_KEY",
-      "reason": "An API key alone does not prove that the backing project cannot incur paid-tier charges."
+      "accountTierProofEnv": "TIGERIQ_GEMINI_FREE_TIER_VERIFIED",
+      "requireFreeTierProof": true,
+      "model": "gemini-2.5-flash",
+      "allowPaidTier": false,
+      "role": [
+        "executor",
+        "reviewer",
+        "judge"
+      ],
+      "onQuota": "fallback",
+      "reason": "Gemini API is routable only when the backing project is explicitly verified as Free Tier; API key alone is insufficient and no paid fallback is permitted."
     },
     "claude_code": {
       "enabled": false,

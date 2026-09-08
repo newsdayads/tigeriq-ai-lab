@@ -1,4 +1,4 @@
-export type Provider = 'gemini' | 'openrouter' | 'ollama' | 'openai' | 'anthropic';
+export type Provider = 'gemini' | 'groq' | 'openrouter' | 'ollama' | 'openai' | 'anthropic';
 
 export type ProviderFailureKind =
   | 'quota'
@@ -179,7 +179,15 @@ export interface OpenAIAdapterOptions extends HttpAdapterOptions {}
 export interface AnthropicAdapterOptions extends HttpAdapterOptions {
   maxTokens?: number;
 }
-export interface GeminiAdapterOptions extends HttpAdapterOptions {}
+export interface GeminiAdapterOptions extends HttpAdapterOptions {
+  freeTierVerified?: boolean;
+  maxOutputTokens?: number;
+}
+export interface GroqAdapterOptions extends HttpAdapterOptions {
+  freeTierVerified?: boolean;
+  maxCompletionTokens?: number;
+  reasoningEffort?: 'low' | 'medium' | 'high';
+}
 export interface OllamaAdapterOptions {
   baseUrl?: string;
   model?: string;
@@ -339,15 +347,25 @@ export function createGeminiAdapter(options: GeminiAdapterOptions = {}): Provide
   const baseUrl = (options.baseUrl ?? 'https://generativelanguage.googleapis.com/v1beta').replace(/\/$/, '');
   const timeoutMs = Math.max(1, options.timeoutMs ?? 120_000);
   const fetchImpl = options.fetchImpl ?? fetch;
+  const allowedModel = 'gemini-2.5-flash';
+  const freeTierVerified = options.freeTierVerified
+    ?? process.env.TIGERIQ_GEMINI_FREE_TIER_VERIFIED?.trim().toLowerCase() === 'true';
+  const maxOutputTokens = Math.max(64, options.maxOutputTokens ?? 512);
 
   return {
     provider: 'gemini',
     async execute(target, request) {
+      if (!freeTierVerified) {
+        throw new ProviderRequestError('gemini', 'configuration', 'gemini free tier proof not configured');
+      }
+      const model = resolveModel(target, 'gemini-default', options.model ?? process.env.TIGERIQ_GEMINI_MODEL ?? allowedModel);
+      if (model !== allowedModel) {
+        throw new ProviderRequestError('gemini', 'configuration', 'gemini model is not zero-cost allowlisted');
+      }
       const apiKey = options.apiKey ?? process.env.GEMINI_API_KEY;
       if (!apiKey) {
         throw new ProviderRequestError('gemini', 'configuration', 'gemini api key not configured');
       }
-      const model = resolveModel(target, 'gemini-default', options.model ?? process.env.TIGERIQ_GEMINI_MODEL);
       const response = await providerFetch(
         'gemini',
         fetchImpl,
@@ -357,6 +375,7 @@ export function createGeminiAdapter(options: GeminiAdapterOptions = {}): Provide
           headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
           body: JSON.stringify({
             contents: [{ role: 'user', parts: [{ text: request.prompt }] }],
+            generationConfig: { maxOutputTokens },
           }),
         },
         request,
@@ -371,6 +390,36 @@ export function createGeminiAdapter(options: GeminiAdapterOptions = {}): Provide
       if (!text?.trim()) {
         throw new ProviderRequestError('gemini', 'invalid_response', 'empty gemini response');
       }
+      return text;
+    },
+  };
+}
+
+export function createGroqAdapter(options: GroqAdapterOptions = {}): ProviderAdapter {
+  const baseUrl = (options.baseUrl ?? 'https://api.groq.com/openai/v1').replace(/\/$/, '');
+  const timeoutMs = Math.max(1, options.timeoutMs ?? 120_000);
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const allowedModel = 'openai/gpt-oss-120b';
+  const freeTierVerified = options.freeTierVerified ?? process.env.TIGERIQ_GROQ_FREE_TIER_VERIFIED?.trim().toLowerCase() === 'true';
+  const maxCompletionTokens = Math.max(64, options.maxCompletionTokens ?? 512);
+  const reasoningEffort = options.reasoningEffort ?? 'low';
+
+  return {
+    provider: 'groq',
+    async execute(target, request) {
+      if (!freeTierVerified) throw new ProviderRequestError('groq', 'configuration', 'groq free tier proof not configured');
+      if (target.model !== allowedModel) throw new ProviderRequestError('groq', 'configuration', 'groq model is not zero-cost allowlisted');
+      const apiKey = options.apiKey ?? process.env.GROQ_API_KEY;
+      if (!apiKey) throw new ProviderRequestError('groq', 'configuration', 'groq api key not configured');
+      const response = await providerFetch('groq', fetchImpl, `${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({ model: allowedModel, service_tier: 'on_demand', reasoning_effort: reasoningEffort, max_completion_tokens: maxCompletionTokens, messages: [{ role: 'user', content: request.prompt }], stream: false }),
+      }, request, timeoutMs);
+      const body = await response.json() as { model?: string; choices?: Array<{ message?: { content?: string } }> };
+      if (body.model && body.model !== allowedModel) throw new ProviderRequestError('groq', 'invalid_response', 'groq returned unexpected model');
+      const text = body.choices?.[0]?.message?.content;
+      if (!text?.trim()) throw new ProviderRequestError('groq', 'invalid_response', 'empty groq response');
       return text;
     },
   };
@@ -410,6 +459,7 @@ export interface ProviderMeshOptions {
   openai?: OpenAIAdapterOptions;
   anthropic?: AnthropicAdapterOptions;
   gemini?: GeminiAdapterOptions;
+  groq?: GroqAdapterOptions;
   ollama?: OllamaAdapterOptions;
   policy?: RoutingPolicy;
   circuitBreaker?: CircuitBreakerOptions;
@@ -420,6 +470,7 @@ export function createProviderMesh(options: ProviderMeshOptions = {}): ModelRout
     createOpenAIAdapter(options.openai),
     createAnthropicAdapter(options.anthropic),
     createGeminiAdapter(options.gemini),
+    createGroqAdapter(options.groq),
     createOllamaAdapter(options.ollama),
   ], options.policy ?? defaultRoutingPolicy, options.circuitBreaker);
 }

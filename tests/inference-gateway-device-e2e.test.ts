@@ -18,7 +18,7 @@ describe('WO-047 mock-device E2E', () => {
     let providerCalls = 0;
     const target: BackendTarget = {
       provider: 'gemini',
-      model: 'gemini-mock',
+      model: 'gemini-2.5-flash',
       tier: 'primary',
       costRank: 0,
       qualityRank: 4,
@@ -26,6 +26,7 @@ describe('WO-047 mock-device E2E', () => {
     };
     const gemini = createGeminiBackendAdapter({
       apiKey: providerSecret,
+      freeTierVerified: true,
       fetchImpl: async (_input, init) => {
         providerCalls += 1;
         expect((init?.headers as Record<string, string>)['x-goog-api-key']).toBe(providerSecret);
@@ -99,7 +100,7 @@ describe('WO-047 mock-device E2E', () => {
     const inferenceBody = await inferenceResponse.json() as Record<string, unknown>;
     const serialized = JSON.stringify(inferenceBody);
     expect(serialized).toContain('mock device inference result');
-    expect(serialized).toContain('gemini/gemini-mock');
+    expect(serialized).toContain('gemini/gemini-2.5-flash');
     expect(serialized).not.toContain(providerSecret);
     expect(serialized).not.toContain('node-bootstrap-secret');
     expect(providerCalls).toBe(1);
@@ -113,7 +114,7 @@ describe('WO-047 mock-device E2E', () => {
     });
     expect(healthResponse.status).toBe(200);
     const healthText = await healthResponse.text();
-    expect(healthText).toContain('gemini/gemini-mock');
+    expect(healthText).toContain('gemini/gemini-2.5-flash');
     expect(healthText).not.toContain(providerSecret);
   });
 

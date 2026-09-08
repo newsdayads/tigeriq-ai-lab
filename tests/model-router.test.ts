@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   ModelRouter,
   RoutingExhaustedError,
+  createGeminiAdapter,
+  createGroqAdapter,
   createOllamaAdapter,
   type ProviderAdapter,
   type RoutingPolicy,
@@ -111,5 +113,60 @@ describe('model router execution', () => {
     expect(() => new ModelRouter([gemini, gemini], policy)).toThrow('duplicate adapter');
     const router = new ModelRouter([gemini], policy);
     await expect(router.execute({ prompt: '   ' })).rejects.toThrow('prompt is required');
+  });
+});
+
+describe('Groq Free adapter guard', () => {
+  it('fails closed before network when Free Tier proof is absent', async () => {
+    let calls = 0;
+    const groq = createGroqAdapter({ apiKey: 'gsk_test_only', freeTierVerified: false, fetchImpl: async () => { calls += 1; return new Response(); } });
+    await expect(groq.execute({ provider: 'groq', model: 'openai/gpt-oss-120b' }, { prompt: 'x' })).rejects.toMatchObject({ kind: 'configuration' });
+    expect(calls).toBe(0);
+  });
+
+  it('pins the Free model and on_demand service tier', async () => {
+    const groq = createGroqAdapter({ apiKey: 'gsk_test_only', freeTierVerified: true, fetchImpl: async (input, init) => {
+      expect(String(input)).toBe('https://api.groq.com/openai/v1/chat/completions');
+      const body = JSON.parse(String(init?.body));
+      expect(body).toMatchObject({ model: 'openai/gpt-oss-120b', service_tier: 'on_demand', reasoning_effort: 'low' });
+      expect(body.max_completion_tokens).toBeGreaterThanOrEqual(64);
+      return new Response(JSON.stringify({ model: 'openai/gpt-oss-120b', choices: [{ message: { content: 'PASS' } }] }), { status: 200 });
+    } });
+    await expect(groq.execute({ provider: 'groq', model: 'openai/gpt-oss-120b' }, { prompt: 'x' })).resolves.toBe('PASS');
+  });
+
+  it('rejects any non-allowlisted Groq model before network', async () => {
+    let calls = 0;
+    const groq = createGroqAdapter({ apiKey: 'gsk_test_only', freeTierVerified: true, fetchImpl: async () => { calls += 1; return new Response(); } });
+    await expect(groq.execute({ provider: 'groq', model: 'other' }, { prompt: 'x' })).rejects.toMatchObject({ kind: 'configuration' });
+    expect(calls).toBe(0);
+  });
+});
+
+
+describe('Gemini Free adapter guard', () => {
+  it('fails closed before network when Free Tier proof is absent', async () => {
+    let calls = 0;
+    const gemini = createGeminiAdapter({ apiKey: 'test_only', freeTierVerified: false, fetchImpl: async () => { calls += 1; return new Response(); } });
+    await expect(gemini.execute({ provider: 'gemini', model: 'gemini-2.5-flash' }, { prompt: 'x' })).rejects.toMatchObject({ kind: 'configuration' });
+    expect(calls).toBe(0);
+  });
+
+  it('pins the zero-cost allowlisted model and bounded output', async () => {
+    const gemini = createGeminiAdapter({ apiKey: 'test_only', freeTierVerified: true, fetchImpl: async (input, init) => {
+      expect(String(input)).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent');
+      const body = JSON.parse(String(init?.body));
+      expect(body.contents[0].parts[0].text).toBe('x');
+      expect(body.generationConfig.maxOutputTokens).toBe(512);
+      return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'PASS' }] } }] }), { status: 200 });
+    } });
+    await expect(gemini.execute({ provider: 'gemini', model: 'gemini-2.5-flash' }, { prompt: 'x' })).resolves.toBe('PASS');
+  });
+
+  it('rejects any non-allowlisted Gemini model before network', async () => {
+    let calls = 0;
+    const gemini = createGeminiAdapter({ apiKey: 'test_only', freeTierVerified: true, fetchImpl: async () => { calls += 1; return new Response(); } });
+    await expect(gemini.execute({ provider: 'gemini', model: 'gemini-3.7-flash' }, { prompt: 'x' })).rejects.toMatchObject({ kind: 'configuration' });
+    expect(calls).toBe(0);
   });
 });

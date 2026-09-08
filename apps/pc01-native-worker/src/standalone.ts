@@ -1,0 +1,15 @@
+import { pathToFileURL } from 'node:url';
+import { NativeWorker, configFromEnv } from './core.js';
+
+export async function startNativeWorker():Promise<void>{
+  const config=configFromEnv();
+  const worker=new NativeWorker(config);
+  const stop=(signal:string)=>{console.log(JSON.stringify({event:'PC01_NATIVE_WORKER_STOP',signal}));worker.stop();};
+  process.once('SIGINT',()=>stop('SIGINT'));
+  process.once('SIGTERM',()=>stop('SIGTERM'));
+  console.log(JSON.stringify({event:'PC01_NATIVE_WORKER_START',version:'v2-multiai',model:config.ollamaModel,aiAuto:true,groqFreeReady:process.env.TIGERIQ_GROQ_FREE_TIER_VERIFIED?.trim().toLowerCase()==='true'&&Boolean(process.env.GROQ_API_KEY?.trim()),geminiFreeReady:process.env.TIGERIQ_GEMINI_FREE_TIER_VERIFIED?.trim().toLowerCase()==='true'&&Boolean(process.env.GEMINI_API_KEY?.trim()),context:4096,localAiMax:2,openClawDependency:false}));
+  await worker.start();
+}
+
+const invokedAsMain=Boolean(process.argv[1])&&import.meta.url===pathToFileURL(process.argv[1]).href;
+if(invokedAsMain)startNativeWorker().catch(error=>{console.error(JSON.stringify({event:'PC01_NATIVE_WORKER_FATAL',message:error instanceof Error?error.message:String(error)}));process.exit(1);});
