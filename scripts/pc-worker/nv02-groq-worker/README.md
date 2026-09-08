@@ -25,6 +25,6 @@ Acceptance runner `run-acceptance-517.ps1` verifies three distinct Work Orders, 
 - Reviewer: `ollama:gemma3:4b`
 - Judge: `ollama:qwen3:8b`
 - Required terminal state: `done`
-- Required evidence per job: executor + reviewer + judge
+- Required JSON evidence per job contains executor + reviewer + judge assurance
 
 The acceptance runner is diagnostic/verification tooling; normal NV02 operation is automatic through the Controller queue and does not require Owner CMD/PowerShell.
