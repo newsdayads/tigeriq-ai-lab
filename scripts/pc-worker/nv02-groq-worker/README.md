@@ -18,3 +18,13 @@ Runtime adapter for `NV02 / Khoa` to consume Controller V1 Work Orders and execu
 ## Acceptance
 
 Controller-targeted Groq E2E requires: queued job, active lease observed, result employee `NV02`, route/provider `groq`, model `openai/gpt-oss-120b`, terminal `done`, and JSON evidence.
+
+Acceptance runner `run-acceptance-517.ps1` verifies three distinct Work Orders, Controller idempotency, bounded Groq retries, and independent assurance:
+
+- Executor: `NV02 / groq:openai/gpt-oss-120b`
+- Reviewer: `ollama:gemma3:4b`
+- Judge: `ollama:qwen3:8b`
+- Required terminal state: `done`
+- Required evidence per job: executor + reviewer + judge
+
+The acceptance runner is diagnostic/verification tooling; normal NV02 operation is automatic through the Controller queue and does not require Owner CMD/PowerShell.
