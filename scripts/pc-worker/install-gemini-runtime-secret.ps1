@@ -26,7 +26,8 @@ Write-Host 'TigerIQ Gemini persistent credential install'
 Write-Host 'Chi tiep tuc neu project Gemini API dang Free Tier va KHONG lien ket billing/PAYG.'
 $confirm = Read-Host 'Nhap FREE de xac nhan'
 if ($confirm.Trim().ToUpperInvariant() -ne 'FREE') { throw 'GEMINI_FREE_TIER_NOT_CONFIRMED' }
-$secure = Read-Host 'Paste GEMINI_API_KEY (se bi an)' -AsSecureString$bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
+$secure = Read-Host 'Paste GEMINI_API_KEY (se bi an)' -AsSecureString
+$bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
 $plain = $null
 $plainBytes = $null
 $protected = $null

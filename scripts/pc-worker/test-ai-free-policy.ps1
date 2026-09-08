@@ -70,6 +70,7 @@ Assert-True (-not [bool]$config.providers.gemini_api.allowPaidTier) 'gemini_paid
 Assert-True ([string]$config.providers.gemini_api.model -eq 'gemini-2.5-flash') 'gemini_model_pinned'
 Assert-True ($geminiInstallerText -match 'ProtectedData\]::Protect') 'gemini_installer_dpapi_protect'
 Assert-True ($geminiInstallerText -match 'DataProtectionScope\]::LocalMachine') 'gemini_installer_local_machine_scope'
+Assert-True (-not ($geminiInstallerText -match '-AsSecureString\$bstr')) 'gemini_installer_prompt_seam_safe'
 Assert-True ($geminiInstallerText -match 'billingLinked=\$false') 'gemini_installer_billing_unlinked_proof'
 Assert-True ($geminiInstallerText -match 'paidFallbackAllowed=\$false') 'gemini_installer_paid_fallback_forbidden'
 Assert-True ($geminiInvokeText -match 'GEMINI_RUNTIME_SECRET_MISSING') 'gemini_runtime_missing_secret_guard'
