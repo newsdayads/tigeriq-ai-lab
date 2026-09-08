@@ -7,7 +7,8 @@ const execFileAsync = promisify(execFile);
 type Issue = { number?: number; title?: string; body?: string | null; state?: string; updated_at?: string };
 type Comment = { body?: string | null; created_at?: string | null; updated_at?: string | null };
 type EmployeeCode = 'NV01' | 'NV02' | 'NV03' | 'NV04';
-type Tone = 'active' | 'waiting' | 'blocked' | 'done' | 'paused' | 'unknown';
+type Tone = 'active' | 'waiting' | 'blocked' | 'done' | 'paused' | 'stale' | 'unknown';
+const WORK_STALE_MS = Math.max(30_000, Number(process.env.TIGERIQ_WEB_WORK_STALE_MS) || 120_000);
 
 type Lane = { issue: Issue; comments: Comment[] };
 
@@ -122,16 +123,20 @@ function lifecycle(comments: Comment[], issue: Issue): { status: string; tone: T
     const text = String(comment.body ?? '');
     const state = [...text.matchAll(/(?:^|\n)state=([^\n]+)/gi)].at(-1)?.[1]?.trim();
     const current = compact(state || text.split(/\r?\n/).find((line) => line.trim()) || 'Có cập nhật', 120);
+    if (/^TIGERIQ_(?:JOB|COMMAND|PC01)_FAILED\b/im.test(text)) return { status: 'Vướng mắc', tone: 'blocked', current };
+    if (/^TIGERIQ_(?:JOB|COMMAND|PC01)_(?:DONE|RESULT)\b/im.test(text)) return { status: 'Hoàn tất', tone: 'done', current };
+    if (/^TIGERIQ_(?:JOB|COMMAND|PC01)_(?:CLAIMED|HEARTBEAT)\b/im.test(text)) {
+      const ageMs = Date.now() - commentTime(comment);
+      return ageMs > WORK_STALE_MS
+        ? { status: 'Mất tín hiệu', tone: 'stale', current }
+        : { status: 'Đang làm', tone: 'active', current };
+    }
     if (state && /HOÀN_TẤT|HOÀN TẤT|DONE|COMPLETED/i.test(state)) return { status: 'Hoàn tất', tone: 'done', current };
     if (state && /LỖI|FAILED|BỊ_CHẶN|BỊ CHẶN|BLOCKED/i.test(state)) return { status: 'Vướng mắc', tone: 'blocked', current };
     if (state && /TẠM_NGƯNG|TẠM NGƯNG|PAUSED/i.test(state)) return { status: 'Tạm ngưng', tone: 'paused', current };
     if (state && /CHỜ|WAIT|PENDING/i.test(state)) return { status: 'Chờ xử lý', tone: 'waiting', current };
-    if (state && /ĐANG_XỬ_LÝ|ĐANG XỬ LÝ|IN_PROGRESS|RUNNING/i.test(state)) return { status: 'Đang làm', tone: 'active', current };
-    if (/TIGERIQ_(?:JOB|COMMAND|PC01)_FAILED/i.test(text)) return { status: 'Vướng mắc', tone: 'blocked', current };
-    if (/TIGERIQ_(?:JOB|COMMAND|PC01)_(?:DONE|RESULT)/i.test(text)) return { status: 'Hoàn tất', tone: 'done', current };
-    if (/TIGERIQ_(?:JOB|COMMAND|PC01)_CLAIMED|heartbeat/i.test(text)) return { status: 'Đang làm', tone: 'active', current };
   }
-  return { status: 'Chờ xử lý', tone: 'waiting', current: 'Chưa có lifecycle mới' };
+  return { status: 'Chờ xác minh thực thi', tone: 'waiting', current: 'Chưa có lease/heartbeat/evidence mới' };
 }
 
 function progressPercent(issue: Issue, comments: Comment[]): number | null {
@@ -289,7 +294,7 @@ export async function loadExecutiveDashboardV4(repo: string, telemetry: ServerTe
     waitingCount: works.filter((work) => work.tone === 'waiting').length,
     blockedCount: works.filter((work) => work.tone === 'blocked').length,
     doneCount: works.filter((work) => work.tone === 'done').length,
-    pausedCount: works.filter((work) => work.tone === 'paused').length,
+    pausedCount: works.filter((work) => work.tone === 'paused' || work.tone === 'stale').length,
     progressAverage,
     ownerActionRequired: action.required,
     ownerActionText: action.text,

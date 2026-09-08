@@ -64,58 +64,46 @@ if($tailscale){
 
 $controllerOnline = $false
 $controllerPort = 8790
+$controllerProtocol = $null
+$controllerQueuedJobs = $null
+$controllerActiveLeases = $null
+$controllerPc01 = $null
 $workforce = $null
 if($tailscaleIp){
   try {
     $controllerStatus = Invoke-RestMethod -Uri "http://$tailscaleIp`:$controllerPort/api/workforce/status" -TimeoutSec 1
     $controllerOnline = [bool]$controllerStatus.ok
+    $controllerProtocol = 'workforce-status'
     if($controllerOnline -and $controllerStatus.workforce){
       $wf = $controllerStatus.workforce
       $roster = @()
       if($wf.roster){
         $roster = @($wf.roster | ForEach-Object {
-          [ordered]@{
-            employeeId = [string]$_.employeeId
-            displayName = [string]$_.displayName
-            department = [string]$_.department
-            role = [string]$_.role
-            nodeId = [string]$_.nodeId
-            provider = if($_.provider){[string]$_.provider}else{$null}
-            model = if($_.model){[string]$_.model}else{$null}
-            availability = [string]$_.availability
-            healthScore = [double]$_.healthScore
-            concurrencyLimit = [int]$_.concurrencyLimit
-            activeTaskCount = [int]$_.activeTaskCount
-            currentTaskIds = @($_.currentTaskIds | ForEach-Object { [string]$_ })
-          }
+          [ordered]@{ employeeId=[string]$_.employeeId; displayName=[string]$_.displayName; department=[string]$_.department; role=[string]$_.role; nodeId=[string]$_.nodeId; provider=if($_.provider){[string]$_.provider}else{$null}; model=if($_.model){[string]$_.model}else{$null}; availability=[string]$_.availability; healthScore=[double]$_.healthScore; concurrencyLimit=[int]$_.concurrencyLimit; activeTaskCount=[int]$_.activeTaskCount; currentTaskIds=@($_.currentTaskIds | ForEach-Object { [string]$_ }) }
         })
       }
       $taskList = @()
       if($wf.taskList){
         $taskList = @($wf.taskList | ForEach-Object {
-          [ordered]@{
-            taskId = [string]$_.taskId
-            objective = [string]$_.objective
-            stage = [string]$_.stage
-            priority = [string]$_.priority
-            assignedEmployeeId = if($_.assignedEmployeeId){[string]$_.assignedEmployeeId}else{$null}
-          }
+          [ordered]@{ taskId=[string]$_.taskId; objective=[string]$_.objective; stage=[string]$_.stage; priority=[string]$_.priority; assignedEmployeeId=if($_.assignedEmployeeId){[string]$_.assignedEmployeeId}else{$null} }
         })
       }
-      $workforce = [ordered]@{
-        employeesTotal = [int]$wf.employees.total
-        idle = [int]$wf.employees.byAvailability.idle
-        busy = [int]$wf.employees.byAvailability.busy
-        offline = [int]$wf.employees.byAvailability.offline
-        degraded = [int]$wf.employees.byAvailability.degraded
-        activeTasks = [int]$wf.employees.activeTasks
-        tasksActive = [int]$wf.tasks.active
-        tasksFailed = [int]$wf.tasks.failed
-        roster = $roster
-        taskList = $taskList
-      }
+      $workforce = [ordered]@{ employeesTotal=[int]$wf.employees.total; idle=[int]$wf.employees.byAvailability.idle; busy=[int]$wf.employees.byAvailability.busy; offline=[int]$wf.employees.byAvailability.offline; degraded=[int]$wf.employees.byAvailability.degraded; activeTasks=[int]$wf.employees.activeTasks; tasksActive=[int]$wf.tasks.active; tasksFailed=[int]$wf.tasks.failed; roster=$roster; taskList=$taskList }
     }
-  } catch {}
+  } catch {
+    try {
+      $controllerStatus = Invoke-RestMethod -Uri "http://$tailscaleIp`:$controllerPort/api/v1/status" -TimeoutSec 1
+      $controllerOnline = [bool]$controllerStatus.ok
+      $controllerProtocol = if($controllerStatus.protocol){[string]$controllerStatus.protocol}else{'controller-v1'}
+      if($controllerStatus.workforce){
+        $controllerQueuedJobs = [int]$controllerStatus.workforce.queuedJobs
+        $controllerActiveLeases = [int]$controllerStatus.workforce.activeLeases
+      }
+      if($controllerStatus.pc01){
+        $controllerPc01 = [ordered]@{ employeeId=if($controllerStatus.pc01.employeeId){[string]$controllerStatus.pc01.employeeId}else{$null}; deviceId=if($controllerStatus.pc01.deviceId){[string]$controllerStatus.pc01.deviceId}else{$null}; health=if($controllerStatus.pc01.health){[string]$controllerStatus.pc01.health}else{$null}; lastHeartbeatAt=if($controllerStatus.pc01.lastHeartbeatAt){[string]$controllerStatus.pc01.lastHeartbeatAt}else{$null}; online=[bool]$controllerStatus.pc01.online }
+      }
+    } catch {}
+  }
 }
 
 $postgresService = $null
@@ -153,7 +141,7 @@ $result = [ordered]@{
   uptimeSeconds = $uptimeSeconds
   disk = [ordered]@{ drive="$driveName`:"; freeBytes=$diskFree; totalBytes=$diskTotal; utilizationPercent=(Percent ($diskTotal-$diskFree) $diskTotal) }
   worker = [ordered]@{ online=($workers.Count -gt 0); pid=if($worker){[int]$worker.ProcessId}else{$null}; instances=$workers.Count }
-  controller = [ordered]@{ online=$controllerOnline; ip=$tailscaleIp; port=$controllerPort }
+  controller = [ordered]@{ online=$controllerOnline; ip=$tailscaleIp; port=$controllerPort; protocol=$controllerProtocol; queuedJobs=$controllerQueuedJobs; activeLeases=$controllerActiveLeases; pc01=$controllerPc01 }
   workforce = $workforce
   postgresql = [ordered]@{ online=$postgresOnline; service=$postgresService; port=$postgresPort }
   ollama = [ordered]@{ online=$ollamaOnline; models=$ollamaModels }

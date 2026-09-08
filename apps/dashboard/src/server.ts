@@ -46,7 +46,7 @@ export type ServerTelemetry = {
   uptimeSeconds: number | null;
   disk: { drive: string; freeBytes: number; totalBytes: number; utilizationPercent: number | null } | null;
   worker: { online: boolean; pid: number | null; instances: number } | null;
-  controller: { online: boolean; ip: string | null; port: number | null } | null;
+  controller: { online: boolean; ip: string | null; port: number | null; protocol?: string | null; queuedJobs?: number | null; activeLeases?: number | null; pc01?: { employeeId: string | null; deviceId: string | null; health: string | null; lastHeartbeatAt: string | null; online: boolean } | null } | null;
   workforce: {
     employeesTotal: number;
     idle: number;
@@ -299,7 +299,7 @@ function normalizeTelemetry(raw: unknown): ServerTelemetry {
       utilizationPercent: numberOrNull(disk.utilizationPercent),
     } : null,
     worker: worker ? { online: worker.online === true, pid: numberOrNull(worker.pid), instances: numberOrNull(worker.instances) ?? 0 } : null,
-    controller: controller ? { online: controller.online === true, ip: stringOrNull(controller.ip), port: numberOrNull(controller.port) } : null,
+    controller: controller ? { online: controller.online === true, ip: stringOrNull(controller.ip), port: numberOrNull(controller.port), protocol: stringOrNull(controller.protocol, 64), queuedJobs: numberOrNull(controller.queuedJobs), activeLeases: numberOrNull(controller.activeLeases), pc01: (() => { const row = objectOrNull(controller.pc01); return row ? { employeeId: stringOrNull(row.employeeId, 128), deviceId: stringOrNull(row.deviceId, 128), health: stringOrNull(row.health, 32), lastHeartbeatAt: stringOrNull(row.lastHeartbeatAt, 64), online: row.online === true } : null; })() } : null,
     workforce: normalizeWorkforce(objectOrNull(data.workforce)),
     postgresql: postgresql ? { online: postgresql.online === true, service: stringOrNull(postgresql.service), port: numberOrNull(postgresql.port) } : null,
     ollama: ollama ? { online: ollama.online === true, models } : null,
