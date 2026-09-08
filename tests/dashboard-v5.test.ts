@@ -135,4 +135,21 @@ describe('Owner Cockpit V5 functional contract', () => {
     expect(github.created.at(-1)?.body).toContain('TIGERIQ_COMMAND_V1');
     expect(github.created.at(-1)?.body).toContain('system.status');
   });
+  it('runs authenticated bounded PC01 self-heal and records evidence', async () => {
+    const backend = await startDashboard(fixturePlane(), { commandSecret: 'test-secret', serverTelemetry: async () => telemetry });
+    closers.push(backend.close); const github = githubFixture(); let heals = 0;
+    const outer = await startOwnerCockpitV5({ backendUrl: backend.url, repo: 'newsdayads/tigeriq-ai-lab', github: github.adapter,
+      runSelfHeal: async () => { heals += 1; return { result: 'READY', updatedAt: '2026-09-08T10:00:00Z', error: null }; } });
+    closers.push(outer.close);
+    const login = await fetch(`${outer.url}/login`, { method: 'POST', body: new URLSearchParams({ secret: 'test-secret' }), headers: { 'content-type': 'application/x-www-form-urlencoded' }, redirect: 'manual' });
+    const cookie = login.headers.get('set-cookie')?.split(';', 1)[0] ?? '';
+    const page = await (await fetch(outer.url, { headers: { cookie } })).text();
+    const csrf = page.match(/name="csrf" value="([^"]+)"/)?.[1] ?? '';
+    expect(page).toContain('Tự phục hồi PC01');
+    const action = await fetch(`${outer.url}/system-action`, { method: 'POST', headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ csrf, action: 'runtime-self-heal', idempotency: 'heal-test-12345678' }), redirect: 'manual' });
+    expect(action.status).toBe(303); expect(heals).toBe(1);
+    expect(github.commentsWritten.at(-1)?.issue).toBe(486);
+    expect(github.commentsWritten.at(-1)?.body).toContain('TIGERIQ_WEB_CONTROL_SELF_HEAL_V1');
+  });
+
 });

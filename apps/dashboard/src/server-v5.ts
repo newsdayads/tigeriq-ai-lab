@@ -64,6 +64,7 @@ export interface OwnerCockpitV5Options {
   port?: number;
   github?: GithubControlAdapter;
   readUpdaterState?: () => Promise<UpdaterState>;
+  runSelfHeal?: () => Promise<{ result: string; updatedAt?: string; error?: string | null }>;
 }
 
 const headers = {
@@ -349,7 +350,7 @@ async function renderPage(summary: DashboardSummary, telemetry: ServerTelemetry,
   const report = `<div class="report-grid"><article><span>1. Tổng tiến độ</span><b>${completion}%</b><small>${done}/${total} công việc đã hoàn thành</small></article><article><span>2. Hạng mục chính</span><b>${activeAll.length} đang xử lý</b><small>${problems} lỗi/đang vướng</small></article><article><span>3. P0 Vướng mắc</span><b>${esc(p0 ? taskTitle(p0) : 'Không có')}</b><small>${p0 ? esc(stateLabel(p0.status)) : 'Không ghi nhận vướng mắc'}</small></article><article><span>4. Đang xử lý</span><b>${esc(current ? taskTitle(current) : 'Không có')}</b><small>${current ? esc(stateLabel(current.status)) : 'Đang rảnh'}</small></article><article><span>5. Nhân sự AI</span><b>${telemetry.workforce?.busy ?? 0} đang bận · ${telemetry.workforce?.idle ?? 0} rảnh</b><small>${telemetry.workforce?.offline ?? 0} mất kết nối</small></article><article><span>6. Mốc kế tiếp</span><b>${esc(next)}</b><small>Dựa trên state hiện tại</small></article></div>`;
 
   const updaterGood = ['UPDATED', 'NO_CHANGE'].includes(updater.result);
-  const systemAction = csrf ? `<form method="post" action="/system-action" class="system-actions"><input type="hidden" name="csrf" value="${esc(csrf)}"><input type="hidden" name="idempotency" value="sys-${randomBytes(12).toString('hex')}"><button name="action" value="system-status">${icon('refresh')} Kiểm tra lại PC01</button><button name="action" value="ollama-status">${icon('brain')} Kiểm tra Ollama</button></form>` : '<span class="muted-note">Đăng nhập để gửi kiểm tra deterministic.</span>';
+  const systemAction = csrf ? `<form method="post" action="/system-action" class="system-actions"><input type="hidden" name="csrf" value="${esc(csrf)}"><input type="hidden" name="idempotency" value="sys-${randomBytes(12).toString('hex')}"><button name="action" value="system-status">${icon('refresh')} Kiểm tra lại PC01</button><button name="action" value="ollama-status">${icon('brain')} Kiểm tra Ollama</button><button name="action" value="runtime-self-heal">${icon('refresh')} Tự phục hồi PC01</button></form>` : '<span class="muted-note">Đăng nhập để gửi kiểm tra deterministic.</span>';
 
   const refreshMeta = csrf ? '' : '<meta http-equiv="refresh" content="30">';
   return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">${refreshMeta}<title>TigerIQ — Bảng điều hành</title><style>
@@ -395,7 +396,13 @@ export async function startOwnerCockpitV5(options: OwnerCockpitV5Options) {
         if (!(await authorizeWrite(options.backendUrl, req, form))) return respond(res, 403, 'application/json; charset=utf-8', JSON.stringify({ error: 'authorization_rejected' }));
         const action = form.get('action') ?? '';
         const idempotency = (form.get('idempotency') ?? '').trim();
-        if (!/^[A-Za-z0-9_-]{8,96}$/.test(idempotency) || !['system-status', 'ollama-status'].includes(action)) return respond(res, 400, 'application/json; charset=utf-8', JSON.stringify({ error: 'invalid_system_action' }));
+        if (!/^[A-Za-z0-9_-]{8,96}$/.test(idempotency) || !['system-status', 'ollama-status', 'runtime-self-heal'].includes(action)) return respond(res, 400, 'application/json; charset=utf-8', JSON.stringify({ error: 'invalid_system_action' }));
+        if (action === 'runtime-self-heal') {
+          if (!options.runSelfHeal) return respond(res, 409, 'application/json; charset=utf-8', JSON.stringify({ error: 'self_heal_unavailable' }));
+          const result = await options.runSelfHeal();
+          await github.comment(486, `TIGERIQ_WEB_CONTROL_SELF_HEAL_V1\nidempotency=${idempotency}\nresult=${String(result.result).slice(0,80)}\nupdated_at=${result.updatedAt ?? new Date().toISOString()}\nerror=${String(result.error ?? '').slice(0,180)}\nsource=WebControl`);
+          return redirect(res, `/?notice=${encodeURIComponent(`Tự phục hồi PC01: ${result.result}`)}#he-thong`);
+        }
         const commandAction = action === 'system-status' ? 'system.status' : 'ollama.status';
         const body = `PC01_REQUIRED=true\nCLOUD_EXECUTOR_ALLOWED=false\n\nTIGERIQ_COMMAND_V1\n\`\`\`json\n${JSON.stringify({ idempotency_key: idempotency, action: commandAction, args: {} })}\n\`\`\`\n\nPurpose: Owner-requested bounded read-only check from Web Control. No mutation.`;
         await github.create(`[Web Control][VERIFY] ${action === 'system-status' ? 'Kiểm tra PC01' : 'Kiểm tra Ollama'}`, body);

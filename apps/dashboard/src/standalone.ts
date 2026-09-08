@@ -5,7 +5,7 @@ import { promisify } from 'node:util';
 import { FileJournal } from '../../../packages/event-store/src/index.js';
 import { DurableControlPlane } from '../../../packages/durable-control-plane/src/index.js';
 import { GitHubWorkSource } from './github-work-source.js';
-import { schedulePc01RuntimeSelfHeal } from './runtime-self-heal.js';
+import { schedulePc01RuntimeSelfHeal, selfHealPc01Runtime } from './runtime-self-heal.js';
 import { startDashboard } from './server.js';
 import { startOwnerCockpitV5 } from './server-v5.js';
 import { startOwnerCockpitV8 } from './server-v8.js';
@@ -223,7 +223,7 @@ const backend = await startDashboard(dashboardSource, {
   submitJob: submitPc01WorkOrder,
 });
 
-const cockpitV5 = await startOwnerCockpitV5({ backendUrl: backend.url, repo, host: '127.0.0.1', port: 0 });
+const cockpitV5 = await startOwnerCockpitV5({ backendUrl: backend.url, repo, host: '127.0.0.1', port: 0, runSelfHeal: () => selfHealPc01Runtime({ host, repo, repoRoot: process.env.TIGERIQ_REPO_ROOT }) });
 const cockpitV8 = await startOwnerCockpitV8({ cockpitUrl: cockpitV5.url, backendUrl: backend.url, repo, host: '127.0.0.1', port: 0 });
 const cockpitV10 = await startOwnerCockpitV10({ cockpitUrl: cockpitV8.url, host: '127.0.0.1', port: 0 });
 const cockpitV11 = await startOwnerCockpitV11({ cockpitUrl: cockpitV10.url, host: '127.0.0.1', port: 0 });
