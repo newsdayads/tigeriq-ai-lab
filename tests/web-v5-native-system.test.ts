@@ -15,4 +15,16 @@ describe('Web V5 native self-heal projection', () => {
     const heal=out.systems.find((x:any)=>x.key==='self-heal');
     expect(heal?.tone).toBe('active'); expect(heal?.note).toContain('2/2');
   });
+  it('does not downgrade fresh telemetry when native task map is absent', () => {
+    const data:any={generatedAt:'x',works:[],people:[],systems:[
+      {key:'control',name:'Controller',status:'Hoạt động',tone:'active',note:'Cổng 8790 phản hồi'},
+      {key:'worker',name:'Worker',status:'Hoạt động',tone:'active',note:'1 tiến trình'},
+      {key:'ollama',name:'Ollama',status:'Hoạt động',tone:'active',note:'4 mô hình'},
+    ],activeCount:0,waitingCount:0,blockedCount:0,doneCount:0,pausedCount:0,progressAverage:null,ownerActionRequired:false,ownerActionText:''};
+    const out=applyNativeSelfHealStateV5(data,{result:'FAILED',runtimeMode:'NATIVE',updatedAt:'2026-09-08T21:55:30Z',error:'NATIVE_RUNTIME_NOT_READY'});
+    expect(out.systems.find((x:any)=>x.key==='control')?.tone).toBe('active');
+    expect(out.systems.find((x:any)=>x.key==='worker')?.tone).toBe('active');
+    expect(out.systems.find((x:any)=>x.key==='ollama')?.tone).toBe('active');
+  });
+
 });
