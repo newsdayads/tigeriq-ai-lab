@@ -2,7 +2,7 @@ import { FileJournal } from '../../../packages/event-store/src/index.js';
 import { DurableControlPlane } from '../../../packages/durable-control-plane/src/index.js';
 import { startDashboard } from './server.js';
 
-const journalPath = process.env.TIGERIQ_JOURNAL ?? 'F:\\TigerIQ\\State\\control-plane.jsonl';
+const journalPath = process.env.TIGERIQ_JOURNAL ?? 'D:\\TigerIQ\\State\\control-plane.jsonl';
 const host = process.env.TIGERIQ_COMMAND_HOST ?? '127.0.0.1';
 const port = Number(process.env.TIGERIQ_COMMAND_PORT ?? '8787');
 

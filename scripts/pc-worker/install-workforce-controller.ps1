@@ -1,6 +1,6 @@
 param(
-  [string]$RepoPath = 'F:\TigerIQ\Workspace\tigeriq-ai-lab',
-  [string]$StatePath = 'F:\TigerIQ\State\workforce.jsonl',
+  [string]$RepoPath = 'D:\TigerIQ\Workspace\tigeriq-ai-lab',
+  [string]$StatePath = 'D:\TigerIQ\State\workforce.jsonl',
   [string]$ControllerHost = '',
   [int]$ControllerPort = 8790
 )
@@ -10,8 +10,8 @@ Set-StrictMode -Version Latest
 
 $TaskName = 'TigerIQ Workforce Controller'
 $FirewallName = 'TigerIQ Workforce Controller (Tailscale)'
-$RuntimeDir = 'F:\TigerIQ\Worker'
-$SecretsDir = 'F:\TigerIQ\Secrets'
+$RuntimeDir = 'D:\TigerIQ\Worker'
+$SecretsDir = 'D:\TigerIQ\Secrets'
 $SecretPath = Join-Path $SecretsDir 'workforce-admin.secret'
 $RunnerPath = Join-Path $RuntimeDir 'run-workforce-controller.ps1'
 $LogPath = Join-Path $RuntimeDir 'workforce-controller.log'

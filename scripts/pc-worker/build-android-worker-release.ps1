@@ -1,7 +1,7 @@
 param(
   [string]$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path,
-  [string]$SecretsDir = 'F:\TigerIQ\Secrets\android-worker-signing',
-  [string]$ReleaseRoot = 'F:\TigerIQ\Releases\android-worker',
+  [string]$SecretsDir = 'D:\TigerIQ\Secrets\android-worker-signing',
+  [string]$ReleaseRoot = 'D:\TigerIQ\Releases\android-worker',
   [string]$Alias = 'tigeriq-worker-stable'
 )
 

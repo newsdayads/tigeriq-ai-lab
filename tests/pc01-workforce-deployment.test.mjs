@@ -21,7 +21,7 @@ describe('WO-036 PC01 Workforce Controller deployment package', () => {
   it('enables tailnet self-pair explicitly without exposing the admin secret', () => {
     expect(install).toContain("TIGERIQ_WORKFORCE_ALLOW_TAILNET_SELF_PAIR = '1'");
     expect(install).toContain("tailnetSelfPair = $true");
-    expect(install).toContain("$SecretsDir = 'F:\\TigerIQ\\Secrets'");
+    expect(install).toContain("$SecretsDir = 'D:\\TigerIQ\\Secrets'");
     expect(install).toContain("secret = 'STORED_LOCALLY_REDACTED'");
     expect(install).not.toMatch(/Write-(Host|Output).*workforce-admin\.secret.*ReadAllText/i);
     expect(audit).toContain('tailnetSelfPairConfigured');

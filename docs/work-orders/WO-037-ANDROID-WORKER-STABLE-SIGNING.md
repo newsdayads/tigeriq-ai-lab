@@ -4,7 +4,7 @@
 Stop Android Worker upgrades from depending on disposable CI debug certificates. Establish one persistent TigerIQ Worker signing identity that stays private on company-controlled runtime storage and can sign every later pilot/release APK with the same certificate.
 
 ## Design
-- private keystore lives under `F:\TigerIQ\Secrets\android-worker-signing` by default; never repository, logs or CI artifacts;
+- private keystore lives under `D:\TigerIQ\Secrets\android-worker-signing` by default; never repository, logs or CI artifacts;
 - password values live in separate ACL-restricted local files and are never passed as source-code literals;
 - Gradle reads only **paths** from `TIGERIQ_ANDROID_KEYSTORE`, `TIGERIQ_ANDROID_KEY_ALIAS`, `TIGERIQ_ANDROID_STORE_PASSWORD_FILE`, `TIGERIQ_ANDROID_KEY_PASSWORD_FILE`;
 - partial signing configuration fails closed;

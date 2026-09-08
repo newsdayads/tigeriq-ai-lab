@@ -3,7 +3,7 @@ Set-StrictMode -Version Latest
 
 $TaskName = 'TigerIQ Workforce Controller'
 $FirewallName = 'TigerIQ Workforce Controller (Tailscale)'
-$RunnerPath = 'F:\TigerIQ\Worker\run-workforce-controller.ps1'
+$RunnerPath = 'D:\TigerIQ\Worker\run-workforce-controller.ps1'
 
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = New-Object Security.Principal.WindowsPrincipal($identity)

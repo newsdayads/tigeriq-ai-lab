@@ -1,6 +1,6 @@
 param([string]$Branch='wo008/command-ingress-github-queue')
 $ErrorActionPreference='Stop'
-$workerDir='F:\TigerIQ\Worker'
+$workerDir='D:\TigerIQ\Worker'
 $worker=Join-Path $workerDir 'worker.py'
 $log=Join-Path $workerDir 'worker-start.log'
 $backup=Join-Path $workerDir ("worker.py.bak-{0}" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))

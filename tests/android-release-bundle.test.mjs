@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 const script = readFileSync(new URL('../scripts/pc-worker/build-android-worker-release.ps1', import.meta.url), 'utf8');
 
 test('stable release bundle consumes private signing paths without copying secrets', () => {
-  assert.match(script, /F:\\TigerIQ\\Secrets\\android-worker-signing/);
+  assert.match(script, /D:\\TigerIQ\\Secrets\\android-worker-signing/);
   assert.match(script, /TIGERIQ_ANDROID_KEYSTORE/);
   assert.match(script, /TIGERIQ_ANDROID_STORE_PASSWORD_FILE/);
   assert.match(script, /TIGERIQ_ANDROID_KEY_PASSWORD_FILE/);

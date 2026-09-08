@@ -7,7 +7,7 @@ Prepare a single-action, fail-closed Windows deployment package that can turn PC
 - install/preflight PowerShell scripts only; no unattended claim that PC01 was actually changed;
 - controller discovers the **live** PC01 Tailscale IPv4 with `tailscale ip -4`, requires exactly one address in `100.64.0.0/10`, verifies Windows owns it, and binds only to that explicit address on port `8790`; no historical IP is trusted blindly;
 - tailnet self-pairing is explicitly enabled for the Android Worker while the Controller still verifies the connecting peer is sourced from `100.64.0.0/10`;
-- durable journal remains under `F:\TigerIQ\State\workforce.jsonl` by default;
+- durable journal remains under `D:\TigerIQ\State\workforce.jsonl` by default;
 - runtime admin secret is generated locally and stored outside the repository with restricted ACL; it is never printed or committed and is not required by the phone self-pair flow;
 - Windows Scheduled Task runs at startup under SYSTEM so the Controller does not depend on an interactive user logon;
 - Windows Firewall rule is limited to the resolved local Controller address/port and Tailscale CGNAT range;

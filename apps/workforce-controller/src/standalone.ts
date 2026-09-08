@@ -8,7 +8,7 @@ import { DurableWorkforceRuntime } from '../../../packages/workforce/src/runtime
 import { DurableTaskMailbox } from '../../../packages/workforce/src/task-mailbox.js';
 import { startWorkforceController } from './server.js';
 
-const journalPath = process.env.TIGERIQ_WORKFORCE_JOURNAL ?? 'F:\\TigerIQ\\State\\workforce.jsonl';
+const journalPath = process.env.TIGERIQ_WORKFORCE_JOURNAL ?? 'D:\\TigerIQ\\State\\workforce.jsonl';
 const host = process.env.TIGERIQ_WORKFORCE_HOST ?? '127.0.0.1';
 const port = Number(process.env.TIGERIQ_WORKFORCE_PORT ?? '8790');
 const adminSecret = process.env.TIGERIQ_WORKFORCE_ADMIN_SECRET ?? '';

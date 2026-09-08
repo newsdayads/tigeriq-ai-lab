@@ -10,7 +10,7 @@ Create a deterministic PC01-side release path that turns the already-approved pr
 - Require the WO-037 private signing directory and pinned certificate fingerprint.
 - Build `assembleRelease` with path-only Gradle signing variables.
 - Verify the produced APK with `apksigner` and reject certificate mismatch.
-- Compute APK SHA-256 and emit a redacted release manifest under `F:\TigerIQ\Releases\android-worker\<version>`.
+- Compute APK SHA-256 and emit a redacted release manifest under `D:\TigerIQ\Releases\android-worker\<version>`.
 - Add deterministic static safety tests.
 
 ## Gates

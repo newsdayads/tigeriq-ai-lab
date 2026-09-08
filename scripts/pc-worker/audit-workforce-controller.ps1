@@ -1,5 +1,5 @@
 param(
-  [string]$StatePath = 'F:\TigerIQ\State\workforce.jsonl',
+  [string]$StatePath = 'D:\TigerIQ\State\workforce.jsonl',
   [string]$ControllerHost = '',
   [int]$ControllerPort = 8790
 )
@@ -7,8 +7,8 @@ param(
 $ErrorActionPreference = 'SilentlyContinue'
 $TaskName = 'TigerIQ Workforce Controller'
 $FirewallName = 'TigerIQ Workforce Controller (Tailscale)'
-$SecretPath = 'F:\TigerIQ\Secrets\workforce-admin.secret'
-$RunnerPath = 'F:\TigerIQ\Worker\run-workforce-controller.ps1'
+$SecretPath = 'D:\TigerIQ\Secrets\workforce-admin.secret'
+$RunnerPath = 'D:\TigerIQ\Worker\run-workforce-controller.ps1'
 
 function Test-TailscaleIPv4([string]$Address) {
   if ($Address -notmatch '^100\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$') { return $false }

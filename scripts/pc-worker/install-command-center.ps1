@@ -5,9 +5,9 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $repo = 'newsdayads/tigeriq-ai-lab'
-$workspace = 'F:\TigerIQ\Workspace\tigeriq-ai-lab'
-$runtimeDir = 'F:\TigerIQ\CommandCenter'
-$secretDir = 'F:\TigerIQ\Secrets'
+$workspace = 'D:\TigerIQ\Workspace\tigeriq-ai-lab'
+$runtimeDir = 'D:\TigerIQ\CommandCenter'
+$secretDir = 'D:\TigerIQ\Secrets'
 $secretPath = Join-Path $secretDir 'command-center.secret'
 $startScript = Join-Path $runtimeDir 'start-command-center.ps1'
 $stdout = Join-Path $runtimeDir 'command-center.log'
@@ -72,7 +72,7 @@ $launcher = @"
 `$env:TIGERIQ_COMMAND_SECRET = (Get-Content -Raw '$secretPath').Trim()
 `$env:TIGERIQ_COMMAND_HOST = '$hostIp'
 `$env:TIGERIQ_COMMAND_PORT = '$Port'
-`$env:TIGERIQ_JOURNAL = 'F:\TigerIQ\State\control-plane.jsonl'
+`$env:TIGERIQ_JOURNAL = 'D:\TigerIQ\State\control-plane.jsonl'
 Set-Location '$workspace'
 cmd /c npm run command-center 1>> '$stdout' 2>> '$stderr'
 exit `$LASTEXITCODE

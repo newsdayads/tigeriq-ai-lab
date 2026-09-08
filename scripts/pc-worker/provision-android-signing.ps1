@@ -1,5 +1,5 @@
 param(
-  [string]$SecretsDir = 'F:\TigerIQ\Secrets\android-worker-signing',
+  [string]$SecretsDir = 'D:\TigerIQ\Secrets\android-worker-signing',
   [string]$Alias = 'tigeriq-worker-stable'
 )
 

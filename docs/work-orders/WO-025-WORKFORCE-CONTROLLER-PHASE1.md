@@ -25,7 +25,7 @@ Turn the WO-024 remote domain core into a zero-cost, restart-safe operational co
    - `POST /api/node/pair` — device key proof, node registration, scoped credential return.
    - `POST /api/admin/employees` — admin-secret protected employee/node binding and role provisioning.
    - `POST /api/node/heartbeat` — credential-scoped node health update.
-5. Standalone PC01 runtime using `F:\TigerIQ\State\workforce.jsonl` by default and environment-configurable private host/port/admin secret.
+5. Standalone PC01 runtime using `D:\TigerIQ\State\workforce.jsonl` by default and environment-configurable private host/port/admin secret.
 6. Integration tests for file-backed restart dedupe, hash-chained journal state, real P-256 signature verification, credential survival/revocation, private bind, pairing, heartbeat, employee provisioning and status projection.
 
 ## Security boundaries

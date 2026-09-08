@@ -26,7 +26,7 @@ describe('WO-037 Android stable signing', () => {
   });
 
   it('provisions one persistent private keystore and pins its fingerprint', () => {
-    expect(provision).toContain("F:\\TigerIQ\\Secrets\\android-worker-signing");
+    expect(provision).toContain("D:\\TigerIQ\\Secrets\\android-worker-signing");
     expect(provision).toContain("if (-not (Test-Path $KeyStorePath))");
     expect(provision).toContain('SIGNING_IDENTITY_CHANGED');
     expect(provision).toContain('certificateSha256');
