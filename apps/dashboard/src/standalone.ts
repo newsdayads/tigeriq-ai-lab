@@ -228,7 +228,7 @@ const cockpitV8 = await startOwnerCockpitV8({ cockpitUrl: cockpitV5.url, backend
 const cockpitV10 = await startOwnerCockpitV10({ cockpitUrl: cockpitV8.url, host: '127.0.0.1', port: 0 });
 const cockpitV11 = await startOwnerCockpitV11({ cockpitUrl: cockpitV10.url, host: '127.0.0.1', port: 0 });
 const cockpitV12 = await startOwnerCockpitV12({ cockpitUrl: cockpitV11.url, host: '127.0.0.1', port: 0 });
-const server = await startOwnerCockpitV17({ stableUrl: cockpitV12.url, backendUrl: backend.url, repo, host, port });
+const server = await startOwnerCockpitV17({ stableUrl: cockpitV12.url, backendUrl: backend.url, repo, host, port, runtimeStateEnabled: true });
 void emitWebLocalRuntimeEvidence(server.url);
 schedulePc01RuntimeSelfHeal({ host, repo, repoRoot: process.env.TIGERIQ_REPO_ROOT, runtimeMode: 'native', statePath: 'D:\\TigerIQ\\CommandCenter\\worker-self-heal-v1.json' });
 

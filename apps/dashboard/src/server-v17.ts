@@ -9,6 +9,7 @@ import { renderWorkContentV5, stableWorkIdV5, WORK_V5_CSS } from './work-view-v5
 import { ENTITY_V5_CSS, ENTITY_V5_CSS_EXTRA, renderSystemContentV5, renderWorkforceContentV5 } from './entity-views-v5.js';
 import { MANAGEMENT_V5_CSS, OVERVIEW_SIGNALS_V5_CSS, overviewCheckpointScriptV5, renderOverviewSignalsV5, renderProjectsV5, renderReportsV5, renderSettingsV5 } from './management-views-v5.js';
 import { renderCommandOverviewV5, COMMAND_OVERVIEW_V5_CSS, COMMAND_OVERVIEW_V5_CSS_MORE, COMMAND_OVERVIEW_V5_CSS_LAST } from './command-overview-v5.js';
+import { stabilizeExecutiveDataV5 } from './runtime-state-v5.js';
 
 export const WEB_LOCAL_VERSION_V17 = 'WEB-LOCAL-396-V4.0';
 const MAX_BODY_BYTES = 64 * 1024;
@@ -24,6 +25,7 @@ export interface OwnerCockpitV17Options {
   loadData?: (telemetry: ServerTelemetry) => Promise<ExecutiveDashboardV4>;
   livePollMs?: number;
   selfHealStatePath?: string;
+  runtimeStateEnabled?: boolean;
 }
 
 function esc(value: unknown): string {
@@ -111,7 +113,7 @@ function brand(): string {
 }
 
 function sidebar(active: View): string {
-  return `<aside class="x-sidebar">${brand()}<nav class="x-nav">${primaryNav(active)}</nav><div class="x-side-bottom"><em>Con người thông minh hơn<br>Tạo tác động lớn hơn</em><span>TigerIQ AI Lab<br>Web Control V5</span></div></aside>`;
+  return `<aside class="x-sidebar">${brand()}<nav class="x-nav">${primaryNav(active)}</nav><div class="x-side-bottom"><em>Con người thông minh hơn<br>Tạo tác động lớn hơn</em><span>TigerIQ AI Lab<br>Web Control V5 · Trung tâm điều hành V5</span></div></aside>`;
 }
 
 function header(title = 'TigerIQ AI Lab', subtitle = 'Bảng điều hành', live = false): string {
@@ -208,7 +210,7 @@ export function renderExecutiveSystemV5(data: ExecutiveDashboardV4, selectedId =
 }
 
 export function renderExecutiveManagementV5(data: ExecutiveDashboardV4, view: 'models'|'reports'|'settings', selectedId = ''): string {
-  const content = view === 'models' ? renderProjectsV5(data, selectedId) : view === 'reports' ? renderReportsV5(data) : renderSettingsV5();
+  const content = view === 'models' ? renderProjectsV5(data, selectedId) : view === 'reports' ? renderReportsV5(data) : renderSettingsV5(data);
   const title = view === 'models' ? 'Dự án' : view === 'reports' ? 'Báo cáo' : 'Cài đặt';
   return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TigerIQ — ${title} V5</title><style>${BASE_CSS}${MANAGEMENT_V5_CSS}${OVERVIEW_SIGNALS_V5_CSS}</style></head><body><div class="x-app" data-version="${WEB_LOCAL_VERSION_V17}" data-view="${view}-v5">${sidebar(view)}${header('TigerIQ AI Lab',`${title} · trung tâm quản trị`,true)}<main class="x-main">${content}</main></div>${liveScript()}</body></html>`;
 }
@@ -230,6 +232,7 @@ export function themeFunctionalPageV4(input: string, view: View): string {
     .replace(/@import\s+url\([^)]*fonts\.googleapis\.com[^)]*\);?/gi, '')
     .replace(/<meta\s+http-equiv=["']refresh["'][^>]*>/gi, '');
   html = replacePrimaryNav(html, view);
+  html = html.replace(/>Lifecycle</g, '>Vòng đời<').replace(/Lifecycle và bằng chứng kỹ thuật/gi, 'Vòng đời và bằng chứng kỹ thuật');
   html = html.replace(/<a class="brand"[\s\S]*?<\/a>/, `<div class="brand x-functional-brand">${brand()}</div>`);
   html = html.replace('<main class="content">', `<main class="content">${functionalSubnav(view)}`);
   html = html.replace('<body', `<body data-version="${WEB_LOCAL_VERSION_V17}" data-layout="executive-functional-v4"`);
@@ -253,7 +256,7 @@ export function applyNativeSelfHealStateV5(data: ExecutiveDashboardV4, state: Na
   if (state.runtimeMode !== 'NATIVE') return data;
   const tasks = state.nativeTasks ?? {}; const ports = state.nativePorts ?? {};
   const bind: Record<string,string> = { worker:'TigerIQ PC01 Native Worker', control:'TigerIQ Workforce Controller', planner:'TigerIQ Autonomous Planner', orchestrator:'TigerIQ Mission Orchestrator', supervisor:'TigerIQ Autonomy Supervisor', remote:'TigerIQ Desktop Commander Remote', ollama:'TigerIQ Ollama Runtime' };
-  const systems = data.systems.map((row) => { const task = bind[row.key]; if (!task) return row; const running = tasks[task] === 'Running'; return { ...row, status: running ? 'Ho\u1ea1t \u0111\u1ed9ng' : 'Kh\u00f4ng ho\u1ea1t \u0111\u1ed9ng', tone: running ? 'active' : 'blocked', note: `${task} · ${tasks[task] ?? 'MISSING'}` } as ExecutiveSystemV4; });
+  const systems = data.systems.map((row) => { const task = bind[row.key]; if (!task) return row; const running = tasks[task] === 'Running'; return { ...row, status: running ? 'Ho\u1ea1t \u0111\u1ed9ng' : 'Kh\u00f4ng ho\u1ea1t \u0111\u1ed9ng', tone: running ? 'active' : 'blocked', note: `${running ? 'Đang chạy' : 'Không chạy'} · tác vụ hệ thống: ${task}` } as ExecutiveSystemV4; });
   const taskReady = Object.values(tasks).filter((value) => value === 'Running').length; const portReady = Object.values(ports).filter(Boolean).length;
   const healthy = state.result === 'READY' || state.result === 'REPAIRED';
   systems.push({ key:'self-heal', name:'T\u1ef1 ph\u1ee5c h\u1ed3i PC01', status: healthy ? 'S\u1eb5n s\u00e0ng' : 'C\u1ea7n ki\u1ec3m tra', tone: healthy ? 'active' : 'blocked', note: `Native · ${taskReady}/${Object.keys(tasks).length} ti\u1ebfn tr\u00ecnh · ${portReady}/${Object.keys(ports).length} c\u1ed5ng · ${state.updatedAt ?? 'ch\u01b0a c\u00f3 m\u1ed1c'}` });
@@ -268,7 +271,8 @@ async function loadOverviewDataFresh(options: OwnerCockpitV17Options): Promise<E
   if (!telemetryResponse.ok) throw new Error('telemetry_unavailable');
   const telemetry = await telemetryResponse.json() as ServerTelemetry;
   const data = await (options.loadData ? options.loadData(telemetry) : loadExecutiveDashboardV4(options.repo, telemetry));
-  return enrichNativeSelfHealV5(data, options);
+  const enriched = await enrichNativeSelfHealV5(data, options);
+  return options.runtimeStateEnabled ? stabilizeExecutiveDataV5(enriched) : enriched;
 }
 
 type OverviewCacheV5 = { data: ExecutiveDashboardV4 | null; refreshedAt: number; loading: Promise<ExecutiveDashboardV4> | null };

@@ -67,6 +67,9 @@ export type ExecutiveDashboardV4 = {
   progressAverage: number | null;
   ownerActionRequired: boolean;
   ownerActionText: string;
+  sourceStatus?: string;
+  sourceNote?: string;
+  sourceUpdatedAt?: string;
 };
 
 function compact(value: string, max = 150): string {
