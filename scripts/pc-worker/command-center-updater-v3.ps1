@@ -1,19 +1,19 @@
 # TIGERIQ_COMMAND_CENTER_UPDATER_V3
 param(
   [string]$Repo = 'newsdayads/tigeriq-ai-lab',
-  [string]$Branch = 'wo250/command-center-artifact-updater-v3',
+  [string]$Branch = 'vy/web-v5-release-channel-20260909',
   [string]$HostIp = '100.97.23.87',
   [int]$Port = 8787
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-$runtimeDir = 'F:\TigerIQ\CommandCenter'
+$runtimeDir = 'D:\TigerIQ\CommandCenter'
 $releaseRoot = Join-Path $runtimeDir 'releases-v3'
 $currentPath = Join-Path $runtimeDir 'current-release.txt'
 $statePath = Join-Path $runtimeDir 'updater-v3-state.json'
-$secretPath = 'F:\TigerIQ\Secrets\command-center.secret'
-$tokenPath = 'F:\TigerIQ\Secrets\github-command-center.token'
+$secretPath = 'D:\TigerIQ\Secrets\command-center.secret'
+$tokenPath = 'D:\TigerIQ\Secrets\github-command-center.token'
 $taskName = 'TigerIQ Command Center'
 $mutex = New-Object Threading.Mutex($false,'Global\TigerIQCommandCenterUpdaterV3')
 $locked = $false
@@ -99,7 +99,7 @@ try {
   $env:TIGERIQ_COMMAND_SECRET = [IO.File]::ReadAllText($secretPath).Trim()
   $env:TIGERIQ_COMMAND_HOST = '127.0.0.1'
   $env:TIGERIQ_COMMAND_PORT = [string]$testPort
-  $env:TIGERIQ_JOURNAL = 'F:\TigerIQ\State\control-plane.jsonl'
+  $env:TIGERIQ_JOURNAL = 'D:\TigerIQ\State\control-plane.jsonl'
   $env:TIGERIQ_REPO_ROOT = $releaseDir
   $env:TIGERIQ_REPO = $Repo
   $candidateOut = Join-Path $stage 'candidate.out.log'

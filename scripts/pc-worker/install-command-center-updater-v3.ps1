@@ -1,15 +1,15 @@
 # TIGERIQ_COMMAND_CENTER_UPDATER_V3_BOOTSTRAP
 param(
   [string]$Repo = 'newsdayads/tigeriq-ai-lab',
-  [string]$Branch = 'wo250/command-center-artifact-updater-v3',
+  [string]$Branch = 'vy/web-v5-release-channel-20260909',
   [string]$HostIp = '100.97.23.87',
   [int]$Port = 8787
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-$runtimeDir = 'F:\TigerIQ\CommandCenter'
-$secretDir = 'F:\TigerIQ\Secrets'
+$runtimeDir = 'D:\TigerIQ\CommandCenter'
+$secretDir = 'D:\TigerIQ\Secrets'
 $secretPath = Join-Path $secretDir 'command-center.secret'
 $tokenPath = Join-Path $secretDir 'github-command-center.token'
 $updaterPath = Join-Path $runtimeDir 'command-center-updater-v3.ps1'
@@ -84,7 +84,7 @@ if(-not `$release -or -not (Test-Path -LiteralPath `$release)){ throw 'CURRENT_R
 `$env:GH_TOKEN = [IO.File]::ReadAllText('$tokenPath').Trim()
 `$env:TIGERIQ_COMMAND_HOST = '$HostIp'
 `$env:TIGERIQ_COMMAND_PORT = '$Port'
-`$env:TIGERIQ_JOURNAL = 'F:\TigerIQ\State\control-plane.jsonl'
+`$env:TIGERIQ_JOURNAL = 'D:\TigerIQ\State\control-plane.jsonl'
 `$env:TIGERIQ_REPO_ROOT = `$release
 `$env:TIGERIQ_REPO = '$Repo'
 Set-Location `$release

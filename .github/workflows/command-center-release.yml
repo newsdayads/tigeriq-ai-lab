@@ -3,7 +3,7 @@ name: Command Center Release Bundle
 on:
   push:
     branches:
-      - wo250/command-center-artifact-updater-v3
+      - vy/web-v5-release-channel-20260909
   workflow_dispatch:
 
 permissions:
