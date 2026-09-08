@@ -1,7 +1,7 @@
 # Current State
 
 Date: 2026-09-08
-Status: CURRENT — reconciliation candidate, OFF-MAIN
+Status: CURRENT — MAIN synchronized
 Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #335 > exact runtime/evidence
 
 ## Current operating policy
@@ -43,7 +43,7 @@ Historical OpenClaw PRs #279 and #315 remain historical/superseded evidence only
 1. Keep PC01 background AI/runtime healthy on `D:\TigerIQ`.
 2. Continue Web Control / continuous self-healing OFF-MAIN using safe non-browser execution paths (#482/#484/#486).
 3. Keep unattended Chrome/ChatGPT UI automation blocked.
-4. Complete CURRENT_STATE reconciliation through normal OFF-MAIN review/gate.
+4. Keep `docs/CURRENT_STATE.md`, CENTRAL #280 and Registry #335 synchronized when runtime truth changes.
 5. Continue the dedicated OpenClaw audit/configuration lane without conflicting parallel mutation; record exact runtime evidence back into CENTRAL/current state when verified.
 
 ## Command / employee registry
@@ -64,9 +64,8 @@ Registry authority: #335 (`REGISTRY_ROOT_VERSION=4`).
 - No self-bypass of MAIN/Production/paid/security/reboot/irreversible gates.
 
 ## Superseded state notice
-The previous `docs/CURRENT_STATE.md` dated 2026-09-04 contained stale runtime/priority information, including an obsolete OpenClaw priority interpretation and pre-recovery PC01 assumptions. Those details are historical context only and must not be used to route current work when they conflict with CENTRAL #280, Registry #335, this current reconciliation, or newer exact evidence.
+The previous `docs/CURRENT_STATE.md` dated 2026-09-04 contained stale runtime/priority information, including an obsolete OpenClaw priority interpretation and pre-recovery PC01 assumptions. Those details are historical context only and must not be used to route current work when they conflict with CENTRAL #280, Registry #335, this current state, or newer exact evidence.
 
 ## Next evidence required
-- Review/gate this CURRENT_STATE reconciliation before MAIN integration.
 - Dedicated OpenClaw session publishes exact current gateway/task/config/model/runtime evidence and updates CENTRAL/state accordingly.
 - Continue evidence-driven Web Control/Self-Healing work OFF-MAIN.
