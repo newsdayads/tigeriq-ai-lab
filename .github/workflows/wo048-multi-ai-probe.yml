@@ -1,0 +1,69 @@
+name: WO-048 Multi-AI Probe Guard
+
+on:
+  pull_request:
+    paths:
+      - 'config/ai-free-providers-v1.json'
+      - 'scripts/pc-worker/probe-multi-ai.ps1'
+      - 'scripts/pc-worker/test-ai-free-policy.ps1'
+      - 'scripts/pc-worker/ai-provider-scheduler.ps1'
+      - 'scripts/pc-worker/test-ai-provider-scheduler.ps1'
+      - 'scripts/pc-worker/ai-job-orchestrator.ps1'
+      - 'scripts/pc-worker/test-ai-job-orchestration.ps1'
+      - '.github/workflows/wo048-multi-ai-probe.yml'
+  push:
+    branches:
+      - 'wo048/multi-ai-subscription-orchestration'
+    paths:
+      - 'config/ai-free-providers-v1.json'
+      - 'scripts/pc-worker/probe-multi-ai.ps1'
+      - 'scripts/pc-worker/test-ai-free-policy.ps1'
+      - 'scripts/pc-worker/ai-provider-scheduler.ps1'
+      - 'scripts/pc-worker/test-ai-provider-scheduler.ps1'
+      - 'scripts/pc-worker/ai-job-orchestrator.ps1'
+      - 'scripts/pc-worker/test-ai-job-orchestration.ps1'
+      - '.github/workflows/wo048-multi-ai-probe.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  subscription-only-probe-guard:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Parse PowerShell guards
+        shell: powershell
+        run: |
+          foreach ($path in @(
+            'scripts/pc-worker/probe-multi-ai.ps1',
+            'scripts/pc-worker/test-ai-free-policy.ps1',
+            'scripts/pc-worker/ai-provider-scheduler.ps1',
+            'scripts/pc-worker/test-ai-provider-scheduler.ps1',
+            'scripts/pc-worker/ai-job-orchestrator.ps1',
+            'scripts/pc-worker/test-ai-job-orchestration.ps1'
+          )) {
+            $errors = $null
+            $tokens = $null
+            [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path), [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error $_.Message }
+              exit 1
+            }
+          }
+          Write-Host 'MULTI_AI_POWERSHELL_PARSE_PASS'
+      - name: Run zero-cost three-way policy test
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/pc-worker/test-ai-free-policy.ps1
+      - name: Run scheduler lease-dedupe regression
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/pc-worker/test-ai-provider-scheduler.ps1
+      - name: Run JOB-001 orchestration regression
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/pc-worker/test-ai-job-orchestration.ps1
+      - name: Run no-provider probe self-test
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/pc-worker/probe-multi-ai.ps1 -SelfTest
