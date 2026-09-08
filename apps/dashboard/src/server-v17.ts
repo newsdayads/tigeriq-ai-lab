@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -22,6 +23,7 @@ export interface OwnerCockpitV17Options {
   port?: number;
   loadData?: (telemetry: ServerTelemetry) => Promise<ExecutiveDashboardV4>;
   livePollMs?: number;
+  selfHealStatePath?: string;
 }
 
 function esc(value: unknown): string {
@@ -246,11 +248,27 @@ function copyHeaders(upstream: Response, res: ServerResponse, overview = false):
     : "default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
 }
 
+type NativeSelfHealV5 = { result?: string; runtimeMode?: string; updatedAt?: string; nativeTasks?: Record<string,string>; nativePorts?: Record<string,boolean>; error?: string };
+export function applyNativeSelfHealStateV5(data: ExecutiveDashboardV4, state: NativeSelfHealV5): ExecutiveDashboardV4 {
+  if (state.runtimeMode !== 'NATIVE') return data;
+  const tasks = state.nativeTasks ?? {}; const ports = state.nativePorts ?? {};
+  const bind: Record<string,string> = { worker:'TigerIQ PC01 Native Worker', control:'TigerIQ Workforce Controller', planner:'TigerIQ Autonomous Planner', orchestrator:'TigerIQ Mission Orchestrator', supervisor:'TigerIQ Autonomy Supervisor', remote:'TigerIQ Desktop Commander Remote', ollama:'TigerIQ Ollama Runtime' };
+  const systems = data.systems.map((row) => { const task = bind[row.key]; if (!task) return row; const running = tasks[task] === 'Running'; return { ...row, status: running ? 'Ho\u1ea1t \u0111\u1ed9ng' : 'Kh\u00f4ng ho\u1ea1t \u0111\u1ed9ng', tone: running ? 'active' : 'blocked', note: `${task} · ${tasks[task] ?? 'MISSING'}` } as ExecutiveSystemV4; });
+  const taskReady = Object.values(tasks).filter((value) => value === 'Running').length; const portReady = Object.values(ports).filter(Boolean).length;
+  const healthy = state.result === 'READY' || state.result === 'REPAIRED';
+  systems.push({ key:'self-heal', name:'T\u1ef1 ph\u1ee5c h\u1ed3i PC01', status: healthy ? 'S\u1eb5n s\u00e0ng' : 'C\u1ea7n ki\u1ec3m tra', tone: healthy ? 'active' : 'blocked', note: `Native · ${taskReady}/${Object.keys(tasks).length} ti\u1ebfn tr\u00ecnh · ${portReady}/${Object.keys(ports).length} c\u1ed5ng · ${state.updatedAt ?? 'ch\u01b0a c\u00f3 m\u1ed1c'}` });
+  return { ...data, systems };
+}
+async function enrichNativeSelfHealV5(data: ExecutiveDashboardV4, options: OwnerCockpitV17Options): Promise<ExecutiveDashboardV4> {
+  try { const raw=await readFile(options.selfHealStatePath ?? 'D:\\TigerIQ\\CommandCenter\\worker-self-heal-v1.json','utf8'); return applyNativeSelfHealStateV5(data, JSON.parse(raw) as NativeSelfHealV5); } catch { return data; }
+}
+
 async function loadOverviewDataFresh(options: OwnerCockpitV17Options): Promise<ExecutiveDashboardV4> {
   const telemetryResponse = await fetch(`${options.backendUrl}/api/server`, { cache: 'no-store' });
   if (!telemetryResponse.ok) throw new Error('telemetry_unavailable');
   const telemetry = await telemetryResponse.json() as ServerTelemetry;
-  return options.loadData ? options.loadData(telemetry) : loadExecutiveDashboardV4(options.repo, telemetry);
+  const data = await (options.loadData ? options.loadData(telemetry) : loadExecutiveDashboardV4(options.repo, telemetry));
+  return enrichNativeSelfHealV5(data, options);
 }
 
 type OverviewCacheV5 = { data: ExecutiveDashboardV4 | null; refreshedAt: number; loading: Promise<ExecutiveDashboardV4> | null };
