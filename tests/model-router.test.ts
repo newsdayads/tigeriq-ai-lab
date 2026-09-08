@@ -148,19 +148,19 @@ describe('Gemini Free adapter guard', () => {
   it('fails closed before network when Free Tier proof is absent', async () => {
     let calls = 0;
     const gemini = createGeminiAdapter({ apiKey: 'test_only', freeTierVerified: false, fetchImpl: async () => { calls += 1; return new Response(); } });
-    await expect(gemini.execute({ provider: 'gemini', model: 'gemini-2.5-flash' }, { prompt: 'x' })).rejects.toMatchObject({ kind: 'configuration' });
+    await expect(gemini.execute({ provider: 'gemini', model: 'gemini-3.5-flash-lite' }, { prompt: 'x' })).rejects.toMatchObject({ kind: 'configuration' });
     expect(calls).toBe(0);
   });
 
   it('pins the zero-cost allowlisted model and bounded output', async () => {
     const gemini = createGeminiAdapter({ apiKey: 'test_only', freeTierVerified: true, fetchImpl: async (input, init) => {
-      expect(String(input)).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent');
+      expect(String(input)).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent');
       const body = JSON.parse(String(init?.body));
       expect(body.contents[0].parts[0].text).toBe('x');
       expect(body.generationConfig.maxOutputTokens).toBe(512);
       return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'PASS' }] } }] }), { status: 200 });
     } });
-    await expect(gemini.execute({ provider: 'gemini', model: 'gemini-2.5-flash' }, { prompt: 'x' })).resolves.toBe('PASS');
+    await expect(gemini.execute({ provider: 'gemini', model: 'gemini-3.5-flash-lite' }, { prompt: 'x' })).resolves.toBe('PASS');
   });
 
   it('rejects any non-allowlisted Gemini model before network', async () => {

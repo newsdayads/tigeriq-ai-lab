@@ -67,7 +67,7 @@ describe('PC01 coordinated zero-cost AI',()=>{
       return new Response(JSON.stringify({choices:[{message:{content}}]}),{status:200});};
     try{const provider=new CoordinatedAiProvider(root,'http://127.0.0.1:11434');const result=await provider.run(job({jobId:'HIGH-1',payload:{prompt:'work',risk:'high'}}));
       expect(result.status).toBe('verified');expect(result.executorModel).toBe('groq/openai/gpt-oss-120b');expect(result.reviewerDecision).toBe('PASS');expect(result.judgeDecision).toBe('PASS');
-      expect(result.evidence.stages.map(stage=>stage.model)).toEqual(['openai/gpt-oss-120b','gemini-2.5-flash','qwen3:8b']);
+      expect(result.evidence.stages.map(stage=>stage.model)).toEqual(['openai/gpt-oss-120b','gemini-3.5-flash-lite','qwen3:8b']);
     }finally{globalThis.fetch=beforeFetch;if(beforeGroqKey===undefined)delete process.env.GROQ_API_KEY;else process.env.GROQ_API_KEY=beforeGroqKey;if(beforeGroqProof===undefined)delete process.env.TIGERIQ_GROQ_FREE_TIER_VERIFIED;else process.env.TIGERIQ_GROQ_FREE_TIER_VERIFIED=beforeGroqProof;if(beforeGeminiKey===undefined)delete process.env.GEMINI_API_KEY;else process.env.GEMINI_API_KEY=beforeGeminiKey;if(beforeGeminiProof===undefined)delete process.env.TIGERIQ_GEMINI_FREE_TIER_VERIFIED;else process.env.TIGERIQ_GEMINI_FREE_TIER_VERIFIED=beforeGeminiProof;}
   });
   test('falls back to three distinct local Ollama models when Groq proof is absent',async()=>{

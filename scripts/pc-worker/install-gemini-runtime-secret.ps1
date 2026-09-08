@@ -54,7 +54,7 @@ try {
   $now = [DateTime]::UtcNow
   $proof = [ordered]@{
     provider='gemini'; plan='Free'; priceUsd=0; ownerConfirmed=$true
-    billingLinked=$false; paidFallbackAllowed=$false; model='gemini-2.5-flash'
+    billingLinked=$false; paidFallbackAllowed=$false; model='gemini-3.5-flash-lite'
     verifiedAtUtc=$now.ToString('o'); expiresAtUtc=$now.AddDays($ProofDays).ToString('o')
     source='owner_free_tier_confirmation_plus_official_pricing'
   }

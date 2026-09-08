@@ -94,7 +94,7 @@
       "credentialEnv": "GEMINI_API_KEY",
       "accountTierProofEnv": "TIGERIQ_GEMINI_FREE_TIER_VERIFIED",
       "requireFreeTierProof": true,
-      "model": "gemini-2.5-flash",
+      "model": "gemini-3.5-flash-lite",
       "allowPaidTier": false,
       "role": [
         "executor",

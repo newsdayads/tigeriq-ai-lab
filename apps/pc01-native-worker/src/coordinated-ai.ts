@@ -29,14 +29,14 @@ export class CoordinatedAiProvider {
     const profiles:ModelProfile[]=[
       {target:{provider:'ollama',model:'qwen3:4b',local:true},costRank:0,qualityRank:2,kinds:['general','coding','analysis'],roles:['executor']},
       {target:{provider:'groq',model:'openai/gpt-oss-120b'},costRank:1,qualityRank:4,kinds:['general','coding','analysis','research'],roles:['executor','judge']},
-      {target:{provider:'gemini',model:'gemini-2.5-flash'},costRank:0,qualityRank:4,kinds:['general','coding','analysis','research'],roles:['reviewer']},
+      {target:{provider:'gemini',model:'gemini-3.5-flash-lite'},costRank:0,qualityRank:4,kinds:['general','coding','analysis','research'],roles:['reviewer']},
       {target:{provider:'ollama',model:'qwen3:8b',local:true},costRank:2,qualityRank:4,kinds:['general','coding','analysis','research'],roles:['executor','judge']},
       {target:{provider:'ollama',model:'qwen2.5-coder:14b',local:true},costRank:3,qualityRank:4,kinds:['general','coding','analysis','research'],roles:['executor','judge']},
       {target:{provider:'ollama',model:'gemma3:4b',local:true},costRank:0,qualityRank:4,kinds:['general','coding','analysis','research'],roles:['reviewer']},
     ];
     const adapters=[
       createGroqAdapter({model:'openai/gpt-oss-120b'}),
-      createGeminiAdapter({model:'gemini-2.5-flash'}),
+      createGeminiAdapter({model:'gemini-3.5-flash-lite'}),
       createOllamaAdapter({baseUrl:ollamaEndpoint}),
     ];
     this.coordinator=new AICoordinator(

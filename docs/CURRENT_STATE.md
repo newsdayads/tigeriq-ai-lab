@@ -1,6 +1,19 @@
 # Current State
 
-Date: 2026-08-31
+Date: 2026-09-08
+
+## NV04 Gemini API current overlay — OFF-MAIN
+- Authoritative lane: issue #392 with #133; integration successor PR #513 on `nv04/ai-api-runtime-integration-20260908`.
+- Persistent Gemini Free Tier credential/proof verified without secret disclosure: plan `Free`, price `0`, `billingLinked=false`, `paidFallbackAllowed=false`.
+- Safe default: `gemini-3.5-flash-lite`; direct deployed API call PASS and live Model Router → Gemini → response PASS.
+- Coordinated mixed path PASS/verified: Groq executor → Gemini reviewer → Ollama judge; reviewer and judge both PASS.
+- Real Gemini 429 quota was classified as `quota` and fell back to Groq successfully; deterministic 429/503/timeout/fallback guards PASS.
+- Final branch regression: typecheck PASS; build PASS; 30 test files / 146 tests PASS; zero-cost policy PASS; `git diff --check` PASS.
+- Gemini remains inside existing Model Router / Inference Gateway / PC01 AI Coordinator; no duplicate runtime path.
+- MAIN/Production/payment/PAYG/security boundaries unchanged.
+- Evidence: `docs/evidence/NV04-GEMINI-API-INTEGRATION-PC01-20260908.md`.
+
+Historical baseline sections below are retained for context; this overlay is authoritative for the NV04 Gemini slice on this branch.
 
 TigerIQ AI Lab is being operated as a continuous distributed AI company. Tiger IQ Driver (`newsdayads/drivetrack`) remains isolated and unchanged.
 

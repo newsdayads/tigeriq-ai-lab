@@ -574,7 +574,7 @@ export function createGeminiBackendAdapter(options: GeminiBackendOptions = {}): 
   const fetchImpl = options.fetchImpl ?? fetch;
   const baseUrl = (options.baseUrl ?? 'https://generativelanguage.googleapis.com/v1beta').replace(/\/$/, '');
   const timeoutMs = Math.max(1, options.timeoutMs ?? 120_000);
-  const allowedModel = 'gemini-2.5-flash';
+  const allowedModel = 'gemini-3.5-flash-lite';
   const freeTierVerified = options.freeTierVerified
     ?? process.env.TIGERIQ_GEMINI_FREE_TIER_VERIFIED?.trim().toLowerCase() === 'true';
   return {
@@ -684,7 +684,7 @@ export function defaultServerTargets(env: NodeJS.ProcessEnv = process.env): Back
   return [
     {
       provider: 'gemini',
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.5-flash-lite',
       tier: 'primary',
       costRank: 0,
       qualityRank: 4,

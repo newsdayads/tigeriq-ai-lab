@@ -24,7 +24,7 @@ try{
   mixed=await new CoordinatedAiProvider(path.join(root,'mixed'),ollama).run(job(`PC01-AUTO-MIXED-${Date.now()}`));
   if(mixed.executorModel!=='groq/openai/gpt-oss-120b')throw new Error(`MIXED_EXECUTOR_UNEXPECTED:${mixed.executorModel}`);
   const reviewer=mixed.evidence.stages.find(x=>x.role==='reviewer');
-  if(geminiReady&&`${reviewer?.provider}/${reviewer?.model}`!=='gemini/gemini-2.5-flash')throw new Error(`GEMINI_REVIEWER_UNEXPECTED:${reviewer?.provider}/${reviewer?.model}`);
+  if(geminiReady&&`${reviewer?.provider}/${reviewer?.model}`!=='gemini/gemini-3.5-flash-lite'){console.error(JSON.stringify({geminiAttempts:mixed.evidence.attempts.filter(x=>x.provider==='gemini')},null,2));throw new Error(`GEMINI_REVIEWER_UNEXPECTED:${reviewer?.provider}/${reviewer?.model}`);}
   delete process.env.GROQ_API_KEY;delete process.env.TIGERIQ_GROQ_FREE_TIER_VERIFIED;
   delete process.env.GEMINI_API_KEY;delete process.env.TIGERIQ_GEMINI_FREE_TIER_VERIFIED;
   localOnly=await new CoordinatedAiProvider(path.join(root,'local'),ollama).run(job(`PC01-AUTO-LOCAL-${Date.now()}`));

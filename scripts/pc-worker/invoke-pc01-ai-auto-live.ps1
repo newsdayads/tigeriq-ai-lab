@@ -39,9 +39,9 @@ try{
   if($RequireGemini-and-not$geminiAvailable){throw 'GEMINI_RUNTIME_SECRET_OR_PROOF_MISSING'}
   if($geminiAvailable){
     $gp=Read-FreeProof $geminiProof 'gemini'
-    if([string]$gp.model-ne'gemini-2.5-flash'){throw 'GEMINI_RUNTIME_MODEL_PROOF_INVALID'}
+    if([string]$gp.model-ne'gemini-3.5-flash-lite'){throw 'GEMINI_RUNTIME_MODEL_PROOF_INVALID'}
     $geminiKey=Unprotect-Key $geminiSecret 'TigerIQ-Gemini-PC01-v1'
-    if(-not$geminiKey.StartsWith('AIza')){throw 'GEMINI_RUNTIME_SECRET_DECRYPT_INVALID'}
+    if($geminiKey.Length-lt 30){throw 'GEMINI_RUNTIME_SECRET_DECRYPT_INVALID'}
     [Environment]::SetEnvironmentVariable('GEMINI_API_KEY',$geminiKey,'Process')
     [Environment]::SetEnvironmentVariable('TIGERIQ_GEMINI_FREE_TIER_VERIFIED','true','Process')
   }

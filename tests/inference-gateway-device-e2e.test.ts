@@ -18,7 +18,7 @@ describe('WO-047 mock-device E2E', () => {
     let providerCalls = 0;
     const target: BackendTarget = {
       provider: 'gemini',
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.5-flash-lite',
       tier: 'primary',
       costRank: 0,
       qualityRank: 4,
@@ -100,7 +100,7 @@ describe('WO-047 mock-device E2E', () => {
     const inferenceBody = await inferenceResponse.json() as Record<string, unknown>;
     const serialized = JSON.stringify(inferenceBody);
     expect(serialized).toContain('mock device inference result');
-    expect(serialized).toContain('gemini/gemini-2.5-flash');
+    expect(serialized).toContain('gemini/gemini-3.5-flash-lite');
     expect(serialized).not.toContain(providerSecret);
     expect(serialized).not.toContain('node-bootstrap-secret');
     expect(providerCalls).toBe(1);
@@ -114,7 +114,7 @@ describe('WO-047 mock-device E2E', () => {
     });
     expect(healthResponse.status).toBe(200);
     const healthText = await healthResponse.text();
-    expect(healthText).toContain('gemini/gemini-2.5-flash');
+    expect(healthText).toContain('gemini/gemini-3.5-flash-lite');
     expect(healthText).not.toContain(providerSecret);
   });
 

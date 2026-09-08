@@ -347,7 +347,7 @@ export function createGeminiAdapter(options: GeminiAdapterOptions = {}): Provide
   const baseUrl = (options.baseUrl ?? 'https://generativelanguage.googleapis.com/v1beta').replace(/\/$/, '');
   const timeoutMs = Math.max(1, options.timeoutMs ?? 120_000);
   const fetchImpl = options.fetchImpl ?? fetch;
-  const allowedModel = 'gemini-2.5-flash';
+  const allowedModel = 'gemini-3.5-flash-lite';
   const freeTierVerified = options.freeTierVerified
     ?? process.env.TIGERIQ_GEMINI_FREE_TIER_VERIFIED?.trim().toLowerCase() === 'true';
   const maxOutputTokens = Math.max(64, options.maxOutputTokens ?? 512);
