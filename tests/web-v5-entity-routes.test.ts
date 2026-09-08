@@ -15,8 +15,8 @@ describe('Web V5 entity routes',()=>{
     const stable=await stub('<html><body>stable</body></html>','text/html');
     const backend=await stub(JSON.stringify(telemetry),'application/json');
     const app=await startOwnerCockpitV17({stableUrl:stable,backendUrl:backend,repo:'newsdayads/tigeriq-ai-lab',loadData:async()=>data()});closers.push(app.close);
-    for(const [path,marker] of [['/?view=workforce','AI nào đang làm gì'],['/people/NV01','Work liên quan'],['/?view=system','Máy có khỏe không'],['/system/worker','Native Worker']] as const){
-      const r=await fetch(app.url+path);const html=await r.text();expect(r.status).toBe(200);expect(html).toContain(marker);expect(html).toContain('V5 · đang kết nối');
+    for(const [path,marker] of [['/?view=workforce','AI nào đang làm gì'],['/people/NV01','Công việc liên quan'],['/?view=system','Máy có khỏe không'],['/system/worker','Tiến trình thực thi PC01']] as const){
+      const r=await fetch(app.url+path);const html=await r.text();expect(r.status).toBe(200);expect(html).toContain(marker);expect(html).toContain('Đang kết nối dữ liệu');
     }
   });
 });
@@ -25,6 +25,6 @@ describe('Web V5 management routes',()=>{
     const d=data();d.works=[{number:511,title:'Web V5',ownerCode:'NV01',owner:'Minh',progressPercent:null,progressLabel:'—',status:'Đang làm',tone:'active',next:'Rollout',updated:'now',workId:'GH-511',projectId:'project:tigeriq',project:'TigerIQ',priority:'P0',goal:'Live',currentStep:'Batch',lastActivityAt:'2026-09-08T08:00:00Z'}];d.activeCount=1;
     const stable=await stub('<html><body>stable</body></html>','text/html');const backend=await stub(JSON.stringify(telemetry),'application/json');
     const app=await startOwnerCockpitV17({stableUrl:stable,backendUrl:backend,repo:'newsdayads/tigeriq-ai-lab',loadData:async()=>d});closers.push(app.close);
-    for(const [path,marker] of [['/?view=models','stable project_id'],['/projects/project%3Atigeriq','Work thuộc dự án'],['/?view=reports','Chưa đủ dữ liệu'],['/?view=settings','read-first']] as const){const r=await fetch(app.url+path);const html=await r.text();expect(r.status).toBe(200);expect(html).toContain(marker);}
+    for(const [path,marker] of [['/?view=models','mã dự án ổn định'],['/projects/project%3Atigeriq','Công việc thuộc dự án'],['/?view=reports','Chưa đủ dữ liệu'],['/?view=settings','ưu tiên đọc']] as const){const r=await fetch(app.url+path);const html=await r.text();expect(r.status).toBe(200);expect(html).toContain(marker);}
   });
 });

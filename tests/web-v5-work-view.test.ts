@@ -40,7 +40,7 @@ describe('Web Control V5 work execution board', () => {
     const detail = renderWorkContentV5(data([item]), new URL('http://local/work/GH-509?owner=NV01'), 'GH-509');
     expect(detail).toContain('Execution board thật');
     expect(detail).toContain('Chuẩn hóa route');
-    expect(detail).toContain('Timeline / evidence');
+    expect(detail).toContain('Dòng thời gian / bằng chứng');
     expect(stableWorkIdV5(item)).toBe('GH-509');
   });
 });

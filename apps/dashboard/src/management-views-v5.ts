@@ -17,7 +17,7 @@ function age(timestamp?: string): string {
   return `${Math.floor(s / 86400)} ngày trước`;
 }
 function projectId(work: ExecutiveWorkV4): string { return work.projectId || 'project:unmapped'; }
-function projectName(work: ExecutiveWorkV4): string { return work.project || 'Chưa chuẩn hóa project mapping'; }
+function projectName(work: ExecutiveWorkV4): string { return work.project || 'Chưa liên kết dự án'; }
 function projectGroups(data: ExecutiveDashboardV4) {
   const groups = new Map<string, ExecutiveWorkV4[]>();
   for (const work of data.works) {
@@ -34,12 +34,12 @@ export function renderProjectsV5(data: ExecutiveDashboardV4, selectedId = ''): s
   const groups = projectGroups(data);
   if (selectedId) {
     const group = groups.find((item) => item.id === selectedId);
-    if (!group) return '<div class="mv5-empty">Không tìm thấy project_id trong snapshot hiện hành.</div>';
+    if (!group) return '<div class="mv5-empty">Không tìm thấy mã dự án trong dữ liệu hiện hành.</div>';
     const rows = group.works.map((work) => `<a class="mv5-row" href="/work/${encodeURIComponent(stableWorkIdV5(work))}"><b>${esc(stableWorkIdV5(work))}</b><span>${esc(work.title)}</span><em class="mv5-state ${tone(work.tone)}">${esc(work.status)}</em></a>`).join('');
-    return `<div class="mv5-shell" data-live-section="management-content"><a class="mv5-back" href="/?view=models">← Dự án</a><div class="mv5-title"><div><small>${esc(group.id)}</small><h1>${esc(group.name)}</h1></div><span>${age(group.last)}</span></div><div class="mv5-metrics"><article><small>Active</small><b>${group.active}</b></article><article><small>Blocked</small><b>${group.blocked}</b></article><article><small>Done</small><b>${group.done}</b></article><article><small>Milestone</small><b>Lifecycle từ Work thật</b></article></div><h3>Work thuộc dự án</h3><div class="mv5-list">${rows || '<div class="mv5-empty">Chưa có Work.</div>'}</div></div>`;
+    return `<div class="mv5-shell" data-live-section="management-content"><a class="mv5-back" href="/?view=models">← Dự án</a><div class="mv5-title"><div><small>${esc(group.id)}</small><h1>${esc(group.name)}</h1></div><span>${age(group.last)}</span></div><div class="mv5-metrics"><article><small>Đang làm</small><b>${group.active}</b></article><article><small>Bị chặn</small><b>${group.blocked}</b></article><article><small>Hoàn tất</small><b>${group.done}</b></article><article><small>Mốc hiện tại</small><b>Trạng thái từ công việc thật</b></article></div><h3>Công việc thuộc dự án</h3><div class="mv5-list">${rows || '<div class="mv5-empty">Chưa có công việc.</div>'}</div></div>`;
   }
-  const cards = groups.map((group) => `<a class="mv5-card" href="/projects/${encodeURIComponent(group.id)}"><div class="mv5-card-head"><b>${esc(group.id)}</b><span>${age(group.last)}</span></div><h2>${esc(group.name)}</h2><p>Outcome lấy từ Work/goal đã ánh xạ; không dựng % nếu thiếu mẫu số.</p><dl><div><dt>Active</dt><dd>${group.active}</dd></div><div><dt>Blocked</dt><dd>${group.blocked}</dd></div><div><dt>Done</dt><dd>${group.done}</dd></div></dl></a>`).join('');
-  return `<div class="mv5-shell" data-live-section="management-content"><div class="mv5-intro"><h1>Dự án</h1><p>Vì mục tiêu nào — gom Work theo stable project_id.</p></div><div class="mv5-grid">${cards || '<div class="mv5-empty">Chưa chuẩn hóa project mapping.</div>'}</div></div>`;
+  const cards = groups.map((group) => `<a class="mv5-card" href="/projects/${encodeURIComponent(group.id)}"><div class="mv5-card-head"><b>${esc(group.id)}</b><span>${age(group.last)}</span></div><h2>${esc(group.name)}</h2><p>Mục tiêu lấy từ công việc đã liên kết; không dựng % nếu thiếu mẫu số.</p><dl><div><dt>Đang làm</dt><dd>${group.active}</dd></div><div><dt>Bị chặn</dt><dd>${group.blocked}</dd></div><div><dt>Hoàn tất</dt><dd>${group.done}</dd></div></dl></a>`).join('');
+  return `<div class="mv5-shell" data-live-section="management-content"><div class="mv5-intro"><h1>Dự án</h1><p>Vì mục tiêu nào — gom công việc theo mã dự án ổn định.</p></div><div class="mv5-grid">${cards || '<div class="mv5-empty">Chưa chuẩn hóa liên kết dự án.</div>'}</div></div>`;
 }
 
 function timelineEvents(data: ExecutiveDashboardV4) {
@@ -51,31 +51,31 @@ export function renderReportsV5(data: ExecutiveDashboardV4): string {
   const events = timelineEvents(data);
   const stale = data.works.filter((w) => w.tone === 'stale').length;
   const cards = [
-    ['Hoàn tất', data.doneCount, 'Từ snapshot Work hiện hành'],
-    ['Bị chặn', data.blockedCount, 'Từ lifecycle có evidence'],
-    ['Stale', stale, 'Theo ngưỡng heartbeat hiện hành'],
-    ['Event có timestamp', events.length, 'Nguồn timeline/evidence đang nạp'],
+    ['Hoàn tất', data.doneCount, 'Từ dữ liệu công việc hiện hành'],
+    ['Bị chặn', data.blockedCount, 'Từ trạng thái có bằng chứng'],
+    ['Mất nhịp', stale, 'Theo ngưỡng mất nhịp hiện hành'],
+    ['Sự kiện có thời gian', events.length, 'Nguồn dòng thời gian/bằng chứng đang nạp'],
   ];
   const errors = events.filter((event) => /error|fail|blocked|lỗi|bị chặn/i.test(event.message)).slice(0,10);
-  return `<div class="mv5-shell" data-live-section="management-content"><div class="mv5-intro"><h1>Báo cáo</h1><p>Kết quả từ dữ liệu thật; metric thiếu timestamp hiển thị Chưa đủ dữ liệu.</p></div><div class="mv5-metrics">${cards.map(([name,value,note]) => `<article><small>${esc(name)}</small><b>${esc(value)}</b><span>${esc(note)}</span></article>`).join('')}</div><div class="mv5-report-grid"><section><h2>Cycle time / tự động hóa</h2><div class="mv5-empty">Chưa đủ dữ liệu lifecycle timestamps chuẩn để tính median/p95 hoặc tỷ lệ tự động.</div></section><section><h2>Lỗi / blocker gần đây</h2>${errors.length ? errors.map((event) => `<a class="mv5-event" href="/work/${encodeURIComponent(stableWorkIdV5(event.work))}"><time>${esc(new Date(event.timestamp).toLocaleString('vi-VN',{hour12:false}))}</time><span>${esc(event.message)}</span></a>`).join('') : '<div class="mv5-empty">Chưa có event lỗi trong snapshot hiện hành.</div>'}</section></div></div>`;
+  return `<div class="mv5-shell" data-live-section="management-content"><div class="mv5-intro"><h1>Báo cáo</h1><p>Kết quả từ dữ liệu thật; chỉ số thiếu mốc thời gian sẽ hiển thị Chưa đủ dữ liệu.</p></div><div class="mv5-metrics">${cards.map(([name,value,note]) => `<article><small>${esc(name)}</small><b>${esc(value)}</b><span>${esc(note)}</span></article>`).join('')}</div><div class="mv5-report-grid"><section><h2>Thời gian xử lý / mức tự động</h2><div class="mv5-empty">Chưa đủ mốc thời gian chuẩn để tính trung vị, phân vị 95 hoặc tỷ lệ tự động.</div></section><section><h2>Lỗi / vướng mắc gần đây</h2>${errors.length ? errors.map((event) => `<a class="mv5-event" href="/work/${encodeURIComponent(stableWorkIdV5(event.work))}"><time>${esc(new Date(event.timestamp).toLocaleString('vi-VN',{hour12:false}))}</time><span>${esc(event.message)}</span></a>`).join('') : '<div class="mv5-empty">Chưa có sự kiện lỗi trong dữ liệu hiện hành.</div>'}</section></div></div>`;
 }
 export function renderSettingsV5(): string {
   const rows = [
-    ['SSE live stream','Bật','Server → UI; fallback polling khi stream lỗi'],
-    ['Fallback refresh','5 giây','Read-only trong release này'],
-    ['Heartbeat stale','120 giây','Nguồn hiện hành của Web V5'],
-    ['Write controls','Khóa','Chờ execution bridge #486 + Owner auth/audit'],
-    ['Browser lane control','Khóa','Không bypass policy #497'],
+    ['Đồng bộ trực tiếp','Bật','Máy chủ → giao diện; tự chuyển sang cập nhật 5 giây khi luồng trực tiếp lỗi'],
+    ['Cập nhật dự phòng','5 giây','Chỉ đọc trong bản hiện tại'],
+    ['Ngưỡng mất nhịp','120 giây','Nguồn hiện hành của Web V5'],
+    ['Điều khiển ghi','Khóa','Chờ cầu điều khiển #486 + xác thực chủ hệ thống + nhật ký'],
+    ['Điều khiển kênh trình duyệt','Khóa','Không vượt chính sách #497'],
   ];
-  return `<div class="mv5-shell" data-live-section="management-content"><div class="mv5-intro"><h1>Cài đặt</h1><p>Luật vận hành — read-first, write fail-closed.</p></div><div class="mv5-settings">${rows.map(([name,value,note]) => `<article><div><b>${esc(name)}</b><small>${esc(note)}</small></div><span>${esc(value)}</span></article>`).join('')}</div><section class="mv5-callout"><b>Điều khiển ghi chưa mở.</b><p>Backend hiện có auth cho giao job, nhưng chưa có contract stop/retry/reprioritize/kill-switch đạt #486; Web không tạo nút giả.</p></section></div>`;
+  return `<div class="mv5-shell" data-live-section="management-content"><div class="mv5-intro"><h1>Cài đặt</h1><p>Luật vận hành — ưu tiên đọc, thao tác ghi mặc định khóa.</p></div><div class="mv5-settings">${rows.map(([name,value,note]) => `<article><div><b>${esc(name)}</b><small>${esc(note)}</small></div><span>${esc(value)}</span></article>`).join('')}</div><section class="mv5-callout"><b>Điều khiển ghi chưa mở.</b><p>Hệ thống nền đã có xác thực khi giao việc, nhưng chưa có quy tắc dừng, thử lại, đổi ưu tiên và khóa khẩn cấp đạt #486; Web không tạo nút giả.</p></section></div>`;
 }
 
 export function renderOverviewSignalsV5(data: ExecutiveDashboardV4): string {
   const recent = timelineEvents(data).slice(0,8);
   const queued = data.works.filter((w) => w.tone === 'waiting' || w.tone === 'paused').slice(0,5);
-  const recentHtml = recent.length ? recent.map((event) => `<a href="/work/${encodeURIComponent(stableWorkIdV5(event.work))}"><time>${esc(age(event.timestamp))}</time><span>${esc(event.message)}</span></a>`).join('') : '<div class="mv5-empty">Chưa có event mới.</div>';
+  const recentHtml = recent.length ? recent.map((event) => `<a href="/work/${encodeURIComponent(stableWorkIdV5(event.work))}"><time>${esc(age(event.timestamp))}</time><span>${esc(event.message)}</span></a>`).join('') : '<div class="mv5-empty">Chưa có sự kiện mới.</div>';
   const queueHtml = queued.length ? queued.map((work) => `<a href="/work/${encodeURIComponent(stableWorkIdV5(work))}"><b>${esc(work.priority ?? '—')}</b><span>${esc(work.title)}</span><small>${esc(work.next)}</small></a>`).join('') : '<div class="mv5-empty">Không có việc chờ được xác minh.</div>';
-  return `<section class="mv5-overview" data-live-section="overview-signals" data-active="${data.activeCount}" data-done="${data.doneCount}" data-blocked="${data.blockedCount}" data-generated="${esc(data.generatedAt)}"><article><h2>Vừa xảy ra</h2><div class="mv5-events">${recentHtml}</div></article><article><h2>Sắp làm gì</h2><div class="mv5-queue">${queueHtml}</div></article><article><h2>Từ lần xem trước</h2><div class="mv5-since"><b data-since-done>—</b><span>hoàn tất</span><b data-since-active>—</b><span>active</span><b data-since-blocked>—</b><span>blocked</span></div></article></section>`;
+  return `<section class="mv5-overview" data-live-section="overview-signals" data-active="${data.activeCount}" data-done="${data.doneCount}" data-blocked="${data.blockedCount}" data-generated="${esc(data.generatedAt)}"><article><h2>Vừa xảy ra</h2><div class="mv5-events">${recentHtml}</div></article><article><h2>Sắp làm gì</h2><div class="mv5-queue">${queueHtml}</div></article><article><h2>Từ lần xem trước</h2><div class="mv5-since"><b data-since-done>—</b><span>hoàn tất</span><b data-since-active>—</b><span>đang làm</span><b data-since-blocked>—</b><span>bị chặn</span></div></article></section>`;
 }
 export function overviewCheckpointScriptV5(): string {
   return `<script id="mv5-checkpoint">(()=>{function run(){const el=document.querySelector('[data-live-section="overview-signals"]');if(!el)return;const cur={active:+(el.dataset.active||0),done:+(el.dataset.done||0),blocked:+(el.dataset.blocked||0),generated:el.dataset.generated||''};let prev=null;try{prev=JSON.parse(localStorage.getItem('tigeriq-v5-last-view')||'null')}catch{};const set=(q,v)=>{const n=document.querySelector(q);if(n)n.textContent=prev?String(v):'Lần đầu'};set('[data-since-done]',cur.done-(prev?.done||0));set('[data-since-active]',cur.active-(prev?.active||0));set('[data-since-blocked]',cur.blocked-(prev?.blocked||0));try{localStorage.setItem('tigeriq-v5-last-view',JSON.stringify(cur))}catch{}}window.tqV5Checkpoint=run;run()})();</script>`;

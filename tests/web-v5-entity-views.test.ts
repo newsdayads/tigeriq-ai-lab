@@ -25,13 +25,13 @@ describe('Web Control V5 entity views', () => {
     expect(html).not.toContain('Workforce Controller');
     const detail=renderWorkforceContentV5(data(),'NV01');
     expect(detail).toContain('/work/GH-509');
-    expect(detail).toContain('Chưa có binding xác minh');
-    expect(detail).toContain('Chưa có contract');
+    expect(detail).toContain('Chưa có liên kết xác minh');
+    expect(detail).toContain('Chưa có nguồn trực tiếp');
   });
 
   it('renders system truth and fails unknown components closed', () => {
     const d=data(); const html=renderSystemContentV5(d);
-    for(const label of ['PC01 Server','Workforce Controller','Native Worker','Autonomous Planner','Mission Orchestrator','Autonomy Supervisor','Command Center / Web Control','PostgreSQL','Ollama','OpenClaw','Browser Lane','Remote CMD']) expect(html).toContain(label);
+    for(const label of ['Máy chủ PC01','Bộ điều phối công việc','Tiến trình thực thi PC01','Bộ lập kế hoạch','Bộ điều phối nhiệm vụ','Giám sát tự vận hành','Web Control','PostgreSQL','Ollama','OpenClaw','Kênh trình duyệt','Điều khiển PC từ xa']) expect(html).toContain(label);
     expect(html).toContain('/system/worker');
     expect(html).toContain('PID 24700');
     expect(html).toContain('Disk D:');
@@ -39,6 +39,6 @@ describe('Web Control V5 entity views', () => {
     expect(planner?.tone).toBe('unknown');
     expect(planner?.status).toBe('Chưa xác minh');
     const detail=renderSystemContentV5(d,'planner');
-    expect(detail).toContain('Chưa có telemetry contract');
+    expect(detail).toContain('Chưa có nguồn trạng thái trực tiếp');
   });
 });

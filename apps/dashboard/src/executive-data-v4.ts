@@ -95,6 +95,18 @@ async function ghJson<T>(repo: string, endpoint: string): Promise<T> {
   return JSON.parse(stdout || '{}') as T;
 }
 
+async function ghJsonPages<T>(repo: string, endpoint: string, maxPages = 5): Promise<T[]> {
+  const rows: T[] = [];
+  for (let page = 1; page <= maxPages; page += 1) {
+    const join = endpoint.includes('?') ? '&' : '?';
+    const batch = await ghJson<T[]>(repo, `${endpoint}${join}per_page=100&page=${page}`);
+    if (!Array.isArray(batch) || batch.length === 0) break;
+    rows.push(...batch);
+    if (batch.length < 100) break;
+  }
+  return rows;
+}
+
 function employeeCode(value: string): EmployeeCode | null {
   const exact = value.match(/\b(NV0[1-4])\b/i)?.[1]?.toUpperCase() as EmployeeCode | undefined;
   if (exact) return exact;
@@ -119,6 +131,17 @@ function ownerCode(issue: Issue, comments: Comment[]): EmployeeCode | null {
   return employeeCode(String(issue.body ?? '').match(/(?:^|\n)(?:owner|employee_id|assigned_to)=([^\n]+)/i)?.[1] ?? '');
 }
 
+function humanizeIssueTitle(number: number | null, raw: string): string {
+  const known: Record<number,string> = {
+    511: 'Kế hoạch Web Control V5 — dữ liệu sống + giao diện quản trị + điều khiển + xuất bản',
+    507: 'Web Control thành phòng điều hành sống — thời gian thực + xem chi tiết + chức năng theo vai trò',
+    497: 'Tự động hóa trình duyệt đăng nhập — quyền thường trực + hàng rào an toàn',
+    486: 'Cầu điều khiển Web Control — thao tác thực tế + tự phục hồi',
+  };
+  if (number && known[number]) return known[number];
+  return raw.replace(/^(?:\[[^\]]+\]\s*)+/, '').replace(/\brollout\b/gi,'xuất bản').replace(/\bdrill-down\b/gi,'xem chi tiết');
+}
+
 function ownerName(code: EmployeeCode | null): string {
   if (code === 'NV01') return 'Minh (NV01)';
   if (code === 'NV02') return 'Khoa (NV02)';
@@ -132,7 +155,8 @@ function lifecycle(comments: Comment[], issue: Issue): { status: string; tone: T
   for (const comment of [...comments].sort((a, b) => commentTime(b) - commentTime(a))) {
     const text = String(comment.body ?? '');
     const state = [...text.matchAll(/(?:^|\n)state=([^\n]+)/gi)].at(-1)?.[1]?.trim();
-    const current = compact(state || text.split(/\r?\n/).find((line) => line.trim()) || 'Có cập nhật', 120);
+    const step = [...text.matchAll(/(?:^|\n)(?:current_step|step|current|bước_hiện_tại|buoc_hien_tai)=([^\n]+)/gi)].at(-1)?.[1]?.trim();
+    const current = compact(step || state || text.split(/\r?\n/).find((line) => line.trim()) || 'Có cập nhật', 120);
     if (/^TIGERIQ_(?:JOB|COMMAND|PC01)_FAILED\b/im.test(text)) return { status: 'Vướng mắc', tone: 'blocked', current };
     if (/^TIGERIQ_(?:JOB|COMMAND|PC01)_(?:DONE|RESULT)\b/im.test(text)) return { status: 'Hoàn tất', tone: 'done', current };
     if (/^TIGERIQ_(?:JOB|COMMAND|PC01)_(?:CLAIMED|HEARTBEAT)\b/im.test(text)) {
@@ -146,7 +170,7 @@ function lifecycle(comments: Comment[], issue: Issue): { status: string; tone: T
     if (state && /TẠM_NGƯNG|TẠM NGƯNG|PAUSED/i.test(state)) return { status: 'Tạm ngưng', tone: 'paused', current };
     if (state && /CHỜ|WAIT|PENDING/i.test(state)) return { status: 'Chờ xử lý', tone: 'waiting', current };
   }
-  return { status: 'Chờ xác minh thực thi', tone: 'waiting', current: 'Chưa có lease/heartbeat/evidence mới' };
+  return { status: 'Chờ xác minh thực thi', tone: 'waiting', current: 'Chưa có quyền giữ việc, nhịp sống hoặc bằng chứng mới' };
 }
 
 function progressPercent(issue: Issue, comments: Comment[]): number | null {
@@ -173,6 +197,10 @@ function nextMilestone(issue: Issue): string {
 }
 
 function resolvePriorityIssueNumber(central: Issue | null, comments: Comment[]): number | null {
+  const body = String(central?.body ?? '');
+  const currentBody = body.match(/##\s*CURRENT P0[^\n]*\n([\s\S]*?)(?=\n##\s+|$)/i)?.[1] ?? '';
+  const bodyFirst = currentBody.match(/^\s*1\.\s+.*?#(\d+)/mi) || body.match(/##\s*P0 hiện hành[^\n]*#(\d+)/i);
+  if (bodyFirst) return Number(bodyFirst[1]);
   for (const comment of [...comments].sort((a, b) => commentTime(b) - commentTime(a))) {
     const text = String(comment.body ?? '');
     const current = text.match(/ƯU TIÊN HIỆN HÀNH\s*:?\s*[\s\S]{0,900}?#(\d+)/i);
@@ -186,9 +214,10 @@ function resolvePriorityIssueNumber(central: Issue | null, comments: Comment[]):
 }
 
 function resolveLaneNumbers(central: Issue | null, currentNumber: number | null): number[] {
-  const block = section(String(central?.body ?? ''), 'Ưu tiên hiện hành');
+  const body = String(central?.body ?? '');
+  const currentBlock = body.match(/##\s*CURRENT P0[^\n]*\n([\s\S]*?)(?=\n##\s+|$)/i)?.[1] ?? section(body, 'Ưu tiên hiện hành');
   const numbers: number[] = [];
-  for (const line of block.split(/\r?\n/)) {
+  for (const line of currentBlock.split(/\r?\n/)) {
     const match = line.match(/^\s*\d+\.\s+.*?#(\d+)/);
     if (match) numbers.push(Number(match[1]));
   }
@@ -196,11 +225,20 @@ function resolveLaneNumbers(central: Issue | null, currentNumber: number | null)
   return [...new Set(numbers.filter((value) => Number.isInteger(value) && value > 0))].slice(0, 5);
 }
 
+function resolveScopedIssueNumbers(registry: Issue | null): number[] {
+  const text = String(registry?.body ?? '');
+  const numbers: number[] = [];
+  if (/\| `511` \|[^\n]*\| true \|/i.test(text)) numbers.push(511);
+  const apiScope = text.match(/- `4`:[^\n]*scope hiện hành #(\d+)/i);
+  if (apiScope) numbers.push(Number(apiScope[1]));
+  return [...new Set(numbers.filter((value) => Number.isInteger(value) && value > 0))];
+}
+
 function nv03Paused(registry: Issue | null, central: Issue | null): boolean {
   const registryText = String(registry?.body ?? '');
   const centralText = String(central?.body ?? '');
   return /NV03[^\n]*active=false[^\n]*TẠM NGƯNG/i.test(registryText)
-    || /`3`[^\n]*false[^\n]*TẠM NGƯNG/i.test(registryText)
+    || /`3`[^\n]*false[^\n]*(?:TẠM NGƯNG|PAUSED)/i.test(registryText)
     || /Huy[^\n]*NV03[^\n]*TẠM NGƯNG/i.test(centralText)
     || /Command `3`[^\n]*enabled=false/i.test(`${registryText}\n${centralText}`);
 }
@@ -223,38 +261,38 @@ export function systemRows(telemetry: ServerTelemetry): ExecutiveSystemV4[] {
     : 'Chưa có telemetry máy chủ';
   const state = (online: boolean | null | undefined, ok: string, missing: string): Pick<ExecutiveSystemV4,'status'|'tone'|'note'> => online === true ? { status: 'Hoạt động', tone: 'active', note: ok } : online === false ? { status: 'Không hoạt động', tone: 'blocked', note: missing } : { status: 'Chưa xác minh', tone: 'unknown', note: missing };
   const control = state(telemetry.controller?.online, telemetry.controller?.port ? `Cổng ${telemetry.controller.port} phản hồi` : 'Controller phản hồi', 'Chưa có phản hồi Controller');
-  const worker = state(telemetry.worker?.online, `${telemetry.worker?.instances ?? 0} instance · PID ${telemetry.worker?.pid ?? '—'}`, 'Chưa xác minh Native Worker');
+  const worker = state(telemetry.worker?.online, `${telemetry.worker?.instances ?? 0} tiến trình · PID ${telemetry.worker?.pid ?? '—'}`, 'Chưa xác minh Native Worker');
   const postgres = state(telemetry.postgresql?.online, `Cổng ${telemetry.postgresql?.port ?? 5432} phản hồi`, 'Chưa xác minh PostgreSQL');
-  const ollama = state(telemetry.ollama?.online, `${telemetry.ollama?.models?.length ?? 0} model local`, 'Chưa xác minh Ollama');
+  const ollama = state(telemetry.ollama?.online, `${telemetry.ollama?.models?.length ?? 0} mô hình cục bộ`, 'Chưa xác minh Ollama');
   return [
-    { key: 'pc01', name: 'PC01 Server', status: telemetry.available ? 'Hoạt động' : 'Chưa xác minh', tone: telemetry.available ? 'active' : 'unknown', note: serverNote },
-    { key: 'control', name: 'Workforce Controller', ...control },
-    { key: 'worker', name: 'Native Worker', ...worker },
-    { key: 'planner', name: 'Autonomous Planner', status: 'Chưa xác minh', tone: 'unknown', note: 'Chưa có telemetry contract trong Web V5' },
-    { key: 'orchestrator', name: 'Mission Orchestrator', status: 'Chưa xác minh', tone: 'unknown', note: 'Chưa có telemetry contract trong Web V5' },
-    { key: 'supervisor', name: 'Autonomy Supervisor', status: 'Chưa xác minh', tone: 'unknown', note: 'Chưa có telemetry contract trong Web V5' },
-    { key: 'web', name: 'Command Center / Web Control', status: 'Hoạt động', tone: 'active', note: 'Renderer V5 hiện hành đang phục vụ trang này' },
+    { key: 'pc01', name: 'Máy chủ PC01', status: telemetry.available ? 'Hoạt động' : 'Chưa xác minh', tone: telemetry.available ? 'active' : 'unknown', note: serverNote },
+    { key: 'control', name: 'Bộ điều phối công việc', ...control },
+    { key: 'worker', name: 'Tiến trình thực thi PC01', ...worker },
+    { key: 'planner', name: 'Bộ lập kế hoạch', status: 'Chưa xác minh', tone: 'unknown', note: 'Chưa có nguồn trạng thái trực tiếp trong Web V5' },
+    { key: 'orchestrator', name: 'Bộ điều phối nhiệm vụ', status: 'Chưa xác minh', tone: 'unknown', note: 'Chưa có nguồn trạng thái trực tiếp trong Web V5' },
+    { key: 'supervisor', name: 'Giám sát tự vận hành', status: 'Chưa xác minh', tone: 'unknown', note: 'Chưa có nguồn trạng thái trực tiếp trong Web V5' },
+    { key: 'web', name: 'Web Control', status: 'Hoạt động', tone: 'active', note: 'Web V5 hiện hành đang phục vụ trang này' },
     { key: 'postgresql', name: 'PostgreSQL', ...postgres },
     { key: 'ollama', name: 'Ollama', ...ollama },
-    { key: 'openclaw', name: 'OpenClaw', status: 'Chưa xác minh', tone: 'unknown', note: 'Chưa có telemetry contract trong Web V5' },
-    { key: 'browser', name: 'Browser Lane', status: 'Chưa xác minh', tone: 'unknown', note: 'Chưa có telemetry contract trong Web V5' },
-    { key: 'remote', name: 'Remote CMD', status: 'Chưa xác minh', tone: 'unknown', note: 'Chưa có telemetry contract trong Web V5' },
+    { key: 'openclaw', name: 'OpenClaw', status: 'Chưa xác minh', tone: 'unknown', note: 'Chưa có nguồn trạng thái trực tiếp trong Web V5' },
+    { key: 'browser', name: 'Kênh trình duyệt', status: 'Chưa xác minh', tone: 'unknown', note: 'Chưa có nguồn trạng thái trực tiếp trong Web V5' },
+    { key: 'remote', name: 'Điều khiển PC từ xa', status: 'Chưa xác minh', tone: 'unknown', note: 'Chưa có nguồn trạng thái trực tiếp trong Web V5' },
   ];
 }
 
 export async function loadExecutiveDashboardV4(repo: string, telemetry: ServerTelemetry): Promise<ExecutiveDashboardV4> {
   const [central, centralCommentsRaw, registry] = await Promise.all([
     ghJson<Issue>(repo, 'issues/280').catch(() => null),
-    ghJson<Comment[]>(repo, 'issues/280/comments?per_page=100').catch(() => []),
+    ghJsonPages<Comment>(repo, 'issues/280/comments').catch(() => []),
     ghJson<Issue>(repo, 'issues/335').catch(() => null),
   ]);
   const centralComments = Array.isArray(centralCommentsRaw) ? centralCommentsRaw : [];
   const current = resolvePriorityIssueNumber(central, centralComments);
-  const laneNumbers = resolveLaneNumbers(central, current);
+  const laneNumbers = [...new Set([...resolveLaneNumbers(central, current), ...resolveScopedIssueNumbers(registry)])].slice(0, 8);
   const lanes = (await Promise.all(laneNumbers.map(async (number): Promise<Lane | null> => {
     const [issue, comments] = await Promise.all([
       ghJson<Issue>(repo, `issues/${number}`).catch(() => null),
-      ghJson<Comment[]>(repo, `issues/${number}/comments?per_page=100`).catch(() => []),
+      ghJsonPages<Comment>(repo, `issues/${number}/comments`).catch(() => []),
     ]);
     return issue ? { issue, comments: Array.isArray(comments) ? comments : [] } : null;
   }))).filter((lane): lane is Lane => lane !== null);
@@ -272,7 +310,7 @@ export async function loadExecutiveDashboardV4(repo: string, telemetry: ServerTe
     const timeline = [...lane.comments].sort((a, b) => commentTime(b) - commentTime(a)).slice(0, 8).map((row) => ({ timestamp: row.updated_at || row.created_at || '', message: compact(String(row.body ?? '').split(/\r?\n/).find(Boolean) || 'Có cập nhật', 140), ...(row.html_url ? { evidenceRef: row.html_url } : {}) }));
     return {
       number: issueNumber,
-      title: compact(String(lane.issue.title ?? 'Chưa có tiêu đề').replace(/^\[[^\]]+\]\s*/g, ''), 96),
+      title: compact(humanizeIssueTitle(issueNumber, String(lane.issue.title ?? 'Chưa có tiêu đề')), 96),
       ownerCode: code,
       owner: ownerName(code),
       progressPercent: percent,

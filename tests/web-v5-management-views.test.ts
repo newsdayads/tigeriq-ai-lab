@@ -7,7 +7,7 @@ const data:ExecutiveDashboardV4={generatedAt:'2026-09-08T08:00:00Z',works:[work]
 
 describe('Web V5 management views',()=>{
   it('renders project stable id and work deep link',()=>{const html=renderProjectsV5(data);expect(html).toContain('project:tigeriq');expect(html).toContain('/projects/project%3Atigeriq');const detail=renderProjectsV5(data,'project:tigeriq');expect(detail).toContain('/work/GH-511');});
-  it('renders source-limited reports without fake metrics',()=>{const html=renderReportsV5(data);expect(html).toContain('Chưa đủ dữ liệu');expect(html).toContain('Event có timestamp');});
-  it('keeps settings write controls fail-closed',()=>{const html=renderSettingsV5();expect(html).toContain('Write controls');expect(html).toContain('Khóa');expect(html).not.toContain('<form');});
+  it('renders source-limited reports without fake metrics',()=>{const html=renderReportsV5(data);expect(html).toContain('Chưa đủ dữ liệu');expect(html).toContain('Sự kiện có thời gian');});
+  it('keeps settings write controls fail-closed',()=>{const html=renderSettingsV5();expect(html).toContain('Điều khiển ghi');expect(html).toContain('Khóa');expect(html).not.toContain('<form');});
   it('renders overview recent/next/since checkpoint contract',()=>{const html=renderOverviewSignalsV5(data);expect(html).toContain('Vừa xảy ra');expect(html).toContain('Sắp làm gì');expect(html).toContain('Từ lần xem trước');const script=overviewCheckpointScriptV5();expect(script).toContain('localStorage');expect(script).toContain('tigeriq-v5-last-view');});
 });

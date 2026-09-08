@@ -38,14 +38,13 @@ describe('Web Local #396 Executive V4 renderer', () => {
   it('matches the approved executive reference hierarchy and keeps real-data semantics', () => {
     const html = renderExecutiveOverviewV4(data);
     expect(html).toContain(WEB_LOCAL_VERSION_V17);
-    expect(html).toContain('data-layout="executive-reference-1648x928"');
+    expect(html).toContain('data-layout="command-center-v5"');
     expect(html).toContain('data-font="segoe-ui"');
     for (const label of ['Tổng quan', 'Công việc', 'Dự án', 'Nhân sự', 'Hệ thống', 'Báo cáo', 'Cài đặt']) expect(html).toContain(`>${label}<`);
-    for (const module of ['Đang làm', 'Ai phụ trách', 'Tiến độ', 'Vướng mắc', 'Cần anh Sơn', 'Công việc đang chạy', 'Phân bổ công việc', 'Tải theo nhân sự', 'Trạng thái hệ thống', 'Đội AI']) expect(html).toContain(module);
+    for (const module of ['Hôm nay hệ thống đang làm gì?', 'AI đang làm gì ngay lúc này', 'Công việc cần nhìn trước', 'Cần chú ý ngay', 'Sức khỏe hệ thống chính']) expect(html).toContain(module);
     expect(html).toContain('Minh (NV01)');
     expect(html).toContain('Huy (NV03)');
-    expect(html).toContain('80%');
-    expect(html).toContain('—');
+    expect(html).not.toContain('Vừa xảy ra');
     expect(html).not.toContain('68%');
     expect(html).not.toContain('fonts.googleapis.com');
     expect(html).not.toContain('Open Sans');
@@ -59,7 +58,7 @@ describe('Web Local #396 Executive V4 renderer', () => {
     expect((nav.match(/href="\/\?view=/g) ?? []).length).toBe(7);
     for (const route of ['overview', 'work', 'models', 'workforce', 'system', 'reports', 'settings']) expect(nav).toContain(`href="/?view=${route}"`);
     expect(nav).not.toContain('href="/?view=evidence"');
-    expect(html).toContain('href="/?view=evidence"');
+    expect(html).not.toContain('href="/?view=evidence"');
   });
 
   it('themes functional pages without deleting their forms, sections or actions', () => {

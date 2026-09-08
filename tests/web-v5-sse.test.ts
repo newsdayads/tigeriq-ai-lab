@@ -51,12 +51,13 @@ describe('Web Control V5 SSE foundation', () => {
     const outer = await startOwnerCockpitV17({ stableUrl: `http://127.0.0.1:${slowAddress.port}`, backendUrl, repo: 'newsdayads/tigeriq-ai-lab', loadData: async () => { loads += 1; return data; } });
     closers.push(outer.close);
     const started = Date.now();
-    const response = await fetch(`${outer.url}/`);
+    const response = await fetch(`${outer.url}/?view=overview`);
     const html = await response.text();
     expect(response.status).toBe(200);
     expect(Date.now() - started).toBeLessThan(1000);
     expect(loads).toBe(1);
     expect(html).toContain('Web Control V5');
-    expect(html).toContain('V5 · LIVE SSE');
+    expect(html).toContain('Đang kết nối dữ liệu');
+    expect(html).toContain('Đồng bộ trực tiếp');
   });
 });
