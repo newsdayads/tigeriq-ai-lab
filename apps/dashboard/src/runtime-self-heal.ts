@@ -84,9 +84,10 @@ function autoWorkerPhysical(stdout: string): 'CONFIRMED' | 'PENDING' | 'UNKNOWN'
 function nativeRuntimePowerShell(): string {
   return [
     "$ErrorActionPreference='Stop'",
-    "$names=@('TigerIQ PC01 Native Worker','TigerIQ Workforce Controller','TigerIQ Autonomous Planner','TigerIQ Mission Orchestrator','TigerIQ Autonomy Supervisor','TigerIQ Desktop Commander Remote','TigerIQ Ollama Runtime')",
+    "$names=@('TigerIQ PC01 Native Worker','TigerIQ Workforce Controller','TigerIQ Autonomous Planner','TigerIQ Mission Orchestrator','TigerIQ Desktop Commander Remote','TigerIQ Ollama Runtime')",
     "$states=[ordered]@{};$mutated=$false",
     "foreach($name in $names){$t=Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue;if(-not $t){$states[$name]='MISSING';continue};if([string]$t.State -eq 'Disabled'){$states[$name]='Disabled';continue};if([string]$t.State -ne 'Running'){Start-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue;Start-Sleep -Milliseconds 800;$mutated=$true};$t=Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue;$states[$name]=if($t){[string]$t.State}else{'MISSING'}}",
+    "$supervisorNames=@('TigerIQ Autonomy Supervisor V2','TigerIQ Autonomy Supervisor');$supervisorName=$null;foreach($candidate in $supervisorNames){$t=Get-ScheduledTask -TaskName $candidate -ErrorAction SilentlyContinue;if(-not $t){continue};$supervisorName=$candidate;if([string]$t.State -eq 'Disabled'){$states[$candidate]='Disabled';break};if([string]$t.State -ne 'Running'){Start-ScheduledTask -TaskName $candidate -ErrorAction SilentlyContinue;Start-Sleep -Milliseconds 800;$mutated=$true};$t=Get-ScheduledTask -TaskName $candidate -ErrorAction SilentlyContinue;$states[$candidate]=if($t){[string]$t.State}else{'MISSING'};break};if(-not $supervisorName){$states['TigerIQ Autonomy Supervisor V2']='MISSING'}",
     "$ports=[ordered]@{};foreach($p in @(8787,8790,5432,11434)){$ports[[string]$p]=[bool](Get-NetTCPConnection -State Listen -LocalPort $p -ErrorAction SilentlyContinue)}",
     "[ordered]@{status='PASS';mutated=$mutated;tasks=$states;ports=$ports}|ConvertTo-Json -Compress -Depth 6",
   ].join(';');
@@ -114,9 +115,11 @@ export async function selfHealPc01Runtime(options: RuntimeSelfHealOptions): Prom
       const line = response.stdout.split(/\r?\n/).map((value) => value.trim()).filter(Boolean).at(-1) ?? '{}';
       const parsed = JSON.parse(line) as { mutated?: boolean; tasks?: Record<string, string>; ports?: Record<string, boolean> };
       const tasks = parsed.tasks ?? {}; const ports = parsed.ports ?? {};
-      const taskNames = ['TigerIQ PC01 Native Worker','TigerIQ Workforce Controller','TigerIQ Autonomous Planner','TigerIQ Mission Orchestrator','TigerIQ Autonomy Supervisor','TigerIQ Desktop Commander Remote','TigerIQ Ollama Runtime'];
+      const taskNames = ['TigerIQ PC01 Native Worker','TigerIQ Workforce Controller','TigerIQ Autonomous Planner','TigerIQ Mission Orchestrator','TigerIQ Desktop Commander Remote','TigerIQ Ollama Runtime'];
+      const supervisorNames = ['TigerIQ Autonomy Supervisor V2','TigerIQ Autonomy Supervisor'];
       const portNames = ['8787','8790','5432','11434'];
       const badTasks = taskNames.filter((name) => tasks[name] !== 'Running');
+      if (!supervisorNames.some((name) => tasks[name] === 'Running')) badTasks.push('TigerIQ Autonomy Supervisor V2|V1');
       const badPorts = portNames.filter((name) => ports[name] !== true);
       if (badTasks.length || badPorts.length) throw new Error(`NATIVE_RUNTIME_NOT_READY tasks=${badTasks.join(',') || 'none'} ports=${badPorts.join(',') || 'none'}`);
       const state: RuntimeSelfHealState = { result: parsed.mutated ? 'REPAIRED' : 'READY', updatedAt: timestamp(), workerTask: tasks['TigerIQ PC01 Native Worker'] ?? 'UNKNOWN', runtimeMode: 'NATIVE', nativeTasks: tasks, nativePorts: ports };
