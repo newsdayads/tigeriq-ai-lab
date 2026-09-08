@@ -179,4 +179,29 @@ describe('TigerIQ Command Center', () => {
     expect(response.status).toBe(404);
     await expect(response.json()).resolves.toEqual({ error: 'not_found' });
   });
+  it('exposes typed execution capability status without secrets', async () => {
+    const plane = new ControlPlane();
+    const server = await startDashboard(plane, { serverTelemetry: async () => telemetry });
+    closeCurrent = server.close;
+    const response = await fetch(`${server.url}/api/execution-capabilities`);
+    expect(response.status).toBe(200);
+    const body = await response.json() as { configured: boolean; capabilities: string[] };
+    expect(body.configured).toBe(false);
+    expect(body.capabilities).toContain('system.resource_snapshot');
+    expect(JSON.stringify(body)).not.toContain('token');
+    expect(JSON.stringify(body)).not.toContain('secret');
+  });
+
+  it('routes authenticated typed execution to the structured submitter', async () => {
+    const plane = new ControlPlane();
+    const executionSubmitter = { submit: vi.fn(async () => ({ jobId: 'TYPED-web-canary-001', stage: 'queued', protocol: 'controller-v1' as const })) };
+    const server = await startDashboard(plane, { commandSecret: 'local-test-secret', executionSubmitter, serverTelemetry: async () => telemetry });
+    closeCurrent = server.close;
+    const { cookie, csrf } = await login(server.url);
+    const response = await fetch(`${server.url}/api/executions`, { method: 'POST', headers: { cookie, 'content-type': 'application/json' }, body: JSON.stringify({ csrf, capability: 'system.resource_snapshot', idempotencyKey: 'web-canary-001', priority: 'P0' }) });
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toMatchObject({ ok: true, receipt: { jobId: 'TYPED-web-canary-001', protocol: 'controller-v1' } });
+    expect(executionSubmitter.submit).toHaveBeenCalledTimes(1);
+  });
+
 });
