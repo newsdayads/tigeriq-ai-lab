@@ -18,7 +18,7 @@ $plainBytes=$null;$key=$null
 try{
   $plainBytes=[Security.Cryptography.ProtectedData]::Unprotect($cipher,$entropy,[Security.Cryptography.DataProtectionScope]::LocalMachine)
   $key=[Text.Encoding]::UTF8.GetString($plainBytes)
-  if([string]::IsNullOrWhiteSpace($key)-or-not$key.StartsWith('AIza')){throw 'GEMINI_RUNTIME_SECRET_DECRYPT_INVALID'}
+  if([string]::IsNullOrWhiteSpace($key)-or $key.Length-lt 30-or $key-match '\s'){throw 'GEMINI_RUNTIME_SECRET_DECRYPT_INVALID'}
   $headers=@{'x-goog-api-key'=$key;'Content-Type'='application/json'}
   $marker='TIGERIQ_GEMINI_FREE_READY'
   $body=@{contents=@(@{role='user';parts=@(@{text=('Return exactly '+$marker)})});generationConfig=@{maxOutputTokens=64;temperature=0}}|ConvertTo-Json -Depth 7

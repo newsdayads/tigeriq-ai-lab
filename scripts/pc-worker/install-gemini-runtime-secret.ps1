@@ -24,16 +24,24 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 New-Item -ItemType Directory -Path $secretDir -Force | Out-Null
 Write-Host 'TigerIQ Gemini persistent credential install'
 Write-Host 'Chi tiep tuc neu project Gemini API dang Free Tier va KHONG lien ket billing/PAYG.'
-$confirm = Read-Host 'Nhap FREE de xac nhan'
-if ($confirm.Trim().ToUpperInvariant() -ne 'FREE') { throw 'GEMINI_FREE_TIER_NOT_CONFIRMED' }
-$secure = Read-Host 'Paste GEMINI_API_KEY (se bi an)' -AsSecureString
+$confirmSecure = Read-Host 'Nhap FREE de xac nhan (KHONG dan API key o buoc nay)' -AsSecureString
+$confirmBstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($confirmSecure)
+try {
+  $confirm = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($confirmBstr)
+  if ($confirm.Trim().ToUpperInvariant() -ne 'FREE') { throw 'GEMINI_FREE_TIER_NOT_CONFIRMED' }
+} finally {
+  if ($confirmBstr -ne [IntPtr]::Zero) { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($confirmBstr) }
+  $confirm = $null
+  $confirmSecure = $null
+}
+$secure = Read-Host 'Paste GEMINI_API_KEY moi (se bi an)' -AsSecureString
 $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
 $plain = $null
 $plainBytes = $null
 $protected = $null
 try {
   $plain = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
-  if ([string]::IsNullOrWhiteSpace($plain) -or -not $plain.StartsWith('AIza') -or $plain.Length -lt 30) {
+  if ([string]::IsNullOrWhiteSpace($plain) -or $plain.Length -lt 30 -or $plain -match '\s') {
     throw 'GEMINI_SECRET_INVALID_KEY_SHAPE'
   }
   $plainBytes = [Text.Encoding]::UTF8.GetBytes($plain)
