@@ -78,3 +78,4 @@ Local Multi-AI orchestration is now physically proven on PC01. Cloud API integra
 - Full local gate: typecheck PASS; Vitest 28 files / 129 tests PASS; Playwright E2E 1/1 PASS; build PASS.
 - PowerShell policy/scheduler/orchestration/probe/mixed-harness guards PASS.
 - External cloud E2E remains intentionally blocked until `GROQ_API_KEY` plus verified Free Tier evidence are supplied.
+- WO-048 CI now also asserts `-Live` without credentials exits blocked with `networkCallMade=false`, preventing accidental cloud calls from CI.

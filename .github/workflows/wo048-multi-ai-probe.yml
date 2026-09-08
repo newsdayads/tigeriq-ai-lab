@@ -70,6 +70,16 @@ jobs:
       - name: Run mixed Groq-Ollama harness self-test
         shell: powershell
         run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/pc-worker/run-ai-job001-mixed.ps1 -SelfTest
+      - name: Assert mixed live preflight fails closed without credentials
+        shell: powershell
+        run: |
+          $output = & powershell -NoProfile -ExecutionPolicy Bypass -File scripts/pc-worker/run-ai-job001-mixed.ps1 -Live 2>&1
+          $code = $LASTEXITCODE
+          $text = ($output | Out-String)
+          if ($code -ne 2) { Write-Error "Expected blocked exit 2, got $code"; exit 1 }
+          if ($text -notmatch '"networkCallMade"\s*:\s*false') { Write-Error 'Missing no-network evidence'; exit 1 }
+          if ($text -notmatch '"status"\s*:\s*"BLOCKED"') { Write-Error 'Missing blocked status'; exit 1 }
+          Write-Host 'MIXED_LIVE_NO_CREDENTIAL_FAIL_CLOSED_PASS'
       - name: Run no-provider probe self-test
         shell: powershell
         run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/pc-worker/probe-multi-ai.ps1 -SelfTest
