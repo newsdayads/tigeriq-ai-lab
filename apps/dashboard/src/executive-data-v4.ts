@@ -4,8 +4,8 @@ import type { ServerTelemetry } from './server.js';
 
 const execFileAsync = promisify(execFile);
 
-type Issue = { number?: number; title?: string; body?: string | null; state?: string; updated_at?: string };
-type Comment = { body?: string | null; created_at?: string | null; updated_at?: string | null };
+type Issue = { number?: number; title?: string; body?: string | null; state?: string; updated_at?: string; html_url?: string | null };
+type Comment = { body?: string | null; created_at?: string | null; updated_at?: string | null; html_url?: string | null };
 type EmployeeCode = 'NV01' | 'NV02' | 'NV03' | 'NV04';
 type Tone = 'active' | 'waiting' | 'blocked' | 'done' | 'paused' | 'stale' | 'unknown';
 const WORK_STALE_MS = Math.max(30_000, Number(process.env.TIGERIQ_WEB_WORK_STALE_MS) || 120_000);
@@ -23,6 +23,16 @@ export type ExecutiveWorkV4 = {
   tone: Tone;
   next: string;
   updated: string;
+  workId?: string;
+  projectId?: string;
+  project?: string;
+  priority?: string;
+  goal?: string;
+  currentStep?: string;
+  updatedAt?: string;
+  lastActivityAt?: string;
+  evidenceRef?: string;
+  timeline?: Array<{ timestamp: string; message: string; evidenceRef?: string }>;
 };
 
 export type ExecutivePersonV4 = {
@@ -243,8 +253,14 @@ export async function loadExecutiveDashboardV4(repo: string, telemetry: ServerTe
     const code = ownerCode(lane.issue, lane.comments);
     const life = code === 'NV03' && paused ? { status: 'Tạm ngưng', tone: 'paused' as Tone, current: 'Theo Registry #335' } : lifecycle(lane.comments, lane.issue);
     const percent = progressPercent(lane.issue, lane.comments);
+    const issueNumber = Number(lane.issue.number || 0) || null;
+    const latestComment = [...lane.comments].sort((a, b) => commentTime(b) - commentTime(a))[0];
+    const titleRaw = String(lane.issue.title ?? 'Chưa có tiêu đề');
+    const bodyRaw = String(lane.issue.body ?? '');
+    const priority = titleRaw.match(/\b(P[0-2])\b/i)?.[1]?.toUpperCase() ?? bodyRaw.match(/\b(P[0-2])\b/i)?.[1]?.toUpperCase() ?? '—';
+    const timeline = [...lane.comments].sort((a, b) => commentTime(b) - commentTime(a)).slice(0, 8).map((row) => ({ timestamp: row.updated_at || row.created_at || '', message: compact(String(row.body ?? '').split(/\r?\n/).find(Boolean) || 'Có cập nhật', 140), ...(row.html_url ? { evidenceRef: row.html_url } : {}) }));
     return {
-      number: Number(lane.issue.number || 0) || null,
+      number: issueNumber,
       title: compact(String(lane.issue.title ?? 'Chưa có tiêu đề').replace(/^\[[^\]]+\]\s*/g, ''), 96),
       ownerCode: code,
       owner: ownerName(code),
@@ -254,6 +270,12 @@ export async function loadExecutiveDashboardV4(repo: string, telemetry: ServerTe
       tone: life.tone,
       next: nextMilestone(lane.issue),
       updated: lane.issue.updated_at ? new Date(lane.issue.updated_at).toLocaleString('vi-VN', { hour12: false }) : '—',
+      workId: issueNumber ? `GH-${issueNumber}` : undefined,
+      projectId: 'project:tigeriq', project: 'TigerIQ', priority,
+      goal: compact(section(bodyRaw, 'Mục tiêu') || titleRaw, 220),
+      currentStep: life.current, updatedAt: lane.issue.updated_at,
+      lastActivityAt: latestComment?.updated_at || latestComment?.created_at || lane.issue.updated_at,
+      evidenceRef: latestComment?.html_url || lane.issue.html_url || undefined, timeline,
     };
   });
 

@@ -4,6 +4,7 @@ import type { AddressInfo } from 'node:net';
 import type { ServerTelemetry } from './server.js';
 import { loadExecutiveDashboardV4, type ExecutiveDashboardV4, type ExecutiveSystemV4, type ExecutiveWorkV4 } from './executive-data-v4.js';
 import { LiveEventBufferV5, LiveEventProjectionV5, type LiveEventV5 } from './live-events-v5.js';
+import { renderWorkContentV5, stableWorkIdV5, WORK_V5_CSS } from './work-view-v5.js';
 
 export const WEB_LOCAL_VERSION_V17 = 'WEB-LOCAL-396-V4.0';
 const MAX_BODY_BYTES = 64 * 1024;
@@ -45,7 +46,9 @@ async function readBody(req: IncomingMessage): Promise<string | undefined> {
 }
 
 function viewFrom(urlValue: string | undefined): View {
-  const value = new URL(urlValue ?? '/', 'http://local').searchParams.get('view') ?? 'overview';
+  const url = new URL(urlValue ?? '/', 'http://local');
+  if (url.pathname === '/work' || url.pathname.startsWith('/work/')) return 'work';
+  const value = url.searchParams.get('view') ?? 'overview';
   return ['overview', 'work', 'workforce', 'models', 'evidence', 'reports', 'system', 'settings'].includes(value) ? value as View : 'overview';
 }
 
@@ -125,7 +128,7 @@ function kpis(data: ExecutiveDashboardV4): string {
 }
 
 function workTable(data: ExecutiveDashboardV4): string {
-  const rows = data.works.slice(0, 5).map((work, index) => `<tr><td class="x-index">${index + 1}</td><td><div class="x-work-title"><i class="x-dot ${toneClass(work.tone)}"></i><a href="/?view=work&work=${work.number ?? ''}">${work.number ? `#${work.number} · ` : ''}${esc(work.title)}</a></div></td><td><b>${esc(work.owner)}</b></td><td>${progressBar(work)}</td><td><span class="x-status ${toneClass(work.tone)}"><i></i>${esc(work.status)}</span></td><td>${esc(work.next)}<small>${esc(work.updated)}</small></td></tr>`).join('');
+  const rows = data.works.slice(0, 5).map((work, index) => `<tr><td class="x-index">${index + 1}</td><td><div class="x-work-title"><i class="x-dot ${toneClass(work.tone)}"></i><a href="/work/${encodeURIComponent(stableWorkIdV5(work))}">${work.number ? `#${work.number} · ` : ''}${esc(work.title)}</a></div></td><td><b>${esc(work.owner)}</b></td><td>${progressBar(work)}</td><td><span class="x-status ${toneClass(work.tone)}"><i></i>${esc(work.status)}</span></td><td>${esc(work.next)}<small>${esc(work.updated)}</small></td></tr>`).join('');
   return `<section class="x-card x-work-card" data-live-section="work"><div class="x-card-head"><h2>${svg(icons.list)} Công việc đang chạy</h2><div><a class="x-add" href="/?view=work#cong-viec">${svg(icons.plus)} Thêm công việc</a><button class="x-more" type="button" aria-label="Thêm tùy chọn">${svg(icons.more)}</button></div></div><div class="x-table-wrap"><table class="x-table"><thead><tr><th>#</th><th>Việc</th><th>Người phụ trách</th><th>Tiến độ</th><th>Trạng thái</th><th>Mốc kế tiếp</th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="x-empty">Chưa có công việc được xác minh.</td></tr>'}</tbody></table></div></section>`;
 }
 
@@ -182,6 +185,10 @@ function liveScript(): string {
 
 export function renderExecutiveOverviewV4(data: ExecutiveDashboardV4): string {
   return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TigerIQ — Bảng điều hành</title><style id="x-executive-v4">${BASE_CSS}</style></head><body><div class="x-app" data-version="${WEB_LOCAL_VERSION_V17}" data-layout="executive-reference-1648x928" data-font="segoe-ui">${sidebar('overview')}${header('TigerIQ AI Lab','Bảng điều hành',true)}<main class="x-main">${kpis(data)}<div class="x-overview-grid"><div>${workTable(data)}</div><div class="x-right">${distribution(data)}${workload(data)}${systemSummary(data)}</div><div class="x-bottom-grid">${team(data)}${systems(data)}${ownerCard(data)}</div><footer class="x-footer"><span>“AI giúp chúng ta đi nhanh hơn, nhưng con người tạo ra hành trình ý nghĩa.”</span><span>TigerIQ AI Lab &nbsp;|&nbsp; Kiến tạo giá trị thực bằng AI</span></footer></div></main></div>${liveScript()}</body></html>`;
+}
+
+export function renderExecutiveWorkV5(data: ExecutiveDashboardV4, url: URL, selectedRaw = ''): string {
+  return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TigerIQ — Công việc V5</title><style id="x-executive-v5-work">${BASE_CSS}${WORK_V5_CSS}</style></head><body><div class="x-app" data-version="${WEB_LOCAL_VERSION_V17}" data-view="work-v5">${sidebar('work')}${header('TigerIQ AI Lab','Công việc · execution board V5',true)}<main class="x-main">${renderWorkContentV5(data,url,selectedRaw)}</main></div>${liveScript()}</body></html>`;
 }
 
 function replacePrimaryNav(html: string, active: View): string {
@@ -247,8 +254,19 @@ async function loadOverviewData(options: OwnerCockpitV17Options): Promise<Execut
 }
 
 async function relay(options: OwnerCockpitV17Options, req: IncomingMessage, res: ServerResponse): Promise<void> {
-  const path = new URL(req.url ?? '/', 'http://local').pathname;
+  const requestUrl = new URL(req.url ?? '/', 'http://local');
+  const path = requestUrl.pathname;
   const view = viewFrom(req.url);
+  if (req.method === 'GET' && (path === '/work' || path.startsWith('/work/') || (path === '/' && view === 'work'))) {
+    const data = await loadOverviewData(options);
+    const selectedRaw = path.startsWith('/work/') ? decodeURIComponent(path.slice('/work/'.length)) : (requestUrl.searchParams.get('work') ?? '');
+    res.statusCode = 200;
+    res.setHeader('content-type', 'text/html; charset=utf-8');
+    res.setHeader('cache-control', 'no-store');
+    res.setHeader('content-security-policy', "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
+    res.end(renderExecutiveWorkV5(data, requestUrl, selectedRaw));
+    return;
+  }
   if (req.method === 'GET' && path === '/' && view === 'overview') {
     const data = await loadOverviewData(options);
     res.statusCode = 200;
