@@ -224,6 +224,7 @@ Errors MUST NOT include upstream response bodies or secret values.
 Expected environment variables are server-side only:
 - `GEMINI_API_KEY`
 - `GROQ_API_KEY`
+- `TIGERIQ_GROQ_FREE_TIER_VERIFIED=true` (explicit runtime proof that the Groq organization remains on Free Tier)
 - `OPENROUTER_API_KEY`
 - `TIGERIQ_GEMINI_MODEL`
 - `TIGERIQ_GROQ_MODEL`

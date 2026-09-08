@@ -57,3 +57,11 @@ Local Multi-AI orchestration is now physically proven on PC01. Cloud API integra
 - PowerShell policy/self-test PASS, including exact-model validation and no-network refusal when free-tier proof is absent.
 - Full Vitest regression: 28 files / 126 tests PASS; TypeScript build PASS.
 - Current PC01 live state: Groq `KEY_MISSING`, therefore no cloud request was made and `cloudReadyCount` remains 0.
+
+## Groq Gateway hardening — 2026-09-08
+- Server adapter now refuses Groq before network unless `TIGERIQ_GROQ_FREE_TIER_VERIFIED=true` (or explicit test injection) is present.
+- Allowed model is locked to `openai/gpt-oss-120b`; any other Groq model fails closed before network.
+- Every Groq request explicitly sends `service_tier=on_demand`; `auto`, `flex`, and `performance` are never selected by this route.
+- Groq default server target updated from `openai/gpt-oss-20b` to `openai/gpt-oss-120b`.
+- Contract test proves missing Free Tier proof and wrong model produce zero upstream requests; 429 remains quota-classified with bounded retry metadata.
+- Full regression after hardening: 28 files / 127 tests PASS; TypeScript build PASS; live probe remains `KEY_MISSING` and performs no Groq cloud call.

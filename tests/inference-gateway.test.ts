@@ -222,13 +222,15 @@ describe('WO-047 short-lived TigerIQ device sessions', () => {
 
 describe('WO-047 server-only provider adapters', () => {
   it('classifies real HTTP 429 as quota with retry-after and keeps the key outside the response object', async () => {
-    const seen: Array<{ url: string; auth: string }> = [];
+    const seen: Array<{ url: string; auth: string; body: string }> = [];
     const groq = createGroqBackendAdapter({
       apiKey: 'groq-provider-secret',
+      freeTierVerified: true,
       fetchImpl: async (input, init) => {
         seen.push({
           url: String(input),
           auth: String((init?.headers as Record<string, string>)?.authorization ?? ''),
+          body: String(init?.body ?? ''),
         });
         return new Response('{}', { status: 429, headers: { 'retry-after': '2' } });
       },
@@ -236,7 +238,7 @@ describe('WO-047 server-only provider adapters', () => {
 
     let caught: unknown;
     try {
-      await groq.execute(targets[1], { prompt: 'test' });
+      await groq.execute({ ...targets[1], model: 'openai/gpt-oss-120b' }, { prompt: 'test' });
     } catch (error) {
       caught = error;
     }
@@ -244,7 +246,23 @@ describe('WO-047 server-only provider adapters', () => {
     expect(caught).toMatchObject({ kind: 'quota', retryAfterMs: 2000 });
     expect(seen[0]?.url).toBe('https://api.groq.com/openai/v1/chat/completions');
     expect(seen[0]?.auth).toBe('Bearer groq-provider-secret');
+    expect(JSON.parse(seen[0]?.body ?? '{}')).toMatchObject({ model: 'openai/gpt-oss-120b', service_tier: 'on_demand' });
     expect(JSON.stringify(caught)).not.toContain('groq-provider-secret');
+  });
+
+  it('fails closed before network when Groq free-tier proof or allowlisted model is missing', async () => {
+    let calls = 0;
+    const fetchImpl: typeof fetch = async () => {
+      calls += 1;
+      return new Response(JSON.stringify({ choices: [{ message: { content: 'unexpected' } }] }), { status: 200 });
+    };
+    const safeTarget = { ...targets[1], model: 'openai/gpt-oss-120b' };
+    const missingProof = createGroqBackendAdapter({ apiKey: 'secret', fetchImpl });
+    await expect(missingProof.execute(safeTarget, { prompt: 'x' })).rejects.toMatchObject({ kind: 'configuration' });
+    expect(calls).toBe(0);
+    const wrongModel = createGroqBackendAdapter({ apiKey: 'secret', freeTierVerified: true, fetchImpl });
+    await expect(wrongModel.execute({ ...safeTarget, model: 'openai/gpt-oss-20b' }, { prompt: 'x' })).rejects.toMatchObject({ kind: 'configuration' });
+    expect(calls).toBe(0);
   });
 
   it('uses official Gemini and OpenRouter HTTP shapes with server-side authorization', async () => {

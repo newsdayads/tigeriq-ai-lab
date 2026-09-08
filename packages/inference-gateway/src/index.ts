@@ -560,7 +560,9 @@ interface ProviderHttpOptions {
 }
 
 export interface GeminiBackendOptions extends ProviderHttpOptions {}
-export interface GroqBackendOptions extends ProviderHttpOptions {}
+export interface GroqBackendOptions extends ProviderHttpOptions {
+  freeTierVerified?: boolean;
+}
 export interface OpenRouterBackendOptions extends ProviderHttpOptions {
   appName?: string;
   appUrl?: string;
@@ -589,10 +591,43 @@ export function createGeminiBackendAdapter(options: GeminiBackendOptions = {}): 
 }
 
 export function createGroqBackendAdapter(options: GroqBackendOptions = {}): BackendAdapter {
-  return createOpenAICompatibleAdapter('groq', {
-    ...options,
-    baseUrl: options.baseUrl ?? 'https://api.groq.com/openai/v1',
-  });
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const baseUrl = (options.baseUrl ?? 'https://api.groq.com/openai/v1').replace(/\/$/, '');
+  const timeoutMs = Math.max(1, options.timeoutMs ?? 120_000);
+  const allowedModel = 'openai/gpt-oss-120b';
+  const freeTierVerified = options.freeTierVerified
+    ?? process.env.TIGERIQ_GROQ_FREE_TIER_VERIFIED?.trim().toLowerCase() === 'true';
+  return {    provider: 'groq',
+    async execute(target, request) {
+      if (!freeTierVerified) {
+        throw new BackendRequestError('groq', 'configuration', 'groq free tier proof not configured');
+      }
+      if (target.model !== allowedModel) {
+        throw new BackendRequestError('groq', 'configuration', 'groq model is not zero-cost allowlisted');
+      }
+      const apiKey = options.apiKey ?? process.env.GROQ_API_KEY;
+      if (!apiKey) throw new BackendRequestError('groq', 'configuration', 'groq api key not configured');
+      const response = await providerFetch('groq', fetchImpl, `${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: allowedModel,
+          service_tier: 'on_demand',
+          messages: [{ role: 'user', content: request.prompt }],
+          stream: false,
+        }),
+      }, request.signal, timeoutMs);
+      const body = await response.json() as { model?: string; choices?: Array<{ message?: { content?: string } }> };
+      if (body.model && body.model !== allowedModel) {        throw new BackendRequestError('groq', 'invalid_response', 'groq returned unexpected model');
+      }
+      const text = body.choices?.[0]?.message?.content ?? '';
+      if (!text.trim()) throw new BackendRequestError('groq', 'invalid_response', 'empty groq response');
+      return text;
+    },
+  };
 }
 
 export function createOpenRouterBackendAdapter(options: OpenRouterBackendOptions = {}): BackendAdapter {
@@ -652,7 +687,7 @@ export function defaultServerTargets(env: NodeJS.ProcessEnv = process.env): Back
     },
     {
       provider: 'groq',
-      model: env.TIGERIQ_GROQ_MODEL?.trim() || 'openai/gpt-oss-20b',
+      model: env.TIGERIQ_GROQ_MODEL?.trim() || 'openai/gpt-oss-120b',
       tier: 'primary',
       costRank: 0,
       qualityRank: 4,
