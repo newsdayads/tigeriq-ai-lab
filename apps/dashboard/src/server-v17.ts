@@ -345,6 +345,19 @@ async function relay(options: OwnerCockpitV17Options, req: IncomingMessage, res:
     res.end(renderExecutiveOverviewV4(data));
     return;
   }
+  const typedDirectPaths = new Set(['/api/session','/api/execution-capabilities','/api/executions']);
+  if (typedDirectPaths.has(path)) {
+    const headers = new Headers();
+    if (req.headers.cookie) headers.set('cookie', req.headers.cookie);
+    const contentType = req.headers['content-type'];
+    if (typeof contentType === 'string') headers.set('content-type', contentType);
+    const upstream = await fetch(`${options.backendUrl}${req.url ?? '/'}`, { method: req.method, headers, body: await readBody(req), redirect: 'manual' });
+    copyHeaders(upstream, res, false);
+    const payload = Buffer.from(await upstream.arrayBuffer());
+    res.statusCode = upstream.status;
+    res.end(payload);
+    return;
+  }
   const headers = new Headers();
   if (req.headers.cookie) headers.set('cookie', req.headers.cookie);
   const contentType = req.headers['content-type'];

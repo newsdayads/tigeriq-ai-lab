@@ -380,6 +380,10 @@ export async function startDashboard(source: DashboardSource, options: CommandCe
       if (request.method === 'GET' && path === '/api/server') {
         return respond(response, 200, 'application/json; charset=utf-8', JSON.stringify(await getTelemetry()));
       }
+      if (request.method === 'GET' && path === '/api/session') {
+        const session = getSession(request);
+        return respond(response, 200, 'application/json; charset=utf-8', JSON.stringify(session ? { authenticated: true, csrf: session.csrf } : { authenticated: false }));
+      }
       if (request.method === 'GET' && path === '/api/execution-capabilities') {
         return respond(response, 200, 'application/json; charset=utf-8', JSON.stringify({ configured: Boolean(executionSubmitter), capabilities: listTypedCapabilities() }));
       }
