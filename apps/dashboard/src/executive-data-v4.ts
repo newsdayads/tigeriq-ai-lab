@@ -267,6 +267,9 @@ export function systemRows(telemetry: ServerTelemetry): ExecutiveSystemV4[] {
   const worker = state(telemetry.worker?.online, `${telemetry.worker?.instances ?? 0} tiến trình · PID ${telemetry.worker?.pid ?? '—'}`, 'Chưa xác minh Native Worker');
   const postgres = state(telemetry.postgresql?.online, `Cổng ${telemetry.postgresql?.port ?? 5432} phản hồi`, 'Chưa xác minh PostgreSQL');
   const ollama = state(telemetry.ollama?.online, `${telemetry.ollama?.models?.length ?? 0} mô hình cục bộ`, 'Chưa xác minh Ollama');
+  const stages = telemetry.jobStages ?? {};
+  const queueNote = `queued ${stages.queued ?? 0} · leased ${stages.leased ?? 0} · reviewing ${stages.reviewing ?? 0} · judging ${stages.judging ?? 0} · done ${stages.done ?? 0} · failed ${stages.failed ?? 0}`;
+  const providerRows: ExecutiveSystemV4[] = (telemetry.providers ?? []).map((provider) => ({ key: `provider-${provider.providerId}`, name: `Provider · ${provider.provider}`, status: provider.state === 'active' && !provider.stale ? 'Hoạt động' : provider.stale ? 'Stale' : provider.state, tone: provider.state === 'active' && !provider.stale ? 'active' : provider.stale ? 'blocked' : 'unknown', note: `${provider.model} · heartbeat ${provider.lastHeartbeatAt ?? 'chưa có'}` }));
   return [
     { key: 'pc01', name: 'Máy chủ PC01', status: telemetry.available ? 'Hoạt động' : 'Chưa xác minh', tone: telemetry.available ? 'active' : 'unknown', note: serverNote },
     { key: 'control', name: 'Bộ điều phối công việc', ...control },
@@ -277,6 +280,9 @@ export function systemRows(telemetry: ServerTelemetry): ExecutiveSystemV4[] {
     { key: 'web', name: 'Web Control', status: 'Hoạt động', tone: 'active', note: 'Web V5 hiện hành đang phục vụ trang này' },
     { key: 'postgresql', name: 'PostgreSQL', ...postgres },
     { key: 'ollama', name: 'Ollama', ...ollama },
+    { key: 'runtime-truth', name: 'Runtime truth', status: telemetry.truthSource ? 'Hoạt động' : 'Chưa xác minh', tone: telemetry.truthSource ? 'active' : 'unknown', note: telemetry.truthSource ? `${telemetry.truthSource} · stale ${telemetry.staleAfterMs ?? '—'}ms` : 'Chưa có nguồn runtime truth' },
+    { key: 'queue', name: 'Queue / Job lifecycle', status: 'Runtime', tone: 'active', note: queueNote },
+    ...providerRows,
     { key: 'openclaw', name: 'OpenClaw', status: 'Chưa xác minh', tone: 'unknown', note: 'Chưa có nguồn trạng thái trực tiếp trong Web V5' },
     { key: 'browser', name: 'Kênh trình duyệt', status: 'Chưa xác minh', tone: 'unknown', note: 'Chưa có nguồn trạng thái trực tiếp trong Web V5' },
     { key: 'remote', name: 'Điều khiển PC từ xa', status: 'Chưa xác minh', tone: 'unknown', note: 'Chưa có nguồn trạng thái trực tiếp trong Web V5' },

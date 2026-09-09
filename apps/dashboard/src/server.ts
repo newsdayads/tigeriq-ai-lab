@@ -8,6 +8,7 @@ import { resolve } from 'node:path';
 import type { WorkOrderSnapshot } from '../../../packages/control-plane/src/index.js';
 import { buildDashboard } from './index.js';
 import { listTypedCapabilities, WorkforceControllerV1Client, type ExecutionSubmitter, type TypedExecutionRequest } from './typed-execution.js';
+import { collectControllerRuntimeTruth } from './runtime-truth-client.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -64,6 +65,10 @@ export type ServerTelemetry = {
   ollama: { online: boolean; models: string[] } | null;
   tailscale: { online: boolean; ip: string | null } | null;
   gpu: { name: string; utilizationPercent: number | null; memoryUsedMiB: number | null; memoryTotalMiB: number | null } | null;
+  truthSource?: string | null;
+  staleAfterMs?: number | null;
+  jobStages?: Record<string, number>;
+  providers?: Array<{ providerId: string; provider: string; model: string; state: string; lastHeartbeatAt: string | null; stale: boolean }>;
 };
 
 export interface CommandCenterOptions {
@@ -326,19 +331,9 @@ function normalizeTelemetry(raw: unknown): ServerTelemetry {
 }
 
 async function collectPc01Telemetry(): Promise<ServerTelemetry> {
-  try {
-    const repoRoot = process.env.TIGERIQ_REPO_ROOT ?? process.cwd();
-    const script = resolve(repoRoot, 'scripts', 'pc-worker', 'pc01-telemetry.ps1');
-    const { stdout } = await execFileAsync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script], {
-      timeout: TELEMETRY_TIMEOUT_MS,
-      windowsHide: true,
-      encoding: 'utf8',
-      maxBuffer: 512 * 1024,
-    });
-    return normalizeTelemetry(JSON.parse(stdout.trim()));
-  } catch {
-    return unavailableTelemetry();
-  }
+  const controllerUrl = process.env.TIGERIQ_WORKFORCE_CONTROLLER_URL ?? '';
+  const ingressToken = process.env.TIGERIQ_WORKFORCE_INGRESS_TOKEN ?? '';
+  return collectControllerRuntimeTruth(controllerUrl, ingressToken);
 }
 
 function isPrivateIpv4(host: string): boolean {
