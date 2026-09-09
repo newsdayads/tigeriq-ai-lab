@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ExecutiveDashboardV4 } from '../apps/dashboard/src/executive-data-v4.js';
 import { renderSystemContentV5, renderWorkforceContentV5 } from '../apps/dashboard/src/entity-views-v5.js';
-import { renderProjectsV5, renderReportsV5, renderSettingsV5 } from '../apps/dashboard/src/management-views-v5.js';
+import { renderOverviewSignalsV5, renderProjectsV5, renderReportsV5, renderSettingsV5 } from '../apps/dashboard/src/management-views-v5.js';
 
 function data(sourceStatus: string, sourceNote: string): ExecutiveDashboardV4 {
   return {
@@ -31,7 +31,7 @@ const states = [
 
 describe('#509 tab-specific presentation states', () => {
   for (const [status, note, state] of states) {
-    it(`propagates ${status} truth across Project/People/System/Reports/Settings`, () => {
+    it(`propagates ${status} truth across Project/People/System/Reports/Settings/Overview`, () => {
       const d = data(status, note);
       const views = [
         renderProjectsV5(d),
@@ -39,16 +39,15 @@ describe('#509 tab-specific presentation states', () => {
         renderSystemContentV5(d),
         renderReportsV5(d),
         renderSettingsV5(d),
+        renderOverviewSignalsV5(d),
       ];
 
       for (const html of views) {
         expect(html).toContain(status);
         expect(html).toContain(note);
+        expect(html).toContain(`data-source-state="${state}"`);
         expect(html).not.toContain('100%');
       }
-
-      expect(renderWorkforceContentV5(d)).toContain(`data-source-state="${state}"`);
-      expect(renderSystemContentV5(d)).toContain(`data-source-state="${state}"`);
     });
   }
 
@@ -59,7 +58,17 @@ describe('#509 tab-specific presentation states', () => {
     expect(renderReportsV5(d)).toContain('Không có công việc bị chặn hoặc mất tín hiệu.');
     expect(renderWorkforceContentV5(d)).toContain('Chưa có nhân sự AI được xác minh trong nguồn hiện hành.');
     expect(renderSystemContentV5(d)).toContain('Chưa có thành phần hệ thống được xác minh trong nguồn hiện hành.');
+    expect(renderOverviewSignalsV5(d)).toContain('Không có việc chờ được xác minh.');
     expect(renderWorkforceContentV5(d)).not.toContain('/people/');
     expect(renderSystemContentV5(d)).not.toContain('/system/');
+  });
+
+  it('fails closed when Settings has no source snapshot yet', () => {
+    const html = renderSettingsV5();
+    expect(html).toContain('data-source-state="loading"');
+    expect(html).toContain('Đang tải');
+    expect(html).toContain('Đang chờ nguồn trạng thái hiện hành.');
+    expect(html).toContain('Chưa xác minh');
+    expect(html).not.toContain('100%');
   });
 });
