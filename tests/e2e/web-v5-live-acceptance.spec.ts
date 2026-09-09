@@ -30,6 +30,19 @@ test('Web Control V5 live machine acceptance', async () => {
         await expect(page.locator(marker)).toBeVisible();
         const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
         expect(overflow, `horizontal overflow ${width}x${height} ${path}`).toBeLessThanOrEqual(1);
+        const escaped = await page.evaluate(() => Array.from(document.querySelectorAll('.x-card,.wv5-lane,.mv5-card,.ev5-card,.mv5-report-grid section')).filter((node) => { const el=node as HTMLElement; const style=getComputedStyle(el); if(style.display==='none'||style.visibility==='hidden') return false; const r=el.getBoundingClientRect(); return r.width>0 && (r.left < -1 || r.right > document.documentElement.clientWidth + 1); }).map((node) => (node as HTMLElement).className));
+        expect(escaped, `cut card ${width}x${height} ${path}`).toEqual([]);
+      }
+    }
+    for (const [width, height] of viewports) {
+      await page.setViewportSize({ width, height });
+      for (const [path, marker] of routes) {
+        const response = await page.goto(`${base}${path}`, { waitUntil: 'domcontentloaded', timeout: 10000 });
+        expect(response?.status(), `zoom125 ${width}x${height} ${path}`).toBe(200);
+        await page.evaluate(() => { document.documentElement.style.zoom = '1.25'; });
+        await expect(page.locator(marker)).toBeVisible();
+        const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+        expect(overflow, `horizontal overflow zoom125 ${width}x${height} ${path}`).toBeLessThanOrEqual(1);
       }
     }
     await page.setViewportSize({ width: 1366, height: 768 });
@@ -37,9 +50,13 @@ test('Web Control V5 live machine acceptance', async () => {
     const link = page.locator('a.cv5-priority-work, .cv5-person a, .x-nav a').first();
     await link.hover(); await link.focus();
     expect(await link.evaluate((el) => document.activeElement === el)).toBe(true);
-    await page.evaluate(() => { document.documentElement.style.zoom = '1.25'; });
-    const zoomOverflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-    expect(zoomOverflow, 'horizontal overflow at desktop zoom 125%').toBeLessThanOrEqual(1);
+    expect(await link.evaluate((el) => getComputedStyle(el).outlineStyle)).not.toBe('none');
+    const liveDot = page.locator('.x-live i');
+    await expect(liveDot).toBeVisible();
+    expect(await liveDot.evaluate((el) => getComputedStyle(el).animationName)).toContain('x-status-pulse');
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    expect(await liveDot.evaluate((el) => getComputedStyle(el).animationName)).toBe('none');
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
     await page.goto(`${base}/people/NV01`, { waitUntil: 'domcontentloaded' });
     await expect(page.locator('[data-live-section="entity-content"]')).toBeVisible();
     const linkedWork = page.locator('a[href^="/work/"]');
