@@ -1,6 +1,7 @@
 import type { TaskPacket, TaskRuntimeRecord, WorkerResult } from './index.js';
 import type { DurableWorkforceRuntime } from './runtime.js';
 import { DurableTaskMailbox, type TaskLease } from './task-mailbox.js';
+import { androidResourceEligibility } from './android-resource.js';
 
 export interface RemoteTaskLease extends TaskLease {
   employeeId: string;
@@ -35,6 +36,13 @@ export class RemoteTaskBroker {
       });
 
     for (const record of candidates) {
+      const node = this.runtime.registry.getNode(nodeId);
+      if (!node) continue;
+      if (node.kind === 'android') {
+        const eligibility = androidResourceEligibility(node, record.task, this.now().getTime());
+        if (!eligibility.eligible) continue;
+      }
+
       const employee = this.runtime.scheduler.select(record.task);
       if (!employee || employee.nodeId !== nodeId) continue;
 
