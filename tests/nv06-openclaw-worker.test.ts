@@ -1,5 +1,5 @@
 import { describe,expect,test } from 'vitest';
-import { containsHumanAuthBlock,parseOpenClawJson } from '../apps/nv06-openclaw-worker/src/openclaw.js';
+import { containsHumanAuthBlock,openClawSpawn,parseOpenClawJson } from '../apps/nv06-openclaw-worker/src/openclaw.js';
 import { NV06_CAPABILITIES,NV06_EMPLOYEE_ID,NV06_PERMISSIONS } from '../apps/nv06-openclaw-worker/src/types.js';
 
 describe('NV06 OpenClaw worker contract',()=>{
@@ -8,6 +8,14 @@ describe('NV06 OpenClaw worker contract',()=>{
     expect(NV06_CAPABILITIES).toContain('browser.chatgpt');
     expect(NV06_CAPABILITIES).toContain('continuity.signal');
     expect(NV06_PERMISSIONS).toEqual(['browser:execute','evidence:write']);
+  });
+  test('builds a shell-free OpenClaw Node invocation',()=>{
+    const run=openClawSpawn('D:\\OpenClaw\\npm-global\\openclaw.cmd','agent:main:test','D:\\TigerIQ\\Temp\\message.txt',90);
+    expect(run.command).toBe(process.execPath);
+    expect(run.args[0]).toBe('D:\\OpenClaw\\npm-global\\node_modules\\openclaw\\openclaw.mjs');
+    expect(run.args).toContain('agent:main:test');
+    expect(run.args).toContain('D:\\TigerIQ\\Temp\\message.txt');
+    expect(run.args).not.toContain('/c');
   });
   test('parses clean and prefixed OpenClaw JSON output',()=>{
     expect(parseOpenClawJson('{"status":"ok"}')).toEqual({status:'ok'});

@@ -7,6 +7,10 @@ export interface OpenClawRun { text:string;browserUsed:boolean;durationMs:number
 export class OpenClawExecutionError extends Error {constructor(readonly code:string,message:string,readonly retriable:boolean=false){super(message);}}
 const HUMAN_AUTH=/(captcha|verify you are human|security challenge|re-?auth(?:enticate|entication)?|suspicious activity|account verification|rate.?limit)/i;
 export function containsHumanAuthBlock(text:string):boolean{return HUMAN_AUTH.test(text);}
+export function openClawSpawn(openclawCli:string,sessionKey:string,messageFile:string,timeoutSeconds:number):{command:string;args:string[]}{
+  const entrypoint=openclawCli.includes('\\')?path.win32.join(path.win32.dirname(openclawCli),'node_modules','openclaw','openclaw.mjs'):path.join(path.dirname(openclawCli),'node_modules','openclaw','openclaw.mjs');
+  return {command:process.execPath,args:[entrypoint,'--no-color','agent','--agent','main','--session-key',sessionKey,'--message-file',messageFile,'--json','--thinking','off','--timeout',String(timeoutSeconds)]};
+}
 
 export function parseOpenClawJson(raw:string):Record<string,unknown>{
   const clean=raw.replace(/\x1b\[[0-9;]*m/g,'').trim();
@@ -39,8 +43,8 @@ export class OpenClawRunner {
     const safe=job.jobId.replace(/[^A-Za-z0-9._-]/g,'_').slice(0,120),jobDir=path.join(path.dirname(this.config.identityFile),'jobs');await mkdir(jobDir,{recursive:true});
     const stamp=Date.now(),messageFile=path.join(jobDir,`${safe}-a${attempt}-${stamp}.txt`);await writeFile(messageFile,prompt,'utf8');
     const sessionKey=`agent:main:nv06-${safe}-a${attempt}-${stamp}`,started=Date.now();
-    const args=`"${this.config.openclawCli}" --no-color agent --agent main --session-key ${sessionKey} --message-file "${messageFile}" --json --thinking off --timeout ${this.config.timeoutSeconds}`;
-    const {stdout,stderr,code}=await this.spawn(args,(this.config.timeoutSeconds+45)*1000);
+    const invocation=openClawSpawn(this.config.openclawCli,sessionKey,messageFile,this.config.timeoutSeconds);
+    const {stdout,stderr,code}=await this.spawn(invocation.command,invocation.args,(this.config.timeoutSeconds+45)*1000);
     if(containsHumanAuthBlock(`${stdout}\n${stderr}`))throw new OpenClawExecutionError('BLOCKED_HUMAN_AUTH','Browser requires human authentication or verification',false);
     const parsed=parseOpenClawJson(`${stdout}\n${stderr}`),text=resultText(parsed),browserUsed=browserWasUsed(parsed),status=stringValue(parsed.status);
     if(code!==0||status==='timeout'||status==='error')throw new OpenClawExecutionError('OPENCLAW_EXECUTION_FAILED',`OpenClaw exit=${code} status=${status??'unknown'}: ${(text||stderr).slice(0,1000)}`,true);
@@ -48,9 +52,9 @@ export class OpenClawRunner {
     if(!text)throw new OpenClawExecutionError('OPENCLAW_EMPTY_RESULT','OpenClaw completed without a deliverable text result',true);
     return {text,browserUsed,durationMs:Date.now()-started,sessionKey,parsed,stdout,stderr,attempt};
   }
-  private spawn(commandLine:string,timeoutMs:number):Promise<{stdout:string;stderr:string;code:number}>{
+  private spawn(command:string,args:string[],timeoutMs:number):Promise<{stdout:string;stderr:string;code:number}>{
     return new Promise((resolve,reject)=>{
-      const child=spawn(process.env.ComSpec||'cmd.exe',['/d','/s','/c',commandLine],{windowsHide:true,shell:false,env:{...process.env,OPENCLAW_HOME:this.config.openclawHome,OPENCLAW_STATE_DIR:this.config.openclawStateDir,OPENCLAW_CONFIG_PATH:this.config.openclawConfigPath,OPENCLAW_WORKSPACE_DIR:this.config.openclawWorkspaceDir}});
+      const child=spawn(command,args,{windowsHide:true,shell:false,env:{...process.env,OPENCLAW_HOME:this.config.openclawHome,OPENCLAW_STATE_DIR:this.config.openclawStateDir,OPENCLAW_CONFIG_PATH:this.config.openclawConfigPath,OPENCLAW_WORKSPACE_DIR:this.config.openclawWorkspaceDir}});
       let stdout='',stderr='',settled=false,timedOut=false;const cap=(current:string,chunk:Buffer|string)=>(current+chunk.toString()).slice(-1_000_000);
       child.stdout?.on('data',chunk=>{stdout=cap(stdout,chunk);});child.stderr?.on('data',chunk=>{stderr=cap(stderr,chunk);});
       const timer=setTimeout(()=>{timedOut=true;child.kill('SIGKILL');},timeoutMs);
