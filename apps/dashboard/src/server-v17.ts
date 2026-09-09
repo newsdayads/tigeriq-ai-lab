@@ -4,7 +4,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { ServerTelemetry } from './server.js';
 import { loadExecutiveDashboardV4, type ExecutiveDashboardV4, type ExecutiveSystemV4, type ExecutiveWorkV4 } from './executive-data-v4.js';
-import { LiveEventBufferV5, LiveEventProjectionV5, type LiveEventV5 } from './live-events-v5.js';
+import { LiveEventBufferV5, RuntimeLiveEventProjectionV5, type LiveEventV5 } from './live-events-v5.js';
 import { renderWorkContentV5, stableWorkIdV5, WORK_V5_CSS } from './work-view-v5.js';
 import { ENTITY_V5_CSS, ENTITY_V5_CSS_EXTRA, renderSystemContentV5, renderWorkforceContentV5 } from './entity-views-v5.js';
 import { MANAGEMENT_V5_CSS, OVERVIEW_SIGNALS_V5_CSS, overviewCheckpointScriptV5, renderOverviewSignalsV5, renderProjectsV5, renderReportsV5, renderSettingsV5 } from './management-views-v5.js';
@@ -194,7 +194,7 @@ a[href],button,[role="button"]{cursor:pointer}a[href]:focus-visible,button:focus
 `;
 
 function liveScript(): string {
-  return `<script id="x-live-script">(()=>{const names=['command-overview','work-v5','entity-content','management-content'];let busy=false,last=Date.now(),source=null,fallback=null,retry=1000,lastEventId='';const age=document.getElementById('x-live-age'),live=document.getElementById('x-live'),state=document.getElementById('x-live-state');function tick(){if(!age)return;const s=Math.floor((Date.now()-last)/1000);age.textContent=s<5?'vừa cập nhật':s+'s trước'}async function update(){if(busy||document.hidden)return;busy=true;try{const r=await fetch(location.href,{cache:'no-store',headers:{'X-TigerIQ-Refresh':'1'}});if(!r.ok)throw new Error(String(r.status));const doc=new DOMParser().parseFromString(await r.text(),'text/html');for(const name of names){const a=document.querySelector('[data-live-section="'+name+'"]');const b=doc.querySelector('[data-live-section="'+name+'"]');if(a&&b&&a.innerHTML!==b.innerHTML){a.innerHTML=b.innerHTML;a.classList.remove('x-flash');void a.offsetWidth;a.classList.add('x-flash')}}last=Date.now();window.tqV5Checkpoint?.()}catch{}finally{busy=false}}function startFallback(){if(fallback)return;fallback=setInterval(update,5000)}function stopFallback(){if(fallback){clearInterval(fallback);fallback=null}}function connect(){try{const q=lastEventId?'?lastEventId='+encodeURIComponent(lastEventId):'';source=new EventSource('/api/events'+q);source.onopen=()=>{retry=1000;stopFallback();live?.classList.remove('fallback');live?.classList.add('live-ok');if(state)state.textContent='Đồng bộ trực tiếp'};source.addEventListener('tigeriq',(event)=>{lastEventId=event.lastEventId||lastEventId;last=Date.now();update()});source.onerror=()=>{source?.close();source=null;live?.classList.remove('live-ok');live?.classList.add('fallback');if(state)state.textContent='Đồng bộ dự phòng 5 giây';startFallback();const wait=retry;retry=Math.min(retry*2,30000);setTimeout(connect,wait)}}catch{startFallback()}}document.getElementById('x-refresh')?.addEventListener('click',update);setInterval(tick,1000);document.addEventListener('visibilitychange',()=>{if(!document.hidden&&Date.now()-last>5000)update()});connect()})();</script>`;
+  return `<script id="x-live-script">(()=>{const names=['command-overview','work-v5','entity-content','management-content'],key='tigeriq:v5:last-seen-event';let busy=false,last=Date.now(),source=null,fallback=null,retry=1000,lastEventId=sessionStorage.getItem(key)||'',sessionBase=lastEventId,newest=lastEventId;const ageEl=document.getElementById('x-live-age'),live=document.getElementById('x-live'),state=document.getElementById('x-live-state');function tick(){if(!ageEl)return;const s=Math.floor((Date.now()-last)/1000);ageEl.textContent=s<5?'vừa cập nhật':s+'s trước'}function checkpoint(){const ids=[...document.querySelectorAll('[data-live-event-id]')].map(el=>el.getAttribute('data-live-event-id')).filter(Boolean);if(ids[0])newest=ids[0];const out=document.getElementById('x-since-count');if(out){if(!sessionBase)out.textContent='Lần đầu phiên này';else{const at=ids.indexOf(sessionBase);out.textContent='Từ lần xem trước: '+(at<0?ids.length:at)}}}async function update(){if(busy||document.hidden)return;busy=true;try{const r=await fetch(location.href,{cache:'no-store',headers:{'X-TigerIQ-Refresh':'1'}});if(!r.ok)throw new Error(String(r.status));const doc=new DOMParser().parseFromString(await r.text(),'text/html');for(const name of names){const a=document.querySelector('[data-live-section="'+name+'"]'),b=doc.querySelector('[data-live-section="'+name+'"]');if(a&&b&&a.innerHTML!==b.innerHTML){a.innerHTML=b.innerHTML;a.classList.remove('x-flash');void a.offsetWidth;a.classList.add('x-flash')}}last=Date.now();checkpoint()}catch{}finally{busy=false}}async function snapshot(){try{const q=lastEventId?'?after='+encodeURIComponent(lastEventId):'';const r=await fetch('/api/live-snapshot'+q,{cache:'no-store'});if(!r.ok)throw new Error(String(r.status));const data=await r.json(),events=Array.isArray(data.events)?data.events:[];if(data.last_event_id)lastEventId=String(data.last_event_id);if(events.length){last=Date.now();await update()}else checkpoint();return true}catch{return false}}function startFallback(){if(fallback)return;fallback=setInterval(()=>void snapshot(),5000)}function stopFallback(){if(fallback){clearInterval(fallback);fallback=null}}function connect(){try{const q=lastEventId?'?lastEventId='+encodeURIComponent(lastEventId):'';source=new EventSource('/api/events'+q);source.onopen=()=>{retry=1000;stopFallback();live?.classList.remove('fallback');live?.classList.add('live-ok');if(state)state.textContent='Đồng bộ trực tiếp';void snapshot()};source.addEventListener('tigeriq',(event)=>{lastEventId=event.lastEventId||lastEventId;last=Date.now();void update()});source.onerror=()=>{source?.close();source=null;live?.classList.remove('live-ok');live?.classList.add('fallback');if(state)state.textContent='Đồng bộ dự phòng 5 giây';startFallback();const wait=retry;retry=Math.min(retry*2,30000);setTimeout(connect,wait)}}catch{startFallback()}}function persist(){if(newest)sessionStorage.setItem(key,newest)}document.getElementById('x-refresh')?.addEventListener('click',()=>{void snapshot();void update()});setInterval(tick,1000);document.addEventListener('visibilitychange',()=>{if(document.hidden)persist();else if(Date.now()-last>5000)void snapshot()});window.addEventListener('pagehide',persist);checkpoint();connect()})();</script>`;
 }
 
 export function renderExecutiveOverviewV4(data: ExecutiveDashboardV4): string {
@@ -270,10 +270,14 @@ async function enrichNativeSelfHealV5(data: ExecutiveDashboardV4, options: Owner
   try { const raw=await readFile(options.selfHealStatePath ?? 'D:\\TigerIQ\\CommandCenter\\worker-self-heal-v1.json','utf8'); return applyNativeSelfHealStateV5(data, JSON.parse(raw) as NativeSelfHealV5); } catch { return data; }
 }
 
-async function loadOverviewDataFresh(options: OwnerCockpitV17Options): Promise<ExecutiveDashboardV4> {
+async function loadBackendTelemetryFresh(options: OwnerCockpitV17Options): Promise<ServerTelemetry> {
   const telemetryResponse = await fetch(`${options.backendUrl}/api/server`, { cache: 'no-store' });
   if (!telemetryResponse.ok) throw new Error('telemetry_unavailable');
-  const telemetry = await telemetryResponse.json() as ServerTelemetry;
+  return telemetryResponse.json() as Promise<ServerTelemetry>;
+}
+
+async function loadOverviewDataFresh(options: OwnerCockpitV17Options): Promise<ExecutiveDashboardV4> {
+  const telemetry = await loadBackendTelemetryFresh(options);
   const data = await (options.loadData ? options.loadData(telemetry) : loadExecutiveDashboardV4(options.repo, telemetry));
   const enriched = await enrichNativeSelfHealV5(data, options);
   return options.runtimeStateEnabled ? stabilizeExecutiveDataV5(enriched) : enriched;
@@ -408,25 +412,35 @@ function streamAuthorized(options: OwnerCockpitV17Options): boolean {
 export async function startOwnerCockpitV17(options: OwnerCockpitV17Options) {
   const host = options.host ?? '127.0.0.1';
   if (!isPrivateHost(host)) throw new Error('public_bind_forbidden');
-  const projection = new LiveEventProjectionV5();
+  const projection = new RuntimeLiveEventProjectionV5();
   const buffer = new LiveEventBufferV5(200);
   const clients = new Set<ServerResponse>();
   let polling = false;
   const pollLive = async () => {
-    if (polling || clients.size === 0) return;
+    if (polling) return;
     polling = true;
     try {
-      const events = buffer.append(projection.ingest(await refreshOverviewData(options)));
+      await loadBackendTelemetryFresh(options);
+      const cached = overviewCacheV5(options).data;
+      if (!cached) return;
+      const events = buffer.append(projection.ingest(cached));
       for (const event of events) for (const client of clients) writeLiveEvent(client, event);
     } catch {}
     finally { polling = false; }
   };
-  const pollTimer = setInterval(() => { void pollLive(); }, Math.max(1000, options.livePollMs ?? 5000));
+  const pollTimer = setInterval(() => { void pollLive(); }, Math.min(2000, Math.max(1000, options.livePollMs ?? 1500)));
   const heartbeatTimer = setInterval(() => { for (const client of clients) client.write(`: heartbeat ${Date.now()}\n\n`); }, 15000);
-  try { await refreshOverviewData(options); } catch {}
+  try { const initial = await refreshOverviewData(options); buffer.append(projection.ingest(initial)); } catch {}
   const server = createServer(async (req, res) => {
     try {
       const url = new URL(req.url ?? '/', 'http://local');
+      if (req.method === 'GET' && url.pathname === '/api/live-snapshot') {
+        if (!streamAuthorized(options)) { res.statusCode = 401; res.end(); return; }
+        const after = String(req.headers['last-event-id'] ?? url.searchParams.get('after') ?? url.searchParams.get('lastEventId') ?? '');
+        const events = buffer.since(after || undefined).slice(-20);
+        res.statusCode = 200; res.setHeader('content-type','application/json; charset=utf-8'); res.setHeader('cache-control','no-store'); res.setHeader('x-content-type-options','nosniff');
+        res.end(JSON.stringify({ ok:true, protocol:'web-v5-live-v1', generated_at:new Date().toISOString(), last_event_id:buffer.lastEventId(), events })); return;
+      }
       if (req.method === 'GET' && url.pathname === '/api/events') {
         if (!streamAuthorized(options)) { res.statusCode = 401; res.end(); return; }
         if (clients.size === 0) {

@@ -41,10 +41,10 @@ describe('Web Local #396 Executive V4 renderer', () => {
     expect(html).toContain('data-layout="command-center-v5"');
     expect(html).toContain('data-font="segoe-ui"');
     for (const label of ['Tổng quan', 'Công việc', 'Dự án', 'Nhân sự', 'Hệ thống', 'Báo cáo', 'Cài đặt']) expect(html).toContain(`>${label}<`);
-    for (const module of ['Hôm nay hệ thống đang làm gì?', 'AI đang làm gì ngay lúc này', 'Công việc cần nhìn trước', 'Cần chú ý ngay', 'Sức khỏe hệ thống chính']) expect(html).toContain(module);
+    for (const module of ['Hôm nay hệ thống đang làm gì?', 'AI đang làm gì ngay lúc này', 'Công việc cần nhìn trước', 'Cần chú ý ngay', 'Sức khỏe hệ thống chính', 'Vừa xảy ra']) expect(html).toContain(module);
+    expect(html).toContain('data-live-since');
     expect(html).toContain('Minh (NV01)');
     expect(html).toContain('Huy (NV03)');
-    expect(html).not.toContain('Vừa xảy ra');
     expect(html).not.toContain('68%');
     expect(html).not.toContain('fonts.googleapis.com');
     expect(html).not.toContain('Open Sans');

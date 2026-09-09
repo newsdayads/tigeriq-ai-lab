@@ -289,6 +289,19 @@ export function systemRows(telemetry: ServerTelemetry): ExecutiveSystemV4[] {
   ];
 }
 
+type RuntimeTaskViewV5 = import('./server.js').WorkforceTaskTelemetry & { createdAt?:string|null; updatedAt?:string|null; leaseId?:string|null; leaseEmployeeId?:string|null; leasedAt?:string|null; workerHeartbeatAt?:string|null; workerOnline?:boolean; workerStale?:boolean; sourceRef?:string; lastFailureCode?:string|null };
+type RuntimeEmployeeViewV5 = import('./server.js').WorkforceEmployeeTelemetry & { lastHeartbeatAt?:string|null; stale?:boolean };
+function runtimeStageToneV5(stage:string,hasLease:boolean,freshWorker:boolean):Tone{if(stage==='done')return 'done';if(stage==='failed')return 'blocked';if(stage==='cancelled')return 'paused';if(['leased','reviewing','judging'].includes(stage)&&hasLease)return freshWorker?'active':'stale';return 'waiting';}
+function runtimeStageLabelV5(stage:string,tone:Tone):string{if(tone==='active')return 'Đang làm';if(tone==='stale')return 'Mất tín hiệu';if(stage==='done')return 'Hoàn tất';if(stage==='failed')return 'Vướng mắc';if(stage==='cancelled')return 'Tạm ngưng';if(stage==='queued')return 'Chờ xử lý';return 'Chờ runtime worker';}
+export function mergeRuntimeWorkTruthV5(governanceWorks:ExecutiveWorkV4[],telemetry:ServerTelemetry,nowMs=Date.now()):ExecutiveWorkV4[]{
+  const governance=governanceWorks.map((work)=>['active','stale'].includes(work.tone)?{...work,status:'Chờ xác minh thực thi',tone:'waiting' as Tone,currentStep:'GitHub chỉ là metadata; cần lease + heartbeat runtime để claim đang chạy.'}:work);
+  const staleAfter=Math.max(5_000,telemetry.staleAfterMs??45_000),employees=(telemetry.workforce?.roster??[]) as RuntimeEmployeeViewV5[];
+  const employeeById=new Map(employees.map((row)=>[row.employeeId,row])),tasks=(telemetry.workforce?.taskList??[]) as RuntimeTaskViewV5[];
+  const selected=[...tasks].sort((a,b)=>Date.parse(b.updatedAt??'')-Date.parse(a.updatedAt??'')).filter((task,index)=>task.stage!=='done'||index<8).slice(0,32);
+  const runtime=selected.map((task):ExecutiveWorkV4=>{const employeeId=task.leaseEmployeeId??task.assignedEmployeeId??null,employee=employeeId?employeeById.get(employeeId):undefined,hb=task.workerHeartbeatAt??employee?.lastHeartbeatAt??null,hbAt=Date.parse(hb??''),fresh=task.workerOnline===true&&task.workerStale!==true&&Number.isFinite(hbAt)&&nowMs-hbAt<=staleAfter,hasLease=Boolean(task.leaseId),tone=runtimeStageToneV5(task.stage,hasLease,fresh),last=tone==='active'||tone==='stale'?hb??task.updatedAt:task.updatedAt??hb,code=employeeId?employeeCode(employeeId):null;return {number:null,title:compact(task.objective||task.taskId,96),ownerCode:code,owner:employee?.displayName??employeeId??'Runtime worker',progressPercent:null,progressLabel:tone==='done'?'100%':'—',status:runtimeStageLabelV5(task.stage,tone),tone,next:task.stage==='queued'?'Chờ worker nhận việc':task.stage==='failed'?(task.lastFailureCode??'Xem lỗi runtime'):task.stage==='done'?'Đã hoàn tất':`Runtime stage: ${task.stage}`,updated:task.updatedAt?new Date(task.updatedAt).toLocaleString('vi-VN',{hour12:false}):'—',workId:task.taskId,projectId:'project:tigeriq',project:'TigerIQ',priority:task.priority,goal:compact(task.objective,220),currentStep:`Runtime · ${task.stage}`,updatedAt:task.updatedAt??undefined,lastActivityAt:last??undefined,evidenceRef:task.sourceRef??`runtime-truth-v1:job:${task.taskId}`,timeline:[...(task.leasedAt?[{timestamp:task.leasedAt,message:'Worker nhận lease',evidenceRef:`runtime-truth-v1:job:${task.taskId}`}]:[]),...(task.updatedAt?[{timestamp:task.updatedAt,message:`Runtime stage: ${task.stage}`,evidenceRef:`runtime-truth-v1:job:${task.taskId}`}]:[])]};});
+  const ids=new Set(runtime.map((work)=>work.workId).filter(Boolean));return [...runtime,...governance.filter((work)=>!work.workId||!ids.has(work.workId))];
+}
+
 export async function loadExecutiveDashboardV4(repo: string, telemetry: ServerTelemetry): Promise<ExecutiveDashboardV4> {
   const [central, centralCommentsRaw, registry] = await Promise.all([
     ghJson<Issue>(repo, 'issues/280').catch(() => null),
@@ -307,7 +320,7 @@ export async function loadExecutiveDashboardV4(repo: string, telemetry: ServerTe
   }))).filter((lane): lane is Lane => lane !== null);
 
   const paused = nv03Paused(registry, central);
-  const works = lanes.map((lane): ExecutiveWorkV4 => {
+  const governanceWorks = lanes.map((lane): ExecutiveWorkV4 => {
     const code = ownerCode(lane.issue, lane.comments);
     const life = code === 'NV03' && paused ? { status: 'Tạm ngưng', tone: 'paused' as Tone, current: 'Theo Registry #335' } : lifecycle(lane.comments, lane.issue);
     const percent = progressPercent(lane.issue, lane.comments);
@@ -336,6 +349,8 @@ export async function loadExecutiveDashboardV4(repo: string, telemetry: ServerTe
       evidenceRef: latestComment?.html_url || lane.issue.html_url || undefined, timeline,
     };
   });
+
+  const works = mergeRuntimeWorkTruthV5(governanceWorks, telemetry);
 
   const allComments = [...centralComments, ...lanes.flatMap((lane) => lane.comments)];
   const action = ownerAction(allComments);
