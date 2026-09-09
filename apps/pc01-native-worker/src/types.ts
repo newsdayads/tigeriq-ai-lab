@@ -17,6 +17,7 @@ export interface WorkerJob {
 }
 export interface WorkerLease { leaseId:string; leaseToken:string; expiresAt:string; job:WorkerJob; }
 export interface Identity { employeeId:string;deviceId:string;bindingId:string;nodeId:string;publicKeyBase64:string;publicKeyFingerprint:string;privateKeyPem:string; }
+export interface IdentitySeed { employeeId:string;deviceId:string;bindingId:string;nodeId:string; }
 export interface ResourceSnapshot { cpuPercent:number|null;totalRamBytes:number;freeRamBytes:number;freeRamPercent:number;hostname:string;platform:string; }
 export interface OllamaMetrics { model:string;totalDurationMs?:number;loadDurationMs?:number;promptTokens?:number;evalTokens?:number;tokensPerSec?:number;sizeBytes?:number;vramBytes?:number;processor?:string; }
 export interface ToolExecutionResult { operation:string;exitCode:number;stdout:string;stderr:string;durationMs:number;timedOut:boolean;detail?:Record<string,unknown>; }
@@ -67,10 +68,10 @@ export class EvidenceStore {
   }
 }
 
-export async function loadOrCreateIdentity(identityFile:string):Promise<Identity>{
-  try{const parsed=JSON.parse(await readFile(identityFile,'utf8')) as Identity;if(parsed.privateKeyPem&&parsed.publicKeyBase64&&parsed.publicKeyFingerprint)return parsed;}catch{}
+export async function loadOrCreateIdentity(identityFile:string,seed:IdentitySeed={employeeId:PC01_EMPLOYEE_ID,deviceId:PC01_DEVICE_ID,bindingId:PC01_BINDING_ID,nodeId:'PC01'}):Promise<Identity>{
+  try{const parsed=JSON.parse(await readFile(identityFile,'utf8')) as Identity;if(parsed.privateKeyPem&&parsed.publicKeyBase64&&parsed.publicKeyFingerprint&&parsed.employeeId===seed.employeeId&&parsed.deviceId===seed.deviceId)return parsed;}catch{}
   const pair=generateKeyPairSync('ec',{namedCurve:'prime256v1',publicKeyEncoding:{type:'spki',format:'der'},privateKeyEncoding:{type:'pkcs8',format:'pem'}}),publicKeyBase64=pair.publicKey.toString('base64');
-  const identity:Identity={employeeId:PC01_EMPLOYEE_ID,deviceId:PC01_DEVICE_ID,bindingId:PC01_BINDING_ID,nodeId:'PC01',publicKeyBase64,publicKeyFingerprint:sha256(pair.publicKey),privateKeyPem:pair.privateKey};
+  const identity:Identity={...seed,publicKeyBase64,publicKeyFingerprint:sha256(pair.publicKey),privateKeyPem:pair.privateKey};
   await mkdir(path.dirname(identityFile),{recursive:true});const temp=`${identityFile}.tmp`;await writeFile(temp,JSON.stringify(identity,null,2),'utf8');await rename(temp,identityFile);return identity;
 }
 
