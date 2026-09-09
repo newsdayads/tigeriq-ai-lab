@@ -8,6 +8,22 @@ function tone(value: string): string {
   return ['active','waiting','blocked','done','paused','stale','unknown'].includes(value) ? value : 'unknown';
 }
 
+type SourcePresentationState = 'loading' | 'empty' | 'error' | 'stale' | 'ready';
+
+function sourcePresentationState(data: ExecutiveDashboardV4): SourcePresentationState {
+  const status = String(data.sourceStatus || '').toLowerCase();
+  const note = String(data.sourceNote || '').toLowerCase();
+  if (status.includes('tải') || status.includes('loading') || note.includes('đang đồng bộ')) return 'loading';
+  if (status.includes('lỗi') || status.includes('error') || note.includes('không thể xác minh')) return 'error';
+  if (status.includes('mất tín hiệu') || status.includes('stale') || note.includes('quá ngưỡng')) return 'stale';
+  return 'ready';
+}
+
+function sourceBar(data: ExecutiveDashboardV4): string {
+  const state = sourcePresentationState(data);
+  return `<div class="ev5-sourcebar ${state}" data-source-state="${state}"><b>${esc(data.sourceStatus || 'Nguồn trực tiếp')}</b><span>${esc(data.sourceNote || 'Dữ liệu đang đồng bộ từ nguồn hiện hành.')}</span></div>`;
+}
+
 function ageLabel(timestamp?: string): string {
   const at = Date.parse(timestamp || '');
   if (!Number.isFinite(at)) return 'Chưa có mốc hoạt động';
@@ -42,20 +58,24 @@ function systemDetail(system: ExecutiveSystemV4 | undefined): string {
 }
 
 export function renderWorkforceContentV5(data: ExecutiveDashboardV4, selectedId = ''): string {
-  if (selectedId) return `<div class="ev5-shell" data-live-section="entity-content">${personDetail(data.people.find((person) => person.key === selectedId), data)}</div>`;
+  const state = sourcePresentationState(data);
+  const source = sourceBar(data);
+  if (selectedId) return `<div class="ev5-shell" data-live-section="entity-content" data-source-state="${state}">${source}${personDetail(data.people.find((person) => person.key === selectedId), data)}</div>`;
   const people=data.people.filter((person)=>person.key!=='VY'); const busy=people.filter((person)=>person.tone==='active').length; const warning=people.filter((person)=>person.tone==='blocked'||person.tone==='stale').length; const paused=people.filter((person)=>person.tone==='paused').length; const idle=people.length-busy-warning-paused;
-  const source=`<div class="ev5-sourcebar"><b>${esc(data.sourceStatus || 'Nguồn trực tiếp')}</b><span>${esc(data.sourceNote || 'Dữ liệu đang đồng bộ từ nguồn hiện hành.')}</span></div>`;
   const stats=`<div class="ev5-stats"><article><small>Đang làm</small><b>${busy}</b></article><article><small>Chờ việc</small><b>${Math.max(0,idle)}</b></article><article><small>Cảnh báo</small><b>${warning}</b></article><article><small>Tạm ngưng</small><b>${paused}</b></article></div>`;
-  return `<div class="ev5-shell" data-live-section="entity-content"><div class="ev5-intro"><h1>Nhân sự AI</h1><p>AI nào đang làm gì — mỗi người đang giữ việc gì, bước hiện tại là gì và có đang bị chặn hay không.</p></div>${source}${stats}<div class="ev5-grid">${people.map((person) => personCard(person,data)).join('')}</div></div>`;
+  const cards = people.length ? people.map((person) => personCard(person,data)).join('') : '<div class="ev5-empty" data-entity-state="empty">Chưa có nhân sự AI được xác minh trong nguồn hiện hành.</div>';
+  return `<div class="ev5-shell" data-live-section="entity-content" data-source-state="${state}"><div class="ev5-intro"><h1>Nhân sự AI</h1><p>AI nào đang làm gì — mỗi người đang giữ việc gì, bước hiện tại là gì và có đang bị chặn hay không.</p></div>${source}${stats}<div class="ev5-grid">${cards}</div></div>`;
 }
 
 export function renderSystemContentV5(data: ExecutiveDashboardV4, selectedId = ''): string {
-  if (selectedId) return `<div class="ev5-shell" data-live-section="entity-content">${systemDetail(data.systems.find((system) => system.key === selectedId))}</div>`;
-  const source=`<div class="ev5-sourcebar"><b>${esc(data.sourceStatus || 'Nguồn trực tiếp')}</b><span>${esc(data.sourceNote || 'Dữ liệu đang đồng bộ từ nguồn hiện hành.')}</span></div>`;
-  return `<div class="ev5-shell" data-live-section="entity-content"><div class="ev5-intro ev5-intro-actions"><div><h1>Hệ thống</h1><p>Máy có khỏe không — thiếu nguồn trực tiếp thì giữ trạng thái Chưa xác minh.</p></div><a class="ev5-control" href="/?view=evidence#he-thong">Mở điều khiển an toàn</a></div>${source}<div class="ev5-grid systems">${data.systems.map(systemCard).join('')}</div></div>`;
+  const state = sourcePresentationState(data);
+  const source = sourceBar(data);
+  if (selectedId) return `<div class="ev5-shell" data-live-section="entity-content" data-source-state="${state}">${source}${systemDetail(data.systems.find((system) => system.key === selectedId))}</div>`;
+  const cards = data.systems.length ? data.systems.map(systemCard).join('') : '<div class="ev5-empty" data-entity-state="empty">Chưa có thành phần hệ thống được xác minh trong nguồn hiện hành.</div>';
+  return `<div class="ev5-shell" data-live-section="entity-content" data-source-state="${state}"><div class="ev5-intro ev5-intro-actions"><div><h1>Hệ thống</h1><p>Máy có khỏe không — thiếu nguồn trực tiếp thì giữ trạng thái Chưa xác minh.</p></div><a class="ev5-control" href="/?view=evidence#he-thong">Mở điều khiển an toàn</a></div>${source}<div class="ev5-grid systems">${cards}</div></div>`;
 }
 export const ENTITY_V5_CSS = `
-.ev5-sourcebar{display:flex;gap:9px;align-items:center;padding:8px 10px;margin-bottom:10px;border:1px solid #28527e;border-radius:8px;background:#092443}.ev5-sourcebar b{font-size:10px;color:#49d99a;white-space:nowrap}.ev5-sourcebar span{font-size:10px;color:#8fa7c1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ev5-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:12px}.ev5-stats article{min-width:0;display:flex;align-items:center;justify-content:space-between;border:1px solid #244b77;border-radius:8px;background:#0a294d;padding:8px 10px}.ev5-stats small{color:#829ab6}.ev5-stats b{font-size:17px}
+.ev5-sourcebar{display:flex;gap:9px;align-items:center;padding:8px 10px;margin-bottom:10px;border:1px solid #28527e;border-radius:8px;background:#092443}.ev5-sourcebar b{font-size:10px;color:#49d99a;white-space:nowrap}.ev5-sourcebar span{font-size:10px;color:#8fa7c1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ev5-sourcebar.loading{border-color:#8a6a2d}.ev5-sourcebar.loading b{color:#ffd166}.ev5-sourcebar.error{border-color:#8b3a4c}.ev5-sourcebar.error b{color:#ff8194}.ev5-sourcebar.stale{border-color:#80572b}.ev5-sourcebar.stale b{color:#ffb25f}.ev5-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:12px}.ev5-stats article{min-width:0;display:flex;align-items:center;justify-content:space-between;border:1px solid #244b77;border-radius:8px;background:#0a294d;padding:8px 10px}.ev5-stats small{color:#829ab6}.ev5-stats b{font-size:17px}
 .ev5-shell{min-width:0}.ev5-intro{margin-bottom:14px}.ev5-intro-actions{display:flex;align-items:end;justify-content:space-between;gap:12px}.ev5-control{border:1px solid #2d6b9c;border-radius:8px;padding:8px 10px;background:#0b3157;color:#8fd0ff;font-size:11px;font-weight:700;transition:transform .15s ease,border-color .15s ease,background .15s ease}.ev5-control:hover{transform:translateY(-1px);border-color:#55aee8;background:#0e3d6a}.ev5-control:focus-visible{outline:2px solid #5fc4ff;outline-offset:2px}.ev5-intro h1{margin:0;font-size:22px}.ev5-intro p{margin:4px 0 0;color:#9fb2ca}.ev5-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.ev5-grid.systems{grid-template-columns:repeat(3,minmax(0,1fr))}.ev5-card{min-width:0;display:block;border:1px solid #214a78;border-radius:11px;background:linear-gradient(180deg,#0b274a,#09213e);padding:12px;transition:transform .15s ease,border-color .15s ease,box-shadow .15s ease}.ev5-card:hover{transform:translateY(-1px);border-color:#3c79b3;box-shadow:0 8px 20px rgba(0,0,0,.15)}.ev5-card:focus-visible,.ev5-back:focus-visible,.ev5-work:focus-visible{outline:2px solid #5fc4ff;outline-offset:2px}.ev5-head{display:flex;align-items:center;justify-content:space-between;gap:8px}.ev5-head>b{font-size:10px;color:#56baff}.ev5-card h3{margin:9px 0 4px;font-size:14px}.ev5-card p{margin:0 0 10px;color:#a5bad1;font-size:11px;overflow-wrap:anywhere;word-break:break-word}.ev5-card dl{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:9px 0}.ev5-card dl div{background:#091f3b;border-radius:7px;padding:6px}.ev5-card dt{font-size:9px;color:#7791ad}.ev5-card dd{margin:2px 0 0;font-weight:700}.ev5-card>small{display:block;color:#879fba;overflow-wrap:anywhere}.ev5-state{display:inline-flex;padding:3px 7px;border-radius:6px;background:#23364f;color:#a8bbd1;font-size:10px;font-style:normal;font-weight:700}.ev5-state.active{background:#0c3d35;color:#36dd8c}.ev5-state.blocked{background:#4b2331;color:#ff7489}.ev5-state.done{background:#123b58;color:#52baff}.ev5-state.waiting{background:#50351c;color:#ffae58}.ev5-detail{border:1px solid #214a78;border-radius:12px;background:linear-gradient(180deg,rgba(11,34,65,.96),rgba(8,28,54,.97));padding:15px}.ev5-back{display:inline-block;margin-bottom:12px;color:#67bdff}.ev5-title{display:flex;justify-content:space-between;gap:18px}.ev5-title h2{margin:4px 0}.ev5-title p{margin:0;color:#9fb2ca}.ev5-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:15px 0}.ev5-metrics article{min-width:0;border:1px solid #244b77;border-radius:8px;background:#0a294d;padding:10px;display:grid;gap:5px}.ev5-metrics small{color:#829ab6}.ev5-metrics b{overflow-wrap:anywhere}.ev5-work-list{display:grid;gap:8px}.ev5-work{min-width:0;display:grid;grid-template-columns:90px minmax(0,1fr) auto;gap:10px;align-items:center;border:1px solid #234b78;border-radius:8px;padding:9px;background:#0a294d;transition:transform .15s ease,border-color .15s ease,background .15s ease}.ev5-work:hover{transform:translateY(-1px);border-color:#3c79b3;background:#0d3159}.ev5-work>b{font-size:10px;color:#56baff}.ev5-work>span,.ev5-title p{min-width:0;overflow-wrap:anywhere;word-break:break-word}.ev5-source,.ev5-empty{color:#879fba}.ev5-empty{padding:20px;text-align:center}
 @media(max-width:1200px){.ev5-grid,.ev5-grid.systems{grid-template-columns:repeat(2,minmax(0,1fr))}.ev5-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:700px){.ev5-intro-actions{align-items:flex-start;flex-direction:column}.ev5-grid,.ev5-grid.systems,.ev5-metrics{grid-template-columns:minmax(0,1fr)}.ev5-title{flex-direction:column}.ev5-work{grid-template-columns:minmax(0,1fr)}}
 @media(prefers-reduced-motion:reduce){.ev5-card,.ev5-control,.ev5-work{transition:none}}
