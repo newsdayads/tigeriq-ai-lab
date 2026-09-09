@@ -1,4 +1,5 @@
 import { createHash, generateKeyPairSync } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -73,8 +74,11 @@ export async function loadOrCreateIdentity(identityFile:string):Promise<Identity
   await mkdir(path.dirname(identityFile),{recursive:true});const temp=`${identityFile}.tmp`;await writeFile(temp,JSON.stringify(identity,null,2),'utf8');await rename(temp,identityFile);return identity;
 }
 
+function runtimeSecret(file:string):string{try{return readFileSync(file,'utf8').trim();}catch{return '';}}
 export function configFromEnv():NativeWorkerConfig{
-  const workspace=path.resolve(process.env.TIGERIQ_WORKSPACE?.trim()||process.cwd()),stateRoot=process.env.TIGERIQ_PC01_STATE_DIR?.trim()||path.join(process.env.LOCALAPPDATA||workspace,'TigerIQ','pc01-native-worker'),ingressToken=(process.env.TIGERIQ_INGRESS_TOKEN??'').trim();
+  const workspace=path.resolve(process.env.TIGERIQ_WORKSPACE?.trim()||'D:\\TigerIQ\\Workspace\\tigeriq-ai-lab');
+  const stateRoot=process.env.TIGERIQ_PC01_STATE_DIR?.trim()||'D:\\TigerIQ\\Runtime\\pc01-native-worker\\state';
+  const ingressToken=(process.env.TIGERIQ_INGRESS_TOKEN??runtimeSecret('D:\\TigerIQ\\Secrets\\pc01-primary-node.ingress-token')).trim();
   if(ingressToken.length<32)throw new Error('TIGERIQ_INGRESS_TOKEN must contain at least 32 characters');
   return {workspace,identityFile:path.join(stateRoot,'identity.json'),controllerUrl:process.env.TIGERIQ_CONTROLLER_URL?.trim()||'http://100.97.23.87:8790',ingressToken,ollamaEndpoint:process.env.TIGERIQ_OLLAMA_URL?.trim()||'http://127.0.0.1:11434',ollamaModel:process.env.TIGERIQ_OLLAMA_MODEL?.trim()||'qwen3:8b',pollMs:Math.max(250,Number(process.env.TIGERIQ_WORKER_POLL_MS??1000)),heartbeatMs:Math.max(5000,Number(process.env.TIGERIQ_HEARTBEAT_MS??15000)),maxConcurrentJobs:Math.min(8,Math.max(1,Number(process.env.TIGERIQ_WORKER_MAX_JOBS??4))),minFreeRamBytes:Math.max(4,Number(process.env.TIGERIQ_MIN_FREE_RAM_GB??8))*1024**3};
 }

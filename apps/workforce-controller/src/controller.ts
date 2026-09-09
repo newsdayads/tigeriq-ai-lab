@@ -3,6 +3,7 @@ import type { SqlPoolLike } from '../../../packages/work-state/src/postgres-repo
 import { OperationalWorkService } from '../../../packages/work-state/src/service.js';
 import type { EvidenceInput, JobDefinition, JobResultInput, ResultFailure, WorkerKind } from '../../../packages/work-state/src/types.js';
 import { DeviceAuthError, VerifiedDeviceAuthenticator } from './device-auth.js';
+import { buildRuntimeTruth } from './runtime-truth.js';
 
 export interface ControllerRequest { method:string; path:string; headers:Record<string,string|undefined>; body:Buffer; nowMs?:number; }
 export interface ControllerResponse { status:number; body:Record<string,unknown>; }
@@ -96,6 +97,10 @@ export class WorkforceControllerV1 {
     const method=request.method.toUpperCase();
     const pathname=request.path.split('?')[0]??request.path;
     if(method==='GET'&&pathname==='/api/v1/status')return this.status(request.nowMs??Date.now());
+    if(method==='GET'&&pathname==='/api/v1/runtime-truth'){
+      this.requireIngressAuth(request);
+      return {status:200,body:await buildRuntimeTruth(this.pool,request.nowMs??Date.now())};
+    }
 
     if(method==='POST'&&pathname==='/api/v1/pc01/register'){
       this.requireIngressAuth(request);

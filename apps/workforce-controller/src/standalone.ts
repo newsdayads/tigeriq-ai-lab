@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { readFileSync } from 'node:fs';
 import os from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { createPgPool } from '../../../packages/work-state/src/pg-driver.js';
@@ -10,11 +11,12 @@ const EXPECTED_HOST='100.97.23.87';
 const EXPECTED_PORT=8790;
 const MAX_BODY_BYTES=512_000;
 
+function fileSecret(file:string):string{try{return readFileSync(file,'utf8').trim();}catch{return '';}}
 function requireProductionConfig():{host:string;port:number;databaseUrl:string;ingressToken:string}{
-  const host=(process.env.TIGERIQ_WORKFORCE_HOST??'').trim();
+  const host=(process.env.TIGERIQ_WORKFORCE_HOST??EXPECTED_HOST).trim();
   const port=Number(process.env.TIGERIQ_WORKFORCE_PORT??EXPECTED_PORT);
-  const databaseUrl=(process.env.TIGERIQ_DATABASE_URL??'').trim();
-  const ingressToken=(process.env.TIGERIQ_INGRESS_TOKEN??'').trim();
+  const databaseUrl=(process.env.TIGERIQ_DATABASE_URL??fileSecret('D:\\TigerIQ\\Secrets\\workforce-controller-v1.database-url')).trim();
+  const ingressToken=(process.env.TIGERIQ_INGRESS_TOKEN??fileSecret('D:\\TigerIQ\\Secrets\\pc01-primary-node.ingress-token')).trim();
   if(host!==EXPECTED_HOST)throw new Error(`TIGERIQ_WORKFORCE_HOST must equal ${EXPECTED_HOST}`);
   if(port!==EXPECTED_PORT)throw new Error(`TIGERIQ_WORKFORCE_PORT must equal ${EXPECTED_PORT}`);
   if(!databaseUrl)throw new Error('TIGERIQ_DATABASE_URL is required for local PC01 PostgreSQL');
@@ -44,6 +46,7 @@ function send(response:ServerResponse,status:number,body:Record<string,unknown>)
 
 export async function startController():Promise<void>{
   const {host,port,databaseUrl,ingressToken}=requireProductionConfig();
+  process.env.PGPASSFILE=process.env.PGPASSFILE?.trim()||'D:\\TigerIQ\\Secrets\\workforce-controller-v1.pgpass';
   const pool=await createPgPool(databaseUrl,10);
   const repository=new PostgresOperationalStateRepository(pool);
   const service=new OperationalWorkService(repository);

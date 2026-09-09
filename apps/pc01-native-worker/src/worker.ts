@@ -47,5 +47,11 @@ export class NativeWorker {
   }
   private document(job:WorkerJob,startedAt:string,completedAt:string,route:string,model:string|undefined,commands:unknown[],tests:unknown[],errors:unknown[],output:Record<string,unknown>|undefined,finalStatus:'completed'|'failed'):EvidenceDocument{return {work_order_id:job.jobId,worker:PC01_EMPLOYEE_ID,device:PC01_DEVICE_ID,started_at:startedAt,completed_at:completedAt,input_task_summary:job.objective,selected_route:route,model,commands_tools_executed:commands,test_results:tests,output_result:output,reviewer_gate_result:{independentReviewRequired:job.independentReview,judgeRequired:job.judgeRequired,claimedIndependentAiReview:false},errors_retries:errors,final_status:finalStatus};}
   private evidenceFor(job:WorkerJob,ref:string,digest:string):Array<{kind:'text'|'json'|'log';ref:string;summary:string;sha256:string}>{const supported=new Set(['json','log','text']);for(const kind of job.expectedEvidence)if(!supported.has(kind))throw new ToolPolicyError('EVIDENCE_KIND_UNSUPPORTED',`native worker cannot truthfully synthesize required evidence kind ${kind}`);return job.expectedEvidence.map(kind=>({kind:kind as 'text'|'json'|'log',ref,summary:`PC01 native worker ${kind} evidence`,sha256:digest}));}
-  private async sendHeartbeat():Promise<void>{if(!this.client)return;const resources=this.resources.snapshot();let ollama:Record<string,unknown>;try{ollama=await this.ollama.health();}catch(error){ollama={ok:false,error:String(error)};}const healthy=resources.freeRamBytes>=this.config.minFreeRamBytes&&ollama.ok===true;await this.client.heartbeat({resources,ollama,activeJobs:this.inflight.size,localAiActive:this.ollama.semaphore.activeCount,localAiMax:2,context:4096,model:this.ollama.model},healthy?'ok':'degraded');}
+  private async sendHeartbeat():Promise<void>{
+    if(!this.client)return;
+    const resources=this.resources.snapshot();let ollama:Record<string,unknown>;
+    try{ollama=await this.ollama.health();}catch(error){ollama={ok:false,error:String(error)};}
+    const healthy=resources.freeRamBytes>=this.config.minFreeRamBytes&&ollama.ok===true;
+    await this.client.heartbeat({service:'pc01-native-worker-v1',pid:process.pid,processUptimeSeconds:Math.round(process.uptime()),resources,ollama,activeJobs:this.inflight.size,localAiActive:this.ollama.semaphore.activeCount,localAiMax:2,context:4096,model:this.ollama.model},healthy?'ok':'degraded');
+  }
 }
