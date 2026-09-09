@@ -4,7 +4,8 @@ import { asRecord,NV06_CAPABILITIES,NV06_PERMISSIONS,sha256,stringValue,type Ide
 export class ControllerClient {
   constructor(readonly baseUrl:string,readonly ingressToken:string,readonly identity:Identity){}
   async register(metadata:Record<string,unknown>):Promise<Record<string,unknown>>{
-    return this.request('/api/v1/pc01/register',{employeeId:this.identity.employeeId,deviceId:this.identity.deviceId,bindingId:this.identity.bindingId,nodeId:this.identity.nodeId,displayName:'NV06 OpenClaw Browser Worker',platform:'windows-pc01-openclaw',publicKeyBase64:this.identity.publicKeyBase64,publicKeyFingerprint:this.identity.publicKeyFingerprint,capabilities:[...NV06_CAPABILITIES],permissions:[...NV06_PERMISSIONS],concurrencyLimit:1,metadata},{Authorization:`Bearer ${this.ingressToken}`});
+    const bindingId=`${this.identity.bindingId}-${sha256(this.identity.deviceId).slice(0,8)}`;
+    return this.request('/api/v1/pc01/register',{employeeId:this.identity.employeeId,deviceId:this.identity.deviceId,bindingId,nodeId:this.identity.nodeId,displayName:'NV06 OpenClaw Browser Worker',platform:'windows-pc01-openclaw',publicKeyBase64:this.identity.publicKeyBase64,publicKeyFingerprint:this.identity.publicKeyFingerprint,capabilities:[...NV06_CAPABILITIES],permissions:[...NV06_PERMISSIONS],concurrencyLimit:1,metadata},{Authorization:`Bearer ${this.ingressToken}`});
   }
   async heartbeat(metadata:Record<string,unknown>,health:'ok'|'degraded'='ok'):Promise<void>{await this.signed(`/api/v1/devices/${encodeURIComponent(this.identity.deviceId)}/heartbeat`,{health,metadata});}
   async lease():Promise<WorkerLease|undefined>{const body=await this.signed('/api/v1/jobs/lease',{leaseTtlMs:300_000});return (body.lease??undefined) as WorkerLease|undefined;}
