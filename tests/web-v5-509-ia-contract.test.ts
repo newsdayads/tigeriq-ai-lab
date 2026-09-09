@@ -53,7 +53,7 @@ describe('#509 Web V5 IA contract', () => {
     expect(list).toContain('Có thể đang treo');
 
     const detail = renderWorkContentV5(data(), url, 'GH-509');
-    expect(detail).toContain('/?view=work&amp;q=web&amp;owner=NV01&amp;priority=P0&amp;stale=1');
+    expect(detail).toContain('/?view=work&q=web&owner=NV01&priority=P0&stale=1');
   });
 
   it('renders explicit source error/stale truth instead of inventing progress', () => {
