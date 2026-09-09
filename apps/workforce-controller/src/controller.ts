@@ -118,7 +118,7 @@ export class WorkforceControllerV1 {
       if(!Number.isInteger(concurrencyLimit)||concurrencyLimit<1||concurrencyLimit>16)throw new ControllerError(400,'INVALID_CONCURRENCY_LIMIT','concurrencyLimit must be 1-16');
       const metadata=optionalRecord(body.metadata,'metadata')??{};
       await this.service.upsertEmployee({employeeId,displayName:optionalString(body.displayName,128)??'PC01 Native Worker',roles:['pc01-native-worker'],permissions,capabilities,state:'active',concurrencyLimit,createdAt:now,updatedAt:now});
-      await this.service.upsertDevice({deviceId,platform:optionalString(body.platform,64)??'windows-pc01',publicKeyFingerprint:fingerprint,state:'active',metadata:{...metadata,publicKeyBase64,nodeId:optionalString(body.nodeId,128)??'PC01'},createdAt:now,updatedAt:now});
+      await this.service.upsertDevice({deviceId,platform:optionalString(body.platform,64)??'windows-pc01',publicKeyFingerprint:fingerprint,state:'active',metadata:{...metadata,workerKind:'pc01',publicKeyBase64,nodeId:optionalString(body.nodeId,128)??'PC01'},createdAt:now,updatedAt:now});
       await this.service.bindDevice({bindingId,employeeId,deviceId,state:'active',createdAt:now,updatedAt:now});
       return {status:200,body:{ok:true,employeeId,deviceId,bindingId,capabilities,permissions}};
     }
@@ -172,7 +172,7 @@ export class WorkforceControllerV1 {
     if(method==='POST'&&pathname==='/api/v1/jobs/lease'){
       const auth=await this.auth.verify({...request,path:pathname});
       const body=jsonBody(request.body);
-      const lease=await this.service.assignNextJob({employeeId:auth.employeeId,deviceId:auth.deviceId,workerKind:'pc01',workerIndependenceKey:`device:${auth.deviceId}`,capabilities:auth.capabilities,permissions:auth.permissions,leaseTtlMs:leaseTtl(body.leaseTtlMs),now:new Date(request.nowMs??Date.now()).toISOString()});
+      const lease=await this.service.assignNextJob({employeeId:auth.employeeId,deviceId:auth.deviceId,workerKind:auth.workerKind,workerIndependenceKey:`device:${auth.deviceId}`,capabilities:auth.capabilities,permissions:auth.permissions,leaseTtlMs:leaseTtl(body.leaseTtlMs),now:new Date(request.nowMs??Date.now()).toISOString()});
       return {status:200,body:{ok:true,lease:lease??null}};
     }
 
