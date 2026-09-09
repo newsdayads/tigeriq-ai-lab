@@ -93,3 +93,21 @@ No task is DONE solely because code or documentation changed. Runtime/deployment
 - MAIN/Production remains untouched by this change.
 - Remaining P0: eliminate the legacy free-form GitHub queue execution path from Web Control after typed/controller E2E regression evidence. Until then do not claim the PC01 command path fully consolidated.
 - Evidence: `docs/evidence/PC01-GITHUB-RELEASE-CHANNEL-2026-09-09.md`.
+
+## 2026-09-09 update — V2-B / #530 Runtime Zero-touch DONE
+- Status: `V2_B_530_DONE_B1_B5_LIVE_VERIFIED`.
+- Canonical PC01 job path: Web/ingress -> Workforce Controller -> PostgreSQL queue/lease -> service/worker -> result/evidence.
+- Normal job execution no longer requires anh Sơn to open CMD/PowerShell or manually claim jobs.
+- Controller and PC01 Native Worker Scheduled Tasks now execute Node directly; launch/recovery scripts remain only around startup/recovery components where required.
+- Canonical runtime truth is Controller `/api/v1/runtime-truth` (`runtime-truth-v1`, `workforce-controller-v1`) backed by PostgreSQL operational state.
+- Web `/api/server` reads that Controller truth directly; `pc01-telemetry.ps1` is removed from the Web read hot path.
+- Direct Controller vs live Web truth matched queue stages, leases, PC01 online state and exact heartbeat.
+- 200 live Web truth reads produced zero PowerShell/CMD child processes.
+- Real E2E `JOB-530-E2E-1788940175432`: `queued -> done`, one attempt, `EMP-PC01-NATIVE`, evidence persisted, deterministic resource snapshot returned.
+- Safe kill tests for Native Worker and Controller both auto-recovered without manual start; Web truth reflected outage then fresh recovery.
+- Singleton runtime verified: one Controller, one Native Worker, one Planner, one Mission Orchestrator, one OpenClaw gateway; one listener on 8787/8790/11434/18789.
+- Core commit: `fce9d1a933f0a810d25a0e64a802fffa41df31ab`.
+- Web branch code commit: `c681f1146dd8e2727325af659e82f857c53ffe2d`.
+- Durable Web release: `1c42466e817c984e1ac6216fe068b96e8c327300`; workflow run `34325384490` success; Updater V3 subsequently `NO_CHANGE`.
+- Evidence: `docs/evidence/V2-B-530-RUNTIME-ZERO-TOUCH-PC01-20260909.md`.
+- #529 provider/router ownership was not modified. MAIN/Production, billing/PAYG and reboot remain untouched.
