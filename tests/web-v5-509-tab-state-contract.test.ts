@@ -23,14 +23,14 @@ function data(sourceStatus: string, sourceNote: string): ExecutiveDashboardV4 {
 }
 
 const states = [
-  ['Đang tải', 'Đang đồng bộ dữ liệu hiện hành'],
-  ['Lỗi nguồn', 'Không thể xác minh nguồn dữ liệu hiện hành'],
-  ['Mất tín hiệu', 'Dữ liệu đã quá ngưỡng freshness'],
-  ['Nguồn trực tiếp', 'Dữ liệu hiện hành đã sẵn sàng'],
+  ['Đang tải', 'Đang đồng bộ dữ liệu hiện hành', 'loading'],
+  ['Lỗi nguồn', 'Không thể xác minh nguồn dữ liệu hiện hành', 'error'],
+  ['Mất tín hiệu', 'Dữ liệu đã quá ngưỡng freshness', 'stale'],
+  ['Nguồn trực tiếp', 'Dữ liệu hiện hành đã sẵn sàng', 'ready'],
 ] as const;
 
 describe('#509 tab-specific presentation states', () => {
-  for (const [status, note] of states) {
+  for (const [status, note, state] of states) {
     it(`propagates ${status} truth across Project/People/System/Reports/Settings`, () => {
       const d = data(status, note);
       const views = [
@@ -46,6 +46,9 @@ describe('#509 tab-specific presentation states', () => {
         expect(html).toContain(note);
         expect(html).not.toContain('100%');
       }
+
+      expect(renderWorkforceContentV5(d)).toContain(`data-source-state="${state}"`);
+      expect(renderSystemContentV5(d)).toContain(`data-source-state="${state}"`);
     });
   }
 
@@ -54,6 +57,8 @@ describe('#509 tab-specific presentation states', () => {
     expect(renderProjectsV5(d)).toContain('Chưa có dự án được liên kết.');
     expect(renderReportsV5(d)).toContain('Chưa có sự kiện mới được xác minh.');
     expect(renderReportsV5(d)).toContain('Không có công việc bị chặn hoặc mất tín hiệu.');
+    expect(renderWorkforceContentV5(d)).toContain('Chưa có nhân sự AI được xác minh trong nguồn hiện hành.');
+    expect(renderSystemContentV5(d)).toContain('Chưa có thành phần hệ thống được xác minh trong nguồn hiện hành.');
     expect(renderWorkforceContentV5(d)).not.toContain('/people/');
     expect(renderSystemContentV5(d)).not.toContain('/system/');
   });
