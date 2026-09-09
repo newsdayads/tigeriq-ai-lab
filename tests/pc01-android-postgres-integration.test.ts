@@ -51,13 +51,13 @@ integration('PC01 Android -> Controller -> PostgreSQL -> Result integration',()=
     controller=new WorkforceControllerV1(pool,service);
     const now=new Date().toISOString();
     await repo.upsertEmployee({employeeId,displayName:'Android AI Employee',roles:['worker'],permissions:['jobs:lease','jobs:submit'],capabilities:['ai-direct','gemini'],state:'active',concurrencyLimit:1,createdAt:now,updatedAt:now});
-    await repo.upsertDevice({deviceId,platform:'android',publicKeyFingerprint:fingerprint,state:'active',metadata:{publicKeyBase64,nodeId},createdAt:now,updatedAt:now});
+    await repo.upsertDevice({deviceId,platform:'android',publicKeyFingerprint:fingerprint,state:'active',metadata:{publicKeyBase64,nodeId,workerKind:'device'},createdAt:now,updatedAt:now});
     await repo.bindDevice({bindingId,employeeId,deviceId,state:'active',createdAt:now,updatedAt:now});
   });
 
   afterAll(async()=>{const closable=pool as SqlPoolLike&{end?:()=>Promise<void>};if(closable?.end)await closable.end();});
 
-  it('authenticates device, leases one job, persists result/evidence once, and rejects replay/conflict',async()=>{
+  it('authenticates device, leases one device-kind job, persists result/evidence once, and rejects replay/conflict',async()=>{
     const createdAt=new Date().toISOString();
     await service.createJob({jobId:'JOB-ANDROID-001',idempotencyKey:'android-e2e-001',title:'Android integration',objective:'Run phone-owned AI and return result',payload:{prompt:'Return TIGERIQ OK'},targetEmployeeId:employeeId,requiredPermissions:['jobs:lease','jobs:submit'],requiredCapabilities:['ai-direct','gemini'],allowedWorkerKinds:['device'],expectedEvidence:['json'],scopeKeys:['pc01/android/integration'],dependencies:[],maxAttempts:3,independentReview:false,judgeRequired:false,priority:'P0',createdAt});
 
@@ -70,6 +70,7 @@ integration('PC01 Android -> Controller -> PostgreSQL -> Result integration',()=
     expect(lease.employeeId).toBe(employeeId);
     expect(lease.deviceId).toBe(deviceId);
     expect(lease.bindingId).toBe(bindingId);
+    expect(lease.workerKind).toBe('device');
     expect(typeof lease.leaseToken).toBe('string');
 
     const replay=await controller.handle(leaseRequest);
@@ -107,8 +108,32 @@ integration('PC01 Android -> Controller -> PostgreSQL -> Result integration',()=
     expect(conflict.status).toBe(409);
     expect((conflict.body.error as Record<string,unknown>).code).toBe('IDEMPOTENCY_CONFLICT');
 
-    const counts=await pool.query<{results:string;evidence:string;stage:string;lease_status:string}>(`SELECT (SELECT count(*) FROM results WHERE job_id='JOB-ANDROID-001')::text results,(SELECT count(*) FROM evidence WHERE job_id='JOB-ANDROID-001')::text evidence,(SELECT stage FROM jobs WHERE job_id='JOB-ANDROID-001') stage,(SELECT status FROM leases WHERE job_id='JOB-ANDROID-001' ORDER BY attempt DESC LIMIT 1) lease_status`);
-    expect(counts.rows[0]).toMatchObject({results:'1',evidence:'1',stage:'done',lease_status:'completed'});
+    const counts=await pool.query<{results:string;evidence:string;stage:string;lease_status:string;worker_kind:string}>(`SELECT (SELECT count(*) FROM results WHERE job_id='JOB-ANDROID-001')::text results,(SELECT count(*) FROM evidence WHERE job_id='JOB-ANDROID-001')::text evidence,(SELECT stage FROM jobs WHERE job_id='JOB-ANDROID-001') stage,(SELECT status FROM leases WHERE job_id='JOB-ANDROID-001' ORDER BY attempt DESC LIMIT 1) lease_status,(SELECT worker_kind FROM leases WHERE job_id='JOB-ANDROID-001' ORDER BY attempt DESC LIMIT 1) worker_kind`);
+    expect(counts.rows[0]).toMatchObject({results:'1',evidence:'1',stage:'done',lease_status:'completed',worker_kind:'device'});
+  });
+
+  it('does not lease jobs with a mismatched worker kind or missing capability',async()=>{
+    const createdAt=new Date().toISOString();
+    await service.createJob({jobId:'JOB-ANDROID-PC01-ONLY',idempotencyKey:'android-wrong-kind-001',title:'PC01-only job',objective:'Must not be leased by Android device worker',payload:{},targetEmployeeId:employeeId,requiredPermissions:['jobs:lease'],requiredCapabilities:['ai-direct'],allowedWorkerKinds:['pc01'],expectedEvidence:['json'],scopeKeys:['pc01/android/wrong-kind'],dependencies:[],maxAttempts:2,independentReview:false,judgeRequired:false,priority:'P0',createdAt});
+    await service.createJob({jobId:'JOB-ANDROID-MISSING-CAP',idempotencyKey:'android-missing-cap-001',title:'Missing-capability job',objective:'Must not be leased without required capability',payload:{},targetEmployeeId:employeeId,requiredPermissions:['jobs:lease'],requiredCapabilities:['android-special-capability'],allowedWorkerKinds:['device'],expectedEvidence:['json'],scopeKeys:['pc01/android/missing-cap'],dependencies:[],maxAttempts:2,independentReview:false,judgeRequired:false,priority:'P0',createdAt});
+
+    const response=await controller.handle(signedRequest('POST','/api/v1/jobs/lease',json({leaseTtlMs:60_000})));
+    expect(response.status).toBe(200);
+    expect(response.body.lease).toBeNull();
+    expect((await service.getJob('JOB-ANDROID-PC01-ONLY'))?.job.stage).toBe('queued');
+    expect((await service.getJob('JOB-ANDROID-MISSING-CAP'))?.job.stage).toBe('queued');
+  });
+
+  it('fails closed when provisioned device worker kind is invalid',async()=>{
+    await pool.query(`UPDATE devices SET metadata=jsonb_set(metadata,'{workerKind}',to_jsonb('human'::text),true) WHERE device_id=$1`,[deviceId]);
+    try{
+      const heartbeatBody=json({health:'ok',metadata:{source:'invalid-worker-kind'}});
+      const response=await controller.handle(signedRequest('POST',`/api/v1/devices/${deviceId}/heartbeat`,heartbeatBody));
+      expect(response.status).toBe(401);
+      expect((response.body.error as Record<string,unknown>).code).toBe('DEVICE_WORKER_KIND_INVALID');
+    }finally{
+      await pool.query(`UPDATE devices SET metadata=jsonb_set(metadata,'{workerKind}',to_jsonb('device'::text),true) WHERE device_id=$1`,[deviceId]);
+    }
   });
 
   it('rejects the exact signed request after Controller reconstruction with no duplicate side effect',async()=>{
@@ -145,6 +170,7 @@ integration('PC01 Android -> Controller -> PostgreSQL -> Result integration',()=
     const leased=await controller.handle(signedRequest('POST','/api/v1/jobs/lease',leaseBody,simulatedLeaseAt));
     expect(leased.status).toBe(200);
     expect((leased.body.lease as Record<string,unknown>).jobId).toBe('JOB-ANDROID-RECOVERY');
+    expect((leased.body.lease as Record<string,unknown>).workerKind).toBe('device');
 
     const restartedRepo=new PostgresOperationalStateRepository(pool);
     const restartedService=new OperationalWorkService(restartedRepo);
