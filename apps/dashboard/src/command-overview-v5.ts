@@ -1,5 +1,6 @@
 import type { ExecutiveDashboardV4, ExecutivePersonV4, ExecutiveSystemV4, ExecutiveWorkV4 } from './executive-data-v4.js';
 import { stableWorkIdV5 } from './work-view-v5.js';
+import { recentRuntimeLiveEventsV5, type LiveEventV5 } from './live-events-v5.js';
 
 function esc(value: unknown): string {
   return String(value ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch] ?? ch));
@@ -54,6 +55,10 @@ function attention(data: ExecutiveDashboardV4): string {
   return items.map((item) => `<a class="cv5-alert ${tone(item.tone)}" href="${esc(item.href)}"><i></i><div><b>${esc(item.title)}</b><span>${esc(item.note)}</span></div></a>`).join('');
 }
 
+function liveEventTone(event:LiveEventV5):string{if(event.severity==='error')return 'blocked';if(event.event_type==='work.completed'||event.event_type==='system.recovered')return 'done';if(event.stale||event.severity==='warning')return 'waiting';return 'active';}
+function liveEventLabel(event:LiveEventV5):string{return ({'work.queued':'Xếp hàng','work.claimed':'Đã nhận','work.started':'Bắt đầu','work.step':'Chuyển bước','work.heartbeat':'Heartbeat','work.blocked':'Mất nhịp','work.failed':'Thất bại','work.completed':'Hoàn tất','system.health':'Sức khỏe','system.error':'Lỗi hệ thống','system.recovered':'Phục hồi'} as Record<string,string>)[event.event_type]??event.event_type;}
+function liveTimeline():string{const events=recentRuntimeLiveEventsV5(20).reverse(),rows=events.map((event)=>{const href=event.entity_type==='work'?`/work/${encodeURIComponent(event.entity_id)}`:`/system/${encodeURIComponent(event.entity_id)}`;return `<a class="cv5-priority-work ${liveEventTone(event)}" data-live-event-id="${esc(event.event_id)}" href="${href}"><div><span class="cv5-priority">${esc(liveEventLabel(event))}</span><b>${esc(event.entity_id)}</b></div><small>${esc(event.worker_id??event.owner_id??'runtime')}</small><p>${esc(event.message)}</p><time>${esc(age(event.last_activity_at??event.timestamp))}</time></a>`;}).join('');return `<section class="cv5-panel cv5-priority-list" id="x-live-timeline"><header><div><h2>Vừa xảy ra</h2><p>Event runtime thật · tối đa 20 mốc gần nhất.</p></div><span id="x-since-count" data-live-since>—</span></header><div id="x-event-list">${rows||'<div class="cv5-empty">Chưa có event runtime mới.</div>'}</div></section>`;}
+
 export function renderCommandOverviewV5(data: ExecutiveDashboardV4): string {
   const employees = data.people.filter((person) => person.key !== 'VY');
   const busy = employees.filter((person) => person.tone === 'active').length;
@@ -78,7 +83,7 @@ export function renderCommandOverviewV5(data: ExecutiveDashboardV4): string {
     <div class="cv5-main-grid"><section class="cv5-panel cv5-people"><header><div><h2>AI đang làm gì ngay lúc này</h2><p>Người phụ trách → việc đang giữ → bước hiện tại → hoạt động cuối.</p></div><a href="/?view=workforce">Xem toàn bộ nhân sự</a></header><div class="cv5-people-head"><span>Nhân sự</span><span>Trạng thái</span><span>Việc / bước hiện tại</span><span>Cập nhật</span></div><div class="cv5-people-list">${employees.map((person) => employeeRow(person,data)).join('')}</div></section>
       <section class="cv5-panel cv5-priority-list"><header><div><h2>Công việc cần nhìn trước</h2><p>Sắp theo ưu tiên và trạng thái cần can thiệp.</p></div><a href="/?view=work">Xem bảng đầy đủ</a></header><div>${workHtml}</div></section></div>
     <div class="cv5-bottom-grid"><section class="cv5-panel"><header><div><h2>Cần chú ý ngay</h2><p>Chỉ blocker, mất nhịp hoặc quyết định thật.</p></div></header><div class="cv5-alerts">${attention(data)}</div></section>
-      <section class="cv5-panel"><header><div><h2>Sức khỏe hệ thống chính</h2><p>${systemWarnings ? `${systemWarnings} thành phần cần xem` : 'Các thành phần chính đang phản hồi'}</p></div><a href="/?view=system">Mở Hệ thống</a></header><div class="cv5-systems">${critical.map(systemRow).join('')}</div></section></div>
+      <section class="cv5-panel"><header><div><h2>Sức khỏe hệ thống chính</h2><p>${systemWarnings ? `${systemWarnings} thành phần cần xem` : 'Các thành phần chính đang phản hồi'}</p></div><a href="/?view=system">Mở Hệ thống</a></header><div class="cv5-systems">${critical.map(systemRow).join('')}</div></section>${liveTimeline()}</div>
   </div>`;
 }
 
