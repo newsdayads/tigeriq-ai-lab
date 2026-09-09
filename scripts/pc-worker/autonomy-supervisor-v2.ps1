@@ -179,7 +179,7 @@ while ($true) {
     }
     $componentStates += [ordered]@{
       id=$health.id; healthy=$health.healthy; taskState=$health.taskState; processOk=$health.processOk; processCount=$health.processCount; duplicateProcess=([int]$health.processCount -gt 1)
-      httpOk=$health.httpOk; httpStatus=if($probe){$probe.status}else{$null}; failures=[int]$Failures[$component.id]; autoRepair=[bool]$component.autoRepair; critical=[bool]$component.critical
+      httpOk=$health.httpOk; httpStatus=$health.httpStatus; failures=[int]$Failures[$component.id]; autoRepair=[bool]$component.autoRepair; critical=[bool]$component.critical
     }
   }
 
