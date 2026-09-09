@@ -30,6 +30,11 @@ export interface AIWorkItem {
   risk: WorkRisk;
   acceptanceCriteria?: string[];
   minQuality?: number;
+  preferredProviders?: Provider[];
+  reviewPolicy?: {
+    independentReview?: boolean;
+    judgeRequired?: boolean;
+  };
 }
 
 export interface ModelProfile {
@@ -39,6 +44,7 @@ export interface ModelProfile {
   kinds: WorkKind[];
   roles?: CoordinatorRole[];
   enabled?: boolean;
+  available?: boolean;
 }
 
 export interface CoordinatorAttempt {
@@ -219,19 +225,21 @@ export class AICoordinator {
       return checkpoint;
     }
 
+    const verification = verificationPlan(work);
+    if (!verification.reviewRequired) {
+      checkpoint.status = 'verified';
+      checkpoint.blocker = undefined;
+      checkpoint.updatedAt = this.timestamp();
+      await this.store.save(checkpoint);
+      return checkpoint;
+    }
+
     if (!checkpoint.reviewer) {
       checkpoint.status = 'reviewing';
       checkpoint.updatedAt = this.timestamp();
       await this.store.save(checkpoint);
       const excluded = new Set([identity(executor.target)]);
-      const ok = await this.runStage(
-        work,
-        checkpoint,
-        'reviewer',
-        this.reviewerPrompt(work, executor),
-        excluded,
-        request.signal,
-      );
+      const ok = await this.runStage(work, checkpoint, 'reviewer', this.reviewerPrompt(work, executor), excluded, request.signal);
       if (!ok) return checkpoint;
     }
     const reviewer = checkpoint.reviewer;
@@ -239,23 +247,21 @@ export class AICoordinator {
       await this.markBlocked(checkpoint, 'reviewer completed without a persisted artifact');
       return checkpoint;
     }
+    const reviewPass = reviewer.decision === 'PASS';
+    if (!verification.judgeRequired) {
+      checkpoint.status = reviewPass ? 'verified' : 'failed';
+      checkpoint.blocker = reviewPass ? undefined : 'independent review did not pass';
+      checkpoint.updatedAt = this.timestamp();
+      await this.store.save(checkpoint);
+      return checkpoint;
+    }
 
     if (!checkpoint.judge) {
       checkpoint.status = 'judging';
       checkpoint.updatedAt = this.timestamp();
       await this.store.save(checkpoint);
-      const excluded = new Set<string>([
-        identity(executor.target),
-        identity(reviewer.target),
-      ]);
-      const ok = await this.runStage(
-        work,
-        checkpoint,
-        'judge',
-        this.judgePrompt(work, executor, reviewer),
-        excluded,
-        request.signal,
-      );
+      const excluded = new Set<string>([identity(executor.target), identity(reviewer.target)]);
+      const ok = await this.runStage(work, checkpoint, 'judge', this.judgePrompt(work, executor, reviewer), excluded, request.signal);
       if (!ok) return checkpoint;
     }
     const judge = checkpoint.judge;
@@ -264,7 +270,6 @@ export class AICoordinator {
       return checkpoint;
     }
 
-    const reviewPass = reviewer.decision === 'PASS';
     const judgePass = judge.decision === 'PASS';
     checkpoint.status = reviewPass && judgePass ? 'verified' : 'failed';
     checkpoint.blocker = reviewPass && judgePass ? undefined : 'independent verification did not pass';
@@ -374,14 +379,29 @@ export class AICoordinator {
 
   private selectCandidates(work: AIWorkItem, role: CoordinatorRole, excluded: Set<string>): ModelProfile[] {
     const minQuality = work.minQuality ?? minimumQuality(work.risk);
-    return this.profiles
-      .filter((profile) => profile.enabled !== false)
+    const eligible = this.profiles
+      .filter((profile) => profile.enabled !== false && profile.available !== false)
       .filter((profile) => this.adapters.has(profile.target.provider))
       .filter((profile) => profile.kinds.includes(work.kind))
       .filter((profile) => !profile.roles || profile.roles.includes(role))
       .filter((profile) => profile.qualityRank >= minQuality)
-      .filter((profile) => !excluded.has(identity(profile.target)))
-      .sort((a, b) => a.costRank - b.costRank || b.qualityRank - a.qualityRank || identity(a.target).localeCompare(identity(b.target)));
+      .filter((profile) => !excluded.has(identity(profile.target)));
+    const compare = (a: ModelProfile, b: ModelProfile): number => a.costRank - b.costRank || b.qualityRank - a.qualityRank || identity(a.target).localeCompare(identity(b.target));
+    const buckets = new Map<Provider, ModelProfile[]>();
+    for (const profile of eligible.sort(compare)) {
+      const bucket = buckets.get(profile.target.provider) ?? [];
+      bucket.push(profile);
+      buckets.set(profile.target.provider, bucket);
+    }
+    const preferred = work.preferredProviders ?? [];
+    const providers = [...new Set([...preferred.filter((provider) => buckets.has(provider)), ...eligible.sort(compare).map((profile) => profile.target.provider)])];
+    const result: ModelProfile[] = [];
+    const maxDepth = Math.max(0, ...[...buckets.values()].map((bucket) => bucket.length));
+    for (let depth = 0; depth < maxDepth; depth += 1) for (const provider of providers) {
+      const profile = buckets.get(provider)?.[depth];
+      if (profile) result.push(profile);
+    }
+    return result;
   }
 
   private executorPrompt(work: AIWorkItem): string {
@@ -436,12 +456,28 @@ export function fingerprintWorkItem(work: AIWorkItem): string {
       risk: work.risk,
       acceptanceCriteria: work.acceptanceCriteria ?? [],
       minQuality: work.minQuality ?? null,
+      preferredProviders: work.preferredProviders ?? [],
+      reviewPolicy: work.reviewPolicy ?? null,
     }))
     .digest('hex');
 }
 
-export function requiresStrictIndependence(_work: AIWorkItem): boolean {
-  return true;
+export interface VerificationPlan {
+  reviewRequired: boolean;
+  judgeRequired: boolean;
+  requiredDistinctBackendIdentities: 1 | 2 | 3;
+}
+
+export function verificationPlan(work: AIWorkItem): VerificationPlan {
+  const highRisk = work.risk === 'high';
+  const mediumRisk = work.risk === 'medium';
+  const judgeRequired = highRisk || work.reviewPolicy?.judgeRequired === true;
+  const reviewRequired = highRisk || mediumRisk || work.reviewPolicy?.independentReview === true || judgeRequired;
+  return { reviewRequired, judgeRequired, requiredDistinctBackendIdentities: judgeRequired ? 3 : reviewRequired ? 2 : 1 };
+}
+
+export function requiresStrictIndependence(work: AIWorkItem): boolean {
+  return verificationPlan(work).requiredDistinctBackendIdentities === 3;
 }
 
 function minimumQuality(risk: WorkRisk): number {

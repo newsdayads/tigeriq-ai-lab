@@ -33,24 +33,21 @@ function work(overrides: Partial<AIWorkItem> = {}): AIWorkItem {
 }
 
 describe('WO-043 AI coordinator', () => {
-  it('uses the lowest-cost capable executor plus distinct reviewer and judge', async () => {
+  it('keeps low-risk work executor-only unless assurance is explicitly required', async () => {
     const store = new InMemoryCheckpointStore();
     const coordinator = new AICoordinator([
       adapter('ollama', async () => 'local executor result'),
-      adapter('gemini', async () => 'PASS independent check'),
-      adapter('anthropic', async () => 'PASS independent judgment'),
+      adapter('gemini', async () => 'MUST_NOT_REVIEW'),
+      adapter('anthropic', async () => 'MUST_NOT_JUDGE'),
     ], store, { profiles });
 
     const result = await coordinator.run(work());
-    const identities = [result.executor, result.reviewer, result.judge]
-      .map((stage) => `${stage?.target.provider}/${stage?.target.model}`);
 
     expect(result.status).toBe('verified');
     expect(result.executor?.target.provider).toBe('ollama');
-    expect(result.reviewer?.target.provider).toBe('gemini');
-    expect(result.judge?.target.provider).toBe('anthropic');
-    expect(new Set(identities).size).toBe(3);
-    expect(result.judge?.decision).toBe('PASS');
+    expect(result.reviewer).toBeUndefined();
+    expect(result.judge).toBeUndefined();
+    expect(result.attempts).toHaveLength(1);
   });
 
   it('requires three distinct model identities for coding/high-impact work', async () => {
@@ -107,7 +104,7 @@ describe('WO-043 AI coordinator', () => {
   });
 
   it('resumes from a persisted executor checkpoint instead of repeating completed work', async () => {
-    const item = work({ id: 'WO-RESUME' });
+    const item = work({ id: 'WO-RESUME', risk: 'high' });
     const store = new InMemoryCheckpointStore();
     const saved: CoordinatorCheckpoint = {
       workItemId: item.id,
@@ -148,21 +145,23 @@ describe('WO-043 AI coordinator', () => {
     ]).size).toBe(3);
   });
 
-  it('fails closed when three-way independence cannot be satisfied even for low-risk work', async () => {
+  it('does not force reviewer and judge for low-risk work', async () => {
     const store = new InMemoryCheckpointStore();
     const limitedProfiles = profiles.filter((profile) => ['gemini', 'openai'].includes(profile.target.provider));
     const coordinator = new AICoordinator([
       adapter('gemini', async () => 'executor result'),
-      adapter('openai', async () => 'PASS review'),
+      adapter('openai', async () => 'MUST_NOT_RUN'),
     ], store, { profiles: limitedProfiles });
 
     const result = await coordinator.run(work({ id: 'WO-INDEP' }));
 
-    expect(result.status).toBe('blocked');
-    expect(result.blocker).toBe('judge has no eligible independent model');
+    expect(result.status).toBe('verified');
+    expect(result.executor?.target.provider).toBe('gemini');
+    expect(result.reviewer).toBeUndefined();
+    expect(result.judge).toBeUndefined();
   });
 
-  it('defaults only to zero-cost routes and blocks rather than auto-selecting paid API providers', async () => {
+  it('defaults only to zero-cost routes without requiring unnecessary assurance for low risk', async () => {
     expect(defaultModelProfiles.map((profile) => profile.target.provider)).toEqual(['ollama', 'openrouter']);
     expect(defaultModelProfiles.find((profile) => profile.target.provider === 'openrouter')?.target.model).toBe('openrouter/free');
     expect(defaultModelProfiles.some((profile) => ['openai', 'anthropic', 'gemini'].includes(profile.target.provider))).toBe(false);
@@ -178,9 +177,11 @@ describe('WO-043 AI coordinator', () => {
 
     const result = await coordinator.run(work({ id: 'WO-ZERO-COST-DEFAULT' }));
 
-    expect(result.status).toBe('blocked');
-    expect(result.blocker).toBe('judge has no eligible independent model');
-    expect(result.attempts.map((attempt) => attempt.target.provider)).toEqual(['ollama', 'openrouter']);
+    expect(result.status).toBe('verified');
+    expect(result.executor?.target.provider).toBe('ollama');
+    expect(result.reviewer).toBeUndefined();
+    expect(result.judge).toBeUndefined();
+    expect(result.attempts.map((attempt) => attempt.target.provider)).toEqual(['ollama']);
   });
 
   it('emits bounded evidence without raw prompts, outputs or secret-like error messages', async () => {

@@ -132,18 +132,21 @@
     }
   },
   "routing": {
-    "selectionMode": "capability_then_zero_cost_rank",
-    "preferParallel": true,
+    "selectionMode": "capability_availability_then_zero_cost_rank",
+    "preferParallel": false,
     "dedupeByWorkOrder": true,
     "leaseRequired": true,
-    "independentReviewRequired": true,
-    "independentJudgeRequired": true,
-    "requiredDistinctBackendIdentities": 3,
+    "verificationByRisk": {
+      "low": { "reviewRequired": false, "judgeRequired": false, "distinctBackendIdentities": 1 },
+      "medium": { "reviewRequired": true, "judgeRequired": false, "distinctBackendIdentities": 2 },
+      "high": { "reviewRequired": true, "judgeRequired": true, "distinctBackendIdentities": 3 }
+    },
     "fallbackOrder": [
-      "ollama",
+      "gemini_api",
       "groq",
-      "openrouter",
-      "gemini_cli"
-    ]
+      "ollama"
+    ],
+    "providerBinding": "dynamic_resource_not_employee_identity",
+    "maxFailoverAttempts": 3
   }
 }

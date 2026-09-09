@@ -65,9 +65,9 @@ describe('PC01 coordinated zero-cost AI',()=>{
       if(url.includes('generativelanguage.googleapis.com'))return new Response(JSON.stringify({candidates:[{content:{parts:[{text:'PASS reviewer'}]}}]}),{status:200});
       const model=body.model as string,content=model==='gemma3:4b'?'PASS reviewer':'PASS judge';
       return new Response(JSON.stringify({choices:[{message:{content}}]}),{status:200});};
-    try{const provider=new CoordinatedAiProvider(root,'http://127.0.0.1:11434');const result=await provider.run(job({jobId:'HIGH-1',payload:{prompt:'work',risk:'high'}}));
-      expect(result.status).toBe('verified');expect(result.executorModel).toBe('groq/openai/gpt-oss-120b');expect(result.reviewerDecision).toBe('PASS');expect(result.judgeDecision).toBe('PASS');
-      expect(result.evidence.stages.map(stage=>stage.model)).toEqual(['openai/gpt-oss-120b','gemini-3.5-flash-lite','qwen3:8b']);
+    try{const provider=new CoordinatedAiProvider(root,'http://127.0.0.1:11434');const result=await provider.run(job({jobId:'HIGH-1',payload:{prompt:'work',risk:'high',providerPolicy:{zeroCostOnly:true,preferredProviders:['groq','gemini','ollama']}}}));
+      expect(result.status).toBe('verified');expect(result.executorModel).toBe('groq/openai/gpt-oss-120b');expect(result.reviewerDecision).toBe('PASS');expect(result.judgeDecision).toBe('PASS');expect(result.verificationMode).toBe('reviewed-and-judged');
+      expect(result.evidence.stages.map(stage=>stage.model)).toEqual(['openai/gpt-oss-120b','gemini-3.5-flash-lite','gemma3:4b']);
     }finally{globalThis.fetch=beforeFetch;if(beforeGroqKey===undefined)delete process.env.GROQ_API_KEY;else process.env.GROQ_API_KEY=beforeGroqKey;if(beforeGroqProof===undefined)delete process.env.TIGERIQ_GROQ_FREE_TIER_VERIFIED;else process.env.TIGERIQ_GROQ_FREE_TIER_VERIFIED=beforeGroqProof;if(beforeGeminiKey===undefined)delete process.env.GEMINI_API_KEY;else process.env.GEMINI_API_KEY=beforeGeminiKey;if(beforeGeminiProof===undefined)delete process.env.TIGERIQ_GEMINI_FREE_TIER_VERIFIED;else process.env.TIGERIQ_GEMINI_FREE_TIER_VERIFIED=beforeGeminiProof;}
   });
   test('falls back to three distinct local Ollama models when Groq proof is absent',async()=>{
@@ -78,12 +78,12 @@ describe('PC01 coordinated zero-cost AI',()=>{
     globalThis.fetch=async(input,init)=>{const url=String(input),body=JSON.parse(String(init?.body??'{}'));
       if(url.includes('api.groq.com')){groqCalls++;throw new Error('Groq network must not be called');}
       if(url.includes('generativelanguage.googleapis.com')){geminiCalls++;throw new Error('Gemini network must not be called');}
-      const model=body.model as string;
-      const content=model==='gemma3:4b'?'PASS reviewer':model==='qwen2.5-coder:14b'?'PASS judge':'EXECUTOR_LOCAL';
+      const prompt=String(body.messages?.[0]?.content??'');
+      const content=prompt.startsWith('ROLE: EXECUTOR')?'EXECUTOR_LOCAL':'PASS local assurance';
       return new Response(JSON.stringify({choices:[{message:{content}}]}),{status:200});};
-    try{const provider=new CoordinatedAiProvider(root,'http://127.0.0.1:11434');const result=await provider.run(job({jobId:'HIGH-LOCAL-1',payload:{prompt:'work',risk:'high'}}));
-      expect(result.status).toBe('verified');expect(result.executorModel).toBe('ollama/qwen3:8b');expect(groqCalls).toBe(0);expect(geminiCalls).toBe(0);
-      expect(result.evidence.stages.map(stage=>stage.model)).toEqual(['qwen3:8b','gemma3:4b','qwen2.5-coder:14b']);
+    try{const provider=new CoordinatedAiProvider(root,'http://127.0.0.1:11434');const result=await provider.run(job({jobId:'HIGH-LOCAL-1',payload:{prompt:'work',risk:'high',providerPolicy:{zeroCostOnly:true,preferredProviders:['ollama']}}}));
+      expect(result.status).toBe('verified');expect(result.executorModel).toBe('ollama/gemma3:4b');expect(groqCalls).toBe(0);expect(geminiCalls).toBe(0);
+      expect(result.evidence.stages.map(stage=>stage.model)).toEqual(['gemma3:4b','qwen2.5-coder:14b','qwen3:8b']);
     }finally{globalThis.fetch=beforeFetch;if(beforeKey===undefined)delete process.env.GROQ_API_KEY;else process.env.GROQ_API_KEY=beforeKey;if(beforeProof===undefined)delete process.env.TIGERIQ_GROQ_FREE_TIER_VERIFIED;else process.env.TIGERIQ_GROQ_FREE_TIER_VERIFIED=beforeProof;if(beforeGeminiKey===undefined)delete process.env.GEMINI_API_KEY;else process.env.GEMINI_API_KEY=beforeGeminiKey;if(beforeGeminiProof===undefined)delete process.env.TIGERIQ_GEMINI_FREE_TIER_VERIFIED;else process.env.TIGERIQ_GEMINI_FREE_TIER_VERIFIED=beforeGeminiProof;}
   });
 });

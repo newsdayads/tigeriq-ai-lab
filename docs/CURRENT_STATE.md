@@ -1,7 +1,20 @@
 # Current State
 
-Date: 2026-09-08
+Date: 2026-09-09
 
+## TigerIQ V2 Lane A #529 — AI Resource overlay — OFF-MAIN
+- Authoritative lane: #529 under parent #528; branch `v2-a/529-ai-resource-core`.
+- A1–A5 all PASS by real queue/controller E2E on PC01.
+- Gemini, Groq and Ollama are resources behind one capability/availability/zero-cost selector; logical employee identity is not bound to provider.
+- Low-risk uses executor-only unless assurance is explicitly requested; medium/high risk add reviewer/judge as required.
+- Live failover PASS: `JOB-1C2316B5-9B8D-4010-8F3F-DB6A2C05982E` Gemini failure -> Groq Free Tier success, bounded to the next eligible zero-cost route with no paid fallback.
+- High-risk assurance PASS: Groq executor -> Gemini reviewer PASS -> Ollama judge PASS.
+- Full regression: 30 test files / 146 tests PASS; build and `git diff --check` PASS.
+- Existing NV02 Groq worker remained live; normal AI Resource Worker restored after the test-only failover probe.
+- MAIN/Production/Web/CSS/#530 ownership/payment/PAYG boundaries unchanged.
+- Evidence: `docs/evidence/V2-A-529-AI-RESOURCE-PC01-20260909.md`.
+
+Historical baseline sections below are retained for context; this overlay is authoritative for V2 Lane A #529 on this branch.
 ## NV04 Gemini API current overlay — OFF-MAIN
 - Authoritative lane: issue #392 with #133; integration successor PR #513 on `nv04/ai-api-runtime-integration-20260908`.
 - Persistent Gemini Free Tier credential/proof verified without secret disclosure: plan `Free`, price `0`, `billingLinked=false`, `paidFallbackAllowed=false`.
