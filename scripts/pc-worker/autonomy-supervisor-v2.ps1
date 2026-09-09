@@ -70,6 +70,7 @@ $Components = @(
   [pscustomobject]@{ id='ollama'; task='TigerIQ Ollama Runtime'; mode='http'; uri='http://127.0.0.1:11434/api/version'; jsonOk=$false; pattern='ollama\.exe.*serve'; autoRepair=$true; critical=$true },
   [pscustomobject]@{ id='openclaw'; task='TigerIQ OpenClaw Gateway'; mode='http'; uri='http://127.0.0.1:18789/'; jsonOk=$false; pattern='openclaw\\.mjs.*gateway run'; autoRepair=$true; critical=$true },
   [pscustomobject]@{ id='planner'; task='TigerIQ Autonomous Planner'; mode='process'; uri=$null; jsonOk=$false; pattern='autonomous-planner.*standalone\.js'; autoRepair=$true; critical=$true },
+  [pscustomobject]@{ id='nv02-github-queue'; task='TigerIQ NV02 GitHub Queue'; mode='process'; uri=$null; jsonOk=$false; pattern='github-queue-sync\.js'; autoRepair=$true; critical=$true },
   [pscustomobject]@{ id='orchestrator'; task='TigerIQ Mission Orchestrator'; mode='process'; uri=$null; jsonOk=$false; pattern='mission-orchestrator.*standalone\.js'; autoRepair=$true; critical=$true },
   [pscustomobject]@{ id='pc01-worker'; task='TigerIQ PC01 Native Worker'; mode='process'; uri=$null; jsonOk=$false; pattern='pc01-native-worker.*standalone\.js'; autoRepair=$true; critical=$true },
   [pscustomobject]@{ id='nv02-worker'; task='TigerIQ NV02 Worker'; mode='process'; uri=$null; jsonOk=$false; pattern='nv02-worker\\groq-worker\.mjs'; autoRepair=$false; critical=$false },
@@ -178,7 +179,7 @@ while ($true) {
     }
     $componentStates += [ordered]@{
       id=$health.id; healthy=$health.healthy; taskState=$health.taskState; processOk=$health.processOk; processCount=$health.processCount; duplicateProcess=([int]$health.processCount -gt 1)
-      httpOk=$health.httpOk; httpStatus=$health.httpStatus; failures=[int]$Failures[$component.id]; autoRepair=[bool]$component.autoRepair; critical=[bool]$component.critical
+      httpOk=$health.httpOk; httpStatus=if($probe){$probe.status}else{$null}; failures=[int]$Failures[$component.id]; autoRepair=[bool]$component.autoRepair; critical=[bool]$component.critical
     }
   }
 
