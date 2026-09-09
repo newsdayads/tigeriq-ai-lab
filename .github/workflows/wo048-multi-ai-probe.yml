@@ -11,6 +11,8 @@ on:
       - 'scripts/pc-worker/ai-job-orchestrator.ps1'
       - 'scripts/pc-worker/test-ai-job-orchestration.ps1'
       - 'scripts/pc-worker/run-ai-job001-mixed.ps1'
+      - 'scripts/pc-worker/run-ai-job001-triprovider.ps1'
+      - 'scripts/pc-worker/invoke-ai-job001-triprovider-runtime.ps1'
       - 'scripts/pc-worker/install-groq-runtime-secret.ps1'
       - 'scripts/pc-worker/invoke-groq-runtime.ps1'
       - 'scripts/pc-worker/deploy-ai-api-runtime.ps1'
@@ -27,6 +29,8 @@ on:
       - 'scripts/pc-worker/ai-job-orchestrator.ps1'
       - 'scripts/pc-worker/test-ai-job-orchestration.ps1'
       - 'scripts/pc-worker/run-ai-job001-mixed.ps1'
+      - 'scripts/pc-worker/run-ai-job001-triprovider.ps1'
+      - 'scripts/pc-worker/invoke-ai-job001-triprovider-runtime.ps1'
       - 'scripts/pc-worker/install-groq-runtime-secret.ps1'
       - 'scripts/pc-worker/invoke-groq-runtime.ps1'
       - 'scripts/pc-worker/deploy-ai-api-runtime.ps1'
@@ -54,6 +58,8 @@ jobs:
             'scripts/pc-worker/ai-job-orchestrator.ps1',
             'scripts/pc-worker/test-ai-job-orchestration.ps1',
             'scripts/pc-worker/run-ai-job001-mixed.ps1',
+            'scripts/pc-worker/run-ai-job001-triprovider.ps1',
+            'scripts/pc-worker/invoke-ai-job001-triprovider-runtime.ps1',
             'scripts/pc-worker/install-groq-runtime-secret.ps1',
             'scripts/pc-worker/invoke-groq-runtime.ps1',
             'scripts/pc-worker/deploy-ai-api-runtime.ps1'
@@ -82,13 +88,29 @@ jobs:
       - name: Assert mixed live preflight fails closed without credentials
         shell: powershell
         run: |
-          $output = & powershell -NoProfile -ExecutionPolicy Bypass -File scripts/pc-worker/run-ai-job001-mixed.ps1 -Live 2>&1
+          $output = & powershell -NoProfile -ExecutionPolicy Bypass -File scripts/pc-worker/run-ai-job001-mixed.ps1 -Live -WorkOrderId 'CI-MIXED-PREFLIGHT' 2>&1
           $code = $LASTEXITCODE
           $text = ($output | Out-String)
           if ($code -ne 2) { Write-Error "Expected blocked exit 2, got $code"; exit 1 }
           if ($text -notmatch '"networkCallMade"\s*:\s*false') { Write-Error 'Missing no-network evidence'; exit 1 }
           if ($text -notmatch '"status"\s*:\s*"BLOCKED"') { Write-Error 'Missing blocked status'; exit 1 }
+          if ($text -notmatch 'CI-MIXED-PREFLIGHT') { Write-Error 'Mixed explicit WorkOrderId was not preserved'; exit 1 }
           Write-Host 'MIXED_LIVE_NO_CREDENTIAL_FAIL_CLOSED_PASS'
+          exit 0
+      - name: Run tri-provider JOB-001 self-test
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/pc-worker/run-ai-job001-triprovider.ps1 -SelfTest
+      - name: Assert tri-provider live preflight fails closed without credentials
+        shell: powershell
+        run: |
+          $output = & powershell -NoProfile -ExecutionPolicy Bypass -File scripts/pc-worker/run-ai-job001-triprovider.ps1 -Live -WorkOrderId 'CI-TRI-PREFLIGHT' 2>&1
+          $code = $LASTEXITCODE
+          $text = ($output | Out-String)
+          if ($code -ne 2) { Write-Error "Expected blocked exit 2, got $code"; exit 1 }
+          if ($text -notmatch '"networkCallMade"\s*:\s*false') { Write-Error 'Missing tri-provider no-network evidence'; exit 1 }
+          if ($text -notmatch '"status"\s*:\s*"BLOCKED"') { Write-Error 'Missing tri-provider blocked status'; exit 1 }
+          if ($text -notmatch 'CI-TRI-PREFLIGHT') { Write-Error 'Tri-provider explicit WorkOrderId was not preserved'; exit 1 }
+          Write-Host 'TRI_PROVIDER_LIVE_NO_CREDENTIAL_FAIL_CLOSED_PASS'
           exit 0
       - name: Run no-provider probe self-test
         shell: powershell

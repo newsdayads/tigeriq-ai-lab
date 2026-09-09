@@ -18,8 +18,14 @@ if ($TimeoutSeconds -lt 5 -or $TimeoutSeconds -gt 180) {
 }
 
 $orchestratorPath = Join-Path $PSScriptRoot 'ai-job-orchestrator.ps1'
+$requestedWorkOrderId=$WorkOrderId
+$requestedStatePath=$StatePath
+$requestedEvidencePath=$EvidencePath
 if (-not (Test-Path -LiteralPath $orchestratorPath)) { throw 'AI_JOB001_MIXED_ORCHESTRATOR_MISSING' }
 . $orchestratorPath
+$WorkOrderId=$requestedWorkOrderId
+$StatePath=$requestedStatePath
+$EvidencePath=$requestedEvidencePath
 
 $script:GroqIdentity = 'groq:openai.gpt-oss-120b'
 $script:OllamaExecutor = 'ollama:qwen3:4b'

@@ -9,6 +9,8 @@ $files = @(
   'ai-provider-scheduler.ps1',
   'ai-job-orchestrator.ps1',
   'run-ai-job001-mixed.ps1',
+  'run-ai-job001-triprovider.ps1',
+  'invoke-ai-job001-triprovider-runtime.ps1',
   'invoke-groq-runtime.ps1',
   'install-groq-runtime-secret.ps1',
   'invoke-gemini-runtime.ps1',
@@ -19,8 +21,7 @@ foreach ($file in $files) {
   $source = Join-Path $sourceDir $file
   if (-not (Test-Path -LiteralPath $source)) { throw "AI_API_RUNTIME_SOURCE_MISSING:$file" }
   Copy-Item -LiteralPath $source -Destination (Join-Path $RuntimeDir $file) -Force
-}
-$head='UNKNOWN'
+}$head='UNKNOWN'
 try {
   $repoRoot=(Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
   $head=(git -C $repoRoot rev-parse HEAD 2>$null).Trim()
