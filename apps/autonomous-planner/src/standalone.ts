@@ -4,12 +4,12 @@ import { pathToFileURL } from 'node:url';
 import { actionable, parseBacklog, reconcile, toControllerBody, waitingDependencies, type PlannerRuntimeState } from './core.js';
 import { parseAuthorizationStore } from './policy.js';
 
-const workspace=(process.env.TIGERIQ_WORKSPACE??'F:\\TigerIQ\\Workspace\\tigeriq-ai-lab').trim();
+const workspace=(process.env.TIGERIQ_WORKSPACE??'D:\\TigerIQ\\Workspace\\tigeriq-ai-lab').trim();
 const controllerUrl=(process.env.TIGERIQ_CONTROLLER_URL??'http://100.97.23.87:8790').replace(/\/$/,'');
-const backlogPath=(process.env.TIGERIQ_AUTONOMY_BACKLOG??'F:\\TigerIQ\\Runtime\\autonomous-planner-v1\\backlog.json').trim();
-const statePath=(process.env.TIGERIQ_AUTONOMY_STATE??'F:\\TigerIQ\\Runtime\\autonomous-planner-v1\\planner-state.json').trim();
-const authorizationPath=(process.env.TIGERIQ_AUTONOMY_AUTHORIZATIONS??'F:\\TigerIQ\\Runtime\\autonomous-planner-v1\\authorizations.json').trim();
-const tokenPath=(process.env.TIGERIQ_INGRESS_TOKEN_FILE??'F:\\TigerIQ\\Secrets\\pc01-primary-node.ingress-token').trim();
+const backlogPath=(process.env.TIGERIQ_AUTONOMY_BACKLOG??'D:\\TigerIQ\\Runtime\\autonomous-planner-v1\\backlog.json').trim();
+const statePath=(process.env.TIGERIQ_AUTONOMY_STATE??'D:\\TigerIQ\\Runtime\\autonomous-planner-v1\\planner-state.json').trim();
+const authorizationPath=(process.env.TIGERIQ_AUTONOMY_AUTHORIZATIONS??'D:\\TigerIQ\\Runtime\\autonomous-planner-v1\\authorizations.json').trim();
+const tokenPath=(process.env.TIGERIQ_INGRESS_TOKEN_FILE??'D:\\TigerIQ\\Secrets\\pc01-primary-node.ingress-token').trim();
 const intervalMs=Math.max(2_000,Number(process.env.TIGERIQ_AUTONOMY_INTERVAL_MS??5_000));
 const dispatchLimit=Math.max(1,Math.min(4,Number(process.env.TIGERIQ_AUTONOMY_DISPATCH_LIMIT??2)));
 let stopped=false;
@@ -47,7 +47,7 @@ export async function plannerCycle():Promise<void>{
 }
 
 export async function startPlanner():Promise<void>{
-  if(path.resolve(workspace).toLowerCase()!==path.resolve('F:\\TigerIQ\\Workspace\\tigeriq-ai-lab').toLowerCase())throw new Error('WORKSPACE_MISMATCH');
+  if(path.resolve(workspace).toLowerCase()!==path.resolve('D:\\TigerIQ\\Workspace\\tigeriq-ai-lab').toLowerCase())throw new Error('WORKSPACE_MISMATCH');
   console.log(JSON.stringify({event:'AUTONOMOUS_PLANNER_V1_START',intervalMs,dispatchLimit,backlogPath,statePath,authorizationPath}));
   while(!stopped){try{await plannerCycle();}catch(error){console.error(JSON.stringify({event:'AUTONOMY_CYCLE_FATAL',message:String(error)}));}for(let elapsed=0;elapsed<intervalMs&&!stopped;elapsed+=1000)await new Promise(r=>setTimeout(r,Math.min(1000,intervalMs-elapsed)));}
 }

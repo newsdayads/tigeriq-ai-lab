@@ -4,13 +4,13 @@ import { pathToFileURL } from 'node:url';
 import { parseBacklog, type PlannerRuntimeState } from '../../autonomous-planner/src/core.js';
 import { acceptancePlan, decompositionPrompt, deriveMissionStage, mergePlan, parseAiPlan, parseMissionInbox, type MissionPlan, type MissionRuntimeState } from './core.js';
 
-const runtimeDir=(process.env.TIGERIQ_MISSION_RUNTIME??'F:\\TigerIQ\\Runtime\\mission-orchestrator-v1').trim();
+const runtimeDir=(process.env.TIGERIQ_MISSION_RUNTIME??'D:\\TigerIQ\\Runtime\\mission-orchestrator-v1').trim();
 const inboxPath=(process.env.TIGERIQ_MISSION_INBOX??path.join(runtimeDir,'mission-inbox.json')).trim();
 const statePath=(process.env.TIGERIQ_MISSION_STATE??path.join(runtimeDir,'mission-state.json')).trim();
-const backlogPath=(process.env.TIGERIQ_AUTONOMY_BACKLOG??'F:\\TigerIQ\\Runtime\\autonomous-planner-v1\\backlog.json').trim();
-const plannerStatePath=(process.env.TIGERIQ_AUTONOMY_STATE??'F:\\TigerIQ\\Runtime\\autonomous-planner-v1\\planner-state.json').trim();
+const backlogPath=(process.env.TIGERIQ_AUTONOMY_BACKLOG??'D:\\TigerIQ\\Runtime\\autonomous-planner-v1\\backlog.json').trim();
+const plannerStatePath=(process.env.TIGERIQ_AUTONOMY_STATE??'D:\\TigerIQ\\Runtime\\autonomous-planner-v1\\planner-state.json').trim();
 const ollamaUrl=(process.env.TIGERIQ_OLLAMA_URL??'http://127.0.0.1:11434').replace(/\/$/,'');
-const model=(process.env.TIGERIQ_MISSION_MODEL??'qwen3:8b').trim();
+const model=(process.env.TIGERIQ_MISSION_MODEL??'qwen3:4b').trim();
 const intervalMs=Math.max(2_000,Number(process.env.TIGERIQ_MISSION_INTERVAL_MS??5_000));
 let stopped=false;
 
