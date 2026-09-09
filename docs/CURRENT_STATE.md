@@ -67,3 +67,16 @@ Verified foundation retained:
 - Ollama `qwen3:8b`, `num_ctx=4096`, `think=false`, physical GPU evidence.
 - Local AI concurrency=2, Tool Executor, failure capture and restart recovery PASS.
 - MAIN/Production untouched; OpenClaw unused.
+
+## 2026-09-09 — #532 Planner/Orchestrator direct Node
+- Successor hẹp của #530 trong Runtime/Zero-touch/PC01.
+- Autonomous Planner + Mission Orchestrator Scheduled Task đã chạy `node.exe` trực tiếp; PowerShell wrapper chỉ còn rollback/recovery artifact.
+- Canonical root `D:\TigerIQ`; Node tự ghi log, không cần shell redirection.
+- Runtime/source drift `route=groq` đã được backport từ live dist về source để giữ hành vi đang chạy; không đổi provider selection/failover policy #529.
+- Typecheck/build PASS; targeted tests 14/14 PASS.
+- Planner và Orchestrator kill/recovery đều PASS, không start tay.
+- Final singleton 1 Planner + 1 Orchestrator; hot-path wrapper shell count = 0.
+- Controller/PostgreSQL/PC01/Web runtime truth/OpenClaw listener không regression tại final verify.
+- Evidence: `docs/evidence/V2-B-532-HANDOFF-20260909.md`.
+
+STATE: `P1_532_DIRECT_NODE_PLANNER_ORCHESTRATOR_LIVE_VERIFIED_PASS`
