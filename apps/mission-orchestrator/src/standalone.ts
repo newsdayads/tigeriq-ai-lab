@@ -1,3 +1,4 @@
+import { appendFileSync, mkdirSync } from 'node:fs';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -13,6 +14,9 @@ const ollamaUrl=(process.env.TIGERIQ_OLLAMA_URL??'http://127.0.0.1:11434').repla
 const model=(process.env.TIGERIQ_MISSION_MODEL??'qwen3:4b').trim();
 const intervalMs=Math.max(2_000,Number(process.env.TIGERIQ_MISSION_INTERVAL_MS??5_000));
 let stopped=false;
+const logPath=(process.env.TIGERIQ_MISSION_LOG??'D:\\TigerIQ\\Logs\\mission-orchestrator-v1.log').trim();
+function runtimeLog(value:string,level:'INFO'|'ERROR'='INFO'):void{try{mkdirSync(path.dirname(logPath),{recursive:true});appendFileSync(logPath,new Date().toISOString()+' ['+level+'] '+value+'\n','utf8');}catch{}}
+function runtimeLogError(value:string):void{runtimeLog(value,'ERROR');}
 
 async function readJson(file:string):Promise<unknown>{const raw=await readFile(file,'utf8');return JSON.parse(raw.replace(/^\uFEFF/,''));}
 async function atomicJson(file:string,value:unknown):Promise<void>{await mkdir(path.dirname(file),{recursive:true});const tmp=`${file}.${process.pid}.tmp`;await writeFile(tmp,JSON.stringify(value,null,2),'utf8');await rename(tmp,file);}
@@ -29,15 +33,15 @@ export async function missionCycle():Promise<void>{
     if(current?.childTaskIds?.length){const childSet=new Set(current.childTaskIds);const tasks=backlog.tasks.filter(t=>childSet.has(t.taskId));if(tasks.length===current.childTaskIds.length)plan={missionId:mission.missionId,summary:current.summary??mission.goal,model:current.model,tasks};}
     if(!plan){
       state.missions[mission.missionId]={stage:'planning',updatedAt:now,childTaskIds:[]};await atomicJson(statePath,state);
-      try{plan=mission.mode==='acceptance'?acceptancePlan(mission):parseAiPlan(mission,await ollamaPlan(decompositionPrompt(mission)),model);backlog=mergePlan(backlog,plan);await atomicJson(backlogPath,backlog);state.missions[mission.missionId]={stage:'running',updatedAt:new Date().toISOString(),childTaskIds:plan.tasks.map(t=>t.taskId),summary:plan.summary,model:plan.model};console.log(JSON.stringify({event:'MISSION_DECOMPOSED',missionId:mission.missionId,mode:mission.mode,children:plan.tasks.map(t=>t.taskId),model:plan.model}));}
-      catch(error){state.missions[mission.missionId]={stage:'blocked_plan',updatedAt:new Date().toISOString(),childTaskIds:[],reason:String(error).slice(0,1024),model};console.error(JSON.stringify({event:'MISSION_PLAN_BLOCKED',missionId:mission.missionId,message:String(error)}));continue;}
+      try{plan=mission.mode==='acceptance'?acceptancePlan(mission):parseAiPlan(mission,await ollamaPlan(decompositionPrompt(mission)),model);backlog=mergePlan(backlog,plan);await atomicJson(backlogPath,backlog);state.missions[mission.missionId]={stage:'running',updatedAt:new Date().toISOString(),childTaskIds:plan.tasks.map(t=>t.taskId),summary:plan.summary,model:plan.model};runtimeLog(JSON.stringify({event:'MISSION_DECOMPOSED',missionId:mission.missionId,mode:mission.mode,children:plan.tasks.map(t=>t.taskId),model:plan.model}));}
+      catch(error){state.missions[mission.missionId]={stage:'blocked_plan',updatedAt:new Date().toISOString(),childTaskIds:[],reason:String(error).slice(0,1024),model};runtimeLogError(JSON.stringify({event:'MISSION_PLAN_BLOCKED',missionId:mission.missionId,message:String(error)}));continue;}
     }
     const stage=deriveMissionStage(plan,planner);const prior=state.missions[mission.missionId];state.missions[mission.missionId]={...prior,stage,updatedAt:new Date().toISOString(),childTaskIds:plan.tasks.map(t=>t.taskId),summary:plan.summary,model:plan.model};
   }
-  state.lastCycleAt=new Date().toISOString();await atomicJson(statePath,state);console.log(JSON.stringify({event:'MISSION_CYCLE',missions:Object.fromEntries(Object.entries(state.missions).map(([id,v])=>[id,v.stage]))}));
+  state.lastCycleAt=new Date().toISOString();await atomicJson(statePath,state);runtimeLog(JSON.stringify({event:'MISSION_CYCLE',missions:Object.fromEntries(Object.entries(state.missions).map(([id,v])=>[id,v.stage]))}));
 }
 
-export async function startMissionOrchestrator():Promise<void>{await ensureFiles();console.log(JSON.stringify({event:'MISSION_ORCHESTRATOR_V1_START',intervalMs,inboxPath,statePath,model}));while(!stopped){try{await missionCycle();}catch(error){console.error(JSON.stringify({event:'MISSION_CYCLE_FATAL',message:String(error)}));}for(let elapsed=0;elapsed<intervalMs&&!stopped;elapsed+=1000)await new Promise(r=>setTimeout(r,Math.min(1000,intervalMs-elapsed)));}}
-function stop(signal:string){stopped=true;console.log(JSON.stringify({event:'MISSION_ORCHESTRATOR_V1_STOP',signal}));}
+export async function startMissionOrchestrator():Promise<void>{await ensureFiles();runtimeLog(JSON.stringify({event:'MISSION_ORCHESTRATOR_V1_START',intervalMs,inboxPath,statePath,model}));while(!stopped){try{await missionCycle();}catch(error){runtimeLogError(JSON.stringify({event:'MISSION_CYCLE_FATAL',message:String(error)}));}for(let elapsed=0;elapsed<intervalMs&&!stopped;elapsed+=1000)await new Promise(r=>setTimeout(r,Math.min(1000,intervalMs-elapsed)));}}
+function stop(signal:string){stopped=true;runtimeLog(JSON.stringify({event:'MISSION_ORCHESTRATOR_V1_STOP',signal}));}
 process.once('SIGINT',()=>stop('SIGINT'));process.once('SIGTERM',()=>stop('SIGTERM'));
-const invokedAsMain=Boolean(process.argv[1])&&import.meta.url===pathToFileURL(process.argv[1]).href;if(invokedAsMain)startMissionOrchestrator().catch(error=>{console.error(JSON.stringify({event:'MISSION_ORCHESTRATOR_V1_FATAL',message:error instanceof Error?error.message:String(error)}));process.exit(1);});
+const invokedAsMain=Boolean(process.argv[1])&&import.meta.url===pathToFileURL(process.argv[1]).href;if(invokedAsMain)startMissionOrchestrator().catch(error=>{runtimeLogError(JSON.stringify({event:'MISSION_ORCHESTRATOR_V1_FATAL',message:error instanceof Error?error.message:String(error)}));process.exit(1);});
