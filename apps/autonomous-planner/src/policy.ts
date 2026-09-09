@@ -32,7 +32,7 @@ export interface AuthorizationGrant {
 export interface AuthorizationStore {version:1;grants:AuthorizationGrant[];}
 export interface PolicySubject {
   taskId:string;
-  route:'local_ai'|'tool'|'deterministic';
+  route:'local_ai'|'groq'|'tool'|'deterministic';
   payload:Record<string,unknown>;
   requiresAuthorization:boolean;
   actionClass?:ActionClass;
@@ -68,7 +68,7 @@ function toolClass(value:unknown):ActionClass|'UNCLASSIFIED'{
   return 'UNCLASSIFIED';
 }
 function inferred(subject:PolicySubject):ActionClass|'UNCLASSIFIED'{
-  if(subject.route==='local_ai')return 'LOCAL_AI';
+  if(subject.route==='local_ai'||subject.route==='groq')return 'LOCAL_AI';
   if(subject.route==='deterministic')return subject.payload.action==='resource_snapshot'?'WORKSPACE_READ':'UNCLASSIFIED';
   const requests=Array.isArray(subject.payload.toolRequests)?subject.payload.toolRequests:[subject.payload.toolRequest];
   let selected:ActionClass|'UNCLASSIFIED'='UNCLASSIFIED',selectedRank=-1;

@@ -1,7 +1,7 @@
 import { evaluatePolicy,isActionClass,type ActionClass,type AuthorizationStore,type PolicyDecision } from './policy.js';
 
 export type PlannerPriority='P0'|'P1'|'P2'|'P3';
-export type PlannerRoute='local_ai'|'tool'|'deterministic';
+export type PlannerRoute='local_ai'|'groq'|'tool'|'deterministic';
 export type BacklogStatus='pending'|'done'|'blocked';
 
 export interface BacklogTask {
@@ -50,7 +50,7 @@ export function parseBacklog(raw:unknown):PlannerBacklog{
     if(!idPattern.test(taskId)||seen.has(taskId))throw new Error('INVALID_OR_DUPLICATE_TASK_ID');seen.add(taskId);
     const status=text(row.status,'status',16) as BacklogStatus;if(!['pending','done','blocked'].includes(status))throw new Error('INVALID_STATUS');
     const priority=text(row.priority,'priority',2) as PlannerPriority;if(!(priority in priorities))throw new Error('INVALID_PRIORITY');
-    const route=text(row.route,'route',32) as PlannerRoute;if(!['local_ai','tool','deterministic'].includes(route))throw new Error('INVALID_ROUTE');
+    const route=text(row.route,'route',32) as PlannerRoute;if(!['local_ai','groq','tool','deterministic'].includes(route))throw new Error('INVALID_ROUTE');
     const evidence=strings(row.expectedEvidence??['json'],'expected_evidence',8) as BacklogTask['expectedEvidence'];if(evidence.length===0||evidence.some(k=>!['text','json','log'].includes(k)))throw new Error('INVALID_EXPECTED_EVIDENCE');
     const maxAttempts=Number(row.maxAttempts??2);if(!Number.isInteger(maxAttempts)||maxAttempts<1||maxAttempts>5)throw new Error('INVALID_MAX_ATTEMPTS');
     let actionClass:ActionClass|undefined;if(row.actionClass!==undefined){if(!isActionClass(row.actionClass))throw new Error('INVALID_ACTION_CLASS');actionClass=row.actionClass;}
@@ -62,7 +62,7 @@ export function parseBacklog(raw:unknown):PlannerBacklog{
 }
 
 function validatePayload(task:BacklogTask):void{
-  if(task.route==='local_ai'){
+  if(task.route==='local_ai'||task.route==='groq'){
     if(typeof task.payload.prompt!=='string'||!task.payload.prompt.trim())throw new Error(`LOCAL_AI_PROMPT_REQUIRED:${task.taskId}`);
     return;
   }
@@ -105,7 +105,8 @@ export function waitingDependencies(backlog:PlannerBacklog,state:PlannerRuntimeS
 }
 
 export function toControllerBody(task:BacklogTask):Record<string,unknown>{
-  const routeCapabilities=task.route==='local_ai'?['local_ai','evidence']:task.route==='tool'?['filesystem','evidence']:['evidence'];
-  const routePermissions=task.route==='local_ai'?['local_ai:execute','evidence:write']:task.route==='tool'?['workspace:read','workspace:write','evidence:write']:['evidence:write'];
-  return {idempotencyKey:`autonomy:${task.taskId}:v1`,title:task.title,objective:task.objective,payload:{...task.payload,route:task.route},requiredCapabilities:task.requiredCapabilities.length?task.requiredCapabilities:routeCapabilities,requiredPermissions:task.requiredPermissions.length?task.requiredPermissions:routePermissions,allowedWorkerKinds:['pc01'],expectedEvidence:task.expectedEvidence,scopeKeys:task.scopeKeys.length?task.scopeKeys:[`autonomy/${task.taskId}`],maxAttempts:task.maxAttempts,independentReview:false,judgeRequired:false,priority:task.priority};
+  const routeCapabilities=task.route==='groq'?['groq','evidence']:task.route==='local_ai'?['local_ai','evidence']:task.route==='tool'?['filesystem','evidence']:['evidence'];
+  const routePermissions=task.route==='groq'?['cloud_ai:execute','evidence:write']:task.route==='local_ai'?['local_ai:execute','evidence:write']:task.route==='tool'?['workspace:read','workspace:write','evidence:write']:['evidence:write'];
+  const payload=task.route==='groq'?{...task.payload,route:task.route,requireAssurance:true,requireJudge:true}:{...task.payload,route:task.route};
+  return {idempotencyKey:`autonomy:${task.taskId}:v1`,title:task.title,objective:task.objective,payload,targetEmployeeId:task.route==='groq'?'NV02':undefined,requiredCapabilities:task.requiredCapabilities.length?task.requiredCapabilities:routeCapabilities,requiredPermissions:task.requiredPermissions.length?task.requiredPermissions:routePermissions,allowedWorkerKinds:['pc01'],expectedEvidence:task.expectedEvidence,scopeKeys:task.scopeKeys.length?task.scopeKeys:[`autonomy/${task.taskId}`],maxAttempts:task.maxAttempts,independentReview:false,judgeRequired:false,priority:task.priority};
 }
