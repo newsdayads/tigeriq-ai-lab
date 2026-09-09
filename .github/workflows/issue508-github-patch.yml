@@ -1,5 +1,5 @@
 name: Issue 508 GitHub-first patch
-# retry: 2
+# retry: 3
 on:
   push:
     branches: [chat-b/508-live-data-20260909]
