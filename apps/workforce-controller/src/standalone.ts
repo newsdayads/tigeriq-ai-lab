@@ -6,6 +6,7 @@ import { createPgPool } from '../../../packages/work-state/src/pg-driver.js';
 import { PostgresOperationalStateRepository, type SqlPoolLike } from '../../../packages/work-state/src/postgres-repository.js';
 import { OperationalWorkService } from '../../../packages/work-state/src/service.js';
 import { WorkforceControllerV1 } from './controller.js';
+import { LeaseRecoveryLoop } from './lease-recovery-loop.js';
 
 const EXPECTED_HOST='100.97.23.87';
 const EXPECTED_PORT=8790;
@@ -51,6 +52,13 @@ export async function startController():Promise<void>{
   const repository=new PostgresOperationalStateRepository(pool);
   const service=new OperationalWorkService(repository);
   const recovery=await service.recoverAfterRestart(new Date().toISOString());
+  const recoveryLoop=new LeaseRecoveryLoop(service,{
+    onSweep:(summary)=>{
+      if(summary.expiredLeases>0)console.log(JSON.stringify({event:'WORKFORCE_LEASE_RECOVERY',...summary}));
+    },
+    onError:(error)=>console.error(JSON.stringify({event:'WORKFORCE_LEASE_RECOVERY_ERROR',message:error instanceof Error?error.message:'lease recovery failed'})),
+  });
+  recoveryLoop.start();
   const controller=new WorkforceControllerV1(pool,service,ingressToken);
   const server=createServer(async(request,response)=>{
     try{
@@ -64,8 +72,9 @@ export async function startController():Promise<void>{
   });
   server.on('error',error=>{console.error(JSON.stringify({event:'WORKFORCE_CONTROLLER_ERROR',message:error.message}));});
   await new Promise<void>((resolve,reject)=>{server.once('error',reject);server.listen(port,host,()=>resolve());});
-  console.log(JSON.stringify({event:'WORKFORCE_CONTROLLER_V1_START',host,port,hostname:os.hostname(),postgres:'operational-state-v1',ingress:'authenticated',recovery}));
+  console.log(JSON.stringify({event:'WORKFORCE_CONTROLLER_V1_START',host,port,hostname:os.hostname(),postgres:'operational-state-v1',ingress:'authenticated',recovery,leaseRecoveryIntervalMs:30_000}));
   const shutdown=async(signal:string)=>{
+    recoveryLoop.stop();
     console.log(JSON.stringify({event:'WORKFORCE_CONTROLLER_V1_STOP',signal}));
     await new Promise<void>(resolve=>server.close(()=>resolve()));
     const closable=pool as SqlPoolLike&{end?:()=>Promise<void>};
