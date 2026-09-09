@@ -1,5 +1,6 @@
 import { createHash, createPublicKey, timingSafeEqual, verify as verifySignature } from 'node:crypto';
 import type { SqlPoolLike } from '../../../packages/work-state/src/postgres-repository.js';
+import type { WorkerKind } from '../../../packages/work-state/src/types.js';
 
 export interface DeviceAuthRequest {
   method:string;
@@ -14,6 +15,7 @@ export interface DeviceAuthContext {
   nodeId:string;
   deviceId:string;
   bindingId:string;
+  workerKind:WorkerKind;
   capabilities:string[];
   permissions:string[];
   publicKeyFingerprint:string;
@@ -36,6 +38,12 @@ function requiredHeader(headers:Record<string,string|undefined>,name:string):str
 function timingSafeTextEqual(left:string,right:string):boolean{
   const a=Buffer.from(left,'utf8'),b=Buffer.from(right,'utf8');
   return a.length===b.length&&timingSafeEqual(a,b);
+}
+function workerKindFromMetadata(metadata:Record<string,unknown>):WorkerKind{
+  const value=metadata?.workerKind;
+  if(value===undefined||value===null||value==='')return 'pc01';
+  if(value==='pc01'||value==='device')return value;
+  throw new DeviceAuthError(401,'DEVICE_WORKER_KIND_INVALID','provisioned device worker kind is invalid');
 }
 
 export class VerifiedDeviceAuthenticator {
@@ -92,7 +100,7 @@ export class VerifiedDeviceAuthenticator {
     }
 
     await this.claimNonce(deviceId,nonce,timestamp,now);
-    return {employeeId:row.employee_id,nodeId,deviceId:row.device_id,bindingId:row.binding_id,capabilities:row.capabilities??[],permissions:row.permissions??[],publicKeyFingerprint:storedFingerprint};
+    return {employeeId:row.employee_id,nodeId,deviceId:row.device_id,bindingId:row.binding_id,workerKind:workerKindFromMetadata(row.metadata??{}),capabilities:row.capabilities??[],permissions:row.permissions??[],publicKeyFingerprint:storedFingerprint};
   }
 
   private async claimNonce(deviceId:string,nonce:string,proofTimestampMs:number,acceptedAtMs:number):Promise<void>{
