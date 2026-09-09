@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { LiveEventBufferV5, RuntimeLiveEventProjectionV5 } from '../apps/dashboard/src/live-events-v5.js';
-import { mergeRuntimeWorkTruthV5, type ExecutiveDashboardV4 } from '../apps/dashboard/src/executive-data-v4.js';
+import { mergeRuntimeWorkTruthV5, type ExecutiveDashboardV4, type ExecutiveWorkV4 } from '../apps/dashboard/src/executive-data-v4.js';
 import type { ServerTelemetry } from '../apps/dashboard/src/server.js';
 
 const base:ExecutiveDashboardV4={generatedAt:'2026-09-09T05:00:00Z',works:[],people:[],systems:[{key:'control',name:'Controller',status:'Hoạt động',tone:'active',note:'runtime truth'}],activeCount:0,waitingCount:0,blockedCount:0,doneCount:0,pausedCount:0,progressAverage:null,ownerActionRequired:false,ownerActionText:'Không'};
@@ -41,7 +41,7 @@ describe('Web V5 runtime live projection',()=>{
 
   test('never projects GitHub governance or leased stage as active without both lease and fresh heartbeat',()=>{
     const now=Date.parse('2026-09-09T05:00:00Z');
-    const governance=[{number:508,title:'GitHub says active',ownerCode:'NV01',owner:'Minh (NV01)',progressPercent:null,progressLabel:'—',status:'Đang làm',tone:'active' as const,next:'runtime proof',updated:'—',workId:'GH-508'}];
+    const governance:ExecutiveWorkV4[]=[{number:508,title:'GitHub says active',ownerCode:'NV01',owner:'Minh (NV01)',progressPercent:null,progressLabel:'—',status:'Đang làm',tone:'active',next:'runtime proof',updated:'—',workId:'GH-508'}];
     const noRuntime=telemetry({});
     noRuntime.workforce={...noRuntime.workforce!,activeTasks:0,tasksActive:0,taskList:[]};
     expect(mergeRuntimeWorkTruthV5(governance,noRuntime,now)[0].tone).toBe('waiting');
