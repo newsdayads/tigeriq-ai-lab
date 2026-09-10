@@ -10,11 +10,11 @@ describe('HOT STATE fast-start contract', () => {
   it('is a derived index and preserves authoritative source pointers', () => {
     expect(hot.authoritativeByItself).toBe(false);
     expect(hot.kind).toBe('derived_fast_start_index');
-    expect(hot.dynamicPointers).toMatchObject({ centralRouterIssue: 280, interactionPolicyIssue: 504, commandRegistryIssue: 335, sourceTruthIssue: 556 });
+    expect(hot.dynamicPointers).toMatchObject({ centralRouterIssue: 280, interactionPolicyIssue: 504, commandRegistryIssue: 335, sourceTruthIssue: 556, zeroTouchUpdateIssue: 478 });
   });
 
-  it('resolves current priority and the latest browser Owner hold without deep history', () => {
-    expect(hot.currentPriority).toMatchObject({ issue: 556, owner: 'NV02 / Khoa' });
+  it('reports actual direct execution instead of inventing a background lease', () => {
+    expect(hot.currentPriority).toMatchObject({ issue: 556, owner: 'Vy / Chief of Staff', mode: 'foreground_direct', queueMaterialized: false });
     expect(hot.currentDecisions.chatgptWebAutomation).toMatchObject({ status: 'OWNER_HOLD', sourceIssue: 549, sourceCommentId: 5609639273 });
     expect(hot.completed).toEqual(expect.arrayContaining([401, 509, 524]));
   });
