@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const file = resolve(process.env.TIGERIQ_HOT_STATE || 'docs/HOT_STATE.json');
 const requiredPointers = ['centralRouterIssue','interactionPolicyIssue','commandRegistryIssue','sourceTruthIssue'];
@@ -37,7 +38,7 @@ function readState() {
   return validateHotState(JSON.parse(readFileSync(file, 'utf8')));
 }
 
-if (process.argv[1] && import.meta.url === new URL(`file:///${process.argv[1].replaceAll('\\','/')}`).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   try {
     const state = readState();
     if (process.argv.includes('--check')) console.log(JSON.stringify({ ok: true, hotStateVersion: state.hotStateVersion }));
