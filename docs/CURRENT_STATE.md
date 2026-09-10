@@ -13,7 +13,9 @@ Status: COMPATIBILITY VIEW — read `docs/HOT_STATE.json` first for fast-start; 
 `docs/HOT_STATE.json` is a derived index only. If it conflicts with a higher source, treat HOT STATE as stale and drill down.
 
 ## Current priority
-- **#556 — Source Truth + HOT STATE**, logical owner `NV02 / Khoa`, current Owner priority 2026-09-10.
+- **#556 — Source Truth + HOT STATE** is being executed directly by `Vy / Chief of Staff` under the Owner's `lam` instruction.
+- #556 is **not** materialized in the canonical Planner queue at this snapshot; do not label NV02/Khoa active on it without a job/lease.
+- Next safe P0 after #556's Owner-gated MAIN adoption is #478 zero-touch framework reconciliation.
 - #401 continuity: COMPLETED.
 - #509 Web V5 IA: COMPLETED.
 - #524 F→D migration: COMPLETED; F data retained only for rollback/history.
