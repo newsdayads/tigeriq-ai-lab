@@ -125,6 +125,22 @@ export function parseCentralPriorities(body = '') {
     rows.push({ priority: match[1], number, label: cleanTitle(match[3]) });
   }
 
+  const lines = text.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i += 1) {
+    const heading = lines[i].match(/^###\s+(.+?)\s+—\s+(P[0-2])\s*$/);
+    if (!heading) continue;
+    let number = null;
+    for (let j = i + 1; j < Math.min(lines.length, i + 10); j += 1) {
+      if (/^###\s+/.test(lines[j])) break;
+      const issueMatch = lines[j].match(/\b(?:APP issue|issue|Work Order|P0 framework)\b[^#\n]*#(\d+)/i)
+        || lines[j].match(/\*\*#(\d+)\*\*/);
+      if (issueMatch) { number = Number(issueMatch[1]); break; }
+    }
+    if (!number || seen.has(number)) continue;
+    seen.add(number);
+    rows.push({ priority: heading[2], number, label: cleanTitle(heading[1]) });
+  }
+
   const currentSection = text.match(/## CURRENT OWNER PRIORITY[^\n]*\n([\s\S]*?)(?=\n## |$)/i)?.[1] || '';
   const current = /^\s*\d+\.\s+\*\*#(\d+)\s+—\s+([^*\n]+)\*\*(?:\s*:\s*([^\n]+))?/gm;
   for (const match of currentSection.matchAll(current)) {
@@ -152,9 +168,12 @@ export function parseEmployees(body = '') {
     if (!command || !employeeMatch) continue;
 
     const legacyShape = cells.length >= 7;
+    const transitionalShape = cells.length === 6;
     const label = legacyShape ? cells[5] : cells[1];
     const enabledRaw = String(legacyShape ? cells[6] : cells[4] || '').toLowerCase();
-    const active = enabledRaw.startsWith('true');
+    const enabled = enabledRaw.startsWith('true');
+    const activation = transitionalShape ? String(cells[5] || '').toUpperCase() : null;
+    const active = enabled && (!activation || activation === 'ACTIVE');
     rows.push({
       command,
       employeeId: employeeMatch[1].toUpperCase(),

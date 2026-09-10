@@ -48,6 +48,13 @@ describe('public authoritative projection', () => {
     ]);
   });
 
+  it('preserves the intermediate CENTRAL owner-heading format', () => {
+    const body = '### Khoa/NV02 — P0\n- APP issue: **#441**.\n- Successor: PR **#443**.\n### Minh/NV01\n- Continuity: **#322 + #261**.';
+    expect(parseCentralPriorities(body)).toEqual([
+      { priority: 'P0', number: 441, label: 'Khoa/NV02' },
+    ]);
+  });
+
   it('parses CENTRAL v12 current owner priority list', () => {
     const body = '## CURRENT OWNER PRIORITY — 2026-09-10\n1. **#556 — Source Truth + HOT STATE**: highest P0.\n2. **#478 — Zero-touch framework**: next safe P0.\n3. **#318 — PC01 autonomous 24/7 master**: backend continues.\n\n## FAST-START CONTRACT';
     expect(parseCentralPriorities(body)).toEqual([
@@ -63,6 +70,13 @@ describe('public authoritative projection', () => {
     expect(rows).toHaveLength(2);
     expect(rows[0]).toMatchObject({ command: 2, employeeId: 'NV02', active: true });
     expect(rows[1]).toMatchObject({ command: 3, employeeId: 'NV03', active: false });
+  });
+
+  it('preserves the intermediate registry activation column', () => {
+    const body = '| command | employee | mode | background | enabled | activation |\n|---|---|---|---|---|---|\n| `1` | `NV01 / Minh` | `foreground_interactive` | false | true | ACTIVE |\n| `3` | `NV03 / Huy` | `paused_specialized` | false | true | PAUSED |';
+    const rows = parseEmployees(body);
+    expect(rows[0]).toMatchObject({ command: 1, active: true });
+    expect(rows[1]).toMatchObject({ command: 3, active: false });
   });
 
   it('parses Registry v12 command table shape', () => {
