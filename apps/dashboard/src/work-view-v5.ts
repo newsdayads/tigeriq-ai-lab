@@ -78,7 +78,7 @@ function filterBar(data: ExecutiveDashboardV4, url: URL): string {
     <input name="q" value="${esc(url.searchParams.get('q') ?? '')}" placeholder="Tìm mã việc, mục tiêu, bước…">
     <select name="owner"><option value="">Tất cả AI</option>${owners.map((owner) => option(owner, owner, state.owner)).join('')}</select>
     <select name="priority"><option value="">Mọi ưu tiên</option>${priorities.map((priority) => option(priority, priority, state.priority)).join('')}</select>
-    <select name="lane"><option value="">Mọi trạng thái</option>${option('active','Đang thực thi',state.lane)}${option('waiting','Chờ',state.lane)}${option('blocked','Bị chặn',state.lane)}${option('done','Hoàn tất',state.lane)}</select>
+    <select name="lane"><option value="">Mọi trạng thái</option>${option('active','Đang thực thi',state.lane)}${option('waiting','Chờ điều kiện',state.lane)}${option('blocked','Bị chặn',state.lane)}${option('done','Hoàn tất',state.lane)}</select>
     <label class="wv5-check"><input type="checkbox" name="stale" value="1"${state.stale ? ' checked' : ''}> Có thể đang treo</label>
     <button type="submit">Lọc</button><a href="/?view=work">Xóa lọc</a>
   </form>`;
@@ -91,13 +91,14 @@ function card(work: ExecutiveWorkV4, url: URL): string {
     <div class="wv5-card-top"><a class="wv5-title" href="${esc(detailHref(work,url))}"><b>${esc(id)}</b><span>${esc(work.title)}</span></a><span class="wv5-priority">${esc(work.priority ?? '—')}</span></div>
     <div class="wv5-meta"><span>${esc(work.owner)}</span><span>${esc(work.project ?? 'Chưa liên kết dự án')}</span></div>
     <div class="wv5-step"><small>Bước hiện tại</small><strong>${esc(work.currentStep ?? 'Chưa có bước thực thi xác minh')}</strong></div>
+    <div class="wv5-step"><small>Việc kế tiếp</small><strong>${esc(work.next ?? 'Chưa có việc kế tiếp được xác minh')}</strong></div>
     <div class="wv5-foot"><span class="wv5-status ${toneClass(work)}">${esc(work.status)}</span><span>${esc(ageLabel(work.lastActivityAt))}</span>${evidence}</div>
   </article>`;
 }
 function board(data: ExecutiveDashboardV4, url: URL): string {
   const state = queryState(url);
   const filtered = data.works.filter((work) => matches(work, state));
-  const defs: Array<[WorkLaneV5, string]> = [['active','Đang thực thi'],['waiting','Chờ'],['blocked','Bị chặn'],['done','Hoàn tất gần đây']];
+  const defs: Array<[WorkLaneV5, string]> = [['active','Đang thực thi'],['waiting','Chờ điều kiện'],['blocked','Bị chặn'],['done','Hoàn tất gần đây']];
   return `<div class="wv5-board">${defs.map(([lane,label]) => {
     const items = filtered.filter((work) => laneFor(work) === lane);
     return `<section class="wv5-lane ${lane}"><header><h2>${label}</h2><b>${items.length}</b></header><div class="wv5-stack">${items.length ? items.map((work) => card(work,url)).join('') : '<div class="wv5-empty">Không có công việc phù hợp.</div>'}</div></section>`;
@@ -116,8 +117,8 @@ function detail(data: ExecutiveDashboardV4, url: URL, selectedRaw: string): stri
 
 export function renderWorkContentV5(data: ExecutiveDashboardV4, url: URL, selectedRaw = ''): string {
   const source = `<div class="wv5-source"><b>${esc(data.sourceStatus || 'Nguồn trực tiếp')}</b><span>${esc(data.sourceNote || 'Dữ liệu đang đồng bộ từ nguồn hiện hành.')}</span></div>`;
-  const counts = `<div class="wv5-counts"><article><small>Đang làm</small><b>${data.activeCount}</b></article><article><small>Chờ xử lý</small><b>${data.waitingCount}</b></article><article><small>Bị chặn</small><b>${data.blockedCount}</b></article><article><small>Tạm ngưng / mất tín hiệu</small><b>${data.pausedCount}</b></article></div>`;
-  return `<div class="wv5-shell" data-live-section="work-v5"><div class="wv5-intro"><div><h1>Công việc</h1><p>Nhìn một lần để biết việc nào đang chạy, ai phụ trách và bước hiện tại.</p></div><span>Cập nhật ${esc(new Date(data.generatedAt).toLocaleString('vi-VN',{hour12:false}))}</span></div>${source}${selectedRaw ? detail(data,url,selectedRaw) : `${counts}${filterBar(data,url)}${board(data,url)}`}</div>`;
+  const counts = `<div class="wv5-counts"><article><small>Đang làm</small><b>${data.activeCount}</b></article><article><small>Chờ điều kiện</small><b>${data.waitingCount}</b></article><article><small>Bị chặn</small><b>${data.blockedCount}</b></article><article><small>Tạm ngưng / mất tín hiệu</small><b>${data.pausedCount}</b></article></div>`;
+  return `<div class="wv5-shell" data-live-section="work-v5"><div class="wv5-intro"><div><h1>Công việc</h1><p>Nhìn một lần để biết việc nào đang chạy, ai phụ trách, bước hiện tại và việc kế tiếp.</p></div><span>Cập nhật ${esc(new Date(data.generatedAt).toLocaleString('vi-VN',{hour12:false}))}</span></div>${source}${selectedRaw ? detail(data,url,selectedRaw) : `${counts}${filterBar(data,url)}${board(data,url)}`}</div>`;
 }
 export const WORK_V5_CSS = `
 .wv5-source{display:flex;gap:9px;align-items:center;padding:8px 10px;margin-bottom:10px;border:1px solid #28527e;border-radius:8px;background:#092443}.wv5-source b{font-size:10px;color:#49d99a;white-space:nowrap}.wv5-source span{font-size:10px;color:#8fa7c1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.wv5-counts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:10px}.wv5-counts article{border:1px solid #244b77;border-radius:8px;background:#0a294d;padding:8px 10px;display:flex;align-items:center;justify-content:space-between}.wv5-counts small{color:#829ab6}.wv5-counts b{font-size:17px}
