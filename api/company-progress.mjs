@@ -140,7 +140,7 @@ export function parseCentralPriorities(body = '') {
     rows.push({ priority: heading[2], number, label: cleanTitle(heading[1]) });
   }
 
-  const currentSection = text.match(/## CURRENT OWNER PRIORITY[^\n]*\n([\s\S]*?)(?=\n## |$)/i)?.[1] || '';
+  const currentSection = text.match(/##\s+(?:CURRENT OWNER PRIORITY|ƯU TIÊN HIỆN HÀNH)[^\n]*\n([\s\S]*?)(?=\n## |$)/i)?.[1] || '';
   const current = /^\s*\d+\.\s+\*\*#(\d+)\s+—\s+([^*\n]+)\*\*(?:\s*:\s*([^\n]+))?/gm;
   for (const match of currentSection.matchAll(current)) {
     const number = Number(match[1]);
@@ -168,11 +168,21 @@ export function parseEmployees(body = '') {
 
     const legacyShape = cells.length >= 7;
     const transitionalShape = cells.length === 6;
+    const currentShape = cells.length === 4;
     const label = legacyShape ? cells[5] : cells[1];
-    const enabledRaw = String(legacyShape ? cells[6] : cells[4] || '').toLowerCase();
-    const enabled = enabledRaw.startsWith('true');
-    const activation = transitionalShape ? String(cells[5] || '').toUpperCase() : null;
-    const active = enabled && (!activation || activation === 'ACTIVE');
+    let active = false;
+    if (legacyShape) {
+      active = String(cells[6] || '').toLowerCase().startsWith('true');
+    } else if (transitionalShape) {
+      const enabled = String(cells[4] || '').toLowerCase().startsWith('true');
+      active = enabled && String(cells[5] || '').toUpperCase() === 'ACTIVE';
+    } else if (currentShape) {
+      const status = String(cells[3] || '').toLowerCase();
+      const disabled = /tạm dừng|chưa kích hoạt|paused|pending/.test(status);
+      active = !disabled && /đã kích hoạt|hoạt động|gọi được|đã cấu hình|enabled|available/.test(status);
+    } else {
+      active = String(cells[4] || '').toLowerCase().startsWith('true');
+    }
     rows.push({
       command,
       employeeId: employeeMatch[1].toUpperCase(),
@@ -188,8 +198,10 @@ export function inferDeclaredExecutor(body = '', issueNumber = null) {
   if (!issueNumber) return null;
   const line = String(body).split(/\r?\n/).find((row) => new RegExp(`^\\s*\\d+\\.\\s+\\*\\*#${issueNumber}\\b`).test(row));
   if (!line) return null;
-  const match = line.match(/(?:Actual executor now|executor|owner)\s*=\s*`([^`]+)`/i);
-  return match?.[1]?.trim() || null;
+  const direct = line.match(/(?:Actual executor now|executor|owner)\s*=\s*`([^`]+)`/i);
+  if (direct) return direct[1].trim();
+  const assigned = line.match(/đã giao cho\s+\*\*([^*]+)\*\*/i);
+  return assigned?.[1]?.trim() || null;
 }
 
 export function inferOwnerAction(text = '') {
@@ -237,8 +249,10 @@ export async function buildCompanyProgress(fetchImpl = fetch) {
   for (const row of declared.slice(0, 6)) {
     try {
       const live = await issue(row.number, owner, repo, fetchImpl);
+      const titlePriority = String(live.title || '').match(/\[(P[0-2])\]/i)?.[1]?.toUpperCase();
       priorityIssues.push({
         ...row,
+        priority: titlePriority || row.priority,
         title: cleanTitle(live.title || row.label),
         status: issueStatus(live),
         open: live.state === 'open',
