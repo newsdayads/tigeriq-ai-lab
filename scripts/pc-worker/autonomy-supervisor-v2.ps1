@@ -73,6 +73,7 @@ $Components = @(
   [pscustomobject]@{ id='nv02-github-queue'; task='TigerIQ NV02 GitHub Queue'; mode='process'; uri=$null; jsonOk=$false; pattern='github-queue-sync\.js'; autoRepair=$true; critical=$true },
   [pscustomobject]@{ id='orchestrator'; task='TigerIQ Mission Orchestrator'; mode='process'; uri=$null; jsonOk=$false; pattern='mission-orchestrator.*standalone\.js'; autoRepair=$true; critical=$true },
   [pscustomobject]@{ id='pc01-worker'; task='TigerIQ PC01 Native Worker'; mode='process'; uri=$null; jsonOk=$false; pattern='pc01-native-worker.*standalone\.js'; autoRepair=$true; critical=$true },
+  [pscustomobject]@{ id='nv06-openclaw-worker'; task='TigerIQ NV06 OpenClaw Worker'; mode='process'; uri=$null; jsonOk=$false; pattern='nv06-openclaw-worker.*standalone\.js'; autoRepair=$true; critical=$true },
   [pscustomobject]@{ id='nv02-worker'; task='TigerIQ NV02 Worker'; mode='process'; uri=$null; jsonOk=$false; pattern='nv02-worker\\groq-worker\.mjs'; autoRepair=$false; critical=$false },
   [pscustomobject]@{ id='desktop-commander'; task='TigerIQ Desktop Commander Remote'; mode='process'; uri=$null; jsonOk=$false; pattern='desktop-commander.*remote --persist-session'; autoRepair=$false; critical=$true }
 )
