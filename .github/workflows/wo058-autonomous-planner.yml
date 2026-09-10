@@ -1,0 +1,70 @@
+name: WO-058 Autonomous Planner V1
+
+on:
+  push:
+    branches:
+      - 'wo058/autonomous-planner-v1'
+  pull_request:
+    paths:
+      - 'apps/autonomous-planner/**'
+      - 'scripts/pc01-autonomy/**'
+      - 'config/autonomy/**'
+      - 'tests/autonomous-planner.test.ts'
+      - '.github/workflows/wo058-autonomous-planner.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  linux-quality-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Autonomy safety contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "held_authorization" apps/autonomous-planner/src/core.ts
+          grep -q "'main','master','production','prod'" apps/autonomous-planner/src/core.ts
+          grep -q "autonomy:" apps/autonomous-planner/src/core.ts
+          ! grep -R -E -i 'openclaw[[:space:]]+(connect|login|auth|enable|start)' apps/autonomous-planner scripts/pc01-autonomy
+          echo 'WO058_AUTONOMY_SAFETY_CONTRACT_PASS'
+
+  windows-build-gate:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Confirm planner artifact and PowerShell syntax
+        shell: powershell
+        run: |
+          if (-not (Test-Path 'dist\apps\autonomous-planner\src\standalone.js')) { throw 'Autonomous planner build artifact missing' }
+          $scripts = @('scripts\pc01-autonomy\Install-PC01-AutonomousPlanner.ps1','scripts\pc01-autonomy\Invoke-WO058-Physical-E2E.ps1')
+          $failed = $false
+          foreach ($script in $scripts) {
+            $tokens = $null; $errors = $null
+            [Management.Automation.Language.Parser]::ParseFile((Resolve-Path $script),[ref]$tokens,[ref]$errors) | Out-Null
+            foreach ($parseError in @($errors)) {
+              $failed = $true
+              Write-Host ("PARSER_ERROR {0}:{1}:{2} token=[{3}] message={4}" -f $script,$parseError.Extent.StartLineNumber,$parseError.Extent.StartColumnNumber,$parseError.Extent.Text,$parseError.Message)
+            }
+          }
+          if ($failed) { throw 'PowerShell parse gate failed' }
+          Write-Host 'WO058_WINDOWS_BUILD_PASS'

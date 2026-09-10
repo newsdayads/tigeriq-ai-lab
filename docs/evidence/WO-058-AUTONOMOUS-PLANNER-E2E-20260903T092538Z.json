@@ -1,0 +1,47 @@
+{
+    "workOrder":  "WO-058",
+    "runId":  "20260903T092538Z",
+    "host":  "PC01",
+    "branch":  "wo058/autonomous-planner-v1",
+    "allPass":  true,
+    "plannerTask":  "TigerIQ Autonomous Planner",
+    "tests":  [
+                  {
+                      "test":  "A_AUTO_DISCOVER_AND_EXECUTE_TOOL",
+                      "pass":  true,
+                      "taskId":  "WO058-A-20260903T092538Z",
+                      "jobId":  "JOB-1D0BE2E2-E215-4D37-840E-286685219933",
+                      "artifact":  ".tigeriq-runtime/autonomy/WO058-AUTO-ARTIFACT-20260903T092538Z.txt"
+                  },
+                  {
+                      "test":  "B_DEPENDENCY_AND_LOCAL_AI",
+                      "pass":  true,
+                      "taskId":  "WO058-B-20260903T092538Z",
+                      "jobId":  "JOB-4673CBD3-475C-441E-B9EB-05B1A63DC076",
+                      "model":  "qwen3:8b",
+                      "processor":  "100% GPU"
+                  },
+                  {
+                      "test":  "C_AUTHORIZATION_HOLD",
+                      "pass":  true,
+                      "taskId":  "WO058-C-20260903T092538Z",
+                      "controllerJobId":  null,
+                      "blockedArtifactAbsent":  true
+                  },
+                  {
+                      "test":  "D_PC01_BASELINE_REMAINS_HEALTHY",
+                      "pass":  true,
+                      "controller":  "TigerIQ Workforce Controller V1",
+                      "postgres":  true,
+                      "pc01":  {
+                                   "employeeId":  "EMP-PC01-NATIVE",
+                                   "deviceId":  "DEV-PC01",
+                                   "health":  "ok",
+                                   "lastHeartbeatAt":  "2026-09-03T09:27:10.640Z",
+                                   "online":  true
+                               }
+                  }
+              ],
+    "mainProductionTouched":  false,
+    "secretPrinted":  false
+}

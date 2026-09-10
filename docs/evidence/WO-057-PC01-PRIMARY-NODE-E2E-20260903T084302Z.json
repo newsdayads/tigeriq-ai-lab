@@ -1,0 +1,192 @@
+{
+    "workOrder":  "WO-057",
+    "runId":  "20260903T084302Z",
+    "host":  "PC01",
+    "startedAt":  "2026-09-03T08:43:02.8111440Z",
+    "completedAt":  "2026-09-03T08:44:10.1317865Z",
+    "branch":  "wo057/pc01-primary-ai-compute-node",
+    "headSha":  "3bc06fdd5e1049e8b3ac7a6c093854a2562cd122",
+    "tests":  [
+                  {
+                      "test":  "A_HEALTH",
+                      "pass":  true,
+                      "evidence":  {
+                                       "postgres":  true,
+                                       "pc01":  {
+                                                    "employeeId":  "EMP-PC01-NATIVE",
+                                                    "deviceId":  "DEV-PC01",
+                                                    "health":  "ok",
+                                                    "lastHeartbeatAt":  "2026-09-03T08:43:03.172Z",
+                                                    "online":  true
+                                                },
+                                       "controller":  "TigerIQ Workforce Controller V1",
+                                       "ollama":  "qwen3:8b"
+                                   }
+                  },
+                  {
+                      "test":  "B_WORKFORCE",
+                      "pass":  true,
+                      "evidence":  {
+                                       "employees":  1,
+                                       "devices":  1,
+                                       "queuedJobs":  0,
+                                       "activeLeases":  0
+                                   }
+                  },
+                  {
+                      "test":  "C_LOCAL_AI",
+                      "pass":  true,
+                      "evidence":  {
+                                       "jobId":  "JOB-32405FD6-BED7-4FA2-A780-F03192568B23",
+                                       "evidence":  [
+                                                        {
+                                                            "evidenceId":  "EV-E54CA16D-2CE8-4AB3-8812-2871EDD45454",
+                                                            "jobId":  "JOB-32405FD6-BED7-4FA2-A780-F03192568B23",
+                                                            "resultId":  "RS-6B762F0F-7940-45B4-B214-E097AB7958C6",
+                                                            "kind":  "json",
+                                                            "ref":  ".tigeriq-runtime/evidence/JOB-32405FD6-BED7-4FA2-A780-F03192568B23/1788424994130-completed.json",
+                                                            "summary":  "PC01 native worker json evidence",
+                                                            "sha256":  "0cb8279c4083734c05f82f6e3dc0b41ac4e718937a2874e490c16e08863ce5ad",
+                                                            "createdAt":  "2026-09-03T08:43:14.141Z"
+                                                        }
+                                                    ],
+                                       "metrics":  {
+                                                       "model":  "qwen3:8b",
+                                                       "processor":  "100% GPU",
+                                                       "sizeBytes":  5569815510,
+                                                       "vramBytes":  5569815510,
+                                                       "evalTokens":  289,
+                                                       "promptTokens":  62,
+                                                       "tokensPerSec":  30.427205332783608,
+                                                       "loadDurationMs":  2.4779,
+                                                       "totalDurationMs":  9642.7982
+                                                   },
+                                       "stage":  "done"
+                                   }
+                  },
+                  {
+                      "test":  "D_TOOL_EXECUTION",
+                      "pass":  true,
+                      "evidence":  {
+                                       "jobId":  "JOB-89A4240E-2895-427F-8CB5-D3DAC1EAFD93",
+                                       "evidence":  [
+                                                        {
+                                                            "evidenceId":  "EV-A2A8988C-66B4-4B38-B5A8-CAE4DE6FF13C",
+                                                            "jobId":  "JOB-89A4240E-2895-427F-8CB5-D3DAC1EAFD93",
+                                                            "resultId":  "RS-04DDD72F-CA55-4AA4-BD5F-8A2D5F3FA1D9",
+                                                            "kind":  "json",
+                                                            "ref":  ".tigeriq-runtime/evidence/JOB-89A4240E-2895-427F-8CB5-D3DAC1EAFD93/1788424995590-completed.json",
+                                                            "summary":  "PC01 native worker json evidence",
+                                                            "sha256":  "501f0bc463964c09dc4f9d775af863b1824f265973523165ce8a51c42bcacf2c",
+                                                            "createdAt":  "2026-09-03T08:43:15.614Z"
+                                                        }
+                                                    ],
+                                       "artifact":  ".tigeriq-runtime/e2e/20260903T084302Z/artifact.txt",
+                                       "commands":  [
+                                                        {
+                                                            "detail":  {
+                                                                           "path":  ".tigeriq-runtime\\e2e\\20260903T084302Z\\fixture.txt",
+                                                                           "bytes":  20
+                                                                       },
+                                                            "stderr":  "",
+                                                            "stdout":  "TIGERIQ_FIXTURE_PASS",
+                                                            "exitCode":  0,
+                                                            "timedOut":  false,
+                                                            "operation":  "read_file",
+                                                            "durationMs":  3
+                                                        },
+                                                        {
+                                                            "detail":  {
+                                                                           "path":  ".tigeriq-runtime\\e2e\\20260903T084302Z\\artifact.txt"
+                                                                       },
+                                                            "stderr":  "",
+                                                            "stdout":  "WROTE 26 bytes",
+                                                            "exitCode":  0,
+                                                            "timedOut":  false,
+                                                            "operation":  "write_file",
+                                                            "durationMs":  5
+                                                        }
+                                                    ]
+                                   }
+                  },
+                  {
+                      "test":  "E_FAILURE_HANDLING",
+                      "pass":  true,
+                      "evidence":  {
+                                       "jobId":  "JOB-9C1AF8E6-EF41-4766-A5F7-A8272310B47B",
+                                       "evidence":  [
+                                                        {
+                                                            "evidenceId":  "EV-B0B41D69-B441-497F-90BA-A732E12589F3",
+                                                            "jobId":  "JOB-9C1AF8E6-EF41-4766-A5F7-A8272310B47B",
+                                                            "resultId":  "RS-472B9735-09E0-4665-9709-73593F3685EE",
+                                                            "kind":  "json",
+                                                            "ref":  ".tigeriq-runtime/evidence/JOB-9C1AF8E6-EF41-4766-A5F7-A8272310B47B/1788424996619-failed.json",
+                                                            "summary":  "PC01 failure evidence",
+                                                            "sha256":  "3a071bfefa97125cf3873a61252c9392932cf49976c7e78e61d48bee80792f7f",
+                                                            "createdAt":  "2026-09-03T08:43:16.631Z"
+                                                        }
+                                                    ],
+                                       "failure":  {
+                                                       "code":  "ENOENT",
+                                                       "message":  "ENOENT: no such file or directory, stat \u0027F:\\TigerIQ\\Workspace\\tigeriq-ai-lab\\.tigeriq-runtime\\e2e\\20260903T084302Z\\does-not-exist.txt\u0027",
+                                                       "retriable":  false
+                                                   }
+                                   }
+                  },
+                  {
+                      "test":  "F_CONCURRENCY",
+                      "pass":  true,
+                      "evidence":  {
+                                       "overlap":  true,
+                                       "intervals":  [
+                                                         [
+                                                             "2026-09-03T08:43:59.576Z",
+                                                             "2026-09-03T08:44:00.477Z"
+                                                         ],
+                                                         [
+                                                             "2026-09-03T08:43:59.602Z",
+                                                             "2026-09-03T08:44:01.299Z"
+                                                         ]
+                                                     ],
+                                       "configuredLocalAiMax":  2,
+                                       "jobs":  [
+                                                    "JOB-C05AC667-0964-4439-9876-179234A3C1D4",
+                                                    "JOB-3F0ECD78-32D7-417B-A7EB-17E67F80A536"
+                                                ]
+                                   }
+                  },
+                  {
+                      "test":  "G_RECOVERY",
+                      "pass":  true,
+                      "evidence":  {
+                                       "jobId":  "JOB-2DF1F2D3-2AB8-4C7F-9D90-472781169613",
+                                       "stage":  "done",
+                                       "pc01":  {
+                                                    "employeeId":  "EMP-PC01-NATIVE",
+                                                    "deviceId":  "DEV-PC01",
+                                                    "health":  "ok",
+                                                    "lastHeartbeatAt":  "2026-09-03T08:43:59.557Z",
+                                                    "online":  true
+                                                }
+                                   }
+                  }
+              ],
+    "allPass":  true,
+    "mainProductionTouched":  false,
+    "openClawDependency":  false,
+    "runtimeConfigVerification":  {
+                                      "contextLength":  4096,
+                                      "ctx4096":  true,
+                                      "deployedThinkFalse":  true,
+                                      "configuredLocalAiMax":  2,
+                                      "controllerHealthy":  true,
+                                      "postgresHealthy":  true,
+                                      "pc01Online":  true,
+                                      "pc01Health":  "ok",
+                                      "employees":  1,
+                                      "devices":  1,
+                                      "rootCause":  [
+
+                                                    ]
+                                  }
+}

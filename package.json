@@ -4,7 +4,9 @@
   "private": true,
   "description": "Evidence-gated distributed AI workforce control center",
   "type": "module",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -14,7 +16,10 @@
     "build": "tsc -p tsconfig.build.json",
     "command-center": "node dist/apps/dashboard/src/standalone.js",
     "workforce-controller": "node dist/apps/workforce-controller/src/standalone.js",
-    "ci": "npm run test:vercel-policy && npm run typecheck && npm run test && npm run test:e2e && npm run build"
+    "ci": "npm run test:vercel-policy && npm run typecheck && npm run test && npm run test:e2e && npm run build",
+    "pc01-native-worker": "node dist/apps/pc01-native-worker/src/standalone.js",
+    "autonomous-planner": "node dist/apps/autonomous-planner/src/standalone.js",
+    "mission-orchestrator": "node dist/apps/mission-orchestrator/src/standalone.js"
   },
   "dependencies": {
     "@vercel/oidc": "3.8.5"

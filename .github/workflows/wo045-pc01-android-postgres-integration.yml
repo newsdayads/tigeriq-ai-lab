@@ -1,0 +1,72 @@
+name: WO-045 PC01 Android PostgreSQL Integration
+
+on:
+  pull_request:
+    paths:
+      - 'apps/workforce-controller/**'
+      - 'packages/work-state/**'
+      - 'db/migrations/**'
+      - 'tests/pc01-android-postgres-integration.test.ts'
+      - '.github/workflows/wo045-pc01-android-postgres-integration.yml'
+  push:
+    branches:
+      - 'wo045/pc01-autonomy-hardening'
+    paths:
+      - 'apps/workforce-controller/**'
+      - 'packages/work-state/**'
+      - 'db/migrations/**'
+      - 'tests/pc01-android-postgres-integration.test.ts'
+      - '.github/workflows/wo045-pc01-android-postgres-integration.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  android-controller-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: tigeriq
+          POSTGRES_PASSWORD: tigeriq_test
+          POSTGRES_DB: tigeriq
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tigeriq -d tigeriq"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TIGERIQ_TEST_DATABASE_URL: postgresql://tigeriq:tigeriq_test@127.0.0.1:5432/tigeriq
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - name: Install repository dependencies
+        run: npm ci
+      - name: Install free PostgreSQL runtime adapter for integration only
+        run: npm install --no-save --ignore-scripts --package-lock=false pg@8.16.3
+      - name: Typecheck canonical integration
+        run: npm run typecheck
+      - name: Build canonical integration
+        run: npm run build
+      - name: Android to PC01 to PostgreSQL integration and restart replay regression
+        run: npx vitest run tests/pc01-android-postgres-integration.test.ts
+      - name: Single-protocol single-datastore and durable-replay guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! grep -R '/v1/android/sessions\|/v1/android/jobs/pull\|/v1/android/jobs/submit' apps/workforce-controller packages/work-state tests/pc01-android-postgres-integration.test.ts
+          test -f db/migrations/001_operational_state_v1.sql
+          test -f db/migrations/002_device_proof_replay_v1.sql
+          test ! -f scripts/pc-worker/workforce-controller-v1/workforce_controller_v1.sql
+          grep -q 'device_proof_replay_state' apps/workforce-controller/src/device-auth.ts
+          ! grep -q 'seenNonces' apps/workforce-controller/src/device-auth.ts
+          echo 'PC01_ANDROID_POSTGRES_DURABLE_REPLAY_GUARD_PASS'

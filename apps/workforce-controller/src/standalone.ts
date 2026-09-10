@@ -1,57 +1,89 @@
-import { FileJournal } from '../../../packages/event-store/src/index.js';
-import { CapabilityScheduler, TaskQueue, WorkforceRegistry } from '../../../packages/workforce/src/index.js';
-import { FileJournalWorkforceStateStore } from '../../../packages/workforce/src/journal-store.js';
-import { DurableNodeCredentialStore } from '../../../packages/workforce/src/node-credentials.js';
-import { NodePairingService, verifyAndroidP256PairingProof } from '../../../packages/workforce/src/pairing.js';
-import { RemoteTaskBroker } from '../../../packages/workforce/src/remote-task-broker.js';
-import { DurableWorkforceRuntime } from '../../../packages/workforce/src/runtime.js';
-import { DurableTaskMailbox } from '../../../packages/workforce/src/task-mailbox.js';
-import { startWorkforceController } from './server.js';
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { readFileSync } from 'node:fs';
+import os from 'node:os';
+import { pathToFileURL } from 'node:url';
+import { createPgPool } from '../../../packages/work-state/src/pg-driver.js';
+import { PostgresOperationalStateRepository, type SqlPoolLike } from '../../../packages/work-state/src/postgres-repository.js';
+import { OperationalWorkService } from '../../../packages/work-state/src/service.js';
+import { WorkforceControllerV1 } from './controller.js';
+import { LeaseRecoveryLoop } from './lease-recovery-loop.js';
 
-const journalPath = process.env.TIGERIQ_WORKFORCE_JOURNAL ?? 'F:\\TigerIQ\\State\\workforce.jsonl';
-const host = process.env.TIGERIQ_WORKFORCE_HOST ?? '127.0.0.1';
-const port = Number(process.env.TIGERIQ_WORKFORCE_PORT ?? '8790');
-const adminSecret = process.env.TIGERIQ_WORKFORCE_ADMIN_SECRET ?? '';
-const allowTailnetSelfPair = process.env.TIGERIQ_WORKFORCE_ALLOW_TAILNET_SELF_PAIR === '1';
+const EXPECTED_HOST='100.97.23.87';
+const EXPECTED_PORT=8790;
+const MAX_BODY_BYTES=512_000;
 
-if (!Number.isInteger(port) || port < 1 || port > 65535) {
-  throw new Error('TIGERIQ_WORKFORCE_PORT must be an integer between 1 and 65535');
+function fileSecret(file:string):string{try{return readFileSync(file,'utf8').trim();}catch{return '';}}
+function requireProductionConfig():{host:string;port:number;databaseUrl:string;ingressToken:string}{
+  const host=(process.env.TIGERIQ_WORKFORCE_HOST??EXPECTED_HOST).trim();
+  const port=Number(process.env.TIGERIQ_WORKFORCE_PORT??EXPECTED_PORT);
+  const databaseUrl=(process.env.TIGERIQ_DATABASE_URL??fileSecret('D:\\TigerIQ\\Secrets\\workforce-controller-v1.database-url')).trim();
+  const ingressToken=(process.env.TIGERIQ_INGRESS_TOKEN??fileSecret('D:\\TigerIQ\\Secrets\\pc01-primary-node.ingress-token')).trim();
+  if(host!==EXPECTED_HOST)throw new Error(`TIGERIQ_WORKFORCE_HOST must equal ${EXPECTED_HOST}`);
+  if(port!==EXPECTED_PORT)throw new Error(`TIGERIQ_WORKFORCE_PORT must equal ${EXPECTED_PORT}`);
+  if(!databaseUrl)throw new Error('TIGERIQ_DATABASE_URL is required for local PC01 PostgreSQL');
+  if(ingressToken.length<32)throw new Error('TIGERIQ_INGRESS_TOKEN must contain at least 32 characters');
+  return {host,port,databaseUrl,ingressToken};
 }
 
-const journal = new FileJournal(journalPath);
-const stateStore = new FileJournalWorkforceStateStore(journal);
-const credentialStore = new DurableNodeCredentialStore(journal);
-const registry = new WorkforceRegistry();
-const queue = new TaskQueue();
-const runtime = await DurableWorkforceRuntime.restore(
-  registry,
-  queue,
-  new CapabilityScheduler(registry),
-  stateStore,
-);
-const pairing = new NodePairingService(verifyAndroidP256PairingProof);
-const mailbox = new DurableTaskMailbox(journal);
-const remoteTasks = new RemoteTaskBroker(runtime, mailbox);
-const server = await startWorkforceController({
-  runtime,
-  pairing,
-  credentials: credentialStore,
-  remoteTasks,
-  adminSecret,
-  allowTailnetSelfPair,
-  host,
-  port,
-});
+async function readBody(request:IncomingMessage):Promise<Buffer>{
+  const chunks:Buffer[]=[];let total=0;
+  for await(const chunk of request){const value=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk);total+=value.length;if(total>MAX_BODY_BYTES)throw new Error('REQUEST_TOO_LARGE');chunks.push(value);}
+  return Buffer.concat(chunks);
+}
+function headersOf(request:IncomingMessage):Record<string,string|undefined>{
+  const out:Record<string,string|undefined>={};
+  for(const [name,value] of Object.entries(request.headers))out[name.toLowerCase()]=Array.isArray(value)?value.join(','):value;
+  return out;
+}
+function send(response:ServerResponse,status:number,body:Record<string,unknown>):void{
+  const raw=Buffer.from(JSON.stringify(body),'utf8');
+  response.writeHead(status,{
+    'Content-Type':'application/json; charset=utf-8','Content-Length':String(raw.length),'Cache-Control':'no-store',
+    'X-Content-Type-Options':'nosniff','X-Frame-Options':'DENY','Referrer-Policy':'no-referrer',
+    'Content-Security-Policy':"default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+  });
+  response.end(raw);
+}
 
-console.log(`TigerIQ Workforce Controller online: ${server.url}`);
-console.log(`Workforce journal: ${journalPath}`);
-console.log(adminSecret ? 'Pairing/admin writes enabled.' : 'Admin writes disabled: TIGERIQ_WORKFORCE_ADMIN_SECRET is not configured.');
-console.log(allowTailnetSelfPair ? 'Tailnet self-pair enabled for 100.64.0.0/10 peers.' : 'Tailnet self-pair disabled.');
+export async function startController():Promise<void>{
+  const {host,port,databaseUrl,ingressToken}=requireProductionConfig();
+  process.env.PGPASSFILE=process.env.PGPASSFILE?.trim()||'D:\\TigerIQ\\Secrets\\workforce-controller-v1.pgpass';
+  const pool=await createPgPool(databaseUrl,10);
+  const repository=new PostgresOperationalStateRepository(pool);
+  const service=new OperationalWorkService(repository);
+  const recovery=await service.recoverAfterRestart(new Date().toISOString());
+  const recoveryLoop=new LeaseRecoveryLoop(service,{
+    onSweep:(summary)=>{
+      if(summary.expiredLeases>0)console.log(JSON.stringify({event:'WORKFORCE_LEASE_RECOVERY',...summary}));
+    },
+    onError:(error)=>console.error(JSON.stringify({event:'WORKFORCE_LEASE_RECOVERY_ERROR',message:error instanceof Error?error.message:'lease recovery failed'})),
+  });
+  recoveryLoop.start();
+  const controller=new WorkforceControllerV1(pool,service,ingressToken);
+  const server=createServer(async(request,response)=>{
+    try{
+      const body=await readBody(request);
+      const result=await controller.handle({method:request.method??'GET',path:new URL(request.url??'/',`http://${host}:${port}`).pathname,headers:headersOf(request),body});
+      send(response,result.status,result.body);
+    }catch(error){
+      if(error instanceof Error&&error.message==='REQUEST_TOO_LARGE')return send(response,413,{ok:false,error:{code:'REQUEST_TOO_LARGE',message:'request body too large',retryable:false}});
+      send(response,503,{ok:false,error:{code:'CONTROLLER_UNAVAILABLE',message:'workforce controller unavailable',retryable:true}});
+    }
+  });
+  server.on('error',error=>{console.error(JSON.stringify({event:'WORKFORCE_CONTROLLER_ERROR',message:error.message}));});
+  await new Promise<void>((resolve,reject)=>{server.once('error',reject);server.listen(port,host,()=>resolve());});
+  console.log(JSON.stringify({event:'WORKFORCE_CONTROLLER_V1_START',host,port,hostname:os.hostname(),postgres:'operational-state-v1',ingress:'authenticated',recovery,leaseRecoveryIntervalMs:30_000}));
+  const shutdown=async(signal:string)=>{
+    recoveryLoop.stop();
+    console.log(JSON.stringify({event:'WORKFORCE_CONTROLLER_V1_STOP',signal}));
+    await new Promise<void>(resolve=>server.close(()=>resolve()));
+    const closable=pool as SqlPoolLike&{end?:()=>Promise<void>};
+    if(closable.end)await closable.end();
+    process.exit(0);
+  };
+  process.once('SIGINT',()=>void shutdown('SIGINT'));
+  process.once('SIGTERM',()=>void shutdown('SIGTERM'));
+}
 
-const shutdown = async () => {
-  await runtime.checkpoint();
-  await server.close();
-  process.exit(0);
-};
-process.once('SIGINT', shutdown);
-process.once('SIGTERM', shutdown);
+const invokedAsMain = Boolean(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]).href;
+if(invokedAsMain)startController().catch(error=>{console.error(JSON.stringify({event:'WORKFORCE_CONTROLLER_V1_FATAL',message:error instanceof Error?error.message:'startup failed'}));process.exit(1);});
