@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { buildCentralTask, parseCentralPriorities, parseCentralVersion, type GithubIssue } from '../apps/autonomous-planner/src/central-source.js';
-import { parseBacklog, toControllerBody } from '../apps/autonomous-planner/src/core.js';
+import { buildCentralTask, parseCentralPriorities, parseCentralVersion, shouldAdvanceCompletedTopPriority, type GithubIssue } from '../apps/autonomous-planner/src/central-source.js';
+import { parseBacklog, toControllerBody, type PlannerRuntimeState } from '../apps/autonomous-planner/src/core.js';
 
 const central=`# CENTRAL
 \`CENTRAL_VERSION=16\`
@@ -30,5 +30,12 @@ describe('CENTRAL P0 source materializer',()=>{
     expect(body.requiredCapabilities).toContain('ai_resource');
     expect(body.targetEmployeeId).toBeUndefined();
     expect((body.payload as Record<string,unknown>).route).toBe('ai_auto');
+  });
+  it('advances only when the top CENTRAL priority already completed its canonical job',()=>{
+    const top=buildCentralTask(issue,16,{rank:1,issueNumber:556,description:'current P0'});
+    const next=buildCentralTask({...issue,number:478},16,{rank:2,issueNumber:478,description:'next safe P0'});
+    const state:PlannerRuntimeState={version:1,tasks:{[top.taskId]:{stage:'done',updatedAt:'2026-09-10T00:00:00.000Z'},[next.taskId]:{stage:'done',updatedAt:'2026-09-10T00:00:00.000Z'}}};
+    expect(shouldAdvanceCompletedTopPriority({rank:1,issueNumber:556,description:'current P0'},top,state)).toBe(true);
+    expect(shouldAdvanceCompletedTopPriority({rank:2,issueNumber:478,description:'next safe P0'},next,state)).toBe(false);
   });
 });
