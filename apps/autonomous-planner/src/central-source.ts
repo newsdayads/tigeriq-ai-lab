@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { BacklogTask, PlannerBacklog, PlannerRuntimeState } from './core.js';
 
@@ -30,7 +30,8 @@ async function writeJsonAtomic(file:string,value:unknown):Promise<void>{
   await mkdir(path.dirname(file),{recursive:true});
   const temp=`${file}.${process.pid}.tmp`;
   await writeFile(temp,JSON.stringify(value,null,2),'utf8');
-  await rename(temp,file);
+  await copyFile(temp,file);
+  await unlink(temp).catch(()=>undefined);
 }
 async function optionalToken(file:string):Promise<string>{try{return await readText(file);}catch{return '';}}
 function githubHeaders(token:string):Record<string,string>{
