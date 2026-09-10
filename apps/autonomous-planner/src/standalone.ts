@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { actionable, parseBacklog, reconcile, toControllerBody, waitingDependencies, type PlannerRuntimeState } from './core.js';
+import { materializeCentralPriority, reportCompletedCentralTasks } from './central-source.js';
 import { parseAuthorizationStore } from './policy.js';
 
 const workspace=(process.env.TIGERIQ_WORKSPACE??'D:\\TigerIQ\\Workspace\\tigeriq-ai-lab').trim();
@@ -38,6 +39,8 @@ async function syncDispatched(state:PlannerRuntimeState):Promise<void>{
 }
 
 export async function plannerCycle():Promise<void>{
+  try{const materialized=await materializeCentralPriority();if(materialized.added)runtimeLog(JSON.stringify({event:'CENTRAL_P0_MATERIALIZED',...materialized}));}
+  catch(error){runtimeLogError(JSON.stringify({event:'CENTRAL_P0_MATERIALIZE_ERROR',message:String(error)}));}
   const backlog=parseBacklog(await readJson(backlogPath)),authorizations=parseAuthorizationStore(await readJson(authorizationPath));let state=reconcile(backlog,await loadState(),authorizations);await syncDispatched(state);
   const now=new Date().toISOString();for(const id of waitingDependencies(backlog,state))state.tasks[id]={...state.tasks[id],stage:'waiting_dependency',updatedAt:now,reason:'dependency_not_done'};
   const selected=actionable(backlog,state,dispatchLimit);
@@ -46,6 +49,8 @@ export async function plannerCycle():Promise<void>{
     catch(error){state.tasks[task.taskId]={...state.tasks[task.taskId],stage:'failed',updatedAt:new Date().toISOString(),reason:String(error).slice(0,1024)};runtimeLogError(JSON.stringify({event:'AUTONOMY_DISPATCH_ERROR',taskId:task.taskId,message:String(error)}));}
   }
   state.lastCycleAt=new Date().toISOString();await writeJson(statePath,state);
+  try{const report=await reportCompletedCentralTasks(backlog,state);if(report.reported)runtimeLog(JSON.stringify({event:'CENTRAL_P0_EVIDENCE_REPORTED',...report}));}
+  catch(error){runtimeLogError(JSON.stringify({event:'CENTRAL_P0_REPORT_ERROR',message:String(error)}));}
   const held=Object.entries(state.tasks).filter(([,v])=>v.stage==='held_authorization').map(([id,v])=>({taskId:id,policy:v.policy}));
   runtimeLog(JSON.stringify({event:'AUTONOMY_CYCLE',workspace,selected:selected.map(t=>t.taskId),heldAuthorization:held,statePath,authorizationPath}));
 }
