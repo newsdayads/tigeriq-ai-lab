@@ -6,7 +6,7 @@ const execFileAsync = promisify(execFile);
 
 type Issue = { number?: number; title?: string; body?: string | null; state?: string; updated_at?: string; html_url?: string | null };
 type Comment = { body?: string | null; created_at?: string | null; updated_at?: string | null; html_url?: string | null };
-type EmployeeCode = 'NV01' | 'NV02' | 'NV03' | 'NV04';
+export type EmployeeCode = 'NV01' | 'NV02' | 'NV03' | 'NV04' | 'NV05' | 'NV06' | 'NV07' | 'NV08';
 type Tone = 'active' | 'waiting' | 'blocked' | 'done' | 'paused' | 'stale' | 'unknown';
 const WORK_STALE_MS = Math.max(30_000, Number(process.env.TIGERIQ_WEB_WORK_STALE_MS) || 120_000);
 
@@ -110,14 +110,55 @@ async function ghJsonPages<T>(repo: string, endpoint: string, maxPages = 5): Pro
   return rows;
 }
 
+const EMPLOYEE_CODES_V5 = new Set<EmployeeCode>(['NV01','NV02','NV03','NV04','NV05','NV06','NV07','NV08']);
+
 function employeeCode(value: string): EmployeeCode | null {
-  const exact = value.match(/\b(NV0[1-4])\b/i)?.[1]?.toUpperCase() as EmployeeCode | undefined;
-  if (exact) return exact;
-  if (/Minh\s*\(/i.test(value)) return 'NV01';
-  if (/Khoa\s*\(/i.test(value)) return 'NV02';
-  if (/Huy\s*\(/i.test(value)) return 'NV03';
-  if (/Khải\s*\(/i.test(value)) return 'NV04';
-  return null;
+  const exact = value.match(/\b(NV0[1-8])\b/i)?.[1]?.toUpperCase() as EmployeeCode | undefined;
+  return exact && EMPLOYEE_CODES_V5.has(exact) ? exact : null;
+}
+
+export type RegistryPersonV5 = {
+  code: EmployeeCode;
+  initials: string;
+  name: string;
+  role: string;
+  defaultStatus: string;
+  defaultTone: Tone;
+};
+
+function personInitials(name: string): string {
+  const label = name.split('(')[0]?.trim() || name.trim();
+  const words = label.match(/[\p{L}\p{N}]+/gu) ?? [];
+  if (words.length > 1) return words.map((word) => word[0] ?? '').join('').slice(0, 2).toUpperCase();
+  return (words[0] ?? 'AI').slice(0, 2).toUpperCase();
+}
+
+function registryDefaultState(cell: string): Pick<RegistryPersonV5,'defaultStatus'|'defaultTone'> {
+  const text = cell.replace(/[*`]/g, '').trim();
+  if (/\bPAUSED\b/i.test(text)) return { defaultStatus: 'PAUSED (tạm dừng)', defaultTone: 'paused' };
+  if (/\bBLOCKED\b/i.test(text)) return { defaultStatus: 'BLOCKED (bị chặn)', defaultTone: 'blocked' };
+  if (/\bOWNER_HOLD\b/i.test(text)) return { defaultStatus: 'OWNER_HOLD (chờ anh Sơn duyệt)', defaultTone: 'waiting' };
+  if (/\bPENDING\b/i.test(text)) return { defaultStatus: 'PENDING (chưa kích hoạt)', defaultTone: 'waiting' };
+  if (/\bAVAILABLE_MANUAL\b/i.test(text)) return { defaultStatus: 'AVAILABLE_MANUAL (dùng thủ công)', defaultTone: 'waiting' };
+  if (/\bVERIFY_PENDING\b/i.test(text)) return { defaultStatus: 'READY (sẵn sàng)', defaultTone: 'waiting' };
+  return { defaultStatus: 'IDLE (rảnh)', defaultTone: 'waiting' };
+}
+
+export function parseRegistryWorkforceV5(body: string): RegistryPersonV5[] {
+  const rows: RegistryPersonV5[] = [];
+  for (const line of String(body || '').split(/\r?\n/)) {
+    if (!line.trim().startsWith('|')) continue;
+    const cells = line.split('|').slice(1, -1).map((cell) => cell.trim());
+    const code = employeeCode(cells[0] ?? '');
+    if (!code) continue;
+    const name = (cells[1] ?? '').replace(/\*\*/g, '').replace(/`/g, '').trim();
+    const roleMatch = name.match(new RegExp(`\\(${code}\\s*-\\s*(.+)\\)$`, 'i'));
+    if (!roleMatch?.[1]) continue;
+    const state = registryDefaultState(cells[3] ?? '');
+    rows.push({ code, initials: personInitials(name), name, role: roleMatch[1].trim(), ...state });
+  }
+  const byCode = new Map(rows.map((row) => [row.code, row]));
+  return [...byCode.values()].sort((a, b) => a.code.localeCompare(b.code));
 }
 
 function ownerCode(issue: Issue, comments: Comment[]): EmployeeCode | null {
@@ -145,12 +186,39 @@ function humanizeIssueTitle(number: number | null, raw: string): string {
   return raw.replace(/^(?:\[[^\]]+\]\s*)+/, '').replace(/\brollout\b/gi,'xuất bản').replace(/\bdrill-down\b/gi,'xem chi tiết');
 }
 
-function ownerName(code: EmployeeCode | null): string {
-  if (code === 'NV01') return 'Minh (NV01)';
-  if (code === 'NV02') return 'Khoa (NV02)';
-  if (code === 'NV03') return 'Huy (NV03)';
-  if (code === 'NV04') return 'Khải (NV04)';
-  return 'Chưa xác minh';
+function ownerName(code: EmployeeCode | null, roster: ReadonlyMap<EmployeeCode, RegistryPersonV5>): string {
+  if (!code) return 'Chưa xác minh';
+  return roster.get(code)?.name ?? code;
+}
+
+function canonicalizeEmployeeReferences(value: string, roster: ReadonlyMap<EmployeeCode, RegistryPersonV5>): string {
+  let output = value;
+  for (const [code, person] of roster) {
+    const label = person.name.split('(')[0]?.trim();
+    if (!label) continue;
+    const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    output = output.replace(new RegExp(`${escaped}\\s*\\(${code}(?:\\s*-[^)]*)?\\)`, 'gi'), person.name);
+  }
+  return output;
+}
+
+function canonicalizeWorkV5(work: ExecutiveWorkV4, roster: ReadonlyMap<EmployeeCode, RegistryPersonV5>): ExecutiveWorkV4 {
+  const text = (value: string | undefined) => value === undefined ? undefined : canonicalizeEmployeeReferences(value, roster);
+  return {
+    ...work,
+    title: canonicalizeEmployeeReferences(work.title, roster),
+    goal: text(work.goal), currentStep: text(work.currentStep), next: canonicalizeEmployeeReferences(work.next, roster),
+    timeline: work.timeline?.map((row) => ({ ...row, message: canonicalizeEmployeeReferences(row.message, roster) })),
+  };
+}
+
+function personStatusFromWork(work: ExecutiveWorkV4, fallback: RegistryPersonV5): Pick<ExecutivePersonV4,'status'|'tone'> {
+  if (work.tone === 'active') return { status: 'RUNNING (đang làm thật)', tone: 'active' };
+  if (work.tone === 'blocked') return { status: 'BLOCKED (bị chặn)', tone: 'blocked' };
+  if (work.tone === 'paused') return { status: 'PAUSED (tạm dừng)', tone: 'paused' };
+  if (work.tone === 'waiting') return { status: 'QUEUED (đang chờ nhận)', tone: 'waiting' };
+  if (work.tone === 'stale') return { status: 'READY (sẵn sàng)', tone: 'waiting' };
+  return { status: fallback.defaultStatus, tone: fallback.defaultTone };
 }
 
 function lifecycle(comments: Comment[], issue: Issue): { status: string; tone: Tone; current: string } {
@@ -293,12 +361,12 @@ type RuntimeTaskViewV5 = import('./server.js').WorkforceTaskTelemetry & { create
 type RuntimeEmployeeViewV5 = import('./server.js').WorkforceEmployeeTelemetry & { lastHeartbeatAt?:string|null; stale?:boolean };
 function runtimeStageToneV5(stage:string,hasLease:boolean,freshWorker:boolean):Tone{if(stage==='done')return 'done';if(stage==='failed')return 'blocked';if(stage==='cancelled')return 'paused';if(['leased','reviewing','judging'].includes(stage)&&hasLease)return freshWorker?'active':'stale';return 'waiting';}
 function runtimeStageLabelV5(stage:string,tone:Tone):string{if(tone==='active')return 'Đang làm';if(tone==='stale')return 'Mất tín hiệu';if(stage==='done')return 'Hoàn tất';if(stage==='failed')return 'Vướng mắc';if(stage==='cancelled')return 'Tạm ngưng';if(stage==='queued')return 'Chờ xử lý';return 'Chờ runtime worker';}
-export function mergeRuntimeWorkTruthV5(governanceWorks:ExecutiveWorkV4[],telemetry:ServerTelemetry,nowMs=Date.now()):ExecutiveWorkV4[]{
+export function mergeRuntimeWorkTruthV5(governanceWorks:ExecutiveWorkV4[],telemetry:ServerTelemetry,nowMs=Date.now(),registry:ReadonlyMap<EmployeeCode,RegistryPersonV5>=new Map()):ExecutiveWorkV4[]{
   const governance=governanceWorks.map((work)=>['active','stale'].includes(work.tone)?{...work,status:'Chờ xác minh thực thi',tone:'waiting' as Tone,currentStep:'GitHub chỉ là metadata; cần lease + heartbeat runtime để claim đang chạy.'}:work);
   const staleAfter=Math.max(5_000,telemetry.staleAfterMs??45_000),employees=(telemetry.workforce?.roster??[]) as RuntimeEmployeeViewV5[];
   const employeeById=new Map(employees.map((row)=>[row.employeeId,row])),tasks=(telemetry.workforce?.taskList??[]) as RuntimeTaskViewV5[];
   const selected=[...tasks].sort((a,b)=>Date.parse(b.updatedAt??'')-Date.parse(a.updatedAt??'')).filter((task,index)=>task.stage!=='done'||index<8).slice(0,32);
-  const runtime=selected.map((task):ExecutiveWorkV4=>{const employeeId=task.leaseEmployeeId??task.assignedEmployeeId??null,employee=employeeId?employeeById.get(employeeId):undefined,hb=task.workerHeartbeatAt??employee?.lastHeartbeatAt??null,hbAt=Date.parse(hb??''),fresh=task.workerOnline===true&&task.workerStale!==true&&Number.isFinite(hbAt)&&nowMs-hbAt<=staleAfter,hasLease=Boolean(task.leaseId),tone=runtimeStageToneV5(task.stage,hasLease,fresh),last=tone==='active'||tone==='stale'?hb??task.updatedAt:task.updatedAt??hb,code=employeeId?employeeCode(employeeId):null;return {number:null,title:compact(task.objective||task.taskId,96),ownerCode:code,owner:employee?.displayName??employeeId??'Runtime worker',progressPercent:null,progressLabel:tone==='done'?'100%':'—',status:runtimeStageLabelV5(task.stage,tone),tone,next:task.stage==='queued'?'Chờ worker nhận việc':task.stage==='failed'?(task.lastFailureCode??'Xem lỗi runtime'):task.stage==='done'?'Đã hoàn tất':`Runtime stage: ${task.stage}`,updated:task.updatedAt?new Date(task.updatedAt).toLocaleString('vi-VN',{hour12:false}):'—',workId:task.taskId,projectId:'project:tigeriq',project:'TigerIQ',priority:task.priority,goal:compact(task.objective,220),currentStep:`Runtime · ${task.stage}`,updatedAt:task.updatedAt??undefined,lastActivityAt:last??undefined,evidenceRef:task.sourceRef??`runtime-truth-v1:job:${task.taskId}`,timeline:[...(task.leasedAt?[{timestamp:task.leasedAt,message:'Worker nhận lease',evidenceRef:`runtime-truth-v1:job:${task.taskId}`}]:[]),...(task.updatedAt?[{timestamp:task.updatedAt,message:`Runtime stage: ${task.stage}`,evidenceRef:`runtime-truth-v1:job:${task.taskId}`}]:[])]};});
+  const runtime=selected.map((task):ExecutiveWorkV4=>{const employeeId=task.leaseEmployeeId??task.assignedEmployeeId??null,employee=employeeId?employeeById.get(employeeId):undefined,hb=task.workerHeartbeatAt??employee?.lastHeartbeatAt??null,hbAt=Date.parse(hb??''),fresh=task.workerOnline===true&&task.workerStale!==true&&Number.isFinite(hbAt)&&nowMs-hbAt<=staleAfter,hasLease=Boolean(task.leaseId),tone=runtimeStageToneV5(task.stage,hasLease,fresh),last=tone==='active'||tone==='stale'?hb??task.updatedAt:task.updatedAt??hb,code=employeeId?employeeCode(`${employeeId} ${employee?.displayName??''}`):null;return {number:null,title:compact(task.objective||task.taskId,96),ownerCode:code,owner:code?(registry.get(code)?.name??employee?.displayName??code):(employee?.displayName??employeeId??'Runtime worker'),progressPercent:null,progressLabel:tone==='done'?'100%':'—',status:runtimeStageLabelV5(task.stage,tone),tone,next:task.stage==='queued'?'Chờ worker nhận việc':task.stage==='failed'?(task.lastFailureCode??'Xem lỗi runtime'):task.stage==='done'?'Đã hoàn tất':`Runtime stage: ${task.stage}`,updated:task.updatedAt?new Date(task.updatedAt).toLocaleString('vi-VN',{hour12:false}):'—',workId:task.taskId,projectId:'project:tigeriq',project:'TigerIQ',priority:task.priority,goal:compact(task.objective,220),currentStep:`Runtime · ${task.stage}`,updatedAt:task.updatedAt??undefined,lastActivityAt:last??undefined,evidenceRef:task.sourceRef??`runtime-truth-v1:job:${task.taskId}`,timeline:[...(task.leasedAt?[{timestamp:task.leasedAt,message:'Worker nhận lease',evidenceRef:`runtime-truth-v1:job:${task.taskId}`}]:[]),...(task.updatedAt?[{timestamp:task.updatedAt,message:`Runtime stage: ${task.stage}`,evidenceRef:`runtime-truth-v1:job:${task.taskId}`}]:[])]};});
   const ids=new Set(runtime.map((work)=>work.workId).filter(Boolean));return [...runtime,...governance.filter((work)=>!work.workId||!ids.has(work.workId))];
 }
 
@@ -309,6 +377,8 @@ export async function loadExecutiveDashboardV4(repo: string, telemetry: ServerTe
     ghJson<Issue>(repo, 'issues/335').catch(() => null),
   ]);
   const centralComments = Array.isArray(centralCommentsRaw) ? centralCommentsRaw : [];
+  const registryRoster = parseRegistryWorkforceV5(String(registry?.body ?? ''));
+  const registryByCode = new Map(registryRoster.map((row) => [row.code, row]));
   const current = resolvePriorityIssueNumber(central, centralComments);
   const laneNumbers = [...new Set([...resolveLaneNumbers(central, current), ...resolveScopedIssueNumbers(registry)])].slice(0, 8);
   const lanes = (await Promise.all(laneNumbers.map(async (number): Promise<Lane | null> => {
@@ -334,7 +404,7 @@ export async function loadExecutiveDashboardV4(repo: string, telemetry: ServerTe
       number: issueNumber,
       title: compact(humanizeIssueTitle(issueNumber, String(lane.issue.title ?? 'Chưa có tiêu đề')), 96),
       ownerCode: code,
-      owner: ownerName(code),
+      owner: ownerName(code, registryByCode),
       progressPercent: percent,
       progressLabel: percent === null ? (life.tone === 'done' ? '100%' : '—') : `${percent}%`,
       status: life.status,
@@ -350,30 +420,34 @@ export async function loadExecutiveDashboardV4(repo: string, telemetry: ServerTe
     };
   });
 
-  const works = mergeRuntimeWorkTruthV5(governanceWorks, telemetry);
+  const works = mergeRuntimeWorkTruthV5(governanceWorks, telemetry, Date.now(), registryByCode)
+    .map((work) => canonicalizeWorkV5(work, registryByCode));
 
   const allComments = [...centralComments, ...lanes.flatMap((lane) => lane.comments)];
   const action = ownerAction(allComments);
-  const defs: Array<[EmployeeCode, string, string, string]> = [
-    ['NV01', 'MI', 'Minh (NV01)', 'Thực thi trực tiếp'],
-    ['NV02', 'KH', 'Khoa (NV02)', 'Vận hành tự động'],
-    ['NV03', 'HU', 'Huy (NV03)', 'Kỹ sư Hệ thống Local'],
-    ['NV04', 'K', 'Khải (NV04)', 'Kỹ sư Tích hợp AI/API'],
-  ];
-  const people: ExecutivePersonV4[] = [{ key: 'VY', initials: 'VY', name: 'Vy (Trợ lý)', role: 'Điều phối', status: 'Điều phối', tone: 'active', current: 'Hỗ trợ vận hành dự án', activeCount: 0 }];
-  for (const [code, initials, name, role] of defs) {
-    const owned = works.filter((work) => work.ownerCode === code);
+  const people: ExecutivePersonV4[] = [{ key: 'VY', initials: 'VY', name: 'Vy (Trợ lý)', role: 'Trợ lý', status: 'READY (sẵn sàng)', tone: 'waiting', current: 'Điều phối theo Nguồn Sự Thật hiện hành', activeCount: 0 }];
+  for (const definition of registryRoster) {
+    const code = definition.code;
+    const owned = works.filter((work) => work.ownerCode === code && work.tone !== 'done');
+    const representative = owned.find((work) => work.tone === 'active')
+      ?? owned.find((work) => work.tone === 'blocked')
+      ?? owned.find((work) => work.tone === 'waiting')
+      ?? owned.find((work) => work.tone === 'stale' || work.tone === 'paused');
     const active = owned.filter((work) => work.tone === 'active').length;
-    const representative = owned[0];
-    const isPaused = code === 'NV03' && paused;
+    const registryPaused = definition.defaultTone === 'paused' || (code === 'NV03' && paused);
+    const derived = registryPaused
+      ? { status: definition.defaultStatus, tone: 'paused' as Tone }
+      : representative
+        ? personStatusFromWork(representative, definition)
+        : { status: definition.defaultStatus, tone: definition.defaultTone };
     people.push({
       key: code,
-      initials,
-      name,
-      role,
-      status: isPaused ? 'Tạm ngưng' : active > 0 ? 'Đang làm' : representative?.status ?? 'Chờ việc',
-      tone: isPaused ? 'paused' : active > 0 ? 'active' : representative?.tone ?? 'waiting',
-      current: isPaused ? 'Cấu hình AI PC01 và hệ thống local' : representative ? compact(representative.title, 58) : 'Chưa có việc đang giữ',
+      initials: definition.initials,
+      name: definition.name,
+      role: definition.role,
+      status: derived.status,
+      tone: derived.tone,
+      current: registryPaused ? 'Theo Registry #335 hiện hành' : representative ? compact(representative.title, 58) : 'Chưa có JOB đang giữ được xác minh',
       activeCount: active,
     });
   }

@@ -17,6 +17,6 @@ describe('Web V5 runtime state',()=>{ it('keeps current command visible when Git
   await writeFile(pulse,JSON.stringify({workId:'GH-511',issueNumber:511,title:'Web Control V5',ownerCode:'NV01',owner:'Minh (NV01)',priority:'P0',status:'active',currentStep:'Hoàn thiện một đợt',heartbeatAt:new Date().toISOString()}),'utf8');
   const data=await stabilizeExecutiveDataV5(empty(),{pulsePath:pulse,snapshotPath:cache});
   expect(data.works[0]?.workId).toBe('GH-511'); expect(data.works[0]?.tone).toBe('active'); expect(data.people.find(p=>p.key==='NV01')?.current).toBe('Web Control V5');
-  expect(data.people.map(p=>p.key)).toEqual(['VY','NV01','NV02','NV03','NV04']); expect(data.people.find(p=>p.key==='NV03')?.tone).toBe('paused');
+  expect(data.people.map(p=>p.key)).toEqual(['VY','NV01']); expect(data.people.find(p=>p.key==='NV01')?.name).toBe('Minh (NV01)');
   expect(data.sourceStatus).toContain('phiên điều hành'); await rm(root,{recursive:true,force:true});
 }); });

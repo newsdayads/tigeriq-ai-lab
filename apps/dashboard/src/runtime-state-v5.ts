@@ -1,13 +1,13 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import type { ExecutiveDashboardV4, ExecutivePersonV4, ExecutiveWorkV4 } from './executive-data-v4.js';
+import type { EmployeeCode, ExecutiveDashboardV4, ExecutivePersonV4, ExecutiveWorkV4 } from './executive-data-v4.js';
 
 export type RuntimePulseV5 = {
   schema?: number;
   workId?: string;
   issueNumber?: number;
   title?: string;
-  ownerCode?: 'NV01' | 'NV02' | 'NV03' | 'NV04';
+  ownerCode?: EmployeeCode;
   owner?: string;
   priority?: string;
   projectId?: string;
@@ -27,16 +27,9 @@ export type RuntimeStateV5Options = {
 const SNAPSHOT_DEFAULT = 'D:\\TigerIQ\\CommandCenter\\web-v5-data-cache.json';
 const PULSE_DEFAULT = 'D:\\TigerIQ\\CommandCenter\\web-control-activity.json';
 const ACTIVE_TTL_MS = 6 * 60 * 60 * 1000;
-const CANONICAL_ROSTER_V5: ExecutivePersonV4[] = [
-  { key:'VY', initials:'VY', name:'Vy (Trợ lý)', role:'Điều phối', status:'Điều phối', tone:'active', current:'Hỗ trợ vận hành dự án', activeCount:0 },
-  { key:'NV01', initials:'MI', name:'Minh (NV01)', role:'Thực thi trực tiếp', status:'Chờ việc', tone:'waiting', current:'Chưa có việc đang giữ', activeCount:0 },
-  { key:'NV02', initials:'KH', name:'Khoa (NV02)', role:'Vận hành tự động', status:'Chờ việc', tone:'waiting', current:'Chưa có việc đang giữ', activeCount:0 },
-  { key:'NV03', initials:'HU', name:'Huy (NV03)', role:'Kỹ sư Hệ thống Local', status:'Tạm ngưng', tone:'paused', current:'Cấu hình AI PC01 và hệ thống local', activeCount:0 },
-  { key:'NV04', initials:'K', name:'Khải (NV04)', role:'Kỹ sư Tích hợp AI/API', status:'Chờ việc', tone:'waiting', current:'Chưa có việc đang giữ', activeCount:0 },
-];
 function ensureCanonicalRosterV5(people: ExecutivePersonV4[]): ExecutivePersonV4[] {
   const current = new Map(people.map((person) => [person.key, person]));
-  return CANONICAL_ROSTER_V5.map((fallback) => ({ ...fallback, ...(current.get(fallback.key) ?? {}) }));
+  return [...current.values()];
 }
 
 async function readJson<T>(path: string): Promise<T | null> {
@@ -110,22 +103,32 @@ function mergePulse(works: ExecutiveWorkV4[], pulse: RuntimePulseV5 | null): Exe
   return [current, ...rest];
 }
 function recalc(data: ExecutiveDashboardV4, works: ExecutiveWorkV4[], sourceStatus: string, sourceNote: string): ExecutiveDashboardV4 {
-  const people = ensureCanonicalRosterV5(data.people).map((person) => {
+  const canonicalPeople = ensureCanonicalRosterV5(data.people);
+  const canonicalNames = new Map(canonicalPeople.flatMap((person) => person.key === 'VY' ? [] : [[person.key, person.name] as const]));
+  const normalizedWorks = works.map((work) => work.ownerCode && canonicalNames.has(work.ownerCode)
+    ? { ...work, owner: canonicalNames.get(work.ownerCode) ?? work.owner }
+    : work);
+  const people = canonicalPeople.map((person) => {
     if (person.key === 'VY') return person;
-    const owned = works.filter((work) => work.ownerCode === person.key && work.tone !== 'done');
+    const owned = normalizedWorks.filter((work) => work.ownerCode === person.key && work.tone !== 'done');
     const current = owned.find((work) => work.tone === 'active') || owned.find((work) => work.tone === 'blocked' || work.tone === 'stale') || owned[0];
-    if (!current) return { ...person, status: person.tone === 'paused' ? person.status : 'Chờ việc', tone: person.tone === 'paused' ? person.tone : 'waiting' as const, current: 'Chưa có việc đang giữ', activeCount: 0 };
-    const tone = current.tone === 'done' ? 'waiting' : current.tone;
-    return { ...person, status: current.status, tone, current: current.title, activeCount: owned.filter((work) => work.tone === 'active').length };
+    if (!current) return { ...person, activeCount: 0 };
+    const status = current.tone === 'active' ? 'RUNNING (đang làm thật)'
+      : current.tone === 'blocked' ? 'BLOCKED (bị chặn)'
+      : current.tone === 'paused' ? 'PAUSED (tạm dừng)'
+      : current.tone === 'waiting' ? 'QUEUED (đang chờ nhận)'
+      : 'READY (sẵn sàng)';
+    const tone = current.tone === 'stale' ? 'waiting' as const : current.tone === 'done' ? 'waiting' as const : current.tone;
+    return { ...person, status, tone, current: current.title, activeCount: owned.filter((work) => work.tone === 'active').length };
   });
-  const verified = works.map((work) => work.progressPercent).filter((value): value is number => typeof value === 'number');
+  const verified = normalizedWorks.map((work) => work.progressPercent).filter((value): value is number => typeof value === 'number');
   return {
-    ...data, works, people,
-    activeCount: works.filter((work) => work.tone === 'active').length,
-    waitingCount: works.filter((work) => work.tone === 'waiting').length,
-    blockedCount: works.filter((work) => work.tone === 'blocked').length,
-    doneCount: works.filter((work) => work.tone === 'done').length,
-    pausedCount: works.filter((work) => work.tone === 'paused' || work.tone === 'stale').length,
+    ...data, works: normalizedWorks, people,
+    activeCount: normalizedWorks.filter((work) => work.tone === 'active').length,
+    waitingCount: normalizedWorks.filter((work) => work.tone === 'waiting').length,
+    blockedCount: normalizedWorks.filter((work) => work.tone === 'blocked').length,
+    doneCount: normalizedWorks.filter((work) => work.tone === 'done').length,
+    pausedCount: normalizedWorks.filter((work) => work.tone === 'paused' || work.tone === 'stale').length,
     progressAverage: verified.length ? Math.round(verified.reduce((a,b) => a + b, 0) / verified.length) : null,
     sourceStatus, sourceNote, sourceUpdatedAt: new Date().toISOString(),
   };
