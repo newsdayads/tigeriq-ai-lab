@@ -2,10 +2,20 @@ import { existsSync, readFileSync } from 'node:fs';
 
 const config = JSON.parse(readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'));
 
-if (config?.git?.deploymentEnabled !== false) {
+const deploymentEnabled = config?.git?.deploymentEnabled;
+const mainOnlyAutoDeploy =
+  deploymentEnabled &&
+  typeof deploymentEnabled === 'object' &&
+  !Array.isArray(deploymentEnabled) &&
+  deploymentEnabled['*'] === false &&
+  deploymentEnabled.main === true &&
+  Object.entries(deploymentEnabled).every(
+    ([branch, enabled]) => branch === 'main' || enabled === false
+  );
+
+if (!mainOnlyAutoDeploy) {
   throw new Error(
-    'TigerIQ Vercel policy violation: vercel.json must keep git.deploymentEnabled=false. ' +
-      'Deploy previews/production explicitly only when needed.'
+    'TigerIQ Vercel policy violation: automatic Git deployment must be enabled for main only; all other branch patterns must remain false.'
   );
 }
 
@@ -32,4 +42,4 @@ if (existsSync(new URL('../public/index.html', import.meta.url))) {
   );
 }
 
-console.log('Vercel deployment/routing policy PASS: Git auto-deploy disabled and cleanUrls root routing is loop-safe.');
+console.log('Vercel deployment/routing policy PASS: Git auto-deploy is main-only and cleanUrls root routing is loop-safe.');
