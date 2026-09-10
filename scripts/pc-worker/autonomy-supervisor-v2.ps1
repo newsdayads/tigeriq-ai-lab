@@ -28,9 +28,9 @@ function Get-TaskState([string]$Name) {
   if ($null -eq $t) { return 'MISSING' }
   return [string]$t.State
 }
-function Get-ProcessCount([string]$Pattern) {
+function Get-ProcessCount([string]$Pattern, [string]$ProcessName='') {
   $p = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
-    $_.CommandLine -and $_.CommandLine -match $Pattern
+    $_.CommandLine -and $_.CommandLine -match $Pattern -and ([string]::IsNullOrWhiteSpace($ProcessName) -or $_.Name -eq $ProcessName)
   }
   return @($p).Count
 }
@@ -73,7 +73,7 @@ $Components = @(
   [pscustomobject]@{ id='nv02-github-queue'; task='TigerIQ NV02 GitHub Queue'; mode='process'; uri=$null; jsonOk=$false; pattern='github-queue-sync\.js'; autoRepair=$true; critical=$true },
   [pscustomobject]@{ id='orchestrator'; task='TigerIQ Mission Orchestrator'; mode='process'; uri=$null; jsonOk=$false; pattern='mission-orchestrator.*standalone\.js'; autoRepair=$true; critical=$true },
   [pscustomobject]@{ id='pc01-worker'; task='TigerIQ PC01 Native Worker'; mode='process'; uri=$null; jsonOk=$false; pattern='pc01-native-worker.*standalone\.js'; autoRepair=$true; critical=$true },
-  [pscustomobject]@{ id='nv06-openclaw-worker'; task='TigerIQ NV06 OpenClaw Worker'; mode='process'; uri=$null; jsonOk=$false; pattern='^"C:\\Program Files\\nodejs\\node\.exe".*nv06-openclaw-worker.*standalone\.js'; autoRepair=$true; critical=$true },
+  [pscustomobject]@{ id='nv06-openclaw-worker'; task='TigerIQ NV06 OpenClaw Worker'; mode='process'; uri=$null; jsonOk=$false; pattern='nv06-openclaw-worker.*standalone\.js'; processName='node.exe'; autoRepair=$true; critical=$true },
   [pscustomobject]@{ id='nv02-worker'; task='TigerIQ NV02 Worker'; mode='process'; uri=$null; jsonOk=$false; pattern='nv02-worker\\groq-worker\.mjs'; autoRepair=$false; critical=$false },
   [pscustomobject]@{ id='desktop-commander'; task='TigerIQ Desktop Commander Remote'; mode='process'; uri=$null; jsonOk=$false; pattern='desktop-commander.*remote --persist-session'; autoRepair=$false; critical=$true }
 )
@@ -85,7 +85,7 @@ $LastQueueAlertAt = [datetime]::MinValue
 
 function Get-ComponentHealth($Component) {
   $taskState = Get-TaskState $Component.task
-  $processCount = Get-ProcessCount $Component.pattern
+  $processCount = Get-ProcessCount $Component.pattern ([string]$Component.processName)
   $processOk = ($processCount -gt 0)
   $probe = $null
   if ($Component.mode -eq 'http') { $probe = Invoke-Probe $Component.uri $Component.jsonOk }
