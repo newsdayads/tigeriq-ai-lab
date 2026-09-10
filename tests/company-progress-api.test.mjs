@@ -64,7 +64,16 @@ describe('public authoritative projection', () => {
     ]);
   });
 
-  it('parses active and paused employees from the dynamic registry table', () => {
+  it('parses CENTRAL v16 Vietnamese current priority heading', () => {
+    const body = '## ƯU TIÊN HIỆN HÀNH — 2026-09-10\n1. **#556 — Nguồn Sự Thật + HOT STATE**: P0 cao nhất.\n2. **#478 — cơ chế tự cập nhật**: P0 an toàn kế tiếp.\n3. **#318 — PC01 tự vận hành 24/7**: phần nền tiếp tục.\n\n## HỢP ĐỒNG KHỞI ĐỘNG NHANH';
+    expect(parseCentralPriorities(body)).toEqual([
+      { priority: 'P0', number: 556, label: 'Nguồn Sự Thật + HOT STATE' },
+      { priority: 'P0', number: 478, label: 'cơ chế tự cập nhật' },
+      { priority: 'P0', number: 318, label: 'PC01 tự vận hành 24/7' },
+    ]);
+  });
+
+  it('parses active and paused employees from the legacy dynamic registry table', () => {
     const body = '| `2` | `NV02` | `autonomous` | `P0` | `queue` | `Khoa (NV02 — Vận hành tự động)` | true |\n| `3` | `NV03` | `specialized` | `P0` | `local` | `Huy (NV03)` | **false — TẠM NGƯNG** |';
     const rows = parseEmployees(body);
     expect(rows).toHaveLength(2);
@@ -87,11 +96,21 @@ describe('public authoritative projection', () => {
     expect(rows[1]).toMatchObject({ command: 3, employeeId: 'NV03', label: 'NV03 / Huy', active: false });
   });
 
-  it('uses only an explicitly declared executor for current work ownership', () => {
+  it('parses Registry v15 four-column execution status table', () => {
+    const body = '| lệnh | nhân viên | chế độ | trạng thái thực thi |\n|---|---|---|---|\n| `1` | **Minh (NV01 - Kỹ sư chính / P0 & kỹ thuật)** | làm việc trực tiếp | đã kích hoạt |\n| `3` | **Huy (NV03 - Kỹ sư hệ thống dự phòng / hạ tầng)** | chuyên trách dự phòng | tạm dừng |\n| `8` | **Gemini Plus (NV08 - Chuyên gia nghiên cứu & phân tích độc lập)** | nghiên cứu thủ công | gọi được; tự động hoàn toàn chưa có cầu nối |';
+    const rows = parseEmployees(body);
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toMatchObject({ command: 1, employeeId: 'NV01', active: true });
+    expect(rows[1]).toMatchObject({ command: 3, employeeId: 'NV03', active: false });
+    expect(rows[2]).toMatchObject({ command: 8, employeeId: 'NV08', active: true });
+  });
+
+  it('uses only explicitly declared or explicitly assigned ownership', () => {
     const body = '1. **#556 — Source Truth + HOT STATE**: highest P0. Actual executor now = `Vy / Chief of Staff`, `mode=foreground_direct`.\n2. **#478 — Zero-touch**: next safe P0.';
     expect(inferDeclaredExecutor(body, 556)).toBe('Vy / Chief of Staff');
     expect(inferDeclaredExecutor(body, 478)).toBe(null);
-    expect(inferDeclaredExecutor(body, 999)).toBe(null);
+    const v16 = '1. **#556 — Nguồn Sự Thật + HOT STATE**: P0 cao nhất. Phần cầu nối đã giao cho **Minh (NV01 - Kỹ sư chính / P0 & kỹ thuật)** qua lệnh `1`.';
+    expect(inferDeclaredExecutor(v16, 556)).toBe('Minh (NV01 - Kỹ sư chính / P0 & kỹ thuật)');
   });
 
   it('does not mistake descriptive owner-question prose for a real owner action', () => {
