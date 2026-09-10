@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "hotStateVersion": "2026-09-10.1",
+  "hotStateVersion": "2026-09-10.2",
   "kind": "derived_fast_start_index",
   "authoritativeByItself": false,
   "purpose": "Resolve current TigerIQ state quickly, then drill into authoritative sources only when required.",
@@ -19,13 +19,15 @@
     "masterAutonomyIssue": 318,
     "continuityIssue": 401,
     "browserWorkerIssue": 549,
-    "webExecutionBridgeIssue": 486
+    "webExecutionBridgeIssue": 486,
+    "zeroTouchUpdateIssue": 478
   },
   "currentPriority": {
     "issue": 556,
-    "owner": "NV02 / Khoa",
-    "mode": "background_auto",
-    "reason": "OWNER_PRIORITY_2026-09-10"
+    "owner": "Vy / Chief of Staff",
+    "mode": "foreground_direct",
+    "queueMaterialized": false,
+    "reason": "OWNER_LAM_DIRECT_EXECUTION_2026-09-10"
   },
   "currentDecisions": {
     "chatgptWebAutomation": {
@@ -69,6 +71,7 @@
   },
   "completed": [401, 509, 524],
   "openWithExternalOrOwnerGate": [318, 486, 549],
+  "nextSafePriority": 478,
   "excludedFromCurrentResolution": [
     "chat_history",
     "memory_as_authority",
