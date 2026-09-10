@@ -48,7 +48,7 @@ describe('CENTRAL P0-P3 source materializer',()=>{
     const state:PlannerRuntimeState={version:1,tasks:{
       [first.taskId]:{stage:'done',updatedAt:'2026-09-10T00:00:00.000Z'},
       [second.taskId]:{stage:'done',updatedAt:'2026-09-10T00:00:01.000Z'},
-      [third.taskId]:{stage:'queued',updatedAt:'2026-09-10T00:00:02.000Z'},
+      [third.taskId]:{stage:'dispatched',updatedAt:'2026-09-10T00:00:02.000Z'},
     }};
     expect(shouldAdvanceCompletedTopPriority({rank:1,issueNumber:478,description:'[P0] Zero-touch',priority:'P0'},first,state)).toBe(true);
     expect(shouldAdvanceCompletedTopPriority({rank:2,issueNumber:318,description:'[P0] PC01',priority:'P0'},second,state)).toBe(true);
