@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "hotStateVersion": "2026-09-10.1",
+  "kind": "derived_fast_start_index",
+  "authoritativeByItself": false,
+  "purpose": "Resolve current TigerIQ state quickly, then drill into authoritative sources only when required.",
+  "precedence": [
+    "explicit_current_owner_instruction",
+    "project_bootstrap_constitution_architecture_workflow_source_index_employee_model_baseline",
+    "dynamic_authority",
+    "current_state_queue_work_evidence",
+    "chat_memory_agent_assumptions"
+  ],
+  "dynamicPointers": {
+    "centralRouterIssue": 280,
+    "interactionPolicyIssue": 504,
+    "commandRegistryIssue": 335,
+    "sourceTruthIssue": 556,
+    "masterAutonomyIssue": 318,
+    "continuityIssue": 401,
+    "browserWorkerIssue": 549,
+    "webExecutionBridgeIssue": 486
+  },
+  "currentPriority": {
+    "issue": 556,
+    "owner": "NV02 / Khoa",
+    "mode": "background_auto",
+    "reason": "OWNER_PRIORITY_2026-09-10"
+  },
+  "currentDecisions": {
+    "chatgptWebAutomation": {
+      "status": "OWNER_HOLD",
+      "sourceIssue": 549,
+      "sourceCommentId": 5609639273,
+      "latestEvidenceCommentId": 5610076484,
+      "rule": "Do not drive authenticated chatgpt.com until explicit Owner re-approval while at PC."
+    },
+    "paidAiUpgrade": "HOLD_UNTIL_RUNTIME_STABLE",
+    "mainProductionMutation": "OWNER_GATE_REQUIRED"
+  },
+  "runtime": {
+    "lastVerifiedAt": "2026-09-10T08:23:57+07:00",
+    "root": "D:\\TigerIQ",
+    "controller": {
+      "url": "http://100.97.23.87:8790",
+      "ok": true,
+      "postgres": true,
+      "queuedJobs": 0,
+      "activeLeases": 0,
+      "pc01Online": true,
+      "pc01Health": "ok",
+      "source": "D:\\TigerIQ\\worktrees\\401-pr551-runtime\\dist\\apps\\workforce-controller\\src\\standalone.js",
+      "candidateHead": "3d15d2e646d023cd9000a4a8507fcf18d78e6424"
+    },
+    "webControl": {
+      "url": "http://100.97.23.87:8787",
+      "httpOk": true,
+      "releasePointer": "ccf619267a061daa6d65d12bd6ee4c7981f2ccbe"
+    },
+    "openClawGateway": {
+      "url": "http://127.0.0.1:18789",
+      "httpOk": true
+    },
+    "ollama": {
+      "url": "http://127.0.0.1:11434",
+      "version": "0.33.2",
+      "httpOk": true
+    }
+  },
+  "completed": [401, 509, 524],
+  "openWithExternalOrOwnerGate": [318, 486, 549],
+  "excludedFromCurrentResolution": [
+    "chat_history",
+    "memory_as_authority",
+    "stale_pc01_worktrees",
+    "stale_pc01_releases",
+    "archived_runtime_snapshots",
+    "repo_docs_company_v1_as_runtime_authority"
+  ],
+  "deepScanRequiredWhen": [
+    "hot_state_missing_or_invalid",
+    "owner_instruction_newer_than_hot_state",
+    "source_conflict",
+    "runtime_claim_requires_fresh_evidence",
+    "mutation_or_security_gate",
+    "requested_exact_issue_or_evidence"
+  ]
+}
