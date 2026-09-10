@@ -195,7 +195,9 @@ export function inferDeclaredExecutor(body = '', issueNumber = null) {
 
 export function inferOwnerAction(text = '') {
   const normalized = String(text).toUpperCase();
-  const required = /(^|\n)\s*(?:[-*]\s*)?(?:STATE\s*[:=]\s*)?(?:CHỜ ANH SƠN|OWNER[_ ]ACTION[_ ]REQUIRED)\b/m.test(normalized);
+  const explicitAction = /(^|\n)\s*(?:[-*]\s*)?(?:STATE\s*[:=]\s*)?(?:CHỜ ANH SƠN|OWNER[_ ]ACTION[_ ]REQUIRED)\b/m.test(normalized);
+  const ownerGateState = /(?:\*\*)?STATE(?:\*\*)?\s*[:=]\s*`?[^`\n]*OWNER(?:[_ -](?:MAIN[_ -])?)?GATE\b[^`\n]*`?/m.test(normalized);
+  const required = explicitAction || ownerGateState;
   return {
     required,
     summary: required ? 'Có hạng mục đang chờ anh Sơn theo Nguồn Sự Thật.' : 'Không có việc bắt buộc anh Sơn thao tác ở ưu tiên hiện tại.',

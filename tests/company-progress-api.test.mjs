@@ -97,5 +97,7 @@ describe('public authoritative projection', () => {
   it('does not mistake descriptive owner-question prose for a real owner action', () => {
     expect(inferOwnerAction('UI phải cho biết có cần anh Sơn làm gì không.').required).toBe(false);
     expect(inferOwnerAction('STATE=CHỜ ANH SƠN').required).toBe(true);
+    expect(inferOwnerAction('**STATE:** `556_DEV_GATE_PASS_MAIN_ADOPTION_OWNER_GATE`').required).toBe(true);
+    expect(inferOwnerAction('MAIN/Production remain Owner-gated by policy.').required).toBe(false);
   });
 });
