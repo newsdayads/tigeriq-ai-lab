@@ -10,6 +10,7 @@ export interface CentralSourceConfig {
   repo:string;
   centralIssue:number;
   backlogPath:string;
+  plannerStatePath:string;
   reportStatePath:string;
   githubTokenPath:string;
   ingressTokenPath:string;
@@ -20,11 +21,14 @@ export const centralDefaults:CentralSourceConfig={
   repo:process.env.TIGERIQ_GITHUB_REPO??'newsdayads/tigeriq-ai-lab',
   centralIssue:Number(process.env.TIGERIQ_CENTRAL_ISSUE??280),
   backlogPath:process.env.TIGERIQ_AUTONOMY_BACKLOG??'D:\\TigerIQ\\Runtime\\autonomous-planner-v1\\backlog.json',
+  plannerStatePath:process.env.TIGERIQ_AUTONOMY_STATE??'D:\\TigerIQ\\Runtime\\autonomous-planner-v1\\planner-state.json',
   reportStatePath:process.env.TIGERIQ_CENTRAL_REPORT_STATE??'D:\\TigerIQ\\Runtime\\autonomous-planner-v1\\central-report-state.json',
   githubTokenPath:process.env.TIGERIQ_GITHUB_TOKEN_FILE??'D:\\TigerIQ\\Secrets\\github-command-center.token',
   ingressTokenPath:process.env.TIGERIQ_INGRESS_TOKEN_FILE??'D:\\TigerIQ\\Secrets\\pc01-primary-node.ingress-token',
   controllerUrl:(process.env.TIGERIQ_CONTROLLER_URL??'http://100.97.23.87:8790').replace(/\/$/,''),
-};async function readText(file:string):Promise<string>{return (await readFile(file,'utf8')).replace(/^\uFEFF/,'').trim();}
+};
+
+async function readText(file:string):Promise<string>{return (await readFile(file,'utf8')).replace(/^\uFEFF/,'').trim();}
 async function readJson<T>(file:string):Promise<T>{return JSON.parse(await readText(file)) as T;}
 async function writeJsonAtomic(file:string,value:unknown):Promise<void>{
   await mkdir(path.dirname(file),{recursive:true});
@@ -55,7 +59,8 @@ export function parseCentralPriorities(body:string):PriorityRef[]{
 function explicitlyHeld(issue:GithubIssue):boolean{
   const body=String(issue.body??'');
   return /(?:^|\n)\s*(?:STATE|STATUS)\s*[:=]\s*(?:OWNER_HOLD|BLOCKED)\b/im.test(body);
-}async function fetchIssue(repo:string,number:number,token:string):Promise<GithubIssue>{
+}
+async function fetchIssue(repo:string,number:number,token:string):Promise<GithubIssue>{
   const response=await fetch(`https://api.github.com/repos/${repo}/issues/${number}`,{headers:githubHeaders(token)});
   if(!response.ok)throw new Error(`GITHUB_ISSUE_${number}_${response.status}`);
   return await response.json() as GithubIssue;
@@ -78,19 +83,36 @@ export function buildCentralTask(issue:GithubIssue,centralVersion:number,priorit
     requiredCapabilities:['ai_resource','evidence'],requiredPermissions:['local_ai:execute','evidence:write'],expectedEvidence:['json'],
     scopeKeys:[`central/p0/issue-${issue.number}/v${centralVersion}`],dependencies:[],requiresAuthorization:false,enabled:true,maxAttempts:3,
   };
-}export async function materializeCentralPriority(config:CentralSourceConfig=centralDefaults):Promise<{added:number;taskId?:string;issueNumber?:number;centralVersion:number;reason?:string}>{
+}
+
+export function shouldAdvanceCompletedTopPriority(priority:PriorityRef,task:BacklogTask,state:PlannerRuntimeState):boolean{
+  return priority.rank===1&&state.tasks[task.taskId]?.stage==='done';
+}
+async function loadPlannerState(file:string):Promise<PlannerRuntimeState>{
+  try{
+    const state=await readJson<PlannerRuntimeState>(file);
+    if(state?.version===1&&state.tasks&&typeof state.tasks==='object')return state;
+  }catch{}
+  return {version:1,tasks:{}};
+}
+
+export async function materializeCentralPriority(config:CentralSourceConfig=centralDefaults):Promise<{added:number;taskId?:string;issueNumber?:number;centralVersion:number;reason?:string}>{
   const token=await optionalToken(config.githubTokenPath);
   const central=await fetchIssue(config.repo,config.centralIssue,token);
   const centralVersion=parseCentralVersion(String(central.body??''));
   const priorities=parseCentralPriorities(String(central.body??''));
   if(!priorities.length)return {added:0,centralVersion,reason:'NO_CENTRAL_PRIORITIES'};
   const backlog=await readJson<PlannerBacklog>(config.backlogPath);
+  const plannerState=await loadPlannerState(config.plannerStatePath);
   const known=new Set(backlog.tasks.map(task=>task.taskId));
   for(const priority of priorities){
     const issue=await fetchIssue(config.repo,priority.issueNumber,token);
     if(issue.pull_request||issue.state!=='open'||explicitlyHeld(issue))continue;
     const task=buildCentralTask(issue,centralVersion,priority);
-    if(known.has(task.taskId))return {added:0,taskId:task.taskId,issueNumber:issue.number,centralVersion,reason:'ALREADY_MATERIALIZED'};
+    if(known.has(task.taskId)){
+      if(shouldAdvanceCompletedTopPriority(priority,task,plannerState))continue;
+      return {added:0,taskId:task.taskId,issueNumber:issue.number,centralVersion,reason:'ALREADY_MATERIALIZED'};
+    }
     backlog.tasks.push(task);
     await writeJsonAtomic(config.backlogPath,backlog);
     return {added:1,taskId:task.taskId,issueNumber:issue.number,centralVersion};
@@ -102,12 +124,12 @@ async function loadReportState(file:string):Promise<ReportState>{
   try{const state=await readJson<ReportState>(file);if(state.version===1&&Array.isArray(state.reportedJobIds))return state;}catch{}
   return {version:1,reportedJobIds:[]};
 }
-function authHeaders(token:string):Record<string,string>{return {authorization:`Bearer ${token}`,'content-type':'application/json'};}
 async function controllerJob(config:CentralSourceConfig,jobId:string,ingress:string):Promise<any>{
   const response=await fetch(`${config.controllerUrl}/api/v1/work-orders/${encodeURIComponent(jobId)}`,{headers:{authorization:`Bearer ${ingress}`}});
   if(!response.ok)throw new Error(`CONTROLLER_JOB_${response.status}`);
   return await response.json();
-}export async function reportCompletedCentralTasks(backlog:PlannerBacklog,state:PlannerRuntimeState,config:CentralSourceConfig=centralDefaults):Promise<{reported:number;jobIds:string[]}>{
+}
+export async function reportCompletedCentralTasks(backlog:PlannerBacklog,state:PlannerRuntimeState,config:CentralSourceConfig=centralDefaults):Promise<{reported:number;jobIds:string[]}>{
   const githubToken=await optionalToken(config.githubTokenPath),ingress=await optionalToken(config.ingressTokenPath);
   if(!githubToken||!ingress)return {reported:0,jobIds:[]};
   const reportState=await loadReportState(config.reportStatePath),reported=new Set(reportState.reportedJobIds),jobIds:string[]=[];
