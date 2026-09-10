@@ -1,5 +1,7 @@
 const REPO = process.env.TIGERIQ_REPO || 'newsdayads/tigeriq-ai-lab';
 const FETCH_TIMEOUT_MS = 5000;
+const CENTRAL_ISSUE = 280;
+const REGISTRY_ISSUE = 335;
 const BASE_GATES = ['CI', 'WO-014 Queue Hygiene', 'WO-012/013 Vercel Online Verify'];
 
 function json(res, status, body) {
@@ -57,6 +59,8 @@ function vietnameseGate(name) {
   return name;
 }
 
+// Compatibility helper retained for older V5 callers/tests. Public truth below
+// is sourced from CENTRAL + Registry rather than whichever PR changed recently.
 export function projectProgress({ pull, runs = [] }) {
   if (!pull) {
     return {
@@ -100,47 +104,217 @@ export function projectProgress({ pull, runs = [] }) {
   };
 }
 
-function recentActivity(runs) {
-  return (Array.isArray(runs) ? runs : [])
-    .slice()
-    .sort((a, b) => Date.parse(b.updated_at || b.created_at || 0) - Date.parse(a.updated_at || a.created_at || 0))
-    .slice(0, 8)
-    .map((run) => ({
-      name: vietnameseGate(run.name),
-      status: runState(run),
-      at: run.updated_at || run.created_at || null,
-      url: run.html_url || null,
+function cleanTitle(value = '') {
+  return String(value).replace(/^\[[^\]]+\]\s*/g, '').replace(/\s+/g, ' ').trim().slice(0, 180);
+}
+
+function firstLine(value = '') {
+  return String(value).split(/\r?\n/).map((line) => line.trim()).find(Boolean) || '';
+}
+
+export function parseCentralPriorities(body = '') {
+  const rows = [];
+  const seen = new Set();
+  const text = String(body);
+  const legacy = /###\s+\d+\.\s+(P[0-2])\s+#(\d+)\s+—\s+([^\n]+)/g;
+  for (const match of text.matchAll(legacy)) {
+    const number = Number(match[2]);
+    if (!number || seen.has(number)) continue;
+    seen.add(number);
+    rows.push({ priority: match[1], number, label: cleanTitle(match[3]) });
+  }
+
+  const lines = text.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i += 1) {
+    const heading = lines[i].match(/^###\s+(.+?)\s+—\s+(P[0-2])\s*$/);
+    if (!heading) continue;
+    let number = null;
+    for (let j = i + 1; j < Math.min(lines.length, i + 10); j += 1) {
+      if (/^###\s+/.test(lines[j])) break;
+      const issueMatch = lines[j].match(/\b(?:APP issue|issue|Work Order|P0 framework)\b[^#\n]*#(\d+)/i)
+        || lines[j].match(/\*\*#(\d+)\*\*/);
+      if (issueMatch) { number = Number(issueMatch[1]); break; }
+    }
+    if (!number || seen.has(number)) continue;
+    seen.add(number);
+    rows.push({ priority: heading[2], number, label: cleanTitle(heading[1]) });
+  }
+
+  const currentSection = text.match(/## CURRENT OWNER PRIORITY[^\n]*\n([\s\S]*?)(?=\n## |$)/i)?.[1] || '';
+  const current = /^\s*\d+\.\s+\*\*#(\d+)\s+—\s+([^*\n]+)\*\*(?:\s*:\s*([^\n]+))?/gm;
+  for (const match of currentSection.matchAll(current)) {
+    const number = Number(match[1]);
+    if (!number || seen.has(number)) continue;
+    const detail = String(match[3] || '');
+    const priority = detail.match(/\b(P[0-2])\b/i)?.[1]?.toUpperCase() || 'P0';
+    seen.add(number);
+    rows.push({ priority, number, label: cleanTitle(match[2]) });
+  }
+  return rows;
+}
+
+function cleanRegistryCell(value = '') {
+  return String(value).replace(/`/g, '').replace(/\*\*/g, '').trim();
+}
+
+export function parseEmployees(body = '') {
+  const rows = [];
+  for (const line of String(body).split(/\r?\n/)) {
+    if (!line.trim().startsWith('|')) continue;
+    const cells = line.split('|').slice(1, -1).map(cleanRegistryCell);
+    const command = Number(cells[0]);
+    const employeeMatch = String(cells[1] || '').match(/\b(NV\d+)\b/i);
+    if (!command || !employeeMatch) continue;
+
+    const legacyShape = cells.length >= 7;
+    const transitionalShape = cells.length === 6;
+    const label = legacyShape ? cells[5] : cells[1];
+    const enabledRaw = String(legacyShape ? cells[6] : cells[4] || '').toLowerCase();
+    const enabled = enabledRaw.startsWith('true');
+    const activation = transitionalShape ? String(cells[5] || '').toUpperCase() : null;
+    const active = enabled && (!activation || activation === 'ACTIVE');
+    rows.push({
+      command,
+      employeeId: employeeMatch[1].toUpperCase(),
+      label: label || employeeMatch[1].toUpperCase(),
+      active,
+      state: active ? 'Sẵn sàng theo danh mục' : 'Tạm ngưng',
+    });
+  }
+  return rows;
+}
+
+export function inferDeclaredExecutor(body = '', issueNumber = null) {
+  if (!issueNumber) return null;
+  const line = String(body).split(/\r?\n/).find((row) => new RegExp(`^\\s*\\d+\\.\\s+\\*\\*#${issueNumber}\\b`).test(row));
+  if (!line) return null;
+  const match = line.match(/(?:Actual executor now|executor|owner)\s*=\s*`([^`]+)`/i);
+  return match?.[1]?.trim() || null;
+}
+
+export function inferOwnerAction(text = '') {
+  const normalized = String(text).toUpperCase();
+  const explicitAction = /(^|\n)\s*(?:[-*]\s*)?(?:STATE\s*[:=]\s*)?(?:CHỜ ANH SƠN|OWNER[_ ]ACTION[_ ]REQUIRED)\b/m.test(normalized);
+  const ownerGateState = /(?:\*\*)?STATE\s*:?\s*(?:\*\*)?\s*[:=]?\s*`?[^`\n]*OWNER(?:[_ -](?:MAIN[_ -])?)?GATE\b[^`\n]*`?/m.test(normalized);
+  const required = explicitAction || ownerGateState;
+  return {
+    required,
+    summary: required ? 'Có hạng mục đang chờ anh Sơn theo Nguồn Sự Thật.' : 'Không có việc bắt buộc anh Sơn thao tác ở ưu tiên hiện tại.',
+  };
+}
+
+function issueStatus(issue) {
+  return issue?.state === 'closed' ? 'HOÀN TẤT' : 'ĐANG XỬ LÝ';
+}
+
+async function issue(number, owner, repo, fetchImpl) {
+  return gh(`/repos/${owner}/${repo}/issues/${number}`, fetchImpl);
+}
+
+async function comments(number, owner, repo, fetchImpl) {
+  try {
+    const rows = await gh(`/repos/${owner}/${repo}/issues/${number}/comments?per_page=8`, fetchImpl);
+    return (Array.isArray(rows) ? rows : []).slice(-6).reverse().map((row) => ({
+      name: firstLine(row.body).replace(/^#+\s*/, '').slice(0, 160) || `Cập nhật #${number}`,
+      status: 'ĐÃ GHI NHẬN',
+      at: row.created_at || row.updated_at || null,
+      url: row.html_url || null,
     }));
+  } catch {
+    return [];
+  }
 }
 
 export async function buildCompanyProgress(fetchImpl = fetch) {
   const { owner, repo } = repoParts();
-  const pulls = await gh(`/repos/${owner}/${repo}/pulls?state=open&sort=updated&direction=desc&per_page=20`, fetchImpl);
-  const activePull = (Array.isArray(pulls) ? pulls : []).find((pull) => /^WO-\d+/i.test(String(pull.title || ''))) || null;
-  let runs = [];
-  if (activePull?.head?.sha) {
-    const response = await gh(`/repos/${owner}/${repo}/actions/runs?head_sha=${encodeURIComponent(activePull.head.sha)}&per_page=50`, fetchImpl);
-    runs = Array.isArray(response?.workflow_runs) ? response.workflow_runs : [];
+  const [central, registry] = await Promise.all([
+    issue(CENTRAL_ISSUE, owner, repo, fetchImpl),
+    issue(REGISTRY_ISSUE, owner, repo, fetchImpl),
+  ]);
+
+  const declared = parseCentralPriorities(central.body);
+  const priorityIssues = [];
+  for (const row of declared.slice(0, 6)) {
+    try {
+      const live = await issue(row.number, owner, repo, fetchImpl);
+      priorityIssues.push({
+        ...row,
+        title: cleanTitle(live.title || row.label),
+        status: issueStatus(live),
+        open: live.state === 'open',
+        updatedAt: live.updated_at || null,
+        url: live.html_url || null,
+      });
+    } catch {
+      priorityIssues.push({ ...row, title: row.label, status: 'CHƯA XÁC MINH', open: null, updatedAt: null, url: null });
+    }
   }
-  const progress = projectProgress({ pull: activePull, runs });
+
+  const active = priorityIssues.find((row) => row.open === true) || null;
+  let activeIssue = null;
+  if (active) {
+    try { activeIssue = await issue(active.number, owner, repo, fetchImpl); } catch { activeIssue = null; }
+  }
+  const activity = active ? await comments(active.number, owner, repo, fetchImpl) : [];
+  const employees = parseEmployees(registry.body);
+  const ownerAction = inferOwnerAction(`${central.body}\n${activeIssue?.body || ''}`);
+  const openCount = priorityIssues.filter((row) => row.open === true).length;
+  const closedCount = priorityIssues.filter((row) => row.open === false).length;
+
   return {
     ok: true,
     generatedAt: new Date().toISOString(),
-    mode: 'evidence-based',
-    activeWork: activePull ? {
-      number: activePull.number,
-      title: String(activePull.title || '').slice(0, 160),
-      branch: activePull.head?.ref || null,
-      headSha: activePull.head?.sha || null,
-      updatedAt: activePull.updated_at || null,
-      url: activePull.html_url || null,
-      ...progress,
-    } : progress,
-    activity: recentActivity(runs),
-    ownerAction: {
-      required: false,
-      summary: 'Không có việc cần Sếp thao tác ở gate kỹ thuật hiện tại',
+    mode: 'authoritative-central-registry',
+    source: {
+      centralIssue: CENTRAL_ISSUE,
+      registryIssue: REGISTRY_ISSUE,
+      centralUpdatedAt: central.updated_at || null,
+      registryUpdatedAt: registry.updated_at || null,
     },
+    activeWork: active ? {
+      active: true,
+      number: active.number,
+      title: active.title,
+      priority: active.priority,
+      ownerLabel: inferDeclaredExecutor(central.body, active.number),
+      status: active.status,
+      progressPct: null,
+      progressText: 'Đang xử lý · chỉ chốt khi đủ bằng chứng',
+      gates: [],
+      branch: null,
+      headSha: null,
+      currentStep: cleanTitle(activeIssue?.body?.match(/## Trạng thái[^\n]*\n([^\n]+)/i)?.[1] || active.label || active.title),
+      nextStep: 'Tiếp tục theo điều kiện ĐẠT của issue hiện hành',
+      updatedAt: active.updatedAt,
+      url: active.url,
+    } : {
+      active: false,
+      number: null,
+      title: 'Không có P0/P1/P2 mở trong danh sách ưu tiên CENTRAL đã đọc',
+      status: 'CHỜ VIỆC TIẾP THEO',
+      progressPct: null,
+      progressText: 'Không suy đoán',
+      gates: [],
+      branch: null,
+      headSha: null,
+      currentStep: 'Đọc CENTRAL để chọn việc tiếp theo',
+      nextStep: 'Tự rà việc an toàn theo chính sách hiện hành',
+    },
+    priorityIssues,
+    summary: { total: priorityIssues.length, open: openCount, completed: closedCount },
+    employees,
+    employeeSummary: {
+      total: employees.length,
+      active: employees.filter((x) => x.active).length,
+      paused: employees.filter((x) => !x.active).length,
+    },
+    activity,
+    ownerAction,
+    systems: [
+      { name: 'Vercel View', state: 'TRỰC TUYẾN', detail: 'API công khai đang phản hồi' },
+      { name: 'GitHub', state: 'TRỰC TUYẾN', detail: `Đã đọc CENTRAL #${CENTRAL_ISSUE} + danh mục #${REGISTRY_ISSUE}` },
+      { name: 'PC01', state: 'CHƯA CÓ DỮ LIỆU', detail: 'View công khai không suy đoán trạng thái máy nội bộ' },
+    ],
   };
 }
 
@@ -154,8 +328,10 @@ export default async function handler(req, res) {
       generatedAt: new Date().toISOString(),
       mode: 'unavailable',
       activeWork: null,
+      priorityIssues: [],
+      employees: [],
       activity: [],
-      ownerAction: { required: false, summary: 'Chưa lấy được tiến độ GitHub; không suy đoán trạng thái.' },
+      ownerAction: { required: false, summary: 'Chưa lấy được Nguồn Sự Thật; hệ thống không suy đoán trạng thái.' },
       reason: String(error instanceof Error ? error.message : error).slice(0, 96),
     });
   }
