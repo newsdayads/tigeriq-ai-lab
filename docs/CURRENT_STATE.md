@@ -1,72 +1,40 @@
 # Current State
 
-Date: 2026-09-08
-Status: CURRENT — candidate synchronized with CENTRAL #280 + Registry #335 v5
-Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #335 > exact runtime/evidence
+Date: 2026-09-10
+Status: COMPATIBILITY VIEW — read `docs/HOT_STATE.json` first for fast-start; this file does not override higher authority.
 
-## Current operating policy
-- TigerIQ project background AI/runtime is ACTIVE.
-- Browser/Chrome/ChatGPT authenticated UI automation is AUTHORIZED_WITH_GUARDRAILS under #497; no per-session Owner approval is required for normal browser jobs.
-- One authenticated account/session = one automation owner at a time; UI actions must be queued, bounded-retry/backoff, logged, and kill-switch capable.
-- Suspicious activity, rate limit, CAPTCHA/challenge, re-auth/verification or security warning => stop that UI lane immediately, do not bypass; keep safe non-UI lanes running.
-- Prefer API/connector/CLI when more stable/effective; use browser UI when it is the appropriate execution path.
-- No password/2FA/recovery/security-setting changes, paid actions, MAIN/Production release, reboot or irreversible action without the normal gate.
+## Authority / fast-start
+1. Explicit current Owner instruction.
+2. Project Bootstrap according to Constitution / Architecture-Security / Workflow / Source Index / AI Employee Model / Baseline Decisions.
+3. Dynamic authority: CENTRAL #280 → Interaction #504 / Registry #335 / exact current issue-decision.
+4. Current queue/work/runtime evidence.
+5. Chat/history/memory assumptions.
 
-## PC01 live state — 2026-09-08 09:04 +07
-Authoritative live evidence recorded in CENTRAL #280:
-- Runtime canonical root: `D:\TigerIQ`.
-- Workforce Controller: RUNNING; `/api/v1/status` reports `ok=true`, `postgres=true`.
-- PC01 Native Worker: RUNNING; online/health=`ok`; queue=0, active leases=0 at the recorded check.
-- Autonomous Planner: RUNNING.
-- Mission Orchestrator: RUNNING.
-- Autonomy Supervisor: RUNNING.
-- Command Center: RUNNING `100.97.23.87:8787`.
-- Workforce Controller: RUNNING `100.97.23.87:8790`.
-- PostgreSQL: RUNNING `5432`.
-- Ollama: RUNNING `127.0.0.1:11434`.
-- Remote Desktop Commander: RUNNING from D-root with S4U/BootTrigger.
-- No live `F:\TigerIQ` process references; F is rollback legacy only.
+`docs/HOT_STATE.json` is a derived index only. If it conflicts with a higher source, treat HOT STATE as stale and drill down.
 
-Repository alignment candidate: Draft PR #494 (`pc01/d-root-recovery-20260908`) remains OPEN, DRAFT, OFF-MAIN and must not be represented as merged/Production.
+## Current priority
+- **#556 — Source Truth + HOT STATE**, logical owner `NV02 / Khoa`, current Owner priority 2026-09-10.
+- #401 continuity: COMPLETED.
+- #509 Web V5 IA: COMPLETED.
+- #524 F→D migration: COMPLETED; F data retained only for rollback/history.
 
-## OpenClaw — current
-- Config valid at `D:\TigerIQ-OpenClaw\state\openclaw.json`.
-- Default model: `ollama/qwen3:4b`.
-- Browser plugin is enabled; CUA is not considered operational until tested.
-- Gateway `127.0.0.1:18789` is currently STOPPED in the latest CENTRAL evidence.
-- Native OpenClaw service installer rejected install because of custom state/config path; #318 owns the managed D-root wrapper/task or canonical-compatible service-path resolution.
-- OpenClaw requires 3 consecutive Agent/tool E2E passes before it may be claimed operational.
-- OpenClaw must not own or disrupt Controller, PostgreSQL, Ollama, Planner, Worker, Mission Orchestrator, Autonomy Supervisor or Command Center lifecycle unless explicitly authorized.
+## Current browser decision
+Authenticated `chatgpt.com` automation is **OWNER_HOLD** per the latest correction in #549. Backend/API/OpenClaw non-ChatGPT work remains independent. Older standing-authorization text must not auto-resume the held ChatGPT-Web leg.
 
-## Current P0 — ordered
-1. #318 — PC01 autonomous 24/7: control plane + queue/lease + Planner/Orchestrator/Worker/Supervisor + AI routing + OpenClaw + browser/ChatGPT + mobile execution + self-heal + zero-touch + E2E.
-2. #497 — browser/account guardrails.
-3. #486 — Web Control bridge/self-healing integration.
-4. #478 — system-wide zero-touch update framework.
-5. Keep CENTRAL/Registry/CURRENT_STATE/evidence synchronized to runtime truth.
+## PC01 runtime — verified 2026-09-10 08:23 +07
+- Canonical root: `D:\TigerIQ`.
+- Workforce Controller: HTTP 200 at `100.97.23.87:8790`; PostgreSQL=true; PC01 online/health=ok; queue=0; active leases=0 at check time.
+- Controller executable: `D:\TigerIQ\worktrees\401-pr551-runtime\dist\apps\workforce-controller\src\standalone.js`; #551 candidate head `3d15d2e646d023cd9000a4a8507fcf18d78e6424`.
+- Planner / Mission Orchestrator / Supervisor V2 / Native Worker / NV02 Worker / NV06 Worker / Command Center Scheduled Tasks: Running at check time.
+- Command Center: HTTP 200 at `100.97.23.87:8787`; current release pointer `ccf619267a061daa6d65d12bd6ee4c7981f2ccbe`.
+- OpenClaw Gateway: HTTP 200 at `127.0.0.1:18789`.
+- Ollama: HTTP 200 at `127.0.0.1:11434`, version `0.33.2`.
 
-## Command / employee registry
-Registry authority: #335 (`REGISTRY_ROOT_VERSION=5`).
-- `1` = NV01 / Minh — `foreground_interactive` — enabled — ACTIVE.
-- `2` = NV02 / Khoa — `background_auto` — enabled — ACTIVE_PROJECT_BACKGROUND.
-- `3` = NV03 / Huy — paused/disabled.
-- `4` = NV04 / Khải — enabled but PENDING_OWNER_ACTIVATION.
-- `5` = NV05 / An — pending/disabled.
-- Unknown/disabled command must fail closed; never infer semantics from chat/memory.
+## Registry pointer
+Command / AI Employee authority remains Registry #335. Do not hard-code command semantics from this compatibility file.
 
-## Active safety invariants
-- One Work Order/resource/account-session = one active owner.
-- Exact evidence is required before `ĐẠT/HOÀN TẤT` claims.
-- Current Owner instruction supersedes stale queue/status snapshots.
-- Browser authority is standing but #497 guardrails are mandatory.
-- Queue/lease/heartbeat/checkpoint/dedupe/retry must remain bounded and auditable.
-- No fake heartbeat/background/online/browser/runtime evidence.
-- Registry cannot self-authorize MAIN/Production/paid/security/reboot/irreversible actions.
+## Archive exclusion
+Old PC01 worktrees, releases, snapshots, old `docs/company/*_v1.md` repository copies and chat history are not current-state authority. Preserve them for rollback/evidence; exclude them from normal resolution unless a specific comparison/evidence request requires them.
 
-## Superseded state notice
-The previous MAIN snapshot that said unattended Chrome/ChatGPT UI automation was paused and referenced Registry v4 is superseded by CENTRAL #280 + Registry #335 v5 + #497. Until this candidate is merged through the normal gate, those dynamic sources remain authoritative when conflict exists.
-
-## Next evidence required
-- Continue #318 PC01 autonomy work without duplicating the other chat's owned PC/OpenClaw mutation scope.
-- Dedicated OpenClaw lane publishes exact current gateway/task/config/model/runtime evidence and updates CENTRAL/state accordingly.
-- Complete guarded browser/ChatGPT E2E, mobile->PC01 execution, self-heal and reboot-recovery evidence before final autonomy completion claim.
+## Deep-read triggers
+Deep-read CENTRAL/Registry/exact issue/runtime evidence when HOT STATE is missing/invalid, a newer Owner instruction exists, sources conflict, fresh runtime proof is required, a mutation/security gate is involved, or exact evidence is requested.
