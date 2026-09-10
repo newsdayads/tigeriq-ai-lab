@@ -116,35 +116,88 @@ function firstLine(value = '') {
 export function parseCentralPriorities(body = '') {
   const rows = [];
   const seen = new Set();
-  const regex = /###\s+\d+\.\s+(P[0-2])\s+#(\d+)\s+—\s+([^\n]+)/g;
-  for (const match of String(body).matchAll(regex)) {
+  const text = String(body);
+  const legacy = /###\s+\d+\.\s+(P[0-2])\s+#(\d+)\s+—\s+([^\n]+)/g;
+  for (const match of text.matchAll(legacy)) {
     const number = Number(match[2]);
     if (!number || seen.has(number)) continue;
     seen.add(number);
     rows.push({ priority: match[1], number, label: cleanTitle(match[3]) });
   }
+
+  const lines = text.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i += 1) {
+    const heading = lines[i].match(/^###\s+(.+?)\s+—\s+(P[0-2])\s*$/);
+    if (!heading) continue;
+    let number = null;
+    for (let j = i + 1; j < Math.min(lines.length, i + 10); j += 1) {
+      if (/^###\s+/.test(lines[j])) break;
+      const issueMatch = lines[j].match(/\b(?:APP issue|issue|Work Order|P0 framework)\b[^#\n]*#(\d+)/i)
+        || lines[j].match(/\*\*#(\d+)\*\*/);
+      if (issueMatch) { number = Number(issueMatch[1]); break; }
+    }
+    if (!number || seen.has(number)) continue;
+    seen.add(number);
+    rows.push({ priority: heading[2], number, label: cleanTitle(heading[1]) });
+  }
+
+  const currentSection = text.match(/## CURRENT OWNER PRIORITY[^\n]*\n([\s\S]*?)(?=\n## |$)/i)?.[1] || '';
+  const current = /^\s*\d+\.\s+\*\*#(\d+)\s+—\s+([^*\n]+)\*\*(?:\s*:\s*([^\n]+))?/gm;
+  for (const match of currentSection.matchAll(current)) {
+    const number = Number(match[1]);
+    if (!number || seen.has(number)) continue;
+    const detail = String(match[3] || '');
+    const priority = detail.match(/\b(P[0-2])\b/i)?.[1]?.toUpperCase() || 'P0';
+    seen.add(number);
+    rows.push({ priority, number, label: cleanTitle(match[2]) });
+  }
   return rows;
+}
+
+function cleanRegistryCell(value = '') {
+  return String(value).replace(/`/g, '').replace(/\*\*/g, '').trim();
 }
 
 export function parseEmployees(body = '') {
   const rows = [];
-  const regex = /\|\s*`(\d+)`\s*\|\s*`(NV\d+)`\s*\|[^|]*\|[^|]*\|[^|]*\|\s*`([^`]+)`\s*\|\s*([^|]+)\|/g;
-  for (const match of String(body).matchAll(regex)) {
-    const enabledRaw = match[4].replace(/\*/g, '').trim().toLowerCase();
+  for (const line of String(body).split(/\r?\n/)) {
+    if (!line.trim().startsWith('|')) continue;
+    const cells = line.split('|').slice(1, -1).map(cleanRegistryCell);
+    const command = Number(cells[0]);
+    const employeeMatch = String(cells[1] || '').match(/\b(NV\d+)\b/i);
+    if (!command || !employeeMatch) continue;
+
+    const legacyShape = cells.length >= 7;
+    const transitionalShape = cells.length === 6;
+    const label = legacyShape ? cells[5] : cells[1];
+    const enabledRaw = String(legacyShape ? cells[6] : cells[4] || '').toLowerCase();
+    const enabled = enabledRaw.startsWith('true');
+    const activation = transitionalShape ? String(cells[5] || '').toUpperCase() : null;
+    const active = enabled && (!activation || activation === 'ACTIVE');
     rows.push({
-      command: Number(match[1]),
-      employeeId: match[2],
-      label: match[3].trim(),
-      active: enabledRaw.startsWith('true'),
-      state: enabledRaw.startsWith('true') ? 'Sẵn sàng theo danh mục' : 'Tạm ngưng',
+      command,
+      employeeId: employeeMatch[1].toUpperCase(),
+      label: label || employeeMatch[1].toUpperCase(),
+      active,
+      state: active ? 'Sẵn sàng theo danh mục' : 'Tạm ngưng',
     });
   }
   return rows;
 }
 
+export function inferDeclaredExecutor(body = '', issueNumber = null) {
+  if (!issueNumber) return null;
+  const line = String(body).split(/\r?\n/).find((row) => new RegExp(`^\\s*\\d+\\.\\s+\\*\\*#${issueNumber}\\b`).test(row));
+  if (!line) return null;
+  const match = line.match(/(?:Actual executor now|executor|owner)\s*=\s*`([^`]+)`/i);
+  return match?.[1]?.trim() || null;
+}
+
 export function inferOwnerAction(text = '') {
   const normalized = String(text).toUpperCase();
-  const required = /(^|\n)\s*(?:[-*]\s*)?(?:STATE\s*[:=]\s*)?(?:CHỜ ANH SƠN|OWNER[_ ]ACTION[_ ]REQUIRED)\b/m.test(normalized);
+  const explicitAction = /(^|\n)\s*(?:[-*]\s*)?(?:STATE\s*[:=]\s*)?(?:CHỜ ANH SƠN|OWNER[_ ]ACTION[_ ]REQUIRED)\b/m.test(normalized);
+  const ownerGateState = /(?:\*\*)?STATE\s*:?\s*(?:\*\*)?\s*[:=]?\s*`?[^`\n]*OWNER(?:[_ -](?:MAIN[_ -])?)?GATE\b[^`\n]*`?/m.test(normalized);
+  const required = explicitAction || ownerGateState;
   return {
     required,
     summary: required ? 'Có hạng mục đang chờ anh Sơn theo Nguồn Sự Thật.' : 'Không có việc bắt buộc anh Sơn thao tác ở ưu tiên hiện tại.',
@@ -219,6 +272,7 @@ export async function buildCompanyProgress(fetchImpl = fetch) {
       number: active.number,
       title: active.title,
       priority: active.priority,
+      ownerLabel: inferDeclaredExecutor(central.body, active.number),
       status: active.status,
       progressPct: null,
       progressText: 'Đang xử lý · chỉ chốt khi đủ bằng chứng',
