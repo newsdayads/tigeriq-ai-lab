@@ -79,7 +79,6 @@ export class ZeroTouchUpdateCoordinator {
     }
     this.#inFlight.add(manifest.component);
     let previous:InstalledComponentState={version:'unknown',revision:0};
-    let candidate:StagedCandidate<THandle>|undefined;
     let attempts=0;
     let rolledBack=false;
     try{
@@ -95,6 +94,7 @@ export class ZeroTouchUpdateCoordinator {
       const preserved=await adapter.capturePreserved(manifest.preserveKeys);
       const maxAttempts=manifest.maxAttempts??1;
       for(attempts=1;attempts<=maxAttempts;attempts++){
+        let candidate:StagedCandidate<THandle>|undefined;
         try{
           candidate=await adapter.stage(manifest);emit('stage',true,`attempt=${attempts}`);
           if(candidate.sha256.toLowerCase()!==manifest.artifactSha256.toLowerCase())throw new Error('ARTIFACT_HASH_MISMATCH');
@@ -104,7 +104,7 @@ export class ZeroTouchUpdateCoordinator {
           const after=await adapter.capturePreserved(manifest.preserveKeys);
           if(!samePreserved(preserved,after,manifest.preserveKeys))throw new Error('PRESERVED_STATE_MISMATCH');
           await adapter.commit(manifest,candidate);emit('commit',true,`version=${manifest.version}`);
-          return {component:manifest.component,targetVersion:manifest.version,previousVersion:previous.version,status:'updated',attempts,rolledBack:false,evidence:events};
+          return {component:manifest.component,targetVersion:manifest.version,previousVersion:previous.version,status:'updated',attempts,rolledBack,evidence:events};
         }catch(error){
           if(candidate){await adapter.rollback(previous,candidate);rolledBack=true;emit('rollback',true,`attempt=${attempts}`);}
           if(attempts>=maxAttempts)throw error;
