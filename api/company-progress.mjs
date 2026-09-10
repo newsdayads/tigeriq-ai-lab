@@ -185,6 +185,14 @@ export function parseEmployees(body = '') {
   return rows;
 }
 
+export function inferDeclaredExecutor(body = '', issueNumber = null) {
+  if (!issueNumber) return null;
+  const line = String(body).split(/\r?\n/).find((row) => new RegExp(`^\\s*\\d+\\.\\s+\\*\\*#${issueNumber}\\b`).test(row));
+  if (!line) return null;
+  const match = line.match(/(?:Actual executor now|executor|owner)\s*=\s*`([^`]+)`/i);
+  return match?.[1]?.trim() || null;
+}
+
 export function inferOwnerAction(text = '') {
   const normalized = String(text).toUpperCase();
   const required = /(^|\n)\s*(?:[-*]\s*)?(?:STATE\s*[:=]\s*)?(?:CHỜ ANH SƠN|OWNER[_ ]ACTION[_ ]REQUIRED)\b/m.test(normalized);
@@ -262,6 +270,7 @@ export async function buildCompanyProgress(fetchImpl = fetch) {
       number: active.number,
       title: active.title,
       priority: active.priority,
+      ownerLabel: inferDeclaredExecutor(central.body, active.number),
       status: active.status,
       progressPct: null,
       progressText: 'Đang xử lý · chỉ chốt khi đủ bằng chứng',

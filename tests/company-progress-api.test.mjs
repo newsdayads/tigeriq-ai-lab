@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { inferOwnerAction, parseCentralPriorities, parseEmployees, projectProgress } from '../api/company-progress.mjs';
+import { inferDeclaredExecutor, inferOwnerAction, parseCentralPriorities, parseEmployees, projectProgress } from '../api/company-progress.mjs';
 
 function pull(title = 'WO-031: Mobile Workforce Board') {
   return { title, body: '', number: 93, head: { sha: 'abc', ref: 'wo031/test' } };
@@ -85,6 +85,13 @@ describe('public authoritative projection', () => {
     expect(rows).toHaveLength(2);
     expect(rows[0]).toMatchObject({ command: 1, employeeId: 'NV01', label: 'NV01 / Minh', active: true });
     expect(rows[1]).toMatchObject({ command: 3, employeeId: 'NV03', label: 'NV03 / Huy', active: false });
+  });
+
+  it('uses only an explicitly declared executor for current work ownership', () => {
+    const body = '1. **#556 — Source Truth + HOT STATE**: highest P0. Actual executor now = `Vy / Chief of Staff`, `mode=foreground_direct`.\n2. **#478 — Zero-touch**: next safe P0.';
+    expect(inferDeclaredExecutor(body, 556)).toBe('Vy / Chief of Staff');
+    expect(inferDeclaredExecutor(body, 478)).toBe(null);
+    expect(inferDeclaredExecutor(body, 999)).toBe(null);
   });
 
   it('does not mistake descriptive owner-question prose for a real owner action', () => {
