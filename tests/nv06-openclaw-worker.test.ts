@@ -1,5 +1,5 @@
 import { describe,expect,test } from 'vitest';
-import { containsHumanAuthBlock,openClawSpawn,parseOpenClawJson } from '../apps/nv06-openclaw-worker/src/openclaw.js';
+import { containsHumanAuthBlock,executionContainsHumanAuthBlock,openClawSpawn,parseOpenClawJson } from '../apps/nv06-openclaw-worker/src/openclaw.js';
 import { NV06_CAPABILITIES,NV06_EMPLOYEE_ID,NV06_PERMISSIONS } from '../apps/nv06-openclaw-worker/src/types.js';
 
 describe('NV06 OpenClaw worker contract',()=>{
@@ -25,5 +25,10 @@ describe('NV06 OpenClaw worker contract',()=>{
     expect(containsHumanAuthBlock('Please verify you are human')).toBe(true);
     expect(containsHumanAuthBlock('CAPTCHA challenge')).toBe(true);
     expect(containsHumanAuthBlock('normal ChatGPT response')).toBe(false);
+  });
+  test('does not self-block on guardrail text echoed outside the deliverable result',()=>{
+    const parsed={prompt:'Stop on CAPTCHA, re-auth, security challenge or suspicious activity',result:{payloads:[{text:'normal ChatGPT response'}]}};
+    expect(executionContainsHumanAuthBlock(parsed,'')).toBe(false);
+    expect(executionContainsHumanAuthBlock({result:{payloads:[{text:'Please verify you are human'}]}},'')).toBe(true);
   });
 });

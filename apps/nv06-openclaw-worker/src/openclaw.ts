@@ -1,4 +1,4 @@
-﻿import { spawn } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { asRecord,sleep,stringValue,type NV06Config,type WorkerJob } from './types.js';
@@ -24,6 +24,7 @@ function resultText(parsed:Record<string,unknown>):string{
   for(const value of payloads){const text=stringValue(asRecord(value)?.text);if(text)return text;}
   return stringValue(result?.finalAssistantVisibleText)??stringValue(parsed.summary)??'';
 }
+export function executionContainsHumanAuthBlock(parsed:Record<string,unknown>,stderr=''):boolean{return containsHumanAuthBlock(`${resultText(parsed)}\n${stderr}`);}
 function browserWasUsed(parsed:Record<string,unknown>):boolean{
   const result=asRecord(parsed.result),meta=asRecord(result?.meta),agentMeta=asRecord(meta?.agentMeta),receipt=asRecord(agentMeta?.terminalReceipt);
   return Array.isArray(receipt?.successfulToolNames)&&receipt.successfulToolNames.includes('browser');
@@ -45,8 +46,13 @@ export class OpenClawRunner {
     const sessionKey=`agent:main:nv06-${safe}-a${attempt}-${stamp}`,started=Date.now();
     const invocation=openClawSpawn(this.config.openclawCli,sessionKey,messageFile,this.config.timeoutSeconds);
     const {stdout,stderr,code}=await this.spawn(invocation.command,invocation.args,(this.config.timeoutSeconds+45)*1000);
-    if(containsHumanAuthBlock(`${stdout}\n${stderr}`))throw new OpenClawExecutionError('BLOCKED_HUMAN_AUTH','Browser requires human authentication or verification',false);
-    const parsed=parseOpenClawJson(`${stdout}\n${stderr}`),text=resultText(parsed),browserUsed=browserWasUsed(parsed),status=stringValue(parsed.status);
+    let parsed:Record<string,unknown>;
+    try{parsed=parseOpenClawJson(stdout);}catch(error){
+      if(containsHumanAuthBlock(stderr))throw new OpenClawExecutionError('BLOCKED_HUMAN_AUTH','Browser requires human authentication or verification',false);
+      throw error;
+    }
+    const text=resultText(parsed),browserUsed=browserWasUsed(parsed),status=stringValue(parsed.status);
+    if(executionContainsHumanAuthBlock(parsed,stderr))throw new OpenClawExecutionError('BLOCKED_HUMAN_AUTH','Browser requires human authentication or verification',false);
     if(code!==0||status==='timeout'||status==='error')throw new OpenClawExecutionError('OPENCLAW_EXECUTION_FAILED',`OpenClaw exit=${code} status=${status??'unknown'}: ${(text||stderr).slice(0,1000)}`,true);
     if(job.requiredCapabilities.includes('browser.chatgpt')&&!browserUsed)throw new OpenClawExecutionError('BROWSER_TOOL_NOT_USED','Job required browser.chatgpt but OpenClaw did not successfully call browser',true);
     if(!text)throw new OpenClawExecutionError('OPENCLAW_EMPTY_RESULT','OpenClaw completed without a deliverable text result',true);
