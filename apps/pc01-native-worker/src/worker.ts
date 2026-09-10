@@ -2,15 +2,16 @@ import os from 'node:os';
 import { ControllerClient } from './controller-client.js';
 import { ToolExecutor, ToolPolicyError } from './executor.js';
 import { OllamaProvider } from './ollama.js';
+import { CoordinatedAiProvider } from './coordinated-ai.js';
 import { boolValue, CapabilityRouter, EvidenceStore, loadOrCreateIdentity, numberValue, PC01_DEVICE_ID, PC01_EMPLOYEE_ID, ResourceMonitor, sleep, stringValue, type EvidenceDocument, type NativeWorkerConfig, type WorkerJob, type WorkerLease } from './types.js';
 
 export class NativeWorker {
-  readonly resources=new ResourceMonitor();readonly router=new CapabilityRouter();readonly executor:ToolExecutor;readonly evidence:EvidenceStore;readonly ollama:OllamaProvider;
+  readonly resources=new ResourceMonitor();readonly router=new CapabilityRouter();readonly executor:ToolExecutor;readonly evidence:EvidenceStore;readonly ollama:OllamaProvider;readonly coordinatedAi:CoordinatedAiProvider;
   private readonly inflight=new Map<string,Promise<void>>();private stopped=false;private client?:ControllerClient;
-  constructor(readonly config:NativeWorkerConfig){this.executor=new ToolExecutor(config.workspace);this.evidence=new EvidenceStore(config.workspace);this.ollama=new OllamaProvider(config.ollamaEndpoint,config.ollamaModel,4096,2);}
+  constructor(readonly config:NativeWorkerConfig){this.executor=new ToolExecutor(config.workspace);this.evidence=new EvidenceStore(config.workspace);this.ollama=new OllamaProvider(config.ollamaEndpoint,config.ollamaModel,4096,2);this.coordinatedAi=new CoordinatedAiProvider(config.stateRoot,config.ollamaEndpoint);}
   async start():Promise<void>{
     const identity=await loadOrCreateIdentity(this.config.identityFile);this.client=new ControllerClient(this.config.controllerUrl,this.config.ingressToken,identity);
-    const ollamaHealth=await this.ollama.health();await this.client.register({hostname:os.hostname(),workspace:this.config.workspace,ollama:ollamaHealth,workerVersion:'pc01-native-worker-v1'});await this.sendHeartbeat();
+    const ollamaHealth=await this.ollama.health();await this.client.register({hostname:os.hostname(),workspace:this.config.workspace,ollama:ollamaHealth,workerVersion:'pc01-native-worker-v2-multiai'});await this.sendHeartbeat();
     const heartbeat=setInterval(()=>void this.sendHeartbeat().catch(error=>console.error(JSON.stringify({event:'PC01_HEARTBEAT_ERROR',message:String(error)}))),this.config.heartbeatMs);
     try{while(!this.stopped){await this.fillCapacity();await sleep(this.config.pollMs);}}finally{clearInterval(heartbeat);await Promise.allSettled(this.inflight.values());}
   }
@@ -23,8 +24,12 @@ export class NativeWorker {
     if(!this.client)return;const startedAt=new Date().toISOString(),route=this.router.select(lease.job),commands:unknown[]=[],tests:unknown[]=[],errors:unknown[]=[];let model:string|undefined,output:Record<string,unknown>|undefined,renewFailed=false;
     const renewer=setInterval(()=>void this.client!.renew(lease).catch(error=>{renewFailed=true;errors.push({phase:'lease-renew',message:String(error)});}),40_000);
     try{
-      if(route==='cloud')throw new ToolPolicyError('CLOUD_PROVIDER_NOT_CONFIGURED','cloud route is unavailable until an authorized provider is configured');
-      if(route==='local_ai'){
+      if(route==='cloud')throw new ToolPolicyError('CLOUD_DIRECT_ROUTE_DENIED','direct cloud route is disabled; use ai_auto zero-cost coordinator');
+      if(route==='ai_auto'){
+        const coordinated=await this.coordinatedAi.run(lease.job);model=coordinated.executorModel;
+        output={route,model,content:coordinated.content,reviewerDecision:coordinated.reviewerDecision,judgeDecision:coordinated.judgeDecision,coordinatorEvidence:coordinated.evidence};
+        tests.push({name:'ai-coordinator-verified',pass:true,executorModel:coordinated.executorModel,reviewerDecision:coordinated.reviewerDecision,judgeDecision:coordinated.judgeDecision});
+      }else if(route==='local_ai'){
         const prompt=stringValue(lease.job.payload.prompt)??lease.job.objective,json=boolValue(lease.job.payload.json,lease.job.expectedEvidence.includes('json')),generated=await this.ollama.generate(prompt,{temperature:numberValue(lease.job.payload.temperature)??0.1,json});model=this.ollama.model;
         output={route,model,content:generated.content,parsedJson:generated.parsed,metrics:generated.metrics};tests.push({name:'ollama-generate',pass:true,metrics:generated.metrics});
       }else if(route==='tool'){
@@ -45,13 +50,7 @@ export class NativeWorker {
       console.error(JSON.stringify({event:'PC01_JOB_FAILED',jobId:lease.job.jobId,code,message,evidence:stored.relativePath}));
     }finally{clearInterval(renewer);}
   }
-  private document(job:WorkerJob,startedAt:string,completedAt:string,route:string,model:string|undefined,commands:unknown[],tests:unknown[],errors:unknown[],output:Record<string,unknown>|undefined,finalStatus:'completed'|'failed'):EvidenceDocument{return {work_order_id:job.jobId,worker:PC01_EMPLOYEE_ID,device:PC01_DEVICE_ID,started_at:startedAt,completed_at:completedAt,input_task_summary:job.objective,selected_route:route,model,commands_tools_executed:commands,test_results:tests,output_result:output,reviewer_gate_result:{independentReviewRequired:job.independentReview,judgeRequired:job.judgeRequired,claimedIndependentAiReview:false},errors_retries:errors,final_status:finalStatus};}
+  private document(job:WorkerJob,startedAt:string,completedAt:string,route:string,model:string|undefined,commands:unknown[],tests:unknown[],errors:unknown[],output:Record<string,unknown>|undefined,finalStatus:'completed'|'failed'):EvidenceDocument{return {work_order_id:job.jobId,worker:PC01_EMPLOYEE_ID,device:PC01_DEVICE_ID,started_at:startedAt,completed_at:completedAt,input_task_summary:job.objective,selected_route:route,model,commands_tools_executed:commands,test_results:tests,output_result:output,reviewer_gate_result:{independentReviewRequired:job.independentReview,judgeRequired:job.judgeRequired,claimedIndependentAiReview:route==='ai_auto',reviewerDecision:route==='ai_auto'?output?.reviewerDecision:undefined,judgeDecision:route==='ai_auto'?output?.judgeDecision:undefined},errors_retries:errors,final_status:finalStatus};}
   private evidenceFor(job:WorkerJob,ref:string,digest:string):Array<{kind:'text'|'json'|'log';ref:string;summary:string;sha256:string}>{const supported=new Set(['json','log','text']);for(const kind of job.expectedEvidence)if(!supported.has(kind))throw new ToolPolicyError('EVIDENCE_KIND_UNSUPPORTED',`native worker cannot truthfully synthesize required evidence kind ${kind}`);return job.expectedEvidence.map(kind=>({kind:kind as 'text'|'json'|'log',ref,summary:`PC01 native worker ${kind} evidence`,sha256:digest}));}
-  private async sendHeartbeat():Promise<void>{
-    if(!this.client)return;
-    const resources=this.resources.snapshot();let ollama:Record<string,unknown>;
-    try{ollama=await this.ollama.health();}catch(error){ollama={ok:false,error:String(error)};}
-    const healthy=resources.freeRamBytes>=this.config.minFreeRamBytes&&ollama.ok===true;
-    await this.client.heartbeat({service:'pc01-native-worker-v1',pid:process.pid,processUptimeSeconds:Math.round(process.uptime()),resources,ollama,activeJobs:this.inflight.size,localAiActive:this.ollama.semaphore.activeCount,localAiMax:2,context:4096,model:this.ollama.model},healthy?'ok':'degraded');
-  }
+  private async sendHeartbeat():Promise<void>{if(!this.client)return;const resources=this.resources.snapshot();let ollama:Record<string,unknown>;try{ollama=await this.ollama.health();}catch(error){ollama={ok:false,error:String(error)};}const groqFreeReady=process.env.TIGERIQ_GROQ_FREE_TIER_VERIFIED?.trim().toLowerCase()==='true'&&Boolean(process.env.GROQ_API_KEY?.trim());const geminiFreeReady=process.env.TIGERIQ_GEMINI_FREE_TIER_VERIFIED?.trim().toLowerCase()==='true'&&Boolean(process.env.GEMINI_API_KEY?.trim());const healthy=resources.freeRamBytes>=this.config.minFreeRamBytes&&ollama.ok===true;await this.client.heartbeat({resources,ollama,aiCoordinator:{enabled:true,groqFreeReady,geminiFreeReady},activeJobs:this.inflight.size,localAiActive:this.ollama.semaphore.activeCount,localAiMax:2,context:4096,model:this.ollama.model},healthy?'ok':'degraded');}
 }

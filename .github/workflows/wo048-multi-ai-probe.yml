@@ -1,0 +1,117 @@
+name: WO-048 Multi-AI Probe Guard
+
+on:
+  pull_request:
+    paths:
+      - 'config/ai-free-providers-v1.json'
+      - 'scripts/pc-worker/probe-multi-ai.ps1'
+      - 'scripts/pc-worker/test-ai-free-policy.ps1'
+      - 'scripts/pc-worker/ai-provider-scheduler.ps1'
+      - 'scripts/pc-worker/test-ai-provider-scheduler.ps1'
+      - 'scripts/pc-worker/ai-job-orchestrator.ps1'
+      - 'scripts/pc-worker/test-ai-job-orchestration.ps1'
+      - 'scripts/pc-worker/run-ai-job001-mixed.ps1'
+      - 'scripts/pc-worker/run-ai-job001-triprovider.ps1'
+      - 'scripts/pc-worker/invoke-ai-job001-triprovider-runtime.ps1'
+      - 'scripts/pc-worker/install-groq-runtime-secret.ps1'
+      - 'scripts/pc-worker/invoke-groq-runtime.ps1'
+      - 'scripts/pc-worker/deploy-ai-api-runtime.ps1'
+      - '.github/workflows/wo048-multi-ai-probe.yml'
+  push:
+    branches:
+      - 'wo048/multi-ai-subscription-orchestration'
+    paths:
+      - 'config/ai-free-providers-v1.json'
+      - 'scripts/pc-worker/probe-multi-ai.ps1'
+      - 'scripts/pc-worker/test-ai-free-policy.ps1'
+      - 'scripts/pc-worker/ai-provider-scheduler.ps1'
+      - 'scripts/pc-worker/test-ai-provider-scheduler.ps1'
+      - 'scripts/pc-worker/ai-job-orchestrator.ps1'
+      - 'scripts/pc-worker/test-ai-job-orchestration.ps1'
+      - 'scripts/pc-worker/run-ai-job001-mixed.ps1'
+      - 'scripts/pc-worker/run-ai-job001-triprovider.ps1'
+      - 'scripts/pc-worker/invoke-ai-job001-triprovider-runtime.ps1'
+      - 'scripts/pc-worker/install-groq-runtime-secret.ps1'
+      - 'scripts/pc-worker/invoke-groq-runtime.ps1'
+      - 'scripts/pc-worker/deploy-ai-api-runtime.ps1'
+      - '.github/workflows/wo048-multi-ai-probe.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  subscription-only-probe-guard:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Parse PowerShell guards
+        shell: powershell
+        run: |
+          foreach ($path in @(
+            'scripts/pc-worker/probe-multi-ai.ps1',
+            'scripts/pc-worker/test-ai-free-policy.ps1',
+            'scripts/pc-worker/ai-provider-scheduler.ps1',
+            'scripts/pc-worker/test-ai-provider-scheduler.ps1',
+            'scripts/pc-worker/ai-job-orchestrator.ps1',
+            'scripts/pc-worker/test-ai-job-orchestration.ps1',
+            'scripts/pc-worker/run-ai-job001-mixed.ps1',
+            'scripts/pc-worker/run-ai-job001-triprovider.ps1',
+            'scripts/pc-worker/invoke-ai-job001-triprovider-runtime.ps1',
+            'scripts/pc-worker/install-groq-runtime-secret.ps1',
+            'scripts/pc-worker/invoke-groq-runtime.ps1',
+            'scripts/pc-worker/deploy-ai-api-runtime.ps1'
+          )) {
+            $errors = $null
+            $tokens = $null
+            [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path), [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error $_.Message }
+              exit 1
+            }
+          }
+          Write-Host 'MULTI_AI_POWERSHELL_PARSE_PASS'
+      - name: Run zero-cost three-way policy test
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/pc-worker/test-ai-free-policy.ps1
+      - name: Run scheduler lease-dedupe regression
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/pc-worker/test-ai-provider-scheduler.ps1
+      - name: Run JOB-001 orchestration regression
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/pc-worker/test-ai-job-orchestration.ps1
+      - name: Run mixed Groq-Ollama harness self-test
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/pc-worker/run-ai-job001-mixed.ps1 -SelfTest
+      - name: Assert mixed live preflight fails closed without credentials
+        shell: powershell
+        run: |
+          $output = & powershell -NoProfile -ExecutionPolicy Bypass -File scripts/pc-worker/run-ai-job001-mixed.ps1 -Live -WorkOrderId 'CI-MIXED-PREFLIGHT' 2>&1
+          $code = $LASTEXITCODE
+          $text = ($output | Out-String)
+          if ($code -ne 2) { Write-Error "Expected blocked exit 2, got $code"; exit 1 }
+          if ($text -notmatch '"networkCallMade"\s*:\s*false') { Write-Error 'Missing no-network evidence'; exit 1 }
+          if ($text -notmatch '"status"\s*:\s*"BLOCKED"') { Write-Error 'Missing blocked status'; exit 1 }
+          if ($text -notmatch 'CI-MIXED-PREFLIGHT') { Write-Error 'Mixed explicit WorkOrderId was not preserved'; exit 1 }
+          Write-Host 'MIXED_LIVE_NO_CREDENTIAL_FAIL_CLOSED_PASS'
+          exit 0
+      - name: Run tri-provider JOB-001 self-test
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/pc-worker/run-ai-job001-triprovider.ps1 -SelfTest
+      - name: Assert tri-provider live preflight fails closed without credentials
+        shell: powershell
+        run: |
+          $output = & powershell -NoProfile -ExecutionPolicy Bypass -File scripts/pc-worker/run-ai-job001-triprovider.ps1 -Live -WorkOrderId 'CI-TRI-PREFLIGHT' 2>&1
+          $code = $LASTEXITCODE
+          $text = ($output | Out-String)
+          if ($code -ne 2) { Write-Error "Expected blocked exit 2, got $code"; exit 1 }
+          if ($text -notmatch '"networkCallMade"\s*:\s*false') { Write-Error 'Missing tri-provider no-network evidence'; exit 1 }
+          if ($text -notmatch '"status"\s*:\s*"BLOCKED"') { Write-Error 'Missing tri-provider blocked status'; exit 1 }
+          if ($text -notmatch 'CI-TRI-PREFLIGHT') { Write-Error 'Tri-provider explicit WorkOrderId was not preserved'; exit 1 }
+          Write-Host 'TRI_PROVIDER_LIVE_NO_CREDENTIAL_FAIL_CLOSED_PASS'
+          exit 0
+      - name: Run no-provider probe self-test
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/pc-worker/probe-multi-ai.ps1 -SelfTest

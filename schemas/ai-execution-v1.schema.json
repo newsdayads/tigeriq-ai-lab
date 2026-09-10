@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tigeriq.local/schemas/ai-execution-v1.schema.json",
+  "title": "TigerIQ AI Execution V1",
+  "type": "object",
+  "required": ["endpoint", "request", "result"],
+  "properties": {
+    "endpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["endpointId", "employeeId", "provider", "model", "location", "credentialOwner", "billingMode"],
+      "properties": {
+        "endpointId": { "type": "string", "minLength": 1 },
+        "employeeId": { "type": "string", "minLength": 1 },
+        "provider": { "type": "string", "minLength": 1 },
+        "model": { "type": "string", "minLength": 1 },
+        "location": { "enum": ["pc01-local", "pc01-server", "employee-device"] },
+        "credentialOwner": { "enum": ["none", "pc01", "employee-device"] },
+        "billingMode": { "enum": ["local-zero-cost", "free-tier-proven", "subscription-proven", "unknown", "paid"] }
+      }
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contractVersion", "jobId", "promptId", "promptVersion", "employeeId", "endpointId", "role", "idempotencyKey", "prompt", "createdAt"],
+      "properties": {
+        "contractVersion": { "const": "TIGERIQ_JOB_EXECUTION_V1" },
+        "jobId": { "type": "string", "minLength": 1 },
+        "promptId": { "type": "string", "pattern": "^PROMPT-" },
+        "promptVersion": { "type": "integer", "minimum": 1 },
+        "employeeId": { "type": "string", "minLength": 1 },
+        "endpointId": { "type": "string", "minLength": 1 },
+        "role": { "enum": ["executor", "reviewer", "judge"] },
+        "idempotencyKey": { "type": "string", "minLength": 1 },
+        "prompt": { "type": "string", "minLength": 1 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contractVersion", "jobId", "promptId", "promptVersion", "employeeId", "endpointId", "provider", "model", "output", "startedAt", "completedAt", "attempts", "failoverCount", "errors", "evidence", "credentialExposure"],
+      "properties": {
+        "contractVersion": { "const": "TIGERIQ_JOB_EXECUTION_V1" },
+        "jobId": { "type": "string", "minLength": 1 },
+        "promptId": { "type": "string", "pattern": "^PROMPT-" },
+        "promptVersion": { "type": "integer", "minimum": 1 },
+        "employeeId": { "type": "string", "minLength": 1 },
+        "endpointId": { "type": "string", "minLength": 1 },
+        "provider": { "type": "string", "minLength": 1 },
+        "model": { "type": "string", "minLength": 1 },
+        "output": { "type": "string" },
+        "startedAt": { "type": "string", "format": "date-time" },
+        "completedAt": { "type": "string", "format": "date-time" },
+        "attempts": { "type": "integer", "minimum": 1 },
+        "failoverCount": { "type": "integer", "minimum": 0 },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["code", "retryable"],
+            "properties": {
+              "code": { "type": "string", "minLength": 1 },
+              "retryable": { "type": "boolean" }
+            }
+          }
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "ref"],
+            "properties": {
+              "kind": { "type": "string", "minLength": 1 },
+              "ref": { "type": "string", "minLength": 1 },
+              "sha256": { "type": "string", "pattern": "^[a-fA-F0-9]{64}$" }
+            }
+          }
+        },
+        "credentialExposure": { "const": false }
+      }
+    }
+  }
+}

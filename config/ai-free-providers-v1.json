@@ -1,0 +1,152 @@
+{
+  "version": "TIGERIQ_AI_FREE_PROVIDERS_V1",
+  "policy": {
+    "billingMode": "ZERO_COST_ONLY",
+    "paidFallback": false,
+    "failClosedOnUnknownBilling": true,
+    "maxParallelCloudWorkers": 3,
+    "localFallbackAlwaysAllowed": true,
+    "maxAttemptsPerRole": 3
+  },
+  "execution": {
+    "coordinatorRequiresProviderCredential": false,
+    "serverProviderCallRequired": false,
+    "allowedLocations": [
+      "pc01-local",
+      "pc01-server",
+      "employee-device"
+    ],
+    "employeeDeviceCredentialOwner": "employee-device",
+    "providerSecretsInEvidence": false
+  },
+  "scheduler": {
+    "version": "TIGERIQ_AI_PROVIDER_SCHEDULER_V1",
+    "stateMode": "file_backed_exclusive_lock",
+    "dedupeScope": "work_order_role",
+    "leaseRequired": true,
+    "leaseSeconds": 120,
+    "lockWaitMs": 1500,
+    "maxAttemptsPerRole": 3,
+    "candidateEligibilityRequired": true,
+    "eligibilitySource": "guarded_live_probe_READY",
+    "failClosedOnMissingEligibility": true,
+    "retryableFailures": [
+      "timeout",
+      "rate_limit",
+      "outage"
+    ],
+    "terminalFailures": [
+      "auth",
+      "config",
+      "invalid_response",
+      "billing_unknown",
+      "billing_nonzero"
+    ],
+    "staleLeaseTokenFailsClosed": true,
+    "expiredLeaseRecoverable": true
+  },
+  "providers": {
+    "groq": {
+      "enabled": true,
+      "mode": "free_tier_only_explicit_account_proof",
+      "credentialEnv": "GROQ_API_KEY",
+      "accountTierProofEnv": "TIGERIQ_GROQ_FREE_TIER_VERIFIED",
+      "requireFreeTierProof": true,
+      "model": "openai/gpt-oss-120b",
+      "serviceTier": "on_demand",
+      "allowPaidTier": false,
+      "role": [
+        "executor",
+        "reviewer",
+        "judge"
+      ],
+      "onQuota": "fallback",
+      "reason": "Groq Free Plan is routable only when the runtime explicitly proves the backing organization is still Free Tier; API key alone is insufficient."
+    },
+    "openrouter": {
+      "enabled": true,
+      "mode": "free_router_only",
+      "credentialEnv": "OPENROUTER_API_KEY",
+      "model": "openrouter/free",
+      "allowNonFreeModels": false,
+      "role": [
+        "executor",
+        "reviewer",
+        "judge"
+      ],
+      "onQuota": "fallback"
+    },
+    "gemini_cli": {
+      "enabled": true,
+      "mode": "google_account_login_only",
+      "forbidApiKeyRoute": true,
+      "forbidVertexRoute": true,
+      "role": [
+        "executor",
+        "reviewer",
+        "judge"
+      ],
+      "onQuota": "fallback"
+    },
+    "gemini_api": {
+      "enabled": true,
+      "mode": "free_tier_only_explicit_project_proof",
+      "credentialEnv": "GEMINI_API_KEY",
+      "accountTierProofEnv": "TIGERIQ_GEMINI_FREE_TIER_VERIFIED",
+      "requireFreeTierProof": true,
+      "model": "gemini-3.5-flash-lite",
+      "allowPaidTier": false,
+      "role": [
+        "executor",
+        "reviewer",
+        "judge"
+      ],
+      "onQuota": "fallback",
+      "reason": "Gemini API is routable only when the backing project is explicitly verified as Free Tier; API key alone is insufficient and no paid fallback is permitted."
+    },
+    "claude_code": {
+      "enabled": false,
+      "mode": "disabled_until_subscription_no_usage_credits_is_independently_proven",
+      "forbidApiKeyRoute": true,
+      "forbidCloudGatewayRoutes": true,
+      "forbidUsageCredits": true,
+      "requiredAuth": "claude_ai_pro_or_max_subscription",
+      "role": [
+        "executor",
+        "reviewer",
+        "judge"
+      ],
+      "onQuota": "fallback",
+      "reason": "Claude Code subscription usage is acceptable only when API credentials and usage-credit/PAYG continuation are both proven unavailable; otherwise quota exhaustion must fall back or stop."
+    },
+    "ollama": {
+      "enabled": true,
+      "mode": "local_zero_cost",
+      "role": [
+        "executor",
+        "reviewer",
+        "judge",
+        "fallback"
+      ],
+      "onQuota": "continue_local"
+    }
+  },
+  "routing": {
+    "selectionMode": "capability_availability_then_zero_cost_rank",
+    "preferParallel": false,
+    "dedupeByWorkOrder": true,
+    "leaseRequired": true,
+    "verificationByRisk": {
+      "low": { "reviewRequired": false, "judgeRequired": false, "distinctBackendIdentities": 1 },
+      "medium": { "reviewRequired": true, "judgeRequired": false, "distinctBackendIdentities": 2 },
+      "high": { "reviewRequired": true, "judgeRequired": true, "distinctBackendIdentities": 3 }
+    },
+    "fallbackOrder": [
+      "gemini_api",
+      "groq",
+      "ollama"
+    ],
+    "providerBinding": "dynamic_resource_not_employee_identity",
+    "maxFailoverAttempts": 3
+  }
+}

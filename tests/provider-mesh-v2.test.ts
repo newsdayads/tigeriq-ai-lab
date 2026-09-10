@@ -61,9 +61,10 @@ describe('WO-019 provider mesh v2', () => {
     });
     const gemini = createGeminiAdapter({
       apiKey: 'gemini-key',
-      model: 'configured-gemini',
+      model: 'gemini-3.5-flash-lite',
+      freeTierVerified: true,
       fetchImpl: async (input, init) => {
-        expect(String(input)).toBe('https://generativelanguage.googleapis.com/v1beta/models/configured-gemini:generateContent');
+        expect(String(input)).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent');
         expect(new Headers(init?.headers).get('x-goog-api-key')).toBe('gemini-key');
         return new Response(JSON.stringify({
           candidates: [{ content: { parts: [{ text: 'gemini-ok' }] } }],
