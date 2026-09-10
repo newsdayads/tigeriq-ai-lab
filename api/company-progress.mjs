@@ -141,7 +141,7 @@ export function parseCentralPriorities(body = '') {
     rows.push({ priority: heading[2], number, label: cleanTitle(heading[1]) });
   }
 
-  const currentSection = text.match(/## CURRENT OWNER PRIORITY[^\n]*\n([\s\S]*?)(?=\n## |$)/i)?.[1] || '';
+  const currentSection = text.match(/##\s+(?:CURRENT OWNER PRIORITY|ƯU TIÊN HIỆN HÀNH)[^\n]*\n([\s\S]*?)(?=\n## |$)/i)?.[1] || '';
   const current = /^\s*\d+\.\s+\*\*#(\d+)\s+—\s+([^*\n]+)\*\*(?:\s*:\s*([^\n]+))?/gm;
   for (const match of currentSection.matchAll(current)) {
     const number = Number(match[1]);
@@ -169,17 +169,28 @@ export function parseEmployees(body = '') {
 
     const legacyShape = cells.length >= 7;
     const transitionalShape = cells.length === 6;
+    const currentShape = cells.length === 4;
     const label = legacyShape ? cells[5] : cells[1];
-    const enabledRaw = String(legacyShape ? cells[6] : cells[4] || '').toLowerCase();
-    const enabled = enabledRaw.startsWith('true');
+    const statusRaw = String(currentShape ? cells[3] : legacyShape ? cells[6] : cells[4] || '').trim();
+    const normalizedStatus = statusRaw.toLowerCase();
+    const enabled = currentShape
+      ? Boolean(statusRaw) && !/(?:tạm dừng|chưa kích hoạt|paused|pending)/i.test(statusRaw)
+      : normalizedStatus.startsWith('true');
     const activation = transitionalShape ? String(cells[5] || '').toUpperCase() : null;
     const active = enabled && (!activation || activation === 'ACTIVE');
+    let state = active ? 'Sẵn sàng theo danh mục' : 'Tạm ngưng';
+    if (/tạm dừng|paused/i.test(statusRaw)) state = 'Tạm dừng';
+    else if (/chưa kích hoạt|pending/i.test(statusRaw)) state = 'Chưa kích hoạt';
+    else if (/nghiên cứu thủ công|available_manual|gọi được/i.test(statusRaw)) state = 'Dùng thủ công';
+    else if (/chờ bằng chứng|verify_pending/i.test(statusRaw)) state = 'Đã cấu hình · chờ xác minh';
+    else if (/hoạt động trong phạm vi được phép/i.test(statusRaw)) state = 'Hoạt động trong phạm vi được phép';
+    else if (/đã kích hoạt|enabled/i.test(statusRaw)) state = 'Đã kích hoạt';
     rows.push({
       command,
       employeeId: employeeMatch[1].toUpperCase(),
       label: label || employeeMatch[1].toUpperCase(),
       active,
-      state: active ? 'Sẵn sàng theo danh mục' : 'Tạm ngưng',
+      state,
     });
   }
   return rows;
