@@ -116,27 +116,51 @@ function firstLine(value = '') {
 export function parseCentralPriorities(body = '') {
   const rows = [];
   const seen = new Set();
-  const regex = /###\s+\d+\.\s+(P[0-2])\s+#(\d+)\s+—\s+([^\n]+)/g;
-  for (const match of String(body).matchAll(regex)) {
+  const text = String(body);
+  const legacy = /###\s+\d+\.\s+(P[0-2])\s+#(\d+)\s+—\s+([^\n]+)/g;
+  for (const match of text.matchAll(legacy)) {
     const number = Number(match[2]);
     if (!number || seen.has(number)) continue;
     seen.add(number);
     rows.push({ priority: match[1], number, label: cleanTitle(match[3]) });
   }
+
+  const currentSection = text.match(/## CURRENT OWNER PRIORITY[^\n]*\n([\s\S]*?)(?=\n## |$)/i)?.[1] || '';
+  const current = /^\s*\d+\.\s+\*\*#(\d+)\s+—\s+([^*\n]+)\*\*(?:\s*:\s*([^\n]+))?/gm;
+  for (const match of currentSection.matchAll(current)) {
+    const number = Number(match[1]);
+    if (!number || seen.has(number)) continue;
+    const detail = String(match[3] || '');
+    const priority = detail.match(/\b(P[0-2])\b/i)?.[1]?.toUpperCase() || 'P0';
+    seen.add(number);
+    rows.push({ priority, number, label: cleanTitle(match[2]) });
+  }
   return rows;
+}
+
+function cleanRegistryCell(value = '') {
+  return String(value).replace(/`/g, '').replace(/\*\*/g, '').trim();
 }
 
 export function parseEmployees(body = '') {
   const rows = [];
-  const regex = /\|\s*`(\d+)`\s*\|\s*`(NV\d+)`\s*\|[^|]*\|[^|]*\|[^|]*\|\s*`([^`]+)`\s*\|\s*([^|]+)\|/g;
-  for (const match of String(body).matchAll(regex)) {
-    const enabledRaw = match[4].replace(/\*/g, '').trim().toLowerCase();
+  for (const line of String(body).split(/\r?\n/)) {
+    if (!line.trim().startsWith('|')) continue;
+    const cells = line.split('|').slice(1, -1).map(cleanRegistryCell);
+    const command = Number(cells[0]);
+    const employeeMatch = String(cells[1] || '').match(/\b(NV\d+)\b/i);
+    if (!command || !employeeMatch) continue;
+
+    const legacyShape = cells.length >= 7;
+    const label = legacyShape ? cells[5] : cells[1];
+    const enabledRaw = String(legacyShape ? cells[6] : cells[4] || '').toLowerCase();
+    const active = enabledRaw.startsWith('true');
     rows.push({
-      command: Number(match[1]),
-      employeeId: match[2],
-      label: match[3].trim(),
-      active: enabledRaw.startsWith('true'),
-      state: enabledRaw.startsWith('true') ? 'Sẵn sàng theo danh mục' : 'Tạm ngưng',
+      command,
+      employeeId: employeeMatch[1].toUpperCase(),
+      label: label || employeeMatch[1].toUpperCase(),
+      active,
+      state: active ? 'Sẵn sàng theo danh mục' : 'Tạm ngưng',
     });
   }
   return rows;

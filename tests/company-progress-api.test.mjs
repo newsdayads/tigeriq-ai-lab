@@ -48,12 +48,29 @@ describe('public authoritative projection', () => {
     ]);
   });
 
+  it('parses CENTRAL v12 current owner priority list', () => {
+    const body = '## CURRENT OWNER PRIORITY — 2026-09-10\n1. **#556 — Source Truth + HOT STATE**: highest P0.\n2. **#478 — Zero-touch framework**: next safe P0.\n3. **#318 — PC01 autonomous 24/7 master**: backend continues.\n\n## FAST-START CONTRACT';
+    expect(parseCentralPriorities(body)).toEqual([
+      { priority: 'P0', number: 556, label: 'Source Truth + HOT STATE' },
+      { priority: 'P0', number: 478, label: 'Zero-touch framework' },
+      { priority: 'P0', number: 318, label: 'PC01 autonomous 24/7 master' },
+    ]);
+  });
+
   it('parses active and paused employees from the dynamic registry table', () => {
     const body = '| `2` | `NV02` | `autonomous` | `P0` | `queue` | `Khoa (NV02 — Vận hành tự động)` | true |\n| `3` | `NV03` | `specialized` | `P0` | `local` | `Huy (NV03)` | **false — TẠM NGƯNG** |';
     const rows = parseEmployees(body);
     expect(rows).toHaveLength(2);
     expect(rows[0]).toMatchObject({ command: 2, employeeId: 'NV02', active: true });
     expect(rows[1]).toMatchObject({ command: 3, employeeId: 'NV03', active: false });
+  });
+
+  it('parses Registry v12 command table shape', () => {
+    const body = '| command | employee | mode | background | enabled |\n|---|---|---|---|---|\n| `1` | `NV01 / Minh` | `foreground_interactive` | false | true |\n| `3` | `NV03 / Huy` | `paused_specialized` | false | false |';
+    const rows = parseEmployees(body);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({ command: 1, employeeId: 'NV01', label: 'NV01 / Minh', active: true });
+    expect(rows[1]).toMatchObject({ command: 3, employeeId: 'NV03', label: 'NV03 / Huy', active: false });
   });
 
   it('does not mistake descriptive owner-question prose for a real owner action', () => {
