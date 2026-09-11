@@ -31,7 +31,7 @@ const resources = [
 ];
 const nowIso = () => new Date().toISOString();
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-const credentialEnvByProvider = { groq:['GROQ_API_KEY'], gemini:['GEMINI_API_KEY'], openrouter:['OPENROUTER_API_KEY'], mistral:['MISTRAL_API_KEY'], cloudflare:['CLOUDFLARE_AUTH_TOKEN','CLOUDFLARE_ACCOUNT_ID'], huggingface:['HF_TOKEN'], vercel:['AI_GATEWAY_API_KEY'], watsonx:['WATSONX_API_KEY','WATSONX_PROJECT_ID','WATSONX_MODEL_ID'], cohere:['COHERE_API_KEY'], nvidia:['NVIDIA_API_KEY'] };
+const credentialEnvByProvider = { groq:['GROQ_API_KEY'], gemini:['GEMINI_API_KEY'], openrouter:['OPENROUTER_API_KEY'], mistral:['MISTRAL_API_KEY'], cloudflare:['CLOUDFLARE_AUTH_TOKEN'], huggingface:['HF_TOKEN'], vercel:['AI_GATEWAY_API_KEY'], watsonx:['WATSONX_API_KEY'], cohere:['COHERE_API_KEY'], nvidia:['NVIDIA_API_KEY'] };
 const credentialPresent = (r) => r.provider === 'ollama' || (credentialEnvByProvider[r.provider] || []).every(k => process.env[k]);
 const reqReady = (r) => r.req.every(([k,v]) => process.env[k] && (v === undefined || process.env[k] === v));
 
