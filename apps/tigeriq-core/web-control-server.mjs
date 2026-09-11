@@ -4,7 +4,9 @@ import { readFileSync } from 'node:fs';
 const HOST = process.env.TIGERIQ_WEB_CONTROL_HOST?.trim() || '127.0.0.1';
 const PORT = Number(process.env.TIGERIQ_WEB_CONTROL_PORT || 8796);
 const CORE_URL = (process.env.TIGERIQ_CORE_URL?.trim() || 'http://127.0.0.1:8795').replace(/\/$/, '');
-const html = readFileSync(new URL('./web-control.html', import.meta.url), 'utf8');
+const baseHtml = readFileSync(new URL('./web-control.html', import.meta.url), 'utf8');
+const truthJs = readFileSync(new URL('./web-control-truth.js', import.meta.url), 'utf8');
+const html = baseHtml.replace('</body>', '<script src="/web-control-truth.js"></script></body>');
 
 const securityHeaders = {
   'cache-control': 'no-store, max-age=0',
@@ -34,6 +36,10 @@ const server = createServer(async (req, res) => {
     if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/web-control')) {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       return res.end(html);
+    }
+    if (req.method === 'GET' && url.pathname === '/web-control-truth.js') {
+      res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8' });
+      return res.end(truthJs);
     }
     if (req.method === 'GET' && url.pathname === '/api/status') {
       const response = await upstream('/api/status', 4000);
