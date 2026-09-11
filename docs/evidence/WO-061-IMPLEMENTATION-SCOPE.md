@@ -1,0 +1,1 @@
+Implementation scope on branch `vy/coding-lane-autonomy-20260912`: autonomous Coding Lane service, free-only runtime entry, fail-closed path policy, dedicated launcher/task installer, path-aware Core updater, tests, work order and ADR. TigerIQ Core source itself is intentionally not modified in this branch.
