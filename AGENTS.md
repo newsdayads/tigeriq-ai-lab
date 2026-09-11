@@ -14,6 +14,14 @@ When sources conflict, follow this order:
 
 README reading order is navigational only; it does not override decision precedence.
 
+## GitHub-only engineering boundary
+- The canonical engineering path is **GitHub → CI**; hosted Web/UI goes to **Vercel** when deployment is required.
+- PC01 is runtime/local-integration infrastructure, not a normal coding machine.
+- Do not use PC01 CMD/PowerShell/Desktop Commander to edit repository source, create development worktrees, implement fixes, commit/push code, or run ordinary web/code build pipelines.
+- Desktop Commander on PC01 is limited to runtime operations, diagnostics, and genuinely device/hardware/local-runtime-bound verification.
+- If an implementation task would otherwise require PC01 shell access, fail closed on that path and use GitHub/CI/Vercel instead.
+- See `docs/EXECUTION_BOUNDARY.md` for the authoritative execution boundary.
+
 ## Non-negotiable rules
 - Coding agents never self-declare DONE.
 - No evidence means no PASS and no merge.
