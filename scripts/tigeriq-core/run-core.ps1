@@ -2,7 +2,7 @@ $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 . 'D:\TigerIQ\Rebuild\credential-store.ps1'
 $repo='D:\TigerIQ\Workspace\tigeriq-ai-lab'
-$core=Join-Path $repo 'apps\tigeriq-core\core.mjs'
+$core=Join-Path $repo 'apps\tigeriq-core\core-entry.mjs'
 $logDir='D:\TigerIQ\Logs\Core24x7'
 New-Item -ItemType Directory -Path $logDir -Force|Out-Null
 function Set-SecretEnv([string]$EnvName,[string]$SecretName,[string]$Entropy){
