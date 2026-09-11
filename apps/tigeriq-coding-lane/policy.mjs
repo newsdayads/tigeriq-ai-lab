@@ -32,11 +32,47 @@ export function validateChanges(changes,allowedPaths=[]){
   return true;
 }
 
+function repairInvalidJsonEscapes(input){
+  const s=String(input||'');
+  let out='';
+  let inString=false;
+  for(let i=0;i<s.length;i++){
+    const ch=s[i];
+    if(!inString){
+      out+=ch;
+      if(ch==='"') inString=true;
+      continue;
+    }
+    if(ch==='"'){
+      let backslashes=0;
+      for(let j=i-1;j>=0&&s[j]==='\\';j--) backslashes++;
+      out+=ch;
+      if(backslashes%2===0) inString=false;
+      continue;
+    }
+    if(ch==='\\'){
+      const next=s[i+1];
+      if(next&&'"\\/bfnrtu'.includes(next)) out+='\\';
+      else out+='\\\\';
+      continue;
+    }
+    out+=ch;
+  }
+  return out;
+}
+
 export function parseJsonObject(text){
   const clean=String(text||'').replace(/```json|```/gi,'').trim();
   const a=clean.indexOf('{'),b=clean.lastIndexOf('}');
   if(a<0||b<a) throw new Error('JSON_OBJECT_MISSING');
-  return JSON.parse(clean.slice(a,b+1));
+  const candidate=clean.slice(a,b+1);
+  try{return JSON.parse(candidate)}catch(firstError){
+    try{return JSON.parse(repairInvalidJsonEscapes(candidate))}catch{
+      const e=new Error(`JSON_OBJECT_INVALID:${String(firstError?.message||firstError)}`);
+      e.cause=firstError;
+      throw e;
+    }
+  }
 }
 
 export function branchName(employeeId,jobId){
