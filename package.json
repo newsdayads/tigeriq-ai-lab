@@ -4,7 +4,9 @@
   "private": true,
   "description": "Evidence-gated distributed AI workforce control center",
   "type": "module",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -17,7 +19,8 @@
     "ci": "npm run test:vercel-policy && npm run typecheck && npm run test && npm run test:e2e && npm run build"
   },
   "dependencies": {
-    "@vercel/oidc": "3.8.5"
+    "@vercel/oidc": "3.8.5",
+    "pg": "8.23.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.55.0",
