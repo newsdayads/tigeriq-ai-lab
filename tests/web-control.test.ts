@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const web = readFileSync(resolve('apps/tigeriq-core/web-control.html'), 'utf8');
+const server = readFileSync(resolve('apps/tigeriq-core/web-control-server.mjs'), 'utf8');
+const launcher = readFileSync(resolve('scripts/tigeriq-core/run-web-control.ps1'), 'utf8');
 const apiHealth = readFileSync(resolve('apps/tigeriq-core/dashboard.html'), 'utf8');
 const core = readFileSync(resolve('apps/tigeriq-core/core.mjs'), 'utf8');
 
@@ -11,6 +13,7 @@ describe('TigerIQ Web Control isolation', () => {
     expect(apiHealth).toContain('<title>TigerIQ API Health</title>');
     expect(core).toContain("url.pathname==='/'");
     expect(core).toContain('return res.end(dashboard())');
+    expect(core).not.toContain('web-control-server.mjs');
   });
 
   it('contains the approved Web Control information architecture', () => {
@@ -22,7 +25,7 @@ describe('TigerIQ Web Control isolation', () => {
     ]) expect(web).toContain(label);
   });
 
-  it('uses Core status data rather than hard-coded production truth', () => {
+  it('uses Core status data rather than hard-coded resource/job/objective truth', () => {
     expect(web).toContain("fetch('/api/status'");
     expect(web).toContain('d.resources');
     expect(web).toContain('d.jobs');
@@ -36,6 +39,16 @@ describe('TigerIQ Web Control isolation', () => {
     expect(web).toContain('@media(max-width:1150px)');
     expect(web).toContain('@media(max-width:760px)');
     expect(web).toContain('@media(max-width:480px)');
+  });
+
+  it('runs as a separate read-only service and proxies only Core reads', () => {
+    expect(server).toContain("TIGERIQ_WEB_CONTROL_PORT || 8796");
+    expect(server).toContain("url.pathname === '/api/status'");
+    expect(server).toContain("url.pathname === '/health'");
+    expect(server).not.toMatch(/req\.method\s*===\s*['\"]POST['\"]/);
+    expect(server).not.toMatch(/req\.method\s*===\s*['\"]DELETE['\"]/);
+    expect(launcher).toContain("$env:TIGERIQ_WEB_CONTROL_PORT='8796'");
+    expect(launcher).toContain("$env:TIGERIQ_CORE_URL=('http://'+$hostIp+':8795')");
   });
 
   it('does not expose destructive or credential controls', () => {
