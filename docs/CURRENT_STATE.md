@@ -1,59 +1,56 @@
 # TigerIQ — Current State
 
 Date: 2026-09-11
-Status: CURRENT — TigerIQ Core 24/7 clean-state architecture
-Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #335 > this snapshot > runtime/evidence
+Status: CURRENT — `main` canonical, Core 24/7 operational
+Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 v38 > Registry #335 v38 > Interaction #504 v10 > runtime/evidence
 
 ## Canonical architecture
 - One hot-path runtime: **TigerIQ Core 24/7**.
+- Canonical source branch: `main`.
 - Core source: `apps/tigeriq-core/core.mjs`.
-- PC01 runtime branch: `rebuild/core-24x7` until merged to `main`.
+- PC01 launcher: `D:\TigerIQ\Workspace\tigeriq-ai-lab\scripts\tigeriq-core\run-core.ps1`.
 - Runtime endpoint: `100.97.23.87:8795`.
 - Durable state: PostgreSQL on `5432`.
-- Local AI resource: Ollama on `127.0.0.1:11434`.
-- Remote administration: TigerIQ Desktop Commander Remote.
+- Local AI: Ollama on `127.0.0.1:11434`.
 - API providers are Core resource profiles, not independent background workers.
 
-## PC01 verified state — 2026-09-11
-- Scheduled Task `TigerIQ Core 24x7`: enabled, SYSTEM, At system startup, running.
-- Core `/health`: `ok=true`.
-- `scripts/tigeriq-core/verify-core.mjs`: PASS.
-- Durable objective `OBJ-E2E-578-1` and completed jobs survived restart/reboot evidence.
-- Core self-heal: kill child -> supervisor wrapper restarts Core.
-- PostgreSQL service: Running / Automatic.
-- Ollama runtime: Running.
-- Legacy Planner / Mission Orchestrator / Autonomy Supervisor / Native Worker / Command Center / OpenClaw tasks are not part of the current hot path and remain disabled/archive-only unless explicitly reactivated.
+## PC01 verified state
+- `TigerIQ Core 24x7`: Running, SYSTEM, At system startup.
+- `/health`: `ok=true`; `verify-core.mjs`: PASS; resources=11.
+- Durable objective `OBJ-E2E-578-1` and completed jobs survived restart/reboot.
+- Active TigerIQ Scheduled Tasks: Core / Desktop Commander Remote / Ollama Runtime only.
+- 19 legacy Scheduled Tasks were exported to XML and removed.
+- Old clones/worktrees were archived; only current development lanes #581/#582 are retained.
+
+## GitHub governance
+- Core PR #579 merged; `main` is canonical.
+- `main` protection requires strict checks: `CI Verify`, `Queue Hygiene Verify`, `Vercel Online Verify`.
+- 1 approving review; stale reviews dismissed; conversations resolved before merge.
+- Force-push and branch deletion disabled for `main`.
+- Canary PR #583 proved all 3 required checks PASS and was closed without merge.
+- 41 fully merged remote branches were deleted after branch→SHA manifest backup on PC01.
+- Unmerged branches are retained to avoid destroying unverified history.
+- Open active issues are limited to #280, #335, #497, #504, #581, #582.
 
 ## AI resource truth
-- NV02 — Ollama: local Core resource.
-- NV11 — Groq: READY when called / live PASS.
-- NV12 — Gemini: READY when called / live PASS / free-tier guard.
-- NV13 — OpenRouter: live PASS.
-- NV14 — Mistral: credential installed; rate-limited; 30-minute Core cooldown.
-- NV15 — Cloudflare Workers AI: live PASS.
-- NV16 — Hugging Face: live PASS.
-- NV17 — Vercel AI Gateway: credential valid; inference 403; BLOCKED/OFFLINE.
-- NV18 — IBM watsonx.ai Lite: credential installed; runtime association blocked/deferred; BLOCKED/OFFLINE.
-- NV19 — Cohere: live PASS.
-- NV20 — NVIDIA NIM: WAIT_KEY/OFFLINE.
-- Router admits only credential state `LOCAL` or `READY`; `BLOCKED` and `WAIT_KEY` fail closed.
+- NV02 Ollama: local Core resource.
+- NV11 Groq, NV12 Gemini, NV13 OpenRouter, NV15 Cloudflare Workers AI, NV16 Hugging Face, NV19 Cohere: prior live PASS / READY_WHEN_CALLED.
+- NV14 Mistral: rate-limited; 30-minute Core cooldown.
+- NV17 Vercel AI Gateway: BLOCKED/OFFLINE after inference 403.
+- NV18 IBM watsonx.ai Lite: BLOCKED/OFFLINE; runtime association deferred.
+- NV20 NVIDIA NIM: WAIT_KEY/OFFLINE.
+- API provisioning/repair work is Owner-deferred; existing resource truth remains preserved.
 
-## Source-of-Truth policy
-- CENTRAL #280 and Registry #335 are the dynamic authority.
-- Interaction policy: #504.
-- Browser/authenticated-UI guardrails: #497.
-- Legacy issues/PRs from the pre-Core architecture are historical evidence only unless CENTRAL explicitly reactivates them.
-- Chat/memory is not runtime authority.
-
-## Current registered next lanes
-- #582 — Chrome DevTools MCP: registered P0 browser/Web testing lane; not yet operational until acceptance passes.
-- #581 — SurfSense: registered P1 research/knowledge lane; not yet adopted until benchmark/E2E decision.
+## Current active lanes
+1. #582 — Chrome DevTools MCP, P0. Separate owner/lane; do not duplicate.
+2. #581 — SurfSense, P1. Adopt only after benchmark + E2E evidence.
 
 ## Safety invariants
 - One resource/session = one active owner.
 - No fake RUNNING/PASS/DONE without evidence.
-- No paid fallback by default.
-- Security/credential changes remain fail-closed.
-- MAIN/Production changes require Owner authorization.
+- FREE/zero-cost first; no paid fallback by default.
+- Browser/authenticated UI follows #497 guardrails.
+- Legacy issues/PRs are historical evidence only unless CENTRAL explicitly reactivates them.
+- Admin bypass of `main` is emergency/bootstrap only after explicit Owner instruction, not routine workflow.
 
-STATE: `CURRENT_CORE24X7_CANONICAL_20260911`
+STATE: `CURRENT_V38_MAIN_CANONICAL_PROTECTED_CLEAN_20260911`
