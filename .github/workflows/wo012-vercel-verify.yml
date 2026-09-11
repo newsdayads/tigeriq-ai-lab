@@ -3,6 +3,7 @@ name: WO-012/013 Vercel Online Verify
 on:
   push:
     branches:
+      - main
       - wo012/command-center-vercel-online
       - wo013/chief-of-staff-chat
   pull_request:
