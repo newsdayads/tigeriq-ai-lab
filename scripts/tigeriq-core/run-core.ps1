@@ -1,7 +1,7 @@
-$ErrorActionPreference='Stop'
+﻿$ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 . 'D:\TigerIQ\Rebuild\credential-store.ps1'
-$repo='D:\TigerIQ\worktrees\core-24x7'
+$repo='D:\TigerIQ\Workspace\tigeriq-ai-lab'
 $core=Join-Path $repo 'apps\tigeriq-core\core.mjs'
 $logDir='D:\TigerIQ\Logs\Core24x7'
 New-Item -ItemType Directory -Path $logDir -Force|Out-Null
@@ -69,3 +69,4 @@ while($true){
   }
   Start-Sleep -Seconds 10
 }
+
