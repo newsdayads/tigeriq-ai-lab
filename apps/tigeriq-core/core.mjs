@@ -10,6 +10,9 @@ const PORT = Number(process.env.TIGERIQ_CORE_PORT || 8795);
 const TOKEN = process.env.TIGERIQ_CORE_TOKEN?.trim() || '';
 const POLL_MS = Number(process.env.TIGERIQ_CORE_POLL_MS || 1000);
 const MANAGER_IDLE_MS = Number(process.env.TIGERIQ_MANAGER_IDLE_MS || 5000);
+const SURFSENSE_APP_URL = process.env.TIGERIQ_SURFSENSE_APP_URL?.trim() || 'http://127.0.0.1:3929';
+const SURFSENSE_SEARCH_URL = process.env.TIGERIQ_SURFSENSE_SEARCH_URL?.trim() || 'http://127.0.0.1:3930/search';
+const SURFSENSE_SUMMARY_MODEL = process.env.TIGERIQ_SURFSENSE_SUMMARY_MODEL?.trim() || 'gemma3:4b';
 const pool = new Pool({ connectionString: DATABASE_URL, max: 4 });
 pool.on('error', (err) => console.error(JSON.stringify({event:'PG_POOL_ERROR',error:String(err?.message||err)})));
 
@@ -53,7 +56,31 @@ async function fetchJson(url, init = {}, timeoutMs = 90000) {
     return body;
   } catch (e) { if (e.name === 'AbortError') { e.kind = 'timeout'; } throw e; }
   finally { clearTimeout(t); }
-}async function openAiCompat(endpoint, key, model, prompt, extraHeaders = {}) {
+}
+async function surfSenseHealth() {
+  const started=Date.now();
+  try { const r=await fetch(SURFSENSE_APP_URL,{signal:AbortSignal.timeout(2500)}); return {ok:r.ok,status:r.status,latencyMs:Date.now()-started,url:SURFSENSE_APP_URL}; }
+  catch(e){ return {ok:false,error:String(e?.message||e),latencyMs:Date.now()-started,url:SURFSENSE_APP_URL}; }
+}
+async function surfSenseSearch(query, limit=6) {
+  const u=new URL(SURFSENSE_SEARCH_URL); u.searchParams.set('q',query); u.searchParams.set('format','json');
+  const body=await fetchJson(u.toString(),{},30000); const rows=Array.isArray(body?.results)?body.results:[];
+  const sources=rows.filter(x=>x?.url&&x?.title).slice(0,Math.max(1,Math.min(10,limit))).map((x,i)=>({index:i+1,title:String(x.title),url:String(x.url),snippet:String(x.content||'').slice(0,1200),engine:String(x.engine||'surfsense')}));
+  if(!sources.length){const e=new Error('SURFSENSE_NO_RESULTS');e.kind='invalid_response';throw e;} return sources;
+}
+async function summarizeSurfSense(evidence, query) {
+  const started=Date.now();
+  const body=await fetchJson('http://127.0.0.1:11434/api/generate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({model:SURFSENSE_SUMMARY_MODEL,prompt:`Answer using ONLY the supplied sources. Cite claims as [1], [2], etc. Be concise. If evidence is insufficient, say so.\nQuestion: ${query}\n\nSources:\n${evidence}`,stream:false,options:{temperature:0,num_predict:180}})},90000);
+  const text=String(body?.response||'').trim(); if(!text){const e=new Error('OLLAMA_RESEARCH_EMPTY');e.kind='invalid_response';throw e;} return {text,latencyMs:Date.now()-started};
+}
+async function runSurfSenseResearch(query, limit=6) {
+  const id=`JOB-${randomUUID()}`; await pool.query("insert into tigeriq_jobs(id,title,prompt,capability,kind,status,started_at) values($1,$2,$3,'reasoning','research','running',now())",[id,`Research: ${query}`.slice(0,200),query]);
+  try { const sources=await surfSenseSearch(query,limit); const evidence=sources.map(x=>`[${x.index}] ${x.title}\nURL: ${x.url}\n${x.snippet}`).join('\n\n'); const local=await summarizeSurfSense(evidence,query);
+    const result={text:local.text,sources,researchProvider:'surfsense',aiProvider:'ollama',employeeId:'NV02',model:SURFSENSE_SUMMARY_MODEL,latencyMs:local.latencyMs}; await pool.query("update tigeriq_jobs set status='done',employee_id='NV02',provider='ollama',result=$2,lease_until=null,completed_at=now() where id=$1",[id,JSON.stringify(result)]); await event('SURFSENSE_RESEARCH_DONE',{jobId:id,employeeId:'NV02',provider:'ollama'}); return {ok:true,jobId:id,...result};
+  } catch(error){ await pool.query("update tigeriq_jobs set status='failed',failure=$2,lease_until=null,completed_at=now() where id=$1",[id,JSON.stringify({message:String(error?.message||error)})]); await event('SURFSENSE_RESEARCH_FAILED',{jobId:id}); throw error; }
+}
+
+async function openAiCompat(endpoint, key, model, prompt, extraHeaders = {}) {
   const body = await fetchJson(endpoint, {
     method: 'POST', headers: { 'content-type':'application/json', authorization:`Bearer ${key}`, ...extraHeaders },
     body: JSON.stringify({ model, messages:[{role:'user',content:prompt}], temperature:0, max_tokens:1200, stream:false }),
@@ -308,7 +335,7 @@ async function snapshot(){
   const telemetry=(await pool.query(`select ts,employee_id,type,(data->>'latencyMs')::int as latency_ms from tigeriq_events
     where ts>=now()-interval '24 hours' and type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK') and data ? 'latencyMs'
     order by ts asc limit 500`)).rows;
-  return {ok:true,core:{host:HOST,port:PORT,pid:process.pid,uptimeSec:Math.floor(process.uptime()),time:nowIso()},resources:rr,objectives,jobs,events,telemetry};
+  return {ok:true,core:{host:HOST,port:PORT,pid:process.pid,uptimeSec:Math.floor(process.uptime()),time:nowIso()},integrations:{surfsense:await surfSenseHealth()},resources:rr,objectives,jobs,events,telemetry};
 }
 function auth(req){return TOKEN && req.headers.authorization===`Bearer ${TOKEN}`;}
 function localSelf(req){const a=String(req.socket.remoteAddress||'').replace('::ffff:','');return a==='127.0.0.1'||a==='::1'||a===HOST;}
@@ -324,6 +351,11 @@ function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta
       if(!auth(req)&&!localSelf(req)){res.writeHead(401);return res.end('unauthorized');}
       const b=await readBody(req); const result=await probeResource(String(b.employeeId||''));
       res.writeHead(200,{'content-type':'application/json'});return res.end(JSON.stringify(result));
+    }
+    if(req.method==='POST'&&url.pathname==='/api/research'){
+      if(!auth(req)&&!localSelf(req)){res.writeHead(401);return res.end('unauthorized');}
+      const b=await readBody(req); const query=String(b.query||'').trim(); if(!query){res.writeHead(400);return res.end('query_required');}
+      const result=await runSurfSenseResearch(query,Number(b.limit||6)); res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(result));
     }
     if(req.method==='POST'&&url.pathname==='/api/objectives'){
       if(!auth(req)&&!localSelf(req)){res.writeHead(401);return res.end('unauthorized');}
