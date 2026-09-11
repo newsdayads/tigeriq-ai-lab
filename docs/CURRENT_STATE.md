@@ -22,6 +22,8 @@ Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #
 - Core `/health`: `ok=true`; `verify-core.mjs`: PASS; 11 resources.
 - Always-on Scheduled Tasks: Core / Desktop Commander Remote / Ollama Runtime.
 - PowerShell/CMD supervising Core/Ollama/Desktop Commander are runtime launchers only, not a coding lane.
+- Core source on `main` hard-blocks `coding` with `LOCAL_CODING_DISABLED_GITHUB_ONLY`; Core resource capabilities are `general/reasoning/review` only.
+- Runtime coding-boundary PR #587 passed `CI Verify`, `Queue Hygiene Verify`, `Vercel Online Verify` and merged as `f37a2f6`.
 - Core supervisor points to canonical `main`; stale in-memory worktree-path failure was fixed and retested.
 - Registered Git worktree after cleanup: canonical `main` only, except temporary worktrees created during an active PR.
 - Legacy tasks/worktrees/clones are archived/non-executable unless Owner explicitly reactivates them.
