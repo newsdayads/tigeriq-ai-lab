@@ -1,4 +1,4 @@
-﻿$ErrorActionPreference='Stop'
+$ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 . 'D:\TigerIQ\Rebuild\credential-store.ps1'
 $repo='D:\TigerIQ\Workspace\tigeriq-ai-lab'
@@ -69,4 +69,3 @@ while($true){
   }
   Start-Sleep -Seconds 10
 }
-
