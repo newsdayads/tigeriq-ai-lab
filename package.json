@@ -16,15 +16,18 @@
     "build": "tsc -p tsconfig.build.json",
     "command-center": "node dist/apps/dashboard/src/standalone.js",
     "workforce-controller": "node dist/apps/workforce-controller/src/standalone.js",
-    "ci": "npm run test:vercel-policy && npm run typecheck && npm run test && npm run test:e2e && npm run build"
+    "ci": "npm run test:vercel-policy && npm run typecheck && npm run test && npm run test:e2e && npm run build",
+    "test:chrome-mcp": "node scripts/chrome-devtools-mcp-smoke.mjs"
   },
   "dependencies": {
     "@vercel/oidc": "3.8.5",
     "pg": "8.23.0"
   },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
     "@playwright/test": "^1.55.0",
     "@types/node": "^22.0.0",
+    "chrome-devtools-mcp": "1.9.0",
     "typescript": "^5.9.0",
     "vitest": "^3.2.0"
   }
