@@ -3,8 +3,17 @@ Set-StrictMode -Version Latest
 . 'D:\TigerIQ\Rebuild\credential-store.ps1'
 $repo='D:\TigerIQ\Workspace\tigeriq-ai-lab'
 $core=Join-Path $repo 'apps\tigeriq-core\core-entry.mjs'
+$coreMatch=$core.ToLowerInvariant()
 $logDir='D:\TigerIQ\Logs\Core24x7'
 New-Item -ItemType Directory -Path $logDir -Force|Out-Null
+$supervisorMutex=New-Object Threading.Mutex($false,'Global\TigerIQCoreSupervisorV2')
+$ownsSupervisor=$false
+try{$ownsSupervisor=$supervisorMutex.WaitOne(0)}catch{$ownsSupervisor=$false}
+if(-not $ownsSupervisor){exit 73}
+function Stop-OrphanCore {
+  $procs=Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue | Where-Object {$_.CommandLine -and $_.CommandLine.ToLowerInvariant().Contains($coreMatch)}
+  foreach($proc in $procs){try{Stop-Process -Id $proc.ProcessId -Force -ErrorAction Stop}catch{}}
+}
 function Set-SecretEnv([string]$EnvName,[string]$SecretName,[string]$Entropy){
   $value=Get-TigerIQSecret $SecretName $Entropy
   if(-not[string]::IsNullOrWhiteSpace($value)){[Environment]::SetEnvironmentVariable($EnvName,$value,'Process')}
@@ -52,6 +61,7 @@ function Load-CoreEnvironment {
   $co=Get-TigerIQConfig 'cohere-proof';if($co -and $co.PSObject.Properties['trialConfirmed'] -and $co.trialConfirmed){$env:TIGERIQ_COHERE_TRIAL_CONFIRMED='true'}
   $nv=Get-TigerIQConfig 'nvidia-proof';if($nv -and $nv.PSObject.Properties['freeConfirmed'] -and $nv.freeConfirmed){$env:TIGERIQ_NVIDIA_FREE_DEV_CONFIRMED='true'}
 }
+Stop-OrphanCore
 while($true){
   try {
     Load-CoreEnvironment
