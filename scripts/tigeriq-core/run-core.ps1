@@ -51,18 +51,21 @@ function Load-CoreEnvironment {
   $nv=Get-TigerIQConfig 'nvidia-proof';if($nv -and $nv.PSObject.Properties['freeConfirmed'] -and $nv.freeConfirmed){$env:TIGERIQ_NVIDIA_FREE_DEV_CONFIRMED='true'}
 }
 while($true){
-  Load-CoreEnvironment
-  $stamp=Get-SecretStamp
-  $out=Join-Path $logDir ('core-'+(Get-Date -Format 'yyyyMMdd')+'.out.log')
-  $err=Join-Path $logDir ('core-'+(Get-Date -Format 'yyyyMMdd')+'.err.log')
-  $p=Start-Process -FilePath 'C:\Program Files\nodejs\node.exe' -ArgumentList @($core) -PassThru -WindowStyle Hidden -RedirectStandardOutput $out -RedirectStandardError $err
-  while(-not $p.HasExited){
-    Start-Sleep -Seconds 5
-    if((Get-SecretStamp)-ne$stamp){
-      try{Stop-Process -Id $p.Id -Force -ErrorAction Stop}catch{}
-      break
+  try {
+    Load-CoreEnvironment
+    $stamp=Get-SecretStamp
+    $out=Join-Path $logDir ('core-'+(Get-Date -Format 'yyyyMMdd')+'.out.log')
+    $err=Join-Path $logDir ('core-'+(Get-Date -Format 'yyyyMMdd')+'.err.log')
+    $p=Start-Process -FilePath 'C:\Program Files\nodejs\node.exe' -ArgumentList @($core) -PassThru -WindowStyle Hidden -RedirectStandardOutput $out -RedirectStandardError $err
+    while(-not $p.HasExited){
+      Start-Sleep -Seconds 5
+      if((Get-SecretStamp)-ne$stamp){try{Stop-Process -Id $p.Id -Force -ErrorAction Stop}catch{};break}
     }
+  } catch {
+    $supervisorLog=Join-Path $logDir 'supervisor.log'
+    Add-Content -Path $supervisorLog -Value ((Get-Date -Format o)+' '+($_.Exception.Message)) -Encoding UTF8
+  } finally {
+    Clear-CoreEnvironment
   }
-  Clear-CoreEnvironment
-  Start-Sleep -Seconds 2
+  Start-Sleep -Seconds 10
 }
