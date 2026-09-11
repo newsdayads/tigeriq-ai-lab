@@ -44,11 +44,11 @@ function Load-CoreEnvironment {
   Set-SecretEnv 'WATSONX_API_KEY' 'watsonx-api-key' 'TigerIQ-Watsonx-PC01-v1'
   Set-SecretEnv 'COHERE_API_KEY' 'cohere-api-key' 'TigerIQ-Cohere-PC01-v1'
   Set-SecretEnv 'NVIDIA_API_KEY' 'nvidia-api-key' 'TigerIQ-NVIDIA-PC01-v1'
-  $cf=Get-TigerIQConfig 'cloudflare-config';if($cf){$env:CLOUDFLARE_ACCOUNT_ID=[string]$cf.accountId}
-  $ve=Get-TigerIQConfig 'vercel-proof';if($ve -and $ve.freeConfirmed){$env:TIGERIQ_VERCEL_FREE_CREDIT_CONFIRMED='true'}
-  $wx=Get-TigerIQConfig 'watsonx-config';if($wx){$env:WATSONX_PROJECT_ID=[string]$wx.projectId;$env:WATSONX_MODEL_ID=[string]$wx.modelId;if($wx.liteConfirmed){$env:TIGERIQ_WATSONX_LITE_CONFIRMED='true'}}
-  $co=Get-TigerIQConfig 'cohere-proof';if($co -and $co.trialConfirmed){$env:TIGERIQ_COHERE_TRIAL_CONFIRMED='true'}
-  $nv=Get-TigerIQConfig 'nvidia-proof';if($nv -and $nv.freeConfirmed){$env:TIGERIQ_NVIDIA_FREE_DEV_CONFIRMED='true'}
+  $cf=Get-TigerIQConfig 'cloudflare-config';if($cf -and $cf.PSObject.Properties['accountId']){$env:CLOUDFLARE_ACCOUNT_ID=[string]$cf.accountId}
+  $ve=Get-TigerIQConfig 'vercel-proof';if($ve -and $ve.PSObject.Properties['freeConfirmed'] -and $ve.freeConfirmed){$env:TIGERIQ_VERCEL_FREE_CREDIT_CONFIRMED='true'}
+  $wx=Get-TigerIQConfig 'watsonx-config';if($wx){if($wx.PSObject.Properties['projectId']){$env:WATSONX_PROJECT_ID=[string]$wx.projectId};if($wx.PSObject.Properties['modelId']){$env:WATSONX_MODEL_ID=[string]$wx.modelId};if($wx.PSObject.Properties['liteConfirmed'] -and $wx.liteConfirmed){$env:TIGERIQ_WATSONX_LITE_CONFIRMED='true'}}
+  $co=Get-TigerIQConfig 'cohere-proof';if($co -and $co.PSObject.Properties['trialConfirmed'] -and $co.trialConfirmed){$env:TIGERIQ_COHERE_TRIAL_CONFIRMED='true'}
+  $nv=Get-TigerIQConfig 'nvidia-proof';if($nv -and $nv.PSObject.Properties['freeConfirmed'] -and $nv.freeConfirmed){$env:TIGERIQ_NVIDIA_FREE_DEV_CONFIRMED='true'}
 }
 while($true){
   Load-CoreEnvironment

@@ -317,7 +317,7 @@ function dashboard(){return `<!doctype html><html lang="vi"><meta charset="utf-8
   }catch(e){res.writeHead(500,{'content-type':'application/json'});res.end(JSON.stringify({ok:false,error:String(e?.message||e)}));}
 });
 
-let stop=false, lastRefresh=0, lastRecover=0, lastManager=0; const active=new Set(); const MAX_PARALLEL=3;
+let stop=false, lastRefresh=0, lastRecover=0, lastManager=0, lastProbe=0; const active=new Set(); const MAX_PARALLEL=3;
 async function loop(){
   while(!stop){const t=Date.now();
     try{
