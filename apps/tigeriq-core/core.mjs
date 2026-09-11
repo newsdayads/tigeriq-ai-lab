@@ -18,7 +18,7 @@ pool.on('error', (err) => console.error(JSON.stringify({event:'PG_POOL_ERROR',er
 
 const R = (id, name, provider, model, req = [], rank = 50) => ({
   id, name, provider, model, req, rank,
-  capabilities: ['general', 'reasoning', 'coding', 'review'],
+  capabilities: ['general', 'reasoning', 'review'],
 });
 const resources = [
   R('NV02','Ollama','ollama',process.env.TIGERIQ_OLLAMA_MODEL || 'qwen3:4b',[],90),
@@ -215,6 +215,7 @@ async function claimResource(capability, jobId, excluded=[]) {
   } catch(e){await c.query('rollback');throw e;} finally{c.release();}
 }
 async function invokeRouted(prompt, capability, jobId, maxAttempts=3) {
+  if(capability==='coding'){const e=new Error('LOCAL_CODING_DISABLED_GITHUB_ONLY');e.kind='configuration';throw e;}
   const failures=[],excluded=[];
   for(let i=0;i<maxAttempts;i++){
     const row=await claimResource(capability,jobId,excluded); if(!row) break; excluded.push(row.employee_id);
@@ -296,14 +297,14 @@ async function managerTick() {
   const o=q.rows[0]; if(!o) return;
   if(o.manager_cycles>=30){await pool.query("update tigeriq_objectives set status='blocked',summary='manager cycle safety limit reached',updated_at=now() where id=$1",[o.id]);return;}
   const history=(await pool.query("select title,status,provider,result,failure from tigeriq_jobs where objective_id=$1 order by created_at desc limit 8",[o.id])).rows;
-  const prompt=`You are TigerIQ AI Manager. Goal: ${o.objective}\nRecent work: ${JSON.stringify(history).slice(0,10000)}\nDecide the next useful work. Return ONLY JSON: {"status":"continue|complete|blocked","summary":"short","jobs":[{"title":"short","prompt":"standalone task instruction","capability":"general|reasoning|coding|review"}]}. Maximum 3 jobs. Prefer independent useful work. Never request paid services, Production/Main release, credential/security changes, destructive actions or reboot. If the goal is already achieved, status=complete.`;
+  const prompt=`You are TigerIQ AI Manager. Goal: ${o.objective}\nRecent work: ${JSON.stringify(history).slice(0,10000)}\nDecide the next useful work. Return ONLY JSON: {"status":"continue|complete|blocked","summary":"short","jobs":[{"title":"short","prompt":"standalone task instruction","capability":"general|reasoning|review"}]}. Maximum 3 jobs. Prefer independent useful work. Repository implementation/coding is GitHub-only; never create coding jobs for PC01 Core. Never request paid services, Production/Main release, credential/security changes, destructive actions or reboot. If the goal is already achieved, status=complete.`;
   try {
     const routed=await invokeRouted(prompt,'reasoning',`MGR-${o.id}`,3); const decision=parseManagerJson(routed.text);
     await pool.query("update tigeriq_objectives set manager_cycles=manager_cycles+1,summary=$2,updated_at=now(),next_check_at=now()+interval '5 seconds' where id=$1",[o.id,String(decision.summary||'').slice(0,2000)]);
     if(decision.status!=='continue'){await pool.query('update tigeriq_objectives set status=$2,updated_at=now() where id=$1',[o.id,decision.status==='complete'?'completed':'blocked']);await event('OBJECTIVE_'+decision.status.toUpperCase(),{objectiveId:o.id});return;}
     for(const spec of decision.jobs){
       if(!spec?.title||!spec?.prompt) continue; const id=`JOB-${randomUUID()}`;
-      await pool.query('insert into tigeriq_jobs(id,objective_id,title,prompt,capability) values($1,$2,$3,$4,$5)',[id,o.id,String(spec.title).slice(0,200),String(spec.prompt).slice(0,12000),['general','reasoning','coding','review'].includes(spec.capability)?spec.capability:'general']);
+      await pool.query('insert into tigeriq_jobs(id,objective_id,title,prompt,capability) values($1,$2,$3,$4,$5)',[id,o.id,String(spec.title).slice(0,200),String(spec.prompt).slice(0,12000),['general','reasoning','review'].includes(spec.capability)?spec.capability:'general']);
       await event('JOB_CREATED',{objectiveId:o.id,jobId:id});
     }
   } catch(error){await pool.query("update tigeriq_objectives set summary=$2,next_check_at=now()+interval '1 minute',updated_at=now() where id=$1",[o.id,`manager error: ${String(error?.message||error).slice(0,500)}`]);await event('MANAGER_ERROR',{objectiveId:o.id});}
