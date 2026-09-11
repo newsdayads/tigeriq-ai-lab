@@ -1,5 +1,6 @@
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { Pool } from 'pg';
 
 const DATABASE_URL = process.env.DATABASE_URL?.trim();
@@ -292,10 +293,7 @@ function auth(req){return TOKEN && req.headers.authorization===`Bearer ${TOKEN}`
 function localSelf(req){const a=String(req.socket.remoteAddress||'').replace('::ffff:','');return a==='127.0.0.1'||a==='::1'||a===HOST;}
 async function readBody(req){let raw='';for await(const c of req){raw+=c;if(raw.length>65536)throw new Error('BODY_TOO_LARGE');}return raw?JSON.parse(raw):{};}
 const labels={IDLE:'RẢNH',BUSY:'ĐANG LÀM',READY:'SẴN SÀNG',WAIT_KEY:'CHỜ KEY',RATE_LIMITED:'HẾT HẠN MỨC',OFFLINE:'OFFLINE',ERROR:'LỖI',DISABLED:'TẮT'};
-function dashboard(){return `<!doctype html><html lang="vi"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TigerIQ Core</title>
-<style>body{font-family:system-ui;margin:20px;background:#0b1020;color:#eef2ff}.top{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:16px}.card{background:#151c33;border:1px solid #2b365d;border-radius:14px;padding:14px}.s{font-weight:800}.IDLE{color:#54e38e}.BUSY{color:#ffd166}.READY{color:#7bdff2}.WAIT_KEY,.OFFLINE{color:#9aa5c3}.RATE_LIMITED{color:#ff9f43}.ERROR{color:#ff6b6b}small{color:#9aa5c3}table{width:100%;border-collapse:collapse;margin-top:18px}td,th{padding:8px;border-bottom:1px solid #283252;text-align:left}</style>
-<body><div class="top"><h2>TigerIQ Core 24/7</h2><span id="core"></span></div><div id="grid" class="grid"></div><h3>Công việc gần nhất</h3><table><thead><tr><th>Job</th><th>Việc</th><th>NV</th><th>Trạng thái</th></tr></thead><tbody id="jobs"></tbody></table>
-<script>const L=${JSON.stringify(labels)};async function load(){const d=await fetch('/api/status').then(r=>r.json());core.textContent='PID '+d.core.pid+' • '+Math.floor(d.core.uptimeSec/60)+' phút';grid.innerHTML=d.resources.map(x=>'<div class="card"><b>'+x.employee_id+' — '+x.name+'</b><br><span class="s '+x.status+'">'+(L[x.status]||x.status)+'</span><br><small>'+x.provider+' • '+x.model+'</small><br><small>Job: '+(x.current_job_id||'—')+'</small><br><small>Lần cuối: '+(x.last_seen_at?new Date(x.last_seen_at).toLocaleTimeString('vi-VN'):'—')+'</small></div>').join('');jobs.innerHTML=d.jobs.slice(0,15).map(j=>'<tr><td>'+j.id.slice(0,16)+'</td><td>'+j.title+'</td><td>'+(j.employee_id||'—')+'</td><td>'+j.status+'</td></tr>').join('')}load();setInterval(load,2000)</script></body></html>`;}const server=createServer(async(req,res)=>{
+function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta.url),'utf8');}const server=createServer(async(req,res)=>{
   const url=new URL(req.url||'/','http://localhost');
   try{
     if(req.method==='GET'&&url.pathname==='/health'){res.writeHead(200,{'content-type':'application/json'});return res.end(JSON.stringify({ok:true,pid:process.pid,uptimeSec:Math.floor(process.uptime())}));}
