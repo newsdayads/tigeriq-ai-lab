@@ -1,68 +1,69 @@
 # TigerIQ — Current State
 
-Date: 2026-09-11
-Status: CURRENT — clean operational baseline
+Date: 2026-09-12
+Status: CURRENT — autonomous coding lane verified
 Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #335 > this snapshot > runtime/evidence
 
 ## Canonical architecture
-- One hot-path runtime: **TigerIQ Core 24/7**.
-- Canonical source branch: `main`.
-- Runtime entry: `apps/tigeriq-core/core-entry.mjs` → `core.mjs` + GitHub intake.
-- Engineering path: **GitHub → CI**; hosted Web/UI uses **Vercel** when deployment is required.
-- **PC01 is excluded from the normal coding/repository/web-build/web-deploy path.**
-- PC01 launcher: `D:\TigerIQ\Workspace\tigeriq-ai-lab\scripts\tigeriq-core\run-core.ps1`.
-- Core endpoint: `100.97.23.87:8795`.
-- Durable state: PostgreSQL `5432`.
-- Local AI: Ollama `127.0.0.1:11434`.
-- Remote administration: TigerIQ Desktop Commander Remote, limited to runtime operations/diagnostics and genuinely local/device-bound verification.
-- API providers are Core resource profiles, not independent background workers.
+- **TigerIQ Core 24/7** remains the primary orchestration/runtime service at `100.97.23.87:8795`.
+- **TigerIQ Coding Lane 24/7** is a separate runtime at `100.97.23.87:8797` for repository implementation automation.
+- **TigerIQ Web Control 24/7** remains a separate read-only runtime at `100.97.23.87:8796`.
+- Canonical source branch: `main`; normal engineering path is **GitHub branch → PR → CI/review → merge**.
+- PC01 is runtime/diagnostics only. It is not a normal source-edit, coding, development-worktree, build, or web-deploy machine.
+- Durable runtime state: PostgreSQL `5432`; local AI: Ollama `127.0.0.1:11434`.
 - Execution boundary authority: `docs/EXECUTION_BOUNDARY.md`.
 
-## PC01 verified state
-- Core `/health`: `ok=true`; 11 resources.
-- Always-on Scheduled Tasks: Core / Desktop Commander Remote / Ollama Runtime / Core Runtime Updater.
-- PowerShell/CMD supervising Core/Ollama/Desktop Commander are runtime launchers only, not a coding lane.
-- Core source on `main` hard-blocks `coding` with `LOCAL_CODING_DISABLED_GITHUB_ONLY`; Core resource capabilities are `general/reasoning/review` only.
-- PR #594 merged as `6b6fa5e`; PC01 zero-touch updater automatically advanced `44acbbc → 6b6fa5e` after required gates passed.
-- Core PID changed `30672 → 27960`; `/health` remained `ok=true` after update.
-- Supervisor/updater now enforce a single live Core, clear stale/orphan Node processes, require a changed healthy PID after update, and roll back on failed health validation.
-- Updater reloads itself after self-update so the running updater script cannot remain stale.
-- Legacy tasks/worktrees/clones are archived/non-executable unless Owner explicitly reactivates them.
+## Autonomous Coding Lane — VERIFIED
+- AI Manager creates durable coding objectives/jobs; the Coding Lane manager currently uses eligible free/trial API NV resources.
+- Implementer receives an explicit file scope and writes only to an isolated branch named `tigeriq/<nv>/<job>` through GitHub API.
+- Direct Coding Lane writes to `main` are not implemented; merge occurs only through a PR after required gates.
+- Required gates: `CI Verify`, `Queue Hygiene Verify`, `Vercel Online Verify`.
+- Independent reviewer must be a different NV from the implementer. Review rejection returns the job for fix/retest, bounded by the job retry limit.
+- Credential/security, paid AI, destructive operations, and production/release-control work fail closed.
 
-## GitHub → Core autonomy
-- GitHub executable issues are materialized by Core intake into durable `OBJ-GH-*` objectives.
-- #588–#590 completed through the GitHub intake path.
-- #595 is the post-fix E2E proof: Core automatically wrote `[CLAIM]`, completed the objective, wrote `[RESULT]`, and closed the issue without manual runtime activation.
-- Verified path: **GitHub issue → Core intake → AI resource → objective completion → GitHub result/close**.
-- This autonomy path does not turn PC01 into a coding lane; repository implementation remains GitHub/CI only.
+## Coding Lane E2E evidence
+- Initial smoke E2E: objective `CODEOBJ-8740a833-8ffe-4d09-8794-a6eae79875f1` → job `CODE-08c497bf-cfd8-40d8-865e-fc8c2689d048` → branch `tigeriq/nv12/code-08c497bf-cfd8-40d8-865e-fc8c2689d048` → PR #604 → 3/3 gates PASS → NV11 independent review approved → merged as `d6972207df30f43400cea9650c8168d272f1f7bf`.
+- Persistent scheduled-runtime E2E: objective `CODEOBJ-02ee5c98-f679-40e2-9dd4-2b1cea5e8890` → job `CODE-ddfc9b5f-5f19-4735-93d1-1e7bba38914e` → branch `tigeriq/nv12/code-ddfc9b5f-5f19-4735-93d1-1e7bba38914e` → PR #607 → 3/3 gates PASS → NV11 independent review approved → merged as `830c6b0fe8567a8702cb38a4de1ac7d453111649`.
+- Persistent E2E ran from the Scheduled Task-backed Coding Lane runtime, not a development shell.
 
-## Integrations
-- SurfSense #581: COMPLETED, `ADOPTED_ON_DEMAND`, Core-integrated `/api/research`.
-- SurfSense E2E: `JOB-6143510e-2cbf-4e6d-8078-0def48132f81`, 9.771s, sourced research → Ollama summary with citations.
-- SurfSense benchmark: ~4.2 GiB RAM container; Docker images ~16.97 GB. Task remains Disabled by default to save resources and is started only when research is needed.
-- Chrome DevTools MCP #582: COMPLETED, v1.9.0, smoke lane on `main` commit `2490bcd`.
-- Chrome DevTools MCP final E2E: 3/3 PASS, 29 tools/run, no material console/network errors.
+## Path-aware runtime updater — VERIFIED
+- `update-core-runtime.ps1` classifies changed paths before runtime action.
+- Core runtime paths → restart Core.
+- Web Control-only paths → restart Web Control only.
+- Coding Lane-only paths → restart Coding Lane only.
+- Docs/other non-runtime paths → no service restart.
+- PR #605 fixed PowerShell PID state handling after the first rollout exposed a `.HasValue` runtime defect.
+- Final Web Control-only E2E via PR #606 changed only `apps/tigeriq-core/web-control-updater-probe.md`.
+- Updater evidence: `impact.core=false`, `impact.web=true`, `impact.coding=false`, `coreRestarted=false`, `webRestarted=true`, `result=UPDATED`.
+- Core PID remained `28696` before/after the Web Control-only update; Web Control Node PID changed `23856 → 31396`.
+- Initial rollout incident: the legacy updater restarted Core once before path-aware activation; the final verified path no longer does so for non-Core changes.
+
+## PC01 verified runtime
+- Core `/health`: `ok=true`, PID `28696` at final verification.
+- Coding Lane `/health`: `ok=true`, 3 eligible API resources, Scheduled Task-backed.
+- Web Control `/health`: `ok=true`, Scheduled Task-backed, Core upstream healthy.
+- Core Runtime Updater state reached `NO_CHANGE` on installed SHA `830c6b0fe8567a8702cb38a4de1ac7d453111649` after the persistent Coding Lane E2E.
+- Always-on Scheduled Tasks now include Core / Coding Lane / Web Control / Core Runtime Updater / Desktop Commander Remote / Ollama Runtime.
 
 ## GitHub governance
-- `main` protected with strict required checks: `CI Verify`, `Queue Hygiene Verify`, `Vercel Online Verify`.
-- One approving review required; stale reviews dismissed; conversations resolved; force-push/delete disabled.
-- GitHub-only engineering boundary is enforced by `AGENTS.md`, `docs/EXECUTION_BOUNDARY.md`, CENTRAL #280 and Interaction #504.
-- Desktop Commander/PC01 must not be used for ordinary source implementation, repository edits, or web build/deploy.
-- Merged legacy remote branches were cleaned with branch→SHA restore manifest preserved in PC01 Archive.
-- Persistent open control issues: #280 CENTRAL, #335 Registry, #497 browser guardrail, #504 Interaction policy.
-- These control issues are not executable backlog.
+- `main` required checks remain `CI Verify`, `Queue Hygiene Verify`, `Vercel Online Verify`.
+- Coding Lane always creates a job-specific branch and PR; it does not call repository contents writes against `main`.
+- GitHub branch protection remains the final repository-side authority; the Coding Lane adds its own fail-closed gate before merge.
+- Desktop Commander remains operations/diagnostics only for PC01 runtime.
+
+## Existing autonomy/integrations
+- GitHub issue → Core intake → AI resource → objective completion → GitHub result/close remains verified by #595.
+- SurfSense #581 remains `ADOPTED_ON_DEMAND` through Core `/api/research`.
+- Chrome DevTools MCP #582 remains completed with 3/3 final E2E PASS.
 
 ## AI resource truth
-- NV02 Ollama: local Core resource.
-- NV11 Groq, NV12 Gemini, NV13 OpenRouter, NV15 Cloudflare Workers AI, NV16 Hugging Face, NV19 Cohere: live PASS/READY_WHEN_CALLED per recorded evidence.
-- NV14 Mistral: rate-limited/cooldown.
-- NV17 Vercel AI Gateway: BLOCKED/OFFLINE 403.
-- NV18 IBM watsonx.ai Lite: BLOCKED/OFFLINE, deferred.
-- NV20 NVIDIA NIM: WAIT_KEY/OFFLINE.
-- API provisioning/repair is Owner-deferred; no paid fallback.
+- Core resources remain governed by recorded LOCAL/READY/free-proof state.
+- Coding Lane active eligible resources at final E2E: NV11 Groq, NV12 Gemini, NV19 Cohere.
+- No paid fallback is enabled.
+- Deferred/broken providers remain excluded until separately repaired/authorized.
 
 ## Source of Truth
-- CENTRAL #280 = v44.
+- CENTRAL #280: update target v45 for Coding Lane + path-aware updater completion.
 - Registry #335 = v42.
 - Interaction #504 = v14.
 - Browser/authenticated UI guardrail = #497.
@@ -70,8 +71,8 @@ Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #
 - Chat/memory is not runtime authority.
 
 ## Active work
-- `NONE` — no executable backlog is active.
-- #588, #589, #590 and #595 are completed/closed evidence only.
-- New work starts only from a new Owner objective or an explicit reactivation recorded in CENTRAL.
+- `NONE` for WO-061 after Source of Truth reconciliation.
+- PR #603, #605, #606, #607 are completion/evidence history.
+- PR #602 remains a separate Web Control source-integration item and is not part of WO-061 completion.
 
-STATE: `CURRENT_V44_GITHUB_CORE_AUTONOMY_E2E_PASS_NO_ACTIVE_BACKLOG_20260911`
+STATE: `CURRENT_V45_AUTONOMOUS_CODING_LANE_E2E_PATH_AWARE_UPDATER_PASS_20260912`
