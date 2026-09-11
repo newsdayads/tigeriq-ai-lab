@@ -16,6 +16,7 @@ permissions:
 
 jobs:
   verify:
+    name: Vercel Online Verify
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
