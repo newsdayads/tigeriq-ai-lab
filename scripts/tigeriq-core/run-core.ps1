@@ -10,7 +10,7 @@ function Set-SecretEnv([string]$EnvName,[string]$SecretName,[string]$Entropy){
   if(-not[string]::IsNullOrWhiteSpace($value)){[Environment]::SetEnvironmentVariable($EnvName,$value,'Process')}
 }
 function Clear-CoreEnvironment {
-  $names=@('DATABASE_URL','PGPASSWORD','TIGERIQ_CORE_TOKEN','GROQ_API_KEY','GEMINI_API_KEY','OPENROUTER_API_KEY','MISTRAL_API_KEY','CLOUDFLARE_AUTH_TOKEN','HF_TOKEN','AI_GATEWAY_API_KEY','WATSONX_API_KEY','COHERE_API_KEY','NVIDIA_API_KEY','CLOUDFLARE_ACCOUNT_ID','WATSONX_PROJECT_ID','WATSONX_MODEL_ID','TIGERIQ_GROQ_FREE_TIER_VERIFIED','TIGERIQ_GEMINI_FREE_TIER_VERIFIED','TIGERIQ_VERCEL_FREE_CREDIT_CONFIRMED','TIGERIQ_WATSONX_LITE_CONFIRMED','TIGERIQ_COHERE_TRIAL_CONFIRMED','TIGERIQ_NVIDIA_FREE_DEV_CONFIRMED')
+  $names=@('DATABASE_URL','PGPASSWORD','TIGERIQ_CORE_TOKEN','TIGERIQ_GITHUB_TOKEN','GROQ_API_KEY','GEMINI_API_KEY','OPENROUTER_API_KEY','MISTRAL_API_KEY','CLOUDFLARE_AUTH_TOKEN','HF_TOKEN','AI_GATEWAY_API_KEY','WATSONX_API_KEY','COHERE_API_KEY','NVIDIA_API_KEY','CLOUDFLARE_ACCOUNT_ID','WATSONX_PROJECT_ID','WATSONX_MODEL_ID','TIGERIQ_GROQ_FREE_TIER_VERIFIED','TIGERIQ_GEMINI_FREE_TIER_VERIFIED','TIGERIQ_VERCEL_FREE_CREDIT_CONFIRMED','TIGERIQ_WATSONX_LITE_CONFIRMED','TIGERIQ_COHERE_TRIAL_CONFIRMED','TIGERIQ_NVIDIA_FREE_DEV_CONFIRMED')
   foreach($name in $names){[Environment]::SetEnvironmentVariable($name,$null,'Process')}
 }
 function Get-SecretStamp {
@@ -23,6 +23,8 @@ function Load-CoreEnvironment {
   $pgLine=(Get-Content 'D:\TigerIQ\Secrets\workforce-controller-v1.pgpass'|Where-Object{$_ -and -not $_.StartsWith('#')}|Select-Object -First 1)
   $env:PGPASSWORD=([string]$pgLine).Split(':',5)[4]
   $env:TIGERIQ_CORE_TOKEN=(Get-Content -Raw 'D:\TigerIQ\Secrets\pc01-primary-node.ingress-token').Trim()
+  $githubTokenPath='D:\TigerIQ\Secrets\github-command-center.token'
+  if(Test-Path -LiteralPath $githubTokenPath){$env:TIGERIQ_GITHUB_TOKEN=(Get-Content -Raw -LiteralPath $githubTokenPath).Trim()}
   $tail=(tailscale ip -4 2>$null | Select-Object -First 1)
   $env:TIGERIQ_CORE_HOST=if($tail){[string]$tail}else{'127.0.0.1'}
   $env:TIGERIQ_CORE_PORT='8795'

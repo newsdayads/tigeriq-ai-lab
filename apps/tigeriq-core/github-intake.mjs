@@ -37,11 +37,17 @@ export function extractRepoPaths(body){
   return out;
 }
 
-async function ghJson(fetchImpl,url,token=''){
-  const headers={'accept':'application/vnd.github+json','user-agent':'TigerIQ-Core-GitHub-Intake/1.0','x-github-api-version':'2022-11-28'};
+export function formatResultComment(row){
+  const summary=String(row?.summary||'Objective completed.').trim().slice(0,5000);
+  return `[RESULT] TigerIQ Core ${row?.status==='completed'?'completed':'blocked'} ${row?.id}.\n\n${summary}\n\nEvidence: Core objective \`${row?.id}\`, status \`${row?.status}\`.`;
+}
+
+async function ghJson(fetchImpl,url,token='',init={}){
+  const headers={'accept':'application/vnd.github+json','user-agent':'TigerIQ-Core-GitHub-Intake/1.1','x-github-api-version':'2022-11-28',...(init.headers||{})};
   if(token) headers.authorization=`Bearer ${token}`;
-  const r=await fetchImpl(url,{headers,signal:AbortSignal.timeout(12000)});
+  const r=await fetchImpl(url,{...init,headers,signal:AbortSignal.timeout(12000)});
   if(!r.ok){const e=new Error(`GITHUB_HTTP_${r.status}`);e.status=r.status;throw e;}
+  if(r.status===204) return {};
   return r.json();
 }
 
@@ -59,12 +65,16 @@ async function hydrateContext(fetchImpl,owner,repo,spec,token){
   return chunks.join('\n\n---\n\n').slice(0,MAX_CONTEXT_CHARS);
 }
 
-async function maybeComment(fetchImpl,owner,repo,issueNumber,body,token){
+async function commentIssue(fetchImpl,owner,repo,issueNumber,body,token){
   if(!token) return false;
-  const url=`https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}/comments`;
-  const headers={'accept':'application/vnd.github+json','user-agent':'TigerIQ-Core-GitHub-Intake/1.0','x-github-api-version':'2022-11-28','content-type':'application/json',authorization:`Bearer ${token}`};
-  const r=await fetchImpl(url,{method:'POST',headers,body:JSON.stringify({body}),signal:AbortSignal.timeout(12000)});
-  return r.ok;
+  await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}/comments`,token,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({body})});
+  return true;
+}
+
+async function closeIssue(fetchImpl,owner,repo,issueNumber,token){
+  if(!token) return false;
+  await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}`,token,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({state:'closed',state_reason:'completed'})});
+  return true;
 }
 
 export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token=''}){
@@ -79,16 +89,36 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
     const objective=`GitHub autonomous work item #${spec.number}. Execute only the read-only task below. Do not edit repository source, use PC01 shell, deploy, change credentials/security, spend money, reboot, or perform destructive actions. Ground conclusions only in the supplied GitHub context. When the requested analysis is satisfied, complete the objective.\n\n${context}`;
     await pool.query('insert into tigeriq_objectives(id,objective,priority,metadata) values($1,$2,$3,$4) on conflict(id) do nothing',[id,objective,spec.priority,JSON.stringify({source:'github',issueNumber:spec.number,issueUrl:spec.url,capability:spec.capability})]);
     await pool.query("insert into tigeriq_events(type,objective_id,data) values('GITHUB_OBJECTIVE_MATERIALIZED',$1,$2)",[id,JSON.stringify({issueNumber:spec.number,issueUrl:spec.url})]);
-    await maybeComment(fetchImpl,owner,repo,spec.number,`[CLAIM] TigerIQ Core materialized this issue as ${id}. Automatic processing has started.`,token);
     created++;
   }
   return {created};
 }
 
+export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token=''}){
+  if(!token) return {claims:0,results:0};
+  const rows=(await pool.query("select id,status,summary,metadata from tigeriq_objectives where metadata->>'source'='github' order by created_at asc limit 100")).rows;
+  let claims=0,results=0;
+  for(const row of rows){
+    const number=Number(row.metadata?.issueNumber); if(!number) continue;
+    if(!row.metadata?.githubClaimReported){
+      await commentIssue(fetchImpl,owner,repo,number,`[CLAIM] TigerIQ Core accepted this issue as ${row.id}. Automatic processing is active.`,token);
+      await pool.query("update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1",[row.id,JSON.stringify({githubClaimReported:true})]);
+      row.metadata={...row.metadata,githubClaimReported:true}; claims++;
+    }
+    if(['completed','blocked'].includes(row.status)&&!row.metadata?.githubResultReported){
+      await commentIssue(fetchImpl,owner,repo,number,formatResultComment(row),token);
+      if(row.status==='completed') await closeIssue(fetchImpl,owner,repo,number,token);
+      await pool.query("update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1",[row.id,JSON.stringify({githubResultReported:true,githubClosed:row.status==='completed'})]);
+      results++;
+    }
+  }
+  return {claims,results};
+}
+
 export function startGithubIntake({databaseUrl=process.env.DATABASE_URL,fetchImpl=fetch,owner=process.env.TIGERIQ_GITHUB_OWNER||DEFAULT_OWNER,repo=process.env.TIGERIQ_GITHUB_REPO||DEFAULT_REPO,token=process.env.TIGERIQ_GITHUB_TOKEN||process.env.GITHUB_TOKEN||'',intervalMs=Number(process.env.TIGERIQ_GITHUB_INTAKE_MS||DEFAULT_INTERVAL_MS),initialDelayMs=DEFAULT_INITIAL_DELAY_MS}={}){
   if(!databaseUrl) return {enabled:false,stop(){}};
   const pool=new Pool({connectionString:databaseUrl,max:1}); let stopped=false,busy=false,timer=null,interval=null;
-  const tick=async()=>{if(stopped||busy)return;busy=true;try{const r=await materializeGithubIssues({pool,fetchImpl,owner,repo,token});if(r.created)console.log(JSON.stringify({event:'GITHUB_INTAKE_MATERIALIZED',created:r.created}));}catch(e){console.error(JSON.stringify({event:'GITHUB_INTAKE_ERROR',error:String(e?.message||e)}));}finally{busy=false;}};
+  const tick=async()=>{if(stopped||busy)return;busy=true;try{const a=await materializeGithubIssues({pool,fetchImpl,owner,repo,token});const b=await syncGithubOutcomes({pool,fetchImpl,owner,repo,token});if(a.created||b.claims||b.results)console.log(JSON.stringify({event:'GITHUB_INTAKE_SYNC',created:a.created,claims:b.claims,results:b.results}));}catch(e){console.error(JSON.stringify({event:'GITHUB_INTAKE_ERROR',error:String(e?.message||e)}));}finally{busy=false;}};
   timer=setTimeout(()=>{void tick();interval=setInterval(()=>void tick(),Math.max(60000,intervalMs));interval.unref?.();},Math.max(1000,initialDelayMs)); timer.unref?.();
   return {enabled:true,async stop(){stopped=true;if(timer)clearTimeout(timer);if(interval)clearInterval(interval);await pool.end();}};
 }
