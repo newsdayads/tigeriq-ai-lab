@@ -17,10 +17,10 @@ function Stop-CoreProcesses(){
   $procs=Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue | Where-Object {$_.CommandLine -and $_.CommandLine.ToLowerInvariant().Contains($corePath)}
   foreach($p in $procs){try{Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop}catch{}}
 }
-function Restart-Core([Nullable[int]]$oldPid){
+function Restart-Core($oldPid){
   Stop-ScheduledTask -TaskName $coreTask -ErrorAction SilentlyContinue;Start-Sleep -Seconds 2;Stop-CoreProcesses;Start-Sleep -Seconds 1;Start-ScheduledTask -TaskName $coreTask
   $deadline=(Get-Date).AddSeconds(60)
-  while((Get-Date)-lt$deadline){$h=HealthInfo 'http://100.97.23.87:8795/health';if($h -and ((-not $oldPid.HasValue)-or([int]$h.pid -ne $oldPid.Value))){return $h};Start-Sleep -Seconds 2}
+  while((Get-Date)-lt$deadline){$h=HealthInfo 'http://100.97.23.87:8795/health';if($h -and (($null -eq $oldPid)-or([int]$h.pid -ne [int]$oldPid))){return $h};Start-Sleep -Seconds 2}
   return $null
 }
 function Restart-ServiceTask([string]$name,[string]$healthUrl){
@@ -51,7 +51,7 @@ while($true){
     foreach($n in $need){if(-not(@($runs.workflow_runs|Where-Object{$_.name -eq $n -and $_.conclusion -eq 'success'}))){$gatesOk=$false;break}}
     if(-not $gatesOk){Save-State @{result='WAIT_GATES';candidateSha=$remote};continue}
     [string[]]$changed=@(git -C $repo diff --name-only $local $remote);$impact=Get-Impact $changed
-    $oldCore=HealthInfo 'http://100.97.23.87:8795/health';$oldPid=if($oldCore){[Nullable[int]]([int]$oldCore.pid)}else{[Nullable[int]]$null}
+    $oldCore=HealthInfo 'http://100.97.23.87:8795/health';$oldPid=if($oldCore){[int]$oldCore.pid}else{$null}
     git -C $repo merge --ff-only origin/main|Out-Null;if($LASTEXITCODE -ne 0){throw 'FAST_FORWARD_FAILED'}
     $coreHealth=$oldCore;$webHealth=$null;$codingHealth=$null
     try{
@@ -61,13 +61,13 @@ while($true){
       if($impact.coding){$codingHealth=Restart-ServiceTask $codingTask 'http://100.97.23.87:8797/health';if(-not $codingHealth){throw 'CODING_LANE_HEALTH_FAILED'}}
     }catch{
       git -C $repo reset --hard $local|Out-Null
-      if($impact.core){$null=Restart-Core ([Nullable[int]]$null)}
+      if($impact.core){$null=Restart-Core $null}
       if($impact.web -and (Task-Exists $webTask)){$null=Restart-ServiceTask $webTask 'http://100.97.23.87:8796/health'}
       if($impact.coding -and (Task-Exists $codingTask)){$null=Restart-ServiceTask $codingTask 'http://100.97.23.87:8797/health'}
       throw ('ROLLED_BACK:'+ $_.Exception.Message)
     }
     $newCore=HealthInfo 'http://100.97.23.87:8795/health'
-    Save-State @{result='UPDATED';installedSha=$remote;previousSha=$local;changedPaths=$changed;impact=$impact;corePid=if($newCore){[int]$newCore.pid}else{$null};previousCorePid=if($oldPid.HasValue){$oldPid.Value}else{$null};coreRestarted=$impact.core;webRestarted=$impact.web;codingRestarted=$impact.coding}
+    Save-State @{result='UPDATED';installedSha=$remote;previousSha=$local;changedPaths=$changed;impact=$impact;corePid=if($newCore){[int]$newCore.pid}else{$null};previousCorePid=$oldPid;coreRestarted=$impact.core;webRestarted=$impact.web;codingRestarted=$impact.coding}
     if($impact.updater){exit 75}
   }catch{Save-State @{result='FAILED';error=$_.Exception.Message}}
   finally{Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue;if($locked){$mutex.ReleaseMutex()|Out-Null}}
