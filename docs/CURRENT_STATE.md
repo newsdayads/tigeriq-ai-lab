@@ -7,7 +7,7 @@ Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #
 ## Canonical architecture
 - One hot-path runtime: **TigerIQ Core 24/7**.
 - Canonical source branch: `main`.
-- Core source: `apps/tigeriq-core/core.mjs`.
+- Runtime entry: `apps/tigeriq-core/core-entry.mjs` → `core.mjs` + GitHub intake.
 - Engineering path: **GitHub → CI**; hosted Web/UI uses **Vercel** when deployment is required.
 - **PC01 is excluded from the normal coding/repository/web-build/web-deploy path.**
 - PC01 launcher: `D:\TigerIQ\Workspace\tigeriq-ai-lab\scripts\tigeriq-core\run-core.ps1`.
@@ -19,14 +19,22 @@ Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #
 - Execution boundary authority: `docs/EXECUTION_BOUNDARY.md`.
 
 ## PC01 verified state
-- Core `/health`: `ok=true`; `verify-core.mjs`: PASS; 11 resources.
-- Always-on Scheduled Tasks: Core / Desktop Commander Remote / Ollama Runtime.
+- Core `/health`: `ok=true`; 11 resources.
+- Always-on Scheduled Tasks: Core / Desktop Commander Remote / Ollama Runtime / Core Runtime Updater.
 - PowerShell/CMD supervising Core/Ollama/Desktop Commander are runtime launchers only, not a coding lane.
 - Core source on `main` hard-blocks `coding` with `LOCAL_CODING_DISABLED_GITHUB_ONLY`; Core resource capabilities are `general/reasoning/review` only.
-- Runtime coding-boundary PR #587 passed `CI Verify`, `Queue Hygiene Verify`, `Vercel Online Verify` and merged as `f37a2f6`.
-- Core supervisor points to canonical `main`; stale in-memory worktree-path failure was fixed and retested.
-- Registered Git worktree after cleanup: canonical `main` only, except temporary worktrees created during an active PR.
+- PR #594 merged as `6b6fa5e`; PC01 zero-touch updater automatically advanced `44acbbc → 6b6fa5e` after required gates passed.
+- Core PID changed `30672 → 27960`; `/health` remained `ok=true` after update.
+- Supervisor/updater now enforce a single live Core, clear stale/orphan Node processes, require a changed healthy PID after update, and roll back on failed health validation.
+- Updater reloads itself after self-update so the running updater script cannot remain stale.
 - Legacy tasks/worktrees/clones are archived/non-executable unless Owner explicitly reactivates them.
+
+## GitHub → Core autonomy
+- GitHub executable issues are materialized by Core intake into durable `OBJ-GH-*` objectives.
+- #588–#590 completed through the GitHub intake path.
+- #595 is the post-fix E2E proof: Core automatically wrote `[CLAIM]`, completed the objective, wrote `[RESULT]`, and closed the issue without manual runtime activation.
+- Verified path: **GitHub issue → Core intake → AI resource → objective completion → GitHub result/close**.
+- This autonomy path does not turn PC01 into a coding lane; repository implementation remains GitHub/CI only.
 
 ## Integrations
 - SurfSense #581: COMPLETED, `ADOPTED_ON_DEMAND`, Core-integrated `/api/research`.
@@ -41,8 +49,8 @@ Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #
 - GitHub-only engineering boundary is enforced by `AGENTS.md`, `docs/EXECUTION_BOUNDARY.md`, CENTRAL #280 and Interaction #504.
 - Desktop Commander/PC01 must not be used for ordinary source implementation, repository edits, or web build/deploy.
 - Merged legacy remote branches were cleaned with branch→SHA restore manifest preserved in PC01 Archive.
-- Open issues are only #280 CENTRAL, #335 Registry, #497 browser guardrail, #504 Interaction policy.
-- These four issues are persistent control sources, not executable backlog.
+- Persistent open control issues: #280 CENTRAL, #335 Registry, #497 browser guardrail, #504 Interaction policy.
+- These control issues are not executable backlog.
 
 ## AI resource truth
 - NV02 Ollama: local Core resource.
@@ -54,7 +62,7 @@ Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #
 - API provisioning/repair is Owner-deferred; no paid fallback.
 
 ## Source of Truth
-- CENTRAL #280 = v42.
+- CENTRAL #280 = v44.
 - Registry #335 = v42.
 - Interaction #504 = v14.
 - Browser/authenticated UI guardrail = #497.
@@ -62,7 +70,8 @@ Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #
 - Chat/memory is not runtime authority.
 
 ## Active work
-- `NONE` — no autonomous backlog is active.
+- `NONE` — no executable backlog is active.
+- #588, #589, #590 and #595 are completed/closed evidence only.
 - New work starts only from a new Owner objective or an explicit reactivation recorded in CENTRAL.
 
-STATE: `CURRENT_V42_GITHUB_ONLY_ENGINEERING_PC01_RUNTIME_ONLY_20260911`
+STATE: `CURRENT_V44_GITHUB_CORE_AUTONOMY_E2E_PASS_NO_ACTIVE_BACKLOG_20260911`
