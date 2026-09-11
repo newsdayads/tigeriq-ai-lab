@@ -29,6 +29,8 @@ const resources = [
 ];
 const nowIso = () => new Date().toISOString();
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+const credentialEnvByProvider = { groq:['GROQ_API_KEY'], gemini:['GEMINI_API_KEY'], openrouter:['OPENROUTER_API_KEY'], mistral:['MISTRAL_API_KEY'], cloudflare:['CLOUDFLARE_AUTH_TOKEN','CLOUDFLARE_ACCOUNT_ID'], huggingface:['HF_TOKEN'], vercel:['AI_GATEWAY_API_KEY'], watsonx:['WATSONX_API_KEY','WATSONX_PROJECT_ID','WATSONX_MODEL_ID'], cohere:['COHERE_API_KEY'], nvidia:['NVIDIA_API_KEY'] };
+const credentialPresent = (r) => r.provider === 'ollama' || (credentialEnvByProvider[r.provider] || []).every(k => process.env[k]);
 const reqReady = (r) => r.req.every(([k,v]) => process.env[k] && (v === undefined || process.env[k] === v));
 
 function classifyHttp(status) {
@@ -128,8 +130,8 @@ async function event(type, data = {}) {
     [type,data.objectiveId||null,data.jobId||null,data.employeeId||null,JSON.stringify(data)]);
 }async function refreshResources() {
   for (const r of resources) {
-    let credential = r.provider === 'ollama' ? 'LOCAL' : (reqReady(r) ? 'READY' : 'WAIT_KEY');
-    let health = credential === 'WAIT_KEY' ? 'OFFLINE' : 'READY';
+    let credential = r.provider === 'ollama' ? 'LOCAL' : (!credentialPresent(r) ? 'WAIT_KEY' : (reqReady(r) ? 'READY' : 'BLOCKED'));
+    let health = credential === 'WAIT_KEY' || credential === 'BLOCKED' ? 'OFFLINE' : 'READY';
     const old = (await pool.query('select health_state,work_state,last_seen_at,cooldown_until,current_job_id from tigeriq_resources where employee_id=$1',[r.id])).rows[0];
     if (r.provider === 'ollama') {
       try { await fetchJson('http://127.0.0.1:11434/api/tags',{},3000); health='ONLINE'; }
@@ -150,7 +152,7 @@ async function recoverAfterCoreRestart() {
   const q=await pool.query("select id,employee_id from tigeriq_jobs where status='running' and kind='ai'");
   for(const j of q.rows){
     await pool.query("update tigeriq_jobs set status='queued',employee_id=null,provider=null,lease_until=null where id=$1",[j.id]);
-    if(j.employee_id) await pool.query("update tigeriq_resources set current_job_id=null,work_state='IDLE',health_state=case when credential_state='WAIT_KEY' then 'OFFLINE' else 'READY' end,updated_at=now() where employee_id=$1",[j.employee_id]);
+    if(j.employee_id) await pool.query("update tigeriq_resources set current_job_id=null,work_state='IDLE',health_state=case when credential_state in ('WAIT_KEY','BLOCKED') then 'OFFLINE' else 'READY' end,updated_at=now() where employee_id=$1",[j.employee_id]);
     await event('JOB_RECOVERED_AFTER_CORE_RESTART',{jobId:j.id,employeeId:j.employee_id});
   }
 }
@@ -162,7 +164,7 @@ async function recoverStale() {
     await event('JOB_LEASE_RECOVERED',{jobId:j.id,employeeId:j.employee_id});
   }
 }async function candidates(capability='general') {
-  const q = await pool.query(`select * from tigeriq_resources where enabled=true and credential_state<>'WAIT_KEY'
+  const q = await pool.query(`select * from tigeriq_resources where enabled=true and credential_state in ('LOCAL','READY')
     and health_state in ('READY','ONLINE') and current_job_id is null and (cooldown_until is null or cooldown_until<=now())
     and ($1=any(capabilities) or 'general'=any(capabilities)) order by rank + failure_count*5 + coalesce(last_latency_ms,0)/1000 asc`,[capability]);
   return q.rows;
@@ -170,7 +172,7 @@ async function recoverStale() {
 async function claimResource(capability, jobId, excluded=[]) {
   const c=await pool.connect();
   try { await c.query('begin');
-    const q=await c.query(`select * from tigeriq_resources where enabled=true and credential_state<>'WAIT_KEY'
+    const q=await c.query(`select * from tigeriq_resources where enabled=true and credential_state in ('LOCAL','READY')
       and health_state in ('READY','ONLINE') and current_job_id is null and (cooldown_until is null or cooldown_until<=now())
       and ($1=any(capabilities) or 'general'=any(capabilities)) and not(employee_id=any($2::text[]))
       order by rank + failure_count*5 + coalesce(last_latency_ms,0)/1000 asc for update skip locked limit 1`,[capability,excluded]);
@@ -213,7 +215,7 @@ async function probeResource(employeeId) {
   }
 }
 async function probeReadyResources() {
-  const rows=(await pool.query("select employee_id,credential_state,health_state,current_job_id,last_seen_at,cooldown_until from tigeriq_resources where enabled=true and credential_state<>'WAIT_KEY' and current_job_id is null order by rank")).rows;
+  const rows=(await pool.query("select employee_id,credential_state,health_state,current_job_id,last_seen_at,cooldown_until from tigeriq_resources where enabled=true and credential_state in ('LOCAL','READY') and current_job_id is null order by rank")).rows;
   const now=Date.now();
   for(const row of rows){
     const neverSeen=!row.last_seen_at;
