@@ -12,7 +12,9 @@ const statusPayload = {
   core: { host: '127.0.0.1', port: CORE_PORT, pid: 1234, uptimeSec: 321 },
   integrations: { surfsense: { ok: false } },
   resources: [{ employee_id: 'NV02', name: 'Ollama', provider: 'ollama', status: 'IDLE', calls_success_24h: 1, calls_failure_24h: 0 }],
-  objectives: [], jobs: [], events: [], telemetry: []
+  objectives: [{ id: 'OBJ-1', objective: 'Test', priority: 'P1', status: 'active', manager_cycles: 7, updated_at: new Date().toISOString() }],
+  jobs: [{ id: 'JOB-R', objective_id: 'OBJ-1', title: 'Review', capability: 'review', status: 'running' }],
+  events: [], telemetry: []
 };
 
 async function waitFor(url: string, timeoutMs = 8000) {
@@ -65,11 +67,18 @@ afterAll(async () => {
 });
 
 describe('Web Control runtime', () => {
-  it('serves the separate Web Control product', async () => {
+  it('serves the separate Web Control product with truth guard', async () => {
     const response = await fetch(`http://127.0.0.1:${WEB_PORT}/`);
     expect(response.status).toBe(200);
     expect(response.headers.get('cache-control')).toContain('no-store');
-    expect(await response.text()).toContain('<title>TigerIQ Core 24/7 — Web Control</title>');
+    const body = await response.text();
+    expect(body).toContain('<title>TigerIQ Core 24/7 — Web Control</title>');
+    expect(body).toContain('<script src="/web-control-truth.js"></script>');
+    const truth = await fetch(`http://127.0.0.1:${WEB_PORT}/web-control-truth.js`);
+    expect(truth.status).toBe(200);
+    const js = await truth.text();
+    expect(js).toContain('Core chưa cung cấp % tiến độ');
+    expect(js).toContain('c.running - review');
   });
 
   it('proxies live Core status read-only', async () => {
