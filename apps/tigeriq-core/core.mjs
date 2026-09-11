@@ -11,6 +11,7 @@ const TOKEN = process.env.TIGERIQ_CORE_TOKEN?.trim() || '';
 const POLL_MS = Number(process.env.TIGERIQ_CORE_POLL_MS || 1000);
 const MANAGER_IDLE_MS = Number(process.env.TIGERIQ_MANAGER_IDLE_MS || 5000);
 const pool = new Pool({ connectionString: DATABASE_URL, max: 4 });
+pool.on('error', (err) => console.error(JSON.stringify({event:'PG_POOL_ERROR',error:String(err?.message||err)})));
 
 const R = (id, name, provider, model, req = [], rank = 50) => ({
   id, name, provider, model, req, rank,
@@ -135,8 +136,12 @@ async function event(type, data = {}) {
     if (r.provider === 'ollama') {
       try { await fetchJson('http://127.0.0.1:11434/api/tags',{},3000); health='ONLINE'; }
       catch { health='OFFLINE'; }
-    } else if (old?.health_state === 'ONLINE' && old?.last_seen_at) health='ONLINE';
-    if (old?.cooldown_until && new Date(old.cooldown_until) > new Date()) health='RATE_LIMITED';
+    } else if (old?.health_state === 'ONLINE' && old?.last_seen_at && (Date.now()-new Date(old.last_seen_at).getTime()) < 900000) {
+      health='ONLINE';
+    } else if (old?.health_state === 'RATE_LIMITED' || old?.health_state === 'ERROR' || old?.health_state === 'OFFLINE') {
+      health=old.health_state;
+    }
+    if (r.provider !== 'ollama' && old?.health_state === 'RATE_LIMITED' && old?.cooldown_until && new Date(old.cooldown_until) > new Date()) health='RATE_LIMITED';
     const work = old?.current_job_id ? 'BUSY' : (health === 'ONLINE' ? 'IDLE' : (health === 'READY' ? 'READY' : health));
     await pool.query(`insert into tigeriq_resources(employee_id,name,provider,model,credential_state,health_state,work_state,current_job_id,capabilities,rank,updated_at)
       values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,now())
@@ -191,7 +196,7 @@ async function invokeRouted(prompt, capability, jobId, maxAttempts=3) {
       await pool.query("update tigeriq_resources set current_job_id=null,work_state='IDLE',health_state='ONLINE',last_seen_at=now(),last_latency_ms=$2,success_count=success_count+1,updated_at=now() where employee_id=$1",[r.id,latency]);
       await event('RESOURCE_SUCCESS',{jobId,employeeId:r.id,provider:r.provider,latencyMs:latency}); return {text,resource:r,latencyMs:latency,failures};
     } catch(error){ const kind=error?.kind||'outage'; failures.push({employeeId:r.id,provider:r.provider,kind,message:String(error?.message||error)});
-      const health=kind==='rate_limit'?'RATE_LIMITED':(kind==='auth'||kind==='configuration'?'OFFLINE':'ERROR'); const cooldown=kind==='rate_limit'?new Date(Date.now()+60000).toISOString():null;
+      const health=kind==='rate_limit'?'RATE_LIMITED':(kind==='auth'||kind==='configuration'?'OFFLINE':'ERROR'); const cooldown=kind==='rate_limit'?new Date(Date.now()+600000).toISOString():null;
       await pool.query("update tigeriq_resources set current_job_id=null,work_state=$2,health_state=$3,cooldown_until=$4,last_seen_at=now(),failure_count=failure_count+1,updated_at=now() where employee_id=$1",[r.id,health,health,cooldown]); await event('RESOURCE_FAILURE',{jobId,employeeId:r.id,provider:r.provider,kind}); }
   }
   const e=new Error('NO_AI_RESOURCE_AVAILABLE');e.failures=failures;throw e;
@@ -204,11 +209,11 @@ async function probeResource(employeeId) {
     const marker='TIGERIQ_RESOURCE_PROBE_'+r.id; const text=await invokeProvider(r,'Return exactly '+marker);
     if(!String(text).includes(marker)) throw Object.assign(new Error('PROBE_UNEXPECTED_RESPONSE'),{kind:'invalid_response'});
     const latency=Date.now()-started;
-    await pool.query("update tigeriq_resources set health_state='ONLINE',work_state=case when current_job_id is null then 'IDLE' else 'BUSY' end,last_seen_at=now(),last_latency_ms=$2,cooldown_until=null,updated_at=now() where employee_id=$1",[r.id,latency]);
+    await pool.query("update tigeriq_resources set health_state='ONLINE',work_state=case when current_job_id is null then 'IDLE' else 'BUSY' end,last_seen_at=now(),last_latency_ms=$2,cooldown_until=null,success_count=success_count+1,updated_at=now() where employee_id=$1",[r.id,latency]);
     await event('RESOURCE_PROBE_OK',{employeeId:r.id,provider:r.provider,latencyMs:latency}); return {ok:true,employeeId:r.id,provider:r.provider,latencyMs:latency};
   } catch(error) {
     const kind=error?.kind||'outage'; const health=kind==='rate_limit'?'RATE_LIMITED':(kind==='auth'||kind==='configuration'?'OFFLINE':'ERROR');
-    const cooldown=new Date(Date.now()+(kind==='rate_limit'?60000:300000)).toISOString();
+    const cooldown=new Date(Date.now()+(kind==='rate_limit'?600000:300000)).toISOString();
     await pool.query("update tigeriq_resources set health_state=$2,work_state=$2,cooldown_until=$3,last_seen_at=now(),failure_count=failure_count+1,updated_at=now() where employee_id=$1",[r.id,health,cooldown]);
     await event('RESOURCE_PROBE_FAIL',{employeeId:r.id,provider:r.provider,kind,message:String(error?.message||error).slice(0,300)}); const e=new Error('RESOURCE_PROBE_FAILED');e.kind=kind;throw e;
   }
@@ -218,8 +223,9 @@ async function probeReadyResources() {
   const now=Date.now();
   for(const row of rows){
     const neverSeen=!row.last_seen_at;
+    const staleOnline=row.health_state==='ONLINE' && row.last_seen_at && (now-new Date(row.last_seen_at).getTime())>=900000;
     const retryDue=['READY','ERROR','RATE_LIMITED','OFFLINE'].includes(row.health_state) && (!row.cooldown_until || new Date(row.cooldown_until).getTime()<=now);
-    if(!neverSeen && !retryDue) continue;
+    if(!neverSeen && !staleOnline && !retryDue) continue;
     try{await probeResource(row.employee_id);}catch{}
   }
 }
@@ -283,11 +289,24 @@ async function managerTick() {
   return 'READY';
 }
 async function snapshot(){
-  const rr=(await pool.query('select * from tigeriq_resources order by employee_id')).rows.map(x=>({...x,status:publicStatus(x)}));
+  const base=(await pool.query('select * from tigeriq_resources order by employee_id')).rows;
+  const failures=(await pool.query(`select distinct on(employee_id) employee_id,ts,type,data from tigeriq_events
+    where employee_id is not null and type in ('RESOURCE_FAILURE','RESOURCE_PROBE_FAIL') order by employee_id,seq desc`)).rows;
+  const failureMap=new Map(failures.map(x=>[x.employee_id,x]));
+  const callStats=(await pool.query(`select employee_id,
+    count(*) filter(where type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK'))::int as ok,
+    count(*) filter(where type in ('RESOURCE_FAILURE','RESOURCE_PROBE_FAIL'))::int as fail
+    from tigeriq_events where employee_id is not null and ts>=now()-interval '24 hours'
+    and type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK','RESOURCE_FAILURE','RESOURCE_PROBE_FAIL') group by employee_id`)).rows;
+  const statMap=new Map(callStats.map(x=>[x.employee_id,x]));
+  const rr=base.map(x=>{const f=failureMap.get(x.employee_id),st=statMap.get(x.employee_id)||{ok:0,fail:0};return {...x,status:publicStatus(x),last_error:f?.data?.kind||f?.data?.message||null,last_error_at:f?.ts||null,calls_success_24h:Number(st.ok||0),calls_failure_24h:Number(st.fail||0)};});
   const objectives=(await pool.query("select id,objective,priority,status,summary,manager_cycles,updated_at from tigeriq_objectives order by created_at desc limit 20")).rows;
   const jobs=(await pool.query("select id,objective_id,title,capability,status,employee_id,provider,attempts,created_at,started_at,completed_at from tigeriq_jobs order by created_at desc limit 40")).rows;
-  const events=(await pool.query("select seq,ts,type,objective_id,job_id,employee_id,data from tigeriq_events order by seq desc limit 40")).rows;
-  return {ok:true,core:{host:HOST,port:PORT,pid:process.pid,uptimeSec:Math.floor(process.uptime()),time:nowIso()},resources:rr,objectives,jobs,events};
+  const events=(await pool.query("select seq,ts,type,objective_id,job_id,employee_id,data from tigeriq_events order by seq desc limit 80")).rows;
+  const telemetry=(await pool.query(`select ts,employee_id,type,(data->>'latencyMs')::int as latency_ms from tigeriq_events
+    where ts>=now()-interval '24 hours' and type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK') and data ? 'latencyMs'
+    order by ts asc limit 500`)).rows;
+  return {ok:true,core:{host:HOST,port:PORT,pid:process.pid,uptimeSec:Math.floor(process.uptime()),time:nowIso()},resources:rr,objectives,jobs,events,telemetry};
 }
 function auth(req){return TOKEN && req.headers.authorization===`Bearer ${TOKEN}`;}
 function localSelf(req){const a=String(req.socket.remoteAddress||'').replace('::ffff:','');return a==='127.0.0.1'||a==='::1'||a===HOST;}
