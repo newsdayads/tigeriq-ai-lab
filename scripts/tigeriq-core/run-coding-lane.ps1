@@ -12,7 +12,11 @@ function Set-SecretEnv([string]$EnvName,[string]$SecretName,[string]$Entropy){
   $value=Get-TigerIQSecret $SecretName $Entropy
   if(-not[string]::IsNullOrWhiteSpace($value)){[Environment]::SetEnvironmentVariable($EnvName,$value,'Process')}
 }
+function Clear-ProviderEnvironment {
+  foreach($name in @('GROQ_API_KEY','GEMINI_API_KEY','OPENROUTER_API_KEY','MISTRAL_API_KEY','HF_TOKEN','COHERE_API_KEY','TIGERIQ_GROQ_FREE_TIER_VERIFIED','TIGERIQ_GEMINI_FREE_TIER_VERIFIED','TIGERIQ_COHERE_TRIAL_CONFIRMED')){[Environment]::SetEnvironmentVariable($name,$null,'Process')}
+}
 function Load-Environment {
+  Clear-ProviderEnvironment
   $env:DATABASE_URL=(Get-Content -Raw 'D:\TigerIQ\Secrets\workforce-controller-v1.database-url').Trim()
   $env:TIGERIQ_GITHUB_TOKEN=(Get-Content -Raw 'D:\TigerIQ\Secrets\github-command-center.token').Trim()
   $tail=(tailscale ip -4 2>$null|Select-Object -First 1)
@@ -24,11 +28,8 @@ function Load-Environment {
   $geminiProof=Get-Content -Raw 'D:\TigerIQ\Secrets\gemini-free-tier-proof.json'|ConvertFrom-Json
   if($groqProof.plan -eq 'Free' -and $groqProof.priceUsd -eq 0 -and $groqProof.ownerConfirmed -and -not $groqProof.paidFallbackAllowed -and [DateTime]::Parse($groqProof.expiresAtUtc) -gt [DateTime]::UtcNow){Set-SecretEnv 'GROQ_API_KEY' 'groq-api-key' 'TigerIQ-Groq-PC01-v1';$env:TIGERIQ_GROQ_FREE_TIER_VERIFIED='true'}
   if($geminiProof.plan -eq 'Free' -and $geminiProof.priceUsd -eq 0 -and $geminiProof.ownerConfirmed -and -not $geminiProof.billingLinked -and -not $geminiProof.paidFallbackAllowed -and [DateTime]::Parse($geminiProof.expiresAtUtc) -gt [DateTime]::UtcNow){Set-SecretEnv 'GEMINI_API_KEY' 'gemini-api-key' 'TigerIQ-Gemini-PC01-v1';$env:TIGERIQ_GEMINI_FREE_TIER_VERIFIED='true'}
-  Set-SecretEnv 'OPENROUTER_API_KEY' 'openrouter-api-key' 'TigerIQ-OpenRouter-PC01-v1'
-  Set-SecretEnv 'MISTRAL_API_KEY' 'mistral-api-key' 'TigerIQ-Mistral-PC01-v1'
-  Set-SecretEnv 'HF_TOKEN' 'hf-token' 'TigerIQ-HuggingFace-PC01-v1'
-  Set-SecretEnv 'COHERE_API_KEY' 'cohere-api-key' 'TigerIQ-Cohere-PC01-v1'
-  $co=Get-TigerIQConfig 'cohere-proof';if($co -and $co.PSObject.Properties['trialConfirmed'] -and $co.trialConfirmed){$env:TIGERIQ_COHERE_TRIAL_CONFIRMED='true'}
+  $co=Get-TigerIQConfig 'cohere-proof'
+  if($co -and $co.PSObject.Properties['trialConfirmed'] -and $co.trialConfirmed){Set-SecretEnv 'COHERE_API_KEY' 'cohere-api-key' 'TigerIQ-Cohere-PC01-v1';$env:TIGERIQ_COHERE_TRIAL_CONFIRMED='true'}
 }
 $logDir='D:\TigerIQ\Logs\CodingLane24x7';New-Item -ItemType Directory -Path $logDir -Force|Out-Null
 while($true){
