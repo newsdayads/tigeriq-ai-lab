@@ -22,6 +22,10 @@ README reading order is navigational only; it does not override decision precede
 - If an implementation task would otherwise require PC01 shell access, fail closed on that path and use GitHub/CI/Vercel instead.
 - See `docs/EXECUTION_BOUNDARY.md` for the authoritative execution boundary.
 
+## Owner command semantics
+- `apdung` / `áp dụng` = **thực hiện ngay yêu cầu hiện tại đến khi sửa xong và xuất bản luôn**. Với thay đổi code/web/app: tự audit/root-cause → fix → test/CI → merge MAIN → deploy Production khi áp dụng; không dừng ở phân tích, TEST, Preview hay báo tiến độ giữa chừng.
+- Vẫn phải giữ các gate an toàn/evidence hiện hành. Chỉ dừng khi DONE, REAL BLOCKER, EXTERNAL WAIT, hoặc thiếu quyền bắt buộc không thể tự hoàn tất.
+
 ## Non-negotiable rules
 - Coding agents never self-declare DONE.
 - No evidence means no PASS and no merge.
