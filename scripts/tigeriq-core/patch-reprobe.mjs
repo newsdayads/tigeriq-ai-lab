@@ -1,9 +1,0 @@
-import fs from 'node:fs';
-const p='D:/TigerIQ/worktrees/core-24x7/apps/tigeriq-core/core.mjs';
-let s=fs.readFileSync(p,'utf8');
-s=s.replace("async function probeNewReadyResources() {\n  const rows=(await pool.query(\"select employee_id,credential_state,last_seen_at from tigeriq_resources where enabled=true and credential_state<>'WAIT_KEY' order by rank\")).rows;\n  for(const row of rows){\n    if(row.last_seen_at) continue;\n    try{await probeResource(row.employee_id);}catch{}\n  }\n}","async function probeReadyResources() {\n  const rows=(await pool.query(\"select employee_id,credential_state,health_state,current_job_id,last_seen_at,cooldown_until from tigeriq_resources where enabled=true and credential_state<>'WAIT_KEY' and current_job_id is null order by rank\")).rows;\n  const now=Date.now();\n  for(const row of rows){\n    const neverSeen=!row.last_seen_at;\n    const retryDue=['READY','ERROR','RATE_LIMITED','OFFLINE'].includes(row.health_state) && (!row.cooldown_until || new Date(row.cooldown_until).getTime()<=now);\n    if(!neverSeen && !retryDue) continue;\n    try{await probeResource(row.employee_id);}catch{}\n  }\n}");
-s=s.replace('void probeNewReadyResources();','void probeReadyResources();');
-s=s.replace("let lastRecover=0,lastManager=0;","let lastRecover=0,lastManager=0,lastProbe=0;");
-s=s.replace("if(t-lastManager>MANAGER_IDLE_MS){await managerTick();lastManager=t;}","if(t-lastManager>MANAGER_IDLE_MS){await managerTick();lastManager=t;}\n      if(t-lastProbe>60000){await probeReadyResources();lastProbe=t;}");
-fs.writeFileSync(p,s);
-console.log('patched-reprobe');
