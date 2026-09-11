@@ -18,6 +18,9 @@ function Clear-ProviderEnvironment {
 function Load-Environment {
   Clear-ProviderEnvironment
   $env:DATABASE_URL=(Get-Content -Raw 'D:\TigerIQ\Secrets\workforce-controller-v1.database-url').Trim()
+  $pgLine=(Get-Content 'D:\TigerIQ\Secrets\workforce-controller-v1.pgpass'|Where-Object{$_ -and -not $_.StartsWith('#')}|Select-Object -First 1)
+  if(-not $pgLine){throw 'PGPASSWORD_MISSING'}
+  $env:PGPASSWORD=([string]$pgLine).Split(':',5)[4]
   $env:TIGERIQ_GITHUB_TOKEN=(Get-Content -Raw 'D:\TigerIQ\Secrets\github-command-center.token').Trim()
   $tail=(tailscale ip -4 2>$null|Select-Object -First 1)
   $env:TIGERIQ_CODING_HOST=if($tail){[string]$tail}else{'127.0.0.1'}
