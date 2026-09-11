@@ -16,9 +16,9 @@ const R = (id, name, provider, model, req = [], rank = 50) => ({
   capabilities: ['general', 'reasoning', 'coding', 'review'],
 });
 const resources = [
-  R('NV02','Khoa','ollama',process.env.TIGERIQ_OLLAMA_MODEL || 'qwen3:4b',[],90),
-  R('NV11','Huy','groq',process.env.TIGERIQ_GROQ_MODEL || 'openai/gpt-oss-120b',[['GROQ_API_KEY'],['TIGERIQ_GROQ_FREE_TIER_VERIFIED','true']],10),
-  R('NV12','Khải','gemini',process.env.TIGERIQ_GEMINI_MODEL || 'gemini-3.5-flash-lite',[['GEMINI_API_KEY'],['TIGERIQ_GEMINI_FREE_TIER_VERIFIED','true']],20),
+  R('NV02','Ollama','ollama',process.env.TIGERIQ_OLLAMA_MODEL || 'qwen3:4b',[],90),
+  R('NV11','Groq','groq',process.env.TIGERIQ_GROQ_MODEL || 'openai/gpt-oss-120b',[['GROQ_API_KEY'],['TIGERIQ_GROQ_FREE_TIER_VERIFIED','true']],10),
+  R('NV12','Gemini','gemini',process.env.TIGERIQ_GEMINI_MODEL || 'gemini-3.5-flash-lite',[['GEMINI_API_KEY'],['TIGERIQ_GEMINI_FREE_TIER_VERIFIED','true']],20),
   R('NV13','OpenRouter','openrouter','openrouter/free',[['OPENROUTER_API_KEY']],30),
   R('NV14','Mistral','mistral','mistral-small-latest',[['MISTRAL_API_KEY']],35),
   R('NV15','Cloudflare','cloudflare','@cf/meta/llama-3.1-8b-instruct',[['CLOUDFLARE_ACCOUNT_ID'],['CLOUDFLARE_AUTH_TOKEN']],40),  R('NV16','HuggingFace','huggingface','openai/gpt-oss-120b:fastest',[['HF_TOKEN']],45),
@@ -190,7 +190,7 @@ async function invokeRouted(prompt, capability, jobId, maxAttempts=3) {
       await pool.query("update tigeriq_resources set current_job_id=null,work_state='IDLE',health_state='ONLINE',last_seen_at=now(),last_latency_ms=$2,success_count=success_count+1,updated_at=now() where employee_id=$1",[r.id,latency]);
       await event('RESOURCE_SUCCESS',{jobId,employeeId:r.id,provider:r.provider,latencyMs:latency}); return {text,resource:r,latencyMs:latency,failures};
     } catch(error){ const kind=error?.kind||'outage'; failures.push({employeeId:r.id,provider:r.provider,kind,message:String(error?.message||error)});
-      const health=kind==='rate_limit'?'RATE_LIMITED':(kind==='auth'||kind==='configuration'?'OFFLINE':'ERROR'); const cooldown=kind==='rate_limit'?new Date(Date.now()+60000).toISOString():null;
+      const health=kind==='rate_limit'?'RATE_LIMITED':(kind==='auth'||kind==='configuration'?'OFFLINE':'ERROR'); const cooldown=kind==='rate_limit'?new Date(Date.now()+1800000).toISOString():null;
       await pool.query("update tigeriq_resources set current_job_id=null,work_state=$2,health_state=$3,cooldown_until=$4,last_seen_at=now(),failure_count=failure_count+1,updated_at=now() where employee_id=$1",[r.id,health,health,cooldown]); await event('RESOURCE_FAILURE',{jobId,employeeId:r.id,provider:r.provider,kind}); }
   }
   const e=new Error('NO_AI_RESOURCE_AVAILABLE');e.failures=failures;throw e;
@@ -207,7 +207,7 @@ async function probeResource(employeeId) {
     await event('RESOURCE_PROBE_OK',{employeeId:r.id,provider:r.provider,latencyMs:latency}); return {ok:true,employeeId:r.id,provider:r.provider,latencyMs:latency};
   } catch(error) {
     const kind=error?.kind||'outage'; const health=kind==='rate_limit'?'RATE_LIMITED':(kind==='auth'||kind==='configuration'?'OFFLINE':'ERROR');
-    const cooldown=new Date(Date.now()+(kind==='rate_limit'?60000:300000)).toISOString();
+    const cooldown=new Date(Date.now()+(kind==='rate_limit'?1800000:300000)).toISOString();
     await pool.query("update tigeriq_resources set health_state=$2,work_state=$2,cooldown_until=$3,last_seen_at=now(),failure_count=failure_count+1,updated_at=now() where employee_id=$1",[r.id,health,cooldown]);
     await event('RESOURCE_PROBE_FAIL',{employeeId:r.id,provider:r.provider,kind,message:String(error?.message||error).slice(0,300)}); const e=new Error('RESOURCE_PROBE_FAILED');e.kind=kind;throw e;
   }
