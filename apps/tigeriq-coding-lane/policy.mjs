@@ -32,17 +32,49 @@ export function validateChanges(changes,allowedPaths=[]){
   return true;
 }
 
+function pathTokens(text){
+  return (String(text||'').match(/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)+/g)||[]).filter(safeRepoPath);
+}
+
+export function extractCanonicalAllowedPaths(text){
+  const lines=String(text||'').split(/\r?\n/);
+  const out=[];
+  let active=false;
+  for(const raw of lines){
+    const line=raw.trim();
+    const header=line.match(/^(?:[-*]\s*)?(?:#{1,6}\s*)?(?:exact\s+hard\s+scope|allowed\s+paths\s+only)\s*:?(.*)$/i);
+    if(header){
+      active=true;
+      for(const token of pathTokens(header[1]))out.push(token);
+      continue;
+    }
+    if(!active)continue;
+    if(/^#{1,6}\s+/.test(line)||/^(?:##?\s*)?(?:implement|mục tiêu|bắt buộc|acceptance|gate|no\s+)/i.test(line))break;
+    const m=line.match(/^[-*]\s+`?([^`\s]+)`?\s*$/);
+    if(m&&safeRepoPath(m[1]))out.push(m[1]);
+    else if(line){
+      const inline=pathTokens(line);
+      if(inline.length)out.push(...inline);
+      else if(out.length)break;
+    }
+  }
+  return [...new Set(out)];
+}
+
+export function isRetryableAiError(error){
+  const status=Number(error?.status||0);
+  if([408,409,429,500,502,503,504].includes(status)) return true;
+  const msg=String(error?.message||error||'');
+  return error?.name==='AbortError'||/JSON_OBJECT_(?:INVALID|MISSING)|unterminated|truncat|schema|EMPTY_RESPONSE|fetch failed|aborted|ECONNRESET|ETIMEDOUT|socket|HTTP_(?:408|409|429|500|502|503|504)\b/i.test(msg);
+}
+
 function repairInvalidJsonEscapes(input){
   const s=String(input||'');
   let out='';
   let inString=false;
   for(let i=0;i<s.length;i++){
     const ch=s[i];
-    if(!inString){
-      out+=ch;
-      if(ch==='"') inString=true;
-      continue;
-    }
+    if(!inString){out+=ch;if(ch==='"') inString=true;continue;}
     if(ch==='"'){
       let backslashes=0;
       for(let j=i-1;j>=0&&s[j]==='\\';j--) backslashes++;
