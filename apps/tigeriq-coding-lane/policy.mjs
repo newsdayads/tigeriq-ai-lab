@@ -32,25 +32,31 @@ export function validateChanges(changes,allowedPaths=[]){
   return true;
 }
 
+function pathTokens(text){
+  return (String(text||'').match(/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)+/g)||[]).filter(safeRepoPath);
+}
+
 export function extractCanonicalAllowedPaths(text){
   const lines=String(text||'').split(/\r?\n/);
   const out=[];
   let active=false;
   for(const raw of lines){
     const line=raw.trim();
-    if(/^(?:#{1,6}\s*)?(?:exact\s+hard\s+scope|allowed\s+paths\s+only)\s*:?.*$/i.test(line)){
+    const header=line.match(/^(?:[-*]\s*)?(?:#{1,6}\s*)?(?:exact\s+hard\s+scope|allowed\s+paths\s+only)\s*:?(.*)$/i);
+    if(header){
       active=true;
-      const inline=line.match(/(?:allowed\s+paths\s+only|exact\s+hard\s+scope)\s*:\s*(.+)$/i)?.[1];
-      if(inline){
-        for(const token of inline.split(/[,;]/).map(x=>x.replace(/^[`'"\s-]+|[`'"\s]+$/g,'')).filter(Boolean)) if(safeRepoPath(token)) out.push(token);
-      }
+      for(const token of pathTokens(header[1]))out.push(token);
       continue;
     }
-    if(!active) continue;
-    if(/^#{1,6}\s+/.test(line) || /^(?:##?\s*)?(?:implement|mục tiêu|bắt buộc|acceptance|gate|no\s+)/i.test(line)) break;
+    if(!active)continue;
+    if(/^#{1,6}\s+/.test(line)||/^(?:##?\s*)?(?:implement|mục tiêu|bắt buộc|acceptance|gate|no\s+)/i.test(line))break;
     const m=line.match(/^[-*]\s+`?([^`\s]+)`?\s*$/);
-    if(m&&safeRepoPath(m[1])) out.push(m[1]);
-    else if(line && !/^[-*]\s+/.test(line) && out.length) break;
+    if(m&&safeRepoPath(m[1]))out.push(m[1]);
+    else if(line){
+      const inline=pathTokens(line);
+      if(inline.length)out.push(...inline);
+      else if(out.length)break;
+    }
   }
   return [...new Set(out)];
 }
