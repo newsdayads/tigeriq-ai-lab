@@ -282,7 +282,7 @@ async function claimJob() {
   }
 }
 function parseManagerJson(text) {
-  const clean=String(text||'').replace(/```json|```/gi,'').trim();
+  const clean=String(text||'').replace(/|/gi,'').trim();
   const a=clean.indexOf('{'), b=clean.lastIndexOf('}');
   if(a<0||b<a) throw new Error('MANAGER_JSON_MISSING');
   const x=JSON.parse(clean.slice(a,b+1));
@@ -318,6 +318,74 @@ async function managerTick() {
   if(r.health_state==='ONLINE') return 'IDLE';
   return 'READY';
 }
+let lastAuditScan = 0;
+let lastAuditDeep = 0;
+let currentAuditorId = null;
+let lastScan = null;
+let lastDeepScan = null;
+let openIncidents = 0;
+let latestFinding = null;
+
+async function runRotatingIdleAuditor() {
+  const now = Date.now();
+  const isDeep = now - lastAuditDeep >= 30 * 60 * 1000;
+  const interval = isDeep ? 30 * 60 * 1000 : 5 * 60 * 1000;
+  if (now - lastAuditScan < interval) return;
+  lastAuditScan = now;
+  if (isDeep) lastAuditDeep = now;
+
+  const q = await pool.query(`
+    select r.*, 
+           extract(epoch from (now() - coalesce(r.updated_at, now()))) as idle_time_sec
+    from tigeriq_resources r
+    where r.enabled = true 
+      and r.current_job_id is null
+      and r.health_state not in ('BUSY', 'RATE_LIMITED', 'ERROR', 'OFFLINE', 'WAIT_KEY', 'DISABLED')
+    order by (r.success_count + r.failure_count) asc, idle_time_sec desc
+    limit 1
+  `);
+  const resRow = q.rows[0];
+  if (!resRow) return;
+  currentAuditorId = resRow.employee_id;
+  lastScan = nowIso();
+  if (isDeep) lastDeepScan = lastScan;
+
+  if (!isDeep) {
+    await event('AUDIT_SCAN_HEARTBEAT', { employeeId: currentAuditorId });
+    return;
+  }
+
+  // Deep scan logic: detect genuine findings
+  const objectiveId = `OBJ-AUDIT-${randomUUID()}`;
+  const jobId = `JOB-AUDIT-${randomUUID()}`;
+  const dedupeKey = `AUDIT-FINDING-${currentAuditorId}`;
+
+  let finding = null;
+  if (resRow.credential_state === 'WAIT_KEY' || resRow.health_state === 'ERROR') {
+    finding = {
+      dedupeKey,
+      title: `Auditor finding on ${currentAuditorId}`,
+      description: `Resource health or credentials compromised: ${resRow.health_state}`
+    };
+  }
+
+  if (finding) {
+    latestFinding = finding;
+    openIncidents++;
+    await pool.query(
+      "insert into tigeriq_objectives(id, objective, priority, status, metadata) values($1, $2, 'P1', 'active', $3)",
+      [objectiveId, finding.title, JSON.stringify({ dedupeKey, finding })]
+    );
+    await pool.query(
+      "insert into tigeriq_jobs(id, objective_id, title, prompt, capability, status) values($1, $2, $3, $4, 'general', 'done')",
+      [jobId, objectiveId, finding.title, finding.description]
+    );
+    await event('AUDIT_DEEP_FINDING', { employeeId: currentAuditorId, finding, dedupeKey, objectiveId, jobId });
+  } else {
+    await event('AUDIT_DEEP_HEARTBEAT', { employeeId: currentAuditorId });
+  }
+}
+
 async function snapshot(){
   const base=(await pool.query('select * from tigeriq_resources order by employee_id')).rows;
   const failures=(await pool.query(`select distinct on(employee_id) employee_id,ts,type,data from tigeriq_events
@@ -336,7 +404,7 @@ async function snapshot(){
   const telemetry=(await pool.query(`select ts,employee_id,type,(data->>'latencyMs')::int as latency_ms from tigeriq_events
     where ts>=now()-interval '24 hours' and type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK') and data ? 'latencyMs'
     order by ts asc limit 500`)).rows;
-  return {ok:true,core:{host:HOST,port:PORT,pid:process.pid,uptimeSec:Math.floor(process.uptime()),time:nowIso()},integrations:{surfsense:await surfSenseHealth()},resources:rr,objectives,jobs,events,telemetry};
+  return {ok:true,core:{host:HOST,port:PORT,pid:process.pid,uptimeSec:Math.floor(process.uptime()),time:nowIso()},currentAuditorId,lastScan,lastDeepScan,openIncidents,latestFinding,integrations:{surfsense:await surfSenseHealth()},resources:rr,objectives,jobs,events,telemetry};
 }
 function auth(req){return TOKEN && req.headers.authorization===`Bearer ${TOKEN}`;}
 function localSelf(req){const a=String(req.socket.remoteAddress||'').replace('::ffff:','');return a==='127.0.0.1'||a==='::1'||a===HOST;}
@@ -377,6 +445,7 @@ async function loop(){
       if(t-lastRecover>10000){await recoverStale();lastRecover=t;}
       if(t-lastManager>MANAGER_IDLE_MS){await managerTick();lastManager=t;}
       if(t-lastProbe>60000){await probeReadyResources();lastProbe=t;}
+      await runRotatingIdleAuditor();
       while(active.size<MAX_PARALLEL){const j=await claimJob();if(!j)break;active.add(j.id);void runJob(j).finally(()=>active.delete(j.id));}
     }catch(e){console.error(JSON.stringify({event:'CORE_LOOP_ERROR',error:String(e?.message||e)}));}
     await sleep(POLL_MS);
