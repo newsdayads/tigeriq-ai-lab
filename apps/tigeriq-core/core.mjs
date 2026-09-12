@@ -193,6 +193,7 @@ export class RotatingIdleAuditor {
   constructor(eventBus, poolClient = typeof pool !== 'undefined' ? pool : null, options = {}) {
     this.implementer = 'NV12';
     this.reviewer = 'NV02';
+    this.currentAuditorId = 'NV12';
     if (this.implementer === this.reviewer) {
       throw new Error('IMPLEMENTER_AND_REVIEWER_MUST_BE_DISTINCT');
     }
@@ -205,6 +206,7 @@ export class RotatingIdleAuditor {
     this.openIncidents = 0;
     this.latestFinding = null;
     this.timer = null;
+    this.deepTimer = null;
     this.findingsCache = new Set();
   }
 
@@ -215,6 +217,8 @@ export class RotatingIdleAuditor {
         and work_state = 'IDLE'
         and health_state = 'READY'
         and (current_job_id is null or current_job_id = '')
+        and work_state not in ('BUSY', 'RATE_LIMITED', 'ERROR', 'OFFLINE', 'WAIT_KEY')
+        and health_state not in ('BUSY', 'RATE_LIMITED', 'ERROR', 'OFFLINE', 'WAIT_KEY')
       order by (failure_count * 5) + coalesce(last_latency_ms, 0) asc, last_seen_at asc nulls first
     `);
     const rows = q.rows;
@@ -224,6 +228,7 @@ export class RotatingIdleAuditor {
 
   async runScan(isDeep = false) {
     const now = new Date();
+    this.currentAuditorId = this.implementer;
     if (isDeep) {
       this.lastDeepScan = now.toISOString();
     }
@@ -233,7 +238,7 @@ export class RotatingIdleAuditor {
     if (!resource) {
       const eventPayload = {
         type: 'AUDIT_DEFERRED_NO_IDLE_RESOURCE',
-        auditorId: this.implementer,
+        auditorId: this.currentAuditorId,
         timestamp: this.lastScan
       };
       if (typeof this.eventBus?.emit === 'function') {
@@ -259,7 +264,7 @@ export class RotatingIdleAuditor {
 
     const finding = {
       id: randomUUID(),
-      auditorId: this.implementer,
+      auditorId: this.currentAuditorId,
       resourceId: resource.employee_id,
       provider: resource.provider,
       scanType: isDeep ? 'deep' : 'light',
@@ -274,6 +279,7 @@ export class RotatingIdleAuditor {
       type: 'AUDITOR_FINDING_HANDOFF',
       implementer: this.implementer,
       reviewer: this.reviewer,
+      currentAuditorId: this.currentAuditorId,
       finding
     };
 
@@ -289,22 +295,33 @@ export class RotatingIdleAuditor {
 
   start() {
     if (this.timer) return;
-    let ticks = 0;
     this.timer = setInterval(async () => {
-      ticks++;
-      const isDeep = ticks % 6 === 0; 
       try {
-        await this.runScan(isDeep);
+        await this.runScan(false);
       } catch (err) {
         console.error(JSON.stringify({ event: 'AUDITOR_SCAN_ERROR', error: String(err?.message || err) }));
       }
     }, this.lightScanMs);
+
+    if (this.deepScanMs && !this.deepTimer) {
+      this.deepTimer = setInterval(async () => {
+        try {
+          await this.runScan(true);
+        } catch (err) {
+          console.error(JSON.stringify({ event: 'AUDITOR_DEEP_SCAN_ERROR', error: String(err?.message || err) }));
+        }
+      }, this.deepScanMs);
+    }
   }
 
   stop() {
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
+    }
+    if (this.deepTimer) {
+      clearInterval(this.deepTimer);
+      this.deepTimer = null;
     }
   }
 }
