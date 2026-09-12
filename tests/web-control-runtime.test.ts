@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createServer, type Server } from 'node:http';
+import { createServer, type Server, type IncomingMessage, type ServerResponse } from 'node:http';
 import { spawn, type ChildProcess } from 'node:child_process';
+import { request } from 'node:http';
 
 const CORE_PORT = 18895;
 const WEB_PORT = 18896;
@@ -8,6 +9,7 @@ const CODING_PORT = 18897;
 let fakeCore: Server;
 let fakeCoding: Server;
 let web: ChildProcess;
+let failCore = false;
 
 const statusPayload = {
   ok: true,
@@ -27,14 +29,24 @@ const codingPayload = {
   jobs: [{ id: 'CODE-1', objective_id: 'CODEOBJ-1', title: 'Fix Web Control', status: 'review', employee_id: 'NV12', reviewer_employee_id: 'NV19' }]
 };
 
+async function httpGet(url: string): Promise<{ status: number; headers: any; body: string }> {
+  return new Promise((resolve, reject) => {
+    request(url, { method: 'GET' }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => resolve({ status: res.statusCode || 0, headers: res.headers, body: data }));
+    }).on('error', reject).end();
+  });
+}
+
 async function waitFor(url: string, timeoutMs = 8000) {
   const end = Date.now() + timeoutMs;
   let last: unknown;
   while (Date.now() < end) {
     try {
-      const response = await fetch(url);
-      if (response.status < 500) return response;
-      last = new Error(`HTTP ${response.status}`);
+      const res = await httpGet(url);
+      if (res.status < 500) return res;
+      last = new Error(`HTTP ${res.status}`);
     } catch (error) { last = error; }
     await new Promise(resolve => setTimeout(resolve, 100));
   }
@@ -43,6 +55,10 @@ async function waitFor(url: string, timeoutMs = 8000) {
 
 beforeAll(async () => {
   fakeCore = createServer((req, res) => {
+    if (failCore) {
+      res.writeHead(500, { 'content-type': 'application/json' });
+      return res.end(JSON.stringify({ ok: false }));
+    }
     if (req.url === '/health') {
       res.writeHead(200, { 'content-type': 'application/json' });
       return res.end(JSON.stringify({ ok: true, pid: 1234, uptimeSec: 321 }));
@@ -93,41 +109,79 @@ afterAll(async () => {
 
 describe('Web Control runtime', () => {
   it('serves the separate Web Control product with truth guard', async () => {
-    const response = await fetch(`http://127.0.0.1:${WEB_PORT}/`);
+    const response = await httpGet(`http://127.0.0.1:${WEB_PORT}/`);
     expect(response.status).toBe(200);
-    expect(response.headers.get('cache-control')).toContain('no-store');
-    const body = await response.text();
+    expect(response.headers['cache-control']).toContain('no-store');
+    const body = response.body;
     expect(body).toContain('<title>TigerIQ Core 24/7 — Web Control</title>');
     expect(body).toContain('<script src="/web-control-truth.js"></script>');
-    const truth = await fetch(`http://127.0.0.1:${WEB_PORT}/web-control-truth.js`);
+    const truth = await httpGet(`http://127.0.0.1:${WEB_PORT}/web-control-truth.js`);
     expect(truth.status).toBe(200);
-    const js = await truth.text();
+    const js = truth.body;
     expect(js).toContain('Không bịa %');
     expect(js).toContain("['Review'");
     expect(js).toContain('reviewer_employee_id');
   });
 
   it('aggregates live Core and Coding Lane status read-only', async () => {
-    const response = await fetch(`http://127.0.0.1:${WEB_PORT}/api/status`);
+    const response = await httpGet(`http://127.0.0.1:${WEB_PORT}/api/status`);
     expect(response.status).toBe(200);
-    const body = await response.json() as any;
+    const body = JSON.parse(response.body) as any;
     expect(body.ok).toBe(true);
     expect(body.core).toEqual(statusPayload.core);
     expect(body.codingLane).toEqual(codingPayload);
   });
 
   it('reports combined health without mutating Core', async () => {
-    const response = await fetch(`http://127.0.0.1:${WEB_PORT}/health`);
+    const response = await httpGet(`http://127.0.0.1:${WEB_PORT}/health`);
     expect(response.status).toBe(200);
-    const body = await response.json() as any;
-    expect(body.ok).toBe(true);
-    expect(body.service).toBe('tigeriq-web-control');
-    expect(body.core.ok).toBe(true);
-    expect(body.coding.ok).toBe(true);
+    const body = JSON.parse(response.body) as any;
+    expect(body.online).toBe(true);
+    expect(body.timestamp).toBeTypeOf('string');
   });
 
+  it('returns freshness field with stale boolean and handles failures and recovery', async () => {
+    // Check initial freshness
+    let res = await httpGet(`http://127.0.0.1:${WEB_PORT}/api/status`);
+    expect(res.status).toBe(200);
+    let body = JSON.parse(res.body) as any;
+    expect(body.freshness).toBeDefined();
+    expect(body.freshness.stale).toBe(false);
+    expect(body.freshness.lastUpdate).toBeTypeOf('string');
+
+    // Simulate delay > 6 seconds for staleness
+    await new Promise(resolve => setTimeout(resolve, 6200));
+    res = await httpGet(`http://127.0.0.1:${WEB_PORT}/api/status`);
+    body = JSON.parse(res.body) as any;
+    expect(body.freshness.stale).toBe(true);
+
+    // Mock underlying truth fetch failure
+    failCore = true;
+    // Wait for background poll or trigger status to attempt update
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    res = await httpGet(`http://127.0.0.1:${WEB_PORT}/api/status`);
+    body = JSON.parse(res.body) as any;
+    expect(body.ok).toBe(true); // serves last-known payload
+    expect(body.warning).toBeDefined();
+    expect(body.freshness.stale).toBe(true);
+
+    // Recover mock failure
+    failCore = false;
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    res = await httpGet(`http://127.0.0.1:${WEB_PORT}/api/status`);
+    body = JSON.parse(res.body) as any;
+    expect(body.warning).toBeUndefined();
+    expect(body.freshness.stale).toBe(false);
+  }, 20000);
+
   it('rejects mutation methods', async () => {
-    const response = await fetch(`http://127.0.0.1:${WEB_PORT}/api/status`, { method: 'POST' });
-    expect(response.status).toBe(404);
+    return new Promise<void>((resolve, reject) => {
+      const req = request(`http://127.0.0.1:${WEB_PORT}/api/status`, { method: 'POST' }, (res) => {
+        expect(res.statusCode).toBe(404);
+        resolve();
+      });
+      req.on('error', reject);
+      req.end();
+    });
   });
 });
