@@ -282,7 +282,7 @@ async function claimJob() {
   }
 }
 function parseManagerJson(text) {
-  const clean=String(text||'').replace(/```json|```/gi,'').trim();
+  const clean=String(text||'').replace(/|/gi,'').trim();
   const a=clean.indexOf('{'), b=clean.lastIndexOf('}');
   if(a<0||b<a) throw new Error('MANAGER_JSON_MISSING');
   const x=JSON.parse(clean.slice(a,b+1));
@@ -384,6 +384,10 @@ async function loop(){
 }
 await initDb();
 await recoverAfterCoreRestart();
+
+const { RotatingIdleAuditor } = await import('./rotating-idle-auditor.mjs');
+const auditor = new RotatingIdleAuditor();
+await auditor.start();
 await refreshResources();
 await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(PORT,HOST,resolve);});
 void probeReadyResources();
