@@ -190,7 +190,7 @@ async function recoverAfterCoreRestart() {
   }
 }
 export class RotatingIdleAuditor {
-  constructor(eventBus, poolClient = pool, options = {}) {
+  constructor(eventBus, poolClient = typeof pool !== 'undefined' ? pool : null, options = {}) {
     this.implementer = 'NV12';
     this.reviewer = 'NV02';
     if (this.implementer === this.reviewer) {
@@ -215,22 +215,9 @@ export class RotatingIdleAuditor {
         and work_state = 'IDLE'
         and health_state = 'READY'
         and (current_job_id is null or current_job_id = '')
-        and not (health_state = any(array['BUSY','RATE_LIMITED','ERROR','OFFLINE','WAIT_KEY']))
-        and not (work_state = any(array['BUSY','RATE_LIMITED','ERROR','OFFLINE','WAIT_KEY']))
       order by (failure_count * 5) + coalesce(last_latency_ms, 0) asc, last_seen_at asc nulls first
     `);
-    const rows = q.rows.filter(r => 
-      r.health_state !== 'BUSY' &&
-      r.health_state !== 'RATE_LIMITED' &&
-      r.health_state !== 'ERROR' &&
-      r.health_state !== 'OFFLINE' &&
-      r.health_state !== 'WAIT_KEY' &&
-      r.work_state !== 'BUSY' &&
-      r.work_state !== 'RATE_LIMITED' &&
-      r.work_state !== 'ERROR' &&
-      r.work_state !== 'OFFLINE' &&
-      r.work_state !== 'WAIT_KEY'
-    );
+    const rows = q.rows;
     if (!rows.length) return null;
     return rows[0];
   }
@@ -263,6 +250,10 @@ export class RotatingIdleAuditor {
 
     if (this.findingsCache.has(findingKey)) {
       return null;
+    }
+    if (this.findingsCache.size > 1000) {
+      const firstKey = this.findingsCache.values().next().value;
+      this.findingsCache.delete(firstKey);
     }
     this.findingsCache.add(findingKey);
 
@@ -411,7 +402,7 @@ async function claimJob() {
   }
 }
 function parseManagerJson(text) {
-  const clean=String(text||'').replace(/|/gi,'').trim();
+  const clean=String(text||'').replace(/\|/g,'').trim();
   const a=clean.indexOf('{'), b=clean.lastIndexOf('}');
   if(a<0||b<a) throw new Error('MANAGER_JSON_MISSING');
   const x=JSON.parse(clean.slice(a,b+1));
