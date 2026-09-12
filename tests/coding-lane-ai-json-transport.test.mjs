@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {extractModelText,isAiUrl,looksLikeJsonObject,matchesExpectedSchema,prepareAiJsonRequest} from '../apps/tigeriq-coding-lane/ai-json-transport.mjs';
+import {compactPromptForChanges,currentFilesFromPrompt,expandCompactChanges,extractModelText,isAiUrl,looksLikeJsonObject,matchesExpectedSchema,prepareAiJsonRequest} from '../apps/tigeriq-coding-lane/ai-json-transport.mjs';
 
 describe('coding lane AI JSON transport',()=>{
   it('forces JSON mode for Gemini',()=>{
@@ -29,5 +29,30 @@ describe('coding lane AI JSON transport',()=>{
     expect(isAiUrl('https://api.groq.com/openai/v1/chat/completions')).toBe(true);
     expect(isAiUrl('https://api.github.com/repos/a/b')).toBe(false);
     expect(extractModelText('https://api.groq.com/openai/v1/chat/completions',{choices:[{message:{content:'{"ok":true}'}}]})).toBe('{"ok":true}');
+  });
+  it('rewrites large-file generation to compact edits',()=>{
+    const prompt='TASK: x\nCURRENT FILES:\nFILE apps/a.mjs\nconst n=1;\n\n---\n\nFILE tests/new.test.mjs\n\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}. Do not touch paths outside ALLOWED PATHS. Never output secrets. Keep changes minimal and testable.';
+    const compact=compactPromptForChanges(prompt);
+    expect(compact).toContain('"edits"');
+    expect(compact).toContain('Do not return full existing files');
+    expect(currentFilesFromPrompt(prompt).get('apps/a.mjs')).toBe('const n=1;');
+  });
+  it('expands compact edits into complete replacement changes locally',()=>{
+    const prompt='TASK: x\nCURRENT FILES:\nFILE apps/a.mjs\nconst n=1;\nconsole.log(n);\n\n---\n\nFILE tests/new.test.mjs\n\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}. Do not touch paths outside ALLOWED PATHS. Never output secrets. Keep changes minimal and testable.';
+    const model=JSON.stringify({summary:'small patch',edits:[
+      {path:'apps/a.mjs',search:'const n=1;',replace:'const n=2;'},
+      {path:'tests/new.test.mjs',content:'import {it} from \'vitest\';\n'},
+    ]});
+    const expanded=expandCompactChanges(prompt,model);
+    expect(expanded.changes).toEqual([
+      {path:'apps/a.mjs',content:'const n=2;\nconsole.log(n);'},
+      {path:'tests/new.test.mjs',content:'import {it} from \'vitest\';\n'},
+    ]);
+    expect(matchesExpectedSchema(prompt,JSON.stringify(expanded))).toBe(true);
+  });
+  it('rejects ambiguous compact search instead of corrupting a file',()=>{
+    const prompt='CURRENT FILES:\nFILE apps/a.mjs\nfoo();\nfoo();\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}.';
+    const model=JSON.stringify({summary:'x',edits:[{path:'apps/a.mjs',search:'foo();',replace:'bar();'}]});
+    expect(()=>expandCompactChanges(prompt,model)).toThrow('COMPACT_EDIT_SEARCH_AMBIGUOUS');
   });
 });
