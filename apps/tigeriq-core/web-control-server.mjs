@@ -53,6 +53,10 @@ const server = createServer(async (req, res) => {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       return res.end(html);
     }
+    if (req.method === 'GET' && url.pathname === '/favicon.ico') {
+      res.writeHead(204, { 'cache-control': 'public, max-age=86400' });
+      return res.end();
+    }
     if (req.method === 'GET' && url.pathname === '/web-control-truth.js') {
       res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8' });
       return res.end(truthJs);

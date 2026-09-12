@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 
 const web = readFileSync(resolve('apps/tigeriq-core/web-control.html'), 'utf8');
 const server = readFileSync(resolve('apps/tigeriq-core/web-control-server.mjs'), 'utf8');
+const truth = readFileSync(resolve('apps/tigeriq-core/web-control-truth.js'), 'utf8');
 const launcher = readFileSync(resolve('scripts/tigeriq-core/run-web-control.ps1'), 'utf8');
 const apiHealth = readFileSync(resolve('apps/tigeriq-core/dashboard.html'), 'utf8');
 const core = readFileSync(resolve('apps/tigeriq-core/core.mjs'), 'utf8');
@@ -25,13 +26,15 @@ describe('TigerIQ Web Control isolation', () => {
     ]) expect(web).toContain(label);
   });
 
-  it('uses Core status data rather than hard-coded resource/job/objective truth', () => {
+  it('uses runtime truth and exposes Coding Lane stages without fake progress', () => {
     expect(web).toContain("fetch('/api/status'");
-    expect(web).toContain('d.resources');
-    expect(web).toContain('d.jobs');
-    expect(web).toContain('d.objectives');
-    expect(web).toContain('d.events');
-    expect(web).toContain('Mất kết nối Web Control');
+    expect(server).toContain('codingLane');
+    expect(server).toContain('TIGERIQ_CODING_LANE_URL');
+    expect(truth).toContain("['Intake'");
+    expect(truth).toContain("['Review'");
+    expect(truth).toContain("['CI'");
+    expect(truth).toContain('reviewer_employee_id');
+    expect(truth).toContain('Không bịa %');
   });
 
   it('has responsive breakpoints for desktop, tablet and phone', () => {
@@ -39,12 +42,17 @@ describe('TigerIQ Web Control isolation', () => {
     expect(web).toContain('@media(max-width:1150px)');
     expect(web).toContain('@media(max-width:760px)');
     expect(web).toContain('@media(max-width:480px)');
+    expect(truth).toContain('@media(max-width:1024px)');
+    expect(truth).toContain('@media(max-width:624px)');
+    expect(truth).toContain('@media(max-width:430px)');
   });
 
-  it('runs as a separate read-only service and proxies only Core reads', () => {
+  it('runs as a separate read-only service with clean browser resources', () => {
     expect(server).toContain("TIGERIQ_WEB_CONTROL_PORT || 8796");
     expect(server).toContain("url.pathname === '/api/status'");
     expect(server).toContain("url.pathname === '/health'");
+    expect(server).toContain("url.pathname === '/favicon.ico'");
+    expect(server).toContain('res.writeHead(204');
     expect(server).not.toMatch(/req\.method\s*===\s*['\"]POST['\"]/);
     expect(server).not.toMatch(/req\.method\s*===\s*['\"]DELETE['\"]/);
     expect(launcher).toContain("$env:TIGERIQ_WEB_CONTROL_PORT='8796'");

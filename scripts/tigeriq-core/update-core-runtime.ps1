@@ -6,6 +6,7 @@ $state='D:\TigerIQ\State\core-runtime-updater.json'
 $coreTask='TigerIQ Core 24x7'
 $webTask='TigerIQ Web Control 24x7'
 $codingTask='TigerIQ Coding Lane 24x7'
+$webRuntime='D:\TigerIQ\Runtime\WebControl24x7'
 $tokenPath='D:\TigerIQ\Secrets\github-command-center.token'
 $corePath=(Join-Path $repo 'apps\tigeriq-core\core-entry.mjs').ToLowerInvariant()
 $mutex=New-Object Threading.Mutex($false,'Global\TigerIQCoreRuntimeUpdaterV2')
@@ -45,6 +46,23 @@ function Restart-ServiceTask([string]$name,[string]$healthUrl){
   while((Get-Date)-lt$deadline){$h=HealthInfo $healthUrl;if($h){return $h};Start-Sleep -Seconds 2}
   return $null
 }
+function Sync-WebRuntime(){
+  New-Item -ItemType Directory -Path $webRuntime -Force|Out-Null
+  $files=@(
+    @{src='apps\tigeriq-core\web-control-server.mjs';dst='web-control-server.mjs'},
+    @{src='apps\tigeriq-core\web-control-truth.js';dst='web-control-truth.js'},
+    @{src='apps\tigeriq-core\web-control.html';dst='web-control.html'},
+    @{src='scripts\tigeriq-core\run-web-control-bundle.ps1';dst='run-web-control-bundle.ps1'}
+  )
+  foreach($f in $files){
+    $source=Join-Path $repo $f.src
+    if(-not(Test-Path -LiteralPath $source)){throw ('WEB_RUNTIME_SOURCE_MISSING:'+ $f.src)}
+    $target=Join-Path $webRuntime $f.dst
+    $tmp=$target+'.tmp'
+    Copy-Item -LiteralPath $source -Destination $tmp -Force
+    Move-Item -LiteralPath $tmp -Destination $target -Force
+  }
+}
 function Get-Impact([string[]]$paths){
   $web=[bool](@($paths|Where-Object{$_ -match '^apps/tigeriq-core/web-control(?:\.|-)' -or $_ -match '^scripts/tigeriq-core/(?:run|install)-web-control'}).Count)
   $coding=[bool](@($paths|Where-Object{$_ -match '^apps/tigeriq-coding-lane/' -or $_ -match '^scripts/tigeriq-core/(?:run|install)-coding-lane'}).Count)
@@ -70,12 +88,12 @@ while($true){
     try{
       if($impact.core){$coreHealth=Restart-Core $oldPid;if(-not $coreHealth){throw 'CORE_HEALTH_OR_PID_FAILED'}}
       elseif(-not(HealthInfo 'http://100.97.23.87:8795/health')){throw 'CORE_HEALTH_LOST_WITHOUT_CORE_CHANGE'}
-      if($impact.web){$webHealth=Restart-ServiceTask $webTask 'http://100.97.23.87:8796/health';if(-not $webHealth){throw 'WEB_CONTROL_HEALTH_FAILED'}}
+      if($impact.web){Sync-WebRuntime;$webHealth=Restart-ServiceTask $webTask 'http://100.97.23.87:8796/health';if(-not $webHealth){throw 'WEB_CONTROL_HEALTH_FAILED'}}
       if($impact.coding){$codingHealth=Restart-ServiceTask $codingTask 'http://100.97.23.87:8797/health';if(-not $codingHealth){throw 'CODING_LANE_HEALTH_FAILED'}}
     }catch{
       git -C $repo reset --hard $local|Out-Null
       if($impact.core){$null=Restart-Core $null}
-      if($impact.web -and (Task-Exists $webTask)){$null=Restart-ServiceTask $webTask 'http://100.97.23.87:8796/health'}
+      if($impact.web -and (Task-Exists $webTask)){Sync-WebRuntime;$null=Restart-ServiceTask $webTask 'http://100.97.23.87:8796/health'}
       if($impact.coding -and (Task-Exists $codingTask)){$null=Restart-ServiceTask $codingTask 'http://100.97.23.87:8797/health'}
       throw ('ROLLED_BACK:'+ $_.Exception.Message)
     }
