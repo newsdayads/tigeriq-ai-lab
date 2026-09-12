@@ -61,7 +61,7 @@ async function gh(path,init={}){return fetchJson(`https://api.github.com/repos/$
 async function ghText(path,accept){const res=await fetch(`https://api.github.com/repos/${OWNER}/${REPO}${path}`,{headers:{accept,authorization:`Bearer ${GH_TOKEN}`,'user-agent':'TigerIQ-Coding-Lane/1.0'},signal:AbortSignal.timeout(30000)});const text=await res.text();if(!res.ok)throw new Error(`GITHUB_HTTP_${res.status}:${text.slice(0,250)}`);return text}
 async function mainSha(){return (await gh('/git/ref/heads/main')).object.sha}
 async function repoTree(){const sha=await mainSha();const t=await gh(`/git/trees/${sha}?recursive=1`);return (t.tree||[]).filter(x=>x.type==='blob').map(x=>x.path).filter(safeRepoPath).slice(0,3000)}
-async function readRepoFile(path,ref='main'){try{const x=await gh(`/contents/${path.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(ref)}`);return {path,sha:x.sha,content:Buffer.from(x.content||'','base64').toString('utf8')};}catch(e){if(e.status===404)return {path,sha:null,content:''};throw e}}
+async function readRepoFile(path,ref='main'){try{const x=await gh(`/contents/${path.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(ref)}`);return {path,sha:x.sha,content:Buffer.from(x.content||'','base64').toString('utf8');}catch(e){if(e.status===404)return {path,sha:null,content:''};throw e}}
 async function createBranch(name,sha){await gh('/git/refs',{method:'POST',body:JSON.stringify({ref:`refs/heads/${name}`,sha})})}
 async function writeFile(branch,change){const old=await readRepoFile(change.path,branch);const body={message:`TigerIQ ${change.path}`,content:Buffer.from(change.content,'utf8').toString('base64'),branch};if(old.sha)body.sha=old.sha;return gh(`/contents/${change.path.split('/').map(encodeURIComponent).join('/')}`,{method:'PUT',body:JSON.stringify(body)})}
 async function openPr(branch,title,body){return gh('/pulls',{method:'POST',body:JSON.stringify({title,head:branch,base:'main',body,draft:false,maintainer_can_modify:true})})}
@@ -84,7 +84,6 @@ async function reviewPr(reviewer,j,diff){const prompt=`You are ${reviewer.id}, i
 
 async function runJob(j){const worker=pickResource();if(!worker)throw new Error('NO_IMPLEMENTER_AVAILABLE');const reviewer=pickResource([worker.id]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE');j.paths=Array.isArray(j.paths)?j.paths:j.paths||[];const base=await mainSha();const branch=branchName(worker.id,j.id);await createBranch(branch,base);await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,branch=$4 where id=$1",[j.id,worker.id,reviewer.id,branch]);let context=await contextFor(j.paths,'main');let gen=await generateChanges(worker,j,context);
 
-// Scope validation step right after generation and before any branch writes/PR creation
 validateJobScope(j.paths, gen.changes);
 
 for(const ch of gen.changes)await writeFile(branch,ch);const pr=await openPr(branch,`[${worker.id}] ${j.title}`,`Automated TigerIQ Coding Lane job \`${j.id}\`.\n\nImplementer: ${worker.id}\nIndependent reviewer: ${reviewer.id}\nDirect writes to main are forbidden. Merge is attempted only after CI gates and reviewer approval.`);await pool.query("update tigeriq_coding_jobs set pr_number=$2,status='waiting_ci' where id=$1",[j.id,pr.number]);let review=null,gates=null;for(let cycle=0;cycle<3;cycle++){gates=await waitGates(branch);await pool.query("update tigeriq_coding_jobs set status='review',head_sha=$2 where id=$1",[j.id,gates.sha]);const diff=await ghText(`/pulls/${pr.number}`, 'application/vnd.github.v3.diff');review=await reviewPr(reviewer,j,diff);if(review.decision==='approve')break;if(cycle===2)throw Object.assign(new Error('REVIEW_CHANGES_UNRESOLVED'),{detail:review});context=await contextFor(j.paths,branch);gen=await generateChanges(worker,j,context,review.issues);
@@ -98,4 +97,27 @@ async function snapshot(){const objectives=(await pool.query('select * from tige
 async function body(req){let s='';for await(const c of req){s+=c;if(s.length>65536)throw new Error('BODY_TOO_LARGE')}return s?JSON.parse(s):{}}
 const server=createServer(async(req,res)=>{const u=new URL(req.url||'/','http://localhost');try{if(req.method==='GET'&&u.pathname==='/health'){res.writeHead(200,{'content-type':'application/json'});return res.end(JSON.stringify({ok:true,service:'tigeriq-coding-lane',pid:process.pid,resources:resources.length}))}if(req.method==='GET'&&u.pathname==='/api/status'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await snapshot()))}if(req.method==='POST'&&u.pathname==='/api/objectives'){const b=await body(req);if(!String(b.objective||'').trim()){res.writeHead(400);return res.end('objective_required')}const id=`CODEOBJ-${randomUUID()}`;const priority=['P0','P1','P2'].includes(b.priority)?b.priority:'P1';await pool.query('insert into tigeriq_coding_objectives(id,objective,priority) values($1,$2,$3)',[id,String(b.objective).slice(0,12000),priority]);res.writeHead(201,{'content-type':'application/json'});return res.end(JSON.stringify({ok:true,id}))}res.writeHead(404);res.end('not_found')}catch(e){res.writeHead(500,{'content-type':'application/json'});res.end(JSON.stringify({ok:false,error:String(e?.message||e)}))}});
 
-if(process.env.NODE_ENV!=='test'){await initDb();await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(PORT,HOST,resolve)});console.log(JSON.stringify({event:'TIGERIQ_CODING_LANE_STARTED',host:HOST,port:PORT,pid:process.pid,resources:resources.map(x=>x.id),autoMerge:AUTO_MERGE}));let stop=false;const active=new Set();process.on('SIGINT',()=>{stop=true;server.close()});process.on('SIGTERM',()=>{stop=true;server.close()});while(!stop){try{await managerTick();while(active.size<MAX_PARALLEL){const j=await claimJob();if(!j)break;active.add(j.id);void runJob(j).catch(e=>failJob(j,e)).finally(()=>active.delete(j.id))}}catch(e){console.error(JSON.stringify({event:'CODING_LANE_LOOP_ERROR',error:String(e?.message||e)}))}await sleep(1500)}await pool.end();}
+if(process.env.NODE_ENV!=='test'){
+  await initDb();
+  await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(PORT,HOST,resolve)});
+  console.log(JSON.stringify({event:'TIGERIQ_CODING_LANE_STARTED',host:HOST,port:PORT,pid:process.pid,resources:resources.map(x=>x.id),autoMerge:AUTO_MERGE}));
+  let stop=false;
+  const active=new Set();
+  process.on('SIGINT',()=>{stop=true;server.close()});
+  process.on('SIGTERM',()=>{stop=true;server.close()});
+  while(!stop){
+    try{
+      await managerTick();
+      while(active.size<MAX_PARALLEL){
+        const j=await claimJob();
+        if(!j)break;
+        active.add(j.id);
+        void runJob(j).catch(e=>failJob(j,e)).finally(()=>active.delete(j.id))
+      }
+    }catch(e){
+      console.error(JSON.stringify({event:'CODING_LANE_LOOP_ERROR',error:String(e?.message||e)}))
+    }
+    await sleep(1500);
+  }
+  if(pool) await pool.end();
+}
