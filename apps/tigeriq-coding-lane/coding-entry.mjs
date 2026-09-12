@@ -1,4 +1,5 @@
 import {installAiJsonTransport} from './ai-json-transport.mjs';
+import {startAutonomySupervisor} from './autonomy-supervisor.mjs';
 
 const paidAllowed=String(process.env.TIGERIQ_ALLOW_PAID_AI||'false').toLowerCase()==='true';
 if(!paidAllowed){
@@ -10,4 +11,9 @@ if(!paidAllowed){
   delete process.env.HF_TOKEN;
 }
 installAiJsonTransport({maxAttempts:3});
-await import('./coding-lane.mjs');
+const autonomySupervisor=startAutonomySupervisor();
+try{
+  await import('./coding-lane.mjs');
+}finally{
+  await autonomySupervisor.stop();
+}
