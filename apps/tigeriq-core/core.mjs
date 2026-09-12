@@ -282,7 +282,7 @@ async function claimJob() {
   }
 }
 function parseManagerJson(text) {
-  const clean=String(text||'').replace(/```json|```/gi,'').trim();
+  const clean=String(text||'').replace(/|/gi,'').trim();
   const a=clean.indexOf('{'), b=clean.lastIndexOf('}');
   if(a<0||b<a) throw new Error('MANAGER_JSON_MISSING');
   const x=JSON.parse(clean.slice(a,b+1));
@@ -317,6 +317,114 @@ async function managerTick() {
   if(r.health_state==='OFFLINE') return 'OFFLINE';
   if(r.health_state==='ONLINE') return 'IDLE';
   return 'READY';
+}
+let lastAuditorId = null;
+async function scanAndRunRotatingIdleAuditor() {
+  const lightScanStart = Date.now();
+  const eligibleResult = await pool.query(`
+    SELECT r.employee_id, r.provider, r.model
+    FROM tigeriq_resources r
+    WHERE r.enabled = true
+      AND r.employee_id != 'NV02'
+      AND r.provider != 'ollama'
+      AND r.credential_state != 'WAIT_KEY'
+      AND r.health_state NOT IN ('BUSY', 'RATE_LIMITED', 'ERROR', 'OFFLINE')
+      AND r.current_job_id IS NULL
+      AND r.work_state != 'BUSY'
+    ORDER BY r.employee_id
+  `);
+  const lightScanDuration = Date.now() - lightScanStart;
+  if (lightScanDuration > 300000) {
+    console.warn(JSON.stringify({ event: 'LIGHT_SCAN_WARNING', durationMs: lightScanDuration }));
+  }
+
+  const candidates = eligibleResult.rows;
+  if (candidates.length === 0) {
+    return {
+      currentAuditorId: null,
+      lastScan: nowIso(),
+      lastDeepScan: nowIso(),
+      openIncidents: 0,
+      latestFinding: 'No eligible NV auditors found'
+    };
+  }
+
+  const deepScanStart = Date.now();
+  const auditorStats = [];
+  for (const c of candidates) {
+    const countRes = await pool.query(`
+      SELECT count(*)::int as cnt
+      FROM tigeriq_events
+      WHERE employee_id = $1
+        AND ts >= now() - interval '24 hours'
+        AND type IN ('RESOURCE_SUCCESS', 'RESOURCE_PROBE_OK', 'JOB_COMPLETED')
+    `, [c.employee_id]);
+    const callCount = countRes.rows[0]?.cnt || 0;
+
+    const idleRes = await pool.query(`
+      SELECT ts
+      FROM tigeriq_events
+      WHERE employee_id = $1
+      ORDER BY seq DESC
+      LIMIT 1
+    `, [c.employee_id]);
+    const lastEventTs = idleRes.rows[0]?.ts ? new Date(idleRes.rows[0].ts).getTime() : Date.now();
+    const idleDuration = Math.max(0, Date.now() - lastEventTs);
+
+    auditorStats.push({
+      ...c,
+      callCount,
+      idleDuration
+    });
+  }
+  const deepScanDuration = Date.now() - deepScanStart;
+  if (deepScanDuration > 1800000) {
+    console.warn(JSON.stringify({ event: 'DEEP_SCAN_WARNING', durationMs: deepScanDuration }));
+  }
+
+  auditorStats.sort((a, b) => {
+    if (a.callCount !== b.callCount) return a.callCount - b.callCount;
+    if (b.idleDuration !== a.idleDuration) return b.idleDuration - a.idleDuration;
+    return 0;
+  });
+
+  let bestAuditor = auditorStats[0];
+  const tied = auditorStats.filter(x => x.callCount === bestAuditor.callCount && x.idleDuration === bestAuditor.idleDuration);
+  if (tied.length > 1) {
+    tied.sort((a, b) => a.employee_id.localeCompare(b.employee_id));
+    const lastIdx = tied.findIndex(x => x.employee_id === lastAuditorId);
+    const nextIdx = lastIdx >= 0 ? (lastIdx + 1) % tied.length : 0;
+    bestAuditor = tied[nextIdx];
+  }
+
+  lastAuditorId = bestAuditor.employee_id;
+
+  let latestFinding = 'Auditor executed successfully';
+  let openIncidents = 0;
+  try {
+    const prompt = 'Perform audit read, evaluate, detect, and verify steps.';
+    const routed = await invokeRouted(prompt, 'review', `AUDIT-${bestAuditor.employee_id}`, 2);
+    latestFinding = String(routed?.text || 'Audit evaluated').slice(0, 500);
+  } catch (err) {
+    latestFinding = `Audit error: ${String(err?.message || err).slice(0, 200)}`;
+    openIncidents = 1;
+  }
+
+  const incidentsRes = await pool.query(`
+    SELECT count(*)::int as cnt
+    FROM tigeriq_events
+    WHERE type IN ('RESOURCE_FAILURE', 'RESOURCE_PROBE_FAIL')
+      AND ts >= now() - interval '24 hours'
+  `);
+  openIncidents = incidentsRes.rows[0]?.cnt || openIncidents;
+
+  return {
+    currentAuditorId: lastAuditorId,
+    lastScan: nowIso(),
+    lastDeepScan: nowIso(),
+    openIncidents,
+    latestFinding
+  };
 }
 async function snapshot(){
   const base=(await pool.query('select * from tigeriq_resources order by employee_id')).rows;
