@@ -11,8 +11,23 @@ compactStyle.textContent = `
 `;
 document.head.appendChild(compactStyle);
 
-let lastSyncTimestamp = null;
-let lastKnownData = null;
+let latestWebHealth = null;
+
+async function pollWebHealth() {
+  try {
+    const res = await fetch('/health', { cache: 'no-store' });
+    if (res.ok) {
+      latestWebHealth = await res.json();
+    } else {
+      latestWebHealth = { ok: false };
+    }
+  } catch (e) {
+    latestWebHealth = { ok: false };
+  }
+}
+
+pollWebHealth();
+setInterval(pollWebHealth, 2000);
 
 // Create freshness badge next to existing sync text
 const syncTextEl = document.getElementById('syncText') || document.querySelector('.sync-text') || document.querySelector('header') || document.body;
@@ -30,9 +45,14 @@ if (syncTextEl && syncTextEl.parentNode) {
 }
 
 setInterval(() => {
-  if (!lastSyncTimestamp) return;
-  const ageSec = Math.floor((Date.now() - lastSyncTimestamp) / 1000);
-  const dateObj = new Date(lastSyncTimestamp);
+  const lastOkTime = typeof S !== 'undefined' && S.lastOk ? S.lastOk : null;
+  if (!lastOkTime) {
+    freshnessBadge.textContent = 'CHƯA CÓ DỮ LIỆU';
+    freshnessBadge.style.background = 'rgba(255,0,0,0.2)';
+    return;
+  }
+  const ageSec = Math.floor((Date.now() - lastOkTime) / 1000);
+  const dateObj = new Date(lastOkTime);
   const timeStr = dateObj.toTimeString().split(' ')[0];
   if (ageSec > 6) {
     freshnessBadge.textContent = 'DỮ LIỆU CŨ';
@@ -58,9 +78,14 @@ renderMetrics = function renderMetricsTruth(d) {
   const totalWarnings = badResourcesCount + badJobsCount;
 
   const codingProblems = d?.codingLane && d.codingLane.ok !== true ? 1 : 0;
+
+  const webOnline = latestWebHealth?.ok === true;
+  const webStatusText = webOnline ? 'ONLINE' : (latestWebHealth === null ? 'ĐANG KIỂM TRA' : 'OFFLINE');
+  const webStatusClass = webOnline ? '' : 'bad';
+
   const rows = [
     ['Core', d.core?.pid ? 'ONLINE' : '—', d.core?.pid ? `PID ${d.core.pid}` : 'Không có dữ liệu', d.core?.pid ? '' : 'bad'],
-    ['Web Control', 'ONLINE', 'Read-only', ''],
+    ['Web Control', webStatusText, webOnline ? 'Read-only' : 'Health check failed', webStatusClass],
     ['Coding Lane', lane ? 'ONLINE' : 'OFFLINE', lane ? `${lane.resources?.length || 0} AI resource` : 'Không kết nối', lane ? '' : 'bad'],
     ['NV hoạt động', `${c.active}/${c.resources}`, `${Math.round(c.active / Math.max(1, c.resources) * 100)}%`, ''],
     ['Đang bận', c.busy, c.busy ? 'Đang xử lý' : 'Không có việc', c.busy ? 'warn' : ''],
@@ -141,54 +166,3 @@ render = function renderTruth(d) {
     sysWebEl.textContent = lane ? `Web Control đọc Core + Coding Lane thật · Coding PID ${lane.pid ?? '—'}` : 'Web Control đọc Core thật · Coding Lane chưa kết nối';
   }
 };
-
-// Wrap existing refresh() logic
-if (typeof refresh === 'function') {
-  const originalRefresh = refresh;
-  refresh = async function wrappedRefresh() {
-    try {
-      const [healthRes, statusRes] = await Promise.all([
-        fetch('/health'),
-        fetch('/api/status')
-      ]);
-      
-      if (!healthRes.ok || !statusRes.ok) {
-        throw new Error('Network response was not ok');
-      }
-      
-      const healthData = await healthRes.json();
-      const statusData = await statusRes.json();
-      
-      const mergedData = Object.assign({}, statusData, healthData, {
-        health: healthData
-      });
-      
-      lastKnownData = mergedData;
-      lastSyncTimestamp = Date.now();
-      
-      // Clear error UI if any error banner/connection-lost UI exists
-      const errBanner = document.getElementById('errorBanner') || document.querySelector('.error-banner');
-      if (errBanner) errBanner.style.display = 'none';
-      
-      render(mergedData);
-    } catch (err) {
-      console.error('Refresh failed, retaining last-known data:', err);
-      if (lastKnownData) {
-        render(lastKnownData);
-      }
-      // Display connection-lost / error banner if available
-      const errBanner = document.getElementById('errorBanner') || document.querySelector('.error-banner');
-      if (errBanner) {
-        errBanner.style.display = 'block';
-      } else {
-        const h = document.getElementById('topHealth');
-        if (h) {
-          h.style.color = 'red';
-          h.style.borderColor = 'red';
-          h.style.background = 'rgba(255,0,0,0.1)';
-          h.textContent = 'Mất kết nối / Lỗi đồng bộ';
-        }
-      }
-    }
-  };
-}
