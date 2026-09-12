@@ -16,3 +16,10 @@ export interface EvidenceRecord {
 export function isPassingEvidence(record: EvidenceRecord): boolean {
   return record.status === 'pass' && record.exitCode === 0 && record.commitSha.length >= 7 && record.command.length > 0;
 }
+
+export const evidenceStore = [];
+
+export function storeEvidence(record: EvidenceRecord): EvidenceRecord {
+  evidenceStore.push(record);
+  return record;
+}
