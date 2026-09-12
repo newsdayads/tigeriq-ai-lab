@@ -4,7 +4,9 @@ import { spawn, type ChildProcess } from 'node:child_process';
 
 const CORE_PORT = 18895;
 const WEB_PORT = 18896;
+const CODING_PORT = 18897;
 let fakeCore: Server;
+let fakeCoding: Server;
 let web: ChildProcess;
 
 const statusPayload = {
@@ -12,9 +14,17 @@ const statusPayload = {
   core: { host: '127.0.0.1', port: CORE_PORT, pid: 1234, uptimeSec: 321 },
   integrations: { surfsense: { ok: false } },
   resources: [{ employee_id: 'NV02', name: 'Ollama', provider: 'ollama', status: 'IDLE', calls_success_24h: 1, calls_failure_24h: 0 }],
-  objectives: [{ id: 'OBJ-1', objective: 'Test', priority: 'P1', status: 'active', manager_cycles: 7, updated_at: new Date().toISOString() }],
-  jobs: [{ id: 'JOB-R', objective_id: 'OBJ-1', title: 'Review', capability: 'review', status: 'running' }],
-  events: [], telemetry: []
+  objectives: [{ id: 'OBJ-1', objective: 'Core Test', priority: 'P1', status: 'active', manager_cycles: 7, updated_at: new Date().toISOString() }],
+  jobs: [], events: [], telemetry: []
+};
+
+const codingPayload = {
+  ok: true,
+  service: 'tigeriq-coding-lane',
+  pid: 5678,
+  resources: [{ id: 'NV12', provider: 'gemini', model: 'test' }],
+  objectives: [{ id: 'CODEOBJ-1', objective: 'Coding Test', priority: 'P0', status: 'active', manager_employee_id: 'NV11', updated_at: new Date().toISOString() }],
+  jobs: [{ id: 'CODE-1', objective_id: 'CODEOBJ-1', title: 'Fix Web Control', status: 'review', employee_id: 'NV12', reviewer_employee_id: 'NV19' }]
 };
 
 async function waitFor(url: string, timeoutMs = 8000) {
@@ -43,10 +53,21 @@ beforeAll(async () => {
     }
     res.writeHead(404); res.end('not_found');
   });
-  await new Promise<void>((resolve, reject) => {
-    fakeCore.once('error', reject);
-    fakeCore.listen(CORE_PORT, '127.0.0.1', () => resolve());
+  fakeCoding = createServer((req, res) => {
+    if (req.url === '/health') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      return res.end(JSON.stringify({ ok: true, service: 'tigeriq-coding-lane', pid: 5678, resources: 1 }));
+    }
+    if (req.url === '/api/status') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      return res.end(JSON.stringify(codingPayload));
+    }
+    res.writeHead(404); res.end('not_found');
   });
+  await Promise.all([
+    new Promise<void>((resolve, reject) => { fakeCore.once('error', reject); fakeCore.listen(CORE_PORT, '127.0.0.1', resolve); }),
+    new Promise<void>((resolve, reject) => { fakeCoding.once('error', reject); fakeCoding.listen(CODING_PORT, '127.0.0.1', resolve); })
+  ]);
 
   web = spawn(process.execPath, ['apps/tigeriq-core/web-control-server.mjs'], {
     cwd: process.cwd(),
@@ -54,7 +75,8 @@ beforeAll(async () => {
       ...process.env,
       TIGERIQ_WEB_CONTROL_HOST: '127.0.0.1',
       TIGERIQ_WEB_CONTROL_PORT: String(WEB_PORT),
-      TIGERIQ_CORE_URL: `http://127.0.0.1:${CORE_PORT}`
+      TIGERIQ_CORE_URL: `http://127.0.0.1:${CORE_PORT}`,
+      TIGERIQ_CODING_LANE_URL: `http://127.0.0.1:${CODING_PORT}`
     },
     stdio: ['ignore', 'pipe', 'pipe']
   });
@@ -63,7 +85,10 @@ beforeAll(async () => {
 
 afterAll(async () => {
   web?.kill('SIGTERM');
-  await new Promise<void>(resolve => fakeCore?.close(() => resolve()));
+  await Promise.all([
+    new Promise<void>(resolve => fakeCore?.close(() => resolve())),
+    new Promise<void>(resolve => fakeCoding?.close(() => resolve()))
+  ]);
 });
 
 describe('Web Control runtime', () => {
@@ -77,14 +102,18 @@ describe('Web Control runtime', () => {
     const truth = await fetch(`http://127.0.0.1:${WEB_PORT}/web-control-truth.js`);
     expect(truth.status).toBe(200);
     const js = await truth.text();
-    expect(js).toContain('Core chưa cung cấp % tiến độ');
-    expect(js).toContain('c.running - review');
+    expect(js).toContain('Không bịa %');
+    expect(js).toContain("['Review'");
+    expect(js).toContain('reviewer_employee_id');
   });
 
-  it('proxies live Core status read-only', async () => {
+  it('aggregates live Core and Coding Lane status read-only', async () => {
     const response = await fetch(`http://127.0.0.1:${WEB_PORT}/api/status`);
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual(statusPayload);
+    const body = await response.json() as any;
+    expect(body.ok).toBe(true);
+    expect(body.core).toEqual(statusPayload.core);
+    expect(body.codingLane).toEqual(codingPayload);
   });
 
   it('reports combined health without mutating Core', async () => {
@@ -94,6 +123,7 @@ describe('Web Control runtime', () => {
     expect(body.ok).toBe(true);
     expect(body.service).toBe('tigeriq-web-control');
     expect(body.core.ok).toBe(true);
+    expect(body.coding.ok).toBe(true);
   });
 
   it('rejects mutation methods', async () => {
