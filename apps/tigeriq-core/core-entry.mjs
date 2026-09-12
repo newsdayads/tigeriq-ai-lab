@@ -1,4 +1,8 @@
 import { startGithubIntake } from './github-intake.mjs';
+import { RotatingIdleAuditor } from './core.mjs';
+const globalEventBus = { emit: (type, data) => {} };
+const auditor = new RotatingIdleAuditor(globalEventBus);
+auditor.start();
 import { startGithubCodingIntake } from './github-coding-intake.mjs';
 import { installOllamaProbeAdapter } from './ollama-probe-adapter.mjs';
 
