@@ -1,4 +1,4 @@
-﻿import {describe,expect,it} from 'vitest';
+import {describe,expect,it} from 'vitest';
 import {compactCurrentFilesForModel,compactPromptForChanges,currentFilesFromPrompt,expandCompactChanges,extractModelText,isAiUrl,looksLikeJsonObject,matchesExpectedSchema,prepareAiJsonRequest,installAiJsonTransport} from '../apps/tigeriq-coding-lane/ai-json-transport.mjs';
 
 describe('coding lane AI JSON transport',()=>{
