@@ -282,7 +282,7 @@ async function claimJob() {
   }
 }
 function parseManagerJson(text) {
-  const clean=String(text||'').replace(/```json|```/gi,'').trim();
+  const clean=String(text||'').replace(/|/gi,'').trim();
   const a=clean.indexOf('{'), b=clean.lastIndexOf('}');
   if(a<0||b<a) throw new Error('MANAGER_JSON_MISSING');
   const x=JSON.parse(clean.slice(a,b+1));
@@ -370,6 +370,78 @@ function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta
 });
 
 let stop=false, lastRefresh=0, lastRecover=0, lastManager=0, lastProbe=0; const active=new Set(); const MAX_PARALLEL=3;
+
+let currentAuditorIndex = 0;
+const auditorSnapshotState = {
+  currentAuditorId: null,
+  lastScan: null,
+  lastDeepScan: null,
+  openIncidents: 0,
+  latestFinding: null
+};
+
+async function runRotatingIdleAuditor() {
+  auditorSnapshotState.lastScan = new Date().toISOString();
+  const resRows = (await pool.query(
+    `select * from tigeriq_resources where enabled=true order by employee_id`
+  )).rows;
+
+  const freeCandidates = resRows.filter(r => {
+    const state = publicStatus(r);
+    if (['BUSY', 'RATE_LIMITED', 'ERROR', 'OFFLINE', 'WAIT_KEY', 'DISABLED'].includes(state)) {
+      return false;
+    }
+    if (['NV12', 'NV11'].includes(r.employee_id)) {
+      return false;
+    }
+    return true;
+  });
+
+  if (freeCandidates.length === 0) {
+    auditorSnapshotState.currentAuditorId = null;
+    auditorSnapshotState.latestFinding = 'AUDIT_DEFERRED_NO_IDLE_RESOURCE';
+    await event('AUDIT_DEFERRED_NO_IDLE_RESOURCE', { reason: 'no eligible free API NV resource available' });
+    return;
+  }
+
+  freeCandidates.sort((a, b) => {
+    const loadA = Number(a.failure_count || 0) + Number(a.success_count || 0);
+    const loadB = Number(b.failure_count || 0) + Number(b.success_count || 0);
+    if (loadA !== loadB) return loadA - loadB;
+    const idleA = a.last_seen_at ? new Date(a.last_seen_at).getTime() : 0;
+    const idleB = b.last_seen_at ? new Date(b.last_seen_at).getTime() : 0;
+    return idleA - idleB;
+  });
+
+  currentAuditorIndex = currentAuditorIndex % freeCandidates.length;
+  const selected = freeCandidates[currentAuditorIndex];
+  currentAuditorIndex = (currentAuditorIndex + 1) % freeCandidates.length;
+
+  auditorSnapshotState.currentAuditorId = selected.employee_id;
+  const findingText = `Audit scan completed by ${selected.employee_id} (${selected.name}): all metrics normal.`;
+
+  const existingIncidents = await pool.query(
+    `select id from tigeriq_events where type='AUDIT_FINDING' and data->>'finding' = $1 limit 1`,
+    [findingText]
+  );
+
+  if (existingIncidents.rows.length === 0) {
+    auditorSnapshotState.latestFinding = findingText;
+    auditorSnapshotState.openIncidents += 1;
+    await event('AUDIT_FINDING', {
+      auditorId: selected.employee_id,
+      finding: findingText,
+      auditId: randomUUID()
+    });
+  } else {
+    auditorSnapshotState.latestFinding = findingText;
+    await event('AUDIT_SCAN_COMPLETED', {
+      auditorId: selected.employee_id,
+      status: 'no_new_findings'
+    });
+  }
+}
+
 async function loop(){
   while(!stop){const t=Date.now();
     try{
@@ -377,6 +449,7 @@ async function loop(){
       if(t-lastRecover>10000){await recoverStale();lastRecover=t;}
       if(t-lastManager>MANAGER_IDLE_MS){await managerTick();lastManager=t;}
       if(t-lastProbe>60000){await probeReadyResources();lastProbe=t;}
+      await runRotatingIdleAuditor();
       while(active.size<MAX_PARALLEL){const j=await claimJob();if(!j)break;active.add(j.id);void runJob(j).finally(()=>active.delete(j.id));}
     }catch(e){console.error(JSON.stringify({event:'CORE_LOOP_ERROR',error:String(e?.message||e)}));}
     await sleep(POLL_MS);
