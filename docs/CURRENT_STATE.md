@@ -38,6 +38,10 @@ Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #
 - Core PID remained `28696` before/after the Web Control-only update; Web Control Node PID changed `23856 → 31396`.
 - Initial rollout incident: the legacy updater restarted Core once before path-aware activation; the final verified path no longer does so for non-Core changes.
 
+## Current
+- 2026-09-12 Autonomous GitHub Coding Intake E2E: Core auto-detects explicit safe zero‑cost reversible coding issues (referencing issue #618, objective `CODEOBJ-67adad52-5386-4ff8-b3a9-d653123ec222`), dispatches to Coding Lane, comments CLAIM/PROGRESS/RESULT, Coding Lane assigns implementer NV12 and reviewer NV19, runs required CI gates, guarded merge (PR #619 merged), and Core closes the completed issue. Evidence file: `docs/evidence/AUTONOMOUS-GITHUB-INTAKE-E2E-20260912.md`.
+- Runtime updater fix PR #620 completed and the current runtime main is installed.
+
 ## PC01 verified runtime
 - Core `/health`: `ok=true`, PID `28696` at final verification.
 - Coding Lane `/health`: `ok=true`, 3 eligible API resources, Scheduled Task-backed.
