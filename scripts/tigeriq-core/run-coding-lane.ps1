@@ -2,7 +2,7 @@ $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 . 'D:\TigerIQ\Rebuild\credential-store.ps1'
 $root=$PSScriptRoot
-$app=Join-Path $root '..\..\apps\tigeriq-coding-lane\coding-entry.mjs'
+$app=(Resolve-Path -LiteralPath (Join-Path $root '..\..\apps\tigeriq-coding-lane\coding-entry.mjs')).Path
 if(-not(Test-Path -LiteralPath $app)){throw 'CODING_LANE_APP_MISSING'}
 $mutex=New-Object Threading.Mutex($false,'Global\TigerIQCodingLaneSupervisorV1')
 $owns=$false
