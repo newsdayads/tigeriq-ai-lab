@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {compactPromptForChanges,currentFilesFromPrompt,expandCompactChanges,extractModelText,isAiUrl,looksLikeJsonObject,matchesExpectedSchema,prepareAiJsonRequest} from '../apps/tigeriq-coding-lane/ai-json-transport.mjs';
+import {compactPromptForChanges,currentFilesFromPrompt,expandCompactChanges,extractModelText,isAiUrl,looksLikeJsonObject,matchesExpectedSchema,prepareAiJsonRequest,installAiJsonTransport} from '../apps/tigeriq-coding-lane/ai-json-transport.mjs';
 
 describe('coding lane AI JSON transport',()=>{
   it('forces JSON mode for Gemini',()=>{
@@ -50,7 +50,28 @@ describe('coding lane AI JSON transport',()=>{
     ]);
     expect(matchesExpectedSchema(prompt,JSON.stringify(expanded))).toBe(true);
   });
-  it('rejects ambiguous compact search instead of corrupting a file',()=>{
+  it('retries transient AI fetch aborts before failing the job',async()=>{
+    const previousFetch=globalThis.fetch;
+    const previousInstalled=globalThis.__tigeriqAiJsonTransportInstalled;
+    let calls=0;
+    try{
+      globalThis.__tigeriqAiJsonTransportInstalled=false;
+      globalThis.fetch=async()=>{
+        calls++;
+        if(calls===1) throw new DOMException('This operation was aborted','AbortError');
+        return new Response(JSON.stringify({choices:[{message:{content:'{"status":"blocked","summary":"ok"}'}}]}),{status:200,headers:{'content-type':'application/json'}});
+      };
+      installAiJsonTransport({maxAttempts:2,baseDelayMs:1});
+      const prompt='Return ONLY JSON {"status":"continue|blocked","summary":"short","job":{"title":"short","instruction":"standalone implementation instruction","paths":["exact/repo/path"]}}.';
+      const res=await fetch('https://api.groq.com/openai/v1/chat/completions',{method:'POST',body:JSON.stringify({messages:[{role:'user',content:prompt}]})});
+      expect(res.ok).toBe(true);
+      expect(calls).toBe(2);
+    }finally{
+      globalThis.fetch=previousFetch;
+      if(previousInstalled===undefined) delete globalThis.__tigeriqAiJsonTransportInstalled;
+      else globalThis.__tigeriqAiJsonTransportInstalled=previousInstalled;
+    }
+  });  it('rejects ambiguous compact search instead of corrupting a file',()=>{
     const prompt='CURRENT FILES:\nFILE apps/a.mjs\nfoo();\nfoo();\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}.';
     const model=JSON.stringify({summary:'x',edits:[{path:'apps/a.mjs',search:'foo();',replace:'bar();'}]});
     expect(()=>expandCompactChanges(prompt,model)).toThrow('COMPACT_EDIT_SEARCH_AMBIGUOUS');
