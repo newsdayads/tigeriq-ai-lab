@@ -12,11 +12,38 @@ export function extractModelText(input,data){
   return data?.choices?.[0]?.message?.content||'';
 }
 
-export function looksLikeJsonObject(text){
+export function parseModelJson(text){
   const clean=String(text||'').replace(/```json|```/gi,'').trim();
   const a=clean.indexOf('{'),b=clean.lastIndexOf('}');
-  if(a<0||b<a)return false;
-  try{JSON.parse(clean.slice(a,b+1));return true}catch{return false}
+  if(a<0||b<a)return null;
+  try{return JSON.parse(clean.slice(a,b+1))}catch{return null}
+}
+
+export function looksLikeJsonObject(text){return !!parseModelJson(text)}
+
+export function expectedSchemaFromPrompt(prompt){
+  const p=String(prompt||'');
+  if(p.includes('"decision":"approve|changes_requested"'))return 'review';
+  if(p.includes('"changes":[{"path"'))return 'changes';
+  if(p.includes('"status":"continue|blocked"'))return 'manager';
+  return 'json';
+}
+
+export function matchesExpectedSchema(prompt,text){
+  const d=parseModelJson(text); if(!d||typeof d!=='object'||Array.isArray(d))return false;
+  const schema=expectedSchemaFromPrompt(prompt);
+  if(schema==='review')return ['approve','changes_requested'].includes(d.decision)&&typeof d.summary==='string'&&Array.isArray(d.issues);
+  if(schema==='changes')return typeof d.summary==='string'&&Array.isArray(d.changes)&&d.changes.length>0&&d.changes.every(x=>x&&typeof x.path==='string'&&typeof x.content==='string');
+  if(schema==='manager')return ['continue','blocked'].includes(d.status)&&typeof d.summary==='string'&&(d.status==='blocked'||(d.job&&typeof d.job.title==='string'&&typeof d.job.instruction==='string'&&Array.isArray(d.job.paths)));
+  return true;
+}
+
+export function promptFromRequest(input,init={}){
+  let body;try{body=JSON.parse(String(init?.body||''))}catch{return ''}
+  const host=new URL(String(input)).hostname;
+  if(host==='generativelanguage.googleapis.com')return body?.contents?.flatMap(x=>x?.parts||[]).map(x=>x?.text||'').join('\n')||'';
+  if(host==='api.cohere.com')return body?.messages?.map(x=>typeof x?.content==='string'?x.content:(x?.content||[]).map(y=>y?.text||'').join('')).join('\n')||'';
+  return body?.messages?.map(x=>x?.content||'').join('\n')||'';
 }
 
 export function prepareAiJsonRequest(input,init={}){
@@ -35,6 +62,7 @@ export function installAiJsonTransport({maxAttempts=3,baseDelayMs=350}={}){
   globalThis.fetch=async(input,init={})=>{
     if(!isAiUrl(input))return original(input,init);
     const prepared=prepareAiJsonRequest(input,init);
+    const prompt=promptFromRequest(input,prepared);
     let last;
     for(let attempt=1;attempt<=maxAttempts;attempt++){
       const res=await original(input,prepared); last=res;
@@ -45,8 +73,10 @@ export function installAiJsonTransport({maxAttempts=3,baseDelayMs=350}={}){
       try{
         const data=await res.clone().json();
         const text=extractModelText(input,data);
-        if(String(text||'').trim()&&looksLikeJsonObject(text))return res;
-      }catch{return res}
+        if(String(text||'').trim()&&matchesExpectedSchema(prompt,text))return res;
+      }catch{
+        if(attempt===maxAttempts)return res;
+      }
       if(attempt<maxAttempts){await sleep(baseDelayMs*attempt);continue}
       return res;
     }
