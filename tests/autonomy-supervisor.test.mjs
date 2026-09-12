@@ -41,6 +41,15 @@ describe('Runtime updater watchdog wiring',()=>{
     expect(src).toContain('$healthFailures[$key]-lt 2');
     expect(src).toContain('$healCooldownSec=300');
   });
+  it('kills surviving child node processes and verifies a new PID',()=>{
+    expect(src).toContain('function Stop-NodeProcessesByMatch');
+    expect(src).toContain('function Get-NodePidByMatch');
+    expect(src).toContain("$codingPath=(Join-Path $repo 'apps\\tigeriq-coding-lane\\coding-entry.mjs')");
+    expect(src).toContain("$webPath=(Join-Path $webRuntime 'web-control-server.mjs')");
+    expect(src).toContain('([int]$newPid-ne[int]$oldPid)');
+    expect(src).toContain('CODING_LANE_HEALTH_OR_PID_FAILED');
+    expect(src).toContain('WEB_CONTROL_HEALTH_OR_PID_FAILED');
+  });
   it('self-restarts updater after updater source changes',()=>{
     expect(src).toContain('Restart-UpdaterAfterExit');
     expect(src).toContain("$updaterTask='TigerIQ Core Runtime Updater'");
