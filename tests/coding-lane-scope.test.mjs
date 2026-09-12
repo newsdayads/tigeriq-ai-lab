@@ -37,7 +37,6 @@ test('coding lane scope validation tests', async (t) => {
   });
 
   await t.test('(c) that no PR-creation function is called after a violation', async () => {
-    // We verify the contract and execution sequence: validateJobScope throws before branch write / PR creation functions are invoked.
     let prCreated = false;
     const mockOpenPr = async () => {
       prCreated = true;
@@ -49,7 +48,6 @@ test('coding lane scope validation tests', async (t) => {
 
     let caught = null;
     try {
-      // Simulating runJob execution check flow
       validateJobScope(allowedPaths, invalidChanges);
       await mockOpenPr();
     } catch (err) {
