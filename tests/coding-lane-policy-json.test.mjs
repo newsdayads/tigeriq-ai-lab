@@ -11,6 +11,11 @@ describe('Coding Lane JSON parser resilience',()=>{
     expect(parseJsonObject(raw)).toEqual({summary:'windows path C:\\TigerIQ\\new',ok:true});
   });
 
+  it('repairs raw control characters emitted inside JSON strings',()=>{
+    const raw='{"summary":"line one\nline two\tindent","ok":true}';
+    expect(parseJsonObject(raw)).toEqual({summary:'line one\nline two\tindent',ok:true});
+  });
+
   it('still fails closed for structurally invalid JSON',()=>{
     expect(()=>parseJsonObject('{"ok":true')).toThrow(/JSON_OBJECT_MISSING|JSON_OBJECT_INVALID/);
   });

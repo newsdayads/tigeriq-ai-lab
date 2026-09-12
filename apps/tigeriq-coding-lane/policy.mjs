@@ -56,6 +56,16 @@ function repairInvalidJsonEscapes(input){
       else out+='\\\\';
       continue;
     }
+    const code=ch.charCodeAt(0);
+    if(code<=0x1f){
+      if(ch==='\n') out+='\\n';
+      else if(ch==='\r') out+='\\r';
+      else if(ch==='\t') out+='\\t';
+      else if(ch==='\b') out+='\\b';
+      else if(ch==='\f') out+='\\f';
+      else out+=`\\u${code.toString(16).padStart(4,'0')}`;
+      continue;
+    }
     out+=ch;
   }
   return out;
