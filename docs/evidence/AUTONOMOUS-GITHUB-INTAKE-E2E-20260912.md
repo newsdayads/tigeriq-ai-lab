@@ -1,0 +1,2 @@
+# Autonomous GitHub Intake E2E 2026-09-12
+Marker: GITHUB_CODING_INTAKE_E2E_20260912
