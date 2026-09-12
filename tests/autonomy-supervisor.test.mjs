@@ -34,6 +34,7 @@ describe('Autonomy supervisor policy',()=>{
 
 describe('Runtime updater watchdog wiring',()=>{
   const src=readFileSync('scripts/tigeriq-core/update-core-runtime.ps1','utf8');
+  const codingLauncher=readFileSync('scripts/tigeriq-core/run-coding-lane.ps1','utf8');
   it('checks and heals only canonical services with bounded cooldown',()=>{
     expect(src).toContain("Ensure-ServiceHealth 'core'");
     expect(src).toContain("Ensure-ServiceHealth 'web'");
@@ -49,6 +50,9 @@ describe('Runtime updater watchdog wiring',()=>{
     expect(src).toContain('([int]$newPid-ne[int]$oldPid)');
     expect(src).toContain('CODING_LANE_HEALTH_OR_PID_FAILED');
     expect(src).toContain('WEB_CONTROL_HEALTH_OR_PID_FAILED');
+  });
+  it('launches Coding Lane from a canonical resolved path',()=>{
+    expect(codingLauncher).toContain("$app=(Resolve-Path -LiteralPath (Join-Path $root '..\\..\\apps\\tigeriq-coding-lane\\coding-entry.mjs')).Path");
   });
   it('self-restarts updater after updater source changes',()=>{
     expect(src).toContain('Restart-UpdaterAfterExit');
