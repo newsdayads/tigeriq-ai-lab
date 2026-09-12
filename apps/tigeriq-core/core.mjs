@@ -189,6 +189,135 @@ async function recoverAfterCoreRestart() {
     await event('JOB_RECOVERED_AFTER_CORE_RESTART',{jobId:j.id,employeeId:j.employee_id});
   }
 }
+export class RotatingIdleAuditor {
+  constructor(eventBus, poolClient = pool, options = {}) {
+    this.implementer = 'NV12';
+    this.reviewer = 'NV02';
+    if (this.implementer === this.reviewer) {
+      throw new Error('IMPLEMENTER_AND_REVIEWER_MUST_BE_DISTINCT');
+    }
+    this.eventBus = eventBus;
+    this.pool = poolClient;
+    this.lightScanMs = options.lightScanMs || 5 * 60 * 1000;
+    this.deepScanMs = options.deepScanMs || 30 * 60 * 1000;
+    this.lastScan = null;
+    this.lastDeepScan = null;
+    this.openIncidents = 0;
+    this.latestFinding = null;
+    this.timer = null;
+    this.findingsCache = new Set();
+  }
+
+  async selectEligibleResource() {
+    const q = await this.pool.query(`
+      select * from tigeriq_resources
+      where enabled = true
+        and work_state = 'IDLE'
+        and health_state = 'READY'
+        and (current_job_id is null or current_job_id = '')
+        and not (health_state = any(array['BUSY','RATE_LIMITED','ERROR','OFFLINE','WAIT_KEY']))
+        and not (work_state = any(array['BUSY','RATE_LIMITED','ERROR','OFFLINE','WAIT_KEY']))
+      order by (failure_count * 5) + coalesce(last_latency_ms, 0) asc, last_seen_at asc nulls first
+    `);
+    const rows = q.rows.filter(r => 
+      r.health_state !== 'BUSY' &&
+      r.health_state !== 'RATE_LIMITED' &&
+      r.health_state !== 'ERROR' &&
+      r.health_state !== 'OFFLINE' &&
+      r.health_state !== 'WAIT_KEY' &&
+      r.work_state !== 'BUSY' &&
+      r.work_state !== 'RATE_LIMITED' &&
+      r.work_state !== 'ERROR' &&
+      r.work_state !== 'OFFLINE' &&
+      r.work_state !== 'WAIT_KEY'
+    );
+    if (!rows.length) return null;
+    return rows[0];
+  }
+
+  async runScan(isDeep = false) {
+    const now = new Date();
+    if (isDeep) {
+      this.lastDeepScan = now.toISOString();
+    }
+    this.lastScan = now.toISOString();
+
+    const resource = await this.selectEligibleResource();
+    if (!resource) {
+      const eventPayload = {
+        type: 'AUDIT_DEFERRED_NO_IDLE_RESOURCE',
+        auditorId: this.implementer,
+        timestamp: this.lastScan
+      };
+      if (typeof this.eventBus?.emit === 'function') {
+        this.eventBus.emit('AUDIT_DEFERRED_NO_IDLE_RESOURCE', eventPayload);
+      } else if (typeof this.eventBus === 'function') {
+        this.eventBus('AUDIT_DEFERRED_NO_IDLE_RESOURCE', eventPayload);
+      }
+      await event('AUDIT_DEFERRED_NO_IDLE_RESOURCE', eventPayload);
+      return null;
+    }
+
+    const findingText = `RotatingIdleAuditor scan on resource ${resource.employee_id} (${resource.provider}): health=${resource.health_state}, work=${resource.work_state}`;
+    const findingKey = `${resource.employee_id}:${isDeep ? 'deep' : 'light'}`;
+
+    if (this.findingsCache.has(findingKey)) {
+      return null;
+    }
+    this.findingsCache.add(findingKey);
+
+    const finding = {
+      id: randomUUID(),
+      auditorId: this.implementer,
+      resourceId: resource.employee_id,
+      provider: resource.provider,
+      scanType: isDeep ? 'deep' : 'light',
+      description: findingText,
+      timestamp: now.toISOString()
+    };
+
+    this.openIncidents += 1;
+    this.latestFinding = finding;
+
+    const handoffPayload = {
+      type: 'AUDITOR_FINDING_HANDOFF',
+      implementer: this.implementer,
+      reviewer: this.reviewer,
+      finding
+    };
+
+    if (typeof this.eventBus?.emit === 'function') {
+      this.eventBus.emit('AUDITOR_FINDING_HANDOFF', handoffPayload);
+    } else if (typeof this.eventBus === 'function') {
+      this.eventBus('AUDITOR_FINDING_HANDOFF', handoffPayload);
+    }
+    await event('AUDITOR_FINDING_HANDOFF', handoffPayload);
+
+    return finding;
+  }
+
+  start() {
+    if (this.timer) return;
+    let ticks = 0;
+    this.timer = setInterval(async () => {
+      ticks++;
+      const isDeep = ticks % 6 === 0; 
+      try {
+        await this.runScan(isDeep);
+      } catch (err) {
+        console.error(JSON.stringify({ event: 'AUDITOR_SCAN_ERROR', error: String(err?.message || err) }));
+      }
+    }, this.lightScanMs);
+  }
+
+  stop() {
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
+  }
+}
+
 async function recoverStale() {
   const stale = await pool.query("select id,employee_id from tigeriq_jobs where status='running' and lease_until < now()");
   for (const j of stale.rows) {
@@ -282,7 +411,7 @@ async function claimJob() {
   }
 }
 function parseManagerJson(text) {
-  const clean=String(text||'').replace(/```json|```/gi,'').trim();
+  const clean=String(text||'').replace(/|/gi,'').trim();
   const a=clean.indexOf('{'), b=clean.lastIndexOf('}');
   if(a<0||b<a) throw new Error('MANAGER_JSON_MISSING');
   const x=JSON.parse(clean.slice(a,b+1));
