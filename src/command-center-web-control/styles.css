@@ -1,0 +1,33 @@
+:root {
+    --bg: #07111f;
+    --panel: #0d1a2b;
+    --line: #1f3858;
+    --text: #eef5ff;
+    --muted: #92a5bd;
+    --blue: #58a6ff;
+}
+body {
+    margin: 0;
+    font-family: system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+}
+.shell {
+    width: min(1180px, 100%);
+    margin: auto;
+    padding: 16px;
+}
+.pipeline-container {
+    display: grid;
+    gap: 8px;
+    margin-top: 16px;
+}
+.task-card {
+    border: 1px solid var(--line);
+    background: var(--panel);
+    padding: 10px;
+    border-radius: 10px;
+}
+@media(max-width: 600px) {
+    .shell { padding: 8px; }
+}
