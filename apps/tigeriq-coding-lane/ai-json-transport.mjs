@@ -152,7 +152,8 @@ export function installAiJsonTransport({maxAttempts=3,baseDelayMs=350,attemptTim
     let last;
     for(let attempt=1;attempt<=maxAttempts;attempt++){
       let res;
-      const attemptRequest=request?.signal?{...request,signal:AbortSignal.timeout(attemptTimeoutMs)}:request;`n      try{res=await original(input,attemptRequest);last=res;
+      const attemptRequest=request?.signal?{...request,signal:AbortSignal.timeout(attemptTimeoutMs)}:request;
+      try{res=await original(input,attemptRequest);last=res;}
       catch(error){
         const transient=error?.name==='AbortError'||/aborted|fetch failed|ECONNRESET|ETIMEDOUT|socket/i.test(String(error?.message||error));
         if(transient&&attempt<maxAttempts){await sleep(baseDelayMs*attempt);continue}
