@@ -42,7 +42,13 @@ test('RotatingIdleAuditor emits AUDIT_DEFERRED_NO_IDLE_RESOURCE when no resource
   assert.strictEqual(eventEmitted.type, 'AUDIT_DEFERRED_NO_IDLE_RESOURCE');
 });
 
-test('RotatingIdleAuditor deduplicates findings and dispatches single handoff', async () => {
+test('RotatingIdleAuditor deduplicates findings and dispatches single handoff with fake clock', async () => {
+  const originalSetInterval = global.setInterval;
+  const originalClearInterval = global.clearInterval;
+  let intervalCallback = null;
+  global.setInterval = (cb, ms) => { intervalCallback = cb; return 123; };
+  global.clearInterval = (id) => {};
+
   const resources = [
     { employee_id: 'R10', enabled: true, work_state: 'IDLE', health_state: 'READY', failure_count: 0, provider: 'ollama', last_seen_at: new Date() }
   ];
@@ -53,7 +59,10 @@ test('RotatingIdleAuditor deduplicates findings and dispatches single handoff', 
       if (type === 'AUDITOR_FINDING_HANDOFF') handoffs++;
     }
   };
-  const auditor = new RotatingIdleAuditor(eventBus, pool);
+  const auditor = new RotatingIdleAuditor(eventBus, pool, { lightScanMs: 300000, deepScanMs: 1800000 });
+  auditor.start();
+  assert.strictEqual(typeof intervalCallback, 'function');
+
   const f1 = await auditor.runScan(false);
   const f2 = await auditor.runScan(false);
   assert.notStrictEqual(f1, null);
@@ -61,4 +70,7 @@ test('RotatingIdleAuditor deduplicates findings and dispatches single handoff', 
   assert.strictEqual(handoffs, 1);
   assert.strictEqual(auditor.openIncidents, 1);
   assert.ok(auditor.latestFinding);
+  auditor.stop();
+  global.setInterval = originalSetInterval;
+  global.clearInterval = originalClearInterval;
 });
