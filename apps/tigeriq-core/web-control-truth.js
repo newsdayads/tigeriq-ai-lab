@@ -11,6 +11,38 @@ compactStyle.textContent = `
 `;
 document.head.appendChild(compactStyle);
 
+let lastSyncTimestamp = null;
+let lastKnownData = null;
+
+// Create freshness badge next to existing sync text
+const syncTextEl = document.getElementById('syncText') || document.querySelector('.sync-text') || document.querySelector('header') || document.body;
+const freshnessBadge = document.createElement('span');
+freshnessBadge.id = 'freshnessBadge';
+freshnessBadge.style.marginLeft = '10px';
+freshnessBadge.style.padding = '2px 6px';
+freshnessBadge.style.borderRadius = '4px';
+freshnessBadge.style.fontSize = '0.85em';
+freshnessBadge.style.background = 'rgba(0,0,0,0.1)';
+if (syncTextEl && syncTextEl.parentNode) {
+  syncTextEl.parentNode.insertBefore(freshnessBadge, syncTextEl.nextSibling);
+} else {
+  document.body.insertBefore(freshnessBadge, document.body.firstChild);
+}
+
+setInterval(() => {
+  if (!lastSyncTimestamp) return;
+  const ageSec = Math.floor((Date.now() - lastSyncTimestamp) / 1000);
+  const dateObj = new Date(lastSyncTimestamp);
+  const timeStr = dateObj.toTimeString().split(' ')[0];
+  if (ageSec > 6) {
+    freshnessBadge.textContent = 'DỮ LIỆU CŨ';
+    freshnessBadge.style.background = 'rgba(255,0,0,0.2)';
+  } else {
+    freshnessBadge.textContent = `Cập nhật lúc ${timeStr} · Tuổi dữ liệu ${ageSec}s`;
+    freshnessBadge.style.background = 'rgba(0,0,0,0.1)';
+  }
+}, 1000);
+
 const codingTruth = d => d?.codingLane?.ok === true ? d.codingLane : null;
 const statusCount = (jobs, status) => jobs.filter(j => j.status === status).length;
 
@@ -19,6 +51,12 @@ renderMetrics = function renderMetricsTruth(d) {
   const lane = codingTruth(d);
   const jobs = lane?.jobs || [];
   const objectives = lane?.objectives || [];
+  
+  const resources = d?.resources || lane?.resources || [];
+  const badResourcesCount = resources.filter(r => ['ERROR', 'OFFLINE', 'RATE_LIMITED', 'WAIT_KEY'].includes(r.status)).length;
+  const badJobsCount = jobs.filter(j => ['running', 'review', 'waiting_ci', 'blocked'].includes(j.status)).length;
+  const totalWarnings = badResourcesCount + badJobsCount;
+
   const codingProblems = d?.codingLane && d.codingLane.ok !== true ? 1 : 0;
   const rows = [
     ['Core', d.core?.pid ? 'ONLINE' : '—', d.core?.pid ? `PID ${d.core.pid}` : 'Không có dữ liệu', d.core?.pid ? '' : 'bad'],
@@ -26,7 +64,7 @@ renderMetrics = function renderMetricsTruth(d) {
     ['Coding Lane', lane ? 'ONLINE' : 'OFFLINE', lane ? `${lane.resources?.length || 0} AI resource` : 'Không kết nối', lane ? '' : 'bad'],
     ['NV hoạt động', `${c.active}/${c.resources}`, `${Math.round(c.active / Math.max(1, c.resources) * 100)}%`, ''],
     ['Đang bận', c.busy, c.busy ? 'Đang xử lý' : 'Không có việc', c.busy ? 'warn' : ''],
-    ['Cảnh báo', c.problems + codingProblems, c.problems + codingProblems ? 'Cần chú ý' : 'Không có cảnh báo', c.problems + codingProblems ? 'bad' : ''],
+    ['Cảnh báo', totalWarnings + codingProblems, totalWarnings + codingProblems ? 'Cần chú ý' : 'Không có cảnh báo', totalWarnings + codingProblems ? 'bad' : ''],
     ['Coding job', jobs.filter(j => ['queued','running','waiting_ci','review'].includes(j.status)).length, `${statusCount(jobs,'queued')} chờ · ${statusCount(jobs,'running')} chạy`, ''],
     ['Objective mở', objectives.filter(o => o.status === 'active').length, 'Coding Lane truth', ''],
     ['Uptime', `${Math.floor((d.core?.uptimeSec || 0) / 3600)}h`, `${Math.floor((d.core?.uptimeSec || 0) / 86400)} ngày`, '']
@@ -90,11 +128,67 @@ function applyPeopleFullFilter() {
 const renderBase = render;
 render = function renderTruth(d) {
   const h = document.getElementById('topHealth');
-  h.style.color = '';
-  h.style.borderColor = '';
-  h.style.background = '';
+  if (h) {
+    h.style.color = '';
+    h.style.borderColor = '';
+    h.style.background = '';
+  }
   renderBase(d);
   applyPeopleFullFilter();
   const lane = codingTruth(d);
-  document.getElementById('sysWeb').textContent = lane ? `Web Control đọc Core + Coding Lane thật · Coding PID ${lane.pid ?? '—'}` : 'Web Control đọc Core thật · Coding Lane chưa kết nối';
+  const sysWebEl = document.getElementById('sysWeb');
+  if (sysWebEl) {
+    sysWebEl.textContent = lane ? `Web Control đọc Core + Coding Lane thật · Coding PID ${lane.pid ?? '—'}` : 'Web Control đọc Core thật · Coding Lane chưa kết nối';
+  }
 };
+
+// Wrap existing refresh() logic
+if (typeof refresh === 'function') {
+  const originalRefresh = refresh;
+  refresh = async function wrappedRefresh() {
+    try {
+      const [healthRes, statusRes] = await Promise.all([
+        fetch('/health'),
+        fetch('/api/status')
+      ]);
+      
+      if (!healthRes.ok || !statusRes.ok) {
+        throw new Error('Network response was not ok');
+      }
+      
+      const healthData = await healthRes.json();
+      const statusData = await statusRes.json();
+      
+      const mergedData = Object.assign({}, statusData, healthData, {
+        health: healthData
+      });
+      
+      lastKnownData = mergedData;
+      lastSyncTimestamp = Date.now();
+      
+      // Clear error UI if any error banner/connection-lost UI exists
+      const errBanner = document.getElementById('errorBanner') || document.querySelector('.error-banner');
+      if (errBanner) errBanner.style.display = 'none';
+      
+      render(mergedData);
+    } catch (err) {
+      console.error('Refresh failed, retaining last-known data:', err);
+      if (lastKnownData) {
+        render(lastKnownData);
+      }
+      // Display connection-lost / error banner if available
+      const errBanner = document.getElementById('errorBanner') || document.querySelector('.error-banner');
+      if (errBanner) {
+        errBanner.style.display = 'block';
+      } else {
+        const h = document.getElementById('topHealth');
+        if (h) {
+          h.style.color = 'red';
+          h.style.borderColor = 'red';
+          h.style.background = 'rgba(255,0,0,0.1)';
+          h.textContent = 'Mất kết nối / Lỗi đồng bộ';
+        }
+      }
+    }
+  };
+}
