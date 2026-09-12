@@ -5,6 +5,8 @@ const DEFAULT_INTERVAL_MS=15000;
 const DEFAULT_STALE_MS=45*60*1000;
 const DEFAULT_MAX_JOBS_PER_OBJECTIVE=3;
 const RETRYABLE_FAILURES=new Set(['CI_GATES_FAILED','CI_GATES_TIMEOUT']);
+const GH_OWNER=process.env.TIGERIQ_GITHUB_OWNER||'newsdayads';
+const GH_REPO=process.env.TIGERIQ_GITHUB_REPO||'tigeriq-ai-lab';
 
 export function isRetryableFailure(message){return RETRYABLE_FAILURES.has(String(message||''));}
 export function shouldRetry(totalJobs,maxJobs=DEFAULT_MAX_JOBS_PER_OBJECTIVE){return Number(totalJobs)<Number(maxJobs);}
@@ -12,6 +14,13 @@ export function isStaleJob(job,now=Date.now(),staleMs=DEFAULT_STALE_MS){
   if(!job||!['running','waiting_ci','review'].includes(job.status))return false;
   const t=Date.parse(job.started_at||job.created_at||'');
   return Number.isFinite(t)&&now-t>staleMs;
+}
+export function extractGitHubIssueNumber(text){
+  const s=String(text||'');
+  const tagged=s.match(/GitHub autonomous coding issue #(\d+)/i);
+  if(tagged)return Number(tagged[1]);
+  const url=s.match(/github\.com\/[^/]+\/[^/]+\/issues\/(\d+)/i);
+  return url?Number(url[1]):null;
 }
 export function repairInstruction(job,reason,cycle){
   const detail=typeof job.failure==='object'&&job.failure?JSON.stringify(job.failure):String(job.failure||'');
@@ -29,6 +38,21 @@ async function ensureSchema(pool){
 async function emit(pool,kind,payload){
   await pool.query('insert into tigeriq_coding_watchdog_events(kind,payload) values($1,$2)',[kind,JSON.stringify(payload)]);
   console.log(JSON.stringify({event:'CODING_AUTONOMY_WATCHDOG',kind,...payload}));
+}
+async function githubIssueIsOpen(issueNumber,fetchImpl=fetch){
+  const token=(process.env.TIGERIQ_GITHUB_TOKEN||process.env.GITHUB_TOKEN||'').trim();
+  if(!token||!issueNumber)return false;
+  try{
+    const res=await fetchImpl(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/issues/${issueNumber}`,{headers:{accept:'application/vnd.github+json',authorization:`Bearer ${token}`,'user-agent':'TigerIQ-Autonomy-Supervisor/1.0'},signal:AbortSignal.timeout(10000)});
+    if(!res.ok)return false;
+    const body=await res.json();
+    return body?.state==='open'&&!body?.pull_request;
+  }catch{return false;}
+}
+async function objectiveIsEligible(pool,objectiveId,fetchImpl=fetch){
+  const q=await pool.query('select objective from tigeriq_coding_objectives where id=$1',[objectiveId]);
+  const issueNumber=extractGitHubIssueNumber(q.rows[0]?.objective);
+  return {eligible:await githubIssueIsOpen(issueNumber,fetchImpl),issueNumber};
 }
 async function countObjectiveJobs(pool,objectiveId){
   const q=await pool.query('select count(*)::int n from tigeriq_coding_jobs where objective_id=$1',[objectiveId]);
@@ -61,7 +85,9 @@ async function handleFailed(pool,maxJobs){
   for(const job of q.rows){
     const reason=String(job.failure?.message||'');
     if(!isRetryableFailure(reason))continue;
+    const gate=await objectiveIsEligible(pool,job.objective_id);
     await pool.query("update tigeriq_coding_jobs set failure=coalesce(failure,'{}'::jsonb)||'{\"supervisorHandled\":true}'::jsonb where id=$1",[job.id]);
+    if(!gate.eligible){await emit(pool,'REPAIR_SKIPPED',{objectiveId:job.objective_id,jobId:job.id,reason:'ISSUE_NOT_OPEN',issueNumber:gate.issueNumber});continue;}
     await queueRetry(pool,job,reason,maxJobs);
   }
 }
@@ -69,10 +95,12 @@ async function handleStale(pool,staleMs,maxJobs,onStall){
   const q=await pool.query("select * from tigeriq_coding_jobs where status in ('running','waiting_ci','review') order by coalesce(started_at,created_at) limit 20");
   for(const job of q.rows){
     if(!isStaleJob(job,Date.now(),staleMs))continue;
+    const gate=await objectiveIsEligible(pool,job.objective_id);
+    if(!gate.eligible)continue;
     const reason='STALL_TIMEOUT';
     await pool.query("update tigeriq_coding_jobs set status='failed',failure=$2,completed_at=now() where id=$1",[job.id,JSON.stringify({message:reason,supervisorHandled:true,previousStatus:job.status})]);
     const queued=await queueRetry(pool,job,reason,maxJobs);
-    await emit(pool,'STALL_DETECTED',{objectiveId:job.objective_id,jobId:job.id,previousStatus:job.status,retryQueued:queued});
+    await emit(pool,'STALL_DETECTED',{objectiveId:job.objective_id,jobId:job.id,previousStatus:job.status,retryQueued:queued,issueNumber:gate.issueNumber});
     if(typeof onStall==='function')onStall({job,retryQueued:queued});
     return true;
   }
