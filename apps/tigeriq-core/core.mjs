@@ -328,23 +328,28 @@ let latestFinding = null;
 
 async function runRotatingIdleAuditor() {
   const now = Date.now();
-  const isDeep = now - lastAuditDeep >= 30 * 60 * 1000;
+  const isDeep = (now - lastAuditDeep) >= 30 * 60 * 1000;
   const interval = isDeep ? 30 * 60 * 1000 : 5 * 60 * 1000;
   if (now - lastAuditScan < interval) return;
   lastAuditScan = now;
   if (isDeep) lastAuditDeep = now;
 
-  const q = await pool.query(`
-    select r.*, 
-           extract(epoch from (now() - coalesce(r.updated_at, now()))) as idle_time_sec
-    from tigeriq_resources r
-    where r.enabled = true 
-      and r.current_job_id is null
-      and r.health_state not in ('BUSY', 'RATE_LIMITED', 'ERROR', 'OFFLINE', 'WAIT_KEY', 'DISABLED')
-    order by (r.success_count + r.failure_count) asc, idle_time_sec desc
-    limit 1
-  `);
-  const resRow = q.rows[0];
+  const rows = (await pool.query('select * from tigeriq_resources order by employee_id')).rows;
+  const eligible = rows.filter(r => {
+    const st = publicStatus(r);
+    return r.current_job_id === null && (st === 'READY' || st === 'IDLE');
+  });
+
+  eligible.sort((a, b) => {
+    const loadA = (a.success_count || 0) + (a.failure_count || 0);
+    const loadB = (b.success_count || 0) + (b.failure_count || 0);
+    if (loadA !== loadB) return loadA - loadB;
+    const idleA = a.updated_at ? new Date(a.updated_at).getTime() : 0;
+    const idleB = b.updated_at ? new Date(b.updated_at).getTime() : 0;
+    return idleA - idleB;
+  });
+
+  const resRow = eligible[0];
   if (!resRow) return;
   currentAuditorId = resRow.employee_id;
   lastScan = nowIso();
@@ -355,23 +360,21 @@ async function runRotatingIdleAuditor() {
     return;
   }
 
-  // Deep scan logic: detect genuine findings
-  const objectiveId = `OBJ-AUDIT-${randomUUID()}`;
-  const jobId = `JOB-AUDIT-${randomUUID()}`;
-  const dedupeKey = `AUDIT-FINDING-${currentAuditorId}`;
-
+  const dedupeKey = `AUDIT-DEDUPE-${currentAuditorId}`;
   let finding = null;
-  if (resRow.credential_state === 'WAIT_KEY' || resRow.health_state === 'ERROR') {
+  if (resRow.credential_state === 'WAIT_KEY' || resRow.health_state === 'ERROR' || resRow.health_state === 'OFFLINE') {
     finding = {
       dedupeKey,
-      title: `Auditor finding on ${currentAuditorId}`,
-      description: `Resource health or credentials compromised: ${resRow.health_state}`
+      title: `Genuine finding: ${resRow.employee_id} state ${resRow.health_state}`,
+      description: `Auditor detected degraded resource state: ${resRow.health_state}`
     };
   }
 
   if (finding) {
     latestFinding = finding;
     openIncidents++;
+    const objectiveId = `OBJ-AUDIT-${randomUUID()}`;
+    const jobId = `JOB-AUDIT-${randomUUID()}`;
     await pool.query(
       "insert into tigeriq_objectives(id, objective, priority, status, metadata) values($1, $2, 'P1', 'active', $3)",
       [objectiveId, finding.title, JSON.stringify({ dedupeKey, finding })]
