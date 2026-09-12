@@ -60,3 +60,5 @@ export class FixedWindowRateLimiter {
     return { allowed: true, remaining: this.limit - bucket.count, retryAfterMs: 0 };
   }
 }
+
+export { NV21Supervisor, runtimeState, checkCoreHealth, checkWebControlHealth, checkQueueHealth, dispatchWorkItem, updateWebControlStatus } from './nv21-supervisor';
