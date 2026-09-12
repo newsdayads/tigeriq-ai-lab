@@ -10,6 +10,8 @@ $updaterTask='TigerIQ Core Runtime Updater'
 $webRuntime='D:\TigerIQ\Runtime\WebControl24x7'
 $tokenPath='D:\TigerIQ\Secrets\github-command-center.token'
 $corePath=(Join-Path $repo 'apps\tigeriq-core\core-entry.mjs').ToLowerInvariant()
+$codingPath=(Join-Path $repo 'apps\tigeriq-coding-lane\coding-entry.mjs').ToLowerInvariant()
+$webPath=(Join-Path $webRuntime 'web-control-server.mjs').ToLowerInvariant()
 $mutex=New-Object Threading.Mutex($false,'Global\TigerIQCoreRuntimeUpdaterV2')
 $healthFailures=@{core=0;web=0;coding=0}
 $lastHeal=@{core=[DateTime]::MinValue;web=[DateTime]::MinValue;coding=[DateTime]::MinValue}
@@ -31,21 +33,35 @@ function Resolve-GateSha([string]$remote){
   foreach($pr in @($prs)){$head=[string]$pr.head.sha;if($head -and (Gates-Pass $head)){return $head}}
   return $null
 }
-function Stop-CoreProcesses(){
-  $procs=Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue | Where-Object {$_.CommandLine -and $_.CommandLine.ToLowerInvariant().Contains($corePath)}
+function Get-NodePidByMatch([string]$match){
+  $m=$match.ToLowerInvariant()
+  $p=Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue | Where-Object {$_.CommandLine -and $_.CommandLine.ToLowerInvariant().Contains($m)} | Select-Object -First 1
+  if($p){return [int]$p.ProcessId};return $null
+}
+function Stop-NodeProcessesByMatch([string]$match){
+  $m=$match.ToLowerInvariant()
+  $procs=Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue | Where-Object {$_.CommandLine -and $_.CommandLine.ToLowerInvariant().Contains($m)}
   foreach($p in $procs){try{Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop}catch{}}
 }
+function Stop-CoreProcesses(){Stop-NodeProcessesByMatch $corePath}
 function Restart-Core($oldPid){
   Stop-ScheduledTask -TaskName $coreTask -ErrorAction SilentlyContinue;Start-Sleep -Seconds 2;Stop-CoreProcesses;Start-Sleep -Seconds 1;Start-ScheduledTask -TaskName $coreTask
   $deadline=(Get-Date).AddSeconds(60)
   while((Get-Date)-lt$deadline){$h=HealthInfo 'http://100.97.23.87:8795/health';if($h -and (($null -eq $oldPid)-or([int]$h.pid -ne [int]$oldPid))){return $h};Start-Sleep -Seconds 2}
   return $null
 }
-function Restart-ServiceTask([string]$name,[string]$healthUrl){
+function Restart-ServiceTask([string]$name,[string]$healthUrl,[string]$processMatch){
   if(-not(Task-Exists $name)){throw ('TASK_MISSING:'+ $name)}
-  Stop-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue;Start-Sleep -Seconds 2;Start-ScheduledTask -TaskName $name
+  $oldPid=Get-NodePidByMatch $processMatch
+  Stop-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue;Start-Sleep -Seconds 2
+  Stop-NodeProcessesByMatch $processMatch;Start-Sleep -Seconds 1
+  Start-ScheduledTask -TaskName $name
   $deadline=(Get-Date).AddSeconds(45)
-  while((Get-Date)-lt$deadline){$h=HealthInfo $healthUrl;if($h){return $h};Start-Sleep -Seconds 2}
+  while((Get-Date)-lt$deadline){
+    $h=HealthInfo $healthUrl;$newPid=Get-NodePidByMatch $processMatch
+    if($h -and $newPid -and (($null-eq$oldPid)-or([int]$newPid-ne[int]$oldPid))){return @{health=$h;pid=[int]$newPid;previousPid=$oldPid}}
+    Start-Sleep -Seconds 2
+  }
   return $null
 }
 function Sync-WebRuntime(){
@@ -60,7 +76,7 @@ function Sync-WebRuntime(){
 }
 function Ensure-ServiceHealth([string]$key,[string]$url){
   $h=HealthInfo $url
-  if($h){$healthFailures[$key]=0;return @{service=$key;healthy=$true;action='none';pid=$h.pid}}
+  if($h){$healthFailures[$key]=0;return @{service=$key;healthy=$true;action='none';pid=if($key-eq'web'){Get-NodePidByMatch $webPath}elseif($key-eq'coding'){Get-NodePidByMatch $codingPath}else{$h.pid}}}
   $healthFailures[$key]=[int]$healthFailures[$key]+1
   if($healthFailures[$key]-lt 2){return @{service=$key;healthy=$false;action='observe';failures=$healthFailures[$key]}}
   $since=((Get-Date)-[DateTime]$lastHeal[$key]).TotalSeconds
@@ -68,10 +84,10 @@ function Ensure-ServiceHealth([string]$key,[string]$url){
   $lastHeal[$key]=Get-Date
   try{
     if($key-eq'core'){$after=Restart-Core $null}
-    elseif($key-eq'web'){Sync-WebRuntime;$after=Restart-ServiceTask $webTask 'http://100.97.23.87:8796/health'}
-    elseif($key-eq'coding'){$after=Restart-ServiceTask $codingTask 'http://100.97.23.87:8797/health'}
+    elseif($key-eq'web'){Sync-WebRuntime;$after=Restart-ServiceTask $webTask 'http://100.97.23.87:8796/health' $webPath}
+    elseif($key-eq'coding'){$after=Restart-ServiceTask $codingTask 'http://100.97.23.87:8797/health' $codingPath}
     else{throw ('UNKNOWN_SERVICE:'+ $key)}
-    if($after){$healthFailures[$key]=0;return @{service=$key;healthy=$true;action='restarted';pid=$after.pid}}
+    if($after){$healthFailures[$key]=0;return @{service=$key;healthy=$true;action='restarted';pid=$after.pid;previousPid=$after.previousPid}}
     return @{service=$key;healthy=$false;action='restart_failed';failures=$healthFailures[$key]}
   }catch{return @{service=$key;healthy=$false;action='restart_error';error=$_.Exception.Message;failures=$healthFailures[$key]}}
 }
@@ -113,17 +129,17 @@ while($true){
     try{
       if($impact.core){$coreHealth=Restart-Core $oldPid;if(-not $coreHealth){throw 'CORE_HEALTH_OR_PID_FAILED'}}
       elseif(-not(HealthInfo 'http://100.97.23.87:8795/health')){throw 'CORE_HEALTH_LOST_WITHOUT_CORE_CHANGE'}
-      if($impact.web){Sync-WebRuntime;$webHealth=Restart-ServiceTask $webTask 'http://100.97.23.87:8796/health';if(-not $webHealth){throw 'WEB_CONTROL_HEALTH_FAILED'}}
-      if($impact.coding){$codingHealth=Restart-ServiceTask $codingTask 'http://100.97.23.87:8797/health';if(-not $codingHealth){throw 'CODING_LANE_HEALTH_FAILED'}}
+      if($impact.web){Sync-WebRuntime;$webHealth=Restart-ServiceTask $webTask 'http://100.97.23.87:8796/health' $webPath;if(-not $webHealth){throw 'WEB_CONTROL_HEALTH_OR_PID_FAILED'}}
+      if($impact.coding){$codingHealth=Restart-ServiceTask $codingTask 'http://100.97.23.87:8797/health' $codingPath;if(-not $codingHealth){throw 'CODING_LANE_HEALTH_OR_PID_FAILED'}}
     }catch{
       git -C $repo reset --hard $local|Out-Null
       if($impact.core){$null=Restart-Core $null}
-      if($impact.web -and (Task-Exists $webTask)){Sync-WebRuntime;$null=Restart-ServiceTask $webTask 'http://100.97.23.87:8796/health'}
-      if($impact.coding -and (Task-Exists $codingTask)){$null=Restart-ServiceTask $codingTask 'http://100.97.23.87:8797/health'}
+      if($impact.web -and (Task-Exists $webTask)){Sync-WebRuntime;$null=Restart-ServiceTask $webTask 'http://100.97.23.87:8796/health' $webPath}
+      if($impact.coding -and (Task-Exists $codingTask)){$null=Restart-ServiceTask $codingTask 'http://100.97.23.87:8797/health' $codingPath}
       throw ('ROLLED_BACK:'+ $_.Exception.Message)
     }
     $newCore=HealthInfo 'http://100.97.23.87:8795/health'
-    Save-State @{result='UPDATED';installedSha=$remote;gateSha=$gateSha;previousSha=$local;changedPaths=$changed;impact=$impact;corePid=if($newCore){[int]$newCore.pid}else{$null};previousCorePid=$oldPid;coreRestarted=$impact.core;webRestarted=$impact.web;codingRestarted=$impact.coding;watchdog=$watchdog}
+    Save-State @{result='UPDATED';installedSha=$remote;gateSha=$gateSha;previousSha=$local;changedPaths=$changed;impact=$impact;corePid=if($newCore){[int]$newCore.pid}else{$null};previousCorePid=$oldPid;coreRestarted=$impact.core;webRestarted=$impact.web;codingRestarted=$impact.coding;webPid=if($webHealth){$webHealth.pid}else{$null};codingPid=if($codingHealth){$codingHealth.pid}else{$null};watchdog=$watchdog}
     if($impact.updater){Restart-UpdaterAfterExit;exit 75}
   }catch{Save-State @{result='FAILED';error=$_.Exception.Message;watchdog=$watchdog}}
   finally{Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue;if($locked){$mutex.ReleaseMutex()|Out-Null}}
