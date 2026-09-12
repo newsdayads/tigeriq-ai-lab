@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TigerIQ Web Control</title>
+<style>
+  :root {
+    --bg-color: #0f172a;
+    --card-bg: #1e293b;
+    --text-color: #f8fafc;
+    --text-muted: #94a3b8;
+    --accent-color: #38bdf8;
+    --success-color: #4ade80;
+  }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background-color: var(--bg-color);
+    color: var(--text-color);
+  }
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 2rem;
+    background-color: var(--card-bg);
+    border-bottom: 1px solid #334155;
+  }
+  h1 { font-size: 1.25rem; margin: 0; }
+  .container {
+    max-width: 1200px;
+    margin: 2rem auto;
+    padding: 0 1rem;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1.5rem;
+  }
+  .card {
+    background-color: var(--card-bg);
+    border-radius: 0.5rem;
+    padding: 1.5rem;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  }
+  .card h3 { margin-top: 0; color: var(--accent-color); }
+  .status-indicator {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background-color: var(--success-color);
+    margin-right: 0.5rem;
+  }
+  @media (max-width: 768px) {
+    header { padding: 1rem; }
+    .container { margin: 1rem; }
+  }
+</style>
+</head>
+<body>
+  <header>
+    <h1>TigerIQ Web Control</h1>
+    <div><span class="status-indicator"></span><span id="conn-status">Connected (Read-Only)</span></div>
+  </header>
+  <div class="container">
+    <div class="grid" id="dashboard-grid">
+      <div class="card">
+        <h3>Pipeline State</h3>
+        <p id="pipeline-state">Loading...</p>
+      </div>
+      <div class="card">
+        <h3>Throughput</h3>
+        <p id="pipeline-throughput">Loading...</p>
+      </div>
+      <div class="card">
+        <h3>Error Rate</h3>
+        <p id="pipeline-errors">Loading...</p>
+      </div>
+    </div>
+  </div>
+  <script>
+    async function fetchTruth() {
+      try {
+        const res = await fetch('/api/status');
+        if (!res.ok) throw new Error('Network response was not ok');
+        const data = await res.json();
+        document.getElementById('pipeline-state').textContent = data.pipelineState;
+        document.getElementById('pipeline-throughput').textContent = data.throughput;
+        document.getElementById('pipeline-errors').textContent = data.errorRate;
+        document.getElementById('conn-status').textContent = 'Connected (Read-Only)';
+      } catch (err) {
+        document.getElementById('conn-status').textContent = 'Reconnecting...';
+      }
+    }
+    fetchTruth();
+    setInterval(fetchTruth, 5000);
+  </script>
+</body>
+</html>
