@@ -6,6 +6,11 @@ export interface Assignment {
   agentId: string;
 }
 
+export interface CodingScopeViolation {
+  code: 'CODING_SCOPE_VIOLATION';
+  offending: string[];
+}
+
 export function validateAssignments(assignments: Assignment[]): string[] {
   const errors: string[] = [];
   const byRole = new Map(assignments.map((a) => [a.role, a.agentId]));
