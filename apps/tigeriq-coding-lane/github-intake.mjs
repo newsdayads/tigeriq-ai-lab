@@ -28,9 +28,12 @@ export function classifyRisk(title, body) {
 /**
  * Process a GitHub issue payload into a task and persist evidence.
  * @param {object} payload GitHub webhook payload containing an `issue` object.
+ * @param {object} [options] Optional helpers, currently { storeEvidence }.
  * @returns {object} Task description or rejection result.
  */
-export function processGitHubIssue(payload) {
+export function processGitHubIssue(payload, options = {}) {
+  const storeEvidence = typeof options.storeEvidence === 'function' ? options.storeEvidence : defaultStoreEvidence;
+
   const issue = payload?.issue;
   const labels = issue?.labels || [];
   const title = issue?.title || '';
@@ -67,8 +70,8 @@ export function processGitHubIssue(payload) {
     }
   };
 
-  // 4️⃣ Persist evidence for the intake operation
-  const evidenceRecord = {
+  // 4️⃣ Persist evidence for the intake gate operation
+  const gateEvidence = {
     id: crypto.randomUUID(),
     workOrderId: taskId,
     gate: 'github-intake',
@@ -78,7 +81,7 @@ export function processGitHubIssue(payload) {
     status: 'pass',
     timestamp: new Date().toISOString()
   };
-  defaultStoreEvidence(evidenceRecord);
+  storeEvidence(gateEvidence);
 
   // 5️⃣ Advance phase based on risk
   if (risk === 'low') {
@@ -94,6 +97,19 @@ export function processGitHubIssue(payload) {
     baseTask.blocker = 'High-risk task requires manual reviewer assignment';
     // phase remains 'intake' as per specification
   }
+
+  // 6️⃣ Persist the task itself as an evidence record (fits schema)
+  const taskEvidence = {
+    id: crypto.randomUUID(),
+    workOrderId: taskId,
+    gate: 'github-intake-task',
+    commitSha: '0000000000000000000000000000000000000000',
+    command: 'storeTask',
+    exitCode: 0,
+    status: 'pass',
+    timestamp: new Date().toISOString()
+  };
+  storeEvidence(taskEvidence);
 
   return baseTask;
 }
