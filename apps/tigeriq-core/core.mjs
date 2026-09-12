@@ -282,7 +282,7 @@ async function claimJob() {
   }
 }
 function parseManagerJson(text) {
-  const clean=String(text||'').replace(/```json|```/gi,'').trim();
+  const clean=String(text||'').replace(/|/gi,'').trim();
   const a=clean.indexOf('{'), b=clean.lastIndexOf('}');
   if(a<0||b<a) throw new Error('MANAGER_JSON_MISSING');
   const x=JSON.parse(clean.slice(a,b+1));
@@ -336,7 +336,23 @@ async function snapshot(){
   const telemetry=(await pool.query(`select ts,employee_id,type,(data->>'latencyMs')::int as latency_ms from tigeriq_events
     where ts>=now()-interval '24 hours' and type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK') and data ? 'latencyMs'
     order by ts asc limit 500`)).rows;
-  return {ok:true,core:{host:HOST,port:PORT,pid:process.pid,uptimeSec:Math.floor(process.uptime()),time:nowIso()},integrations:{surfsense:await surfSenseHealth()},resources:rr,objectives,jobs,events,telemetry};
+  return {
+    ok: true,
+    core: { host: HOST, port: PORT, pid: process.pid, uptimeSec: Math.floor(process.uptime()), time: nowIso() },
+    integrations: { surfsense: await surfSenseHealth() },
+    resources: rr,
+    objectives,
+    jobs,
+    events,
+    telemetry,
+    lastAuditScan: lastAuditScan ? new Date(lastAuditScan).toISOString() : null,
+    lastAuditDeep: lastAuditDeep ? new Date(lastAuditDeep).toISOString() : null,
+    currentAuditorId,
+    lastScan: lastAuditScan ? new Date(lastAuditScan).toISOString() : null,
+    lastDeepScan: lastAuditDeep ? new Date(lastAuditDeep).toISOString() : null,
+    openIncidents,
+    latestFinding
+  };
 }
 function auth(req){return TOKEN && req.headers.authorization===`Bearer ${TOKEN}`;}
 function localSelf(req){const a=String(req.socket.remoteAddress||'').replace('::ffff:','');return a==='127.0.0.1'||a==='::1'||a===HOST;}
@@ -369,7 +385,74 @@ function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta
   }catch(e){res.writeHead(500,{'content-type':'application/json'});res.end(JSON.stringify({ok:false,error:String(e?.message||e)}));}
 });
 
-let stop=false, lastRefresh=0, lastRecover=0, lastManager=0, lastProbe=0; const active=new Set(); const MAX_PARALLEL=3;
+let stop=false, lastRefresh=0, lastRecover=0, lastManager=0, lastProbe=0, lastAuditScan=0, lastAuditDeep=0; const active=new Set(); const MAX_PARALLEL=3;
+const currentAuditorId = `AUDIT-${randomUUID().slice(0, 8)}`;
+let openIncidents = 0;
+let latestFinding = null;
+const auditFindingsSeen = new Set();
+
+async function auditorTick() {
+  const now = Date.now();
+  const isDeep = lastAuditDeep === 0 || (now - lastAuditDeep >= 30 * 60 * 1000);
+  const isLight = lastAuditScan === 0 || (now - lastAuditScan >= 5 * 60 * 1000);
+  if (!isDeep && !isLight) return;
+
+  if (isDeep) {
+    lastAuditDeep = now;
+  }
+  lastAuditScan = now;
+
+  const rSnap = await snapshot();
+  const eligible = rSnap.resources.filter(r =>
+    r.enabled &&
+    (r.status === 'READY' || r.status === 'IDLE') &&
+    !r.current_job_id &&
+    !['BUSY', 'RATE_LIMITED', 'ERROR', 'OFFLINE', 'WAIT_KEY', 'DISABLED'].includes(r.status)
+  );
+
+  let chosen = null;
+  if (eligible.length > 0) {
+    eligible.sort((a, b) => {
+      const loadA = (a.calls_success_24h || 0) + (a.calls_failure_24h || 0);
+      const loadB = (b.calls_success_24h || 0) + (b.calls_failure_24h || 0);
+      if (loadA !== loadB) return loadA - loadB;
+      const idleA = a.last_seen_at ? new Date(a.last_seen_at).getTime() : 0;
+      const idleB = b.last_seen_at ? new Date(b.last_seen_at).getTime() : 0;
+      return idleA - idleB;
+    });
+    chosen = eligible[0];
+  }
+
+  if (isDeep) {
+    if (chosen) {
+      const findingKey = `DEEP_AUDIT_${chosen.employee_id}_${Math.floor(now / (30 * 60 * 1000))}`;
+      if (!auditFindingsSeen.has(findingKey)) {
+        auditFindingsSeen.add(findingKey);
+        latestFinding = {
+          key: findingKey,
+          type: 'AUDIT_DEEP_FINDING',
+          employeeId: chosen.employee_id,
+          timestamp: nowIso()
+        };
+        openIncidents++;
+        await event('AUDIT_DEEP_FINDING', { employeeId: chosen.employee_id, findingKey });
+      }
+    } else {
+      const findingKey = `AUDIT_DEFERRED_NO_IDLE_RESOURCE_${Math.floor(now / (30 * 60 * 1000))}`;
+      if (!auditFindingsSeen.has(findingKey)) {
+        auditFindingsSeen.add(findingKey);
+        latestFinding = {
+          key: findingKey,
+          type: 'AUDIT_DEFERRED_NO_IDLE_RESOURCE',
+          timestamp: nowIso()
+        };
+        openIncidents++;
+        await event('AUDIT_DEFERRED_NO_IDLE_RESOURCE', { findingKey });
+      }
+    }
+  }
+}
+
 async function loop(){
   while(!stop){const t=Date.now();
     try{
@@ -377,6 +460,7 @@ async function loop(){
       if(t-lastRecover>10000){await recoverStale();lastRecover=t;}
       if(t-lastManager>MANAGER_IDLE_MS){await managerTick();lastManager=t;}
       if(t-lastProbe>60000){await probeReadyResources();lastProbe=t;}
+      await auditorTick();
       while(active.size<MAX_PARALLEL){const j=await claimJob();if(!j)break;active.add(j.id);void runJob(j).finally(()=>active.delete(j.id));}
     }catch(e){console.error(JSON.stringify({event:'CORE_LOOP_ERROR',error:String(e?.message||e)}));}
     await sleep(POLL_MS);
