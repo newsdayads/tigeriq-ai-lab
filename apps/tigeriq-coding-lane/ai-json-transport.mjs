@@ -139,7 +139,7 @@ function responseWithJson(res,data){
   return new Response(JSON.stringify(data),{status:res.status,statusText:res.statusText,headers:res.headers});
 }
 
-export function installAiJsonTransport({maxAttempts=3,baseDelayMs=350}={}){
+export function installAiJsonTransport({maxAttempts=3,baseDelayMs=350,attemptTimeoutMs=180000}={}){
   if(globalThis.__tigeriqAiJsonTransportInstalled)return;
   globalThis.__tigeriqAiJsonTransportInstalled=true;
   const original=globalThis.fetch.bind(globalThis);
@@ -152,7 +152,8 @@ export function installAiJsonTransport({maxAttempts=3,baseDelayMs=350}={}){
     let last;
     for(let attempt=1;attempt<=maxAttempts;attempt++){
       let res;
-      try{res=await original(input,request);last=res;}
+      const attemptRequest=request?.signal?{...request,signal:AbortSignal.timeout(attemptTimeoutMs)}:request;
+      try{res=await original(input,attemptRequest);last=res;}
       catch(error){
         const transient=error?.name==='AbortError'||/aborted|fetch failed|ECONNRESET|ETIMEDOUT|socket/i.test(String(error?.message||error));
         if(transient&&attempt<maxAttempts){await sleep(baseDelayMs*attempt);continue}
