@@ -8,6 +8,7 @@ const port = 3000;
 
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
+app.use(express.static(__dirname));
 
 const csrfProtection = csrf({ cookie: true });
 
@@ -37,6 +38,10 @@ app.get('/status', (req, res) => {
     res.json({ jobs: jobQueue });
 });
 
-app.listen(port, () => {
-    console.log(`Server running at http://localhost:${port}`);
-});
+if (require.main === module) {
+    app.listen(port, () => {
+        console.log(`Server running at http://localhost:${port}`);
+    });
+}
+
+module.exports = app;
