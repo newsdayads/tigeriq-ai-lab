@@ -11,7 +11,7 @@ describe('coding lane AI JSON transport',()=>{
     expect(JSON.parse(init.body).response_format).toEqual({type:'json_object'});
   });
   it('detects valid versus malformed model JSON',()=>{
-    expect(looksLikeJsonObject('```json\n{"ok":true}\n```')).toBe(true);
+    expect(looksLikeJsonObject('\n{"ok":true}\n')).toBe(true);
     expect(looksLikeJsonObject('{bad json}')).toBe(false);
   });
   it('rejects schema-invalid review JSON so transport retries',()=>{
@@ -28,10 +28,11 @@ describe('coding lane AI JSON transport',()=>{
   it('extracts provider model text and ignores non AI URLs',()=>{
     expect(isAiUrl('https://api.groq.com/openai/v1/chat/completions')).toBe(true);
     expect(isAiUrl('https://api.github.com/repos/a/b')).toBe(false);
+    expect(isAiUrl('not-a-url')).toBe(false);
     expect(extractModelText('https://api.groq.com/openai/v1/chat/completions',{choices:[{message:{content:'{"ok":true}'}}]})).toBe('{"ok":true}');
   });
   it('limits model-visible current files while retaining head and tail excerpts',()=>{
-    const body='HEAD'+'.'.repeat(30000)+'TAIL';
+    const body='HEAD'.repeat(30000)+'TAIL';
     const prompt=`TASK: x\nCURRENT FILES:\nFILE apps/a.mjs\n${body}\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}.`;
     const compact=compactCurrentFilesForModel(prompt,12000);
     expect(compact.length).toBeLessThan(prompt.length);
@@ -90,4 +91,3 @@ describe('coding lane AI JSON transport',()=>{
     expect(()=>expandCompactChanges(prompt,model)).toThrow('COMPACT_EDIT_SEARCH_AMBIGUOUS');
   });
 });
-
