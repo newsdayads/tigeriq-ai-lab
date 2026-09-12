@@ -151,7 +151,13 @@ export function installAiJsonTransport({maxAttempts=3,baseDelayMs=350}={}){
     const request=schema==='changes'?rewritePromptInRequest(input,jsonPrepared,compactPromptForChanges(originalPrompt)):jsonPrepared;
     let last;
     for(let attempt=1;attempt<=maxAttempts;attempt++){
-      const res=await original(input,request); last=res;
+      let res;
+      try{res=await original(input,request);last=res;}
+      catch(error){
+        const transient=error?.name==='AbortError'||/aborted|fetch failed|ECONNRESET|ETIMEDOUT|socket/i.test(String(error?.message||error));
+        if(transient&&attempt<maxAttempts){await sleep(baseDelayMs*attempt);continue}
+        throw error;
+      }
       if(!res.ok){
         if(attempt<maxAttempts&&[408,409,429,500,502,503,504].includes(res.status)){await sleep(baseDelayMs*attempt);continue}
         return res;
