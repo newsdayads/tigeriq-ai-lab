@@ -12,7 +12,7 @@ const core = readFileSync(resolve('apps/tigeriq-core/core.mjs'), 'utf8');
 describe('TigerIQ Web Control isolation', () => {
   it('keeps API Health as a separate existing product', () => {
     expect(apiHealth).toContain('<title>TigerIQ API Health</title>');
-    expect(core).toContain("url.pathname==='/ '").or.toBeDefined;
+    expect(core).toContain("url.pathname==='/'");
     expect(core).toContain('return res.end(dashboard())');
     expect(core).not.toContain('web-control-server.mjs');
   });
