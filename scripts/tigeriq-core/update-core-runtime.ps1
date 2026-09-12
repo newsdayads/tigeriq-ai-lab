@@ -14,6 +14,7 @@ $mutex=New-Object Threading.Mutex($false,'Global\TigerIQCoreRuntimeUpdaterV2')
 $healthFailures=@{core=0;web=0;coding=0}
 $lastHeal=@{core=[DateTime]::MinValue;web=[DateTime]::MinValue;coding=[DateTime]::MinValue}
 $healCooldownSec=300
+$watchdog=$null
 function Save-State([hashtable]$d){$d.updatedAt=(Get-Date).ToUniversalTime().ToString('o');$tmp="$state.tmp";[IO.File]::WriteAllText($tmp,($d|ConvertTo-Json -Depth 10),(New-Object Text.UTF8Encoding($false)));Move-Item -Force $tmp $state}
 function Head([string]$ref){(& git -C $repo rev-parse $ref 2>$null|Out-String).Trim()}
 function HealthInfo([string]$url){try{$r=Invoke-RestMethod -Uri $url -TimeoutSec 5;if($r.ok){return $r}}catch{};return $null}
@@ -124,7 +125,7 @@ while($true){
     $newCore=HealthInfo 'http://100.97.23.87:8795/health'
     Save-State @{result='UPDATED';installedSha=$remote;gateSha=$gateSha;previousSha=$local;changedPaths=$changed;impact=$impact;corePid=if($newCore){[int]$newCore.pid}else{$null};previousCorePid=$oldPid;coreRestarted=$impact.core;webRestarted=$impact.web;codingRestarted=$impact.coding;watchdog=$watchdog}
     if($impact.updater){Restart-UpdaterAfterExit;exit 75}
-  }catch{Save-State @{result='FAILED';error=$_.Exception.Message;watchdog=if($null-ne$watchdog){$watchdog}else{$null}}}
+  }catch{Save-State @{result='FAILED';error=$_.Exception.Message;watchdog=$watchdog}}
   finally{Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue;if($locked){$mutex.ReleaseMutex()|Out-Null}}
   Start-Sleep -Seconds $IntervalSeconds
 }
