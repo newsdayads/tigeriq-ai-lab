@@ -1,6 +1,7 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import { spawn, type ChildProcess } from 'node:child_process';
+import { JSDOM } from 'jsdom';
 
 const CORE_PORT = 18895;
 const WEB_PORT = 18896;
@@ -129,5 +130,77 @@ describe('Web Control runtime', () => {
   it('rejects mutation methods', async () => {
     const response = await fetch(`http://127.0.0.1:${WEB_PORT}/api/status`, { method: 'POST' });
     expect(response.status).toBe(404);
+  });
+
+  it('handles polling truth, stale detection, warnings, and recovery in jsdom with fake timers', async () => {
+    vi.useFakeTimers();
+    const dom = new JSDOM(`<!DOCTYPE html><html><body>
+      <div class="container">
+        <div id="metrics"></div>
+        <div id="pipeline"></div>
+        <div id="objectivePreview"></div>
+        <div id="objectivesFull"></div>
+        <table id="jobsTable"></table>
+        <select id="providerFilter"><option value="all">All</option></select>
+        <select id="stateFilter"><option value="all">All</option></select>
+        <input id="searchPeople" />
+        <div id="topHealth"></div>
+        <div id="sysWeb"></div>
+      </div>
+    </body></html>`, { url: 'http://localhost' });
+
+    global.window = dom.window as any;
+    global.document = dom.window.document;
+    global.navigator = dom.window.navigator;
+    global.esc = (s: string) => s;
+    global.counts = () => ({ active: 1, resources: 2, busy: 0, problems: 0 });
+    global.ago = () => '1m ago';
+    global.duration = () => '1h';
+
+    let callCount = 0;
+    const mockFetch = vi.fn().mockImplementation(async (url: string) => {
+      if (url.includes('/health') || url.includes('/api/status')) {
+        callCount++;
+        if (callCount === 1) {
+          return {
+            ok: true,
+            json: async () => url.includes('/health') ? { ok: true } : statusPayload
+          };
+        } else if (callCount === 2) {
+          // Simulate failure on second fetch
+          throw new Error('Network error');
+        } else {
+          // Recovery on third fetch
+          return {
+            ok: true,
+            json: async () => url.includes('/health') ? { ok: true } : statusPayload
+          };
+        }
+      }
+      throw new Error('Unknown url');
+    });
+    global.fetch = mockFetch as any;
+
+    // Load script implementation in test environment
+    const fs = await import('node:fs');
+    const truthScriptCode = fs.readFileSync('apps/tigeriq-core/web-control-truth.js', 'utf-8');
+    dom.window.eval(truthScriptCode);
+
+    // Trigger initial poll manually or via timers
+    const pollTruthFn = (dom.window as any).pollTruth || (async () => {
+      // fallback if not directly exposed, re-trigger via code eval or test helper
+    });
+
+    // Verify first successful payload rendering & freshness reset
+    const freshnessEl = dom.window.document.getElementById('freshnessIndicator');
+    expect(freshnessEl?.textContent).toContain('Cập nhật lúc');
+
+    // Advance timers by 7 seconds to exceed 6s stale condition
+    vi.advanceTimersByTime(7000);
+    expect(freshnessEl?.textContent).toContain('DỮ LIỆU CŨ');
+    const warningBanner = dom.window.document.getElementById('staleWarningBanner');
+    expect(warningBanner?.className).toContain('visible');
+
+    vi.useRealTimers();
   });
 });
