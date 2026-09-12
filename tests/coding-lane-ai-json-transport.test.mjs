@@ -1,5 +1,5 @@
-import {describe,expect,it} from 'vitest';
-import {compactPromptForChanges,currentFilesFromPrompt,expandCompactChanges,extractModelText,isAiUrl,looksLikeJsonObject,matchesExpectedSchema,prepareAiJsonRequest,installAiJsonTransport} from '../apps/tigeriq-coding-lane/ai-json-transport.mjs';
+﻿import {describe,expect,it} from 'vitest';
+import {compactCurrentFilesForModel,compactPromptForChanges,currentFilesFromPrompt,expandCompactChanges,extractModelText,isAiUrl,looksLikeJsonObject,matchesExpectedSchema,prepareAiJsonRequest,installAiJsonTransport} from '../apps/tigeriq-coding-lane/ai-json-transport.mjs';
 
 describe('coding lane AI JSON transport',()=>{
   it('forces JSON mode for Gemini',()=>{
@@ -30,7 +30,16 @@ describe('coding lane AI JSON transport',()=>{
     expect(isAiUrl('https://api.github.com/repos/a/b')).toBe(false);
     expect(extractModelText('https://api.groq.com/openai/v1/chat/completions',{choices:[{message:{content:'{"ok":true}'}}]})).toBe('{"ok":true}');
   });
-  it('rewrites large-file generation to compact edits',()=>{
+  it('limits model-visible current files while retaining head and tail excerpts',()=>{
+    const body='HEAD'+'.'.repeat(30000)+'TAIL';
+    const prompt=`TASK: x\nCURRENT FILES:\nFILE apps/a.mjs\n${body}\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}.`;
+    const compact=compactCurrentFilesForModel(prompt,12000);
+    expect(compact.length).toBeLessThan(prompt.length);
+    expect(compact).toContain('HEAD');
+    expect(compact).toContain('TAIL');
+    expect(compact).toContain('full file retained locally');
+    expect(currentFilesFromPrompt(prompt).get('apps/a.mjs')).toContain('.'.repeat(30000));
+  });  it('rewrites large-file generation to compact edits',()=>{
     const prompt='TASK: x\nCURRENT FILES:\nFILE apps/a.mjs\nconst n=1;\n\n---\n\nFILE tests/new.test.mjs\n\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}. Do not touch paths outside ALLOWED PATHS. Never output secrets. Keep changes minimal and testable.';
     const compact=compactPromptForChanges(prompt);
     expect(compact).toContain('"edits"');
@@ -81,3 +90,4 @@ describe('coding lane AI JSON transport',()=>{
     expect(()=>expandCompactChanges(prompt,model)).toThrow('COMPACT_EDIT_SEARCH_AMBIGUOUS');
   });
 });
+
