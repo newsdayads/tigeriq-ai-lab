@@ -54,18 +54,22 @@ describe('coding lane AI JSON transport',()=>{
     const previousFetch=globalThis.fetch;
     const previousInstalled=globalThis.__tigeriqAiJsonTransportInstalled;
     let calls=0;
+    const signals=[];
     try{
       globalThis.__tigeriqAiJsonTransportInstalled=false;
-      globalThis.fetch=async()=>{
+      globalThis.fetch=async(_input,init)=>{
         calls++;
+        signals.push(Boolean(init?.signal?.aborted));
         if(calls===1) throw new DOMException('This operation was aborted','AbortError');
         return new Response(JSON.stringify({choices:[{message:{content:'{"status":"blocked","summary":"ok"}'}}]}),{status:200,headers:{'content-type':'application/json'}});
       };
-      installAiJsonTransport({maxAttempts:2,baseDelayMs:1});
+      installAiJsonTransport({maxAttempts:2,baseDelayMs:1,attemptTimeoutMs:1000});
       const prompt='Return ONLY JSON {"status":"continue|blocked","summary":"short","job":{"title":"short","instruction":"standalone implementation instruction","paths":["exact/repo/path"]}}.';
-      const res=await fetch('https://api.groq.com/openai/v1/chat/completions',{method:'POST',body:JSON.stringify({messages:[{role:'user',content:prompt}]})});
+      const stale=new AbortController(); stale.abort();
+      const res=await fetch('https://api.groq.com/openai/v1/chat/completions',{method:'POST',signal:stale.signal,body:JSON.stringify({messages:[{role:'user',content:prompt}]})});
       expect(res.ok).toBe(true);
       expect(calls).toBe(2);
+      expect(signals).toEqual([false,false]);
     }finally{
       globalThis.fetch=previousFetch;
       if(previousInstalled===undefined) delete globalThis.__tigeriqAiJsonTransportInstalled;
