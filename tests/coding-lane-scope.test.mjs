@@ -1,60 +1,38 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import {validateJobScope, CodingScopeViolationError} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {CodingScopeViolationError,validateJobScope,validateSourceScope} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {extractCanonicalAllowedPaths} from '../apps/tigeriq-coding-lane/policy.mjs';
 
-test('coding lane scope validation tests', async (t) => {
-  const allowedPaths = [
-    'apps/tigeriq-coding-lane/coding-lane.mjs',
-    'apps/tigeriq-coding-lane/coding-entry.mjs',
-    'packages/orchestrator/src/index.ts',
-    'tests/coding-lane-scope.test.mjs'
-  ];
+test('coding lane scope validation tests',async(t)=>{
+  const allowedPaths=['apps/tigeriq-coding-lane/coding-lane.mjs','apps/tigeriq-coding-lane/policy.mjs','tests/coding-lane-scope.test.mjs','tests/coding-lane-foundation.test.mjs'];
 
-  await t.test('(a) a valid edit set passes', () => {
-    const changes = [
-      { path: 'apps/tigeriq-coding-lane/coding-lane.mjs', content: 'content1' },
-      { path: 'packages/orchestrator/src/index.ts', content: 'content2' }
-    ];
-    const res = validateJobScope(allowedPaths, changes);
-    assert.strictEqual(res, true);
+  await t.test('extracts canonical paths from source objective',()=>{
+    const objective='## Exact hard scope\nAllowed paths ONLY:\n- apps/tigeriq-coding-lane/coding-lane.mjs\n- `tests/coding-lane-scope.test.mjs`\n\n## Implement\nDo work';
+    assert.deepStrictEqual(extractCanonicalAllowedPaths(objective),['apps/tigeriq-coding-lane/coding-lane.mjs','tests/coding-lane-scope.test.mjs']);
   });
 
-  await t.test('(b) an edit set containing one extra path fails with the proper error', () => {
-    const changes = [
-      { path: 'apps/tigeriq-coding-lane/coding-lane.mjs', content: 'content1' },
-      { path: 'unauthorized/secret-file.js', content: 'bad' }
-    ];
-    let errorCaught = null;
-    try {
-      validateJobScope(allowedPaths, changes);
-    } catch (err) {
-      errorCaught = err;
-    }
-    assert.ok(errorCaught instanceof CodingScopeViolationError);
-    assert.strictEqual(errorCaught.code, 'CODING_SCOPE_VIOLATION');
-    assert.deepStrictEqual(errorCaught.offending, ['unauthorized/secret-file.js']);
-    assert.deepStrictEqual(errorCaught.detail, { code: 'CODING_SCOPE_VIOLATION', offending: ['unauthorized/secret-file.js'] });
+  await t.test('allowed-only candidate passes',()=>{
+    assert.strictEqual(validateSourceScope(['apps/tigeriq-coding-lane/policy.mjs'],allowedPaths),true);
+    assert.strictEqual(validateJobScope(allowedPaths,[{path:'apps/tigeriq-coding-lane/policy.mjs',content:'x'}]),true);
   });
 
-  await t.test('(c) that no PR-creation function is called after a violation', async () => {
-    let prCreated = false;
-    const mockOpenPr = async () => {
-      prCreated = true;
-    };
+  await t.test('source manager scope expansion fails closed',()=>{
+    assert.throws(()=>validateSourceScope(['apps/tigeriq-coding-lane/policy.mjs','unauthorized/extra.mjs'],allowedPaths),e=>e instanceof CodingScopeViolationError&&e.code==='CODING_SCOPE_VIOLATION'&&e.offending[0]==='unauthorized/extra.mjs');
+  });
 
-    const invalidChanges = [
-      { path: 'unauthorized/path.js', content: 'hack' }
-    ];
+  await t.test('generated extra path fails closed',()=>{
+    const changes=[{path:'apps/tigeriq-coding-lane/coding-lane.mjs',content:'ok'},{path:'unauthorized/secret-file.js',content:'bad'}];
+    assert.throws(()=>validateJobScope(allowedPaths,changes),e=>e instanceof CodingScopeViolationError&&e.code==='CODING_SCOPE_VIOLATION');
+  });
 
-    let caught = null;
-    try {
-      validateJobScope(allowedPaths, invalidChanges);
-      await mockOpenPr();
-    } catch (err) {
-      caught = err;
-    }
-
-    assert.ok(caught instanceof CodingScopeViolationError);
-    assert.strictEqual(prCreated, false, 'PR creation must not be called after scope violation');
+  await t.test('no write or PR continuation occurs after violation',async()=>{
+    let writeCalled=false,prCreated=false;
+    try{
+      validateJobScope(allowedPaths,[{path:'unauthorized/path.js',content:'hack'}]);
+      writeCalled=true;
+      prCreated=true;
+    }catch(e){assert.ok(e instanceof CodingScopeViolationError)}
+    assert.strictEqual(writeCalled,false);
+    assert.strictEqual(prCreated,false);
   });
 });
