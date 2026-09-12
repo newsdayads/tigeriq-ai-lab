@@ -282,7 +282,7 @@ async function claimJob() {
   }
 }
 function parseManagerJson(text) {
-  const clean=String(text||'').replace(/```json|```/gi,'').trim();
+  const clean=String(text||'').replace(/|/gi,'').trim();
   const a=clean.indexOf('{'), b=clean.lastIndexOf('}');
   if(a<0||b<a) throw new Error('MANAGER_JSON_MISSING');
   const x=JSON.parse(clean.slice(a,b+1));
@@ -336,7 +336,7 @@ async function snapshot(){
   const telemetry=(await pool.query(`select ts,employee_id,type,(data->>'latencyMs')::int as latency_ms from tigeriq_events
     where ts>=now()-interval '24 hours' and type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK') and data ? 'latencyMs'
     order by ts asc limit 500`)).rows;
-  return {ok:true,core:{host:HOST,port:PORT,pid:process.pid,uptimeSec:Math.floor(process.uptime()),time:nowIso()},integrations:{surfsense:await surfSenseHealth()},resources:rr,objectives,jobs,events,telemetry};
+  return {ok:true,core:{host:HOST,port:PORT,pid:process.pid,uptimeSec:Math.floor(process.uptime()),time:nowIso()},auditor:auditorSnapshot,integrations:{surfsense:await surfSenseHealth()},resources:rr,objectives,jobs,events,telemetry};
 }
 function auth(req){return TOKEN && req.headers.authorization===`Bearer ${TOKEN}`;}
 function localSelf(req){const a=String(req.socket.remoteAddress||'').replace('::ffff:','');return a==='127.0.0.1'||a==='::1'||a===HOST;}
@@ -369,7 +369,96 @@ function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta
   }catch(e){res.writeHead(500,{'content-type':'application/json'});res.end(JSON.stringify({ok:false,error:String(e?.message||e)}));}
 });
 
-let stop=false, lastRefresh=0, lastRecover=0, lastManager=0, lastProbe=0; const active=new Set(); const MAX_PARALLEL=3;
+let stop=false, lastRefresh=0, lastRecover=0, lastManager=0, lastProbe=0, lastLightAudit=0, lastDeepAudit=0;
+let auditorSnapshot = { currentAuditorId: null, lastScan: null, lastDeepScan: null, openIncidents: 0, latestFinding: null };
+const active=new Set(); const MAX_PARALLEL=3;
+
+async function runRotatingIdleAuditor(isDeep = false) {
+  const now = Date.now();
+  const rows = (await pool.query("select * from tigeriq_resources where enabled=true and provider != 'ollama' and credential_state = 'READY' and (public_status = 'READY' or public_status = 'IDLE' or health_state in ('READY','ONLINE')) and current_job_id is null and work_state not in ('BUSY','RATE_LIMITED','ERROR','OFFLINE','WAIT_KEY') order by rank")).rows;
+  
+  const eligible = [];
+  for (const r of rows) {
+    const ps = publicStatus(r);
+    if (ps === 'READY' || ps === 'IDLE') {
+      eligible.push(r);
+    }
+  }
+
+  if (eligible.length === 0) {
+    await event('AUDIT_DEFERRED_NO_IDLE_RESOURCE', { isDeep });
+    auditorSnapshot.lastScan = new Date(now).toISOString();
+    if (isDeep) auditorSnapshot.lastDeepScan = auditorSnapshot.lastScan;
+    return;
+  }
+
+  eligible.sort((a, b) => {
+    const loadA = (a.failure_count || 0) * 5 + (a.last_latency_ms || 0);
+    const loadB = (b.failure_count || 0) * 5 + (b.last_latency_ms || 0);
+    if (loadA !== loadB) return loadA - loadB;
+    const timeA = a.last_seen_at ? new Date(a.last_seen_at).getTime() : 0;
+    const timeB = b.last_seen_at ? new Date(b.last_seen_at).getTime() : 0;
+    if (timeA !== timeB) return timeA - timeB;
+    return a.employee_id.localeCompare(b.employee_id);
+  });
+
+  const leastLoad = (eligible[0].failure_count || 0) * 5 + (eligible[0].last_latency_ms || 0);
+  const oldestSeen = eligible[0].last_seen_at ? new Date(eligible[0].last_seen_at).getTime() : 0;
+  const exactTies = eligible.filter(r => {
+    const l = (r.failure_count || 0) * 5 + (r.last_latency_ms || 0);
+    const t = r.last_seen_at ? new Date(r.last_seen_at).getTime() : 0;
+    return l === leastLoad && t === oldestSeen;
+  });
+
+  let selectedAuditor;
+  if (exactTies.length > 1) {
+    const idx = Math.floor(now / 1000) % exactTies.length;
+    selectedAuditor = exactTies[idx];
+  } else {
+    selectedAuditor = eligible[0];
+  }
+
+  auditorSnapshot.currentAuditorId = selectedAuditor.employee_id;
+  auditorSnapshot.lastScan = new Date(now).toISOString();
+  if (isDeep) auditorSnapshot.lastDeepScan = auditorSnapshot.lastScan;
+
+  const otherEligible = eligible.filter(r => r.employee_id !== selectedAuditor.employee_id);
+  if (isDeep && otherEligible.length >= 2) {
+    const degraded = (await pool.query("select * from tigeriq_resources where enabled=true and provider != 'ollama' and credential_state = 'READY' and health_state in ('ERROR','OFFLINE')")).rows;
+    if (degraded.length > 0) {
+      const target = degraded[0];
+      const dedupeKey = `AUDIT-FINDING-${target.employee_id}-${Math.floor(now / 3600000)}`;
+      const existingObj = (await pool.query("select * from tigeriq_objectives where metadata->>'dedupeKey'=$1", [dedupeKey])).rows[0];
+      
+      const suggestedImplementerId = otherEligible[0].employee_id;
+      const suggestedReviewerId = otherEligible.find(r => r.employee_id !== suggestedImplementerId)?.employee_id || otherEligible[1].employee_id;
+
+      auditorSnapshot.latestFinding = { dedupeKey, targetId: target.employee_id, auditorId: selectedAuditor.employee_id };
+
+      if (existingObj) {
+        await pool.query("update tigeriq_objectives set updated_at=now(), summary=$2 where id=$1", [existingObj.id, `Updated audit finding for ${target.employee_id}`]);
+      } else {
+        const objId = `OBJ-${randomUUID()}`;
+        const metadata = {
+          source: 'rotating_idle_auditor',
+          auditorId: selectedAuditor.employee_id,
+          dedupeKey,
+          suggestedImplementerId,
+          suggestedReviewerId,
+          targetId: target.employee_id
+        };
+        await pool.query("insert into tigeriq_objectives(id, objective, priority, status, metadata) values($1, $2, 'P1', 'active', $3)", [
+          objId,
+          `Audit finding: Resource ${target.employee_id} is degraded (${target.health_state})`,
+          JSON.stringify(metadata)
+        ]);
+        await event('ROTATING_AUDITOR_FINDING_HANDOFF', { objectiveId: objId, auditorId: selectedAuditor.employee_id, dedupeKey, suggestedImplementerId, suggestedReviewerId });
+      }
+      const openCount = (await pool.query("select count(*)::int as cnt from tigeriq_objectives where status='active' and metadata->>'source'='rotating_idle_auditor'")).rows[0].cnt;
+      auditorSnapshot.openIncidents = openCount;
+    }
+  }
+}
 async function loop(){
   while(!stop){const t=Date.now();
     try{
@@ -377,6 +466,8 @@ async function loop(){
       if(t-lastRecover>10000){await recoverStale();lastRecover=t;}
       if(t-lastManager>MANAGER_IDLE_MS){await managerTick();lastManager=t;}
       if(t-lastProbe>60000){await probeReadyResources();lastProbe=t;}
+      if(t-lastLightAudit>=300000){await runRotatingIdleAuditor(false);lastLightAudit=t;}
+      if(t-lastDeepAudit>=1800000){await runRotatingIdleAuditor(true);lastDeepAudit=t;}
       while(active.size<MAX_PARALLEL){const j=await claimJob();if(!j)break;active.add(j.id);void runJob(j).finally(()=>active.delete(j.id));}
     }catch(e){console.error(JSON.stringify({event:'CORE_LOOP_ERROR',error:String(e?.message||e)}));}
     await sleep(POLL_MS);
