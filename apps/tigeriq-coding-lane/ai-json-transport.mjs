@@ -1,4 +1,4 @@
-﻿const AI_HOSTS=['api.groq.com','openrouter.ai','api.mistral.ai','router.huggingface.co','generativelanguage.googleapis.com','api.cohere.com'];
+const AI_HOSTS=['api.groq.com','openrouter.ai','api.mistral.ai','router.huggingface.co','generativelanguage.googleapis.com','api.cohere.com'];
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
 export function isAiUrl(input){
