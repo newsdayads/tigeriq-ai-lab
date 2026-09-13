@@ -7,8 +7,12 @@ describe('Coding Lane JSON parser resilience',()=>{
   });
 
   it('repairs invalid backslash escapes emitted inside JSON strings',()=>{
-    const raw='```json\n{"summary":"windows path C:\\TigerIQ\\new","ok":true}\n```';
-    expect(parseJsonObject(raw)).toEqual({summary:'windows path C:\\TigerIQ\\new',ok:true});
+    const raw='```json\n{"summary":"windows path C:\\TigerIQ\\project","ok":true}\n```';
+    expect(parseJsonObject(raw)).toEqual({summary:'windows path C:\\TigerIQ\\project',ok:true});
+  });
+
+  it('preserves valid JSON newline escapes without guessing Windows paths',()=>{
+    expect(parseJsonObject('{"summary":"line\\none"}')).toEqual({summary:'line\none'});
   });
 
   it('repairs raw control characters emitted inside JSON strings',()=>{

@@ -14,6 +14,10 @@ export async function quarantineLegacyWork(pool) {
       source_table text not null, source_id text not null, original_row jsonb not null,
       quarantined_at timestamptz not null default now(),
       primary key(source_table,source_id))`);
+    await client.query(`create table if not exists tigeriq_migrations(
+      id text primary key, applied_at timestamptz not null default now())`);
+    const applied = await client.query("select id from tigeriq_migrations where id='step1-legacy-quarantine'");
+    if (applied.rowCount) { await client.query('commit'); return; }
     for (const [table,statuses] of tables) {
       const exists = await client.query('select to_regclass($1) as name',[table]);
       if (!exists.rows[0]?.name) continue;
@@ -23,6 +27,7 @@ export async function quarantineLegacyWork(pool) {
         on conflict(source_table,source_id) do nothing`,[table,statuses]);
       await client.query(`update ${table} set status='blocked' where status=any($1::text[])`,[statuses]);
     }
+    await client.query("insert into tigeriq_migrations(id) values('step1-legacy-quarantine')");
     await client.query('commit');
   } catch (error) {
     await client.query('rollback');

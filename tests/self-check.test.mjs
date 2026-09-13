@@ -28,6 +28,7 @@ test('Core boots against PostgreSQL, quarantines legacy work and never replays i
   };
   try{
     await start();await stop();
+    await pool.query("delete from tigeriq_migrations where id='step1-legacy-quarantine'");
     await pool.query(`create table tigeriq_coding_objectives(id text primary key,status text,objective text);
       create table tigeriq_coding_jobs(id text primary key,status text,attempts int,result jsonb);
       insert into tigeriq_coding_objectives values('old-objective','active','preserve instruction');
@@ -45,12 +46,15 @@ test('Core boots against PostgreSQL, quarantines legacy work and never replays i
     const post=await fetch('http://127.0.0.1:18955/api/objectives',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({objective:'must not enqueue'})});
     assert.equal(post.status,409);
     await new Promise(r=>setTimeout(r,1500));
-    await stop();await start();await stop();
+    await stop();
+    await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,status,attempts) values('new-research','core-old','explicit research','research','failed',1)");
+    await start();await stop();
+    assert.equal((await pool.query("select status from tigeriq_jobs where id='new-research'")).rows[0].status,'failed');
     const archived=(await pool.query("select original_row from tigeriq_legacy_quarantine where source_table='tigeriq_coding_jobs' and source_id='old-job'")).rows;
     assert.deepEqual(archived,[{original_row:before}]);
     assert.deepEqual((await pool.query("select status,attempts,result from tigeriq_coding_jobs where id='old-job'")).rows,[{status:'blocked',attempts:2,result:{evidence:'keep'}}]);
     assert.equal((await pool.query("select status from tigeriq_coding_jobs where id='done-job'")).rows[0].status,'done');
-    assert.equal((await pool.query("select count(*)::int n from tigeriq_jobs")).rows[0].n,1);
+    assert.equal((await pool.query("select count(*)::int n from tigeriq_jobs")).rows[0].n,2);
     assert.equal((await pool.query("select manager_cycles from tigeriq_objectives where id='core-old'")).rows[0].manager_cycles,0);
     assert.equal((await pool.query("select count(*)::int n from tigeriq_events where type in ('SELF_CHECK_LIGHT','SELF_CHECK_DEEP','JOB_CREATED','JOB_DONE','MANAGER_ERROR')")).rows[0].n,0);
   }finally{await stop();await pool.end();}

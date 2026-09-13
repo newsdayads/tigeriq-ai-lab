@@ -34,7 +34,7 @@ export function matchesExpectedSchema(prompt,text){
   const schema=expectedSchemaFromPrompt(prompt);
   if(schema==='review')return ['approve','changes_requested'].includes(d.decision)&&typeof d.summary==='string'&&Array.isArray(d.issues);
   if(schema==='changes')return typeof d.summary==='string'&&Array.isArray(d.changes)&&d.changes.length>0&&d.changes.every(x=>x&&typeof x.path==='string'&&typeof x.content==='string');
-  if(schema==='manager')return ['continue','blocked'].includes(d.status)&&typeof d.summary==='string'&&(d.status==='blocked'||(d.job&&typeof d.job.title==='string'&&typeof d.job.instruction==='string'&&Array.isArray(d.job.paths)));
+  if(schema==='manager')return ['continue','blocked'].includes(d.status)&&typeof d.summary==='string'&&(d.status==='blocked'||(Boolean(d.job)&&typeof d.job.title==='string'&&typeof d.job.instruction==='string'&&Array.isArray(d.job.paths)));
   return true;
 }
 

@@ -17,7 +17,7 @@ Codex product pilot and final routing cutover are NOT part of this PR.
 - Entry/direct lane invocation exits without DB, provider, GitHub writes or timers, regardless of legacy env flags.
 - Core fails without DATABASE_URL; boots with disposable PostgreSQL and remains readable.
 - Old nonterminal Core/Coding rows are copied exactly once into tigeriq_legacy_quarantine then blocked,
-  in one transaction. Completed rows and original payloads survive. Repeated restart cannot replay work.
+  in one transaction with a persistent one-time migration marker. New research rows are not swept on restart. Completed rows and original payloads survive. Repeated restart cannot replay work.
 - No manager/self-check/job execution resumes while containment policy is installed.
 - Web remains healthy and usable on desktop/mobile with Coding Lane intentionally disabled.
 - All tests/**/*.test.mjs at the current repository root are run by their existing runner.
@@ -47,8 +47,12 @@ Do not install a preview over the live database.
 
 ## Rollback
 Before rollout: close this PR if rejected; MAIN/runtime/data are unchanged.
-After approved rollout: stop new intake, preserve current DB, deploy the previously verified runtime artifact
-through a separate privileged release. Keep legacy Coding Lane task and automatic ingress disabled.
+After approved rollout: stop the updater and Core/Lane before recovery and preserve current DB.
+Do NOT start any pre-containment Core/updater artifact: it can revive intake and replay blocked work.
+Rollback only to a separately verified artifact retaining ALL containment guards and the migration marker,
+through a separate privileged release. If none exists, remain stopped; reduced availability is safer than replay.
+Web-only rollback must retain a compatible execution-policy bundle. Keep Lane task disabled.
+Reverting this entire PR is not a safe live rollback.
 Do not restore the whole DB over newer data; tigeriq_legacy_quarantine retains exact pre-migration rows.
 Never bulk unquarantine or automatically reopen/replay jobs. An approved operator may recover a selected
 work item after checking its PR/merge state and deduplication identity.
@@ -59,3 +63,7 @@ Formerly unexecuted transport test compared HEAD input to unrelated dot characte
 equality with the original input (stronger preservation check). A stale source regex now matches the actual
 waitGates(branch,pr.number) call. Old launcher/auditor/PR-head-fallback assertions are replaced by the
 new disabled/no-replay/exact-SHA contract, not suppressed. No Golden expected output is auto-edited.
+
+The invalid-escape fixture now uses \\project instead of \\new: JSON \\n is a valid newline, not an invalid escape.
+An additional test preserves valid newline semantics. No path-guessing repair or new retry is introduced.
+The schema predicate now returns false (not undefined) for a missing manager job, as its existing assertion requires.
