@@ -1,5 +1,14 @@
 # Agent Governance
 
+## Step 1 containment direction (Owner, 2026-09-14)
+Legacy Coding Lane task/worker and automatic repair/revival must remain disabled. Do not replay quarantined
+jobs or re-enable old launchers. Codex is the proposed product coding path through existing GitHub issues
+and isolated PRs; no shadow queue or new manager/auditor/retry layer. API workers may support research/review.
+PR #737 remains off-MAIN until explicit Owner release approval. Core in-process automation is not yet fully
+disabled on the old live artifact; controlled rollout/restart and smoke are still required.
+See docs/CURRENT_STATE.md and docs/evidence/STEP1-PC01-CONTAINMENT-20260914.md.
+Do not translate source/CI PASS into live containment or production completion.
+
 TigerIQ AI Lab is an evidence-gated control plane for replaceable AI workers.
 
 ## Decision precedence

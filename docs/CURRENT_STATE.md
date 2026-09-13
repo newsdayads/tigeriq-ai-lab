@@ -1,4 +1,48 @@
-# TigerIQ — Current State
+# TigerIQ - Current State
+
+Date: 2026-09-14
+Status: PARTIAL LIVE CONTAINMENT; PR #737 OFF-MAIN; RELEASE AUTHORIZATION BLOCKED
+Authority: current Owner instruction > Constitution/Workflow > this evidence-backed snapshot.
+
+## Current operational facts
+- PR #737 is the only Step 1 migration PR, branch `codex/stabilize-foundation-step1`.
+- No MAIN merge or production artifact deployment has occurred.
+- Coding Lane task is Disabled; canonical worker PID 6852 and launcher are stopped.
+- Runtime Updater task was already Disabled and remains Disabled; no updater process was observed.
+- 61 legacy coding jobs and 55 coding objectives were snapshotted into `tigeriq_legacy_quarantine`
+  before blocking. 12 done jobs and 13 completed objectives survive; zero payload mismatches.
+- No legacy coding leases remain. Core's 25 done jobs and 27 completed objectives were not changed.
+- Core PID 5912 and Web PID 13976 remain running/healthy. Old Web correctly reports the stopped
+  Coding endpoint as unavailable; the new explicit DISABLED presentation awaits approved rollout.
+- Windows rejected a start attempt on the disabled Coding task. No new coding rows were observed
+  between quarantine and the subsequent observation. This is NOT a reboot/full-rollout proof.
+
+## Unresolved release boundary
+Core's two GitHub intake timers, manager, job dispatcher and self-check are in the existing Core process.
+MAIN has no supported live pause API. Stopping its signals closes Core HTTP; changing those functions
+requires a verified artifact rollout and controlled Core restart, currently forbidden until Owner approval.
+Do not claim full containment, post-reboot verification or production completion before that boundary.
+Do not use debugger injection, database triggers/locks or credential changes as a workaround.
+
+## Coding direction
+Codex is the proposed coding path: one approved product issue -> isolated Codex branch/PR -> exact-SHA
+CI -> independent review -> smoke -> Owner acceptance. No new shadow queue, manager, auditor,
+repair/failover layer or replacement Coding Lane is authorized.
+Existing GitHub issues retain queue identity; Core/Web retain state/routing/reporting responsibilities.
+API workers remain candidates for research/review/support. The pilot issue is not created until release approval
+and successful controlled rollout/smoke. Final primary-coder cutover still requires the representative pilots.
+
+## PR disposition and evidence
+- Closed without merge: #732 (manager retry/failover), #719 (rotating auditor), superseded by containment.
+- Preserved unchanged: Web product PRs #720, #652, #648, #646. They are not automatically accepted or replayed.
+- Operational evidence and rollback: `docs/evidence/STEP1-PC01-CONTAINMENT-20260914.md`.
+- Earlier source/CI evidence: PR #737 head `f102d7d17e0bccb061d741e5982d625c4f3bbde7`, all 3 workflows passed.
+- The new documentation head must pass the same complete workflows and independent review before approval.
+
+## Historical Snapshot (not current authority)
+The following prior state is retained as history only. Its automatic repair/revival authorization is superseded
+by the current Owner containment instruction and must not be used to restart Coding Lane.
+
 
 Date: 2026-09-12
 Status: CURRENT — 24/7 autonomy self-heal verified
@@ -55,3 +99,4 @@ Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #
 - Chat/memory is not runtime authority.
 
 STATE: `CURRENT_V47_AUTONOMY_24X7_SELF_HEAL_STALL_WATCHDOG_PASS_20260912`
+

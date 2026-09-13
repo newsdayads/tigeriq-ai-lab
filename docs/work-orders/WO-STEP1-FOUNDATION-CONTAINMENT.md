@@ -28,9 +28,11 @@ Codex product pilot and final routing cutover are NOT part of this PR.
 - Independent reviewer and Judge examine the final PR SHA and CI evidence before off-MAIN acceptance.
 
 ## Activation boundary
-This PR does not stop or replace live PC01 services. No runtime rollout is authorized in this step.
-Its code-side no-replay guarantee applies after the approved version is installed. Do not claim live containment
-from an off-MAIN CI pass. Existing live jobs/PRs remain a rollout prerequisite until reconciled.
+Owner subsequently authorized bounded PC01 containment operations: Lane task/worker stopped, legacy
+coding rows snapshotted/blocked, invalid #732/#719 closed without merge, auxiliary launchers disabled.
+Core/Web were not stopped; no PR artifact was deployed. See the dated operational evidence.
+The complete no-dispatch guarantee still requires approved Core artifact rollout/restart because the old
+Core has no independent live pause API. Do not claim full containment, reboot proof or release from CI.
 Do not install a preview over the live database.
 
 ## Safe rollout after separate approval
@@ -71,9 +73,10 @@ The schema predicate now returns false (not undefined) for a missing manager job
 Legacy resource leases are snapshotted and cleared only when linked to the quarantined Core cohort.
 
 ## Legacy PR inventory (read-only, before activation)
-These are open automated PRs, NOT accepted or replayable work. Retain each branch and job identity.
-Close only after old workers/updater are stopped, to avoid supervisor regeneration. Production DB cohort
-must be reconciled at that boundary; this inventory is not proof that live jobs are paused.
+Original pre-operation inventory, NOT accepted or replayable work. Retain each branch and job identity.
+After Lane stop/quarantine, #732 and #719 were closed without merge as invalid retry/auditor work.
+#720/#652/#648/#646 contain Web product changes and remain unchanged, pending independent product review.
+The operational evidence records the live cohort; Core's in-process dispatch remains a release blocker.
 
 | PR | Job | Head SHA |
 | --- | --- | --- |
