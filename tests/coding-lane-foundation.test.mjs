@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert';
 import {assertPrOpenState,invokeJsonWithFailover,shrinkAiPrompt} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
-import {isRetryableAiError} from '../apps/tigeriq-coding-lane/policy.mjs';
+import {isRetryableAiError,parseJsonObject} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 const nv11={id:'NV11',provider:'fake',model:'a'};
 const nv19={id:'NV19',provider:'fake',model:'b'};
@@ -19,6 +19,13 @@ test('foundation bounded retry and failover',async(t)=>{
     assert.strictEqual(out.attempts,3);
     assert.deepStrictEqual(calls.map(x=>x.id),['NV11','NV11','NV19']);
     assert.ok(calls[1].prompt.length<calls[0].prompt.length);
+  });
+
+  await t.test('outer markdown fence is stripped without mutating source literals',()=>{
+    const source="const clean=String(text||'').replace(/```json|```/gi,'').trim();";
+    const payload=JSON.stringify({summary:'ok',changes:[{path:'apps/tigeriq-core/core.mjs',content:source}]});
+    const out=parseJsonObject(`\n\`\`\`json\n${payload}\n\`\`\`\n`);
+    assert.strictEqual(out.changes[0].content,source);
   });
 
   await t.test('HTTP 413 retries same NV with a shrunken prompt',async()=>{

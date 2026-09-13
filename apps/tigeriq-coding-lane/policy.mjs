@@ -105,7 +105,8 @@ function repairInvalidJsonEscapes(input){
 }
 
 export function parseJsonObject(text){
-  const clean=String(text||'').replace(/```json|```/gi,'').trim();
+  const raw=String(text||'').trim();
+  const clean=raw.replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'').trim();
   const a=clean.indexOf('{'),b=clean.lastIndexOf('}');
   if(a<0||b<a) throw new Error('JSON_OBJECT_MISSING');
   const candidate=clean.slice(a,b+1);
