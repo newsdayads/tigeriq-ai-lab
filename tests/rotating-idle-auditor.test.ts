@@ -34,16 +34,20 @@ test('Rotating idle auditor scheduler tests', async (t) => {
     assert.ok(resAfter.rows[0].last_heartbeat_at);
   });
 
-  await t.test('Deduplicated handoff creation', async () => {
+  await t.test('Deduplicated handoff creation and 10min/30min cadence simulation', async () => {
     await pool.query("delete from tigeriq_objectives where metadata->>'source' = 'auditor_deep_scan'");
-    const fingerprint = 'test_issue_123';
-    
+    await pool.query("update tigeriq_auditor_state set last_light_scan_at = now() - interval '15 minutes', last_deep_scan_at = now() - interval '35 minutes', active_issue_fingerprint = null, last_emitted_handoff_id = null where id='singleton'");
+
+    const stateRes = await pool.query("select * from tigeriq_auditor_state where id='singleton'");
+    assert.ok(stateRes.rows.length > 0);
+
+    const fingerprint = 'cadence_test_issue';
     await pool.query(
       'insert into tigeriq_objectives(id, objective, priority, metadata) values($1, $2, $3, $4)',
-      ['HANDOFF-TEST-1', 'Auditor Finding: test issue', 'P1', JSON.stringify({ source: 'auditor_deep_scan', fingerprint })]
+      ['HANDOFF-CADENCE-1', 'Auditor Finding: cadence test', 'P1', JSON.stringify({ source: 'auditor_deep_scan', fingerprint })]
     );
     await pool.query(
-      "update tigeriq_auditor_state set active_issue_fingerprint = $1, last_emitted_handoff_id = 'HANDOFF-TEST-1' where id='singleton'",
+      "update tigeriq_auditor_state set active_issue_fingerprint = $1, last_emitted_handoff_id = 'HANDOFF-CADENCE-1' where id='singleton'",
       [fingerprint]
     );
 
