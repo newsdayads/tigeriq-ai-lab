@@ -369,7 +369,72 @@ function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta
   }catch(e){res.writeHead(500,{'content-type':'application/json'});res.end(JSON.stringify({ok:false,error:String(e?.message||e)}));}
 });
 
-let stop=false, lastRefresh=0, lastRecover=0, lastManager=0, lastProbe=0; const active=new Set(); const MAX_PARALLEL=3;
+let stop=false, lastRefresh=0, lastRecover=0, lastManager=0, lastProbe=0, lastIdleAudit=0; const active=new Set(); const MAX_PARALLEL=3; let nextIdleAuditInterval = 10 * 60 * 1000 + Math.floor(Math.random() * (20 * 60 * 1000 + 1));
+async function auditIdleNode(){
+  const t = Date.now();
+  if (t - lastIdleAudit < nextIdleAuditInterval) return;
+  lastIdleAudit = t;
+  nextIdleAuditInterval = 10 * 60 * 1000 + Math.floor(Math.random() * (20 * 60 * 1000 + 1));
+
+  try {
+    const res = await pool.query(
+      `select * from tigeriq_resources where enabled = true and current_job_id is null and work_state is distinct from 'BUSY' and credential_state is distinct from 'WAIT_KEY' and health_state not in ('RATE_LIMITED', 'OFFLINE', 'ERROR') and rank < 90 order.by random() limit 1`
+    ).catch(() => pool.query(
+      `select * from tigeriq_resources where enabled = true and work_state != 'BUSY' and credential_state != 'WAIT_KEY' and health_state not in ('RATE_LIMITED', 'OFFLINE', 'ERROR') order by rank asc`
+    ));
+
+    const rows = res.rows || [];
+    const candidate = rows.find(r => {
+      const st = publicStatus(r);
+      return st === 'READY' || st === 'IDLE';
+    });
+
+    if (!candidate) return;
+
+    const hb = await pool.query(
+      `select * from tigeriq_events where employee_id = $1 and type in ('RESOURCE_SUCCESS', 'RESOURCE_PROBE_OK') order by seq desc limit 1`,
+      [candidate.employee_id]
+    );
+    if (!hb.rows || hb.rows.length === 0) return;
+
+    const findingKey = `AUDIT_FINDING_${candidate.employee_id}_${Math.floor(Date.now() / (3600000 * 24))}`;
+    const existing = await pool.query(
+      `select seq from tigeriq_events where type = 'ROTATING_IDLE_AUDIT_HANDOFF' and data->>'findingKey' = $1 limit 1`,
+      [findingKey]
+    );
+    if (existing.rows && existing.rows.length > 0) return;
+
+    await event('ROTATING_IDLE_AUDIT_HANDOFF', {
+      employeeId: candidate.employee_id,
+      provider: candidate.provider,
+      model: candidate.model,
+      findingKey,
+      auditedAt: nowIso()
+    });
+
+    const stateData = { lastIdleAudit, nextIdleAuditInterval, employeeId: candidate.employee_id };
+    await pool.query(
+      `insert into tigeriq_events(type, data) values('ROTATING_IDLE_AUDITOR_STATE', $1)`,
+      [JSON.stringify(stateData)]
+    ).catch(() => {});
+  } catch (err) {
+    console.error(JSON.stringify({ event: 'ROTATING_IDLE_AUDIT_ERROR', error: String(err?.message || err) }));
+  }
+}
+
+async function recoverIdleAuditorState(){
+  try {
+    const r = await pool.query(
+      `select data from tigeriq_events where type = 'ROTATING_IDLE_AUDITOR_STATE' order by seq desc limit 1`
+    );
+    if (r.rows && r.rows[0] && r.rows[0].data) {
+      const d = r.rows[0].data;
+      if (typeof d.lastIdleAudit === 'number') lastIdleAudit = d.lastIdleAudit;
+      if (typeof d.nextIdleAuditInterval === 'number') nextIdleAuditInterval = d.nextIdleAuditInterval;
+    }
+  } catch (e) {}
+}
+
 async function loop(){
   while(!stop){const t=Date.now();
     try{
@@ -377,6 +442,7 @@ async function loop(){
       if(t-lastRecover>10000){await recoverStale();lastRecover=t;}
       if(t-lastManager>MANAGER_IDLE_MS){await managerTick();lastManager=t;}
       if(t-lastProbe>60000){await probeReadyResources();lastProbe=t;}
+      await auditIdleNode();
       while(active.size<MAX_PARALLEL){const j=await claimJob();if(!j)break;active.add(j.id);void runJob(j).finally(()=>active.delete(j.id));}
     }catch(e){console.error(JSON.stringify({event:'CORE_LOOP_ERROR',error:String(e?.message||e)}));}
     await sleep(POLL_MS);
@@ -384,6 +450,7 @@ async function loop(){
 }
 await initDb();
 await recoverAfterCoreRestart();
+await recoverIdleAuditorState();
 await refreshResources();
 await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(PORT,HOST,resolve);});
 void probeReadyResources();
