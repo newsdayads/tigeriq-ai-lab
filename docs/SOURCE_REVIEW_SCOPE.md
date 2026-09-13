@@ -4,7 +4,7 @@ Status: REVIEW TARGET DEFINITION
 Date: 2026-08-29
 
 ## Authoritative review target
-A WO-001 review must evaluate one exact current Git commit of branch `chore/source-of-truth-bootstrap` / PR #11.
+A WO-001 review must evaluate one exact current Git commit of branch chore/source-of-truth-bootstrap via active draft PR #738. Closed PR #11 is historical evidence only; the PR body must name the exact SHA.
 
 A review request must state that exact commit SHA in its initial body. Do not change the target by later comment. If the branch changes after a review is queued or completed, that review does not apply to the new head.
 
