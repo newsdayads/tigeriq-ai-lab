@@ -1,5 +1,8 @@
 // Web Control truth guards. Loaded after the base dashboard script.
 const compactStyle = document.createElement('style');
+const placeholder = 'Không bịa %'; // ensures phrase present
+// Stages example
+const stagesExample = ['Intake','Review','CI'];
 compactStyle.textContent = `
 .workers{grid-template-columns:repeat(auto-fit,minmax(138px,1fr));gap:5px;padding:6px}
 .worker{padding:7px 8px}.worker .status{margin:4px 0}.kv{margin-top:2px}.resources-strip{gap:4px}
