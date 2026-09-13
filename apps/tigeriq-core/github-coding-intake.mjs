@@ -47,6 +47,7 @@ export async function materializeGithubCodingIssues({pool,fetchImpl=fetch,owner=
   }
   if(hasOpenDependency){
     console.warn(JSON.stringify({event:'GITHUB_CODING_INTAKE_DEPENDENCY_OPEN',issueNumber:spec.number,dependsOn:spec.dependsOn}));
+    await mark(pool,'GITHUB_CODING_INTAKE_DEPENDENCY_OPEN',{issueNumber:spec.number,dependsOn:spec.dependsOn});
     continue;
   }}
 const objective=`GitHub autonomous coding issue #${spec.number}: ${spec.title}\n${spec.url}\n\n${spec.body}\n\nExecute only zero-cost reversible repository work. Keep direct main writes, paid cost, credentials/security, destructive actions, production release, browser authentication and PC01 source editing blocked.`;const out=await jsonFetch(fetchImpl,`${codingLaneUrl.replace(/\/$/,'')}/api/objectives`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({objective,priority:spec.priority})});if(!out?.id)throw new Error('CODING_OBJECTIVE_ID_MISSING');await mark(pool,'GITHUB_CODING_DISPATCHED',{issueNumber:spec.number,issueUrl:spec.url,codingObjectiveId:out.id});await comment(fetchImpl,owner,repo,spec.number,token,`[CLAIM] TigerIQ Coding Lane accepted this issue as ${out.id}. Automatic coding pipeline is active.`);created++}
