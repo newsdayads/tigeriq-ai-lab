@@ -18,7 +18,7 @@ At this audit, `main` remains the initial repository baseline. The Company Sourc
 
 ## VERIFIED OFF-MAIN — Company Source bootstrap
 Branch: `chore/source-of-truth-bootstrap`.
-PR #11: docs: bootstrap TigerIQ Source of Truth and Company OS governance — **CLOSED UNMERGED** on 2026-08-30. The branch remains off-MAIN at 922c490c36c0a1871625d42046e760c508d18dd3; closing the PR did not merge, release, or deploy this baseline.
+PR #11: docs: bootstrap TigerIQ Source of Truth and Company OS governance — **CLOSED UNMERGED** on 2026-08-30. PR #11 closed at snapshot head 922c490c36c0a1871625d42046e760c508d18dd3; the branch may advance through later checkpoints, each of which requires its own exact review target. Closing the PR did not merge, release, or deploy this baseline.
 
 This unmerged branch contains the general/public-safe governance baseline:
 - Company Constitution v1;

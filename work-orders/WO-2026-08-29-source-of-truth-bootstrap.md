@@ -27,7 +27,7 @@ Establish a repository-backed Company and Engineering Source of Truth without ex
 ## Evidence
 - Initial MAIN audit: `.gitignore`, `LICENSE`, `README.md` only before bootstrap.
 - Working branch: `chore/source-of-truth-bootstrap`.
-- PR #11 was closed unmerged on 2026-08-30. Its branch remains off-MAIN; this Work Order does not claim an open review or merge eligibility.
+- PR #11 was closed unmerged on 2026-08-30. That closure snapshot is historical; this Work Order does not claim an open review or merge eligibility, and each later branch checkpoint needs its own exact review target.
 - Runtime audit found open stacked PRs #1–#10 through `phase8/actor-rate-limits`.
 - Latest audited runtime head: `e29b9a32b49226075147f2168a7f0438665258b2`.
 - GitHub Actions CI on the latest Phase 8 head is PASS.
@@ -44,5 +44,5 @@ Establish a repository-backed Company and Engineering Source of Truth without ex
 
 ## Gate
 Independent review: PASS on corrected head `f34b8c672112eb38b5d7b0bb04c3af06609759d3`.
-Judge/release gate: FAIL on head 627f2b8999e6fbe94ff4cecf9110d7d91dd2d6c7; at current head 922c490c36c0a1871625d42046e760c508d18dd3, the independent Judge returned FAIL because PR #11 is closed unmerged while earlier evidence said it was open. Remediation records the closed state and requires a fresh independent review/judge of the corrected exact head before any future reviewed PR/release-gate path.
+Judge/release gate: FAIL on head 627f2b8999e6fbe94ff4cecf9110d7d91dd2d6c7; for the prior review target 922c490c36c0a1871625d42046e760c508d18dd3, the independent Judge returned FAIL because PR #11 is closed unmerged while earlier evidence said it was open. Remediation records the closed state and requires a fresh independent review/judge of the corrected exact head before any future reviewed PR/release-gate path.
 No Production action is authorized by this Work Order.
