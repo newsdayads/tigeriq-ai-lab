@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import {assertPrOpenState,gateFailureIssues,invokeJsonWithFailover,runGateWithRepair,shrinkAiPrompt} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {assertPrOpenState,gateFailureIssues,invokeJsonWithFailover,isResourceTransientError,resourceWaitPlan,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError,parseJsonObject} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 const nv11={id:'NV11',provider:'fake',model:'a'};
@@ -163,6 +163,27 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
     assert.strictEqual(repairs,0);
   });
 
+  await t.test('retryable provider exhaustion becomes bounded WAITING_RESOURCE',()=>{
+    const first=resourceWaitPlan({retryCount:0,startedAt:'2026-09-13T00:00:00.000Z',nowMs:Date.parse('2026-09-13T00:00:10.000Z')});
+    assert.strictEqual(first.wait,true);
+    assert.strictEqual(first.retryCount,1);
+    assert.strictEqual(first.delayMs,30000);
+    const exhausted=resourceWaitPlan({retryCount:6,startedAt:'2026-09-13T00:00:00.000Z',nowMs:Date.parse('2026-09-13T00:10:00.000Z')});
+    assert.strictEqual(exhausted.wait,false);
+  });
+
+  await t.test('resource transient classifier stays fail-closed for policy errors',()=>{
+    assert.strictEqual(isResourceTransientError(new Error('EMPTY_RESPONSE')),true);
+    assert.strictEqual(isResourceTransientError(new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE')),true);
+    assert.strictEqual(isResourceTransientError(new Error('POLICY_DENIED')),false);
+    assert.strictEqual(isResourceTransientError(new Error('CODING_SCOPE_VIOLATION')),false);
+  });
+
+  await t.test('existing branch and PR are resumable identity',()=>{
+    assert.strictEqual(shouldResumeExistingPr({branch:'tigeriq/nv12/job',pr_number:722}),true);
+    assert.strictEqual(shouldResumeExistingPr({branch:'',pr_number:722}),false);
+    assert.strictEqual(shouldResumeExistingPr({branch:'tigeriq/nv12/job',pr_number:null}),false);
+  });
   await t.test('gate evidence is concise and machine-usable',()=>{
     const issues=gateFailureIssues({message:'CI_GATES_FAILED',detail:{states:[{name:'CI Verify',status:'completed',conclusion:'failure'},{name:'Queue Hygiene Verify',status:'completed',conclusion:'success'}]}});
     assert.deepStrictEqual(issues,['CI Verify: failure (completed)']);
