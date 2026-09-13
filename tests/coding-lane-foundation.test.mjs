@@ -21,6 +21,20 @@ test('foundation bounded retry and failover',async(t)=>{
     assert.ok(calls[1].prompt.length<calls[0].prompt.length);
   });
 
+  await t.test('HTTP 413 retries same NV with a shrunken prompt',async()=>{
+    const calls=[];
+    const invokeFn=async(r,prompt)=>{
+      calls.push({id:r.id,prompt});
+      if(calls.length===1){const e=new Error('HTTP_413:payload too large');e.status=413;throw e;}
+      return '{"status":"blocked","summary":"ok"}';
+    };
+    const out=await invokeJsonWithFailover(nv11,'x'.repeat(40000),{resourcePool:[nv11,nv19],invokeFn,maxResources:2});
+    assert.strictEqual(out.resource.id,'NV11');
+    assert.strictEqual(out.attempts,2);
+    assert.deepStrictEqual(calls.map(x=>x.id),['NV11','NV11']);
+    assert.ok(calls[1].prompt.length<calls[0].prompt.length);
+  });
+
   await t.test('HTTP 429 retries then fails over with bounded budget',async()=>{
     let count=0;
     const invokeFn=async(r)=>{
@@ -52,8 +66,12 @@ test('foundation bounded retry and failover',async(t)=>{
 
   await t.test('retry classifier covers malformed JSON and transport failures',()=>{
     assert.strictEqual(isRetryableAiError(new Error('JSON_OBJECT_INVALID:unterminated string')),true);
-    const e=new Error('rate');e.status=429;
-    assert.strictEqual(isRetryableAiError(e),true);
+    const e413=new Error('HTTP_413:payload too large');e413.status=413;
+    assert.strictEqual(isRetryableAiError(e413),true);
+    assert.strictEqual(isRetryableAiError(new Error('HTTP_413:payload too large')),true);
+    const e429=new Error('rate');e429.status=429;
+    assert.strictEqual(isRetryableAiError(e429),true);
+    assert.strictEqual(isRetryableAiError(new Error('CODING_SCOPE_VIOLATION')),false);
     assert.strictEqual(isRetryableAiError(new Error('POLICY_DENIED')),false);
   });
 
