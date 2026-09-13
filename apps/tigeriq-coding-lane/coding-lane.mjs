@@ -78,102 +78,41 @@ async function invoke(r,prompt){
   throw new Error('PROVIDER_UNSUPPORTED');
 }
 
-export async function invokeJsonWithFailover(initialResource,prompt,{exclude=[],resourcePool=resources,invokeFn=invoke,shrinkPrompt=shrinkAiPrompt,maxResources=2,validateData=null}={}){
+export async function invokeJsonWithFailover(initialResource,prompt,{exclude=[],resourcePool=resources,invokeFn=invoke,shrinkPrompt=shrinkAiPrompt,maxResources=3,validateData=null}={}){
   const initial=initialResource;
   if(!initial)throw new Error('NO_FREE_API_CODING_RESOURCE');
   const ordered=[initial,...resourcePool.filter(r=>r?.id!==initial.id&&!exclude.includes(r?.id))];
   const unique=[];const ids=new Set();
   for(const r of ordered){if(!r||exclude.includes(r.id)||ids.has(r.id))continue;ids.add(r.id);unique.push(r);if(unique.length>=maxResources)break;}
   let lastError=null;let attempts=0;
-  for(const resource of unique){
+  let currentPrompt=String(prompt);
+  for(let resourceIdx=0; resourceIdx<unique.length; resourceIdx++){
+    const resource=unique[resourceIdx];
     for(let same=0;same<2;same++){
       attempts++;
       try{
-        const data=parseJsonObject(await invokeFn(resource,same===0?prompt:shrinkPrompt(prompt)));
-        if(validateData)validateData(data,resource);
+        if(same>0) currentPrompt=shrinkPrompt(currentPrompt);
+        const raw=await invokeFn(resource,currentPrompt);
+        const data=parseJsonObject(raw);
+        if(typeof validateData==='function')validateData(data);
         return {data,resource,attempts};
+      }catch(e){
+        lastError=e;
+        if(e.code==='CODING_SCOPE_VIOLATION'||String(e.message||'').includes('CODING_SCOPE_VIOLATION')||e.code==='CREDENTIAL_VIOLATION'||String(e.message||'').includes('CREDENTIAL_VIOLATION')){
+          throw e;
+        }
+        if(!isRetryableAiError(e)){
+          throw e;
+        }
+        if(e.status===429 || String(e.message||'').includes('HTTP_429')){
+          const backoffTime = Math.min(1000 * Math.pow(2, resourceIdx + same), 8000);
+          await new Promise(r=>setTimeout(r, backoffTime));
+        }
       }
-      catch(e){lastError=e;if(!isRetryableAiError(e))throw e;if(same===0)continue;break;}
     }
   }
-  if(lastError){lastError.detail={...(lastError.detail||{}),attempts,tried:unique.map(x=>x.id)};throw lastError;}
-  throw new Error('AI_RETRY_BUDGET_EXHAUSTED');
+  throw lastError||new Error('AI_INVOCATION_FAILED');
 }
-
-async function gh(path,init={}){return fetchJson(`https://api.github.com/repos/${OWNER}/${REPO}${path}`,{...init,headers:{accept:'application/vnd.github+json','content-type':'application/json','user-agent':'TigerIQ-Coding-Lane/1.0','x-github-api-version':'2022-11-28',authorization:`Bearer ${GH_TOKEN}`,...(init.headers||{})}},30000)}
-async function ghText(path,accept){const res=await fetch(`https://api.github.com/repos/${OWNER}/${REPO}${path}`,{headers:{accept,authorization:`Bearer ${GH_TOKEN}`,'user-agent':'TigerIQ-Coding-Lane/1.0'},signal:AbortSignal.timeout(30000)});const text=await res.text();if(!res.ok)throw new Error(`GITHUB_HTTP_${res.status}:${text.slice(0,250)}`);return text}
-async function mainSha(){return (await gh('/git/ref/heads/main')).object.sha}
-async function repoTree(){const sha=await mainSha();const t=await gh(`/git/trees/${sha}?recursive=1`);return (t.tree||[]).filter(x=>x.type==='blob').map(x=>x.path).filter(safeRepoPath).slice(0,3000)}
-async function readRepoFile(path,ref='main'){try{const x=await gh(`/contents/${path.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(ref)}`);return {path,sha:x.sha,content:Buffer.from(x.content||'','base64').toString('utf8')};}catch(e){if(e.status===404)return {path,sha:null,content:''};throw e}}
-async function createBranch(name,sha){await gh('/git/refs',{method:'POST',body:JSON.stringify({ref:`refs/heads/${name}`,sha})})}
-async function writeFile(branch,change){const old=await readRepoFile(change.path,branch);const body={message:`TigerIQ ${change.path}`,content:Buffer.from(change.content,'utf8').toString('base64'),branch};if(old.sha)body.sha=old.sha;return gh(`/contents/${change.path.split('/').map(encodeURIComponent).join('/')}`,{method:'PUT',body:JSON.stringify(body)})}
-async function openPr(branch,title,body){return gh('/pulls',{method:'POST',body:JSON.stringify({title,head:branch,base:'main',body,draft:false,maintainer_can_modify:true})})}
-async function headSha(branch){return (await gh(`/git/ref/heads/${encodeURIComponent(branch)}`)).object.sha}
-async function waitGates(branch,prNumber,timeoutMs=20*60*1000){const deadline=Date.now()+timeoutMs;while(Date.now()<deadline){assertPrOpenState(await gh(`/pulls/${prNumber}`));const sha=await headSha(branch);const x=await gh(`/commits/${sha}/check-runs?per_page=100`);const g=checkGateState(x.check_runs||[]);if(g.state==='passed')return {sha,...g};if(g.state==='failed')throw Object.assign(new Error('CI_GATES_FAILED'),{detail:g});await sleep(15000)}throw new Error('CI_GATES_TIMEOUT')}
-async function mergePr(number,sha){return gh(`/pulls/${number}/merge`,{method:'PUT',body:JSON.stringify({sha,merge_method:'squash',commit_title:`TigerIQ Coding Lane PR #${number}`})})}
-
-async function initDb(){if(!pool)return;await pool.query(`
-create table if not exists tigeriq_coding_objectives(id text primary key,objective text not null,priority text not null default 'P1',status text not null default 'active',summary text,manager_employee_id text,created_at timestamptz not null default now(),updated_at timestamptz not null default now());
-create table if not exists tigeriq_coding_jobs(id text primary key,objective_id text references tigeriq_coding_objectives(id),title text not null,instruction text not null,paths jsonb not null default '[]'::jsonb,status text not null default 'queued',employee_id text,reviewer_employee_id text,branch text,pr_number int,head_sha text,result jsonb,failure jsonb,attempts int not null default 0,created_at timestamptz not null default now(),started_at timestamptz,completed_at timestamptz);
-create index if not exists tigeriq_coding_jobs_status_idx on tigeriq_coding_jobs(status,created_at);
-`)}
-
-async function managerTick(){
-  const q=await pool.query("select * from tigeriq_coding_objectives where status='active' and not exists(select 1 from tigeriq_coding_jobs j where j.objective_id=tigeriq_coding_objectives.id and j.status in ('queued','running','review','waiting_ci')) order by case priority when 'P0' then 0 when 'P1' then 1 else 2 end,created_at limit 1");
-  const o=q.rows[0];if(!o)return;
-  let manager=pickResource();if(!manager){await pool.query("update tigeriq_coding_objectives set status='blocked',summary='NO_FREE_API_CODING_RESOURCE' where id=$1",[o.id]);return}
-  const canonical=extractCanonicalAllowedPaths(o.objective);
-  const tree=await repoTree();
-  const scopeText=canonical.length?`\nCANONICAL ALLOWED PATHS (MUST NOT EXPAND):\n${canonical.join('\n')}\n`:'';
-  const prompt=`You are TigerIQ Coding Manager. Decompose this repository objective into ONE safe coding job. Repository files:\n${tree.join('\n').slice(0,45000)}\n\nOBJECTIVE: ${o.objective}${scopeText}\nReturn ONLY JSON {"status":"continue|blocked","summary":"short","job":{"title":"short","instruction":"standalone implementation instruction","paths":["exact/repo/path"]}}. Max 8 paths. Include relevant tests only when they are inside canonical scope. Never select .github/workflows, credentials/secrets, production/deploy config, docs/EXECUTION_BOUNDARY.md, docs/SECURITY.md, scripts/tigeriq-core/run-core.ps1, or main/release controls.`;
-  try{
-    const invoked=await invokeJsonWithFailover(manager,prompt);manager=invoked.resource;const d=invoked.data;
-    if(d.status!=='continue'||!d.job){await pool.query("update tigeriq_coding_objectives set status='blocked',summary=$2,manager_employee_id=$3,updated_at=now() where id=$1",[o.id,String(d.summary||'manager blocked').slice(0,1000),manager.id]);return}
-    const paths=[...new Set((d.job.paths||[]).map(String))].filter(safeRepoPath).slice(0,8);if(!paths.length)throw new Error('MANAGER_PATHS_EMPTY');
-    validateSourceScope(paths,canonical);
-    const id=`CODE-${randomUUID()}`;
-    await pool.query('insert into tigeriq_coding_jobs(id,objective_id,title,instruction,paths) values($1,$2,$3,$4,$5)',[id,o.id,String(d.job.title||'Coding job').slice(0,180),String(d.job.instruction||o.objective).slice(0,12000),JSON.stringify(paths)]);
-    await pool.query("update tigeriq_coding_objectives set manager_employee_id=$2,summary=$3,updated_at=now() where id=$1",[o.id,manager.id,String(d.summary||'coding job created').slice(0,1000)]);
-  }catch(e){await pool.query("update tigeriq_coding_objectives set status='blocked',summary=$2,manager_employee_id=$3,updated_at=now() where id=$1",[o.id,String(e.message).slice(0,1000),manager.id])}
-}
-
-async function claimJob(){const c=await pool.connect();try{await c.query('begin');const q=await c.query("select * from tigeriq_coding_jobs where status='queued' order by created_at for update skip locked limit 1");if(!q.rows[0]){await c.query('commit');return null}const j=q.rows[0];await c.query("update tigeriq_coding_jobs set status='running',started_at=coalesce(started_at,now()),attempts=attempts+1 where id=$1",[j.id]);await c.query('commit');return j}catch(e){await c.query('rollback');throw e}finally{c.release()}}
-async function contextFor(paths,ref='main'){const rows=[];for(const p of paths){const f=await readRepoFile(p,ref);rows.push(`FILE ${p}\n${f.content.slice(0,45000)}`)}return rows.join('\n\n---\n\n').slice(0,180000)}
-async function generateChanges(worker,j,context,reviewIssues=[],exclude=[]){const prompt=`You are ${worker.id}, an autonomous TigerIQ repository engineer. Implement ONLY the assigned task on a GitHub branch.\nTASK: ${j.instruction}\nALLOWED PATHS: ${j.paths.join(', ')}\n${reviewIssues.length?`REVIEW ISSUES TO FIX: ${JSON.stringify(reviewIssues)}\n`:''}CURRENT FILES:\n${context}\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}. Do not touch paths outside ALLOWED PATHS. Never output secrets. Keep changes minimal and testable.`;const validateData=d=>{validateChanges(d.changes,j.paths);validateJobScope(j.paths,d.changes)};const invoked=await invokeJsonWithFailover(worker,prompt,{exclude,validateData});const d=invoked.data;return {payload:d,resource:invoked.resource}}
-async function reviewPr(reviewer,j,diff,implementerId){const prompt=`You are ${reviewer.id}, independent TigerIQ code reviewer. Review against the task and safety boundaries. TASK: ${j.instruction}\nDIFF:\n${diff.slice(0,180000)}\nReturn ONLY JSON {"decision":"approve|changes_requested","summary":"short","issues":["specific issue"]}. Reject unsafe, untested, out-of-scope, credential/security/production changes.`;const invoked=await invokeJsonWithFailover(reviewer,prompt,{exclude:[implementerId]});const d=invoked.data;if(!['approve','changes_requested'].includes(d.decision)){const e=new Error('REVIEW_DECISION_INVALID');e.code='REVIEW_SCHEMA_INVALID';throw e}d.issues=Array.isArray(d.issues)?d.issues.slice(0,8):[];return {review:d,resource:invoked.resource}}
-
-async function runJob(j){
-  let worker=pickResource();if(!worker)throw new Error('NO_IMPLEMENTER_AVAILABLE');
-  j.paths=Array.isArray(j.paths)?j.paths:j.paths||[];
-  let context=await contextFor(j.paths,'main');
-  let generated=await generateChanges(worker,j,context);worker=generated.resource;let gen=generated.payload;
-  validateJobScope(j.paths,gen.changes);
-  let reviewer=pickResource([worker.id]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE');
-  const base=await mainSha();const branch=branchName(worker.id,j.id);await createBranch(branch,base);
-  await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,branch=$4 where id=$1",[j.id,worker.id,reviewer.id,branch]);
-  for(const ch of gen.changes)await writeFile(branch,ch);
-  const pr=await openPr(branch,`[${worker.id}] ${j.title}`,`Automated TigerIQ Coding Lane job \`${j.id}\`.\n\nImplementer: ${worker.id}\nIndependent reviewer: ${reviewer.id}\nDirect writes to main are forbidden. Merge is attempted only after CI gates and reviewer approval.`);
-  await pool.query("update tigeriq_coding_jobs set pr_number=$2,status='waiting_ci' where id=$1",[j.id,pr.number]);
-  let review=null,gates=null;
-  for(let cycle=0;cycle<3;cycle++){
-    gates=await waitGates(branch,pr.number);
-    await pool.query("update tigeriq_coding_jobs set status='review',head_sha=$2 where id=$1",[j.id,gates.sha]);
-    const diff=await ghText(`/pulls/${pr.number}`,'application/vnd.github.v3.diff');
-    const reviewed=await reviewPr(reviewer,j,diff,worker.id);reviewer=reviewed.resource;review=reviewed.review;
-    await pool.query("update tigeriq_coding_jobs set reviewer_employee_id=$2 where id=$1",[j.id,reviewer.id]);
-    if(review.decision==='approve')break;
-    if(cycle===2)throw Object.assign(new Error('REVIEW_CHANGES_UNRESOLVED'),{detail:review});
-    context=await contextFor(j.paths,branch);
-    generated=await generateChanges(worker,j,context,review.issues,[reviewer.id]);worker=generated.resource;gen=generated.payload;
-    validateJobScope(j.paths,gen.changes);
-    await pool.query("update tigeriq_coding_jobs set employee_id=$2 where id=$1",[j.id,worker.id]);
-    for(const ch of gen.changes)await writeFile(branch,ch);
-    await pool.query("update tigeriq_coding_jobs set status='waiting_ci' where id=$1",[j.id]);
-  }
-  if(review?.decision!=='approve')throw new Error('REVIEW_NOT_APPROVED');
-  assertPrOpenState(await gh(`/pulls/${pr.number}`));
-  const finalSha=await headSha(branch);let merge={merged:false,message:'AUTO_MERGE_DISABLED'};
-  if(AUTO_MERGE){try{merge=await mergePr(pr.number,finalSha)}catch(e){merge={merged:false,message:String(e.message||e)}}}
   const status=merge?.merged?'done':'blocked';
   await pool.query("update tigeriq_coding_jobs set status=$2,head_sha=$3,result=$4,completed_at=now() where id=$1",[j.id,status,finalSha,JSON.stringify({summary:gen.summary,prNumber:pr.number,branch,gates,review,merge})]);
   await pool.query("update tigeriq_coding_objectives set status=$2,summary=$3,updated_at=now() where id=$1",[j.objective_id,merge?.merged?'completed':'blocked',merge?.merged?`Merged PR #${pr.number}`:`PR #${pr.number} ready but merge blocked: ${String(merge?.message||'unknown').slice(0,500)}`]);
