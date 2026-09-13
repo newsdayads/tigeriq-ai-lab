@@ -22,7 +22,7 @@ test('foundation bounded retry and failover',async(t)=>{
   });
 
   await t.test('outer markdown fence is stripped without mutating source literals',()=>{
-    const source="const clean=String(text||'').replace(/|/gi,'').trim();";
+    const source="const clean=String(text||'').replace(/\|/gi,'').trim();";
     const payload=JSON.stringify({summary:'ok',changes:[{path:'apps/tigeriq-core/core.mjs',content:source}]});
     const out=parseJsonObject(`\n\`\`\`json\n${payload}\n\`\`\`\n`);
     assert.strictEqual(out.changes[0].content,source);
