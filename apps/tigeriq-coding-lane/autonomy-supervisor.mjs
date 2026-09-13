@@ -1,5 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import {Pool} from 'pg';
+import {LEGACY_AUTONOMY_DISABLED,disabledLegacyStatus} from '../tigeriq-core/execution-policy.mjs';
 
 const DEFAULT_INTERVAL_MS=15000;
 const DEFAULT_STALE_MS=45*60*1000;
@@ -108,6 +109,7 @@ async function handleStale(pool,staleMs,maxJobs,onStall){
 }
 
 export function startAutonomySupervisor(options={}){
+  if(LEGACY_AUTONOMY_DISABLED)return {...disabledLegacyStatus(),stop:async()=>{}};
   const databaseUrl=options.databaseUrl||process.env.DATABASE_URL?.trim();
   if(!databaseUrl)return {stop:async()=>{}};
   const pool=options.pool||new Pool({connectionString:databaseUrl,max:2});

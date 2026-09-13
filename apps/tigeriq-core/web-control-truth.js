@@ -46,7 +46,7 @@ setInterval(() => {
   }
 }, 1000);
 
-const codingTruth = d => d?.codingLane?.ok === true ? d.codingLane : null;
+const codingTruth = d => d?.codingLane?.ok === true && d.codingLane.enabled !== false ? d.codingLane : null;
 const statusCount = (jobs, status) => jobs.filter(j => j.status === status).length;
 
 renderMetrics = function renderMetricsTruth(d) {
@@ -60,11 +60,11 @@ renderMetrics = function renderMetricsTruth(d) {
   const badJobsCount = jobs.filter(j => ['running', 'review', 'waiting_ci', 'blocked'].includes(j.status)).length;
   const totalWarnings = badResourcesCount + badJobsCount;
 
-  const codingProblems = d?.codingLane && d.codingLane.ok !== true ? 1 : 0;
+  const codingProblems = d?.codingLane && d.codingLane.enabled !== false && d.codingLane.ok !== true ? 1 : 0;
   const rows = [
     ['Core', d.core?.pid ? 'ONLINE' : '—', d.core?.pid ? `PID ${d.core.pid}` : 'Không có dữ liệu', d.core?.pid ? '' : 'bad'],
     ['Web Control', 'ONLINE', 'Read-only', ''],
-    ['Coding Lane', lane ? 'ONLINE' : 'OFFLINE', lane ? `${lane.resources?.length || 0} AI resource` : 'Không kết nối', lane ? '' : 'bad'],
+    ['Coding Lane', d?.codingLane?.enabled === false ? 'DISABLED' : lane ? 'ONLINE' : 'OFFLINE', d?.codingLane?.enabled === false ? 'Step 1 quarantine' : lane ? `${lane.resources?.length || 0} AI resource` : 'Không kết nối', d?.codingLane?.enabled === false || lane ? '' : 'bad'],
     ['NV hoạt động', `${c.active}/${c.resources}`, `${Math.round(c.active / Math.max(1, c.resources) * 100)}%`, ''],
     ['Đang bận', c.busy, c.busy ? 'Đang xử lý' : 'Không có việc', c.busy ? 'warn' : ''],
     ['Cảnh báo', totalWarnings + codingProblems, totalWarnings + codingProblems ? 'Cần chú ý' : 'Không có cảnh báo', totalWarnings + codingProblems ? 'bad' : ''],

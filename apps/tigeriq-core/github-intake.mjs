@@ -1,3 +1,4 @@
+import {LEGACY_AUTONOMY_DISABLED,disabledLegacyStatus} from './execution-policy.mjs';
 import { Pool } from 'pg';
 
 const DEFAULT_OWNER='newsdayads';
@@ -116,6 +117,7 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
 }
 
 export function startGithubIntake({databaseUrl=process.env.DATABASE_URL,fetchImpl=fetch,owner=process.env.TIGERIQ_GITHUB_OWNER||DEFAULT_OWNER,repo=process.env.TIGERIQ_GITHUB_REPO||DEFAULT_REPO,token=process.env.TIGERIQ_GITHUB_TOKEN||process.env.GITHUB_TOKEN||'',intervalMs=Number(process.env.TIGERIQ_GITHUB_INTAKE_MS||DEFAULT_INTERVAL_MS),initialDelayMs=DEFAULT_INITIAL_DELAY_MS}={}){
+  if(LEGACY_AUTONOMY_DISABLED)return {...disabledLegacyStatus(),stop:async()=>{}};
   if(!databaseUrl) return {enabled:false,stop(){}};
   const pool=new Pool({connectionString:databaseUrl,max:1}); let stopped=false,busy=false,timer=null,interval=null;
   const tick=async()=>{if(stopped||busy)return;busy=true;try{const a=await materializeGithubIssues({pool,fetchImpl,owner,repo,token});const b=await syncGithubOutcomes({pool,fetchImpl,owner,repo,token});if(a.created||b.claims||b.results)console.log(JSON.stringify({event:'GITHUB_INTAKE_SYNC',created:a.created,claims:b.claims,results:b.results}));}catch(e){console.error(JSON.stringify({event:'GITHUB_INTAKE_ERROR',error:String(e?.message||e)}));}finally{busy=false;}};

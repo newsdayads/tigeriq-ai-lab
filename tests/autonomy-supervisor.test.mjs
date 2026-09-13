@@ -57,8 +57,9 @@ describe('Runtime updater watchdog wiring',()=>{
     expect(src).toContain('CODING_LANE_HEALTH_OR_PID_FAILED');
     expect(src).toContain('WEB_CONTROL_HEALTH_OR_PID_FAILED');
   });
-  it('launches Coding Lane from a canonical resolved path',()=>{
-    expect(codingLauncher).toContain("$app=(Resolve-Path -LiteralPath (Join-Path $root '..\\..\\apps\\tigeriq-coding-lane\\coding-entry.mjs')).Path");
+  it('does not launch the quarantined Coding Lane',()=>{
+    expect(codingLauncher).toContain('CODING_LANE_DISABLED');
+    expect(codingLauncher).not.toContain('Start-Process');
   });
   it('self-restarts updater after updater source changes',()=>{
     expect(src).toContain('Restart-UpdaterAfterExit');

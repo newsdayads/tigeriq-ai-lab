@@ -1,6 +1,7 @@
 import {createServer} from 'node:http';
 import {randomUUID} from 'node:crypto';
 import {Pool} from 'pg';
+import {LEGACY_AUTONOMY_DISABLED} from '../tigeriq-core/execution-policy.mjs';
 import {branchName,checkGateState,extractCanonicalAllowedPaths,isRetryableAiError,parseJsonObject,safeRepoPath,validateChanges} from './policy.mjs';
 
 export class CodingScopeViolationError extends Error {
@@ -113,15 +114,15 @@ export function resourceWaitPlan({retryCount=0,startedAt=null,nowMs=Date.now(),m
 export function shouldResumeExistingPr(job){
   return Boolean(String(job?.branch||'').trim()&&Number(job?.pr_number)>0);
 }
-const DATABASE_URL=process.env.DATABASE_URL?.trim(); if(!DATABASE_URL&&process.env.NODE_ENV!=='test')throw new Error('DATABASE_URL_MISSING');
-const GH_TOKEN=(process.env.TIGERIQ_GITHUB_TOKEN||process.env.GITHUB_TOKEN||'').trim(); if(!GH_TOKEN&&process.env.NODE_ENV!=='test')throw new Error('GITHUB_TOKEN_MISSING');
+const DATABASE_URL=process.env.DATABASE_URL?.trim(); if(!LEGACY_AUTONOMY_DISABLED&&!DATABASE_URL&&process.env.NODE_ENV!=='test')throw new Error('DATABASE_URL_MISSING');
+const GH_TOKEN=(process.env.TIGERIQ_GITHUB_TOKEN||process.env.GITHUB_TOKEN||'').trim(); if(!LEGACY_AUTONOMY_DISABLED&&!GH_TOKEN&&process.env.NODE_ENV!=='test')throw new Error('GITHUB_TOKEN_MISSING');
 const OWNER=process.env.TIGERIQ_GITHUB_OWNER||'newsdayads';
 const REPO=process.env.TIGERIQ_GITHUB_REPO||'tigeriq-ai-lab';
 const HOST=process.env.TIGERIQ_CODING_HOST||'127.0.0.1';
 const PORT=Number(process.env.TIGERIQ_CODING_PORT||8797);
-const AUTO_MERGE=String(process.env.TIGERIQ_CODING_AUTO_MERGE||'true').toLowerCase()==='true';
+const AUTO_MERGE=false;
 const MAX_PARALLEL=Math.max(1,Math.min(2,Number(process.env.TIGERIQ_CODING_MAX_PARALLEL||1)));
-const pool=DATABASE_URL?new Pool({connectionString:DATABASE_URL,max:4}):null;
+const pool=!LEGACY_AUTONOMY_DISABLED&&DATABASE_URL?new Pool({connectionString:DATABASE_URL,max:4}):null;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
 const R=(id,provider,model,ready)=>({id,provider,model,ready});
@@ -354,7 +355,7 @@ async function snapshot(){const objectives=(await pool.query('select * from tige
 async function body(req){let s='';for await(const c of req){s+=c;if(s.length>65536)throw new Error('BODY_TOO_LARGE')}return s?JSON.parse(s):{}}
 const server=createServer(async(req,res)=>{const u=new URL(req.url||'/','http://localhost');try{if(req.method==='GET'&&u.pathname==='/health'){res.writeHead(200,{'content-type':'application/json'});return res.end(JSON.stringify({ok:true,service:'tigeriq-coding-lane',pid:process.pid,resources:resources.length}))}if(req.method==='GET'&&u.pathname==='/api/status'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await snapshot()))}if(req.method==='POST'&&u.pathname==='/api/objectives'){const b=await body(req);if(!String(b.objective||'').trim()){res.writeHead(400);return res.end('objective_required')}const id=`CODEOBJ-${randomUUID()}`;const priority=['P0','P1','P2'].includes(b.priority)?b.priority:'P1';await pool.query('insert into tigeriq_coding_objectives(id,objective,priority) values($1,$2,$3)',[id,String(b.objective).slice(0,12000),priority]);res.writeHead(201,{'content-type':'application/json'});return res.end(JSON.stringify({ok:true,id}))}res.writeHead(404);res.end('not_found')}catch(e){res.writeHead(500,{'content-type':'application/json'});res.end(JSON.stringify({ok:false,error:String(e?.message||e)}))}});
 
-if(process.env.NODE_ENV!=='test'){
+if(!LEGACY_AUTONOMY_DISABLED&&process.env.NODE_ENV!=='test'){
   await initDb();
   await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(PORT,HOST,resolve)});
   console.log(JSON.stringify({event:'TIGERIQ_CODING_LANE_STARTED',host:HOST,port:PORT,pid:process.pid,resources:resources.map(x=>x.id),autoMerge:AUTO_MERGE}));

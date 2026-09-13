@@ -39,7 +39,7 @@ describe('coding lane AI JSON transport',()=>{
     expect(compact).toContain('HEAD');
     expect(compact).toContain('TAIL');
     expect(compact).toContain('full file retained locally');
-    expect(currentFilesFromPrompt(prompt).get('apps/a.mjs')).toContain('.'.repeat(30000));
+    expect(currentFilesFromPrompt(prompt).get('apps/a.mjs')).toBe(body);
   });  it('rewrites large-file generation to compact edits',()=>{
     const prompt='TASK: x\nCURRENT FILES:\nFILE apps/a.mjs\nconst n=1;\n\n---\n\nFILE tests/new.test.mjs\n\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}. Do not touch paths outside ALLOWED PATHS. Never output secrets. Keep changes minimal and testable.';
     const compact=compactPromptForChanges(prompt);

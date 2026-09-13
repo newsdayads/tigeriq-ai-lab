@@ -1,8 +1,13 @@
 import { defineConfig } from 'vitest/config';
+import {readdirSync,readFileSync} from 'node:fs';
 
+const nodeTests=readdirSync('tests')
+  .filter(f=>f.endsWith('.test.mjs')&&/from ['"]node:test['"]/.test(readFileSync('tests/'+f,'utf8')))
+  .map(f=>'tests/'+f);
 export default defineConfig({
   test: {
-    include: ['tests/**/*.test.ts', 'tests/android-stable-signing.test.mjs', 'tests/company-progress-api.test.mjs', 'tests/pc01-workforce-deployment.test.mjs', 'tests/pwa-entry.test.mjs', 'tests/workforce-status-api.test.mjs'],
+    include: ['tests/**/*.test.ts', 'tests/**/*.test.mjs'],
+    exclude: nodeTests,
     environment: 'node'
   }
 });

@@ -1,5 +1,6 @@
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
+import {LEGACY_AUTONOMY_DISABLED,disabledLegacyStatus} from './execution-policy.mjs';
 
 const HOST = process.env.TIGERIQ_WEB_CONTROL_HOST?.trim() || '127.0.0.1';
 const PORT = Number(process.env.TIGERIQ_WEB_CONTROL_PORT || 8796);
@@ -35,6 +36,7 @@ function safeJson(text, fallback = {}) {
 }
 
 async function codingStatus() {
+  if(LEGACY_AUTONOMY_DISABLED)return {...disabledLegacyStatus(),objectives:[],jobs:[],resources:[]};
   try {
     const response = await upstream(CODING_URL, '/api/status', 3000);
     if (response.status !== 200) return { ok: false, status: response.status };
@@ -84,8 +86,8 @@ const server = createServer(async (req, res) => {
       } catch (error) {
         core = { ok: false, error: String(error?.name === 'AbortError' ? 'CORE_TIMEOUT' : error?.message || error) };
       }
-      let coding = { ok: false };
-      try {
+      let coding = disabledLegacyStatus();
+      if(!LEGACY_AUTONOMY_DISABLED)try {
         const response = await upstream(CODING_URL, '/health', 1500);
         coding = response.status === 200 ? safeJson(response.text, { ok: false }) : { ok: false, status: response.status };
       } catch (error) {

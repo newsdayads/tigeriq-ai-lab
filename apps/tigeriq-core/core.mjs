@@ -2,6 +2,8 @@ import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { Pool } from 'pg';
+import {LEGACY_AUTONOMY_DISABLED,disabledLegacyStatus} from './execution-policy.mjs';
+import {quarantineLegacyWork} from './quarantine-legacy-work.mjs';
 
 const DATABASE_URL = process.env.DATABASE_URL?.trim();
 if (!DATABASE_URL) throw new Error('DATABASE_URL_MISSING');
@@ -291,6 +293,7 @@ function parseManagerJson(text) {
   return x;
 }
 async function managerTick() {
+  if(LEGACY_AUTONOMY_DISABLED)return;
   const q=await pool.query(`select o.* from tigeriq_objectives o where o.status='active' and o.next_check_at<=now()
     and not exists(select 1 from tigeriq_jobs j where j.objective_id=o.id and j.status in ('queued','running'))
     order by case o.priority when 'P0' then 0 when 'P1' then 1 else 2 end,o.created_at limit 1`);
@@ -336,7 +339,7 @@ async function snapshot(){
   const telemetry=(await pool.query(`select ts,employee_id,type,(data->>'latencyMs')::int as latency_ms from tigeriq_events
     where ts>=now()-interval '24 hours' and type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK') and data ? 'latencyMs'
     order by ts asc limit 500`)).rows;
-  return {ok:true,core:{host:HOST,port:PORT,pid:process.pid,uptimeSec:Math.floor(process.uptime()),time:nowIso()},integrations:{surfsense:await surfSenseHealth()},resources:rr,objectives,jobs,events,telemetry};
+  return {ok:true,automation:disabledLegacyStatus(),core:{host:HOST,port:PORT,pid:process.pid,uptimeSec:Math.floor(process.uptime()),time:nowIso()},integrations:{surfsense:await surfSenseHealth()},resources:rr,objectives,jobs,events,telemetry};
 }
 function auth(req){return TOKEN && req.headers.authorization===`Bearer ${TOKEN}`;}
 function localSelf(req){const a=String(req.socket.remoteAddress||'').replace('::ffff:','');return a==='127.0.0.1'||a==='::1'||a===HOST;}
@@ -359,6 +362,7 @@ function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta
       const result=await runSurfSenseResearch(query,Number(b.limit||6)); res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(result));
     }
     if(req.method==='POST'&&url.pathname==='/api/objectives'){
+       if(LEGACY_AUTONOMY_DISABLED){res.writeHead(409,{'content-type':'application/json'});return res.end(JSON.stringify(disabledLegacyStatus()));}
       if(!auth(req)&&!localSelf(req)){res.writeHead(401);return res.end('unauthorized');}
       const b=await readBody(req); if(!String(b.objective||'').trim()){res.writeHead(400);return res.end('objective_required');}
       const id=`OBJ-${randomUUID()}`; const priority=['P0','P1','P2'].includes(b.priority)?b.priority:'P1';
@@ -372,6 +376,7 @@ function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta
 let stop=false, lastRefresh=0, lastRecover=0, lastManager=0, lastProbe=0; const active=new Set(); const MAX_PARALLEL=3;
 let lastLightAudit = 0, lastDeepAudit = 0, activeDeepAudit = false;
 export async function startSelfCheck(runtime) {
+  if(LEGACY_AUTONOMY_DISABLED)return disabledLegacyStatus();
   const now = runtime?.now ? runtime.now() : Date.now();
   const lightInterval = runtime?.lightIntervalMs ?? 10 * 60 * 1000;
   const deepInterval = runtime?.deepIntervalMs ?? 30 * 60 * 1000;
@@ -448,17 +453,18 @@ async function loop(){
   while(!stop){const t=Date.now();
     try{
       if(t-lastRefresh>15000){await refreshResources();lastRefresh=t;}
-      if(t-lastRecover>10000){await recoverStale();lastRecover=t;}
+      if(!LEGACY_AUTONOMY_DISABLED&&t-lastRecover>10000){await recoverStale();lastRecover=t;}
       if(t-lastManager>MANAGER_IDLE_MS){await managerTick();lastManager=t;}
       if(t-lastProbe>60000){await probeReadyResources();lastProbe=t;}
-      await startSelfCheck({ now: () => Date.now(), store: pool });
-      while(active.size<MAX_PARALLEL){const j=await claimJob();if(!j)break;active.add(j.id);void runJob(j).finally(()=>active.delete(j.id));}
+      // Legacy self-check and automatic queue execution are quarantined.
+      while(!LEGACY_AUTONOMY_DISABLED&&active.size<MAX_PARALLEL){const j=await claimJob();if(!j)break;active.add(j.id);void runJob(j).finally(()=>active.delete(j.id));}
     }catch(e){console.error(JSON.stringify({event:'CORE_LOOP_ERROR',error:String(e?.message||e)}));}
     await sleep(POLL_MS);
   }
 }
 await initDb();
-await recoverAfterCoreRestart();
+if(LEGACY_AUTONOMY_DISABLED)await quarantineLegacyWork(pool);
+if(!LEGACY_AUTONOMY_DISABLED)await recoverAfterCoreRestart();
 await refreshResources();
 await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(PORT,HOST,resolve);});
 void probeReadyResources();

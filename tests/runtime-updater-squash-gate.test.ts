@@ -2,11 +2,13 @@ import {readFileSync} from 'node:fs';
 import {describe,expect,it} from 'vitest';
 
 describe('runtime updater squash merge gate resolution',()=>{
-  it('falls back from merge SHA to associated PR head SHA',()=>{
+  it('accepts only the approved exact commit, never an associated PR head',()=>{
     const src=readFileSync('scripts/tigeriq-core/update-core-runtime.ps1','utf8');
     expect(src).toContain('function Resolve-GateSha');
-    expect(src).toContain('commits/$remote/pulls');
-    expect(src).toContain('Gates-Pass $head');
+    expect(src).not.toContain('commits/$remote/pulls');
+    expect(src).toContain('$ApprovedReleaseSha -ne $remote');
+    expect(src).toContain('Gates-Pass $remote');
+    expect(src).toContain("$latest[0].status -ne 'completed'");
     expect(src).toContain('gateSha=$gateSha');
   });
 

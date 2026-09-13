@@ -12,7 +12,7 @@ test('updater never relies on Nullable HasValue/Value',()=>{
 
 test('updater is path aware for core, web control, and coding lane',()=>{
   assert.match(script,/function Get-Impact/);
-  assert.match(script,/apps\/tigeriq-coding-lane/);
+  assert.match(script,/\$coding=\$false/);
   assert.match(script,/web-control/);
   assert.match(script,/coreRestarted=\$impact\.core/);
   assert.match(script,/webRestarted=\$impact\.web/);

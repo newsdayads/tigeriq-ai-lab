@@ -113,7 +113,7 @@ describe('Web Control runtime', () => {
     const body = await response.json() as any;
     expect(body.ok).toBe(true);
     expect(body.core).toEqual(statusPayload.core);
-    expect(body.codingLane).toEqual(codingPayload);
+    expect(body.codingLane).toMatchObject({ok:true,enabled:false,status:'disabled',jobs:[],objectives:[]});
   });
 
   it('reports combined health without mutating Core', async () => {
@@ -124,6 +124,7 @@ describe('Web Control runtime', () => {
     expect(body.service).toBe('tigeriq-web-control');
     expect(body.core.ok).toBe(true);
     expect(body.coding.ok).toBe(true);
+    expect(body.coding.enabled).toBe(false);
   });
 
   it('rejects mutation methods', async () => {
