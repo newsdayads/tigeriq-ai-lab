@@ -25,6 +25,7 @@ describe('GitHub coding intake guard',()=>{
     const parsed=parseCodingIssue(issue(SAFE));
     expect(parsed?.number).toBe(777);
     expect(parsed?.priority).toBe('P1');
+    expect(parsed?.dependsOn).toEqual([]);
   });
   it('fails closed when a required guard is missing',()=>{
     expect(parseCodingIssue(issue(SAFE.replace('NO_DIRECT_MAIN=true','')))).toBeNull();
