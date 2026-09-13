@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { Pool } from 'pg';
 
 const DATABASE_URL = process.env.DATABASE_URL?.trim();
-if (!DATABASE_URL) throw new Error('DATABASE_URL_MISSING');
+// DATABASE_URL is required at runtime; omitted during module import for testing.
 const HOST = process.env.TIGERIQ_CORE_HOST?.trim() || '127.0.0.1';
 const PORT = Number(process.env.TIGERIQ_CORE_PORT || 8795);
 const TOKEN = process.env.TIGERIQ_CORE_TOKEN?.trim() || '';
@@ -455,12 +455,18 @@ async function loop(){
     await sleep(POLL_MS);
   }
 }
-await initDb();
-await loadLastSelfCheckTimestamps();
-await recoverAfterCoreRestart();
-await refreshResources();
-await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(PORT,HOST,resolve);});
-void probeReadyResources();
-console.log(JSON.stringify({event:'TIGERIQ_CORE_STARTED',host:HOST,port:PORT,pid:process.pid,resources:resources.length}));
-process.on('SIGINT',()=>{stop=true;server.close();});process.on('SIGTERM',()=>{stop=true;server.close();});
-await loop(); await pool.end();
+if (import.meta.url === process.argv[1]) {
+  (async () => {
+    await initDb();
+    await loadLastSelfCheckTimestamps();
+    await recoverAfterCoreRestart();
+    await refreshResources();
+    await new Promise((resolve, reject) => { server.once('error', reject); server.listen(PORT, HOST, resolve); });
+    void probeReadyResources();
+    console.log(JSON.stringify({ event: 'TIGERIQ_CORE_STARTED', host: HOST, port: PORT, pid: process.pid, resources: resources.length }));
+    process.on('SIGINT', () => { stop = true; server.close(); });
+    process.on('SIGTERM', () => { stop = true; server.close(); });
+    await loop();
+    await pool.end();
+  })();
+}
