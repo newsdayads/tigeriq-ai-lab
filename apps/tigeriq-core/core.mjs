@@ -282,7 +282,7 @@ async function claimJob() {
   }
 }
 function parseManagerJson(text) {
-  const clean=String(text||'').replace(/```json|```/gi,'').trim();
+  const clean=String(text||'').replace(/|/gi,'').trim();
   const a=clean.indexOf('{'), b=clean.lastIndexOf('}');
   if(a<0||b<a) throw new Error('MANAGER_JSON_MISSING');
   const x=JSON.parse(clean.slice(a,b+1));
@@ -369,7 +369,87 @@ function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta
   }catch(e){res.writeHead(500,{'content-type':'application/json'});res.end(JSON.stringify({ok:false,error:String(e?.message||e)}));}
 });
 
-let stop=false, lastRefresh=0, lastRecover=0, lastManager=0, lastProbe=0; const active=new Set(); const MAX_PARALLEL=3;
+let auditor = { currentAuditor: null, lastScan: 0, lastDeepScan: 0, openIncidents: [], latestFinding: null, lastAuditorId: null };
+async function loadAuditorState() {
+  try {
+    const res = await pool.query("select data from tigeriq_events where type='AUDITOR_STATE_PERSIST' order by seq desc limit 1");
+    if (res.rows.length > 0 && res.rows[0].data) {
+      auditor = { ...auditor, ...res.rows[0].data };
+    }
+  } catch (e) {}
+}
+async function persistAuditorState() {
+  try {
+    await event('AUDITOR_STATE_PERSIST', auditor);
+  } catch (e) {}
+}
+async function selectEligibleAuditor() {
+  const rows = (await pool.query(`select employee_id from tigeriq_resources where enabled=true and provider!='ollama' and credential_state='READY' and current_job_id is null and (cooldown is null or cooldown <= now()) and public_status in ('READY','IDLE','ONLINE') and public_status not in ('BUSY','RUNNING','REVIEWING','RATE_LIMITED','BLOCKED','WAIT_KEY','OFFLINE','ERROR','critical-job') order.by employee_id asc`)).rows;
+  if (rows.length === 0) return null;
+  let candidates = rows.map(r => r.employee_id);
+  if (auditor.lastAuditorId) {
+    const idx = candidates.indexOf(auditor.lastAuditorId);
+    if (idx !== -1) {
+      candidates = [...candidates.slice(idx + 1), ...candidates.slice(0, idx + 1)];
+    }
+  }
+  const chosen = candidates[0];
+  auditor.lastAuditorId = chosen;
+  auditor.currentAuditor = chosen;
+  return chosen;
+}
+async function runAuditorScan(isDeep = false) {
+  const now = Date.now();
+  if (isDeep) {
+    auditor.lastDeepScan = now;
+  } else {
+    auditor.lastScan = now;
+  }
+  const chosenId = await selectEligibleAuditor();
+  if (!chosenId) {
+    await persistAuditorState();
+    return;
+  }
+  const resRow = (await pool.query('select * from tigeriq_resources where employee_id=$1', [chosenId])).rows[0];
+  if (!resRow) {
+    await persistAuditorState();
+    return;
+  }
+  const snapshotResource = { employee_id: resRow.employee_id, provider: resRow.provider, model: resRow.model, credential_state: resRow.credential_state, health_state: resRow.health_state };
+  let degraded = false;
+  try {
+    await invokeProvider(snapshotResource.provider, snapshotResource.model, 'ping', 10);
+  } catch (err) {
+    if (resRow.credential_state === 'READY' && (resRow.health_state === 'ERROR' || resRow.health_state === 'OFFLINE')) {
+      degraded = true;
+    }
+  }
+  if (degraded) {
+    auditor.latestFinding = { employee_id: chosenId, time: nowIso(), kind: 'DEGRADED_STATE' };
+    await event('RESOURCE_FAILURE', { employee_id: chosenId, kind: 'DEGRADED_STATE' });
+    const dedupeKey = `audit-degraded-${chosenId}`;
+    const activeObj = (await pool.query("select id from tigeriq_objectives where status='active' and metadata->>'dedupeKey'=$1", [dedupeKey])).rows[0];
+    if (activeObj) {
+      await event('AUDITOR_DEDUPE_EVIDENCE', { dedupeKey, employeeId: chosenId });
+    } else {
+      const otherRows = (await pool.query("select employee_id from tigeriq_resources where enabled=true and employee_id != $1 limit 2", [chosenId])).rows;
+      const suggestedImplementerId = otherRows[0]?.employee_id || 'NV11';
+      const suggestedReviewerId = otherRows[1]?.employee_id || 'NV13';
+      const objId = `OBJ-${randomUUID()}`;
+      await pool.query('insert into tigeriq_objectives(id, objective, priority, metadata) values($1, $2, $3, $4)', [
+        objId,
+        `Audit remediation for ${chosenId}`,
+        'P1',
+        JSON.stringify({ source: 'rotating_idle_auditor', auditorId: chosenId, dedupeKey, suggestedImplementerId, suggestedReviewerId })
+      ]);
+      await event('OBJECTIVE_CREATED', { objectiveId: objId });
+    }
+  } else {
+    await event('AUDITOR_HEARTBEAT', { scanComplete: true, auditorId: chosenId });
+  }
+  await persistAuditorState();
+}
+let stop=false, lastRefresh=0, lastRecover=0, lastManager=0, lastProbe=0, lastAuditorCheck=0; const active=new Set(); const MAX_PARALLEL=3;
 async function loop(){
   while(!stop){const t=Date.now();
     try{
@@ -377,16 +457,33 @@ async function loop(){
       if(t-lastRecover>10000){await recoverStale();lastRecover=t;}
       if(t-lastManager>MANAGER_IDLE_MS){await managerTick();lastManager=t;}
       if(t-lastProbe>60000){await probeReadyResources();lastProbe=t;}
+      if(t-lastAuditorCheck>30000){
+        const elapsedLight = t - auditor.lastScan;
+        const elapsedDeep = t - auditor.lastDeepScan;
+        if (elapsedDeep >= 1800000) {
+          await runAuditorScan(true);
+        } else if (elapsedLight >= 300000) {
+          await runAuditorScan(false);
+        }
+        lastAuditorCheck = t;
+      }
       while(active.size<MAX_PARALLEL){const j=await claimJob();if(!j)break;active.add(j.id);void runJob(j).finally(()=>active.delete(j.id));}
     }catch(e){console.error(JSON.stringify({event:'CORE_LOOP_ERROR',error:String(e?.message||e)}));}
     await sleep(POLL_MS);
   }
 }
 await initDb();
+await loadAuditorState();
 await recoverAfterCoreRestart();
 await refreshResources();
 await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(PORT,HOST,resolve);});
 void probeReadyResources();
 console.log(JSON.stringify({event:'TIGERIQ_CORE_STARTED',host:HOST,port:PORT,pid:process.pid,resources:resources.length}));
 process.on('SIGINT',()=>{stop=true;server.close();});process.on('SIGTERM',()=>{stop=true;server.close();});
-await loop(); await pool.end();
+if (process.env.NODE_ENV === 'test') {
+  // Test export guard
+} else {
+  await loop(); await pool.end();
+}
+
+export { auditor, loadAuditorState, persistAuditorState, selectEligibleAuditor, runAuditorScan, pool };
