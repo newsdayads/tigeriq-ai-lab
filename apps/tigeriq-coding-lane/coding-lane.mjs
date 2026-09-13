@@ -113,11 +113,62 @@ export async function invokeJsonWithFailover(initialResource,prompt,{exclude=[],
   }
   throw lastError||new Error('AI_INVOCATION_FAILED');
 }
+  let gates=null;
+  let waiting_ci=false;
+  let timeoutRetries=0;
+  for(let repairCycle=0; repairCycle<3; repairCycle++){
+    try{
+      waiting_ci=true;
+      gates=await waitGates(branch);
+      waiting_ci=false;
+      break;
+    }catch(e){
+      waiting_ci=false;
+      if(e.code==='CI_GATES_TIMEOUT'){
+        if(timeoutRetries<1){
+          timeoutRetries++;
+          continue;
+        }else{
+          throw e;
+        }
+      }else if(e.code==='CI_GATES_FAILED'){
+        if(repairCycle===2) throw e;
+        const repairPrompt=`CI gates failed with output:
+${e.failedOutput}
+Apply an in-place patch on branch ${branch} to fix these errors.`;
+        const repairRes=await invokeJsonWithFailover(resource,repairPrompt,{resourcePool:resources,invokeFn:invoke,shrinkPrompt:shrinkAiPrompt});
+        validateChanges(repairRes.data.changes);
+        await applyChanges(branch,repairRes.data.changes,`repair ci gates cycle ${repairCycle+1}`);
+      }else{
+        throw e;
+      }
+    }
+  }
+
+  const reviewPrompt=`Review the PR #${pr.number} changes.`;
+  const reviewRes=await invokeJsonWithFailover(pickResource([resource.id]),reviewPrompt,{resourcePool:resources,invokeFn:invoke,shrinkPrompt:shrinkAiPrompt});
+  const review=reviewRes.data;
+
+  let merge=null;
+  if(AUTO_MERGE && review?.decision==='approve'){
+    merge=await mergePr(pr.number);
+  }else{
+    merge={merged:false,message:'not_auto_merged_or_rejected'};
+  }
+
+  const finalSha=await gh('rev-parse',['HEAD']);
   const status=merge?.merged?'done':'blocked';
   await pool.query("update tigeriq_coding_jobs set status=$2,head_sha=$3,result=$4,completed_at=now() where id=$1",[j.id,status,finalSha,JSON.stringify({summary:gen.summary,prNumber:pr.number,branch,gates,review,merge})]);
   await pool.query("update tigeriq_coding_objectives set status=$2,summary=$3,updated_at=now() where id=$1",[j.objective_id,merge?.merged?'completed':'blocked',merge?.merged?`Merged PR #${pr.number}`:`PR #${pr.number} ready but merge blocked: ${String(merge?.message||'unknown').slice(0,500)}`]);
   return {prNumber:pr.number,branch,merge};
 }
+async function gh(cmd,args=[]){const {execFile}=await import('node:child_process');const {promisify}=await import('node:util');const execFileAsync=promisify(execFile);try{const {stdout}=await execFileAsync('gh',[cmd,...args],{env:{...process.env,GH_TOKEN}});return String(stdout||'').trim();}catch(e){const msg=String(e?.stderr||e?.message||e);const err=new Error(`GH_${cmd.toUpperCase()}_FAILED:${msg.slice(0,300)}`);err.code='GH_CLI_ERROR';throw err;}}
+
+async function waitGates(branch,maxWaitMs=600000){const start=Date.now();let attempts=0;while(Date.now()-start<maxWaitMs){attempts++;try{const out=await gh('pr','checks',[branch]);if(out.includes('fail')||out.includes('FAILURE')){const match=out.match(/(?:FAIL|FAILURE)[^
+]*/i);const failedOutput=match?match[0]:out.slice(0,1000);const err=new Error('CI_GATES_FAILED');err.code='CI_GATES_FAILED';err.failedOutput=failedOutput;throw err;}if(out.includes('success')||out.includes('SUCCESS')||(out&&!out.includes('pending')&&!out.includes('in_progress'))){const sha=await gh('rev-parse',['HEAD']);return {status:'passed',sha};}}catch(e){if(e.code==='CI_GATES_FAILED')throw e;}if(Date.now()-start>maxWaitMs){const err=new Error('CI_GATES_TIMEOUT');err.code='CI_GATES_TIMEOUT';err.failedOutput='CI gates timed out after maximum wait duration';throw err;}await sleep(10000);}const err=new Error('CI_GATES_TIMEOUT');err.code='CI_GATES_TIMEOUT';err.failedOutput='CI gates timed out';throw err;}
+
+async function mergePr(prNumber){try{await gh('pr','merge',[String(prNumber),'-s','--delete-branch']);return {merged:true};}catch(e){return {merged:false,message:e.message};}}
+
 async function failJob(j,e){if(!pool)return;await pool.query("update tigeriq_coding_jobs set status='failed',failure=$2,completed_at=now() where id=$1",[j.id,JSON.stringify({message:String(e?.message||e),code:e?.code||null,detail:e?.detail||null})]);await pool.query("update tigeriq_coding_objectives set status='blocked',summary=$2,updated_at=now() where id=$1",[j.objective_id,String(e?.message||e).slice(0,1000)])}
 
 async function snapshot(){const objectives=(await pool.query('select * from tigeriq_coding_objectives order by created_at desc limit 20')).rows;const jobs=(await pool.query('select * from tigeriq_coding_jobs order by created_at desc limit 30')).rows;return {ok:true,service:'tigeriq-coding-lane',host:HOST,port:PORT,pid:process.pid,resources:resources.map(x=>({id:x.id,provider:x.provider,model:x.model})),objectives,jobs}}
