@@ -36,7 +36,7 @@ describe('GitHub coding intake guard',()=>{
 });
 
 describe('GitHub coding intake dependencies',()=>{
-  it('aborts intake and emits warning if any DEPENDS_ON work order is open',async()=>{
+  it('aborts intake, records event, and emits warning if any DEPENDS_ON work order is open',async()=>{
     const workOrderBody = SAFE + '\nDEPENDS_ON=100';
     const mockIssues = [ {
       number: 101,
@@ -45,19 +45,29 @@ describe('GitHub coding intake dependencies',()=>{
       state: 'open',
       html_url: 'https://github.com/newsdayads/tigeriq-ai-lab/issues/101'
     } ];
+    let recordedEvent = null;
     const mockPool = {
-      query: async () => ({ rowCount: 0 })
+      query: async (q, params) => {
+        if (q.includes('insert into tigeriq_events')) {
+          recordedEvent = { type: params[0], data: JSON.parse(params[1]) };
+        }
+        return { rowCount: 0 };
+      }
     };
     const fetchImpl = async (url, init) => {
       if (url.includes('/issues?')) {
-        return { ok: true, text: async () => JSON.stringify(mockIssues) };
+        return { ok: true, json: async () => mockIssues, text: async () => JSON.stringify(mockIssues) };
       } else if (url.includes('/issues/100')) {
-        return { ok: true, text: async () => JSON.stringify({ number: 100, state: 'open' }) };
+        const data = { number: 100, state: 'open' };
+        return { ok: true, json: async () => data, text: async () => JSON.stringify(data) };
       }
-      return { ok: false, text: async () => '{}' };
+      return { ok: false, json: async () => ({}), text: async () => '{}' };
     };
     const res = await materializeGithubCodingIssues({ pool: mockPool, fetchImpl, token: 'fake' });
     expect(res.created).toBe(0);
+    expect(recordedEvent).not.toBeNull();
+    expect(recordedEvent.type).toBe('GITHUB_CODING_INTAKE_DEPENDENCY_OPEN');
+    expect(recordedEvent.data.issueNumber).toBe(101);
   });
 
   it('dispatches normally if all DEPENDS_ON work orders are closed',async()=>{
@@ -75,16 +85,18 @@ describe('GitHub coding intake dependencies',()=>{
     let posted = false;
     const fetchImpl = async (url, init) => {
       if (url.includes('/issues?')) {
-        return { ok: true, text: async () => JSON.stringify(mockIssues) };
+        return { ok: true, json: async () => mockIssues, text: async () => JSON.stringify(mockIssues) };
       } else if (url.includes('/issues/100')) {
-        return { ok: true, text: async () => JSON.stringify({ number: 100, state: 'closed' }) };
+        const data = { number: 100, state: 'closed' };
+        return { ok: true, json: async () => data, text: async () => JSON.stringify(data) };
       } else if (url.includes('/api/objectives')) {
         posted = true;
-        return { ok: true, text: async () => JSON.stringify({ id: 'obj-123' }) };
+        const data = { id: 'obj-123' };
+        return { ok: true, json: async () => data, text: async () => JSON.stringify(data) };
       } else if (url.includes('/comments')) {
-        return { ok: true, text: async () => '{}' };
+        return { ok: true, json: async () => ({}), text: async () => '{}' };
       }
-      return { ok: false, text: async () => '{}' };
+      return { ok: false, json: async () => ({}), text: async () => '{}' };
     };
     const res = await materializeGithubCodingIssues({ pool: mockPool, fetchImpl, token: 'fake' });
     expect(res.created).toBe(1);
