@@ -33,6 +33,19 @@ const resources = [
   R('NV20','NVIDIA','nvidia','nvidia/nemotron-3-super-120b-a12b',[['NVIDIA_API_KEY'],['TIGERIQ_NVIDIA_FREE_DEV_CONFIRMED','true']],65),
 ];
 const nowIso = () => new Date().toISOString();
+
+// Exported pure helpers for cadence and deduplication (used in tests)
+export const CADENCE_LIGHT_MS = 10 * 60 * 1000; // 10 minutes
+export const CADENCE_DEEP_MS = 30 * 60 * 1000; // 30 minutes
+/** Returns true if enough time has passed since lastRun to trigger a run */
+export function shouldRun(lastRun, now, cadenceMs) {
+  return (now - (lastRun || 0)) >= cadenceMs;
+}
+/** Simple deduplication key based on cadence bucket */
+export function dedupKey(eventType, now, cadenceMs) {
+  return `${eventType}:${Math.floor(now / cadenceMs)}`;
+}
+
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const credentialEnvByProvider = { groq:['GROQ_API_KEY'], gemini:['GEMINI_API_KEY'], openrouter:['OPENROUTER_API_KEY'], mistral:['MISTRAL_API_KEY'], cloudflare:['CLOUDFLARE_AUTH_TOKEN'], huggingface:['HF_TOKEN'], vercel:['AI_GATEWAY_API_KEY'], watsonx:['WATSONX_API_KEY'], cohere:['COHERE_API_KEY'], nvidia:['NVIDIA_API_KEY'] };
 const credentialPresent = (r) => r.provider === 'ollama' || (credentialEnvByProvider[r.provider] || []).every(k => process.env[k]);
@@ -370,8 +383,68 @@ function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta
 });
 
 let stop=false, lastRefresh=0, lastRecover=0, lastManager=0, lastProbe=0; const active=new Set(); const MAX_PARALLEL=3;
+
+// Self‑check scheduler state (persisted via tigeriq_events)
+let lastLight = 0;
+let lastDeep = 0;
+
+/** Record a self‑check event to persist cadence across restarts */
+async function recordSelfCheck(type, ts) {
+  try {
+    await pool.query('insert into tigeriq_events(ts,type,data) values($1,$2,$3)', [new Date(ts), type, JSON.stringify({})]);
+  } catch (e) {
+    console.error(JSON.stringify({event:'SELF_CHECK_RECORD_ERROR',type,error:String(e?.message||e)}));
+  }
+}
+
+/** Load last timestamps for persisted cadences */
+async function loadLastSelfCheckTimestamps() {
+  const lightRes = await pool.query("select extract(epoch from ts)::bigint as ts from tigeriq_events where type='SELF_CHECK_LIGHT' order by ts desc limit 1");
+  const deepRes = await pool.query("select extract(epoch from ts)::bigint as ts from tigeriq_events where type='SELF_CHECK_DEEP' order by ts desc limit 1");
+  if (lightRes.rows[0]) lastLight = Number(lightRes.rows[0].ts) * 1000;
+  if (deepRes.rows[0]) lastDeep = Number(deepRes.rows[0].ts) * 1000;
+}
+
+/** Light self‑check: emit heartbeat if all resources appear healthy */
+async function runSelfCheckLight() {
+  const snap = await snapshot();
+  const allHealthy = snap.resources.every(r => ['IDLE','READY','ONLINE'].includes(r.status));
+  if (allHealthy) {
+    await event('HEARTBEAT', {});
+  }
+}
+
+/** Deep self‑check: look for recent failures and emit a single handoff if needed */
+async function runSelfCheckDeep() {
+  // Recent blocked jobs (last 30m)
+  const blockedJobs = await pool.query("select id from tigeriq_jobs where status='blocked' and created_at>=now()-interval '30 minutes'");
+  // Repeated resource failures (>=3 in last 30m)
+  const failingResources = await pool.query(`
+    select employee_id, count(*) as cnt
+    from tigeriq_events
+    where type='RESOURCE_FAILURE' and ts>=now()-interval '30 minutes'
+    group by employee_id having count(*)>=3`);
+  if (blockedJobs.rowCount || failingResources.rowCount) {
+    // Emit a deterministic handoff event (deduped by cadence bucket)
+    const now = Date.now();
+    const key = dedupKey('HANDOFF_DEEP', now, CADENCE_DEEP_MS);
+    await event('HANDOFF_DEEP', {key, blockedJobs:blockedJobs.rowCount, failingResources:failingResources.rowCount});
+  }
+}
+
 async function loop(){
   while(!stop){const t=Date.now();
+    // Self‑check cadence handling
+    if (shouldRun(lastLight, t, CADENCE_LIGHT_MS)) {
+      await runSelfCheckLight();
+      lastLight = t;
+      await recordSelfCheck('SELF_CHECK_LIGHT', t);
+    }
+    if (shouldRun(lastDeep, t, CADENCE_DEEP_MS)) {
+      await runSelfCheckDeep();
+      lastDeep = t;
+      await recordSelfCheck('SELF_CHECK_DEEP', t);
+    }
     try{
       if(t-lastRefresh>15000){await refreshResources();lastRefresh=t;}
       if(t-lastRecover>10000){await recoverStale();lastRecover=t;}
@@ -383,6 +456,7 @@ async function loop(){
   }
 }
 await initDb();
+await loadLastSelfCheckTimestamps();
 await recoverAfterCoreRestart();
 await refreshResources();
 await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(PORT,HOST,resolve);});
