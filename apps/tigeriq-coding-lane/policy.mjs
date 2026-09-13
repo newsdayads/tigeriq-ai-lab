@@ -66,7 +66,7 @@ export function isRetryableAiError(error){
   const status=Number(error?.status||0);
   if([408,409,413,429,500,502,503,504].includes(status)) return true;
   const msg=String(error?.message||error||'');
-  return error?.name==='AbortError'||/JSON_OBJECT_(?:INVALID|MISSING)|unterminated|truncat|schema|EMPTY_RESPONSE|fetch failed|aborted|ECONNRESET|ETIMEDOUT|socket|HTTP_(?:408|409|413|429|500|502|503|504)\b/i.test(msg);
+  return error?.name==='AbortError'||/CODING_CHANGES_COUNT_INVALID|JSON_OBJECT_(?:INVALID|MISSING)|unterminated|truncat|schema|EMPTY_RESPONSE|fetch failed|aborted|ECONNRESET|ETIMEDOUT|socket|HTTP_(?:408|409|413|429|500|502|503|504)\b/i.test(msg);
 }
 
 function repairInvalidJsonEscapes(input){
