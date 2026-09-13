@@ -373,14 +373,30 @@ let stop=false, lastRefresh=0, lastRecover=0, lastManager=0, lastProbe=0; const 
 let lastLightAudit = 0, lastDeepAudit = 0, activeDeepAudit = false;
 export async function startSelfCheck(runtime) {
   const now = runtime?.now ? runtime.now() : Date.now();
-  if (!lastLightAudit) lastLightAudit = now;
-  if (!lastDeepAudit) lastDeepAudit = now;
-  
   const lightInterval = runtime?.lightIntervalMs ?? 10 * 60 * 1000;
   const deepInterval = runtime?.deepIntervalMs ?? 30 * 60 * 1000;
   const store = runtime?.store || pool;
 
-  if (now - lastLightAudit >= lightInterval) {
+  if (!lastLightAudit) {
+    lastLightAudit = now;
+    try {
+      const healthMetrics = {
+        ok: true,
+        uptimeSec: Math.floor(process.uptime()),
+        timestamp: new Date(now).toISOString(),
+      };
+      if (typeof store.persist === 'function') {
+        await store.persist('SELF_CHECK_LIGHT', healthMetrics);
+      } else if (typeof store.query === 'function') {
+        await store.query(
+          "insert into tigeriq_events(type, data) values($1, $2)",
+          ['SELF_CHECK_LIGHT', JSON.stringify(healthMetrics)]
+        );
+      }
+    } catch (err) {
+      console.error(JSON.stringify({ event: 'SELF_CHECK_LIGHT_ERROR', error: String(err?.message || err) }));
+    }
+  } else if (now - lastLightAudit >= lightInterval) {
     lastLightAudit = now;
     try {
       const healthMetrics = {
@@ -394,30 +410,31 @@ export async function startSelfCheck(runtime) {
           ['SELF_CHECK_LIGHT', JSON.stringify(healthMetrics)]
         );
       } else if (typeof store.persist === 'function') {
-        await store.persist('self_check_light', healthMetrics);
+        await store.persist('SELF_CHECK_LIGHT', healthMetrics);
       }
     } catch (err) {
       console.error(JSON.stringify({ event: 'SELF_CHECK_LIGHT_ERROR', error: String(err?.message || err) }));
     }
   }
 
-  if (!activeDeepAudit && (now - lastDeepAudit >= deepInterval)) {
+  if (!activeDeepAudit && (!lastDeepAudit || (now - lastDeepAudit >= deepInterval))) {
     activeDeepAudit = true;
     lastDeepAudit = now;
     try {
+      const resList = typeof resources !== 'undefined' ? resources : [];
       const auditResult = {
         ok: true,
         auditType: 'deep',
-        resourcesCount: resources.length,
+        resourcesCount: resList.length,
         timestamp: new Date(now).toISOString(),
       };
-      if (typeof store.query === 'function') {
+      if (typeof store.persist === 'function') {
+        await store.persist('SELF_CHECK_DEEP', auditResult);
+      } else if (typeof store.query === 'function') {
         await store.query(
           "insert into tigeriq_events(type, data) values($1, $2)",
           ['SELF_CHECK_DEEP', JSON.stringify(auditResult)]
         );
-      } else if (typeof store.persist === 'function') {
-        await store.persist('self_check_deep', auditResult);
       }
     } catch (err) {
       console.error(JSON.stringify({ event: 'SELF_CHECK_DEEP_ERROR', error: String(err?.message || err) }));
