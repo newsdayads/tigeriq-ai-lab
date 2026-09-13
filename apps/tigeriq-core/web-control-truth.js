@@ -14,15 +14,29 @@ document.head.appendChild(compactStyle);
 let lastSyncTimestamp = null;
 let lastKnownData = null;
 
-// Create freshness badge next to existing sync text
 const syncTextEl = document.getElementById('syncText') || document.querySelector('.sync-text') || document.querySelector('header') || document.body;
-const freshnessBadge = document.createElement('span');
-freshnessBadge.id = 'freshnessBadge';
-freshnessBadge.style.marginLeft = '10px';
-freshnessBadge.style.padding = '2px 6px';
-freshnessBadge.style.borderRadius = '4px';
-freshnessBadge.style.fontSize = '0.85em';
-freshnessBadge.style.background = 'rgba(0,0,0,0.1)';
+let freshnessBadge = document.getElementById('freshnessBadge');
+if (!freshnessBadge) {
+  freshnessBadge = document.createElement('span');
+  freshnessBadge.id = 'freshnessBadge';
+  freshnessBadge.style.marginLeft = '10px';
+  freshnessBadge.style.padding = '2px 6px';
+  freshnessBadge.style.borderRadius = '4px';
+  freshnessBadge.style.fontSize = '0.85em';
+  freshnessBadge.style.background = 'rgba(0,0,0,0.1)';
+  if (syncTextEl) syncTextEl.appendChild(freshnessBadge);
+}
+if (syncTextEl && !document.getElementById('freshnessBadge')) {
+  syncTextEl.appendChild(freshnessBadge);
+}
+
+setInterval(() => {
+  if (lastSyncTimestamp) {
+    const ageSec = Math.floor((Date.now() - lastSyncTimestamp) / 1000);
+    freshnessBadge.textContent = `Dữ liệu cách đây ${ageSec}s`;
+    freshnessBadge.style.color = ageSec > 10 ? 'var(--amber)' : 'var(--green)';
+  }
+}, 1000);
 if (syncTextEl && syncTextEl.parentNode) {
   syncTextEl.parentNode.insertBefore(freshnessBadge, syncTextEl.nextSibling);
 } else {
@@ -132,6 +146,20 @@ render = function renderTruth(d) {
     h.style.color = '';
     h.style.borderColor = '';
     h.style.background = '';
+    const issues = [];
+    const workers = d.workers || [];
+    const problemsCount = workers.filter(w => ['ERROR','OFFLINE','RATE_LIMITED','WAIT_KEY'].includes(w.status)).length;
+    if (problemsCount > 0) {
+      issues.push(`${problemsCount} nhân sự gặp sự cố`);
+    }
+    if (d.codingLane && d.codingLane.ok === false) {
+      issues.push('Coding Lane ngoại tuyến');
+    }
+    if (issues.length > 0) {
+      h.innerHTML = `<span class="dot" style="background:var(--amber)"></span><span>CẢNH BÁO: ${issues.join(' · ')}</span>`;
+    } else {
+      h.innerHTML = '<span class="dot"></span><span>HỆ THỐNG ĐANG HOẠT ĐỘNG</span>';
+    }
   }
   renderBase(d);
   applyPeopleFullFilter();
