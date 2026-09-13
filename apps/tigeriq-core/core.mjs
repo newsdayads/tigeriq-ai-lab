@@ -282,7 +282,7 @@ async function claimJob() {
   }
 }
 function parseManagerJson(text) {
-  const clean=String(text||'').replace(/```json|```/gi,'').trim();
+  const clean=String(text||'').replace(/|/gi,'').trim();
   const a=clean.indexOf('{'), b=clean.lastIndexOf('}');
   if(a<0||b<a) throw new Error('MANAGER_JSON_MISSING');
   const x=JSON.parse(clean.slice(a,b+1));
@@ -369,7 +369,96 @@ function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta
   }catch(e){res.writeHead(500,{'content-type':'application/json'});res.end(JSON.stringify({ok:false,error:String(e?.message||e)}));}
 });
 
-let stop=false, lastRefresh=0, lastRecover=0, lastManager=0, lastProbe=0; const active=new Set(); const MAX_PARALLEL=3;
+let stop=false, lastRefresh=0, lastRecover=0, lastManager=0, lastProbe=0, lastLightScan=0, lastDeepScan=0;
+let currentAuditor = null, lastScanTime = null, lastDeepScanTime = null, openIncidents = 0, latestFinding = null;
+const active=new Set(); const MAX_PARALLEL=3;
+
+async function runAuditorScans() {
+  const now = Date.now();
+  const lightInterval = 5 * 60 * 1000;
+  const deepInterval = 30 * 60 * 1000;
+
+  const doLight = (lastLightScan === 0) || (now - lastLightScan >= lightInterval);
+  const doDeep = (lastDeepScan === 0) || (now - lastDeepScan >= deepInterval);
+
+  if (!doLight && !doDeep) return;
+
+  // Find eligible NVs: READY/IDLE/ONLINE with no current job, excluding self (NV12)
+  const res = await pool.query(
+    "select employee_id, health_state, work_state, current_job_id, enabled, credential_state from tigeriq_resources where employee_id != 'NV12'"
+  );
+  const eligible = res.rows.filter(r => {
+    if (!r.enabled || r.current_job_id || r.credential_state === 'WAIT_KEY') return false;
+    if (r.health_state !== 'ONLINE') return false;
+    if (r.work_state === 'BUSY') return false;
+    return true;
+  });
+
+  if (eligible.length === 0) return;
+
+  // Rotate or pick auditor deterministically or round-robin
+  const auditor = eligible[Math.floor(now / lightInterval) % eligible.length];
+  currentAuditor = auditor.employee_id;
+
+  const isDeep = doDeep;
+  if (doDeep) lastDeepScan = now;
+  lastLightScan = now;
+
+  lastScanTime = nowIso();
+  if (isDeep) lastDeepScanTime = lastScanTime;
+
+  // VERIFY -> DEDUPE -> REPORT/DISPATCH
+  const findings = [];
+  // Read-only scan simulation checking DB consistency, queue hygiene, or stuck jobs
+  const stuckJobs = (await pool.query("select id, objective_id, title from tigeriq_jobs where status='running' and started_at < now() - interval '30 minutes'")).rows;
+  for (const j of stuckJobs) {
+    findings.push({
+      type: 'STUCK_JOB',
+      description: `Job ${j.id} (${j.title}) stuck for over 30 minutes`,
+      objectiveId: j.objective_id,
+      jobId: j.id
+    });
+  }
+
+  openIncidents = findings.length;
+  if (findings.length > 0) {
+    latestFinding = findings[0].description;
+    // Deduplicate against existing open events or dispatch
+    const findingKey = findings[0].type + ':' + (findings[0].jobId || '');
+    const recentEvt = (await pool.query(
+      "select seq from tigeriq_events where type='AUDITOR_FINDING' and data->>'key'=$1 and ts >= now() - interval '1 hour' limit 1",
+      [findingKey]
+    )).rows;
+
+    if (recentEvt.length === 0) {
+      await event('AUDITOR_FINDING', {
+        key: findingKey,
+        auditor: currentAuditor,
+        deep: isDeep,
+        finding: findings[0]
+      });
+
+      // Single handoff to a different NV via objective/job/event contracts
+      const targetObjective = (await pool.query("select id from tigeriq_objectives where status='active' order by created_at desc limit 1")).rows[0];
+      if (targetObjective) {
+        const jobId = `JOB-${randomUUID()}`;
+        await pool.query(
+          'insert into tigeriq_jobs(id, objective_id, title, prompt, capability) values($1, $2, $3, $4, $5)',
+          [
+            jobId,
+            targetObjective.id,
+            `Auditor resolution: ${findings[0].type}`,
+            `Investigate and resolve finding reported by ${currentAuditor}: ${findings[0].description}`,
+            'reasoning'
+          ]
+        );
+        await event('JOB_CREATED', { objectiveId: targetObjective.id, jobId, auditor: currentAuditor });
+      }
+    }
+  } else {
+    latestFinding = null;
+  }
+}
 async function loop(){
   while(!stop){const t=Date.now();
     try{
@@ -377,6 +466,7 @@ async function loop(){
       if(t-lastRecover>10000){await recoverStale();lastRecover=t;}
       if(t-lastManager>MANAGER_IDLE_MS){await managerTick();lastManager=t;}
       if(t-lastProbe>60000){await probeReadyResources();lastProbe=t;}
+      await runAuditorScans();
       while(active.size<MAX_PARALLEL){const j=await claimJob();if(!j)break;active.add(j.id);void runJob(j).finally(()=>active.delete(j.id));}
     }catch(e){console.error(JSON.stringify({event:'CORE_LOOP_ERROR',error:String(e?.message||e)}));}
     await sleep(POLL_MS);
