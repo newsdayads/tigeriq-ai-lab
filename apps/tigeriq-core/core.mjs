@@ -290,6 +290,51 @@ function parseManagerJson(text) {
   x.jobs=Array.isArray(x.jobs)?x.jobs.slice(0,3):[];
   return x;
 }
+async function callManagerWithRetry(promptFn, opts = {}) {
+  let responseText;
+  let usedModel = opts.model || SURFSENSE_SUMMARY_MODEL;
+  let attempt = 0;
+  let lastError = null;
+
+  while (attempt < 2) {
+    attempt++;
+    try {
+      responseText = await promptFn(usedModel);
+      // Validate JSON structure and status
+      let parsed;
+      try {
+        parsed = JSON.parse(responseText);
+      } catch (err) {
+        // Check if trailing/invalid JSON or missing
+        throw new Error('MANAGER_JSON_MISSING');
+      }
+      if (!parsed || typeof parsed !== 'object') {
+        throw new Error('MANAGER_JSON_MISSING');
+      }
+      if (parsed.status && !['active', 'idle', 'completed', 'failed', 'pending'].includes(parsed.status)) {
+        throw new Error('MANAGER_STATUS_INVALID');
+      }
+      return parsed;
+    } catch (err) {
+      const msg = String(err?.message || err);
+      // Reject non-JSON or credential-related failures immediately
+      if (msg.includes('CREDENTIAL') || msg.includes('UNAUTHORIZED') || msg.includes('API_KEY')) {
+        throw err;
+      }
+      const isTargetError = msg.includes('MANAGER_JSON_MISSING') || msg.includes('JSON') || msg.includes('MANAGER_STATUS_INVALID');
+      if (isTargetError && attempt === 1) {
+        lastError = err;
+        // First occurrence: retry with smaller JSON-only prompt using same NV model, or failover if second
+        // Let's use a smaller JSON-only prompt alternative model on retry or same model as requested
+        usedModel = opts.failoverModel || 'gemma3:2b';
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastError;
+}
+
 async function managerTick() {
   const q=await pool.query(`select o.* from tigeriq_objectives o where o.status='active' and o.next_check_at<=now()
     and not exists(select 1 from tigeriq_jobs j where j.objective_id=o.id and j.status in ('queued','running'))
