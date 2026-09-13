@@ -43,6 +43,53 @@ export function assertPrOpenState(pr){
   throw e;
 }
 
+export function gateFailureIssues(error){
+  const detail=error?.detail||{};
+  const states=Array.isArray(detail.states)?detail.states:[];
+  const issues=states
+    .filter(s=>s?.conclusion && s.conclusion!=='success')
+    .map(s=>`${s.name||'check'}: ${s.conclusion}${s.status?` (${s.status})`:''}`);
+  if(detail.output)issues.push(String(detail.output).slice(0,2000));
+  if(detail.message)issues.push(String(detail.message).slice(0,2000));
+  if(!issues.length)issues.push(String(error?.message||'CI gate failed').slice(0,2000));
+  return issues.slice(0,8);
+}
+
+export async function runGateWithRepair({waitFn,repairFn,onWaiting=async()=>{},maxRepairCycles=3,timeoutRetries=1}){
+  let repairCycles=0;
+  let timeoutCount=0;
+  while(true){
+    try{return await waitFn()}
+    catch(error){
+      const code=error?.code||String(error?.message||'').split(':')[0];
+      if(code==='CI_GATES_TIMEOUT'){
+        if(timeoutCount>=timeoutRetries){
+          error.detail={...(error.detail||{}),timeoutRetries:timeoutCount};
+          throw error;
+        }
+        timeoutCount++;
+        await onWaiting({reason:'timeout',timeoutCount,evidence:gateFailureIssues(error)});
+        continue;
+      }
+      if(code==='CI_GATES_FAILED'){
+        if(repairCycles>=maxRepairCycles){
+          const exhausted=new Error('CI_GATE_REPAIR_EXHAUSTED');
+          exhausted.code='CI_GATE_REPAIR_EXHAUSTED';
+          exhausted.detail={repairCycles,evidence:gateFailureIssues(error),lastFailure:error.detail||null};
+          throw exhausted;
+        }
+        repairCycles++;
+        const evidence=gateFailureIssues(error);
+        await onWaiting({reason:'failed',repairCycle:repairCycles,evidence});
+        await repairFn({repairCycle:repairCycles,evidence,error});
+        timeoutCount=0;
+        continue;
+      }
+      throw error;
+    }
+  }
+}
+
 const DATABASE_URL=process.env.DATABASE_URL?.trim(); if(!DATABASE_URL&&process.env.NODE_ENV!=='test')throw new Error('DATABASE_URL_MISSING');
 const GH_TOKEN=(process.env.TIGERIQ_GITHUB_TOKEN||process.env.GITHUB_TOKEN||'').trim(); if(!GH_TOKEN&&process.env.NODE_ENV!=='test')throw new Error('GITHUB_TOKEN_MISSING');
 const OWNER=process.env.TIGERIQ_GITHUB_OWNER||'newsdayads';
@@ -78,22 +125,33 @@ async function invoke(r,prompt){
   throw new Error('PROVIDER_UNSUPPORTED');
 }
 
-export async function invokeJsonWithFailover(initialResource,prompt,{exclude=[],resourcePool=resources,invokeFn=invoke,shrinkPrompt=shrinkAiPrompt,maxResources=2,validateData=null}={}){
-  const initial=initialResource;
+export async function invokeJsonWithFailover(initialResource,prompt,{exclude=[],resourcePool=resources,invokeFn=invoke,shrinkPrompt=shrinkAiPrompt,maxResources=3,validateData=null,sleepFn=sleep,randomFn=Math.random,backoffBaseMs=1000}={}){
+  const initial=(initialResource&&!exclude.includes(initialResource.id))?initialResource:resourcePool.find(r=>r&&!exclude.includes(r.id));
   if(!initial)throw new Error('NO_FREE_API_CODING_RESOURCE');
   const ordered=[initial,...resourcePool.filter(r=>r?.id!==initial.id&&!exclude.includes(r?.id))];
   const unique=[];const ids=new Set();
-  for(const r of ordered){if(!r||exclude.includes(r.id)||ids.has(r.id))continue;ids.add(r.id);unique.push(r);if(unique.length>=maxResources)break;}
+  for(const r of ordered){if(!r||exclude.includes(r.id)||ids.has(r.id))continue;ids.add(r.id);unique.push(r);if(unique.length>=Math.min(3,maxResources))break;}
   let lastError=null;let attempts=0;
-  for(const resource of unique){
+  for(let resourceIndex=0;resourceIndex<unique.length;resourceIndex++){
+    const resource=unique[resourceIndex];
     for(let same=0;same<2;same++){
       attempts++;
       try{
         const data=parseJsonObject(await invokeFn(resource,same===0?prompt:shrinkPrompt(prompt)));
         if(validateData)validateData(data,resource);
         return {data,resource,attempts};
+      }catch(e){
+        lastError=e;
+        if(!isRetryableAiError(e))throw e;
+        const is429=e?.status===429||String(e?.message||'').includes('HTTP_429');
+        if(is429&&same===0){
+          const base=Math.min(9000,Math.max(0,backoffBaseMs)*Math.pow(2,resourceIndex));
+          const jitter=Math.floor(randomFn()*Math.max(1,10001-base));
+          await sleepFn(Math.min(10000,base+jitter));
+        }
+        if(same===0)continue;
+        break;
       }
-      catch(e){lastError=e;if(!isRetryableAiError(e))throw e;if(same===0)continue;break;}
     }
   }
   if(lastError){lastError.detail={...(lastError.detail||{}),attempts,tried:unique.map(x=>x.id)};throw lastError;}
@@ -109,7 +167,7 @@ async function createBranch(name,sha){await gh('/git/refs',{method:'POST',body:J
 async function writeFile(branch,change){const old=await readRepoFile(change.path,branch);const body={message:`TigerIQ ${change.path}`,content:Buffer.from(change.content,'utf8').toString('base64'),branch};if(old.sha)body.sha=old.sha;return gh(`/contents/${change.path.split('/').map(encodeURIComponent).join('/')}`,{method:'PUT',body:JSON.stringify(body)})}
 async function openPr(branch,title,body){return gh('/pulls',{method:'POST',body:JSON.stringify({title,head:branch,base:'main',body,draft:false,maintainer_can_modify:true})})}
 async function headSha(branch){return (await gh(`/git/ref/heads/${encodeURIComponent(branch)}`)).object.sha}
-async function waitGates(branch,prNumber,timeoutMs=20*60*1000){const deadline=Date.now()+timeoutMs;while(Date.now()<deadline){assertPrOpenState(await gh(`/pulls/${prNumber}`));const sha=await headSha(branch);const x=await gh(`/commits/${sha}/check-runs?per_page=100`);const g=checkGateState(x.check_runs||[]);if(g.state==='passed')return {sha,...g};if(g.state==='failed')throw Object.assign(new Error('CI_GATES_FAILED'),{detail:g});await sleep(15000)}throw new Error('CI_GATES_TIMEOUT')}
+async function waitGates(branch,prNumber,timeoutMs=20*60*1000){const deadline=Date.now()+timeoutMs;while(Date.now()<deadline){assertPrOpenState(await gh(`/pulls/${prNumber}`));const sha=await headSha(branch);const x=await gh(`/commits/${sha}/check-runs?per_page=100`);const g=checkGateState(x.check_runs||[]);if(g.state==='passed')return {sha,...g};if(g.state==='failed'){const e=Object.assign(new Error('CI_GATES_FAILED'),{code:'CI_GATES_FAILED',detail:g});throw e}await sleep(15000)}const e=new Error('CI_GATES_TIMEOUT');e.code='CI_GATES_TIMEOUT';throw e}
 async function mergePr(number,sha){return gh(`/pulls/${number}/merge`,{method:'PUT',body:JSON.stringify({sha,merge_method:'squash',commit_title:`TigerIQ Coding Lane PR #${number}`})})}
 
 async function initDb(){if(!pool)return;await pool.query(`
@@ -155,20 +213,36 @@ async function runJob(j){
   const pr=await openPr(branch,`[${worker.id}] ${j.title}`,`Automated TigerIQ Coding Lane job \`${j.id}\`.\n\nImplementer: ${worker.id}\nIndependent reviewer: ${reviewer.id}\nDirect writes to main are forbidden. Merge is attempted only after CI gates and reviewer approval.`);
   await pool.query("update tigeriq_coding_jobs set pr_number=$2,status='waiting_ci' where id=$1",[j.id,pr.number]);
   let review=null,gates=null;
-  for(let cycle=0;cycle<3;cycle++){
-    gates=await waitGates(branch,pr.number);
+  for(let reviewCycle=0;reviewCycle<3;reviewCycle++){
+    gates=await runGateWithRepair({
+      waitFn:()=>waitGates(branch,pr.number),
+      onWaiting:async()=>{await pool.query("update tigeriq_coding_jobs set status='waiting_ci' where id=$1",[j.id])},
+      repairFn:async({evidence})=>{
+        context=await contextFor(j.paths,branch);
+        generated=await generateChanges(worker,j,context,[`CI gate failure on same PR #${pr.number}`,...evidence],[reviewer.id]);
+        worker=generated.resource;gen=generated.payload;
+        validateJobScope(j.paths,gen.changes);
+        if(reviewer?.id===worker.id){reviewer=pickResource([worker.id]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE')}
+        await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,status='waiting_ci' where id=$1",[j.id,worker.id,reviewer.id]);
+        for(const ch of gen.changes)await writeFile(branch,ch);
+      },
+      maxRepairCycles:3,
+      timeoutRetries:1,
+    });
     await pool.query("update tigeriq_coding_jobs set status='review',head_sha=$2 where id=$1",[j.id,gates.sha]);
+    if(reviewer?.id===worker.id){reviewer=pickResource([worker.id]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE')}
     const diff=await ghText(`/pulls/${pr.number}`,'application/vnd.github.v3.diff');
     const reviewed=await reviewPr(reviewer,j,diff,worker.id);reviewer=reviewed.resource;review=reviewed.review;
+    if(reviewer.id===worker.id)throw new Error('REVIEWER_IMPLEMENTER_COLLISION');
     await pool.query("update tigeriq_coding_jobs set reviewer_employee_id=$2 where id=$1",[j.id,reviewer.id]);
     if(review.decision==='approve')break;
-    if(cycle===2)throw Object.assign(new Error('REVIEW_CHANGES_UNRESOLVED'),{detail:review});
+    if(reviewCycle===2)throw Object.assign(new Error('REVIEW_CHANGES_UNRESOLVED'),{detail:review});
     context=await contextFor(j.paths,branch);
     generated=await generateChanges(worker,j,context,review.issues,[reviewer.id]);worker=generated.resource;gen=generated.payload;
     validateJobScope(j.paths,gen.changes);
-    await pool.query("update tigeriq_coding_jobs set employee_id=$2 where id=$1",[j.id,worker.id]);
+    if(reviewer.id===worker.id){reviewer=pickResource([worker.id]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE')}
+    await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,status='waiting_ci' where id=$1",[j.id,worker.id,reviewer.id]);
     for(const ch of gen.changes)await writeFile(branch,ch);
-    await pool.query("update tigeriq_coding_jobs set status='waiting_ci' where id=$1",[j.id]);
   }
   if(review?.decision!=='approve')throw new Error('REVIEW_NOT_APPROVED');
   assertPrOpenState(await gh(`/pulls/${pr.number}`));
