@@ -33,7 +33,8 @@ export function validateChanges(changes,allowedPaths=[]){
 }
 
 function pathTokens(text){
-  return (String(text||'').match(/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)+/g)||[]).filter(safeRepoPath);
+  const raw=String(text||'').match(/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)+/g)||[];
+  return raw.map(x=>x.replace(/[.,;:!?)}]+$/g,'')).filter(safeRepoPath);
 }
 
 export function extractCanonicalAllowedPaths(text){
