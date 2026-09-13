@@ -10,6 +10,17 @@ function exactFlag(body,key,value='true'){
 export function parseCodingIssue(issue){
   if(!issue||issue.pull_request||issue.state!=='open')return null;
   const body=String(issue.body||'');
+  const dependsMatch=body.match(/^DEPENDS_ON=(.+)$/m);
+  const dependsOn=dependsMatch?dependsMatch[1].split(',').map(s=>Number(s.trim())).filter(n=>!isNaN(n)&&n>0):[];
+  const required=[['TIGERIQ_EXECUTABLE','true'],['OWNER_POLICY','AUTO'],['AUTONOMOUS_CODE','true'],['ZERO_COST','true'],['NO_PC01_SHELL','true'],['NO_PAID_COST','true'],['NO_CREDENTIAL_CHANGE','true'],['NO_DESTRUCTIVE','true'],['NO_PRODUCTION_RELEASE','true'],['NO_BROWSER_AUTH','true'],['NO_DIRECT_MAIN','true']];
+  if(required.some(([k,v])=>!exactFlag(body,k,v)))return null;
+  const priority=body.match(/^PRIORITY=(P[0-3])$/m)?.[1]||'P1';
+  return {number:Number(issue.number),title:String(issue.title||''),body,priority:priority==='P3'?'P2':priority,url:String(issue.html_url||''),dependsOn};
+}
+
+export function _parseCodingIssue_old(issue){
+  if(!issue||issue.pull_request||issue.state!=='open')return null;
+  const body=String(issue.body||'');
   const required=[['TIGERIQ_EXECUTABLE','true'],['OWNER_POLICY','AUTO'],['AUTONOMOUS_CODE','true'],['ZERO_COST','true'],['NO_PC01_SHELL','true'],['NO_PAID_COST','true'],['NO_CREDENTIAL_CHANGE','true'],['NO_DESTRUCTIVE','true'],['NO_PRODUCTION_RELEASE','true'],['NO_BROWSER_AUTH','true'],['NO_DIRECT_MAIN','true']];
   if(required.some(([k,v])=>!exactFlag(body,k,v)))return null;
   const priority=body.match(/^PRIORITY=(P[0-3])$/m)?.[1]||'P1';
@@ -24,7 +35,21 @@ async function mark(pool,type,data){await pool.query('insert into tigeriq_events
 
 export async function materializeGithubCodingIssues({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token='',codingLaneUrl=process.env.TIGERIQ_CODING_LANE_URL||DEFAULT_CODING_URL}){
   const issues=await gh(fetchImpl,owner,repo,'/issues?state=open&per_page=100&sort=updated&direction=desc',token);let created=0;
-  for(const issue of issues){const spec=parseCodingIssue(issue);if(!spec||await markerExists(pool,'GITHUB_CODING_DISPATCHED',spec.number))continue;const objective=`GitHub autonomous coding issue #${spec.number}: ${spec.title}\n${spec.url}\n\n${spec.body}\n\nExecute only zero-cost reversible repository work. Keep direct main writes, paid cost, credentials/security, destructive actions, production release, browser authentication and PC01 source editing blocked.`;const out=await jsonFetch(fetchImpl,`${codingLaneUrl.replace(/\/$/,'')}/api/objectives`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({objective,priority:spec.priority})});if(!out?.id)throw new Error('CODING_OBJECTIVE_ID_MISSING');await mark(pool,'GITHUB_CODING_DISPATCHED',{issueNumber:spec.number,issueUrl:spec.url,codingObjectiveId:out.id});await comment(fetchImpl,owner,repo,spec.number,token,`[CLAIM] TigerIQ Coding Lane accepted this issue as ${out.id}. Automatic coding pipeline is active.`);created++}
+  for(const issue of issues){const spec=parseCodingIssue(issue);if(!spec||await markerExists(pool,'GITHUB_CODING_DISPATCHED',spec.number))continue;if(spec.dependsOn&&spec.dependsOn.length>0){let hasOpenDependency=false;
+  for(const depNum of spec.dependsOn){
+    try{
+      const depIssue=await gh(fetchImpl,owner,repo,`/issues/${depNum}`,token);
+      if(depIssue && depIssue.state==='open'){
+        hasOpenDependency=true;
+        break;
+      }
+    }catch(e){}
+  }
+  if(hasOpenDependency){
+    console.warn(JSON.stringify({event:'GITHUB_CODING_INTAKE_DEPENDENCY_OPEN',issueNumber:spec.number,dependsOn:spec.dependsOn}));
+    continue;
+  }}
+const objective=`GitHub autonomous coding issue #${spec.number}: ${spec.title}\n${spec.url}\n\n${spec.body}\n\nExecute only zero-cost reversible repository work. Keep direct main writes, paid cost, credentials/security, destructive actions, production release, browser authentication and PC01 source editing blocked.`;const out=await jsonFetch(fetchImpl,`${codingLaneUrl.replace(/\/$/,'')}/api/objectives`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({objective,priority:spec.priority})});if(!out?.id)throw new Error('CODING_OBJECTIVE_ID_MISSING');await mark(pool,'GITHUB_CODING_DISPATCHED',{issueNumber:spec.number,issueUrl:spec.url,codingObjectiveId:out.id});await comment(fetchImpl,owner,repo,spec.number,token,`[CLAIM] TigerIQ Coding Lane accepted this issue as ${out.id}. Automatic coding pipeline is active.`);created++}
   return {created};
 }
 export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token='',codingLaneUrl=process.env.TIGERIQ_CODING_LANE_URL||DEFAULT_CODING_URL}){
