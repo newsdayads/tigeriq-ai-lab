@@ -35,6 +35,27 @@ test('foundation bounded retry and failover',async(t)=>{
     assert.ok(calls[1].prompt.length<calls[0].prompt.length);
   });
 
+  await t.test('post-parse invalid changes retry same NV then fail over',async()=>{
+    const calls=[];
+    const invokeFn=async(r,prompt)=>{
+      calls.push({id:r.id,prompt});
+      if(calls.length<=2)return '{"summary":"bad","changes":[]}';
+      return '{"summary":"ok","changes":[{"path":"tests/example.test.mjs","content":"ok"}]}';
+    };
+    const validateData=data=>{if(!Array.isArray(data.changes)||data.changes.length<1||data.changes.length>8)throw new Error('CODING_CHANGES_COUNT_INVALID')};
+    const out=await invokeJsonWithFailover(nv11,'x'.repeat(40000),{resourcePool:[nv11,nv19],invokeFn,maxResources:2,validateData});
+    assert.strictEqual(out.resource.id,'NV19');
+    assert.strictEqual(out.attempts,3);
+    assert.deepStrictEqual(calls.map(x=>x.id),['NV11','NV11','NV19']);
+    assert.ok(calls[1].prompt.length<calls[0].prompt.length);
+  });
+
+  await t.test('scope validation remains fail-closed inside validator boundary',async()=>{
+    let count=0;
+    await assert.rejects(()=>invokeJsonWithFailover(nv11,'x',{resourcePool:[nv11,nv19],invokeFn:async()=>{count++;return '{"summary":"x","changes":[{"path":"bad","content":"x"}]}'},validateData:()=>{throw new Error('CODING_SCOPE_VIOLATION')}}),/CODING_SCOPE_VIOLATION/);
+    assert.strictEqual(count,1);
+  });
+
   await t.test('HTTP 429 retries then fails over with bounded budget',async()=>{
     let count=0;
     const invokeFn=async(r)=>{
@@ -66,6 +87,7 @@ test('foundation bounded retry and failover',async(t)=>{
 
   await t.test('retry classifier covers malformed JSON and transport failures',()=>{
     assert.strictEqual(isRetryableAiError(new Error('JSON_OBJECT_INVALID:unterminated string')),true);
+    assert.strictEqual(isRetryableAiError(new Error('CODING_CHANGES_COUNT_INVALID')),true);
     const e413=new Error('HTTP_413:payload too large');e413.status=413;
     assert.strictEqual(isRetryableAiError(e413),true);
     assert.strictEqual(isRetryableAiError(new Error('HTTP_413:payload too large')),true);
