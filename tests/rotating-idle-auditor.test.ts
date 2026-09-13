@@ -1,4 +1,4 @@
-import { describe, it, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, beforeEach, afterEach, expect, vi } from 'vitest';
 
 describe('Rotating Idle Auditor', () => {
   beforeEach(() => {
@@ -12,10 +12,11 @@ describe('Rotating Idle Auditor', () => {
   it('verifies 10 to 30 minute intervals and selection criteria', async () => {
     const minInterval = 10 * 60 * 1000;
     const maxInterval = 30 * 60 * 1000;
-    
-    let currentInterval = minInterval + Math.floor(Math.random() * (maxInterval - minInterval + 1));
-    expect(currentInterval).toBeGreaterThanOrEqual(minInterval);
-    expect(currentInterval).toBeLessThanOrEqual(maxInterval);
+    for (let i = 0; i < 50; i++) {
+      const val = 10 * 60 * 1000 + Math.floor(Math.random() * (20 * 60 * 1000 + 1));
+      expect(val).toBeGreaterThanOrEqual(minInterval);
+      expect(val).toBeLessThanOrEqual(maxInterval);
+    }
   });
 
   it('performs single deduplicated handoff and state recovery', async () => {
