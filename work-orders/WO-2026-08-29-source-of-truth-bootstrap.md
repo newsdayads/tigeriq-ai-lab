@@ -1,7 +1,7 @@
 # Work Order — Source of Truth Bootstrap
 
 ID: WO-2026-08-29-SOT-BOOTSTRAP
-Status: GATE PENDING
+Status: HANDOFF / GATE BLOCKED
 Priority: P0
 Owner: Project Owner
 
@@ -29,6 +29,12 @@ Establish a repository-backed Company and Engineering Source of Truth without ex
 - Working branch: `chore/source-of-truth-bootstrap`.
 - PR #11 was closed unmerged on 2026-08-30. That closure snapshot is historical; this Work Order does not claim an open review or merge eligibility, and each later branch checkpoint needs its own exact review target.
 - Active review path: draft PR #738 against main; its exact review target is recorded in the PR body. It is currently conflicted (DIRTY) and is not merge-eligible.
+
+- Handoff base target: `6643755a34217d2f7712a0f401ce36bbc4522e84`; MAIN at handoff: `548ea9a842f95a543107e2e9a70d0995492edfba`. PR #738 is `OPEN / DRAFT / DIRTY / REVIEW_REQUIRED`.
+- Current checks: Vercel SUCCESS and Vercel Preview Comments SUCCESS. Prior diff checks passed; no mandatory local test/build suite was rerun for `6643755`.
+- Exact-head independent review/Judge for `6643755` is unverified because the independent reviewer could not access WSL/GitHub.
+- No rollback, merge, release, deployment, or Production action occurred. A targeted `git revert` is the rollback path if needed; do not reset or modify `main`.
+- Single continuation step: resolve conflict with `main`, create a new SHA, run required gates/tests, obtain independent review for that exact SHA, then wait for Owner approval before merge or rollout.
 - Runtime audit found open stacked PRs #1–#10 through `phase8/actor-rate-limits`.
 - Latest audited runtime head: `e29b9a32b49226075147f2168a7f0438665258b2`.
 - GitHub Actions CI on the latest Phase 8 head is PASS.

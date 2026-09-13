@@ -1,6 +1,6 @@
 # TigerIQ AI Lab — CURRENT STATE
 
-Last audited: 2026-08-29
+Last audited: 2026-09-14
 
 ## State taxonomy — authoritative interpretation
 Every item in this document belongs to exactly one state:
@@ -19,7 +19,19 @@ At this audit, `main` remains the initial repository baseline. The Company Sourc
 ## VERIFIED OFF-MAIN — Company Source bootstrap
 Branch: `chore/source-of-truth-bootstrap`.
 PR #11: docs: bootstrap TigerIQ Source of Truth and Company OS governance — **CLOSED UNMERGED** on 2026-08-30. PR #11 closed at snapshot head 922c490c36c0a1871625d42046e760c508d18dd3; the branch may advance through later checkpoints, each of which requires its own exact review target. Closing the PR did not merge, release, or deploy this baseline.
-Active review path: draft PR #738 (docs: source-of-truth bootstrap checkpoint) against main. Its exact review target is the SHA recorded in the PR body; PR #11 remains historical closure evidence only. GitHub currently reports PR #738 as conflicted (DIRTY), so it is not merge-eligible.
+Active review path: draft PR #738 (docs: source-of-truth bootstrap checkpoint) against main. Historical PR #11 remains closed unmerged.
+
+### Handoff checkpoint — 2026-09-14
+
+- Handoff base reviewed target: branch `chore/source-of-truth-bootstrap` at `6643755a34217d2f7712a0f401ce36bbc4522e84`.
+- PR #738 state at handoff: `OPEN / DRAFT / CONFLICT_WITH_MAIN` (GitHub merge state `DIRTY`) / `REVIEW_REQUIRED`; base `main` at `548ea9a842f95a543107e2e9a70d0995492edfba`.
+- Completed scope: public-safe Company Source documents, architecture/current-state records, privacy boundary, source-review scope, and historical PR #11 closure reconciliation. No source implementation, MAIN, release, deployment, or Production state changed.
+- Evidence already present: diff check passed in prior reviews; prior review PASS applies only to `f553e914eb7ed544a7ad3c3aa7ec9e624894e579`; PR #738 reports Vercel SUCCESS and Vercel Preview Comments SUCCESS. Historical runtime evidence remains recorded in this document and the current Work Order.
+- Not verified for handoff target: mandatory local test/build suite was not rerun on `6643755`; no independent reviewer/Judge result exists for `6643755` because the independent reviewer lost WSL/GitHub access.
+- Real blockers: PR #738 has conflicts with `main`; independent review on the exact target is unavailable until reviewer WSL/GitHub access is restored.
+- Rollback: no rollback was performed. Checkpoint commits are reversible with a targeted `git revert` on this branch; do not reset, merge, or alter `main`.
+- Sole next step: resolve conflict with `main`, create a new SHA, run required gates/tests, obtain independent review for that exact SHA, then wait for Owner approval before any merge or rollout.
+- Continuation rule: this document checkpoint is a successor to the handoff base and must itself be independently reviewed before it is used as gate evidence.
 
 This unmerged branch contains the general/public-safe governance baseline:
 - Company Constitution v1;
@@ -77,7 +89,7 @@ Engineering hardening is verified off-MAIN. Android Production signing/update-in
 - **WO-004 Android Production signing**: requires one persistent production signer, secure secret provisioning, signed release certificate evidence, dependency-security triage, and update-in-place verification against the intended installed baseline. No update-safe Production signing PASS is claimed.
 
 ## Open integration/release gates
-- Source bootstrap: PR #11 is closed unmerged; a fresh PR/release-gate path, with independent review/judge of one exact current head, is required before any merge consideration.
+- Source bootstrap: active draft PR #738 is conflict-blocked and review-required; handoff base target 6643755a34217d2f7712a0f401ce36bbc4522e84; each successor requires exact re-review.
 - Primary runtime PR #1 → #3–#10 → #13: fresh dependency-order integration review is required.
 - Any merge to MAIN requires the applicable merge/release gate.
 - Any Production deployment requires explicit Owner authorization and release evidence.
