@@ -133,7 +133,7 @@ render = function renderTruth(d) {
     h.style.borderColor = '';
     h.style.background = '';
   }
-  renderBase(d);
+  renderBase(d);renderActiveExec(d);
   applyPeopleFullFilter();
   const lane = codingTruth(d);
   const sysWebEl = document.getElementById('sysWeb');
@@ -142,6 +142,7 @@ render = function renderTruth(d) {
   }
 };
 
+function renderActiveExec(d){const lane=codingTruth(d);const exec=lane?.activeExecution||{};const html=`<div>Task: ${esc(exec.task||"—")}</div><div>Implementer: ${esc(exec.implementer||"—")}</div><div>Reviewer: ${esc(exec.reviewer||"—")}</div><div>Elapsed: ${esc(duration(exec.started_at,exec.updated_at))}</div>`;const panel=document.querySelector("#activeExec .exec-panel");if(panel)panel.innerHTML=html;}
 // Wrap existing refresh() logic
 if (typeof refresh === 'function') {
   const originalRefresh = refresh;
