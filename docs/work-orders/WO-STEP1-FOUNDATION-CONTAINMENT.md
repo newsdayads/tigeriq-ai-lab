@@ -67,3 +67,19 @@ new disabled/no-replay/exact-SHA contract, not suppressed. No Golden expected ou
 The invalid-escape fixture now uses \\project instead of \\new: JSON \\n is a valid newline, not an invalid escape.
 An additional test preserves valid newline semantics. No path-guessing repair or new retry is introduced.
 The schema predicate now returns false (not undefined) for a missing manager job, as its existing assertion requires.
+
+Legacy resource leases are snapshotted and cleared only when linked to the quarantined Core cohort.
+
+## Legacy PR inventory (read-only, before activation)
+These are open automated PRs, NOT accepted or replayable work. Retain each branch and job identity.
+Close only after old workers/updater are stopped, to avoid supervisor regeneration. Production DB cohort
+must be reconciled at that boundary; this inventory is not proof that live jobs are paused.
+
+| PR | Job | Head SHA |
+| --- | --- | --- |
+| #732 | CODE-370a055c-0c59-4072-815e-38be435775c2 | 80fc19ec600117a489f43d928349a705dbb317eb |
+| #720 | CODE-78a11e40-8a88-4d65-8303-848c4c76dcb3 | 4798b31c4a11103c3240a5d8828638c472f21140 |
+| #719 | CODE-3c64c87f-0778-45c8-a2a7-cb3aacca4681 | 21b94a083249a423ae276ede1d2b5fc65ac1dbb6 |
+| #652 | CODE-eb28a1bf-69e3-4dfa-85e9-406ece48abd3 | cfc443b9151bc221b37fe467d379e2ad1ae7ff68 |
+| #648 | CODE-60f9a9a9-6ee7-49c4-aca8-a42d646cd09c | 63cd8cfb32d6f2d5d1cf40526c246118708e8e8d |
+| #646 | CODE-e37b3593-7e37-4db9-bbe7-d75a1e484f2e | 60083273e111cbe052972bd61425c3d4b75910b7 |

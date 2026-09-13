@@ -37,6 +37,8 @@ test('Core boots against PostgreSQL, quarantines legacy work and never replays i
       insert into tigeriq_objectives(id,objective) values('core-old','preserve objective');
       insert into tigeriq_jobs(id,objective_id,title,prompt,status,attempts)
         values('core-old-job','core-old','legacy','never execute','queued',1)`);
+    await pool.query("update tigeriq_resources set current_job_id='core-old-job',work_state='BUSY' where employee_id=(select employee_id from tigeriq_resources order by employee_id limit 1)");
+    const leased=(await pool.query("select employee_id,to_jsonb(r) as row from tigeriq_resources r where current_job_id='core-old-job'")).rows[0];
     const before=(await pool.query("select to_jsonb(t) as row from tigeriq_coding_jobs t where id='old-job'")).rows[0].row;
     await start();
     const status=await (await fetch('http://127.0.0.1:18955/api/status')).json();
@@ -50,6 +52,8 @@ test('Core boots against PostgreSQL, quarantines legacy work and never replays i
     await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,status,attempts) values('new-research','core-old','explicit research','research','failed',1)");
     await start();await stop();
     assert.equal((await pool.query("select status from tigeriq_jobs where id='new-research'")).rows[0].status,'failed');
+    assert.deepEqual((await pool.query("select original_row from tigeriq_legacy_quarantine where source_table='tigeriq_resources' and source_id=$1",[leased.employee_id])).rows,[{original_row:leased.row}]);
+    assert.equal((await pool.query("select current_job_id from tigeriq_resources where employee_id=$1",[leased.employee_id])).rows[0].current_job_id,null);
     const archived=(await pool.query("select original_row from tigeriq_legacy_quarantine where source_table='tigeriq_coding_jobs' and source_id='old-job'")).rows;
     assert.deepEqual(archived,[{original_row:before}]);
     assert.deepEqual((await pool.query("select status,attempts,result from tigeriq_coding_jobs where id='old-job'")).rows,[{status:'blocked',attempts:2,result:{evidence:'keep'}}]);

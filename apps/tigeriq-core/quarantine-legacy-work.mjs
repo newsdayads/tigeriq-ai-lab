@@ -27,6 +27,13 @@ export async function quarantineLegacyWork(pool) {
         on conflict(source_table,source_id) do nothing`,[table,statuses]);
       await client.query(`update ${table} set status='blocked' where status=any($1::text[])`,[statuses]);
     }
+    // Release only leases belonging to the snapshotted legacy cohort, preserving their original rows.
+    await client.query(`insert into tigeriq_legacy_quarantine(source_table,source_id,original_row)
+      select 'tigeriq_resources',employee_id,to_jsonb(r) from tigeriq_resources r
+      where current_job_id in (select source_id from tigeriq_legacy_quarantine where source_table='tigeriq_jobs')
+      on conflict(source_table,source_id) do nothing`);
+    await client.query(`update tigeriq_resources set current_job_id=null,work_state='IDLE'
+      where current_job_id in (select source_id from tigeriq_legacy_quarantine where source_table='tigeriq_jobs')`);
     await client.query("insert into tigeriq_migrations(id) values('step1-legacy-quarantine')");
     await client.query('commit');
   } catch (error) {
