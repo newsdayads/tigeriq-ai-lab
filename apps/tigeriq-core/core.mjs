@@ -399,6 +399,10 @@ async function recordSelfCheck(type, ts) {
 
 /** Load last timestamps for persisted cadences */
 async function loadLastSelfCheckTimestamps() {
+  if (!DATABASE_URL) {
+    console.warn('DATABASE_URL not set, skipping self‑check timestamp load');
+    return;
+  }
   const lightRes = await pool.query("select extract(epoch from ts)::bigint as ts from tigeriq_events where type='SELF_CHECK_LIGHT' order by ts desc limit 1");
   const deepRes = await pool.query("select extract(epoch from ts)::bigint as ts from tigeriq_events where type='SELF_CHECK_DEEP' order by ts desc limit 1");
   if (lightRes.rows[0]) lastLight = Number(lightRes.rows[0].ts) * 1000;
