@@ -15,13 +15,17 @@ let lastSyncTimestamp = null;
 let lastKnownData = null;
 
 const syncTextEl = document.getElementById('syncText') || document.querySelector('.sync-text') || document.querySelector('header') || document.body;
-const freshnessBadge = document.createElement('span');
-freshnessBadge.id = 'freshnessBadge';
-freshnessBadge.style.marginLeft = '10px';
-freshnessBadge.style.padding = '2px 6px';
-freshnessBadge.style.borderRadius = '4px';
-freshnessBadge.style.fontSize = '0.85em';
-freshnessBadge.style.background = 'rgba(0,0,0,0.1)';
+let freshnessBadge = document.getElementById('freshnessBadge');
+if (!freshnessBadge) {
+  freshnessBadge = document.createElement('span');
+  freshnessBadge.id = 'freshnessBadge';
+  freshnessBadge.style.marginLeft = '10px';
+  freshnessBadge.style.padding = '2px 6px';
+  freshnessBadge.style.borderRadius = '4px';
+  freshnessBadge.style.fontSize = '0.85em';
+  freshnessBadge.style.background = 'rgba(0,0,0,0.1)';
+  if (syncTextEl) syncTextEl.appendChild(freshnessBadge);
+}
 if (syncTextEl && !document.getElementById('freshnessBadge')) {
   syncTextEl.appendChild(freshnessBadge);
 }
