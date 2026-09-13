@@ -90,6 +90,29 @@ export async function runGateWithRepair({waitFn,repairFn,onWaiting=async()=>{},m
   }
 }
 
+const RESOURCE_WAIT_MAX_RETRIES=6;
+const RESOURCE_WAIT_MAX_WINDOW_MS=60*60*1000;
+const RESOURCE_WAIT_BASE_MS=30*1000;
+const RESOURCE_WAIT_MAX_DELAY_MS=10*60*1000;
+
+export function isResourceTransientError(error){
+  if(isRetryableAiError(error))return true;
+  const msg=String(error?.message||error||'');
+  return /NO_(?:IMPLEMENTER_AVAILABLE|INDEPENDENT_REVIEWER_AVAILABLE|FREE_API_CODING_RESOURCE)|AI_RETRY_BUDGET_EXHAUSTED/i.test(msg);
+}
+
+export function resourceWaitPlan({retryCount=0,startedAt=null,nowMs=Date.now(),maxRetries=RESOURCE_WAIT_MAX_RETRIES,maxWindowMs=RESOURCE_WAIT_MAX_WINDOW_MS}={}){
+  const count=Math.max(0,Number(retryCount)||0);
+  const startedMs=startedAt?new Date(startedAt).getTime():nowMs;
+  const ageMs=Math.max(0,nowMs-(Number.isFinite(startedMs)?startedMs:nowMs));
+  if(count>=maxRetries||ageMs>=maxWindowMs)return {wait:false,retryCount:count,ageMs,nextAttemptAt:null,delayMs:0};
+  const delayMs=Math.min(RESOURCE_WAIT_MAX_DELAY_MS,RESOURCE_WAIT_BASE_MS*Math.pow(2,count));
+  return {wait:true,retryCount:count+1,ageMs,delayMs,nextAttemptAt:new Date(nowMs+delayMs).toISOString()};
+}
+
+export function shouldResumeExistingPr(job){
+  return Boolean(String(job?.branch||'').trim()&&Number(job?.pr_number)>0);
+}
 const DATABASE_URL=process.env.DATABASE_URL?.trim(); if(!DATABASE_URL&&process.env.NODE_ENV!=='test')throw new Error('DATABASE_URL_MISSING');
 const GH_TOKEN=(process.env.TIGERIQ_GITHUB_TOKEN||process.env.GITHUB_TOKEN||'').trim(); if(!GH_TOKEN&&process.env.NODE_ENV!=='test')throw new Error('GITHUB_TOKEN_MISSING');
 const OWNER=process.env.TIGERIQ_GITHUB_OWNER||'newsdayads';
@@ -173,11 +196,14 @@ async function mergePr(number,sha){return gh(`/pulls/${number}/merge`,{method:'P
 async function initDb(){if(!pool)return;await pool.query(`
 create table if not exists tigeriq_coding_objectives(id text primary key,objective text not null,priority text not null default 'P1',status text not null default 'active',summary text,manager_employee_id text,created_at timestamptz not null default now(),updated_at timestamptz not null default now());
 create table if not exists tigeriq_coding_jobs(id text primary key,objective_id text references tigeriq_coding_objectives(id),title text not null,instruction text not null,paths jsonb not null default '[]'::jsonb,status text not null default 'queued',employee_id text,reviewer_employee_id text,branch text,pr_number int,head_sha text,result jsonb,failure jsonb,attempts int not null default 0,created_at timestamptz not null default now(),started_at timestamptz,completed_at timestamptz);
+alter table tigeriq_coding_jobs add column if not exists next_attempt_at timestamptz;
+alter table tigeriq_coding_jobs add column if not exists resource_retry_count int not null default 0;
+alter table tigeriq_coding_jobs add column if not exists resource_retry_started_at timestamptz;
 create index if not exists tigeriq_coding_jobs_status_idx on tigeriq_coding_jobs(status,created_at);
 `)}
 
 async function managerTick(){
-  const q=await pool.query("select * from tigeriq_coding_objectives where status='active' and not exists(select 1 from tigeriq_coding_jobs j where j.objective_id=tigeriq_coding_objectives.id and j.status in ('queued','running','review','waiting_ci')) order by case priority when 'P0' then 0 when 'P1' then 1 else 2 end,created_at limit 1");
+  const q=await pool.query("select * from tigeriq_coding_objectives where status='active' and not exists(select 1 from tigeriq_coding_jobs j where j.objective_id=tigeriq_coding_objectives.id and j.status in ('queued','running','review','waiting_ci','waiting_resource')) order by case priority when 'P0' then 0 when 'P1' then 1 else 2 end,created_at limit 1");
   const o=q.rows[0];if(!o)return;
   let manager=pickResource();if(!manager){await pool.query("update tigeriq_coding_objectives set status='blocked',summary='NO_FREE_API_CODING_RESOURCE' where id=$1",[o.id]);return}
   const canonical=extractCanonicalAllowedPaths(o.objective);
@@ -195,23 +221,33 @@ async function managerTick(){
   }catch(e){await pool.query("update tigeriq_coding_objectives set status='blocked',summary=$2,manager_employee_id=$3,updated_at=now() where id=$1",[o.id,String(e.message).slice(0,1000),manager.id])}
 }
 
-async function claimJob(){const c=await pool.connect();try{await c.query('begin');const q=await c.query("select * from tigeriq_coding_jobs where status='queued' order by created_at for update skip locked limit 1");if(!q.rows[0]){await c.query('commit');return null}const j=q.rows[0];await c.query("update tigeriq_coding_jobs set status='running',started_at=coalesce(started_at,now()),attempts=attempts+1 where id=$1",[j.id]);await c.query('commit');return j}catch(e){await c.query('rollback');throw e}finally{c.release()}}
+async function claimJob(){const c=await pool.connect();try{await c.query('begin');const q=await c.query("select * from tigeriq_coding_jobs where status='queued' or (status='waiting_resource' and coalesce(next_attempt_at,now())<=now()) order by case when status='waiting_resource' then 0 else 1 end,created_at for update skip locked limit 1");if(!q.rows[0]){await c.query('commit');return null}const j=q.rows[0];await c.query("update tigeriq_coding_jobs set status='running',started_at=coalesce(started_at,now()),attempts=attempts+1,completed_at=null where id=$1",[j.id]);await c.query('commit');return j}catch(e){await c.query('rollback');throw e}finally{c.release()}}
 async function contextFor(paths,ref='main'){const rows=[];for(const p of paths){const f=await readRepoFile(p,ref);rows.push(`FILE ${p}\n${f.content.slice(0,45000)}`)}return rows.join('\n\n---\n\n').slice(0,180000)}
 async function generateChanges(worker,j,context,reviewIssues=[],exclude=[]){const prompt=`You are ${worker.id}, an autonomous TigerIQ repository engineer. Implement ONLY the assigned task on a GitHub branch.\nTASK: ${j.instruction}\nALLOWED PATHS: ${j.paths.join(', ')}\n${reviewIssues.length?`REVIEW ISSUES TO FIX: ${JSON.stringify(reviewIssues)}\n`:''}CURRENT FILES:\n${context}\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}. Do not touch paths outside ALLOWED PATHS. Never output secrets. Keep changes minimal and testable.`;const validateData=d=>{validateChanges(d.changes,j.paths);validateJobScope(j.paths,d.changes)};const invoked=await invokeJsonWithFailover(worker,prompt,{exclude,validateData});const d=invoked.data;return {payload:d,resource:invoked.resource}}
 async function reviewPr(reviewer,j,diff,implementerId){const prompt=`You are ${reviewer.id}, independent TigerIQ code reviewer. Review against the task and safety boundaries. TASK: ${j.instruction}\nDIFF:\n${diff.slice(0,180000)}\nReturn ONLY JSON {"decision":"approve|changes_requested","summary":"short","issues":["specific issue"]}. Reject unsafe, untested, out-of-scope, credential/security/production changes.`;const invoked=await invokeJsonWithFailover(reviewer,prompt,{exclude:[implementerId]});const d=invoked.data;if(!['approve','changes_requested'].includes(d.decision)){const e=new Error('REVIEW_DECISION_INVALID');e.code='REVIEW_SCHEMA_INVALID';throw e}d.issues=Array.isArray(d.issues)?d.issues.slice(0,8):[];return {review:d,resource:invoked.resource}}
 
 async function runJob(j){
-  let worker=pickResource();if(!worker)throw new Error('NO_IMPLEMENTER_AVAILABLE');
+  let worker=resources.find(r=>r.id===j.employee_id)||pickResource();if(!worker)throw new Error('NO_IMPLEMENTER_AVAILABLE');
   j.paths=Array.isArray(j.paths)?j.paths:j.paths||[];
-  let context=await contextFor(j.paths,'main');
-  let generated=await generateChanges(worker,j,context);worker=generated.resource;let gen=generated.payload;
-  validateJobScope(j.paths,gen.changes);
-  let reviewer=pickResource([worker.id]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE');
-  const base=await mainSha();const branch=branchName(worker.id,j.id);await createBranch(branch,base);
-  await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,branch=$4 where id=$1",[j.id,worker.id,reviewer.id,branch]);
-  for(const ch of gen.changes)await writeFile(branch,ch);
-  const pr=await openPr(branch,`[${worker.id}] ${j.title}`,`Automated TigerIQ Coding Lane job \`${j.id}\`.\n\nImplementer: ${worker.id}\nIndependent reviewer: ${reviewer.id}\nDirect writes to main are forbidden. Merge is attempted only after CI gates and reviewer approval.`);
-  await pool.query("update tigeriq_coding_jobs set pr_number=$2,status='waiting_ci' where id=$1",[j.id,pr.number]);
+  let context=null,generated=null,gen={summary:'resumed existing PR'},reviewer=null;
+  let branch=j.branch||null,pr=j.pr_number?{number:Number(j.pr_number)}:null;
+  if(shouldResumeExistingPr(j)){
+    assertPrOpenState(await gh(`/pulls/${pr.number}`));
+    context=await contextFor(j.paths,branch);
+    reviewer=resources.find(r=>r.id===j.reviewer_employee_id&&r.id!==worker.id)||pickResource([worker.id]);
+    if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE');
+    await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,status='waiting_ci',next_attempt_at=null,completed_at=null where id=$1",[j.id,worker.id,reviewer.id]);
+  }else{
+    context=await contextFor(j.paths,'main');
+    generated=await generateChanges(worker,j,context);worker=generated.resource;gen=generated.payload;
+    validateJobScope(j.paths,gen.changes);
+    reviewer=pickResource([worker.id]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE');
+    const base=await mainSha();branch=branchName(worker.id,j.id);await createBranch(branch,base);
+    await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,branch=$4,next_attempt_at=null where id=$1",[j.id,worker.id,reviewer.id,branch]);
+    for(const ch of gen.changes)await writeFile(branch,ch);
+    pr=await openPr(branch,`[${worker.id}] ${j.title}`,`Automated TigerIQ Coding Lane job \`${j.id}\`.\n\nImplementer: ${worker.id}\nIndependent reviewer: ${reviewer.id}\nDirect writes to main are forbidden. Merge is attempted only after CI gates and reviewer approval.`);
+    await pool.query("update tigeriq_coding_jobs set pr_number=$2,status='waiting_ci' where id=$1",[j.id,pr.number]);
+  }
   let review=null,gates=null;
   for(let reviewCycle=0;reviewCycle<3;reviewCycle++){
     gates=await runGateWithRepair({
@@ -249,11 +285,25 @@ async function runJob(j){
   const finalSha=await headSha(branch);let merge={merged:false,message:'AUTO_MERGE_DISABLED'};
   if(AUTO_MERGE){try{merge=await mergePr(pr.number,finalSha)}catch(e){merge={merged:false,message:String(e.message||e)}}}
   const status=merge?.merged?'done':'blocked';
-  await pool.query("update tigeriq_coding_jobs set status=$2,head_sha=$3,result=$4,completed_at=now() where id=$1",[j.id,status,finalSha,JSON.stringify({summary:gen.summary,prNumber:pr.number,branch,gates,review,merge})]);
+  await pool.query("update tigeriq_coding_jobs set status=$2,head_sha=$3,result=$4,completed_at=now(),next_attempt_at=null,resource_retry_count=0,resource_retry_started_at=null where id=$1",[j.id,status,finalSha,JSON.stringify({summary:gen.summary,prNumber:pr.number,branch,gates,review,merge})]);
   await pool.query("update tigeriq_coding_objectives set status=$2,summary=$3,updated_at=now() where id=$1",[j.objective_id,merge?.merged?'completed':'blocked',merge?.merged?`Merged PR #${pr.number}`:`PR #${pr.number} ready but merge blocked: ${String(merge?.message||'unknown').slice(0,500)}`]);
   return {prNumber:pr.number,branch,merge};
 }
-async function failJob(j,e){if(!pool)return;await pool.query("update tigeriq_coding_jobs set status='failed',failure=$2,completed_at=now() where id=$1",[j.id,JSON.stringify({message:String(e?.message||e),code:e?.code||null,detail:e?.detail||null})]);await pool.query("update tigeriq_coding_objectives set status='blocked',summary=$2,updated_at=now() where id=$1",[j.objective_id,String(e?.message||e).slice(0,1000)])}
+async function failJob(j,e){
+  if(!pool)return;
+  const current=(await pool.query("select * from tigeriq_coding_jobs where id=$1",[j.id])).rows[0]||j;
+  const failure={message:String(e?.message||e),code:e?.code||null,detail:e?.detail||null};
+  if(isResourceTransientError(e)){
+    const plan=resourceWaitPlan({retryCount:current.resource_retry_count,startedAt:current.resource_retry_started_at});
+    if(plan.wait){
+      await pool.query("update tigeriq_coding_jobs set status='waiting_resource',failure=$2,next_attempt_at=$3,resource_retry_count=$4,resource_retry_started_at=coalesce(resource_retry_started_at,now()),completed_at=null where id=$1",[j.id,JSON.stringify({...failure,resourceWait:{retryCount:plan.retryCount,delayMs:plan.delayMs,nextAttemptAt:plan.nextAttemptAt}}),plan.nextAttemptAt,plan.retryCount]);
+      await pool.query("update tigeriq_coding_objectives set status='active',summary=$2,updated_at=now() where id=$1",[j.objective_id,`WAITING_RESOURCE retry ${plan.retryCount}/${RESOURCE_WAIT_MAX_RETRIES}: ${failure.message}`.slice(0,1000)]);
+      return;
+    }
+  }
+  await pool.query("update tigeriq_coding_jobs set status='failed',failure=$2,completed_at=now(),next_attempt_at=null where id=$1",[j.id,JSON.stringify(failure)]);
+  await pool.query("update tigeriq_coding_objectives set status='blocked',summary=$2,updated_at=now() where id=$1",[j.objective_id,String(e?.message||e).slice(0,1000)]);
+}
 
 async function snapshot(){const objectives=(await pool.query('select * from tigeriq_coding_objectives order by created_at desc limit 20')).rows;const jobs=(await pool.query('select * from tigeriq_coding_jobs order by created_at desc limit 30')).rows;return {ok:true,service:'tigeriq-coding-lane',host:HOST,port:PORT,pid:process.pid,resources:resources.map(x=>({id:x.id,provider:x.provider,model:x.model})),objectives,jobs}}
 async function body(req){let s='';for await(const c of req){s+=c;if(s.length>65536)throw new Error('BODY_TOO_LARGE')}return s?JSON.parse(s):{}}
