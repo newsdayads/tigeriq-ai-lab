@@ -377,13 +377,152 @@ async function loop(){
       if(t-lastRecover>10000){await recoverStale();lastRecover=t;}
       if(t-lastManager>MANAGER_IDLE_MS){await managerTick();lastManager=t;}
       if(t-lastProbe>60000){await probeReadyResources();lastProbe=t;}
+      await auditorTick();
       while(active.size<MAX_PARALLEL){const j=await claimJob();if(!j)break;active.add(j.id);void runJob(j).finally(()=>active.delete(j.id));}
     }catch(e){console.error(JSON.stringify({event:'CORE_LOOP_ERROR',error:String(e?.message||e)}));}
     await sleep(POLL_MS);
   }
 }
 await initDb();
+await ensureAuditorSchema();
 await recoverAfterCoreRestart();
+
+async function ensureAuditorSchema() {
+  await pool.query(`
+    create table if not exists tigeriq_auditor_state (
+      id text primary key default 'singleton',
+      last_light_scan_at timestamptz,
+      last_deep_scan_at timestamptz,
+      last_heartbeat_at timestamptz,
+      last_emitted_handoff_id text,
+      active_issue_fingerprint text,
+      updated_at timestamptz default now()
+    );
+  `);
+  await pool.query(`
+    insert into tigeriq_auditor_state (id) values ('singleton') on conflict (id) do nothing;
+  `);
+}
+
+async function getAuditorState() {
+  const res = await pool.query("select * from tigeriq_auditor_state where id='singleton'");
+  return res.rows[0] || {};
+}
+
+async function updateAuditorState(fields) {
+  const sets = [];
+  const vals = [];
+  let idx = 1;
+  for (const [k, v] of Object.entries(fields)) {
+    sets.push(`${k} = $${idx++}`);
+    vals.push(v);
+  }
+  if (sets.length === 0) return;
+  sets.push(`updated_at = now()`);
+  await pool.query(`update tigeriq_auditor_state set ${sets.join(', ')} where id='singleton'`, vals);
+}
+
+async function runLightScan() {
+  const res = await snapshot();
+  const coreOk = !!res.core;
+  const codingLaneOk = true;
+  const apiOk = true;
+  const resourceOk = Array.isArray(res.resources);
+  const jobOk = Array.isArray(res.jobs);
+  const queueOk = true;
+
+  const isHealthy = coreOk && codingLaneOk && apiOk && resourceOk && jobOk && queueOk;
+  const ts = nowIso();
+  if (isHealthy) {
+    await updateAuditorState({ last_light_scan_at: ts, last_heartbeat_at: ts });
+    await event('AUDITOR_LIGHT_SCAN_HEARTBEAT', { ts });
+  } else {
+    await updateAuditorState({ last_light_scan_at: ts });
+    await event('AUDITOR_LIGHT_SCAN_UNHEALTHY', { ts });
+  }
+}
+
+async function runDeepScan() {
+  const ts = nowIso();
+  const state = await getAuditorState();
+  const resourcesData = (await pool.query('select * from tigeriq_resources')).rows;
+  const excludedStatuses = new Set(['BUSY', 'RATE_LIMITED', 'BLOCKED', 'WAIT_KEY', 'OFFLINE']);
+  
+  const validResources = resourcesData.filter(r => {
+    const st = publicStatus(r);
+    return !excludedStatuses.has(st) && r.health_state !== 'CRITICAL_JOB';
+  });
+
+  if (validResources.length === 0 && resourcesData.length > 0) {
+    await updateAuditorState({ last_deep_scan_at: ts });
+    return;
+  }
+
+  const failedJobs = (await pool.query("select * from tigeriq_jobs where status='failed' and created_at >= now() - interval '2 hours'")).rows;
+  const blockedJobs = (await pool.query("select * from tigeriq_jobs where status='blocked' and created_at >= now() - interval '2 hours'")).rows;
+  const failureEvents = (await pool.query("select count(*) as cnt from tigeriq_events where type in ('RESOURCE_FAILURE','RESOURCE_PROBE_FAIL') and ts >= now() - interval '1 hour'")).rows;
+  const failureCount = Number(failureEvents[0]?.cnt || 0);
+
+  let issueDetected = false;
+  let issueSummary = '';
+  let issueFingerprint = '';
+
+  if (failureCount >= 5) {
+    issueDetected = true;
+    issueSummary = `High failure count in last hour: ${failureCount}`;
+    issueFingerprint = `high_failures_${Math.floor(Date.now() / 3600000)}`;
+  } else if (failedJobs.length > 0) {
+    issueDetected = true;
+    issueSummary = `Detected ${failedJobs.length} failed jobs`;
+    issueFingerprint = `failed_jobs_${failedJobs[0].id}`;
+  } else if (blockedJobs.length > 2) {
+    issueDetected = true;
+    issueSummary = `Detected ${blockedJobs.length} blocked jobs`;
+    issueFingerprint = `blocked_jobs_${blockedJobs[0].id}`;
+  }
+
+  if (issueDetected) {
+    if (state.active_issue_fingerprint === issueFingerprint) {
+      await updateAuditorState({ last_deep_scan_at: ts });
+      return;
+    }
+
+    const handoffId = `HANDOFF-${randomUUID()}`;
+    await pool.query(
+      'insert into tigeriq_objectives(id, objective, priority, metadata) values($1, $2, $3, $4)',
+      [handoffId, `Auditor Finding: ${issueSummary}`, 'P1', JSON.stringify({ source: 'auditor_deep_scan', fingerprint: issueFingerprint })]
+    );
+    await event('AUDITOR_HANDOFF_CREATED', { handoffId, fingerprint: issueFingerprint, summary: issueSummary });
+    await updateAuditorState({
+      last_deep_scan_at: ts,
+      last_emitted_handoff_id: handoffId,
+      active_issue_fingerprint: issueFingerprint
+    });
+  } else {
+    if (state.active_issue_fingerprint) {
+      await updateAuditorState({
+        last_deep_scan_at: ts,
+        active_issue_fingerprint: null
+      });
+    } else {
+      await updateAuditorState({ last_deep_scan_at: ts });
+    }
+  }
+}
+
+async function auditorTick() {
+  const state = await getAuditorState();
+  const now = Date.now();
+  const lastLight = state.last_light_scan_at ? new Date(state.last_light_scan_at).getTime() : 0;
+  const lastDeep = state.last_deep_scan_at ? new Date(state.last_deep_scan_at).getTime() : 0;
+
+  if (now - lastLight >= 10 * 60 * 1000) {
+    await runLightScan();
+  }
+  if (now - lastDeep >= 30 * 60 * 1000) {
+    await runDeepScan();
+  }
+}
 await refreshResources();
 await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(PORT,HOST,resolve);});
 void probeReadyResources();
