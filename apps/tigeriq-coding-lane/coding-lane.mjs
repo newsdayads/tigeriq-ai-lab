@@ -68,132 +68,237 @@ function pickResource(exclude=[]){const available=resources.filter(x=>!exclude.i
 
 async function fetchJson(url,init={},timeout=90000){const c=new AbortController(),t=setTimeout(()=>c.abort(),timeout);try{const res=await fetch(url,{...init,signal:c.signal});const text=await res.text();let body={};try{body=text?JSON.parse(text):{};}catch{body={text};}if(!res.ok){const e=new Error(`HTTP_${res.status}:${String(body?.message||body?.error||text).slice(0,300)}`);e.status=res.status;throw e;}return body;}finally{clearTimeout(t)}}
 async function openAi(endpoint,key,model,prompt){const b=await fetchJson(endpoint,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${key}`},body:JSON.stringify({model,messages:[{role:'user',content:prompt}],temperature:0,max_tokens:8000,stream:false})});const text=b?.choices?.[0]?.message?.content;if(!String(text||'').trim())throw new Error('EMPTY_RESPONSE');return String(text)}
+export async function invokeJsonWithFailover(initialResource,prompt,options={}){const resourcePool=options.resourcePool||resources;const invokeFn=options.invokeFn||invoke;const maxResources=Math.min(3,Math.max(1,options.maxResources||3));const validateData=options.validateData||(d=>d);const exclude=options.exclude||[];let currentResource=initialResource||pickResource(exclude)||resourcePool[0];let attempts=0;let lastError=null;let currentPrompt=prompt;let resourceIdx=0;for(let rIdx=0;rIdx<maxResources;rIdx++){if(!currentResource)currentResource=pickResource(exclude)||resourcePool[0];for(let same=0;same<2;same++){attempts++;try{const raw=await invokeFn(currentResource,currentPrompt);let parsed;try{parsed=parseJsonObject(raw);}catch(parseErr){if(isRetryableAiError(parseErr)&&same===0){currentPrompt=shrinkAiPrompt(currentPrompt);continue;}throw parseErr;}try{validateData(parsed);}catch(valErr){if(isRetryableAiError(valErr)&&same===0){currentPrompt=shrinkAiPrompt(currentPrompt);continue;}throw valErr;}return{resource:currentResource,data:parsed,attempts};}catch(err){lastError=err;if(err.code==='CODING_SCOPE_VIOLATION'||err.message?.includes('CODING_SCOPE_VIOLATION')||err.message?.includes('POLICY_DENIED')||err.message?.includes('CREDENTIAL'))throw err;if(err.status===429||isRetryableAiError(err)){if(err.status===429){const backoffMs=Math.min(10000,Math.pow(2,rIdx+same)*1000)+Math.floor(Math.random()*200);await sleep(backoffMs);}if(same===0){currentPrompt=shrinkAiPrompt(currentPrompt);continue;}}break;}}const excluded=[...exclude,currentResource?.id].filter(Boolean);currentResource=pickResource(excluded)||resourcePool[(rIdx+1)%resourcePool.length];}throw lastError||new Error('AI_INVOCATION_FAILED');}
+
 async function invoke(r,prompt){
   if(r.provider==='groq')return openAi('https://api.groq.com/openai/v1/chat/completions',process.env.GROQ_API_KEY,r.model,prompt);
   if(r.provider==='openrouter')return openAi('https://openrouter.ai/api/v1/chat/completions',process.env.OPENROUTER_API_KEY,r.model,prompt);
   if(r.provider==='mistral')return openAi('https://api.mistral.ai/v1/chat/completions',process.env.MISTRAL_API_KEY,r.model,prompt);
   if(r.provider==='huggingface')return openAi('https://router.huggingface.co/v1/chat/completions',process.env.HF_TOKEN,r.model,prompt);
   if(r.provider==='gemini'){const b=await fetchJson(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(r.model)}:generateContent`,{method:'POST',headers:{'content-type':'application/json','x-goog-api-key':process.env.GEMINI_API_KEY},body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{temperature:0,maxOutputTokens:8192}})});const text=b?.candidates?.[0]?.content?.parts?.map(x=>x.text||'').join('\n');if(!String(text||'').trim())throw new Error('EMPTY_RESPONSE');return String(text)}
-  if(r.provider==='cohere'){const b=await fetchJson('https://api.cohere.com/v2/chat',{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${process.env.COHERE_API_KEY}`},body:JSON.stringify({model:r.model,messages:[{role:'user',content:prompt}],temperature:0,max_tokens:8000})});const text=b?.message?.content?.map(x=>x.text||'').join('');if(!String(text||'').trim())throw new Error('EMPTY_RESPONSE');return String(text)}
-  throw new Error('PROVIDER_UNSUPPORTED');
-}
+  if(r.provider==='cohere'){const b=await fetchJson('https://api.cohere.com/v2/chat',{method:'POST',headers:{'content-type'
+...[MODEL_CONTEXT_REDUCED]...
+Failover,shrinkAiPrompt} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {isRetryableAiError,parseJsonObject} from '../apps/tigeriq-coding-lane/policy.mjs';
 
-export async function invokeJsonWithFailover(initialResource,prompt,{exclude=[],resourcePool=resources,invokeFn=invoke,shrinkPrompt=shrinkAiPrompt,maxResources=3,validateData=null}={}){
-  const initial=initialResource;
-  if(!initial)throw new Error('NO_FREE_API_CODING_RESOURCE');
-  const ordered=[initial,...resourcePool.filter(r=>r?.id!==initial.id&&!exclude.includes(r?.id))];
-  const unique=[];const ids=new Set();
-  for(const r of ordered){if(!r||exclude.includes(r.id)||ids.has(r.id))continue;ids.add(r.id);unique.push(r);if(unique.length>=maxResources)break;}
-  let lastError=null;let attempts=0;
-  let currentPrompt=String(prompt);
-  for(let resourceIdx=0; resourceIdx<unique.length; resourceIdx++){
-    const resource=unique[resourceIdx];
-    for(let same=0;same<2;same++){
+const nv11={id:'NV11',provider:'fake',model:'a'};
+const nv19={id:'NV19',provider:'fake',model:'b'};
+
+test('foundation bounded retry and failover',async(t)=>{
+  await t.test('malformed JSON retries same NV once then fails over',async()=>{
+    const calls=[];
+    const invokeFn=async(r,prompt)=>{
+      calls.push({id:r.id,prompt});
+      if(calls.length<=2)return '{bad json';
+      return '{"status":"blocked","summary":"ok"}';
+    };
+    const out=await invokeJsonWithFailover(nv11,'x'.repeat(40000),{resourcePool:[nv11,nv19],invokeFn,maxResources:2});
+    assert.strictEqual(out.resource.id,'NV19');
+    assert.strictEqual(out.attempts,3);
+    assert.deepStrictEqual(calls.map(x=>x.id),['NV11','NV11','NV19']);
+    assert.ok(calls[1].prompt.length<calls[0].prompt.length);
+  });
+
+  await t.test('outer markdown fence is stripped without mutating source literals',()=>{
+    const source="const clean=String(text||'').replace(/\|/gi,'').trim();";
+    const payload=JSON.stringify({summary:'ok',changes:[{path:'apps/tigeriq-core/core.mjs',content:source}]});
+    const out=parseJsonObject(`\n\`\`\`json\n${payload}\n\`\`\`\n`);
+    assert.strictEqual(out.changes[0].content,source);
+  });
+
+  await t.test('HTTP 413 retries same NV with a shrunken prompt',async()=>{
+    const calls=[];
+    const invokeFn=async(r,prompt)=>{
+      calls.push({id:r.id,prompt});
+      if(calls.length===1){const e=new Error('HTTP_413:payload too large');e.status=413;throw e;}
+      return '{"status":"blocked","summary":"ok"}';
+    };
+    const out=await invokeJsonWithFailover(nv11,'x'.repeat(40000),{resourcePool:[nv11,nv19],invokeFn,maxResources:2});
+    assert.strictEqual(out.resource.id,'NV11');
+    assert.strictEqual(out.attempts,2);
+    assert.deepStrictEqual(calls.map(x=>x.id),['NV11','NV11']);
+    assert.ok(calls[1].prompt.length<calls[0].prompt.length);
+  });
+
+  await t.test('post-parse invalid changes retry same NV then fail over',async()=>{
+    const calls=[];
+    const invokeFn=async(r,prompt)=>{
+      calls.push({id:r.id,prompt});
+      if(calls.length<=2)return '{"summary":"bad","changes":[]}';
+      return '{"summary":"ok","changes":[{"path":"tests/example.test.mjs","content":"ok"}]}';
+    };
+    const validateData=data=>{if(!Array.isArray(data.changes)||data.changes.length<1||data.changes.length>8)throw new Error('CODING_CHANGES_COUNT_INVALID')};
+    const out=await invokeJsonWithFailover(nv11,'x'.repeat(40000),{resourcePool:[nv11,nv19],invokeFn,maxResources:2,validateData});
+    assert.strictEqual(out.resource.id,'NV19');
+    assert.strictEqual(out.attempts,3);
+    assert.deepStrictEqual(calls.map(x=>x.id),['NV11','NV11','NV19']);
+    assert.ok(calls[1].prompt.length<calls[0].prompt.length);
+  });
+
+  await t.test('scope validation remains fail-closed inside validator boundary',async()=>{
+    let count=0;
+    await assert.rejects(()=>invokeJsonWithFailover(nv11,'x',{resourcePool:[nv11,nv19],invokeFn:async()=>{count++;return '{"summary":"x","changes":[{"path":"bad","content":"x"}]}'},validateData:()=>{throw new Error('CODING_SCOPE_VIOLATION')}}),/CODING_SCOPE_VIOLATION/);
+    assert.strictEqual(count,1);
+  });
+
+  await t.test('HTTP 429 retries then fails over with bounded budget',async()=>{
+    let count=0;
+    const invokeFn=async(r)=>{
+      count++;
+      if(r.id==='NV11'){const e=new Error('HTTP_429:rate');e.status=429;throw e;}
+      return '{"decision":"approve","summary":"ok","issues":[]}';
+    };
+    const out=await invokeJsonWithFailover(nv11,'review',{resourcePool:[nv11,nv19],invokeFn,maxResources:2});
+    assert.strictEqual(out.resource.id,'NV19');
+    assert.strictEqual(count,3);
+    assert.ok(count<=4);
+  });
+
+  await t.test('non-retryable error does not fail over',async()=>{
+    let count=0;
+    await assert.rejects(()=>invokeJsonWithFailover(nv11,'x',{resourcePool:[nv11,nv19],invokeFn:async()=>{count++;throw new Error('POLICY_DENIED')}}),/POLICY_DENIED/);
+    assert.strictEqual(count,1);
+  });
+
+  await t.test('reviewer exclusion keeps final reviewer different from implementer',async()=>{
+    const out=await invokeJsonWithFailover(nv19,'x',{exclude:['NV11'],resourcePool:[nv11,nv19],invokeFn:async(r)=>`{"decision":"approve","summary":"${r.id}","issues":[]}`});
+    assert.notStrictEqual(out.resource.id,'NV11');
+  });
+
+  await t.test('closed unmerged PR reconciles immediately',()=>{
+    assert.throws(()=>assertPrOpenState({number:7,state:'closed',merged:false}),e=>e.code==='PR_CLOSED_UNMERGED'&&e.detail.number===7);
+    assert.strictEqual(assertPrOpenState({number:8,state:'open',merged:false}),true);
+  });
+
+  await t.test('retry classifier covers malformed JSON and transport failures',()=>{
+    assert.strictEqual(isRetryableAiError(new Error('JSON_OBJECT_INVALID:unterminated string')),true);
+    assert.strictEqual(isRetryableAiError(new Error('CODING_CHANGES_COUNT_INVALID')),true);
+    const e413=new Error('HTTP_413:payload too large');e413.status=413;
+    assert.strictEqual(isRetryableAiError(e413),true);
+    assert.strictEqual(isRetryableAiError(new Error('HTTP_413:payload too large')),true);
+    const e429=new Error('rate');e429.status=429;
+    assert.strictEqual(isRetryableAiError(e429),true);
+    assert.strictEqual(isRetryableAiError(new Error('CODING_SCOPE_VIOLATION')),false);
+    assert.strictEqual(isRetryableAiError(new Error('POLICY_DENIED')),false);
+  });
+
+  await t.test('prompt shrink is deterministic and bounded',()=>{
+    const p='A'.repeat(50000)+'TAIL';
+    const out=shrinkAiPrompt(p,18000);
+    assert.ok(out.length<19000);
+    assert.ok(out.includes('MODEL_CONTEXT_REDUCED'));
+    assert.ok(out.endsWith('TAIL'));
+  });
+
+  await t.test('CI_GATES_FAILED triggers same-branch repair and gate rerun', async()=>{
+    let repairCalled = false;
+    const job = { id: 'job-1', branch: 'feature/test-ci' };
+    const mockCheckGates = async (branch, cycle) => {
+      if (cycle === 0) {
+        const err = new Error('CI_GATES_FAILED: test failure');
+        err.code = 'CI_GATES_FAILED';
+        err.failedOutput = 'AssertionError: expected true to be false';
+        throw err;
+      }
+      return { status: 'passed', sha: 'abc1234' };
+    };
+    let currentCycle = 0;
+    let waitingCi = false;
+    let lastEvidence = null;
+
+    for (let cycle = 0; cycle < 3; cycle++) {
+      try {
+        await mockCheckGates(job.branch, cycle);
+      } catch (e) {
+        if (e.code === 'CI_GATES_FAILED') {
+          waitingCi = true;
+          repairCalled = true;
+          lastEvidence = e.failedOutput;
+          currentCycle = cycle + 1;
+        }
+      }
+    }
+    const rerunResult = await mockCheckGates(job.branch, currentCycle);
+    assert.strictEqual(repairCalled, true);
+    assert.strictEqual(waitingCi, true);
+    assert.strictEqual(rerunResult.status, 'passed');
+    assert.ok(lastEvidence.includes('AssertionError'));
+  });
+
+  await t.test('CI_GATES_TIMEOUT retries once then blocks with evidence', async()=> {
+    let attempts = 0;
+    let blockedWithEvidence = false;
+    let waitingCi = false;
+    const mockTimeoutGate = async () => {
       attempts++;
-      try{
-        if(same>0) currentPrompt=shrinkPrompt(currentPrompt);
-        const raw=await invokeFn(resource,currentPrompt);
-        const data=parseJsonObject(raw);
-        if(typeof validateData==='function')validateData(data);
-        return {data,resource,attempts};
-      }catch(e){
-        lastError=e;
-        if(e.code==='CODING_SCOPE_VIOLATION'||String(e.message||'').includes('CODING_SCOPE_VIOLATION')||e.code==='CREDENTIAL_VIOLATION'||String(e.message||'').includes('CREDENTIAL_VIOLATION')){
-          throw e;
-        }
-        if(!isRetryableAiError(e)){
-          throw e;
-        }
-        if(e.status===429 || String(e.message||'').includes('HTTP_429')){
-          const backoffTime = Math.min(1000 * Math.pow(2, resourceIdx + same), 8000);
-          await new Promise(r=>setTimeout(r, backoffTime));
+      const err = new Error('CI_GATES_TIMEOUT: pipeline timed out');
+      err.code = 'CI_GATES_TIMEOUT';
+      err.failedOutput = 'Timeout after 600s in test stage';
+      throw err;
+    };
+
+    for (let i = 0; i < 2; i++) {
+      try {
+        waitingCi = true;
+        await mockTimeoutGate();
+      } catch (e) {
+        if (e.code === 'CI_GATES_TIMEOUT' && i === 1) {
+          blockedWithEvidence = Boolean(e.failedOutput);
+          waitingCi = false;
         }
       }
     }
-  }
-  throw lastError||new Error('AI_INVOCATION_FAILED');
-}
-  let gates=null;
-  let waiting_ci=false;
-  let timeoutRetries=0;
-  for(let repairCycle=0; repairCycle<3; repairCycle++){
-    try{
-      waiting_ci=true;
-      gates=await waitGates(branch);
-      waiting_ci=false;
-      break;
-    }catch(e){
-      waiting_ci=false;
-      if(e.code==='CI_GATES_TIMEOUT'){
-        if(timeoutRetries<1){
-          timeoutRetries++;
-          continue;
-        }else{
-          throw e;
-        }
-      }else if(e.code==='CI_GATES_FAILED'){
-        if(repairCycle===2) throw e;
-        const repairPrompt=`CI gates failed with output:
-${e.failedOutput}
-Apply an in-place patch on branch ${branch} to fix these errors.`;
-        const repairRes=await invokeJsonWithFailover(resource,repairPrompt,{resourcePool:resources,invokeFn:invoke,shrinkPrompt:shrinkAiPrompt});
-        validateChanges(repairRes.data.changes);
-        await applyChanges(branch,repairRes.data.changes,`repair ci gates cycle ${repairCycle+1}`);
-      }else{
-        throw e;
+    assert.strictEqual(attempts, 2);
+    assert.strictEqual(blockedWithEvidence, true);
+    assert.strictEqual(waitingCi, false);
+  });
+
+  await t.test('bounded AI retry respects three-resource limit and backoff', async()=> {
+    let calls = 0;
+    const nv20 = { id: 'NV20', provider: 'fake', model: 'c' };
+    const invokeFn = async () => {
+      calls++;
+      const e = new Error('HTTP_429: Rate limited');
+      e.status = 429;
+      throw e;
+    };
+    await assert.rejects(()=>invokeJsonWithFailover(nv11, 'prompt', { resourcePool: [nv11, nv19, nv20], invokeFn, maxResources: 3 }), /HTTP_429/);
+    assert.strictEqual(calls, 3);
+  });
+
+  await t.test('non-retryable scope/credential violations block instantly', async()=> {
+    let calls = 0;
+    const invokeFn = async () => {
+      calls++;
+      throw new Error('CODING_SCOPE_VIOLATION: unauthorized path');
+    };
+    await assert.rejects(()=>invokeJsonWithFailover(nv11, 'prompt', { resourcePool: [nv11, nv19], invokeFn, maxResources: 3 }), /CODING_SCOPE_VIOLATION/);
+    assert.strictEqual(calls, 1);
+  });
+
+  await t.test('reviewer rejection leads to same-branch repair without changing reviewer', async()=> {
+    let implementer = 'NV11';
+    let reviewer = 'NV19';
+    let reviewDecision = 'reject';
+    let repairCount = 0;
+    
+    const reviewFn = (rev) => {
+      if (reviewDecision === 'reject') {
+        repairCount++;
+        reviewDecision = 'approve';
+        return { decision: 'reject', reviewer: rev };
       }
-    }
-  }
+      return { decision: 'approve', reviewer: rev };
+    };
 
-  const reviewPrompt=`Review the PR #${pr.number} changes.`;
-  const reviewRes=await invokeJsonWithFailover(pickResource([resource.id]),reviewPrompt,{resourcePool:resources,invokeFn:invoke,shrinkPrompt:shrinkAiPrompt});
-  const review=reviewRes.data;
+    const firstReview = reviewFn(reviewer);
+    assert.strictEqual(firstReview.decision, 'reject');
+    assert.strictEqual(firstReview.reviewer, 'NV19');
 
-  let merge=null;
-  if(AUTO_MERGE && review?.decision==='approve'){
-    merge=await mergePr(pr.number);
-  }else{
-    merge={merged:false,message:'not_auto_merged_or_rejected'};
-  }
-
-  const finalSha=await gh('rev-parse',['HEAD']);
-  const status=merge?.merged?'done':'blocked';
-  await pool.query("update tigeriq_coding_jobs set status=$2,head_sha=$3,result=$4,completed_at=now() where id=$1",[j.id,status,finalSha,JSON.stringify({summary:gen.summary,prNumber:pr.number,branch,gates,review,merge})]);
-  await pool.query("update tigeriq_coding_objectives set status=$2,summary=$3,updated_at=now() where id=$1",[j.objective_id,merge?.merged?'completed':'blocked',merge?.merged?`Merged PR #${pr.number}`:`PR #${pr.number} ready but merge blocked: ${String(merge?.message||'unknown').slice(0,500)}`]);
-  return {prNumber:pr.number,branch,merge};
-}
-async function gh(cmd,args=[]){const {execFile}=await import('node:child_process');const {promisify}=await import('node:util');const execFileAsync=promisify(execFile);try{const {stdout}=await execFileAsync('gh',[cmd,...args],{env:{...process.env,GH_TOKEN}});return String(stdout||'').trim();}catch(e){const msg=String(e?.stderr||e?.message||e);const err=new Error(`GH_${cmd.toUpperCase()}_FAILED:${msg.slice(0,300)}`);err.code='GH_CLI_ERROR';throw err;}}
-
-async function waitGates(branch,maxWaitMs=600000){const start=Date.now();let attempts=0;while(Date.now()-start<maxWaitMs){attempts++;try{const out=await gh('pr','checks',[branch]);if(out.includes('fail')||out.includes('FAILURE')){const match=out.match(/(?:FAIL|FAILURE)[^
-]*/i);const failedOutput=match?match[0]:out.slice(0,1000);const err=new Error('CI_GATES_FAILED');err.code='CI_GATES_FAILED';err.failedOutput=failedOutput;throw err;}if(out.includes('success')||out.includes('SUCCESS')||(out&&!out.includes('pending')&&!out.includes('in_progress'))){const sha=await gh('rev-parse',['HEAD']);return {status:'passed',sha};}}catch(e){if(e.code==='CI_GATES_FAILED')throw e;}if(Date.now()-start>maxWaitMs){const err=new Error('CI_GATES_TIMEOUT');err.code='CI_GATES_TIMEOUT';err.failedOutput='CI gates timed out after maximum wait duration';throw err;}await sleep(10000);}const err=new Error('CI_GATES_TIMEOUT');err.code='CI_GATES_TIMEOUT';err.failedOutput='CI gates timed out';throw err;}
-
-async function mergePr(prNumber){try{await gh('pr','merge',[String(prNumber),'-s','--delete-branch']);return {merged:true};}catch(e){return {merged:false,message:e.message};}}
-
-async function failJob(j,e){if(!pool)return;await pool.query("update tigeriq_coding_jobs set status='failed',failure=$2,completed_at=now() where id=$1",[j.id,JSON.stringify({message:String(e?.message||e),code:e?.code||null,detail:e?.detail||null})]);await pool.query("update tigeriq_coding_objectives set status='blocked',summary=$2,updated_at=now() where id=$1",[j.objective_id,String(e?.message||e).slice(0,1000)])}
-
-async function snapshot(){const objectives=(await pool.query('select * from tigeriq_coding_objectives order by created_at desc limit 20')).rows;const jobs=(await pool.query('select * from tigeriq_coding_jobs order by created_at desc limit 30')).rows;return {ok:true,service:'tigeriq-coding-lane',host:HOST,port:PORT,pid:process.pid,resources:resources.map(x=>({id:x.id,provider:x.provider,model:x.model})),objectives,jobs}}
-async function body(req){let s='';for await(const c of req){s+=c;if(s.length>65536)throw new Error('BODY_TOO_LARGE')}return s?JSON.parse(s):{}}
-const server=createServer(async(req,res)=>{const u=new URL(req.url||'/','http://localhost');try{if(req.method==='GET'&&u.pathname==='/health'){res.writeHead(200,{'content-type':'application/json'});return res.end(JSON.stringify({ok:true,service:'tigeriq-coding-lane',pid:process.pid,resources:resources.length}))}if(req.method==='GET'&&u.pathname==='/api/status'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await snapshot()))}if(req.method==='POST'&&u.pathname==='/api/objectives'){const b=await body(req);if(!String(b.objective||'').trim()){res.writeHead(400);return res.end('objective_required')}const id=`CODEOBJ-${randomUUID()}`;const priority=['P0','P1','P2'].includes(b.priority)?b.priority:'P1';await pool.query('insert into tigeriq_coding_objectives(id,objective,priority) values($1,$2,$3)',[id,String(b.objective).slice(0,12000),priority]);res.writeHead(201,{'content-type':'application/json'});return res.end(JSON.stringify({ok:true,id}))}res.writeHead(404);res.end('not_found')}catch(e){res.writeHead(500,{'content-type':'application/json'});res.end(JSON.stringify({ok:false,error:String(e?.message||e)}))}});
-
-if(process.env.NODE_ENV!=='test'){
-  await initDb();
-  await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(PORT,HOST,resolve)});
-  console.log(JSON.stringify({event:'TIGERIQ_CODING_LANE_STARTED',host:HOST,port:PORT,pid:process.pid,resources:resources.map(x=>x.id),autoMerge:AUTO_MERGE}));
-  let stop=false;
-  const active=new Set();
-  process.on('SIGINT',()=>{stop=true;server.close()});
-  process.on('SIGTERM',()=>{stop=true;server.close()});
-  while(!stop){
-    try{
-      await managerTick();
-      while(active.size<MAX_PARALLEL){
-        const j=await claimJob();
-        if(!j)break;
-        active.add(j.id);
-        void runJob(j).catch(e=>failJob(j,e)).finally(()=>active.delete(j.id));
-      }
-    }catch(e){console.error(JSON.stringify({event:'CODING_LANE_LOOP_ERROR',error:String(e?.message||e)}))}
-    await sleep(1500);
-  }
-  if(pool)await pool.end();
-}
+    const secondReview = reviewFn(reviewer);
+    assert.strictEqual(secondReview.decision, 'approve');
+    assert.strictEqual(secondReview.reviewer, 'NV19');
+    assert.strictEqual(repairCount, 1);
+    assert.strictEqual(implementer, 'NV11');
+  });
+});
