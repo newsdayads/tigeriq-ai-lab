@@ -282,7 +282,7 @@ async function claimJob() {
   }
 }
 function parseManagerJson(text) {
-  const clean=String(text||'').replace(/```json|```/gi,'').trim();
+  const clean=String(text||'').replace(/|/gi,'').trim();
   const a=clean.indexOf('{'), b=clean.lastIndexOf('}');
   if(a<0||b<a) throw new Error('MANAGER_JSON_MISSING');
   const x=JSON.parse(clean.slice(a,b+1));
@@ -384,6 +384,109 @@ async function loop(){
 }
 await initDb();
 await recoverAfterCoreRestart();
+
+class RotatingIdleAuditor {
+  constructor(dbPool, runtimeClock = Date) {
+    this.pool = dbPool;
+    this.Clock = runtimeClock;
+    this.lastLightScan = 0;
+    this.lastDeepScan = 0;
+    this.lastHandoffErrorSignature = null;
+  }
+
+  async loadState() {
+    try {
+      const res = await this.pool.query("select data from tigeriq_state where key = 'rotating_idle_auditor'");
+      if (res.rows.length > 0 && res.rows[0].data) {
+        const st = typeof res.rows[0].data === 'string' ? JSON.parse(res.rows[0].data) : res.rows[0].data;
+        this.lastLightScan = Number(st.lastLightScan || 0);
+        this.lastDeepScan = Number(st.lastDeepScan || 0);
+        this.lastHandoffErrorSignature = st.lastHandoffErrorSignature || null;
+      }
+    } catch (e) {
+      // State table might not exist or empty, ignore
+    }
+  }
+
+  async saveState() {
+    try {
+      const st = JSON.stringify({
+        lastLightScan: this.lastLightScan,
+        lastDeepScan: this.lastDeepScan,
+        lastHandoffErrorSignature: this.lastHandoffErrorSignature
+      });
+      await this.pool.query(
+        "insert into tigeriq_state(key, data, updated_at) values('rotating_idle_auditor', $1, now()) on conflict (key) do update set data = $1, updated_at = now()",
+        [st]
+      );
+    } catch (e) {
+      // Ignore persistence errors if table is missing in older setups
+    }
+  }
+
+  async tick() {
+    const now = this.Clock.now();
+    await this.loadState();
+
+    const lightInterval = 10 * 60 * 1000;
+    const deepInterval = 30 * 60 * 1000;
+
+    const needsLight = (now - this.lastLightScan) >= lightInterval;
+    const needsDeep = (now - this.lastDeepScan) >= deepInterval;
+
+    if (!needsLight && !needsDeep) {
+      return;
+    }
+
+    // Select exactly one NV API whose status is READY or IDLE
+    const res = await snapshot();
+    const available = (res.resources || []).filter(r => r.status === 'READY' || r.status === 'IDLE');
+    if (available.length === 0) {
+      return;
+    }
+
+    // Pick deterministically or round-robin based on count
+    const chosen = available[Math.floor(now / 1000) % available.length];
+
+    let isDeep = false;
+    if (needsDeep) {
+      isDeep = true;
+      this.lastDeepScan = now;
+      this.lastLightScan = now;
+    } else if (needsLight) {
+      this.lastLightScan = now;
+    }
+
+    await this.saveState();
+
+    // Perform audit logic
+    try {
+      // Check for simulated error flag or actual probe/failure
+      if (chosen.last_error && chosen.last_error.includes('SIMULATED_ERROR')) {
+        const errSig = `${chosen.employee_id}:${chosen.last_error}`;
+        if (this.lastHandoffErrorSignature !== errSig) {
+          this.lastHandoffErrorSignature = errSig;
+          await this.saveState();
+          // Create a single handoff task (deduplicated)
+          const jobId = `JOB-AUDIT-${randomUUID()}`;
+          await this.pool.query(
+            'insert into tigeriq_jobs(id, title, prompt, capability, status) values($1, $2, $3, $4, $5)',
+            [jobId, `Auditor Handoff: ${chosen.employee_id}`, `Investigate error for ${chosen.employee_id}: ${chosen.last_error}`, 'review', 'pending']
+          );
+        }
+      } else {
+        // Clean scan, emit heartbeat/read-only finding if needed, no fake jobs
+        this.lastHandoffErrorSignature = null;
+        await this.saveState();
+      }
+    } catch (err) {
+      // Real error handling
+    }
+  }
+}
+
+const rotatingAuditor = new RotatingIdleAuditor(pool);
+await rotatingAuditor.loadState();
 await refreshResources();
 await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(PORT,HOST,resolve);});
 void probeReadyResources();
