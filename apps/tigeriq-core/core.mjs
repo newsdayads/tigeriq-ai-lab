@@ -378,10 +378,8 @@ async function auditIdleNode(){
 
   try {
     const res = await pool.query(
-      `select * from tigeriq_resources where enabled = true and current_job_id is null and work_state is distinct from 'BUSY' and credential_state is distinct from 'WAIT_KEY' and health_state not in ('RATE_LIMITED', 'OFFLINE', 'ERROR') and rank < 90 order.by random() limit 1`
-    ).catch(() => pool.query(
-      `select * from tigeriq_resources where enabled = true and work_state != 'BUSY' and credential_state != 'WAIT_KEY' and health_state not in ('RATE_LIMITED', 'OFFLINE', 'ERROR') order by rank asc`
-    ));
+      `select * from tigeriq_resources where enabled = true and work_state not in ('BUSY') and credential_state not in ('WAIT_KEY') and health_state not in ('RATE_LIMITED', 'OFFLINE', 'ERROR', 'BLOCKED') order by random() limit 20`
+    ).catch(() => ({ rows: [] }));
 
     const rows = res.rows || [];
     const candidate = rows.find(r => {
