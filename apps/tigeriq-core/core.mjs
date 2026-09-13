@@ -282,7 +282,7 @@ async function claimJob() {
   }
 }
 function parseManagerJson(text) {
-  const clean=String(text||'').replace(/```json|```/gi,'').trim();
+  const clean=String(text||'').replace(/|/gi,'').trim();
   const a=clean.indexOf('{'), b=clean.lastIndexOf('}');
   if(a<0||b<a) throw new Error('MANAGER_JSON_MISSING');
   const x=JSON.parse(clean.slice(a,b+1));
@@ -382,6 +382,96 @@ async function loop(){
     await sleep(POLL_MS);
   }
 }
+export class Auditor {
+  constructor(dbPool, options = {}) {
+    this.pool = dbPool;
+    this.lightIntervalMs = options.lightIntervalMs || 5 * 60 * 1000;
+    this.deepIntervalMs = options.deepIntervalMs || 30 * 60 * 1000;
+    this.processedHashes = new Set();
+    this.timerLight = null;
+    this.timerDeep = null;
+    this.isRunning = false;
+  }
+
+  async computeHash(resourceId, scanType, timestamp) {
+    const { createHash } = await import('node:crypto');
+    return createHash('sha256').update(`${resourceId}:${scanType}:${timestamp}`).digest('hex');
+  }
+
+  async getEligibleResources() {
+    const res = await this.pool.query('select * from tigeriq_resources order by employee_id');
+    const base = res.rows;
+    const failures = (await this.pool.query(`select distinct on(employee_id) employee_id,ts,type,data from tigeriq_events
+      where employee_id is not null and type in ('RESOURCE_FAILURE','RESOURCE_PROBE_FAIL') order by employee_id,seq desc`)).rows;
+    const failureMap = new Map(failures.map(x => [x.employee_id, x]));
+    
+    const eligible = [];
+    for (const r of base) {
+      const f = failureMap.get(r.employee_id);
+      const st = publicStatus(r);
+      const isCriticalJob = !!r.current_job_id;
+      const excludedStatuses = ['BUSY', 'RATE_LIMITED', 'BLOCKED', 'WAIT_KEY', 'OFFLINE'];
+      
+      if (excludedStatuses.includes(st) || isCriticalJob) {
+        continue;
+      }
+      if (['READY', 'IDLE', 'ONLINE'].includes(st)) {
+        eligible.push({ ...r, status: st, last_error: f?.data?.kind || f?.data?.message || null });
+      }
+    }
+    return eligible;
+  }
+
+  async scan(scanType = 'light') {
+    const timestamp = Math.floor(Date.now() / (scanType === 'light' ? this.lightIntervalMs : this.deepIntervalMs));
+    console.log(JSON.stringify({ event: 'AUDITOR_SCAN_START', scanType, timestamp }));
+    
+    const resources = await this.getEligibleResources();
+    for (const r of resources) {
+      const hash = await this.computeHash(r.employee_id || r.id, scanType, timestamp);
+      if (this.processedHashes.has(hash)) {
+        console.log(JSON.stringify({ event: 'AUDITOR_RESOURCE_SKIPPED_DUPLICATE', resourceId: r.employee_id || r.id, hash }));
+        continue;
+      }
+      
+      this.processedHashes.add(hash);
+      console.log(JSON.stringify({ event: 'AUDITOR_RESOURCE_AUDITED', scanType, resourceId: r.employee_id || r.id, status: r.status }));
+      
+      // Read-only health check & heartbeat recording, ensuring zero write-oriented core logic
+      await this.pool.query('insert into tigeriq_events(type, employee_id, data) values($1, $2, $3)', [
+        'AUDITOR_HEARTBEAT',
+        r.employee_id || r.id,
+        JSON.stringify({ scanType, status: r.status, timestamp })
+      ]);
+    }
+    console.log(JSON.stringify({ event: 'AUDITOR_SCAN_COMPLETE', scanType, auditedCount: resources.length }));
+  }
+
+  start() {
+    if (this.isRunning) return;
+    this.isRunning = true;
+    this.timerLight = setInterval(() => {
+      this.scan('light').catch(err => console.error(JSON.stringify({ event: 'AUDITOR_ERROR', scanType: 'light', error: String(err?.message || err) })));
+    }, this.lightIntervalMs);
+    
+    this.timerDeep = setInterval(() => {
+      this.scan('deep').catch(err => console.error(JSON.stringify({ event: 'AUDITOR_ERROR', scanType: 'deep', error: String(err?.message || err) })));
+    }, this.deepIntervalMs);
+    
+    console.log(JSON.stringify({ event: 'AUDITOR_STARTED' }));
+  }
+
+  stop() {
+    if (!this.isRunning) return;
+    if (this.timerLight) clearInterval(this.timerLight);
+    if (this.timerDeep) clearInterval(this.timerDeep);
+    this.timerLight = null;
+    this.timerDeep = null;
+    this.isRunning = false;
+    console.log(JSON.stringify({ event: 'AUDITOR_STOPPED' }));
+  }
+}
+
 await initDb();
 await recoverAfterCoreRestart();
 await refreshResources();
