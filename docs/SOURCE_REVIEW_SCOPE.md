@@ -20,4 +20,4 @@ A review request must state that exact commit SHA in its initial body. Do not ch
 Previous WO-001 review attempts target older repository states and are not evidence for a later head. They remain historical audit records only and must not be used to pass the current head.
 
 ## Release boundary
-A Source review PASS does not authorize merging PR #11, merging the runtime stack, activating paid/cloud providers, changing Android signing identity, or deploying Production. Those transitions require their own applicable gates and authorization.
+A Source review PASS does not authorize merging draft PR #738, merging the runtime stack, activating paid/cloud providers, changing Android signing identity, or deploying Production. Those transitions require their own applicable gates and authorization.

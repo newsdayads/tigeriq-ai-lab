@@ -19,6 +19,7 @@ At this audit, `main` remains the initial repository baseline. The Company Sourc
 ## VERIFIED OFF-MAIN — Company Source bootstrap
 Branch: `chore/source-of-truth-bootstrap`.
 PR #11: docs: bootstrap TigerIQ Source of Truth and Company OS governance — **CLOSED UNMERGED** on 2026-08-30. PR #11 closed at snapshot head 922c490c36c0a1871625d42046e760c508d18dd3; the branch may advance through later checkpoints, each of which requires its own exact review target. Closing the PR did not merge, release, or deploy this baseline.
+Active review path: draft PR #738 (docs: source-of-truth bootstrap checkpoint) against main. Its exact review target is the SHA recorded in the PR body; PR #11 remains historical closure evidence only. GitHub currently reports PR #738 as conflicted (DIRTY), so it is not merge-eligible.
 
 This unmerged branch contains the general/public-safe governance baseline:
 - Company Constitution v1;
@@ -32,7 +33,7 @@ This unmerged branch contains the general/public-safe governance baseline:
 
 Privacy boundary: `04_TIGERIQ_OWNER_PROFILE_v1.md`, health/medical information, intimate family information, authentication credentials, private keys, and unnecessary personal identifiers are excluded from the general repository.
 
-The closed PR is not a pending GitHub review. A fresh independent review/judge must evaluate one exact current branch head before any future reviewed PR/release-gate path can be considered. No prior review attempt is authoritative for the current head.
+PR #738 is the active draft review path. A fresh independent review/judge must evaluate the exact SHA recorded in its PR body; no prior review attempt is authoritative for a later branch head. Its current GitHub conflict status blocks merge consideration until separately resolved.
 
 ## VERIFIED OFF-MAIN — primary runtime foundation
 Primary dependency path:
