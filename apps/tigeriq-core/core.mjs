@@ -446,7 +446,7 @@ async function runDeepScan() {
   const ts = nowIso();
   const state = await getAuditorState();
   const resourcesData = (await pool.query('select * from tigeriq_resources')).rows;
-  const excludedStatuses = new Set(['BUSY', 'RATE_LIMITED', 'BLOCKED', 'WAIT_KEY', 'OFFLINE']);
+  const excludedStatuses = new Set(['BUSY', 'RATE_LIMITED', 'BLOCKED', 'WAIT_KEY', 'OFFLINE', 'CRITICAL_JOB']);
   
   const validResources = resourcesData.filter(r => {
     const st = publicStatus(r);
