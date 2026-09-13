@@ -370,6 +370,63 @@ function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta
 });
 
 let stop=false, lastRefresh=0, lastRecover=0, lastManager=0, lastProbe=0; const active=new Set(); const MAX_PARALLEL=3;
+let lastLightAudit = 0, lastDeepAudit = 0, activeDeepAudit = false;
+export async function startSelfCheck(runtime) {
+  const now = runtime?.now ? runtime.now() : Date.now();
+  if (!lastLightAudit) lastLightAudit = now;
+  if (!lastDeepAudit) lastDeepAudit = now;
+  
+  const lightInterval = runtime?.lightIntervalMs ?? 10 * 60 * 1000;
+  const deepInterval = runtime?.deepIntervalMs ?? 30 * 60 * 1000;
+  const store = runtime?.store || pool;
+
+  if (now - lastLightAudit >= lightInterval) {
+    lastLightAudit = now;
+    try {
+      const healthMetrics = {
+        ok: true,
+        uptimeSec: Math.floor(process.uptime()),
+        timestamp: new Date(now).toISOString(),
+      };
+      if (typeof store.query === 'function') {
+        await store.query(
+          "insert into tigeriq_events(type, data) values($1, $2)",
+          ['SELF_CHECK_LIGHT', JSON.stringify(healthMetrics)]
+        );
+      } else if (typeof store.persist === 'function') {
+        await store.persist('self_check_light', healthMetrics);
+      }
+    } catch (err) {
+      console.error(JSON.stringify({ event: 'SELF_CHECK_LIGHT_ERROR', error: String(err?.message || err) }));
+    }
+  }
+
+  if (!activeDeepAudit && (now - lastDeepAudit >= deepInterval)) {
+    activeDeepAudit = true;
+    lastDeepAudit = now;
+    try {
+      const auditResult = {
+        ok: true,
+        auditType: 'deep',
+        resourcesCount: resources.length,
+        timestamp: new Date(now).toISOString(),
+      };
+      if (typeof store.query === 'function') {
+        await store.query(
+          "insert into tigeriq_events(type, data) values($1, $2)",
+          ['SELF_CHECK_DEEP', JSON.stringify(auditResult)]
+        );
+      } else if (typeof store.persist === 'function') {
+        await store.persist('self_check_deep', auditResult);
+      }
+    } catch (err) {
+      console.error(JSON.stringify({ event: 'SELF_CHECK_DEEP_ERROR', error: String(err?.message || err) }));
+    } finally {
+      activeDeepAudit = false;
+    }
+  }
+}
+
 async function loop(){
   while(!stop){const t=Date.now();
     try{
@@ -377,6 +434,7 @@ async function loop(){
       if(t-lastRecover>10000){await recoverStale();lastRecover=t;}
       if(t-lastManager>MANAGER_IDLE_MS){await managerTick();lastManager=t;}
       if(t-lastProbe>60000){await probeReadyResources();lastProbe=t;}
+      await startSelfCheck({ now: () => Date.now(), store: pool });
       while(active.size<MAX_PARALLEL){const j=await claimJob();if(!j)break;active.add(j.id);void runJob(j).finally(()=>active.delete(j.id));}
     }catch(e){console.error(JSON.stringify({event:'CORE_LOOP_ERROR',error:String(e?.message||e)}));}
     await sleep(POLL_MS);
