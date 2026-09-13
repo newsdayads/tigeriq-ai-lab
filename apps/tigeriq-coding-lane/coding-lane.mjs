@@ -131,7 +131,6 @@ const resources=[
   R('NV13','openrouter','openrouter/free',()=>process.env.OPENROUTER_API_KEY),
   R('NV14','mistral','mistral-small-latest',()=>process.env.MISTRAL_API_KEY),
   R('NV16','huggingface','openai/gpt-oss-120b:fastest',()=>process.env.HF_TOKEN),
-  R('NV19','cohere','command-a-plus-05-2026',()=>process.env.COHERE_API_KEY&&process.env.TIGERIQ_COHERE_TRIAL_CONFIRMED==='true'),
 ].filter(x=>x.ready());
 let rr=0;
 function pickResource(exclude=[]){const available=resources.filter(x=>!exclude.includes(x.id));if(!available.length)return null;const r=available[rr%available.length];rr++;return r;}
@@ -223,6 +222,54 @@ async function managerTick(){
 
 async function claimJob(){const c=await pool.connect();try{await c.query('begin');const q=await c.query("select * from tigeriq_coding_jobs where status='queued' or (status='waiting_resource' and coalesce(next_attempt_at,now())<=now()) order by case when status='waiting_resource' then 0 else 1 end,created_at for update skip locked limit 1");if(!q.rows[0]){await c.query('commit');return null}const j=q.rows[0];await c.query("update tigeriq_coding_jobs set status='running',started_at=coalesce(started_at,now()),attempts=attempts+1,completed_at=null where id=$1",[j.id]);await c.query('commit');return j}catch(e){await c.query('rollback');throw e}finally{c.release()}}
 async function contextFor(paths,ref='main'){const rows=[];for(const p of paths){const f=await readRepoFile(p,ref);rows.push(`FILE ${p}\n${f.content.slice(0,45000)}`)}return rows.join('\n\n---\n\n').slice(0,180000)}
+export function validateCompactEdits(edits,allowedPaths=[]){
+  if(!Array.isArray(edits)||edits.length<1||edits.length>12)throw new Error('CODING_COMPACT_EDITS_COUNT_INVALID');
+  const allow=new Set((allowedPaths||[]).map(String)),seen=new Set(),paths=new Set();
+  let bytes=0;
+  for(const edit of edits){
+    const path=String(edit?.path||'').trim(),old=String(edit?.old??''),next=String(edit?.new??'');
+    if(!safeRepoPath(path)||!allow.has(path))throw new CodingScopeViolationError([path||'<empty>']);
+    paths.add(path);
+    if(!old||old===next)throw new Error('CODING_COMPACT_EDIT_INVALID');
+    const key=`${path}\u0000${old}`;if(seen.has(key))throw new Error('CODING_COMPACT_EDIT_DUPLICATE');seen.add(key);
+    bytes+=Buffer.byteLength(old,'utf8')+Buffer.byteLength(next,'utf8');
+  }
+  if(paths.size!==1)throw new Error('CODING_COMPACT_REPAIR_MULTI_FILE_INVALID');
+  if(bytes>120000)throw new Error('CODING_COMPACT_EDITSET_TOO_LARGE');
+  return true;
+}
+
+export function applyCompactEdits(content,edits){
+  const source=String(content??''),ranges=[];
+  for(const edit of edits||[]){
+    const old=String(edit.old),next=String(edit.new),first=source.indexOf(old);
+    if(first<0)throw new Error('CODING_COMPACT_EDIT_OLD_NOT_FOUND');
+    if(source.indexOf(old,first+old.length)>=0)throw new Error('CODING_COMPACT_EDIT_OLD_NOT_UNIQUE');
+    ranges.push({start:first,end:first+old.length,next});
+  }
+  ranges.sort((a,b)=>a.start-b.start);
+  for(let i=1;i<ranges.length;i++)if(ranges[i].start<ranges[i-1].end)throw new Error('CODING_COMPACT_EDIT_OVERLAP');
+  let out=source;
+  for(const r of [...ranges].sort((a,b)=>b.start-a.start))out=out.slice(0,r.start)+r.next+out.slice(r.end);
+  return out;
+}
+
+async function generateRepairEdits(worker,j,context,issues=[],exclude=[]){
+  const prompt=`You are ${worker.id}, an autonomous TigerIQ repository engineer. Fix ONLY the listed issues on the existing branch.\nTASK: ${j.instruction}\nALLOWED PATHS: ${j.paths.join(', ')}\nISSUES TO FIX: ${JSON.stringify(issues)}\nCURRENT FILES:\n${context}\nReturn ONLY compact JSON {"summary":"short","edits":[{"path":"exact allowed path","old":"exact UNIQUE existing snippet","new":"replacement snippet"}]}. Never return a complete file. All edits in one repair response must target ONE allowed file. Each old snippet must exist exactly once. Keep edits minimal. Do not touch paths outside ALLOWED PATHS. Never output secrets.`;
+  const validateData=d=>validateCompactEdits(d.edits,j.paths);
+  const invoked=await invokeJsonWithFailover(worker,prompt,{exclude,validateData});
+  return {payload:invoked.data,resource:invoked.resource};
+}
+async function writeRepairEdits(branch,edits){
+  const byPath=new Map();
+  for(const edit of edits){if(!byPath.has(edit.path))byPath.set(edit.path,[]);byPath.get(edit.path).push(edit)}
+  for(const [path,pathEdits] of byPath){
+    const current=await readRepoFile(path,branch);
+    if(!current.sha)throw new Error(`CODING_COMPACT_EDIT_FILE_MISSING:${path}`);
+    const content=applyCompactEdits(current.content,pathEdits);
+    await writeFile(branch,{path,content});
+  }
+}
 async function generateChanges(worker,j,context,reviewIssues=[],exclude=[]){const prompt=`You are ${worker.id}, an autonomous TigerIQ repository engineer. Implement ONLY the assigned task on a GitHub branch.\nTASK: ${j.instruction}\nALLOWED PATHS: ${j.paths.join(', ')}\n${reviewIssues.length?`REVIEW ISSUES TO FIX: ${JSON.stringify(reviewIssues)}\n`:''}CURRENT FILES:\n${context}\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}. Do not touch paths outside ALLOWED PATHS. Never output secrets. Keep changes minimal and testable.`;const validateData=d=>{validateChanges(d.changes,j.paths);validateJobScope(j.paths,d.changes)};const invoked=await invokeJsonWithFailover(worker,prompt,{exclude,validateData});const d=invoked.data;return {payload:d,resource:invoked.resource}}
 async function reviewPr(reviewer,j,diff,implementerId){const prompt=`You are ${reviewer.id}, independent TigerIQ code reviewer. Review against the task and safety boundaries. TASK: ${j.instruction}\nDIFF:\n${diff.slice(0,180000)}\nReturn ONLY JSON {"decision":"approve|changes_requested","summary":"short","issues":["specific issue"]}. Reject unsafe, untested, out-of-scope, credential/security/production changes.`;const invoked=await invokeJsonWithFailover(reviewer,prompt,{exclude:[implementerId]});const d=invoked.data;if(!['approve','changes_requested'].includes(d.decision)){const e=new Error('REVIEW_DECISION_INVALID');e.code='REVIEW_SCHEMA_INVALID';throw e}d.issues=Array.isArray(d.issues)?d.issues.slice(0,8):[];return {review:d,resource:invoked.resource}}
 
@@ -255,12 +302,11 @@ async function runJob(j){
       onWaiting:async()=>{await pool.query("update tigeriq_coding_jobs set status='waiting_ci' where id=$1",[j.id])},
       repairFn:async({evidence})=>{
         context=await contextFor(j.paths,branch);
-        generated=await generateChanges(worker,j,context,[`CI gate failure on same PR #${pr.number}`,...evidence],[reviewer.id]);
+        generated=await generateRepairEdits(worker,j,context,[`CI gate failure on same PR #${pr.number}`,...evidence],[reviewer.id]);
         worker=generated.resource;gen=generated.payload;
-        validateJobScope(j.paths,gen.changes);
         if(reviewer?.id===worker.id){reviewer=pickResource([worker.id]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE')}
         await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,status='waiting_ci' where id=$1",[j.id,worker.id,reviewer.id]);
-        for(const ch of gen.changes)await writeFile(branch,ch);
+        await writeRepairEdits(branch,gen.edits);
       },
       maxRepairCycles:3,
       timeoutRetries:1,
@@ -274,11 +320,10 @@ async function runJob(j){
     if(review.decision==='approve')break;
     if(reviewCycle===2)throw Object.assign(new Error('REVIEW_CHANGES_UNRESOLVED'),{detail:review});
     context=await contextFor(j.paths,branch);
-    generated=await generateChanges(worker,j,context,review.issues,[reviewer.id]);worker=generated.resource;gen=generated.payload;
-    validateJobScope(j.paths,gen.changes);
+    generated=await generateRepairEdits(worker,j,context,review.issues,[reviewer.id]);worker=generated.resource;gen=generated.payload;
     if(reviewer.id===worker.id){reviewer=pickResource([worker.id]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE')}
     await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,status='waiting_ci' where id=$1",[j.id,worker.id,reviewer.id]);
-    for(const ch of gen.changes)await writeFile(branch,ch);
+    await writeRepairEdits(branch,gen.edits);
   }
   if(review?.decision!=='approve')throw new Error('REVIEW_NOT_APPROVED');
   assertPrOpenState(await gh(`/pulls/${pr.number}`));

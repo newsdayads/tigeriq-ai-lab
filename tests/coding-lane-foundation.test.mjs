@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import {assertPrOpenState,gateFailureIssues,invokeJsonWithFailover,isResourceTransientError,resourceWaitPlan,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {applyCompactEdits,assertPrOpenState,gateFailureIssues,invokeJsonWithFailover,isResourceTransientError,resourceWaitPlan,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,validateCompactEdits} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError,parseJsonObject} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 const nv11={id:'NV11',provider:'fake',model:'a'};
@@ -183,6 +183,29 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
     assert.strictEqual(shouldResumeExistingPr({branch:'tigeriq/nv12/job',pr_number:722}),true);
     assert.strictEqual(shouldResumeExistingPr({branch:'',pr_number:722}),false);
     assert.strictEqual(shouldResumeExistingPr({branch:'tigeriq/nv12/job',pr_number:null}),false);
+  });
+  await t.test('compact repair applies one exact unique snippet only',()=>{
+    const path='apps/tigeriq-core/core.mjs';
+    const edits=[{path,old:'JSON.stringify(stateData)',new:'stateData'}];
+    assert.strictEqual(validateCompactEdits(edits,[path]),true);
+    assert.strictEqual(applyCompactEdits('before JSON.stringify(stateData) after',edits),'before stateData after');
+    assert.throws(()=>applyCompactEdits('JSON.stringify(stateData) + JSON.stringify(stateData)',edits),/CODING_COMPACT_EDIT_OLD_NOT_UNIQUE/);
+  });
+
+  await t.test('compact repair remains fail-closed outside allowed scope',()=>{
+    assert.throws(()=>validateCompactEdits([{path:'docs/SECURITY.md',old:'a',new:'b'}],['apps/tigeriq-core/core.mjs']),/CODING_SCOPE_VIOLATION/);
+    assert.throws(()=>validateCompactEdits([{path:'apps/tigeriq-core/core.mjs',old:'same',new:'same'}],['apps/tigeriq-core/core.mjs']),/CODING_COMPACT_EDIT_INVALID/);
+  });
+
+  await t.test('multiple compact edits on one file are order-independent and reject overlap',()=>{
+    const path='apps/tigeriq-core/core.mjs';
+    const edits=[{path,old:'alpha',new:'A-LONG'},{path,old:'gamma',new:'G'}];
+    assert.strictEqual(validateCompactEdits(edits,[path]),true);
+    assert.strictEqual(applyCompactEdits('alpha beta gamma',edits),'A-LONG beta G');
+    assert.strictEqual(applyCompactEdits('alpha beta gamma',[...edits].reverse()),'A-LONG beta G');
+    assert.throws(()=>applyCompactEdits('abcdef',[{path,old:'abc',new:'x'},{path,old:'bcd',new:'y'}]),/CODING_COMPACT_EDIT_OVERLAP/);
+    assert.throws(()=>validateCompactEdits([{path,old:'alpha',new:'A'},{path,old:'alpha',new:'B'}],[path]),/CODING_COMPACT_EDIT_DUPLICATE/);
+    assert.throws(()=>validateCompactEdits([{path,old:'alpha',new:'A'},{path:'tests/other.mjs',old:'beta',new:'B'}],[path,'tests/other.mjs']),/CODING_COMPACT_REPAIR_MULTI_FILE_INVALID/);
   });
   await t.test('gate evidence is concise and machine-usable',()=>{
     const issues=gateFailureIssues({message:'CI_GATES_FAILED',detail:{states:[{name:'CI Verify',status:'completed',conclusion:'failure'},{name:'Queue Hygiene Verify',status:'completed',conclusion:'success'}]}});
