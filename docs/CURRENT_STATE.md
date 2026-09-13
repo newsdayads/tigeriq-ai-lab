@@ -18,7 +18,7 @@ At this audit, `main` remains the initial repository baseline. The Company Sourc
 
 ## VERIFIED OFF-MAIN — Company Source bootstrap
 Branch: `chore/source-of-truth-bootstrap`.
-PR #11: `docs: bootstrap TigerIQ Source of Truth and Company OS governance`.
+PR #11: docs: bootstrap TigerIQ Source of Truth and Company OS governance — **CLOSED UNMERGED** on 2026-08-30. The branch remains off-MAIN at 922c490c36c0a1871625d42046e760c508d18dd3; closing the PR did not merge, release, or deploy this baseline.
 
 This unmerged branch contains the general/public-safe governance baseline:
 - Company Constitution v1;
@@ -32,7 +32,7 @@ This unmerged branch contains the general/public-safe governance baseline:
 
 Privacy boundary: `04_TIGERIQ_OWNER_PROFILE_v1.md`, health/medical information, intimate family information, authentication credentials, private keys, and unnecessary personal identifiers are excluded from the general repository.
 
-The Source bootstrap itself remains **under independent review** until a fresh review/judge evaluates one exact current branch head. No prior review attempt is authoritative for the current head.
+The closed PR is not a pending GitHub review. A fresh independent review/judge must evaluate one exact current branch head before any future reviewed PR/release-gate path can be considered. No prior review attempt is authoritative for the current head.
 
 ## VERIFIED OFF-MAIN — primary runtime foundation
 Primary dependency path:
@@ -76,7 +76,7 @@ Engineering hardening is verified off-MAIN. Android Production signing/update-in
 - **WO-004 Android Production signing**: requires one persistent production signer, secure secret provisioning, signed release certificate evidence, dependency-security triage, and update-in-place verification against the intended installed baseline. No update-safe Production signing PASS is claimed.
 
 ## Open integration/release gates
-- Source bootstrap PR #11: fresh independent review/judge of one exact current head is required.
+- Source bootstrap: PR #11 is closed unmerged; a fresh PR/release-gate path, with independent review/judge of one exact current head, is required before any merge consideration.
 - Primary runtime PR #1 → #3–#10 → #13: fresh dependency-order integration review is required.
 - Any merge to MAIN requires the applicable merge/release gate.
 - Any Production deployment requires explicit Owner authorization and release evidence.
