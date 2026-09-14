@@ -14,21 +14,23 @@ const WORKER_BADGE_COLORS = {
   NV05: '#16a34a',
   NV04: '#7c3aed',
 };
+let activeWorkerBadge = null;
+let badgeRepairQueued = false;
 
 function stripWorkerTitlePrefix() {
-  document.title = document.title.replace(/^\[NV0[345]\]\s*/, '');
+  const clean = document.title.replace(/^\[NV0[345]\]\s*/, '');
+  if (clean !== document.title) document.title = clean;
 }
 
 function removeWorkerBadge() {
+  activeWorkerBadge = null;
   document.getElementById(WORKER_BADGE_ID)?.remove();
   stripWorkerTitlePrefix();
 }
 
-function showWorkerBadge(workerId, label) {
-  if (!WORKER_BADGE_LABELS[workerId]) {
-    removeWorkerBadge();
-    return;
-  }
+function ensureWorkerBadge() {
+  const workerId = activeWorkerBadge?.workerId;
+  if (!workerId || !WORKER_BADGE_LABELS[workerId] || !document.documentElement) return;
   let badge = document.getElementById(WORKER_BADGE_ID);
   if (!badge) {
     badge = document.createElement('div');
@@ -53,10 +55,47 @@ function showWorkerBadge(workerId, label) {
   }
   badge.style.background = WORKER_BADGE_COLORS[workerId];
   badge.textContent = `● ${WORKER_BADGE_LABELS[workerId]}`;
-  badge.title = label || WORKER_BADGE_LABELS[workerId];
-  stripWorkerTitlePrefix();
-  document.title = `[${workerId}] ${document.title}`;
+  badge.title = activeWorkerBadge?.label || WORKER_BADGE_LABELS[workerId];
+  const cleanTitle = document.title.replace(/^\[NV0[345]\]\s*/, '');
+  const wantedTitle = `[${workerId}] ${cleanTitle}`;
+  if (document.title !== wantedTitle) document.title = wantedTitle;
 }
+
+function queueBadgeRepair() {
+  if (badgeRepairQueued || !activeWorkerBadge) return;
+  badgeRepairQueued = true;
+  queueMicrotask(() => {
+    badgeRepairQueued = false;
+    ensureWorkerBadge();
+  });
+}
+
+function showWorkerBadge(workerId, label) {
+  if (!WORKER_BADGE_LABELS[workerId]) {
+    removeWorkerBadge();
+    return;
+  }
+  activeWorkerBadge = { workerId, label };
+  ensureWorkerBadge();
+}
+
+const badgeObserver = new MutationObserver(() => queueBadgeRepair());
+badgeObserver.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+
+function notifyRouteChanged() {
+  queueBadgeRepair();
+  try { chrome.runtime.sendMessage({ type: 'TIGERIQ_ROUTE_CHANGED', url: location.href }, () => void chrome.runtime.lastError); } catch { /* extension navigation teardown */ }
+}
+for (const method of ['pushState', 'replaceState']) {
+  const original = history[method].bind(history);
+  history[method] = (...args) => {
+    const result = original(...args);
+    notifyRouteChanged();
+    return result;
+  };
+}
+addEventListener('popstate', notifyRouteChanged);
+addEventListener('hashchange', notifyRouteChanged);
 
 function detectSecurityBlock() {
   if (document.querySelector('iframe[src*="captcha" i], iframe[src*="challenge" i], [class*="captcha" i], [id*="captcha" i]')) {
