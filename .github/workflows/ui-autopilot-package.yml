@@ -5,7 +5,7 @@ on:
   pull_request:
     paths:
       - 'apps/tigeriq-core/ui-autopilot-snapshot.mjs'
-      - 'apps/tigeriq-core/ui-autopilot-snapshot.test.mjs'
+      - 'tests/ui-autopilot-snapshot.test.mjs'
       - 'apps/tigeriq-core/core-entry.mjs'
       - '.github/workflows/ui-autopilot-package.yml'
 
@@ -23,7 +23,7 @@ jobs:
       - name: Install
         run: npm ci
       - name: Tests
-        run: npx vitest run apps/tigeriq-core/ui-autopilot-snapshot.test.mjs
+        run: npx vitest run tests/ui-autopilot-snapshot.test.mjs
       - name: Assemble runtime package
         shell: bash
         env:
