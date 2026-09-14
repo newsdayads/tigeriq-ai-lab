@@ -126,7 +126,11 @@ async function execute(workerId,command) {
   if(!ctx) throw new Error('WORKER_WINDOW_AMBIGUOUS_OR_MISSING');
   if(action==='FOCUS'){await chrome.windows.update(ctx.windowId,{focused:true});return{status:'FOCUSED'};}
   if(action==='LAYOUT'){await chrome.windows.update(ctx.windowId,{left:Number(payload.left),top:Number(payload.top),width:Number(payload.width),height:Number(payload.height),focused:false});return{status:'LAYOUT_APPLIED'};}
-  if(action==='CLOSE_WINDOW'){await chrome.windows.remove(ctx.windowId);return{status:'WINDOW_CLOSED'};}
+  if(action==='CLOSE_WINDOW'){
+    await chrome.windows.remove(ctx.windowId);
+    try{await post('/api/window-event',{workerId,event:'CLOSED',windowId:ctx.windowId});}catch{/* onRemoved or stale-heartbeat recovery remains as fallback */}
+    return{status:'WINDOW_CLOSED'};
+  }
   if(action==='NAVIGATE'){
     if(!allowedUrl(payload.url)||!matchesWorker(workerId,payload.url)) throw new Error('BLOCKED_URL');
     await chrome.tabs.update(ctx.tabId,{url:payload.url,active:true}); await waitForTabComplete(ctx.tabId); return{status:'NAVIGATED'};
