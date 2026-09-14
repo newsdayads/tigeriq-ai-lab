@@ -86,17 +86,29 @@ async function updateWorkerBadge(workerId, ctx) {
   } catch { /* content script may not be ready yet; next tick retries */ }
 }
 
-async function displayInfo() {
+async function displayInfo(windowId) {
   const displays = await chrome.system.display.getInfo();
-  const primary = displays.find((d) => d.isPrimary) || displays[0];
-  return primary ? { workArea:primary.workArea } : undefined;
+  let selected = null;
+  try {
+    const win = windowId ? await chrome.windows.get(windowId) : null;
+    if (win && Number.isFinite(win.left) && Number.isFinite(win.top) && Number.isFinite(win.width) && Number.isFinite(win.height)) {
+      const x = win.left + win.width / 2;
+      const y = win.top + win.height / 2;
+      selected = displays.find((d) => {
+        const b = d.bounds;
+        return b && x >= b.left && x < b.left + b.width && y >= b.top && y < b.top + b.height;
+      }) || null;
+    }
+  } catch { /* window may disappear between context lookup and heartbeat */ }
+  if (!selected) selected = displays.find((d) => d.isPrimary) || displays[0] || null;
+  return selected ? { workArea:selected.workArea } : undefined;
 }
 async function post(path,data) {
   const r = await fetch(`${CONTROLLER}${path}`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(data)});
   if(!r.ok) throw new Error(`HTTP_${r.status}`);
   return r.json();
 }
-async function heartbeat(workerId,ctx) { await post('/api/heartbeat',{workerId,state:'READY',...ctx,display:await displayInfo()}); }
+async function heartbeat(workerId,ctx) { await post('/api/heartbeat',{workerId,state:'READY',...ctx,display:await displayInfo(ctx.windowId)}); }
 
 async function waitForTabComplete(tabId,timeoutMs=60000) {
   const current=await chrome.tabs.get(tabId); if(current.status==='complete') return;
