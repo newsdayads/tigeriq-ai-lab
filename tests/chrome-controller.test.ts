@@ -50,8 +50,7 @@ describe('chrome-controller config guardrails', () => {
   });
 
   it('rejects non-loopback binding', () => {
-    const config = baseConfig() as ControllerConfig & { host: string };
-    config.host = '0.0.0.0';
+    const config = { ...baseConfig(), host: '0.0.0.0' } as unknown;
     expect(() => validateConfig(config)).toThrow('CONFIG_HOST_MUST_BE_LOOPBACK');
   });
 
