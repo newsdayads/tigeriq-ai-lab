@@ -1,0 +1,44 @@
+// @ts-nocheck
+import {describe,it,expect} from 'vitest';
+import {parseManagerJson,runBoundedManagerDecision} from '../apps/tigeriq-core/manager-json.mjs';
+
+const valid=(summary='ok')=>JSON.stringify({status:'complete',summary,jobs:[]});
+const resource=id=>({id,provider:id==='NV11'?'groq':'openrouter'});
+
+describe('manager JSON parsing',()=>{
+  it('strips only outer fence and preserves inner literal byte-for-byte',()=>{
+    const literal="replace(/```json|```/gi,'')";
+    const input='```json\n'+JSON.stringify({status:'complete',summary:literal,jobs:[]})+'\n```';
+    expect(parseManagerJson(input).summary).toBe(literal);
+  });
+  it('rejects trailing prose and invalid status',()=>{
+    expect(()=>parseManagerJson(valid()+' trailing')).toThrow('MANAGER_JSON_INVALID');
+    expect(()=>parseManagerJson(JSON.stringify({status:'maybe',summary:'x',jobs:[]}))).toThrow('MANAGER_STATUS_INVALID');
+  });
+});
+
+describe('bounded manager retry/failover',()=>{
+  it('retries malformed output once on the same resource',async()=>{
+    const acquired=[];const invoked=[];const retried=[];let calls=0;
+    const result=await runBoundedManagerDecision({prompt:'p',acquire:async excluded=>{acquired.push([...excluded]);return resource('NV11');},invoke:async r=>{invoked.push(r.id);calls++;return calls===1?'not-json':valid('recovered');},onRetry:async r=>retried.push(r.id)});
+    expect(result.decision.summary).toBe('recovered');expect(invoked).toEqual(['NV11','NV11']);expect(acquired).toHaveLength(1);expect(retried).toEqual(['NV11']);
+  });
+  it('fails over after two malformed outputs without unbounded looping',async()=>{
+    const pool=[resource('NV11'),resource('NV13')];const invoked=[];const failed=[];let pick=0;
+    const result=await runBoundedManagerDecision({prompt:'p',maxProviders:2,acquire:async excluded=>{expect(excluded).toEqual(pool.slice(0,pick).map(x=>x.id));return pool[pick++]||null;},invoke:async r=>{invoked.push(r.id);return r.id==='NV13'?valid('fallback-ok'):'bad';},onFailure:async r=>failed.push(r.id)});
+    expect(result.decision.summary).toBe('fallback-ok');expect(invoked).toEqual(['NV11','NV11','NV13']);expect(failed).toEqual(['NV11']);
+  });
+
+  it('has a finite total budget when all providers fail',async()=>{
+    const pool=[resource('NV11'),resource('NV13'),resource('NV15')];let pick=0,calls=0;
+    await expect(runBoundedManagerDecision({prompt:'p',maxProviders:3,acquire:async()=>pool[pick++]||null,invoke:async()=>{calls++;return 'bad';}})).rejects.toThrow('MANAGER_DECISION_EXHAUSTED');
+    expect(calls).toBe(6);
+  });
+
+  it('does not retry provider or policy failures as manager-output errors',async()=>{
+    let calls=0;const pool=[resource('NV11'),resource('NV13')];let pick=0;
+    const result=await runBoundedManagerDecision({prompt:'p',maxProviders:2,acquire:async()=>pool[pick++]||null,invoke:async r=>{calls++;if(r.id==='NV11'){const e=new Error('HTTP_429');e.kind='rate_limit';throw e;}return valid('next-provider');}});
+    expect(result.decision.summary).toBe('next-provider');expect(calls).toBe(2);
+  });
+});
+
