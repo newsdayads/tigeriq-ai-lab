@@ -22,26 +22,39 @@
     "maxRetries": 1,
     "retryBackoffMs": 15000
   },
+  "autopilot": {
+    "enabled": true,
+    "pollIntervalMs": 15000,
+    "requestTimeoutMs": 5000
+  },
+  "recovery": {
+    "heartbeatStaleMs": 45000,
+    "checkIntervalMs": 10000,
+    "maxReopenAttempts": 2,
+    "reopenBackoffMs": 15000,
+    "startupReadyUrl": "http://127.0.0.1:8795/health",
+    "startupReadyTimeoutMs": 120000
+  },
   "workers": [
     {
-      "id": "NV03",
-      "role": "CODE_WEB_UI",
-      "enabled": true,
-      "profileDirectory": "REPLACE_GO_PROFILE",
-      "homeUrl": "https://chatgpt.com/g/REPLACE_WITH_NV03_PROJECT"
-    },
-    {
       "id": "NV05",
-      "role": "CODE_CORE_BACKEND",
+      "role": "PRIMARY_AUTOPILOT_UI",
       "enabled": true,
       "profileDirectory": "REPLACE_PLUS_PROFILE",
       "homeUrl": "https://chatgpt.com/g/REPLACE_WITH_NV05_PROJECT"
     },
     {
-      "id": "NV04",
-      "role": "ARCHITECT_REVIEW_RESEARCH",
+      "id": "NV03",
+      "role": "INDEPENDENT_REVIEW",
       "enabled": true,
-      "profileDirectory": "REPLACE_GEMINI_PROFILE_MAY_EQUAL_NV05_IF_DOMAIN_DIFFERS",
+      "profileDirectory": "REPLACE_GO_PROFILE",
+      "homeUrl": "https://chatgpt.com/g/REPLACE_WITH_NV03_PROJECT"
+    },
+    {
+      "id": "NV04",
+      "role": "RESEARCH_REVIEW",
+      "enabled": true,
+      "profileDirectory": "REPLACE_GEMINI_PROFILE",
       "homeUrl": "https://gemini.google.com/notebook/REPLACE_WITH_NV04_WORKSPACE"
     }
   ]
