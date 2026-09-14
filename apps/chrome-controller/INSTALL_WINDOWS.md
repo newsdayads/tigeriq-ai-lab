@@ -1,8 +1,8 @@
-# TigerIQ Chrome Controller V1 — Cài đặt Windows
+# TigerIQ Chrome Controller V1 — Cài đặt Windows / PC01
 
 ## 1. Mục tiêu V1
 
-V1 vận hành 3 Chrome Profile độc lập trên PC01:
+V1 vận hành 3 Chrome Profile độc lập:
 
 - `NV03` — ChatGPT Go — Code Lane A / Web-UI
 - `NV05` — ChatGPT Plus — Code Lane B / Core-Backend
@@ -10,77 +10,109 @@ V1 vận hành 3 Chrome Profile độc lập trên PC01:
 
 Controller chỉ bind `127.0.0.1`, mở Chrome tuần tự và dùng một hàng đợi UI toàn cục (`concurrency=1`). Không scrape/parse nội dung câu trả lời, không đọc cookie/token/password và không có cơ chế stealth/fingerprint/fake-human.
 
-## 2. Yêu cầu trước khi cài
+## 2. Cách cài chuẩn trên PC01
+
+PC01 là runtime/diagnostics machine, **không build source tại PC01**. Build/test/package chạy trên GitHub Actions. PC01 chỉ tải artifact đã qua CI và chạy runtime.
+
+Workflow tạo artifact:
+
+```text
+Chrome Controller Package
+```
+
+Artifact có dạng:
+
+```text
+TigerIQ-Chrome-Controller-V1-<PR hoặc run>
+```
+
+Bên trong đã có:
+
+```text
+dist/apps/chrome-controller/src/*.js
+apps/chrome-controller/extension/*
+apps/chrome-controller/public/index.html
+apps/chrome-controller/chrome-controller.config.example.json
+apps/chrome-controller/Start-ChromeController.ps1
+apps/chrome-controller/INSTALL_WINDOWS.md
+VERSION.txt
+```
+
+## 3. Yêu cầu trên PC01
 
 - Windows 10/11.
 - Google Chrome đã cài.
-- Node.js >= 20.
-- Repo `newsdayads/tigeriq-ai-lab` đã có trên máy để chạy runtime sau khi PR được merge.
+- Node.js >= 20 đã có sẵn cho runtime.
 - Ba tài khoản đã đăng nhập trong ba Chrome Profile riêng.
+- Không cần `npm install`, `npm ci`, TypeScript hay build tool trên PC01.
 
-> Không dùng ba cửa sổ cùng một Profile. Mỗi NV phải map đúng một Profile Chrome riêng.
+## 4. Tải và giải nén artifact
 
-## 3. Xác định đúng Chrome Profile đang dùng
+Sau khi workflow `Chrome Controller Package` PASS:
 
-Làm một lần cho từng cửa sổ đang đăng nhập:
+1. Mở GitHub repository `newsdayads/tigeriq-ai-lab`.
+2. Vào **Actions**.
+3. Mở run `Chrome Controller Package` tương ứng PR/commit cần test.
+4. Tải artifact `TigerIQ-Chrome-Controller-V1-...`.
+5. Giải nén vào thư mục cố định, khuyến nghị:
 
-1. Mở cửa sổ Chrome của NV cần xác định.
-2. Mở `chrome://version`.
-3. Tìm dòng **Profile Path**.
+```text
+D:\TigerIQ\ChromeControllerV1
+```
+
+Sau khi giải nén phải thấy:
+
+```text
+D:\TigerIQ\ChromeControllerV1\dist\apps\chrome-controller\src\server.js
+D:\TigerIQ\ChromeControllerV1\apps\chrome-controller\extension\manifest.json
+```
+
+## 5. Xác định đúng Chrome Profile đang đăng nhập
+
+Làm một lần cho từng cửa sổ:
+
+1. Mở đúng cửa sổ Chrome của NV.
+2. Vào `chrome://version`.
+3. Tìm **Profile Path**.
 4. Ví dụ:
-   - `C:\Users\<user>\AppData\Local\Google\Chrome\User Data\Default`
-   - `C:\Users\<user>\AppData\Local\Google\Chrome\User Data\Profile 1`
-   - `C:\Users\<user>\AppData\Local\Google\Chrome\User Data\Profile 2`
-5. Phần cuối của đường dẫn (`Default`, `Profile 1`, `Profile 2`) chính là `profileDirectory` dùng trong config.
-
-Ghi lại mapping rõ ràng, ví dụ:
 
 ```text
-NV03 -> Profile 1
-NV05 -> Profile 2
-NV04 -> Default
+C:\Users\<user>\AppData\Local\Google\Chrome\User Data\Default
+C:\Users\<user>\AppData\Local\Google\Chrome\User Data\Profile 1
+C:\Users\<user>\AppData\Local\Google\Chrome\User Data\Profile 2
 ```
 
-Không đoán profile theo vị trí cửa sổ.
+5. Phần cuối (`Default`, `Profile 1`, `Profile 2`) là `profileDirectory`.
 
-## 4. Build source
-
-Tại thư mục repo:
-
-```powershell
-npm ci
-npm run build
-```
-
-Sau build, controller chạy từ:
+Ghi mapping thật, không đoán theo vị trí cửa sổ:
 
 ```text
-dist/apps/chrome-controller/src/server.js
+NV03 -> <profile ChatGPT Go>
+NV05 -> <profile ChatGPT Plus>
+NV04 -> <profile Gemini Pro>
 ```
 
-Dashboard vẫn được đọc từ source path:
+## 6. Tạo config runtime
+
+Tạo thư mục:
 
 ```text
-apps/chrome-controller/public/index.html
+D:\TigerIQ\Config
 ```
 
-Vì vậy khi chạy, Current Directory phải là root của repo.
-
-## 5. Tạo config runtime
-
-Copy file:
+Copy:
 
 ```text
-apps/chrome-controller/chrome-controller.config.example.json
+D:\TigerIQ\ChromeControllerV1\apps\chrome-controller\chrome-controller.config.example.json
 ```
 
-thành một file runtime ngoài source, khuyến nghị:
+thành:
 
 ```text
 D:\TigerIQ\Config\chrome-controller.json
 ```
 
-Sửa các trường sau:
+Sửa các trường sau.
 
 ### Chrome executable
 
@@ -90,11 +122,9 @@ Thông thường:
 "chromePath": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
 ```
 
-Nếu Chrome ở vị trí khác, dùng đường dẫn thực tế.
+### Chrome User Data
 
-### User Data Directory
-
-Nếu 3 NV đang là 3 Chrome Profile trong cùng một Chrome User Data:
+Nếu cả ba là các Profile khác nhau trong cùng Chrome User Data:
 
 ```json
 "userDataDir": "%LOCALAPPDATA%\\Google\\Chrome\\User Data"
@@ -102,21 +132,38 @@ Nếu 3 NV đang là 3 Chrome Profile trong cùng một Chrome User Data:
 
 Mỗi worker vẫn phải có `profileDirectory` khác nhau.
 
-V1 cũng hỗ trợ `userDataDir` riêng ở từng worker nếu sau này tách hoàn toàn thành ba thư mục User Data độc lập.
+### Worker mapping
 
-### URL làm việc
+Ví dụ:
 
-Điền đúng URL đang dùng cho từng NV:
+```json
+"workers": [
+  {
+    "id": "NV03",
+    "role": "CODE_WEB_UI",
+    "profileDirectory": "Profile 1",
+    "homeUrl": "https://chatgpt.com/..."
+  },
+  {
+    "id": "NV05",
+    "role": "CODE_CORE_BACKEND",
+    "profileDirectory": "Profile 2",
+    "homeUrl": "https://chatgpt.com/..."
+  },
+  {
+    "id": "NV04",
+    "role": "ARCHITECT_REVIEW_RESEARCH",
+    "profileDirectory": "Default",
+    "homeUrl": "https://gemini.google.com/..."
+  }
+]
+```
 
-- NV03: URL Project/Chat TigerIQ của ChatGPT Go.
-- NV05: URL Project/Chat TigerIQ của ChatGPT Plus.
-- NV04: URL workspace/notebook/chat TigerIQ của Gemini Pro.
+Điền đúng URL Project/Chat/Workspace hiện tại của từng NV. V1 chỉ chấp nhận `https://chatgpt.com/*` và `https://gemini.google.com/*`.
 
-Chỉ `https://chatgpt.com/*` và `https://gemini.google.com/*` được chấp nhận ở V1.
+## 7. Layout mặc định màn hình 4096x2160
 
-## 6. Layout mặc định màn hình 4096x2160
-
-V1 dùng:
+Config mặc định:
 
 ```json
 "width": 500,
@@ -127,7 +174,7 @@ V1 dùng:
 "fallbackWorkAreaWidth": 4096
 ```
 
-Với work area rộng 4096 px, vị trí mặc định là:
+Nếu work area rộng đúng 4096 px:
 
 ```text
 NV03: x=2572, y=0, 500x834
@@ -135,35 +182,32 @@ NV05: x=3080, y=0, 500x834
 NV04: x=3588, y=0, 500x834
 ```
 
-Sau khi Extension heartbeat, Controller lấy `workArea` thật từ Chrome `system.display` và áp lại layout. Vì vậy fallback 4096 chỉ dùng lúc khởi động trước khi có heartbeat.
+Khi Extension heartbeat, Controller lấy `workArea` thật từ Chrome `system.display` và áp layout lại; giá trị 4096 chỉ là fallback lúc chưa có heartbeat.
 
-## 7. Cài Extension vào từng Chrome Profile
+## 8. Cài Extension vào từng Profile
 
-Thực hiện riêng cho NV03, NV05 và NV04:
+Thực hiện riêng trên NV03, NV05, NV04:
 
 1. Mở đúng Chrome Profile.
 2. Vào `chrome://extensions`.
 3. Bật **Developer mode**.
 4. Chọn **Load unpacked**.
-5. Chọn thư mục:
+5. Chọn:
 
 ```text
-<repo>\apps\chrome-controller\extension
+D:\TigerIQ\ChromeControllerV1\apps\chrome-controller\extension
 ```
 
-6. Mở **Details** của extension `TigerIQ Chrome Controller`.
-7. Chọn **Extension options**.
-8. Gắn đúng Worker ID cho Profile đó:
-   - Profile của ChatGPT Go -> `NV03`
-   - Profile của ChatGPT Plus -> `NV05`
-   - Profile của Gemini Pro -> `NV04`
-9. Nhấn **Lưu**.
+6. Mở **Details** -> **Extension options**.
+7. Chọn Worker ID đúng profile:
+   - ChatGPT Go -> `NV03`
+   - ChatGPT Plus -> `NV05`
+   - Gemini Pro -> `NV04`
+8. Nhấn **Lưu**.
 
-Mỗi Profile lưu `workerId` riêng trong `chrome.storage.local`; không dùng chung mapping.
+Mỗi Profile lưu worker ID riêng trong `chrome.storage.local`.
 
-## 8. Pacing mặc định
-
-Config V1 mặc định:
+## 9. Pacing mặc định
 
 ```json
 "betweenWorkerLaunchMs": 30000,
@@ -177,65 +221,48 @@ Config V1 mặc định:
 
 Ý nghĩa:
 
-- Chrome không được mở đồng loạt: worker sau chỉ bắt đầu sau worker trước và khoảng nghỉ tuần tự.
-- Sau khi heartbeat, chờ thêm trước khi layout/thao tác.
+- Không mở 3 Chrome đồng loạt.
+- Worker sau chỉ được mở sau khi worker trước đã heartbeat/settle và qua hàng đợi launch.
 - Toàn Controller chỉ có một UI action tại một thời điểm.
-- Retry hữu hạn; không loop vô hạn.
-- Có thể **tăng** các khoảng chờ nếu Chrome/Internet chậm.
+- Retry hữu hạn; không vòng lặp vô hạn.
+- Có thể **tăng** thời gian chờ nếu máy/Internet chậm.
 
-Các khoảng chờ dùng để tuần tự hóa và ổn định giao diện, không phải để giả lập người dùng hay né hệ thống phát hiện automation.
+Pacing dùng để tuần tự hóa và ổn định UI, không phải để giả lập con người hay né cơ chế phát hiện automation.
 
-## 9. Chạy Controller
+## 10. Chạy Controller
 
-PowerShell tại root repo:
-
-```powershell
-$env:TIGERIQ_CHROME_CONFIG="D:\TigerIQ\Config\chrome-controller.json"
-node dist/apps/chrome-controller/src/server.js
-```
-
-Hoặc sau khi script npm được thêm:
+Mở PowerShell và chạy:
 
 ```powershell
-$env:TIGERIQ_CHROME_CONFIG="D:\TigerIQ\Config\chrome-controller.json"
-npm run chrome-controller
+Set-Location "D:\TigerIQ\ChromeControllerV1"
+.\apps\chrome-controller\Start-ChromeController.ps1 -Config "D:\TigerIQ\Config\chrome-controller.json"
 ```
 
-Khi chạy đúng sẽ log:
+Khi đúng, console ghi `CONTROLLER_READY`.
 
-```text
-CONTROLLER_READY
-```
-
-Mở dashboard:
+Mở:
 
 ```text
 http://127.0.0.1:8798
 ```
 
-Controller không bind LAN/Tailscale ở V1.
+V1 không expose Controller ra LAN/Tailscale.
 
-## 10. Test cài đặt — không gửi prompt trước
+## 11. Test cài đặt — chưa gửi prompt
 
-Test theo thứ tự:
+1. Nhấn **Mở 3 NV tuần tự**.
+2. Xác minh NV03 mở trước.
+3. Chờ Controller nhận heartbeat + settling.
+4. Sau đó NV05 mới mở.
+5. Cuối cùng NV04 mới mở.
+6. Xác minh thứ tự cửa sổ bên phải: `NV03 | NV05 | NV04`.
+7. Nhấn **Focus** từng NV và kiểm tra đúng cửa sổ.
+8. Nhấn **Sắp xếp** và kiểm tra size 500x834.
+9. Chỉ test `Giao việc` sau khi các bước trên ĐẠT.
 
-1. Mở Controller.
-2. Nhấn **Mở 3 NV tuần tự**.
-3. Quan sát:
-   - NV03 mở trước.
-   - Controller chờ heartbeat + settling.
-   - Sau đó mới tới NV05.
-   - Cuối cùng NV04.
-4. Kiểm tra ba cửa sổ nằm bên phải theo thứ tự `NV03 | NV05 | NV04`.
-5. Nhấn **Focus** từng NV, xác minh đúng cửa sổ được đưa lên trước.
-6. Nhấn **Sắp xếp** từng NV, xác minh size/layout trở lại đúng vị trí.
-7. Chưa test `Giao việc` cho tới khi 6 bước trên ĐẠT.
+## 12. Test Giao việc
 
-## 11. Test Giao việc
-
-Sau khi layout/profile mapping ĐẠT, dùng một Work Order nhỏ, không có thao tác bảo mật/tài chính/Production.
-
-Ví dụ:
+Dùng một Work Order nhỏ, không thay đổi bảo mật/tài chính/Production/MAIN. Ví dụ:
 
 ```text
 Đọc trạng thái Project TigerIQ hiện tại và xác nhận bạn đang ở đúng workspace. Không thay đổi tài khoản, bảo mật, Production hoặc MAIN.
@@ -243,19 +270,19 @@ Ví dụ:
 
 Controller sẽ:
 
-1. queue thao tác vào hàng đợi toàn cục;
-2. điều hướng về `homeUrl` nếu checkbox bật;
+1. queue request vào hàng đợi toàn cục;
+2. điều hướng về `homeUrl` nếu được chọn;
 3. tìm composer;
 4. điền Work Order;
 5. kiểm tra challenge trước khi gửi;
-6. click đúng nút Send một lần;
+6. click nút Send một lần;
 7. ghi `SUBMITTED` vào log.
 
-Controller **không đọc/scrape câu trả lời** sau đó.
+Controller **không đọc/scrape câu trả lời** và không tự tạo prompt kế tiếp từ Output.
 
-## 12. Guardrail bắt buộc
+## 13. Guardrail fail-closed
 
-Nếu trang xuất hiện một trong các trạng thái sau, worker phải bị khóa:
+Worker bị khóa nếu phát hiện:
 
 - CAPTCHA/challenge;
 - rate limit / too many requests;
@@ -265,66 +292,56 @@ Nếu trang xuất hiện một trong các trạng thái sau, worker phải bị
 
 Khi bị khóa:
 
-1. Không retry vô hạn.
-2. Không bypass challenge.
-3. Dashboard hiển thị `BLOCKED`.
-4. Anh Sơn xử lý/login/xác minh thủ công khi cần.
-5. Sau khi điều kiện an toàn được giải quyết, dùng **Bỏ khóa** để cho phép job mới.
+1. dừng retry;
+2. không bypass;
+3. dashboard hiện `BLOCKED`;
+4. xử lý đăng nhập/xác minh thủ công nếu cần;
+5. chỉ nhấn **Bỏ khóa** sau khi điều kiện an toàn đã được xử lý.
 
-## 13. Nút chính trên Dashboard
+## 14. Nút Dashboard
 
-### Toàn hệ thống
+Toàn hệ thống:
 
-- **Mở 3 NV tuần tự**: mở NV03 -> NV05 -> NV04, không đồng loạt.
-- **Tạm dừng**: chặn UI action mới.
-- **Tiếp tục**: cho phép UI action mới.
-- **KILL SWITCH**: dừng nhận/thực thi command mới và xóa command chưa nhận.
+- **Mở 3 NV tuần tự** — Start All theo NV03 -> NV05 -> NV04.
+- **Tạm dừng** — chặn action mới.
+- **Tiếp tục** — mở lại action mới.
+- **KILL SWITCH** — dừng command mới và xóa command chưa nhận.
 
-### Từng NV
+Từng NV:
 
-- **Mở**: mở đúng Chrome Profile.
-- **Focus**: đưa đúng cửa sổ lên trước.
-- **Sắp xếp**: trả cửa sổ về layout chuẩn.
-- **Giao việc**: chọn worker và gửi một Work Order.
-- **Bỏ khóa**: chỉ dùng sau khi blocker/challenge đã được xử lý hợp lệ.
-- **Đóng**: đóng đúng cửa sổ Chrome của worker qua Extension.
+- **Mở** — mở đúng Chrome Profile.
+- **Focus** — đưa đúng cửa sổ lên trước.
+- **Sắp xếp** — áp lại layout.
+- **Giao việc** — gửi một Work Order.
+- **Bỏ khóa** — mở worker sau khi blocker đã được xử lý.
+- **Đóng** — đóng đúng window qua Extension.
 
-## 14. Log và evidence
+## 15. Log runtime
 
-Log runtime mặc định:
+Mặc định:
 
 ```text
 D:\TigerIQ\Runtime\chrome-controller\chrome-controller.jsonl
 ```
 
-Log chứa:
-
-- timestamp;
-- worker ID;
-- action;
-- command ID;
-- trạng thái/result;
-- lỗi/blocker.
-
-Không ghi password, cookie, token hoặc nội dung response của AI.
-
-## 15. Giới hạn V1
-
-- V1 không bảo đảm một website sẽ không bao giờ phân loại hoạt động là automation.
-- V1 không scrape response và không tự tạo prompt tiếp theo dựa trên response.
-- V1 không bypass CAPTCHA/2FA/rate limit/security challenge.
-- Selector composer/send có thể cần cập nhật nếu ChatGPT/Gemini đổi DOM.
-- Nếu extension chưa được gắn đúng Worker ID, Controller sẽ timeout heartbeat và không tiếp tục mở đồng loạt worker khác.
+Log chỉ giữ timestamp, worker ID, action, command ID, status/error. Không ghi password, cookie, token hoặc nội dung AI response.
 
 ## 16. Tiêu chí PASS trước khi dùng thường xuyên
 
-Chỉ coi V1 sẵn sàng sau khi:
+1. 3 Profile mapping đúng.
+2. 3 lượt Start All liên tiếp mở đúng thứ tự và không đồng loạt.
+3. 3 lượt layout đúng 500x834.
+4. Focus đúng cả 3 window.
+5. Một Work Order thử trên từng provider chỉ submit một lần.
+6. Pause/Kill hoạt động.
+7. Blocker/challenge test fail-closed.
+8. CI Verify + Queue Hygiene Verify + Vercel Online Verify PASS.
+9. Workflow `Chrome Controller Package` PASS và artifact được tạo đúng.
 
-1. 3 profile mapping đúng.
-2. 3 lần Start All liên tiếp mở đúng thứ tự, không mở đồng loạt.
-3. 3 lần layout liên tiếp đúng 500x834 và đúng thứ tự.
-4. Focus 3 worker đúng cửa sổ.
-5. Một Work Order thử trên từng provider submit đúng một lần.
-6. Kill/Pause hoạt động.
-7. Một test blocker mô phỏng/local xác nhận worker fail-closed.
-8. CI của PR đạt các gate hiện hành.
+## 17. Giới hạn V1
+
+- Không thể bảo đảm website sẽ không bao giờ phân loại hoạt động là automation.
+- Không scrape Output, không tự loop prompt dựa trên Output.
+- Không bypass CAPTCHA/2FA/rate-limit/security challenge.
+- Selector composer/send có thể cần cập nhật khi ChatGPT/Gemini thay DOM.
+- Nếu Extension chưa gắn đúng Worker ID, Start All sẽ timeout heartbeat và không tiếp tục mở hàng loạt worker khác.
