@@ -5,23 +5,18 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>TigerIQ Chrome Controller</title>
   <style>
-    body{font:15px system-ui,sans-serif;max-width:520px;margin:40px auto;padding:0 20px;color:#111827}
-    h1{font-size:22px} label{display:block;margin:18px 0 8px;font-weight:700}
-    select,button{font:inherit;padding:10px 12px;border-radius:8px;border:1px solid #cbd5e1}
-    button{background:#0f62fe;color:white;border:0;cursor:pointer} .ok{color:#067647;margin-top:14px}
+    body{font:15px system-ui,sans-serif;max-width:560px;margin:40px auto;padding:0 20px;color:#111827}
+    h1{font-size:22px}.row{display:flex;gap:10px;align-items:center;margin:12px 0;padding:10px;border:1px solid #e2e8f0;border-radius:10px}
+    button{font:inherit;padding:10px 14px;border-radius:8px;border:0;background:#0f62fe;color:white;cursor:pointer}.ok{color:#067647;margin-top:14px}.note{color:#475569}
   </style>
 </head>
 <body>
   <h1>TigerIQ Chrome Controller</h1>
-  <p>Mỗi Chrome Profile chỉ gắn với đúng một nhân viên.</p>
-  <label for="worker">Nhân viên của profile này</label>
-  <select id="worker">
-    <option value="">-- Chọn --</option>
-    <option value="NV03">NV03 — ChatGPT Go</option>
-    <option value="NV05">NV05 — ChatGPT Plus</option>
-    <option value="NV04">NV04 — Gemini Pro</option>
-  </select>
-  <button id="save">Lưu</button>
+  <p class="note">Một Chrome Profile có thể phụ trách nhiều NV nếu các NV dùng domain khác nhau. Không cho hai NV cùng domain dùng chung một Profile.</p>
+  <div class="row"><input id="NV03" type="checkbox"><label for="NV03"><b>NV03</b> — ChatGPT Go</label></div>
+  <div class="row"><input id="NV05" type="checkbox"><label for="NV05"><b>NV05</b> — ChatGPT Plus</label></div>
+  <div class="row"><input id="NV04" type="checkbox"><label for="NV04"><b>NV04</b> — Gemini Pro</label></div>
+  <button id="save">Lưu cấu hình Profile</button>
   <div id="status" class="ok"></div>
   <script src="options.js"></script>
 </body>
