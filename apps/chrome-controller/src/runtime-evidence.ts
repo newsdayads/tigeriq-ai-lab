@@ -8,6 +8,7 @@ export interface EvidenceWorkerState {
   blocked: boolean;
   lastHeartbeat?: { at: string; url?: string; windowId?: number; display?: { workArea?: WorkArea } };
   lastError?: string;
+  windowState?: 'OPEN' | 'CLOSED';
 }
 
 export interface RuntimeEvidenceInput {
@@ -20,6 +21,8 @@ export interface RuntimeEvidenceInput {
   killed: boolean;
   recoveryAttempts: Partial<Record<WorkerId, number>>;
   startupReady: boolean;
+  interactiveSession?: boolean;
+  sessionName?: string | null;
 }
 
 export function buildRuntimeEvidence(input: RuntimeEvidenceInput, now = new Date()) {
@@ -54,6 +57,8 @@ export function buildRuntimeEvidence(input: RuntimeEvidenceInput, now = new Date
       lastDispatchedJobId: input.autopilot.lastDispatchedJobId ?? null,
       lastCompletedJobId: input.autopilot.lastCompletedJobId ?? null,
       lastEvidenceRef: input.autopilot.lastEvidenceRef ?? null,
+      pendingJobId: input.autopilot.pendingJobId ?? null,
+      uncertainJobId: input.autopilot.uncertainJobId ?? null,
       externalSnapshot: input.snapshot ? {
         source: input.snapshot.source,
         observedAt: input.snapshot.observedAt,
@@ -70,7 +75,14 @@ export function buildRuntimeEvidence(input: RuntimeEvidenceInput, now = new Date
       heartbeatStaleMs: input.config.recovery.heartbeatStaleMs,
       checkIntervalMs: input.config.recovery.checkIntervalMs,
       maxReopenAttempts: input.config.recovery.maxReopenAttempts,
+      startupAttachGraceMs: input.config.recovery.startupAttachGraceMs,
       attempts: input.recoveryAttempts,
+    },
+    sessionPolicy: {
+      chromeVisibleOnly: true,
+      interactiveSession: input.interactiveSession ?? null,
+      sessionName: input.sessionName ?? null,
+      hiddenChromeAllowed: false,
     },
     security: {
       stopOn: ['BLOCKED_CAPTCHA','BLOCKED_RATE_LIMIT','BLOCKED_SUSPICIOUS_ACTIVITY','BLOCKED_REAUTH','BLOCKED_SECURITY_WARNING'],
@@ -86,6 +98,7 @@ export function buildRuntimeEvidence(input: RuntimeEvidenceInput, now = new Date
       heartbeatAt: worker.lastHeartbeat?.at ?? null,
       url: worker.lastHeartbeat?.url ?? null,
       windowId: worker.lastHeartbeat?.windowId ?? null,
+      windowState: worker.windowState ?? null,
       lastError: worker.lastError ?? null,
     })),
   };
