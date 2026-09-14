@@ -3,15 +3,48 @@ const WORKER_HOSTS = { NV03:'chatgpt.com', NV05:'chatgpt.com', NV04:'gemini.goog
 const ALLOWED_HOSTS = new Set(Object.values(WORKER_HOSTS));
 let ticking = false;
 
-async function getWorkerIds() {
-  const saved = await chrome.storage.local.get(['workerIds','workerId']);
-  if (Array.isArray(saved.workerIds) && saved.workerIds.length) return saved.workerIds.filter((id) => WORKER_HOSTS[id]);
-  if (saved.workerId && WORKER_HOSTS[saved.workerId]) return [saved.workerId];
-  return [];
-}
-
 function hostname(value) { try { return new URL(value).hostname; } catch { return ''; } }
 function allowedUrl(value) { try { const u=new URL(value); return u.protocol==='https:' && ALLOWED_HOSTS.has(u.hostname); } catch { return false; } }
+function markerWorkerId(value) {
+  try {
+    const u = new URL(value);
+    const match = u.hash.match(/(?:^|[&#])tigeriq-worker=(NV03|NV04|NV05)(?:&|$)/i);
+    return match ? match[1].toUpperCase() : null;
+  } catch { return null; }
+}
+function stripWorkerMarker(value) {
+  try {
+    const u = new URL(value);
+    const parts = u.hash.replace(/^#/, '').split('&').filter((p) => p && !/^tigeriq-worker=/i.test(p));
+    u.hash = parts.length ? `#${parts.join('&')}` : '';
+    return u.toString();
+  } catch { return value; }
+}
+
+async function bootstrapWorkerIds() {
+  const saved = await chrome.storage.local.get(['workerIds','workerId']);
+  const ids = new Set(Array.isArray(saved.workerIds) ? saved.workerIds.filter((id) => WORKER_HOSTS[id]) : []);
+  if (saved.workerId && WORKER_HOSTS[saved.workerId]) ids.add(saved.workerId);
+  const wins = await chrome.windows.getAll({ populate:true, windowTypes:['normal'] });
+  let changed = false;
+  for (const win of wins) {
+    for (const tab of win.tabs || []) {
+      const id = markerWorkerId(tab.url || '');
+      if (!id || hostname(tab.url || '') !== WORKER_HOSTS[id]) continue;
+      const sameHostId = [...ids].find((existing) => existing !== id && WORKER_HOSTS[existing] === WORKER_HOSTS[id]);
+      if (sameHostId) continue;
+      if (!ids.has(id)) { ids.add(id); changed = true; }
+      if (tab.id) await chrome.tabs.update(tab.id, { url: stripWorkerMarker(tab.url || '') });
+    }
+  }
+  if (changed || saved.workerId) {
+    await chrome.storage.local.set({ workerIds:[...ids] });
+    await chrome.storage.local.remove('workerId');
+  }
+  return [...ids];
+}
+
+async function getWorkerIds() { return bootstrapWorkerIds(); }
 
 async function findContext(workerId) {
   const wanted = WORKER_HOSTS[workerId];
@@ -34,7 +67,6 @@ async function displayInfo() {
   const primary = displays.find((d) => d.isPrimary) || displays[0];
   return primary ? { workArea:primary.workArea } : undefined;
 }
-
 async function post(path,data) {
   const r = await fetch(`${CONTROLLER}${path}`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(data)});
   if(!r.ok) throw new Error(`HTTP_${r.status}`);
@@ -53,7 +85,7 @@ async function waitForTabComplete(tabId,timeoutMs=60000) {
 
 async function execute(workerId,command) {
   const {action,payload={}}=command;
-  let ctx=await findContext(workerId);
+  const ctx=await findContext(workerId);
   if(!ctx) throw new Error('WORKER_WINDOW_AMBIGUOUS_OR_MISSING');
   if(action==='FOCUS'){await chrome.windows.update(ctx.windowId,{focused:true});return{status:'FOCUSED'};}
   if(action==='LAYOUT'){await chrome.windows.update(ctx.windowId,{left:Number(payload.left),top:Number(payload.top),width:Number(payload.width),height:Number(payload.height),focused:false});return{status:'LAYOUT_APPLIED'};}
