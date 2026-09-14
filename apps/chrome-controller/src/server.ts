@@ -3,19 +3,22 @@ import { spawn } from 'node:child_process';
 import { mkdirSync, readFileSync, appendFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { loadConfig, computePlacements, type ControllerConfig, type WorkerId, type WorkArea } from './model.js';
+import { loadConfig, computePlacements, isWorkerEnabled, type ControllerConfig, type WorkerId, type WorkArea } from './model.js';
 import { delay, SerialQueue } from './serial-queue.js';
 
 type Command = { id: string; workerId: WorkerId; action: string; payload?: Record<string, unknown>; createdAt: string };
 type Heartbeat = { workerId: WorkerId; url?: string; windowId?: number; state?: string; display?: { workArea?: WorkArea }; at: string };
-type WorkerState = { id: WorkerId; status: string; blocked: boolean; lastHeartbeat?: Heartbeat; lastError?: string };
+type WorkerState = { id: WorkerId; enabled: boolean; status: string; blocked: boolean; lastHeartbeat?: Heartbeat; lastError?: string };
 
-type Waiter = { resolve: (value: unknown) => void; reject: (reason?: unknown) => void; timer: NodeJS.Timeout };
+type Waiter = { workerId: WorkerId; resolve: (value: unknown) => void; reject: (reason?: unknown) => void; timer: NodeJS.Timeout };
 
 const config = loadConfig(process.argv[2]);
 const uiQueue = new SerialQueue(config.pacing.minUiActionGapMs);
 const launchQueue = new SerialQueue(config.pacing.betweenWorkerLaunchMs);
-const states = new Map<WorkerId, WorkerState>(config.workers.map((w) => [w.id, { id: w.id, status: 'IDLE', blocked: false }]));
+const states = new Map<WorkerId, WorkerState>(config.workers.map((w) => {
+  const enabled = isWorkerEnabled(w);
+  return [w.id, { id: w.id, enabled, status: enabled ? 'IDLE' : 'DISABLED', blocked: false }];
+}));
 const commandQueues = new Map<WorkerId, Command[]>(config.workers.map((w) => [w.id, []]));
 const waiters = new Map<string, Waiter>();
 let paused = false;
@@ -52,20 +55,54 @@ function getWorker(id: string): ReturnType<ControllerConfig['workers']['find']> 
   return config.workers.find((w) => w.id === id);
 }
 
-function recentHeartbeat(id: WorkerId): boolean {
-  const hb = states.get(id)?.lastHeartbeat;
+function heartbeatFresh(state: WorkerState | undefined): boolean {
+  const hb = state?.lastHeartbeat;
   return Boolean(hb && Date.now() - Date.parse(hb.at) < 60_000);
+}
+
+function recentHeartbeat(id: WorkerId): boolean {
+  const state = states.get(id);
+  return Boolean(state?.enabled && heartbeatFresh(state));
+}
+
+function assertWorkerEnabled(workerId: WorkerId): void {
+  if (!states.get(workerId)?.enabled) throw new Error(`WORKER_DISABLED:${workerId}`);
+}
+
+function setWorkerEnabled(workerId: WorkerId, enabled: boolean): void {
+  const state = states.get(workerId)!;
+  if (state.enabled === enabled) return;
+  state.enabled = enabled;
+  if (!enabled) {
+    commandQueues.get(workerId)!.splice(0);
+    for (const [commandId, waiter] of waiters) {
+      if (waiter.workerId !== workerId) continue;
+      clearTimeout(waiter.timer);
+      waiter.reject(new Error(`WORKER_DISABLED:${workerId}`));
+      waiters.delete(commandId);
+    }
+    state.status = 'DISABLED';
+    state.lastError = undefined;
+    log('WORKER_DISABLED', { workerId });
+    return;
+  }
+  state.status = state.blocked ? 'BLOCKED' : heartbeatFresh(state) ? 'ONLINE' : 'IDLE';
+  if (!state.blocked) state.lastError = undefined;
+  log('WORKER_ENABLED', { workerId });
 }
 
 function effectiveWorkArea(): WorkArea | undefined {
   for (const id of ['NV03', 'NV05', 'NV04'] as WorkerId[]) {
-    const area = states.get(id)?.lastHeartbeat?.display?.workArea;
+    const state = states.get(id);
+    if (!state?.enabled) continue;
+    const area = state.lastHeartbeat?.display?.workArea;
     if (area?.width && area?.height) return area;
   }
   return undefined;
 }
 
 function launchChrome(workerId: WorkerId): void {
+  assertWorkerEnabled(workerId);
   const worker = getWorker(workerId);
   if (!worker) throw new Error(`UNKNOWN_WORKER:${workerId}`);
   const placement = computePlacements(config, effectiveWorkArea())[workerId];
@@ -84,8 +121,10 @@ function launchChrome(workerId: WorkerId): void {
 }
 
 async function waitForHeartbeat(workerId: WorkerId): Promise<void> {
+  assertWorkerEnabled(workerId);
   const deadline = Date.now() + config.pacing.workerReadyTimeoutMs;
   while (Date.now() < deadline) {
+    assertWorkerEnabled(workerId);
     if (recentHeartbeat(workerId)) return;
     await delay(1_000);
   }
@@ -94,6 +133,7 @@ async function waitForHeartbeat(workerId: WorkerId): Promise<void> {
 
 function sendCommand(workerId: WorkerId, action: string, payload?: Record<string, unknown>): Promise<unknown> {
   const state = states.get(workerId)!;
+  assertWorkerEnabled(workerId);
   if (killed) return Promise.reject(new Error('CONTROLLER_KILLED'));
   if (paused) return Promise.reject(new Error('CONTROLLER_PAUSED'));
   if (state.blocked && !['FOCUS', 'LAYOUT'].includes(action)) return Promise.reject(new Error(`WORKER_BLOCKED:${workerId}`));
@@ -105,7 +145,7 @@ function sendCommand(workerId: WorkerId, action: string, payload?: Record<string
       waiters.delete(command.id);
       reject(new Error(`COMMAND_TIMEOUT:${action}:${workerId}`));
     }, config.pacing.commandTimeoutMs);
-    waiters.set(command.id, { resolve, reject, timer });
+    waiters.set(command.id, { workerId, resolve, reject, timer });
   });
 }
 
@@ -124,15 +164,19 @@ async function runWithRetry<T>(label: string, task: () => Promise<T>): Promise<T
 }
 
 async function layoutWorker(workerId: WorkerId): Promise<unknown> {
+  assertWorkerEnabled(workerId);
   const placement = computePlacements(config, effectiveWorkArea())[workerId];
   return uiQueue.enqueue(() => runWithRetry(`layout:${workerId}`, () => sendCommand(workerId, 'LAYOUT', placement as unknown as Record<string, unknown>)));
 }
 
 async function startWorker(workerId: WorkerId): Promise<void> {
+  assertWorkerEnabled(workerId);
   await launchQueue.enqueue(async () => {
+    assertWorkerEnabled(workerId);
     if (!recentHeartbeat(workerId)) launchChrome(workerId);
     await waitForHeartbeat(workerId);
     await delay(config.pacing.postReadySettlingMs);
+    assertWorkerEnabled(workerId);
     await layoutWorker(workerId);
     states.get(workerId)!.status = 'READY';
     log('WORKER_READY', { workerId });
@@ -140,19 +184,22 @@ async function startWorker(workerId: WorkerId): Promise<void> {
 }
 
 async function dispatch(workerId: WorkerId, text: string, navigate: boolean): Promise<unknown> {
+  assertWorkerEnabled(workerId);
   if (!text.trim()) throw new Error('DISPATCH_TEXT_REQUIRED');
   const worker = getWorker(workerId)!;
   states.get(workerId)!.status = 'DISPATCHING';
   return uiQueue.enqueue(async () => {
     try {
+      assertWorkerEnabled(workerId);
       if (navigate) await runWithRetry(`navigate:${workerId}`, () => sendCommand(workerId, 'NAVIGATE', { url: worker.homeUrl }));
       const result = await runWithRetry(`dispatch:${workerId}`, () => sendCommand(workerId, 'DISPATCH', { text }));
       states.get(workerId)!.status = 'SUBMITTED';
       log('WORK_ORDER_SUBMITTED', { workerId, chars: text.length });
       return result;
     } catch (error) {
-      states.get(workerId)!.status = 'ERROR';
-      states.get(workerId)!.lastError = String(error);
+      const state = states.get(workerId)!;
+      if (state.enabled) state.status = 'ERROR';
+      state.lastError = String(error);
       throw error;
     }
   });
@@ -167,14 +214,22 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL): P
     const data = await body(req);
     const workerId = data.workerId as WorkerId;
     if (!getWorker(workerId)) { json(res, 400, { ok: false, error: 'UNKNOWN_WORKER' }); return true; }
+    const state = states.get(workerId)!;
     const hb: Heartbeat = { ...(data as unknown as Heartbeat), workerId, at: new Date().toISOString() };
-    states.get(workerId)!.lastHeartbeat = hb;
-    if (states.get(workerId)!.status === 'IDLE' || states.get(workerId)!.status === 'STARTING') states.get(workerId)!.status = 'ONLINE';
-    json(res, 200, { ok: true }); return true;
+    state.lastHeartbeat = hb;
+    if (!state.enabled) {
+      state.status = 'DISABLED';
+      json(res, 200, { ok: true, enabled: false }); return true;
+    }
+    if (state.status === 'IDLE' || state.status === 'STARTING') state.status = 'ONLINE';
+    json(res, 200, { ok: true, enabled: true }); return true;
   }
   if (url.pathname.startsWith('/api/commands/') && req.method === 'GET') {
     const workerId = decodeURIComponent(url.pathname.split('/').pop()!) as WorkerId;
     if (!getWorker(workerId)) { json(res, 404, { ok: false }); return true; }
+    if (!states.get(workerId)!.enabled) {
+      json(res, 200, { command: null, disabled: true, error: `WORKER_DISABLED:${workerId}` }); return true;
+    }
     json(res, 200, { command: commandQueues.get(workerId)!.shift() ?? null }); return true;
   }
   if (url.pathname === '/api/result' && req.method === 'POST') {
@@ -184,7 +239,11 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL): P
     const waiter = waiters.get(commandId);
     if (String(data.status ?? '').startsWith('BLOCKED')) {
       const state = states.get(workerId);
-      if (state) { state.blocked = true; state.status = 'BLOCKED'; state.lastError = String(data.status); }
+      if (state) {
+        state.blocked = true;
+        if (state.enabled) state.status = 'BLOCKED';
+        state.lastError = String(data.status);
+      }
     }
     if (waiter) {
       clearTimeout(waiter.timer);
@@ -198,7 +257,15 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL): P
     if (startAllRunning) { json(res, 409, { ok: false, error: 'START_ALL_ALREADY_RUNNING' }); return true; }
     startAllRunning = true;
     void (async () => {
-      try { for (const worker of config.workers) await startWorker(worker.id); }
+      try {
+        for (const worker of config.workers) {
+          if (!states.get(worker.id)!.enabled) {
+            log('START_ALL_SKIPPED_DISABLED', { workerId: worker.id });
+            continue;
+          }
+          await startWorker(worker.id);
+        }
+      }
       catch (error) { log('START_ALL_FAILED', { error: String(error) }); }
       finally { startAllRunning = false; }
     })();
@@ -212,21 +279,26 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL): P
     log('KILL_SWITCH'); json(res, 200, { ok: true }); return true;
   }
 
-  const match = url.pathname.match(/^\/api\/workers\/(NV03|NV04|NV05)\/(start|focus|layout|dispatch|close|unblock)$/);
+  const match = url.pathname.match(/^\/api\/workers\/(NV03|NV04|NV05)\/(start|focus|layout|dispatch|close|unblock|enable|disable)$/);
   if (match && req.method === 'POST') {
     const workerId = match[1] as WorkerId;
     const action = match[2];
     try {
-      if (action === 'start') await startWorker(workerId);
-      else if (action === 'focus') await uiQueue.enqueue(() => sendCommand(workerId, 'FOCUS'));
-      else if (action === 'layout') await layoutWorker(workerId);
-      else if (action === 'close') await uiQueue.enqueue(() => sendCommand(workerId, 'CLOSE_WINDOW'));
-      else if (action === 'unblock') { states.get(workerId)!.blocked = false; states.get(workerId)!.status = 'READY'; states.get(workerId)!.lastError = undefined; }
-      else if (action === 'dispatch') {
-        const data = await body(req);
-        await dispatch(workerId, String(data.text ?? ''), data.navigate !== false);
+      if (action === 'enable') setWorkerEnabled(workerId, true);
+      else if (action === 'disable') setWorkerEnabled(workerId, false);
+      else {
+        assertWorkerEnabled(workerId);
+        if (action === 'start') await startWorker(workerId);
+        else if (action === 'focus') await uiQueue.enqueue(() => sendCommand(workerId, 'FOCUS'));
+        else if (action === 'layout') await layoutWorker(workerId);
+        else if (action === 'close') await uiQueue.enqueue(() => sendCommand(workerId, 'CLOSE_WINDOW'));
+        else if (action === 'unblock') { states.get(workerId)!.blocked = false; states.get(workerId)!.status = 'READY'; states.get(workerId)!.lastError = undefined; }
+        else if (action === 'dispatch') {
+          const data = await body(req);
+          await dispatch(workerId, String(data.text ?? ''), data.navigate !== false);
+        }
       }
-      json(res, 200, { ok: true });
+      json(res, 200, { ok: true, enabled: states.get(workerId)!.enabled });
     } catch (error) { json(res, 409, { ok: false, error: String(error) }); }
     return true;
   }
