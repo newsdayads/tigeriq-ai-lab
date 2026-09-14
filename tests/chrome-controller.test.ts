@@ -6,20 +6,7 @@ import { buildRuntimeEvidence } from '../apps/chrome-controller/src/runtime-evid
 import { SerialQueue } from '../apps/chrome-controller/src/serial-queue.js';
 import { allowedUrl, matchesWorker } from '../apps/chrome-controller/extension/url-policy.js';
 
-function baseConfig(): ControllerConfig {
-  return {
-    host:'127.0.0.1',port:8798,chromePath:'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',userDataDir:'%LOCALAPPDATA%\\Google\\Chrome\\User Data',logDir:'D:\\TigerIQ\\Apps\\ChromeController\\Runtime',
-    layout:{width:500,height:834,gap:8,rightMargin:8,top:0,fallbackWorkAreaWidth:4096,fallbackWorkAreaLeft:0},
-    pacing:{betweenWorkerLaunchMs:30000,postReadySettlingMs:10000,minUiActionGapMs:8000,commandTimeoutMs:60000,workerReadyTimeoutMs:180000,maxRetries:1,retryBackoffMs:15000},
-    autopilot:{enabled:true,pollIntervalMs:15000,requestTimeoutMs:5000},
-    recovery:{heartbeatStaleMs:45000,checkIntervalMs:10000,maxReopenAttempts:2,reopenBackoffMs:15000,startupReadyUrl:'http://127.0.0.1:8795/health',startupReadyTimeoutMs:120000},
-    workers:[
-      {id:'NV05',role:'PRIMARY_AUTOPILOT_UI',profileDirectory:'Profile 5',homeUrl:'https://chatgpt.com/g/test-nv05'},
-      {id:'NV03',role:'INDEPENDENT_REVIEW',profileDirectory:'Profile 3',homeUrl:'https://chatgpt.com/g/test-nv03'},
-      {id:'NV04',role:'RESEARCH_REVIEW',profileDirectory:'Profile 4',homeUrl:'https://gemini.google.com/notebook/test'},
-    ],
-  };
-}
+function baseConfig():ControllerConfig{return{host:'127.0.0.1',port:8798,chromePath:'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',userDataDir:'%LOCALAPPDATA%\\Google\\Chrome\\User Data',logDir:'D:\\TigerIQ\\Apps\\ChromeController\\Runtime',layout:{width:500,height:834,gap:8,rightMargin:8,top:0,fallbackWorkAreaWidth:4096,fallbackWorkAreaLeft:0},pacing:{betweenWorkerLaunchMs:30000,postReadySettlingMs:10000,minUiActionGapMs:8000,commandTimeoutMs:60000,workerReadyTimeoutMs:180000,maxRetries:1,retryBackoffMs:15000},autopilot:{enabled:true,pollIntervalMs:15000,requestTimeoutMs:5000},recovery:{heartbeatStaleMs:45000,checkIntervalMs:10000,maxReopenAttempts:2,reopenBackoffMs:15000,startupReadyUrl:'http://127.0.0.1:8795/health',startupReadyTimeoutMs:120000},workers:[{id:'NV05',role:'PRIMARY_AUTOPILOT_UI',profileDirectory:'Profile 5',homeUrl:'https://chatgpt.com/g/test-nv05'},{id:'NV03',role:'INDEPENDENT_REVIEW',profileDirectory:'Profile 3',homeUrl:'https://chatgpt.com/g/test-nv03'},{id:'NV04',role:'RESEARCH_REVIEW',profileDirectory:'Profile 4',homeUrl:'https://gemini.google.com/notebook/test'}]};}
 function snapshot(overrides:Partial<ExternalAutopilotSnapshot>={}):ExternalAutopilotSnapshot{return{source:'GITHUB',observedAt:'2026-09-15T01:00:00.000Z',revision:'issue-763-v1',previousJob:{jobId:'JOB-1',workerId:'NV05',status:'DONE',executable:true,priority:'P0',evidence:[{source:'GITHUB',ref:'https://github.com/newsdayads/tigeriq-ai-lab/issues/763#evidence'}]},nextJob:{jobId:'JOB-2',workerId:'NV05',status:'READY',executable:true,priority:'P0',prompt:'LÀM — NO YAPPING. Execute JOB-2 from authoritative state.'},...overrides};}
 
 describe('layout 5-3-4',()=>{
@@ -31,7 +18,8 @@ describe('config guardrails',()=>{
   it('accepts only canonical order and defaults enabled',()=>{const c=validateConfig(baseConfig());expect(c.workers.map(w=>w.id)).toEqual(['NV05','NV03','NV04']);expect(c.workers.map(w=>w.enabled)).toEqual([true,true,true]);expect(c.workers.every(isWorkerEnabled)).toBe(true);});
   it('adds bounded defaults to older JSON',()=>{const c=baseConfig() as unknown as Record<string,unknown>;delete c.autopilot;delete c.recovery;const v=validateConfig(c);expect(v.autopilot).toMatchObject({enabled:true,pollIntervalMs:15000});expect(v.recovery).toMatchObject({heartbeatStaleMs:45000,maxReopenAttempts:2});});
   it('preserves disabled worker and rejects invalid enabled/order',()=>{const c=baseConfig();c.workers[2].enabled=false;expect(validateConfig(c).workers[2]).toMatchObject({id:'NV04',enabled:false});const bad=baseConfig() as unknown as {workers:Array<Record<string,unknown>>};bad.workers[0].enabled='false';expect(()=>validateConfig(bad)).toThrow('CONFIG_ENABLED_MUST_BE_BOOLEAN:NV05');const old=baseConfig();old.workers=[old.workers[1],old.workers[0],old.workers[2]];expect(()=>validateConfig(old)).toThrow('CONFIG_WORKER_ORDER_MUST_BE_NV05_NV03_NV04');});
-  it('requires loopback control plane and bounded pacing',()=>{expect(()=>validateConfig({...baseConfig(),host:'0.0.0.0'} as unknown)).toThrow('CONFIG_HOST_MUST_BE_LOOPBACK');const remote=baseConfig();remote.autopilot.stateUrl='https://example.com/state';expect(()=>validateConfig(remote)).toThrow('CONFIG_AUTOPILOT_STATE_URL_MUST_BE_LOOPBACK');const fast=baseConfig();fast.recovery.heartbeatStaleMs=1000;expect(()=>validateConfig(fast)).toThrow('CONFIG_RECOVERY_PACING_INVALID');});
+  it('keeps controller/autopilot loopback but permits Tailscale readiness only',()=>{expect(()=>validateConfig({...baseConfig(),host:'0.0.0.0'} as unknown)).toThrow('CONFIG_HOST_MUST_BE_LOOPBACK');const remote=baseConfig();remote.autopilot.stateUrl='http://100.97.23.87:8795/state';expect(()=>validateConfig(remote)).toThrow('CONFIG_AUTOPILOT_STATE_URL_MUST_BE_LOOPBACK');const tail=baseConfig();tail.recovery.startupReadyUrl='http://100.97.23.87:8795/health';expect(validateConfig(tail).recovery.startupReadyUrl).toBe('http://100.97.23.87:8795/health');const internet=baseConfig();internet.recovery.startupReadyUrl='http://8.8.8.8:8795/health';expect(()=>validateConfig(internet)).toThrow('CONFIG_RECOVERY_READY_URL_MUST_BE_LOOPBACK_OR_TAILSCALE');});
+  it('enforces bounded pacing',()=>{const fast=baseConfig();fast.recovery.heartbeatStaleMs=1000;expect(()=>validateConfig(fast)).toThrow('CONFIG_RECOVERY_PACING_INVALID');});
   it('keeps profile/session and URL isolation',()=>{const collision=baseConfig();collision.workers[0].profileDirectory='Profile 3';expect(()=>validateConfig(collision)).toThrow('CONFIG_PROFILE_HOST_COLLISION:NV03');const url=baseConfig();url.workers[0].homeUrl='https://example.com/';expect(()=>validateConfig(url)).toThrow('CONFIG_HOME_URL_NOT_ALLOWED:NV05');});
 });
 
