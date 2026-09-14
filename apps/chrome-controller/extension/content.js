@@ -53,9 +53,12 @@ function ensureWorkerBadge() {
     });
     document.documentElement.appendChild(badge);
   }
-  badge.style.background = WORKER_BADGE_COLORS[workerId];
-  badge.textContent = `● ${WORKER_BADGE_LABELS[workerId]}`;
-  badge.title = activeWorkerBadge?.label || WORKER_BADGE_LABELS[workerId];
+  const wantedBackground = WORKER_BADGE_COLORS[workerId];
+  const wantedText = `● ${WORKER_BADGE_LABELS[workerId]}`;
+  const wantedBadgeTitle = activeWorkerBadge?.label || WORKER_BADGE_LABELS[workerId];
+  if (badge.style.background !== wantedBackground) badge.style.background = wantedBackground;
+  if (badge.textContent !== wantedText) badge.textContent = wantedText;
+  if (badge.title !== wantedBadgeTitle) badge.title = wantedBadgeTitle;
   const cleanTitle = document.title.replace(/^\[NV0[345]\]\s*/, '');
   const wantedTitle = `[${workerId}] ${cleanTitle}`;
   if (document.title !== wantedTitle) document.title = wantedTitle;
@@ -80,7 +83,7 @@ function showWorkerBadge(workerId, label) {
 }
 
 const badgeObserver = new MutationObserver(() => queueBadgeRepair());
-badgeObserver.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+badgeObserver.observe(document.documentElement, { childList: true, subtree: true });
 
 function notifyRouteChanged() {
   queueBadgeRepair();
