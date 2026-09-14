@@ -63,3 +63,6 @@ STATE: `CURRENT_V47_AUTONOMY_24X7_SELF_HEAL_STALL_WATCHDOG_PASS_20260912`
 - Existing Gemini API key preserved; metadata-only verification confirmed suffix `BP0A` and model supports `generateContent` without generating content.
 - Regression: `26/26` relevant tests PASS.
 
+- Post-merge runtime verification: Core PID `46640` loaded the new NV12 configuration; NV12 reports model `gemini-3.5-flash-lite`.
+- Live probe after deployment still returned HTTP `429` after bounded retry; runtime remains `RATE_LIMITED`. Configuration rollout is complete; remaining capacity limit is provider-side/external, not a missing throttle/retry implementation.
+
