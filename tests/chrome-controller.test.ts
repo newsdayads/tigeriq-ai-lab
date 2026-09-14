@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { computePlacements, isWorkerEnabled, validateConfig, type ControllerConfig } from '../apps/chrome-controller/src/model.js';
 import { SerialQueue } from '../apps/chrome-controller/src/serial-queue.js';
+import { allowedUrl, matchesWorker } from '../apps/chrome-controller/extension/url-policy.js';
 
 function baseConfig(): ControllerConfig {
   return {
@@ -49,6 +50,23 @@ describe('chrome-controller config guardrails',()=>{
   it('rejects same-profile same-host collision',()=>{const c=baseConfig();c.workers[0].profileDirectory='Default';expect(()=>validateConfig(c)).toThrow('CONFIG_PROFILE_HOST_COLLISION:NV05');});
   it('rejects unsupported worker URLs',()=>{const c=baseConfig();c.workers[0].homeUrl='https://example.com/';expect(()=>validateConfig(c)).toThrow('CONFIG_HOME_URL_NOT_ALLOWED:NV03');});
   it('rejects pacing that is too aggressive',()=>{const c=baseConfig();c.pacing.betweenWorkerLaunchMs=1000;expect(()=>validateConfig(c)).toThrow('CONFIG_STARTUP_GAP_MIN_5000MS');});
+});
+
+describe('chrome-controller worker URL policy',()=>{
+  it('keeps ChatGPT workers bound to their exact TigerIQ project',()=>{
+    expect(matchesWorker('NV03','https://chatgpt.com/g/g-p-6a9e19b4deac8191938cca4486a7e12b-tigeriq-ai-lab/c/test')).toBe(true);
+    expect(matchesWorker('NV03','https://chatgpt.com/g/other-project')).toBe(false);
+  });
+  it('accepts Gemini notebook and live app conversation routes for NV04',()=>{
+    expect(matchesWorker('NV04','https://gemini.google.com/notebook/c3a7911e-5a73-41c6-b7db-2e3b17d3983a')).toBe(true);
+    expect(matchesWorker('NV04','https://gemini.google.com/app/85001b78fca5a010')).toBe(true);
+  });
+  it('fails closed for bare or unrelated Gemini routes',()=>{
+    expect(matchesWorker('NV04','https://gemini.google.com/app/')).toBe(false);
+    expect(matchesWorker('NV04','https://gemini.google.com/')).toBe(false);
+    expect(matchesWorker('NV04','https://example.com/app/85001b78fca5a010')).toBe(false);
+    expect(allowedUrl('https://example.com/app/85001b78fca5a010')).toBe(false);
+  });
 });
 
 describe('chrome-controller popup',()=>{
