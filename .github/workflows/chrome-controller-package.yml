@@ -37,6 +37,8 @@ jobs:
         run: npm run build
       - name: Assemble runtime package
         shell: bash
+        env:
+          ARTIFACT_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
           ROOT="artifact/TigerIQ-Chrome-Controller-V1"
@@ -49,7 +51,7 @@ jobs:
           cp apps/chrome-controller/runtime-evidence.schema.json "$ROOT/apps/chrome-controller/"
           cp apps/chrome-controller/INSTALL_WINDOWS.md "$ROOT/apps/chrome-controller/"
           cp apps/chrome-controller/Start-ChromeController.ps1 "$ROOT/apps/chrome-controller/"
-          printf '%s\n' "${GITHUB_SHA}" > "$ROOT/VERSION.txt"
+          printf '%s\n' "$ARTIFACT_SOURCE_SHA" > "$ROOT/VERSION.txt"
       - name: Upload Windows runtime
         uses: actions/upload-artifact@v4
         with:
