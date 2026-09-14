@@ -5,13 +5,23 @@ function visible(element) {
 
 const WORKER_BADGE_ID = 'tigeriq-worker-badge';
 const WORKER_BADGE_LABELS = {
-  NV03: 'NV03 · GO',
-  NV05: 'NV05 · PLUS',
-  NV04: 'NV04 · GEMINI',
+  NV03: 'NV03 · CHATGPT GO',
+  NV05: 'NV05 · CHATGPT PLUS',
+  NV04: 'NV04 · GEMINI PRO',
 };
+const WORKER_BADGE_COLORS = {
+  NV03: '#2563eb',
+  NV05: '#16a34a',
+  NV04: '#7c3aed',
+};
+
+function stripWorkerTitlePrefix() {
+  document.title = document.title.replace(/^\[NV0[345]\]\s*/, '');
+}
 
 function removeWorkerBadge() {
   document.getElementById(WORKER_BADGE_ID)?.remove();
+  stripWorkerTitlePrefix();
 }
 
 function showWorkerBadge(workerId, label) {
@@ -25,23 +35,27 @@ function showWorkerBadge(workerId, label) {
     badge.id = WORKER_BADGE_ID;
     Object.assign(badge.style, {
       position: 'fixed',
-      top: '8px',
-      right: '8px',
+      top: '56px',
+      right: '12px',
       zIndex: '2147483647',
-      padding: '5px 9px',
-      borderRadius: '999px',
-      background: 'rgba(17, 24, 39, 0.92)',
+      padding: '9px 14px',
+      borderRadius: '10px',
       color: '#fff',
-      font: '700 11px/1.2 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-      letterSpacing: '0.02em',
-      boxShadow: '0 1px 6px rgba(0,0,0,0.28)',
+      font: '800 14px/1.2 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+      letterSpacing: '0.03em',
+      border: '2px solid rgba(255,255,255,0.92)',
+      boxShadow: '0 4px 14px rgba(0,0,0,0.38)',
       pointerEvents: 'none',
       userSelect: 'none',
+      opacity: '0.97',
     });
     document.documentElement.appendChild(badge);
   }
-  badge.textContent = WORKER_BADGE_LABELS[workerId];
+  badge.style.background = WORKER_BADGE_COLORS[workerId];
+  badge.textContent = `● ${WORKER_BADGE_LABELS[workerId]}`;
   badge.title = label || WORKER_BADGE_LABELS[workerId];
+  stripWorkerTitlePrefix();
+  document.title = `[${workerId}] ${document.title}`;
 }
 
 function detectSecurityBlock() {
