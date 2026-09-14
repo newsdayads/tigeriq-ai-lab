@@ -23,6 +23,8 @@ export function expandEnv(value:string):string{return value.replace(/%([^%]+)%/g
 export function isLoopbackHttpUrl(value:string|undefined):boolean{if(!value)return true;try{const u=new URL(value);return u.protocol==='http:'&&(u.hostname==='127.0.0.1'||u.hostname==='localhost'||u.hostname==='::1')}catch{return false}}
 function isTailscaleIpv4(hostname:string):boolean{const parts=hostname.split('.').map(Number);if(parts.length!==4||parts.some(v=>!Number.isInteger(v)||v<0||v>255))return false;return parts[0]===100&&parts[1]>=64&&parts[1]<=127}
 export function isTrustedRuntimeReadyUrl(value:string|undefined):boolean{if(!value)return true;try{const u=new URL(value);return u.protocol==='http:'&&(u.hostname==='127.0.0.1'||u.hostname==='localhost'||u.hostname==='::1'||isTailscaleIpv4(u.hostname))}catch{return false}}
+export function minimumLayoutWidth(config:Pick<ControllerConfig,'layout'|'workers'>):number{return config.workers.length*config.layout.width+(config.workers.length-1)*config.layout.gap+config.layout.rightMargin}
+export function workAreaFitsLayout(config:Pick<ControllerConfig,'layout'|'workers'>,area:WorkArea):boolean{return area.width>=minimumLayoutWidth(config)&&area.height>=config.layout.top+config.layout.height}
 
 export function validateConfig(raw:unknown):ControllerConfig{
   if(!raw||typeof raw!=='object')throw new Error('CONFIG_INVALID_OBJECT');
@@ -44,7 +46,8 @@ export function validateConfig(raw:unknown):ControllerConfig{
   }
   const{layout,pacing,autopilot,recovery}=config;
   if(!layout||layout.width<320||layout.height<480||layout.gap<0||layout.rightMargin<0)throw new Error('CONFIG_INVALID_LAYOUT');
-  if(layout.fallbackWorkAreaWidth<layout.width*3)throw new Error('CONFIG_FALLBACK_WORK_AREA_TOO_SMALL');
+  const fallbackArea:WorkArea={left:layout.fallbackWorkAreaLeft,top:0,width:layout.fallbackWorkAreaWidth,height:layout.top+layout.height};
+  if(!workAreaFitsLayout(config,fallbackArea))throw new Error('CONFIG_FALLBACK_WORK_AREA_TOO_SMALL');
   if(!pacing)throw new Error('CONFIG_PACING_REQUIRED');
   if(pacing.betweenWorkerLaunchMs<5000)throw new Error('CONFIG_STARTUP_GAP_MIN_5000MS');
   if(pacing.postReadySettlingMs<3000)throw new Error('CONFIG_SETTLE_MIN_3000MS');
@@ -62,4 +65,4 @@ export function validateConfig(raw:unknown):ControllerConfig{
   return{...config,chromePath:expandEnv(config.chromePath),userDataDir:config.userDataDir?expandEnv(config.userDataDir):undefined,logDir:expandEnv(config.logDir),workers:config.workers.map(w=>({...w,enabled:isWorkerEnabled(w),userDataDir:w.userDataDir?expandEnv(w.userDataDir):undefined}))};
 }
 export function loadConfig(configPath?:string):ControllerConfig{const p=resolve(configPath??process.env.TIGERIQ_CHROME_CONFIG??'apps/chrome-controller/chrome-controller.config.json');return validateConfig(JSON.parse(readFileSync(p,'utf8'))as unknown)}
-export function computePlacements(config:ControllerConfig,workArea?:WorkArea):Record<WorkerId,WindowPlacement>{const area=workArea??{left:config.layout.fallbackWorkAreaLeft,top:0,width:config.layout.fallbackWorkAreaWidth,height:config.layout.height};const total=config.workers.length*config.layout.width+(config.workers.length-1)*config.layout.gap;const first=area.left+area.width-config.layout.rightMargin-total;if(first<area.left)throw new Error('LAYOUT_DOES_NOT_FIT_WORK_AREA');return Object.fromEntries(config.workers.map((w,i)=>[w.id,{left:first+i*(config.layout.width+config.layout.gap),top:area.top+config.layout.top,width:config.layout.width,height:config.layout.height}]))as Record<WorkerId,WindowPlacement>}
+export function computePlacements(config:ControllerConfig,workArea?:WorkArea):Record<WorkerId,WindowPlacement>{const fallback:WorkArea={left:config.layout.fallbackWorkAreaLeft,top:0,width:config.layout.fallbackWorkAreaWidth,height:config.layout.top+config.layout.height};const area=workArea&&workAreaFitsLayout(config,workArea)?workArea:fallback;if(!workAreaFitsLayout(config,area))throw new Error('LAYOUT_DOES_NOT_FIT_WORK_AREA');const total=config.workers.length*config.layout.width+(config.workers.length-1)*config.layout.gap;const first=area.left+area.width-config.layout.rightMargin-total;return Object.fromEntries(config.workers.map((w,i)=>[w.id,{left:first+i*(config.layout.width+config.layout.gap),top:area.top+config.layout.top,width:config.layout.width,height:config.layout.height}]))as Record<WorkerId,WindowPlacement>}
