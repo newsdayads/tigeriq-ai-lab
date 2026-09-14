@@ -1,4 +1,4 @@
-import { WORKER_IDS, computePlacements, type ControllerConfig, type WindowPlacement, type WorkArea, type WorkerId } from './model.js';
+import { WORKER_IDS, computePlacements, workAreaFitsLayout, type ControllerConfig, type WindowPlacement, type WorkArea, type WorkerId } from './model.js';
 import type { DurableAutopilotState, ExternalAutopilotSnapshot } from './autopilot.js';
 
 export interface EvidenceWorkerState {
@@ -23,7 +23,8 @@ export interface RuntimeEvidenceInput {
 }
 
 export function buildRuntimeEvidence(input: RuntimeEvidenceInput, now = new Date()) {
-  const placements = computePlacements(input.config, input.workArea);
+  const usableWorkArea = input.workArea && workAreaFitsLayout(input.config, input.workArea) ? input.workArea : undefined;
+  const placements = computePlacements(input.config, usableWorkArea);
   return {
     schemaVersion: 'tigeriq.chrome-controller.runtime-evidence.v1',
     generatedAt: now.toISOString(),
@@ -34,8 +35,8 @@ export function buildRuntimeEvidence(input: RuntimeEvidenceInput, now = new Date
       gap: input.config.layout.gap,
       rightMargin: input.config.layout.rightMargin,
       rightAnchored: true,
-      source: input.workArea ? 'HEARTBEAT_WORK_AREA' : 'CONFIG_FALLBACK',
-      workArea: input.workArea ?? null,
+      source: usableWorkArea ? 'HEARTBEAT_WORK_AREA' : 'CONFIG_FALLBACK',
+      workArea: usableWorkArea ?? null,
       placements: placements as Record<WorkerId, WindowPlacement>,
     },
     queue: {
