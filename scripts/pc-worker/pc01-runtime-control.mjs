@@ -70,9 +70,14 @@ export function resolveActionPath(action, workerId) {
   return `/api/workers/${workerId}/${action}`;
 }
 
+export function actionTimeoutMs(action) {
+  return action === 'start' ? 120_000 : 15_000;
+}
+
 export async function runAction(action, workerId, options = {}) {
   const path = resolveActionPath(action, workerId);
-  return requestJson(path, { ...options, method: 'POST' });
+  const timeoutMs = options.timeoutMs ?? actionTimeoutMs(action);
+  return requestJson(path, { ...options, timeoutMs, method: 'POST' });
 }
 
 async function main(argv) {
