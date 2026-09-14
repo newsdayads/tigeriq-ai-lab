@@ -46,6 +46,7 @@ jobs:
           cp -R apps/chrome-controller/extension "$ROOT/apps/chrome-controller/"
           cp -R apps/chrome-controller/public "$ROOT/apps/chrome-controller/"
           cp apps/chrome-controller/chrome-controller.config.example.json "$ROOT/apps/chrome-controller/"
+          cp apps/chrome-controller/runtime-evidence.schema.json "$ROOT/apps/chrome-controller/"
           cp apps/chrome-controller/INSTALL_WINDOWS.md "$ROOT/apps/chrome-controller/"
           cp apps/chrome-controller/Start-ChromeController.ps1 "$ROOT/apps/chrome-controller/"
           printf '%s\n' "${GITHUB_SHA}" > "$ROOT/VERSION.txt"
