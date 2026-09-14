@@ -9,6 +9,7 @@ export interface WorkerConfig {
   role: string;
   homeUrl: string;
   profileDirectory: string;
+  enabled?: boolean;
   userDataDir?: string;
 }
 export interface LayoutConfig { width:number; height:number; gap:number; rightMargin:number; top:number; fallbackWorkAreaWidth:number; fallbackWorkAreaLeft:number }
@@ -19,6 +20,7 @@ export interface WindowPlacement { left:number; top:number; width:number; height
 
 const ALLOWED_HOSTS = new Set(['chatgpt.com','gemini.google.com']);
 export function isAllowedWorkerUrl(value:string):boolean { try { const u=new URL(value); return u.protocol==='https:' && ALLOWED_HOSTS.has(u.hostname) } catch { return false } }
+export function isWorkerEnabled(worker:Pick<WorkerConfig,'enabled'>):boolean { return worker.enabled !== false }
 export function expandEnv(value:string):string { return value.replace(/%([^%]+)%/g,(_m,n:string)=>process.env[n]??`%${n}%`) }
 
 export function validateConfig(raw:unknown):ControllerConfig {
@@ -33,6 +35,7 @@ export function validateConfig(raw:unknown):ControllerConfig {
   if(ids.join('|')!==WORKER_IDS.join('|')) throw new Error('CONFIG_WORKER_ORDER_MUST_BE_NV03_NV05_NV04');
   const targets=new Set<string>();
   for(const worker of config.workers){
+    if(worker.enabled!==undefined && typeof worker.enabled!=='boolean') throw new Error(`CONFIG_ENABLED_MUST_BE_BOOLEAN:${worker.id}`);
     if(!isAllowedWorkerUrl(worker.homeUrl)) throw new Error(`CONFIG_HOME_URL_NOT_ALLOWED:${worker.id}`);
     if(!worker.role.trim()) throw new Error(`CONFIG_ROLE_REQUIRED:${worker.id}`);
     const host=new URL(worker.homeUrl).hostname;
@@ -51,7 +54,7 @@ export function validateConfig(raw:unknown):ControllerConfig {
   if(pacing.commandTimeoutMs<10000||pacing.workerReadyTimeoutMs<30000) throw new Error('CONFIG_TIMEOUT_TOO_SMALL');
   if(!Number.isInteger(pacing.maxRetries)||pacing.maxRetries<0||pacing.maxRetries>2) throw new Error('CONFIG_MAX_RETRIES_0_TO_2');
   if(pacing.retryBackoffMs<3000) throw new Error('CONFIG_RETRY_BACKOFF_MIN_3000MS');
-  return {...config,chromePath:expandEnv(config.chromePath),userDataDir:config.userDataDir?expandEnv(config.userDataDir):undefined,logDir:expandEnv(config.logDir),workers:config.workers.map(w=>({...w,userDataDir:w.userDataDir?expandEnv(w.userDataDir):undefined}))};
+  return {...config,chromePath:expandEnv(config.chromePath),userDataDir:config.userDataDir?expandEnv(config.userDataDir):undefined,logDir:expandEnv(config.logDir),workers:config.workers.map(w=>({...w,enabled:isWorkerEnabled(w),userDataDir:w.userDataDir?expandEnv(w.userDataDir):undefined}))};
 }
 export function loadConfig(configPath?:string):ControllerConfig { const p=resolve(configPath??process.env.TIGERIQ_CHROME_CONFIG??'apps/chrome-controller/chrome-controller.config.json'); return validateConfig(JSON.parse(readFileSync(p,'utf8')) as unknown) }
 export function computePlacements(config:ControllerConfig,workArea?:WorkArea):Record<WorkerId,WindowPlacement>{
