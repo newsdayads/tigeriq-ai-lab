@@ -1,0 +1,43 @@
+name: UI Autopilot Snapshot Package
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'apps/tigeriq-core/ui-autopilot-snapshot.mjs'
+      - 'apps/tigeriq-core/ui-autopilot-snapshot.test.mjs'
+      - 'apps/tigeriq-core/core-entry.mjs'
+      - '.github/workflows/ui-autopilot-package.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install
+        run: npm ci
+      - name: Tests
+        run: npx vitest run apps/tigeriq-core/ui-autopilot-snapshot.test.mjs
+      - name: Assemble runtime package
+        shell: bash
+        env:
+          ARTIFACT_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          ROOT="artifact/TigerIQ-UI-Autopilot-Snapshot"
+          mkdir -p "$ROOT"
+          cp apps/tigeriq-core/ui-autopilot-snapshot.mjs "$ROOT/"
+          printf '%s\n' "$ARTIFACT_SOURCE_SHA" > "$ROOT/VERSION.txt"
+      - name: Upload runtime
+        uses: actions/upload-artifact@v4
+        with:
+          name: TigerIQ-UI-Autopilot-Snapshot-${{ github.event.pull_request.number || github.run_number }}
+          path: artifact/TigerIQ-UI-Autopilot-Snapshot
+          if-no-files-found: error
+          retention-days: 14
