@@ -1,26 +1,13 @@
+import { WORKER_HOSTS, allowedUrl, hostname, matchesWorker } from './url-policy.js';
+
 const CONTROLLER = 'http://127.0.0.1:8798';
-const WORKER_HOSTS = { NV03:'chatgpt.com', NV05:'chatgpt.com', NV04:'gemini.google.com' };
-const WORKER_HINTS = {
-  NV03:'/g/g-p-6a9e19b4deac8191938cca4486a7e12b-tigeriq-ai-lab',
-  NV05:'/g/g-p-6a925c470aa08191a10595e215d04f4e-tigeriq-ai-lab',
-  NV04:'/notebook/c3a7911e-5a73-41c6-b7db-2e3b17d3983a'
-};
 const WORKER_LABELS = {
   NV03:'NV03 · ChatGPT Go',
   NV05:'NV05 · ChatGPT Plus',
   NV04:'NV04 · Gemini Pro'
 };
-const ALLOWED_HOSTS = new Set(Object.values(WORKER_HOSTS));
 let ticking = false;
 
-function hostname(value) { try { return new URL(value).hostname; } catch { return ''; } }
-function allowedUrl(value) { try { const u=new URL(value); return u.protocol==='https:' && ALLOWED_HOSTS.has(u.hostname); } catch { return false; } }
-function matchesWorker(workerId,value) {
-  try {
-    const u = new URL(value);
-    return u.hostname === WORKER_HOSTS[workerId] && u.pathname.startsWith(WORKER_HINTS[workerId]);
-  } catch { return false; }
-}
 function markerWorkerId(value) {
   try {
     const u = new URL(value);
