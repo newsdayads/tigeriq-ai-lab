@@ -18,5 +18,5 @@
     }
   ],
   "options_page": "options.html",
-  "action": { "default_title": "TigerIQ Chrome Controller" }
+  "action": { "default_title": "TigerIQ Chrome Controller", "default_popup": "popup.html" }
 }
