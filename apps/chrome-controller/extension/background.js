@@ -156,8 +156,12 @@ async function tick(){
   catch { /* Controller may be offline; retry later. */ }
   finally { ticking=false; }
 }
-chrome.runtime.onInstalled.addListener(async()=>{await chrome.alarms.create('tigeriqTick',{periodInMinutes:0.5});void tick();});
-chrome.runtime.onStartup.addListener(async()=>{await chrome.alarms.create('tigeriqTick',{periodInMinutes:0.5});void tick();});
+async function ensureTickAlarm(){
+  await chrome.alarms.create('tigeriqTick',{periodInMinutes:0.5});
+}
+chrome.runtime.onInstalled.addListener(async()=>{await ensureTickAlarm();void tick();});
+chrome.runtime.onStartup.addListener(async()=>{await ensureTickAlarm();void tick();});
 chrome.alarms.onAlarm.addListener((a)=>{if(a.name==='tigeriqTick')void tick();});
-chrome.runtime.onMessage.addListener((m)=>{if(m?.type==='TIGERIQ_CONFIG_UPDATED')void tick();});
+chrome.runtime.onMessage.addListener((m)=>{if(m?.type==='TIGERIQ_CONFIG_UPDATED'||m?.type==='TIGERIQ_ROUTE_CHANGED')void tick();});
+void ensureTickAlarm();
 setInterval(()=>void tick(),7000); void tick();
