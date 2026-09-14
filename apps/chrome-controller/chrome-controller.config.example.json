@@ -1,0 +1,45 @@
+{
+  "host": "127.0.0.1",
+  "port": 8798,
+  "chromePath": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "userDataDir": "%LOCALAPPDATA%\\Google\\Chrome\\User Data",
+  "logDir": "D:\\TigerIQ\\Runtime\\chrome-controller",
+  "layout": {
+    "width": 500,
+    "height": 834,
+    "gap": 8,
+    "rightMargin": 8,
+    "top": 0,
+    "fallbackWorkAreaWidth": 4096,
+    "fallbackWorkAreaLeft": 0
+  },
+  "pacing": {
+    "betweenWorkerLaunchMs": 30000,
+    "postReadySettlingMs": 10000,
+    "minUiActionGapMs": 8000,
+    "commandTimeoutMs": 60000,
+    "workerReadyTimeoutMs": 180000,
+    "maxRetries": 1,
+    "retryBackoffMs": 15000
+  },
+  "workers": [
+    {
+      "id": "NV03",
+      "role": "CODE_WEB_UI",
+      "profileDirectory": "REPLACE_NV03_PROFILE_DIRECTORY",
+      "homeUrl": "https://chatgpt.com/REPLACE_WITH_NV03_PROJECT_OR_CHAT_URL"
+    },
+    {
+      "id": "NV05",
+      "role": "CODE_CORE_BACKEND",
+      "profileDirectory": "REPLACE_NV05_PROFILE_DIRECTORY",
+      "homeUrl": "https://chatgpt.com/REPLACE_WITH_NV05_PROJECT_OR_CHAT_URL"
+    },
+    {
+      "id": "NV04",
+      "role": "ARCHITECT_REVIEW_RESEARCH",
+      "profileDirectory": "REPLACE_NV04_PROFILE_DIRECTORY",
+      "homeUrl": "https://gemini.google.com/REPLACE_WITH_NV04_WORKSPACE_URL"
+    }
+  ]
+}
