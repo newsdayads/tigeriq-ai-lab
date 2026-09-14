@@ -77,5 +77,9 @@ export function validateConfig(raw:unknown):ControllerConfig{
   if(!isTrustedRuntimeUrl(recovery.startupReadyUrl,trustedRuntimeHosts))throw new Error('CONFIG_RECOVERY_READY_URL_NOT_TRUSTED');
   return{...config,chromePath:expandEnv(config.chromePath),userDataDir:config.userDataDir?expandEnv(config.userDataDir):undefined,logDir:expandEnv(config.logDir),workers:config.workers.map(w=>({...w,enabled:isWorkerEnabled(w),userDataDir:w.userDataDir?expandEnv(w.userDataDir):undefined}))};
 }
-export function loadConfig(configPath?:string):ControllerConfig{const p=resolve(configPath??process.env.TIGERIQ_CHROME_CONFIG??'apps/chrome-controller/chrome-controller.config.json');return validateConfig(JSON.parse(readFileSync(p,'utf8'))as unknown)}
+export function loadConfig(configPath?:string):ControllerConfig{
+  const p=resolve(configPath??process.env.TIGERIQ_CHROME_CONFIG??'apps/chrome-controller/chrome-controller.config.json');
+  const text=readFileSync(p,'utf8').replace(/^\uFEFF/,'');
+  return validateConfig(JSON.parse(text) as unknown);
+}
 export function computePlacements(config:ControllerConfig,workArea?:WorkArea):Record<WorkerId,WindowPlacement>{const fallback:WorkArea={left:config.layout.fallbackWorkAreaLeft,top:0,width:config.layout.fallbackWorkAreaWidth,height:config.layout.top+config.layout.height};const area=workArea&&workAreaFitsLayout(config,workArea)?workArea:fallback;if(!workAreaFitsLayout(config,area))throw new Error('LAYOUT_DOES_NOT_FIT_WORK_AREA');const total=config.workers.length*config.layout.width+(config.workers.length-1)*config.layout.gap;const first=area.left+area.width-config.layout.rightMargin-total;return Object.fromEntries(config.workers.map((w,i)=>[w.id,{left:first+i*(config.layout.width+config.layout.gap),top:area.top+config.layout.top,width:config.layout.width,height:config.layout.height}]))as Record<WorkerId,WindowPlacement>}
