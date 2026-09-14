@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  actionTimeoutMs,
   assertLoopbackBaseUrl,
   collectSnapshot,
   requestJson,
@@ -34,6 +35,12 @@ describe('pc01 runtime control safety', () => {
     expect(resolveActionPath('layout', 'NV05')).toBe('/api/workers/NV05/layout');
     expect(() => resolveActionPath('kill', 'NV05')).toThrow('RUNTIME_CONTROL_ACTION_NOT_ALLOWED');
     expect(() => resolveActionPath('layout', 'NV99')).toThrow('RUNTIME_CONTROL_ACTION_NOT_ALLOWED');
+  });
+
+  it('uses a longer but bounded timeout only for worker start', () => {
+    expect(actionTimeoutMs('start')).toBe(120_000);
+    expect(actionTimeoutMs('layout')).toBe(15_000);
+    expect(actionTimeoutMs('resume')).toBe(15_000);
   });
 
   it('uses the state endpoint without shelling out', async () => {
