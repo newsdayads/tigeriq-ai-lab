@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>TigerIQ Chrome Controller</title>
+  <style>
+    body{font:15px system-ui,sans-serif;max-width:520px;margin:40px auto;padding:0 20px;color:#111827}
+    h1{font-size:22px} label{display:block;margin:18px 0 8px;font-weight:700}
+    select,button{font:inherit;padding:10px 12px;border-radius:8px;border:1px solid #cbd5e1}
+    button{background:#0f62fe;color:white;border:0;cursor:pointer} .ok{color:#067647;margin-top:14px}
+  </style>
+</head>
+<body>
+  <h1>TigerIQ Chrome Controller</h1>
+  <p>Mỗi Chrome Profile chỉ gắn với đúng một nhân viên.</p>
+  <label for="worker">Nhân viên của profile này</label>
+  <select id="worker">
+    <option value="">-- Chọn --</option>
+    <option value="NV03">NV03 — ChatGPT Go</option>
+    <option value="NV05">NV05 — ChatGPT Plus</option>
+    <option value="NV04">NV04 — Gemini Pro</option>
+  </select>
+  <button id="save">Lưu</button>
+  <div id="status" class="ok"></div>
+  <script src="options.js"></script>
+</body>
+</html>
