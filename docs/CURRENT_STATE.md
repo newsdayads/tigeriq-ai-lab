@@ -55,3 +55,11 @@ Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #
 - Chat/memory is not runtime authority.
 
 STATE: `CURRENT_V47_AUTONOMY_24X7_SELF_HEAL_STALL_WATCHDOG_PASS_20260912`
+
+## NV12 Gemini rate-limit hardening — 2026-09-14
+- NV12 pinned to `gemini-3.5-flash-lite`.
+- Minimum inter-call delay: `4500 ms`.
+- HTTP 429 / `RESOURCE_EXHAUSTED`: bounded exponential backoff `4.5s -> 9s -> 18s`, max 4 attempts before outer failover.
+- Existing Gemini API key preserved; metadata-only verification confirmed suffix `BP0A` and model supports `generateContent` without generating content.
+- Regression: `26/26` relevant tests PASS.
+

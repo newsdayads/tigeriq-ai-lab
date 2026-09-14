@@ -13,7 +13,7 @@ function Set-SecretEnv([string]$EnvName,[string]$SecretName,[string]$Entropy){
   if(-not[string]::IsNullOrWhiteSpace($value)){[Environment]::SetEnvironmentVariable($EnvName,$value,'Process')}
 }
 function Clear-ProviderEnvironment {
-  foreach($name in @('GROQ_API_KEY','GEMINI_API_KEY','OPENROUTER_API_KEY','MISTRAL_API_KEY','HF_TOKEN','COHERE_API_KEY','TIGERIQ_GROQ_FREE_TIER_VERIFIED','TIGERIQ_GEMINI_FREE_TIER_VERIFIED','TIGERIQ_COHERE_TRIAL_CONFIRMED')){[Environment]::SetEnvironmentVariable($name,$null,'Process')}
+  foreach($name in @('GROQ_API_KEY','GEMINI_API_KEY','OPENROUTER_API_KEY','MISTRAL_API_KEY','HF_TOKEN','COHERE_API_KEY','TIGERIQ_GROQ_FREE_TIER_VERIFIED','TIGERIQ_GEMINI_FREE_TIER_VERIFIED','TIGERIQ_COHERE_TRIAL_CONFIRMED','TIGERIQ_GEMINI_MODEL','TIGERIQ_GEMINI_MIN_INTERVAL_MS','TIGERIQ_GEMINI_BACKOFF_BASE_MS','TIGERIQ_GEMINI_MAX_ATTEMPTS')){[Environment]::SetEnvironmentVariable($name,$null,'Process')}
 }
 function Load-Environment {
   Clear-ProviderEnvironment
@@ -27,6 +27,10 @@ function Load-Environment {
   $env:TIGERIQ_CODING_PORT='8797'
   $env:TIGERIQ_CODING_AUTO_MERGE='true'
   $env:TIGERIQ_ALLOW_PAID_AI='false'
+  $env:TIGERIQ_GEMINI_MODEL='gemini-3.5-flash-lite'
+  $env:TIGERIQ_GEMINI_MIN_INTERVAL_MS='4500'
+  $env:TIGERIQ_GEMINI_BACKOFF_BASE_MS='4500'
+  $env:TIGERIQ_GEMINI_MAX_ATTEMPTS='4'
   $groqProof=Get-Content -Raw 'D:\TigerIQ\Secrets\groq-free-tier-proof.json'|ConvertFrom-Json
   $geminiProof=Get-Content -Raw 'D:\TigerIQ\Secrets\gemini-free-tier-proof.json'|ConvertFrom-Json
   if($groqProof.plan -eq 'Free' -and $groqProof.priceUsd -eq 0 -and $groqProof.ownerConfirmed -and -not $groqProof.paidFallbackAllowed -and [DateTime]::Parse($groqProof.expiresAtUtc) -gt [DateTime]::UtcNow){Set-SecretEnv 'GROQ_API_KEY' 'groq-api-key' 'TigerIQ-Groq-PC01-v1';$env:TIGERIQ_GROQ_FREE_TIER_VERIFIED='true'}
