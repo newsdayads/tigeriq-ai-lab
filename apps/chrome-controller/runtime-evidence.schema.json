@@ -3,7 +3,7 @@
   "$id": "https://tigeriq.local/schemas/chrome-controller-runtime-evidence-v1.json",
   "title": "TigerIQ Chrome Controller Runtime Evidence V1",
   "type": "object",
-  "required": ["schemaVersion", "generatedAt", "layout", "queue", "autopilot", "recovery", "security", "workers"],
+  "required": ["schemaVersion", "generatedAt", "layout", "queue", "autopilot", "recovery", "sessionPolicy", "security", "workers"],
   "properties": {
     "schemaVersion": { "const": "tigeriq.chrome-controller.runtime-evidence.v1" },
     "generatedAt": { "type": "string", "format": "date-time" },
@@ -28,7 +28,7 @@
     },
     "autopilot": {
       "type": "object",
-      "required": ["enabled", "fixedTrigger", "aiOutputParsed", "phase"],
+      "required": ["enabled", "fixedTrigger", "aiOutputParsed", "phase", "pendingJobId", "uncertainJobId"],
       "properties": {
         "fixedTrigger": { "const": "AUTO_CONTINUE" },
         "aiOutputParsed": { "const": false }
@@ -36,8 +36,16 @@
     },
     "recovery": {
       "type": "object",
-      "required": ["startupReady", "heartbeatStaleMs", "checkIntervalMs", "maxReopenAttempts", "attempts"],
+      "required": ["startupReady", "heartbeatStaleMs", "checkIntervalMs", "maxReopenAttempts", "startupAttachGraceMs", "attempts"],
       "properties": { "maxReopenAttempts": { "type": "integer", "minimum": 0, "maximum": 3 } }
+    },
+    "sessionPolicy": {
+      "type": "object",
+      "required": ["chromeVisibleOnly", "interactiveSession", "sessionName", "hiddenChromeAllowed"],
+      "properties": {
+        "chromeVisibleOnly": { "const": true },
+        "hiddenChromeAllowed": { "const": false }
+      }
     },
     "security": {
       "type": "object",
