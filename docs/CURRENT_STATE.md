@@ -1,68 +1,40 @@
 # TigerIQ — Current State
 
-Date: 2026-09-12
-Status: CURRENT — 24/7 autonomy self-heal verified
+Date: 2026-09-14
+Status: CURRENT — Core autonomous manager E2E verified
 Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #335 > this snapshot > runtime/evidence
 
 ## Canonical runtime
-- Core: `100.97.23.87:8795`.
-- Web Control: `100.97.23.87:8796`, read-only runtime truth.
-- Coding Lane: `100.97.23.87:8797`.
-- PostgreSQL: `5432`; Ollama: `127.0.0.1:11434`.
-- Source path: GitHub branch → PR → required gates → merge. No direct `main` source editing on PC01.
+- `main` source SHA before this SOT sync: `354b8abf4ea35230005e1802c96f72bc5133a130` from PR #744.
+- Core `100.97.23.87:8795`: ONLINE.
+- Web Control `100.97.23.87:8796`: ONLINE.
+- Coding Lane `8797`: intentionally Disabled; legacy autonomous coding path is not active.
+- Core Runtime Updater: intentionally Disabled.
+- Desktop Commander Remote and Ollama Runtime: Running.
+- Engineering path: GitHub branch → PR → required gates → merge; no direct `main` source editing on PC01.
 
-## Autonomous Coding Lane
-- Manager decomposes eligible zero-cost repository work into bounded jobs.
-- Implementer works on an isolated branch; reviewer must differ from implementer.
-- Required gates: CI Verify, Queue Hygiene Verify, Vercel Online Verify.
-- Paid, credential/security, destructive, production/release and browser-auth work fail closed.
-- Autonomous repair is allowed only while the originating GitHub issue remains OPEN.
+## AI Manager / autonomy
+- Issue #731 completed through PR #744.
+- Manager malformed/trailing/status-invalid JSON is handled by bounded same-provider retry once, then bounded zero-cost provider failover.
+- Manager creates jobs only after a valid decision is parsed.
+- Ollama request timeout is 30s.
+- Provider failures use bounded cooldown; NV16 HTTP 402/configuration failures are quarantined from repeated hammering.
+- Three real E2E runs passed consecutively without Owner intervention: objective accepted → Manager decomposed → NV19 executed → job DONE → objective COMPLETED.
 
-## 24/7 self-heal — VERIFIED
-- Issue #631 implementation: PRs #633, #634, #637; all required gates PASS before merge.
-- Final verified runtime SHA: `c2cc3b228e15d8d10cc5f7201a892124a3d8abce`.
-- Runtime updater checks Core/Web/Coding health continuously, uses two-strike detection and 5-minute cooldown, and restarts only the failed service.
-- Coding autonomy supervisor detects retryable CI failures and stale `running/waiting_ci/review` jobs, uses a bounded retry budget, records machine-readable events, and blocks exhausted work instead of looping forever.
-- Exact Coding child PID matching is based on canonical entry path.
+## Queue truth
+- Issue #735 queue hygiene: DONE.
+- Runtime verification after #731/#733: active objectives = 0; queued/running/review/waiting_ci jobs = 0.
+- No stale active queue item remained; history/evidence preserved.
 
-## Live fault evidence
-- Service self-heal test: Coding PID `21564 → 10112`; Core PID `40448` unchanged; Web PID `15692` unchanged. PASS.
-- Stalled-job test: `STALL_TIMEOUT` detected; budget exhausted → `BLOCKED`; `retryQueued=false`; machine-readable events recorded. PASS.
-- Autonomous CI repair was observed: failed #631 job produced repair job `CODE-fb0873b2-e29f-4f64-8966-fe95fdc62c76` automatically.
-- Superseded autonomous PRs #632 and #638 are closed and not merged.
-- Evidence: `docs/evidence/ISSUE-631-AUTONOMY-SELF-HEAL-20260912.md`.
+## Resource truth
+- NV02 Ollama: ONLINE/IDLE after live probe.
+- NV12 Gemini and NV14 Mistral: provider-side RATE_LIMITED with cooldown/failover; they do not block the pipeline.
+- NV16 Hugging Face: provider/configuration error path isolated with cooldown/quarantine.
+- NV11/NV13/NV15/NV19 remain usable zero-cost resources when healthy; NV20 remains WAIT_KEY.
 
-## Web Control
-- Final implementation from PRs #626/#628/#629 remains verified.
-- UI matrix: 8 widths × 2 zoom levels = 16/16 PASS; no overflow, console/page/network errors; filters PASS.
-- Pipeline truth: Intake → Running → Review → CI → Done → Blocked.
-- Evidence: `docs/evidence/WEB-CONTROL-FINAL-20260912.md`.
+## Governance
+- Required checks remain: CI Verify, Queue Hygiene Verify, Vercel Online Verify.
+- No external human GitHub reviewer is required; independent AI review/evidence is sufficient unless Owner changes policy.
+- #718 acceptance condition of 3 consecutive real E2E runs is satisfied; final governance/backlog closure is the next checkpoint.
 
-## Final live runtime verification
-- Core: healthy, PID `40448`.
-- Web Control: healthy, PID `15692`.
-- Coding Lane: healthy, PID `16108`, 3 eligible resources.
-- Coding Lane Scheduled Task: Running.
-- Runtime Updater Scheduled Task: Running.
-- Runtime updater state: `NO_CHANGE`.
-- Watchdog: `ok=true`; Core/Web/Coding all healthy.
-
-## Source of Truth
-- CENTRAL #280: active dynamic queue/router.
-- Registry #335: current employee/resource registry unless separately changed.
-- Interaction #504 and browser guardrail #497 remain applicable.
-- Execution boundary: `docs/EXECUTION_BOUNDARY.md`.
-- Chat/memory is not runtime authority.
-
-STATE: `CURRENT_V47_AUTONOMY_24X7_SELF_HEAL_STALL_WATCHDOG_PASS_20260912`
-
-## NV12 Gemini rate-limit hardening � 2026-09-14
-- NV12 pinned to `gemini-3.5-flash-lite`.
-- Minimum inter-call delay: `4500 ms`.
-- HTTP 429 / `RESOURCE_EXHAUSTED`: bounded exponential backoff `4.5s -> 9s -> 18s`, max 4 attempts before outer failover.
-- Existing Gemini API key preserved; metadata-only verification confirmed suffix `BP0A` and model supports `generateContent` without generating content.
-- Regression: `26/26` relevant tests PASS.
-
-- Post-merge runtime verification: Core PID `46640` loaded the new NV12 configuration; NV12 reports model `gemini-3.5-flash-lite`.
-- Live probe after deployment still returned HTTP `429` after bounded retry; runtime remains `RATE_LIMITED`. Configuration rollout is complete; remaining capacity limit is provider-side/external, not a missing throttle/retry implementation.
-
+STATE: `CURRENT_20260914_CORE_MANAGER_3X_E2E_PASS_QUEUE_CLEAN`
