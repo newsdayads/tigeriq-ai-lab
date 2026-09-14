@@ -5,6 +5,7 @@ on:
   pull_request:
     paths:
       - 'apps/tigeriq-core/ui-autopilot-snapshot.mjs'
+      - 'apps/tigeriq-core/ui-autopilot-entry.mjs'
       - 'tests/ui-autopilot-snapshot.test.ts'
       - 'apps/tigeriq-core/core-entry.mjs'
       - '.github/workflows/ui-autopilot-package.yml'
@@ -33,6 +34,7 @@ jobs:
           ROOT="artifact/TigerIQ-UI-Autopilot-Snapshot"
           mkdir -p "$ROOT"
           cp apps/tigeriq-core/ui-autopilot-snapshot.mjs "$ROOT/"
+          cp apps/tigeriq-core/ui-autopilot-entry.mjs "$ROOT/"
           printf '%s\n' "$ARTIFACT_SOURCE_SHA" > "$ROOT/VERSION.txt"
       - name: Upload runtime
         uses: actions/upload-artifact@v4
