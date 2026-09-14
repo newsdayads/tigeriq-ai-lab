@@ -3,7 +3,7 @@
   "port": 8798,
   "chromePath": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
   "userDataDir": "%LOCALAPPDATA%\\Google\\Chrome\\User Data",
-  "logDir": "D:\\TigerIQ\\Runtime\\chrome-controller",
+  "logDir": "D:\\TigerIQ\\Apps\\ChromeController\\Runtime",
   "layout": {
     "width": 500,
     "height": 834,
@@ -26,20 +26,20 @@
     {
       "id": "NV03",
       "role": "CODE_WEB_UI",
-      "profileDirectory": "REPLACE_NV03_PROFILE_DIRECTORY",
-      "homeUrl": "https://chatgpt.com/REPLACE_WITH_NV03_PROJECT_OR_CHAT_URL"
+      "profileDirectory": "REPLACE_GO_PROFILE",
+      "homeUrl": "https://chatgpt.com/g/REPLACE_WITH_NV03_PROJECT"
     },
     {
       "id": "NV05",
       "role": "CODE_CORE_BACKEND",
-      "profileDirectory": "REPLACE_NV05_PROFILE_DIRECTORY",
-      "homeUrl": "https://chatgpt.com/REPLACE_WITH_NV05_PROJECT_OR_CHAT_URL"
+      "profileDirectory": "REPLACE_PLUS_PROFILE",
+      "homeUrl": "https://chatgpt.com/g/REPLACE_WITH_NV05_PROJECT"
     },
     {
       "id": "NV04",
       "role": "ARCHITECT_REVIEW_RESEARCH",
-      "profileDirectory": "REPLACE_NV04_PROFILE_DIRECTORY",
-      "homeUrl": "https://gemini.google.com/REPLACE_WITH_NV04_WORKSPACE_URL"
+      "profileDirectory": "REPLACE_GEMINI_PROFILE_MAY_EQUAL_NV05_IF_DOMAIN_DIFFERS",
+      "homeUrl": "https://gemini.google.com/notebook/REPLACE_WITH_NV04_WORKSPACE"
     }
   ]
 }
