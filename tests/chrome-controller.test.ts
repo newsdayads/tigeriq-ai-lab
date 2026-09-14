@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { computePlacements, validateConfig, type ControllerConfig } from '../apps/chrome-controller/src/model.js';
 import { SerialQueue } from '../apps/chrome-controller/src/serial-queue.js';
@@ -33,6 +34,22 @@ describe('chrome-controller config guardrails',()=>{
   it('rejects same-profile same-host collision',()=>{const c=baseConfig();c.workers[0].profileDirectory='Default';expect(()=>validateConfig(c)).toThrow('CONFIG_PROFILE_HOST_COLLISION:NV05');});
   it('rejects unsupported worker URLs',()=>{const c=baseConfig();c.workers[0].homeUrl='https://example.com/';expect(()=>validateConfig(c)).toThrow('CONFIG_HOME_URL_NOT_ALLOWED:NV03');});
   it('rejects pacing that is too aggressive',()=>{const c=baseConfig();c.pacing.betweenWorkerLaunchMs=1000;expect(()=>validateConfig(c)).toThrow('CONFIG_STARTUP_GAP_MIN_5000MS');});
+});
+
+describe('chrome-controller popup',()=>{
+  it('wires the popup and limits it to status/config UI scope',()=>{
+    const manifest=JSON.parse(readFileSync('apps/chrome-controller/extension/manifest.json','utf8')) as { action?: { default_popup?: string } };
+    const popup=readFileSync('apps/chrome-controller/extension/popup.js','utf8');
+    const html=readFileSync('apps/chrome-controller/extension/popup.html','utf8');
+    expect(manifest.action?.default_popup).toBe('popup.html');
+    expect(html).toContain('id="profileWorkers"');
+    expect(html).toContain('id="controllerStatus"');
+    expect(html).toContain('id="options"');
+    expect(popup).toContain("chrome.storage.local.get(['workerIds'])");
+    expect(popup).toContain("/api/state");
+    expect(popup).toContain('chrome.runtime.openOptionsPage');
+    expect(popup).not.toMatch(/cookies|password|token|stealth|anti-bot/i);
+  });
 });
 
 describe('SerialQueue',()=>{
