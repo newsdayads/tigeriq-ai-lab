@@ -5,6 +5,11 @@ const WORKER_HINTS = {
   NV05:'/g/g-p-6a925c470aa08191a10595e215d04f4e-tigeriq-ai-lab',
   NV04:'/notebook/c3a7911e-5a73-41c6-b7db-2e3b17d3983a'
 };
+const WORKER_LABELS = {
+  NV03:'NV03 · ChatGPT Go',
+  NV05:'NV05 · ChatGPT Plus',
+  NV04:'NV04 · Gemini Pro'
+};
 const ALLOWED_HOSTS = new Set(Object.values(WORKER_HOSTS));
 let ticking = false;
 
@@ -79,6 +84,21 @@ async function findContext(workerId) {
   return choose(exact) || choose(hostOnly);
 }
 
+async function updateWorkerBadge(workerId, ctx) {
+  const exact = matchesWorker(workerId, ctx.url || '');
+  const badgeText = exact ? workerId.slice(2) : '';
+  await chrome.action.setBadgeText({ text: badgeText });
+  await chrome.action.setTitle({ title: exact ? `TigerIQ · ${WORKER_LABELS[workerId]}` : 'TigerIQ Chrome Controller' });
+  if (!ctx.tabId) return;
+  try {
+    await chrome.tabs.sendMessage(ctx.tabId, {
+      type:'TIGERIQ_WORKER_BADGE',
+      workerId: exact ? workerId : null,
+      label: exact ? WORKER_LABELS[workerId] : ''
+    });
+  } catch { /* content script may not be ready yet; next tick retries */ }
+}
+
 async function displayInfo() {
   const displays = await chrome.system.display.getInfo();
   const primary = displays.find((d) => d.isPrimary) || displays[0];
@@ -123,6 +143,7 @@ async function execute(workerId,command) {
 
 async function tickWorker(workerId) {
   const ctx=await findContext(workerId); if(!ctx) return;
+  await updateWorkerBadge(workerId, ctx);
   await heartbeat(workerId,ctx);
   const r=await fetch(`${CONTROLLER}/api/commands/${encodeURIComponent(workerId)}`); if(!r.ok) return;
   const {command}=await r.json(); if(!command) return;
