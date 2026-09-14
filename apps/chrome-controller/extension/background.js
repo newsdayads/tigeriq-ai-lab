@@ -7,6 +7,7 @@ const WORKER_LABELS = {
   NV04:'NV04 · Gemini Pro'
 };
 let ticking = false;
+const lastWindowByWorker = new Map();
 
 function markerWorkerId(value) {
   try {
@@ -142,6 +143,7 @@ async function execute(workerId,command) {
 
 async function tickWorker(workerId) {
   const ctx=await findContext(workerId); if(!ctx) return;
+  lastWindowByWorker.set(workerId,ctx.windowId);
   await updateWorkerBadge(workerId, ctx);
   await heartbeat(workerId,ctx);
   const r=await fetch(`${CONTROLLER}/api/commands/${encodeURIComponent(workerId)}`); if(!r.ok) return;
@@ -156,9 +158,17 @@ async function tick(){
   catch { /* Controller may be offline; retry later. */ }
   finally { ticking=false; }
 }
-async function ensureTickAlarm(){
-  await chrome.alarms.create('tigeriqTick',{periodInMinutes:0.5});
-}
+async function ensureTickAlarm(){ await chrome.alarms.create('tigeriqTick',{periodInMinutes:0.5}); }
+
+chrome.windows.onRemoved.addListener((windowId)=>{
+  void (async()=>{
+    for(const [workerId,lastWindowId] of lastWindowByWorker){
+      if(lastWindowId!==windowId)continue;
+      lastWindowByWorker.delete(workerId);
+      try{await post('/api/window-event',{workerId,event:'CLOSED',windowId});}catch{/* controller may be restarting */}
+    }
+  })();
+});
 chrome.runtime.onInstalled.addListener(async()=>{await ensureTickAlarm();void tick();});
 chrome.runtime.onStartup.addListener(async()=>{await ensureTickAlarm();void tick();});
 chrome.alarms.onAlarm.addListener((a)=>{if(a.name==='tigeriqTick')void tick();});
