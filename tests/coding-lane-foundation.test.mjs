@@ -212,3 +212,16 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
     assert.deepStrictEqual(issues,['CI Verify: failure (completed)']);
   });
 });
+test('Gemini internal 429 exhaustion still fails over to next provider',async()=>{
+  const gemini={id:'NV12',provider:'gemini',model:'gemini-test'};
+  const backup={id:'NV13',provider:'fake',model:'backup'};
+  const calls=[];
+  const invokeFn=async r=>{
+    calls.push(r.id);
+    if(r.id==='NV12'){const e=new Error('HTTP_429 RESOURCE_EXHAUSTED');e.status=429;e.geminiRetryExhausted=true;throw e;}
+    return '{"status":"blocked","summary":"backup-ok"}';
+  };
+  const out=await invokeJsonWithFailover(gemini,'x',{resourcePool:[gemini,backup],invokeFn,maxResources:2});
+  assert.strictEqual(out.resource.id,'NV13');
+  assert.deepStrictEqual(calls,['NV12','NV13']);
+});
