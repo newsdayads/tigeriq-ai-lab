@@ -26,18 +26,21 @@
     {
       "id": "NV03",
       "role": "CODE_WEB_UI",
+      "enabled": true,
       "profileDirectory": "REPLACE_GO_PROFILE",
       "homeUrl": "https://chatgpt.com/g/REPLACE_WITH_NV03_PROJECT"
     },
     {
       "id": "NV05",
       "role": "CODE_CORE_BACKEND",
+      "enabled": true,
       "profileDirectory": "REPLACE_PLUS_PROFILE",
       "homeUrl": "https://chatgpt.com/g/REPLACE_WITH_NV05_PROJECT"
     },
     {
       "id": "NV04",
       "role": "ARCHITECT_REVIEW_RESEARCH",
+      "enabled": true,
       "profileDirectory": "REPLACE_GEMINI_PROFILE_MAY_EQUAL_NV05_IF_DOMAIN_DIFFERS",
       "homeUrl": "https://gemini.google.com/notebook/REPLACE_WITH_NV04_WORKSPACE"
     }
