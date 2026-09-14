@@ -127,8 +127,10 @@ async function execute(workerId,command) {
   if(action==='FOCUS'){await chrome.windows.update(ctx.windowId,{focused:true});return{status:'FOCUSED'};}
   if(action==='LAYOUT'){await chrome.windows.update(ctx.windowId,{left:Number(payload.left),top:Number(payload.top),width:Number(payload.width),height:Number(payload.height),focused:false});return{status:'LAYOUT_APPLIED'};}
   if(action==='CLOSE_WINDOW'){
+    // Mark CLOSED while this profile context is still alive. Recovery waits/backoffs and
+    // a surviving heartbeat re-opens state if chrome.windows.remove itself fails.
+    await post('/api/window-event',{workerId,event:'CLOSED',windowId:ctx.windowId});
     await chrome.windows.remove(ctx.windowId);
-    try{await post('/api/window-event',{workerId,event:'CLOSED',windowId:ctx.windowId});}catch{/* onRemoved or stale-heartbeat recovery remains as fallback */}
     return{status:'WINDOW_CLOSED'};
   }
   if(action==='NAVIGATE'){
