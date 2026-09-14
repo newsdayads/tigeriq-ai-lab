@@ -3,6 +3,47 @@ function visible(element) {
   return rect.width > 0 && rect.height > 0 && getComputedStyle(element).visibility !== 'hidden';
 }
 
+const WORKER_BADGE_ID = 'tigeriq-worker-badge';
+const WORKER_BADGE_LABELS = {
+  NV03: 'NV03 · GO',
+  NV05: 'NV05 · PLUS',
+  NV04: 'NV04 · GEMINI',
+};
+
+function removeWorkerBadge() {
+  document.getElementById(WORKER_BADGE_ID)?.remove();
+}
+
+function showWorkerBadge(workerId, label) {
+  if (!WORKER_BADGE_LABELS[workerId]) {
+    removeWorkerBadge();
+    return;
+  }
+  let badge = document.getElementById(WORKER_BADGE_ID);
+  if (!badge) {
+    badge = document.createElement('div');
+    badge.id = WORKER_BADGE_ID;
+    Object.assign(badge.style, {
+      position: 'fixed',
+      top: '8px',
+      right: '8px',
+      zIndex: '2147483647',
+      padding: '5px 9px',
+      borderRadius: '999px',
+      background: 'rgba(17, 24, 39, 0.92)',
+      color: '#fff',
+      font: '700 11px/1.2 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+      letterSpacing: '0.02em',
+      boxShadow: '0 1px 6px rgba(0,0,0,0.28)',
+      pointerEvents: 'none',
+      userSelect: 'none',
+    });
+    document.documentElement.appendChild(badge);
+  }
+  badge.textContent = WORKER_BADGE_LABELS[workerId];
+  badge.title = label || WORKER_BADGE_LABELS[workerId];
+}
+
 function detectSecurityBlock() {
   if (document.querySelector('iframe[src*="captcha" i], iframe[src*="challenge" i], [class*="captcha" i], [id*="captcha" i]')) {
     return 'BLOCKED_CAPTCHA';
@@ -89,6 +130,12 @@ async function dispatch(text) {
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type === 'TIGERIQ_WORKER_BADGE') {
+    if (message.workerId) showWorkerBadge(String(message.workerId), String(message.label || ''));
+    else removeWorkerBadge();
+    sendResponse({ ok: true });
+    return;
+  }
   if (message?.type !== 'TIGERIQ_DISPATCH') return;
   void dispatch(String(message.text || '')).then(sendResponse).catch((error) => sendResponse({ ok: false, status: String(error) }));
   return true;
