@@ -4,6 +4,7 @@
   "chromePath": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
   "userDataDir": "%LOCALAPPDATA%\\Google\\Chrome\\User Data",
   "logDir": "D:\\TigerIQ\\Apps\\ChromeController\\Runtime",
+  "trustedRuntimeHosts": [],
   "layout": {
     "width": 500,
     "height": 834,
@@ -25,15 +26,17 @@
   "autopilot": {
     "enabled": true,
     "pollIntervalMs": 15000,
-    "requestTimeoutMs": 5000
+    "requestTimeoutMs": 5000,
+    "maxSnapshotAgeMs": 300000
   },
   "recovery": {
-    "heartbeatStaleMs": 45000,
-    "checkIntervalMs": 10000,
+    "heartbeatStaleMs": 90000,
+    "checkIntervalMs": 15000,
     "maxReopenAttempts": 2,
     "reopenBackoffMs": 15000,
     "startupReadyUrl": "http://127.0.0.1:8795/health",
-    "startupReadyTimeoutMs": 120000
+    "startupReadyTimeoutMs": 120000,
+    "startupAttachGraceMs": 20000
   },
   "workers": [
     {
