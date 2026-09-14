@@ -1,10 +1,21 @@
 const CONTROLLER = 'http://127.0.0.1:8798';
 const WORKER_HOSTS = { NV03:'chatgpt.com', NV05:'chatgpt.com', NV04:'gemini.google.com' };
+const WORKER_HINTS = {
+  NV03:'/g/g-p-6a9e19b4deac8191938cca4486a7e12b-tigeriq-ai-lab',
+  NV05:'/g/g-p-6a925c470aa08191a10595e215d04f4e-tigeriq-ai-lab',
+  NV04:'/notebook/c3a7911e-5a73-41c6-b7db-2e3b17d3983a'
+};
 const ALLOWED_HOSTS = new Set(Object.values(WORKER_HOSTS));
 let ticking = false;
 
 function hostname(value) { try { return new URL(value).hostname; } catch { return ''; } }
 function allowedUrl(value) { try { const u=new URL(value); return u.protocol==='https:' && ALLOWED_HOSTS.has(u.hostname); } catch { return false; } }
+function matchesWorker(workerId,value) {
+  try {
+    const u = new URL(value);
+    return u.hostname === WORKER_HOSTS[workerId] && u.pathname.startsWith(WORKER_HINTS[workerId]);
+  } catch { return false; }
+}
 function markerWorkerId(value) {
   try {
     const u = new URL(value);
@@ -30,7 +41,7 @@ async function bootstrapWorkerIds() {
   for (const win of wins) {
     for (const tab of win.tabs || []) {
       const id = markerWorkerId(tab.url || '');
-      if (!id || hostname(tab.url || '') !== WORKER_HOSTS[id]) continue;
+      if (!id || !matchesWorker(id, tab.url || '')) continue;
       const sameHostId = [...ids].find((existing) => existing !== id && WORKER_HOSTS[existing] === WORKER_HOSTS[id]);
       if (sameHostId) continue;
       if (!ids.has(id)) { ids.add(id); changed = true; }
@@ -47,19 +58,25 @@ async function bootstrapWorkerIds() {
 async function getWorkerIds() { return bootstrapWorkerIds(); }
 
 async function findContext(workerId) {
-  const wanted = WORKER_HOSTS[workerId];
   const wins = await chrome.windows.getAll({ populate:true, windowTypes:['normal'] });
-  const candidates = [];
+  const exact = [];
+  const hostOnly = [];
   for (const win of wins) {
-    const tabs = (win.tabs || []).filter((tab) => hostname(tab.url || '') === wanted);
-    if (!tabs.length) continue;
-    const tab = tabs.find((t) => t.active) || tabs[0];
-    candidates.push({ windowId:win.id, tabId:tab.id, url:tab.url || '', active:Boolean(tab.active) });
+    for (const tab of win.tabs || []) {
+      const url = tab.url || '';
+      if (hostname(url) !== WORKER_HOSTS[workerId]) continue;
+      const item = { windowId:win.id, tabId:tab.id, url, active:Boolean(tab.active) };
+      hostOnly.push(item);
+      if (matchesWorker(workerId, url)) exact.push(item);
+    }
   }
-  if (!candidates.length) return null;
-  if (candidates.length === 1) return candidates[0];
-  const active = candidates.filter((c) => c.active);
-  return active.length === 1 ? active[0] : null;
+  const choose = (items) => {
+    if (!items.length) return null;
+    if (items.length === 1) return items[0];
+    const active = items.filter((c) => c.active);
+    return active.length === 1 ? active[0] : items[0];
+  };
+  return choose(exact) || choose(hostOnly);
 }
 
 async function displayInfo() {
@@ -91,11 +108,11 @@ async function execute(workerId,command) {
   if(action==='LAYOUT'){await chrome.windows.update(ctx.windowId,{left:Number(payload.left),top:Number(payload.top),width:Number(payload.width),height:Number(payload.height),focused:false});return{status:'LAYOUT_APPLIED'};}
   if(action==='CLOSE_WINDOW'){await chrome.windows.remove(ctx.windowId);return{status:'WINDOW_CLOSED'};}
   if(action==='NAVIGATE'){
-    if(!allowedUrl(payload.url)||hostname(payload.url)!==WORKER_HOSTS[workerId]) throw new Error('BLOCKED_URL');
+    if(!allowedUrl(payload.url)||!matchesWorker(workerId,payload.url)) throw new Error('BLOCKED_URL');
     await chrome.tabs.update(ctx.tabId,{url:payload.url,active:true}); await waitForTabComplete(ctx.tabId); return{status:'NAVIGATED'};
   }
   if(action==='DISPATCH'){
-    if(hostname(ctx.url)!==WORKER_HOSTS[workerId]) throw new Error('BLOCKED_URL');
+    if(!matchesWorker(workerId,ctx.url)) throw new Error('BLOCKED_URL');
     await chrome.tabs.update(ctx.tabId,{active:true});
     const response=await chrome.tabs.sendMessage(ctx.tabId,{type:'TIGERIQ_DISPATCH',text:String(payload.text||'')});
     if(!response?.ok){const reason=response?.status||'DISPATCH_FAILED';const error=new Error(reason);error.status=reason;throw error;}
