@@ -45,5 +45,12 @@ export async function runBoundedManagerDecision({prompt,acquire,invoke,onSuccess
       }
     }
   }
-  const error=managerError('MANAGER_DECISION_EXHAUSTED');error.failures=failures;throw error;
+  return {
+    decision:{status:'blocked',summary:'manager decision exhausted after bounded retry/failover',jobs:[]},
+    resource:null,
+    failures,
+    providerAttempts:excluded.length,
+    outputAttempts:0,
+    exhausted:true,
+  };
 }
