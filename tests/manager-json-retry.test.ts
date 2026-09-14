@@ -1,4 +1,4 @@
-﻿// @ts-nocheck
+// @ts-nocheck
 import {describe,it,expect} from 'vitest';
 import {parseManagerJson,runBoundedManagerDecision} from '../apps/tigeriq-core/manager-json.mjs';
 
