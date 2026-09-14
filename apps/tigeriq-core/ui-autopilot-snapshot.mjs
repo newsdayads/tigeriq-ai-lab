@@ -46,21 +46,21 @@ function jobFromIssue(issue,spec){
 }
 
 async function ghJson(fetchImpl,url,token){
-  if(!token)throw new Error('GITHUB_TOKEN_REQUIRED');
-  const response=await fetchImpl(url,{headers:{accept:'application/vnd.github+json',authorization:`Bearer ${token}`,'user-agent':'TigerIQ-UI-Autopilot/1.0','x-github-api-version':'2022-11-28'},signal:AbortSignal.timeout(12000)});
+  const headers={accept:'application/vnd.github+json','user-agent':'TigerIQ-UI-Autopilot/1.1','x-github-api-version':'2022-11-28'};
+  if(token)headers.authorization=`Bearer ${token}`;
+  const response=await fetchImpl(url,{headers,signal:AbortSignal.timeout(12000)});
   if(!response.ok)throw new Error(`GITHUB_HTTP_${response.status}`);
   return response.json();
 }
 
 export async function readPreviousJobIdFromController({fetchImpl=fetch,stateUrl=DEFAULT_CONTROLLER_STATE_URL}={}){
   if(!isLoopbackUrl(stateUrl))throw new Error('CONTROLLER_STATE_URL_MUST_BE_LOOPBACK');
-  try{
-    const response=await fetchImpl(stateUrl,{signal:AbortSignal.timeout(2500)});
-    if(!response.ok)return undefined;
-    const value=await response.json();
-    const id=String(value?.state?.lastDispatchedJobId||'');
-    return /^GH-\d+$/.test(id)?id:undefined;
-  }catch{return undefined;}
+  let response;
+  try{response=await fetchImpl(stateUrl,{signal:AbortSignal.timeout(2500)});}catch{throw new Error('CONTROLLER_STATE_UNAVAILABLE');}
+  if(!response.ok)throw new Error(`CONTROLLER_STATE_HTTP_${response.status}`);
+  const value=await response.json();
+  const id=String(value?.state?.lastDispatchedJobId||'');
+  return /^GH-\d+$/.test(id)?id:undefined;
 }
 
 export async function buildUiAutopilotSnapshot({fetchImpl=fetch,token='',owner=DEFAULT_OWNER,repo=DEFAULT_REPO,previousJobId}={}){
@@ -108,9 +108,8 @@ export function startUiAutopilotSnapshotServer({
       res.writeHead(404,{'content-type':'application/json'});res.end(JSON.stringify({ok:false,error:'NOT_FOUND'}));
     }catch(error){
       const message=String(error?.message||error);
-      const status=message==='GITHUB_TOKEN_REQUIRED'?503:502;
-      res.writeHead(status,{'content-type':'application/json','cache-control':'no-store'});res.end(JSON.stringify({ok:false,error:message}));
+      res.writeHead(502,{'content-type':'application/json','cache-control':'no-store'});res.end(JSON.stringify({ok:false,error:message}));
     }
   });
-  server.listen(port,host,()=>console.log(JSON.stringify({event:'UI_AUTOPILOT_SNAPSHOT_READY',host,port})));return{enabled:true,host,port,stop:()=>new Promise(resolve=>server.close(()=>resolve()))};
+  server.listen(port,host,()=>console.log(JSON.stringify({event:'UI_AUTOPILOT_SNAPSHOT_READY',host,port,authenticatedGithub:Boolean(token)})));return{enabled:true,host,port,stop:()=>new Promise(resolve=>server.close(()=>resolve()))};
 }
