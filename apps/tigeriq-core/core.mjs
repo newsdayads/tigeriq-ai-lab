@@ -282,7 +282,8 @@ async function claimJob() {
   }
 }
 function parseManagerJson(text) {
-  const clean=String(text||'').replace(/```json|```/gi,'').trim();
+  const raw=String(text||'').trim();
+  const clean=raw.replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'').trim();
   const a=clean.indexOf('{'), b=clean.lastIndexOf('}');
   if(a<0||b<a) throw new Error('MANAGER_JSON_MISSING');
   const x=JSON.parse(clean.slice(a,b+1));
