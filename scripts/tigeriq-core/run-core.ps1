@@ -19,7 +19,7 @@ function Set-SecretEnv([string]$EnvName,[string]$SecretName,[string]$Entropy){
   if(-not[string]::IsNullOrWhiteSpace($value)){[Environment]::SetEnvironmentVariable($EnvName,$value,'Process')}
 }
 function Clear-CoreEnvironment {
-  $names=@('DATABASE_URL','PGPASSWORD','TIGERIQ_CORE_TOKEN','TIGERIQ_GITHUB_TOKEN','GROQ_API_KEY','GEMINI_API_KEY','OPENROUTER_API_KEY','MISTRAL_API_KEY','CLOUDFLARE_AUTH_TOKEN','HF_TOKEN','AI_GATEWAY_API_KEY','WATSONX_API_KEY','COHERE_API_KEY','NVIDIA_API_KEY','CLOUDFLARE_ACCOUNT_ID','WATSONX_PROJECT_ID','WATSONX_MODEL_ID','TIGERIQ_GROQ_FREE_TIER_VERIFIED','TIGERIQ_GEMINI_FREE_TIER_VERIFIED','TIGERIQ_VERCEL_FREE_CREDIT_CONFIRMED','TIGERIQ_WATSONX_LITE_CONFIRMED','TIGERIQ_COHERE_TRIAL_CONFIRMED','TIGERIQ_NVIDIA_FREE_DEV_CONFIRMED')
+  $names=@('DATABASE_URL','PGPASSWORD','TIGERIQ_CORE_TOKEN','TIGERIQ_GITHUB_TOKEN','GROQ_API_KEY','GEMINI_API_KEY','OPENROUTER_API_KEY','MISTRAL_API_KEY','CLOUDFLARE_AUTH_TOKEN','HF_TOKEN','AI_GATEWAY_API_KEY','WATSONX_API_KEY','COHERE_API_KEY','NVIDIA_API_KEY','CLOUDFLARE_ACCOUNT_ID','WATSONX_PROJECT_ID','WATSONX_MODEL_ID','TIGERIQ_GROQ_FREE_TIER_VERIFIED','TIGERIQ_GEMINI_FREE_TIER_VERIFIED','TIGERIQ_VERCEL_FREE_CREDIT_CONFIRMED','TIGERIQ_WATSONX_LITE_CONFIRMED','TIGERIQ_COHERE_TRIAL_CONFIRMED','TIGERIQ_NVIDIA_FREE_DEV_CONFIRMED','TIGERIQ_GEMINI_MODEL','TIGERIQ_GEMINI_MIN_INTERVAL_MS','TIGERIQ_GEMINI_BACKOFF_BASE_MS','TIGERIQ_GEMINI_MAX_ATTEMPTS')
   foreach($name in $names){[Environment]::SetEnvironmentVariable($name,$null,'Process')}
 }
 function Get-SecretStamp {
@@ -39,6 +39,10 @@ function Load-CoreEnvironment {
   $env:TIGERIQ_CORE_PORT='8795'
   $env:TIGERIQ_OLLAMA_MODEL='qwen3:4b'
   $env:TIGERIQ_ALLOW_PAID_AI='false'
+  $env:TIGERIQ_GEMINI_MODEL='gemini-3.5-flash-lite'
+  $env:TIGERIQ_GEMINI_MIN_INTERVAL_MS='4500'
+  $env:TIGERIQ_GEMINI_BACKOFF_BASE_MS='4500'
+  $env:TIGERIQ_GEMINI_MAX_ATTEMPTS='4'
   $groqProof=Get-Content -Raw 'D:\TigerIQ\Secrets\groq-free-tier-proof.json'|ConvertFrom-Json
   $geminiProof=Get-Content -Raw 'D:\TigerIQ\Secrets\gemini-free-tier-proof.json'|ConvertFrom-Json
   if($groqProof.plan -eq 'Free' -and $groqProof.priceUsd -eq 0 -and $groqProof.ownerConfirmed -and -not $groqProof.paidFallbackAllowed -and [DateTime]::Parse($groqProof.expiresAtUtc) -gt [DateTime]::UtcNow){
