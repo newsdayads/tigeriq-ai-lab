@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { describe,expect,it } from 'vitest';
-import { buildPrompt,buildUiAutopilotSnapshot,parseAutoUiIssue } from '../apps/tigeriq-core/ui-autopilot-snapshot.mjs';
+import { buildPrompt,buildUiAutopilotSnapshot,parseAutoUiIssue,readPreviousJobIdFromController } from '../apps/tigeriq-core/ui-autopilot-snapshot.mjs';
 
 const body=(priority='P0')=>[
   'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO_UI',`PRIORITY=${priority}`,'PRIMARY_EMPLOYEE=NV05',
@@ -17,9 +17,15 @@ describe('UI autopilot issue contract',()=>{
 });
 
 describe('UI autopilot snapshot',()=>{
-  it('selects P0 before P1 and then lowest issue number',async()=>{const rows=[issue(21,{body:body('P1')}),issue(23),issue(22)];const fetchImpl=async()=>response(rows);const s=await buildUiAutopilotSnapshot({fetchImpl,token:'x'});expect(s.nextJob).toMatchObject({jobId:'GH-22',workerId:'NV05',status:'READY',priority:'P0'});expect(s.revision).toContain('GH-22');});
+  it('supports public read-only GitHub without a token and selects P0 first',async()=>{const rows=[issue(21,{body:body('P1')}),issue(23),issue(22)];const fetchImpl=async()=>response(rows);const s=await buildUiAutopilotSnapshot({fetchImpl,token:''});expect(s.nextJob).toMatchObject({jobId:'GH-22',workerId:'NV05',status:'READY',priority:'P0'});expect(s.revision).toContain('GH-22');});
   it('correlates open previous job as RUNNING and excludes it from next',async()=>{const previous=issue(30);const rows=[previous,issue(31)];const fetchImpl=async(url)=>response(url.includes('/issues/30')?previous:rows);const s=await buildUiAutopilotSnapshot({fetchImpl,token:'x',previousJobId:'GH-30'});expect(s.previousJob).toMatchObject({jobId:'GH-30',status:'RUNNING'});expect(s.nextJob).toMatchObject({jobId:'GH-31'});});
   it('maps completed previous issue to DONE with GitHub evidence and verifiedAt',async()=>{const previous=issue(40,{state:'closed',state_reason:'completed',closed_at:'2026-09-15T02:00:00Z'});const fetchImpl=async(url)=>response(url.includes('/issues/40')?previous:[]);const s=await buildUiAutopilotSnapshot({fetchImpl,token:'x',previousJobId:'GH-40'});expect(s.previousJob).toMatchObject({jobId:'GH-40',status:'DONE',evidence:[{source:'GITHUB',ref:previous.html_url,verifiedAt:'2026-09-15T02:00:00Z'}]});expect(s.nextJob).toBeUndefined();});
   it('maps non-completed closure to CANCELLED',async()=>{const previous=issue(41,{state:'closed',state_reason:'not_planned',closed_at:'2026-09-15T02:00:00Z'});const fetchImpl=async(url)=>response(url.includes('/issues/41')?previous:[]);const s=await buildUiAutopilotSnapshot({fetchImpl,token:'x',previousJobId:'GH-41'});expect(s.previousJob.status).toBe('CANCELLED');});
-  it('fails closed on missing token, invalid previous id, or unauthorized previous issue',async()=>{await expect(buildUiAutopilotSnapshot({fetchImpl:async()=>response([]),token:''})).rejects.toThrow('GITHUB_TOKEN_REQUIRED');await expect(buildUiAutopilotSnapshot({fetchImpl:async()=>response([]),token:'x',previousJobId:'bad'})).rejects.toThrow('PREVIOUS_JOB_ID_INVALID');const bad=issue(50,{body:'TIGERIQ_EXECUTABLE=true'});await expect(buildUiAutopilotSnapshot({fetchImpl:async()=>response(bad),token:'x',previousJobId:'GH-50'})).rejects.toThrow('PREVIOUS_JOB_NOT_AUTHORIZED_AUTO_UI');});
+  it('fails closed on invalid or unauthorized previous issue',async()=>{await expect(buildUiAutopilotSnapshot({fetchImpl:async()=>response([]),token:'x',previousJobId:'bad'})).rejects.toThrow('PREVIOUS_JOB_ID_INVALID');const bad=issue(50,{body:'TIGERIQ_EXECUTABLE=true'});await expect(buildUiAutopilotSnapshot({fetchImpl:async()=>response(bad),token:'x',previousJobId:'GH-50'})).rejects.toThrow('PREVIOUS_JOB_NOT_AUTHORIZED_AUTO_UI');});
+});
+
+describe('controller correlation',()=>{
+  it('reads only a valid GH job id from loopback controller state',async()=>{const fetchImpl=async()=>response({state:{lastDispatchedJobId:'GH-765'}});await expect(readPreviousJobIdFromController({fetchImpl})).resolves.toBe('GH-765');});
+  it('returns undefined when controller has no prior job',async()=>{const fetchImpl=async()=>response({state:{}});await expect(readPreviousJobIdFromController({fetchImpl})).resolves.toBeUndefined();});
+  it('fails closed when controller state is unavailable or non-loopback',async()=>{await expect(readPreviousJobIdFromController({fetchImpl:async()=>{throw new Error('down')}})).rejects.toThrow('CONTROLLER_STATE_UNAVAILABLE');await expect(readPreviousJobIdFromController({fetchImpl:async()=>response({},500)})).rejects.toThrow('CONTROLLER_STATE_HTTP_500');await expect(readPreviousJobIdFromController({stateUrl:'http://8.8.8.8/state'})).rejects.toThrow('CONTROLLER_STATE_URL_MUST_BE_LOOPBACK');});
 });
