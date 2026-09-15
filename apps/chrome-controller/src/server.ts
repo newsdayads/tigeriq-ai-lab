@@ -25,7 +25,7 @@ import {
 import { buildRuntimeEvidence } from './runtime-evidence.js';
 
 type Command = { id:string; workerId:WorkerId; action:string; payload?:Record<string,unknown>; createdAt:string };
-type Heartbeat = { workerId:WorkerId; url?:string; windowId?:number; tabId?:number; state?:string; display?:{workArea?:WorkArea}; at:string };
+type Heartbeat = { workerId:WorkerId; url?:string; windowId?:number; tabId?:number; state?:string; uiBusy?:boolean|null; securityBlock?:string|null; display?:{workArea?:WorkArea}; at:string };
 type WindowState = 'OPEN' | 'CLOSED';
 type WorkerState = {
   id:WorkerId;
@@ -381,6 +381,16 @@ async function autopilotTick(){
     const primary=states.get('NV02')!;
     if(!primary.enabled||primary.blocked||!startupReady){stopAutopilot(primary.blocked?'NV02_BLOCKED':'NV02_NOT_READY');persistEvidence();return;}
     if(!recentHeartbeat('NV02')){setAutopilotPhase('RECOVERING');persistEvidence();return;}
+    const uiSecurity=primary.lastHeartbeat?.securityBlock;
+    if(uiSecurity&&uiSecurity.startsWith('BLOCKED_')){
+      primary.blocked=true;primary.status='BLOCKED';primary.lastError=uiSecurity;
+      stopAutopilot(uiSecurity);log('AUTOPILOT_SECURITY_STOP',{workerId:'NV02',status:uiSecurity});persistEvidence();return;
+    }
+    if(autopilotState.lastDispatchedJobId&&primary.lastHeartbeat?.uiBusy!==false){
+      setAutopilotPhase('BUSY');
+      log('AUTOPILOT_WAIT_UI_BUSY',{workerId:'NV02',uiBusy:primary.lastHeartbeat?.uiBusy??null,lastDispatchedJobId:autopilotState.lastDispatchedJobId});
+      persistEvidence();return;
+    }
     autopilotState={
       ...autopilotState,
       phase:'BUSY',
@@ -553,8 +563,11 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
     state.windowState='OPEN';
     state.windowEventAt=hb.at;
     state.lastWindowId=hb.windowId;
-    state.lastError=undefined;
-    state.manualCloseSuppressed=false;
+    if(hb.securityBlock&&hb.securityBlock.startsWith('BLOCKED_')){
+      state.blocked=true;state.status='BLOCKED';state.lastError=hb.securityBlock;
+      if(workerId==='NV02')stopAutopilot(hb.securityBlock);
+      log('HEARTBEAT_SECURITY_STOP',{workerId,status:hb.securityBlock});
+    }else if(!state.blocked){state.lastError=undefined;}
     recoveryAttempts.set(workerId,0);
     if(!state.enabled){state.status='DISABLED';json(res,200,{ok:true,enabled:false});return true;}
     if(['IDLE','STARTING','RECOVERING','RECOVERY_ERROR','RECOVERY_AMBIGUOUS_WINDOW','RECOVERY_EXHAUSTED','WINDOW_CLOSED_IDLE','WINDOW_CLOSED_ACTIVE'].includes(state.status))state.status='ONLINE';

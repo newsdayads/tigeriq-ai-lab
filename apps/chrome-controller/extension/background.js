@@ -108,11 +108,21 @@ async function displayInfo(windowId) {
   return selected ? { workArea:selected.workArea } : undefined;
 }
 async function post(path,data) {
-  const r = await fetch(`${CONTROLLER}${path}`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(data)});
+  const r = await fetch(`${CONTROLLER}${path}`,{method:'POST',headers:{'content-type':'application/json; charset=utf-8'},body:JSON.stringify(data)});
   if(!r.ok) throw new Error(`HTTP_${r.status}`);
   return r.json();
 }
-async function heartbeat(workerId,ctx) { await post('/api/heartbeat',{workerId,state:'READY',...ctx,display:await displayInfo(ctx.windowId)}); }
+async function readUiState(ctx) {
+  try {
+    if (!ctx?.tabId) return { uiBusy:null, securityBlock:null };
+    const value=await chrome.tabs.sendMessage(ctx.tabId,{type:'TIGERIQ_UI_STATE'});
+    return { uiBusy:typeof value?.uiBusy==='boolean'?value.uiBusy:null, securityBlock:value?.securityBlock?String(value.securityBlock):null };
+  } catch { return { uiBusy:null, securityBlock:null }; }
+}
+async function heartbeat(workerId,ctx) {
+  const ui=await readUiState(ctx);
+  await post('/api/heartbeat',{workerId,state:'READY',...ctx,uiBusy:ui.uiBusy,securityBlock:ui.securityBlock,display:await displayInfo(ctx.windowId)});
+}
 
 async function waitForTabComplete(tabId,timeoutMs=60000) {
   const current=await chrome.tabs.get(tabId); if(current.status==='complete') return;

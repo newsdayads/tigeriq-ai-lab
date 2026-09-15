@@ -6,7 +6,7 @@ export interface EvidenceWorkerState {
   enabled: boolean;
   status: string;
   blocked: boolean;
-  lastHeartbeat?: { at: string; url?: string; windowId?: number; display?: { workArea?: WorkArea } };
+  lastHeartbeat?: { at: string; url?: string; windowId?: number; uiBusy?: boolean | null; securityBlock?: string | null; display?: { workArea?: WorkArea } };
   lastError?: string;
   windowState?: 'OPEN' | 'CLOSED';
   manualCloseSuppressed?: boolean;
@@ -40,6 +40,7 @@ export function buildRuntimeEvidence(input: RuntimeEvidenceInput, now = new Date
       gap: input.config.layout.gap,
       rightMargin: input.config.layout.rightMargin,
       rightAnchored: true,
+      ownerWorkspace: { workerRegion:'TOP_RIGHT', reservedBelowY: input.config.layout.top + input.config.layout.height, overlapByDesign:false },
       source: usableWorkArea ? 'HEARTBEAT_WORK_AREA' : 'CONFIG_FALLBACK',
       workArea: usableWorkArea ?? null,
       placements: placements as Record<WorkerId, WindowPlacement>,
@@ -56,6 +57,8 @@ export function buildRuntimeEvidence(input: RuntimeEvidenceInput, now = new Date
       fixedTrigger: 'AUTO_CONTINUE',
       browserAction: 'DISPATCH',
       aiOutputParsed: false,
+      completionAwareUiState: true,
+      utf8JsonDispatch: true,
       phase: input.autopilot.phase,
       lastDispatchedJobId: input.autopilot.lastDispatchedJobId ?? null,
       lastCompletedJobId: input.autopilot.lastCompletedJobId ?? null,
@@ -102,6 +105,8 @@ export function buildRuntimeEvidence(input: RuntimeEvidenceInput, now = new Date
       heartbeatAt: worker.lastHeartbeat?.at ?? null,
       url: worker.lastHeartbeat?.url ?? null,
       windowId: worker.lastHeartbeat?.windowId ?? null,
+      uiBusy: worker.lastHeartbeat?.uiBusy ?? null,
+      securityBlock: worker.lastHeartbeat?.securityBlock ?? null,
       windowState: worker.windowState ?? null,
       manualCloseSuppressed: worker.manualCloseSuppressed ?? false,
       lastError: worker.lastError ?? null,

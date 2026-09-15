@@ -120,6 +120,13 @@ function detectSecurityBlock() {
   return null;
 }
 
+function detectUiBusy() {
+  const selectors = location.hostname === 'chatgpt.com'
+    ? ['button[data-testid="stop-button"]','button[aria-label*="Stop" i]','button[aria-label*="Dừng" i]']
+    : ['button[aria-label*="Stop" i]','button[aria-label*="Dừng" i]','button[data-test-id*="stop" i]'];
+  return selectors.some((selector) => Array.from(document.querySelectorAll(selector)).some((el) => visible(el)));
+}
+
 function findComposer() {
   const selectors = location.hostname === 'chatgpt.com'
     ? ['#prompt-textarea', 'div[contenteditable="true"][data-lexical-editor="true"]', '[contenteditable="true"][role="textbox"]', 'textarea']
@@ -191,6 +198,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message.workerId) showWorkerBadge(String(message.workerId), String(message.label || ''));
     else removeWorkerBadge();
     sendResponse({ ok: true });
+    return;
+  }
+  if (message?.type === 'TIGERIQ_UI_STATE') {
+    sendResponse({ ok: true, uiBusy: detectUiBusy(), securityBlock: detectSecurityBlock() });
     return;
   }
   if (message?.type !== 'TIGERIQ_DISPATCH') return;
