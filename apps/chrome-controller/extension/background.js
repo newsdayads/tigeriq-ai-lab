@@ -7,6 +7,8 @@ const WORKER_LABELS = {
   NV02:'NV02 · ChatGPT Plus',
   NV04:'NV04 · Gemini Pro'
 };
+const ARCHIVE_SUPPORTED_WORKERS = new Set(['NV02','NV03']);
+const archiveInFlight = new Set();
 let ticking = false;
 const lastWindowByWorker = new Map();
 
@@ -112,6 +114,12 @@ async function post(path,data) {
   if(!r.ok) throw new Error(`HTTP_${r.status}`);
   return r.json();
 }
+async function get(path) {
+  const r = await fetch(`${CONTROLLER}${path}`);
+  if(!r.ok) throw new Error(`HTTP_${r.status}`);
+  return r.json();
+}
+function sleep(ms){return new Promise((resolve)=>setTimeout(resolve,ms));}
 async function readUiState(ctx) {
   try {
     if (!ctx?.tabId) return { uiBusy:null, securityBlock:null };
@@ -131,6 +139,92 @@ async function waitForTabComplete(tabId,timeoutMs=60000) {
     const listener=(id,info)=>{if(id===tabId&&info.status==='complete'){clearTimeout(timer);chrome.tabs.onUpdated.removeListener(listener);resolve();}};
     chrome.tabs.onUpdated.addListener(listener);
   });
+}
+
+function doneEvidence(snapshot,workerId){
+  const job=snapshot?.previousJob;
+  if(!job||job.workerId!==workerId||job.status!=='DONE') return null;
+  const evidence=(job.evidence||[]).find((item)=>['GITHUB','CORE'].includes(item?.source)&&String(item?.ref||'').trim()&&item?.verifiedAt);
+  return evidence?{job,evidence}:null;
+}
+
+async function assertArchiveAllowed(workerId){
+  if(!ARCHIVE_SUPPORTED_WORKERS.has(workerId)) throw new Error(`ARCHIVE_SELECTOR_UNVERIFIED:${workerId}`);
+  const state=await get('/api/state');
+  if(state.killed) throw new Error('ARCHIVE_CONTROLLER_KILLED');
+  if(state.paused) throw new Error('ARCHIVE_OWNER_INTERACTION_READ_ONLY');
+  const worker=(state.workers||[]).find((item)=>item.id===workerId);
+  if(!worker?.enabled) throw new Error(`ARCHIVE_WORKER_DISABLED:${workerId}`);
+  if(worker.blocked) throw new Error(`ARCHIVE_WORKER_BLOCKED:${workerId}`);
+  if(worker.lastHeartbeat?.securityBlock) throw new Error(String(worker.lastHeartbeat.securityBlock));
+  if(worker.lastHeartbeat?.uiBusy!==false) throw new Error('ARCHIVE_UI_NOT_IDLE');
+
+  const autopilot=await get('/api/autopilot/state');
+  if(workerId==='NV02'&&(autopilot.state?.pendingJobId||autopilot.state?.uncertainJobId)) throw new Error('ARCHIVE_ACTIVE_JOB_FORBIDDEN');
+  const previous=autopilot.snapshot?.previousJob;
+  if(previous?.workerId===workerId&&['QUEUED','READY','RUNNING','WAITING','BLOCKED','REVIEWING'].includes(previous.status)) throw new Error('ARCHIVE_ACTIVE_JOB_FORBIDDEN');
+  const proof=doneEvidence(autopilot.snapshot,workerId);
+  if(!proof) throw new Error('ARCHIVE_EXTERNAL_DONE_EVIDENCE_REQUIRED');
+  return {jobId:proof.job.jobId,evidenceRef:proof.evidence.ref};
+}
+
+async function waitForSaveCompletion(ctx){
+  const start=Date.now();
+  const observeBusyUntil=start+20000;
+  const deadline=start+120000;
+  let sawBusy=false;
+  while(Date.now()<deadline){
+    const ui=await readUiState(ctx);
+    if(ui.securityBlock) throw new Error(ui.securityBlock);
+    if(ui.uiBusy===true) sawBusy=true;
+    if(sawBusy&&ui.uiBusy===false) return;
+    if(!sawBusy&&Date.now()>observeBusyUntil) throw new Error('SAVE_RESPONSE_NOT_OBSERVED');
+    await sleep(1000);
+  }
+  throw new Error('SAVE_RESPONSE_TIMEOUT');
+}
+
+async function recordArchivedJob(workerId,jobId){
+  const saved=await chrome.storage.local.get(['lastArchivedJobByWorker']);
+  const last={...(saved.lastArchivedJobByWorker||{}),[workerId]:jobId};
+  await chrome.storage.local.set({lastArchivedJobByWorker:last});
+}
+
+async function saveAndArchive(workerId){
+  workerId=normalizeWorkerId(workerId);
+  if(archiveInFlight.has(workerId)) throw new Error(`ARCHIVE_ALREADY_IN_FLIGHT:${workerId}`);
+  archiveInFlight.add(workerId);
+  try{
+    const proof=await assertArchiveAllowed(workerId);
+    const ctx=await findContext(workerId);
+    if(!ctx||!ctx.tabId||!matchesWorker(workerId,ctx.url)) throw new Error('ARCHIVE_WORKER_WINDOW_AMBIGUOUS_OR_MISSING');
+    await chrome.tabs.update(ctx.tabId,{active:true});
+    const save=await chrome.tabs.sendMessage(ctx.tabId,{type:'TIGERIQ_DISPATCH',text:'lưu'});
+    if(!save?.ok) throw new Error(String(save?.status||'SAVE_DISPATCH_FAILED'));
+    await waitForSaveCompletion(ctx);
+    await assertArchiveAllowed(workerId);
+    const result=await chrome.tabs.sendMessage(ctx.tabId,{type:'TIGERIQ_ARCHIVE_CONVERSATION'});
+    if(!result?.ok) throw new Error(String(result?.status||'ARCHIVE_FAILED'));
+    await recordArchivedJob(workerId,proof.jobId);
+    return {ok:true,status:'ARCHIVED',workerId,jobId:proof.jobId,evidenceRef:proof.evidenceRef};
+  }finally{archiveInFlight.delete(workerId);}
+}
+
+async function maybeAutoArchive(workerId){
+  if(!ARCHIVE_SUPPORTED_WORKERS.has(workerId)||archiveInFlight.has(workerId)) return;
+  const saved=await chrome.storage.local.get(['archiveAfterDone','lastArchivedJobByWorker','archiveAttemptByJob']);
+  if(saved.archiveAfterDone!==true) return;
+  const autopilot=await get('/api/autopilot/state');
+  const proof=doneEvidence(autopilot.snapshot,workerId);
+  if(!proof) return;
+  if(saved.lastArchivedJobByWorker?.[workerId]===proof.job.jobId) return;
+  const key=`${workerId}:${proof.job.jobId}`;
+  const attempts={...(saved.archiveAttemptByJob||{})};
+  const count=Number(attempts[key]||0);
+  if(count>=2) return;
+  attempts[key]=count+1;
+  await chrome.storage.local.set({archiveAttemptByJob:attempts});
+  try{await saveAndArchive(workerId);}catch{/* bounded fail-closed; evidence remains unmodified */}
 }
 
 async function execute(workerId,command) {
@@ -163,6 +257,7 @@ async function tickWorker(workerId) {
   lastWindowByWorker.set(workerId,ctx.windowId);
   await updateWorkerBadge(workerId, ctx);
   await heartbeat(workerId,ctx);
+  void maybeAutoArchive(workerId).catch(()=>{});
   const r=await fetch(`${CONTROLLER}/api/commands/${encodeURIComponent(workerId)}`); if(!r.ok) return;
   const {command}=await r.json(); if(!command) return;
   try { const result=await execute(workerId,command); await post('/api/result',{workerId,commandId:command.id,ok:true,...result}); }
@@ -189,6 +284,12 @@ chrome.windows.onRemoved.addListener((windowId)=>{
 chrome.runtime.onInstalled.addListener(async()=>{await ensureTickAlarm();void tick();});
 chrome.runtime.onStartup.addListener(async()=>{await ensureTickAlarm();void tick();});
 chrome.alarms.onAlarm.addListener((a)=>{if(a.name==='tigeriqTick')void tick();});
-chrome.runtime.onMessage.addListener((m)=>{if(m?.type==='TIGERIQ_CONFIG_UPDATED'||m?.type==='TIGERIQ_ROUTE_CHANGED')void tick();});
+chrome.runtime.onMessage.addListener((m,_sender,sendResponse)=>{
+  if(m?.type==='TIGERIQ_SAVE_AND_ARCHIVE'){
+    void saveAndArchive(String(m.workerId||'')).then(sendResponse).catch((error)=>sendResponse({ok:false,status:String(error?.message||error)}));
+    return true;
+  }
+  if(m?.type==='TIGERIQ_CONFIG_UPDATED'||m?.type==='TIGERIQ_ROUTE_CHANGED')void tick();
+});
 void ensureTickAlarm();
 setInterval(()=>void tick(),7000); void tick();
