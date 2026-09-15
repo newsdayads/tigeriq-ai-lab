@@ -1,6 +1,7 @@
 import { WORKER_HOSTS, allowedUrl, hostname, matchesWorker } from './url-policy.js';
 
 const CONTROLLER = 'http://127.0.0.1:8798';
+const LEGACY_PLUS_ID = ['NV','05'].join('');
 const WORKER_LABELS = {
   NV03:'NV03 · ChatGPT Go',
   NV02:'NV02 · ChatGPT Plus',
@@ -9,6 +10,7 @@ const WORKER_LABELS = {
 let ticking = false;
 const lastWindowByWorker = new Map();
 
+function normalizeWorkerId(value) { return value === LEGACY_PLUS_ID ? 'NV02' : value; }
 function markerWorkerId(value) {
   try {
     const u = new URL(value);
@@ -27,10 +29,11 @@ function stripWorkerMarker(value) {
 
 async function bootstrapWorkerIds() {
   const saved = await chrome.storage.local.get(['workerIds','workerId']);
-  const ids = new Set(Array.isArray(saved.workerIds) ? saved.workerIds.filter((id) => WORKER_HOSTS[id]) : []);
-  if (saved.workerId && WORKER_HOSTS[saved.workerId]) ids.add(saved.workerId);
+  const rawIds = Array.isArray(saved.workerIds) ? saved.workerIds : (saved.workerId ? [saved.workerId] : []);
+  const normalizedIds = rawIds.map(normalizeWorkerId).filter((id) => WORKER_HOSTS[id]);
+  const ids = new Set(normalizedIds);
+  let changed = normalizedIds.length !== rawIds.length || rawIds.some((id) => normalizeWorkerId(id) !== id) || Boolean(saved.workerId);
   const wins = await chrome.windows.getAll({ populate:true, windowTypes:['normal'] });
-  let changed = false;
   for (const win of wins) {
     for (const tab of win.tabs || []) {
       const id = markerWorkerId(tab.url || '');
@@ -41,7 +44,7 @@ async function bootstrapWorkerIds() {
       if (tab.id) await chrome.tabs.update(tab.id, { url: stripWorkerMarker(tab.url || '') });
     }
   }
-  if (changed || saved.workerId) {
+  if (changed) {
     await chrome.storage.local.set({ workerIds:[...ids] });
     await chrome.storage.local.remove('workerId');
   }
@@ -127,8 +130,6 @@ async function execute(workerId,command) {
   if(action==='FOCUS'){await chrome.windows.update(ctx.windowId,{focused:true});return{status:'FOCUSED'};}
   if(action==='LAYOUT'){await chrome.windows.update(ctx.windowId,{left:Number(payload.left),top:Number(payload.top),width:Number(payload.width),height:Number(payload.height),focused:false});return{status:'LAYOUT_APPLIED'};}
   if(action==='CLOSE_WINDOW'){
-    // Mark CLOSED while this profile context is still alive. Recovery waits/backoffs and
-    // a surviving heartbeat re-opens state if chrome.windows.remove itself fails.
     await post('/api/window-event',{workerId,event:'CLOSED',windowId:ctx.windowId});
     await chrome.windows.remove(ctx.windowId);
     return{status:'WINDOW_CLOSED'};
