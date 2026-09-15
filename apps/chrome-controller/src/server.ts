@@ -92,7 +92,7 @@ function setWorkerEnabled(workerId: WorkerId, enabled: boolean): void {
 }
 
 function effectiveWorkArea(): WorkArea | undefined {
-  for (const id of ['NV03', 'NV05', 'NV04'] as WorkerId[]) {
+  for (const id of ['NV02', 'NV03', 'NV04'] as WorkerId[]) {
     const state = states.get(id);
     if (!state?.enabled) continue;
     const area = state.lastHeartbeat?.display?.workArea;
@@ -279,7 +279,7 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL): P
     log('KILL_SWITCH'); json(res, 200, { ok: true }); return true;
   }
 
-  const match = url.pathname.match(/^\/api\/workers\/(NV03|NV04|NV05)\/(start|focus|layout|dispatch|close|unblock|enable|disable)$/);
+  const match = url.pathname.match(/^\/api\/workers\/(NV02|NV03|NV04)\/(start|focus|layout|dispatch|close|unblock|enable|disable)$/);
   if (match && req.method === 'POST') {
     const workerId = match[1] as WorkerId;
     const action = match[2];
