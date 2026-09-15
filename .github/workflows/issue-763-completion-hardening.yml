@@ -21,6 +21,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+      - name: Repair transform anchor
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('scripts/issue-763-hardening.py')
+          s=p.read_text(encoding='utf-8')
+          old="""    state.lastWindowId=hb.windowId;\n    state.lastError=undefined;\n    recoveryAttempts.set(workerId,0);"""
+          new="""    state.lastWindowId=hb.windowId;\n    state.lastError=undefined;\n    state.manualCloseSuppressed=false;\n    recoveryAttempts.set(workerId,0);"""
+          if s.count(old)!=1:
+              raise SystemExit(f'anchor count={s.count(old)}')
+          p.write_text(s.replace(old,new,1),encoding='utf-8')
+          PY
       - name: Apply hardening
         run: python scripts/issue-763-hardening.py
       - name: Verify
