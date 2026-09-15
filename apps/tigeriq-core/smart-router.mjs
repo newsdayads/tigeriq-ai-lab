@@ -20,7 +20,8 @@ export function normalizeRoutingProfile(value='AUTO') {
 }
 
 export function deriveRoutingProfile({requested,taskKind,capability}={}) {
-  if(requested)return normalizeRoutingProfile(requested);
+  const normalizedRequested=normalizeRoutingProfile(requested||'AUTO');
+  if(normalizedRequested!=='AUTO')return normalizedRequested;
   const kind=String(taskKind||'').toLowerCase();
   const cap=String(capability||'general').toLowerCase();
   if(cap==='coding'||kind==='coding')return 'CODING';
@@ -103,17 +104,18 @@ function cooldownActive(resource, nowMs) {
   return Number.isFinite(until)&&until>nowMs;
 }
 
-export function scoreResource(resource,{profile='AUTO',capability='general',taskKind='general',reviewerResourceId=null,nowMs=Date.now()}={}) {
+export function scoreResource(resource,{profile='AUTO',capability='general',taskKind='general',reviewerResourceId=null,reviewerResourceIds=[],nowMs=Date.now()}={}) {
   const normalizedProfile=normalizeRoutingProfile(profile);
   const resourceId=String(resource.resource_id??resource.resourceId??createResourceId(resource.provider,resource.model,resource.account_binding??resource.accountBinding??'default',resource.runtime_binding??resource.runtimeBinding??'core'));
   const reasons=[];
+  const reviewerExclusions=new Set([reviewerResourceId,...(Array.isArray(reviewerResourceIds)?reviewerResourceIds:[])].filter(Boolean).map(String));
   if(resource.enabled===false)return {eligible:false,resourceId,score:Infinity,reasons:['disabled']};
   if(TERMINAL_HEALTH.has(String(resource.health_state??resource.healthState??'').toUpperCase()))return {eligible:false,resourceId,score:Infinity,reasons:['health']};
   if(cooldownActive(resource,nowMs))return {eligible:false,resourceId,score:Infinity,reasons:['cooldown']};
   if(!quotaUsable(resource.quota_state??resource.quotaState??{},nowMs))return {eligible:false,resourceId,score:Infinity,reasons:['quota']};
   if(!isFree(resource))return {eligible:false,resourceId,score:Infinity,reasons:['paid_fallback_forbidden']};
   if(normalizedProfile==='LOCAL'&&!isLocal(resource))return {eligible:false,resourceId,score:Infinity,reasons:['profile_local']};
-  if(normalizedProfile==='REVIEW'&&reviewerResourceId&&resourceId===reviewerResourceId)return {eligible:false,resourceId,score:Infinity,reasons:['reviewer_independence']};
+  if(normalizedProfile==='REVIEW'&&reviewerExclusions.has(resourceId))return {eligible:false,resourceId,score:Infinity,reasons:['reviewer_independence']};
   const caps=capabilities(resource);
   const wanted=String(capability||'general').toLowerCase();
   if(!caps.includes(wanted)&&!caps.includes('general'))return {eligible:false,resourceId,score:Infinity,reasons:['capability']};
@@ -142,9 +144,9 @@ export function scoreResource(resource,{profile='AUTO',capability='general',task
   return {eligible:true,resourceId,score:Number(score.toFixed(3)),reasons};
 }
 
-export function rankCandidates(resources,{profile='AUTO',capability='general',taskKind='general',reviewerResourceId=null,nowMs=Date.now()}={}) {
+export function rankCandidates(resources,{profile='AUTO',capability='general',taskKind='general',reviewerResourceId=null,reviewerResourceIds=[],nowMs=Date.now()}={}) {
   const normalizedProfile=normalizeRoutingProfile(profile);
-  const evaluated=(Array.isArray(resources)?resources:[]).map(resource=>({resource,...scoreResource(resource,{profile:normalizedProfile,capability,taskKind,reviewerResourceId,nowMs})}));
+  const evaluated=(Array.isArray(resources)?resources:[]).map(resource=>({resource,...scoreResource(resource,{profile:normalizedProfile,capability,taskKind,reviewerResourceId,reviewerResourceIds,nowMs})}));
   const eligible=evaluated.filter(x=>x.eligible).sort((a,b)=>a.score-b.score||a.resourceId.localeCompare(b.resourceId));
   const chosen=eligible[0]||null;
   return {
