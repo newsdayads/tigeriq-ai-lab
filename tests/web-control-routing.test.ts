@@ -2,13 +2,21 @@ import { readFileSync } from 'node:fs';
 import { describe,expect,it } from 'vitest';
 
 const ui=readFileSync('apps/tigeriq-core/web-control-unified.js','utf8');
+const html=readFileSync('apps/tigeriq-core/web-control.html','utf8');
 const css=readFileSync('apps/tigeriq-core/web-control-unified.css','utf8');
 
 describe('#777 Web Control routing/resource projection',()=>{
-  it('extends the existing unified Web Control instead of creating a second dashboard',()=>{
+  it('extends the existing unified Web Control and separates employees from AI resources',()=>{
     expect(ui).toContain('window.__tigerIqUnifiedWebControl');
     expect(ui).toContain('Định tuyến AI');
     expect(ui).toContain('Hiệu suất theo loại việc');
+    expect(ui).toContain('Tài nguyên AI');
+    expect(ui).toContain('tqUResources');
+    expect(ui).toContain('resources.map(richResourceCard)');
+    expect(ui).toContain('canonicalEmployees');
+    expect(ui).toContain('renderWorkers = renderCanonicalWorkers');
+    expect(ui).not.toContain('workerCard = richResourceCard');
+    expect(html).toContain('Danh sách NV canonical theo Registry');
   });
   it('shows stable resource identity, provider/model, quota and routing evidence from Core truth',()=>{
     expect(ui).toContain('r.resource_id');

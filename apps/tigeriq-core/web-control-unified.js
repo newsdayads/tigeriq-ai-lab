@@ -63,7 +63,20 @@
     oldGrid.remove();
   }
 
-  function richWorkerCard(r) {
+  function mountResourcePanel() {
+    const peoplePage = document.querySelector('.page[data-view="people"]');
+    const peoplePanel = document.getElementById('peopleFull')?.closest('.panel');
+    if (!peoplePage || !peoplePanel || document.getElementById('tqUResources')) return;
+    const subtitle = peoplePanel.querySelector('.ph small');
+    if (subtitle) subtitle.textContent = 'Danh sách NV canonical theo Registry';
+    const panel = document.createElement('section');
+    panel.className = 'panel tq-u-resources-panel';
+    panel.style.marginTop = '12px';
+    panel.innerHTML = '<div class="ph"><div><h2>Tài nguyên AI</h2><small>Resource identity riêng theo provider / model / runtime</small></div><span id="tqUResourceCount">—</span></div><div class="workers" id="tqUResources"></div>';
+    peoplePanel.insertAdjacentElement('afterend', panel);
+  }
+
+  function richResourceCard(r) {
     const ok = Number(r.calls_success_24h || 0);
     const fail = Number(r.calls_failure_24h || 0);
     const total = ok + fail;
@@ -74,6 +87,41 @@
     const err = r.last_error ? `<div class="tq-u-error" title="${safe(r.last_error)}">Lỗi cuối: ${safe(r.last_error)}</div>` : '';
     const resourceId = r.resource_id || `legacy:${r.employee_id || r.provider || 'unknown'}`;
     return `<article class="worker" data-provider="${safe(r.provider)}" data-status="${safe(r.status)}"><div class="worker-head"><span class="worker-id">${safe(r.employee_id || '—')} — ${safe(r.name)}</span><span class="${CLASS?.[r.status] || 'gray'}">●</span></div><div class="tq-u-resource-id" title="${safe(resourceId)}">${safe(resourceId)}</div><div class="tq-u-provider">${safe(r.provider || '—')}</div><div class="tq-u-model" title="${safe(r.model || '')}">${safe(r.model || 'Chưa có model')}</div><div class="status ${CLASS?.[r.status] || 'gray'}"><span class="dot"></span>${safe(STATUS[r.status] || r.status)}</div><div class="kv"><span>Job hiện tại</span><span>${safe(r.current_job_id || '—')}</span></div><div class="kv"><span>Lần cuối</span><span>${safe(rel(r.last_seen_at))}</span></div><div class="kv"><span>Độ trễ</span><span>${safe(latency)}</span></div><div class="kv"><span>Hạn mức</span><span title="${safe(r.quota_state?.sourceConfidence || 'low')}">${safe(quotaSummary(r))}</span></div><div class="tq-u-success"><span>24h</span><b>${rate == null ? 'Chưa đủ dữ liệu' : `${rate}% · ${ok} đạt/${fail} lỗi`}</b></div>${rate == null ? '' : `<div class="tq-u-bar"><i style="width:${Math.max(0,Math.min(100,rate))}%"></i></div>`}${cooldown}${err}</article>`;
+  }
+
+  function canonicalEmployees(d) {
+    const priority = {BUSY:0,ERROR:1,RATE_LIMITED:2,WAIT_KEY:3,OFFLINE:4,READY:5,IDLE:6,ONLINE:7,DISABLED:8};
+    const rows = new Map();
+    for (const resource of (d?.resources || [])) {
+      if (!resource.employee_id) continue;
+      const current = rows.get(resource.employee_id);
+      const nextRank = priority[resource.status] ?? 99;
+      const currentRank = current ? (priority[current.status] ?? 99) : 999;
+      if (!current || nextRank < currentRank) rows.set(resource.employee_id, resource);
+    }
+    return [...rows.values()];
+  }
+
+  function renderCanonicalWorkers(d) {
+    const employees = canonicalEmployees(d);
+    const html = employees.map(workerCard).join('') || '<div class="placeholder">Chưa có dữ liệu nhân sự.</div>';
+    const overview = document.getElementById('workers');
+    const full = document.getElementById('peopleFull');
+    const strip = document.getElementById('resourceStrip');
+    if (overview) overview.innerHTML = html;
+    if (full) full.innerHTML = html;
+    if (strip) strip.innerHTML = (d?.resources || []).map(miniResource).join('');
+    if (typeof applyWorkerFilter === 'function') applyWorkerFilter();
+  }
+
+  function renderResources(d) {
+    mountResourcePanel();
+    const box = document.getElementById('tqUResources');
+    const count = document.getElementById('tqUResourceCount');
+    if (!box || !count) return;
+    const resources = d?.resources || [];
+    count.textContent = `${resources.length} resource`;
+    box.innerHTML = resources.map(richResourceCard).join('') || '<div class="placeholder">Chưa có tài nguyên AI.</div>';
   }
 
   function renderUnifiedMetrics(d) {
@@ -155,7 +203,8 @@
   }
 
   mountUnifiedOverview();
-  if (typeof workerCard === 'function') workerCard = richWorkerCard;
+  mountResourcePanel();
+  if (typeof renderWorkers === 'function') renderWorkers = renderCanonicalWorkers;
   if (typeof renderMetrics === 'function') renderMetrics = renderUnifiedMetrics;
   const priorRender = typeof render === 'function' ? render : null;
   if (priorRender) {
@@ -163,6 +212,7 @@
       priorRender(d);
       mountUnifiedOverview();
       renderUnifiedMetrics(d);
+      renderResources(d);
       renderPerformance(d);
       renderRouting(d);
       renderTaskPerformance(d);
@@ -172,6 +222,6 @@
   }
   if (window.S?.data) {
     if (typeof renderWorkers === 'function') renderWorkers(S.data);
-    renderUnifiedMetrics(S.data); renderPerformance(S.data); renderRouting(S.data); renderTaskPerformance(S.data); renderRecentJobs(S.data); compactEvents(S.data);
+    renderUnifiedMetrics(S.data); renderResources(S.data); renderPerformance(S.data); renderRouting(S.data); renderTaskPerformance(S.data); renderRecentJobs(S.data); compactEvents(S.data);
   }
 })();
