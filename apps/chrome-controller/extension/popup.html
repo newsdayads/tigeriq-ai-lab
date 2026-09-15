@@ -31,6 +31,17 @@
       <div id="workerStates" class="state-list" aria-live="polite">Đang tải…</div>
     </section>
 
+    <section class="card">
+      <div class="label">Dọn chat an toàn</div>
+      <select id="archiveWorker" aria-label="Worker cần lưu trữ">
+        <option value="NV02">NV02 · ChatGPT Plus</option>
+        <option value="NV03">NV03 · ChatGPT Go</option>
+      </select>
+      <button id="saveArchive" class="options-button" type="button">Lưu &amp; Lưu trữ</button>
+      <label class="detail"><input id="archiveAfterDone" type="checkbox" /> Tự lưu trữ sau DONE</label>
+      <div class="detail">Mặc định TẮT. Chỉ chạy khi có DONE + bằng chứng GitHub/Core; Gemini Pro chưa tự lưu trữ.</div>
+    </section>
+
     <button id="options" class="options-button" type="button">Mở Options</button>
     <p id="error" class="error" role="alert" hidden></p>
   </main>
