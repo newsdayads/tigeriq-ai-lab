@@ -32,14 +32,23 @@ describe('TigerIQ Web Control owner dashboard', () => {
     expect(web).toContain('setInterval(refresh,2000)');
   });
 
-  it('uses the approved system font and monospace stacks', () => {
-    expect(unifiedCss).toContain('--tq-font:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif');
+  it('uses the approved Segoe UI and monospace stacks', () => {
+    expect(unifiedCss).toContain('--tq-font:"Segoe UI",Roboto,Helvetica,Arial,sans-serif');
     expect(unifiedCss).toContain('font-size:14px!important;line-height:1.5!important');
     expect(unifiedCss).toContain('-webkit-font-smoothing:antialiased');
     expect(unifiedCss).toContain('-moz-osx-font-smoothing:grayscale');
     expect(unifiedCss).toContain('--tq-mono:"SFMono-Regular",Consolas,"Roboto Mono","Liberation Mono",Menlo,monospace');
     expect(unifiedCss).toContain('code,pre,.terminal-log');
     expect(unifiedCss).toContain('font-size:13px!important');
+  });
+
+  it('uses a horizontal top navigation instead of the legacy left menu', () => {
+    expect(unifiedCss).toContain('Top navigation: replaces the legacy left sidebar');
+    expect(unifiedCss).toContain('.sidebar{position:sticky!important;top:0!important');
+    expect(unifiedCss).toContain('flex-direction:row!important');
+    expect(unifiedCss).toContain('.nav{display:flex!important');
+    expect(unifiedCss).toContain('.side-bottom{display:none!important}');
+    expect(mobileCss).toContain('.shell{display:block!important;grid-template-columns:none!important}');
   });
 
   it('uses runtime truth and keeps Coding Lane stages without fake progress', () => {
