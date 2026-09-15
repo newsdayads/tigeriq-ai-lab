@@ -68,6 +68,15 @@ export function normalizeQuota(raw={}, nowMs=Date.now()) {
   return {known,usable,remainingRatio,requestLimit,requestRemaining,tokenLimit,tokenRemaining,resetAt,cooldownUntil,last429At,sourceConfidence};
 }
 
+export function rateLimitFailureState(rawQuota={}, policyCooldownMs=30*60*1000, nowMs=Date.now()) {
+  const quota=normalizeQuota(rawQuota,nowMs);
+  const resetMs=quota.resetAt?Date.parse(quota.resetAt):NaN;
+  const fallbackMs=nowMs+Math.max(0,Number(policyCooldownMs)||0);
+  const recoveryMs=Number.isFinite(resetMs)&&resetMs>nowMs?resetMs:fallbackMs;
+  const cooldownUntil=new Date(recoveryMs).toISOString();
+  return {cooldownUntil,quotaPatch:{usable:false,cooldownUntil,last429At:new Date(nowMs).toISOString(),sourceConfidence:quota.sourceConfidence==='high'?'high':'medium'}};
+}
+
 export function quotaUsable(raw={}, nowMs=Date.now()) {
   const q=normalizeQuota(raw,nowMs);
   if(q.usable)return true;
