@@ -35,7 +35,7 @@ describe('TigerIQ Web Control owner dashboard', () => {
 
   it('uses the proven Segoe UI typography with readable operational sizing', () => {
     expect(unifiedCss).toContain('--tq-font:"Segoe UI",Arial,sans-serif');
-    expect(unifiedCss).toContain('font-size:14px!important');
+    expect(unifiedCss).toContain('font-size:15px!important');
     expect(unifiedCss).toContain('.metric .k{font-size:12px!important}');
     expect(unifiedCss).toContain('.metric .v{font-size:24px!important');
     expect(unifiedCss).not.toMatch(/\.worker-id\{[^}]*font-size:(?:9|10)px/i);
