@@ -73,7 +73,7 @@ function isFree(resource) {
   return FREE_TIERS.has(tier);
 }
 function isLocal(resource) {
-  return resource.local===true||String(resource.provider||'').toLowerCase()==='ollama'||String(resource.cost_tier??resource.costTier||'').toUpperCase()==='LOCAL';
+  return resource.local===true||String(resource.provider||'').toLowerCase()==='ollama'||String(resource.cost_tier??resource.costTier??'').toUpperCase()==='LOCAL';
 }
 function cooldownActive(resource, nowMs) {
   if(!resource.cooldown_until&&!resource.cooldownUntil)return false;
