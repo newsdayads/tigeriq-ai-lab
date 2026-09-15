@@ -77,14 +77,14 @@ export function validateExternalSnapshot(raw: unknown): ExternalAutopilotSnapsho
   const checkJob = (job: ExternalJob | undefined, label: string) => {
     if (!job) return;
     if (!job.jobId?.trim()) throw new Error(`AUTOPILOT_${label}_JOB_ID_REQUIRED`);
-    if (!['NV03', 'NV04', 'NV05'].includes(job.workerId)) throw new Error(`AUTOPILOT_${label}_WORKER_INVALID`);
+    if (!['NV02', 'NV03', 'NV04'].includes(job.workerId)) throw new Error(`AUTOPILOT_${label}_WORKER_INVALID`);
     if (!['P0', 'P1', 'P2'].includes(job.priority)) throw new Error(`AUTOPILOT_${label}_PRIORITY_INVALID`);
     if (!['QUEUED', 'READY', 'RUNNING', 'DONE', 'FAILED', 'BLOCKED', 'CANCELLED'].includes(job.status)) throw new Error(`AUTOPILOT_${label}_STATUS_INVALID`);
     if (typeof job.executable !== 'boolean') throw new Error(`AUTOPILOT_${label}_EXECUTABLE_MUST_BE_BOOLEAN`);
   };
   checkJob(snapshot.previousJob, 'PREVIOUS');
   checkJob(snapshot.nextJob, 'NEXT');
-  if (snapshot.requiredWorkers && snapshot.requiredWorkers.some((id) => !['NV03', 'NV04', 'NV05'].includes(id))) throw new Error('AUTOPILOT_REQUIRED_WORKER_INVALID');
+  if (snapshot.requiredWorkers && snapshot.requiredWorkers.some((id) => !['NV02', 'NV03', 'NV04'].includes(id))) throw new Error('AUTOPILOT_REQUIRED_WORKER_INVALID');
   return snapshot;
 }
 
@@ -121,7 +121,7 @@ export function decideAutoContinue(
 
   if (!next) return { kind: 'IDLE', reason: 'NO_EXECUTABLE_JOB' };
   if (previous?.jobId === next.jobId) return { kind: 'STOP', reason: 'NEXT_JOB_EQUALS_PREVIOUS_JOB' };
-  if (next.workerId !== 'NV05') return { kind: 'IDLE', reason: 'NEXT_JOB_NOT_NV05' };
+  if (next.workerId !== 'NV02') return { kind: 'IDLE', reason: 'NEXT_JOB_NOT_NV02' };
   if (!next.executable) return { kind: 'IDLE', reason: 'NEXT_JOB_NOT_EXECUTABLE' };
   if (!['P0', 'P1'].includes(next.priority)) return { kind: 'IDLE', reason: 'NEXT_JOB_PRIORITY_NOT_ALLOWED' };
   if (!EXECUTABLE_JOB_STATUSES.has(next.status)) return { kind: 'BUSY', reason: `NEXT_JOB_${next.status}` };
