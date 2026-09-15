@@ -1,0 +1,48 @@
+{
+  "host": "127.0.0.1",
+  "port": 8798,
+  "chromePath": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "userDataDir": "%LOCALAPPDATA%\\Google\\Chrome\\User Data",
+  "logDir": "D:\\TigerIQ\\Apps\\ChromeController\\Runtime",
+  "layout": {
+    "width": 500,
+    "height": 834,
+    "gap": 8,
+    "rightMargin": 8,
+    "top": 0,
+    "fallbackWorkAreaWidth": 4096,
+    "fallbackWorkAreaLeft": 0
+  },
+  "pacing": {
+    "betweenWorkerLaunchMs": 30000,
+    "postReadySettlingMs": 10000,
+    "minUiActionGapMs": 8000,
+    "commandTimeoutMs": 60000,
+    "workerReadyTimeoutMs": 180000,
+    "maxRetries": 1,
+    "retryBackoffMs": 15000
+  },
+  "workers": [
+    {
+      "id": "NV02",
+      "role": "PRIMARY_EXECUTOR",
+      "enabled": true,
+      "profileDirectory": "REPLACE_PLUS_PROFILE",
+      "homeUrl": "https://chatgpt.com/g/REPLACE_WITH_NV02_PROJECT"
+    },
+    {
+      "id": "NV03",
+      "role": "INDEPENDENT_REVIEW",
+      "enabled": true,
+      "profileDirectory": "REPLACE_GO_PROFILE",
+      "homeUrl": "https://chatgpt.com/g/REPLACE_WITH_NV03_PROJECT"
+    },
+    {
+      "id": "NV04",
+      "role": "DEEP_RESEARCH_CROSS_CHECK",
+      "enabled": true,
+      "profileDirectory": "REPLACE_GEMINI_PROFILE_MAY_EQUAL_NV02_IF_DOMAIN_DIFFERS",
+      "homeUrl": "https://gemini.google.com/notebook/REPLACE_WITH_NV04_WORKSPACE"
+    }
+  ]
+}
