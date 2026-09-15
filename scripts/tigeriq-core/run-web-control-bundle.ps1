@@ -10,6 +10,7 @@ if(-not(Test-Path -LiteralPath $sourceRoot)){throw 'WEB_CONTROL_SOURCE_ROOT_MISS
 $assets=@(Get-ChildItem -LiteralPath $sourceRoot -File | Where-Object {
   $_.Name -eq 'web-control-server.mjs' -or
   $_.Name -eq 'web-control.html' -or
+  $_.Name -eq 'workforce-registry.mjs' -or
   $_.Name -like 'web-control-*.js' -or
   $_.Name -like 'web-control-*.css'
 })
