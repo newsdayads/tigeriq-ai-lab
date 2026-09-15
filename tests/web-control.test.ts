@@ -7,6 +7,7 @@ const server = readFileSync(resolve('apps/tigeriq-core/web-control-server.mjs'),
 const truth = readFileSync(resolve('apps/tigeriq-core/web-control-truth.js'), 'utf8');
 const unified = readFileSync(resolve('apps/tigeriq-core/web-control-unified.js'), 'utf8');
 const unifiedCss = readFileSync(resolve('apps/tigeriq-core/web-control-unified.css'), 'utf8');
+const mobileCss = readFileSync(resolve('apps/tigeriq-core/web-control-mobile.css'), 'utf8');
 const launcher = readFileSync(resolve('scripts/tigeriq-core/run-web-control.ps1'), 'utf8');
 const apiHealth = readFileSync(resolve('apps/tigeriq-core/dashboard.html'), 'utf8');
 const core = readFileSync(resolve('apps/tigeriq-core/core.mjs'), 'utf8');
@@ -17,14 +18,13 @@ describe('TigerIQ Web Control owner dashboard', () => {
     expect(core).toContain('dashboard()');
     expect(server).toContain('web-control-unified.js');
     expect(server).toContain('web-control-unified.css');
+    expect(server).toContain('web-control-mobile.css');
     expect(unified).toContain('API Health is the visual/function reference');
     expect(web + unified).not.toMatch(/<iframe\b/i);
   });
 
   it('ports API Health live UI affordances into Web Control', () => {
-    for (const label of ['API/NV online','NV đang bận','Cảnh báo','Chờ cấu hình key','Jobs đang chạy','Tỷ lệ thành công','Độ trễ trung bình','Uptime','Hiệu suất API','Công việc gần nhất','Cloud API','Có vấn đề']) {
-      expect(unified).toContain(label);
-    }
+    for (const label of ['API/NV online','NV đang bận','Cảnh báo','Chờ cấu hình key','Jobs đang chạy','Tỷ lệ thành công','Độ trễ trung bình','Uptime','Hiệu suất API','Công việc gần nhất','Cloud API','Có vấn đề']) expect(unified).toContain(label);
     expect(unified).toContain('PROVIDER_MARK');
     expect(unified).toContain('tq-logo');
     expect(unified).toContain('tq-spark');
@@ -57,11 +57,14 @@ describe('TigerIQ Web Control owner dashboard', () => {
     expect(unified).toContain('cooldown_until');
   });
 
-  it('keeps responsive desktop/tablet/mobile breakpoints', () => {
+  it('keeps desktop/tablet/mobile layouts bounded', () => {
     expect(unifiedCss).toContain('@media(max-width:1450px)');
     expect(unifiedCss).toContain('@media(max-width:1050px)');
-    expect(unifiedCss).toContain('@media(max-width:720px)');
-    expect(unifiedCss).toContain('@media(max-width:460px)');
+    expect(mobileCss).toContain('@media(max-width:720px)');
+    expect(mobileCss).toContain('@media(max-width:460px)');
+    expect(mobileCss).toContain('overflow-x:hidden');
+    expect(mobileCss).toContain('.workers{grid-template-columns:1fr!important}');
+    expect(mobileCss).toContain('.board-controls{width:100%!important');
   });
 
   it('runs as the read-only Web Control service', () => {
@@ -70,6 +73,7 @@ describe('TigerIQ Web Control owner dashboard', () => {
     expect(server).toContain("url.pathname === '/health'");
     expect(server).toContain("url.pathname === '/web-control-unified.js'");
     expect(server).toContain("url.pathname === '/web-control-unified.css'");
+    expect(server).toContain("url.pathname === '/web-control-mobile.css'");
     expect(server).not.toMatch(/req\.method\s*===\s*['\"]POST['\"]/);
     expect(server).not.toMatch(/req\.method\s*===\s*['\"]DELETE['\"]/);
     expect(launcher).toContain("$env:TIGERIQ_WEB_CONTROL_PORT='8796'");
