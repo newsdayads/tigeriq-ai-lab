@@ -20,7 +20,7 @@
 </head>
 <body>
 <header>
-  <div><h1>🐯 TigerIQ Chrome Controller V1</h1><div class="sub">NV03 · NV05 · NV04 — tuần tự hóa thao tác, profile độc lập</div></div>
+  <div><h1>🐯 TigerIQ Chrome Controller V1</h1><div class="sub">NV02 · NV03 · NV04 — thực thi chính · kiểm tra · nghiên cứu</div></div>
   <div id="globalState" class="statusbar">Đang kết nối...</div>
 </header>
 <main>
@@ -33,7 +33,7 @@
   </section>
 
   <section class="dispatch">
-    <select id="worker"><option>NV03</option><option>NV05</option><option>NV04</option></select>
+    <select id="worker"><option>NV02</option><option>NV03</option><option>NV04</option></select>
     <textarea id="workOrder" placeholder="Work Order: giao một nhiệm vụ rõ ràng; không dùng vòng lặp prompt..."></textarea>
     <label><input id="navigate" type="checkbox" checked /> mở đúng trang trước khi gửi</label>
     <button class="primary" onclick="dispatchWork()">Giao việc</button>
@@ -43,7 +43,7 @@
   <div class="notice">Guardrail V1: chỉ 1 UI action trên toàn Controller tại một thời điểm; worker tắt sẽ không được mở/giao việc và heartbeat không làm worker thành active; profile/session tách biệt; retry hữu hạn; gặp CAPTCHA/re-auth/rate-limit/suspicious activity/security warning thì khóa worker và dừng. Controller không đọc/scrape nội dung câu trả lời.</div>
 </main>
 <script>
-const roles={NV03:'ChatGPT Go — Code Lane A / Web-UI',NV05:'ChatGPT Plus — Code Lane B / Core-Backend',NV04:'Gemini Pro — Architect / Review / Research'};
+const roles={NV02:'ChatGPT Plus — Thực thi chính',NV03:'ChatGPT Go — Kiểm tra độc lập',NV04:'Gemini Pro — Nghiên cứu sâu / kiểm tra chéo'};
 async function api(path,options={}){const r=await fetch(path,{headers:{'content-type':'application/json'},...options});const data=await r.json().catch(()=>({}));if(!r.ok)throw new Error(data.error||`HTTP ${r.status}`);return data}
 async function post(path,body){try{await api(path,{method:'POST',body:JSON.stringify(body||{})});await refresh()}catch(e){alert(String(e.message||e))}}
 async function dispatchWork(){const id=document.getElementById('worker').value;const text=document.getElementById('workOrder').value;if(!text.trim())return alert('Chưa nhập Work Order.');await post(`/api/workers/${id}/dispatch`,{text,navigate:document.getElementById('navigate').checked})}
