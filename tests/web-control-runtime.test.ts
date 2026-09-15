@@ -124,7 +124,9 @@ describe('Web Control runtime', () => {
     expect(unifiedJs).toContain('Công việc gần nhất');
     expect(unifiedJs).toContain('telemetry');
     expect(unifiedJs).toContain('LIVE · 2s');
-    expect(unifiedStyle).toContain('system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif');
+    expect(unifiedStyle).toContain('"Segoe UI",Roboto,Helvetica,Arial,sans-serif');
+    expect(unifiedStyle).toContain('content:"TigerIQ AI"');
+    expect(unifiedStyle).toContain('.topbar>.title,.topbar>.system-pill,.topbar>.clock{display:none!important}');
     expect(unifiedStyle).toContain('"SFMono-Regular",Consolas,"Roboto Mono","Liberation Mono",Menlo,monospace');
     expect(mobileStyle).toContain('overflow-x:hidden');
   });
