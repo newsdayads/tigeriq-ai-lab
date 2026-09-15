@@ -1,0 +1,58 @@
+name: Chrome Controller Package
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'apps/chrome-controller/**'
+      - 'tests/chrome-controller.test.ts'
+      - 'package.json'
+      - '.github/workflows/chrome-controller-package.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/chrome-controller/**'
+      - 'tests/chrome-controller.test.ts'
+      - 'package.json'
+      - '.github/workflows/chrome-controller-package.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Tests
+        run: npx vitest run tests/chrome-controller.test.ts
+      - name: Build
+        run: npm run build
+      - name: Assemble runtime package
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="artifact/TigerIQ-Chrome-Controller-V1"
+          mkdir -p "$ROOT/dist/apps/chrome-controller/src"
+          mkdir -p "$ROOT/apps/chrome-controller"
+          cp -R dist/apps/chrome-controller/src/* "$ROOT/dist/apps/chrome-controller/src/"
+          cp -R apps/chrome-controller/extension "$ROOT/apps/chrome-controller/"
+          cp -R apps/chrome-controller/public "$ROOT/apps/chrome-controller/"
+          cp apps/chrome-controller/chrome-controller.config.example.json "$ROOT/apps/chrome-controller/"
+          cp apps/chrome-controller/INSTALL_WINDOWS.md "$ROOT/apps/chrome-controller/"
+          cp apps/chrome-controller/Start-ChromeController.ps1 "$ROOT/apps/chrome-controller/"
+          printf '%s\n' "${GITHUB_SHA}" > "$ROOT/VERSION.txt"
+      - name: Upload Windows runtime
+        uses: actions/upload-artifact@v4
+        with:
+          name: TigerIQ-Chrome-Controller-V1-${{ github.event.pull_request.number || github.run_number }}
+          path: artifact/TigerIQ-Chrome-Controller-V1
+          if-no-files-found: error
+          retention-days: 14
