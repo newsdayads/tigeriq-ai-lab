@@ -1,0 +1,85 @@
+name: One-shot fix worker badge
+
+on:
+  push:
+    branches:
+      - tigeriq/nv05/issue-763-autopilot-recovery-layout
+    paths:
+      - '.github/workflows/one-shot-fix-worker-badge.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix-package:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: tigeriq/nv05/issue-763-autopilot-recovery-layout
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Apply worker identity fix
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path('apps/chrome-controller/extension/content.js')
+          s = p.read_text(encoding='utf-8')
+          old = r"replace(/^\[NV0[345]\]\s*/, '')"
+          new = r"replace(/^(?:\[NV0[2345]\]\s*)+/, '')"
+          if s.count(old) != 2:
+              raise SystemExit(f'expected 2 title-prefix patterns, found {s.count(old)}')
+          s = s.replace(old, new)
+          needle = "      opacity: '0.97',\n"
+          if s.count(needle) != 1:
+              raise SystemExit('badge opacity marker mismatch')
+          s = s.replace(needle, needle + "      display: 'none',\n")
+          p.write_text(s, encoding='utf-8')
+
+          m = Path('apps/chrome-controller/extension/manifest.json')
+          data = json.loads(m.read_text(encoding='utf-8'))
+          data['version'] = '1.1.4'
+          m.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          PY
+      - name: Remove one-shot workflow and commit source fix
+        shell: bash
+        run: |
+          rm -f .github/workflows/one-shot-fix-worker-badge.yml
+          git config user.name 'TigerIQ Automation'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -A
+          git commit -m 'fix(#763): make worker identity idempotent and hide page overlay'
+          git push origin HEAD:tigeriq/nv05/issue-763-autopilot-recovery-layout
+      - name: Install
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Tests
+        run: npx vitest run tests/chrome-controller.test.ts
+      - name: Build
+        run: npm run build
+      - name: Assemble runtime package
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='artifact/TigerIQ-Chrome-Controller-V1'
+          mkdir -p "$ROOT/dist/apps/chrome-controller/src" "$ROOT/apps/chrome-controller"
+          cp -R dist/apps/chrome-controller/src/* "$ROOT/dist/apps/chrome-controller/src/"
+          cp -R apps/chrome-controller/extension "$ROOT/apps/chrome-controller/"
+          cp -R apps/chrome-controller/public "$ROOT/apps/chrome-controller/"
+          cp apps/chrome-controller/chrome-controller.config.example.json "$ROOT/apps/chrome-controller/"
+          cp apps/chrome-controller/runtime-evidence.schema.json "$ROOT/apps/chrome-controller/"
+          cp apps/chrome-controller/INSTALL_WINDOWS.md "$ROOT/apps/chrome-controller/"
+          cp apps/chrome-controller/Start-ChromeController.ps1 "$ROOT/apps/chrome-controller/"
+          git rev-parse HEAD > "$ROOT/VERSION.txt"
+      - name: Upload Windows runtime
+        uses: actions/upload-artifact@v4
+        with:
+          name: TigerIQ-Chrome-Controller-V1.1.4
+          path: artifact/TigerIQ-Chrome-Controller-V1
+          if-no-files-found: error
+          retention-days: 7
