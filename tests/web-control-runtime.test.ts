@@ -97,31 +97,36 @@ afterAll(async () => {
 });
 
 describe('Web Control runtime', () => {
-  it('serves the unified owner dashboard with truth and migrated API Health assets', async () => {
+  it('serves the unified owner dashboard with Health parity assets', async () => {
     const response = await fetch(`http://127.0.0.1:${WEB_PORT}/`);
     expect(response.status).toBe(200);
     expect(response.headers.get('cache-control')).toContain('no-store');
     const body = await response.text();
     expect(body).toContain('<title>TigerIQ Core 24/7 — Web Control</title>');
     expect(body).toContain('<link rel="stylesheet" href="/web-control-unified.css">');
+    expect(body).toContain('<link rel="stylesheet" href="/web-control-mobile.css">');
     expect(body).toContain('<script src="/web-control-truth.js"></script>');
     expect(body).toContain('<script src="/web-control-unified.js"></script>');
     expect(body).not.toMatch(/<iframe\b/i);
 
-    const [truth, unified, css] = await Promise.all([
+    const [truth, unified, css, mobile] = await Promise.all([
       fetch(`http://127.0.0.1:${WEB_PORT}/web-control-truth.js`),
       fetch(`http://127.0.0.1:${WEB_PORT}/web-control-unified.js`),
-      fetch(`http://127.0.0.1:${WEB_PORT}/web-control-unified.css`)
+      fetch(`http://127.0.0.1:${WEB_PORT}/web-control-unified.css`),
+      fetch(`http://127.0.0.1:${WEB_PORT}/web-control-mobile.css`)
     ]);
-    expect(truth.status).toBe(200); expect(unified.status).toBe(200); expect(css.status).toBe(200);
-    const truthJs = await truth.text(); const unifiedJs = await unified.text(); const unifiedStyle = await css.text();
+    expect(truth.status).toBe(200); expect(unified.status).toBe(200); expect(css.status).toBe(200); expect(mobile.status).toBe(200);
+    const truthJs = await truth.text(); const unifiedJs = await unified.text(); const unifiedStyle = await css.text(); const mobileStyle = await mobile.text();
     expect(truthJs).toContain('Không bịa %');
     expect(truthJs).toContain("['Review'");
     expect(truthJs).toContain('reviewer_employee_id');
     expect(unifiedJs).toContain('Hiệu suất API');
     expect(unifiedJs).toContain('Công việc gần nhất');
     expect(unifiedJs).toContain('telemetry');
-    expect(unifiedStyle).toContain('"Segoe UI",Arial,sans-serif');
+    expect(unifiedJs).toContain('LIVE · 2s');
+    expect(unifiedStyle).toContain('system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif');
+    expect(unifiedStyle).toContain('"SFMono-Regular",Consolas,"Roboto Mono","Liberation Mono",Menlo,monospace');
+    expect(mobileStyle).toContain('overflow-x:hidden');
   });
 
   it('aggregates live Core, telemetry and Coding Lane status read-only', async () => {
