@@ -24,7 +24,7 @@ export function parseAutoUiIssue(issue,{allowClosed=false}={}){
   const body=String(issue.body||'');
   if(REQUIRED_TRUE_FLAGS.some(key=>!exactTrue(body,key)))return null;
   if(exactValue(body,'OWNER_POLICY')!=='AUTO_UI')return null;
-  if(exactValue(body,'PRIMARY_EMPLOYEE')!=='NV05')return null;
+  if(exactValue(body,'PRIMARY_EMPLOYEE')!=='NV02')return null;
   const priority=exactValue(body,'PRIORITY');
   if(!['P0','P1'].includes(priority))return null;
   const number=Number(issue.number);
@@ -40,7 +40,7 @@ function jobFromIssue(issue,spec){
   const completed=issue.state==='closed'&&issue.state_reason==='completed';
   const cancelled=issue.state==='closed'&&!completed;
   const status=completed?'DONE':cancelled?'CANCELLED':'RUNNING';
-  const job={jobId:spec.jobId,workerId:'NV05',status,executable:true,priority:spec.priority};
+  const job={jobId:spec.jobId,workerId:'NV02',status,executable:true,priority:spec.priority};
   if(completed){job.evidence=[{source:'GITHUB',ref:spec.url,verifiedAt:String(issue.closed_at||issue.updated_at||new Date().toISOString())}];}
   return job;
 }
@@ -82,7 +82,7 @@ export async function buildUiAutopilotSnapshot({fetchImpl=fetch,token='',owner=D
     .filter(x=>x.spec&&x.spec.number!==previousNumber)
     .sort((a,b)=>priorityRank(a.spec.priority)-priorityRank(b.spec.priority)||a.spec.number-b.spec.number);
   const chosen=eligible[0];
-  const nextJob=chosen?{jobId:chosen.spec.jobId,workerId:'NV05',status:'READY',executable:true,priority:chosen.spec.priority,prompt:buildPrompt(chosen.spec,`${owner}/${repo}`),riskFlags:[]}:undefined;
+  const nextJob=chosen?{jobId:chosen.spec.jobId,workerId:'NV02',status:'READY',executable:true,priority:chosen.spec.priority,prompt:buildPrompt(chosen.spec,`${owner}/${repo}`),riskFlags:[]}:undefined;
   const revision=['github-ui-v1',previousJob?.jobId||'none',previousJob?.status||'none',chosen?.spec.jobId||'none',chosen?.spec.updatedAt||'none'].join(':');
   return{source:'GITHUB',observedAt,revision,previousJob,nextJob,requiredWorkers:[]};
 }
