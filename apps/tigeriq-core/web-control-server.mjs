@@ -7,7 +7,11 @@ const CORE_URL = (process.env.TIGERIQ_CORE_URL?.trim() || 'http://127.0.0.1:8795
 const CODING_URL = (process.env.TIGERIQ_CODING_LANE_URL?.trim() || CORE_URL.replace(/:8795$/, ':8797')).replace(/\/$/, '');
 const baseHtml = readFileSync(new URL('./web-control.html', import.meta.url), 'utf8');
 const truthJs = readFileSync(new URL('./web-control-truth.js', import.meta.url), 'utf8');
-const html = baseHtml.replace('</body>', '<script src="/web-control-truth.js"></script></body>');
+const unifiedJs = readFileSync(new URL('./web-control-unified.js', import.meta.url), 'utf8');
+const unifiedCss = readFileSync(new URL('./web-control-unified.css', import.meta.url), 'utf8');
+const html = baseHtml
+  .replace('</head>', '<link rel="stylesheet" href="/web-control-unified.css"></head>')
+  .replace('</body>', '<script src="/web-control-truth.js"></script><script src="/web-control-unified.js"></script></body>');
 
 const securityHeaders = {
   'cache-control': 'no-store, max-age=0',
@@ -60,6 +64,14 @@ const server = createServer(async (req, res) => {
     if (req.method === 'GET' && url.pathname === '/web-control-truth.js') {
       res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8' });
       return res.end(truthJs);
+    }
+    if (req.method === 'GET' && url.pathname === '/web-control-unified.js') {
+      res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8' });
+      return res.end(unifiedJs);
+    }
+    if (req.method === 'GET' && url.pathname === '/web-control-unified.css') {
+      res.writeHead(200, { 'content-type': 'text/css; charset=utf-8' });
+      return res.end(unifiedCss);
     }
     if (req.method === 'GET' && url.pathname === '/api/status') {
       const coreResponse = await upstream(CORE_URL, '/api/status', 4000);

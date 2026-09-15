@@ -29,10 +29,13 @@ describe('bounded manager retry/failover',()=>{
     expect(result.decision.summary).toBe('fallback-ok');expect(invoked).toEqual(['NV11','NV11','NV13']);expect(failed).toEqual(['NV11']);
   });
 
-  it('has a finite total budget when all providers fail',async()=>{
+  it('returns a terminal blocked decision when the bounded provider budget is exhausted',async()=>{
     const pool=[resource('NV11'),resource('NV13'),resource('NV15')];let pick=0,calls=0;
-    await expect(runBoundedManagerDecision({prompt:'p',maxProviders:3,acquire:async()=>pool[pick++]||null,invoke:async()=>{calls++;return 'bad';}})).rejects.toThrow('MANAGER_DECISION_EXHAUSTED');
+    const result=await runBoundedManagerDecision({prompt:'p',maxProviders:3,acquire:async()=>pool[pick++]||null,invoke:async()=>{calls++;return 'bad';}});
     expect(calls).toBe(6);
+    expect(result.exhausted).toBe(true);
+    expect(result.providerAttempts).toBe(3);
+    expect(result.decision).toEqual({status:'blocked',summary:'manager decision exhausted after bounded retry/failover',jobs:[]});
   });
 
   it('does not retry provider or policy failures as manager-output errors',async()=>{
@@ -41,4 +44,3 @@ describe('bounded manager retry/failover',()=>{
     expect(result.decision.summary).toBe('next-provider');expect(calls).toBe(2);
   });
 });
-

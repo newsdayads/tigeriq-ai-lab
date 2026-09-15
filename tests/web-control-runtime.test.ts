@@ -13,9 +13,14 @@ const statusPayload = {
   ok: true,
   core: { host: '127.0.0.1', port: CORE_PORT, pid: 1234, uptimeSec: 321 },
   integrations: { surfsense: { ok: false } },
-  resources: [{ employee_id: 'NV02', name: 'Ollama', provider: 'ollama', status: 'IDLE', calls_success_24h: 1, calls_failure_24h: 0 }],
+  resources: [{
+    employee_id: 'NV02', name: 'Ollama', provider: 'ollama', model: 'qwen3:4b', status: 'IDLE',
+    calls_success_24h: 11, calls_failure_24h: 1, last_latency_ms: 210, last_seen_at: new Date().toISOString()
+  }],
   objectives: [{ id: 'OBJ-1', objective: 'Core Test', priority: 'P1', status: 'active', manager_cycles: 7, updated_at: new Date().toISOString() }],
-  jobs: [], events: [], telemetry: []
+  jobs: [{ id: 'JOB-1', title: 'Core read-only test', status: 'done', employee_id: 'NV02', completed_at: new Date().toISOString() }],
+  events: [{ type: 'RESOURCE_PROBE_OK', employee_id: 'NV02', ts: new Date().toISOString() }],
+  telemetry: [{ employee_id: 'NV02', latency_ms: 180, ts: new Date(Date.now() - 1000).toISOString() }, { employee_id: 'NV02', latency_ms: 220, ts: new Date().toISOString() }]
 };
 
 const codingPayload = {
@@ -92,27 +97,41 @@ afterAll(async () => {
 });
 
 describe('Web Control runtime', () => {
-  it('serves the separate Web Control product with truth guard', async () => {
+  it('serves the unified owner dashboard with truth and migrated API Health assets', async () => {
     const response = await fetch(`http://127.0.0.1:${WEB_PORT}/`);
     expect(response.status).toBe(200);
     expect(response.headers.get('cache-control')).toContain('no-store');
     const body = await response.text();
     expect(body).toContain('<title>TigerIQ Core 24/7 — Web Control</title>');
+    expect(body).toContain('<link rel="stylesheet" href="/web-control-unified.css">');
     expect(body).toContain('<script src="/web-control-truth.js"></script>');
-    const truth = await fetch(`http://127.0.0.1:${WEB_PORT}/web-control-truth.js`);
-    expect(truth.status).toBe(200);
-    const js = await truth.text();
-    expect(js).toContain('Không bịa %');
-    expect(js).toContain("['Review'");
-    expect(js).toContain('reviewer_employee_id');
+    expect(body).toContain('<script src="/web-control-unified.js"></script>');
+    expect(body).not.toMatch(/<iframe\b/i);
+
+    const [truth, unified, css] = await Promise.all([
+      fetch(`http://127.0.0.1:${WEB_PORT}/web-control-truth.js`),
+      fetch(`http://127.0.0.1:${WEB_PORT}/web-control-unified.js`),
+      fetch(`http://127.0.0.1:${WEB_PORT}/web-control-unified.css`)
+    ]);
+    expect(truth.status).toBe(200); expect(unified.status).toBe(200); expect(css.status).toBe(200);
+    const truthJs = await truth.text(); const unifiedJs = await unified.text(); const unifiedStyle = await css.text();
+    expect(truthJs).toContain('Không bịa %');
+    expect(truthJs).toContain("['Review'");
+    expect(truthJs).toContain('reviewer_employee_id');
+    expect(unifiedJs).toContain('Hiệu suất API');
+    expect(unifiedJs).toContain('Công việc gần nhất');
+    expect(unifiedJs).toContain('telemetry');
+    expect(unifiedStyle).toContain('"Segoe UI",Arial,sans-serif');
   });
 
-  it('aggregates live Core and Coding Lane status read-only', async () => {
+  it('aggregates live Core, telemetry and Coding Lane status read-only', async () => {
     const response = await fetch(`http://127.0.0.1:${WEB_PORT}/api/status`);
     expect(response.status).toBe(200);
     const body = await response.json() as any;
     expect(body.ok).toBe(true);
     expect(body.core).toEqual(statusPayload.core);
+    expect(body.telemetry).toEqual(statusPayload.telemetry);
+    expect(body.resources[0].last_latency_ms).toBe(210);
     expect(body.codingLane).toEqual(codingPayload);
   });
 
