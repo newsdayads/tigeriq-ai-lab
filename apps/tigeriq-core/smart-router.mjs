@@ -39,6 +39,11 @@ export function failurePolicy(kind='outage') {
   return {kind:'outage',retrySameResource:false,failover:true,cooldownMs:5*60*1000,stop:false};
 }
 
+function latestRecoveryMs(resetAt, cooldownUntil) {
+  const values=[resetAt,cooldownUntil].filter(Boolean).map(value=>Date.parse(String(value))).filter(Number.isFinite);
+  return values.length?Math.max(...values):NaN;
+}
+
 export function normalizeQuota(raw={}, nowMs=Date.now()) {
   const q=raw&&typeof raw==='object'?raw:{};
   const finite=(value)=>value===null||value===undefined||value===''?null:(Number.isFinite(Number(value))?Math.max(0,Number(value)):null);
@@ -52,11 +57,10 @@ export function normalizeQuota(raw={}, nowMs=Date.now()) {
   if(requestLimit>0&&requestRemaining!==null)ratios.push(Math.max(0,Math.min(1,requestRemaining/requestLimit)));
   if(tokenLimit>0&&tokenRemaining!==null)ratios.push(Math.max(0,Math.min(1,tokenRemaining/tokenLimit)));
   if(remainingRatio===null&&ratios.length)remainingRatio=Math.min(...ratios);
-  const known=q.known===true||[requestLimit,requestRemaining,tokenLimit,tokenRemaining].some(v=>v!==null);
+  const known=q.known===true||remainingRatio!==null||[requestLimit,requestRemaining,tokenLimit,tokenRemaining].some(v=>v!==null);
   const resetAt=q.resetAt?String(q.resetAt):null;
   const cooldownUntil=q.cooldownUntil?String(q.cooldownUntil):null;
-  const recoveryAt=resetAt||cooldownUntil;
-  const recoveryMs=recoveryAt?Date.parse(recoveryAt):NaN;
+  const recoveryMs=latestRecoveryMs(resetAt,cooldownUntil);
   let usable=q.usable!==false;
   if(remainingRatio!==null&&remainingRatio<=0){
     usable=Number.isFinite(recoveryMs)&&recoveryMs<=nowMs;
@@ -80,10 +84,8 @@ export function rateLimitFailureState(rawQuota={}, policyCooldownMs=30*60*1000, 
 export function quotaUsable(raw={}, nowMs=Date.now()) {
   const q=normalizeQuota(raw,nowMs);
   if(q.usable)return true;
-  const recoveryAt=q.resetAt||q.cooldownUntil;
-  if(!recoveryAt)return false;
-  const reset=Date.parse(recoveryAt);
-  return Number.isFinite(reset)&&reset<=nowMs;
+  const recoveryMs=latestRecoveryMs(q.resetAt,q.cooldownUntil);
+  return Number.isFinite(recoveryMs)&&recoveryMs<=nowMs;
 }
 
 function successRate(resource) {
