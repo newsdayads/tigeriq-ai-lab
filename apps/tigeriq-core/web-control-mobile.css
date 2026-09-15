@@ -2,11 +2,11 @@
   html,body{overflow-x:hidden}
   .main{min-width:0;padding:0 8px 12px!important}
   .topbar{height:auto!important;min-height:58px;flex-wrap:wrap!important;padding:8px 0!important;gap:8px!important}
-  .title{min-width:0!important;flex:1 1 100%}
+  .title{order:1;min-width:0!important;flex:1 1 100%}
   .title h1{font-size:22px!important}
-  .system-pill{margin-left:0!important;max-width:100%;font-size:11px!important;white-space:normal!important}
-  .clock{margin-left:auto!important;font-size:10px!important}
-  .tq-u-livebar{order:3;width:auto!important;margin:0!important;max-width:100%;flex-wrap:wrap}
+  .clock{order:2;width:100%;margin-left:0!important;font-size:10px!important}
+  .system-pill{order:3;margin-left:0!important;max-width:100%;font-size:11px!important;white-space:normal!important}
+  .tq-u-livebar{order:4;flex:1 1 auto;width:auto!important;margin:0!important;max-width:100%;flex-wrap:wrap}
   .tq-u-livebar .tq-u-sync{display:none!important}
   .metrics{grid-template-columns:1fr!important}
   .metric{min-width:0!important}
