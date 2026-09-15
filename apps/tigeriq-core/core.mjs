@@ -15,6 +15,7 @@ const MANAGER_IDLE_MS = Number(process.env.TIGERIQ_MANAGER_IDLE_MS || 5000);
 const SURFSENSE_APP_URL = process.env.TIGERIQ_SURFSENSE_APP_URL?.trim() || 'http://127.0.0.1:3929';
 const SURFSENSE_SEARCH_URL = process.env.TIGERIQ_SURFSENSE_SEARCH_URL?.trim() || 'http://127.0.0.1:3930/search';
 const SURFSENSE_SUMMARY_MODEL = process.env.TIGERIQ_SURFSENSE_SUMMARY_MODEL?.trim() || 'gemma3:4b';
+const OLLAMA_EMPLOYEE_ID = 'NV10';
 const GEMINI_MIN_INTERVAL_MS = Math.max(4500, Number(process.env.TIGERIQ_GEMINI_MIN_INTERVAL_MS || 4500));
 const GEMINI_BACKOFF_BASE_MS = Math.max(4500, Number(process.env.TIGERIQ_GEMINI_BACKOFF_BASE_MS || 4500));
 const GEMINI_MAX_ATTEMPTS = Math.max(1, Number(process.env.TIGERIQ_GEMINI_MAX_ATTEMPTS || 4));
@@ -31,7 +32,7 @@ const R = (id, name, provider, model, req = [], rank = 50) => ({
   capabilities: ['general', 'reasoning', 'review'],
 });
 const resources = [
-  R('NV02','Ollama','ollama',process.env.TIGERIQ_OLLAMA_MODEL || 'qwen3:4b',[],90),
+  R(OLLAMA_EMPLOYEE_ID,'Ollama','ollama',process.env.TIGERIQ_OLLAMA_MODEL || 'qwen3:4b',[],90),
   R('NV11','Groq','groq',process.env.TIGERIQ_GROQ_MODEL || 'openai/gpt-oss-120b',[['GROQ_API_KEY'],['TIGERIQ_GROQ_FREE_TIER_VERIFIED','true']],10),
   R('NV12','Gemini','gemini',process.env.TIGERIQ_GEMINI_MODEL || 'gemini-3.5-flash-lite',[['GEMINI_API_KEY'],['TIGERIQ_GEMINI_FREE_TIER_VERIFIED','true']],20),
   R('NV13','OpenRouter','openrouter','openrouter/free',[['OPENROUTER_API_KEY']],30),
@@ -87,7 +88,7 @@ async function summarizeSurfSense(evidence, query) {
 async function runSurfSenseResearch(query, limit=6) {
   const id=`JOB-${randomUUID()}`; await pool.query("insert into tigeriq_jobs(id,title,prompt,capability,kind,status,started_at) values($1,$2,$3,'reasoning','research','running',now())",[id,`Research: ${query}`.slice(0,200),query]);
   try { const sources=await surfSenseSearch(query,limit); const evidence=sources.map(x=>`[${x.index}] ${x.title}\nURL: ${x.url}\n${x.snippet}`).join('\n\n'); const local=await summarizeSurfSense(evidence,query);
-    const result={text:local.text,sources,researchProvider:'surfsense',aiProvider:'ollama',employeeId:'NV02',model:SURFSENSE_SUMMARY_MODEL,latencyMs:local.latencyMs}; await pool.query("update tigeriq_jobs set status='done',employee_id='NV02',provider='ollama',result=$2,lease_until=null,completed_at=now() where id=$1",[id,JSON.stringify(result)]); await event('SURFSENSE_RESEARCH_DONE',{jobId:id,employeeId:'NV02',provider:'ollama'}); return {ok:true,jobId:id,...result};
+    const result={text:local.text,sources,researchProvider:'surfsense',aiProvider:'ollama',employeeId:OLLAMA_EMPLOYEE_ID,model:SURFSENSE_SUMMARY_MODEL,latencyMs:local.latencyMs}; await pool.query("update tigeriq_jobs set status='done',employee_id=$2,provider='ollama',result=$3,lease_until=null,completed_at=now() where id=$1",[id,OLLAMA_EMPLOYEE_ID,JSON.stringify(result)]); await event('SURFSENSE_RESEARCH_DONE',{jobId:id,employeeId:OLLAMA_EMPLOYEE_ID,provider:'ollama'}); return {ok:true,jobId:id,...result};
   } catch(error){ await pool.query("update tigeriq_jobs set status='failed',failure=$2,lease_until=null,completed_at=now() where id=$1",[id,JSON.stringify({message:String(error?.message||error)})]); await event('SURFSENSE_RESEARCH_FAILED',{jobId:id}); throw error; }
 }
 
@@ -200,6 +201,12 @@ async function markResourceFailure(r,jobId,error,eventType='RESOURCE_FAILURE',re
   const quarantine=await maybeQuarantineResource(r);return {kind,health,cooldownUntil,quarantine};
 }
 async function refreshResources() {
+  const staleOllama=(await pool.query("select employee_id,current_job_id from tigeriq_resources where provider='ollama' and employee_id<>$1",[OLLAMA_EMPLOYEE_ID])).rows;
+  if(staleOllama.some(x=>x.current_job_id)) throw new Error('STALE_OLLAMA_IDENTITY_BUSY');
+  for(const stale of staleOllama){
+    await pool.query("delete from tigeriq_resources where employee_id=$1 and provider='ollama'",[stale.employee_id]);
+    await event('RESOURCE_IDENTITY_MIGRATED',{fromEmployeeId:stale.employee_id,toEmployeeId:OLLAMA_EMPLOYEE_ID,provider:'ollama'});
+  }
   for (const r of resources) {
     let credential = r.provider === 'ollama' ? 'LOCAL' : (!credentialPresent(r) ? 'WAIT_KEY' : (reqReady(r) ? 'READY' : 'BLOCKED'));
     let health = credential === 'WAIT_KEY' || credential === 'BLOCKED' ? 'OFFLINE' : 'READY';
