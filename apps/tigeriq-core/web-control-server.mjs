@@ -9,8 +9,9 @@ const baseHtml = readFileSync(new URL('./web-control.html', import.meta.url), 'u
 const truthJs = readFileSync(new URL('./web-control-truth.js', import.meta.url), 'utf8');
 const unifiedJs = readFileSync(new URL('./web-control-unified.js', import.meta.url), 'utf8');
 const unifiedCss = readFileSync(new URL('./web-control-unified.css', import.meta.url), 'utf8');
+const mobileCss = readFileSync(new URL('./web-control-mobile.css', import.meta.url), 'utf8');
 const html = baseHtml
-  .replace('</head>', '<link rel="stylesheet" href="/web-control-unified.css"></head>')
+  .replace('</head>', '<link rel="stylesheet" href="/web-control-unified.css"><link rel="stylesheet" href="/web-control-mobile.css"></head>')
   .replace('</body>', '<script src="/web-control-truth.js"></script><script src="/web-control-unified.js"></script></body>');
 
 const securityHeaders = {
@@ -72,6 +73,10 @@ const server = createServer(async (req, res) => {
     if (req.method === 'GET' && url.pathname === '/web-control-unified.css') {
       res.writeHead(200, { 'content-type': 'text/css; charset=utf-8' });
       return res.end(unifiedCss);
+    }
+    if (req.method === 'GET' && url.pathname === '/web-control-mobile.css') {
+      res.writeHead(200, { 'content-type': 'text/css; charset=utf-8' });
+      return res.end(mobileCss);
     }
     if (req.method === 'GET' && url.pathname === '/api/status') {
       const coreResponse = await upstream(CORE_URL, '/api/status', 4000);

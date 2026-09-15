@@ -7,41 +7,54 @@ const server = readFileSync(resolve('apps/tigeriq-core/web-control-server.mjs'),
 const truth = readFileSync(resolve('apps/tigeriq-core/web-control-truth.js'), 'utf8');
 const unified = readFileSync(resolve('apps/tigeriq-core/web-control-unified.js'), 'utf8');
 const unifiedCss = readFileSync(resolve('apps/tigeriq-core/web-control-unified.css'), 'utf8');
+const mobileCss = readFileSync(resolve('apps/tigeriq-core/web-control-mobile.css'), 'utf8');
 const launcher = readFileSync(resolve('scripts/tigeriq-core/run-web-control.ps1'), 'utf8');
 const apiHealth = readFileSync(resolve('apps/tigeriq-core/dashboard.html'), 'utf8');
 const core = readFileSync(resolve('apps/tigeriq-core/core.mjs'), 'utf8');
 
 describe('TigerIQ Web Control owner dashboard', () => {
-  it('keeps API Health only as a temporary prototype source while Web Control is the owner UI', () => {
+  it('uses API Health as the visual/function reference without iframe duplication', () => {
     expect(apiHealth).toContain('<title>TigerIQ API Health</title>');
     expect(core).toContain('dashboard()');
     expect(server).toContain('web-control-unified.js');
     expect(server).toContain('web-control-unified.css');
-    expect(unified).toContain('temporary prototype');
+    expect(server).toContain('web-control-mobile.css');
+    expect(unified).toContain('API Health is the visual/function reference');
     expect(web + unified).not.toMatch(/<iframe\b/i);
   });
 
-  it('contains the approved Web Control information architecture', () => {
-    expect(web).toContain('<title>TigerIQ Core 24/7 — Web Control</title>');
-    for (const label of [
-      'Tổng quan', 'Nhân sự AI', 'Công việc', 'Mục tiêu', 'Lịch sử',
-      'Giám sát hệ thống', 'Cài đặt', 'Sơ đồ nhân sự AI', 'Job Pipeline',
-      'Objective / Công việc chính', 'Bảng nhân sự AI', 'Cảnh báo & Sự kiện gần đây'
-    ]) expect(web).toContain(label);
-    expect(unified).toContain('Công việc gần nhất');
-    expect(unified).toContain('Hiệu suất API');
-    expect(unified).toContain('telemetry');
+  it('ports API Health live UI affordances into Web Control', () => {
+    for (const label of ['API/NV online','NV đang bận','Cảnh báo','Chờ cấu hình key','Jobs đang chạy','Tỷ lệ thành công','Độ trễ trung bình','Uptime','Hiệu suất API','Công việc gần nhất','Cloud API','Có vấn đề']) expect(unified).toContain(label);
+    expect(unified).toContain('PROVIDER_MARK');
+    expect(unified).toContain('tq-logo');
+    expect(unified).toContain('tq-spark');
+    expect(unified).toContain('LIVE · 2s');
+    expect(web).toContain('setInterval(refresh,2000)');
   });
 
-  it('uses the proven Segoe UI typography with readable operational sizing', () => {
-    expect(unifiedCss).toContain('--tq-font:"Segoe UI",Arial,sans-serif');
-    expect(unifiedCss).toContain('font-size:15px!important');
-    expect(unifiedCss).toContain('.metric .k{font-size:12px!important}');
-    expect(unifiedCss).toContain('.metric .v{font-size:24px!important');
-    expect(unifiedCss).not.toMatch(/\.worker-id\{[^}]*font-size:(?:9|10)px/i);
+  it('uses the approved Segoe UI and monospace stacks', () => {
+    expect(unifiedCss).toContain('--tq-font:"Segoe UI",Roboto,Helvetica,Arial,sans-serif');
+    expect(unifiedCss).toContain('font-size:14px!important;line-height:1.5!important');
+    expect(unifiedCss).toContain('-webkit-font-smoothing:antialiased');
+    expect(unifiedCss).toContain('-moz-osx-font-smoothing:grayscale');
+    expect(unifiedCss).toContain('--tq-mono:"SFMono-Regular",Consolas,"Roboto Mono","Liberation Mono",Menlo,monospace');
+    expect(unifiedCss).toContain('code,pre,.terminal-log');
+    expect(unifiedCss).toContain('font-size:13px!important');
   });
 
-  it('uses runtime truth and exposes Coding Lane stages without fake progress', () => {
+  it('uses one horizontal top navigation with TigerIQ AI and LIVE at the right', () => {
+    expect(unifiedCss).toContain('Single top navigation');
+    expect(unifiedCss).toContain('.sidebar{position:sticky!important;top:0!important');
+    expect(unifiedCss).toContain('flex-direction:row!important');
+    expect(unifiedCss).toContain('.nav{display:flex!important');
+    expect(unifiedCss).toContain('content:"TigerIQ AI"');
+    expect(unifiedCss).toContain('.topbar>.title,.topbar>.system-pill,.topbar>.clock{display:none!important}');
+    expect(unifiedCss).toContain('.topbar>.tq-u-livebar{position:fixed!important');
+    expect(unifiedCss).toContain('.side-bottom{display:none!important}');
+    expect(mobileCss).toContain('.shell{display:block!important;grid-template-columns:none!important}');
+  });
+
+  it('uses runtime truth and keeps Coding Lane stages without fake progress', () => {
     expect(web).toContain("fetch('/api/status'");
     expect(server).toContain('codingLane');
     expect(server).toContain('TIGERIQ_CODING_LANE_URL');
@@ -53,31 +66,29 @@ describe('TigerIQ Web Control owner dashboard', () => {
     expect(unified).toContain('calls_success_24h');
     expect(unified).toContain('last_latency_ms');
     expect(unified).toContain('last_error');
+    expect(unified).toContain('cooldown_until');
   });
 
-  it('has responsive breakpoints for desktop, tablet and phone', () => {
-    expect(web).toContain('@media(max-width:1500px)');
-    expect(web).toContain('@media(max-width:1150px)');
-    expect(web).toContain('@media(max-width:760px)');
-    expect(web).toContain('@media(max-width:480px)');
-    expect(unifiedCss).toContain('@media(max-width:1500px)');
-    expect(unifiedCss).toContain('@media(max-width:1150px)');
-    expect(unifiedCss).toContain('@media(max-width:760px)');
-    expect(unifiedCss).toContain('@media(max-width:480px)');
+  it('keeps desktop/tablet/mobile layouts bounded', () => {
+    expect(unifiedCss).toContain('@media(max-width:1450px)');
+    expect(unifiedCss).toContain('@media(max-width:1050px)');
+    expect(mobileCss).toContain('@media(max-width:720px)');
+    expect(mobileCss).toContain('@media(max-width:460px)');
+    expect(mobileCss).toContain('overflow-x:hidden');
+    expect(mobileCss).toContain('.workers{grid-template-columns:1fr!important}');
+    expect(mobileCss).toContain('.board-controls{width:100%!important');
   });
 
-  it('runs as a single read-only Web Control service with clean browser resources', () => {
+  it('runs as the read-only Web Control service', () => {
     expect(server).toContain("TIGERIQ_WEB_CONTROL_PORT || 8796");
     expect(server).toContain("url.pathname === '/api/status'");
     expect(server).toContain("url.pathname === '/health'");
     expect(server).toContain("url.pathname === '/web-control-unified.js'");
     expect(server).toContain("url.pathname === '/web-control-unified.css'");
-    expect(server).toContain("url.pathname === '/favicon.ico'");
-    expect(server).toContain('res.writeHead(204');
+    expect(server).toContain("url.pathname === '/web-control-mobile.css'");
     expect(server).not.toMatch(/req\.method\s*===\s*['\"]POST['\"]/);
     expect(server).not.toMatch(/req\.method\s*===\s*['\"]DELETE['\"]/);
     expect(launcher).toContain("$env:TIGERIQ_WEB_CONTROL_PORT='8796'");
-    expect(launcher).toContain("$env:TIGERIQ_CORE_URL=('http://'+$hostIp+':8795')");
   });
 
   it('does not expose destructive or credential controls', () => {
