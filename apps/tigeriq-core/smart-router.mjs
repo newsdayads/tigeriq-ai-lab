@@ -38,7 +38,7 @@ export function failurePolicy(kind='outage') {
   return {kind:'outage',retrySameResource:false,failover:true,cooldownMs:5*60*1000,stop:false};
 }
 
-export function normalizeQuota(raw={}) {
+export function normalizeQuota(raw={}, nowMs=Date.now()) {
   const q=raw&&typeof raw==='object'?raw:{};
   const finite=(value)=>value===null||value===undefined||value===''?null:(Number.isFinite(Number(value))?Math.max(0,Number(value)):null);
   const requestLimit=finite(q.requestLimit??q.requestsLimit);
@@ -52,16 +52,23 @@ export function normalizeQuota(raw={}) {
   if(tokenLimit>0&&tokenRemaining!==null)ratios.push(Math.max(0,Math.min(1,tokenRemaining/tokenLimit)));
   if(remainingRatio===null&&ratios.length)remainingRatio=Math.min(...ratios);
   const known=q.known===true||[requestLimit,requestRemaining,tokenLimit,tokenRemaining].some(v=>v!==null);
-  const usable=q.usable!==false;
   const resetAt=q.resetAt?String(q.resetAt):null;
   const cooldownUntil=q.cooldownUntil?String(q.cooldownUntil):null;
+  const recoveryAt=resetAt||cooldownUntil;
+  const recoveryMs=recoveryAt?Date.parse(recoveryAt):NaN;
+  let usable=q.usable!==false;
+  if(remainingRatio!==null&&remainingRatio<=0){
+    usable=Number.isFinite(recoveryMs)&&recoveryMs<=nowMs;
+  } else if(!usable&&Number.isFinite(recoveryMs)&&recoveryMs<=nowMs) {
+    usable=true;
+  }
   const last429At=q.last429At?String(q.last429At):null;
   const sourceConfidence=['high','medium','low'].includes(String(q.sourceConfidence))?String(q.sourceConfidence):'low';
   return {known,usable,remainingRatio,requestLimit,requestRemaining,tokenLimit,tokenRemaining,resetAt,cooldownUntil,last429At,sourceConfidence};
 }
 
 export function quotaUsable(raw={}, nowMs=Date.now()) {
-  const q=normalizeQuota(raw);
+  const q=normalizeQuota(raw,nowMs);
   if(q.usable)return true;
   const recoveryAt=q.resetAt||q.cooldownUntil;
   if(!recoveryAt)return false;
@@ -123,7 +130,7 @@ export function scoreResource(resource,{profile='AUTO',capability='general',task
   const taskLatency=Math.max(0,Number(stats.avgLatencyMs??stats.avg_latency_ms??latency));
   const retries=Math.max(0,Number(stats.retry??stats.retries??0));
   const failovers=Math.max(0,Number(stats.failover??stats.failovers??0));
-  const quota=normalizeQuota(resource.quota_state??resource.quotaState??{});
+  const quota=normalizeQuota(resource.quota_state??resource.quotaState??{},nowMs);
   let score=baseRank + globalFailure*25 + taskFailure*30 + retries*2 + failovers*3 + taskLatency/1500;
   if(normalizedProfile==='FAST')score+=taskLatency/350;
   if(normalizedProfile==='CHEAP')score+=isLocal(resource)?-12:0;
