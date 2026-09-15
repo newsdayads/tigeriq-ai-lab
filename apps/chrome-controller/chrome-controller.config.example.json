@@ -41,7 +41,7 @@
   "workers": [
     {
       "id": "NV02",
-      "role": "PRIMARY_AUTOPILOT_UI",
+      "role": "PRIMARY_UI_EXECUTOR",
       "enabled": true,
       "profileDirectory": "REPLACE_PLUS_PROFILE",
       "homeUrl": "https://chatgpt.com/g/REPLACE_WITH_NV02_PROJECT"
