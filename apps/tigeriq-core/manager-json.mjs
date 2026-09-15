@@ -40,7 +40,18 @@ export async function runBoundedManagerDecision({prompt,acquire,invoke,onSuccess
         const retryable=isRetryableManagerOutputError(error);
         failures.push({employeeId:resourceId,attempt:attempt+1,kind:error?.kind||'invalid_response',message:String(error?.code||error?.message||error)});
         if(retryable&&attempt===0){await onRetry?.(resource,error,{attempt:1});continue;}
-        await onFailure?.(resource,error,{attempt:attempt+1,retryable});
+        const failureResult=await onFailure?.(resource,error,{attempt:attempt+1,retryable});
+        if(failureResult?.stop===true||failureResult?.policy?.stop===true){
+          return {
+            decision:{status:'blocked',summary:'manager decision stopped by resource failure policy',jobs:[]},
+            resource:null,
+            failures,
+            providerAttempts:providerIndex+1,
+            outputAttempts:attempt+1,
+            exhausted:false,
+            stopped:true,
+          };
+        }
         break;
       }
     }
