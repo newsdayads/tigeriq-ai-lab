@@ -3,7 +3,7 @@ import { WORKER_HOSTS, allowedUrl, hostname, matchesWorker } from './url-policy.
 const CONTROLLER = 'http://127.0.0.1:8798';
 const WORKER_LABELS = {
   NV03:'NV03 · ChatGPT Go',
-  NV05:'NV05 · ChatGPT Plus',
+  NV02:'NV02 · ChatGPT Plus',
   NV04:'NV04 · Gemini Pro'
 };
 let ticking = false;
@@ -12,7 +12,7 @@ const lastWindowByWorker = new Map();
 function markerWorkerId(value) {
   try {
     const u = new URL(value);
-    const match = u.hash.match(/(?:^|[&#])tigeriq-worker=(NV03|NV04|NV05)(?:&|$)/i);
+    const match = u.hash.match(/(?:^|[&#])tigeriq-worker=(NV03|NV04|NV02)(?:&|$)/i);
     return match ? match[1].toUpperCase() : null;
   } catch { return null; }
 }

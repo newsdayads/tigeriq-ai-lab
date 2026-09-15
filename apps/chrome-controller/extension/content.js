@@ -6,12 +6,12 @@ function visible(element) {
 const WORKER_BADGE_ID = 'tigeriq-worker-badge';
 const WORKER_BADGE_LABELS = {
   NV03: 'NV03 · CHATGPT GO',
-  NV05: 'NV05 · CHATGPT PLUS',
+  NV02: 'NV02 · CHATGPT PLUS',
   NV04: 'NV04 · GEMINI PRO',
 };
 const WORKER_BADGE_COLORS = {
   NV03: '#2563eb',
-  NV05: '#16a34a',
+  NV02: '#16a34a',
   NV04: '#7c3aed',
 };
 let activeWorkerBadge = null;

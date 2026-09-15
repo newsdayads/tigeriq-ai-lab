@@ -11,14 +11,14 @@
       "type": "object",
       "required": ["order", "width", "height", "gap", "rightAnchored", "source", "placements"],
       "properties": {
-        "order": { "const": ["NV05", "NV03", "NV04"] },
+        "order": { "const": ["NV02", "NV03", "NV04"] },
         "width": { "const": 500 },
         "height": { "const": 834 },
         "gap": { "const": 8 },
         "rightAnchored": { "const": true },
         "source": { "enum": ["HEARTBEAT_WORK_AREA", "CONFIG_FALLBACK"] },
         "workArea": { "type": ["object", "null"] },
-        "placements": { "type": "object", "required": ["NV05", "NV03", "NV04"] }
+        "placements": { "type": "object", "required": ["NV02", "NV03", "NV04"] }
       }
     },
     "queue": {

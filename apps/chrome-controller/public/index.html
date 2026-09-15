@@ -20,7 +20,7 @@
 </head>
 <body>
 <header>
-  <div><h1>🐯 TigerIQ Chrome Controller V1</h1><div class="sub">NV05 · NV03 · NV04 — trái → phải, thao tác tuần tự, hồ sơ độc lập</div></div>
+  <div><h1>🐯 TigerIQ Chrome Controller V1</h1><div class="sub">NV02 · NV03 · NV04 — trái → phải, thao tác tuần tự, hồ sơ độc lập</div></div>
   <div id="globalState" class="statusbar">Đang kết nối...</div>
 </header>
 <main>
@@ -33,17 +33,17 @@
   </section>
 
   <section class="dispatch">
-    <select id="worker"><option>NV05</option><option>NV03</option><option>NV04</option></select>
+    <select id="worker"><option>NV02</option><option>NV03</option><option>NV04</option></select>
     <textarea id="workOrder" placeholder="Công việc: giao một nhiệm vụ rõ ràng; không dùng vòng lặp câu lệnh..."></textarea>
     <label><input id="navigate" type="checkbox" checked /> mở đúng trang trước khi gửi</label>
     <button class="primary" onclick="dispatchWork()">Giao việc</button>
   </section>
 
   <section id="cards" class="grid"></section>
-  <div class="notice">Bảo vệ V1: toàn bộ giao diện chỉ thực hiện 1 thao tác tại một thời điểm; nhịp thao tác và thử lại đều hữu hạn/cấu hình được; NV05 chỉ tự lấy việc khi trạng thái ngoài chat xác nhận việc trước đã kết thúc và có bằng chứng GitHub/Core; không đọc nội dung trả lời AI. CAPTCHA, yêu cầu đăng nhập/xác minh lại, giới hạn tốc độ, hoạt động bất thường hoặc cảnh báo bảo mật sẽ khóa và dừng.</div>
+  <div class="notice">Bảo vệ V1: toàn bộ giao diện chỉ thực hiện 1 thao tác tại một thời điểm; nhịp thao tác và thử lại đều hữu hạn/cấu hình được; NV02 chỉ tự lấy việc khi trạng thái ngoài chat xác nhận việc trước đã kết thúc và có bằng chứng GitHub/Core; không đọc nội dung trả lời AI. CAPTCHA, yêu cầu đăng nhập/xác minh lại, giới hạn tốc độ, hoạt động bất thường hoặc cảnh báo bảo mật sẽ khóa và dừng.</div>
 </main>
 <script>
-const roles={NV05:'ChatGPT Plus — Tự động chính / giao diện độc lập',NV03:'ChatGPT Go — Rà soát độc lập',NV04:'Gemini Pro — Nghiên cứu / rà soát'};
+const roles={NV02:'ChatGPT Plus — Tự động chính / giao diện độc lập',NV03:'ChatGPT Go — Rà soát độc lập',NV04:'Gemini Pro — Nghiên cứu / rà soát'};
 async function api(path,options={}){const r=await fetch(path,{headers:{'content-type':'application/json'},...options});const data=await r.json().catch(()=>({}));if(!r.ok)throw new Error(data.error||`HTTP ${r.status}`);return data}
 async function post(path,body){try{await api(path,{method:'POST',body:JSON.stringify(body||{})});await refresh()}catch(e){alert(String(e.message||e))}}
 async function dispatchWork(){const id=document.getElementById('worker').value;const text=document.getElementById('workOrder').value;if(!text.trim())return alert('Chưa nhập công việc.');await post(`/api/workers/${id}/dispatch`,{text,navigate:document.getElementById('navigate').checked})}

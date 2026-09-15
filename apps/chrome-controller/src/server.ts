@@ -314,7 +314,7 @@ async function dispatch(workerId:WorkerId,text:string,navigate:boolean,source:'M
 function snapshotRequiredWorkers():WorkerId[]{return latestSnapshot?.requiredWorkers?.filter((id)=>states.get(id)?.enabled)??[];}
 function workerNeeded(id:WorkerId){
   const state=states.get(id);
-  return id==='NV05'||snapshotRequiredWorkers().includes(id)||state?.windowState==='CLOSED';
+  return id==='NV02'||snapshotRequiredWorkers().includes(id)||state?.windowState==='CLOSED';
 }
 async function fetchExternalSnapshot(){
   if(!config.autopilot.stateUrl)return;
@@ -352,9 +352,9 @@ async function autopilotTick(){
     if(decision.kind==='BUSY'||decision.kind==='DUPLICATE_NOOP'){lastAutopilotStopReason='';setAutopilotPhase('BUSY');persistEvidence();return;}
     if(decision.kind==='WAIT_EVIDENCE'){lastAutopilotStopReason='';setAutopilotPhase('WAIT_EVIDENCE');persistEvidence();return;}
     if(decision.kind==='STOP'){stopAutopilot(decision.reason);persistEvidence();return;}
-    const nv05=states.get('NV05')!;
-    if(!nv05.enabled||nv05.blocked||!startupReady){stopAutopilot(nv05.blocked?'NV05_BLOCKED':'NV05_NOT_READY');persistEvidence();return;}
-    if(!recentHeartbeat('NV05')){setAutopilotPhase('RECOVERING');persistEvidence();return;}
+    const nv05=states.get('NV02')!;
+    if(!nv05.enabled||nv05.blocked||!startupReady){stopAutopilot(nv05.blocked?'NV02_BLOCKED':'NV02_NOT_READY');persistEvidence();return;}
+    if(!recentHeartbeat('NV02')){setAutopilotPhase('RECOVERING');persistEvidence();return;}
     autopilotState={
       ...autopilotState,
       phase:'BUSY',
@@ -367,7 +367,7 @@ async function autopilotTick(){
     persistAutopilotState();
     log('AUTO_CONTINUE_RESERVED',{jobId:decision.jobId,trigger:AUTO_CONTINUE,evidenceRef:decision.evidenceRef??null});
     try{
-      await dispatch('NV05',decision.text,true,'AUTO_CONTINUE');
+      await dispatch('NV02',decision.text,true,'AUTO_CONTINUE');
       autopilotState={
         ...clearPending(autopilotState),
         phase:'BUSY',
@@ -418,7 +418,7 @@ async function recoverWorker(workerId:WorkerId){
   recoveryInFlight.add(workerId);
   recoveryAttempts.set(workerId,attempts+1);
   state.status='RECOVERING';
-  if(workerId==='NV05')setAutopilotPhase('RECOVERING');
+  if(workerId==='NV02')setAutopilotPhase('RECOVERING');
   log('RECOVERY_REOPEN_SCHEDULED',{workerId,attempt:attempts+1});
   try{
     await delay(config.recovery.reopenBackoffMs);
@@ -466,7 +466,7 @@ async function startupRecovery(){
     return;
   }
   log('STARTUP_RUNTIME_READY',{url:config.recovery.startupReadyUrl??null,interactiveSession:isInteractiveDesktopSession(),sessionName:process.env.SESSIONNAME??null});
-  const needed=new Set<WorkerId>(['NV05',...snapshotRequiredWorkers()]);
+  const needed=new Set<WorkerId>(['NV02',...snapshotRequiredWorkers()]);
   for(const id of WORKER_IDS){
     if(!needed.has(id)||!states.get(id)?.enabled||states.get(id)?.blocked)continue;
     try{
@@ -560,7 +560,7 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
     if(String(data.status??'').startsWith('BLOCKED')){
       const state=states.get(workerId);
       if(state){state.blocked=true;if(state.enabled)state.status='BLOCKED';state.lastError=String(data.status);}
-      if(workerId==='NV05')stopAutopilot(String(data.status));
+      if(workerId==='NV02')stopAutopilot(String(data.status));
       log('SECURITY_STOP',{workerId,status:data.status});
     }
     if(waiter){
@@ -596,7 +596,7 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
     for(const queue of commandQueues.values())queue.splice(0);
     log('KILL_SWITCH');persistEvidence();json(res,200,{ok:true});return true;
   }
-  const match=url.pathname.match(/^\/api\/workers\/(NV03|NV04|NV05)\/(start|focus|layout|dispatch|close|unblock|enable|disable)$/);
+  const match=url.pathname.match(/^\/api\/workers\/(NV03|NV04|NV02)\/(start|focus|layout|dispatch|close|unblock|enable|disable)$/);
   if(match&&req.method==='POST'){
     const workerId=match[1] as WorkerId;
     const action=match[2];
