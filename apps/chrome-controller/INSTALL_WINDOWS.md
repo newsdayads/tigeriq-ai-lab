@@ -5,7 +5,7 @@
 V1 vận hành 3 Chrome Profile độc lập:
 
 - `NV03` — ChatGPT Go — Code Lane A / Web-UI
-- `NV05` — ChatGPT Plus — Code Lane B / Core-Backend
+- `NV02` — ChatGPT Plus — Code Lane B / Core-Backend
 - `NV04` — Gemini Pro — Architect / Review / Research
 
 Controller chỉ bind `127.0.0.1`, mở Chrome tuần tự và dùng một hàng đợi UI toàn cục (`concurrency=1`). Không scrape/parse nội dung câu trả lời, không đọc cookie/token/password và không có cơ chế stealth/fingerprint/fake-human.
@@ -88,7 +88,7 @@ Ghi mapping thật, không đoán theo vị trí cửa sổ:
 
 ```text
 NV03 -> <profile ChatGPT Go>
-NV05 -> <profile ChatGPT Plus>
+NV02 -> <profile ChatGPT Plus>
 NV04 -> <profile Gemini Pro>
 ```
 
@@ -145,7 +145,7 @@ Ví dụ:
     "homeUrl": "https://chatgpt.com/..."
   },
   {
-    "id": "NV05",
+    "id": "NV02",
     "role": "CODE_CORE_BACKEND",
     "profileDirectory": "Profile 2",
     "homeUrl": "https://chatgpt.com/..."
@@ -178,7 +178,7 @@ Nếu work area rộng đúng 4096 px:
 
 ```text
 NV03: x=2572, y=0, 500x834
-NV05: x=3080, y=0, 500x834
+NV02: x=3080, y=0, 500x834
 NV04: x=3588, y=0, 500x834
 ```
 
@@ -186,7 +186,7 @@ Khi Extension heartbeat, Controller lấy `workArea` thật từ Chrome `system.
 
 ## 8. Cài Extension vào từng Profile
 
-Thực hiện riêng trên NV03, NV05, NV04:
+Thực hiện riêng trên NV03, NV02, NV04:
 
 1. Mở đúng Chrome Profile.
 2. Vào `chrome://extensions`.
@@ -201,7 +201,7 @@ D:\TigerIQ\ChromeControllerV1\apps\chrome-controller\extension
 6. Mở **Details** -> **Extension options**.
 7. Chọn Worker ID đúng profile:
    - ChatGPT Go -> `NV03`
-   - ChatGPT Plus -> `NV05`
+   - ChatGPT Plus -> `NV02`
    - Gemini Pro -> `NV04`
 8. Nhấn **Lưu**.
 
@@ -253,9 +253,9 @@ V1 không expose Controller ra LAN/Tailscale.
 1. Nhấn **Mở 3 NV tuần tự**.
 2. Xác minh NV03 mở trước.
 3. Chờ Controller nhận heartbeat + settling.
-4. Sau đó NV05 mới mở.
+4. Sau đó NV02 mới mở.
 5. Cuối cùng NV04 mới mở.
-6. Xác minh thứ tự cửa sổ bên phải: `NV03 | NV05 | NV04`.
+6. Xác minh thứ tự cửa sổ bên phải: `NV03 | NV02 | NV04`.
 7. Nhấn **Focus** từng NV và kiểm tra đúng cửa sổ.
 8. Nhấn **Sắp xếp** và kiểm tra size 500x834.
 9. Chỉ test `Giao việc` sau khi các bước trên ĐẠT.
@@ -302,7 +302,7 @@ Khi bị khóa:
 
 Toàn hệ thống:
 
-- **Mở 3 NV tuần tự** — Start All theo NV03 -> NV05 -> NV04.
+- **Mở 3 NV tuần tự** — Start All theo NV03 -> NV02 -> NV04.
 - **Tạm dừng** — chặn action mới.
 - **Tiếp tục** — mở lại action mới.
 - **KILL SWITCH** — dừng command mới và xóa command chưa nhận.

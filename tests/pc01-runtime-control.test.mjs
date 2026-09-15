@@ -32,8 +32,8 @@ describe('pc01 runtime control safety', () => {
 
   it('maps only allowlisted controller actions', () => {
     expect(resolveActionPath('resume')).toBe('/api/resume');
-    expect(resolveActionPath('layout', 'NV05')).toBe('/api/workers/NV05/layout');
-    expect(() => resolveActionPath('kill', 'NV05')).toThrow('RUNTIME_CONTROL_ACTION_NOT_ALLOWED');
+    expect(resolveActionPath('layout', 'NV02')).toBe('/api/workers/NV02/layout');
+    expect(() => resolveActionPath('kill', 'NV02')).toThrow('RUNTIME_CONTROL_ACTION_NOT_ALLOWED');
     expect(() => resolveActionPath('layout', 'NV99')).toThrow('RUNTIME_CONTROL_ACTION_NOT_ALLOWED');
   });
 
@@ -62,10 +62,10 @@ describe('pc01 runtime control snapshot', () => {
 
   it('collects state and recent events in one snapshot', async () => {
     const logPath = await tempLog(['{"event":"READY"}']);
-    const fetchImpl = async () => new Response(JSON.stringify({ paused: false, workers: [{ id: 'NV05', status: 'READY' }] }), { status: 200, headers: { 'content-type': 'application/json' } });
+    const fetchImpl = async () => new Response(JSON.stringify({ paused: false, workers: [{ id: 'NV02', status: 'READY' }] }), { status: 200, headers: { 'content-type': 'application/json' } });
     const snapshot = await collectSnapshot({ logPath, logTail: 1, fetchImpl });
     expect(snapshot.ok).toBe(true);
-    expect(snapshot.state.workers[0]).toMatchObject({ id: 'NV05', status: 'READY' });
+    expect(snapshot.state.workers[0]).toMatchObject({ id: 'NV02', status: 'READY' });
     expect(snapshot.recentEvents).toEqual([{ event: 'READY' }]);
     expect(snapshot.elapsedMs).toBeTypeOf('number');
   });
