@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe,expect,it } from 'vitest';
 
 const core=readFileSync('apps/tigeriq-core/core.mjs','utf8');
+const router=readFileSync('apps/tigeriq-core/smart-router.mjs','utf8');
 
 describe('#777 Core Smart Router integration',()=>{
   it('separates AI resource identity from employee identity without rewriting history',()=>{
@@ -28,7 +29,7 @@ describe('#777 Core Smart Router integration',()=>{
   it('uses bounded failure-aware failover and no automatic auth/config bypass',()=>{
     expect(core).toContain('failurePolicy(kind)');
     expect(core).toContain('if(policy.stop)break');
-    expect(core).toContain('paid_fallback_forbidden');
+    expect(router).toContain('paid_fallback_forbidden');
   });
   it('exposes routing/performance truth through the existing status snapshot',()=>{
     expect(core).toContain('routingDecisions');
