@@ -23,13 +23,17 @@ function stripWorkerMarker(value) {
     return u.toString();
   } catch { return value; }
 }
+function normalizeWorkerId(id) {
+  return id === 'NV05' ? 'NV02' : id;
+}
 
 async function bootstrapWorkerIds() {
   const saved = await chrome.storage.local.get(['workerIds','workerId']);
-  const ids = new Set(Array.isArray(saved.workerIds) ? saved.workerIds.filter((id) => WORKER_HOSTS[id]) : []);
-  if (saved.workerId && WORKER_HOSTS[saved.workerId]) ids.add(saved.workerId);
+  const rawIds = Array.isArray(saved.workerIds) ? saved.workerIds : (saved.workerId ? [saved.workerId] : []);
+  const normalizedIds = rawIds.map(normalizeWorkerId).filter((id) => WORKER_HOSTS[id]);
+  const ids = new Set(normalizedIds);
+  let changed = normalizedIds.length !== rawIds.length || rawIds.some((id) => normalizeWorkerId(id) !== id) || Boolean(saved.workerId);
   const wins = await chrome.windows.getAll({ populate:true, windowTypes:['normal'] });
-  let changed = false;
   for (const win of wins) {
     for (const tab of win.tabs || []) {
       const id = markerWorkerId(tab.url || '');
@@ -40,7 +44,7 @@ async function bootstrapWorkerIds() {
       if (tab.id) await chrome.tabs.update(tab.id, { url: stripWorkerMarker(tab.url || '') });
     }
   }
-  if (changed || saved.workerId) {
+  if (changed) {
     await chrome.storage.local.set({ workerIds:[...ids] });
     await chrome.storage.local.remove('workerId');
   }
