@@ -1,0 +1,27 @@
+name: Issue 777 Final Verify
+
+on:
+  push:
+    branches:
+      - tigeriq/nv02/issue-777-smart-router-foundation
+    paths:
+      - .github/workflows/issue-777-final-verify.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: tigeriq/nv02/issue-777-smart-router-foundation
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: node --check apps/tigeriq-core/core.mjs
+      - run: npx vitest run tests/smart-router.test.ts tests/core-smart-router-integration.test.ts tests/web-control-routing.test.ts
+      - run: npm run typecheck
+      - run: npm run build
