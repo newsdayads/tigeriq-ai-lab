@@ -1,5 +1,5 @@
-const IDS = ['NV03','NV05','NV04'];
-const HOST = { NV03:'chatgpt.com', NV05:'chatgpt.com', NV04:'gemini.google.com' };
+const IDS = ['NV02','NV03','NV04'];
+const HOST = { NV02:'chatgpt.com', NV03:'chatgpt.com', NV04:'gemini.google.com' };
 const status = document.getElementById('status');
 const saved = await chrome.storage.local.get(['workerIds','workerId']);
 const initial = Array.isArray(saved.workerIds) ? saved.workerIds : (saved.workerId ? [saved.workerId] : []);
@@ -10,7 +10,7 @@ document.getElementById('save').addEventListener('click', async () => {
   if (!workerIds.length) { status.textContent = 'Phải chọn ít nhất một nhân viên.'; return; }
   const hosts = workerIds.map((id) => HOST[id]);
   if (new Set(hosts).size !== hosts.length) {
-    status.textContent = 'Không được gắn NV03 và NV05 vào cùng một Profile vì cùng dùng chatgpt.com.';
+    status.textContent = 'Không được gắn NV02 và NV03 vào cùng một Profile vì cùng dùng chatgpt.com.';
     return;
   }
   await chrome.storage.local.set({ workerIds });
