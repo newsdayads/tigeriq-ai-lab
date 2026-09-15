@@ -37,20 +37,20 @@ function ensureWorkerBadge() {
     badge.id = WORKER_BADGE_ID;
     Object.assign(badge.style, {
       position: 'fixed',
-      top: '56px',
+      top: '10px',
       right: '12px',
       zIndex: '2147483647',
-      padding: '9px 14px',
-      borderRadius: '10px',
+      padding: '6px 10px',
+      borderRadius: '8px',
       color: '#fff',
-      font: '800 14px/1.2 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+      font: '800 12px/1.2 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
       letterSpacing: '0.03em',
-      border: '2px solid rgba(255,255,255,0.92)',
-      boxShadow: '0 4px 14px rgba(0,0,0,0.38)',
+      border: '1px solid rgba(255,255,255,0.85)',
+      boxShadow: '0 2px 8px rgba(0,0,0,0.28)',
       pointerEvents: 'none',
       userSelect: 'none',
-      opacity: '0.97',
-      display: 'none',
+      opacity: '0.94',
+      display: 'block',
     });
     document.documentElement.appendChild(badge);
   }
