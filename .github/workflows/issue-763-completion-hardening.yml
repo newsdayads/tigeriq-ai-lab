@@ -45,7 +45,8 @@ jobs:
         run: |
           git config user.name "TigerIQ NV02"
           git config user.email "actions@users.noreply.github.com"
-          git rm .github/workflows/issue-763-completion-hardening.yml scripts/issue-763-hardening.py
+          git rm .github/workflows/issue-763-completion-hardening.yml
+          git rm -f scripts/issue-763-hardening.py
           git add apps/chrome-controller/extension/content.js apps/chrome-controller/extension/background.js apps/chrome-controller/src/server.ts apps/chrome-controller/src/runtime-evidence.ts tests/chrome-controller.test.ts
           git commit -m "feat(#763): completion-aware UTF-8 supervisor and Owner-safe layout"
           git push origin HEAD:tigeriq/nv05/issue-763-autopilot-recovery-layout
