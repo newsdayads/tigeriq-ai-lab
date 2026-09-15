@@ -1,7 +1,7 @@
-export const WORKER_HOSTS = { NV03:'chatgpt.com', NV05:'chatgpt.com', NV04:'gemini.google.com' };
+export const WORKER_HOSTS = { NV02:'chatgpt.com', NV03:'chatgpt.com', NV04:'gemini.google.com' };
 export const WORKER_HINTS = {
+  NV02:['/g/g-p-6a925c470aa08191a10595e215d04f4e-tigeriq-ai-lab'],
   NV03:['/g/g-p-6a9e19b4deac8191938cca4486a7e12b-tigeriq-ai-lab'],
-  NV05:['/g/g-p-6a925c470aa08191a10595e215d04f4e-tigeriq-ai-lab'],
   NV04:['/notebook/c3a7911e-5a73-41c6-b7db-2e3b17d3983a','/app/']
 };
 
