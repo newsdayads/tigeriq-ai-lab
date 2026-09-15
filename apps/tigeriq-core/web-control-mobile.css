@@ -7,8 +7,8 @@
   .system-pill{margin-left:0!important;max-width:100%;font-size:11px!important;white-space:normal!important}
   .clock{margin-left:auto!important;font-size:10px!important}
   .tq-u-livebar{order:3;width:auto!important;margin:0!important;max-width:100%;flex-wrap:wrap}
-  .tq-u-sync{white-space:normal!important}
-  .metrics{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .tq-u-livebar .tq-u-sync{display:none!important}
+  .metrics{grid-template-columns:1fr!important}
   .metric{min-width:0!important}
   .tq-u-overview,.tq-u-main,.tq-u-side,.panel,.tq-u-panel{min-width:0!important;max-width:100%!important}
   .tq-u-side{grid-template-columns:1fr!important}
@@ -25,7 +25,6 @@
 }
 @media(max-width:460px){
   .shell{grid-template-columns:54px minmax(0,1fr)!important}
-  .metrics{grid-template-columns:1fr!important}
   .board-controls{grid-template-columns:1fr!important}
   .tq-quick-filters{grid-template-columns:1fr 1fr!important}
   .board-controls input{grid-column:1}
