@@ -9,7 +9,6 @@
   const safe = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const rel = value => { if (!value) return '—'; const sec=Math.max(0,Math.floor((Date.now()-new Date(value))/1000)); if(sec<60)return `${sec}s`; if(sec<3600)return `${Math.floor(sec/60)}p`; if(sec<86400)return `${Math.floor(sec/3600)}h`; return `${Math.floor(sec/86400)}d`; };
   const jobsOf = d => d?.codingLane?.jobs?.length ? d.codingLane.jobs : (d?.jobs || []);
-  const objectivesOf = d => d?.codingLane?.objectives?.length ? d.codingLane.objectives : (d?.objectives || []);
 
   function mountUnifiedOverview() {
     const overview = document.querySelector('.page[data-view="overview"]');
@@ -55,8 +54,10 @@
     const total = ok + fail;
     const rate = total ? Math.round(ok * 100 / total) : null;
     const latency = Number.isFinite(Number(r.last_latency_ms)) ? `${Math.round(Number(r.last_latency_ms))} ms` : '—';
+    const cooldownMs = r.cooldown_until ? new Date(r.cooldown_until).getTime() - Date.now() : 0;
+    const cooldown = cooldownMs > 0 ? `<div class="tq-u-error">Thử lại sau ~${Math.max(1,Math.ceil(cooldownMs/60000))} phút</div>` : '';
     const err = r.last_error ? `<div class="tq-u-error" title="${safe(r.last_error)}">Lỗi cuối: ${safe(r.last_error)}</div>` : '';
-    return `<article class="worker" data-provider="${safe(r.provider)}" data-status="${safe(r.status)}"><div class="worker-head"><span class="worker-id">${safe(r.employee_id)} — ${safe(r.name)}</span><span class="${CLASS?.[r.status] || 'gray'}">●</span></div><div class="tq-u-provider">${safe(r.provider || '—')}</div><div class="tq-u-model" title="${safe(r.model || '')}">${safe(r.model || 'Chưa có model')}</div><div class="status ${CLASS?.[r.status] || 'gray'}"><span class="dot"></span>${safe(STATUS[r.status] || r.status)}</div><div class="kv"><span>Job hiện tại</span><span>${safe(r.current_job_id || '—')}</span></div><div class="kv"><span>Lần cuối</span><span>${safe(rel(r.last_seen_at))}</span></div><div class="kv"><span>Độ trễ</span><span>${safe(latency)}</span></div><div class="tq-u-success"><span>24h</span><b>${rate == null ? 'Chưa đủ dữ liệu' : `${rate}% · ${ok} đạt/${fail} lỗi`}</b></div>${rate == null ? '' : `<div class="tq-u-bar"><i style="width:${Math.max(0,Math.min(100,rate))}%"></i></div>`}${err}</article>`;
+    return `<article class="worker" data-provider="${safe(r.provider)}" data-status="${safe(r.status)}"><div class="worker-head"><span class="worker-id">${safe(r.employee_id)} — ${safe(r.name)}</span><span class="${CLASS?.[r.status] || 'gray'}">●</span></div><div class="tq-u-provider">${safe(r.provider || '—')}</div><div class="tq-u-model" title="${safe(r.model || '')}">${safe(r.model || 'Chưa có model')}</div><div class="status ${CLASS?.[r.status] || 'gray'}"><span class="dot"></span>${safe(STATUS[r.status] || r.status)}</div><div class="kv"><span>Job hiện tại</span><span>${safe(r.current_job_id || '—')}</span></div><div class="kv"><span>Lần cuối</span><span>${safe(rel(r.last_seen_at))}</span></div><div class="kv"><span>Độ trễ</span><span>${safe(latency)}</span></div><div class="tq-u-success"><span>24h</span><b>${rate == null ? 'Chưa đủ dữ liệu' : `${rate}% · ${ok} đạt/${fail} lỗi`}</b></div>${rate == null ? '' : `<div class="tq-u-bar"><i style="width:${Math.max(0,Math.min(100,rate))}%"></i></div>`}${cooldown}${err}</article>`;
   }
 
   function renderUnifiedMetrics(d) {
