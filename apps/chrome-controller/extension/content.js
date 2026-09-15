@@ -193,6 +193,59 @@ async function dispatch(text) {
   return { ok: true, status: 'SUBMITTED' };
 }
 
+function normalizedText(element) {
+  return String(element?.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+function dismissMenu() {
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }));
+}
+
+async function archiveConversation() {
+  const blocked = detectSecurityBlock();
+  if (blocked) return { ok: false, status: blocked };
+  if (location.hostname !== 'chatgpt.com') return { ok: false, status: 'ARCHIVE_SELECTOR_UNVERIFIED_HOST' };
+  if (!/\/c\//.test(location.pathname)) return { ok: false, status: 'ARCHIVE_REQUIRES_CONVERSATION_URL' };
+
+  const before = location.href;
+  const selectors = [
+    'header button[aria-haspopup="menu"]',
+    'main button[aria-haspopup="menu"]',
+    'button[data-testid*="conversation" i][aria-haspopup="menu"]',
+    'button[aria-label*="conversation" i][aria-haspopup="menu"]'
+  ];
+  const candidates = [...new Set(selectors.flatMap((selector) => Array.from(document.querySelectorAll(selector))))]
+    .filter((element) => visible(element))
+    .filter((element) => {
+      const label = `${element.getAttribute('aria-label') || ''} ${element.getAttribute('title') || ''}`.toLowerCase();
+      return /more|menu|options|thêm|tùy chọn/.test(label);
+    });
+  if (candidates.length !== 1) return { ok: false, status: `ARCHIVE_MENU_BUTTON_NOT_UNIQUE:${candidates.length}` };
+
+  candidates[0].click();
+  await sleep(350);
+  const blockedAfterMenu = detectSecurityBlock();
+  if (blockedAfterMenu) { dismissMenu(); return { ok: false, status: blockedAfterMenu }; }
+
+  const menuItems = Array.from(document.querySelectorAll('[role="menuitem"], [role="menu"] button, [data-radix-menu-content] button'))
+    .filter((element) => visible(element));
+  const archiveItems = menuItems.filter((element) => ['archive', 'lưu trữ'].includes(normalizedText(element)));
+  if (archiveItems.length !== 1) {
+    dismissMenu();
+    return { ok: false, status: `ARCHIVE_MENU_ITEM_NOT_UNIQUE:${archiveItems.length}` };
+  }
+
+  archiveItems[0].click();
+  const deadline = Date.now() + 8000;
+  while (Date.now() < deadline) {
+    await sleep(250);
+    if (location.href !== before || !/\/c\//.test(location.pathname)) return { ok: true, status: 'ARCHIVED' };
+    const blockedAfterClick = detectSecurityBlock();
+    if (blockedAfterClick) return { ok: false, status: blockedAfterClick };
+  }
+  return { ok: false, status: 'ARCHIVE_NOT_CONFIRMED' };
+}
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === 'TIGERIQ_WORKER_BADGE') {
     if (message.workerId) showWorkerBadge(String(message.workerId), String(message.label || ''));
@@ -203,6 +256,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === 'TIGERIQ_UI_STATE') {
     sendResponse({ ok: true, uiBusy: detectUiBusy(), securityBlock: detectSecurityBlock() });
     return;
+  }
+  if (message?.type === 'TIGERIQ_ARCHIVE_CONVERSATION') {
+    void archiveConversation().then(sendResponse).catch((error) => sendResponse({ ok: false, status: String(error) }));
+    return true;
   }
   if (message?.type !== 'TIGERIQ_DISPATCH') return;
   void dispatch(String(message.text || '')).then(sendResponse).catch((error) => sendResponse({ ok: false, status: String(error) }));
