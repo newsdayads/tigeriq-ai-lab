@@ -15,7 +15,7 @@ describe('TigerIQ Web Control owner dashboard', () => {
   it('keeps API Health only as a temporary prototype source while Web Control is the owner UI', () => {
     expect(apiHealth).toContain('<title>TigerIQ API Health</title>');
     expect(core).toContain("url.pathname==='/ '").not;
-    expect(core).toContain("url.pathname==='/''".replace("/''", "/'"));
+    expect(core.replaceAll(' ', '')).toContain("url.pathname==='/'");
     expect(core).toContain('return res.end(dashboard())');
     expect(server).toContain('web-control-unified.js');
     expect(server).toContain('web-control-unified.css');
