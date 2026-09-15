@@ -674,7 +674,8 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
           recoveryAttempts.set(workerId,0);
         }else if(action==='dispatch'){
           const data=await body(req);
-          await dispatch(workerId,String(data.text??''),data.navigate!==false);
+          if(typeof data.text!=='string')throw new Error('DISPATCH_TEXT_MUST_BE_STRING');
+          await dispatch(workerId,data.text,data.navigate!==false);
         }
       }
       persistEvidence();
