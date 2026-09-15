@@ -1,0 +1,36 @@
+/* #772 — compact workforce strip: exactly two rows, horizontal scroll for more. */
+.workers.workforce-strip{
+  display:grid!important;
+  grid-template-rows:repeat(2,82px)!important;
+  grid-auto-flow:column!important;
+  grid-auto-columns:minmax(230px,250px)!important;
+  grid-template-columns:none!important;
+  gap:8px!important;
+  padding:10px!important;
+  overflow-x:auto!important;
+  overflow-y:hidden!important;
+  overscroll-behavior-inline:contain;
+  scroll-snap-type:x proximity;
+  scrollbar-width:thin;
+  scrollbar-color:#276da5 #07162a;
+  max-width:100%!important;
+}
+.workers.workforce-strip::-webkit-scrollbar{height:8px}.workers.workforce-strip::-webkit-scrollbar-track{background:#07162a}.workers.workforce-strip::-webkit-scrollbar-thumb{background:#276da5;border-radius:99px}
+.workforce-card{
+  min-width:0!important;
+  width:auto!important;
+  min-height:82px!important;
+  height:82px!important;
+  max-height:82px!important;
+  padding:10px 11px!important;
+  border-radius:11px!important;
+  scroll-snap-align:start;
+  cursor:help;
+  display:grid!important;
+  grid-template-rows:auto 1fr!important;
+  align-content:center!important;
+  background:linear-gradient(150deg,#0b213b,#09172b)!important;
+}
+.workforce-card:hover,.workforce-card:focus-visible{outline:none;transform:translateY(-1px)!important;border-color:#35a7ef!important;box-shadow:0 7px 18px #0007!important}
+.workforce-card-head{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}.workforce-card-head strong{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}.workforce-card-role{font-size:11px;color:#8fabca;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;align-self:end}.workforce-badge{display:inline-flex;align-items:center;gap:4px;flex:0 0 auto;padding:2px 6px;border:1px solid currentColor;border-radius:999px;font-size:9px;font-weight:800;line-height:1.25}.workforce-badge .dot{width:6px;height:6px}.workforce-card.green{border-color:#1d765e!important}.workforce-card.blue{border-color:#226da5!important}.workforce-card.amber{border-color:#7f672a!important}.workforce-card.red{border-color:#813844!important}.workforce-card.gray{opacity:.78}
+@media(max-width:720px){.workers.workforce-strip{grid-template-rows:repeat(2,78px)!important;grid-auto-columns:minmax(190px,215px)!important;grid-template-columns:none!important;overflow-x:auto!important}.workforce-card{height:78px!important;min-height:78px!important;max-height:78px!important;padding:9px!important}.workforce-card-head strong{font-size:12px}.workforce-card-role{font-size:10px}.workforce-badge{font-size:8px}}

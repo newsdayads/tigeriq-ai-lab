@@ -1,5 +1,6 @@
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
+import { normalizeRuntimeResources, refreshRegistryWorkforce, workforceSnapshot } from './workforce-registry.mjs';
 
 const HOST = process.env.TIGERIQ_WEB_CONTROL_HOST?.trim() || '127.0.0.1';
 const PORT = Number(process.env.TIGERIQ_WEB_CONTROL_PORT || 8796);
@@ -8,10 +9,13 @@ const CODING_URL = (process.env.TIGERIQ_CODING_LANE_URL?.trim() || CORE_URL.repl
 const baseHtml = readFileSync(new URL('./web-control.html', import.meta.url), 'utf8');
 const truthJs = readFileSync(new URL('./web-control-truth.js', import.meta.url), 'utf8');
 const unifiedJs = readFileSync(new URL('./web-control-unified.js', import.meta.url), 'utf8');
+const workforceJs = readFileSync(new URL('./web-control-workforce.js', import.meta.url), 'utf8');
 const unifiedCss = readFileSync(new URL('./web-control-unified.css', import.meta.url), 'utf8');
+const mobileCss = readFileSync(new URL('./web-control-mobile.css', import.meta.url), 'utf8');
+const workforceCss = readFileSync(new URL('./web-control-workforce.css', import.meta.url), 'utf8');
 const html = baseHtml
-  .replace('</head>', '<link rel="stylesheet" href="/web-control-unified.css"></head>')
-  .replace('</body>', '<script src="/web-control-truth.js"></script><script src="/web-control-unified.js"></script></body>');
+  .replace('</head>', '<link rel="stylesheet" href="/web-control-unified.css"><link rel="stylesheet" href="/web-control-mobile.css"><link rel="stylesheet" href="/web-control-workforce.css"></head>')
+  .replace('</body>', '<script src="/web-control-truth.js"></script><script src="/web-control-unified.js"></script><script src="/web-control-workforce.js"></script></body>');
 
 const securityHeaders = {
   'cache-control': 'no-store, max-age=0',
@@ -49,6 +53,10 @@ async function codingStatus() {
   }
 }
 
+void refreshRegistryWorkforce(true);
+const registryTimer=setInterval(()=>void refreshRegistryWorkforce(),60000);
+registryTimer.unref?.();
+
 const server = createServer(async (req, res) => {
   const url = new URL(req.url || '/', 'http://localhost');
   for (const [key, value] of Object.entries(securityHeaders)) res.setHeader(key, value);
@@ -69,9 +77,21 @@ const server = createServer(async (req, res) => {
       res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8' });
       return res.end(unifiedJs);
     }
+    if (req.method === 'GET' && url.pathname === '/web-control-workforce.js') {
+      res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8' });
+      return res.end(workforceJs);
+    }
     if (req.method === 'GET' && url.pathname === '/web-control-unified.css') {
       res.writeHead(200, { 'content-type': 'text/css; charset=utf-8' });
       return res.end(unifiedCss);
+    }
+    if (req.method === 'GET' && url.pathname === '/web-control-mobile.css') {
+      res.writeHead(200, { 'content-type': 'text/css; charset=utf-8' });
+      return res.end(mobileCss);
+    }
+    if (req.method === 'GET' && url.pathname === '/web-control-workforce.css') {
+      res.writeHead(200, { 'content-type': 'text/css; charset=utf-8' });
+      return res.end(workforceCss);
     }
     if (req.method === 'GET' && url.pathname === '/api/status') {
       const coreResponse = await upstream(CORE_URL, '/api/status', 4000);
@@ -84,9 +104,11 @@ const server = createServer(async (req, res) => {
         res.writeHead(502, { 'content-type': 'application/json' });
         return res.end(JSON.stringify({ ok: false, error: 'CORE_INVALID_JSON' }));
       }
+      const {workforce,workforceMeta}=workforceSnapshot();
+      const resources=normalizeRuntimeResources(core.resources,workforce);
       const codingLane = await codingStatus();
       res.writeHead(200, { 'content-type': 'application/json' });
-      return res.end(JSON.stringify({ ...core, codingLane }));
+      return res.end(JSON.stringify({ ...core, resources, workforce, workforceMeta, codingLane }));
     }
     if (req.method === 'GET' && url.pathname === '/health') {
       let core = { ok: false };

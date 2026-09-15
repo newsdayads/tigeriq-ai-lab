@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tigeriq.local/schemas/chrome-controller-runtime-evidence-v1.json",
+  "title": "TigerIQ Chrome Controller Runtime Evidence V1",
+  "type": "object",
+  "required": ["schemaVersion", "generatedAt", "layout", "queue", "autopilot", "recovery", "sessionPolicy", "security", "workers"],
+  "properties": {
+    "schemaVersion": { "const": "tigeriq.chrome-controller.runtime-evidence.v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "layout": {
+      "type": "object",
+      "required": ["order", "width", "height", "gap", "rightAnchored", "source", "placements"],
+      "properties": {
+        "order": { "const": ["NV02", "NV03", "NV04"] },
+        "width": { "const": 500 },
+        "height": { "const": 834 },
+        "gap": { "const": 8 },
+        "rightAnchored": { "const": true },
+        "source": { "enum": ["HEARTBEAT_WORK_AREA", "CONFIG_FALLBACK"] },
+        "workArea": { "type": ["object", "null"] },
+        "placements": { "type": "object", "required": ["NV02", "NV03", "NV04"] }
+      }
+    },
+    "queue": {
+      "type": "object",
+      "required": ["globalUiConcurrency", "minUiActionGapMs", "maxRetries"],
+      "properties": { "globalUiConcurrency": { "const": 1 } }
+    },
+    "autopilot": {
+      "type": "object",
+      "required": ["enabled", "fixedTrigger", "aiOutputParsed", "phase", "pendingJobId", "uncertainJobId"],
+      "properties": {
+        "fixedTrigger": { "const": "AUTO_CONTINUE" },
+        "aiOutputParsed": { "const": false }
+      }
+    },
+    "recovery": {
+      "type": "object",
+      "required": ["startupReady", "heartbeatStaleMs", "checkIntervalMs", "maxReopenAttempts", "startupAttachGraceMs", "attempts"],
+      "properties": { "maxReopenAttempts": { "type": "integer", "minimum": 0, "maximum": 3 } }
+    },
+    "sessionPolicy": {
+      "type": "object",
+      "required": ["chromeVisibleOnly", "interactiveSession", "sessionName", "hiddenChromeAllowed"],
+      "properties": {
+        "chromeVisibleOnly": { "const": true },
+        "hiddenChromeAllowed": { "const": false }
+      }
+    },
+    "security": {
+      "type": "object",
+      "required": ["stopOn", "stealth", "fakeHuman", "credentialExtraction"],
+      "properties": {
+        "stealth": { "const": false },
+        "fakeHuman": { "const": false },
+        "credentialExtraction": { "const": false }
+      }
+    },
+    "workers": { "type": "array", "minItems": 3 }
+  }
+}
