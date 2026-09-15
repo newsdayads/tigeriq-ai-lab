@@ -1,4 +1,4 @@
-// OWNER_DIRECT #767 + #777 — single Web Control projection over Core truth.
+// OWNER_DIRECT #767 + #777 — single Web Control projection over Core truth; API Health remains a temporary prototype source only.
 (() => {
   if (window.__tigerIqUnifiedWebControl) return;
   window.__tigerIqUnifiedWebControl = true;
