@@ -73,10 +73,15 @@ async function fetchJson(url, init = {}, timeoutMs = 90000, onResponse = null) {
   finally { clearTimeout(t); }
 }
 function quotaHeaderNumber(headers,name){const value=headers?.get?.(name);if(value===null||value===undefined||String(value).trim()==='')return null;const n=Number(value);return Number.isFinite(n)?Math.max(0,n):null;}
+function quotaResetDurationMs(value){
+  const text=String(value||'').trim();if(!text)return null;
+  const parts=[...text.matchAll(/(\d+(?:\.\d+)?)(ms|s|m|h)/gi)];if(!parts.length||parts.map(x=>x[0]).join('').toLowerCase()!==text.toLowerCase())return null;
+  const mult={ms:1,s:1000,m:60000,h:3600000};const total=parts.reduce((sum,x)=>sum+Number(x[1])*mult[x[2].toLowerCase()],0);return Number.isFinite(total)?Math.max(0,total):null;
+}
 function quotaResetAt(headers){
   const retry=headers?.get?.('retry-after');
   if(retry){const seconds=Number(retry);if(Number.isFinite(seconds))return new Date(Date.now()+Math.max(0,seconds)*1000).toISOString();const parsed=Date.parse(retry);if(Number.isFinite(parsed))return new Date(parsed).toISOString();}
-  for(const key of ['x-ratelimit-reset-requests','x-ratelimit-reset-tokens','x-ratelimit-reset']){const value=headers?.get?.(key);if(!value)continue;const parsed=Date.parse(value);if(Number.isFinite(parsed))return new Date(parsed).toISOString();const m=String(value).trim().match(/^(\d+(?:\.\d+)?)(ms|s|m|h)$/i);if(m){const mult={ms:1,s:1000,m:60000,h:3600000}[m[2].toLowerCase()];return new Date(Date.now()+Number(m[1])*mult).toISOString();}}
+  for(const key of ['x-ratelimit-reset-requests','x-ratelimit-reset-tokens','x-ratelimit-reset']){const value=headers?.get?.(key);if(!value)continue;const durationMs=quotaResetDurationMs(value);if(durationMs!==null)return new Date(Date.now()+durationMs).toISOString();const numeric=Number(value);if(Number.isFinite(numeric)){const when=numeric>1e12?numeric:(numeric>1e9?numeric*1000:Date.now()+Math.max(0,numeric)*1000);return new Date(when).toISOString();}const parsed=Date.parse(value);if(Number.isFinite(parsed))return new Date(parsed).toISOString();}
   return null;
 }
 async function syncQuotaFromHeaders(r,res){
