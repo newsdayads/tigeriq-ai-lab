@@ -22,6 +22,23 @@ describe('runtime updater squash merge gate resolution',()=>{
     expect(src).toContain("if($impact.web -and (Task-Exists $webTask)){Sync-WebRuntime;$null=Restart-ServiceTask");
   });
 
+  it('restarts only the Core child while the supervisor task is already running',()=>{
+    const src=readFileSync('scripts/tigeriq-core/update-core-runtime.ps1','utf8');
+    const start=src.indexOf('function Restart-Core');
+    const end=src.indexOf('function Restart-ServiceTask');
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const restartCore=src.slice(start,end);
+    expect(restartCore).toContain("if(-not(Task-Exists $coreTask)){throw ('TASK_MISSING:'+ $coreTask)}");
+    expect(restartCore).toContain("if($task.State -eq 'Running')");
+    expect(restartCore).toContain('Stop-CoreProcesses');
+    expect(restartCore).toContain('Start-ScheduledTask -TaskName $coreTask');
+    expect(restartCore).not.toContain('Stop-ScheduledTask');
+    expect(restartCore).toContain('$previousPid=if($null-ne$oldPid){[int]$oldPid}else{Get-NodePidByMatch $corePath}');
+    expect(restartCore).toContain('$newPid=Get-NodePidByMatch $corePath');
+    expect(restartCore).toContain('[int]$newPid-ne[int]$previousPid');
+  });
+
   it('self-syncs every current/future web-control asset plus workforce registry before launch',()=>{
     const launcher=readFileSync('scripts/tigeriq-core/run-web-control-bundle.ps1','utf8');
     expect(launcher).toContain("$sourceRoot='D:\\TigerIQ\\Workspace\\tigeriq-ai-lab\\apps\\tigeriq-core'");
