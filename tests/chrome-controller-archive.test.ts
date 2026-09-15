@@ -22,6 +22,7 @@ describe('Chrome Controller safe save-and-archive',()=>{
     expect(background).toContain("text:'lưu'");
     expect(background).toContain('if(count>=2) return');
     expect(background).toContain("saved.archiveAfterDone!==true");
+    expect(background).toContain('void maybeAutoArchive(workerId).catch(()=>{})');
   });
 
   it('exposes manual action and keeps auto archive default off',()=>{
