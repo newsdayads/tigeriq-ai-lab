@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+// @ts-expect-error Runtime .mjs helper is intentionally JavaScript-only.
 import { normalizeRuntimeResources, parseRegistryBody } from '../apps/tigeriq-core/workforce-registry.mjs';
 
 const workforceJs=readFileSync(resolve('apps/tigeriq-core/web-control-workforce.js'),'utf8');
@@ -13,10 +14,10 @@ describe('Web Control workforce projection',()=>{
     const parsed=parseRegistryBody(body);
     expect(parsed.version).toBe('49');
     expect(parsed.workforce).toHaveLength(20);
-    expect(parsed.workforce.map(x=>x.employee_id)).toEqual(Array.from({length:20},(_,i)=>`NV${String(i+1).padStart(2,'0')}`));
-    expect(parsed.workforce.find(x=>x.employee_id==='NV01')?.name).toBe('Minh');
-    expect(parsed.workforce.find(x=>x.employee_id==='NV05')?.admin_state).toBe('RETIRED');
-    expect(parsed.workforce.find(x=>x.employee_id==='NV09')?.admin_state).toBe('UNASSIGNED');
+    expect(parsed.workforce.map((x:any)=>x.employee_id)).toEqual(Array.from({length:20},(_,i)=>`NV${String(i+1).padStart(2,'0')}`));
+    expect(parsed.workforce.find((x:any)=>x.employee_id==='NV01')?.name).toBe('Minh');
+    expect(parsed.workforce.find((x:any)=>x.employee_id==='NV05')?.admin_state).toBe('RETIRED');
+    expect(parsed.workforce.find((x:any)=>x.employee_id==='NV09')?.admin_state).toBe('UNASSIGNED');
   });
 
   it('projects stale Core NV02 Ollama identity onto canonical NV10 without contaminating ChatGPT Plus',()=>{
