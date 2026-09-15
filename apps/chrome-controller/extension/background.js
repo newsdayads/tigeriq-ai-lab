@@ -257,7 +257,7 @@ async function tickWorker(workerId) {
   lastWindowByWorker.set(workerId,ctx.windowId);
   await updateWorkerBadge(workerId, ctx);
   await heartbeat(workerId,ctx);
-  void maybeAutoArchive(workerId);
+  void maybeAutoArchive(workerId).catch(()=>{});
   const r=await fetch(`${CONTROLLER}/api/commands/${encodeURIComponent(workerId)}`); if(!r.ok) return;
   const {command}=await r.json(); if(!command) return;
   try { const result=await execute(workerId,command); await post('/api/result',{workerId,commandId:command.id,ok:true,...result}); }
