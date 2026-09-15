@@ -43,4 +43,15 @@ describe('bounded manager retry/failover',()=>{
     const result=await runBoundedManagerDecision({prompt:'p',maxProviders:2,acquire:async()=>pool[pick++]||null,invoke:async r=>{calls++;if(r.id==='NV11'){const e=new Error('HTTP_429');e.kind='rate_limit';throw e;}return valid('next-provider');}});
     expect(result.decision.summary).toBe('next-provider');expect(calls).toBe(2);
   });
+
+  it('stops instead of failing over when resource failure policy is terminal',async()=>{
+    let calls=0,pick=0;const pool=[resource('NV11'),resource('NV13')];
+    const result=await runBoundedManagerDecision({prompt:'p',maxProviders:2,acquire:async()=>pool[pick++]||null,invoke:async()=>{calls++;const e=new Error('HTTP_401');e.kind='auth';throw e;},onFailure:async()=>({policy:{stop:true}})});
+    expect(calls).toBe(1);
+    expect(pick).toBe(1);
+    expect(result.stopped).toBe(true);
+    expect(result.exhausted).toBe(false);
+    expect(result.providerAttempts).toBe(1);
+    expect(result.decision).toEqual({status:'blocked',summary:'manager decision stopped by resource failure policy',jobs:[]});
+  });
 });
