@@ -42,11 +42,14 @@ describe('TigerIQ Web Control owner dashboard', () => {
     expect(unifiedCss).toContain('font-size:13px!important');
   });
 
-  it('uses a horizontal top navigation instead of the legacy left menu', () => {
-    expect(unifiedCss).toContain('Top navigation: replaces the legacy left sidebar');
+  it('uses one horizontal top navigation with TigerIQ AI and LIVE at the right', () => {
+    expect(unifiedCss).toContain('Single top navigation');
     expect(unifiedCss).toContain('.sidebar{position:sticky!important;top:0!important');
     expect(unifiedCss).toContain('flex-direction:row!important');
     expect(unifiedCss).toContain('.nav{display:flex!important');
+    expect(unifiedCss).toContain('content:"TigerIQ AI"');
+    expect(unifiedCss).toContain('.topbar>.title,.topbar>.system-pill,.topbar>.clock{display:none!important}');
+    expect(unifiedCss).toContain('.topbar>.tq-u-livebar{position:fixed!important');
     expect(unifiedCss).toContain('.side-bottom{display:none!important}');
     expect(mobileCss).toContain('.shell{display:block!important;grid-template-columns:none!important}');
   });
