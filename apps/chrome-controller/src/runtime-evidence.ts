@@ -9,6 +9,7 @@ export interface EvidenceWorkerState {
   lastHeartbeat?: { at: string; url?: string; windowId?: number; display?: { workArea?: WorkArea } };
   lastError?: string;
   windowState?: 'OPEN' | 'CLOSED';
+  manualCloseSuppressed?: boolean;
 }
 
 export interface RuntimeEvidenceInput {
@@ -31,6 +32,7 @@ export function buildRuntimeEvidence(input: RuntimeEvidenceInput, now = new Date
   return {
     schemaVersion: 'tigeriq.chrome-controller.runtime-evidence.v1',
     generatedAt: now.toISOString(),
+    ownerInteractionMode: input.paused ? 'READ_ONLY' : 'AUTOMATION',
     layout: {
       order: [...WORKER_IDS],
       width: input.config.layout.width,
@@ -52,6 +54,7 @@ export function buildRuntimeEvidence(input: RuntimeEvidenceInput, now = new Date
     autopilot: {
       enabled: input.config.autopilot.enabled,
       fixedTrigger: 'AUTO_CONTINUE',
+      browserAction: 'DISPATCH',
       aiOutputParsed: false,
       phase: input.autopilot.phase,
       lastDispatchedJobId: input.autopilot.lastDispatchedJobId ?? null,
@@ -83,6 +86,7 @@ export function buildRuntimeEvidence(input: RuntimeEvidenceInput, now = new Date
       interactiveSession: input.interactiveSession ?? null,
       sessionName: input.sessionName ?? null,
       hiddenChromeAllowed: false,
+      ownerReadOnlyStopsUiMutation: true,
     },
     security: {
       stopOn: ['BLOCKED_CAPTCHA','BLOCKED_RATE_LIMIT','BLOCKED_SUSPICIOUS_ACTIVITY','BLOCKED_REAUTH','BLOCKED_SECURITY_WARNING'],
@@ -99,6 +103,7 @@ export function buildRuntimeEvidence(input: RuntimeEvidenceInput, now = new Date
       url: worker.lastHeartbeat?.url ?? null,
       windowId: worker.lastHeartbeat?.windowId ?? null,
       windowState: worker.windowState ?? null,
+      manualCloseSuppressed: worker.manualCloseSuppressed ?? false,
       lastError: worker.lastError ?? null,
     })),
   };
