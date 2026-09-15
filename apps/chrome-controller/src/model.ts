@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-export const WORKER_IDS = ['NV03', 'NV05', 'NV04'] as const;
+export const WORKER_IDS = ['NV02', 'NV03', 'NV04'] as const;
 export type WorkerId = (typeof WORKER_IDS)[number];
 
 export interface WorkerConfig {
@@ -32,7 +32,7 @@ export function validateConfig(raw:unknown):ControllerConfig {
   if(!config.logDir) throw new Error('CONFIG_LOG_DIR_REQUIRED');
   if(!Array.isArray(config.workers)||config.workers.length!==3) throw new Error('CONFIG_REQUIRES_3_WORKERS');
   const ids=config.workers.map(w=>w.id);
-  if(ids.join('|')!==WORKER_IDS.join('|')) throw new Error('CONFIG_WORKER_ORDER_MUST_BE_NV03_NV05_NV04');
+  if(ids.join('|')!==WORKER_IDS.join('|')) throw new Error('CONFIG_WORKER_ORDER_MUST_BE_NV02_NV03_NV04');
   const targets=new Set<string>();
   for(const worker of config.workers){
     if(worker.enabled!==undefined && typeof worker.enabled!=='boolean') throw new Error(`CONFIG_ENABLED_MUST_BE_BOOLEAN:${worker.id}`);
