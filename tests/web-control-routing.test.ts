@@ -19,7 +19,7 @@ describe('#777 Web Control Smart Router projection',()=>{
     expect(routing).toContain('Tài nguyên AI');
     expect(routing).toContain('tqUResources');
     expect(routing).toContain('r.resource_id');
-    expect(routing).toContain('r.quota_state');
+    expect(routing).toContain('resource?.quota_state');
     expect(routing).toContain('Resource identity riêng');
   });
 
