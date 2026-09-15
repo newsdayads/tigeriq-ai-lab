@@ -22,13 +22,14 @@ describe('runtime updater squash merge gate resolution',()=>{
     expect(src).toContain("if($impact.web -and (Task-Exists $webTask)){Sync-WebRuntime;$null=Restart-ServiceTask");
   });
 
-  it('self-syncs every current and future web-control JS/CSS asset before launch',()=>{
+  it('self-syncs every current/future web-control asset plus workforce registry before launch',()=>{
     const launcher=readFileSync('scripts/tigeriq-core/run-web-control-bundle.ps1','utf8');
     expect(launcher).toContain("$sourceRoot='D:\\TigerIQ\\Workspace\\tigeriq-ai-lab\\apps\\tigeriq-core'");
     expect(launcher).toContain("$_.Name -like 'web-control-*.js'");
     expect(launcher).toContain("$_.Name -like 'web-control-*.css'");
     expect(launcher).toContain("$_.Name -eq 'web-control-server.mjs'");
     expect(launcher).toContain("$_.Name -eq 'web-control.html'");
+    expect(launcher).toContain("$_.Name -eq 'workforce-registry.mjs'");
     expect(launcher).toContain('Copy-Item -LiteralPath $asset.FullName -Destination $tmp -Force');
     expect(launcher).toContain('Move-Item -LiteralPath $tmp -Destination $target -Force');
   });
