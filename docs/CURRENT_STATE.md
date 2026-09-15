@@ -1,17 +1,28 @@
 # TigerIQ — Current State
 
-Date: 2026-09-14
-Status: CURRENT — Core autonomous manager E2E verified
+Date: 2026-09-15
+Status: CURRENT — Core autonomous manager E2E verified; Web Control Health-parity candidate live
 Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #335 > this snapshot > runtime/evidence
 
 ## Canonical runtime
-- `main` source SHA before this SOT sync: `354b8abf4ea35230005e1802c96f72bc5133a130` from PR #744.
-- Core `100.97.23.87:8795`: ONLINE.
-- Web Control `100.97.23.87:8796`: ONLINE.
+- `main` source SHA at this snapshot: `33697fdf4b36f0a83d49bd30ce24fc093e3a81fe`.
+- Core `100.97.23.87:8795`: ONLINE; remains backend/API truth and temporary API Health reference UI.
+- Web Control `100.97.23.87:8796`: ONLINE; Owner management UI.
 - Coding Lane `8797`: intentionally Disabled; legacy autonomous coding path is not active.
 - Core Runtime Updater: intentionally Disabled.
 - Desktop Commander Remote and Ollama Runtime: Running.
 - Engineering path: GitHub branch → PR → required gates → merge; no direct `main` source editing on PC01.
+
+## Web Control Owner UI — #770
+- Issue #770 - Đồng bộ icon/CSS API Health + live refresh + font hệ thống: OWNER_DIRECT / P1.
+- PR #771 - Parity API Health + live refresh + system font: OPEN on branch `nv05/issue-767-health-parity-font-refresh`; not merged at this snapshot.
+- Candidate source was loaded to PC01 Web Control for Owner visual acceptance without replacing `main`.
+- Runtime candidate SHA at final visual verification: `fe757813d8f33640071eceeee468506813b212d4`.
+- Web Control refreshes `/api/status` every 2 seconds and exposes a visible `LIVE · 2s` freshness indicator; stale data is flagged after 6 seconds.
+- API Health visual/function pattern is now represented in Web Control: 8 KPI cards, provider icon tiles, status/spark, rich NV/API cards, telemetry/P95 chart, recent jobs, compact events and Local/Cloud/Problem filters.
+- Typography: system UI stack at 14px/1.5 with antialiasing; code/log/terminal use SFMono/Consolas/Roboto Mono stack at 13px.
+- Desktop 1648x928 and mobile 430x932 visual checks passed after responsive fixes; evidence: `evidence/issue-770-web-control-health-parity.md`.
+- Owner explicitly waived independent review for this iteration; CI exact-head + runtime visual verification are the completion gates.
 
 ## AI Manager / autonomy
 - Issue #731 completed through PR #744.
@@ -33,8 +44,9 @@ Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #
 - NV11/NV13/NV15/NV19 remain usable zero-cost resources when healthy; NV20 remains WAIT_KEY.
 
 ## Governance
-- Required checks remain: CI Verify, Queue Hygiene Verify, Vercel Online Verify.
-- No external human GitHub reviewer is required; independent AI review/evidence is sufficient unless Owner changes policy.
-- #718 acceptance condition of 3 consecutive real E2E runs is satisfied; final governance/backlog closure is the next checkpoint.
+- Required protected-branch checks remain: CI Verify, Queue Hygiene Verify, Vercel Online Verify.
+- No external human GitHub reviewer is required; Owner may waive independent AI review for an explicit iteration as in #770.
+- #718 acceptance condition of 3 consecutive real E2E runs is satisfied; final governance/backlog closure remains a separate checkpoint.
 
 STATE: `CURRENT_20260914_CORE_MANAGER_3X_E2E_PASS_QUEUE_CLEAN`
+UI_STATE: `CURRENT_20260915_WEB_CONTROL_HEALTH_PARITY_LIVE_CANDIDATE`
