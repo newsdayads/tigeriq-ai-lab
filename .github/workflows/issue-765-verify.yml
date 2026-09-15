@@ -1,0 +1,25 @@
+name: Issue 765 Focused Verify
+
+on:
+  push:
+    branches:
+      - tigeriq/vy/issue-765-ui-autopilot-snapshot
+    paths:
+      - .github/workflows/issue-765-verify.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: tigeriq/vy/issue-765-ui-autopilot-snapshot
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npx vitest run tests/ui-autopilot-snapshot.test.ts
+      - run: node --check apps/tigeriq-core/ui-autopilot-snapshot.mjs
