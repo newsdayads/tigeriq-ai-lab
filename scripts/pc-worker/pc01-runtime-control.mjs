@@ -66,7 +66,7 @@ export async function collectSnapshot({ baseUrl = DEFAULT_CONTROLLER_URL, logPat
 
 export function resolveActionPath(action, workerId) {
   if (GLOBAL_ACTIONS.has(action)) return GLOBAL_ACTIONS.get(action);
-  if (!/^NV0[345]$/.test(workerId ?? '') || !WORKER_ACTIONS.has(action)) throw new Error('RUNTIME_CONTROL_ACTION_NOT_ALLOWED');
+  if (!/^NV0[234]$/.test(workerId ?? '') || !WORKER_ACTIONS.has(action)) throw new Error('RUNTIME_CONTROL_ACTION_NOT_ALLOWED');
   return `/api/workers/${workerId}/${action}`;
 }
 
@@ -92,7 +92,7 @@ async function main(argv) {
     process.stdout.write(`${JSON.stringify(result)}\n`);
     return;
   }
-  throw new Error('USAGE: node pc01-runtime-control.mjs snapshot [logTail] | action <action> [NV03|NV04|NV05]');
+  throw new Error('USAGE: node pc01-runtime-control.mjs snapshot [logTail] | action <action> [NV02|NV03|NV04]');
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {

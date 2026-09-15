@@ -1,17 +1,20 @@
 import { WORKER_HOSTS, allowedUrl, hostname, matchesWorker } from './url-policy.js';
 
 const CONTROLLER = 'http://127.0.0.1:8798';
+const LEGACY_PLUS_ID = ['NV','05'].join('');
 const WORKER_LABELS = {
-  NV02:'NV02 · ChatGPT Plus',
   NV03:'NV03 · ChatGPT Go',
+  NV02:'NV02 · ChatGPT Plus',
   NV04:'NV04 · Gemini Pro'
 };
 let ticking = false;
+const lastWindowByWorker = new Map();
 
+function normalizeWorkerId(value) { return value === LEGACY_PLUS_ID ? 'NV02' : value; }
 function markerWorkerId(value) {
   try {
     const u = new URL(value);
-    const match = u.hash.match(/(?:^|[&#])tigeriq-worker=(NV02|NV03|NV04)(?:&|$)/i);
+    const match = u.hash.match(/(?:^|[&#])tigeriq-worker=(NV03|NV04|NV02)(?:&|$)/i);
     return match ? match[1].toUpperCase() : null;
   } catch { return null; }
 }
@@ -22,9 +25,6 @@ function stripWorkerMarker(value) {
     u.hash = parts.length ? `#${parts.join('&')}` : '';
     return u.toString();
   } catch { return value; }
-}
-function normalizeWorkerId(id) {
-  return id === 'NV05' ? 'NV02' : id;
 }
 
 async function bootstrapWorkerIds() {
@@ -90,17 +90,39 @@ async function updateWorkerBadge(workerId, ctx) {
   } catch { /* content script may not be ready yet; next tick retries */ }
 }
 
-async function displayInfo() {
+async function displayInfo(windowId) {
   const displays = await chrome.system.display.getInfo();
-  const primary = displays.find((d) => d.isPrimary) || displays[0];
-  return primary ? { workArea:primary.workArea } : undefined;
+  let selected = null;
+  try {
+    const win = windowId ? await chrome.windows.get(windowId) : null;
+    if (win && Number.isFinite(win.left) && Number.isFinite(win.top) && Number.isFinite(win.width) && Number.isFinite(win.height)) {
+      const x = win.left + win.width / 2;
+      const y = win.top + win.height / 2;
+      selected = displays.find((d) => {
+        const b = d.bounds;
+        return b && x >= b.left && x < b.left + b.width && y >= b.top && y < b.top + b.height;
+      }) || null;
+    }
+  } catch { /* window may disappear between context lookup and heartbeat */ }
+  if (!selected) selected = displays.find((d) => d.isPrimary) || displays[0] || null;
+  return selected ? { workArea:selected.workArea } : undefined;
 }
 async function post(path,data) {
-  const r = await fetch(`${CONTROLLER}${path}`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(data)});
+  const r = await fetch(`${CONTROLLER}${path}`,{method:'POST',headers:{'content-type':'application/json; charset=utf-8'},body:JSON.stringify(data)});
   if(!r.ok) throw new Error(`HTTP_${r.status}`);
   return r.json();
 }
-async function heartbeat(workerId,ctx) { await post('/api/heartbeat',{workerId,state:'READY',...ctx,display:await displayInfo()}); }
+async function readUiState(ctx) {
+  try {
+    if (!ctx?.tabId) return { uiBusy:null, securityBlock:null };
+    const value=await chrome.tabs.sendMessage(ctx.tabId,{type:'TIGERIQ_UI_STATE'});
+    return { uiBusy:typeof value?.uiBusy==='boolean'?value.uiBusy:null, securityBlock:value?.securityBlock?String(value.securityBlock):null };
+  } catch { return { uiBusy:null, securityBlock:null }; }
+}
+async function heartbeat(workerId,ctx) {
+  const ui=await readUiState(ctx);
+  await post('/api/heartbeat',{workerId,state:'READY',...ctx,uiBusy:ui.uiBusy,securityBlock:ui.securityBlock,display:await displayInfo(ctx.windowId)});
+}
 
 async function waitForTabComplete(tabId,timeoutMs=60000) {
   const current=await chrome.tabs.get(tabId); if(current.status==='complete') return;
@@ -117,7 +139,11 @@ async function execute(workerId,command) {
   if(!ctx) throw new Error('WORKER_WINDOW_AMBIGUOUS_OR_MISSING');
   if(action==='FOCUS'){await chrome.windows.update(ctx.windowId,{focused:true});return{status:'FOCUSED'};}
   if(action==='LAYOUT'){await chrome.windows.update(ctx.windowId,{left:Number(payload.left),top:Number(payload.top),width:Number(payload.width),height:Number(payload.height),focused:false});return{status:'LAYOUT_APPLIED'};}
-  if(action==='CLOSE_WINDOW'){await chrome.windows.remove(ctx.windowId);return{status:'WINDOW_CLOSED'};}
+  if(action==='CLOSE_WINDOW'){
+    await post('/api/window-event',{workerId,event:'CLOSED',windowId:ctx.windowId});
+    await chrome.windows.remove(ctx.windowId);
+    return{status:'WINDOW_CLOSED'};
+  }
   if(action==='NAVIGATE'){
     if(!allowedUrl(payload.url)||!matchesWorker(workerId,payload.url)) throw new Error('BLOCKED_URL');
     await chrome.tabs.update(ctx.tabId,{url:payload.url,active:true}); await waitForTabComplete(ctx.tabId); return{status:'NAVIGATED'};
@@ -134,6 +160,7 @@ async function execute(workerId,command) {
 
 async function tickWorker(workerId) {
   const ctx=await findContext(workerId); if(!ctx) return;
+  lastWindowByWorker.set(workerId,ctx.windowId);
   await updateWorkerBadge(workerId, ctx);
   await heartbeat(workerId,ctx);
   const r=await fetch(`${CONTROLLER}/api/commands/${encodeURIComponent(workerId)}`); if(!r.ok) return;
@@ -148,8 +175,20 @@ async function tick(){
   catch { /* Controller may be offline; retry later. */ }
   finally { ticking=false; }
 }
-chrome.runtime.onInstalled.addListener(async()=>{await chrome.alarms.create('tigeriqTick',{periodInMinutes:0.5});void tick();});
-chrome.runtime.onStartup.addListener(async()=>{await chrome.alarms.create('tigeriqTick',{periodInMinutes:0.5});void tick();});
+async function ensureTickAlarm(){ await chrome.alarms.create('tigeriqTick',{periodInMinutes:0.5}); }
+
+chrome.windows.onRemoved.addListener((windowId)=>{
+  void (async()=>{
+    for(const [workerId,lastWindowId] of lastWindowByWorker){
+      if(lastWindowId!==windowId)continue;
+      lastWindowByWorker.delete(workerId);
+      try{await post('/api/window-event',{workerId,event:'CLOSED',windowId});}catch{/* controller may be restarting */}
+    }
+  })();
+});
+chrome.runtime.onInstalled.addListener(async()=>{await ensureTickAlarm();void tick();});
+chrome.runtime.onStartup.addListener(async()=>{await ensureTickAlarm();void tick();});
 chrome.alarms.onAlarm.addListener((a)=>{if(a.name==='tigeriqTick')void tick();});
-chrome.runtime.onMessage.addListener((m)=>{if(m?.type==='TIGERIQ_CONFIG_UPDATED')void tick();});
+chrome.runtime.onMessage.addListener((m)=>{if(m?.type==='TIGERIQ_CONFIG_UPDATED'||m?.type==='TIGERIQ_ROUTE_CHANGED')void tick();});
+void ensureTickAlarm();
 setInterval(()=>void tick(),7000); void tick();

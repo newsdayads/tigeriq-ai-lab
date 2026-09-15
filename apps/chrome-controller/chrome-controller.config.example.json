@@ -4,6 +4,7 @@
   "chromePath": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
   "userDataDir": "%LOCALAPPDATA%\\Google\\Chrome\\User Data",
   "logDir": "D:\\TigerIQ\\Apps\\ChromeController\\Runtime",
+  "trustedRuntimeHosts": [],
   "layout": {
     "width": 500,
     "height": 834,
@@ -22,10 +23,26 @@
     "maxRetries": 1,
     "retryBackoffMs": 15000
   },
+  "autopilot": {
+    "enabled": true,
+    "pollIntervalMs": 15000,
+    "stateUrl": "http://127.0.0.1:8794/api/ui-autopilot/snapshot",
+    "requestTimeoutMs": 5000,
+    "maxSnapshotAgeMs": 300000
+  },
+  "recovery": {
+    "heartbeatStaleMs": 90000,
+    "checkIntervalMs": 15000,
+    "maxReopenAttempts": 2,
+    "reopenBackoffMs": 15000,
+    "startupReadyUrl": "http://127.0.0.1:8795/health",
+    "startupReadyTimeoutMs": 120000,
+    "startupAttachGraceMs": 20000
+  },
   "workers": [
     {
       "id": "NV02",
-      "role": "PRIMARY_EXECUTOR",
+      "role": "PRIMARY_UI_EXECUTOR",
       "enabled": true,
       "profileDirectory": "REPLACE_PLUS_PROFILE",
       "homeUrl": "https://chatgpt.com/g/REPLACE_WITH_NV02_PROJECT"
@@ -39,9 +56,9 @@
     },
     {
       "id": "NV04",
-      "role": "DEEP_RESEARCH_CROSS_CHECK",
+      "role": "RESEARCH_REVIEW",
       "enabled": true,
-      "profileDirectory": "REPLACE_GEMINI_PROFILE_MAY_EQUAL_NV02_IF_DOMAIN_DIFFERS",
+      "profileDirectory": "REPLACE_GEMINI_PROFILE",
       "homeUrl": "https://gemini.google.com/notebook/REPLACE_WITH_NV04_WORKSPACE"
     }
   ]

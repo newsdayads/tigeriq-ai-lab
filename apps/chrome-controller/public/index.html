@@ -14,13 +14,13 @@
     button{padding:9px 13px;cursor:pointer} button:disabled{opacity:.42;cursor:not-allowed} button.primary{background:var(--blue);border-color:var(--blue)} button.warn{background:#5e4509;border-color:#9b7515} button.danger{background:#5c1717;border-color:#a52a2a}
     textarea{flex:1;min-width:420px;min-height:86px;padding:10px;resize:vertical} select{padding:9px 12px}.grid{display:grid;grid-template-columns:repeat(3,minmax(270px,1fr));gap:14px}
     .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px}.card h2{margin:0 0 4px;font-size:17px}.role{color:var(--muted);font-size:12px;margin-bottom:12px}.row{display:flex;justify-content:space-between;gap:8px;margin:7px 0}.value{font-family:ui-monospace,Consolas,monospace;text-align:right;overflow-wrap:anywhere}.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#667085;margin-right:6px}.dot.online{background:var(--green)}.dot.blocked{background:var(--red)}.dot.disabled{background:var(--amber)}
-    .actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:14px}.actions button{padding:7px 9px;font-size:12px}.notice{margin-top:16px;color:var(--muted);font-size:12px}.statusbar{font-family:ui-monospace,Consolas,monospace;color:var(--muted);max-width:600px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:14px}.actions button{padding:7px 9px;font-size:12px}.notice{margin-top:16px;color:var(--muted);font-size:12px}.statusbar{font-family:ui-monospace,Consolas,monospace;color:var(--muted);max-width:720px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     @media(max-width:900px){.grid{grid-template-columns:1fr}.dispatch textarea{min-width:100%}}
   </style>
 </head>
 <body>
 <header>
-  <div><h1>🐯 TigerIQ Chrome Controller V1</h1><div class="sub">NV02 · NV03 · NV04 — thực thi chính · kiểm tra · nghiên cứu</div></div>
+  <div><h1>🐯 TigerIQ Chrome Controller V1</h1><div class="sub">NV02 · NV03 · NV04 — trái → phải, thao tác tuần tự, hồ sơ độc lập</div></div>
   <div id="globalState" class="statusbar">Đang kết nối...</div>
 </header>
 <main>
@@ -28,28 +28,28 @@
     <button class="primary" onclick="post('/api/start-all')">▶ Mở NV đang bật tuần tự</button>
     <button class="warn" onclick="post('/api/pause')">⏸ Tạm dừng</button>
     <button onclick="post('/api/resume')">⏵ Tiếp tục</button>
-    <button class="danger" onclick="post('/api/kill')">■ KILL SWITCH</button>
+    <button class="danger" onclick="post('/api/kill')">■ DỪNG KHẨN</button>
     <button onclick="refresh()">↻ Làm mới</button>
   </section>
 
   <section class="dispatch">
     <select id="worker"><option>NV02</option><option>NV03</option><option>NV04</option></select>
-    <textarea id="workOrder" placeholder="Work Order: giao một nhiệm vụ rõ ràng; không dùng vòng lặp prompt..."></textarea>
+    <textarea id="workOrder" placeholder="Công việc: giao một nhiệm vụ rõ ràng; không dùng vòng lặp câu lệnh..."></textarea>
     <label><input id="navigate" type="checkbox" checked /> mở đúng trang trước khi gửi</label>
     <button class="primary" onclick="dispatchWork()">Giao việc</button>
   </section>
 
   <section id="cards" class="grid"></section>
-  <div class="notice">Guardrail V1: chỉ 1 UI action trên toàn Controller tại một thời điểm; worker tắt sẽ không được mở/giao việc và heartbeat không làm worker thành active; profile/session tách biệt; retry hữu hạn; gặp CAPTCHA/re-auth/rate-limit/suspicious activity/security warning thì khóa worker và dừng. Controller không đọc/scrape nội dung câu trả lời.</div>
+  <div class="notice">Bảo vệ V1: toàn bộ giao diện chỉ thực hiện 1 thao tác tại một thời điểm; nhịp thao tác và thử lại đều hữu hạn/cấu hình được; NV02 chỉ tự lấy việc khi trạng thái ngoài chat xác nhận việc trước đã kết thúc và có bằng chứng GitHub/Core; không đọc nội dung trả lời AI. CAPTCHA, yêu cầu đăng nhập/xác minh lại, giới hạn tốc độ, hoạt động bất thường hoặc cảnh báo bảo mật sẽ khóa và dừng.</div>
 </main>
 <script>
-const roles={NV02:'ChatGPT Plus — Thực thi chính',NV03:'ChatGPT Go — Kiểm tra độc lập',NV04:'Gemini Pro — Nghiên cứu sâu / kiểm tra chéo'};
+const roles={NV02:'ChatGPT Plus — Tự động chính / giao diện độc lập',NV03:'ChatGPT Go — Rà soát độc lập',NV04:'Gemini Pro — Nghiên cứu / rà soát'};
 async function api(path,options={}){const r=await fetch(path,{headers:{'content-type':'application/json'},...options});const data=await r.json().catch(()=>({}));if(!r.ok)throw new Error(data.error||`HTTP ${r.status}`);return data}
 async function post(path,body){try{await api(path,{method:'POST',body:JSON.stringify(body||{})});await refresh()}catch(e){alert(String(e.message||e))}}
-async function dispatchWork(){const id=document.getElementById('worker').value;const text=document.getElementById('workOrder').value;if(!text.trim())return alert('Chưa nhập Work Order.');await post(`/api/workers/${id}/dispatch`,{text,navigate:document.getElementById('navigate').checked})}
+async function dispatchWork(){const id=document.getElementById('worker').value;const text=document.getElementById('workOrder').value;if(!text.trim())return alert('Chưa nhập công việc.');await post(`/api/workers/${id}/dispatch`,{text,navigate:document.getElementById('navigate').checked})}
 function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-function card(w){const online=w.enabled&&w.lastHeartbeat&&Date.now()-Date.parse(w.lastHeartbeat.at)<60000;const dot=!w.enabled?'disabled':w.blocked?'blocked':online?'online':'';const op=w.enabled?'':'disabled';const toggle=w.enabled?`<button class="warn" onclick="post('/api/workers/${w.id}/disable')">Tắt NV</button>`:`<button class="primary" onclick="post('/api/workers/${w.id}/enable')">Bật NV</button>`;return `<article class="card"><h2><span class="dot ${dot}"></span>${esc(w.id)}</h2><div class="role">${esc(roles[w.id]||'')}</div><div class="row"><span>Quản trị</span><span class="value">${w.enabled?'BẬT':'TẮT'}</span></div><div class="row"><span>Trạng thái</span><span class="value">${esc(w.status)}</span></div><div class="row"><span>URL</span><span class="value">${esc(w.lastHeartbeat?.url||'—')}</span></div><div class="row"><span>Heartbeat</span><span class="value">${esc(w.lastHeartbeat?.at||'—')}</span></div><div class="row"><span>Blocker</span><span class="value">${esc(w.lastError||'—')}</span></div><div class="actions">${toggle}<button ${op} onclick="post('/api/workers/${w.id}/start')">Mở</button><button ${op} onclick="post('/api/workers/${w.id}/focus')">Focus</button><button ${op} onclick="post('/api/workers/${w.id}/layout')">Sắp xếp</button><button ${op} onclick="document.getElementById('worker').value='${w.id}';document.getElementById('workOrder').focus()">Giao việc</button><button ${op} onclick="post('/api/workers/${w.id}/unblock')">Bỏ khóa</button><button ${op} class="danger" onclick="post('/api/workers/${w.id}/close')">Đóng</button></div></article>`}
-async function refresh(){try{const s=await api('/api/state');const enabled=s.workers.filter(w=>w.enabled).length;document.getElementById('globalState').textContent=`${s.killed?'KILLED':s.paused?'PAUSED':'ACTIVE'} · StartAll=${s.startAllRunning?'RUNNING':'IDLE'} · NV bật=${enabled}/${s.workers.length}`;document.getElementById('cards').innerHTML=s.workers.map(card).join('')}catch(e){document.getElementById('globalState').textContent=`OFFLINE · ${e.message}`}}
+function card(w){const online=w.enabled&&w.lastHeartbeat&&Date.now()-Date.parse(w.lastHeartbeat.at)<60000;const dot=!w.enabled?'disabled':w.blocked?'blocked':online?'online':'';const op=w.enabled?'':'disabled';const toggle=w.enabled?`<button class="warn" onclick="post('/api/workers/${w.id}/disable')">Tắt NV</button>`:`<button class="primary" onclick="post('/api/workers/${w.id}/enable')">Bật NV</button>`;return `<article class="card"><h2><span class="dot ${dot}"></span>${esc(w.id)}</h2><div class="role">${esc(roles[w.id]||'')}</div><div class="row"><span>Quản trị</span><span class="value">${w.enabled?'BẬT':'TẮT'}</span></div><div class="row"><span>Trạng thái</span><span class="value">${esc(w.status)}</span></div><div class="row"><span>URL</span><span class="value">${esc(w.lastHeartbeat?.url||'—')}</span></div><div class="row"><span>Nhịp sống</span><span class="value">${esc(w.lastHeartbeat?.at||'—')}</span></div><div class="row"><span>Điểm chặn</span><span class="value">${esc(w.lastError||'—')}</span></div><div class="actions">${toggle}<button ${op} onclick="post('/api/workers/${w.id}/start')">Mở</button><button ${op} onclick="post('/api/workers/${w.id}/focus')">Đưa lên trước</button><button ${op} onclick="post('/api/workers/${w.id}/layout')">Sắp xếp</button><button ${op} onclick="document.getElementById('worker').value='${w.id}';document.getElementById('workOrder').focus()">Giao việc</button><button ${op} onclick="post('/api/workers/${w.id}/unblock')">Bỏ khóa</button><button ${op} class="danger" onclick="post('/api/workers/${w.id}/close')">Đóng</button></div></article>`}
+async function refresh(){try{const s=await api('/api/state');const enabled=s.workers.filter(w=>w.enabled).length;const phase=s.autopilot?.phase||'—';document.getElementById('globalState').textContent=`${s.killed?'ĐÃ DỪNG':s.paused?'TẠM DỪNG':'HOẠT ĐỘNG'} · Tự động=${phase} · Khởi động=${s.startupReady?'SẴN SÀNG':'CHỜ'} · NV bật=${enabled}/${s.workers.length}`;document.getElementById('cards').innerHTML=s.workers.map(card).join('')}catch(e){document.getElementById('globalState').textContent=`NGOẠI TUYẾN · ${e.message}`}}
 setInterval(refresh,3000);refresh();
 </script>
 </body>

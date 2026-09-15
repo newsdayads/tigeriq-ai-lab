@@ -5,23 +5,73 @@ function visible(element) {
 
 const WORKER_BADGE_ID = 'tigeriq-worker-badge';
 const WORKER_BADGE_LABELS = {
-  NV02: 'NV02 · CHATGPT PLUS',
   NV03: 'NV03 · CHATGPT GO',
+  NV02: 'NV02 · CHATGPT PLUS',
   NV04: 'NV04 · GEMINI PRO',
 };
 const WORKER_BADGE_COLORS = {
-  NV02: '#16a34a',
   NV03: '#2563eb',
+  NV02: '#16a34a',
   NV04: '#7c3aed',
 };
+let activeWorkerBadge = null;
+let badgeRepairQueued = false;
 
 function stripWorkerTitlePrefix() {
-  document.title = document.title.replace(/^\[NV0[234]\]\s*/, '');
+  const clean = document.title.replace(/^(?:\[NV0[2345]\]\s*)+/, '');
+  if (clean !== document.title) document.title = clean;
 }
 
 function removeWorkerBadge() {
+  activeWorkerBadge = null;
   document.getElementById(WORKER_BADGE_ID)?.remove();
   stripWorkerTitlePrefix();
+}
+
+function ensureWorkerBadge() {
+  const workerId = activeWorkerBadge?.workerId;
+  if (!workerId || !WORKER_BADGE_LABELS[workerId] || !document.documentElement) return;
+  let badge = document.getElementById(WORKER_BADGE_ID);
+  if (!badge) {
+    badge = document.createElement('div');
+    badge.id = WORKER_BADGE_ID;
+    Object.assign(badge.style, {
+      position: 'fixed',
+      top: '10px',
+      right: '12px',
+      zIndex: '2147483647',
+      padding: '6px 10px',
+      borderRadius: '8px',
+      color: '#fff',
+      font: '800 12px/1.2 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+      letterSpacing: '0.03em',
+      border: '1px solid rgba(255,255,255,0.85)',
+      boxShadow: '0 2px 8px rgba(0,0,0,0.28)',
+      pointerEvents: 'none',
+      userSelect: 'none',
+      opacity: '0.94',
+      display: 'block',
+    });
+    document.documentElement.appendChild(badge);
+  }
+  const wantedBackground = WORKER_BADGE_COLORS[workerId];
+  const wantedText = `● ${WORKER_BADGE_LABELS[workerId]}`;
+  const wantedBadgeTitle = activeWorkerBadge?.label || WORKER_BADGE_LABELS[workerId];
+  if (badge.style.background !== wantedBackground) badge.style.background = wantedBackground;
+  if (badge.textContent !== wantedText) badge.textContent = wantedText;
+  if (badge.title !== wantedBadgeTitle) badge.title = wantedBadgeTitle;
+  const cleanTitle = document.title.replace(/^(?:\[NV0[2345]\]\s*)+/, '');
+  const wantedTitle = `[${workerId}] ${cleanTitle}`;
+  if (document.title !== wantedTitle) document.title = wantedTitle;
+}
+
+function queueBadgeRepair() {
+  if (badgeRepairQueued || !activeWorkerBadge) return;
+  badgeRepairQueued = true;
+  queueMicrotask(() => {
+    badgeRepairQueued = false;
+    ensureWorkerBadge();
+  });
 }
 
 function showWorkerBadge(workerId, label) {
@@ -29,34 +79,27 @@ function showWorkerBadge(workerId, label) {
     removeWorkerBadge();
     return;
   }
-  let badge = document.getElementById(WORKER_BADGE_ID);
-  if (!badge) {
-    badge = document.createElement('div');
-    badge.id = WORKER_BADGE_ID;
-    Object.assign(badge.style, {
-      position: 'fixed',
-      top: '56px',
-      right: '12px',
-      zIndex: '2147483647',
-      padding: '9px 14px',
-      borderRadius: '10px',
-      color: '#fff',
-      font: '800 14px/1.2 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-      letterSpacing: '0.03em',
-      border: '2px solid rgba(255,255,255,0.92)',
-      boxShadow: '0 4px 14px rgba(0,0,0,0.38)',
-      pointerEvents: 'none',
-      userSelect: 'none',
-      opacity: '0.97',
-    });
-    document.documentElement.appendChild(badge);
-  }
-  badge.style.background = WORKER_BADGE_COLORS[workerId];
-  badge.textContent = `● ${WORKER_BADGE_LABELS[workerId]}`;
-  badge.title = label || WORKER_BADGE_LABELS[workerId];
-  stripWorkerTitlePrefix();
-  document.title = `[${workerId}] ${document.title}`;
+  activeWorkerBadge = { workerId, label };
+  ensureWorkerBadge();
 }
+
+const badgeObserver = new MutationObserver(() => queueBadgeRepair());
+badgeObserver.observe(document.documentElement, { childList: true, subtree: true });
+
+function notifyRouteChanged() {
+  queueBadgeRepair();
+  try { chrome.runtime.sendMessage({ type: 'TIGERIQ_ROUTE_CHANGED', url: location.href }, () => void chrome.runtime.lastError); } catch { /* extension navigation teardown */ }
+}
+for (const method of ['pushState', 'replaceState']) {
+  const original = history[method].bind(history);
+  history[method] = (...args) => {
+    const result = original(...args);
+    notifyRouteChanged();
+    return result;
+  };
+}
+addEventListener('popstate', notifyRouteChanged);
+addEventListener('hashchange', notifyRouteChanged);
 
 function detectSecurityBlock() {
   if (document.querySelector('iframe[src*="captcha" i], iframe[src*="challenge" i], [class*="captcha" i], [id*="captcha" i]')) {
@@ -75,6 +118,13 @@ function detectSecurityBlock() {
   ];
   for (const [needle, status] of checks) if (text.includes(needle)) return status;
   return null;
+}
+
+function detectUiBusy() {
+  const selectors = location.hostname === 'chatgpt.com'
+    ? ['button[data-testid="stop-button"]','button[aria-label*="Stop" i]','button[aria-label*="Dừng" i]']
+    : ['button[aria-label*="Stop" i]','button[aria-label*="Dừng" i]','button[data-test-id*="stop" i]'];
+  return selectors.some((selector) => Array.from(document.querySelectorAll(selector)).some((el) => visible(el)));
 }
 
 function findComposer() {
@@ -148,6 +198,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message.workerId) showWorkerBadge(String(message.workerId), String(message.label || ''));
     else removeWorkerBadge();
     sendResponse({ ok: true });
+    return;
+  }
+  if (message?.type === 'TIGERIQ_UI_STATE') {
+    sendResponse({ ok: true, uiBusy: detectUiBusy(), securityBlock: detectSecurityBlock() });
     return;
   }
   if (message?.type !== 'TIGERIQ_DISPATCH') return;
