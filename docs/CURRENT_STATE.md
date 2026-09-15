@@ -1,16 +1,16 @@
 # TigerIQ — Current State
 
-Date: 2026-09-14
-Status: CURRENT — Core autonomous manager E2E verified
+Date: 2026-09-15
+Status: CURRENT — Core autonomous manager E2E verified; workforce identity renumber source migration in review
 Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #335 > this snapshot > runtime/evidence
 
 ## Canonical runtime
-- `main` source SHA before this SOT sync: `354b8abf4ea35230005e1802c96f72bc5133a130` from PR #744.
-- Core `100.97.23.87:8795`: ONLINE.
-- Web Control `100.97.23.87:8796`: ONLINE.
+- `main` source SHA at #775 branch cut: `33697fdf4b36f0a83d49bd30ce24fc093e3a81fe`.
+- Core `100.97.23.87:8795`: ONLINE at the latest verified runtime checkpoint.
+- Web Control `100.97.23.87:8796`: ONLINE at the latest verified runtime checkpoint.
 - Coding Lane `8797`: intentionally Disabled; legacy autonomous coding path is not active.
 - Core Runtime Updater: intentionally Disabled.
-- Desktop Commander Remote and Ollama Runtime: Running.
+- Desktop Commander Remote and Ollama Runtime: Running at the latest verified runtime checkpoint.
 - Engineering path: GitHub branch → PR → required gates → merge; no direct `main` source editing on PC01.
 
 ## AI Manager / autonomy
@@ -27,7 +27,8 @@ Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #
 - No stale active queue item remained; history/evidence preserved.
 
 ## Resource truth
-- NV02 Ollama: ONLINE/IDLE after live probe.
+- `NV10 = Ollama` is the canonical local/Core resource identity per Registry #335 v49. Core source migration is tracked by #775; live runtime must be re-verified after an approved merge/deployment before claiming the deployed runtime has switched identity.
+- `NV02 = ChatGPT Plus` is the UI primary executor per Registry #335 v49; it is not the Ollama local/API Core resource.
 - NV12 Gemini and NV14 Mistral: provider-side RATE_LIMITED with cooldown/failover; they do not block the pipeline.
 - NV16 Hugging Face: provider/configuration error path isolated with cooldown/quarantine.
 - NV11/NV13/NV15/NV19 remain usable zero-cost resources when healthy; NV20 remains WAIT_KEY.
@@ -37,4 +38,4 @@ Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #
 - No external human GitHub reviewer is required; independent AI review/evidence is sufficient unless Owner changes policy.
 - #718 acceptance condition of 3 consecutive real E2E runs is satisfied; final governance/backlog closure is the next checkpoint.
 
-STATE: `CURRENT_20260914_CORE_MANAGER_3X_E2E_PASS_QUEUE_CLEAN`
+STATE: `CURRENT_20260915_CORE_MANAGER_3X_E2E_PASS_QUEUE_CLEAN_NV10_OLLAMA_SOURCE_MIGRATION_REVIEW`
