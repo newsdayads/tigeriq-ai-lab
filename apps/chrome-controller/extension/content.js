@@ -18,7 +18,7 @@ let activeWorkerBadge = null;
 let badgeRepairQueued = false;
 
 function stripWorkerTitlePrefix() {
-  const clean = document.title.replace(/^\[NV0[345]\]\s*/, '');
+  const clean = document.title.replace(/^(?:\[NV0[2345]\]\s*)+/, '');
   if (clean !== document.title) document.title = clean;
 }
 
@@ -50,6 +50,7 @@ function ensureWorkerBadge() {
       pointerEvents: 'none',
       userSelect: 'none',
       opacity: '0.97',
+      display: 'none',
     });
     document.documentElement.appendChild(badge);
   }
@@ -59,7 +60,7 @@ function ensureWorkerBadge() {
   if (badge.style.background !== wantedBackground) badge.style.background = wantedBackground;
   if (badge.textContent !== wantedText) badge.textContent = wantedText;
   if (badge.title !== wantedBadgeTitle) badge.title = wantedBadgeTitle;
-  const cleanTitle = document.title.replace(/^\[NV0[345]\]\s*/, '');
+  const cleanTitle = document.title.replace(/^(?:\[NV0[2345]\]\s*)+/, '');
   const wantedTitle = `[${workerId}] ${cleanTitle}`;
   if (document.title !== wantedTitle) document.title = wantedTitle;
 }
