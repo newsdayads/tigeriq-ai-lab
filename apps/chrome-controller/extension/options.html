@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>TigerIQ Chrome Controller</title>
+  <style>
+    body{font:15px system-ui,sans-serif;max-width:560px;margin:40px auto;padding:0 20px;color:#111827}
+    h1{font-size:22px}.row{display:flex;gap:10px;align-items:center;margin:12px 0;padding:10px;border:1px solid #e2e8f0;border-radius:10px}
+    button{font:inherit;padding:10px 14px;border-radius:8px;border:0;background:#0f62fe;color:white;cursor:pointer}.ok{color:#067647;margin-top:14px}.note{color:#475569}
+  </style>
+</head>
+<body>
+  <h1>TigerIQ Chrome Controller</h1>
+  <p class="note">Một Chrome Profile có thể phụ trách nhiều NV nếu các NV dùng domain khác nhau. Không cho hai NV cùng domain dùng chung một Profile.</p>
+  <div class="row"><input id="NV02" type="checkbox"><label for="NV02"><b>NV02</b> — ChatGPT Plus</label></div>
+  <div class="row"><input id="NV03" type="checkbox"><label for="NV03"><b>NV03</b> — ChatGPT Go</label></div>
+  <div class="row"><input id="NV04" type="checkbox"><label for="NV04"><b>NV04</b> — Gemini Pro</label></div>
+  <button id="save">Lưu cấu hình Profile</button>
+  <div id="status" class="ok"></div>
+  <script src="options.js"></script>
+</body>
+</html>
