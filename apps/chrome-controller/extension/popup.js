@@ -1,5 +1,5 @@
 const CONTROLLER = 'http://127.0.0.1:8798';
-const WORKER_IDS = ['NV03', 'NV05', 'NV04'];
+const WORKER_IDS = ['NV02', 'NV03', 'NV04'];
 
 const controllerStatus = document.getElementById('controllerStatus');
 const controllerDetail = document.getElementById('controllerDetail');
