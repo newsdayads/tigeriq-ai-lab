@@ -1,0 +1,56 @@
+name: One-shot NV02 renumber migration
+
+on:
+  push:
+    branches:
+      - tigeriq/nv05/issue-763-autopilot-recovery-layout
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: tigeriq/nv05/issue-763-autopilot-recovery-layout
+          fetch-depth: 0
+      - name: Replace current runtime identity
+        shell: python
+        run: |
+          from pathlib import Path
+          roots = [Path('apps/chrome-controller'), Path('tests/chrome-controller.test.ts')]
+          files = []
+          for root in roots:
+              if root.is_file():
+                  files.append(root)
+              elif root.exists():
+                  files.extend(p for p in root.rglob('*') if p.is_file())
+          changed = []
+          for p in files:
+              try:
+                  text = p.read_text(encoding='utf-8')
+              except UnicodeDecodeError:
+                  continue
+              new = text.replace('NV05', 'NV02')
+              if new != text:
+                  p.write_text(new, encoding='utf-8')
+                  changed.append(str(p))
+          print('CHANGED_FILES=' + str(len(changed)))
+          for p in changed:
+              print(p)
+      - name: Remove one-shot workflow and commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/one-shot-renumber-nv02.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add apps/chrome-controller tests/chrome-controller.test.ts .github/workflows/one-shot-renumber-nv02.yml
+          if git diff --cached --quiet; then
+            echo 'NO_CHANGES'
+            exit 0
+          fi
+          git commit -m 'fix(chrome): complete NV02 runtime renumber'
+          git push origin HEAD:tigeriq/nv05/issue-763-autopilot-recovery-layout
