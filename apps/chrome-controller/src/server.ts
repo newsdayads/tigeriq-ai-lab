@@ -37,6 +37,7 @@ type WorkerState = {
   windowState?:WindowState;
   windowEventAt?:string;
   lastWindowId?:number;
+  manualCloseSuppressed?:boolean;
 };
 type Waiter = {
   workerId:WorkerId;
@@ -71,6 +72,7 @@ const logPath=resolve(config.logDir,'chrome-controller.jsonl');
 const autopilotStatePath=resolve(config.logDir,'autopilot-state.json');
 const autopilotSnapshotPath=resolve(config.logDir,'autopilot-snapshot.json');
 const runtimeEvidencePath=resolve(config.logDir,'runtime-evidence.json');
+const interactionStatePath=resolve(config.logDir,'owner-interaction-state.json');
 const extensionPath=resolve(process.cwd(),'apps/chrome-controller/extension');
 
 function log(event:string,data:Record<string,unknown>={}){
@@ -90,11 +92,18 @@ function loadJson<T>(path:string):T|undefined{
 }
 let autopilotState:DurableAutopilotState=loadJson<DurableAutopilotState>(autopilotStatePath)??freshAutopilotState();
 let latestSnapshot:ExternalAutopilotSnapshot|undefined;
+paused=loadJson<{readOnly?:boolean}>(interactionStatePath)?.readOnly===true;
 try{
   const saved=loadJson<ExternalAutopilotSnapshot>(autopilotSnapshotPath);
   if(saved)latestSnapshot=validateExternalSnapshot(saved);
 }catch(error){log('AUTOPILOT_SNAPSHOT_RESTORE_REJECTED',{error:String(error)});}
 function persistAutopilotState(){atomicJson(autopilotStatePath,autopilotState);}
+function persistInteractionState(){atomicJson(interactionStatePath,{readOnly:paused,updatedAt:new Date().toISOString()});}
+function setOwnerInteractionReadOnly(readOnly:boolean){
+  paused=readOnly;
+  persistInteractionState();
+  log(readOnly?'OWNER_INTERACTION_READ_ONLY':'OWNER_INTERACTION_AUTOMATION',{readOnly});
+}
 function setAutopilotPhase(phase:DurableAutopilotState['phase']){
   if(autopilotState.phase===phase)return;
   autopilotState={...autopilotState,phase,updatedAt:new Date().toISOString()};
@@ -142,9 +151,11 @@ function setWorkerEnabled(id:WorkerId,enabled:boolean){
     }
     state.status='DISABLED';
     state.lastError=undefined;
+    state.manualCloseSuppressed=true;
     log('WORKER_DISABLED',{workerId:id});
     return;
   }
+  state.manualCloseSuppressed=false;
   state.status=state.blocked?'BLOCKED':heartbeatFresh(state)?'ONLINE':'IDLE';
   if(!state.blocked)state.lastError=undefined;
   log('WORKER_ENABLED',{workerId:id});
@@ -190,6 +201,7 @@ function launchChrome(workerId:WorkerId){
   args.push(
     `--load-extension=${extensionPath}`,
     `--profile-directory=${worker.profileDirectory}`,
+    '--disable-session-crashed-bubble',
     '--new-window',
     `--window-position=${placement.left},${placement.top}`,
     `--window-size=${placement.width},${placement.height}`,
@@ -201,7 +213,8 @@ function launchChrome(workerId:WorkerId){
   state.status='STARTING';
   state.windowState='OPEN';
   state.windowEventAt=new Date().toISOString();
-  log('CHROME_LAUNCH_VISIBLE',{workerId,profileDirectory:worker.profileDirectory,placement,extensionLoaded:true,sessionName:process.env.SESSIONNAME??null});
+  state.manualCloseSuppressed=false;
+  log('CHROME_LAUNCH_VISIBLE',{workerId,profileDirectory:worker.profileDirectory,placement,extensionLoaded:true,disableSessionCrashedBubble:true,sessionName:process.env.SESSIONNAME??null});
 }
 async function waitForHeartbeat(workerId:WorkerId){
   const deadline=Date.now()+config.pacing.workerReadyTimeoutMs;
@@ -221,7 +234,7 @@ function sendCommand(workerId:WorkerId,action:string,payload?:Record<string,unkn
   const state=states.get(workerId)!;
   assertWorkerEnabled(workerId);
   if(killed)return Promise.reject(new Error('CONTROLLER_KILLED'));
-  if(paused)return Promise.reject(new Error('CONTROLLER_PAUSED'));
+  if(paused)return Promise.reject(new Error('OWNER_INTERACTION_READ_ONLY'));
   if(state.blocked&&!['FOCUS','LAYOUT'].includes(action))return Promise.reject(new Error(`WORKER_BLOCKED:${workerId}`));
   const command:Command={id:randomUUID(),workerId,action,payload,createdAt:new Date().toISOString()};
   commandQueues.get(workerId)!.push(command);
@@ -263,9 +276,11 @@ async function layoutWorker(workerId:WorkerId){
 function canLaunchWorker(state:WorkerState){return !state.lastHeartbeat||state.windowState==='CLOSED';}
 async function startWorker(workerId:WorkerId){
   assertWorkerEnabled(workerId);
+  if(paused)throw new Error('OWNER_INTERACTION_READ_ONLY');
+  const state=states.get(workerId)!;
+  state.manualCloseSuppressed=false;
   await launchQueue.enqueue(async()=>{
     assertWorkerEnabled(workerId);
-    const state=states.get(workerId)!;
     if(!recentHeartbeat(workerId)){
       if(!canLaunchWorker(state))throw new Error(`RECOVERY_AMBIGUOUS_WINDOW:${workerId}`);
       launchChrome(workerId);
@@ -277,6 +292,7 @@ async function startWorker(workerId:WorkerId){
     state.status='READY';
     state.lastError=undefined;
     state.windowState='OPEN';
+    state.manualCloseSuppressed=false;
     recoveryAttempts.set(workerId,0);
     log('WORKER_READY',{workerId});
     persistEvidence();
@@ -312,9 +328,19 @@ async function dispatch(workerId:WorkerId,text:string,navigate:boolean,source:'M
 }
 
 function snapshotRequiredWorkers():WorkerId[]{return latestSnapshot?.requiredWorkers?.filter((id)=>states.get(id)?.enabled)??[];}
+function workerHasActiveJob(id:WorkerId){
+  if(id==='NV02'){
+    if(autopilotState.pendingJobId||autopilotState.uncertainJobId)return true;
+    const previous=latestSnapshot?.previousJob;
+    return Boolean(previous&&previous.workerId==='NV02'&&previous.jobId===autopilotState.lastDispatchedJobId&&['QUEUED','READY','RUNNING'].includes(previous.status));
+  }
+  return snapshotRequiredWorkers().includes(id);
+}
 function workerNeeded(id:WorkerId){
   const state=states.get(id);
-  return id==='NV02'||snapshotRequiredWorkers().includes(id)||state?.windowState==='CLOSED';
+  if(!state?.enabled||state.manualCloseSuppressed)return false;
+  if(id==='NV02')return true;
+  return snapshotRequiredWorkers().includes(id)||workerHasActiveJob(id);
 }
 async function fetchExternalSnapshot(){
   if(!config.autopilot.stateUrl)return;
@@ -352,8 +378,8 @@ async function autopilotTick(){
     if(decision.kind==='BUSY'||decision.kind==='DUPLICATE_NOOP'){lastAutopilotStopReason='';setAutopilotPhase('BUSY');persistEvidence();return;}
     if(decision.kind==='WAIT_EVIDENCE'){lastAutopilotStopReason='';setAutopilotPhase('WAIT_EVIDENCE');persistEvidence();return;}
     if(decision.kind==='STOP'){stopAutopilot(decision.reason);persistEvidence();return;}
-    const nv05=states.get('NV02')!;
-    if(!nv05.enabled||nv05.blocked||!startupReady){stopAutopilot(nv05.blocked?'NV02_BLOCKED':'NV02_NOT_READY');persistEvidence();return;}
+    const primary=states.get('NV02')!;
+    if(!primary.enabled||primary.blocked||!startupReady){stopAutopilot(primary.blocked?'NV02_BLOCKED':'NV02_NOT_READY');persistEvidence();return;}
     if(!recentHeartbeat('NV02')){setAutopilotPhase('RECOVERING');persistEvidence();return;}
     autopilotState={
       ...autopilotState,
@@ -394,16 +420,20 @@ async function autopilotTick(){
 
 async function recoverWorker(workerId:WorkerId){
   const state=states.get(workerId)!;
-  if(!state.enabled||state.blocked||paused||killed||!startupReady||recoveryInFlight.has(workerId)||!workerNeeded(workerId))return;
+  if(!state.enabled||state.blocked||state.manualCloseSuppressed||paused||killed||!startupReady||recoveryInFlight.has(workerId)||!workerNeeded(workerId))return;
   if(recentHeartbeat(workerId))return;
   if(state.lastHeartbeat&&state.windowState!=='CLOSED'){
-    if(state.status!=='RECOVERY_AMBIGUOUS_WINDOW'){
-      state.status='RECOVERY_AMBIGUOUS_WINDOW';
-      state.lastError=`RECOVERY_AMBIGUOUS_WINDOW:${workerId}`;
-      log('RECOVERY_AMBIGUOUS_WINDOW_FAIL_CLOSED',{workerId,lastWindowId:state.lastWindowId??null});
-      persistEvidence();
+    if(!workerHasActiveJob(workerId)){
+      if(state.status!=='RECOVERY_AMBIGUOUS_WINDOW'){
+        state.status='RECOVERY_AMBIGUOUS_WINDOW';
+        state.lastError=`RECOVERY_AMBIGUOUS_WINDOW:${workerId}`;
+        log('RECOVERY_AMBIGUOUS_WINDOW_FAIL_CLOSED',{workerId,lastWindowId:state.lastWindowId??null});
+        persistEvidence();
+      }
+      return;
     }
-    return;
+    state.windowState='CLOSED';
+    log('RECOVERY_ACTIVE_STALE',{workerId,lastWindowId:state.lastWindowId??null});
   }
   const attempts=recoveryAttempts.get(workerId)??0;
   if(attempts>=config.recovery.maxReopenAttempts){
@@ -466,9 +496,14 @@ async function startupRecovery(){
     return;
   }
   log('STARTUP_RUNTIME_READY',{url:config.recovery.startupReadyUrl??null,interactiveSession:isInteractiveDesktopSession(),sessionName:process.env.SESSIONNAME??null});
+  if(paused){
+    log('STARTUP_OWNER_INTERACTION_READ_ONLY');
+    persistEvidence();
+    return;
+  }
   const needed=new Set<WorkerId>(['NV02',...snapshotRequiredWorkers()]);
   for(const id of WORKER_IDS){
-    if(!needed.has(id)||!states.get(id)?.enabled||states.get(id)?.blocked)continue;
+    if(!needed.has(id)||!states.get(id)?.enabled||states.get(id)?.blocked||states.get(id)?.manualCloseSuppressed)continue;
     try{
       const attached=await waitForStartupAttach(id);
       if(attached){await layoutWorker(id);states.get(id)!.status='READY';log('STARTUP_WORKER_REATTACHED',{workerId:id});}
@@ -484,6 +519,7 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
   if(url.pathname==='/api/state'&&req.method==='GET'){
     json(res,200,{
       paused,killed,startAllRunning,startupReady,
+      ownerInteractionMode:paused?'READ_ONLY':'AUTOMATION',
       interactiveSession:isInteractiveDesktopSession(),
       sessionName:process.env.SESSIONNAME??null,
       autopilot:autopilotState,
@@ -518,9 +554,10 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
     state.windowEventAt=hb.at;
     state.lastWindowId=hb.windowId;
     state.lastError=undefined;
+    state.manualCloseSuppressed=false;
     recoveryAttempts.set(workerId,0);
     if(!state.enabled){state.status='DISABLED';json(res,200,{ok:true,enabled:false});return true;}
-    if(['IDLE','STARTING','RECOVERING','RECOVERY_ERROR','RECOVERY_AMBIGUOUS_WINDOW','RECOVERY_EXHAUSTED'].includes(state.status))state.status='ONLINE';
+    if(['IDLE','STARTING','RECOVERING','RECOVERY_ERROR','RECOVERY_AMBIGUOUS_WINDOW','RECOVERY_EXHAUSTED','WINDOW_CLOSED_IDLE','WINDOW_CLOSED_ACTIVE'].includes(state.status))state.status='ONLINE';
     json(res,200,{ok:true,enabled:true});
     return true;
   }
@@ -532,15 +569,17 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
     if(data.event!=='CLOSED'){json(res,400,{ok:false,error:'UNSUPPORTED_WINDOW_EVENT'});return true;}
     const windowId=Number(data.windowId);
     if(state.lastWindowId&&Number.isFinite(windowId)&&state.lastWindowId!==windowId){json(res,202,{ok:true,ignored:'STALE_WINDOW_EVENT'});return true;}
+    const recoveryEligible=!paused&&!state.manualCloseSuppressed&&workerHasActiveJob(workerId);
     state.windowState='CLOSED';
     state.windowEventAt=new Date().toISOString();
-    state.status='WINDOW_CLOSED';
+    state.manualCloseSuppressed=!recoveryEligible;
+    state.status=recoveryEligible?'WINDOW_CLOSED_ACTIVE':'WINDOW_CLOSED_IDLE';
     state.lastError=undefined;
     recoveryAttempts.set(workerId,0);
-    log('WORKER_WINDOW_CLOSED',{workerId,windowId:Number.isFinite(windowId)?windowId:null});
+    log('WORKER_WINDOW_CLOSED',{workerId,windowId:Number.isFinite(windowId)?windowId:null,recoveryEligible,ownerInteractionMode:paused?'READ_ONLY':'AUTOMATION'});
     persistEvidence();
-    void recoveryTick();
-    json(res,202,{ok:true});
+    if(recoveryEligible)void recoveryTick();
+    json(res,202,{ok:true,recoveryEligible});
     return true;
   }
   if(url.pathname.startsWith('/api/commands/')&&req.method==='GET'){
@@ -575,6 +614,7 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
     return true;
   }
   if(url.pathname==='/api/start-all'&&req.method==='POST'){
+    if(paused){json(res,409,{ok:false,error:'OWNER_INTERACTION_READ_ONLY'});return true;}
     if(startAllRunning){json(res,409,{ok:false,error:'START_ALL_ALREADY_RUNNING'});return true;}
     startAllRunning=true;
     void(async()=>{
@@ -589,10 +629,10 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
     json(res,202,{ok:true});
     return true;
   }
-  if(url.pathname==='/api/pause'&&req.method==='POST'){paused=true;log('PAUSE');persistEvidence();json(res,200,{ok:true});return true;}
-  if(url.pathname==='/api/resume'&&req.method==='POST'){paused=false;killed=false;log('RESUME');persistEvidence();void autopilotTick();json(res,200,{ok:true});return true;}
+  if(url.pathname==='/api/pause'&&req.method==='POST'){setOwnerInteractionReadOnly(true);persistEvidence();json(res,200,{ok:true,ownerInteractionMode:'READ_ONLY'});return true;}
+  if(url.pathname==='/api/resume'&&req.method==='POST'){setOwnerInteractionReadOnly(false);killed=false;persistEvidence();void recoveryTick();void autopilotTick();json(res,200,{ok:true,ownerInteractionMode:'AUTOMATION'});return true;}
   if(url.pathname==='/api/kill'&&req.method==='POST'){
-    killed=true;paused=true;
+    killed=true;setOwnerInteractionReadOnly(true);
     for(const queue of commandQueues.values())queue.splice(0);
     log('KILL_SWITCH');persistEvidence();json(res,200,{ok:true});return true;
   }
@@ -608,8 +648,12 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
         if(action==='start')await startWorker(workerId);
         else if(action==='focus')await uiQueue.enqueue(()=>sendCommand(workerId,'FOCUS'));
         else if(action==='layout')await layoutWorker(workerId);
-        else if(action==='close')await uiQueue.enqueue(()=>sendCommand(workerId,'CLOSE_WINDOW'));
-        else if(action==='unblock'){
+        else if(action==='close'){
+          const state=states.get(workerId)!;
+          state.manualCloseSuppressed=true;
+          state.status='MANUAL_CLOSE_REQUESTED';
+          await uiQueue.enqueue(()=>sendCommand(workerId,'CLOSE_WINDOW'));
+        }else if(action==='unblock'){
           const state=states.get(workerId)!;
           state.blocked=false;
           state.status=recentHeartbeat(workerId)?'READY':'IDLE';
@@ -652,6 +696,7 @@ server.listen(config.port,config.host,()=>{
     logPath,
     workerOrder:WORKER_IDS,
     fixedTrigger:AUTO_CONTINUE,
+    ownerInteractionMode:paused?'READ_ONLY':'AUTOMATION',
     interactiveSession:isInteractiveDesktopSession(),
     sessionName:process.env.SESSIONNAME??null,
   });
