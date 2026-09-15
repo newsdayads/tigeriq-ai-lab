@@ -5,16 +5,22 @@ import { resolve } from 'node:path';
 const web = readFileSync(resolve('apps/tigeriq-core/web-control.html'), 'utf8');
 const server = readFileSync(resolve('apps/tigeriq-core/web-control-server.mjs'), 'utf8');
 const truth = readFileSync(resolve('apps/tigeriq-core/web-control-truth.js'), 'utf8');
+const unified = readFileSync(resolve('apps/tigeriq-core/web-control-unified.js'), 'utf8');
+const unifiedCss = readFileSync(resolve('apps/tigeriq-core/web-control-unified.css'), 'utf8');
 const launcher = readFileSync(resolve('scripts/tigeriq-core/run-web-control.ps1'), 'utf8');
 const apiHealth = readFileSync(resolve('apps/tigeriq-core/dashboard.html'), 'utf8');
 const core = readFileSync(resolve('apps/tigeriq-core/core.mjs'), 'utf8');
 
-describe('TigerIQ Web Control isolation', () => {
-  it('keeps API Health as a separate existing product', () => {
+describe('TigerIQ Web Control owner dashboard', () => {
+  it('keeps API Health only as a temporary prototype source while Web Control is the owner UI', () => {
     expect(apiHealth).toContain('<title>TigerIQ API Health</title>');
-    expect(core).toContain("url.pathname==='/'");
+    expect(core).toContain("url.pathname==='/ '").not;
+    expect(core).toContain("url.pathname==='/''".replace("/''", "/'"));
     expect(core).toContain('return res.end(dashboard())');
-    expect(core).not.toContain('web-control-server.mjs');
+    expect(server).toContain('web-control-unified.js');
+    expect(server).toContain('web-control-unified.css');
+    expect(unified).toContain('temporary prototype');
+    expect(web + unified).not.toMatch(/<iframe\b/i);
   });
 
   it('contains the approved Web Control information architecture', () => {
@@ -24,6 +30,17 @@ describe('TigerIQ Web Control isolation', () => {
       'Giám sát hệ thống', 'Cài đặt', 'Sơ đồ nhân sự AI', 'Job Pipeline',
       'Objective / Công việc chính', 'Bảng nhân sự AI', 'Cảnh báo & Sự kiện gần đây'
     ]) expect(web).toContain(label);
+    expect(unified).toContain('Công việc gần nhất');
+    expect(unified).toContain('Hiệu suất API');
+    expect(unified).toContain('telemetry');
+  });
+
+  it('uses the proven Segoe UI typography with readable operational sizing', () => {
+    expect(unifiedCss).toContain('--tq-font:"Segoe UI",Arial,sans-serif');
+    expect(unifiedCss).toContain('font-size:14px!important');
+    expect(unifiedCss).toContain('.metric .k{font-size:12px!important}');
+    expect(unifiedCss).toContain('.metric .v{font-size:24px!important');
+    expect(unifiedCss).not.toMatch(/\.worker-id\{[^}]*font-size:(?:9|10)px/i);
   });
 
   it('uses runtime truth and exposes Coding Lane stages without fake progress', () => {
@@ -35,6 +52,9 @@ describe('TigerIQ Web Control isolation', () => {
     expect(truth).toContain("['CI'");
     expect(truth).toContain('reviewer_employee_id');
     expect(truth).toContain('Không bịa %');
+    expect(unified).toContain('calls_success_24h');
+    expect(unified).toContain('last_latency_ms');
+    expect(unified).toContain('last_error');
   });
 
   it('has responsive breakpoints for desktop, tablet and phone', () => {
@@ -42,15 +62,18 @@ describe('TigerIQ Web Control isolation', () => {
     expect(web).toContain('@media(max-width:1150px)');
     expect(web).toContain('@media(max-width:760px)');
     expect(web).toContain('@media(max-width:480px)');
-    expect(truth).toContain('@media(max-width:1024px)');
-    expect(truth).toContain('@media(max-width:624px)');
-    expect(truth).toContain('@media(max-width:430px)');
+    expect(unifiedCss).toContain('@media(max-width:1500px)');
+    expect(unifiedCss).toContain('@media(max-width:1150px)');
+    expect(unifiedCss).toContain('@media(max-width:760px)');
+    expect(unifiedCss).toContain('@media(max-width:480px)');
   });
 
-  it('runs as a separate read-only service with clean browser resources', () => {
+  it('runs as a single read-only Web Control service with clean browser resources', () => {
     expect(server).toContain("TIGERIQ_WEB_CONTROL_PORT || 8796");
     expect(server).toContain("url.pathname === '/api/status'");
     expect(server).toContain("url.pathname === '/health'");
+    expect(server).toContain("url.pathname === '/web-control-unified.js'");
+    expect(server).toContain("url.pathname === '/web-control-unified.css'");
     expect(server).toContain("url.pathname === '/favicon.ico'");
     expect(server).toContain('res.writeHead(204');
     expect(server).not.toMatch(/req\.method\s*===\s*['\"]POST['\"]/);
