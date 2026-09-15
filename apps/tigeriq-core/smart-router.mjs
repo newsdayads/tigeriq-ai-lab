@@ -5,10 +5,13 @@ export const ROUTING_PROFILE_LABELS = Object.freeze({
 const TERMINAL_HEALTH = new Set(['OFFLINE','DISABLED']);
 const FREE_TIERS = new Set(['FREE','LOCAL','ZERO']);
 
-export function createResourceId(provider, account='default') {
-  const p=String(provider||'unknown').trim().toLowerCase().replace(/[^a-z0-9._-]+/g,'-');
-  const a=String(account||'default').trim().toLowerCase().replace(/[^a-z0-9._-]+/g,'-');
-  return `res:${p}:${a}`;
+function resourcePart(value, fallback) {
+  return String(value||fallback).trim().toLowerCase().replace(/[^a-z0-9._-]+/g,'-').replace(/^-+|-+$/g,'')||fallback;
+}
+export function createResourceId(provider, modelOrAccount='unknown', account, runtime='core') {
+  const p=resourcePart(provider,'unknown');
+  if(account===undefined)return `res:${p}:${resourcePart(modelOrAccount,'default')}`;
+  return `res:${p}:${resourcePart(modelOrAccount,'unknown')}:${resourcePart(account,'default')}:${resourcePart(runtime,'core')}`;
 }
 
 export function normalizeRoutingProfile(value='AUTO') {
@@ -29,7 +32,7 @@ export function deriveRoutingProfile({requested,taskKind,capability}={}) {
 export function failurePolicy(kind='outage') {
   const k=String(kind||'outage').toLowerCase();
   if(k==='rate_limit')return {kind:k,retrySameResource:false,failover:true,cooldownMs:30*60*1000,stop:false};
-  if(k==='auth'||k==='configuration')return {kind:k,retrySameResource:false,failover:false,cooldownMs:6*60*60*1000,stop:true};
+  if(['auth','configuration','security','credential','paid','production','irreversible'].includes(k))return {kind:k,retrySameResource:false,failover:false,cooldownMs:6*60*60*1000,stop:true};
   if(k==='timeout')return {kind:k,retrySameResource:true,failover:true,cooldownMs:2*60*1000,stop:false};
   if(k==='invalid_response'||k==='model-output')return {kind:'invalid_response',retrySameResource:false,failover:true,cooldownMs:5*60*1000,stop:false};
   return {kind:'outage',retrySameResource:false,failover:true,cooldownMs:5*60*1000,stop:false};
@@ -37,20 +40,32 @@ export function failurePolicy(kind='outage') {
 
 export function normalizeQuota(raw={}) {
   const q=raw&&typeof raw==='object'?raw:{};
-  const known=q.known===true;
+  const finite=(value)=>value===null||value===undefined||value===''?null:(Number.isFinite(Number(value))?Math.max(0,Number(value)):null);
+  const requestLimit=finite(q.requestLimit??q.requestsLimit);
+  const requestRemaining=finite(q.requestRemaining??q.requestsRemaining);
+  const tokenLimit=finite(q.tokenLimit??q.tokensLimit);
+  const tokenRemaining=finite(q.tokenRemaining??q.tokensRemaining);
+  let remainingRatio=finite(q.remainingRatio);
+  if(remainingRatio!==null)remainingRatio=Math.min(1,remainingRatio);
+  const ratios=[];
+  if(requestLimit>0&&requestRemaining!==null)ratios.push(Math.max(0,Math.min(1,requestRemaining/requestLimit)));
+  if(tokenLimit>0&&tokenRemaining!==null)ratios.push(Math.max(0,Math.min(1,tokenRemaining/tokenLimit)));
+  if(remainingRatio===null&&ratios.length)remainingRatio=Math.min(...ratios);
+  const known=q.known===true||[requestLimit,requestRemaining,tokenLimit,tokenRemaining].some(v=>v!==null);
   const usable=q.usable!==false;
-  const remainingRatio=Number.isFinite(Number(q.remainingRatio))?Math.max(0,Math.min(1,Number(q.remainingRatio))):null;
   const resetAt=q.resetAt?String(q.resetAt):null;
+  const cooldownUntil=q.cooldownUntil?String(q.cooldownUntil):null;
   const last429At=q.last429At?String(q.last429At):null;
   const sourceConfidence=['high','medium','low'].includes(String(q.sourceConfidence))?String(q.sourceConfidence):'low';
-  return {known,usable,remainingRatio,resetAt,last429At,sourceConfidence};
+  return {known,usable,remainingRatio,requestLimit,requestRemaining,tokenLimit,tokenRemaining,resetAt,cooldownUntil,last429At,sourceConfidence};
 }
 
 export function quotaUsable(raw={}, nowMs=Date.now()) {
   const q=normalizeQuota(raw);
   if(q.usable)return true;
-  if(!q.resetAt)return false;
-  const reset=Date.parse(q.resetAt);
+  const recoveryAt=q.resetAt||q.cooldownUntil;
+  if(!recoveryAt)return false;
+  const reset=Date.parse(recoveryAt);
   return Number.isFinite(reset)&&reset<=nowMs;
 }
 
@@ -83,7 +98,7 @@ function cooldownActive(resource, nowMs) {
 
 export function scoreResource(resource,{profile='AUTO',capability='general',taskKind='general',reviewerResourceId=null,nowMs=Date.now()}={}) {
   const normalizedProfile=normalizeRoutingProfile(profile);
-  const resourceId=String(resource.resource_id??resource.resourceId??createResourceId(resource.provider,resource.account_binding??resource.accountBinding??'default'));
+  const resourceId=String(resource.resource_id??resource.resourceId??createResourceId(resource.provider,resource.model,resource.account_binding??resource.accountBinding??'default',resource.runtime_binding??resource.runtimeBinding??'core'));
   const reasons=[];
   if(resource.enabled===false)return {eligible:false,resourceId,score:Infinity,reasons:['disabled']};
   if(TERMINAL_HEALTH.has(String(resource.health_state??resource.healthState??'').toUpperCase()))return {eligible:false,resourceId,score:Infinity,reasons:['health']};
@@ -105,17 +120,18 @@ export function scoreResource(resource,{profile='AUTO',capability='general',task
   const taskFail=Math.max(0,Number(stats.failure??0));
   const taskTotal=taskOk+taskFail;
   const taskFailure=taskTotal?taskFail/taskTotal:globalFailure;
+  const taskLatency=Math.max(0,Number(stats.avgLatencyMs??stats.avg_latency_ms??latency));
   const retries=Math.max(0,Number(stats.retry??stats.retries??0));
   const failovers=Math.max(0,Number(stats.failover??stats.failovers??0));
   const quota=normalizeQuota(resource.quota_state??resource.quotaState??{});
-  let score=baseRank + globalFailure*25 + taskFailure*30 + retries*2 + failovers*3 + latency/1500;
-  if(normalizedProfile==='FAST')score+=latency/350;
+  let score=baseRank + globalFailure*25 + taskFailure*30 + retries*2 + failovers*3 + taskLatency/1500;
+  if(normalizedProfile==='FAST')score+=taskLatency/350;
   if(normalizedProfile==='CHEAP')score+=isLocal(resource)?-12:0;
   if(normalizedProfile==='LOCAL')score-=20;
   if(normalizedProfile==='RESEARCH'&&caps.includes('reasoning'))score-=8;
   if(normalizedProfile==='REVIEW'&&caps.includes('review'))score-=10;
   if(quota.known&&quota.remainingRatio!==null){score+=(1-quota.remainingRatio)*20;reasons.push(`quota:${quota.remainingRatio.toFixed(2)}`);}
-  reasons.push(`base:${baseRank}`,`latency:${latency}`,`success:${successRate(resource).toFixed(2)}`,`taskFailure:${taskFailure.toFixed(2)}`);
+  reasons.push(`base:${baseRank}`,`latency:${taskLatency}`,`success:${successRate(resource).toFixed(2)}`,`taskFailure:${taskFailure.toFixed(2)}`);
   return {eligible:true,resourceId,score:Number(score.toFixed(3)),reasons};
 }
 
