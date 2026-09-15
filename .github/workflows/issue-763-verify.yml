@@ -1,0 +1,26 @@
+name: Issue 763 Focused Verify
+
+on:
+  push:
+    branches:
+      - tigeriq/nv05/issue-763-autopilot-recovery-layout
+    paths:
+      - .github/workflows/issue-763-verify.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: tigeriq/nv05/issue-763-autopilot-recovery-layout
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npx vitest run tests/chrome-controller.test.ts
+      - run: npm run build
