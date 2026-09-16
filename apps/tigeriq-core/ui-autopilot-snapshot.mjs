@@ -3,8 +3,13 @@ import { createServer } from 'node:http';
 const DEFAULT_OWNER='newsdayads';
 const DEFAULT_REPO='tigeriq-ai-lab';
 const DEFAULT_CONTROLLER_STATE_URL='http://127.0.0.1:8798/api/autopilot/state';
+const DEFAULT_SAVE_LEDGER_ISSUE=788;
 const REQUIRED_TRUE_FLAGS=[
   'TIGERIQ_EXECUTABLE','NO_DIRECT_MAIN','NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_DESTRUCTIVE','NO_PRODUCTION_RELEASE',
+];
+const REQUIRED_SAVE_FIELDS=[
+  'TIGERIQ_SAVE_STATE','TIGERIQ_SAVE_FOCUS','TIGERIQ_SAVE_DECISIONS','TIGERIQ_SAVE_DONE',
+  'TIGERIQ_SAVE_PENDING','TIGERIQ_SAVE_BLOCKERS','TIGERIQ_SAVE_NEXT','TIGERIQ_SAVE_EVIDENCE',
 ];
 
 function exactValue(body,key){
@@ -46,11 +51,40 @@ function jobFromIssue(issue,spec){
 }
 
 async function ghJson(fetchImpl,url,token){
-  const headers={accept:'application/vnd.github+json','user-agent':'TigerIQ-UI-Autopilot/1.1','x-github-api-version':'2022-11-28'};
+  const headers={accept:'application/vnd.github+json','user-agent':'TigerIQ-UI-Autopilot/1.2','x-github-api-version':'2022-11-28'};
   if(token)headers.authorization=`Bearer ${token}`;
   const response=await fetchImpl(url,{headers,signal:AbortSignal.timeout(12000)});
   if(!response.ok)throw new Error(`GITHUB_HTTP_${response.status}`);
   return response.json();
+}
+
+export function findDurableSaveReceipt(comments,{saveToken,workerId,after}){
+  if(!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(saveToken||'')))throw new Error('SAVE_TOKEN_INVALID');
+  if(!['NV02','NV03'].includes(String(workerId||'')))throw new Error('SAVE_WORKER_INVALID');
+  const afterMs=Date.parse(String(after||''));
+  if(!Number.isFinite(afterMs))throw new Error('SAVE_AFTER_INVALID');
+  for(const comment of Array.isArray(comments)?[...comments].reverse():[]){
+    const createdAt=String(comment?.created_at||'');
+    const createdMs=Date.parse(createdAt);
+    if(!Number.isFinite(createdMs)||createdMs<afterMs)continue;
+    const text=String(comment?.body||'');
+    if(!text.includes('TIGERIQ_SAVE_RECEIPT_V1'))continue;
+    if(exactValue(text,'TIGERIQ_SAVE_TOKEN')!==saveToken)continue;
+    if(exactValue(text,'TIGERIQ_SAVE_WORKER')!==workerId)continue;
+    if(exactValue(text,'TIGERIQ_SAVE_STATUS')!=='DURABLE')continue;
+    const checkpointRef=exactValue(text,'TIGERIQ_SAVE_REF');
+    if(!checkpointRef)continue;
+    if(REQUIRED_SAVE_FIELDS.some((key)=>!exactValue(text,key)))continue;
+    return{ok:true,status:'DURABLE',receiptRef:String(comment?.html_url||''),checkpointRef,verifiedAt:createdAt};
+  }
+  return{ok:false,status:'SAVE_NOT_DURABLE'};
+}
+
+export async function readDurableSaveReceipt({fetchImpl=fetch,token='',owner=DEFAULT_OWNER,repo=DEFAULT_REPO,ledgerIssue=DEFAULT_SAVE_LEDGER_ISSUE,saveToken,workerId,after}={}){
+  const issue=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/${ledgerIssue}`,token);
+  const page=Math.max(1,Math.ceil(Number(issue?.comments||0)/100));
+  const comments=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/${ledgerIssue}/comments?per_page=100&page=${page}`,token);
+  return findDurableSaveReceipt(comments,{saveToken,workerId,after});
 }
 
 export async function readPreviousJobIdFromController({fetchImpl=fetch,stateUrl=DEFAULT_CONTROLLER_STATE_URL}={}){
@@ -90,6 +124,7 @@ export async function buildUiAutopilotSnapshot({fetchImpl=fetch,token='',owner=D
 export function startUiAutopilotSnapshotServer({
   token=process.env.TIGERIQ_GITHUB_TOKEN||process.env.GITHUB_TOKEN||'',owner=process.env.TIGERIQ_GITHUB_OWNER||DEFAULT_OWNER,repo=process.env.TIGERIQ_GITHUB_REPO||DEFAULT_REPO,
   host='127.0.0.1',port=Number(process.env.TIGERIQ_UI_AUTOPILOT_PORT||8794),fetchImpl=fetch,controllerStateUrl=process.env.TIGERIQ_CHROME_CONTROLLER_STATE_URL||DEFAULT_CONTROLLER_STATE_URL,
+  saveLedgerIssue=Number(process.env.TIGERIQ_SAVE_LEDGER_ISSUE||DEFAULT_SAVE_LEDGER_ISSUE),
 }={}){
   if(host!=='127.0.0.1')throw new Error('UI_AUTOPILOT_HOST_MUST_BE_LOOPBACK');
   if(!isLoopbackUrl(controllerStateUrl))throw new Error('CONTROLLER_STATE_URL_MUST_BE_LOOPBACK');
@@ -105,11 +140,18 @@ export function startUiAutopilotSnapshotServer({
         const snapshot=await buildUiAutopilotSnapshot({fetchImpl,token,owner,repo,previousJobId});
         res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(snapshot));
       }
+      if(req.method==='GET'&&url.pathname==='/api/ui-autopilot/save-receipt'){
+        const result=await readDurableSaveReceipt({
+          fetchImpl,token,owner,repo,ledgerIssue:saveLedgerIssue,
+          saveToken:url.searchParams.get('token')||'',workerId:url.searchParams.get('workerId')||'',after:url.searchParams.get('after')||'',
+        });
+        res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(result));
+      }
       res.writeHead(404,{'content-type':'application/json'});res.end(JSON.stringify({ok:false,error:'NOT_FOUND'}));
     }catch(error){
       const message=String(error?.message||error);
       res.writeHead(502,{'content-type':'application/json','cache-control':'no-store'});res.end(JSON.stringify({ok:false,error:message}));
     }
   });
-  server.listen(port,host,()=>console.log(JSON.stringify({event:'UI_AUTOPILOT_SNAPSHOT_READY',host,port,authenticatedGithub:Boolean(token)})));return{enabled:true,host,port,stop:()=>new Promise(resolve=>server.close(()=>resolve()))};
+  server.listen(port,host,()=>console.log(JSON.stringify({event:'UI_AUTOPILOT_SNAPSHOT_READY',host,port,authenticatedGithub:Boolean(token),saveLedgerIssue})));return{enabled:true,host,port,stop:()=>new Promise(resolve=>server.close(()=>resolve()))};
 }
