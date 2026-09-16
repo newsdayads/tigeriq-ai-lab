@@ -12,7 +12,7 @@ describe('Chrome Controller safe save-and-archive',()=>{
     expect(content).toContain("message?.type === 'TIGERIQ_ARCHIVE_CONVERSATION'");
   });
 
-  it('requires terminal external evidence, a unique durable receipt, and bounded automatic retries',()=>{
+  it('requires terminal external evidence for auto archive and a unique durable receipt for every archive',()=>{
     const background=readFileSync('apps/chrome-controller/extension/background.js','utf8');
     const receipt=readFileSync('apps/chrome-controller/extension/save-receipt.js','utf8');
     expect(background).toContain("const ARCHIVE_SUPPORTED_WORKERS = new Set(['NV02','NV03'])");
@@ -24,11 +24,14 @@ describe('Chrome Controller safe save-and-archive',()=>{
     expect(background).toContain('buildDurableSavePrompt({saveToken,workerId,dispatchedAt})');
     expect(background).toContain('await waitForDurableSaveReceipt(saveToken,workerId,dispatchedAt)');
     expect(background.indexOf('await waitForDurableSaveReceipt(saveToken,workerId,dispatchedAt)')).toBeLessThan(background.indexOf("type:'TIGERIQ_ARCHIVE_CONVERSATION'"));
+    expect(background).toContain('saveAndArchive(workerId,{requireDone:true})');
+    expect(background).toContain("saveAndArchive(String(m.workerId||''),{requireDone:false})");
     expect(receipt).toContain('TIGERIQ_SAVE_RECEIPT_V1');
     expect(receipt).toContain('TIGERIQ_SAVE_TOKEN=');
     expect(receipt).toContain('TIGERIQ_SAVE_STATE=');
     expect(receipt).toContain('/api/ui-autopilot/save-receipt');
     expect(receipt).toContain('SAVE_NOT_DURABLE');
+    expect(receipt).toContain('tuyệt đối không ghi secret');
     expect(background).toContain('if(count>=2) return');
     expect(background).toContain("saved.archiveAfterDone!==true");
     expect(background).toContain('void maybeAutoArchive(workerId).catch(()=>{})');
