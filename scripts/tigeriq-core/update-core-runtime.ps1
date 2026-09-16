@@ -45,9 +45,20 @@ function Stop-NodeProcessesByMatch([string]$match){
 }
 function Stop-CoreProcesses(){Stop-NodeProcessesByMatch $corePath}
 function Restart-Core($oldPid){
-  Stop-ScheduledTask -TaskName $coreTask -ErrorAction SilentlyContinue;Start-Sleep -Seconds 2;Stop-CoreProcesses;Start-Sleep -Seconds 1;Start-ScheduledTask -TaskName $coreTask
+  if(-not(Task-Exists $coreTask)){throw ('TASK_MISSING:'+ $coreTask)}
+  $task=Get-ScheduledTask -TaskName $coreTask -ErrorAction Stop
+  $previousPid=if($null-ne$oldPid){[int]$oldPid}else{Get-NodePidByMatch $corePath}
+  if($task.State -eq 'Running'){
+    Stop-CoreProcesses
+  }else{
+    Start-ScheduledTask -TaskName $coreTask
+  }
   $deadline=(Get-Date).AddSeconds(60)
-  while((Get-Date)-lt$deadline){$h=HealthInfo 'http://100.97.23.87:8795/health';if($h -and (($null -eq $oldPid)-or([int]$h.pid -ne [int]$oldPid))){return $h};Start-Sleep -Seconds 2}
+  while((Get-Date)-lt$deadline){
+    $h=HealthInfo 'http://100.97.23.87:8795/health';$newPid=Get-NodePidByMatch $corePath
+    if($h -and $newPid -and (($null-eq$previousPid)-or([int]$newPid-ne[int]$previousPid))){return $h}
+    Start-Sleep -Seconds 2
+  }
   return $null
 }
 function Restart-ServiceTask([string]$name,[string]$healthUrl,[string]$processMatch){
