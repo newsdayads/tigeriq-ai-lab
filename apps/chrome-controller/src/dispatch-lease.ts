@@ -27,7 +27,9 @@ function iso(ms:number){return new Date(ms).toISOString();}
 function parse(path:string):DispatchLease|undefined{
   if(!existsSync(path))return;
   try{return JSON.parse(readFileSync(path,'utf8')) as DispatchLease;}catch{return;}
-}export class DurableDispatchLeaseStore{
+}
+
+export class DurableDispatchLeaseStore{
   readonly #path:string;
   readonly #ownerId:string;
   readonly #ttlMs:number;
@@ -53,7 +55,9 @@ function parse(path:string):DispatchLease|undefined{
     if(expiry>nowMs)return{kind:'BUSY',lease};
     if(lease.state==='DISPATCHING')return{kind:'UNCERTAIN',lease,reason:`DISPATCH_INFLIGHT_STALE:${lease.jobId}`};
     return this.#retireAndCreate(lease,jobId,nowMs);
-  }  reconcilePending(jobId:string,nowMs=Date.now()):PendingReconcileResult{
+  }
+
+  reconcilePending(jobId:string,nowMs=Date.now()):PendingReconcileResult{
     const current=this.read();const lease=current.lease;
     if(current.malformed)return{kind:'UNCERTAIN',reason:'DISPATCH_LEASE_STATE_MALFORMED'};
     if(!lease)return{kind:'UNCERTAIN',reason:'DISPATCH_PENDING_WITHOUT_LEASE'};
@@ -87,7 +91,9 @@ function parse(path:string):DispatchLease|undefined{
     const lease:DispatchLease={schemaVersion:'tigeriq.chrome-controller.dispatch-lease.v2',leaseId:randomUUID(),ownerId:this.#ownerId,jobId,state:'RESERVED',acquiredAt:iso(nowMs),expiresAt:iso(nowMs+this.#ttlMs),...(takeoverOf?{takeoverOf}: {})};
     try{writeFileSync(this.#path,`${JSON.stringify(lease,null,2)}\n`,{encoding:'utf8',flag:'wx'});return{kind:takeoverOf?'TAKEN_OVER':'ACQUIRED',lease};}
     catch(error){if(code(error)!=='EEXIST')throw error;const winner=this.read();if(winner.malformed||!winner.lease)return{kind:'UNCERTAIN',reason:'DISPATCH_LEASE_RACE_UNRESOLVED'};return winner.lease.jobId===jobId&&winner.lease.state==='COMMITTED'?{kind:'COMMITTED',lease:winner.lease}:{kind:'BUSY',lease:winner.lease};}
-  }  #retireAndCreate(stale:DispatchLease,jobId:string,nowMs:number):LeaseAcquireResult{
+  }
+
+  #retireAndCreate(stale:DispatchLease,jobId:string,nowMs:number):LeaseAcquireResult{
     const retired=`${this.#path}.retired.${stale.leaseId}.${nowMs}`;
     try{renameSync(this.#path,retired);}catch(error){
       if(code(error)==='ENOENT')return this.#create(jobId,nowMs);

@@ -49,7 +49,7 @@ function jobFromIssue(issue,spec,verifiedAt){
   const job={jobId:spec.jobId,workerId:'NV02',status,executable:true,priority:spec.priority};
   if(completed){
     const completedAt=String(issue.closed_at||issue.updated_at||'');
-    const completionRevision=['github-issue-v2',spec.jobId,completedAt,String(issue.updated_at||completedAt)].join(':');
+    const completionRevision=['github-issue-v2',spec.jobId,completedAt].join(':');
     job.completedAt=completedAt;job.completionRevision=completionRevision;
     job.evidence=[{source:'GITHUB',ref:spec.url,verifiedAt,jobId:spec.jobId,completedAt,completionRevision}];
   }

@@ -23,7 +23,9 @@ describe('durable dispatch lease',()=>{
     a.markDispatching(acquired.lease.leaseId,'GH-1',2000);a.markCommitted(acquired.lease.leaseId,'GH-1',3000);
     expect(b.acquire('GH-1',4000)).toMatchObject({kind:'COMMITTED',lease:{jobId:'GH-1',state:'COMMITTED'}});
     expect(b.acquire('GH-2',4000).kind).toBe('TAKEN_OVER');
-  });  it('reconciles a reserved pending dispatch before allowing bounded takeover',()=>{
+  });
+
+  it('reconciles a reserved pending dispatch before allowing bounded takeover',()=>{
     const dir=mkdtempSync(join(tmpdir(),'tigeriq-lease-'));const path=join(dir,'lease.json');
     const a=new DurableDispatchLeaseStore(path,'controller-a',60_000);const b=new DurableDispatchLeaseStore(path,'controller-b',60_000);
     expect(a.acquire('GH-1',1000).kind).toBe('ACQUIRED');
@@ -46,7 +48,9 @@ describe('fresh completion evidence and security fail-closed matrix',()=>{
     expect(decideAutoContinue(snapshot(),state,now)).toMatchObject({kind:'DISPATCH',jobId:'GH-2'});
     const wrong=snapshot();wrong.previousJob!.evidence![0].jobId='GH-X';expect(decideAutoContinue(wrong,state,now)).toMatchObject({kind:'WAIT_EVIDENCE'});
     const old=snapshot();old.previousJob!.completedAt='2026-09-17T00:00:00.000Z';old.previousJob!.evidence![0].completedAt='2026-09-17T00:00:00.000Z';expect(decideAutoContinue(old,state,now)).toMatchObject({kind:'WAIT_EVIDENCE'});
-  });  it('stops on AUTH/REAUTH/CAPTCHA/RATE_LIMIT and related security flags',()=>{
+  });
+
+  it('stops on AUTH/REAUTH/CAPTCHA/RATE_LIMIT and related security flags',()=>{
     for(const flag of ['AUTH_REQUIRED','REAUTH','CAPTCHA','RATE_LIMIT','RATE_LIMIT_429','HTTP_429','SECURITY_WARNING','SUSPICIOUS_ACTIVITY']){
       expect(decideAutoContinue(snapshot([flag]),freshAutopilotState(),now)).toMatchObject({kind:'STOP',reason:`RISK_FLAG_${flag}`});
     }

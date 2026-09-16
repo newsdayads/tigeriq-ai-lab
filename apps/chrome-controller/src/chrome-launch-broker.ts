@@ -18,7 +18,9 @@ function placement(value:unknown):WindowPlacement{
 }
 async function debugPortActive(portNumber:number){
   try{const response=await fetch(`http://127.0.0.1:${portNumber}/json/version`,{signal:AbortSignal.timeout(1200)});return response.ok;}catch{return false;}
-}async function launch(workerId:WorkerId,p:WindowPlacement){
+}
+
+async function launch(workerId:WorkerId,p:WindowPlacement){
   if(!isInteractiveDesktopSession())throw new Error('INTERACTIVE_SESSION_REQUIRED:NO_HIDDEN_CHROME');
   const worker=config.workers.find(item=>item.id===workerId&&item.enabled!==false);if(!worker)throw new Error(`WORKER_DISABLED_OR_UNKNOWN:${workerId}`);
   if(worker.debugPort&&await debugPortActive(worker.debugPort))throw new Error(`WORKER_ALREADY_RUNNING:${workerId}`);
@@ -45,4 +47,6 @@ const server=createServer(async(req,res)=>{
     }
     return json(res,404,{ok:false,error:'NOT_FOUND'});
   }catch(error){return json(res,409,{ok:false,error:String(error instanceof Error?error.message:error)});}
-});server.listen(port,host,()=>console.log(JSON.stringify({event:'CHROME_LAUNCH_BROKER_READY',host,port,interactiveSession:isInteractiveDesktopSession()})));
+});
+
+server.listen(port,host,()=>console.log(JSON.stringify({event:'CHROME_LAUNCH_BROKER_READY',host,port,interactiveSession:isInteractiveDesktopSession()})));
