@@ -1,4 +1,5 @@
 import { WORKER_HOSTS, allowedUrl, hostname, matchesWorker } from './url-policy.js';
+import { buildDurableSavePrompt, waitForDurableSaveReceipt } from './save-receipt.js';
 
 const CONTROLLER = 'http://127.0.0.1:8798';
 const LEGACY_PLUS_ID = ['NV','05'].join('');
@@ -198,15 +199,19 @@ async function saveAndArchive(workerId){
     const proof=await assertArchiveAllowed(workerId);
     const ctx=await findContext(workerId);
     if(!ctx||!ctx.tabId||!matchesWorker(workerId,ctx.url)) throw new Error('ARCHIVE_WORKER_WINDOW_AMBIGUOUS_OR_MISSING');
+    const saveToken=crypto.randomUUID();
+    const dispatchedAt=new Date().toISOString();
+    const saveText=buildDurableSavePrompt({saveToken,workerId,dispatchedAt});
     await chrome.tabs.update(ctx.tabId,{active:true});
-    const save=await chrome.tabs.sendMessage(ctx.tabId,{type:'TIGERIQ_DISPATCH',text:'lưu'});
+    const save=await chrome.tabs.sendMessage(ctx.tabId,{type:'TIGERIQ_DISPATCH',text:saveText});
     if(!save?.ok) throw new Error(String(save?.status||'SAVE_DISPATCH_FAILED'));
     await waitForSaveCompletion(ctx);
+    const receipt=await waitForDurableSaveReceipt(saveToken,workerId,dispatchedAt);
     await assertArchiveAllowed(workerId);
     const result=await chrome.tabs.sendMessage(ctx.tabId,{type:'TIGERIQ_ARCHIVE_CONVERSATION'});
     if(!result?.ok) throw new Error(String(result?.status||'ARCHIVE_FAILED'));
     await recordArchivedJob(workerId,proof.jobId);
-    return {ok:true,status:'ARCHIVED',workerId,jobId:proof.jobId,evidenceRef:proof.evidenceRef};
+    return {ok:true,status:'ARCHIVED',workerId,jobId:proof.job.jobId,evidenceRef:proof.evidence.ref,receiptRef:receipt.receiptRef,checkpointRef:receipt.checkpointRef,receiptVerifiedAt:receipt.verifiedAt};
   }finally{archiveInFlight.delete(workerId);}
 }
 
