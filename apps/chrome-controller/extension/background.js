@@ -1,4 +1,5 @@
 import { WORKER_HOSTS, allowedUrl, hostname, matchesWorker } from './url-policy.js';
+import { buildDurableSavePrompt, waitForDurableSaveReceipt } from './save-receipt.js';
 
 const CONTROLLER = 'http://127.0.0.1:8798';
 const LEGACY_PLUS_ID = ['NV','05'].join('');
@@ -148,7 +149,7 @@ function doneEvidence(snapshot,workerId){
   return evidence?{job,evidence}:null;
 }
 
-async function assertArchiveAllowed(workerId){
+async function assertArchiveAllowed(workerId,{requireDone=true}={}){
   if(!ARCHIVE_SUPPORTED_WORKERS.has(workerId)) throw new Error(`ARCHIVE_SELECTOR_UNVERIFIED:${workerId}`);
   const state=await get('/api/state');
   if(state.killed) throw new Error('ARCHIVE_CONTROLLER_KILLED');
@@ -164,8 +165,8 @@ async function assertArchiveAllowed(workerId){
   const previous=autopilot.snapshot?.previousJob;
   if(previous?.workerId===workerId&&['QUEUED','READY','RUNNING','WAITING','BLOCKED','REVIEWING'].includes(previous.status)) throw new Error('ARCHIVE_ACTIVE_JOB_FORBIDDEN');
   const proof=doneEvidence(autopilot.snapshot,workerId);
-  if(!proof) throw new Error('ARCHIVE_EXTERNAL_DONE_EVIDENCE_REQUIRED');
-  return {jobId:proof.job.jobId,evidenceRef:proof.evidence.ref};
+  if(requireDone&&!proof) throw new Error('ARCHIVE_EXTERNAL_DONE_EVIDENCE_REQUIRED');
+  return proof?{jobId:proof.job.jobId,evidenceRef:proof.evidence.ref}:{jobId:null,evidenceRef:null};
 }
 
 async function waitForSaveCompletion(ctx){
@@ -190,23 +191,27 @@ async function recordArchivedJob(workerId,jobId){
   await chrome.storage.local.set({lastArchivedJobByWorker:last});
 }
 
-async function saveAndArchive(workerId){
+async function saveAndArchive(workerId,{requireDone=true}={}){
   workerId=normalizeWorkerId(workerId);
   if(archiveInFlight.has(workerId)) throw new Error(`ARCHIVE_ALREADY_IN_FLIGHT:${workerId}`);
   archiveInFlight.add(workerId);
   try{
-    const proof=await assertArchiveAllowed(workerId);
+    const proof=await assertArchiveAllowed(workerId,{requireDone});
     const ctx=await findContext(workerId);
     if(!ctx||!ctx.tabId||!matchesWorker(workerId,ctx.url)) throw new Error('ARCHIVE_WORKER_WINDOW_AMBIGUOUS_OR_MISSING');
+    const saveToken=crypto.randomUUID();
+    const dispatchedAt=new Date().toISOString();
+    const saveText=buildDurableSavePrompt({saveToken,workerId,dispatchedAt});
     await chrome.tabs.update(ctx.tabId,{active:true});
-    const save=await chrome.tabs.sendMessage(ctx.tabId,{type:'TIGERIQ_DISPATCH',text:'lưu'});
+    const save=await chrome.tabs.sendMessage(ctx.tabId,{type:'TIGERIQ_DISPATCH',text:saveText});
     if(!save?.ok) throw new Error(String(save?.status||'SAVE_DISPATCH_FAILED'));
     await waitForSaveCompletion(ctx);
-    await assertArchiveAllowed(workerId);
+    const receipt=await waitForDurableSaveReceipt(saveToken,workerId,dispatchedAt);
+    await assertArchiveAllowed(workerId,{requireDone});
     const result=await chrome.tabs.sendMessage(ctx.tabId,{type:'TIGERIQ_ARCHIVE_CONVERSATION'});
     if(!result?.ok) throw new Error(String(result?.status||'ARCHIVE_FAILED'));
-    await recordArchivedJob(workerId,proof.jobId);
-    return {ok:true,status:'ARCHIVED',workerId,jobId:proof.jobId,evidenceRef:proof.evidenceRef};
+    if(proof.jobId)await recordArchivedJob(workerId,proof.jobId);
+    return {ok:true,status:'ARCHIVED',workerId,jobId:proof.jobId,evidenceRef:proof.evidenceRef,receiptRef:receipt.receiptRef,checkpointRef:receipt.checkpointRef,receiptVerifiedAt:receipt.verifiedAt};
   }finally{archiveInFlight.delete(workerId);}
 }
 
@@ -224,7 +229,7 @@ async function maybeAutoArchive(workerId){
   if(count>=2) return;
   attempts[key]=count+1;
   await chrome.storage.local.set({archiveAttemptByJob:attempts});
-  try{await saveAndArchive(workerId);}catch{/* bounded fail-closed; evidence remains unmodified */}
+  try{await saveAndArchive(workerId,{requireDone:true});}catch{/* bounded fail-closed; evidence remains unmodified */}
 }
 
 async function execute(workerId,command) {
@@ -286,7 +291,7 @@ chrome.runtime.onStartup.addListener(async()=>{await ensureTickAlarm();void tick
 chrome.alarms.onAlarm.addListener((a)=>{if(a.name==='tigeriqTick')void tick();});
 chrome.runtime.onMessage.addListener((m,_sender,sendResponse)=>{
   if(m?.type==='TIGERIQ_SAVE_AND_ARCHIVE'){
-    void saveAndArchive(String(m.workerId||'')).then(sendResponse).catch((error)=>sendResponse({ok:false,status:String(error?.message||error)}));
+    void saveAndArchive(String(m.workerId||''),{requireDone:false}).then(sendResponse).catch((error)=>sendResponse({ok:false,status:String(error?.message||error)}));
     return true;
   }
   if(m?.type==='TIGERIQ_CONFIG_UPDATED'||m?.type==='TIGERIQ_ROUTE_CHANGED')void tick();

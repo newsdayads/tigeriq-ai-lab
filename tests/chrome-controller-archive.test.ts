@@ -12,27 +12,42 @@ describe('Chrome Controller safe save-and-archive',()=>{
     expect(content).toContain("message?.type === 'TIGERIQ_ARCHIVE_CONVERSATION'");
   });
 
-  it('requires terminal external evidence and bounded automatic retries',()=>{
+  it('requires terminal external evidence for auto archive and a unique durable receipt for every archive',()=>{
     const background=readFileSync('apps/chrome-controller/extension/background.js','utf8');
+    const receipt=readFileSync('apps/chrome-controller/extension/save-receipt.js','utf8');
     expect(background).toContain("const ARCHIVE_SUPPORTED_WORKERS = new Set(['NV02','NV03'])");
     expect(background).toContain('ARCHIVE_SELECTOR_UNVERIFIED');
     expect(background).toContain('ARCHIVE_ACTIVE_JOB_FORBIDDEN');
     expect(background).toContain('ARCHIVE_EXTERNAL_DONE_EVIDENCE_REQUIRED');
     expect(background).toContain('SAVE_RESPONSE_NOT_OBSERVED');
-    expect(background).toContain("text:'lưu'");
+    expect(background).toContain('crypto.randomUUID()');
+    expect(background).toContain('buildDurableSavePrompt({saveToken,workerId,dispatchedAt})');
+    expect(background).toContain('await waitForDurableSaveReceipt(saveToken,workerId,dispatchedAt)');
+    expect(background.indexOf('await waitForDurableSaveReceipt(saveToken,workerId,dispatchedAt)')).toBeLessThan(background.indexOf("type:'TIGERIQ_ARCHIVE_CONVERSATION'"));
+    expect(background).toContain('saveAndArchive(workerId,{requireDone:true})');
+    expect(background).toContain("saveAndArchive(String(m.workerId||''),{requireDone:false})");
+    expect(receipt).toContain('TIGERIQ_SAVE_RECEIPT_V1');
+    expect(receipt).toContain('TIGERIQ_SAVE_TOKEN=');
+    expect(receipt).toContain('TIGERIQ_SAVE_STATE=');
+    expect(receipt).toContain('/api/ui-autopilot/save-receipt');
+    expect(receipt).toContain('SAVE_NOT_DURABLE');
+    expect(receipt).toContain('tuyệt đối không ghi secret');
     expect(background).toContain('if(count>=2) return');
     expect(background).toContain("saved.archiveAfterDone!==true");
     expect(background).toContain('void maybeAutoArchive(workerId).catch(()=>{})');
   });
 
-  it('exposes manual action and keeps auto archive default off',()=>{
+  it('exposes manual action, keeps auto archive default off, and grants only loopback verifier access',()=>{
     const html=readFileSync('apps/chrome-controller/extension/popup.html','utf8');
     const script=readFileSync('apps/chrome-controller/extension/popup.js','utf8');
+    const manifest=JSON.parse(readFileSync('apps/chrome-controller/extension/manifest.json','utf8'));
     expect(html).toContain('id="saveArchive"');
     expect(html).toContain('Lưu &amp; Lưu trữ');
     expect(html).toContain('id="archiveAfterDone" type="checkbox"');
     expect(html).not.toContain('id="archiveAfterDone" type="checkbox" checked');
     expect(script).toContain("type:'TIGERIQ_SAVE_AND_ARCHIVE'");
     expect(script).toContain('saved.archiveAfterDone === true');
+    expect(manifest.version).toBe('1.1.6');
+    expect(manifest.host_permissions).toContain('http://127.0.0.1:8794/*');
   });
 });
