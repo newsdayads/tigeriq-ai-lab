@@ -1,5 +1,4 @@
 import { createServer, IncomingMessage, ServerResponse } from 'node:http';
-import { spawn } from 'node:child_process';
 import { mkdirSync, readFileSync, appendFileSync, writeFileSync, renameSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -18,14 +17,16 @@ import {
   AUTO_CONTINUE,
   decideAutoContinue,
   freshAutopilotState,
+  selectFreshCompletionEvidence,
   validateExternalSnapshot,
   type DurableAutopilotState,
   type ExternalAutopilotSnapshot,
 } from './autopilot.js';
 import { buildRuntimeEvidence } from './runtime-evidence.js';
+import { DurableDispatchLeaseStore } from './dispatch-lease.js';
 
 type Command = { id:string; workerId:WorkerId; action:string; payload?:Record<string,unknown>; createdAt:string };
-type Heartbeat = { workerId:WorkerId; url?:string; windowId?:number; tabId?:number; state?:string; uiBusy?:boolean|null; securityBlock?:string|null; display?:{workArea?:WorkArea}; at:string };
+type Heartbeat = { workerId:WorkerId; url?:string; windowId?:number; tabId?:number; state?:string; uiReady?:boolean; authRequired?:boolean; reauthRequired?:boolean; captchaRequired?:boolean; rateLimited?:boolean; rateLimitCode?:number|string; uiBusy?:boolean|null; securityBlock?:string|null; display?:{workArea?:WorkArea}; at:string };
 type WindowState = 'OPEN' | 'CLOSED';
 type WorkerState = {
   id:WorkerId;
@@ -73,7 +74,9 @@ const autopilotStatePath=resolve(config.logDir,'autopilot-state.json');
 const autopilotSnapshotPath=resolve(config.logDir,'autopilot-snapshot.json');
 const runtimeEvidencePath=resolve(config.logDir,'runtime-evidence.json');
 const interactionStatePath=resolve(config.logDir,'owner-interaction-state.json');
-const extensionPath=resolve(process.cwd(),'apps/chrome-controller/extension');
+const dispatchLeasePath=resolve(config.logDir,'autopilot-dispatch-lease.json');
+const controllerInstanceId=randomUUID();
+const dispatchLease=new DurableDispatchLeaseStore(dispatchLeasePath,controllerInstanceId,config.autopilot.dispatchLeaseTtlMs);
 
 function log(event:string,data:Record<string,unknown>={}){
   const line=JSON.stringify({ts:new Date().toISOString(),event,...data});
@@ -133,7 +136,7 @@ async function body(req:IncomingMessage):Promise<Record<string,unknown>>{
   return chunks.length?JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string,unknown>:{};
 }
 function getWorker(id:string):ReturnType<ControllerConfig['workers']['find']>{return config.workers.find((worker)=>worker.id===id);}
-function heartbeatFresh(state:WorkerState|undefined){return Boolean(state?.lastHeartbeat&&Date.now()-Date.parse(state.lastHeartbeat.at)<config.recovery.heartbeatStaleMs);}
+function heartbeatFresh(state:WorkerState|undefined){return Boolean(state?.lastHeartbeat&&state.windowState!=='CLOSED'&&Date.now()-Date.parse(state.lastHeartbeat.at)<config.recovery.heartbeatStaleMs);}
 function recentHeartbeat(id:WorkerId){const state=states.get(id);return Boolean(state?.enabled&&heartbeatFresh(state));}
 function assertWorkerEnabled(id:WorkerId){if(!states.get(id)?.enabled)throw new Error(`WORKER_DISABLED:${id}`);}
 function setWorkerEnabled(id:WorkerId,enabled:boolean){
@@ -185,36 +188,20 @@ function evidence(){
 }
 function persistEvidence(){const value=evidence();atomicJson(runtimeEvidencePath,value);return value;}
 
-function assertVisibleChromeLaunch(){
-  if(!isInteractiveDesktopSession())throw new Error('INTERACTIVE_SESSION_REQUIRED:NO_HIDDEN_CHROME');
-}
-function launchChrome(workerId:WorkerId){
+async function launchChrome(workerId:WorkerId){
   assertWorkerEnabled(workerId);
-  assertVisibleChromeLaunch();
-  const worker=getWorker(workerId);
-  if(!worker)throw new Error(`UNKNOWN_WORKER:${workerId}`);
-  if(!existsSync(extensionPath))throw new Error('CONTROLLER_EXTENSION_PATH_MISSING');
+  if(!isInteractiveDesktopSession())throw new Error('INTERACTIVE_SESSION_REQUIRED:NO_HIDDEN_CHROME');
+  const url=config.recovery.launchBrokerUrl;
+  if(!url)throw new Error('CHROME_LAUNCH_BROKER_REQUIRED');
   const placement=computePlacements(config,effectiveWorkArea())[workerId];
-  const args:string[]=[];
-  const userDataDir=worker.userDataDir??config.userDataDir;
-  if(userDataDir)args.push(`--user-data-dir=${userDataDir}`);
-  args.push(
-    `--load-extension=${extensionPath}`,
-    `--profile-directory=${worker.profileDirectory}`,
-    '--disable-session-crashed-bubble',
-    '--new-window',
-    `--window-position=${placement.left},${placement.top}`,
-    `--window-size=${placement.width},${placement.height}`,
-    worker.homeUrl,
-  );
-  const child=spawn(config.chromePath,args,{detached:false,windowsHide:false,stdio:'ignore'});
-  child.unref();
+  const response=await fetch(`${url}/api/launch`,{method:'POST',headers:{'content-type':'application/json; charset=utf-8'},body:JSON.stringify({workerId,placement}),signal:AbortSignal.timeout(config.recovery.launchBrokerTimeoutMs)});
+  if(!response.ok)throw new Error(`CHROME_LAUNCH_BROKER_HTTP_${response.status}:${await response.text()}`);
   const state=states.get(workerId)!;
   state.status='STARTING';
   state.windowState='OPEN';
   state.windowEventAt=new Date().toISOString();
   state.manualCloseSuppressed=false;
-  log('CHROME_LAUNCH_VISIBLE',{workerId,profileDirectory:worker.profileDirectory,placement,extensionLoaded:true,disableSessionCrashedBubble:true,sessionName:process.env.SESSIONNAME??null});
+  log('CHROME_LAUNCH_REQUESTED_VIA_BROKER',{workerId,placement,brokerUrl:url,controllerInstanceId});
 }
 async function waitForHeartbeat(workerId:WorkerId){
   const deadline=Date.now()+config.pacing.workerReadyTimeoutMs;
@@ -283,7 +270,7 @@ async function startWorker(workerId:WorkerId){
     assertWorkerEnabled(workerId);
     if(!recentHeartbeat(workerId)){
       if(!canLaunchWorker(state))throw new Error(`RECOVERY_AMBIGUOUS_WINDOW:${workerId}`);
-      launchChrome(workerId);
+      await launchChrome(workerId);
     }
     await waitForHeartbeat(workerId);
     await delay(config.pacing.postReadySettlingMs);
@@ -355,6 +342,20 @@ async function fetchExternalSnapshot(){
     log('AUTOPILOT_SNAPSHOT_PULLED',{source:snapshot.source,revision:snapshot.revision});
   }finally{clearTimeout(timer);}
 }
+function heartbeatStopReason(hb:Heartbeat|undefined):string|undefined{
+  if(!hb)return;
+  if(hb.authRequired)return 'AUTH_REQUIRED';
+  if(hb.reauthRequired)return 'REAUTH';
+  if(hb.captchaRequired)return 'CAPTCHA';
+  if(hb.rateLimited||Number(hb.rateLimitCode)===429)return 'RATE_LIMIT_429';
+  const raw=String(hb.securityBlock||'').trim().toUpperCase();
+  if(!raw)return;
+  if(raw.includes('CAPTCHA'))return 'CAPTCHA';
+  if(raw.includes('REAUTH')||raw.includes('VERIFY'))return 'REAUTH';
+  if(raw.includes('RATE_LIMIT')||raw.includes('429')||raw.includes('TOO_MANY_REQUESTS'))return 'RATE_LIMIT_429';
+  if(raw.includes('SUSPICIOUS')||raw.includes('SECURITY'))return raw.startsWith('BLOCKED_')?raw:'SECURITY_WARNING';
+  return raw.startsWith('BLOCKED_')?raw:'SECURITY_BLOCK';
+}
 async function autopilotTick(){
   if(autopilotTicking||!config.autopilot.enabled||paused||killed)return;
   autopilotTicking=true;
@@ -363,14 +364,32 @@ async function autopilotTick(){
       try{await fetchExternalSnapshot();}
       catch(error){log('AUTOPILOT_EXTERNAL_STATE_UNAVAILABLE',{error:String(error)});}
     }
+    if(autopilotState.pendingJobId){
+      const pendingJobId=autopilotState.pendingJobId;
+      const reconciliation=dispatchLease.reconcilePending(pendingJobId);
+      if(reconciliation.kind==='WAIT'){
+        setAutopilotPhase('BUSY');log('AUTO_CONTINUE_PENDING_LEASE_WAIT',{jobId:pendingJobId,leaseId:reconciliation.lease.leaseId,expiresAt:reconciliation.lease.expiresAt});persistEvidence();return;
+      }
+      if(reconciliation.kind==='UNCERTAIN'){
+        autopilotState={...clearPending(autopilotState),uncertainJobId:pendingJobId,updatedAt:new Date().toISOString()};
+        stopAutopilot(reconciliation.reason);persistAutopilotState();log('AUTO_CONTINUE_PENDING_RECONCILE_UNCERTAIN',{jobId:pendingJobId,reason:reconciliation.reason});persistEvidence();return;
+      }
+      if(reconciliation.kind==='COMMITTED'){
+        autopilotState={...clearPending(autopilotState),phase:'BUSY',lastDispatchedJobId:pendingJobId,lastDispatchedAt:reconciliation.lease.dispatchedAt,uncertainJobId:undefined,updatedAt:new Date().toISOString()};
+        persistAutopilotState();log('AUTO_CONTINUE_PENDING_RECONCILED_COMMITTED',{jobId:pendingJobId,leaseId:reconciliation.lease.leaseId});
+      }else{
+        autopilotState={...clearPending(autopilotState),phase:'IDLE',updatedAt:new Date().toISOString()};
+        persistAutopilotState();log('AUTO_CONTINUE_PENDING_RECONCILED_SAFE_RETRY',{jobId:pendingJobId,leaseId:reconciliation.lease.leaseId});
+      }
+    }
     if(!latestSnapshot){setAutopilotPhase('IDLE');persistEvidence();return;}
     const previous=latestSnapshot.previousJob;
     if(previous&&previous.jobId===autopilotState.lastDispatchedJobId&&previous.status==='DONE'){
-      const ext=previous.evidence?.find((item)=>['GITHUB','CORE'].includes(item.source)&&Boolean(item.ref?.trim())&&Boolean(item.verifiedAt));
+      const ext=selectFreshCompletionEvidence(previous,autopilotState,Date.parse(latestSnapshot.observedAt));
       if(ext&&autopilotState.lastCompletedJobId!==previous.jobId){
-        autopilotState={...autopilotState,lastCompletedJobId:previous.jobId,lastEvidenceRef:ext.ref,updatedAt:new Date().toISOString()};
+        autopilotState={...autopilotState,lastCompletedJobId:previous.jobId,lastEvidenceRef:ext.ref,lastCompletedEvidenceRevision:ext.completionRevision,updatedAt:new Date().toISOString()};
         persistAutopilotState();
-        log('COMPLETION_WATCHER_DONE_EVIDENCE',{jobId:previous.jobId,evidenceRef:ext.ref,source:ext.source});
+        log('COMPLETION_WATCHER_DONE_EVIDENCE',{jobId:previous.jobId,evidenceRef:ext.ref,evidenceRevision:ext.completionRevision,source:ext.source});
       }
     }
     const decision=decideAutoContinue(latestSnapshot,autopilotState,Date.now(),config.autopilot.maxSnapshotAgeMs);
@@ -381,8 +400,8 @@ async function autopilotTick(){
     const primary=states.get('NV02')!;
     if(!primary.enabled||primary.blocked||!startupReady){stopAutopilot(primary.blocked?'NV02_BLOCKED':'NV02_NOT_READY');persistEvidence();return;}
     if(!recentHeartbeat('NV02')){setAutopilotPhase('RECOVERING');persistEvidence();return;}
-    const uiSecurity=primary.lastHeartbeat?.securityBlock;
-    if(uiSecurity&&uiSecurity.startsWith('BLOCKED_')){
+    const uiSecurity=heartbeatStopReason(primary.lastHeartbeat);
+    if(uiSecurity){
       primary.blocked=true;primary.status='BLOCKED';primary.lastError=uiSecurity;
       stopAutopilot(uiSecurity);log('AUTOPILOT_SECURITY_STOP',{workerId:'NV02',status:uiSecurity});persistEvidence();return;
     }
@@ -391,6 +410,18 @@ async function autopilotTick(){
       log('AUTOPILOT_WAIT_UI_BUSY',{workerId:'NV02',uiBusy:primary.lastHeartbeat?.uiBusy??null,lastDispatchedJobId:autopilotState.lastDispatchedJobId});
       persistEvidence();return;
     }
+    const leaseResult=dispatchLease.acquire(decision.jobId);
+    if(leaseResult.kind==='BUSY'){
+      setAutopilotPhase('BUSY');log('AUTO_CONTINUE_LEASE_BUSY',{jobId:decision.jobId,leaseJobId:leaseResult.lease.jobId,leaseOwnerId:leaseResult.lease.ownerId});persistEvidence();return;
+    }
+    if(leaseResult.kind==='UNCERTAIN'){
+      stopAutopilot(leaseResult.reason);log('AUTO_CONTINUE_LEASE_UNCERTAIN',{jobId:decision.jobId,reason:leaseResult.reason});persistEvidence();return;
+    }
+    if(leaseResult.kind==='COMMITTED'){
+      autopilotState={...clearPending(autopilotState),phase:'BUSY',lastDispatchedJobId:decision.jobId,lastDispatchedAt:leaseResult.lease.dispatchedAt??autopilotState.lastDispatchedAt,updatedAt:new Date().toISOString()};
+      persistAutopilotState();log('AUTO_CONTINUE_DUPLICATE_SUPPRESSED_DURABLE',{jobId:decision.jobId,leaseId:leaseResult.lease.leaseId});persistEvidence();return;
+    }
+    const dispatchLeaseToken=leaseResult.lease;
     autopilotState={
       ...autopilotState,
       phase:'BUSY',
@@ -401,13 +432,18 @@ async function autopilotTick(){
       updatedAt:new Date().toISOString(),
     };
     persistAutopilotState();
-    log('AUTO_CONTINUE_RESERVED',{jobId:decision.jobId,trigger:AUTO_CONTINUE,evidenceRef:decision.evidenceRef??null});
+    log('AUTO_CONTINUE_RESERVED',{jobId:decision.jobId,trigger:AUTO_CONTINUE,evidenceRef:decision.evidenceRef??null,leaseId:dispatchLeaseToken.leaseId,controllerInstanceId});
+    let dispatchDelivered=false;
     try{
+      dispatchLease.markDispatching(dispatchLeaseToken.leaseId,decision.jobId);
       await dispatch('NV02',decision.text,true,'AUTO_CONTINUE');
+      dispatchDelivered=true;
+      const committedLease=dispatchLease.markCommitted(dispatchLeaseToken.leaseId,decision.jobId);
       autopilotState={
         ...clearPending(autopilotState),
         phase:'BUSY',
         lastDispatchedJobId:decision.jobId,
+        lastDispatchedAt:committedLease.dispatchedAt,
         uncertainJobId:undefined,
         updatedAt:new Date().toISOString(),
       };
@@ -422,7 +458,7 @@ async function autopilotTick(){
         updatedAt:new Date().toISOString(),
       };
       persistAutopilotState();
-      log('AUTO_CONTINUE_FAILED_CLOSED',{jobId:decision.jobId,error:message,ambiguous:message.includes('DELIVERED')});
+      log('AUTO_CONTINUE_FAILED_CLOSED',{jobId:decision.jobId,error:message,ambiguous:dispatchDelivered||message.includes('DELIVERED')});
     }
     persistEvidence();
   }finally{autopilotTicking=false;}
@@ -563,10 +599,11 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
     state.windowState='OPEN';
     state.windowEventAt=hb.at;
     state.lastWindowId=hb.windowId;
-    if(hb.securityBlock&&hb.securityBlock.startsWith('BLOCKED_')){
-      state.blocked=true;state.status='BLOCKED';state.lastError=hb.securityBlock;
-      if(workerId==='NV02')stopAutopilot(hb.securityBlock);
-      log('HEARTBEAT_SECURITY_STOP',{workerId,status:hb.securityBlock});
+    const hbStop=heartbeatStopReason(hb);
+    if(hbStop){
+      state.blocked=true;state.status='BLOCKED';state.lastError=hbStop;
+      if(workerId==='NV02')stopAutopilot(hbStop);
+      log('HEARTBEAT_SECURITY_STOP',{workerId,status:hbStop});
     }else if(!state.blocked){state.lastError=undefined;}
     recoveryAttempts.set(workerId,0);
     if(!state.enabled){state.status='DISABLED';json(res,200,{ok:true,enabled:false});return true;}

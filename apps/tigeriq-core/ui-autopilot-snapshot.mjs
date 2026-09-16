@@ -42,12 +42,17 @@ export function buildPrompt(spec,repoFullName=`${DEFAULT_OWNER}/${DEFAULT_REPO}`
   return `LÀM — NO YAPPING. Nhận việc #${spec.number} - ${spec.title}. Đọc đầy đủ issue #${spec.number} trong repo ${repoFullName} và thực hiện end-to-end đúng scope. Tuân thủ toàn bộ guardrail trong issue; không MAIN/Production, không chi phí, không đổi credential, không destructive. Cập nhật GitHub bằng bằng chứng kiểm chứng được; chỉ dừng DONE có evidence hoặc BLOCKER thật.`;
 }
 
-function jobFromIssue(issue,spec){
+function jobFromIssue(issue,spec,verifiedAt){
   const completed=issue.state==='closed'&&issue.state_reason==='completed';
   const cancelled=issue.state==='closed'&&!completed;
   const status=completed?'DONE':cancelled?'CANCELLED':'RUNNING';
   const job={jobId:spec.jobId,workerId:'NV02',status,executable:true,priority:spec.priority};
-  if(completed){job.evidence=[{source:'GITHUB',ref:spec.url,verifiedAt:String(issue.closed_at||issue.updated_at||new Date().toISOString())}];}
+  if(completed){
+    const completedAt=String(issue.closed_at||issue.updated_at||'');
+    const completionRevision=['github-issue-v2',spec.jobId,completedAt,String(issue.updated_at||completedAt)].join(':');
+    job.completedAt=completedAt;job.completionRevision=completionRevision;
+    job.evidence=[{source:'GITHUB',ref:spec.url,verifiedAt,jobId:spec.jobId,completedAt,completionRevision}];
+  }
   return job;
 }
 
@@ -111,7 +116,7 @@ export async function buildUiAutopilotSnapshot({fetchImpl=fetch,token='',owner=D
     const issue=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/${previousNumber}`,token);
     const spec=parseAutoUiIssue(issue,{allowClosed:true});
     if(!spec)throw new Error('PREVIOUS_JOB_NOT_AUTHORIZED_AUTO_UI');
-    previousJob=jobFromIssue(issue,spec);
+    previousJob=jobFromIssue(issue,spec,observedAt);
   }
   const rows=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues?state=open&per_page=100&sort=created&direction=asc`,token);
   const eligible=(Array.isArray(rows)?rows:[])
@@ -120,7 +125,7 @@ export async function buildUiAutopilotSnapshot({fetchImpl=fetch,token='',owner=D
     .sort((a,b)=>priorityRank(a.spec.priority)-priorityRank(b.spec.priority)||a.spec.number-b.spec.number);
   const chosen=eligible[0];
   const nextJob=chosen?{jobId:chosen.spec.jobId,workerId:'NV02',status:'READY',executable:true,priority:chosen.spec.priority,prompt:buildPrompt(chosen.spec,`${owner}/${repo}`),riskFlags:[]}:undefined;
-  const revision=['github-ui-v1',previousJob?.jobId||'none',previousJob?.status||'none',chosen?.spec.jobId||'none',chosen?.spec.updatedAt||'none'].join(':');
+  const revision=['github-ui-v2',previousJob?.jobId||'none',previousJob?.status||'none',chosen?.spec.jobId||'none',chosen?.spec.updatedAt||'none'].join(':');
   return{source:'GITHUB',observedAt,revision,previousJob,nextJob,requiredWorkers:[]};
 }
 

@@ -4,18 +4,18 @@ import { resolve } from 'node:path';
 export const WORKER_IDS = ['NV02', 'NV03', 'NV04'] as const;
 export type WorkerId = (typeof WORKER_IDS)[number];
 
-export interface WorkerConfig { id:WorkerId; role:string; homeUrl:string; profileDirectory:string; enabled?:boolean; userDataDir?:string }
+export interface WorkerConfig { id:WorkerId; role:string; homeUrl:string; profileDirectory:string; enabled?:boolean; userDataDir?:string; debugPort?:number }
 export interface LayoutConfig { width:number; height:number; gap:number; rightMargin:number; top:number; fallbackWorkAreaWidth:number; fallbackWorkAreaLeft:number }
 export interface PacingConfig { betweenWorkerLaunchMs:number; postReadySettlingMs:number; minUiActionGapMs:number; commandTimeoutMs:number; workerReadyTimeoutMs:number; maxRetries:number; retryBackoffMs:number }
-export interface AutopilotConfig { enabled:boolean; pollIntervalMs:number; stateUrl?:string; requestTimeoutMs:number; maxSnapshotAgeMs:number }
-export interface RecoveryConfig { heartbeatStaleMs:number; checkIntervalMs:number; maxReopenAttempts:number; reopenBackoffMs:number; startupReadyUrl?:string; startupReadyTimeoutMs:number; startupAttachGraceMs:number }
+export interface AutopilotConfig { enabled:boolean; pollIntervalMs:number; stateUrl?:string; requestTimeoutMs:number; maxSnapshotAgeMs:number; dispatchLeaseTtlMs:number }
+export interface RecoveryConfig { heartbeatStaleMs:number; checkIntervalMs:number; maxReopenAttempts:number; reopenBackoffMs:number; startupReadyUrl?:string; startupReadyTimeoutMs:number; startupAttachGraceMs:number; launchBrokerUrl?:string; launchBrokerTimeoutMs:number }
 export interface ControllerConfig { host:'127.0.0.1'; port:number; chromePath:string; userDataDir?:string; logDir:string; trustedRuntimeHosts:string[]; layout:LayoutConfig; pacing:PacingConfig; autopilot:AutopilotConfig; recovery:RecoveryConfig; workers:WorkerConfig[] }
 export interface WorkArea { left:number; top:number; width:number; height:number }
 export interface WindowPlacement { left:number; top:number; width:number; height:number }
 
 const ALLOWED_HOSTS=new Set(['chatgpt.com','gemini.google.com']);
-const DEFAULT_AUTOPILOT:AutopilotConfig={enabled:true,pollIntervalMs:15000,requestTimeoutMs:5000,maxSnapshotAgeMs:300000};
-const DEFAULT_RECOVERY:RecoveryConfig={heartbeatStaleMs:90000,checkIntervalMs:15000,maxReopenAttempts:2,reopenBackoffMs:15000,startupReadyUrl:'http://127.0.0.1:8795/health',startupReadyTimeoutMs:120000,startupAttachGraceMs:20000};
+const DEFAULT_AUTOPILOT:AutopilotConfig={enabled:true,pollIntervalMs:15000,requestTimeoutMs:5000,maxSnapshotAgeMs:300000,dispatchLeaseTtlMs:300000};
+const DEFAULT_RECOVERY:RecoveryConfig={heartbeatStaleMs:90000,checkIntervalMs:15000,maxReopenAttempts:2,reopenBackoffMs:15000,startupReadyUrl:'http://127.0.0.1:8795/health',startupReadyTimeoutMs:120000,startupAttachGraceMs:20000,launchBrokerUrl:'http://127.0.0.1:8800',launchBrokerTimeoutMs:5000};
 
 export function isAllowedWorkerUrl(value:string):boolean{try{const u=new URL(value);return u.protocol==='https:'&&ALLOWED_HOSTS.has(u.hostname)}catch{return false}}
 export function isWorkerEnabled(worker:Pick<WorkerConfig,'enabled'>):boolean{return worker.enabled!==false}
@@ -50,10 +50,12 @@ export function validateConfig(raw:unknown):ControllerConfig{
   if(!Array.isArray(config.workers)||config.workers.length!==3)throw new Error('CONFIG_REQUIRES_3_WORKERS');
   const ids=config.workers.map(w=>w.id);if(ids.join('|')!==WORKER_IDS.join('|'))throw new Error('CONFIG_WORKER_ORDER_MUST_BE_NV02_NV03_NV04');
   const targets=new Set<string>();
+  const debugPorts=new Set<number>();
   for(const worker of config.workers){
     if(worker.enabled!==undefined&&typeof worker.enabled!=='boolean')throw new Error(`CONFIG_ENABLED_MUST_BE_BOOLEAN:${worker.id}`);
     if(!isAllowedWorkerUrl(worker.homeUrl))throw new Error(`CONFIG_HOME_URL_NOT_ALLOWED:${worker.id}`);
     if(!worker.role.trim())throw new Error(`CONFIG_ROLE_REQUIRED:${worker.id}`);
+    if(worker.debugPort!==undefined){if(!Number.isInteger(worker.debugPort)||worker.debugPort<1024||worker.debugPort>65535)throw new Error(`CONFIG_DEBUG_PORT_INVALID:${worker.id}`);if(debugPorts.has(worker.debugPort))throw new Error(`CONFIG_DEBUG_PORT_COLLISION:${worker.id}`);debugPorts.add(worker.debugPort);}
     const host=new URL(worker.homeUrl).hostname;const userData=worker.userDataDir??config.userDataDir??'';const target=`${userData}|${worker.profileDirectory}|${host}`.toLowerCase();
     if(targets.has(target))throw new Error(`CONFIG_PROFILE_HOST_COLLISION:${worker.id}`);targets.add(target);
   }
@@ -69,12 +71,14 @@ export function validateConfig(raw:unknown):ControllerConfig{
   if(!Number.isInteger(pacing.maxRetries)||pacing.maxRetries<0||pacing.maxRetries>2)throw new Error('CONFIG_MAX_RETRIES_0_TO_2');
   if(pacing.retryBackoffMs<3000)throw new Error('CONFIG_RETRY_BACKOFF_MIN_3000MS');
   if(typeof autopilot.enabled!=='boolean')throw new Error('CONFIG_AUTOPILOT_ENABLED_MUST_BE_BOOLEAN');
-  if(autopilot.pollIntervalMs<5000||autopilot.requestTimeoutMs<1000||autopilot.requestTimeoutMs>30000||autopilot.maxSnapshotAgeMs<60000)throw new Error('CONFIG_AUTOPILOT_PACING_INVALID');
+  if(autopilot.pollIntervalMs<5000||autopilot.requestTimeoutMs<1000||autopilot.requestTimeoutMs>30000||autopilot.maxSnapshotAgeMs<60000||autopilot.dispatchLeaseTtlMs<Math.max(60000,pacing.commandTimeoutMs+30000))throw new Error('CONFIG_AUTOPILOT_PACING_INVALID');
   if(!isTrustedRuntimeUrl(autopilot.stateUrl,trustedRuntimeHosts))throw new Error('CONFIG_AUTOPILOT_STATE_URL_NOT_TRUSTED');
   if(recovery.heartbeatStaleMs<30000||recovery.checkIntervalMs<5000||recovery.reopenBackoffMs<5000||recovery.startupAttachGraceMs<5000)throw new Error('CONFIG_RECOVERY_PACING_INVALID');
   if(!Number.isInteger(recovery.maxReopenAttempts)||recovery.maxReopenAttempts<0||recovery.maxReopenAttempts>3)throw new Error('CONFIG_RECOVERY_ATTEMPTS_0_TO_3');
   if(recovery.startupReadyTimeoutMs<30000||recovery.startupReadyTimeoutMs>300000)throw new Error('CONFIG_RECOVERY_STARTUP_TIMEOUT_INVALID');
   if(!isTrustedRuntimeUrl(recovery.startupReadyUrl,trustedRuntimeHosts))throw new Error('CONFIG_RECOVERY_READY_URL_NOT_TRUSTED');
+  if(recovery.launchBrokerTimeoutMs<1000||recovery.launchBrokerTimeoutMs>30000)throw new Error('CONFIG_LAUNCH_BROKER_TIMEOUT_INVALID');
+  if(recovery.launchBrokerUrl){try{const u=new URL(recovery.launchBrokerUrl);if(u.protocol!=='http:'||!isLoopbackHost(u.hostname))throw new Error();}catch{throw new Error('CONFIG_LAUNCH_BROKER_URL_MUST_BE_LOOPBACK');}}
   return{...config,chromePath:expandEnv(config.chromePath),userDataDir:config.userDataDir?expandEnv(config.userDataDir):undefined,logDir:expandEnv(config.logDir),workers:config.workers.map(w=>({...w,enabled:isWorkerEnabled(w),userDataDir:w.userDataDir?expandEnv(w.userDataDir):undefined}))};
 }
 export function loadConfig(configPath?:string):ControllerConfig{
