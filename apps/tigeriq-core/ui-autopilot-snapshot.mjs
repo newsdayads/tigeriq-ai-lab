@@ -8,7 +8,7 @@ const REQUIRED_TRUE_FLAGS=[
   'TIGERIQ_EXECUTABLE','NO_DIRECT_MAIN','NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_DESTRUCTIVE','NO_PRODUCTION_RELEASE',
 ];
 const REQUIRED_SAVE_FIELDS=[
-  'TIGERIQ_SAVE_STATE','TIGERIQ_SAVE_FOCUS','TIGERIQ_SAVE_DECISIONS','TIGERIQ_SAVE_DONE',
+  'TIGERIQ_SAVE_DISPATCHED_AT','TIGERIQ_SAVE_STATE','TIGERIQ_SAVE_FOCUS','TIGERIQ_SAVE_DECISIONS','TIGERIQ_SAVE_DONE',
   'TIGERIQ_SAVE_PENDING','TIGERIQ_SAVE_BLOCKERS','TIGERIQ_SAVE_NEXT','TIGERIQ_SAVE_EVIDENCE',
 ];
 
@@ -17,6 +17,7 @@ function exactValue(body,key){
   return String(body||'').match(new RegExp(`^${escaped}=([^\\r\\n]+)$`,'m'))?.[1]?.trim();
 }
 function exactTrue(body,key){return exactValue(body,key)==='true';}
+function meaningfulValue(value){const text=String(value||'').trim();return Boolean(text)&&!/^<.*>$/.test(text);}
 function cleanTitle(value){return String(value||'').replace(/[\r\n\t]+/g,' ').replace(/\s+/g,' ').trim().slice(0,180);}
 function priorityRank(value){return value==='P0'?0:value==='P1'?1:9;}
 function isLoopbackUrl(value){
@@ -61,7 +62,8 @@ async function ghJson(fetchImpl,url,token){
 export function findDurableSaveReceipt(comments,{saveToken,workerId,after}){
   if(!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(saveToken||'')))throw new Error('SAVE_TOKEN_INVALID');
   if(!['NV02','NV03'].includes(String(workerId||'')))throw new Error('SAVE_WORKER_INVALID');
-  const afterMs=Date.parse(String(after||''));
+  const afterText=String(after||'');
+  const afterMs=Date.parse(afterText);
   if(!Number.isFinite(afterMs))throw new Error('SAVE_AFTER_INVALID');
   for(const comment of Array.isArray(comments)?[...comments].reverse():[]){
     const createdAt=String(comment?.created_at||'');
@@ -72,9 +74,10 @@ export function findDurableSaveReceipt(comments,{saveToken,workerId,after}){
     if(exactValue(text,'TIGERIQ_SAVE_TOKEN')!==saveToken)continue;
     if(exactValue(text,'TIGERIQ_SAVE_WORKER')!==workerId)continue;
     if(exactValue(text,'TIGERIQ_SAVE_STATUS')!=='DURABLE')continue;
+    if(exactValue(text,'TIGERIQ_SAVE_DISPATCHED_AT')!==afterText)continue;
     const checkpointRef=exactValue(text,'TIGERIQ_SAVE_REF');
-    if(!checkpointRef)continue;
-    if(REQUIRED_SAVE_FIELDS.some((key)=>!exactValue(text,key)))continue;
+    if(!meaningfulValue(checkpointRef)||!String(checkpointRef).startsWith(`https://github.com/${DEFAULT_OWNER}/${DEFAULT_REPO}/`))continue;
+    if(REQUIRED_SAVE_FIELDS.some((key)=>!meaningfulValue(exactValue(text,key))))continue;
     return{ok:true,status:'DURABLE',receiptRef:String(comment?.html_url||''),checkpointRef,verifiedAt:createdAt};
   }
   return{ok:false,status:'SAVE_NOT_DURABLE'};
