@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { describe,expect,it } from 'vitest';
-import { buildPrompt,buildUiAutopilotSnapshot,parseAutoUiIssue,readPreviousJobIdFromController } from '../apps/tigeriq-core/ui-autopilot-snapshot.mjs';
+import { buildPrompt,buildUiAutopilotSnapshot,findDurableSaveReceipt,parseAutoUiIssue,readDurableSaveReceipt,readPreviousJobIdFromController } from '../apps/tigeriq-core/ui-autopilot-snapshot.mjs';
 
 const body=(priority='P0')=>[
   'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO_UI',`PRIORITY=${priority}`,'PRIMARY_EMPLOYEE=NV02',
@@ -22,6 +22,17 @@ describe('UI autopilot snapshot',()=>{
   it('maps completed previous issue to DONE with GitHub evidence and verifiedAt',async()=>{const previous=issue(40,{state:'closed',state_reason:'completed',closed_at:'2026-09-15T02:00:00Z'});const fetchImpl=async(url)=>response(url.includes('/issues/40')?previous:[]);const s=await buildUiAutopilotSnapshot({fetchImpl,token:'x',previousJobId:'GH-40'});expect(s.previousJob).toMatchObject({jobId:'GH-40',status:'DONE',evidence:[{source:'GITHUB',ref:previous.html_url,verifiedAt:'2026-09-15T02:00:00Z'}]});expect(s.nextJob).toBeUndefined();});
   it('maps non-completed closure to CANCELLED',async()=>{const previous=issue(41,{state:'closed',state_reason:'not_planned',closed_at:'2026-09-15T02:00:00Z'});const fetchImpl=async(url)=>response(url.includes('/issues/41')?previous:[]);const s=await buildUiAutopilotSnapshot({fetchImpl,token:'x',previousJobId:'GH-41'});expect(s.previousJob.status).toBe('CANCELLED');});
   it('fails closed on invalid or unauthorized previous issue',async()=>{await expect(buildUiAutopilotSnapshot({fetchImpl:async()=>response([]),token:'x',previousJobId:'bad'})).rejects.toThrow('PREVIOUS_JOB_ID_INVALID');const bad=issue(50,{body:'TIGERIQ_EXECUTABLE=true'});await expect(buildUiAutopilotSnapshot({fetchImpl:async()=>response(bad),token:'x',previousJobId:'GH-50'})).rejects.toThrow('PREVIOUS_JOB_NOT_AUTHORIZED_AUTO_UI');});
+});
+
+describe('durable save receipt',()=>{
+  const saveToken='123e4567-e89b-42d3-a456-426614174000';
+  const receiptBody=[
+    'TIGERIQ_SAVE_RECEIPT_V1',`TIGERIQ_SAVE_TOKEN=${saveToken}`,'TIGERIQ_SAVE_WORKER=NV02','TIGERIQ_SAVE_STATUS=DURABLE','TIGERIQ_SAVE_REF=https://github.com/newsdayads/tigeriq-ai-lab/issues/788#issuecomment-1',
+    'TIGERIQ_SAVE_STATE=idle','TIGERIQ_SAVE_FOCUS=durable save gate','TIGERIQ_SAVE_DECISIONS=archive only after receipt','TIGERIQ_SAVE_DONE=source checkpointed','TIGERIQ_SAVE_PENDING=runtime deploy','TIGERIQ_SAVE_BLOCKERS=none','TIGERIQ_SAVE_NEXT=verify runtime','TIGERIQ_SAVE_EVIDENCE=PR and CI',
+  ].join('\n');
+  it('accepts only a complete matching receipt created after dispatch',()=>{const comments=[{created_at:'2026-09-16T07:00:01Z',html_url:'https://github.com/x/1',body:receiptBody}];expect(findDurableSaveReceipt(comments,{saveToken,workerId:'NV02',after:'2026-09-16T07:00:00Z'})).toMatchObject({ok:true,status:'DURABLE'});expect(findDurableSaveReceipt(comments,{saveToken,workerId:'NV02',after:'2026-09-16T07:00:02Z'})).toEqual({ok:false,status:'SAVE_NOT_DURABLE'});});
+  it('rejects stale, wrong-worker, incomplete, or invalid-token receipts',()=>{const fresh={created_at:'2026-09-16T07:00:01Z',html_url:'x',body:receiptBody};expect(findDurableSaveReceipt([fresh],{saveToken,workerId:'NV03',after:'2026-09-16T07:00:00Z'})).toEqual({ok:false,status:'SAVE_NOT_DURABLE'});expect(findDurableSaveReceipt([{...fresh,body:receiptBody.replace('TIGERIQ_SAVE_NEXT=verify runtime','')}],{saveToken,workerId:'NV02',after:'2026-09-16T07:00:00Z'})).toEqual({ok:false,status:'SAVE_NOT_DURABLE'});expect(()=>findDurableSaveReceipt([fresh],{saveToken:'bad',workerId:'NV02',after:'2026-09-16T07:00:00Z'})).toThrow('SAVE_TOKEN_INVALID');});
+  it('reads the last ledger page and returns the verified receipt',async()=>{const calls=[];const fetchImpl=async(url)=>{calls.push(url);return response(url.includes('/comments?')?[{created_at:'2026-09-16T07:00:01Z',html_url:'receipt',body:receiptBody}]:{comments:101});};const value=await readDurableSaveReceipt({fetchImpl,token:'x',saveToken,workerId:'NV02',after:'2026-09-16T07:00:00Z'});expect(value).toMatchObject({ok:true,status:'DURABLE',receiptRef:'receipt'});expect(calls.some((url)=>url.includes('page=2'))).toBe(true);});
 });
 
 describe('controller correlation',()=>{
