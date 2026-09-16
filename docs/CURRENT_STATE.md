@@ -1,54 +1,38 @@
 # TigerIQ — Current State
 
-Date: 2026-09-15
-Status: CURRENT — Autopilot + Smart Router source merged and live runtime verified on PC01
+Date: 2026-09-16
+Status: CURRENT — Core/Web live; reduced-shell PC01 control path verified; Chrome maintenance remains gated
 Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #335 > this snapshot > runtime/evidence
 
 ## Canonical source / runtime
-- `main` source includes PR #776 (`NV10 = Ollama` source migration), PR #750 (Chrome Controller base), PR #766 (UI Autopilot Snapshot Adapter), PR #771 (Web Control Health parity), PR #764 (3-worker Autopilot/recovery), PR #774 (canonical Workforce NV01–NV20), PR #779 (safe save/archive after DONE), PR #778 (Smart Router + AI resource identity separation + routing telemetry), PR #781 (complete Web Control runtime bundle sync), and PR #782 (include `workforce-registry.mjs` in runtime bundle).
-- Latest verified source/runtime SHA on PC01: `af7e48f9198c85812e0c01e55160b2ff9fcb9e69`.
-- Core `100.97.23.87:8795` is ONLINE on PID `11684`; Web Control `100.97.23.87:8796` is ONLINE on PID `27740`.
-- Chrome Controller remains untouched on PID `30300` at `127.0.0.1:8798`.
-- Coding Lane `8797` and Core Runtime Updater remain intentionally disabled.
-- `vercel.json` has Git deployment disabled; no Vercel Production release was performed.
+- GitHub `main` current SHA: `8f2379c1e6766a269caf808a731d5d4b2c1bb5c5` (PR #785 merged); PC01 live workspace remains on the previously verified runtime until a separately authorized release/deploy.
+- Core `100.97.23.87:8795`: ONLINE; fresh direct endpoint probe on 2026-09-16 returned `ok=true`, PID `27636`.
+- Web Control `100.97.23.87:8796`: ONLINE; fresh direct endpoint probe returned Web + Core `ok=true`; Coding Lane timeout is consistent with intentionally disabled `8797`.
+- Chrome Controller remains separately gated; do not restart/reload/close OPEN workers merely for maintenance.
+- Core Runtime Updater remains intentionally disabled; no Production release was performed.
 
-## #777 Smart Router — source and live truth
-- PR #778 merged to `main` after exact-head `CI Verify`, `Queue Hygiene Verify`, and `Vercel Online Verify` passed.
-- Final PR #778 test evidence: Vitest `42 files / 219 tests` PASS; Playwright foundation E2E `1/1` PASS; typecheck/build/Vercel policy/PowerShell syntax PASS.
-- Employee identity and AI resource identity are separate: stable `resource_id` is provider/model/account/runtime based; current jobs/events keep backward compatibility and historical provenance is not rewritten.
-- `NV10 = Ollama`; stale Ollama identity `NV02` is no longer present in live Core resources. `NV02 = ChatGPT Plus` remains the primary UI executor.
-- Routing profiles: `AUTO`, `CODING`, `FAST`, `CHEAP`, `LOCAL`, `RESEARCH`, `REVIEW`.
-- Router eligibility/scoring considers capability, health, cooldown, quota/rate limit, task-specific performance, cost tier, and reviewer-resource independence; paid fallback is excluded.
-- Auth/configuration/security/credential/paid/Production/irreversible failures remain terminal and are never auto-bypassed.
-- Quota telemetry preserves unknown as unknown, treats ratio-only telemetry as known, penalizes near-limit resources, and honors the later of provider reset and active cooldown.
-- Live Core verification: `routing=true`, `resources=11`, Ollama resource `res:ollama:qwen3-4b:default:core` is owned by `NV10`, active objectives `0`, active jobs `0`.
+## #756 — reduced CMD/PowerShell control path
+- #756 is CLOSED/COMPLETED. PR #757 exact reviewed head `52bfb10c0d834c4142dca095f7244e13c4c76883`; exact-head CI run `34847843264` SUCCESS; merged into its parent Chrome Controller branch as `32ab0478cea1e104bda9a638f404af7079ffbb66`, later incorporated through the canonical source line.
+- Acceptance evidence: normal controller state, recent log, and process/session inspection moved from repeated PowerShell/polling to Desktop Commander direct URL/file/process/session actions: 0 shell for those normal read-only paths.
+- Historical before evidence recorded repeated PowerShell state/log probes around 458–650 ms and polling shells held for ~12–120 s. After evidence recorded direct state ~10 ms, direct log tail ~36 ms, and consolidated runtime snapshot ~80.5 ms.
+- Fresh 2026-09-16 verification used direct actions only: Core health PASS, Web health PASS, and Desktop Commander reports `No active sessions`; no shell was spawned for this verification.
+- Remaining shell is exception-only: a single bounded mutation POST fallback where no direct remote POST primitive exists, or a bounded consolidated network probe when direct URL access is unavailable. Repeated shell polling is not the normal path.
+- Independent NV03 review requirement was resolved before #756 closure; final issue checkpoint records APPROVE and acceptance reached.
 
-## Web Control / workforce truth
-- Web Control is the single Owner UI and refreshes `/api/status` every 2 seconds with stale-data visibility.
-- Registry #335 remains the canonical employee source; all NV01–NV20 slots are represented, including retired/unassigned states without fake OFFLINE status.
-- Live Web verification: `workforce=20`, `resources=11`, `routing=true`.
-- `/web-control-routing.js` and `/web-control-routing.css` both returned HTTP `200` after maintenance.
-- `Nhân sự AI` remains Registry-derived; `Tài nguyên AI`, `Định tuyến AI`, and `Hiệu suất theo loại việc` are separate Core projections.
-- Smart Router overlay does not replace the canonical Workforce renderer.
+## Workforce / Web Control truth
+- Registry #335 is canonical for employee identity. `NV02 = ChatGPT Plus`, `NV03 = ChatGPT Go`, `NV04 = Gemini Pro`, `NV10 = Ollama`; NV05 remains retired.
+- Web Control remains the single Owner UI and Registry-derived workforce view; Smart Router resources remain separate from employee identity.
 
-## Autopilot / Chrome source truth
-- PR #750, #764, #766 and #779 are merged in source.
-- Canonical Chrome workers are `NV02 | NV03 | NV04`; `NV05` remains retired; `NV10` is local/Core AI and not a Chrome worker.
-- Safe save/archive is gated by external DONE evidence and fails closed for active/busy/blocked/security states.
-- #777 maintenance did not restart or deploy Chrome Controller; PID `30300` stayed unchanged through Core/Web activation.
-
-## Maintenance evidence / safeguards
-- The first maintenance attempt did not obtain new Core health and automatically rolled back to the previous source/runtime; Core and Web stayed recoverable and Chrome Controller was unchanged.
-- Runtime DB read-only verification then confirmed both legacy Ollama rows were IDLE with `current_job_id=null` and there were no active jobs.
-- Successful retry preserved the existing Core supervisor and restarted only the Core Node child; new Core came ONLINE with `routing=true` and only `NV10` as Ollama.
-- Web Control was then restarted from the canonical runtime bundle and verified independently.
-- Pre-maintenance dirty workspace changes were preserved in a reversible git stash rather than deleted.
-- Core Runtime Updater remains disabled; task-level supervisor restart behavior discovered during maintenance is tracked separately and is not enabled automatically.
+## Current active/gated work
+- #763 Chrome 3-worker autonomy remains PARTIAL/REAL BLOCKER while Controller is READ_ONLY/paused and workers are not safe to recycle.
+- #758 Close & Archive waits on the same safe Chrome maintenance gate.
+- #784 source fix is merged/CI PASS, but live updater deployment/enable remains behind the explicit release gate.
 
 ## Governance
-- Protected-branch required checks: `CI Verify`, `Queue Hygiene Verify`, `Vercel Online Verify`.
-- Owner authorization on 2026-09-15 allows NV01 to merge `main` when exact-head required checks pass and the merge itself cannot trigger Production/paid/credential/security/destructive/irreversible effects.
-- Production release, paid actions, credential/security changes and destructive/irreversible actions remain separate authorization gates.
+- Development path remains branch → PR → required checks/review → merge; no direct `main` edits.
+- PC01 control preference is endpoint/API → direct remote action → one bounded shell only when unavoidable; no shell polling for health/status when an equivalent endpoint exists.
+- Production, paid, credential/security, destructive/irreversible actions require separate authorization.
+- Do not claim live/runtime DONE from source/CI alone.
 
-STATE: `CURRENT_20260915_AUTOPILOT_AND_SMART_ROUTER_LIVE_VERIFIED`
+STATE: `CURRENT_20260916_CORE_WEB_PASS_REDUCED_SHELL_CONTROL_VERIFIED_CHROME_GATE_REMAINS`
 UI_STATE: `CURRENT_20260915_WEB_CONTROL_CANONICAL_WORKFORCE_PLUS_ROUTING_OVERLAY_LIVE_VERIFIED`
