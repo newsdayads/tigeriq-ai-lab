@@ -40,6 +40,10 @@ internal sealed class WorkerSettings
     public bool PositionLocked { get; set; }
     public DateTimeOffset? StateChangedAt { get; set; }
     public string? LastState { get; set; }
+    public int? BadgeOffsetX { get; set; }
+    public int? BadgeOffsetY { get; set; }
+    public int? PopupX { get; set; }
+    public int? PopupY { get; set; }
 }
 
 internal sealed class ScheduleSettings
