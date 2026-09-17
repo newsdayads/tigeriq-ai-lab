@@ -484,7 +484,11 @@ internal sealed class PillLabel : Label
     public PillLabel()
     {
         Resize += (_, _) => RefreshRegion();
-        TextChanged += (_, _) => BeginInvoke(new Action(RefreshRegion));
+        HandleCreated += (_, _) => RefreshRegion();
+        TextChanged += (_, _) =>
+        {
+            if (IsHandleCreated) BeginInvoke(new Action(RefreshRegion));
+        };
     }
 
     void RefreshRegion()
