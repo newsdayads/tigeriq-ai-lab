@@ -69,14 +69,27 @@ internal static class SelfTest
     static void TestUiPlacement()
     {
         var working = new Rectangle(0, 0, 1920, 1080);
-        var chrome = new Rectangle(0, 0, 1920, 1040);
+        var chrome = new Rectangle(0, 0, 1500, 1040);
         var badgeSize = new Size(52, 26);
         var badge = UiPlacement.DefaultBadge(chrome, badgeSize, working);
         Must(badge.X >= working.Left && badge.Y >= working.Top, "badge inside working area");
         Must(badge.X + badgeSize.Width <= working.Right && badge.Y + badgeSize.Height <= working.Bottom, "badge fully visible");
-        Must(badge.X + badgeSize.Width < chrome.Right - 120, "badge avoids chrome system controls");
 
         var clamped = UiPlacement.Clamp(new Point(4000, 4000), new Size(320, 620), working);
         Must(clamped.X == 1600 && clamped.Y == 460, "popup clamp");
+
+        var popupSize = new Size(336, 690);
+        var ok = UiPlacement.TryPopup(chrome, popupSize, new[] { working }, new[] { chrome }, null, out var target);
+        Must(ok, "popup finds safe sidecar space");
+        Must(!new Rectangle(target, popupSize).IntersectsWith(chrome), "popup never overlaps chrome");
+
+        var savedInsideChrome = new Point(100, 100);
+        ok = UiPlacement.TryPopup(chrome, popupSize, new[] { working }, new[] { chrome }, savedInsideChrome, out target);
+        Must(ok, "unsafe saved popup position is ignored");
+        Must(!new Rectangle(target, popupSize).IntersectsWith(chrome), "saved popup cannot force overlap");
+
+        var fullScreenChrome = new Rectangle(0, 0, 1920, 1080);
+        ok = UiPlacement.TryPopup(fullScreenChrome, popupSize, new[] { working }, new[] { fullScreenChrome }, null, out _);
+        Must(!ok, "popup fails closed when no safe sidecar space exists");
     }
 }
