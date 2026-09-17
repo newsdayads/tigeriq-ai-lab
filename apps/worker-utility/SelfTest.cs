@@ -87,7 +87,7 @@ internal static class SelfTest
         Must(badge.X + badgeSize.Width <= working.Right && badge.Y + badgeSize.Height <= working.Bottom, "badge fully visible");
         Must(chrome.Contains(new Rectangle(badge, badgeSize)), "badge stays inside its own Chrome window");
         Must(badge.X < chrome.Left + chrome.Width / 2, "badge stays on the left half of its own title strip");
-        var tinyChrome = new Rectangle(0, 0, 70, 30);
+        var tinyChrome = new Rectangle(0, 0, 40, 20);
         Must(!UiPlacement.TryBadge(tinyChrome, badgeSize, working, null, null, out _), "badge fails closed when own title strip is too small");
         Must(UiPlacement.TryBadge(chrome, badgeSize, working, 5000, 5000, out var draggedBadge)
             && chrome.Contains(new Rectangle(draggedBadge, badgeSize)), "saved badge offset clamps to its own title strip");
