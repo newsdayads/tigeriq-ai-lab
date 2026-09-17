@@ -1,54 +1,53 @@
 # TigerIQ — Current State
 
-Date: 2026-09-15
-Status: CURRENT — Autopilot + Smart Router source merged and live runtime verified on PC01
+Date: 2026-09-17
+Status: CURRENT — Chrome autonomy exactly-once E2E verified; Worker Utility UI lane active
 Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #335 > this snapshot > runtime/evidence
 
 ## Canonical source / runtime
-- `main` source includes PR #776 (`NV10 = Ollama` source migration), PR #750 (Chrome Controller base), PR #766 (UI Autopilot Snapshot Adapter), PR #771 (Web Control Health parity), PR #764 (3-worker Autopilot/recovery), PR #774 (canonical Workforce NV01–NV20), PR #779 (safe save/archive after DONE), PR #778 (Smart Router + AI resource identity separation + routing telemetry), PR #781 (complete Web Control runtime bundle sync), and PR #782 (include `workforce-registry.mjs` in runtime bundle).
-- Latest verified source/runtime SHA on PC01: `af7e48f9198c85812e0c01e55160b2ff9fcb9e69`.
-- Core `100.97.23.87:8795` is ONLINE on PID `11684`; Web Control `100.97.23.87:8796` is ONLINE on PID `27740`.
-- Chrome Controller remains untouched on PID `30300` at `127.0.0.1:8798`.
-- Coding Lane `8797` and Core Runtime Updater remain intentionally disabled.
-- `vercel.json` has Git deployment disabled; no Vercel Production release was performed.
+- GitHub `main` remains canonical. Engineering changes go `branch → PR → required checks → merge`; no direct `main`.
+- #763 Chrome autonomy hardening is source/runtime verified after PR #798 and PR #799 merged.
+- Live Chrome Controller artifact on PC01 is `Current-v117-763-49524aa`; reboot/startup script `D:\TigerIQ\Apps\ChromeController\Runtime\Start-Workspace.ps1` points to that exact artifact and starts fail-safe in `READ_ONLY`.
+- Controller `127.0.0.1:8798` and Direct CDP Bridge `127.0.0.1:8799` are ONLINE after safe task recovery on 2026-09-17; existing Chrome sessions were preserved.
+- UI Autopilot Snapshot Adapter `127.0.0.1:8794` serves snapshot v2. Latest verified snapshot remains `github-ui-v2:GH-797:DONE:none:none`.
+- TigerIQ Core `100.97.23.87:8795` is ONLINE; latest live verification returned `ok=true`, PID `11892`.
+- Web Control `100.97.23.87:8796` is ONLINE and reports Core healthy. Its Coding Lane probe is expected to time out because Coding Lane `8797` remains intentionally disabled.
+- Scheduled task `TigerIQ Coding Lane 24x7` is disabled and `127.0.0.1:8797` refuses connections, matching policy.
+- Core Runtime Updater remains intentionally disabled.
+- No Production release, paid action, credential change, destructive action or irreversible action was performed by this reconciliation.
 
-## #777 Smart Router — source and live truth
-- PR #778 merged to `main` after exact-head `CI Verify`, `Queue Hygiene Verify`, and `Vercel Online Verify` passed.
-- Final PR #778 test evidence: Vitest `42 files / 219 tests` PASS; Playwright foundation E2E `1/1` PASS; typecheck/build/Vercel policy/PowerShell syntax PASS.
-- Employee identity and AI resource identity are separate: stable `resource_id` is provider/model/account/runtime based; current jobs/events keep backward compatibility and historical provenance is not rewritten.
-- `NV10 = Ollama`; stale Ollama identity `NV02` is no longer present in live Core resources. `NV02 = ChatGPT Plus` remains the primary UI executor.
-- Routing profiles: `AUTO`, `CODING`, `FAST`, `CHEAP`, `LOCAL`, `RESEARCH`, `REVIEW`.
-- Router eligibility/scoring considers capability, health, cooldown, quota/rate limit, task-specific performance, cost tier, and reviewer-resource independence; paid fallback is excluded.
-- Auth/configuration/security/credential/paid/Production/irreversible failures remain terminal and are never auto-bypassed.
-- Quota telemetry preserves unknown as unknown, treats ratio-only telemetry as known, penalizes near-limit resources, and honors the later of provider reset and active cooldown.
-- Live Core verification: `routing=true`, `resources=11`, Ollama resource `res:ollama:qwen3-4b:default:core` is owned by `NV10`, active objectives `0`, active jobs `0`.
+## #763 — Chrome autonomy final truth
+- PR #798 merged: `AUTO_CONTINUE` keeps the current worker chat (`navigate=false`), preventing the `COMPOSER_NOT_FOUND` failure caused by navigating away before submission.
+- PR #799 merged: explicit known non-delivery can take one bounded safe retry; ambiguous delivery remains fail-closed; retry-state transition failure also fail-closes.
+- Live canary #796 completed exactly once with one `CANARY_A_EXECUTED` comment and issue closed completed.
+- Completion Watcher consumed fresh external GitHub evidence with `jobId`, `completedAt` and `completionRevision` from snapshot v2.
+- Live canary #797 then completed exactly once with one `CANARY_B_EXECUTED` comment and issue closed completed.
+- Final autopilot evidence: `lastDispatchedJobId=GH-797`, `lastCompletedJobId=GH-797`, evidence points to #797, no pending/uncertain job, next job null.
+- Durable lease/takeover, fresh completion-evidence correlation, fail-closed auth/re-auth/CAPTCHA/rate-limit coverage and exactly-once queue→dispatch→completion→next-job path are represented in the final source/runtime path verified by the canary sequence.
 
-## Web Control / workforce truth
-- Web Control is the single Owner UI and refreshes `/api/status` every 2 seconds with stale-data visibility.
-- Registry #335 remains the canonical employee source; all NV01–NV20 slots are represented, including retired/unassigned states without fake OFFLINE status.
-- Live Web verification: `workforce=20`, `resources=11`, `routing=true`.
-- `/web-control-routing.js` and `/web-control-routing.css` both returned HTTP `200` after maintenance.
-- `Nhân sự AI` remains Registry-derived; `Tài nguyên AI`, `Định tuyến AI`, and `Hiệu suất theo loại việc` are separate Core projections.
-- Smart Router overlay does not replace the canonical Workforce renderer.
+## Chrome workforce live truth
+- Canonical UI workers remain `NV02 | NV03 | NV04`.
+- Current Controller startup is fail-safe `READ_ONLY`; workers remain enabled and attached to existing windows.
+- Latest live heartbeat: NV02/NV03/NV04 all OPEN/ONLINE, `uiReady=true`, `authRequired=false`, `securityBlock=null`.
+- Under Owner command `00`, Vy briefly enabled automation only to submit the independent #802 work order to NV02, then immediately restored `READ_ONLY`.
+- NV02 accepted #802: Controller state is `SUBMITTED`; heartbeat is `uiBusy=true`. NV03/NV04 remain idle/ready.
+- No Chrome window was closed, restarted, reloaded or force-killed during the #801 reconciliation and #802 dispatch.
 
-## Autopilot / Chrome source truth
-- PR #750, #764, #766 and #779 are merged in source.
-- Canonical Chrome workers are `NV02 | NV03 | NV04`; `NV05` remains retired; `NV10` is local/Core AI and not a Chrome worker.
-- Safe save/archive is gated by external DONE evidence and fails closed for active/busy/blocked/security states.
-- #777 maintenance did not restart or deploy Chrome Controller; PID `30300` stayed unchanged through Core/Web activation.
+## Worker Utility / active work
+- #793 Worker Utility V1 remains the canonical APP for controlling NV02/NV03/NV04; source is `apps/worker-utility/**`.
+- #801 is the Vy lane for Source of Truth reconciliation and final #763 audit. It must not modify `apps/worker-utility/**`.
+- #802 is the independent NV02 lane for Worker Utility UI/UX. It owns `apps/worker-utility/**` and directly related tests/UI artefacts; it must not modify #801 Source of Truth/governance resources.
+- Command `00` is the current dual-lane orchestration alias from Interaction #504 v27: Vy continues the primary lane while ChatGPT Plus (NV02) receives one independent safe lane.
 
-## Maintenance evidence / safeguards
-- The first maintenance attempt did not obtain new Core health and automatically rolled back to the previous source/runtime; Core and Web stayed recoverable and Chrome Controller was unchanged.
-- Runtime DB read-only verification then confirmed both legacy Ollama rows were IDLE with `current_job_id=null` and there were no active jobs.
-- Successful retry preserved the existing Core supervisor and restarted only the Core Node child; new Core came ONLINE with `routing=true` and only `NV10` as Ollama.
-- Web Control was then restarted from the canonical runtime bundle and verified independently.
-- Pre-maintenance dirty workspace changes were preserved in a reversible git stash rather than deleted.
-- Core Runtime Updater remains disabled; task-level supervisor restart behavior discovered during maintenance is tracked separately and is not enabled automatically.
+## Workforce / identity
+- Registry #335 remains authoritative for employee identity/capability.
+- `NV02 = ChatGPT Plus` is the primary UI executor; `NV03 = ChatGPT Go` is independent review/support; `NV04 = Gemini Pro` is deep research/cross-check; `NV10 = Ollama` is local/Core AI.
+- `NV05` and command `5` remain retired. `GPT-6 Astra` remains an on-demand high-tier resource of NV02, not a separate employee.
 
 ## Governance
-- Protected-branch required checks: `CI Verify`, `Queue Hygiene Verify`, `Vercel Online Verify`.
-- Owner authorization on 2026-09-15 allows NV01 to merge `main` when exact-head required checks pass and the merge itself cannot trigger Production/paid/credential/security/destructive/irreversible effects.
-- Production release, paid actions, credential/security changes and destructive/irreversible actions remain separate authorization gates.
+- Interaction #504 v27 is current and contains the Owner override for command `00` dual-lane orchestration.
+- Registry #335 v50 remains current; no identity/capability change was required by #801.
+- Production release, paid service, credential/security mutation and destructive/irreversible actions remain separate authorization gates.
 
-STATE: `CURRENT_20260915_AUTOPILOT_AND_SMART_ROUTER_LIVE_VERIFIED`
-UI_STATE: `CURRENT_20260915_WEB_CONTROL_CANONICAL_WORKFORCE_PLUS_ROUTING_OVERLAY_LIVE_VERIFIED`
+STATE: `CURRENT_20260917_763_EXACTLY_ONCE_E2E_VERIFIED_SOT_RECONCILIATION`
+UI_STATE: `CURRENT_20260917_WORKER_UTILITY_CANONICAL_NV02_UI_LANE_ACTIVE`
