@@ -74,7 +74,9 @@ function parsed(value:string|undefined):number|undefined {
 
 export function selectFreshCompletionEvidence(job:ExternalJob|undefined,state:DurableAutopilotState,observedAtMs:number):ExternalEvidence|undefined {
   if(!job?.evidence?.length)return;
-  const dispatchedAt=state.lastDispatchedJobId===job.jobId?parsed(state.lastDispatchedAt):undefined;
+  if(state.lastDispatchedJobId!==job.jobId)return;
+  const dispatchedAt=parsed(state.lastDispatchedAt);
+  if(dispatchedAt===undefined)return;
   return job.evidence.find((item)=>{
     if(!ALLOWED_EVIDENCE_SOURCES.has(item.source)||!item.ref?.trim()||!item.verifiedAt||!item.completedAt||!item.jobId||!item.completionRevision?.trim())return false;
     if(item.jobId!==job.jobId)return false;

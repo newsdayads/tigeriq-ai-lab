@@ -39,7 +39,7 @@ export function parseAutoUiIssue(issue,{allowClosed=false}={}){
 }
 
 export function buildPrompt(spec,repoFullName=`${DEFAULT_OWNER}/${DEFAULT_REPO}`){
-  return `LÀM — NO YAPPING. Nhận việc #${spec.number} - ${spec.title}. Đọc đầy đủ issue #${spec.number} trong repo ${repoFullName} và thực hiện end-to-end đúng scope. Tuân thủ toàn bộ guardrail trong issue; không MAIN/Production, không chi phí, không đổi credential, không destructive. Cập nhật GitHub bằng bằng chứng kiểm chứng được; chỉ dừng DONE có evidence hoặc BLOCKER thật.`;
+  return `LÃƒâ‚¬M Ã¢â‚¬â€ NO YAPPING. NhÃ¡ÂºÂ­n viÃ¡Â»â€¡c #${spec.number} - ${spec.title}. Ã„ÂÃ¡Â»Âc Ã„â€˜Ã¡ÂºÂ§y Ã„â€˜Ã¡Â»Â§ issue #${spec.number} trong repo ${repoFullName} vÃƒÂ  thÃ¡Â»Â±c hiÃ¡Â»â€¡n end-to-end Ã„â€˜ÃƒÂºng scope. TuÃƒÂ¢n thÃ¡Â»Â§ toÃƒÂ n bÃ¡Â»â„¢ guardrail trong issue; khÃƒÂ´ng MAIN/Production, khÃƒÂ´ng chi phÃƒÂ­, khÃƒÂ´ng Ã„â€˜Ã¡Â»â€¢i credential, khÃƒÂ´ng destructive. CÃ¡ÂºÂ­p nhÃ¡ÂºÂ­t GitHub bÃ¡ÂºÂ±ng bÃ¡ÂºÂ±ng chÃ¡Â»Â©ng kiÃ¡Â»Æ’m chÃ¡Â»Â©ng Ã„â€˜Ã†Â°Ã¡Â»Â£c; chÃ¡Â»â€° dÃ¡Â»Â«ng DONE cÃƒÂ³ evidence hoÃ¡ÂºÂ·c BLOCKER thÃ¡ÂºÂ­t.`;
 }
 
 function jobFromIssue(issue,spec,verifiedAt){
@@ -49,7 +49,7 @@ function jobFromIssue(issue,spec,verifiedAt){
   const job={jobId:spec.jobId,workerId:'NV02',status,executable:true,priority:spec.priority};
   if(completed){
     const completedAt=String(issue.closed_at||issue.updated_at||'');
-    const completionRevision=['github-issue-v2',spec.jobId,completedAt].join(':');
+    const completionRevision=['github-issue-closure-v1',spec.jobId,completedAt].join(':');
     job.completedAt=completedAt;job.completionRevision=completionRevision;
     job.evidence=[{source:'GITHUB',ref:spec.url,verifiedAt,jobId:spec.jobId,completedAt,completionRevision}];
   }

@@ -1,13 +1,10 @@
-import { spawn } from 'node:child_process';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { isInteractiveDesktopSession, loadConfig, type WindowPlacement, type WorkerId } from './model.js';
+import { spawnDetachedProcess } from './process-lifecycle.js';
 
 const config=loadConfig(process.argv[2]);
 const host='127.0.0.1';
 const port=Number(process.env.TIGERIQ_CHROME_LAUNCH_BROKER_PORT||8800);
-const extensionPath=resolve(process.cwd(),'apps/chrome-controller/extension');
 function json(res:ServerResponse,status:number,value:unknown){res.writeHead(status,{'content-type':'application/json; charset=utf-8'});res.end(JSON.stringify(value));}
 async function body(req:IncomingMessage):Promise<Record<string,unknown>>{const chunks:Buffer[]=[];for await(const chunk of req)chunks.push(Buffer.from(chunk));return chunks.length?JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string,unknown>:{};}
 function placement(value:unknown):WindowPlacement{
@@ -24,17 +21,13 @@ async function launch(workerId:WorkerId,p:WindowPlacement){
   if(!isInteractiveDesktopSession())throw new Error('INTERACTIVE_SESSION_REQUIRED:NO_HIDDEN_CHROME');
   const worker=config.workers.find(item=>item.id===workerId&&item.enabled!==false);if(!worker)throw new Error(`WORKER_DISABLED_OR_UNKNOWN:${workerId}`);
   if(worker.debugPort&&await debugPortActive(worker.debugPort))throw new Error(`WORKER_ALREADY_RUNNING:${workerId}`);
+  if(!worker.debugPort)throw new Error('DIRECT_CDP_DEBUG_PORT_REQUIRED');
   const args:string[]=[];const userDataDir=worker.userDataDir??config.userDataDir;
   if(userDataDir)args.push(`--user-data-dir=${userDataDir}`);
-  if(worker.debugPort){
-    args.push('--remote-debugging-address=127.0.0.1',`--remote-debugging-port=${worker.debugPort}`);
-  }else{
-    if(!existsSync(extensionPath))throw new Error('CONTROLLER_EXTENSION_PATH_MISSING');
-    args.push(`--load-extension=${extensionPath}`);
-  }
+  args.push('--remote-debugging-address=127.0.0.1',`--remote-debugging-port=${worker.debugPort}`);
   args.push(`--profile-directory=${worker.profileDirectory}`,'--disable-session-crashed-bubble','--hide-crash-restore-bubble','--new-window',`--window-position=${p.left},${p.top}`,`--window-size=${p.width},${p.height}`,worker.homeUrl);
-  const child=spawn(config.chromePath,args,{detached:true,windowsHide:false,stdio:'ignore'});child.unref();
-  return{ok:true,workerId,pid:child.pid??null,controllerIndependent:true,transport:worker.debugPort?'DIRECT_CDP':'EXTENSION'};
+  const child=spawnDetachedProcess(config.chromePath,args,{windowsHide:false});
+  return{ok:true,workerId,pid:child.pid,controllerIndependent:true,transport:'DIRECT_CDP'};
 }
 const server=createServer(async(req,res)=>{
   try{
