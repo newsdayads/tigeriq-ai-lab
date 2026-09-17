@@ -7,6 +7,7 @@ on:
       - 'apps/chrome-controller/**'
       - 'tests/chrome-controller.test.ts'
       - 'tests/chrome-controller-autonomy-hardening.test.ts'
+      - 'tests/chrome-controller-direct-cdp-archive.test.ts'
       - 'tests/ui-autopilot-snapshot.test.ts'
       - 'apps/tigeriq-core/ui-autopilot-snapshot.mjs'
       - 'package.json'
@@ -17,6 +18,7 @@ on:
       - 'apps/chrome-controller/**'
       - 'tests/chrome-controller.test.ts'
       - 'tests/chrome-controller-autonomy-hardening.test.ts'
+      - 'tests/chrome-controller-direct-cdp-archive.test.ts'
       - 'tests/ui-autopilot-snapshot.test.ts'
       - 'apps/tigeriq-core/ui-autopilot-snapshot.mjs'
       - 'package.json'
@@ -38,7 +40,7 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
       - name: Tests
-        run: npx vitest run tests/chrome-controller.test.ts tests/chrome-controller-autonomy-hardening.test.ts tests/ui-autopilot-snapshot.test.ts
+        run: npx vitest run tests/chrome-controller.test.ts tests/chrome-controller-autonomy-hardening.test.ts tests/chrome-controller-direct-cdp-archive.test.ts tests/ui-autopilot-snapshot.test.ts
       - name: Build
         run: npm run build
       - name: Assemble runtime package
@@ -53,6 +55,7 @@ jobs:
           cp -R dist/apps/chrome-controller/src/* "$ROOT/dist/apps/chrome-controller/src/"
           cp -R apps/chrome-controller/extension "$ROOT/apps/chrome-controller/"
           cp -R apps/chrome-controller/public "$ROOT/apps/chrome-controller/"
+          cp -R apps/chrome-controller/runtime "$ROOT/apps/chrome-controller/"
           cp apps/chrome-controller/chrome-controller.config.example.json "$ROOT/apps/chrome-controller/"
           cp apps/chrome-controller/runtime-evidence.schema.json "$ROOT/apps/chrome-controller/"
           cp apps/chrome-controller/INSTALL_WINDOWS.md "$ROOT/apps/chrome-controller/"
