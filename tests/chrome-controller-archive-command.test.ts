@@ -1,4 +1,5 @@
 import { describe,expect,it,vi } from 'vitest';
+// @ts-ignore Chrome extension runtime module is intentionally plain JavaScript.
 import { runArchiveCommand,validateArchiveCommand } from '../apps/chrome-controller/extension/archive-command.js';
 
 const supported=(id:string)=>id==='NV02'||id==='NV03';
