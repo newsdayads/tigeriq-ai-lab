@@ -12,8 +12,9 @@ describe('Chrome Controller safe save-and-archive',()=>{
     expect(content).toContain("message?.type === 'TIGERIQ_ARCHIVE_CONVERSATION'");
   });
 
-  it('requires terminal external evidence for auto archive and a unique durable receipt for every archive',()=>{
+  it('requires terminal external evidence for auto archive and a fresh durable receipt for direct archive',()=>{
     const background=readFileSync('apps/chrome-controller/extension/background.js','utf8');
+    const archiveCommand=readFileSync('apps/chrome-controller/extension/archive-command.js','utf8');
     const receipt=readFileSync('apps/chrome-controller/extension/save-receipt.js','utf8');
     expect(background).toContain("const ARCHIVE_SUPPORTED_WORKERS = new Set(['NV02','NV03'])");
     expect(background).toContain('ARCHIVE_SELECTOR_UNVERIFIED');
@@ -36,8 +37,9 @@ describe('Chrome Controller safe save-and-archive',()=>{
     expect(background).toContain("saved.archiveAfterDone!==true");
     expect(background).toContain('void maybeAutoArchive(workerId).catch(()=>{})');
     expect(background).toContain("if(action==='ARCHIVE_CHAT')");
-    expect(background).toContain("const receiptRef=String(payload.receiptRef||'')");
-    expect(background).toContain("return {status:'ARCHIVED',receiptRef}");
+    expect(background).toContain('return runArchiveCommand(workerId,payload,{');
+    expect(archiveCommand).toContain('const result=await saveAndArchive(workerId,{requireDone:false});');
+    expect(archiveCommand).toContain('ARCHIVE_FRESH_DURABLE_RECEIPT_REQUIRED');
   });
 
   it('exposes manual action, keeps auto archive default off, and grants only loopback verifier access',()=>{
