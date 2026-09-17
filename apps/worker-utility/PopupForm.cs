@@ -176,7 +176,7 @@ internal sealed class PopupForm : Form
         reason.Text = $"{view.Reason} · Không tiến triển {noProgress} · Heartbeat {alive} · Recovery {recovery}";
 
         var elapsed = settings.StateChangedAt is DateTimeOffset since ? DateTimeOffset.Now - since : TimeSpan.Zero;
-        job.Text = $"Job: {view.JobId ?? "—"} · Trạng thái {elapsed:hh\:mm\:ss} · HB {(view.HeartbeatAt?.ToLocalTime().ToString("HH:mm:ss") ?? "—")}";
+        job.Text = $"Job: {view.JobId ?? "—"} · Trạng thái {elapsed.ToString(@"hh\:mm\:ss")} · HB {(view.HeartbeatAt?.ToLocalTime().ToString("HH:mm:ss") ?? "—")}";
         progress.Text = view.State == WorkerUiState.Working
             ? "Tiến triển: chưa xác minh bởi kênh progress riêng; heartbeat/uiBusy chỉ chứng minh worker còn sống hoặc đang bận."
             : "Tiến triển: không có job WORKING cần xác minh.";
