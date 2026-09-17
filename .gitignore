@@ -146,3 +146,9 @@ vite.config.ts.timestamp-*
 test-results/
 playwright-report/
 # TIGERIQ_CODING_LANE_E2E_20260912
+
+# .NET build artifacts
+**/bin/
+**/obj/
+# Local packaged artifacts
+artifact/

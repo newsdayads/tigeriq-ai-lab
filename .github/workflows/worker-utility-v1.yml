@@ -1,0 +1,37 @@
+name: Worker Utility V1
+on:
+  pull_request:
+    paths:
+      - 'apps/worker-utility/**'
+      - 'apps/chrome-controller/**'
+      - 'tests/worker-utility-contract.test.ts'
+      - '.github/workflows/worker-utility-v1.yml'
+  workflow_dispatch:
+jobs:
+  verify:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npx vitest run tests/worker-utility-contract.test.ts
+      - run: dotnet build apps/worker-utility/TigerIQ.WorkerUtility.csproj -c Release
+      - run: dotnet run --project apps/worker-utility/TigerIQ.WorkerUtility.csproj -c Release -- --self-test
+      - run: dotnet publish apps/worker-utility/TigerIQ.WorkerUtility.csproj -c Release -o artifact/worker-utility
+      - shell: pwsh
+        run: |
+          Get-FileHash artifact/worker-utility/TigerIQ.WorkerUtility.exe -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash.ToLower())  TigerIQ.WorkerUtility.exe" } |
+            Set-Content artifact/worker-utility/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TigerIQ-WorkerUtility-V1-win-x64
+          path: artifact/worker-utility/
+          if-no-files-found: error

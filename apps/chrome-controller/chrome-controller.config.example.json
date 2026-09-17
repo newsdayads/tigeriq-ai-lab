@@ -28,7 +28,8 @@
     "pollIntervalMs": 15000,
     "stateUrl": "http://127.0.0.1:8794/api/ui-autopilot/snapshot",
     "requestTimeoutMs": 5000,
-    "maxSnapshotAgeMs": 300000
+    "maxSnapshotAgeMs": 300000,
+    "dispatchLeaseTtlMs": 300000
   },
   "recovery": {
     "heartbeatStaleMs": 90000,
@@ -37,7 +38,9 @@
     "reopenBackoffMs": 15000,
     "startupReadyUrl": "http://127.0.0.1:8795/health",
     "startupReadyTimeoutMs": 120000,
-    "startupAttachGraceMs": 20000
+    "startupAttachGraceMs": 20000,
+    "launchBrokerUrl": "http://127.0.0.1:8800",
+    "launchBrokerTimeoutMs": 5000
   },
   "workers": [
     {
@@ -45,21 +48,27 @@
       "role": "PRIMARY_UI_EXECUTOR",
       "enabled": true,
       "profileDirectory": "REPLACE_PLUS_PROFILE",
-      "homeUrl": "https://chatgpt.com/g/REPLACE_WITH_NV02_PROJECT"
+      "homeUrl": "https://chatgpt.com/g/REPLACE_WITH_NV02_PROJECT",
+      "debugPort": 9222,
+      "userDataDir": "D:\\TigerIQ\\Chrome\\NV02-Worker\\UserData"
     },
     {
       "id": "NV03",
       "role": "INDEPENDENT_REVIEW",
       "enabled": true,
       "profileDirectory": "REPLACE_GO_PROFILE",
-      "homeUrl": "https://chatgpt.com/g/REPLACE_WITH_NV03_PROJECT"
+      "homeUrl": "https://chatgpt.com/g/REPLACE_WITH_NV03_PROJECT",
+      "debugPort": 9223,
+      "userDataDir": "D:\\TigerIQ\\Chrome\\NV03-Worker\\UserData"
     },
     {
       "id": "NV04",
       "role": "RESEARCH_REVIEW",
       "enabled": true,
       "profileDirectory": "REPLACE_GEMINI_PROFILE",
-      "homeUrl": "https://gemini.google.com/notebook/REPLACE_WITH_NV04_WORKSPACE"
+      "homeUrl": "https://gemini.google.com/notebook/REPLACE_WITH_NV04_WORKSPACE",
+      "debugPort": 9224,
+      "userDataDir": "D:\\TigerIQ\\Chrome\\NV04-Worker\\UserData"
     }
   ]
 }
