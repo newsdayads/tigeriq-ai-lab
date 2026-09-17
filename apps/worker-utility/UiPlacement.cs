@@ -11,21 +11,22 @@ internal static class UiPlacement
         return new Point(x, y);
     }
 
-    public static Point DefaultBadge(Rectangle chromeBounds, Size badgeSize, Rectangle workingArea)
+    public static bool TryBadge(Rectangle chromeBounds, Size badgeSize, Rectangle workingArea,
+        int? offsetX, int? offsetY, out Point target)
     {
-        // Keep each worker badge inside the title strip of its own Chrome window.
-        // External side placement can visually attach NV02/NV03 to the adjacent tiled worker.
-        var desired = new Point(chromeBounds.Left + 10, chromeBounds.Top + 4);
+        target = Point.Empty;
         var ownTitleArea = Rectangle.Intersect(
             new Rectangle(chromeBounds.Left, chromeBounds.Top, chromeBounds.Width, Math.Min(44, chromeBounds.Height)),
             workingArea);
-        if (ownTitleArea.Width >= badgeSize.Width && ownTitleArea.Height >= badgeSize.Height)
-            return Clamp(desired, badgeSize, ownTitleArea);
-        return Clamp(desired, badgeSize, workingArea);
-    }
+        if (ownTitleArea.Width < badgeSize.Width || ownTitleArea.Height < badgeSize.Height)
+            return false;
 
-    public static Point BadgeFromOffset(Rectangle chromeBounds, Size badgeSize, Rectangle workingArea, int offsetX, int offsetY)
-        => Clamp(new Point(chromeBounds.Left + offsetX, chromeBounds.Top + offsetY), badgeSize, workingArea);
+        var desired = offsetX is int x && offsetY is int y
+            ? new Point(chromeBounds.Left + x, chromeBounds.Top + y)
+            : new Point(chromeBounds.Left + 10, chromeBounds.Top + 4);
+        target = Clamp(desired, badgeSize, ownTitleArea);
+        return true;
+    }
 
     public static bool TryPopup(Rectangle anchor, Size popupSize, Rectangle[] workingAreas, Rectangle[] occupied,
         Point? savedLocation, out Point target)
