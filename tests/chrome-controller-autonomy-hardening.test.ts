@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import * as ts from 'typescript';
 import { describe,expect,it } from 'vitest';
 import { DurableDispatchLeaseStore } from '../apps/chrome-controller/src/dispatch-lease.js';
-import { decideAutoContinue,freshAutopilotState,type DurableAutopilotState,type ExternalAutopilotSnapshot } from '../apps/chrome-controller/src/autopilot.js';
+import { classifyAutoContinueDispatchFailure,decideAutoContinue,freshAutopilotState,type DurableAutopilotState,type ExternalAutopilotSnapshot } from '../apps/chrome-controller/src/autopilot.js';
 import { heartbeatStopReason } from '../apps/chrome-controller/src/security-gate.js';
 
 const observedAt='2026-09-17T00:00:10.000Z';
@@ -67,7 +67,15 @@ describe('durable dispatch lease',()=>{
     expect(b.reconcilePending('GH-1',63_000)).toMatchObject({kind:'UNCERTAIN',reason:'DISPATCH_INFLIGHT_STALE:GH-1'});
     expect(b.acquire('GH-2',63_000)).toMatchObject({kind:'UNCERTAIN',reason:'DISPATCH_INFLIGHT_STALE:GH-1'});
   });
-});
+  it('returns known non-delivery to RESERVED with a bounded retry delay',()=>{
+    const dir=mkdtempSync(join(tmpdir(),'tigeriq-lease-'));const path=join(dir,'lease.json');
+    const a=new DurableDispatchLeaseStore(path,'controller-a',60_000);const b=new DurableDispatchLeaseStore(path,'controller-b',60_000);
+    const acquired=a.acquire('GH-1',1000);if(acquired.kind!=='ACQUIRED')throw new Error('setup');
+    a.markDispatching(acquired.lease.leaseId,'GH-1',2000);
+    expect(a.markRetryable(acquired.lease.leaseId,'GH-1',3000)).toMatchObject({state:'RESERVED',expiresAt:'1970-01-01T00:01:03.000Z'});
+    expect(b.acquire('GH-1',4000)).toMatchObject({kind:'BUSY'});
+    expect(b.acquire('GH-1',63_001)).toMatchObject({kind:'TAKEN_OVER',lease:{jobId:'GH-1',leaseEpoch:2}});
+  });});
 
 describe('fresh completion evidence',()=>{
   it('requires durable proof of the exact prior dispatch and completion after it',()=>{
@@ -115,6 +123,32 @@ describe('AUTO_CONTINUE current-chat dispatch contract',()=>{
     const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
     expect(server).toContain("await dispatch('NV02',decision.text,false,'AUTO_CONTINUE')");
     expect(server).not.toContain("await dispatch('NV02',decision.text,true,'AUTO_CONTINUE')");
+    expect(server).toContain("await dispatch(workerId,data.text,data.navigate!==false)");
+  });
+});
+describe('AUTO_CONTINUE known non-delivery contract',()=>{
+  it('classifies every explicit pre-submit failure as safe retry',()=>{
+    for(const error of [
+      new Error('COMMAND_TIMEOUT_NOT_DELIVERED:DISPATCH:NV02'),
+      new Error('COMPOSER_NOT_FOUND'),
+      new Error('SEND_BUTTON_NOT_FOUND'),
+    ]) expect(classifyAutoContinueDispatchFailure(error,false)).toBe('SAFE_RETRY');
+  });
+
+  it('keeps ambiguous or submitted failures fail-closed',()=>{
+    for(const error of [
+      new Error('COMMAND_TIMEOUT_DELIVERED:DISPATCH:NV02'),
+      new Error('DISPATCH_FAILED'),
+      new Error('NETWORK_AFTER_CLICK'),
+    ]) expect(classifyAutoContinueDispatchFailure(error,false)).toBe('UNCERTAIN');
+    expect(classifyAutoContinueDispatchFailure(new Error('COMPOSER_NOT_FOUND'),true)).toBe('UNCERTAIN');
+  });
+
+  it('wires the classifier into AUTO_CONTINUE while preserving manual dispatch configuration',()=>{
+    const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
+    expect(server).toContain('classifyAutoContinueDispatchFailure(error,dispatchDelivered)');
+    expect(server).toContain('dispatchLease.markRetryable(dispatchLeaseToken.leaseId,decision.jobId)');
+    expect(server).toContain("log('AUTO_CONTINUE_FAILED_CLOSED'");
     expect(server).toContain("await dispatch(workerId,data.text,data.navigate!==false)");
   });
 });

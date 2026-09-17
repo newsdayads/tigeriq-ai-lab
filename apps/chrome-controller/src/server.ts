@@ -15,6 +15,7 @@ import {
 import { delay, SerialQueue } from './serial-queue.js';
 import {
   AUTO_CONTINUE,
+  classifyAutoContinueDispatchFailure,
   decideAutoContinue,
   freshAutopilotState,
   selectFreshCompletionEvidence,
@@ -440,14 +441,23 @@ async function autopilotTick(){
       log('AUTO_CONTINUE_COMMITTED',{jobId:decision.jobId});
     }catch(error){
       const message=String(error);
-      autopilotState={
-        ...clearPending(autopilotState),
-        phase:'STOPPED',
-        uncertainJobId:decision.jobId,
-        updatedAt:new Date().toISOString(),
-      };
-      persistAutopilotState();
-      log('AUTO_CONTINUE_FAILED_CLOSED',{jobId:decision.jobId,error:message,ambiguous:dispatchDelivered||message.includes('DELIVERED')});
+      const failureClass=classifyAutoContinueDispatchFailure(error,dispatchDelivered);
+      if(failureClass==='SAFE_RETRY'){
+        try{
+          dispatchLease.markRetryable(dispatchLeaseToken.leaseId,decision.jobId);
+          autopilotState={...clearPending(autopilotState),phase:'STOPPED',uncertainJobId:undefined,updatedAt:new Date().toISOString()};
+          persistAutopilotState();
+          log('AUTO_CONTINUE_FAILED_SAFE_RETRY',{jobId:decision.jobId,error:message,retryAfterMs:config.autopilot.dispatchLeaseTtlMs??300000});
+        }catch(retryError){
+          autopilotState={...clearPending(autopilotState),phase:'STOPPED',uncertainJobId:decision.jobId,updatedAt:new Date().toISOString()};
+          persistAutopilotState();
+          log('AUTO_CONTINUE_SAFE_RETRY_STATE_FAILED',{jobId:decision.jobId,error:String(retryError),originalError:message});
+        }
+      }else{
+        autopilotState={...clearPending(autopilotState),phase:'STOPPED',uncertainJobId:decision.jobId,updatedAt:new Date().toISOString()};
+        persistAutopilotState();
+        log('AUTO_CONTINUE_FAILED_CLOSED',{jobId:decision.jobId,error:message,ambiguous:dispatchDelivered||message.includes('DELIVERED')});
+      }
     }
     persistEvidence();
   }finally{autopilotTicking=false;}

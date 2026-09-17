@@ -76,6 +76,10 @@ export class DurableDispatchLeaseStore{
     return this.#transition(leaseId,jobId,'RESERVED','DISPATCHING',nowMs,{expiresAt:iso(nowMs+this.#ttlMs)});
   }
 
+  markRetryable(leaseId:string,jobId:string,nowMs=Date.now()):DispatchLease{
+    return this.#transition(leaseId,jobId,'DISPATCHING','RESERVED',nowMs,{expiresAt:iso(nowMs+this.#ttlMs)});
+  }
+
   markCommitted(leaseId:string,jobId:string,nowMs=Date.now()):DispatchLease{
     return this.#transition(leaseId,jobId,'DISPATCHING','COMMITTED',nowMs,{dispatchedAt:iso(nowMs),expiresAt:iso(nowMs+this.#ttlMs)});
   }
