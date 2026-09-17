@@ -1,3 +1,6 @@
+using System.Drawing.Drawing2D;
+using System.Runtime.InteropServices;
+
 namespace TigerIQ.WorkerUtility;
 
 internal sealed class UtilityContext : ApplicationContext
@@ -6,11 +9,14 @@ internal sealed class UtilityContext : ApplicationContext
     readonly ControllerClient controller = new();
     readonly WindowBinder binder = new();
     readonly Dictionary<string, BadgeForm> badges = new();
+    readonly Dictionary<string, PopupForm> popups = new();
     readonly Dictionary<string, WorkerView> views = new();
     readonly Dictionary<string, WatchdogView> health = new();
+    readonly Dictionary<string, ToolStripMenuItem> trayWorkerItems = new();
     readonly WatchdogTracker watchdog = new();
-    readonly PopupForm popup;
     readonly NotifyIcon tray;
+    readonly Icon trayIcon;
+    readonly TrayPanelForm trayPanel;
     readonly System.Windows.Forms.Timer timer = new() { Interval = 1000 };
     UtilitySettings settings;
     bool ticking;
@@ -22,35 +28,61 @@ internal sealed class UtilityContext : ApplicationContext
         foreach (var w in Workers.All)
             if (!settings.Workers.ContainsKey(w.Id)) settings.Workers[w.Id] = new WorkerSettings();
         store.EnsureAutostart();
-        popup = new PopupForm(HandleActionAsync, SavePopupPosition);
+
         foreach (var worker in Workers.All)
         {
-            var badge = new BadgeForm(worker, ShowPopup, SaveBadgeOffset, ResetBadgePosition);
-            badges[worker.Id] = badge;
+            popups[worker.Id] = new PopupForm(HandleActionAsync, SavePopupPosition);
+            badges[worker.Id] = new BadgeForm(worker, ShowPopup, SaveBadgeOffset, ResetBadgePosition);
         }
+
+        trayPanel = new TrayPanelForm(ShowPopup, ShowAllPopups, ToggleDnd, ExitUtility);
+        trayIcon = CreateTrayIcon();
         tray = new NotifyIcon
         {
             Visible = true,
-            Text = "TigerIQ Worker Utility",
-            Icon = SystemIcons.Application,
+            Text = "TigerIQ Workers",
+            Icon = trayIcon,
             ContextMenuStrip = BuildTrayMenu()
         };
+        tray.MouseClick += (_, e) =>
+        {
+            if (e.Button == MouseButtons.Left)
+            {
+                trayPanel.ApplyStates(views, settings);
+                trayPanel.ToggleNearTray();
+            }
+        };
+
         timer.Tick += async (_, _) => await TickAsync();
         timer.Start();
-        store.Log("SYSTEM", "UTILITY_STARTED", new { version = Application.ProductVersion });
+        store.Log("SYSTEM", "UTILITY_STARTED", new { version = Application.ProductVersion, issue = 817 });
     }
 
     ContextMenuStrip BuildTrayMenu()
     {
-        var menu = new ContextMenuStrip();
+        var menu = new ContextMenuStrip
+        {
+            Font = new Font("Segoe UI", 9),
+            ShowImageMargin = false,
+            BackColor = Color.FromArgb(8, 19, 34),
+            ForeColor = Color.FromArgb(241, 245, 249)
+        };
+        var title = new ToolStripMenuItem("🐯  TigerIQ Workers") { Enabled = false };
+        menu.Items.Add(title);
+        menu.Items.Add(new ToolStripSeparator());
         foreach (var w in Workers.All)
         {
             var id = w.Id;
-            menu.Items.Add($"Mở {id}", null, (_, _) => ShowPopup(id));
+            var item = new ToolStripMenuItem($"{id} — {w.Name}");
+            item.Click += (_, _) => ShowPopup(id);
+            trayWorkerItems[id] = item;
+            menu.Items.Add(item);
         }
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Không làm phiền", null, (_, _) => ToggleDnd());
-        menu.Items.Add("Thoát Utility", null, (_, _) => ExitUtility());
+        menu.Items.Add("▦  Mở tất cả bảng điều khiển", null, (_, _) => ShowAllPopups());
+        menu.Items.Add("◐  Bật / tắt Không làm phiền", null, (_, _) => ToggleDnd());
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add("⏻  Thoát TigerIQ Workers", null, (_, _) => ExitUtility());
         return menu;
     }
 
@@ -91,7 +123,45 @@ internal sealed class UtilityContext : ApplicationContext
             health[w.Id] = watchdog.Observe(view, DateTimeOffset.Now);
             badges[w.Id].ApplyState(view);
         }
+        UpdateTraySurface();
     }
+
+    void UpdateTraySurface()
+    {
+        trayPanel.ApplyStates(views, settings);
+        foreach (var worker in Workers.All)
+        {
+            if (!trayWorkerItems.TryGetValue(worker.Id, out var item)) continue;
+            if (!views.TryGetValue(worker.Id, out var view))
+            {
+                item.Text = $"●  {worker.Id} — {worker.Name} — chưa có dữ liệu";
+                item.ForeColor = Color.FromArgb(248, 113, 113);
+                continue;
+            }
+            item.Text = $"●  {worker.Id} — {worker.Name} — {StateDisplay(view)}";
+            item.ForeColor = view.State switch
+            {
+                WorkerUiState.Ready or WorkerUiState.Working => Color.FromArgb(52, 211, 153),
+                WorkerUiState.Paused => Color.FromArgb(251, 191, 36),
+                _ => Color.FromArgb(248, 113, 113)
+            };
+        }
+        var parts = Workers.All.Select(w =>
+        {
+            if (!views.TryGetValue(w.Id, out var v)) return $"{w.Id[2..]}:?";
+            return $"{w.Id[2..]}:{(v.State == WorkerUiState.Working ? "RUN" : v.State == WorkerUiState.Ready ? "OK" : v.State == WorkerUiState.Paused ? "PAUSE" : "BLOCK")}";
+        });
+        var text = "TigerIQ Workers | " + string.Join(" ", parts);
+        tray.Text = text.Length <= 63 ? text : "TigerIQ Workers";
+    }
+
+    static string StateDisplay(WorkerView view) => view.State switch
+    {
+        WorkerUiState.Ready => "Sẵn sàng",
+        WorkerUiState.Working => $"Đang chạy {view.JobId ?? ""}".Trim(),
+        WorkerUiState.Paused => "Tạm dừng",
+        _ => $"Bị chặn: {view.Reason}"
+    };
 
     void TrackStateChange(string id, WorkerView view)
     {
@@ -134,23 +204,63 @@ internal sealed class UtilityContext : ApplicationContext
 
     void ShowPopup(string id)
     {
+        if (!TryShowPopup(id, true)) return;
+        store.Log(id, "POPUP_OPENED");
+    }
+
+    bool TryShowPopup(string id, bool notifyOnFailure)
+    {
         if (!views.TryGetValue(id, out var view))
             view = new WorkerView(id, WorkerUiState.Blocked, "STATE_LOADING", null, null,
                 false, false, false, null, null, Workers.Get(id).DebugPort, null, false, false);
         if (!binder.TryResolve(id, out _, out var rect))
         {
-            MessageBox.Show($"{id}: không xác định được đúng cửa sổ Chrome. Fail-closed.", "TigerIQ");
-            return;
+            if (notifyOnFailure) MessageBox.Show($"{id}: không xác định được đúng cửa sổ Chrome. Fail-closed.", "TigerIQ");
+            return false;
         }
+
         settings.Schedules.TryGetValue(id, out var sched);
         health.TryGetValue(id, out var wd);
-        popup.ShowWorker(Workers.Get(id), view, wd, settings.Workers[id], sched, settings.DoNotDisturb, store.RecentLogs(), rect);
+        var occupied = new List<Rectangle>();
+        foreach (var worker in Workers.All)
+            if (binder.TryResolve(worker.Id, out _, out var chromeRect) && chromeRect.Width > 0 && chromeRect.Height > 0)
+                occupied.Add(chromeRect);
+        foreach (var pair in popups)
+            if (pair.Key != id && pair.Value.Visible)
+                occupied.Add(pair.Value.Bounds);
+
+        var ok = popups[id].ShowWorker(
+            Workers.Get(id), view, wd, settings.Workers[id], sched, settings.DoNotDisturb,
+            store.RecentLogs(id), rect, occupied.ToArray());
+        if (!ok && notifyOnFailure)
+        {
+            MessageBox.Show(
+                "Không có vùng trống an toàn để mở bảng điều khiển mà không che Chrome hoặc bảng điều khiển khác. Hãy đóng một bảng đang mở hoặc chuyển cửa sổ rồi thử lại.",
+                "TigerIQ — Không chồng cửa sổ",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+        }
+        return ok;
     }
 
-    async Task HandleActionAsync(string id, string action)
+    void ShowAllPopups()
     {
-        store.Log(id, "ACTION_REQUEST", new { action });
-        switch (action)
+        var opened = 0;
+        foreach (var worker in Workers.All)
+            if (TryShowPopup(worker.Id, false)) opened++;
+        store.Log("SYSTEM", "OPEN_ALL_POPUPS", new { opened, requested = Workers.All.Length });
+        if (opened < Workers.All.Length)
+        {
+            tray.BalloonTipTitle = "TigerIQ Workers";
+            tray.BalloonTipText = $"Đã mở {opened}/{Workers.All.Length} bảng. Bảng còn lại bị giữ lại để không che Chrome.";
+            tray.ShowBalloonTip(4000);
+        }
+    }
+
+    async Task HandleActionAsync(string id, string actionName)
+    {
+        store.Log(id, "ACTION_REQUEST", new { action = actionName });
+        switch (actionName)
         {
             case "run":
                 settings.Workers[id].Paused = false;
@@ -165,14 +275,14 @@ internal sealed class UtilityContext : ApplicationContext
             case "lock": settings.Workers[id].PositionLocked = !settings.Workers[id].PositionLocked; break;
             case "badge-reset": ResetBadgePosition(id); break;
             case "open": await controller.OpenCanonicalAsync(id); break;
-            case "health": MessageBox.Show(await controller.QuickHealthAsync(id), $"Quick health {id}"); break;
+            case "health": MessageBox.Show(await controller.QuickHealthAsync(id), $"Kiểm tra nhanh {id}"); break;
             case "save":
                 var saved = await controller.SaveAsync(id, false);
-                MessageBox.Show($"DURABLE: {saved.CheckpointRef}", $"Save {id}");
+                MessageBox.Show($"Đã lưu bền vững: {saved.CheckpointRef}", $"Lưu {id}");
                 break;
             case "save-archive":
                 var archived = await controller.SaveAsync(id, true);
-                MessageBox.Show($"DURABLE + ARCHIVE: {archived.CheckpointRef}", $"Save & Archive {id}");
+                MessageBox.Show($"Đã lưu + lưu trữ: {archived.CheckpointRef}", $"Lưu & Lưu trữ {id}");
                 break;
             case "close": await controller.SafeCloseAsync(id); break;
             case "recover": await SafeRecoverAsync(id); break;
@@ -182,24 +292,55 @@ internal sealed class UtilityContext : ApplicationContext
             case "schedule-120": SetSchedule(id, 120); break;
             case "schedule-custom": SetSchedule(id, PromptMinutes()); break;
             case "schedule-cancel": settings.Schedules.Remove(id); break;
+            case "schedule-on": EnsureSchedule(id, true); break;
+            case "schedule-off": EnsureSchedule(id, false); break;
+            case "schedule-change-only-on": EnsureSchedule(id, null).ChangesOnly = true; break;
+            case "schedule-change-only-off": EnsureSchedule(id, null).ChangesOnly = false; break;
             case "dnd-on": settings.DoNotDisturb = true; break;
             case "dnd-off": settings.DoNotDisturb = false; break;
-            case "advanced": ShowAdvanced(id); break;
-            default: throw new InvalidOperationException("UNKNOWN_UTILITY_ACTION:" + action);
+            case "advanced": break; // compatibility alias; UI now toggles advanced details locally
+            default: throw new InvalidOperationException("UNKNOWN_UTILITY_ACTION:" + actionName);
         }
         store.Save(settings);
-        store.Log(id, "ACTION_OK", new { action });
+        store.Log(id, "ACTION_OK", new { action = actionName });
         await RefreshStateAsync();
+        TryShowPopup(id, false);
+    }
+
+    ScheduleSettings EnsureSchedule(string id, bool? enabled)
+    {
+        if (!settings.Schedules.TryGetValue(id, out var sched))
+        {
+            sched = new ScheduleSettings
+            {
+                IntervalMinutes = 30,
+                NextCheckAt = DateTimeOffset.Now.AddMinutes(30),
+                LastFingerprint = views.TryGetValue(id, out var view) ? Fingerprint(view) : "",
+                Enabled = enabled ?? true,
+                ChangesOnly = true
+            };
+            settings.Schedules[id] = sched;
+        }
+        if (enabled is bool on)
+        {
+            sched.Enabled = on;
+            if (on && (sched.NextCheckAt is null || sched.NextCheckAt <= DateTimeOffset.Now))
+                sched.NextCheckAt = DateTimeOffset.Now.AddMinutes(Math.Max(1, sched.IntervalMinutes));
+        }
+        return sched;
     }
 
     void SetSchedule(string id, int minutes)
     {
         if (minutes < 1 || minutes > 24 * 60) throw new InvalidOperationException("SCHEDULE_INTERVAL_INVALID");
+        var changesOnly = settings.Schedules.TryGetValue(id, out var existing) ? existing.ChangesOnly : true;
         settings.Schedules[id] = new ScheduleSettings
         {
             IntervalMinutes = minutes,
             NextCheckAt = DateTimeOffset.Now.AddMinutes(minutes),
-            LastFingerprint = views.TryGetValue(id, out var v) ? Fingerprint(v) : ""
+            LastFingerprint = views.TryGetValue(id, out var v) ? Fingerprint(v) : "",
+            Enabled = true,
+            ChangesOnly = changesOnly
         };
     }
 
@@ -208,7 +349,7 @@ internal sealed class UtilityContext : ApplicationContext
         foreach (var item in settings.Schedules.ToArray())
         {
             var sched = item.Value;
-            if (sched.NextCheckAt is null || sched.NextCheckAt > DateTimeOffset.Now) continue;
+            if (!sched.Enabled || sched.NextCheckAt is null || sched.NextCheckAt > DateTimeOffset.Now) continue;
             WorkerView v;
             try { v = await controller.GetWorkerAsync(item.Key); }
             catch (Exception ex)
@@ -219,8 +360,9 @@ internal sealed class UtilityContext : ApplicationContext
                 continue;
             }
             var fp = Fingerprint(v);
-            if (!string.Equals(fp, sched.LastFingerprint, StringComparison.Ordinal) || v.State == WorkerUiState.Blocked)
-                NotifyChanged(item.Key, $"{v.State}: {v.Reason}");
+            var changed = !string.Equals(fp, sched.LastFingerprint, StringComparison.Ordinal);
+            if (!sched.ChangesOnly || changed || v.State == WorkerUiState.Blocked)
+                NotifyChanged(item.Key, $"{StateDisplay(v)}");
             sched.LastFingerprint = fp;
             sched.NextCheckAt = DateTimeOffset.Now.AddMinutes(sched.IntervalMinutes);
             store.Save(settings);
@@ -255,6 +397,7 @@ internal sealed class UtilityContext : ApplicationContext
         settings.DoNotDisturb = !settings.DoNotDisturb;
         store.Save(settings);
         store.Log("SYSTEM", "DND_CHANGED", new { settings.DoNotDisturb });
+        UpdateTraySurface();
     }
 
     async Task RunWatchdogAsync()
@@ -262,7 +405,11 @@ internal sealed class UtilityContext : ApplicationContext
         foreach (var w in Workers.All)
         {
             if (!views.TryGetValue(w.Id, out var v) || !health.TryGetValue(w.Id, out var h)) continue;
-            if (h.Health == HealthBand.Blocked) { if (!settings.DoNotDisturb) NotifyChanged(w.Id, $"BLOCKED: {v.Reason}"); continue; }
+            if (h.Health == HealthBand.Blocked)
+            {
+                if (!settings.DoNotDisturb) NotifyChanged(w.Id, $"Bị chặn: {v.Reason}");
+                continue;
+            }
             if (!watchdog.ShouldEscalate(w.Id, DateTimeOffset.Now)) continue;
             watchdog.BeginRecovery(w.Id, DateTimeOffset.Now);
             store.Log(w.Id, "WATCHDOG_ESCALATE", new { health = h.Health.ToString(), h.NoProgressFor, v.JobId, v.Reason });
@@ -276,9 +423,18 @@ internal sealed class UtilityContext : ApplicationContext
                 var next = await controller.GetWorkerAsync(w.Id);
                 var progressed = next.Reason != v.Reason || next.UiBusy != v.UiBusy || next.JobId != v.JobId;
                 watchdog.EndRecovery(w.Id, progressed, DateTimeOffset.Now);
-                if (!progressed) { store.Log(w.Id, "WATCHDOG_FAIL_CLOSED", new { reason = "NO_SAFE_IDEMPOTENT_REDISPATCH_PROOF" }); NotifyChanged(w.Id, "STALLED — cần khôi phục an toàn"); }
+                if (!progressed)
+                {
+                    store.Log(w.Id, "WATCHDOG_FAIL_CLOSED", new { reason = "NO_SAFE_IDEMPOTENT_REDISPATCH_PROOF" });
+                    NotifyChanged(w.Id, "Treo — cần khôi phục an toàn");
+                }
             }
-            catch (Exception ex) { watchdog.EndRecovery(w.Id, false, DateTimeOffset.Now); store.Log(w.Id, "WATCHDOG_BLOCKED", new { error = ex.Message }); NotifyChanged(w.Id, "BLOCKED: " + ex.Message); }
+            catch (Exception ex)
+            {
+                watchdog.EndRecovery(w.Id, false, DateTimeOffset.Now);
+                store.Log(w.Id, "WATCHDOG_BLOCKED", new { error = ex.Message });
+                NotifyChanged(w.Id, "Bị chặn: " + ex.Message);
+            }
         }
     }
 
@@ -316,44 +472,53 @@ internal sealed class UtilityContext : ApplicationContext
         using var form = new Form
         {
             Text = "Lịch tùy chỉnh",
-            Width = 260,
-            Height = 140,
+            Width = 270,
+            Height = 150,
             StartPosition = FormStartPosition.CenterScreen,
-            AutoScaleMode = AutoScaleMode.Dpi
+            AutoScaleMode = AutoScaleMode.Dpi,
+            BackColor = Color.FromArgb(8, 19, 34),
+            ForeColor = Color.White
         };
-        var input = new NumericUpDown { Minimum = 1, Maximum = 1440, Value = 30, Left = 20, Top = 20, Width = 200 };
-        var ok = new Button { Text = "OK", DialogResult = DialogResult.OK, Left = 85, Top = 55 };
-        form.Controls.Add(input); form.Controls.Add(ok); form.AcceptButton = ok;
+        var input = new NumericUpDown { Minimum = 1, Maximum = 1440, Value = 30, Left = 20, Top = 22, Width = 215 };
+        var ok = new Button { Text = "Lưu", DialogResult = DialogResult.OK, Left = 90, Top = 62, Width = 80 };
+        form.Controls.Add(input);
+        form.Controls.Add(ok);
+        form.AcceptButton = ok;
         return form.ShowDialog() == DialogResult.OK ? (int)input.Value : 30;
-    }
-
-    void ShowAdvanced(string id)
-    {
-        views.TryGetValue(id, out var v);
-        health.TryGetValue(id, out var h);
-        settings.Schedules.TryGetValue(id, out var sched);
-        var text = string.Join(Environment.NewLine, new[]
-        {
-            $"Worker: {id}", $"State: {v?.State} / {v?.Reason}",
-            $"Health: {h?.Health} / no progress {h?.NoProgressFor}",
-            $"Heartbeat: {v?.HeartbeatAt}", $"URL: {v?.Url}",
-            $"Debug port: {Workers.Get(id).DebugPort}",
-            $"Session OK: {v?.SessionOk}", $"Window open: {v?.WindowOpen}",
-            $"Position locked: {settings.Workers[id].PositionLocked}",
-            $"Badge offset: {settings.Workers[id].BadgeOffsetX},{settings.Workers[id].BadgeOffsetY}",
-            $"Popup position: {settings.Workers[id].PopupX},{settings.Workers[id].PopupY}",
-            $"Next check: {sched?.NextCheckAt}"
-        });
-        MessageBox.Show(text, $"Nâng cao {id}");
     }
 
     void ExitUtility()
     {
         timer.Stop();
         foreach (var b in badges.Values) b.Close();
-        popup.Close();
+        foreach (var p in popups.Values) p.Close();
+        trayPanel.Close();
         tray.Visible = false;
         tray.Dispose();
+        trayIcon.Dispose();
         ExitThread();
     }
+
+    static Icon CreateTrayIcon()
+    {
+        using var bitmap = new Bitmap(32, 32);
+        using (var g = Graphics.FromImage(bitmap))
+        {
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.Clear(Color.Transparent);
+            using var outer = new SolidBrush(Color.FromArgb(8, 19, 34));
+            using var accent = new Pen(Color.FromArgb(245, 158, 11), 3);
+            g.FillEllipse(outer, 1, 1, 30, 30);
+            g.DrawEllipse(accent, 3, 3, 26, 26);
+            using var font = new Font("Segoe UI", 9, FontStyle.Bold, GraphicsUnit.Pixel);
+            TextRenderer.DrawText(g, "TQ", font, new Rectangle(0, 8, 32, 16), Color.White,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+        }
+        var handle = bitmap.GetHicon();
+        try { return (Icon)Icon.FromHandle(handle).Clone(); }
+        finally { DestroyIcon(handle); }
+    }
+
+    [DllImport("user32.dll")]
+    static extern bool DestroyIcon(IntPtr handle);
 }

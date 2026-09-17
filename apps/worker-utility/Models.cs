@@ -25,6 +25,7 @@ internal sealed class UtilitySettings
     public bool DoNotDisturb { get; set; }
     public Dictionary<string, WorkerSettings> Workers { get; set; } = new();
     public Dictionary<string, ScheduleSettings> Schedules { get; set; } = new();
+
     public static UtilitySettings CreateDefault()
     {
         var value = new UtilitySettings();
@@ -51,4 +52,6 @@ internal sealed class ScheduleSettings
     public int IntervalMinutes { get; set; }
     public DateTimeOffset? NextCheckAt { get; set; }
     public string LastFingerprint { get; set; } = "";
+    public bool Enabled { get; set; } = true;
+    public bool ChangesOnly { get; set; } = true;
 }

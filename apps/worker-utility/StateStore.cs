@@ -30,6 +30,7 @@ internal sealed class StateStore
         catch { }
         return UtilitySettings.CreateDefault();
     }
+
     public void Save(UtilitySettings value)
     {
         var tmp = statePath + ".tmp";
@@ -53,6 +54,47 @@ internal sealed class StateStore
     {
         if (!File.Exists(logPath)) return [];
         return File.ReadLines(logPath).Reverse().Take(max).Reverse().ToArray();
+    }
+
+    public string[] RecentLogs(string workerId, int max = 10)
+    {
+        if (!File.Exists(logPath)) return [];
+        return File.ReadLines(logPath)
+            .Reverse()
+            .Where(line => MatchesWorker(line, workerId))
+            .Take(max)
+            .Reverse()
+            .Select(FormatLogLine)
+            .ToArray();
+    }
+
+    static bool MatchesWorker(string line, string workerId)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(line);
+            return doc.RootElement.TryGetProperty("workerId", out var id)
+                && string.Equals(id.GetString(), workerId, StringComparison.OrdinalIgnoreCase);
+        }
+        catch { return false; }
+    }
+
+    static string FormatLogLine(string line)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(line);
+            var root = doc.RootElement;
+            var ts = root.TryGetProperty("ts", out var t) && DateTimeOffset.TryParse(t.GetString(), out var parsed)
+                ? parsed.ToLocalTime().ToString("HH:mm:ss")
+                : "--:--:--";
+            var evt = root.TryGetProperty("event", out var e) ? e.GetString() ?? "EVENT" : "EVENT";
+            var detail = root.TryGetProperty("detail", out var d) && d.ValueKind is not JsonValueKind.Null
+                ? d.ToString()
+                : "";
+            return string.IsNullOrWhiteSpace(detail) ? $"{ts}  {evt}" : $"{ts}  {evt}  {detail}";
+        }
+        catch { return line; }
     }
 
     public void EnsureAutostart()
