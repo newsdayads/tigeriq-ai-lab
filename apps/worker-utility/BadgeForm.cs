@@ -148,9 +148,12 @@ internal sealed class BadgeForm : Form
         lastChromeBounds = chromeBounds;
         if (dragging) return;
         var working = Screen.FromRectangle(chromeBounds).WorkingArea;
-        var target = settings.BadgeOffsetX is int x && settings.BadgeOffsetY is int y
-            ? UiPlacement.BadgeFromOffset(chromeBounds, Size, working, x, y)
-            : UiPlacement.DefaultBadge(chromeBounds, Size, working);
+        if (!UiPlacement.TryBadge(chromeBounds, Size, working, settings.BadgeOffsetX, settings.BadgeOffsetY, out var target))
+        {
+            ApplyState(null);
+            if (Visible) Hide();
+            return;
+        }
         if (Location != target) Location = target;
         if (!Visible) Show();
     }
