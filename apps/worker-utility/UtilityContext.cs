@@ -22,10 +22,10 @@ internal sealed class UtilityContext : ApplicationContext
         foreach (var w in Workers.All)
             if (!settings.Workers.ContainsKey(w.Id)) settings.Workers[w.Id] = new WorkerSettings();
         store.EnsureAutostart();
-        popup = new PopupForm(HandleActionAsync);
+        popup = new PopupForm(HandleActionAsync, SavePopupPosition);
         foreach (var worker in Workers.All)
         {
-            var badge = new BadgeForm(worker, ShowPopup);
+            var badge = new BadgeForm(worker, ShowPopup, SaveBadgeOffset, ResetBadgePosition);
             badges[worker.Id] = badge;
         }
         tray = new NotifyIcon
@@ -39,6 +39,7 @@ internal sealed class UtilityContext : ApplicationContext
         timer.Start();
         store.Log("SYSTEM", "UTILITY_STARTED", new { version = Application.ProductVersion });
     }
+
     ContextMenuStrip BuildTrayMenu()
     {
         var menu = new ContextMenuStrip();
@@ -61,7 +62,7 @@ internal sealed class UtilityContext : ApplicationContext
         {
             foreach (var w in Workers.All)
             {
-                if (binder.TryResolve(w.Id, out _, out var rect)) badges[w.Id].AnchorTo(rect);
+                if (binder.TryResolve(w.Id, out _, out var rect)) badges[w.Id].AnchorTo(rect, settings.Workers[w.Id]);
                 else badges[w.Id].MarkUnbound();
             }
             if (++pollCounter % 2 == 0) await RefreshStateAsync();
@@ -71,6 +72,7 @@ internal sealed class UtilityContext : ApplicationContext
         }
         finally { ticking = false; }
     }
+
     async Task RefreshStateAsync()
     {
         foreach (var w in Workers.All)
@@ -101,6 +103,35 @@ internal sealed class UtilityContext : ApplicationContext
         store.Save(settings);
         store.Log(id, "STATE_CHANGED", new { state = view.State.ToString(), view.Reason, view.JobId });
     }
+
+    void SaveBadgeOffset(string id, Point offset)
+    {
+        var state = settings.Workers[id];
+        state.BadgeOffsetX = offset.X;
+        state.BadgeOffsetY = offset.Y;
+        store.Save(settings);
+        store.Log(id, "BADGE_POSITION_SAVED", new { offset.X, offset.Y });
+    }
+
+    void ResetBadgePosition(string id)
+    {
+        var state = settings.Workers[id];
+        state.BadgeOffsetX = null;
+        state.BadgeOffsetY = null;
+        store.Save(settings);
+        if (binder.TryResolve(id, out _, out var rect)) badges[id].AnchorTo(rect, state);
+        store.Log(id, "BADGE_POSITION_RESET");
+    }
+
+    void SavePopupPosition(string id, Point location)
+    {
+        var state = settings.Workers[id];
+        state.PopupX = location.X;
+        state.PopupY = location.Y;
+        store.Save(settings);
+        store.Log(id, "POPUP_POSITION_SAVED", new { location.X, location.Y });
+    }
+
     void ShowPopup(string id)
     {
         if (!views.TryGetValue(id, out var view))
@@ -132,6 +163,7 @@ internal sealed class UtilityContext : ApplicationContext
             case "focus": await controller.FocusAsync(id); break;
             case "fix": await controller.FixPositionAsync(id); break;
             case "lock": settings.Workers[id].PositionLocked = !settings.Workers[id].PositionLocked; break;
+            case "badge-reset": ResetBadgePosition(id); break;
             case "open": await controller.OpenCanonicalAsync(id); break;
             case "health": MessageBox.Show(await controller.QuickHealthAsync(id), $"Quick health {id}"); break;
             case "save":
@@ -159,6 +191,7 @@ internal sealed class UtilityContext : ApplicationContext
         store.Log(id, "ACTION_OK", new { action });
         await RefreshStateAsync();
     }
+
     void SetSchedule(string id, int minutes)
     {
         if (minutes < 1 || minutes > 24 * 60) throw new InvalidOperationException("SCHEDULE_INTERVAL_INVALID");
@@ -193,6 +226,7 @@ internal sealed class UtilityContext : ApplicationContext
             store.Save(settings);
         }
     }
+
     static string Fingerprint(WorkerView v)
         => $"{v.State}|{v.Reason}|{v.JobId}|{v.UiReady}|{v.AuthRequired}|{v.SecurityBlock}|{v.WindowOpen}";
 
@@ -276,9 +310,17 @@ internal sealed class UtilityContext : ApplicationContext
             throw;
         }
     }
+
     int PromptMinutes()
     {
-        using var form = new Form { Text = "Lịch tùy chỉnh", Width = 260, Height = 140, StartPosition = FormStartPosition.CenterScreen };
+        using var form = new Form
+        {
+            Text = "Lịch tùy chỉnh",
+            Width = 260,
+            Height = 140,
+            StartPosition = FormStartPosition.CenterScreen,
+            AutoScaleMode = AutoScaleMode.Dpi
+        };
         var input = new NumericUpDown { Minimum = 1, Maximum = 1440, Value = 30, Left = 20, Top = 20, Width = 200 };
         var ok = new Button { Text = "OK", DialogResult = DialogResult.OK, Left = 85, Top = 55 };
         form.Controls.Add(input); form.Controls.Add(ok); form.AcceptButton = ok;
@@ -298,10 +340,13 @@ internal sealed class UtilityContext : ApplicationContext
             $"Debug port: {Workers.Get(id).DebugPort}",
             $"Session OK: {v?.SessionOk}", $"Window open: {v?.WindowOpen}",
             $"Position locked: {settings.Workers[id].PositionLocked}",
+            $"Badge offset: {settings.Workers[id].BadgeOffsetX},{settings.Workers[id].BadgeOffsetY}",
+            $"Popup position: {settings.Workers[id].PopupX},{settings.Workers[id].PopupY}",
             $"Next check: {sched?.NextCheckAt}"
         });
         MessageBox.Show(text, $"Nâng cao {id}");
     }
+
     void ExitUtility()
     {
         timer.Stop();

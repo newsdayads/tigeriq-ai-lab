@@ -9,6 +9,7 @@ internal static class SelfTest
             TestWatchdog();
             TestSavePrompt();
             TestSettingsRoundTrip();
+            TestUiPlacement();
             Console.WriteLine("SELF_TEST_OK");
             return 0;
         }
@@ -52,10 +53,30 @@ internal static class SelfTest
     {
         var settings = UtilitySettings.CreateDefault();
         settings.Workers["NV02"].Paused = true;
+        settings.Workers["NV02"].BadgeOffsetX = 24;
+        settings.Workers["NV02"].BadgeOffsetY = 42;
+        settings.Workers["NV02"].PopupX = 111;
+        settings.Workers["NV02"].PopupY = 222;
         settings.Schedules["NV02"] = new ScheduleSettings { IntervalMinutes = 10, NextCheckAt = DateTimeOffset.UtcNow.AddMinutes(10) };
         var text = System.Text.Json.JsonSerializer.Serialize(settings);
         var copy = System.Text.Json.JsonSerializer.Deserialize<UtilitySettings>(text)!;
         Must(copy.Workers["NV02"].Paused, "settings paused persistence");
+        Must(copy.Workers["NV02"].BadgeOffsetX == 24 && copy.Workers["NV02"].BadgeOffsetY == 42, "badge persistence");
+        Must(copy.Workers["NV02"].PopupX == 111 && copy.Workers["NV02"].PopupY == 222, "popup persistence");
         Must(copy.Schedules["NV02"].IntervalMinutes == 10, "schedule persistence");
+    }
+
+    static void TestUiPlacement()
+    {
+        var working = new Rectangle(0, 0, 1920, 1080);
+        var chrome = new Rectangle(0, 0, 1920, 1040);
+        var badgeSize = new Size(52, 26);
+        var badge = UiPlacement.DefaultBadge(chrome, badgeSize, working);
+        Must(badge.X >= working.Left && badge.Y >= working.Top, "badge inside working area");
+        Must(badge.X + badgeSize.Width <= working.Right && badge.Y + badgeSize.Height <= working.Bottom, "badge fully visible");
+        Must(badge.X + badgeSize.Width < chrome.Right - 120, "badge avoids chrome system controls");
+
+        var clamped = UiPlacement.Clamp(new Point(4000, 4000), new Size(320, 620), working);
+        Must(clamped.X == 1600 && clamped.Y == 460, "popup clamp");
     }
 }
