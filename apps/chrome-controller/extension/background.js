@@ -1,5 +1,6 @@
 import { WORKER_HOSTS, allowedUrl, hostname, matchesWorker } from './url-policy.js';
 import { buildDurableSavePrompt, waitForDurableSaveReceipt } from './save-receipt.js';
+import { runArchiveCommand } from './archive-command.js';
 
 const CONTROLLER = 'http://127.0.0.1:8798';
 const LEGACY_PLUS_ID = ['NV','05'].join('');
@@ -253,6 +254,13 @@ async function execute(workerId,command) {
     const response=await chrome.tabs.sendMessage(ctx.tabId,{type:'TIGERIQ_DISPATCH',text:String(payload.text||'')});
     if(!response?.ok){const reason=response?.status||'DISPATCH_FAILED';const error=new Error(reason);error.status=reason;throw error;}
     return response;
+  }
+  if(action==='ARCHIVE_CHAT'){
+    if(!matchesWorker(workerId,ctx.url)) throw new Error('BLOCKED_URL');
+    return runArchiveCommand(workerId,payload,{
+      archiveSupported:(id)=>ARCHIVE_SUPPORTED_WORKERS.has(id),
+      saveAndArchive,
+    });
   }
   throw new Error(`UNKNOWN_ACTION:${action}`);
 }
