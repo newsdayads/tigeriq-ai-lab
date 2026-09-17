@@ -11,24 +11,22 @@ internal static class UiPlacement
         return new Point(x, y);
     }
 
-    public static Point DefaultBadge(Rectangle chromeBounds, Size badgeSize, Rectangle workingArea)
+    public static bool TryBadge(Rectangle chromeBounds, Size badgeSize, Rectangle workingArea,
+        int? offsetX, int? offsetY, out Point target)
     {
-        const int gap = 6;
-        var right = new Point(chromeBounds.Right + gap, chromeBounds.Top + 8);
-        if (right.X + badgeSize.Width <= workingArea.Right)
-            return Clamp(right, badgeSize, workingArea);
+        target = Point.Empty;
+        var ownTitleArea = Rectangle.Intersect(
+            new Rectangle(chromeBounds.Left, chromeBounds.Top, chromeBounds.Width, Math.Min(44, chromeBounds.Height)),
+            workingArea);
+        if (ownTitleArea.Width < badgeSize.Width || ownTitleArea.Height < badgeSize.Height)
+            return false;
 
-        var left = new Point(chromeBounds.Left - badgeSize.Width - gap, chromeBounds.Top + 8);
-        if (left.X >= workingArea.Left)
-            return Clamp(left, badgeSize, workingArea);
-
-        // Badge-only fallback: keep the tiny native badge in Chrome's title strip,
-        // away from Minimize/Maximize/Close and page content.
-        return Clamp(new Point(chromeBounds.Left + 8, chromeBounds.Top + 4), badgeSize, workingArea);
+        var desired = offsetX is int x && offsetY is int y
+            ? new Point(chromeBounds.Left + x, chromeBounds.Top + y)
+            : new Point(chromeBounds.Left + 10, chromeBounds.Top + 4);
+        target = Clamp(desired, badgeSize, ownTitleArea);
+        return true;
     }
-
-    public static Point BadgeFromOffset(Rectangle chromeBounds, Size badgeSize, Rectangle workingArea, int offsetX, int offsetY)
-        => Clamp(new Point(chromeBounds.Left + offsetX, chromeBounds.Top + offsetY), badgeSize, workingArea);
 
     public static bool TryPopup(Rectangle anchor, Size popupSize, Rectangle[] workingAreas, Rectangle[] occupied,
         Point? savedLocation, out Point target)
