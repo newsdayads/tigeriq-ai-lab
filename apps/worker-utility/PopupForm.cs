@@ -44,7 +44,7 @@ internal sealed class PopupForm : Form
     readonly Label header = new()
     {
         AutoSize = false,
-        Size = new Size(210, 24),
+        Size = new Size(184, 24),
         Font = new Font("Segoe UI", 13, FontStyle.Bold),
         ForeColor = Ink
     };
@@ -282,7 +282,7 @@ internal sealed class PopupForm : Form
         eyebrow.Location = new Point(14, 12);
         header.Location = new Point(14, 34);
         subtitle.Location = new Point(14, 61);
-        onlineChip.Location = new Point(221, 51);
+        onlineChip.Location = new Point(206, 36);
 
         headerSurface.Controls.Add(accent);
         headerSurface.Controls.Add(eyebrow);
@@ -310,8 +310,8 @@ internal sealed class PopupForm : Form
         stateChip.Location = new Point(12, 28);
         healthChip.Location = new Point(118, 28);
         job.Location = new Point(12, 51);
-        reason.Location = new Point(12, 68);
-        progress.Location = new Point(12, 84);
+        reason.Location = new Point(12, 65);
+        progress.Location = new Point(12, 78);
 
         statusSurface.Controls.Add(title);
         statusSurface.Controls.Add(stateChip);
