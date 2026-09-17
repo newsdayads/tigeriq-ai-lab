@@ -80,10 +80,10 @@ internal static class SelfTest
     {
         var working = new Rectangle(0, 0, 1920, 1080);
         var chrome = new Rectangle(0, 0, 1500, 1040);
-        var badgeSize = new Size(52, 26);
+        var badgeSize = new Size(88, 32);
         var badge = UiPlacement.DefaultBadge(chrome, badgeSize, working);
         Must(badge.X >= working.Left && badge.Y >= working.Top, "badge inside working area");
-        Must(badge.X + badgeSize.Width <= working.Right && badge.Y + badgeSize.Height <= working.Bottom, "badge fully visible");
+        Must(badge.X + badgeSize.Width <= working.Right && badge.Y + badgeSize.Height <= working.Bottom, "badge fully visible");\n        Must(chrome.Contains(new Rectangle(badge, badgeSize)), "badge stays inside its own Chrome window");\n        Must(badge.X < chrome.Left + chrome.Width / 2, "badge stays on the left half of its own title strip");
 
         var clamped = UiPlacement.Clamp(new Point(4000, 4000), new Size(320, 620), working);
         Must(clamped.X == 1600 && clamped.Y == 460, "popup clamp");
