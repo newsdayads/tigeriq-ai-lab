@@ -5,40 +5,131 @@ namespace TigerIQ.WorkerUtility;
 internal sealed class PopupForm : Form
 {
     static readonly Color Canvas = Color.FromArgb(5, 13, 25);
-    static readonly Color Card = Color.FromArgb(12, 25, 43);
-    static readonly Color CardAlt = Color.FromArgb(9, 20, 35);
+    static readonly Color Surface = Color.FromArgb(10, 22, 38);
+    static readonly Color Surface2 = Color.FromArgb(14, 30, 50);
     static readonly Color Ink = Color.FromArgb(241, 245, 249);
     static readonly Color Muted = Color.FromArgb(148, 163, 184);
     static readonly Color Border = Color.FromArgb(31, 52, 76);
     static readonly Color Green = Color.FromArgb(52, 211, 153);
     static readonly Color Amber = Color.FromArgb(251, 191, 36);
     static readonly Color Red = Color.FromArgb(248, 113, 113);
-    static readonly Color Teal = Color.FromArgb(45, 212, 191);
 
-    readonly Label eyebrow = new() { AutoSize = true, Text = "TIGERIQ  /  WORKER CONTROL", Font = new Font("Segoe UI", 8, FontStyle.Bold), ForeColor = Color.FromArgb(148, 163, 184) };
-    readonly Label workerGlyph = new() { AutoSize = false, Size = new Size(44, 44), TextAlign = ContentAlignment.MiddleCenter, Font = new Font("Segoe UI", 16, FontStyle.Bold), ForeColor = Color.White };
-    readonly Label header = new() { AutoSize = true, Font = new Font("Segoe UI", 14, FontStyle.Bold), ForeColor = Color.White };
-    readonly Label subtitle = new() { AutoSize = true, Text = "Trung tâm điều khiển Chrome thật", Font = new Font("Segoe UI", 8.5f), ForeColor = Muted };
-    readonly PillLabel onlineChip = new() { AutoSize = true, Padding = new Padding(9, 4, 9, 4), Font = new Font("Segoe UI", 8, FontStyle.Bold) };
-    readonly PillLabel stateChip = new() { AutoSize = true, Padding = new Padding(9, 4, 9, 4), Font = new Font("Segoe UI", 8, FontStyle.Bold) };
-    readonly PillLabel healthChip = new() { AutoSize = true, Padding = new Padding(9, 4, 9, 4), Font = new Font("Segoe UI", 8, FontStyle.Bold) };
-    readonly Label reason = new() { AutoSize = true, MaximumSize = new Size(284, 0), ForeColor = Muted, Font = new Font("Segoe UI", 8.3f) };
-    readonly Label job = new() { AutoSize = true, MaximumSize = new Size(284, 0), ForeColor = Ink, Font = new Font("Segoe UI", 9, FontStyle.Bold) };
-    readonly Label progress = new() { AutoSize = true, MaximumSize = new Size(284, 0), ForeColor = Muted, Font = new Font("Segoe UI", 8.3f) };
-    readonly Label schedule = new() { AutoSize = true, MaximumSize = new Size(284, 0), ForeColor = Amber, Font = new Font("Segoe UI", 8.3f, FontStyle.Bold) };
-    readonly TextBox logs = new() { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Height = 94, Width = 286, TabStop = false, BorderStyle = BorderStyle.None, BackColor = Color.FromArgb(4, 10, 20), ForeColor = Color.FromArgb(203, 213, 225), Font = new Font("Consolas", 8.3f) };
-    readonly TextBox advancedInfo = new() { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Height = 150, Width = 286, TabStop = false, BorderStyle = BorderStyle.None, BackColor = Color.FromArgb(4, 10, 20), ForeColor = Color.FromArgb(203, 213, 225), Font = new Font("Consolas", 8.3f) };
+    readonly Panel root = new() { Dock = DockStyle.Fill, BackColor = Canvas };
+    readonly RoundedPanel headerSurface = new()
+    {
+        Location = new Point(10, 10),
+        Size = new Size(324, 88),
+        BackColor = Surface,
+        BorderColor = Color.FromArgb(37, 99, 235),
+        BorderWidth = 1,
+        CornerRadius = 14
+    };
+    readonly RoundedPanel statusSurface = new()
+    {
+        Location = new Point(10, 106),
+        Size = new Size(324, 92),
+        BackColor = Surface,
+        BorderColor = Border,
+        BorderWidth = 1,
+        CornerRadius = 12
+    };
+
+    readonly Label eyebrow = new()
+    {
+        AutoSize = true,
+        Text = "TIGERIQ  /  WORKER CONTROL",
+        Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
+        ForeColor = Muted
+    };
+    readonly Label header = new()
+    {
+        AutoSize = false,
+        Size = new Size(210, 24),
+        Font = new Font("Segoe UI", 13, FontStyle.Bold),
+        ForeColor = Ink
+    };
+    readonly Label subtitle = new()
+    {
+        AutoSize = true,
+        Text = "Trung tâm điều khiển Chrome thật",
+        Font = new Font("Segoe UI", 8.2f),
+        ForeColor = Muted
+    };
+    readonly PillLabel onlineChip = new()
+    {
+        AutoSize = true,
+        Padding = new Padding(8, 3, 8, 3),
+        Font = new Font("Segoe UI", 7.5f, FontStyle.Bold)
+    };
+    readonly PillLabel stateChip = new()
+    {
+        AutoSize = true,
+        Padding = new Padding(8, 3, 8, 3),
+        Font = new Font("Segoe UI", 7.5f, FontStyle.Bold)
+    };
+    readonly PillLabel healthChip = new()
+    {
+        AutoSize = true,
+        Padding = new Padding(8, 3, 8, 3),
+        Font = new Font("Segoe UI", 7.5f, FontStyle.Bold)
+    };
+    readonly Label job = new()
+    {
+        AutoSize = false,
+        Size = new Size(294, 18),
+        ForeColor = Ink,
+        Font = new Font("Segoe UI", 8.6f, FontStyle.Bold)
+    };
+    readonly Label reason = new()
+    {
+        AutoSize = false,
+        Size = new Size(294, 18),
+        ForeColor = Muted,
+        Font = new Font("Segoe UI", 7.8f)
+    };
+    readonly Label progress = new()
+    {
+        AutoSize = false,
+        Size = new Size(294, 18),
+        ForeColor = Muted,
+        Font = new Font("Segoe UI", 7.8f)
+    };
+    readonly Label actionStatus = new()
+    {
+        AutoSize = false,
+        Size = new Size(312, 20),
+        Location = new Point(16, 202),
+        ForeColor = Muted,
+        Font = new Font("Segoe UI", 7.8f),
+        TextAlign = ContentAlignment.MiddleLeft
+    };
+    readonly Label schedule = new()
+    {
+        AutoSize = false,
+        Size = new Size(308, 18),
+        ForeColor = Amber,
+        Font = new Font("Segoe UI", 7.8f, FontStyle.Bold)
+    };
+    readonly Label logSummary = new()
+    {
+        AutoSize = false,
+        Size = new Size(312, 50),
+        ForeColor = Color.FromArgb(203, 213, 225),
+        Font = new Font("Consolas", 7.6f),
+        BackColor = Canvas
+    };
+
     readonly CheckBox dnd = NewCheckBox("Không làm phiền");
-    readonly CheckBox scheduleEnabled = NewCheckBox("Bật lịch kiểm tra");
-    readonly CheckBox changeOnly = NewCheckBox("Chỉ báo khi có thay đổi/lỗi");
-    readonly FlowLayoutPanel flow = new() { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoScroll = true, Padding = new Padding(14, 14, 14, 16), TabStop = true, BackColor = Canvas };
-    readonly FlowLayoutPanel chips = new() { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = true, Margin = new Padding(0, 8, 0, 8), BackColor = Card };
+    readonly CheckBox scheduleEnabled = NewCheckBox("Bật lịch");
+    readonly CheckBox changeOnly = NewCheckBox("Chỉ báo thay đổi/lỗi");
     readonly Dictionary<string, RoundedButton> actionButtons = new();
     readonly Func<string, string, Task> action;
     readonly Action<string, Point> positionChanged;
     readonly ToolTip tips = new();
-    readonly RoundedPanel headerCard;
-    readonly RoundedPanel advancedCard;
+    readonly RoundedButton footerAdvanced;
+    readonly RoundedButton footerHide;
+    AdvancedInfoForm? advancedForm;
+    string[] advancedLines = [];
     string workerId = "NV02";
     bool suppressDndEvent;
     bool suppressScheduleEvents;
@@ -62,12 +153,13 @@ internal sealed class PopupForm : Form
     {
         this.action = action;
         this.positionChanged = positionChanged;
+
         AutoScaleMode = AutoScaleMode.Dpi;
         Font = new Font("Segoe UI", 9);
         Text = "TigerIQ Worker Utility";
-        ClientSize = new Size(346, 700);
-        MinimumSize = new Size(330, 600);
-        MaximumSize = new Size(360, 820);
+        ClientSize = new Size(344, 760);
+        MinimumSize = Size;
+        MaximumSize = Size;
         StartPosition = FormStartPosition.Manual;
         FormBorderStyle = FormBorderStyle.None;
         MaximizeBox = false;
@@ -78,22 +170,51 @@ internal sealed class PopupForm : Form
         KeyPreview = true;
         BackColor = Canvas;
         AccessibleName = "TigerIQ Worker Utility";
-        AccessibleDescription = "Bảng điều khiển worker, trạng thái, job, lịch, log và thao tác an toàn.";
+        AccessibleDescription = "Bảng điều khiển worker phẳng, không thanh cuộn.";
 
-        headerCard = BuildBrandHeader();
-        advancedCard = BuildAdvancedCard();
-        flow.Controls.Add(headerCard);
-        flow.Controls.Add(BuildStatusHero());
-        AddSection("ĐIỀU KHIỂN", ("▶  Chạy / Tiếp tục", "run"), ("Ⅱ  Tạm dừng", "pause"));
-        AddSection("CỬA SỔ", ("⌖  Về vị trí", "fix"), ("⌁  Khóa vị trí", "lock"), ("◎  Focus", "focus"), ("↺  Reset badge", "badge-reset"));
-        AddSection("ĐIỀU HƯỚNG & KIỂM TRA", ("↗  Mở đúng trang", "open"), ("⌕  Kiểm tra nhanh", "health"));
-        AddSection("LƯU AN TOÀN", ("▣  Lưu", "save"), ("▦  Lưu & Lưu trữ", "save-archive"));
-        AddSection("PHỤC HỒI", ("⏻  Đóng an toàn", "close"), ("↻  Khôi phục", "recover"));
-        flow.Controls.Add(BuildScheduleCard());
-        flow.Controls.Add(BuildLogCard());
-        AddSection("NÂNG CAO", ("⚙  Thông tin kỹ thuật", "advanced-toggle"));
-        flow.Controls.Add(advancedCard);
-        Controls.Add(flow);
+        Controls.Add(root);
+        BuildHeader();
+        BuildStatus();
+
+        var y = 228;
+        AddActionSection("ĐIỀU KHIỂN", ref y,
+            ("▶  Chạy / Tiếp tục", "run"),
+            ("Ⅱ  Tạm dừng", "pause"));
+        AddActionSection("CỬA SỔ", ref y,
+            ("⌖  Về vị trí", "fix"),
+            ("⌁  Khóa vị trí", "lock"),
+            ("◎  Focus", "focus"),
+            ("↺  Đặt lại badge", "badge-reset"));
+        AddActionSection("ĐIỀU HƯỚNG & KIỂM TRA", ref y,
+            ("↗  Mở đúng trang", "open"),
+            ("⌕  Kiểm tra nhanh", "health"));
+        AddActionSection("LƯU & PHỤC HỒI", ref y,
+            ("▣  Lưu", "save"),
+            ("▦  Lưu & Lưu trữ", "save-archive"),
+            ("⏻  Đóng Chrome an toàn", "close"),
+            ("↻  Khôi phục", "recover"));
+
+        BuildSchedule(ref y);
+        BuildLogs(ref y);
+
+        footerAdvanced = MakeActionButton("⚙  Nâng cao", "advanced-toggle", 150, 32);
+        footerAdvanced.Location = new Point(16, 718);
+        footerHide = new RoundedButton
+        {
+            Text = "×  Ẩn bảng",
+            Location = new Point(178, 718),
+            Size = new Size(150, 32),
+            BackColor = Color.FromArgb(20, 38, 60),
+            ForeColor = Ink,
+            HoverColor = Color.FromArgb(29, 50, 75),
+            CornerRadius = 9,
+            Font = new Font("Segoe UI", 8.2f, FontStyle.Bold),
+            Cursor = Cursors.Hand,
+            TabStop = false
+        };
+        footerHide.Click += (_, _) => Hide();
+        root.Controls.Add(footerAdvanced);
+        root.Controls.Add(footerHide);
 
         dnd.CheckedChanged += async (_, _) =>
         {
@@ -134,197 +255,138 @@ internal sealed class PopupForm : Form
         Text = text,
         AutoSize = true,
         ForeColor = Color.FromArgb(203, 213, 225),
-        Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
+        Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
         FlatStyle = FlatStyle.Flat,
-        Margin = new Padding(2, 3, 0, 3)
+        BackColor = Canvas,
+        TabStop = false
     };
 
-    RoundedPanel BuildBrandHeader()
+    void BuildHeader()
     {
-        var card = new RoundedPanel
-        {
-            Width = 310,
-            Height = 116,
-            Margin = new Padding(0, 0, 0, 10),
-            Padding = new Padding(14),
-            BackColor = Color.FromArgb(8, 19, 34),
-            BorderColor = Color.FromArgb(37, 99, 235),
-            BorderWidth = 2,
-            CornerRadius = 16,
-            AccessibleName = "TigerIQ worker header"
-        };
+        var accent = new Panel { Location = new Point(0, 0), Size = new Size(324, 3), BackColor = Color.FromArgb(37, 99, 235) };
         var close = new RoundedButton
         {
             Text = "×",
-            Size = new Size(30, 30),
-            Location = new Point(264, 12),
-            Font = new Font("Segoe UI", 13, FontStyle.Bold),
+            Location = new Point(282, 10),
+            Size = new Size(28, 28),
+            Font = new Font("Segoe UI", 12, FontStyle.Bold),
             BackColor = Color.FromArgb(20, 38, 60),
             ForeColor = Color.FromArgb(203, 213, 225),
-            HoverColor = Color.FromArgb(42, 62, 86),
-            CornerRadius = 10,
+            HoverColor = Color.FromArgb(55, 65, 81),
+            CornerRadius = 9,
             TabStop = false,
             AccessibleName = "Đóng bảng điều khiển"
         };
         close.Click += (_, _) => Hide();
-        workerGlyph.Location = new Point(15, 42);
-        workerGlyph.BackColor = Color.FromArgb(37, 99, 235);
-        eyebrow.Location = new Point(15, 13);
-        header.Location = new Point(68, 39);
-        subtitle.Location = new Point(69, 66);
-        onlineChip.Location = new Point(69, 84);
-        card.Controls.Add(eyebrow);
-        card.Controls.Add(workerGlyph);
-        card.Controls.Add(header);
-        card.Controls.Add(subtitle);
-        card.Controls.Add(onlineChip);
-        card.Controls.Add(close);
-        card.MouseDown += BeginHeaderDrag;
-        card.MouseMove += MoveHeaderDrag;
-        card.MouseUp += EndHeaderDrag;
-        foreach (Control control in new Control[] { eyebrow, header, subtitle, workerGlyph })
+
+        eyebrow.Location = new Point(14, 12);
+        header.Location = new Point(14, 34);
+        subtitle.Location = new Point(14, 61);
+        onlineChip.Location = new Point(221, 51);
+
+        headerSurface.Controls.Add(accent);
+        headerSurface.Controls.Add(eyebrow);
+        headerSurface.Controls.Add(header);
+        headerSurface.Controls.Add(subtitle);
+        headerSurface.Controls.Add(onlineChip);
+        headerSurface.Controls.Add(close);
+        root.Controls.Add(headerSurface);
+
+        headerSurface.MouseDown += BeginHeaderDrag;
+        headerSurface.MouseMove += MoveHeaderDrag;
+        headerSurface.MouseUp += EndHeaderDrag;
+        foreach (Control control in new Control[] { eyebrow, header, subtitle, accent })
         {
             control.MouseDown += BeginHeaderDrag;
             control.MouseMove += MoveHeaderDrag;
             control.MouseUp += EndHeaderDrag;
         }
-        return card;
     }
 
-    Control BuildStatusHero()
+    void BuildStatus()
     {
-        var card = NewCard();
         var title = SectionTitle("TRẠNG THÁI PHIÊN");
-        chips.Controls.Add(stateChip);
-        chips.Controls.Add(healthChip);
-        card.Controls.Add(title);
-        card.Controls.Add(chips);
-        card.Controls.Add(job);
-        card.Controls.Add(reason);
-        card.Controls.Add(progress);
-        return card;
+        title.Location = new Point(12, 8);
+        stateChip.Location = new Point(12, 28);
+        healthChip.Location = new Point(118, 28);
+        job.Location = new Point(12, 51);
+        reason.Location = new Point(12, 68);
+        progress.Location = new Point(12, 84);
+
+        statusSurface.Controls.Add(title);
+        statusSurface.Controls.Add(stateChip);
+        statusSurface.Controls.Add(healthChip);
+        statusSurface.Controls.Add(job);
+        statusSurface.Controls.Add(reason);
+        statusSurface.Controls.Add(progress);
+        root.Controls.Add(statusSurface);
+        root.Controls.Add(actionStatus);
     }
 
-    RoundedPanel BuildScheduleCard()
+    void AddActionSection(string title, ref int y, params (string Text, string Action)[] buttons)
     {
-        var card = NewCard();
-        card.Controls.Add(SectionTitle("ĐẶT LỊCH KIỂM TRA"));
-        var grid = new TableLayoutPanel
-        {
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            ColumnCount = 5,
-            RowCount = 1,
-            Margin = new Padding(0, 0, 0, 5),
-            BackColor = Card
-        };
-        foreach (var width in new[] { 53, 53, 53, 53, 70 }) grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, width));
-        var entries = new[] {
-            ("10p", "schedule-10"), ("30p", "schedule-30"), ("1h", "schedule-60"),
-            ("2h", "schedule-120"), ("Tùy chỉnh", "schedule-custom")
-        };
-        for (var i = 0; i < entries.Length; i++)
-        {
-            var item = entries[i];
-            var b = MakeActionButton(item.Item1, item.Item2, i == 4 ? 66 : 49, 32);
-            grid.Controls.Add(b, i, 0);
-        }
-        card.Controls.Add(grid);
-        card.Controls.Add(scheduleEnabled);
-        card.Controls.Add(changeOnly);
-        card.Controls.Add(dnd);
-        card.Controls.Add(schedule);
-        return card;
-    }
+        var label = SectionTitle(title);
+        label.Location = new Point(16, y);
+        root.Controls.Add(label);
+        y += 18;
 
-    RoundedPanel BuildLogCard()
-    {
-        var card = NewCard();
-        card.Controls.Add(SectionTitle("NHẬT KÝ GẦN NHẤT"));
-        var shell = new RoundedPanel
-        {
-            Width = 290,
-            Height = 108,
-            Padding = new Padding(8, 7, 8, 7),
-            Margin = new Padding(0, 4, 0, 0),
-            BackColor = Color.FromArgb(4, 10, 20),
-            BorderColor = Border,
-            CornerRadius = 10
-        };
-        logs.Dock = DockStyle.Fill;
-        shell.Controls.Add(logs);
-        card.Controls.Add(shell);
-        return card;
-    }
-
-    RoundedPanel BuildAdvancedCard()
-    {
-        var card = NewCard();
-        card.Visible = false;
-        card.Controls.Add(SectionTitle("THÔNG TIN KỸ THUẬT"));
-        var shell = new RoundedPanel
-        {
-            Width = 290,
-            Height = 164,
-            Padding = new Padding(8, 7, 8, 7),
-            Margin = new Padding(0, 4, 0, 0),
-            BackColor = Color.FromArgb(4, 10, 20),
-            BorderColor = Border,
-            CornerRadius = 10
-        };
-        advancedInfo.Dock = DockStyle.Fill;
-        shell.Controls.Add(advancedInfo);
-        card.Controls.Add(shell);
-        return card;
-    }
-
-    RoundedPanel NewCard() => new()
-    {
-        AutoSize = true,
-        AutoSizeMode = AutoSizeMode.GrowAndShrink,
-        FlowDirection = FlowDirection.TopDown,
-        WrapContents = false,
-        MinimumSize = new Size(310, 0),
-        MaximumSize = new Size(310, 0),
-        Padding = new Padding(10, 10, 10, 11),
-        Margin = new Padding(0, 7, 0, 0),
-        BackColor = Card,
-        BorderColor = Border,
-        CornerRadius = 14
-    };
-
-    static Label SectionTitle(string title) => new()
-    {
-        Text = title,
-        AutoSize = true,
-        Margin = new Padding(2, 0, 0, 6),
-        Font = new Font("Segoe UI", 7.8f, FontStyle.Bold),
-        ForeColor = Color.FromArgb(100, 116, 139)
-    };
-
-    void AddSection(string title, params (string Text, string Action)[] buttons)
-    {
-        var card = NewCard();
-        card.AccessibleName = title;
-        var grid = new TableLayoutPanel
-        {
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            ColumnCount = 2,
-            RowCount = (buttons.Length + 1) / 2,
-            Margin = Padding.Empty,
-            BackColor = Card
-        };
-        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 143));
-        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 143));
         for (var i = 0; i < buttons.Length; i++)
         {
-            var item = buttons[i];
-            grid.Controls.Add(MakeActionButton(item.Text, item.Action, 137, 36), i % 2, i / 2);
+            var row = i / 2;
+            var col = i % 2;
+            var button = MakeActionButton(buttons[i].Text, buttons[i].Action, 152, 30);
+            button.Location = new Point(16 + col * 160, y + row * 34);
+            root.Controls.Add(button);
         }
-        card.Controls.Add(SectionTitle(title));
-        card.Controls.Add(grid);
-        flow.Controls.Add(card);
+        y += ((buttons.Length + 1) / 2) * 34 + 5;
+    }
+
+    void BuildSchedule(ref int y)
+    {
+        var label = SectionTitle("ĐẶT LỊCH KIỂM TRA");
+        label.Location = new Point(16, y);
+        root.Controls.Add(label);
+        y += 18;
+
+        var entries = new[] {
+            ("10p", "schedule-10", 45),
+            ("30p", "schedule-30", 45),
+            ("1h", "schedule-60", 45),
+            ("2h", "schedule-120", 45),
+            ("Tùy chỉnh", "schedule-custom", 96)
+        };
+        var x = 16;
+        foreach (var item in entries)
+        {
+            var b = MakeActionButton(item.Item1, item.Item2, item.Item3, 28);
+            b.Location = new Point(x, y);
+            root.Controls.Add(b);
+            x += item.Item3 + 4;
+        }
+        y += 32;
+
+        scheduleEnabled.Location = new Point(16, y);
+        changeOnly.Location = new Point(104, y);
+        dnd.Location = new Point(16, y + 20);
+        root.Controls.Add(scheduleEnabled);
+        root.Controls.Add(changeOnly);
+        root.Controls.Add(dnd);
+        y += 42;
+
+        schedule.Location = new Point(16, y);
+        root.Controls.Add(schedule);
+        y += 23;
+    }
+
+    void BuildLogs(ref int y)
+    {
+        var label = SectionTitle("LOG GẦN NHẤT");
+        label.Location = new Point(16, y);
+        root.Controls.Add(label);
+        y += 18;
+        logSummary.Location = new Point(16, y);
+        root.Controls.Add(logSummary);
+        y += 54;
     }
 
     RoundedButton MakeActionButton(string text, string actionName, int width, int height)
@@ -332,25 +394,33 @@ internal sealed class PopupForm : Form
         var button = new RoundedButton
         {
             Text = text,
-            Width = width,
-            Height = height,
+            Size = new Size(width, height),
             Tag = actionName,
             AccessibleName = text,
             AccessibleDescription = $"Thao tác {text} cho worker hiện tại",
-            Margin = new Padding(2, 3, 2, 3),
             UseMnemonic = false,
             Cursor = Cursors.Hand,
-            Font = new Font("Segoe UI", 8.2f, FontStyle.Bold),
+            Font = new Font("Segoe UI", 7.9f, FontStyle.Bold),
             BackColor = ButtonBack(actionName),
             ForeColor = ButtonFore(actionName),
             HoverColor = ButtonHover(actionName),
-            CornerRadius = 9
+            CornerRadius = 8,
+            TabStop = false
         };
         tips.SetToolTip(button, ShortcutFor(actionName));
         button.Click += async (s, _) => await InvokeActionAsync((string)((Button)s!).Tag!);
         actionButtons[actionName] = button;
         return button;
     }
+
+    static Label SectionTitle(string title) => new()
+    {
+        Text = title,
+        AutoSize = true,
+        Font = new Font("Segoe UI", 7.3f, FontStyle.Bold),
+        ForeColor = Color.FromArgb(100, 116, 139),
+        BackColor = Canvas
+    };
 
     static Color ButtonBack(string action) => action switch
     {
@@ -418,14 +488,6 @@ internal sealed class PopupForm : Form
         _ => Color.FromArgb(59, 130, 246)
     };
 
-    static string WorkerGlyph(string id) => id switch
-    {
-        "NV02" => "◎",
-        "NV03" => "◉",
-        "NV04" => "✦",
-        _ => "●"
-    };
-
     void BeginHeaderDrag(object? sender, MouseEventArgs e)
     {
         if (e.Button != MouseButtons.Left) return;
@@ -438,7 +500,9 @@ internal sealed class PopupForm : Form
     {
         if (!dragging) return;
         var cursor = Cursor.Position;
-        Location = new Point(dragWindowStart.X + cursor.X - dragCursorStart.X, dragWindowStart.Y + cursor.Y - dragCursorStart.Y);
+        Location = new Point(
+            dragWindowStart.X + cursor.X - dragCursorStart.X,
+            dragWindowStart.Y + cursor.Y - dragCursorStart.Y);
     }
 
     void EndHeaderDrag(object? sender, MouseEventArgs e)
@@ -452,13 +516,54 @@ internal sealed class PopupForm : Form
     {
         if (name == "advanced-toggle")
         {
-            advancedCard.Visible = !advancedCard.Visible;
+            ShowAdvanced();
             return;
         }
-        Enabled = false;
-        try { await action(workerId, name); }
-        catch (Exception ex) { MessageBox.Show(this, ex.Message, "TigerIQ", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
-        finally { Enabled = true; }
+
+        SetActionNotice("Đang thực hiện…", false);
+        foreach (var button in actionButtons.Values) button.Enabled = false;
+        try
+        {
+            await action(workerId, name);
+            if (actionStatus.Text == "Đang thực hiện…") SetActionNotice("✓ Hoàn tất", false);
+        }
+        catch (Exception ex)
+        {
+            SetActionNotice(FriendlyError(ex), true);
+        }
+        finally
+        {
+            foreach (var button in actionButtons.Values) button.Enabled = true;
+        }
+    }
+
+    static string FriendlyError(Exception ex)
+    {
+        if (ex is TaskCanceledException
+            || ex.Message.Contains("HttpClient.Timeout", StringComparison.OrdinalIgnoreCase)
+            || ex.Message.Contains("CONTROLLER_TIMEOUT", StringComparison.OrdinalIgnoreCase))
+            return "⚠ Controller phản hồi quá chậm. Thử lại sau.";
+        var text = ex.Message.Replace("\r", " ").Replace("\n", " ").Trim();
+        return text.Length > 90 ? "⚠ " + text[..87] + "…" : "⚠ " + text;
+    }
+
+    internal void SetActionNotice(string text, bool isError)
+    {
+        if (InvokeRequired)
+        {
+            BeginInvoke(new Action(() => SetActionNotice(text, isError)));
+            return;
+        }
+        actionStatus.ForeColor = isError ? Red : (text.StartsWith("✓") ? Green : Muted);
+        actionStatus.Text = text;
+    }
+
+    void ShowAdvanced()
+    {
+        advancedForm ??= new AdvancedInfoForm();
+        advancedForm.SetWorker(workerId, advancedLines);
+        if (!advancedForm.Visible) advancedForm.Show(this);
+        else advancedForm.Activate();
     }
 
     public bool ShowWorker(WorkerDefinition worker, WorkerView view, WatchdogView? watchdog, WorkerSettings settings,
@@ -466,9 +571,7 @@ internal sealed class PopupForm : Form
     {
         workerId = worker.Id;
         var accent = WorkerAccent(worker.Id);
-        headerCard.BorderColor = accent;
-        workerGlyph.BackColor = accent;
-        workerGlyph.Text = WorkerGlyph(worker.Id);
+        headerSurface.BorderColor = accent;
         header.Text = $"{worker.Id}  ·  {worker.Name}";
 
         onlineChip.Text = view.WindowOpen && view.SessionOk ? "●  ONLINE" : "●  OFFLINE";
@@ -496,9 +599,8 @@ internal sealed class PopupForm : Form
         {
             HealthBand.Healthy => Color.FromArgb(13, 65, 49),
             HealthBand.Slow => Color.FromArgb(72, 48, 18),
-            HealthBand.Stalled => Color.FromArgb(74, 24, 31),
+            HealthBand.Stalled or HealthBand.Blocked => Color.FromArgb(74, 24, 31),
             HealthBand.Recovering => Color.FromArgb(25, 58, 91),
-            HealthBand.Blocked => Color.FromArgb(74, 24, 31),
             _ => Color.FromArgb(20, 38, 60)
         };
         healthChip.ForeColor = watchdog?.Health switch
@@ -517,20 +619,21 @@ internal sealed class PopupForm : Form
         }
 
         var noProgress = watchdog?.NoProgressFor.ToString(@"mm\:ss") ?? "—";
-        var alive = watchdog is null || watchdog.AliveAge == TimeSpan.MaxValue ? "—" : watchdog.AliveAge.ToString(@"mm\:ss");
-        var recovery = watchdog?.LastRecoveryAt?.ToLocalTime().ToString("HH:mm:ss") ?? "—";
-        reason.Text = $"{view.Reason}  ·  im lặng {noProgress}  ·  heartbeat {alive}  ·  phục hồi {recovery}";
+        var alive = watchdog is null || watchdog.AliveAge == TimeSpan.MaxValue
+            ? "—"
+            : watchdog.AliveAge.ToString(@"mm\:ss");
+        reason.Text = $"{view.Reason}  ·  im lặng {noProgress}  ·  heartbeat {alive}";
 
         var elapsed = settings.StateChangedAt is DateTimeOffset since ? DateTimeOffset.Now - since : TimeSpan.Zero;
-        job.Text = $"Job hiện tại   {view.JobId ?? "—"}     {elapsed.ToString(@"hh\:mm\:ss")}";
+        job.Text = $"Job hiện tại  {view.JobId ?? "—"}     {elapsed.ToString(@"hh\:mm\:ss")}";
         progress.Text = view.State == WorkerUiState.Working
-            ? "Đang xử lý — chỉ hiển thị dữ liệu đã xác minh từ bộ điều khiển."
+            ? "Đang xử lý — dữ liệu đã xác minh từ controller."
             : "Không có job đang chạy cần xác minh.";
         progress.ForeColor = view.State == WorkerUiState.Working ? Color.FromArgb(147, 197, 253) : Muted;
 
         schedule.Text = scheduleSettings?.NextCheckAt is DateTimeOffset next && scheduleSettings.Enabled
-            ? $"↪  Lần kiểm tra kế tiếp: {next.ToLocalTime():HH:mm:ss  dd/MM}"
-            : "↪  Lịch kiểm tra: chưa bật";
+            ? $"↪ Lần kiểm tra kế tiếp: {next.ToLocalTime():HH:mm:ss}"
+            : "↪ Lịch kiểm tra: chưa bật";
 
         suppressDndEvent = true;
         dnd.Checked = doNotDisturb;
@@ -541,8 +644,13 @@ internal sealed class PopupForm : Form
         changeOnly.Checked = scheduleSettings?.ChangesOnly ?? true;
         suppressScheduleEvents = false;
 
-        logs.Lines = recentLogs.Length == 0 ? ["Chưa có log cho worker này."] : recentLogs.TakeLast(10).ToArray();
-        advancedInfo.Lines = BuildAdvancedLines(worker, view, watchdog, settings, scheduleSettings);
+        var visibleLogs = recentLogs.Length == 0
+            ? new[] { "Chưa có log cho worker này." }
+            : recentLogs.TakeLast(2).ToArray();
+        logSummary.Text = string.Join(Environment.NewLine, visibleLogs);
+
+        advancedLines = BuildAdvancedLines(worker, view, watchdog, settings, scheduleSettings);
+        if (advancedForm?.Visible == true) advancedForm.SetWorker(workerId, advancedLines);
 
         var saved = settings.PopupX is int x && settings.PopupY is int y ? new Point?(new Point(x, y)) : null;
         var workingAreas = Screen.AllScreens.Select(s => s.WorkingArea).ToArray();
@@ -608,7 +716,49 @@ internal sealed class PopupForm : Form
     }
 }
 
-internal sealed class RoundedPanel : FlowLayoutPanel
+internal sealed class AdvancedInfoForm : Form
+{
+    readonly Label title = new()
+    {
+        AutoSize = false,
+        Location = new Point(16, 14),
+        Size = new Size(340, 24),
+        ForeColor = Color.White,
+        Font = new Font("Segoe UI", 11, FontStyle.Bold)
+    };
+    readonly Label details = new()
+    {
+        AutoSize = false,
+        Location = new Point(16, 48),
+        Size = new Size(388, 318),
+        ForeColor = Color.FromArgb(203, 213, 225),
+        Font = new Font("Consolas", 8.3f),
+        BackColor = Color.FromArgb(5, 13, 25)
+    };
+
+    public AdvancedInfoForm()
+    {
+        Text = "TigerIQ — Thông tin kỹ thuật";
+        ClientSize = new Size(420, 382);
+        MinimumSize = Size;
+        MaximumSize = Size;
+        StartPosition = FormStartPosition.CenterScreen;
+        FormBorderStyle = FormBorderStyle.FixedToolWindow;
+        ShowInTaskbar = false;
+        TopMost = true;
+        BackColor = Color.FromArgb(5, 13, 25);
+        Controls.Add(title);
+        Controls.Add(details);
+    }
+
+    public void SetWorker(string workerId, string[] lines)
+    {
+        title.Text = $"{workerId} — Thông tin kỹ thuật";
+        details.Text = string.Join(Environment.NewLine, lines);
+    }
+}
+
+internal sealed class RoundedPanel : Panel
 {
     public int CornerRadius { get; set; } = 12;
     public Color BorderColor { get; set; } = Color.Transparent;
