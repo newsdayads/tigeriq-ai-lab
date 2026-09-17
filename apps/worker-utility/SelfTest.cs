@@ -81,9 +81,16 @@ internal static class SelfTest
         var working = new Rectangle(0, 0, 1920, 1080);
         var chrome = new Rectangle(0, 0, 1500, 1040);
         var badgeSize = new Size(88, 32);
-        var badge = UiPlacement.DefaultBadge(chrome, badgeSize, working);
+        var badgeOk = UiPlacement.TryBadge(chrome, badgeSize, working, null, null, out var badge);
+        Must(badgeOk, "badge has safe own-window title space");
         Must(badge.X >= working.Left && badge.Y >= working.Top, "badge inside working area");
-        Must(badge.X + badgeSize.Width <= working.Right && badge.Y + badgeSize.Height <= working.Bottom, "badge fully visible");\n        Must(chrome.Contains(new Rectangle(badge, badgeSize)), "badge stays inside its own Chrome window");\n        Must(badge.X < chrome.Left + chrome.Width / 2, "badge stays on the left half of its own title strip");
+        Must(badge.X + badgeSize.Width <= working.Right && badge.Y + badgeSize.Height <= working.Bottom, "badge fully visible");
+        Must(chrome.Contains(new Rectangle(badge, badgeSize)), "badge stays inside its own Chrome window");
+        Must(badge.X < chrome.Left + chrome.Width / 2, "badge stays on the left half of its own title strip");
+        var tinyChrome = new Rectangle(0, 0, 70, 30);
+        Must(!UiPlacement.TryBadge(tinyChrome, badgeSize, working, null, null, out _), "badge fails closed when own title strip is too small");
+        Must(UiPlacement.TryBadge(chrome, badgeSize, working, 5000, 5000, out var draggedBadge)
+            && chrome.Contains(new Rectangle(draggedBadge, badgeSize)), "saved badge offset clamps to its own title strip");
 
         var clamped = UiPlacement.Clamp(new Point(4000, 4000), new Size(320, 620), working);
         Must(clamped.X == 1600 && clamped.Y == 460, "popup clamp");
