@@ -1,5 +1,6 @@
 import { WORKER_HOSTS, allowedUrl, hostname, matchesWorker } from './url-policy.js';
 import { buildDurableSavePrompt, waitForDurableSaveReceipt } from './save-receipt.js';
+import { runArchiveCommand } from './archive-command.js';
 
 const CONTROLLER = 'http://127.0.0.1:8798';
 const LEGACY_PLUS_ID = ['NV','05'].join('');
@@ -255,13 +256,11 @@ async function execute(workerId,command) {
     return response;
   }
   if(action==='ARCHIVE_CHAT'){
-    if(!ARCHIVE_SUPPORTED_WORKERS.has(workerId)) throw new Error(`ARCHIVE_SELECTOR_UNVERIFIED:${workerId}`);
     if(!matchesWorker(workerId,ctx.url)) throw new Error('BLOCKED_URL');
-    const receiptRef=String(payload.receiptRef||'');
-    if(!receiptRef.startsWith('https://github.com/')) throw new Error('ARCHIVE_DURABLE_RECEIPT_REQUIRED');
-    const result=await chrome.tabs.sendMessage(ctx.tabId,{type:'TIGERIQ_ARCHIVE_CONVERSATION'});
-    if(!result?.ok){const reason=result?.status||'ARCHIVE_FAILED';const error=new Error(reason);error.status=reason;throw error;}
-    return {status:'ARCHIVED',receiptRef};
+    return runArchiveCommand(workerId,payload,{
+      archiveSupported:(id)=>ARCHIVE_SUPPORTED_WORKERS.has(id),
+      saveAndArchive,
+    });
   }
   throw new Error(`UNKNOWN_ACTION:${action}`);
 }
