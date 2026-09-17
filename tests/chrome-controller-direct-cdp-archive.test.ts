@@ -91,12 +91,16 @@ describe('direct CDP archive runtime', () => {
     expect(mutated).toBe(false);
   });
 
-  it('installer preserves the existing credential line and never embeds its value', () => {
+  it('installer preserves credential and atomically rolls bridge + helper back', () => {
     const installer = readFileSync('apps/chrome-controller/runtime/Install-DirectCdpArchive.ps1', 'utf8');
     const module = readFileSync('apps/chrome-controller/runtime/direct-cdp-archive.mjs', 'utf8');
     expect(installer).toContain('BRIDGE_CREDENTIAL_MUTATION_FORBIDDEN');
     expect(installer).toContain('tokenFingerprintBefore');
     expect(installer).toContain('tokenFingerprintAfter');
+    expect(installer).toContain('Restore-PreviousFiles');
+    expect(installer).toContain('modulePreviouslyExisted');
+    expect(installer).toContain("Remove-Item -LiteralPath $moduleTarget");
+    expect(installer).toContain('BRIDGE_RESTART_AND_ROLLBACK_HEALTH_FAILED');
     expect(module).not.toContain('NV02_TOKEN');
     expect(module).not.toMatch(/[a-f0-9]{48,}/i);
   });
