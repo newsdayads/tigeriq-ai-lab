@@ -34,7 +34,7 @@ internal static class UiPlacement
         Point? savedLocation, out Point target)
     {
         target = Point.Empty;
-        if (workingAreas.Length == 0) return false;
+        if (workingAreas.Length == 0 || popupSize.Width <= 0 || popupSize.Height <= 0) return false;
 
         var blockers = occupied
             .Where(r => r.Width > 0 && r.Height > 0)
@@ -47,41 +47,50 @@ internal static class UiPlacement
             return area.Contains(rect) && blockers.All(b => !b.IntersectsWith(rect));
         }
 
+        // Preserve a saved location only when that exact rectangle is still safe.
+        // Never clamp it onto another monitor because that can silently create overlap.
         if (savedLocation is Point saved)
         {
             foreach (var area in workingAreas)
             {
-                var clamped = Clamp(saved, popupSize, area);
-                if (Available(clamped, area))
-                {
-                    target = clamped;
-                    return true;
-                }
+                if (!Available(saved, area)) continue;
+                target = saved;
+                return true;
             }
         }
 
         var orderedAreas = workingAreas
             .OrderByDescending(area => area.IntersectsWith(anchor))
-            .ThenBy(area => Math.Abs(area.Left - anchor.Left))
+            .ThenBy(area => DistanceSquared(area, anchor))
             .ToArray();
 
         foreach (var area in orderedAreas)
         {
+            if (popupSize.Width > area.Width || popupSize.Height > area.Height) continue;
             var local = blockers.Where(b => b.IntersectsWith(area)).ToArray();
-            var candidates = new List<Point>();
 
-            if (local.Length > 0)
+            // For axis-aligned blockers, any feasible fixed-size rectangle can be slid
+            // left/up until it touches a working-area edge or blocker edge. Therefore
+            // the Cartesian product of these critical x/y edges is geometry-complete;
+            // it finds a free rectangle whenever one exists without pixel-by-pixel scans.
+            var xs = new HashSet<int> { area.Left, area.Right - popupSize.Width };
+            var ys = new HashSet<int> { area.Top, area.Bottom - popupSize.Height };
+            foreach (var blocker in local)
             {
-                var minLeft = local.Min(b => b.Left);
-                var maxRight = local.Max(b => b.Right);
-                candidates.Add(new Point(minLeft - popupSize.Width - SafetyGap, area.Top + 12));
-                candidates.Add(new Point(maxRight + SafetyGap, area.Top + 12));
+                xs.Add(blocker.Left - popupSize.Width);
+                xs.Add(blocker.Right);
+                ys.Add(blocker.Top - popupSize.Height);
+                ys.Add(blocker.Bottom);
             }
 
-            candidates.Add(new Point(area.Left + 12, area.Top + 12));
-            candidates.Add(new Point(area.Right - popupSize.Width - 12, area.Top + 12));
-            candidates.Add(new Point(area.Left + 12, area.Bottom - popupSize.Height - 12));
-            candidates.Add(new Point(area.Right - popupSize.Width - 12, area.Bottom - popupSize.Height - 12));
+            var candidates =
+                from x in xs
+                where x >= area.Left && x + popupSize.Width <= area.Right
+                from y in ys
+                where y >= area.Top && y + popupSize.Height <= area.Bottom
+                let point = new Point(x, y)
+                orderby DistanceSquared(new Rectangle(point, popupSize), anchor)
+                select point;
 
             foreach (var candidate in candidates)
             {
@@ -93,5 +102,16 @@ internal static class UiPlacement
 
         // Deliberately fail closed instead of covering any Chrome worker.
         return false;
+    }
+
+    static long DistanceSquared(Rectangle a, Rectangle b)
+    {
+        var ax = (long)a.Left + a.Width / 2L;
+        var ay = (long)a.Top + a.Height / 2L;
+        var bx = (long)b.Left + b.Width / 2L;
+        var by = (long)b.Top + b.Height / 2L;
+        var dx = ax - bx;
+        var dy = ay - by;
+        return dx * dx + dy * dy;
     }
 }
