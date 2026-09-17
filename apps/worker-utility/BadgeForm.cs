@@ -30,7 +30,7 @@ internal sealed class BadgeForm : Form
         ShowInTaskbar = false;
         TopMost = true;
         StartPosition = FormStartPosition.Manual;
-        Size = new Size(88, 32);
+        Size = new Size(48, 26);
         MinimumSize = Size;
         MaximumSize = Size;
         Text = $"TigerIQ {worker.Id}";
@@ -39,15 +39,14 @@ internal sealed class BadgeForm : Form
         label = new Label
         {
             Dock = DockStyle.Fill,
-            Text = worker.Id,
+            Text = worker.Id[2..],
             TextAlign = ContentAlignment.MiddleCenter,
-            Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
-            Cursor = Cursors.SizeAll,
-            Padding = new Padding(7, 0, 7, 0),
+            Font = new Font("Segoe UI", 8, FontStyle.Bold),
+            Cursor = Cursors.Hand,
             BackColor = Color.FromArgb(15, 23, 42),
             ForeColor = Color.White,
-            AccessibleName = $"Điều khiển {worker.Id} {worker.Name}",
-            AccessibleDescription = "Bấm để mở bảng điều khiển; kéo để đổi vị trí; chuột phải để đặt lại vị trí."
+            AccessibleName = $"Mở {worker.Id} {worker.Name}",
+            AccessibleDescription = "Badge nhận diện gọn. Bấm để mở bảng điều khiển."
         };
         Controls.Add(label);
         SizeChanged += (_, _) => ApplyRoundedRegion();
@@ -66,7 +65,7 @@ internal sealed class BadgeForm : Form
             ShowImageMargin = false
         };
         menu.Items.Add("Mở bảng điều khiển", null, (_, _) => onClick(worker.Id));
-        menu.Items.Add("Đặt lại vị trí badge", null, (_, _) => onReset(worker.Id));
+        menu.Items.Add("Đặt lại badge", null, (_, _) => onReset(worker.Id));
         ContextMenuStrip = menu;
         label.ContextMenuStrip = menu;
     }
@@ -92,13 +91,18 @@ internal sealed class BadgeForm : Form
 
     void MovePointer(object? sender, MouseEventArgs e)
     {
-        if (!dragging) return;
+        if (!dragging || lastChromeBounds == Rectangle.Empty) return;
         var cursor = Cursor.Position;
         var dx = cursor.X - dragCursorStart.X;
         var dy = cursor.Y - dragCursorStart.Y;
         if (Math.Abs(dx) + Math.Abs(dy) >= 3) moved = true;
-        var screen = Screen.FromPoint(cursor).WorkingArea;
-        Location = UiPlacement.Clamp(new Point(dragWindowStart.X + dx, dragWindowStart.Y + dy), Size, screen);
+
+        var desired = new Point(dragWindowStart.X + dx, dragWindowStart.Y + dy);
+        var working = Screen.FromRectangle(lastChromeBounds).WorkingArea;
+        var offsetX = desired.X - lastChromeBounds.Left;
+        var offsetY = desired.Y - lastChromeBounds.Top;
+        if (UiPlacement.TryBadge(lastChromeBounds, Size, working, offsetX, offsetY, out var target))
+            Location = target;
     }
 
     void EndPointer(object? sender, MouseEventArgs e)
@@ -118,15 +122,8 @@ internal sealed class BadgeForm : Form
     public void ApplyState(WorkerView? view)
     {
         CurrentState = view?.State ?? WorkerUiState.Blocked;
-        var glyph = CurrentState switch
-        {
-            WorkerUiState.Ready => "●",
-            WorkerUiState.Working => "▶",
-            WorkerUiState.Paused => "Ⅱ",
-            _ => "!"
-        };
         var shortId = worker.Id.StartsWith("NV", StringComparison.OrdinalIgnoreCase) ? worker.Id[2..] : worker.Id;
-        label.Text = $"{shortId}   {glyph}";
+        label.Text = shortId;
         var back = CurrentState switch
         {
             WorkerUiState.Ready => Color.FromArgb(5, 150, 105),
@@ -139,7 +136,7 @@ internal sealed class BadgeForm : Form
         label.ForeColor = Color.White;
         label.AccessibleDescription = view is null
             ? "Không có trạng thái"
-            : $"{CurrentState}: {view.Reason}. Bấm mở bảng điều khiển, kéo để đổi vị trí.";
+            : $"{CurrentState}: {view.Reason}. Bấm để mở bảng điều khiển.";
         Text = $"TigerIQ {worker.Id} — {CurrentState}";
     }
 
@@ -156,6 +153,11 @@ internal sealed class BadgeForm : Form
         }
         if (Location != target) Location = target;
         if (!Visible) Show();
+    }
+
+    public void HideForPopup()
+    {
+        if (Visible) Hide();
     }
 
     public void MarkUnbound()
