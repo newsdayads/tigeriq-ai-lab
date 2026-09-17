@@ -298,6 +298,7 @@ internal sealed class UtilityContext : ApplicationContext
             case "schedule-change-only-off": EnsureSchedule(id, null).ChangesOnly = false; break;
             case "dnd-on": settings.DoNotDisturb = true; break;
             case "dnd-off": settings.DoNotDisturb = false; break;
+            case "advanced": break; // compatibility alias; UI now toggles advanced details locally
             default: throw new InvalidOperationException("UNKNOWN_UTILITY_ACTION:" + actionName);
         }
         store.Save(settings);
