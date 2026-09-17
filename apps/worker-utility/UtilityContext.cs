@@ -55,7 +55,7 @@ internal sealed class UtilityContext : ApplicationContext
 
         timer.Tick += async (_, _) => await TickAsync();
         timer.Start();
-        store.Log("SYSTEM", "UTILITY_STARTED", new { version = Application.ProductVersion, issue = 817 });
+        store.Log("SYSTEM", "UTILITY_STARTED", new { version = Application.ProductVersion, issue = 820 });
     }
 
     ContextMenuStrip BuildTrayMenu()
@@ -94,6 +94,11 @@ internal sealed class UtilityContext : ApplicationContext
         {
             foreach (var w in Workers.All)
             {
+                if (popups[w.Id].Visible)
+                {
+                    badges[w.Id].HideForPopup();
+                    continue;
+                }
                 if (binder.TryResolve(w.Id, out _, out var rect)) badges[w.Id].AnchorTo(rect, settings.Workers[w.Id]);
                 else badges[w.Id].MarkUnbound();
             }
@@ -215,7 +220,7 @@ internal sealed class UtilityContext : ApplicationContext
                 false, false, false, null, null, Workers.Get(id).DebugPort, null, false, false);
         if (!binder.TryResolve(id, out _, out var rect))
         {
-            if (notifyOnFailure) MessageBox.Show($"{id}: không xác định được đúng cửa sổ Chrome. Fail-closed.", "TigerIQ");
+            if (notifyOnFailure) ShowTrayNotice($"TigerIQ {id}", "Không xác định được đúng cửa sổ Chrome.");
             return false;
         }
 
@@ -232,14 +237,9 @@ internal sealed class UtilityContext : ApplicationContext
         var ok = popups[id].ShowWorker(
             Workers.Get(id), view, wd, settings.Workers[id], sched, settings.DoNotDisturb,
             store.RecentLogs(id), rect, occupied.ToArray());
+        if (ok) badges[id].HideForPopup();
         if (!ok && notifyOnFailure)
-        {
-            MessageBox.Show(
-                "Không có vùng trống an toàn để mở bảng điều khiển mà không che Chrome hoặc bảng điều khiển khác. Hãy đóng một bảng đang mở hoặc chuyển cửa sổ rồi thử lại.",
-                "TigerIQ — Không chồng cửa sổ",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
-        }
+            ShowTrayNotice("TigerIQ — Không chồng cửa sổ", "Không có vùng trống an toàn để mở bảng điều khiển.");
         return ok;
     }
 
@@ -275,17 +275,25 @@ internal sealed class UtilityContext : ApplicationContext
             case "lock": settings.Workers[id].PositionLocked = !settings.Workers[id].PositionLocked; break;
             case "badge-reset": ResetBadgePosition(id); break;
             case "open": await controller.OpenCanonicalAsync(id); break;
-            case "health": MessageBox.Show(await controller.QuickHealthAsync(id), $"Kiểm tra nhanh {id}"); break;
+            case "health":
+                popups[id].SetActionNotice("✓ " + await controller.QuickHealthAsync(id), false);
+                break;
             case "save":
                 var saved = await controller.SaveAsync(id, false);
-                MessageBox.Show($"Đã lưu bền vững: {saved.CheckpointRef}", $"Lưu {id}");
+                popups[id].SetActionNotice($"✓ Đã lưu: {saved.CheckpointRef}", false);
                 break;
             case "save-archive":
                 var archived = await controller.SaveAsync(id, true);
-                MessageBox.Show($"Đã lưu + lưu trữ: {archived.CheckpointRef}", $"Lưu & Lưu trữ {id}");
+                popups[id].SetActionNotice($"✓ Đã lưu & lưu trữ: {archived.CheckpointRef}", false);
                 break;
-            case "close": await controller.SafeCloseAsync(id); break;
-            case "recover": await SafeRecoverAsync(id); break;
+            case "close":
+                await controller.SafeCloseAsync(id);
+                popups[id].SetActionNotice("✓ Chrome đã đóng an toàn", false);
+                break;
+            case "recover":
+                await SafeRecoverAsync(id);
+                popups[id].SetActionNotice("✓ Đã khôi phục an toàn", false);
+                break;
             case "schedule-10": SetSchedule(id, 10); break;
             case "schedule-30": SetSchedule(id, 30); break;
             case "schedule-60": SetSchedule(id, 60); break;
@@ -398,6 +406,15 @@ internal sealed class UtilityContext : ApplicationContext
         store.Save(settings);
         store.Log("SYSTEM", "DND_CHANGED", new { settings.DoNotDisturb });
         UpdateTraySurface();
+    }
+
+    void ShowTrayNotice(string title, string message)
+    {
+        store.Log("SYSTEM", "UI_NOTICE", new { title, message });
+        if (settings.DoNotDisturb) return;
+        tray.BalloonTipTitle = title;
+        tray.BalloonTipText = message;
+        tray.ShowBalloonTip(3500);
     }
 
     async Task RunWatchdogAsync()
