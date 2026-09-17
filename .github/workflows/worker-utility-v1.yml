@@ -22,7 +22,8 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npx vitest run tests/worker-utility-contract.test.ts
-      - run: dotnet build apps/worker-utility/TigerIQ.WorkerUtility.csproj -c Release      - run: dotnet run --project apps/worker-utility/TigerIQ.WorkerUtility.csproj -c Release -- --self-test
+      - run: dotnet build apps/worker-utility/TigerIQ.WorkerUtility.csproj -c Release
+      - run: dotnet run --project apps/worker-utility/TigerIQ.WorkerUtility.csproj -c Release -- --self-test
       - run: dotnet publish apps/worker-utility/TigerIQ.WorkerUtility.csproj -c Release -o artifact/worker-utility
       - shell: pwsh
         run: |
