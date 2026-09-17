@@ -443,10 +443,16 @@ async function autopilotTick(){
       const message=String(error);
       const failureClass=classifyAutoContinueDispatchFailure(error,dispatchDelivered);
       if(failureClass==='SAFE_RETRY'){
-        dispatchLease.markRetryable(dispatchLeaseToken.leaseId,decision.jobId);
-        autopilotState={...clearPending(autopilotState),phase:'STOPPED',uncertainJobId:undefined,updatedAt:new Date().toISOString()};
-        persistAutopilotState();
-        log('AUTO_CONTINUE_FAILED_SAFE_RETRY',{jobId:decision.jobId,error:message,retryAfterMs:config.autopilot.dispatchLeaseTtlMs??300000});
+        try{
+          dispatchLease.markRetryable(dispatchLeaseToken.leaseId,decision.jobId);
+          autopilotState={...clearPending(autopilotState),phase:'STOPPED',uncertainJobId:undefined,updatedAt:new Date().toISOString()};
+          persistAutopilotState();
+          log('AUTO_CONTINUE_FAILED_SAFE_RETRY',{jobId:decision.jobId,error:message,retryAfterMs:config.autopilot.dispatchLeaseTtlMs??300000});
+        }catch(retryError){
+          autopilotState={...clearPending(autopilotState),phase:'STOPPED',uncertainJobId:decision.jobId,updatedAt:new Date().toISOString()};
+          persistAutopilotState();
+          log('AUTO_CONTINUE_SAFE_RETRY_STATE_FAILED',{jobId:decision.jobId,error:String(retryError),originalError:message});
+        }
       }else{
         autopilotState={...clearPending(autopilotState),phase:'STOPPED',uncertainJobId:decision.jobId,updatedAt:new Date().toISOString()};
         persistAutopilotState();
