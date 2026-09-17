@@ -425,7 +425,7 @@ async function autopilotTick(){
     let dispatchDelivered=false;
     try{
       dispatchLease.markDispatching(dispatchLeaseToken.leaseId,decision.jobId);
-      await dispatch('NV02',decision.text,true,'AUTO_CONTINUE');
+      await dispatch('NV02',decision.text,false,'AUTO_CONTINUE');
       dispatchDelivered=true;
       const committedLease=dispatchLease.markCommitted(dispatchLeaseToken.leaseId,decision.jobId);
       autopilotState={
