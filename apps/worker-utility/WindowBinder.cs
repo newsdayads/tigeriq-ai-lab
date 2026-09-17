@@ -31,26 +31,12 @@ internal sealed class WindowBinder
     {
         rect = Rectangle.Empty;
         if (!expected.TryGetValue(workerId, out var anchor)) { hwnd = 0; return false; }
-        if (handles.TryGetValue(workerId, out hwnd) && IsWindow(hwnd) && GetWindowRect(hwnd, out var current))
-        {
-            var currentRect = current.ToRectangle();
-            var title = GetTitle(hwnd);
-            if (TitleMatches(workerId, title) || NearAnchor(currentRect, anchor, 180))
-            {
-                rect = currentRect;
-                return true;
-            }
-        }
-        handles.Remove(workerId);
-        var used = handles.Values.ToHashSet();
         var candidates = EnumerateChromeWindows()
-            .Where(x => x.Rect.Width >= 400 && x.Rect.Height >= 600 && !used.Contains(x.Hwnd))
+            .Where(x => x.Rect.Width >= 400 && x.Rect.Height >= 600)
             .Select(x => new { x.Hwnd, x.Rect, x.Title, Distance = Distance(x.Rect, anchor) })
             .ToList();
-        var best = candidates.FirstOrDefault(x => TitleMatches(workerId, x.Title))
-            ?? candidates.OrderBy(x => x.Distance).FirstOrDefault();
-        if (best is null || (!TitleMatches(workerId, best.Title) && best.Distance > 180)) { hwnd = 0; return false; }
-        handles[workerId] = best.Hwnd;
+        var best = candidates.OrderBy(x => x.Distance).FirstOrDefault();
+        if (best is null || best.Distance > 180) { hwnd = 0; return false; }
         hwnd = best.Hwnd;
         rect = best.Rect;
         return true;
