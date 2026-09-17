@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+// @ts-expect-error manager-json is a runtime .mjs module without declarations.
 import { parseManagerJson } from '../apps/tigeriq-core/manager-json.mjs';
 
 describe('manager terminal decision invariant', () => {
