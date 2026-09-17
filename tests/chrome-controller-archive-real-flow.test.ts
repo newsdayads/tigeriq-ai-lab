@@ -12,7 +12,7 @@ const jsonResponse=(value:unknown)=>({ok:true,status:200,json:async()=>value});
 afterEach(()=>vi.restoreAllMocks());
 
 async function loadRealFlow(done:boolean,events:string[]){
-  vi.spyOn(globalThis,'setInterval').mockImplementation((()=>0) as typeof setInterval);
+  vi.spyOn(globalThis,'setInterval').mockImplementation((()=>0) as unknown as typeof setInterval);
   let windows:any[]=[];
   let uiReads=0;
   (globalThis as any).chrome={
