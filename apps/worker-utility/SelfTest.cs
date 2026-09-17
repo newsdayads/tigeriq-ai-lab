@@ -9,6 +9,7 @@ internal static class SelfTest
             TestWatchdog();
             TestSavePrompt();
             TestSettingsRoundTrip();
+            TestWorkerIdentityOrder();
             TestUiPlacement();
             Console.WriteLine("SELF_TEST_OK");
             return 0;
@@ -57,13 +58,22 @@ internal static class SelfTest
         settings.Workers["NV02"].BadgeOffsetY = 42;
         settings.Workers["NV02"].PopupX = 111;
         settings.Workers["NV02"].PopupY = 222;
-        settings.Schedules["NV02"] = new ScheduleSettings { IntervalMinutes = 10, NextCheckAt = DateTimeOffset.UtcNow.AddMinutes(10) };
+        settings.Schedules["NV02"] = new ScheduleSettings { IntervalMinutes = 10, NextCheckAt = DateTimeOffset.UtcNow.AddMinutes(10), Enabled = true, ChangesOnly = false };
         var text = System.Text.Json.JsonSerializer.Serialize(settings);
         var copy = System.Text.Json.JsonSerializer.Deserialize<UtilitySettings>(text)!;
         Must(copy.Workers["NV02"].Paused, "settings paused persistence");
         Must(copy.Workers["NV02"].BadgeOffsetX == 24 && copy.Workers["NV02"].BadgeOffsetY == 42, "badge persistence");
         Must(copy.Workers["NV02"].PopupX == 111 && copy.Workers["NV02"].PopupY == 222, "popup persistence");
         Must(copy.Schedules["NV02"].IntervalMinutes == 10, "schedule persistence");
+        Must(copy.Schedules["NV02"].Enabled && !copy.Schedules["NV02"].ChangesOnly, "schedule display preference persistence");
+    }
+
+    static void TestWorkerIdentityOrder()
+    {
+        Must(Workers.All.Select(x => x.Id).SequenceEqual(new[] { "NV02", "NV03", "NV04" }), "worker display order");
+        Must(Workers.Get("NV02").Name == "ChatGPT Plus", "NV02 identity");
+        Must(Workers.Get("NV03").Name == "ChatGPT Go", "NV03 identity");
+        Must(Workers.Get("NV04").Name == "Gemini Pro", "NV04 identity");
     }
 
     static void TestUiPlacement()
