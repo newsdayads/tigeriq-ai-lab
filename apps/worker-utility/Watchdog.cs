@@ -27,22 +27,23 @@ internal sealed class WatchdogTracker
             s.LastFingerprint = fp;
             s.LastProgressAt = now;
         }
+        s.Active = view.State == WorkerUiState.Working;
         var noProgress = now - s.LastProgressAt;
         var aliveAge = view.HeartbeatAt is DateTimeOffset alive ? now - alive : TimeSpan.MaxValue;
         if (view.State == WorkerUiState.Blocked)
             return new(HealthBand.Blocked, noProgress, aliveAge, s.LastProgressAt, s.LastRecoveryAt, view.Reason);
         if (s.Recovering)
             return new(HealthBand.Recovering, noProgress, aliveAge, s.LastProgressAt, s.LastRecoveryAt, "RECOVERY_IN_PROGRESS");
-        if (view.State == WorkerUiState.Working && noProgress >= StalledAfter)
+        if (s.Active && noProgress >= StalledAfter)
             return new(HealthBand.Stalled, noProgress, aliveAge, s.LastProgressAt, s.LastRecoveryAt, "NO_PROGRESS");
-        if (noProgress >= SlowAfter)
+        if (s.Active && noProgress >= SlowAfter)
             return new(HealthBand.Slow, noProgress, aliveAge, s.LastProgressAt, s.LastRecoveryAt, "SLOW_PROGRESS");
-        return new(HealthBand.Healthy, noProgress, aliveAge, s.LastProgressAt, s.LastRecoveryAt, "HEALTHY");
+        return new(HealthBand.Healthy, s.Active ? noProgress : TimeSpan.Zero, aliveAge, s.LastProgressAt, s.LastRecoveryAt, s.Active ? "HEALTHY" : "HEALTHY_IDLE");
     }
 
     public bool ShouldEscalate(string id, DateTimeOffset now)
     {
-        if (!states.TryGetValue(id, out var s) || s.Recovering) return false;
+        if (!states.TryGetValue(id, out var s) || s.Recovering || !s.Active) return false;
         if (now - s.LastProgressAt < RecoverAfter) return false;
         if (s.LastRecoveryAt is DateTimeOffset last && now - last < TimeSpan.FromMinutes(5)) return false;
         return true;
@@ -69,5 +70,6 @@ internal sealed class WatchdogTracker
         public DateTimeOffset LastProgressAt { get; set; }
         public DateTimeOffset? LastRecoveryAt { get; set; }
         public bool Recovering { get; set; }
+        public bool Active { get; set; }
     }
 }

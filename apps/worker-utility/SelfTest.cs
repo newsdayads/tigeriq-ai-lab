@@ -33,6 +33,9 @@ internal static class SelfTest
         Must(t.Observe(view, now).Health == HealthBand.Healthy, "watchdog healthy");
         Must(t.Observe(view, now.AddMinutes(3)).Health == HealthBand.Stalled, "watchdog stalled");
         Must(t.ShouldEscalate("NV02", now.AddMinutes(6)), "watchdog escalation");
+        var idle = view with { State = WorkerUiState.Ready, Reason = "READY", JobId = null, UiBusy = false };
+        Must(t.Observe(idle, now.AddMinutes(10)).Health == HealthBand.Healthy, "idle remains healthy");
+        Must(!t.ShouldEscalate("NV02", now.AddMinutes(20)), "idle never escalates");
         t.BeginRecovery("NV02", now.AddMinutes(6));
         Must(t.Observe(view, now.AddMinutes(6)).Health == HealthBand.Recovering, "watchdog recovering");
     }
