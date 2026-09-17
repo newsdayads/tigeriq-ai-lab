@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe,expect,it } from 'vitest';
 const server=readFileSync('apps/chrome-controller/src/server.ts','utf8'); const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
 const client=readFileSync('apps/worker-utility/ControllerClient.cs','utf8'); const context=readFileSync('apps/worker-utility/UtilityContext.cs','utf8');
-const popup=readFileSync('apps/worker-utility/PopupForm.cs','utf8'); const watchdog=readFileSync('apps/worker-utility/Watchdog.cs','utf8');
+const popup=readFileSync('apps/worker-utility/PopupForm.cs','utf8'); const badge=readFileSync('apps/worker-utility/BadgeForm.cs','utf8'); const watchdog=readFileSync('apps/worker-utility/Watchdog.cs','utf8');
 const store=readFileSync('apps/worker-utility/StateStore.cs','utf8'); const program=readFileSync('apps/worker-utility/Program.cs','utf8');
 const installer=readFileSync('apps/worker-utility/Install-WorkerUtility.ps1','utf8'); const binder=readFileSync('apps/worker-utility/WindowBinder.cs','utf8');
 describe('Worker Utility V1 contract',()=>{
@@ -15,4 +15,5 @@ describe('Worker Utility V1 contract',()=>{
  it('fails closed on Session 0 and installer uses InteractiveToken',()=>{expect(program).toContain('SessionId == 0');expect(program).toContain('Environment.Exit(42)');expect(installer).toContain('-LogonType Interactive');expect(installer).toContain('SessionId -ne 0');});
  it('implements watchdog bands and thresholds',()=>{for(const x of ['Healthy','Slow','Stalled','Recovering','Blocked'])expect(watchdog).toContain(x);expect(watchdog).toContain('FromSeconds(30)');expect(watchdog).toContain('FromMinutes(2)');expect(watchdog).toContain('FromMinutes(5)');});
  it('fail-closes save and close active mutation',()=>{expect(client).toContain('SAVE_ACTIVE_MUTATION_FORBIDDEN');expect(client).toContain('SAFE_CLOSE_ACTIVE_JOB_FORBIDDEN');expect(client).toContain('SAVE_NOT_DURABLE');});
+ it('locks the finished branded visual layer',()=>{expect(popup).toContain('FormBorderStyle = FormBorderStyle.None');expect(popup).toContain('TIGERIQ  /  WORKER CONTROL');expect(popup).toContain('RoundedButton');expect(popup).toContain('RoundedPanel');expect(popup).toContain('CS_DROPSHADOW');expect(badge).toContain('Size = new Size(88, 32)');expect(badge).toContain('Height / 2');});
 });

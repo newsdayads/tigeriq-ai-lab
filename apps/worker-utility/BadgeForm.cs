@@ -1,3 +1,5 @@
+using System.Drawing.Drawing2D;
+
 namespace TigerIQ.WorkerUtility;
 
 internal sealed class BadgeForm : Form
@@ -28,11 +30,11 @@ internal sealed class BadgeForm : Form
         ShowInTaskbar = false;
         TopMost = true;
         StartPosition = FormStartPosition.Manual;
-        Size = new Size(64, 30);
+        Size = new Size(88, 32);
         MinimumSize = Size;
         MaximumSize = Size;
         Text = $"TigerIQ {worker.Id}";
-        BackColor = Color.White;
+        BackColor = Color.FromArgb(15, 23, 42);
 
         label = new Label
         {
@@ -40,13 +42,16 @@ internal sealed class BadgeForm : Form
             Text = worker.Id,
             TextAlign = ContentAlignment.MiddleCenter,
             Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
-            BorderStyle = BorderStyle.FixedSingle,
             Cursor = Cursors.SizeAll,
-            Padding = new Padding(4, 0, 4, 0),
+            Padding = new Padding(7, 0, 7, 0),
+            BackColor = Color.FromArgb(15, 23, 42),
+            ForeColor = Color.White,
             AccessibleName = $"Điều khiển {worker.Id} {worker.Name}",
             AccessibleDescription = "Bấm để mở bảng điều khiển; kéo để đổi vị trí; chuột phải để đặt lại vị trí."
         };
         Controls.Add(label);
+        SizeChanged += (_, _) => ApplyRoundedRegion();
+        Shown += (_, _) => ApplyRoundedRegion();
 
         label.MouseDown += BeginPointer;
         label.MouseMove += MovePointer;
@@ -55,11 +60,24 @@ internal sealed class BadgeForm : Form
         MouseMove += MovePointer;
         MouseUp += EndPointer;
 
-        var menu = new ContextMenuStrip();
+        var menu = new ContextMenuStrip
+        {
+            Font = new Font("Segoe UI", 9),
+            ShowImageMargin = false
+        };
         menu.Items.Add("Mở bảng điều khiển", null, (_, _) => onClick(worker.Id));
         menu.Items.Add("Đặt lại vị trí badge", null, (_, _) => onReset(worker.Id));
         ContextMenuStrip = menu;
         label.ContextMenuStrip = menu;
+    }
+
+    void ApplyRoundedRegion()
+    {
+        if (Width <= 0 || Height <= 0) return;
+        using var path = PopupForm.RoundedPath(new Rectangle(0, 0, Width, Height), Height / 2);
+        var old = Region;
+        Region = new Region(path);
+        old?.Dispose();
     }
 
     void BeginPointer(object? sender, MouseEventArgs e)
@@ -107,21 +125,18 @@ internal sealed class BadgeForm : Form
             WorkerUiState.Paused => "Ⅱ",
             _ => "!"
         };
-        label.Text = $"{worker.Id[2..]}  {glyph}";
-        label.BackColor = CurrentState switch
+        var shortId = worker.Id.StartsWith("NV", StringComparison.OrdinalIgnoreCase) ? worker.Id[2..] : worker.Id;
+        label.Text = $"{shortId}   {glyph}";
+        var back = CurrentState switch
         {
-            WorkerUiState.Ready => Color.FromArgb(226, 248, 236),
-            WorkerUiState.Working => Color.FromArgb(255, 244, 219),
-            WorkerUiState.Paused => Color.FromArgb(237, 240, 244),
-            _ => Color.FromArgb(255, 236, 236)
+            WorkerUiState.Ready => Color.FromArgb(5, 150, 105),
+            WorkerUiState.Working => Color.FromArgb(217, 119, 6),
+            WorkerUiState.Paused => Color.FromArgb(71, 85, 105),
+            _ => Color.FromArgb(220, 38, 38)
         };
-        label.ForeColor = CurrentState switch
-        {
-            WorkerUiState.Ready => Color.FromArgb(23, 111, 67),
-            WorkerUiState.Working => Color.FromArgb(151, 93, 0),
-            WorkerUiState.Paused => Color.FromArgb(79, 88, 99),
-            _ => Color.FromArgb(176, 42, 42)
-        };
+        BackColor = back;
+        label.BackColor = back;
+        label.ForeColor = Color.White;
         label.AccessibleDescription = view is null
             ? "Không có trạng thái"
             : $"{CurrentState}: {view.Reason}. Bấm mở bảng điều khiển, kéo để đổi vị trí.";
