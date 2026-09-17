@@ -77,7 +77,7 @@ export class DurableDispatchLeaseStore{
   }
 
   markRetryable(leaseId:string,jobId:string,nowMs=Date.now()):DispatchLease{
-    return this.#transition(leaseId,jobId,'DISPATCHING','RESERVED',nowMs,{expiresAt:iso(nowMs)});
+    return this.#transition(leaseId,jobId,'DISPATCHING','RESERVED',nowMs,{expiresAt:iso(nowMs+this.#ttlMs)});
   }
 
   markCommitted(leaseId:string,jobId:string,nowMs=Date.now()):DispatchLease{
