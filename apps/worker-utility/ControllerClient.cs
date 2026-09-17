@@ -18,34 +18,50 @@ internal sealed class ControllerClient
 
     async Task<JsonDocument?> TryGetJsonAsync(string url)
     {
-        using var response = await http.GetAsync(url);
-        if ((int)response.StatusCode == 404) return null;
-        response.EnsureSuccessStatusCode();
-        return JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        try
+        {
+            using var response = await http.GetAsync(url);
+            if ((int)response.StatusCode == 404) return null;
+            response.EnsureSuccessStatusCode();
+            return JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        }
+        catch (TaskCanceledException ex) { throw new InvalidOperationException("CONTROLLER_TIMEOUT", ex); }
     }
 
     async Task<JsonDocument> GetJsonAsync(string url)
     {
-        using var response = await http.GetAsync(url);
-        response.EnsureSuccessStatusCode();
-        return JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        try
+        {
+            using var response = await http.GetAsync(url);
+            response.EnsureSuccessStatusCode();
+            return JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        }
+        catch (TaskCanceledException ex) { throw new InvalidOperationException("CONTROLLER_TIMEOUT", ex); }
     }
 
     async Task<JsonDocument?> TryPostAsync(string path, object? body = null)
     {
-        using var response = await http.PostAsJsonAsync(Controller + path, body ?? new { });
-        if ((int)response.StatusCode == 404) return null;
-        var text = await response.Content.ReadAsStringAsync();
-        if (!response.IsSuccessStatusCode) throw new InvalidOperationException(text);
-        return JsonDocument.Parse(string.IsNullOrWhiteSpace(text) ? "{}" : text);
+        try
+        {
+            using var response = await http.PostAsJsonAsync(Controller + path, body ?? new { });
+            if ((int)response.StatusCode == 404) return null;
+            var text = await response.Content.ReadAsStringAsync();
+            if (!response.IsSuccessStatusCode) throw new InvalidOperationException(text);
+            return JsonDocument.Parse(string.IsNullOrWhiteSpace(text) ? "{}" : text);
+        }
+        catch (TaskCanceledException ex) { throw new InvalidOperationException("CONTROLLER_TIMEOUT", ex); }
     }
 
     async Task<JsonDocument> PostAsync(string path, object? body = null)
     {
-        using var response = await http.PostAsJsonAsync(Controller + path, body ?? new { });
-        var text = await response.Content.ReadAsStringAsync();
-        if (!response.IsSuccessStatusCode) throw new InvalidOperationException(text);
-        return JsonDocument.Parse(string.IsNullOrWhiteSpace(text) ? "{}" : text);
+        try
+        {
+            using var response = await http.PostAsJsonAsync(Controller + path, body ?? new { });
+            var text = await response.Content.ReadAsStringAsync();
+            if (!response.IsSuccessStatusCode) throw new InvalidOperationException(text);
+            return JsonDocument.Parse(string.IsNullOrWhiteSpace(text) ? "{}" : text);
+        }
+        catch (TaskCanceledException ex) { throw new InvalidOperationException("CONTROLLER_TIMEOUT", ex); }
     }
     public async Task<WorkerView> GetWorkerAsync(string workerId)
     {
