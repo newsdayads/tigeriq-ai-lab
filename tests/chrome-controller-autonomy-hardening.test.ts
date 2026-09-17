@@ -78,3 +78,34 @@ describe('fresh completion evidence',()=>{
     const old=snapshot();old.previousJob!.completedAt='2026-09-17T00:00:00.000Z';old.previousJob!.evidence![0].completedAt='2026-09-17T00:00:00.000Z';expect(decideAutoContinue(old,dispatchedState(),now)).toMatchObject({kind:'WAIT_EVIDENCE'});
   });
 });
+
+describe('security fail-closed matrix',()=>{
+  it('maps every auth/challenge/rate-limit heartbeat signal to a stop reason',()=>{
+    expect(heartbeatStopReason({authRequired:true})).toBe('AUTH_REQUIRED');
+    expect(heartbeatStopReason({reauthRequired:true})).toBe('REAUTH');
+    expect(heartbeatStopReason({captchaRequired:true})).toBe('CAPTCHA');
+    expect(heartbeatStopReason({rateLimited:true})).toBe('RATE_LIMIT_429');
+    expect(heartbeatStopReason({rateLimitCode:429})).toBe('RATE_LIMIT_429');
+    expect(heartbeatStopReason({securityBlock:'BLOCKED_CAPTCHA'})).toBe('CAPTCHA');
+    expect(heartbeatStopReason({securityBlock:'BLOCKED_REAUTH'})).toBe('REAUTH');
+    expect(heartbeatStopReason({securityBlock:'BLOCKED_RATE_LIMIT'})).toBe('RATE_LIMIT_429');
+  });
+  it('stops AUTO_CONTINUE for all equivalent risk flags',()=>{
+    for(const flag of ['AUTH_REQUIRED','REAUTH','CAPTCHA','RATE_LIMIT','RATE_LIMIT_429','HTTP_429']){
+      expect(decideAutoContinue(snapshot([flag]),dispatchedState(),now)).toMatchObject({kind:'STOP',reason:`RISK_FLAG_${flag}`});
+    }
+  });
+});
+
+describe('controller-independent Chrome lifecycle contract',()=>{
+  it('keeps Chrome spawn only in detached broker helper, never in Controller',()=>{
+    const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
+    const broker=readFileSync('apps/chrome-controller/src/chrome-launch-broker.ts','utf8');
+    const lifecycle=readFileSync('apps/chrome-controller/src/process-lifecycle.ts','utf8');
+    expect(server).not.toContain('spawn(');
+    expect(server).toContain('launchBrokerUrl');
+    expect(broker).toContain('spawnDetachedProcess');
+    expect(lifecycle).toContain('detached:true');
+    expect(lifecycle).toContain('child.unref()');
+  });
+});
