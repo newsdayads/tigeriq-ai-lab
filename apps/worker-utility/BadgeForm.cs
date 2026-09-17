@@ -28,21 +28,23 @@ internal sealed class BadgeForm : Form
         ShowInTaskbar = false;
         TopMost = true;
         StartPosition = FormStartPosition.Manual;
-        Size = new Size(52, 26);
+        Size = new Size(64, 30);
         MinimumSize = Size;
         MaximumSize = Size;
         Text = $"TigerIQ {worker.Id}";
+        BackColor = Color.White;
 
         label = new Label
         {
             Dock = DockStyle.Fill,
-            Text = worker.Id[2..],
+            Text = worker.Id,
             TextAlign = ContentAlignment.MiddleCenter,
-            Font = new Font("Segoe UI", 9, FontStyle.Bold),
+            Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
             BorderStyle = BorderStyle.FixedSingle,
             Cursor = Cursors.SizeAll,
+            Padding = new Padding(4, 0, 4, 0),
             AccessibleName = $"Điều khiển {worker.Id} {worker.Name}",
-            AccessibleDescription = "Bấm để mở điều khiển; kéo để đổi vị trí; chuột phải để đặt lại vị trí."
+            AccessibleDescription = "Bấm để mở bảng điều khiển; kéo để đổi vị trí; chuột phải để đặt lại vị trí."
         };
         Controls.Add(label);
 
@@ -54,6 +56,7 @@ internal sealed class BadgeForm : Form
         MouseUp += EndPointer;
 
         var menu = new ContextMenuStrip();
+        menu.Items.Add("Mở bảng điều khiển", null, (_, _) => onClick(worker.Id));
         menu.Items.Add("Đặt lại vị trí badge", null, (_, _) => onReset(worker.Id));
         ContextMenuStrip = menu;
         label.ContextMenuStrip = menu;
@@ -99,23 +102,29 @@ internal sealed class BadgeForm : Form
         CurrentState = view?.State ?? WorkerUiState.Blocked;
         var glyph = CurrentState switch
         {
-            WorkerUiState.Ready => "✓",
+            WorkerUiState.Ready => "●",
             WorkerUiState.Working => "▶",
             WorkerUiState.Paused => "Ⅱ",
             _ => "!"
         };
-        label.Text = $"{worker.Id[2..]} {glyph}";
+        label.Text = $"{worker.Id[2..]}  {glyph}";
         label.BackColor = CurrentState switch
         {
-            WorkerUiState.Ready => Color.Honeydew,
-            WorkerUiState.Working => Color.LightGoldenrodYellow,
-            WorkerUiState.Paused => Color.Gainsboro,
-            _ => Color.MistyRose
+            WorkerUiState.Ready => Color.FromArgb(226, 248, 236),
+            WorkerUiState.Working => Color.FromArgb(255, 244, 219),
+            WorkerUiState.Paused => Color.FromArgb(237, 240, 244),
+            _ => Color.FromArgb(255, 236, 236)
         };
-        label.ForeColor = SystemColors.ControlText;
+        label.ForeColor = CurrentState switch
+        {
+            WorkerUiState.Ready => Color.FromArgb(23, 111, 67),
+            WorkerUiState.Working => Color.FromArgb(151, 93, 0),
+            WorkerUiState.Paused => Color.FromArgb(79, 88, 99),
+            _ => Color.FromArgb(176, 42, 42)
+        };
         label.AccessibleDescription = view is null
             ? "Không có trạng thái"
-            : $"{CurrentState}: {view.Reason}. Bấm mở điều khiển, kéo để đổi vị trí.";
+            : $"{CurrentState}: {view.Reason}. Bấm mở bảng điều khiển, kéo để đổi vị trí.";
         Text = $"TigerIQ {worker.Id} — {CurrentState}";
     }
 
