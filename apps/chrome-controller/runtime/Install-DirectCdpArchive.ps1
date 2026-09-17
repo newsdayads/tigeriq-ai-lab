@@ -14,6 +14,17 @@ function Get-TextSha256([string]$Value) {
   finally { $sha.Dispose() }
 }
 
+function Wait-BridgeHealth {
+  for ($i = 0; $i -lt 20; $i++) {
+    Start-Sleep -Milliseconds 500
+    try {
+      $health = Invoke-RestMethod -Uri 'http://127.0.0.1:8799/health' -TimeoutSec 2
+      if ($health.ok -eq $true) { return $true }
+    } catch { }
+  }
+  return $false
+}
+
 if (-not (Test-Path -LiteralPath $BridgePath)) { throw "BRIDGE_NOT_FOUND:$BridgePath" }
 if (-not (Test-Path -LiteralPath $ModuleSourcePath)) { throw "ARCHIVE_MODULE_NOT_FOUND:$ModuleSourcePath" }
 
@@ -66,15 +77,35 @@ if ($tokenFingerprintAfter -ne $tokenFingerprintBefore) { throw 'BRIDGE_CREDENTI
 $bridgeDir = Split-Path -Parent $BridgePath
 $moduleTarget = Join-Path $bridgeDir 'direct-cdp-archive.mjs'
 $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-$backup = "$BridgePath.pre802-$timestamp.bak"
-Copy-Item -LiteralPath $BridgePath -Destination $backup -Force
+$bridgeBackup = "$BridgePath.pre802-$timestamp.bak"
+$moduleExisted = Test-Path -LiteralPath $moduleTarget
+$moduleBackup = if ($moduleExisted) { "$moduleTarget.pre802-$timestamp.bak" } else { $null }
+
+Copy-Item -LiteralPath $BridgePath -Destination $bridgeBackup -Force
+if ($moduleExisted) { Copy-Item -LiteralPath $moduleTarget -Destination $moduleBackup -Force }
+
+function Restore-PreviousFiles {
+  Copy-Item -LiteralPath $bridgeBackup -Destination $BridgePath -Force
+  if ($moduleExisted) {
+    Copy-Item -LiteralPath $moduleBackup -Destination $moduleTarget -Force
+  } else {
+    Remove-Item -LiteralPath $moduleTarget -Force -ErrorAction SilentlyContinue
+  }
+  Remove-Item -LiteralPath "$BridgePath.tmp802" -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath "$moduleTarget.tmp802" -Force -ErrorAction SilentlyContinue
+}
 
 $tempBridge = "$BridgePath.tmp802"
 $tempModule = "$moduleTarget.tmp802"
-[IO.File]::WriteAllText($tempBridge, $patched, [Text.UTF8Encoding]::new($false))
-Copy-Item -LiteralPath $ModuleSourcePath -Destination $tempModule -Force
-Move-Item -LiteralPath $tempModule -Destination $moduleTarget -Force
-Move-Item -LiteralPath $tempBridge -Destination $BridgePath -Force
+try {
+  [IO.File]::WriteAllText($tempBridge, $patched, [Text.UTF8Encoding]::new($false))
+  Copy-Item -LiteralPath $ModuleSourcePath -Destination $tempModule -Force
+  Move-Item -LiteralPath $tempModule -Destination $moduleTarget -Force
+  Move-Item -LiteralPath $tempBridge -Destination $BridgePath -Force
+} catch {
+  Restore-PreviousFiles
+  throw "BRIDGE_INSTALL_FAILED_ROLLBACK_APPLIED:$($_.Exception.Message)"
+}
 
 $bridgeSha = (Get-FileHash -LiteralPath $BridgePath -Algorithm SHA256).Hash.ToLowerInvariant()
 $moduleSha = (Get-FileHash -LiteralPath $moduleTarget -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -83,23 +114,23 @@ $restartInfo = $null
 if ($RestartBridge) {
   $escaped = [regex]::Escape($BridgePath)
   $existing = @(Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'node.exe' -and $_.CommandLine -match $escaped })
-  foreach ($process in $existing) { Stop-Process -Id $process.ProcessId -Force }
   $node = (Get-Command node.exe -ErrorAction Stop).Source
-  $newProcess = Start-Process -FilePath $node -ArgumentList @($BridgePath) -WindowStyle Hidden -PassThru
-  $healthy = $false
-  for ($i = 0; $i -lt 20; $i++) {
-    Start-Sleep -Milliseconds 500
-    try {
-      $health = Invoke-RestMethod -Uri 'http://127.0.0.1:8799/health' -TimeoutSec 2
-      if ($health.ok -eq $true) { $healthy = $true; break }
-    } catch { }
+  foreach ($process in $existing) { Stop-Process -Id $process.ProcessId -Force }
+  $newProcess = $null
+  try {
+    $newProcess = Start-Process -FilePath $node -ArgumentList @($BridgePath) -WindowStyle Hidden -PassThru
+    if (-not (Wait-BridgeHealth)) { throw 'NEW_BRIDGE_HEALTH_FAILED' }
+    $restartInfo = @{ oldPids = @($existing.ProcessId); newPid = $newProcess.Id; health = 'PASS' }
+  } catch {
+    if ($null -ne $newProcess) { Stop-Process -Id $newProcess.Id -Force -ErrorAction SilentlyContinue }
+    Restore-PreviousFiles
+    $rollbackProcess = Start-Process -FilePath $node -ArgumentList @($BridgePath) -WindowStyle Hidden -PassThru
+    if (-not (Wait-BridgeHealth)) {
+      Stop-Process -Id $rollbackProcess.Id -Force -ErrorAction SilentlyContinue
+      throw "BRIDGE_RESTART_AND_ROLLBACK_HEALTH_FAILED:$($_.Exception.Message)"
+    }
+    throw "BRIDGE_RESTART_HEALTH_FAILED_ROLLBACK_APPLIED:$($_.Exception.Message)"
   }
-  if (-not $healthy) {
-    Stop-Process -Id $newProcess.Id -Force -ErrorAction SilentlyContinue
-    Copy-Item -LiteralPath $backup -Destination $BridgePath -Force
-    throw 'BRIDGE_RESTART_HEALTH_FAILED_ROLLBACK_APPLIED'
-  }
-  $restartInfo = @{ oldPids = @($existing.ProcessId); newPid = $newProcess.Id; health = 'PASS' }
 }
 
 [pscustomobject]@{
@@ -109,6 +140,8 @@ if ($RestartBridge) {
   credentialUnchanged = ($tokenFingerprintBefore -eq $tokenFingerprintAfter)
   bridgeSha256 = $bridgeSha
   moduleSha256 = $moduleSha
-  backupPath = $backup
+  bridgeBackupPath = $bridgeBackup
+  moduleBackupPath = $moduleBackup
+  modulePreviouslyExisted = $moduleExisted
   restart = $restartInfo
 } | ConvertTo-Json -Depth 4
