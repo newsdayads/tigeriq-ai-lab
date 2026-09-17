@@ -15,23 +15,23 @@ internal sealed class PopupForm : Form
     static readonly Color Red = Color.FromArgb(248, 113, 113);
 
     readonly Panel root = new() { Dock = DockStyle.Fill, BackColor = Canvas };
-    readonly RoundedPanel headerSurface = new()
+    readonly Panel accentLine = new()
     {
         Location = new Point(10, 10),
-        Size = new Size(324, 88),
-        BackColor = Surface,
-        BorderColor = Color.FromArgb(37, 99, 235),
-        BorderWidth = 1,
-        CornerRadius = 14
+        Size = new Size(324, 3),
+        BackColor = Color.FromArgb(37, 99, 235)
     };
-    readonly RoundedPanel statusSurface = new()
+    readonly Panel headerSeparator = new()
     {
-        Location = new Point(10, 106),
-        Size = new Size(324, 100),
-        BackColor = Surface,
-        BorderColor = Border,
-        BorderWidth = 1,
-        CornerRadius = 12
+        Location = new Point(16, 100),
+        Size = new Size(312, 1),
+        BackColor = Color.FromArgb(31, 52, 76)
+    };
+    readonly Panel statusSeparator = new()
+    {
+        Location = new Point(16, 205),
+        Size = new Size(312, 1),
+        BackColor = Color.FromArgb(31, 52, 76)
     };
 
     readonly Label eyebrow = new()
@@ -264,11 +264,10 @@ internal sealed class PopupForm : Form
 
     void BuildHeader()
     {
-        var accent = new Panel { Location = new Point(0, 0), Size = new Size(324, 3), BackColor = Color.FromArgb(37, 99, 235) };
         var close = new RoundedButton
         {
             Text = "×",
-            Location = new Point(282, 10),
+            Location = new Point(292, 18),
             Size = new Size(28, 28),
             Font = new Font("Segoe UI", 12, FontStyle.Bold),
             BackColor = Color.FromArgb(20, 38, 60),
@@ -280,23 +279,20 @@ internal sealed class PopupForm : Form
         };
         close.Click += (_, _) => Hide();
 
-        eyebrow.Location = new Point(14, 12);
-        header.Location = new Point(14, 34);
-        subtitle.Location = new Point(14, 61);
-        onlineChip.Location = new Point(206, 36);
+        eyebrow.Location = new Point(20, 21);
+        header.Location = new Point(20, 43);
+        subtitle.Location = new Point(20, 70);
+        onlineChip.Location = new Point(212, 45);
 
-        headerSurface.Controls.Add(accent);
-        headerSurface.Controls.Add(eyebrow);
-        headerSurface.Controls.Add(header);
-        headerSurface.Controls.Add(subtitle);
-        headerSurface.Controls.Add(onlineChip);
-        headerSurface.Controls.Add(close);
-        root.Controls.Add(headerSurface);
+        root.Controls.Add(accentLine);
+        root.Controls.Add(eyebrow);
+        root.Controls.Add(header);
+        root.Controls.Add(subtitle);
+        root.Controls.Add(onlineChip);
+        root.Controls.Add(close);
+        root.Controls.Add(headerSeparator);
 
-        headerSurface.MouseDown += BeginHeaderDrag;
-        headerSurface.MouseMove += MoveHeaderDrag;
-        headerSurface.MouseUp += EndHeaderDrag;
-        foreach (Control control in new Control[] { eyebrow, header, subtitle, accent })
+        foreach (Control control in new Control[] { eyebrow, header, subtitle, onlineChip, accentLine })
         {
             control.MouseDown += BeginHeaderDrag;
             control.MouseMove += MoveHeaderDrag;
@@ -307,20 +303,20 @@ internal sealed class PopupForm : Form
     void BuildStatus()
     {
         var title = SectionTitle("TRẠNG THÁI PHIÊN");
-        title.Location = new Point(12, 8);
-        stateChip.Location = new Point(12, 28);
-        healthChip.Location = new Point(118, 28);
-        job.Location = new Point(12, 51);
-        reason.Location = new Point(12, 65);
-        progress.Location = new Point(12, 78);
+        title.Location = new Point(20, 111);
+        stateChip.Location = new Point(20, 132);
+        healthChip.Location = new Point(126, 132);
+        job.Location = new Point(20, 156);
+        reason.Location = new Point(20, 172);
+        progress.Location = new Point(20, 187);
 
-        statusSurface.Controls.Add(title);
-        statusSurface.Controls.Add(stateChip);
-        statusSurface.Controls.Add(healthChip);
-        statusSurface.Controls.Add(job);
-        statusSurface.Controls.Add(reason);
-        statusSurface.Controls.Add(progress);
-        root.Controls.Add(statusSurface);
+        root.Controls.Add(title);
+        root.Controls.Add(stateChip);
+        root.Controls.Add(healthChip);
+        root.Controls.Add(job);
+        root.Controls.Add(reason);
+        root.Controls.Add(progress);
+        root.Controls.Add(statusSeparator);
         root.Controls.Add(actionStatus);
     }
 
@@ -572,7 +568,7 @@ internal sealed class PopupForm : Form
     {
         workerId = worker.Id;
         var accent = WorkerAccent(worker.Id);
-        headerSurface.BorderColor = accent;
+        accentLine.BackColor = accent;
         header.Text = $"{worker.Id}  ·  {worker.Name}";
 
         onlineChip.Text = view.WindowOpen && view.SessionOk ? "●  ONLINE" : "●  OFFLINE";
@@ -756,37 +752,6 @@ internal sealed class AdvancedInfoForm : Form
     {
         title.Text = $"{workerId} — Thông tin kỹ thuật";
         details.Text = string.Join(Environment.NewLine, lines);
-    }
-}
-
-internal sealed class RoundedPanel : Panel
-{
-    public int CornerRadius { get; set; } = 12;
-    public Color BorderColor { get; set; } = Color.Transparent;
-    public int BorderWidth { get; set; } = 1;
-
-    public RoundedPanel()
-    {
-        DoubleBuffered = true;
-        Resize += (_, _) => RefreshRegion();
-    }
-
-    void RefreshRegion()
-    {
-        if (Width <= 0 || Height <= 0) return;
-        using var path = PopupForm.RoundedPath(new Rectangle(0, 0, Width, Height), CornerRadius);
-        var old = Region;
-        Region = new Region(path);
-        old?.Dispose();
-    }
-
-    protected override void OnPaint(PaintEventArgs e)
-    {
-        base.OnPaint(e);
-        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        using var path = PopupForm.RoundedPath(new Rectangle(0, 0, Width, Height), CornerRadius);
-        using var pen = new Pen(BorderColor, BorderWidth);
-        e.Graphics.DrawPath(pen, path);
     }
 }
 
