@@ -83,13 +83,62 @@ internal static class SelfTest
         Must(ok, "popup finds safe sidecar space");
         Must(!new Rectangle(target, popupSize).IntersectsWith(chrome), "popup never overlaps chrome");
 
-        var savedInsideChrome = new Point(100, 100);
-        ok = UiPlacement.TryPopup(chrome, popupSize, new[] { working }, new[] { chrome }, savedInsideChrome, out target);
-        Must(ok, "unsafe saved popup position is ignored");
-        Must(!new Rectangle(target, popupSize).IntersectsWith(chrome), "saved popup cannot force overlap");
+        // Critical-edge search must find an interior pocket that is not any screen corner.
+        var pocketWorking = new Rectangle(0, 0, 1000, 800);
+        var pocketPopup = new Size(200, 200);
+        var pocketBlockers = new[] {
+            new Rectangle(0, 0, 300, 800),
+            new Rectangle(700, 0, 300, 800),
+            new Rectangle(300, 0, 400, 250),
+            new Rectangle(300, 550, 400, 250)
+        };
+        ok = UiPlacement.TryPopup(new Rectangle(0, 0, 300, 800), pocketPopup, new[] { pocketWorking }, pocketBlockers, null, out target);
+        Must(ok, "geometry-complete search finds interior pocket");
+        Must(pocketBlockers.All(b => !Rectangle.Inflate(b, 10, 10).IntersectsWith(new Rectangle(target, pocketPopup))), "interior pocket respects safety gaps");
+
+        // Multi-monitor: if the anchor monitor is fully occupied, use a genuinely free secondary monitor.
+        var primary = new Rectangle(0, 0, 1920, 1080);
+        var secondary = new Rectangle(1920, 0, 1600, 900);
+        var fullPrimaryChrome = new Rectangle(0, 0, 1920, 1080);
+        ok = UiPlacement.TryPopup(fullPrimaryChrome, popupSize, new[] { primary, secondary }, new[] { fullPrimaryChrome }, null, out target);
+        Must(ok, "popup uses free secondary monitor");
+        Must(secondary.Contains(new Rectangle(target, popupSize)), "popup fully contained on secondary monitor");
+
+        // Exact safe saved coordinates must be preserved; unsafe saved coordinates must never be clamped across monitors.
+        var safeSaved = new Point(2100, 100);
+        ok = UiPlacement.TryPopup(fullPrimaryChrome, popupSize, new[] { primary, secondary }, new[] { fullPrimaryChrome }, safeSaved, out target);
+        Must(ok && target == safeSaved, "safe saved secondary position preserved exactly");
+        var unsafeSaved = new Point(100, 100);
+        ok = UiPlacement.TryPopup(fullPrimaryChrome, popupSize, new[] { primary, secondary }, new[] { fullPrimaryChrome }, unsafeSaved, out target);
+        Must(ok && target != unsafeSaved && secondary.Contains(new Rectangle(target, popupSize)), "unsafe saved position rejected and safely relocated");
 
         var fullScreenChrome = new Rectangle(0, 0, 1920, 1080);
         ok = UiPlacement.TryPopup(fullScreenChrome, popupSize, new[] { working }, new[] { fullScreenChrome }, null, out _);
         Must(!ok, "popup fails closed when no safe sidecar space exists");
+
+        // DpiUnaware process contract: Windows virtualizes both Screen/Chrome bounds to 96-DPI logical coordinates.
+        // Simulate a 150% monitor, place in logical space, then map result back to physical pixels and re-check safety.
+        const int dpi = 144;
+        var physicalWorking = new Rectangle(0, 0, 2560, 1400);
+        var physicalChrome = new Rectangle(1000, 0, 1560, 1400);
+        var logicalWorking = ToLogical(physicalWorking, dpi);
+        var logicalChrome = ToLogical(physicalChrome, dpi);
+        ok = UiPlacement.TryPopup(logicalChrome, popupSize, new[] { logicalWorking }, new[] { logicalChrome }, null, out target);
+        Must(ok, "150-percent DPI logical placement succeeds");
+        var physicalPopup = ToPhysical(new Rectangle(target, popupSize), dpi);
+        Must(physicalWorking.Contains(physicalPopup), "150-percent DPI popup remains inside physical working area");
+        Must(!physicalPopup.IntersectsWith(physicalChrome), "150-percent DPI popup remains physically clear of Chrome");
+    }
+
+    static Rectangle ToLogical(Rectangle physical, int dpi)
+    {
+        int Scale(int value) => (int)Math.Round(value * 96.0 / dpi, MidpointRounding.AwayFromZero);
+        return new Rectangle(Scale(physical.X), Scale(physical.Y), Scale(physical.Width), Scale(physical.Height));
+    }
+
+    static Rectangle ToPhysical(Rectangle logical, int dpi)
+    {
+        int Scale(int value) => (int)Math.Round(value * dpi / 96.0, MidpointRounding.AwayFromZero);
+        return new Rectangle(Scale(logical.X), Scale(logical.Y), Scale(logical.Width), Scale(logical.Height));
     }
 }
