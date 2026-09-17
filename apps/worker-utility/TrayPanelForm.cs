@@ -1,0 +1,251 @@
+using System.Drawing.Drawing2D;
+
+namespace TigerIQ.WorkerUtility;
+
+internal sealed class TrayPanelForm : Form
+{
+    static readonly Color Canvas = Color.FromArgb(5, 13, 25);
+    static readonly Color Card = Color.FromArgb(12, 25, 43);
+    static readonly Color Border = Color.FromArgb(33, 55, 79);
+    static readonly Color Ink = Color.FromArgb(241, 245, 249);
+    static readonly Color Muted = Color.FromArgb(148, 163, 184);
+    static readonly Color Green = Color.FromArgb(52, 211, 153);
+    static readonly Color Amber = Color.FromArgb(251, 191, 36);
+    static readonly Color Red = Color.FromArgb(248, 113, 113);
+
+    readonly Dictionary<string, Label> stateLabels = new();
+    readonly Dictionary<string, Label> dotLabels = new();
+    readonly Label dndLabel = new() { AutoSize = true, ForeColor = Muted, Font = new Font("Segoe UI", 8.5f) };
+    readonly Action<string> openWorker;
+    readonly Action openAll;
+    readonly Action toggleDnd;
+    readonly Action exit;
+
+    protected override bool ShowWithoutActivation => false;
+
+    public TrayPanelForm(Action<string> openWorker, Action openAll, Action toggleDnd, Action exit)
+    {
+        this.openWorker = openWorker;
+        this.openAll = openAll;
+        this.toggleDnd = toggleDnd;
+        this.exit = exit;
+
+        AutoScaleMode = AutoScaleMode.Dpi;
+        FormBorderStyle = FormBorderStyle.None;
+        ShowInTaskbar = false;
+        TopMost = true;
+        StartPosition = FormStartPosition.Manual;
+        ClientSize = new Size(306, 432);
+        BackColor = Canvas;
+        Padding = new Padding(10);
+        Text = "TigerIQ Workers";
+
+        var root = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.TopDown,
+            WrapContents = false,
+            BackColor = Canvas,
+            Padding = new Padding(4),
+            AutoScroll = false
+        };
+        root.Controls.Add(BuildHeader());
+        foreach (var worker in Workers.All) root.Controls.Add(BuildWorkerRow(worker));
+        root.Controls.Add(BuildGlobalActions());
+        Controls.Add(root);
+
+        Shown += (_, _) => ApplyRoundedRegion();
+        SizeChanged += (_, _) => ApplyRoundedRegion();
+        Deactivate += (_, _) => Hide();
+        KeyDown += (_, e) => { if (e.KeyCode == Keys.Escape) Hide(); };
+        KeyPreview = true;
+    }
+
+    Control BuildHeader()
+    {
+        var panel = new Panel
+        {
+            Size = new Size(270, 72),
+            Margin = new Padding(0, 0, 0, 8),
+            BackColor = Color.FromArgb(8, 19, 34)
+        };
+        var brand = new Label
+        {
+            Text = "🐯  TigerIQ Workers",
+            AutoSize = true,
+            Location = new Point(12, 10),
+            ForeColor = Ink,
+            Font = new Font("Segoe UI", 13, FontStyle.Bold)
+        };
+        var sub = new Label
+        {
+            Text = "Điều khiển 3 nhân viên Chrome",
+            AutoSize = true,
+            Location = new Point(14, 37),
+            ForeColor = Muted,
+            Font = new Font("Segoe UI", 8.5f)
+        };
+        dndLabel.Location = new Point(14, 53);
+        panel.Controls.Add(brand);
+        panel.Controls.Add(sub);
+        panel.Controls.Add(dndLabel);
+        return panel;
+    }
+
+    Control BuildWorkerRow(WorkerDefinition worker)
+    {
+        var accent = WorkerAccent(worker.Id);
+        var panel = new Panel
+        {
+            Size = new Size(270, 76),
+            Margin = new Padding(0, 0, 0, 7),
+            BackColor = Card
+        };
+        var stripe = new Panel { BackColor = accent, Location = new Point(0, 0), Size = new Size(4, 76) };
+        var dot = new Label
+        {
+            Text = "●",
+            AutoSize = true,
+            Location = new Point(14, 12),
+            Font = new Font("Segoe UI", 10, FontStyle.Bold),
+            ForeColor = Red
+        };
+        var name = new Label
+        {
+            Text = $"{worker.Id} — {worker.Name}",
+            AutoSize = true,
+            Location = new Point(34, 10),
+            ForeColor = Ink,
+            Font = new Font("Segoe UI", 10, FontStyle.Bold)
+        };
+        var state = new Label
+        {
+            Text = "Đang tải trạng thái…",
+            AutoSize = true,
+            Location = new Point(34, 36),
+            ForeColor = Muted,
+            Font = new Font("Segoe UI", 8.5f)
+        };
+        var button = new Button
+        {
+            Text = "Mở",
+            Size = new Size(55, 30),
+            Location = new Point(203, 26),
+            FlatStyle = FlatStyle.Flat,
+            BackColor = accent,
+            ForeColor = Color.White,
+            Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
+            Cursor = Cursors.Hand,
+            TabStop = false
+        };
+        button.FlatAppearance.BorderSize = 0;
+        button.Click += (_, _) => { Hide(); openWorker(worker.Id); };
+
+        dotLabels[worker.Id] = dot;
+        stateLabels[worker.Id] = state;
+        panel.Controls.Add(stripe);
+        panel.Controls.Add(dot);
+        panel.Controls.Add(name);
+        panel.Controls.Add(state);
+        panel.Controls.Add(button);
+        return panel;
+    }
+
+    Control BuildGlobalActions()
+    {
+        var panel = new Panel
+        {
+            Size = new Size(270, 94),
+            Margin = new Padding(0, 3, 0, 0),
+            BackColor = Canvas
+        };
+        var all = MakeButton("▦  Mở tất cả bảng", new Point(0, 0), new Size(130, 36));
+        all.Click += (_, _) => { Hide(); openAll(); };
+        var dnd = MakeButton("◐  Không làm phiền", new Point(140, 0), new Size(130, 36));
+        dnd.Click += (_, _) => toggleDnd();
+        var quit = MakeButton("⏻  Thoát Utility", new Point(0, 46), new Size(270, 36));
+        quit.BackColor = Color.FromArgb(74, 24, 31);
+        quit.ForeColor = Color.FromArgb(254, 202, 202);
+        quit.Click += (_, _) => exit();
+        panel.Controls.Add(all);
+        panel.Controls.Add(dnd);
+        panel.Controls.Add(quit);
+        return panel;
+    }
+
+    Button MakeButton(string text, Point location, Size size)
+    {
+        var button = new Button
+        {
+            Text = text,
+            Location = location,
+            Size = size,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.FromArgb(20, 40, 64),
+            ForeColor = Ink,
+            Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
+            Cursor = Cursors.Hand,
+            TabStop = false
+        };
+        button.FlatAppearance.BorderColor = Border;
+        button.FlatAppearance.BorderSize = 1;
+        return button;
+    }
+
+    public void ApplyStates(IReadOnlyDictionary<string, WorkerView> views, UtilitySettings settings)
+    {
+        dndLabel.Text = settings.DoNotDisturb ? "Thông báo: đang tắt" : "Thông báo: đang bật";
+        foreach (var worker in Workers.All)
+        {
+            if (!views.TryGetValue(worker.Id, out var view))
+            {
+                dotLabels[worker.Id].ForeColor = Red;
+                stateLabels[worker.Id].Text = "Chưa có dữ liệu";
+                continue;
+            }
+
+            dotLabels[worker.Id].ForeColor = view.State switch
+            {
+                WorkerUiState.Ready => Green,
+                WorkerUiState.Working => Green,
+                WorkerUiState.Paused => Amber,
+                _ => Red
+            };
+            stateLabels[worker.Id].ForeColor = view.State == WorkerUiState.Blocked ? Red : Muted;
+            stateLabels[worker.Id].Text = view.State switch
+            {
+                WorkerUiState.Ready => "● Sẵn sàng",
+                WorkerUiState.Working => $"● Đang chạy  ·  {view.JobId ?? "đang xử lý"}",
+                WorkerUiState.Paused => "● Tạm dừng",
+                _ => $"● Bị chặn  ·  {view.Reason}"
+            };
+        }
+    }
+
+    public void ToggleNearTray()
+    {
+        if (Visible) { Hide(); return; }
+        var cursorScreen = Screen.FromPoint(Cursor.Position);
+        var work = cursorScreen.WorkingArea;
+        Location = new Point(work.Right - Width - 12, work.Bottom - Height - 12);
+        Show();
+        Activate();
+    }
+
+    static Color WorkerAccent(string id) => id switch
+    {
+        "NV02" => Color.FromArgb(37, 99, 235),
+        "NV03" => Color.FromArgb(168, 85, 247),
+        "NV04" => Color.FromArgb(6, 182, 212),
+        _ => Color.FromArgb(59, 130, 246)
+    };
+
+    void ApplyRoundedRegion()
+    {
+        if (Width <= 0 || Height <= 0) return;
+        using var path = PopupForm.RoundedPath(new Rectangle(0, 0, Width, Height), 16);
+        var old = Region;
+        Region = new Region(path);
+        old?.Dispose();
+    }
+}
