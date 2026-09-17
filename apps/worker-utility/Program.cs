@@ -27,7 +27,7 @@ internal static class Program
         }
         using var mutex = new Mutex(true, "Local\\TigerIQ.WorkerUtility.V1", out var created);
         if (!created) return;
-        Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
+        Application.SetHighDpiMode(HighDpiMode.DpiUnaware);
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
         Application.Run(new UtilityContext());
