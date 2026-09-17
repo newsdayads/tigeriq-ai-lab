@@ -76,14 +76,14 @@ internal sealed class PopupForm : Form
     readonly Label job = new()
     {
         AutoSize = false,
-        Size = new Size(294, 18),
+        Size = new Size(294, 15),
         ForeColor = Ink,
         Font = new Font("Segoe UI", 8.6f, FontStyle.Bold)
     };
     readonly Label reason = new()
     {
         AutoSize = false,
-        Size = new Size(294, 15),
+        Size = new Size(294, 14),
         ForeColor = Muted,
         Font = new Font("Segoe UI", 7.8f)
     };
