@@ -27,7 +27,7 @@ internal sealed class PopupForm : Form
     readonly RoundedPanel statusSurface = new()
     {
         Location = new Point(10, 106),
-        Size = new Size(324, 92),
+        Size = new Size(324, 100),
         BackColor = Surface,
         BorderColor = Border,
         BorderWidth = 1,
@@ -99,7 +99,7 @@ internal sealed class PopupForm : Form
         AutoSize = false,
         AutoEllipsis = true,
         Size = new Size(312, 20),
-        Location = new Point(16, 202),
+        Location = new Point(16, 210),
         ForeColor = Muted,
         Font = new Font("Segoe UI", 7.8f),
         TextAlign = ContentAlignment.MiddleLeft
@@ -158,7 +158,7 @@ internal sealed class PopupForm : Form
         AutoScaleMode = AutoScaleMode.Dpi;
         Font = new Font("Segoe UI", 9);
         Text = "TigerIQ Worker Utility";
-        ClientSize = new Size(344, 760);
+        ClientSize = new Size(344, 770);
         MinimumSize = Size;
         MaximumSize = Size;
         StartPosition = FormStartPosition.Manual;
@@ -177,7 +177,7 @@ internal sealed class PopupForm : Form
         BuildHeader();
         BuildStatus();
 
-        var y = 228;
+        var y = 236;
         AddActionSection("ĐIỀU KHIỂN", ref y,
             ("▶  Chạy / Tiếp tục", "run"),
             ("Ⅱ  Tạm dừng", "pause"));
@@ -199,11 +199,11 @@ internal sealed class PopupForm : Form
         BuildLogs(ref y);
 
         footerAdvanced = MakeActionButton("⚙  Nâng cao", "advanced-toggle", 150, 32);
-        footerAdvanced.Location = new Point(16, 718);
+        footerAdvanced.Location = new Point(16, 728);
         footerHide = new RoundedButton
         {
             Text = "×  Ẩn bảng",
-            Location = new Point(178, 718),
+            Location = new Point(178, 728),
             Size = new Size(150, 32),
             BackColor = Color.FromArgb(20, 38, 60),
             ForeColor = Ink,
