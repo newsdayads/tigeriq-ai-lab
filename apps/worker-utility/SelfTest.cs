@@ -80,7 +80,7 @@ internal static class SelfTest
     {
         var working = new Rectangle(0, 0, 1920, 1080);
         var chrome = new Rectangle(0, 0, 1500, 1040);
-        var badgeSize = new Size(88, 32);
+        var badgeSize = new Size(48, 26);
         var badgeOk = UiPlacement.TryBadge(chrome, badgeSize, working, null, null, out var badge);
         Must(badgeOk, "badge has safe own-window title space");
         Must(badge.X >= working.Left && badge.Y >= working.Top, "badge inside working area");
