@@ -57,6 +57,7 @@ const states = new Map<WorkerId,WorkerState>(config.workers.map((worker) => {
 }));
 const commandQueues = new Map<WorkerId,Command[]>(config.workers.map((worker) => [worker.id, []]));
 const waiters = new Map<string,Waiter>();
+const utilityPausedWorkers = new Set<WorkerId>();
 const recoveryAttempts = new Map<WorkerId,number>(WORKER_IDS.map((id) => [id,0]));
 const recoveryInFlight = new Set<WorkerId>();
 let paused=false;
@@ -185,36 +186,16 @@ function evidence(){
 }
 function persistEvidence(){const value=evidence();atomicJson(runtimeEvidencePath,value);return value;}
 
-function assertVisibleChromeLaunch(){
-  if(!isInteractiveDesktopSession())throw new Error('INTERACTIVE_SESSION_REQUIRED:NO_HIDDEN_CHROME');
-}
-function launchChrome(workerId:WorkerId){
+async function launchChrome(workerId:WorkerId){
   assertWorkerEnabled(workerId);
-  assertVisibleChromeLaunch();
-  const worker=getWorker(workerId);
-  if(!worker)throw new Error(`UNKNOWN_WORKER:${workerId}`);
-  if(!existsSync(extensionPath))throw new Error('CONTROLLER_EXTENSION_PATH_MISSING');
+  if(!isInteractiveDesktopSession())throw new Error('INTERACTIVE_SESSION_REQUIRED:NO_HIDDEN_CHROME');
+  const url=config.recovery.launchBrokerUrl;
+  if(!url)throw new Error('CHROME_LAUNCH_BROKER_REQUIRED');
   const placement=computePlacements(config,effectiveWorkArea())[workerId];
-  const args:string[]=[];
-  const userDataDir=worker.userDataDir??config.userDataDir;
-  if(userDataDir)args.push(`--user-data-dir=${userDataDir}`);
-  args.push(
-    `--load-extension=${extensionPath}`,
-    `--profile-directory=${worker.profileDirectory}`,
-    '--disable-session-crashed-bubble',
-    '--new-window',
-    `--window-position=${placement.left},${placement.top}`,
-    `--window-size=${placement.width},${placement.height}`,
-    worker.homeUrl,
-  );
-  const child=spawn(config.chromePath,args,{detached:false,windowsHide:false,stdio:'ignore'});
-  child.unref();
-  const state=states.get(workerId)!;
-  state.status='STARTING';
-  state.windowState='OPEN';
-  state.windowEventAt=new Date().toISOString();
-  state.manualCloseSuppressed=false;
-  log('CHROME_LAUNCH_VISIBLE',{workerId,profileDirectory:worker.profileDirectory,placement,extensionLoaded:true,disableSessionCrashedBubble:true,sessionName:process.env.SESSIONNAME??null});
+  const response=await fetch(`${url}/api/launch`,{method:'POST',headers:{'content-type':'application/json; charset=utf-8'},body:JSON.stringify({workerId,placement}),signal:AbortSignal.timeout((config.recovery.launchBrokerTimeoutMs??5000))});
+  if(!response.ok)throw new Error(`CHROME_LAUNCH_BROKER_HTTP_${response.status}:${await response.text()}`);
+  const state=states.get(workerId)!; state.status='STARTING'; state.windowState='OPEN'; state.windowEventAt=new Date().toISOString(); state.manualCloseSuppressed=false;
+  log('CHROME_LAUNCH_REQUESTED_VIA_BROKER',{workerId,placement,brokerUrl:url});
 }
 async function waitForHeartbeat(workerId:WorkerId){
   const deadline=Date.now()+config.pacing.workerReadyTimeoutMs;
@@ -235,6 +216,7 @@ function sendCommand(workerId:WorkerId,action:string,payload?:Record<string,unkn
   assertWorkerEnabled(workerId);
   if(killed)return Promise.reject(new Error('CONTROLLER_KILLED'));
   if(paused)return Promise.reject(new Error('OWNER_INTERACTION_READ_ONLY'));
+  if(utilityPausedWorkers.has(workerId)&&!['FOCUS','LAYOUT'].includes(action))return Promise.reject(new Error(`UTILITY_WORKER_PAUSED:${workerId}`));
   if(state.blocked&&!['FOCUS','LAYOUT'].includes(action))return Promise.reject(new Error(`WORKER_BLOCKED:${workerId}`));
   const command:Command={id:randomUUID(),workerId,action,payload,createdAt:new Date().toISOString()};
   commandQueues.get(workerId)!.push(command);
@@ -283,7 +265,7 @@ async function startWorker(workerId:WorkerId){
     assertWorkerEnabled(workerId);
     if(!recentHeartbeat(workerId)){
       if(!canLaunchWorker(state))throw new Error(`RECOVERY_AMBIGUOUS_WINDOW:${workerId}`);
-      launchChrome(workerId);
+      await launchChrome(workerId);
     }
     await waitForHeartbeat(workerId);
     await delay(config.pacing.postReadySettlingMs);
@@ -648,6 +630,23 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
     killed=true;setOwnerInteractionReadOnly(true);
     for(const queue of commandQueues.values())queue.splice(0);
     log('KILL_SWITCH');persistEvidence();json(res,200,{ok:true});return true;
+  }
+  const utilityMatch=url.pathname.match(/^\/api\/utility\/workers\/(NV02|NV03|NV04)\/(health|pause|resume|open-canonical|archive|safe-recover)$/);
+  if(utilityMatch){
+    const workerId=utilityMatch[1] as WorkerId; const action=utilityMatch[2]; const state=states.get(workerId)!; const worker=getWorker(workerId)!;
+    try{
+      if(action==='health'&&req.method==='GET'){
+        let bridgeOk=false;try{const r=await fetch('http://127.0.0.1:8799/health',{signal:AbortSignal.timeout(1500)});bridgeOk=r.ok;}catch{}
+        json(res,200,{ok:true,workerId,controller:true,bridgeOk,interactiveSession:isInteractiveDesktopSession(),sessionName:process.env.SESSIONNAME??null,utilityPaused:utilityPausedWorkers.has(workerId),state});return true;
+      }
+      if(req.method!=='POST'){json(res,405,{ok:false,error:'METHOD_NOT_ALLOWED'});return true;}
+      if(action==='pause'){utilityPausedWorkers.add(workerId);log('UTILITY_WORKER_PAUSED',{workerId});persistEvidence();json(res,200,{ok:true});return true;}
+      if(action==='resume'){utilityPausedWorkers.delete(workerId);log('UTILITY_WORKER_RESUMED',{workerId});persistEvidence();json(res,200,{ok:true});return true;}
+      assertWorkerEnabled(workerId);
+      if(action==='open-canonical'){await uiQueue.enqueue(()=>sendCommand(workerId,'NAVIGATE',{url:worker.homeUrl}));json(res,200,{ok:true});return true;}
+      if(action==='safe-recover'){if(state.blocked)throw new Error('SAFE_RECOVER_BLOCKED'); if(recentHeartbeat(workerId)){await layoutWorker(workerId);json(res,200,{ok:true,mode:'ATTACH_EXISTING'});return true;} await startWorker(workerId);json(res,200,{ok:true,mode:'BROKER_LAUNCH'});return true;}
+      if(action==='archive'){const data=await body(req);if(typeof data.receiptRef!=='string'||!data.receiptRef.startsWith('https://github.com/'))throw new Error('ARCHIVE_DURABLE_RECEIPT_REQUIRED');if(workerHasActiveJob(workerId)||state.lastHeartbeat?.uiBusy)throw new Error('ARCHIVE_ACTIVE_JOB_FORBIDDEN');await uiQueue.enqueue(()=>sendCommand(workerId,'ARCHIVE_CHAT',{receiptRef:data.receiptRef}));json(res,200,{ok:true});return true;}
+    }catch(error){json(res,409,{ok:false,error:String(error)});return true;}
   }
   const match=url.pathname.match(/^\/api\/workers\/(NV03|NV04|NV02)\/(start|focus|layout|dispatch|close|unblock|enable|disable)$/);
   if(match&&req.method==='POST'){
