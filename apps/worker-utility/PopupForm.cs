@@ -83,20 +83,21 @@ internal sealed class PopupForm : Form
     readonly Label reason = new()
     {
         AutoSize = false,
-        Size = new Size(294, 18),
+        Size = new Size(294, 15),
         ForeColor = Muted,
         Font = new Font("Segoe UI", 7.8f)
     };
     readonly Label progress = new()
     {
         AutoSize = false,
-        Size = new Size(294, 18),
+        Size = new Size(294, 13),
         ForeColor = Muted,
         Font = new Font("Segoe UI", 7.8f)
     };
     readonly Label actionStatus = new()
     {
         AutoSize = false,
+        AutoEllipsis = true,
         Size = new Size(312, 20),
         Location = new Point(16, 202),
         ForeColor = Muted,
