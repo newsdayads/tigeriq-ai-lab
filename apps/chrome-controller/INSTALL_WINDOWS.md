@@ -345,3 +345,17 @@ Log chỉ giữ timestamp, worker ID, action, command ID, status/error. Không g
 - Không bypass CAPTCHA/2FA/rate-limit/security challenge.
 - Selector composer/send có thể cần cập nhật khi ChatGPT/Gemini thay DOM.
 - Nếu Extension chưa gắn đúng Worker ID, Start All sẽ timeout heartbeat và không tiếp tục mở hàng loạt worker khác.
+
+## 17. Hardening #763 — tách vòng đời Chrome khỏi Controller
+
+Từ gói hardening #763, `ChromeController` không được trực tiếp sinh tiến trình Chrome. Việc mở Chrome đi qua `chrome-launch-broker` tại `127.0.0.1:8800`.
+
+- Chạy `Start-ChromeLaunchBroker.ps1` bằng process/task **độc lập** với `Start-ChromeController.ps1`; không đặt broker làm child của Controller.
+- Restart/terminate riêng Controller không được kéo theo broker hoặc Chrome.
+- Nếu worker có `debugPort`, broker mở Google Chrome chuẩn bằng `--remote-debugging-port` và không nạp extension; đây là đường Direct CDP hiện hành.
+- Broker fail closed nếu debug port của worker đã hoạt động (`WORKER_ALREADY_RUNNING`) để không tạo cửa sổ/tab trùng.
+- Không fallback về spawn Chrome trực tiếp từ Controller khi broker không sẵn sàng.
+- `autopilot.dispatchLeaseTtlMs` giữ lease dispatch bền vững; dispatch đang ở trạng thái không chắc chắn không được takeover tự động.
+- `AUTH_REQUIRED`, `REAUTH`, `CAPTCHA`, `RATE_LIMIT/429`, security warning hoặc suspicious activity đều dừng automation và cần `unblock` có chủ đích sau khi điều kiện đã được xử lý.
+
+Trong lúc nâng cấp một runtime đang có Chrome worker mở, **không restart/reload/close Chrome hoặc ChromeController** chỉ để áp source mới. Chỉ triển khai khi có maintenance gate riêng và bằng chứng an toàn.

@@ -6,6 +6,9 @@ on:
     paths:
       - 'apps/chrome-controller/**'
       - 'tests/chrome-controller.test.ts'
+      - 'tests/chrome-controller-autonomy-hardening.test.ts'
+      - 'tests/ui-autopilot-snapshot.test.ts'
+      - 'apps/tigeriq-core/ui-autopilot-snapshot.mjs'
       - 'package.json'
       - '.github/workflows/chrome-controller-package.yml'
   push:
@@ -13,6 +16,9 @@ on:
     paths:
       - 'apps/chrome-controller/**'
       - 'tests/chrome-controller.test.ts'
+      - 'tests/chrome-controller-autonomy-hardening.test.ts'
+      - 'tests/ui-autopilot-snapshot.test.ts'
+      - 'apps/tigeriq-core/ui-autopilot-snapshot.mjs'
       - 'package.json'
       - '.github/workflows/chrome-controller-package.yml'
 
@@ -32,7 +38,7 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
       - name: Tests
-        run: npx vitest run tests/chrome-controller.test.ts
+        run: npx vitest run tests/chrome-controller.test.ts tests/chrome-controller-autonomy-hardening.test.ts tests/ui-autopilot-snapshot.test.ts
       - name: Build
         run: npm run build
       - name: Assemble runtime package
@@ -51,6 +57,7 @@ jobs:
           cp apps/chrome-controller/runtime-evidence.schema.json "$ROOT/apps/chrome-controller/"
           cp apps/chrome-controller/INSTALL_WINDOWS.md "$ROOT/apps/chrome-controller/"
           cp apps/chrome-controller/Start-ChromeController.ps1 "$ROOT/apps/chrome-controller/"
+          cp apps/chrome-controller/Start-ChromeLaunchBroker.ps1 "$ROOT/apps/chrome-controller/"
           printf '%s\n' "$ARTIFACT_SOURCE_SHA" > "$ROOT/VERSION.txt"
       - name: Upload Windows runtime
         uses: actions/upload-artifact@v4
