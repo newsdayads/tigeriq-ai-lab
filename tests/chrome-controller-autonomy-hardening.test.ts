@@ -109,3 +109,12 @@ describe('controller-independent Chrome lifecycle contract',()=>{
     expect(lifecycle).toContain('child.unref()');
   });
 });
+
+describe('AUTO_CONTINUE current-chat dispatch contract',()=>{
+  it('does not navigate to project home before dispatching the queued job',()=>{
+    const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
+    expect(server).toContain("await dispatch('NV02',decision.text,false,'AUTO_CONTINUE')");
+    expect(server).not.toContain("await dispatch('NV02',decision.text,true,'AUTO_CONTINUE')");
+    expect(server).toContain("await dispatch(workerId,data.text,data.navigate!==false)");
+  });
+});
