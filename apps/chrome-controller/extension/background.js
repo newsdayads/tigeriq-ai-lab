@@ -254,6 +254,15 @@ async function execute(workerId,command) {
     if(!response?.ok){const reason=response?.status||'DISPATCH_FAILED';const error=new Error(reason);error.status=reason;throw error;}
     return response;
   }
+  if(action==='ARCHIVE_CHAT'){
+    if(!ARCHIVE_SUPPORTED_WORKERS.has(workerId)) throw new Error(`ARCHIVE_SELECTOR_UNVERIFIED:${workerId}`);
+    if(!matchesWorker(workerId,ctx.url)) throw new Error('BLOCKED_URL');
+    const receiptRef=String(payload.receiptRef||'');
+    if(!receiptRef.startsWith('https://github.com/')) throw new Error('ARCHIVE_DURABLE_RECEIPT_REQUIRED');
+    const result=await chrome.tabs.sendMessage(ctx.tabId,{type:'TIGERIQ_ARCHIVE_CONVERSATION'});
+    if(!result?.ok){const reason=result?.status||'ARCHIVE_FAILED';const error=new Error(reason);error.status=reason;throw error;}
+    return {status:'ARCHIVED',receiptRef};
+  }
   throw new Error(`UNKNOWN_ACTION:${action}`);
 }
 

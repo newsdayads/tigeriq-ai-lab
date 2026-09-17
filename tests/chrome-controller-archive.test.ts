@@ -35,6 +35,9 @@ describe('Chrome Controller safe save-and-archive',()=>{
     expect(background).toContain('if(count>=2) return');
     expect(background).toContain("saved.archiveAfterDone!==true");
     expect(background).toContain('void maybeAutoArchive(workerId).catch(()=>{})');
+    expect(background).toContain("if(action==='ARCHIVE_CHAT')");
+    expect(background).toContain("const receiptRef=String(payload.receiptRef||'')");
+    expect(background).toContain("return {status:'ARCHIVED',receiptRef}");
   });
 
   it('exposes manual action, keeps auto archive default off, and grants only loopback verifier access',()=>{
