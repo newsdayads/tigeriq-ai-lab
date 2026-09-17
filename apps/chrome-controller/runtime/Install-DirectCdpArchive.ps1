@@ -29,7 +29,8 @@ if (-not (Test-Path -LiteralPath $BridgePath)) { throw "BRIDGE_NOT_FOUND:$Bridge
 if (-not (Test-Path -LiteralPath $ModuleSourcePath)) { throw "ARCHIVE_MODULE_NOT_FOUND:$ModuleSourcePath" }
 
 $raw = [IO.File]::ReadAllText($BridgePath)
-$tokenMatch = [regex]::Match($raw, '(?m)^const NV02_TOKEN=.*;$')
+$tokenPattern = '(?m)^const NV02_TOKEN=[^\r\n]*;(?=\r?$)'
+$tokenMatch = [regex]::Match($raw, $tokenPattern)
 if (-not $tokenMatch.Success) { throw 'BRIDGE_TOKEN_ANCHOR_NOT_FOUND' }
 $tokenFingerprintBefore = Get-TextSha256 $tokenMatch.Value
 
@@ -69,7 +70,7 @@ if (-not $patched.Contains("if(action==='ARCHIVE_CHAT')")) {
   $patched = $patched.Replace($unknownAnchor, "$archiveBranch`r`n$unknownAnchor")
 }
 
-$tokenMatchAfter = [regex]::Match($patched, '(?m)^const NV02_TOKEN=.*;$')
+$tokenMatchAfter = [regex]::Match($patched, $tokenPattern)
 if (-not $tokenMatchAfter.Success) { throw 'BRIDGE_TOKEN_ANCHOR_LOST' }
 $tokenFingerprintAfter = Get-TextSha256 $tokenMatchAfter.Value
 if ($tokenFingerprintAfter -ne $tokenFingerprintBefore) { throw 'BRIDGE_CREDENTIAL_MUTATION_FORBIDDEN' }
