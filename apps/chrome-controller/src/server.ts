@@ -15,6 +15,7 @@ import {
 import { delay, SerialQueue } from './serial-queue.js';
 import {
   AUTO_CONTINUE,
+  classifyAutoContinueDispatchFailure,
   decideAutoContinue,
   freshAutopilotState,
   selectFreshCompletionEvidence,
@@ -440,12 +441,8 @@ async function autopilotTick(){
       log('AUTO_CONTINUE_COMMITTED',{jobId:decision.jobId});
     }catch(error){
       const message=String(error);
-      const knownNotDelivered=!dispatchDelivered&&(
-        message.includes('COMMAND_TIMEOUT_NOT_DELIVERED')||
-        message.includes('COMPOSER_NOT_FOUND')||
-        message.includes('SEND_BUTTON_NOT_FOUND')
-      );
-      if(knownNotDelivered){
+      const failureClass=classifyAutoContinueDispatchFailure(error,dispatchDelivered);
+      if(failureClass==='SAFE_RETRY'){
         dispatchLease.markRetryable(dispatchLeaseToken.leaseId,decision.jobId);
         autopilotState={...clearPending(autopilotState),phase:'STOPPED',uncertainJobId:undefined,updatedAt:new Date().toISOString()};
         persistAutopilotState();

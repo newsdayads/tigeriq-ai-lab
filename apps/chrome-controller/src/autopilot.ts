@@ -5,6 +5,16 @@ export const TERMINAL_JOB_STATUSES = new Set(['DONE', 'FAILED', 'BLOCKED', 'CANC
 export const EXECUTABLE_JOB_STATUSES = new Set(['QUEUED', 'READY']);
 export const ALLOWED_EVIDENCE_SOURCES = new Set(['GITHUB', 'CORE']);
 export const DEFAULT_SNAPSHOT_MAX_AGE_MS = 5 * 60_000;
+export type AutoContinueDispatchFailureClass = 'SAFE_RETRY' | 'UNCERTAIN';
+export function classifyAutoContinueDispatchFailure(error:unknown,dispatchSubmitted:boolean):AutoContinueDispatchFailureClass {
+  if(dispatchSubmitted)return 'UNCERTAIN';
+  const message=String(error);
+  return [
+    'COMMAND_TIMEOUT_NOT_DELIVERED',
+    'COMPOSER_NOT_FOUND',
+    'SEND_BUTTON_NOT_FOUND',
+  ].some((marker)=>message.includes(marker))?'SAFE_RETRY':'UNCERTAIN';
+}
 const MAX_FUTURE_SKEW_MS = 60_000;
 const DISALLOWED_RISK_FLAGS = new Set([
   'PAID','CREDENTIAL_CHANGE','DESTRUCTIVE','PRODUCTION_RELEASE','IRREVERSIBLE','SECURITY_BOUNDARY',

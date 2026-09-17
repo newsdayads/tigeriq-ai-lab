@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import * as ts from 'typescript';
 import { describe,expect,it } from 'vitest';
 import { DurableDispatchLeaseStore } from '../apps/chrome-controller/src/dispatch-lease.js';
-import { decideAutoContinue,freshAutopilotState,type DurableAutopilotState,type ExternalAutopilotSnapshot } from '../apps/chrome-controller/src/autopilot.js';
+import { classifyAutoContinueDispatchFailure,decideAutoContinue,freshAutopilotState,type DurableAutopilotState,type ExternalAutopilotSnapshot } from '../apps/chrome-controller/src/autopilot.js';
 import { heartbeatStopReason } from '../apps/chrome-controller/src/security-gate.js';
 
 const observedAt='2026-09-17T00:00:10.000Z';
@@ -127,12 +127,28 @@ describe('AUTO_CONTINUE current-chat dispatch contract',()=>{
   });
 });
 describe('AUTO_CONTINUE known non-delivery contract',()=>{
-  it('releases only explicit pre-submit failures for safe retry',()=>{
+  it('classifies every explicit pre-submit failure as safe retry',()=>{
+    for(const error of [
+      new Error('COMMAND_TIMEOUT_NOT_DELIVERED:DISPATCH:NV02'),
+      new Error('COMPOSER_NOT_FOUND'),
+      new Error('SEND_BUTTON_NOT_FOUND'),
+    ]) expect(classifyAutoContinueDispatchFailure(error,false)).toBe('SAFE_RETRY');
+  });
+
+  it('keeps ambiguous or submitted failures fail-closed',()=>{
+    for(const error of [
+      new Error('COMMAND_TIMEOUT_DELIVERED:DISPATCH:NV02'),
+      new Error('DISPATCH_FAILED'),
+      new Error('NETWORK_AFTER_CLICK'),
+    ]) expect(classifyAutoContinueDispatchFailure(error,false)).toBe('UNCERTAIN');
+    expect(classifyAutoContinueDispatchFailure(new Error('COMPOSER_NOT_FOUND'),true)).toBe('UNCERTAIN');
+  });
+
+  it('wires the classifier into AUTO_CONTINUE while preserving manual dispatch configuration',()=>{
     const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
-    expect(server).toContain("message.includes('COMMAND_TIMEOUT_NOT_DELIVERED')");
-    expect(server).toContain("message.includes('COMPOSER_NOT_FOUND')");
-    expect(server).toContain("message.includes('SEND_BUTTON_NOT_FOUND')");
+    expect(server).toContain('classifyAutoContinueDispatchFailure(error,dispatchDelivered)');
     expect(server).toContain('dispatchLease.markRetryable(dispatchLeaseToken.leaseId,decision.jobId)');
     expect(server).toContain("log('AUTO_CONTINUE_FAILED_CLOSED'");
+    expect(server).toContain("await dispatch(workerId,data.text,data.navigate!==false)");
   });
 });
