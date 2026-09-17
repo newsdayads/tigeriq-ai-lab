@@ -13,18 +13,15 @@ internal static class UiPlacement
 
     public static Point DefaultBadge(Rectangle chromeBounds, Size badgeSize, Rectangle workingArea)
     {
-        const int gap = 6;
-        var right = new Point(chromeBounds.Right + gap, chromeBounds.Top + 8);
-        if (right.X + badgeSize.Width <= workingArea.Right)
-            return Clamp(right, badgeSize, workingArea);
-
-        var left = new Point(chromeBounds.Left - badgeSize.Width - gap, chromeBounds.Top + 8);
-        if (left.X >= workingArea.Left)
-            return Clamp(left, badgeSize, workingArea);
-
-        // Badge-only fallback: keep the tiny native badge in Chrome's title strip,
-        // away from Minimize/Maximize/Close and page content.
-        return Clamp(new Point(chromeBounds.Left + 8, chromeBounds.Top + 4), badgeSize, workingArea);
+        // Keep each worker badge inside the title strip of its own Chrome window.
+        // External side placement can visually attach NV02/NV03 to the adjacent tiled worker.
+        var desired = new Point(chromeBounds.Left + 10, chromeBounds.Top + 4);
+        var ownTitleArea = Rectangle.Intersect(
+            new Rectangle(chromeBounds.Left, chromeBounds.Top, chromeBounds.Width, Math.Min(44, chromeBounds.Height)),
+            workingArea);
+        if (ownTitleArea.Width >= badgeSize.Width && ownTitleArea.Height >= badgeSize.Height)
+            return Clamp(desired, badgeSize, ownTitleArea);
+        return Clamp(desired, badgeSize, workingArea);
     }
 
     public static Point BadgeFromOffset(Rectangle chromeBounds, Size badgeSize, Rectangle workingArea, int offsetX, int offsetY)
