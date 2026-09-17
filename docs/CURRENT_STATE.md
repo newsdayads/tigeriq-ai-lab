@@ -1,7 +1,7 @@
 # TigerIQ — Current State
 
 Date: 2026-09-17
-Status: CURRENT — Chrome autonomy exactly-once E2E + Astra handoff verified; Worker Utility UI lane active
+Status: CURRENT — Chrome autonomy exactly-once E2E + Astra handoff verified; #802 CMD-00 owner active
 Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #335 > this snapshot > runtime/evidence
 
 ## Canonical source / runtime
@@ -34,16 +34,16 @@ Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #
 
 ## Chrome workforce live truth
 - Canonical UI workers remain `NV02 | NV03 | NV04`.
-- Current Controller is fail-safe `READ_ONLY`; workers remain enabled and attached to existing windows.
-- Latest live heartbeat: NV02/NV03/NV04 all OPEN, `uiReady=true`, `authRequired=false`, `securityBlock=null`.
-- NV02 is currently `SUBMITTED/uiBusy=true` on #802; NV03/NV04 remain idle/ready.
-- Repeated command `00` does not create a duplicate NV02 mutation lane while #802 owns `apps/worker-utility/**`.
+- Current Controller is fail-safe `READ_ONLY`; workers remain attached to existing windows.
+- Owner has explicitly withdrawn #802 from NV02 and reassigned it to CMD-00/Vy as the single mutation owner.
+- NV02 is paused for #802 and must not mutate `apps/worker-utility/**` unless the Owner gives a new explicit handoff.
+- Repeated command `00` must not re-delegate #802 to NV02 while this Owner override is active.
 
 ## Worker Utility / active work
 - #793 Worker Utility V1 is CLOSED/COMPLETED and remains the canonical APP for controlling NV02/NV03/NV04; source is `apps/worker-utility/**`.
 - #801 Source of Truth reconciliation is CLOSED/COMPLETED.
-- #802 remains the active independent NV02 lane for Worker Utility UI/UX. It owns `apps/worker-utility/**` and directly related tests/UI artefacts.
-- Command `00` remains the dual-lane orchestration alias from Interaction #504 v27: Vy continues the highest-priority safe lane while ChatGPT Plus (NV02) receives one independent safe lane when ownership allows it.
+- #802 is ACTIVE under `CMD-00/Vy` as the single mutation owner for `apps/worker-utility/**` and directly related tests/UI artefacts.
+- Previous `00 → 02` delegation for #802 is superseded. NV02 keeps prior evidence/checkpoints only and does not continue execution unless a new explicit Owner handoff is recorded.
 
 ## Workforce / identity
 - Registry #335 remains authoritative for employee identity/capability.
@@ -51,9 +51,9 @@ Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #
 - `NV05` and command `5` remain retired. `GPT-6 Astra` remains an on-demand high-tier resource of NV02, not a separate employee.
 
 ## Governance
-- Interaction #504 v27 is current and contains the Owner override for command `00` dual-lane orchestration.
+- Interaction #504 v27 remains the general command policy, but the Owner's explicit #802 takeback supersedes any generic `00 → 02` delegation for this scope.
 - Registry #335 v50 remains current.
 - Production release, paid service, credential/security mutation and destructive/irreversible actions remain separate authorization gates.
 
-STATE: `CURRENT_20260917_763_787_801_DONE_802_ACTIVE`
-UI_STATE: `CURRENT_20260917_WORKER_UTILITY_CANONICAL_NV02_UI_LANE_ACTIVE`
+STATE: `CURRENT_20260917_802_CMD00_SINGLE_OWNER_NV02_REVOKED`
+UI_STATE: `CURRENT_20260917_WORKER_UTILITY_CMD00_OWNER_NV02_PAUSED`
