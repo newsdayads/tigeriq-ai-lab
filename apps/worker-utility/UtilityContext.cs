@@ -194,7 +194,8 @@ internal sealed class UtilityContext : ApplicationContext
         state.BadgeOffsetX = null;
         state.BadgeOffsetY = null;
         store.Save(settings);
-        if (binder.TryResolve(id, out _, out var rect)) badges[id].AnchorTo(rect, state);
+        if (popups[id].Visible) badges[id].HideForPopup();
+        else if (binder.TryResolve(id, out _, out var rect)) badges[id].AnchorTo(rect, state);
         store.Log(id, "BADGE_POSITION_RESET");
     }
 
