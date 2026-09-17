@@ -1,6 +1,3 @@
-using Microsoft.Win32;
-using System.Text.Json;
-
 namespace TigerIQ.WorkerUtility;
 
 internal static class Program
@@ -13,12 +10,16 @@ internal static class Program
             Environment.Exit(SelfTest.Run());
             return;
         }
+        if (System.Diagnostics.Process.GetCurrentProcess().SessionId == 0)
+        {
+            Environment.Exit(42);
+            return;
+        }
         using var mutex = new Mutex(true, "Local\\TigerIQ.WorkerUtility.V1", out var created);
         if (!created) return;
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
-        var app = new UtilityContext();
-        Application.Run(app);
+        Application.Run(new UtilityContext());
     }
 }
