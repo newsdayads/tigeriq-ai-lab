@@ -13,7 +13,7 @@ internal sealed record HarnessView(
     string? Title,
     DateTimeOffset? CheckedAt)
 {
-    public static HarnessView Off(string id) => new(id, HarnessState.Off, "PILOT_NV04_ONLY", null, null, null);
+    public static HarnessView Off(string id) => new(id, HarnessState.Off, "HARNESS_DISABLED", null, null, null);
     public static HarnessView Unknown(string id) => new(id, HarnessState.Unknown, "CHƯA_KIỂM_TRA", null, null, null);
 }
 
@@ -24,12 +24,15 @@ internal sealed class BrowserHarnessClient
     readonly Dictionary<string, SemaphoreSlim> gates =
         Workers.All.ToDictionary(x => x.Id, _ => new SemaphoreSlim(1, 1));
 
+    public static bool ReadOnlyEnabled(string workerId)
+        => Workers.All.Any(x => string.Equals(x.Id, workerId, StringComparison.OrdinalIgnoreCase));
+
     public static bool PilotEnabled(string workerId)
         => string.Equals(workerId, PilotWorkerId, StringComparison.OrdinalIgnoreCase);
 
     public async Task<HarnessView> ProbeAsync(WorkerDefinition worker, WorkerView current)
     {
-        if (!PilotEnabled(worker.Id)) return HarnessView.Off(worker.Id);
+        if (!ReadOnlyEnabled(worker.Id)) return HarnessView.Off(worker.Id);
         if (!current.SessionOk || !current.WindowOpen)
             return new(worker.Id, HarnessState.Blocked, "SESSION_OR_WINDOW_BLOCKED", null, null, DateTimeOffset.Now);
         if (current.AuthRequired || !string.IsNullOrWhiteSpace(current.SecurityBlock))
