@@ -714,7 +714,7 @@ internal sealed class UtilityContext : ApplicationContext
             Width = 430,
             Height = 360,
             StartPosition = FormStartPosition.CenterScreen,
-            AutoScaleMode = AutoScaleMode.Dpi,
+            AutoScaleMode = AutoScaleMode.None,
             BackColor = Color.FromArgb(8, 19, 34),
             ForeColor = Color.White,
             FormBorderStyle = FormBorderStyle.FixedDialog,
