@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 // @ts-ignore — runtime JS module is intentionally tested without a declaration file.
@@ -70,6 +70,8 @@ test('max three skills and context budget are hard limits', () => {
   const contents = Object.fromEntries(entries.map((entry, i) => [entry.id, 'x'.repeat(1200 + i)]));
   const f = fixture(entries, contents);
   try {
+    const maxThree = matchAndLoadSkills('shared routing', { registryPath: f.registryPath, baseDir: f.dir, maxSkills: 3, maxChars: 6000 });
+    assert.equal(maxThree.skills.length, 3);
     const result = matchAndLoadSkills('shared routing', { registryPath: f.registryPath, baseDir: f.dir, maxSkills: 3, maxChars: 2500 });
     assert.ok(result.skills.length <= 3);
     assert.ok(result.totalChars <= 2500);
@@ -95,4 +97,12 @@ test('manager prompt integration appends only matched ACTIVE skill context', () 
     assert.match(prompt, /role-separation/);
     assert.doesNotMatch(prompt, /candidate-nope/);
   } finally { f.cleanup(); }
+});
+
+test('Core manager invokes loader and appends matched skill context', () => {
+  const core = readFileSync(join(process.cwd(), 'apps/tigeriq-core/core.mjs'), 'utf8');
+  assert.match(core, /matchAndLoadSkills\(goal\)/);
+  assert.match(core, /appendSkillContextToPrompt\(basePrompt,skillContext\.contextBlock\)/);
+  assert.match(core, /SKILL_REGISTRY_REJECTED/);
+  assert.match(core, /SKILL_CONTEXT_LOADED/);
 });
