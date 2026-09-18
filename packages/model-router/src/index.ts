@@ -225,6 +225,10 @@ export class ModelRouter {
 
   async execute(request: ModelRequest): Promise<RoutedResult> {
     if (!request.prompt.trim()) throw new Error('prompt is required');
+    const preflight = validateModelRequestPreflight(request);
+    if (!preflight.valid) {
+      throw new ProviderRequestError('openai', 'configuration', `Preflight validation failed: ${preflight.reasons.join(', ')}`);
+    }
     const attempts: RoutingAttempt[] = [];
 
     for (const target of routeCandidates(this.policy)) {
