@@ -22,7 +22,7 @@ export function parseCodingIssue(issue){
   if(required.some(([k,v])=>!exactFlag(body,k,v)))return null;
   const sourcePriority=body.match(/^PRIORITY=(P[0-3])$/m)?.[1]||'P1';
   const priority=sourcePriority==='P3'?'P2':sourcePriority;
-  return {number:Number(issue.number),title:String(issue.title||''),body,priority,sourcePriority,url:String(issue.html_url||''),dependsOn:extractCodingDependencies(body),ownerDirect:backlogOwnerDirect(body)};
+  return {number:Number(issue.number),title:String(issue.title||''),body,priority,sourcePriority,url:String(issue.html_url||''),dependsOn:extractCodingDependencies(body),ownerDirect:backlogOwnerDirect(body),resourceScope:extractCodingResourceScope(body)};
 }
 
 async function jsonFetch(fetchImpl,url,init={}){const res=await fetchImpl(url,{...init,signal:AbortSignal.timeout(12000)});const text=await res.text();let body={};try{body=text?JSON.parse(text):{}}catch{body={text}}if(!res.ok)throw new Error(`HTTP_${res.status}:${String(body?.error||body?.message||text).slice(0,300)}`);return body}
@@ -31,8 +31,19 @@ async function comment(fetchImpl,owner,repo,n,token,body){if(token)await gh(fetc
 async function close(fetchImpl,owner,repo,n,token){if(token)await gh(fetchImpl,owner,repo,`/issues/${n}`,token,{method:'PATCH',body:JSON.stringify({state:'closed',state_reason:'completed'})})}
 async function markerExists(pool,type,n){const q=await pool.query("select 1 from tigeriq_events where type=$1 and data->>'issueNumber'=$2 limit 1",[type,String(n)]);return q.rowCount>0}
 async function mark(pool,type,data){await pool.query('insert into tigeriq_events(type,data) values($1,$2)',[type,JSON.stringify(data)])}
-async function hasOpenCodingDispatch(pool){
-  const q=await pool.query("select 1 from (select data from tigeriq_events where type='GITHUB_CODING_DISPATCHED' order by seq desc limit 1) d where not exists(select 1 from tigeriq_events r where r.type='GITHUB_CODING_RESULT_REPORTED' and r.data->>'issueNumber'=d.data->>'issueNumber')");
+export function extractCodingResourceScope(body){ 
+  const raw=String(body||'').match(/^RESOURCE_SCOPE=(.+)$/m)?.[1]?.trim()||'';
+  if(!raw){ 
+    const lower=String(body||'').toLowerCase();
+    if(lower.includes('app chrome')||lower.includes('chrome'))return 'APP_CHROME';
+    if(lower.includes('core/api')||lower.includes('core-api')||lower.includes('api'))return 'CORE_API';
+    return 'DEFAULT';
+  }
+  return raw;
+}
+
+async function hasOpenCodingDispatchForScope(pool,scopeKey){
+  const q=await pool.query("select 1 from (select data from tigeriq_events where type='GITHUB_CODING_DISPATCHED' order by seq desc) d where (d.data->>'resourceScope' = $1 or (d.data->>'resourceScope' is null and $1 = 'DEFAULT')) and not exists(select 1 from tigeriq_events r where r.type='GITHUB_CODING_RESULT_REPORTED' and r.data->>'issueNumber'=d.data->>'issueNumber') limit 1",[scopeKey]);
   return q.rowCount>0;
 }
 
@@ -46,11 +57,27 @@ async function dependencyGate(fetchImpl,owner,repo,token,dependsOn){
 }
 
 export async function materializeGithubCodingIssues({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token='',codingLaneUrl=process.env.TIGERIQ_CODING_LANE_URL||DEFAULT_CODING_URL}){
-  if(await hasOpenCodingDispatch(pool))return {created:0,active:1,considered:0};
   const issues=await gh(fetchImpl,owner,repo,'/issues?state=open&per_page=100&sort=updated&direction=desc',token);
   const specs=sortBacklogSpecs(issues.map(parseCodingIssue).filter(Boolean));
+  let createdCount=0;
   for(const spec of specs){
     if(await markerExists(pool,'GITHUB_CODING_DISPATCHED',spec.number))continue;
+    if(await hasOpenCodingDispatchForScope(pool,spec.resourceScope))continue;
+    const gate=await dependencyGate(fetchImpl,owner,repo,token,spec.dependsOn);
+    if(!gate.ok){
+      if(!(await markerExists(pool,'GITHUB_CODING_DEPENDENCY_WAIT',spec.number)))await mark(pool,'GITHUB_CODING_DEPENDENCY_WAIT',{issueNumber:spec.number,dependsOn:spec.dependsOn,...gate});
+      console.warn(JSON.stringify({event:'GITHUB_CODING_DEPENDENCY_WAIT',issueNumber:spec.number,dependsOn:spec.dependsOn,...gate}));
+      continue;
+    }
+    const objective=`GitHub autonomous coding issue #${spec.number}: ${spec.title}\n${spec.url}\n\n${spec.body}\n\nExecute only zero-cost reversible repository work. Keep direct main writes, paid cost, credentials/security, destructive actions, production release, browser authentication and PC01 source editing blocked.`;
+    const out=await jsonFetch(fetchImpl,`${codingLaneUrl.replace(//$/,'')}/api/objectives`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({objective,priority:spec.priority})});if(!out?.id)throw new Error('CODING_OBJECTIVE_ID_MISSING');
+    const dispatchReason=spec.ownerDirect?`OWNER_DIRECT>${spec.sourcePriority}`:`PRIORITY_${spec.sourcePriority}`;
+    await mark(pool,'GITHUB_CODING_DISPATCHED',{issueNumber:spec.number,issueUrl:spec.url,codingObjectiveId:out.id,ownerDirect:spec.ownerDirect,sourcePriority:spec.sourcePriority,dispatchPriority:spec.priority,dispatchReason,resourceScope:spec.resourceScope});
+    await comment(fetchImpl,owner,repo,spec.number,token,`[CLAIM] TigerIQ Coding Lane accepted this issue as ${out.id}. Automatic coding pipeline is active. Dispatch: ${dispatchReason}. Scope: ${spec.resourceScope}.`);
+    return {created:1,active:0,considered:specs.length,issueNumber:spec.number,codingObjectiveId:out.id};
+  }
+  const anyActive=specs.some(s=>hasOpenCodingDispatchForScope(pool,s.resourceScope));
+  return {created:0,active:anyActive?1:0,considered:specs.length};
     const gate=await dependencyGate(fetchImpl,owner,repo,token,spec.dependsOn);
     if(!gate.ok){
       if(!(await markerExists(pool,'GITHUB_CODING_DEPENDENCY_WAIT',spec.number)))await mark(pool,'GITHUB_CODING_DEPENDENCY_WAIT',{issueNumber:spec.number,dependsOn:spec.dependsOn,...gate});
@@ -69,10 +96,39 @@ export async function materializeGithubCodingIssues({pool,fetchImpl=fetch,owner=
 
 export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token='',codingLaneUrl=process.env.TIGERIQ_CODING_LANE_URL||DEFAULT_CODING_URL}){
   const rows=(await pool.query("select data from tigeriq_events where type='GITHUB_CODING_DISPATCHED' limit 100")).rows;if(!rows.length)return {progress:0,results:0};const status=await jsonFetch(fetchImpl,`${codingLaneUrl.replace(/\/$/,'')}/api/status`);let progress=0,results=0;
-  for(const row of rows){const n=Number(row.data?.issueNumber),id=String(row.data?.codingObjectiveId||'');if(!n||!id)continue;const objective=(status.objectives||[]).find(x=>x.id===id);if(!objective)continue;const job=(status.jobs||[]).find(x=>x.objective_id===id);if(job&&!(await markerExists(pool,'GITHUB_CODING_PROGRESS_REPORTED',n))){const pr=job.pr_number?` PR #${job.pr_number}.`:'';await comment(fetchImpl,owner,repo,n,token,`[PROGRESS] ${id} is ${job.status}. Implementer: ${job.employee_id||'pending'}; reviewer: ${job.reviewer_employee_id||'pending'}.${pr}`);await mark(pool,'GITHUB_CODING_PROGRESS_REPORTED',{issueNumber:n,codingObjectiveId:id,jobId:job.id,prNumber:job.pr_number||null});progress++}if(['completed','blocked'].includes(objective.status)&&!(await markerExists(pool,'GITHUB_CODING_RESULT_REPORTED',n))){await comment(fetchImpl,owner,repo,n,token,`[RESULT] ${id} ${objective.status}. ${String(objective.summary||'').slice(0,3000)}`);if(objective.status==='completed')await close(fetchImpl,owner,repo,n,token);await mark(pool,'GITHUB_CODING_RESULT_REPORTED',{issueNumber:n,codingObjectiveId:id,status:objective.status});results++}}
-  return {progress,results};
+  for(const row of rows){const n=Number(row.data?.issueNumber),id=String(row.data?.codingObjectiveId||'');if(!n||!id)continue;const objective=(status.objectives||[]).find(x=>x.id===id);if(!objective)continue;const job=(status.jobs||[]).find(x=>x.objective_id===id);if(job&&!(await markerExists(pool,'GITHUB_CODING_PROGRESS_REPORTED',n))){const pr=job.pr_number?` PR #${job.pr_number}.`:'';await comment(fetchImpl,owner,repo,n,token,`[PROGRESS] ${id} is ${job.status}. Implementer: ${job.employee_id||'pending'}; reviewer: ${job.reviewer_employee_id||'pending'}.${pr}`);await mark(pool,'GITHUB_CODING_PROGRESS_REPORTED',{issueNumber:n,codingObjectiveId:id,jobId:job.id,prNumber:job.pr_number||null});progress++}if(['completed','blocked'].includes(objective.status)&&!(await markerExist
+...[MODEL_CONTEXT_REDUCED]...
+"insert into tigeriq_events(type,objective_id,data) values('GITHUB_OBJECTIVE_MATERIALIZED',$1,$2)",[id,JSON.stringify({issueNumber:spec.number,issueUrl:spec.url,ownerDirect:spec.ownerDirect,priority:spec.priority,dispatchReason:metadata.dispatchReason})]);
+    return {created:1,skipped,active:0,considered:specs.length,issueNumber:spec.number};
+  }
+  return {created:0,skipped,active:0,considered:specs.length};
 }
 
-export function startGithubCodingIntake({databaseUrl=process.env.DATABASE_URL,fetchImpl=fetch,owner=process.env.TIGERIQ_GITHUB_OWNER||DEFAULT_OWNER,repo=process.env.TIGERIQ_GITHUB_REPO||DEFAULT_REPO,token=process.env.TIGERIQ_GITHUB_TOKEN||process.env.GITHUB_TOKEN||'',codingLaneUrl=process.env.TIGERIQ_CODING_LANE_URL||DEFAULT_CODING_URL,intervalMs=Number(process.env.TIGERIQ_GITHUB_INTAKE_MS||DEFAULT_INTERVAL_MS),initialDelayMs=20000}={}){
-  if(!databaseUrl)return {enabled:false,stop(){}};const pool=new Pool({connectionString:databaseUrl,max:1});let stopped=false,busy=false,timer=null,interval=null;const tick=async()=>{if(stopped||busy)return;busy=true;try{const b=await syncGithubCodingOutcomes({pool,fetchImpl,owner,repo,token,codingLaneUrl});const a=await materializeGithubCodingIssues({pool,fetchImpl,owner,repo,token,codingLaneUrl});if(a.created||b.progress||b.results)console.log(JSON.stringify({event:'GITHUB_CODING_INTAKE_SYNC',created:a.created,progress:b.progress,results:b.results,active:a.active||0,issueNumber:a.issueNumber||null}))}catch(e){console.error(JSON.stringify({event:'GITHUB_CODING_INTAKE_ERROR',error:String(e?.message||e)}))}finally{busy=false}};timer=setTimeout(()=>{void tick();interval=setInterval(()=>void tick(),Math.max(60000,intervalMs));interval.unref?.()},Math.max(1000,initialDelayMs));timer.unref?.();return {enabled:true,async stop(){stopped=true;if(timer)clearTimeout(timer);if(interval)clearInterval(interval);await pool.end()}};
+export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token=''}){
+  if(!token) return {claims:0,results:0};
+  const rows=(await pool.query("select id,status,summary,metadata from tigeriq_objectives where metadata->>'source'='github' order by created_at asc limit 100")).rows;
+  let claims=0,results=0;
+  for(const row of rows){
+    const number=Number(row.metadata?.issueNumber); if(!number) continue;
+    if(!row.metadata?.githubClaimReported){
+      await commentIssue(fetchImpl,owner,repo,number,`[CLAIM] TigerIQ Core accepted this issue as ${row.id}. Automatic processing is active.`,token);
+      await pool.query("update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1",[row.id,JSON.stringify({githubClaimReported:true})]);
+      row.metadata={...row.metadata,githubClaimReported:true}; claims++;
+    }
+    if(['completed','blocked'].includes(row.status)&&!row.metadata?.githubResultReported){
+      await commentIssue(fetchImpl,owner,repo,number,formatResultComment(row),token);
+      if(row.status==='completed') await closeIssue(fetchImpl,owner,repo,number,token);
+      await pool.query("update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1",[row.id,JSON.stringify({githubResultReported:true,githubClosed:row.status==='completed'})]);
+      results++;
+    }
+  }
+  return {claims,results};
+}
+
+export function startGithubIntake({databaseUrl=process.env.DATABASE_URL,fetchImpl=fetch,owner=process.env.TIGERIQ_GITHUB_OWNER||DEFAULT_OWNER,repo=process.env.TIGERIQ_GITHUB_REPO||DEFAULT_REPO,token=process.env.TIGERIQ_GITHUB_TOKEN||process.env.GITHUB_TOKEN||'',intervalMs=Number(process.env.TIGERIQ_GITHUB_INTAKE_MS||DEFAULT_INTERVAL_MS),initialDelayMs=DEFAULT_INITIAL_DELAY_MS}={}){
+  if(!databaseUrl) return {enabled:false,stop(){}};
+  const pool=new Pool({connectionString:databaseUrl,max:1}); let stopped=false,busy=false,timer=null,interval=null;
+  const tick=async()=>{if(stopped||busy)return;busy=true;try{const b=await syncGithubOutcomes({pool,fetchImpl,owner,repo,token});const a=await materializeGithubIssues({pool,fetchImpl,owner,repo,token});if(a.created||b.claims||b.results)console.log(JSON.stringify({event:'GITHUB_INTAKE_SYNC',created:a.created,claims:b.claims,results:b.results,active:a.active||0,issueNumber:a.issueNumber||null}));}catch(e){console.error(JSON.stringify({event:'GITHUB_INTAKE_ERROR',error:String(e?.message||e)}));}finally{busy=false;}};
+  timer=setTimeout(()=>{void tick();interval=setInterval(()=>void tick(),Math.max(60000,intervalMs));interval.unref?.();},Math.max(1000,initialDelayMs)); timer.unref?.();
+  return {enabled:true,async stop(){stopped=true;if(timer)clearTimeout(timer);if(interval)clearInterval(interval);await pool.end();}};
 }
