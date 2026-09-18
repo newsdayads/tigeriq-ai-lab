@@ -31,7 +31,7 @@ internal sealed class UtilityContext : ApplicationContext
         foreach (var w in Workers.All)
         {
             if (!settings.Workers.ContainsKey(w.Id)) settings.Workers[w.Id] = new WorkerSettings();
-            harnessViews[w.Id] = BrowserHarnessClient.PilotEnabled(w.Id) ? HarnessView.Unknown(w.Id) : HarnessView.Off(w.Id);
+            harnessViews[w.Id] = BrowserHarnessClient.ReadOnlyEnabled(w.Id) ? HarnessView.Unknown(w.Id) : HarnessView.Off(w.Id);
         }
         store.EnsureAutostart();
 
@@ -61,7 +61,7 @@ internal sealed class UtilityContext : ApplicationContext
 
         timer.Tick += async (_, _) => await TickAsync();
         timer.Start();
-        store.Log("SYSTEM", "UTILITY_STARTED", new { version = Application.ProductVersion, issue = 876, harnessPilot = BrowserHarnessClient.PilotWorkerId });
+        store.Log("SYSTEM", "UTILITY_STARTED", new { version = Application.ProductVersion, issue = 897, harnessReadOnly = Workers.All.Select(w => w.Id).ToArray(), harnessWritePilot = BrowserHarnessClient.WritePilotWorkerId });
     }
 
     ContextMenuStrip BuildTrayMenu()
@@ -106,7 +106,10 @@ internal sealed class UtilityContext : ApplicationContext
                 else badges[w.Id].MarkUnbound();
             }
             if (++pollCounter % 2 == 0) await RefreshStateAsync();
-            if (pollCounter % 60 == 6) await RefreshHarnessAsync(BrowserHarnessClient.PilotWorkerId, false);
+            var harnessSlot = pollCounter % 60;
+            if (harnessSlot == 6) await RefreshHarnessAsync("NV04", false);
+            else if (harnessSlot == 26) await RefreshHarnessAsync("NV03", false);
+            else if (harnessSlot == 46) await RefreshHarnessAsync("NV02", false);
             await RunSchedulesAsync();
             if (pollCounter % 5 == 0) await RunWatchdogAsync();
             if (!settings.DoNotDisturb && pollCounter % 5 == 0) await EnforceLocksAsync();
@@ -385,6 +388,9 @@ internal sealed class UtilityContext : ApplicationContext
                 if (harnessResult.State != HarnessState.Ready)
                     throw new InvalidOperationException($"HARNESS_{harnessResult.State}:{harnessResult.Summary}");
                 break;
+            case "harness-write-smoke":
+                await RunHarnessWriteSmokeAsync(id);
+                break;
             case "save":
                 var saved = await controller.SaveAsync(id, false);
                 popups[id].SetActionNotice($"✓ Đã lưu: {saved.CheckpointRef}", false);
@@ -433,11 +439,11 @@ internal sealed class UtilityContext : ApplicationContext
 
     async Task<HarnessView> RefreshHarnessAsync(string id, bool notify)
     {
-        if (!BrowserHarnessClient.PilotEnabled(id))
+        if (!BrowserHarnessClient.ReadOnlyEnabled(id))
         {
             var off = HarnessView.Off(id);
             harnessViews[id] = off;
-            if (notify) popups[id].SetActionNotice("Browser Harness chưa mở cho NV này (pilot NV04).", false);
+            if (notify) popups[id].SetActionNotice("Browser Harness đang tắt cho NV này.", false);
             UpdateTraySurface();
             return off;
         }
@@ -473,6 +479,37 @@ internal sealed class UtilityContext : ApplicationContext
         }
         UpdateTraySurface();
         return result;
+    }
+
+    async Task RunHarnessWriteSmokeAsync(string id)
+    {
+        if (!BrowserHarnessClient.WritePilotEnabled(id))
+            throw new InvalidOperationException("HARNESS_WRITE_PILOT_NV04_ONLY");
+        if (!views.TryGetValue(id, out var current))
+            throw new InvalidOperationException("HARNESS_WRITE_STATE_NOT_READY");
+
+        var ownerId = $"WORKER_UTILITY_HARNESS:{Environment.ProcessId}:{id}";
+        BrowserMutationLeaseReceipt? lease = null;
+        store.Log(id, "HARNESS_WRITE_SMOKE_BEGIN", new { ownerId, mode = "TYPE_VERIFY_CLEAR_NO_SEND" });
+        try
+        {
+            lease = await controller.AcquireBrowserMutationLeaseAsync(id, ownerId, 30000);
+            store.Log(id, "HARNESS_WRITE_LEASE_ACQUIRED", new { lease.LeaseId, lease.OwnerId, lease.ExpiresAt });
+            var result = await browserHarness.WriteSmokeAsync(Workers.Get(id), current);
+            store.Log(id, "HARNESS_WRITE_SMOKE_RESULT", new { result.Ok, result.Status, result.Url, result.Title });
+            if (!result.Ok) throw new InvalidOperationException("HARNESS_WRITE_SMOKE_FAILED:" + result.Status);
+            harnessViews[id] = new HarnessView(id, HarnessState.Ready, "WRITE_SMOKE_OK", result.Url, result.Title, DateTimeOffset.Now);
+            popups[id].SetActionNotice("✓ Harness ghi an toàn: nhập → xác minh → xóa, KHÔNG gửi", false);
+        }
+        finally
+        {
+            if (lease is not null)
+            {
+                await controller.ReleaseBrowserMutationLeaseAsync(id, lease);
+                store.Log(id, "HARNESS_WRITE_LEASE_RELEASED", new { lease.LeaseId, lease.OwnerId });
+            }
+            UpdateTraySurface();
+        }
     }
 
     ScheduleSettings EnsureSchedule(string id, bool? enabled)
