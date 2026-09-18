@@ -9,7 +9,6 @@ internal sealed class UtilityContext : ApplicationContext
     readonly ControllerClient controller = new();
     readonly WindowBinder binder = new();
     readonly Dictionary<string, BadgeForm> badges = new();
-    readonly Dictionary<string, PopupForm> popups = new();
     readonly Dictionary<string, WorkerView> views = new();
     readonly Dictionary<string, WatchdogView> health = new();
     readonly Dictionary<string, ToolStripMenuItem> trayWorkerItems = new();
@@ -43,12 +42,9 @@ internal sealed class UtilityContext : ApplicationContext
         store.EnsureAutostart();
 
         foreach (var worker in Workers.All)
-        {
-            popups[worker.Id] = new PopupForm(HandleActionAsync, SavePopupPosition);
-            badges[worker.Id] = new BadgeForm(worker, ShowPopup, SaveBadgeOffset, ResetBadgePosition);
-        }
+            badges[worker.Id] = new BadgeForm(worker, ShowTrayForWorker, SaveBadgeOffset, ResetBadgePosition);
 
-        trayPanel = new TrayPanelForm(ShowPopup, ShowAllPopups, ToggleDnd, ExitUtility);
+        trayPanel = new TrayPanelForm(HandleActionAsync, FocusAllChromeAsync, ToggleDnd, ExitUtility);
         trayIcon = CreateTrayIcon();
         tray = new NotifyIcon
         {
@@ -87,12 +83,12 @@ internal sealed class UtilityContext : ApplicationContext
         {
             var id = w.Id;
             var item = new ToolStripMenuItem($"{id} — {w.Name}");
-            item.Click += (_, _) => ShowPopup(id);
+            item.Click += (_, _) => ShowTrayForWorker(id);
             trayWorkerItems[id] = item;
             menu.Items.Add(item);
         }
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("▦  Mở tất cả bảng điều khiển", null, (_, _) => ShowAllPopups());
+        menu.Items.Add("▦  Mở bảng điều khiển nhanh", null, (_, _) => ShowTray());
         menu.Items.Add("◐  Bật / tắt Không làm phiền", null, (_, _) => ToggleDnd());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("⏻  Thoát TigerIQ Workers", null, (_, _) => ExitUtility());
@@ -107,11 +103,6 @@ internal sealed class UtilityContext : ApplicationContext
         {
             foreach (var w in Workers.All)
             {
-                if (popups[w.Id].Visible)
-                {
-                    badges[w.Id].HideForPopup();
-                    continue;
-                }
                 if (binder.TryResolve(w.Id, out _, out var rect)) badges[w.Id].AnchorTo(rect, settings.Workers[w.Id]);
                 else badges[w.Id].MarkUnbound();
             }
@@ -207,58 +198,44 @@ internal sealed class UtilityContext : ApplicationContext
         state.BadgeOffsetX = null;
         state.BadgeOffsetY = null;
         store.Save(settings);
-        if (popups[id].Visible) badges[id].HideForPopup();
-        else if (binder.TryResolve(id, out _, out var rect)) badges[id].AnchorTo(rect, state);
+        if (binder.TryResolve(id, out _, out var rect)) badges[id].AnchorTo(rect, state);
         store.Log(id, "BADGE_POSITION_RESET");
     }
 
-    void SavePopupPosition(string id, Point location)
+    void ShowTray()
     {
-        var state = settings.Workers[id];
-        state.PopupX = location.X;
-        state.PopupY = location.Y;
-        store.Save(settings);
-        store.Log(id, "POPUP_POSITION_SAVED", new { location.X, location.Y });
+        trayPanel.ApplyStates(views, settings);
+        trayPanel.ToggleNearTray();
+        store.Log("SYSTEM", "TRAY_FLYOUT_TOGGLED");
     }
 
-    void ShowPopup(string id)
+    void ShowTrayForWorker(string id)
     {
-        if (!TryShowPopup(id, true)) return;
-        store.Log(id, "POPUP_OPENED");
+        trayPanel.ApplyStates(views, settings);
+        trayPanel.ToggleNearTray(id);
+        store.Log(id, "TRAY_FLYOUT_OPENED");
     }
 
-    bool TryShowPopup(string id, bool notifyOnFailure)
+    async Task FocusAllChromeAsync()
     {
-        if (!views.TryGetValue(id, out var view))
-            view = new WorkerView(id, WorkerUiState.Blocked, "STATE_LOADING", null, null,
-                false, false, false, null, null, Workers.Get(id).DebugPort, null, false, false);
-        if (!binder.TryResolve(id, out _, out var rect))
+        var failures = new List<string>();
+        foreach (var worker in Workers.All)
         {
-            if (notifyOnFailure) ShowTrayNotice($"TigerIQ {id}", "Không xác định được đúng cửa sổ Chrome.");
-            return false;
+            try
+            {
+                await controller.FixPositionAsync(worker.Id);
+                await controller.FocusAsync(worker.Id);
+            }
+            catch
+            {
+                failures.Add(worker.Id);
+            }
         }
 
-        settings.Schedules.TryGetValue(id, out var sched);
-        health.TryGetValue(id, out var wd);
-        var workerIndex = Array.FindIndex(Workers.All, x => x.Id == id);
-        var working = Screen.FromRectangle(rect).WorkingArea;
-        var defaultLocation = UiPlacement.DockedPopup(workerIndex, Workers.All.Length, popups[id].Size, working);
-
-        var ok = popups[id].ShowWorker(
-            Workers.Get(id), view, wd, settings.Workers[id], sched, settings.DoNotDisturb,
-            store.RecentLogs(id), defaultLocation, working);
-        if (ok) badges[id].HideForPopup();
-        return ok;
-    }
-
-    void ShowAllPopups()
-    {
-        var opened = 0;
-        foreach (var worker in Workers.All)
-            if (TryShowPopup(worker.Id, false)) opened++;
-        store.Log("SYSTEM", "OPEN_ALL_POPUPS", new { opened, requested = Workers.All.Length });
-        if (opened < Workers.All.Length)
-            ShowTrayNotice("TigerIQ Workers", $"Đã mở {opened}/{Workers.All.Length} bảng điều khiển.");
+        if (failures.Count > 0)
+            ShowTrayNotice("TigerIQ Workers", "Không Focus được: " + string.Join(", ", failures));
+        else
+            ShowTrayNotice("TigerIQ Workers", "Đã đưa 3 Chrome về layout và Focus.");
     }
 
     async Task HandleActionAsync(string id, string actionName)
@@ -280,23 +257,23 @@ internal sealed class UtilityContext : ApplicationContext
             case "badge-reset": ResetBadgePosition(id); break;
             case "open": await controller.OpenCanonicalAsync(id); break;
             case "health":
-                popups[id].SetActionNotice("✓ " + await controller.QuickHealthAsync(id), false);
+                trayPanel.SetWorkerNotice(id, "✓ " + await controller.QuickHealthAsync(id), false);
                 break;
             case "save":
                 var saved = await controller.SaveAsync(id, false);
-                popups[id].SetActionNotice($"✓ Đã lưu: {saved.CheckpointRef}", false);
+                trayPanel.SetWorkerNotice(id, $"✓ Đã lưu: {saved.CheckpointRef}", false);
                 break;
             case "save-archive":
                 var archived = await controller.SaveAsync(id, true);
-                popups[id].SetActionNotice($"✓ Đã lưu & lưu trữ: {archived.CheckpointRef}", false);
+                trayPanel.SetWorkerNotice(id, $"✓ Đã lưu & lưu trữ: {archived.CheckpointRef}", false);
                 break;
             case "close":
                 await controller.SafeCloseAsync(id);
-                popups[id].SetActionNotice("✓ Chrome đã đóng an toàn", false);
+                trayPanel.SetWorkerNotice(id, "✓ Chrome đã đóng an toàn", false);
                 break;
             case "recover":
                 await SafeRecoverAsync(id);
-                popups[id].SetActionNotice("✓ Đã khôi phục an toàn", false);
+                trayPanel.SetWorkerNotice(id, "✓ Đã khôi phục an toàn", false);
                 break;
             case "schedule-10": SetSchedule(id, 10); break;
             case "schedule-30": SetSchedule(id, 30); break;
@@ -316,7 +293,6 @@ internal sealed class UtilityContext : ApplicationContext
         store.Save(settings);
         store.Log(id, "ACTION_OK", new { action = actionName });
         await RefreshStateAsync();
-        TryShowPopup(id, false);
     }
 
     ScheduleSettings EnsureSchedule(string id, bool? enabled)
@@ -512,7 +488,6 @@ internal sealed class UtilityContext : ApplicationContext
     {
         timer.Stop();
         foreach (var b in badges.Values) b.Close();
-        foreach (var p in popups.Values) p.Close();
         trayPanel.Close();
         tray.Visible = false;
         tray.Dispose();
