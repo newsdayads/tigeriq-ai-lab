@@ -121,8 +121,9 @@ internal sealed class UtilityContext : ApplicationContext
             try { view = await controller.GetWorkerAsync(w.Id); }
             catch (Exception ex)
             {
-                view = new WorkerView(w.Id, WorkerUiState.Blocked, "CONTROLLER_UNAVAILABLE", null, null,
-                    false, false, false, ex.GetType().Name, null, w.DebugPort, null, false, false);
+                view = new WorkerView(w.Id, WorkerUiState.Blocked, "CONTROLLER_UNAVAILABLE", null,
+                    null, null, null, null, null, null, null,
+                    null, false, false, false, ex.GetType().Name, null, w.DebugPort, null, false, false);
             }
             if (settings.Workers[w.Id].Paused)
                 view = view with { State = WorkerUiState.Paused, Reason = "UTILITY_PAUSED" };
@@ -257,8 +258,9 @@ internal sealed class UtilityContext : ApplicationContext
     bool TryShowPopup(string id, bool notifyOnFailure)
     {
         if (!views.TryGetValue(id, out var view))
-            view = new WorkerView(id, WorkerUiState.Blocked, "STATE_LOADING", null, null,
-                false, false, false, null, null, Workers.Get(id).DebugPort, null, false, false);
+            view = new WorkerView(id, WorkerUiState.Blocked, "STATE_LOADING", null,
+                null, null, null, null, null, null, null,
+                null, false, false, false, null, null, Workers.Get(id).DebugPort, null, false, false);
         if (!binder.TryResolve(id, out _, out var rect))
         {
             if (notifyOnFailure) ShowTrayNotice($"TigerIQ {id}", "Không xác định được đúng cửa sổ Chrome.");
