@@ -368,7 +368,7 @@ async function persistTerminalHandoff(o,decision,currentPhase){
 async function managerTick() {
   const q=await pool.query(`select o.* from tigeriq_objectives o where o.status='active' and o.next_check_at<=now()
     and not exists(select 1 from tigeriq_jobs j where j.objective_id=o.id and j.status in ('queued','running'))
-    order by case o.priority when 'P0' then 0 when 'P1' then 1 else 2 end,o.created_at limit 1`);
+    order by case o.priority when 'P0' then 0 when 'P1' then 1 else 2 end,case when o.metadata#>>'{handoff,state}'='waiting_children' then 1 else 0 end,o.created_at limit 1`);
   const o=q.rows[0]; if(!o) return;
   if(await reconcileAutonomousHandoff(o)) return;
   const campaign=o.metadata?.campaign||null;
