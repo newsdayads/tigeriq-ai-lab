@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert';
 import { processGitHubIssue, classifyRisk, isZeroCost } from '../apps/tigeriq-coding-lane/github-intake.mjs';
+import { materializeGithubIssues } from '../apps/tigeriq-core/github-intake.mjs';
 
 test('isZeroCost checks label correctly', () => {
   assert.strictEqual(isZeroCost([{ name: 'zero-cost-reversible' }]), true);
@@ -45,15 +46,60 @@ test('persistence verification through injected evidence sink', () => {
   assert.strictEqual(evidence[0].status,'pass');
 });
 
-test('filterBacklogIssues enforces OWNER_DIRECT and P0-P3 criteria', () => {
-  const issues = [
-    { number: 1, state: 'open', title: 'Valid 1', body: 'TIGERIQ_EXECUTABLE=true\nOWNER_POLICY=AUTO\nOWNER=OWNER_DIRECT\nPRIORITY=P1' },
-    { number: 2, state: 'open', title: 'Invalid Owner', body: 'TIGERIQ_EXECUTABLE=true\nOWNER_POLICY=AUTO\nOWNER=OTHER\nPRIORITY=P1' },
-    { number: 3, state: 'open', title: 'Invalid Priority', body: 'TIGERIQ_EXECUTABLE=true\nOWNER_POLICY=AUTO\nOWNER=OWNER_DIRECT\nPRIORITY=P4' }
+
+function response(data,ok=true,status=200){return {ok,status,json:async()=>data};}
+
+function coreBacklogPool(){
+  const objectives=[]; const events=[];
+  return {objectives,events,async query(q,params=[]){
+    if(q.includes("metadata->>'source'='github' and status='active'")){
+      const active=objectives.some(o=>o.metadata?.source==='github'&&o.status==='active');
+      return {rowCount:active?1:0,rows:active?[{id:'active'}]:[]};
+    }
+    if(q.includes('select 1 from tigeriq_objectives where id=$1')){
+      const found=objectives.some(o=>o.id===params[0]);
+      return {rowCount:found?1:0,rows:found?[{id:params[0]}]:[]};
+    }
+    if(q.includes('insert into tigeriq_objectives')){
+      objectives.push({id:params[0],objective:params[1],priority:params[2],metadata:JSON.parse(params[3]),status:'active'});
+      return {rowCount:1,rows:[]};
+    }
+    if(q.includes("insert into tigeriq_events")){
+      events.push({type:'GITHUB_OBJECTIVE_MATERIALIZED',objectiveId:params[0],data:JSON.parse(params[1])});
+      return {rowCount:1,rows:[]};
+    }
+    return {rowCount:0,rows:[]};
+  }};
+}
+
+const READ_ONLY_BASE=`TIGERIQ_EXECUTABLE=true
+OWNER_POLICY=AUTO
+NO_CODE_CHANGE=true
+NO_PC01_SHELL=true
+CAPABILITY=review`;
+
+test('read-only GitHub backlog runs one-at-a-time and chains by OWNER_DIRECT then priority',async()=>{
+  const pool=coreBacklogPool();
+  const issues=[
+    {number:30,state:'open',title:'non-owner P0',body:`${READ_ONLY_BASE}\nPRIORITY=P0`,html_url:'https://example/30'},
+    {number:20,state:'open',title:'owner P2',body:`${READ_ONLY_BASE}\nOWNER_DIRECT=true\nPRIORITY=P2`,html_url:'https://example/20'},
+    {number:10,state:'open',title:'owner P1',body:`${READ_ONLY_BASE}\nOWNER_DIRECT=true\nPRIORITY=P1`,html_url:'https://example/10'},
   ];
-  import('../apps/tigeriq-core/github-intake.mjs').then(mod => {
-    const filtered = mod.filterBacklogIssues(issues);
-    assert.strictEqual(filtered.length, 1);
-    assert.strictEqual(filtered[0].number, 1);
-  });
+  const fetchImpl=async(url)=>url.includes('/issues?')?response(issues):response({});
+  let out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
+  assert.strictEqual(out.issueNumber,10);
+  assert.strictEqual(pool.objectives.at(-1).metadata.dispatchReason,'OWNER_DIRECT>P1');
+
+  out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
+  assert.strictEqual(out.created,0);
+  assert.strictEqual(out.active,1);
+
+  pool.objectives.at(-1).status='completed';
+  out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
+  assert.strictEqual(out.issueNumber,20);
+
+  pool.objectives.at(-1).status='completed';
+  out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
+  assert.strictEqual(out.issueNumber,30);
+  assert.deepStrictEqual(pool.objectives.map(o=>o.metadata.issueNumber),[10,20,30]);
 });
