@@ -187,6 +187,14 @@ internal sealed class ControllerClient
         };
     }
 
+    public async Task<bool> IsUtilityPausedAsync(string id)
+    {
+        using var doc = await TryGetJsonAsync(Controller + $"/api/utility/workers/{id}/health");
+        if (doc is null) throw new InvalidOperationException("UTILITY_HEALTH_REQUIRES_CONTROLLER_UPGRADE");
+        return doc.RootElement.TryGetProperty("utilityPaused", out var paused)
+            && paused.ValueKind == JsonValueKind.True;
+    }
+
     public async Task<string> QuickHealthAsync(string id)
     {
         using var doc = await TryGetJsonAsync(Controller + $"/api/utility/workers/{id}/health");
