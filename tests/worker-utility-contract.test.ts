@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe,expect,it } from 'vitest';
 const server=readFileSync('apps/chrome-controller/src/server.ts','utf8'); const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
 const client=readFileSync('apps/worker-utility/ControllerClient.cs','utf8'); const context=readFileSync('apps/worker-utility/UtilityContext.cs','utf8');
-const popup=readFileSync('apps/worker-utility/PopupForm.cs','utf8'); const badge=readFileSync('apps/worker-utility/BadgeForm.cs','utf8'); const watchdog=readFileSync('apps/worker-utility/Watchdog.cs','utf8');
+const popup=readFileSync('apps/worker-utility/PopupForm.cs','utf8'); const tray=readFileSync('apps/worker-utility/TrayPanelForm.cs','utf8'); const badge=readFileSync('apps/worker-utility/BadgeForm.cs','utf8'); const watchdog=readFileSync('apps/worker-utility/Watchdog.cs','utf8');
 const store=readFileSync('apps/worker-utility/StateStore.cs','utf8'); const program=readFileSync('apps/worker-utility/Program.cs','utf8');
 const installer=readFileSync('apps/worker-utility/Install-WorkerUtility.ps1','utf8'); const binder=readFileSync('apps/worker-utility/WindowBinder.cs','utf8'); const placement=readFileSync('apps/worker-utility/UiPlacement.cs','utf8');
 describe('Worker Utility V1 contract',()=>{
