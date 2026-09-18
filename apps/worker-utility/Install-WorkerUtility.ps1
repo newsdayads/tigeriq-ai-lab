@@ -39,18 +39,39 @@ Get-CimInstance Win32_Process | Where-Object {
    $_.CommandLine -like '*Ensure-Lock-All-Workers.ps1*')
 } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 
-Get-Process TigerIQ.WorkerUtility -ErrorAction SilentlyContinue |
-  Where-Object { $_.SessionId -ne 0 } |
-  Stop-Process -Force -ErrorAction SilentlyContinue
+$oldInteractive = @(Get-Process TigerIQ.WorkerUtility -ErrorAction SilentlyContinue |
+  Where-Object { $_.SessionId -ne 0 })
+$oldInteractive | Stop-Process -Force -ErrorAction SilentlyContinue
+
+# Never accept a stale Worker Utility as proof of a successful switch.
+for($i=0; $i -lt 10; $i++){
+  $stale = @(Get-Process TigerIQ.WorkerUtility -ErrorAction SilentlyContinue |
+    Where-Object { $_.SessionId -ne 0 -and $oldInteractive.Id -contains $_.Id })
+  if($stale.Count -eq 0){ break }
+  Start-Sleep -Milliseconds 250
+}
+$stale = @(Get-Process TigerIQ.WorkerUtility -ErrorAction SilentlyContinue |
+  Where-Object { $_.SessionId -ne 0 -and $oldInteractive.Id -contains $_.Id })
+if($stale.Count -gt 0){ throw 'UTILITY_PREVIOUS_PROCESS_STILL_RUNNING' }
 
 $taskName='TigerIQ Worker Utility Bootstrap'
 $action=New-ScheduledTaskAction -Execute $installedExe
 $principal=New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited
 Register-ScheduledTask -TaskName $taskName -Action $action -Principal $principal -Force | Out-Null
-Start-ScheduledTask -TaskName $taskName
-Start-Sleep -Seconds 2
-$live=Get-Process TigerIQ.WorkerUtility -ErrorAction SilentlyContinue | Where-Object { $_.SessionId -ne 0 } | Select-Object -First 1
-Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
-if(-not $live){ throw 'UTILITY_INTERACTIVE_SESSION_START_FAILED' }
-@{ installedAt=(Get-Date).ToString('o'); target=$target; sha256=$hash; sessionId=$live.SessionId } | ConvertTo-Json | Set-Content (Join-Path $InstallRoot 'install-state.json') -Encoding UTF8
-Write-Output ("INSTALLED|$target|$hash|SESSION=$($live.SessionId)")
+try {
+  Start-ScheduledTask -TaskName $taskName
+  $live=$null
+  for($i=0; $i -lt 12; $i++){
+    $live = Get-CimInstance Win32_Process -Filter "Name='TigerIQ.WorkerUtility.exe'" |
+      Where-Object { $_.SessionId -ne 0 -and [string]::Equals($_.ExecutablePath, $installedExe, [System.StringComparison]::OrdinalIgnoreCase) } |
+      Select-Object -First 1
+    if($live){ break }
+    Start-Sleep -Milliseconds 250
+  }
+}
+finally {
+  Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
+}
+if(-not $live){ throw 'UTILITY_NEW_EXECUTABLE_NOT_RUNNING' }
+@{ installedAt=(Get-Date).ToString('o'); target=$target; sha256=$hash; sessionId=$live.SessionId; processId=$live.ProcessId } | ConvertTo-Json | Set-Content (Join-Path $InstallRoot 'install-state.json') -Encoding UTF8
+Write-Output ("INSTALLED|$target|$hash|SESSION=$($live.SessionId)|PID=$($live.ProcessId)")
