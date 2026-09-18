@@ -74,10 +74,10 @@ describe('Context Gateway',()=>{
     expect(core).not.toContain('JSON.stringify(history).slice(0,10000)');
   });
 
-  it('promotes only context-budget-compaction and leaves contextual-skill-loading candidate',()=>{
+  it('keeps both verified context skills ACTIVE after contextual loading promotion',()=>{
     const registry=readFileSync('docs/skills/registry.yaml','utf8');
     const contextBlock=registry.slice(registry.indexOf('- id: contextual-skill-loading'),registry.indexOf('- id: spec-first-tdd'));
-    expect(contextBlock).toMatch(/id: contextual-skill-loading[\s\S]*?state: CANDIDATE/);
+    expect(contextBlock).toMatch(/id: contextual-skill-loading[\s\S]*?state: ACTIVE/);
     expect(contextBlock).toMatch(/id: context-budget-compaction[\s\S]*?state: ACTIVE/);
   });
 });
