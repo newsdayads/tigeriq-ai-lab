@@ -1,7 +1,39 @@
-# Learning Log – 2026-09-18
+# Learning Log – 2026-09-18 (#859)
 
-## Owner Video Lessons Ingested
-- Added two owner video lessons to `docs/skills/registry.yaml` as `CANDIDATE` state.
-- Recorded provenance URLs and SHA-256 hashes; no binary data stored.
-- Updated `README.md` with the durable INGEST→EXTRACT→… contract and state machine description.
-- All entries await validation before becoming `ACTIVE`.
+## Provenance Date
+- Date: 2026-09-18
+- Note: Raw videos are not copied or stored in the repository; missing video URLs and hashes are explicitly marked as `NOT_CAPTURED`.
+
+## Skills Ingested & Decisions
+1. **contextual-skill-loading**
+   - Decision: KEEP
+   - Provenance: 2026-09-18
+   - Source URL / Hash: NOT_CAPTURED
+2. **context-budget-compaction**
+   - Decision: KEEP
+   - Provenance: 2026-09-18
+   - Source URL / Hash: NOT_CAPTURED
+3. **spec-first-tdd**
+   - Decision: KEEP
+   - Provenance: 2026-09-18
+   - Source URL / Hash: NOT_CAPTURED
+4. **learn-from-failure**
+   - Decision: KEEP
+   - Provenance: 2026-09-18
+   - Source URL / Hash: NOT_CAPTURED
+5. **role-separated-execution**
+   - Decision: KEEP
+   - Provenance: 2026-09-18
+   - Source URL / Hash: NOT_CAPTURED
+6. **external-skill-security-gate**
+   - Decision: KEEP
+   - Provenance: 2026-09-18
+   - Source URL / Hash: NOT_CAPTURED
+7. **minimal-change-output**
+   - Decision: KEEP
+   - Provenance: 2026-09-18
+   - Source URL / Hash: NOT_CAPTURED
+8. **capability-aware-model-routing**
+   - Decision: KEEP
+   - Provenance: 2026-09-18
+   - Source URL / Hash: NOT_CAPTURED
