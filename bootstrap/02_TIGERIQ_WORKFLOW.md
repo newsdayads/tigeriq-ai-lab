@@ -1,8 +1,8 @@
 # TIGERIQ — WORKFLOW
-Version: 3.2
+Version: 3.3
 Status: Source of Truth
 Priority: P0
-Updated: 2026-09-14
+Updated: 2026-09-18
 
 ## 1. Ngôn ngữ và cách xưng hô
 - Mọi nội dung hiển thị trực tiếp cho anh Sơn phải dùng **TIẾNG VIỆT**.
@@ -163,6 +163,18 @@ Khi đó Vy phải tạo migration packet, cập nhật GitHub, kiểm thử NEW
 - Không tự thực hiện paid service, mua hàng/subscription, thay đổi credential/security boundary, hành động irreversible hoặc release Production khi chưa có quyền áp dụng.
 - Không lộ secret trong source/evidence.
 - Ưu tiên: an toàn → reversible → evidence → automation → low-cost.
+
+## 16.1. PC01 Shell Guard — hard gate xuyên chat
+- Áp dụng cho **mọi chat và NEW CHAT**: `CMD`/`PowerShell`/terminal trên PC01 mặc định **KHÔNG ĐƯỢC DÙNG**.
+- Trước mọi ý định gọi shell, bắt buộc kiểm tra theo thứ tự: **direct app/plugin tool → direct API/runtime endpoint → Desktop Commander direct file/process action → shell**.
+- Nếu tồn tại direct tool/API/action tương đương cho mục tiêu hiện tại thì **CẤM shell**, kể cả shell có thể nhanh hơn hoặc quen hơn.
+- Các việc đọc file, liệt kê thư mục, tìm file/nội dung, xem/kill process, xem session, đọc health/status/API, đọc GitHub source/issue/PR/evidence phải dùng direct action nếu có.
+- Shell chỉ được phép khi thao tác thật sự Windows/runtime-specific và **không có** direct action/API tương đương, hoặc direct path đã được xác minh không đáp ứng được.
+- Khi buộc dùng shell phải ghi ngắn `SHELL_EXCEPTION=<lý do>` vào evidence/state; không retry cùng kiểu lệnh/quoting quá 1 lần; không tạo chuỗi nhiều shell để audit.
+- **Cấm tuyệt đối code repository bằng CMD/PowerShell PC01.** Mã nguồn chỉ đi GitHub `branch → PR → checks → review → merge`.
+- PC01 ngoài ngoại lệ hợp lệ chỉ dùng cho runtime, chẩn đoán, thao tác gắn thiết bị, deploy local và xác minh máy thật.
+- Vi phạm gate này là lỗi vận hành P0: dừng đường shell, chuyển về direct path, ghi root cause → fix → retest.
+- Không được viện lý do phiên mới/chat khác/không nhớ policy; Loader + Bootstrap + Interaction Policy là authority xuyên chat.
 
 ## 17. Định nghĩa HOÀN TẤT
 Một task chỉ `HOÀN TẤT` khi outcome đã được thực hiện ở mức áp dụng, test/review cần thiết đạt, evidence có sẵn, state/docs được cập nhật và không còn blocker thật trong scope.
