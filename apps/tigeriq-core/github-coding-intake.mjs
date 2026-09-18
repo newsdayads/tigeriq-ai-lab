@@ -14,6 +14,8 @@ export function extractCodingDependencies(body){
   return [...new Set(values)].slice(0,16);
 }
 
+export function determineCodingBacklogRoute(issue){const body=String(issue?.body||'');if(hasExactFlag(body,'AUTONOMOUS_CODE','true'))return 'CODING';return 'CORE';}
+
 export function parseCodingIssue(issue){
   if(!issue||issue.pull_request||issue.state!=='open')return null;
   const body=String(issue.body||'');
