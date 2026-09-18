@@ -44,3 +44,16 @@ test('persistence verification through injected evidence sink', () => {
   assert.strictEqual(evidence[0].gate,'github-intake');
   assert.strictEqual(evidence[0].status,'pass');
 });
+
+test('filterBacklogIssues enforces OWNER_DIRECT and P0-P3 criteria', () => {
+  const issues = [
+    { number: 1, state: 'open', title: 'Valid 1', body: 'TIGERIQ_EXECUTABLE=true\nOWNER_POLICY=AUTO\nOWNER=OWNER_DIRECT\nPRIORITY=P1' },
+    { number: 2, state: 'open', title: 'Invalid Owner', body: 'TIGERIQ_EXECUTABLE=true\nOWNER_POLICY=AUTO\nOWNER=OTHER\nPRIORITY=P1' },
+    { number: 3, state: 'open', title: 'Invalid Priority', body: 'TIGERIQ_EXECUTABLE=true\nOWNER_POLICY=AUTO\nOWNER=OWNER_DIRECT\nPRIORITY=P4' }
+  ];
+  import('../apps/tigeriq-core/github-intake.mjs').then(mod => {
+    const filtered = mod.filterBacklogIssues(issues);
+    assert.strictEqual(filtered.length, 1);
+    assert.strictEqual(filtered[0].number, 1);
+  });
+});
