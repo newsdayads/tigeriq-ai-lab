@@ -5,6 +5,12 @@ export interface WorkerSafetySnapshot {
   pausedWorkers:WorkerId[];
   manualCloseSuppressedWorkers:WorkerId[];
 }
+export interface WorkerSafetyRestoreResult {
+  state:WorkerSafetySnapshot;
+  failClosed:boolean;
+  error?:unknown;
+}
+export interface WorkerSafetyPersistResult extends WorkerSafetyRestoreResult {}
 
 interface WorkerSafetyFile extends WorkerSafetySnapshot {
   schemaVersion:'tigeriq.chrome-controller.worker-safety.v1';
@@ -30,6 +36,13 @@ function parseSafety(text:string):WorkerSafetySnapshot{
   };
 }
 
+export function failClosedWorkerSafetyState():WorkerSafetySnapshot {
+  return{
+    pausedWorkers:[...WORKER_IDS],
+    manualCloseSuppressedWorkers:[...WORKER_IDS],
+  };
+}
+
 export function readWorkerSafetyState(path:string):WorkerSafetySnapshot {
   const candidates=[path,`${path}.bak`];
   let sawFile=false;
@@ -41,6 +54,14 @@ export function readWorkerSafetyState(path:string):WorkerSafetySnapshot {
   }
   if(sawFile)throw new Error('WORKER_SAFETY_STATE_CORRUPT');
   return{pausedWorkers:[],manualCloseSuppressedWorkers:[]};
+}
+
+export function restoreWorkerSafetyState(
+  path:string,
+  reader:(path:string)=>WorkerSafetySnapshot=readWorkerSafetyState,
+):WorkerSafetyRestoreResult {
+  try{return{state:reader(path),failClosed:false};}
+  catch(error){return{state:failClosedWorkerSafetyState(),failClosed:true,error};}
 }
 
 export function writeWorkerSafetyState(path:string,state:WorkerSafetySnapshot,now=new Date()):void {
@@ -68,6 +89,19 @@ export function writeWorkerSafetyState(path:string,state:WorkerSafetySnapshot,no
       try{renameSync(backup,path);}catch{}
     }
     throw error;
+  }
+}
+
+export function persistWorkerSafetyStateOrFailClosed(
+  path:string,
+  state:WorkerSafetySnapshot,
+  writer:(path:string,state:WorkerSafetySnapshot)=>void=writeWorkerSafetyState,
+):WorkerSafetyPersistResult {
+  try{
+    writer(path,state);
+    return{state:{pausedWorkers:[...state.pausedWorkers],manualCloseSuppressedWorkers:[...state.manualCloseSuppressedWorkers]},failClosed:false};
+  }catch(error){
+    return{state:failClosedWorkerSafetyState(),failClosed:true,error};
   }
 }
 

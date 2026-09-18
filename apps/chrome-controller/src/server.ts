@@ -30,7 +30,7 @@ import { BrowserMutationLeaseStore } from './browser-mutation-lease.js';
 import { heartbeatStopReason } from './security-gate.js';
 import { DurableUiJobLedger, isUiJobStage, reconcileUiJobStage, type UiJobMetadata } from './job-ledger.js';
 import type { WorkerPresence } from './worker-presence.js';
-import { readWorkerSafetyState, workerStartGate, writeWorkerSafetyState } from './worker-safety-state.js';
+import { persistWorkerSafetyStateOrFailClosed, restoreWorkerSafetyState, workerStartGate, type WorkerSafetySnapshot } from './worker-safety-state.js';
 
 type Command = { id:string; workerId:WorkerId; action:string; payload?:Record<string,unknown>; createdAt:string };
 type Heartbeat = { workerId:WorkerId; url?:string; windowId?:number; tabId?:number; state?:string; uiReady?:boolean; authRequired?:boolean; reauthRequired?:boolean; captchaRequired?:boolean; rateLimited?:boolean; rateLimitCode?:number|string; uiBusy?:boolean|null; securityBlock?:string|null; display?:{workArea?:WorkArea}; at:string };
@@ -114,27 +114,30 @@ try{
   const saved=loadJson<ExternalAutopilotSnapshot>(autopilotSnapshotPath);
   if(saved)latestSnapshot=validateExternalSnapshot(saved);
 }catch(error){log('AUTOPILOT_SNAPSHOT_RESTORE_REJECTED',{error:String(error)});}
-try{
-  const restoredWorkerSafety=readWorkerSafetyState(workerSafetyStatePath);
-  for(const id of restoredWorkerSafety.pausedWorkers)utilityPausedWorkers.add(id);
-  for(const id of restoredWorkerSafety.manualCloseSuppressedWorkers)states.get(id)!.manualCloseSuppressed=true;
-}catch(error){
-  for(const id of WORKER_IDS){utilityPausedWorkers.add(id);states.get(id)!.manualCloseSuppressed=true;states.get(id)!.status='PAUSED';}
-  log('WORKER_SAFETY_STATE_FAIL_CLOSED',{error:String(error)});
+function applyWorkerSafetySnapshot(snapshot:WorkerSafetySnapshot){
+  utilityPausedWorkers.clear();
+  for(const id of WORKER_IDS)states.get(id)!.manualCloseSuppressed=false;
+  for(const id of snapshot.pausedWorkers)utilityPausedWorkers.add(id);
+  for(const id of snapshot.manualCloseSuppressedWorkers)states.get(id)!.manualCloseSuppressed=true;
+  for(const id of WORKER_IDS){
+    if(utilityPausedWorkers.has(id)||states.get(id)!.manualCloseSuppressed===true)states.get(id)!.status='PAUSED';
+  }
 }
+const restoredWorkerSafety=restoreWorkerSafetyState(workerSafetyStatePath);
+applyWorkerSafetySnapshot(restoredWorkerSafety.state);
+if(restoredWorkerSafety.failClosed)log('WORKER_SAFETY_STATE_FAIL_CLOSED',{error:String(restoredWorkerSafety.error)});
 function persistAutopilotState(){atomicJson(autopilotStatePath,autopilotState);}
 function persistInteractionState(){atomicJson(interactionStatePath,{readOnly:paused,updatedAt:new Date().toISOString()});}
 function persistWorkerSafetyState(){
-  try{
-    writeWorkerSafetyState(workerSafetyStatePath,{
-      pausedWorkers:[...utilityPausedWorkers],
-      manualCloseSuppressedWorkers:WORKER_IDS.filter((id)=>states.get(id)?.manualCloseSuppressed===true),
-    });
-  }catch(error){
-    for(const id of WORKER_IDS){utilityPausedWorkers.add(id);states.get(id)!.manualCloseSuppressed=true;states.get(id)!.status='PAUSED';}
-    log('WORKER_SAFETY_STATE_PERSIST_FAIL_CLOSED',{error:String(error)});
-    throw error;
-  }
+  const intended:WorkerSafetySnapshot={
+    pausedWorkers:[...utilityPausedWorkers],
+    manualCloseSuppressedWorkers:WORKER_IDS.filter((id)=>states.get(id)?.manualCloseSuppressed===true),
+  };
+  const persisted=persistWorkerSafetyStateOrFailClosed(workerSafetyStatePath,intended);
+  if(!persisted.failClosed)return;
+  applyWorkerSafetySnapshot(persisted.state);
+  log('WORKER_SAFETY_STATE_PERSIST_FAIL_CLOSED',{error:String(persisted.error)});
+  throw persisted.error instanceof Error?persisted.error:new Error('WORKER_SAFETY_STATE_PERSIST_FAILED');
 }
 function setOwnerInteractionReadOnly(readOnly:boolean){
   paused=readOnly;

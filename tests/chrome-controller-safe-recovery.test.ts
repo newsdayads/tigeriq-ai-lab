@@ -2,8 +2,15 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { WORKER_IDS } from '../apps/chrome-controller/src/model.js';
 import { classifyWorkerPresence, processProbeFromCount } from '../apps/chrome-controller/src/worker-presence.js';
-import { readWorkerSafetyState, workerStartGate, writeWorkerSafetyState } from '../apps/chrome-controller/src/worker-safety-state.js';
+import {
+  persistWorkerSafetyStateOrFailClosed,
+  readWorkerSafetyState,
+  restoreWorkerSafetyState,
+  workerStartGate,
+  writeWorkerSafetyState,
+} from '../apps/chrome-controller/src/worker-safety-state.js';
 
 const roots:string[]=[];
 function root(){const p=mkdtempSync(join(tmpdir(),'tigeriq-recovery-'));roots.push(p);return p;}
@@ -25,29 +32,46 @@ describe('worker presence classification',()=>{
   });
 });
 
-describe('restart-safe worker safety state',()=>{
-  it('restores pause after restart and blocks worker start',()=>{
+describe('controller restart-safe worker safety gates',()=>{
+  it('restores paused NV02 through the same boot restore path used by Controller',()=>{
     const path=join(root(),'worker-safety-state.json');
     writeWorkerSafetyState(path,{pausedWorkers:['NV02'],manualCloseSuppressedWorkers:[]},new Date('2026-09-19T00:00:00Z'));
-    const restored=readWorkerSafetyState(path);
-    expect(restored.pausedWorkers).toEqual(['NV02']);
-    expect(workerStartGate('NV02',{globalPaused:false,utilityPaused:restored.pausedWorkers.includes('NV02'),manualCloseSuppressed:false}))
-      .toBe('UTILITY_WORKER_PAUSED:NV02');
+    const boot=restoreWorkerSafetyState(path);
+    expect(boot.failClosed).toBe(false);
+    expect(boot.state.pausedWorkers).toEqual(['NV02']);
+    expect(workerStartGate('NV02',{
+      globalPaused:false,
+      utilityPaused:boot.state.pausedWorkers.includes('NV02'),
+      manualCloseSuppressed:boot.state.manualCloseSuppressedWorkers.includes('NV02'),
+    })).toBe('UTILITY_WORKER_PAUSED:NV02');
   });
 
-  it('restores manual-close suppression after restart and blocks worker start',()=>{
+  it('restores manual-close suppression through the Controller boot path',()=>{
     const path=join(root(),'worker-safety-state.json');
     writeWorkerSafetyState(path,{pausedWorkers:[],manualCloseSuppressedWorkers:['NV02']});
-    const restored=readWorkerSafetyState(path);
-    expect(restored.manualCloseSuppressedWorkers).toEqual(['NV02']);
-    expect(workerStartGate('NV02',{globalPaused:false,utilityPaused:false,manualCloseSuppressed:restored.manualCloseSuppressedWorkers.includes('NV02')}))
-      .toBe('MANUAL_CLOSE_SUPPRESSED:NV02');
+    const boot=restoreWorkerSafetyState(path);
+    expect(boot.failClosed).toBe(false);
+    expect(workerStartGate('NV02',{
+      globalPaused:false,
+      utilityPaused:boot.state.pausedWorkers.includes('NV02'),
+      manualCloseSuppressed:boot.state.manualCloseSuppressedWorkers.includes('NV02'),
+    })).toBe('MANUAL_CLOSE_SUPPRESSED:NV02');
   });
 
-  it('fails closed when persisted safety state is corrupt',()=>{
+  it('fails closed for every worker when persisted state is corrupt',()=>{
     const path=join(root(),'worker-safety-state.json');
     writeFileSync(path,'{broken','utf8');
-    expect(()=>readWorkerSafetyState(path)).toThrow('WORKER_SAFETY_STATE_CORRUPT');
+    const boot=restoreWorkerSafetyState(path);
+    expect(boot.failClosed).toBe(true);
+    expect(boot.state.pausedWorkers).toEqual([...WORKER_IDS]);
+    expect(boot.state.manualCloseSuppressedWorkers).toEqual([...WORKER_IDS]);
+    for(const id of WORKER_IDS){
+      expect(workerStartGate(id,{
+        globalPaused:false,
+        utilityPaused:boot.state.pausedWorkers.includes(id),
+        manualCloseSuppressed:boot.state.manualCloseSuppressedWorkers.includes(id),
+      })).toBe(`UTILITY_WORKER_PAUSED:${id}`);
+    }
   });
 
   it('recovers from a valid backup if primary is corrupt',()=>{
@@ -56,13 +80,42 @@ describe('restart-safe worker safety state',()=>{
     const valid=readFileSync(path,'utf8');
     writeFileSync(path+'.bak',valid,'utf8');
     writeFileSync(path,'{broken','utf8');
-    expect(readWorkerSafetyState(path)).toEqual({pausedWorkers:['NV02'],manualCloseSuppressedWorkers:['NV03']});
+    const boot=restoreWorkerSafetyState(path);
+    expect(boot.failClosed).toBe(false);
+    expect(boot.state).toEqual({pausedWorkers:['NV02'],manualCloseSuppressedWorkers:['NV03']});
+  });
+
+  it('forces every worker gate closed when durable persistence fails',()=>{
+    const path=join(root(),'worker-safety-state.json');
+    const result=persistWorkerSafetyStateOrFailClosed(
+      path,
+      {pausedWorkers:['NV02'],manualCloseSuppressedWorkers:[]},
+      ()=>{throw new Error('DISK_WRITE_FAILED');},
+    );
+    expect(result.failClosed).toBe(true);
+    expect(String(result.error)).toContain('DISK_WRITE_FAILED');
+    expect(result.state.pausedWorkers).toEqual([...WORKER_IDS]);
+    expect(result.state.manualCloseSuppressedWorkers).toEqual([...WORKER_IDS]);
+    for(const id of WORKER_IDS){
+      expect(workerStartGate(id,{
+        globalPaused:false,
+        utilityPaused:result.state.pausedWorkers.includes(id),
+        manualCloseSuppressed:result.state.manualCloseSuppressedWorkers.includes(id),
+      })).toBe(`UTILITY_WORKER_PAUSED:${id}`);
+    }
   });
 });
 
 describe('safe recovery contracts',()=>{
   const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
   const broker=readFileSync('apps/chrome-controller/src/chrome-launch-broker.ts','utf8');
+
+  it('uses tested boot/persist fail-closed helpers in Controller runtime',()=>{
+    expect(server).toContain('restoreWorkerSafetyState(workerSafetyStatePath)');
+    expect(server).toContain('persistWorkerSafetyStateOrFailClosed(workerSafetyStatePath,intended)');
+    expect(server).toContain('applyWorkerSafetySnapshot(persisted.state)');
+    expect(server).toContain('WORKER_SAFETY_STATE_PERSIST_FAIL_CLOSED');
+  });
 
   it('makes utility pause and manual close hard gates for worker start/recovery',()=>{
     const start=server.slice(server.indexOf('async function startWorker'),server.indexOf('async function dispatch'));
@@ -82,12 +135,9 @@ describe('safe recovery contracts',()=>{
     expect(broker).toContain('WORKER_PROCESS_AMBIGUOUS');
   });
 
-  it('keeps paused workers out of unattended start/autopilot paths and persists the gate',()=>{
+  it('keeps paused workers out of unattended start/autopilot paths',()=>{
     expect(server).toContain('START_ALL_SKIPPED_UTILITY_PAUSED');
     expect(server).toContain("if(utilityPausedWorkers.has('NV02')){setAutopilotPhase('IDLE')");
     expect(server).toContain("state.status='PAUSED'");
-    expect(server).toContain('worker-safety-state.json');
-    expect(server).toContain('WORKER_SAFETY_STATE_FAIL_CLOSED');
-    expect(server).toContain('WORKER_SAFETY_STATE_PERSIST_FAIL_CLOSED');
   });
 });
