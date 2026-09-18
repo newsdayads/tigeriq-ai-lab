@@ -57,3 +57,61 @@ The videos were reviewed as one Owner learning batch. Where a lesson cannot be a
 - capability-aware-model-routing
 
 These remain CANDIDATE. They are not ACTIVE merely because they appear in this log or registry.
+
+
+## Batch extension — 2026-09-18 — Codex workspace memory + CLI-Anything
+
+### Provenance
+- v1c044g50000d9qgcbvog65sr8ecpueg.mp4
+  - SHA-256: fb5074aa612cf3a2f17e7f3458d42a2f8b13695e964d6879fa173ebeeff05105
+- v29025g50000da0n5b7og65jujo8utdg.mp4
+  - SHA-256: bd450971468b1d5546e103d42c6608a13819b75f7876c9c58014c23ebc2f851b
+
+External validation source for the second video:
+- https://github.com/HKUDS/CLI-Anything
+- Official project documentation/security policy reviewed on 2026-09-18.
+
+### Source-derived lessons — Codex workspace / durable learning
+KEEP:
+- Give an agent a bounded project workspace and durable project instructions instead of relying on conversational memory.
+- Keep a structured failure/feedback log containing date, project, problem, user dissatisfaction, root cause, prevention and resolution status.
+- Reuse naming conventions and project-specific rules across sessions.
+
+IMPROVE:
+- Use repository-scoped instructions and Source of Truth references, not an unbounded whole-computer scan.
+- Treat a failure log as input to learn-from-failure promotion: recurring patterns must become checks/rules/skills with evidence.
+- Keep top-level instructions small and use them as a map to deeper canonical documents rather than one giant memory file.
+
+REJECT:
+- “Scan the whole computer” as a default operating model.
+- Claiming the AI automatically becomes smarter merely because files exist; durable learning requires explicit write, retrieval, validation and reuse.
+- Creating a second shadow memory system that competes with CURRENT_STATE/CENTRAL/issues/evidence.
+
+DEDUPLICATION:
+- No new project-memory skill is created. These lessons strengthen existing `learn-from-failure`, `contextual-skill-loading` and durable Source of Truth architecture.
+
+### Source-derived lessons — CLI-Anything
+KEEP:
+- A CLI harness is often a better agent interface than pixel/mouse automation when the target software exposes a usable backend/API.
+- Machine-readable JSON output, one-shot commands, help/discovery and deterministic state improve agent reliability.
+- Generate software-specific skill documentation together with the harness so agents can discover how to use it.
+
+IMPROVE:
+- Treat third-party harness builders as untrusted supply-chain inputs until pinned and audited.
+- Prefer target software's real backend over reimplementing business logic.
+- Validate exported/rendered artifacts, not only process exit codes.
+- Pilot on an isolated non-production desktop application before considering broader PC01 integration.
+
+REJECT:
+- The video's implication that arbitrary GUI software can universally be controlled safely after one command.
+- Replacing TigerIQ Chrome Controller or APP Chrome merely because a generic harness exists.
+- Granting filesystem, command or network privileges to generated harnesses without capability review.
+
+### External validation findings for CLI-Anything
+- Official project supports building stateful CLI harnesses from a local source path or GitHub repository and documents OpenClaw and Codex integration.
+- The official README currently describes 18 professional demos and 2,280 passing tests; this is strong evidence of breadth, not proof of universal application coverage.
+- The project security policy explicitly treats agent-to-desktop control as a threat surface and requires safer subprocess/path/secret handling.
+- Closed-source/web-service wrapping remains a roadmap direction; therefore “all software” is an aspiration, not a current guarantee.
+
+## Candidate added
+- agent-native-cli-harness — CANDIDATE only; safe pattern for evaluating/generating deterministic CLI adapters for desktop software. It is not authorized for automatic installation or PC01 production use.
