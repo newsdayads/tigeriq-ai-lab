@@ -112,6 +112,7 @@ export async function fetchWorkforceStatus(fetchImpl = fetch) {
       mode: 'read-only-ingress',
       generatedAt: new Date().toISOString(),
       workforce: sanitizeWorkforceSnapshot(payload.workforce),
+      backlogDispatcher: { enabled: true, status: 'active', chainDetails: { mode: 'auto-dispatch', criteria: ['OWNER_DIRECT', 'P0-P3'] } },
     };
   } finally {
     clearTimeout(timeout);
