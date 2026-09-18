@@ -156,6 +156,10 @@ internal static class SelfTest
         Must(target == new Point(ownChrome.Left + 10, ownChrome.Top + 54), "selected worker popup uses approved inset overlay");
         Must(ownChrome.Contains(new Rectangle(target, ownPopup)), "selected worker popup stays inside its own Chrome");
 
+        var savedOverBadge = new Point(ownChrome.Left + 17, ownChrome.Top);
+        ok = UiPlacement.TryPopup(ownChrome, ownPopup, new[] { working }, Array.Empty<Rectangle>(), savedOverBadge, out target);
+        Must(ok && target == new Point(ownChrome.Left + 10, ownChrome.Top + 54), "saved popup overlapping badge strip is rejected");
+
         var fullScreenChrome = new Rectangle(0, 0, 1920, 1080);
         ok = UiPlacement.TryPopup(fullScreenChrome, popupSize, new[] { working }, new[] { fullScreenChrome }, null, out _);
         Must(!ok, "popup fails closed when no safe sidecar space exists");
