@@ -75,7 +75,7 @@ internal static class UiPlacement
             var savedRect = new Rectangle(saved, popupSize);
             // Layout 2 only accepts a remembered popup position when it still belongs
             // to this worker's own Chrome. Old pre-freeze positions are ignored.
-            if (anchor.Contains(savedRect) && savedRect.Top >= anchor.Top + 54)
+            if (anchor.Contains(savedRect) && savedRect.Left == anchor.Left && savedRect.Top == anchor.Top + 64)
             {
                 foreach (var area in workingAreas)
                 {
@@ -95,7 +95,7 @@ internal static class UiPlacement
         // while other worker windows remain blockers. Prefer a consistent inset overlay.
         foreach (var area in orderedAreas)
         {
-            var overlay = new Point(anchor.Left + 10, anchor.Top + 54);
+            var overlay = new Point(anchor.Left, anchor.Top + 64);
             if (Available(overlay, area))
             {
                 target = overlay;
@@ -113,7 +113,7 @@ internal static class UiPlacement
             // the Cartesian product of these critical x/y edges is geometry-complete;
             // it finds a free rectangle whenever one exists without pixel-by-pixel scans.
             var xs = new HashSet<int> { area.Left, area.Right - popupSize.Width };
-            var minPopupTop = Math.Max(area.Top, anchor.Top + 54);
+            var minPopupTop = Math.Max(area.Top, anchor.Top + 64);
             var ys = new HashSet<int> { minPopupTop, area.Bottom - popupSize.Height };
             foreach (var blocker in local)
             {

@@ -150,21 +150,21 @@ internal static class SelfTest
 
         // Selected-worker overlay: when its own Chrome is NOT a blocker, prefer the approved inset overlay.
         var ownChrome = new Rectangle(1000, 0, 500, 834);
-        var ownPopup = new Size(344, 770);
+        var ownPopup = new Size(312, 650);
         ok = UiPlacement.TryPopup(ownChrome, ownPopup, new[] { working }, Array.Empty<Rectangle>(), null, out target);
         Must(ok, "selected worker popup can overlay its own Chrome");
-        Must(target == new Point(ownChrome.Left + 10, ownChrome.Top + 54), "selected worker popup uses approved inset overlay");
+        Must(target == new Point(ownChrome.Left, ownChrome.Top + 64), "selected worker popup uses approved inset overlay");
         Must(ownChrome.Contains(new Rectangle(target, ownPopup)), "selected worker popup stays inside its own Chrome");
 
         var savedOverBadge = new Point(ownChrome.Left + 17, ownChrome.Top);
         ok = UiPlacement.TryPopup(ownChrome, ownPopup, new[] { working }, Array.Empty<Rectangle>(), savedOverBadge, out target);
-        Must(ok && target == new Point(ownChrome.Left + 10, ownChrome.Top + 54), "saved popup overlapping badge strip is rejected");
+        Must(ok && target == new Point(ownChrome.Left, ownChrome.Top + 64), "saved popup overlapping badge strip is rejected");
 
         var neighborChrome = new Rectangle(500, 0, 515, 834);
         var selectedChrome = new Rectangle(1008, 0, 515, 834);
-        ok = UiPlacement.TryPopup(selectedChrome, new Size(360, 809), new[] { new Rectangle(0, 0, 3277, 1688) },
+        ok = UiPlacement.TryPopup(selectedChrome, new Size(312, 650), new[] { new Rectangle(0, 0, 3277, 1688) },
             new[] { neighborChrome }, null, out target);
-        Must(ok && target.Y >= selectedChrome.Top + 54, "fallback popup candidate never covers selected badge strip");
+        Must(ok && target.Y >= selectedChrome.Top + 64, "fallback popup candidate never covers selected badge strip");
 
         var fullScreenChrome = new Rectangle(0, 0, 1920, 1080);
         ok = UiPlacement.TryPopup(fullScreenChrome, popupSize, new[] { working }, new[] { fullScreenChrome }, null, out _);
