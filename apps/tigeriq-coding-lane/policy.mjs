@@ -17,6 +17,73 @@ export function safeRepoPath(path){
   return !PROTECTED.some(re=>re.test(p));
 }
 
+export function parseRawUtf8Envelope(text){
+  const raw=String(text||'').trim();
+  const clean=raw.replace(/^(?:json)?\s*/i,'').replace(/\s*$/,'').trim();
+  let obj;
+  try{
+    obj=parseJsonObject(clean);
+  }catch(e){
+    const malformedErr=new Error(`CODING_ENVELOPE_MALFORMED:${String(e?.message||e)}`);
+    malformedErr.code='CODING_ENVELOPE_MALFORMED';
+    malformedErr.cause=e;
+    throw malformedErr;
+  }
+  if(!obj||typeof obj!=='object'||Array.isArray(obj)){
+    const malformedErr=new Error('CODING_ENVELOPE_MALFORMED:root_not_object');
+    malformedErr.code='CODING_ENVELOPE_MALFORMED';
+    throw malformedErr;
+  }
+  const summary=typeof obj.summary==='string'?obj.summary:null;
+  const edits=Array.isArray(obj.edits)?obj.edits:null;
+  if(!edits){
+    const malformedErr=new Error('CODING_ENVELOPE_MALFORMED:edits_missing_or_invalid');
+    malformedErr.code='CODING_ENVELOPE_MALFORMED';
+    throw malformedErr;
+  }
+  const parsedEdits=[];
+  const seenPaths=new Set();
+  for(const edit of edits){
+    if(!edit||typeof edit!=='object'){
+      const malformedErr=new Error('CODING_ENVELOPE_MALFORMED:edit_not_object');
+      malformedErr.code='CODING_ENVELOPE_MALFORMED';
+      throw malformedErr;
+    }
+    const path=String(edit.path||'').trim();
+    if(!safeRepoPath(path)){
+      const scopeErr=new Error(`CODING_PATH_BLOCKED:${path}`);
+      scopeErr.code='CODING_PATH_BLOCKED';
+      throw scopeErr;
+    }
+    if(seenPaths.has(path)){
+      const dupErr=new Error(`CODING_DUPLICATE_PATH:${path}`);
+      dupErr.code='CODING_DUPLICATE_PATH';
+      throw dupErr;
+    }
+    seenPaths.add(path);
+
+    const hasContent=Object.prototype.hasOwnProperty.call(edit,'content');
+    const hasSearch=Object.prototype.hasOwnProperty.call(edit,'search');
+    const hasReplace=Object.prototype.hasOwnProperty.call(edit,'replace');
+
+    if(hasContent){
+      if(hasSearch||hasReplace){
+        const malformedErr=new Error('CODING_ENVELOPE_MALFORMED:mixed_content_and_search_replace');
+        malformedErr.code='CODING_ENVELOPE_MALFORMED';
+        throw malformedErr;
+      }
+      parsedEdits.push({path,content:String(edit.content??'')});
+    }else if(hasSearch&&hasReplace){
+      parsedEdits.push({path,search:String(edit.search??''),replace:String(edit.replace??'')});
+    }else{
+      const malformedErr=new Error('CODING_ENVELOPE_MALFORMED:missing_content_or_search_replace');
+      malformedErr.code='CODING_ENVELOPE_MALFORMED';
+      throw malformedErr;
+    }
+  }
+  return {summary,edits:parsedEdits};
+}
+
 export function validateChanges(changes,allowedPaths=[]){
   if(!Array.isArray(changes)||changes.length<1||changes.length>8) throw new Error('CODING_CHANGES_COUNT_INVALID');
   const allow=new Set((allowedPaths||[]).map(x=>String(x).trim()).filter(Boolean));
@@ -66,7 +133,8 @@ export function isRetryableAiError(error){
   const status=Number(error?.status||0);
   if([408,409,413,429,500,502,503,504].includes(status)) return true;
   const msg=String(error?.message||error||'');
-  return error?.name==='AbortError'||/CODING_CHANGES_COUNT_INVALID|JSON_OBJECT_(?:INVALID|MISSING)|unterminated|truncat|schema|EMPTY_RESPONSE|fetch failed|aborted|ECONNRESET|ETIMEDOUT|socket|HTTP_(?:408|409|413|429|500|502|503|504)\b/i.test(msg);
+  const code=String(error?.code||'');
+  return error?.name==='AbortError'||code==='CODING_ENVELOPE_MALFORMED'||/CODING_ENVELOPE_MALFORMED|CODING_CHANGES_COUNT_INVALID|JSON_OBJECT_(?:INVALID|MISSING)|unterminated|truncat|schema|EMPTY_RESPONSE|fetch failed|aborted|ECONNRESET|ETIMEDOUT|socket|HTTP_(?:408|409|413|429|500|502|503|504)\b/i.test(msg);
 }
 
 function repairInvalidJsonEscapes(input){
