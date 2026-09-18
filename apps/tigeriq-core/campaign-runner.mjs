@@ -53,3 +53,9 @@ export function makePhaseCheckpoint({currentPhase=0,phases=[],summary='',complet
 export function campaignNeedsEvidence({status,phases=[],doneJobs=0}) {
   return status === 'complete' && Array.isArray(phases) && phases.length > 0 && Number(doneJobs || 0) < 1;
 }
+
+export function campaignEvidenceJobId(objectiveId,currentPhase=0) {
+  const id=String(objectiveId||'').trim();
+  if(!id) throw new Error('CAMPAIGN_OBJECTIVE_ID_REQUIRED');
+  return `JOB-EVID-${id}-P${Number(currentPhase)||0}`;
+}
