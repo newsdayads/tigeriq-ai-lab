@@ -641,6 +641,8 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
     const workerId=decodeURIComponent(url.pathname.split('/').pop()!) as WorkerId;
     if(!getWorker(workerId)){json(res,404,{ok:false});return true;}
     if(!states.get(workerId)!.enabled){json(res,200,{command:null,disabled:true,error:`WORKER_DISABLED:${workerId}`});return true;}
+    const mutationLease=browserMutationLeases.active(workerId);
+    if(mutationLease){json(res,200,{command:null,mutationLease:{ownerId:mutationLease.ownerId,expiresAt:mutationLease.expiresAt}});return true;}
     const command=commandQueues.get(workerId)!.shift()??null;
     if(command){const waiter=waiters.get(command.id);if(waiter)waiter.delivered=true;}
     json(res,200,{command});
