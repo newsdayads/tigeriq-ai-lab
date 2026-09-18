@@ -9,8 +9,18 @@ export function parseManagerJson(text){
   if(!value||typeof value!=='object'||Array.isArray(value))throw managerError('MANAGER_SCHEMA_INVALID');
   if(!['continue','complete','blocked'].includes(value.status))throw managerError('MANAGER_STATUS_INVALID');
   if(typeof value.summary!=='string')throw managerError('MANAGER_SCHEMA_INVALID');
-  const jobs=Array.isArray(value.jobs)?value.jobs.slice(0,3):[];
-  if(value.status==='continue'&&!jobs.length)throw managerError('MANAGER_SCHEMA_INVALID');
+  let jobs = [];
+  if (value.status === 'continue') {
+    if (!Array.isArray(value.jobs) || value.jobs.length < 1 || value.jobs.length > 3) {
+      throw managerError('MANAGER_SCHEMA_INVALID');
+    }
+    jobs = value.jobs.slice(0, 3);
+  } else {
+    if (value.jobs !== undefined && (!Array.isArray(value.jobs) || value.jobs.length > 0)) {
+      throw managerError('MANAGER_SCHEMA_INVALID');
+    }
+    jobs = [];
+  }
   for(const job of jobs){
     if(!job||typeof job!=='object'||typeof job.title!=='string'||typeof job.prompt!=='string')throw managerError('MANAGER_SCHEMA_INVALID');
     if(job.capability!==undefined&&!['general','reasoning','review'].includes(job.capability))throw managerError('MANAGER_SCHEMA_INVALID');
