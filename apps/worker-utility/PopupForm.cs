@@ -194,6 +194,13 @@ internal sealed class PopupForm : Form
         AccessibleDescription = "Bảng điều khiển worker phẳng, không thanh cuộn.";
 
         Controls.Add(root);
+        root.Paint += (_, e) =>
+        {
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            using var pen = new Pen(currentAccent, 2);
+            using var borderPath = RoundedPath(new Rectangle(1, 1, root.Width - 3, root.Height - 3), 18);
+            e.Graphics.DrawPath(pen, borderPath);
+        };
         BuildHeader();
         BuildStatus();
 
