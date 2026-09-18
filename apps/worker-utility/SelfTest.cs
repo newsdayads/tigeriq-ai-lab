@@ -84,8 +84,9 @@ internal static class SelfTest
         Must(BrowserHarnessClient.ReadOnlyEnabled("NV02"), "harness read-only NV02");
         Must(BrowserHarnessClient.ReadOnlyEnabled("NV03"), "harness read-only NV03");
         Must(BrowserHarnessClient.ReadOnlyEnabled("NV04"), "harness read-only NV04");
-        Must(BrowserHarnessClient.PilotEnabled("NV04"), "harness write pilot NV04");
-        Must(!BrowserHarnessClient.PilotEnabled("NV02"), "harness write pilot excludes NV02");
+        Must(BrowserHarnessClient.WriteEnabled("NV02"), "harness write-safe NV02");
+        Must(BrowserHarnessClient.WriteEnabled("NV03"), "harness write-safe NV03");
+        Must(BrowserHarnessClient.WriteEnabled("NV04"), "harness write-safe NV04");
         var parsed = BrowserHarnessClient.ParseProbeOutput("NV04",
             "update available\n{\"url\":\"https://gemini.google.com/app\",\"title\":\"Gemini\",\"w\":1000}\n");
         Must(parsed.State == HarnessState.Ready, "harness parses page_info json");
