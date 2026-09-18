@@ -11,6 +11,7 @@ export function parseManagerJson(text){
   if(typeof value.summary!=='string')throw managerError('MANAGER_SCHEMA_INVALID');
   const jobs=Array.isArray(value.jobs)?value.jobs.slice(0,3):[];
   if(value.status==='continue'&&!jobs.length)throw managerError('MANAGER_SCHEMA_INVALID');
+  if(value.status!=='continue'&&jobs.length)throw managerError('MANAGER_SCHEMA_INVALID');
   for(const job of jobs){
     if(!job||typeof job!=='object'||typeof job.title!=='string'||typeof job.prompt!=='string')throw managerError('MANAGER_SCHEMA_INVALID');
     if(job.capability!==undefined&&!['general','reasoning','review'].includes(job.capability))throw managerError('MANAGER_SCHEMA_INVALID');
