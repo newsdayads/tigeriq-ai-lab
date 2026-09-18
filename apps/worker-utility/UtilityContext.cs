@@ -385,6 +385,11 @@ internal sealed class UtilityContext : ApplicationContext
                 if (harnessResult.State != HarnessState.Ready)
                     throw new InvalidOperationException($"HARNESS_{harnessResult.State}:{harnessResult.Summary}");
                 break;
+            case "harness-lock-test":
+                var lockResult = await RunHarnessLockTestAsync(id);
+                if (lockResult.State != HarnessState.Ready)
+                    throw new InvalidOperationException($"HARNESS_{lockResult.State}:{lockResult.Summary}");
+                break;
             case "save":
                 var saved = await controller.SaveAsync(id, false);
                 popups[id].SetActionNotice($"✓ Đã lưu: {saved.CheckpointRef}", false);
@@ -473,6 +478,51 @@ internal sealed class UtilityContext : ApplicationContext
         }
         UpdateTraySurface();
         return result;
+    }
+
+    async Task<HarnessView> RunHarnessLockTestAsync(string id)
+    {
+        if (!BrowserHarnessClient.PilotEnabled(id))
+            throw new InvalidOperationException("HARNESS_LOCK_PILOT_NV04_ONLY");
+        if (!views.TryGetValue(id, out var current))
+            throw new InvalidOperationException("HARNESS_LOCK_STATE_UNAVAILABLE");
+        if (current.AuthRequired || !string.IsNullOrWhiteSpace(current.SecurityBlock))
+            throw new InvalidOperationException($"HARNESS_LOCK_SECURITY_BLOCK:{current.Reason}");
+        if (!current.SessionOk || !current.WindowOpen || !current.UiReady)
+            throw new InvalidOperationException($"HARNESS_LOCK_WORKER_NOT_READY:{current.Reason}");
+        if (current.UiBusy || !string.IsNullOrWhiteSpace(current.JobId))
+            throw new InvalidOperationException("HARNESS_LOCK_ACTIVE_JOB_FORBIDDEN");
+
+        store.Log(id, "HARNESS_LOCK_REQUEST", new { mode = "REVERSIBLE_DOM_MUTATION" });
+        await controller.PauseAsync(id);
+        try
+        {
+            if (!await controller.IsUtilityPausedAsync(id))
+                throw new InvalidOperationException("HARNESS_LOCK_NOT_CONFIRMED");
+
+            store.Log(id, "HARNESS_LOCK_ACQUIRED", new { utilityPaused = true });
+            var result = await browserHarness.MutationProbeAsync(Workers.Get(id), current);
+            harnessViews[id] = result;
+            store.Log(id, "HARNESS_MUTATION_PROBE_RESULT", new
+            {
+                state = result.State.ToString(),
+                result.Summary,
+                result.Url,
+                result.CheckedAt
+            });
+            if (result.State != HarnessState.Ready)
+                throw new InvalidOperationException($"HARNESS_MUTATION_{result.State}:{result.Summary}");
+            return result;
+        }
+        finally
+        {
+            await controller.ResumeAsync(id);
+            var stillPaused = await controller.IsUtilityPausedAsync(id);
+            store.Log(id, "HARNESS_LOCK_RELEASED", new { utilityPaused = stillPaused });
+            if (stillPaused)
+                throw new InvalidOperationException("HARNESS_LOCK_RELEASE_FAILED");
+            UpdateTraySurface();
+        }
     }
 
     ScheduleSettings EnsureSchedule(string id, bool? enabled)
