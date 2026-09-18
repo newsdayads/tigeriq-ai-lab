@@ -72,11 +72,17 @@ internal static class UiPlacement
         // Never clamp it onto another monitor because that can silently create overlap.
         if (savedLocation is Point saved)
         {
-            foreach (var area in workingAreas)
+            var savedRect = new Rectangle(saved, popupSize);
+            // Layout 2 only accepts a remembered popup position when it still belongs
+            // to this worker's own Chrome. Old pre-freeze positions are ignored.
+            if (anchor.Contains(savedRect))
             {
-                if (!Available(saved, area)) continue;
-                target = saved;
-                return true;
+                foreach (var area in workingAreas)
+                {
+                    if (!Available(saved, area)) continue;
+                    target = saved;
+                    return true;
+                }
             }
         }
 
