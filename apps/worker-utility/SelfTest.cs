@@ -150,7 +150,7 @@ internal static class SelfTest
 
         // Selected-worker overlay: when its own Chrome is NOT a blocker, prefer the approved inset overlay.
         var ownChrome = new Rectangle(1000, 0, 500, 834);
-        var ownPopup = new Size(344, 660);
+        var ownPopup = new Size(312, 650);
         ok = UiPlacement.TryPopup(ownChrome, ownPopup, new[] { working }, Array.Empty<Rectangle>(), null, out target);
         Must(ok, "selected worker popup can overlay its own Chrome");
         Must(target == new Point(ownChrome.Left, ownChrome.Top + 64), "selected worker popup uses approved inset overlay");
@@ -162,7 +162,7 @@ internal static class SelfTest
 
         var neighborChrome = new Rectangle(500, 0, 515, 834);
         var selectedChrome = new Rectangle(1008, 0, 515, 834);
-        ok = UiPlacement.TryPopup(selectedChrome, new Size(344, 660), new[] { new Rectangle(0, 0, 3277, 1688) },
+        ok = UiPlacement.TryPopup(selectedChrome, new Size(312, 650), new[] { new Rectangle(0, 0, 3277, 1688) },
             new[] { neighborChrome }, null, out target);
         Must(ok && target.Y >= selectedChrome.Top + 64, "fallback popup candidate never covers selected badge strip");
 
