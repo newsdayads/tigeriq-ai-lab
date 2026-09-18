@@ -136,6 +136,7 @@ const resources=[
   R('NV13','openrouter','openrouter/free',()=>process.env.OPENROUTER_API_KEY),
   R('NV14','mistral','mistral-small-latest',()=>process.env.MISTRAL_API_KEY),
   R('NV16','huggingface','openai/gpt-oss-120b:fastest',()=>process.env.HF_TOKEN),
+  R('NV19','cohere',process.env.TIGERIQ_COHERE_MODEL||'command-a-plus-05-2026',()=>process.env.COHERE_API_KEY&&process.env.TIGERIQ_COHERE_TRIAL_CONFIRMED==='true'),
 ].filter(x=>x.ready());
 let rr=0;
 function pickResource(exclude=[]){const available=resources.filter(x=>!exclude.includes(x.id));if(!available.length)return null;const r=available[rr%available.length];rr++;return r;}
