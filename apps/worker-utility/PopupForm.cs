@@ -183,17 +183,17 @@ internal sealed class PopupForm : Form
             ("Ⅱ  Tạm dừng", "pause"));
         AddActionSection("CỬA SỔ", ref y,
             ("⌖  Về vị trí", "fix"),
-            ("⌁  Khóa vị trí", "lock"),
-            ("◎  Focus", "focus"),
-            ("↺  Đặt lại badge", "badge-reset"));
+            ("⌁  Khóa vị trí", "lock"));
         AddActionSection("ĐIỀU HƯỚNG & KIỂM TRA", ref y,
             ("↗  Mở đúng trang", "open"),
             ("⌕  Kiểm tra nhanh", "health"));
-        AddActionSection("LƯU & PHỤC HỒI", ref y,
+        AddActionSection("LƯU", ref y,
             ("▣  Lưu", "save"),
-            ("▦  Lưu & Lưu trữ", "save-archive"),
-            ("⏻  Đóng Chrome an toàn", "close"),
-            ("↻  Khôi phục", "recover"));
+            ("▦  Lưu & Lưu trữ", "save-archive"));
+        var closeMain = MakeActionButton("⏻  Đóng Chrome an toàn", "close", 312, 30);
+        closeMain.Location = new Point(16, y);
+        root.Controls.Add(closeMain);
+        y += 39;
 
         BuildSchedule(ref y);
         BuildLogs(ref y);
@@ -364,11 +364,9 @@ internal sealed class PopupForm : Form
 
         scheduleEnabled.Location = new Point(16, y);
         changeOnly.Location = new Point(104, y);
-        dnd.Location = new Point(16, y + 20);
         root.Controls.Add(scheduleEnabled);
         root.Controls.Add(changeOnly);
-        root.Controls.Add(dnd);
-        y += 42;
+        y += 22;
 
         schedule.Location = new Point(16, y);
         root.Controls.Add(schedule);
@@ -557,8 +555,8 @@ internal sealed class PopupForm : Form
 
     void ShowAdvanced()
     {
-        advancedForm ??= new AdvancedInfoForm();
-        advancedForm.SetWorker(workerId, advancedLines);
+        advancedForm ??= new AdvancedInfoForm(async name => await InvokeActionAsync(name));
+        advancedForm.SetWorker(workerId, advancedLines, dnd.Checked);
         if (!advancedForm.Visible) advancedForm.Show(this);
         else advancedForm.Activate();
     }
@@ -647,7 +645,7 @@ internal sealed class PopupForm : Form
         logSummary.Text = string.Join(Environment.NewLine, visibleLogs);
 
         advancedLines = BuildAdvancedLines(worker, view, watchdog, settings, scheduleSettings);
-        if (advancedForm?.Visible == true) advancedForm.SetWorker(workerId, advancedLines);
+        if (advancedForm?.Visible == true) advancedForm.SetWorker(workerId, advancedLines, doNotDisturb);
 
         var saved = settings.PopupX is int x && settings.PopupY is int y ? new Point?(new Point(x, y)) : null;
         var workingAreas = Screen.AllScreens.Select(s => s.WorkingArea).ToArray();
@@ -715,11 +713,12 @@ internal sealed class PopupForm : Form
 
 internal sealed class AdvancedInfoForm : Form
 {
+    readonly Func<string, Task> action;
     readonly Label title = new()
     {
         AutoSize = false,
         Location = new Point(16, 14),
-        Size = new Size(340, 24),
+        Size = new Size(388, 24),
         ForeColor = Color.White,
         Font = new Font("Segoe UI", 11, FontStyle.Bold)
     };
@@ -727,16 +726,27 @@ internal sealed class AdvancedInfoForm : Form
     {
         AutoSize = false,
         Location = new Point(16, 48),
-        Size = new Size(388, 318),
+        Size = new Size(388, 276),
         ForeColor = Color.FromArgb(203, 213, 225),
         Font = new Font("Consolas", 8.3f),
         BackColor = Color.FromArgb(5, 13, 25)
     };
-
-    public AdvancedInfoForm()
+    readonly Label status = new()
     {
-        Text = "TigerIQ — Thông tin kỹ thuật";
-        ClientSize = new Size(420, 382);
+        AutoSize = false,
+        Location = new Point(16, 456),
+        Size = new Size(388, 22),
+        ForeColor = Color.FromArgb(148, 163, 184),
+        Font = new Font("Segoe UI", 8.2f)
+    };
+    readonly Button dndButton;
+    bool dndOn;
+
+    public AdvancedInfoForm(Func<string, Task> action)
+    {
+        this.action = action;
+        Text = "TigerIQ — Nâng cao";
+        ClientSize = new Size(420, 490);
         MinimumSize = Size;
         MaximumSize = Size;
         StartPosition = FormStartPosition.CenterScreen;
@@ -746,12 +756,80 @@ internal sealed class AdvancedInfoForm : Form
         BackColor = Color.FromArgb(5, 13, 25);
         Controls.Add(title);
         Controls.Add(details);
+
+        var actions = new[]
+        {
+            ("◎  Focus cửa sổ", "focus"),
+            ("↻  Khôi phục an toàn", "recover"),
+            ("↺  Đặt lại badge", "badge-reset"),
+            ("⏻  Đóng NV an toàn", "close")
+        };
+        for (var i = 0; i < actions.Length; i++)
+        {
+            var item = actions[i];
+            var button = MakeButton(item.Item1, new Point(16 + (i % 2) * 196, 338 + (i / 2) * 42), 184);
+            var command = item.Item2;
+            button.Click += async (_, _) => await RunAsync(command);
+            Controls.Add(button);
+        }
+
+        dndButton = MakeButton("Không làm phiền", new Point(16, 422), 380);
+        dndButton.Click += async (_, _) =>
+        {
+            await RunAsync(dndOn ? "dnd-off" : "dnd-on");
+            dndOn = !dndOn;
+            UpdateDndText();
+        };
+        Controls.Add(dndButton);
+        Controls.Add(status);
     }
 
-    public void SetWorker(string workerId, string[] lines)
+    static Button MakeButton(string text, Point location, int width)
     {
-        title.Text = $"{workerId} — Thông tin kỹ thuật";
+        var button = new Button
+        {
+            Text = text,
+            Location = location,
+            Size = new Size(width, 34),
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.FromArgb(20, 38, 60),
+            ForeColor = Color.FromArgb(241, 245, 249),
+            Font = new Font("Segoe UI", 8.3f, FontStyle.Bold),
+            Cursor = Cursors.Hand,
+            TabStop = false
+        };
+        button.FlatAppearance.BorderColor = Color.FromArgb(31, 52, 76);
+        button.FlatAppearance.BorderSize = 1;
+        return button;
+    }
+
+    async Task RunAsync(string command)
+    {
+        status.Text = "Đang thực hiện…";
+        try
+        {
+            await action(command);
+            status.ForeColor = Color.FromArgb(52, 211, 153);
+            status.Text = "✓ Hoàn tất";
+        }
+        catch (Exception ex)
+        {
+            status.ForeColor = Color.FromArgb(248, 113, 113);
+            status.Text = "⚠ " + ex.Message;
+        }
+    }
+
+    void UpdateDndText()
+    {
+        dndButton.Text = dndOn ? "Không làm phiền: BẬT" : "Không làm phiền: TẮT";
+    }
+
+    public void SetWorker(string workerId, string[] lines, bool doNotDisturb)
+    {
+        title.Text = $"{workerId} — Nâng cao / Thông tin kỹ thuật";
         details.Text = string.Join(Environment.NewLine, lines);
+        dndOn = doNotDisturb;
+        UpdateDndText();
     }
 }
 
