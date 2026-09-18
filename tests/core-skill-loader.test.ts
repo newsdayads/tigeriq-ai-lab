@@ -3,7 +3,12 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-// @ts-ignore — runtime JS module is intentionally tested without a declaration file.\nimport { appendSkillContextToPrompt, loadSkillRegistry, matchAndLoadSkills, parseSkillRegistry } from '../apps/tigeriq-core/skill-loader.mjs';\n\ntype Entry = { id: string; state: string; title?: string; version?: string; target?: string; summary?: string; triggers?: string };\n\nfunction fixture(entries: Entry[], contents: Record<string, string> = {}) {
+// @ts-ignore — runtime JS module is intentionally tested without a declaration file.
+import { appendSkillContextToPrompt, loadSkillRegistry, matchAndLoadSkills, parseSkillRegistry } from '../apps/tigeriq-core/skill-loader.mjs';
+
+type Entry = { id: string; state: string; title?: string; version?: string; target?: string; summary?: string; triggers?: string };
+
+function fixture(entries: Entry[], contents: Record<string, string> = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'tigeriq-skill-'));
   const registryPath = join(dir, 'registry.yaml');
   const rows = ['version: 1', 'skills:'];
