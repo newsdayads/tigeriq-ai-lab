@@ -227,6 +227,66 @@ alter table tigeriq_coding_jobs add column if not exists resource_retry_started_
 create index if not exists tigeriq_coding_jobs_status_idx on tigeriq_coding_jobs(status,created_at);
 `)}
 
+export function extractGithubIssueNumber(text){
+  const value=String(text||'');
+  const tagged=value.match(/GitHub(?:\s+autonomous|\s+bootstrap)?\s+coding\s+issue\s+#(\d+)/i)||value.match(/(?:issue|work item)\s+#(\d+)/i);
+  if(tagged)return Number(tagged[1]);
+  const url=value.match(/github\.com\/[^/]+\/[^/]+\/issues\/(\d+)/i);
+  return url?Number(url[1]):null;
+}
+
+export function recoveryDecision({job={},issue=null,pr=null,lookupError=null}={}){
+  if(lookupError)return {action:'defer',reason:'GITHUB_LOOKUP_FAILED'};
+  if(pr){
+    if(pr.merged)return {action:'complete',reason:'PR_MERGED'};
+    if(pr.state==='open')return {action:'resume',reason:'PR_OPEN'};
+    return {action:'block',reason:'PR_CLOSED_UNMERGED'};
+  }
+  if(issue){
+    if(issue.state==='closed'){
+      if(String(issue.state_reason||'').toLowerCase()==='completed')return {action:'complete',reason:'ISSUE_COMPLETED'};
+      return {action:'block',reason:'ISSUE_CLOSED_NOT_COMPLETED'};
+    }
+    if(job.branch)return {action:'block',reason:'BRANCH_WITHOUT_PR'};
+    return {action:'resume',reason:'ISSUE_OPEN_NO_MUTATION'};
+  }
+  if(job.branch)return {action:'block',reason:'BRANCH_WITHOUT_DURABLE_GITHUB_REF'};
+  return {action:'resume',reason:'NO_MUTATION_TO_REPLAY'};
+}
+
+export async function recoverOrphanedJobs({db=pool,github=gh}={}){
+  if(!db)return [];
+  const q=await db.query("select j.*,o.objective from tigeriq_coding_jobs j left join tigeriq_coding_objectives o on o.id=j.objective_id where j.status in ('running','review','waiting_ci') order by j.created_at");
+  const actions=[];
+  for(const job of q.rows){
+    const issueNumber=extractGithubIssueNumber(job.objective);
+    let pr=null,issue=null,lookupError=null;
+    try{
+      if(Number(job.pr_number)>0)pr=await github(`/pulls/${Number(job.pr_number)}`);
+      else if(issueNumber)issue=await github(`/issues/${issueNumber}`);
+    }catch(error){lookupError=String(error?.message||error)}
+    const decision=recoveryDecision({job,issue,pr,lookupError});
+    const evidence={event:'CODING_LANE_ORPHAN_RECOVERY',jobId:job.id,objectiveId:job.objective_id,issueNumber,prNumber:Number(job.pr_number)||null,previousStatus:job.status,...decision};
+    if(lookupError)evidence.lookupError=lookupError.slice(0,240);
+    if(decision.action==='complete'){
+      await db.query("update tigeriq_coding_jobs set status='done',result=coalesce(result,'{}'::jsonb)||$2::jsonb,completed_at=coalesce(completed_at,now()),next_attempt_at=null where id=$1",[job.id,JSON.stringify({recovery:evidence})]);
+      if(job.objective_id)await db.query("update tigeriq_coding_objectives set status='completed',summary=$2,updated_at=now() where id=$1",[job.objective_id,`ORPHAN_RECOVERY_COMPLETED:${decision.reason}`]);
+    }else if(decision.action==='resume'){
+      await db.query("update tigeriq_coding_jobs set status='queued',result=coalesce(result,'{}'::jsonb)||$2::jsonb,completed_at=null,next_attempt_at=null where id=$1",[job.id,JSON.stringify({recovery:evidence})]);
+      if(job.objective_id)await db.query("update tigeriq_coding_objectives set status='active',summary=$2,updated_at=now() where id=$1",[job.objective_id,`ORPHAN_RECOVERY_RESUME:${decision.reason}`]);
+    }else if(decision.action==='defer'){
+      await db.query("update tigeriq_coding_jobs set status='waiting_resource',failure=coalesce(failure,'{}'::jsonb)||$2::jsonb,next_attempt_at=now()+interval '60 seconds',completed_at=null where id=$1",[job.id,JSON.stringify({recovery:evidence})]);
+      if(job.objective_id)await db.query("update tigeriq_coding_objectives set status='active',summary=$2,updated_at=now() where id=$1",[job.objective_id,'ORPHAN_RECOVERY_DEFER:GITHUB_LOOKUP_FAILED']);
+    }else{
+      await db.query("update tigeriq_coding_jobs set status='failed',failure=coalesce(failure,'{}'::jsonb)||$2::jsonb,completed_at=now(),next_attempt_at=null where id=$1",[job.id,JSON.stringify({recovery:evidence})]);
+      if(job.objective_id)await db.query("update tigeriq_coding_objectives set status='blocked',summary=$2,updated_at=now() where id=$1",[job.objective_id,`ORPHAN_RECOVERY_BLOCKED:${decision.reason}`]);
+    }
+    console.log(JSON.stringify(evidence));
+    actions.push(evidence);
+  }
+  return actions;
+}
+
 async function managerTick(){
   const q=await pool.query("select * from tigeriq_coding_objectives where status='active' and not exists(select 1 from tigeriq_coding_jobs j where j.objective_id=tigeriq_coding_objectives.id and j.status in ('queued','running','review','waiting_ci','waiting_resource')) order by case priority when 'P0' then 0 when 'P1' then 1 else 2 end,created_at limit 1");
   const o=q.rows[0];if(!o)return;
@@ -383,6 +443,7 @@ const server=createServer(async(req,res)=>{const u=new URL(req.url||'/','http://
 
 if(process.env.NODE_ENV!=='test'){
   await initDb();
+  await recoverOrphanedJobs();
   await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(PORT,HOST,resolve)});
   console.log(JSON.stringify({event:'TIGERIQ_CODING_LANE_STARTED',host:HOST,port:PORT,pid:process.pid,resources:resources.map(x=>x.id),autoMerge:AUTO_MERGE}));
   let stop=false;
