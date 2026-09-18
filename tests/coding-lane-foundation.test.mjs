@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import {applyCompactEdits,assertPrOpenState,gateFailureIssues,invokeJsonWithFailover,isResourceTransientError,resourceWaitPlan,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,validateCompactEdits} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {activeProviderCooldownIds,applyCompactEdits,assertPrOpenState,classifyAiFailure,gateFailureIssues,invokeJsonWithFailover,isResourceTransientError,resourceWaitPlan,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,validateCompactEdits} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError,parseJsonObject} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 const nv11={id:'NV11',provider:'fake',model:'a'};
@@ -63,18 +63,52 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
     assert.strictEqual(count,1);
   });
 
-  await t.test('HTTP 429 can fail over through a third eligible free resource with bounded backoff',async()=>{
-    const calls=[];const sleeps=[];
+  await t.test('HTTP 429 skips the limited provider immediately and fails over',async()=>{
+    const calls=[];
     const invokeFn=async(r)=>{
       calls.push(r.id);
       if(r.id!=='NV13'){const e=new Error('HTTP_429:rate');e.status=429;throw e;}
       return '{"decision":"approve","summary":"ok","issues":[]}';
     };
-    const out=await invokeJsonWithFailover(nv11,'review',{resourcePool:[nv11,nv19,nv13],invokeFn,maxResources:3,sleepFn:async ms=>sleeps.push(ms),randomFn:()=>0.5,backoffBaseMs:100});
+    const out=await invokeJsonWithFailover(nv11,'review',{resourcePool:[nv11,nv19,nv13],invokeFn,maxResources:3});
     assert.strictEqual(out.resource.id,'NV13');
-    assert.deepStrictEqual(calls,['NV11','NV11','NV19','NV19','NV13']);
-    assert.strictEqual(sleeps.length,2);
-    assert.ok(sleeps.every(ms=>ms>=0&&ms<=10000));
+    assert.deepStrictEqual(calls,['NV11','NV19','NV13']);
+    assert.deepStrictEqual(out.failureLedger.map(x=>x.class),['rate_limit','rate_limit']);
+  });
+
+  await t.test('mixed output failures and 429 become OUTPUT_CONTRACT_EXHAUSTED, not resource wait',async()=>{
+    const calls=[];
+    const invokeFn=async(r)=>{
+      calls.push(r.id);
+      if(r.id==='NV19'){const e=new Error('HTTP_429:rate');e.status=429;throw e;}
+      return '{bad json';
+    };
+    await assert.rejects(()=>invokeJsonWithFailover(nv11,'x',{resourcePool:[nv11,nv13,nv19],invokeFn,maxResources:3}),e=>{
+      assert.strictEqual(e.code,'OUTPUT_CONTRACT_EXHAUSTED');
+      assert.deepStrictEqual(e.detail.failureLedger.map(x=>x.class),['output_contract','output_contract','output_contract','output_contract','rate_limit']);
+      assert.strictEqual(isResourceTransientError(e),false);
+      return true;
+    });
+    assert.deepStrictEqual(calls,['NV11','NV11','NV13','NV13','NV19']);
+  });
+
+  await t.test('all providers unavailable produce resource wait classification with cooldown evidence',async()=>{
+    const invokeFn=async()=>{const e=new Error('HTTP_429:rate');e.status=429;throw e;};
+    await assert.rejects(()=>invokeJsonWithFailover(nv11,'x',{resourcePool:[nv11,nv19],invokeFn,maxResources:2}),e=>{
+      assert.strictEqual(e.code,'AI_RESOURCES_UNAVAILABLE');
+      assert.strictEqual(isResourceTransientError(e),true);
+      assert.strictEqual(e.detail.failureLedger.length,2);
+      assert.ok(e.detail.failureLedger.every(x=>x.class==='rate_limit'&&Date.parse(x.cooldownUntil)>Date.now()));
+      const excluded=activeProviderCooldownIds({detail:e.detail},Date.now());
+      assert.deepStrictEqual(excluded.sort(),['NV11','NV19']);
+      return true;
+    });
+  });
+
+  await t.test('failure classifier separates output errors from provider exhaustion',()=>{
+    assert.strictEqual(classifyAiFailure(Object.assign(new Error('HTTP_429:rate'),{status:429})),'rate_limit');
+    assert.strictEqual(classifyAiFailure(new Error('JSON_OBJECT_INVALID:bad')),'output_contract');
+    assert.strictEqual(classifyAiFailure(new Error('EMPTY_RESPONSE')),'invalid_response');
   });
 
   await t.test('non-retryable error does not fail over',async()=>{
@@ -173,7 +207,7 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
   });
 
   await t.test('resource transient classifier stays fail-closed for policy errors',()=>{
-    assert.strictEqual(isResourceTransientError(new Error('EMPTY_RESPONSE')),true);
+    assert.strictEqual(isResourceTransientError(new Error('EMPTY_RESPONSE')),false);
     assert.strictEqual(isResourceTransientError(new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE')),true);
     assert.strictEqual(isResourceTransientError(new Error('POLICY_DENIED')),false);
     assert.strictEqual(isResourceTransientError(new Error('CODING_SCOPE_VIOLATION')),false);

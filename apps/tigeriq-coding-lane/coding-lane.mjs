@@ -96,8 +96,24 @@ const RESOURCE_WAIT_MAX_WINDOW_MS=60*60*1000;
 const RESOURCE_WAIT_BASE_MS=30*1000;
 const RESOURCE_WAIT_MAX_DELAY_MS=10*60*1000;
 
+export function classifyAiFailure(error){
+  const status=Number(error?.status||0);
+  const msg=String(error?.message||error||'');
+  if(status===429||/HTTP_429\b|RATE_LIMIT|RESOURCE_EXHAUSTED/i.test(msg))return 'rate_limit';
+  if(error?.name==='AbortError'||/ETIMEDOUT|timeout|aborted|ECONNRESET|socket/i.test(msg))return 'timeout';
+  if(/JSON_OBJECT_(?:INVALID|MISSING)|CODING_CHANGES_COUNT_INVALID|schema|unterminated|truncat|COMPACT_EDIT/i.test(msg))return 'output_contract';
+  if(/EMPTY_RESPONSE|invalid_response/i.test(msg))return 'invalid_response';
+  if([408,409,413,500,502,503,504].includes(status)||/fetch failed|HTTP_(?:408|409|413|500|502|503|504)\b/i.test(msg))return 'provider_unavailable';
+  return isRetryableAiError(error)?'other_retryable':'other';
+}
+
+export function activeProviderCooldownIds(failure,nowMs=Date.now()){
+  const ledger=Array.isArray(failure?.detail?.failureLedger)?failure.detail.failureLedger:[];
+  return [...new Set(ledger.filter(x=>x?.class==='rate_limit'&&Date.parse(x?.cooldownUntil||0)>nowMs).map(x=>x.resourceId).filter(Boolean))];
+}
+
 export function isResourceTransientError(error){
-  if(isRetryableAiError(error))return true;
+  if(error?.code==='AI_RESOURCES_UNAVAILABLE')return true;
   const msg=String(error?.message||error||'');
   return /NO_(?:IMPLEMENTER_AVAILABLE|INDEPENDENT_REVIEWER_AVAILABLE|FREE_API_CODING_RESOURCE)|AI_RETRY_BUDGET_EXHAUSTED/i.test(msg);
 }
@@ -159,7 +175,7 @@ export async function invokeJsonWithFailover(initialResource,prompt,{exclude=[],
   const ordered=[initial,...resourcePool.filter(r=>r?.id!==initial.id&&!exclude.includes(r?.id))];
   const unique=[];const ids=new Set();
   for(const r of ordered){if(!r||exclude.includes(r.id)||ids.has(r.id))continue;ids.add(r.id);unique.push(r);if(unique.length>=Math.min(3,maxResources))break;}
-  let lastError=null;let attempts=0;
+  const failureLedger=[];let attempts=0;
   for(let resourceIndex=0;resourceIndex<unique.length;resourceIndex++){
     const resource=unique[resourceIndex];
     for(let same=0;same<2;same++){
@@ -167,24 +183,27 @@ export async function invokeJsonWithFailover(initialResource,prompt,{exclude=[],
       try{
         const data=parseJsonObject(await invokeFn(resource,same===0?prompt:shrinkPrompt(prompt)));
         if(validateData)validateData(data,resource);
-        return {data,resource,attempts};
+        return {data,resource,attempts,failureLedger};
       }catch(e){
-        lastError=e;
-        if(!isRetryableAiError(e))throw e;
-        const is429=e?.status===429||String(e?.message||'').includes('HTTP_429');
-        if(is429&&e?.geminiRetryExhausted)break;
-        if(is429&&same===0){
-          const base=Math.min(9000,Math.max(0,backoffBaseMs)*Math.pow(2,resourceIndex));
-          const jitter=Math.floor(randomFn()*Math.max(1,10001-base));
-          await sleepFn(Math.min(10000,base+jitter));
+        const retryable=isRetryableAiError(e);
+        const failureClass=classifyAiFailure(e);
+        const cooldownUntil=failureClass==='rate_limit'?new Date(Date.now()+30*60*1000).toISOString():null;
+        failureLedger.push({resourceId:resource.id,provider:resource.provider,class:failureClass,retryable,cooldownUntil,message:String(e?.message||e).slice(0,500)});
+        if(!retryable){
+          e.detail={...(e.detail||{}),attempts,tried:[...new Set(failureLedger.map(x=>x.resourceId))],failureLedger};
+          throw e;
         }
+        if(failureClass==='rate_limit')break;
         if(same===0)continue;
         break;
       }
     }
   }
-  if(lastError){lastError.detail={...(lastError.detail||{}),attempts,tried:unique.map(x=>x.id)};throw lastError;}
-  throw new Error('AI_RETRY_BUDGET_EXHAUSTED');
+  const tried=[...new Set(failureLedger.map(x=>x.resourceId))];
+  const resourceOnly=failureLedger.length>0&&failureLedger.every(x=>['rate_limit','timeout','provider_unavailable'].includes(x.class));
+  const hasOutputFailure=failureLedger.some(x=>['output_contract','invalid_response'].includes(x.class));
+  const code=resourceOnly?'AI_RESOURCES_UNAVAILABLE':hasOutputFailure?'OUTPUT_CONTRACT_EXHAUSTED':'AI_RETRY_BUDGET_EXHAUSTED';
+  const error=new Error(code);error.code=code;error.detail={attempts,tried,failureLedger};throw error;
 }
 
 async function gh(path,init={}){return fetchJson(`https://api.github.com/repos/${OWNER}/${REPO}${path}`,{...init,headers:{accept:'application/vnd.github+json','content-type':'application/json','user-agent':'TigerIQ-Coding-Lane/1.0','x-github-api-version':'2022-11-28',authorization:`Bearer ${GH_TOKEN}`,...(init.headers||{})}},30000)}
@@ -278,24 +297,25 @@ async function writeRepairEdits(branch,edits){
   }
 }
 async function generateChanges(worker,j,context,reviewIssues=[],exclude=[]){const prompt=`You are ${worker.id}, an autonomous TigerIQ repository engineer. Implement ONLY the assigned task on a GitHub branch.\nTASK: ${j.instruction}\nALLOWED PATHS: ${j.paths.join(', ')}\n${reviewIssues.length?`REVIEW ISSUES TO FIX: ${JSON.stringify(reviewIssues)}\n`:''}CURRENT FILES:\n${context}\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}. Do not touch paths outside ALLOWED PATHS. Never output secrets. Keep changes minimal and testable.`;const validateData=d=>{validateChanges(d.changes,j.paths);validateJobScope(j.paths,d.changes)};const invoked=await invokeJsonWithFailover(worker,prompt,{exclude,validateData});const d=invoked.data;return {payload:d,resource:invoked.resource}}
-async function reviewPr(reviewer,j,diff,implementerId){const prompt=`You are ${reviewer.id}, independent TigerIQ code reviewer. Review against the task and safety boundaries. TASK: ${j.instruction}\nDIFF:\n${diff.slice(0,180000)}\nReturn ONLY JSON {"decision":"approve|changes_requested","summary":"short","issues":["specific issue"]}. Reject unsafe, untested, out-of-scope, credential/security/production changes.`;const invoked=await invokeJsonWithFailover(reviewer,prompt,{exclude:[implementerId]});const d=invoked.data;if(!['approve','changes_requested'].includes(d.decision)){const e=new Error('REVIEW_DECISION_INVALID');e.code='REVIEW_SCHEMA_INVALID';throw e}d.issues=Array.isArray(d.issues)?d.issues.slice(0,8):[];return {review:d,resource:invoked.resource}}
+async function reviewPr(reviewer,j,diff,implementerId,extraExclude=[]){const prompt=`You are ${reviewer.id}, independent TigerIQ code reviewer. Review against the task and safety boundaries. TASK: ${j.instruction}\nDIFF:\n${diff.slice(0,180000)}\nReturn ONLY JSON {"decision":"approve|changes_requested","summary":"short","issues":["specific issue"]}. Reject unsafe, untested, out-of-scope, credential/security/production changes.`;const invoked=await invokeJsonWithFailover(reviewer,prompt,{exclude:[implementerId,...extraExclude]});const d=invoked.data;if(!['approve','changes_requested'].includes(d.decision)){const e=new Error('REVIEW_DECISION_INVALID');e.code='REVIEW_SCHEMA_INVALID';throw e}d.issues=Array.isArray(d.issues)?d.issues.slice(0,8):[];return {review:d,resource:invoked.resource}}
 
 async function runJob(j){
-  let worker=resources.find(r=>r.id===j.employee_id)||pickResource();if(!worker)throw new Error('NO_IMPLEMENTER_AVAILABLE');
+  const cooldownExcludes=activeProviderCooldownIds(j.failure);
+  let worker=resources.find(r=>r.id===j.employee_id&&!cooldownExcludes.includes(r.id))||pickResource(cooldownExcludes);if(!worker)throw new Error('NO_IMPLEMENTER_AVAILABLE');
   j.paths=Array.isArray(j.paths)?j.paths:j.paths||[];
   let context=null,generated=null,gen={summary:'resumed existing PR'},reviewer=null;
   let branch=j.branch||null,pr=j.pr_number?{number:Number(j.pr_number)}:null;
   if(shouldResumeExistingPr(j)){
     assertPrOpenState(await gh(`/pulls/${pr.number}`));
     context=await contextFor(j.paths,branch);
-    reviewer=resources.find(r=>r.id===j.reviewer_employee_id&&r.id!==worker.id)||pickResource([worker.id]);
+    reviewer=resources.find(r=>r.id===j.reviewer_employee_id&&r.id!==worker.id&&!cooldownExcludes.includes(r.id))||pickResource([worker.id,...cooldownExcludes]);
     if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE');
     await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,status='waiting_ci',next_attempt_at=null,completed_at=null where id=$1",[j.id,worker.id,reviewer.id]);
   }else{
     context=await contextFor(j.paths,'main');
-    generated=await generateChanges(worker,j,context);worker=generated.resource;gen=generated.payload;
+    generated=await generateChanges(worker,j,context,[],cooldownExcludes);worker=generated.resource;gen=generated.payload;
     validateJobScope(j.paths,gen.changes);
-    reviewer=pickResource([worker.id]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE');
+    reviewer=pickResource([worker.id,...cooldownExcludes]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE');
     const base=await mainSha();branch=branchName(worker.id,j.id);await createBranch(branch,base);
     await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,branch=$4,next_attempt_at=null where id=$1",[j.id,worker.id,reviewer.id,branch]);
     for(const ch of gen.changes)await writeFile(branch,ch);
@@ -309,9 +329,9 @@ async function runJob(j){
       onWaiting:async()=>{await pool.query("update tigeriq_coding_jobs set status='waiting_ci' where id=$1",[j.id])},
       repairFn:async({evidence})=>{
         context=await contextFor(j.paths,branch);
-        generated=await generateRepairEdits(worker,j,context,[`CI gate failure on same PR #${pr.number}`,...evidence],[reviewer.id]);
+        generated=await generateRepairEdits(worker,j,context,[`CI gate failure on same PR #${pr.number}`,...evidence],[reviewer.id,...cooldownExcludes]);
         worker=generated.resource;gen=generated.payload;
-        if(reviewer?.id===worker.id){reviewer=pickResource([worker.id]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE')}
+        if(reviewer?.id===worker.id){reviewer=pickResource([worker.id,...cooldownExcludes]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE')}
         await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,status='waiting_ci' where id=$1",[j.id,worker.id,reviewer.id]);
         await writeRepairEdits(branch,gen.edits);
       },
@@ -319,16 +339,16 @@ async function runJob(j){
       timeoutRetries:1,
     });
     await pool.query("update tigeriq_coding_jobs set status='review',head_sha=$2 where id=$1",[j.id,gates.sha]);
-    if(reviewer?.id===worker.id){reviewer=pickResource([worker.id]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE')}
+    if(reviewer?.id===worker.id){reviewer=pickResource([worker.id,...cooldownExcludes]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE')}
     const diff=await ghText(`/pulls/${pr.number}`,'application/vnd.github.v3.diff');
-    const reviewed=await reviewPr(reviewer,j,diff,worker.id);reviewer=reviewed.resource;review=reviewed.review;
+    const reviewed=await reviewPr(reviewer,j,diff,worker.id,cooldownExcludes);reviewer=reviewed.resource;review=reviewed.review;
     if(reviewer.id===worker.id)throw new Error('REVIEWER_IMPLEMENTER_COLLISION');
     await pool.query("update tigeriq_coding_jobs set reviewer_employee_id=$2 where id=$1",[j.id,reviewer.id]);
     if(review.decision==='approve')break;
     if(reviewCycle===2)throw Object.assign(new Error('REVIEW_CHANGES_UNRESOLVED'),{detail:review});
     context=await contextFor(j.paths,branch);
-    generated=await generateRepairEdits(worker,j,context,review.issues,[reviewer.id]);worker=generated.resource;gen=generated.payload;
-    if(reviewer.id===worker.id){reviewer=pickResource([worker.id]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE')}
+    generated=await generateRepairEdits(worker,j,context,review.issues,[reviewer.id,...cooldownExcludes]);worker=generated.resource;gen=generated.payload;
+    if(reviewer.id===worker.id){reviewer=pickResource([worker.id,...cooldownExcludes]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE')}
     await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,status='waiting_ci' where id=$1",[j.id,worker.id,reviewer.id]);
     await writeRepairEdits(branch,gen.edits);
   }
