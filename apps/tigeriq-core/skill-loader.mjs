@@ -128,13 +128,14 @@ export function matchAndLoadSkills(objectiveText = '', options = {}) {
       skipped.push({ id: skill.id, reason: 'EMPTY_SKILL_FILE' });
       continue;
     }
-    const bytes = content.length;
-    if (bytes > maxChars - totalChars) {
+    const chars = content.length;
+    const bytes = Buffer.byteLength(content, 'utf8');
+    if (chars > maxChars - totalChars) {
       skipped.push({ id: skill.id, reason: 'CONTEXT_BUDGET' });
       continue;
     }
-    loaded.push({ ...skill, score, content, bytes });
-    totalChars += bytes;
+    loaded.push({ ...skill, score, content, chars, bytes });
+    totalChars += chars;
   }
 
   const contextBlock = loaded.length
