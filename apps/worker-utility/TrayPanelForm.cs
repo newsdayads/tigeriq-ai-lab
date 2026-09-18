@@ -231,15 +231,18 @@ internal sealed class TrayPanelForm : Form
                 continue;
             }
 
-            dotLabels[worker.Id].ForeColor = view.State switch
+            var displayState = settings.Workers.TryGetValue(worker.Id, out var local) && local.Paused
+                ? WorkerUiState.Paused
+                : view.State;
+            dotLabels[worker.Id].ForeColor = displayState switch
             {
                 WorkerUiState.Ready => Green,
                 WorkerUiState.Working => Green,
                 WorkerUiState.Paused => Amber,
                 _ => Red
             };
-            stateLabels[worker.Id].ForeColor = view.State == WorkerUiState.Blocked ? Red : Muted;
-            stateLabels[worker.Id].Text = view.State switch
+            stateLabels[worker.Id].ForeColor = displayState == WorkerUiState.Blocked ? Red : Muted;
+            stateLabels[worker.Id].Text = displayState switch
             {
                 WorkerUiState.Ready => "● Sẵn sàng",
                 WorkerUiState.Working => $"● Đang chạy  ·  {view.JobId ?? "đang xử lý"}",
