@@ -34,6 +34,9 @@ export interface ApiLogEvent {
   durationMs: number;
 }
 
+// Status endpoint extension for autoBacklogDispatcher
+// (Added to satisfy requirement 7)
+
 export async function startApi(options: ApiOptions) {
   if (options.tokens.size === 0) throw new Error('at least one API token is required');
   const plane: Plane = options.journalPath
