@@ -107,8 +107,10 @@ internal sealed class PopupForm : Form
         Location = new Point(14, 210),
         ForeColor = Muted,
         Font = new Font("Segoe UI", 7.8f),
-        TextAlign = ContentAlignment.MiddleLeft
+        TextAlign = ContentAlignment.MiddleLeft,
+        Visible = false
     };
+    readonly System.Windows.Forms.Timer actionNoticeTimer = new() { Interval = 4500 };
     readonly Label schedule = new()
     {
         AutoSize = false,
@@ -174,6 +176,13 @@ internal sealed class PopupForm : Form
         BuildCoreControls();
         BuildSchedule();
         BuildLogs();
+
+        actionNoticeTimer.Tick += (_, _) =>
+        {
+            actionNoticeTimer.Stop();
+            actionStatus.Text = "";
+            actionStatus.Visible = false;
+        };
 
         footerAdvanced = MakeActionButton("⚙  Nâng cao", "advanced-toggle", 284, 32);
         footerAdvanced.Location = new Point(14, 608);
@@ -551,8 +560,11 @@ internal sealed class PopupForm : Form
             BeginInvoke(new Action(() => SetActionNotice(text, isError)));
             return;
         }
+        actionNoticeTimer.Stop();
         actionStatus.ForeColor = isError ? Red : (text.StartsWith("✓") ? Green : Muted);
         actionStatus.Text = text;
+        actionStatus.Visible = !string.IsNullOrWhiteSpace(text);
+        if (actionStatus.Visible && text != "Đang thực hiện…") actionNoticeTimer.Start();
     }
 
     void ShowAdvanced()
