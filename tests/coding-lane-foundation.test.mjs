@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import {activeProviderCooldownIds,applyCompactEdits,assertPrOpenState,classifyAiFailure,gateFailureIssues,invokeJsonWithFailover,isResourceTransientError,resourceWaitPlan,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,validateCompactEdits} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {activeProviderCooldownIds,applyCompactEdits,assertPrOpenState,classifyAiFailure,gateFailureIssues,invokeJsonWithFailover,isResourceTransientError,rememberRateLimitCooldowns,resourceWaitPlan,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,validateCompactEdits} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError,parseJsonObject} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 const nv11={id:'NV11',provider:'fake',model:'a'};
@@ -110,6 +110,15 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
     assert.strictEqual(classifyAiFailure(new Error('JSON_OBJECT_INVALID:bad')),'output_contract');
     assert.strictEqual(classifyAiFailure(new Error('EMPTY_RESPONSE')),'invalid_response');
   });
+
+  await t.test('rate-limit cooldown remains excluded across later steps in the same job',()=>{
+    const future=new Date(Date.now()+60000).toISOString();
+    const exclude=['NV12'];
+    const out=rememberRateLimitCooldowns(exclude,[{resourceId:'NV11',class:'rate_limit',cooldownUntil:future},{resourceId:'NV13',class:'output_contract',cooldownUntil:null}]);
+    assert.strictEqual(out,exclude);
+    assert.deepStrictEqual(out,['NV12','NV11']);
+  });
+
 
   await t.test('non-retryable error does not fail over',async()=>{
     let count=0;
