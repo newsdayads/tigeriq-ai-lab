@@ -36,11 +36,14 @@ export function buildRuntimeEvidence(input: RuntimeEvidenceInput, now = new Date
     layout: {
       order: [...WORKER_IDS],
       width: input.config.layout.width,
-      height: input.config.layout.height,
+      height: placements.NV02.height,
+      fillWorkAreaHeight: input.config.layout.fillWorkAreaHeight ?? false,
       gap: input.config.layout.gap,
       rightMargin: input.config.layout.rightMargin,
       rightAnchored: true,
-      ownerWorkspace: { workerRegion:'TOP_RIGHT', reservedBelowY: input.config.layout.top + input.config.layout.height, overlapByDesign:false },
+      ownerWorkspace: input.config.layout.fillWorkAreaHeight
+        ? { workerRegion:'FULL_HEIGHT_RIGHT', reservedBelowY:null, overlapByDesign:false }
+        : { workerRegion:'TOP_RIGHT', reservedBelowY: input.config.layout.top + input.config.layout.height, overlapByDesign:false },
       source: usableWorkArea ? 'HEARTBEAT_WORK_AREA' : 'CONFIG_FALLBACK',
       workArea: usableWorkArea ?? null,
       placements: placements as Record<WorkerId, WindowPlacement>,
