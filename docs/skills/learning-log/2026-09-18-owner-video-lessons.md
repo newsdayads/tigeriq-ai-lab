@@ -115,3 +115,44 @@ REJECT:
 
 ## Candidate added
 - agent-native-cli-harness — CANDIDATE only; safe pattern for evaluating/generating deterministic CLI adapters for desktop software. It is not authorized for automatic installation or PC01 production use.
+
+
+## Batch extension — 2026-09-18 — Skill / Tool / Memory triad
+
+### Provenance
+- v1c044g50000d9323tnog65ktbcn248g.mp4
+  - SHA-256: 11fe8eb58594b06288fb14e681a0e719de63c1c0a67de0e85794854c264e86f2
+
+### Source-derived model
+The video separates three concerns for an AI agent:
+- SKILL: what the agent knows how to do; examples shown include content, sales and R&D specialization.
+- TOOL: what the agent can use to act or retrieve information; examples shown include document/file access, web search, email, Google Drive and APIs.
+- MEMORY: what the agent retains across work; examples shown include tone of voice, rules, project/user context, decisions and accumulated handling experience.
+
+The video's mnemonic is: SKILL = biết làm gì; TOOL = làm bằng gì; MEMORY = nhớ điều gì.
+
+### KEEP
+- Preserve the separation between capability, action interface and durable context/state.
+- Treat good agent performance as a composition of the right capability + the right tool access + the right retained context, rather than assuming a strong model alone is sufficient.
+- Keep role-specific skills bounded: e.g. content/sales/R&D are different capabilities even if they can share some tools.
+- Memory should accumulate useful project/user/rule/decision context that improves continuity over time.
+
+### IMPROVE FOR TIGERIQ
+- Map SKILL to Dynamic AI Employee Registry capabilities + ACTIVE skills in the Skill Registry.
+- Map TOOL to explicit connector/API/runtime capabilities with permission and security gates.
+- Map MEMORY to authoritative Source of Truth, CURRENT_STATE, issues/Work Orders, checkpoints and evidence; raw chat history remains non-authoritative.
+- Add a preflight contract for executable Work Orders: required_skill, required_tools, required_state_refs. If any required element is missing, route/fail closed instead of pretending the employee can execute.
+- Keep tool permissions separate from employee identity: having a tool available does not imply every employee may use it.
+- Retrieve memory/context just in time; do not preload all history into every worker call.
+
+### REJECT
+- Treating MEMORY as unlimited chat transcript or model recollection.
+- Treating TOOL access as proof of competence.
+- Treating SKILL text alone as executable capability when the required tool or permission is absent.
+- Giving every agent every tool “just in case”.
+
+### External cross-check
+Anthropic's production-agent guidance describes the core augmented-LLM building block as combining retrieval, tools and memory, and separately stresses that tools should have clear, non-overlapping purposes and context-efficient outputs. This supports the video's separation model, while TigerIQ keeps stronger durability and authorization boundaries.
+
+### Deduplication decision
+No new standalone skill is created. This video clarifies the architecture binding among existing Skill Registry, AI Employee capabilities, tool permissions and durable state. It strengthens `contextual-skill-loading`, `role-separated-execution`, `capability-aware-model-routing` and the Source of Truth contract without creating a parallel agent framework.
