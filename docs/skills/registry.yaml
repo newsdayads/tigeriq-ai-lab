@@ -25,6 +25,8 @@ source_catalog:
       source_hash: fb5074aa612cf3a2f17e7f3458d42a2f8b13695e964d6879fa173ebeeff05105
     - filename: v29025g50000da0n5b7og65jujo8utdg.mp4
       source_hash: bd450971468b1d5546e103d42c6608a13819b75f7876c9c58014c23ebc2f851b
+    - filename: v1c044g50000d9323tnog65ktbcn248g.mp4
+      source_hash: 11fe8eb58594b06288fb14e681a0e719de63c1c0a67de0e85794854c264e86f2
 
 states:
   - CANDIDATE
