@@ -1,7 +1,7 @@
 # TIGERIQ — BASELINE DECISIONS
-Version: 2.2
+Version: 2.3
 Status: Bootstrap Baseline
-Updated: 2026-09-14
+Updated: 2026-09-18
 
 ## Mục đích
 File này chỉ giữ các quyết định nền tảng ổn định mà NEW CHAT cần biết sau khi nạp `bootstrap/00_TIGERIQ_LOADER.md`. Không dùng file này để lưu P0 hiện tại, lỗi runtime, model/API đang dùng, command→employee mapping, danh sách employee, Work Order, issue hoặc kế hoạch triển khai tạm thời.
@@ -28,6 +28,7 @@ File này chỉ giữ các quyết định nền tảng ổn định mà NEW CHA
 - Production, paid service, financial commitment, credential/security boundary và irreversible action luôn đi qua gate/quyền phù hợp.
 - Không giả vờ AI/NV đang chạy nền hoặc song song nếu runtime không thực sự hỗ trợ.
 - Một Work Order/resource scope chỉ có một active owner; takeover phải idempotent và theo policy động hợp lệ, không bypass Owner hold hay authorization gate.
+- PC01 shell (`CMD`/`PowerShell`/terminal) là **mặc định DENY xuyên chat**: nếu có direct tool/API/file/process action tương đương thì bắt buộc dùng direct path; shell chỉ cho thao tác Windows/runtime-specific không có đường tương đương. Tuyệt đối không code repository bằng shell PC01; source engineering chỉ GitHub branch → PR → checks → review → merge.
 
 ## Những gì CỐ Ý không lưu ở đây
 Các nội dung sau phải lấy từ dynamic state và có thể thay đổi mà KHÔNG cập nhật Loader:
