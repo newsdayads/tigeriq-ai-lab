@@ -8,10 +8,14 @@ namespace TigerIQ.WorkerUtility;
 internal static class VisualRegression
 {
     // Filled after the first exact Windows-CI render on this branch.
-    internal const string PopupPixelBaseline = "PENDING";
-    internal const string TrayPixelBaseline = "PENDING";
-    internal const string AdvancedPixelBaseline = "PENDING";
-    internal const string BadgePixelBaseline = "PENDING";
+    internal const string PopupPixelBaseline = "0ff3505abdcea7bd69bc3ab782c875ff1a5f559ac2c4b124d4bb801d9a55bf58";
+    internal const string TrayPixelBaseline = "48afe9b69796a96531da5e4adf91f73573daa7177dc4c443e7d6de9553bc947c";
+    internal const string AdvancedPixelBaseline = "18e2bf3661b04dfe1e475df71fd7c11555b987425d695f10e778d079c322bbd1";
+    internal const string BadgePixelBaseline = "44f6e9baf3094c3c723f553d6fe6e3ec80ded21b42287d70d96605992183c5a7";
+    internal const string PopupGeometryBaseline = "7e72ce90222a339096d31360ddec85f77957c633ed7f7e03485e20a312579ae5";
+    internal const string TrayGeometryBaseline = "15aee6afc62de0f69cdc765bcc7718b2c14bca7549d256a4d0bad5d69667051b";
+    internal const string AdvancedGeometryBaseline = "765a6d8fa2ac97c63a6845737b3ceeb99fb8c6735ebab5f0f601664aaea798ee";
+    internal const string BadgeGeometryBaseline = "1441bfd48d609a9aa3872c4a366c3210b44d2c0f5edc62059119d046e25bc9ed";
 
     public static void Run()
     {
@@ -39,10 +43,14 @@ internal static class VisualRegression
         Console.WriteLine($"VISUAL_REGRESSION popup_pixels={popupPixels} tray_pixels={trayPixels} advanced_pixels={advancedPixels} badge_pixels={badgePixels}");
         Console.WriteLine($"VISUAL_GEOMETRY popup={popupGeometry} tray={trayGeometry} advanced={advancedGeometry} badge={badgeGeometry}");
 
-        AssertBaseline("popup", popupPixels, PopupPixelBaseline);
-        AssertBaseline("tray", trayPixels, TrayPixelBaseline);
-        AssertBaseline("advanced", advancedPixels, AdvancedPixelBaseline);
-        AssertBaseline("badge", badgePixels, BadgePixelBaseline);
+        AssertBaseline("popup pixels", popupPixels, PopupPixelBaseline);
+        AssertBaseline("tray pixels", trayPixels, TrayPixelBaseline);
+        AssertBaseline("advanced pixels", advancedPixels, AdvancedPixelBaseline);
+        AssertBaseline("badge pixels", badgePixels, BadgePixelBaseline);
+        AssertBaseline("popup geometry", popupGeometry, PopupGeometryBaseline);
+        AssertBaseline("tray geometry", trayGeometry, TrayGeometryBaseline);
+        AssertBaseline("advanced geometry", advancedGeometry, AdvancedGeometryBaseline);
+        AssertBaseline("badge geometry", badgeGeometry, BadgeGeometryBaseline);
     }
 
     static void AssertBaseline(string name, string actual, string expected)
