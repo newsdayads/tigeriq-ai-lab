@@ -139,13 +139,32 @@ internal static class SelfTest
         Must(ok, "popup uses free secondary monitor");
         Must(secondary.Contains(new Rectangle(target, popupSize)), "popup fully contained on secondary monitor");
 
-        // Exact safe saved coordinates must be preserved; unsafe saved coordinates must never be clamped across monitors.
-        var safeSaved = new Point(2100, 100);
-        ok = UiPlacement.TryPopup(fullPrimaryChrome, popupSize, new[] { primary, secondary }, new[] { fullPrimaryChrome }, safeSaved, out target);
-        Must(ok && target == safeSaved, "safe saved secondary position preserved exactly");
+        // Frozen Layout 2: remembered popup coordinates are valid only inside the selected worker's own Chrome.
+        // Old sidecar/secondary-monitor coordinates must be discarded instead of preserved.
+        var staleSaved = new Point(2100, 100);
+        ok = UiPlacement.TryPopup(fullPrimaryChrome, popupSize, new[] { primary, secondary }, new[] { fullPrimaryChrome }, staleSaved, out target);
+        Must(ok && target != staleSaved && secondary.Contains(new Rectangle(target, popupSize)), "stale saved secondary position rejected and safely relocated");
         var unsafeSaved = new Point(100, 100);
         ok = UiPlacement.TryPopup(fullPrimaryChrome, popupSize, new[] { primary, secondary }, new[] { fullPrimaryChrome }, unsafeSaved, out target);
-        Must(ok && target != unsafeSaved && secondary.Contains(new Rectangle(target, popupSize)), "unsafe saved position rejected and safely relocated");
+        Must(ok && target != unsafeSaved && secondary.Contains(new Rectangle(target, popupSize)), "blocked saved position rejected and safely relocated");
+
+        // Selected-worker overlay: when its own Chrome is NOT a blocker, prefer the approved inset overlay.
+        var ownChrome = new Rectangle(1000, 0, 500, 834);
+        var ownPopup = new Size(344, 770);
+        ok = UiPlacement.TryPopup(ownChrome, ownPopup, new[] { working }, Array.Empty<Rectangle>(), null, out target);
+        Must(ok, "selected worker popup can overlay its own Chrome");
+        Must(target == new Point(ownChrome.Left + 10, ownChrome.Top + 54), "selected worker popup uses approved inset overlay");
+        Must(ownChrome.Contains(new Rectangle(target, ownPopup)), "selected worker popup stays inside its own Chrome");
+
+        var savedOverBadge = new Point(ownChrome.Left + 17, ownChrome.Top);
+        ok = UiPlacement.TryPopup(ownChrome, ownPopup, new[] { working }, Array.Empty<Rectangle>(), savedOverBadge, out target);
+        Must(ok && target == new Point(ownChrome.Left + 10, ownChrome.Top + 54), "saved popup overlapping badge strip is rejected");
+
+        var neighborChrome = new Rectangle(500, 0, 515, 834);
+        var selectedChrome = new Rectangle(1008, 0, 515, 834);
+        ok = UiPlacement.TryPopup(selectedChrome, new Size(360, 809), new[] { new Rectangle(0, 0, 3277, 1688) },
+            new[] { neighborChrome }, null, out target);
+        Must(ok && target.Y >= selectedChrome.Top + 54, "fallback popup candidate never covers selected badge strip");
 
         var fullScreenChrome = new Rectangle(0, 0, 1920, 1080);
         ok = UiPlacement.TryPopup(fullScreenChrome, popupSize, new[] { working }, new[] { fullScreenChrome }, null, out _);

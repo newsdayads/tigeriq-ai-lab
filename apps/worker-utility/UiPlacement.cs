@@ -72,11 +72,17 @@ internal static class UiPlacement
         // Never clamp it onto another monitor because that can silently create overlap.
         if (savedLocation is Point saved)
         {
-            foreach (var area in workingAreas)
+            var savedRect = new Rectangle(saved, popupSize);
+            // Layout 2 only accepts a remembered popup position when it still belongs
+            // to this worker's own Chrome. Old pre-freeze positions are ignored.
+            if (anchor.Contains(savedRect) && savedRect.Top >= anchor.Top + 54)
             {
-                if (!Available(saved, area)) continue;
-                target = saved;
-                return true;
+                foreach (var area in workingAreas)
+                {
+                    if (!Available(saved, area)) continue;
+                    target = saved;
+                    return true;
+                }
             }
         }
 
@@ -84,6 +90,18 @@ internal static class UiPlacement
             .OrderByDescending(area => area.IntersectsWith(anchor))
             .ThenBy(area => DistanceSquared(area, anchor))
             .ToArray();
+
+        // Approved Layout 2: the selected worker popup belongs ON TOP OF its own Chrome,
+        // while other worker windows remain blockers. Prefer a consistent inset overlay.
+        foreach (var area in orderedAreas)
+        {
+            var overlay = new Point(anchor.Left + 10, anchor.Top + 54);
+            if (Available(overlay, area))
+            {
+                target = overlay;
+                return true;
+            }
+        }
 
         foreach (var area in orderedAreas)
         {
@@ -95,7 +113,8 @@ internal static class UiPlacement
             // the Cartesian product of these critical x/y edges is geometry-complete;
             // it finds a free rectangle whenever one exists without pixel-by-pixel scans.
             var xs = new HashSet<int> { area.Left, area.Right - popupSize.Width };
-            var ys = new HashSet<int> { area.Top, area.Bottom - popupSize.Height };
+            var minPopupTop = Math.Max(area.Top, anchor.Top + 54);
+            var ys = new HashSet<int> { minPopupTop, area.Bottom - popupSize.Height };
             foreach (var blocker in local)
             {
                 xs.Add(blocker.Left - popupSize.Width);
@@ -108,7 +127,7 @@ internal static class UiPlacement
                 from x in xs
                 where x >= area.Left && x + popupSize.Width <= area.Right
                 from y in ys
-                where y >= area.Top && y + popupSize.Height <= area.Bottom
+                where y >= minPopupTop && y + popupSize.Height <= area.Bottom
                 let point = new Point(x, y)
                 orderby DistanceSquared(new Rectangle(point, popupSize), anchor)
                 select point;

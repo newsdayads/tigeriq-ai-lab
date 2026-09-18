@@ -32,10 +32,10 @@ internal sealed class UtilityContext : ApplicationContext
         foreach (var worker in Workers.All)
         {
             popups[worker.Id] = new PopupForm(HandleActionAsync, SavePopupPosition);
-            badges[worker.Id] = new BadgeForm(worker, ShowPopup, SaveBadgeOffset, ResetBadgePosition);
+            badges[worker.Id] = new BadgeForm(worker, TogglePopup, SaveBadgeOffset, ResetBadgePosition);
         }
 
-        trayPanel = new TrayPanelForm(ShowPopup, ShowAllPopups, ToggleDnd, ExitUtility);
+        trayPanel = new TrayPanelForm(TogglePopup, () => _ = FocusAllChromeAsync(), OpenQuickPanel, ShowUtilitySettings, ShowSystemLogs, ExitUtility);
         trayIcon = CreateTrayIcon();
         tray = new NotifyIcon
         {
@@ -74,15 +74,17 @@ internal sealed class UtilityContext : ApplicationContext
         {
             var id = w.Id;
             var item = new ToolStripMenuItem($"{id} — {w.Name}");
-            item.Click += (_, _) => ShowPopup(id);
+            item.Click += (_, _) => TogglePopup(id);
             trayWorkerItems[id] = item;
             menu.Items.Add(item);
         }
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("▦  Mở tất cả bảng điều khiển", null, (_, _) => ShowAllPopups());
-        menu.Items.Add("◐  Bật / tắt Không làm phiền", null, (_, _) => ToggleDnd());
+        menu.Items.Add("▦  Mở tất cả cửa sổ", null, (_, _) => _ = FocusAllChromeAsync());
+        menu.Items.Add("▣  Bảng điều khiển nhanh", null, (_, _) => OpenQuickPanel());
+        menu.Items.Add("⚙  Cài đặt", null, (_, _) => ShowUtilitySettings());
+        menu.Items.Add("▤  Xem log hệ thống", null, (_, _) => ShowSystemLogs());
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("⏻  Thoát TigerIQ Workers", null, (_, _) => ExitUtility());
+        menu.Items.Add("⏻  Thoát", null, (_, _) => ExitUtility());
         return menu;
     }
 
@@ -94,11 +96,6 @@ internal sealed class UtilityContext : ApplicationContext
         {
             foreach (var w in Workers.All)
             {
-                if (popups[w.Id].Visible)
-                {
-                    badges[w.Id].HideForPopup();
-                    continue;
-                }
                 if (binder.TryResolve(w.Id, out _, out var rect)) badges[w.Id].AnchorTo(rect, settings.Workers[w.Id]);
                 else badges[w.Id].MarkUnbound();
             }
@@ -194,8 +191,7 @@ internal sealed class UtilityContext : ApplicationContext
         state.BadgeOffsetX = null;
         state.BadgeOffsetY = null;
         store.Save(settings);
-        if (popups[id].Visible) badges[id].HideForPopup();
-        else if (binder.TryResolve(id, out _, out var rect)) badges[id].AnchorTo(rect, state);
+        if (binder.TryResolve(id, out _, out var rect)) badges[id].AnchorTo(rect, state);
         store.Log(id, "BADGE_POSITION_RESET");
     }
 
@@ -208,8 +204,18 @@ internal sealed class UtilityContext : ApplicationContext
         store.Log(id, "POPUP_POSITION_SAVED", new { location.X, location.Y });
     }
 
-    void ShowPopup(string id)
+    void TogglePopup(string id)
     {
+        if (popups[id].Visible)
+        {
+            popups[id].Hide();
+            store.Log(id, "POPUP_HIDDEN_BY_TOGGLE");
+            return;
+        }
+
+        foreach (var pair in popups)
+            if (pair.Key != id && pair.Value.Visible) pair.Value.Hide();
+
         if (!TryShowPopup(id, true)) return;
         store.Log(id, "POPUP_OPENED");
     }
@@ -228,33 +234,119 @@ internal sealed class UtilityContext : ApplicationContext
         settings.Schedules.TryGetValue(id, out var sched);
         health.TryGetValue(id, out var wd);
         var occupied = new List<Rectangle>();
+
+        // The selected popup is allowed to overlay its OWN Chrome, exactly as the approved layout.
+        // Other worker Chrome windows remain protected from overlap.
         foreach (var worker in Workers.All)
+        {
+            if (worker.Id == id) continue;
             if (binder.TryResolve(worker.Id, out _, out var chromeRect) && chromeRect.Width > 0 && chromeRect.Height > 0)
                 occupied.Add(chromeRect);
+        }
+
         foreach (var pair in popups)
             if (pair.Key != id && pair.Value.Visible)
                 occupied.Add(pair.Value.Bounds);
 
         var ok = popups[id].ShowWorker(
             Workers.Get(id), view, wd, settings.Workers[id], sched, settings.DoNotDisturb,
-            store.RecentLogs(id), rect, occupied.ToArray());
-        if (ok) badges[id].HideForPopup();
+            store.RecentLogs(id, 100), rect, occupied.ToArray());
         if (!ok && notifyOnFailure)
-            ShowTrayNotice("TigerIQ — Không chồng cửa sổ", "Không có vùng trống an toàn để mở bảng điều khiển.");
+            ShowTrayNotice("TigerIQ — Không chồng NV khác", "Không tìm được vị trí popup an toàn cho NV đã chọn.");
         return ok;
     }
 
-    void ShowAllPopups()
+    async Task FocusAllChromeAsync()
     {
-        var opened = 0;
         foreach (var worker in Workers.All)
-            if (TryShowPopup(worker.Id, false)) opened++;
-        store.Log("SYSTEM", "OPEN_ALL_POPUPS", new { opened, requested = Workers.All.Length });
-        if (opened < Workers.All.Length)
         {
-            tray.BalloonTipTitle = "TigerIQ Workers";
-            tray.BalloonTipText = $"Đã mở {opened}/{Workers.All.Length} bảng. Bảng còn lại bị giữ lại để không che Chrome.";
-            tray.ShowBalloonTip(4000);
+            try
+            {
+                await controller.FixPositionAsync(worker.Id);
+                await controller.FocusAsync(worker.Id);
+            }
+            catch (Exception ex)
+            {
+                store.Log(worker.Id, "OPEN_ALL_WINDOWS_ERROR", new { error = ex.Message });
+            }
+        }
+        store.Log("SYSTEM", "OPEN_ALL_CHROME_WINDOWS", new { count = Workers.All.Length });
+    }
+
+    void OpenQuickPanel()
+    {
+        var target = Workers.All
+            .FirstOrDefault(w => views.TryGetValue(w.Id, out var v) && v.State == WorkerUiState.Working)
+            ?? Workers.All[0];
+        TogglePopup(target.Id);
+    }
+
+    void ShowSystemLogs()
+    {
+        using var form = new Form
+        {
+            Text = "TigerIQ — Log hệ thống",
+            Width = 720,
+            Height = 520,
+            StartPosition = FormStartPosition.CenterScreen,
+            BackColor = Color.FromArgb(5, 13, 25),
+            ForeColor = Color.White
+        };
+        var box = new TextBox
+        {
+            Multiline = true,
+            ReadOnly = true,
+            ScrollBars = ScrollBars.Vertical,
+            Dock = DockStyle.Fill,
+            BackColor = Color.FromArgb(5, 13, 25),
+            ForeColor = Color.FromArgb(203, 213, 225),
+            Font = new Font("Consolas", 9),
+            Text = string.Join(Environment.NewLine, store.RecentLogs(120))
+        };
+        form.Controls.Add(box);
+        form.ShowDialog();
+    }
+
+    void ShowUtilitySettings()
+    {
+        using var form = new Form
+        {
+            Text = "TigerIQ — Cài đặt",
+            Width = 380,
+            Height = 220,
+            StartPosition = FormStartPosition.CenterScreen,
+            BackColor = Color.FromArgb(5, 13, 25),
+            ForeColor = Color.White
+        };
+        var dndBox = new CheckBox
+        {
+            Text = "Không làm phiền",
+            Left = 24,
+            Top = 28,
+            Width = 220,
+            Checked = settings.DoNotDisturb,
+            ForeColor = Color.White,
+            BackColor = form.BackColor
+        };
+        var info = new Label
+        {
+            Text = "Layout 2 đã khóa: 3 Chrome riêng · 1 popup/NV · badge luôn hiển thị.",
+            Left = 24,
+            Top = 64,
+            Width = 315,
+            Height = 42,
+            ForeColor = Color.FromArgb(148, 163, 184)
+        };
+        var save = new Button { Text = "Lưu", Left = 248, Top = 124, Width = 90, DialogResult = DialogResult.OK };
+        form.Controls.Add(dndBox);
+        form.Controls.Add(info);
+        form.Controls.Add(save);
+        form.AcceptButton = save;
+        if (form.ShowDialog() == DialogResult.OK)
+        {
+            settings.DoNotDisturb = dndBox.Checked;
+            store.Save(settings);
+            UpdateTraySurface();
         }
     }
 
@@ -276,6 +368,7 @@ internal sealed class UtilityContext : ApplicationContext
             case "lock": settings.Workers[id].PositionLocked = !settings.Workers[id].PositionLocked; break;
             case "badge-reset": ResetBadgePosition(id); break;
             case "open": await controller.OpenCanonicalAsync(id); break;
+            case "view-job": await controller.FocusAsync(id); break;
             case "health":
                 popups[id].SetActionNotice("✓ " + await controller.QuickHealthAsync(id), false);
                 break;
@@ -299,7 +392,14 @@ internal sealed class UtilityContext : ApplicationContext
             case "schedule-30": SetSchedule(id, 30); break;
             case "schedule-60": SetSchedule(id, 60); break;
             case "schedule-120": SetSchedule(id, 120); break;
-            case "schedule-custom": SetSchedule(id, PromptMinutes()); break;
+            case "schedule-custom":
+                var custom = PromptSchedule(id);
+                if (custom is { } choice)
+                {
+                    SetSchedule(id, choice.Minutes);
+                    settings.Schedules[id].ChangesOnly = choice.ChangesOnly;
+                }
+                break;
             case "schedule-cancel": settings.Schedules.Remove(id); break;
             case "schedule-on": EnsureSchedule(id, true); break;
             case "schedule-off": EnsureSchedule(id, false); break;
@@ -307,6 +407,8 @@ internal sealed class UtilityContext : ApplicationContext
             case "schedule-change-only-off": EnsureSchedule(id, null).ChangesOnly = false; break;
             case "dnd-on": settings.DoNotDisturb = true; break;
             case "dnd-off": settings.DoNotDisturb = false; break;
+            case "screenshot": CaptureWorkerScreenshot(id); break;
+            case "safe-retry": await SafeRetryAsync(id); break;
             case "advanced": break; // compatibility alias; UI now toggles advanced details locally
             default: throw new InvalidOperationException("UNKNOWN_UTILITY_ACTION:" + actionName);
         }
@@ -485,24 +587,100 @@ internal sealed class UtilityContext : ApplicationContext
         }
     }
 
-    int PromptMinutes()
+    sealed record ScheduleChoice(int Minutes, bool ChangesOnly);
+
+    ScheduleChoice? PromptSchedule(string id)
     {
         using var form = new Form
         {
-            Text = "Lịch tùy chỉnh",
-            Width = 270,
-            Height = 150,
+            Text = $"Đặt lịch kiểm tra — {id}",
+            Width = 430,
+            Height = 360,
             StartPosition = FormStartPosition.CenterScreen,
             AutoScaleMode = AutoScaleMode.Dpi,
             BackColor = Color.FromArgb(8, 19, 34),
-            ForeColor = Color.White
+            ForeColor = Color.White,
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            MaximizeBox = false,
+            MinimizeBox = false
         };
-        var input = new NumericUpDown { Minimum = 1, Maximum = 1440, Value = 30, Left = 20, Top = 22, Width = 215 };
-        var ok = new Button { Text = "Lưu", DialogResult = DialogResult.OK, Left = 90, Top = 62, Width = 80 };
-        form.Controls.Add(input);
-        form.Controls.Add(ok);
-        form.AcceptButton = ok;
-        return form.ShowDialog() == DialogResult.OK ? (int)input.Value : 30;
+
+        var title = new Label { Text = "Đặt lịch kiểm tra", Left = 20, Top = 16, Width = 250, Font = new Font("Segoe UI", 12, FontStyle.Bold) };
+        form.Controls.Add(title);
+
+        var choices = new (string Text, int Minutes)[] { ("10 phút",10),("30 phút",30),("1 giờ",60),("2 giờ",120) };
+        var radios = new List<RadioButton>();
+        var y = 54;
+        foreach (var item in choices)
+        {
+            var rb = new RadioButton { Text = item.Text, Left = 24, Top = y, Width = 120, Tag = item.Minutes, ForeColor = Color.White, BackColor = form.BackColor };
+            radios.Add(rb); form.Controls.Add(rb); y += 30;
+        }
+
+        var customRadio = new RadioButton { Text = "Tùy chỉnh", Left = 24, Top = y, Width = 120, ForeColor = Color.White, BackColor = form.BackColor };
+        var custom = new NumericUpDown { Left = 150, Top = y - 2, Width = 90, Minimum = 1, Maximum = 1440, Value = 30 };
+        var minutesText = new Label { Text = "phút", Left = 248, Top = y + 2, Width = 60, ForeColor = Color.White };
+        form.Controls.Add(customRadio); form.Controls.Add(custom); form.Controls.Add(minutesText);
+        y += 42;
+
+        var changes = new CheckBox { Text = "Chỉ báo khi có thay đổi / lỗi", Left = 24, Top = y, Width = 260, ForeColor = Color.White, BackColor = form.BackColor, Checked = settings.Schedules.TryGetValue(id, out var old) ? old.ChangesOnly : true };
+        form.Controls.Add(changes);
+        y += 34;
+
+        var next = new Label { Left = 24, Top = y, Width = 350, Height = 28, ForeColor = Color.FromArgb(251,191,36) };
+        form.Controls.Add(next);
+
+        void RefreshNext()
+        {
+            var mins = customRadio.Checked ? (int)custom.Value : radios.FirstOrDefault(r => r.Checked)?.Tag is int n ? n : 30;
+            next.Text = $"Lần kiểm tra kế tiếp: {DateTime.Now.AddMinutes(mins):HH:mm}";
+        }
+        foreach (var rb in radios) rb.CheckedChanged += (_, _) => RefreshNext();
+        customRadio.CheckedChanged += (_, _) => RefreshNext();
+        custom.ValueChanged += (_, _) => RefreshNext();
+
+        var currentMinutes = settings.Schedules.TryGetValue(id, out var sched) ? sched.IntervalMinutes : 30;
+        var matched = radios.FirstOrDefault(r => (int)r.Tag! == currentMinutes);
+        if (matched is not null) matched.Checked = true;
+        else { customRadio.Checked = true; custom.Value = Math.Clamp(currentMinutes, 1, 1440); }
+        RefreshNext();
+
+        var cancel = new Button { Text = "Hủy", Left = 200, Top = 278, Width = 90, DialogResult = DialogResult.Cancel };
+        var save = new Button { Text = "Lưu", Left = 300, Top = 278, Width = 90, DialogResult = DialogResult.OK };
+        form.Controls.Add(cancel); form.Controls.Add(save);
+        form.CancelButton = cancel; form.AcceptButton = save;
+
+        if (form.ShowDialog() != DialogResult.OK) return null;
+        var minutes = customRadio.Checked ? (int)custom.Value : radios.First(r => r.Checked).Tag is int v ? v : 30;
+        return new ScheduleChoice(minutes, changes.Checked);
+    }
+
+    void CaptureWorkerScreenshot(string id)
+    {
+        if (!binder.TryResolve(id, out _, out var rect) || rect.Width <= 0 || rect.Height <= 0)
+            throw new InvalidOperationException("SCREENSHOT_WINDOW_NOT_FOUND");
+        var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TigerIQ", "WorkerUtility", "Screenshots");
+        Directory.CreateDirectory(dir);
+        var path = Path.Combine(dir, $"{id}-{DateTime.Now:yyyyMMdd-HHmmss}.png");
+        using var bitmap = new Bitmap(rect.Width, rect.Height);
+        using var graphics = Graphics.FromImage(bitmap);
+        graphics.CopyFromScreen(rect.Location, Point.Empty, rect.Size);
+        bitmap.Save(path, System.Drawing.Imaging.ImageFormat.Png);
+        popups[id].SetActionNotice("✓ Đã chụp: " + path, false);
+        store.Log(id, "SCREENSHOT_SAVED", new { path });
+    }
+
+    async Task SafeRetryAsync(string id)
+    {
+        var current = await controller.GetWorkerAsync(id);
+        if (current.AuthRequired || !string.IsNullOrWhiteSpace(current.SecurityBlock))
+            throw new InvalidOperationException($"SAFE_RETRY_BLOCKED:{current.Reason}");
+        if (current.UiBusy || !string.IsNullOrWhiteSpace(current.JobId))
+            throw new InvalidOperationException("SAFE_RETRY_ACTIVE_JOB_FORBIDDEN");
+        await controller.FocusAsync(id);
+        await controller.FixPositionAsync(id);
+        popups[id].SetActionNotice("✓ Đã kiểm tra và focus lại an toàn", false);
+        store.Log(id, "SAFE_RETRY_OK");
     }
 
     void ExitUtility()
@@ -528,8 +706,8 @@ internal sealed class UtilityContext : ApplicationContext
             using var accent = new Pen(Color.FromArgb(245, 158, 11), 3);
             g.FillEllipse(outer, 1, 1, 30, 30);
             g.DrawEllipse(accent, 3, 3, 26, 26);
-            using var font = new Font("Segoe UI", 9, FontStyle.Bold, GraphicsUnit.Pixel);
-            TextRenderer.DrawText(g, "TQ", font, new Rectangle(0, 8, 32, 16), Color.White,
+            using var font = new Font("Segoe UI Emoji", 17, FontStyle.Regular, GraphicsUnit.Pixel);
+            TextRenderer.DrawText(g, "🐯", font, new Rectangle(0, 4, 32, 24), Color.White,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
         }
         var handle = bitmap.GetHicon();
