@@ -51,23 +51,84 @@ internal sealed class BrowserHarnessClient
         }
     }
 
+    public async Task<HarnessView> MutationProbeAsync(WorkerDefinition worker, WorkerView current)
+    {
+        if (!PilotEnabled(worker.Id)) return HarnessView.Off(worker.Id);
+        if (!current.SessionOk || !current.WindowOpen)
+            return new(worker.Id, HarnessState.Blocked, "SESSION_OR_WINDOW_BLOCKED", null, null, DateTimeOffset.Now);
+        if (current.AuthRequired || !string.IsNullOrWhiteSpace(current.SecurityBlock))
+            return new(worker.Id, HarnessState.Blocked, current.SecurityBlock ?? "AUTH_REQUIRED", null, null, DateTimeOffset.Now);
+        if (current.UiBusy || !string.IsNullOrWhiteSpace(current.JobId))
+            return new(worker.Id, HarnessState.Busy, "WORKER_BUSY_DEFERRED", current.Url, null, DateTimeOffset.Now);
+
+        var gate = gates[worker.Id];
+        if (!await gate.WaitAsync(0))
+            return new(worker.Id, HarnessState.Busy, "HARNESS_MUTATION_ALREADY_RUNNING", current.Url, null, DateTimeOffset.Now);
+
+        try
+        {
+            return await RunMutationProbeAsync(worker, current);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    async Task<HarnessView> RunMutationProbeAsync(WorkerDefinition worker, WorkerView current)
+    {
+        var executable = ResolveExecutable();
+        var token = Guid.NewGuid().ToString("N");
+        var jsCode = $"(() => {{ const k='data-tigeriq-bh-probe'; document.documentElement.setAttribute(k,'{token}'); const v=document.documentElement.getAttribute(k); document.documentElement.removeAttribute(k); return v; }})()";
+        var psi = NewStartInfo(worker, executable);
+
+        try
+        {
+            using var process = new Process { StartInfo = psi };
+            if (!process.Start())
+                return Error(worker.Id, "HARNESS_START_FAILED");
+
+            var stdoutTask = process.StandardOutput.ReadToEndAsync();
+            var stderrTask = process.StandardError.ReadToEndAsync();
+            await process.StandardInput.WriteLineAsync("print(js(" + JsonSerializer.Serialize(jsCode) + "))");
+            process.StandardInput.Close();
+
+            using var timeout = new CancellationTokenSource(ProbeTimeout);
+            try
+            {
+                await process.WaitForExitAsync(timeout.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                try { process.Kill(entireProcessTree: true); } catch { }
+                return Error(worker.Id, "HARNESS_MUTATION_TIMEOUT");
+            }
+
+            var stdout = await stdoutTask;
+            var stderr = await stderrTask;
+            if (process.ExitCode != 0)
+            {
+                var detail = FirstUseful(stderr, stdout);
+                return Error(worker.Id, "HARNESS_MUTATION_EXIT_" + process.ExitCode + (detail is null ? "" : ":" + detail));
+            }
+
+            return ParseMutationProbeOutput(worker.Id, stdout, token, current.Url);
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            return new(worker.Id, HarnessState.Missing, "BROWSER_HARNESS_NOT_INSTALLED", null, null, DateTimeOffset.Now);
+        }
+        catch (Exception ex)
+        {
+            return Error(worker.Id, "HARNESS_MUTATION_ERROR:" + Clean(ex.Message));
+        }
+    }
+
     async Task<HarnessView> RunProbeAsync(WorkerDefinition worker)
     {
         var executable = ResolveExecutable();
 
-        var psi = new ProcessStartInfo
-        {
-            FileName = executable,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true
-        };
-        psi.Environment["BU_CDP_URL"] = $"http://127.0.0.1:{worker.DebugPort}";
-        psi.Environment["BH_HOME"] = HarnessHome(worker.Id);
-        psi.Environment["BH_OPEN_LIVE_URL"] = "0";
-        psi.Environment["BH_DOMAIN_SKILLS"] = "0";
+        var psi = NewStartInfo(worker, executable);
 
         try
         {
@@ -110,6 +171,24 @@ internal sealed class BrowserHarnessClient
         {
             return Error(worker.Id, "HARNESS_ERROR:" + Clean(ex.Message));
         }
+    }
+
+    static ProcessStartInfo NewStartInfo(WorkerDefinition worker, string executable)
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = executable,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+        psi.Environment["BU_CDP_URL"] = $"http://127.0.0.1:{worker.DebugPort}";
+        psi.Environment["BH_HOME"] = HarnessHome(worker.Id);
+        psi.Environment["BH_OPEN_LIVE_URL"] = "0";
+        psi.Environment["BH_DOMAIN_SKILLS"] = "0";
+        return psi;
     }
 
     static string ResolveExecutable()
@@ -156,6 +235,16 @@ internal sealed class BrowserHarnessClient
             catch (JsonException) { }
         }
         return Error(workerId, "HARNESS_OUTPUT_UNPARSEABLE");
+    }
+
+    internal static HarnessView ParseMutationProbeOutput(string workerId, string output, string token, string? url)
+    {
+        var matched = output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(x => x.Trim())
+            .Any(x => string.Equals(x, token, StringComparison.Ordinal));
+        return matched
+            ? new(workerId, HarnessState.Ready, "MUTATION_PROBE_OK", url, null, DateTimeOffset.Now)
+            : Error(workerId, "HARNESS_MUTATION_PROBE_MISMATCH");
     }
 
     static HarnessView Error(string workerId, string message)

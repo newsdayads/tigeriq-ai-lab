@@ -829,9 +829,9 @@ internal sealed class AdvancedInfoForm : Form
                 status.ForeColor = Color.FromArgb(248, 113, 113);
             }
         };
-        var harnessProbe = MakeButton("Kiểm tra Harness", new Point(208, 286), 170);
+        var harnessProbe = MakeButton("Harness + khóa an toàn", new Point(208, 286), 170);
         harnessProbe.Anchor = AnchorStyles.Right | AnchorStyles.Bottom;
-        harnessProbe.Click += async (_, _) => await RunAsync("harness-probe");
+        harnessProbe.Click += async (_, _) => await RunAsync("harness-lock-test");
 
         infoBox.Dock = DockStyle.Top;
         infoBox.Height = 272;
