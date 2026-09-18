@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DurableUiJobLedger, uiJobProgress } from '../apps/chrome-controller/src/job-ledger.js';
@@ -33,6 +33,22 @@ describe('durable UI worker job ledger',()=>{
     expect(restored.active('NV03')?.jobId).toBe('GH-959-NV03');
     expect(()=>restored.create('NV03',{jobId:'GH-959-NV03'})).toThrow('UI_JOB_DUPLICATE_ACTIVE');
     expect(()=>restored.create('NV03',{jobId:'OTHER'})).toThrow('UI_JOB_ACTIVE');
+  });
+
+  it('fails closed on corrupt persisted state and invalid lifecycle jumps',()=>{
+    const {path,store}=ledger();
+    store.create('NV02',{jobId:'GH-CORRUPT'});
+    expect(()=>store.transition('NV02','GH-CORRUPT','DONE',{result:'bad'})).toThrow('UI_JOB_TRANSITION_INVALID');
+    writeFileSync(path,'{not-json','utf8');
+    expect(()=>new DurableUiJobLedger(path)).toThrow('UI_JOB_LEDGER_CORRUPT');
+  });
+
+  it('keeps milestone progress deterministic',()=>{
+    expect(uiJobProgress('QUEUED')).toBe(5);
+    expect(uiJobProgress('WORKING')).toBe(60);
+    expect(uiJobProgress('WAITING_EVIDENCE')).toBe(80);
+    expect(uiJobProgress('VERIFY')).toBe(90);
+    expect(uiJobProgress('DONE')).toBe(100);
   });
 
   it('terminalizes only on explicit terminal stage and keeps the result for READY display',()=>{
