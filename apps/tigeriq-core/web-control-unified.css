@@ -9,3 +9,97 @@ html,body,button,input,select{font-family:var(--tq-font)!important}html,body{fon
 .shell{display:block!important;min-height:100vh!important}.sidebar{position:sticky!important;top:0!important;z-index:60!important;height:auto!important;min-height:58px!important;width:100%!important;display:flex!important;flex-direction:row!important;align-items:center!important;gap:12px!important;padding:9px 16px!important;border-right:0!important;border-bottom:1px solid #16375c!important;background:linear-gradient(180deg,#071528f5,#071221f5)!important;backdrop-filter:blur(12px)}.brand{flex:0 0 auto!important;display:flex!important;align-items:center!important;gap:9px!important;padding:0!important;margin:0 8px 0 0!important}.brand .mark{width:36px!important;height:36px!important}.brand span:last-child{font-size:0!important}.brand span:last-child::after{content:"TigerIQ AI";font-size:20px;font-weight:900;letter-spacing:-.25px}.nav{display:flex!important;flex:1 1 auto!important;align-items:center!important;gap:6px!important;min-width:0!important;overflow-x:auto!important;overflow-y:hidden!important;white-space:nowrap!important;scrollbar-width:none;padding-right:92px}.nav::-webkit-scrollbar{display:none}.nav button{width:auto!important;flex:0 0 auto!important;text-align:center!important;padding:9px 12px!important;border-radius:9px!important}.side-bottom{display:none!important}.main{min-width:0!important;padding:0 16px 16px!important}.topbar{height:0!important;min-height:0!important;padding:0!important;margin:0!important;border:0!important;background:transparent!important;backdrop-filter:none!important;position:static!important;overflow:visible!important}.topbar>.title,.topbar>.system-pill,.topbar>.clock{display:none!important}.topbar>.tq-u-livebar{position:fixed!important;top:14px!important;right:16px!important;z-index:80!important;margin:0!important}.sidebar+.main{width:100%!important}
 @media(max-width:900px){.sidebar{padding:8px 10px!important;gap:8px!important}.brand{margin-right:2px!important}.brand span:last-child{display:none!important}.nav{padding-right:82px}.nav button{padding:8px 10px!important}.topbar>.tq-u-livebar{top:12px!important;right:10px!important}}
 @media(max-width:560px){.sidebar{min-height:54px!important;padding:7px 8px!important}.brand .mark{width:32px!important;height:32px!important}.nav{gap:4px!important;padding-right:76px}.nav button{padding:8px 9px!important}.nav button .txt{display:inline!important}.main{padding:0 8px 12px!important}.topbar>.tq-u-livebar{top:10px!important;right:8px!important}.tq-u-live{font-size:10px!important;padding:4px 7px!important}}
+
+
+/* #826 Layout 2 — restore canonical left navigation on desktop.
+   Worker controls moved out of Web Control into the native System Tray flyout. */
+@media(min-width:721px){
+  body.layout-sidebar-v2 .shell{
+    display:grid!important;
+    grid-template-columns:190px minmax(0,1fr)!important;
+    min-height:100vh!important;
+  }
+  body.layout-sidebar-v2 .sidebar{
+    position:sticky!important;
+    top:0!important;
+    z-index:60!important;
+    width:auto!important;
+    height:100vh!important;
+    min-height:100vh!important;
+    display:flex!important;
+    flex-direction:column!important;
+    align-items:stretch!important;
+    gap:14px!important;
+    padding:16px 10px!important;
+    border-right:1px solid #16375c!important;
+    border-bottom:0!important;
+    background:linear-gradient(180deg,#071528,#071221)!important;
+    backdrop-filter:none!important;
+  }
+  body.layout-sidebar-v2 .brand{
+    flex:0 0 auto!important;
+    display:flex!important;
+    align-items:center!important;
+    justify-content:flex-start!important;
+    gap:9px!important;
+    padding:0 8px 12px!important;
+    margin:0!important;
+  }
+  body.layout-sidebar-v2 .brand span:last-child{
+    display:inline!important;
+    font-size:19px!important;
+    font-weight:900!important;
+  }
+  body.layout-sidebar-v2 .brand span:last-child::after{content:none!important}
+  body.layout-sidebar-v2 .nav{
+    display:grid!important;
+    flex:0 0 auto!important;
+    grid-template-columns:1fr!important;
+    gap:6px!important;
+    min-width:0!important;
+    overflow:visible!important;
+    white-space:normal!important;
+    padding-right:0!important;
+  }
+  body.layout-sidebar-v2 .nav button{
+    width:100%!important;
+    flex:0 0 auto!important;
+    text-align:left!important;
+    padding:10px 11px!important;
+  }
+  body.layout-sidebar-v2 .nav button .txt{display:inline!important}
+  body.layout-sidebar-v2 .side-bottom{
+    display:grid!important;
+    margin-top:auto!important;
+  }
+  body.layout-sidebar-v2 .main{
+    width:auto!important;
+    min-width:0!important;
+    padding:0 14px 16px!important;
+  }
+  body.layout-sidebar-v2 .topbar{
+    height:64px!important;
+    min-height:64px!important;
+    padding:0!important;
+    margin:0!important;
+    border-bottom:1px solid #16375c!important;
+    background:#071426cc!important;
+    backdrop-filter:blur(12px)!important;
+    position:sticky!important;
+    top:0!important;
+    overflow:visible!important;
+  }
+  body.layout-sidebar-v2 .topbar>.title,
+  body.layout-sidebar-v2 .topbar>.system-pill,
+  body.layout-sidebar-v2 .topbar>.clock{
+    display:block!important;
+  }
+  body.layout-sidebar-v2 .topbar>.system-pill{
+    display:flex!important;
+    margin-left:auto!important;
+  }
+  body.layout-sidebar-v2 .topbar>.tq-u-livebar{
+    position:static!important;
+    margin-left:8px!important;
+  }
+}
