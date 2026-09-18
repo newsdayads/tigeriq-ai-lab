@@ -53,9 +53,21 @@ internal static class VisualRegression
 
     static void Prepare(Form form)
     {
+        // Force the real WinForms docking/layout engine to materialize all nested controls.
+        // Hidden TabPages otherwise keep design-time placeholder sizes and create false clipping reports.
         form.CreateControl();
-        form.PerformLayout();
-        foreach (Control child in form.Controls) child.PerformLayout();
+        form.Show();
+        Application.DoEvents();
+        LayoutTree(form);
+        form.Hide();
+    }
+
+    static void LayoutTree(Control root)
+    {
+        root.CreateControl();
+        root.PerformLayout();
+        foreach (Control child in root.Controls) LayoutTree(child);
+        root.PerformLayout();
     }
 
     static void AssertContained(Control root, string name)
