@@ -21,6 +21,16 @@ source_catalog:
       source_hash: NOT_CAPTURED
     - filename: v14044g50000daeauqfog65m4sf8hce0.mp4
       source_hash: NOT_CAPTURED
+    - filename: v1c044g50000d9qgcbvog65sr8ecpueg.mp4
+      source_hash: fb5074aa612cf3a2f17e7f3458d42a2f8b13695e964d6879fa173ebeeff05105
+    - filename: v29025g50000da0n5b7og65jujo8utdg.mp4
+      source_hash: bd450971468b1d5546e103d42c6608a13819b75f7876c9c58014c23ebc2f851b
+    - filename: v1c044g50000d9323tnog65ktbcn248g.mp4
+      source_hash: 11fe8eb58594b06288fb14e681a0e719de63c1c0a67de0e85794854c264e86f2
+    - filename: v14025g50000d90mvrfog65qm0qanqt0.mp4
+      source_hash: 3cc0c3e1250f38a55e4e89c7376c62bc51790ff6de9897d4d9cf8c381fa46296
+    - filename: v1c044g50000d8v9mlvog65kca405ong.mp4
+      source_hash: a201b25bdfa108a7c70e0640dadb0d30ada840e013f21dea7500e1578949f269
 
 states:
   - CANDIDATE
@@ -105,3 +115,17 @@ skills:
     target: router
     triggers: routing route model provider capability latency quota cost định tuyến mô hình
     summary: Route work by difficulty, capability, latency and cost instead of always using the strongest model.
+
+
+  - id: agent-native-cli-harness
+    title: Agent-Native CLI Harness
+    state: CANDIDATE
+    version: 0.1.0
+    provenance_batch: owner-video-lessons-2026-09-18
+    source_log: learning-log/2026-09-18-owner-video-lessons.md
+    target: desktop-tooling
+    external_source: https://github.com/HKUDS/CLI-Anything
+    external_source_reviewed: 2026-09-18
+    capabilities: READ_SOURCE, WRITE_HARNESS_CODE, RUN_COMMANDS, OPTIONAL_NETWORK
+    security_gate: external-skill-security-gate
+    summary: Evaluate or generate deterministic JSON-capable CLI adapters for GUI software using real backends where possible; never auto-install or replace existing TigerIQ controllers without isolated validation.

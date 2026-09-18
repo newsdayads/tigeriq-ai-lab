@@ -57,3 +57,174 @@ The videos were reviewed as one Owner learning batch. Where a lesson cannot be a
 - capability-aware-model-routing
 
 These remain CANDIDATE. They are not ACTIVE merely because they appear in this log or registry.
+
+
+## Batch extension — 2026-09-18 — Codex workspace memory + CLI-Anything
+
+### Provenance
+- v1c044g50000d9qgcbvog65sr8ecpueg.mp4
+  - SHA-256: fb5074aa612cf3a2f17e7f3458d42a2f8b13695e964d6879fa173ebeeff05105
+- v29025g50000da0n5b7og65jujo8utdg.mp4
+  - SHA-256: bd450971468b1d5546e103d42c6608a13819b75f7876c9c58014c23ebc2f851b
+
+External validation source for the second video:
+- https://github.com/HKUDS/CLI-Anything
+- Official project documentation/security policy reviewed on 2026-09-18.
+
+### Source-derived lessons — Codex workspace / durable learning
+KEEP:
+- Give an agent a bounded project workspace and durable project instructions instead of relying on conversational memory.
+- Keep a structured failure/feedback log containing date, project, problem, user dissatisfaction, root cause, prevention and resolution status.
+- Reuse naming conventions and project-specific rules across sessions.
+
+IMPROVE:
+- Use repository-scoped instructions and Source of Truth references, not an unbounded whole-computer scan.
+- Treat a failure log as input to learn-from-failure promotion: recurring patterns must become checks/rules/skills with evidence.
+- Keep top-level instructions small and use them as a map to deeper canonical documents rather than one giant memory file.
+
+REJECT:
+- “Scan the whole computer” as a default operating model.
+- Claiming the AI automatically becomes smarter merely because files exist; durable learning requires explicit write, retrieval, validation and reuse.
+- Creating a second shadow memory system that competes with CURRENT_STATE/CENTRAL/issues/evidence.
+
+DEDUPLICATION:
+- No new project-memory skill is created. These lessons strengthen existing `learn-from-failure`, `contextual-skill-loading` and durable Source of Truth architecture.
+
+### Source-derived lessons — CLI-Anything
+KEEP:
+- A CLI harness is often a better agent interface than pixel/mouse automation when the target software exposes a usable backend/API.
+- Machine-readable JSON output, one-shot commands, help/discovery and deterministic state improve agent reliability.
+- Generate software-specific skill documentation together with the harness so agents can discover how to use it.
+
+IMPROVE:
+- Treat third-party harness builders as untrusted supply-chain inputs until pinned and audited.
+- Prefer target software's real backend over reimplementing business logic.
+- Validate exported/rendered artifacts, not only process exit codes.
+- Pilot on an isolated non-production desktop application before considering broader PC01 integration.
+
+REJECT:
+- The video's implication that arbitrary GUI software can universally be controlled safely after one command.
+- Replacing TigerIQ Chrome Controller or APP Chrome merely because a generic harness exists.
+- Granting filesystem, command or network privileges to generated harnesses without capability review.
+
+### External validation findings for CLI-Anything
+- Official project supports building stateful CLI harnesses from a local source path or GitHub repository and documents OpenClaw and Codex integration.
+- The official README currently describes 18 professional demos and 2,280 passing tests; this is strong evidence of breadth, not proof of universal application coverage.
+- The project security policy explicitly treats agent-to-desktop control as a threat surface and requires safer subprocess/path/secret handling.
+- Closed-source/web-service wrapping remains a roadmap direction; therefore “all software” is an aspiration, not a current guarantee.
+
+## Candidate added
+- agent-native-cli-harness — CANDIDATE only; safe pattern for evaluating/generating deterministic CLI adapters for desktop software. It is not authorized for automatic installation or PC01 production use.
+
+
+## Batch extension — 2026-09-18 — Skill / Tool / Memory triad
+
+### Provenance
+- v1c044g50000d9323tnog65ktbcn248g.mp4
+  - SHA-256: 11fe8eb58594b06288fb14e681a0e719de63c1c0a67de0e85794854c264e86f2
+
+### Source-derived model
+The video separates three concerns for an AI agent:
+- SKILL: what the agent knows how to do; examples shown include content, sales and R&D specialization.
+- TOOL: what the agent can use to act or retrieve information; examples shown include document/file access, web search, email, Google Drive and APIs.
+- MEMORY: what the agent retains across work; examples shown include tone of voice, rules, project/user context, decisions and accumulated handling experience.
+
+The video's mnemonic is: SKILL = biết làm gì; TOOL = làm bằng gì; MEMORY = nhớ điều gì.
+
+### KEEP
+- Preserve the separation between capability, action interface and durable context/state.
+- Treat good agent performance as a composition of the right capability + the right tool access + the right retained context, rather than assuming a strong model alone is sufficient.
+- Keep role-specific skills bounded: e.g. content/sales/R&D are different capabilities even if they can share some tools.
+- Memory should accumulate useful project/user/rule/decision context that improves continuity over time.
+
+### IMPROVE FOR TIGERIQ
+- Map SKILL to Dynamic AI Employee Registry capabilities + ACTIVE skills in the Skill Registry.
+- Map TOOL to explicit connector/API/runtime capabilities with permission and security gates.
+- Map MEMORY to authoritative Source of Truth, CURRENT_STATE, issues/Work Orders, checkpoints and evidence; raw chat history remains non-authoritative.
+- Add a preflight contract for executable Work Orders: required_skill, required_tools, required_state_refs. If any required element is missing, route/fail closed instead of pretending the employee can execute.
+- Keep tool permissions separate from employee identity: having a tool available does not imply every employee may use it.
+- Retrieve memory/context just in time; do not preload all history into every worker call.
+
+### REJECT
+- Treating MEMORY as unlimited chat transcript or model recollection.
+- Treating TOOL access as proof of competence.
+- Treating SKILL text alone as executable capability when the required tool or permission is absent.
+- Giving every agent every tool “just in case”.
+
+### External cross-check
+Anthropic's production-agent guidance describes the core augmented-LLM building block as combining retrieval, tools and memory, and separately stresses that tools should have clear, non-overlapping purposes and context-efficient outputs. This supports the video's separation model, while TigerIQ keeps stronger durability and authorization boundaries.
+
+### Deduplication decision
+No new standalone skill is created. This video clarifies the architecture binding among existing Skill Registry, AI Employee capabilities, tool permissions and durable state. It strengthens `contextual-skill-loading`, `role-separated-execution`, `capability-aware-model-routing` and the Source of Truth contract without creating a parallel agent framework.
+
+
+## Batch extension — 2026-09-18 — OpenCode + AI-company orchestration
+
+### Provenance
+- v14025g50000d90mvrfog65qm0qanqt0.mp4
+  - SHA-256: 3cc0c3e1250f38a55e4e89c7376c62bc51790ff6de9897d4d9cf8c381fa46296
+- v1c044g50000d8v9mlvog65kca405ong.mp4
+  - SHA-256: a201b25bdfa108a7c70e0640dadb0d30ada840e013f21dea7500e1578949f269
+
+### Source-derived lessons — OpenCode
+The video presents OpenCode as an open-source AI coding agent that works directly in a terminal, supports multiple model providers, parallel agents, local models through Ollama, and an extensible plugin/workflow ecosystem.
+
+KEEP:
+- Provider-agnostic coding execution is strategically aligned with TigerIQ's multi-provider design.
+- Terminal-native execution is valuable for deterministic repository work, especially when paired with scoped permissions and durable evidence.
+- Parallel sessions/agents are useful only when ownership/resource scopes are isolated.
+- Local models through Ollama remain valuable for privacy, cost control and offline/local fallback.
+- Extensibility through commands/plugins/workflows can reduce one-off glue code.
+
+IMPROVE FOR TIGERIQ:
+- Treat OpenCode as an optional execution substrate/tool candidate, not as a new orchestration authority.
+- Any pilot must sit under existing Work Order, ownership, branch, test, review and evidence gates.
+- Use its provider flexibility as a worker-level implementation option; routing authority remains in TigerIQ Core/Registry.
+- If evaluated on PC01, start in an isolated non-production repository/worktree with minimum permissions.
+- Compare against the current Coding Lane on measurable criteria: task completion, retry rate, context/token cost, permission safety, interruption/resume and evidence quality.
+
+REJECT:
+- Replacing Core/CENTRAL/Registry with OpenCode.
+- Giving multiple OpenCode sessions write access to the same resource without TigerIQ ownership/lease controls.
+- Installing plugins or enabling auto-approval broadly without supply-chain and capability review.
+- Treating open source or local-model support as proof of safety.
+
+EXTERNAL VALIDATION:
+- Official OpenCode documentation confirms terminal/desktop/IDE availability, multi-provider support, multi-session parallel agents, local models, configurable agents/permissions and Ollama integration.
+- The official provider documentation currently states support for 75+ LLM providers through Models.dev.
+- This validates the video's main technical claims but does not prove that OpenCode is superior to TigerIQ's current Coding Lane for our workload.
+
+DEDUPLICATION:
+- No new standalone skill is created. The lesson strengthens existing capability-aware-model-routing, role-separated-execution, external-skill-security-gate and current Coding Lane evaluation policy.
+
+### Source-derived lessons — AI-company orchestration
+The video describes an AI-operated company structure:
+- leadership/CEO receives a goal;
+- departments/specialists exist for management, content, marketing, sales and customer care;
+- a dev organization uses an Orchestrator, Senior/Junior developers and Tester;
+- the CEO analyzes the objective, creates tickets/tasks, assigns specialist agents and tracks execution;
+- a test loop validates app/code, logs bugs, returns failures to development and repeats;
+- the stated target is 24/7 execution with minimal human intervention;
+- cost is controlled through API usage, provider free tiers and local models.
+
+KEEP:
+- Goal → analysis → ticket/work decomposition → specialist routing → execution → testing → bug loop → evidence is the correct operating pattern.
+- Orchestrator and specialist roles should remain separate from tester/reviewer where risk/value justifies it.
+- Human Owner should define objectives and gates, not manually dispatch every subtask.
+- 24/7 autonomy is only meaningful when backed by durable queue/state, checkpoints and real runtime, not chat claims.
+- Cost-aware routing across paid/free/local providers is a first-class orchestration concern.
+
+IMPROVE FOR TIGERIQ:
+- Make every executable child task machine-readable and durable, with owner, scope, acceptance, required skill/tools/state refs, evidence and retry/failure state.
+- Ensure failed tests automatically generate a bounded repair task and return through verification without Owner intervention when within authority.
+- Dashboard should expose goal → department/worker → ticket → test/review → evidence so the Owner can observe without becoming dispatcher.
+- Measure autonomous completion rate, human-intervention count, duplicate-work rate, failure-recovery time and cost per completed objective.
+
+REJECT:
+- Calling an agent “CEO” or “department” without real bounded authority, state and runtime.
+- Claiming 24/7 operation when execution only advances after a chat message.
+- Letting one orchestrator both implement and self-approve high-impact changes.
+- Using free/local models solely for cost if they fail task-quality or tool-use requirements.
+
+DEDUPLICATION:
+- This video strongly matches TigerIQ's existing Chief-of-Staff / AI Employee / Work Order / reviewer / judge model and #822 goal-driven baseline. No parallel company architecture is created.
