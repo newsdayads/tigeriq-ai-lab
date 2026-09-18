@@ -53,8 +53,7 @@ internal sealed class BrowserHarnessClient
 
     async Task<HarnessView> RunProbeAsync(WorkerDefinition worker)
     {
-        var executable = Environment.GetEnvironmentVariable("BROWSER_HARNESS_EXE");
-        if (string.IsNullOrWhiteSpace(executable)) executable = "browser-harness";
+        var executable = ResolveExecutable();
 
         var psi = new ProcessStartInfo
         {
@@ -111,6 +110,22 @@ internal sealed class BrowserHarnessClient
         {
             return Error(worker.Id, "HARNESS_ERROR:" + Clean(ex.Message));
         }
+    }
+
+    static string ResolveExecutable()
+    {
+        var configured = Environment.GetEnvironmentVariable("BROWSER_HARNESS_EXE");
+        if (!string.IsNullOrWhiteSpace(configured)) return configured;
+
+        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        var candidates = new[]
+        {
+            Path.Combine(userProfile, ".local", "bin", "browser-harness.exe"),
+            Path.Combine(appData, "Python", "Python312", "Scripts", "browser-harness.exe"),
+            Path.Combine(appData, "Python", "Scripts", "browser-harness.exe")
+        };
+        return candidates.FirstOrDefault(File.Exists) ?? "browser-harness";
     }
 
     static string HarnessHome(string workerId)
