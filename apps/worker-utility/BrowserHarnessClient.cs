@@ -19,7 +19,6 @@ internal sealed record HarnessView(
 
 internal sealed class BrowserHarnessClient
 {
-    public const string PilotWorkerId = "NV04";
     static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(18);
     readonly Dictionary<string, SemaphoreSlim> gates =
         Workers.All.ToDictionary(x => x.Id, _ => new SemaphoreSlim(1, 1));
@@ -27,8 +26,8 @@ internal sealed class BrowserHarnessClient
     public static bool ReadOnlyEnabled(string workerId)
         => Workers.All.Any(x => string.Equals(x.Id, workerId, StringComparison.OrdinalIgnoreCase));
 
-    public static bool PilotEnabled(string workerId)
-        => string.Equals(workerId, PilotWorkerId, StringComparison.OrdinalIgnoreCase);
+    public static bool WriteEnabled(string workerId)
+        => ReadOnlyEnabled(workerId);
 
     public async Task<HarnessView> ProbeAsync(WorkerDefinition worker, WorkerView current)
     {
@@ -56,7 +55,7 @@ internal sealed class BrowserHarnessClient
 
     public async Task<HarnessView> FillRestoreProbeAsync(WorkerDefinition worker, WorkerView current)
     {
-        if (!PilotEnabled(worker.Id)) return HarnessView.Off(worker.Id);
+        if (!WriteEnabled(worker.Id)) return HarnessView.Off(worker.Id);
         if (!current.SessionOk || !current.WindowOpen)
             return new(worker.Id, HarnessState.Blocked, "SESSION_OR_WINDOW_BLOCKED", null, null, DateTimeOffset.Now);
         if (current.AuthRequired || !string.IsNullOrWhiteSpace(current.SecurityBlock))
@@ -81,8 +80,10 @@ internal sealed class BrowserHarnessClient
     async Task<HarnessView> RunFillRestoreProbeAsync(WorkerDefinition worker, WorkerView current)
     {
         var executable = ResolveExecutable();
-        var selector = "rich-textarea .ql-editor[contenteditable=\"true\"]";
-        var marker = "TIGERIQ_BH_WRITE_PROBE_" + Guid.NewGuid().ToString("N");
+        var selector = worker.Id == "NV04"
+            ? "rich-textarea .ql-editor[contenteditable=\"true\"]"
+            : "#prompt-textarea";
+        var marker = $"TIGERIQ_BH_WRITE_PROBE_{worker.Id}_" + Guid.NewGuid().ToString("N");
         var psi = NewStartInfo(worker, executable);
 
         try
@@ -96,7 +97,7 @@ internal sealed class BrowserHarnessClient
             await process.StandardInput.WriteLineAsync("import json");
             await process.StandardInput.WriteLineAsync("selector = " + JsonSerializer.Serialize(selector));
             await process.StandardInput.WriteLineAsync("marker = " + JsonSerializer.Serialize(marker));
-            await process.StandardInput.WriteLineAsync("read_code = \"(() => { const e=document.querySelector(\" + json.dumps(selector) + \"); return e ? (e.innerText || '') : null; })()\"");
+            await process.StandardInput.WriteLineAsync("read_code = \"(() => { const e=document.querySelector(\" + json.dumps(selector) + \"); return e ? (e.innerText || e.value || '') : null; })()\"");
             await process.StandardInput.WriteLineAsync("before = js(read_code)");
             await process.StandardInput.WriteLineAsync("if before is None: raise RuntimeError('COMPOSER_NOT_FOUND')");
             await process.StandardInput.WriteLineAsync("if before.strip(): raise RuntimeError('COMPOSER_NOT_EMPTY')");
@@ -144,7 +145,7 @@ internal sealed class BrowserHarnessClient
 
     public async Task<HarnessView> MutationProbeAsync(WorkerDefinition worker, WorkerView current)
     {
-        if (!PilotEnabled(worker.Id)) return HarnessView.Off(worker.Id);
+        if (!WriteEnabled(worker.Id)) return HarnessView.Off(worker.Id);
         if (!current.SessionOk || !current.WindowOpen)
             return new(worker.Id, HarnessState.Blocked, "SESSION_OR_WINDOW_BLOCKED", null, null, DateTimeOffset.Now);
         if (current.AuthRequired || !string.IsNullOrWhiteSpace(current.SecurityBlock))

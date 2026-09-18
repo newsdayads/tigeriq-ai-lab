@@ -61,7 +61,7 @@ internal sealed class UtilityContext : ApplicationContext
 
         timer.Tick += async (_, _) => await TickAsync();
         timer.Start();
-        store.Log("SYSTEM", "UTILITY_STARTED", new { version = Application.ProductVersion, issue = 876, harnessPilot = BrowserHarnessClient.PilotWorkerId });
+        store.Log("SYSTEM", "UTILITY_STARTED", new { version = Application.ProductVersion, issue = 876, harnessReadOnly = Workers.All.Select(x => x.Id).ToArray(), harnessWriteSafe = Workers.All.Where(x => BrowserHarnessClient.WriteEnabled(x.Id)).Select(x => x.Id).ToArray() });
     }
 
     ContextMenuStrip BuildTrayMenu()
@@ -484,8 +484,8 @@ internal sealed class UtilityContext : ApplicationContext
 
     async Task<HarnessView> RunHarnessMutationPilotAsync(string id)
     {
-        if (!BrowserHarnessClient.PilotEnabled(id))
-            throw new InvalidOperationException("HARNESS_WRITE_PILOT_NV04_ONLY");
+        if (!BrowserHarnessClient.WriteEnabled(id))
+            throw new InvalidOperationException("HARNESS_WRITE_DISABLED");
         if (!views.TryGetValue(id, out var current))
             throw new InvalidOperationException("HARNESS_WRITE_STATE_UNAVAILABLE");
         if (current.AuthRequired || !string.IsNullOrWhiteSpace(current.SecurityBlock))
