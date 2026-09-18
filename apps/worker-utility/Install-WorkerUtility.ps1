@@ -14,6 +14,20 @@ $installedExe=Join-Path $target 'TigerIQ.WorkerUtility.exe'
 $hash=(Get-FileHash $installedExe -Algorithm SHA256).Hash.ToLower()
 $user=(Get-CimInstance Win32_ComputerSystem).UserName
 if([string]::IsNullOrWhiteSpace($user)){ throw 'INTERACTIVE_USER_NOT_FOUND' }
+
+# #826: WorkerUtility is the single owner of worker badges.
+$legacyTask='TigerIQ Worker Status Compact'
+$legacy=Get-ScheduledTask -TaskName $legacyTask -ErrorAction SilentlyContinue
+if($legacy){ Disable-ScheduledTask -TaskName $legacyTask -ErrorAction SilentlyContinue | Out-Null }
+Get-CimInstance Win32_Process | Where-Object {
+  ($_.Name -eq 'powershell.exe' -or $_.Name -eq 'pwsh.exe') -and
+  $_.CommandLine -like '*Worker-Status-Title.ps1*'
+} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+
+Get-Process TigerIQ.WorkerUtility -ErrorAction SilentlyContinue |
+  Where-Object { $_.SessionId -ne 0 } |
+  Stop-Process -Force -ErrorAction SilentlyContinue
+
 $taskName='TigerIQ Worker Utility Bootstrap'
 $action=New-ScheduledTaskAction -Execute $installedExe
 $principal=New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited
