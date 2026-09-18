@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
+import {readFileSync} from 'node:fs';
 import {activeProviderCooldownIds,applyCompactEdits,assertPrOpenState,classifyAiFailure,gateFailureIssues,invokeJsonWithFailover,isResourceTransientError,rememberRateLimitCooldowns,resourceWaitPlan,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,validateCompactEdits} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError,parseJsonObject} from '../apps/tigeriq-coding-lane/policy.mjs';
 
@@ -255,6 +256,12 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
     assert.deepStrictEqual(issues,['CI Verify: failure (completed)']);
   });
 });
+test('review path propagates failover ledger into same-job cooldown memory',()=>{
+  const source=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
+  assert.match(source,/return \{review:d,resource:invoked\.resource,failureLedger:invoked\.failureLedger\|\|\[\]\}/);
+  assert.match(source,/rememberRateLimitCooldowns\(cooldownExcludes,reviewed\.failureLedger\)/);
+});
+
 test('Gemini internal 429 exhaustion still fails over to next provider',async()=>{
   const gemini={id:'NV12',provider:'gemini',model:'gemini-test'};
   const backup={id:'NV13',provider:'fake',model:'backup'};
