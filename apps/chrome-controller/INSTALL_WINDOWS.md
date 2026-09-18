@@ -351,6 +351,7 @@ Log chỉ giữ timestamp, worker ID, action, command ID, status/error. Không g
 Từ gói hardening #763, `ChromeController` không được trực tiếp sinh tiến trình Chrome. Việc mở Chrome đi qua `chrome-launch-broker` tại `127.0.0.1:8800`.
 
 - Chạy `Start-ChromeLaunchBroker.ps1` bằng process/task **độc lập** với `Start-ChromeController.ps1`; không đặt broker làm child của Controller.
+- Task Broker phải gọi **`Start-ChromeLaunchBroker.ps1`**, không gọi `node chrome-launch-broker.js` trực tiếp. Script truyền Windows SessionId thật vào runtime để task interactive vẫn được nhận diện đúng khi `SESSIONNAME` bị Windows để trống; Session 0/Services vẫn fail-closed.
 - Restart/terminate riêng Controller không được kéo theo broker hoặc Chrome.
 - Nếu worker có `debugPort`, broker mở Google Chrome chuẩn bằng `--remote-debugging-port` và không nạp extension; đây là đường Direct CDP hiện hành.
 - Broker fail closed nếu debug port của worker đã hoạt động (`WORKER_ALREADY_RUNNING`) để không tạo cửa sổ/tab trùng.

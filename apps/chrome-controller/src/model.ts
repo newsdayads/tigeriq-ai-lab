@@ -29,10 +29,17 @@ export function isTrustedRuntimeUrl(value:string|undefined,trustedRuntimeHosts:s
     return isLoopbackHost(u.hostname)||trustedRuntimeHosts.includes(u.hostname);
   }catch{return false}
 }
-export function isInteractiveDesktopSession(platform=process.platform,sessionName=process.env.SESSIONNAME):boolean{
+export function isInteractiveDesktopSession(
+  platform=process.platform,
+  sessionName=process.env.SESSIONNAME,
+  windowsSessionId=process.env.TIGERIQ_WINDOWS_SESSION_ID,
+):boolean{
   if(platform!=='win32')return true;
   const value=String(sessionName??'').trim().toLowerCase();
-  return Boolean(value)&&value!=='services';
+  if(value==='services')return false;
+  if(value)return true;
+  const sessionId=Number(windowsSessionId);
+  return Number.isInteger(sessionId)&&sessionId>0;
 }
 export function minimumLayoutWidth(config:Pick<ControllerConfig,'layout'|'workers'>):number{return config.workers.length*config.layout.width+(config.workers.length-1)*config.layout.gap+config.layout.rightMargin}
 export function workAreaFitsLayout(config:Pick<ControllerConfig,'layout'|'workers'>,area:WorkArea):boolean{return area.width>=minimumLayoutWidth(config)&&area.height>=config.layout.top+config.layout.height}
