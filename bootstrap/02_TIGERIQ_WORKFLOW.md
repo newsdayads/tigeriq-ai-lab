@@ -1,5 +1,5 @@
 # TIGERIQ — WORKFLOW
-Version: 3.3
+Version: 3.4
 Status: Source of Truth
 Priority: P0
 Updated: 2026-09-18
@@ -175,6 +175,16 @@ Khi đó Vy phải tạo migration packet, cập nhật GitHub, kiểm thử NEW
 - PC01 ngoài ngoại lệ hợp lệ chỉ dùng cho runtime, chẩn đoán, thao tác gắn thiết bị, deploy local và xác minh máy thật.
 - Vi phạm gate này là lỗi vận hành P0: dừng đường shell, chuyển về direct path, ghi root cause → fix → retest.
 - Không được viện lý do phiên mới/chat khác/không nhớ policy; Loader + Bootstrap + Interaction Policy là authority xuyên chat.
+
+## 16.2. Continuous Safe Execution — không chờ duyệt từng bước
+- Khi anh Sơn đã giao một mục tiêu rõ ràng, mọi bước **an toàn, reversible, zero-cost và nằm trong cùng scope** phải tự chạy liên tục đến điểm dừng hợp lệ; không trả quyền điều khiển chỉ vì vừa checkpoint, mở PR, chạy kiểm tra hay hoàn tất một stage.
+- Với GitHub engineering, merge an toàn vào `main` được **ủy quyền sẵn** khi đồng thời thỏa: có Work Order/issue; scope rõ và không overlap; thay đổi reversible; required checks ĐẠT; required review/gate ĐẠT; không unresolved blocker; merge **không đồng thời là Production/runtime release**; không paid/credential/security/destructive/irreversible action.
+- Khi đủ điều kiện, chuỗi chuẩn là `branch → PR → checks → review → merge → bước an toàn kế tiếp`; **không hỏi lại anh Sơn giữa các bước**.
+- Checkpoint luôn là `SAVE → CONTINUE`, không phải approval gate.
+- Hoàn tất một stage phải tự kích hoạt stage an toàn kế tiếp của cùng mục tiêu nếu scope/resource lock cho phép.
+- Chỉ trả quyền điều khiển cho anh Sơn khi có một trong các gate thật: Production/runtime release cần quyền riêng; chi phí/cam kết tài chính; credential/security-boundary; destructive/irreversible; thao tác vật lý; intent xung đột/không rõ; blocker thật hoặc external wait.
+- `bc / báo cáo / tiến độ` chỉ là quan sát trạng thái; không pause execution.
+- Quy tắc này áp dụng xuyên NEW CHAT; không được viện lý do đổi chat/đổi phiên để quay lại cơ chế xin duyệt từng bước.
 
 ## 17. Định nghĩa HOÀN TẤT
 Một task chỉ `HOÀN TẤT` khi outcome đã được thực hiện ở mức áp dụng, test/review cần thiết đạt, evidence có sẵn, state/docs được cập nhật và không còn blocker thật trong scope.

@@ -1,5 +1,5 @@
 # TIGERIQ — BASELINE DECISIONS
-Version: 2.3
+Version: 2.4
 Status: Bootstrap Baseline
 Updated: 2026-09-18
 
@@ -29,6 +29,7 @@ File này chỉ giữ các quyết định nền tảng ổn định mà NEW CHA
 - Không giả vờ AI/NV đang chạy nền hoặc song song nếu runtime không thực sự hỗ trợ.
 - Một Work Order/resource scope chỉ có một active owner; takeover phải idempotent và theo policy động hợp lệ, không bypass Owner hold hay authorization gate.
 - PC01 shell (`CMD`/`PowerShell`/terminal) là **mặc định DENY xuyên chat**: nếu có direct tool/API/file/process action tương đương thì bắt buộc dùng direct path; shell chỉ cho thao tác Windows/runtime-specific không có đường tương đương. Tuyệt đối không code repository bằng shell PC01; source engineering chỉ GitHub branch → PR → checks → review → merge.
+- Một mục tiêu đã được anh Sơn giao là standing authorization cho mọi bước safe/reversible/zero-cost trong cùng scope: tự chạy branch → PR → checks → review → merge → bước kế tiếp khi đủ gate; không xin duyệt từng bước. Chỉ dừng ở Production/runtime release, paid/financial, credential/security boundary, destructive/irreversible, physical action, intent xung đột, blocker thật hoặc external wait.
 
 ## Những gì CỐ Ý không lưu ở đây
 Các nội dung sau phải lấy từ dynamic state và có thể thay đổi mà KHÔNG cập nhật Loader:
