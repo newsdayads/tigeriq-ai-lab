@@ -380,6 +380,7 @@ async function managerTick() {
   const goal=currentCampaignGoal(o.objective,phases,currentPhase);
   const skillContext=loadRelevantActiveSkillContext(goal);
   if(skillContext.skillIds.length){await event('ACTIVE_SKILLS_LOADED',{objectiveId:o.id,skillIds:skillContext.skillIds,bytes:skillContext.bytes});}
+  if(skillContext.skipped.length){await event('ACTIVE_SKILLS_SKIPPED',{objectiveId:o.id,skipped:skillContext.skipped});}
   if(skillContext.error){await event('ACTIVE_SKILLS_FAIL_CLOSED',{objectiveId:o.id,error:skillContext.error});}
   const activeSkillContext=skillContext.text?\`Relevant ACTIVE skills (apply only when relevant):\\n\${skillContext.text}\`:'';
   const handoffContext=o.metadata?.handoff?.state==='children_completed'?`Completed autonomous child work: ${JSON.stringify(o.metadata.handoff.childResults||[]).slice(0,6000)}`:'';
