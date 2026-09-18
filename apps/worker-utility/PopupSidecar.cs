@@ -12,6 +12,6 @@ internal static class PopupSidecar
                 occupied.Add(rect);
 
         if (!occupied.Any(r => r == anchor)) occupied.Add(anchor);
-        popup.ShowWorker(worker, view, watchdog, settings, scheduleSettings, doNotDisturb, recentLogs, anchor, occupied.ToArray());
+        popup.ShowWorker(worker, view, watchdog, settings, scheduleSettings, null, doNotDisturb, recentLogs, anchor, occupied.ToArray());
     }
 }
