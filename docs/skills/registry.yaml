@@ -68,11 +68,12 @@ skills:
 
   - id: role-separated-execution
     title: Role-Separated Execution
-    state: CANDIDATE
-    version: 0.1.0
+    state: ACTIVE
+    version: 1.0.0
     provenance_batch: owner-video-lessons-2026-09-18
     source_log: learning-log/2026-09-18-owner-video-lessons.md
     target: orchestration
+    triggers: implementation review reviewer verifier planning source mutation phân vai kiểm tra
     summary: Separate planning, implementation, review and verification where risk or value justifies it.
 
   - id: external-skill-security-gate
@@ -95,9 +96,10 @@ skills:
 
   - id: capability-aware-model-routing
     title: Capability-Aware Model Routing
-    state: CANDIDATE
-    version: 0.1.0
+    state: ACTIVE
+    version: 1.0.0
     provenance_batch: owner-video-lessons-2026-09-18
     source_log: learning-log/2026-09-18-owner-video-lessons.md
     target: router
+    triggers: routing route model provider capability latency quota cost định tuyến mô hình
     summary: Route work by difficulty, capability, latency and cost instead of always using the strongest model.
