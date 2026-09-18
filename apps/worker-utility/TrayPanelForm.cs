@@ -34,7 +34,8 @@ internal sealed class TrayPanelForm : Form
         this.showLogs = showLogs;
         this.exit = exit;
 
-        AutoScaleMode = AutoScaleMode.Dpi;
+        AutoScaleMode = AutoScaleMode.None;
+        DoubleBuffered = true;
         FormBorderStyle = FormBorderStyle.None;
         ShowInTaskbar = false;
         TopMost = true;
