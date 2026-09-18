@@ -13,6 +13,7 @@ internal static class SelfTest
             TestBrowserHarnessProbeParsing();
             TestWorkerObservability();
             TestUiPlacement();
+            VisualRegression.Run();
             Console.WriteLine("SELF_TEST_OK");
             return 0;
         }
