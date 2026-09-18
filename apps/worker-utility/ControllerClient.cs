@@ -5,7 +5,11 @@ namespace TigerIQ.WorkerUtility;
 
 internal sealed class ControllerClient
 {
-    readonly HttpClient http = new() { Timeout = TimeSpan.FromSeconds(8) };
+    // Controller enforces an 8s minimum UI-action gap. Keep client timeout
+    // comfortably above pacing + bridge round-trip so successful paced actions
+    // are not reported as false timeouts.
+    static readonly TimeSpan ControllerTimeout = TimeSpan.FromSeconds(20);
+    readonly HttpClient http = new() { Timeout = ControllerTimeout };
     const string Controller = "http://127.0.0.1:8798";
     const string ReceiptService = "http://127.0.0.1:8794";
 
