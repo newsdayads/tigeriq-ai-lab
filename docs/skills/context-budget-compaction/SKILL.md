@@ -22,5 +22,10 @@ A Manager/model call includes recent job history or other repeated operational c
 - apps/tigeriq-core/core.mjs
 - tests/core-context-gateway.test.ts
 
+## Rules for Relevant-Only and ACTIVE-Only Skill Loading
+- Restrict dynamic skill loading strictly to skills marked as ACTIVE in the skill registry; never load CANDIDATE, DEPRECATED, or REJECTED skills into runtime execution.
+- Selectively load only skills whose triggers or target metadata match the current objective or prompt context.
+- Prevent preloading the entire skill registry or all available markdown skill guides into the active model context.
+
 ## Non-goals
-This skill does not authorize Production/runtime release, paid actions, credential/security changes, destructive actions, or APP Chrome/Worker Utility mutation.
+This skill does not authorize Production/runtime release, paid actions, credential/security changes, destructive actions, APP Chrome/Worker Utility mutation, or automatic promotion of CANDIDATE skills without verified live evidence (#864).
