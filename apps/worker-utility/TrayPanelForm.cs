@@ -17,17 +17,21 @@ internal sealed class TrayPanelForm : Form
     readonly Dictionary<string, Label> dotLabels = new();
     readonly Label dndLabel = new() { AutoSize = true, ForeColor = Muted, Font = new Font("Segoe UI", 8.5f) };
     readonly Action<string> openWorker;
-    readonly Action openAll;
-    readonly Action toggleDnd;
+    readonly Action openAllChrome;
+    readonly Action openQuick;
+    readonly Action showSettings;
+    readonly Action showLogs;
     readonly Action exit;
 
     protected override bool ShowWithoutActivation => false;
 
-    public TrayPanelForm(Action<string> openWorker, Action openAll, Action toggleDnd, Action exit)
+    public TrayPanelForm(Action<string> openWorker, Action openAllChrome, Action openQuick, Action showSettings, Action showLogs, Action exit)
     {
         this.openWorker = openWorker;
-        this.openAll = openAll;
-        this.toggleDnd = toggleDnd;
+        this.openAllChrome = openAllChrome;
+        this.openQuick = openQuick;
+        this.showSettings = showSettings;
+        this.showLogs = showLogs;
         this.exit = exit;
 
         AutoScaleMode = AutoScaleMode.Dpi;
@@ -35,7 +39,7 @@ internal sealed class TrayPanelForm : Form
         ShowInTaskbar = false;
         TopMost = true;
         StartPosition = FormStartPosition.Manual;
-        ClientSize = new Size(306, 432);
+        ClientSize = new Size(306, 552);
         BackColor = Canvas;
         Padding = new Padding(10);
         Text = "TigerIQ Workers";
@@ -126,20 +130,31 @@ internal sealed class TrayPanelForm : Form
             ForeColor = Muted,
             Font = new Font("Segoe UI", 8.5f)
         };
-        var button = new Button
+        var arrow = new Label
         {
-            Text = "Mở",
-            Size = new Size(55, 30),
-            Location = new Point(203, 26),
-            FlatStyle = FlatStyle.Flat,
-            BackColor = accent,
-            ForeColor = Color.White,
-            Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
-            Cursor = Cursors.Hand,
-            TabStop = false
+            Text = "›",
+            AutoSize = false,
+            Size = new Size(28, 44),
+            Location = new Point(230, 16),
+            TextAlign = ContentAlignment.MiddleCenter,
+            ForeColor = accent,
+            Font = new Font("Segoe UI", 18, FontStyle.Bold),
+            Cursor = Cursors.Hand
         };
-        button.FlatAppearance.BorderSize = 0;
-        button.Click += (_, _) => { Hide(); openWorker(worker.Id); };
+
+        void OpenSelected(object? _, EventArgs __)
+        {
+            Hide();
+            openWorker(worker.Id);
+        }
+
+        panel.Cursor = Cursors.Hand;
+        panel.Click += OpenSelected;
+        stripe.Click += OpenSelected;
+        dot.Click += OpenSelected;
+        name.Click += OpenSelected;
+        state.Click += OpenSelected;
+        arrow.Click += OpenSelected;
 
         dotLabels[worker.Id] = dot;
         stateLabels[worker.Id] = state;
@@ -147,7 +162,7 @@ internal sealed class TrayPanelForm : Form
         panel.Controls.Add(dot);
         panel.Controls.Add(name);
         panel.Controls.Add(state);
-        panel.Controls.Add(button);
+        panel.Controls.Add(arrow);
         return panel;
     }
 
@@ -155,20 +170,32 @@ internal sealed class TrayPanelForm : Form
     {
         var panel = new Panel
         {
-            Size = new Size(270, 94),
+            Size = new Size(270, 198),
             Margin = new Padding(0, 3, 0, 0),
             BackColor = Canvas
         };
-        var all = MakeButton("▦  Mở tất cả bảng", new Point(0, 0), new Size(130, 36));
-        all.Click += (_, _) => { Hide(); openAll(); };
-        var dnd = MakeButton("◐  Không làm phiền", new Point(140, 0), new Size(130, 36));
-        dnd.Click += (_, _) => toggleDnd();
-        var quit = MakeButton("⏻  Thoát Utility", new Point(0, 46), new Size(270, 36));
+
+        var all = MakeButton("▦  Mở tất cả cửa sổ", new Point(0, 0), new Size(270, 34));
+        all.Click += (_, _) => { Hide(); openAllChrome(); };
+
+        var quick = MakeButton("▣  Bảng điều khiển nhanh", new Point(0, 40), new Size(270, 34));
+        quick.Click += (_, _) => { Hide(); openQuick(); };
+
+        var settings = MakeButton("⚙  Cài đặt", new Point(0, 80), new Size(270, 34));
+        settings.Click += (_, _) => { Hide(); showSettings(); };
+
+        var logs = MakeButton("▤  Xem log hệ thống", new Point(0, 120), new Size(270, 34));
+        logs.Click += (_, _) => { Hide(); showLogs(); };
+
+        var quit = MakeButton("⏻  Thoát", new Point(0, 160), new Size(270, 34));
         quit.BackColor = Color.FromArgb(74, 24, 31);
         quit.ForeColor = Color.FromArgb(254, 202, 202);
         quit.Click += (_, _) => exit();
+
         panel.Controls.Add(all);
-        panel.Controls.Add(dnd);
+        panel.Controls.Add(quick);
+        panel.Controls.Add(settings);
+        panel.Controls.Add(logs);
         panel.Controls.Add(quit);
         return panel;
     }
