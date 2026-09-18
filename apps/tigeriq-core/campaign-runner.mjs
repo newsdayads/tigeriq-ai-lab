@@ -1,3 +1,4 @@
+export { generateChildKey } from './work-handoff.mjs';
 export function normalizeCampaignPhases(input) {
   if (input == null) return [];
   if (!Array.isArray(input)) throw new Error('CAMPAIGN_PHASES_INVALID');
