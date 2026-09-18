@@ -53,6 +53,7 @@ internal static class SelfTest
     static void TestSettingsRoundTrip()
     {
         var settings = UtilitySettings.CreateDefault();
+        settings.LayoutRevision = 2;
         settings.Workers["NV02"].Paused = true;
         settings.Workers["NV02"].BadgeOffsetX = 24;
         settings.Workers["NV02"].BadgeOffsetY = 42;
@@ -61,6 +62,7 @@ internal static class SelfTest
         settings.Schedules["NV02"] = new ScheduleSettings { IntervalMinutes = 10, NextCheckAt = DateTimeOffset.UtcNow.AddMinutes(10), Enabled = true, ChangesOnly = false };
         var text = System.Text.Json.JsonSerializer.Serialize(settings);
         var copy = System.Text.Json.JsonSerializer.Deserialize<UtilitySettings>(text)!;
+        Must(copy.LayoutRevision == 2, "layout revision persistence");
         Must(copy.Workers["NV02"].Paused, "settings paused persistence");
         Must(copy.Workers["NV02"].BadgeOffsetX == 24 && copy.Workers["NV02"].BadgeOffsetY == 42, "badge persistence");
         Must(copy.Workers["NV02"].PopupX == 111 && copy.Workers["NV02"].PopupY == 222, "popup persistence");
@@ -91,6 +93,22 @@ internal static class SelfTest
         Must(!UiPlacement.TryBadge(tinyChrome, badgeSize, working, null, null, out _), "badge fails closed when own title strip is too small");
         Must(UiPlacement.TryBadge(chrome, badgeSize, working, 5000, 5000, out var draggedBadge)
             && chrome.Contains(new Rectangle(draggedBadge, badgeSize)), "saved badge offset clamps to its own title strip");
+
+        var desktop = new Rectangle(0, 0, 3277, 1688);
+        var dockSize = new Size(344, 728);
+        var dock0 = UiPlacement.DockedPopup(0, 3, dockSize, desktop);
+        var dock1 = UiPlacement.DockedPopup(1, 3, dockSize, desktop);
+        var dock2 = UiPlacement.DockedPopup(2, 3, dockSize, desktop);
+        Must(dock0.Y == dock1.Y && dock1.Y == dock2.Y, "worker panels share one bottom row");
+        Must(dock0.X < dock1.X && dock1.X < dock2.X, "worker panels preserve NV02 NV03 NV04 order");
+        Must(dock2.X + dockSize.Width <= desktop.Right - 8, "rightmost panel respects dock margin");
+        Must(!new Rectangle(dock0, dockSize).IntersectsWith(new Rectangle(dock1, dockSize)), "dock slot 0 and 1 do not overlap");
+        Must(!new Rectangle(dock1, dockSize).IntersectsWith(new Rectangle(dock2, dockSize)), "dock slot 1 and 2 do not overlap");
+        var savedUser = new Point(777, 333);
+        Must(UiPlacement.ResolvePopup(savedUser, dock0, dockSize, desktop) == savedUser, "user dragged popup stays where dropped");
+        var offscreenUser = new Point(9999, 9999);
+        var clampedUser = UiPlacement.ResolvePopup(offscreenUser, dock0, dockSize, desktop);
+        Must(desktop.Contains(new Rectangle(clampedUser, dockSize)), "saved popup clamps only to visible desktop");
 
         var clamped = UiPlacement.Clamp(new Point(4000, 4000), new Size(320, 620), working);
         Must(clamped.X == 1600 && clamped.Y == 460, "popup clamp");
