@@ -44,7 +44,7 @@ internal sealed class UtilityContext : ApplicationContext
         foreach (var worker in Workers.All)
             badges[worker.Id] = new BadgeForm(worker, ShowTrayForWorker, SaveBadgeOffset, ResetBadgePosition);
 
-        trayPanel = new TrayPanelForm(HandleActionAsync, FocusAllChromeAsync, ToggleDnd, ExitUtility);
+        trayPanel = new TrayPanelForm(HandleActionAsync, FocusAllChromeAsync, () => store.RecentLogs(60), ToggleDnd, ExitUtility);
         trayIcon = CreateTrayIcon();
         tray = new NotifyIcon
         {
