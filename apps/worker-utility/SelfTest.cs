@@ -89,6 +89,11 @@ internal static class SelfTest
         Must(parsed.Url == "https://gemini.google.com/app", "harness preserves url");
         var bad = BrowserHarnessClient.ParseProbeOutput("NV04", "not-json");
         Must(bad.State == HarnessState.Error, "harness fails closed on malformed output");
+        var token = "abc123";
+        var mutation = BrowserHarnessClient.ParseMutationProbeOutput("NV04", $"noise\n{token}\n", token, "https://gemini.google.com/app");
+        Must(mutation.State == HarnessState.Ready && mutation.Summary == "MUTATION_PROBE_OK", "harness mutation probe confirms exact token");
+        var mismatch = BrowserHarnessClient.ParseMutationProbeOutput("NV04", "different", token, null);
+        Must(mismatch.State == HarnessState.Error, "harness mutation probe fails closed on mismatch");
     }
 
     static void TestUiPlacement()
