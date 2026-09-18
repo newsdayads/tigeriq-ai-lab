@@ -85,6 +85,18 @@ internal static class UiPlacement
             .ThenBy(area => DistanceSquared(area, anchor))
             .ToArray();
 
+        // Approved Layout 2: the selected worker popup belongs ON TOP OF its own Chrome,
+        // while other worker windows remain blockers. Prefer a consistent inset overlay.
+        foreach (var area in orderedAreas)
+        {
+            var overlay = new Point(anchor.Left + 10, anchor.Top + 54);
+            if (Available(overlay, area))
+            {
+                target = overlay;
+                return true;
+            }
+        }
+
         foreach (var area in orderedAreas)
         {
             if (popupSize.Width > area.Width || popupSize.Height > area.Height) continue;
