@@ -50,3 +50,29 @@ export function nextGate(current: Gate): Gate {
   if (index < 0 || index === GATES.length - 1) return 'DONE';
   return GATES[index + 1];
 }
+
+export interface WorkOrderPreflightInput {
+  required_skill?: string;
+  required_tools?: string[];
+  required_state_refs?: string[];
+  strict_preflight?: boolean;
+}
+
+export function gateValidatePreflight(workOrder: WorkOrderPreflightInput = {}): { valid: boolean; legacy: boolean; reasons: string[] } {
+  const reqSkill = workOrder.required_skill;
+  const reqTools = workOrder.required_tools;
+  const reqStateRefs = workOrder.required_state_refs;
+  const isLegacy = !reqSkill && !reqTools && !reqStateRefs && !workOrder.strict_preflight;
+  if (isLegacy) {
+    return { valid: true, legacy: true, reasons: [] };
+  }
+  const reasons: string[] = [];
+  if (!reqSkill) reasons.push('MISSING_REQUIRED_SKILL');
+  if (!Array.isArray(reqTools) || reqTools.length === 0) reasons.push('MISSING_REQUIRED_TOOLS');
+  if (!Array.isArray(reqStateRefs) || reqStateRefs.length === 0) reasons.push('MISSING_REQUIRED_STATE_REFS');
+  return {
+    valid: reasons.length === 0,
+    legacy: false,
+    reasons,
+  };
+}
