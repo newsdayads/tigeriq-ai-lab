@@ -59,3 +59,17 @@ export function campaignEvidenceJobId(objectiveId,currentPhase=0) {
   if(!id) throw new Error('CAMPAIGN_OBJECTIVE_ID_REQUIRED');
   return `JOB-EVID-${id}-P${Number(currentPhase)||0}`;
 }
+
+import { handleTerminalCampaign } from './work-handoff.mjs';
+
+export function processTerminalCampaignState(campaign, aiResult) {
+  const childWork = handleTerminalCampaign(campaign, aiResult);
+  const autonomousCampaign = {
+    objective: childWork.objective,
+    phases: [{ title: childWork.title, prompt: childWork.prompt, acceptance: childWork.acceptance }],
+    parentId: campaign.id || campaign.objectiveId,
+    childId: childWork.id,
+    sourceMutated: false
+  };
+  return { childWork, autonomousCampaign };
+}
