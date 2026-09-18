@@ -45,8 +45,8 @@ describe('Worker Utility V1 contract',()=>{
   it('uses one auto-hiding System Tray flyout instead of persistent worker control windows',()=>{
     expect(tray).toContain('System Tray Utility');
     expect(tray).toContain('Deactivate += (_, _) => Hide()');
-    expect(tray).toContain('ClientSize = new Size(1160, 540)');
-    expect(context).toContain('new TrayPanelForm(HandleActionAsync, FocusAllChromeAsync, () => store.RecentLogs(60)');
+    expect(tray).toContain('ClientSize = new Size(1330, 810)');
+    expect(context).toContain('new TrayPanelForm(HandleActionAsync, FocusAllChromeAsync, () => store.RecentLogs(60), id => store.RecentLogs(id, 5)');
     expect(context).not.toContain('new PopupForm');
     expect(context).toContain('TRAY_FLYOUT_OPENED');
   });
@@ -61,12 +61,15 @@ describe('Worker Utility V1 contract',()=>{
     expect(tray).toContain('ShowSettingsMenu');
   });
 
-  it('keeps only core controls on the worker face and moves auxiliary actions to Advanced',()=>{
-    for(const label of ['Chạy / Tiếp tục','Tạm dừng','Về vị trí','Khóa vị trí','Mở trang','Kiểm tra','Lưu','Đóng an toàn'])
+  it('preserves the approved worker controls, scheduler and recent logs on the main face',()=>{
+    for(const label of ['Chạy / Tiếp tục','Tạm dừng','Về vị trí','Khóa vị trí','Mở trang','Kiểm tra nhanh','Lưu','Lưu & Lưu trữ','Đóng an toàn'])
       expect(tray).toContain(label);
-    for(const label of ['Focus','Khôi phục an toàn','Đóng NV an toàn','Lưu & Lưu trữ','Đặt lại badge','Lịch 10 phút','Lịch tùy chỉnh'])
+    for(const label of ['ĐẶT LỊCH KIỂM TRA','10p','30p','1h','2h','Tùy chỉnh','Bật lịch','Chỉ báo khi có thay đổi / lỗi','Lần kiểm tra kế tiếp','LOG GẦN NHẤT'])
       expect(tray).toContain(label);
+    expect(tray).toContain('readWorkerLogs(worker.Id)');
     expect(tray).toContain('ShowAdvancedMenu');
+    for(const label of ['Focus','Khôi phục an toàn','Đóng NV an toàn','Đặt lại badge'])
+      expect(tray).toContain(label);
   });
 
   it('keeps the flyout non-modal and controller timeouts inline',()=>{
