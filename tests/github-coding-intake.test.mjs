@@ -21,6 +21,10 @@ PRIORITY=P1`;
 function fakePool(){
   const events=[];
   return {events,async query(q,params=[]){
+    if(q.includes("from tigeriq_events d where d.type='GITHUB_CODING_DISPATCHED'")){
+      const active=events.some(d=>d.type==='GITHUB_CODING_DISPATCHED'&&!events.some(r=>r.type==='GITHUB_CODING_RESULT_REPORTED'&&String(r.data.issueNumber)===String(d.data.issueNumber)));
+      return {rowCount:active?1:0,rows:active?[{one:1}]:[]};
+    }
     if(q.includes('select 1 from tigeriq_events'))return {rowCount:events.some(e=>e.type===params[0]&&String(e.data.issueNumber)===String(params[1]))?1:0,rows:[]};
     if(q.includes('insert into tigeriq_events')){events.push({type:params[0],data:JSON.parse(params[1])});return {rowCount:1,rows:[]};}
     return {rowCount:0,rows:[]};
@@ -93,4 +97,42 @@ describe('GitHub coding intake dependencies',()=>{
     expect((await materializeGithubCodingIssues({pool,fetchImpl,token:'fake'})).created).toBe(0);
     expect(posted).toBe(1);
   });
+});
+
+it('coding backlog serializes three issues by OWNER_DIRECT then priority',async()=>{
+  const pool=fakePool(); const posted=[];
+  const withFlags=(number,priority,ownerDirect=false)=>issue(`${SAFE.replace('PRIORITY=P1',`PRIORITY=${priority}`)}${ownerDirect?'\nOWNER_DIRECT=true':''}`,{number,title:`Issue ${number}`});
+  const issues=[
+    withFlags(30,'P0',false),
+    withFlags(20,'P2',true),
+    withFlags(10,'P1',true),
+  ];
+  const fetchImpl=async(url,init={})=>{
+    if(url.includes('/issues?'))return response(issues);
+    if(url.includes('/api/objectives')){
+      const payload=JSON.parse(init.body);
+      posted.push(payload.objective);
+      return response({id:`obj-${posted.length}`});
+    }
+    if(url.includes('/comments'))return response({});
+    return response({});
+  };
+
+  let out=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake'});
+  expect(out.issueNumber).toBe(10);
+  expect(posted[0]).toContain('#10');
+
+  out=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake'});
+  expect(out.created).toBe(0);
+  expect(out.active).toBe(1);
+
+  pool.events.push({type:'GITHUB_CODING_RESULT_REPORTED',data:{issueNumber:10}});
+  out=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake'});
+  expect(out.issueNumber).toBe(20);
+  expect(posted[1]).toContain('#20');
+
+  pool.events.push({type:'GITHUB_CODING_RESULT_REPORTED',data:{issueNumber:20}});
+  out=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake'});
+  expect(out.issueNumber).toBe(30);
+  expect(posted[2]).toContain('#30');
 });
