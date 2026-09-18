@@ -5,6 +5,7 @@ import { Pool } from 'pg';
 import { createGeminiRateController } from '../shared/gemini-rate-control.mjs';
 import { runBoundedManagerDecision } from './manager-json.mjs';
 import { normalizeCampaignPhases, currentCampaignGoal, campaignTransition, makePhaseCheckpoint, campaignNeedsEvidence, campaignEvidenceJobId } from './campaign-runner.mjs';
+import { normalizeTerminalWorkItems, handoffGenerationKey, evaluateChildObjectiveStates, isCodingHandoff } from './work-handoff.mjs';
 import { ROUTING_PROFILE_LABELS, createResourceId, deriveRoutingProfile, failurePolicy, normalizeQuota, rankCandidates, rateLimitFailureState } from './smart-router.mjs';
 
 const DATABASE_URL = process.env.DATABASE_URL?.trim();
@@ -305,18 +306,81 @@ async function claimJob() {
 }
 async function callManagerDecision(prompt,objectiveId){const jobId=`MGR-${objectiveId}`,starts=new Map();return runBoundedManagerDecision({prompt,maxProviders:3,acquire:async excluded=>{const excludedResources=excluded.map(id=>resources.find(x=>x.id===id)?.resourceId||id),row=await claimResource('reasoning',jobId,excludedResources,{profile:'AUTO',taskKind:'manager'});if(!row)return null;return resources.find(x=>x.resourceId===row.resource_id)||null;},invoke:async(r,nextPrompt)=>{starts.set(r.id,Date.now());return invokeProvider(r,nextPrompt);},onRetry:async(r,error)=>event('MANAGER_OUTPUT_RETRY',{objectiveId,jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind:'manager',kind:error?.code||error?.message||'invalid_response'}),onSuccess:async r=>markResourceSuccess(r,jobId,Math.max(0,Date.now()-(starts.get(r.id)||Date.now())),'RESOURCE_SUCCESS',true,{taskKind:'manager',profile:'AUTO'}),onFailure:async(r,error)=>markResourceFailure(r,jobId,error,'RESOURCE_FAILURE',true,{taskKind:'manager',profile:'AUTO'})});
 }
+async function reconcileAutonomousHandoff(o){
+  const handoff=o?.metadata?.handoff;
+  if(handoff?.state!=='waiting_children')return false;
+  const childIds=Array.isArray(handoff.childIds)?handoff.childIds.map(String).filter(Boolean):[];
+  const rows=childIds.length?(await pool.query('select id,status,summary from tigeriq_objectives where id=any($1::text[])',[childIds])).rows:[];
+  const state=evaluateChildObjectiveStates(childIds,rows);
+  if(state.state==='waiting'){
+    await pool.query("update tigeriq_objectives set summary=$2,next_check_at=now()+interval '5 seconds',updated_at=now() where id=$1",[o.id,`waiting for autonomous child work: ${state.completed.length}/${childIds.length} complete`]);
+    return true;
+  }
+  if(state.state==='blocked'){
+    await pool.query("update tigeriq_objectives set status='blocked',summary=$2,updated_at=now() where id=$1",[o.id,`autonomous child work blocked: ${state.blocked.join(', ')}`]);
+    await event('AUTONOMOUS_HANDOFF_BLOCKED',{objectiveId:o.id,childIds,blockedChildIds:state.blocked,generationKey:handoff.generationKey||null});
+    return true;
+  }
+  const completedGenerationKeys=[...new Set([...(Array.isArray(handoff.completedGenerationKeys)?handoff.completedGenerationKeys:[]),handoff.generationKey].filter(Boolean))];
+  const codingItems=Array.isArray(handoff.codingItems)?handoff.codingItems:[];
+  const next={...handoff,state:codingItems.length?'coding_handoff_ready':'children_completed',completedGenerationKeys,childResults:state.results,completedAt:nowIso()};
+  if(codingItems.length){
+    await pool.query("update tigeriq_objectives set status='blocked',metadata=jsonb_set(metadata,'{handoff}',$2::jsonb,true),summary=$3,updated_at=now() where id=$1",[o.id,JSON.stringify(next),'API child work complete; durable coding handoff requires the coding executor lane']);
+    await event('AUTONOMOUS_CODING_HANDOFF_READY',{objectiveId:o.id,generationKey:handoff.generationKey||null,codingItems});
+    return true;
+  }
+  await pool.query("update tigeriq_objectives set metadata=jsonb_set(metadata,'{handoff}',$2::jsonb,true),manager_cycles=0,summary=$3,next_check_at=now(),updated_at=now() where id=$1",[o.id,JSON.stringify(next),'autonomous child work complete; re-evaluating parent acceptance']);
+  await event('AUTONOMOUS_HANDOFF_CHILDREN_COMPLETED',{objectiveId:o.id,childIds,generationKey:handoff.generationKey||null});
+  return true;
+}
+
+async function persistTerminalHandoff(o,decision,currentPhase){
+  const items=normalizeTerminalWorkItems(o.id,decision?.jobs||[]);
+  if(!items.length)return {action:'none',items:[]};
+  const generationKey=handoffGenerationKey(items);
+  const previous=o?.metadata?.handoff||{};
+  const completedGenerationKeys=Array.isArray(previous.completedGenerationKeys)?previous.completedGenerationKeys:[];
+  if(completedGenerationKeys.includes(generationKey))return {action:'repeated_completed',items,generationKey};
+  const apiItems=items.filter(item=>!isCodingHandoff(item));
+  const codingItems=items.filter(isCodingHandoff);
+  const childIds=apiItems.map(item=>item.childObjectiveId);
+  const client=await pool.connect();
+  try{
+    await client.query('begin');
+    for(const item of apiItems){
+      const metadata={source:'autonomous_work_handoff',handoff:{parentObjectiveId:o.id,kind:item.kind,title:item.title,acceptance:item.acceptance,capability:item.capability,scopeResourceKey:item.scopeResourceKey,idempotencyKey:item.idempotencyKey,authorityClass:item.authorityClass}};
+      await client.query("insert into tigeriq_objectives(id,objective,priority,status,summary,metadata) values($1,$2,$3,'active',$4,$5) on conflict(id) do nothing",[item.childObjectiveId,item.prompt,o.priority,`autonomous child of ${o.id}`,JSON.stringify(metadata)]);
+    }
+    const state=childIds.length?'waiting_children':'coding_handoff_ready';
+    const handoff={state,generationKey,phaseIndex:currentPhase,childIds,codingItems,items,completedGenerationKeys,createdAt:nowIso()};
+    if(childIds.length){
+      await client.query("update tigeriq_objectives set metadata=jsonb_set(metadata,'{handoff}',$2::jsonb,true),summary=$3,next_check_at=now()+interval '5 seconds',updated_at=now() where id=$1",[o.id,JSON.stringify(handoff),`autonomous handoff created: ${childIds.length} API child work item(s)`]);
+    }else{
+      await client.query("update tigeriq_objectives set status='blocked',metadata=jsonb_set(metadata,'{handoff}',$2::jsonb,true),summary=$3,updated_at=now() where id=$1",[o.id,JSON.stringify(handoff),'durable coding handoff ready; awaiting coding executor lane']);
+    }
+    await client.query('commit');
+    for(const item of apiItems)await event('AUTONOMOUS_CHILD_CREATED',{objectiveId:o.id,childObjectiveId:item.childObjectiveId,idempotencyKey:item.idempotencyKey,scopeResourceKey:item.scopeResourceKey,kind:item.kind});
+    for(const item of codingItems)await event('AUTONOMOUS_CODING_HANDOFF_CREATED',{objectiveId:o.id,idempotencyKey:item.idempotencyKey,scopeResourceKey:item.scopeResourceKey,kind:item.kind,title:item.title,prompt:item.prompt,acceptance:item.acceptance,authorityClass:item.authorityClass});
+    return {action:childIds.length?'waiting_children':'coding_handoff_ready',items,generationKey,childIds};
+  }catch(error){await client.query('rollback');throw error;}finally{client.release();}
+}
+
 async function managerTick() {
   const q=await pool.query(`select o.* from tigeriq_objectives o where o.status='active' and o.next_check_at<=now()
     and not exists(select 1 from tigeriq_jobs j where j.objective_id=o.id and j.status in ('queued','running'))
     order by case o.priority when 'P0' then 0 when 'P1' then 1 else 2 end,o.created_at limit 1`);
   const o=q.rows[0]; if(!o) return;
+  if(await reconcileAutonomousHandoff(o)) return;
   const campaign=o.metadata?.campaign||null;
   const phases=Array.isArray(campaign?.phases)?campaign.phases:[];
   const currentPhase=Math.min(Math.max(Number(campaign?.currentPhase)||0,0),Math.max(0,phases.length-1));
   if(o.manager_cycles>=30){await pool.query("update tigeriq_objectives set status='blocked',summary='manager cycle safety limit reached',updated_at=now() where id=$1",[o.id]);await event('OBJECTIVE_BLOCKED',{objectiveId:o.id,phaseIndex:currentPhase,reason:'manager_cycle_limit'});return;}
   const history=(await pool.query("select title,status,provider,result,failure from tigeriq_jobs where objective_id=$1 and phase_index=$2 order by created_at desc limit 8",[o.id,currentPhase])).rows;
   const goal=currentCampaignGoal(o.objective,phases,currentPhase);
-  const prompt=`You are TigerIQ AI Manager. Goal: ${goal}\nRecent work for this phase: ${JSON.stringify(history).slice(0,10000)}\nDecide the next useful work. Return ONLY JSON: {"status":"continue|complete|blocked","summary":"short","jobs":[{"title":"short","prompt":"standalone task instruction","capability":"general|reasoning|review"}]}. Maximum 3 jobs. Prefer independent useful work. Repository implementation/coding is GitHub-only; never create coding jobs for PC01 Core. Never request paid services, Production/Main release, credential/security changes, destructive actions or reboot. For a campaign, status=complete means the CURRENT PHASE acceptance is achieved; Core will automatically advance to the next phase. Do not wait for Owner/chat between phases.`;
+  const handoffContext=o.metadata?.handoff?.state==='children_completed'?`Completed autonomous child work: ${JSON.stringify(o.metadata.handoff.childResults||[]).slice(0,6000)}`:'';
+  const isFinalCampaignPhase=phases.length>0&&currentPhase===phases.length-1;
+  const terminalHandoffInstruction=isFinalCampaignPhase?'FINAL CAMPAIGN PHASE: when status=complete, jobs must contain ONLY additional NEXT work still required to satisfy the overall goal. Use [CODING] prefix in the title only for repository/source mutation; other next work is API/research/review/general. Every next-work prompt must include SCOPE: <resource-or-domain> and ACCEPTANCE: <observable completion>. If no further work is required, return jobs: [].':'';
+  const prompt=`You are TigerIQ AI Manager. Goal: ${goal}\nRecent work for this phase: ${JSON.stringify(history).slice(0,10000)}\n${handoffContext}\n${terminalHandoffInstruction}\nDecide the next useful work. Return ONLY JSON: {"status":"continue|complete|blocked","summary":"short","jobs":[{"title":"short","prompt":"standalone task instruction","capability":"general|reasoning|review"}]}. Maximum 3 jobs. Prefer independent useful work. Repository implementation/coding is GitHub-only; never create coding jobs for PC01 Core. Never request paid services, Production/Main release, credential/security changes, destructive actions or reboot. For a campaign, status=complete means the CURRENT PHASE acceptance is achieved; Core will automatically advance to the next phase. Do not wait for Owner/chat between phases.`;
   try {
     const routed=await callManagerDecision(prompt,o.id); const decision=routed.decision;
     await pool.query("update tigeriq_objectives set manager_cycles=manager_cycles+1,summary=$2,updated_at=now(),next_check_at=now()+interval '5 seconds' where id=$1",[o.id,String(decision.summary||'').slice(0,2000)]);
@@ -343,7 +407,16 @@ async function managerTick() {
     }
     const transition=campaignTransition({status:decision.status,currentPhase,phases});
     if(transition.action==='blocked'){await pool.query("update tigeriq_objectives set status='blocked',updated_at=now() where id=$1",[o.id]);await event('OBJECTIVE_BLOCKED',{objectiveId:o.id,phaseIndex:currentPhase});return;}
-    if(transition.action==='complete'){await pool.query("update tigeriq_objectives set status='completed',updated_at=now() where id=$1",[o.id]);await event('OBJECTIVE_COMPLETE',{objectiveId:o.id,phaseIndex:currentPhase,phaseCount:phases.length||1});return;}
+    if(transition.action==='complete'){
+      if(phases.length){
+        const handoff=await persistTerminalHandoff(o,decision,currentPhase);
+        if(handoff.action==='waiting_children'||handoff.action==='coding_handoff_ready')return;
+        if(handoff.action==='repeated_completed')await event('AUTONOMOUS_HANDOFF_DEDUPED_COMPLETE',{objectiveId:o.id,generationKey:handoff.generationKey,phaseIndex:currentPhase});
+      }
+      await pool.query("update tigeriq_objectives set status='completed',updated_at=now() where id=$1",[o.id]);
+      await event('OBJECTIVE_COMPLETE',{objectiveId:o.id,phaseIndex:currentPhase,phaseCount:phases.length||1});
+      return;
+    }
     if(transition.action==='advance'){
       const checkpoint=makePhaseCheckpoint({currentPhase,phases,summary:decision.summary});
       const advanced=await pool.query(`update tigeriq_objectives
