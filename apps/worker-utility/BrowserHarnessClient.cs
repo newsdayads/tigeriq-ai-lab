@@ -19,7 +19,6 @@ internal sealed record HarnessView(
 
 internal sealed class BrowserHarnessClient
 {
-    public const string PilotWorkerId = "NV04";
     static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(18);
     readonly Dictionary<string, SemaphoreSlim> gates =
         Workers.All.ToDictionary(x => x.Id, _ => new SemaphoreSlim(1, 1));
