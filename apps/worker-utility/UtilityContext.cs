@@ -18,6 +18,7 @@ internal sealed class UtilityContext : ApplicationContext
     readonly Icon trayIcon;
     readonly TrayPanelForm trayPanel;
     readonly System.Windows.Forms.Timer timer = new() { Interval = 1000 };
+    readonly Dictionary<string, (string Message, DateTimeOffset At)> lastNotices = new();
     UtilitySettings settings;
     bool ticking;
     int pollCounter;
@@ -483,9 +484,19 @@ internal sealed class UtilityContext : ApplicationContext
     static string Fingerprint(WorkerView v)
         => $"{v.State}|{v.Reason}|{v.JobId}|{v.UiReady}|{v.AuthRequired}|{v.SecurityBlock}|{v.WindowOpen}";
 
-    void NotifyChanged(string id, string message)
+    void NotifyChanged(string id, string message, string eventName = "SCHEDULE_CHANGE", TimeSpan? dedupeWindow = null)
     {
-        store.Log(id, "SCHEDULE_CHANGE", new { message });
+        var now = DateTimeOffset.Now;
+        var key = $"{id}:{eventName}";
+        var window = dedupeWindow ?? TimeSpan.Zero;
+        if (window > TimeSpan.Zero
+            && lastNotices.TryGetValue(key, out var previous)
+            && string.Equals(previous.Message, message, StringComparison.Ordinal)
+            && now - previous.At < window)
+            return;
+
+        lastNotices[key] = (message, now);
+        store.Log(id, eventName, new { message });
         if (settings.DoNotDisturb) return;
         tray.BalloonTipTitle = $"TigerIQ {id}";
         tray.BalloonTipText = message;
@@ -527,7 +538,7 @@ internal sealed class UtilityContext : ApplicationContext
             if (!views.TryGetValue(w.Id, out var v) || !health.TryGetValue(w.Id, out var h)) continue;
             if (h.Health == HealthBand.Blocked)
             {
-                if (!settings.DoNotDisturb) NotifyChanged(w.Id, $"Bị chặn: {v.Reason}");
+                NotifyChanged(w.Id, $"Bị chặn: {v.Reason}", "WATCHDOG_NOTICE", TimeSpan.FromMinutes(1));
                 continue;
             }
             if (!watchdog.ShouldEscalate(w.Id, DateTimeOffset.Now)) continue;
@@ -546,14 +557,14 @@ internal sealed class UtilityContext : ApplicationContext
                 if (!progressed)
                 {
                     store.Log(w.Id, "WATCHDOG_FAIL_CLOSED", new { reason = "NO_SAFE_IDEMPOTENT_REDISPATCH_PROOF" });
-                    NotifyChanged(w.Id, "Treo — cần khôi phục an toàn");
+                    NotifyChanged(w.Id, "Treo — cần khôi phục an toàn", "WATCHDOG_NOTICE", TimeSpan.FromMinutes(1));
                 }
             }
             catch (Exception ex)
             {
                 watchdog.EndRecovery(w.Id, false, DateTimeOffset.Now);
                 store.Log(w.Id, "WATCHDOG_BLOCKED", new { error = ex.Message });
-                NotifyChanged(w.Id, "Bị chặn: " + ex.Message);
+                NotifyChanged(w.Id, "Bị chặn: " + ex.Message, "WATCHDOG_NOTICE", TimeSpan.FromMinutes(1));
             }
         }
     }
