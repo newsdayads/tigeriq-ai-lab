@@ -30,6 +30,7 @@ import { BrowserMutationLeaseStore } from './browser-mutation-lease.js';
 import { heartbeatStopReason } from './security-gate.js';
 import { DurableUiJobLedger, isUiJobStage, reconcileUiJobStage, type UiJobMetadata } from './job-ledger.js';
 import type { WorkerPresence } from './worker-presence.js';
+import { readWorkerSafetyState, workerStartGate, writeWorkerSafetyState } from './worker-safety-state.js';
 
 type Command = { id:string; workerId:WorkerId; action:string; payload?:Record<string,unknown>; createdAt:string };
 type Heartbeat = { workerId:WorkerId; url?:string; windowId?:number; tabId?:number; state?:string; uiReady?:boolean; authRequired?:boolean; reauthRequired?:boolean; captchaRequired?:boolean; rateLimited?:boolean; rateLimitCode?:number|string; uiBusy?:boolean|null; securityBlock?:string|null; display?:{workArea?:WorkArea}; at:string };
@@ -113,18 +114,27 @@ try{
   const saved=loadJson<ExternalAutopilotSnapshot>(autopilotSnapshotPath);
   if(saved)latestSnapshot=validateExternalSnapshot(saved);
 }catch(error){log('AUTOPILOT_SNAPSHOT_RESTORE_REJECTED',{error:String(error)});}
-const restoredWorkerSafety=loadJson<{pausedWorkers?:WorkerId[];manualCloseSuppressedWorkers?:WorkerId[]}>(workerSafetyStatePath);
-for(const id of restoredWorkerSafety?.pausedWorkers??[])if(WORKER_IDS.includes(id))utilityPausedWorkers.add(id);
-for(const id of restoredWorkerSafety?.manualCloseSuppressedWorkers??[])if(WORKER_IDS.includes(id))states.get(id)!.manualCloseSuppressed=true;
+try{
+  const restoredWorkerSafety=readWorkerSafetyState(workerSafetyStatePath);
+  for(const id of restoredWorkerSafety.pausedWorkers)utilityPausedWorkers.add(id);
+  for(const id of restoredWorkerSafety.manualCloseSuppressedWorkers)states.get(id)!.manualCloseSuppressed=true;
+}catch(error){
+  for(const id of WORKER_IDS){utilityPausedWorkers.add(id);states.get(id)!.manualCloseSuppressed=true;states.get(id)!.status='PAUSED';}
+  log('WORKER_SAFETY_STATE_FAIL_CLOSED',{error:String(error)});
+}
 function persistAutopilotState(){atomicJson(autopilotStatePath,autopilotState);}
 function persistInteractionState(){atomicJson(interactionStatePath,{readOnly:paused,updatedAt:new Date().toISOString()});}
 function persistWorkerSafetyState(){
-  writeFileSync(workerSafetyStatePath,`${JSON.stringify({
-    schemaVersion:'tigeriq.chrome-controller.worker-safety.v1',
-    pausedWorkers:[...utilityPausedWorkers],
-    manualCloseSuppressedWorkers:WORKER_IDS.filter((id)=>states.get(id)?.manualCloseSuppressed===true),
-    updatedAt:new Date().toISOString(),
-  },null,2)}\n`,'utf8');
+  try{
+    writeWorkerSafetyState(workerSafetyStatePath,{
+      pausedWorkers:[...utilityPausedWorkers],
+      manualCloseSuppressedWorkers:WORKER_IDS.filter((id)=>states.get(id)?.manualCloseSuppressed===true),
+    });
+  }catch(error){
+    for(const id of WORKER_IDS){utilityPausedWorkers.add(id);states.get(id)!.manualCloseSuppressed=true;states.get(id)!.status='PAUSED';}
+    log('WORKER_SAFETY_STATE_PERSIST_FAIL_CLOSED',{error:String(error)});
+    throw error;
+  }
 }
 function setOwnerInteractionReadOnly(readOnly:boolean){
   paused=readOnly;
@@ -307,15 +317,13 @@ async function layoutWorker(workerId:WorkerId){
 }
 async function startWorker(workerId:WorkerId){
   assertWorkerEnabled(workerId);
-  if(paused)throw new Error('OWNER_INTERACTION_READ_ONLY');
-  if(utilityPausedWorkers.has(workerId))throw new Error(`UTILITY_WORKER_PAUSED:${workerId}`);
   const state=states.get(workerId)!;
-  if(state.manualCloseSuppressed)throw new Error(`MANUAL_CLOSE_SUPPRESSED:${workerId}`);
+  const initialGate=workerStartGate(workerId,{globalPaused:paused,utilityPaused:utilityPausedWorkers.has(workerId),manualCloseSuppressed:state.manualCloseSuppressed===true});
+  if(initialGate)throw new Error(initialGate);
   await launchQueue.enqueue(async()=>{
     assertWorkerEnabled(workerId);
-    if(paused)throw new Error('OWNER_INTERACTION_READ_ONLY');
-    if(utilityPausedWorkers.has(workerId))throw new Error(`UTILITY_WORKER_PAUSED:${workerId}`);
-    if(state.manualCloseSuppressed)throw new Error(`MANUAL_CLOSE_SUPPRESSED:${workerId}`);
+    const queuedGate=workerStartGate(workerId,{globalPaused:paused,utilityPaused:utilityPausedWorkers.has(workerId),manualCloseSuppressed:state.manualCloseSuppressed===true});
+    if(queuedGate)throw new Error(queuedGate);
     if(!recentHeartbeat(workerId)){
       const presence=await brokerWorkerPresence(workerId);
       if(presence==='RUNNING')throw new Error(`WORKER_RUNNING_WITHOUT_HEARTBEAT:${workerId}`);

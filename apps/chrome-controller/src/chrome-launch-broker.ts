@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { isInteractiveDesktopSession, loadConfig, type WindowPlacement, type WorkerId } from './model.js';
 import { spawnDetachedProcess } from './process-lifecycle.js';
-import { classifyWorkerPresence, type WorkerPresence, type WorkerProcessProbe } from './worker-presence.js';
+import { classifyWorkerPresence, processProbeFromCount, type WorkerPresence, type WorkerProcessProbe } from './worker-presence.js';
 
 type LaunchRecord={pid:number|null;launchedAt:string};
 type BrokerLaunchState={
@@ -53,8 +53,7 @@ function windowsChromeProcessProbe(workerId:WorkerId):WorkerProcessProbe{
   if(!worker?.debugPort)return 'UNKNOWN';
   if(process.platform!=='win32'){
     const recorded=launchState.workers[workerId];
-    if(!recorded)return 'UNKNOWN';
-    return pidAlive(recorded.pid)?'PRESENT':'ABSENT';
+    return processProbeFromCount(undefined,recorded?pidAlive(recorded.pid):undefined);
   }
   const userDataDir=worker.userDataDir??config.userDataDir;
   const flags=[`--remote-debugging-port=${worker.debugPort}`];
@@ -64,11 +63,10 @@ function windowsChromeProcessProbe(workerId:WorkerId):WorkerProcessProbe{
   try{
     const output=execFileSync('powershell.exe',['-NoProfile','-NonInteractive','-Command',script],{encoding:'utf8',timeout:2500,windowsHide:true}).trim();
     const count=Number(output);
-    if(Number.isInteger(count))return count>0?'PRESENT':'ABSENT';
+    if(Number.isInteger(count))return processProbeFromCount(count,undefined);
   }catch{}
   const recorded=launchState.workers[workerId];
-  if(!recorded)return 'UNKNOWN';
-  return pidAlive(recorded.pid)?'PRESENT':'ABSENT';
+  return processProbeFromCount(undefined,recorded?pidAlive(recorded.pid):undefined);
 }
 async function presence(workerId:WorkerId):Promise<{ok:true;workerId:WorkerId;presence:WorkerPresence;debugPortActive:boolean;processProbe:WorkerProcessProbe;pid:number|null}>{
   const worker=config.workers.find(item=>item.id===workerId&&item.enabled!==false);if(!worker)throw new Error(`WORKER_DISABLED_OR_UNKNOWN:${workerId}`);
