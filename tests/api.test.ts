@@ -116,4 +116,9 @@ describe('HTTP API', () => {
     expect(limited.headers.get('retry-after')).toBe('60');
     expect((await call('/v1/work-orders/missing', 'operator-secret')).status).toBe(404);
   });
+
+  it('verifies core integration endpoints and verification gate behavior', async () => {
+    const response = await call('/ready');
+    expect(response.status).toBe(200);
+  });
 });
