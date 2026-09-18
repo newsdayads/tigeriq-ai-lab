@@ -1,17 +1,65 @@
 skills:
-  - id: owner-video-lesson-001
-    title: "Owner Introduction to TigerIQ"
-    source_url: "https://example.com/videos/owner-intro.mp4"
-    source_hash: "sha256:abcdef1234567890..."
+  - id: contextual-skill-loading
+    title: "Contextual Skill Loading"
+    source_url: "NOT_CAPTURED"
+    source_hash: "NOT_CAPTURED"
     ingest_timestamp: "2026-09-18T10:00:00Z"
     owner: "owner"
     state: CANDIDATE
     version: "1.0.0"
-  - id: owner-video-lesson-002
-    title: "Advanced TigerIQ Techniques"
-    source_url: "https://example.com/videos/owner-advanced.mp4"
-    source_hash: "sha256:123456abcdef7890..."
+  - id: context-budget-compaction
+    title: "Context Budget Compaction"
+    source_url: "NOT_CAPTURED"
+    source_hash: "NOT_CAPTURED"
+    ingest_timestamp: "2026-09-18T10:05:00Z"
+    owner: "owner"
+    state: CANDIDATE
+    version: "1.0.0"
+  - id: spec-first-tdd
+    title: "Spec-First TDD"
+    source_url: "NOT_CAPTURED"
+    source_hash: "NOT_CAPTURED"
+    ingest_timestamp: "2026-09-18T10:10:00Z"
+    owner: "owner"
+    state: CANDIDATE
+    version: "1.0.0"
+  - id: learn-from-failure
+    title: "Learn From Failure"
+    source_url: "NOT_CAPTURED"
+    source_hash: "NOT_CAPTURED"
     ingest_timestamp: "2026-09-18T10:15:00Z"
+    owner: "owner"
+    state: CANDIDATE
+    version: "1.0.0"
+  - id: role-separated-execution
+    title: "Role-Separated Execution"
+    source_url: "NOT_CAPTURED"
+    source_hash: "NOT_CAPTURED"
+    ingest_timestamp: "2026-09-18T10:20:00Z"
+    owner: "owner"
+    state: CANDIDATE
+    version: "1.0.0"
+  - id: external-skill-security-gate
+    title: "External Skill Security Gate"
+    source_url: "NOT_CAPTURED"
+    source_hash: "NOT_CAPTURED"
+    ingest_timestamp: "2026-09-18T10:25:00Z"
+    owner: "owner"
+    state: CANDIDATE
+    version: "1.0.0"
+  - id: minimal-change-output
+    title: "Minimal Change Output"
+    source_url: "NOT_CAPTURED"
+    source_hash: "NOT_CAPTURED"
+    ingest_timestamp: "2026-09-18T10:30:00Z"
+    owner: "owner"
+    state: CANDIDATE
+    version: "1.0.0"
+  - id: capability-aware-model-routing
+    title: "Capability-Aware Model Routing"
+    source_url: "NOT_CAPTURED"
+    source_hash: "NOT_CAPTURED"
+    ingest_timestamp: "2026-09-18T10:35:00Z"
     owner: "owner"
     state: CANDIDATE
     version: "1.0.0"
