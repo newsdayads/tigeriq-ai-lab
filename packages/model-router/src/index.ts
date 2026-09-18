@@ -23,6 +23,35 @@ export interface RoutingPolicy {
 export interface ModelRequest {
   prompt: string;
   signal?: AbortSignal;
+  required_skill?: string;
+  required_tools?: string[];
+  required_state_refs?: string[];
+  strict_preflight?: boolean;
+}
+
+export interface PreflightResult {
+  valid: boolean;
+  legacy: boolean;
+  reasons: string[];
+}
+
+export function validateModelRequestPreflight(request: ModelRequest): PreflightResult {
+  const reqSkill = request.required_skill;
+  const reqTools = request.required_tools;
+  const reqStateRefs = request.required_state_refs;
+  const isLegacy = !reqSkill && !reqTools && !reqStateRefs && !request.strict_preflight;
+  if (isLegacy) {
+    return { valid: true, legacy: true, reasons: [] };
+  }
+  const reasons: string[] = [];
+  if (!reqSkill) reasons.push('MISSING_REQUIRED_SKILL');
+  if (!Array.isArray(reqTools) || reqTools.length === 0) reasons.push('MISSING_REQUIRED_TOOLS');
+  if (!Array.isArray(reqStateRefs) || reqStateRefs.length === 0) reasons.push('MISSING_REQUIRED_STATE_REFS');
+  return {
+    valid: reasons.length === 0,
+    legacy: false,
+    reasons,
+  };
 }
 
 export interface ModelResponse {
