@@ -1,103 +1,159 @@
-version: 1
-owner_issue: 859
-parent_issue: 822
-updated: 2026-09-18
-
-source_catalog:
-  batch_id: owner-video-lessons-2026-09-18
-  source_type: chatgpt_attachment
-  ingest_date: 2026-09-18
-  raw_attachments_copied_to_repo: false
-  files:
-    - filename: v14044g50000daklphvog65tn29ogksg.mp4
-      source_hash: NOT_CAPTURED
-    - filename: v102ffg50001d9tgtj7og65ms8ca8f10.mp4
-      source_hash: NOT_CAPTURED
-    - filename: v29025g50000dagbbenog65gahgdtid0.mp4
-      source_hash: NOT_CAPTURED
-    - filename: v14044g50000d9k95evog65tfldn124g.mp4
-      source_hash: NOT_CAPTURED
-    - filename: v14044g50000d9uishnog65ous22rkd0.mp4
-      source_hash: NOT_CAPTURED
-    - filename: v14044g50000daeauqfog65m4sf8hce0.mp4
-      source_hash: NOT_CAPTURED
-
-states:
-  - CANDIDATE
-  - VALIDATED
-  - ACTIVE
-  - DEPRECATED
-  - REJECTED
-
-skills:
-  - id: contextual-skill-loading
-    title: Contextual Skill Loading
-    state: CANDIDATE
-    version: 0.1.0
-    provenance_batch: owner-video-lessons-2026-09-18
-    source_log: learning-log/2026-09-18-owner-video-lessons.md
-    target: core-context-routing
-    summary: Load only skills relevant to the current objective instead of preloading all knowledge.
-
-  - id: context-budget-compaction
-    title: Context Budget and Compaction
-    state: CANDIDATE
-    version: 0.1.0
-    provenance_batch: owner-video-lessons-2026-09-18
-    source_log: learning-log/2026-09-18-owner-video-lessons.md
-    target: core-context-routing
-    summary: Filter irrelevant context, reserve headroom, compact milestones and resume from durable references.
-
-  - id: spec-first-tdd
-    title: SPEC-First and TDD When Appropriate
-    state: CANDIDATE
-    version: 0.1.0
-    provenance_batch: owner-video-lessons-2026-09-18
-    source_log: learning-log/2026-09-18-owner-video-lessons.md
-    target: coding-lane
-    summary: Define scope and acceptance before code; for suitable bugs prove RED before GREEN.
-
-  - id: learn-from-failure
-    title: Learn From Failure
-    state: CANDIDATE
-    version: 0.1.0
-    provenance_batch: owner-video-lessons-2026-09-18
-    source_log: learning-log/2026-09-18-owner-video-lessons.md
-    target: knowledge-system
-    summary: Convert recurring failures into durable rules, checks or skills with evidence.
-
-  - id: role-separated-execution
-    title: Role-Separated Execution
-    state: CANDIDATE
-    version: 0.1.0
-    provenance_batch: owner-video-lessons-2026-09-18
-    source_log: learning-log/2026-09-18-owner-video-lessons.md
-    target: orchestration
-    summary: Separate planning, implementation, review and verification where risk or value justifies it.
-
-  - id: external-skill-security-gate
-    title: External Skill Security Gate
-    state: CANDIDATE
-    version: 0.1.0
-    provenance_batch: owner-video-lessons-2026-09-18
-    source_log: learning-log/2026-09-18-owner-video-lessons.md
-    target: skill-intake
-    summary: Audit provenance, pinned version, installer behavior and capabilities before executable use.
-
-  - id: minimal-change-output
-    title: Minimal Change Output
-    state: CANDIDATE
-    version: 0.1.0
-    provenance_batch: owner-video-lessons-2026-09-18
-    source_log: learning-log/2026-09-18-owner-video-lessons.md
-    target: coding-lane
-    summary: Prefer scoped diffs and minimal edits; avoid whole-file regeneration when unnecessary.
-
-  - id: capability-aware-model-routing
-    title: Capability-Aware Model Routing
-    state: CANDIDATE
-    version: 0.1.0
-    provenance_batch: owner-video-lessons-2026-09-18
-    source_log: learning-log/2026-09-18-owner-video-lessons.md
-    target: router
-    summary: Route work by difficulty, capability, latency and cost instead of always using the strongest model.
+{
+  "version": 1,
+  "owner_issue": 859,
+  "activation_issue": 864,
+  "parent_issue": 822,
+  "updated": "2026-09-18",
+  "source_catalog": {
+    "batch_id": "owner-video-lessons-2026-09-18",
+    "source_type": "chatgpt_attachment",
+    "ingest_date": "2026-09-18",
+    "raw_attachments_copied_to_repo": false,
+    "files": [
+      {
+        "filename": "v14044g50000daklphvog65tn29ogksg.mp4",
+        "source_hash": "NOT_CAPTURED"
+      },
+      {
+        "filename": "v102ffg50001d9tgtj7og65ms8ca8f10.mp4",
+        "source_hash": "NOT_CAPTURED"
+      },
+      {
+        "filename": "v29025g50000dagbbenog65gahgdtid0.mp4",
+        "source_hash": "NOT_CAPTURED"
+      },
+      {
+        "filename": "v14044g50000d9k95evog65tfldn124g.mp4",
+        "source_hash": "NOT_CAPTURED"
+      },
+      {
+        "filename": "v14044g50000d9uishnog65ous22rkd0.mp4",
+        "source_hash": "NOT_CAPTURED"
+      },
+      {
+        "filename": "v14044g50000daeauqfog65m4sf8hce0.mp4",
+        "source_hash": "NOT_CAPTURED"
+      }
+    ]
+  },
+  "states": [
+    "CANDIDATE",
+    "VALIDATED",
+    "ACTIVE",
+    "DEPRECATED",
+    "REJECTED"
+  ],
+  "skills": [
+    {
+      "id": "contextual-skill-loading",
+      "title": "Contextual Skill Loading",
+      "state": "CANDIDATE",
+      "version": "0.1.0",
+      "provenance_batch": "owner-video-lessons-2026-09-18",
+      "source_log": "learning-log/2026-09-18-owner-video-lessons.md",
+      "target": "core-context-routing",
+      "summary": "Load only skills relevant to the current objective instead of preloading all knowledge."
+    },
+    {
+      "id": "context-budget-compaction",
+      "title": "Context Budget and Compaction",
+      "state": "CANDIDATE",
+      "version": "0.1.0",
+      "provenance_batch": "owner-video-lessons-2026-09-18",
+      "source_log": "learning-log/2026-09-18-owner-video-lessons.md",
+      "target": "core-context-routing",
+      "summary": "Filter irrelevant context, reserve headroom, compact milestones and resume from durable references."
+    },
+    {
+      "id": "spec-first-tdd",
+      "title": "SPEC-First and TDD When Appropriate",
+      "state": "CANDIDATE",
+      "version": "0.1.0",
+      "provenance_batch": "owner-video-lessons-2026-09-18",
+      "source_log": "learning-log/2026-09-18-owner-video-lessons.md",
+      "target": "coding-lane",
+      "summary": "Define scope and acceptance before code; for suitable bugs prove RED before GREEN."
+    },
+    {
+      "id": "learn-from-failure",
+      "title": "Learn From Failure",
+      "state": "CANDIDATE",
+      "version": "0.1.0",
+      "provenance_batch": "owner-video-lessons-2026-09-18",
+      "source_log": "learning-log/2026-09-18-owner-video-lessons.md",
+      "target": "knowledge-system",
+      "summary": "Convert recurring failures into durable rules, checks or skills with evidence."
+    },
+    {
+      "id": "role-separated-execution",
+      "title": "Role-Separated Execution",
+      "state": "ACTIVE",
+      "version": "1.0.0",
+      "provenance_batch": "owner-video-lessons-2026-09-18",
+      "source_log": "learning-log/2026-09-18-owner-video-lessons.md",
+      "target": "orchestration",
+      "triggers": [
+        "review",
+        "reviewer",
+        "implementer",
+        "coding",
+        "source mutation",
+        "independent review",
+        "planner",
+        "execution"
+      ],
+      "evidence_refs": [
+        "apps/tigeriq-coding-lane/coding-lane.mjs",
+        "docs/ADR/0012-autonomous-coding-lane.md"
+      ],
+      "skill_path": "role-separated-execution/SKILL.md",
+      "summary": "Separate planning, implementation, review and verification where risk or value justifies it."
+    },
+    {
+      "id": "external-skill-security-gate",
+      "title": "External Skill Security Gate",
+      "state": "CANDIDATE",
+      "version": "0.1.0",
+      "provenance_batch": "owner-video-lessons-2026-09-18",
+      "source_log": "learning-log/2026-09-18-owner-video-lessons.md",
+      "target": "skill-intake",
+      "summary": "Audit provenance, pinned version, installer behavior and capabilities before executable use."
+    },
+    {
+      "id": "minimal-change-output",
+      "title": "Minimal Change Output",
+      "state": "CANDIDATE",
+      "version": "0.1.0",
+      "provenance_batch": "owner-video-lessons-2026-09-18",
+      "source_log": "learning-log/2026-09-18-owner-video-lessons.md",
+      "target": "coding-lane",
+      "summary": "Prefer scoped diffs and minimal edits; avoid whole-file regeneration when unnecessary."
+    },
+    {
+      "id": "capability-aware-model-routing",
+      "title": "Capability-Aware Model Routing",
+      "state": "ACTIVE",
+      "version": "1.0.0",
+      "provenance_batch": "owner-video-lessons-2026-09-18",
+      "source_log": "learning-log/2026-09-18-owner-video-lessons.md",
+      "target": "router",
+      "triggers": [
+        "routing",
+        "route",
+        "provider",
+        "model",
+        "capability",
+        "latency",
+        "quota",
+        "resource",
+        "reasoning"
+      ],
+      "evidence_refs": [
+        "apps/tigeriq-core/smart-router.mjs",
+        "apps/tigeriq-core/core.mjs"
+      ],
+      "skill_path": "capability-aware-model-routing/SKILL.md",
+      "summary": "Route work by difficulty, capability, latency and cost instead of always using the strongest model."
+    }
+  ]
+}
