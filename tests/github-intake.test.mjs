@@ -45,15 +45,18 @@ test('persistence verification through injected evidence sink', () => {
   assert.strictEqual(evidence[0].status,'pass');
 });
 
-test('filterBacklogIssues enforces OWNER_DIRECT and P0-P3 criteria', () => {
+test('filterBacklogIssues enforces OWNER_DIRECT=true and P0-P3 criteria with deterministic ordering', async () => {
   const issues = [
-    { number: 1, state: 'open', title: 'Valid 1', body: 'TIGERIQ_EXECUTABLE=true\nOWNER_POLICY=AUTO\nOWNER=OWNER_DIRECT\nPRIORITY=P1' },
-    { number: 2, state: 'open', title: 'Invalid Owner', body: 'TIGERIQ_EXECUTABLE=true\nOWNER_POLICY=AUTO\nOWNER=OTHER\nPRIORITY=P1' },
-    { number: 3, state: 'open', title: 'Invalid Priority', body: 'TIGERIQ_EXECUTABLE=true\nOWNER_POLICY=AUTO\nOWNER=OWNER_DIRECT\nPRIORITY=P4' }
+    { number: 2, state: 'open', title: 'Valid P2', body: 'TIGERIQ_EXECUTABLE=true\nOWNER_POLICY=AUTO\nOWNER=OWNER_DIRECT\nPRIORITY=P2' },
+    { number: 1, state: 'open', title: 'Valid P0', body: 'TIGERIQ_EXECUTABLE=true\nOWNER_POLICY=AUTO\nOWNER=OWNER_DIRECT\nPRIORITY=P0' },
+    { number: 3, state: 'open', title: 'Invalid Owner', body: 'TIGERIQ_EXECUTABLE=true\nOWNER_POLICY=AUTO\nOWNER=OTHER\nPRIORITY=P1' },
+    { number: 4, state: 'open', title: 'Invalid Priority', body: 'TIGERIQ_EXECUTABLE=true\nOWNER_POLICY=AUTO\nOWNER=OWNER_DIRECT\nPRIORITY=P4' }
   ];
-  import('../apps/tigeriq-core/github-intake.mjs').then(mod => {
-    const filtered = mod.filterBacklogIssues(issues);
-    assert.strictEqual(filtered.length, 1);
-    assert.strictEqual(filtered[0].number, 1);
-  });
+  const mod = await import('../apps/tigeriq-core/github-intake.mjs');
+  const filtered = mod.filterBacklogIssues(issues);
+  assert.strictEqual(filtered.length, 2);
+  assert.strictEqual(filtered[0].number, 1);
+  assert.strictEqual(filtered[0].priority, 'P0');
+  assert.strictEqual(filtered[1].number, 2);
+  assert.strictEqual(filtered[1].priority, 'P2');
 });
