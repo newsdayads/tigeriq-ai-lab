@@ -9,6 +9,7 @@ internal sealed class BadgeForm : Form
     readonly Action<string, Point> onMoved;
     readonly Action<string> onReset;
     readonly Label label;
+    readonly Label statusDot;
     Rectangle lastChromeBounds;
     Point dragCursorStart;
     Point dragWindowStart;
@@ -34,7 +35,8 @@ internal sealed class BadgeForm : Form
         MinimumSize = Size;
         MaximumSize = Size;
         Text = $"TigerIQ {worker.Id}";
-        BackColor = Color.FromArgb(15, 23, 42);
+        var accent = WorkerAccent(worker.Id);
+        BackColor = accent;
 
         label = new Label
         {
@@ -43,18 +45,35 @@ internal sealed class BadgeForm : Form
             TextAlign = ContentAlignment.MiddleCenter,
             Font = new Font("Segoe UI", 8, FontStyle.Bold),
             Cursor = Cursors.Hand,
-            BackColor = Color.FromArgb(15, 23, 42),
+            BackColor = accent,
             ForeColor = Color.White,
             AccessibleName = $"Mở {worker.Id} {worker.Name}",
-            AccessibleDescription = "Badge nhận diện gọn. Bấm để mở bảng điều khiển."
+            AccessibleDescription = "Badge nhận diện cố định theo NV. Bấm để mở hoặc ẩn bảng điều khiển."
+        };
+        statusDot = new Label
+        {
+            AutoSize = false,
+            Text = "●",
+            Size = new Size(12, 12),
+            Location = new Point(34, 7),
+            BackColor = Color.Transparent,
+            ForeColor = Color.FromArgb(148, 163, 184),
+            Font = new Font("Segoe UI", 6.5f, FontStyle.Bold),
+            TextAlign = ContentAlignment.MiddleCenter,
+            Cursor = Cursors.Hand
         };
         Controls.Add(label);
+        Controls.Add(statusDot);
+        statusDot.BringToFront();
         SizeChanged += (_, _) => ApplyRoundedRegion();
         Shown += (_, _) => ApplyRoundedRegion();
 
         label.MouseDown += BeginPointer;
         label.MouseMove += MovePointer;
         label.MouseUp += EndPointer;
+        statusDot.MouseDown += BeginPointer;
+        statusDot.MouseMove += MovePointer;
+        statusDot.MouseUp += EndPointer;
         MouseDown += BeginPointer;
         MouseMove += MovePointer;
         MouseUp += EndPointer;
@@ -124,19 +143,20 @@ internal sealed class BadgeForm : Form
         CurrentState = view?.State ?? WorkerUiState.Blocked;
         var shortId = worker.Id.StartsWith("NV", StringComparison.OrdinalIgnoreCase) ? worker.Id[2..] : worker.Id;
         label.Text = shortId;
-        var back = CurrentState switch
-        {
-            WorkerUiState.Ready => Color.FromArgb(5, 150, 105),
-            WorkerUiState.Working => Color.FromArgb(217, 119, 6),
-            WorkerUiState.Paused => Color.FromArgb(71, 85, 105),
-            _ => Color.FromArgb(220, 38, 38)
-        };
-        BackColor = back;
-        label.BackColor = back;
+        var accent = WorkerAccent(worker.Id);
+        BackColor = accent;
+        label.BackColor = accent;
         label.ForeColor = Color.White;
+        statusDot.ForeColor = CurrentState switch
+        {
+            WorkerUiState.Ready => Color.FromArgb(52, 211, 153),
+            WorkerUiState.Working => Color.FromArgb(52, 211, 153),
+            WorkerUiState.Paused => Color.FromArgb(251, 191, 36),
+            _ => Color.FromArgb(248, 113, 113)
+        };
         label.AccessibleDescription = view is null
             ? "Không có trạng thái"
-            : $"{CurrentState}: {view.Reason}. Bấm để mở bảng điều khiển.";
+            : $"{CurrentState}: {view.Reason}. Bấm để mở hoặc ẩn bảng điều khiển.";
         Text = $"TigerIQ {worker.Id} — {CurrentState}";
     }
 
@@ -155,10 +175,13 @@ internal sealed class BadgeForm : Form
         if (!Visible) Show();
     }
 
-    public void HideForPopup()
+    static Color WorkerAccent(string id) => id switch
     {
-        if (Visible) Hide();
-    }
+        "NV02" => Color.FromArgb(37, 99, 235),
+        "NV03" => Color.FromArgb(168, 85, 247),
+        "NV04" => Color.FromArgb(6, 182, 212),
+        _ => Color.FromArgb(59, 130, 246)
+    };
 
     public void MarkUnbound()
     {
