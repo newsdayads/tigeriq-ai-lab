@@ -142,4 +142,24 @@ describe('model router execution', () => {
     ]);
     expect(gateRes.verified).toBe(true);
   });
+
+  it('validates work order preflight checks for required skills, tools, and state refs', async () => {
+    const { validateModelRequestPreflight } = await import('../packages/model-router/src/index.js');
+    const legacyRes = validateModelRequestPreflight({ prompt: 'legacy prompt' });
+    expect(legacyRes.valid).toBe(true);
+    expect(legacyRes.legacy).toBe(true);
+
+    const invalidRes = validateModelRequestPreflight({ strict_preflight: true, required_skill: 'coding' });
+    expect(invalidRes.valid).toBe(false);
+    expect(invalidRes.reasons).toContain('MISSING_REQUIRED_TOOLS');
+    expect(invalidRes.reasons).toContain('MISSING_REQUIRED_STATE_REFS');
+
+    const validRes = validateModelRequestPreflight({
+      required_skill: 'architect',
+      required_tools: ['git'],
+      required_state_refs: ['ref-1'],
+    });
+    expect(validRes.valid).toBe(true);
+    expect(validRes.legacy).toBe(false);
+  });
 });
