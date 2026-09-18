@@ -8,7 +8,6 @@
   "layout": {
     "width": 500,
     "height": 834,
-    "fillWorkAreaHeight": true,
     "gap": 8,
     "rightMargin": 8,
     "top": 0,
