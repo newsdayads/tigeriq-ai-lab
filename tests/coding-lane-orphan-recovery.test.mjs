@@ -6,7 +6,8 @@ test('orphan recovery decisions are fail-closed and restart-safe',()=>{
   assert.equal(extractGithubIssueNumber('GitHub bootstrap coding issue #925: done'),925);
   assert.equal(extractGithubIssueNumber('https://github.com/newsdayads/tigeriq-ai-lab/issues/937'),937);
   assert.deepEqual(recoveryDecision({pr:{merged:true,state:'closed'}}),{action:'complete',reason:'PR_MERGED'});
-  assert.deepEqual(recoveryDecision({pr:{merged:false,state:'open'}}),{action:'resume',reason:'PR_OPEN'});
+  assert.deepEqual(recoveryDecision({job:{branch:'existing'},pr:{merged:false,state:'open'}}),{action:'resume',reason:'PR_OPEN'});
+  assert.deepEqual(recoveryDecision({job:{branch:null},pr:{merged:false,state:'open'}}),{action:'block',reason:'PR_OPEN_WITHOUT_BRANCH'});
   assert.deepEqual(recoveryDecision({pr:{merged:false,state:'closed'}}),{action:'block',reason:'PR_CLOSED_UNMERGED'});
   assert.deepEqual(recoveryDecision({issue:{state:'closed',state_reason:'completed'}}),{action:'complete',reason:'ISSUE_COMPLETED'});
   assert.deepEqual(recoveryDecision({job:{branch:null},issue:{state:'open'}}),{action:'resume',reason:'ISSUE_OPEN_NO_MUTATION'});
