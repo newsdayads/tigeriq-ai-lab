@@ -51,10 +51,22 @@ describe('durable UI worker job ledger',()=>{
     expect(uiJobProgress('DONE')).toBe(100);
   });
 
+  it('requires issue-identity evidence and result at controller completion gate',()=>{
+    const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
+    expect(server).toContain('UI_JOB_COMPLETION_EVIDENCE_REQUIRED');
+    expect(server).toContain('UI_JOB_COMPLETION_EVIDENCE_IDENTITY_MISMATCH');
+    expect(server).toContain('UI_JOB_DONE_RESULT_REQUIRED');
+    expect(server).toContain("data.stage==='VERIFY'||data.stage==='DONE'");
+  });
+
   it('terminalizes only on explicit terminal stage and keeps the result for READY display',()=>{
     const {path,store}=ledger();
     store.create('NV04',{jobId:'GH-959-NV04',title:'Verifier'});
+    store.transition('NV04','GH-959-NV04','DISPATCHING');
+    store.transition('NV04','GH-959-NV04','SUBMITTED');
     store.transition('NV04','GH-959-NV04','WORKING');
+    store.transition('NV04','GH-959-NV04','WAITING_EVIDENCE');
+    store.transition('NV04','GH-959-NV04','VERIFY',{evidenceRef:'https://github.com/newsdayads/tigeriq-ai-lab/issues/959'});
     expect(store.active('NV04')).toBeTruthy();
     const done=store.transition('NV04','GH-959-NV04','DONE',{result:'Acceptance PASS',evidenceRef:'https://github.com/newsdayads/tigeriq-ai-lab/issues/959'});
     expect(done).toMatchObject({stage:'DONE',progress:100,result:'Acceptance PASS'});
