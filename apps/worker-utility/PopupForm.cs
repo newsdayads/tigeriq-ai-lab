@@ -164,6 +164,10 @@ internal sealed class PopupForm : Form
 
         Shown += (_, _) => ApplyRoundedRegion(this, 18);
         SizeChanged += (_, _) => ApplyRoundedRegion(this, 18);
+        VisibleChanged += (_, _) =>
+        {
+            if (!Visible && advancedForm?.Visible == true) advancedForm.Hide();
+        };
         Move += (_, _) =>
         {
             if (Visible && !suppressPositionEvent) positionChanged(workerId, Location);
@@ -190,9 +194,11 @@ internal sealed class PopupForm : Form
         const int HTCAPTION = 2;
         base.WndProc(ref m);
         if (m.Msg != WM_NCHITTEST || m.Result != (IntPtr)HTCLIENT) return;
-        var p = PointToClient(Cursor.Position);
+        var raw = m.LParam.ToInt64();
+        var screenPoint = new Point(unchecked((short)(raw & 0xffff)), unchecked((short)((raw >> 16) & 0xffff)));
+        var p = PointToClient(screenPoint);
         var closeScreen = new Rectangle(closeButton.PointToScreen(Point.Empty), closeButton.Size);
-        if (p.Y >= HeaderTop && p.Y < HeaderTop + HeaderHeight && !closeScreen.Contains(Cursor.Position))
+        if (p.Y >= HeaderTop && p.Y < HeaderTop + HeaderHeight && !closeScreen.Contains(screenPoint))
             m.Result = (IntPtr)HTCAPTION;
     }
 
