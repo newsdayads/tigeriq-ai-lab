@@ -115,9 +115,92 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
   return {claims,results};
 }
 
-export function filterBacklogIssues(issues){if(!Array.isArray(issues))return[];return issues.filter(issue=>{if(!issue||issue.pull_request||issue.state!=='open')return false;const body=String(issue.body||'');if(!hasExactFlag(body,'TIGERIQ_EXECUTABLE')||!hasExactFlag(body,'OWNER_POLICY','AUTO'))return false;const ownerLine=body.match(/^OWNER=(.+)$/m)?.[1]?.trim()||'';if(ownerLine!=='OWNER_DIRECT')return false;const p=body.match(/^PRIORITY=(P[0-3])$/m)?.[1]||'P2';return ['P0','P1','P2','P3'].includes(p);}).map(issue=>{const body=String(issue.body||'');return {number:Number(issue.number),title:String(issue.title||'').trim(),body,priority:body.match(/^PRIORITY=(P[0-3])$/m)?.[1]||'P2',capability:body.match(/^CAPABILITY=(general|reasoning|review)$/m)?.[1]||'reasoning',htmlUrl:String(issue.html_url||'')};});}
+export async function fetchIssues(fetchImpl, owner, repo, token) {
+  const headers = { accept: 'application/vnd.github.v3+json' };
+  if (token) headers.authorization = `token ${token}`;
+  const response = await fetchImpl(`https://api.github.com/repos/${owner}/${repo}/issues?state=open&per_page=100`, { headers });
+  if (!response.ok) throw new Error(`github_issues_fetch_${response.status}`);
+  const data = await response.json();
+  return Array.isArray(data) ? data : [];
+}
 
-export async function dispatchAutoBacklog({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token=''}){const issues=await fetchIssues(fetchImpl,owner,repo,token);const executable=filterBacklogIssues(issues);let dispatched=0,skipped=0;for(const item of executable){const existing=await pool.query("select id from tigeriq_objectives where metadata->>'githubIssueNumber'=$1 limit 1",[String(item.number)]);if(existing.rows.length>0){skipped++;continue;}const isCoding=item.body.includes('ROUTE=CODING')||item.title.toLowerCase().includes('coding')||item.capability==='reasoning';const metadata={githubIssueNumber:item.number,githubHtmlUrl:item.htmlUrl,priority:item.priority,capability:item.capability,dispatchSource:'auto_backlog',routeTarget:isCoding?'coding_handoff':'api_eligible'};await pool.query("insert into tigeriq_objectives (id, title, goal, status, priority, capability, metadata, created_at, updated_at) values ($1, $2, $3, 'queued', $4, $5, $6::jsonb, now(), now())",[`OBJ-GBK-${item.number}-${Date.now().toString(36)}`,item.title,item.body,item.priority,item.capability,JSON.stringify(metadata)]);dispatched++;}return {checked:issues.length,dispatched,skipped};}
+export function filterBacklogIssues(issues) {
+  if (!Array.isArray(issues)) return [];
+  const filtered = issues.filter(issue => {
+    if (!issue || issue.pull_request || issue.state !== 'open') return false;
+    const body = String(issue.body || '');
+    if (!hasExactFlag(body, 'TIGERIQ_EXECUTABLE', 'true') || !hasExactFlag(body, 'OWNER_POLICY', 'AUTO')) return false;
+    if (!hasExactFlag(body, 'OWNER', 'OWNER_DIRECT')) return false;
+    const p = body.match(/^PRIORITY=(P[0-3])$/m)?.[1] || 'P2';
+    return ['P0', 'P1', 'P2', 'P3'].includes(p);
+  }).map(issue => {
+    const body = String(issue.body || '');
+    return {
+      number: Number(issue.number),
+      title: String(issue.title || '').trim(),
+      body,
+      priority: body.match(/^PRIORITY=(P[0-3])$/m)?.[1] || 'P2',
+      capability: body.match(/^CAPABILITY=(general|reasoning|review)$/m)?.[1] || 'reasoning',
+      htmlUrl: String(issue.html_url || '')
+    };
+  });
+
+  const order = { P0: 0, P1: 1, P2: 2, P3: 3 };
+  filtered.sort((a, b) => {
+    const pa = order[a.priority] ?? 2;
+    const pb = order[b.priority] ?? 2;
+    if (pa !== pb) return pa - pb;
+    return a.number - b.number;
+  });
+  return filtered;
+}
+
+export async function dispatchAutoBacklog({ pool, fetchImpl = fetch, owner = DEFAULT_OWNER, repo = DEFAULT_REPO, token = '' }) {
+  const issues = await fetchIssues(fetchImpl, owner, repo, token);
+  const executable = filterBacklogIssues(issues);
+  let dispatched = 0, skipped = 0;
+  for (const item of executable) {
+    const existing = await pool.query("select id from tigeriq_objectives where metadata->>'githubIssueNumber'=$1 limit 1", [String(item.number)]);
+    if (existing.rows.length > 0) {
+      skipped++;
+      continue;
+    }
+    const isCoding = item.body.includes('ROUTE=CODING') || item.title.toLowerCase().includes('coding') || item.capability === 'reasoning';
+    const routeTarget = isCoding ? 'coding_handoff' : 'api_eligible';
+    const metadata = {
+      githubIssueNumber: item.number,
+      githubHtmlUrl: item.htmlUrl,
+      priority: item.priority,
+      capability: item.capability,
+      dispatchSource: 'auto_backlog',
+      routeTarget,
+      ownerDirect: true
+    };
+    const objectiveId = `OBJ-GBK-${item.number}-${Date.now().toString(36)}`;
+    await pool.query(
+      `insert into tigeriq_objectives (
+        id, objective, priority, status, summary, manager_cycles, next_check_at, timestamps, metadata, created_at, updated_at
+      ) values ($1, $2, $3, 'active', $4, 0, now(), '{}'::jsonb, $5::jsonb, now(), now())`,
+      [
+        objectiveId,
+        item.body,
+        item.priority,
+        item.title,
+        JSON.stringify(metadata)
+      ]
+    );
+    if (routeTarget === 'coding_handoff') {
+      try {
+        const { materializeGithubCodingIssues } = await import('./github-coding-intake.mjs');
+        await materializeGithubCodingIssues({ pool, fetchImpl, owner, repo, token });
+      } catch (err) {
+        console.error(JSON.stringify({ event: 'CODING_HANDOFF_DISPATCH_ERROR', error: String(err?.message || err) }));
+      }
+    }
+    dispatched++;
+  }
+  return { checked: issues.length, dispatched, skipped };
+}
 
 export function startGithubIntake({databaseUrl=process.env.DATABASE_URL,fetchImpl=fetch,owner=process.env.TIGERIQ_GITHUB_OWNER||DEFAULT_OWNER,repo=process.env.TIGERIQ_GITHUB_REPO||DEFAULT_REPO,token=process.env.TIGERIQ_GITHUB_TOKEN||process.env.GITHUB_TOKEN||'',intervalMs=Number(process.env.TIGERIQ_GITHUB_INTAKE_MS||DEFAULT_INTERVAL_MS),initialDelayMs=DEFAULT_INITIAL_DELAY_MS}={}){
   if(!databaseUrl) return {enabled:false,stop(){}};
