@@ -1,6 +1,6 @@
 import {describe,it,expect} from 'vitest';
 import {readFileSync} from 'node:fs';
-import {isRetryableFailure,shouldRetry,isStaleJob,repairInstruction,extractGitHubIssueNumber} from '../apps/tigeriq-coding-lane/autonomy-supervisor.mjs';
+import {isRetryableFailure,shouldRetry,isStaleJob,repairInstruction,extractGitHubIssueNumber,runRealBrowserAudit} from '../apps/tigeriq-coding-lane/autonomy-supervisor.mjs';
 
 describe('Autonomy supervisor policy',()=>{
   it('retries CI failures but not arbitrary blockers',()=>{
@@ -27,6 +27,14 @@ describe('Autonomy supervisor policy',()=>{
     expect(isStaleJob({status:'running',started_at:'2026-09-12T01:00:00Z'},now,45*60*1000)).toBe(true);
     expect(isStaleJob({status:'waiting_ci',started_at:'2026-09-12T01:50:00Z'},now,45*60*1000)).toBe(false);
     expect(isStaleJob({status:'failed',started_at:'2026-09-12T01:00:00Z'},now,45*60*1000)).toBe(false);
+  });
+
+  it('executes durable real-browser audit with deduplication and routing', async () => {
+    const mockPool = { query: async () => ({ rows: [] }) };
+    const audit = await runRealBrowserAudit(mockPool);
+    expect(audit.auditId).toBeDefined();
+    expect(audit.findings.length).toBeGreaterThan(0);
+    expect(Array.isArray(audit.routedItems)).toBe(true);
   });
 
   it('preserves scope while adding machine-readable repair context',()=>{
