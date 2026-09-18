@@ -297,17 +297,18 @@ export function applyCompactEdits(content,edits){
 
 function validateMutationPayload(payload,allowedPaths=[]){
   const allow=new Set((allowedPaths||[]).map(String));
-  validateCompactEdits(payload?.edits||[],allowedPaths);
+  const edits=payload?.edits||[],creates=payload?.creates||[];
+  if(edits.length)validateCompactEdits(edits,allowedPaths);
   let bytes=0; const seenCreates=new Set();
-  for(const create of payload?.creates||[]){
+  for(const create of creates){
     const path=String(create?.path||'').trim(),content=String(create?.content??'');
     if(!safeRepoPath(path)||!allow.has(path))throw new CodingScopeViolationError([path||'<empty>']);
     if(seenCreates.has(path))throw new Error('MUTATION_ENVELOPE_DUPLICATE_CREATE');
     seenCreates.add(path); bytes+=Buffer.byteLength(content,'utf8');
   }
-  const edited=new Set((payload?.edits||[]).map(x=>String(x.path||'')));
+  const edited=new Set(edits.map(x=>String(x.path||'')));
   for(const path of seenCreates)if(edited.has(path))throw new Error('MUTATION_ENVELOPE_CREATE_EDIT_COLLISION');
-  if(!(payload?.edits?.length||payload?.creates?.length))throw new Error('MUTATION_ENVELOPE_MISSING');
+  if(!(edits.length||creates.length))throw new Error('MUTATION_ENVELOPE_MISSING');
   if(bytes>120000)throw new Error('MUTATION_ENVELOPE_TOO_LARGE');
   return true;
 }
