@@ -149,7 +149,8 @@ internal sealed class PopupForm : Form
         this.action = action;
         this.positionChanged = positionChanged;
 
-        AutoScaleMode = AutoScaleMode.Dpi;
+        AutoScaleMode = AutoScaleMode.None;
+        DoubleBuffered = true;
         Font = new Font("Segoe UI", 9);
         Text = "TigerIQ Worker Utility";
         ClientSize = new Size(312, 650);
@@ -206,6 +207,11 @@ internal sealed class PopupForm : Form
             e.SuppressKeyPress = true;
             await InvokeActionAsync(command);
         };
+        // Empty header pixels are draggable too; interactive controls keep their own behavior.
+        root.MouseDown += (_, e) => { if (e.Y < 100) BeginHeaderDrag(root, e); };
+        root.MouseMove += (_, e) => { if (dragging) MoveHeaderDrag(root, e); };
+        root.MouseUp += (_, e) => { if (dragging) EndHeaderDrag(root, e); };
+
         Move += (_, _) =>
         {
             if (Visible && !suppressPositionEvent && !dragging) positionChanged(workerId, Location);
