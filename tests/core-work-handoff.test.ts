@@ -1,5 +1,6 @@
 import {describe,it,expect} from 'vitest';
 import {readFileSync} from 'node:fs';
+// @ts-expect-error JavaScript runtime module intentionally has no TypeScript declarations.
 import {
   normalizeTerminalWorkItems,
   handoffGenerationKey,
