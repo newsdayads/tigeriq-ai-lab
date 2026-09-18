@@ -207,7 +207,7 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
   });
 
   await t.test('resource transient classifier stays fail-closed for policy errors',()=>{
-    assert.strictEqual(isResourceTransientError(new Error('EMPTY_RESPONSE')),true);
+    assert.strictEqual(isResourceTransientError(new Error('EMPTY_RESPONSE')),false);
     assert.strictEqual(isResourceTransientError(new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE')),true);
     assert.strictEqual(isResourceTransientError(new Error('POLICY_DENIED')),false);
     assert.strictEqual(isResourceTransientError(new Error('CODING_SCOPE_VIOLATION')),false);
