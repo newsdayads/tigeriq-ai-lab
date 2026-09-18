@@ -250,7 +250,7 @@ internal sealed class UtilityContext : ApplicationContext
 
         var ok = popups[id].ShowWorker(
             Workers.Get(id), view, wd, settings.Workers[id], sched, settings.DoNotDisturb,
-            store.RecentLogs(id), rect, occupied.ToArray());
+            store.RecentLogs(id, 100), rect, occupied.ToArray());
         if (!ok && notifyOnFailure)
             ShowTrayNotice("TigerIQ — Không chồng NV khác", "Không tìm được vị trí popup an toàn cho NV đã chọn.");
         return ok;
