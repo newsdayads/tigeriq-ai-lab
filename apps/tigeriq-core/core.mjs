@@ -6,6 +6,7 @@ import { createGeminiRateController } from '../shared/gemini-rate-control.mjs';
 import { runBoundedManagerDecision } from './manager-json.mjs';
 import { appendSkillContextToPrompt, matchAndLoadSkills } from './skill-loader.mjs';
 import { buildManagerHistoryContext } from './context-gateway.mjs';
+import { buildFailureLearningCandidates, failureLearningEventTypes } from './failure-learning.mjs';
 import { normalizeCampaignPhases, currentCampaignGoal, campaignTransition, makePhaseCheckpoint, campaignNeedsEvidence, campaignEvidenceJobId } from './campaign-runner.mjs';
 import { normalizeTerminalWorkItems, handoffGenerationKey, evaluateChildObjectiveStates, isCodingHandoff } from './work-handoff.mjs';
 import { ROUTING_PROFILE_LABELS, createResourceId, deriveRoutingProfile, failurePolicy, normalizeQuota, rankCandidates, rateLimitFailureState } from './smart-router.mjs';
@@ -17,6 +18,7 @@ const PORT = Number(process.env.TIGERIQ_CORE_PORT || 8795);
 const TOKEN = process.env.TIGERIQ_CORE_TOKEN?.trim() || '';
 const POLL_MS = Number(process.env.TIGERIQ_CORE_POLL_MS || 1000);
 const MANAGER_IDLE_MS = Number(process.env.TIGERIQ_MANAGER_IDLE_MS || 5000);
+const FAILURE_LEARNING_INTERVAL_MS = Math.max(60000, Number(process.env.TIGERIQ_FAILURE_LEARNING_INTERVAL_MS || 600000));
 const SURFSENSE_APP_URL = process.env.TIGERIQ_SURFSENSE_APP_URL?.trim() || 'http://127.0.0.1:3929';
 const SURFSENSE_SEARCH_URL = process.env.TIGERIQ_SURFSENSE_SEARCH_URL?.trim() || 'http://127.0.0.1:3930/search';
 const SURFSENSE_SUMMARY_MODEL = process.env.TIGERIQ_SURFSENSE_SUMMARY_MODEL?.trim() || 'gemma3:4b';
@@ -498,7 +500,22 @@ function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta
   }catch(e){res.writeHead(500,{'content-type':'application/json'});res.end(JSON.stringify({ok:false,error:String(e?.message||e)}));}
 });
 
-let stop=false, lastRefresh=0, lastRecover=0, lastManager=0, lastProbe=0; const active=new Set(); const MAX_PARALLEL=3;
+async function runFailureLearningScan(){
+  const rows=(await pool.query(
+    "select seq,ts,type,objective_id,job_id,employee_id,resource_id,task_kind,data from tigeriq_events where type=any($1::text[]) order by seq desc limit 200",
+    [failureLearningEventTypes]
+  )).rows;
+  const knownRows=(await pool.query(
+    "select data->>'signature' as signature from tigeriq_events where type='FAILURE_LEARNING_CANDIDATE' and data ? 'signature' order by seq desc limit 500"
+  )).rows;
+  const existingSignatures=new Set(knownRows.map(x=>String(x.signature||'')).filter(Boolean));
+  const candidates=buildFailureLearningCandidates(rows,{minOccurrences:2,existingSignatures});
+  for(const candidate of candidates)await event('FAILURE_LEARNING_CANDIDATE',candidate);
+  await event('FAILURE_LEARNING_SCAN',{eventsIn:rows.length,candidatesCreated:candidates.length,knownSignatures:existingSignatures.size});
+  return {eventsIn:rows.length,candidatesCreated:candidates.length};
+}
+
+let stop=false, lastRefresh=0, lastRecover=0, lastManager=0, lastProbe=0, lastFailureLearning=0; const active=new Set(); const MAX_PARALLEL=3;
 let lastLightAudit = 0, lastDeepAudit = 0, activeDeepAudit = false;
 export async function startSelfCheck(runtime) {
   const now = runtime?.now ? runtime.now() : Date.now();
@@ -580,6 +597,7 @@ async function loop(){
       if(t-lastRecover>10000){await recoverStale();lastRecover=t;}
       if(t-lastManager>MANAGER_IDLE_MS){await managerTick();lastManager=t;}
       if(t-lastProbe>60000){await probeReadyResources();lastProbe=t;}
+      if(t-lastFailureLearning>FAILURE_LEARNING_INTERVAL_MS){lastFailureLearning=t;await runFailureLearningScan();}
       await startSelfCheck({ now: () => Date.now(), store: pool });
       while(active.size<MAX_PARALLEL){const j=await claimJob();if(!j)break;active.add(j.id);void runJob(j).finally(()=>active.delete(j.id));}
     }catch(e){console.error(JSON.stringify({event:'CORE_LOOP_ERROR',error:String(e?.message||e)}));}
