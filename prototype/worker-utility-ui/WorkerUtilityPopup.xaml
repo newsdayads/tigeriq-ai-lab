@@ -1,0 +1,67 @@
+<!-- Static UI prototype only. No backend/controller/integration code. -->
+<Window x:Class="TigerIQ.WorkerUtilityUi.WorkerUtilityPopup"
+        Width="320" MinWidth="280" MaxWidth="350"
+        SizeToContent="Height" WindowStartupLocation="Manual"
+        Title="TigerIQ Worker Utility">
+  <Grid Margin="12">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/><RowDefinition Height="*"/>
+    </Grid.RowDefinitions>
+
+    <Grid Grid.Row="0">
+      <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+      <StackPanel Orientation="Horizontal">
+        <TextBlock Text="●" AutomationProperties.Name="Worker icon" Margin="0,0,8,0"/>
+        <TextBlock Text="NV03" FontWeight="SemiBold"/>
+        <TextBlock Text="  •  READY" Margin="8,0,0,0" AutomationProperties.Name="Worker state READY"/>
+      </StackPanel>
+      <TextBlock Grid.Column="1" Text="00:00" AutomationProperties.Name="Elapsed time"/>
+    </Grid>
+
+    <Border Grid.Row="1" Margin="0,10,0,8" Padding="8" BorderThickness="1">
+      <StackPanel>
+        <TextBlock Text="JOB-0000" FontWeight="SemiBold"/>
+        <TextBlock Text="Started — 00:00  •  Last update — now"/>
+        <TextBlock Text="HEALTHY  •  progress current" AutomationProperties.Name="Health HEALTHY"/>
+      </StackPanel>
+    </Border>
+
+    <UniformGrid Grid.Row="2" Columns="2" Margin="0,0,0,8">
+      <Button Content="Run / Continue" Margin="0,0,4,4"/>
+      <Button Content="Pause" Margin="4,0,0,4"/>
+    </UniformGrid>
+
+    <UniformGrid Grid.Row="3" Columns="3" Margin="0,0,0,8">
+      <Button Content="Fix position" Margin="0,0,3,0"/>
+      <Button Content="Lock position" Margin="3,0,3,0"/>
+      <Button Content="Focus" Margin="3,0,0,0"/>
+    </UniformGrid>
+
+    <UniformGrid Grid.Row="4" Columns="2" Margin="0,0,0,8">
+      <Button Content="Open canonical" Margin="0,0,4,0"/>
+      <Button Content="Quick check" Margin="4,0,0,0"/>
+    </UniformGrid>
+
+    <UniformGrid Grid.Row="5" Columns="2" Margin="0,0,0,8">
+      <Button Content="Save" Margin="0,0,4,0"/>
+      <Button Content="Save &amp; Archive" Margin="4,0,0,0"/>
+    </UniformGrid>
+
+    <UniformGrid Grid.Row="6" Columns="2" Margin="0,0,0,8">
+      <Button Content="Safe Close" Margin="0,0,4,0"/>
+      <Button Content="Thử khôi phục an toàn" Margin="4,0,0,0"/>
+    </UniformGrid>
+
+    <Expander Grid.Row="7" Header="Schedule / Recent logs / Advanced">
+      <StackPanel Margin="4">
+        <TextBlock Text="10m   30m   1h   2h   Custom    DND"/>
+        <TextBlock Text="Next run: —   •   Cancel" Margin="0,6,0,0"/>
+        <TextBlock Text="Recent logs" FontWeight="SemiBold" Margin="0,8,0,0"/>
+        <TextBlock Text="[now] state=READY  [now] session=valid  [now] evidence=current"/>
+        <Button Content="Advanced" Margin="0,8,0,0"/>
+      </StackPanel>
+    </Expander>
+  </Grid>
+</Window>
