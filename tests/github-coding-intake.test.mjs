@@ -95,8 +95,49 @@ describe('GitHub coding intake dependencies',()=>{
       return response({});
     };
     expect((await materializeGithubCodingIssues({pool,fetchImpl,token:'fake'})).created).toBe(1);
-    expect((await materializeGithubCodingIssues({pool,fetchImpl,token:'fake'})).created).toBe(0);
+    expect((await materializeGithubCodingIssues({pool,fetchImpl,token:$token='fake'})).created).toBe(0);
     expect(posted).toBe(1);
+  });
+});
+
+describe('GitHub coding intake resource/scope concurrency lanes',()=>{
+  it('allows non-overlapping APP Chrome and Core/API lanes to run concurrently while serializing overlapping lanes',async()=>{
+    const pool=fakePool();
+    const chromeIssue=issue(`${SAFE}\nRESOURCE_SCOPE=APP_CHROME`,{number:801,title:'APP Chrome lane task'});
+    const coreIssue=issue(`${SAFE}\nRESOURCE_SCOPE=CORE_API`,{number:802,title:'Core API lane task'});
+    const duplicateChrome=issue(`${SAFE}\nRESOURCE_SCOPE=APP_CHROME`,{number:803,title:'Another APP Chrome task'});
+
+    const fetchImpl=async(url,init={})=>{
+      if(url.includes('/issues?'))return response([chromeIssue,coreIssue,duplicateChrome]);
+      if(url.includes('/api/objectives')){
+        const payload=JSON.parse(init.body);
+        return response({id:`obj-${Math.random()}`});
+      }
+      if(url.includes('/comments'))return response({});
+      return response({});
+    };
+
+    // First materialization should dispatch BOTH independent lanes (APP_CHROME #801 and CORE_API #802)
+    const res1=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake'});
+    expect(res1.created).toBe(1);
+    const dispatchedNumbers=pool.events.filter(e=>e.type==='GITHUB_CODING_DISPATCHED').map(e=>e.data.issueNumber);
+    expect(dispatchedNumbers).toContain(801);
+    expect(dispatchedNumbers).toContain(802);
+    expect(dispatchedNumbers).not.toContain(803);
+
+    // Trying to materialize again should not dispatch #803 because APP_CHROME scope is already active
+    const res2=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake'});
+    // Since 801 and 802 are both dispatched and active, considered might find 803 but skip due to active scope
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_DISPATCHED').map(e=>e.data.issueNumber)).not.toContain(803);
+
+    // Now complete issue 801
+    pool.events.push({type:'GITHUB_CODING_RESULT_REPORTED',data:{issueNumber:801}});
+
+    // Now duplicateChrome (#803) in APP_CHROME scope should be able to dispatch
+    const res3=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake'});
+    expect(res3.created).toBe(1);
+    const finalDispatched=pool.events.filter(e=>e.type==='GITHUB_CODING_DISPATCHED').map(e=>e.data.issueNumber);
+    expect(finalDispatched).toContain(803);
   });
 });
 
