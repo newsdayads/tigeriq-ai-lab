@@ -73,6 +73,11 @@ export function isUiJobStage(value: unknown): value is UiJobStage {
 }
 export function isTerminalUiJobStage(stage: UiJobStage): boolean { return TERMINAL.has(stage); }
 export function uiJobProgress(stage: UiJobStage): number { return PROGRESS[stage]; }
+export function reconcileUiJobStage(stage: UiJobStage, uiBusy: boolean|null|undefined): UiJobStage|undefined {
+  if (uiBusy===true && stage==='SUBMITTED') return 'WORKING';
+  if (uiBusy===false && (stage==='SUBMITTED'||stage==='WORKING')) return 'WAITING_EVIDENCE';
+  return undefined;
+}
 
 export class DurableUiJobLedger {
   private value: LedgerFile;
