@@ -368,6 +368,7 @@ internal sealed class UtilityContext : ApplicationContext
             case "lock": settings.Workers[id].PositionLocked = !settings.Workers[id].PositionLocked; break;
             case "badge-reset": ResetBadgePosition(id); break;
             case "open": await controller.OpenCanonicalAsync(id); break;
+            case "view-job": await controller.FocusAsync(id); break;
             case "health":
                 popups[id].SetActionNotice("✓ " + await controller.QuickHealthAsync(id), false);
                 break;
