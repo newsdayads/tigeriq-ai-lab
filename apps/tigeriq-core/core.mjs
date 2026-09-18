@@ -336,12 +336,15 @@ async function reconcileAutonomousHandoff(o){
   return true;
 }
 
-async function persistTerminalHandoff(o,decision,currentPhase){
-  const items=normalizeTerminalWorkItems(o.id,decision?.jobs||[]);
-  if(!items.length)return {action:'none',items:[]};
-  const generationKey=handoffGenerationKey(items);
-  const previous=o?.metadata?.handoff||{};
-  const completedGenerationKeys=Array.isArray(previous.completedGenerationKeys)?previous.completedGenerationKeys:[];
-  if(completedGenerationKeys.includes(generationKey))return {action:'repeated_completed',items,generationKey};
-  const apiItems=items.filter(item=>!isCodingHandoff(item));
+async function persistTerminalHandoff(o, decision, currentPhase) {
+  const items = normalizeTerminalWorkItems(o.id, decision?.jobs || []);
+  if (!items.length) return { action: 'none', items: [] };
+  const generationKey = handoffGenerationKey(items);
+  const previous = o?.metadata?.handoff || {};
+  const completedGenerationKeys = Array.isArray(previous.completedGenerationKeys) ? previous.completedGenerationKeys : [];
+  if (completedGenerationKeys.includes(generationKey)) return { action: 'repeated_completed', items, generationKey };
+  const apiItems = items.filter(x => !isCodingHandoff(x));
+  const codingItems = items.filter(x => isCodingHandoff(x));
+  return { action: 'ready', items, apiItems, codingItems, generationKey };
+}ems.filter(item=>!isCodingHandoff(item));
   const codingItems=items.filter(isCo
