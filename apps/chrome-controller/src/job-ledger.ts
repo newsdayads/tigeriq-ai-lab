@@ -107,9 +107,15 @@ export class DurableUiJobLedger {
 
   snapshot(): UiJobRecord[] { return this.value.jobs.map((job)=>({...job,evidenceRefs:[...job.evidenceRefs]})); }
 
+  get(workerId: WorkerId, jobId: string): UiJobRecord | undefined {
+    const job=this.value.jobs.find((item)=>item.workerId===workerId&&item.jobId===jobId);
+    return job ? {...job,evidenceRefs:[...job.evidenceRefs]} : undefined;
+  }
+
   latest(workerId: WorkerId): UiJobRecord | undefined {
     const jobs=this.value.jobs.filter((job)=>job.workerId===workerId);
-    return jobs.length ? jobs[jobs.length-1] : undefined;
+    const job=jobs.length ? jobs[jobs.length-1] : undefined;
+    return job ? {...job,evidenceRefs:[...job.evidenceRefs]} : undefined;
   }
 
   active(workerId: WorkerId): UiJobRecord | undefined {
