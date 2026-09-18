@@ -587,8 +587,27 @@ internal sealed class PopupForm : Form
 
         if (actionButtons.TryGetValue("run", out var run))
         {
-            run.BackColor = accent;
+            run.BackColor = view.State == WorkerUiState.Paused ? Color.FromArgb(20, 38, 60) : accent;
+            run.ForeColor = Color.White;
             run.HoverColor = ControlPaint.Dark(accent, .12f);
+        }
+        if (actionButtons.TryGetValue("pause", out var pause))
+        {
+            pause.BackColor = view.State == WorkerUiState.Paused ? Color.FromArgb(120, 72, 16) : Color.FromArgb(72, 48, 18);
+            pause.ForeColor = Amber;
+        }
+        if (actionButtons.TryGetValue("lock", out var lockButton))
+        {
+            lockButton.Text = settings.PositionLocked ? "⌁  Mở khóa vị trí" : "⌁  Khóa vị trí";
+            lockButton.BackColor = settings.PositionLocked ? Color.FromArgb(25, 58, 91) : Color.FromArgb(20, 38, 60);
+        }
+
+        foreach (var pair in new[] { ("schedule-10", 10), ("schedule-30", 30), ("schedule-60", 60), ("schedule-120", 120) })
+        {
+            if (!actionButtons.TryGetValue(pair.Item1, out var scheduleButton)) continue;
+            var selected = scheduleSettings?.Enabled == true && scheduleSettings.IntervalMinutes == pair.Item2;
+            scheduleButton.BackColor = selected ? accent : Color.FromArgb(20, 38, 60);
+            scheduleButton.ForeColor = selected ? Color.White : Ink;
         }
 
         var elapsed = settings.StateChangedAt is DateTimeOffset since ? DateTimeOffset.Now - since : TimeSpan.Zero;
