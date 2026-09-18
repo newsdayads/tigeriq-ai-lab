@@ -239,7 +239,10 @@ export function recoveryDecision({job={},issue=null,pr=null,lookupError=null}={}
   if(lookupError)return {action:'defer',reason:'GITHUB_LOOKUP_FAILED'};
   if(pr){
     if(pr.merged)return {action:'complete',reason:'PR_MERGED'};
-    if(pr.state==='open')return {action:'resume',reason:'PR_OPEN'};
+    if(pr.state==='open'){
+      if(job.branch)return {action:'resume',reason:'PR_OPEN'};
+      return {action:'block',reason:'PR_OPEN_WITHOUT_BRANCH'};
+    }
     return {action:'block',reason:'PR_CLOSED_UNMERGED'};
   }
   if(issue){
