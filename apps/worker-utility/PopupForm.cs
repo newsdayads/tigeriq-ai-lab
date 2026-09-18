@@ -861,8 +861,10 @@ internal sealed class AdvancedInfoForm : Form
         dndButton.Margin = new Padding(0, 0, 0, 8);
         dndButton.Click += async (_, _) =>
         {
+            // Parent settings are authoritative. HandleActionAsync refreshes SetWorker()
+            // before RunAsync returns, so locally flipping dndOn here races that refresh
+            // and can make the second click send dnd-on twice.
             await RunAsync(dndOn ? "dnd-off" : "dnd-on");
-            dndOn = !dndOn;
             UpdateDndText();
         };
         options.Controls.Add(dndButton);
