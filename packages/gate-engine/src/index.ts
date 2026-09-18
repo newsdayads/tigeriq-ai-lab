@@ -32,6 +32,19 @@ export function canAdvance(current: Gate, evidence: GateEvidence[]): boolean {
   return Boolean(record.commitSha && record.command && record.exitCode === 0);
 }
 
+export interface VerificationGateResult {
+  verified: boolean;
+  reason?: string;
+}
+
+export function verificationGate(current: Gate, evidence: GateEvidence[]): VerificationGateResult {
+  const passed = canAdvance(current, evidence);
+  if (!passed) {
+    return { verified: false, reason: `Gate ${current} evidence incomplete or failing` };
+  }
+  return { verified: true };
+}
+
 export function nextGate(current: Gate): Gate {
   const index = GATES.indexOf(current);
   if (index < 0 || index === GATES.length - 1) return 'DONE';

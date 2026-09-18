@@ -112,4 +112,34 @@ describe('model router execution', () => {
     const router = new ModelRouter([gemini], policy);
     await expect(router.execute({ prompt: '   ' })).rejects.toThrow('prompt is required');
   });
+
+  it('supports API discovery, normalization, verification gate, credential gating, capability registry, and zero-cost router policy integration', async () => {
+    const { discoverAndNormalizeApi, enforceCredentialGate, CapabilityRegistry, zeroCostRouterPolicyIntegration } = await import('../packages/model-router/src/index.js');
+    const { verificationGate } = await import('../packages/gate-engine/src/index.js');
+
+    const endpoint = { url: 'https://api.tigeriq.ai/v1', version: '1.0', capabilities: ['chat'] };
+    const normalized = discoverAndNormalizeApi(endpoint, { query: 'test' });
+    expect(normalized.endpoint).toBe('https://api.tigeriq.ai/v1');
+    expect(normalized.headers['x-api-version']).toBe('1.0');
+
+    expect(enforceCredentialGate({ type: 'no-auth' })).toBe(true);
+    expect(enforceCredentialGate({ type: 'apiKey', token: 'secret-key' })).toBe(true);
+    expect(() => enforceCredentialGate({ type: 'apiKey', token: '' })).toThrow();
+    expect(enforceCredentialGate({ type: 'OAuth', token: 'oauth-token' })).toBe(true);
+    expect(() => enforceCredentialGate({ type: 'OAuth' })).toThrow();
+
+    const registry = new CapabilityRegistry();
+    registry.register('code-gen');
+    expect(registry.has('code-gen')).toBe(true);
+    expect(registry.list()).toContain('code-gen');
+
+    const freePolicy = zeroCostRouterPolicyIntegration({ provider: 'openai', model: 'gpt-4' }, { provider: 'ollama', model: 'llama3', local: true });
+    expect(freePolicy.primary.provider).toBe('ollama');
+    expect(freePolicy.fallbacks[0]?.provider).toBe('openai');
+
+    const gateRes = verificationGate('CODE', [
+      { gate: 'CODE', status: 'pass', commitSha: 'abc', command: 'npm test', exitCode: 0 },
+    ]);
+    expect(gateRes.verified).toBe(true);
+  });
 });
