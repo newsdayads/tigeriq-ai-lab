@@ -149,10 +149,27 @@ internal sealed class ControllerClient
 
     public async Task OpenCanonicalAsync(string id)
     {
+        var current = await GetWorkerAsync(id);
+        if (current.AuthRequired || !string.IsNullOrWhiteSpace(current.SecurityBlock))
+            throw new InvalidOperationException($"OPEN_CANONICAL_BLOCKED:{current.Reason}");
+
+        // Approved utility behavior: if the worker is already in its canonical context,
+        // do not reload/navigate it. A simple focus is enough and avoids UI_NOT_READY churn.
+        if (current.WindowOpen && IsCanonicalContext(id, current.Url))
+        {
+            using var focused = await FocusAsync(id);
+            return;
+        }
+
         using var response = await TryPostAsync($"/api/utility/workers/{id}/open-canonical");
         if (response is not null) return;
-        var current = await GetWorkerAsync(id);
-        if (IsCanonicalContext(id, current.Url)) { using var focused = await FocusAsync(id); return; }
+
+        current = await GetWorkerAsync(id);
+        if (IsCanonicalContext(id, current.Url))
+        {
+            using var focused = await FocusAsync(id);
+            return;
+        }
         throw new InvalidOperationException("OPEN_CANONICAL_REQUIRES_CONTROLLER_UPGRADE");
     }
     static bool IsCanonicalContext(string id, string? url)
