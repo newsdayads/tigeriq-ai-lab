@@ -1,0 +1,46 @@
+version: 1
+owner_issue: 859
+parent_issue: 822
+updated: 2026-09-18
+states: [CANDIDATE, VALIDATED, ACTIVE, DEPRECATED, REJECTED]
+entries:
+  - id: contextual-skill-loading
+    state: CANDIDATE
+    source_log: learning-log/2026-09-18-owner-video-lessons.md
+    target: core-context-routing
+    summary: Load only the skill relevant to the current job instead of preloading all knowledge.
+  - id: context-budget-compaction
+    state: CANDIDATE
+    source_log: learning-log/2026-09-18-owner-video-lessons.md
+    target: core-context-routing
+    summary: Filter irrelevant context, reserve headroom, compact milestones, and resume from durable references.
+  - id: spec-first-tdd
+    state: CANDIDATE
+    source_log: learning-log/2026-09-18-owner-video-lessons.md
+    target: coding-lane
+    summary: Establish SPEC and acceptance before coding; for suitable bugs prove RED before GREEN.
+  - id: learn-from-failure
+    state: CANDIDATE
+    source_log: learning-log/2026-09-18-owner-video-lessons.md
+    target: knowledge-system
+    summary: Distill recurring failures into durable rules, checks, or skills with provenance.
+  - id: role-separated-execution
+    state: CANDIDATE
+    source_log: learning-log/2026-09-18-owner-video-lessons.md
+    target: orchestration
+    summary: Separate planning, execution, review, and verification where risk/value justifies it.
+  - id: external-skill-security-gate
+    state: CANDIDATE
+    source_log: learning-log/2026-09-18-owner-video-lessons.md
+    target: skill-intake
+    summary: Audit provenance, version, installer behavior, and capability permissions before using external skills.
+  - id: minimal-change-output
+    state: CANDIDATE
+    source_log: learning-log/2026-09-18-owner-video-lessons.md
+    target: coding-lane
+    summary: Prefer scoped diffs/minimal edits; do not regenerate whole files when unnecessary.
+  - id: capability-aware-model-routing
+    state: CANDIDATE
+    source_log: learning-log/2026-09-18-owner-video-lessons.md
+    target: router
+    summary: Route simple work to lighter resources and reserve stronger models for harder reasoning/debugging.
