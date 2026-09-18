@@ -41,6 +41,11 @@ export function isInteractiveDesktopSession(
   const sessionId=Number(windowsSessionId);
   return Number.isInteger(sessionId)&&sessionId>0;
 }
+export function reconcileWorkerUiStatus(status:string,uiBusy:boolean|null|undefined):string{
+  if(uiBusy===true&&['READY','ONLINE','SUBMITTED','DISPATCHING','WORKING'].includes(status))return 'WORKING';
+  if(uiBusy===false&&['SUBMITTED','DISPATCHING','WORKING','ONLINE'].includes(status))return 'READY';
+  return status;
+}
 export function minimumLayoutWidth(config:Pick<ControllerConfig,'layout'|'workers'>):number{return config.workers.length*config.layout.width+(config.workers.length-1)*config.layout.gap+config.layout.rightMargin}
 export function workAreaFitsLayout(config:Pick<ControllerConfig,'layout'|'workers'>,area:WorkArea):boolean{return area.width>=minimumLayoutWidth(config)&&area.height>=config.layout.top+config.layout.height}
 
