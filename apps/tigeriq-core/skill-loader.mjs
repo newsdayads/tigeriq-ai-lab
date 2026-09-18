@@ -40,10 +40,25 @@ function relevanceScore(skill,objective){
   return score;
 }
 
-function compactSkillText(skill,content,maxChars){
+function truncateUtf8(value,maxBytes){
+  const text=String(value||'');
+  if(maxBytes<=0)return '';
+  if(Buffer.byteLength(text,'utf8')<=maxBytes)return text;
+  let low=0,high=text.length;
+  while(low<high){
+    const mid=Math.ceil((low+high)/2);
+    if(Buffer.byteLength(text.slice(0,mid),'utf8')<=maxBytes)low=mid;
+    else high=mid-1;
+  }
+  return text.slice(0,low);
+}
+
+function compactSkillText(skill,content,maxBytes){
   const header=`[${skill.id}] ${skill.title||skill.id} — target=${skill.target||'general'}`;
-  const available=Math.max(0,maxChars-header.length-1);
-  return `${header}\n${String(content||'').slice(0,available)}`.trim();
+  const prefix=`${header}\n`;
+  const prefixBytes=Buffer.byteLength(prefix,'utf8');
+  if(prefixBytes>maxBytes)return '';
+  return `${prefix}${truncateUtf8(content,maxBytes-prefixBytes)}`.trim();
 }
 
 export function loadRelevantActiveSkillContext(objective,options={}){
@@ -67,9 +82,11 @@ export function loadRelevantActiveSkillContext(objective,options={}){
       if(!existsSync(skillPath)){skipped.push({id:skill.id,reason:'SKILL_MD_MISSING'});continue;}
       const raw=readFileSync(skillPath,'utf8');
       const text=compactSkillText(skill,raw,remaining);
-      if(!text||text.length>remaining){skipped.push({id:skill.id,reason:'CONTEXT_BUDGET'});continue;}
+      const textBytes=Buffer.byteLength(text,'utf8');
+      const separatorBytes=selected.length?2:0;
+      if(!text||textBytes+separatorBytes>remaining){skipped.push({id:skill.id,reason:'CONTEXT_BUDGET'});continue;}
       selected.push({id:skill.id,text});
-      remaining-=text.length+(selected.length>1?2:0);
+      remaining-=textBytes+separatorBytes;
     }
     const text=selected.map(x=>x.text).join('\n\n');
     return {text,skillIds:selected.map(x=>x.id),bytes:Buffer.byteLength(text,'utf8'),skipped,error:null};
