@@ -23,6 +23,7 @@ internal sealed class TrayPanelForm : Form
 
     readonly Func<string, string, Task> workerAction;
     readonly Func<Task> focusAllChrome;
+    readonly Func<string[]> readSystemLogs;
     readonly Action toggleDnd;
     readonly Action exit;
     readonly Label dndLabel = new()
@@ -33,13 +34,15 @@ internal sealed class TrayPanelForm : Form
     };
 
     string? focusedWorker;
+    SystemLogForm? logForm;
 
     protected override bool ShowWithoutActivation => false;
 
-    public TrayPanelForm(Func<string, string, Task> workerAction, Func<Task> focusAllChrome, Action toggleDnd, Action exit)
+    public TrayPanelForm(Func<string, string, Task> workerAction, Func<Task> focusAllChrome, Func<string[]> readSystemLogs, Action toggleDnd, Action exit)
     {
         this.workerAction = workerAction;
         this.focusAllChrome = focusAllChrome;
+        this.readSystemLogs = readSystemLogs;
         this.toggleDnd = toggleDnd;
         this.exit = exit;
 
@@ -139,12 +142,7 @@ internal sealed class TrayPanelForm : Form
         };
         rail.Controls.Add(sep);
 
-        var quick = RailButton("▦  Bảng điều khiển nhanh", 278);
-        quick.BackColor = Color.FromArgb(14, 52, 88);
-        quick.ForeColor = Color.White;
-        rail.Controls.Add(quick);
-
-        var all = RailButton("⊞  Mở / Focus 3 Chrome", 318);
+        var all = RailButton("⊞  Mở tất cả cửa sổ", 278);
         all.Click += async (_, _) =>
         {
             try { await focusAllChrome(); }
@@ -152,22 +150,26 @@ internal sealed class TrayPanelForm : Form
         };
         rail.Controls.Add(all);
 
-        var dnd = RailButton("◐  Không làm phiền", 358);
-        dnd.Click += (_, _) => toggleDnd();
-        rail.Controls.Add(dnd);
-
-        dndLabel.Location = new Point(17, 398);
-        rail.Controls.Add(dndLabel);
-
-        var note = new Label
+        var quick = RailButton("▦  Bảng điều khiển nhanh", 318);
+        quick.BackColor = Color.FromArgb(14, 52, 88);
+        quick.ForeColor = Color.White;
+        quick.Click += (_, _) =>
         {
-            Text = "Click ngoài popup để tự ẩn.",
-            AutoSize = true,
-            Location = new Point(17, 430),
-            ForeColor = Color.FromArgb(100, 116, 139),
-            Font = new Font("Segoe UI", 7.7f)
+            if (focusedWorker is not null) FocusWorker(focusedWorker);
+            Activate();
         };
-        rail.Controls.Add(note);
+        rail.Controls.Add(quick);
+
+        var settings = RailButton("⚙  Cài đặt", 358);
+        settings.Click += (_, _) => ShowSettingsMenu(settings);
+        rail.Controls.Add(settings);
+
+        var logs = RailButton("▣  Xem log hệ thống", 398);
+        logs.Click += (_, _) => ShowSystemLogs();
+        rail.Controls.Add(logs);
+
+        dndLabel.Location = new Point(17, 439);
+        rail.Controls.Add(dndLabel);
 
         var quit = RailButton("⏻  Thoát Utility", 462);
         quit.BackColor = Color.FromArgb(74, 24, 31);
@@ -419,6 +421,33 @@ internal sealed class TrayPanelForm : Form
         menu.Show(anchor, new Point(0, anchor.Height + 2));
     }
 
+    void ShowSettingsMenu(Control anchor)
+    {
+        var menu = new ContextMenuStrip
+        {
+            Font = new Font("Segoe UI", 9),
+            BackColor = Color.FromArgb(8, 19, 34),
+            ForeColor = Ink,
+            ShowImageMargin = false
+        };
+        var dnd = new ToolStripMenuItem("Không làm phiền");
+        dnd.Click += (_, _) => toggleDnd();
+        menu.Items.Add(dnd);
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(new ToolStripMenuItem("Tự ẩn khi click ra ngoài: BẬT") { Enabled = false });
+        menu.Items.Add(new ToolStripMenuItem("System Tray Utility: BẬT") { Enabled = false });
+        menu.Closed += (_, _) => menu.Dispose();
+        menu.Show(anchor, new Point(0, anchor.Height + 2));
+    }
+
+    void ShowSystemLogs()
+    {
+        logForm ??= new SystemLogForm();
+        logForm.SetLines(readSystemLogs());
+        if (!logForm.Visible) logForm.Show();
+        else logForm.Activate();
+    }
+
     void AddAdvanced(ContextMenuStrip menu, string workerId, string text, string actionName)
     {
         var item = new ToolStripMenuItem(text);
@@ -563,5 +592,41 @@ internal sealed class TrayPanelForm : Form
         var old = Region;
         Region = new Region(path);
         old?.Dispose();
+    }
+}
+
+
+internal sealed class SystemLogForm : Form
+{
+    readonly TextBox box = new()
+    {
+        Dock = DockStyle.Fill,
+        Multiline = true,
+        ReadOnly = true,
+        ScrollBars = ScrollBars.Vertical,
+        BackColor = Color.FromArgb(5, 13, 25),
+        ForeColor = Color.FromArgb(203, 213, 225),
+        BorderStyle = BorderStyle.None,
+        Font = new Font("Consolas", 9),
+        WordWrap = false
+    };
+
+    public SystemLogForm()
+    {
+        Text = "TigerIQ — Log hệ thống";
+        ClientSize = new Size(720, 430);
+        StartPosition = FormStartPosition.CenterScreen;
+        ShowInTaskbar = false;
+        TopMost = true;
+        BackColor = Color.FromArgb(5, 13, 25);
+        Padding = new Padding(12);
+        Controls.Add(box);
+    }
+
+    public void SetLines(string[] lines)
+    {
+        box.Lines = lines.Length == 0 ? new[] { "Chưa có log hệ thống." } : lines;
+        box.SelectionStart = box.TextLength;
+        box.ScrollToCaret();
     }
 }
