@@ -75,11 +75,17 @@ export type AutopilotDecision =
   | { kind: 'WAIT_EVIDENCE'; reason: string }
   | { kind: 'STOP'; reason: string }
   | { kind: 'DUPLICATE_NOOP'; reason: string; jobId: string }
-  | { kind: 'DISPATCH'; trigger: typeof AUTO_CONTINUE; jobId: string; text: string; evidenceRef?: string; evidenceRevision?: string };
+  | { kind: 'DISPATCH'; trigger: typeof AUTO_CONTINUE; jobId: string; text: string; issueRef?: string; evidenceRef?: string; evidenceRevision?: string };
 
 function parsed(value:string|undefined):number|undefined {
   if(!value)return;
   const ms=Date.parse(value);return Number.isFinite(ms)?ms:undefined;
+}
+
+export function canonicalGithubIssueRef(jobId:string):string|undefined {
+  const match=String(jobId||'').trim().match(/^GH-(\d+)$/);
+  if(!match)return;
+  return `https://github.com/newsdayads/tigeriq-ai-lab/issues/${match[1]}`;
 }
 
 export function selectFreshCompletionEvidence(job:ExternalJob|undefined,state:DurableAutopilotState,observedAtMs:number):ExternalEvidence|undefined {
@@ -161,7 +167,16 @@ export function decideAutoContinue(
   if (!next.prompt?.trim()) return { kind: 'STOP', reason: 'NEXT_JOB_PROMPT_REQUIRED' };
   if (state.lastDispatchedJobId === next.jobId) return { kind: 'DUPLICATE_NOOP', reason: 'JOB_ALREADY_DISPATCHED', jobId: next.jobId };
 
-  return {kind:'DISPATCH',trigger:AUTO_CONTINUE,jobId:next.jobId,text:next.prompt.trim(),evidenceRef:completionEvidence?.ref,evidenceRevision:completionEvidence?.completionRevision};
+  const currentIssueRef=snapshot.source==='GITHUB'?canonicalGithubIssueRef(next.jobId):undefined;
+  return {
+    kind:'DISPATCH',
+    trigger:AUTO_CONTINUE,
+    jobId:next.jobId,
+    text:next.prompt.trim(),
+    ...(currentIssueRef?{issueRef:currentIssueRef}:{}),
+    evidenceRef:completionEvidence?.ref,
+    evidenceRevision:completionEvidence?.completionRevision,
+  };
 }
 
 export function freshAutopilotState(now = new Date()): DurableAutopilotState {

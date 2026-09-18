@@ -393,9 +393,28 @@ internal sealed class UtilityContext : ApplicationContext
         switch (actionName)
         {
             case "run":
+            {
                 settings.Workers[id].Paused = false;
-                await controller.ResumeAsync(id);
+                using var resumedController = await controller.ResumeAsync(id);
+                await Task.Delay(250);
+                var resumed = await controller.GetWorkerAsync(id);
+                if (resumed.State == WorkerUiState.Working || !string.IsNullOrWhiteSpace(resumed.JobId))
+                {
+                    popups[id].SetActionNotice($"✓ Đang chạy {resumed.JobId ?? ""}".Trim(), false);
+                }
+                else if (id == "NV02")
+                {
+                    var queuedJob = await controller.NextEligibleAutoUiJobAsync(id);
+                    if (!string.IsNullOrWhiteSpace(queuedJob))
+                        popups[id].SetActionNotice($"… Đang chờ hệ thống giao {queuedJob}", false);
+                    else
+                    {
+                        popups[id].SetActionNotice("Không có việc AUTO_UI", false);
+                        store.Log(id, "RUN_NO_AUTO_UI_JOB");
+                    }
+                }
                 break;
+            }
             case "pause":
                 settings.Workers[id].Paused = true;
                 await controller.PauseAsync(id);

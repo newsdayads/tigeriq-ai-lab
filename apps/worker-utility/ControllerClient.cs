@@ -160,6 +160,23 @@ internal sealed class ControllerClient
         if (result is not null) return result;
         return id == "NV02" ? await PostAsync("/api/resume") : JsonDocument.Parse("{\"ok\":true,\"compat\":\"UTILITY_LOCAL_ONLY\"}");
     }
+    public async Task<string?> NextEligibleAutoUiJobAsync(string id)
+    {
+        if (id != "NV02") return null;
+        var snapshot = await TryGetJsonAsync(ReceiptService + "/api/ui-autopilot/snapshot");
+        if (snapshot is null) return null;
+        using (snapshot)
+        {
+            var root = snapshot.RootElement;
+            if (!root.TryGetProperty("nextJob", out var job) || job.ValueKind != JsonValueKind.Object) return null;
+            if (!job.TryGetProperty("workerId", out var wid) || wid.GetString() != id) return null;
+            if (!job.TryGetProperty("executable", out var executable) || executable.ValueKind != JsonValueKind.True) return null;
+            var status = job.TryGetProperty("status", out var statusEl) ? statusEl.GetString() : null;
+            if (status is not ("READY" or "QUEUED")) return null;
+            return job.TryGetProperty("jobId", out var jobId) ? jobId.GetString() : null;
+        }
+    }
+
     public async Task<JsonDocument> PauseAsync(string id)
     {
         var result = await TryPostAsync($"/api/utility/workers/{id}/pause");
