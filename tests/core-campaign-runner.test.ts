@@ -1,0 +1,34 @@
+// @ts-nocheck
+import {describe,it,expect} from 'vitest';
+import {normalizeCampaignPhases,currentCampaignGoal,campaignTransition,makePhaseCheckpoint} from '../apps/tigeriq-core/campaign-runner.mjs';
+
+const phases=[
+  {title:'Checkpoint',prompt:'Design durable resume',acceptance:'Resume without Owner'},
+  {title:'Knowledge',prompt:'Design source-aware index'},
+  {title:'Visibility',prompt:'Design orchestration truth'}
+];
+
+describe('API campaign runner',()=>{
+  it('requires at least three phases for a campaign',()=>{
+    expect(()=>normalizeCampaignPhases(['one','two'])).toThrow('CAMPAIGN_PHASE_COUNT_INVALID');
+    expect(normalizeCampaignPhases(phases)).toHaveLength(3);
+  });
+  it('builds a phase-scoped manager goal',()=>{
+    const goal=currentCampaignGoal('Optimize TigerIQ',phases,1);
+    expect(goal).toContain('Campaign phase 2/3: Knowledge');
+    expect(goal).toContain('Design source-aware index');
+    expect(goal).not.toContain('Design durable resume');
+  });
+  it('advances on phase complete and only terminates after final phase',()=>{
+    expect(campaignTransition({status:'complete',currentPhase:0,phases})).toEqual({action:'advance',terminal:false,nextPhase:1});
+    expect(campaignTransition({status:'complete',currentPhase:2,phases})).toEqual({action:'complete',terminal:true,nextPhase:null});
+  });
+  it('preserves continue and blocked semantics',()=>{
+    expect(campaignTransition({status:'continue',currentPhase:1,phases}).action).toBe('continue');
+    expect(campaignTransition({status:'blocked',currentPhase:1,phases})).toEqual({action:'blocked',terminal:true,nextPhase:null});
+  });
+  it('creates a durable phase checkpoint payload',()=>{
+    const cp=makePhaseCheckpoint({currentPhase:1,phases,summary:'phase done',completedAt:'2026-09-18T00:00:00.000Z'});
+    expect(cp).toMatchObject({phaseIndex:1,phaseNumber:2,phaseCount:3,phaseTitle:'Knowledge',summary:'phase done'});
+  });
+});
