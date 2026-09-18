@@ -34,14 +34,15 @@ internal sealed class TrayPanelForm : Form
         this.showLogs = showLogs;
         this.exit = exit;
 
-        AutoScaleMode = AutoScaleMode.Dpi;
+        AutoScaleMode = AutoScaleMode.None;
+        DoubleBuffered = true;
         FormBorderStyle = FormBorderStyle.None;
         ShowInTaskbar = false;
         TopMost = true;
         StartPosition = FormStartPosition.Manual;
         ClientSize = new Size(286, 520);
         BackColor = Canvas;
-        Padding = new Padding(10);
+        Padding = new Padding(8);
         Text = "TigerIQ Workers";
 
         var root = new FlowLayoutPanel
@@ -50,7 +51,7 @@ internal sealed class TrayPanelForm : Form
             FlowDirection = FlowDirection.TopDown,
             WrapContents = false,
             BackColor = Canvas,
-            Padding = new Padding(4),
+            Padding = new Padding(0),
             AutoScroll = false
         };
         root.Controls.Add(BuildHeader());
@@ -69,15 +70,15 @@ internal sealed class TrayPanelForm : Form
     {
         var panel = new Panel
         {
-            Size = new Size(250, 64),
+            Size = new Size(270, 64),
             Margin = new Padding(0, 0, 0, 8),
-            BackColor = Color.FromArgb(8, 19, 34)
+            BackColor = Canvas
         };
         var brand = new Label
         {
             Text = "🐯  TigerIQ Workers",
             AutoSize = true,
-            Location = new Point(10, 8),
+            Location = new Point(10, 6),
             ForeColor = Ink,
             Font = new Font("Segoe UI", 13, FontStyle.Bold)
         };
@@ -85,11 +86,11 @@ internal sealed class TrayPanelForm : Form
         {
             Text = "Điều khiển 3 nhân viên Chrome",
             AutoSize = true,
-            Location = new Point(12, 34),
+            Location = new Point(12, 30),
             ForeColor = Muted,
             Font = new Font("Segoe UI", 8.5f)
         };
-        dndLabel.Location = new Point(12, 49);
+        dndLabel.Location = new Point(12, 45);
         panel.Controls.Add(brand);
         panel.Controls.Add(sub);
         panel.Controls.Add(dndLabel);
@@ -101,7 +102,7 @@ internal sealed class TrayPanelForm : Form
         var accent = WorkerAccent(worker.Id);
         var panel = new Panel
         {
-            Size = new Size(250, 70),
+            Size = new Size(270, 70),
             Margin = new Padding(0, 0, 0, 7),
             BackColor = Card
         };
@@ -127,7 +128,7 @@ internal sealed class TrayPanelForm : Form
             Text = "Đang tải trạng thái…",
             AutoSize = false,
             AutoEllipsis = true,
-            Size = new Size(172, 34),
+            Size = new Size(192, 34),
             Location = new Point(34, 33),
             ForeColor = Muted,
             Font = new Font("Segoe UI", 7.8f)
@@ -137,7 +138,7 @@ internal sealed class TrayPanelForm : Form
             Text = "›",
             AutoSize = false,
             Size = new Size(28, 44),
-            Location = new Point(210, 13),
+            Location = new Point(232, 13),
             TextAlign = ContentAlignment.MiddleCenter,
             ForeColor = accent,
             Font = new Font("Segoe UI", 18, FontStyle.Bold),
@@ -172,24 +173,24 @@ internal sealed class TrayPanelForm : Form
     {
         var panel = new Panel
         {
-            Size = new Size(250, 190),
+            Size = new Size(270, 186),
             Margin = new Padding(0, 3, 0, 0),
             BackColor = Canvas
         };
 
-        var all = MakeButton("▦  Mở tất cả cửa sổ", new Point(0, 0), new Size(250, 34));
+        var all = MakeButton("▦  Mở tất cả cửa sổ", new Point(0, 0), new Size(270, 34));
         all.Click += (_, _) => { Hide(); openAllChrome(); };
 
-        var quick = MakeButton("▣  Bảng điều khiển nhanh", new Point(0, 40), new Size(250, 34));
+        var quick = MakeButton("▣  Bảng điều khiển nhanh", new Point(0, 38), new Size(270, 34));
         quick.Click += (_, _) => { Hide(); openQuick(); };
 
-        var settings = MakeButton("⚙  Cài đặt", new Point(0, 80), new Size(250, 34));
+        var settings = MakeButton("⚙  Cài đặt", new Point(0, 76), new Size(270, 34));
         settings.Click += (_, _) => { Hide(); showSettings(); };
 
-        var logs = MakeButton("▤  Xem log hệ thống", new Point(0, 120), new Size(250, 34));
+        var logs = MakeButton("▤  Xem log hệ thống", new Point(0, 114), new Size(270, 34));
         logs.Click += (_, _) => { Hide(); showLogs(); };
 
-        var quit = MakeButton("⏻  Thoát", new Point(0, 160), new Size(250, 34));
+        var quit = MakeButton("⏻  Thoát", new Point(0, 152), new Size(270, 34));
         quit.BackColor = Color.FromArgb(74, 24, 31);
         quit.ForeColor = Color.FromArgb(254, 202, 202);
         quit.Click += (_, _) => exit();
@@ -202,23 +203,22 @@ internal sealed class TrayPanelForm : Form
         return panel;
     }
 
-    Button MakeButton(string text, Point location, Size size)
+    RoundedButton MakeButton(string text, Point location, Size size)
     {
-        var button = new Button
+        return new RoundedButton
         {
             Text = text,
             Location = location,
             Size = size,
-            FlatStyle = FlatStyle.Flat,
             BackColor = Color.FromArgb(20, 40, 64),
             ForeColor = Ink,
+            HoverColor = Color.FromArgb(29, 50, 75),
+            CornerRadius = 8,
             Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
             Cursor = Cursors.Hand,
-            TabStop = false
+            TabStop = false,
+            UseMnemonic = false
         };
-        button.FlatAppearance.BorderColor = Border;
-        button.FlatAppearance.BorderSize = 1;
-        return button;
     }
 
     public void ApplyStates(IReadOnlyDictionary<string, WorkerView> views, IReadOnlyDictionary<string, HarnessView> harness, UtilitySettings settings)

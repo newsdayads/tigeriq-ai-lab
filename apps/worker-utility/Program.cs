@@ -5,6 +5,13 @@ internal static class Program
     [STAThread]
     static void Main(string[] args)
     {
+        // The process is intentionally DPI-unaware so Chrome/window coordinates and UI geometry
+        // stay in one 96-DPI logical coordinate system. Apply this before any Form is created,
+        // including CI visual-regression fixtures.
+        Application.SetHighDpiMode(HighDpiMode.DpiUnaware);
+        Application.EnableVisualStyles();
+        Application.SetCompatibleTextRenderingDefault(false);
+
         if (args.Contains("--self-test", StringComparer.OrdinalIgnoreCase))
         {
             Environment.Exit(SelfTest.Run());
@@ -27,9 +34,6 @@ internal static class Program
         }
         using var mutex = new Mutex(true, "Local\\TigerIQ.WorkerUtility.V1", out var created);
         if (!created) return;
-        Application.SetHighDpiMode(HighDpiMode.DpiUnaware);
-        Application.EnableVisualStyles();
-        Application.SetCompatibleTextRenderingDefault(false);
         Application.Run(new UtilityContext());
     }
 }

@@ -149,7 +149,8 @@ internal sealed class PopupForm : Form
         this.action = action;
         this.positionChanged = positionChanged;
 
-        AutoScaleMode = AutoScaleMode.Dpi;
+        AutoScaleMode = AutoScaleMode.None;
+        DoubleBuffered = true;
         Font = new Font("Segoe UI", 9);
         Text = "TigerIQ Worker Utility";
         ClientSize = new Size(312, 650);
@@ -206,6 +207,11 @@ internal sealed class PopupForm : Form
             e.SuppressKeyPress = true;
             await InvokeActionAsync(command);
         };
+        // Empty header pixels are draggable too; interactive controls keep their own behavior.
+        root.MouseDown += (_, e) => { if (e.Y < 100) BeginHeaderDrag(root, e); };
+        root.MouseMove += (_, e) => { if (dragging) MoveHeaderDrag(root, e); };
+        root.MouseUp += (_, e) => { if (dragging) EndHeaderDrag(root, e); };
+
         Move += (_, _) =>
         {
             if (Visible && !suppressPositionEvent && !dragging) positionChanged(workerId, Location);
@@ -796,6 +802,8 @@ internal sealed class AdvancedInfoForm : Form
     public AdvancedInfoForm(Func<string, Task> action)
     {
         this.action = action;
+        AutoScaleMode = AutoScaleMode.None;
+        DoubleBuffered = true;
         Text = "TigerIQ — Nâng cao";
         ClientSize = new Size(420, 420);
         MinimumSize = Size;
@@ -815,8 +823,13 @@ internal sealed class AdvancedInfoForm : Form
         tabs.TabPages.Add(securityTab);
 
         var infoWrap = new Panel { Dock = DockStyle.Fill, Padding = new Padding(12), BackColor = Color.FromArgb(5, 13, 25) };
-        var copy = MakeButton("Sao chép chẩn đoán", new Point(12, 286), 190);
-        copy.Anchor = AnchorStyles.Left | AnchorStyles.Bottom;
+        var infoActions = new Panel
+        {
+            Dock = DockStyle.Bottom,
+            Height = 30,
+            BackColor = Color.FromArgb(5, 13, 25)
+        };
+        var copy = MakeButton("Sao chép chẩn đoán", new Point(0, 0), 184);
         copy.Click += (_, _) =>
         {
             try
@@ -831,15 +844,14 @@ internal sealed class AdvancedInfoForm : Form
                 status.ForeColor = Color.FromArgb(248, 113, 113);
             }
         };
-        var harnessProbe = MakeButton("Harness + khóa an toàn", new Point(208, 286), 170);
-        harnessProbe.Anchor = AnchorStyles.Right | AnchorStyles.Bottom;
+        var harnessProbe = MakeButton("Harness + khóa an toàn", new Point(190, 0), 190);
         harnessProbe.Click += async (_, _) => await RunAsync("harness-lock-test");
 
-        infoBox.Dock = DockStyle.Top;
-        infoBox.Height = 272;
-        infoWrap.Controls.Add(copy);
-        infoWrap.Controls.Add(harnessProbe);
+        infoActions.Controls.Add(copy);
+        infoActions.Controls.Add(harnessProbe);
+        infoBox.Dock = DockStyle.Fill;
         infoWrap.Controls.Add(infoBox);
+        infoWrap.Controls.Add(infoActions);
         infoTab.Controls.Add(infoWrap);
 
         var options = new FlowLayoutPanel
@@ -864,13 +876,13 @@ internal sealed class AdvancedInfoForm : Form
         {
             var button = MakeButton(item.Item1, Point.Empty, 355);
             var command = item.Item2;
-            button.Margin = new Padding(0, 0, 0, 8);
+            button.Margin = new Padding(0, 0, 0, 5);
             button.Click += async (_, _) => await RunAsync(command);
             options.Controls.Add(button);
         }
 
         dndButton = MakeButton("Không làm phiền", Point.Empty, 355);
-        dndButton.Margin = new Padding(0, 0, 0, 8);
+        dndButton.Margin = new Padding(0, 0, 0, 5);
         dndButton.Click += async (_, _) =>
         {
             // Parent settings are authoritative. HandleActionAsync refreshes SetWorker()
@@ -899,25 +911,24 @@ internal sealed class AdvancedInfoForm : Form
         Padding = new Padding(4)
     };
 
-    static Button MakeButton(string text, Point location, int width)
+    static RoundedButton MakeButton(string text, Point location, int width)
     {
-        var button = new Button
+        return new RoundedButton
         {
             Text = text,
             Location = location,
-            Size = new Size(width, 34),
-            FlatStyle = FlatStyle.Flat,
+            Size = new Size(width, 30),
             BackColor = Color.FromArgb(20, 38, 60),
             ForeColor = Color.FromArgb(241, 245, 249),
-            Font = new Font("Segoe UI", 8.8f, FontStyle.Bold),
+            HoverColor = Color.FromArgb(29, 50, 75),
+            CornerRadius = 8,
+            Font = new Font("Segoe UI", 8.6f, FontStyle.Bold),
             Cursor = Cursors.Hand,
             TabStop = false,
             TextAlign = ContentAlignment.MiddleLeft,
-            Padding = new Padding(10, 0, 0, 0)
+            Padding = new Padding(10, 0, 0, 0),
+            UseMnemonic = false
         };
-        button.FlatAppearance.BorderColor = Color.FromArgb(31, 52, 76);
-        button.FlatAppearance.BorderSize = 1;
-        return button;
     }
 
     async Task RunAsync(string command)
