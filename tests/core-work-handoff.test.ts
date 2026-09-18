@@ -1,12 +1,7 @@
 import {describe,it,expect} from 'vitest';
 import {readFileSync} from 'node:fs';
-// @ts-expect-error JavaScript runtime module intentionally has no TypeScript declarations.
-import {
-  normalizeTerminalWorkItems,
-  handoffGenerationKey,
-  evaluateChildObjectiveStates,
-  isCodingHandoff,
-} from '../apps/tigeriq-core/work-handoff.mjs';
+// @ts-expect-error TigerIQ Core runtime module is JavaScript and intentionally has no TypeScript declaration file.
+import {normalizeTerminalWorkItems,handoffGenerationKey,evaluateChildObjectiveStates,isCodingHandoff} from '../apps/tigeriq-core/work-handoff.mjs';
 
 describe('durable autonomous work handoff',()=>{
   it('uses deterministic idempotency keys and child ids',()=>{
