@@ -267,32 +267,27 @@ internal sealed class PopupForm : Form
         var title = SectionTitle("TRẠNG THÁI PHIÊN");
         title.Location = new Point(14, 110);
 
-        var card = new Panel
-        {
-            Location = new Point(14, 130),
-            Size = new Size(284, 80),
-            BackColor = Surface
-        };
+        // Flat owner-facing status surface: no nested card.
+        stateChip.Location = new Point(14, 130);
+        job.Location = new Point(14, 158);
+        job.Size = new Size(284, 18);
+        reason.Location = new Point(14, 177);
+        reason.Size = new Size(284, 16);
+        progress.Location = new Point(14, 195);
+        progress.Size = new Size(284, 16);
+        progress.Visible = true;
 
-        stateChip.Location = new Point(10, 8);
-        job.Location = new Point(10, 36);
-        job.Size = new Size(184, 18);
-        reason.Location = new Point(10, 56);
-        reason.Size = new Size(184, 16);
-        progress.Visible = false;
-
-        var viewJob = MakeActionButton("Xem việc", "view-job", 76, 28);
-        viewJob.Location = new Point(198, 34);
-
-        card.Controls.Add(stateChip);
-        card.Controls.Add(job);
-        card.Controls.Add(reason);
-        card.Controls.Add(viewJob);
+        var viewJob = MakeActionButton("Xem việc", "view-job", 76, 26);
+        viewJob.Location = new Point(222, 127);
 
         actionStatus.Location = new Point(14, 212);
 
         root.Controls.Add(title);
-        root.Controls.Add(card);
+        root.Controls.Add(stateChip);
+        root.Controls.Add(job);
+        root.Controls.Add(reason);
+        root.Controls.Add(progress);
+        root.Controls.Add(viewJob);
         root.Controls.Add(actionStatus);
     }
 
