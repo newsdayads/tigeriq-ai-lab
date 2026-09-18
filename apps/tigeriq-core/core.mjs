@@ -46,14 +46,14 @@ const resources = [
   R('NV13','OpenRouter','openrouter','openrouter/free',[['OPENROUTER_API_KEY']],30),
   R('NV14','Mistral','mistral','mistral-small-latest',[['MISTRAL_API_KEY']],35),
   R('NV15','Cloudflare','cloudflare','@cf/meta/llama-3.1-8b-instruct',[['CLOUDFLARE_ACCOUNT_ID'],['CLOUDFLARE_AUTH_TOKEN']],40),  R('NV16','HuggingFace','huggingface','openai/gpt-oss-120b:fastest',[['HF_TOKEN']],45),
-  R('NV17','Vercel','vercel','openai/gpt-5.4-mini',[['AI_GATEWAY_API_KEY'],['TIGERIQ_VERCEL_FREE_CREDIT_CONFIRMED','true']],50),
+  R('NV17','Cerebras','cerebras',process.env.TIGERIQ_CEREBRAS_MODEL || 'gpt-oss-120b',[['CEREBRAS_API_KEY'],['TIGERIQ_CEREBRAS_FREE_TIER_VERIFIED','true']],50),
   R('NV18','Watsonx','watsonx',process.env.WATSONX_MODEL_ID || 'configured-model',[['WATSONX_API_KEY'],['WATSONX_PROJECT_ID'],['WATSONX_MODEL_ID'],['TIGERIQ_WATSONX_LITE_CONFIRMED','true']],55),
   R('NV19','Cohere','cohere','command-a-plus-05-2026',[['COHERE_API_KEY'],['TIGERIQ_COHERE_TRIAL_CONFIRMED','true']],60),
   R('NV20','NVIDIA','nvidia','nvidia/nemotron-3-super-120b-a12b',[['NVIDIA_API_KEY'],['TIGERIQ_NVIDIA_FREE_DEV_CONFIRMED','true']],65),
 ];
 const nowIso = () => new Date().toISOString();
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-const credentialEnvByProvider = { groq:['GROQ_API_KEY'], gemini:['GEMINI_API_KEY'], openrouter:['OPENROUTER_API_KEY'], mistral:['MISTRAL_API_KEY'], cloudflare:['CLOUDFLARE_AUTH_TOKEN'], huggingface:['HF_TOKEN'], vercel:['AI_GATEWAY_API_KEY'], watsonx:['WATSONX_API_KEY'], cohere:['COHERE_API_KEY'], nvidia:['NVIDIA_API_KEY'] };
+const credentialEnvByProvider = { groq:['GROQ_API_KEY'], gemini:['GEMINI_API_KEY'], openrouter:['OPENROUTER_API_KEY'], mistral:['MISTRAL_API_KEY'], cloudflare:['CLOUDFLARE_AUTH_TOKEN'], huggingface:['HF_TOKEN'], cerebras:['CEREBRAS_API_KEY'], watsonx:['WATSONX_API_KEY'], cohere:['COHERE_API_KEY'], nvidia:['NVIDIA_API_KEY'] };
 const credentialPresent = (r) => r.provider === 'ollama' || (credentialEnvByProvider[r.provider] || []).every(k => process.env[k]);
 const reqReady = (r) => r.req.every(([k,v]) => process.env[k] && (v === undefined || process.env[k] === v));
 
@@ -138,7 +138,7 @@ async function invokeProvider(r, prompt) {
     case 'openrouter': return openAiCompat('https://openrouter.ai/api/v1/chat/completions',process.env.OPENROUTER_API_KEY,r.model,prompt,{},90000,r);
     case 'mistral': return openAiCompat('https://api.mistral.ai/v1/chat/completions',process.env.MISTRAL_API_KEY,r.model,prompt,{},90000,r);
     case 'huggingface': return openAiCompat('https://router.huggingface.co/v1/chat/completions',process.env.HF_TOKEN,r.model,prompt,{},90000,r);
-    case 'vercel': return openAiCompat('https://ai-gateway.vercel.sh/v1/chat/completions',process.env.AI_GATEWAY_API_KEY,r.model,prompt,{},90000,r);
+    case 'cerebras': return openAiCompat('https://api.cerebras.ai/v1/chat/completions',process.env.CEREBRAS_API_KEY,r.model,prompt,{},90000,r);
     case 'nvidia': return openAiCompat('https://integrate.api.nvidia.com/v1/chat/completions',process.env.NVIDIA_API_KEY,r.model,prompt,{},90000,r);
     case 'gemini': return geminiRateController.run(async()=>{
       const b = await fetchJson(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(r.model)}:generateContent`, {
