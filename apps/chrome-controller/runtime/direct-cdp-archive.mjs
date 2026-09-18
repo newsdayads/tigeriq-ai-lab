@@ -100,6 +100,31 @@ export async function archiveConversation({target,evaluate}){
   return result;
 }
 
+export function buildDurableSavePrompt({saveToken}){
+  return `lưu [SAVE_RECEIPT:${saveToken}]`;
+}
+
+export async function waitForDurableSaveReceipt(saveToken,workerId,dispatchedAt,{fetchImpl=fetch,sleep=(ms)=>new Promise((resolve)=>setTimeout(resolve,ms)),timeoutMs=15000,pollIntervalMs=1000}={}){
+  const deadline=Date.now()+timeoutMs;
+  const dispatchTimeMs=Date.parse(dispatchedAt);
+  while(Date.now()<deadline){
+    try{
+      const res=await fetchImpl(`${SAVE_RECEIPT_SERVICE}/api/ui-autopilot/save-receipt?token=${encodeURIComponent(saveToken)}&workerId=${encodeURIComponent(workerId)}`);
+      if(res.ok){
+        const data=await res.json();
+        if(data?.ok && data?.receipt?.receiptRef && data?.receipt?.checkpointRef && data?.receipt?.verifiedAt){
+          const verifiedMs=Date.parse(data.receipt.verifiedAt);
+          if(Number.isFinite(verifiedMs)&&verifiedMs>dispatchTimeMs){
+            return data.receipt;
+          }
+        }
+      }
+    }catch(_err){}
+    await sleep(pollIntervalMs);
+  }
+  throw new Error('SAVE_RECEIPT_NOT_FOUND_OR_NOT_FRESH');
+}
+
 export async function runDirectCdpArchive({workerId,target,payload,getJson,dispatch,uiState,evaluate,fetchImpl=fetch,sleep=(ms)=>new Promise((resolve)=>setTimeout(resolve,ms)),randomUUID=()=>crypto.randomUUID(),saveCompletionOptions={},receiptOptions={}}){
   const upstreamReceiptRef=validateArchiveCommand(workerId,payload);
   const proof=await assertArchiveAllowed(workerId,{getJson,requireDone:true});
@@ -107,13 +132,40 @@ export async function runDirectCdpArchive({workerId,target,payload,getJson,dispa
   const url=new URL(target.url);
   if(url.hostname!=='chatgpt.com'||!/\/c\//.test(url.pathname)) throw new Error('ARCHIVE_WORKER_WINDOW_AMBIGUOUS_OR_MISSING');
 
+  const jobStatus=proof.job?.status;
+  if(!['DONE','COMPLETED','FAILED','CANCELED'].includes(jobStatus)){
+    throw new Error(`ARCHIVE_JOB_STATE_FORBIDDEN:${jobStatus}`);
+  }
+
   const saveToken=randomUUID();
   const dispatchedAt=new Date().toISOString();
-  const saveText=buildDurableSavePrompt({saveToken,workerId,dispatchedAt});
-  const save=await dispatch(saveText);
-  if(!save?.ok) throw new Error(String(save?.status||'SAVE_DISPATCH_FAILED'));
-  await waitForSaveCompletion(uiState,{sleep,...saveCompletionOptions});
-  const receipt=await waitForDurableSaveReceipt(saveToken,workerId,dispatchedAt,{fetchImpl,sleep,...receiptOptions});
+  const saveText='lưu';
+  
+  let attempt=0;
+  let receipt=null;
+  let lastError=null;
+
+  while(attempt<3){
+    attempt++;
+    try{
+      const save=await dispatch(saveText);
+      if(!save?.ok) throw new Error(String(save?.status||'SAVE_DISPATCH_FAILED'));
+      await waitForSaveCompletion(uiState,{sleep,...saveCompletionOptions});
+      receipt=await waitForDurableSaveReceipt(saveToken,workerId,dispatchedAt,{fetchImpl,sleep,...receiptOptions});
+      break;
+    }catch(err){
+      lastError=err;
+      const msg=String(err?.message||err);
+      if(/CAPTCHA|REAUTH|RATE_LIMIT|SECURITY_CHALLENGE/i.test(msg)){
+        throw new Error(`SAFE_STOP_SECURITY_CHALLENGE:${msg}`);
+      }
+      if(attempt<3){
+        await sleep(Math.pow(2,attempt)*500);
+      }
+    }
+  }
+  if(!receipt) throw lastError || new Error('SAVE_RECEIPT_MAX_ATTEMPTS_EXCEEDED');
+
   await assertArchiveAllowed(workerId,{getJson,requireDone:true});
   await archiveConversation({target,evaluate});
   return {ok:true,status:'ARCHIVED',workerId,jobId:proof.jobId,evidenceRef:proof.evidenceRef,receiptRef:receipt.receiptRef,checkpointRef:receipt.checkpointRef,receiptVerifiedAt:receipt.verifiedAt,upstreamReceiptRef};

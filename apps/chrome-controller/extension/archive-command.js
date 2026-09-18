@@ -5,6 +5,10 @@ export function validateArchiveCommand(workerId,payload,{archiveSupported}){
   return upstreamReceiptRef;
 }
 
+export function buildDurableSavePrompt({saveToken}){
+  return `lưu [SAVE_RECEIPT:${saveToken}]`;
+}
+
 export async function runArchiveCommand(workerId,payload,{archiveSupported,saveAndArchive}){
   const upstreamReceiptRef=validateArchiveCommand(workerId,payload,{archiveSupported});
   // The caller-provided receipt is never sufficient authority to archive.
