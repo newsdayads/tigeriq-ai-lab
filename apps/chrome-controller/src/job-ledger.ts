@@ -45,6 +45,17 @@ interface LedgerFile {
 }
 
 const TERMINAL = new Set<UiJobStage>(['DONE','BLOCKED','ERROR']);
+const ALLOWED_NEXT: Record<UiJobStage,ReadonlySet<UiJobStage>> = {
+  QUEUED: new Set(['DISPATCHING','BLOCKED','ERROR']),
+  DISPATCHING: new Set(['SUBMITTED','BLOCKED','ERROR']),
+  SUBMITTED: new Set(['WORKING','WAITING_EVIDENCE','BLOCKED','ERROR']),
+  WORKING: new Set(['WAITING_EVIDENCE','BLOCKED','ERROR']),
+  WAITING_EVIDENCE: new Set(['VERIFY','BLOCKED','ERROR']),
+  VERIFY: new Set(['DONE','BLOCKED','ERROR']),
+  DONE: new Set(),
+  BLOCKED: new Set(),
+  ERROR: new Set(),
+};
 const PROGRESS: Record<UiJobStage,number> = {
   QUEUED: 5,
   DISPATCHING: 15,
@@ -71,13 +82,21 @@ export class DurableUiJobLedger {
 
   private load(): LedgerFile {
     if (!existsSync(this.path)) return { schemaVersion:'tigeriq.chrome-controller.ui-job-ledger.v1', jobs:[] };
+    let raw: Partial<LedgerFile>;
     try {
-      const raw = JSON.parse(readFileSync(this.path,'utf8')) as Partial<LedgerFile>;
-      if (!Array.isArray(raw.jobs)) throw new Error('UI_JOB_LEDGER_JOBS_INVALID');
-      return { schemaVersion:'tigeriq.chrome-controller.ui-job-ledger.v1', jobs:raw.jobs as UiJobRecord[] };
-    } catch {
-      return { schemaVersion:'tigeriq.chrome-controller.ui-job-ledger.v1', jobs:[] };
+      raw = JSON.parse(readFileSync(this.path,'utf8')) as Partial<LedgerFile>;
+    } catch (error) {
+      throw new Error(`UI_JOB_LEDGER_CORRUPT:${String(error)}`);
     }
+    if (raw.schemaVersion !== 'tigeriq.chrome-controller.ui-job-ledger.v1') throw new Error('UI_JOB_LEDGER_SCHEMA_INVALID');
+    if (!Array.isArray(raw.jobs)) throw new Error('UI_JOB_LEDGER_JOBS_INVALID');
+    for (const job of raw.jobs) {
+      if (!job || typeof job!=='object' || !job.jobId || !job.workerId || !isUiJobStage(job.stage))
+        throw new Error('UI_JOB_LEDGER_RECORD_INVALID');
+      if (job.progress !== uiJobProgress(job.stage)) throw new Error(`UI_JOB_LEDGER_PROGRESS_INVALID:${job.jobId}`);
+      if (!Array.isArray(job.evidenceRefs)) throw new Error(`UI_JOB_LEDGER_EVIDENCE_INVALID:${job.jobId}`);
+    }
+    return { schemaVersion:'tigeriq.chrome-controller.ui-job-ledger.v1', jobs:raw.jobs as UiJobRecord[] };
   }
 
   private save() {
@@ -133,6 +152,8 @@ export class DurableUiJobLedger {
   transition(workerId: WorkerId, jobId: string, stage: UiJobStage, patch: UiJobPatch = {}, now = new Date()): UiJobRecord {
     const record=this.value.jobs.find((job)=>job.workerId===workerId&&job.jobId===jobId);
     if (!record) throw new Error(`UI_JOB_NOT_FOUND:${workerId}:${jobId}`);
+    if (record.stage!==stage && !ALLOWED_NEXT[record.stage].has(stage))
+      throw new Error(`UI_JOB_TRANSITION_INVALID:${record.stage}->${stage}`);
     const at=now.toISOString();
     record.stage=stage;
     record.progress=uiJobProgress(stage);
