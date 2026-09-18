@@ -743,13 +743,23 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
       const jobId=String(data.jobId??'').trim();
       if(!jobId)throw new Error('UI_JOB_ID_REQUIRED');
       if(!isUiJobStage(data.stage))throw new Error('UI_JOB_STAGE_INVALID');
+      const current=uiJobLedger.get(workerId,jobId);
+      if(!current)throw new Error(`UI_JOB_NOT_FOUND:${workerId}:${jobId}`);
       const evidenceRef=typeof data.evidenceRef==='string'?data.evidenceRef.trim():undefined;
       if(evidenceRef&&!evidenceRef.startsWith('https://github.com/'))throw new Error('UI_JOB_EVIDENCE_REF_NOT_GITHUB');
+      if(data.stage==='VERIFY'||data.stage==='DONE'){
+        if(!current.issueRef)throw new Error('UI_JOB_ISSUE_REF_REQUIRED_FOR_COMPLETION');
+        if(!evidenceRef)throw new Error('UI_JOB_COMPLETION_EVIDENCE_REQUIRED');
+        if(!(evidenceRef===current.issueRef||evidenceRef.startsWith(`${current.issueRef}#`)))
+          throw new Error('UI_JOB_COMPLETION_EVIDENCE_IDENTITY_MISMATCH');
+      }
+      const result=typeof data.result==='string'?data.result.trim():'';
+      if(data.stage==='DONE'&&!result)throw new Error('UI_JOB_DONE_RESULT_REQUIRED');
       const record=uiJobLedger.transition(workerId,jobId,data.stage,{
         nextAction:typeof data.nextAction==='string'?data.nextAction:null,
         blocker:typeof data.blocker==='string'?data.blocker:null,
         evidenceRef,
-        result:typeof data.result==='string'?data.result:null,
+        result:result||null,
       });
       log('UI_JOB_STATUS_UPDATED',{workerId,jobId,stage:record.stage,progress:record.progress,evidenceRef:evidenceRef??null});
       persistEvidence();
