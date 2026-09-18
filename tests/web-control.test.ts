@@ -13,6 +13,10 @@ const apiHealth = readFileSync(resolve('apps/tigeriq-core/dashboard.html'), 'utf
 const core = readFileSync(resolve('apps/tigeriq-core/core.mjs'), 'utf8');
 
 describe('TigerIQ Web Control owner dashboard', () => {
+  it('exposes durable real-browser audit endpoint', () => {
+    expect(server).toContain('/api/browser-audit');
+  });
+
   it('uses API Health as the visual/function reference without iframe duplication', () => {
     expect(apiHealth).toContain('<title>TigerIQ API Health</title>');
     expect(core).toContain('dashboard()');
