@@ -11,6 +11,7 @@ internal static class SelfTest
             TestSettingsRoundTrip();
             TestWorkerIdentityOrder();
             TestBrowserHarnessProbeParsing();
+            TestWorkerObservability();
             TestUiPlacement();
             Console.WriteLine("SELF_TEST_OK");
             return 0;
@@ -106,6 +107,44 @@ internal static class SelfTest
         var fillBad = BrowserHarnessClient.ParseFillRestoreOutput("NV04",
             "{\"ok\":true,\"action\":\"fill_restore\",\"marker\":\"wrong\",\"restored\":true}", marker, null);
         Must(fillBad.State == HarnessState.Error, "harness fill restore rejects mismatched evidence");
+    }
+
+    static void TestWorkerObservability()
+    {
+        var now = DateTimeOffset.Now;
+        var settings = new WorkerSettings { StateChangedAt = now.AddSeconds(-5) };
+        var schedule = new ScheduleSettings
+        {
+            Enabled = true,
+            IntervalMinutes = 30,
+            NextCheckAt = now.AddMinutes(10)
+        };
+        var ready = new WorkerView(
+            "NV02", WorkerUiState.Ready, "READY", null,
+            now.AddSeconds(-5), true, false, false, null,
+            "https://chatgpt.com/", 9222, now, true, true);
+        var harness = new HarnessView(
+            "NV02", HarnessState.Ready, "READ_ONLY_READY",
+            "https://chatgpt.com/", "ChatGPT", now.AddSeconds(-1));
+        var readyView = WorkerObservability.Build(
+            ready, harness, settings, schedule,
+            new[] { "12:00:00  ACTION_OK  {\"action\":\"save\"}" });
+        Must(readyView.Current == "Chờ việc mới", "owner observability ready current");
+        Must(readyView.Result == "Đã lưu checkpoint", "owner observability result from real log");
+        Must(readyView.Browser == "BH:OK", "owner observability harness");
+        Must(readyView.Next.StartsWith("Kiểm tra "), "owner observability scheduled next action");
+
+        var working = ready with { State = WorkerUiState.Working, JobId = "GH-999", UiBusy = true };
+        var workingView = WorkerObservability.Build(
+            working, harness, settings, null, Array.Empty<string>());
+        Must(workingView.Current == "Job GH-999", "owner observability working job");
+        Must(workingView.Next == "Theo dõi đến khi hoàn tất", "owner observability working next action");
+
+        var blocked = ready with { State = WorkerUiState.Blocked, Reason = "AUTH_REQUIRED", AuthRequired = true };
+        var blockedView = WorkerObservability.Build(
+            blocked, harness, settings, null, Array.Empty<string>());
+        Must(blockedView.Result.Contains("AUTH_REQUIRED"), "owner observability blocker result");
+        Must(blockedView.Next == "Xử lý blocker", "owner observability blocker next action");
     }
 
     static void TestUiPlacement()

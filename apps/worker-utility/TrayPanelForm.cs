@@ -125,10 +125,12 @@ internal sealed class TrayPanelForm : Form
         var state = new Label
         {
             Text = "Đang tải trạng thái…",
-            AutoSize = true,
-            Location = new Point(34, 36),
+            AutoSize = false,
+            AutoEllipsis = true,
+            Size = new Size(172, 34),
+            Location = new Point(34, 33),
             ForeColor = Muted,
-            Font = new Font("Segoe UI", 8.5f)
+            Font = new Font("Segoe UI", 7.8f)
         };
         var arrow = new Label
         {
@@ -242,11 +244,23 @@ internal sealed class TrayPanelForm : Form
             var stateText = view.State switch
             {
                 WorkerUiState.Ready => "● Sẵn sàng",
-                WorkerUiState.Working => $"● Đang chạy  ·  {view.JobId ?? "đang xử lý"}",
+                WorkerUiState.Working => $"● Chạy · {view.JobId ?? "đang xử lý"}",
                 WorkerUiState.Paused => "● Tạm dừng",
-                _ => $"● Bị chặn  ·  {view.Reason}"
+                _ => $"● Chặn · {view.Reason}"
             };
-            stateLabels[worker.Id].Text = stateText + HarnessSuffix(worker.Id, harness);
+            harness.TryGetValue(worker.Id, out var harnessView);
+            settings.Workers.TryGetValue(worker.Id, out var workerSettings);
+            settings.Schedules.TryGetValue(worker.Id, out var scheduleSettings);
+            var ownerView = WorkerObservability.Build(
+                view,
+                harnessView,
+                workerSettings ?? new WorkerSettings(),
+                scheduleSettings,
+                Array.Empty<string>());
+            stateLabels[worker.Id].Text =
+                stateText + HarnessSuffix(worker.Id, harness)
+                + Environment.NewLine
+                + $"↪ {ownerView.Next} · {ownerView.LastActivity}";
         }
     }
 

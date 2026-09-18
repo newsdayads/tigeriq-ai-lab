@@ -78,6 +78,7 @@ internal sealed class PopupForm : Form
     readonly Label job = new()
     {
         AutoSize = false,
+        AutoEllipsis = true,
         Size = new Size(190, 18),
         ForeColor = Ink,
         Font = new Font("Segoe UI", 8.6f, FontStyle.Bold)
@@ -85,6 +86,7 @@ internal sealed class PopupForm : Form
     readonly Label reason = new()
     {
         AutoSize = false,
+        AutoEllipsis = true,
         Size = new Size(190, 16),
         ForeColor = Muted,
         Font = new Font("Segoe UI", 7.8f)
@@ -92,6 +94,7 @@ internal sealed class PopupForm : Form
     readonly Label progress = new()
     {
         AutoSize = false,
+        AutoEllipsis = true,
         Size = new Size(284, 16),
         ForeColor = Muted,
         Font = new Font("Segoe UI", 7.8f)
@@ -267,32 +270,36 @@ internal sealed class PopupForm : Form
         var title = SectionTitle("TRẠNG THÁI PHIÊN");
         title.Location = new Point(14, 110);
 
-        var card = new Panel
+        // Keep the approved 284x80 geometry, but render it flat on the same canvas.
+        var statusSurface = new Panel
         {
             Location = new Point(14, 130),
             Size = new Size(284, 80),
-            BackColor = Surface
+            BackColor = Canvas
         };
 
-        stateChip.Location = new Point(10, 8);
-        job.Location = new Point(10, 36);
-        job.Size = new Size(184, 18);
-        reason.Location = new Point(10, 56);
-        reason.Size = new Size(184, 16);
-        progress.Visible = false;
+        stateChip.Location = new Point(0, 0);
+        job.Location = new Point(0, 28);
+        job.Size = new Size(284, 18);
+        reason.Location = new Point(0, 47);
+        reason.Size = new Size(284, 16);
+        progress.Location = new Point(0, 64);
+        progress.Size = new Size(284, 16);
+        progress.Visible = true;
 
-        var viewJob = MakeActionButton("Xem việc", "view-job", 76, 28);
-        viewJob.Location = new Point(198, 34);
+        var viewJob = MakeActionButton("Xem việc", "view-job", 76, 26);
+        viewJob.Location = new Point(208, 0);
 
-        card.Controls.Add(stateChip);
-        card.Controls.Add(job);
-        card.Controls.Add(reason);
-        card.Controls.Add(viewJob);
+        statusSurface.Controls.Add(stateChip);
+        statusSurface.Controls.Add(job);
+        statusSurface.Controls.Add(reason);
+        statusSurface.Controls.Add(progress);
+        statusSurface.Controls.Add(viewJob);
 
         actionStatus.Location = new Point(14, 212);
 
         root.Controls.Add(title);
-        root.Controls.Add(card);
+        root.Controls.Add(statusSurface);
         root.Controls.Add(actionStatus);
     }
 
@@ -610,16 +617,11 @@ internal sealed class PopupForm : Form
             scheduleButton.ForeColor = selected ? Color.White : Ink;
         }
 
-        var elapsed = settings.StateChangedAt is DateTimeOffset since ? DateTimeOffset.Now - since : TimeSpan.Zero;
-        stateChip.Text = $"{StateText(view.State)}     {elapsed.ToString(@"hh\:mm\:ss")}";
-        job.Text = $"Job hiện tại  {view.JobId ?? "—"}";
-        reason.Text = view.State switch
-        {
-            WorkerUiState.Working => "Đang xử lý công việc hiện tại",
-            WorkerUiState.Paused => "Đã tạm dừng theo điều khiển",
-            WorkerUiState.Blocked => $"Bị chặn: {view.Reason}",
-            _ => "Sẵn sàng nhận việc"
-        };
+        var ownerView = WorkerObservability.Build(view, harness, settings, scheduleSettings, recentLogs);
+        stateChip.Text = StateText(view.State);
+        job.Text = $"Đang làm  {ownerView.Current}";
+        reason.Text = $"Kết quả  {ownerView.Result} · {ownerView.Browser}";
+        progress.Text = $"Tiếp  {ownerView.Next} · Hoạt động {ownerView.LastActivity}";
         schedule.Text = scheduleSettings?.NextCheckAt is DateTimeOffset next && scheduleSettings.Enabled
             ? $"↪ Lần kiểm tra kế tiếp: {next.ToLocalTime():HH:mm:ss}"
             : "↪ Lịch kiểm tra: chưa bật";
