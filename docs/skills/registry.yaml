@@ -60,12 +60,13 @@ skills:
 
   - id: learn-from-failure
     title: Learn From Failure
-    state: CANDIDATE
-    version: 0.1.0
+    state: ACTIVE
+    version: 1.0.0
     provenance_batch: owner-video-lessons-2026-09-18
     source_log: learning-log/2026-09-18-owner-video-lessons.md
     target: knowledge-system
-    summary: Convert recurring failures into durable rules, checks or skills with evidence.
+    triggers: failure error retry blocked regression evidence learning
+    summary: Convert recurring failures into durable candidate rules/checks from repeated verified evidence; never self-promote or mutate protected policy.
 
   - id: role-separated-execution
     title: Role-Separated Execution
