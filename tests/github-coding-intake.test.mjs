@@ -21,8 +21,9 @@ PRIORITY=P1`;
 function fakePool(){
   const events=[];
   return {events,async query(q,params=[]){
-    if(q.includes("from tigeriq_events d where d.type='GITHUB_CODING_DISPATCHED'")){
-      const active=events.some(d=>d.type==='GITHUB_CODING_DISPATCHED'&&!events.some(r=>r.type==='GITHUB_CODING_RESULT_REPORTED'&&String(r.data.issueNumber)===String(d.data.issueNumber)));
+    if(q.includes("select data from tigeriq_events where type='GITHUB_CODING_DISPATCHED'")){
+      const latest=[...events].reverse().find(e=>e.type==='GITHUB_CODING_DISPATCHED');
+      const active=Boolean(latest)&&!events.some(r=>r.type==='GITHUB_CODING_RESULT_REPORTED'&&String(r.data.issueNumber)===String(latest.data.issueNumber));
       return {rowCount:active?1:0,rows:active?[{one:1}]:[]};
     }
     if(q.includes('select 1 from tigeriq_events'))return {rowCount:events.some(e=>e.type===params[0]&&String(e.data.issueNumber)===String(params[1]))?1:0,rows:[]};
