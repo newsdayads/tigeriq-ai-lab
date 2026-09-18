@@ -11,9 +11,15 @@ describe('manager JSON parsing',()=>{
     const input='```json\n'+JSON.stringify({status:'complete',summary:literal,jobs:[]})+'\n```';
     expect(parseManagerJson(input).summary).toBe(literal);
   });
-  it('rejects trailing prose and invalid status',()=>{
+  it('rejects trailing prose, invalid status, and invalid jobs per status',()=>{
     expect(()=>parseManagerJson(valid()+' trailing')).toThrow('MANAGER_JSON_INVALID');
     expect(()=>parseManagerJson(JSON.stringify({status:'maybe',summary:'x',jobs:[]}))).toThrow('MANAGER_STATUS_INVALID');
+    expect(()=>parseManagerJson(JSON.stringify({status:'continue',summary:'x',jobs:[]}))).toThrow('MANAGER_SCHEMA_INVALID');
+    expect(()=>parseManagerJson(JSON.stringify({status:'continue',summary:'x',jobs:[{title:'t',prompt:'p'},{title:'t',prompt:'p'},{title:'t',prompt:'p'},{title:'t',prompt:'p'}]}))).toThrow('MANAGER_SCHEMA_INVALID');
+    expect(()=>parseManagerJson(JSON.stringify({status:'complete',summary:'x',jobs:[{title:'t',prompt:'p'}]}))).toThrow('MANAGER_SCHEMA_INVALID');
+    expect(()=>parseManagerJson(JSON.stringify({status:'blocked',summary:'x',jobs:[{title:'t',prompt:'p'}]}))).toThrow('MANAGER_SCHEMA_INVALID');
+    expect(parseManagerJson(JSON.stringify({status:'complete',summary:'x',jobs:[]}))).toMatchObject({status:'complete',jobs:[]});
+    expect(parseManagerJson(JSON.stringify({status:'continue',summary:'x',jobs:[{title:'t',prompt:'p'}]}))).toMatchObject({status:'continue',jobs:[{title:'t',prompt:'p'}]});
   });
 });
 
