@@ -1,7 +1,7 @@
 # TigerIQ — Current State
 
-Date: 2026-09-18
-Status: CURRENT — Chrome autonomy exactly-once E2E + Astra handoff verified; Worker Utility #802 live-verified and complete
+Date: 2026-09-19
+Status: CURRENT — #833 autonomous handoff PASS + #843 scheduler-starvation fix verified; Worker Utility #802 live-verified and complete
 Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #335 > this snapshot > runtime/evidence
 
 ## Canonical source / runtime
@@ -18,6 +18,7 @@ Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #
 - #763 is CLOSED/COMPLETED.
 
 ## Astra dispatch / handoff truth
+- #833 autonomous handoff PASS verified.
 - #787 is CLOSED/COMPLETED.
 - `gpt-6-astra` remains an on-demand resource of NV02, not a separate employee.
 - Usage/quota remains `UNKNOWN` without a direct measurement source; no percentage is inferred.
@@ -48,10 +49,13 @@ Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #
 - `NV02 = ChatGPT Plus`; `NV03 = ChatGPT Go`; `NV04 = Gemini Pro`; `NV10 = Ollama`.
 - `GPT-6 Astra` remains an on-demand high-tier resource of NV02, not a separate employee.
 
+## Scheduler & Runtime Updates
+- #843 scheduler-starvation fix successfully implemented and verified, resolving queue starvation under high load.
+
 ## Governance
 - Interaction #504 remains the generic command policy; explicit Owner instructions can supersede delegation for a scoped Work Order.
 - Production/runtime, paid, credential/security and destructive/irreversible actions remain separate authorization gates.
 - #802 closeout does not reopen NV02 mutation ownership; any new Worker Utility mutation requires a new Work Order/handoff.
 
-STATE: `CURRENT_20260918_802_DONE_WORKER_UTILITY_LIVE_VERIFIED`
-UI_STATE: `CURRENT_20260918_WORKER_UTILITY_BRANDED_LIVE_NO_OVERLAP`
+STATE: `CURRENT_20260919_833_843_VERIFIED`
+UI_STATE: `CURRENT_20260919_WORKER_UTILITY_BRANDED_LIVE_NO_OVERLAP`
