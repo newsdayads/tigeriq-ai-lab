@@ -18,8 +18,8 @@ internal sealed class PopupForm : Form
     readonly Label serviceIcon = new()
     {
         AutoSize = false,
-        Location = new Point(18, 22),
-        Size = new Size(36, 36),
+        Location = new Point(14, 16),
+        Size = new Size(40, 40),
         TextAlign = ContentAlignment.MiddleCenter,
         ForeColor = Color.White,
         Font = new Font("Segoe UI Symbol", 16, FontStyle.Bold)
@@ -27,7 +27,7 @@ internal sealed class PopupForm : Form
     readonly Label bell = new()
     {
         AutoSize = false,
-        Location = new Point(254, 20),
+        Location = new Point(232, 18),
         Size = new Size(28, 28),
         Text = "🔔",
         TextAlign = ContentAlignment.MiddleCenter,
@@ -37,8 +37,8 @@ internal sealed class PopupForm : Form
     Color currentAccent = Color.FromArgb(37, 99, 235);
     readonly Panel headerSeparator = new()
     {
-        Location = new Point(16, 102),
-        Size = new Size(312, 1),
+        Location = new Point(14, 100),
+        Size = new Size(284, 1),
         BackColor = Color.FromArgb(31, 52, 76)
     };
 
@@ -78,21 +78,21 @@ internal sealed class PopupForm : Form
     readonly Label job = new()
     {
         AutoSize = false,
-        Size = new Size(294, 15),
+        Size = new Size(190, 18),
         ForeColor = Ink,
         Font = new Font("Segoe UI", 8.6f, FontStyle.Bold)
     };
     readonly Label reason = new()
     {
         AutoSize = false,
-        Size = new Size(294, 14),
+        Size = new Size(190, 16),
         ForeColor = Muted,
         Font = new Font("Segoe UI", 7.8f)
     };
     readonly Label progress = new()
     {
         AutoSize = false,
-        Size = new Size(294, 13),
+        Size = new Size(284, 16),
         ForeColor = Muted,
         Font = new Font("Segoe UI", 7.8f)
     };
@@ -100,8 +100,8 @@ internal sealed class PopupForm : Form
     {
         AutoSize = false,
         AutoEllipsis = true,
-        Size = new Size(312, 20),
-        Location = new Point(16, 210),
+        Size = new Size(284, 20),
+        Location = new Point(14, 210),
         ForeColor = Muted,
         Font = new Font("Segoe UI", 7.8f),
         TextAlign = ContentAlignment.MiddleLeft
@@ -109,14 +109,14 @@ internal sealed class PopupForm : Form
     readonly Label schedule = new()
     {
         AutoSize = false,
-        Size = new Size(308, 18),
+        Size = new Size(280, 18),
         ForeColor = Amber,
         Font = new Font("Segoe UI", 7.8f, FontStyle.Bold)
     };
     readonly Label logSummary = new()
     {
         AutoSize = false,
-        Size = new Size(312, 82),
+        Size = new Size(284, 64),
         ForeColor = Color.FromArgb(203, 213, 225),
         Font = new Font("Consolas", 7.6f),
         BackColor = Canvas
@@ -149,7 +149,7 @@ internal sealed class PopupForm : Form
         AutoScaleMode = AutoScaleMode.Dpi;
         Font = new Font("Segoe UI", 9);
         Text = "TigerIQ Worker Utility";
-        ClientSize = new Size(344, 660);
+        ClientSize = new Size(312, 650);
         MinimumSize = Size;
         MaximumSize = Size;
         StartPosition = FormStartPosition.Manual;
@@ -171,8 +171,8 @@ internal sealed class PopupForm : Form
         BuildSchedule();
         BuildLogs();
 
-        footerAdvanced = MakeActionButton("⚙  Nâng cao", "advanced-toggle", 312, 32);
-        footerAdvanced.Location = new Point(16, 616);
+        footerAdvanced = MakeActionButton("⚙  Nâng cao", "advanced-toggle", 284, 32);
+        footerAdvanced.Location = new Point(14, 608);
         root.Controls.Add(footerAdvanced);
 
         dnd.CheckedChanged += async (_, _) =>
@@ -225,7 +225,7 @@ internal sealed class PopupForm : Form
         var close = new RoundedButton
         {
             Text = "×",
-            Location = new Point(298, 18),
+            Location = new Point(270, 16),
             Size = new Size(28, 28),
             Font = new Font("Segoe UI", 12, FontStyle.Bold),
             BackColor = Surface,
@@ -237,13 +237,13 @@ internal sealed class PopupForm : Form
         };
         close.Click += (_, _) => Hide();
 
-        serviceIcon.Location = new Point(16, 18);
-        serviceIcon.Size = new Size(42, 42);
-        eyebrow.Location = new Point(70, 17);
-        header.Location = new Point(70, 34);
-        subtitle.Location = new Point(70, 59);
-        onlineChip.Location = new Point(70, 79);
-        bell.Location = new Point(260, 20);
+        serviceIcon.Location = new Point(14, 16);
+        serviceIcon.Size = new Size(40, 40);
+        eyebrow.Location = new Point(64, 15);
+        header.Location = new Point(64, 31);
+        subtitle.Location = new Point(64, 55);
+        onlineChip.Location = new Point(64, 76);
+        bell.Location = new Point(232, 18);
 
         root.Controls.Add(serviceIcon);
         root.Controls.Add(bell);
@@ -265,31 +265,31 @@ internal sealed class PopupForm : Form
     void BuildStatus()
     {
         var title = SectionTitle("TRẠNG THÁI PHIÊN");
-        title.Location = new Point(16, 112);
+        title.Location = new Point(14, 110);
 
         var card = new Panel
         {
-            Location = new Point(16, 132),
-            Size = new Size(312, 82),
+            Location = new Point(14, 130),
+            Size = new Size(284, 80),
             BackColor = Surface
         };
 
         stateChip.Location = new Point(10, 8);
         job.Location = new Point(10, 36);
-        job.Size = new Size(205, 18);
+        job.Size = new Size(184, 18);
         reason.Location = new Point(10, 56);
-        reason.Size = new Size(205, 16);
+        reason.Size = new Size(184, 16);
         progress.Visible = false;
 
         var viewJob = MakeActionButton("Xem việc", "view-job", 76, 28);
-        viewJob.Location = new Point(226, 35);
+        viewJob.Location = new Point(198, 34);
 
         card.Controls.Add(stateChip);
         card.Controls.Add(job);
         card.Controls.Add(reason);
         card.Controls.Add(viewJob);
 
-        actionStatus.Location = new Point(16, 216);
+        actionStatus.Location = new Point(14, 212);
 
         root.Controls.Add(title);
         root.Controls.Add(card);
@@ -309,46 +309,46 @@ internal sealed class PopupForm : Form
             ("▣  Lưu", "save"),
             ("▦  Lưu & Lưu trữ", "save-archive")
         };
-        var y = 244;
+        var y = 240;
         for (var i = 0; i < items.Length; i++)
         {
             var row = i / 2;
             var col = i % 2;
-            var button = MakeActionButton(items[i].Text, items[i].Action, 152, 31);
-            button.Location = new Point(16 + col * 160, y + row * 35);
+            var button = MakeActionButton(items[i].Text, items[i].Action, 138, 31);
+            button.Location = new Point(14 + col * 146, y + row * 35);
             root.Controls.Add(button);
         }
 
-        var closeMain = MakeActionButton("⏻  Đóng an toàn", "close", 312, 32);
-        closeMain.Location = new Point(16, 386);
+        var closeMain = MakeActionButton("⏻  Đóng an toàn", "close", 284, 32);
+        closeMain.Location = new Point(14, 382);
         root.Controls.Add(closeMain);
     }
 
     void BuildSchedule()
     {
         var label = SectionTitle("ĐẶT LỊCH KIỂM TRA");
-        label.Location = new Point(16, 430);
+        label.Location = new Point(14, 424);
         root.Controls.Add(label);
 
         var entries = new[] {
-            ("10p", "schedule-10", 45),
-            ("30p", "schedule-30", 45),
-            ("1h", "schedule-60", 45),
-            ("2h", "schedule-120", 45),
-            ("Tùy chỉnh", "schedule-custom", 96)
+            ("10p", "schedule-10", 40),
+            ("30p", "schedule-30", 40),
+            ("1h", "schedule-60", 40),
+            ("2h", "schedule-120", 40),
+            ("Tùy chỉnh", "schedule-custom", 108)
         };
-        var x = 16;
+        var x = 14;
         foreach (var item in entries)
         {
             var b = MakeActionButton(item.Item1, item.Item2, item.Item3, 28);
-            b.Location = new Point(x, 449);
+            b.Location = new Point(x, 443);
             root.Controls.Add(b);
             x += item.Item3 + 4;
         }
 
-        scheduleEnabled.Location = new Point(16, 482);
-        changeOnly.Location = new Point(104, 482);
-        schedule.Location = new Point(16, 503);
+        scheduleEnabled.Location = new Point(14, 476);
+        changeOnly.Location = new Point(96, 476);
+        schedule.Location = new Point(14, 497);
         root.Controls.Add(scheduleEnabled);
         root.Controls.Add(changeOnly);
         root.Controls.Add(schedule);
@@ -357,16 +357,16 @@ internal sealed class PopupForm : Form
     void BuildLogs()
     {
         var label = SectionTitle("LOG GẦN NHẤT");
-        label.Location = new Point(16, 532);
+        label.Location = new Point(14, 524);
         root.Controls.Add(label);
 
         var allLogs = MakeActionButton("Xem tất cả", "logs-local", 82, 24);
-        allLogs.Location = new Point(246, 526);
+        allLogs.Location = new Point(218, 518);
         allLogs.Click += (_, _) => ShowAllLogs();
         root.Controls.Add(allLogs);
 
-        logSummary.Location = new Point(16, 552);
-        logSummary.Size = new Size(312, 58);
+        logSummary.Location = new Point(14, 544);
+        logSummary.Size = new Size(284, 56);
         root.Controls.Add(logSummary);
     }
 
