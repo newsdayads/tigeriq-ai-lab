@@ -42,7 +42,7 @@ internal sealed class TrayPanelForm : Form
         StartPosition = FormStartPosition.Manual;
         ClientSize = new Size(286, 520);
         BackColor = Canvas;
-        Padding = new Padding(10);
+        Padding = new Padding(8);
         Text = "TigerIQ Workers";
 
         var root = new FlowLayoutPanel
@@ -51,7 +51,7 @@ internal sealed class TrayPanelForm : Form
             FlowDirection = FlowDirection.TopDown,
             WrapContents = false,
             BackColor = Canvas,
-            Padding = new Padding(4),
+            Padding = new Padding(0),
             AutoScroll = false
         };
         root.Controls.Add(BuildHeader());
@@ -70,7 +70,7 @@ internal sealed class TrayPanelForm : Form
     {
         var panel = new Panel
         {
-            Size = new Size(258, 64),
+            Size = new Size(270, 64),
             Margin = new Padding(0, 0, 0, 8),
             BackColor = Canvas
         };
@@ -102,7 +102,7 @@ internal sealed class TrayPanelForm : Form
         var accent = WorkerAccent(worker.Id);
         var panel = new Panel
         {
-            Size = new Size(258, 70),
+            Size = new Size(270, 70),
             Margin = new Padding(0, 0, 0, 7),
             BackColor = Card
         };
@@ -128,7 +128,7 @@ internal sealed class TrayPanelForm : Form
             Text = "Đang tải trạng thái…",
             AutoSize = false,
             AutoEllipsis = true,
-            Size = new Size(180, 34),
+            Size = new Size(192, 34),
             Location = new Point(34, 33),
             ForeColor = Muted,
             Font = new Font("Segoe UI", 7.8f)
@@ -138,7 +138,7 @@ internal sealed class TrayPanelForm : Form
             Text = "›",
             AutoSize = false,
             Size = new Size(28, 44),
-            Location = new Point(220, 13),
+            Location = new Point(232, 13),
             TextAlign = ContentAlignment.MiddleCenter,
             ForeColor = accent,
             Font = new Font("Segoe UI", 18, FontStyle.Bold),
@@ -173,24 +173,24 @@ internal sealed class TrayPanelForm : Form
     {
         var panel = new Panel
         {
-            Size = new Size(258, 186),
+            Size = new Size(270, 186),
             Margin = new Padding(0, 3, 0, 0),
             BackColor = Canvas
         };
 
-        var all = MakeButton("▦  Mở tất cả cửa sổ", new Point(0, 0), new Size(258, 34));
+        var all = MakeButton("▦  Mở tất cả cửa sổ", new Point(0, 0), new Size(270, 34));
         all.Click += (_, _) => { Hide(); openAllChrome(); };
 
-        var quick = MakeButton("▣  Bảng điều khiển nhanh", new Point(0, 38), new Size(258, 34));
+        var quick = MakeButton("▣  Bảng điều khiển nhanh", new Point(0, 38), new Size(270, 34));
         quick.Click += (_, _) => { Hide(); openQuick(); };
 
-        var settings = MakeButton("⚙  Cài đặt", new Point(0, 76), new Size(258, 34));
+        var settings = MakeButton("⚙  Cài đặt", new Point(0, 76), new Size(270, 34));
         settings.Click += (_, _) => { Hide(); showSettings(); };
 
-        var logs = MakeButton("▤  Xem log hệ thống", new Point(0, 114), new Size(258, 34));
+        var logs = MakeButton("▤  Xem log hệ thống", new Point(0, 114), new Size(270, 34));
         logs.Click += (_, _) => { Hide(); showLogs(); };
 
-        var quit = MakeButton("⏻  Thoát", new Point(0, 152), new Size(258, 34));
+        var quit = MakeButton("⏻  Thoát", new Point(0, 152), new Size(270, 34));
         quit.BackColor = Color.FromArgb(74, 24, 31);
         quit.ForeColor = Color.FromArgb(254, 202, 202);
         quit.Click += (_, _) => exit();
