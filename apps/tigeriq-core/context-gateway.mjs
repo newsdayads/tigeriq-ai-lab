@@ -5,6 +5,11 @@ const MAX_EVIDENCE_REFS=6;
 
 function byteLength(value){return Buffer.byteLength(String(value??''),'utf8');}
 
+function jsonByteLength(value){
+  try{return byteLength(JSON.stringify(value));}
+  catch{return Number.POSITIVE_INFINITY;}
+}
+
 function truncateUtf8(value,maxBytes){
   const text=String(value??'');
   if(maxBytes<=0)return '';
@@ -109,7 +114,7 @@ export function buildManagerHistoryContext(history,options={}){
     const candidate=JSON.stringify([...accepted,normalized]);
     if(byteLength(candidate)<=effectiveBudgetBytes){
       accepted.push(normalized);
-      if(byteLength(fullJson)<byteLength(JSON.stringify(rows[i]??{})))truncatedCount++;
+      if(byteLength(fullJson)<jsonByteLength(rows[i]??{}))truncatedCount++;
       continue;
     }
     const slim=slimRow(normalized);
