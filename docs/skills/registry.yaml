@@ -1,0 +1,17 @@
+skills:
+  - id: owner-video-lesson-001
+    title: "Owner Introduction to TigerIQ"
+    source_url: "https://example.com/videos/owner-intro.mp4"
+    source_hash: "sha256:abcdef1234567890..."
+    ingest_timestamp: "2026-09-18T10:00:00Z"
+    owner: "owner"
+    state: CANDIDATE
+    version: "1.0.0"
+  - id: owner-video-lesson-002
+    title: "Advanced TigerIQ Techniques"
+    source_url: "https://example.com/videos/owner-advanced.mp4"
+    source_hash: "sha256:123456abcdef7890..."
+    ingest_timestamp: "2026-09-18T10:15:00Z"
+    owner: "owner"
+    state: CANDIDATE
+    version: "1.0.0"
