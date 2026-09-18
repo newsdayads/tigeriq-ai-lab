@@ -155,6 +155,20 @@ export function scoreResource(resource,{profile='AUTO',capability='general',task
   return {eligible:true,resourceId,score:Number(score.toFixed(3)),reasons};
 }
 
+export function validateRouterPreflight(workOrder = {}) {
+  const reqSkill = workOrder.required_skill ?? workOrder.requiredSkill;
+  const reqTools = workOrder.required_tools ?? workOrder.requiredTools;
+  const reqStateRefs = workOrder.required_state_refs ?? workOrder.requiredStateRefs;
+  if (!reqSkill && !reqTools && !reqStateRefs && !workOrder.strict_preflight) {
+    return { valid: true, legacy: true, reasons: [] };
+  }
+  const reasons = [];
+  if (!reqSkill) reasons.push('MISSING_REQUIRED_SKILL');
+  if (!Array.isArray(reqTools) || reqTools.length === 0) reasons.push('MISSING_REQUIRED_TOOLS');
+  if (!Array.isArray(reqStateRefs) || reqStateRefs.length === 0) reasons.push('MISSING_REQUIRED_STATE_REFS');
+  return { valid: reasons.length === 0, legacy: false, reasons };
+}
+
 export function rankCandidates(resources,{profile='AUTO',capability='general',taskKind='general',reviewerResourceId=null,reviewerResourceIds=[],nowMs=Date.now()}={}) {
   const normalizedProfile=normalizeRoutingProfile(profile);
   const evaluated=(Array.isArray(resources)?resources:[]).map(resource=>({resource,...scoreResource(resource,{profile:normalizedProfile,capability,taskKind,reviewerResourceId,reviewerResourceIds,nowMs})}));
