@@ -43,6 +43,7 @@ function snapshot(overrides:Partial<ExternalAutopilotSnapshot>={}):ExternalAutop
 describe('layout 2-3-4',()=>{
   it('keeps 500x834, gap 8 and right-anchors NV02 | NV03 | NV04',()=>{const p=computePlacements(baseConfig(),{left:0,top:0,width:4096,height:2120});expect(p.NV02).toEqual({left:2572,top:0,width:500,height:834});expect(p.NV03.left).toBe(3080);expect(p.NV04.left).toBe(3588);});
   it('uses the true work-area left/top',()=>{const p=computePlacements(baseConfig(),{left:-1200,top:40,width:3277,height:1688});expect(p.NV02.left).toBe(553);expect(p.NV03.left).toBe(1061);expect(p.NV04.left).toBe(1569);expect(p.NV02.top).toBe(40);});
+  it('fills the full work-area height when Layout 2 tray mode is enabled',()=>{const c=baseConfig();c.layout.fillWorkAreaHeight=true;const p=computePlacements(c,{left:0,top:0,width:3277,height:1688});expect(p.NV02.height).toBe(1688);expect(p.NV03.height).toBe(1688);expect(p.NV04.height).toBe(1688);expect(p.NV02.top).toBe(0);});
   it('falls back safely when a heartbeat reports an undersized display',()=>{const p=computePlacements(baseConfig(),{left:0,top:0,width:1024,height:768});expect(p.NV02.left).toBe(2572);expect(p.NV03.left).toBe(3080);expect(p.NV04.left).toBe(3588);});
 });
 

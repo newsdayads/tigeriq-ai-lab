@@ -22,6 +22,7 @@ internal sealed record WorkerView(
     DateTimeOffset? HeartbeatAt, bool SessionOk, bool WindowOpen);
 internal sealed class UtilitySettings
 {
+    public int LayoutRevision { get; set; }
     public bool DoNotDisturb { get; set; }
     public Dictionary<string, WorkerSettings> Workers { get; set; } = new();
     public Dictionary<string, ScheduleSettings> Schedules { get; set; } = new();

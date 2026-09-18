@@ -5,139 +5,86 @@ namespace TigerIQ.WorkerUtility;
 internal sealed class PopupForm : Form
 {
     static readonly Color Canvas = Color.FromArgb(5, 13, 25);
-    static readonly Color Surface = Color.FromArgb(10, 22, 38);
-    static readonly Color Surface2 = Color.FromArgb(14, 30, 50);
+    static readonly Color Card = Color.FromArgb(10, 24, 42);
+    static readonly Color CardAlt = Color.FromArgb(14, 32, 54);
     static readonly Color Ink = Color.FromArgb(241, 245, 249);
     static readonly Color Muted = Color.FromArgb(148, 163, 184);
-    static readonly Color Border = Color.FromArgb(31, 52, 76);
+    static readonly Color Border = Color.FromArgb(34, 55, 79);
     static readonly Color Green = Color.FromArgb(52, 211, 153);
     static readonly Color Amber = Color.FromArgb(251, 191, 36);
     static readonly Color Red = Color.FromArgb(248, 113, 113);
 
+    const int HeaderTop = 10;
+    const int HeaderHeight = 88;
     readonly Panel root = new() { Dock = DockStyle.Fill, BackColor = Canvas };
-    readonly Panel accentLine = new()
+    readonly RoundedPanel headerCard;
+    readonly RoundedPanel statusCard;
+    readonly RoundedPanel controlsCard;
+    readonly RoundedPanel saveCard;
+    readonly RoundedPanel scheduleCard;
+    readonly RoundedPanel logsCard;
+    readonly Label workerGlyph = new()
     {
-        Location = new Point(10, 10),
-        Size = new Size(324, 3),
-        BackColor = Color.FromArgb(37, 99, 235)
+        AutoSize = false, Size = new Size(32, 32), TextAlign = ContentAlignment.MiddleCenter,
+        Font = new Font("Segoe UI", 10, FontStyle.Bold), ForeColor = Color.White
     };
-    readonly Panel headerSeparator = new()
-    {
-        Location = new Point(16, 100),
-        Size = new Size(312, 1),
-        BackColor = Color.FromArgb(31, 52, 76)
-    };
-    readonly Panel statusSeparator = new()
-    {
-        Location = new Point(16, 205),
-        Size = new Size(312, 1),
-        BackColor = Color.FromArgb(31, 52, 76)
-    };
-
     readonly Label eyebrow = new()
     {
-        AutoSize = true,
-        Text = "TIGERIQ  /  WORKER CONTROL",
-        Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
-        ForeColor = Muted
+        AutoSize = true, Text = "TIGERIQ / WORKER CONTROL",
+        Font = new Font("Segoe UI", 7.8f, FontStyle.Bold), ForeColor = Muted
     };
-    readonly Label header = new()
+    readonly Label workerName = new()
     {
-        AutoSize = false,
-        Size = new Size(184, 24),
-        Font = new Font("Segoe UI", 13, FontStyle.Bold),
-        ForeColor = Ink
+        AutoSize = false, Size = new Size(150, 24),
+        Font = new Font("Segoe UI", 12.5f, FontStyle.Bold), ForeColor = Ink
     };
     readonly Label subtitle = new()
     {
-        AutoSize = true,
-        Text = "Trung tâm điều khiển Chrome thật",
-        Font = new Font("Segoe UI", 8.2f),
-        ForeColor = Muted
+        AutoSize = true, Text = "Trung tâm điều khiển Chrome thật",
+        Font = new Font("Segoe UI", 8.4f), ForeColor = Muted
     };
-    readonly PillLabel onlineChip = new()
-    {
-        AutoSize = true,
-        Padding = new Padding(8, 3, 8, 3),
-        Font = new Font("Segoe UI", 7.5f, FontStyle.Bold)
-    };
-    readonly PillLabel stateChip = new()
-    {
-        AutoSize = true,
-        Padding = new Padding(8, 3, 8, 3),
-        Font = new Font("Segoe UI", 7.5f, FontStyle.Bold)
-    };
-    readonly PillLabel healthChip = new()
-    {
-        AutoSize = true,
-        Padding = new Padding(8, 3, 8, 3),
-        Font = new Font("Segoe UI", 7.5f, FontStyle.Bold)
-    };
+    readonly PillLabel onlineChip = NewPill();
+    readonly PillLabel stateChip = NewPill();
+    readonly PillLabel healthChip = NewPill();
     readonly Label job = new()
     {
-        AutoSize = false,
-        Size = new Size(294, 15),
-        ForeColor = Ink,
-        Font = new Font("Segoe UI", 8.6f, FontStyle.Bold)
+        AutoSize = false, Size = new Size(292, 16), ForeColor = Ink,
+        Font = new Font("Segoe UI", 8.5f, FontStyle.Bold)
     };
     readonly Label reason = new()
     {
-        AutoSize = false,
-        Size = new Size(294, 14),
-        ForeColor = Muted,
-        Font = new Font("Segoe UI", 7.8f)
-    };
-    readonly Label progress = new()
-    {
-        AutoSize = false,
-        Size = new Size(294, 13),
-        ForeColor = Muted,
-        Font = new Font("Segoe UI", 7.8f)
+        AutoSize = false, AutoEllipsis = true, Size = new Size(292, 16), ForeColor = Muted,
+        Font = new Font("Segoe UI", 8.2f)
     };
     readonly Label actionStatus = new()
     {
-        AutoSize = false,
-        AutoEllipsis = true,
-        Size = new Size(312, 20),
-        Location = new Point(16, 210),
-        ForeColor = Muted,
-        Font = new Font("Segoe UI", 7.8f),
-        TextAlign = ContentAlignment.MiddleLeft
+        AutoSize = false, AutoEllipsis = true, Size = new Size(292, 16), ForeColor = Muted,
+        Font = new Font("Segoe UI", 8.2f)
     };
-    readonly Label schedule = new()
+    readonly Label scheduleText = new()
     {
-        AutoSize = false,
-        Size = new Size(308, 18),
-        ForeColor = Amber,
-        Font = new Font("Segoe UI", 7.8f, FontStyle.Bold)
+        AutoSize = false, AutoEllipsis = true, Size = new Size(292, 17), ForeColor = Amber,
+        Font = new Font("Segoe UI", 8.1f, FontStyle.Bold)
     };
     readonly Label logSummary = new()
     {
-        AutoSize = false,
-        Size = new Size(312, 50),
-        ForeColor = Color.FromArgb(203, 213, 225),
-        Font = new Font("Consolas", 7.6f),
-        BackColor = Canvas
+        AutoSize = false, Size = new Size(292, 42), ForeColor = Color.FromArgb(203, 213, 225),
+        Font = new Font("Consolas", 7.7f), BackColor = Card
     };
-
-    readonly CheckBox dnd = NewCheckBox("Không làm phiền");
     readonly CheckBox scheduleEnabled = NewCheckBox("Bật lịch");
     readonly CheckBox changeOnly = NewCheckBox("Chỉ báo thay đổi/lỗi");
     readonly Dictionary<string, RoundedButton> actionButtons = new();
     readonly Func<string, string, Task> action;
     readonly Action<string, Point> positionChanged;
     readonly ToolTip tips = new();
+    readonly RoundedButton closeButton;
     readonly RoundedButton footerAdvanced;
     readonly RoundedButton footerHide;
     AdvancedInfoForm? advancedForm;
     string[] advancedLines = [];
     string workerId = "NV02";
-    bool suppressDndEvent;
     bool suppressScheduleEvents;
     bool suppressPositionEvent;
-    Point dragCursorStart;
-    Point dragWindowStart;
-    bool dragging;
 
     protected override CreateParams CreateParams
     {
@@ -154,73 +101,58 @@ internal sealed class PopupForm : Form
     {
         this.action = action;
         this.positionChanged = positionChanged;
-
         AutoScaleMode = AutoScaleMode.Dpi;
         Font = new Font("Segoe UI", 9);
         Text = "TigerIQ Worker Utility";
-        ClientSize = new Size(344, 770);
+        ClientSize = new Size(344, 728);
         MinimumSize = Size;
         MaximumSize = Size;
         StartPosition = FormStartPosition.Manual;
         FormBorderStyle = FormBorderStyle.None;
-        MaximizeBox = false;
-        MinimizeBox = false;
         ShowIcon = false;
         ShowInTaskbar = false;
         TopMost = true;
         KeyPreview = true;
         BackColor = Canvas;
         AccessibleName = "TigerIQ Worker Utility";
-        AccessibleDescription = "Bảng điều khiển worker phẳng, không thanh cuộn.";
+        AccessibleDescription = "Bảng điều khiển worker theo layout TigerIQ.";
 
-        Controls.Add(root);
+        headerCard = NewCard(new Rectangle(10, 10, 324, 88));
+        statusCard = NewCard(new Rectangle(10, 106, 324, 100));
+        controlsCard = NewCard(new Rectangle(10, 214, 324, 166));
+        saveCard = NewCard(new Rectangle(10, 388, 324, 100));
+        scheduleCard = NewCard(new Rectangle(10, 496, 324, 104));
+        logsCard = NewCard(new Rectangle(10, 608, 324, 76));
+
+        closeButton = MakeLocalButton("×", 28, 28);
+        closeButton.Font = new Font("Segoe UI", 12, FontStyle.Bold);
+        closeButton.Location = new Point(282, 10);
+        closeButton.AccessibleName = "Ẩn bảng điều khiển";
+        closeButton.Click += (_, _) => Hide();
+
         BuildHeader();
         BuildStatus();
+        BuildControls();
+        BuildSaveRecover();
+        BuildSchedule();
+        BuildLogs();
 
-        var y = 236;
-        AddActionSection("ĐIỀU KHIỂN", ref y,
-            ("▶  Chạy / Tiếp tục", "run"),
-            ("Ⅱ  Tạm dừng", "pause"));
-        AddActionSection("CỬA SỔ", ref y,
-            ("⌖  Về vị trí", "fix"),
-            ("⌁  Khóa vị trí", "lock"),
-            ("◎  Focus", "focus"),
-            ("↺  Đặt lại badge", "badge-reset"));
-        AddActionSection("ĐIỀU HƯỚNG & KIỂM TRA", ref y,
-            ("↗  Mở đúng trang", "open"),
-            ("⌕  Kiểm tra nhanh", "health"));
-        AddActionSection("LƯU & PHỤC HỒI", ref y,
-            ("▣  Lưu", "save"),
-            ("▦  Lưu & Lưu trữ", "save-archive"),
-            ("⏻  Đóng Chrome an toàn", "close"),
-            ("↻  Khôi phục", "recover"));
-
-        BuildSchedule(ref y);
-        BuildLogs(ref y);
-
-        footerAdvanced = MakeActionButton("⚙  Nâng cao", "advanced-toggle", 150, 32);
-        footerAdvanced.Location = new Point(16, 728);
-        footerHide = new RoundedButton
-        {
-            Text = "×  Ẩn bảng",
-            Location = new Point(178, 728),
-            Size = new Size(150, 32),
-            BackColor = Color.FromArgb(20, 38, 60),
-            ForeColor = Ink,
-            HoverColor = Color.FromArgb(29, 50, 75),
-            CornerRadius = 9,
-            Font = new Font("Segoe UI", 8.2f, FontStyle.Bold),
-            Cursor = Cursors.Hand,
-            TabStop = false
-        };
+        footerAdvanced = MakeActionButton("⚙  Nâng cao", "advanced-toggle", 150, 30);
+        footerAdvanced.Location = new Point(16, 690);
+        footerHide = MakeLocalButton("×  Ẩn bảng", 150, 30);
+        footerHide.Location = new Point(178, 690);
         footerHide.Click += (_, _) => Hide();
+
+        root.Controls.Add(headerCard);
+        root.Controls.Add(statusCard);
+        root.Controls.Add(controlsCard);
+        root.Controls.Add(saveCard);
+        root.Controls.Add(scheduleCard);
+        root.Controls.Add(logsCard);
         root.Controls.Add(footerAdvanced);
         root.Controls.Add(footerHide);
+        Controls.Add(root);
 
-        dnd.CheckedChanged += async (_, _) =>
-        {
-            if (!suppressDndEvent) await InvokeActionAsync(dnd.Checked ? "dnd-on" : "dnd-off");
-        };
         scheduleEnabled.CheckedChanged += async (_, _) =>
         {
             if (!suppressScheduleEvents) await InvokeActionAsync(scheduleEnabled.Checked ? "schedule-on" : "schedule-off");
@@ -230,8 +162,16 @@ internal sealed class PopupForm : Form
             if (!suppressScheduleEvents) await InvokeActionAsync(changeOnly.Checked ? "schedule-change-only-on" : "schedule-change-only-off");
         };
 
-        SizeChanged += (_, _) => ApplyRoundedRegion(this, 18);
         Shown += (_, _) => ApplyRoundedRegion(this, 18);
+        SizeChanged += (_, _) => ApplyRoundedRegion(this, 18);
+        VisibleChanged += (_, _) =>
+        {
+            if (!Visible && advancedForm?.Visible == true) advancedForm.Hide();
+        };
+        Move += (_, _) =>
+        {
+            if (Visible && !suppressPositionEvent) positionChanged(workerId, Location);
+        };
         KeyDown += async (_, e) =>
         {
             string? command = null;
@@ -245,164 +185,163 @@ internal sealed class PopupForm : Form
             e.SuppressKeyPress = true;
             await InvokeActionAsync(command);
         };
-        Move += (_, _) =>
-        {
-            if (Visible && !suppressPositionEvent && !dragging) positionChanged(workerId, Location);
-        };
     }
 
-    static CheckBox NewCheckBox(string text) => new()
+    protected override void WndProc(ref Message m)
     {
-        Text = text,
-        AutoSize = true,
-        ForeColor = Color.FromArgb(203, 213, 225),
-        Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
-        FlatStyle = FlatStyle.Flat,
-        BackColor = Canvas,
-        TabStop = false
-    };
+        const int WM_NCHITTEST = 0x0084;
+        const int HTCLIENT = 1;
+        const int HTCAPTION = 2;
+        base.WndProc(ref m);
+        if (m.Msg != WM_NCHITTEST || m.Result != (IntPtr)HTCLIENT) return;
+        var raw = m.LParam.ToInt64();
+        var screenPoint = new Point(unchecked((short)(raw & 0xffff)), unchecked((short)((raw >> 16) & 0xffff)));
+        var p = PointToClient(screenPoint);
+        var closeScreen = new Rectangle(closeButton.PointToScreen(Point.Empty), closeButton.Size);
+        if (p.Y >= HeaderTop && p.Y < HeaderTop + HeaderHeight && !closeScreen.Contains(screenPoint))
+            m.Result = (IntPtr)HTCAPTION;
+    }
 
     void BuildHeader()
     {
-        var close = new RoundedButton
-        {
-            Text = "×",
-            Location = new Point(292, 18),
-            Size = new Size(28, 28),
-            Font = new Font("Segoe UI", 12, FontStyle.Bold),
-            BackColor = Color.FromArgb(20, 38, 60),
-            ForeColor = Color.FromArgb(203, 213, 225),
-            HoverColor = Color.FromArgb(55, 65, 81),
-            CornerRadius = 9,
-            TabStop = false,
-            AccessibleName = "Đóng bảng điều khiển"
-        };
-        close.Click += (_, _) => Hide();
+        var accent = new Panel { Location = new Point(0, 0), Size = new Size(324, 3) };
+        eyebrow.Location = new Point(14, 10);
+        workerGlyph.Location = new Point(14, 38);
+        workerName.Location = new Point(54, 34);
+        subtitle.Location = new Point(54, 59);
+        onlineChip.Location = new Point(207, 39);
 
-        eyebrow.Location = new Point(20, 21);
-        header.Location = new Point(20, 43);
-        subtitle.Location = new Point(20, 70);
-        onlineChip.Location = new Point(212, 45);
-
-        root.Controls.Add(accentLine);
-        root.Controls.Add(eyebrow);
-        root.Controls.Add(header);
-        root.Controls.Add(subtitle);
-        root.Controls.Add(onlineChip);
-        root.Controls.Add(close);
-        root.Controls.Add(headerSeparator);
-
-        foreach (Control control in new Control[] { eyebrow, header, subtitle, onlineChip, accentLine })
-        {
-            control.MouseDown += BeginHeaderDrag;
-            control.MouseMove += MoveHeaderDrag;
-            control.MouseUp += EndHeaderDrag;
-        }
+        headerCard.Controls.Add(accent);
+        headerCard.Controls.Add(eyebrow);
+        headerCard.Controls.Add(workerGlyph);
+        headerCard.Controls.Add(workerName);
+        headerCard.Controls.Add(subtitle);
+        headerCard.Controls.Add(onlineChip);
+        headerCard.Controls.Add(closeButton);
+        accent.Tag = "accent";
     }
 
     void BuildStatus()
     {
-        var title = SectionTitle("TRẠNG THÁI PHIÊN");
-        title.Location = new Point(20, 111);
-        stateChip.Location = new Point(20, 132);
-        healthChip.Location = new Point(126, 132);
-        job.Location = new Point(20, 156);
-        reason.Location = new Point(20, 172);
-        progress.Location = new Point(20, 187);
-
-        root.Controls.Add(title);
-        root.Controls.Add(stateChip);
-        root.Controls.Add(healthChip);
-        root.Controls.Add(job);
-        root.Controls.Add(reason);
-        root.Controls.Add(progress);
-        root.Controls.Add(statusSeparator);
-        root.Controls.Add(actionStatus);
+        AddSectionTitle(statusCard, "TRẠNG THÁI PHIÊN");
+        stateChip.Location = new Point(12, 28);
+        healthChip.Location = new Point(124, 28);
+        job.Location = new Point(12, 52);
+        reason.Location = new Point(12, 69);
+        actionStatus.Location = new Point(12, 84);
+        statusCard.Controls.Add(stateChip);
+        statusCard.Controls.Add(healthChip);
+        statusCard.Controls.Add(job);
+        statusCard.Controls.Add(reason);
+        statusCard.Controls.Add(actionStatus);
     }
 
-    void AddActionSection(string title, ref int y, params (string Text, string Action)[] buttons)
+    void BuildControls()
     {
-        var label = SectionTitle(title);
-        label.Location = new Point(16, y);
-        root.Controls.Add(label);
-        y += 18;
-
-        for (var i = 0; i < buttons.Length; i++)
-        {
-            var row = i / 2;
-            var col = i % 2;
-            var button = MakeActionButton(buttons[i].Text, buttons[i].Action, 152, 30);
-            button.Location = new Point(16 + col * 160, y + row * 34);
-            root.Controls.Add(button);
-        }
-        y += ((buttons.Length + 1) / 2) * 34 + 5;
+        AddSectionTitle(controlsCard, "ĐIỀU KHIỂN & CỬA SỔ");
+        AddGridButton(controlsCard, "▶  Chạy / Tiếp tục", "run", 12, 30);
+        AddGridButton(controlsCard, "Ⅱ  Tạm dừng", "pause", 164, 30);
+        AddGridButton(controlsCard, "⌖  Về vị trí", "fix", 12, 64);
+        AddGridButton(controlsCard, "⌁  Khóa vị trí", "lock", 164, 64);
+        AddGridButton(controlsCard, "◎  Focus", "focus", 12, 98);
+        AddGridButton(controlsCard, "↺  Đặt lại badge", "badge-reset", 164, 98);
+        AddGridButton(controlsCard, "↗  Mở đúng trang", "open", 12, 132);
+        AddGridButton(controlsCard, "⌕  Kiểm tra nhanh", "health", 164, 132);
     }
 
-    void BuildSchedule(ref int y)
+    void BuildSaveRecover()
     {
-        var label = SectionTitle("ĐẶT LỊCH KIỂM TRA");
-        label.Location = new Point(16, y);
-        root.Controls.Add(label);
-        y += 18;
+        AddSectionTitle(saveCard, "LƯU & PHỤC HỒI");
+        AddGridButton(saveCard, "▣  Lưu", "save", 12, 28);
+        AddGridButton(saveCard, "▦  Lưu & Lưu trữ", "save-archive", 164, 28);
+        AddGridButton(saveCard, "⏻  Đóng NV an toàn", "close", 12, 62);
+        AddGridButton(saveCard, "↻  Khôi phục", "recover", 164, 62);
+    }
 
+    void BuildSchedule()
+    {
+        AddSectionTitle(scheduleCard, "ĐẶT LỊCH KIỂM TRA");
         var entries = new[] {
-            ("10p", "schedule-10", 45),
-            ("30p", "schedule-30", 45),
-            ("1h", "schedule-60", 45),
-            ("2h", "schedule-120", 45),
-            ("Tùy chỉnh", "schedule-custom", 96)
+            ("10p", "schedule-10", 42),
+            ("30p", "schedule-30", 42),
+            ("1h", "schedule-60", 42),
+            ("2h", "schedule-120", 42),
+            ("Tùy chỉnh", "schedule-custom", 92)
         };
-        var x = 16;
+        var x = 12;
         foreach (var item in entries)
         {
-            var b = MakeActionButton(item.Item1, item.Item2, item.Item3, 28);
-            b.Location = new Point(x, y);
-            root.Controls.Add(b);
+            var b = MakeActionButton(item.Item1, item.Item2, item.Item3, 27);
+            b.Location = new Point(x, 29);
+            scheduleCard.Controls.Add(b);
             x += item.Item3 + 4;
         }
-        y += 32;
-
-        scheduleEnabled.Location = new Point(16, y);
-        changeOnly.Location = new Point(104, y);
-        dnd.Location = new Point(16, y + 20);
-        root.Controls.Add(scheduleEnabled);
-        root.Controls.Add(changeOnly);
-        root.Controls.Add(dnd);
-        y += 42;
-
-        schedule.Location = new Point(16, y);
-        root.Controls.Add(schedule);
-        y += 23;
+        scheduleEnabled.Location = new Point(12, 60);
+        changeOnly.Location = new Point(96, 60);
+        scheduleText.Location = new Point(12, 81);
+        scheduleCard.Controls.Add(scheduleEnabled);
+        scheduleCard.Controls.Add(changeOnly);
+        scheduleCard.Controls.Add(scheduleText);
     }
 
-    void BuildLogs(ref int y)
+    void BuildLogs()
     {
-        var label = SectionTitle("LOG GẦN NHẤT");
-        label.Location = new Point(16, y);
-        root.Controls.Add(label);
-        y += 18;
-        logSummary.Location = new Point(16, y);
-        root.Controls.Add(logSummary);
-        y += 54;
+        AddSectionTitle(logsCard, "LOG GẦN NHẤT");
+        logSummary.Location = new Point(12, 27);
+        logsCard.Controls.Add(logSummary);
     }
+
+    void AddGridButton(Control parent, string text, string actionName, int x, int y)
+    {
+        var b = MakeActionButton(text, actionName, 144, 30);
+        b.Location = new Point(x, y);
+        parent.Controls.Add(b);
+    }
+
+    static void AddSectionTitle(Control parent, string title)
+    {
+        parent.Controls.Add(new Label
+        {
+            Text = title, AutoSize = true, Location = new Point(12, 8),
+            Font = new Font("Segoe UI", 8.1f, FontStyle.Bold),
+            ForeColor = Color.FromArgb(100, 116, 139), BackColor = Card
+        });
+    }
+
+    static PillLabel NewPill() => new()
+    {
+        AutoSize = true, Padding = new Padding(8, 3, 8, 3),
+        Font = new Font("Segoe UI", 7.7f, FontStyle.Bold)
+    };
+
+    static CheckBox NewCheckBox(string text) => new()
+    {
+        Text = text, AutoSize = true, ForeColor = Color.FromArgb(203, 213, 225),
+        Font = new Font("Segoe UI", 8.1f, FontStyle.Bold), FlatStyle = FlatStyle.Flat,
+        BackColor = Card, TabStop = false
+    };
+
+    static RoundedPanel NewCard(Rectangle bounds) => new()
+    {
+        Bounds = bounds, BackColor = Card, BorderColor = Border, BorderWidth = 1, CornerRadius = 13
+    };
+
+    RoundedButton MakeLocalButton(string text, int width, int height) => new()
+    {
+        Text = text, Size = new Size(width, height), BackColor = Color.FromArgb(20, 38, 60),
+        ForeColor = Ink, HoverColor = Color.FromArgb(29, 50, 75), CornerRadius = 9,
+        Font = new Font("Segoe UI", 8.4f, FontStyle.Bold), Cursor = Cursors.Hand, TabStop = false
+    };
 
     RoundedButton MakeActionButton(string text, string actionName, int width, int height)
     {
         var button = new RoundedButton
         {
-            Text = text,
-            Size = new Size(width, height),
-            Tag = actionName,
-            AccessibleName = text,
-            AccessibleDescription = $"Thao tác {text} cho worker hiện tại",
-            UseMnemonic = false,
-            Cursor = Cursors.Hand,
-            Font = new Font("Segoe UI", 7.9f, FontStyle.Bold),
-            BackColor = ButtonBack(actionName),
-            ForeColor = ButtonFore(actionName),
-            HoverColor = ButtonHover(actionName),
-            CornerRadius = 8,
-            TabStop = false
+            Text = text, Size = new Size(width, height), Tag = actionName,
+            AccessibleName = text, AccessibleDescription = $"Thao tác {text} cho worker hiện tại",
+            UseMnemonic = false, Cursor = Cursors.Hand, Font = new Font("Segoe UI", 8.35f, FontStyle.Bold),
+            BackColor = ButtonBack(actionName), ForeColor = ButtonFore(actionName),
+            HoverColor = ButtonHover(actionName), CornerRadius = 8, TabStop = false
         };
         tips.SetToolTip(button, ShortcutFor(actionName));
         button.Click += async (s, _) => await InvokeActionAsync((string)((Button)s!).Tag!);
@@ -410,32 +349,23 @@ internal sealed class PopupForm : Form
         return button;
     }
 
-    static Label SectionTitle(string title) => new()
-    {
-        Text = title,
-        AutoSize = true,
-        Font = new Font("Segoe UI", 7.3f, FontStyle.Bold),
-        ForeColor = Color.FromArgb(100, 116, 139),
-        BackColor = Canvas
-    };
-
     static Color ButtonBack(string action) => action switch
     {
         "run" => Color.FromArgb(37, 99, 235),
         "pause" => Color.FromArgb(72, 48, 18),
-        "save" or "save-archive" => Color.FromArgb(19, 47, 78),
         "close" => Color.FromArgb(74, 24, 31),
         "recover" => Color.FromArgb(13, 57, 55),
-        _ => Color.FromArgb(20, 38, 60)
+        "save" or "save-archive" => Color.FromArgb(19, 47, 78),
+        _ => Color.FromArgb(24, 45, 70)
     };
 
     static Color ButtonFore(string action) => action switch
     {
         "run" => Color.White,
         "pause" => Color.FromArgb(253, 230, 138),
-        "save" or "save-archive" => Color.FromArgb(191, 219, 254),
         "close" => Color.FromArgb(254, 202, 202),
         "recover" => Color.FromArgb(153, 246, 228),
+        "save" or "save-archive" => Color.FromArgb(191, 219, 254),
         _ => Ink
     };
 
@@ -443,71 +373,17 @@ internal sealed class PopupForm : Form
     {
         "run" => Color.FromArgb(29, 78, 216),
         "pause" => Color.FromArgb(92, 61, 20),
-        "save" or "save-archive" => Color.FromArgb(25, 64, 104),
         "close" => Color.FromArgb(103, 31, 39),
         "recover" => Color.FromArgb(17, 76, 72),
-        _ => Color.FromArgb(29, 50, 75)
+        "save" or "save-archive" => Color.FromArgb(25, 64, 104),
+        _ => Color.FromArgb(32, 56, 84)
     };
 
     static string ShortcutFor(string action) => action switch
     {
-        "run" => "Ctrl+R",
-        "pause" => "Ctrl+P",
-        "focus" => "Ctrl+F",
-        "health" => "Ctrl+H",
-        "save" => "Ctrl+S",
-        _ => ""
+        "run" => "Ctrl+R", "pause" => "Ctrl+P", "focus" => "Ctrl+F",
+        "health" => "Ctrl+H", "save" => "Ctrl+S", _ => ""
     };
-
-    static string StateText(WorkerUiState state) => state switch
-    {
-        WorkerUiState.Ready => "●  SẴN SÀNG",
-        WorkerUiState.Working => "●  ĐANG CHẠY",
-        WorkerUiState.Paused => "●  TẠM DỪNG",
-        _ => "●  BỊ CHẶN"
-    };
-
-    static string HealthText(HealthBand? health) => health switch
-    {
-        HealthBand.Healthy => "✓  ỔN ĐỊNH",
-        HealthBand.Slow => "◷  CHẬM",
-        HealthBand.Stalled => "!  TREO",
-        HealthBand.Recovering => "↻  KHÔI PHỤC",
-        HealthBand.Blocked => "!  BỊ CHẶN",
-        _ => "•  CHƯA RÕ"
-    };
-
-    static Color WorkerAccent(string id) => id switch
-    {
-        "NV02" => Color.FromArgb(37, 99, 235),
-        "NV03" => Color.FromArgb(168, 85, 247),
-        "NV04" => Color.FromArgb(6, 182, 212),
-        _ => Color.FromArgb(59, 130, 246)
-    };
-
-    void BeginHeaderDrag(object? sender, MouseEventArgs e)
-    {
-        if (e.Button != MouseButtons.Left) return;
-        dragging = true;
-        dragCursorStart = Cursor.Position;
-        dragWindowStart = Location;
-    }
-
-    void MoveHeaderDrag(object? sender, MouseEventArgs e)
-    {
-        if (!dragging) return;
-        var cursor = Cursor.Position;
-        Location = new Point(
-            dragWindowStart.X + cursor.X - dragCursorStart.X,
-            dragWindowStart.Y + cursor.Y - dragCursorStart.Y);
-    }
-
-    void EndHeaderDrag(object? sender, MouseEventArgs e)
-    {
-        if (!dragging || e.Button != MouseButtons.Left) return;
-        dragging = false;
-        positionChanged(workerId, Location);
-    }
 
     async Task InvokeActionAsync(string name)
     {
@@ -539,9 +415,9 @@ internal sealed class PopupForm : Form
         if (ex is TaskCanceledException
             || ex.Message.Contains("HttpClient.Timeout", StringComparison.OrdinalIgnoreCase)
             || ex.Message.Contains("CONTROLLER_TIMEOUT", StringComparison.OrdinalIgnoreCase))
-            return "⚠ Controller phản hồi quá chậm. Thử lại sau.";
+            return "⚠ Controller phản hồi chậm. Thử lại sau.";
         var text = ex.Message.Replace("\r", " ").Replace("\n", " ").Trim();
-        return text.Length > 90 ? "⚠ " + text[..87] + "…" : "⚠ " + text;
+        return text.Length > 88 ? "⚠ " + text[..85] + "…" : "⚠ " + text;
     }
 
     internal void SetActionNotice(string text, bool isError)
@@ -564,14 +440,20 @@ internal sealed class PopupForm : Form
     }
 
     public bool ShowWorker(WorkerDefinition worker, WorkerView view, WatchdogView? watchdog, WorkerSettings settings,
-        ScheduleSettings? scheduleSettings, bool doNotDisturb, string[] recentLogs, Rectangle anchor, Rectangle[] occupied)
+        ScheduleSettings? scheduleSettings, bool doNotDisturb, string[] recentLogs, Point defaultLocation, Rectangle workingArea)
     {
         workerId = worker.Id;
+        Text = $"TigerIQ Worker Utility — {worker.Id}";
         var accent = WorkerAccent(worker.Id);
-        accentLine.BackColor = accent;
-        header.Text = $"{worker.Id}  ·  {worker.Name}";
+        headerCard.BorderColor = accent;
+        foreach (Control control in headerCard.Controls)
+            if (Equals(control.Tag, "accent")) control.BackColor = accent;
 
-        onlineChip.Text = view.WindowOpen && view.SessionOk ? "●  ONLINE" : "●  OFFLINE";
+        workerGlyph.Text = worker.Id[2..];
+        workerGlyph.BackColor = accent;
+        workerName.Text = $"{worker.Id} · {worker.Name}";
+
+        onlineChip.Text = view.WindowOpen && view.SessionOk ? "● ONLINE" : "● OFFLINE";
         onlineChip.BackColor = view.WindowOpen && view.SessionOk ? Color.FromArgb(13, 65, 49) : Color.FromArgb(74, 24, 31);
         onlineChip.ForeColor = view.WindowOpen && view.SessionOk ? Green : Red;
 
@@ -615,48 +497,30 @@ internal sealed class PopupForm : Form
             run.HoverColor = ControlPaint.Dark(accent, .12f);
         }
 
-        var noProgress = watchdog?.NoProgressFor.ToString(@"mm\:ss") ?? "—";
-        var alive = watchdog is null || watchdog.AliveAge == TimeSpan.MaxValue
-            ? "—"
-            : watchdog.AliveAge.ToString(@"mm\:ss");
-        reason.Text = $"{view.Reason}  ·  im lặng {noProgress}  ·  heartbeat {alive}";
-
         var elapsed = settings.StateChangedAt is DateTimeOffset since ? DateTimeOffset.Now - since : TimeSpan.Zero;
-        job.Text = $"Job hiện tại  {view.JobId ?? "—"}     {elapsed.ToString(@"hh\:mm\:ss")}";
-        progress.Text = view.State == WorkerUiState.Working
-            ? "Đang xử lý — dữ liệu đã xác minh từ controller."
-            : "Không có job đang chạy cần xác minh.";
-        progress.ForeColor = view.State == WorkerUiState.Working ? Color.FromArgb(147, 197, 253) : Muted;
+        job.Text = $"Job hiện tại  {view.JobId ?? "—"}   {elapsed:hh\\:mm\\:ss}";
+        var heartbeat = watchdog is null || watchdog.AliveAge == TimeSpan.MaxValue ? "—" : watchdog.AliveAge.ToString(@"mm\:ss");
+        reason.Text = $"{ShortReason(view.Reason)} · heartbeat {heartbeat}";
 
-        schedule.Text = scheduleSettings?.NextCheckAt is DateTimeOffset next && scheduleSettings.Enabled
+        scheduleText.Text = scheduleSettings?.NextCheckAt is DateTimeOffset next && scheduleSettings.Enabled
             ? $"↪ Lần kiểm tra kế tiếp: {next.ToLocalTime():HH:mm:ss}"
             : "↪ Lịch kiểm tra: chưa bật";
-
-        suppressDndEvent = true;
-        dnd.Checked = doNotDisturb;
-        suppressDndEvent = false;
 
         suppressScheduleEvents = true;
         scheduleEnabled.Checked = scheduleSettings?.Enabled ?? false;
         changeOnly.Checked = scheduleSettings?.ChangesOnly ?? true;
         suppressScheduleEvents = false;
 
-        var visibleLogs = recentLogs.Length == 0
-            ? new[] { "Chưa có log cho worker này." }
-            : recentLogs.TakeLast(2).ToArray();
-        logSummary.Text = string.Join(Environment.NewLine, visibleLogs);
+        var friendlyLogs = recentLogs.Length == 0
+            ? new[] { "Chưa có log." }
+            : recentLogs.TakeLast(2).Select(FriendlyLog).ToArray();
+        logSummary.Text = string.Join(Environment.NewLine, friendlyLogs);
 
-        advancedLines = BuildAdvancedLines(worker, view, watchdog, settings, scheduleSettings);
+        advancedLines = BuildAdvancedLines(worker, view, watchdog, settings, scheduleSettings, doNotDisturb);
         if (advancedForm?.Visible == true) advancedForm.SetWorker(workerId, advancedLines);
 
         var saved = settings.PopupX is int x && settings.PopupY is int y ? new Point?(new Point(x, y)) : null;
-        var workingAreas = Screen.AllScreens.Select(s => s.WorkingArea).ToArray();
-        if (!UiPlacement.TryPopup(anchor, Size, workingAreas, occupied, saved, out var target))
-        {
-            if (Visible) Hide();
-            return false;
-        }
-
+        var target = UiPlacement.ResolvePopup(saved, defaultLocation, Size, workingArea);
         suppressPositionEvent = true;
         Location = target;
         suppressPositionEvent = false;
@@ -666,10 +530,58 @@ internal sealed class PopupForm : Form
         return true;
     }
 
-    static string[] BuildAdvancedLines(WorkerDefinition worker, WorkerView view, WatchdogView? watchdog,
-        WorkerSettings settings, ScheduleSettings? scheduleSettings)
+    static string ShortReason(string value)
     {
-        var heartbeat = view.HeartbeatAt?.ToLocalTime().ToString("HH:mm:ss  dd/MM") ?? "chưa có dữ liệu";
+        if (string.IsNullOrWhiteSpace(value)) return "Không có cảnh báo";
+        return value switch
+        {
+            "READY" => "Sẵn sàng",
+            "JOB_ACTIVE" => "Đang xử lý",
+            "UTILITY_PAUSED" => "Đã tạm dừng",
+            "CONTROLLER_UNAVAILABLE" => "Controller chưa sẵn sàng",
+            _ => value.Replace('_', ' ')
+        };
+    }
+
+    static string FriendlyLog(string line)
+    {
+        var text = line.Replace("POPUP_POSITION_SAVED", "Đã lưu vị trí bảng")
+            .Replace("ACTION_OK", "Thao tác hoàn tất")
+            .Replace("ACTION_REQUEST", "Đang thực hiện")
+            .Replace("STATE_CHANGED", "Trạng thái thay đổi");
+        return text.Length > 64 ? text[..61] + "…" : text;
+    }
+
+    static string StateText(WorkerUiState state) => state switch
+    {
+        WorkerUiState.Ready => "● SẴN SÀNG",
+        WorkerUiState.Working => "● ĐANG CHẠY",
+        WorkerUiState.Paused => "● TẠM DỪNG",
+        _ => "● BỊ CHẶN"
+    };
+
+    static string HealthText(HealthBand? health) => health switch
+    {
+        HealthBand.Healthy => "✓ ỔN ĐỊNH",
+        HealthBand.Slow => "◷ CHẬM",
+        HealthBand.Stalled => "! TREO",
+        HealthBand.Recovering => "↻ KHÔI PHỤC",
+        HealthBand.Blocked => "! BỊ CHẶN",
+        _ => "• CHƯA RÕ"
+    };
+
+    static Color WorkerAccent(string id) => id switch
+    {
+        "NV02" => Color.FromArgb(37, 99, 235),
+        "NV03" => Color.FromArgb(168, 85, 247),
+        "NV04" => Color.FromArgb(6, 182, 212),
+        _ => Color.FromArgb(59, 130, 246)
+    };
+
+    static string[] BuildAdvancedLines(WorkerDefinition worker, WorkerView view, WatchdogView? watchdog,
+        WorkerSettings settings, ScheduleSettings? scheduleSettings, bool doNotDisturb)
+    {
+        var heartbeat = view.HeartbeatAt?.ToLocalTime().ToString("HH:mm:ss dd/MM") ?? "chưa có dữ liệu";
         return
         [
             $"Worker       : {worker.Id} — {worker.Name}",
@@ -681,11 +593,9 @@ internal sealed class PopupForm : Form
             $"Login/Auth   : {(view.AuthRequired ? "CẦN ĐĂNG NHẬP" : "không yêu cầu")}",
             $"Security     : {view.SecurityBlock ?? "không có cảnh báo"}",
             $"URL          : {view.Url ?? "chưa có dữ liệu"}",
-            $"Tab ID       : chưa có dữ liệu backend",
-            $"Profile      : chưa có dữ liệu backend",
-            $"Rate limit   : chưa có dữ liệu backend",
             $"Health       : {watchdog?.Health.ToString() ?? "chưa có dữ liệu"}",
             $"Khóa vị trí  : {(settings.PositionLocked ? "BẬT" : "TẮT")}",
+            $"Không làm phiền: {(doNotDisturb ? "BẬT" : "TẮT")}",
             $"Lịch         : {(scheduleSettings?.Enabled == true ? $"{scheduleSettings.IntervalMinutes} phút" : "TẮT")}"
         ];
     }
@@ -717,26 +627,20 @@ internal sealed class AdvancedInfoForm : Form
 {
     readonly Label title = new()
     {
-        AutoSize = false,
-        Location = new Point(16, 14),
-        Size = new Size(340, 24),
-        ForeColor = Color.White,
-        Font = new Font("Segoe UI", 11, FontStyle.Bold)
+        AutoSize = false, Location = new Point(16, 14), Size = new Size(340, 24),
+        ForeColor = Color.White, Font = new Font("Segoe UI", 11, FontStyle.Bold)
     };
     readonly Label details = new()
     {
-        AutoSize = false,
-        Location = new Point(16, 48),
-        Size = new Size(388, 318),
-        ForeColor = Color.FromArgb(203, 213, 225),
-        Font = new Font("Consolas", 8.3f),
+        AutoSize = false, Location = new Point(16, 48), Size = new Size(388, 300),
+        ForeColor = Color.FromArgb(203, 213, 225), Font = new Font("Consolas", 8.3f),
         BackColor = Color.FromArgb(5, 13, 25)
     };
 
     public AdvancedInfoForm()
     {
         Text = "TigerIQ — Thông tin kỹ thuật";
-        ClientSize = new Size(420, 382);
+        ClientSize = new Size(420, 364);
         MinimumSize = Size;
         MaximumSize = Size;
         StartPosition = FormStartPosition.CenterScreen;
@@ -752,6 +656,37 @@ internal sealed class AdvancedInfoForm : Form
     {
         title.Text = $"{workerId} — Thông tin kỹ thuật";
         details.Text = string.Join(Environment.NewLine, lines);
+    }
+}
+
+internal sealed class RoundedPanel : Panel
+{
+    public int CornerRadius { get; set; } = 12;
+    public Color BorderColor { get; set; } = Color.Transparent;
+    public int BorderWidth { get; set; } = 1;
+
+    public RoundedPanel()
+    {
+        DoubleBuffered = true;
+        Resize += (_, _) => RefreshRegion();
+    }
+
+    void RefreshRegion()
+    {
+        if (Width <= 0 || Height <= 0) return;
+        using var path = PopupForm.RoundedPath(new Rectangle(0, 0, Width, Height), CornerRadius);
+        var old = Region;
+        Region = new Region(path);
+        old?.Dispose();
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        base.OnPaint(e);
+        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        using var path = PopupForm.RoundedPath(new Rectangle(0, 0, Width, Height), CornerRadius);
+        using var pen = new Pen(BorderColor, BorderWidth);
+        e.Graphics.DrawPath(pen, path);
     }
 }
 

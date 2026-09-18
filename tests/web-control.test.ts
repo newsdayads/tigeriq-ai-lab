@@ -42,16 +42,17 @@ describe('TigerIQ Web Control owner dashboard', () => {
     expect(unifiedCss).toContain('font-size:13px!important');
   });
 
-  it('uses one horizontal top navigation with TigerIQ AI and LIVE at the right', () => {
-    expect(unifiedCss).toContain('Single top navigation');
-    expect(unifiedCss).toContain('.sidebar{position:sticky!important;top:0!important');
-    expect(unifiedCss).toContain('flex-direction:row!important');
-    expect(unifiedCss).toContain('.nav{display:flex!important');
-    expect(unifiedCss).toContain('content:"TigerIQ AI"');
-    expect(unifiedCss).toContain('.topbar>.title,.topbar>.system-pill,.topbar>.clock{display:none!important}');
-    expect(unifiedCss).toContain('.topbar>.tq-u-livebar{position:fixed!important');
-    expect(unifiedCss).toContain('.side-bottom{display:none!important}');
-    expect(mobileCss).toContain('.shell{display:block!important;grid-template-columns:none!important}');
+  it('restores the approved global left navigation on desktop', () => {
+    expect(web).toContain('<body class="layout-sidebar-v2">');
+    expect(unifiedCss).toContain('#826 Layout 2');
+    expect(unifiedCss).toContain('body.layout-sidebar-v2 .shell');
+    expect(unifiedCss).toContain('grid-template-columns:190px minmax(0,1fr)!important');
+    expect(unifiedCss).toContain('body.layout-sidebar-v2 .sidebar');
+    expect(unifiedCss).toContain('flex-direction:column!important');
+    expect(unifiedCss).toContain('body.layout-sidebar-v2 .nav{');
+    expect(unifiedCss).toContain('display:grid!important');
+    expect(unifiedCss).toContain('body.layout-sidebar-v2 .side-bottom');
+    expect(mobileCss).toContain('@media(max-width:720px)');
   });
 
   it('uses runtime truth and keeps Coding Lane stages without fake progress', () => {

@@ -5,7 +5,7 @@ export const WORKER_IDS = ['NV02', 'NV03', 'NV04'] as const;
 export type WorkerId = (typeof WORKER_IDS)[number];
 
 export interface WorkerConfig { id:WorkerId; role:string; homeUrl:string; profileDirectory:string; enabled?:boolean; userDataDir?:string; debugPort?:number }
-export interface LayoutConfig { width:number; height:number; gap:number; rightMargin:number; top:number; fallbackWorkAreaWidth:number; fallbackWorkAreaLeft:number }
+export interface LayoutConfig { width:number; height:number; gap:number; rightMargin:number; top:number; fallbackWorkAreaWidth:number; fallbackWorkAreaLeft:number; fillWorkAreaHeight?:boolean }
 export interface PacingConfig { betweenWorkerLaunchMs:number; postReadySettlingMs:number; minUiActionGapMs:number; commandTimeoutMs:number; workerReadyTimeoutMs:number; maxRetries:number; retryBackoffMs:number }
 export interface AutopilotConfig { enabled:boolean; pollIntervalMs:number; stateUrl?:string; requestTimeoutMs:number; maxSnapshotAgeMs:number; dispatchLeaseTtlMs?:number }
 export interface RecoveryConfig { heartbeatStaleMs:number; checkIntervalMs:number; maxReopenAttempts:number; reopenBackoffMs:number; startupReadyUrl?:string; startupReadyTimeoutMs:number; startupAttachGraceMs:number; launchBrokerUrl?:string; launchBrokerTimeoutMs?:number }
@@ -35,7 +35,7 @@ export function isInteractiveDesktopSession(platform=process.platform,sessionNam
   return Boolean(value)&&value!=='services';
 }
 export function minimumLayoutWidth(config:Pick<ControllerConfig,'layout'|'workers'>):number{return config.workers.length*config.layout.width+(config.workers.length-1)*config.layout.gap+config.layout.rightMargin}
-export function workAreaFitsLayout(config:Pick<ControllerConfig,'layout'|'workers'>,area:WorkArea):boolean{return area.width>=minimumLayoutWidth(config)&&area.height>=config.layout.top+config.layout.height}
+export function workAreaFitsLayout(config:Pick<ControllerConfig,'layout'|'workers'>,area:WorkArea):boolean{const requiredHeight=config.layout.top+(config.layout.fillWorkAreaHeight?480:config.layout.height);return area.width>=minimumLayoutWidth(config)&&area.height>=requiredHeight}
 
 export function validateConfig(raw:unknown):ControllerConfig{
   if(!raw||typeof raw!=='object')throw new Error('CONFIG_INVALID_OBJECT');
@@ -86,4 +86,4 @@ export function loadConfig(configPath?:string):ControllerConfig{
   const text=readFileSync(p,'utf8').replace(/^\uFEFF/,'');
   return validateConfig(JSON.parse(text) as unknown);
 }
-export function computePlacements(config:ControllerConfig,workArea?:WorkArea):Record<WorkerId,WindowPlacement>{const fallback:WorkArea={left:config.layout.fallbackWorkAreaLeft,top:0,width:config.layout.fallbackWorkAreaWidth,height:config.layout.top+config.layout.height};const area=workArea&&workAreaFitsLayout(config,workArea)?workArea:fallback;if(!workAreaFitsLayout(config,area))throw new Error('LAYOUT_DOES_NOT_FIT_WORK_AREA');const total=config.workers.length*config.layout.width+(config.workers.length-1)*config.layout.gap;const first=area.left+area.width-config.layout.rightMargin-total;return Object.fromEntries(config.workers.map((w,i)=>[w.id,{left:first+i*(config.layout.width+config.layout.gap),top:area.top+config.layout.top,width:config.layout.width,height:config.layout.height}]))as Record<WorkerId,WindowPlacement>}
+export function computePlacements(config:ControllerConfig,workArea?:WorkArea):Record<WorkerId,WindowPlacement>{const fallback:WorkArea={left:config.layout.fallbackWorkAreaLeft,top:0,width:config.layout.fallbackWorkAreaWidth,height:config.layout.top+config.layout.height};const area=workArea&&workAreaFitsLayout(config,workArea)?workArea:fallback;if(!workAreaFitsLayout(config,area))throw new Error('LAYOUT_DOES_NOT_FIT_WORK_AREA');const total=config.workers.length*config.layout.width+(config.workers.length-1)*config.layout.gap;const first=area.left+area.width-config.layout.rightMargin-total;const height=config.layout.fillWorkAreaHeight?Math.max(480,area.height-config.layout.top):config.layout.height;return Object.fromEntries(config.workers.map((w,i)=>[w.id,{left:first+i*(config.layout.width+config.layout.gap),top:area.top+config.layout.top,width:config.layout.width,height}]))as Record<WorkerId,WindowPlacement>}

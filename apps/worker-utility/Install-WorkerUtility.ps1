@@ -14,6 +14,35 @@ $installedExe=Join-Path $target 'TigerIQ.WorkerUtility.exe'
 $hash=(Get-FileHash $installedExe -Algorithm SHA256).Hash.ToLower()
 $user=(Get-CimInstance Win32_ComputerSystem).UserName
 if([string]::IsNullOrWhiteSpace($user)){ throw 'INTERACTIVE_USER_NOT_FOUND' }
+
+# #826 Layout 2: WorkerUtility is the single badge/control-surface owner.
+# Decommission legacy overlays and half-height window keepers that conflict with
+# the System Tray flyout + full-height Chrome architecture.
+$legacyTasks=@(
+  'TigerIQ Worker Status Compact',
+  'TigerIQ Worker Window Keeper',
+  'TigerIQ Worker Window Supervisor',
+  'TigerIQ Worker Layout After Logon'
+)
+foreach($legacyTask in $legacyTasks){
+  $legacy=Get-ScheduledTask -TaskName $legacyTask -ErrorAction SilentlyContinue
+  if($legacy){
+    Stop-ScheduledTask -TaskName $legacyTask -ErrorAction SilentlyContinue
+    Disable-ScheduledTask -TaskName $legacyTask -ErrorAction SilentlyContinue | Out-Null
+  }
+}
+Get-CimInstance Win32_Process | Where-Object {
+  ($_.Name -eq 'powershell.exe' -or $_.Name -eq 'pwsh.exe') -and
+  ($_.CommandLine -like '*Worker-Status-Title.ps1*' -or
+   $_.CommandLine -like '*Worker-Window-Keeper.ps1*' -or
+   $_.CommandLine -like '*Worker-Window-Supervisor.ps1*' -or
+   $_.CommandLine -like '*Ensure-Lock-All-Workers.ps1*')
+} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+
+Get-Process TigerIQ.WorkerUtility -ErrorAction SilentlyContinue |
+  Where-Object { $_.SessionId -ne 0 } |
+  Stop-Process -Force -ErrorAction SilentlyContinue
+
 $taskName='TigerIQ Worker Utility Bootstrap'
 $action=New-ScheduledTaskAction -Execute $installedExe
 $principal=New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited

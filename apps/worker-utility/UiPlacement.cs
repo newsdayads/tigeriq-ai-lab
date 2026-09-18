@@ -28,6 +28,29 @@ internal static class UiPlacement
         return true;
     }
 
+
+    public static Point DockedPopup(int workerIndex, int workerCount, Size popupSize, Rectangle workingArea)
+    {
+        const int margin = 8;
+        const int gap = 8;
+        workerIndex = Math.Clamp(workerIndex, 0, Math.Max(0, workerCount - 1));
+        workerCount = Math.Max(1, workerCount);
+
+        var totalWidth = popupSize.Width * workerCount + gap * (workerCount - 1);
+        var startX = workingArea.Right - margin - totalWidth;
+        if (startX < workingArea.Left + margin) startX = workingArea.Left + margin;
+        var x = startX + workerIndex * (popupSize.Width + gap);
+        var y = workingArea.Bottom - margin - popupSize.Height;
+        return Clamp(new Point(x, y), popupSize, workingArea);
+    }
+
+    public static Point ResolvePopup(Point? savedLocation, Point defaultLocation, Size popupSize, Rectangle workingArea)
+    {
+        if (savedLocation is Point saved)
+            return Clamp(saved, popupSize, workingArea);
+        return Clamp(defaultLocation, popupSize, workingArea);
+    }
+
     public static bool TryPopup(Rectangle anchor, Size popupSize, Rectangle[] workingAreas, Rectangle[] occupied,
         Point? savedLocation, out Point target)
     {
