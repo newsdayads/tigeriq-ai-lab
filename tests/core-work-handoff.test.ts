@@ -61,5 +61,6 @@ describe('durable autonomous work handoff',()=>{
     expect(core).toContain('completedGenerationKeys');
     expect(core).toContain('terminalHandoffInstruction');
     expect(core).toContain("handoff?.state!=='waiting_children'");
+    expect(core).toContain("case when o.metadata#>>'{handoff,state}'='waiting_children' then 1 else 0 end");
   });
 });
