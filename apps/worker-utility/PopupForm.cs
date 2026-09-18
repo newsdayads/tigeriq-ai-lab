@@ -21,6 +21,26 @@ internal sealed class PopupForm : Form
         Size = new Size(324, 3),
         BackColor = Color.FromArgb(37, 99, 235)
     };
+    readonly Label serviceIcon = new()
+    {
+        AutoSize = false,
+        Location = new Point(18, 22),
+        Size = new Size(36, 36),
+        TextAlign = ContentAlignment.MiddleCenter,
+        ForeColor = Color.White,
+        Font = new Font("Segoe UI Symbol", 16, FontStyle.Bold)
+    };
+    readonly Label bell = new()
+    {
+        AutoSize = false,
+        Location = new Point(256, 20),
+        Size = new Size(28, 28),
+        Text = "◉",
+        TextAlign = ContentAlignment.MiddleCenter,
+        ForeColor = Color.FromArgb(147, 197, 253),
+        Font = new Font("Segoe UI Symbol", 10, FontStyle.Bold)
+    };
+    Color currentAccent = Color.FromArgb(37, 99, 235);
     readonly Panel headerSeparator = new()
     {
         Location = new Point(16, 100),
@@ -37,7 +57,7 @@ internal sealed class PopupForm : Form
     readonly Label eyebrow = new()
     {
         AutoSize = true,
-        Text = "TIGERIQ  /  WORKER CONTROL",
+        Text = "NHÂN VIÊN AI",
         Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
         ForeColor = Muted
     };
@@ -114,7 +134,7 @@ internal sealed class PopupForm : Form
     readonly Label logSummary = new()
     {
         AutoSize = false,
-        Size = new Size(312, 50),
+        Size = new Size(312, 82),
         ForeColor = Color.FromArgb(203, 213, 225),
         Font = new Font("Consolas", 7.6f),
         BackColor = Canvas
@@ -128,7 +148,7 @@ internal sealed class PopupForm : Form
     readonly Action<string, Point> positionChanged;
     readonly ToolTip tips = new();
     readonly RoundedButton footerAdvanced;
-    readonly RoundedButton footerHide;
+    string[] currentLogs = [];
     AdvancedInfoForm? advancedForm;
     string[] advancedLines = [];
     string workerId = "NV02";
@@ -198,24 +218,9 @@ internal sealed class PopupForm : Form
         BuildSchedule(ref y);
         BuildLogs(ref y);
 
-        footerAdvanced = MakeActionButton("⚙  Nâng cao", "advanced-toggle", 150, 32);
+        footerAdvanced = MakeActionButton("⚙  Nâng cao", "advanced-toggle", 312, 32);
         footerAdvanced.Location = new Point(16, 728);
-        footerHide = new RoundedButton
-        {
-            Text = "×  Ẩn bảng",
-            Location = new Point(178, 728),
-            Size = new Size(150, 32),
-            BackColor = Color.FromArgb(20, 38, 60),
-            ForeColor = Ink,
-            HoverColor = Color.FromArgb(29, 50, 75),
-            CornerRadius = 9,
-            Font = new Font("Segoe UI", 8.2f, FontStyle.Bold),
-            Cursor = Cursors.Hand,
-            TabStop = false
-        };
-        footerHide.Click += (_, _) => Hide();
         root.Controls.Add(footerAdvanced);
-        root.Controls.Add(footerHide);
 
         dnd.CheckedChanged += async (_, _) =>
         {
@@ -279,12 +284,14 @@ internal sealed class PopupForm : Form
         };
         close.Click += (_, _) => Hide();
 
-        eyebrow.Location = new Point(20, 21);
-        header.Location = new Point(20, 43);
-        subtitle.Location = new Point(20, 70);
-        onlineChip.Location = new Point(212, 45);
+        eyebrow.Location = new Point(62, 18);
+        header.Location = new Point(62, 36);
+        subtitle.Location = new Point(62, 62);
+        onlineChip.Location = new Point(212, 70);
 
         root.Controls.Add(accentLine);
+        root.Controls.Add(serviceIcon);
+        root.Controls.Add(bell);
         root.Controls.Add(eyebrow);
         root.Controls.Add(header);
         root.Controls.Add(subtitle);
@@ -292,7 +299,7 @@ internal sealed class PopupForm : Form
         root.Controls.Add(close);
         root.Controls.Add(headerSeparator);
 
-        foreach (Control control in new Control[] { eyebrow, header, subtitle, onlineChip, accentLine })
+        foreach (Control control in new Control[] { serviceIcon, eyebrow, header, subtitle, onlineChip, bell, accentLine })
         {
             control.MouseDown += BeginHeaderDrag;
             control.MouseMove += MoveHeaderDrag;
@@ -305,17 +312,19 @@ internal sealed class PopupForm : Form
         var title = SectionTitle("TRẠNG THÁI PHIÊN");
         title.Location = new Point(20, 111);
         stateChip.Location = new Point(20, 132);
-        healthChip.Location = new Point(126, 132);
-        job.Location = new Point(20, 156);
-        reason.Location = new Point(20, 172);
-        progress.Location = new Point(20, 187);
+        job.Location = new Point(20, 158);
+        reason.Location = new Point(20, 176);
+        progress.Location = new Point(20, 193);
+
+        var viewJob = MakeActionButton("Xem việc", "view-job", 76, 26);
+        viewJob.Location = new Point(248, 154);
 
         root.Controls.Add(title);
         root.Controls.Add(stateChip);
-        root.Controls.Add(healthChip);
         root.Controls.Add(job);
         root.Controls.Add(reason);
         root.Controls.Add(progress);
+        root.Controls.Add(viewJob);
         root.Controls.Add(statusSeparator);
         root.Controls.Add(actionStatus);
     }
@@ -381,7 +390,11 @@ internal sealed class PopupForm : Form
         y += 18;
         logSummary.Location = new Point(16, y);
         root.Controls.Add(logSummary);
-        y += 54;
+        var allLogs = MakeActionButton("Xem tất cả", "logs-local", 82, 24);
+        allLogs.Location = new Point(246, y - 22);
+        allLogs.Click += (_, _) => ShowAllLogs();
+        root.Controls.Add(allLogs);
+        y += 86;
     }
 
     RoundedButton MakeActionButton(string text, string actionName, int width, int height)
@@ -403,8 +416,11 @@ internal sealed class PopupForm : Form
             TabStop = false
         };
         tips.SetToolTip(button, ShortcutFor(actionName));
-        button.Click += async (s, _) => await InvokeActionAsync((string)((Button)s!).Tag!);
-        actionButtons[actionName] = button;
+        if (actionName != "logs-local")
+        {
+            button.Click += async (s, _) => await InvokeActionAsync((string)((Button)s!).Tag!);
+            actionButtons[actionName] = button;
+        }
         return button;
     }
 
@@ -566,8 +582,14 @@ internal sealed class PopupForm : Form
     {
         workerId = worker.Id;
         var accent = WorkerAccent(worker.Id);
+        currentAccent = accent;
         accentLine.BackColor = accent;
-        header.Text = $"{worker.Id}  ·  {worker.Name}";
+        serviceIcon.BackColor = accent;
+        serviceIcon.Text = worker.Id == "NV04" ? "✦" : "◎";
+        eyebrow.Text = worker.Id == "NV04" ? "GEMINI" : "CHATGPT";
+        header.Text = worker.Id;
+        subtitle.Text = worker.Name;
+        Invalidate();
 
         onlineChip.Text = view.WindowOpen && view.SessionOk ? "●  ONLINE" : "●  OFFLINE";
         onlineChip.BackColor = view.WindowOpen && view.SessionOk ? Color.FromArgb(13, 65, 49) : Color.FromArgb(74, 24, 31);
@@ -589,42 +611,26 @@ internal sealed class PopupForm : Form
             _ => Red
         };
 
-        healthChip.Text = HealthText(watchdog?.Health);
-        healthChip.BackColor = watchdog?.Health switch
-        {
-            HealthBand.Healthy => Color.FromArgb(13, 65, 49),
-            HealthBand.Slow => Color.FromArgb(72, 48, 18),
-            HealthBand.Stalled or HealthBand.Blocked => Color.FromArgb(74, 24, 31),
-            HealthBand.Recovering => Color.FromArgb(25, 58, 91),
-            _ => Color.FromArgb(20, 38, 60)
-        };
-        healthChip.ForeColor = watchdog?.Health switch
-        {
-            HealthBand.Healthy => Green,
-            HealthBand.Slow => Amber,
-            HealthBand.Recovering => Color.FromArgb(147, 197, 253),
-            HealthBand.Stalled or HealthBand.Blocked => Red,
-            _ => Muted
-        };
-
         if (actionButtons.TryGetValue("run", out var run))
         {
             run.BackColor = accent;
             run.HoverColor = ControlPaint.Dark(accent, .12f);
         }
 
-        var noProgress = watchdog?.NoProgressFor.ToString(@"mm\:ss") ?? "—";
-        var alive = watchdog is null || watchdog.AliveAge == TimeSpan.MaxValue
-            ? "—"
-            : watchdog.AliveAge.ToString(@"mm\:ss");
-        reason.Text = $"{view.Reason}  ·  im lặng {noProgress}  ·  heartbeat {alive}";
-
         var elapsed = settings.StateChangedAt is DateTimeOffset since ? DateTimeOffset.Now - since : TimeSpan.Zero;
-        job.Text = $"Job hiện tại  {view.JobId ?? "—"}     {elapsed.ToString(@"hh\:mm\:ss")}";
-        progress.Text = view.State == WorkerUiState.Working
-            ? "Đang xử lý — dữ liệu đã xác minh từ controller."
-            : "Không có job đang chạy cần xác minh.";
-        progress.ForeColor = view.State == WorkerUiState.Working ? Color.FromArgb(147, 197, 253) : Muted;
+        stateChip.Text = $"{StateText(view.State)}     {elapsed.ToString(@"hh\:mm\:ss")}";
+        job.Text = $"Job hiện tại  {view.JobId ?? "—"}";
+        reason.Text = view.State switch
+        {
+            WorkerUiState.Working => "Đang xử lý công việc hiện tại",
+            WorkerUiState.Paused => "Đã tạm dừng theo điều khiển",
+            WorkerUiState.Blocked => $"Bị chặn: {view.Reason}",
+            _ => "Sẵn sàng nhận việc"
+        };
+        progress.Text = scheduleSettings?.NextCheckAt is DateTimeOffset nextCheck && scheduleSettings.Enabled
+            ? $"Lần kiểm tra kế tiếp: {nextCheck.ToLocalTime():HH:mm}"
+            : "Chưa đặt lịch kiểm tra";
+        progress.ForeColor = view.State == WorkerUiState.Blocked ? Red : Muted;
 
         schedule.Text = scheduleSettings?.NextCheckAt is DateTimeOffset next && scheduleSettings.Enabled
             ? $"↪ Lần kiểm tra kế tiếp: {next.ToLocalTime():HH:mm:ss}"
@@ -639,9 +645,10 @@ internal sealed class PopupForm : Form
         changeOnly.Checked = scheduleSettings?.ChangesOnly ?? true;
         suppressScheduleEvents = false;
 
+        currentLogs = recentLogs;
         var visibleLogs = recentLogs.Length == 0
             ? new[] { "Chưa có log cho worker này." }
-            : recentLogs.TakeLast(2).ToArray();
+            : recentLogs.TakeLast(5).ToArray();
         logSummary.Text = string.Join(Environment.NewLine, visibleLogs);
 
         advancedLines = BuildAdvancedLines(worker, view, watchdog, settings, scheduleSettings);
@@ -686,6 +693,41 @@ internal sealed class PopupForm : Form
             $"Khóa vị trí  : {(settings.PositionLocked ? "BẬT" : "TẮT")}",
             $"Lịch         : {(scheduleSettings?.Enabled == true ? $"{scheduleSettings.IntervalMinutes} phút" : "TẮT")}"
         ];
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        base.OnPaint(e);
+        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        using var pen = new Pen(currentAccent, 2);
+        using var path = RoundedPath(new Rectangle(1, 1, Width - 3, Height - 3), 18);
+        e.Graphics.DrawPath(pen, path);
+    }
+
+    void ShowAllLogs()
+    {
+        using var form = new Form
+        {
+            Text = $"{workerId} — Log gần nhất",
+            Width = 680,
+            Height = 480,
+            StartPosition = FormStartPosition.CenterParent,
+            BackColor = Canvas,
+            ForeColor = Ink
+        };
+        var box = new TextBox
+        {
+            Dock = DockStyle.Fill,
+            Multiline = true,
+            ReadOnly = true,
+            ScrollBars = ScrollBars.Vertical,
+            BackColor = Canvas,
+            ForeColor = Color.FromArgb(203, 213, 225),
+            Font = new Font("Consolas", 9),
+            Text = currentLogs.Length == 0 ? "Chưa có log." : string.Join(Environment.NewLine, currentLogs.TakeLast(100))
+        };
+        form.Controls.Add(box);
+        form.ShowDialog(this);
     }
 
     static void ApplyRoundedRegion(Control control, int radius)
