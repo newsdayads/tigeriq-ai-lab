@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { Pool } from 'pg';
 import { createGeminiRateController } from '../shared/gemini-rate-control.mjs';
 import { runBoundedManagerDecision } from './manager-json.mjs';
-import { normalizeCampaignPhases, currentCampaignGoal, campaignTransition, makePhaseCheckpoint } from './campaign-runner.mjs';
+import { normalizeCampaignPhases, currentCampaignGoal, campaignTransition, makePhaseCheckpoint, campaignNeedsEvidence, campaignEvidenceJobId } from './campaign-runner.mjs';
 import { ROUTING_PROFILE_LABELS, createResourceId, deriveRoutingProfile, failurePolicy, normalizeQuota, rankCandidates, rateLimitFailureState } from './smart-router.mjs';
 
 const DATABASE_URL = process.env.DATABASE_URL?.trim();
@@ -320,6 +320,27 @@ async function managerTick() {
   try {
     const routed=await callManagerDecision(prompt,o.id); const decision=routed.decision;
     await pool.query("update tigeriq_objectives set manager_cycles=manager_cycles+1,summary=$2,updated_at=now(),next_check_at=now()+interval '5 seconds' where id=$1",[o.id,String(decision.summary||'').slice(0,2000)]);
+    const doneJobs=history.filter(x=>x.status==='done').length;
+    if(campaignNeedsEvidence({status:decision.status,phases,doneJobs})){
+      const phase=phases[currentPhase]; const id=campaignEvidenceJobId(o.id,currentPhase);
+      const evidencePrompt=[
+        `Execute campaign phase ${currentPhase+1}/${phases.length}: ${phase.title}.`,
+        `Task: ${phase.prompt}`,
+        phase.acceptance?`Acceptance: ${phase.acceptance}`:'',
+        'Return concise concrete evidence/results for this phase. Do not claim repository mutation; coding/source changes are GitHub-only.'
+      ].filter(Boolean).join('\n');
+      const inserted=await pool.query('insert into tigeriq_jobs(id,objective_id,title,prompt,capability,phase_index) values($1,$2,$3,$4,$5,$6) on conflict(id) do nothing',[id,o.id,`Phase ${currentPhase+1} evidence: ${phase.title}`.slice(0,200),evidencePrompt.slice(0,12000),'reasoning',currentPhase]);
+      if(inserted.rowCount===0){
+        const existing=(await pool.query('select status,attempts,max_attempts from tigeriq_jobs where id=$1 and objective_id=$2 and phase_index=$3',[id,o.id,currentPhase])).rows[0];
+        if(existing?.status==='failed'&&Number(existing.attempts)<Number(existing.max_attempts)){await pool.query("update tigeriq_jobs set status='queued',employee_id=null,resource_id=null,provider=null,lease_until=null,started_at=null,completed_at=null where id=$1",[id]);await event('CAMPAIGN_PHASE_EVIDENCE_REQUEUED',{objectiveId:o.id,jobId:id,phaseIndex:currentPhase});return;}
+        if(existing?.status==='failed'){await pool.query("update tigeriq_objectives set status='blocked',summary=$2,updated_at=now() where id=$1",[o.id,`phase ${currentPhase+1}/${phases.length} evidence exhausted`]);await event('OBJECTIVE_BLOCKED',{objectiveId:o.id,jobId:id,phaseIndex:currentPhase,reason:'phase_evidence_exhausted'});return;}
+        await event('CAMPAIGN_PHASE_EVIDENCE_ALREADY_EXISTS',{objectiveId:o.id,jobId:id,phaseIndex:currentPhase,status:existing?.status||'unknown'});return;
+      }
+      await pool.query("update tigeriq_objectives set summary=$2,next_check_at=now()+interval '5 seconds',updated_at=now() where id=$1",[o.id,`phase ${currentPhase+1}/${phases.length} completion rejected: no DONE job evidence; evidence job created`]);
+      await event('CAMPAIGN_PHASE_COMPLETE_REJECTED_NO_EVIDENCE',{objectiveId:o.id,jobId:id,phaseIndex:currentPhase});
+      await event('JOB_CREATED',{objectiveId:o.id,jobId:id,phaseIndex:currentPhase});
+      return;
+    }
     const transition=campaignTransition({status:decision.status,currentPhase,phases});
     if(transition.action==='blocked'){await pool.query("update tigeriq_objectives set status='blocked',updated_at=now() where id=$1",[o.id]);await event('OBJECTIVE_BLOCKED',{objectiveId:o.id,phaseIndex:currentPhase});return;}
     if(transition.action==='complete'){await pool.query("update tigeriq_objectives set status='completed',updated_at=now() where id=$1",[o.id]);await event('OBJECTIVE_COMPLETE',{objectiveId:o.id,phaseIndex:currentPhase,phaseCount:phases.length||1});return;}

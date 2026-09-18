@@ -1,6 +1,6 @@
 // @ts-nocheck
 import {describe,it,expect} from 'vitest';
-import {normalizeCampaignPhases,currentCampaignGoal,campaignTransition,makePhaseCheckpoint} from '../apps/tigeriq-core/campaign-runner.mjs';
+import {normalizeCampaignPhases,currentCampaignGoal,campaignTransition,makePhaseCheckpoint,campaignNeedsEvidence,campaignEvidenceJobId} from '../apps/tigeriq-core/campaign-runner.mjs';
 
 const phases=[
   {title:'Checkpoint',prompt:'Design durable resume',acceptance:'Resume without Owner'},
@@ -26,6 +26,15 @@ describe('API campaign runner',()=>{
   it('preserves continue and blocked semantics',()=>{
     expect(campaignTransition({status:'continue',currentPhase:1,phases}).action).toBe('continue');
     expect(campaignTransition({status:'blocked',currentPhase:1,phases})).toEqual({action:'blocked',terminal:true,nextPhase:null});
+  });
+  it('rejects phase completion without durable work evidence',()=>{
+    expect(campaignNeedsEvidence({status:'complete',phases,doneJobs:0})).toBe(true);
+    expect(campaignNeedsEvidence({status:'complete',phases,doneJobs:1})).toBe(false);
+    expect(campaignNeedsEvidence({status:'complete',phases:[],doneJobs:0})).toBe(false);
+  });
+  it('uses one deterministic evidence job id per phase',()=>{
+    expect(campaignEvidenceJobId('OBJ-123',1)).toBe('JOB-EVID-OBJ-123-P1');
+    expect(campaignEvidenceJobId('OBJ-123',1)).toBe(campaignEvidenceJobId('OBJ-123',1));
   });
   it('creates a durable phase checkpoint payload',()=>{
     const cp=makePhaseCheckpoint({currentPhase:1,phases,summary:'phase done',completedAt:'2026-09-18T00:00:00.000Z'});
