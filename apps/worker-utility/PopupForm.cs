@@ -569,15 +569,16 @@ internal sealed class PopupForm : Form
         onlineChip.BackColor = view.WindowOpen && view.SessionOk ? Color.FromArgb(13, 65, 49) : Color.FromArgb(74, 24, 31);
         onlineChip.ForeColor = view.WindowOpen && view.SessionOk ? Green : Red;
 
-        stateChip.Text = StateText(view.State);
-        stateChip.BackColor = view.State switch
+        var displayState = settings.Paused ? WorkerUiState.Paused : view.State;
+        stateChip.Text = StateText(displayState);
+        stateChip.BackColor = displayState switch
         {
             WorkerUiState.Ready => Color.FromArgb(13, 65, 49),
             WorkerUiState.Working => Color.FromArgb(25, 58, 91),
             WorkerUiState.Paused => Color.FromArgb(72, 48, 18),
             _ => Color.FromArgb(74, 24, 31)
         };
-        stateChip.ForeColor = view.State switch
+        stateChip.ForeColor = displayState switch
         {
             WorkerUiState.Ready => Green,
             WorkerUiState.Working => Color.FromArgb(147, 197, 253),
@@ -587,13 +588,13 @@ internal sealed class PopupForm : Form
 
         if (actionButtons.TryGetValue("run", out var run))
         {
-            run.BackColor = view.State == WorkerUiState.Paused ? Color.FromArgb(20, 38, 60) : accent;
+            run.BackColor = displayState == WorkerUiState.Paused ? Color.FromArgb(20, 38, 60) : accent;
             run.ForeColor = Color.White;
             run.HoverColor = ControlPaint.Dark(accent, .12f);
         }
         if (actionButtons.TryGetValue("pause", out var pause))
         {
-            pause.BackColor = view.State == WorkerUiState.Paused ? Color.FromArgb(120, 72, 16) : Color.FromArgb(72, 48, 18);
+            pause.BackColor = displayState == WorkerUiState.Paused ? Color.FromArgb(120, 72, 16) : Color.FromArgb(72, 48, 18);
             pause.ForeColor = Amber;
         }
         if (actionButtons.TryGetValue("lock", out var lockButton))
@@ -611,9 +612,9 @@ internal sealed class PopupForm : Form
         }
 
         var elapsed = settings.StateChangedAt is DateTimeOffset since ? DateTimeOffset.Now - since : TimeSpan.Zero;
-        stateChip.Text = $"{StateText(view.State)}     {elapsed.ToString(@"hh\:mm\:ss")}";
+        stateChip.Text = $"{StateText(displayState)}     {elapsed.ToString(@"hh\:mm\:ss")}";
         job.Text = $"Job hiện tại  {view.JobId ?? "—"}";
-        reason.Text = view.State switch
+        reason.Text = displayState switch
         {
             WorkerUiState.Working => "Đang xử lý công việc hiện tại",
             WorkerUiState.Paused => "Đã tạm dừng theo điều khiển",
