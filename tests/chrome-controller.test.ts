@@ -10,6 +10,7 @@ import {
 import {
   computePlacements,
   isInteractiveDesktopSession,
+  reconcileWorkerUiStatus,
   isWorkerEnabled,
   validateConfig,
   type ControllerConfig,
@@ -52,6 +53,7 @@ describe('config and session guardrails',()=>{
   it('preserves disabled worker and rejects invalid enabled/order',()=>{const c=baseConfig();c.workers[2].enabled=false;expect(validateConfig(c).workers[2]).toMatchObject({id:'NV04',enabled:false});const bad=baseConfig() as unknown as {workers:Array<Record<string,unknown>>};bad.workers[0].enabled='false';expect(()=>validateConfig(bad)).toThrow('CONFIG_ENABLED_MUST_BE_BOOLEAN:NV02');const old=baseConfig();old.workers=[old.workers[1],old.workers[0],old.workers[2]];expect(()=>validateConfig(old)).toThrow('CONFIG_WORKER_ORDER_MUST_BE_NV02_NV03_NV04');});
   it('requires exact trusted runtime hosts',()=>{const remote=baseConfig();remote.autopilot.stateUrl='http://100.97.23.87:8795/state';expect(()=>validateConfig(remote)).toThrow('CONFIG_AUTOPILOT_STATE_URL_NOT_TRUSTED');remote.trustedRuntimeHosts=['100.97.23.87'];expect(validateConfig(remote).autopilot.stateUrl).toBe(remote.autopilot.stateUrl);const internet=baseConfig();internet.recovery.startupReadyUrl='http://8.8.8.8:8795/health';expect(()=>validateConfig(internet)).toThrow('CONFIG_RECOVERY_READY_URL_NOT_TRUSTED');});
   it('forbids Windows Services/Session-0 style launches but accepts a verified interactive SessionId when SESSIONNAME is blank',()=>{expect(isInteractiveDesktopSession('win32','Services','1')).toBe(false);expect(isInteractiveDesktopSession('win32','',undefined)).toBe(false);expect(isInteractiveDesktopSession('win32','','0')).toBe(false);expect(isInteractiveDesktopSession('win32','','1')).toBe(true);expect(isInteractiveDesktopSession('win32','Console',undefined)).toBe(true);expect(isInteractiveDesktopSession('linux',undefined,undefined)).toBe(true);});
+  it('reconciles submitted/working/ready only from real uiBusy heartbeat',()=>{expect(reconcileWorkerUiStatus('SUBMITTED',false)).toBe('READY');expect(reconcileWorkerUiStatus('SUBMITTED',true)).toBe('WORKING');expect(reconcileWorkerUiStatus('READY',true)).toBe('WORKING');expect(reconcileWorkerUiStatus('WORKING',false)).toBe('READY');expect(reconcileWorkerUiStatus('ONLINE',false)).toBe('READY');expect(reconcileWorkerUiStatus('BLOCKED',false)).toBe('BLOCKED');expect(reconcileWorkerUiStatus('ERROR',false)).toBe('ERROR');expect(reconcileWorkerUiStatus('STARTING',true)).toBe('STARTING');});
 });
 
 describe('NV02 completion watcher/autopilot',()=>{
