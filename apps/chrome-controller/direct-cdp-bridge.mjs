@@ -64,11 +64,13 @@ async function pruneDuplicates(w,list){
   const pages=pageTargetsFor(w,list);if(pages.length<=1) return pages[0]||null;
   const homePath=new URL(w.homeUrl).pathname;
   const keep=pages.find(t=>{try{return new URL(t.url).pathname===homePath}catch{return false}})||pages[0];
+  const lease=await acquireBridgeMutationLease(w.id);
+  if(!lease){log('DUPLICATE_TABS_PRUNE_DEFERRED_LEASE_BUSY',{workerId:w.id,count:pages.length});return keep;}
   const b=await browserRpc(workerPort(w));
   try{
     for(const t of pages){if(t.id!==keep.id) await b.call('Target.closeTarget',{targetId:t.id});}
     log('DUPLICATE_TABS_PRUNED',{workerId:w.id,removed:pages.length-1,kept:keep.id});
-  }finally{b.close();}
+  }finally{b.close();await releaseBridgeMutationLease(w.id,lease);}
   return keep;
 }
 
@@ -108,6 +110,21 @@ async function post(path,workerId,data){
 async function getCommand(workerId){
   const r=await fetch(`${CONTROLLER}/api/commands/${encodeURIComponent(workerId)}`,{headers:auth(workerId),signal:AbortSignal.timeout(4000)});
   if(!r.ok) throw new Error(`HTTP_${r.status}:commands`);return (await r.json()).command||null;
+}
+async function acquireBridgeMutationLease(workerId){
+  const ownerId=`DIRECT_CDP_BRIDGE:${process.pid}:${workerId}`;
+  const r=await fetch(`${CONTROLLER}/api/utility/workers/${workerId}/mutation-lease/acquire`,{
+    method:'POST',headers:auth(workerId,true),body:JSON.stringify({ownerId,ttlMs:10000}),signal:AbortSignal.timeout(4000)
+  });
+  if(r.status===409)return null;
+  if(!r.ok)throw new Error(`HTTP_${r.status}:mutation-lease-acquire`);
+  const data=await r.json();return data.lease?{ownerId,leaseId:data.lease.leaseId}:null;
+}
+async function releaseBridgeMutationLease(workerId,lease){
+  if(!lease)return;
+  await fetch(`${CONTROLLER}/api/utility/workers/${workerId}/mutation-lease/release`,{
+    method:'POST',headers:auth(workerId,true),body:JSON.stringify(lease),signal:AbortSignal.timeout(4000)
+  }).catch(()=>{});
 }
 async function navigate(target,url){
   const p=await pageRpc(target);try{await p.call('Page.enable');await p.call('Page.navigate',{url});}finally{p.close();}
