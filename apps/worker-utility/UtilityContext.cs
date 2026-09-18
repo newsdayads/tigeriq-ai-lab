@@ -385,6 +385,11 @@ internal sealed class UtilityContext : ApplicationContext
                 if (harnessResult.State != HarnessState.Ready)
                     throw new InvalidOperationException($"HARNESS_{harnessResult.State}:{harnessResult.Summary}");
                 break;
+            case "harness-lock-test":
+                var mutationResult = await RunHarnessMutationPilotAsync(id);
+                if (mutationResult.State != HarnessState.Ready)
+                    throw new InvalidOperationException($"HARNESS_{mutationResult.State}:{mutationResult.Summary}");
+                break;
             case "save":
                 var saved = await controller.SaveAsync(id, false);
                 popups[id].SetActionNotice($"✓ Đã lưu: {saved.CheckpointRef}", false);
@@ -473,6 +478,49 @@ internal sealed class UtilityContext : ApplicationContext
         }
         UpdateTraySurface();
         return result;
+    }
+
+    async Task<HarnessView> RunHarnessMutationPilotAsync(string id)
+    {
+        if (!BrowserHarnessClient.PilotEnabled(id))
+            throw new InvalidOperationException("HARNESS_WRITE_PILOT_NV04_ONLY");
+        if (!views.TryGetValue(id, out var current))
+            throw new InvalidOperationException("HARNESS_WRITE_STATE_UNAVAILABLE");
+        if (current.AuthRequired || !string.IsNullOrWhiteSpace(current.SecurityBlock))
+            throw new InvalidOperationException($"HARNESS_WRITE_SECURITY_BLOCK:{current.Reason}");
+        if (!current.SessionOk || !current.WindowOpen || !current.UiReady)
+            throw new InvalidOperationException($"HARNESS_WRITE_WORKER_NOT_READY:{current.Reason}");
+        if (current.UiBusy || !string.IsNullOrWhiteSpace(current.JobId))
+            throw new InvalidOperationException("HARNESS_WRITE_ACTIVE_JOB_FORBIDDEN");
+
+        var ownerId = $"WORKER_UTILITY_BROWSER_HARNESS:{Environment.ProcessId}:{id}";
+        store.Log(id, "HARNESS_MUTATION_LEASE_REQUEST", new { ownerId, ttlMs = 30000 });
+        var lease = await controller.AcquireBrowserMutationLeaseAsync(id, ownerId, 30000);
+        store.Log(id, "HARNESS_MUTATION_LEASE_ACQUIRED", new { ownerId, lease.LeaseId, lease.ExpiresAt });
+
+        try
+        {
+            var result = await browserHarness.MutationProbeAsync(Workers.Get(id), current);
+            harnessViews[id] = result;
+            store.Log(id, "HARNESS_MUTATION_PROBE_RESULT", new
+            {
+                state = result.State.ToString(),
+                result.Summary,
+                result.Url,
+                result.CheckedAt,
+                lease.LeaseId
+            });
+            if (result.State != HarnessState.Ready)
+                throw new InvalidOperationException($"HARNESS_MUTATION_{result.State}:{result.Summary}");
+            popups[id].SetActionNotice("✓ Harness mutation + lease OK", false);
+            return result;
+        }
+        finally
+        {
+            await controller.ReleaseBrowserMutationLeaseAsync(id, lease);
+            store.Log(id, "HARNESS_MUTATION_LEASE_RELEASED", new { ownerId, lease.LeaseId });
+            UpdateTraySurface();
+        }
     }
 
     ScheduleSettings EnsureSchedule(string id, bool? enabled)
