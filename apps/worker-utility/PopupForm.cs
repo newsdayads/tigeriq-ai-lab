@@ -790,7 +790,7 @@ internal sealed class AdvancedInfoForm : Form
     {
         this.action = action;
         Text = "TigerIQ — Nâng cao";
-        ClientSize = new Size(520, 520);
+        ClientSize = new Size(420, 420);
         MinimumSize = Size;
         MaximumSize = Size;
         StartPosition = FormStartPosition.CenterScreen;
@@ -808,7 +808,7 @@ internal sealed class AdvancedInfoForm : Form
         tabs.TabPages.Add(securityTab);
 
         var infoWrap = new Panel { Dock = DockStyle.Fill, Padding = new Padding(12), BackColor = Color.FromArgb(5, 13, 25) };
-        var copy = MakeButton("Sao chép chẩn đoán", new Point(12, 380), 220);
+        var copy = MakeButton("Sao chép chẩn đoán", new Point(12, 286), 190);
         copy.Anchor = AnchorStyles.Left | AnchorStyles.Bottom;
         copy.Click += (_, _) =>
         {
@@ -825,7 +825,7 @@ internal sealed class AdvancedInfoForm : Form
             }
         };
         infoBox.Dock = DockStyle.Top;
-        infoBox.Height = 364;
+        infoBox.Height = 272;
         infoWrap.Controls.Add(copy);
         infoWrap.Controls.Add(infoBox);
         infoTab.Controls.Add(infoWrap);
@@ -850,14 +850,14 @@ internal sealed class AdvancedInfoForm : Form
             ("⏻  Đóng NV an toàn", "close")
         })
         {
-            var button = MakeButton(item.Item1, Point.Empty, 455);
+            var button = MakeButton(item.Item1, Point.Empty, 355);
             var command = item.Item2;
             button.Margin = new Padding(0, 0, 0, 8);
             button.Click += async (_, _) => await RunAsync(command);
             options.Controls.Add(button);
         }
 
-        dndButton = MakeButton("Không làm phiền", Point.Empty, 455);
+        dndButton = MakeButton("Không làm phiền", Point.Empty, 355);
         dndButton.Margin = new Padding(0, 0, 0, 8);
         dndButton.Click += async (_, _) =>
         {
@@ -891,7 +891,7 @@ internal sealed class AdvancedInfoForm : Form
         {
             Text = text,
             Location = location,
-            Size = new Size(width, 36),
+            Size = new Size(width, 34),
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.FromArgb(20, 38, 60),
             ForeColor = Color.FromArgb(241, 245, 249),
