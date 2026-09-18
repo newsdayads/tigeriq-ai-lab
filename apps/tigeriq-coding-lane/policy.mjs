@@ -17,11 +17,14 @@ export function safeRepoPath(path){
   return !PROTECTED.some(re=>re.test(p));
 }
 
+import {parseEnvelopeOrLegacy} from './envelope.mjs';
+
 export function validateChanges(changes,allowedPaths=[]){
   if(!Array.isArray(changes)||changes.length<1||changes.length>8) throw new Error('CODING_CHANGES_COUNT_INVALID');
   const allow=new Set((allowedPaths||[]).map(x=>String(x).trim()).filter(Boolean));
   let bytes=0; const seen=new Set();
-  for(const change of changes){
+  for(const rawChange of changes){
+    const change = parseEnvelopeOrLegacy(rawChange);
     const path=String(change?.path||'').trim(); const content=String(change?.content??'');
     if(!safeRepoPath(path)) throw new Error(`CODING_PATH_BLOCKED:${path}`);
     if(allow.size&&!allow.has(path)) throw new Error(`CODING_PATH_OUTSIDE_MANAGER_SCOPE:${path}`);
