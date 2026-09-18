@@ -155,7 +155,7 @@ internal sealed class ControllerClient
 
         // Approved utility behavior: if the worker is already in its canonical context,
         // do not reload/navigate it. A simple focus is enough and avoids UI_NOT_READY churn.
-        if (current.WindowOpen && IsCanonicalContext(id, current.Url))
+        if (current.WindowOpen && current.UiReady && IsCanonicalContext(id, current.Url))
         {
             using var focused = await FocusAsync(id);
             return;
