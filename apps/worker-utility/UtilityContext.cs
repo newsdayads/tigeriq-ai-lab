@@ -31,7 +31,7 @@ internal sealed class UtilityContext : ApplicationContext
         foreach (var w in Workers.All)
         {
             if (!settings.Workers.ContainsKey(w.Id)) settings.Workers[w.Id] = new WorkerSettings();
-            harnessViews[w.Id] = BrowserHarnessClient.PilotEnabled(w.Id) ? HarnessView.Unknown(w.Id) : HarnessView.Off(w.Id);
+            harnessViews[w.Id] = BrowserHarnessClient.ReadOnlyEnabled(w.Id) ? HarnessView.Unknown(w.Id) : HarnessView.Off(w.Id);
         }
         store.EnsureAutostart();
 
@@ -106,7 +106,9 @@ internal sealed class UtilityContext : ApplicationContext
                 else badges[w.Id].MarkUnbound();
             }
             if (++pollCounter % 2 == 0) await RefreshStateAsync();
-            if (pollCounter % 60 == 6) await RefreshHarnessAsync(BrowserHarnessClient.PilotWorkerId, false);
+            if (pollCounter % 60 == 6)
+                foreach (var worker in Workers.All.Where(x => BrowserHarnessClient.ReadOnlyEnabled(x.Id)))
+                    await RefreshHarnessAsync(worker.Id, false);
             await RunSchedulesAsync();
             if (pollCounter % 5 == 0) await RunWatchdogAsync();
             if (!settings.DoNotDisturb && pollCounter % 5 == 0) await EnforceLocksAsync();
@@ -438,11 +440,11 @@ internal sealed class UtilityContext : ApplicationContext
 
     async Task<HarnessView> RefreshHarnessAsync(string id, bool notify)
     {
-        if (!BrowserHarnessClient.PilotEnabled(id))
+        if (!BrowserHarnessClient.ReadOnlyEnabled(id))
         {
             var off = HarnessView.Off(id);
             harnessViews[id] = off;
-            if (notify) popups[id].SetActionNotice("Browser Harness chưa mở cho NV này (pilot NV04).", false);
+            if (notify) popups[id].SetActionNotice("Browser Harness chưa mở cho NV này.", false);
             UpdateTraySurface();
             return off;
         }
