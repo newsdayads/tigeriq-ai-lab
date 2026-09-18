@@ -75,7 +75,7 @@ internal static class UiPlacement
             var savedRect = new Rectangle(saved, popupSize);
             // Layout 2 only accepts a remembered popup position when it still belongs
             // to this worker's own Chrome. Old pre-freeze positions are ignored.
-            if (anchor.Contains(savedRect))
+            if (anchor.Contains(savedRect) && savedRect.Top >= anchor.Top + 54)
             {
                 foreach (var area in workingAreas)
                 {
