@@ -343,5 +343,5 @@ async function persistTerminalHandoff(o,decision,currentPhase){
   const generationKey=handoffGenerationKey(items);
   const previous=o?.metadata?.handoff||{};
   const completedGenerationKeys=Array.isArray(previous.completedGenerationKeys)?previous.completedGenerationKeys:[];
-  if(completedGenerationKeys.includes(generationKey))return {action:'repeated_completed',items,generationKey};
+  if(completedGenerationKeys.includes(generationKey))return {action:'skipped',generationKey};Key))return {action:'repeated_completed',items,generationKey};
   const apiItems=items.filter(
