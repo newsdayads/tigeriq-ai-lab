@@ -823,8 +823,13 @@ internal sealed class AdvancedInfoForm : Form
         tabs.TabPages.Add(securityTab);
 
         var infoWrap = new Panel { Dock = DockStyle.Fill, Padding = new Padding(12), BackColor = Color.FromArgb(5, 13, 25) };
-        var copy = MakeButton("Sao chép chẩn đoán", new Point(12, 286), 190);
-        copy.Anchor = AnchorStyles.Left | AnchorStyles.Bottom;
+        var infoActions = new Panel
+        {
+            Dock = DockStyle.Bottom,
+            Height = 30,
+            BackColor = Color.FromArgb(5, 13, 25)
+        };
+        var copy = MakeButton("Sao chép chẩn đoán", new Point(0, 0), 184);
         copy.Click += (_, _) =>
         {
             try
@@ -839,15 +844,14 @@ internal sealed class AdvancedInfoForm : Form
                 status.ForeColor = Color.FromArgb(248, 113, 113);
             }
         };
-        var harnessProbe = MakeButton("Harness + khóa an toàn", new Point(208, 286), 170);
-        harnessProbe.Anchor = AnchorStyles.Right | AnchorStyles.Bottom;
+        var harnessProbe = MakeButton("Harness + khóa an toàn", new Point(190, 0), 190);
         harnessProbe.Click += async (_, _) => await RunAsync("harness-lock-test");
 
-        infoBox.Dock = DockStyle.Top;
-        infoBox.Height = 272;
-        infoWrap.Controls.Add(copy);
-        infoWrap.Controls.Add(harnessProbe);
+        infoActions.Controls.Add(copy);
+        infoActions.Controls.Add(harnessProbe);
+        infoBox.Dock = DockStyle.Fill;
         infoWrap.Controls.Add(infoBox);
+        infoWrap.Controls.Add(infoActions);
         infoTab.Controls.Add(infoWrap);
 
         var options = new FlowLayoutPanel
