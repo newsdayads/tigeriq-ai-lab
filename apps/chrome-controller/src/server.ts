@@ -299,6 +299,7 @@ async function dispatch(workerId:WorkerId,text:string,navigate:boolean,source:'M
   assertWorkerEnabled(workerId);
   if(!text.trim())throw new Error('DISPATCH_TEXT_REQUIRED');
   const worker=getWorker(workerId)!;
+  browserMutationLeases.assertControllerAllowed(workerId);
   states.get(workerId)!.status=source==='AUTO_CONTINUE'?'AUTOPILOT_DISPATCHING':'DISPATCHING';
   return uiQueue.enqueue(async()=>{
     try{
