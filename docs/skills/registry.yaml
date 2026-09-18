@@ -41,8 +41,8 @@ skills:
 
   - id: context-budget-compaction
     title: Context Budget and Compaction
-    state: CANDIDATE
-    version: 0.1.0
+    state: ACTIVE
+    version: 1.0.0
     provenance_batch: owner-video-lessons-2026-09-18
     source_log: learning-log/2026-09-18-owner-video-lessons.md
     target: core-context-routing
