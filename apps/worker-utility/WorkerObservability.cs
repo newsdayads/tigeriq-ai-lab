@@ -26,15 +26,18 @@ internal static class WorkerObservability
 
     internal static string CurrentText(WorkerView view) => view.State switch
     {
-        WorkerUiState.Working when !string.IsNullOrWhiteSpace(view.JobId) => $"Job {view.JobId}",
+        WorkerUiState.Working when !string.IsNullOrWhiteSpace(view.JobId) =>
+            $"{Short(view.JobTitle ?? view.JobId, 28)} · {StageText(view.JobStage)}{ProgressText(view.JobProgress)}",
         WorkerUiState.Working => "Đang xử lý trên web",
         WorkerUiState.Paused => "Đang tạm dừng",
         WorkerUiState.Blocked => $"Bị chặn · {Short(view.Reason, 42)}",
+        _ when !string.IsNullOrWhiteSpace(view.JobStage) => $"{StageText(view.JobStage)}{ProgressText(view.JobProgress)}",
         _ => "Chờ việc mới"
     };
 
     internal static string NextText(WorkerView view, HarnessView? harness, ScheduleSettings? schedule)
     {
+        if (!string.IsNullOrWhiteSpace(view.JobNextAction)) return Short(view.JobNextAction, 48);
         if (view.State == WorkerUiState.Blocked) return "Xử lý blocker";
         if (view.State == WorkerUiState.Paused) return "Bấm Chạy/Tiếp tục";
         if (harness?.State is HarnessState.Error or HarnessState.Missing or HarnessState.Blocked)
@@ -59,6 +62,10 @@ internal static class WorkerObservability
 
     static string ResultText(WorkerView view, HarnessView? harness, string[] logs)
     {
+        if (!string.IsNullOrWhiteSpace(view.JobResult))
+            return Short(view.JobResult, 46);
+        if (!string.IsNullOrWhiteSpace(view.JobEvidenceRef))
+            return $"Evidence · {Short(view.JobEvidenceRef, 35)}";
         if (view.State == WorkerUiState.Blocked)
             return $"Bị chặn · {Short(view.Reason, 46)}";
 
@@ -127,10 +134,27 @@ internal static class WorkerObservability
         }
 
         Take(ref latest, view.HeartbeatAt);
+        Take(ref latest, view.JobLastActivityAt);
         Take(ref latest, harness?.CheckedAt);
         Take(ref latest, settings.StateChangedAt);
         return latest?.ToLocalTime().ToString("HH:mm:ss") ?? "—";
     }
+
+    static string ProgressText(int? progress) => progress is int p ? $" · {Math.Clamp(p, 0, 100)}%" : "";
+
+    static string StageText(string? stage) => stage switch
+    {
+        "QUEUED" => "Đã xếp hàng",
+        "DISPATCHING" => "Đang giao việc",
+        "SUBMITTED" => "Đã giao",
+        "WORKING" => "Đang làm",
+        "WAITING_EVIDENCE" => "Chờ bằng chứng",
+        "VERIFY" => "Đang xác minh",
+        "DONE" => "Hoàn tất",
+        "BLOCKED" => "Bị chặn",
+        "ERROR" => "Lỗi",
+        _ => string.IsNullOrWhiteSpace(stage) ? "Đang xử lý" : stage
+    };
 
     static string Short(string? text, int max)
     {

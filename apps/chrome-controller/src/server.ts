@@ -28,6 +28,7 @@ import { buildRuntimeEvidence } from './runtime-evidence.js';
 import { DurableDispatchLeaseStore } from './dispatch-lease.js';
 import { BrowserMutationLeaseStore } from './browser-mutation-lease.js';
 import { heartbeatStopReason } from './security-gate.js';
+import { DurableUiJobLedger, isUiJobStage, type UiJobMetadata } from './job-ledger.js';
 
 type Command = { id:string; workerId:WorkerId; action:string; payload?:Record<string,unknown>; createdAt:string };
 type Heartbeat = { workerId:WorkerId; url?:string; windowId?:number; tabId?:number; state?:string; uiReady?:boolean; authRequired?:boolean; reauthRequired?:boolean; captchaRequired?:boolean; rateLimited?:boolean; rateLimitCode?:number|string; uiBusy?:boolean|null; securityBlock?:string|null; display?:{workArea?:WorkArea}; at:string };
@@ -81,9 +82,11 @@ const runtimeEvidencePath=resolve(config.logDir,'runtime-evidence.json');
 const interactionStatePath=resolve(config.logDir,'owner-interaction-state.json');
 const dispatchLeasePath=resolve(config.logDir,'autopilot-dispatch-lease.json');
 const browserMutationLeasePath=resolve(config.logDir,'browser-mutation-leases.json');
+const uiJobLedgerPath=resolve(config.logDir,'ui-job-ledger.json');
 const controllerInstanceId=randomUUID();
 const dispatchLease=new DurableDispatchLeaseStore(dispatchLeasePath,controllerInstanceId,config.autopilot.dispatchLeaseTtlMs??300000);
 const browserMutationLeases=new BrowserMutationLeaseStore(browserMutationLeasePath);
+const uiJobLedger=new DurableUiJobLedger(uiJobLedgerPath);
 const pageMutationActions=new Set(['NAVIGATE','DISPATCH','ARCHIVE_CHAT','CLOSE_WINDOW']);
 
 function log(event:string,data:Record<string,unknown>={}){
@@ -184,6 +187,7 @@ function evidence(){
     config,
     workArea:effectiveWorkArea(),
     workers:[...states.values()],
+    jobs:uiJobLedger.snapshot(),
     autopilot:autopilotState,
     snapshot:latestSnapshot,
     paused,
@@ -296,12 +300,21 @@ async function startWorker(workerId:WorkerId){
   });
 }
 
-async function dispatch(workerId:WorkerId,text:string,navigate:boolean,source:'MANUAL'|'AUTO_CONTINUE'='MANUAL'){
+async function dispatch(
+  workerId:WorkerId,
+  text:string,
+  navigate:boolean,
+  source:'MANUAL'|'AUTO_CONTINUE'='MANUAL',
+  metadata:UiJobMetadata={},
+){
   assertWorkerEnabled(workerId);
   if(!text.trim())throw new Error('DISPATCH_TEXT_REQUIRED');
   const worker=getWorker(workerId)!;
   browserMutationLeases.assertControllerAllowed(workerId);
+  const job=uiJobLedger.create(workerId,{...metadata,source:metadata.source??source});
+  uiJobLedger.transition(workerId,job.jobId,'DISPATCHING',{nextAction:'Deliver to worker UI'});
   states.get(workerId)!.status=source==='AUTO_CONTINUE'?'AUTOPILOT_DISPATCHING':'DISPATCHING';
+  persistEvidence();
   return uiQueue.enqueue(async()=>{
     try{
       assertWorkerEnabled(workerId);
@@ -309,8 +322,11 @@ async function dispatch(workerId:WorkerId,text:string,navigate:boolean,source:'M
       const result=await sendCommand(workerId,'DISPATCH',{text});
       states.get(workerId)!.status='SUBMITTED';
       states.get(workerId)!.lastError=undefined;
+      uiJobLedger.transition(workerId,job.jobId,'SUBMITTED',{nextAction:'Wait for real UI activity'});
       log(source==='AUTO_CONTINUE'?'AUTO_CONTINUE_SUBMITTED':'WORK_ORDER_SUBMITTED',{
         workerId,
+        jobId:job.jobId,
+        issueRef:job.issueRef,
         trigger:source==='AUTO_CONTINUE'?AUTO_CONTINUE:undefined,
         chars:text.length,
       });
@@ -320,6 +336,8 @@ async function dispatch(workerId:WorkerId,text:string,navigate:boolean,source:'M
       const state=states.get(workerId)!;
       if(state.enabled&&!state.blocked)state.status='ERROR';
       state.lastError=String(error);
+      uiJobLedger.transition(workerId,job.jobId,'ERROR',{blocker:String(error),nextAction:'Root-cause and safe retry'});
+      persistEvidence();
       throw error;
     }
   });
@@ -327,6 +345,7 @@ async function dispatch(workerId:WorkerId,text:string,navigate:boolean,source:'M
 
 function snapshotRequiredWorkers():WorkerId[]{return latestSnapshot?.requiredWorkers?.filter((id)=>states.get(id)?.enabled)??[];}
 function workerHasActiveJob(id:WorkerId){
+  if(uiJobLedger.active(id))return true;
   if(id==='NV02'){
     if(autopilotState.pendingJobId||autopilotState.uncertainJobId)return true;
     const previous=latestSnapshot?.previousJob;
@@ -433,7 +452,7 @@ async function autopilotTick(){
     let dispatchDelivered=false;
     try{
       dispatchLease.markDispatching(dispatchLeaseToken.leaseId,decision.jobId);
-      await dispatch('NV02',decision.text,false,'AUTO_CONTINUE');
+      await dispatch('NV02',decision.text,false,'AUTO_CONTINUE',{jobId:decision.jobId,title:`Autopilot ${decision.jobId}`,source:'AUTO_CONTINUE'});
       dispatchDelivered=true;
       const committedLease=dispatchLease.markCommitted(dispatchLeaseToken.leaseId,decision.jobId);
       autopilotState={
@@ -578,6 +597,7 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
       recovery:{attempts:Object.fromEntries(recoveryAttempts),maxReopenAttempts:config.recovery.maxReopenAttempts},
       evidencePath:runtimeEvidencePath,
       browserMutationLeases:browserMutationLeases.snapshot(),
+      jobs:uiJobLedger.snapshot(),
       workers:[...states.values()],
     });
     return true;
@@ -609,6 +629,8 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
     const hbStop=heartbeatStopReason(hb);
     if(hbStop){
       state.blocked=true;state.status='BLOCKED';state.lastError=hbStop;
+      const activeJob=uiJobLedger.active(workerId);
+      if(activeJob)uiJobLedger.transition(workerId,activeJob.jobId,'BLOCKED',{blocker:hbStop,nextAction:'Resolve security blocker'});
       if(workerId==='NV02')stopAutopilot(hbStop);
       log('HEARTBEAT_SECURITY_STOP',{workerId,status:hbStop});
     }else if(!state.blocked){
@@ -616,6 +638,14 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
       const beforeStatus=state.status;
       state.status=reconcileWorkerUiStatus(state.status,hb.uiBusy);
       if(state.status!==beforeStatus)log('WORKER_UI_STATUS_RECONCILED',{workerId,from:beforeStatus,to:state.status,uiBusy:hb.uiBusy});
+      const activeJob=uiJobLedger.active(workerId);
+      if(activeJob&&hb.uiBusy===true&&activeJob.stage!=='WORKING'){
+        uiJobLedger.transition(workerId,activeJob.jobId,'WORKING',{nextAction:'Continue current work'});
+        log('UI_JOB_STAGE_RECONCILED',{workerId,jobId:activeJob.jobId,from:activeJob.stage,to:'WORKING',uiBusy:true});
+      }else if(activeJob&&hb.uiBusy===false&&activeJob.stage==='WORKING'){
+        uiJobLedger.transition(workerId,activeJob.jobId,'WAITING_EVIDENCE',{nextAction:'Attach authoritative evidence'});
+        log('UI_JOB_STAGE_RECONCILED',{workerId,jobId:activeJob.jobId,from:'WORKING',to:'WAITING_EVIDENCE',uiBusy:false});
+      }
     }
     recoveryAttempts.set(workerId,0);
     if(!state.enabled){state.status='DISABLED';json(res,200,{ok:true,enabled:false});return true;}
@@ -699,6 +729,43 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
     killed=true;setOwnerInteractionReadOnly(true);
     for(const queue of commandQueues.values())queue.splice(0);
     log('KILL_SWITCH');persistEvidence();json(res,200,{ok:true});return true;
+  }
+  const jobMatch=url.pathname.match(/^\/api\/utility\/workers\/(NV02|NV03|NV04)\/job(?:\/status)?$/);
+  if(jobMatch){
+    const workerId=jobMatch[1] as WorkerId;
+    if(req.method==='GET'){
+      json(res,200,{ok:true,workerId,active:uiJobLedger.active(workerId)??null,latest:uiJobLedger.latest(workerId)??null});
+      return true;
+    }
+    if(req.method!=='POST'){json(res,405,{ok:false,error:'METHOD_NOT_ALLOWED'});return true;}
+    try{
+      const data=await body(req);
+      const jobId=String(data.jobId??'').trim();
+      if(!jobId)throw new Error('UI_JOB_ID_REQUIRED');
+      if(!isUiJobStage(data.stage))throw new Error('UI_JOB_STAGE_INVALID');
+      const current=uiJobLedger.get(workerId,jobId);
+      if(!current)throw new Error(`UI_JOB_NOT_FOUND:${workerId}:${jobId}`);
+      const evidenceRef=typeof data.evidenceRef==='string'?data.evidenceRef.trim():undefined;
+      if(evidenceRef&&!evidenceRef.startsWith('https://github.com/'))throw new Error('UI_JOB_EVIDENCE_REF_NOT_GITHUB');
+      if(data.stage==='VERIFY'||data.stage==='DONE'){
+        if(!current.issueRef)throw new Error('UI_JOB_ISSUE_REF_REQUIRED_FOR_COMPLETION');
+        if(!evidenceRef)throw new Error('UI_JOB_COMPLETION_EVIDENCE_REQUIRED');
+        if(!(evidenceRef===current.issueRef||evidenceRef.startsWith(`${current.issueRef}#`)))
+          throw new Error('UI_JOB_COMPLETION_EVIDENCE_IDENTITY_MISMATCH');
+      }
+      const result=typeof data.result==='string'?data.result.trim():'';
+      if(data.stage==='DONE'&&!result)throw new Error('UI_JOB_DONE_RESULT_REQUIRED');
+      const record=uiJobLedger.transition(workerId,jobId,data.stage,{
+        nextAction:typeof data.nextAction==='string'?data.nextAction:null,
+        blocker:typeof data.blocker==='string'?data.blocker:null,
+        evidenceRef,
+        result:result||null,
+      });
+      log('UI_JOB_STATUS_UPDATED',{workerId,jobId,stage:record.stage,progress:record.progress,evidenceRef:evidenceRef??null});
+      persistEvidence();
+      json(res,200,{ok:true,job:record});
+    }catch(error){json(res,409,{ok:false,error:String(error)});}
+    return true;
   }
   const browserLeaseMatch=url.pathname.match(/^\/api\/utility\/workers\/(NV02|NV03|NV04)\/mutation-lease(?:\/(acquire|release))?$/);
   if(browserLeaseMatch){
@@ -789,7 +856,13 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
         }else if(action==='dispatch'){
           const data=await body(req);
           if(typeof data.text!=='string')throw new Error('DISPATCH_TEXT_MUST_BE_STRING');
-          await dispatch(workerId,data.text,data.navigate!==false);
+          const jobData=data.job&&typeof data.job==='object'&&!Array.isArray(data.job)?data.job as Record<string,unknown>:{};
+          await dispatch(workerId,data.text,data.navigate!==false,'MANUAL',{
+            jobId:typeof jobData.jobId==='string'?jobData.jobId:undefined,
+            issueRef:typeof jobData.issueRef==='string'?jobData.issueRef:undefined,
+            title:typeof jobData.title==='string'?jobData.title:undefined,
+            source:typeof jobData.source==='string'?jobData.source:'SYSTEM',
+          });
         }
       }
       persistEvidence();

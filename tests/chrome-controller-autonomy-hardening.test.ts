@@ -121,9 +121,9 @@ describe('controller-independent Chrome lifecycle contract',()=>{
 describe('AUTO_CONTINUE current-chat dispatch contract',()=>{
   it('does not navigate to project home before dispatching the queued job',()=>{
     const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
-    expect(server).toContain("await dispatch('NV02',decision.text,false,'AUTO_CONTINUE')");
+    expect(server).toContain("await dispatch('NV02',decision.text,false,'AUTO_CONTINUE',{jobId:decision.jobId");
     expect(server).not.toContain("await dispatch('NV02',decision.text,true,'AUTO_CONTINUE')");
-    expect(server).toContain("await dispatch(workerId,data.text,data.navigate!==false)");
+    expect(server).toContain("await dispatch(workerId,data.text,data.navigate!==false,'MANUAL',{");
   });
 });
 describe('AUTO_CONTINUE known non-delivery contract',()=>{
@@ -149,6 +149,6 @@ describe('AUTO_CONTINUE known non-delivery contract',()=>{
     expect(server).toContain('classifyAutoContinueDispatchFailure(error,dispatchDelivered)');
     expect(server).toContain('dispatchLease.markRetryable(dispatchLeaseToken.leaseId,decision.jobId)');
     expect(server).toContain("log('AUTO_CONTINUE_FAILED_CLOSED'");
-    expect(server).toContain("await dispatch(workerId,data.text,data.navigate!==false)");
+    expect(server).toContain("await dispatch(workerId,data.text,data.navigate!==false,'MANUAL',{");
   });
 });

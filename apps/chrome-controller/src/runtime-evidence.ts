@@ -1,5 +1,6 @@
 import { WORKER_IDS, computePlacements, workAreaFitsLayout, type ControllerConfig, type WindowPlacement, type WorkArea, type WorkerId } from './model.js';
 import type { DurableAutopilotState, ExternalAutopilotSnapshot } from './autopilot.js';
+import type { UiJobRecord } from './job-ledger.js';
 
 export interface EvidenceWorkerState {
   id: WorkerId;
@@ -16,6 +17,7 @@ export interface RuntimeEvidenceInput {
   config: ControllerConfig;
   workArea?: WorkArea;
   workers: EvidenceWorkerState[];
+  jobs: UiJobRecord[];
   autopilot: DurableAutopilotState;
   snapshot?: ExternalAutopilotSnapshot;
   paused: boolean;
@@ -30,7 +32,7 @@ export function buildRuntimeEvidence(input: RuntimeEvidenceInput, now = new Date
   const usableWorkArea = input.workArea && workAreaFitsLayout(input.config, input.workArea) ? input.workArea : undefined;
   const placements = computePlacements(input.config, usableWorkArea);
   return {
-    schemaVersion: 'tigeriq.chrome-controller.runtime-evidence.v1',
+    schemaVersion: 'tigeriq.chrome-controller.runtime-evidence.v2',
     generatedAt: now.toISOString(),
     ownerInteractionMode: input.paused ? 'READ_ONLY' : 'AUTOMATION',
     layout: {
@@ -97,6 +99,23 @@ export function buildRuntimeEvidence(input: RuntimeEvidenceInput, now = new Date
       fakeHuman: false,
       credentialExtraction: false,
     },
+    jobs: input.jobs.map((job) => ({
+      jobId: job.jobId,
+      workerId: job.workerId,
+      issueRef: job.issueRef,
+      title: job.title,
+      source: job.source,
+      stage: job.stage,
+      progress: job.progress,
+      createdAt: job.createdAt,
+      startedAt: job.startedAt,
+      lastActivityAt: job.lastActivityAt,
+      completedAt: job.completedAt,
+      nextAction: job.nextAction,
+      blocker: job.blocker,
+      evidenceRefs: [...job.evidenceRefs],
+      result: job.result,
+    })),
     workers: input.workers.map((worker) => ({
       id: worker.id,
       enabled: worker.enabled,

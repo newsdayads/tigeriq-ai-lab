@@ -17,6 +17,9 @@ internal sealed record WorkerDefinition(string Id, string Name, int DebugPort);
 internal enum WorkerUiState { Ready, Working, Blocked, Paused }
 internal sealed record WorkerView(
     string Id, WorkerUiState State, string Reason, string? JobId,
+    string? JobTitle, string? JobStage, int? JobProgress,
+    string? JobNextAction, string? JobEvidenceRef, string? JobResult,
+    DateTimeOffset? JobLastActivityAt,
     DateTimeOffset? StatusSince, bool UiReady, bool AuthRequired,
     bool UiBusy, string? SecurityBlock, string? Url, int? TabPort,
     DateTimeOffset? HeartbeatAt, bool SessionOk, bool WindowOpen);

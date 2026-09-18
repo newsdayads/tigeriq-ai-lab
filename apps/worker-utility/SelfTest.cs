@@ -33,8 +33,9 @@ internal static class SelfTest
     {
         var t = new WatchdogTracker();
         var now = DateTimeOffset.UtcNow;
-        var view = new WorkerView("NV02", WorkerUiState.Working, "JOB_ACTIVE", "GH-1", null,
-            true, false, true, null, "https://chatgpt.com/", 9222, now, true, true);
+        var view = new WorkerView("NV02", WorkerUiState.Working, "JOB_ACTIVE", "GH-1",
+            "Test job", "WORKING", 60, "Continue current work", null, null, now,
+            null, true, false, true, null, "https://chatgpt.com/", 9222, now, true, true);
         Must(t.Observe(view, now).Health == HealthBand.Healthy, "watchdog healthy");
         Must(t.Observe(view, now.AddMinutes(3)).Health == HealthBand.Stalled, "watchdog stalled");
         Must(t.ShouldEscalate("NV02", now.AddMinutes(6)), "watchdog escalation");
@@ -122,6 +123,7 @@ internal static class SelfTest
         };
         var ready = new WorkerView(
             "NV02", WorkerUiState.Ready, "READY", null,
+            null, null, null, null, null, null, null,
             now.AddSeconds(-5), true, false, false, null,
             "https://chatgpt.com/", 9222, now, true, true);
         var harness = new HarnessView(
@@ -135,10 +137,10 @@ internal static class SelfTest
         Must(readyView.Browser == "BH:OK", "owner observability harness");
         Must(readyView.Next.StartsWith("Kiểm tra "), "owner observability scheduled next action");
 
-        var working = ready with { State = WorkerUiState.Working, JobId = "GH-999", UiBusy = true };
+        var working = ready with { State = WorkerUiState.Working, JobId = "GH-999", JobTitle = "Review #959", JobStage = "WORKING", JobProgress = 60, UiBusy = true };
         var workingView = WorkerObservability.Build(
             working, harness, settings, null, Array.Empty<string>());
-        Must(workingView.Current == "Job GH-999", "owner observability working job");
+        Must(workingView.Current == "Review #959 · Đang làm · 60%", "owner observability working job");
         Must(workingView.Next == "Theo dõi đến khi hoàn tất", "owner observability working next action");
 
         var blocked = ready with { State = WorkerUiState.Blocked, Reason = "AUTH_REQUIRED", AuthRequired = true };
