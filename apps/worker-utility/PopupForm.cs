@@ -802,6 +802,8 @@ internal sealed class AdvancedInfoForm : Form
     public AdvancedInfoForm(Func<string, Task> action)
     {
         this.action = action;
+        AutoScaleMode = AutoScaleMode.None;
+        DoubleBuffered = true;
         Text = "TigerIQ — Nâng cao";
         ClientSize = new Size(420, 420);
         MinimumSize = Size;
@@ -870,13 +872,13 @@ internal sealed class AdvancedInfoForm : Form
         {
             var button = MakeButton(item.Item1, Point.Empty, 355);
             var command = item.Item2;
-            button.Margin = new Padding(0, 0, 0, 8);
+            button.Margin = new Padding(0, 0, 0, 5);
             button.Click += async (_, _) => await RunAsync(command);
             options.Controls.Add(button);
         }
 
         dndButton = MakeButton("Không làm phiền", Point.Empty, 355);
-        dndButton.Margin = new Padding(0, 0, 0, 8);
+        dndButton.Margin = new Padding(0, 0, 0, 5);
         dndButton.Click += async (_, _) =>
         {
             // Parent settings are authoritative. HandleActionAsync refreshes SetWorker()
@@ -905,25 +907,24 @@ internal sealed class AdvancedInfoForm : Form
         Padding = new Padding(4)
     };
 
-    static Button MakeButton(string text, Point location, int width)
+    static RoundedButton MakeButton(string text, Point location, int width)
     {
-        var button = new Button
+        return new RoundedButton
         {
             Text = text,
             Location = location,
-            Size = new Size(width, 34),
-            FlatStyle = FlatStyle.Flat,
+            Size = new Size(width, 30),
             BackColor = Color.FromArgb(20, 38, 60),
             ForeColor = Color.FromArgb(241, 245, 249),
-            Font = new Font("Segoe UI", 8.8f, FontStyle.Bold),
+            HoverColor = Color.FromArgb(29, 50, 75),
+            CornerRadius = 8,
+            Font = new Font("Segoe UI", 8.6f, FontStyle.Bold),
             Cursor = Cursors.Hand,
             TabStop = false,
             TextAlign = ContentAlignment.MiddleLeft,
-            Padding = new Padding(10, 0, 0, 0)
+            Padding = new Padding(10, 0, 0, 0),
+            UseMnemonic = false
         };
-        button.FlatAppearance.BorderColor = Color.FromArgb(31, 52, 76);
-        button.FlatAppearance.BorderSize = 1;
-        return button;
     }
 
     async Task RunAsync(string command)
