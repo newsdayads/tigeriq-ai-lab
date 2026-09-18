@@ -7,10 +7,12 @@ internal sealed class UtilityContext : ApplicationContext
 {
     readonly StateStore store = new();
     readonly ControllerClient controller = new();
+    readonly BrowserHarnessClient browserHarness = new();
     readonly WindowBinder binder = new();
     readonly Dictionary<string, BadgeForm> badges = new();
     readonly Dictionary<string, PopupForm> popups = new();
     readonly Dictionary<string, WorkerView> views = new();
+    readonly Dictionary<string, HarnessView> harnessViews = new();
     readonly Dictionary<string, WatchdogView> health = new();
     readonly Dictionary<string, ToolStripMenuItem> trayWorkerItems = new();
     readonly WatchdogTracker watchdog = new();
@@ -27,7 +29,10 @@ internal sealed class UtilityContext : ApplicationContext
     {
         settings = store.Load();
         foreach (var w in Workers.All)
+        {
             if (!settings.Workers.ContainsKey(w.Id)) settings.Workers[w.Id] = new WorkerSettings();
+            harnessViews[w.Id] = BrowserHarnessClient.PilotEnabled(w.Id) ? HarnessView.Unknown(w.Id) : HarnessView.Off(w.Id);
+        }
         store.EnsureAutostart();
 
         foreach (var worker in Workers.All)
@@ -49,14 +54,14 @@ internal sealed class UtilityContext : ApplicationContext
         {
             if (e.Button == MouseButtons.Left)
             {
-                trayPanel.ApplyStates(views, settings);
+                trayPanel.ApplyStates(views, harnessViews, settings);
                 trayPanel.ToggleNearTray();
             }
         };
 
         timer.Tick += async (_, _) => await TickAsync();
         timer.Start();
-        store.Log("SYSTEM", "UTILITY_STARTED", new { version = Application.ProductVersion, issue = 820 });
+        store.Log("SYSTEM", "UTILITY_STARTED", new { version = Application.ProductVersion, issue = 876, harnessPilot = BrowserHarnessClient.PilotWorkerId });
     }
 
     ContextMenuStrip BuildTrayMenu()
@@ -101,6 +106,7 @@ internal sealed class UtilityContext : ApplicationContext
                 else badges[w.Id].MarkUnbound();
             }
             if (++pollCounter % 2 == 0) await RefreshStateAsync();
+            if (pollCounter % 60 == 6) await RefreshHarnessAsync(BrowserHarnessClient.PilotWorkerId, false);
             await RunSchedulesAsync();
             if (pollCounter % 5 == 0) await RunWatchdogAsync();
             if (!settings.DoNotDisturb && pollCounter % 5 == 0) await EnforceLocksAsync();
@@ -131,7 +137,7 @@ internal sealed class UtilityContext : ApplicationContext
 
     void UpdateTraySurface()
     {
-        trayPanel.ApplyStates(views, settings);
+        trayPanel.ApplyStates(views, harnessViews, settings);
         foreach (var worker in Workers.All)
         {
             if (!trayWorkerItems.TryGetValue(worker.Id, out var item)) continue;
@@ -234,6 +240,7 @@ internal sealed class UtilityContext : ApplicationContext
 
         settings.Schedules.TryGetValue(id, out var sched);
         health.TryGetValue(id, out var wd);
+        harnessViews.TryGetValue(id, out var harnessView);
         var occupied = new List<Rectangle>();
 
         // The selected popup is allowed to overlay its OWN Chrome, exactly as the approved layout.
@@ -250,7 +257,7 @@ internal sealed class UtilityContext : ApplicationContext
                 occupied.Add(pair.Value.Bounds);
 
         var ok = popups[id].ShowWorker(
-            Workers.Get(id), view, wd, settings.Workers[id], sched, settings.DoNotDisturb,
+            Workers.Get(id), view, wd, settings.Workers[id], sched, harnessView, settings.DoNotDisturb,
             store.RecentLogs(id, 100), rect, occupied.ToArray());
         if (!ok && notifyOnFailure)
             ShowTrayNotice("TigerIQ — Không chồng NV khác", "Không tìm được vị trí popup an toàn cho NV đã chọn.");
@@ -373,6 +380,11 @@ internal sealed class UtilityContext : ApplicationContext
             case "health":
                 popups[id].SetActionNotice("✓ " + await controller.QuickHealthAsync(id), false);
                 break;
+            case "harness-probe":
+                var harnessResult = await RefreshHarnessAsync(id, true);
+                if (harnessResult.State != HarnessState.Ready)
+                    throw new InvalidOperationException($"HARNESS_{harnessResult.State}:{harnessResult.Summary}");
+                break;
             case "save":
                 var saved = await controller.SaveAsync(id, false);
                 popups[id].SetActionNotice($"✓ Đã lưu: {saved.CheckpointRef}", false);
@@ -417,6 +429,50 @@ internal sealed class UtilityContext : ApplicationContext
         store.Log(id, "ACTION_OK", new { action = actionName });
         await RefreshStateAsync();
         TryShowPopup(id, false);
+    }
+
+    async Task<HarnessView> RefreshHarnessAsync(string id, bool notify)
+    {
+        if (!BrowserHarnessClient.PilotEnabled(id))
+        {
+            var off = HarnessView.Off(id);
+            harnessViews[id] = off;
+            if (notify) popups[id].SetActionNotice("Browser Harness chưa mở cho NV này (pilot NV04).", false);
+            UpdateTraySurface();
+            return off;
+        }
+
+        if (!views.TryGetValue(id, out var current))
+        {
+            var unknown = HarnessView.Unknown(id);
+            harnessViews[id] = unknown;
+            UpdateTraySurface();
+            return unknown;
+        }
+
+        store.Log(id, "HARNESS_PROBE_BEGIN", new { mode = "READ_ONLY", port = Workers.Get(id).DebugPort });
+        var result = await browserHarness.ProbeAsync(Workers.Get(id), current);
+        harnessViews[id] = result;
+        store.Log(id, "HARNESS_PROBE_RESULT", new
+        {
+            mode = "READ_ONLY",
+            state = result.State.ToString(),
+            result.Summary,
+            result.Url,
+            result.Title,
+            result.CheckedAt
+        });
+
+        if (notify)
+        {
+            var ok = result.State == HarnessState.Ready;
+            var text = ok
+                ? $"✓ Harness READ-ONLY OK · {result.Title ?? result.Url ?? id}"
+                : $"⚠ Harness {result.State}: {result.Summary}";
+            popups[id].SetActionNotice(text, !ok);
+        }
+        UpdateTraySurface();
+        return result;
     }
 
     ScheduleSettings EnsureSchedule(string id, bool? enabled)

@@ -219,7 +219,7 @@ internal sealed class TrayPanelForm : Form
         return button;
     }
 
-    public void ApplyStates(IReadOnlyDictionary<string, WorkerView> views, UtilitySettings settings)
+    public void ApplyStates(IReadOnlyDictionary<string, WorkerView> views, IReadOnlyDictionary<string, HarnessView> harness, UtilitySettings settings)
     {
         dndLabel.Text = settings.DoNotDisturb ? "Thông báo: đang tắt" : "Thông báo: đang bật";
         foreach (var worker in Workers.All)
@@ -227,7 +227,7 @@ internal sealed class TrayPanelForm : Form
             if (!views.TryGetValue(worker.Id, out var view))
             {
                 dotLabels[worker.Id].ForeColor = Red;
-                stateLabels[worker.Id].Text = "Chưa có dữ liệu";
+                stateLabels[worker.Id].Text = "Chưa có dữ liệu" + HarnessSuffix(worker.Id, harness);
                 continue;
             }
 
@@ -239,14 +239,31 @@ internal sealed class TrayPanelForm : Form
                 _ => Red
             };
             stateLabels[worker.Id].ForeColor = view.State == WorkerUiState.Blocked ? Red : Muted;
-            stateLabels[worker.Id].Text = view.State switch
+            var stateText = view.State switch
             {
                 WorkerUiState.Ready => "● Sẵn sàng",
                 WorkerUiState.Working => $"● Đang chạy  ·  {view.JobId ?? "đang xử lý"}",
                 WorkerUiState.Paused => "● Tạm dừng",
                 _ => $"● Bị chặn  ·  {view.Reason}"
             };
+            stateLabels[worker.Id].Text = stateText + HarnessSuffix(worker.Id, harness);
         }
+    }
+
+    static string HarnessSuffix(string id, IReadOnlyDictionary<string, HarnessView> harness)
+    {
+        if (!harness.TryGetValue(id, out var value)) return "";
+        var shortState = value.State switch
+        {
+            HarnessState.Ready => "OK",
+            HarnessState.Busy => "BẬN",
+            HarnessState.Blocked => "CHẶN",
+            HarnessState.Missing => "THIẾU",
+            HarnessState.Error => "LỖI",
+            HarnessState.Unknown => "?",
+            _ => "—"
+        };
+        return $" · BH:{shortState}";
     }
 
     public void ToggleNearTray()

@@ -10,6 +10,7 @@ internal static class SelfTest
             TestSavePrompt();
             TestSettingsRoundTrip();
             TestWorkerIdentityOrder();
+            TestBrowserHarnessProbeParsing();
             TestUiPlacement();
             Console.WriteLine("SELF_TEST_OK");
             return 0;
@@ -76,6 +77,18 @@ internal static class SelfTest
         Must(Workers.Get("NV02").Name == "ChatGPT Plus", "NV02 identity");
         Must(Workers.Get("NV03").Name == "ChatGPT Go", "NV03 identity");
         Must(Workers.Get("NV04").Name == "Gemini Pro", "NV04 identity");
+    }
+
+    static void TestBrowserHarnessProbeParsing()
+    {
+        Must(BrowserHarnessClient.PilotEnabled("NV04"), "harness pilot NV04");
+        Must(!BrowserHarnessClient.PilotEnabled("NV02"), "harness pilot excludes NV02");
+        var parsed = BrowserHarnessClient.ParseProbeOutput("NV04",
+            "update available\n{\"url\":\"https://gemini.google.com/app\",\"title\":\"Gemini\",\"w\":1000}\n");
+        Must(parsed.State == HarnessState.Ready, "harness parses page_info json");
+        Must(parsed.Url == "https://gemini.google.com/app", "harness preserves url");
+        var bad = BrowserHarnessClient.ParseProbeOutput("NV04", "not-json");
+        Must(bad.State == HarnessState.Error, "harness fails closed on malformed output");
     }
 
     static void TestUiPlacement()

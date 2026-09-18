@@ -551,7 +551,7 @@ internal sealed class PopupForm : Form
     }
 
     public bool ShowWorker(WorkerDefinition worker, WorkerView view, WatchdogView? watchdog, WorkerSettings settings,
-        ScheduleSettings? scheduleSettings, bool doNotDisturb, string[] recentLogs, Rectangle anchor, Rectangle[] occupied)
+        ScheduleSettings? scheduleSettings, HarnessView? harness, bool doNotDisturb, string[] recentLogs, Rectangle anchor, Rectangle[] occupied)
     {
         workerId = worker.Id;
         var accent = WorkerAccent(worker.Id);
@@ -639,7 +639,7 @@ internal sealed class PopupForm : Form
             : recentLogs.TakeLast(5).ToArray();
         logSummary.Text = string.Join(Environment.NewLine, visibleLogs);
 
-        advancedLines = BuildAdvancedLines(worker, view, watchdog, settings, scheduleSettings);
+        advancedLines = BuildAdvancedLines(worker, view, watchdog, settings, scheduleSettings, harness);
         if (advancedForm?.Visible == true) advancedForm.SetWorker(workerId, advancedLines, doNotDisturb);
 
         var saved = settings.PopupX is int x && settings.PopupY is int y ? new Point?(new Point(x, y)) : null;
@@ -660,7 +660,7 @@ internal sealed class PopupForm : Form
     }
 
     static string[] BuildAdvancedLines(WorkerDefinition worker, WorkerView view, WatchdogView? watchdog,
-        WorkerSettings settings, ScheduleSettings? scheduleSettings)
+        WorkerSettings settings, ScheduleSettings? scheduleSettings, HarnessView? harness)
     {
         var heartbeat = view.HeartbeatAt?.ToLocalTime().ToString("HH:mm:ss  dd/MM") ?? "chưa có dữ liệu";
         return
@@ -678,10 +678,15 @@ internal sealed class PopupForm : Form
             $"Profile      : chưa có dữ liệu backend",
             $"Rate limit   : chưa có dữ liệu backend",
             $"Health       : {watchdog?.Health.ToString() ?? "chưa có dữ liệu"}",
+            $"Harness      : {HarnessDisplay(harness)}",
+            $"Harness check: {harness?.CheckedAt?.ToLocalTime().ToString("HH:mm:ss  dd/MM") ?? "chưa kiểm tra"}",
             $"Khóa vị trí  : {(settings.PositionLocked ? "BẬT" : "TẮT")}",
             $"Lịch         : {(scheduleSettings?.Enabled == true ? $"{scheduleSettings.IntervalMinutes} phút" : "TẮT")}"
         ];
     }
+
+    static string HarnessDisplay(HarnessView? harness)
+        => harness is null ? "chưa có dữ liệu" : $"{harness.State} · {harness.Summary}";
 
     void ShowAllLogs()
     {
@@ -824,9 +829,14 @@ internal sealed class AdvancedInfoForm : Form
                 status.ForeColor = Color.FromArgb(248, 113, 113);
             }
         };
+        var harnessProbe = MakeButton("Kiểm tra Harness", new Point(208, 286), 170);
+        harnessProbe.Anchor = AnchorStyles.Right | AnchorStyles.Bottom;
+        harnessProbe.Click += async (_, _) => await RunAsync("harness-probe");
+
         infoBox.Dock = DockStyle.Top;
         infoBox.Height = 272;
         infoWrap.Controls.Add(copy);
+        infoWrap.Controls.Add(harnessProbe);
         infoWrap.Controls.Add(infoBox);
         infoTab.Controls.Add(infoWrap);
 
