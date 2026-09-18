@@ -58,6 +58,87 @@ interface CircuitState {
   openUntil: number;
 }
 
+export interface ApiDiscoveryEndpoint {
+  url: string;
+  version: string;
+  capabilities: string[];
+}
+
+export interface NormalizedApiRequest {
+  endpoint: string;
+  payload: unknown;
+  headers: Record<string, string>;
+}
+
+export type CredentialAuthType = 'no-auth' | 'apiKey' | 'OAuth';
+
+export interface CredentialConfig {
+  type: CredentialAuthType;
+  token?: string;
+  keyName?: string;
+}
+
+export class CredentialGatingError extends Error {
+  constructor(public readonly authType: CredentialAuthType, message: string) {
+    super(`Credential gating failed [${authType}]: ${message}`);
+    this.name = 'CredentialGatingError';
+  }
+}
+
+export function enforceCredentialGate(config: CredentialConfig): boolean {
+  if (config.type === 'no-auth') return true;
+  if (config.type === 'apiKey') {
+    if (!config.token || !config.token.trim()) {
+      throw new CredentialGatingError('apiKey', 'Missing or empty API key');
+    }
+    return true;
+  }
+  if (config.type === 'OAuth') {
+    if (!config.token || !config.token.trim()) {
+      throw new CredentialGatingError('OAuth', 'Missing or empty OAuth token');
+    }
+    return true;
+  }
+  throw new CredentialGatingError(config.type, 'Unknown auth type');
+}
+
+export class CapabilityRegistry {
+  private caps = new Set<string>();
+
+  register(capability: string): void {
+    this.caps.add(capability);
+  }
+
+  has(capability: string): boolean {
+    return this.caps.has(capability);
+  }
+
+  list(): string[] {
+    return Array.from(this.caps);
+  }
+}
+
+export function discoverAndNormalizeApi(endpoint: ApiDiscoveryEndpoint, rawPayload: unknown): NormalizedApiRequest {
+  if (!endpoint.url) {
+    throw new Error('Invalid endpoint URL');
+  }
+  return {
+    endpoint: endpoint.url,
+    payload: rawPayload ?? {},
+    headers: {
+      'x-api-version': endpoint.version,
+      'content-type': 'application/json',
+    },
+  };
+}
+
+export function zeroCostRouterPolicyIntegration(primaryTarget: ModelTarget, freeTarget: ModelTarget): RoutingPolicy {
+  return {
+    primary: freeTarget,
+    fallbacks: [primaryTarget],
+  };
+}
+
 export class RoutingExhaustedError extends Error {
   constructor(public readonly attempts: RoutingAttempt[]) {
     super('all configured model routes failed');
