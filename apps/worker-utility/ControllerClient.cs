@@ -91,7 +91,8 @@ internal sealed class ControllerClient
         var url = hasHb && hb.TryGetProperty("url", out var u) ? u.GetString() : null;
         var windowOpen = worker.TryGetProperty("windowState", out var ws) && ws.GetString() == "OPEN";
         var status = worker.TryGetProperty("status", out var st) ? st.GetString() ?? "UNKNOWN" : "UNKNOWN";
-        var jobId = CurrentJob(auto.RootElement, workerId);
+        var durableJob = CurrentDurableJob(root, workerId);
+        var jobId = durableJob.ActiveJobId ?? CurrentJob(auto.RootElement, workerId);
         WorkerUiState viewState;
         string reason;
         if (paused) { viewState = WorkerUiState.Paused; reason = "Controller paused"; }
@@ -100,8 +101,45 @@ internal sealed class ControllerClient
         else if (stale || !windowOpen || !uiReady) { viewState = WorkerUiState.Blocked; reason = stale ? "HEARTBEAT_STALE" : (!windowOpen ? "WINDOW_NOT_OPEN" : "UI_NOT_READY"); }
         else if (busy || !string.IsNullOrWhiteSpace(jobId)) { viewState = WorkerUiState.Working; reason = busy ? "UI_BUSY" : "JOB_ACTIVE"; }
         else { viewState = WorkerUiState.Ready; reason = "READY"; }
-        return new WorkerView(workerId, viewState, reason, jobId, null, uiReady, auth, busy, sec, url,
+        return new WorkerView(workerId, viewState, reason, jobId,
+            durableJob.Title, durableJob.Stage, durableJob.Progress,
+            durableJob.NextAction, durableJob.EvidenceRef, durableJob.Result, durableJob.LastActivityAt,
+            null, uiReady, auth, busy, sec, url,
             Workers.Get(workerId).DebugPort, hbAt, sessionOk, windowOpen);
+    }
+
+    static (string? ActiveJobId, string? Title, string? Stage, int? Progress, string? NextAction, string? EvidenceRef, string? Result, DateTimeOffset? LastActivityAt)
+        CurrentDurableJob(JsonElement root, string workerId)
+    {
+        if (!root.TryGetProperty("jobs", out var jobs) || jobs.ValueKind != JsonValueKind.Array)
+            return (null, null, null, null, null, null, null, null);
+
+        JsonElement selected = default;
+        var found = false;
+        foreach (var candidate in jobs.EnumerateArray())
+        {
+            if (!candidate.TryGetProperty("workerId", out var wid) || wid.GetString() != workerId) continue;
+            selected = candidate;
+            found = true;
+        }
+        if (!found) return (null, null, null, null, null, null, null, null);
+
+        var stage = selected.TryGetProperty("stage", out var stageEl) ? stageEl.GetString() : null;
+        var terminal = stage is "DONE" or "BLOCKED" or "ERROR";
+        var id = selected.TryGetProperty("jobId", out var idEl) ? idEl.GetString() : null;
+        var title = selected.TryGetProperty("title", out var titleEl) ? titleEl.GetString() : null;
+        int? progress = selected.TryGetProperty("progress", out var progressEl) && progressEl.TryGetInt32(out var p) ? p : null;
+        var next = selected.TryGetProperty("nextAction", out var nextEl) && nextEl.ValueKind == JsonValueKind.String ? nextEl.GetString() : null;
+        var result = selected.TryGetProperty("result", out var resultEl) && resultEl.ValueKind == JsonValueKind.String ? resultEl.GetString() : null;
+        DateTimeOffset? lastActivity = selected.TryGetProperty("lastActivityAt", out var lastEl)
+            && DateTimeOffset.TryParse(lastEl.GetString(), out var parsedLast) ? parsedLast : null;
+        string? evidence = null;
+        if (selected.TryGetProperty("evidenceRefs", out var refs) && refs.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in refs.EnumerateArray())
+                if (item.ValueKind == JsonValueKind.String) evidence = item.GetString();
+        }
+        return (terminal ? null : id, title, stage, progress, next, evidence, result, lastActivity);
     }
 
     static string? CurrentJob(JsonElement root, string workerId)
