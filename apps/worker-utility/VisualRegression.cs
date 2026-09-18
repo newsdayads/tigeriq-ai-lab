@@ -10,30 +10,45 @@ internal static class VisualRegression
     // Filled after the first exact Windows-CI render on this branch.
     internal const string PopupPixelBaseline = "PENDING";
     internal const string TrayPixelBaseline = "PENDING";
+    internal const string AdvancedPixelBaseline = "PENDING";
+    internal const string BadgePixelBaseline = "PENDING";
 
     public static void Run()
     {
         using var popup = new PopupForm((_, _) => Task.CompletedTask, (_, _) => { });
         using var tray = new TrayPanelForm(_ => { }, () => { }, () => { }, () => { }, () => { }, () => { });
+        using var advanced = new AdvancedInfoForm(_ => Task.CompletedTask);
+        using var badge = new BadgeForm(Workers.Get("NV02"), _ => { }, (_, _) => { }, _ => { });
 
-        Prepare(popup);
-        Prepare(tray);
+        foreach (var form in new Form[] { popup, tray, advanced, badge }) Prepare(form);
 
         AssertContained(popup, "popup");
         AssertContained(tray, "tray");
+        AssertContained(advanced, "advanced");
+        AssertContained(badge, "badge");
 
         var popupPixels = PixelHash(popup);
         var trayPixels = PixelHash(tray);
+        var advancedPixels = PixelHash(advanced);
+        var badgePixels = PixelHash(badge);
         var popupGeometry = GeometryHash(popup);
         var trayGeometry = GeometryHash(tray);
+        var advancedGeometry = GeometryHash(advanced);
+        var badgeGeometry = GeometryHash(badge);
 
-        Console.WriteLine($"VISUAL_REGRESSION popup_pixels={popupPixels} tray_pixels={trayPixels}");
-        Console.WriteLine($"VISUAL_GEOMETRY popup={popupGeometry} tray={trayGeometry}");
+        Console.WriteLine($"VISUAL_REGRESSION popup_pixels={popupPixels} tray_pixels={trayPixels} advanced_pixels={advancedPixels} badge_pixels={badgePixels}");
+        Console.WriteLine($"VISUAL_GEOMETRY popup={popupGeometry} tray={trayGeometry} advanced={advancedGeometry} badge={badgeGeometry}");
 
-        if (PopupPixelBaseline != "PENDING" && !string.Equals(popupPixels, PopupPixelBaseline, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException($"popup visual regression: expected {PopupPixelBaseline}, got {popupPixels}");
-        if (TrayPixelBaseline != "PENDING" && !string.Equals(trayPixels, TrayPixelBaseline, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException($"tray visual regression: expected {TrayPixelBaseline}, got {trayPixels}");
+        AssertBaseline("popup", popupPixels, PopupPixelBaseline);
+        AssertBaseline("tray", trayPixels, TrayPixelBaseline);
+        AssertBaseline("advanced", advancedPixels, AdvancedPixelBaseline);
+        AssertBaseline("badge", badgePixels, BadgePixelBaseline);
+    }
+
+    static void AssertBaseline(string name, string actual, string expected)
+    {
+        if (expected != "PENDING" && !string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException($"{name} visual regression: expected {expected}, got {actual}");
     }
 
     static void Prepare(Form form)
