@@ -28,7 +28,7 @@ import { buildRuntimeEvidence } from './runtime-evidence.js';
 import { DurableDispatchLeaseStore } from './dispatch-lease.js';
 import { BrowserMutationLeaseStore } from './browser-mutation-lease.js';
 import { heartbeatStopReason } from './security-gate.js';
-import { DurableUiJobLedger, isUiJobStage, type UiJobMetadata } from './job-ledger.js';
+import { DurableUiJobLedger, isUiJobStage, reconcileUiJobStage, type UiJobMetadata } from './job-ledger.js';
 
 type Command = { id:string; workerId:WorkerId; action:string; payload?:Record<string,unknown>; createdAt:string };
 type Heartbeat = { workerId:WorkerId; url?:string; windowId?:number; tabId?:number; state?:string; uiReady?:boolean; authRequired?:boolean; reauthRequired?:boolean; captchaRequired?:boolean; rateLimited?:boolean; rateLimitCode?:number|string; uiBusy?:boolean|null; securityBlock?:string|null; display?:{workArea?:WorkArea}; at:string };
@@ -639,12 +639,14 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
       state.status=reconcileWorkerUiStatus(state.status,hb.uiBusy);
       if(state.status!==beforeStatus)log('WORKER_UI_STATUS_RECONCILED',{workerId,from:beforeStatus,to:state.status,uiBusy:hb.uiBusy});
       const activeJob=uiJobLedger.active(workerId);
-      if(activeJob&&hb.uiBusy===true&&activeJob.stage!=='WORKING'){
-        uiJobLedger.transition(workerId,activeJob.jobId,'WORKING',{nextAction:'Continue current work'});
-        log('UI_JOB_STAGE_RECONCILED',{workerId,jobId:activeJob.jobId,from:activeJob.stage,to:'WORKING',uiBusy:true});
-      }else if(activeJob&&hb.uiBusy===false&&activeJob.stage==='WORKING'){
-        uiJobLedger.transition(workerId,activeJob.jobId,'WAITING_EVIDENCE',{nextAction:'Attach authoritative evidence'});
-        log('UI_JOB_STAGE_RECONCILED',{workerId,jobId:activeJob.jobId,from:'WORKING',to:'WAITING_EVIDENCE',uiBusy:false});
+      if(activeJob){
+        const reconciledStage=reconcileUiJobStage(activeJob.stage,hb.uiBusy);
+        if(reconciledStage){
+          uiJobLedger.transition(workerId,activeJob.jobId,reconciledStage,{
+            nextAction:reconciledStage==='WORKING'?'Continue current work':'Attach authoritative evidence',
+          });
+          log('UI_JOB_STAGE_RECONCILED',{workerId,jobId:activeJob.jobId,from:activeJob.stage,to:reconciledStage,uiBusy:hb.uiBusy});
+        }
       }
     }
     recoveryAttempts.set(workerId,0);
