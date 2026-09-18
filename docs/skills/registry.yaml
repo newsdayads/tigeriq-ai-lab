@@ -39,7 +39,6 @@ skills:
     target: core-context-routing
     triggers: skill load relevant active registry context objective
     summary: Load only ACTIVE skills relevant to the current objective; never preload the whole skill library.
-    evidence_refs: "#864 PR#870 runtime:SKILL_CONTEXT_LOADED"
 
   - id: context-budget-compaction
     title: Context Budget and Compaction
