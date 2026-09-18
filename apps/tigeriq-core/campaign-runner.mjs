@@ -49,3 +49,7 @@ export function makePhaseCheckpoint({currentPhase=0,phases=[],summary='',complet
     completedAt:completedAt || new Date().toISOString()
   };
 }
+
+export function campaignNeedsEvidence({status,phases=[],doneJobs=0}) {
+  return status === 'complete' && Array.isArray(phases) && phases.length > 0 && Number(doneJobs || 0) < 1;
+}
