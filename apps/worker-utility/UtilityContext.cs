@@ -101,10 +101,7 @@ internal sealed class UtilityContext : ApplicationContext
         try
         {
             foreach (var w in Workers.All)
-            {
-                if (binder.TryResolve(w.Id, out _, out var rect)) badges[w.Id].AnchorTo(rect, settings.Workers[w.Id]);
-                else badges[w.Id].MarkUnbound();
-            }
+                RefreshBadgeVisibility(w.Id);
             if (++pollCounter % 2 == 0) await RefreshStateAsync();
             if (pollCounter % 60 == 6)
                 foreach (var worker in Workers.All.Where(x => BrowserHarnessClient.ReadOnlyEnabled(x.Id)))
@@ -200,7 +197,7 @@ internal sealed class UtilityContext : ApplicationContext
         state.BadgeOffsetX = null;
         state.BadgeOffsetY = null;
         store.Save(settings);
-        if (binder.TryResolve(id, out _, out var rect)) badges[id].AnchorTo(rect, state);
+        RefreshBadgeVisibility(id);
         store.Log(id, "BADGE_POSITION_RESET");
     }
 
@@ -213,11 +210,34 @@ internal sealed class UtilityContext : ApplicationContext
         store.Log(id, "POPUP_POSITION_SAVED", new { location.X, location.Y });
     }
 
+    void RefreshBadgeVisibility(string id)
+    {
+        // Approved Layout 2: the selected worker badge must disappear while its
+        // popup is open, then return automatically when the popup is hidden.
+        if (popups[id].Visible)
+        {
+            if (badges[id].Visible) badges[id].Hide();
+            return;
+        }
+
+        if (binder.TryResolve(id, out _, out var rect))
+            badges[id].AnchorTo(rect, settings.Workers[id]);
+        else
+            badges[id].MarkUnbound();
+    }
+
+    void RefreshAllBadgeVisibility()
+    {
+        foreach (var worker in Workers.All)
+            RefreshBadgeVisibility(worker.Id);
+    }
+
     void TogglePopup(string id)
     {
         if (popups[id].Visible)
         {
             popups[id].Hide();
+            RefreshAllBadgeVisibility();
             store.Log(id, "POPUP_HIDDEN_BY_TOGGLE");
             return;
         }
@@ -225,7 +245,12 @@ internal sealed class UtilityContext : ApplicationContext
         foreach (var pair in popups)
             if (pair.Key != id && pair.Value.Visible) pair.Value.Hide();
 
-        if (!TryShowPopup(id, true)) return;
+        if (!TryShowPopup(id, true))
+        {
+            RefreshAllBadgeVisibility();
+            return;
+        }
+        RefreshAllBadgeVisibility();
         store.Log(id, "POPUP_OPENED");
     }
 
@@ -340,7 +365,7 @@ internal sealed class UtilityContext : ApplicationContext
         };
         var info = new Label
         {
-            Text = "Layout 2 đã khóa: 3 Chrome riêng · 1 popup/NV · badge luôn hiển thị.",
+            Text = "Layout 2 đã khóa: 3 Chrome riêng · 1 popup/NV · badge ẩn khi popup mở.",
             Left = 24,
             Top = 64,
             Width = 315,
