@@ -46,17 +46,19 @@ describe('Worker Utility V1 contract',()=>{
     expect(tray).toContain('System Tray Utility');
     expect(tray).toContain('Deactivate += (_, _) => Hide()');
     expect(tray).toContain('ClientSize = new Size(1160, 540)');
-    expect(context).toContain('new TrayPanelForm(HandleActionAsync, FocusAllChromeAsync');
+    expect(context).toContain('new TrayPanelForm(HandleActionAsync, FocusAllChromeAsync, () => store.RecentLogs(60)');
     expect(context).not.toContain('new PopupForm');
     expect(context).toContain('TRAY_FLYOUT_OPENED');
   });
 
   it('restores the Layout 2 global rail and worker color zoning',()=>{
-    for(const label of ['TigerIQ Workers','Bảng điều khiển nhanh','Mở / Focus 3 Chrome','Không làm phiền','Thoát Utility'])
+    for(const label of ['TigerIQ Workers','Mở tất cả cửa sổ','Bảng điều khiển nhanh','Cài đặt','Xem log hệ thống','Không làm phiền','Thoát Utility'])
       expect(tray).toContain(label);
     expect(tray).toContain('Color.FromArgb(37, 99, 235)');
     expect(tray).toContain('Color.FromArgb(192, 64, 255)');
     expect(tray).toContain('Color.FromArgb(6, 182, 212)');
+    expect(tray).toContain('ShowSystemLogs');
+    expect(tray).toContain('ShowSettingsMenu');
   });
 
   it('keeps only core controls on the worker face and moves auxiliary actions to Advanced',()=>{
