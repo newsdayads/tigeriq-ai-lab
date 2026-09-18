@@ -3,6 +3,7 @@ import {randomUUID} from 'node:crypto';
 import {Pool} from 'pg';
 import {branchName,checkGateState,extractCanonicalAllowedPaths,isRetryableAiError,parseJsonObject,safeRepoPath,validateChanges} from './policy.mjs';
 import { createGeminiRateController } from '../shared/gemini-rate-control.mjs';
+import {parseMutationEnvelope} from './envelope.mjs';
 
 export class CodingScopeViolationError extends Error {
   constructor(offending) {
@@ -187,6 +188,40 @@ export async function invokeJsonWithFailover(initialResource,prompt,{exclude=[],
   throw new Error('AI_RETRY_BUDGET_EXHAUSTED');
 }
 
+export async function invokeMutationWithFailover(initialResource,prompt,{exclude=[],resourcePool=resources,invokeFn=invoke,shrinkPrompt=shrinkAiPrompt,maxResources=3,validateData=null,sleepFn=sleep,randomFn=Math.random,backoffBaseMs=1000}={}){
+  const initial=(initialResource&&!exclude.includes(initialResource.id))?initialResource:resourcePool.find(r=>r&&!exclude.includes(r.id));
+  if(!initial)throw new Error('NO_FREE_API_CODING_RESOURCE');
+  const ordered=[initial,...resourcePool.filter(r=>r?.id!==initial.id&&!exclude.includes(r?.id))];
+  const unique=[];const ids=new Set();
+  for(const r of ordered){if(!r||exclude.includes(r.id)||ids.has(r.id))continue;ids.add(r.id);unique.push(r);if(unique.length>=Math.min(3,maxResources))break;}
+  let lastError=null,attempts=0;
+  for(let resourceIndex=0;resourceIndex<unique.length;resourceIndex++){
+    const resource=unique[resourceIndex];
+    for(let same=0;same<2;same++){
+      attempts++;
+      try{
+        const data=parseMutationEnvelope(await invokeFn(resource,same===0?prompt:shrinkPrompt(prompt)));
+        if(validateData)validateData(data,resource);
+        return {data,resource,attempts};
+      }catch(e){
+        lastError=e;
+        if(!isRetryableAiError(e))throw e;
+        const is429=e?.status===429||String(e?.message||'').includes('HTTP_429');
+        if(is429&&e?.geminiRetryExhausted)break;
+        if(is429&&same===0){
+          const base=Math.min(9000,Math.max(0,backoffBaseMs)*Math.pow(2,resourceIndex));
+          const jitter=Math.floor(randomFn()*Math.max(1,10001-base));
+          await sleepFn(Math.min(10000,base+jitter));
+        }
+        if(same===0)continue;
+        break;
+      }
+    }
+  }
+  if(lastError){lastError.detail={...(lastError.detail||{}),attempts,tried:unique.map(x=>x.id)};throw lastError;}
+  throw new Error('AI_RETRY_BUDGET_EXHAUSTED');
+}
+
 async function gh(path,init={}){return fetchJson(`https://api.github.com/repos/${OWNER}/${REPO}${path}`,{...init,headers:{accept:'application/vnd.github+json','content-type':'application/json','user-agent':'TigerIQ-Coding-Lane/1.0','x-github-api-version':'2022-11-28',authorization:`Bearer ${GH_TOKEN}`,...(init.headers||{})}},30000)}
 async function ghText(path,accept){const res=await fetch(`https://api.github.com/repos/${OWNER}/${REPO}${path}`,{headers:{accept,authorization:`Bearer ${GH_TOKEN}`,'user-agent':'TigerIQ-Coding-Lane/1.0'},signal:AbortSignal.timeout(30000)});const text=await res.text();if(!res.ok)throw new Error(`GITHUB_HTTP_${res.status}:${text.slice(0,250)}`);return text}
 async function mainSha(){return (await gh('/git/ref/heads/main')).object.sha}
@@ -241,7 +276,6 @@ export function validateCompactEdits(edits,allowedPaths=[]){
     const key=`${path}\u0000${old}`;if(seen.has(key))throw new Error('CODING_COMPACT_EDIT_DUPLICATE');seen.add(key);
     bytes+=Buffer.byteLength(old,'utf8')+Buffer.byteLength(next,'utf8');
   }
-  if(paths.size!==1)throw new Error('CODING_COMPACT_REPAIR_MULTI_FILE_INVALID');
   if(bytes>120000)throw new Error('CODING_COMPACT_EDITSET_TOO_LARGE');
   return true;
 }
@@ -261,13 +295,52 @@ export function applyCompactEdits(content,edits){
   return out;
 }
 
-async function generateRepairEdits(worker,j,context,issues=[],exclude=[]){
-  const prompt=`You are ${worker.id}, an autonomous TigerIQ repository engineer. Fix ONLY the listed issues on the existing branch.\nTASK: ${j.instruction}\nALLOWED PATHS: ${j.paths.join(', ')}\nISSUES TO FIX: ${JSON.stringify(issues)}\nCURRENT FILES:\n${context}\nReturn ONLY compact JSON {"summary":"short","edits":[{"path":"exact allowed path","old":"exact UNIQUE existing snippet","new":"replacement snippet"}]}. Never return a complete file. All edits in one repair response must target ONE allowed file. Each old snippet must exist exactly once. Keep edits minimal. Do not touch paths outside ALLOWED PATHS. Never output secrets.`;
-  const validateData=d=>validateCompactEdits(d.edits,j.paths);
-  const invoked=await invokeJsonWithFailover(worker,prompt,{exclude,validateData});
-  return {payload:invoked.data,resource:invoked.resource};
+function validateMutationPayload(payload,allowedPaths=[]){
+  const allow=new Set((allowedPaths||[]).map(String));
+  validateCompactEdits(payload?.edits||[],allowedPaths);
+  let bytes=0; const seenCreates=new Set();
+  for(const create of payload?.creates||[]){
+    const path=String(create?.path||'').trim(),content=String(create?.content??'');
+    if(!safeRepoPath(path)||!allow.has(path))throw new CodingScopeViolationError([path||'<empty>']);
+    if(seenCreates.has(path))throw new Error('MUTATION_ENVELOPE_DUPLICATE_CREATE');
+    seenCreates.add(path); bytes+=Buffer.byteLength(content,'utf8');
+  }
+  const edited=new Set((payload?.edits||[]).map(x=>String(x.path||'')));
+  for(const path of seenCreates)if(edited.has(path))throw new Error('MUTATION_ENVELOPE_CREATE_EDIT_COLLISION');
+  if(!(payload?.edits?.length||payload?.creates?.length))throw new Error('MUTATION_ENVELOPE_MISSING');
+  if(bytes>120000)throw new Error('MUTATION_ENVELOPE_TOO_LARGE');
+  return true;
 }
-async function writeRepairEdits(branch,edits){
+
+async function generateRepairEdits(worker,j,context,issues=[],exclude=[]){
+  const prompt=`You are ${worker.id}, an autonomous TigerIQ repository engineer. Fix ONLY the listed issues on the existing branch.
+TASK: ${j.instruction}
+ALLOWED PATHS: ${j.paths.join(', ')}
+ISSUES TO FIX: ${JSON.stringify(issues)}
+CURRENT FILES:
+${context}
+Return ONLY TIGERIQ mutation envelopes, never JSON and never a complete existing file.
+For an existing file use one or more compact exact-snippet patches:
+-----BEGIN TIGERIQ_PATCH_V1-----
+PATH:exact/allowed/path
+-----OLD-----
+exact UNIQUE existing snippet
+-----NEW-----
+replacement snippet
+-----END TIGERIQ_PATCH_V1-----
+For a genuinely missing file only, use:
+-----BEGIN TIGERIQ_CREATE_V1-----
+PATH:exact/allowed/path
+-----CONTENT-----
+raw UTF-8 file content
+-----END TIGERIQ_CREATE_V1-----
+Keep mutations minimal. Multiple allowed files are permitted. Never output secrets or prose outside envelopes.`;
+  const invoked=await invokeMutationWithFailover(worker,prompt,{exclude,validateData:d=>validateMutationPayload(d,j.paths)});
+  return {payload:{summary:'mutation-envelope repair',...invoked.data},resource:invoked.resource};
+}
+
+async function writeMutations(branch,payload){
+  const edits=payload?.edits||[],creates=payload?.creates||[];
   const byPath=new Map();
   for(const edit of edits){if(!byPath.has(edit.path))byPath.set(edit.path,[]);byPath.get(edit.path).push(edit)}
   for(const [path,pathEdits] of byPath){
@@ -276,8 +349,24 @@ async function writeRepairEdits(branch,edits){
     const content=applyCompactEdits(current.content,pathEdits);
     await writeFile(branch,{path,content});
   }
+  for(const create of creates){
+    const current=await readRepoFile(create.path,branch);
+    if(current.sha)throw new Error(`MUTATION_CREATE_FILE_EXISTS:${create.path}`);
+    await writeFile(branch,{path:create.path,content:String(create.content??'')});
+  }
 }
-async function generateChanges(worker,j,context,reviewIssues=[],exclude=[]){const prompt=`You are ${worker.id}, an autonomous TigerIQ repository engineer. Implement ONLY the assigned task on a GitHub branch.\nTASK: ${j.instruction}\nALLOWED PATHS: ${j.paths.join(', ')}\n${reviewIssues.length?`REVIEW ISSUES TO FIX: ${JSON.stringify(reviewIssues)}\n`:''}CURRENT FILES:\n${context}\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}. Do not touch paths outside ALLOWED PATHS. Never output secrets. Keep changes minimal and testable.`;const validateData=d=>{validateChanges(d.changes,j.paths);validateJobScope(j.paths,d.changes)};const invoked=await invokeJsonWithFailover(worker,prompt,{exclude,validateData});const d=invoked.data;return {payload:d,resource:invoked.resource}}
+
+async function generateChanges(worker,j,context,reviewIssues=[],exclude=[]){
+  const prompt=`You are ${worker.id}, an autonomous TigerIQ repository engineer. Implement ONLY the assigned task on a GitHub branch.
+TASK: ${j.instruction}
+ALLOWED PATHS: ${j.paths.join(', ')}
+${reviewIssues.length?`REVIEW ISSUES TO FIX: ${JSON.stringify(reviewIssues)}\n`:''}CURRENT FILES:
+${context}
+Return ONLY TIGERIQ mutation envelopes, never JSON and never a complete existing file.
+For existing files emit compact exact-snippet TIGERIQ_PATCH_V1 blocks. For genuinely missing files emit TIGERIQ_CREATE_V1 raw-content blocks. Multiple allowed files are permitted. Do not touch paths outside ALLOWED PATHS. Never output secrets or prose outside envelopes. Keep every mutation minimal and testable.`;
+  const invoked=await invokeMutationWithFailover(worker,prompt,{exclude,validateData:d=>validateMutationPayload(d,j.paths)});
+  return {payload:{summary:'mutation-envelope implementation',...invoked.data},resource:invoked.resource};
+}
 async function reviewPr(reviewer,j,diff,implementerId){const prompt=`You are ${reviewer.id}, independent TigerIQ code reviewer. Review against the task and safety boundaries. TASK: ${j.instruction}\nDIFF:\n${diff.slice(0,180000)}\nReturn ONLY JSON {"decision":"approve|changes_requested","summary":"short","issues":["specific issue"]}. Reject unsafe, untested, out-of-scope, credential/security/production changes.`;const invoked=await invokeJsonWithFailover(reviewer,prompt,{exclude:[implementerId]});const d=invoked.data;if(!['approve','changes_requested'].includes(d.decision)){const e=new Error('REVIEW_DECISION_INVALID');e.code='REVIEW_SCHEMA_INVALID';throw e}d.issues=Array.isArray(d.issues)?d.issues.slice(0,8):[];return {review:d,resource:invoked.resource}}
 
 async function runJob(j){
@@ -294,11 +383,11 @@ async function runJob(j){
   }else{
     context=await contextFor(j.paths,'main');
     generated=await generateChanges(worker,j,context);worker=generated.resource;gen=generated.payload;
-    validateJobScope(j.paths,gen.changes);
+    validateMutationPayload(gen,j.paths);
     reviewer=pickResource([worker.id]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE');
     const base=await mainSha();branch=branchName(worker.id,j.id);await createBranch(branch,base);
     await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,branch=$4,next_attempt_at=null where id=$1",[j.id,worker.id,reviewer.id,branch]);
-    for(const ch of gen.changes)await writeFile(branch,ch);
+    await writeMutations(branch,gen);
     pr=await openPr(branch,`[${worker.id}] ${j.title}`,`Automated TigerIQ Coding Lane job \`${j.id}\`.\n\nImplementer: ${worker.id}\nIndependent reviewer: ${reviewer.id}\nDirect writes to main are forbidden. Merge is attempted only after CI gates and reviewer approval.`);
     await pool.query("update tigeriq_coding_jobs set pr_number=$2,status='waiting_ci' where id=$1",[j.id,pr.number]);
   }
@@ -313,7 +402,7 @@ async function runJob(j){
         worker=generated.resource;gen=generated.payload;
         if(reviewer?.id===worker.id){reviewer=pickResource([worker.id]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE')}
         await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,status='waiting_ci' where id=$1",[j.id,worker.id,reviewer.id]);
-        await writeRepairEdits(branch,gen.edits);
+        await writeMutations(branch,gen);
       },
       maxRepairCycles:3,
       timeoutRetries:1,
@@ -330,7 +419,7 @@ async function runJob(j){
     generated=await generateRepairEdits(worker,j,context,review.issues,[reviewer.id]);worker=generated.resource;gen=generated.payload;
     if(reviewer.id===worker.id){reviewer=pickResource([worker.id]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE')}
     await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,status='waiting_ci' where id=$1",[j.id,worker.id,reviewer.id]);
-    await writeRepairEdits(branch,gen.edits);
+    await writeMutations(branch,gen);
   }
   if(review?.decision!=='approve')throw new Error('REVIEW_NOT_APPROVED');
   assertPrOpenState(await gh(`/pulls/${pr.number}`));
