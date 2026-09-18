@@ -585,6 +585,8 @@ internal sealed class PopupForm : Form
         currentAccent = accent;
         accentLine.BackColor = accent;
         serviceIcon.BackColor = accent;
+        bell.Text = doNotDisturb ? "⊘" : "◉";
+        bell.ForeColor = doNotDisturb ? Amber : Color.FromArgb(147, 197, 253);
         serviceIcon.Text = worker.Id == "NV04" ? "✦" : "◎";
         eyebrow.Text = worker.Id == "NV04" ? "GEMINI" : "CHATGPT";
         header.Text = worker.Id;
@@ -756,39 +758,62 @@ internal sealed class PopupForm : Form
 internal sealed class AdvancedInfoForm : Form
 {
     readonly Func<string, Task> action;
-    readonly Label title = new()
+    readonly TabControl tabs = new()
     {
-        AutoSize = false,
-        Location = new Point(16, 14),
-        Size = new Size(388, 24),
-        ForeColor = Color.White,
-        Font = new Font("Segoe UI", 11, FontStyle.Bold)
+        Dock = DockStyle.Fill,
+        Appearance = TabAppearance.Normal,
+        Font = new Font("Segoe UI", 9, FontStyle.Bold)
     };
-    readonly Label details = new()
+    readonly TextBox infoBox = new()
     {
-        AutoSize = false,
-        Location = new Point(16, 48),
-        Size = new Size(388, 276),
+        Multiline = true,
+        ReadOnly = true,
+        ScrollBars = ScrollBars.Vertical,
+        Dock = DockStyle.Fill,
+        BorderStyle = BorderStyle.None,
+        BackColor = Color.FromArgb(5, 13, 25),
         ForeColor = Color.FromArgb(203, 213, 225),
-        Font = new Font("Consolas", 8.3f),
-        BackColor = Color.FromArgb(5, 13, 25)
+        Font = new Font("Consolas", 8.6f)
+    };
+    readonly TextBox securityBox = new()
+    {
+        Multiline = true,
+        ReadOnly = true,
+        ScrollBars = ScrollBars.Vertical,
+        Dock = DockStyle.Fill,
+        BorderStyle = BorderStyle.None,
+        BackColor = Color.FromArgb(5, 13, 25),
+        ForeColor = Color.FromArgb(203, 213, 225),
+        Font = new Font("Consolas", 8.6f)
     };
     readonly Label status = new()
     {
         AutoSize = false,
-        Location = new Point(16, 456),
-        Size = new Size(388, 22),
+        Dock = DockStyle.Bottom,
+        Height = 28,
         ForeColor = Color.FromArgb(148, 163, 184),
-        Font = new Font("Segoe UI", 8.2f)
+        Font = new Font("Segoe UI", 8.2f),
+        TextAlign = ContentAlignment.MiddleLeft
     };
     readonly Button dndButton;
+    readonly Label workerTitle = new()
+    {
+        AutoSize = false,
+        Dock = DockStyle.Top,
+        Height = 42,
+        ForeColor = Color.White,
+        Font = new Font("Segoe UI", 12, FontStyle.Bold),
+        TextAlign = ContentAlignment.MiddleLeft,
+        Padding = new Padding(12, 0, 0, 0)
+    };
+    string[] currentLines = [];
     bool dndOn;
 
     public AdvancedInfoForm(Func<string, Task> action)
     {
         this.action = action;
         Text = "TigerIQ — Nâng cao";
-        ClientSize = new Size(420, 490);
+        ClientSize = new Size(520, 520);
         MinimumSize = Size;
         MaximumSize = Size;
         StartPosition = FormStartPosition.CenterScreen;
@@ -796,35 +821,92 @@ internal sealed class AdvancedInfoForm : Form
         ShowInTaskbar = false;
         TopMost = true;
         BackColor = Color.FromArgb(5, 13, 25);
-        Controls.Add(title);
-        Controls.Add(details);
+        ForeColor = Color.White;
 
-        var actions = new[]
+        var infoTab = NewTab("Thông tin");
+        var optionsTab = NewTab("Tùy chọn");
+        var securityTab = NewTab("Bảo mật");
+        tabs.TabPages.Add(infoTab);
+        tabs.TabPages.Add(optionsTab);
+        tabs.TabPages.Add(securityTab);
+
+        var infoWrap = new Panel { Dock = DockStyle.Fill, Padding = new Padding(12), BackColor = Color.FromArgb(5, 13, 25) };
+        var copy = MakeButton("Sao chép chẩn đoán", new Point(12, 380), 220);
+        copy.Anchor = AnchorStyles.Left | AnchorStyles.Bottom;
+        copy.Click += (_, _) =>
+        {
+            try
+            {
+                Clipboard.SetText(string.Join(Environment.NewLine, currentLines));
+                status.Text = "✓ Đã sao chép chẩn đoán";
+                status.ForeColor = Color.FromArgb(52, 211, 153);
+            }
+            catch (Exception ex)
+            {
+                status.Text = "⚠ " + ex.Message;
+                status.ForeColor = Color.FromArgb(248, 113, 113);
+            }
+        };
+        infoBox.Dock = DockStyle.Top;
+        infoBox.Height = 364;
+        infoWrap.Controls.Add(copy);
+        infoWrap.Controls.Add(infoBox);
+        infoTab.Controls.Add(infoWrap);
+
+        var options = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            Padding = new Padding(12),
+            FlowDirection = FlowDirection.TopDown,
+            WrapContents = false,
+            AutoScroll = false,
+            BackColor = Color.FromArgb(5, 13, 25)
+        };
+        foreach (var item in new[]
         {
             ("◎  Focus cửa sổ", "focus"),
-            ("↻  Khôi phục an toàn", "recover"),
+            ("▣  Chụp ảnh nhanh cửa sổ", "screenshot"),
+            ("↻  Thử lại an toàn", "safe-retry"),
+            ("⟳  Khôi phục cửa sổ nếu dead", "recover"),
             ("↺  Đặt lại badge", "badge-reset"),
+            ("🗑  Xóa lịch làm việc", "schedule-cancel"),
             ("⏻  Đóng NV an toàn", "close")
-        };
-        for (var i = 0; i < actions.Length; i++)
+        })
         {
-            var item = actions[i];
-            var button = MakeButton(item.Item1, new Point(16 + (i % 2) * 196, 338 + (i / 2) * 42), 184);
+            var button = MakeButton(item.Item1, Point.Empty, 455);
             var command = item.Item2;
+            button.Margin = new Padding(0, 0, 0, 8);
             button.Click += async (_, _) => await RunAsync(command);
-            Controls.Add(button);
+            options.Controls.Add(button);
         }
 
-        dndButton = MakeButton("Không làm phiền", new Point(16, 422), 380);
+        dndButton = MakeButton("Không làm phiền", Point.Empty, 455);
+        dndButton.Margin = new Padding(0, 0, 0, 8);
         dndButton.Click += async (_, _) =>
         {
             await RunAsync(dndOn ? "dnd-off" : "dnd-on");
             dndOn = !dndOn;
             UpdateDndText();
         };
-        Controls.Add(dndButton);
+        options.Controls.Add(dndButton);
+        optionsTab.Controls.Add(options);
+
+        var securityWrap = new Panel { Dock = DockStyle.Fill, Padding = new Padding(12), BackColor = Color.FromArgb(5, 13, 25) };
+        securityWrap.Controls.Add(securityBox);
+        securityTab.Controls.Add(securityWrap);
+
+        Controls.Add(tabs);
         Controls.Add(status);
+        Controls.Add(workerTitle);
     }
+
+    static TabPage NewTab(string text) => new()
+    {
+        Text = text,
+        BackColor = Color.FromArgb(5, 13, 25),
+        ForeColor = Color.White,
+        Padding = new Padding(4)
+    };
 
     static Button MakeButton(string text, Point location, int width)
     {
@@ -832,13 +914,15 @@ internal sealed class AdvancedInfoForm : Form
         {
             Text = text,
             Location = location,
-            Size = new Size(width, 34),
+            Size = new Size(width, 36),
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.FromArgb(20, 38, 60),
             ForeColor = Color.FromArgb(241, 245, 249),
-            Font = new Font("Segoe UI", 8.3f, FontStyle.Bold),
+            Font = new Font("Segoe UI", 8.8f, FontStyle.Bold),
             Cursor = Cursors.Hand,
-            TabStop = false
+            TabStop = false,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Padding = new Padding(10, 0, 0, 0)
         };
         button.FlatAppearance.BorderColor = Color.FromArgb(31, 52, 76);
         button.FlatAppearance.BorderSize = 1;
@@ -848,6 +932,7 @@ internal sealed class AdvancedInfoForm : Form
     async Task RunAsync(string command)
     {
         status.Text = "Đang thực hiện…";
+        status.ForeColor = Color.FromArgb(148, 163, 184);
         try
         {
             await action(command);
@@ -868,8 +953,15 @@ internal sealed class AdvancedInfoForm : Form
 
     public void SetWorker(string workerId, string[] lines, bool doNotDisturb)
     {
-        title.Text = $"{workerId} — Nâng cao / Thông tin kỹ thuật";
-        details.Text = string.Join(Environment.NewLine, lines);
+        workerTitle.Text = $"{workerId} — Nâng cao";
+        currentLines = lines;
+        infoBox.Text = string.Join(Environment.NewLine, lines);
+        securityBox.Text = string.Join(Environment.NewLine, lines.Where(x =>
+            x.StartsWith("Session", StringComparison.OrdinalIgnoreCase)
+            || x.StartsWith("Login/Auth", StringComparison.OrdinalIgnoreCase)
+            || x.StartsWith("Security", StringComparison.OrdinalIgnoreCase)
+            || x.StartsWith("Rate limit", StringComparison.OrdinalIgnoreCase)
+            || x.StartsWith("Heartbeat", StringComparison.OrdinalIgnoreCase)));
         dndOn = doNotDisturb;
         UpdateDndText();
     }
