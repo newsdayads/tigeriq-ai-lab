@@ -321,7 +321,7 @@ export function validateWorkOrderPreflight(workOrder = {}) {
   }
 
   const reasons = [];
-  if (!reqSkill) {
+  if (!reqSkill || typeof reqSkill !== 'string' || !reqSkill.trim()) {
     reasons.push('MISSING_REQUIRED_SKILL');
   }
   if (!Array.isArray(reqTools) || reqTools.length === 0) {
