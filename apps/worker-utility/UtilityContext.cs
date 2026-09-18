@@ -9,6 +9,7 @@ internal sealed class UtilityContext : ApplicationContext
     readonly ControllerClient controller = new();
     readonly WindowBinder binder = new();
     readonly Dictionary<string, BadgeForm> badges = new();
+    readonly Dictionary<string, PopupForm> popups = new();
     readonly Dictionary<string, WorkerView> views = new();
     readonly Dictionary<string, WatchdogView> health = new();
     readonly Dictionary<string, ToolStripMenuItem> trayWorkerItems = new();
@@ -26,25 +27,15 @@ internal sealed class UtilityContext : ApplicationContext
         settings = store.Load();
         foreach (var w in Workers.All)
             if (!settings.Workers.ContainsKey(w.Id)) settings.Workers[w.Id] = new WorkerSettings();
-        if (settings.LayoutRevision < 2)
-        {
-            foreach (var w in Workers.All)
-            {
-                settings.Workers[w.Id].PopupX = null;
-                settings.Workers[w.Id].PopupY = null;
-                settings.Workers[w.Id].BadgeOffsetX = null;
-                settings.Workers[w.Id].BadgeOffsetY = null;
-            }
-            settings.LayoutRevision = 2;
-            store.Save(settings);
-            store.Log("SYSTEM", "UI_LAYOUT_MIGRATED", new { revision = 2, issue = 826 });
-        }
         store.EnsureAutostart();
 
         foreach (var worker in Workers.All)
-            badges[worker.Id] = new BadgeForm(worker, ShowTrayForWorker, SaveBadgeOffset, ResetBadgePosition);
+        {
+            popups[worker.Id] = new PopupForm(HandleActionAsync, SavePopupPosition);
+            badges[worker.Id] = new BadgeForm(worker, ShowPopup, SaveBadgeOffset, ResetBadgePosition);
+        }
 
-        trayPanel = new TrayPanelForm(HandleActionAsync, FocusAllChromeAsync, () => store.RecentLogs(60), id => store.RecentLogs(id, 5), ToggleDnd, ExitUtility);
+        trayPanel = new TrayPanelForm(ShowPopup, ShowAllPopups, ToggleDnd, ExitUtility);
         trayIcon = CreateTrayIcon();
         tray = new NotifyIcon
         {
@@ -64,7 +55,7 @@ internal sealed class UtilityContext : ApplicationContext
 
         timer.Tick += async (_, _) => await TickAsync();
         timer.Start();
-        store.Log("SYSTEM", "UTILITY_STARTED", new { version = Application.ProductVersion, issue = 826, layoutRevision = settings.LayoutRevision });
+        store.Log("SYSTEM", "UTILITY_STARTED", new { version = Application.ProductVersion, issue = 820 });
     }
 
     ContextMenuStrip BuildTrayMenu()
@@ -83,12 +74,12 @@ internal sealed class UtilityContext : ApplicationContext
         {
             var id = w.Id;
             var item = new ToolStripMenuItem($"{id} — {w.Name}");
-            item.Click += (_, _) => ShowTrayForWorker(id);
+            item.Click += (_, _) => ShowPopup(id);
             trayWorkerItems[id] = item;
             menu.Items.Add(item);
         }
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("▦  Mở bảng điều khiển nhanh", null, (_, _) => ShowTray());
+        menu.Items.Add("▦  Mở tất cả bảng điều khiển", null, (_, _) => ShowAllPopups());
         menu.Items.Add("◐  Bật / tắt Không làm phiền", null, (_, _) => ToggleDnd());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("⏻  Thoát TigerIQ Workers", null, (_, _) => ExitUtility());
@@ -103,6 +94,11 @@ internal sealed class UtilityContext : ApplicationContext
         {
             foreach (var w in Workers.All)
             {
+                if (popups[w.Id].Visible)
+                {
+                    badges[w.Id].HideForPopup();
+                    continue;
+                }
                 if (binder.TryResolve(w.Id, out _, out var rect)) badges[w.Id].AnchorTo(rect, settings.Workers[w.Id]);
                 else badges[w.Id].MarkUnbound();
             }
@@ -198,44 +194,68 @@ internal sealed class UtilityContext : ApplicationContext
         state.BadgeOffsetX = null;
         state.BadgeOffsetY = null;
         store.Save(settings);
-        if (binder.TryResolve(id, out _, out var rect)) badges[id].AnchorTo(rect, state);
+        if (popups[id].Visible) badges[id].HideForPopup();
+        else if (binder.TryResolve(id, out _, out var rect)) badges[id].AnchorTo(rect, state);
         store.Log(id, "BADGE_POSITION_RESET");
     }
 
-    void ShowTray()
+    void SavePopupPosition(string id, Point location)
     {
-        trayPanel.ApplyStates(views, settings);
-        trayPanel.ToggleNearTray();
-        store.Log("SYSTEM", "TRAY_FLYOUT_TOGGLED");
+        var state = settings.Workers[id];
+        state.PopupX = location.X;
+        state.PopupY = location.Y;
+        store.Save(settings);
+        store.Log(id, "POPUP_POSITION_SAVED", new { location.X, location.Y });
     }
 
-    void ShowTrayForWorker(string id)
+    void ShowPopup(string id)
     {
-        trayPanel.ApplyStates(views, settings);
-        trayPanel.ToggleNearTray(id);
-        store.Log(id, "TRAY_FLYOUT_OPENED");
+        if (!TryShowPopup(id, true)) return;
+        store.Log(id, "POPUP_OPENED");
     }
 
-    async Task FocusAllChromeAsync()
+    bool TryShowPopup(string id, bool notifyOnFailure)
     {
-        var failures = new List<string>();
-        foreach (var worker in Workers.All)
+        if (!views.TryGetValue(id, out var view))
+            view = new WorkerView(id, WorkerUiState.Blocked, "STATE_LOADING", null, null,
+                false, false, false, null, null, Workers.Get(id).DebugPort, null, false, false);
+        if (!binder.TryResolve(id, out _, out var rect))
         {
-            try
-            {
-                await controller.FixPositionAsync(worker.Id);
-                await controller.FocusAsync(worker.Id);
-            }
-            catch
-            {
-                failures.Add(worker.Id);
-            }
+            if (notifyOnFailure) ShowTrayNotice($"TigerIQ {id}", "Không xác định được đúng cửa sổ Chrome.");
+            return false;
         }
 
-        if (failures.Count > 0)
-            ShowTrayNotice("TigerIQ Workers", "Không Focus được: " + string.Join(", ", failures));
-        else
-            ShowTrayNotice("TigerIQ Workers", "Đã đưa 3 Chrome về layout và Focus.");
+        settings.Schedules.TryGetValue(id, out var sched);
+        health.TryGetValue(id, out var wd);
+        var occupied = new List<Rectangle>();
+        foreach (var worker in Workers.All)
+            if (binder.TryResolve(worker.Id, out _, out var chromeRect) && chromeRect.Width > 0 && chromeRect.Height > 0)
+                occupied.Add(chromeRect);
+        foreach (var pair in popups)
+            if (pair.Key != id && pair.Value.Visible)
+                occupied.Add(pair.Value.Bounds);
+
+        var ok = popups[id].ShowWorker(
+            Workers.Get(id), view, wd, settings.Workers[id], sched, settings.DoNotDisturb,
+            store.RecentLogs(id), rect, occupied.ToArray());
+        if (ok) badges[id].HideForPopup();
+        if (!ok && notifyOnFailure)
+            ShowTrayNotice("TigerIQ — Không chồng cửa sổ", "Không có vùng trống an toàn để mở bảng điều khiển.");
+        return ok;
+    }
+
+    void ShowAllPopups()
+    {
+        var opened = 0;
+        foreach (var worker in Workers.All)
+            if (TryShowPopup(worker.Id, false)) opened++;
+        store.Log("SYSTEM", "OPEN_ALL_POPUPS", new { opened, requested = Workers.All.Length });
+        if (opened < Workers.All.Length)
+        {
+            tray.BalloonTipTitle = "TigerIQ Workers";
+            tray.BalloonTipText = $"Đã mở {opened}/{Workers.All.Length} bảng. Bảng còn lại bị giữ lại để không che Chrome.";
+            tray.ShowBalloonTip(4000);
+        }
     }
 
     async Task HandleActionAsync(string id, string actionName)
@@ -257,23 +277,23 @@ internal sealed class UtilityContext : ApplicationContext
             case "badge-reset": ResetBadgePosition(id); break;
             case "open": await controller.OpenCanonicalAsync(id); break;
             case "health":
-                trayPanel.SetWorkerNotice(id, "✓ " + await controller.QuickHealthAsync(id), false);
+                popups[id].SetActionNotice("✓ " + await controller.QuickHealthAsync(id), false);
                 break;
             case "save":
                 var saved = await controller.SaveAsync(id, false);
-                trayPanel.SetWorkerNotice(id, $"✓ Đã lưu: {saved.CheckpointRef}", false);
+                popups[id].SetActionNotice($"✓ Đã lưu: {saved.CheckpointRef}", false);
                 break;
             case "save-archive":
                 var archived = await controller.SaveAsync(id, true);
-                trayPanel.SetWorkerNotice(id, $"✓ Đã lưu & lưu trữ: {archived.CheckpointRef}", false);
+                popups[id].SetActionNotice($"✓ Đã lưu & lưu trữ: {archived.CheckpointRef}", false);
                 break;
             case "close":
                 await controller.SafeCloseAsync(id);
-                trayPanel.SetWorkerNotice(id, "✓ Chrome đã đóng an toàn", false);
+                popups[id].SetActionNotice("✓ Chrome đã đóng an toàn", false);
                 break;
             case "recover":
                 await SafeRecoverAsync(id);
-                trayPanel.SetWorkerNotice(id, "✓ Đã khôi phục an toàn", false);
+                popups[id].SetActionNotice("✓ Đã khôi phục an toàn", false);
                 break;
             case "schedule-10": SetSchedule(id, 10); break;
             case "schedule-30": SetSchedule(id, 30); break;
@@ -293,6 +313,7 @@ internal sealed class UtilityContext : ApplicationContext
         store.Save(settings);
         store.Log(id, "ACTION_OK", new { action = actionName });
         await RefreshStateAsync();
+        TryShowPopup(id, false);
     }
 
     ScheduleSettings EnsureSchedule(string id, bool? enabled)
@@ -488,6 +509,7 @@ internal sealed class UtilityContext : ApplicationContext
     {
         timer.Stop();
         foreach (var b in badges.Values) b.Close();
+        foreach (var p in popups.Values) p.Close();
         trayPanel.Close();
         tray.Visible = false;
         tray.Dispose();
