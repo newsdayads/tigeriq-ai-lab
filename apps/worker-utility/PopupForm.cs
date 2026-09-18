@@ -78,6 +78,7 @@ internal sealed class PopupForm : Form
     readonly Label job = new()
     {
         AutoSize = false,
+        AutoEllipsis = true,
         Size = new Size(190, 18),
         ForeColor = Ink,
         Font = new Font("Segoe UI", 8.6f, FontStyle.Bold)
@@ -85,6 +86,7 @@ internal sealed class PopupForm : Form
     readonly Label reason = new()
     {
         AutoSize = false,
+        AutoEllipsis = true,
         Size = new Size(190, 16),
         ForeColor = Muted,
         Font = new Font("Segoe UI", 7.8f)
@@ -92,6 +94,7 @@ internal sealed class PopupForm : Form
     readonly Label progress = new()
     {
         AutoSize = false,
+        AutoEllipsis = true,
         Size = new Size(284, 16),
         ForeColor = Muted,
         Font = new Font("Segoe UI", 7.8f)
@@ -605,16 +608,11 @@ internal sealed class PopupForm : Form
             scheduleButton.ForeColor = selected ? Color.White : Ink;
         }
 
-        var elapsed = settings.StateChangedAt is DateTimeOffset since ? DateTimeOffset.Now - since : TimeSpan.Zero;
-        stateChip.Text = $"{StateText(view.State)}     {elapsed.ToString(@"hh\:mm\:ss")}";
-        job.Text = $"Job hiện tại  {view.JobId ?? "—"}";
-        reason.Text = view.State switch
-        {
-            WorkerUiState.Working => "Đang xử lý công việc hiện tại",
-            WorkerUiState.Paused => "Đã tạm dừng theo điều khiển",
-            WorkerUiState.Blocked => $"Bị chặn: {view.Reason}",
-            _ => "Sẵn sàng nhận việc"
-        };
+        var ownerView = WorkerObservability.Build(view, harness, settings, scheduleSettings, recentLogs);
+        stateChip.Text = StateText(view.State);
+        job.Text = $"Đang làm  {ownerView.Current}";
+        reason.Text = $"Kết quả  {ownerView.Result} · {ownerView.Browser}";
+        progress.Text = $"Tiếp  {ownerView.Next} · Hoạt động {ownerView.LastActivity}";
         schedule.Text = scheduleSettings?.NextCheckAt is DateTimeOffset next && scheduleSettings.Enabled
             ? $"↪ Lần kiểm tra kế tiếp: {next.ToLocalTime():HH:mm:ss}"
             : "↪ Lịch kiểm tra: chưa bật";
