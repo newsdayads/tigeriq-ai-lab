@@ -94,6 +94,14 @@ internal static class SelfTest
         Must(mutation.State == HarnessState.Ready && mutation.Summary == "MUTATION_PROBE_OK", "harness mutation probe confirms exact token");
         var mismatch = BrowserHarnessClient.ParseMutationProbeOutput("NV04", "different", token, null);
         Must(mismatch.State == HarnessState.Error, "harness mutation probe fails closed on mismatch");
+        var marker = "TIGERIQ_BH_WRITE_PROBE_test";
+        var fill = BrowserHarnessClient.ParseFillRestoreOutput("NV04",
+            $"noise\n{{\"ok\":true,\"action\":\"fill_restore\",\"marker\":\"{marker}\",\"restored\":true}}\n",
+            marker, "https://gemini.google.com/app");
+        Must(fill.State == HarnessState.Ready && fill.Summary == "FILL_RESTORE_OK", "harness fill restore proof parses exact evidence");
+        var fillBad = BrowserHarnessClient.ParseFillRestoreOutput("NV04",
+            "{\"ok\":true,\"action\":\"fill_restore\",\"marker\":\"wrong\",\"restored\":true}", marker, null);
+        Must(fillBad.State == HarnessState.Error, "harness fill restore rejects mismatched evidence");
     }
 
     static void TestUiPlacement()

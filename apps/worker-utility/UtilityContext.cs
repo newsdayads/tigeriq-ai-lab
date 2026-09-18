@@ -500,9 +500,9 @@ internal sealed class UtilityContext : ApplicationContext
 
         try
         {
-            var result = await browserHarness.MutationProbeAsync(Workers.Get(id), current);
+            var result = await browserHarness.FillRestoreProbeAsync(Workers.Get(id), current);
             harnessViews[id] = result;
-            store.Log(id, "HARNESS_MUTATION_PROBE_RESULT", new
+            store.Log(id, "HARNESS_FILL_RESTORE_RESULT", new
             {
                 state = result.State.ToString(),
                 result.Summary,
@@ -511,8 +511,8 @@ internal sealed class UtilityContext : ApplicationContext
                 lease.LeaseId
             });
             if (result.State != HarnessState.Ready)
-                throw new InvalidOperationException($"HARNESS_MUTATION_{result.State}:{result.Summary}");
-            popups[id].SetActionNotice("✓ Harness mutation + lease OK", false);
+                throw new InvalidOperationException($"HARNESS_FILL_{result.State}:{result.Summary}");
+            popups[id].SetActionNotice("✓ Harness gõ/xóa + lease OK", false);
             return result;
         }
         finally
