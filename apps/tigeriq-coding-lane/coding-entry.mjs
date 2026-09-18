@@ -6,6 +6,7 @@ if(!paidAllowed){
   if(process.env.TIGERIQ_GROQ_FREE_TIER_VERIFIED!=='true') delete process.env.GROQ_API_KEY;
   if(process.env.TIGERIQ_GEMINI_FREE_TIER_VERIFIED!=='true') delete process.env.GEMINI_API_KEY;
   if(process.env.TIGERIQ_COHERE_TRIAL_CONFIRMED!=='true') delete process.env.COHERE_API_KEY;
+  if(process.env.TIGERIQ_CEREBRAS_FREE_TIER_VERIFIED!=='true') delete process.env.CEREBRAS_API_KEY;
   delete process.env.OPENROUTER_API_KEY;
   delete process.env.MISTRAL_API_KEY;
   delete process.env.HF_TOKEN;

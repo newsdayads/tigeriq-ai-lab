@@ -19,7 +19,7 @@ function Set-SecretEnv([string]$EnvName,[string]$SecretName,[string]$Entropy){
   if(-not[string]::IsNullOrWhiteSpace($value)){[Environment]::SetEnvironmentVariable($EnvName,$value,'Process')}
 }
 function Clear-CoreEnvironment {
-  $names=@('DATABASE_URL','PGPASSWORD','TIGERIQ_CORE_TOKEN','TIGERIQ_GITHUB_TOKEN','GROQ_API_KEY','GEMINI_API_KEY','OPENROUTER_API_KEY','MISTRAL_API_KEY','CLOUDFLARE_AUTH_TOKEN','HF_TOKEN','AI_GATEWAY_API_KEY','WATSONX_API_KEY','COHERE_API_KEY','NVIDIA_API_KEY','CLOUDFLARE_ACCOUNT_ID','WATSONX_PROJECT_ID','WATSONX_MODEL_ID','TIGERIQ_GROQ_FREE_TIER_VERIFIED','TIGERIQ_GEMINI_FREE_TIER_VERIFIED','TIGERIQ_VERCEL_FREE_CREDIT_CONFIRMED','TIGERIQ_WATSONX_LITE_CONFIRMED','TIGERIQ_COHERE_TRIAL_CONFIRMED','TIGERIQ_NVIDIA_FREE_DEV_CONFIRMED','TIGERIQ_GEMINI_MODEL','TIGERIQ_GEMINI_MIN_INTERVAL_MS','TIGERIQ_GEMINI_BACKOFF_BASE_MS','TIGERIQ_GEMINI_MAX_ATTEMPTS')
+  $names=@('DATABASE_URL','PGPASSWORD','TIGERIQ_CORE_TOKEN','TIGERIQ_GITHUB_TOKEN','GROQ_API_KEY','GEMINI_API_KEY','OPENROUTER_API_KEY','MISTRAL_API_KEY','CLOUDFLARE_AUTH_TOKEN','HF_TOKEN','CEREBRAS_API_KEY','WATSONX_API_KEY','COHERE_API_KEY','NVIDIA_API_KEY','CLOUDFLARE_ACCOUNT_ID','WATSONX_PROJECT_ID','WATSONX_MODEL_ID','TIGERIQ_GROQ_FREE_TIER_VERIFIED','TIGERIQ_GEMINI_FREE_TIER_VERIFIED','TIGERIQ_CEREBRAS_FREE_TIER_VERIFIED','TIGERIQ_WATSONX_LITE_CONFIRMED','TIGERIQ_COHERE_TRIAL_CONFIRMED','TIGERIQ_NVIDIA_FREE_DEV_CONFIRMED','TIGERIQ_GEMINI_MODEL','TIGERIQ_GEMINI_MIN_INTERVAL_MS','TIGERIQ_GEMINI_BACKOFF_BASE_MS','TIGERIQ_GEMINI_MAX_ATTEMPTS')
   foreach($name in $names){[Environment]::SetEnvironmentVariable($name,$null,'Process')}
 }
 function Get-SecretStamp {
@@ -55,12 +55,11 @@ function Load-CoreEnvironment {
   Set-SecretEnv 'MISTRAL_API_KEY' 'mistral-api-key' 'TigerIQ-Mistral-PC01-v1'
   Set-SecretEnv 'CLOUDFLARE_AUTH_TOKEN' 'cloudflare-auth-token' 'TigerIQ-Cloudflare-PC01-v1'
   Set-SecretEnv 'HF_TOKEN' 'hf-token' 'TigerIQ-HuggingFace-PC01-v1'
-  Set-SecretEnv 'AI_GATEWAY_API_KEY' 'vercel-ai-gateway-key' 'TigerIQ-Vercel-PC01-v1'
   Set-SecretEnv 'WATSONX_API_KEY' 'watsonx-api-key' 'TigerIQ-Watsonx-PC01-v1'
   Set-SecretEnv 'COHERE_API_KEY' 'cohere-api-key' 'TigerIQ-Cohere-PC01-v1'
   Set-SecretEnv 'NVIDIA_API_KEY' 'nvidia-api-key' 'TigerIQ-NVIDIA-PC01-v1'
   $cf=Get-TigerIQConfig 'cloudflare-config';if($cf -and $cf.PSObject.Properties['accountId']){$env:CLOUDFLARE_ACCOUNT_ID=[string]$cf.accountId}
-  $ve=Get-TigerIQConfig 'vercel-proof';if($ve -and $ve.PSObject.Properties['freeConfirmed'] -and $ve.freeConfirmed){$env:TIGERIQ_VERCEL_FREE_CREDIT_CONFIRMED='true'}
+  $cb=Get-TigerIQConfig 'cerebras-proof';if($cb -and $cb.PSObject.Properties['freeConfirmed'] -and $cb.freeConfirmed -and $cb.PSObject.Properties['priceUsd'] -and [double]$cb.priceUsd -eq 0 -and $cb.PSObject.Properties['paidFallbackAllowed'] -and -not $cb.paidFallbackAllowed){Set-SecretEnv 'CEREBRAS_API_KEY' 'cerebras-api-key' 'TigerIQ-Cerebras-PC01-v1';$env:TIGERIQ_CEREBRAS_FREE_TIER_VERIFIED='true'}
   $wx=Get-TigerIQConfig 'watsonx-config';if($wx){if($wx.PSObject.Properties['projectId']){$env:WATSONX_PROJECT_ID=[string]$wx.projectId};if($wx.PSObject.Properties['modelId']){$env:WATSONX_MODEL_ID=[string]$wx.modelId};if($wx.PSObject.Properties['liteConfirmed'] -and $wx.liteConfirmed){$env:TIGERIQ_WATSONX_LITE_CONFIRMED='true'}}
   $co=Get-TigerIQConfig 'cohere-proof';if($co -and $co.PSObject.Properties['trialConfirmed'] -and $co.trialConfirmed){$env:TIGERIQ_COHERE_TRIAL_CONFIRMED='true'}
   $nv=Get-TigerIQConfig 'nvidia-proof';if($nv -and $nv.PSObject.Properties['freeConfirmed'] -and $nv.freeConfirmed){$env:TIGERIQ_NVIDIA_FREE_DEV_CONFIRMED='true'}
