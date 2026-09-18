@@ -382,7 +382,7 @@ async function managerTick() {
   if(skillContext.skillIds.length){await event('ACTIVE_SKILLS_LOADED',{objectiveId:o.id,skillIds:skillContext.skillIds,bytes:skillContext.bytes});}
   if(skillContext.skipped.length){await event('ACTIVE_SKILLS_SKIPPED',{objectiveId:o.id,skipped:skillContext.skipped});}
   if(skillContext.error){await event('ACTIVE_SKILLS_FAIL_CLOSED',{objectiveId:o.id,error:skillContext.error});}
-  const activeSkillContext=skillContext.text?\`Relevant ACTIVE skills (apply only when relevant):\\n\${skillContext.text}\`:'';
+  const activeSkillContext=skillContext.text?`Relevant ACTIVE skills (apply only when relevant):\n${skillContext.text}`:'';
   const handoffContext=o.metadata?.handoff?.state==='children_completed'?`Completed autonomous child work: ${JSON.stringify(o.metadata.handoff.childResults||[]).slice(0,6000)}`:'';
   const isFinalCampaignPhase=phases.length>0&&currentPhase===phases.length-1;
   const terminalHandoffInstruction=isFinalCampaignPhase?'FINAL CAMPAIGN PHASE: when status=complete, jobs must contain ONLY additional NEXT work still required to satisfy the overall goal. Use [CODING] prefix in the title only for repository/source mutation; other next work is API/research/review/general. Every next-work prompt must include SCOPE: <resource-or-domain> and ACCEPTANCE: <observable completion>. If no further work is required, return jobs: [].':'';
