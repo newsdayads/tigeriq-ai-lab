@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { DurableUiJobLedger, uiJobProgress } from '../apps/chrome-controller/src/job-ledger.js';
+import { DurableUiJobLedger, reconcileUiJobStage, uiJobProgress } from '../apps/chrome-controller/src/job-ledger.js';
 
 const roots:string[]=[];
 function ledger(){
@@ -41,6 +41,16 @@ describe('durable UI worker job ledger',()=>{
     expect(()=>store.transition('NV02','GH-CORRUPT','DONE',{result:'bad'})).toThrow('UI_JOB_TRANSITION_INVALID');
     writeFileSync(path,'{not-json','utf8');
     expect(()=>new DurableUiJobLedger(path)).toThrow('UI_JOB_LEDGER_CORRUPT');
+  });
+
+  it('reconciles fast-complete UI heartbeats monotonically',()=>{
+    expect(reconcileUiJobStage('SUBMITTED',true)).toBe('WORKING');
+    expect(reconcileUiJobStage('SUBMITTED',false)).toBe('WAITING_EVIDENCE');
+    expect(reconcileUiJobStage('WORKING',false)).toBe('WAITING_EVIDENCE');
+    expect(reconcileUiJobStage('DISPATCHING',true)).toBeUndefined();
+    expect(reconcileUiJobStage('WAITING_EVIDENCE',true)).toBeUndefined();
+    expect(reconcileUiJobStage('VERIFY',false)).toBeUndefined();
+    expect(reconcileUiJobStage('DONE',false)).toBeUndefined();
   });
 
   it('keeps milestone progress deterministic',()=>{
