@@ -13,7 +13,7 @@ function Set-SecretEnv([string]$EnvName,[string]$SecretName,[string]$Entropy){
   if(-not[string]::IsNullOrWhiteSpace($value)){[Environment]::SetEnvironmentVariable($EnvName,$value,'Process')}
 }
 function Clear-ProviderEnvironment {
-  foreach($name in @('GROQ_API_KEY','GEMINI_API_KEY','OPENROUTER_API_KEY','MISTRAL_API_KEY','HF_TOKEN','COHERE_API_KEY','TIGERIQ_GROQ_FREE_TIER_VERIFIED','TIGERIQ_GEMINI_FREE_TIER_VERIFIED','TIGERIQ_COHERE_TRIAL_CONFIRMED','TIGERIQ_GEMINI_MODEL','TIGERIQ_GEMINI_MIN_INTERVAL_MS','TIGERIQ_GEMINI_BACKOFF_BASE_MS','TIGERIQ_GEMINI_MAX_ATTEMPTS')){[Environment]::SetEnvironmentVariable($name,$null,'Process')}
+  foreach($name in @('GROQ_API_KEY','GEMINI_API_KEY','OPENROUTER_API_KEY','MISTRAL_API_KEY','HF_TOKEN','COHERE_API_KEY','CEREBRAS_API_KEY','TIGERIQ_GROQ_FREE_TIER_VERIFIED','TIGERIQ_GEMINI_FREE_TIER_VERIFIED','TIGERIQ_COHERE_TRIAL_CONFIRMED','TIGERIQ_CEREBRAS_FREE_TIER_VERIFIED','TIGERIQ_CEREBRAS_MODEL','TIGERIQ_GEMINI_MODEL','TIGERIQ_GEMINI_MIN_INTERVAL_MS','TIGERIQ_GEMINI_BACKOFF_BASE_MS','TIGERIQ_GEMINI_MAX_ATTEMPTS')){[Environment]::SetEnvironmentVariable($name,$null,'Process')}
 }
 function Load-Environment {
   Clear-ProviderEnvironment
@@ -37,6 +37,8 @@ function Load-Environment {
   if($geminiProof.plan -eq 'Free' -and $geminiProof.priceUsd -eq 0 -and $geminiProof.ownerConfirmed -and -not $geminiProof.billingLinked -and -not $geminiProof.paidFallbackAllowed -and [DateTime]::Parse($geminiProof.expiresAtUtc) -gt [DateTime]::UtcNow){Set-SecretEnv 'GEMINI_API_KEY' 'gemini-api-key' 'TigerIQ-Gemini-PC01-v1';$env:TIGERIQ_GEMINI_FREE_TIER_VERIFIED='true'}
   $co=Get-TigerIQConfig 'cohere-proof'
   if($co -and $co.PSObject.Properties['trialConfirmed'] -and $co.trialConfirmed){Set-SecretEnv 'COHERE_API_KEY' 'cohere-api-key' 'TigerIQ-Cohere-PC01-v1';$env:TIGERIQ_COHERE_TRIAL_CONFIRMED='true'}
+  $cb=Get-TigerIQConfig 'cerebras-proof'
+  if($cb -and $cb.PSObject.Properties['freeConfirmed'] -and $cb.freeConfirmed -and $cb.PSObject.Properties['priceUsd'] -and [double]$cb.priceUsd -eq 0 -and $cb.PSObject.Properties['paidFallbackAllowed'] -and -not $cb.paidFallbackAllowed){Set-SecretEnv 'CEREBRAS_API_KEY' 'cerebras-api-key' 'TigerIQ-Cerebras-PC01-v1';$env:TIGERIQ_CEREBRAS_FREE_TIER_VERIFIED='true';$env:TIGERIQ_CEREBRAS_MODEL='gpt-oss-120b'}
 }
 $logDir='D:\TigerIQ\Logs\CodingLane24x7';New-Item -ItemType Directory -Path $logDir -Force|Out-Null
 while($true){
