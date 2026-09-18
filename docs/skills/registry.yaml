@@ -32,12 +32,14 @@ states:
 skills:
   - id: contextual-skill-loading
     title: Contextual Skill Loading
-    state: CANDIDATE
-    version: 0.1.0
+    state: ACTIVE
+    version: 1.0.0
     provenance_batch: owner-video-lessons-2026-09-18
     source_log: learning-log/2026-09-18-owner-video-lessons.md
     target: core-context-routing
-    summary: Load only skills relevant to the current objective instead of preloading all knowledge.
+    triggers: skill load relevant active registry context objective
+    summary: Load only ACTIVE skills relevant to the current objective; never preload the whole skill library.
+    evidence_refs: "#864 PR#870 runtime:SKILL_CONTEXT_LOADED"
 
   - id: context-budget-compaction
     title: Context Budget and Compaction
