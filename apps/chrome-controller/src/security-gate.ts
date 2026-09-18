@@ -21,7 +21,7 @@ export function verifySaveReceiptV1(input: SaveReceiptVerificationInput): { vali
   if (!receipt || typeof receipt !== 'object') {
     return { valid: false, reason: 'RECEIPT_MISSING' };
   }
-  if (receipt.schemaVersion !== 'tigeriq.chrome-controller.save-receipt.v1' && receipt.type !== 'TIGERIQ_SAVE_RECEIPT_V1') {
+  if (receipt.schemaVersion !== 'tigeriq.chrome-controller.save-receipt.v1' || receipt.type !== 'TIGERIQ_SAVE_RECEIPT_V1') {
     return { valid: false, reason: 'INVALID_SCHEMA_VERSION' };
   }
   if (receipt.status !== 'DURABLE') {
