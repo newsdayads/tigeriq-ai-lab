@@ -7,6 +7,7 @@ import {
   computePlacements,
   isWorkerEnabled,
   isInteractiveDesktopSession,
+  reconcileWorkerUiStatus,
   WORKER_IDS,
   type ControllerConfig,
   type WorkerId,
@@ -610,7 +611,12 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
       state.blocked=true;state.status='BLOCKED';state.lastError=hbStop;
       if(workerId==='NV02')stopAutopilot(hbStop);
       log('HEARTBEAT_SECURITY_STOP',{workerId,status:hbStop});
-    }else if(!state.blocked){state.lastError=undefined;}
+    }else if(!state.blocked){
+      state.lastError=undefined;
+      const beforeStatus=state.status;
+      state.status=reconcileWorkerUiStatus(state.status,hb.uiBusy);
+      if(state.status!==beforeStatus)log('WORKER_UI_STATUS_RECONCILED',{workerId,from:beforeStatus,to:state.status,uiBusy:hb.uiBusy});
+    }
     recoveryAttempts.set(workerId,0);
     if(!state.enabled){state.status='DISABLED';json(res,200,{ok:true,enabled:false});return true;}
     if(['IDLE','STARTING','RECOVERING','RECOVERY_ERROR','RECOVERY_AMBIGUOUS_WINDOW','RECOVERY_EXHAUSTED','WINDOW_CLOSED_IDLE','WINDOW_CLOSED_ACTIVE'].includes(state.status))state.status='ONLINE';
