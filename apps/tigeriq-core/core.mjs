@@ -82,8 +82,25 @@ function quotaResetDurationMs(value){
 }
 function quotaResetAt(headers){
   const retry=headers?.get?.('retry-after');
-  if(retry){const seconds=Number(retry);if(Number.isFinite(seconds))return new Date(Date.now()+Math.max(0,seconds)*1000).toISOString();const parsed=Date.parse(retry);if(Number.isFinite(parsed))return new Date(parsed).toISOString();}
-  for(const key of ['x-ratelimit-reset-requests','x-ratelimit-reset-tokens','x-ratelimit-reset']){const value=headers?.get?.(key);if(!value)continue;const durationMs=quotaResetDurationMs(value);if(durationMs!==null)return new Date(Date.now()+durationMs).toISOString();const numeric=Number(value);if(Number.isFinite(numeric)){const when=numeric>1e12?numeric:(numeric>1e9?numeric*1000:Date.now()+Math.max(0,nu
+  if(retry){
+    const seconds=Number(retry);
+    if(Number.isFinite(seconds)) return new Date(Date.now()+Math.max(0,seconds)*1000).toISOString();
+    const parsed=Date.parse(retry);
+    if(Number.isFinite(parsed)) return new Date(parsed).toISOString();
+  }
+  for(const key of ['x-ratelimit-reset-requests','x-ratelimit-reset-tokens','x-ratelimit-reset']){
+    const value=headers?.get?.(key);
+    if(!value) continue;
+    const durationMs=quotaResetDurationMs(value);
+    if(durationMs!==null) return new Date(Date.now()+durationMs).toISOString();
+    const numeric=Number(value);
+    if(Number.isFinite(numeric)){
+      const when=numeric>1e12?numeric:(numeric>1e9?numeric*1000:Date.now()+Math.max(0,numeric));
+      return new Date(when).toISOString();
+    }
+  }
+  return null;
+}
 ...[MODEL_CONTEXT_REDUCED]...
 ion({prompt,maxProviders:3,acquire:async excluded=>{const excludedResources=excluded.map(id=>resources.find(x=>x.id===id)?.resourceId||id),row=await claimResource('reasoning',jobId,excludedResources,{profile:'AUTO',taskKind:'manager'});if(!row)return null;return resources.find(x=>x.resourceId===row.resource_id)||null;},invoke:async(r,nextPrompt)=>{starts.set(r.id,Date.now());return invokeProvider(r,nextPrompt);},onRetry:async(r,error)=>event('MANAGER_OUTPUT_RETRY',{objectiveId,jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind:'manager',kind:error?.code||error?.message||'invalid_response'}),onSuccess:async r=>markResourceSuccess(r,jobId,Math.max(0,Date.now()-(starts.get(r.id)||Date.now())),'RESOURCE_SUCCESS',true,{taskKind:'manager',profile:'AUTO'}),onFailure:async(r,error)=>markResourceFailure(r,jobId,error,'RESOURCE_FAILURE',true,{taskKind:'manager',profile:'AUTO'})});
 }
