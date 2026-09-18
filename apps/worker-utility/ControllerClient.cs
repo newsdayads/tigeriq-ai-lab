@@ -187,6 +187,22 @@ internal sealed class ControllerClient
         };
     }
 
+    public async Task<BrowserMutationLeaseReceipt> AcquireBrowserMutationLeaseAsync(string id, string ownerId, int ttlMs = 30000)
+    {
+        using var doc = await PostAsync($"/api/utility/workers/{id}/mutation-lease/acquire", new { ownerId, ttlMs });
+        var root = doc.RootElement;
+        if (!root.TryGetProperty("lease", out var lease)) throw new InvalidOperationException("BROWSER_MUTATION_LEASE_MISSING");
+        return new BrowserMutationLeaseReceipt(
+            lease.GetProperty("leaseId").GetString() ?? throw new InvalidOperationException("BROWSER_MUTATION_LEASE_ID_MISSING"),
+            lease.GetProperty("ownerId").GetString() ?? ownerId,
+            lease.GetProperty("expiresAt").GetString() ?? "");
+    }
+
+    public async Task ReleaseBrowserMutationLeaseAsync(string id, BrowserMutationLeaseReceipt lease)
+    {
+        using var _ = await PostAsync($"/api/utility/workers/{id}/mutation-lease/release", new { ownerId = lease.OwnerId, leaseId = lease.LeaseId });
+    }
+
     public async Task<string> QuickHealthAsync(string id)
     {
         using var doc = await TryGetJsonAsync(Controller + $"/api/utility/workers/{id}/health");
@@ -229,3 +245,4 @@ internal sealed class ControllerClient
 }
 
 internal sealed record SaveReceipt(string ReceiptRef, string CheckpointRef);
+internal sealed record BrowserMutationLeaseReceipt(string LeaseId, string OwnerId, string ExpiresAt);

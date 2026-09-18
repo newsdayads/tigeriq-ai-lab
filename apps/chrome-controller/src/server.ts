@@ -25,6 +25,7 @@ import {
 } from './autopilot.js';
 import { buildRuntimeEvidence } from './runtime-evidence.js';
 import { DurableDispatchLeaseStore } from './dispatch-lease.js';
+import { BrowserMutationLeaseStore } from './browser-mutation-lease.js';
 import { heartbeatStopReason } from './security-gate.js';
 
 type Command = { id:string; workerId:WorkerId; action:string; payload?:Record<string,unknown>; createdAt:string };
@@ -78,8 +79,11 @@ const autopilotSnapshotPath=resolve(config.logDir,'autopilot-snapshot.json');
 const runtimeEvidencePath=resolve(config.logDir,'runtime-evidence.json');
 const interactionStatePath=resolve(config.logDir,'owner-interaction-state.json');
 const dispatchLeasePath=resolve(config.logDir,'autopilot-dispatch-lease.json');
+const browserMutationLeasePath=resolve(config.logDir,'browser-mutation-leases.json');
 const controllerInstanceId=randomUUID();
 const dispatchLease=new DurableDispatchLeaseStore(dispatchLeasePath,controllerInstanceId,config.autopilot.dispatchLeaseTtlMs??300000);
+const browserMutationLeases=new BrowserMutationLeaseStore(browserMutationLeasePath);
+const pageMutationActions=new Set(['NAVIGATE','DISPATCH','ARCHIVE_CHAT','CLOSE_WINDOW']);
 
 function log(event:string,data:Record<string,unknown>={}){
   const line=JSON.stringify({ts:new Date().toISOString(),event,...data});
@@ -227,6 +231,7 @@ function sendCommand(workerId:WorkerId,action:string,payload?:Record<string,unkn
   if(paused)return Promise.reject(new Error('OWNER_INTERACTION_READ_ONLY'));
   if(utilityPausedWorkers.has(workerId)&&!['FOCUS','LAYOUT'].includes(action))return Promise.reject(new Error(`UTILITY_WORKER_PAUSED:${workerId}`));
   if(state.blocked&&!['FOCUS','LAYOUT'].includes(action))return Promise.reject(new Error(`WORKER_BLOCKED:${workerId}`));
+  if(pageMutationActions.has(action))browserMutationLeases.assertControllerAllowed(workerId);
   const command:Command={id:randomUUID(),workerId,action,payload,createdAt:new Date().toISOString()};
   commandQueues.get(workerId)!.push(command);
   log('COMMAND_QUEUED',{workerId,commandId:command.id,action});
@@ -570,6 +575,7 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
       autopilot:autopilotState,
       recovery:{attempts:Object.fromEntries(recoveryAttempts),maxReopenAttempts:config.recovery.maxReopenAttempts},
       evidencePath:runtimeEvidencePath,
+      browserMutationLeases:browserMutationLeases.snapshot(),
       workers:[...states.values()],
     });
     return true;
@@ -635,6 +641,8 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
     const workerId=decodeURIComponent(url.pathname.split('/').pop()!) as WorkerId;
     if(!getWorker(workerId)){json(res,404,{ok:false});return true;}
     if(!states.get(workerId)!.enabled){json(res,200,{command:null,disabled:true,error:`WORKER_DISABLED:${workerId}`});return true;}
+    const mutationLease=browserMutationLeases.active(workerId);
+    if(mutationLease){json(res,200,{command:null,mutationLease:{ownerId:mutationLease.ownerId,expiresAt:mutationLease.expiresAt}});return true;}
     const command=commandQueues.get(workerId)!.shift()??null;
     if(command){const waiter=waiters.get(command.id);if(waiter)waiter.delivered=true;}
     json(res,200,{command});
@@ -685,6 +693,52 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
     for(const queue of commandQueues.values())queue.splice(0);
     log('KILL_SWITCH');persistEvidence();json(res,200,{ok:true});return true;
   }
+  const browserLeaseMatch=url.pathname.match(/^\/api\/utility\/workers\/(NV02|NV03|NV04)\/mutation-lease(?:\/(acquire|release))?$/);
+  if(browserLeaseMatch){
+    const workerId=browserLeaseMatch[1] as WorkerId;
+    const leaseAction=browserLeaseMatch[2]??'status';
+    try{
+      if(leaseAction==='status'&&req.method==='GET'){
+        json(res,200,{ok:true,workerId,lease:browserMutationLeases.active(workerId)??null});
+        return true;
+      }
+      if(req.method!=='POST'){json(res,405,{ok:false,error:'METHOD_NOT_ALLOWED'});return true;}
+      const data=await body(req);
+      const ownerId=String(data.ownerId??'').trim();
+      if(leaseAction==='acquire'){
+        assertWorkerEnabled(workerId);
+        const state=states.get(workerId)!;
+        if(paused)throw new Error('OWNER_INTERACTION_READ_ONLY');
+        if(utilityPausedWorkers.has(workerId))throw new Error(`UTILITY_WORKER_PAUSED:${workerId}`);
+        if(state.blocked)throw new Error(`WORKER_BLOCKED:${workerId}`);
+        if(!recentHeartbeat(workerId))throw new Error(`WORKER_HEARTBEAT_NOT_READY:${workerId}`);
+        const security=heartbeatStopReason(state.lastHeartbeat);
+        if(security)throw new Error(security);
+        if(state.lastHeartbeat?.uiBusy!==false)throw new Error(`WORKER_UI_BUSY_OR_UNKNOWN:${workerId}`);
+        if(workerHasActiveJob(workerId))throw new Error(`WORKER_ACTIVE_JOB:${workerId}`);
+        if(commandQueues.get(workerId)!.length>0||[...waiters.values()].some((w)=>w.workerId===workerId))
+          throw new Error(`WORKER_COMMAND_INFLIGHT:${workerId}`);
+        const ttlMs=Number(data.ttlMs??30_000);
+        const acquired=browserMutationLeases.acquire(workerId,ownerId,ttlMs);
+        if(acquired.kind==='BUSY'){
+          json(res,409,{ok:false,error:`BROWSER_MUTATION_LEASE_BUSY:${workerId}:${acquired.lease.ownerId}`,lease:acquired.lease});
+          return true;
+        }
+        log('BROWSER_MUTATION_LEASE_ACQUIRED',{workerId,ownerId,leaseId:acquired.lease.leaseId,expiresAt:acquired.lease.expiresAt});
+        json(res,200,{ok:true,lease:acquired.lease});
+        return true;
+      }
+      if(leaseAction==='release'){
+        const leaseId=String(data.leaseId??'').trim();
+        const released=browserMutationLeases.release(workerId,ownerId,leaseId);
+        log('BROWSER_MUTATION_LEASE_RELEASED',{workerId,ownerId,leaseId,released});
+        json(res,200,{ok:true,released});
+        return true;
+      }
+      json(res,404,{ok:false,error:'UNKNOWN_MUTATION_LEASE_ACTION'});
+    }catch(error){json(res,409,{ok:false,error:String(error)});}
+    return true;
+  }
   const utilityMatch=url.pathname.match(/^\/api\/utility\/workers\/(NV02|NV03|NV04)\/(health|pause|resume|open-canonical|archive|safe-recover)$/);
   if(utilityMatch){
     const workerId=utilityMatch[1] as WorkerId; const action=utilityMatch[2]; const state=states.get(workerId)!; const worker=getWorker(workerId)!;
@@ -698,7 +752,7 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
       if(action==='resume'){utilityPausedWorkers.delete(workerId);log('UTILITY_WORKER_RESUMED',{workerId});persistEvidence();json(res,200,{ok:true});return true;}
       assertWorkerEnabled(workerId);
       if(action==='open-canonical'){await uiQueue.enqueue(()=>sendCommand(workerId,'NAVIGATE',{url:worker.homeUrl}));json(res,200,{ok:true});return true;}
-      if(action==='safe-recover'){if(state.blocked)throw new Error('SAFE_RECOVER_BLOCKED'); if(recentHeartbeat(workerId)){await layoutWorker(workerId);json(res,200,{ok:true,mode:'ATTACH_EXISTING'});return true;} await startWorker(workerId);json(res,200,{ok:true,mode:'BROKER_LAUNCH'});return true;}
+      if(action==='safe-recover'){browserMutationLeases.assertControllerAllowed(workerId);if(state.blocked)throw new Error('SAFE_RECOVER_BLOCKED'); if(recentHeartbeat(workerId)){await layoutWorker(workerId);json(res,200,{ok:true,mode:'ATTACH_EXISTING'});return true;} await startWorker(workerId);json(res,200,{ok:true,mode:'BROKER_LAUNCH'});return true;}
       if(action==='archive'){const data=await body(req);if(typeof data.receiptRef!=='string'||!data.receiptRef.startsWith('https://github.com/'))throw new Error('ARCHIVE_DURABLE_RECEIPT_REQUIRED');if(workerHasActiveJob(workerId)||state.lastHeartbeat?.uiBusy)throw new Error('ARCHIVE_ACTIVE_JOB_FORBIDDEN');await uiQueue.enqueue(()=>sendCommand(workerId,'ARCHIVE_CHAT',{receiptRef:data.receiptRef}));json(res,200,{ok:true});return true;}
     }catch(error){json(res,409,{ok:false,error:String(error)});return true;}
   }
