@@ -35,7 +35,7 @@ internal sealed class PopupForm : Form
     };
     readonly Label workerName = new()
     {
-        AutoSize = false, Size = new Size(166, 24),
+        AutoSize = false, Size = new Size(150, 24),
         Font = new Font("Segoe UI", 12.5f, FontStyle.Bold), ForeColor = Ink
     };
     readonly Label subtitle = new()
@@ -104,7 +104,7 @@ internal sealed class PopupForm : Form
         AutoScaleMode = AutoScaleMode.Dpi;
         Font = new Font("Segoe UI", 9);
         Text = "TigerIQ Worker Utility";
-        ClientSize = new Size(344, 720);
+        ClientSize = new Size(344, 728);
         MinimumSize = Size;
         MaximumSize = Size;
         StartPosition = FormStartPosition.Manual;
@@ -119,10 +119,10 @@ internal sealed class PopupForm : Form
 
         headerCard = NewCard(new Rectangle(10, 10, 324, 88));
         statusCard = NewCard(new Rectangle(10, 106, 324, 100));
-        controlsCard = NewCard(new Rectangle(10, 214, 324, 156));
-        saveCard = NewCard(new Rectangle(10, 378, 324, 92));
-        scheduleCard = NewCard(new Rectangle(10, 478, 324, 104));
-        logsCard = NewCard(new Rectangle(10, 590, 324, 76));
+        controlsCard = NewCard(new Rectangle(10, 214, 324, 166));
+        saveCard = NewCard(new Rectangle(10, 388, 324, 100));
+        scheduleCard = NewCard(new Rectangle(10, 496, 324, 104));
+        logsCard = NewCard(new Rectangle(10, 608, 324, 76));
 
         closeButton = MakeLocalButton("×", 28, 28);
         closeButton.Font = new Font("Segoe UI", 12, FontStyle.Bold);
@@ -137,10 +137,10 @@ internal sealed class PopupForm : Form
         BuildSchedule();
         BuildLogs();
 
-        footerAdvanced = MakeActionButton("⚙  Nâng cao", "advanced-toggle", 150, 34);
-        footerAdvanced.Location = new Point(16, 674);
-        footerHide = MakeLocalButton("×  Ẩn bảng", 150, 34);
-        footerHide.Location = new Point(178, 674);
+        footerAdvanced = MakeActionButton("⚙  Nâng cao", "advanced-toggle", 150, 30);
+        footerAdvanced.Location = new Point(16, 690);
+        footerHide = MakeLocalButton("×  Ẩn bảng", 150, 30);
+        footerHide.Location = new Point(178, 690);
         footerHide.Click += (_, _) => Hide();
 
         root.Controls.Add(headerCard);
@@ -203,7 +203,7 @@ internal sealed class PopupForm : Form
         workerGlyph.Location = new Point(14, 38);
         workerName.Location = new Point(54, 34);
         subtitle.Location = new Point(54, 59);
-        onlineChip.Location = new Point(218, 39);
+        onlineChip.Location = new Point(207, 39);
 
         headerCard.Controls.Add(accent);
         headerCard.Controls.Add(eyebrow);
@@ -246,10 +246,10 @@ internal sealed class PopupForm : Form
     void BuildSaveRecover()
     {
         AddSectionTitle(saveCard, "LƯU & PHỤC HỒI");
-        AddGridButton(saveCard, "▣  Lưu", "save", 12, 30);
-        AddGridButton(saveCard, "▦  Lưu & Lưu trữ", "save-archive", 164, 30);
-        AddGridButton(saveCard, "⏻  Đóng NV an toàn", "close", 12, 64);
-        AddGridButton(saveCard, "↻  Khôi phục", "recover", 164, 64);
+        AddGridButton(saveCard, "▣  Lưu", "save", 12, 28);
+        AddGridButton(saveCard, "▦  Lưu & Lưu trữ", "save-archive", 164, 28);
+        AddGridButton(saveCard, "⏻  Đóng NV an toàn", "close", 12, 62);
+        AddGridButton(saveCard, "↻  Khôi phục", "recover", 164, 62);
     }
 
     void BuildSchedule()
