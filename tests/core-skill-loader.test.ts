@@ -3,9 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { appendSkillContextToPrompt, loadSkillRegistry, matchAndLoadSkills, parseSkillRegistry } from '../apps/tigeriq-core/skill-loader.mjs';
-
-function fixture(entries, contents = {}) {
+// @ts-ignore — runtime JS module is intentionally tested without a declaration file.\nimport { appendSkillContextToPrompt, loadSkillRegistry, matchAndLoadSkills, parseSkillRegistry } from '../apps/tigeriq-core/skill-loader.mjs';\n\ntype Entry = { id: string; state: string; title?: string; version?: string; target?: string; summary?: string; triggers?: string };\n\nfunction fixture(entries: Entry[], contents: Record<string, string> = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'tigeriq-skill-'));
   const registryPath = join(dir, 'registry.yaml');
   const rows = ['version: 1', 'skills:'];
@@ -47,7 +45,7 @@ test('only relevant ACTIVE skill loads', () => {
   ], { 'routing-skill': '# Routing\nChoose a model.', 'review-skill': '# Review\nReview independently.' });
   try {
     const result = matchAndLoadSkills('route model routing provider', { registryPath: f.registryPath, baseDir: f.dir });
-    assert.deepEqual(result.skills.map(s => s.id), ['routing-skill']);
+    assert.deepEqual(result.skills.map((s: { id: string }) => s.id), ['routing-skill']);
     assert.match(result.contextBlock, /routing-skill/);
     assert.doesNotMatch(result.contextBlock, /review-skill/);
   } finally { f.cleanup(); }
