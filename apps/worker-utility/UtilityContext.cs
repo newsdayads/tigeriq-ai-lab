@@ -27,6 +27,19 @@ internal sealed class UtilityContext : ApplicationContext
         settings = store.Load();
         foreach (var w in Workers.All)
             if (!settings.Workers.ContainsKey(w.Id)) settings.Workers[w.Id] = new WorkerSettings();
+        if (settings.LayoutRevision < 2)
+        {
+            foreach (var w in Workers.All)
+            {
+                settings.Workers[w.Id].PopupX = null;
+                settings.Workers[w.Id].PopupY = null;
+                settings.Workers[w.Id].BadgeOffsetX = null;
+                settings.Workers[w.Id].BadgeOffsetY = null;
+            }
+            settings.LayoutRevision = 2;
+            store.Save(settings);
+            store.Log("SYSTEM", "UI_LAYOUT_MIGRATED", new { revision = 2, issue = 826 });
+        }
         store.EnsureAutostart();
 
         foreach (var worker in Workers.All)
@@ -55,7 +68,7 @@ internal sealed class UtilityContext : ApplicationContext
 
         timer.Tick += async (_, _) => await TickAsync();
         timer.Start();
-        store.Log("SYSTEM", "UTILITY_STARTED", new { version = Application.ProductVersion, issue = 820 });
+        store.Log("SYSTEM", "UTILITY_STARTED", new { version = Application.ProductVersion, issue = 826, layoutRevision = settings.LayoutRevision });
     }
 
     ContextMenuStrip BuildTrayMenu()
@@ -227,20 +240,14 @@ internal sealed class UtilityContext : ApplicationContext
 
         settings.Schedules.TryGetValue(id, out var sched);
         health.TryGetValue(id, out var wd);
-        var occupied = new List<Rectangle>();
-        foreach (var worker in Workers.All)
-            if (binder.TryResolve(worker.Id, out _, out var chromeRect) && chromeRect.Width > 0 && chromeRect.Height > 0)
-                occupied.Add(chromeRect);
-        foreach (var pair in popups)
-            if (pair.Key != id && pair.Value.Visible)
-                occupied.Add(pair.Value.Bounds);
+        var workerIndex = Array.FindIndex(Workers.All, x => x.Id == id);
+        var working = Screen.FromRectangle(rect).WorkingArea;
+        var defaultLocation = UiPlacement.DockedPopup(workerIndex, Workers.All.Length, popups[id].Size, working);
 
         var ok = popups[id].ShowWorker(
             Workers.Get(id), view, wd, settings.Workers[id], sched, settings.DoNotDisturb,
-            store.RecentLogs(id), rect, occupied.ToArray());
+            store.RecentLogs(id), defaultLocation, working);
         if (ok) badges[id].HideForPopup();
-        if (!ok && notifyOnFailure)
-            ShowTrayNotice("TigerIQ — Không chồng cửa sổ", "Không có vùng trống an toàn để mở bảng điều khiển.");
         return ok;
     }
 
@@ -251,11 +258,7 @@ internal sealed class UtilityContext : ApplicationContext
             if (TryShowPopup(worker.Id, false)) opened++;
         store.Log("SYSTEM", "OPEN_ALL_POPUPS", new { opened, requested = Workers.All.Length });
         if (opened < Workers.All.Length)
-        {
-            tray.BalloonTipTitle = "TigerIQ Workers";
-            tray.BalloonTipText = $"Đã mở {opened}/{Workers.All.Length} bảng. Bảng còn lại bị giữ lại để không che Chrome.";
-            tray.ShowBalloonTip(4000);
-        }
+            ShowTrayNotice("TigerIQ Workers", $"Đã mở {opened}/{Workers.All.Length} bảng điều khiển.");
     }
 
     async Task HandleActionAsync(string id, string actionName)
