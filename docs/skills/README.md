@@ -32,14 +32,15 @@ Raw Owner video/file attachments are not copied into the repository by default.
 Only ACTIVE skills may be auto-loaded by workers/runtime. CANDIDATE and VALIDATED entries are reference material only.
 Workers should retrieve only skills relevant to the current objective; never preload the full registry.
 
-## Promotion gate
-Before a skill becomes ACTIVE:
+## Promotion gate & Default-Deny Validation
+Before a skill becomes ACTIVE, validation follows a strict default-deny model for incomplete records:
 1. no duplicate ACTIVE skill;
 2. trigger/scope/output are explicit;
-3. required capability/security boundary is declared;
-4. measurable acceptance/evidence exists when execution behavior changes;
-5. external skills have pinned provenance/version and installer/capability audit;
-6. interruption/resume works from durable references without replaying full chat history.
+3. mandatory capability manifests (`READ`, `WRITE`, `RUN_COMMAND`, `NETWORK`, `CONFIG/PERMISSION_CHANGE`) are explicitly declared;
+4. pinned provenance (`pinned_source`, `pinned_version`) is mandatory;
+5. measurable acceptance/evidence exists when execution behavior changes;
+6. external skills have pinned provenance/version and installer/capability audit;
+7. interruption/resume works from durable references without replaying full chat history.
 
 ## External skill security gate
 Third-party skills/packages are untrusted by default.
