@@ -32,7 +32,7 @@ async function close(fetchImpl,owner,repo,n,token){if(token)await gh(fetchImpl,o
 async function markerExists(pool,type,n){const q=await pool.query("select 1 from tigeriq_events where type=$1 and data->>'issueNumber'=$2 limit 1",[type,String(n)]);return q.rowCount>0}
 async function mark(pool,type,data){await pool.query('insert into tigeriq_events(type,data) values($1,$2)',[type,JSON.stringify(data)])}
 async function hasOpenCodingDispatch(pool){
-  const q=await pool.query("select 1 from tigeriq_events d where d.type='GITHUB_CODING_DISPATCHED' and not exists(select 1 from tigeriq_events r where r.type='GITHUB_CODING_RESULT_REPORTED' and r.data->>'issueNumber'=d.data->>'issueNumber') limit 1");
+  const q=await pool.query("select 1 from (select data from tigeriq_events where type='GITHUB_CODING_DISPATCHED' order by seq desc limit 1) d where not exists(select 1 from tigeriq_events r where r.type='GITHUB_CODING_RESULT_REPORTED' and r.data->>'issueNumber'=d.data->>'issueNumber')");
   return q.rowCount>0;
 }
 
