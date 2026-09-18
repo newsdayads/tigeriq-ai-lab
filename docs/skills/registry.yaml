@@ -37,6 +37,12 @@ skills:
     provenance_batch: owner-video-lessons-2026-09-18
     source_log: learning-log/2026-09-18-owner-video-lessons.md
     target: core-context-routing
+    provenance:
+      pinned_source: owner-video-lessons-2026-09-18
+      pinned_version: 0.1.0
+    capabilities:
+      - READ
+      - WRITE
     summary: Load only skills relevant to the current objective instead of preloading all knowledge.
 
   - id: context-budget-compaction
@@ -46,6 +52,12 @@ skills:
     provenance_batch: owner-video-lessons-2026-09-18
     source_log: learning-log/2026-09-18-owner-video-lessons.md
     target: core-context-routing
+    provenance:
+      pinned_source: owner-video-lessons-2026-09-18
+      pinned_version: 1.0.0
+    capabilities:
+      - READ
+      - WRITE
     triggers: context history prompt token compact headroom manager
     summary: Filter irrelevant context, reserve headroom, compact milestones and resume from durable references.
 
@@ -56,6 +68,13 @@ skills:
     provenance_batch: owner-video-lessons-2026-09-18
     source_log: learning-log/2026-09-18-owner-video-lessons.md
     target: coding-lane
+    provenance:
+      pinned_source: owner-video-lessons-2026-09-18
+      pinned_version: 0.1.0
+    capabilities:
+      - READ
+      - WRITE
+      - RUN_COMMAND
     summary: Define scope and acceptance before code; for suitable bugs prove RED before GREEN.
 
   - id: learn-from-failure
@@ -65,6 +84,13 @@ skills:
     provenance_batch: owner-video-lessons-2026-09-18
     source_log: learning-log/2026-09-18-owner-video-lessons.md
     target: knowledge-system
+    provenance:
+      pinned_source: owner-video-lessons-2026-09-18
+      pinned_version: 1.0.0
+    capabilities:
+      - READ
+      - WRITE
+      - CONFIG/PERMISSION_CHANGE
     triggers: failure error retry blocked regression evidence learning
     summary: Convert recurring failures into durable candidate rules/checks from repeated verified evidence; never self-promote or mutate protected policy.
 
@@ -75,6 +101,12 @@ skills:
     provenance_batch: owner-video-lessons-2026-09-18
     source_log: learning-log/2026-09-18-owner-video-lessons.md
     target: orchestration
+    provenance:
+      pinned_source: owner-video-lessons-2026-09-18
+      pinned_version: 1.0.0
+    capabilities:
+      - READ
+      - WRITE
     triggers: implementation review reviewer verifier planning source mutation phân vai kiểm tra
     summary: Separate planning, implementation, review and verification where risk or value justifies it.
 
@@ -85,6 +117,14 @@ skills:
     provenance_batch: owner-video-lessons-2026-09-18
     source_log: learning-log/2026-09-18-owner-video-lessons.md
     target: skill-intake
+    provenance:
+      pinned_source: owner-video-lessons-2026-09-18
+      pinned_version: 0.1.0
+    capabilities:
+      - READ
+      - WRITE
+      - NETWORK
+      - CONFIG/PERMISSION_CHANGE
     summary: Audit provenance, pinned version, installer behavior and capabilities before executable use.
 
   - id: minimal-change-output
@@ -94,6 +134,12 @@ skills:
     provenance_batch: owner-video-lessons-2026-09-18
     source_log: learning-log/2026-09-18-owner-video-lessons.md
     target: coding-lane
+    provenance:
+      pinned_source: owner-video-lessons-2026-09-18
+      pinned_version: 0.1.0
+    capabilities:
+      - READ
+      - WRITE
     summary: Prefer scoped diffs and minimal edits; avoid whole-file regeneration when unnecessary.
 
   - id: capability-aware-model-routing
@@ -103,5 +149,11 @@ skills:
     provenance_batch: owner-video-lessons-2026-09-18
     source_log: learning-log/2026-09-18-owner-video-lessons.md
     target: router
+    provenance:
+      pinned_source: owner-video-lessons-2026-09-18
+      pinned_version: 1.0.0
+    capabilities:
+      - READ
+      - NETWORK
     triggers: routing route model provider capability latency quota cost định tuyến mô hình
     summary: Route work by difficulty, capability, latency and cost instead of always using the strongest model.
