@@ -20,10 +20,15 @@ internal sealed class TrayPanelForm : Form
     readonly Dictionary<string, Label> noticeLabels = new();
     readonly Dictionary<string, Label> railStateLabels = new();
     readonly Dictionary<string, Button> primaryButtons = new();
+    readonly Dictionary<string, Label> scheduleLabels = new();
+    readonly Dictionary<string, CheckBox> scheduleEnabledChecks = new();
+    readonly Dictionary<string, CheckBox> scheduleChangesOnlyChecks = new();
+    readonly Dictionary<string, Label> logLabels = new();
 
     readonly Func<string, string, Task> workerAction;
     readonly Func<Task> focusAllChrome;
     readonly Func<string[]> readSystemLogs;
+    readonly Func<string, string[]> readWorkerLogs;
     readonly Action toggleDnd;
     readonly Action exit;
     readonly Label dndLabel = new()
@@ -38,11 +43,12 @@ internal sealed class TrayPanelForm : Form
 
     protected override bool ShowWithoutActivation => false;
 
-    public TrayPanelForm(Func<string, string, Task> workerAction, Func<Task> focusAllChrome, Func<string[]> readSystemLogs, Action toggleDnd, Action exit)
+    public TrayPanelForm(Func<string, string, Task> workerAction, Func<Task> focusAllChrome, Func<string[]> readSystemLogs, Func<string, string[]> readWorkerLogs, Action toggleDnd, Action exit)
     {
         this.workerAction = workerAction;
         this.focusAllChrome = focusAllChrome;
         this.readSystemLogs = readSystemLogs;
+        this.readWorkerLogs = readWorkerLogs;
         this.toggleDnd = toggleDnd;
         this.exit = exit;
 
@@ -51,7 +57,7 @@ internal sealed class TrayPanelForm : Form
         ShowInTaskbar = false;
         TopMost = true;
         StartPosition = FormStartPosition.Manual;
-        ClientSize = new Size(1160, 540);
+        ClientSize = new Size(1330, 810);
         MinimumSize = Size;
         MaximumSize = Size;
         BackColor = Canvas;
@@ -65,7 +71,7 @@ internal sealed class TrayPanelForm : Form
             card.Location = new Point(x, 14);
             Controls.Add(card);
             workerCards[worker.Id] = card;
-            x += 316;
+            x += 374;
         }
 
         Shown += (_, _) => ApplyRoundedRegion();
@@ -87,7 +93,7 @@ internal sealed class TrayPanelForm : Form
         var rail = new RoundedPanel
         {
             Location = new Point(10, 14),
-            Size = new Size(182, 512),
+            Size = new Size(182, 782),
             BackColor = Rail,
             BorderColor = Border,
             BorderWidth = 1,
@@ -185,19 +191,19 @@ internal sealed class TrayPanelForm : Form
         var accent = WorkerAccent(worker.Id);
         var card = new RoundedPanel
         {
-            Size = new Size(304, 512),
+            Size = new Size(362, 782),
             BackColor = Card,
             BorderColor = accent,
             BorderWidth = 2,
             CornerRadius = 15
         };
 
-        var accentLine = new Panel { Location = new Point(0, 0), Size = new Size(304, 4), BackColor = accent };
+        var accentLine = new Panel { Location = new Point(0, 0), Size = new Size(362, 4), BackColor = accent };
         var glyph = new Label
         {
             Text = WorkerGlyph(worker.Id),
             Location = new Point(14, 15),
-            Size = new Size(34, 34),
+            Size = new Size(38, 38),
             TextAlign = ContentAlignment.MiddleCenter,
             BackColor = accent,
             ForeColor = Color.White,
@@ -207,8 +213,8 @@ internal sealed class TrayPanelForm : Form
         {
             Text = $"{worker.Id} · {worker.Name}",
             AutoSize = false,
-            Location = new Point(58, 13),
-            Size = new Size(185, 22),
+            Location = new Point(62, 13),
+            Size = new Size(210, 23),
             ForeColor = Ink,
             Font = new Font("Segoe UI", 11.5f, FontStyle.Bold),
             AutoEllipsis = true
@@ -217,7 +223,7 @@ internal sealed class TrayPanelForm : Form
         {
             Text = "Cửa sổ Chrome thật",
             AutoSize = true,
-            Location = new Point(59, 37),
+            Location = new Point(63, 38),
             ForeColor = Muted,
             Font = new Font("Segoe UI", 7.9f)
         };
@@ -225,7 +231,7 @@ internal sealed class TrayPanelForm : Form
         {
             Text = "● ONLINE",
             AutoSize = true,
-            Location = new Point(232, 18),
+            Location = new Point(286, 18),
             ForeColor = Green,
             Font = new Font("Segoe UI", 7.4f, FontStyle.Bold)
         };
@@ -235,24 +241,14 @@ internal sealed class TrayPanelForm : Form
         card.Controls.Add(role);
         card.Controls.Add(online);
 
-        var section = new Label
-        {
-            Text = "TRẠNG THÁI",
-            AutoSize = true,
-            Location = new Point(14, 68),
-            ForeColor = Color.FromArgb(100, 116, 139),
-            Font = new Font("Segoe UI", 7.6f, FontStyle.Bold)
-        };
-        card.Controls.Add(section);
-
         var state = new Label
         {
             Text = "● ĐANG TẢI",
             AutoSize = false,
-            Location = new Point(14, 88),
-            Size = new Size(276, 22),
+            Location = new Point(14, 68),
+            Size = new Size(334, 24),
             ForeColor = Muted,
-            Font = new Font("Segoe UI", 9, FontStyle.Bold)
+            Font = new Font("Segoe UI", 9.2f, FontStyle.Bold)
         };
         stateLabels[worker.Id] = state;
         card.Controls.Add(state);
@@ -261,10 +257,11 @@ internal sealed class TrayPanelForm : Form
         {
             Text = "Job hiện tại  —",
             AutoSize = false,
-            Location = new Point(14, 112),
-            Size = new Size(276, 34),
+            Location = new Point(14, 96),
+            Size = new Size(334, 44),
             ForeColor = Muted,
-            Font = new Font("Segoe UI", 8.2f)
+            Font = new Font("Segoe UI", 8.2f),
+            AutoEllipsis = true
         };
         jobLabels[worker.Id] = job;
         card.Controls.Add(job);
@@ -273,28 +270,113 @@ internal sealed class TrayPanelForm : Form
         {
             Text = "VẬN HÀNH CỐT LÕI",
             AutoSize = true,
-            Location = new Point(14, 156),
+            Location = new Point(14, 148),
             ForeColor = Color.FromArgb(100, 116, 139),
             Font = new Font("Segoe UI", 7.6f, FontStyle.Bold)
         };
         card.Controls.Add(controlsLabel);
 
-        AddCoreButton(card, worker.Id, "▶ Chạy / Tiếp tục", "run", 14, 178, accent);
-        AddCoreButton(card, worker.Id, "Ⅱ Tạm dừng", "pause", 154, 178, Color.FromArgb(72, 48, 18));
-        AddCoreButton(card, worker.Id, "⌖ Về vị trí", "fix", 14, 218, Color.FromArgb(24, 45, 70));
-        AddCoreButton(card, worker.Id, "⌁ Khóa vị trí", "lock", 154, 218, Color.FromArgb(24, 45, 70));
-        AddCoreButton(card, worker.Id, "↗ Mở trang", "open", 14, 258, Color.FromArgb(24, 45, 70));
-        AddCoreButton(card, worker.Id, "⌕ Kiểm tra", "health", 154, 258, Color.FromArgb(24, 45, 70));
-        AddCoreButton(card, worker.Id, "▣ Lưu", "save", 14, 298, Color.FromArgb(19, 47, 78));
+        AddCoreButton(card, worker.Id, "▶ Chạy / Tiếp tục", "run", 14, 170, accent, 160);
+        AddCoreButton(card, worker.Id, "Ⅱ Tạm dừng", "pause", 188, 170, Color.FromArgb(72, 48, 18), 160);
+        AddCoreButton(card, worker.Id, "⌖ Về vị trí", "fix", 14, 210, Color.FromArgb(24, 45, 70), 160);
+        AddCoreButton(card, worker.Id, "⌁ Khóa vị trí", "lock", 188, 210, Color.FromArgb(24, 45, 70), 160);
+        AddCoreButton(card, worker.Id, "↗ Mở trang", "open", 14, 250, Color.FromArgb(24, 45, 70), 160);
+        AddCoreButton(card, worker.Id, "⌕ Kiểm tra nhanh", "health", 188, 250, Color.FromArgb(24, 45, 70), 160);
+        AddCoreButton(card, worker.Id, "▣ Lưu", "save", 14, 290, Color.FromArgb(19, 47, 78), 160);
+        AddCoreButton(card, worker.Id, "▦ Lưu & Lưu trữ", "save-archive", 188, 290, Color.FromArgb(19, 47, 78), 160);
 
-        var hide = CoreButton("× Đóng an toàn", 136, 34, Color.FromArgb(25, 40, 60));
-        hide.Location = new Point(154, 298);
-        hide.AccessibleDescription = "Chỉ ẩn System Tray popup, không đóng Chrome.";
-        hide.Click += (_, _) => Hide();
-        card.Controls.Add(hide);
+        var close = CoreButton("⏻ Đóng an toàn", 334, 36, Color.FromArgb(102, 28, 35));
+        close.Location = new Point(14, 334);
+        close.Tag = $"{worker.Id}|close";
+        close.Click += async (_, _) => await InvokeWorkerActionAsync(worker.Id, "close", close);
+        card.Controls.Add(close);
 
-        var advanced = CoreButton("⚙ Nâng cao", 276, 36, Color.FromArgb(18, 38, 63));
-        advanced.Location = new Point(14, 350);
+        var scheduleTitle = new Label
+        {
+            Text = "ĐẶT LỊCH KIỂM TRA",
+            AutoSize = true,
+            Location = new Point(14, 382),
+            ForeColor = Color.FromArgb(100, 116, 139),
+            Font = new Font("Segoe UI", 7.6f, FontStyle.Bold)
+        };
+        card.Controls.Add(scheduleTitle);
+
+        var scheduleActions = new[] { ("10p","schedule-10"), ("30p","schedule-30"), ("1h","schedule-60"), ("2h","schedule-120"), ("Tùy chỉnh","schedule-custom") };
+        var sx = 14;
+        foreach (var item in scheduleActions)
+        {
+            var width = item.Item1 == "Tùy chỉnh" ? 86 : 54;
+            var b = CoreButton(item.Item1, width, 30, Color.FromArgb(19, 47, 78));
+            b.Location = new Point(sx, 404);
+            var actionName = item.Item2;
+            b.Click += async (_, _) => await InvokeWorkerActionAsync(worker.Id, actionName, b);
+            card.Controls.Add(b);
+            sx += width + 7;
+        }
+
+        var enabled = new CheckBox
+        {
+            Text = "Bật lịch",
+            AutoSize = true,
+            Location = new Point(14, 442),
+            ForeColor = Ink,
+            BackColor = Card,
+            Font = new Font("Segoe UI", 8.0f)
+        };
+        enabled.Click += async (_, _) => await InvokeWorkerActionAsync(worker.Id, enabled.Checked ? "schedule-on" : "schedule-off", enabled);
+        scheduleEnabledChecks[worker.Id] = enabled;
+        card.Controls.Add(enabled);
+
+        var changesOnly = new CheckBox
+        {
+            Text = "Chỉ báo khi có thay đổi / lỗi",
+            AutoSize = true,
+            Location = new Point(104, 442),
+            ForeColor = Ink,
+            BackColor = Card,
+            Font = new Font("Segoe UI", 8.0f)
+        };
+        changesOnly.Click += async (_, _) => await InvokeWorkerActionAsync(worker.Id, changesOnly.Checked ? "schedule-change-only-on" : "schedule-change-only-off", changesOnly);
+        scheduleChangesOnlyChecks[worker.Id] = changesOnly;
+        card.Controls.Add(changesOnly);
+
+        var schedule = new Label
+        {
+            Text = "Lần kiểm tra kế tiếp: —",
+            AutoSize = false,
+            Location = new Point(14, 468),
+            Size = new Size(334, 20),
+            ForeColor = Amber,
+            Font = new Font("Segoe UI", 7.8f, FontStyle.Bold)
+        };
+        scheduleLabels[worker.Id] = schedule;
+        card.Controls.Add(schedule);
+
+        var logTitle = new Label
+        {
+            Text = "LOG GẦN NHẤT",
+            AutoSize = true,
+            Location = new Point(14, 500),
+            ForeColor = Color.FromArgb(100, 116, 139),
+            Font = new Font("Segoe UI", 7.6f, FontStyle.Bold)
+        };
+        card.Controls.Add(logTitle);
+
+        var logs = new Label
+        {
+            Text = "Chưa có log.",
+            AutoSize = false,
+            Location = new Point(14, 522),
+            Size = new Size(334, 126),
+            ForeColor = Color.FromArgb(203, 213, 225),
+            Font = new Font("Consolas", 7.7f),
+            AutoEllipsis = true
+        };
+        logLabels[worker.Id] = logs;
+        card.Controls.Add(logs);
+
+        var advanced = CoreButton("⚙ Nâng cao", 334, 36, Color.FromArgb(18, 38, 63));
+        advanced.Location = new Point(14, 660);
         advanced.Click += (_, _) => ShowAdvancedMenu(worker.Id, advanced);
         card.Controls.Add(advanced);
 
@@ -302,8 +384,8 @@ internal sealed class TrayPanelForm : Form
         {
             Text = "Sẵn sàng.",
             AutoSize = false,
-            Location = new Point(14, 400),
-            Size = new Size(276, 58),
+            Location = new Point(14, 706),
+            Size = new Size(334, 58),
             ForeColor = Muted,
             Font = new Font("Segoe UI", 8.1f),
             AutoEllipsis = true
@@ -311,23 +393,12 @@ internal sealed class TrayPanelForm : Form
         noticeLabels[worker.Id] = notice;
         card.Controls.Add(notice);
 
-        var hint = new Label
-        {
-            Text = "Focus / Khôi phục / Đóng NV / Lưu & Lưu trữ / Lịch nằm trong Nâng cao.",
-            AutoSize = false,
-            Location = new Point(14, 468),
-            Size = new Size(276, 34),
-            ForeColor = Color.FromArgb(100, 116, 139),
-            Font = new Font("Segoe UI", 7.3f)
-        };
-        card.Controls.Add(hint);
-
         return card;
     }
 
-    void AddCoreButton(Control parent, string workerId, string text, string actionName, int x, int y, Color back)
+    void AddCoreButton(Control parent, string workerId, string text, string actionName, int x, int y, Color back, int width = 136)
     {
-        var button = CoreButton(text, 136, 34, back);
+        var button = CoreButton(text, width, 34, back);
         button.Location = new Point(x, y);
         button.Tag = $"{workerId}|{actionName}";
         button.Click += async (_, _) => await InvokeWorkerActionAsync(workerId, actionName, button);
@@ -532,6 +603,24 @@ internal sealed class TrayPanelForm : Form
 
             if (primaryButtons.TryGetValue($"{worker.Id}:lock", out var lockButton))
                 lockButton.Text = settings.Workers[worker.Id].PositionLocked ? "⌁ Mở khóa vị trí" : "⌁ Khóa vị trí";
+
+            if (settings.Schedules.TryGetValue(worker.Id, out var sched))
+            {
+                scheduleEnabledChecks[worker.Id].Checked = sched.Enabled;
+                scheduleChangesOnlyChecks[worker.Id].Checked = sched.ChangesOnly;
+                scheduleLabels[worker.Id].Text = sched.NextCheckAt is null
+                    ? "Lần kiểm tra kế tiếp: —"
+                    : $"Lần kiểm tra kế tiếp: {sched.NextCheckAt.Value.ToLocalTime():HH:mm} · {sched.IntervalMinutes} phút";
+            }
+            else
+            {
+                scheduleEnabledChecks[worker.Id].Checked = false;
+                scheduleChangesOnlyChecks[worker.Id].Checked = true;
+                scheduleLabels[worker.Id].Text = "Lần kiểm tra kế tiếp: —";
+            }
+
+            var recent = readWorkerLogs(worker.Id);
+            logLabels[worker.Id].Text = recent.Length == 0 ? "Chưa có log." : string.Join(Environment.NewLine, recent.TakeLast(5));
         }
     }
 
