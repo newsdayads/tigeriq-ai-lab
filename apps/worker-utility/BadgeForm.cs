@@ -26,7 +26,8 @@ internal sealed class BadgeForm : Form
         this.onMoved = onMoved;
         this.onReset = onReset;
 
-        AutoScaleMode = AutoScaleMode.Dpi;
+        AutoScaleMode = AutoScaleMode.None;
+        DoubleBuffered = true;
         FormBorderStyle = FormBorderStyle.None;
         ShowInTaskbar = false;
         TopMost = true;
