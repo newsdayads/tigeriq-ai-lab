@@ -1,4 +1,5 @@
 import { Pool } from 'pg';
+import { backlogOwnerDirect, sortBacklogSpecs } from './github-backlog-policy.mjs';
 
 const DEFAULT_OWNER='newsdayads';
 const DEFAULT_REPO='tigeriq-ai-lab';
@@ -18,7 +19,7 @@ export function parseExecutableIssue(issue){
   if(!hasExactFlag(body,'NO_CODE_CHANGE')||!hasExactFlag(body,'NO_PC01_SHELL')) return null;
   const p=body.match(/^PRIORITY=(P[0-3])$/m)?.[1]||'P2';
   const capability=body.match(/^CAPABILITY=(general|reasoning|review)$/m)?.[1]||'reasoning';
-  return {number:Number(issue.number),title:String(issue.title||''),body,priority:p,capability,url:String(issue.html_url||'')};
+  return {number:Number(issue.number),title:String(issue.title||''),body,priority:p,capability,url:String(issue.html_url||''),ownerDirect:backlogOwnerDirect(body)};
 }
 
 export function extractIssueRefs(body,currentNumber){
@@ -79,19 +80,22 @@ async function closeIssue(fetchImpl,owner,repo,issueNumber,token){
 
 export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token=''}){
   const rows=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues?state=open&per_page=100&sort=updated&direction=desc`,token);
-  let created=0;
-  for(const issue of rows){
-    const spec=parseExecutableIssue(issue); if(!spec) continue;
+  const specs=sortBacklogSpecs(rows.map(parseExecutableIssue).filter(Boolean));
+  const active=(await pool.query("select 1 from tigeriq_objectives where metadata->>'source'='github' and status='active' limit 1")).rowCount>0;
+  if(active)return {created:0,skipped:0,active:1,considered:specs.length};
+  let skipped=0;
+  for(const spec of specs){
     const id=`OBJ-GH-${spec.number}`;
     const exists=(await pool.query('select 1 from tigeriq_objectives where id=$1',[id])).rowCount>0;
-    if(exists) continue;
+    if(exists){skipped++;continue;}
     const context=await hydrateContext(fetchImpl,owner,repo,spec,token);
     const objective=`GitHub autonomous work item #${spec.number}. Execute only the read-only task below. Do not edit repository source, use PC01 shell, deploy, change credentials/security, spend money, reboot, or perform destructive actions. Ground conclusions only in the supplied GitHub context. When the requested analysis is satisfied, complete the objective.\n\n${context}`;
-    await pool.query('insert into tigeriq_objectives(id,objective,priority,metadata) values($1,$2,$3,$4) on conflict(id) do nothing',[id,objective,spec.priority,JSON.stringify({source:'github',issueNumber:spec.number,issueUrl:spec.url,capability:spec.capability})]);
-    await pool.query("insert into tigeriq_events(type,objective_id,data) values('GITHUB_OBJECTIVE_MATERIALIZED',$1,$2)",[id,JSON.stringify({issueNumber:spec.number,issueUrl:spec.url})]);
-    created++;
+    const metadata={source:'github',issueNumber:spec.number,issueUrl:spec.url,capability:spec.capability,ownerDirect:spec.ownerDirect,dispatchReason:spec.ownerDirect?`OWNER_DIRECT>${spec.priority}`:`PRIORITY_${spec.priority}`};
+    await pool.query('insert into tigeriq_objectives(id,objective,priority,metadata) values($1,$2,$3,$4) on conflict(id) do nothing',[id,objective,spec.priority,JSON.stringify(metadata)]);
+    await pool.query("insert into tigeriq_events(type,objective_id,data) values('GITHUB_OBJECTIVE_MATERIALIZED',$1,$2)",[id,JSON.stringify({issueNumber:spec.number,issueUrl:spec.url,ownerDirect:spec.ownerDirect,priority:spec.priority,dispatchReason:metadata.dispatchReason})]);
+    return {created:1,skipped,active:0,considered:specs.length,issueNumber:spec.number};
   }
-  return {created};
+  return {created:0,skipped,active:0,considered:specs.length};
 }
 
 export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token=''}){
@@ -115,14 +119,10 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
   return {claims,results};
 }
 
-export function filterBacklogIssues(issues){if(!Array.isArray(issues))return[];return issues.filter(issue=>{if(!issue||issue.pull_request||issue.state!=='open')return false;const body=String(issue.body||'');if(!hasExactFlag(body,'TIGERIQ_EXECUTABLE')||!hasExactFlag(body,'OWNER_POLICY','AUTO'))return false;const ownerLine=body.match(/^OWNER=(.+)$/m)?.[1]?.trim()||'';if(ownerLine!=='OWNER_DIRECT')return false;const p=body.match(/^PRIORITY=(P[0-3])$/m)?.[1]||'P2';return ['P0','P1','P2','P3'].includes(p);}).map(issue=>{const body=String(issue.body||'');return {number:Number(issue.number),title:String(issue.title||'').trim(),body,priority:body.match(/^PRIORITY=(P[0-3])$/m)?.[1]||'P2',capability:body.match(/^CAPABILITY=(general|reasoning|review)$/m)?.[1]||'reasoning',htmlUrl:String(issue.html_url||'')};});}
-
-export async function dispatchAutoBacklog({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token=''}){const issues=await fetchIssues(fetchImpl,owner,repo,token);const executable=filterBacklogIssues(issues);let dispatched=0,skipped=0;for(const item of executable){const existing=await pool.query("select id from tigeriq_objectives where metadata->>'githubIssueNumber'=$1 limit 1",[String(item.number)]);if(existing.rows.length>0){skipped++;continue;}const isCoding=item.body.includes('ROUTE=CODING')||item.title.toLowerCase().includes('coding')||item.capability==='reasoning';const metadata={githubIssueNumber:item.number,githubHtmlUrl:item.htmlUrl,priority:item.priority,capability:item.capability,dispatchSource:'auto_backlog',routeTarget:isCoding?'coding_handoff':'api_eligible'};await pool.query("insert into tigeriq_objectives (id, title, goal, status, priority, capability, metadata, created_at, updated_at) values ($1, $2, $3, 'queued', $4, $5, $6::jsonb, now(), now())",[`OBJ-GBK-${item.number}-${Date.now().toString(36)}`,item.title,item.body,item.priority,item.capability,JSON.stringify(metadata)]);dispatched++;}return {checked:issues.length,dispatched,skipped};}
-
 export function startGithubIntake({databaseUrl=process.env.DATABASE_URL,fetchImpl=fetch,owner=process.env.TIGERIQ_GITHUB_OWNER||DEFAULT_OWNER,repo=process.env.TIGERIQ_GITHUB_REPO||DEFAULT_REPO,token=process.env.TIGERIQ_GITHUB_TOKEN||process.env.GITHUB_TOKEN||'',intervalMs=Number(process.env.TIGERIQ_GITHUB_INTAKE_MS||DEFAULT_INTERVAL_MS),initialDelayMs=DEFAULT_INITIAL_DELAY_MS}={}){
   if(!databaseUrl) return {enabled:false,stop(){}};
   const pool=new Pool({connectionString:databaseUrl,max:1}); let stopped=false,busy=false,timer=null,interval=null;
-  const tick=async()=>{if(stopped||busy)return;busy=true;try{const a=await materializeGithubIssues({pool,fetchImpl,owner,repo,token});const b=await syncGithubOutcomes({pool,fetchImpl,owner,repo,token});const c=await dispatchAutoBacklog({pool,fetchImpl,owner,repo,token});if(a.created||b.claims||b.results||c.dispatched)console.log(JSON.stringify({event:'GITHUB_INTAKE_SYNC',created:a.created,claims:b.claims,results:b.results,dispatchedBacklog:c.dispatched}));}catch(e){console.error(JSON.stringify({event:'GITHUB_INTAKE_ERROR',error:String(e?.message||e)}));}finally{busy=false;}};
+  const tick=async()=>{if(stopped||busy)return;busy=true;try{const b=await syncGithubOutcomes({pool,fetchImpl,owner,repo,token});const a=await materializeGithubIssues({pool,fetchImpl,owner,repo,token});if(a.created||b.claims||b.results)console.log(JSON.stringify({event:'GITHUB_INTAKE_SYNC',created:a.created,claims:b.claims,results:b.results,active:a.active||0,issueNumber:a.issueNumber||null}));}catch(e){console.error(JSON.stringify({event:'GITHUB_INTAKE_ERROR',error:String(e?.message||e)}));}finally{busy=false;}};
   timer=setTimeout(()=>{void tick();interval=setInterval(()=>void tick(),Math.max(60000,intervalMs));interval.unref?.();},Math.max(1000,initialDelayMs)); timer.unref?.();
   return {enabled:true,async stop(){stopped=true;if(timer)clearTimeout(timer);if(interval)clearInterval(interval);await pool.end();}};
 }

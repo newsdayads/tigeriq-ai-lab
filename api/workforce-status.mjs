@@ -105,15 +105,24 @@ export async function fetchWorkforceStatus(fetchImpl = fetch) {
     if (!response.ok) throw new Error(`controller_http_${response.status}`);
     const payload = await response.json();
     if (!payload || payload.ok !== true || !payload.workforce) throw new Error('invalid_controller_status');
-    return {
+    const result = {
       ok: true,
       connected: true,
       authority: 'PC01/Farm Controller',
       mode: 'read-only-ingress',
       generatedAt: new Date().toISOString(),
       workforce: sanitizeWorkforceSnapshot(payload.workforce),
-      backlogDispatcher: { enabled: true, status: 'active', chainDetails: { mode: 'auto-dispatch', criteria: ['OWNER_DIRECT', 'P0-P3'] } },
     };
+    if (payload.backlogDispatcher && typeof payload.backlogDispatcher === 'object' && !Array.isArray(payload.backlogDispatcher)) {
+      result.backlogDispatcher = {
+        enabled: payload.backlogDispatcher.enabled === true,
+        status: String(payload.backlogDispatcher.status || 'unknown').slice(0, 32),
+        chainDetails: payload.backlogDispatcher.chainDetails && typeof payload.backlogDispatcher.chainDetails === 'object'
+          ? payload.backlogDispatcher.chainDetails
+          : null,
+      };
+    }
+    return result;
   } finally {
     clearTimeout(timeout);
   }
