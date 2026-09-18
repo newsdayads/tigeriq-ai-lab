@@ -65,6 +65,8 @@ skills:
     provenance_batch: owner-video-lessons-2026-09-18
     source_log: learning-log/2026-09-18-owner-video-lessons.md
     target: knowledge-system
+    triggers: failure error recovery candidate learning provenance registry
+    error_signature: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
     summary: Convert recurring failures into durable rules, checks or skills with evidence.
 
   - id: role-separated-execution
