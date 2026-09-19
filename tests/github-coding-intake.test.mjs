@@ -354,6 +354,7 @@ it('coding backlog serializes three issues by OWNER_DIRECT then priority',async(
   ];
   const fetchImpl=async(url,init={})=>{
     if(url.includes('/issues?'))return response(issues);
+    if(url.includes('/api/status'))return response({objectives:posted.map((objective,index)=>({id:`obj-${index+1}`,objective,status:'active'})),jobs:[]});
     if(url.includes('/api/objectives')){
       const payload=JSON.parse(init.body);
       posted.push(payload.objective);
@@ -437,4 +438,40 @@ describe('GitHub coding scope-aware pool refill',()=>{
     expect(posted).toBe(0);
     expect(pool.events.filter(e=>e.type==='GITHUB_CODING_DISPATCHED')).toHaveLength(1);
   });
+
+  it('ignores stale historical dispatch markers when Coding Lane has no live objective',async()=>{
+    const pool=fakePool();const posted=[];
+    for(let n=100;n<135;n++)pool.events.push({type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:n,codingObjectiveId:`old-${n}`}});
+    const issues=[scoped(941,'LIVE_A','apps/live-a'),scoped(942,'LIVE_B','apps/live-b'),scoped(943,'LIVE_C','apps/live-c')];
+    const fetchImpl=async(url,init={})=>{
+      if(url.includes('/issues?'))return response(issues);
+      if(url.includes('/api/status'))return response({objectives:[],jobs:[]});
+      if(url.includes('/api/objectives')){const payload=JSON.parse(init.body);posted.push(payload.objective);return response({id:`live-${posted.length}`});}
+      if(url.includes('/comments'))return response({});
+      return response({});
+    };
+    const out=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake',concurrencyCap:3});
+    expect(out).toMatchObject({created:3,active:0,activeSlots:3,freeSlots:0});
+    expect(posted).toHaveLength(3);
+  });
+
+  it('counts only dispatches whose Coding Lane objective is currently non-terminal',async()=>{
+    const pool=fakePool();let posted=0;
+    pool.events.push(
+      {type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:951,codingObjectiveId:'live-951',scopeLease:{resourceScope:'LIVE_OWNER',paths:['apps/owner'],ambiguous:false}}},
+      {type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:952,codingObjectiveId:'stale-952'}}
+    );
+    const candidate=scoped(953,'FREE_SCOPE','apps/free');
+    const fetchImpl=async(url)=>{
+      if(url.includes('/issues?'))return response([candidate]);
+      if(url.includes('/api/status'))return response({objectives:[{id:'live-951',status:'active'},{id:'stale-952',status:'blocked'}],jobs:[]});
+      if(url.includes('/api/objectives')){posted++;return response({id:'new-953'});}
+      if(url.includes('/comments'))return response({});
+      return response({});
+    };
+    const out=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake',concurrencyCap:3});
+    expect(out).toMatchObject({created:1,active:1,activeSlots:2,freeSlots:1});
+    expect(posted).toBe(1);
+  });
+
 });
