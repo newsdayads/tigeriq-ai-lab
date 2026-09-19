@@ -194,6 +194,15 @@ export function decideAutoContinue(
   };
 }
 
+export interface ModelProfileVerificationState {
+  verified: boolean;
+  activeModel?: string;
+  thinkingEffort?: string;
+  isInstantMode?: boolean;
+  lastVerifiedAt?: string;
+  error?: string;
+}
+
 export function freshAutopilotState(now = new Date()): DurableAutopilotState {
   return { phase: 'IDLE', updatedAt: now.toISOString() };
 }
