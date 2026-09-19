@@ -1003,6 +1003,12 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
         }else if(action==='dispatch'){
           const data=await body(req);
           if(typeof data.text!=='string')throw new Error('DISPATCH_TEXT_MUST_BE_STRING');
+          await uiQueue.enqueue(async()=>{
+            const preflightRes=await sendCommand(workerId,'PREFLIGHT_VERIFY');
+            if(!preflightRes || preflightRes.ok!==true) {
+              throw new Error(`PREFLIGHT_VERIFICATION_FAILED:${preflightRes?.status || 'UNKNOWN'}`);
+            }
+          });
           const jobData=data.job&&typeof data.job==='object'&&!Array.isArray(data.job)?data.job as Record<string,unknown>:{};
           await dispatch(workerId,data.text,data.navigate!==false,'MANUAL',{
             jobId:typeof jobData.jobId==='string'?jobData.jobId:undefined,
