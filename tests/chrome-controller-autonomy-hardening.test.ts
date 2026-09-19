@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import * as ts from 'typescript';
 import { describe,expect,it } from 'vitest';
 import { DurableDispatchLeaseStore } from '../apps/chrome-controller/src/dispatch-lease.js';
-import { canResetOrphanUnpersistedDispatch,classifyAutoContinueDispatchFailure,decideAutoContinue,freshAutopilotState,type DurableAutopilotState,type ExternalAutopilotSnapshot } from '../apps/chrome-controller/src/autopilot.js';
+import { canResetOrphanUnpersistedDispatch,classifyAutoContinueDispatchFailure,decideAutoContinue,freshAutopilotState,sourceStillOffersPendingJob,type DurableAutopilotState,type ExternalAutopilotSnapshot } from '../apps/chrome-controller/src/autopilot.js';
 import { heartbeatStopReason } from '../apps/chrome-controller/src/security-gate.js';
 import { atomicWriteJsonWithRetry, type AtomicJsonFileOps } from '../apps/chrome-controller/src/runtime-evidence.js';
 
@@ -76,6 +76,14 @@ describe('durable dispatch lease',()=>{
     expect(a.markRetryable(acquired.lease.leaseId,'GH-1',3000)).toMatchObject({state:'RESERVED',expiresAt:'1970-01-01T00:01:03.000Z'});
     expect(b.acquire('GH-1',4000)).toMatchObject({kind:'BUSY'});
     expect(b.acquire('GH-1',63_001)).toMatchObject({kind:'TAKEN_OVER',lease:{jobId:'GH-1',leaseEpoch:2}});
+  });
+  it('retires withdrawn noncommitted work without treating it as delivered',()=>{
+    const dir=mkdtempSync(join(tmpdir(),'tigeriq-lease-'));const path=join(dir,'lease.json');
+    const a=new DurableDispatchLeaseStore(path,'controller-a',60_000);const b=new DurableDispatchLeaseStore(path,'controller-b',60_000);
+    const acquired=a.acquire('GH-1',1000);if(acquired.kind!=='ACQUIRED')throw new Error('setup');
+    a.markDispatching(acquired.lease.leaseId,'GH-1',2000);
+    expect(b.retireNoLongerExecutable('GH-1',3000)).toMatchObject({jobId:'GH-1',state:'RESERVED',expiresAt:'1970-01-01T00:00:03.000Z',leaseEpoch:2});
+    expect(b.acquire('GH-2',3001)).toMatchObject({kind:'TAKEN_OVER',lease:{jobId:'GH-2',leaseEpoch:3}});
   });});
 
 describe('crash-safe atomic persistence',()=>{
@@ -97,6 +105,23 @@ describe('crash-safe atomic persistence',()=>{
     expect(()=>atomicWriteJsonWithRetry(path,{generation:'never-written'},ops(()=>{throw errorWithCode('EBUSY');},'persistent-busy'),3)).toThrow('EBUSY');
     expect(readFileSync(path,'utf8')).toBe(lastGood);
     expect(readdirSync(dir).filter((name)=>name.endsWith('.tmp'))).toEqual([]);
+  });
+});
+
+describe('withdrawn pending source contract',()=>{
+  it('keeps pending executable only while the fresh snapshot still offers the exact NV02 job',()=>{
+    const s=snapshot();
+    expect(sourceStillOffersPendingJob(s,'GH-2')).toBe(true);
+    expect(sourceStillOffersPendingJob(s,'GH-X')).toBe(false);
+    const none={...s,nextJob:undefined};expect(sourceStillOffersPendingJob(none,'GH-2')).toBe(false);
+    const cancelled={...s,nextJob:{...s.nextJob!,status:'CANCELLED' as const,executable:false}};expect(sourceStillOffersPendingJob(cancelled,'GH-2')).toBe(false);
+  });
+  it('wires source withdrawal into terminal local cleanup before any retry',()=>{
+    const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
+    expect(server).toContain('sourceStillOffersPendingJob(latestSnapshot,pendingJobId)');
+    expect(server).toContain("blocker:'SOURCE_JOB_NO_LONGER_EXECUTABLE'");
+    expect(server).toContain('dispatchLease.retireNoLongerExecutable(pendingJobId,Date.now())');
+    expect(server).toContain("log('AUTO_CONTINUE_PENDING_SOURCE_WITHDRAWN'");
   });
 });
 
