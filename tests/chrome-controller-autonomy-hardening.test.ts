@@ -213,7 +213,19 @@ describe('orphan pre-dispatch recovery proof',()=>{
   });
 });
 
-describe('AUTO_CONTINUE continuity recovery',()=>{
+describe('model profile verification and switching',()=>{
+  it('verifies canonical GPT-5.6 Sol and High thinking effort and blocks Instant mode',()=>{
+    const okHb = { modelProfile: { activeModel: 'GPT-5.6 Sol', thinkingEffort: 'High', isInstantMode: false } };
+    const badHb = { modelProfile: { activeModel: 'GPT-5.6 Sol', thinkingEffort: 'High', isInstantMode: true } };
+    const resOk = verifyModelProfileState(okHb);
+    const resBad = verifyModelProfileState(badHb);
+    expect(resOk.verified).toBe(true);
+    expect(resBad.verified).toBe(false);
+    expect(resBad.error).toBe('MODEL_PROFILE_BLOCKED');
+  });
+});
+
+describe('AUTO_CONTINue continuity recovery',()=>{
   it('treats a pre-submit active-ledger collision as known non-delivery',()=>{
     expect(classifyAutoContinueDispatchFailure(new Error('UI_JOB_ACTIVE:NV02:GH-1005'),false)).toBe('SAFE_RETRY');
     expect(classifyAutoContinueDispatchFailure(new Error('UI_JOB_DUPLICATE_ACTIVE:NV02:GH-1010'),false)).toBe('SAFE_RETRY');
