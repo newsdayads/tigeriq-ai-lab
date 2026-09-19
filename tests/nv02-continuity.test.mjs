@@ -60,7 +60,7 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("ROTATE_MODEL_PROFILE_NOT_READY");
     expect(source).toContain("freshUi?.modelReady!==true");
     expect(source).toContain("const SEND_BUTTON_WAIT_MS=10000");
-    expect(source).toContain("until=Date.now()+SEND_BUTTON_WAIT_MS");
+    expect(source).toContain("until=Date.now()+${SEND_BUTTON_WAIT_MS}");
     expect(source).toContain("activityBusyVisible:Boolean(activityBusy)");
     expect(source).toContain("đang suy nghĩ|thinking|generating|đang tạo");
     expect(source).toContain("/(^|\\\\s)(đang suy nghĩ|thinking|generating|đang tạo)(\\\\s|$)/i");
@@ -71,6 +71,18 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("WORKING_NO_PROGRESS_3_CHECKS");
     expect(source).toContain("activitySignature");
     expect(source).toContain("workingUnchangedChecks");
+    expect(source).toContain("PROJECT_CONTEXT_ACTIVATED");
+    expect(source).toContain("PROJECT_CONTEXT_RECOVERY_DEFERRED");
+    expect(source).toContain("trò chuyện mới trong tigeriq ai lab");
+    expect(source).toContain("activateNv02ProjectContext");
+    expect(source).toContain("NV02_CONTINUITY_CHECKPOINT");
+    expect(source).toContain("CHECKPOINT_LOCAL_DURABLE");
+    expect(source).toContain("NV02_LOCAL_CHECKPOINT_WRITTEN");
+    expect(source).toContain("projectContextReady");
+    expect(source).toContain("projectContextReady&&modelControl");
+    expect(source).toContain("NV02_PROJECT_PATH_PREFIX");
+    expect(source).toContain("PROJECT_PATH_ALREADY_ACTIVE");
+    expect(source).toContain("location.pathname.startsWith");
   });
 
   it('rotates chat by bounded count or age instead of every job', () => {
