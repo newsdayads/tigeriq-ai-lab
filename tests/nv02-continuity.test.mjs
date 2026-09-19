@@ -66,6 +66,10 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("REFRESH_SCHEDULED");
     expect(source).toContain("CHAT_ROTATED");
     expect(source).toContain("ARCHIVE_CURRENT_ROW_COUNT_");
+    expect(source).toContain("function archiveConfirmExpr");
+    expect(source).toContain("visibleChatRows");
+    expect(source).toContain("currentTitleRows");
+    expect(source).toContain("SIDEBAR_ROW_REMOVED");
     expect(source).toContain("data-selected-reasoning-effort");
     expect(source).toContain("MUTATION_LEASE_BUSY");
     expect(source).toContain("dispatchNaturalContinueLocked");
