@@ -34,6 +34,7 @@ async function close(fetchImpl,owner,repo,n,token){if(token)await gh(fetchImpl,o
 async function markerExists(pool,type,n){const q=await pool.query("select 1 from tigeriq_events where type=$1 and data->>'issueNumber'=$2 limit 1",[type,String(n)]);return q.rowCount>0}
 async function eventData(pool,type,n){const q=await pool.query("select data from tigeriq_events where type=$1 and data->>'issueNumber'=$2 order by seq desc limit 100",[type,String(n)]);return q.rows.map(row=>row.data||{})}
 async function mark(pool,type,data){await pool.query('insert into tigeriq_events(type,data) values($1,$2)',[type,JSON.stringify(data)])}
+async function hasCompletedCodingResult(pool,n){return (await eventData(pool,'GITHUB_CODING_RESULT_REPORTED',n)).some(x=>String(x.status||'').toLowerCase()==='completed')}
 export function classifyCodingBlocker(summary){
   const raw=String(summary||'').trim();
   const text=raw.toUpperCase();
@@ -51,7 +52,7 @@ function issueSuperseded(issue){
 function objectiveTerminal(objective){return ['completed','blocked'].includes(String(objective?.status||'').toLowerCase())}
 function objectiveMentionsIssue(objective,n){return new RegExp(`(?:issue\\s+|#)${n}\\b`,'i').test(String(objective?.objective||''))}
 async function hasOpenCodingDispatch(pool){
-  const q=await pool.query("select 1 from (select data from tigeriq_events where type='GITHUB_CODING_DISPATCHED' order by seq desc limit 1) d where not exists(select 1 from tigeriq_events r where r.type in ('GITHUB_CODING_RESULT_REPORTED','GITHUB_CODING_BLOCKED_FINAL') and r.data->>'issueNumber'=d.data->>'issueNumber')");
+  const q=await pool.query("select 1 from (select data from tigeriq_events where type='GITHUB_CODING_DISPATCHED' order by seq desc limit 1) d where not exists(select 1 from tigeriq_events r where r.data->>'issueNumber'=d.data->>'issueNumber' and (r.type='GITHUB_CODING_BLOCKED_FINAL' or (r.type='GITHUB_CODING_RESULT_REPORTED' and lower(coalesce(r.data->>'status',''))='completed')))");
   return q.rowCount>0;
 }
 
@@ -100,7 +101,7 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
     const n=Number(row.data?.issueNumber),id=String(row.data?.codingObjectiveId||'');
     if(!n||!id||seenIssues.has(n))continue;
     seenIssues.add(n);
-    if(await markerExists(pool,'GITHUB_CODING_RESULT_REPORTED',n)||await markerExists(pool,'GITHUB_CODING_BLOCKED_FINAL',n))continue;
+    if(await hasCompletedCodingResult(pool,n)||await markerExists(pool,'GITHUB_CODING_BLOCKED_FINAL',n))continue;
     const objective=(status.objectives||[]).find(x=>x.id===id);
     if(!objective)continue;
     const job=(status.jobs||[]).find(x=>x.objective_id===id);
@@ -112,7 +113,7 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
     }
     if(!objectiveTerminal(objective))continue;
     if(String(objective.status).toLowerCase()==='completed'){
-      if(!(await markerExists(pool,'GITHUB_CODING_RESULT_REPORTED',n))){
+      if(!(await hasCompletedCodingResult(pool,n)){
         await comment(fetchImpl,owner,repo,n,token,`[RESULT] ${id} completed. ${String(objective.summary||'').slice(0,3000)}`);
         await close(fetchImpl,owner,repo,n,token);
         await mark(pool,'GITHUB_CODING_RESULT_REPORTED',{issueNumber:n,codingObjectiveId:id,status:'completed'});
