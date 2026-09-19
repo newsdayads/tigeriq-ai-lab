@@ -159,7 +159,7 @@ export function decideAutoContinue(
 
   if (!next) return { kind: 'IDLE', reason: 'NO_EXECUTABLE_JOB' };
   if (previous?.jobId === next.jobId) return { kind: 'STOP', reason: 'NEXT_JOB_EQUALS_PREVIOUS_JOB' };
-  if (next.workerId !== 'NV02') return { kind: 'IDLE', reason: 'NEXT_JOB_NOT_NV02' };
+  if (!['NV02', 'NV03', 'NV04'].includes(next.workerId)) return { kind: 'IDLE', reason: 'NEXT_JOB_NOT_PRIMARY_EMPLOYEE' };
   if (!next.executable) return { kind: 'IDLE', reason: 'NEXT_JOB_NOT_EXECUTABLE' };
   if (!['P0', 'P1'].includes(next.priority)) return { kind: 'IDLE', reason: 'NEXT_JOB_PRIORITY_NOT_ALLOWED' };
   if (!EXECUTABLE_JOB_STATUSES.has(next.status)) return { kind: 'BUSY', reason: `NEXT_JOB_${next.status}` };
