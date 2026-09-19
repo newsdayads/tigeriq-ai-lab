@@ -59,6 +59,9 @@ describe('NV02 continuity policy', () => {
     expect(source).not.toContain("return dispatchNaturalContinue(target,next,now)");
     expect(source).toContain("ROTATE_MODEL_PROFILE_NOT_READY");
     expect(source).toContain("freshUi?.modelReady!==true");
+    expect(source).toContain("NV02_HOME_URL");
+    expect(source).toContain("NEW_CHAT_PROJECT_CONTEXT_RECOVERED");
+    expect(source).toContain("Page.navigate',{url:NV02_HOME_URL}");
     expect(source).toContain("const SEND_BUTTON_WAIT_MS=10000");
     expect(source).toContain("until=Date.now()+SEND_BUTTON_WAIT_MS");
     expect(source).toContain("activityBusyVisible:Boolean(activityBusy)");
@@ -82,7 +85,9 @@ describe('NV02 continuity policy', () => {
   it('ships one-shot NV02 continuity installer with exact-head deploy and rollback',()=>{
     const installer=readFileSync('apps/chrome-controller/runtime/Install-NV02-Continuity.ps1','utf8');
     expect(installer).toContain('[Parameter(Mandatory=$true)][string]$ExpectedHead');
-    expect(installer).toContain("fetch','origin','p0/nv02-continuous-liveness");
+    expect(installer).toContain("[string]$SourceRef='main'");
+    expect(installer).toContain("fetch','origin',$SourceRef");
+    expect(installer).toContain("rev-parse 'FETCH_HEAD'");
     expect(installer).toContain("tests/chrome-controller-autonomy-hardening.test.ts");
     expect(installer).toContain("Invoke-Native -File 'npm' -ArgumentList @('run','typecheck')");
     expect(installer).toContain("Invoke-Native -File 'npm' -ArgumentList @('run','build')");
