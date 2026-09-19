@@ -30,6 +30,17 @@ function code(error:unknown){return error instanceof Error&&'code' in error?Stri
 function iso(ms:number){return new Date(ms).toISOString();}
 function parseJson<T>(path:string):T|undefined{if(!existsSync(path))return;try{return JSON.parse(readFileSync(path,'utf8')) as T;}catch{return;}}
 
+function atomicRename(temp:string,path:string,attempts=0,max=3){
+  try{return renameSync(temp,path);}
+  catch(error){
+    const code=error instanceof Error&&'code' in error?String((error as NodeJS.ErrnoException).code??''):'';
+    if(!['EPERM','EBUSY'].includes(code)||attempts>=max)throw error;
+    const delay=20*(attempts+1);
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,delay);
+    return atomicRename(temp,path,attempts+1,max);
+  }
+}
+
 export class DurableDispatchLeaseStore{
   readonly #path:string;
   readonly #lockPath:string;
@@ -194,7 +205,12 @@ export class DurableDispatchLeaseStore{
 
   #atomicReplace(lease:DispatchLease){
     const temp=`${this.#path}.${this.#ownerId}.${randomUUID()}.tmp`;
-    writeFileSync(temp,`${JSON.stringify(lease,null,2)}\n`,'utf8');
-    renameSync(temp,this.#path);
+    try{
+      writeFileSync(temp,`${JSON.stringify(lease,null,2)}\n`,'utf8');
+      atomicRename(temp,this.#path);
+    }catch{
+      if(opsSync(temp))try{unlinkSync(temp);}catch{}
+      throw;
+    }
   }
 }
