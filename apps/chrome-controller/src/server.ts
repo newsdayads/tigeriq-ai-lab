@@ -978,7 +978,8 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
         const state=states.get(workerId)!;
         const purpose=String(data.purpose??'NORMAL').trim().toUpperCase();
         const staleWorkingRecovery=workerId==='NV02'&&purpose==='STALE_WORKING_RECOVERY';
-        if(paused)throw new Error('OWNER_INTERACTION_READ_ONLY');
+        const projectContextRecovery=workerId==='NV02'&&purpose==='PROJECT_CONTEXT_RECOVERY';
+        if(paused&&!projectContextRecovery)throw new Error('OWNER_INTERACTION_READ_ONLY');
         if(utilityPausedWorkers.has(workerId))throw new Error(`UTILITY_WORKER_PAUSED:${workerId}`);
         if(state.blocked)throw new Error(`WORKER_BLOCKED:${workerId}`);
         if(!recentHeartbeat(workerId))throw new Error(`WORKER_HEARTBEAT_NOT_READY:${workerId}`);
