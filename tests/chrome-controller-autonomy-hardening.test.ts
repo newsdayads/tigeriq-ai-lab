@@ -280,4 +280,11 @@ describe('NV02 Canonical Model Profile Enforcement (GPT-5.6 Sol + High)', () => 
     expect(security).toContain('verifyCanonicalModelProfile');
     expect(security).toContain('MODEL_PROFILE_BLOCKED');
   });
+
+  it('ensures preflight verification triggers on new chats, recovery, tab replacement, and reconnect', () => {
+    const server = readFileSync('apps/chrome-controller/src/server.ts', 'utf8');
+    expect(server).toContain('verifyWorkerModelProfilePreflight');
+    expect(server).toContain('VERIFY_MODEL_PROFILE');
+    expect(server).toContain('NV02_MODEL_PROFILE_VERIFIED');
+  });
 });
