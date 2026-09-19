@@ -25,7 +25,7 @@ function Invoke-Native([string]$File,[string[]]$Args,[string]$WorkingDirectory=$
   Push-Location $WorkingDirectory
   try{
     & $File @Args
-    if($LASTEXITCODE -ne 0){throw "NATIVE_FAILED:$File:$LASTEXITCODE"}
+    if($LASTEXITCODE -ne 0){throw "NATIVE_FAILED:${File}:$LASTEXITCODE"}
   }finally{Pop-Location}
 }
 function Wait-Http([string]$Url,[int]$Seconds=30){
