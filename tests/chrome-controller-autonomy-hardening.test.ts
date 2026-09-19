@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import * as ts from 'typescript';
 import { describe,expect,it } from 'vitest';
 import { DurableDispatchLeaseStore } from '../apps/chrome-controller/src/dispatch-lease.js';
-import { classifyAutoContinueDispatchFailure,decideAutoContinue,freshAutopilotState,type DurableAutopilotState,type ExternalAutopilotSnapshot } from '../apps/chrome-controller/src/autopilot.js';
+import { canResetOrphanUnpersistedDispatch,classifyAutoContinueDispatchFailure,decideAutoContinue,freshAutopilotState,type DurableAutopilotState,type ExternalAutopilotSnapshot } from '../apps/chrome-controller/src/autopilot.js';
 import { heartbeatStopReason } from '../apps/chrome-controller/src/security-gate.js';
 import { atomicWriteJsonWithRetry, type AtomicJsonFileOps } from '../apps/chrome-controller/src/runtime-evidence.js';
 
@@ -185,6 +185,31 @@ describe('AUTO_CONTINUE known non-delivery contract',()=>{
     expect(server).toContain('dispatchLease.resetKnownNotDelivered(decision.jobId,Date.now(),0)');
     expect(server).toContain("log('AUTO_CONTINUE_FAILED_CLOSED'");
     expect(server).toContain("await dispatch(workerId,data.text,data.navigate!==false,'MANUAL',{");
+  });
+});
+
+describe('orphan pre-dispatch recovery proof',()=>{
+  const lease=(state:'RESERVED'|'DISPATCHING'|'COMMITTED',expiresAt:string,jobId='GH-1042')=>({
+    schemaVersion:'tigeriq.chrome-controller.dispatch-lease.v3' as const,
+    leaseId:'lease-1',leaseEpoch:1,ownerId:'old-controller',jobId,state,
+    acquiredAt:'2026-09-19T05:59:49.105Z',heartbeatAt:'2026-09-19T05:59:49.111Z',expiresAt,
+  });
+  it('allows safe reset only when the matching DISPATCHING lease is expired and no durable ledger record exists',()=>{
+    const now=Date.parse('2026-09-19T06:07:00Z');
+    expect(canResetOrphanUnpersistedDispatch('GH-1042',false,lease('DISPATCHING','2026-09-19T06:04:49Z'),now)).toBe(true);
+    expect(canResetOrphanUnpersistedDispatch('GH-1042',true,lease('DISPATCHING','2026-09-19T06:04:49Z'),now)).toBe(false);
+    expect(canResetOrphanUnpersistedDispatch('GH-1042',false,lease('DISPATCHING','2026-09-19T06:10:00Z'),now)).toBe(false);
+    expect(canResetOrphanUnpersistedDispatch('GH-1042',false,lease('COMMITTED','2026-09-19T06:04:49Z'),now)).toBe(false);
+    expect(canResetOrphanUnpersistedDispatch('GH-1042',false,lease('DISPATCHING','2026-09-19T06:04:49Z','GH-X'),now)).toBe(false);
+  });
+  it('preserves ordering invariant: durable ledger transition happens before any browser command is queued',()=>{
+    const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
+    const ledgerCreate=server.indexOf('uiJobLedger.create');
+    const ledgerDispatching=server.indexOf("uiJobLedger.transition(workerId,job.jobId,'DISPATCHING'");
+    const command=server.indexOf("sendCommand(workerId,'DISPATCH'");
+    expect(ledgerCreate).toBeGreaterThan(-1);
+    expect(ledgerDispatching).toBeGreaterThan(ledgerCreate);
+    expect(command).toBeGreaterThan(ledgerDispatching);
   });
 });
 

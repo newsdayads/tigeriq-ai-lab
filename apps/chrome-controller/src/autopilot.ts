@@ -1,4 +1,5 @@
 import type { WorkerId } from './model.js';
+import type { DispatchLease } from './dispatch-lease.js';
 
 export const AUTO_CONTINUE = 'AUTO_CONTINUE' as const;
 export const TERMINAL_JOB_STATUSES = new Set(['DONE', 'FAILED', 'BLOCKED', 'CANCELLED']);
@@ -16,6 +17,16 @@ export function classifyAutoContinueDispatchFailure(error:unknown,dispatchSubmit
     'UI_JOB_ACTIVE:',
     'UI_JOB_DUPLICATE_ACTIVE:',
   ].some((marker)=>message.includes(marker))?'SAFE_RETRY':'UNCERTAIN';
+}
+export function canResetOrphanUnpersistedDispatch(
+  uncertainJobId:string|undefined,
+  ledgerRecordPresent:boolean,
+  lease:DispatchLease|undefined,
+  nowMs:number,
+):boolean {
+  if(!uncertainJobId||ledgerRecordPresent||!lease||lease.jobId!==uncertainJobId||lease.state!=='DISPATCHING')return false;
+  const expiry=Date.parse(lease.expiresAt);
+  return Number.isFinite(expiry)&&expiry<=nowMs;
 }
 const MAX_FUTURE_SKEW_MS = 60_000;
 const DISALLOWED_RISK_FLAGS = new Set([
