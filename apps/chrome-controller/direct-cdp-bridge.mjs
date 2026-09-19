@@ -315,7 +315,7 @@ async function maybeNv02Continuity(w,target,ui){
     }
     return;
   }
-  if(phase==='READY'&&!active&&shouldRotateChat(state,now)){
+  if(phase==='READY'&&!active&&now>=state.nextContinueAt&&shouldRotateChat(state,now)){
     try{await rotateNv02Chat(target,state,now);}
     catch(error){
       state={...state,stalledChecks:Math.min(MAX_STALLED_CHECKS,state.stalledChecks+1),nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
