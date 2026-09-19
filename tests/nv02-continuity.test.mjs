@@ -76,6 +76,8 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("TIGERIQ_SAVE_RECEIPT_V1");
     expect(source).toContain("trò chuyện mới trong tigeriq ai lab");
     expect(source).toContain("activateNv02ProjectContext");
+    expect(source).toContain("projectContextReady");
+    expect(source).toContain("projectContextReady&&modelControl");
   });
 
   it('rotates chat by bounded count or age instead of every job', () => {
