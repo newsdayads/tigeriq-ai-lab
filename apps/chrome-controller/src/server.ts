@@ -21,6 +21,7 @@ import {
   decideAutoContinue,
   freshAutopilotState,
   selectFreshCompletionEvidence,
+  sourceStillOffersPendingJob,
   validateExternalSnapshot,
   type DurableAutopilotState,
   type ExternalAutopilotSnapshot,
@@ -29,7 +30,7 @@ import { atomicWriteJsonWithRetry, buildRuntimeEvidence } from './runtime-eviden
 import { DurableDispatchLeaseStore } from './dispatch-lease.js';
 import { BrowserMutationLeaseStore } from './browser-mutation-lease.js';
 import { heartbeatStopReason } from './security-gate.js';
-import { DurableUiJobLedger, isUiJobStage, reconcileUiJobStage, type UiJobMetadata } from './job-ledger.js';
+import { DurableUiJobLedger, isTerminalUiJobStage, isUiJobStage, reconcileUiJobStage, type UiJobMetadata } from './job-ledger.js';
 import type { WorkerPresence } from './worker-presence.js';
 import { persistWorkerSafetyStateOrFailClosed, restoreWorkerSafetyState, workerStartGate, type WorkerSafetySnapshot } from './worker-safety-state.js';
 
@@ -465,20 +466,37 @@ async function autopilotTick(){
     }
     if(autopilotState.pendingJobId){
       const pendingJobId=autopilotState.pendingJobId;
-      const reconciliation=dispatchLease.reconcilePending(pendingJobId);
-      if(reconciliation.kind==='WAIT'){
-        setAutopilotPhase('BUSY');log('AUTO_CONTINUE_PENDING_LEASE_WAIT',{jobId:pendingJobId,leaseId:reconciliation.lease.leaseId,expiresAt:reconciliation.lease.expiresAt});persistEvidence();return;
-      }
-      if(reconciliation.kind==='UNCERTAIN'){
-        autopilotState={...clearPending(autopilotState),uncertainJobId:pendingJobId,updatedAt:new Date().toISOString()};
-        stopAutopilot(reconciliation.reason);persistAutopilotState();log('AUTO_CONTINUE_PENDING_RECONCILE_UNCERTAIN',{jobId:pendingJobId,reason:reconciliation.reason});persistEvidence();return;
-      }
-      if(reconciliation.kind==='COMMITTED'){
-        autopilotState={...clearPending(autopilotState),phase:'BUSY',lastDispatchedJobId:pendingJobId,lastDispatchedAt:reconciliation.lease.dispatchedAt,uncertainJobId:undefined,updatedAt:new Date().toISOString()};
-        persistAutopilotState();log('AUTO_CONTINUE_PENDING_RECONCILED_COMMITTED',{jobId:pendingJobId,leaseId:reconciliation.lease.leaseId});
+      const leaseState=dispatchLease.read();
+      const sourceWithdrawn=Boolean(latestSnapshot&&!sourceStillOffersPendingJob(latestSnapshot,pendingJobId));
+      const canRetireWithdrawn=sourceWithdrawn&&!leaseState.malformed&&leaseState.lease?.jobId===pendingJobId&&leaseState.lease.state!=='COMMITTED';
+      if(canRetireWithdrawn){
+        const primary=states.get('NV02')!;
+        if(!recentHeartbeat('NV02')||primary.lastHeartbeat?.uiBusy!==false){
+          stopAutopilot(`PENDING_SOURCE_WITHDRAWN_UI_NOT_IDLE:${pendingJobId}`);persistEvidence();return;
+        }
+        const localJob=uiJobLedger.get('NV02',pendingJobId);
+        if(localJob&&!isTerminalUiJobStage(localJob.stage))uiJobLedger.transition('NV02',pendingJobId,'BLOCKED',{nextAction:null,blocker:'SOURCE_JOB_NO_LONGER_EXECUTABLE',result:'Source withdrew/cancelled work before a committed dispatch'});
+        const retired=dispatchLease.retireNoLongerExecutable(pendingJobId,Date.now());
+        autopilotState={...clearPending(autopilotState),phase:'IDLE',uncertainJobId:undefined,dispatchFailureClass:undefined,retryAt:undefined,updatedAt:new Date().toISOString()};
+        persistAutopilotState();
+        log('AUTO_CONTINUE_PENDING_SOURCE_WITHDRAWN',{jobId:pendingJobId,priorLeaseState:leaseState.lease?.state??null,retiredLeaseId:retired.leaseId});
+        persistEvidence();
       }else{
-        autopilotState={...clearPending(autopilotState),phase:'IDLE',updatedAt:new Date().toISOString()};
-        persistAutopilotState();log('AUTO_CONTINUE_PENDING_RECONCILED_SAFE_RETRY',{jobId:pendingJobId,leaseId:reconciliation.lease.leaseId});
+        const reconciliation=dispatchLease.reconcilePending(pendingJobId);
+        if(reconciliation.kind==='WAIT'){
+          setAutopilotPhase('BUSY');log('AUTO_CONTINUE_PENDING_LEASE_WAIT',{jobId:pendingJobId,leaseId:reconciliation.lease.leaseId,expiresAt:reconciliation.lease.expiresAt});persistEvidence();return;
+        }
+        if(reconciliation.kind==='UNCERTAIN'){
+          autopilotState={...clearPending(autopilotState),uncertainJobId:pendingJobId,updatedAt:new Date().toISOString()};
+          stopAutopilot(reconciliation.reason);persistAutopilotState();log('AUTO_CONTINUE_PENDING_RECONCILE_UNCERTAIN',{jobId:pendingJobId,reason:reconciliation.reason});persistEvidence();return;
+        }
+        if(reconciliation.kind==='COMMITTED'){
+          autopilotState={...clearPending(autopilotState),phase:'BUSY',lastDispatchedJobId:pendingJobId,lastDispatchedAt:reconciliation.lease.dispatchedAt,uncertainJobId:undefined,updatedAt:new Date().toISOString()};
+          persistAutopilotState();log('AUTO_CONTINUE_PENDING_RECONCILED_COMMITTED',{jobId:pendingJobId,leaseId:reconciliation.lease.leaseId});
+        }else{
+          autopilotState={...clearPending(autopilotState),phase:'IDLE',updatedAt:new Date().toISOString()};
+          persistAutopilotState();log('AUTO_CONTINUE_PENDING_RECONCILED_SAFE_RETRY',{jobId:pendingJobId,leaseId:reconciliation.lease.leaseId});
+        }
       }
     }
     if(!latestSnapshot){setAutopilotPhase('IDLE');persistEvidence();return;}
