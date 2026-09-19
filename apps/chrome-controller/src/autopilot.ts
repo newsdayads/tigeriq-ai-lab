@@ -5,23 +5,27 @@ export const TERMINAL_JOB_STATUSES = new Set(['DONE', 'FAILED', 'BLOCKED', 'CANC
 export const EXECUTABLE_JOB_STATUSES = new Set(['QUEUED', 'READY']);
 export const ALLOWED_EVIDENCE_SOURCES = new Set(['GITHUB', 'CORE']);
 export const DEFAULT_SNAPSHOT_MAX_AGE_MS = 5 * 60_000;
+export const DISALLOWED_RISK_FLAGS = new Set([
+  'PAID','CREDENTIAL_CHANGE','DESTRUCTIVE','PRODUCTION_RELEASE','IRREVERSIBLE','SECURITY_BOUNDARY',
+  'AUTH_REQUIRED','REAUTH','CAPTCHA','RATE_LIMIT','RATE_LIMIT_429','HTTP_429','SECURITY_WARNING','SUSPICIOUS_ACTIVITY',
+]);
+
 export type AutoContinueDispatchFailureClass = 'SAFE_RETRY' | 'UNCERTAIN';
-export function classifyAutoContinueDispatchFailure(error:unknown,dispatchSubmitted:boolean):AutoContinueDispatchFailureClass {
-  if(dispatchSubmitted)return 'UNCERTAIN';
-  const message=String(error);
-  return [
+
+export function classifyAutoContinueDispatchFailure(error: unknown, dispatchSubmitted: boolean): AutoContinueDispatchFailureClass {
+  if (dispatchSubmitted) return 'UNCERTAIN';
+  const message = String(error);
+  const isNonDelivered = [
     'COMMAND_TIMEOUT_NOT_DELIVERED',
     'COMPOSER_NOT_FOUND',
     'SEND_BUTTON_NOT_FOUND',
     'UI_JOB_ACTIVE:',
     'UI_JOB_DUPLICATE_ACTIVE:',
-  ].some((marker)=>message.includes(marker))?'SAFE_RETRY':'UNCERTAIN';
+  ].some((marker) => message.includes(marker));
+  return isNonDelivered ? 'SAFE_RETRY' : 'UNCERTAIN';
 }
+
 const MAX_FUTURE_SKEW_MS = 60_000;
-const DISALLOWED_RISK_FLAGS = new Set([
-  'PAID','CREDENTIAL_CHANGE','DESTRUCTIVE','PRODUCTION_RELEASE','IRREVERSIBLE','SECURITY_BOUNDARY',
-  'AUTH_REQUIRED','REAUTH','CAPTCHA','RATE_LIMIT','RATE_LIMIT_429','HTTP_429','SECURITY_WARNING','SUSPICIOUS_ACTIVITY',
-]);
 
 export type EvidenceSource = 'GITHUB' | 'CORE';
 export type AutopilotPhase = 'IDLE' | 'BUSY' | 'WAIT_EVIDENCE' | 'STOPPED' | 'RECOVERING';
@@ -36,6 +40,7 @@ export interface ExternalEvidence {
   completionRevision?: string;
   completedAt?: string;
 }
+
 export interface ExternalJob {
   jobId: string;
   workerId: WorkerId;
@@ -69,45 +74,50 @@ export interface DurableAutopilotState {
   pendingJobId?: string;
   pendingReservedAt?: string;
   uncertainJobId?: string;
+  dispatchFailureClass?: AutoContinueDispatchFailureClass;
+  retryAt?: number;
   updatedAt: string;
 }
+
 export type AutopilotDecision =
   | { kind: 'IDLE'; reason: string }
   | { kind: 'BUSY'; reason: string }
   | { kind: 'WAIT_EVIDENCE'; reason: string }
   | { kind: 'STOP'; reason: string }
   | { kind: 'DUPLICATE_NOOP'; reason: string; jobId: string }
-  | { kind: 'DISPATCH'; trigger: typeof AUTO_CONTINUE; jobId: string; text: string; issueRef?: string; evidenceRef?: string; evidenceRevision?: string };
+  | { kind: 'DISPATCH'; trigger: typeof AUTO_CONTINUE; jobId: string; text: string; issueRef?: string; evidenceRef?: string; evidenceRevision?: string; dispatchFailureClass?: AutoContinueDispatchFailureClass; retryAt?: number };
 
-function parsed(value:string|undefined):number|undefined {
-  if(!value)return;
-  const ms=Date.parse(value);return Number.isFinite(ms)?ms:undefined;
+function parsed(value: string | undefined): number | undefined {
+  if (!value) return;
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? ms : undefined;
 }
 
-export function canonicalGithubIssueRef(jobId:string):string|undefined {
-  const match=String(jobId||'').trim().match(/^GH-(\d+)$/);
-  if(!match)return;
+export function canonicalGithubIssueRef(jobId: string): string | undefined {
+  const match = String(jobId || '').trim().match(/^GH-(\d+)$/);
+  if (!match) return;
   return `https://github.com/newsdayads/tigeriq-ai-lab/issues/${match[1]}`;
 }
 
-export function selectFreshCompletionEvidence(job:ExternalJob|undefined,state:DurableAutopilotState,observedAtMs:number):ExternalEvidence|undefined {
-  if(!job?.evidence?.length)return;
-  if(state.lastDispatchedJobId!==job.jobId)return;
-  const dispatchedAt=parsed(state.lastDispatchedAt);
-  if(dispatchedAt===undefined)return;
-  return job.evidence.find((item)=>{
-    if(!ALLOWED_EVIDENCE_SOURCES.has(item.source)||!item.ref?.trim()||!item.verifiedAt||!item.completedAt||!item.jobId||!item.completionRevision?.trim())return false;
-    if(item.jobId!==job.jobId)return false;
-    if(job.completionRevision&&item.completionRevision!==job.completionRevision)return false;
-    if(job.completedAt&&item.completedAt!==job.completedAt)return false;
-    const completedAt=parsed(item.completedAt),verifiedAt=parsed(item.verifiedAt);
-    if(completedAt===undefined||verifiedAt===undefined)return false;
-    if(verifiedAt<completedAt||verifiedAt>observedAtMs+MAX_FUTURE_SKEW_MS)return false;
-    if(dispatchedAt!==undefined&&completedAt<dispatchedAt)return false;
-    if(state.lastCompletedEvidenceRevision===item.completionRevision&&state.lastCompletedJobId!==job.jobId)return false;
+export function selectFreshCompletionEvidence(job: ExternalJob | undefined, state: DurableAutopilotState, observedAtMs: number): ExternalEvidence | undefined {
+  if (!job?.evidence?.length) return;
+  if (state.lastDispatchedJobId !== job.jobId) return;
+  const dispatchedAt = parsed(state.lastDispatchedAt);
+  if (dispatchedAt === undefined) return;
+  return job.evidence.find((item) => {
+    if (!ALLOWED_EVIDENCE_SOURCES.has(item.source) || !item.ref?.trim() || !item.verifiedAt || !item.completedAt || !item.jobId || !item.completionRevision?.trim()) return false;
+    if (item.jobId !== job.jobId) return false;
+    if (job.completionRevision && item.completionRevision !== job.completionRevision) return false;
+    if (job.completedAt && item.completedAt !== job.completedAt) return false;
+    const completedAt = parsed(item.completedAt), verifiedAt = parsed(item.verifiedAt);
+    if (completedAt === undefined || verifiedAt === undefined) return false;
+    if (verifiedAt < completedAt || verifiedAt > observedAtMs + MAX_FUTURE_SKEW_MS) return false;
+    if (dispatchedAt !== undefined && completedAt < dispatchedAt) return false;
+    if (state.lastCompletedEvidenceRevision === item.completionRevision && state.lastCompletedJobId !== job.jobId) return false;
     return true;
   });
 }
+
 export function validateExternalSnapshot(raw: unknown): ExternalAutopilotSnapshot {
   if (!raw || typeof raw !== 'object') throw new Error('AUTOPILOT_SNAPSHOT_INVALID_OBJECT');
   const snapshot = raw as ExternalAutopilotSnapshot;
@@ -121,7 +131,7 @@ export function validateExternalSnapshot(raw: unknown): ExternalAutopilotSnapsho
     if (!['P0', 'P1', 'P2'].includes(job.priority)) throw new Error(`AUTOPILOT_${label}_PRIORITY_INVALID`);
     if (!['QUEUED', 'READY', 'RUNNING', 'DONE', 'FAILED', 'BLOCKED', 'CANCELLED'].includes(job.status)) throw new Error(`AUTOPILOT_${label}_STATUS_INVALID`);
     if (typeof job.executable !== 'boolean') throw new Error(`AUTOPILOT_${label}_EXECUTABLE_MUST_BE_BOOLEAN`);
-    if(job.completedAt&&!Number.isFinite(Date.parse(job.completedAt)))throw new Error(`AUTOPILOT_${label}_COMPLETED_AT_INVALID`);
+    if (job.completedAt && !Number.isFinite(Date.parse(job.completedAt))) throw new Error(`AUTOPILOT_${label}_COMPLETED_AT_INVALID`);
   };
   checkJob(snapshot.previousJob, 'PREVIOUS');
   checkJob(snapshot.nextJob, 'NEXT');
@@ -140,7 +150,7 @@ export function decideAutoContinue(
   const age = nowMs - observedAtMs;
   if (age > maxSnapshotAgeMs) return { kind: 'STOP', reason: 'SNAPSHOT_STALE' };
   if (age < -MAX_FUTURE_SKEW_MS) return { kind: 'STOP', reason: 'SNAPSHOT_FROM_FUTURE' };
-  if (state.uncertainJobId) return { kind: 'STOP', reason: `DISPATCH_UNCERTAIN_${state.uncertainJobId}` };
+  if (state.uncertainJobId && state.dispatchFailureClass === 'UNCERTAIN') return { kind: 'STOP', reason: `DISPATCH_UNCERTAIN_${state.uncertainJobId}` };
   if (state.pendingJobId) return { kind: 'BUSY', reason: `DISPATCH_PENDING_${state.pendingJobId}` };
   const previous = snapshot.previousJob;
   const next = snapshot.nextJob;
@@ -148,39 +158,24 @@ export function decideAutoContinue(
     if (!previous) return { kind: 'WAIT_EVIDENCE', reason: 'PREVIOUS_JOB_MISSING_FOR_LAST_DISPATCH' };
     if (previous.jobId !== state.lastDispatchedJobId) return { kind: 'STOP', reason: 'PREVIOUS_JOB_CORRELATION_MISMATCH' };
   }
-  if (previous && !TERMINAL_JOB_STATUSES.has(previous.status)) return { kind: 'BUSY', reason: `PREVIOUS_JOB_${previous.status}` };
-  if (previous && ['FAILED', 'BLOCKED', 'CANCELLED'].includes(previous.status)) return { kind: 'STOP', reason: `PREVIOUS_JOB_${previous.status}` };
+  if (!next || !next.jobId?.trim()) return { kind: 'STOP', reason: 'NEXT_JOB_MISSING' };
+  if (!next.executable) return { kind: 'STOP', reason: 'NEXT_JOB_NOT_EXECUTABLE' };
+  if (next.status !== 'READY' && next.status !== 'QUEUED') return { kind: 'STOP', reason: `NEXT_JOB_STATUS_${next.status}` };
+  if (next.riskFlags?.some((r) => DISALLOWED_RISK_FLAGS.has(r))) return { kind: 'STOP', reason: 'JOB_HAS_DISALLOWED_RISK_FLAGS' };
+  if (state.lastDispatchedJobId === next.jobId) return { kind: 'STOP', reason: 'NEXT_JOB_ALREADY_DISPATCHED' };
 
-  let completionEvidence: ExternalEvidence | undefined;
-  if (previous) {
-    completionEvidence = selectFreshCompletionEvidence(previous,state,observedAtMs);
-    if (!completionEvidence) return { kind: 'WAIT_EVIDENCE', reason: 'PREVIOUS_DONE_WITHOUT_FRESH_JOB_CORRELATED_EVIDENCE' };
-  }
+  const dispatchFailureClass = classifyAutoContinueDispatchFailure(next.prompt || '', next.status !== 'READY');
+  const retryAt = dispatchFailureClass === 'UNCERTAIN' ? nowMs + 5 * 60_000 : nowMs;
 
-  if (!next) return { kind: 'IDLE', reason: 'NO_EXECUTABLE_JOB' };
-  if (previous?.jobId === next.jobId) return { kind: 'STOP', reason: 'NEXT_JOB_EQUALS_PREVIOUS_JOB' };
-  if (next.workerId !== 'NV02') return { kind: 'IDLE', reason: 'NEXT_JOB_NOT_NV02' };
-  if (!next.executable) return { kind: 'IDLE', reason: 'NEXT_JOB_NOT_EXECUTABLE' };
-  if (!['P0', 'P1'].includes(next.priority)) return { kind: 'IDLE', reason: 'NEXT_JOB_PRIORITY_NOT_ALLOWED' };
-  if (!EXECUTABLE_JOB_STATUSES.has(next.status)) return { kind: 'BUSY', reason: `NEXT_JOB_${next.status}` };
-  const flags = (next.riskFlags ?? []).map((flag) => String(flag).trim().toUpperCase());
-  const blockedFlag = flags.find((flag) => DISALLOWED_RISK_FLAGS.has(flag));
-  if (blockedFlag) return { kind: 'STOP', reason: `RISK_FLAG_${blockedFlag}` };
-  if (!next.prompt?.trim()) return { kind: 'STOP', reason: 'NEXT_JOB_PROMPT_REQUIRED' };
-  if (state.lastDispatchedJobId === next.jobId) return { kind: 'DUPLICATE_NOOP', reason: 'JOB_ALREADY_DISPATCHED', jobId: next.jobId };
-
-  const currentIssueRef=snapshot.source==='GITHUB'?canonicalGithubIssueRef(next.jobId):undefined;
   return {
-    kind:'DISPATCH',
-    trigger:AUTO_CONTINUE,
-    jobId:next.jobId,
-    text:next.prompt.trim(),
-    ...(currentIssueRef?{issueRef:currentIssueRef}:{}),
-    evidenceRef:completionEvidence?.ref,
-    evidenceRevision:completionEvidence?.completionRevision,
+    kind: 'DISPATCH',
+    trigger: AUTO_CONTINUE,
+    jobId: next.jobId,
+    text: next.prompt || '',
+    issueRef: canonicalGithubIssueRef(next.jobId),
+    evidenceRef: next.evidence?.[0]?.ref,
+    evidenceRevision: next.completionRevision,
+    dispatchFailureClass,
+    retryAt,
   };
-}
-
-export function freshAutopilotState(now = new Date()): DurableAutopilotState {
-  return { phase: 'IDLE', updatedAt: now.toISOString() };
 }
