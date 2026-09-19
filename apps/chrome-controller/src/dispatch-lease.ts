@@ -92,6 +92,16 @@ export class DurableDispatchLeaseStore{
     return next;
   }
 
+  retireNoLongerExecutable(jobId:string,nowMs=Date.now()):DispatchLease{
+    const current=this.read();const lease=current.lease;
+    if(current.malformed||!lease)throw new Error('DISPATCH_LEASE_MISSING_OR_MALFORMED');
+    if(lease.jobId!==jobId)throw new Error('DISPATCH_LEASE_JOB_MISMATCH');
+    if(lease.state==='COMMITTED')throw new Error('DISPATCH_LEASE_COMMITTED_CANNOT_RETIRE');
+    const next={...this.#newLease(jobId,nowMs,lease.leaseEpoch+1,lease.leaseId),expiresAt:iso(nowMs)};
+    this.#atomicReplace(next);
+    return next;
+  }
+
   markCommitted(leaseId:string,jobId:string,nowMs=Date.now()):DispatchLease{
     return this.#transition(leaseId,jobId,'DISPATCHING','COMMITTED',nowMs,{dispatchedAt:iso(nowMs),expiresAt:iso(nowMs+this.#ttlMs)});
   }

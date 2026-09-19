@@ -21,6 +21,7 @@ import {
   decideAutoContinue,
   freshAutopilotState,
   selectFreshCompletionEvidence,
+  sourceStillOffersPendingJob,
   validateExternalSnapshot,
   type DurableAutopilotState,
   type ExternalAutopilotSnapshot,
@@ -29,12 +30,12 @@ import { atomicWriteJsonWithRetry, buildRuntimeEvidence } from './runtime-eviden
 import { DurableDispatchLeaseStore } from './dispatch-lease.js';
 import { BrowserMutationLeaseStore } from './browser-mutation-lease.js';
 import { heartbeatStopReason } from './security-gate.js';
-import { DurableUiJobLedger, isUiJobStage, reconcileUiJobStage, type UiJobMetadata } from './job-ledger.js';
+import { DurableUiJobLedger, isTerminalUiJobStage, isUiJobStage, reconcileUiJobStage, type UiJobMetadata } from './job-ledger.js';
 import type { WorkerPresence } from './worker-presence.js';
 import { persistWorkerSafetyStateOrFailClosed, restoreWorkerSafetyState, workerStartGate, type WorkerSafetySnapshot } from './worker-safety-state.js';
 
 type Command = { id:string; workerId:WorkerId; action:string; payload?:Record<string,unknown>; createdAt:string };
-type Heartbeat = { workerId:WorkerId; url?:string; windowId?:number; tabId?:number; state?:string; uiReady?:boolean; authRequired?:boolean; reauthRequired?:boolean; captchaRequired?:boolean; rateLimited?:boolean; rateLimitCode?:number|string; uiBusy?:boolean|null; securityBlock?:string|null; display?:{workArea?:WorkArea}; at:string };
+type Heartbeat = { workerId:WorkerId; url?:string; windowId?:number; tabId?:number; state?:string; uiReady?:boolean; authRequired?:boolean; reauthRequired?:boolean; captchaRequired?:boolean; rateLimited?:boolean; rateLimitCode?:number|string; uiBusy?:boolean|null; uiPhase?:'WORKING'|'READY'|'STALLED'|'BLOCKED'|string; composerReady?:boolean; sendReady?:boolean; stopVisible?:boolean; scrollToBottomVisible?:boolean; securityBlock?:string|null; display?:{workArea?:WorkArea}; at:string };
 type WindowState = 'OPEN' | 'CLOSED';
 type WorkerState = {
   id:WorkerId;
@@ -69,6 +70,7 @@ const waiters = new Map<string,Waiter>();
 const utilityPausedWorkers = new Set<WorkerId>();
 const recoveryAttempts = new Map<WorkerId,number>(WORKER_IDS.map((id) => [id,0]));
 const recoveryInFlight = new Set<WorkerId>();
+const plannedRefreshWorkers = new Set<WorkerId>();
 let paused=false;
 let killed=false;
 let startAllRunning=false;
@@ -464,20 +466,37 @@ async function autopilotTick(){
     }
     if(autopilotState.pendingJobId){
       const pendingJobId=autopilotState.pendingJobId;
-      const reconciliation=dispatchLease.reconcilePending(pendingJobId);
-      if(reconciliation.kind==='WAIT'){
-        setAutopilotPhase('BUSY');log('AUTO_CONTINUE_PENDING_LEASE_WAIT',{jobId:pendingJobId,leaseId:reconciliation.lease.leaseId,expiresAt:reconciliation.lease.expiresAt});persistEvidence();return;
-      }
-      if(reconciliation.kind==='UNCERTAIN'){
-        autopilotState={...clearPending(autopilotState),uncertainJobId:pendingJobId,updatedAt:new Date().toISOString()};
-        stopAutopilot(reconciliation.reason);persistAutopilotState();log('AUTO_CONTINUE_PENDING_RECONCILE_UNCERTAIN',{jobId:pendingJobId,reason:reconciliation.reason});persistEvidence();return;
-      }
-      if(reconciliation.kind==='COMMITTED'){
-        autopilotState={...clearPending(autopilotState),phase:'BUSY',lastDispatchedJobId:pendingJobId,lastDispatchedAt:reconciliation.lease.dispatchedAt,uncertainJobId:undefined,updatedAt:new Date().toISOString()};
-        persistAutopilotState();log('AUTO_CONTINUE_PENDING_RECONCILED_COMMITTED',{jobId:pendingJobId,leaseId:reconciliation.lease.leaseId});
+      const leaseState=dispatchLease.read();
+      const sourceWithdrawn=Boolean(latestSnapshot&&!sourceStillOffersPendingJob(latestSnapshot,pendingJobId));
+      const canRetireWithdrawn=sourceWithdrawn&&!leaseState.malformed&&leaseState.lease?.jobId===pendingJobId&&leaseState.lease.state!=='COMMITTED';
+      if(canRetireWithdrawn){
+        const primary=states.get('NV02')!;
+        if(!recentHeartbeat('NV02')||primary.lastHeartbeat?.uiBusy!==false){
+          stopAutopilot(`PENDING_SOURCE_WITHDRAWN_UI_NOT_IDLE:${pendingJobId}`);persistEvidence();return;
+        }
+        const localJob=uiJobLedger.get('NV02',pendingJobId);
+        if(localJob&&!isTerminalUiJobStage(localJob.stage))uiJobLedger.transition('NV02',pendingJobId,'BLOCKED',{nextAction:null,blocker:'SOURCE_JOB_NO_LONGER_EXECUTABLE',result:'Source withdrew/cancelled work before a committed dispatch'});
+        const retired=dispatchLease.retireNoLongerExecutable(pendingJobId,Date.now());
+        autopilotState={...clearPending(autopilotState),phase:'IDLE',uncertainJobId:undefined,dispatchFailureClass:undefined,retryAt:undefined,updatedAt:new Date().toISOString()};
+        persistAutopilotState();
+        log('AUTO_CONTINUE_PENDING_SOURCE_WITHDRAWN',{jobId:pendingJobId,priorLeaseState:leaseState.lease?.state??null,retiredLeaseId:retired.leaseId});
+        persistEvidence();
       }else{
-        autopilotState={...clearPending(autopilotState),phase:'IDLE',updatedAt:new Date().toISOString()};
-        persistAutopilotState();log('AUTO_CONTINUE_PENDING_RECONCILED_SAFE_RETRY',{jobId:pendingJobId,leaseId:reconciliation.lease.leaseId});
+        const reconciliation=dispatchLease.reconcilePending(pendingJobId);
+        if(reconciliation.kind==='WAIT'){
+          setAutopilotPhase('BUSY');log('AUTO_CONTINUE_PENDING_LEASE_WAIT',{jobId:pendingJobId,leaseId:reconciliation.lease.leaseId,expiresAt:reconciliation.lease.expiresAt});persistEvidence();return;
+        }
+        if(reconciliation.kind==='UNCERTAIN'){
+          autopilotState={...clearPending(autopilotState),uncertainJobId:pendingJobId,updatedAt:new Date().toISOString()};
+          stopAutopilot(reconciliation.reason);persistAutopilotState();log('AUTO_CONTINUE_PENDING_RECONCILE_UNCERTAIN',{jobId:pendingJobId,reason:reconciliation.reason});persistEvidence();return;
+        }
+        if(reconciliation.kind==='COMMITTED'){
+          autopilotState={...clearPending(autopilotState),phase:'BUSY',lastDispatchedJobId:pendingJobId,lastDispatchedAt:reconciliation.lease.dispatchedAt,uncertainJobId:undefined,updatedAt:new Date().toISOString()};
+          persistAutopilotState();log('AUTO_CONTINUE_PENDING_RECONCILED_COMMITTED',{jobId:pendingJobId,leaseId:reconciliation.lease.leaseId});
+        }else{
+          autopilotState={...clearPending(autopilotState),phase:'IDLE',updatedAt:new Date().toISOString()};
+          persistAutopilotState();log('AUTO_CONTINUE_PENDING_RECONCILED_SAFE_RETRY',{jobId:pendingJobId,leaseId:reconciliation.lease.leaseId});
+        }
       }
     }
     if(!latestSnapshot){setAutopilotPhase('IDLE');persistEvidence();return;}
@@ -762,8 +781,9 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
     }else if(!state.blocked){
       state.lastError=undefined;
       const beforeStatus=state.status;
-      state.status=reconcileWorkerUiStatus(state.status,hb.uiBusy);
-      if(state.status!==beforeStatus)log('WORKER_UI_STATUS_RECONCILED',{workerId,from:beforeStatus,to:state.status,uiBusy:hb.uiBusy});
+      const uiPhase=String(hb.uiPhase??'').toUpperCase();
+      state.status=['WORKING','READY','STALLED'].includes(uiPhase)?uiPhase:reconcileWorkerUiStatus(state.status,hb.uiBusy);
+      if(state.status!==beforeStatus)log('WORKER_UI_STATUS_RECONCILED',{workerId,from:beforeStatus,to:state.status,uiBusy:hb.uiBusy,uiPhase:hb.uiPhase??null});
       const activeJob=uiJobLedger.active(workerId);
       if(activeJob){
         const reconciledStage=reconcileUiJobStage(activeJob.stage,hb.uiBusy);
@@ -789,7 +809,9 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
     if(data.event!=='CLOSED'){json(res,400,{ok:false,error:'UNSUPPORTED_WINDOW_EVENT'});return true;}
     const windowId=Number(data.windowId);
     if(state.lastWindowId&&Number.isFinite(windowId)&&state.lastWindowId!==windowId){json(res,202,{ok:true,ignored:'STALE_WINDOW_EVENT'});return true;}
-    const recoveryEligible=!paused&&!utilityPausedWorkers.has(workerId)&&!state.manualCloseSuppressed&&workerHasActiveJob(workerId);
+    const plannedRefresh=plannedRefreshWorkers.has(workerId);
+    const recoveryEligible=!paused&&!utilityPausedWorkers.has(workerId)&&!state.manualCloseSuppressed&&(plannedRefresh||workerHasActiveJob(workerId));
+    if(plannedRefresh)plannedRefreshWorkers.delete(workerId);
     state.windowState='CLOSED';
     state.windowEventAt=new Date().toISOString();
     state.manualCloseSuppressed=!recoveryEligible;
@@ -797,10 +819,52 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
     state.status=recoveryEligible?'WINDOW_CLOSED_ACTIVE':'WINDOW_CLOSED_IDLE';
     state.lastError=undefined;
     recoveryAttempts.set(workerId,0);
-    log('WORKER_WINDOW_CLOSED',{workerId,windowId:Number.isFinite(windowId)?windowId:null,recoveryEligible,ownerInteractionMode:paused?'READ_ONLY':'AUTOMATION'});
+    log('WORKER_WINDOW_CLOSED',{workerId,windowId:Number.isFinite(windowId)?windowId:null,recoveryEligible,plannedRefresh,ownerInteractionMode:paused?'READ_ONLY':'AUTOMATION'});
     persistEvidence();
     if(recoveryEligible)void recoveryTick();
     json(res,202,{ok:true,recoveryEligible});
+    return true;
+  }
+  if(url.pathname==='/api/continuity/event'&&req.method==='POST'){
+    const data=await body(req);
+    const workerId=String(data.workerId??'') as WorkerId;
+    const event=String(data.event??'').trim().toUpperCase();
+    if(workerId!=='NV02'){json(res,400,{ok:false,error:'CONTINUITY_NV02_ONLY'});return true;}
+    if(!/^[A-Z0-9_]{3,64}$/.test(event)){json(res,400,{ok:false,error:'CONTINUITY_EVENT_INVALID'});return true;}
+    const safeData=Object.fromEntries(Object.entries(data).filter(([key])=>!['workerId','event'].includes(key)).slice(0,20));
+    log('NV02_CONTINUITY_EVENT',{workerId,event,...safeData});
+    persistEvidence();
+    json(res,202,{ok:true});
+    return true;
+  }
+  if(url.pathname==='/api/workers/NV02/restart-schedule'&&req.method==='POST'){
+    try{
+      if(paused)throw new Error('OWNER_INTERACTION_READ_ONLY');
+      if(killed)throw new Error('CONTROLLER_KILLED');
+      const state=states.get('NV02')!;
+      const data=await body(req);
+      const reason=String(data.reason??'PLANNED_REFRESH').slice(0,96);
+      const staleWorkingRecovery=reason==='WORKING_NO_PROGRESS_3_CHECKS';
+      if(!state.enabled)throw new Error('WORKER_DISABLED:NV02');
+      if(state.blocked)throw new Error('WORKER_BLOCKED:NV02');
+      if(!recentHeartbeat('NV02'))throw new Error('NV02_HEARTBEAT_NOT_FRESH');
+      const security=heartbeatStopReason(state.lastHeartbeat);
+      if(security)throw new Error(security);
+      if(state.lastHeartbeat?.uiBusy!==false&&!staleWorkingRecovery)throw new Error('NV02_UI_NOT_IDLE');
+      if(staleWorkingRecovery&&state.lastHeartbeat?.uiBusy!==true)throw new Error('NV02_STALE_WORKING_RESTART_REQUIRES_BUSY');
+      if(workerHasActiveJob('NV02'))throw new Error('NV02_ACTIVE_JOB');
+      if(commandQueues.get('NV02')!.length>0||[...waiters.values()].some((w)=>w.workerId==='NV02'))throw new Error('NV02_COMMAND_INFLIGHT');
+      plannedRefreshWorkers.add('NV02');
+      state.manualCloseSuppressed=false;
+      persistWorkerSafetyState();
+      log('NV02_PLANNED_REFRESH_QUEUED',{workerId:'NV02',reason});
+      void uiQueue.enqueue(()=>sendCommand('NV02','CLOSE_WINDOW')).catch((error)=>{
+        plannedRefreshWorkers.delete('NV02');
+        log('NV02_PLANNED_REFRESH_QUEUE_FAILED',{workerId:'NV02',reason,error:String(error)});
+        persistEvidence();
+      });
+      json(res,202,{ok:true,queued:true});
+    }catch(error){json(res,409,{ok:false,error:String(error)});}
     return true;
   }
   if(url.pathname.startsWith('/api/commands/')&&req.method==='GET'){
@@ -912,13 +976,16 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
       if(leaseAction==='acquire'){
         assertWorkerEnabled(workerId);
         const state=states.get(workerId)!;
+        const purpose=String(data.purpose??'NORMAL').trim().toUpperCase();
+        const staleWorkingRecovery=workerId==='NV02'&&purpose==='STALE_WORKING_RECOVERY';
         if(paused)throw new Error('OWNER_INTERACTION_READ_ONLY');
         if(utilityPausedWorkers.has(workerId))throw new Error(`UTILITY_WORKER_PAUSED:${workerId}`);
         if(state.blocked)throw new Error(`WORKER_BLOCKED:${workerId}`);
         if(!recentHeartbeat(workerId))throw new Error(`WORKER_HEARTBEAT_NOT_READY:${workerId}`);
         const security=heartbeatStopReason(state.lastHeartbeat);
         if(security)throw new Error(security);
-        if(state.lastHeartbeat?.uiBusy!==false)throw new Error(`WORKER_UI_BUSY_OR_UNKNOWN:${workerId}`);
+        if(state.lastHeartbeat?.uiBusy!==false&&!staleWorkingRecovery)throw new Error(`WORKER_UI_BUSY_OR_UNKNOWN:${workerId}`);
+        if(staleWorkingRecovery&&state.lastHeartbeat?.uiBusy!==true)throw new Error(`STALE_WORKING_RECOVERY_REQUIRES_BUSY:${workerId}`);
         if(workerHasActiveJob(workerId))throw new Error(`WORKER_ACTIVE_JOB:${workerId}`);
         if(commandQueues.get(workerId)!.length>0||[...waiters.values()].some((w)=>w.workerId===workerId))
           throw new Error(`WORKER_COMMAND_INFLIGHT:${workerId}`);
@@ -928,7 +995,7 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
           json(res,409,{ok:false,error:`BROWSER_MUTATION_LEASE_BUSY:${workerId}:${acquired.lease.ownerId}`,lease:acquired.lease});
           return true;
         }
-        log('BROWSER_MUTATION_LEASE_ACQUIRED',{workerId,ownerId,leaseId:acquired.lease.leaseId,expiresAt:acquired.lease.expiresAt});
+        log('BROWSER_MUTATION_LEASE_ACQUIRED',{workerId,ownerId,purpose,leaseId:acquired.lease.leaseId,expiresAt:acquired.lease.expiresAt});
         json(res,200,{ok:true,lease:acquired.lease});
         return true;
       }

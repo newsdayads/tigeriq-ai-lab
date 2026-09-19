@@ -120,12 +120,63 @@ function detectSecurityBlock() {
   return null;
 }
 
-function detectUiBusy() {
+function findStopButton() {
   const selectors = location.hostname === 'chatgpt.com'
     ? ['button[data-testid="stop-button"]','button[aria-label*="Stop" i]','button[aria-label*="Dừng" i]']
     : ['button[aria-label*="Stop" i]','button[aria-label*="Dừng" i]','button[data-test-id*="stop" i]'];
-  return selectors.some((selector) => Array.from(document.querySelectorAll(selector)).some((el) => visible(el)));
+  for (const selector of selectors) {
+    const match = Array.from(document.querySelectorAll(selector)).find((el) => visible(el));
+    if (match) return match;
+  }
+  return null;
 }
+
+function findActiveGenerationIndicator() {
+  return Array.from(document.querySelectorAll('button,[role="button"],[aria-live]'))
+    .find((el) => visible(el) && /(^|\s)(đang suy nghĩ|thinking|generating|đang tạo)(\s|$)/i
+      .test((el.getAttribute('aria-label') || el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim())) || null;
+}
+
+function findScrollToBottomButton() {
+  const labels = ['Cuộn xuống cuối', 'Scroll to bottom', 'Jump to bottom'];
+  return Array.from(document.querySelectorAll('button,[role="button"]'))
+    .find((el) => visible(el) && labels.some((label) => (el.getAttribute('aria-label') || el.textContent || '').trim().toLowerCase() === label.toLowerCase())) || null;
+}
+
+function detectUiBusy() {
+  return Boolean(findStopButton() || findActiveGenerationIndicator());
+}
+
+function detectUiSignals() {
+  const composer = findComposer();
+  const stop = findStopButton();
+  const activityBusy = findActiveGenerationIndicator();
+  const send = composer ? findSendButton(composer) : null;
+  const scroll = findScrollToBottomButton();
+  const securityBlock = detectSecurityBlock();
+  const authRequired = Array.from(document.querySelectorAll('button,a'))
+    .some((el) => visible(el) && /^(đăng nhập|sign in|log in)$/i.test((el.textContent || '').trim()));
+  const phase = securityBlock
+    ? 'BLOCKED'
+    : (stop || activityBusy)
+      ? 'WORKING'
+      : composer && !authRequired
+        ? 'READY'
+        : 'STALLED';
+  return {
+    uiBusy: Boolean(stop || activityBusy),
+    uiPhase: phase,
+    composerReady: Boolean(composer),
+    sendReady: Boolean(send),
+    stopVisible: Boolean(stop),
+    activityBusyVisible: Boolean(activityBusy),
+    scrollToBottomVisible: Boolean(scroll),
+    authRequired,
+    securityBlock,
+  };
+}
+
+const SEND_BUTTON_WAIT_MS = 10000;
 
 function findComposer() {
   const selectors = location.hostname === 'chatgpt.com'
@@ -222,7 +273,7 @@ async function dispatch(text) {
   const composer = findComposer();
   if (!composer) return { ok: false, status: 'COMPOSER_NOT_FOUND' };
   if (composerText(composer) !== expectedText) fillComposer(composer, text);
-  const deadline = Date.now() + 4000;
+  const deadline = Date.now() + SEND_BUTTON_WAIT_MS;
   while (Date.now() < deadline) {
     await sleep(200);
     const blockedAfterFill = detectSecurityBlock();
@@ -245,6 +296,52 @@ function dismissMenu() {
   document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }));
 }
 
+function deepElements(root = document) {
+  const out = [];
+  const visit = (node) => {
+    for (const child of Array.from(node.querySelectorAll?.('*') || [])) {
+      out.push(child);
+      if (child.shadowRoot) visit(child.shadowRoot);
+    }
+  };
+  visit(root);
+  return out;
+}
+
+function conversationIdFromPath() {
+  const match = location.pathname.match(/\/c\/([^/?#]+)/);
+  return match?.[1] || null;
+}
+
+function findCurrentConversationActionButton() {
+  const conversationId = conversationIdFromPath();
+  if (!conversationId) return null;
+  const actions = Array.from(document.querySelectorAll('button'))
+    .filter((el) => visible(el) && /hành động trong trò chuyện|conversation actions|chat actions/i.test(el.getAttribute('aria-label') || ''));
+  const matches = actions.filter((button) => {
+    let node = button;
+    for (let depth = 0; depth < 7 && node; depth += 1, node = node.parentElement) {
+      const hrefs = Array.from(node.querySelectorAll?.('a[href]') || []).map((a) => a.getAttribute('href') || '');
+      if (hrefs.some((href) => href.includes('/c/' + conversationId))) return true;
+      if (node.getAttribute?.('aria-current') === 'page' || node.getAttribute?.('data-active') === 'true') return true;
+    }
+    return false;
+  });
+  return matches.length === 1 ? matches[0] : null;
+}
+
+function findArchiveMenuItem() {
+  const exact = deepElements().filter((el) => {
+    if (!visible(el)) return false;
+    const text = normalizedText(el);
+    if (!['archive', 'lưu trữ'].includes(text)) return false;
+    const role = el.getAttribute?.('role') || '';
+    return role.includes('menuitem') || el.tagName === 'BUTTON' || el.closest?.('[role="menu"]');
+  });
+  const unique = [...new Set(exact)];
+  return unique.length === 1 ? unique[0] : null;
+}
+
 async function archiveConversation() {
   const blocked = detectSecurityBlock();
   if (blocked) return { ok: false, status: blocked };
@@ -252,42 +349,66 @@ async function archiveConversation() {
   if (!/\/c\//.test(location.pathname)) return { ok: false, status: 'ARCHIVE_REQUIRES_CONVERSATION_URL' };
 
   const before = location.href;
-  const selectors = [
-    'header button[aria-haspopup="menu"]',
-    'main button[aria-haspopup="menu"]',
-    'button[data-testid*="conversation" i][aria-haspopup="menu"]',
-    'button[aria-label*="conversation" i][aria-haspopup="menu"]'
-  ];
-  const candidates = [...new Set(selectors.flatMap((selector) => Array.from(document.querySelectorAll(selector))))]
-    .filter((element) => visible(element))
-    .filter((element) => {
-      const label = `${element.getAttribute('aria-label') || ''} ${element.getAttribute('title') || ''}`.toLowerCase();
-      return /more|menu|options|thêm|tùy chọn/.test(label);
-    });
-  if (candidates.length !== 1) return { ok: false, status: `ARCHIVE_MENU_BUTTON_NOT_UNIQUE:${candidates.length}` };
+  let menuButton = findCurrentConversationActionButton();
+  if (!menuButton) {
+    const fallback = Array.from(document.querySelectorAll('header button,main button'))
+      .filter((el) => visible(el))
+      .filter((el) => /more|menu|options|thêm|tùy chọn/i.test((el.getAttribute('aria-label') || '') + ' ' + (el.getAttribute('title') || '')));
+    if (fallback.length === 1) menuButton = fallback[0];
+  }
+  if (!menuButton) return { ok: false, status: 'ARCHIVE_MENU_BUTTON_NOT_UNIQUE' };
 
-  candidates[0].click();
-  await sleep(350);
+  menuButton.click();
+  await sleep(450);
   const blockedAfterMenu = detectSecurityBlock();
   if (blockedAfterMenu) { dismissMenu(); return { ok: false, status: blockedAfterMenu }; }
 
-  const menuItems = Array.from(document.querySelectorAll('[role="menuitem"], [role="menu"] button, [data-radix-menu-content] button'))
-    .filter((element) => visible(element));
-  const archiveItems = menuItems.filter((element) => ['archive', 'lưu trữ'].includes(normalizedText(element)));
-  if (archiveItems.length !== 1) {
+  const archive = findArchiveMenuItem();
+  if (!archive) {
     dismissMenu();
-    return { ok: false, status: `ARCHIVE_MENU_ITEM_NOT_UNIQUE:${archiveItems.length}` };
+    return { ok: false, status: 'ARCHIVE_MENU_ITEM_NOT_UNIQUE' };
   }
 
-  archiveItems[0].click();
-  const deadline = Date.now() + 8000;
+  archive.click();
+  const deadline = Date.now() + 10000;
   while (Date.now() < deadline) {
     await sleep(250);
-    if (location.href !== before || !/\/c\//.test(location.pathname)) return { ok: true, status: 'ARCHIVED' };
+    if (location.href !== before || !/\/c\//.test(location.pathname)) return { ok: true, status: 'ARCHIVED', before, after: location.href };
     const blockedAfterClick = detectSecurityBlock();
     if (blockedAfterClick) return { ok: false, status: blockedAfterClick };
   }
   return { ok: false, status: 'ARCHIVE_NOT_CONFIRMED' };
+}
+
+async function newConversation() {
+  const blocked = detectSecurityBlock();
+  if (blocked) return { ok: false, status: blocked };
+  if (location.hostname !== 'chatgpt.com') return { ok: false, status: 'NEW_CHAT_SELECTOR_UNVERIFIED_HOST' };
+  const before = location.href;
+  const buttons = Array.from(document.querySelectorAll('button,[role="button"]')).filter((el) => {
+    if (!visible(el)) return false;
+    const label = (el.getAttribute('aria-label') || el.textContent || '').replace(/\s+/g, ' ').trim();
+    return /^(đoạn chat mới|trò chuyện mới|new chat)$/i.test(label);
+  });
+  const preferred = buttons.find((el) => el.closest('main,header')) || buttons[0];
+  if (!preferred) return { ok: false, status: 'NEW_CHAT_BUTTON_NOT_FOUND' };
+  preferred.click();
+  const deadline = Date.now() + 10000;
+  while (Date.now() < deadline) {
+    await sleep(250);
+    const composer = findComposer();
+    if (composer && (!/\/c\//.test(location.pathname) || location.href !== before)) return { ok: true, status: 'NEW_CHAT_READY', url: location.href };
+    const blockedAfterClick = detectSecurityBlock();
+    if (blockedAfterClick) return { ok: false, status: blockedAfterClick };
+  }
+  return { ok: false, status: 'NEW_CHAT_NOT_CONFIRMED' };
+}
+
+function scrollToBottom() {
+  const button = findScrollToBottomButton();
+  if (!button) return { ok: true, status: 'ALREADY_AT_BOTTOM' };
+  button.click();
+  return { ok: true, status: 'SCROLL_TO_BOTTOM_CLICKED' };
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -298,8 +419,16 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return;
   }
   if (message?.type === 'TIGERIQ_UI_STATE') {
-    sendResponse({ ok: true, uiBusy: detectUiBusy(), securityBlock: detectSecurityBlock() });
+    sendResponse({ ok: true, ...detectUiSignals() });
     return;
+  }
+  if (message?.type === 'TIGERIQ_SCROLL_TO_BOTTOM') {
+    sendResponse(scrollToBottom());
+    return;
+  }
+  if (message?.type === 'TIGERIQ_NEW_CHAT') {
+    void newConversation().then(sendResponse).catch((error) => sendResponse({ ok: false, status: String(error) }));
+    return true;
   }
   if (message?.type === 'TIGERIQ_ARCHIVE_CONVERSATION') {
     void archiveConversation().then(sendResponse).catch((error) => sendResponse({ ok: false, status: String(error) }));

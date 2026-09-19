@@ -9,7 +9,7 @@ export interface EvidenceWorkerState {
   enabled: boolean;
   status: string;
   blocked: boolean;
-  lastHeartbeat?: { at: string; url?: string; windowId?: number; uiBusy?: boolean | null; securityBlock?: string | null; display?: { workArea?: WorkArea } };
+  lastHeartbeat?: { at: string; url?: string; windowId?: number; uiBusy?: boolean | null; uiPhase?: string; composerReady?: boolean; sendReady?: boolean; stopVisible?: boolean; scrollToBottomVisible?: boolean; securityBlock?: string | null; display?: { workArea?: WorkArea } };
   lastError?: string;
   windowState?: 'OPEN' | 'CLOSED';
   manualCloseSuppressed?: boolean;
@@ -168,6 +168,11 @@ export function buildRuntimeEvidence(input: RuntimeEvidenceInput, now = new Date
       url: worker.lastHeartbeat?.url ?? null,
       windowId: worker.lastHeartbeat?.windowId ?? null,
       uiBusy: worker.lastHeartbeat?.uiBusy ?? null,
+      uiPhase: worker.lastHeartbeat?.uiPhase ?? null,
+      composerReady: worker.lastHeartbeat?.composerReady ?? null,
+      sendReady: worker.lastHeartbeat?.sendReady ?? null,
+      stopVisible: worker.lastHeartbeat?.stopVisible ?? null,
+      scrollToBottomVisible: worker.lastHeartbeat?.scrollToBottomVisible ?? null,
       securityBlock: worker.lastHeartbeat?.securityBlock ?? null,
       windowState: worker.windowState ?? null,
       manualCloseSuppressed: worker.manualCloseSuppressed ?? false,

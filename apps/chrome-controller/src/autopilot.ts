@@ -103,6 +103,11 @@ export function canonicalGithubIssueRef(jobId:string):string|undefined {
   return `https://github.com/newsdayads/tigeriq-ai-lab/issues/${match[1]}`;
 }
 
+export function sourceStillOffersPendingJob(snapshot:ExternalAutopilotSnapshot,jobId:string):boolean {
+  const next=snapshot.nextJob;
+  return Boolean(next&&next.jobId===jobId&&next.workerId==='NV02'&&next.executable&&EXECUTABLE_JOB_STATUSES.has(next.status));
+}
+
 export function selectFreshCompletionEvidence(job:ExternalJob|undefined,state:DurableAutopilotState,observedAtMs:number):ExternalEvidence|undefined {
   if(!job?.evidence?.length)return;
   if(state.lastDispatchedJobId!==job.jobId)return;
