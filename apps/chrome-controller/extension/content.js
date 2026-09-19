@@ -131,6 +131,12 @@ function findStopButton() {
   return null;
 }
 
+function findActiveGenerationIndicator() {
+  return Array.from(document.querySelectorAll('button,[role="button"],[aria-live]'))
+    .find((el) => visible(el) && /(^|\s)(đang suy nghĩ|thinking|generating|đang tạo)(\s|$)/i
+      .test((el.getAttribute('aria-label') || el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim())) || null;
+}
+
 function findScrollToBottomButton() {
   const labels = ['Cuộn xuống cuối', 'Scroll to bottom', 'Jump to bottom'];
   return Array.from(document.querySelectorAll('button,[role="button"]'))
@@ -138,12 +144,13 @@ function findScrollToBottomButton() {
 }
 
 function detectUiBusy() {
-  return Boolean(findStopButton());
+  return Boolean(findStopButton() || findActiveGenerationIndicator());
 }
 
 function detectUiSignals() {
   const composer = findComposer();
   const stop = findStopButton();
+  const activityBusy = findActiveGenerationIndicator();
   const send = composer ? findSendButton(composer) : null;
   const scroll = findScrollToBottomButton();
   const securityBlock = detectSecurityBlock();
@@ -151,17 +158,18 @@ function detectUiSignals() {
     .some((el) => visible(el) && /^(đăng nhập|sign in|log in)$/i.test((el.textContent || '').trim()));
   const phase = securityBlock
     ? 'BLOCKED'
-    : stop
+    : (stop || activityBusy)
       ? 'WORKING'
       : composer && !authRequired
         ? 'READY'
         : 'STALLED';
   return {
-    uiBusy: Boolean(stop),
+    uiBusy: Boolean(stop || activityBusy),
     uiPhase: phase,
     composerReady: Boolean(composer),
     sendReady: Boolean(send),
     stopVisible: Boolean(stop),
+    activityBusyVisible: Boolean(activityBusy),
     scrollToBottomVisible: Boolean(scroll),
     authRequired,
     securityBlock,
