@@ -52,6 +52,9 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("ARCHIVE_CURRENT_ROW_COUNT_");
     expect(source).toContain("data-selected-reasoning-effort");
     expect(source).toContain("MUTATION_LEASE_BUSY");
+    expect(source).toContain("dispatchNaturalContinueLocked");
+    expect(source).toContain("return dispatchNaturalContinueLocked(target,next,now)");
+    expect(source).not.toContain("return dispatchNaturalContinue(target,next,now)");
   });
 
   it('rotates chat by bounded count or age instead of every job', () => {
