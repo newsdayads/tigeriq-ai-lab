@@ -4,6 +4,18 @@ import { resolve } from 'node:path';
 export const WORKER_IDS = ['NV02', 'NV03', 'NV04'] as const;
 export type WorkerId = (typeof WORKER_IDS)[number];
 
+export const CANONICAL_MODEL_PROFILE = {
+  modelName: 'GPT-5.6 Sol',
+  reasoningEffort: 'High',
+} as const;
+
+export interface ModelProfileVerificationResult {
+  verified: boolean;
+  profile?: { modelName: string; reasoningEffort: string };
+  timestamp?: string;
+  reason?: string;
+}
+
 export interface WorkerConfig { id:WorkerId; role:string; homeUrl:string; profileDirectory:string; enabled?:boolean; userDataDir?:string; debugPort?:number }
 export interface LayoutConfig { width:number; height:number; gap:number; rightMargin:number; top:number; fallbackWorkAreaWidth:number; fallbackWorkAreaLeft:number }
 export interface PacingConfig { betweenWorkerLaunchMs:number; postReadySettlingMs:number; minUiActionGapMs:number; commandTimeoutMs:number; workerReadyTimeoutMs:number; maxRetries:number; retryBackoffMs:number }
