@@ -11,6 +11,14 @@ export interface EvidenceRecord {
   artifactUris?: string[];
   logDigest?: string;
   timestamp: string;
+  latencyMetrics?: {
+    queuedAt?: string;
+    claimedAt?: string;
+    workingAt?: string;
+    evidenceAt?: string;
+    doneAt?: string;
+    durationMs?: number;
+  };
 }
 
 export function isPassingEvidence(record: EvidenceRecord): boolean {

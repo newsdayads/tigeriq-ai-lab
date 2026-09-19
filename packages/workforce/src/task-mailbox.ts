@@ -11,6 +11,13 @@ export interface TaskLease {
   expiresAt: string;
   attempt: number;
   task: TaskPacket;
+  timestamps?: {
+    queuedAt?: string;
+    claimedAt?: string;
+    workingAt?: string;
+    evidenceAt?: string;
+    doneAt?: string;
+  };
 }
 
 interface StoredLease extends Omit<TaskLease, 'leaseToken'> {
