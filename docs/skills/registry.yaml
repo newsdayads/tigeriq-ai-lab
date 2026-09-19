@@ -96,6 +96,16 @@ skills:
     target: coding-lane
     summary: Prefer scoped diffs and minimal edits; avoid whole-file regeneration when unnecessary.
 
+  - id: destructive-rewrite-guard
+    title: Destructive Rewrite Guard
+    state: ACTIVE
+    version: 1.0.0
+    provenance_batch: owner-video-lessons-2026-09-18
+    source_log: learning-log/2026-09-18-owner-video-lessons.md
+    target: coding-lane
+    triggers: safety guard destructive truncate rewrite replace diff validation
+    summary: Prevent accidental or destructive whole-file truncations and large-block replacements.
+
   - id: capability-aware-model-routing
     title: Capability-Aware Model Routing
     state: ACTIVE
