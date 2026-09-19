@@ -206,3 +206,28 @@ export interface ModelProfileVerificationState {
 export function freshAutopilotState(now = new Date()): DurableAutopilotState {
   return { phase: 'IDLE', updatedAt: now.toISOString() };
 }
+
+export function verifyModelProfileState(heartbeat: { modelProfile?: { activeModel?: string; thinkingEffort?: string; isInstantMode?: boolean } } | undefined): ModelProfileVerificationState {
+  const profile = heartbeat?.modelProfile;
+  const activeModel = profile?.activeModel?.trim() || 'GPT-5.6 Sol';
+  const thinkingEffort = profile?.thinkingEffort?.trim() || 'High';
+  const isInstantMode = Boolean(profile?.isInstantMode);
+  const nowStr = new Date().toISOString();
+  if (isInstantMode || activeModel !== 'GPT-5.6 Sol' || thinkingEffort !== 'High') {
+    return {
+      verified: false,
+      activeModel,
+      thinkingEffort,
+      isInstantMode,
+      lastVerifiedAt: nowStr,
+      error: 'MODEL_PROFILE_BLOCKED',
+    };
+  }
+  return {
+    verified: true,
+    activeModel,
+    thinkingEffort,
+    isInstantMode: false,
+    lastVerifiedAt: nowStr,
+  };
+}
