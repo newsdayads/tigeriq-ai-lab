@@ -5,6 +5,8 @@ import type { Gate } from '../../gate-engine/src/index.js';
 import type { WorkOrder, WorkOrderStatus } from '../../work-orders/src/index.js';
 import { validateWorkOrder } from '../../work-orders/src/index.js';
 
+export { UnifiedWorkItem, projectWorkItem } from './unifiedWorkItem.js';
+
 export type ActorRole = 'planner' | 'approver' | 'coder' | 'reviewer' | 'judge' | 'operator';
 
 export interface Actor {
