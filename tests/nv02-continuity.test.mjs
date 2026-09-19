@@ -89,6 +89,9 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("until=Date.now()+${SEND_BUTTON_WAIT_MS}");
     expect(source).toContain("activityBusyVisible:Boolean(activityBusy)");
     expect(source).toContain('button[aria-label*="Ngừng" i]');
+    expect(source).toContain("thay đổi dự án:");
+    expect(source).toContain("const uiBusy=Boolean(stop&&!streamRecoveryError)");
+    expect(source).toContain("rawUi?.projectContextReady===true");
     expect(source).toContain("đang suy nghĩ|thinking|generating|đang tạo");
     expect(source).toContain("/(^|\\\\s)(đang suy nghĩ|thinking|generating|đang tạo)(\\\\s|$)/i");
     expect(source).toContain(".replace(/\\\\s+/g,' ')");
