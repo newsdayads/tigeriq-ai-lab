@@ -101,4 +101,12 @@ describe('durable UI worker job ledger',()=>{
     expect(()=>store.retryError('NV02','ACTIVE')).toThrow('UI_JOB_ACTIVE');
   });
 
+
+  it('uses collision-safe bounded atomic persistence for the durable ledger',()=>{
+    const source=readFileSync('apps/chrome-controller/src/job-ledger.ts','utf8');
+    expect(source).toContain("atomicWriteJsonWithRetry(this.path,this.value,undefined,12)");
+    expect(source).not.toContain("const temp=\`\${this.path}.tmp\`");
+    expect(source).not.toContain('renameSync(temp,this.path)');
+  });
+
 });
