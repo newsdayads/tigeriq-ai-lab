@@ -1,6 +1,6 @@
 // @ts-nocheck
 import {describe,it,expect} from 'vitest';
-import {normalizeCampaignPhases,currentCampaignGoal,campaignTransition,makePhaseCheckpoint,campaignNeedsEvidence,campaignEvidenceJobId} from '../apps/tigeriq-core/campaign-runner.mjs';
+import {normalizeCampaignPhases,currentCampaignGoal,campaignTransition,makePhaseCheckpoint,campaignNeedsEvidence,campaignEvidenceJobId,projectWorkItemLifecycle,WORKITEM_LIFECYCLE_STATES} from '../apps/tigeriq-core/campaign-runner.mjs';
 
 const phases=[
   {title:'Checkpoint',prompt:'Design durable resume',acceptance:'Resume without Owner'},
@@ -39,5 +39,15 @@ describe('API campaign runner',()=>{
   it('creates a durable phase checkpoint payload',()=>{
     const cp=makePhaseCheckpoint({currentPhase:1,phases,summary:'phase done',completedAt:'2026-09-18T00:00:00.000Z'});
     expect(cp).toMatchObject({phaseIndex:1,phaseNumber:2,phaseCount:3,phaseTitle:'Knowledge',summary:'phase done'});
+  });
+  it('projects canonical Core WorkItem V1 lifecycle states accurately',()=>{
+    expect(WORKITEM_LIFECYCLE_STATES).toEqual(['QUEUED', 'CLAIMED', 'WORKING', 'EVIDENCE', 'VERIFY', 'DONE', 'BLOCKED']);
+    expect(projectWorkItemLifecycle({objective:{status:'queued'},jobs:[]})).toBe('QUEUED');
+    expect(projectWorkItemLifecycle({objective:{status:'running'},jobs:[{status:'claimed'}]})).toBe('CLAIMED');
+    expect(projectWorkItemLifecycle({objective:{status:'running'},jobs:[{status:'running'}]})).toBe('WORKING');
+    expect(projectWorkItemLifecycle({objective:{status:'running'},jobs:[{kind:'evidence',result:'ok'}]})).toBe('EVIDENCE');
+    expect(projectWorkItemLifecycle({objective:{status:'running'},jobs:[{kind:'verify'}]})).toBe('VERIFY');
+    expect(projectWorkItemLifecycle({objective:{status:'done'},jobs:[]})).toBe('DONE');
+    expect(projectWorkItemLifecycle({objective:{status:'blocked'},jobs:[]})).toBe('BLOCKED');
   });
 });
