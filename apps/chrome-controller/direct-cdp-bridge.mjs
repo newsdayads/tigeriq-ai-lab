@@ -346,7 +346,7 @@ async function tickWorker(w){
   }finally{busy.delete(w.id);}
 }
 
-async function tick(){await Promise.all(config.workers.filter(w=>w.enabled!==false).map(tickWorker));}
+async function tick(){await Promise.all(config.workers.filter(w=>w.enabled!==false&&w.id==='NV02').map(tickWorker));}
 http.createServer((req,res)=>{if(req.url==='/health'){res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({ok:true,workers:config.workers.map(w=>w.id)}));return;}res.writeHead(404);res.end();}).listen(8799,'127.0.0.1',()=>log('BRIDGE_READY',{port:8799}));
 setInterval(()=>void tick(),3000).unref();
 void tick();
