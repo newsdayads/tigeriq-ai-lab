@@ -5,6 +5,7 @@ const DEFAULT_REPO='tigeriq-ai-lab';
 const DEFAULT_CONTROLLER_STATE_URL='http://127.0.0.1:8798/api/autopilot/state';
 const DEFAULT_SAVE_LEDGER_ISSUE=788;
 const SUPPORTED_WORKERS=new Set(['NV02','NV03','NV04']);
+const INTEGRATION_WORK_ITEM_MARKER='PARALLEL_WAVE_READY_FOR_INTEGRATION';
 const REQUIRED_TRUE_FLAGS=[
   'TIGERIQ_EXECUTABLE','NO_DIRECT_MAIN','NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_DESTRUCTIVE','NO_PRODUCTION_RELEASE',
 ];
@@ -125,9 +126,33 @@ export async function buildUiAutopilotSnapshot({fetchImpl=fetch,token='',owner=D
     .filter(x=>x.spec&&x.spec.number!==previousNumber)
     .sort((a,b)=>priorityRank(a.spec.priority)-priorityRank(b.spec.priority)||a.spec.number-b.spec.number);
   const chosen=eligible[0];
-  const nextJob=chosen?{jobId:chosen.spec.jobId,workerId:'NV02',status:'READY',executable:true,priority:chosen.spec.priority,prompt:buildPrompt(chosen.spec,`${owner}/${repo}`),riskFlags:[]}:undefined;
+  let nextJob=undefined;
+  let requiredWorkers=['NV02'];
+  if(chosen){
+    const spec=chosen.spec;
+    let workerId='NV02';
+    if(spec.primaryEmployee&&SUPPORTED_WORKERS.has(spec.primaryEmployee)){
+      workerId=spec.primaryEmployee;
+    } else {
+      throw new Error('WORKER_SELECTION_FAIL_CLOSED');
+    }
+    if(bodyContains(chosen.issue.body, INTEGRATION_WORK_ITEM_MARKER)){
+      // Ensure deduplicated NV02 integration WorkItem for aggregation and publishing through core state
+      workerId='NV02';
+    }
+    nextJob={
+      jobId:spec.jobId,
+      workerId,
+      status:'READY',
+      executable:true,
+      priority:spec.priority,
+      prompt:buildPrompt(spec,`${owner}/${repo}`),
+      riskFlags:[],
+    };
+    requiredWorkers=Array.from(new Set(['NV02', workerId]));
+  }
   const revision=['github-ui-v2',previousJob?.jobId||'none',previousJob?.status||'none',chosen?.spec.jobId||'none',chosen?.spec.updatedAt||'none'].join(':');
-  return{source:'GITHUB',observedAt,revision,previousJob,nextJob,requiredWorkers:[]};
+  return{source:'GITHUB',observedAt,revision,previousJob,nextJob,requiredWorkers};
 }
 
 export function startUiAutopilotSnapshotServer({
