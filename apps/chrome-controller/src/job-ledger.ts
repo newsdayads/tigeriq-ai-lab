@@ -1,4 +1,5 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { WorkerId } from './model.js';
 import { atomicWriteJsonWithRetry } from './runtime-evidence.js';
@@ -82,18 +83,14 @@ export function reconcileUiJobStage(stage: UiJobStage, uiBusy: boolean|null|unde
 
 export class DurableUiJobLedger {
   private value: LedgerFile;
-  constructor(private readonly path: string) {
+  constructor(
+    private readonly path: string,
+    private readonly atomicWriter: (path:string,value:unknown)=>void = atomicWriteJsonWithRetry,
+  ) {
     this.value = this.load();
   }
 
-  private load(): LedgerFile {
-    if (!existsSync(this.path)) return { schemaVersion:'tigeriq.chrome-controller.ui-job-ledger.v1', jobs:[] };
-    let raw: Partial<LedgerFile>;
-    try {
-      raw = JSON.parse(readFileSync(this.path,'utf8')) as Partial<LedgerFile>;
-    } catch (error) {
-      throw new Error(`UI_JOB_LEDGER_CORRUPT:${String(error)}`);
-    }
+  private validate(raw: Partial<LedgerFile>): LedgerFile {
     if (raw.schemaVersion !== 'tigeriq.chrome-controller.ui-job-ledger.v1') throw new Error('UI_JOB_LEDGER_SCHEMA_INVALID');
     if (!Array.isArray(raw.jobs)) throw new Error('UI_JOB_LEDGER_JOBS_INVALID');
     for (const job of raw.jobs) {
@@ -105,8 +102,50 @@ export class DurableUiJobLedger {
     return { schemaVersion:'tigeriq.chrome-controller.ui-job-ledger.v1', jobs:raw.jobs as UiJobRecord[] };
   }
 
+  private journalPaths(): string[] {
+    const dir=dirname(this.path);
+    if (!existsSync(dir)) return [];
+    const prefix=`${basename(this.path)}.journal.`;
+    return readdirSync(dir)
+      .filter((name)=>name.startsWith(prefix)&&name.endsWith('.json'))
+      .sort()
+      .reverse()
+      .map((name)=>join(dir,name));
+  }
+
+  private load(): LedgerFile {
+    for (const journal of this.journalPaths()) {
+      try {
+        return this.validate(JSON.parse(readFileSync(journal,'utf8')) as Partial<LedgerFile>);
+      } catch {}
+    }
+    if (!existsSync(this.path)) return { schemaVersion:'tigeriq.chrome-controller.ui-job-ledger.v1', jobs:[] };
+    try {
+      return this.validate(JSON.parse(readFileSync(this.path,'utf8')) as Partial<LedgerFile>);
+    } catch (error) {
+      throw new Error(`UI_JOB_LEDGER_CORRUPT:${String(error)}`);
+    }
+  }
+
+  private cleanupJournals(keep?:string) {
+    for (const journal of this.journalPaths()) {
+      if (journal===keep) continue;
+      try{unlinkSync(journal);}catch{}
+    }
+  }
+
   private save() {
-    atomicWriteJsonWithRetry(this.path,this.value);
+    try {
+      this.atomicWriter(this.path,this.value);
+      this.cleanupJournals();
+    } catch (error) {
+      const code=error instanceof Error&&'code' in error?String((error as NodeJS.ErrnoException).code??''):'';
+      if (!['EPERM','EBUSY'].includes(code)) throw error;
+      const journal=`${this.path}.journal.${String(Date.now()).padStart(13,'0')}.${randomUUID()}.json`;
+      writeFileSync(journal,`${JSON.stringify(this.value,null,2)}\n`,'utf8');
+      this.cleanupJournals(journal);
+      console.warn(JSON.stringify({event:'UI_JOB_LEDGER_JOURNAL_FALLBACK',path:this.path,journal,code}));
+    }
   }
 
   snapshot(): UiJobRecord[] { return this.value.jobs.map((job)=>({...job,evidenceRefs:[...job.evidenceRefs]})); }
