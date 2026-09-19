@@ -103,6 +103,9 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("WORKING_NO_PROGRESS_3_CHECKS");
     expect(source).toContain("activitySignature");
     expect(source).toContain("workingUnchangedChecks");
+    const serverSource=readFileSync('apps/chrome-controller/src/server.ts','utf8');
+    expect(serverSource).toContain("const projectContextRecovery=workerId==='NV02'&&purpose==='PROJECT_CONTEXT_RECOVERY';");
+    expect(serverSource).toContain("if(paused&&!projectContextRecovery)throw new Error('OWNER_INTERACTION_READ_ONLY');");
   });
 
   it('rotates chat by bounded count or age instead of every job', () => {
