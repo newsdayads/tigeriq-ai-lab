@@ -69,6 +69,8 @@ export interface DurableAutopilotState {
   pendingJobId?: string;
   pendingReservedAt?: string;
   uncertainJobId?: string;
+  dispatchFailureClass?: AutoContinueDispatchFailureClass;
+  retryAt?: string;
   updatedAt: string;
 }
 export type AutopilotDecision =
