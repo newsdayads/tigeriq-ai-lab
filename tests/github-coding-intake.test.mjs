@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {extractCodingDependencies,materializeGithubCodingIssues,parseCodingIssue} from '../apps/tigeriq-core/github-coding-intake.mjs';
+import {classifyCodingBlocker,extractCodingDependencies,materializeGithubCodingIssues,parseCodingIssue,syncGithubCodingOutcomes} from '../apps/tigeriq-core/github-coding-intake.mjs';
 
 function issue(body,extra={}){
   return {number:777,title:'Safe autonomous coding task',body,state:'open',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/777',...extra};
@@ -22,9 +22,19 @@ function fakePool(){
   const events=[];
   return {events,async query(q,params=[]){
     if(q.includes("select data from tigeriq_events where type='GITHUB_CODING_DISPATCHED'")){
-      const latest=[...events].reverse().find(e=>e.type==='GITHUB_CODING_DISPATCHED');
-      const active=Boolean(latest)&&!events.some(r=>r.type==='GITHUB_CODING_RESULT_REPORTED'&&String(r.data.issueNumber)===String(latest.data.issueNumber));
-      return {rowCount:active?1:0,rows:active?[{one:1}]:[]};
+      const dispatches=events.filter(e=>e.type==='GITHUB_CODING_DISPATCHED');
+      if(q.includes('not exists')){
+        const latest=[...dispatches].reverse()[0];
+        const final=latest&&events.some(r=>['GITHUB_CODING_RESULT_REPORTED','GITHUB_CODING_BLOCKED_FINAL'].includes(r.type)&&String(r.data.issueNumber)===String(latest.data.issueNumber));
+        const active=Boolean(latest)&&!final;
+        return {rowCount:active?1:0,rows:active?[{one:1}]:[]};
+      }
+      const rows=[...dispatches].reverse().slice(0,100).map(e=>({data:e.data}));
+      return {rowCount:rows.length,rows};
+    }
+    if(q.includes("select data from tigeriq_events where type=$1 and data->>'issueNumber'=$2")){
+      const rows=[...events].reverse().filter(e=>e.type===params[0]&&String(e.data.issueNumber)===String(params[1])).slice(0,100).map(e=>({data:e.data}));
+      return {rowCount:rows.length,rows};
     }
     if(q.includes('select 1 from tigeriq_events'))return {rowCount:events.some(e=>e.type===params[0]&&String(e.data.issueNumber)===String(params[1]))?1:0,rows:[]};
     if(q.includes('insert into tigeriq_events')){events.push({type:params[0],data:JSON.parse(params[1])});return {rowCount:1,rows:[]};}
@@ -97,6 +107,157 @@ describe('GitHub coding intake dependencies',()=>{
     expect((await materializeGithubCodingIssues({pool,fetchImpl,token:'fake'})).created).toBe(1);
     expect((await materializeGithubCodingIssues({pool,fetchImpl,token:'fake'})).created).toBe(0);
     expect(posted).toBe(1);
+  });
+});
+
+describe('GitHub coding continuity supervisor',()=>{
+  it('classifies compact/output failures as recoverable and policy/security as hard',()=>{
+    expect(classifyCodingBlocker('CODING_COMPACT_EDIT_INVALID').kind).toBe('RECOVERABLE');
+    expect(classifyCodingBlocker('CODING_COMPACT_REPAIR_MULTI_FILE_INVALID').kind).toBe('RECOVERABLE');
+    expect(classifyCodingBlocker('HTTP_429 provider rate limit')).toMatchObject({kind:'RECOVERABLE',transient:true});
+    expect(classifyCodingBlocker('SECURITY POLICY_BLOCK requires human')).toMatchObject({kind:'HARD',transient:false});
+  });
+
+  it('retries the same blocked issue, completes it, then releases and dispatches its dependent child',async()=>{
+    const pool=fakePool();
+    pool.events.push({type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:705,codingObjectiveId:'obj-705'}});
+    pool.events.push({type:'GITHUB_CODING_DEPENDENCY_WAIT',data:{issueNumber:706,dependsOn:[705],reason:'DEPENDENCY_OPEN'}});
+    const parent=issue(SAFE.replace('PRIORITY=P1','PRIORITY=P0'),{number:705,title:'Parent continuity fix'});
+    const child=issue(`${SAFE}\nDEPENDS_ON=#705`,{number:706,title:'Dependent follow-up'});
+    let phase=0,closed=false;
+    const posts=[];
+    const fetchImpl=async(url,init={})=>{
+      if(url.includes('/api/status')){
+        const objectives=phase===0
+          ?[{id:'obj-705',status:'blocked',summary:'CODING_COMPACT_REPAIR_MULTI_FILE_INVALID'}]
+          :[{id:'obj-705',status:'blocked',summary:'CODING_COMPACT_REPAIR_MULTI_FILE_INVALID'},{id:'obj-retry-705',status:'completed',summary:'Merged PR #123'}];
+        return response({objectives,jobs:[]});
+      }
+      if(url.includes('/api/objectives')){
+        const body=JSON.parse(init.body);
+        posts.push(body.objective);
+        return response({id:body.objective.includes('#706')?'obj-child-706':'obj-retry-705'});
+      }
+      if(url.includes('/issues?'))return response([child]);
+      if(url.includes('/issues/705')){
+        if(init.method==='PATCH'){closed=true;return response({number:705,state:'closed'});}
+        return response({...parent,state:closed?'closed':'open'});
+      }
+      if(url.includes('/comments')||url.includes('/issues/706'))return response({});
+      return response({});
+    };
+
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake',now:()=>1000});
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_RETRY_SCHEDULED')).toHaveLength(1);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_RETRY_DISPATCHED')).toHaveLength(1);
+    expect(posts[0]).toContain('SOURCE_BASE=CURRENT_MAIN');
+    expect(posts[0]).toContain('PRIOR_OBJECTIVE_ID=obj-705');
+
+    phase=1;
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake',now:()=>1000});
+    expect(closed).toBe(true);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_RESULT_REPORTED')).toHaveLength(1);
+
+    const next=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake'});
+    expect(next.issueNumber).toBe(706);
+    expect(pool.events.filter(e=>e.type==='GITHUB_DEPENDENCY_RELEASED')).toHaveLength(1);
+  });
+
+  it('backs off provider 429 and dispatches only after next-at gate',async()=>{
+    const pool=fakePool();
+    pool.events.push({type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:800,codingObjectiveId:'obj-800'}});
+    const current=issue(SAFE,{number:800});
+    let nowMs=1000000,posted=0;
+    const fetchImpl=async(url,init={})=>{
+      if(url.includes('/api/status'))return response({objectives:[{id:'obj-800',status:'blocked',summary:'HTTP_429 provider rate limit'}],jobs:[]});
+      if(url.includes('/api/objectives')){posted++;return response({id:'obj-800-retry'});}
+      if(url.includes('/issues/800'))return response(current);
+      if(url.includes('/comments'))return response({});
+      return response({});
+    };
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake',now:()=>nowMs});
+    expect(posted).toBe(0);
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake',now:()=>nowMs+59999});
+    expect(posted).toBe(0);
+    nowMs+=60000;
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake',now:()=>nowMs});
+    expect(posted).toBe(1);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_RETRY_DISPATCHED')).toHaveLength(1);
+  });
+
+  it('fails closed for hard blockers without retry',async()=>{
+    const pool=fakePool();
+    pool.events.push({type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:801,codingObjectiveId:'obj-801'}});
+    const current=issue(SAFE,{number:801});
+    let posted=0;
+    const fetchImpl=async(url)=>{
+      if(url.includes('/api/status'))return response({objectives:[{id:'obj-801',status:'blocked',summary:'SECURITY POLICY_BLOCK requires human decision'}],jobs:[]});
+      if(url.includes('/api/objectives')){posted++;return response({id:'unexpected'});}
+      if(url.includes('/issues/801'))return response(current);
+      if(url.includes('/comments'))return response({});
+      return response({});
+    };
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+    expect(posted).toBe(0);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_BLOCKED_FINAL')[0]?.data.reason).toBe('HARD_BLOCKER');
+  });
+
+  it('emits BLOCKED_FINAL after the retry budget is exhausted',async()=>{
+    const pool=fakePool();
+    pool.events.push(
+      {type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:802,codingObjectiveId:'obj-802-r2'}},
+      {type:'GITHUB_CODING_RETRY_DISPATCHED',data:{issueNumber:802,codingObjectiveId:'obj-802-r1',retryAttempt:1}},
+      {type:'GITHUB_CODING_RETRY_DISPATCHED',data:{issueNumber:802,codingObjectiveId:'obj-802-r2',retryAttempt:2}}
+    );
+    const current=issue(SAFE,{number:802});
+    const fetchImpl=async(url)=>{
+      if(url.includes('/api/status'))return response({objectives:[{id:'obj-802-r2',status:'blocked',summary:'CODING_COMPACT_EDIT_INVALID'}],jobs:[]});
+      if(url.includes('/issues/802'))return response(current);
+      if(url.includes('/comments'))return response({});
+      return response({});
+    };
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_BLOCKED_FINAL')[0]?.data.reason).toBe('RETRY_BUDGET_EXHAUSTED');
+  });
+
+  it('never resurrects a closed or superseded issue while retry is pending',async()=>{
+    const pool=fakePool();
+    pool.events.push({type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:803,codingObjectiveId:'obj-803'}});
+    const superseded=issue(`${SAFE}\nSTATE=SUPERSEDED`,{number:803});
+    let posted=0;
+    const fetchImpl=async(url)=>{
+      if(url.includes('/api/status'))return response({objectives:[{id:'obj-803',status:'blocked',summary:'CODING_COMPACT_EDIT_INVALID'}],jobs:[]});
+      if(url.includes('/api/objectives')){posted++;return response({id:'unexpected'});}
+      if(url.includes('/issues/803'))return response(superseded);
+      if(url.includes('/comments'))return response({});
+      return response({});
+    };
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+    expect(posted).toBe(0);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_BLOCKED_FINAL')[0]?.data.reason).toBe('ISSUE_CLOSED_OR_SUPERSEDED');
+  });
+
+  it('resumes idempotently after restart between retry POST and durable dispatch markers',async()=>{
+    const pool=fakePool();
+    pool.events.push(
+      {type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:804,codingObjectiveId:'obj-804'}},
+      {type:'GITHUB_CODING_RETRY_SCHEDULED',data:{issueNumber:804,priorObjectiveId:'obj-804',retryAttempt:1,reason:'CODING_COMPACT_EDIT_INVALID',transient:false,nextAt:new Date(0).toISOString()}}
+    );
+    const current=issue(SAFE,{number:804});
+    let posted=0;
+    const existingRetry={id:'obj-existing-retry',status:'queued',objective:'RETRY_KEY=GITHUB-ISSUE-804-RETRY-1 issue #804'};
+    const fetchImpl=async(url)=>{
+      if(url.includes('/api/status'))return response({objectives:[{id:'obj-804',status:'blocked',summary:'CODING_COMPACT_EDIT_INVALID'},existingRetry],jobs:[]});
+      if(url.includes('/api/objectives')){posted++;return response({id:'unexpected'});}
+      if(url.includes('/issues/804'))return response(current);
+      if(url.includes('/comments'))return response({});
+      return response({});
+    };
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake',now:()=>1000});
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake',now:()=>1000});
+    expect(posted).toBe(0);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_RETRY_DISPATCHED')).toHaveLength(1);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_DISPATCHED')).toHaveLength(2);
   });
 });
 
