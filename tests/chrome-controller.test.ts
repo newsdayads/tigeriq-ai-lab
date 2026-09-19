@@ -85,7 +85,8 @@ describe('completion-aware UTF-8 supervisor and Owner workspace',()=>{
   it('supports NV02, NV03, and NV04 routing and exact-once retry/restart without duplicate schedulers', () => {
     const s = snapshot();
     s.nextJob = { jobId: 'job-999', workerId: 'NV03', executable: true, status: 'READY', priority: 'P1', prompt: 'test nv03 route' };
-    const dec = decideAutoContinue(s, freshAutopilotState(), NOW);
+    const state={...freshAutopilotState(),lastDispatchedJobId:'JOB-1',lastDispatchedAt:'2026-09-15T00:59:58.000Z'};
+    const dec = decideAutoContinue(s, state, NOW);
     expect(dec.kind).toBe('DISPATCH');
     if(dec.kind!=='DISPATCH') throw new Error(`EXPECTED_DISPATCH:${dec.kind}`);
     expect(dec.jobId).toBe('job-999');
