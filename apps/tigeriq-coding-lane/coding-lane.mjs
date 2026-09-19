@@ -250,7 +250,8 @@ async function managerTick(){
 }
 
 async function claimJob(){const c=await pool.connect();try{await c.query('begin');const q=await c.query("select * from tigeriq_coding_jobs where status='queued' or (status='waiting_resource' and coalesce(next_attempt_at,now())<=now()) order by case when status='waiting_resource' then 0 else 1 end,created_at for update skip locked limit 1");if(!q.rows[0]){await c.query('commit');return null}const j=q.rows[0];await c.query("update tigeriq_coding_jobs set status='running',started_at=coalesce(started_at,now()),attempts=attempts+1,completed_at=null where id=$1",[j.id]);await c.query('commit');return j}catch(e){await c.query('rollback');throw e}finally{c.release()}}
-async function contextFor(paths,ref='main'){const rows=[];for(const p of paths){const f=await readRepoFile(p,ref);rows.push(`FILE ${p}\n${f.content.slice(0,45000)}`)}return rows.join('\n\n---\n\n').slice(0,180000)}
+export function buildLocalFileContext(files=[]){return files.map(file=>`FILE ${file.path}\n${String(file.content??'')}`).join('\n\n---\n\n')}
+async function contextFor(paths,ref='main'){const files=[];for(const p of paths){const f=await readRepoFile(p,ref);files.push({path:p,content:f.content})}return buildLocalFileContext(files)}
 export function validateCompactEdits(edits,allowedPaths=[]){
   if(!Array.isArray(edits)||edits.length<1||edits.length>12)throw new Error('CODING_COMPACT_EDITS_COUNT_INVALID');
   const allow=new Set((allowedPaths||[]).map(String)),seen=new Set(),paths=new Set();
@@ -286,7 +287,7 @@ export function applyCompactEdits(content,edits){
 async function generateRepairEdits(worker,j,context,issues=[],exclude=[]){
   const prompt=`You are ${worker.id}, an autonomous TigerIQ repository engineer. Fix ONLY the listed issues on the existing branch.\nTASK: ${j.instruction}\nALLOWED PATHS: ${j.paths.join(', ')}\nISSUES TO FIX: ${JSON.stringify(issues)}\nCURRENT FILES:\n${context}\nReturn ONLY compact JSON {"summary":"short","edits":[{"path":"exact allowed path","old":"exact UNIQUE existing snippet","new":"replacement snippet"}]}. Never return a complete file. Edits may target multiple ALLOWED PATHS when the listed CI/review issues require coordinated changes. Each old snippet must exist exactly once. Keep edits minimal. Do not touch paths outside ALLOWED PATHS. Never output secrets.`;
   const validateData=d=>validateCompactEdits(d.edits,j.paths);
-  const invoked=await invokeJsonWithFailover(worker,prompt,{exclude,validateData});
+  const invoked=await invokeJsonWithFailover(worker,prompt,{exclude,validateData,shrinkPrompt:value=>value});
   return {payload:invoked.data,resource:invoked.resource};
 }
 async function writeRepairEdits(branch,edits){
