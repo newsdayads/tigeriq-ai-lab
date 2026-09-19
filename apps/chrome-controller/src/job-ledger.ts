@@ -160,6 +160,26 @@ export class DurableUiJobLedger {
     return {...record,evidenceRefs:[]};
   }
 
+  retryError(workerId: WorkerId, jobId: string, metadata: UiJobMetadata = {}, now = new Date()): UiJobRecord {
+    if (this.active(workerId)) throw new Error(`UI_JOB_ACTIVE:${workerId}:${this.active(workerId)!.jobId}`);
+    const record=this.value.jobs.find((job)=>job.workerId===workerId&&job.jobId===jobId);
+    if (!record) throw new Error(`UI_JOB_NOT_FOUND:${workerId}:${jobId}`);
+    if (record.stage!=='ERROR') throw new Error(`UI_JOB_RETRY_REQUIRES_ERROR:${record.stage}`);
+    const at=now.toISOString();
+    if (metadata.issueRef!==undefined) record.issueRef=String(metadata.issueRef??'').trim()||null;
+    if (metadata.title!==undefined) record.title=String(metadata.title??'').trim()||record.title;
+    if (metadata.source!==undefined) record.source=String(metadata.source??'').trim()||record.source;
+    record.stage='QUEUED';
+    record.progress=uiJobProgress('QUEUED');
+    record.lastActivityAt=at;
+    record.completedAt=null;
+    record.nextAction='Retry dispatch to worker';
+    record.blocker=null;
+    record.result=null;
+    this.save();
+    return {...record,evidenceRefs:[...record.evidenceRefs]};
+  }
+
   transition(workerId: WorkerId, jobId: string, stage: UiJobStage, patch: UiJobPatch = {}, now = new Date()): UiJobRecord {
     const record=this.value.jobs.find((job)=>job.workerId===workerId&&job.jobId===jobId);
     if (!record) throw new Error(`UI_JOB_NOT_FOUND:${workerId}:${jobId}`);
