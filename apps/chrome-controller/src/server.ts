@@ -25,7 +25,7 @@ import {
   type DurableAutopilotState,
   type ExternalAutopilotSnapshot,
 } from './autopilot.js';
-import { buildRuntimeEvidence } from './runtime-evidence.js';
+import { buildRuntimeEvidence, persistEvidence as persistRuntimeEvidence } from './runtime-evidence.js';
 import { DurableDispatchLeaseStore } from './dispatch-lease.js';
 import { BrowserMutationLeaseStore } from './browser-mutation-lease.js';
 import { heartbeatStopReason } from './security-gate.js';
@@ -227,7 +227,7 @@ function evidence(){
     sessionName:process.env.SESSIONNAME??null,
   });
 }
-function persistEvidence(){const value=evidence();atomicJson(runtimeEvidencePath,value);return value;}
+function persistEvidence(){const value=evidence();persistRuntimeEvidence(runtimeEvidencePath,value);return value;}
 
 async function brokerWorkerPresence(workerId:WorkerId):Promise<WorkerPresence>{
   const url=config.recovery.launchBrokerUrl;
