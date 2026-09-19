@@ -245,6 +245,105 @@ function dismissMenu() {
   document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }));
 }
 
+function profileBlocked(reason) {
+  dismissMenu();
+  return { ok: false, status: `MODEL_PROFILE_BLOCKED:${reason}` };
+}
+
+function modelProfileTrigger() {
+  const selectors = [
+    'button[data-codex-intelligence-trigger="true"][data-composer-navigation-target="reasoning"][aria-haspopup="menu"]',
+    'button[aria-label="Chọn mô hình ChatGPT"][aria-haspopup="menu"]',
+    'button[aria-label="Select ChatGPT model"][aria-haspopup="menu"]'
+  ];
+  const matches = [...new Set(selectors.flatMap((selector) => Array.from(document.querySelectorAll(selector))))].filter(visible);
+  return matches.length === 1 ? matches[0] : null;
+}
+
+function openModelMenu() {
+  const menus = Array.from(document.querySelectorAll('[role="menu"]'))
+    .filter(visible)
+    .filter((menu) => menu.querySelector('[data-model-picker-view-toggle="true"],[data-reasoning-slider="true"],[data-model-selected="true"]'));
+  return menus.length === 1 ? menus[0] : null;
+}
+
+function selectedModelName(menu) {
+  const selected = Array.from(menu.querySelectorAll('[role="menuitemradio"][aria-checked="true"][data-model-selected="true"]'));
+  if (selected.length !== 1) return null;
+  return String(selected[0].textContent || '').replace(/\s+/g, ' ').trim();
+}
+
+async function ensureNv02ExactModelProfile() {
+  if (location.hostname !== 'chatgpt.com') return profileBlocked('UNVERIFIED_HOST');
+  const initialBlock = detectSecurityBlock();
+  if (initialBlock) return profileBlocked(initialBlock);
+
+  let trigger = modelProfileTrigger();
+  if (!trigger) return profileBlocked('MODEL_TRIGGER_NOT_UNIQUE');
+  if (trigger.getAttribute('data-state') !== 'open') {
+    trigger.click();
+    await sleep(300);
+  }
+  let blocked = detectSecurityBlock();
+  if (blocked) return profileBlocked(blocked);
+  let menu = openModelMenu();
+  if (!menu) return profileBlocked('MODEL_MENU_NOT_UNIQUE');
+
+  if (selectedModelName(menu) !== 'GPT-5.6 Sol') {
+    const toggles = Array.from(menu.querySelectorAll('[data-model-picker-view-toggle="true"][role="menuitem"]')).filter(visible);
+    if (toggles.length !== 1) return profileBlocked('MODEL_VIEW_TOGGLE_NOT_UNIQUE');
+    toggles[0].click();
+    await sleep(250);
+    blocked = detectSecurityBlock();
+    if (blocked) return profileBlocked(blocked);
+    menu = openModelMenu();
+    if (!menu) return profileBlocked('MODEL_MENU_LOST_AFTER_TOGGLE');
+    const solItems = Array.from(menu.querySelectorAll('[role="menuitemradio"]'))
+      .filter(visible)
+      .filter((item) => String(item.textContent || '').replace(/\s+/g, ' ').trim() === 'GPT-5.6 Sol')
+      .filter((item) => item.getAttribute('aria-disabled') !== 'true');
+    if (solItems.length !== 1) return profileBlocked('GPT_5_6_SOL_OPTION_NOT_UNIQUE');
+    solItems[0].click();
+    await sleep(400);
+    blocked = detectSecurityBlock();
+    if (blocked) return profileBlocked(blocked);
+  }
+
+  trigger = modelProfileTrigger();
+  if (!trigger) return profileBlocked('MODEL_TRIGGER_LOST');
+  if (trigger.getAttribute('data-selected-reasoning-effort') !== 'high') {
+    if (trigger.getAttribute('data-state') !== 'open') {
+      trigger.click();
+      await sleep(250);
+    }
+    menu = openModelMenu();
+    if (!menu) return profileBlocked('EFFORT_MENU_NOT_UNIQUE');
+    const effortControls = Array.from(menu.querySelectorAll('[data-reasoning-slider="true"][role="menuitem"]')).filter(visible);
+    if (effortControls.length !== 1) return profileBlocked('EFFORT_CONTROL_NOT_UNIQUE');
+    effortControls[0].focus();
+    for (let i = 0; i < 3 && trigger.getAttribute('data-selected-reasoning-effort') !== 'high'; i++) {
+      effortControls[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', code: 'ArrowRight', bubbles: true }));
+      effortControls[0].dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowRight', code: 'ArrowRight', bubbles: true }));
+      await sleep(150);
+    }
+    if (trigger.getAttribute('data-selected-reasoning-effort') !== 'high') return profileBlocked('HIGH_EFFORT_SWITCH_FAILED');
+  }
+
+  if (trigger.getAttribute('data-state') !== 'open') {
+    trigger.click();
+    await sleep(250);
+  }
+  menu = openModelMenu();
+  if (!menu) return profileBlocked('FINAL_MODEL_MENU_NOT_UNIQUE');
+  const finalModel = selectedModelName(menu);
+  const finalEffort = trigger.getAttribute('data-selected-reasoning-effort');
+  if (finalModel !== 'GPT-5.6 Sol') return profileBlocked('FINAL_MODEL_MISMATCH');
+  if (finalEffort !== 'high') return profileBlocked('FINAL_EFFORT_MISMATCH');
+  const verifiedAt = new Date().toISOString();
+  dismissMenu();
+  return { ok: true, status: 'MODEL_PROFILE_VERIFIED', model: finalModel, thinking: finalEffort, verifiedAt };
+}
+
 async function archiveConversation() {
   const blocked = detectSecurityBlock();
   if (blocked) return { ok: false, status: blocked };
@@ -303,6 +402,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
   if (message?.type === 'TIGERIQ_ARCHIVE_CONVERSATION') {
     void archiveConversation().then(sendResponse).catch((error) => sendResponse({ ok: false, status: String(error) }));
+    return true;
+  }
+  if (message?.type === 'TIGERIQ_MODEL_PREFLIGHT') {
+    void ensureNv02ExactModelProfile().then(sendResponse).catch((error) => sendResponse({ ok: false, status: `MODEL_PROFILE_BLOCKED:${String(error)}` }));
     return true;
   }
   if (message?.type !== 'TIGERIQ_DISPATCH') return;
