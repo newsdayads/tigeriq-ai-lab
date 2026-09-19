@@ -141,6 +141,18 @@ describe('controller-independent Chrome lifecycle contract',()=>{
   });
 });
 
+describe('Direct CDP live dispatch hardening',()=>{
+  it('avoids duplicate prompt text and requires positive submit evidence on the live executor',()=>{
+    const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    expect(bridge).toContain('composerText(c)!==expected');
+    expect(bridge).toContain('button[type=\\"submit\\"]');
+    expect(bridge).toContain("status:'SUBMIT_EVIDENCE_MISSING'");
+    expect(bridge).toContain("status:'SUBMITTED',evidence:'UI_BUSY'");
+    expect(bridge).toContain("status:'SUBMITTED',evidence:'USER_MESSAGE_VISIBLE'");
+    expect(bridge).toContain("status:'SUBMITTED',evidence:'COMPOSER_CLEARED'");
+  });
+});
+
 describe('AUTO_CONTINUE current-chat dispatch contract',()=>{
   it('does not navigate to project home before dispatching the queued job',()=>{
     const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
