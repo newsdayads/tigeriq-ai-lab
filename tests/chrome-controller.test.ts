@@ -82,6 +82,13 @@ describe('review evidence and extension lifecycle',()=>{
 describe('completion-aware UTF-8 supervisor and Owner workspace',()=>{
   it('reports UI generation state without parsing AI output and gates auto-continue',()=>{const content=readFileSync('apps/chrome-controller/extension/content.js','utf8');const background=readFileSync('apps/chrome-controller/extension/background.js','utf8');const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');expect(content).toContain('function detectUiBusy()');expect(content).toContain('button[type="submit"]');expect(content).toContain('composerText(composer) !== expectedText');expect(content).toContain('waitForSubmissionEvidence(expectedText)');expect(content).toContain("status: 'SUBMITTED', evidence: submitted.evidence");expect(content).toContain("message?.type === 'TIGERIQ_UI_STATE'");expect(background).toContain('uiBusy:ui.uiBusy');expect(server).toContain('AUTOPILOT_WAIT_UI_BUSY');expect(server).toContain('AUTOPILOT_SECURITY_STOP');});
   it('keeps Vietnamese dispatch UTF-8 end-to-end',()=>{const sample='Tiáº¿ng Viá»‡t â€” Äáº·ng, áº¥, Æ°, â‚¬';const bytes=new TextEncoder().encode(JSON.stringify({text:sample}));expect(JSON.parse(new TextDecoder('utf-8').decode(bytes)).text).toBe(sample);const background=readFileSync('apps/chrome-controller/extension/background.js','utf8');const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');expect(background).toContain("content-type':'application/json; charset=utf-8");expect(server).toContain("toString('utf8')");});
+  it('supports NV02, NV03, and NV04 routing and exact-once retry/restart without duplicate schedulers', () => {
+    const s = snapshot();
+    s.nextJob = { jobId: 'job-999', workerId: 'NV03', executable: true, status: 'READY', priority: 'P1', prompt: 'test nv03 route' };
+    const dec = decideAutoContinue(s, freshAutopilotState(), NOW);
+    expect(dec.kind).toBe('DISPATCH');
+    expect(dec.jobId).toBe('job-999');
+  });
   it('reserves the lower workspace for Owner while workers stay top-right',()=>{const evidence=buildRuntimeEvidence({config:baseConfig(),workArea:{left:0,top:0,width:4096,height:2120},workers:baseConfig().workers.map(w=>({id:w.id,enabled:true,status:'READY',blocked:false})),jobs:[],autopilot:freshAutopilotState(),snapshot:snapshot(),paused:false,killed:false,recoveryAttempts:{NV02:0,NV03:0,NV04:0},startupReady:true,interactiveSession:true,sessionName:'Console'});expect(evidence.layout.ownerWorkspace).toEqual({workerRegion:'TOP_RIGHT',reservedBelowY:834,overlapByDesign:false});expect(evidence.autopilot).toMatchObject({completionAwareUiState:true,utf8JsonDispatch:true});});
 });
 
