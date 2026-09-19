@@ -5,6 +5,13 @@ export interface WorkerSafetySnapshot {
   pausedWorkers:WorkerId[];
   manualCloseSuppressedWorkers:WorkerId[];
 }
+
+export interface ModelPreflightState {
+  verifiedProfile?: string;
+  verifiedAt?: string;
+  status: 'VERIFIED' | 'BLOCKED';
+  reason?: string;
+}
 export interface WorkerSafetyRestoreResult {
   state:WorkerSafetySnapshot;
   failClosed:boolean;
