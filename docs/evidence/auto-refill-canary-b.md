@@ -1,0 +1,2 @@
+AUTO_REFILL_CANARY_B=PASS
+Source: Issue #1054
