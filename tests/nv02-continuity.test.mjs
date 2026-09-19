@@ -104,6 +104,9 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("retryVisible:Boolean(retryButton)");
     expect(source).toContain("state?.sidebarVisible&&state?.rowPresent===false");
     expect(source).toContain("evidence:state?.archivedNotice?'TOAST'");
+    expect(source).toContain("SEND_BUTTON_WAIT_MS+8000");
+    expect(source).toContain("CONTINUE_DISPATCH_FAILED");
+    expect(source).toContain("nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)");
   });
 
   it('rotates chat by bounded count or age instead of every job', () => {
