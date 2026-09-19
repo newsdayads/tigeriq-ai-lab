@@ -177,10 +177,10 @@ async function continuityEvent(event,data={}){
   catch(error){log('NV02_CONTINUITY_EVENT_POST_FAILED',{event,error:String(error?.message||error)});}
 }
 
-async function acquireBridgeMutationLease(workerId,purpose='NORMAL'){
+async function acquireBridgeMutationLease(workerId,purpose='NORMAL',ttlMs=30000){
   const ownerId=`DIRECT_CDP_BRIDGE:${process.pid}:${workerId}`;
   const r=await fetch(`${CONTROLLER}/api/utility/workers/${workerId}/mutation-lease/acquire`,{
-    method:'POST',headers:auth(workerId,true),body:JSON.stringify({ownerId,ttlMs:10000,purpose}),signal:AbortSignal.timeout(4000)
+    method:'POST',headers:auth(workerId,true),body:JSON.stringify({ownerId,ttlMs,purpose}),signal:AbortSignal.timeout(4000)
   });
   if(r.status===409)return null;
   if(!r.ok)throw new Error(`HTTP_${r.status}:mutation-lease-acquire`);
@@ -272,19 +272,21 @@ async function newChat(target){
 }
 
 async function reloadTarget(target){const p=await pageRpc(target);try{await p.call('Page.reload',{ignoreCache:false});return{ok:true,status:'RELOADED'};}finally{p.close();}}
-async function waitForIdleAfterSubmission(target,timeoutMs=120000){
-  const deadline=Date.now()+timeoutMs;let sawBusy=false;
+async function waitForIdleAfterSubmission(target,timeoutMs=45000,stableReadyMs=5000){
+  const deadline=Date.now()+timeoutMs;let readySince=0;
   while(Date.now()<deadline){
     await sleep(1200);
     const ui=await uiState(target);
     if(ui.securityBlock)throw new Error(ui.securityBlock);
-    if(ui.uiBusy)sawBusy=true;
-    if(sawBusy&&!ui.uiBusy&&ui.uiPhase==='READY')return ui;
+    if(!ui.uiBusy&&ui.uiPhase==='READY'){
+      if(!readySince)readySince=Date.now();
+      if(Date.now()-readySince>=stableReadyMs)return ui;
+    }else readySince=0;
   }
-  throw new Error('NV02_COMPLETION_TIMEOUT');
+  throw new Error('NV02_STABLE_READY_TIMEOUT');
 }
-async function withNv02Mutation(fn,purpose='NORMAL'){
-  const lease=await acquireBridgeMutationLease('NV02',purpose);
+async function withNv02Mutation(fn,purpose='NORMAL',ttlMs=30000){
+  const lease=await acquireBridgeMutationLease('NV02',purpose,ttlMs);
   if(!lease)return{ok:false,status:'MUTATION_LEASE_BUSY'};
   try{return await fn();}finally{await releaseBridgeMutationLease('NV02',lease);}
 }
@@ -307,11 +309,11 @@ async function checkpointNv02(target){
     const text=buildDurableSavePrompt({saveToken,workerId:'NV02',dispatchedAt});
     const sent=await dispatch(target,text);
     if(!sent?.ok)throw new Error(sent?.status||'SAVE_DISPATCH_FAILED');
-    await waitForIdleAfterSubmission(target);
     const receipt=await waitForDurableSaveReceipt(saveToken,'NV02',dispatchedAt);
+    await waitForIdleAfterSubmission(target,45000,5000);
     await continuityEvent('CHECKPOINT_DURABLE',{receiptRef:receipt.receiptRef,checkpointRef:receipt.checkpointRef,verifiedAt:receipt.verifiedAt});
     return receipt;
-  });
+  },'CHECKPOINT_DURABLE',120000);
 }
 async function rotateNv02Chat(target,state,now){
   const receipt=await checkpointNv02(target);
@@ -325,7 +327,7 @@ async function rotateNv02Chat(target,state,now){
     saveNv02Continuity(next);
     await continuityEvent('CHAT_ROTATED',{receiptRef:receipt.receiptRef,checkpointRef:receipt.checkpointRef,archiveStatus:archived.status,newChatStatus:opened.status});
     return dispatchNaturalContinueLocked(target,next,now);
-  });
+  },'CHAT_ROTATION',60000);
 }
 async function noteNv02CommandDispatch(){
   const state=loadNv02Continuity();

@@ -1,12 +1,26 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { SAVE_RECEIPT_POLL_DELAYS_MS, waitForDurableSaveReceipt } from '../apps/chrome-controller/extension/save-receipt.js';
 import {
   CONTINUE_PROMPTS, deriveNv02Phase, hasActiveNv02Work, pickContinuePrompt,
   randomDelay, shouldRotateChat,
 } from '../apps/chrome-controller/extension/continuity.js';
 
 describe('NV02 continuity policy', () => {
+  it('waits long enough for durable receipt propagation without real sleeping', async () => {
+    expect(SAVE_RECEIPT_POLL_DELAYS_MS.reduce((sum,ms)=>sum+ms,0)).toBe(60000);
+    const slept=[];let reads=0;
+    const receipt=await waitForDurableSaveReceipt('token','NV02','2026-09-19T00:00:00Z',{
+      sleep:async(ms)=>{slept.push(ms);},
+      read:async()=>++reads<5
+        ? {ok:false,status:'SAVE_NOT_DURABLE'}
+        : {ok:true,status:'DURABLE',receiptRef:'https://github.com/newsdayads/tigeriq-ai-lab/issues/788#issuecomment-1',checkpointRef:'https://github.com/newsdayads/tigeriq-ai-lab/issues/1122#issuecomment-1',verifiedAt:'2026-09-19T00:01:00Z'},
+    });
+    expect(receipt.status).toBe('DURABLE');
+    expect(slept).toEqual([5000,10000,15000,30000]);
+  });
+
   it('keeps exactly the approved 25 natural continue prompts', () => {
     expect(CONTINUE_PROMPTS).toHaveLength(25);
     expect(new Set(CONTINUE_PROMPTS).size).toBe(25);
@@ -66,6 +80,11 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("isNv02ProjectContext");
     expect(source).toContain("PROJECT_CONTEXT_RECOVERY_NAVIGATED");
     expect(source).toContain("projectContextReady?rawUi:{...rawUi,uiReady:false,uiPhase:'STALLED',modelReady:false}");
+    expect(source).toContain("ttlMs=30000");
+    expect(source).toContain("'CHECKPOINT_DURABLE',120000");
+    expect(source).toContain("'CHAT_ROTATION',60000");
+    expect(source).toContain("NV02_STABLE_READY_TIMEOUT");
+    expect(source).toContain("waitForIdleAfterSubmission(target,45000,5000)");
     expect(source).toContain("const SEND_BUTTON_WAIT_MS=10000");
     expect(source).toContain("until=Date.now()+SEND_BUTTON_WAIT_MS");
     expect(source).toContain("activityBusyVisible:Boolean(activityBusy)");

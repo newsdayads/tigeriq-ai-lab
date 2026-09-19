@@ -1,6 +1,6 @@
 const SAVE_RECEIPT_SERVICE='http://127.0.0.1:8794';
 const SAVE_LEDGER_ISSUE=788;
-const POLL_DELAYS_MS=[0,2000,4000];
+export const SAVE_RECEIPT_POLL_DELAYS_MS=[0,5000,10000,15000,30000];
 
 export function buildDurableSavePrompt({saveToken,workerId,dispatchedAt}){
   return [
@@ -32,11 +32,11 @@ async function readReceipt(saveToken,workerId,dispatchedAt){
   return response.json();
 }
 
-export async function waitForDurableSaveReceipt(saveToken,workerId,dispatchedAt,{sleep=(ms)=>new Promise((resolve)=>setTimeout(resolve,ms))}={}){
+export async function waitForDurableSaveReceipt(saveToken,workerId,dispatchedAt,{sleep=(ms)=>new Promise((resolve)=>setTimeout(resolve,ms)),read=readReceipt}={}){
   let lastStatus='SAVE_NOT_DURABLE';
-  for(const delayMs of POLL_DELAYS_MS){
+  for(const delayMs of SAVE_RECEIPT_POLL_DELAYS_MS){
     if(delayMs)await sleep(delayMs);
-    const value=await readReceipt(saveToken,workerId,dispatchedAt);
+    const value=await read(saveToken,workerId,dispatchedAt);
     if(value?.ok===true&&value?.status==='DURABLE'&&value?.receiptRef&&value?.checkpointRef&&value?.verifiedAt)return value;
     lastStatus=String(value?.status||lastStatus);
   }
