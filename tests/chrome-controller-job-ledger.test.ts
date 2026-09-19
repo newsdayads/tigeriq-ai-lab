@@ -28,7 +28,8 @@ describe('durable UI worker job ledger',()=>{
 
   it('uses collision-safe atomic persistence instead of the legacy fixed .tmp rename path',()=>{
     const source=readFileSync('apps/chrome-controller/src/job-ledger.ts','utf8');
-    expect(source).toContain('atomicWriteJsonWithRetry(this.path,this.value)');
+    expect(source).toContain('atomicWriteJsonWithRetry');
+    expect(source).toContain('this.atomicWriter(this.path,this.value)');
     expect(source).not.toContain('${this.path}.tmp');
   });
 
