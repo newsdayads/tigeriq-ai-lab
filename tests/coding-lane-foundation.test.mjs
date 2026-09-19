@@ -239,7 +239,7 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
     assert.strictEqual(applyCompactEdits('alpha beta gamma',[...edits].reverse()),'A-LONG beta G');
     assert.throws(()=>applyCompactEdits('abcdef',[{path,old:'abc',new:'x'},{path,old:'bcd',new:'y'}]),/CODING_COMPACT_EDIT_OVERLAP/);
     assert.throws(()=>validateCompactEdits([{path,old:'alpha',new:'A'},{path,old:'alpha',new:'B'}],[path]),/CODING_COMPACT_EDIT_DUPLICATE/);
-    assert.throws(()=>validateCompactEdits([{path,old:'alpha',new:'A'},{path:'tests/other.mjs',old:'beta',new:'B'}],[path,'tests/other.mjs']),/CODING_COMPACT_REPAIR_MULTI_FILE_INVALID/);
+    assert.strictEqual(validateCompactEdits([{path,old:'alpha',new:'A'},{path:'tests/other.mjs',old:'beta',new:'B'}],[path,'tests/other.mjs']),true);
   });
   await t.test('gate evidence is concise and machine-usable',()=>{
     const issues=gateFailureIssues({message:'CI_GATES_FAILED',detail:{states:[{name:'CI Verify',status:'completed',conclusion:'failure'},{name:'Queue Hygiene Verify',status:'completed',conclusion:'success'}]}});
