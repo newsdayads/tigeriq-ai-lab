@@ -353,4 +353,13 @@ async function claimJob() {
   }
 }
 async function assignWorkItemAndIssueRef(jobSpec){const workItemId=jobSpec?.workItemId||`WI-${randomUUID().slice(0,8)}`;const issueRef=jobSpec?.issueRef||jobSpec?.issueNumber||null;return{...jobSpec,workItemId,issueRef};}
+
+export async function prepareCoreDispatch(jobSpec, eventsSignal = '') {
+  const assigned = await assignWorkItemAndIssueRef(jobSpec);
+  let integrationWorkItem = null;
+  if (eventsSignal.includes('PARALLEL_WAVE_READY_FOR_INTEGRATION')) {
+    integrationWorkItem = { workItemId: `WI-NV02-INT-${Date.now()}`, status: 'READY_FOR_INTEGRATION', mutationAllowed: false };
+  }
+  return { ...assigned, integrationWorkItem };
+}
 async function callManagerDecision(prompt,objectiveId){const jobId=`MGR-${objectiveId}`,starts=new Map();return runBoundedManagerDecision({prompt,maxProviders:3,acquire:async excluded=>{const excludedResources=excluded.map(id=>resources.find(x=>x.id===id)?.resourceId||id),row=await claimResource('reasoning',jobId,excludedResources,{profile:'AUTO',taskKind:'manager'});if(!row)return null;return resources.find(x=>x.resourceId===row.resource_id)||null;},invoke:async(r,nextPrompt)=>{starts.set(r.id,Date.now());return invokeProvider(r,nextPrompt);},onRetry:async(r,error)=>event('MANAGER_OUTPUT_RETRY',{objectiveId,jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind:'manager',kind:error?.code||error?.message||'invalid_response'}),onSuccess:async r=>markResourceSuccess(r,jobId,Math.max(0,Date.now()-(starts.get(r.id)||Date.now())),'RESOURCE_SUCCESS',true,{taskKind:'manager',profile:'AUTO'}),onFailure:async(r,error)=>markResourceFailure(r,jobId,error,'RESOURCE_FAILURE',true,{taskKind:'manager',pro
