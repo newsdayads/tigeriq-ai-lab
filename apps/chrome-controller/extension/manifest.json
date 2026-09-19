@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "TigerIQ Chrome Controller",
-  "version": "1.1.6",
+  "version": "1.1.7",
   "description": "Window-bound TigerIQ browser worker bridge",
   "permissions": [
     "storage",
