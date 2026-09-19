@@ -174,6 +174,7 @@ export function parseMutationEnvelope(raw: string, allowedPaths: Set<string>, ma
 }
 
 export class DurableWorkforceRuntime {
+  private readonly microTimingStore = new Map<string, { queuedAt?: number; claimedAt?: number; workingAt?: number; evidenceAt?: number; doneAt?: number }>();
   readonly #adapters = new Map<WorkerKind, WorkerAdapter>();
   readonly #store?: WorkforceStateStore;
   #checkpointChain: Promise<void> = Promise.resolve();
