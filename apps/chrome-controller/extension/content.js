@@ -161,36 +161,80 @@ function fillComposer(element, text) {
   }
 }
 
-function findSendButton() {
-  const selectors = [
+function findSendButton(composer) {
+  const scopedRoots = [composer?.closest?.('form'), composer?.parentElement].filter(Boolean);
+  const scopedSelectors = [
+    'button[data-testid="send-button"]',
+    'button[type="submit"]',
+    'button[aria-label*="Send" i]',
+    'button[aria-label*="Gửi" i]',
+    'button[aria-label*="submit" i]'
+  ];
+  const globalSelectors = [
     'button[data-testid="send-button"]',
     'button[aria-label*="Send" i]',
     'button[aria-label*="Gửi" i]',
     'button[aria-label*="submit" i]'
   ];
-  for (const selector of selectors) {
-    const match = Array.from(document.querySelectorAll(selector)).find((el) => visible(el) && !el.disabled && el.getAttribute('aria-disabled') !== 'true');
-    if (match) return match;
+  for (const root of scopedRoots) {
+    for (const selector of scopedSelectors) {
+      const matches = Array.from(root.querySelectorAll(selector)).filter((el) => visible(el) && !el.disabled && el.getAttribute('aria-disabled') !== 'true');
+      if (matches.length === 1) return matches[0];
+    }
+  }
+  for (const selector of globalSelectors) {
+    const matches = Array.from(document.querySelectorAll(selector)).filter((el) => visible(el) && !el.disabled && el.getAttribute('aria-disabled') !== 'true');
+    if (matches.length === 1) return matches[0];
   }
   return null;
+}
+function composerText(element) {
+  if (element instanceof HTMLTextAreaElement || element instanceof HTMLInputElement) return String(element.value || '').trim();
+  return String(element?.innerText || element?.textContent || '').trim();
+}
+function submittedPromptVisible(expectedText) {
+  if (location.hostname !== 'chatgpt.com') return false;
+  return Array.from(document.querySelectorAll('[data-message-author-role="user"]'))
+    .some((el) => visible(el) && String(el.textContent || '').trim() === expectedText.trim());
 }
 
 function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 
+async function waitForSubmissionEvidence(expectedText, timeoutMs = 4000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await sleep(100);
+    const blocked = detectSecurityBlock();
+    if (blocked) return { ok: false, status: blocked };
+    if (detectUiBusy()) return { ok: true, evidence: 'UI_BUSY' };
+    if (submittedPromptVisible(expectedText)) return { ok: true, evidence: 'USER_MESSAGE_VISIBLE' };
+    const currentComposer = findComposer();
+    if (currentComposer && composerText(currentComposer) === '') return { ok: true, evidence: 'COMPOSER_CLEARED' };
+  }
+  return { ok: false, status: 'SUBMIT_EVIDENCE_MISSING' };
+}
+
 async function dispatch(text) {
   const blocked = detectSecurityBlock();
   if (blocked) return { ok: false, status: blocked };
-  if (!text.trim()) return { ok: false, status: 'EMPTY_WORK_ORDER' };
+  const expectedText = text.trim();
+  if (!expectedText) return { ok: false, status: 'EMPTY_WORK_ORDER' };
   const composer = findComposer();
   if (!composer) return { ok: false, status: 'COMPOSER_NOT_FOUND' };
-  fillComposer(composer, text);
-  await sleep(1500);
-  const blockedAfterFill = detectSecurityBlock();
-  if (blockedAfterFill) return { ok: false, status: blockedAfterFill };
-  const send = findSendButton();
-  if (!send) return { ok: false, status: 'SEND_BUTTON_NOT_FOUND' };
-  send.click();
-  return { ok: true, status: 'SUBMITTED' };
+  if (composerText(composer) !== expectedText) fillComposer(composer, text);
+  const deadline = Date.now() + 4000;
+  while (Date.now() < deadline) {
+    await sleep(200);
+    const blockedAfterFill = detectSecurityBlock();
+    if (blockedAfterFill) return { ok: false, status: blockedAfterFill };
+    const send = findSendButton(composer);
+    if (!send) continue;
+    send.click();
+    const submitted = await waitForSubmissionEvidence(expectedText);
+    if (!submitted.ok) return submitted;
+    return { ok: true, status: 'SUBMITTED', evidence: submitted.evidence };
+  }
+  return { ok: false, status: 'SEND_BUTTON_NOT_FOUND' };
 }
 
 function normalizedText(element) {

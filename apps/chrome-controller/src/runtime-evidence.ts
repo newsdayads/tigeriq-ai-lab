@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+import { existsSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { WORKER_IDS, computePlacements, workAreaFitsLayout, type ControllerConfig, type WindowPlacement, type WorkArea, type WorkerId } from './model.js';
 import type { DurableAutopilotState, ExternalAutopilotSnapshot } from './autopilot.js';
 import type { UiJobRecord } from './job-ledger.js';
@@ -26,6 +28,45 @@ export interface RuntimeEvidenceInput {
   startupReady: boolean;
   interactiveSession?: boolean;
   sessionName?: string | null;
+}
+
+export interface AtomicJsonFileOps {
+  write(path:string, content:string):void;
+  rename(from:string, to:string):void;
+  exists(path:string):boolean;
+  unlink(path:string):void;
+  sleep(ms:number):void;
+  tempId():string;
+}
+
+const defaultAtomicJsonFileOps:AtomicJsonFileOps = {
+  write:(path,content)=>writeFileSync(path,content,'utf8'),
+  rename:(from,to)=>renameSync(from,to),
+  exists:(path)=>existsSync(path),
+  unlink:(path)=>unlinkSync(path),
+  sleep:(ms)=>Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,ms),
+  tempId:()=>randomUUID(),
+};
+
+function atomicJsonErrorCode(error:unknown){
+  return error instanceof Error&&'code' in error?String((error as NodeJS.ErrnoException).code??''):'';
+}
+
+export function atomicWriteJsonWithRetry(path:string,value:unknown,ops:AtomicJsonFileOps=defaultAtomicJsonFileOps,maxRetries=3){
+  const temp=`${path}.${process.pid}.${ops.tempId()}.tmp`;
+  ops.write(temp,`${JSON.stringify(value,null,2)}\n`);
+  try{
+    for(let attempt=0;;attempt++){
+      try{ops.rename(temp,path);return;}
+      catch(error){
+        const code=atomicJsonErrorCode(error);
+        if(!['EPERM','EBUSY'].includes(code)||attempt>=maxRetries)throw error;
+        ops.sleep(20*(attempt+1));
+      }
+    }
+  }finally{
+    if(ops.exists(temp)){try{ops.unlink(temp);}catch{}}
+  }
 }
 
 export function buildRuntimeEvidence(input: RuntimeEvidenceInput, now = new Date()) {
@@ -67,6 +108,8 @@ export function buildRuntimeEvidence(input: RuntimeEvidenceInput, now = new Date
       lastEvidenceRef: input.autopilot.lastEvidenceRef ?? null,
       pendingJobId: input.autopilot.pendingJobId ?? null,
       uncertainJobId: input.autopilot.uncertainJobId ?? null,
+      dispatchFailureClass: input.autopilot.dispatchFailureClass ?? null,
+      retryAt: input.autopilot.retryAt ?? null,
       externalSnapshot: input.snapshot ? {
         source: input.snapshot.source,
         observedAt: input.snapshot.observedAt,
