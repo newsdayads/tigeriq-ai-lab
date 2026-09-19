@@ -4,7 +4,8 @@ import { resolve } from 'node:path';
 export const WORKER_IDS = ['NV02', 'NV03', 'NV04'] as const;
 export type WorkerId = (typeof WORKER_IDS)[number];
 
-export interface ModelProfileState { name: string; thinkingEffort: string; verified: boolean; verifiedAt?: string; blocked?: boolean; reason?: string } export interface WorkerConfig { id:WorkerId; role:string; homeUrl:string; profileDirectory:string; enabled?:boolean; userDataDir?:string; debugPort?:number }
+export interface ModelProfileState { name: string; thinkingEffort: string; verified: boolean; verifiedAt?: string; blocked?: boolean; reason?: string }
+export interface WorkerConfig { id:WorkerId; role:string; homeUrl:string; profileDirectory:string; enabled?:boolean; userDataDir?:string; debugPort?:number; modelProfile?: string; modelProfileVerifiedAt?: string; thinkingEffort?: string }
 export interface LayoutConfig { width:number; height:number; gap:number; rightMargin:number; top:number; fallbackWorkAreaWidth:number; fallbackWorkAreaLeft:number }
 export interface PacingConfig { betweenWorkerLaunchMs:number; postReadySettlingMs:number; minUiActionGapMs:number; commandTimeoutMs:number; workerReadyTimeoutMs:number; maxRetries:number; retryBackoffMs:number }
 export interface AutopilotConfig { enabled:boolean; pollIntervalMs:number; stateUrl?:string; requestTimeoutMs:number; maxSnapshotAgeMs:number; dispatchLeaseTtlMs?:number }
