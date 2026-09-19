@@ -47,6 +47,7 @@ type WorkerState = {
   windowEventAt?:string;
   lastWindowId?:number;
   manualCloseSuppressed?:boolean;
+  modelProfile?:{model:string;thinking:string;verifiedAt:string};
 };
 type Waiter = {
   workerId:WorkerId;
@@ -91,7 +92,7 @@ const controllerInstanceId=randomUUID();
 const dispatchLease=new DurableDispatchLeaseStore(dispatchLeasePath,controllerInstanceId,config.autopilot.dispatchLeaseTtlMs??300000);
 const browserMutationLeases=new BrowserMutationLeaseStore(browserMutationLeasePath);
 const uiJobLedger=new DurableUiJobLedger(uiJobLedgerPath);
-const pageMutationActions=new Set(['NAVIGATE','DISPATCH','ARCHIVE_CHAT','CLOSE_WINDOW']);
+const pageMutationActions=new Set(['NAVIGATE','MODEL_PREFLIGHT','DISPATCH','ARCHIVE_CHAT','CLOSE_WINDOW']);
 
 function log(event:string,data:Record<string,unknown>={}){
   const line=JSON.stringify({ts:new Date().toISOString(),event,...data});
@@ -378,6 +379,14 @@ async function dispatch(
     try{
       assertWorkerEnabled(workerId);
       if(navigate)await runWithRetry(`navigate:${workerId}`,()=>sendCommand(workerId,'NAVIGATE',{url:worker.homeUrl}));
+      if(workerId==='NV02'){
+        const raw=await sendCommand(workerId,'MODEL_PREFLIGHT');
+        const profile=raw as {ok?:boolean;status?:string;model?:string;thinking?:string;verifiedAt?:string};
+        if(profile?.ok!==true||profile.model!=='GPT-5.6 Sol'||profile.thinking!=='high'||!profile.verifiedAt)throw new Error(`MODEL_PROFILE_BLOCKED:${profile?.status||'EVIDENCE_MISMATCH'}`);
+        states.get(workerId)!.modelProfile={model:profile.model,thinking:profile.thinking,verifiedAt:profile.verifiedAt};
+        log('MODEL_PROFILE_VERIFIED',{workerId,jobId:job.jobId,model:profile.model,thinking:profile.thinking,verifiedAt:profile.verifiedAt});
+        persistEvidence();
+      }
       const result=await sendCommand(workerId,'DISPATCH',{text});
       states.get(workerId)!.status='SUBMITTED';
       states.get(workerId)!.lastError=undefined;
@@ -819,7 +828,7 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
     const commandId=String(data.commandId??'');
     const workerId=data.workerId as WorkerId;
     const waiter=waiters.get(commandId);
-    if(String(data.status??'').startsWith('BLOCKED')){
+    if(String(data.status??'').startsWith('BLOCKED')||String(data.status??'').includes('MODEL_PROFILE_BLOCKED')){
       const state=states.get(workerId);
       if(state){state.blocked=true;if(state.enabled)state.status='BLOCKED';state.lastError=String(data.status);}
       if(workerId==='NV02')stopAutopilot(String(data.status));
