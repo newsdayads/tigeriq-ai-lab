@@ -53,6 +53,8 @@ export function deriveNv02Phase(ui,{heartbeatStale=false}={}){
   if(ui?.securityBlock)return 'BLOCKED';
   if(heartbeatStale)return 'STALLED';
   if(ui?.stopVisible===true||ui?.uiBusy===true)return 'WORKING';
+  if(ui?.modelReady===false)return 'STALLED';
+  if(String(ui?.uiPhase||'').toUpperCase()==='STALLED')return 'STALLED';
   if(ui?.composerReady===true&&ui?.authRequired!==true)return 'READY';
   return 'STALLED';
 }
