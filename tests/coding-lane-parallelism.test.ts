@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-// @ts-expect-error TigerIQ Coding Lane is an ESM JavaScript module without a declaration file.\nimport { normalizeCodingParallelLimit } from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+// @ts-expect-error TigerIQ Coding Lane is an ESM JavaScript module without a declaration file.
+import { normalizeCodingParallelLimit } from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 
 describe('Coding Lane parallel execution cap', () => {
   it('defaults to the three slots exposed by Core', () => {
