@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import {activeProviderCooldownIds,applyCompactEdits,assertPrOpenState,classifyAiFailure,gateFailureIssues,invokeJsonWithFailover,isResourceTransientError,resourceWaitPlan,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,validateCompactEdits} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {activeProviderCooldownIds,applyCompactEdits,assertPrOpenState,buildLocalFileContext,classifyAiFailure,gateFailureIssues,invokeJsonWithFailover,isResourceTransientError,resourceWaitPlan,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,validateCompactEdits} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError,parseJsonObject} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 const nv11={id:'NV11',provider:'fake',model:'a'};
@@ -224,6 +224,14 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
     assert.strictEqual(validateCompactEdits(edits,[path]),true);
     assert.strictEqual(applyCompactEdits('before JSON.stringify(stateData) after',edits),'before stateData after');
     assert.throws(()=>applyCompactEdits('JSON.stringify(stateData) + JSON.stringify(stateData)',edits),/CODING_COMPACT_EDIT_OLD_NOT_UNIQUE/);
+  });
+
+  await t.test('local generation context preserves the full existing file tail for safe compact expansion',()=>{
+    const content='HEAD\n'+'.'.repeat(60000)+'\nTAIL';
+    const context=buildLocalFileContext([{path:'apps/large.mjs',content}]);
+    assert.ok(context.includes('FILE apps/large.mjs'));
+    assert.ok(context.includes('TAIL'));
+    assert.ok(context.length>60000);
   });
 
   await t.test('compact repair remains fail-closed outside allowed scope',()=>{
