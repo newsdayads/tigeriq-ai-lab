@@ -52,7 +52,7 @@ describe('durable autonomous work handoff',()=>{
     expect(evaluateChildObjectiveStates(ids,[{id:ids[0],status:'blocked',summary:'gate'}]).state).toBe('blocked');
   });
 
-  it('wires persistence, reconciliation and final-phase handoff into the real Core',()=>{
+  it('projects normalized Core WorkItem V1 correctly across canonical stages and state-mapping',()=>{
     const core=readFileSync('apps/tigeriq-core/core.mjs','utf8');
     expect(core).toContain('async function reconcileAutonomousHandoff');
     expect(core).toContain('async function persistTerminalHandoff');
@@ -62,5 +62,26 @@ describe('durable autonomous work handoff',()=>{
     expect(core).toContain('terminalHandoffInstruction');
     expect(core).toContain("handoff?.state!=='waiting_children'");
     expect(core).toContain("case when o.metadata#>>'{handoff,state}'='waiting_children' then 1 else 0 end");
+  });
+
+  it('maps objectives, jobs, and events to WorkItem V1 projection cleanly', async () => {
+    const {normalizeCoreWorkItemV1} = await import('../apps/tigeriq-core/work-handoff.mjs');
+    const item = normalizeCoreWorkItemV1({
+      objective: { id: 'OBJ-123', status: 'in_progress', summary: 'Working on feature', scope_resource_key: 'app' },
+      jobs: [{ id: 'JOB-1', status: 'running', title: 'Task' }],
+      events: []
+    });
+    expect(item.workItemId).toBe('OBJ-123');
+    expect(item.stage).toBe('WORKING');
+    expect(item.scopeLease.resourceKey).toBe('app');
+    expect(item.blockers).toHaveLength(0);
+
+    const blockedItem = normalizeCoreWorkItemV1({
+      objective: { id: 'OBJ-456', status: 'blocked', summary: 'Gate failed' },
+      jobs: [{ id: 'JOB-2', status: 'failed', failure: 'Out of memory' }],
+      events: []
+    });
+    expect(blockedItem.stage).toBe('BLOCKED');
+    expect(blockedItem.blockers.length).toBeGreaterThan(0);
   });
 });
