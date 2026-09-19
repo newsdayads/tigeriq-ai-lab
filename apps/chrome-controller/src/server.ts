@@ -509,6 +509,14 @@ async function autopilotTick(){
       primary.blocked=true;primary.status='BLOCKED';primary.lastError=uiSecurity;
       stopAutopilot(uiSecurity);log('AUTOPILOT_SECURITY_STOP',{workerId:'NV02',status:uiSecurity});persistEvidence();return;
     }
+    const modelProfile=verifyModelProfileState(primary.lastHeartbeat as any);
+    (autopilotState as any).modelProfileVerification=modelProfile;
+    if(!modelProfile.verified){
+      primary.blocked=true;primary.status='MODEL_PROFILE_BLOCKED';primary.lastError='MODEL_PROFILE_BLOCKED';
+      stopAutopilot('MODEL_PROFILE_BLOCKED');
+      log('AUTOPILOT_MODEL_PROFILE_BLOCKED',{workerId:'NV02',modelProfile});
+      persistEvidence();return;
+    }
     if(autopilotState.lastDispatchedJobId&&primary.lastHeartbeat?.uiBusy!==false){
       setAutopilotPhase('BUSY');
       log('AUTOPILOT_WAIT_UI_BUSY',{workerId:'NV02',uiBusy:primary.lastHeartbeat?.uiBusy??null,lastDispatchedJobId:autopilotState.lastDispatchedJobId});
