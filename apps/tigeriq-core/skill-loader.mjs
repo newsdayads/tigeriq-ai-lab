@@ -36,7 +36,8 @@ export function parseSkillRegistry(raw) {
     if (!current.id || !SKILL_ID_RE.test(current.id)) throw new Error('SKILL_REGISTRY_MALFORMED:SKILL_ID');
     if (!ALLOWED_STATES.has(current.state)) throw new Error(`SKILL_REGISTRY_MALFORMED:STATE:${current.id}`);
     if (current.origin === 'external') {
-      if (!current.provenance_url || current.audit_status !== 'PASSED' || current.installer_reviewed !== 'true' || !current.capabilities_declared) {
+      const isReviewed = current.installer_reviewed === 'true' || current.installer_reviewed === true;
+      if (!current.provenance_url || current.audit_status !== 'PASSED' || !isReviewed || !current.capabilities_declared) {
         throw new Error(`SKILL_REGISTRY_REJECTED:INCOMPLETE_EXTERNAL_METADATA:${current.id}`);
       }
     }
