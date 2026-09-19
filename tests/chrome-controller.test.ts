@@ -1,6 +1,6 @@
 import { describe, it, expect, jest } from '@jest/globals';
-import { buildRuntimeEvidence, freshAutopilotState } from '../src/runtime-evidence.js';
-import { AUTO_CONTINUE, freshSnapshot, freshAutopilotState as freshAutopilotState, decideAutoContinue, classifyAutoContinueDispatchFailure } from '../src/autopilot.js';
+import { buildRuntimeEvidence, freshAutopilotState } from '../../apps/chrome-controller/src/runtime-evidence.js';
+import { AUTO_CONTINUE, freshSnapshot, freshAutopilotState as freshAutopilotState, decideAutoContinue, classifyAutoContinueDispatchFailure } from '../../apps/chrome-controller/src/autopilot.js';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
