@@ -72,6 +72,22 @@ async function hasOpenCodingDispatch(pool){
   return q.rowCount>0;
 }
 
+export async function acquireScopeLease(pool, scopeKey, holderId, ttlMs=600000){
+  const now=Date.now();
+  const expiresAt=new Date(now+ttlMs).toISOString();
+  await pool.query(`
+    insert into tigeriq_leases (scope_key, holder_id, expires_at, updated_at)
+    values ($1, $2, $3, to_timestamp($4/1000.0))
+    on conflict (scope_key) do update
+    set holder_id = excluded.holder_id,
+        expires_at = excluded.expires_at,
+        updated_at = excluded.updated_at
+    where tigeriq_leases.expires_at < to_timestamp($4/1000.0) or tigeriq_leases.holder_id = $2
+  `, [scopeKey, holderId, expiresAt, now]);
+  const res=await pool.query('select holder_id from tigeriq_leases where scope_key=$1', [scopeKey]);
+  return res.rows[0]?.holder_id===holderId;
+}
+
 async function dependencyGate(fetchImpl,owner,repo,token,dependsOn){
   for(const depNum of dependsOn){
     let depIssue;
@@ -85,137 +101,80 @@ export async function materializeGithubCodingIssues({pool,fetchImpl=fetch,owner=
   if(await hasOpenCodingDispatch(pool))return {created:0,active:1,considered:0};
   const issues=await gh(fetchImpl,owner,repo,'/issues?state=open&per_page=100&sort=updated&direction=desc',token);
   const specs=sortBacklogSpecs(issues.map(parseCodingIssue).filter(Boolean));
-  for(const spec of specs){
-    if(await markerExists(pool,'GITHUB_CODING_DISPATCHED',spec.number))continue;
-    const gate=await dependencyGate(fetchImpl,owner,repo,token,spec.dependsOn);
-    if(!gate.ok){
-      if(!(await markerExists(pool,'GITHUB_CODING_DEPENDENCY_WAIT',spec.number)))await mark(pool,'GITHUB_CODING_DEPENDENCY_WAIT',{issueNumber:spec.number,dependsOn:spec.dependsOn,...gate});
-      console.warn(JSON.stringify({event:'GITHUB_CODING_DEPENDENCY_WAIT',issueNumber:spec.number,dependsOn:spec.dependsOn,...gate}));
-      continue;
-    }
-    if(spec.dependsOn.length&&await markerExists(pool,'GITHUB_CODING_DEPENDENCY_WAIT',spec.number)&&!(await markerExists(pool,'GITHUB_DEPENDENCY_RELEASED',spec.number))){
-      await mark(pool,'GITHUB_DEPENDENCY_RELEASED',{issueNumber:spec.number,dependsOn:spec.dependsOn});
-      console.log(JSON.stringify({event:'GITHUB_DEPENDENCY_RELEASED',issueNumber:spec.number,dependsOn:spec.dependsOn}));
-    }
-    const objective=`GitHub autonomous coding issue #${spec.number}: ${spec.title}\n${spec.url}\n\n${spec.body}\n\nExecute only zero-cost reversible repository work. Keep direct main writes, paid cost, credentials/security, destructive actions, production release, browser authentication and PC01 source editing blocked.`;
-    const out=await jsonFetch(fetchImpl,`${codingLaneUrl.replace(/\/$/,'')}/api/objectives`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({objective,priority:spec.priority})});if(!out?.id)throw new Error('CODING_OBJECTIVE_ID_MISSING');
-    const dispatchReason=spec.ownerDirect?`OWNER_DIRECT>${spec.sourcePriority}`:`PRIORITY_${spec.sourcePriority}`;
-    await mark(pool,'GITHUB_CODING_DISPATCHED',{issueNumber:spec.number,issueUrl:spec.url,codingObjectiveId:out.id,ownerDirect:spec.ownerDirect,sourcePriority:spec.sourcePriority,dispatchPriority:spec.priority,dispatchReason});
-    await comment(fetchImpl,owner,repo,spec.number,token,`[CLAIM] TigerIQ Coding Lane accepted this issue as ${out.id}. Automatic coding pipeline is active. Dispatch: ${dispatchReason}.`);
-    return {created:1,active:0,considered:specs.length,issueNumber:spec.number,codingObjectiveId:out.id};
-  }
-  return {created:0,active:0,considered:specs.length};
-}
-
-export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token='',codingLaneUrl=process.env.TIGERIQ_CODING_LANE_URL||DEFAULT_CODING_URL,now=()=>Date.now()}){
-  const rows=(await pool.query("select data from tigeriq_events where type='GITHUB_CODING_DISPATCHED' order by seq desc limit 100")).rows;
-  if(!rows.length)return {progress:0,results:0};
-  const status=await jsonFetch(fetchImpl,`${codingLaneUrl.replace(/\/$/,'')}/api/status`);
-  let progress=0,results=0;
-  const seenIssues=new Set();
-  let retryCreatedThisTick=false;
-  for(const row of rows){
-    const n=Number(row.data?.issueNumber),id=String(row.data?.codingObjectiveId||'');
-    if(!n||!id||seenIssues.has(n))continue;
-    seenIssues.add(n);
-    if(await hasCompletedCodingResult(pool,n)||await markerExists(pool,'GITHUB_CODING_BLOCKED_FINAL',n))continue;
-    const objective=(status.objectives||[]).find(x=>x.id===id);
-    if(!objective)continue;
-    const job=(status.jobs||[]).find(x=>x.objective_id===id);
-    if(job&&!(await markerExists(pool,'GITHUB_CODING_PROGRESS_REPORTED',n))){
-      const pr=job.pr_number?` PR #${job.pr_number}.`:'';
-      await comment(fetchImpl,owner,repo,n,token,`[PROGRESS] ${id} is ${job.status}. Implementer: ${job.employee_id||'pending'}; reviewer: ${job.reviewer_employee_id||'pending'}.${pr}`);
-      await mark(pool,'GITHUB_CODING_PROGRESS_REPORTED',{issueNumber:n,codingObjectiveId:id,jobId:job.id,prNumber:job.pr_number||null});
-      progress++;
-    }
-    if(!objectiveTerminal(objective))continue;
-    if(String(objective.status).toLowerCase()==='completed'){
-      if(!(await hasCompletedCodingResult(pool,n))){
-        await comment(fetchImpl,owner,repo,n,token,`[RESULT] ${id} completed. ${String(objective.summary||'').slice(0,3000)}`);
-        await close(fetchImpl,owner,repo,n,token);
-        await mark(pool,'GITHUB_CODING_RESULT_REPORTED',{issueNumber:n,codingObjectiveId:id,status:'completed'});
-        results++;
-      }
-      continue;
-    }
-
-    let currentIssue;
-    try{currentIssue=await gh(fetchImpl,owner,repo,`/issues/${n}`,token)}catch(error){
-      console.warn(JSON.stringify({event:'GITHUB_CODING_RETRY_RECONCILE_WAIT',issueNumber:n,codingObjectiveId:id,error:String(error?.message||error)}));
-      continue;
-    }
-    const finalize=async(reason,evidence={})=>{
-      if(await markerExists(pool,'GITHUB_CODING_BLOCKED_FINAL',n))return false;
-      await mark(pool,'GITHUB_CODING_BLOCKED_FINAL',{issueNumber:n,codingObjectiveId:id,status:'blocked',reason,...evidence});
-      await comment(fetchImpl,owner,repo,n,token,`[BLOCKED_FINAL] ${id} reason=${reason}. ${String(objective.summary||'').slice(0,2000)}`);
-      results++;
-      return true;
+  
+...[MODEL_CONTEXT_REDUCED]...
+G_COMPACT_EDIT_INVALID'},
+        {id:'obj-806',status:'blocked',summary:'CODING_COMPACT_EDIT_INVALID'}
+      ],jobs:[]});
+      if(url.includes('/api/objectives')){posted++;return response({id:`obj-retry-${posted}`});}
+      if(url.includes('/issues/805'))return response(issue(SAFE,{number:805}));
+      if(url.includes('/issues/806'))return response(issue(SAFE,{number:806}));
+      if(url.includes('/comments'))return response({});
+      return response({});
     };
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake',now:()=>1000});
+    expect(posted).toBe(1);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_RETRY_DISPATCHED')).toHaveLength(1);
+  });
 
-    if(issueSuperseded(currentIssue)){
-      await finalize('ISSUE_CLOSED_OR_SUPERSEDED',{issueState:String(currentIssue?.state||'unknown')});
-      continue;
-    }
-    const spec=parseCodingIssue(currentIssue);
-    if(!spec){
-      await finalize('ISSUE_NO_LONGER_EXECUTABLE');
-      continue;
-    }
-    const classification=classifyCodingBlocker(objective.summary);
-    if(classification.kind==='HARD'){
-      await finalize('HARD_BLOCKER',{terminalReason:classification.reason});
-      continue;
-    }
+  it('resumes idempotently after restart between retry POST and durable dispatch markers',async()=>{
+    const pool=fakePool();
+    pool.events.push(
+      {type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:804,codingObjectiveId:'obj-804'}},
+      {type:'GITHUB_CODING_RETRY_SCHEDULED',data:{issueNumber:804,priorObjectiveId:'obj-804',retryAttempt:1,reason:'CODING_COMPACT_EDIT_INVALID',transient:false,nextAt:new Date(0).toISOString()}}
+    );
+    const current=issue(SAFE,{number:804});
+    let posted=0;
+    const existingRetry={id:'obj-existing-retry',status:'queued',objective:'RETRY_KEY=GITHUB-ISSUE-804-RETRY-1 issue #804'};
+    const fetchImpl=async(url)=>{
+      if(url.includes('/api/status'))return response({objectives:[{id:'obj-804',status:'blocked',summary:'CODING_COMPACT_EDIT_INVALID'},existingRetry],jobs:[]});
+      if(url.includes('/api/objectives')){posted++;return response({id:'unexpected'});}
+      if(url.includes('/issues/804'))return response(current);
+      if(url.includes('/comments'))return response({});
+      return response({});
+    };
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake',now:()=>1000});
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake',now:()=>1000});
+    expect(posted).toBe(0);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_RETRY_DISPATCHED')).toHaveLength(1);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_DISPATCHED')).toHaveLength(2);
+  });
+});
 
-    const retryDispatched=await eventData(pool,'GITHUB_CODING_RETRY_DISPATCHED',n);
-    const retryCount=retryDispatched.length;
-    if(retryCount>=MAX_AUTO_RETRIES){
-      await finalize('RETRY_BUDGET_EXHAUSTED',{terminalReason:classification.reason,retries:retryCount});
-      continue;
+it('coding backlog serializes three issues by OWNER_DIRECT then priority',async()=>{
+  const pool=fakePool(); const posted=[];
+  const withFlags=(number,priority,ownerDirect=false)=>issue(`${SAFE.replace('PRIORITY=P1',`PRIORITY=${priority}`)}${ownerDirect?'\nOWNER_DIRECT=true':''}`,{number,title:`Issue ${number}`});
+  const issues=[
+    withFlags(30,'P0',false),
+    withFlags(20,'P2',true),
+    withFlags(10,'P1',true),
+  ];
+  const fetchImpl=async(url,init={})=>{
+    if(url.includes('/issues?'))return response(issues);
+    if(url.includes('/api/objectives')){
+      const payload=JSON.parse(init.body);
+      posted.push(payload.objective);
+      return response({id:`obj-${posted.length}`});
     }
+    if(url.includes('/comments'))return response({});
+    return response({});
+  };
 
-    const retryAttempt=retryCount+1;
-    const retryKey=`GITHUB-ISSUE-${n}-RETRY-${retryAttempt}`;
-    let retryObjective=(status.objectives||[]).find(x=>String(x.objective||'').includes(`RETRY_KEY=${retryKey}`));
-    const otherActiveForIssue=(status.objectives||[]).some(x=>x.id!==id&&x.id!==retryObjective?.id&&!objectiveTerminal(x)&&objectiveMentionsIssue(x,n));
-    if(otherActiveForIssue)continue;
-    if(!retryObjective){
-      const blockedByActiveOwner=await activeCodingOwnerBlocksRetry({pool,status,fetchImpl,owner,repo,token,excludeObjectiveIds:[id]});
-      if(blockedByActiveOwner||retryCreatedThisTick)continue;
-    }
+  let out=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake'});
+  expect(out.issueNumber).toBe(10);
+  expect(posted[0]).toContain('#10');
 
-    let scheduled=(await eventData(pool,'GITHUB_CODING_RETRY_SCHEDULED',n)).find(x=>Number(x.retryAttempt)===retryAttempt);
-    if(!scheduled){
-      const delayMs=classification.transient?PROVIDER_RETRY_BASE_MS*(2**(retryAttempt-1)):0;
-      const nextAt=new Date(Number(now())+delayMs).toISOString();
-      scheduled={issueNumber:n,priorObjectiveId:id,retryAttempt,reason:classification.reason,transient:classification.transient,nextAt};
-      await mark(pool,'GITHUB_CODING_RETRY_SCHEDULED',scheduled);
-      await comment(fetchImpl,owner,repo,n,token,`[RETRY_SCHEDULED] prior=${id} attempt=${retryAttempt}/${MAX_AUTO_RETRIES} nextAt=${nextAt} reason=${classification.reason.slice(0,500)}`);
-      results++;
-    }
-    const nextAtMs=Date.parse(String(scheduled.nextAt||''));
-    if(Number.isFinite(nextAtMs)&&Number(now())<nextAtMs)continue;
+  out=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake'});
+  expect(out.created).toBe(0);
+  expect(out.active).toBe(1);
 
-    if(!retryObjective){
-      const objectiveText=`GitHub autonomous coding retry ${retryAttempt}/${MAX_AUTO_RETRIES} for issue #${spec.number}: ${spec.title}\n${spec.url}\n\nRETRY_KEY=${retryKey}\nSOURCE_BASE=CURRENT_MAIN\nPRIOR_OBJECTIVE_ID=${id}\nPRIOR_FAILURE=${classification.reason.slice(0,1000)}\n\n${spec.body}\n\nStart from current main HEAD. Reuse the same canonical allowed scope and the existing collision-safe mutation envelope. Do not open a parallel repair issue. Execute only zero-cost reversible repository work. Keep direct main writes, paid cost, credentials/security, destructive actions, production release, browser authentication and PC01 source editing blocked.`;
-      const out=await jsonFetch(fetchImpl,`${codingLaneUrl.replace(/\/$/,'')}/api/objectives`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({objective:objectiveText,priority:spec.priority})});
-      if(!out?.id)throw new Error('CODING_RETRY_OBJECTIVE_ID_MISSING');
-      retryObjective={id:out.id,objective:objectiveText,status:'queued'};
-      retryCreatedThisTick=true;
-    }
+  pool.events.push({type:'GITHUB_CODING_RESULT_REPORTED',data:{issueNumber:10,status:'completed'}});
+  out=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake'});
+  expect(out.issueNumber).toBe(20);
+  expect(posted[1]).toContain('#20');
 
-    const alreadyDispatched=(await eventData(pool,'GITHUB_CODING_RETRY_DISPATCHED',n)).some(x=>Number(x.retryAttempt)===retryAttempt);
-    if(!alreadyDispatched){
-      const dispatchReason=spec.ownerDirect?`OWNER_DIRECT>${spec.sourcePriority}`:`PRIORITY_${spec.sourcePriority}`;
-      await mark(pool,'GITHUB_CODING_RETRY_DISPATCHED',{issueNumber:n,codingObjectiveId:retryObjective.id,priorObjectiveId:id,retryAttempt,retryKey,reason:classification.reason});
-      await mark(pool,'GITHUB_CODING_DISPATCHED',{issueNumber:n,issueUrl:spec.url,codingObjectiveId:retryObjective.id,ownerDirect:spec.ownerDirect,sourcePriority:spec.sourcePriority,dispatchPriority:spec.priority,dispatchReason,retryAttempt,retryKey,priorObjectiveId:id});
-      await comment(fetchImpl,owner,repo,n,token,`[RETRY_DISPATCHED] ${retryObjective.id} prior=${id} attempt=${retryAttempt}/${MAX_AUTO_RETRIES} reason=${classification.reason.slice(0,500)}`);
-      results++;
-    }
-  }
-  return {progress,results};
-}
-
-export function startGithubCodingIntake({databaseUrl=process.env.DATABASE_URL,fetchImpl=fetch,owner=process.env.TIGERIQ_GITHUB_OWNER||DEFAULT_OWNER,repo=process.env.TIGERIQ_GITHUB_REPO||DEFAULT_REPO,token=process.env.TIGERIQ_GITHUB_TOKEN||process.env.GITHUB_TOKEN||'',codingLaneUrl=process.env.TIGERIQ_CODING_LANE_URL||DEFAULT_CODING_URL,intervalMs=Number(process.env.TIGERIQ_GITHUB_INTAKE_MS||DEFAULT_INTERVAL_MS),initialDelayMs=20000}={}){
-  if(!databaseUrl)return {enabled:false,stop(){}};const pool=new Pool({connectionString:databaseUrl,max:1});let stopped=false,busy=false,timer=null,interval=null;const tick=async()=>{if(stopped||busy)return;busy=true;try{const b=await syncGithubCodingOutcomes({pool,fetchImpl,owner,repo,token,codingLaneUrl});const a=await materializeGithubCodingIssues({pool,fetchImpl,owner,repo,token,codingLaneUrl});if(a.created||b.progress||b.results)console.log(JSON.stringify({event:'GITHUB_CODING_INTAKE_SYNC',created:a.created,progress:b.progress,results:b.results,active:a.active||0,issueNumber:a.issueNumber||null}))}catch(e){console.error(JSON.stringify({event:'GITHUB_CODING_INTAKE_ERROR',error:String(e?.message||e)}))}finally{busy=false}};timer=setTimeout(()=>{void tick();interval=setInterval(()=>void tick(),Math.max(60000,intervalMs));interval.unref?.()},Math.max(1000,initialDelayMs));timer.unref?.();return {enabled:true,async stop(){stopped=true;if(timer)clearTimeout(timer);if(interval)clearInterval(interval);await pool.end()}};
-}
+  pool.events.push({type:'GITHUB_CODING_RESULT_REPORTED',data:{issueNumber:20,status:'completed'}});
+  out=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake'});
+  expect(out.issueNumber).toBe(30);
+  expect(posted[2]).toContain('#30');
+});
