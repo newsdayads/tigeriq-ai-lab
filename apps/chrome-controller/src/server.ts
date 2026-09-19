@@ -17,6 +17,7 @@ import { delay, SerialQueue } from './serial-queue.js';
 import {
   AUTO_CONTINUE,
   classifyAutoContinueDispatchFailure,
+  canResetOrphanUnpersistedDispatch,
   decideAutoContinue,
   freshAutopilotState,
   selectFreshCompletionEvidence,
@@ -482,12 +483,16 @@ async function autopilotTick(){
     if(!latestSnapshot){setAutopilotPhase('IDLE');persistEvidence();return;}
     reconcileCompletedUiJobFromSnapshot();
     if(autopilotState.uncertainJobId){
-      const uncertain=uiJobLedger.get('NV02',autopilotState.uncertainJobId);
-      if(uncertain?.stage==='ERROR'&&classifyAutoContinueDispatchFailure(new Error(uncertain.blocker??''),false)==='SAFE_RETRY'){
-        dispatchLease.resetKnownNotDelivered(uncertain.jobId,Date.now(),0);
+      const uncertainJobId=autopilotState.uncertainJobId;
+      const uncertain=uiJobLedger.get('NV02',uncertainJobId);
+      const leaseState=dispatchLease.read();
+      const knownNotDelivered=uncertain?.stage==='ERROR'&&classifyAutoContinueDispatchFailure(new Error(uncertain.blocker??''),false)==='SAFE_RETRY';
+      const orphanBeforeLedgerCommit=canResetOrphanUnpersistedDispatch(uncertainJobId,Boolean(uncertain),leaseState.lease,Date.now());
+      if(knownNotDelivered||orphanBeforeLedgerCommit){
+        dispatchLease.resetKnownNotDelivered(uncertainJobId,Date.now(),0);
         autopilotState={...clearPending(autopilotState),phase:'IDLE',uncertainJobId:undefined,dispatchFailureClass:'SAFE_RETRY',retryAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
         persistAutopilotState();
-        log('AUTO_CONTINUE_UNCERTAIN_RECLASSIFIED_SAFE_RETRY',{jobId:uncertain.jobId,priorBlocker:uncertain.blocker});
+        log(orphanBeforeLedgerCommit?'AUTO_CONTINUE_ORPHAN_PRE_DISPATCH_RECOVERED':'AUTO_CONTINUE_UNCERTAIN_RECLASSIFIED_SAFE_RETRY',{jobId:uncertainJobId,priorBlocker:uncertain?.blocker??null,leaseState:leaseState.lease?.state??null});
       }
     }
     const decision=decideAutoContinue(latestSnapshot,autopilotState,Date.now(),config.autopilot.maxSnapshotAgeMs);
