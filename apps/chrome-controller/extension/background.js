@@ -404,7 +404,6 @@ async function tickWorker(workerId) {
   await updateWorkerBadge(workerId, ctx);
   const ui=await readUiState(ctx);
   await post('/api/heartbeat',{workerId,state:ui.uiPhase||'STALLED',...ctx,...ui,display:await displayInfo(ctx.windowId)});
-  void maybeAutoArchive(workerId).catch(()=>{});
   const r=await fetch(`${CONTROLLER}/api/commands/${encodeURIComponent(workerId)}`); if(!r.ok) return;
   const {command}=await r.json();
   if(command){
