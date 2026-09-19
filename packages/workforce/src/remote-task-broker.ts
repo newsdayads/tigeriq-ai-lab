@@ -10,6 +10,7 @@ const PRIORITY_ORDER = { P0: 0, P1: 1, P2: 2, P3: 3 } as const;
 
 /** Bridges the canonical Workforce queue/scheduler to durable pull-based remote worker leases. */
 export class RemoteTaskBroker {
+  private readonly workerChannels = new Map<string, { socket?: any; activeJobId?: string; lastSeenMs: number }>();
   constructor(
     private readonly runtime: DurableWorkforceRuntime,
     private readonly mailbox: DurableTaskMailbox,
