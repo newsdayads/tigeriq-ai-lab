@@ -324,7 +324,7 @@ async function checkpointNv02(target){
     await waitForIdleAfterSubmission(target,45000,5000);
     await continuityEvent('CHECKPOINT_DURABLE',{receiptRef:receipt.receiptRef,checkpointRef:receipt.checkpointRef,verifiedAt:receipt.verifiedAt});
     return receipt;
-  },'CHECKPOINT_DURABLE',120000);
+  },'CHECKPOINT_DURABLE',180000);
 }
 async function rotateNv02Chat(target,state,now){
   const receipt=await checkpointNv02(target);
