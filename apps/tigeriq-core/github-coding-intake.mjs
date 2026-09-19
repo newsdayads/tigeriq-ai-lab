@@ -113,9 +113,11 @@ async function activeCodingDispatches(pool,laneStatus,{fetchImpl=fetch,owner=DEF
     if(!liveObjectiveIds.has(objectiveId))continue;
     try{
       const sourceIssue=await gh(fetchImpl,owner,repo,`/issues/${n}`,token);
-      if(issueSuperseded(sourceIssue)){
+      const sourceState=String(sourceIssue?.state||'').toLowerCase();
+      const explicitlySuperseded=sourceState==='open'&&issueSuperseded(sourceIssue);
+      if(sourceState==='closed'||explicitlySuperseded){
         if(!(await markerExists(pool,'GITHUB_CODING_STALE_SCOPE_IGNORED',n))){
-          await mark(pool,'GITHUB_CODING_STALE_SCOPE_IGNORED',{issueNumber:n,codingObjectiveId:objectiveId,sourceState:String(sourceIssue?.state||'unknown')});
+          await mark(pool,'GITHUB_CODING_STALE_SCOPE_IGNORED',{issueNumber:n,codingObjectiveId:objectiveId,sourceState:sourceState||'unknown'});
         }
         continue;
       }
