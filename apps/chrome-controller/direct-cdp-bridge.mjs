@@ -34,6 +34,8 @@ function loadNv02Continuity(){
     dispatchesInChat:Number(raw.dispatchesInChat)||0,
     chatStartedAt:Number(raw.chatStartedAt)||now,
     lastPhase:String(raw.lastPhase||'STALLED'),
+    workingSignature:String(raw.workingSignature||''),
+    workingUnchangedChecks:Number(raw.workingUnchangedChecks)||0,
   };
 }
 function saveNv02Continuity(state){
@@ -127,12 +129,16 @@ const UI_EXPR=`(()=>{
   const reasoningEffort=modelControl?.getAttribute('data-selected-reasoning-effort')||null;
   const modelReady=location.hostname!=='chatgpt.com'||Boolean(modelControl&&String(reasoningEffort||'').toLowerCase()==='high');
   const uiBusy=Boolean(stop||activityBusy);
+  const activityRoot=activityBusy?.closest?.('.block-BQZwFn')||activityBusy?.parentElement||null;
+  const activityText=String(activityRoot?.innerText||activityRoot?.textContent||'').replace(/\s+/g,' ').trim();
+  let activityHash=0;for(let i=0;i<activityText.length;i+=1)activityHash=((activityHash*31)+activityText.charCodeAt(i))>>>0;
+  const activitySignature=uiBusy?`${activityText.length}:${activityHash}`:'';
   const uiReady=document.readyState==='complete'&&!!composer&&!authRequired;
   const uiPhase=securityBlock?'BLOCKED':uiBusy?'WORKING':uiReady&&modelReady?'READY':'STALLED';
   return {
     uiReady,uiPhase,composerReady:Boolean(composer),sendReady:Boolean(send),stopVisible:Boolean(stop),activityBusyVisible:Boolean(activityBusy),
     scrollToBottomVisible:Boolean(scroll),authRequired,uiBusy,securityBlock,
-    modelControlPresent:Boolean(modelControl),reasoningEffort,modelReady,
+    modelControlPresent:Boolean(modelControl),reasoningEffort,modelReady,activitySignature,
     title:document.title,url:location.href,readyState:document.readyState,bodyChildren:document.body?.children?.length||0
   };
 })()`;
@@ -324,9 +330,25 @@ async function maybeNv02Continuity(w,target,ui){
     return;
   }
   if(now<state.nextContinueAt)return;
-  if(active||phase==='WORKING'){
-    state={...state,stalledChecks:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
-    await continuityEvent(active?'CONTINUE_SKIPPED_ACTIVE_JOB':'CONTINUE_SKIPPED_WORKING',{nextContinueAt:state.nextContinueAt});
+  if(active){
+    state={...state,stalledChecks:0,workingSignature:'',workingUnchangedChecks:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
+    await continuityEvent('CONTINUE_SKIPPED_ACTIVE_JOB',{nextContinueAt:state.nextContinueAt});
+    return;
+  }
+  if(phase==='WORKING'){
+    const signature=String(ui?.activitySignature||'');
+    const same=Boolean(signature&&state.workingSignature===signature);
+    const unchanged=same?Math.min(MAX_STALLED_CHECKS,Number(state.workingUnchangedChecks||0)+1):1;
+    state={...state,stalledChecks:0,workingSignature:signature,workingUnchangedChecks:unchanged,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
+    await continuityEvent('WORKING_NO_PROGRESS_CHECK',{workingUnchangedChecks:unchanged,nextContinueAt:state.nextContinueAt,signaturePresent:Boolean(signature)});
+    if(unchanged===2){
+      const result=await withNv02Mutation(()=>reloadTarget(target));
+      await continuityEvent('WORKING_STALE_RELOAD',{status:result?.status||null,workingUnchangedChecks:unchanged});
+    }else if(unchanged>=MAX_STALLED_CHECKS){
+      await post('/api/workers/NV02/restart-schedule','NV02',{reason:'WORKING_NO_PROGRESS_3_CHECKS'}).catch(async error=>continuityEvent('WORKING_STALE_RESTART_FAILED',{error:String(error?.message||error)}));
+    }else{
+      await continuityEvent('CONTINUE_SKIPPED_WORKING',{nextContinueAt:state.nextContinueAt});
+    }
     return;
   }
   if(phase==='READY'){
