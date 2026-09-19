@@ -142,7 +142,6 @@ export async function persistEvidence(path: string, evidence: RuntimeEvidenceInp
   const backupPath = path + '.bak';
   const tempPath = path + '.tmp';
 
-  // Attempt to back up existing good file
   try {
     await fs.access(path);
     await fs.rename(path, backupPath);
@@ -159,17 +158,14 @@ export async function persistEvidence(path: string, evidence: RuntimeEvidenceInp
     } catch (err: any) {
       lastErr = err;
       if (['EPERM', 'EBUSY'].includes(err?.code)) {
-        // Backoff with jitter
         const delay = BACKOFF_MS * (i + 1) * (0.5 + Math.random());
         await new Promise(r => setTimeout(r, delay));
       } else {
-        // Non-retryable error
         throw err;
       }
     }
   }
 
-  // Failed all retries; restore backup if available
   if (lastErr) {
     try {
       await fs.access(backupPath);
