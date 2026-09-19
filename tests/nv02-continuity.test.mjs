@@ -64,6 +64,11 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("/(^|\\\\s)(đang suy nghĩ|thinking|generating|đang tạo)(\\\\s|$)/i");
     expect(source).toContain(".replace(/\\\\s+/g,' ')");
     expect(source).toContain("phase==='READY'&&!active&&now>=state.nextContinueAt&&shouldRotateChat(state,now)");
+    expect(source).toContain("WORKING_NO_PROGRESS_CHECK");
+    expect(source).toContain("WORKING_STALE_RELOAD");
+    expect(source).toContain("WORKING_NO_PROGRESS_3_CHECKS");
+    expect(source).toContain("activitySignature");
+    expect(source).toContain("workingUnchangedChecks");
   });
 
   it('rotates chat by bounded count or age instead of every job', () => {
