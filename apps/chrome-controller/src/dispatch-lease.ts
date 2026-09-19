@@ -105,7 +105,7 @@ export class DurableDispatchLeaseStore{
       return workItem.uiAssignment;
     }
     console.warn('Chrome attempting to select UI work without Core assignment');
-    return 'DEFAULT_UI_SELECTOR_PATH';
+    throw new Error('Chrome attempted to select UI work without Core assignment');
   }
 
   #evaluateForAcquire(lease:DispatchLease,jobId:string,nowMs:number):LeaseAcquireResult{
