@@ -36,7 +36,18 @@ describe('durable save receipt',()=>{
   it('reads the last ledger page and returns the verified receipt',async()=>{const calls=[];const fetchImpl=async(url)=>{calls.push(url);return response(url.includes('/comments?')?[{created_at:'2026-09-16T07:00:01Z',html_url:'receipt',body:receiptBody}]:{comments:101});};const value=await readDurableSaveReceipt({fetchImpl,token:'x',saveToken,workerId:'NV02',after:dispatchedAt});expect(value).toMatchObject({ok:true,status:'DURABLE',receiptRef:'receipt'});expect(calls.some((url)=>url.includes('page=2'))).toBe(true);});
 });
 
-describe('controller correlation',()=>{
+describe('PARALLEL_WAVE_READY_FOR_INTEGRATION & Core WorkItem snapshot',()=>{
+  it('creates or reads an NV02 integration WorkItem without source mutation upon PARALLEL_WAVE_READY_FOR_INTEGRATION', () => {
+    const res = ensureIntegrationWorkItem('PARALLEL_WAVE_READY_FOR_INTEGRATION');
+    expect(res).toMatchObject({
+      status: 'READY_FOR_INTEGRATION',
+      mutationAllowed: false,
+    });
+    expect(res.workItemId).toContain('WI-NV02-INT-');
+  });
+});
+
+describe('controller correlation',(() => {
   it('reads only a valid GH job id from loopback controller state',async()=>{const fetchImpl=async()=>response({state:{lastDispatchedJobId:'GH-765'}});await expect(readPreviousJobIdFromController({fetchImpl})).resolves.toBe('GH-765');});
   it('returns undefined when controller has no prior job',async()=>{const fetchImpl=async()=>response({state:{}});await expect(readPreviousJobIdFromController({fetchImpl})).resolves.toBeUndefined();});
   it('fails closed when controller state is unavailable or non-loopback',async()=>{await expect(readPreviousJobIdFromController({fetchImpl:async()=>{throw new Error('down')}})).rejects.toThrow('CONTROLLER_STATE_UNAVAILABLE');await expect(readPreviousJobIdFromController({fetchImpl:async()=>response({},500)})).rejects.toThrow('CONTROLLER_STATE_HTTP_500');await expect(readPreviousJobIdFromController({stateUrl:'http://8.8.8.8/state'})).rejects.toThrow('CONTROLLER_STATE_URL_MUST_BE_LOOPBACK');});
