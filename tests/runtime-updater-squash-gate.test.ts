@@ -22,7 +22,7 @@ describe('runtime updater squash merge gate resolution',()=>{
     expect(src).toContain("if($impact.web -and (Task-Exists $webTask)){Sync-WebRuntime;$null=Restart-ServiceTask");
   });
 
-  it('restarts only the Core child while the supervisor task is already running',()=>{
+  it('restarts the full Core scheduled task so updated launcher logic is reloaded',()=>{
     const src=readFileSync('scripts/tigeriq-core/update-core-runtime.ps1','utf8');
     const start=src.indexOf('function Restart-Core');
     const end=src.indexOf('function Restart-ServiceTask');
@@ -30,10 +30,9 @@ describe('runtime updater squash merge gate resolution',()=>{
     expect(end).toBeGreaterThan(start);
     const restartCore=src.slice(start,end);
     expect(restartCore).toContain("if(-not(Task-Exists $coreTask)){throw ('TASK_MISSING:'+ $coreTask)}");
-    expect(restartCore).toContain("if($task.State -eq 'Running')");
+    expect(restartCore).toContain('Stop-ScheduledTask -TaskName $coreTask');
     expect(restartCore).toContain('Stop-CoreProcesses');
     expect(restartCore).toContain('Start-ScheduledTask -TaskName $coreTask');
-    expect(restartCore).not.toContain('Stop-ScheduledTask');
     expect(restartCore).toContain('$previousPid=if($null-ne$oldPid){[int]$oldPid}else{Get-NodePidByMatch $corePath}');
     expect(restartCore).toContain('$newPid=Get-NodePidByMatch $corePath');
     expect(restartCore).toContain('[int]$newPid-ne[int]$previousPid');
