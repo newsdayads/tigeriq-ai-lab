@@ -173,7 +173,7 @@ export async function materializeGithubCodingIssues({pool,fetchImpl=fetch,owner=
 }
 
 export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token='',codingLaneUrl=process.env.TIGERIQ_CODING_LANE_URL||DEFAULT_CODING_URL,now=()=>Date.now()}){
-  const rows=(await pool.query("select data from tigeriq_events where type='GITHUB_CODING_DISPATCHED' order by seq desc limit 100")).rows;
+  const rows=(await pool.query("select distinct on ((data->>'issueNumber')::int) data from tigeriq_events where type='GITHUB_CODING_DISPATCHED' and data ? 'issueNumber' order by ((data->>'issueNumber')::int), seq desc")).rows;
   if(!rows.length)return {progress:0,results:0};
   const status=await jsonFetch(fetchImpl,`${codingLaneUrl.replace(/\/$/,'')}/api/status`);
   let progress=0,results=0;
