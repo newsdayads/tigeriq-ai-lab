@@ -105,3 +105,33 @@ skills:
     target: router
     triggers: routing route model provider capability latency quota cost định tuyến mô hình
     summary: Route work by difficulty, capability, latency and cost instead of always using the strongest model.
+
+  - id: design-system-memory
+    title: Design System Memory
+    state: ACTIVE
+    version: 1.0.0
+    provenance_batch: owner-design-ui-video-2026-09-19
+    source_log: learning-log/2026-09-19-design-ui-video.md
+    target: design-knowledge
+    triggers: design thiết kế ui giao diện screenshot mockup layout typography spacing color visual DESIGN.md
+    summary: Extract and preserve approved visual language as a scoped durable design contract without inventing unsupported design choices.
+
+  - id: image-to-ui-implementation
+    title: Image-to-UI Implementation
+    state: ACTIVE
+    version: 1.0.0
+    provenance_batch: owner-design-ui-video-2026-09-19
+    source_log: learning-log/2026-09-19-design-ui-video.md
+    target: ui-implementation
+    triggers: image ảnh screenshot mockup reference ui giao diện implementation component layout code visual
+    summary: Translate approved image or mockup references into minimal traceable UI implementation changes.
+
+  - id: visual-quality-gate
+    title: Visual Quality Gate
+    state: ACTIVE
+    version: 1.0.0
+    provenance_batch: owner-design-ui-video-2026-09-19
+    source_log: learning-log/2026-09-19-design-ui-video.md
+    target: ui-verification
+    triggers: visual screenshot playwright layout geometry clipping accessibility responsive ui giao diện verify kiểm tra
+    summary: Verify rendered UI against approved design evidence using existing browser and visual-regression mechanisms without auto-blessing baselines.
