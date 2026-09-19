@@ -115,6 +115,9 @@ describe('NV02 continuity policy', () => {
     expect(installer).toContain("Invoke-Native -File 'npm' -ArgumentList @('run','typecheck')");
     expect(installer).toContain("Invoke-Native -File 'npm' -ArgumentList @('run','build')");
     expect(installer).toContain("Deploy-1122-");
+    expect(installer).toContain('Assert-Ok (Test-Path $launcher) "LAUNCHER_NOT_FOUND:$launcher"');
+    expect(installer).toContain('& $launcher');
+    expect(installer).not.toContain('Start-ScheduledTask -TaskName $TaskName');
     expect(installer).toContain("apps\\chrome-controller\\direct-cdp-bridge.mjs");
     expect(installer).toContain("NV02_PACKAGE_FAILED_ROLLBACK_APPLIED");
     expect(installer).toContain("CONTROLLER_NOT_RUNNING_DEPLOY_HEAD");
