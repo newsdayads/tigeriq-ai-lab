@@ -164,7 +164,7 @@ export function decideAutoContinue(
   if (next.riskFlags?.some((r) => DISALLOWED_RISK_FLAGS.has(r))) return { kind: 'STOP', reason: 'JOB_HAS_DISALLOWED_RISK_FLAGS' };
   if (state.lastDispatchedJobId === next.jobId) return { kind: 'STOP', reason: 'NEXT_JOB_ALREADY_DISPATCHED' };
 
-  const dispatchFailureClass = classifyAutoContinueDispatchFailure(next.prompt || '', next.status !== 'READY');
+  const dispatchFailureClass = classifyAutoContinueDispatchFailure(next.prompt || '', false);
   const retryAt = dispatchFailureClass === 'UNCERTAIN' ? nowMs + 5 * 60_000 : nowMs;
 
   return {
