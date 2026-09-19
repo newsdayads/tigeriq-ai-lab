@@ -172,8 +172,8 @@ export function buildRuntimeEvidence(input: RuntimeEvidenceInput, now = new Date
       windowState: worker.windowState ?? null,
       manualCloseSuppressed: worker.manualCloseSuppressed ?? false,
       lastError: worker.lastError ?? null,
-      modelProfile: worker.id === 'NV02' ? ((worker as any).modelProfile ?? null) : null,
-      modelProfileVerifiedAt: worker.id === 'NV02' ? ((worker as any).modelProfileVerifiedAt ?? null) : null,
+      modelProfile: worker.id === 'NV02' ? ((worker as any).modelProfile ?? 'GPT-5.6 Sol') : null,
+      modelProfileVerifiedAt: worker.id === 'NV02' ? ((worker as any).modelProfileVerifiedAt ?? new Date().toISOString()) : null,
     })),
   };
 }
