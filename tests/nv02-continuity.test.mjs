@@ -110,6 +110,11 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("evidence:state?.archivedNotice?'TOAST'");
     expect(source).toContain("SEND_BUTTON_WAIT_MS+8000");
     expect(source).toContain("CONTINUE_DISPATCH_FAILED");
+    expect(source).toContain("PROJECT_UI_RECOVERED");
+    expect(source).toContain("PROJECT_CONTEXT_RECOVERY_UI");
+    expect(source).toContain("PROJECT_NEW_CHAT_BUTTON_COUNT_");
+    expect(source).toContain("projectRecoveryNextAt");
+    expect(source).toContain("recoverNv02ProjectByUi");
     expect(source).toContain('button[data-testid="composer-submit-button"]');
     expect(source).toContain("nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)");
   });
