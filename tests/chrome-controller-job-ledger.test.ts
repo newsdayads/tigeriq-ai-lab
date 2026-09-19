@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DurableUiJobLedger, reconcileUiJobStage, uiJobProgress } from '../apps/chrome-controller/src/job-ledger.js';
@@ -30,6 +30,31 @@ describe('durable UI worker job ledger',()=>{
     const source=readFileSync('apps/chrome-controller/src/job-ledger.ts','utf8');
     expect(source).toContain('atomicWriteJsonWithRetry(this.path,this.value)');
     expect(source).not.toContain('${this.path}.tmp');
+  });
+
+  it('falls back to a full-state journal on persistent EPERM and restores from it after restart',()=>{
+    const root=mkdtempSync(join(tmpdir(),'tigeriq-ui-job-journal-'));
+    roots.push(root);
+    const path=join(root,'ledger.json');
+    const locked=Object.assign(new Error('locked'),{code:'EPERM'});
+    const store=new DurableUiJobLedger(path,()=>{throw locked;});
+    const created=store.create('NV02',{jobId:'GH-JOURNAL',source:'AUTO_CONTINUE'});
+    expect(created.stage).toBe('QUEUED');
+    const journals=readdirSync(root).filter((name)=>name.startsWith('ledger.json.journal.'));
+    expect(journals).toHaveLength(1);
+    const restored=new DurableUiJobLedger(path);
+    expect(restored.active('NV02')).toMatchObject({jobId:'GH-JOURNAL',stage:'QUEUED'});
+  });
+
+  it('prefers the newest valid journal and ignores a newer corrupt journal',()=>{
+    const root=mkdtempSync(join(tmpdir(),'tigeriq-ui-job-journal-corrupt-'));
+    roots.push(root);
+    const path=join(root,'ledger.json');
+    writeFileSync(path,JSON.stringify({schemaVersion:'tigeriq.chrome-controller.ui-job-ledger.v1',jobs:[]}));
+    writeFileSync(`${path}.journal.1000000000000.a.json`,JSON.stringify({schemaVersion:'tigeriq.chrome-controller.ui-job-ledger.v1',jobs:[{jobId:'J1',workerId:'NV02',issueRef:null,title:'x',source:'AUTO',stage:'QUEUED',progress:5,createdAt:'x',startedAt:null,lastActivityAt:'x',completedAt:null,nextAction:null,blocker:null,evidenceRefs:[],result:null}]}));
+    writeFileSync(`${path}.journal.2000000000000.b.json`,'{bad-json');
+    const restored=new DurableUiJobLedger(path);
+    expect(restored.active('NV02')?.jobId).toBe('J1');
   });
 
   it('survives restart and rejects duplicate dispatch for the same active worker',()=>{
