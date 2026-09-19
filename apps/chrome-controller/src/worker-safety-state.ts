@@ -4,6 +4,8 @@ import { WORKER_IDS, type WorkerId } from './model.js';
 export interface WorkerSafetySnapshot {
   pausedWorkers:WorkerId[];
   manualCloseSuppressedWorkers:WorkerId[];
+  gpt56SolHighVerified?:boolean;
+  gpt56SolHighVerifiedAt?:string;
 }
 export interface WorkerSafetyRestoreResult {
   state:WorkerSafetySnapshot;
@@ -15,6 +17,8 @@ export interface WorkerSafetyPersistResult extends WorkerSafetyRestoreResult {}
 interface WorkerSafetyFile extends WorkerSafetySnapshot {
   schemaVersion:'tigeriq.chrome-controller.worker-safety.v1';
   updatedAt:string;
+  gpt56SolHighVerified?:boolean;
+  gpt56SolHighVerifiedAt?:string;
 }
 
 function normalizeList(value:unknown):WorkerId[]{
@@ -33,6 +37,8 @@ function parseSafety(text:string):WorkerSafetySnapshot{
   return{
     pausedWorkers:normalizeList(value.pausedWorkers),
     manualCloseSuppressedWorkers:normalizeList(value.manualCloseSuppressedWorkers),
+    gpt56SolHighVerified:typeof value.gpt56SolHighVerified==='boolean'?value.gpt56SolHighVerified:undefined,
+    gpt56SolHighVerifiedAt:typeof value.gpt56SolHighVerifiedAt==='string'?value.gpt56SolHighVerifiedAt:undefined,
   };
 }
 
@@ -71,6 +77,8 @@ export function writeWorkerSafetyState(path:string,state:WorkerSafetySnapshot,no
     schemaVersion:'tigeriq.chrome-controller.worker-safety.v1',
     pausedWorkers:[...new Set(state.pausedWorkers)],
     manualCloseSuppressedWorkers:[...new Set(state.manualCloseSuppressedWorkers)],
+    gpt56SolHighVerified:state.gpt56SolHighVerified,
+    gpt56SolHighVerifiedAt:state.gpt56SolHighVerifiedAt,
     updatedAt:now.toISOString(),
   };
   writeFileSync(temp,`${JSON.stringify(value,null,2)}\n`,'utf8');
@@ -105,9 +113,10 @@ export function persistWorkerSafetyStateOrFailClosed(
   }
 }
 
-export function workerStartGate(workerId:WorkerId,input:{globalPaused:boolean;utilityPaused:boolean;manualCloseSuppressed:boolean}):string|null {
+export function workerStartGate(workerId:WorkerId,input:{globalPaused:boolean;utilityPaused:boolean;manualCloseSuppressed:boolean;gpt56SolHighVerified?:boolean}):string|null {
   if(input.globalPaused)return 'OWNER_INTERACTION_READ_ONLY';
   if(input.utilityPaused)return `UTILITY_WORKER_PAUSED:${workerId}`;
   if(input.manualCloseSuppressed)return `MANUAL_CLOSE_SUPPRESSED:${workerId}`;
+  if(input.gpt56SolHighVerified===false||input.gpt56SolHighVerified===undefined)return 'GPT_5_6_SOL_HIGH_PROFILE_UNVERIFIED';
   return null;
 }
