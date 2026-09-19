@@ -73,9 +73,11 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("workingUnchangedChecks");
     expect(source).toContain("PROJECT_CONTEXT_ACTIVATED");
     expect(source).toContain("PROJECT_CONTEXT_RECOVERY_DEFERRED");
-    expect(source).toContain("TIGERIQ_SAVE_RECEIPT_V1");
     expect(source).toContain("trò chuyện mới trong tigeriq ai lab");
     expect(source).toContain("activateNv02ProjectContext");
+    expect(source).toContain("NV02_CONTINUITY_CHECKPOINT");
+    expect(source).toContain("CHECKPOINT_LOCAL_DURABLE");
+    expect(source).toContain("NV02_LOCAL_CHECKPOINT_WRITTEN");
     expect(source).toContain("projectContextReady");
     expect(source).toContain("projectContextReady&&modelControl");
     expect(source).toContain("NV02_PROJECT_PATH_PREFIX");
