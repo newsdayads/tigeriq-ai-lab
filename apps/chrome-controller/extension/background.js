@@ -1,6 +1,11 @@
 import { WORKER_HOSTS, allowedUrl, hostname, matchesWorker } from './url-policy.js';
 import { buildDurableSavePrompt, waitForDurableSaveReceipt } from './save-receipt.js';
 import { runArchiveCommand } from './archive-command.js';
+import {
+  CONTINUE_MIN_MS, CONTINUE_MAX_MS, REFRESH_MIN_MS, REFRESH_MAX_MS,
+  MAX_STALLED_CHECKS, deriveNv02Phase, hasActiveNv02Work,
+  nextRandomAt, pickContinuePrompt, shouldRotateChat,
+} from './continuity.js';
 
 const CONTROLLER = 'http://127.0.0.1:8798';
 const LEGACY_PLUS_ID = ['NV','05'].join('');
@@ -124,14 +129,24 @@ async function get(path) {
 function sleep(ms){return new Promise((resolve)=>setTimeout(resolve,ms));}
 async function readUiState(ctx) {
   try {
-    if (!ctx?.tabId) return { uiBusy:null, securityBlock:null };
+    if (!ctx?.tabId) return { uiBusy:null, uiPhase:'STALLED', composerReady:false, sendReady:false, stopVisible:false, scrollToBottomVisible:false, authRequired:false, securityBlock:null };
     const value=await chrome.tabs.sendMessage(ctx.tabId,{type:'TIGERIQ_UI_STATE'});
-    return { uiBusy:typeof value?.uiBusy==='boolean'?value.uiBusy:null, securityBlock:value?.securityBlock?String(value.securityBlock):null };
-  } catch { return { uiBusy:null, securityBlock:null }; }
+    const uiBusy=typeof value?.uiBusy==='boolean'?value.uiBusy:null;
+    return {
+      uiBusy,
+      uiPhase:String(value?.uiPhase||deriveNv02Phase(value||{})),
+      composerReady:value?.composerReady===true,
+      sendReady:value?.sendReady===true,
+      stopVisible:value?.stopVisible===true,
+      scrollToBottomVisible:value?.scrollToBottomVisible===true,
+      authRequired:value?.authRequired===true,
+      securityBlock:value?.securityBlock?String(value.securityBlock):null,
+    };
+  } catch { return { uiBusy:null, uiPhase:'STALLED', composerReady:false, sendReady:false, stopVisible:false, scrollToBottomVisible:false, authRequired:false, securityBlock:null }; }
 }
 async function heartbeat(workerId,ctx) {
   const ui=await readUiState(ctx);
-  await post('/api/heartbeat',{workerId,state:'READY',...ctx,uiBusy:ui.uiBusy,securityBlock:ui.securityBlock,display:await displayInfo(ctx.windowId)});
+  await post('/api/heartbeat',{workerId,state:ui.uiPhase||'STALLED',...ctx,...ui,display:await displayInfo(ctx.windowId)});
 }
 
 async function waitForTabComplete(tabId,timeoutMs=60000) {
@@ -265,16 +280,139 @@ async function execute(workerId,command) {
   throw new Error(`UNKNOWN_ACTION:${action}`);
 }
 
+
+const NV02_CONTINUITY_KEY='nv02ContinuityV1';
+
+async function loadNv02Continuity(){
+  const saved=await chrome.storage.local.get([NV02_CONTINUITY_KEY]);
+  const now=Date.now();
+  const raw=saved[NV02_CONTINUITY_KEY]||{};
+  return {
+    nextContinueAt:Number(raw.nextContinueAt)||nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),
+    nextRefreshAt:Number(raw.nextRefreshAt)||nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS),
+    stalledChecks:Number(raw.stalledChecks)||0,
+    lastPrompt:String(raw.lastPrompt||''),
+    dispatchesInChat:Number(raw.dispatchesInChat)||0,
+    chatStartedAt:Number(raw.chatStartedAt)||now,
+    lastPhase:String(raw.lastPhase||'STALLED'),
+  };
+}
+async function saveNv02Continuity(state){await chrome.storage.local.set({[NV02_CONTINUITY_KEY]:state});}
+async function emitContinuityEvent(event,data={}){try{await post('/api/continuity/event',{workerId:'NV02',event,...data});}catch{}}
+
+async function dispatchNaturalContinue(ctx,state,now){
+  if(ctx.url&&/\/c\//.test(new URL(ctx.url).pathname)){
+    try{await chrome.tabs.sendMessage(ctx.tabId,{type:'TIGERIQ_SCROLL_TO_BOTTOM'});}catch{}
+  }
+  const prompt=pickContinuePrompt(state.lastPrompt);
+  const result=await chrome.tabs.sendMessage(ctx.tabId,{type:'TIGERIQ_DISPATCH',text:prompt});
+  if(!result?.ok)throw new Error(String(result?.status||'CONTINUE_DISPATCH_FAILED'));
+  const next={...state,lastPrompt:prompt,dispatchesInChat:state.dispatchesInChat+1,stalledChecks:0,lastPhase:'WORKING',nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
+  await saveNv02Continuity(next);
+  await emitContinuityEvent('CONTINUE_DISPATCHED',{prompt,evidence:result.evidence||null,nextContinueAt:next.nextContinueAt,dispatchesInChat:next.dispatchesInChat});
+  return next;
+}
+
+async function checkpointBeforeRefresh(ctx){
+  const saveToken=crypto.randomUUID();
+  const dispatchedAt=new Date().toISOString();
+  const saveText=buildDurableSavePrompt({saveToken,workerId:'NV02',dispatchedAt});
+  const save=await chrome.tabs.sendMessage(ctx.tabId,{type:'TIGERIQ_DISPATCH',text:saveText});
+  if(!save?.ok)throw new Error(String(save?.status||'REFRESH_CHECKPOINT_DISPATCH_FAILED'));
+  await waitForSaveCompletion(ctx);
+  return waitForDurableSaveReceipt(saveToken,'NV02',dispatchedAt);
+}
+
+async function rotateNv02Chat(ctx,state,now){
+  const archived=await saveAndArchive('NV02',{requireDone:false});
+  if(!archived?.ok)throw new Error(String(archived?.status||'ROTATE_ARCHIVE_FAILED'));
+  const fresh=await findContext('NV02');
+  if(!fresh?.tabId)throw new Error('ROTATE_CONTEXT_MISSING_AFTER_ARCHIVE');
+  const opened=await chrome.tabs.sendMessage(fresh.tabId,{type:'TIGERIQ_NEW_CHAT'});
+  if(!opened?.ok)throw new Error(String(opened?.status||'ROTATE_NEW_CHAT_FAILED'));
+  const next={...state,dispatchesInChat:0,chatStartedAt:now,stalledChecks:0,lastPhase:'READY'};
+  await saveNv02Continuity(next);
+  await emitContinuityEvent('CHAT_ROTATED',{receiptRef:archived.receiptRef||null,checkpointRef:archived.checkpointRef||null});
+  return dispatchNaturalContinue(fresh,next,now);
+}
+
+async function maybeNv02Continuity(ctx,ui){
+  const now=Date.now();
+  let state=await loadNv02Continuity();
+  const controller=await get('/api/state');
+  const phase=deriveNv02Phase(ui||{});
+  state={...state,lastPhase:phase};
+  if(phase==='BLOCKED'){
+    await saveNv02Continuity(state);
+    await emitContinuityEvent('BLOCKED',{securityBlock:ui?.securityBlock||null});
+    return;
+  }
+  const active=hasActiveNv02Work(controller);
+  if(now>=state.nextRefreshAt&&phase==='READY'&&!active){
+    try{
+      const receipt=await checkpointBeforeRefresh(ctx);
+      const next={...state,nextRefreshAt:nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS),nextContinueAt:now+15000,stalledChecks:0};
+      await saveNv02Continuity(next);
+      await emitContinuityEvent('REFRESH_SCHEDULED',{receiptRef:receipt?.receiptRef||null,checkpointRef:receipt?.checkpointRef||null,nextRefreshAt:next.nextRefreshAt});
+      void post('/api/workers/NV02/restart-schedule',{reason:'RANDOM_2_4H'});
+    }catch(error){
+      state={...state,nextRefreshAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
+      await saveNv02Continuity(state);
+      await emitContinuityEvent('REFRESH_DEFERRED',{error:String(error)});
+    }
+    return;
+  }
+  if(phase==='READY'&&!active&&shouldRotateChat(state,now)){
+    try{await rotateNv02Chat(ctx,state,now);}
+    catch(error){
+      state={...state,stalledChecks:Math.min(MAX_STALLED_CHECKS,state.stalledChecks+1),nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
+      await saveNv02Continuity(state);
+      await emitContinuityEvent('CHAT_ROTATE_FAILED',{error:String(error),stalledChecks:state.stalledChecks});
+    }
+    return;
+  }
+  if(now<state.nextContinueAt){await saveNv02Continuity(state);return;}
+  if(active||phase==='WORKING'){
+    state={...state,stalledChecks:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
+    await saveNv02Continuity(state);
+    await emitContinuityEvent(active?'CONTINUE_SKIPPED_ACTIVE_JOB':'CONTINUE_SKIPPED_WORKING',{nextContinueAt:state.nextContinueAt});
+    return;
+  }
+  if(phase==='READY'){
+    try{await dispatchNaturalContinue(ctx,state,now);}
+    catch(error){
+      state={...state,stalledChecks:Math.min(MAX_STALLED_CHECKS,state.stalledChecks+1),nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
+      await saveNv02Continuity(state);
+      await emitContinuityEvent('CONTINUE_DISPATCH_FAILED',{error:String(error),stalledChecks:state.stalledChecks});
+    }
+    return;
+  }
+  state={...state,stalledChecks:Math.min(MAX_STALLED_CHECKS,state.stalledChecks+1),nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
+  await saveNv02Continuity(state);
+  await emitContinuityEvent('STALLED_CHECK',{stalledChecks:state.stalledChecks,nextContinueAt:state.nextContinueAt});
+  if(state.stalledChecks===2&&ctx?.tabId){
+    await chrome.tabs.reload(ctx.tabId);
+    await emitContinuityEvent('STALLED_RELOAD',{stalledChecks:state.stalledChecks});
+  }else if(state.stalledChecks>=MAX_STALLED_CHECKS){
+    void post('/api/workers/NV02/restart-schedule',{reason:'STALLED_3_CHECKS'});
+  }
+}
+
 async function tickWorker(workerId) {
   const ctx=await findContext(workerId); if(!ctx) return;
   lastWindowByWorker.set(workerId,ctx.windowId);
   await updateWorkerBadge(workerId, ctx);
-  await heartbeat(workerId,ctx);
+  const ui=await readUiState(ctx);
+  await post('/api/heartbeat',{workerId,state:ui.uiPhase||'STALLED',...ctx,...ui,display:await displayInfo(ctx.windowId)});
   void maybeAutoArchive(workerId).catch(()=>{});
   const r=await fetch(`${CONTROLLER}/api/commands/${encodeURIComponent(workerId)}`); if(!r.ok) return;
-  const {command}=await r.json(); if(!command) return;
-  try { const result=await execute(workerId,command); await post('/api/result',{workerId,commandId:command.id,ok:true,...result}); }
-  catch(error){ const status=error?.status||String(error?.message||error); await post('/api/result',{workerId,commandId:command.id,ok:false,status}); }
+  const {command}=await r.json();
+  if(command){
+    try { const result=await execute(workerId,command); await post('/api/result',{workerId,commandId:command.id,ok:true,...result}); }
+    catch(error){ const status=error?.status||String(error?.message||error); await post('/api/result',{workerId,commandId:command.id,ok:false,status}); }
+    return;
+  }
+  if(workerId==='NV02')await maybeNv02Continuity(ctx,ui);
 }
 
 async function tick(){
