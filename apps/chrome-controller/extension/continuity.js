@@ -63,7 +63,10 @@ export function hasActiveNv02Work(controller){
   const activeStages=new Set(['QUEUED','DISPATCHING','SUBMITTED','WORKING','WAITING_EVIDENCE','VERIFY','BLOCKED']);
   if((controller?.jobs||[]).some((job)=>job?.workerId==='NV02'&&activeStages.has(String(job?.stage||''))&&!job?.completedAt))return true;
   const autopilot=controller?.autopilot||{};
-  return Boolean(autopilot.pendingJobId||autopilot.uncertainJobId||autopilot.phase==='BUSY'||autopilot.phase==='WAIT_EVIDENCE');
+  if(autopilot.pendingJobId||autopilot.uncertainJobId)return true;
+  const dispatched=String(autopilot.lastDispatchedJobId||'');
+  const completed=String(autopilot.lastCompletedJobId||'');
+  return Boolean((autopilot.phase==='BUSY'||autopilot.phase==='WAIT_EVIDENCE')&&dispatched&&dispatched!==completed);
 }
 
 export function shouldRotateChat(state,now){
