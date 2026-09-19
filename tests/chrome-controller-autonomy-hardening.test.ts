@@ -166,6 +166,20 @@ describe('controller-independent Chrome lifecycle contract',()=>{
   });
 });
 
+describe('stale-working recovery lease scope',()=>{
+  it('keeps busy mutation blocked except for the narrow NV02 recovery purpose',()=>{
+    const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
+    const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    expect(server).toContain("const staleWorkingRecovery=workerId==='NV02'&&purpose==='STALE_WORKING_RECOVERY'");
+    expect(server).toContain("state.lastHeartbeat?.uiBusy!==false&&!staleWorkingRecovery");
+    expect(server).toContain("STALE_WORKING_RECOVERY_REQUIRES_BUSY");
+    expect(server).toContain("workerHasActiveJob(workerId)");
+    expect(server).toContain("WORKER_COMMAND_INFLIGHT");
+    expect(bridge).toContain("withNv02Mutation(()=>reloadTarget(target),'STALE_WORKING_RECOVERY')");
+    expect(bridge).toContain("JSON.stringify({ownerId,ttlMs:10000,purpose})");
+  });
+});
+
 describe('Direct CDP live dispatch hardening',()=>{
   it('avoids duplicate prompt text and requires positive submit evidence on the live executor',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
