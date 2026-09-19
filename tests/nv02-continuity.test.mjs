@@ -85,7 +85,9 @@ describe('NV02 continuity policy', () => {
   it('ships one-shot NV02 continuity installer with exact-head deploy and rollback',()=>{
     const installer=readFileSync('apps/chrome-controller/runtime/Install-NV02-Continuity.ps1','utf8');
     expect(installer).toContain('[Parameter(Mandatory=$true)][string]$ExpectedHead');
-    expect(installer).toContain("fetch','origin','p0/nv02-continuous-liveness");
+    expect(installer).toContain("[string]$SourceRef='main'");
+    expect(installer).toContain("fetch','origin',$SourceRef");
+    expect(installer).toContain("rev-parse 'FETCH_HEAD'");
     expect(installer).toContain("tests/chrome-controller-autonomy-hardening.test.ts");
     expect(installer).toContain("Invoke-Native -File 'npm' -ArgumentList @('run','typecheck')");
     expect(installer).toContain("Invoke-Native -File 'npm' -ArgumentList @('run','build')");
