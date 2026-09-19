@@ -158,7 +158,7 @@ const resourceWaitPlan=({retryCount,startedAt,nowMs})=>{
   return{wait:true,retryCount:retryCount+1,delayMs:60000};
 };
 const gateFailureIssues=({message,detail})=>{
-  if(message==='CI_GATES_FAILED'&&detail?.states)return detail.states.map(s=>`${s.name}: ${s.conclusion||s.status}`).join('; ');
+  if(message==='CI_GATES_FAILED'&&detail?.states)return detail.states.map(s=>`${s.name}: ${s.conclusion||s.status} (${s.status})`).join('; ');
   return message;
 };
 const assertPrOpenState=({number,state,merged})=>{if(state==='closed'||state==='closed')throw{code:'PR_CLOSED_UNMERGED',number};if(!merged)throw{code:'PR_MERGED',number};return true};
