@@ -1,5 +1,6 @@
 param(
   [Parameter(Mandatory=$true)][string]$ExpectedHead,
+  [string]$SourceRef='main',
   [string]$RepoRoot='D:\TigerIQ\Workspace\issue1122-nv02',
   [string]$InstallRoot='D:\TigerIQ\Apps\ChromeController',
   [string]$ConfigPath='D:\TigerIQ\Apps\ChromeController\Config\chrome-controller.json',
@@ -92,8 +93,8 @@ New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
 try{
   $status=(& git -C $RepoRoot status --porcelain)
   Assert-Ok ([string]::IsNullOrWhiteSpace(($status -join ''))) 'REPO_WORKTREE_NOT_CLEAN'
-  Invoke-Native -File 'git' -ArgumentList @('-C',$RepoRoot,'fetch','origin','p0/nv02-continuous-liveness')
-  $remote=(& git -C $RepoRoot rev-parse 'origin/p0/nv02-continuous-liveness').Trim()
+  Invoke-Native -File 'git' -ArgumentList @('-C',$RepoRoot,'fetch','origin',$SourceRef)
+  $remote=(& git -C $RepoRoot rev-parse 'FETCH_HEAD').Trim()
   Assert-Ok ($remote -eq $ExpectedHead) "REMOTE_HEAD_MISMATCH:$remote"
   Invoke-Native -File 'git' -ArgumentList @('-C',$RepoRoot,'checkout','--detach',$ExpectedHead)
   $head=(& git -C $RepoRoot rev-parse 'HEAD').Trim()
