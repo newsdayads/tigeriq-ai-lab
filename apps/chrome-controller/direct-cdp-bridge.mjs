@@ -279,6 +279,9 @@ async function rotateNv02Chat(target,state,now){
   return withNv02Mutation(async()=>{
     const archived=await archiveChat(target);if(!archived?.ok)throw new Error(archived?.status||'ROTATE_ARCHIVE_FAILED');
     const opened=await newChat(target);if(!opened?.ok)throw new Error(opened?.status||'ROTATE_NEW_CHAT_FAILED');
+    const freshUi=await uiState(target);
+    if(freshUi?.securityBlock)throw new Error(freshUi.securityBlock);
+    if(freshUi?.modelReady!==true||freshUi?.uiPhase!=='READY')throw new Error('ROTATE_MODEL_PROFILE_NOT_READY');
     const next={...state,dispatchesInChat:0,chatStartedAt:now,stalledChecks:0,lastPhase:'READY'};
     saveNv02Continuity(next);
     await continuityEvent('CHAT_ROTATED',{receiptRef:receipt.receiptRef,checkpointRef:receipt.checkpointRef,archiveStatus:archived.status,newChatStatus:opened.status});
