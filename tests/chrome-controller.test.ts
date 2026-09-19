@@ -86,3 +86,22 @@ describe('completion-aware UTF-8 supervisor and Owner workspace',()=>{
 });
 
 describe('SerialQueue',()=>{it('runs exactly one task at a time',async()=>{const q=new SerialQueue(0);const order:string[]=[];const a=q.enqueue(async()=>{order.push('a:start');await new Promise(r=>setTimeout(r,20));order.push('a:end');});const b=q.enqueue(async()=>{order.push('b:start');order.push('b:end');});await Promise.all([a,b]);expect(order).toEqual(['a:start','a:end','b:start','b:end']);});});
+
+describe('NV02 model preflight guard', () => {
+  it('switches instant or mismatched profile to GPT-5.6 Sol and High effort', () => {
+    const res = evaluateModelPreflight({ model: 'GPT-4o', thinking: 'Instant' }, Date.now());
+    expect(res.status).toBe('VERIFIED');
+    expect(res.verifiedProfile).toBe('GPT-5.6 Sol / High');
+    expect(res.verifiedAt).toBeDefined();
+  });
+
+  it('fails closed emitting MODEL_PROFILE_BLOCKED when selector is missing or ambiguous', () => {
+    const resMissing = evaluateModelPreflight(undefined, Date.now());
+    expect(resMissing.status).toBe('BLOCKED');
+    expect(resMissing.reason).toBe('MODEL_PROFILE_BLOCKED');
+
+    const resAmbiguous = evaluateModelPreflight({ model: '', thinking: '' }, Date.now());
+    expect(resAmbiguous.status).toBe('BLOCKED');
+    expect(resAmbiguous.reason).toBe('MODEL_PROFILE_BLOCKED');
+  });
+});
