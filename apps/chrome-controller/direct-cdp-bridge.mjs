@@ -50,6 +50,7 @@ function loadNv02Continuity(){
     recoverableRetryCount:Number(raw.recoverableRetryCount)||0,
     nextRecoverableRetryAt:Number(raw.nextRecoverableRetryAt)||0,
     projectRecoveryNextAt:Number(raw.projectRecoveryNextAt)||0,
+    modelRecoveryNextAt:Number(raw.modelRecoveryNextAt)||0,
   };
 }
 function saveNv02Continuity(state){
@@ -438,11 +439,46 @@ async function maybeNv02Continuity(w,target,ui){
   }
 }
 
-function projectRecoveryExpr(){return `(async()=>{const projectPrefix=${JSON.stringify(NV02_PROJECT_PREFIX)};const sleep=ms=>new Promise(r=>setTimeout(r,ms));const vis=e=>{const r=e?.getBoundingClientRect(),s=e&&getComputedStyle(e);return !!e&&r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};if(location.pathname.startsWith(projectPrefix+'/c/'))return{ok:true,status:'PROJECT_ALREADY_ACTIVE',url:location.href};if(location.pathname!=='/')return{ok:false,status:'PROJECT_RECOVERY_NOT_ROOT',url:location.href};const composer=[...document.querySelectorAll('#prompt-textarea,[contenteditable="true"][role="textbox"],textarea')].find(vis)||null;const draft=composer?(composer instanceof HTMLTextAreaElement?String(composer.value||''):String(composer.innerText||composer.textContent||'')):'';if(draft.trim())return{ok:false,status:'PROJECT_RECOVERY_DRAFT_PRESENT'};const open=[...document.querySelectorAll('button,[role="button"]')].find(e=>vis(e)&&/hiện thanh bên|mở sidebar|open sidebar/i.test((e.getAttribute('aria-label')||e.innerText||'').trim()));if(open){open.click();await sleep(350)}const buttons=[...document.querySelectorAll('button')].filter(vis).filter(e=>/trò chuyện mới trong tigeriq ai lab|new chat in tigeriq ai lab/i.test((e.getAttribute('aria-label')||'').trim()));if(buttons.length!==1)return{ok:false,status:'PROJECT_NEW_CHAT_BUTTON_COUNT_'+buttons.length};buttons[0].click();for(let i=0;i<48;i++){await sleep(250);const c=[...document.querySelectorAll('#prompt-textarea,[contenteditable="true"][role="textbox"],textarea')].find(vis);const model=[...document.querySelectorAll('button,[role="button"]')].find(e=>vis(e)&&/chọn mô hình chatgpt|choose.*model|model selector/i.test((e.getAttribute('aria-label')||'')+' '+(e.getAttribute('title')||'')));if(location.pathname.startsWith(projectPrefix+'/c/')&&c&&model&&String(model.getAttribute('data-selected-reasoning-effort')||'').toLowerCase()==='high')return{ok:true,status:'PROJECT_UI_RECOVERED',url:location.href,reasoningEffort:'high'}}return{ok:false,status:'PROJECT_UI_RECOVERY_TIMEOUT',url:location.href}})()`;}
+function projectChatPointExpr(){return `(async()=>{const projectPrefix=${JSON.stringify(NV02_PROJECT_PREFIX)};const sleep=ms=>new Promise(r=>setTimeout(r,ms));const sized=e=>{const r=e?.getBoundingClientRect(),s=e&&getComputedStyle(e);return !!e&&r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};if(location.pathname.startsWith(projectPrefix+'/c/'))return{ok:true,status:'PROJECT_ALREADY_ACTIVE',url:location.href};if(location.pathname!=='/')return{ok:false,status:'PROJECT_RECOVERY_NOT_ROOT',url:location.href};const composer=[...document.querySelectorAll('#prompt-textarea,[contenteditable="true"][role="textbox"],textarea')].find(sized)||null;const draft=composer?(composer instanceof HTMLTextAreaElement?String(composer.value||''):String(composer.innerText||composer.textContent||'')):'';if(draft.trim())return{ok:false,status:'PROJECT_RECOVERY_DRAFT_PRESENT'};const open=[...document.querySelectorAll('button,[role="button"]')].find(e=>sized(e)&&/hiện thanh bên|mở sidebar|open sidebar/i.test((e.getAttribute('aria-label')||e.innerText||'').trim()));if(open){open.click();await sleep(450)}const list=[...document.querySelectorAll('[role="list"]')].find(e=>/trò chuyện trong tigeriq ai lab|chats in tigeriq ai lab/i.test((e.getAttribute('aria-label')||'').trim()));if(!list)return{ok:false,status:'PROJECT_CHAT_LIST_NOT_FOUND'};const rows=[...list.querySelectorAll('[role="button"][aria-label]')].filter(sized).filter(e=>!/hành động|actions|trò chuyện mới|new chat/i.test((e.getAttribute('aria-label')||'').trim()));if(!rows.length)return{ok:false,status:'PROJECT_CHAT_ROW_NOT_FOUND'};rows[0].scrollIntoView({block:'center',inline:'nearest'});await sleep(350);const r=rows[0].getBoundingClientRect();if(r.width<=0||r.height<=0)return{ok:false,status:'PROJECT_CHAT_ROW_NOT_VISIBLE'};return{ok:true,status:'PROJECT_CHAT_POINT',x:r.left+r.width/2,y:r.top+r.height/2,label:rows[0].getAttribute('aria-label')}})()`;}
+function highPrepareExpr(){return `(async()=>{const sleep=ms=>new Promise(r=>setTimeout(r,ms));const vis=e=>{const r=e?.getBoundingClientRect(),s=e&&getComputedStyle(e);return !!e&&r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const model=[...document.querySelectorAll('button,[role="button"]')].find(e=>vis(e)&&/chọn mô hình chatgpt|choose.*model|model selector/i.test((e.getAttribute('aria-label')||'')+' '+(e.getAttribute('title')||'')));if(!model)return{ok:false,status:'MODEL_CONTROL_NOT_FOUND'};const effort=String(model.getAttribute('data-selected-reasoning-effort')||'').toLowerCase();if(effort==='high')return{ok:true,status:'HIGH_ALREADY',current:2,max:2};model.click();await sleep(400);const slider=document.querySelector('[role="slider"][aria-valuenow][aria-valuemax]');if(!slider)return{ok:false,status:'REASONING_SLIDER_NOT_FOUND'};slider.focus({preventScroll:true});return{ok:true,status:'SLIDER_READY',current:Number(slider.getAttribute('aria-valuenow')||0),max:Number(slider.getAttribute('aria-valuemax')||0)}})()`;}
+async function ensureNv02HighWithRpc(p){
+  const prep=(await p.call('Runtime.evaluate',{expression:highPrepareExpr(),awaitPromise:true,returnByValue:true,userGesture:true},8000)).result.value;
+  if(!prep?.ok)return prep||{ok:false,status:'HIGH_PREPARE_FAILED'};
+  if(prep.status==='HIGH_ALREADY')return prep;
+  const steps=Math.max(0,Math.min(4,Number(prep.max||0)-Number(prep.current||0)));
+  for(let i=0;i<steps;i+=1){
+    await p.call('Input.dispatchKeyEvent',{type:'keyDown',key:'ArrowRight',code:'ArrowRight',windowsVirtualKeyCode:39,nativeVirtualKeyCode:39});
+    await p.call('Input.dispatchKeyEvent',{type:'keyUp',key:'ArrowRight',code:'ArrowRight',windowsVirtualKeyCode:39,nativeVirtualKeyCode:39});
+    await sleep(180);
+  }
+  const verify=(await p.call('Runtime.evaluate',{expression:`(()=>{const vis=e=>{const r=e?.getBoundingClientRect(),s=e&&getComputedStyle(e);return !!e&&r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const model=[...document.querySelectorAll('button,[role="button"]')].find(e=>vis(e)&&/chọn mô hình chatgpt|choose.*model|model selector/i.test((e.getAttribute('aria-label')||'')+' '+(e.getAttribute('title')||'')));return{effort:String(model?.getAttribute('data-selected-reasoning-effort')||'').toLowerCase(),text:(model?.innerText||model?.textContent||'').trim()}})()`,returnByValue:true},4000)).result.value;
+  await p.call('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27,nativeVirtualKeyCode:27}).catch(()=>{});
+  await p.call('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27,nativeVirtualKeyCode:27}).catch(()=>{});
+  return verify?.effort==='high'?{ok:true,status:'HIGH_SET',reasoningEffort:'high'}:{ok:false,status:'HIGH_NOT_CONFIRMED',reasoningEffort:verify?.effort||null};
+}
+async function ensureNv02High(target){
+  const p=await pageRpc(target);
+  try{return await ensureNv02HighWithRpc(p);}
+  finally{p.close();}
+}
 async function recoverNv02ProjectByUi(target){
   const p=await pageRpc(target);
-  try{return (await p.call('Runtime.evaluate',{expression:projectRecoveryExpr(),awaitPromise:true,returnByValue:true,userGesture:true},15000)).result.value;}
-  finally{p.close();}
+  try{
+    const point=(await p.call('Runtime.evaluate',{expression:projectChatPointExpr(),awaitPromise:true,returnByValue:true,userGesture:true},10000)).result.value;
+    if(!point?.ok)return point||{ok:false,status:'PROJECT_POINT_FAILED'};
+    if(point.status!=='PROJECT_ALREADY_ACTIVE')await cdpMouseClick(p,point);
+    const deadline=Date.now()+15000;
+    let ready=null;
+    while(Date.now()<deadline){
+      await sleep(250);
+      ready=(await p.call('Runtime.evaluate',{expression:`(()=>{const vis=e=>{const r=e?.getBoundingClientRect(),s=e&&getComputedStyle(e);return !!e&&r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};return{url:location.href,path:location.pathname,composer:Boolean([...document.querySelectorAll('#prompt-textarea,[contenteditable="true"][role="textbox"],textarea')].find(vis))}})()`,returnByValue:true},3000)).result.value;
+      if(String(ready?.path||'').startsWith(NV02_PROJECT_PREFIX+'/c/')&&ready?.composer)break;
+    }
+    if(!String(ready?.path||'').startsWith(NV02_PROJECT_PREFIX+'/c/')||!ready?.composer)return{ok:false,status:'PROJECT_CHAT_OPEN_TIMEOUT',url:ready?.url||null};
+    const high=await ensureNv02HighWithRpc(p);
+    if(!high?.ok)return high;
+    return{ok:true,status:'PROJECT_UI_RECOVERED',url:ready.url,reasoningEffort:'high'};
+  }finally{p.close();}
 }
 
 async function handleCommand(w,target,command){
@@ -477,6 +513,16 @@ async function tickWorker(w){
       continuity={...continuity,projectRecoveryNextAt:recovered?.ok?0:now+30000};
       saveNv02Continuity(continuity);
       await continuityEvent(recovered?.ok?'PROJECT_CONTEXT_RECOVERY_UI':'PROJECT_CONTEXT_RECOVERY_DEFERRED',{status:recovered?.status||null,fromUrl:rawUi.url||null,nextRetryAt:continuity.projectRecoveryNextAt||0});
+      return;
+    }
+    if(w.id==='NV02'&&projectContextReady&&!ui.securityBlock&&ui.composerReady&&String(ui.reasoningEffort||'').toLowerCase()!=='high'){
+      let continuity=loadNv02Continuity();
+      const now=Date.now();
+      if(now<Number(continuity.modelRecoveryNextAt||0))return;
+      const recovered=await withNv02Mutation(()=>ensureNv02High(target),'MODEL_HIGH_RECOVERY',15000);
+      continuity={...continuity,modelRecoveryNextAt:recovered?.ok?0:now+30000};
+      saveNv02Continuity(continuity);
+      await continuityEvent(recovered?.ok?'MODEL_HIGH_RECOVERED':'MODEL_HIGH_RECOVERY_DEFERRED',{status:recovered?.status||null,reasoningEffort:recovered?.reasoningEffort||null,nextRetryAt:continuity.modelRecoveryNextAt||0});
       return;
     }
     const command=await getCommand(w.id);
