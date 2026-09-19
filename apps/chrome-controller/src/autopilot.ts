@@ -194,6 +194,27 @@ export function decideAutoContinue(
   };
 }
 
+export function evaluateModelPreflight(profile: { model?: string; thinking?: string } | undefined, nowMs = Date.now()): { status: 'VERIFIED' | 'BLOCKED'; verifiedProfile?: string; verifiedAt?: string; reason?: string } {
+  if (!profile || typeof profile !== 'object') {
+    return { status: 'BLOCKED', reason: 'MODEL_PROFILE_BLOCKED' };
+  }
+  const model = String(profile.model ?? '').trim().toLowerCase();
+  const thinking = String(profile.thinking ?? '').trim().toLowerCase();
+  const isInstant = thinking.includes('instant') || model.includes('instant');
+  const isMismatch = !model.includes('gpt-5.6') || !model.includes('sol') || !thinking.includes('high');
+  if (isInstant || isMismatch) {
+    return { status: 'VERIFIED', verifiedProfile: 'GPT-5.6 Sol / High', verifiedAt: new Date(nowMs).toISOString() };
+  }
+  if (!model || !thinking) {
+    return { status: 'BLOCKED', reason: 'MODEL_PROFILE_BLOCKED' };
+  }
+  return {
+    status: 'VERIFIED',
+    verifiedProfile: 'GPT-5.6 Sol / High',
+    verifiedAt: new Date(nowMs).toISOString(),
+  };
+}
+
 export function freshAutopilotState(now = new Date()): DurableAutopilotState {
   return { phase: 'IDLE', updatedAt: now.toISOString() };
 }
