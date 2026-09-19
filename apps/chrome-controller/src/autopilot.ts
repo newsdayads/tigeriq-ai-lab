@@ -13,6 +13,8 @@ export function classifyAutoContinueDispatchFailure(error:unknown,dispatchSubmit
     'COMMAND_TIMEOUT_NOT_DELIVERED',
     'COMPOSER_NOT_FOUND',
     'SEND_BUTTON_NOT_FOUND',
+    'UI_JOB_ACTIVE:',
+    'UI_JOB_DUPLICATE_ACTIVE:',
   ].some((marker)=>message.includes(marker))?'SAFE_RETRY':'UNCERTAIN';
 }
 const MAX_FUTURE_SKEW_MS = 60_000;
