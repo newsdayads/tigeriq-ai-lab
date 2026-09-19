@@ -35,6 +35,38 @@ test('parser fails closed on malformed registry', () => {
   assert.throws(() => parseSkillRegistry('version: x\nskills:\n  - id: good\n    state: ACTIVE'), /SKILL_REGISTRY_MALFORMED/);
 });
 
+test('external skill security gate enforces default-deny semantics for incomplete records while accepting valid ones', () => {
+  const incompleteRegistry = `version: 1
+skills:
+  - id: external-incomplete
+    title: Incomplete External
+    state: ACTIVE
+    version: 1.0.0
+    origin: external
+    target: general
+    summary: missing audit and provenance
+`;
+  assert.throws(() => parseSkillRegistry(incompleteRegistry), /SKILL_REGISTRY_REJECTED:INCOMPLETE_EXTERNAL_METADATA/);
+
+  const validRegistry = `version: 1
+skills:
+  - id: external-valid
+    title: Valid External
+    state: ACTIVE
+    version: 1.0.0
+    origin: external
+    provenance_url: https://github.com/example/repo
+    audit_status: PASSED
+    installer_reviewed: true
+    capabilities_declared: read-only
+    target: general
+    summary: complete valid external skill
+`;
+  const parsed = parseSkillRegistry(validRegistry);
+  assert.equal(parsed.skills.length, 1);
+  assert.equal(parsed.skills[0].id, 'external-valid');
+});
+
 test('CANDIDATE skill never loads', () => {
   const f = fixture([{ id: 'candidate-only', state: 'CANDIDATE', triggers: 'routing' }], { 'candidate-only': '# Candidate' });
   try {
