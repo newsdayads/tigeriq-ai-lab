@@ -132,7 +132,7 @@ const UI_EXPR=`(()=>{
   const activityRoot=activityBusy?.closest?.('.block-BQZwFn')||activityBusy?.parentElement||null;
   const activityText=String(activityRoot?.innerText||activityRoot?.textContent||'').replace(/\s+/g,' ').trim();
   let activityHash=0;for(let i=0;i<activityText.length;i+=1)activityHash=((activityHash*31)+activityText.charCodeAt(i))>>>0;
-  const activitySignature=uiBusy?`${activityText.length}:${activityHash}`:'';
+  const activitySignature=uiBusy?(String(activityText.length)+':'+String(activityHash)):'';
   const uiReady=document.readyState==='complete'&&!!composer&&!authRequired;
   const uiPhase=securityBlock?'BLOCKED':uiBusy?'WORKING':uiReady&&modelReady?'READY':'STALLED';
   return {
