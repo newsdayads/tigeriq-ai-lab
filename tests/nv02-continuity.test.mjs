@@ -86,7 +86,7 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("NV02_STABLE_READY_TIMEOUT");
     expect(source).toContain("waitForIdleAfterSubmission(target,45000,5000)");
     expect(source).toContain("const SEND_BUTTON_WAIT_MS=10000");
-    expect(source).toContain("until=Date.now()+SEND_BUTTON_WAIT_MS");
+    expect(source).toContain("until=Date.now()+${SEND_BUTTON_WAIT_MS}");
     expect(source).toContain("activityBusyVisible:Boolean(activityBusy)");
     expect(source).toContain("đang suy nghĩ|thinking|generating|đang tạo");
     expect(source).toContain("/(^|\\\\s)(đang suy nghĩ|thinking|generating|đang tạo)(\\\\s|$)/i");
@@ -97,6 +97,13 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("WORKING_NO_PROGRESS_3_CHECKS");
     expect(source).toContain("activitySignature");
     expect(source).toContain("workingUnchangedChecks");
+    expect(source).toContain("STREAM_RECOVERY_TIMEOUT");
+    expect(source).toContain("STREAM_RECOVERY_ACTION");
+    expect(source).toContain("STREAM_RETRY_CLICKED");
+    expect(source).toContain("STREAM_RETRY_RESTART_SCHEDULED");
+    expect(source).toContain("retryVisible:Boolean(retryButton)");
+    expect(source).toContain("state?.sidebarVisible&&state?.rowPresent===false");
+    expect(source).toContain("evidence:state?.archivedNotice?'TOAST'");
   });
 
   it('rotates chat by bounded count or age instead of every job', () => {
