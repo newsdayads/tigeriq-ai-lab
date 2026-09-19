@@ -44,7 +44,7 @@ const defaultAtomicJsonFileOps:AtomicJsonFileOps = {
   rename:(from,to)=>renameSync(from,to),
   exists:(path)=>existsSync(path),
   unlink:(path)=>unlinkSync(path),
-  sleep:(ms)=>Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,ms),
+  sleep:(ms)=>{try{Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,ms)}catch{const t=Date.now();while(Date.now()-t<ms);}},
   tempId:()=>randomUUID(),
 };
 
