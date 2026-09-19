@@ -272,6 +272,42 @@ interface Plane {
   get(id: string): WorkOrderSnapshot | Promise<WorkOrderSnapshot>;
 }
 
+export function normalizeWorkItemProjection(order: WorkOrder & { issueRef?: string; pr?: string; implementer?: string; reviewer?: string; stage?: string; timestamps?: Record<string, number>; blockers?: string[]; nextAction?: string }): {
+  id: string;
+  status: 'QUEUED' | 'CLAIMED' | 'WORKING' | 'EVIDENCE' | 'VERIFY' | 'DONE' | 'BLOCKED';
+  issueRef: string | null;
+  pr: string | null;
+  implementer: string | null;
+  reviewer: string | null;
+  stage: string;
+  timestamps: Record<string, number>;
+  blockers: string[];
+  nextAction: string | null;
+} {
+  let status: 'QUEUED' | 'CLAIMED' | 'WORKING' | 'EVIDENCE' | 'VERIFY' | 'DONE' | 'BLOCKED' = 'QUEUED';
+  const raw = String(order.status || '').toLowerCase();
+  if (raw === 'approved') status = 'CLAIMED';
+  else if (raw === 'running') status = 'WORKING';
+  else if (raw === 'blocked') status = 'BLOCKED';
+  else if (raw === 'verified') status = 'VERIFY';
+  else if (raw === 'failed') status = 'BLOCKED';
+  else if (['QUEUED', 'CLAIMED', 'WORKING', 'EVIDENCE', 'VERIFY', 'DONE', 'BLOCKED'].includes(order.status)) {
+    status = order.status as any;
+  }
+  return {
+    id: order.id,
+    status,
+    issueRef: order.issueRef || null,
+    pr: order.pr || null,
+    implementer: order.implementer || null,
+    reviewer: order.reviewer || null,
+    stage: order.stage || raw,
+    timestamps: order.timestamps || { updated: Date.now() },
+    blockers: order.blockers || [],
+    nextAction: order.nextAction || null,
+  };
+}
+
 function domainStatus(error: unknown): number {
   if (!(error instanceof Error)) return 500;
   if (/only a|requires an|requires reviewer|cannot evaluate/.test(error.message)) return 403;
