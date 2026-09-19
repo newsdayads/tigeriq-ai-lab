@@ -329,6 +329,11 @@ async function verifyWorkerModelProfilePreflight(workerId:WorkerId){
     if(!verified.valid){
       throw new Error(verified.reason??'MODEL_PROFILE_BLOCKED');
     }
+    const state=states.get(workerId);
+    if(state && state.lastHeartbeat) {
+      state.lastHeartbeat.modelProfileVerified = true;
+      state.lastHeartbeat.modelProfileDetails = { modelName: verified.profile!.modelName, reasoningEffort: verified.profile!.reasoningEffort, verifiedAt: verified.timestamp ?? new Date().toISOString() };
+    }
     log('NV02_MODEL_PROFILE_VERIFIED',{profile:verified.profile,timestamp:verified.timestamp});
   }catch(error){
     const state=states.get(workerId)!;
