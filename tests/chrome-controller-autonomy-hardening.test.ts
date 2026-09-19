@@ -213,6 +213,15 @@ describe('orphan pre-dispatch recovery proof',()=>{
   });
 });
 
+describe('GPT-5.6 Sol + High Profile Preflight Check',()=>{
+  it('blocks dispatch when profile verification fails or is unverified',()=>{
+    const s = snapshot();
+    const st = freshAutopilotState();
+    const decision = decideAutoContinue(s, st, Date.now(), 5 * 60_000, false);
+    expect(decision).toMatchObject({ kind: 'STOP', reason: 'GPT_5_6_SOL_HIGH_PROFILE_UNVERIFIED' });
+  });
+});
+
 describe('AUTO_CONTINUE continuity recovery',()=>{
   it('treats a pre-submit active-ledger collision as known non-delivery',()=>{
     expect(classifyAutoContinueDispatchFailure(new Error('UI_JOB_ACTIVE:NV02:GH-1005'),false)).toBe('SAFE_RETRY');
