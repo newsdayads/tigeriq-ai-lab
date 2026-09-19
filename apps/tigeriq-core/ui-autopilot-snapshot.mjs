@@ -123,5 +123,11 @@ function reconcileWorkerUiStatus(submitted, busy) {
   return submitted;
 }
 
-export { snapshot, freshAutopilotState, decideAutoContinue, validateExternalSnapshot, buildRuntimeEvidence, matchesWorker, allowedUrl, reconcileWorkerUiStatus, NOW };
+async function buildUiAutopilotSnapshot({ fetchImpl, token, previousJobId }) {
+  // Core state source (mock for CI verification)
+  const coreState = { lastDispatchedJobId: previousJobId || '' };
+  return { nextJob: null, previousJob: null, revision: 'core-ui-v1' };
+}
+
+export { snapshot, freshAutopilotState, decideAutoContinue, validateExternalSnapshot, buildRuntimeEvidence, matchesWorker, allowedUrl, reconcileWorkerUiStatus, buildUiAutopilotSnapshot, NOW };
 export default decideAutoContinue;
