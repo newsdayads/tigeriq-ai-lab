@@ -248,6 +248,15 @@ async function execute(workerId,command) {
     if(!allowedUrl(payload.url)||!matchesWorker(workerId,payload.url)) throw new Error('BLOCKED_URL');
     await chrome.tabs.update(ctx.tabId,{url:payload.url,active:true}); await waitForTabComplete(ctx.tabId); return{status:'NAVIGATED'};
   }
+  if(action==='MODEL_PREFLIGHT'){
+    if(workerId!=='NV02') throw new Error('MODEL_PREFLIGHT_NV02_ONLY');
+    if(!matchesWorker(workerId,ctx.url)) throw new Error('BLOCKED_URL');
+    await chrome.tabs.update(ctx.tabId,{active:true});
+    const response=await chrome.tabs.sendMessage(ctx.tabId,{type:'TIGERIQ_MODEL_PREFLIGHT'});
+    if(!response?.ok){const reason=response?.status||'MODEL_PROFILE_BLOCKED:UNKNOWN';const error=new Error(reason);error.status=reason;throw error;}
+    if(response.model!=='GPT-5.6 Sol'||response.thinking!=='high'||!response.verifiedAt)throw new Error('MODEL_PROFILE_BLOCKED:EVIDENCE_MISMATCH');
+    return response;
+  }
   if(action==='DISPATCH'){
     if(!matchesWorker(workerId,ctx.url)) throw new Error('BLOCKED_URL');
     await chrome.tabs.update(ctx.tabId,{active:true});
