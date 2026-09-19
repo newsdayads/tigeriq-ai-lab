@@ -61,6 +61,8 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("until=Date.now()+SEND_BUTTON_WAIT_MS");
     expect(source).toContain("activityBusyVisible:Boolean(activityBusy)");
     expect(source).toContain("đang suy nghĩ|thinking|generating|đang tạo");
+    expect(source).toContain("/(^|\\\\s)(đang suy nghĩ|thinking|generating|đang tạo)(\\\\s|$)/i");
+    expect(source).toContain(".replace(/\\\\s+/g,' ')");
   });
 
   it('rotates chat by bounded count or age instead of every job', () => {
