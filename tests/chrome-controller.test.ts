@@ -79,6 +79,18 @@ describe('review evidence and extension lifecycle',()=>{
   it('persists crash-bubble suppression and manual-close/owner-mode safeguards in controller source',()=>{const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');const broker=readFileSync('apps/chrome-controller/src/chrome-launch-broker.ts','utf8');expect(broker).toContain("'--disable-session-crashed-bubble'");expect(server).toContain('CHROME_LAUNCH_REQUESTED_VIA_BROKER');expect(server).not.toContain("spawn(config.chromePath");expect(server).toContain('manualCloseSuppressed');expect(server).toContain('workerHasActiveJob');expect(server).toContain('recoveryEligible');expect(server).toContain('OWNER_INTERACTION_READ_ONLY');expect(server).toContain("await sendCommand(workerId,'DISPATCH'");expect(server).not.toContain("runWithRetry(`${source.toLowerCase()}:${workerId}`");expect(server).toContain('AUTO_CONTINUE_COMMITTED');expect(server).toContain('resetKnownNotDelivered');expect(server).toContain('PERSIST_EVIDENCE_FAILED');expect(server).toContain('pendingJobId');expect(server).toContain("typeof data.text!=='string'");expect(server).toContain('DISPATCH_TEXT_MUST_BE_STRING');expect(server).not.toContain("String(data.text??'')");});
 });
 
+describe('NV02 preflight model profile inspection and switching', () => {
+  it('requires profile inspection before NV02 chat dispatch and fails closed on unverified state', () => {
+    const content = readFileSync('apps/chrome-controller/extension/content.js', 'utf8');
+    const background = readFileSync('apps/chrome-controller/extension/background.js', 'utf8');
+    expect(content).toContain('inspectAndSwitchNv02Profile');
+    expect(content).toContain('PROFILE_MENU_NOT_UNIQUE');
+    expect(content).toContain('NV02_PROFILE_NOT_VERIFIED');
+    expect(background).toContain("type: 'TIGERIQ_INSPECT_PROFILE'");
+    expect(background).toContain('NV02_PROFILE_INSPECTION_FAILED');
+  });
+});
+
 describe('completion-aware UTF-8 supervisor and Owner workspace',()=>{
   it('reports UI generation state without parsing AI output and gates auto-continue',()=>{const content=readFileSync('apps/chrome-controller/extension/content.js','utf8');const background=readFileSync('apps/chrome-controller/extension/background.js','utf8');const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');expect(content).toContain('function detectUiBusy()');expect(content).toContain('button[type="submit"]');expect(content).toContain('composerText(composer) !== expectedText');expect(content).toContain('waitForSubmissionEvidence(expectedText)');expect(content).toContain("status: 'SUBMITTED', evidence: submitted.evidence");expect(content).toContain("message?.type === 'TIGERIQ_UI_STATE'");expect(background).toContain('uiBusy:ui.uiBusy');expect(server).toContain('AUTOPILOT_WAIT_UI_BUSY');expect(server).toContain('AUTOPILOT_SECURITY_STOP');});
   it('keeps Vietnamese dispatch UTF-8 end-to-end',()=>{const sample='Tiáº¿ng Viá»‡t â€” Äáº·ng, áº¥, Æ°, â‚¬';const bytes=new TextEncoder().encode(JSON.stringify({text:sample}));expect(JSON.parse(new TextDecoder('utf-8').decode(bytes)).text).toBe(sample);const background=readFileSync('apps/chrome-controller/extension/background.js','utf8');const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');expect(background).toContain("content-type':'application/json; charset=utf-8");expect(server).toContain("toString('utf8')");});
