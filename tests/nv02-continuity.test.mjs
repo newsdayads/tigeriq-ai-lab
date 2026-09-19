@@ -110,6 +110,7 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("evidence:state?.archivedNotice?'TOAST'");
     expect(source).toContain("SEND_BUTTON_WAIT_MS+8000");
     expect(source).toContain("CONTINUE_DISPATCH_FAILED");
+    expect(source).toContain('button[data-testid="composer-submit-button"]');
     expect(source).toContain("nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)");
   });
 
