@@ -43,6 +43,7 @@ describe('NV02 continuity policy', () => {
     execFileSync(process.execPath,['--check','apps/chrome-controller/direct-cdp-bridge.mjs'],{stdio:'pipe'});
     const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(source).toContain("if(w.id==='NV02')await maybeNv02Continuity");
+    expect(source).toContain("w.enabled!==false&&w.id==='NV02'");
     expect(source).toContain("CONTINUE_DISPATCHED");
     expect(source).toContain("REFRESH_SCHEDULED");
     expect(source).toContain("CHAT_ROTATED");
