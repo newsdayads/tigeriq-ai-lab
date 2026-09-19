@@ -152,7 +152,7 @@ const resources=[
   R('NV13','openrouter','openrouter/free',()=>process.env.OPENROUTER_API_KEY),
   R('NV14','mistral','mistral-small-latest',()=>process.env.MISTRAL_API_KEY),
   R('NV16','huggingface','openai/gpt-oss-120b:fastest',()=>process.env.HF_TOKEN),
-  R('NV17','cerebras',process.env.TIGERIQ_CEREBRAS_MODEL||'gpt-oss-120b',()=>process.env.CEREBRAS_API_KEY&&process.env.TIGERIQ_CEREBRAS_FREE_TIER_VERIFIED==='true'),
+  R('NV17','inception',process.env.TIGERIQ_INCEPTION_MODEL||'mercury-2.5',()=>process.env.INCEPTION_API_KEY&&process.env.TIGERIQ_INCEPTION_FREE_TIER_VERIFIED==='true'),
   R('NV19','cohere',process.env.TIGERIQ_COHERE_MODEL||'command-a-plus-05-2026',()=>process.env.COHERE_API_KEY&&process.env.TIGERIQ_COHERE_TRIAL_CONFIRMED==='true'),
 ].filter(x=>x.ready());
 let rr=0;
@@ -165,7 +165,7 @@ async function invoke(r,prompt){
   if(r.provider==='openrouter')return openAi('https://openrouter.ai/api/v1/chat/completions',process.env.OPENROUTER_API_KEY,r.model,prompt);
   if(r.provider==='mistral')return openAi('https://api.mistral.ai/v1/chat/completions',process.env.MISTRAL_API_KEY,r.model,prompt);
   if(r.provider==='huggingface')return openAi('https://router.huggingface.co/v1/chat/completions',process.env.HF_TOKEN,r.model,prompt);
-  if(r.provider==='cerebras')return openAi('https://api.cerebras.ai/v1/chat/completions',process.env.CEREBRAS_API_KEY,r.model,prompt);
+  if(r.provider==='inception')return openAi('https://api.inceptionlabs.ai/v1/chat/completions',process.env.INCEPTION_API_KEY,r.model,prompt);
   if(r.provider==='gemini')return geminiRateController.run(async()=>{const b=await fetchJson(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(r.model)}:generateContent`,{method:'POST',headers:{'content-type':'application/json','x-goog-api-key':process.env.GEMINI_API_KEY},body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{temperature:0,maxOutputTokens:8192}})});const text=b?.candidates?.[0]?.content?.parts?.map(x=>x.text||'').join('\n');if(!String(text||'').trim())throw new Error('EMPTY_RESPONSE');return String(text)});
   if(r.provider==='cohere'){const b=await fetchJson('https://api.cohere.com/v2/chat',{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${process.env.COHERE_API_KEY}`},body:JSON.stringify({model:r.model,messages:[{role:'user',content:prompt}],temperature:0,max_tokens:8000})});const text=b?.message?.content?.map(x=>x.text||'').join('');if(!String(text||'').trim())throw new Error('EMPTY_RESPONSE');return String(text)}
   throw new Error('PROVIDER_UNSUPPORTED');
