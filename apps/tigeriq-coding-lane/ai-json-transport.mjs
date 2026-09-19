@@ -140,6 +140,14 @@ export function expandCompactChanges(prompt,text){
     }
     changed.set(path,content);
   }
+  for(const [path,content] of changed){
+    const original=String(files.get(path)??'');
+    const next=String(content??'');
+    if(original.length>=4000){
+      const removed=original.length-next.length;
+      if(removed>10000&&next.length<Math.floor(original.length*0.75))throw new Error(`COMPACT_EDIT_DESTRUCTIVE_SHRINK:${path}`);
+    }
+  }
   return {summary:d.summary,changes:[...changed].map(([path,content])=>({path,content}))};
 }
 
