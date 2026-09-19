@@ -4,6 +4,7 @@ const DEFAULT_OWNER='newsdayads';
 const DEFAULT_REPO='tigeriq-ai-lab';
 const DEFAULT_CODING_URL='http://100.97.23.87:8797';
 const DEFAULT_INTERVAL_MS=120000;
+const DEFAULT_CONCURRENCY_CAP=3;
 const MAX_AUTO_RETRIES=2;
 const PROVIDER_RETRY_BASE_MS=60000;
 
@@ -17,6 +18,20 @@ export function extractCodingDependencies(body){
   return [...new Set(values)].slice(0,16);
 }
 
+export function parseCodingScope(body){
+  const text=String(body||'');
+  const resourceScope=String(text.match(/^RESOURCE_SCOPE=(.+)$/m)?.[1]||'').trim();
+  const rawPaths=String(text.match(/^ALLOW_PATH_PREFIX=(.+)$/m)?.[1]||'');
+  const paths=[...new Set(rawPaths.split(',').map(x=>x.trim().replace(/^\.\//,'').replace(/\/+$/,'')).filter(Boolean))].sort();
+  const ambiguous=(!resourceScope&&!paths.length)||paths.some(path=>path==='*'||path.includes('..'));
+  return {resourceScope,paths,ambiguous};
+}
+function codingScopesOverlap(a,b){
+  if(!a||!b||a.ambiguous||b.ambiguous)return true;
+  if(a.resourceScope&&b.resourceScope&&a.resourceScope===b.resourceScope)return true;
+  return a.paths.some(left=>b.paths.some(right=>left===right||left.startsWith(`${right}/`)||right.startsWith(`${left}/`)));
+}
+
 export function parseCodingIssue(issue){
   if(!issue||issue.pull_request||issue.state!=='open')return null;
   const body=String(issue.body||'');
@@ -24,7 +39,7 @@ export function parseCodingIssue(issue){
   if(required.some(([k,v])=>!exactFlag(body,k,v)))return null;
   const sourcePriority=body.match(/^PRIORITY=(P[0-3])$/m)?.[1]||'P1';
   const priority=sourcePriority==='P3'?'P2':sourcePriority;
-  return {number:Number(issue.number),title:String(issue.title||''),body,priority,sourcePriority,url:String(issue.html_url||''),dependsOn:extractCodingDependencies(body),ownerDirect:backlogOwnerDirect(body)};
+  return {number:Number(issue.number),title:String(issue.title||''),body,priority,sourcePriority,url:String(issue.html_url||''),dependsOn:extractCodingDependencies(body),ownerDirect:backlogOwnerDirect(body),scopeLease:parseCodingScope(body)};
 }
 
 async function jsonFetch(fetchImpl,url,init={}){const res=await fetchImpl(url,{...init,signal:AbortSignal.timeout(12000)});const text=await res.text();let body={};try{body=text?JSON.parse(text):{}}catch{body={text}}if(!res.ok)throw new Error(`HTTP_${res.status}:${String(body?.error||body?.message||text).slice(0,300)}`);return body}
@@ -67,9 +82,17 @@ async function activeCodingOwnerBlocksRetry({pool,status,fetchImpl,owner,repo,to
   }
   return false;
 }
-async function hasOpenCodingDispatch(pool){
-  const q=await pool.query("select 1 from (select data from tigeriq_events where type='GITHUB_CODING_DISPATCHED' order by seq desc limit 1) d where not exists(select 1 from tigeriq_events r where r.data->>'issueNumber'=d.data->>'issueNumber' and (r.type='GITHUB_CODING_BLOCKED_FINAL' or (r.type='GITHUB_CODING_RESULT_REPORTED' and lower(coalesce(r.data->>'status',''))='completed')))");
-  return q.rowCount>0;
+async function activeCodingDispatches(pool){
+  const rows=(await pool.query("select data from tigeriq_events where type='GITHUB_CODING_DISPATCHED' order by seq desc limit 100")).rows;
+  const seen=new Set(),active=[];
+  for(const row of rows){
+    const data=row.data||{},n=Number(data.issueNumber);
+    if(!n||seen.has(n))continue;
+    seen.add(n);
+    if(await hasCompletedCodingResult(pool,n)||await markerExists(pool,'GITHUB_CODING_BLOCKED_FINAL',n))continue;
+    active.push({issueNumber:n,codingObjectiveId:String(data.codingObjectiveId||''),scopeLease:data.scopeLease||{resourceScope:'',paths:[],ambiguous:true}});
+  }
+  return active;
 }
 
 async function dependencyGate(fetchImpl,owner,repo,token,dependsOn){
@@ -81,30 +104,66 @@ async function dependencyGate(fetchImpl,owner,repo,token,dependsOn){
   return {ok:true};
 }
 
-export async function materializeGithubCodingIssues({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token='',codingLaneUrl=process.env.TIGERIQ_CODING_LANE_URL||DEFAULT_CODING_URL}){
-  if(await hasOpenCodingDispatch(pool))return {created:0,active:1,considered:0};
+export async function materializeGithubCodingIssues({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token='',codingLaneUrl=process.env.TIGERIQ_CODING_LANE_URL||DEFAULT_CODING_URL,concurrencyCap=Number(process.env.TIGERIQ_GITHUB_CODING_CONCURRENCY||DEFAULT_CONCURRENCY_CAP)}){
+  const cap=Math.max(1,Math.min(8,Number.isFinite(Number(concurrencyCap))?Math.floor(Number(concurrencyCap)):DEFAULT_CONCURRENCY_CAP));
+  const active=await activeCodingDispatches(pool);
+  const activeScopes=active.map(x=>x.scopeLease);
   const issues=await gh(fetchImpl,owner,repo,'/issues?state=open&per_page=100&sort=updated&direction=desc',token);
   const specs=sortBacklogSpecs(issues.map(parseCodingIssue).filter(Boolean));
+  const counters={openIssues:issues.filter(x=>x?.state==='open'&&!x?.pull_request).length,codingEligible:specs.length,dependencyBlocked:0,scopeBlocked:0,terminalOrDispatched:0,activeSlots:active.length,freeSlots:Math.max(0,cap-active.length),skipReasons:[]};
+  if(counters.freeSlots<=0)return {created:0,active:active.length,considered:specs.length,...counters,skipReason:'CAPACITY_FULL'};
+
+  let laneStatus;
+  try{laneStatus=await jsonFetch(fetchImpl,`${codingLaneUrl.replace(/\/$/,'')}/api/status`)}
+  catch(error){return {created:0,active:active.length,considered:specs.length,...counters,skipReason:'LANE_STATUS_UNAVAILABLE',error:String(error?.message||error)}}
+
+  let created=0,recovered=0;
   for(const spec of specs){
-    if(await markerExists(pool,'GITHUB_CODING_DISPATCHED',spec.number))continue;
+    if(active.length+created+recovered>=cap){
+      counters.skipReasons.push({issueNumber:spec.number,skipReason:'CAPACITY_FULL'});
+      continue;
+    }
+    if(await markerExists(pool,'GITHUB_CODING_DISPATCHED',spec.number)){
+      counters.terminalOrDispatched++;
+      counters.skipReasons.push({issueNumber:spec.number,skipReason:'ALREADY_DISPATCHED_OR_TERMINAL'});
+      continue;
+    }
     const gate=await dependencyGate(fetchImpl,owner,repo,token,spec.dependsOn);
     if(!gate.ok){
+      counters.dependencyBlocked++;
+      counters.skipReasons.push({issueNumber:spec.number,skipReason:gate.reason,dependency:gate.dependency||null});
       if(!(await markerExists(pool,'GITHUB_CODING_DEPENDENCY_WAIT',spec.number)))await mark(pool,'GITHUB_CODING_DEPENDENCY_WAIT',{issueNumber:spec.number,dependsOn:spec.dependsOn,...gate});
       console.warn(JSON.stringify({event:'GITHUB_CODING_DEPENDENCY_WAIT',issueNumber:spec.number,dependsOn:spec.dependsOn,...gate}));
+      continue;
+    }
+    if(activeScopes.some(scope=>codingScopesOverlap(scope,spec.scopeLease))){
+      counters.scopeBlocked++;
+      counters.skipReasons.push({issueNumber:spec.number,skipReason:'SCOPE_OVERLAP'});
       continue;
     }
     if(spec.dependsOn.length&&await markerExists(pool,'GITHUB_CODING_DEPENDENCY_WAIT',spec.number)&&!(await markerExists(pool,'GITHUB_DEPENDENCY_RELEASED',spec.number))){
       await mark(pool,'GITHUB_DEPENDENCY_RELEASED',{issueNumber:spec.number,dependsOn:spec.dependsOn});
       console.log(JSON.stringify({event:'GITHUB_DEPENDENCY_RELEASED',issueNumber:spec.number,dependsOn:spec.dependsOn}));
     }
-    const objective=`GitHub autonomous coding issue #${spec.number}: ${spec.title}\n${spec.url}\n\n${spec.body}\n\nExecute only zero-cost reversible repository work. Keep direct main writes, paid cost, credentials/security, destructive actions, production release, browser authentication and PC01 source editing blocked.`;
-    const out=await jsonFetch(fetchImpl,`${codingLaneUrl.replace(/\/$/,'')}/api/objectives`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({objective,priority:spec.priority})});if(!out?.id)throw new Error('CODING_OBJECTIVE_ID_MISSING');
+    const dispatchKey=`GITHUB-ISSUE-${spec.number}`;
+    const objective=`GitHub autonomous coding issue #${spec.number}: ${spec.title}\n${spec.url}\n\nDISPATCH_KEY=${dispatchKey}\n\n${spec.body}\n\nExecute only zero-cost reversible repository work. Keep direct main writes, paid cost, credentials/security, destructive actions, production release, browser authentication and PC01 source editing blocked.`;
+    let out=(laneStatus?.objectives||[]).find(x=>String(x?.objective||'').includes(`DISPATCH_KEY=${dispatchKey}`));
+    let recoveredExisting=false;
+    if(out?.id){recoveredExisting=true}
+    else{
+      out=await jsonFetch(fetchImpl,`${codingLaneUrl.replace(/\/$/,'')}/api/objectives`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({objective,priority:spec.priority})});
+      if(!out?.id)throw new Error('CODING_OBJECTIVE_ID_MISSING');
+      laneStatus={...(laneStatus||{}),objectives:[...(laneStatus?.objectives||[]),{id:out.id,objective,status:'queued'}]};
+    }
     const dispatchReason=spec.ownerDirect?`OWNER_DIRECT>${spec.sourcePriority}`:`PRIORITY_${spec.sourcePriority}`;
-    await mark(pool,'GITHUB_CODING_DISPATCHED',{issueNumber:spec.number,issueUrl:spec.url,codingObjectiveId:out.id,ownerDirect:spec.ownerDirect,sourcePriority:spec.sourcePriority,dispatchPriority:spec.priority,dispatchReason});
-    await comment(fetchImpl,owner,repo,spec.number,token,`[CLAIM] TigerIQ Coding Lane accepted this issue as ${out.id}. Automatic coding pipeline is active. Dispatch: ${dispatchReason}.`);
-    return {created:1,active:0,considered:specs.length,issueNumber:spec.number,codingObjectiveId:out.id};
+    await mark(pool,'GITHUB_CODING_DISPATCHED',{issueNumber:spec.number,issueUrl:spec.url,codingObjectiveId:out.id,ownerDirect:spec.ownerDirect,sourcePriority:spec.sourcePriority,dispatchPriority:spec.priority,dispatchReason,scopeLease:spec.scopeLease,dispatchKey,recoveredExisting});
+    await comment(fetchImpl,owner,repo,spec.number,token,recoveredExisting?`[CLAIM_RECOVERED] TigerIQ Coding Lane already had this issue as ${out.id}; durable dispatch state was restored. Dispatch: ${dispatchReason}.`:`[CLAIM] TigerIQ Coding Lane accepted this issue as ${out.id}. Automatic coding pipeline is active. Dispatch: ${dispatchReason}.`);
+    activeScopes.push(spec.scopeLease);
+    if(recoveredExisting)recovered++;else created++;
   }
-  return {created:0,active:0,considered:specs.length};
+  counters.activeSlots=active.length+created+recovered;
+  counters.freeSlots=Math.max(0,cap-counters.activeSlots);
+  return {created,recovered,active:active.length,considered:specs.length,...counters,skipReason:counters.freeSlots===0?'CAPACITY_FULL':null};
 }
 
 export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token='',codingLaneUrl=process.env.TIGERIQ_CODING_LANE_URL||DEFAULT_CODING_URL,now=()=>Date.now()}){
