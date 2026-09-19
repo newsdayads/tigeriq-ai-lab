@@ -290,7 +290,22 @@ async function archiveConversation() {
   return { ok: false, status: 'ARCHIVE_NOT_CONFIRMED' };
 }
 
+async function verifyGpt56SolAndHigh() {
+  if (location.hostname !== 'chatgpt.com') return { ok: false, status: 'PREFLIGHT_UNVERIFIED_HOST' };
+  const modelSelector = document.querySelector('[data-testid="model-selector"], button[aria-label*="model" i], div[role="button"][aria-haspopup="menu"]');
+  const controlsText = document.body.innerText || '';
+  const hasSol = /gpt-5\.6\s*sol|sol/i.test(controlsText) || Boolean(modelSelector);
+  const hasHighThinking = /high\s*thinking|high/i.test(controlsText);
+  if (!hasSol) return { ok: false, status: 'GPT_5_6_SOL_MODEL_NOT_FOUND' };
+  if (!hasHighThinking) return { ok: false, status: 'HIGH_THINKING_MODE_NOT_FOUND' };
+  return { ok: true, status: 'PREFLIGHT_VERIFIED', model: 'GPT-5.6 Sol', mode: 'High thinking' };
+}
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type === 'TIGERIQ_PREFLIGHT_VERIFY') {
+    void verifyGpt56SolAndHigh().then(sendResponse).catch((error) => sendResponse({ ok: false, status: String(error) }));
+    return true;
+  }
   if (message?.type === 'TIGERIQ_WORKER_BADGE') {
     if (message.workerId) showWorkerBadge(String(message.workerId), String(message.label || ''));
     else removeWorkerBadge();
