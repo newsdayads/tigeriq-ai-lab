@@ -29,12 +29,17 @@ export function parseSkillRegistry(raw) {
 
   const skills = [];
   let current = null;
-  const allowedFields = new Set(['id', 'title', 'state', 'version', 'provenance_batch', 'source_log', 'target', 'summary', 'triggers']);
+  const allowedFields = new Set(['id', 'title', 'state', 'version', 'provenance_batch', 'source_log', 'target', 'summary', 'triggers', 'origin', 'provenance_url', 'audit_status', 'installer_reviewed', 'capabilities_declared']);
 
   const pushCurrent = () => {
     if (!current) return;
     if (!current.id || !SKILL_ID_RE.test(current.id)) throw new Error('SKILL_REGISTRY_MALFORMED:SKILL_ID');
     if (!ALLOWED_STATES.has(current.state)) throw new Error(`SKILL_REGISTRY_MALFORMED:STATE:${current.id}`);
+    if (current.origin === 'external') {
+      if (!current.provenance_url || current.audit_status !== 'PASSED' || current.installer_reviewed !== 'true' || !current.capabilities_declared) {
+        throw new Error(`SKILL_REGISTRY_REJECTED:INCOMPLETE_EXTERNAL_METADATA:${current.id}`);
+      }
+    }
     if (skills.some(skill => skill.id === current.id)) throw new Error(`SKILL_REGISTRY_MALFORMED:DUPLICATE:${current.id}`);
     skills.push(current);
     current = null;
