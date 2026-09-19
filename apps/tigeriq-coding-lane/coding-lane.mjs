@@ -137,7 +137,8 @@ const REPO=process.env.TIGERIQ_GITHUB_REPO||'tigeriq-ai-lab';
 const HOST=process.env.TIGERIQ_CODING_HOST||'127.0.0.1';
 const PORT=Number(process.env.TIGERIQ_CODING_PORT||8797);
 const AUTO_MERGE=String(process.env.TIGERIQ_CODING_AUTO_MERGE||'true').toLowerCase()==='true';
-const MAX_PARALLEL=Math.max(1,Math.min(2,Number(process.env.TIGERIQ_CODING_MAX_PARALLEL||1)));
+export function normalizeCodingParallelLimit(value=3){const n=Number(value);return Math.max(1,Math.min(3,Number.isFinite(n)?Math.floor(n):3))}
+const MAX_PARALLEL=normalizeCodingParallelLimit(process.env.TIGERIQ_CODING_MAX_PARALLEL||3);
 const pool=DATABASE_URL?new Pool({connectionString:DATABASE_URL,max:4}):null;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const GEMINI_MIN_INTERVAL_MS=Math.max(4500,Number(process.env.TIGERIQ_GEMINI_MIN_INTERVAL_MS||4500));
