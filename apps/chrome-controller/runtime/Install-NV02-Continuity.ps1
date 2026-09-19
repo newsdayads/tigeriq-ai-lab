@@ -45,7 +45,8 @@ function Stop-Port([int]$Port){
   if($l){Stop-Process -Id $l.OwningProcess -Force -ErrorAction Stop}
 }
 function Start-Workspace{
-  Start-ScheduledTask -TaskName $TaskName
+  Assert-Ok (Test-Path $launcher) "LAUNCHER_NOT_FOUND:$launcher"
+  & $launcher
   $controller=Wait-Http 'http://127.0.0.1:8798/api/state' 30
   $bridge=Wait-Http 'http://127.0.0.1:8799/health' 30
   return @{controller=$controller;bridge=$bridge}
