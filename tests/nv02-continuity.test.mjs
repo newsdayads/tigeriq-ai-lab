@@ -78,6 +78,9 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("activateNv02ProjectContext");
     expect(source).toContain("projectContextReady");
     expect(source).toContain("projectContextReady&&modelControl");
+    expect(source).toContain("NV02_PROJECT_PATH_PREFIX");
+    expect(source).toContain("PROJECT_PATH_ALREADY_ACTIVE");
+    expect(source).toContain("location.pathname.startsWith");
   });
 
   it('rotates chat by bounded count or age instead of every job', () => {
