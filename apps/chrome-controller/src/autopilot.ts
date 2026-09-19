@@ -194,6 +194,12 @@ export function decideAutoContinue(
   };
 }
 
+export function verifyAutopilotModelProfileGuard(signals:any):{valid:boolean;reason?:string;profile?:any;timestamp?:string}{
+  const verified=verifyCanonicalModelProfile(signals);
+  if(!verified.valid)return{valid:false,reason:verified.reason??'MODEL_PROFILE_BLOCKED'};
+  return verified;
+}
+
 export function freshAutopilotState(now = new Date()): DurableAutopilotState {
   return { phase: 'IDLE', updatedAt: now.toISOString() };
 }
