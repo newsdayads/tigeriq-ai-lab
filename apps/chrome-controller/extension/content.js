@@ -168,6 +168,8 @@ function detectUiSignals() {
   };
 }
 
+const SEND_BUTTON_WAIT_MS = 10000;
+
 function findComposer() {
   const selectors = location.hostname === 'chatgpt.com'
     ? ['#prompt-textarea', 'div[contenteditable="true"][data-lexical-editor="true"]', '[contenteditable="true"][role="textbox"]', 'textarea']
@@ -263,7 +265,7 @@ async function dispatch(text) {
   const composer = findComposer();
   if (!composer) return { ok: false, status: 'COMPOSER_NOT_FOUND' };
   if (composerText(composer) !== expectedText) fillComposer(composer, text);
-  const deadline = Date.now() + 4000;
+  const deadline = Date.now() + SEND_BUTTON_WAIT_MS;
   while (Date.now() < deadline) {
     await sleep(200);
     const blockedAfterFill = detectSecurityBlock();
