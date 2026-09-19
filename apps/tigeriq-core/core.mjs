@@ -184,5 +184,5 @@ async function main() {
   server.listen(PORT, HOST, () => console.log(`TigerIQ core listening on ${HOST}:${PORT}`));
 }
 
-module.exports = { persistChannel, dispatchCampaign, markCampaignDone, measureLatency };
+module.exports = { persistChannel, dispatchCampaign, markCampaignDone, measureLatency, latencyStarts };
 if (require.main === module) main();
