@@ -241,3 +241,43 @@ describe('AUTO_CONTINUE continuity recovery',()=>{
     expect(server).toContain('resetKnownNotDelivered');
   });
 });
+
+describe('NV02 Canonical Model Profile Enforcement (GPT-5.6 Sol + High)', () => {
+  it('verifies valid canonical model profile signals', () => {
+    const res = verifyCanonicalModelProfile({
+      modelProfileVerified: true,
+      modelProfileDetails: {
+        modelName: 'GPT-5.6 Sol',
+        reasoningEffort: 'High',
+        verifiedAt: '2026-09-20T00:00:00.000Z',
+      },
+    });
+    expect(res.valid).toBe(true);
+    expect(res.profile).toEqual({
+      modelName: 'GPT-5.6 Sol',
+      reasoningEffort: 'High',
+    });
+  });
+
+  it('fails closed with MODEL_PROFILE_BLOCKED when profile is unverified, missing, or incorrect', () => {
+    expect(verifyCanonicalModelProfile(undefined).valid).toBe(false);
+    expect(verifyCanonicalModelProfile({ modelProfileVerified: false }).reason).toContain('MODEL_PROFILE_BLOCKED');
+    expect(verifyCanonicalModelProfile({
+      modelProfileVerified: true,
+      modelProfileDetails: { modelName: 'GPT-4o', reasoningEffort: 'High', verifiedAt: '2026-09-20T00:00:00.000Z' },
+    }).reason).toContain('MODEL_PROFILE_BLOCKED');
+    expect(verifyCanonicalModelProfile({
+      modelProfileVerified: true,
+      modelProfileDetails: { modelName: 'GPT-5.6 Sol', reasoningEffort: 'Low', verifiedAt: '2026-09-20T00:00:00.000Z' },
+    }).reason).toContain('MODEL_PROFILE_BLOCKED');
+  });
+
+  it('includes model profile verification logic in content script and security gate', () => {
+    const content = readFileSync('apps/chrome-controller/extension/content.js', 'utf8');
+    const security = readFileSync('apps/chrome-controller/src/security-gate.ts', 'utf8');
+    expect(content).toContain('TIGERIQ_VERIFY_MODEL_PROFILE');
+    expect(content).toContain('verifyAndSwitchModelProfile');
+    expect(security).toContain('verifyCanonicalModelProfile');
+    expect(security).toContain('MODEL_PROFILE_BLOCKED');
+  });
+});
