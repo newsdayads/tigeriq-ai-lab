@@ -100,11 +100,12 @@ createServer(async(req, res) => {
   if(req.url==='/api/hotpath/sample'){
     res.setHeader('Cache-Control','no-store');
     const data=[];
-    for(let i=0;i<HOTPATH_SAMPLE_LIMIT;i++){
-      const stages=['QUEUED','CLAIMED','WORKING','EVIDENCE','VERIFY','DONE','BLOCKED'];
-      const st=stages[Math.floor(Math.random()*stages.length)];
-      data.push(hotPathStage({job_id:`sample-${i}`},st));
-    }
+    const queued={job_id:'sample-QUEUED',employee_id:'NV10',lane:'coding'};
+    const claimed={job_id:'sample-CLAIMED',employee_id:'NV10',lane:'coding'};
+    const working={job_id:'sample-WORKING',employee_id:'NV10',lane:'coding'};
+    const evidence={job_id:'sample-EVIDENCE',employee_id:'NV10',lane:'coding'};
+    const done={job_id:'sample-DONE',employee_id:'NV10',lane:'coding'};
+    data.push(hotPathStage(queued,'QUEUED'),hotPathStage(claimed,'CLAIMED'),hotPathStage(working,'WORKING'),hotPathStage(evidence,'EVIDENCE'),hotPathStage(done,'DONE'));
     return res.end(JSON.stringify({items:data}));
   }
   if(req.method==='GET'&&req.pathname==='/api/workitems'){
