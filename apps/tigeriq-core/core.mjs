@@ -142,7 +142,6 @@ const runGateWithRepair=async({waitFn,repairFn,onWaiting,maxRepairCycles=3,timeo
   while(repairCycle<=maxRepairCycles){
     try{return await waitFn();} catch(e){
       if(e.code==='CI_GATES_TIMEOUT'&&e.detail?.timeoutRetries>0){
-        e.detail.timeoutRetries--;
         e=await waitFn();
         if(e?.state==='passed')return e;
       }
