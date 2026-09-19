@@ -97,6 +97,7 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
   const status=await jsonFetch(fetchImpl,`${codingLaneUrl.replace(/\/$/,'')}/api/status`);
   let progress=0,results=0;
   const seenIssues=new Set();
+  let retryCreatedThisTick=false;
   for(const row of rows){
     const n=Number(row.data?.issueNumber),id=String(row.data?.codingObjectiveId||'');
     if(!n||!id||seenIssues.has(n))continue;
@@ -113,7 +114,7 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
     }
     if(!objectiveTerminal(objective))continue;
     if(String(objective.status).toLowerCase()==='completed'){
-      if(!(await hasCompletedCodingResult(pool,n)){
+      if(!(await hasCompletedCodingResult(pool,n))){
         await comment(fetchImpl,owner,repo,n,token,`[RESULT] ${id} completed. ${String(objective.summary||'').slice(0,3000)}`);
         await close(fetchImpl,owner,repo,n,token);
         await mark(pool,'GITHUB_CODING_RESULT_REPORTED',{issueNumber:n,codingObjectiveId:id,status:'completed'});
@@ -157,10 +158,16 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
       continue;
     }
 
-    const otherActive=(status.objectives||[]).some(x=>x.id!==id&&!objectiveTerminal(x)&&objectiveMentionsIssue(x,n));
-    if(otherActive)continue;
-
     const retryAttempt=retryCount+1;
+    const retryKey=`GITHUB-ISSUE-${n}-RETRY-${retryAttempt}`;
+    let retryObjective=(status.objectives||[]).find(x=>String(x.objective||'').includes(`RETRY_KEY=${retryKey}`));
+    const otherActiveForIssue=(status.objectives||[]).some(x=>x.id!==id&&x.id!==retryObjective?.id&&!objectiveTerminal(x)&&objectiveMentionsIssue(x,n));
+    if(otherActiveForIssue)continue;
+    if(!retryObjective){
+      const anyActiveObjective=(status.objectives||[]).some(x=>!objectiveTerminal(x));
+      if(anyActiveObjective||retryCreatedThisTick)continue;
+    }
+
     let scheduled=(await eventData(pool,'GITHUB_CODING_RETRY_SCHEDULED',n)).find(x=>Number(x.retryAttempt)===retryAttempt);
     if(!scheduled){
       const delayMs=classification.transient?PROVIDER_RETRY_BASE_MS*(2**(retryAttempt-1)):0;
@@ -173,13 +180,12 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
     const nextAtMs=Date.parse(String(scheduled.nextAt||''));
     if(Number.isFinite(nextAtMs)&&Number(now())<nextAtMs)continue;
 
-    const retryKey=`GITHUB-ISSUE-${n}-RETRY-${retryAttempt}`;
-    let retryObjective=(status.objectives||[]).find(x=>String(x.objective||'').includes(`RETRY_KEY=${retryKey}`));
     if(!retryObjective){
       const objectiveText=`GitHub autonomous coding retry ${retryAttempt}/${MAX_AUTO_RETRIES} for issue #${spec.number}: ${spec.title}\n${spec.url}\n\nRETRY_KEY=${retryKey}\nSOURCE_BASE=CURRENT_MAIN\nPRIOR_OBJECTIVE_ID=${id}\nPRIOR_FAILURE=${classification.reason.slice(0,1000)}\n\n${spec.body}\n\nStart from current main HEAD. Reuse the same canonical allowed scope and the existing collision-safe mutation envelope. Do not open a parallel repair issue. Execute only zero-cost reversible repository work. Keep direct main writes, paid cost, credentials/security, destructive actions, production release, browser authentication and PC01 source editing blocked.`;
       const out=await jsonFetch(fetchImpl,`${codingLaneUrl.replace(/\/$/,'')}/api/objectives`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({objective:objectiveText,priority:spec.priority})});
       if(!out?.id)throw new Error('CODING_RETRY_OBJECTIVE_ID_MISSING');
       retryObjective={id:out.id,objective:objectiveText,status:'queued'};
+      retryCreatedThisTick=true;
     }
 
     const alreadyDispatched=(await eventData(pool,'GITHUB_CODING_RETRY_DISPATCHED',n)).some(x=>Number(x.retryAttempt)===retryAttempt);
