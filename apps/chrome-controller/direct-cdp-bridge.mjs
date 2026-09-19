@@ -16,7 +16,17 @@ const BINDING='2';
 const NV02_TOKEN=String(process.env.TIGERIQ_NV02_WORKER_TOKEN||'').trim();
 const config=JSON.parse(fs.readFileSync(CONFIG,'utf8'));
 const NV02_HOME_URL=String(config.workers.find((worker)=>worker.id==='NV02')?.homeUrl||'').trim();
+const NV02_PROJECT_PREFIX=(()=>{try{return new URL(NV02_HOME_URL).pathname.replace(/\/project\/?$/,'')}catch{return''}})();
 const busy=new Set();
+
+function isNv02ProjectContext(url){
+  if(!NV02_PROJECT_PREFIX)return false;
+  try{
+    const current=new URL(String(url||''));
+    const expected=new URL(NV02_HOME_URL);
+    return current.hostname===expected.hostname&&(current.pathname===expected.pathname||current.pathname.startsWith(NV02_PROJECT_PREFIX+'/c/'));
+  }catch{return false}
+}
 
 function log(event,data={}){
   const line=JSON.stringify({ts:new Date().toISOString(),event,...data});
@@ -404,9 +414,17 @@ async function tickWorker(w){
   if(busy.has(w.id)) return; busy.add(w.id);
   try{
     const port=workerPort(w);let list=await targets(port);let target=await pruneDuplicates(w,list);if(!target)return;
-    const ui=await uiState(target);const windowId=await windowIdFor(port,target.id);
+    const rawUi=await uiState(target);const windowId=await windowIdFor(port,target.id);
+    const projectContextReady=w.id!=='NV02'||isNv02ProjectContext(rawUi.url);
+    const ui=projectContextReady?rawUi:{...rawUi,uiReady:false,uiPhase:'STALLED',modelReady:false};
     const display={workArea:{left:0,top:0,width:Number(config.layout?.fallbackWorkAreaWidth||3277),height:1688}};
     await post('/api/heartbeat',w.id,{workerId:w.id,state:ui.uiPhase||'STALLED',windowId,tabId:target.id,url:ui.url,active:true,uiReady:ui.uiReady,uiPhase:ui.uiPhase,composerReady:ui.composerReady,sendReady:ui.sendReady,stopVisible:ui.stopVisible,scrollToBottomVisible:ui.scrollToBottomVisible,authRequired:ui.authRequired===true,uiBusy:ui.uiBusy,securityBlock:ui.securityBlock,modelControlPresent:ui.modelControlPresent,reasoningEffort:ui.reasoningEffort,modelReady:ui.modelReady,display});
+    if(w.id==='NV02'&&!projectContextReady&&!ui.securityBlock){
+      if(!NV02_HOME_URL){await continuityEvent('PROJECT_CONTEXT_RECOVERY_BLOCKED',{reason:'NV02_HOME_URL_MISSING',url:rawUi.url||null});return;}
+      const recovered=await withNv02Mutation(async()=>{await navigate(target,NV02_HOME_URL);return{ok:true,status:'PROJECT_CONTEXT_NAVIGATED'};},'PROJECT_CONTEXT_RECOVERY');
+      await continuityEvent(recovered?.status==='MUTATION_LEASE_BUSY'?'PROJECT_CONTEXT_RECOVERY_DEFERRED':'PROJECT_CONTEXT_RECOVERY_NAVIGATED',{status:recovered?.status||null,fromUrl:rawUi.url||null});
+      return;
+    }
     const command=await getCommand(w.id);
     if(command){
       try{
