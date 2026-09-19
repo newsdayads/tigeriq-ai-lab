@@ -59,3 +59,23 @@ export function campaignEvidenceJobId(objectiveId,currentPhase=0) {
   if(!id) throw new Error('CAMPAIGN_OBJECTIVE_ID_REQUIRED');
   return `JOB-EVID-${id}-P${Number(currentPhase)||0}`;
 }
+
+export function normalizeWorkItemLifecycle(input = {}) {
+  const raw = input || {};
+  const issueOrPr = String(raw.issueOrPr || raw.issue_or_pr || raw.pr || raw.issue || '').trim();
+  const implementer = String(raw.implementer || raw.assignee || raw.employee_id || '').trim();
+  const reviewer = String(raw.reviewer || raw.review_employee_id || '').trim();
+  const stage = String(raw.stage || raw.status || 'planning').trim().toLowerCase();
+  const timestamps = raw.timestamps && typeof raw.timestamps === 'object' ? raw.timestamps : { created: raw.createdAt || new Date().toISOString() };
+  const blocker = String(raw.blocker || raw.blocked_reason || '').trim();
+  const nextAction = String(raw.nextAction || raw.next_action || raw.next || '').trim();
+  return {
+    issueOrPr,
+    implementer,
+    reviewer,
+    stage,
+    timestamps,
+    blocker,
+    nextAction
+  };
+}

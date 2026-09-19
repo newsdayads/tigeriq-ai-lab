@@ -1,6 +1,6 @@
 // @ts-nocheck
 import {describe,it,expect} from 'vitest';
-import {normalizeCampaignPhases,currentCampaignGoal,campaignTransition,makePhaseCheckpoint,campaignNeedsEvidence,campaignEvidenceJobId} from '../apps/tigeriq-core/campaign-runner.mjs';
+import {normalizeCampaignPhases,currentCampaignGoal,campaignTransition,makePhaseCheckpoint,campaignNeedsEvidence,campaignEvidenceJobId,normalizeWorkItemLifecycle} from '../apps/tigeriq-core/campaign-runner.mjs';
 
 const phases=[
   {title:'Checkpoint',prompt:'Design durable resume',acceptance:'Resume without Owner'},
@@ -39,5 +39,9 @@ describe('API campaign runner',()=>{
   it('creates a durable phase checkpoint payload',()=>{
     const cp=makePhaseCheckpoint({currentPhase:1,phases,summary:'phase done',completedAt:'2026-09-18T00:00:00.000Z'});
     expect(cp).toMatchObject({phaseIndex:1,phaseNumber:2,phaseCount:3,phaseTitle:'Knowledge',summary:'phase done'});
+  });
+  it('normalizes Core-owned WorkItem lifecycle mapping',()=>{
+    const item = normalizeWorkItemLifecycle({ issueOrPr: 'PR #42', implementer: 'NV05', reviewer: 'NV10', stage: 'coding', blocker: 'tests failing', nextAction: 'fix test runner' });
+    expect(item).toMatchObject({ issueOrPr: 'PR #42', implementer: 'NV05', reviewer: 'NV10', stage: 'coding', blocker: 'tests failing', nextAction: 'fix test runner' });
   });
 });
