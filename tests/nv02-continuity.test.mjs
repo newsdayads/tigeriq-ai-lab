@@ -59,6 +59,9 @@ describe('NV02 continuity policy', () => {
     expect(source).not.toContain("return dispatchNaturalContinue(target,next,now)");
     expect(source).toContain("ROTATE_MODEL_PROFILE_NOT_READY");
     expect(source).toContain("freshUi?.modelReady!==true");
+    expect(source).toContain("NV02_HOME_URL");
+    expect(source).toContain("NEW_CHAT_PROJECT_CONTEXT_RECOVERED");
+    expect(source).toContain("Page.navigate',{url:NV02_HOME_URL}");
     expect(source).toContain("const SEND_BUTTON_WAIT_MS=10000");
     expect(source).toContain("until=Date.now()+SEND_BUTTON_WAIT_MS");
     expect(source).toContain("activityBusyVisible:Boolean(activityBusy)");
