@@ -1,6 +1,6 @@
 const SAVE_RECEIPT_SERVICE='http://127.0.0.1:8794';
 const SAVE_LEDGER_ISSUE=788;
-export const SAVE_RECEIPT_POLL_DELAYS_MS=[0,5000,10000,15000,30000];
+export const SAVE_RECEIPT_POLL_DELAYS_MS=[0,5000,10000,15000,30000,30000,30000];
 
 export function buildDurableSavePrompt({saveToken,workerId,dispatchedAt}){
   return [
