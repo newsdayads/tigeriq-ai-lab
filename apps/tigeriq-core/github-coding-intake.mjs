@@ -113,7 +113,7 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
     }
     if(!objectiveTerminal(objective))continue;
     if(String(objective.status).toLowerCase()==='completed'){
-      if(!(await hasCompletedCodingResult(pool,n)){
+      if(!(await hasCompletedCodingResult(pool,n))){
         await comment(fetchImpl,owner,repo,n,token,`[RESULT] ${id} completed. ${String(objective.summary||'').slice(0,3000)}`);
         await close(fetchImpl,owner,repo,n,token);
         await mark(pool,'GITHUB_CODING_RESULT_REPORTED',{issueNumber:n,codingObjectiveId:id,status:'completed'});
