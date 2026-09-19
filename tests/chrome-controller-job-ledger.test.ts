@@ -26,6 +26,12 @@ describe('durable UI worker job ledger',()=>{
     expect(JSON.parse(readFileSync(path,'utf8')).jobs[0].evidenceRefs).toEqual(['https://github.com/newsdayads/tigeriq-ai-lab/issues/959']);
   });
 
+  it('uses collision-safe atomic persistence instead of the legacy fixed .tmp rename path',()=>{
+    const source=readFileSync('apps/chrome-controller/src/job-ledger.ts','utf8');
+    expect(source).toContain('atomicWriteJsonWithRetry(this.path,this.value)');
+    expect(source).not.toContain('${this.path}.tmp');
+  });
+
   it('survives restart and rejects duplicate dispatch for the same active worker',()=>{
     const {path,store}=ledger();
     store.create('NV03',{jobId:'GH-959-NV03'});
