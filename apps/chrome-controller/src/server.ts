@@ -34,7 +34,7 @@ import type { WorkerPresence } from './worker-presence.js';
 import { persistWorkerSafetyStateOrFailClosed, restoreWorkerSafetyState, workerStartGate, type WorkerSafetySnapshot } from './worker-safety-state.js';
 
 type Command = { id:string; workerId:WorkerId; action:string; payload?:Record<string,unknown>; createdAt:string };
-type Heartbeat = { workerId:WorkerId; url?:string; windowId?:number; tabId?:number; state?:string; uiReady?:boolean; authRequired?:boolean; reauthRequired?:boolean; captchaRequired?:boolean; rateLimited?:boolean; rateLimitCode?:number|string; uiBusy?:boolean|null; securityBlock?:string|null; display?:{workArea?:WorkArea}; at:string };
+type Heartbeat = { workerId:WorkerId; url?:string; windowId?:number; tabId?:number; state?:string; uiReady?:boolean; authRequired?:boolean; reauthRequired?:boolean; captchaRequired?:boolean; rateLimited?:boolean; rateLimitCode?:number|string; uiBusy?:boolean|null; uiPhase?:'WORKING'|'READY'|'STALLED'|'BLOCKED'|string; composerReady?:boolean; sendReady?:boolean; stopVisible?:boolean; scrollToBottomVisible?:boolean; securityBlock?:string|null; display?:{workArea?:WorkArea}; at:string };
 type WindowState = 'OPEN' | 'CLOSED';
 type WorkerState = {
   id:WorkerId;
@@ -69,6 +69,7 @@ const waiters = new Map<string,Waiter>();
 const utilityPausedWorkers = new Set<WorkerId>();
 const recoveryAttempts = new Map<WorkerId,number>(WORKER_IDS.map((id) => [id,0]));
 const recoveryInFlight = new Set<WorkerId>();
+const plannedRefreshWorkers = new Set<WorkerId>();
 let paused=false;
 let killed=false;
 let startAllRunning=false;
@@ -762,8 +763,9 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
     }else if(!state.blocked){
       state.lastError=undefined;
       const beforeStatus=state.status;
-      state.status=reconcileWorkerUiStatus(state.status,hb.uiBusy);
-      if(state.status!==beforeStatus)log('WORKER_UI_STATUS_RECONCILED',{workerId,from:beforeStatus,to:state.status,uiBusy:hb.uiBusy});
+      const uiPhase=String(hb.uiPhase??'').toUpperCase();
+      state.status=['WORKING','READY','STALLED'].includes(uiPhase)?uiPhase:reconcileWorkerUiStatus(state.status,hb.uiBusy);
+      if(state.status!==beforeStatus)log('WORKER_UI_STATUS_RECONCILED',{workerId,from:beforeStatus,to:state.status,uiBusy:hb.uiBusy,uiPhase:hb.uiPhase??null});
       const activeJob=uiJobLedger.active(workerId);
       if(activeJob){
         const reconciledStage=reconcileUiJobStage(activeJob.stage,hb.uiBusy);
@@ -789,7 +791,9 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
     if(data.event!=='CLOSED'){json(res,400,{ok:false,error:'UNSUPPORTED_WINDOW_EVENT'});return true;}
     const windowId=Number(data.windowId);
     if(state.lastWindowId&&Number.isFinite(windowId)&&state.lastWindowId!==windowId){json(res,202,{ok:true,ignored:'STALE_WINDOW_EVENT'});return true;}
-    const recoveryEligible=!paused&&!utilityPausedWorkers.has(workerId)&&!state.manualCloseSuppressed&&workerHasActiveJob(workerId);
+    const plannedRefresh=plannedRefreshWorkers.has(workerId);
+    const recoveryEligible=!paused&&!utilityPausedWorkers.has(workerId)&&!state.manualCloseSuppressed&&(plannedRefresh||workerHasActiveJob(workerId));
+    if(plannedRefresh)plannedRefreshWorkers.delete(workerId);
     state.windowState='CLOSED';
     state.windowEventAt=new Date().toISOString();
     state.manualCloseSuppressed=!recoveryEligible;
@@ -797,10 +801,47 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
     state.status=recoveryEligible?'WINDOW_CLOSED_ACTIVE':'WINDOW_CLOSED_IDLE';
     state.lastError=undefined;
     recoveryAttempts.set(workerId,0);
-    log('WORKER_WINDOW_CLOSED',{workerId,windowId:Number.isFinite(windowId)?windowId:null,recoveryEligible,ownerInteractionMode:paused?'READ_ONLY':'AUTOMATION'});
+    log('WORKER_WINDOW_CLOSED',{workerId,windowId:Number.isFinite(windowId)?windowId:null,recoveryEligible,plannedRefresh,ownerInteractionMode:paused?'READ_ONLY':'AUTOMATION'});
     persistEvidence();
     if(recoveryEligible)void recoveryTick();
     json(res,202,{ok:true,recoveryEligible});
+    return true;
+  }
+  if(url.pathname==='/api/continuity/event'&&req.method==='POST'){
+    const data=await body(req);
+    const workerId=String(data.workerId??'') as WorkerId;
+    const event=String(data.event??'').trim().toUpperCase();
+    if(workerId!=='NV02'){json(res,400,{ok:false,error:'CONTINUITY_NV02_ONLY'});return true;}
+    if(!/^[A-Z0-9_]{3,64}$/.test(event)){json(res,400,{ok:false,error:'CONTINUITY_EVENT_INVALID'});return true;}
+    const safeData=Object.fromEntries(Object.entries(data).filter(([key])=>!['workerId','event'].includes(key)).slice(0,20));
+    log('NV02_CONTINUITY_EVENT',{workerId,event,...safeData});
+    persistEvidence();
+    json(res,202,{ok:true});
+    return true;
+  }
+  if(url.pathname==='/api/workers/NV02/restart-schedule'&&req.method==='POST'){
+    try{
+      if(paused)throw new Error('OWNER_INTERACTION_READ_ONLY');
+      if(killed)throw new Error('CONTROLLER_KILLED');
+      const state=states.get('NV02')!;
+      if(!state.enabled)throw new Error('WORKER_DISABLED:NV02');
+      if(state.blocked)throw new Error('WORKER_BLOCKED:NV02');
+      if(!recentHeartbeat('NV02'))throw new Error('NV02_HEARTBEAT_NOT_FRESH');
+      if(state.lastHeartbeat?.uiBusy!==false)throw new Error('NV02_UI_NOT_IDLE');
+      if(workerHasActiveJob('NV02'))throw new Error('NV02_ACTIVE_JOB');
+      const data=await body(req);
+      const reason=String(data.reason??'PLANNED_REFRESH').slice(0,96);
+      plannedRefreshWorkers.add('NV02');
+      state.manualCloseSuppressed=false;
+      persistWorkerSafetyState();
+      log('NV02_PLANNED_REFRESH_QUEUED',{workerId:'NV02',reason});
+      void uiQueue.enqueue(()=>sendCommand('NV02','CLOSE_WINDOW')).catch((error)=>{
+        plannedRefreshWorkers.delete('NV02');
+        log('NV02_PLANNED_REFRESH_QUEUE_FAILED',{workerId:'NV02',reason,error:String(error)});
+        persistEvidence();
+      });
+      json(res,202,{ok:true,queued:true});
+    }catch(error){json(res,409,{ok:false,error:String(error)});}
     return true;
   }
   if(url.pathname.startsWith('/api/commands/')&&req.method==='GET'){
