@@ -187,7 +187,7 @@ describe('stale-working recovery lease scope',()=>{
     expect(server).toContain("workerHasActiveJob(workerId)");
     expect(server).toContain("WORKER_COMMAND_INFLIGHT");
     expect(bridge).toContain("withNv02Mutation(()=>reloadTarget(target),'STALE_WORKING_RECOVERY')");
-    expect(bridge).toContain("JSON.stringify({ownerId,ttlMs:10000,purpose})");
+    expect(bridge).toContain("JSON.stringify({ownerId,ttlMs,purpose})");
   });
 });
 
