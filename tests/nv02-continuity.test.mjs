@@ -9,7 +9,7 @@ import {
 
 describe('NV02 continuity policy', () => {
   it('waits long enough for durable receipt propagation without real sleeping', async () => {
-    expect(SAVE_RECEIPT_POLL_DELAYS_MS.reduce((sum,ms)=>sum+ms,0)).toBe(60000);
+    expect(SAVE_RECEIPT_POLL_DELAYS_MS.reduce((sum,ms)=>sum+ms,0)).toBe(120000);
     const slept=[];let reads=0;
     const receipt=await waitForDurableSaveReceipt('token','NV02','2026-09-19T00:00:00Z',{
       sleep:async(ms)=>{slept.push(ms);},
@@ -80,7 +80,7 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("isNv02ProjectContext");
     expect(source).toContain("projectContextReady?rawUi:{...rawUi,uiReady:false,uiPhase:'STALLED',modelReady:false,projectContextReady:false}");
     expect(source).toContain("ttlMs=30000");
-    expect(source).toContain("'CHECKPOINT_DURABLE',120000");
+    expect(source).toContain("'CHECKPOINT_DURABLE',180000");
     expect(source).toContain("'CHAT_ROTATION',60000");
     expect(source).toContain("NV02_STABLE_READY_TIMEOUT");
     expect(source).toContain("waitForIdleAfterSubmission(target,45000,5000)");
