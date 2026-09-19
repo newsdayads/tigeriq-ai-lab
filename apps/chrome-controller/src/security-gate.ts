@@ -5,6 +5,24 @@ export interface HeartbeatSecuritySignals {
   rateLimited?:boolean;
   rateLimitCode?:number|string;
   securityBlock?:string|null;
+  modelProfileVerified?:boolean;
+  modelProfileDetails?:{modelName:string;reasoningEffort:string;verifiedAt:string};
+  modelProfileBlocked?:string|null;
+}
+
+export function verifyCanonicalModelProfile(signals:HeartbeatSecuritySignals|undefined):{valid:boolean;reason?:string;profile?:{modelName:string;reasoningEffort:string};timestamp?:string}{
+  if(!signals)return{valid:false,reason:'MODEL_PROFILE_BLOCKED:NO_SIGNALS'};
+  if(signals.modelProfileBlocked)return{valid:false,reason:`MODEL_PROFILE_BLOCKED:${signals.modelProfileBlocked}`};
+  if(!signals.modelProfileVerified)return{valid:false,reason:'MODEL_PROFILE_BLOCKED:UNVERIFIED'};
+  const details=signals.modelProfileDetails;
+  if(!details||typeof details!=='object')return{valid:false,reason:'MODEL_PROFILE_BLOCKED:MISSING_DETAILS'};
+  const modelName=String(details.modelName||'').trim();
+  const reasoningEffort=String(details.reasoningEffort||'').trim();
+  if(modelName!=='GPT-5.6 Sol')return{valid:false,reason:`MODEL_PROFILE_BLOCKED:INVALID_MODEL:${modelName}`};
+  if(reasoningEffort!=='High')return{valid:false,reason:`MODEL_PROFILE_BLOCKED:INVALID_REASONING_EFFORT:${reasoningEffort}`};
+  const verifiedAt=String(details.verifiedAt||'').trim();
+  if(!verifiedAt||isNaN(Date.parse(verifiedAt)))return{valid:false,reason:'MODEL_PROFILE_BLOCKED:INVALID_TIMESTAMP'};
+  return{valid:true,profile:{modelName,reasoningEffort},timestamp:verifiedAt};
 }
 
 export interface SaveReceiptVerificationInput {
