@@ -251,15 +251,6 @@ async function execute(workerId,command) {
   if(action==='DISPATCH'){
     if(!matchesWorker(workerId,ctx.url)) throw new Error('BLOCKED_URL');
     await chrome.tabs.update(ctx.tabId,{active:true});
-    if (workerId === 'NV02') {
-      const profileRes = await chrome.tabs.sendMessage(ctx.tabId, { type: 'TIGERIQ_INSPECT_PROFILE' });
-      if (!profileRes?.ok) {
-        const reason = profileRes?.status || 'NV02_PROFILE_INSPECTION_FAILED';
-        const error = new Error(reason);
-        error.status = reason;
-        throw error;
-      }
-    }
     const response=await chrome.tabs.sendMessage(ctx.tabId,{type:'TIGERIQ_DISPATCH',text:String(payload.text||'')});
     if(!response?.ok){const reason=response?.status||'DISPATCH_FAILED';const error=new Error(reason);error.status=reason;throw error;}
     return response;
