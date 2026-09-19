@@ -127,7 +127,9 @@ const UI_EXPR=`(()=>{
   if(!securityBlock) for(const [n,s] of checks){if(txt.includes(n)){securityBlock=s;break;}}
   const modelControl=location.hostname==='chatgpt.com'?[...document.querySelectorAll('button,[role="button"]')].find(e=>vis(e)&&/chọn mô hình chatgpt|choose.*model|model selector/i.test((e.getAttribute('aria-label')||'')+' '+(e.getAttribute('title')||'')))||null:null;
   const reasoningEffort=modelControl?.getAttribute('data-selected-reasoning-effort')||null;
-  const modelReady=location.hostname!=='chatgpt.com'||Boolean(modelControl&&String(reasoningEffort||'').toLowerCase()==='high');
+  const projectContext=location.hostname==='chatgpt.com'?[...document.querySelectorAll('button,[role="button"]')].find(e=>vis(e)&&/thay đổi dự án:\\s*tigeriq ai lab|change project:\\s*tigeriq ai lab/i.test((e.getAttribute('aria-label')||'').trim()))||null:null;
+  const projectContextReady=location.hostname!=='chatgpt.com'||Boolean(projectContext);
+  const modelReady=location.hostname!=='chatgpt.com'||Boolean(projectContextReady&&modelControl&&String(reasoningEffort||'').toLowerCase()==='high');
   const uiBusy=Boolean(stop||activityBusy);
   const activityRoot=activityBusy?.closest?.('.block-BQZwFn')||activityBusy?.parentElement||null;
   const activityText=String(activityRoot?.innerText||activityRoot?.textContent||'').replace(/\s+/g,' ').trim();
@@ -138,7 +140,7 @@ const UI_EXPR=`(()=>{
   return {
     uiReady,uiPhase,composerReady:Boolean(composer),sendReady:Boolean(send),stopVisible:Boolean(stop),activityBusyVisible:Boolean(activityBusy),
     scrollToBottomVisible:Boolean(scroll),authRequired,uiBusy,securityBlock,
-    modelControlPresent:Boolean(modelControl),reasoningEffort,modelReady,activitySignature,
+    modelControlPresent:Boolean(modelControl),projectContextReady,reasoningEffort,modelReady,activitySignature,
     title:document.title,url:location.href,readyState:document.readyState,bodyChildren:document.body?.children?.length||0
   };
 })()`;
@@ -398,7 +400,7 @@ async function tickWorker(w){
     const port=workerPort(w);let list=await targets(port);let target=await pruneDuplicates(w,list);if(!target)return;
     const ui=await uiState(target);const windowId=await windowIdFor(port,target.id);
     const display={workArea:{left:0,top:0,width:Number(config.layout?.fallbackWorkAreaWidth||3277),height:1688}};
-    await post('/api/heartbeat',w.id,{workerId:w.id,state:ui.uiPhase||'STALLED',windowId,tabId:target.id,url:ui.url,active:true,uiReady:ui.uiReady,uiPhase:ui.uiPhase,composerReady:ui.composerReady,sendReady:ui.sendReady,stopVisible:ui.stopVisible,scrollToBottomVisible:ui.scrollToBottomVisible,authRequired:ui.authRequired===true,uiBusy:ui.uiBusy,securityBlock:ui.securityBlock,modelControlPresent:ui.modelControlPresent,reasoningEffort:ui.reasoningEffort,modelReady:ui.modelReady,display});
+    await post('/api/heartbeat',w.id,{workerId:w.id,state:ui.uiPhase||'STALLED',windowId,tabId:target.id,url:ui.url,active:true,uiReady:ui.uiReady,uiPhase:ui.uiPhase,composerReady:ui.composerReady,sendReady:ui.sendReady,stopVisible:ui.stopVisible,scrollToBottomVisible:ui.scrollToBottomVisible,authRequired:ui.authRequired===true,uiBusy:ui.uiBusy,securityBlock:ui.securityBlock,modelControlPresent:ui.modelControlPresent,projectContextReady:ui.projectContextReady,reasoningEffort:ui.reasoningEffort,modelReady:ui.modelReady,display});
     const command=await getCommand(w.id);
     if(command){
       try{
