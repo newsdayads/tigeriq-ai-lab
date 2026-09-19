@@ -128,6 +128,51 @@ function recoveryFailure(taskId: string, employeeId: string): WorkerResult {
   };
 }
 
+export interface MutationEnvelope {
+  path: string;
+  patch: unknown;
+}
+
+export function parseMutationEnvelope(raw: string, allowedPaths: Set<string>, maxSize: number): MutationEnvelope {
+  if (new TextEncoder().encode(raw).length > maxSize) {
+    throw new Error('mutation size exceeds bounded limit');
+  }
+  const colonIdx = raw.indexOf(':');
+  if (colonIdx === -1) {
+    throw new Error('malformed envelope: missing length prefix');
+  }
+  const lenStr = raw.slice(0, colonIdx);
+  const length = Number(lenStr);
+  if (Number.isNaN(length) || length < 0) {
+    throw new Error('malformed envelope: invalid length');
+  }
+  const jsonStart = colonIdx + 1;
+  if (jsonStart + length > raw.length) {
+    throw new Error('malformed envelope: length exceeds remaining data');
+  }
+  const jsonStr = raw.slice(jsonStart, jsonStart + length);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonStr);
+  } catch (err) {
+    throw new Error('malformed envelope: invalid JSON payload');
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('malformed envelope: payload must be an object');
+  }
+  const record = parsed as Record<string, unknown>;
+  if (typeof record.path !== 'string') {
+    throw new Error('malformed envelope: path must be a string');
+  }
+  if (!allowedPaths.has(record.path)) {
+    throw new Error(`rejected out-of-scope path: ${record.path}`);
+  }
+  if (!('patch' in record)) {
+    throw new Error('malformed envelope: missing patch');
+  }
+  return { path: record.path, patch: record.patch };
+}
+
 export class DurableWorkforceRuntime {
   readonly #adapters = new Map<WorkerKind, WorkerAdapter>();
   readonly #store?: WorkforceStateStore;
