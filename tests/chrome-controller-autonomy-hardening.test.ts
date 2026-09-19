@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync,mkdtempSync,readFileSync,writeFileSync } from 'node:fs';
+import { existsSync,mkdtempSync,readFileSync,readdirSync,renameSync,unlinkSync,writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as ts from 'typescript';
@@ -7,6 +7,7 @@ import { describe,expect,it } from 'vitest';
 import { DurableDispatchLeaseStore } from '../apps/chrome-controller/src/dispatch-lease.js';
 import { classifyAutoContinueDispatchFailure,decideAutoContinue,freshAutopilotState,type DurableAutopilotState,type ExternalAutopilotSnapshot } from '../apps/chrome-controller/src/autopilot.js';
 import { heartbeatStopReason } from '../apps/chrome-controller/src/security-gate.js';
+import { atomicWriteJsonWithRetry, type AtomicJsonFileOps } from '../apps/chrome-controller/src/runtime-evidence.js';
 
 const observedAt='2026-09-17T00:00:10.000Z';
 const completedAt='2026-09-17T00:00:05.000Z';
@@ -76,6 +77,28 @@ describe('durable dispatch lease',()=>{
     expect(b.acquire('GH-1',4000)).toMatchObject({kind:'BUSY'});
     expect(b.acquire('GH-1',63_001)).toMatchObject({kind:'TAKEN_OVER',lease:{jobId:'GH-1',leaseEpoch:2}});
   });});
+
+describe('crash-safe atomic persistence',()=>{
+  const errorWithCode=(code:string)=>Object.assign(new Error(code),{code});
+  const ops=(rename:(from:string,to:string)=>void,tempId:string):AtomicJsonFileOps=>({
+    write:(path,content)=>writeFileSync(path,content,'utf8'),rename,exists:existsSync,unlink:unlinkSync,sleep:()=>{},tempId:()=>tempId,
+  });
+
+  it('retries transient EPERM/EBUSY and eventually replaces the last-good file',()=>{
+    const dir=mkdtempSync(join(tmpdir(),'tigeriq-evidence-'));const path=join(dir,'runtime-evidence.json');
+    writeFileSync(path,'{"generation":"last-good"}\n','utf8');let attempts=0;
+    atomicWriteJsonWithRetry(path,{generation:'new'},ops((from,to)=>{attempts++;if(attempts===1)throw errorWithCode('EPERM');if(attempts===2)throw errorWithCode('EBUSY');renameSync(from,to);},'retry-success'));
+    expect(attempts).toBe(3);expect(JSON.parse(readFileSync(path,'utf8'))).toEqual({generation:'new'});
+  });
+
+  it('preserves last-good evidence and removes the unique temp after persistent EBUSY',()=>{
+    const dir=mkdtempSync(join(tmpdir(),'tigeriq-evidence-'));const path=join(dir,'runtime-evidence.json');
+    const lastGood='{"generation":"last-good"}\n';writeFileSync(path,lastGood,'utf8');
+    expect(()=>atomicWriteJsonWithRetry(path,{generation:'never-written'},ops(()=>{throw errorWithCode('EBUSY');},'persistent-busy'),3)).toThrow('EBUSY');
+    expect(readFileSync(path,'utf8')).toBe(lastGood);
+    expect(readdirSync(dir).filter((name)=>name.endsWith('.tmp'))).toEqual([]);
+  });
+});
 
 describe('fresh completion evidence',()=>{
   it('requires durable proof of the exact prior dispatch and completion after it',()=>{
@@ -147,7 +170,7 @@ describe('AUTO_CONTINUE known non-delivery contract',()=>{
   it('wires the classifier into AUTO_CONTINUE while preserving manual dispatch configuration',()=>{
     const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
     expect(server).toContain('classifyAutoContinueDispatchFailure(error,dispatchDelivered)');
-    expect(server).toContain('dispatchLease.markRetryable(dispatchLeaseToken.leaseId,decision.jobId');
+    expect(server).toContain('dispatchLease.resetKnownNotDelivered(decision.jobId,Date.now(),0)');
     expect(server).toContain("log('AUTO_CONTINUE_FAILED_CLOSED'");
     expect(server).toContain("await dispatch(workerId,data.text,data.navigate!==false,'MANUAL',{");
   });
