@@ -649,6 +649,13 @@ export async function startSelfCheck(runtime) {
   }
 }
 
+async function transitionWorkItemState(pool, workItemId, nextState, metadata = {}) {
+  await pool.query(
+    `update tigeriq_work_items set status = $1, metadata = metadata || $2::jsonb, updated_at = now() where id = $3`,
+    [nextState, JSON.stringify(metadata), workItemId]
+  );
+}
+
 async function loop(){
   while(!stop){const t=Date.now();
     try{

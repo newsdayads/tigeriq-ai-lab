@@ -17,6 +17,7 @@
     if(person.retired || admin.includes('RETIRED')) return 'RETIRED';
     if(!person.assigned || admin.includes('UNASSIGNED')) return 'UNASSIGNED';
     if(admin.includes('PAUSED')) return 'PAUSED';
+    if(person.active_coding_lane || person.active_work_item) return 'BUSY';
     if(admin.includes('MANUAL') || admin.includes('PRIMARY_UI') || admin.includes('SUPPORT_UI') || admin.includes('DEEP_RESEARCH')) return 'MANUAL';
     return 'NO_API';
   }
