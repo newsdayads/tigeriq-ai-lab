@@ -259,6 +259,45 @@ describe('GitHub coding continuity supervisor',()=>{
     expect(pool.events.filter(e=>e.type==='GITHUB_CODING_BLOCKED_FINAL')[0]?.data.reason).toBe('ISSUE_CLOSED_OR_SUPERSEDED');
   });
 
+  it('ignores only stale active owners whose source issue is closed',async()=>{
+    const pool=fakePool();let posted=0;
+    pool.events.push({type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:807,codingObjectiveId:'obj-807'}});
+    const fetchImpl=async(url)=>{
+      if(url.includes('/api/status'))return response({objectives:[
+        {id:'obj-807',status:'blocked',summary:'CODING_COMPACT_EDIT_INVALID',objective:'GitHub autonomous coding issue #807: retry me'},
+        {id:'stale-900',status:'active',objective:'GitHub bootstrap coding issue #900: already completed source'}
+      ],jobs:[]});
+      if(url.includes('/api/objectives')){posted++;return response({id:'obj-807-retry'});}
+      if(url.includes('/issues/807'))return response(issue(SAFE,{number:807}));
+      if(url.includes('/issues/900'))return response({number:900,state:'closed'});
+      if(url.includes('/comments'))return response({});
+      return response({});
+    };
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake',now:()=>1000});
+    expect(posted).toBe(1);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_STALE_OWNER_IGNORED')).toHaveLength(1);
+    expect(pool.events.find(e=>e.type==='GITHUB_CODING_STALE_OWNER_IGNORED')?.data.issueNumber).toBe(900);
+  });
+
+  it('keeps an open active source issue as a valid mutation owner',async()=>{
+    const pool=fakePool();let posted=0;
+    pool.events.push({type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:808,codingObjectiveId:'obj-808'}});
+    const fetchImpl=async(url)=>{
+      if(url.includes('/api/status'))return response({objectives:[
+        {id:'obj-808',status:'blocked',summary:'CODING_COMPACT_EDIT_INVALID',objective:'GitHub autonomous coding issue #808: retry me'},
+        {id:'active-901',status:'active',objective:'GitHub autonomous coding issue #901: still open'}
+      ],jobs:[]});
+      if(url.includes('/api/objectives')){posted++;return response({id:'unexpected'});}
+      if(url.includes('/issues/808'))return response(issue(SAFE,{number:808}));
+      if(url.includes('/issues/901'))return response({number:901,state:'open'});
+      if(url.includes('/comments'))return response({});
+      return response({});
+    };
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake',now:()=>1000});
+    expect(posted).toBe(0);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_RETRY_DISPATCHED')).toHaveLength(0);
+  });
+
   it('creates at most one new retry objective per intake tick across blocked issues',async()=>{
     const pool=fakePool();let posted=0;
     pool.events.push(

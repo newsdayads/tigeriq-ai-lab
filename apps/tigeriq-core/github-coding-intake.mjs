@@ -51,6 +51,22 @@ function issueSuperseded(issue){
 }
 function objectiveTerminal(objective){return ['completed','blocked'].includes(String(objective?.status||'').toLowerCase())}
 function objectiveMentionsIssue(objective,n){return new RegExp(`(?:issue\\s+|#)${n}\\b`,'i').test(String(objective?.objective||''))}
+function objectiveIssueNumber(objective){const m=String(objective?.objective||'').match(/\bissue\s+#(\d+)\b/i);const n=Number(m?.[1]||0);return Number.isInteger(n)&&n>0?n:null}
+async function activeCodingOwnerBlocksRetry({pool,status,fetchImpl,owner,repo,token,excludeObjectiveIds=[]}){
+  const excluded=new Set(excludeObjectiveIds.filter(Boolean));
+  for(const active of status.objectives||[]){
+    if(excluded.has(active?.id)||objectiveTerminal(active))continue;
+    const sourceIssueNumber=objectiveIssueNumber(active);
+    if(!sourceIssueNumber)return true;
+    let sourceIssue;
+    try{sourceIssue=await gh(fetchImpl,owner,repo,`/issues/${sourceIssueNumber}`,token)}catch{return true}
+    if(sourceIssue?.state==='open'&&!sourceIssue?.pull_request)return true;
+    if(!(await markerExists(pool,'GITHUB_CODING_STALE_OWNER_IGNORED',sourceIssueNumber))){
+      await mark(pool,'GITHUB_CODING_STALE_OWNER_IGNORED',{issueNumber:sourceIssueNumber,codingObjectiveId:active.id,sourceState:String(sourceIssue?.state||'unknown')});
+    }
+  }
+  return false;
+}
 async function hasOpenCodingDispatch(pool){
   const q=await pool.query("select 1 from (select data from tigeriq_events where type='GITHUB_CODING_DISPATCHED' order by seq desc limit 1) d where not exists(select 1 from tigeriq_events r where r.data->>'issueNumber'=d.data->>'issueNumber' and (r.type='GITHUB_CODING_BLOCKED_FINAL' or (r.type='GITHUB_CODING_RESULT_REPORTED' and lower(coalesce(r.data->>'status',''))='completed')))");
   return q.rowCount>0;
@@ -164,8 +180,8 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
     const otherActiveForIssue=(status.objectives||[]).some(x=>x.id!==id&&x.id!==retryObjective?.id&&!objectiveTerminal(x)&&objectiveMentionsIssue(x,n));
     if(otherActiveForIssue)continue;
     if(!retryObjective){
-      const anyActiveObjective=(status.objectives||[]).some(x=>!objectiveTerminal(x));
-      if(anyActiveObjective||retryCreatedThisTick)continue;
+      const blockedByActiveOwner=await activeCodingOwnerBlocksRetry({pool,status,fetchImpl,owner,repo,token,excludeObjectiveIds:[id]});
+      if(blockedByActiveOwner||retryCreatedThisTick)continue;
     }
 
     let scheduled=(await eventData(pool,'GITHUB_CODING_RETRY_SCHEDULED',n)).find(x=>Number(x.retryAttempt)===retryAttempt);
