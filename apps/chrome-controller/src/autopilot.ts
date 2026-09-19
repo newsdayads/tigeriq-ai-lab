@@ -118,6 +118,24 @@ export function selectFreshCompletionEvidence(job: ExternalJob | undefined, stat
   });
 }
 
+export function freshAutopilotState(): DurableAutopilotState {
+  return {
+    phase: 'IDLE',
+    lastDispatchedJobId: undefined,
+    lastDispatchedAt: undefined,
+    lastCompletedJobId: undefined,
+    lastEvidenceRef: undefined,
+    lastCompletedEvidenceRevision: undefined,
+    lastTrigger: undefined,
+    pendingJobId: undefined,
+    pendingReservedAt: undefined,
+    uncertainJobId: undefined,
+    dispatchFailureClass: undefined,
+    retryAt: undefined,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
 export function validateExternalSnapshot(raw: unknown): ExternalAutopilotSnapshot {
   if (!raw || typeof raw !== 'object') throw new Error('AUTOPILOT_SNAPSHOT_INVALID_OBJECT');
   const snapshot = raw as ExternalAutopilotSnapshot;
