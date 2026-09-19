@@ -55,6 +55,8 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("dispatchNaturalContinueLocked");
     expect(source).toContain("return dispatchNaturalContinueLocked(target,next,now)");
     expect(source).not.toContain("return dispatchNaturalContinue(target,next,now)");
+    expect(source).toContain("ROTATE_MODEL_PROFILE_NOT_READY");
+    expect(source).toContain("freshUi?.modelReady!==true");
   });
 
   it('rotates chat by bounded count or age instead of every job', () => {
