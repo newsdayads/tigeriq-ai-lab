@@ -17,6 +17,7 @@ const HOST = process.env.TIGERIQ_CORE_HOST?.trim() || '127.0.0.1';
 const PORT = Number(process.env.TIGERIQ_CORE_PORT || 8795);
 const TOKEN = process.env.TIGERIQ_CORE_TOKEN?.trim() || '';
 const POLL_MS = Number(process.env.TIGERIQ_CORE_POLL_MS || 1000);
+const HOTPATH_SAMPLE_LIMIT = 5;
 const MANAGER_IDLE_MS = Number(process.env.TIGERIQ_MANAGER_IDLE_MS || 5000);
 const FAILURE_LEARNING_INTERVAL_MS = Math.max(60000, Number(process.env.TIGERIQ_FAILURE_LEARNING_INTERVAL_MS || 600000));
 const SURFSENSE_APP_URL = process.env.TIGERIQ_SURFSENSE_APP_URL?.trim() || 'http://127.0.0.1:3929';
@@ -215,6 +216,18 @@ async function invokeProvider(r, prompt) {
 async function event(type, data = {}) {
   await pool.query('insert into tigeriq_events(type,objective_id,job_id,employee_id,resource_id,task_kind,data) values($1,$2,$3,$4,$5,$6,$7)',[type,data.objectiveId||null,data.jobId||null,data.employeeId||null,data.resourceId||null,data.taskKind||null,JSON.stringify(data)]);
 }
+function hotPathTiming(j, stage, extra = {}) {
+  const now = Date.now();
+  const createdAtMs = j?.created_at ? new Date(j.created_at).getTime() : now;
+  const startedAtMs = j?.started_at ? new Date(j.started_at).getTime() : null;
+  return { stage, at: new Date(now).toISOString(), endToEndMs: Math.max(0, now-createdAtMs), queueMs: startedAtMs ? Math.max(0, startedAtMs-createdAtMs) : null, ...extra };
+}
+async function hotPathStage(j, stage, extra = {}) {
+  const timing=hotPathTiming(j,stage,extra);
+  await event('HOTPATH_STAGE',{objectiveId:j?.objective_id||null,jobId:j?.id||null,taskKind:j?.kind||'ai',...timing});
+  return timing;
+}
+function median(values){const xs=values.filter(Number.isFinite).sort((a,b)=>a-b);if(!xs.length)return null;const m=Math.floor(xs.length/2);return xs.length%2?xs[m]:Math.round((xs[m-1]+xs[m])/2);}
 function failureCooldownMs(kind){return failurePolicy(kind).cooldownMs;}
 function failureHealth(kind){return kind==='rate_limit'?'RATE_LIMITED':(['auth','configuration','security','credential','paid','production','irreversible'].includes(kind)?'OFFLINE':'ERROR');}
 async function maybeQuarantineResource(r){
@@ -309,10 +322,35 @@ async function claimJob() {
       order by case o.priority when 'P0' then 0 when 'P1' then 1 when 'P2' then 2 else 3 end,j.created_at for update skip locked limit 1`);
     if(!q.rows[0]){await c.query('commit');return null;} const j=q.rows[0];
     await c.query("update tigeriq_jobs set status='running',started_at=coalesce(started_at,now()),lease_until=now()+interval '5 minutes' where id=$1",[j.id]);
-    await c.query('commit'); return j;
+    await c.query('commit');
+    const claimed={...j,started_at:j.started_at||new Date()};
+    await hotPathStage(claimed,'CLAIMED');
+    return claimed;
   } catch(e){await c.query('rollback');throw e;} finally{c.release();}
 }async function runJob(j) {
-  try {const reviewerResourceIds=await reviewerResourceIdsForJob(j);const routed=await invokeRouted(j.prompt,j.capability,j.id,j.max_attempts-j.attempts,{taskKind:j.kind||'ai',profile:j.routing_profile||'AUTO',reviewerResourceIds});await pool.query("update tigeriq_jobs set status='done',employee_id=$2,resource_id=$3,provider=$4,routing_profile=$5,routing_decision=$6,result=$7,lease_until=null,completed_at=now() where id=$1",[j.id,routed.resource.id,routed.resource.resourceId,routed.resource.provider,routed.routingProfile,JSON.stringify(routed.routingDecision),JSON.stringify({text:routed.text,latencyMs:routed.latencyMs,failures:routed.failures,resourceId:routed.resource.resourceId,routingProfile:routed.routingProfile,routingDecision:routed.routingDecision})]);await event('JOB_DONE',{jobId:j.id,objectiveId:j.objective_id,employeeId:routed.resource.id,resourceId:routed.resource.resourceId,provider:routed.resource.provider,taskKind:j.kind||'ai',profile:routed.routingProfile});} catch(error) {await pool.query("update tigeriq_jobs set status='failed',failure=$2,lease_until=null,completed_at=now() where id=$1",[j.id,JSON.stringify({message:String(error?.message||error),failures:error?.failures||[]})]);await event('JOB_FAILED',{jobId:j.id,objectiveId:j.objective_id,taskKind:j.kind||'ai'});}
+  try {
+    await hotPathStage(j,'WORKING');
+    if(j.kind==='readonly'){
+      const readStarted=Date.now();
+      const read=(await pool.query('select now() as db_time')).rows[0];
+      const evidence=await hotPathStage(j,'EVIDENCE',{readLatencyMs:Math.max(0,Date.now()-readStarted),dbTime:read?.db_time||null});
+      const result={ok:true,kind:'readonly',hotpath:evidence};
+      await pool.query("update tigeriq_jobs set status='done',result=$2,lease_until=null,completed_at=now() where id=$1",[j.id,JSON.stringify(result)]);
+      await event('JOB_DONE',{jobId:j.id,objectiveId:j.objective_id,taskKind:'readonly'});
+      await hotPathStage(j,'DONE');
+      return;
+    }
+    const reviewerResourceIds=await reviewerResourceIdsForJob(j);
+    const routed=await invokeRouted(j.prompt,j.capability,j.id,j.max_attempts-j.attempts,{taskKind:j.kind||'ai',profile:j.routing_profile||'AUTO',reviewerResourceIds});
+    await hotPathStage(j,'EVIDENCE',{providerLatencyMs:routed.latencyMs,employeeId:routed.resource.id,resourceId:routed.resource.resourceId});
+    await pool.query("update tigeriq_jobs set status='done',employee_id=$2,resource_id=$3,provider=$4,routing_profile=$5,routing_decision=$6,result=$7,lease_until=null,completed_at=now() where id=$1",[j.id,routed.resource.id,routed.resource.resourceId,routed.resource.provider,routed.routingProfile,JSON.stringify(routed.routingDecision),JSON.stringify({text:routed.text,latencyMs:routed.latencyMs,failures:routed.failures,resourceId:routed.resource.resourceId,routingProfile:routed.routingProfile,routingDecision:routed.routingDecision})]);
+    await event('JOB_DONE',{jobId:j.id,objectiveId:j.objective_id,employeeId:routed.resource.id,resourceId:routed.resource.resourceId,provider:routed.resource.provider,taskKind:j.kind||'ai',profile:routed.routingProfile});
+    await hotPathStage(j,'DONE');
+  } catch(error) {
+    await pool.query("update tigeriq_jobs set status='failed',failure=$2,lease_until=null,completed_at=now() where id=$1",[j.id,JSON.stringify({message:String(error?.message||error),failures:error?.failures||[]})]);
+    await event('JOB_FAILED',{jobId:j.id,objectiveId:j.objective_id,taskKind:j.kind||'ai'});
+    await hotPathStage(j,'FAILED',{reason:String(error?.message||error).slice(0,180)});
+  }
 }
 async function callManagerDecision(prompt,objectiveId){const jobId=`MGR-${objectiveId}`,starts=new Map();return runBoundedManagerDecision({prompt,maxProviders:3,acquire:async excluded=>{const excludedResources=excluded.map(id=>resources.find(x=>x.id===id)?.resourceId||id),row=await claimResource('reasoning',jobId,excludedResources,{profile:'AUTO',taskKind:'manager'});if(!row)return null;return resources.find(x=>x.resourceId===row.resource_id)||null;},invoke:async(r,nextPrompt)=>{starts.set(r.id,Date.now());return invokeProvider(r,nextPrompt);},onRetry:async(r,error)=>event('MANAGER_OUTPUT_RETRY',{objectiveId,jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind:'manager',kind:error?.code||error?.message||'invalid_response'}),onSuccess:async r=>markResourceSuccess(r,jobId,Math.max(0,Date.now()-(starts.get(r.id)||Date.now())),'RESOURCE_SUCCESS',true,{taskKind:'manager',profile:'AUTO'}),onFailure:async(r,error)=>markResourceFailure(r,jobId,error,'RESOURCE_FAILURE',true,{taskKind:'manager',profile:'AUTO'})});
 }
@@ -492,6 +530,21 @@ function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta
       if(!auth(req)&&!localSelf(req)){res.writeHead(401);return res.end('unauthorized');}
       const b=await readBody(req); const query=String(b.query||'').trim(); if(!query){res.writeHead(400);return res.end('query_required');}
       const result=await runSurfSenseResearch(query,Number(b.limit||6)); res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(result));
+    }
+    if(req.method==='POST'&&url.pathname==='/api/hotpath/sample'){
+      if(!auth(req)&&!localSelf(req)){res.writeHead(401);return res.end('unauthorized');}
+      const b=await readBody(req);const count=Math.max(1,Math.min(HOTPATH_SAMPLE_LIMIT,Number(b.count||HOTPATH_SAMPLE_LIMIT)));const objectiveId=`PERF-${randomUUID()}`;
+      await pool.query("insert into tigeriq_objectives(id,objective,priority,status,summary,metadata) values($1,$2,'P2','active',$3,$4)",[objectiveId,'TigerIQ hot-path trivial read-only live sample','hot-path live sample running',JSON.stringify({source:'hotpath_sample'})]);
+      const jobIds=[];
+      for(let i=0;i<count;i++){const id=`PERFJOB-${randomUUID()}`;jobIds.push(id);const row=(await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status) values($1,$2,$3,$4,'general','readonly','queued') returning *",[id,objectiveId,`Hot-path read-only ${i+1}`,'Read-only routing latency sample'])).rows[0];await hotPathStage(row,'QUEUED');}
+      const deadline=Date.now()+15000;let rows=[];
+      while(Date.now()<deadline){rows=(await pool.query("select id,status,created_at,started_at,completed_at,result,failure from tigeriq_jobs where id=any($1::text[]) order by created_at",[jobIds])).rows;if(rows.length===count&&rows.every(x=>x.status==='done'||x.status==='failed'))break;await sleep(25);}
+      const runs=rows.map(x=>({id:x.id,status:x.status,queuedAt:x.created_at,claimedAt:x.started_at,doneAt:x.completed_at,queueMs:x.started_at?Math.max(0,new Date(x.started_at)-new Date(x.created_at)):null,endToEndMs:x.completed_at?Math.max(0,new Date(x.completed_at)-new Date(x.created_at)):null}));
+      const endToEnd=runs.map(x=>x.endToEndMs).filter(Number.isFinite);const queueTimes=runs.map(x=>x.queueMs).filter(Number.isFinite);const complete=runs.length===count&&runs.every(x=>x.status==='done');
+      const summary={count,complete,medianMs:median(endToEnd),maxMs:endToEnd.length?Math.max(...endToEnd):null,medianQueueMs:median(queueTimes),normalPathShellSpawn:false,runs};
+      await pool.query("update tigeriq_objectives set status=$2,summary=$3,updated_at=now() where id=$1",[objectiveId,complete?'complete':'blocked',JSON.stringify(summary).slice(0,2000)]);
+      await event(complete?'HOTPATH_SAMPLE_COMPLETED':'HOTPATH_SAMPLE_BLOCKED',{objectiveId,...summary});
+      res.writeHead(complete?200:504,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify({ok:complete,objectiveId,...summary}));
     }
     if(req.method==='POST'&&url.pathname==='/api/objectives'){
       if(!auth(req)&&!localSelf(req)){res.writeHead(401);return res.end('unauthorized');}
