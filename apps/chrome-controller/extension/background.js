@@ -146,7 +146,7 @@ async function readUiState(ctx) {
 }
 async function heartbeat(workerId,ctx) {
   const ui=await readUiState(ctx);
-  await post('/api/heartbeat',{workerId,state:ui.uiPhase||'STALLED',...ctx,...ui,display:await displayInfo(ctx.windowId)});
+  await post('/api/heartbeat',{workerId,state:ui.uiPhase||'STALLED',...ctx,uiBusy:ui.uiBusy,uiPhase:ui.uiPhase,composerReady:ui.composerReady,sendReady:ui.sendReady,stopVisible:ui.stopVisible,scrollToBottomVisible:ui.scrollToBottomVisible,authRequired:ui.authRequired,securityBlock:ui.securityBlock,display:await displayInfo(ctx.windowId)});
 }
 
 async function waitForTabComplete(tabId,timeoutMs=60000) {
@@ -403,7 +403,7 @@ async function tickWorker(workerId) {
   lastWindowByWorker.set(workerId,ctx.windowId);
   await updateWorkerBadge(workerId, ctx);
   const ui=await readUiState(ctx);
-  await post('/api/heartbeat',{workerId,state:ui.uiPhase||'STALLED',...ctx,...ui,display:await displayInfo(ctx.windowId)});
+  await post('/api/heartbeat',{workerId,state:ui.uiPhase||'STALLED',...ctx,uiBusy:ui.uiBusy,uiPhase:ui.uiPhase,composerReady:ui.composerReady,sendReady:ui.sendReady,stopVisible:ui.stopVisible,scrollToBottomVisible:ui.scrollToBottomVisible,authRequired:ui.authRequired,securityBlock:ui.securityBlock,display:await displayInfo(ctx.windowId)});
   const r=await fetch(`${CONTROLLER}/api/commands/${encodeURIComponent(workerId)}`); if(!r.ok) return;
   const {command}=await r.json();
   if(command){
