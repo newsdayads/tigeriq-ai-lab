@@ -66,6 +66,7 @@ class PersistChannel {
 const persistChannel = new PersistChannel(pool, 'core_events', 'core_events');
 const latencyStarts = new Map();
 function measureLatency(id, state) {
+  if (!id) return null;
   const now = Date.now();
   if (state === 'QUEUED') latencyStarts.set(id, now);
   else if (state === 'DONE' || state === 'FAILED') {
