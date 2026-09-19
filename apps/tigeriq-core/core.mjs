@@ -102,14 +102,14 @@ eTransientError(e)){
 }
 
 function normalizeWorkItemLifecycle(obj, jobsForObj) {
-  const activeJob = jobsForObj.find(j => ['queued', 'claimed', 'working', 'evidence', 'verify'].includes(j.status)) || jobsForObj[0];
+  const activeJob = jobsForObj.find(j => ['queued', 'claimed', 'working', 'evidence', 'verify', 'waiting_ci', 'waiting_resource', 'review'].includes(j.status)) || jobsForObj[0];
   let lifecycle = 'QUEUED';
   const rawStatus = String(activeJob?.status || obj.status || '').toLowerCase();
   if (rawStatus === 'queued' || rawStatus === 'active') lifecycle = 'QUEUED';
   else if (rawStatus === 'claimed') lifecycle = 'CLAIMED';
   else if (rawStatus === 'working') lifecycle = 'WORKING';
   else if (rawStatus === 'evidence' || rawStatus === 'waiting_resource') lifecycle = 'EVIDENCE';
-  else if (rawStatus === 'verify' || rawStatus === 'review') lifecycle = 'VERIFY';
+  else if (rawStatus === 'verify' || rawStatus === 'review' || rawStatus === 'waiting_ci') lifecycle = 'VERIFY';
   else if (rawStatus === 'done' || rawStatus === 'completed' || obj.status === 'completed') lifecycle = 'DONE';
   else if (rawStatus === 'blocked' || rawStatus === 'failed' || obj.status === 'blocked') lifecycle = 'BLOCKED';
   return {
