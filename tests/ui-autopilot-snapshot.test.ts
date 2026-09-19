@@ -9,7 +9,38 @@ const body=(priority='P0')=>[
 const issue=(number,overrides={})=>({number,title:`Job ${number}`,state:'open',state_reason:null,html_url:`https://github.com/newsdayads/tigeriq-ai-lab/issues/${number}`,body:body(),updated_at:'2026-09-15T01:00:00Z',closed_at:null,...overrides});
 function response(value,status=200){return{ok:status>=200&&status<300,status,json:async()=>value};}
 
-describe('UI autopilot issue contract',()=>{
+describe('UI autopilot issue contract and parallel integration wave',()=>{
+  it('supports core-selected worker and dynamic NV02, NV03, or NV04 selection with fail-closed fallback', async () =>{
+    const n3Body = body('P0').replace('PRIMARY_EMPLOYEE=NV02', 'PRIMARY_EMPLOYEE=NV03');
+    const issue3 = issue(20, { body: n3Body });
+    const fetchImpl = async (url) => {
+      if (url.includes('/issues?')) return response([issue3]);
+      return response({});
+    };
+    const snap = await buildUiAutopilotSnapshot({ fetchImpl, token: 'x', owner: 'newsdayads', repo: 'tigeriq-ai-lab' });
+    expect(snap.nextJob.workerId).toBe('NV03');
+    expect(snap.requiredWorkers).toContain('NV03');
+
+    const invalidBody = body('P0').replace('PRIMARY_EMPLOYEE=NV02', 'PRIMARY_EMPLOYEE=NV99');
+    const issueInvalid = issue(21, { body: invalidBody });
+    const fetchInvalid = async (url) => {
+      if (url.includes('/issues?')) return response([issueInvalid]);
+      return response({});
+    };
+    await expect(buildUiAutopilotSnapshot({ fetchImpl: fetchInvalid, token: 'x', owner: 'newsdayads', repo: 'tigeriq-ai-lab' })).rejects.toThrow('WORKER_SELECTION_FAIL_CLOSED');
+  });
+
+  it('creates and reads deduplicated NV02 integration WorkItem for PARALLEL_WAVE_READY_FOR_INTEGRATION', async () =>{
+    const integrationBody = body('P0') + '\nPARALLEL_WAVE_READY_FOR_INTEGRATION=true';
+    const issueInt = issue(30, { body: integrationBody });
+    const fetchImpl = async (url) => {
+      if (url.includes('/issues?')) return response([issueInt]);
+      return response({});
+    };
+    const snap = await buildUiAutopilotSnapshot({ fetchImpl, token: 'x', owner: 'newsdayads', repo: 'tigeriq-ai-lab' });
+    expect(snap.nextJob.workerId).toBe('NV02');
+    expect(snap.nextJob.prompt).toContain('PARALLEL_WAVE_READY_FOR_INTEGRATION');
+  });
   it('accepts only explicit AUTO_UI NV02 P0/P1 issues',()=>{expect(parseAutoUiIssue(issue(10))).toMatchObject({number:10,jobId:'GH-10',priority:'P0'});expect(parseAutoUiIssue(issue(11,{body:body('P1')}))).toMatchObject({priority:'P1'});expect(parseAutoUiIssue(issue(12,{body:body('P2')}))).toBeNull();expect(parseAutoUiIssue(issue(13,{body:body().replace('OWNER_POLICY=AUTO_UI','OWNER_POLICY=AUTO')}))).toBeNull();});
   it('fails closed when a required safety flag or employee is wrong',()=>{expect(parseAutoUiIssue(issue(14,{body:body().replace('NO_DESTRUCTIVE=true','NO_DESTRUCTIVE=false')}))).toBeNull();expect(parseAutoUiIssue(issue(15,{body:body().replace('PRIMARY_EMPLOYEE=NV02','PRIMARY_EMPLOYEE=NV03')}))).toBeNull();});
   it('ignores pull requests',()=>{expect(parseAutoUiIssue(issue(16,{pull_request:{url:'x'}}))).toBeNull();});
