@@ -79,4 +79,20 @@ describe('NV02 continuity policy', () => {
     expect(shouldRotateChat({chatStartedAt:now,dispatchesInChat:8},now)).toBe(true);
     expect(shouldRotateChat({chatStartedAt:now-46*60*1000,dispatchesInChat:1},now)).toBe(true);
   });
+  it('ships one-shot NV02 continuity installer with exact-head deploy and rollback',()=>{
+    const installer=readFileSync('apps/chrome-controller/runtime/Install-NV02-Continuity.ps1','utf8');
+    expect(installer).toContain('[Parameter(Mandatory=$true)][string]$ExpectedHead');
+    expect(installer).toContain("fetch','origin','p0/nv02-continuous-liveness");
+    expect(installer).toContain("tests/chrome-controller-autonomy-hardening.test.ts");
+    expect(installer).toContain("npm' @('run','typecheck')");
+    expect(installer).toContain("npm' @('run','build')");
+    expect(installer).toContain("Deploy-1122-");
+    expect(installer).toContain("apps\\chrome-controller\\direct-cdp-bridge.mjs");
+    expect(installer).toContain("NV02_PACKAGE_FAILED_ROLLBACK_APPLIED");
+    expect(installer).toContain("CONTROLLER_NOT_RUNNING_DEPLOY_HEAD");
+    expect(installer).toContain("BRIDGE_NOT_RUNNING_DEPLOY_HEAD");
+    expect(installer).toContain("NV02_MODEL_NOT_READY");
+    expect(installer).toContain("NV02_REASONING_NOT_HIGH");
+  });
+
 });
