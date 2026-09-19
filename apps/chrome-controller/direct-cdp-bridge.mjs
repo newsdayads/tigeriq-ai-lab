@@ -252,8 +252,10 @@ async function newChat(target){
     const deadline=Date.now()+12000;
     while(Date.now()<deadline){
       await sleep(250);
-      const state=(await p.call('Runtime.evaluate',{expression:`(()=>{const v=e=>{const r=e?.getBoundingClientRect(),s=e&&getComputedStyle(e);return !!e&&r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};return{url:location.href,pathname:location.pathname,composer:Boolean([...document.querySelectorAll('#prompt-textarea,[contenteditable="true"][role="textbox"],textarea')].find(v))}})()`,returnByValue:true},3000)).result.value;
-      if(state?.pathname===expected.pathname&&state?.composer)return{ok:true,status:'NEW_CHAT_PROJECT_CONTEXT_RECOVERED',url:state.url};
+      try{
+        const state=(await p.call('Runtime.evaluate',{expression:`(()=>{const v=e=>{const r=e?.getBoundingClientRect(),s=e&&getComputedStyle(e);return !!e&&r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};return{url:location.href,pathname:location.pathname,composer:Boolean([...document.querySelectorAll('#prompt-textarea,[contenteditable="true"][role="textbox"],textarea')].find(v))}})()`,returnByValue:true},3000)).result.value;
+        if(state?.pathname===expected.pathname&&state?.composer)return{ok:true,status:'NEW_CHAT_PROJECT_CONTEXT_RECOVERED',url:state.url};
+      }catch{}
     }
     return{ok:false,status:'NEW_CHAT_PROJECT_CONTEXT_NOT_RECOVERED',url:current?.url||first?.url||null};
   }finally{p.close();}
