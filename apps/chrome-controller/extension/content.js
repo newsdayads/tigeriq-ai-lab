@@ -161,18 +161,26 @@ function fillComposer(element, text) {
   }
 }
 
-function findSendButton() {
+function findSendButton(composer) {
+  const roots = [composer?.closest?.('form'), composer?.parentElement, document].filter(Boolean);
   const selectors = [
     'button[data-testid="send-button"]',
+    'button[type="submit"]',
     'button[aria-label*="Send" i]',
     'button[aria-label*="Gửi" i]',
     'button[aria-label*="submit" i]'
   ];
-  for (const selector of selectors) {
-    const match = Array.from(document.querySelectorAll(selector)).find((el) => visible(el) && !el.disabled && el.getAttribute('aria-disabled') !== 'true');
-    if (match) return match;
+  for (const root of roots) {
+    for (const selector of selectors) {
+      const match = Array.from(root.querySelectorAll(selector)).find((el) => visible(el) && !el.disabled && el.getAttribute('aria-disabled') !== 'true');
+      if (match) return match;
+    }
   }
   return null;
+}
+function composerText(element) {
+  if (element instanceof HTMLTextAreaElement || element instanceof HTMLInputElement) return String(element.value || '').trim();
+  return String(element?.innerText || element?.textContent || '').trim();
 }
 
 function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
@@ -183,14 +191,19 @@ async function dispatch(text) {
   if (!text.trim()) return { ok: false, status: 'EMPTY_WORK_ORDER' };
   const composer = findComposer();
   if (!composer) return { ok: false, status: 'COMPOSER_NOT_FOUND' };
-  fillComposer(composer, text);
-  await sleep(1500);
-  const blockedAfterFill = detectSecurityBlock();
-  if (blockedAfterFill) return { ok: false, status: blockedAfterFill };
-  const send = findSendButton();
-  if (!send) return { ok: false, status: 'SEND_BUTTON_NOT_FOUND' };
-  send.click();
-  return { ok: true, status: 'SUBMITTED' };
+  if (composerText(composer) !== text.trim()) fillComposer(composer, text);
+  const deadline = Date.now() + 4000;
+  while (Date.now() < deadline) {
+    await sleep(200);
+    const blockedAfterFill = detectSecurityBlock();
+    if (blockedAfterFill) return { ok: false, status: blockedAfterFill };
+    const send = findSendButton(composer);
+    if (!send) continue;
+    send.click();
+    await sleep(250);
+    return { ok: true, status: 'SUBMITTED' };
+  }
+  return { ok: false, status: 'SEND_BUTTON_NOT_FOUND' };
 }
 
 function normalizedText(element) {
