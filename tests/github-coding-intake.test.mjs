@@ -150,6 +150,31 @@ describe('GitHub coding continuity supervisor',()=>{
     expect(classifyCodingBlocker('SECURITY POLICY_BLOCK requires human')).toMatchObject({kind:'HARD',transient:false});
   });
 
+  it('reclassifies a legacy HARD_BLOCKER final when its terminal reason is now recoverable',async()=>{
+    const pool=fakePool();let posted=0,nowMs=1000000;
+    pool.events.push(
+      {type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:1053,codingObjectiveId:'old-1053'}},
+      {type:'GITHUB_CODING_BLOCKED_FINAL',data:{issueNumber:1053,codingObjectiveId:'old-1053',status:'blocked',reason:'HARD_BLOCKER',terminalReason:'AI_RESOURCES_UNAVAILABLE'}}
+    );
+    const current=issue(`${SAFE}\nOWNER_DIRECT=true\nRESOURCE_SCOPE=LEGACY_TRANSIENT\nALLOW_PATH_PREFIX=docs/evidence/legacy-transient.md`,{number:1053,title:'Legacy transient final'});
+    const fetchImpl=async(url)=>{
+      if(url.includes('/api/status'))return response({objectives:[{id:'old-1053',status:'blocked',summary:'AI_RESOURCES_UNAVAILABLE'}],jobs:[]});
+      if(url.includes('/api/objectives')){posted++;return response({id:'retry-1053'});}
+      if(url.includes('/issues/1053'))return response(current);
+      if(url.includes('/comments'))return response({});
+      return response({});
+    };
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake',now:()=>nowMs});
+    expect(posted).toBe(0);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_BLOCKED_FINAL_RECLASSIFIED')).toHaveLength(1);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_RETRY_SCHEDULED')).toHaveLength(1);
+    nowMs+=60000;
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake',now:()=>nowMs});
+    expect(posted).toBe(1);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_BLOCKED_FINAL_RECLASSIFIED')).toHaveLength(1);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_RETRY_DISPATCHED')).toHaveLength(1);
+  });
+
   it('retries the same blocked issue, completes it, then releases and dispatches its dependent child',async()=>{
     const pool=fakePool();
     pool.events.push({type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:705,codingObjectiveId:'obj-705'}});
