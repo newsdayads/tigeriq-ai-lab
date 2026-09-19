@@ -224,6 +224,10 @@ async function cdpMouseClick(p,point){
   await p.call('Input.dispatchMouseEvent',{type:'mousePressed',x:Number(point.x),y:Number(point.y),button:'left',clickCount:1});
   await p.call('Input.dispatchMouseEvent',{type:'mouseReleased',x:Number(point.x),y:Number(point.y),button:'left',clickCount:1});
 }
+function archiveConfirmExpr(title){
+  const expected=JSON.stringify(String(title||''));
+  return `(()=>{const vis=e=>{const r=e?.getBoundingClientRect(),s=e&&getComputedStyle(e);return !!e&&r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const rows=[...document.querySelectorAll('[role="listitem"]')].filter(e=>vis(e)&&[...e.querySelectorAll('button')].some(b=>/hành động trong trò chuyện|conversation actions|chat actions/i.test(b.getAttribute('aria-label')||'')));const current=rows.filter(row=>String(row.innerText||'').trim()===${expected});return{url:location.href,path:location.pathname,visibleChatRows:rows.length,currentTitleRows:current.length}})()`;
+}
 async function archiveChat(target){
   const p=await pageRpc(target);
   try{
@@ -241,8 +245,9 @@ async function archiveChat(target){
     const deadline=Date.now()+10000;
     while(Date.now()<deadline){
       await sleep(250);
-      const state=(await p.call('Runtime.evaluate',{expression:'({url:location.href,path:location.pathname})',returnByValue:true},3000)).result.value;
-      if(state?.url!==menuPoint.before||!/\/c\//.test(String(state?.path||'')))return{ok:true,status:'ARCHIVED',before:menuPoint.before,after:state?.url||null,title:menuPoint.title,actionText:archivePoint.text};
+      const state=(await p.call('Runtime.evaluate',{expression:archiveConfirmExpr(menuPoint.title),returnByValue:true},3000)).result.value;
+      const sidebarRemoved=Number(state?.visibleChatRows||0)>0&&Number(state?.currentTitleRows||0)===0;
+      if(state?.url!==menuPoint.before||!/\/c\//.test(String(state?.path||''))||sidebarRemoved)return{ok:true,status:'ARCHIVED',before:menuPoint.before,after:state?.url||null,title:menuPoint.title,actionText:archivePoint.text,confirmation:sidebarRemoved?'SIDEBAR_ROW_REMOVED':'NAVIGATION'};
     }
     return{ok:false,status:'ARCHIVE_NOT_CONFIRMED',before:menuPoint.before,title:menuPoint.title};
   }finally{p.close();}
