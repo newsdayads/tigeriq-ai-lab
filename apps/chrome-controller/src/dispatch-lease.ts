@@ -209,7 +209,7 @@ export class DurableDispatchLeaseStore{
       writeFileSync(temp,`${JSON.stringify(lease,null,2)}\n`,'utf8');
       atomicRename(temp,this.#path);
     }catch{
-      if(opsSync(temp))try{unlinkSync(temp);}catch{}
+      if(existsSync(temp))try{unlinkSync(temp);}catch{}
       throw;
     }
   }
