@@ -1,7 +1,7 @@
 import {describe,it,expect} from 'vitest';
 import {readFileSync} from 'node:fs';
 // @ts-expect-error TigerIQ Core runtime module is JavaScript and intentionally has no TypeScript declaration file.
-import {normalizeTerminalWorkItems,handoffGenerationKey,evaluateChildObjectiveStates,isCodingHandoff} from '../apps/tigeriq-core/work-handoff.mjs';
+import {normalizeTerminalWorkItems,handoffGenerationKey,evaluateChildObjectiveStates,isCodingHandoff,normalizeWorkItemLifecycle} from '../apps/tigeriq-core/work-handoff.mjs';
 
 describe('durable autonomous work handoff',()=>{
   it('uses deterministic idempotency keys and child ids',()=>{
@@ -62,5 +62,11 @@ describe('durable autonomous work handoff',()=>{
     expect(core).toContain('terminalHandoffInstruction');
     expect(core).toContain("handoff?.state!=='waiting_children'");
     expect(core).toContain("case when o.metadata#>>'{handoff,state}'='waiting_children' then 1 else 0 end");
+  });
+  it('normalizes work item lifecycle in handoff',()=>{
+    const normalized = normalizeWorkItemLifecycle({ metadata: { issueOrPr: 'Issue #10', implementer: 'NV01', reviewer: 'NV03', stage: 'review', blocker: '', nextAction: 'merge' } });
+    expect(normalized.issueOrPr).toBe('Issue #10');
+    expect(normalized.implementer).toBe('NV01');
+    expect(normalized.stage).toBe('review');
   });
 });
