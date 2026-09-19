@@ -107,6 +107,8 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("retryVisible:Boolean(retryButton)");
     expect(source).toContain("state?.sidebarVisible&&state?.rowPresent===false");
     expect(source).toContain("evidence:state?.archivedNotice?'TOAST'");
+    expect(source).toContain("itemDeadline=Date.now()+3000");
+    expect(source).toContain("ARCHIVE_ACTION_COUNT_0");
     expect(source).toContain("SEND_BUTTON_WAIT_MS+8000");
     expect(source).toContain("CONTINUE_DISPATCH_FAILED");
     expect(source).toContain("PROJECT_UI_RECOVERED");
