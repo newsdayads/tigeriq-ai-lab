@@ -147,7 +147,9 @@ export function decideAutoContinue(
   state: DurableAutopilotState,
   nowMs = Date.now(),
   maxSnapshotAgeMs = DEFAULT_SNAPSHOT_MAX_AGE_MS,
+  gpt56SolHighVerified = true,
 ): AutopilotDecision {
+  if (!gpt56SolHighVerified) return { kind: 'STOP', reason: 'GPT_5_6_SOL_HIGH_PROFILE_UNVERIFIED' };
   validateExternalSnapshot(snapshot);
   const observedAtMs = Date.parse(snapshot.observedAt);
   const age = nowMs - observedAtMs;
