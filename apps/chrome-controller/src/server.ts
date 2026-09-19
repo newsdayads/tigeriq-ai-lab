@@ -1,5 +1,5 @@
 import { createServer, IncomingMessage, ServerResponse } from 'node:http';
-import { mkdirSync, readFileSync, appendFileSync, writeFileSync, renameSync, existsSync } from 'node:fs';
+import { mkdirSync, readFileSync, appendFileSync, writeFileSync, renameSync, existsSync, unlinkSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import {
@@ -97,10 +97,23 @@ function log(event:string,data:Record<string,unknown>={}){
   appendFileSync(logPath,`${line}\n`,'utf8');
   console.log(line);
 }
+function fsErrorCode(error:unknown){return error instanceof Error&&'code' in error?String((error as NodeJS.ErrnoException).code??''):'';}
+function sleepSync(ms:number){Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,ms);}
 function atomicJson(path:string,value:unknown){
-  const temp=`${path}.tmp`;
+  const temp=`${path}.${process.pid}.${randomUUID()}.tmp`;
   writeFileSync(temp,`${JSON.stringify(value,null,2)}\n`,'utf8');
-  renameSync(temp,path);
+  try{
+    for(let attempt=0;;attempt++){
+      try{renameSync(temp,path);return;}
+      catch(error){
+        const code=fsErrorCode(error);
+        if(!['EPERM','EBUSY'].includes(code)||attempt>=3)throw error;
+        sleepSync(20*(attempt+1));
+      }
+    }
+  }finally{
+    if(existsSync(temp)){try{unlinkSync(temp);}catch{}}
+  }
 }
 function loadJson<T>(path:string):T|undefined{
   if(!existsSync(path))return;
@@ -226,7 +239,12 @@ function evidence(){
     sessionName:process.env.SESSIONNAME??null,
   });
 }
-function persistEvidence(){const value=evidence();atomicJson(runtimeEvidencePath,value);return value;}
+function persistEvidence(){
+  const value=evidence();
+  try{atomicJson(runtimeEvidencePath,value);}
+  catch(error){log('PERSIST_EVIDENCE_FAILED',{path:runtimeEvidencePath,error:String(error),code:fsErrorCode(error)});}
+  return value;
+}
 
 async function brokerWorkerPresence(workerId:WorkerId):Promise<WorkerPresence>{
   const url=config.recovery.launchBrokerUrl;
@@ -527,6 +545,8 @@ async function autopilotTick(){
         lastDispatchedJobId:decision.jobId,
         lastDispatchedAt:committedLease.dispatchedAt,
         uncertainJobId:undefined,
+        dispatchFailureClass:undefined,
+        retryAt:undefined,
         updatedAt:new Date().toISOString(),
       };
       persistAutopilotState();
@@ -536,13 +556,12 @@ async function autopilotTick(){
       const failureClass=classifyAutoContinueDispatchFailure(error,dispatchDelivered);
       if(failureClass==='SAFE_RETRY'){
         try{
-          const immediateRetry=message.includes('UI_JOB_ACTIVE:')||message.includes('UI_JOB_DUPLICATE_ACTIVE:');
-          dispatchLease.markRetryable(dispatchLeaseToken.leaseId,decision.jobId,Date.now(),immediateRetry?0:undefined);
-          autopilotState={...clearPending(autopilotState),phase:'STOPPED',uncertainJobId:undefined,updatedAt:new Date().toISOString()};
+          dispatchLease.resetKnownNotDelivered(decision.jobId,Date.now(),0);
+          autopilotState={...clearPending(autopilotState),phase:'IDLE',uncertainJobId:undefined,dispatchFailureClass:'SAFE_RETRY',retryAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
           persistAutopilotState();
-          log('AUTO_CONTINUE_FAILED_SAFE_RETRY',{jobId:decision.jobId,error:message,retryAfterMs:config.autopilot.dispatchLeaseTtlMs??300000});
+          log('AUTO_CONTINUE_FAILED_SAFE_RETRY',{jobId:decision.jobId,error:message,dispatchFailureClass:'NOT_DELIVERED',retryAfterMs:0,retryAt:autopilotState.retryAt});
         }catch(retryError){
-          autopilotState={...clearPending(autopilotState),phase:'STOPPED',uncertainJobId:decision.jobId,updatedAt:new Date().toISOString()};
+          autopilotState={...clearPending(autopilotState),phase:'STOPPED',uncertainJobId:decision.jobId,dispatchFailureClass:'UNCERTAIN',retryAt:undefined,updatedAt:new Date().toISOString()};
           persistAutopilotState();
           log('AUTO_CONTINUE_SAFE_RETRY_STATE_FAILED',{jobId:decision.jobId,error:String(retryError),originalError:message});
         }
