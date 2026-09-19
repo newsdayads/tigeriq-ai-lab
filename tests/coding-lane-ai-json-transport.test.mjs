@@ -60,6 +60,18 @@ describe('coding lane AI JSON transport',()=>{
     ]);
     expect(matchesExpectedSchema(prompt,JSON.stringify(expanded))).toBe(true);
   });
+  it('rejects model fallback to full-file replacement for an existing file',()=>{
+    const prompt='TASK: x\\nCURRENT FILES:\\nFILE apps/a.mjs\\nconst n=1;\\nconsole.log(n);\\n\\n---\\n\\nFILE tests/new.test.mjs\\n\\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}.';
+    const model=JSON.stringify({summary:'unsafe whole file',changes:[{path:'apps/a.mjs',content:'const n=2;'}]});
+    expect(()=>expandCompactChanges(prompt,model)).toThrow('COMPACT_EDIT_FULL_CONTENT_FOR_EXISTING:apps/a.mjs');
+  });
+
+  it('still allows complete content for a new empty file',()=>{
+    const prompt='TASK: x\\nCURRENT FILES:\\nFILE tests/new.test.mjs\\n\\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}.';
+    const model=JSON.stringify({summary:'new file',changes:[{path:'tests/new.test.mjs',content:'export const ok=true;\\n'}]});
+    expect(expandCompactChanges(prompt,model).changes).toEqual([{path:'tests/new.test.mjs',content:'export const ok=true;\\n'}]);
+  });
+
   it('retries transient AI fetch aborts before failing the job',async()=>{
     const previousFetch=globalThis.fetch;
     const previousInstalled=globalThis.__tigeriqAiJsonTransportInstalled;
