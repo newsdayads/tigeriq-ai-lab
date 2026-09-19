@@ -20,6 +20,7 @@ import {
   decideAutoContinue,
   freshAutopilotState,
   selectFreshCompletionEvidence,
+  shouldReleaseDispatchLease,
   validateExternalSnapshot,
   type DurableAutopilotState,
   type ExternalAutopilotSnapshot,
@@ -534,7 +535,9 @@ async function autopilotTick(){
     }catch(error){
       const message=String(error);
       const failureClass=classifyAutoContinueDispatchFailure(error,dispatchDelivered);
-      if(failureClass==='SAFE_RETRY'){
+      if(failureClass==='SAFE_RETRY' || shouldReleaseDispatchLease(error)){
+        dispatchLease.resetKnownNotDelivered(dispatchLeaseToken.leaseId,Date.now(),0);
+        if(failureClass==='SAFE_RETRY'){
         try{
           const immediateRetry=message.includes('UI_JOB_ACTIVE:')||message.includes('UI_JOB_DUPLICATE_ACTIVE:');
           dispatchLease.markRetryable(dispatchLeaseToken.leaseId,decision.jobId,Date.now(),immediateRetry?0:undefined);
