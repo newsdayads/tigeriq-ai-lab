@@ -166,6 +166,17 @@ describe('controller-independent Chrome lifecycle contract',()=>{
   });
 });
 
+describe('stale-working restart schedule scope',()=>{
+  it('allows busy restart only for the bounded stale-working reason',()=>{
+    const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
+    expect(server).toContain("const staleWorkingRecovery=reason==='WORKING_NO_PROGRESS_3_CHECKS'");
+    expect(server).toContain("state.lastHeartbeat?.uiBusy!==false&&!staleWorkingRecovery");
+    expect(server).toContain("NV02_STALE_WORKING_RESTART_REQUIRES_BUSY");
+    expect(server).toContain("NV02_COMMAND_INFLIGHT");
+    expect(server).toContain("heartbeatStopReason(state.lastHeartbeat)");
+  });
+});
+
 describe('stale-working recovery lease scope',()=>{
   it('keeps busy mutation blocked except for the narrow NV02 recovery purpose',()=>{
     const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
