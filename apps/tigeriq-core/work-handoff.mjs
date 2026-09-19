@@ -69,3 +69,16 @@ export function evaluateChildObjectiveStates(expectedChildIds=[],rows=[]){
 }
 
 export function isCodingHandoff(item){return item?.kind==='source_mutation'||item?.kind==='coding';}
+
+export function normalizeWorkItemLifecycle(item = {}) {
+  const meta = item?.metadata || item || {};
+  return {
+    issueOrPr: String(meta.issueOrPr || meta.issue_or_pr || meta.pr || meta.issue || '').trim(),
+    implementer: String(meta.implementer || meta.assignee || meta.employee_id || '').trim(),
+    reviewer: String(meta.reviewer || meta.review_employee_id || '').trim(),
+    stage: String(meta.stage || meta.status || item.status || 'coding_lane').trim(),
+    timestamps: meta.timestamps || { updated: new Date().toISOString() },
+    blocker: String(meta.blocker || meta.blocked_reason || '').trim(),
+    nextAction: String(meta.nextAction || meta.next_action || meta.next || '').trim()
+  };
+}
