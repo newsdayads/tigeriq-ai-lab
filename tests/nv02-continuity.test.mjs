@@ -79,7 +79,7 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("NV02_PROJECT_PREFIX");
     expect(source).toContain("isNv02ProjectContext");
     expect(source).toContain("PROJECT_CONTEXT_RECOVERY_NAVIGATED");
-    expect(source).toContain("projectContextReady?rawUi:{...rawUi,uiReady:false,uiPhase:'STALLED',modelReady:false}");
+    expect(source).toContain("projectContextReady?rawUi:{...rawUi,uiReady:false,uiPhase:'STALLED',modelReady:false,projectContextReady:false}");
     expect(source).toContain("ttlMs=30000");
     expect(source).toContain("'CHECKPOINT_DURABLE',120000");
     expect(source).toContain("'CHAT_ROTATION',60000");
