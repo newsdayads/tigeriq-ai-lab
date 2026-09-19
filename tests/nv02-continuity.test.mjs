@@ -91,6 +91,7 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("waitForIdleAfterSubmission(target,45000,5000)");
     expect(source).toContain("const SEND_BUTTON_WAIT_MS=10000");
     expect(source).toContain("SEND_BUTTON_WAIT_MS+6000");
+    expect(source).toContain('button[data-testid="composer-submit-button"]');
     expect(source).toContain("until=Date.now()+SEND_BUTTON_WAIT_MS");
     expect(source).toContain("activityBusyVisible:Boolean(activityBusy)");
     expect(source).toContain("đang suy nghĩ|thinking|generating|đang tạo");
