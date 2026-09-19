@@ -1,6 +1,7 @@
-import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import type { WorkerId } from './model.js';
+import { atomicWriteJsonWithRetry } from './runtime-evidence.js';
 
 export const UI_JOB_STAGES = [
   'QUEUED','DISPATCHING','SUBMITTED','WORKING','WAITING_EVIDENCE','VERIFY','DONE','BLOCKED','ERROR',
@@ -105,9 +106,7 @@ export class DurableUiJobLedger {
   }
 
   private save() {
-    const temp=`${this.path}.tmp`;
-    writeFileSync(temp,`${JSON.stringify(this.value,null,2)}\n`,'utf8');
-    renameSync(temp,this.path);
+    atomicWriteJsonWithRetry(this.path,this.value,undefined,12);
   }
 
   snapshot(): UiJobRecord[] { return this.value.jobs.map((job)=>({...job,evidenceRefs:[...job.evidenceRefs]})); }
