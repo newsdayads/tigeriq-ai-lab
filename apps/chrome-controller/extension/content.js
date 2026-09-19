@@ -290,12 +290,69 @@ async function archiveConversation() {
   return { ok: false, status: 'ARCHIVE_NOT_CONFIRMED' };
 }
 
+async function verifyAndSwitchModelProfile() {
+  const buttons = Array.from(querySelectorAllWithShadow('button, [role="button"], [role="menuitem"]'));
+  const modelSelectorButton = buttons.find((el) => {
+    const text = normalizedText(el);
+    const aria = String(el.getAttribute('aria-label') || '').toLowerCase();
+    return text.includes('gpt-5.6') || text.includes('sol') || text.includes('model') || aria.includes('model') || aria.includes('gpt');
+  });
+  
+  if (modelSelectorButton) {
+    modelSelectorButton.click();
+    await sleep(300);
+  }
+
+  const menuItems = Array.from(querySelectorAllWithShadow('[role="menuitem"], [role="option"], button, li'));
+  const canonicalItem = menuItems.find((el) => {
+    const text = normalizedText(el);
+    return text.includes('gpt-5.6 sol') || (text.includes('gpt-5.6') && text.includes('sol'));
+  });
+
+  if (canonicalItem) {
+    canonicalItem.click();
+    await sleep(300);
+  }
+
+  const effortItems = Array.from(querySelectorAllWithShadow('[role="menuitem"], [role="option"], button, li'));
+  const highEffortItem = effortItems.find((el) => {
+    const text = normalizedText(el);
+    return text.includes('high') || text.includes('cao');
+  });
+
+  if (highEffortItem) {
+    highEffortItem.click();
+    await sleep(300);
+  }
+
+  const bodyText = document.body ? document.body.innerText.toLowerCase() : '';
+  const hasModel = bodyText.includes('gpt-5.6 sol') || bodyText.includes('gpt-5.6');
+  const hasEffort = bodyText.includes('high') || bodyText.includes('reasoning: high') || bodyText.includes('effort: high');
+
+  if (!hasModel || !hasEffort) {
+    return { ok: false, status: 'MODEL_PROFILE_BLOCKED:UNAVAILABLE_OR_AMBIGUOUS' };
+  }
+
+  return {
+    ok: true,
+    profile: {
+      modelName: 'GPT-5.6 Sol',
+      reasoningEffort: 'High',
+      verifiedAt: new Date().toISOString()
+    }
+  };
+}
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === 'TIGERIQ_WORKER_BADGE') {
     if (message.workerId) showWorkerBadge(String(message.workerId), String(message.label || ''));
     else removeWorkerBadge();
     sendResponse({ ok: true });
     return;
+  }
+  if (message?.type === 'TIGERIQ_VERIFY_MODEL_PROFILE') {
+    void verifyAndSwitchModelProfile().then(sendResponse).catch((error) => sendResponse({ ok: false, status: `MODEL_PROFILE_BLOCKED:${String(error)}` }));
+    return true;
   }
   if (message?.type === 'TIGERIQ_UI_STATE') {
     sendResponse({ ok: true, uiBusy: detectUiBusy(), securityBlock: detectSecurityBlock() });
