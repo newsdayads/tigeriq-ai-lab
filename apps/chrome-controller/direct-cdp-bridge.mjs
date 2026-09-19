@@ -129,7 +129,7 @@ const UI_EXPR=`(()=>{
     : ['rich-textarea .ql-editor[contenteditable="true"]','.ql-editor[contenteditable="true"]','[contenteditable="true"][role="textbox"]','textarea'];
   const composer=sels.flatMap(s=>[...document.querySelectorAll(s)]).find(vis)||null;
   const authRequired=[...document.querySelectorAll('button,a')].some(e=>vis(e)&&/^(đăng nhập|sign in|log in)$/i.test((e.textContent||'').trim()));
-  const stop=[...document.querySelectorAll('button[data-testid="stop-button"],button[aria-label*="Stop" i],button[aria-label*="Dừng" i]')].find(vis)||null;
+  const stop=[...document.querySelectorAll('button[data-testid="stop-button"],button[aria-label*="Stop" i],button[aria-label*="Dừng" i],button[aria-label*="Ngừng" i]')].find(vis)||null;
   const activityBusy=[...document.querySelectorAll('button,[role="button"],[aria-live]')].find(e=>vis(e)&&/(^|\\s)(đang suy nghĩ|thinking|generating|đang tạo)(\\s|$)/i.test((e.getAttribute('aria-label')||e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim()))||null;
   const retryButton=[...document.querySelectorAll('button,[role="button"]')].find(e=>vis(e)&&/^(thử lại|retry|try again)$/i.test((e.innerText||e.textContent||e.getAttribute('aria-label')||'').replace(/\\s+/g,' ').trim()))||null;
   const streamRecoveryError=Boolean(retryButton)||/chatgpt stream recovery polling timed out/i.test(String(document.body?.innerText||''));
