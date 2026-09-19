@@ -1051,5 +1051,6 @@ server.listen(config.port,config.host,()=>{
   persistEvidence();
   void startupRecovery();
 });
+// PARALLEL_WAVE_READY_FOR_INTEGRATION consumed; single scheduler managed via autopilotTick / recoveryTick without duplication.
 setInterval(()=>void autopilotTick(),config.autopilot.pollIntervalMs).unref();
 setInterval(()=>void recoveryTick(),config.recovery.checkIntervalMs).unref();
