@@ -62,6 +62,10 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("NV02_HOME_URL");
     expect(source).toContain("NEW_CHAT_PROJECT_CONTEXT_RECOVERED");
     expect(source).toContain("Page.navigate',{url:NV02_HOME_URL}");
+    expect(source).toContain("NV02_PROJECT_PREFIX");
+    expect(source).toContain("isNv02ProjectContext");
+    expect(source).toContain("PROJECT_CONTEXT_RECOVERY_NAVIGATED");
+    expect(source).toContain("projectContextReady?rawUi:{...rawUi,uiReady:false,uiPhase:'STALLED',modelReady:false}");
     expect(source).toContain("const SEND_BUTTON_WAIT_MS=10000");
     expect(source).toContain("until=Date.now()+SEND_BUTTON_WAIT_MS");
     expect(source).toContain("activityBusyVisible:Boolean(activityBusy)");
