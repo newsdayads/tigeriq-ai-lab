@@ -363,7 +363,13 @@ async function dispatch(
   if(!text.trim())throw new Error('DISPATCH_TEXT_REQUIRED');
   const worker=getWorker(workerId)!;
   browserMutationLeases.assertControllerAllowed(workerId);
-  const job=uiJobLedger.create(workerId,{...metadata,source:metadata.source??source});
+  const requestedJobId=String(metadata.jobId??'').trim();
+  const prior=requestedJobId?uiJobLedger.get(workerId,requestedJobId):undefined;
+  const retryKnownNotDelivered=source==='AUTO_CONTINUE'&&prior?.stage==='ERROR'&&classifyAutoContinueDispatchFailure(new Error(prior.blocker??''),false)==='SAFE_RETRY';
+  const job=retryKnownNotDelivered
+    ? uiJobLedger.retryError(workerId,requestedJobId,{...metadata,source:metadata.source??source})
+    : uiJobLedger.create(workerId,{...metadata,source:metadata.source??source});
+  if(retryKnownNotDelivered)log('UI_JOB_ERROR_REOPENED_SAFE_RETRY',{workerId,jobId:job.jobId});
   uiJobLedger.transition(workerId,job.jobId,'DISPATCHING',{nextAction:'Deliver to worker UI'});
   states.get(workerId)!.status=source==='AUTO_CONTINUE'?'AUTOPILOT_DISPATCHING':'DISPATCHING';
   persistEvidence();
@@ -475,6 +481,15 @@ async function autopilotTick(){
     }
     if(!latestSnapshot){setAutopilotPhase('IDLE');persistEvidence();return;}
     reconcileCompletedUiJobFromSnapshot();
+    if(autopilotState.uncertainJobId){
+      const uncertain=uiJobLedger.get('NV02',autopilotState.uncertainJobId);
+      if(uncertain?.stage==='ERROR'&&classifyAutoContinueDispatchFailure(new Error(uncertain.blocker??''),false)==='SAFE_RETRY'){
+        dispatchLease.resetKnownNotDelivered(uncertain.jobId,Date.now(),0);
+        autopilotState={...clearPending(autopilotState),phase:'IDLE',uncertainJobId:undefined,dispatchFailureClass:'SAFE_RETRY',retryAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
+        persistAutopilotState();
+        log('AUTO_CONTINUE_UNCERTAIN_RECLASSIFIED_SAFE_RETRY',{jobId:uncertain.jobId,priorBlocker:uncertain.blocker});
+      }
+    }
     const decision=decideAutoContinue(latestSnapshot,autopilotState,Date.now(),config.autopilot.maxSnapshotAgeMs);
     if(decision.kind==='IDLE'){lastAutopilotStopReason='';setAutopilotPhase('IDLE');persistEvidence();return;}
     if(decision.kind==='BUSY'||decision.kind==='DUPLICATE_NOOP'){lastAutopilotStopReason='';setAutopilotPhase('BUSY');persistEvidence();return;}
