@@ -19,6 +19,10 @@ export type LeaseAcquireResult=
   | {kind:'ACQUIRED'|'TAKEN_OVER';lease:DispatchLease}
   | {kind:'BUSY'|'COMMITTED';lease:DispatchLease}
   | {kind:'UNCERTAIN';lease?:DispatchLease;reason:string};
+export function hasCoreUiAssignment(workItem: any): boolean {
+  return workItem != null && typeof workItem === 'object' && 'uiAssignment' in workItem && workItem.uiAssignment !== undefined;
+}
+
 export type PendingReconcileResult=
   | {kind:'WAIT'|'COMMITTED'|'SAFE_RETRY';lease:DispatchLease}
   | {kind:'UNCERTAIN';lease?:DispatchLease;reason:string};
@@ -94,6 +98,14 @@ export class DurableDispatchLeaseStore{
 
   markCommitted(leaseId:string,jobId:string,nowMs=Date.now()):DispatchLease{
     return this.#transition(leaseId,jobId,'DISPATCHING','COMMITTED',nowMs,{dispatchedAt:iso(nowMs),expiresAt:iso(nowMs+this.#ttlMs)});
+  }
+
+  selectWork(workItem: any): any {
+    if (hasCoreUiAssignment(workItem)) {
+      return workItem.uiAssignment;
+    }
+    console.warn('Chrome attempting to select UI work without Core assignment');
+    return 'DEFAULT_UI_SELECTOR_PATH';
   }
 
   #evaluateForAcquire(lease:DispatchLease,jobId:string,nowMs:number):LeaseAcquireResult{
