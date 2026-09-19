@@ -21,13 +21,19 @@ PRIORITY=P1`;
 function fakePool(){
   const events=[];
   return {events,async query(q,params=[]){
-    if(q.includes("select data from tigeriq_events where type='GITHUB_CODING_DISPATCHED'")){
+    if(q.includes("from tigeriq_events where type='GITHUB_CODING_DISPATCHED'")){
       const dispatches=events.filter(e=>e.type==='GITHUB_CODING_DISPATCHED');
       if(q.includes('not exists')){
         const latest=[...dispatches].reverse()[0];
         const final=latest&&events.some(r=>String(r.data.issueNumber)===String(latest.data.issueNumber)&&(r.type==='GITHUB_CODING_BLOCKED_FINAL'||(r.type==='GITHUB_CODING_RESULT_REPORTED'&&String(r.data.status||'').toLowerCase()==='completed')));
         const active=Boolean(latest)&&!final;
         return {rowCount:active?1:0,rows:active?[{one:1}]:[]};
+      }
+      if(q.includes('distinct on')){
+        const latestByIssue=new Map();
+        for(const e of dispatches)latestByIssue.set(String(e.data.issueNumber),e);
+        const rows=[...latestByIssue.values()].reverse().map(e=>({data:e.data}));
+        return {rowCount:rows.length,rows};
       }
       const rows=[...dispatches].reverse().slice(0,100).map(e=>({data:e.data}));
       return {rowCount:rows.length,rows};
@@ -185,6 +191,27 @@ describe('GitHub coding continuity supervisor',()=>{
     const next=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake'});
     expect(next.issueNumber).toBe(706);
     expect(pool.events.filter(e=>e.type==='GITHUB_DEPENDENCY_RELEASED')).toHaveLength(1);
+  });
+
+  it('reconciles transient blocked dispatches even when their marker is older than 100 unrelated dispatch events',async()=>{
+    const pool=fakePool();
+    pool.events.push({type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:1053,codingObjectiveId:'old-1053'}});
+    for(let n=2000;n<2110;n++)pool.events.push({type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:n,codingObjectiveId:`noise-${n}`}});
+    const target=issue(`${SAFE}\nOWNER_DIRECT=true\nRESOURCE_SCOPE=OLD_TRANSIENT\nALLOW_PATH_PREFIX=docs/evidence/old-transient.md`,{number:1053,title:'Old transient retry'});
+    const fetchImpl=async(url,init={})=>{
+      if(url.includes('/api/status'))return response({objectives:[{id:'old-1053',status:'blocked',summary:'AI_RESOURCES_UNAVAILABLE'}],jobs:[]});
+      if(url.includes('/api/objectives')){
+        const body=JSON.parse(init.body);
+        expect(body.objective).toContain('RETRY_KEY=GITHUB-ISSUE-1053-RETRY-1');
+        return response({id:'retry-1053'});
+      }
+      if(url.includes('/issues/1053'))return response(target);
+      if(url.includes('/comments'))return response({});
+      return response({});
+    };
+    const out=await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake',now:()=>Date.parse('2026-09-19T07:30:00Z')});
+    expect(out.results).toBeGreaterThanOrEqual(1);
+    expect(pool.events.some(e=>e.type==='GITHUB_CODING_RETRY_SCHEDULED'&&e.data.issueNumber===1053)).toBe(true);
   });
 
   it('backs off provider 429 and dispatches only after next-at gate',async()=>{

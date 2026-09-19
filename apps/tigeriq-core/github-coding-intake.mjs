@@ -88,7 +88,7 @@ async function activeCodingDispatches(pool,laneStatus){
     if(['done','failed','blocked'].includes(String(job?.status||'').toLowerCase()))continue;
     if(job?.objective_id)liveObjectiveIds.add(String(job.objective_id));
   }
-  const rows=(await pool.query("select data from tigeriq_events where type='GITHUB_CODING_DISPATCHED' order by seq desc limit 100")).rows;
+  const rows=(await pool.query("select distinct on ((data->>'issueNumber')::int) data from tigeriq_events where type='GITHUB_CODING_DISPATCHED' and data ? 'issueNumber' order by ((data->>'issueNumber')::int), seq desc")).rows;
   const seen=new Set(),active=[];
   for(const row of rows){
     const data=row.data||{},n=Number(data.issueNumber),objectiveId=String(data.codingObjectiveId||'');
