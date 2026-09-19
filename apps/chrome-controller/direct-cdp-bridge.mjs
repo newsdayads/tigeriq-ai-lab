@@ -140,6 +140,46 @@ async function closeWorker(w,target){
   await post('/api/window-event',w.id,{workerId:w.id,event:'CLOSED',windowId});
   const b=await browserRpc(port);try{await b.call('Browser.close',{}).catch(()=>{});}finally{b.close();}
 }
+function modelPreflightExpr(){
+  return \`(async()=>{
+    const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+    const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};
+    const security=()=>{if(document.querySelector('iframe[src*="captcha" i],iframe[src*="challenge" i],[class*="captcha" i],[id*="captcha" i]'))return'BLOCKED_CAPTCHA';const txt=[...document.querySelectorAll('[role="alert"],[role="dialog"],[data-testid*="toast" i]')].slice(0,30).map(e=>(e.textContent||'').toLowerCase()).join(' ');for(const [n,v] of [['rate limit','BLOCKED_RATE_LIMIT'],['too many requests','BLOCKED_RATE_LIMIT'],['suspicious activity','BLOCKED_SUSPICIOUS_ACTIVITY'],['unusual activity','BLOCKED_SUSPICIOUS_ACTIVITY'],['verify your identity','BLOCKED_REAUTH'],['verify it’s you','BLOCKED_REAUTH'],['xác minh danh tính','BLOCKED_REAUTH']])if(txt.includes(n))return v;return null};
+    const fail=reason=>{document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',bubbles:true}));return{ok:false,status:'MODEL_PROFILE_BLOCKED:'+reason}};
+    if(location.hostname!=='chatgpt.com')return fail('UNVERIFIED_HOST');
+    const trigger=()=>{const xs=[...document.querySelectorAll('button[data-codex-intelligence-trigger="true"][data-composer-navigation-target="reasoning"][aria-haspopup="menu"],button[aria-label="Chọn mô hình ChatGPT"][aria-haspopup="menu"],button[aria-label="Select ChatGPT model"][aria-haspopup="menu"]')].filter(vis);return xs.length===1?xs[0]:null};
+    const menu=()=>{const xs=[...document.querySelectorAll('[role="menu"]')].filter(vis).filter(e=>e.querySelector('[data-model-picker-view-toggle="true"],[data-reasoning-slider="true"],[data-model-selected="true"]'));return xs.length===1?xs[0]:null};
+    const selected=m=>{const xs=[...m.querySelectorAll('[role="menuitemradio"][aria-checked="true"][data-model-selected="true"]')];return xs.length===1?String(xs[0].textContent||'').replace(/\\s+/g,' ').trim():null};
+    const gate=security();if(gate)return fail(gate);
+    let t=trigger();if(!t)return fail('MODEL_TRIGGER_NOT_UNIQUE');
+    if(t.getAttribute('data-state')!=='open'){t.click();await sleep(300);}
+    let b=security();if(b)return fail(b);let m=menu();if(!m)return fail('MODEL_MENU_NOT_UNIQUE');
+    if(selected(m)!=='GPT-5.6 Sol'){
+      const toggles=[...m.querySelectorAll('[data-model-picker-view-toggle="true"][role="menuitem"]')].filter(vis);if(toggles.length!==1)return fail('MODEL_VIEW_TOGGLE_NOT_UNIQUE');
+      toggles[0].click();await sleep(250);b=security();if(b)return fail(b);m=menu();if(!m)return fail('MODEL_MENU_LOST_AFTER_TOGGLE');
+      const opts=[...m.querySelectorAll('[role="menuitemradio"]')].filter(vis).filter(e=>String(e.textContent||'').replace(/\\s+/g,' ').trim()==='GPT-5.6 Sol'&&e.getAttribute('aria-disabled')!=='true');
+      if(opts.length!==1)return fail('GPT_5_6_SOL_OPTION_NOT_UNIQUE');opts[0].click();await sleep(400);b=security();if(b)return fail(b);
+    }
+    t=trigger();if(!t)return fail('MODEL_TRIGGER_LOST');
+    if(t.getAttribute('data-selected-reasoning-effort')!=='high'){
+      if(t.getAttribute('data-state')!=='open'){t.click();await sleep(250);}m=menu();if(!m)return fail('EFFORT_MENU_NOT_UNIQUE');
+      const controls=[...m.querySelectorAll('[data-reasoning-slider="true"][role="menuitem"]')].filter(vis);if(controls.length!==1)return fail('EFFORT_CONTROL_NOT_UNIQUE');
+      controls[0].focus();for(let i=0;i<3&&t.getAttribute('data-selected-reasoning-effort')!=='high';i++){controls[0].dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',code:'ArrowRight',bubbles:true}));controls[0].dispatchEvent(new KeyboardEvent('keyup',{key:'ArrowRight',code:'ArrowRight',bubbles:true}));await sleep(150);}
+      if(t.getAttribute('data-selected-reasoning-effort')!=='high')return fail('HIGH_EFFORT_SWITCH_FAILED');
+    }
+    if(t.getAttribute('data-state')!=='open'){t.click();await sleep(250);}m=menu();if(!m)return fail('FINAL_MODEL_MENU_NOT_UNIQUE');
+    const finalModel=selected(m),finalEffort=t.getAttribute('data-selected-reasoning-effort');
+    if(finalModel!=='GPT-5.6 Sol')return fail('FINAL_MODEL_MISMATCH');if(finalEffort!=='high')return fail('FINAL_EFFORT_MISMATCH');
+    const verifiedAt=new Date().toISOString();document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',bubbles:true}));
+    return{ok:true,status:'MODEL_PROFILE_VERIFIED',model:finalModel,thinking:finalEffort,verifiedAt};
+  })()\`;
+}
+async function modelPreflight(target){
+  const p=await pageRpc(target);
+  try{return (await p.call('Runtime.evaluate',{expression:modelPreflightExpr(),awaitPromise:true,returnByValue:true,userGesture:true},10000)).result.value;}
+  finally{p.close();}
+}
+
 function dispatchExpr(text){
   return `(async()=>{const text=${JSON.stringify(text)},expected=text.trim();const sleep=ms=>new Promise(r=>setTimeout(r,ms));const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};const securityBlock=()=>{if(document.querySelector('iframe[src*=\"captcha\" i],iframe[src*=\"challenge\" i],[class*=\"captcha\" i],[id*=\"captcha\" i]'))return'BLOCKED_CAPTCHA';const t=[...document.querySelectorAll('[role=\"alert\"],[role=\"dialog\"],[data-testid*=\"toast\" i]')].slice(0,30).map(e=>(e.textContent||'').toLowerCase()).join(' '),m=[['rate limit','BLOCKED_RATE_LIMIT'],['too many requests','BLOCKED_RATE_LIMIT'],['suspicious activity','BLOCKED_SUSPICIOUS_ACTIVITY'],['unusual activity','BLOCKED_SUSPICIOUS_ACTIVITY'],['verify your identity','BLOCKED_REAUTH'],['verify it’s you','BLOCKED_REAUTH'],['xác minh danh tính','BLOCKED_REAUTH']];for(const [n,s] of m)if(t.includes(n))return s;return null;};const blocked=securityBlock();if(blocked)return{ok:false,status:blocked};if(!expected)return{ok:false,status:'EMPTY_WORK_ORDER'};const sels=location.hostname==='chatgpt.com'?['#prompt-textarea','div[contenteditable=\"true\"][data-lexical-editor=\"true\"]','[contenteditable=\"true\"][role=\"textbox\"]','textarea']:['rich-textarea .ql-editor[contenteditable=\"true\"]','.ql-editor[contenteditable=\"true\"]','[contenteditable=\"true\"][role=\"textbox\"]','textarea'];const findComposer=()=>{for(const s of sels){const x=[...document.querySelectorAll(s)].find(vis);if(x)return x;}return null;};const composerText=e=>e instanceof HTMLTextAreaElement||e instanceof HTMLInputElement?String(e.value||'').trim():String(e?.innerText||e?.textContent||'').trim();let c=findComposer();if(!c)return{ok:false,status:'COMPOSER_NOT_FOUND'};if(composerText(c)!==expected){c.focus();if(c instanceof HTMLTextAreaElement||c instanceof HTMLInputElement){const proto=c instanceof HTMLTextAreaElement?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(proto,'value')?.set?.call(c,text);c.dispatchEvent(new Event('input',{bubbles:true}));c.dispatchEvent(new Event('change',{bubbles:true}));}else{const sel=window.getSelection(),range=document.createRange();range.selectNodeContents(c);sel?.removeAllRanges();sel?.addRange(range);if(!document.execCommand('insertText',false,text)){c.textContent=text;c.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:text}));}}}const scoped=['button[data-testid=\"send-button\"]','button[type=\"submit\"]','button[aria-label*=\"Send\" i]','button[aria-label*=\"Gửi\" i]','button[aria-label*=\"submit\" i]'],global=['button[data-testid=\"send-button\"]','button[aria-label*=\"Send\" i]','button[aria-label*=\"Gửi\" i]','button[aria-label*=\"submit\" i]'];const usable=e=>vis(e)&&!e.disabled&&e.getAttribute('aria-disabled')!=='true';const findSend=()=>{for(const root of [c.closest?.('form'),c.parentElement].filter(Boolean))for(const s of scoped){const a=[...root.querySelectorAll(s)].filter(usable);if(a.length===1)return a[0];}for(const s of global){const a=[...document.querySelectorAll(s)].filter(usable);if(a.length===1)return a[0];}return null;};let b=null,until=Date.now()+3000;while(Date.now()<until){await sleep(150);const gate=securityBlock();if(gate)return{ok:false,status:gate};b=findSend();if(b)break;}if(!b)return{ok:false,status:'SEND_BUTTON_NOT_FOUND'};b.click();const busy=()=>['button[data-testid=\"stop-button\"]','button[aria-label*=\"Stop\" i]','button[aria-label*=\"Dừng\" i]'].some(s=>[...document.querySelectorAll(s)].some(vis));until=Date.now()+3500;while(Date.now()<until){await sleep(100);const gate=securityBlock();if(gate)return{ok:false,status:gate};if(busy())return{ok:true,status:'SUBMITTED',evidence:'UI_BUSY'};if(location.hostname==='chatgpt.com'&&[...document.querySelectorAll('[data-message-author-role=\"user\"]')].some(e=>vis(e)&&String(e.textContent||'').trim()===expected))return{ok:true,status:'SUBMITTED',evidence:'USER_MESSAGE_VISIBLE'};c=findComposer();if(c&&composerText(c)==='')return{ok:true,status:'SUBMITTED',evidence:'COMPOSER_CLEARED'};}return{ok:false,status:'SUBMIT_EVIDENCE_MISSING'};})()`;
 }
@@ -156,6 +196,7 @@ async function handleCommand(w,target,command){
   if(action==='LAYOUT') return layout(w,target,payload).then(()=>({status:'LAYOUT_APPLIED'}));
   if(action==='CLOSE_WINDOW') return closeWorker(w,target).then(()=>({status:'WINDOW_CLOSED'}));
   if(action==='NAVIGATE'){const u=new URL(String(payload.url||''));if(u.hostname!==expectedHost(w))throw new Error('BLOCKED_URL');await navigate(target,u.toString());return{status:'NAVIGATED'};}
+  if(action==='MODEL_PREFLIGHT'){if(w.id!=='NV02')throw new Error('MODEL_PREFLIGHT_NV02_ONLY');const r=await modelPreflight(target);if(!r?.ok)throw new Error(r?.status||'MODEL_PROFILE_BLOCKED:UNKNOWN');if(r.model!=='GPT-5.6 Sol'||r.thinking!=='high'||!r.verifiedAt)throw new Error('MODEL_PROFILE_BLOCKED:EVIDENCE_MISMATCH');return r;}
   if(action==='DISPATCH'){const r=await dispatch(target,String(payload.text||''));if(!r?.ok)throw new Error(r?.status||'DISPATCH_FAILED');return r;}
   if(action==='ARCHIVE_CHAT'){const r=await archiveChat(target);if(!r?.ok)throw new Error(r?.status||'ARCHIVE_FAILED');return r;}
   throw new Error(`UNKNOWN_ACTION:${action}`);
