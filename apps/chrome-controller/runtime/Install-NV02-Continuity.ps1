@@ -21,10 +21,10 @@ $previousLauncher=$null
 $pausedBefore=$false
 
 function Assert-Ok([bool]$Condition,[string]$Message){if(-not $Condition){throw $Message}}
-function Invoke-Native([string]$File,[string[]]$Args,[string]$WorkingDirectory=$RepoRoot){
-  Push-Location $WorkingDirectory
+function Invoke-Native([string]$File,[string[]]$ArgumentList){
+  Push-Location $RepoRoot
   try{
-    & $File @Args
+    & $File @ArgumentList
     if($LASTEXITCODE -ne 0){throw "NATIVE_FAILED:${File}:$LASTEXITCODE"}
   }finally{Pop-Location}
 }
@@ -92,16 +92,16 @@ New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
 try{
   $status=(& git -C $RepoRoot status --porcelain)
   Assert-Ok ([string]::IsNullOrWhiteSpace(($status -join ''))) 'REPO_WORKTREE_NOT_CLEAN'
-  Invoke-Native 'git' @('-C',$RepoRoot,'fetch','origin','p0/nv02-continuous-liveness')
+  Invoke-Native -File 'git' -ArgumentList @('-C',$RepoRoot,'fetch','origin','p0/nv02-continuous-liveness')
   $remote=(& git -C $RepoRoot rev-parse 'origin/p0/nv02-continuous-liveness').Trim()
   Assert-Ok ($remote -eq $ExpectedHead) "REMOTE_HEAD_MISMATCH:$remote"
-  Invoke-Native 'git' @('-C',$RepoRoot,'checkout','--detach',$ExpectedHead)
+  Invoke-Native -File 'git' -ArgumentList @('-C',$RepoRoot,'checkout','--detach',$ExpectedHead)
   $head=(& git -C $RepoRoot rev-parse 'HEAD').Trim()
   Assert-Ok ($head -eq $ExpectedHead) "LOCAL_HEAD_MISMATCH:$head"
 
-  Invoke-Native 'npx' @('vitest','run','tests/chrome-controller-autonomy-hardening.test.ts','tests/nv02-continuity.test.mjs')
-  Invoke-Native 'npm' @('run','typecheck')
-  Invoke-Native 'npm' @('run','build')
+  Invoke-Native -File 'npx' -ArgumentList @('vitest','run','tests/chrome-controller-autonomy-hardening.test.ts','tests/nv02-continuity.test.mjs')
+  Invoke-Native -File 'npm' -ArgumentList @('run','typecheck')
+  Invoke-Native -File 'npm' -ArgumentList @('run','build')
 
   if(Test-Path $launcher){
     $previousLauncher=Join-Path $backupDir 'Start-Workspace-826.ps1'
