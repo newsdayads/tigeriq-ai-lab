@@ -166,10 +166,10 @@ async function continuityEvent(event,data={}){
   catch(error){log('NV02_CONTINUITY_EVENT_POST_FAILED',{event,error:String(error?.message||error)});}
 }
 
-async function acquireBridgeMutationLease(workerId){
+async function acquireBridgeMutationLease(workerId,purpose='NORMAL'){
   const ownerId=`DIRECT_CDP_BRIDGE:${process.pid}:${workerId}`;
   const r=await fetch(`${CONTROLLER}/api/utility/workers/${workerId}/mutation-lease/acquire`,{
-    method:'POST',headers:auth(workerId,true),body:JSON.stringify({ownerId,ttlMs:10000}),signal:AbortSignal.timeout(4000)
+    method:'POST',headers:auth(workerId,true),body:JSON.stringify({ownerId,ttlMs:10000,purpose}),signal:AbortSignal.timeout(4000)
   });
   if(r.status===409)return null;
   if(!r.ok)throw new Error(`HTTP_${r.status}:mutation-lease-acquire`);
@@ -252,8 +252,8 @@ async function waitForIdleAfterSubmission(target,timeoutMs=120000){
   }
   throw new Error('NV02_COMPLETION_TIMEOUT');
 }
-async function withNv02Mutation(fn){
-  const lease=await acquireBridgeMutationLease('NV02');
+async function withNv02Mutation(fn,purpose='NORMAL'){
+  const lease=await acquireBridgeMutationLease('NV02',purpose);
   if(!lease)return{ok:false,status:'MUTATION_LEASE_BUSY'};
   try{return await fn();}finally{await releaseBridgeMutationLease('NV02',lease);}
 }
@@ -342,7 +342,7 @@ async function maybeNv02Continuity(w,target,ui){
     state={...state,stalledChecks:0,workingSignature:signature,workingUnchangedChecks:unchanged,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
     await continuityEvent('WORKING_NO_PROGRESS_CHECK',{workingUnchangedChecks:unchanged,nextContinueAt:state.nextContinueAt,signaturePresent:Boolean(signature)});
     if(unchanged===2){
-      const result=await withNv02Mutation(()=>reloadTarget(target));
+      const result=await withNv02Mutation(()=>reloadTarget(target),'STALE_WORKING_RECOVERY');
       await continuityEvent('WORKING_STALE_RELOAD',{status:result?.status||null,workingUnchangedChecks:unchanged});
     }else if(unchanged>=MAX_STALLED_CHECKS){
       await post('/api/workers/NV02/restart-schedule','NV02',{reason:'WORKING_NO_PROGRESS_3_CHECKS'}).catch(async error=>continuityEvent('WORKING_STALE_RESTART_FAILED',{error:String(error?.message||error)}));
