@@ -971,13 +971,16 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
       if(leaseAction==='acquire'){
         assertWorkerEnabled(workerId);
         const state=states.get(workerId)!;
+        const purpose=String(data.purpose??'NORMAL').trim().toUpperCase();
+        const staleWorkingRecovery=workerId==='NV02'&&purpose==='STALE_WORKING_RECOVERY';
         if(paused)throw new Error('OWNER_INTERACTION_READ_ONLY');
         if(utilityPausedWorkers.has(workerId))throw new Error(`UTILITY_WORKER_PAUSED:${workerId}`);
         if(state.blocked)throw new Error(`WORKER_BLOCKED:${workerId}`);
         if(!recentHeartbeat(workerId))throw new Error(`WORKER_HEARTBEAT_NOT_READY:${workerId}`);
         const security=heartbeatStopReason(state.lastHeartbeat);
         if(security)throw new Error(security);
-        if(state.lastHeartbeat?.uiBusy!==false)throw new Error(`WORKER_UI_BUSY_OR_UNKNOWN:${workerId}`);
+        if(state.lastHeartbeat?.uiBusy!==false&&!staleWorkingRecovery)throw new Error(`WORKER_UI_BUSY_OR_UNKNOWN:${workerId}`);
+        if(staleWorkingRecovery&&state.lastHeartbeat?.uiBusy!==true)throw new Error(`STALE_WORKING_RECOVERY_REQUIRES_BUSY:${workerId}`);
         if(workerHasActiveJob(workerId))throw new Error(`WORKER_ACTIVE_JOB:${workerId}`);
         if(commandQueues.get(workerId)!.length>0||[...waiters.values()].some((w)=>w.workerId===workerId))
           throw new Error(`WORKER_COMMAND_INFLIGHT:${workerId}`);
@@ -987,7 +990,7 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
           json(res,409,{ok:false,error:`BROWSER_MUTATION_LEASE_BUSY:${workerId}:${acquired.lease.ownerId}`,lease:acquired.lease});
           return true;
         }
-        log('BROWSER_MUTATION_LEASE_ACQUIRED',{workerId,ownerId,leaseId:acquired.lease.leaseId,expiresAt:acquired.lease.expiresAt});
+        log('BROWSER_MUTATION_LEASE_ACQUIRED',{workerId,ownerId,purpose,leaseId:acquired.lease.leaseId,expiresAt:acquired.lease.expiresAt});
         json(res,200,{ok:true,lease:acquired.lease});
         return true;
       }
