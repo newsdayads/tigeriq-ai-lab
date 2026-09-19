@@ -96,7 +96,7 @@ async function activeCodingOwnerBlocksRetry({pool,status,fetchImpl,owner,repo,to
   }
   return false;
 }
-async function activeCodingDispatches(pool,laneStatus){
+async function activeCodingDispatches(pool,laneStatus,{fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token=''}={}){
   const liveObjectiveIds=new Set((laneStatus?.objectives||[]).filter(x=>!objectiveTerminal(x)).map(x=>String(x.id||'')).filter(Boolean));
   for(const job of laneStatus?.jobs||[]){
     if(['done','failed','blocked'].includes(String(job?.status||'').toLowerCase()))continue;
@@ -111,6 +111,19 @@ async function activeCodingDispatches(pool,laneStatus){
     const liveObjective=(laneStatus?.objectives||[]).find(x=>String(x?.id||'')===objectiveId);
     if(await hasCompletedCodingResult(pool,n)||await hasEffectiveBlockedFinal(pool,n,liveObjective?.summary))continue;
     if(!liveObjectiveIds.has(objectiveId))continue;
+    try{
+      const sourceIssue=await gh(fetchImpl,owner,repo,`/issues/${n}`,token);
+      const sourceState=String(sourceIssue?.state||'').toLowerCase();
+      const explicitlySuperseded=sourceState==='open'&&issueSuperseded(sourceIssue);
+      if(sourceState==='closed'||explicitlySuperseded){
+        if(!(await markerExists(pool,'GITHUB_CODING_STALE_SCOPE_IGNORED',n))){
+          await mark(pool,'GITHUB_CODING_STALE_SCOPE_IGNORED',{issueNumber:n,codingObjectiveId:objectiveId,sourceState:sourceState||'unknown'});
+        }
+        continue;
+      }
+    }catch{
+      // Fail closed: if source truth cannot be verified, keep the lease active.
+    }
     active.push({issueNumber:n,codingObjectiveId:objectiveId,scopeLease:data.scopeLease||{resourceScope:'',paths:[],ambiguous:true}});
   }
   return active;
@@ -133,7 +146,7 @@ export async function materializeGithubCodingIssues({pool,fetchImpl=fetch,owner=
   let laneStatus;
   try{laneStatus=await jsonFetch(fetchImpl,`${codingLaneUrl.replace(/\/$/,'')}/api/status`)}
   catch(error){return {created:0,active:0,considered:specs.length,...baseCounters,skipReason:'LANE_STATUS_UNAVAILABLE',error:String(error?.message||error)}}
-  const active=await activeCodingDispatches(pool,laneStatus);
+  const active=await activeCodingDispatches(pool,laneStatus,{fetchImpl,owner,repo,token});
   const activeScopes=active.map(x=>x.scopeLease);
   const counters={...baseCounters,activeSlots:active.length,freeSlots:Math.max(0,cap-active.length)};
   if(counters.freeSlots<=0)return {created:0,active:active.length,considered:specs.length,...counters,skipReason:'CAPACITY_FULL'};

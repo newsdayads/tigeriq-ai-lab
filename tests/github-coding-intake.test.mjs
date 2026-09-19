@@ -512,6 +512,24 @@ describe('GitHub coding scope-aware pool refill',()=>{
     expect(posted).toHaveLength(3);
   });
 
+  it('releases a stale scope lease when its source issue is closed even if the lane objective is still active',async()=>{
+    const pool=fakePool();let posted=0;
+    pool.events.push({type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:954,codingObjectiveId:'stale-live-954',scopeLease:{resourceScope:'SAME_SCOPE',paths:['apps/shared'],ambiguous:false}}});
+    const candidate=scoped(955,'SAME_SCOPE','apps/shared');
+    const fetchImpl=async(url)=>{
+      if(url.includes('/issues?'))return response([candidate]);
+      if(url.includes('/issues/954'))return response({number:954,state:'closed'});
+      if(url.includes('/api/status'))return response({objectives:[{id:'stale-live-954',status:'active'}],jobs:[]});
+      if(url.includes('/api/objectives')){posted++;return response({id:'new-955'});}
+      if(url.includes('/comments'))return response({});
+      return response({});
+    };
+    const out=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake',concurrencyCap:3});
+    expect(out).toMatchObject({created:1,active:0,scopeBlocked:0});
+    expect(posted).toBe(1);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_STALE_SCOPE_IGNORED')).toHaveLength(1);
+  });
+
   it('counts only dispatches whose Coding Lane objective is currently non-terminal',async()=>{
     const pool=fakePool();let posted=0;
     pool.events.push(
