@@ -121,7 +121,44 @@
 
   function updateLiveSync(){const el=document.getElementById('tqULiveSync');if(!el)return;if(!window.S?.lastOk){el.textContent='Đang đồng bộ…';return;}const age=Math.max(0,Math.floor((Date.now()-S.lastOk)/1000));el.textContent=age>6?`Dữ liệu cũ · ${age}s`:`Đồng bộ ${new Date(S.lastOk).toLocaleTimeString('vi-VN',{hour12:false})} · ${age}s`;el.style.color=age>6?'#ff9aa4':'#9db7d6';}
 
+  function renderCodingLaneWorkItems(d) {
+    const container = document.getElementById('codingLaneWorkItems') || document.createElement('div');
+    container.id = 'codingLaneWorkItems';
+    const objectives = Array.isArray(d?.objectives) ? d.objectives : [];
+    const items = objectives.map(obj => {
+      const meta = obj?.metadata || {};
+      const work = meta.workItem || meta.work_item || {
+        issueOrPr: meta.issueOrPr || meta.pr || obj.title || 'Coding Lane item',
+        implementer: meta.implementer || obj.employee_id || 'NV01',
+        reviewer: meta.reviewer || 'NV02',
+        stage: meta.stage || obj.status || 'active',
+        timestamps: meta.timestamps || { updated: new Date().toISOString() },
+        blocker: meta.blocker || '',
+        nextAction: meta.nextAction || 'Continue work'
+      };
+      return `<div class="coding-lane-item" style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:12px;margin-bottom:8px;font-size:13px;color:#e2e8f0;">
+        <div style="display:flex;justify-content:between;align-items:center;font-weight:600;margin-bottom:6px;">
+          <span>🚀 ${safe(work.issueOrPr)}</span>
+          <span style="font-size:11px;padding:2px 8px;border-radius:4px;background:rgba(59,130,246,0.2);color:#93c5fd;">${safe(work.stage)}</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;color:#94a3b8;font-size:12px;">
+          <div>👤 Implementer: <b style="color:#f8fafc;">${safe(work.implementer || 'None')}</b></div>
+          <div>👁️ Reviewer: <b style="color:#f8fafc;">${safe(work.reviewer || 'None')}</b></div>
+          <div>⏱️ Updated: <b style="color:#f8fafc;">${safe(new Date(work.timestamps?.updated || Date.now()).toLocaleTimeString())}</b></div>
+          <div>🎯 Next: <b style="color:#38bdf8;">${safe(work.nextAction || 'None')}</b></div>
+        </div>
+        ${work.blocker ? `<div style="margin-top:6px;color:#fca5a5;font-size:11px;">⚠️ Blocker: ${safe(work.blocker)}</div>` : ''}
+      </div>`;
+    }).join('');
+    if (container && !document.getElementById('codingLaneWorkItems')) {
+      const target = document.querySelector('.unified-overview') || document.body;
+      target.appendChild(container);
+    } else if (container) {
+      container.innerHTML = items || '<div style="color:#64748b;font-size:12px;">No active Coding Lane items.</div>';
+    }
+  }
   mountUnifiedOverview();
+  renderCodingLaneWorkItems(window.S?.data);
   if(typeof workerCard==='function')workerCard=richWorkerCard;
   if(typeof renderMetrics==='function')renderMetrics=renderUnifiedMetrics;
   const priorRender=typeof render==='function'?render:null;
