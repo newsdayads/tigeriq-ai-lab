@@ -111,9 +111,16 @@ export function currentFilesFromPrompt(prompt){
 export function expandCompactChanges(prompt,text){
   const d=parseModelJson(text);
   if(!d||typeof d!=='object'||Array.isArray(d))throw new Error('COMPACT_EDIT_JSON_INVALID');
-  if(Array.isArray(d.changes)&&d.changes.length>0)return d;
-  if(typeof d.summary!=='string'||!Array.isArray(d.edits)||!d.edits.length)throw new Error('COMPACT_EDIT_SCHEMA_INVALID');
   const files=currentFilesFromPrompt(prompt);
+  if(Array.isArray(d.changes)&&d.changes.length>0){
+    for(const change of d.changes){
+      const path=String(change?.path||'').trim();
+      const existing=files.get(path);
+      if(files.has(path)&&String(existing||'').length>0)throw new Error(`COMPACT_EDIT_FULL_CONTENT_FOR_EXISTING:${path}`);
+    }
+    return d;
+  }
+  if(typeof d.summary!=='string'||!Array.isArray(d.edits)||!d.edits.length)throw new Error('COMPACT_EDIT_SCHEMA_INVALID');
   const changed=new Map();
   for(const edit of d.edits){
     const path=String(edit?.path||'').trim();
