@@ -84,4 +84,21 @@ describe('durable UI worker job ledger',()=>{
     expect(restored.active('NV04')).toBeUndefined();
     expect(restored.latest('NV04')).toMatchObject({stage:'DONE',result:'Acceptance PASS'});
   });
+
+  it('reopens the same ERROR job id for a safe retry without creating a duplicate record',()=>{
+    const {path,store}=ledger();
+    store.create('NV02',{jobId:'GH-1041',issueRef:'https://github.com/newsdayads/tigeriq-ai-lab/issues/1041',source:'AUTO_CONTINUE'});
+    store.transition('NV02','GH-1041','DISPATCHING');
+    store.transition('NV02','GH-1041','ERROR',{blocker:'Error: SEND_BUTTON_NOT_FOUND',nextAction:'Root-cause and safe retry'});
+    const retried=store.retryError('NV02','GH-1041',{source:'AUTO_CONTINUE'},new Date('2026-09-19T05:50:00Z'));
+    expect(retried).toMatchObject({jobId:'GH-1041',stage:'QUEUED',progress:5,blocker:null,completedAt:null,nextAction:'Retry dispatch to worker'});
+    expect(new DurableUiJobLedger(path).snapshot().filter(job=>job.jobId==='GH-1041')).toHaveLength(1);
+  });
+
+  it('refuses retryError for non-error terminal or active jobs',()=>{
+    const {store}=ledger();
+    store.create('NV02',{jobId:'ACTIVE'});
+    expect(()=>store.retryError('NV02','ACTIVE')).toThrow('UI_JOB_ACTIVE');
+  });
+
 });
