@@ -141,11 +141,13 @@ const UI_EXPR=`(()=>{
   const checks=[['rate limit','BLOCKED_RATE_LIMIT'],['too many requests','BLOCKED_RATE_LIMIT'],['suspicious activity','BLOCKED_SUSPICIOUS_ACTIVITY'],['unusual activity','BLOCKED_SUSPICIOUS_ACTIVITY'],['verify your identity','BLOCKED_REAUTH'],['verify it’s you','BLOCKED_REAUTH'],['xác minh danh tính','BLOCKED_REAUTH']];
   if(!securityBlock) for(const [n,s] of checks){if(txt.includes(n)){securityBlock=s;break;}}
   const modelControl=location.hostname==='chatgpt.com'?[...document.querySelectorAll('button,[role="button"]')].find(e=>vis(e)&&/chọn mô hình chatgpt|choose.*model|model selector/i.test((e.getAttribute('aria-label')||'')+' '+(e.getAttribute('title')||'')))||null:null;
+  const projectPrefix="/g/g-p-6a925c470aa08191a10595e215d04f4e-tigeriq-ai-lab";
+  const projectButton=location.hostname==='chatgpt.com'?[...document.querySelectorAll('button,[role="button"]')].find(e=>vis(e)&&/thay đổi dự án:\s*tigeriq ai lab|change project:\s*tigeriq ai lab/i.test((e.getAttribute('aria-label')||'').trim()))||null:null;
+  const projectContextReady=location.hostname!=='chatgpt.com'||location.pathname.startsWith(projectPrefix)||Boolean(projectButton);
   const reasoningEffort=modelControl?.getAttribute('data-selected-reasoning-effort')||null;
-  const modelReady=location.hostname!=='chatgpt.com'||Boolean(modelControl&&String(reasoningEffort||'').toLowerCase()==='high');
-  const uiBusy=Boolean((stop||activityBusy)&&!streamRecoveryError);
-  const activityRoot=activityBusy?.closest?.('.block-BQZwFn')||activityBusy?.parentElement||null;
-  const activityText=String(activityRoot?.innerText||activityRoot?.textContent||'').replace(/\s+/g,' ').trim();
+  const modelReady=location.hostname!=='chatgpt.com'||Boolean(projectContextReady&&modelControl&&String(reasoningEffort||'').toLowerCase()==='high');
+  const uiBusy=Boolean(stop&&!streamRecoveryError);
+  const activityText=String(document.body?.innerText||'').slice(-5000).replace(/\s+/g,' ').trim();
   let activityHash=0;for(let i=0;i<activityText.length;i+=1)activityHash=((activityHash*31)+activityText.charCodeAt(i))>>>0;
   const activitySignature=uiBusy?(String(activityText.length)+':'+String(activityHash)):'';
   const uiReady=document.readyState==='complete'&&!!composer&&!authRequired;
@@ -153,7 +155,7 @@ const UI_EXPR=`(()=>{
   return {
     uiReady,uiPhase,composerReady:Boolean(composer),sendReady:Boolean(send),stopVisible:Boolean(stop),activityBusyVisible:Boolean(activityBusy),
     scrollToBottomVisible:Boolean(scroll),authRequired,uiBusy,securityBlock,
-    modelControlPresent:Boolean(modelControl),reasoningEffort,modelReady,activitySignature,retryVisible:Boolean(retryButton),recoverableError:streamRecoveryError?'STREAM_RECOVERY_TIMEOUT':null,
+    modelControlPresent:Boolean(modelControl),projectContextReady,reasoningEffort,modelReady,activitySignature,retryVisible:Boolean(retryButton),recoverableError:streamRecoveryError?'STREAM_RECOVERY_TIMEOUT':null,
     title:document.title,url:location.href,readyState:document.readyState,bodyChildren:document.body?.children?.length||0
   };
 })()`;
@@ -450,10 +452,10 @@ async function tickWorker(w){
   try{
     const port=workerPort(w);let list=await targets(port);let target=await pruneDuplicates(w,list);if(!target)return;
     const rawUi=await uiState(target);const windowId=await windowIdFor(port,target.id);
-    const projectContextReady=w.id!=='NV02'||isNv02ProjectContext(rawUi.url);
-    const ui=projectContextReady?rawUi:{...rawUi,uiReady:false,uiPhase:'STALLED',modelReady:false};
+    const projectContextReady=w.id!=='NV02'||rawUi?.projectContextReady===true||isNv02ProjectContext(rawUi.url);
+    const ui=projectContextReady?rawUi:{...rawUi,uiReady:false,uiPhase:'STALLED',modelReady:false,projectContextReady:false};
     const display={workArea:{left:0,top:0,width:Number(config.layout?.fallbackWorkAreaWidth||3277),height:1688}};
-    await post('/api/heartbeat',w.id,{workerId:w.id,state:ui.uiPhase||'STALLED',windowId,tabId:target.id,url:ui.url,active:true,uiReady:ui.uiReady,uiPhase:ui.uiPhase,composerReady:ui.composerReady,sendReady:ui.sendReady,stopVisible:ui.stopVisible,scrollToBottomVisible:ui.scrollToBottomVisible,authRequired:ui.authRequired===true,uiBusy:ui.uiBusy,securityBlock:ui.securityBlock,modelControlPresent:ui.modelControlPresent,reasoningEffort:ui.reasoningEffort,modelReady:ui.modelReady,retryVisible:ui.retryVisible,recoverableError:ui.recoverableError,display});
+    await post('/api/heartbeat',w.id,{workerId:w.id,state:ui.uiPhase||'STALLED',windowId,tabId:target.id,url:ui.url,active:true,uiReady:ui.uiReady,uiPhase:ui.uiPhase,composerReady:ui.composerReady,sendReady:ui.sendReady,stopVisible:ui.stopVisible,scrollToBottomVisible:ui.scrollToBottomVisible,authRequired:ui.authRequired===true,uiBusy:ui.uiBusy,securityBlock:ui.securityBlock,modelControlPresent:ui.modelControlPresent,projectContextReady:ui.projectContextReady===true,reasoningEffort:ui.reasoningEffort,modelReady:ui.modelReady,retryVisible:ui.retryVisible,recoverableError:ui.recoverableError,display});
     if(w.id==='NV02'&&!projectContextReady&&!ui.securityBlock){
       if(!NV02_HOME_URL){await continuityEvent('PROJECT_CONTEXT_RECOVERY_BLOCKED',{reason:'NV02_HOME_URL_MISSING',url:rawUi.url||null});return;}
       const recovered=await withNv02Mutation(async()=>{await navigate(target,NV02_HOME_URL);return{ok:true,status:'PROJECT_CONTEXT_NAVIGATED'};},'PROJECT_CONTEXT_RECOVERY');
