@@ -40,4 +40,11 @@ test('coding lane scope validation tests',async(t)=>{
     assert.strictEqual(writeCalled,false);
     assert.strictEqual(prCreated,false);
   });
+
+  await t.test('structural truncation and broad deletion guard fails closed before PR creation/merge',()=>{
+    const originalFile='line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\n';
+    const truncatedFile='line 1\n';
+    const changes=[{path:'apps/tigeriq-coding-lane/coding-lane.mjs',content:truncatedFile,originalContent:originalFile}];
+    assert.throws(()=>validateJobScope(allowedPaths,changes),/TRUNCATION|DELETION/);
+  });
 });
