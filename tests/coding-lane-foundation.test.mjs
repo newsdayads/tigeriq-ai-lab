@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import {activeProviderCooldownIds,applyCompactEdits,assertPrOpenState,buildLocalFileContext,classifyAiFailure,gateFailureIssues,invokeJsonWithFailover,isResourceTransientError,resourceWaitPlan,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,validateCompactEdits} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {activeProviderCooldownIds,applyCompactEdits,assertPrOpenState,buildLocalFileContext,classifyAiFailure,gateFailureIssues,invokeJsonWithFailover,isResourceTransientError,preserveGenerationPrompt,resourceWaitPlan,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,validateCompactEdits} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError,parseJsonObject} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 const nv11={id:'NV11',provider:'fake',model:'a'};
@@ -144,6 +144,22 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
     assert.ok(out.length<19000);
     assert.ok(out.includes('MODEL_CONTEXT_REDUCED'));
     assert.ok(out.endsWith('TAIL'));
+  });
+
+  await t.test('generation retry preserves full prompt tail instead of shrinking existing-file context',async()=>{
+    const prompt='CURRENT FILES:\nFILE apps/large.mjs\n'+'A'.repeat(25000)+'\nTAIL_SENTINEL\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}.';
+    const calls=[];
+    const invokeFn=async(_resource,nextPrompt)=>{
+      calls.push(nextPrompt);
+      if(calls.length===1)throw new Error('CODING_CHANGES_COUNT_INVALID');
+      return '{"summary":"ok","changes":[{"path":"tests/new.test.mjs","content":"ok"}]}';
+    };
+    const validateData=data=>{if(!Array.isArray(data.changes)||data.changes.length<1)throw new Error('CODING_CHANGES_COUNT_INVALID')};
+    await invokeJsonWithFailover(nv11,prompt,{resourcePool:[nv11],invokeFn,maxResources:1,validateData,shrinkPrompt:preserveGenerationPrompt});
+    assert.strictEqual(calls.length,2);
+    assert.strictEqual(calls[1],prompt);
+    assert.ok(calls[1].includes('TAIL_SENTINEL'));
+    assert.ok(calls[1].length>18000);
   });
 
   await t.test('CI_GATES_FAILED repairs and reruns the same gate loop',async()=>{
