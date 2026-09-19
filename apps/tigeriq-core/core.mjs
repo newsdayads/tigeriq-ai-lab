@@ -336,7 +336,13 @@ async function reconcileAutonomousHandoff(o){
   const next={...handoff,state:codingItems.length?'coding_handoff_ready':'children_completed',completedGenerationKeys,childResults:state.results,completedAt:nowIso()};
   if(codingItems.length){
     await pool.query("update tigeriq_objectives set status='blocked',metadata=jsonb_set(metadata,'{handoff}',$2::jsonb,true),summary=$3,updated_at=now() where id=$1",[o.id,JSON.stringify(next),'API child work complete; durable coding handoff requires the coding executor lane']);
-    await event('AUTONOMOUS_CODING_HANDOFF_READY',{objectiveId:o.id,generationKey:handoff.generationKey||null,codingItems});
+    await event('AUTONOMOUS_CODING_HANDOFF_READY',{objectiveId:o.id,generationKey:handoff.generationKey||null});
+  } else {
+    await pool.query("update tigeriq_objectives set status='completed',metadata=jsonb_set(metadata,'{handoff}',$2::jsonb,true),summary=$3,updated_at=now() where id=$1",[o.id,JSON.stringify(next),'all autonomous child objectives completed']);
+    await event('AUTONOMOUS_CHILDREN_COMPLETED',{objectiveId:o.id,generationKey:handoff.generationKey||null});
+  }
+  return true;
+}y||null,codingItems});
     return true;
   }
   await pool.query("update tigeriq_objectives set metadata=jsonb_set(metadata,'{handoff}',$2::jsonb,true),manager_cycles=0,summary=$3,next_check_at=now(),updated_at=now() where id=$1",[o.id,JSON.stringify(next),'autonomous child work complete; re-evaluating parent acceptance']);
