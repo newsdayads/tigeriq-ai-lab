@@ -59,3 +59,28 @@ export function campaignEvidenceJobId(objectiveId,currentPhase=0) {
   if(!id) throw new Error('CAMPAIGN_OBJECTIVE_ID_REQUIRED');
   return `JOB-EVID-${id}-P${Number(currentPhase)||0}`;
 }
+
+export const WORKITEM_LIFECYCLE_STATES = ['QUEUED', 'CLAIMED', 'WORKING', 'EVIDENCE', 'VERIFY', 'DONE', 'BLOCKED'];
+
+export function projectWorkItemLifecycle({ objective, jobs = [], events = [] }) {
+  const objStatus = String(objective?.status || 'queued').toLowerCase();
+  const jobList = Array.isArray(jobs) ? jobs : [];
+  const eventList = Array.isArray(events) ? events : [];
+
+  if (objStatus === 'blocked' || objStatus === 'failed') return 'BLOCKED';
+  if (objStatus === 'done' || objStatus === 'complete') return 'DONE';
+
+  const hasVerifyJob = jobList.some(j => String(j.kind || '').includes('verify') || String(j.status || '') === 'verify');
+  if (hasVerifyJob || eventList.some(e => String(e.type || '').includes('VERIFY'))) return 'VERIFY';
+
+  const hasEvidenceJob = jobList.some(j => String(j.kind || '').includes('evidence') || String(j.result || '').includes('evidence'));
+  if (hasEvidenceJob || eventList.some(e => String(e.type || '').includes('EVIDENCE'))) return 'EVIDENCE';
+
+  const hasRunning = jobList.some(j => ['running', 'working', 'claimed'].includes(String(j.status || '').toLowerCase()));
+  if (hasRunning || objStatus === 'running' || objStatus === 'working') return 'WORKING';
+
+  const hasClaimed = jobList.some(j => String(j.status || '').toLowerCase() === 'claimed' || j.employee_id || j.resource_id);
+  if (hasClaimed) return 'CLAIMED';
+
+  return 'QUEUED';
+}
