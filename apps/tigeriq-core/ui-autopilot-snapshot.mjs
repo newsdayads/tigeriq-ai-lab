@@ -18,6 +18,7 @@ function exactValue(body,key){
 }
 function exactTrue(body,key){return exactValue(body,key)==='true';}
 function meaningfulValue(value){const text=String(value||'').trim();return Boolean(text)&&!/^<.*>$/.test(text);}
+export function ensureIntegrationWorkItem(eventsOrSignal){const signal=typeof eventsOrSignal==='string'?eventsOrSignal:JSON.stringify(eventsOrSignal||{});if(signal.includes('PARALLEL_WAVE_READY_FOR_INTEGRATION')){return{workItemId:`WI-NV02-INT-${Date.now()}`,status:'READY_FOR_INTEGRATION',mutationAllowed:false};}return null;}
 function cleanTitle(value){return String(value||'').replace(/[\r\n\t]+/g,' ').replace(/\s+/g,' ').trim().slice(0,180);}
 function priorityRank(value){return value==='P0'?0:value==='P1'?1:9;}
 function isLoopbackUrl(value){
