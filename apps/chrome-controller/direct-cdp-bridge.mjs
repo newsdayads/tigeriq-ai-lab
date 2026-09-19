@@ -215,7 +215,7 @@ function dispatchExpr(text){
 }
 async function dispatch(target,text){
   const p=await pageRpc(target);
-  try{return (await p.call('Runtime.evaluate',{expression:dispatchExpr(text),awaitPromise:true,returnByValue:true,userGesture:true},10000)).result.value;}
+  try{return (await p.call('Runtime.evaluate',{expression:dispatchExpr(text),awaitPromise:true,returnByValue:true,userGesture:true},SEND_BUTTON_WAIT_MS+8000)).result.value;}
   finally{p.close();}
 }
 function scrollBottomExpr(){return `(()=>{const vis=e=>{const r=e?.getBoundingClientRect(),s=e&&getComputedStyle(e);return !!e&&r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const b=[...document.querySelectorAll('button,[role="button"]')].find(e=>vis(e)&&/^(cuộn xuống cuối|scroll to bottom|jump to bottom)$/i.test((e.getAttribute('aria-label')||e.textContent||'').trim()));if(!b)return{ok:true,status:'ALREADY_AT_BOTTOM'};b.click();return{ok:true,status:'SCROLL_TO_BOTTOM_CLICKED'}})()`; }
@@ -412,10 +412,16 @@ async function maybeNv02Continuity(w,target,ui){
     return;
   }
   if(phase==='READY'){
-    const sent=await dispatchNaturalContinue(target,state,now);
-    if(sent?.status==='MUTATION_LEASE_BUSY'){
-      state={...state,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
-      await continuityEvent('CONTINUE_SKIPPED_LEASE_BUSY',{nextContinueAt:state.nextContinueAt});
+    try{
+      const sent=await dispatchNaturalContinue(target,state,now);
+      if(sent?.status==='MUTATION_LEASE_BUSY'){
+        state={...state,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
+        await continuityEvent('CONTINUE_SKIPPED_LEASE_BUSY',{nextContinueAt:state.nextContinueAt});
+      }
+    }catch(error){
+      state={...state,stalledChecks:Math.min(MAX_STALLED_CHECKS,state.stalledChecks+1),nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
+      saveNv02Continuity(state);
+      await continuityEvent('CONTINUE_DISPATCH_FAILED',{error:String(error?.message||error),stalledChecks:state.stalledChecks,nextContinueAt:state.nextContinueAt});
     }
     return;
   }
