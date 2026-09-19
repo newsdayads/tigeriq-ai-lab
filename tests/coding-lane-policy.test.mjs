@@ -6,6 +6,14 @@ import {branchName,checkGateState,changedPathImpact,safeRepoPath,validateChanges
 const service=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
 const updater=readFileSync(new URL('../scripts/tigeriq-core/update-core-runtime.ps1',import.meta.url),'utf8');
 
+import {validateRedToGreenRequirements} from '../apps/tigeriq-coding-lane/policy.mjs';
+
+test('specification-first and RED-to-GREEN TDD regression contract checks',()=>{
+  assert.equal(validateRedToGreenRequirements({isDocOrConfig:true}),true);
+  assert.equal(validateRedToGreenRequirements({isBugFix:true,hasPreFixFailureEvidence:true}),true);
+  assert.throws(()=>validateRedToGreenRequirements({isBugFix:true,hasPreFixFailureEvidence:false}),/RED_TDD_PRE_FIX_EVIDENCE_REQUIRED/);
+});
+
 test('coding lane cannot target protected or unsafe paths',()=>{
   assert.equal(safeRepoPath('apps/demo/file.ts'),true);
   assert.equal(safeRepoPath('.github/workflows/ci.yml'),false);

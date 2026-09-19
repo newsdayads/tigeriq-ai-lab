@@ -17,6 +17,14 @@ export function safeRepoPath(path){
   return !PROTECTED.some(re=>re.test(p));
 }
 
+export function validateRedToGreenRequirements({ isBugFix = false, hasPreFixFailureEvidence = false, isDocOrConfig = false } = {}) {
+  if (isDocOrConfig) return true;
+  if (isBugFix && !hasPreFixFailureEvidence) {
+    throw new Error('RED_TDD_PRE_FIX_EVIDENCE_REQUIRED');
+  }
+  return true;
+}
+
 export function validateChanges(changes,allowedPaths=[]){
   if(!Array.isArray(changes)||changes.length<1||changes.length>8) throw new Error('CODING_CHANGES_COUNT_INVALID');
   const allow=new Set((allowedPaths||[]).map(x=>String(x).trim()).filter(Boolean));
