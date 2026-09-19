@@ -129,7 +129,7 @@ const UI_EXPR=`(()=>{
   const authRequired=[...document.querySelectorAll('button,a')].some(e=>vis(e)&&/^(đăng nhập|sign in|log in)$/i.test((e.textContent||'').trim()));
   const stop=[...document.querySelectorAll('button[data-testid="stop-button"],button[aria-label*="Stop" i],button[aria-label*="Dừng" i]')].find(vis)||null;
   const activityBusy=[...document.querySelectorAll('button,[role="button"],[aria-live]')].find(e=>vis(e)&&/(^|\\s)(đang suy nghĩ|thinking|generating|đang tạo)(\\s|$)/i.test((e.getAttribute('aria-label')||e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim()))||null;
-  const send=composer?[...document.querySelectorAll('button[data-testid="send-button"],button[type="submit"],button[aria-label*="Gửi" i],button[aria-label*="Send" i]')].find(e=>vis(e)&&!e.disabled&&e.getAttribute('aria-disabled')!=='true')||null:null;
+  const send=composer?[...document.querySelectorAll('button[data-testid="send-button"],button[data-testid="composer-submit-button"],button[type="submit"],button[aria-label*="Gửi" i],button[aria-label*="Send" i]')].find(e=>vis(e)&&!e.disabled&&e.getAttribute('aria-disabled')!=='true')||null:null;
   const scroll=[...document.querySelectorAll('button,[role="button"]')].find(e=>vis(e)&&/^(cuộn xuống cuối|scroll to bottom|jump to bottom)$/i.test((e.getAttribute('aria-label')||e.textContent||'').trim()))||null;
   let securityBlock=null;
   if(document.querySelector('iframe[src*="captcha" i],iframe[src*="challenge" i],[class*="captcha" i],[id*="captcha" i]')) securityBlock='BLOCKED_CAPTCHA';
