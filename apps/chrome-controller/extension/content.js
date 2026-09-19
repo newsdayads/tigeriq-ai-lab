@@ -245,32 +245,6 @@ function dismissMenu() {
   document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }));
 }
 
-async function inspectAndSwitchNv02Profile() {
-  if (location.hostname !== 'chatgpt.com') return { ok: false, status: 'PROFILE_INSPECTION_UNVERIFIED_HOST' };
-  const selectors = [
-    'button[data-testid*="profile" i]',
-    'button[aria-label*="profile" i]',
-    'button[aria-label*="account" i]',
-    'div[data-testid*="user-menu" i] button',
-    'nav button[aria-haspopup="menu"]'
-  ];
-  const candidates = [...new Set(selectors.flatMap((sel) => Array.from(document.querySelectorAll(sel))))]
-    .filter((el) => visible(el));
-  if (candidates.length !== 1) return { ok: false, status: `PROFILE_MENU_NOT_UNIQUE:${candidates.length}` };
-
-  candidates[0].click();
-  await sleep(350);
-  const menuItems = Array.from(document.querySelectorAll('[role="menuitem"], [role="menu"] button, [data-radix-menu-content] button'))
-    .filter((el) => visible(el));
-  const plusItems = menuItems.filter((el) => normalizedText(el).includes('plus') || normalizedText(el).includes('gpt-4') || normalizedText(el).includes('model'));
-  if (plusItems.length === 0) {
-    dismissMenu();
-    return { ok: false, status: 'NV02_PROFILE_NOT_VERIFIED' };
-  }
-  dismissMenu();
-  return { ok: true, status: 'PROFILE_VERIFIED' };
-}
-
 async function archiveConversation() {
   const blocked = detectSecurityBlock();
   if (blocked) return { ok: false, status: blocked };
@@ -329,10 +303,6 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
   if (message?.type === 'TIGERIQ_ARCHIVE_CONVERSATION') {
     void archiveConversation().then(sendResponse).catch((error) => sendResponse({ ok: false, status: String(error) }));
-    return true;
-  }
-  if (message?.type === 'TIGERIQ_INSPECT_PROFILE') {
-    void inspectAndSwitchNv02Profile().then(sendResponse).catch((error) => sendResponse({ ok: false, status: String(error) }));
     return true;
   }
   if (message?.type !== 'TIGERIQ_DISPATCH') return;
