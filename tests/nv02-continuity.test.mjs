@@ -19,6 +19,8 @@ describe('NV02 continuity policy', () => {
     expect(deriveNv02Phase({stopVisible:true,composerReady:true})).toBe('WORKING');
     expect(deriveNv02Phase({uiBusy:true,composerReady:true})).toBe('WORKING');
     expect(deriveNv02Phase({composerReady:true,uiBusy:false})).toBe('READY');
+    expect(deriveNv02Phase({composerReady:true,uiBusy:false,modelReady:false})).toBe('STALLED');
+    expect(deriveNv02Phase({composerReady:true,uiBusy:false,uiPhase:'STALLED'})).toBe('STALLED');
     expect(deriveNv02Phase({composerReady:false,uiBusy:false})).toBe('STALLED');
     expect(deriveNv02Phase({composerReady:true},{heartbeatStale:true})).toBe('STALLED');
   });
