@@ -259,6 +259,28 @@ describe('GitHub coding continuity supervisor',()=>{
     expect(pool.events.filter(e=>e.type==='GITHUB_CODING_BLOCKED_FINAL')[0]?.data.reason).toBe('ISSUE_CLOSED_OR_SUPERSEDED');
   });
 
+  it('creates at most one new retry objective per intake tick across blocked issues',async()=>{
+    const pool=fakePool();let posted=0;
+    pool.events.push(
+      {type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:805,codingObjectiveId:'obj-805'}},
+      {type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:806,codingObjectiveId:'obj-806'}}
+    );
+    const fetchImpl=async(url)=>{
+      if(url.includes('/api/status'))return response({objectives:[
+        {id:'obj-805',status:'blocked',summary:'CODING_COMPACT_EDIT_INVALID'},
+        {id:'obj-806',status:'blocked',summary:'CODING_COMPACT_EDIT_INVALID'}
+      ],jobs:[]});
+      if(url.includes('/api/objectives')){posted++;return response({id:`obj-retry-${posted}`});}
+      if(url.includes('/issues/805'))return response(issue(SAFE,{number:805}));
+      if(url.includes('/issues/806'))return response(issue(SAFE,{number:806}));
+      if(url.includes('/comments'))return response({});
+      return response({});
+    };
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake',now:()=>1000});
+    expect(posted).toBe(1);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_RETRY_DISPATCHED')).toHaveLength(1);
+  });
+
   it('resumes idempotently after restart between retry POST and durable dispatch markers',async()=>{
     const pool=fakePool();
     pool.events.push(
