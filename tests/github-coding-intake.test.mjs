@@ -381,3 +381,60 @@ it('coding backlog serializes three issues by OWNER_DIRECT then priority',async(
   expect(out.issueNumber).toBe(30);
   expect(posted[2]).toContain('#30');
 });
+
+
+describe('GitHub coding scope-aware pool refill',()=>{
+  const scoped=(number,scope,path,priority='P1')=>issue(`${SAFE.replace('PRIORITY=P1',`PRIORITY=${priority}`)}\nRESOURCE_SCOPE=${scope}\nALLOW_PATH_PREFIX=${path}`,{number,title:`Scoped ${number}`});
+
+  it('fills three independent scopes in one intake cycle up to cap=3',async()=>{
+    const pool=fakePool();const posted=[];
+    const issues=[scoped(911,'SCOPE_A','apps/a'),scoped(912,'SCOPE_B','apps/b'),scoped(913,'SCOPE_C','apps/c')];
+    const fetchImpl=async(url,init={})=>{
+      if(url.includes('/issues?'))return response(issues);
+      if(url.includes('/api/status'))return response({objectives:[]});
+      if(url.includes('/api/objectives')){const payload=JSON.parse(init.body);posted.push(payload.objective);return response({id:`obj-${posted.length}`});}
+      if(url.includes('/comments'))return response({});
+      return response({});
+    };
+    const out=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake',concurrencyCap:3});
+    expect(out).toMatchObject({created:3,activeSlots:3,freeSlots:0,scopeBlocked:0});
+    expect(posted).toHaveLength(3);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_DISPATCHED')).toHaveLength(3);
+  });
+
+  it('serializes overlapping path scopes deterministically',async()=>{
+    const pool=fakePool();let posted=0;
+    const issues=[scoped(921,'SCOPE_PARENT','apps/shared'),scoped(922,'SCOPE_CHILD','apps/shared/sub')];
+    const fetchImpl=async(url)=>{
+      if(url.includes('/issues?'))return response(issues);
+      if(url.includes('/api/status'))return response({objectives:[]});
+      if(url.includes('/api/objectives')){posted++;return response({id:`obj-${posted}`});}
+      if(url.includes('/comments'))return response({});
+      return response({});
+    };
+    const out=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake',concurrencyCap:3});
+    expect(out.created).toBe(1);
+    expect(out.scopeBlocked).toBe(1);
+    expect(out.skipReasons).toContainEqual({issueNumber:922,skipReason:'SCOPE_OVERLAP'});
+    expect(posted).toBe(1);
+  });
+
+  it('recovers a pre-existing deterministic objective after restart without duplicate POST',async()=>{
+    const pool=fakePool();let posted=0;
+    const current=scoped(931,'SCOPE_RESTART','apps/restart');
+    const existing={id:'obj-existing-931',status:'queued',objective:'GitHub autonomous coding issue #931\nDISPATCH_KEY=GITHUB-ISSUE-931'};
+    const fetchImpl=async(url)=>{
+      if(url.includes('/issues?'))return response([current]);
+      if(url.includes('/api/status'))return response({objectives:[existing]});
+      if(url.includes('/api/objectives')){posted++;return response({id:'duplicate'});}
+      if(url.includes('/comments'))return response({});
+      return response({});
+    };
+    const first=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake',concurrencyCap:3});
+    const second=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake',concurrencyCap:3});
+    expect(first).toMatchObject({created:0,recovered:1,activeSlots:1});
+    expect(second).toMatchObject({created:0,active:1});
+    expect(posted).toBe(0);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_DISPATCHED')).toHaveLength(1);
+  });
+});
