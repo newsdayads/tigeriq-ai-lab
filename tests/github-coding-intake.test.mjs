@@ -25,7 +25,7 @@ function fakePool(){
       const dispatches=events.filter(e=>e.type==='GITHUB_CODING_DISPATCHED');
       if(q.includes('not exists')){
         const latest=[...dispatches].reverse()[0];
-        const final=latest&&events.some(r=>['GITHUB_CODING_RESULT_REPORTED','GITHUB_CODING_BLOCKED_FINAL'].includes(r.type)&&String(r.data.issueNumber)===String(latest.data.issueNumber));
+        const final=latest&&events.some(r=>String(r.data.issueNumber)===String(latest.data.issueNumber)&&(r.type==='GITHUB_CODING_BLOCKED_FINAL'||(r.type==='GITHUB_CODING_RESULT_REPORTED'&&String(r.data.status||'').toLowerCase()==='completed')));
         const active=Boolean(latest)&&!final;
         return {rowCount:active?1:0,rows:active?[{one:1}]:[]};
       }
@@ -111,6 +111,28 @@ describe('GitHub coding intake dependencies',()=>{
 });
 
 describe('GitHub coding continuity supervisor',()=>{
+  it('does not let a legacy blocked result marker suppress recovery or mark the lane free',async()=>{
+    const pool=fakePool();let posted=0;
+    pool.events.push(
+      {type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:799,codingObjectiveId:'obj-799'}},
+      {type:'GITHUB_CODING_RESULT_REPORTED',data:{issueNumber:799,codingObjectiveId:'obj-799',status:'blocked'}}
+    );
+    const current=issue(SAFE,{number:799});
+    const fetchImpl=async(url)=>{
+      if(url.includes('/api/status'))return response({objectives:[{id:'obj-799',status:'blocked',summary:'CODING_COMPACT_EDIT_INVALID'}],jobs:[]});
+      if(url.includes('/api/objectives')){posted++;return response({id:'obj-799-retry'});}
+      if(url.includes('/issues?'))return response([issue(SAFE,{number:900})]);
+      if(url.includes('/issues/799'))return response(current);
+      if(url.includes('/comments'))return response({});
+      return response({});
+    };
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake',now:()=>1000});
+    expect(posted).toBe(1);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_RETRY_DISPATCHED')).toHaveLength(1);
+    const materialized=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake'});
+    expect(materialized).toMatchObject({created:0,active:1});
+  });
+
   it('classifies compact/output failures as recoverable and policy/security as hard',()=>{
     expect(classifyCodingBlocker('CODING_COMPACT_EDIT_INVALID').kind).toBe('RECOVERABLE');
     expect(classifyCodingBlocker('CODING_COMPACT_REPAIR_MULTI_FILE_INVALID').kind).toBe('RECOVERABLE');
@@ -288,12 +310,12 @@ it('coding backlog serializes three issues by OWNER_DIRECT then priority',async(
   expect(out.created).toBe(0);
   expect(out.active).toBe(1);
 
-  pool.events.push({type:'GITHUB_CODING_RESULT_REPORTED',data:{issueNumber:10}});
+  pool.events.push({type:'GITHUB_CODING_RESULT_REPORTED',data:{issueNumber:10,status:'completed'}});
   out=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake'});
   expect(out.issueNumber).toBe(20);
   expect(posted[1]).toContain('#20');
 
-  pool.events.push({type:'GITHUB_CODING_RESULT_REPORTED',data:{issueNumber:20}});
+  pool.events.push({type:'GITHUB_CODING_RESULT_REPORTED',data:{issueNumber:20,status:'completed'}});
   out=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake'});
   expect(out.issueNumber).toBe(30);
   expect(posted[2]).toContain('#30');
