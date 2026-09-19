@@ -72,6 +72,13 @@ describe('coding lane AI JSON transport',()=>{
     expect(expandCompactChanges(prompt,model).changes).toEqual([{path:'tests/new.test.mjs',content:'export const ok=true;\\n'}]);
   });
 
+  it('rejects a destructive compact shrink of a large existing file',()=>{
+    const content='BEGIN\n'+'x'.repeat(20000)+'\nEND';
+    const prompt=`TASK: x\nCURRENT FILES:\nFILE apps/a.mjs\n${content}\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}.`;
+    const model=JSON.stringify({summary:'bad shrink',edits:[{path:'apps/a.mjs',search:content,replace:'BEGIN\nEND'}]});
+    expect(()=>expandCompactChanges(prompt,model)).toThrow('COMPACT_EDIT_DESTRUCTIVE_SHRINK:apps/a.mjs');
+  });
+
   it('retries transient AI fetch aborts before failing the job',async()=>{
     const previousFetch=globalThis.fetch;
     const previousInstalled=globalThis.__tigeriqAiJsonTransportInstalled;
