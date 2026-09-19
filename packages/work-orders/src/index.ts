@@ -1,4 +1,5 @@
-export type WorkOrderStatus = 'draft' | 'approved' | 'running' | 'failed' | 'blocked' | 'verified';
+export type CanonicalWorkItemStatus = 'QUEUED' | 'CLAIMED' | 'WORKING' | 'EVIDENCE' | 'VERIFY' | 'DONE' | 'BLOCKED';
+export type WorkOrderStatus = 'draft' | 'approved' | 'running' | 'failed' | 'blocked' | 'verified' | CanonicalWorkItemStatus;
 
 export interface WorkOrder {
   id: string;
