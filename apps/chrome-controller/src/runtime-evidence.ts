@@ -1,3 +1,5 @@
+import { promises as fs } from 'node:fs';
+import { join } from 'node:path';
 import { WORKER_IDS, computePlacements, workAreaFitsLayout, type ControllerConfig, type WindowPlacement, type WorkArea, type WorkerId } from './model.js';
 import type { DurableAutopilotState, ExternalAutopilotSnapshot } from './autopilot.js';
 import type { UiJobRecord } from './job-ledger.js';
@@ -131,4 +133,58 @@ export function buildRuntimeEvidence(input: RuntimeEvidenceInput, now = new Date
       lastError: worker.lastError ?? null,
     })),
   };
+}
+
+const MAX_RETRIES = 5;
+const BACKOFF_MS = 200;
+
+export async function persistEvidence(path: string, evidence: RuntimeEvidenceInput): Promise<void> {
+  const backupPath = path + '.bak';
+  const tempPath = path + '.tmp';
+
+  try {
+    await fs.access(path);
+    await fs.rename(path, backupPath);
+  } catch {
+    // Ignore if no existing file
+  }
+
+  let lastErr: Error | undefined;
+  for (let i = 0; i <= MAX_RETRIES; i++) {
+    try {
+      await fs.writeFile(tempPath, JSON.stringify(evidence, null, 2), 'utf8');
+      await fs.rename(tempPath, path);
+      return;
+    } catch (err: any) {
+      lastErr = err;
+      if (['EPERM', 'EBUSY'].includes(err?.code)) {
+        const delay = BACKOFF_MS * (i + 1) * (0.5 + Math.random());
+        await new Promise(r => setTimeout(r, delay));
+      } else {
+        throw err;
+      }
+    }
+  }
+
+  if (lastErr) {
+    try {
+      await fs.access(backupPath);
+      await fs.rename(backupPath, path);
+    } catch {
+      // If no backup, we fail closed
+    }
+    throw lastErr;
+  }
+}
+
+export async function loadEvidence(path: string): Promise<RuntimeEvidenceInput | undefined> {
+  for (const candidate of [path, path + '.bak']) {
+    try {
+      const buf = await fs.readFile(candidate, 'utf8');
+      return JSON.parse(buf);
+    } catch {
+      continue;
+    }
+  }
+  return undefined;
 }

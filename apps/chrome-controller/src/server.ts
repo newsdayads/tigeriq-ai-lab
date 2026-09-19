@@ -20,11 +20,12 @@ import {
   decideAutoContinue,
   freshAutopilotState,
   selectFreshCompletionEvidence,
+  shouldReleaseDispatchLease,
   validateExternalSnapshot,
   type DurableAutopilotState,
   type ExternalAutopilotSnapshot,
 } from './autopilot.js';
-import { buildRuntimeEvidence } from './runtime-evidence.js';
+import { buildRuntimeEvidence, persistEvidence as persistRuntimeEvidence } from './runtime-evidence.js';
 import { DurableDispatchLeaseStore } from './dispatch-lease.js';
 import { BrowserMutationLeaseStore } from './browser-mutation-lease.js';
 import { heartbeatStopReason } from './security-gate.js';
@@ -226,7 +227,7 @@ function evidence(){
     sessionName:process.env.SESSIONNAME??null,
   });
 }
-function persistEvidence(){const value=evidence();atomicJson(runtimeEvidencePath,value);return value;}
+function persistEvidence(){const value=evidence();persistRuntimeEvidence(runtimeEvidencePath,value);return value;}
 
 async function brokerWorkerPresence(workerId:WorkerId):Promise<WorkerPresence>{
   const url=config.recovery.launchBrokerUrl;
@@ -534,7 +535,9 @@ async function autopilotTick(){
     }catch(error){
       const message=String(error);
       const failureClass=classifyAutoContinueDispatchFailure(error,dispatchDelivered);
-      if(failureClass==='SAFE_RETRY'){
+      if(failureClass==='SAFE_RETRY' || shouldReleaseDispatchLease(error)){
+        dispatchLease.resetKnownNotDelivered(dispatchLeaseToken.leaseId,Date.now(),0);
+        if(failureClass==='SAFE_RETRY'){
         try{
           const immediateRetry=message.includes('UI_JOB_ACTIVE:')||message.includes('UI_JOB_DUPLICATE_ACTIVE:');
           dispatchLease.markRetryable(dispatchLeaseToken.leaseId,decision.jobId,Date.now(),immediateRetry?0:undefined);
