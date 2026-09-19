@@ -223,7 +223,7 @@ async function archiveChat(target){
     while(Date.now()<deadline){
       await sleep(250);
       const state=(await p.call('Runtime.evaluate',{expression:'({url:location.href,path:location.pathname})',returnByValue:true},3000)).result.value;
-      if(state?.url!==menuPoint.before||!/\\/c\\//.test(String(state?.path||'')))return{ok:true,status:'ARCHIVED',before:menuPoint.before,after:state?.url||null,title:menuPoint.title,actionText:archivePoint.text};
+      if(state?.url!==menuPoint.before||!/\/c\//.test(String(state?.path||'')))return{ok:true,status:'ARCHIVED',before:menuPoint.before,after:state?.url||null,title:menuPoint.title,actionText:archivePoint.text};
     }
     return{ok:false,status:'ARCHIVE_NOT_CONFIRMED',before:menuPoint.before,title:menuPoint.title};
   }finally{p.close();}
