@@ -1,5 +1,5 @@
 import { createServer, IncomingMessage, ServerResponse } from 'node:http';
-import { mkdirSync, readFileSync, appendFileSync, writeFileSync, renameSync, existsSync, unlinkSync } from 'node:fs';
+import { mkdirSync, readFileSync, appendFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import {
@@ -24,7 +24,7 @@ import {
   type DurableAutopilotState,
   type ExternalAutopilotSnapshot,
 } from './autopilot.js';
-import { buildRuntimeEvidence } from './runtime-evidence.js';
+import { atomicWriteJsonWithRetry, buildRuntimeEvidence } from './runtime-evidence.js';
 import { DurableDispatchLeaseStore } from './dispatch-lease.js';
 import { BrowserMutationLeaseStore } from './browser-mutation-lease.js';
 import { heartbeatStopReason } from './security-gate.js';
@@ -98,23 +98,7 @@ function log(event:string,data:Record<string,unknown>={}){
   console.log(line);
 }
 function fsErrorCode(error:unknown){return error instanceof Error&&'code' in error?String((error as NodeJS.ErrnoException).code??''):'';}
-function sleepSync(ms:number){Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,ms);}
-function atomicJson(path:string,value:unknown){
-  const temp=`${path}.${process.pid}.${randomUUID()}.tmp`;
-  writeFileSync(temp,`${JSON.stringify(value,null,2)}\n`,'utf8');
-  try{
-    for(let attempt=0;;attempt++){
-      try{renameSync(temp,path);return;}
-      catch(error){
-        const code=fsErrorCode(error);
-        if(!['EPERM','EBUSY'].includes(code)||attempt>=3)throw error;
-        sleepSync(20*(attempt+1));
-      }
-    }
-  }finally{
-    if(existsSync(temp)){try{unlinkSync(temp);}catch{}}
-  }
-}
+function atomicJson(path:string,value:unknown){atomicWriteJsonWithRetry(path,value);}
 function loadJson<T>(path:string):T|undefined{
   if(!existsSync(path))return;
   try{return JSON.parse(readFileSync(path,'utf8')) as T;}
