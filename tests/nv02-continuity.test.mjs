@@ -84,8 +84,8 @@ describe('NV02 continuity policy', () => {
     expect(installer).toContain('[Parameter(Mandatory=$true)][string]$ExpectedHead');
     expect(installer).toContain("fetch','origin','p0/nv02-continuous-liveness");
     expect(installer).toContain("tests/chrome-controller-autonomy-hardening.test.ts");
-    expect(installer).toContain("npm' @('run','typecheck')");
-    expect(installer).toContain("npm' @('run','build')");
+    expect(installer).toContain("Invoke-Native -File 'npm' -ArgumentList @('run','typecheck')");
+    expect(installer).toContain("Invoke-Native -File 'npm' -ArgumentList @('run','build')");
     expect(installer).toContain("Deploy-1122-");
     expect(installer).toContain("apps\\chrome-controller\\direct-cdp-bridge.mjs");
     expect(installer).toContain("NV02_PACKAGE_FAILED_ROLLBACK_APPLIED");
