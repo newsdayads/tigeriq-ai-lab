@@ -93,6 +93,9 @@ describe('NV02 continuity policy', () => {
     expect(installer).toContain("BRIDGE_NOT_RUNNING_DEPLOY_HEAD");
     expect(installer).toContain("NV02_MODEL_NOT_READY");
     expect(installer).toContain("NV02_REASONING_NOT_HIGH");
+    expect(installer).toContain("Invoke-Native -File 'git' -ArgumentList");
+    expect(installer).toContain("Invoke-Native -File 'npm' -ArgumentList");
+    expect(installer).not.toContain("Invoke-Native 'git' @(");
   });
 
 });
