@@ -321,6 +321,24 @@ async function layoutWorker(workerId:WorkerId){
   const placement=computePlacements(config,effectiveWorkArea())[workerId];
   return uiQueue.enqueue(()=>runWithRetry(`layout:${workerId}`,()=>sendCommand(workerId,'LAYOUT',placement as unknown as Record<string,unknown>)));
 }
+async function verifyWorkerModelProfilePreflight(workerId:WorkerId){
+  if(workerId!=='NV02')return;
+  try{
+    const res=await sendCommand(workerId,'VERIFY_MODEL_PROFILE',{});
+    const verified=verifyCanonicalModelProfile(res as any);
+    if(!verified.valid){
+      throw new Error(verified.reason??'MODEL_PROFILE_BLOCKED');
+    }
+    log('NV02_MODEL_PROFILE_VERIFIED',{profile:verified.profile,timestamp:verified.timestamp});
+  }catch(error){
+    const state=states.get(workerId)!;
+    state.blocked=true;
+    state.status='BLOCKED';
+    state.lastError=String(error);
+    log('NV02_MODEL_PROFILE_PREFLIGHT_BLOCKED',{error:String(error)});
+    throw error;
+  }
+}
 async function startWorker(workerId:WorkerId){
   assertWorkerEnabled(workerId);
   const state=states.get(workerId)!;
@@ -338,6 +356,7 @@ async function startWorker(workerId:WorkerId){
       await launchChrome(workerId);
     }
     await waitForHeartbeat(workerId);
+    await verifyWorkerModelProfilePreflight(workerId);
     await delay(config.pacing.postReadySettlingMs);
     assertWorkerEnabled(workerId);
     if(utilityPausedWorkers.has(workerId))throw new Error(`UTILITY_WORKER_PAUSED:${workerId}`);
