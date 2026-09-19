@@ -136,7 +136,9 @@ describe('GitHub coding continuity supervisor',()=>{
     expect(posted).toBe(1);
     expect(pool.events.filter(e=>e.type==='GITHUB_CODING_RETRY_DISPATCHED')).toHaveLength(1);
     const materialized=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake'});
-    expect(materialized).toMatchObject({created:0,active:1});
+    expect(materialized).toMatchObject({created:1,active:0});
+    expect(posted).toBe(2);
+    expect(pool.events.some(e=>e.type==='GITHUB_CODING_DISPATCHED'&&e.data.issueNumber===900)).toBe(true);
   });
 
   it('classifies compact/output failures as recoverable and policy/security as hard',()=>{
@@ -189,7 +191,8 @@ describe('GitHub coding continuity supervisor',()=>{
     expect(pool.events.filter(e=>e.type==='GITHUB_CODING_RESULT_REPORTED')).toHaveLength(1);
 
     const next=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake'});
-    expect(next.issueNumber).toBe(706);
+    expect(next.created).toBe(1);
+    expect(posts.some(text=>text.includes('#706'))).toBe(true);
     expect(pool.events.filter(e=>e.type==='GITHUB_DEPENDENCY_RELEASED')).toHaveLength(1);
   });
 
@@ -394,7 +397,7 @@ it('coding backlog serializes three issues by OWNER_DIRECT then priority',async(
   };
 
   let out=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake'});
-  expect(out.issueNumber).toBe(10);
+  expect(out.created).toBe(1);
   expect(posted[0]).toContain('#10');
 
   out=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake'});
@@ -403,12 +406,12 @@ it('coding backlog serializes three issues by OWNER_DIRECT then priority',async(
 
   pool.events.push({type:'GITHUB_CODING_RESULT_REPORTED',data:{issueNumber:10,status:'completed'}});
   out=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake'});
-  expect(out.issueNumber).toBe(20);
+  expect(out.created).toBe(1);
   expect(posted[1]).toContain('#20');
 
   pool.events.push({type:'GITHUB_CODING_RESULT_REPORTED',data:{issueNumber:20,status:'completed'}});
   out=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake'});
-  expect(out.issueNumber).toBe(30);
+  expect(out.created).toBe(1);
   expect(posted[2]).toContain('#30');
 });
 
