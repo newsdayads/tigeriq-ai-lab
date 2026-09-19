@@ -1,7 +1,11 @@
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-$targets = Get-ChildItem -Path (Join-Path $PSScriptRoot 'pc-worker') -Filter '*.ps1' -File
+$repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
+$targets = @(
+  Get-ChildItem -Path (Join-Path $PSScriptRoot 'pc-worker') -Filter '*.ps1' -File
+  Get-ChildItem -Path (Join-Path $repoRoot 'apps\chrome-controller') -Filter '*.ps1' -File -Recurse
+) | Sort-Object FullName -Unique
 $failed = $false
 foreach ($target in $targets) {
   $tokens = $null
