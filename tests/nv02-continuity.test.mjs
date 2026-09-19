@@ -1,3 +1,5 @@
+import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   CONTINUE_PROMPTS, deriveNv02Phase, hasActiveNv02Work, pickContinuePrompt,
@@ -34,6 +36,18 @@ describe('NV02 continuity policy', () => {
 
   it('avoids immediate prompt repetition when alternatives exist', () => {
     expect(pickContinuePrompt('02',()=>0)).not.toBe('02');
+  });
+
+  it('wires continuity into the live direct CDP bridge used by NV02', () => {
+    execFileSync(process.execPath,['--check','apps/chrome-controller/direct-cdp-bridge.mjs'],{stdio:'pipe'});
+    const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    expect(source).toContain("if(w.id==='NV02')await maybeNv02Continuity");
+    expect(source).toContain("CONTINUE_DISPATCHED");
+    expect(source).toContain("REFRESH_SCHEDULED");
+    expect(source).toContain("CHAT_ROTATED");
+    expect(source).toContain("ARCHIVE_CURRENT_ROW_COUNT_");
+    expect(source).toContain("data-selected-reasoning-effort");
+    expect(source).toContain("MUTATION_LEASE_BUSY");
   });
 
   it('rotates chat by bounded count or age instead of every job', () => {
