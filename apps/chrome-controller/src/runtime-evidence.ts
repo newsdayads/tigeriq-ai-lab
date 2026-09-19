@@ -110,6 +110,7 @@ export function buildRuntimeEvidence(input: RuntimeEvidenceInput, now = new Date
       uncertainJobId: input.autopilot.uncertainJobId ?? null,
       dispatchFailureClass: input.autopilot.dispatchFailureClass ?? null,
       retryAt: input.autopilot.retryAt ?? null,
+      modelProfileVerification: (input.autopilot as any).modelProfileVerification ?? null,
       externalSnapshot: input.snapshot ? {
         source: input.snapshot.source,
         observedAt: input.snapshot.observedAt,
