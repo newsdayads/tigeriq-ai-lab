@@ -82,15 +82,21 @@ async function activeCodingOwnerBlocksRetry({pool,status,fetchImpl,owner,repo,to
   }
   return false;
 }
-async function activeCodingDispatches(pool){
+async function activeCodingDispatches(pool,laneStatus){
+  const liveObjectiveIds=new Set((laneStatus?.objectives||[]).filter(x=>!objectiveTerminal(x)).map(x=>String(x.id||'')).filter(Boolean));
+  for(const job of laneStatus?.jobs||[]){
+    if(['done','failed','blocked'].includes(String(job?.status||'').toLowerCase()))continue;
+    if(job?.objective_id)liveObjectiveIds.add(String(job.objective_id));
+  }
   const rows=(await pool.query("select data from tigeriq_events where type='GITHUB_CODING_DISPATCHED' order by seq desc limit 100")).rows;
   const seen=new Set(),active=[];
   for(const row of rows){
-    const data=row.data||{},n=Number(data.issueNumber);
-    if(!n||seen.has(n))continue;
+    const data=row.data||{},n=Number(data.issueNumber),objectiveId=String(data.codingObjectiveId||'');
+    if(!n||!objectiveId||seen.has(n))continue;
     seen.add(n);
     if(await hasCompletedCodingResult(pool,n)||await markerExists(pool,'GITHUB_CODING_BLOCKED_FINAL',n))continue;
-    active.push({issueNumber:n,codingObjectiveId:String(data.codingObjectiveId||''),scopeLease:data.scopeLease||{resourceScope:'',paths:[],ambiguous:true}});
+    if(!liveObjectiveIds.has(objectiveId))continue;
+    active.push({issueNumber:n,codingObjectiveId:objectiveId,scopeLease:data.scopeLease||{resourceScope:'',paths:[],ambiguous:true}});
   }
   return active;
 }
@@ -106,16 +112,16 @@ async function dependencyGate(fetchImpl,owner,repo,token,dependsOn){
 
 export async function materializeGithubCodingIssues({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token='',codingLaneUrl=process.env.TIGERIQ_CODING_LANE_URL||DEFAULT_CODING_URL,concurrencyCap=Number(process.env.TIGERIQ_GITHUB_CODING_CONCURRENCY||DEFAULT_CONCURRENCY_CAP)}){
   const cap=Math.max(1,Math.min(8,Number.isFinite(Number(concurrencyCap))?Math.floor(Number(concurrencyCap)):DEFAULT_CONCURRENCY_CAP));
-  const active=await activeCodingDispatches(pool);
-  const activeScopes=active.map(x=>x.scopeLease);
   const issues=await gh(fetchImpl,owner,repo,'/issues?state=open&per_page=100&sort=updated&direction=desc',token);
   const specs=sortBacklogSpecs(issues.map(parseCodingIssue).filter(Boolean));
-  const counters={openIssues:issues.filter(x=>x?.state==='open'&&!x?.pull_request).length,codingEligible:specs.length,dependencyBlocked:0,scopeBlocked:0,terminalOrDispatched:0,activeSlots:active.length,freeSlots:Math.max(0,cap-active.length),skipReasons:[]};
-  if(counters.freeSlots<=0)return {created:0,active:active.length,considered:specs.length,...counters,skipReason:'CAPACITY_FULL'};
-
+  const baseCounters={openIssues:issues.filter(x=>x?.state==='open'&&!x?.pull_request).length,codingEligible:specs.length,dependencyBlocked:0,scopeBlocked:0,terminalOrDispatched:0,activeSlots:0,freeSlots:0,skipReasons:[]};
   let laneStatus;
   try{laneStatus=await jsonFetch(fetchImpl,`${codingLaneUrl.replace(/\/$/,'')}/api/status`)}
-  catch(error){return {created:0,active:active.length,considered:specs.length,...counters,skipReason:'LANE_STATUS_UNAVAILABLE',error:String(error?.message||error)}}
+  catch(error){return {created:0,active:0,considered:specs.length,...baseCounters,skipReason:'LANE_STATUS_UNAVAILABLE',error:String(error?.message||error)}}
+  const active=await activeCodingDispatches(pool,laneStatus);
+  const activeScopes=active.map(x=>x.scopeLease);
+  const counters={...baseCounters,activeSlots:active.length,freeSlots:Math.max(0,cap-active.length)};
+  if(counters.freeSlots<=0)return {created:0,active:active.length,considered:specs.length,...counters,skipReason:'CAPACITY_FULL'};
 
   let created=0,recovered=0;
   for(const spec of specs){
