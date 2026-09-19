@@ -137,6 +137,8 @@ describe('GitHub coding continuity supervisor',()=>{
     expect(classifyCodingBlocker('CODING_COMPACT_EDIT_INVALID').kind).toBe('RECOVERABLE');
     expect(classifyCodingBlocker('CODING_COMPACT_REPAIR_MULTI_FILE_INVALID').kind).toBe('RECOVERABLE');
     expect(classifyCodingBlocker('HTTP_429 provider rate limit')).toMatchObject({kind:'RECOVERABLE',transient:true});
+    expect(classifyCodingBlocker('AI_RESOURCES_UNAVAILABLE')).toMatchObject({kind:'RECOVERABLE',transient:true});
+    expect(classifyCodingBlocker('manager decision exhausted after bounded retry/failover')).toMatchObject({kind:'RECOVERABLE',transient:true});
     expect(classifyCodingBlocker('SECURITY POLICY_BLOCK requires human')).toMatchObject({kind:'HARD',transient:false});
   });
 
