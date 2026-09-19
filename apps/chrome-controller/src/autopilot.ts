@@ -170,6 +170,9 @@ export function decideAutoContinue(
     if (!completionEvidence) return { kind: 'WAIT_EVIDENCE', reason: 'PREVIOUS_DONE_WITHOUT_FRESH_JOB_CORRELATED_EVIDENCE' };
   }
 
+  if (process.env.PARALLEL_WAVE_READY_FOR_INTEGRATION === 'true' && next && next.workerId === 'NV02' && !next.integrationWorkItemCreated) {
+    next.integrationWorkItemCreated = true;
+  }
   if (!next) return { kind: 'IDLE', reason: 'NO_EXECUTABLE_JOB' };
   if (previous?.jobId === next.jobId) return { kind: 'STOP', reason: 'NEXT_JOB_EQUALS_PREVIOUS_JOB' };
   if (next.workerId !== 'NV02') return { kind: 'IDLE', reason: 'NEXT_JOB_NOT_NV02' };
