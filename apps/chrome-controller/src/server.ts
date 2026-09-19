@@ -422,6 +422,29 @@ async function fetchExternalSnapshot(){
     log('AUTOPILOT_SNAPSHOT_PULLED',{source:snapshot.source,revision:snapshot.revision});
   }finally{clearTimeout(timer);}
 }
+function reconcileCompletedUiJobFromSnapshot(){
+  const previous=latestSnapshot?.previousJob;
+  if(!previous||previous.workerId!=='NV02'||previous.status!=='DONE')return false;
+  const ext=selectFreshCompletionEvidence(previous,autopilotState,Date.parse(latestSnapshot!.observedAt));
+  if(!ext)return false;
+  if(autopilotState.lastCompletedJobId!==previous.jobId){
+    autopilotState={...autopilotState,lastCompletedJobId:previous.jobId,lastEvidenceRef:ext.ref,lastCompletedEvidenceRevision:ext.completionRevision,updatedAt:new Date().toISOString()};
+    persistAutopilotState();
+    log('COMPLETION_WATCHER_DONE_EVIDENCE',{jobId:previous.jobId,evidenceRef:ext.ref,evidenceRevision:ext.completionRevision,source:ext.source});
+  }
+  let active=uiJobLedger.active('NV02');
+  if(active?.jobId!==previous.jobId)return true;
+  if(active.stage==='SUBMITTED'||active.stage==='WORKING'){
+    uiJobLedger.transition('NV02',previous.jobId,'WAITING_EVIDENCE',{evidenceRef:ext.ref,nextAction:'Verify authoritative completion'});
+    active=uiJobLedger.active('NV02');
+  }
+  if(active?.jobId===previous.jobId&&active.stage==='WAITING_EVIDENCE'){
+    uiJobLedger.transition('NV02',previous.jobId,'VERIFY',{evidenceRef:ext.ref,nextAction:'Verify authoritative completion'});
+    uiJobLedger.transition('NV02',previous.jobId,'DONE',{evidenceRef:ext.ref,result:`Authoritative external completion verified for ${previous.jobId}`});
+    log('UI_JOB_EXTERNAL_COMPLETION_RECONCILED',{jobId:previous.jobId,evidenceRef:ext.ref});
+  }
+  return true;
+}
 async function autopilotTick(){
   if(autopilotTicking||!config.autopilot.enabled||paused||killed)return;
   autopilotTicking=true;
@@ -449,15 +472,7 @@ async function autopilotTick(){
       }
     }
     if(!latestSnapshot){setAutopilotPhase('IDLE');persistEvidence();return;}
-    const previous=latestSnapshot.previousJob;
-    if(previous&&previous.jobId===autopilotState.lastDispatchedJobId&&previous.status==='DONE'){
-      const ext=selectFreshCompletionEvidence(previous,autopilotState,Date.parse(latestSnapshot.observedAt));
-      if(ext&&autopilotState.lastCompletedJobId!==previous.jobId){
-        autopilotState={...autopilotState,lastCompletedJobId:previous.jobId,lastEvidenceRef:ext.ref,lastCompletedEvidenceRevision:ext.completionRevision,updatedAt:new Date().toISOString()};
-        persistAutopilotState();
-        log('COMPLETION_WATCHER_DONE_EVIDENCE',{jobId:previous.jobId,evidenceRef:ext.ref,evidenceRevision:ext.completionRevision,source:ext.source});
-      }
-    }
+    reconcileCompletedUiJobFromSnapshot();
     const decision=decideAutoContinue(latestSnapshot,autopilotState,Date.now(),config.autopilot.maxSnapshotAgeMs);
     if(decision.kind==='IDLE'){lastAutopilotStopReason='';setAutopilotPhase('IDLE');persistEvidence();return;}
     if(decision.kind==='BUSY'||decision.kind==='DUPLICATE_NOOP'){lastAutopilotStopReason='';setAutopilotPhase('BUSY');persistEvidence();return;}
@@ -521,7 +536,8 @@ async function autopilotTick(){
       const failureClass=classifyAutoContinueDispatchFailure(error,dispatchDelivered);
       if(failureClass==='SAFE_RETRY'){
         try{
-          dispatchLease.markRetryable(dispatchLeaseToken.leaseId,decision.jobId);
+          const immediateRetry=message.includes('UI_JOB_ACTIVE:')||message.includes('UI_JOB_DUPLICATE_ACTIVE:');
+          dispatchLease.markRetryable(dispatchLeaseToken.leaseId,decision.jobId,Date.now(),immediateRetry?0:undefined);
           autopilotState={...clearPending(autopilotState),phase:'STOPPED',uncertainJobId:undefined,updatedAt:new Date().toISOString()};
           persistAutopilotState();
           log('AUTO_CONTINUE_FAILED_SAFE_RETRY',{jobId:decision.jobId,error:message,retryAfterMs:config.autopilot.dispatchLeaseTtlMs??300000});
@@ -670,6 +686,35 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
       void autopilotTick();
       json(res,202,{ok:true});
     }catch(error){json(res,400,{ok:false,error:String(error)});}
+    return true;
+  }
+  if(url.pathname==='/api/autopilot/continue-now'&&req.method==='POST'){
+    try{
+      if(paused)throw new Error('OWNER_INTERACTION_READ_ONLY');
+      if(killed)throw new Error('CONTROLLER_KILLED');
+      await fetchExternalSnapshot();
+      reconcileCompletedUiJobFromSnapshot();
+      if(autopilotState.uncertainJobId){
+        const uncertain=autopilotState.uncertainJobId;
+        const existing=uiJobLedger.get('NV02',uncertain);
+        const active=uiJobLedger.active('NV02');
+        const worker=states.get('NV02')!;
+        const leaseState=dispatchLease.read();
+        if(existing)throw new Error(`AUTOPILOT_UNCERTAIN_POSSIBLY_DELIVERED:${uncertain}`);
+        if(active)throw new Error(`AUTOPILOT_ACTIVE_JOB:${active.jobId}`);
+        if(worker.lastHeartbeat?.uiBusy!==false)throw new Error('AUTOPILOT_UI_BUSY_OR_UNKNOWN');
+        if(!leaseState.lease||leaseState.lease.jobId!==uncertain||leaseState.lease.state!=='DISPATCHING')
+          throw new Error(`AUTOPILOT_UNCERTAIN_LEASE_NOT_PROVABLY_NOT_DELIVERED:${uncertain}`);
+        dispatchLease.resetKnownNotDelivered(uncertain,Date.now(),0);
+        const {uncertainJobId:_uncertain,...rest}=autopilotState;
+        autopilotState={...rest,phase:'IDLE',updatedAt:new Date().toISOString()};
+        persistAutopilotState();
+        log('AUTOPILOT_MANUAL_KNOWN_NONDELIVERY_RESET',{jobId:uncertain});
+      }
+      persistEvidence();
+      void autopilotTick();
+      json(res,202,{ok:true,mode:'RECONCILE_AND_CONTINUE'});
+    }catch(error){json(res,409,{ok:false,error:String(error)});}
     return true;
   }
   if(url.pathname==='/api/heartbeat'&&req.method==='POST'){
