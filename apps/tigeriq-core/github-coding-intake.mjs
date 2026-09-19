@@ -50,6 +50,20 @@ async function markerExists(pool,type,n){const q=await pool.query("select 1 from
 async function eventData(pool,type,n){const q=await pool.query("select data from tigeriq_events where type=$1 and data->>'issueNumber'=$2 order by seq desc limit 100",[type,String(n)]);return q.rows.map(row=>row.data||{})}
 async function mark(pool,type,data){await pool.query('insert into tigeriq_events(type,data) values($1,$2)',[type,JSON.stringify(data)])}
 async function hasCompletedCodingResult(pool,n){return (await eventData(pool,'GITHUB_CODING_RESULT_REPORTED',n)).some(x=>String(x.status||'').toLowerCase()==='completed')}
+async function hasEffectiveBlockedFinal(pool,n,fallbackSummary=''){
+  const finals=await eventData(pool,'GITHUB_CODING_BLOCKED_FINAL',n);
+  if(!finals.length)return false;
+  const latest=finals[0]||{};
+  const legacyHard=String(latest.reason||'').toUpperCase()==='HARD_BLOCKER';
+  const terminalSummary=String(latest.terminalReason||fallbackSummary||'');
+  if(legacyHard&&classifyCodingBlocker(terminalSummary).kind==='RECOVERABLE'){
+    if(!(await markerExists(pool,'GITHUB_CODING_BLOCKED_FINAL_RECLASSIFIED',n))){
+      await mark(pool,'GITHUB_CODING_BLOCKED_FINAL_RECLASSIFIED',{issueNumber:n,priorCodingObjectiveId:latest.codingObjectiveId||null,priorReason:latest.reason||null,terminalReason:terminalSummary,reclassifiedAs:'RECOVERABLE'});
+    }
+    return false;
+  }
+  return true;
+}
 export function classifyCodingBlocker(summary){
   const raw=String(summary||'').trim();
   const text=raw.toUpperCase();
@@ -94,7 +108,8 @@ async function activeCodingDispatches(pool,laneStatus){
     const data=row.data||{},n=Number(data.issueNumber),objectiveId=String(data.codingObjectiveId||'');
     if(!n||!objectiveId||seen.has(n))continue;
     seen.add(n);
-    if(await hasCompletedCodingResult(pool,n)||await markerExists(pool,'GITHUB_CODING_BLOCKED_FINAL',n))continue;
+    const liveObjective=(laneStatus?.objectives||[]).find(x=>String(x?.id||'')===objectiveId);
+    if(await hasCompletedCodingResult(pool,n)||await hasEffectiveBlockedFinal(pool,n,liveObjective?.summary))continue;
     if(!liveObjectiveIds.has(objectiveId))continue;
     active.push({issueNumber:n,codingObjectiveId:objectiveId,scopeLease:data.scopeLease||{resourceScope:'',paths:[],ambiguous:true}});
   }
@@ -183,8 +198,8 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
     const n=Number(row.data?.issueNumber),id=String(row.data?.codingObjectiveId||'');
     if(!n||!id||seenIssues.has(n))continue;
     seenIssues.add(n);
-    if(await hasCompletedCodingResult(pool,n)||await markerExists(pool,'GITHUB_CODING_BLOCKED_FINAL',n))continue;
     const objective=(status.objectives||[]).find(x=>x.id===id);
+    if(await hasCompletedCodingResult(pool,n)||await hasEffectiveBlockedFinal(pool,n,objective?.summary))continue;
     if(!objective)continue;
     const job=(status.jobs||[]).find(x=>x.objective_id===id);
     if(job&&!(await markerExists(pool,'GITHUB_CODING_PROGRESS_REPORTED',n))){
@@ -210,7 +225,7 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
       continue;
     }
     const finalize=async(reason,evidence={})=>{
-      if(await markerExists(pool,'GITHUB_CODING_BLOCKED_FINAL',n))return false;
+      if(await hasEffectiveBlockedFinal(pool,n,objective.summary))return false;
       await mark(pool,'GITHUB_CODING_BLOCKED_FINAL',{issueNumber:n,codingObjectiveId:id,status:'blocked',reason,...evidence});
       await comment(fetchImpl,owner,repo,n,token,`[BLOCKED_FINAL] ${id} reason=${reason}. ${String(objective.summary||'').slice(0,2000)}`);
       results++;
