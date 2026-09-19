@@ -98,6 +98,51 @@ describe('GitHub coding intake dependencies',()=>{
     expect((await materializeGithubCodingIssues({pool,fetchImpl,token:'fake'})).created).toBe(0);
     expect(posted).toBe(1);
   });
+
+  it('implements bounded retry for blocked WorkItems and hard blocker fail-closed logic',async()=>{
+    const pool=fakePool();
+    pool.events.push({
+      type:'GITHUB_CODING_DISPATCHED',
+      data:{issueNumber:777,issueUrl:'https://github.com/newsdayads/tigeriq-ai-lab/issues/777',codingObjectiveId:'obj-100',ownerDirect:false,sourcePriority:'P1',dispatchPriority:'P1',dispatchReason:'PRIORITY_P1',retryCount:0}
+    });
+    const fetchImpl=async(url)=>{ 
+      if(url.includes('/api/status')){
+        return response({objectives:[{id:'obj-100',status:'blocked',summary:'fail test'}],jobs:[]});
+      }
+      if(url.includes('/api/objectives')){
+        return response({id:'obj-101'});
+      }
+      return response({});
+    };
+    const res1 = await import('../apps/tigeriq-core/github-coding-intake.mjs').then(m => m.syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'}));
+    expect(res1.results).toBe(1);
+    const dispatchedEvents = pool.events.filter(e => e.type === 'GITHUB_CODING_DISPATCHED');
+    expect(dispatchedEvents.length).toBe(2);
+    expect(dispatchedEvents[1].data.retryCount).toBe(1);
+    
+    // second block triggers retry 2
+    pool.events.push({
+      type:'GITHUB_CODING_DISPATCHED',
+      data:{issueNumber:777,issueUrl:'https://github.com/newsdayads/tigeriq-ai-lab/issues/777',codingObjectiveId:'obj-101',ownerDirect:false,sourcePriority:'P1',dispatchPriority:'P1',dispatchReason:'RETRY_1',retryCount:1}
+    });
+    const res2 = await import('../apps/tigeriq-core/github-coding-intake.mjs').then(m => m.syncGithubCodingOutcomes({pool,fetchImpl:async(u)=>{if(u.includes('/api/status'))return response({objectives:[{id:'obj-101',status:'blocked',summary:'fail again'}],jobs:[]});return response({});},token:'fake'}));
+    expect(res2.results).toBe(1);
+    const dispatchedEvents2 = pool.events.filter(e => e.type === 'GITHUB_CODING_DISPATCHED');
+    expect(dispatchedEvents2.length).toBe(3);
+    expect(dispatchedEvents2[2].data.retryCount).toBe(2);
+
+    // third block hits hard blocker fail-closed (no further retries)
+    pool.events.push({
+      type:'GITHUB_CODING_DISPATCHED',
+      data:{issueNumber:777,issueUrl:'https://github.com/newsdayads/tigeriq-ai-lab/issues/777',codingObjectiveId:'obj-102',ownerDirect:false,sourcePriority:'P1',dispatchPriority:'P1',dispatchReason:'RETRY_2',retryCount:2}
+    });
+    const res3 = await import('../apps/tigeriq-core/github-coding-intake.mjs').then(m => m.syncGithubCodingOutcomes({pool,fetchImpl:async(u)=>{if(u.includes('/api/status'))return response({objectives:[{id:'obj-102',status:'blocked',summary:'fail hard'}],jobs:[]});return response({});},token:'fake'}));
+    expect(res3.results).toBe(1);
+    const finalDispatched = pool.events.filter(e => e.type === 'GITHUB_CODING_DISPATCHED');
+    expect(finalDispatched.length).toBe(3); // no new dispatch
+    const lastResult = pool.events.filter(e => e.type === 'GITHUB_CODING_RESULT_REPORTED').pop();
+    expect(lastResult.data.status).toBe('blocked_hard_fail');
+  });
 });
 
 it('coding backlog serializes three issues by OWNER_DIRECT then priority',async()=>{

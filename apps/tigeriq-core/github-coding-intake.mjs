@@ -69,7 +69,45 @@ export async function materializeGithubCodingIssues({pool,fetchImpl=fetch,owner=
 
 export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token='',codingLaneUrl=process.env.TIGERIQ_CODING_LANE_URL||DEFAULT_CODING_URL}){
   const rows=(await pool.query("select data from tigeriq_events where type='GITHUB_CODING_DISPATCHED' limit 100")).rows;if(!rows.length)return {progress:0,results:0};const status=await jsonFetch(fetchImpl,`${codingLaneUrl.replace(/\/$/,'')}/api/status`);let progress=0,results=0;
-  for(const row of rows){const n=Number(row.data?.issueNumber),id=String(row.data?.codingObjectiveId||'');if(!n||!id)continue;const objective=(status.objectives||[]).find(x=>x.id===id);if(!objective)continue;const job=(status.jobs||[]).find(x=>x.objective_id===id);if(job&&!(await markerExists(pool,'GITHUB_CODING_PROGRESS_REPORTED',n))){const pr=job.pr_number?` PR #${job.pr_number}.`:'';await comment(fetchImpl,owner,repo,n,token,`[PROGRESS] ${id} is ${job.status}. Implementer: ${job.employee_id||'pending'}; reviewer: ${job.reviewer_employee_id||'pending'}.${pr}`);await mark(pool,'GITHUB_CODING_PROGRESS_REPORTED',{issueNumber:n,codingObjectiveId:id,jobId:job.id,prNumber:job.pr_number||null});progress++}if(['completed','blocked'].includes(objective.status)&&!(await markerExists(pool,'GITHUB_CODING_RESULT_REPORTED',n))){await comment(fetchImpl,owner,repo,n,token,`[RESULT] ${id} ${objective.status}. ${String(objective.summary||'').slice(0,3000)}`);if(objective.status==='completed')await close(fetchImpl,owner,repo,n,token);await mark(pool,'GITHUB_CODING_RESULT_REPORTED',{issueNumber:n,codingObjectiveId:id,status:objective.status});results++}}
+  for(const row of rows){
+    const n=Number(row.data?.issueNumber),id=String(row.data?.codingObjectiveId||'');if(!n||!id)continue;
+    const objective=(status.objectives||[]).find(x=>x.id===id);if(!objective)continue;
+    const job=(status.jobs||[]).find(x=>x.objective_id===id);
+    if(job&&!(await markerExists(pool,'GITHUB_CODING_PROGRESS_REPORTED',n))){
+      const pr=job.pr_number?` PR #${job.pr_number}.`:'';
+      await comment(fetchImpl,owner,repo,n,token,`[PROGRESS] ${id} is ${job.status}. Implementer: ${job.employee_id||'pending'}; reviewer: ${job.reviewer_employee_id||'pending'}.${pr}`);
+      await mark(pool,'GITHUB_CODING_PROGRESS_REPORTED',{issueNumber:n,codingObjectiveId:id,jobId:job.id,prNumber:job.pr_number||null});
+      progress++;
+    }
+    if(['completed','blocked'].includes(objective.status)&&!(await markerExists(pool,'GITHUB_CODING_RESULT_REPORTED',n))){
+      if(objective.status==='blocked'){
+        const retryCount=Number(row.data?.retryCount||0);
+        if(retryCount<2){
+          const nextRetry=retryCount+1;
+          await comment(fetchImpl,owner,repo,n,token,`[RESULT] ${id} blocked. Attempt ${nextRetry} of 2 retry triggered.`);
+          await mark(pool,'GITHUB_CODING_RESULT_REPORTED',{issueNumber:n,codingObjectiveId:id,status:'blocked_retry'});
+          const objectiveBody=`GitHub autonomous coding issue #${n}: retry ${nextRetry}
+
+${String(objective.summary||'')}`;
+          const out=await jsonFetch(fetchImpl,`${codingLaneUrl.replace(/\/$/,'')}/api/objectives`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({objective:objectiveBody,priority:row.data?.dispatchPriority||'P1'})});
+          if(out?.id){
+            await mark(pool,'GITHUB_CODING_DISPATCHED',{issueNumber:n,issueUrl:row.data?.issueUrl||'',codingObjectiveId:out.id,ownerDirect:row.data?.ownerDirect||false,sourcePriority:row.data?.sourcePriority||'P1',dispatchPriority:row.data?.dispatchPriority||'P1',dispatchReason:`RETRY_${nextRetry}`,retryCount:nextRetry});
+          }
+          results++;
+          continue;
+        } else {
+          await comment(fetchImpl,owner,repo,n,token,`[RESULT] ${id} blocked permanently after max retries. Hard blocker fail-closed.`);
+          await mark(pool,'GITHUB_CODING_RESULT_REPORTED',{issueNumber:n,codingObjectiveId:id,status:'blocked_hard_fail'});
+          results++;
+          continue;
+        }
+      }
+      await comment(fetchImpl,owner,repo,n,token,`[RESULT] ${id} ${objective.status}. ${String(objective.summary||'').slice(0,3000)}`);
+      if(objective.status==='completed')await close(fetchImpl,owner,repo,n,token);
+      await mark(pool,'GITHUB_CODING_RESULT_REPORTED',{issueNumber:n,codingObjectiveId:id,status:objective.status});
+      results++;
+    }
+  }
   return {progress,results};
 }
 
