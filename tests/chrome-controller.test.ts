@@ -87,6 +87,7 @@ describe('completion-aware UTF-8 supervisor and Owner workspace',()=>{
     s.nextJob = { jobId: 'job-999', workerId: 'NV03', executable: true, status: 'READY', priority: 'P1', prompt: 'test nv03 route' };
     const dec = decideAutoContinue(s, freshAutopilotState(), NOW);
     expect(dec.kind).toBe('DISPATCH');
+    if(dec.kind!=='DISPATCH') throw new Error(`EXPECTED_DISPATCH:${dec.kind}`);
     expect(dec.jobId).toBe('job-999');
   });
   it('reserves the lower workspace for Owner while workers stay top-right',()=>{const evidence=buildRuntimeEvidence({config:baseConfig(),workArea:{left:0,top:0,width:4096,height:2120},workers:baseConfig().workers.map(w=>({id:w.id,enabled:true,status:'READY',blocked:false})),jobs:[],autopilot:freshAutopilotState(),snapshot:snapshot(),paused:false,killed:false,recoveryAttempts:{NV02:0,NV03:0,NV04:0},startupReady:true,interactiveSession:true,sessionName:'Console'});expect(evidence.layout.ownerWorkspace).toEqual({workerRegion:'TOP_RIGHT',reservedBelowY:834,overlapByDesign:false});expect(evidence.autopilot).toMatchObject({completionAwareUiState:true,utf8JsonDispatch:true});});
