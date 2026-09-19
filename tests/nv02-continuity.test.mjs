@@ -111,9 +111,16 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("CONTINUE_DISPATCH_FAILED");
     expect(source).toContain("PROJECT_UI_RECOVERED");
     expect(source).toContain("PROJECT_CONTEXT_RECOVERY_UI");
-    expect(source).toContain("PROJECT_NEW_CHAT_BUTTON_COUNT_");
     expect(source).toContain("projectRecoveryNextAt");
     expect(source).toContain("recoverNv02ProjectByUi");
+    expect(source).toContain("PROJECT_CHAT_LIST_NOT_FOUND");
+    expect(source).toContain("PROJECT_CHAT_ROW_NOT_FOUND");
+    expect(source).toContain("PROJECT_CHAT_POINT");
+    expect(source).toContain("scrollIntoView");
+    expect(source).toContain("MODEL_HIGH_RECOVERED");
+    expect(source).toContain("HIGH_SET");
+    expect(source).toContain("modelRecoveryNextAt");
+    expect(source).toContain("[role=\"slider\"]");
     expect(source).toContain('button[data-testid="composer-submit-button"]');
     expect(source).toContain("nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)");
   });
