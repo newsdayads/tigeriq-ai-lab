@@ -67,6 +67,8 @@ export function buildRuntimeEvidence(input: RuntimeEvidenceInput, now = new Date
       lastEvidenceRef: input.autopilot.lastEvidenceRef ?? null,
       pendingJobId: input.autopilot.pendingJobId ?? null,
       uncertainJobId: input.autopilot.uncertainJobId ?? null,
+      dispatchFailureClass: input.autopilot.dispatchFailureClass ?? null,
+      retryAt: input.autopilot.retryAt ?? null,
       externalSnapshot: input.snapshot ? {
         source: input.snapshot.source,
         observedAt: input.snapshot.observedAt,
