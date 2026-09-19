@@ -249,17 +249,18 @@ async function withNv02Mutation(fn){
   if(!lease)return{ok:false,status:'MUTATION_LEASE_BUSY'};
   try{return await fn();}finally{await releaseBridgeMutationLease('NV02',lease);}
 }
+async function dispatchNaturalContinueLocked(target,state,now){
+  await scrollToBottom(target).catch(()=>{});
+  const prompt=pickContinuePrompt(state.lastPrompt);
+  const result=await dispatch(target,prompt);
+  if(!result?.ok)throw new Error(result?.status||'CONTINUE_DISPATCH_FAILED');
+  const next={...state,lastPrompt:prompt,dispatchesInChat:Number(state.dispatchesInChat||0)+1,stalledChecks:0,lastPhase:'WORKING',nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
+  saveNv02Continuity(next);
+  await continuityEvent('CONTINUE_DISPATCHED',{prompt,evidence:result.evidence||null,nextContinueAt:next.nextContinueAt,dispatchesInChat:next.dispatchesInChat});
+  return next;
+}
 async function dispatchNaturalContinue(target,state,now){
-  return withNv02Mutation(async()=>{
-    await scrollToBottom(target).catch(()=>{});
-    const prompt=pickContinuePrompt(state.lastPrompt);
-    const result=await dispatch(target,prompt);
-    if(!result?.ok)throw new Error(result?.status||'CONTINUE_DISPATCH_FAILED');
-    const next={...state,lastPrompt:prompt,dispatchesInChat:Number(state.dispatchesInChat||0)+1,stalledChecks:0,lastPhase:'WORKING',nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
-    saveNv02Continuity(next);
-    await continuityEvent('CONTINUE_DISPATCHED',{prompt,evidence:result.evidence||null,nextContinueAt:next.nextContinueAt,dispatchesInChat:next.dispatchesInChat});
-    return next;
-  });
+  return withNv02Mutation(()=>dispatchNaturalContinueLocked(target,state,now));
 }
 async function checkpointNv02(target){
   return withNv02Mutation(async()=>{
@@ -281,7 +282,7 @@ async function rotateNv02Chat(target,state,now){
     const next={...state,dispatchesInChat:0,chatStartedAt:now,stalledChecks:0,lastPhase:'READY'};
     saveNv02Continuity(next);
     await continuityEvent('CHAT_ROTATED',{receiptRef:receipt.receiptRef,checkpointRef:receipt.checkpointRef,archiveStatus:archived.status,newChatStatus:opened.status});
-    return dispatchNaturalContinue(target,next,now);
+    return dispatchNaturalContinueLocked(target,next,now);
   });
 }
 async function noteNv02CommandDispatch(){
