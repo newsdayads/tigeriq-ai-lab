@@ -28,6 +28,8 @@ export interface RuntimeEvidenceInput {
   startupReady: boolean;
   interactiveSession?: boolean;
   sessionName?: string | null;
+  gpt56SolHighVerified?: boolean;
+  gpt56SolHighVerifiedAt?: string | null;
 }
 
 export interface AtomicJsonFileOps {
@@ -141,6 +143,12 @@ export function buildRuntimeEvidence(input: RuntimeEvidenceInput, now = new Date
       stealth: false,
       fakeHuman: false,
       credentialExtraction: false,
+      gpt56SolHighProfile: {
+        requiredModel: 'GPT-5.6 Sol',
+        requiredEffort: 'High',
+        verified: input.gpt56SolHighVerified ?? false,
+        verifiedAt: input.gpt56SolHighVerifiedAt ?? null,
+      },
     },
     jobs: input.jobs.map((job) => ({
       jobId: job.jobId,
