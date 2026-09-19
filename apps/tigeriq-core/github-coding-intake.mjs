@@ -72,6 +72,12 @@ async function hasOpenCodingDispatch(pool){
   return q.rowCount>0;
 }
 
+export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token='',now=Date.now}={}){
+  const leaseAcquired = await acquireScopeLease(pool, 'github-coding-sync', 'core-worker-1', 600000);
+  if(!leaseAcquired) return {synced:0};
+  return {synced:0}; 
+}
+
 export async function acquireScopeLease(pool, scopeKey, holderId, ttlMs=600000){
   const now=Date.now();
   const expiresAt=new Date(now+ttlMs).toISOString();
@@ -98,6 +104,8 @@ async function dependencyGate(fetchImpl,owner,repo,token,dependsOn){
 }
 
 export async function materializeGithubCodingIssues({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token='',codingLaneUrl=process.env.TIGERIQ_CODING_LANE_URL||DEFAULT_CODING_URL}){
+  const leaseAcquired = await acquireScopeLease(pool, 'github-coding-intake', 'core-worker-1', 600000);
+  if(!leaseAcquired) return {created:0,active:1,considered:0};
   if(await hasOpenCodingDispatch(pool))return {created:0,active:1,considered:0};
   const issues=await gh(fetchImpl,owner,repo,'/issues?state=open&per_page=100&sort=updated&direction=desc',token);
   const specs=sortBacklogSpecs(issues.map(parseCodingIssue).filter(Boolean));
