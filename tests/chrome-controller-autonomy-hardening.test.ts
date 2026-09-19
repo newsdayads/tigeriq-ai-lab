@@ -147,8 +147,37 @@ describe('AUTO_CONTINUE known non-delivery contract',()=>{
   it('wires the classifier into AUTO_CONTINUE while preserving manual dispatch configuration',()=>{
     const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
     expect(server).toContain('classifyAutoContinueDispatchFailure(error,dispatchDelivered)');
-    expect(server).toContain('dispatchLease.markRetryable(dispatchLeaseToken.leaseId,decision.jobId)');
+    expect(server).toContain('dispatchLease.markRetryable(dispatchLeaseToken.leaseId,decision.jobId');
     expect(server).toContain("log('AUTO_CONTINUE_FAILED_CLOSED'");
     expect(server).toContain("await dispatch(workerId,data.text,data.navigate!==false,'MANUAL',{");
+  });
+});
+
+describe('AUTO_CONTINUE continuity recovery',()=>{
+  it('treats a pre-submit active-ledger collision as known non-delivery',()=>{
+    expect(classifyAutoContinueDispatchFailure(new Error('UI_JOB_ACTIVE:NV02:GH-1005'),false)).toBe('SAFE_RETRY');
+    expect(classifyAutoContinueDispatchFailure(new Error('UI_JOB_DUPLICATE_ACTIVE:NV02:GH-1010'),false)).toBe('SAFE_RETRY');
+    expect(classifyAutoContinueDispatchFailure(new Error('UI_JOB_ACTIVE:NV02:GH-1005'),true)).toBe('UNCERTAIN');
+  });
+
+  it('can reset a provably not-delivered dispatch lease across controller instances',()=>{
+    const dir=mkdtempSync(join(tmpdir(),'tigeriq-lease-'));const path=join(dir,'lease.json');
+    const a=new DurableDispatchLeaseStore(path,'controller-a',60_000);
+    const b=new DurableDispatchLeaseStore(path,'controller-b',60_000);
+    const acquired=a.acquire('GH-1010',1000);if(acquired.kind!=='ACQUIRED')throw new Error('setup');
+    a.markDispatching(acquired.lease.leaseId,'GH-1010',2000);
+    expect(b.resetKnownNotDelivered('GH-1010',3000,0)).toMatchObject({
+      jobId:'GH-1010',state:'RESERVED',ownerId:'controller-b',leaseEpoch:2,
+      expiresAt:'1970-01-01T00:00:03.000Z',
+    });
+  });
+
+  it('wires authoritative completion reconciliation and a supported manual fallback',()=>{
+    const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
+    expect(server).toContain('reconcileCompletedUiJobFromSnapshot');
+    expect(server).toContain('UI_JOB_EXTERNAL_COMPLETION_RECONCILED');
+    expect(server).toContain("/api/autopilot/continue-now");
+    expect(server).toContain('AUTOPILOT_UNCERTAIN_POSSIBLY_DELIVERED');
+    expect(server).toContain('resetKnownNotDelivered');
   });
 });

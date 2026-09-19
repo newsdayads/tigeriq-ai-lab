@@ -76,8 +76,20 @@ export class DurableDispatchLeaseStore{
     return this.#transition(leaseId,jobId,'RESERVED','DISPATCHING',nowMs,{expiresAt:iso(nowMs+this.#ttlMs)});
   }
 
-  markRetryable(leaseId:string,jobId:string,nowMs=Date.now()):DispatchLease{
-    return this.#transition(leaseId,jobId,'DISPATCHING','RESERVED',nowMs,{expiresAt:iso(nowMs+this.#ttlMs)});
+  markRetryable(leaseId:string,jobId:string,nowMs=Date.now(),retryDelayMs=this.#ttlMs):DispatchLease{
+    const delay=Math.max(0,Number.isFinite(retryDelayMs)?retryDelayMs:this.#ttlMs);
+    return this.#transition(leaseId,jobId,'DISPATCHING','RESERVED',nowMs,{expiresAt:iso(nowMs+delay)});
+  }
+
+  resetKnownNotDelivered(jobId:string,nowMs=Date.now(),retryDelayMs=0):DispatchLease{
+    const current=this.read();const lease=current.lease;
+    if(current.malformed||!lease)throw new Error('DISPATCH_LEASE_MISSING_OR_MALFORMED');
+    if(lease.jobId!==jobId)throw new Error('DISPATCH_LEASE_JOB_MISMATCH');
+    if(lease.state!=='DISPATCHING')throw new Error(`DISPATCH_LEASE_STATE_${lease.state}_EXPECTED_DISPATCHING`);
+    const delay=Math.max(0,Number.isFinite(retryDelayMs)?retryDelayMs:0);
+    const next={...this.#newLease(jobId,nowMs,lease.leaseEpoch+1,lease.leaseId),expiresAt:iso(nowMs+delay)};
+    this.#atomicReplace(next);
+    return next;
   }
 
   markCommitted(leaseId:string,jobId:string,nowMs=Date.now()):DispatchLease{
