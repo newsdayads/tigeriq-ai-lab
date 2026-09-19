@@ -47,6 +47,8 @@ function loadNv02Continuity(){
     lastPhase:String(raw.lastPhase||'STALLED'),
     workingSignature:String(raw.workingSignature||''),
     workingUnchangedChecks:Number(raw.workingUnchangedChecks)||0,
+    recoverableRetryCount:Number(raw.recoverableRetryCount)||0,
+    nextRecoverableRetryAt:Number(raw.nextRecoverableRetryAt)||0,
   };
 }
 function saveNv02Continuity(state){
@@ -129,6 +131,8 @@ const UI_EXPR=`(()=>{
   const authRequired=[...document.querySelectorAll('button,a')].some(e=>vis(e)&&/^(đăng nhập|sign in|log in)$/i.test((e.textContent||'').trim()));
   const stop=[...document.querySelectorAll('button[data-testid="stop-button"],button[aria-label*="Stop" i],button[aria-label*="Dừng" i]')].find(vis)||null;
   const activityBusy=[...document.querySelectorAll('button,[role="button"],[aria-live]')].find(e=>vis(e)&&/(^|\\s)(đang suy nghĩ|thinking|generating|đang tạo)(\\s|$)/i.test((e.getAttribute('aria-label')||e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim()))||null;
+  const retryButton=[...document.querySelectorAll('button,[role="button"]')].find(e=>vis(e)&&/^(thử lại|retry|try again)$/i.test((e.innerText||e.textContent||e.getAttribute('aria-label')||'').replace(/\\s+/g,' ').trim()))||null;
+  const streamRecoveryError=Boolean(retryButton)||/chatgpt stream recovery polling timed out/i.test(String(document.body?.innerText||''));
   const send=composer?[...document.querySelectorAll('button[data-testid="send-button"],button[type="submit"],button[aria-label*="Gửi" i],button[aria-label*="Send" i]')].find(e=>vis(e)&&!e.disabled&&e.getAttribute('aria-disabled')!=='true')||null:null;
   const scroll=[...document.querySelectorAll('button,[role="button"]')].find(e=>vis(e)&&/^(cuộn xuống cuối|scroll to bottom|jump to bottom)$/i.test((e.getAttribute('aria-label')||e.textContent||'').trim()))||null;
   let securityBlock=null;
@@ -139,17 +143,17 @@ const UI_EXPR=`(()=>{
   const modelControl=location.hostname==='chatgpt.com'?[...document.querySelectorAll('button,[role="button"]')].find(e=>vis(e)&&/chọn mô hình chatgpt|choose.*model|model selector/i.test((e.getAttribute('aria-label')||'')+' '+(e.getAttribute('title')||'')))||null:null;
   const reasoningEffort=modelControl?.getAttribute('data-selected-reasoning-effort')||null;
   const modelReady=location.hostname!=='chatgpt.com'||Boolean(modelControl&&String(reasoningEffort||'').toLowerCase()==='high');
-  const uiBusy=Boolean(stop||activityBusy);
+  const uiBusy=Boolean((stop||activityBusy)&&!streamRecoveryError);
   const activityRoot=activityBusy?.closest?.('.block-BQZwFn')||activityBusy?.parentElement||null;
   const activityText=String(activityRoot?.innerText||activityRoot?.textContent||'').replace(/\s+/g,' ').trim();
   let activityHash=0;for(let i=0;i<activityText.length;i+=1)activityHash=((activityHash*31)+activityText.charCodeAt(i))>>>0;
   const activitySignature=uiBusy?(String(activityText.length)+':'+String(activityHash)):'';
   const uiReady=document.readyState==='complete'&&!!composer&&!authRequired;
-  const uiPhase=securityBlock?'BLOCKED':uiBusy?'WORKING':uiReady&&modelReady?'READY':'STALLED';
+  const uiPhase=securityBlock?'BLOCKED':streamRecoveryError?'STALLED':uiBusy?'WORKING':uiReady&&modelReady?'READY':'STALLED';
   return {
     uiReady,uiPhase,composerReady:Boolean(composer),sendReady:Boolean(send),stopVisible:Boolean(stop),activityBusyVisible:Boolean(activityBusy),
     scrollToBottomVisible:Boolean(scroll),authRequired,uiBusy,securityBlock,
-    modelControlPresent:Boolean(modelControl),reasoningEffort,modelReady,activitySignature,
+    modelControlPresent:Boolean(modelControl),reasoningEffort,modelReady,activitySignature,retryVisible:Boolean(retryButton),recoverableError:streamRecoveryError?'STREAM_RECOVERY_TIMEOUT':null,
     title:document.title,url:location.href,readyState:document.readyState,bodyChildren:document.body?.children?.length||0
   };
 })()`;
@@ -207,7 +211,7 @@ async function closeWorker(w,target){
   const b=await browserRpc(port);try{await b.call('Browser.close',{}).catch(()=>{});}finally{b.close();}
 }
 function dispatchExpr(text){
-  return `(async()=>{const text=${JSON.stringify(text)},expected=text.trim();const sleep=ms=>new Promise(r=>setTimeout(r,ms));const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};const securityBlock=()=>{if(document.querySelector('iframe[src*=\"captcha\" i],iframe[src*=\"challenge\" i],[class*=\"captcha\" i],[id*=\"captcha\" i]'))return'BLOCKED_CAPTCHA';const t=[...document.querySelectorAll('[role=\"alert\"],[role=\"dialog\"],[data-testid*=\"toast\" i]')].slice(0,30).map(e=>(e.textContent||'').toLowerCase()).join(' '),m=[['rate limit','BLOCKED_RATE_LIMIT'],['too many requests','BLOCKED_RATE_LIMIT'],['suspicious activity','BLOCKED_SUSPICIOUS_ACTIVITY'],['unusual activity','BLOCKED_SUSPICIOUS_ACTIVITY'],['verify your identity','BLOCKED_REAUTH'],['verify it’s you','BLOCKED_REAUTH'],['xác minh danh tính','BLOCKED_REAUTH']];for(const [n,s] of m)if(t.includes(n))return s;return null;};const blocked=securityBlock();if(blocked)return{ok:false,status:blocked};if(!expected)return{ok:false,status:'EMPTY_WORK_ORDER'};const sels=location.hostname==='chatgpt.com'?['#prompt-textarea','div[contenteditable=\"true\"][data-lexical-editor=\"true\"]','[contenteditable=\"true\"][role=\"textbox\"]','textarea']:['rich-textarea .ql-editor[contenteditable=\"true\"]','.ql-editor[contenteditable=\"true\"]','[contenteditable=\"true\"][role=\"textbox\"]','textarea'];const findComposer=()=>{for(const s of sels){const x=[...document.querySelectorAll(s)].find(vis);if(x)return x;}return null;};const composerText=e=>e instanceof HTMLTextAreaElement||e instanceof HTMLInputElement?String(e.value||'').trim():String(e?.innerText||e?.textContent||'').trim();let c=findComposer();if(!c)return{ok:false,status:'COMPOSER_NOT_FOUND'};if(composerText(c)!==expected){c.focus();if(c instanceof HTMLTextAreaElement||c instanceof HTMLInputElement){const proto=c instanceof HTMLTextAreaElement?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(proto,'value')?.set?.call(c,text);c.dispatchEvent(new Event('input',{bubbles:true}));c.dispatchEvent(new Event('change',{bubbles:true}));}else{const sel=window.getSelection(),range=document.createRange();range.selectNodeContents(c);sel?.removeAllRanges();sel?.addRange(range);if(!document.execCommand('insertText',false,text)){c.textContent=text;c.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:text}));}}}const scoped=['button[data-testid=\"send-button\"]','button[type=\"submit\"]','button[aria-label*=\"Send\" i]','button[aria-label*=\"Gửi\" i]','button[aria-label*=\"submit\" i]'],global=['button[data-testid=\"send-button\"]','button[aria-label*=\"Send\" i]','button[aria-label*=\"Gửi\" i]','button[aria-label*=\"submit\" i]'];const usable=e=>vis(e)&&!e.disabled&&e.getAttribute('aria-disabled')!=='true';const findSend=()=>{for(const root of [c.closest?.('form'),c.parentElement].filter(Boolean))for(const s of scoped){const a=[...root.querySelectorAll(s)].filter(usable);if(a.length===1)return a[0];}for(const s of global){const a=[...document.querySelectorAll(s)].filter(usable);if(a.length===1)return a[0];}return null;};let b=null,until=Date.now()+SEND_BUTTON_WAIT_MS;while(Date.now()<until){await sleep(150);const gate=securityBlock();if(gate)return{ok:false,status:gate};b=findSend();if(b)break;}if(!b)return{ok:false,status:'SEND_BUTTON_NOT_FOUND'};b.click();const busy=()=>['button[data-testid=\"stop-button\"]','button[aria-label*=\"Stop\" i]','button[aria-label*=\"Dừng\" i]'].some(s=>[...document.querySelectorAll(s)].some(vis))||[...document.querySelectorAll('button,[role=\"button\"],[aria-live]')].some(e=>vis(e)&&/(^|\\s)(đang suy nghĩ|thinking|generating|đang tạo)(\\s|$)/i.test((e.getAttribute('aria-label')||e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim()));until=Date.now()+3500;while(Date.now()<until){await sleep(100);const gate=securityBlock();if(gate)return{ok:false,status:gate};if(busy())return{ok:true,status:'SUBMITTED',evidence:'UI_BUSY'};if(location.hostname==='chatgpt.com'&&[...document.querySelectorAll('[data-message-author-role=\"user\"]')].some(e=>vis(e)&&String(e.textContent||'').trim()===expected))return{ok:true,status:'SUBMITTED',evidence:'USER_MESSAGE_VISIBLE'};c=findComposer();if(c&&composerText(c)==='')return{ok:true,status:'SUBMITTED',evidence:'COMPOSER_CLEARED'};}return{ok:false,status:'SUBMIT_EVIDENCE_MISSING'};})()`;
+  return `(async()=>{const text=${JSON.stringify(text)},expected=text.trim();const sleep=ms=>new Promise(r=>setTimeout(r,ms));const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};const securityBlock=()=>{if(document.querySelector('iframe[src*=\"captcha\" i],iframe[src*=\"challenge\" i],[class*=\"captcha\" i],[id*=\"captcha\" i]'))return'BLOCKED_CAPTCHA';const t=[...document.querySelectorAll('[role=\"alert\"],[role=\"dialog\"],[data-testid*=\"toast\" i]')].slice(0,30).map(e=>(e.textContent||'').toLowerCase()).join(' '),m=[['rate limit','BLOCKED_RATE_LIMIT'],['too many requests','BLOCKED_RATE_LIMIT'],['suspicious activity','BLOCKED_SUSPICIOUS_ACTIVITY'],['unusual activity','BLOCKED_SUSPICIOUS_ACTIVITY'],['verify your identity','BLOCKED_REAUTH'],['verify it’s you','BLOCKED_REAUTH'],['xác minh danh tính','BLOCKED_REAUTH']];for(const [n,s] of m)if(t.includes(n))return s;return null;};const blocked=securityBlock();if(blocked)return{ok:false,status:blocked};if(!expected)return{ok:false,status:'EMPTY_WORK_ORDER'};const sels=location.hostname==='chatgpt.com'?['#prompt-textarea','div[contenteditable=\"true\"][data-lexical-editor=\"true\"]','[contenteditable=\"true\"][role=\"textbox\"]','textarea']:['rich-textarea .ql-editor[contenteditable=\"true\"]','.ql-editor[contenteditable=\"true\"]','[contenteditable=\"true\"][role=\"textbox\"]','textarea'];const findComposer=()=>{for(const s of sels){const x=[...document.querySelectorAll(s)].find(vis);if(x)return x;}return null;};const composerText=e=>e instanceof HTMLTextAreaElement||e instanceof HTMLInputElement?String(e.value||'').trim():String(e?.innerText||e?.textContent||'').trim();let c=findComposer();if(!c)return{ok:false,status:'COMPOSER_NOT_FOUND'};if(composerText(c)!==expected){c.focus();if(c instanceof HTMLTextAreaElement||c instanceof HTMLInputElement){const proto=c instanceof HTMLTextAreaElement?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(proto,'value')?.set?.call(c,text);c.dispatchEvent(new Event('input',{bubbles:true}));c.dispatchEvent(new Event('change',{bubbles:true}));}else{const sel=window.getSelection(),range=document.createRange();range.selectNodeContents(c);sel?.removeAllRanges();sel?.addRange(range);if(!document.execCommand('insertText',false,text)){c.textContent=text;c.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:text}));}}}const scoped=['button[data-testid=\"send-button\"]','button[type=\"submit\"]','button[aria-label*=\"Send\" i]','button[aria-label*=\"Gửi\" i]','button[aria-label*=\"submit\" i]'],global=['button[data-testid=\"send-button\"]','button[aria-label*=\"Send\" i]','button[aria-label*=\"Gửi\" i]','button[aria-label*=\"submit\" i]'];const usable=e=>vis(e)&&!e.disabled&&e.getAttribute('aria-disabled')!=='true';const findSend=()=>{for(const root of [c.closest?.('form'),c.parentElement].filter(Boolean))for(const s of scoped){const a=[...root.querySelectorAll(s)].filter(usable);if(a.length===1)return a[0];}for(const s of global){const a=[...document.querySelectorAll(s)].filter(usable);if(a.length===1)return a[0];}return null;};let b=null,until=Date.now()+${SEND_BUTTON_WAIT_MS};while(Date.now()<until){await sleep(150);const gate=securityBlock();if(gate)return{ok:false,status:gate};b=findSend();if(b)break;}if(!b)return{ok:false,status:'SEND_BUTTON_NOT_FOUND'};b.click();const busy=()=>['button[data-testid=\"stop-button\"]','button[aria-label*=\"Stop\" i]','button[aria-label*=\"Dừng\" i]'].some(s=>[...document.querySelectorAll(s)].some(vis))||[...document.querySelectorAll('button,[role=\"button\"],[aria-live]')].some(e=>vis(e)&&/(^|\\s)(đang suy nghĩ|thinking|generating|đang tạo)(\\s|$)/i.test((e.getAttribute('aria-label')||e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim()));until=Date.now()+3500;while(Date.now()<until){await sleep(100);const gate=securityBlock();if(gate)return{ok:false,status:gate};if(busy())return{ok:true,status:'SUBMITTED',evidence:'UI_BUSY'};if(location.hostname==='chatgpt.com'&&[...document.querySelectorAll('[data-message-author-role=\"user\"]')].some(e=>vis(e)&&String(e.textContent||'').trim()===expected))return{ok:true,status:'SUBMITTED',evidence:'USER_MESSAGE_VISIBLE'};c=findComposer();if(c&&composerText(c)==='')return{ok:true,status:'SUBMITTED',evidence:'COMPOSER_CLEARED'};}return{ok:false,status:'SUBMIT_EVIDENCE_MISSING'};})()`;
 }
 async function dispatch(target,text){
   const p=await pageRpc(target);
@@ -239,10 +243,11 @@ async function archiveChat(target){
     }
     await cdpMouseClick(p,archivePoint);
     const deadline=Date.now()+10000;
+    const confirmExpr=`(()=>{const vis=e=>{const r=e?.getBoundingClientRect(),s=e&&getComputedStyle(e);return !!e&&r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const title=${JSON.stringify(menuPoint.title)};const sidebarVisible=[...document.querySelectorAll('button,[role="button"]')].some(e=>vis(e)&&/ẩn thanh bên|đóng thanh bên|hide sidebar|close sidebar/i.test((e.getAttribute('aria-label')||e.innerText||'').trim()));const rowPresent=[...document.querySelectorAll('[role="listitem"]')].some(e=>vis(e)&&String(e.innerText||'').trim()===title&&[...e.querySelectorAll('button')].some(b=>/hành động trong trò chuyện|conversation actions|chat actions/i.test(b.getAttribute('aria-label')||'')));const notices=[...document.querySelectorAll('[role="status"],[role="alert"],[data-testid*="toast" i]')].filter(vis).map(e=>(e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim()).join(' ');return{url:location.href,path:location.pathname,sidebarVisible,rowPresent,archivedNotice:/đã lưu trữ|archived/i.test(notices)}})()`;
     while(Date.now()<deadline){
       await sleep(250);
-      const state=(await p.call('Runtime.evaluate',{expression:'({url:location.href,path:location.pathname})',returnByValue:true},3000)).result.value;
-      if(state?.url!==menuPoint.before||!/\/c\//.test(String(state?.path||'')))return{ok:true,status:'ARCHIVED',before:menuPoint.before,after:state?.url||null,title:menuPoint.title,actionText:archivePoint.text};
+      const state=(await p.call('Runtime.evaluate',{expression:confirmExpr,returnByValue:true},3000)).result.value;
+      if(state?.url!==menuPoint.before||!/\/c\//.test(String(state?.path||''))||state?.archivedNotice||(state?.sidebarVisible&&state?.rowPresent===false))return{ok:true,status:'ARCHIVED',before:menuPoint.before,after:state?.url||null,title:menuPoint.title,actionText:archivePoint.text,evidence:state?.archivedNotice?'TOAST':state?.url!==menuPoint.before?'URL_CHANGED':state?.sidebarVisible&&!state?.rowPresent?'SIDEBAR_ROW_REMOVED':'PATH_CHANGED'};
     }
     return{ok:false,status:'ARCHIVE_NOT_CONFIRMED',before:menuPoint.before,title:menuPoint.title};
   }finally{p.close();}
@@ -271,6 +276,8 @@ async function newChat(target){
   }finally{p.close();}
 }
 
+function retryStreamExpr(){return `(()=>{const vis=e=>{const r=e?.getBoundingClientRect(),s=e&&getComputedStyle(e);return !!e&&r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const buttons=[...document.querySelectorAll('button,[role="button"]')].filter(vis).filter(e=>/^(thử lại|retry|try again)$/i.test((e.innerText||e.textContent||e.getAttribute('aria-label')||'').replace(/\\s+/g,' ').trim()));if(buttons.length!==1)return{ok:false,status:'RETRY_BUTTON_COUNT_'+buttons.length};buttons[0].click();return{ok:true,status:'STREAM_RETRY_CLICKED'}})()`;}
+async function clickStreamRetry(target){const p=await pageRpc(target);try{return (await p.call('Runtime.evaluate',{expression:retryStreamExpr(),returnByValue:true,userGesture:true},6000)).result.value;}finally{p.close();}}
 async function reloadTarget(target){const p=await pageRpc(target);try{await p.call('Page.reload',{ignoreCache:false});return{ok:true,status:'RELOADED'};}finally{p.close();}}
 async function waitForIdleAfterSubmission(target,timeoutMs=45000,stableReadyMs=5000){
   const deadline=Date.now()+timeoutMs;let readySince=0;
@@ -341,6 +348,26 @@ async function maybeNv02Continuity(w,target,ui){
   if(phase==='BLOCKED'){await continuityEvent('BLOCKED',{securityBlock:ui?.securityBlock||null});return;}
   const controller=await getControllerState();
   const active=hasActiveNv02Work(controller);
+  if(ui?.recoverableError==='STREAM_RECOVERY_TIMEOUT'){
+    if(now<Number(state.nextRecoverableRetryAt||0))return;
+    const count=Math.min(MAX_STALLED_CHECKS,Number(state.recoverableRetryCount||0)+1);
+    let recovery={ok:false,status:'RECOVERY_NOT_RUN'};
+    if(count===1){
+      recovery=await withNv02Mutation(()=>clickStreamRetry(target),'STREAM_RETRY_RECOVERY');
+    }else if(count===2){
+      recovery=await withNv02Mutation(()=>reloadTarget(target),'STREAM_RETRY_RELOAD');
+    }else{
+      await post('/api/workers/NV02/restart-schedule','NV02',{reason:'STREAM_RECOVERY_3_CHECKS'}).catch(()=>{});
+      recovery={ok:true,status:'STREAM_RETRY_RESTART_SCHEDULED'};
+    }
+    state={...state,recoverableRetryCount:count>=MAX_STALLED_CHECKS?0:count,nextRecoverableRetryAt:now+(count===1?30000:60000),workingSignature:'',workingUnchangedChecks:0,nextContinueAt:Math.max(Number(state.nextContinueAt||0),now+30000)};
+    saveNv02Continuity(state);
+    await continuityEvent('STREAM_RECOVERY_ACTION',{count,status:recovery?.status||null,nextRecoverableRetryAt:state.nextRecoverableRetryAt});
+    return;
+  }
+  if(state.recoverableRetryCount||state.nextRecoverableRetryAt){
+    state={...state,recoverableRetryCount:0,nextRecoverableRetryAt:0};saveNv02Continuity(state);
+  }
   if(now>=state.nextRefreshAt&&phase==='READY'&&!active){
     try{
       const receipt=await checkpointNv02(target);
@@ -420,7 +447,7 @@ async function tickWorker(w){
     const projectContextReady=w.id!=='NV02'||isNv02ProjectContext(rawUi.url);
     const ui=projectContextReady?rawUi:{...rawUi,uiReady:false,uiPhase:'STALLED',modelReady:false};
     const display={workArea:{left:0,top:0,width:Number(config.layout?.fallbackWorkAreaWidth||3277),height:1688}};
-    await post('/api/heartbeat',w.id,{workerId:w.id,state:ui.uiPhase||'STALLED',windowId,tabId:target.id,url:ui.url,active:true,uiReady:ui.uiReady,uiPhase:ui.uiPhase,composerReady:ui.composerReady,sendReady:ui.sendReady,stopVisible:ui.stopVisible,scrollToBottomVisible:ui.scrollToBottomVisible,authRequired:ui.authRequired===true,uiBusy:ui.uiBusy,securityBlock:ui.securityBlock,modelControlPresent:ui.modelControlPresent,reasoningEffort:ui.reasoningEffort,modelReady:ui.modelReady,display});
+    await post('/api/heartbeat',w.id,{workerId:w.id,state:ui.uiPhase||'STALLED',windowId,tabId:target.id,url:ui.url,active:true,uiReady:ui.uiReady,uiPhase:ui.uiPhase,composerReady:ui.composerReady,sendReady:ui.sendReady,stopVisible:ui.stopVisible,scrollToBottomVisible:ui.scrollToBottomVisible,authRequired:ui.authRequired===true,uiBusy:ui.uiBusy,securityBlock:ui.securityBlock,modelControlPresent:ui.modelControlPresent,reasoningEffort:ui.reasoningEffort,modelReady:ui.modelReady,retryVisible:ui.retryVisible,recoverableError:ui.recoverableError,display});
     if(w.id==='NV02'&&!projectContextReady&&!ui.securityBlock){
       if(!NV02_HOME_URL){await continuityEvent('PROJECT_CONTEXT_RECOVERY_BLOCKED',{reason:'NV02_HOME_URL_MISSING',url:rawUi.url||null});return;}
       const recovered=await withNv02Mutation(async()=>{await navigate(target,NV02_HOME_URL);return{ok:true,status:'PROJECT_CONTEXT_NAVIGATED'};},'PROJECT_CONTEXT_RECOVERY');
