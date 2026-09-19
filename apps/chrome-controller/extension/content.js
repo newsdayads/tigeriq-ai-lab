@@ -122,8 +122,8 @@ function detectSecurityBlock() {
 
 function findStopButton() {
   const selectors = location.hostname === 'chatgpt.com'
-    ? ['button[data-testid="stop-button"]','button[aria-label*="Stop" i]','button[aria-label*="Dừng" i]']
-    : ['button[aria-label*="Stop" i]','button[aria-label*="Dừng" i]','button[data-test-id*="stop" i]'];
+    ? ['button[data-testid="stop-button"]','button[aria-label*="Stop" i]','button[aria-label*="Dừng" i]','button[aria-label*="Ngừng" i]']
+    : ['button[aria-label*="Stop" i]','button[aria-label*="Dừng" i]','button[aria-label*="Ngừng" i]','button[data-test-id*="stop" i]'];
   for (const selector of selectors) {
     const match = Array.from(document.querySelectorAll(selector)).find((el) => visible(el));
     if (match) return match;
