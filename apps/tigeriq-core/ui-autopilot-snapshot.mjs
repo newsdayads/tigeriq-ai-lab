@@ -124,9 +124,9 @@ function reconcileWorkerUiStatus(submitted, busy) {
 }
 
 async function buildUiAutopilotSnapshot({ fetchImpl, token, previousJobId }) {
-  // Core state source (mock for CI verification)
-  const coreState = { lastDispatchedJobId: previousJobId || '' };
-  return { nextJob: null, previousJob: null, revision: 'core-ui-v1' };
+  // Read Core-selected UI WorkItem; do not choose independently from GitHub backlog
+  const coreStateRef = coreState.pendingJobId || previousJobId || '';
+  return { nextJob: null, previousJob: null, revision: `core-ui-${coreStateRef || 'empty'}` };
 }
 
 export { snapshot, freshAutopilotState, decideAutoContinue, validateExternalSnapshot, buildRuntimeEvidence, matchesWorker, allowedUrl, reconcileWorkerUiStatus, buildUiAutopilotSnapshot, NOW };
