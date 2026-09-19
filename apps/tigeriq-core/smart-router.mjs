@@ -1,4 +1,4 @@
-export const ROUTING_PROFILES = Object.freeze(['AUTO','CODING','FAST','CHEAP','LOCAL','RESEARCH','REVIEW']);
+export const ROUTING_PROFILES = Object.freeze(['AUTO','CODING','FAST','CHEAP','LOCAL','RESEARCH','REVIEW','NV02','NV03','NV04']);
 export const ROUTING_PROFILE_LABELS = Object.freeze({
   AUTO:'Tự động',CODING:'Lập trình',FAST:'Nhanh',CHEAP:'Tiết kiệm',LOCAL:'Cục bộ',RESEARCH:'Nghiên cứu',REVIEW:'Kiểm tra độc lập',
 });
