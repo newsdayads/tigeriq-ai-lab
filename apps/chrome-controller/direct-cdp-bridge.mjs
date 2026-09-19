@@ -5,12 +5,12 @@ import {
   MAX_STALLED_CHECKS, deriveNv02Phase, hasActiveNv02Work,
   nextRandomAt, pickContinuePrompt, shouldRotateChat,
 } from './extension/continuity.js';
-import { buildDurableSavePrompt, waitForDurableSaveReceipt } from './extension/save-receipt.js';
 
 const CONFIG='D:\\TigerIQ\\Apps\\ChromeController\\Config\\chrome-controller.json';
 const LOG='D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\direct-cdp-bridge.jsonl';
 const SEND_BUTTON_WAIT_MS=10000;
 const NV02_CONTINUITY_STATE='D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\nv02-continuity-state.json';
+const NV02_CONTINUITY_CHECKPOINT='D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\nv02-continuity-checkpoint.json';
 const CONTROLLER='http://127.0.0.1:8798';
 const BINDING='2';
 const NV02_TOKEN=String(process.env.TIGERIQ_NV02_WORKER_TOKEN||'').trim();
@@ -275,16 +275,27 @@ async function dispatchNaturalContinue(target,state,now){
   return withNv02Mutation(()=>dispatchNaturalContinueLocked(target,state,now));
 }
 async function checkpointNv02(target){
-  return withNv02Mutation(async()=>{
-    const saveToken=crypto.randomUUID(),dispatchedAt=new Date().toISOString();
-    const text=buildDurableSavePrompt({saveToken,workerId:'NV02',dispatchedAt});
-    const sent=await dispatch(target,text);
-    if(!sent?.ok)throw new Error(sent?.status||'SAVE_DISPATCH_FAILED');
-    await waitForIdleAfterSubmission(target);
-    const receipt=await waitForDurableSaveReceipt(saveToken,'NV02',dispatchedAt);
-    await continuityEvent('CHECKPOINT_DURABLE',{receiptRef:receipt.receiptRef,checkpointRef:receipt.checkpointRef,verifiedAt:receipt.verifiedAt});
-    return receipt;
-  });
+  const ui=await uiState(target);
+  if(ui?.securityBlock)throw new Error(ui.securityBlock);
+  if(ui?.uiPhase!=='READY'||ui?.modelReady!==true)throw new Error('CHECKPOINT_NV02_NOT_READY');
+  const verifiedAt=new Date().toISOString();
+  const checkpoint={
+    version:1,
+    workerId:'NV02',
+    verifiedAt,
+    url:ui.url,
+    title:ui.title,
+    uiPhase:ui.uiPhase,
+    reasoningEffort:ui.reasoningEffort||null,
+    projectContextReady:ui.projectContextReady===true,
+    continuity:loadNv02Continuity(),
+  };
+  const tmp=NV02_CONTINUITY_CHECKPOINT+'.tmp';
+  fs.writeFileSync(tmp,JSON.stringify(checkpoint,null,2));
+  fs.renameSync(tmp,NV02_CONTINUITY_CHECKPOINT);
+  log('NV02_LOCAL_CHECKPOINT_WRITTEN',{workerId:'NV02',checkpointRef:NV02_CONTINUITY_CHECKPOINT,verifiedAt,url:ui.url,title:ui.title});
+  await continuityEvent('CHECKPOINT_LOCAL_DURABLE',{checkpointRef:NV02_CONTINUITY_CHECKPOINT,verifiedAt});
+  return{receiptRef:null,checkpointRef:NV02_CONTINUITY_CHECKPOINT,verifiedAt};
 }
 async function rotateNv02Chat(target,state,now){
   const receipt=await checkpointNv02(target);
