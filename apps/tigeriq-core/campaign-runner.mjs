@@ -155,6 +155,16 @@ export function executeCoreWorkItemLifecycle({ workItem, preflightFn, repairFn, 
     } catch (err) {
       lastError = err;
       const errMessage = String(err?.message || err);
+      if (currentCycle >= maxRepairCycles) {
+        currentCycle++;
+        return {
+          ok: false,
+          stage: 'repair_exhausted',
+          repairCycles: currentCycle - 1,
+          error: errMessage,
+          item: { ...item, stage: 'failed', blocker: `Repair exhausted after ${currentCycle - 1} cycles: ${errMessage}` }
+        };
+      }
       currentCycle++;
       if (currentCycle > maxRepairCycles) {
         return {
