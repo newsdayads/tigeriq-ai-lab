@@ -62,7 +62,7 @@ export function projectCoreWorkItem(snapshot: WorkOrderSnapshot): CoreWorkItemPr
     scopeLease: snapshot.order.scopeLease ?? (snapshot.implementerId ? { ownerId: snapshot.implementerId, scope: snapshot.order.scope, state: snapshot.order.status === 'verified' ? 'released' : 'active' } : null),
     blockers,
     evidenceRefs,
-    nextAction: snapshot.order.nextAction ?? defaultNextAction(status, blockers),
+    nextAction: projectedNextAction(snapshot.order.nextAction, status, blockers),
     timestamps,
   };
 }
@@ -205,6 +205,11 @@ function projectionBlockers(snapshot: WorkOrderSnapshot, latestDecision: GateDec
       : []),
     ...(snapshot.order.status === 'failed' || snapshot.order.status === 'blocked' ? [snapshot.order.status] : []),
   ]);
+}
+
+function projectedNextAction(ownerNextAction: string | undefined, status: CoreWorkItemStatus, blockers: readonly string[]): string | null {
+  if (status === 'QUEUED' || status === 'CLAIMED' || status === 'WORKING') return ownerNextAction ?? defaultNextAction(status, blockers);
+  return defaultNextAction(status, blockers);
 }
 
 function defaultNextAction(status: CoreWorkItemStatus, blockers: readonly string[]): string | null {
