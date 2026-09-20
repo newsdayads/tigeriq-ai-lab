@@ -153,7 +153,7 @@ render = function renderTruth(d) {
 
 async function pollWebHealth() {
   try {
-    const response = await fetch('/health',{cache:'no-store'});
+    const response = await fetch(window.TIGERIQ_HEALTH_ENDPOINT || '/health', { cache: 'no-store' });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     latestWebHealth = await response.json();
     latestWebHealthError = null;
@@ -164,4 +164,6 @@ async function pollWebHealth() {
   if (S.data) { renderMetrics(S.data); syncHealthLabels(S.data); }
 }
 pollWebHealth();
-setInterval(pollWebHealth,2000);
+const _webHealthInterval = setInterval(pollWebHealth, 2000);
+window.addEventListener('beforeunload', () => clearInterval(_webHealthInterval));
+window.addEventListener('focus', pollWebHealth);
