@@ -22,6 +22,28 @@ export class RemoteTaskBroker {
     return record;
   }
 
+  async validateHeartbeat(nodeId: string, activeTaskIds: string[]): Promise<string[]> {
+    if (!nodeId.trim()) throw new Error('nodeId is required');
+    const recovered: string[] = [];
+    const activeSet = new Set(activeTaskIds);
+    for (const record of this.runtime.queue.list()) {
+      if (record.stage !== 'running' || !record.assignedEmployeeId) continue;
+      const employee = this.runtime.registry.getEmployee(record.assignedEmployeeId);
+      if (!employee || employee.nodeId !== nodeId) continue;
+      if (!activeSet.has(record.task.taskId)) {
+        await this.mailbox.expire(record.task.taskId);
+        const failure = brokerFailure(record.task.taskId, employee.employeeId, new Error('heartbeat task missing on worker node'), 'HEARTBEAT_MISSING', this.now());
+        this.runtime.queue.fail(record.task.taskId, failure);
+        this.runtime.registry.release(employee.employeeId, record.task.taskId, false);
+        const latest = this.runtime.queue.get(record.task.taskId);
+        if (latest.attempts < latest.task.maxAttempts) this.runtime.queue.requeue(record.task.taskId);
+        recovered.push(record.task.taskId);
+      }
+    }
+    await this.runtime.checkpoint();
+    return recovered;
+  }
+
   async poll(nodeId: string): Promise<RemoteTaskLease | undefined> {
     if (!nodeId.trim()) throw new Error('nodeId is required');
     await this.#recoverExpiredForNode(nodeId);
