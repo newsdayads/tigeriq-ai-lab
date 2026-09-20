@@ -17,6 +17,8 @@ const NV02_TOKEN=String(process.env.TIGERIQ_NV02_WORKER_TOKEN||'').trim();
 const config=JSON.parse(fs.readFileSync(CONFIG,'utf8'));
 const NV02_HOME_URL=String(config.workers.find((worker)=>worker.id==='NV02')?.homeUrl||'').trim();
 const NV02_PROJECT_PREFIX=(()=>{try{return new URL(NV02_HOME_URL).pathname.replace(/\/project\/?$/,'')}catch{return''}})();
+const NV02_PROJECT_ID=(()=>{const m=NV02_PROJECT_PREFIX.match(/^\/g\/(g-p-[a-z0-9]+)(?:-[^/]+)?$/i);return m?.[1]||''})();
+const NV02_PROJECT_ID_PREFIX=NV02_PROJECT_ID?`/g/${NV02_PROJECT_ID}`:'';
 const busy=new Set();
 
 function isNv02ProjectContext(url){
@@ -24,7 +26,10 @@ function isNv02ProjectContext(url){
   try{
     const current=new URL(String(url||''));
     const expected=new URL(NV02_HOME_URL);
-    return current.hostname===expected.hostname&&(current.pathname===expected.pathname||current.pathname.startsWith(NV02_PROJECT_PREFIX+'/c/'));
+    if(current.hostname!==expected.hostname)return false;
+    if(current.pathname===expected.pathname)return true;
+    if(current.pathname.startsWith(NV02_PROJECT_PREFIX+'/c/'))return true;
+    return Boolean(NV02_PROJECT_ID_PREFIX)&&current.pathname.startsWith(NV02_PROJECT_ID_PREFIX+'/c/');
   }catch{return false}
 }
 

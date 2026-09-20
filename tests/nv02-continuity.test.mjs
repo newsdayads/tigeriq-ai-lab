@@ -104,6 +104,8 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("NEW_CHAT_PROJECT_CONTEXT_RECOVERED");
     expect(source).toContain("Page.navigate',{url:NV02_HOME_URL}");
     expect(source).toContain("NV02_PROJECT_PREFIX");
+    expect(source).toContain("NV02_PROJECT_ID_PREFIX");
+    expect(source).toContain("current.pathname.startsWith(NV02_PROJECT_ID_PREFIX+'/c/')");
     expect(source).toContain("isNv02ProjectContext");
     expect(source).toContain("PROJECT_CONTEXT_RECOVERY_NAVIGATED");
     expect(source).toContain("projectContextReady?rawUi:{...rawUi,uiReady:false,uiPhase:'STALLED',modelReady:false}");
