@@ -124,6 +124,11 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("phase==='READY'&&!waitingEvidence&&!active&&state.nextContinueAt-now>30000");
     expect(source).toContain("nextContinueAt:now+20000");
     expect(source).toContain("IDLE_CONTINUE_ACCELERATED");
+    expect(source).toContain("const checkpointed={...state,dispatchesInChat:0,chatStartedAt:now");
+    expect(source).toContain("nextRefreshAt:nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS)");
+    expect(source).toContain("PROJECT_CONTEXT_RECOVERY_AFTER_ROTATE_FAILED");
+    expect(source).toContain("state={...latest,dispatchesInChat:0,chatStartedAt:now");
+    expect(source).toContain("nextContinueAt:now+5000");
     expect(source).toContain("'CONTINUITY_CONTINUE'");
     const leaseServerSource = readFileSync('apps/chrome-controller/src/server.ts','utf8');
     expect(leaseServerSource).toContain("allowWaitingEvidence:continuityContinue");
