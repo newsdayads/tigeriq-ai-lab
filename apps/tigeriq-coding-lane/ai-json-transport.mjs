@@ -55,7 +55,7 @@ export function prepareAiJsonRequest(input,init={}){
   return {...init,body:JSON.stringify(body)};
 }
 
-export function compactCurrentFilesForModel(prompt,maxTotalChars=24000){
+export function compactCurrentFilesForModel(prompt,maxTotalChars=12000){
   const p=String(prompt||'');
   const start=p.indexOf('CURRENT FILES:\n');
   if(start<0)return p;
@@ -67,26 +67,26 @@ export function compactCurrentFilesForModel(prompt,maxTotalChars=24000){
   const suffix=after.slice(end);
   const chunks=block.split('\n\n---\n\n');
   const fileCount=Math.max(1,chunks.filter(x=>x.startsWith('FILE ')).length);
-  const budget=Math.max(3000,Math.floor(maxTotalChars/fileCount));  const compacted=chunks.map(chunk=>{
+  const budget=Math.max(1800,Math.floor(maxTotalChars/fileCount));  const compacted=chunks.map(chunk=>{
     if(!chunk.startsWith('FILE '))return chunk;
     const nl=chunk.indexOf('\n');
     if(nl<0)return chunk;
     const header=chunk.slice(0,nl+1),content=chunk.slice(nl+1);
     if(content.length<=budget)return chunk;
-    const head=Math.max(1000,Math.floor(budget*0.25));
-    const tail=Math.max(1000,budget-head);
+    const head=Math.max(700,Math.floor(budget*0.25));
+    const tail=Math.max(700,budget-head);
     const omitted=Math.max(0,content.length-head-tail);
     return header+content.slice(0,head)+`\n/* ... ${omitted} chars omitted from model context; full file retained locally ... */\n`+content.slice(-tail);
   }).join('\n\n---\n\n');
   return p.slice(0,bodyStart)+compacted+suffix;
 }
-export function compactPromptForChanges(prompt){
+export function compactPromptForChanges(prompt,{maxContextChars=12000,maxOutputChars=6000}={}){
   const p=String(prompt||'');
   if(expectedSchemaFromPrompt(p)!=='changes')return p;
   const old='Return ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}. Do not touch paths outside ALLOWED PATHS. Never output secrets. Keep changes minimal and testable.';
-  const compact='Return ONLY compact JSON {"summary":"short","edits":[{"path":"exact allowed path","search":"exact existing UTF-8 snippet","replace":"replacement UTF-8 snippet"}]}. For a new or empty small file you may use {"path":"exact allowed path","content":"complete UTF-8 file content"}. Prefer search/replace edits for existing files. Each search must match exactly once. Do not return full existing files. Do not touch paths outside ALLOWED PATHS. Never output secrets. Keep edits minimal and testable.';
+  const compact=`Return ONLY compact JSON {"summary":"short","edits":[{"path":"exact allowed path","search":"exact existing UTF-8 snippet","replace":"replacement UTF-8 snippet"}]}. For a new or empty small file you may use {"path":"exact allowed path","content":"complete UTF-8 file content"}. Keep the ENTIRE JSON response under ${maxOutputChars} characters. For existing files, each search snippet must be <=1200 characters and each replacement <=2400 characters; prefer several small exact edits over one large edit. Each search must match exactly once. Do not return full existing files or copy omitted context blocks. Do not touch paths outside ALLOWED PATHS. Never output secrets. Keep edits minimal and testable.`;
   const rewritten=p.includes(old)?p.replace(old,compact):`${p}\n\nIMPORTANT: ${compact}`;
-  return compactCurrentFilesForModel(rewritten);
+  return compactCurrentFilesForModel(rewritten,maxContextChars);
 }
 
 export function currentFilesFromPrompt(prompt){
@@ -189,10 +189,15 @@ export function installAiJsonTransport({maxAttempts=3,baseDelayMs=350,attemptTim
     const jsonPrepared=prepareAiJsonRequest(input,init);
     const originalPrompt=promptFromRequest(input,jsonPrepared);
     const schema=expectedSchemaFromPrompt(originalPrompt);
-    const request=schema==='changes'?rewritePromptInRequest(input,jsonPrepared,compactPromptForChanges(originalPrompt)):jsonPrepared;
     let last;
     for(let attempt=1;attempt<=maxAttempts;attempt++){
       let res;
+      const request=schema==='changes'
+        ?rewritePromptInRequest(input,jsonPrepared,compactPromptForChanges(originalPrompt,{
+          maxContextChars:attempt===1?12000:7000,
+          maxOutputChars:attempt===1?6000:3500,
+        }))
+        :jsonPrepared;
       const attemptRequest=request?.signal?{...request,signal:AbortSignal.timeout(attemptTimeoutMs)}:request;
       try{res=await original(input,attemptRequest);last=res;}
       catch(error){
