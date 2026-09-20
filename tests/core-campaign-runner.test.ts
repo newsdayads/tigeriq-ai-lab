@@ -45,6 +45,16 @@ describe('API campaign runner and core lifecycle integration',()=>{
     const item = normalizeWorkItemLifecycle({ issueOrPr: 'PR #42', implementer: 'NV05', reviewer: 'NV10', stage: 'coding', blocker: 'tests failing', nextAction: 'fix test runner' });
     expect(item).toMatchObject({ issueOrPr: 'PR #42', implementer: 'NV05', reviewer: 'NV10', stage: 'coding', blocker: 'tests failing', nextAction: 'fix test runner' });
   });
+  it('enforces single retry execution and IDLE_WITH_BACKLOG recovery closeout handling', () => {
+    const tracker = new Set();
+    const item = { issueOrPr: 'PR #1122', implementer: 'NV02', reviewer: 'NV11' };
+    const r1 = executeCoreWorkItemLifecycle({ workItem: item, retryTracker: tracker, repairFn: () => { throw new Error('fail'); }, maxRepairCycles: 1 });
+    expect(r1.ok).toBe(false);
+    
+    const r2 = executeCoreWorkItemLifecycle({ workItem: item, retryTracker: tracker, repairFn: () => {}, maxRepairCycles: 1 });
+    expect(r2.stage).toBe('single_retry_violation');
+  });
+
   it('integrates preflight checks and normalized autonomous repair directly into Core WorkItem lifecycle',()=>{
     const preflightRes = runExecutionPreflight({
       workItem: { issueOrPr: 'PR #1002', implementer: 'NV11', reviewer: 'NV12' }
