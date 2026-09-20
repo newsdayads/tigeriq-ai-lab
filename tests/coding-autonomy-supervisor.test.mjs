@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {isRetryableFailure,isStaleJob,normalizeRepairFailure,repairInstruction,shouldRetry} from '../apps/tigeriq-coding-lane/autonomy-supervisor.mjs';
+import {classifyIssueAutonomy,githubIssueEligibility,isRetryableFailure,isStaleJob,normalizeRepairFailure,repairInstruction,shouldRetry} from '../apps/tigeriq-coding-lane/autonomy-supervisor.mjs';
 
 describe('coding autonomy supervisor repair policy',()=>{
   it('normalizes known repairable failures',()=>{
@@ -21,6 +21,30 @@ describe('coding autonomy supervisor repair policy',()=>{
     expect(isStaleJob({status:'running',started_at:'2026-09-20T11:00:00Z'},now,30*60*1000)).toBe(true);
     expect(isStaleJob({status:'done',started_at:'2026-09-20T11:00:00Z'},now,30*60*1000)).toBe(false);
   });
+
+  it('honors current GitHub autonomy markers and owner holds',()=>{
+    const base={state:'open',body:'TIGERIQ_EXECUTABLE=true\nOWNER_POLICY=AUTO\nSTATE=READY'};
+    expect(classifyIssueAutonomy(base)).toEqual({eligible:true,reason:'AUTO_ALLOWED'});
+    expect(classifyIssueAutonomy({...base,body:'TIGERIQ_EXECUTABLE=false\nOWNER_POLICY=AUTO'}).reason).toBe('TIGERIQ_EXECUTABLE_NOT_TRUE');
+    expect(classifyIssueAutonomy({...base,body:'TIGERIQ_EXECUTABLE=true\nOWNER_POLICY=MANUAL'}).reason).toBe('OWNER_POLICY_NOT_AUTO');
+    expect(classifyIssueAutonomy({...base,body:'TIGERIQ_EXECUTABLE=true\nOWNER_POLICY=AUTO\nNV02_SELF_MODIFICATION_GUARD=true'}).reason).toBe('NV02_SELF_MODIFICATION_GUARD');
+    expect(classifyIssueAutonomy({...base,body:'TIGERIQ_EXECUTABLE=true\nOWNER_POLICY=AUTO\nSTATE=OWNER_HOLD_NV02_SELF_MODIFICATION'}).reason).toBe('OWNER_HOLD');
+    expect(classifyIssueAutonomy({...base,state:'closed'}).reason).toBe('ISSUE_NOT_OPEN');
+  });
+  it('fails closed when current GitHub issue cannot be read',async()=>{
+    const fail=await githubIssueEligibility(1165,async()=>{throw new Error('offline')},'token');
+    expect(fail.eligible).toBe(false);
+    expect(fail.reason).toBe('GITHUB_READ_FAILED');
+    const http=await githubIssueEligibility(1165,async()=>({ok:false,status:503}),'token');
+    expect(http).toEqual({eligible:false,reason:'GITHUB_HTTP_503',issueNumber:1165});
+  });
+  it('uses current fetched issue body instead of stale objective markers',async()=>{
+    const current={state:'open',body:'TIGERIQ_EXECUTABLE=false\nOWNER_POLICY=MANUAL\nNV02_SELF_MODIFICATION_GUARD=true'};
+    const result=await githubIssueEligibility(1165,async()=>({ok:true,json:async()=>current}),'token');
+    expect(result.eligible).toBe(false);
+    expect(result.reason).toBe('TIGERIQ_EXECUTABLE_NOT_TRUE');
+  });
+
   it('repair prompt preserves original instruction and bounded cycle evidence',()=>{
     const p=repairInstruction({instruction:'fix X',failure:{message:'CI_GATES_FAILED'}},'CI_GATES_FAILED',2);
     expect(p).toContain('fix X');
