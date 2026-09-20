@@ -1,29 +1,29 @@
 export const CONTINUE_PROMPTS = Object.freeze([
-  '02',
-  'Làm tiếp',
-  'Tiếp tục',
-  'Thực thi',
-  'Làm ngay',
-  'Tiếp đi',
-  'Xử lý tiếp',
-  'Làm phần tiếp theo',
-  'Tiếp tục công việc',
-  'Thực hiện tiếp',
+  'Làm tiếp công việc hiện tại',
+  'Tiếp tục công việc hiện tại',
+  'Tiếp tục việc đang làm',
+  'Làm tiếp phần đang dở',
+  'Tiếp tục từ chỗ hiện tại',
+  'Tiếp tục đúng việc này',
+  'Xử lý tiếp việc hiện tại',
+  'Thực hiện tiếp việc đang làm',
+  'Tiếp tục đến điểm dừng hợp lệ',
+  'Làm tiếp, không đổi việc',
+  'Tiếp tục phần còn dở',
+  'Tiếp tục đúng nội dung đang làm',
   'Tiếp tục từ trạng thái hiện tại',
-  'Lấy việc tiếp theo làm đi',
-  'Kiểm tra rồi làm tiếp',
-  'Xem việc đang dở và tiếp tục',
-  'Tự lấy việc tiếp theo',
-  'Tiếp tục đến khi xong',
-  'Đừng dừng, làm tiếp',
-  'Xử lý việc ưu tiên cao nhất',
-  'Tiếp tục theo trạng thái hiện tại',
-  'Làm việc tiếp theo trong hàng đợi',
-  'Kiểm tra việc chưa xong rồi thực thi',
+  'Làm tiếp phần hiện tại',
+  'Tiếp tục xử lý việc đang dở',
   'Tiếp tục công việc đang dang dở',
-  'Tự chọn việc phù hợp và làm tiếp',
-  'Tiếp tục xử lý, không cần chờ tôi',
-  'Làm tiếp đến điểm dừng hợp lệ',
+  'Thực thi tiếp việc hiện tại',
+  'Tiếp tục đúng nhiệm vụ hiện tại',
+  'Làm tiếp nhiệm vụ đang thực hiện',
+  'Tiếp tục nội dung hiện tại',
+  'Xử lý tiếp phần đang làm',
+  'Tiếp tục công việc này',
+  'Làm tiếp từ chỗ đang dừng',
+  'Tiếp tục đúng việc đang được giao',
+  'Tiếp tục đến khi đạt điểm dừng hợp lệ',
 ]);
 
 export const CONTINUE_MIN_MS = 5 * 60 * 1000;
@@ -62,6 +62,7 @@ export function deriveNv02Phase(ui,{heartbeatStale=false}={}){
 export function hasActiveNv02Work(controller){
   const activeStages=new Set(['QUEUED','DISPATCHING','SUBMITTED','WORKING','VERIFY','BLOCKED']);
   if((controller?.jobs||[]).some((job)=>job?.workerId==='NV02'&&activeStages.has(String(job?.stage||''))&&!job?.completedAt))return true;
+  if(controller?.externalWorkAutopilotEnabled===false)return false;
   const autopilot=controller?.autopilot||{};
   if(autopilot.pendingJobId||autopilot.uncertainJobId)return true;
   const dispatched=String(autopilot.lastDispatchedJobId||'');

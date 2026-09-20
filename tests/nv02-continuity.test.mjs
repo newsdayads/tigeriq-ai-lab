@@ -24,8 +24,11 @@ describe('NV02 continuity policy', () => {
   it('keeps exactly the approved 25 natural continue prompts', () => {
     expect(CONTINUE_PROMPTS).toHaveLength(25);
     expect(new Set(CONTINUE_PROMPTS).size).toBe(25);
-    expect(CONTINUE_PROMPTS).toContain('02');
-    expect(CONTINUE_PROMPTS).toContain('Làm tiếp');
+    expect(CONTINUE_PROMPTS).toContain('Tiếp tục công việc hiện tại');
+    expect(CONTINUE_PROMPTS).not.toContain('02');
+    for(const prompt of CONTINUE_PROMPTS){
+      expect(prompt).not.toMatch(/tự (lấy|chọn)|việc tiếp theo|hàng đợi|ưu tiên cao nhất/i);
+    }
   });
 
   it('classifies DOM-backed UI state fail closed', () => {
@@ -49,6 +52,7 @@ describe('NV02 continuity policy', () => {
     expect(hasActiveNv02Work({jobs:[],autopilot:{phase:'IDLE'}})).toBe(false);
     expect(hasActiveNv02Work({jobs:[],autopilot:{phase:'BUSY',lastDispatchedJobId:'GH-1',lastCompletedJobId:'GH-1'}})).toBe(false);
     expect(hasActiveNv02Work({jobs:[],autopilot:{phase:'BUSY',lastDispatchedJobId:'GH-2',lastCompletedJobId:'GH-1'}})).toBe(true);
+    expect(hasActiveNv02Work({externalWorkAutopilotEnabled:false,jobs:[],autopilot:{pendingJobId:'GH-STALE',phase:'BUSY'}})).toBe(false);
     expect(hasActiveNv02Work({jobs:[{workerId:'NV02',stage:'BLOCKED',completedAt:'2026-09-18T23:07:35.468Z'}],autopilot:{phase:'IDLE'}})).toBe(false);
   });
 
@@ -112,27 +116,38 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("SEND_BUTTON_WAIT_MS+6000");
     expect((source.match(/composer-submit-button/g)||[]).length).toBeGreaterThanOrEqual(3);
     expect(source).toContain("until=Date.now()+${SEND_BUTTON_WAIT_MS}");
+    expect(source).toContain("first?.status!=='SEND_BUTTON_NOT_FOUND'");
+    expect(source).toContain("enterSubmitStateExpr(text)");
+    expect(source).toContain("Input.dispatchKeyEvent");
+    expect(source).toContain("ENTER_COMPOSER_CLEARED");
+    expect(source).toContain("ENTER_USER_MESSAGE_VISIBLE");
+    expect(source).toContain("ENTER_SUBMIT_EVIDENCE_MISSING");
     expect(source).toContain("activityBusyVisible:Boolean(activityBusy)");
     expect(source).toContain("đang suy nghĩ|thinking|generating|đang tạo");
     expect(source).toContain("/(^|\\\\s)(đang suy nghĩ|thinking|generating|đang tạo)(\\\\s|$)/i");
     expect(source).toContain(".replace(/\\\\s+/g,' ')");
     expect(source).toContain("phase==='READY'&&!active&&!waitingEvidence&&now>=state.nextContinueAt&&shouldRotateChat(state,now)");
     expect(source).toContain("now>=state.nextRefreshAt&&phase==='READY'&&!active&&!waitingEvidence");
-    expect(source).toContain("phase==='READY'&&waitingEvidence&&!active&&state.nextContinueAt-now>15000");
-    expect(source).toContain("nextContinueAt:now+5000");
-    expect(source).toContain("WAITING_EVIDENCE_CONTINUE_ACCELERATED");
-    expect(source).toContain("phase==='READY'&&!waitingEvidence&&!active&&state.nextContinueAt-now>30000");
-    expect(source).toContain("nextContinueAt:now+20000");
-    expect(source).toContain("IDLE_CONTINUE_ACCELERATED");
+    expect(source).not.toContain('WAITING_EVIDENCE_CONTINUE_ACCELERATED');
+    expect(source).not.toContain('IDLE_CONTINUE_ACCELERATED');
+    expect(source).not.toContain('nextContinueAt:now+5000');
+    expect(source).not.toContain('nextContinueAt:now+20000');
+    expect(source).not.toContain('nextContinueAt:now+15000');
+    expect(source).toContain("controller?.paused===true");
+    expect(source).toContain("CONTINUE_SKIPPED_OWNER_READ_ONLY");
+    expect(source).toContain("error.startsWith('BROWSER_MUTATION_LEASE_BUSY:')");
     expect(source).toContain("const checkpointed={...state,dispatchesInChat:0,chatStartedAt:now");
     expect(source).toContain("nextRefreshAt:nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS)");
     expect(source).toContain("PROJECT_CONTEXT_RECOVERY_AFTER_ROTATE_FAILED");
     expect(source).toContain("state={...latest,dispatchesInChat:0,chatStartedAt:now");
-    expect(source).toContain("nextContinueAt:now+5000");
+    expect(source).toContain("nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)");
     expect(source).toContain("'CONTINUITY_CONTINUE'");
     const leaseServerSource = readFileSync('apps/chrome-controller/src/server.ts','utf8');
     expect(leaseServerSource).toContain("allowWaitingEvidence:continuityContinue");
     expect(leaseServerSource).toContain("purpose==='CONTINUITY_CONTINUE'");
+    expect(leaseServerSource).toContain("if(!config.autopilot.enabled)return false;");
+    expect(leaseServerSource).toContain("externalWorkAutopilotEnabled:config.autopilot.enabled");
+    expect(leaseServerSource).toContain("EXTERNAL_WORK_AUTOPILOT_DISABLED");
     expect(source).toContain("WORKING_NO_PROGRESS_CHECK");
     expect(source).toContain("WORKING_STALE_RELOAD");
     expect(source).toContain("WORKING_NO_PROGRESS_3_CHECKS");
@@ -168,6 +183,12 @@ describe('NV02 continuity policy', () => {
     expect(installer).toContain("BRIDGE_NOT_RUNNING_DEPLOY_HEAD");
     expect(installer).toContain("NV02_MODEL_NOT_READY");
     expect(installer).toContain("NV02_REASONING_NOT_HIGH");
+    expect(installer).toContain("$effectiveConfig.autopilot.enabled=$false");
+    expect(installer).toContain("$effectiveConfig.autopilot.stateUrl=''");
+    expect(installer).toContain('APP_CHROME_AUTOPILOT_DISABLE_FAILED');
+    const example=JSON.parse(readFileSync('apps/chrome-controller/chrome-controller.config.example.json','utf8'));
+    expect(example.autopilot.enabled).toBe(false);
+    expect(example.autopilot.stateUrl).toBe('');
     expect(installer).toContain("Invoke-Native -File 'git' -ArgumentList");
     expect(installer).toContain("Invoke-Native -File 'npm' -ArgumentList");
     expect(installer).not.toContain("Invoke-Native 'git' @(");

@@ -24,9 +24,9 @@
     "retryBackoffMs": 15000
   },
   "autopilot": {
-    "enabled": true,
+    "enabled": false,
     "pollIntervalMs": 15000,
-    "stateUrl": "http://127.0.0.1:8794/api/ui-autopilot/snapshot",
+    "stateUrl": "",
     "requestTimeoutMs": 5000,
     "maxSnapshotAgeMs": 300000,
     "dispatchLeaseTtlMs": 300000

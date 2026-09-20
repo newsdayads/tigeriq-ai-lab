@@ -184,7 +184,12 @@ async function acquireBridgeMutationLease(workerId,purpose='NORMAL',ttlMs=30000)
   const r=await fetch(`${CONTROLLER}/api/utility/workers/${workerId}/mutation-lease/acquire`,{
     method:'POST',headers:auth(workerId,true),body:JSON.stringify({ownerId,ttlMs,purpose}),signal:AbortSignal.timeout(4000)
   });
-  if(r.status===409)return null;
+  if(r.status===409){
+    const data=await r.json().catch(()=>({}));
+    const error=String(data?.error||'');
+    if(error.startsWith('BROWSER_MUTATION_LEASE_BUSY:'))return null;
+    throw new Error(error||`HTTP_409:mutation-lease-acquire`);
+  }
   if(!r.ok)throw new Error(`HTTP_${r.status}:mutation-lease-acquire`);
   const data=await r.json();return data.lease?{ownerId,leaseId:data.lease.leaseId}:null;
 }
@@ -226,10 +231,31 @@ async function closeWorker(w,target){
 function dispatchExpr(text){
   return `(async()=>{const text=${JSON.stringify(text)},expected=text.trim();const sleep=ms=>new Promise(r=>setTimeout(r,ms));const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};const securityBlock=()=>{if(document.querySelector('iframe[src*=\"captcha\" i],iframe[src*=\"challenge\" i],[class*=\"captcha\" i],[id*=\"captcha\" i]'))return'BLOCKED_CAPTCHA';const t=[...document.querySelectorAll('[role=\"alert\"],[role=\"dialog\"],[data-testid*=\"toast\" i]')].slice(0,30).map(e=>(e.textContent||'').toLowerCase()).join(' '),m=[['rate limit','BLOCKED_RATE_LIMIT'],['too many requests','BLOCKED_RATE_LIMIT'],['suspicious activity','BLOCKED_SUSPICIOUS_ACTIVITY'],['unusual activity','BLOCKED_SUSPICIOUS_ACTIVITY'],['verify your identity','BLOCKED_REAUTH'],['verify it’s you','BLOCKED_REAUTH'],['xác minh danh tính','BLOCKED_REAUTH']];for(const [n,s] of m)if(t.includes(n))return s;return null;};const blocked=securityBlock();if(blocked)return{ok:false,status:blocked};if(!expected)return{ok:false,status:'EMPTY_WORK_ORDER'};const sels=location.hostname==='chatgpt.com'?['#prompt-textarea','div[contenteditable=\"true\"][data-lexical-editor=\"true\"]','[contenteditable=\"true\"][role=\"textbox\"]','textarea']:['rich-textarea .ql-editor[contenteditable=\"true\"]','.ql-editor[contenteditable=\"true\"]','[contenteditable=\"true\"][role=\"textbox\"]','textarea'];const findComposer=()=>{for(const s of sels){const x=[...document.querySelectorAll(s)].find(vis);if(x)return x;}return null;};const composerText=e=>e instanceof HTMLTextAreaElement||e instanceof HTMLInputElement?String(e.value||'').trim():String(e?.innerText||e?.textContent||'').trim();let c=findComposer();if(!c)return{ok:false,status:'COMPOSER_NOT_FOUND'};if(composerText(c)!==expected){c.focus();if(c instanceof HTMLTextAreaElement||c instanceof HTMLInputElement){const proto=c instanceof HTMLTextAreaElement?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(proto,'value')?.set?.call(c,text);c.dispatchEvent(new Event('input',{bubbles:true}));c.dispatchEvent(new Event('change',{bubbles:true}));}else{const sel=window.getSelection(),range=document.createRange();range.selectNodeContents(c);sel?.removeAllRanges();sel?.addRange(range);if(!document.execCommand('insertText',false,text)){c.textContent=text;c.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:text}));}}}const scoped=['button[data-testid=\"send-button\"]','button[data-testid=\"composer-submit-button\"]','button[type=\"submit\"]','button[aria-label*=\"Send\" i]','button[aria-label*=\"Gửi\" i]','button[aria-label*=\"submit\" i]'],global=['button[data-testid=\"send-button\"]','button[data-testid=\"composer-submit-button\"]','button[aria-label*=\"Send\" i]','button[aria-label*=\"Gửi\" i]','button[aria-label*=\"submit\" i]'];const usable=e=>vis(e)&&!e.disabled&&e.getAttribute('aria-disabled')!=='true';const findSend=()=>{for(const root of [c.closest?.('form'),c.parentElement].filter(Boolean))for(const s of scoped){const a=[...root.querySelectorAll(s)].filter(usable);if(a.length===1)return a[0];}for(const s of global){const a=[...document.querySelectorAll(s)].filter(usable);if(a.length===1)return a[0];}return null;};let b=null,until=Date.now()+${SEND_BUTTON_WAIT_MS};while(Date.now()<until){await sleep(150);const gate=securityBlock();if(gate)return{ok:false,status:gate};b=findSend();if(b)break;}if(!b)return{ok:false,status:'SEND_BUTTON_NOT_FOUND'};b.click();const busy=()=>['button[data-testid=\"stop-button\"]','button[aria-label*=\"Stop\" i]','button[aria-label*=\"Dừng\" i]'].some(s=>[...document.querySelectorAll(s)].some(vis))||[...document.querySelectorAll('button,[role=\"button\"],[aria-live]')].some(e=>vis(e)&&/(^|\\s)(đang suy nghĩ|thinking|generating|đang tạo)(\\s|$)/i.test((e.getAttribute('aria-label')||e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim()));until=Date.now()+3500;while(Date.now()<until){await sleep(100);const gate=securityBlock();if(gate)return{ok:false,status:gate};if(busy())return{ok:true,status:'SUBMITTED',evidence:'UI_BUSY'};if(location.hostname==='chatgpt.com'&&[...document.querySelectorAll('[data-message-author-role=\"user\"]')].some(e=>vis(e)&&String(e.textContent||'').trim()===expected))return{ok:true,status:'SUBMITTED',evidence:'USER_MESSAGE_VISIBLE'};c=findComposer();if(c&&composerText(c)==='')return{ok:true,status:'SUBMITTED',evidence:'COMPOSER_CLEARED'};}return{ok:false,status:'SUBMIT_EVIDENCE_MISSING'};})()`;
 }
+function enterSubmitStateExpr(text){
+  return `(()=>{const expected=${JSON.stringify(text.trim())};const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};const securityBlock=()=>{if(document.querySelector('iframe[src*="captcha" i],iframe[src*="challenge" i],[class*="captcha" i],[id*="captcha" i]'))return'BLOCKED_CAPTCHA';const t=[...document.querySelectorAll('[role="alert"],[role="dialog"],[data-testid*="toast" i]')].slice(0,30).map(e=>(e.textContent||'').toLowerCase()).join(' '),m=[['rate limit','BLOCKED_RATE_LIMIT'],['too many requests','BLOCKED_RATE_LIMIT'],['suspicious activity','BLOCKED_SUSPICIOUS_ACTIVITY'],['unusual activity','BLOCKED_SUSPICIOUS_ACTIVITY'],['verify your identity','BLOCKED_REAUTH'],['verify it’s you','BLOCKED_REAUTH'],['xác minh danh tính','BLOCKED_REAUTH']];for(const [n,x] of m)if(t.includes(n))return x;return null;};const sels=['#prompt-textarea','div[contenteditable="true"][data-lexical-editor="true"]','[contenteditable="true"][role="textbox"]','textarea'];const c=sels.flatMap(x=>[...document.querySelectorAll(x)]).find(vis)||null;const composerText=e=>e instanceof HTMLTextAreaElement||e instanceof HTMLInputElement?String(e.value||'').trim():String(e?.innerText||e?.textContent||'').trim();const busy=['button[data-testid="stop-button"]','button[aria-label*="Stop" i]','button[aria-label*="Dừng" i]'].some(x=>[...document.querySelectorAll(x)].some(vis))||[...document.querySelectorAll('button,[role="button"],[aria-live]')].some(e=>vis(e)&&/(^|\\s)(đang suy nghĩ|thinking|generating|đang tạo)(\\s|$)/i.test((e.getAttribute('aria-label')||e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim()));const userVisible=[...document.querySelectorAll('[data-message-author-role="user"]')].some(e=>vis(e)&&String(e.textContent||'').trim()===expected);const current=composerText(c);return{securityBlock:securityBlock(),composerMatches:Boolean(c)&&current===expected,composerEmpty:Boolean(c)&&current==='',busy,userVisible};})()`;
+}
 async function dispatch(target,text){
   const p=await pageRpc(target);
-  try{return (await p.call('Runtime.evaluate',{expression:dispatchExpr(text),awaitPromise:true,returnByValue:true,userGesture:true},SEND_BUTTON_WAIT_MS+6000)).result.value;}
-  finally{p.close();}
+  try{
+    const first=(await p.call('Runtime.evaluate',{expression:dispatchExpr(text),awaitPromise:true,returnByValue:true,userGesture:true},SEND_BUTTON_WAIT_MS+6000)).result.value;
+    if(first?.status!=='SEND_BUTTON_NOT_FOUND')return first;
+    const before=(await p.call('Runtime.evaluate',{expression:enterSubmitStateExpr(text),returnByValue:true,userGesture:true},3000)).result.value;
+    if(before?.securityBlock)return{ok:false,status:before.securityBlock};
+    if(before?.userVisible)return{ok:true,status:'SUBMITTED',evidence:'USER_MESSAGE_VISIBLE_BEFORE_ENTER'};
+    if(before?.composerMatches!==true)return first;
+    await p.call('Input.dispatchKeyEvent',{type:'keyDown',key:'Enter',code:'Enter',windowsVirtualKeyCode:13,nativeVirtualKeyCode:13});
+    await p.call('Input.dispatchKeyEvent',{type:'keyUp',key:'Enter',code:'Enter',windowsVirtualKeyCode:13,nativeVirtualKeyCode:13});
+    const deadline=Date.now()+3500;
+    while(Date.now()<deadline){
+      await sleep(100);
+      const after=(await p.call('Runtime.evaluate',{expression:enterSubmitStateExpr(text),returnByValue:true},3000)).result.value;
+      if(after?.securityBlock)return{ok:false,status:after.securityBlock};
+      if(after?.busy)return{ok:true,status:'SUBMITTED',evidence:'ENTER_UI_BUSY'};
+      if(after?.userVisible)return{ok:true,status:'SUBMITTED',evidence:'ENTER_USER_MESSAGE_VISIBLE'};
+      if(after?.composerEmpty)return{ok:true,status:'SUBMITTED',evidence:'ENTER_COMPOSER_CLEARED'};
+    }
+    return{ok:false,status:'ENTER_SUBMIT_EVIDENCE_MISSING'};
+  }finally{p.close();}
 }
 function scrollBottomExpr(){return `(()=>{const vis=e=>{const r=e?.getBoundingClientRect(),s=e&&getComputedStyle(e);return !!e&&r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const b=[...document.querySelectorAll('button,[role="button"]')].find(e=>vis(e)&&/^(cuộn xuống cuối|scroll to bottom|jump to bottom)$/i.test((e.getAttribute('aria-label')||e.textContent||'').trim()));if(!b)return{ok:true,status:'ALREADY_AT_BOTTOM'};b.click();return{ok:true,status:'SCROLL_TO_BOTTOM_CLICKED'}})()`; }
 async function scrollToBottom(target){const p=await pageRpc(target);try{return (await p.call('Runtime.evaluate',{expression:scrollBottomExpr(),returnByValue:true,userGesture:true})).result.value;}finally{p.close();}}
@@ -369,12 +395,19 @@ async function maybeNv02Continuity(w,target,ui){
   state={...state,lastPhase:phase};saveNv02Continuity(state);
   if(phase==='BLOCKED'){await continuityEvent('BLOCKED',{securityBlock:ui?.securityBlock||null});return;}
   const controller=await getControllerState();
+  if(controller?.paused===true){
+    if(now>=state.nextContinueAt){
+      state={...state,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
+      await continuityEvent('CONTINUE_SKIPPED_OWNER_READ_ONLY',{nextContinueAt:state.nextContinueAt});
+    }
+    return;
+  }
   const active=hasActiveNv02Work(controller);
   const waitingEvidence=hasWaitingEvidenceNv02Work(controller);
   if(now>=state.nextRefreshAt&&phase==='READY'&&!active&&!waitingEvidence){
     try{
       const receipt=await checkpointNv02(target);
-      state={...state,nextRefreshAt:nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS),nextContinueAt:now+15000,stalledChecks:0};
+      state={...state,nextRefreshAt:nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS),nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),stalledChecks:0};
       saveNv02Continuity(state);
       await continuityEvent('REFRESH_SCHEDULED',{receiptRef:receipt.receiptRef,checkpointRef:receipt.checkpointRef,nextRefreshAt:state.nextRefreshAt});
       await post('/api/workers/NV02/restart-schedule','NV02',{reason:'RANDOM_2_4H'});
@@ -396,19 +429,9 @@ async function maybeNv02Continuity(w,target,ui){
           recoveryStatus=recovered?.status||null;
         }
       }catch(recoveryError){recoveryStatus='FAILED:'+String(recoveryError?.message||recoveryError);}
-      state={...latest,dispatchesInChat:0,chatStartedAt:now,stalledChecks:Math.min(MAX_STALLED_CHECKS,Number(latest.stalledChecks||0)+1),nextRefreshAt:nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS),nextContinueAt:now+5000};saveNv02Continuity(state);
+      state={...latest,dispatchesInChat:0,chatStartedAt:now,stalledChecks:Math.min(MAX_STALLED_CHECKS,Number(latest.stalledChecks||0)+1),nextRefreshAt:nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS),nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
       await continuityEvent('CHAT_ROTATE_FAILED',{error:String(error?.message||error),stalledChecks:state.stalledChecks,recoveryStatus,nextContinueAt:state.nextContinueAt,nextRefreshAt:state.nextRefreshAt});
     }
-    return;
-  }
-  if(phase==='READY'&&waitingEvidence&&!active&&state.nextContinueAt-now>15000){
-    state={...state,nextContinueAt:now+5000};saveNv02Continuity(state);
-    await continuityEvent('WAITING_EVIDENCE_CONTINUE_ACCELERATED',{nextContinueAt:state.nextContinueAt,maxDelayMs:15000});
-    return;
-  }
-  if(phase==='READY'&&!waitingEvidence&&!active&&state.nextContinueAt-now>30000){
-    state={...state,nextContinueAt:now+20000};saveNv02Continuity(state);
-    await continuityEvent('IDLE_CONTINUE_ACCELERATED',{nextContinueAt:state.nextContinueAt,maxDelayMs:30000});
     return;
   }
   if(now<state.nextContinueAt)return;
