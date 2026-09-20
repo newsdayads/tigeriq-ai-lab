@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import {activeProviderCooldownIds,applyCompactEdits,assertPrOpenState,buildLocalFileContext,classifyAiFailure,gateFailureIssues,invokeJsonWithFailover,isResourceTransientError,preserveGenerationPrompt,resourceWaitPlan,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,validateCompactEdits} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {activeProviderCooldownIds,applyCompactEdits,assertPrOpenState,buildLocalFileContext,classifyAiFailure,gateFailureIssues,invokeJsonWithFailover,isResourceTransientError,preserveGenerationPrompt,recoverAfterCodingRestart,resourceWaitPlan,restartRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,validateCompactEdits} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError,parseJsonObject} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 const nv11={id:'NV11',provider:'fake',model:'a'};
@@ -120,6 +120,45 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
   await t.test('excluded implementer can never become reviewer',async()=>{
     const out=await invokeJsonWithFailover(nv11,'x',{exclude:['NV11'],resourcePool:[nv11,nv19],invokeFn:async(r)=>`{"decision":"approve","summary":"${r.id}","issues":[]}`});
     assert.strictEqual(out.resource.id,'NV19');
+  });
+
+  await t.test('restart recovery classifies orphaned PR states fail closed',()=>{
+    const job={status:'waiting_ci',pr_number:1105,branch:'tigeriq/nv17/job'};
+    assert.deepStrictEqual(restartRecoveryDecision(job,{state:'closed',merged:false}),{action:'fail',code:'CODING_RESTART_PR_CLOSED',prNumber:1105});
+    assert.deepStrictEqual(restartRecoveryDecision(job,{state:'open',merged:false}),{action:'queue',code:'CODING_RESTART_RESUME_PR_OPEN',prNumber:1105});
+    assert.deepStrictEqual(restartRecoveryDecision(job,{state:'closed',merged:true,merged_at:'2026-09-20T00:00:00Z'}),{action:'done',code:'CODING_RESTART_PR_ALREADY_MERGED',prNumber:1105});
+    assert.strictEqual(restartRecoveryDecision({...job,pr_number:null},null).code,'CODING_RESTART_RESUME_IDENTITY_INCOMPLETE');
+    assert.strictEqual(restartRecoveryDecision({...job,status:'done'},{state:'closed'}).action,'ignore');
+  });
+
+  await t.test('restart recovery terminalizes a stale waiting_ci closed PR and frees the lane',async()=>{
+    const job={id:'job-stale',objective_id:'obj-stale',status:'waiting_ci',pr_number:1105,branch:'tigeriq/nv17/job',created_at:'2026-09-19T00:00:00Z'};
+    const calls=[];
+    const db={async query(sql,params=[]){
+      calls.push({sql,params});
+      if(sql.startsWith('select * from tigeriq_coding_jobs'))return{rows:[job],rowCount:1};
+      if(sql.startsWith("update tigeriq_coding_jobs set status='failed'"))return{rows:[],rowCount:1};
+      return{rows:[],rowCount:1};
+    }};
+    const out=await recoverAfterCodingRestart({db,fetchPr:async number=>({number,state:'closed',merged:false})});
+    assert.deepStrictEqual(out,{requeued:0,completed:0,failed:1,deferred:0});
+    assert.ok(calls.some(x=>x.sql.includes("status='failed'")&&String(x.params[1]).includes('CODING_RESTART_PR_CLOSED')));
+    assert.ok(calls.some(x=>x.sql.includes("tigeriq_coding_objectives set status='blocked'")));
+  });
+
+  await t.test('restart recovery requeues an open PR with preserved resume identity',async()=>{
+    const job={id:'job-open',objective_id:'obj-open',status:'review',pr_number:1200,branch:'tigeriq/nv12/job-open',created_at:'2026-09-19T00:00:00Z'};
+    const calls=[];
+    const db={async query(sql,params=[]){
+      calls.push({sql,params});
+      if(sql.startsWith('select * from tigeriq_coding_jobs'))return{rows:[job],rowCount:1};
+      if(sql.startsWith("update tigeriq_coding_jobs set status='queued'"))return{rows:[],rowCount:1};
+      return{rows:[],rowCount:1};
+    }};
+    const out=await recoverAfterCodingRestart({db,fetchPr:async number=>({number,state:'open',merged:false})});
+    assert.deepStrictEqual(out,{requeued:1,completed:0,failed:0,deferred:0});
+    assert.ok(calls.some(x=>x.sql.includes("status='queued'")));
+    assert.ok(calls.some(x=>x.sql.includes("tigeriq_coding_objectives set status='active'")));
   });
 
   await t.test('closed unmerged PR reconciles immediately',()=>{
