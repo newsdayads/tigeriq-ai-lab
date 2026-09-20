@@ -61,6 +61,9 @@ export function verifySaveReceiptV1(input: SaveReceiptVerificationInput): { vali
   return { valid: true };
 }
 
+import { watchAndRestoreModelProfile } from './runtime-evidence';
+import { WorkerId } from './model';
+
 export function heartbeatStopReason(hb:HeartbeatSecuritySignals|undefined):string|undefined{
   if(!hb)return;
   if(hb.authRequired)return 'AUTH_REQUIRED';
@@ -74,4 +77,8 @@ export function heartbeatStopReason(hb:HeartbeatSecuritySignals|undefined):strin
   if(raw.includes('RATE_LIMIT')||raw.includes('429')||raw.includes('TOO_MANY_REQUESTS'))return 'RATE_LIMIT_429';
   if(raw.includes('SUSPICIOUS')||raw.includes('SECURITY'))return raw.startsWith('BLOCKED_')?raw:'SECURITY_WARNING';
   return raw.startsWith('BLOCKED_')?raw:'SECURITY_BLOCK';
+}
+
+export function checkAndHandleModelProfileRecovery(workerId: WorkerId, hb: any, workItemId: string | undefined, dispatchFn: (payload: any) => void): boolean {
+  return watchAndRestoreModelProfile(workerId, hb, workItemId, dispatchFn);
 }
