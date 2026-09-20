@@ -85,7 +85,15 @@ export function normalizeWorkItemLifecycle(input = {}) {
 }
 
 export function handleIdleWithBacklogState({ status, backlogCount, activeJobsCount } = {}) {
-  return status === 'IDLE' && Number(backlogCount || 0) > 0 && Number(activeJobsCount || 0) === 0;
+  const isIdle = String(status || '').toUpperCase() === 'IDLE';
+  return (isIdle || status === 'IDLE') && Number(backlogCount || 0) > 0 && Number(activeJobsCount || 0) === 0;
+}
+
+export function handleHeartbeatOrAckFailure({ retryCount = 0, maxRetries = 1 } = {}) {
+  if (retryCount >= maxRetries) {
+    return { action: 'terminate', retryable: false, error: 'HEARTBEAT_OR_ACK_FAILURE_EXCEEDED' };
+  }
+  return { action: 'retry', retryable: true, nextRetryCount: retryCount + 1 };
 }
 
 export function executeCoreWorkItemLifecycle({ workItem, preflightFn, repairFn, reviewFn, maxRepairCycles = 3, retryTracker = new Set() } = {}) {
