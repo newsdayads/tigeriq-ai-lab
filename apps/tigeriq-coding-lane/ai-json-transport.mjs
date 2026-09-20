@@ -1,4 +1,4 @@
-const AI_HOSTS=['api.groq.com','openrouter.ai','api.mistral.ai','router.huggingface.co','generativelanguage.googleapis.com','api.cohere.com'];
+const AI_HOSTS=['api.groq.com','openrouter.ai','api.mistral.ai','router.huggingface.co','generativelanguage.googleapis.com','api.cohere.com','integrate.api.nvidia.com','api.cloudflare.com'];
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
 export function isAiUrl(input){
@@ -9,6 +9,7 @@ export function extractModelText(input,data){
   const host=new URL(String(input)).hostname;
   if(host==='generativelanguage.googleapis.com') return data?.candidates?.[0]?.content?.parts?.map(x=>x?.text||'').join('\n')||'';
   if(host==='api.cohere.com') return data?.message?.content?.map(x=>x?.text||'').join('')||'';
+  if(host==='api.cloudflare.com') return data?.result?.response||'';
   return data?.choices?.[0]?.message?.content||'';
 }
 
@@ -43,6 +44,7 @@ export function promptFromRequest(input,init={}){
   const host=new URL(String(input)).hostname;
   if(host==='generativelanguage.googleapis.com')return body?.contents?.flatMap(x=>x?.parts||[]).map(x=>x?.text||'').join('\n')||'';
   if(host==='api.cohere.com')return body?.messages?.map(x=>typeof x?.content==='string'?x.content:(x?.content||[]).map(y=>y?.text||'').join('')).join('\n')||'';
+  if(host==='api.cloudflare.com')return String(body?.prompt||'');
   return body?.messages?.map(x=>x?.content||'').join('\n')||'';
 }
 
@@ -51,7 +53,7 @@ export function prepareAiJsonRequest(input,init={}){
   let body;try{body=JSON.parse(String(init.body))}catch{return init}
   const host=new URL(String(input)).hostname;
   if(host==='generativelanguage.googleapis.com') body.generationConfig={...(body.generationConfig||{}),responseMimeType:'application/json'};
-  else if(['api.groq.com','openrouter.ai','api.cohere.com'].includes(host)) body.response_format={type:'json_object'};
+  else if(['api.groq.com','openrouter.ai','api.cohere.com','integrate.api.nvidia.com'].includes(host)) body.response_format={type:'json_object'};
   return {...init,body:JSON.stringify(body)};
 }
 
@@ -155,6 +157,7 @@ function rewritePromptInRequest(input,init,prompt){
   let body;try{body=JSON.parse(String(init?.body||''))}catch{return init}
   const host=new URL(String(input)).hostname;
   if(host==='generativelanguage.googleapis.com') body.contents=[{role:'user',parts:[{text:prompt}]}];
+  else if(host==='api.cloudflare.com') body.prompt=prompt;
   else body.messages=[{role:'user',content:prompt}];
   return {...init,body:JSON.stringify(body)};
 }
@@ -168,6 +171,9 @@ function replaceModelText(input,data,text){
   }else if(host==='api.cohere.com'){
     if(!data.message)data.message={};
     data.message.content=[{type:'text',text}];
+  }else if(host==='api.cloudflare.com'){
+    if(!data.result||typeof data.result!=='object')data.result={};
+    data.result.response=text;
   }else{
     if(!data.choices?.[0])data.choices=[{message:{}}];
     if(!data.choices[0].message)data.choices[0].message={};
