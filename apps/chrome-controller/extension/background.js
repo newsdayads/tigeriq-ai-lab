@@ -439,6 +439,21 @@ chrome.runtime.onMessage.addListener((m,_sender,sendResponse)=>{
     void saveAndArchive(String(m.workerId||''),{requireDone:false}).then(sendResponse).catch((error)=>sendResponse({ok:false,status:String(error?.message||error)}));
     return true;
   }
+  if(m?.type==='TIGERIQ_MODEL_PROFILE_BLOCKED'){
+    console.warn('TIGERIQ_MODEL_PROFILE_BLOCKED: dispatch rejected due to incorrect model profile');
+    chrome.tabs.query({active:true,currentWindow:true},(tabs)=>{
+      if(tabs[0]?.id){
+        chrome.tabs.sendMessage(tabs[0].id,{type:'TIGERIQ_SHOW_MODEL_NOTIFICATION',reason:'MODEL_PROFILE_BLOCKED'});
+      }
+    });
+    sendResponse({ok:true});
+    return true;
+  }
+  if(m?.type==='TIGERIQ_TRIGGER_MODEL_SWITCH'){
+    console.info('TIGERIQ_TRIGGER_MODEL_SWITCH requested by user');
+    sendResponse({ok:true});
+    return true;
+  }
   if(m?.type==='TIGERIQ_CONFIG_UPDATED'||m?.type==='TIGERIQ_ROUTE_CHANGED')void tick();
 });
 void ensureTickAlarm();
