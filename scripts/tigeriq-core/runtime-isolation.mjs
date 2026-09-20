@@ -1,21 +1,43 @@
 import { execSync } from 'node:child_process';
-import { existsSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { existsSync, mkdirSync, writeFileSync, readFileSync, rmSync, chmodSync, statSync } from 'node:fs';
+import { join, resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const REPO_ROOT = resolve(process.cwd());
+const __dirname = dirname(fileURLToPath(import.meta.url));
+// Resolve repo root from scripts/tigeriq-core up to repository root
+const REPO_ROOT = resolve(__dirname, '../..');
 const RUNTIME_DIR = join(REPO_ROOT, '.runtime');
 const META_PATH = join(RUNTIME_DIR, 'isolation-meta.json');
 
 let activeWorktreePath = null;
 let gatedShaValue = null;
 
+function sanitizeError(msg) {
+  if (!msg) return 'UNKNOWN_ERROR';
+  return String(msg).replace(/[A-Za-z]:\\[^\s:]+/g, '[REDACTED_PATH]').replace(/\/[^\s:]+\/[^\s:]+/g, '[REDACTED_PATH]');
+}
+
 function runGit(args, cwd = REPO_ROOT) {
   try {
     return execSync(`git ${args}`, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
   } catch (err) {
     const stderr = err.stderr ? err.stderr.trim() : err.message;
-    throw new Error(`GIT_FAILED: git ${args} -> ${stderr}`);
+    throw new Error(`GIT_FAILED: git ${args} -> ${sanitizeError(stderr)}`);
   }
+}
+
+function makeReadOnly(dir) {
+  try {
+    const entries = execSync(`git ls-files`, { cwd: dir, encoding: 'utf8' }).split('\n').filter(Boolean);
+    for (const entry of entries) {
+      const fullPath = join(dir, entry);
+      if (existsSync(fullPath)) {
+        try {
+          chmodSync(fullPath, 0o444);
+        } catch {}
+      }
+    }
+  } catch {}
 }
 
 export function verifyCleanWorkingTree() {
@@ -52,6 +74,8 @@ export function getIsolatedPath() {
     runGit(`worktree add --detach ${worktreeDir} ${gatedShaValue}`);
     activeWorktreePath = resolve(worktreeDir);
 
+    makeReadOnly(activeWorktreePath);
+
     const meta = {
       gatedSha: gatedShaValue,
       devBranch: branch,
@@ -63,7 +87,7 @@ export function getIsolatedPath() {
     return activeWorktreePath;
   } catch (err) {
     cleanup();
-    throw new Error(`ISOLATED_CHECKOUT_FAILED: ${err.message}`);
+    throw new Error(`ISOLATED_CHECKOUT_FAILED: ${sanitizeError(err.message)}`);
   }
 }
 
@@ -73,7 +97,7 @@ export function getGatedSHA() {
   }
   if (existsSync(META_PATH)) {
     try {
-      const data = JSON.parse(import('node:fs').readFileSync(META_PATH, 'utf8'));
+      const data = JSON.parse(readFileSync(META_PATH, 'utf8'));
       if (data && data.gatedSha) {
         gatedShaValue = data.gatedSha;
         return gatedShaValue;
@@ -85,6 +109,17 @@ export function getGatedSHA() {
 
 export function cleanup() {
   if (activeWorktreePath) {
+    try {
+      const entries = execSync(`git ls-files`, { cwd: activeWorktreePath, encoding: 'utf8' }).split('\n').filter(Boolean);
+      for (const entry of entries) {
+        const fullPath = join(activeWorktreePath, entry);
+        if (existsSync(fullPath)) {
+          try {
+            chmodSync(fullPath, 0o666);
+          } catch {}
+        }
+      }
+    } catch {}
     try {
       runGit(`worktree remove --force ${activeWorktreePath}`);
     } catch {
