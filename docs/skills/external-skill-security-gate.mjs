@@ -1,0 +1,1 @@
+import Ajv from "ajv";import schema from "./external-skill-security-gate.schema.json" assert {type:"json"};const ajv=new Ajv({allErrors:true});const validate=ajv.compile(schema);export function validateExternalSkill(skillObject){const valid=validate(skillObject);return valid?{valid:true}:{valid:false,errors:validate.errors};}
