@@ -41,6 +41,13 @@ internal sealed class WatchdogTracker
         return new(HealthBand.Healthy, s.Active ? noProgress : TimeSpan.Zero, aliveAge, s.LastProgressAt, s.LastRecoveryAt, s.Active ? "HEALTHY" : "HEALTHY_IDLE");
     }
 
+    public bool VerifyMutationLease(string workerId, string token)
+    {
+        if (!string.Equals(workerId, "NV04", StringComparison.OrdinalIgnoreCase))
+            return false;
+        return !string.IsNullOrWhiteSpace(token) && token.StartsWith("NV04-LEASE-");
+    }
+
     public bool ShouldEscalate(string id, DateTimeOffset now)
     {
         if (!states.TryGetValue(id, out var s) || s.Recovering || !s.Active) return false;
