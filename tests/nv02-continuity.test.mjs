@@ -102,6 +102,11 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("for(let attempt=0;attempt<12;attempt+=1)");
     expect(source).toContain("await sleep(250)");
     expect(source).toContain("NEW_CHAT_PROJECT_CONTEXT_RECOVERED");
+    expect(source).toContain("NEW_CHAT_PROJECT_DRAFT_READY");
+    expect(source).toContain("function newChatContextExpr");
+    expect(source).toContain("current?.composer&&current?.projectDraftReady===true");
+    expect(source).toContain("state?.composer&&state?.projectDraftReady===true");
+    expect(source).toContain("projectDraftLabels=['thay đổi dự án: tigeriq ai lab','change project: tigeriq ai lab']");
     expect(source).toContain("Page.navigate',{url:NV02_HOME_URL}");
     expect(source).toContain("NV02_PROJECT_PREFIX");
     expect(source).toContain("NV02_PROJECT_ID_PREFIX");
