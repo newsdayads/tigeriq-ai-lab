@@ -149,6 +149,12 @@ export function buildRuntimeEvidence(input: RuntimeEvidenceInput, now = new Date
       fakeHuman: false,
       credentialExtraction: false,
     },
+    modelVerification: {
+      requiredModel: 'GPT-5.6 Sol',
+      requiredReasoningEffort: 'High',
+      exact: true,
+      boundedDomModelPrecheck: true,
+    },
     jobs: input.jobs.map((job) => ({
       jobId: job.jobId,
       workerId: job.workerId,
