@@ -84,15 +84,26 @@ export function normalizeWorkItemLifecycle(input = {}) {
   };
 }
 
+/**
+ * Normalizes and validates bounded recovery state for core scheduling rules.
+ * Enforces exact-once work item resumption, bounded attempt limits (maxAttempts >= attempts),
+ * and strict exactOnceKey format validation (alphanumeric, hyphens, underscores only).
+ */
 export function normalizeBoundedRecoveryState(state = {}) {
-  const attempts = Number(state.attempts || 0);
-  const maxAttempts = Number(state.maxAttempts || 3);
+  const rawAttempts = Number(state.attempts || 0);
+  const rawMaxAttempts = Number(state.maxAttempts || 3);
+  const maxAttempts = Math.max(1, Math.min(10, rawMaxAttempts));
+  const attempts = Math.max(0, Math.min(maxAttempts, rawAttempts));
   const resumed = Boolean(state.resumed);
+  const rawKey = String(state.exactOnceKey || '').trim();
+  if (rawKey && !/^[A-Za-z0-9_\-]+$/.test(rawKey)) {
+    throw new Error('EXACT_ONCE_KEY_FORMAT_INVALID');
+  }
   return {
-    attempts: Math.max(0, attempts),
-    maxAttempts: Math.max(1, Math.min(10, maxAttempts)),
+    attempts,
+    maxAttempts,
     resumed,
-    exactOnceKey: String(state.exactOnceKey || '').trim()
+    exactOnceKey: rawKey
   };
 }
 
@@ -108,12 +119,14 @@ export function executeCoreWorkItemLifecycle({ workItem, preflightFn, repairFn, 
     };
   }
 
-  let currentCycle = 0;
+  const recoveryState = normalizeBoundedRecoveryState({ attempts: 0, maxAttempts: maxRepairCycles, exactOnceKey: item.issueOrPr });
+  let currentCycle = recoveryState.attempts;
+  const maxCycles = recoveryState.maxAttempts;
   let lastError = null;
   let reviewed = false;
   let reviewDecision = 'pending';
 
-  while (currentCycle <= maxRepairCycles) {
+  while (currentCycle <= maxCycles) {
     try {
       if (typeof repairFn === 'function' && currentCycle > 0) {
         repairFn({ cycle: currentCycle, lastError });
