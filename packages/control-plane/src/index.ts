@@ -2,7 +2,14 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { AuditLogEntry } from '../../audit-log/src/index.js';
 import type { EvidenceRecord } from '../../evidence/src/index.js';
 import type { Gate } from '../../gate-engine/src/index.js';
-import type { CoreWorkItemProjection, CoreWorkItemStatus, WorkOrder, WorkOrderStatus } from '../../work-orders/src/index.js';
+import type {
+  CoreWorkItemProjection,
+  CoreWorkItemStatus,
+  ScopeLeaseProjection,
+  WorkOrder,
+  WorkOrderProjectionMetadataPatch,
+  WorkOrderStatus,
+} from '../../work-orders/src/index.js';
 import { validateWorkOrder } from '../../work-orders/src/index.js';
 
 export type ActorRole = 'planner' | 'approver' | 'coder' | 'reviewer' | 'judge' | 'operator';
@@ -59,7 +66,7 @@ export function projectCoreWorkItem(snapshot: WorkOrderSnapshot): CoreWorkItemPr
     reviewer: latestDecision?.evaluatorId ?? snapshot.order.reviewer ?? null,
     stage: snapshot.order.stage ?? latestDecision?.gate ?? snapshot.order.status,
     priority: snapshot.order.priority ?? null,
-    scopeLease: snapshot.order.scopeLease ?? (snapshot.implementerId ? { ownerId: snapshot.implementerId, scope: snapshot.order.scope, state: snapshot.order.status === 'verified' ? 'released' : 'active' } : null),
+    scopeLease: projectedScopeLease(snapshot, status),
     blockers,
     evidenceRefs,
     nextAction: projectedNextAction(snapshot.order.nextAction, status, blockers),
@@ -142,6 +149,22 @@ export class ControlPlane {
     return this.#save(id, this.#withAudit(updated, actor, `gate.${decision.status}`, { gate: decision.gate }));
   }
 
+  updateProjectionMetadata(id: string, patch: WorkOrderProjectionMetadataPatch, actor: Actor): WorkOrderSnapshot {
+    if (!['planner', 'coder', 'reviewer', 'operator'].includes(actor.role)) {
+      throw new Error('projection metadata update requires planner, coder, reviewer, or operator role');
+    }
+    const current = this.#require(id);
+    const updatedOrder: WorkOrder = { ...current.order, ...structuredClone(patch) };
+    const errors = validateWorkOrder(updatedOrder);
+    if (errors.length > 0) throw new Error(`invalid work order: ${errors.join(', ')}`);
+    if (!projectionMetadataChanged(current.order, updatedOrder)) return structuredClone(current);
+
+    const updated: WorkOrderSnapshot = { ...current, order: updatedOrder };
+    return this.#save(id, this.#withAudit(updated, actor, 'projection-metadata.updated', {
+      fields: Object.keys(patch).sort(),
+    }));
+  }
+
   get(id: string): WorkOrderSnapshot {
     return structuredClone(this.#require(id));
   }
@@ -181,6 +204,21 @@ function canonicalStatus(snapshot: WorkOrderSnapshot, latestDecision: GateDecisi
   if (snapshot.order.status === 'running' && snapshot.evidence.length === 0) return 'WORKING';
   if (snapshot.order.status === 'running' && !latestDecision) return 'EVIDENCE';
   return 'VERIFY';
+}
+
+function projectedScopeLease(snapshot: WorkOrderSnapshot, status: CoreWorkItemStatus): ScopeLeaseProjection | null {
+  const base = snapshot.order.scopeLease ?? (snapshot.implementerId
+    ? { ownerId: snapshot.implementerId, scope: snapshot.order.scope, state: 'unknown' as const }
+    : null);
+  if (!base) return null;
+  return { ...base, state: projectedScopeLeaseState(status) };
+}
+
+function projectedScopeLeaseState(status: CoreWorkItemStatus): ScopeLeaseProjection['state'] {
+  if (status === 'DONE') return 'released';
+  if (status === 'BLOCKED') return 'blocked';
+  if (status === 'QUEUED') return 'unknown';
+  return 'active';
 }
 
 function projectionTimestamps(snapshot: WorkOrderSnapshot): CoreWorkItemProjection['timestamps'] {
@@ -229,6 +267,14 @@ function inferKind(snapshot: WorkOrderSnapshot): CoreWorkItemProjection['kind'] 
   if (text.includes('review')) return 'review';
   if (text.includes('research')) return 'research';
   return 'general';
+}
+
+function projectionMetadataChanged(before: WorkOrder, after: WorkOrder): boolean {
+  const fields: readonly (keyof WorkOrderProjectionMetadataPatch)[] = [
+    'issueRef', 'sourceRef', 'pr', 'kind', 'assignedExecutor', 'reviewer', 'stage', 'priority',
+    'scopeLease', 'blockers', 'evidenceRefs', 'nextAction',
+  ];
+  return fields.some((field) => JSON.stringify(before[field]) !== JSON.stringify(after[field]));
 }
 
 function unique(values: readonly string[]): string[] {
