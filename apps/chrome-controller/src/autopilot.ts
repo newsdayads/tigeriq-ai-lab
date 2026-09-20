@@ -188,11 +188,13 @@ export function decideAutoContinue(
   if (state.lastDispatchedJobId === next.jobId) return { kind: 'DUPLICATE_NOOP', reason: 'JOB_ALREADY_DISPATCHED', jobId: next.jobId };
 
   const currentIssueRef=snapshot.source==='GITHUB'?canonicalGithubIssueRef(next.jobId):undefined;
+  const forcedProfile = 'GPT-5.6 Sol + High';
   return {
     kind:'DISPATCH',
     trigger:AUTO_CONTINUE,
     jobId:next.jobId,
     text:next.prompt.trim(),
+    modelProfile:forcedProfile,
     ...(currentIssueRef?{issueRef:currentIssueRef}:{}),
     evidenceRef:completionEvidence?.ref,
     evidenceRevision:completionEvidence?.completionRevision,
