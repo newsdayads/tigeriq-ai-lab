@@ -115,7 +115,7 @@ export function activeProviderCooldownIds(failure,nowMs=Date.now()){
 }
 
 export function isResourceTransientError(error){
-  if(error?.code==='AI_RESOURCES_UNAVAILABLE')return true;
+  if(['AI_RESOURCES_UNAVAILABLE','AI_RESOURCES_BUSY'].includes(error?.code))return true;
   const msg=String(error?.message||error||'');
   return /NO_(?:IMPLEMENTER_AVAILABLE|INDEPENDENT_REVIEWER_AVAILABLE|FREE_API_CODING_RESOURCE)|AI_RETRY_BUDGET_EXHAUSTED/i.test(msg);
 }
@@ -139,9 +139,9 @@ const REPO=process.env.TIGERIQ_GITHUB_REPO||'tigeriq-ai-lab';
 const HOST=process.env.TIGERIQ_CODING_HOST||'127.0.0.1';
 const PORT=Number(process.env.TIGERIQ_CODING_PORT||8797);
 const AUTO_MERGE=String(process.env.TIGERIQ_CODING_AUTO_MERGE||'true').toLowerCase()==='true';
-export function normalizeCodingParallelLimit(value=3){const n=Number(value);return Math.max(1,Math.min(3,Number.isFinite(n)?Math.floor(n):3))}
-const MAX_PARALLEL=normalizeCodingParallelLimit(process.env.TIGERIQ_CODING_MAX_PARALLEL||3);
-const pool=DATABASE_URL?new Pool({connectionString:DATABASE_URL,max:4}):null;
+export function normalizeCodingParallelLimit(value=6){const n=Number(value);return Math.max(1,Math.min(6,Number.isFinite(n)?Math.floor(n):6))}
+const MAX_PARALLEL=normalizeCodingParallelLimit(process.env.TIGERIQ_CODING_MAX_PARALLEL||6);
+const pool=DATABASE_URL?new Pool({connectionString:DATABASE_URL,max:8}):null;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const GEMINI_MIN_INTERVAL_MS=Math.max(4500,Number(process.env.TIGERIQ_GEMINI_MIN_INTERVAL_MS||4500));
 const GEMINI_BACKOFF_BASE_MS=Math.max(4500,Number(process.env.TIGERIQ_GEMINI_BACKOFF_BASE_MS||4500));
@@ -154,12 +154,15 @@ const resources=[
   R('NV12','gemini',process.env.TIGERIQ_GEMINI_MODEL||'gemini-3.5-flash-lite',()=>process.env.GEMINI_API_KEY&&process.env.TIGERIQ_GEMINI_FREE_TIER_VERIFIED==='true'),
   R('NV13','openrouter','openrouter/free',()=>process.env.OPENROUTER_API_KEY),
   R('NV14','mistral','mistral-small-latest',()=>process.env.MISTRAL_API_KEY),
+  R('NV15','cloudflare','@cf/meta/llama-3.1-8b-instruct',()=>process.env.CLOUDFLARE_AUTH_TOKEN&&process.env.CLOUDFLARE_ACCOUNT_ID&&process.env.TIGERIQ_CLOUDFLARE_FREE_CONFIRMED==='true'),
   R('NV16','huggingface','openai/gpt-oss-120b:fastest',()=>process.env.HF_TOKEN),
   R('NV17','inception',process.env.TIGERIQ_INCEPTION_MODEL||'mercury-2.5',()=>process.env.INCEPTION_API_KEY&&process.env.TIGERIQ_INCEPTION_FREE_TIER_VERIFIED==='true'),
   R('NV19','cohere',process.env.TIGERIQ_COHERE_MODEL||'command-a-plus-05-2026',()=>process.env.COHERE_API_KEY&&process.env.TIGERIQ_COHERE_TRIAL_CONFIRMED==='true'),
+  R('NV20','nvidia',process.env.TIGERIQ_NVIDIA_MODEL||'nvidia/nemotron-3-super-120b-a12b',()=>process.env.NVIDIA_API_KEY&&process.env.TIGERIQ_NVIDIA_FREE_DEV_CONFIRMED==='true'),
 ].filter(x=>x.ready());
 let rr=0;
-function pickResource(exclude=[]){const available=resources.filter(x=>!exclude.includes(x.id));if(!available.length)return null;const r=available[rr%available.length];rr++;return r;}
+const busyAiResources=new Set();
+function pickResource(exclude=[]){const available=resources.filter(x=>!exclude.includes(x.id)&&!busyAiResources.has(x.id));if(!available.length)return null;const r=available[rr%available.length];rr++;return r;}
 
 async function fetchJson(url,init={},timeout=90000){const c=new AbortController(),t=setTimeout(()=>c.abort(),timeout);try{const res=await fetch(url,{...init,signal:c.signal});const text=await res.text();let body={};try{body=text?JSON.parse(text):{};}catch{body={text};}if(!res.ok){const e=new Error(`HTTP_${res.status}:${String(body?.message||body?.error||text).slice(0,300)}`);e.status=res.status;throw e;}return body;}finally{clearTimeout(t)}}
 async function openAi(endpoint,key,model,prompt){const b=await fetchJson(endpoint,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${key}`},body:JSON.stringify({model,messages:[{role:'user',content:prompt}],temperature:0,max_tokens:8000,stream:false})});const text=b?.choices?.[0]?.message?.content;if(!String(text||'').trim())throw new Error('EMPTY_RESPONSE');return String(text)}
@@ -167,24 +170,29 @@ async function invoke(r,prompt){
   if(r.provider==='groq')return openAi('https://api.groq.com/openai/v1/chat/completions',process.env.GROQ_API_KEY,r.model,prompt);
   if(r.provider==='openrouter')return openAi('https://openrouter.ai/api/v1/chat/completions',process.env.OPENROUTER_API_KEY,r.model,prompt);
   if(r.provider==='mistral')return openAi('https://api.mistral.ai/v1/chat/completions',process.env.MISTRAL_API_KEY,r.model,prompt);
+  if(r.provider==='cloudflare'){const b=await fetchJson(`https://api.cloudflare.com/client/v4/accounts/${process.env.CLOUDFLARE_ACCOUNT_ID}/ai/run/${r.model}`,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${process.env.CLOUDFLARE_AUTH_TOKEN}`},body:JSON.stringify({prompt})});const text=b?.result?.response;if(!String(text||'').trim())throw new Error('EMPTY_RESPONSE');return String(text)}
   if(r.provider==='huggingface')return openAi('https://router.huggingface.co/v1/chat/completions',process.env.HF_TOKEN,r.model,prompt);
   if(r.provider==='inception')return openAi('https://api.inceptionlabs.ai/v1/chat/completions',process.env.INCEPTION_API_KEY,r.model,prompt);
   if(r.provider==='gemini')return geminiRateController.run(async()=>{const b=await fetchJson(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(r.model)}:generateContent`,{method:'POST',headers:{'content-type':'application/json','x-goog-api-key':process.env.GEMINI_API_KEY},body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{temperature:0,maxOutputTokens:8192}})});const text=b?.candidates?.[0]?.content?.parts?.map(x=>x.text||'').join('\n');if(!String(text||'').trim())throw new Error('EMPTY_RESPONSE');return String(text)});
   if(r.provider==='cohere'){const b=await fetchJson('https://api.cohere.com/v2/chat',{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${process.env.COHERE_API_KEY}`},body:JSON.stringify({model:r.model,messages:[{role:'user',content:prompt}],temperature:0,max_tokens:8000})});const text=b?.message?.content?.map(x=>x.text||'').join('');if(!String(text||'').trim())throw new Error('EMPTY_RESPONSE');return String(text)}
+  if(r.provider==='nvidia')return openAi('https://integrate.api.nvidia.com/v1/chat/completions',process.env.NVIDIA_API_KEY,r.model,prompt);
   throw new Error('PROVIDER_UNSUPPORTED');
 }
 
-export async function invokeJsonWithFailover(initialResource,prompt,{exclude=[],resourcePool=resources,invokeFn=invoke,shrinkPrompt=shrinkAiPrompt,maxResources=3,validateData=null,sleepFn=sleep,randomFn=Math.random,backoffBaseMs=1000}={}){
-  const initial=(initialResource&&!exclude.includes(initialResource.id))?initialResource:resourcePool.find(r=>r&&!exclude.includes(r.id));
-  if(!initial)throw new Error('NO_FREE_API_CODING_RESOURCE');
-  const ordered=[initial,...resourcePool.filter(r=>r?.id!==initial.id&&!exclude.includes(r?.id))];
+export async function invokeJsonWithFailover(initialResource,prompt,{exclude=[],resourcePool=resources,invokeFn=invoke,shrinkPrompt=shrinkAiPrompt,maxResources=5,validateData=null,sleepFn=sleep,randomFn=Math.random,backoffBaseMs=1000}={}){
+  const eligible=resourcePool.filter(r=>r&&!exclude.includes(r.id)&&!busyAiResources.has(r.id));
+  const initial=(initialResource&&!exclude.includes(initialResource.id)&&!busyAiResources.has(initialResource.id))?initialResource:eligible[0];
+  if(!initial){const e=new Error('AI_RESOURCES_BUSY');e.code='AI_RESOURCES_BUSY';throw e;}
+  const ordered=[initial,...eligible.filter(r=>r?.id!==initial.id)];
   const unique=[];const ids=new Set();
-  for(const r of ordered){if(!r||exclude.includes(r.id)||ids.has(r.id))continue;ids.add(r.id);unique.push(r);if(unique.length>=Math.min(3,maxResources))break;}
+  for(const r of ordered){if(!r||exclude.includes(r.id)||ids.has(r.id)||busyAiResources.has(r.id))continue;ids.add(r.id);unique.push(r);if(unique.length>=Math.min(5,maxResources))break;}
   const failureLedger=[];let attempts=0;
   for(let resourceIndex=0;resourceIndex<unique.length;resourceIndex++){
     const resource=unique[resourceIndex];
     for(let same=0;same<2;same++){
+      if(busyAiResources.has(resource.id))break;
       attempts++;
+      busyAiResources.add(resource.id);
       try{
         const data=parseJsonObject(await invokeFn(resource,same===0?prompt:shrinkPrompt(prompt)));
         if(validateData)validateData(data,resource);
@@ -201,6 +209,8 @@ export async function invokeJsonWithFailover(initialResource,prompt,{exclude=[],
         if(failureClass==='rate_limit')break;
         if(same===0)continue;
         break;
+      }finally{
+        busyAiResources.delete(resource.id);
       }
     }
   }
@@ -235,7 +245,7 @@ create index if not exists tigeriq_coding_jobs_status_idx on tigeriq_coding_jobs
 async function managerTick(){
   const q=await pool.query("select * from tigeriq_coding_objectives where status='active' and not exists(select 1 from tigeriq_coding_jobs j where j.objective_id=tigeriq_coding_objectives.id and j.status in ('queued','running','review','waiting_ci','waiting_resource')) order by case priority when 'P0' then 0 when 'P1' then 1 else 2 end,created_at limit 1");
   const o=q.rows[0];if(!o)return;
-  let manager=pickResource();if(!manager){await pool.query("update tigeriq_coding_objectives set status='blocked',summary='NO_FREE_API_CODING_RESOURCE' where id=$1",[o.id]);return}
+  let manager=pickResource();if(!manager)return
   const canonical=extractCanonicalAllowedPaths(o.objective);
   const tree=await repoTree();
   const scopeText=canonical.length?`\nCANONICAL ALLOWED PATHS (MUST NOT EXPAND):\n${canonical.join('\n')}\n`:'';
@@ -312,7 +322,22 @@ export async function recoverAfterCodingRestart({db=pool,fetchPr=async(number)=>
   return out;
 }
 
-async function claimJob(){const c=await pool.connect();try{await c.query('begin');const q=await c.query("select * from tigeriq_coding_jobs where status='queued' or (status='waiting_resource' and coalesce(next_attempt_at,now())<=now()) order by case when status='waiting_resource' then 0 else 1 end,created_at for update skip locked limit 1");if(!q.rows[0]){await c.query('commit');return null}const j=q.rows[0];await c.query("update tigeriq_coding_jobs set status='running',started_at=coalesce(started_at,now()),attempts=attempts+1,completed_at=null where id=$1",[j.id]);await c.query('commit');return j}catch(e){await c.query('rollback');throw e}finally{c.release()}}
+export function codingPathsOverlap(left=[],right=[]){
+  const a=(Array.isArray(left)?left:[]).map(String),b=(Array.isArray(right)?right:[]).map(String);
+  return a.some(x=>b.some(y=>x===y||x.startsWith(y.endsWith('/')?y:y+'/')||y.startsWith(x.endsWith('/')?x:x+'/')));
+}
+async function claimJob(){
+  const c=await pool.connect();
+  try{
+    await c.query('begin');
+    const activeRows=(await c.query("select paths from tigeriq_coding_jobs where status in ('running','review','waiting_ci')")).rows||[];
+    const candidates=(await c.query("select * from tigeriq_coding_jobs where status='queued' or (status='waiting_resource' and coalesce(next_attempt_at,now())<=now()) order by case when status='waiting_resource' then 0 else 1 end,created_at for update skip locked limit 20")).rows||[];
+    const j=candidates.find(candidate=>!activeRows.some(active=>codingPathsOverlap(candidate.paths,active.paths)));
+    if(!j){await c.query('commit');return null}
+    await c.query("update tigeriq_coding_jobs set status='running',started_at=coalesce(started_at,now()),attempts=attempts+1,completed_at=null where id=$1",[j.id]);
+    await c.query('commit');return j;
+  }catch(e){await c.query('rollback');throw e}finally{c.release()}
+}
 export function buildLocalFileContext(files=[]){return files.map(file=>`FILE ${file.path}\n${String(file.content??'')}`).join('\n\n---\n\n')}
 async function contextFor(paths,ref='main'){const files=[];for(const p of paths){const f=await readRepoFile(p,ref);files.push({path:p,content:f.content})}return buildLocalFileContext(files)}
 export function validateCompactEdits(edits,allowedPaths=[]){
@@ -444,7 +469,7 @@ async function failJob(j,e){
   await pool.query("update tigeriq_coding_objectives set status='blocked',summary=$2,updated_at=now() where id=$1",[j.objective_id,String(e?.message||e).slice(0,1000)]);
 }
 
-async function snapshot(){const objectives=(await pool.query('select * from tigeriq_coding_objectives order by created_at desc limit 20')).rows;const jobs=(await pool.query('select * from tigeriq_coding_jobs order by created_at desc limit 30')).rows;return {ok:true,service:'tigeriq-coding-lane',host:HOST,port:PORT,pid:process.pid,resources:resources.map(x=>({id:x.id,provider:x.provider,model:x.model})),objectives,jobs}}
+async function snapshot(){const objectives=(await pool.query('select * from tigeriq_coding_objectives order by created_at desc limit 20')).rows;const jobs=(await pool.query('select * from tigeriq_coding_jobs order by created_at desc limit 30')).rows;return {ok:true,service:'tigeriq-coding-lane',host:HOST,port:PORT,pid:process.pid,maxParallel:MAX_PARALLEL,activeAiResources:[...busyAiResources],freeAiResources:resources.filter(x=>!busyAiResources.has(x.id)).map(x=>x.id),resources:resources.map(x=>({id:x.id,provider:x.provider,model:x.model,busy:busyAiResources.has(x.id)})),objectives,jobs}}
 async function body(req){let s='';for await(const c of req){s+=c;if(s.length>65536)throw new Error('BODY_TOO_LARGE')}return s?JSON.parse(s):{}}
 const server=createServer(async(req,res)=>{const u=new URL(req.url||'/','http://localhost');try{if(req.method==='GET'&&u.pathname==='/health'){res.writeHead(200,{'content-type':'application/json'});return res.end(JSON.stringify({ok:true,service:'tigeriq-coding-lane',pid:process.pid,resources:resources.length}))}if(req.method==='GET'&&u.pathname==='/api/status'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await snapshot()))}if(req.method==='POST'&&u.pathname==='/api/objectives'){const b=await body(req);if(!String(b.objective||'').trim()){res.writeHead(400);return res.end('objective_required')}const id=`CODEOBJ-${randomUUID()}`;const priority=['P0','P1','P2'].includes(b.priority)?b.priority:'P1';await pool.query('insert into tigeriq_coding_objectives(id,objective,priority) values($1,$2,$3)',[id,String(b.objective).slice(0,12000),priority]);res.writeHead(201,{'content-type':'application/json'});return res.end(JSON.stringify({ok:true,id}))}res.writeHead(404);res.end('not_found')}catch(e){res.writeHead(500,{'content-type':'application/json'});res.end(JSON.stringify({ok:false,error:String(e?.message||e)}))}});
 
