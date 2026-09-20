@@ -15,6 +15,29 @@ export interface EvidenceWorkerState {
   manualCloseSuppressed?: boolean;
 }
 
+const restoredReopenFlags = new Set<string>();
+
+export function watchAndRestoreModelProfile(workerId: WorkerId, hb: EvidenceWorkerState['lastHeartbeat'], workItemId: string | undefined, dispatchFn: (payload: { modelProfile: string; reasoningEffort: string; workItemId?: string }) => void): boolean {
+  if (!hb) return false;
+  const statusStr = String(hb.modelProfileStatus || '').toUpperCase();
+  const nameStr = String(hb.modelName || '').toUpperCase();
+  const isBlockedState = statusStr.includes('MODEL_PROFILE_BLOCKED') || nameStr.includes('MODEL_NAME_NOT_GPT_5_6_SOL') || hb.blockedReason === 'MODEL_PROFILE_BLOCKED' || hb.blockedReason === 'MODEL_NAME_NOT_GPT_5_6_SOL';
+  if (!isBlockedState) return false;
+
+  const reopenKey = `${workerId}:${workItemId || 'default'}`;
+  if (restoredReopenFlags.has(reopenKey)) {
+    return false;
+  }
+
+  restoredReopenFlags.add(reopenKey);
+  try {
+    restoreGpt5_6SolProfile(dispatchFn, workItemId);
+    return true;
+  } catch (err) {
+    throw new Error(`RESTORE_GPT5_6_SOL_FAILED:${String(err)}`);
+  }
+}
+
 export interface RuntimeEvidenceInput {
   config: ControllerConfig;
   workArea?: WorkArea;
