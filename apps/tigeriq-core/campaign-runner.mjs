@@ -84,6 +84,18 @@ export function normalizeWorkItemLifecycle(input = {}) {
   };
 }
 
+export function normalizeBoundedRecoveryState(state = {}) {
+  const attempts = Number(state.attempts || 0);
+  const maxAttempts = Number(state.maxAttempts || 3);
+  const resumed = Boolean(state.resumed);
+  return {
+    attempts: Math.max(0, attempts),
+    maxAttempts: Math.max(1, Math.min(10, maxAttempts)),
+    resumed,
+    exactOnceKey: String(state.exactOnceKey || '').trim()
+  };
+}
+
 export function executeCoreWorkItemLifecycle({ workItem, preflightFn, repairFn, reviewFn, maxRepairCycles = 3 } = {}) {
   const item = normalizeWorkItemLifecycle(workItem);
   const preflight = typeof preflightFn === 'function' ? preflightFn(item) : { ok: true, errors: [] };
