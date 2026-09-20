@@ -26,10 +26,11 @@ const SURFSENSE_APP_URL = process.env.TIGERIQ_SURFSENSE_APP_URL?.trim() || 'http
 const SURFSENSE_SEARCH_URL = process.env.TIGERIQ_SURFSENSE_SEARCH_URL?.trim() || 'http://127.0.0.1:3930/search';
 const SURFSENSE_SUMMARY_MODEL = process.env.TIGERIQ_SURFSENSE_SUMMARY_MODEL?.trim() || 'gemma3:4b';
 const OLLAMA_EMPLOYEE_ID = 'NV10';
-export function inspectApiDoctorHealth(resource, metrics = {}) {
+export async function inspectApiDoctorHealth(resource, metrics = {}) {
   const provider = String(resource?.provider || '').toLowerCase();
   const employeeId = String(resource?.employeeId || resource?.employee_id || '');
-  if (provider !== 'ollama' && employeeId !== 'NV10') {
+  if (provider !== 'ollama' || employeeId !== 'NV10') {
+    await event('API_DOCTOR_TELEMETRY_EMITTED', { employeeId, provider, ok: false, errorClass: 'restricted' });
     return { ok: false, error: 'API_DOCTOR_RESTRICTED_TO_NV10' };
   }
   const failures = Number(metrics.consecutiveFailures || 0);
@@ -48,14 +49,28 @@ export function inspectApiDoctorHealth(resource, metrics = {}) {
     action: 'repair_handoff'
   } : null;
 
-  return {
-    ok: errorClass === 'healthy',
+  let verifiedLive = false;
+  if (errorClass !== 'healthy') {
+    try {
+      const probe = await fetch('http://127.0.0.1:11434/api/tags', { signal: AbortSignal.timeout(3000) });
+      verifiedLive = probe.ok;
+    } catch {
+      verifiedLive = false;
+    }
+  } else {
+    verifiedLive = true;
+  }
+
+  const result = {
+    ok: errorClass === 'healthy' && verifiedLive,
     employeeId,
     provider,
     errorClass,
     repairHandoff,
-    verifiedLive: errorClass === 'healthy'
+    verifiedLive
   };
+  await event('API_DOCTOR_TELEMETRY_EMITTED', result);
+  return result;
 }
 const GEMINI_MIN_INTERVAL_MS = Math.max(4500, Number(process.env.TIGERIQ_GEMINI_MIN_INTERVAL_MS || 4500));
 const GEMINI_BACKOFF_BASE_MS = Math.max(4500, Number(process.env.TIGERIQ_GEMINI_BACKOFF_BASE_MS || 4500));
