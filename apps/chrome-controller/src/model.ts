@@ -98,4 +98,12 @@ export function loadConfig(configPath?:string):ControllerConfig{
   const text=readFileSync(p,'utf8').replace(/^\uFEFF/,'');
   return validateConfig(JSON.parse(text) as unknown);
 }
+export function restoreGpt5_6SolProfile(dispatchFn: (payload: { modelProfile: string; reasoningEffort: string; workItemId?: string }) => void, workItemId?: string): void {
+  dispatchFn({
+    modelProfile: 'GPT-5.6 Sol',
+    reasoningEffort: 'High',
+    workItemId,
+  });
+}
+
 export function computePlacements(config:ControllerConfig,workArea?:WorkArea):Record<WorkerId,WindowPlacement>{const fallback:WorkArea={left:config.layout.fallbackWorkAreaLeft,top:0,width:config.layout.fallbackWorkAreaWidth,height:config.layout.top+config.layout.height};const area=workArea&&workAreaFitsLayout(config,workArea)?workArea:fallback;if(!workAreaFitsLayout(config,area))throw new Error('LAYOUT_DOES_NOT_FIT_WORK_AREA');const total=config.workers.length*config.layout.width+(config.workers.length-1)*config.layout.gap;const first=area.left+area.width-config.layout.rightMargin-total;return Object.fromEntries(config.workers.map((w,i)=>[w.id,{left:first+i*(config.layout.width+config.layout.gap),top:area.top+config.layout.top,width:config.layout.width,height:config.layout.height}]))as Record<WorkerId,WindowPlacement>}
