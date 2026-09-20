@@ -162,6 +162,7 @@ describe('Web Control runtime', () => {
     const truthText = await truthRes.text();
     expect(truthText).toContain('TIGERIQ_CONFIG');
     expect(truthText).toContain('healthUrl');
+    expect(truthText).toContain('channel');
 
     const htmlRes = await fetch(`http://127.0.0.1:${WEB_PORT}/`);
     const htmlText = await htmlRes.text();
@@ -169,5 +170,6 @@ describe('Web Control runtime', () => {
     expect(htmlText).toContain('statusUrl');
     expect(htmlText).toContain('healthUrl');
     expect(htmlText).toContain('channel');
+    expect(htmlText).toContain('@media(max-width:');
   });
 });
