@@ -41,8 +41,11 @@ describe('runtime updater squash merge gate resolution',()=>{
   it('enforces clean runtime checkouts and fail-closed checks separately from general dirty worktrees with SHA rollback',()=>{
     const src=readFileSync('scripts/tigeriq-core/update-core-runtime.ps1','utf8');
     expect(src).toContain('BLOCKED_DIRTY_RUNTIME');
+    expect(src).not.toContain('BLOCKED_DIRTY_WORKTREE');
     expect(src).toContain('checkout -B core-runtime-sync origin/main');
     expect(src).toContain('git -C $repo checkout $local');
+    const hasRuntimePathsCheck = src.includes("apps/tigeriq-core") && src.includes("apps/tigeriq-coding-lane");
+    expect(hasRuntimePathsCheck).toBe(true);
   });
 
   it('self-syncs every current/future web-control asset plus workforce registry before launch',()=>{
