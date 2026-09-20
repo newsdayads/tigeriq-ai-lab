@@ -196,6 +196,14 @@ describe('NV02 continuity policy', () => {
     expect(backgroundSource).toContain('single NV02 continuity owner');
     expect(source).toContain('ensureNv02ModelProfile');
     expect(source).toContain('MODEL_56_SOL_CLICK_EXPR');
+    expect(source).toContain('MODEL_SELECTED_EXPR');
+    expect(source).toContain('[role="menuitemradio"][aria-checked="true"]');
+    expect(source).toContain('nv02VerifiedModelProfile');
+    const contentSource=readFileSync('apps/chrome-controller/extension/content.js','utf8');
+    expect(contentSource).toContain("el.getAttribute?.('role') === 'menuitemradio'");
+    expect(contentSource).toContain("el.getAttribute?.('aria-checked') === 'true'");
+    expect(contentSource).toContain('lastVerifiedModelProfile');
+    expect(contentSource).toContain("data-selected-reasoning-effort");
     expect(source).toContain("'MODEL_PROFILE_RECOVERY'");
     expect(source).toContain("'ARCHIVE_CONFIRMED'");
     expect(source).toContain("'NEW_CHAT_CREATED'");
