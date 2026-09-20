@@ -54,6 +54,10 @@ describe('Core WorkItem projection', () => {
     snapshot = plane.transition(order.id, 'approved', approver);
     expect(projectCoreWorkItem(snapshot)).toMatchObject({ status: 'CLAIMED' });
 
+    const idlePolicyTest = evaluateIdleWithBacklogPolicy({ status: 'IDLE', activeCount: 0, backlogItems: [{ number: 1, priority: 'P1' }] });
+    expect(idlePolicyTest.idleWithBacklog).toBe(true);
+    expect(idlePolicyTest.autoDispatched).toBe(true);
+
     snapshot = plane.transition(order.id, 'running', coder);
     expect(projectCoreWorkItem(snapshot)).toMatchObject({
       status: 'WORKING',
