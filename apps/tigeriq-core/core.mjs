@@ -656,6 +656,25 @@ export async function startSelfCheck(runtime) {
   }
 }
 
+async function runJobWithRetry(job, maxAttempts = 5) {
+  let attempt = 0;
+  while (true) {
+    try {
+      return await runJob(job);
+    } catch (err) {
+      if (['NO_IDLE_RESOURCE', 'TEMPORARILY_BUSY'].includes(err?.code)) {
+        if (attempt >= maxAttempts) throw err;
+        const backoff = Math.min(1000 * 2 ** attempt, 8000);
+        const jitter = Math.random() * 100;
+        await sleep(backoff + jitter);
+        attempt++;
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
 async function loop(){
   while(!stop){const t=Date.now();
     try{
@@ -682,7 +701,7 @@ async function loop(){
         }
         dispatchedCount++;
         active.add(j.id);
-        void runJob(j).finally(()=>active.delete(j.id));
+        void runJobWithRetry(j).finally(()=>active.delete(j.id));
       }
     }catch(e){console.error(JSON.stringify({event:'CORE_LOOP_ERROR',error:String(e?.message||e)}));}
     await sleep(POLL_MS);
@@ -696,3 +715,4 @@ void probeReadyResources();
 console.log(JSON.stringify({event:'TIGERIQ_CORE_STARTED',host:HOST,port:PORT,pid:process.pid,resources:resources.length}));
 process.on('SIGINT',()=>{stop=true;server.close();});process.on('SIGTERM',()=>{stop=true;server.close();});
 await loop(); await pool.end();
+export { runJobWithRetry };
