@@ -91,6 +91,10 @@ describe('Workforce Controller remote task API', () => {
     expect((await json(accepted)).result.conclusion).toBe('remote done');
     expect(app.queue.get('REMOTE-01').stage).toBe('completed');
 
+    const hb = await fetch(`${app.url}/api/node/heartbeat`, { method: 'POST', headers: nodeHeaders(), body: JSON.stringify({ activeTaskIds: ['REMOTE-01'] }) });
+    expect(hb.status).toBe(200);
+    expect((await json(hb)).recoveredCount).toBe(0);
+
     const duplicate = await fetch(`${app.url}/api/node/tasks/result`, { method: 'POST', headers: nodeHeaders(), body: JSON.stringify(envelope) });
     expect(duplicate.status).toBe(200);
     expect((await json(duplicate)).result.conclusion).toBe('remote done');
