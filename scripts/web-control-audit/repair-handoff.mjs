@@ -1,9 +1,10 @@
 import { selectIdleWorkers } from './worker-selection.mjs';
 import { getViewportPolicy } from './viewport-policy.mjs';
 import { runBrowserAudit } from './browser-audit-adapter.mjs';
+const seenHandoffs = new Set();
 
 function generateSignature(targetUrl, cycleIndex, auditResult) {
-  const str = `${targetUrl}:${cycleIndex}:${auditResult.status}`;
+  const str = `${targetUrl}:${cycleIndex}:${JSON.stringify(auditResult)}`;
   return btoa(str);
 }
 
@@ -13,9 +14,11 @@ function isSafeForQueue(auditResult) {
 
 export async function processRepairHandoff(targetUrl, cycleIndex) {
   const workers = await selectIdleWorkers();
-  const { fullHD } = getViewportPolicy(cycleIndex);
-  const auditResult = await runBrowserAudit(targetUrl, fullHD);
+  const { rotation } = getViewportPolicy(cycleIndex);
+  const auditResult = await runBrowserAudit(targetUrl, rotation);
   const signature = generateSignature(targetUrl, cycleIndex, auditResult);
+  if (seenHandoffs.has(signature)) return null;
+  seenHandoffs.add(signature);
 
   const handoff = {
     id: signature,
