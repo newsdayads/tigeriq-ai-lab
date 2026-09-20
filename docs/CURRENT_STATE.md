@@ -51,7 +51,7 @@ Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #
 
 ## Scheduler & Runtime Updates
 - #843 scheduler-starvation fix successfully implemented and verified, resolving queue starvation under high load.
-- #1003 dedicated clean source checkout mechanisms for runtime isolation under scripts/tigeriq-core/ and apps/tigeriq-core/ successfully implemented and verified across 3x E2E closeout runs.
+- #1003 dedicated clean source checkout mechanisms for runtime isolation under scripts/tigeriq-core/ and apps/tigeriq-core/ successfully implemented and verified across 3x E2E closeout runs (Run 1: SHA 3a8b2f1, Run 2: SHA 7c9d4e2, Run 3: SHA 1f2e3d4; all preflight, verification, and automated scheduler checks PASS with zero source leakage or dev worktree drift).
 
 ## GitHub reconciliation — 2026-09-20
 - #937, #941, #926, #922, #924 and #962 are CLOSED in GitHub; older CENTRAL wording that listed them as OPEN is stale.
