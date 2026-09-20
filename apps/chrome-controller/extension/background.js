@@ -226,7 +226,6 @@ async function saveAndArchive(workerId,{requireDone=true}={}){
     const dispatchedAt=new Date().toISOString();
     const saveText=buildDurableSavePrompt({saveToken,workerId,dispatchedAt});
     await chrome.tabs.update(ctx.tabId,{active:true});
-    if(workerId==='NV02')await precheckNv02Profile(ctx,'SAVE_AND_ARCHIVE');
     const save=await chrome.tabs.sendMessage(ctx.tabId,{type:'TIGERIQ_DISPATCH',text:saveText,workerId});
     if(!save?.ok) throw new Error(String(save?.status||'SAVE_DISPATCH_FAILED'));
     await waitForSaveCompletion(ctx);
