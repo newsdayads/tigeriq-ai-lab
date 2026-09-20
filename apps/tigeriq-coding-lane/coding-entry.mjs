@@ -7,6 +7,8 @@ if(!paidAllowed){
   if(process.env.TIGERIQ_GEMINI_FREE_TIER_VERIFIED!=='true') delete process.env.GEMINI_API_KEY;
   if(process.env.TIGERIQ_COHERE_TRIAL_CONFIRMED!=='true') delete process.env.COHERE_API_KEY;
   if(process.env.TIGERIQ_INCEPTION_FREE_TIER_VERIFIED!=='true') delete process.env.INCEPTION_API_KEY;
+  if(process.env.TIGERIQ_CLOUDFLARE_FREE_CONFIRMED!=='true'){delete process.env.CLOUDFLARE_AUTH_TOKEN;delete process.env.CLOUDFLARE_ACCOUNT_ID;}
+  if(process.env.TIGERIQ_NVIDIA_FREE_DEV_CONFIRMED!=='true') delete process.env.NVIDIA_API_KEY;
   delete process.env.OPENROUTER_API_KEY;
   delete process.env.MISTRAL_API_KEY;
   delete process.env.HF_TOKEN;
