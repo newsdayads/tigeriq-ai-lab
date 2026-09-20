@@ -389,7 +389,18 @@ async function dispatch(
       if(workerId==='NV02'){
         const profile=await sendCommand(workerId,'MODEL_PREFLIGHT');
         const exact=(profile as any)?.exact===true||(profile as any)?.modelExact===true;
-        if(!exact||(profile as any)?.modelName!=='GPT-5.6 Sol'||(profile as any)?.reasoningEffort!=='High')throw new Error(`MODEL_PROFILE_BLOCKED:${(profile as any)?.blockedReason||'UNVERIFIED'}`);
+        if(!exact||(profile as any)?.modelName!=='GPT-5.6 Sol'||(profile as any)?.reasoningEffort!=='High'){
+          try{
+            await sendCommand(workerId,'RESTORE_MODEL_PROFILE',{modelName:'GPT-5.6 Sol',reasoningEffort:'High',profile:'GPT-5.6 Sol + High'});
+          }catch(restoreError){
+            throw new Error(`MODEL_PROFILE_BLOCKED:${(profile as any)?.blockedReason||'UNVERIFIED'}_RESTORE_FAILED:${String(restoreError)}`);
+          }
+          const recheck=await sendCommand(workerId,'MODEL_PREFLIGHT');
+          const recheckExact=(recheck as any)?.exact===true||(recheck as any)?.modelExact===true;
+          if(!recheckExact||(recheck as any)?.modelName!=='GPT-5.6 Sol'||(recheck as any)?.reasoningEffort!=='High'){
+            throw new Error(`MODEL_PROFILE_BLOCKED:${(recheck as any)?.blockedReason||'UNVERIFIED'}`);
+          }
+        }
       }
       const result=await sendCommand(workerId,'DISPATCH',{text});
       states.get(workerId)!.status='SUBMITTED';
