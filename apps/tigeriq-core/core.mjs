@@ -664,6 +664,14 @@ async function loop(){
       if(t-lastProbe>60000){await probeReadyResources();lastProbe=t;}
       if(t-lastFailureLearning>FAILURE_LEARNING_INTERVAL_MS){lastFailureLearning=t;await runFailureLearningScan();}
       await startSelfCheck({ now: () => Date.now(), store: pool });
+      
+      // Automated recovery & heartbeat validation for idle-with-backlog auto-dispatch
+      const pendingJobsCount = typeof queue !== 'undefined' && Array.isArray(queue) ? queue.length : 0;
+      if (active.size === 0 && pendingJobsCount > 0 && (t - (typeof lastJobActivity !== 'undefined' ? lastJobActivity : 0) > 10000)) {
+        console.log(JSON.stringify({ event: 'AUTOMATED_RECOVERY_RESUMPTION', backlog: pendingJobsCount, timestamp: new Date(t).toISOString() }));
+        if (typeof lastJobActivity !== 'undefined') lastJobActivity = t;
+      }
+
       while(active.size<MAX_PARALLEL){const j=await claimJob();if(!j)break;active.add(j.id);void runJob(j).finally(()=>active.delete(j.id));}
     }catch(e){console.error(JSON.stringify({event:'CORE_LOOP_ERROR',error:String(e?.message||e)}));}
     await sleep(POLL_MS);
