@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-export function generateRepairHandoff(auditResult, handoffDir = 'D:/TigerIQ/Evidence/repair-handoffs') {
+export function generateRepairHandoff(auditResult, handoffDir = 'Evidence/repair-handoffs') {
   fs.mkdirSync(handoffDir, { recursive: true });
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const handoffId = `handoff-${timestamp}`;
