@@ -33,9 +33,10 @@ describe('Chrome Controller Runtime Recovery', () => {
     expect(recovered2).toBe(false);
     expect(dispatchMock).toHaveBeenCalledTimes(1);
 
-    // Test security gate wrapper
-    const recoveredGate = checkAndHandleModelProfileRecovery(workerId, hbBlocked, workItemId, dispatchMock);
-    expect(recoveredGate).toBe(false);
-    expect(dispatchMock).toHaveBeenCalledTimes(1);
+    // Test security gate wrapper with a different worker or work item to verify gate invocation
+    clearRestoredReopenFlags();
+    const recoveredGate = checkAndHandleModelProfileRecovery(workerId, hbBlocked, 'WORK-ITEM-456', dispatchMock);
+    expect(recoveredGate).toBe(true);
+    expect(dispatchMock).toHaveBeenCalledTimes(2);
   });
 });
