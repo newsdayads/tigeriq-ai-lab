@@ -110,4 +110,38 @@ describe('API campaign runner and core lifecycle integration',()=>{
     expect(detectIdleWithBacklog(1, 5)).toBe(false);
     expect(detectIdleWithBacklog(0, 0)).toBe(false);
   });
+  it('enforces api_doctor exclusivity for NV10/Ollama and handles health classification and repair verification', async () => {
+    const { isApiDoctorEligibleResource, inspectOllamaApiDoctorHealth, verifyOllamaApiDoctorPostRepair } = await import('../apps/tigeriq-core/ollama-probe-adapter.mjs');
+    const { scoreResource } = await import('../apps/tigeriq-core/smart-router.mjs');
+
+    const nv10Res = { employee_id: 'NV10', provider: 'ollama', capabilities: ['api_doctor'] };
+    const nv12Res = { employee_id: 'NV12', provider: 'gemini', capabilities: ['api_doctor'] };
+
+    expect(isApiDoctorEligibleResource(nv10Res)).toBe(true);
+    expect(isApiDoctorEligibleResource(nv12Res)).toBe(false);
+
+    const s1 = scoreResource(nv10Res, { capability: 'api_doctor' });
+    expect(s1.eligible).toBe(true);
+
+    const s2 = scoreResource(nv12Res, { capability: 'api_doctor' });
+    expect(s2.eligible).toBe(false);
+    expect(s2.reasons).toContain('api_doctor_exclusivity');
+
+    const rateLimitHealth = inspectOllamaApiDoctorHealth({ status: 429, message: 'rate limit' });
+    expect(rateLimitHealth.classification).toBe('rate_limit');
+    expect(rateLimitHealth.repairable).toBe(true);
+
+    const blockerHealth = inspectOllamaApiDoctorHealth({ status: 402, message: 'payment required' });
+    expect(blockerHealth.classification).toBe('http_402_external_blocker');
+    expect(blockerHealth.blocker).toBe(true);
+
+    const outageHealth = inspectOllamaApiDoctorHealth({ status: 503, message: 'transient outage' });
+    expect(outageHealth.classification).toBe('transient_outage');
+
+    const sourceHealth = inspectOllamaApiDoctorHealth({ status: 400, message: 'syntax error' });
+    expect(sourceHealth.classification).toBe('source_level_failure');
+
+    expect(verifyOllamaApiDoctorPostRepair(rateLimitHealth)).toBe(false);
+    expect(verifyOllamaApiDoctorPostRepair({ ok: true })).toBe(true);
+  });
 });
