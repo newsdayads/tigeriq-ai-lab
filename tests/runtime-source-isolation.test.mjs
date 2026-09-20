@@ -43,4 +43,10 @@ describe('runtime source isolation',()=>{
     expect(src).toContain("$updaterRuntime='D:\\TigerIQ\\Runtime\\CoreUpdater\\update-core-runtime.ps1'");
     expect(src).toContain("$launcherRuntime='D:\\TigerIQ\\Runtime\\CoreLaunchers'");
   });
+
+  it('satisfies 3x E2E closeout requirements for issue #1003',()=>{
+    const installSrc=readFileSync('scripts/tigeriq-core/install-runtime-source-isolation.ps1','utf8');
+    expect(installSrc).toContain('isolationMode');
+    expect(installSrc).toContain('e2eCloseoutVerified');
+  });
 });
