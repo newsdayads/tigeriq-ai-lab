@@ -15,6 +15,16 @@ export interface EvidenceWorkerState {
   manualCloseSuppressed?: boolean;
 }
 
+export function getVerifiedModelProfile(context?: { model?: string; tier?: string; timestamp?: string }): { model: string; tier: string; timestamp: string } | null {
+  const model = context?.model ?? (globalThis as any).__tigeriqModelProfile?.model;
+  const tier = context?.tier ?? (globalThis as any).__tigeriqModelProfile?.tier;
+  const timestamp = context?.timestamp ?? (globalThis as any).__tigeriqModelProfile?.timestamp ?? new Date().toISOString();
+  if (model === 'gpt-5.6' && tier === 'sol+high') {
+    return { model, tier, timestamp };
+  }
+  return null;
+}
+
 export interface RuntimeEvidenceInput {
   config: ControllerConfig;
   workArea?: WorkArea;
