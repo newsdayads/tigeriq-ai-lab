@@ -2,11 +2,12 @@ param([Parameter(Mandatory=$true)][string]$ExpectedSha)
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 
-$controlRepo='D:\TigerIQ\Workspace\tigeriq-ai-lab'
-$runtimeRepo='D:\TigerIQ\Runtime\CoreSource'
-$runtimeState='D:\TigerIQ\State\core-runtime-source.json'
-$launcherRuntime='D:\TigerIQ\Runtime\CoreLaunchers'
-$updaterRuntime='D:\TigerIQ\Runtime\CoreUpdater\update-core-runtime.ps1'
+$baseDir = if ($env:TIGERIQ_BASE_DIR) { $env:TIGERIQ_BASE_DIR } else { 'D:\TigerIQ' }
+$controlRepo=Join-Path $baseDir 'Workspace\tigeriq-ai-lab'
+$runtimeRepo=Join-Path $baseDir 'Runtime\CoreSource'
+$runtimeState=Join-Path $baseDir 'State\core-runtime-source.json'
+$launcherRuntime=Join-Path $baseDir 'Runtime\CoreLaunchers'
+$updaterRuntime=Join-Path $baseDir 'Runtime\CoreUpdater\update-core-runtime.ps1'
 $coreTask='TigerIQ Core 24x7'
 $codingTask='TigerIQ Coding Lane 24x7'
 $updaterTask='TigerIQ Core Runtime Updater'
