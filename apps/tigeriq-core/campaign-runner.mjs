@@ -84,7 +84,7 @@ export function normalizeWorkItemLifecycle(input = {}) {
   };
 }
 
-export function executeCoreWorkItemLifecycle({ workItem, preflightFn, repairFn, reviewFn, maxRepairCycles = 3 } = {}) {
+export function executeCoreWorkItemLifecycle({ workItem, preflightFn, repairFn, reviewFn, maxRepairCycles = 3, heartbeatFn, ackFn, autoChainFn } = {}) {
   const item = normalizeWorkItemLifecycle(workItem);
   const preflight = typeof preflightFn === 'function' ? preflightFn(item) : { ok: true, errors: [] };
   if (!preflight.ok) {
@@ -103,6 +103,13 @@ export function executeCoreWorkItemLifecycle({ workItem, preflightFn, repairFn, 
 
   while (currentCycle <= maxRepairCycles) {
     try {
+      if (typeof heartbeatFn === 'function') {
+        const hb = heartbeatFn({ item, cycle: currentCycle });
+        if (hb && hb.ok === false) {
+          throw new Error(`HEARTBEAT_FAILURE:${hb.reason || 'Heartbeat check failed'}`);
+        }
+      }
+
       if (typeof repairFn === 'function' && currentCycle > 0) {
         repairFn({ cycle: currentCycle, lastError });
       }
@@ -116,11 +123,24 @@ export function executeCoreWorkItemLifecycle({ workItem, preflightFn, repairFn, 
         }
       }
 
+      if (typeof ackFn === 'function') {
+        const ack = ackFn({ item, cycle: currentCycle });
+        if (ack && ack.ok === false) {
+          throw new Error(`ACK_FAILURE:${ack.reason || 'Acknowledgement failed'}`);
+        }
+      }
+
+      let chained = null;
+      if (typeof autoChainFn === 'function') {
+        chained = autoChainFn({ item });
+      }
+
       return {
         ok: true,
         stage: 'completed',
         repairCycles: currentCycle,
-        item: { ...item, stage: 'completed', blocker: '', nextAction: 'done' }
+        nextChainedItem: chained || null,
+        item: { ...item, stage: 'completed', blocker: '', nextAction: chained ? 'auto_dispatched' : 'done' }
       };
     } catch (err) {
       lastError = err;
