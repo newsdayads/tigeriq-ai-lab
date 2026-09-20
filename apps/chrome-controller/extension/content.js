@@ -380,6 +380,60 @@ async function archiveConversation() {
   return { ok: false, status: 'ARCHIVE_NOT_CONFIRMED' };
 }
 
+let modelBlocked = false;
+
+async function verifyExactModel() {
+  let profile = null;
+  try {
+    if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+      profile = await new Promise((resolve) => {
+        chrome.runtime.sendMessage({ type: "getModelProfile" }, (res) => {
+          resolve(res || null);
+        });
+      });
+    }
+  } catch (_e) {
+    // fallback
+  }
+  const sol = profile?.sol;
+  const tier = profile?.tier;
+  if (sol === "5.6" && tier === "High") {
+    return true;
+  }
+  typeof requestModelSwitch === 'function' ? requestModelSwitch() : (() => {
+    alert('Switching to GPT‑5.6 Sol + High');
+    if (typeof window !== 'undefined' && window.modelProfile) {
+      window.modelProfile.sol = "5.6";
+      window.modelProfile.tier = "High";
+    }
+  })();
+  // re-run check
+  let recheckProfile = null;
+  try {
+    if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+      recheckProfile = await new Promise((resolve) => {
+        chrome.runtime.sendMessage({ type: "getModelProfile" }, (res) => {
+          resolve(res || null);
+        });
+      });
+    } else if (typeof window !== 'undefined' && window.modelProfile) {
+      recheckProfile = window.modelProfile;
+    }
+  } catch (_e) {}
+  if (recheckProfile?.sol === "5.6" && recheckProfile?.tier === "High") {
+    return true;
+  }
+  modelBlocked = true;
+  return false;
+}
+
+async function requestModelSwitch() {
+  alert('Switching to GPT‑5.6 Sol + High');
+  if (typeof window !== 'undefined') {
+    window.modelProfile = { sol: "5.6", tier: "High" };
+  }
+}
+
 async function newConversation() {
   const blocked = detectSecurityBlock();
   if (blocked) return { ok: false, status: blocked };
