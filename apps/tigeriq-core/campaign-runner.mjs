@@ -108,8 +108,6 @@ export function executeCoreWorkItemLifecycle({ workItem, preflightFn, repairFn, 
     };
   }
   retryTracker.add(itemKey);
-
-  const item = normalizeWorkItemLifecycle(workItem);
   const preflight = typeof preflightFn === 'function' ? preflightFn(item) : { ok: true, errors: [] };
   if (!preflight.ok) {
     return {
