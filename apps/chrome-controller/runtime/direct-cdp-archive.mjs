@@ -101,6 +101,49 @@ export async function archiveConversation({target,evaluate}){
 }
 
 export async function runDirectCdpArchive({workerId,target,payload,getJson,dispatch,uiState,evaluate,fetchImpl=fetch,sleep=(ms)=>new Promise((resolve)=>setTimeout(resolve,ms)),randomUUID=()=>crypto.randomUUID(),saveCompletionOptions={},receiptOptions={}}){
+  // Guard: only proceed when job is in a terminal state.
+  const jobSnapshot = await getJson('/job/snapshot');
+  const terminalStates = new Set(['COMPLETED','FAILED','CANCELED']);
+  if (!jobSnapshot?.status || !terminalStates.has(jobSnapshot.status)) {
+    throw new Error('ARCHIVE_NOT_IN_TERMINAL_STATE');
+  }
+
+  const upstreamReceiptRef=validateArchiveCommand(workerId,payload);
+  const proof=await assertArchiveAllowed(workerId,{getJson,requireDone:true});
+  if(!target?.url) throw new Error('ARCHIVE_WORKER_WINDOW_AMBIGUOUS_OR_MISSING');
+  const url=new URL(target.url);
+  if(url.hostname!=='chatgpt.com'||!/\/c\//.test(url.pathname)) throw new Error('ARCHIVE_WORKER_WINDOW_AMBIGUOUS_OR_MISSING');
+
+  const saveToken=randomUUID();
+  const dispatchedAt=new Date().toISOString();
+  const saveText=buildDurableSavePrompt({saveToken,workerId,dispatchedAt});
+  const save=await dispatch(saveText);
+  if(!save?.ok) throw new Error(String(save?.status||'SAVE_DISPATCH_FAILED'));
+  await waitForSaveCompletion(uiState,{sleep,...saveCompletionOptions});
+
+  // Bounded retry with exponential back‑off for receipt verification.
+  const maxAttempts=3;
+  let attempt=0;
+  let receipt;
+  while(attempt<maxAttempts){
+    attempt++;
+    receipt=await waitForDurableSaveReceipt(saveToken,workerId,dispatchedAt,{fetchImpl,sleep,...receiptOptions});
+    // Verify receipt freshness and match against contract ID (simulated via receipt.receiptRef).
+    if(receipt?.receiptRef && receipt?.verifiedAt && new Date(receipt.verifiedAt) > new Date(dispatchedAt)) {
+      break; // success
+    }
+    if(attempt===maxAttempts) throw new Error('ARCHIVE_RECEIPT_VERIFICATION_FAILED');
+    await sleep(500 * Math.pow(2, attempt-1)); // exponential back‑off
+  }
+
+  // Re‑assert archive allowed after receipt.
+  await assertArchiveAllowed(workerId,{getJson,requireDone:true});
+
+  const archiveResult = await archiveConversation({target,evaluate});
+  if(!archiveResult?.ok) throw new Error(String(archiveResult?.status||'ARCHIVE_FAILED'));
+
+  return {ok:true,status:'ARCHIVED',workerId,jobId:proof.jobId,evidenceRef:proof.evidenceRef,receiptRef:receipt.receiptRef,checkpointRef:receipt.checkpointRef,receiptVerifiedAt:receipt.verifiedAt,upstreamReceiptRef};
+}
   const upstreamReceiptRef=validateArchiveCommand(workerId,payload);
   const proof=await assertArchiveAllowed(workerId,{getJson,requireDone:true});
   if(!target?.url) throw new Error('ARCHIVE_WORKER_WINDOW_AMBIGUOUS_OR_MISSING');
