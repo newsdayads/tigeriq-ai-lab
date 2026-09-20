@@ -6,21 +6,25 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 
 async function selectWorker() {
+  const envWorkers = process.env.CORE_API_WORKERS ? process.env.CORE_API_WORKERS.split(',').map(u => u.trim()) : [];
   const workers = [
-    { url: 'http://127.0.0.1:8796', status: 'READY' },
+    ...envWorkers.map(url => ({ url, status: 'READY' })),
+    { url: process.env.CORE_API_URL || 'http://127.0.0.1:8796', status: 'READY' },
     { url: 'http://127.0.0.1:8797', status: 'IDLE' }
   ];
   for (const w of workers) {
     try {
       const res = await fetch(`${w.url}/health`);
-      if (res.ok) return w.url;
+      if (res.ok) return { url: w.url, status: w.status };
     } catch (e) {}
   }
-  return workers[0].url;
+  return { url: workers[0].url, status: workers[0].status };
 }
 
 export async function runAudit(targetOverride) {
-  const target = targetOverride || await selectWorker();
+  const selected = targetOverride ? { url: targetOverride, status: 'READY' } : await selectWorker();
+  const target = selected.url;
+  const workerStatus = selected.status;
   const failures = [];
   const results = [];
 
@@ -41,7 +45,7 @@ export async function runAudit(targetOverride) {
   }
 
   const pass = failures.length === 0;
-  const auditResult = { at: new Date().toISOString(), target, pass, results, failures };
+  const auditResult = { at: new Date().toISOString(), target, workerStatus, pass, results, failures };
 
   if (!pass) {
     generateRepairHandoff(auditResult);
