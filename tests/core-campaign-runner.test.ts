@@ -1,6 +1,7 @@
 // @ts-nocheck
 import {describe,it,expect} from 'vitest';
-import {normalizeCampaignPhases,currentCampaignGoal,campaignTransition,makePhaseCheckpoint,campaignNeedsEvidence,campaignEvidenceJobId,normalizeWorkItemLifecycle} from '../apps/tigeriq-core/campaign-runner.mjs';
+import {normalizeCampaignPhases,currentCampaignGoal,campaignTransition,makePhaseCheckpoint,campaignNeedsEvidence,campaignEvidenceJobId,normalizeWorkItemLifecycle,executeCoreWorkItemLifecycle} from '../apps/tigeriq-core/campaign-runner.mjs';
+import {runExecutionPreflight} from '../apps/tigeriq-core/execution-preflight.mjs';
 
 const phases=[
   {title:'Checkpoint',prompt:'Design durable resume',acceptance:'Resume without Owner'},
@@ -8,7 +9,7 @@ const phases=[
   {title:'Visibility',prompt:'Design orchestration truth'}
 ];
 
-describe('API campaign runner',()=>{
+describe('API campaign runner and core lifecycle integration',()=>{
   it('requires at least three phases for a campaign',()=>{
     expect(()=>normalizeCampaignPhases(['one','two'])).toThrow('CAMPAIGN_PHASE_COUNT_INVALID');
     expect(normalizeCampaignPhases(phases)).toHaveLength(3);
@@ -43,5 +44,35 @@ describe('API campaign runner',()=>{
   it('normalizes Core-owned WorkItem lifecycle mapping',()=>{
     const item = normalizeWorkItemLifecycle({ issueOrPr: 'PR #42', implementer: 'NV05', reviewer: 'NV10', stage: 'coding', blocker: 'tests failing', nextAction: 'fix test runner' });
     expect(item).toMatchObject({ issueOrPr: 'PR #42', implementer: 'NV05', reviewer: 'NV10', stage: 'coding', blocker: 'tests failing', nextAction: 'fix test runner' });
+  });
+  it('integrates preflight checks and normalized autonomous repair directly into Core WorkItem lifecycle',()=>{
+    const preflightRes = runExecutionPreflight({
+      workItem: { issueOrPr: 'PR #1002', implementer: 'NV11', reviewer: 'NV12' }
+    });
+    expect(preflightRes.ok).toBe(true);
+
+    let repairs = 0;
+    const result = executeCoreWorkItemLifecycle({
+      workItem: { issueOrPr: 'PR #1002', implementer: 'NV11', reviewer: 'NV12' },
+      preflightFn: (item) => runExecutionPreflight({ workItem: item }),
+      repairFn: () => { repairs++; },
+      reviewFn: ({ cycle }) => {
+        if (cycle < 2) return { decision: 'changes_requested', reason: 'Tests failing' };
+        return { decision: 'approve' };
+      },
+      maxRepairCycles: 3
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.repairCycles).toBe(2);
+    expect(repairs).toBe(2);
+    expect(result.item.stage).toBe('completed');
+  });
+  it('enforces independent review without role collision',()=>{
+    const preflightRes = runExecutionPreflight({
+      workItem: { issueOrPr: 'PR #1002', implementer: 'NV11', reviewer: 'NV11' }
+    });
+    expect(preflightRes.ok).toBe(false);
+    expect(preflightRes.errors).toContain('IMPLEMENTER_REVIEWER_COLLISION');
   });
 });
