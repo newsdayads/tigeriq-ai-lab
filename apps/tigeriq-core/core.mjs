@@ -666,10 +666,10 @@ async function loop(){
       await startSelfCheck({ now: () => Date.now(), store: pool });
       
       // Automated recovery & heartbeat validation for idle-with-backlog auto-dispatch
-      const pendingJobsCount = typeof queue !== 'undefined' && Array.isArray(queue) ? queue.length : 0;
-      if (active.size === 0 && pendingJobsCount > 0 && (t - (typeof lastJobActivity !== 'undefined' ? lastJobActivity : 0) > 10000)) {
-        console.log(JSON.stringify({ event: 'AUTOMATED_RECOVERY_RESUMPTION', backlog: pendingJobsCount, timestamp: new Date(t).toISOString() }));
-        if (typeof lastJobActivity !== 'undefined') lastJobActivity = t;
+      const pendingJobsCount = (await pool.query("select count(*)::int as cnt from tigeriq_jobs where status='queued'")).rows[0]?.cnt || 0;
+      const recoveryCheck = checkAutomatedRecovery({ backlogCount: pendingJobsCount, activeCount: active.size, lastActivityAgeMs: t - (typeof lastJobActivity !== 'undefined' ? lastJobActivity : t - 31000), idleThresholdMs: 30000 });
+      if (recoveryCheck.shouldRecover) {
+        await event('AUTOMATED_RECOVERY_RESUMPTION', { backlog: pendingJobsCount, autoDispatched: recoveryCheck.autoDispatched });
       }
 
       while(active.size<MAX_PARALLEL){const j=await claimJob();if(!j)break;active.add(j.id);void runJob(j).finally(()=>active.delete(j.id));}
