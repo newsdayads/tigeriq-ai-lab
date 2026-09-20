@@ -1,3 +1,12 @@
+export function verifyRuntimeSourceIsolationState(meta = {}) {
+  const sourcePath = String(meta?.sourcePath || '').trim();
+  const sha = String(meta?.currentSha || '').trim();
+  if (!sourcePath || !/^([0-9a-f]{40})$/i.test(sha)) {
+    return { ok: false, error: 'RUNTIME_SOURCE_ISOLATION_INVALID' };
+  }
+  return { ok: true, sourcePath, currentSha: sha };
+}
+
 export function normalizeCampaignPhases(input) {
   if (input == null) return [];
   if (!Array.isArray(input)) throw new Error('CAMPAIGN_PHASES_INVALID');
