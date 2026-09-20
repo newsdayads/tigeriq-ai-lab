@@ -56,6 +56,10 @@ import { processFailure } from './repair-loop.mjs';
 
 export { processFailure };
 
+export function handleFailureDecision(failureId, rawDecision) {
+  return processFailure(failureId, rawDecision);
+}
+
 export function buildFailureLearningCandidates(events,options={}){
   const minOccurrences=Math.max(2,Number(options.minOccurrences||2));
   const existing=new Set(Array.from(options.existingSignatures||[]).map(String));
