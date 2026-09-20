@@ -61,6 +61,35 @@ export function verifySaveReceiptV1(input: SaveReceiptVerificationInput): { vali
   return { valid: true };
 }
 
+import { watchModelProfileBlockedState, type EvidenceWorkerState } from './runtime-evidence.js';
+import { restoreGpt5_6SolProfile } from './model.js';
+
+const restoredReopenMap = new Map<string, boolean>();
+
+export function handleRuntimeProfileRecovery(worker: EvidenceWorkerState, workItemId?: string, reopenEpoch?: number): { recovered: boolean; workItemId?: string; error?: string } {
+  if (!worker || worker.id !== 'NV02') {
+    return { recovered: false };
+  }
+  if (!watchModelProfileBlockedState(worker)) {
+    return { recovered: false };
+  }
+  const targetWorkItemId = workItemId || (worker as any).currentWorkItemId || 'DEFAULT_NV02_WORK_ITEM';
+  const epochKey = `${worker.id}:${reopenEpoch ?? 0}:${targetWorkItemId}`;
+  if (restoredReopenMap.get(epochKey)) {
+    return { recovered: false, workItemId: targetWorkItemId, error: 'ALREADY_RESTORED_FOR_REOPEN' };
+  }
+  try {
+    const res = restoreGpt5_6SolProfile(targetWorkItemId);
+    if (res.dispatched) {
+      restoredReopenMap.set(epochKey, true);
+      return { recovered: true, workItemId: targetWorkItemId };
+    }
+    return { recovered: false, workItemId: targetWorkItemId, error: 'DISPATCH_IDEMPOTENT_SKIPPED' };
+  } catch (err: any) {
+    return { recovered: false, workItemId: targetWorkItemId, error: err?.message || 'RESTORE_FAILED' };
+  }
+}
+
 export function heartbeatStopReason(hb:HeartbeatSecuritySignals|undefined):string|undefined{
   if(!hb)return;
   if(hb.authRequired)return 'AUTH_REQUIRED';
