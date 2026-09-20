@@ -1,6 +1,7 @@
 // @ts-nocheck
 import {describe,it,expect} from 'vitest';
 import {normalizeCampaignPhases,currentCampaignGoal,campaignTransition,makePhaseCheckpoint,campaignNeedsEvidence,campaignEvidenceJobId,normalizeWorkItemLifecycle,executeCoreWorkItemLifecycle} from '../apps/tigeriq-core/campaign-runner.mjs';
+import {detectIdleWithBacklog} from '../apps/tigeriq-core/github-backlog-policy.mjs';
 import {runExecutionPreflight} from '../apps/tigeriq-core/execution-preflight.mjs';
 
 const phases=[
@@ -103,5 +104,10 @@ describe('API campaign runner and core lifecycle integration',()=>{
     });
     expect(preflightRes.ok).toBe(false);
     expect(preflightRes.errors).toContain('IMPLEMENTER_REVIEWER_COLLISION');
+  });
+  it('detects idle state with backlog correctly', () => {
+    expect(detectIdleWithBacklog(0, 5)).toBe(true);
+    expect(detectIdleWithBacklog(1, 5)).toBe(false);
+    expect(detectIdleWithBacklog(0, 0)).toBe(false);
   });
 });
