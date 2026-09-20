@@ -4,6 +4,7 @@ import { WORKER_IDS, type WorkerId } from './model.js';
 export interface WorkerSafetySnapshot {
   pausedWorkers:WorkerId[];
   manualCloseSuppressedWorkers:WorkerId[];
+  activeModelProfile?: string;
 }
 export interface WorkerSafetyRestoreResult {
   state:WorkerSafetySnapshot;
@@ -33,6 +34,7 @@ function parseSafety(text:string):WorkerSafetySnapshot{
   return{
     pausedWorkers:normalizeList(value.pausedWorkers),
     manualCloseSuppressedWorkers:normalizeList(value.manualCloseSuppressedWorkers),
+    activeModelProfile:typeof value.activeModelProfile==='string'?value.activeModelProfile:undefined,
   };
 }
 
@@ -40,6 +42,7 @@ export function failClosedWorkerSafetyState():WorkerSafetySnapshot {
   return{
     pausedWorkers:[...WORKER_IDS],
     manualCloseSuppressedWorkers:[...WORKER_IDS],
+    activeModelProfile:'GPT-5.6 Sol + High',
   };
 }
 
@@ -71,6 +74,7 @@ export function writeWorkerSafetyState(path:string,state:WorkerSafetySnapshot,no
     schemaVersion:'tigeriq.chrome-controller.worker-safety.v1',
     pausedWorkers:[...new Set(state.pausedWorkers)],
     manualCloseSuppressedWorkers:[...new Set(state.manualCloseSuppressedWorkers)],
+    activeModelProfile:state.activeModelProfile ?? 'GPT-5.6 Sol + High',
     updatedAt:now.toISOString(),
   };
   writeFileSync(temp,`${JSON.stringify(value,null,2)}\n`,'utf8');
