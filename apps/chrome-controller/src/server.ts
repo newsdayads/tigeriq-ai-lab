@@ -405,8 +405,9 @@ async function dispatch(
 }
 
 function snapshotRequiredWorkers():WorkerId[]{return latestSnapshot?.requiredWorkers?.filter((id)=>states.get(id)?.enabled)??[];}
-function workerHasActiveJob(id:WorkerId){
-  if(uiJobLedger.active(id))return true;
+function workerHasActiveJob(id:WorkerId,{allowWaitingEvidence=false}:{allowWaitingEvidence?:boolean}={}){
+  const activeUiJob=uiJobLedger.active(id);
+  if(activeUiJob&&!(allowWaitingEvidence&&activeUiJob.stage==='WAITING_EVIDENCE'))return true;
   if(id==='NV02'){
     if(autopilotState.pendingJobId||autopilotState.uncertainJobId)return true;
     const previous=latestSnapshot?.previousJob;
@@ -987,7 +988,8 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
         if(security)throw new Error(security);
         if(state.lastHeartbeat?.uiBusy!==false&&!staleWorkingRecovery)throw new Error(`WORKER_UI_BUSY_OR_UNKNOWN:${workerId}`);
         if(staleWorkingRecovery&&state.lastHeartbeat?.uiBusy!==true)throw new Error(`STALE_WORKING_RECOVERY_REQUIRES_BUSY:${workerId}`);
-        if(workerHasActiveJob(workerId))throw new Error(`WORKER_ACTIVE_JOB:${workerId}`);
+        const continuityContinue=workerId==='NV02'&&purpose==='CONTINUITY_CONTINUE';
+        if(workerHasActiveJob(workerId,{allowWaitingEvidence:continuityContinue}))throw new Error(`WORKER_ACTIVE_JOB:${workerId}`);
         if(commandQueues.get(workerId)!.length>0||[...waiters.values()].some((w)=>w.workerId===workerId))
           throw new Error(`WORKER_COMMAND_INFLIGHT:${workerId}`);
         const ttlMs=Number(data.ttlMs??30_000);

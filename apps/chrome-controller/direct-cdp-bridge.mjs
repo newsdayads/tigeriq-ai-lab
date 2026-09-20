@@ -328,7 +328,7 @@ async function dispatchNaturalContinueLocked(target,state,now){
   return next;
 }
 async function dispatchNaturalContinue(target,state,now){
-  return withNv02Mutation(()=>dispatchNaturalContinueLocked(target,state,now));
+  return withNv02Mutation(()=>dispatchNaturalContinueLocked(target,state,now),'CONTINUITY_CONTINUE');
 }
 async function checkpointNv02(target){
   return withNv02Mutation(async()=>{
