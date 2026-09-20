@@ -26,6 +26,37 @@ const SURFSENSE_APP_URL = process.env.TIGERIQ_SURFSENSE_APP_URL?.trim() || 'http
 const SURFSENSE_SEARCH_URL = process.env.TIGERIQ_SURFSENSE_SEARCH_URL?.trim() || 'http://127.0.0.1:3930/search';
 const SURFSENSE_SUMMARY_MODEL = process.env.TIGERIQ_SURFSENSE_SUMMARY_MODEL?.trim() || 'gemma3:4b';
 const OLLAMA_EMPLOYEE_ID = 'NV10';
+export function inspectApiDoctorHealth(resource, metrics = {}) {
+  const provider = String(resource?.provider || '').toLowerCase();
+  const employeeId = String(resource?.employeeId || resource?.employee_id || '');
+  if (provider !== 'ollama' && employeeId !== 'NV10') {
+    return { ok: false, error: 'API_DOCTOR_RESTRICTED_TO_NV10' };
+  }
+  const failures = Number(metrics.consecutiveFailures || 0);
+  const lastStatus = Number(metrics.lastHttpStatus || 200);
+  const latencyMs = Number(metrics.latencyMs || 0);
+  let errorClass = 'healthy';
+  if (lastStatus === 402) errorClass = 'http_402_blocker';
+  else if (lastStatus === 429 || failures >= 3) errorClass = 'rate_limit';
+  else if (lastStatus >= 500 || latencyMs > 15000) errorClass = 'transient_outage';
+  else if (failures > 0) errorClass = 'source_failure';
+
+  const repairHandoff = errorClass !== 'healthy' ? {
+    lane: 'coding_lane',
+    deduplicatedId: `doc-${employeeId}-${errorClass}-${Date.now()}`,
+    errorClass,
+    action: 'repair_handoff'
+  } : null;
+
+  return {
+    ok: errorClass === 'healthy',
+    employeeId,
+    provider,
+    errorClass,
+    repairHandoff,
+    verifiedLive: errorClass === 'healthy'
+  };
+}
 const GEMINI_MIN_INTERVAL_MS = Math.max(4500, Number(process.env.TIGERIQ_GEMINI_MIN_INTERVAL_MS || 4500));
 const GEMINI_BACKOFF_BASE_MS = Math.max(4500, Number(process.env.TIGERIQ_GEMINI_BACKOFF_BASE_MS || 4500));
 const GEMINI_MAX_ATTEMPTS = Math.max(1, Number(process.env.TIGERIQ_GEMINI_MAX_ATTEMPTS || 4));
