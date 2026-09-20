@@ -66,6 +66,7 @@ describe('Core WorkItem projection', () => {
     expect(projectCoreWorkItem(snapshot)).toMatchObject({
       status: 'EVIDENCE',
       evidenceRefs: ['https://github.com/newsdayads/tigeriq-ai-lab/pull/1087/checks'],
+      scopeLease: { ownerId: 'NV12', state: 'active' },
     });
 
     snapshot = plane.recordGateDecision(order.id, {
@@ -79,12 +80,12 @@ describe('Core WorkItem projection', () => {
     });
   });
 
-  it('surfaces blocking evidence inline for owner visibility', () => {
+  it('maps failed and blocked-gate WorkItems to blocked scope leases', () => {
     const plane = new ControlPlane();
     plane.create({ ...order, id: 'CORE-1033-BLOCKED', status: 'draft', pr: 'https://github.com/newsdayads/tigeriq-ai-lab/pull/1088' }, planner);
     plane.transition('CORE-1033-BLOCKED', 'approved', approver);
     plane.transition('CORE-1033-BLOCKED', 'running', coder);
-    const blocked = plane.recordEvidence('CORE-1033-BLOCKED', {
+    plane.recordEvidence('CORE-1033-BLOCKED', {
       ...evidence,
       id: 'EV-BLOCKED',
       workOrderId: 'CORE-1033-BLOCKED',
@@ -93,10 +94,88 @@ describe('Core WorkItem projection', () => {
       exitCode: 1,
     }, coder);
 
-    expect(projectCoreWorkItem(blocked)).toMatchObject({
-      status: 'EVIDENCE',
-      blockers: ['CI:fail:exitCode=1'],
-      nextAction: 'Run independent verification',
+    const gateBlocked = plane.recordGateDecision('CORE-1033-BLOCKED', {
+      gate: 'CI',
+      status: 'blocked',
+      evaluatorId: judge.id,
+      evidenceIds: ['EV-BLOCKED'],
+      timestamp: '2026-09-20T00:02:00Z',
+      reason: 'CI_FAILED',
+    }, judge);
+
+    expect(projectCoreWorkItem(gateBlocked)).toMatchObject({
+      status: 'BLOCKED',
+      blockers: ['CI:fail:exitCode=1', 'CI:blocked:CI_FAILED'],
+      nextAction: 'Resolve blocker and retry safely',
+      scopeLease: { ownerId: 'NV12', state: 'blocked' },
     });
+
+    const failed = plane.recordGateDecision('CORE-1033-BLOCKED', {
+      gate: 'CI',
+      status: 'fail',
+      evaluatorId: judge.id,
+      evidenceIds: ['EV-BLOCKED'],
+      timestamp: '2026-09-20T00:03:00Z',
+      reason: 'REVIEW_FAIL',
+    }, judge);
+
+    expect(projectCoreWorkItem(failed)).toMatchObject({
+      status: 'BLOCKED',
+      scopeLease: { ownerId: 'NV12', state: 'blocked' },
+    });
+  });
+
+  it('updates Coding Lane projection metadata idempotently on the same WorkItem identity', () => {
+    const plane = new ControlPlane();
+    const pending: WorkOrder = {
+      id: 'CORE-1033-ATTACH',
+      project: order.project,
+      goal: order.goal,
+      scope: order.scope,
+      invariants: order.invariants,
+      acceptanceCriteria: order.acceptanceCriteria,
+      status: 'draft',
+      issueRef: order.issueRef,
+      sourceRef: order.sourceRef,
+      kind: 'coding',
+      priority: 'P0',
+      stage: 'claimed',
+      nextAction: 'Open PR',
+    };
+    plane.create(pending, planner);
+    plane.transition('CORE-1033-ATTACH', 'approved', approver);
+    let snapshot = plane.transition('CORE-1033-ATTACH', 'running', coder);
+
+    expect(projectCoreWorkItem(snapshot)).toMatchObject({
+      workItemId: 'CORE-1033-ATTACH',
+      pr: null,
+      reviewer: null,
+      stage: 'claimed',
+      nextAction: 'Open PR',
+    });
+
+    const patch = {
+      pr: 'https://github.com/newsdayads/tigeriq-ai-lab/pull/1145',
+      reviewer: 'NV19',
+      stage: 'waiting_ci',
+      nextAction: 'Wait exact-head checks',
+      evidenceRefs: ['https://github.com/newsdayads/tigeriq-ai-lab/pull/1145/checks'],
+    };
+
+    snapshot = plane.updateProjectionMetadata('CORE-1033-ATTACH', patch, coder);
+    const updated = projectCoreWorkItem(snapshot);
+    expect(updated).toMatchObject({
+      workItemId: 'CORE-1033-ATTACH',
+      pr: 'https://github.com/newsdayads/tigeriq-ai-lab/pull/1145',
+      reviewer: 'NV19',
+      stage: 'waiting_ci',
+      nextAction: 'Wait exact-head checks',
+      evidenceRefs: ['https://github.com/newsdayads/tigeriq-ai-lab/pull/1145/checks'],
+    });
+
+    const auditLength = snapshot.audit.length;
+    snapshot = plane.updateProjectionMetadata('CORE-1033-ATTACH', patch, coder);
+    expect(snapshot.audit).toHaveLength(auditLength);
+    expect(projectCoreWorkItem(snapshot)).toMatchObject(updated);
   });
 });
