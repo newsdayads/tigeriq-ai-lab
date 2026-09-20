@@ -1,7 +1,7 @@
 # TigerIQ — Current State
 
-Date: 2026-09-19
-Status: CURRENT — Verified evidence update incorporating #833, #843, and #802 runtime checks and system state facts
+Date: 2026-09-20
+Status: CURRENT — GitHub state reconciled on 2026-09-20; runtime facts are cited to durable checkpoints and are not treated as a fresh live probe
 Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #335 > this snapshot > runtime/evidence
 
 ## Canonical source / runtime
@@ -9,7 +9,7 @@ Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #
 - #763 Chrome autonomy hardening remains source/runtime verified after PR #798 and PR #799 merged.
 - Chrome Controller `127.0.0.1:8798` and Direct CDP Bridge `127.0.0.1:8799` are ONLINE; existing Chrome sessions are preserved.
 - UI Autopilot Snapshot Adapter `127.0.0.1:8794` remains on snapshot v2; latest verified queue revision remains `github-ui-v2:GH-797:DONE:none:none`.
-- TigerIQ Core `100.97.23.87:8795` and Web Control `100.97.23.87:8796` remain the canonical core/control endpoints; Coding Lane `8797` and Core Runtime Updater remain intentionally disabled unless separately authorized.
+- TigerIQ Core `100.97.23.87:8795`, Web Control `100.97.23.87:8796`, and Coding Lane `8797` remain canonical service identities. Latest durable runtime checkpoint in #788 (2026-09-20T07:03:46Z) recorded Core/Web/Coding healthy and Coding Lane restarted; this docs-only reconciliation does not assert a newer live heartbeat.
 
 ## #763 — Chrome autonomy final truth
 - PR #798 merged: `AUTO_CONTINUE` keeps the current worker chat (`navigate=false`).
@@ -52,10 +52,21 @@ Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #
 ## Scheduler & Runtime Updates
 - #843 scheduler-starvation fix successfully implemented and verified, resolving queue starvation under high load.
 
+## GitHub reconciliation — 2026-09-20
+- #937, #941, #926, #922, #924 and #962 are CLOSED in GitHub; older CENTRAL wording that listed them as OPEN is stale.
+- #1001 is CLOSED/COMPLETED and its scope-aware Coding Adapter acceptance was recorded PASS.
+- #1032 is CLOSED as duplicate; #1033 is CLOSED/COMPLETED; #1201 is CLOSED/COMPLETED.
+- #1002 remains OPEN with declared dependencies #1032/#1033/#1038; because #1032 and #1033 are terminal, #1038 is the remaining open declared blocker.
+- #1122 is OPEN/reopened as the canonical NV02 continuous-execution baseline and carries NV02 self-modification protection.
+- #1038 and #1161 remain OPEN under NV02 self-modification/Chrome overlap guards; safe evidence-hygiene lanes must not mutate those scopes.
+- #1176 remains OPEN as a manually assigned, evidence-only hygiene lane; it forbids code/runtime/Chrome/Worker Utility mutation.
+- #658 remains OPEN pending real autonomous browser-cycle evidence. #773 remains OPEN because its temporary branch still exists and cleanup requires a separate mutation-authorized lane.
+- Registry #335 is the authority for current workforce/provider identity; do not infer provider identity from stale snapshots in this file.
+
 ## Governance
 - Interaction #504 remains the generic command policy; explicit Owner instructions can supersede delegation for a scoped Work Order.
 - Production/runtime, paid, credential/security and destructive/irreversible actions remain separate authorization gates.
 - #802 closeout does not reopen NV02 mutation ownership; any new Worker Utility mutation requires a new Work Order/handoff.
 
-STATE: `CURRENT_20260919_833_843_VERIFIED`
-UI_STATE: `CURRENT_20260919_WORKER_UTILITY_BRANDED_LIVE_NO_OVERLAP`
+STATE: `CURRENT_20260920_GITHUB_RECONCILED_RUNTIME_NOT_REPROBED`
+UI_STATE: `GITHUB_POLICY_1122_ACTIVE_RUNTIME_NOT_REPROBED`
