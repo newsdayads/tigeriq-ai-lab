@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import {
   CONTINUE_MIN_MS, CONTINUE_MAX_MS, REFRESH_MIN_MS, REFRESH_MAX_MS,
-  MAX_STALLED_CHECKS, deriveNv02Phase, hasActiveNv02Work,
+  MAX_STALLED_CHECKS, deriveNv02Phase, hasActiveNv02Work, hasWaitingEvidenceNv02Work,
   nextRandomAt, pickContinuePrompt, shouldRotateChat,
 } from './extension/continuity.js';
 import { buildDurableSavePrompt, waitForDurableSaveReceipt } from './extension/save-receipt.js';
@@ -368,7 +368,8 @@ async function maybeNv02Continuity(w,target,ui){
   if(phase==='BLOCKED'){await continuityEvent('BLOCKED',{securityBlock:ui?.securityBlock||null});return;}
   const controller=await getControllerState();
   const active=hasActiveNv02Work(controller);
-  if(now>=state.nextRefreshAt&&phase==='READY'&&!active){
+  const waitingEvidence=hasWaitingEvidenceNv02Work(controller);
+  if(now>=state.nextRefreshAt&&phase==='READY'&&!active&&!waitingEvidence){
     try{
       const receipt=await checkpointNv02(target);
       state={...state,nextRefreshAt:nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS),nextContinueAt:now+15000,stalledChecks:0};
@@ -381,7 +382,7 @@ async function maybeNv02Continuity(w,target,ui){
     }
     return;
   }
-  if(phase==='READY'&&!active&&now>=state.nextContinueAt&&shouldRotateChat(state,now)){
+  if(phase==='READY'&&!active&&!waitingEvidence&&now>=state.nextContinueAt&&shouldRotateChat(state,now)){
     try{await rotateNv02Chat(target,state,now);}
     catch(error){
       state={...state,stalledChecks:Math.min(MAX_STALLED_CHECKS,state.stalledChecks+1),nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);

@@ -69,6 +69,10 @@ export function hasActiveNv02Work(controller){
   return Boolean((autopilot.phase==='BUSY'||autopilot.phase==='WAIT_EVIDENCE')&&dispatched&&dispatched!==completed);
 }
 
+export function hasWaitingEvidenceNv02Work(controller){
+  return (controller?.jobs||[]).some((job)=>job?.workerId==='NV02'&&String(job?.stage||'')==='WAITING_EVIDENCE'&&!job?.completedAt);
+}
+
 export function shouldRotateChat(state,now){
   const started=Number(state?.chatStartedAt||now);
   const count=Number(state?.dispatchesInChat||0);

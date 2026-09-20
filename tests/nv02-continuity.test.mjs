@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { SAVE_RECEIPT_POLL_DELAYS_MS, waitForDurableSaveReceipt } from '../apps/chrome-controller/extension/save-receipt.js';
 import {
-  CONTINUE_PROMPTS, deriveNv02Phase, hasActiveNv02Work, pickContinuePrompt,
+  CONTINUE_PROMPTS, deriveNv02Phase, hasActiveNv02Work, hasWaitingEvidenceNv02Work, pickContinuePrompt,
   randomDelay, shouldRotateChat,
 } from '../apps/chrome-controller/extension/continuity.js';
 
@@ -42,6 +42,8 @@ describe('NV02 continuity policy', () => {
   it('detects controller work that forbids overlapping continue dispatch', () => {
     expect(hasActiveNv02Work({jobs:[{workerId:'NV02',stage:'WORKING'}],autopilot:{}})).toBe(true);
     expect(hasActiveNv02Work({jobs:[{workerId:'NV02',stage:'WAITING_EVIDENCE',completedAt:null}],autopilot:{phase:'IDLE'}})).toBe(false);
+    expect(hasWaitingEvidenceNv02Work({jobs:[{workerId:'NV02',stage:'WAITING_EVIDENCE',completedAt:null}]})).toBe(true);
+    expect(hasWaitingEvidenceNv02Work({jobs:[{workerId:'NV02',stage:'DONE',completedAt:'2026-09-20T00:00:00Z'}]})).toBe(false);
     expect(hasActiveNv02Work({jobs:[{workerId:'NV02',stage:'VERIFY',completedAt:null}],autopilot:{phase:'IDLE'}})).toBe(true);
     expect(hasActiveNv02Work({jobs:[],autopilot:{pendingJobId:'GH-1'}})).toBe(true);
     expect(hasActiveNv02Work({jobs:[],autopilot:{phase:'IDLE'}})).toBe(false);
@@ -114,7 +116,8 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("đang suy nghĩ|thinking|generating|đang tạo");
     expect(source).toContain("/(^|\\\\s)(đang suy nghĩ|thinking|generating|đang tạo)(\\\\s|$)/i");
     expect(source).toContain(".replace(/\\\\s+/g,' ')");
-    expect(source).toContain("phase==='READY'&&!active&&now>=state.nextContinueAt&&shouldRotateChat(state,now)");
+    expect(source).toContain("phase==='READY'&&!active&&!waitingEvidence&&now>=state.nextContinueAt&&shouldRotateChat(state,now)");
+    expect(source).toContain("now>=state.nextRefreshAt&&phase==='READY'&&!active&&!waitingEvidence");
     expect(source).toContain("'CONTINUITY_CONTINUE'");
     const leaseServerSource = readFileSync('apps/chrome-controller/src/server.ts','utf8');
     expect(leaseServerSource).toContain("allowWaitingEvidence:continuityContinue");
