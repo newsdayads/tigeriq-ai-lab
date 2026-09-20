@@ -35,7 +35,7 @@ import type { WorkerPresence } from './worker-presence.js';
 import { persistWorkerSafetyStateOrFailClosed, restoreWorkerSafetyState, workerStartGate, type WorkerSafetySnapshot } from './worker-safety-state.js';
 
 type Command = { id:string; workerId:WorkerId; action:string; payload?:Record<string,unknown>; createdAt:string };
-type Heartbeat = { workerId:WorkerId; url?:string; windowId?:number; tabId?:number; state?:string; uiReady?:boolean; authRequired?:boolean; reauthRequired?:boolean; captchaRequired?:boolean; rateLimited?:boolean; rateLimitCode?:number|string; uiBusy?:boolean|null; uiPhase?:'WORKING'|'READY'|'STALLED'|'BLOCKED'|string; composerReady?:boolean; sendReady?:boolean; stopVisible?:boolean; scrollToBottomVisible?:boolean; securityBlock?:string|null; display?:{workArea?:WorkArea}; at:string };
+type Heartbeat = { workerId:WorkerId; url?:string; windowId?:number; tabId?:number; state?:string; uiReady?:boolean; authRequired?:boolean; reauthRequired?:boolean; captchaRequired?:boolean; rateLimited?:boolean; rateLimitCode?:number|string; uiBusy?:boolean|null; uiPhase?:'WORKING'|'READY'|'STALLED'|'BLOCKED'|string; composerReady?:boolean; sendReady?:boolean; stopVisible?:boolean; scrollToBottomVisible?:boolean; securityBlock?:string|null; modelProfileStatus?:string|null; modelName?:string|null; reasoningEffort?:string|null; modelReady?:boolean|null; modelExact?:boolean|null; verifiedAt?:string|null; blockedReason?:string|null; display?:{workArea?:WorkArea}; at:string };
 type WindowState = 'OPEN' | 'CLOSED';
 type WorkerState = {
   id:WorkerId;
@@ -355,6 +355,12 @@ async function startWorker(workerId:WorkerId){
   });
 }
 
+
+function modelProfileGateReason(hb:Heartbeat|undefined){
+  if(hb?.modelProfileStatus==='MODEL_PROFILE_VERIFIED'&&hb.modelName==='GPT-5.6 Sol'&&hb.reasoningEffort==='High'&&hb.modelReady===true)return '';
+  return hb?.blockedReason||hb?.modelProfileStatus||'MODEL_PROFILE_UNVERIFIED';
+}
+
 async function dispatch(
   workerId:WorkerId,
   text:string,
@@ -380,6 +386,11 @@ async function dispatch(
     try{
       assertWorkerEnabled(workerId);
       if(navigate)await runWithRetry(`navigate:${workerId}`,()=>sendCommand(workerId,'NAVIGATE',{url:worker.homeUrl}));
+      if(workerId==='NV02'){
+        const profile=await sendCommand(workerId,'MODEL_PREFLIGHT');
+        const exact=(profile as any)?.exact===true||(profile as any)?.modelExact===true;
+        if(!exact||(profile as any)?.modelName!=='GPT-5.6 Sol'||(profile as any)?.reasoningEffort!=='High')throw new Error(`MODEL_PROFILE_BLOCKED:${(profile as any)?.blockedReason||'UNVERIFIED'}`);
+      }
       const result=await sendCommand(workerId,'DISPATCH',{text});
       states.get(workerId)!.status='SUBMITTED';
       states.get(workerId)!.lastError=undefined;
@@ -405,9 +416,10 @@ async function dispatch(
 }
 
 function snapshotRequiredWorkers():WorkerId[]{return latestSnapshot?.requiredWorkers?.filter((id)=>states.get(id)?.enabled)??[];}
-function workerHasActiveJob(id:WorkerId,{allowWaitingEvidence=false}:{allowWaitingEvidence?:boolean}={}){
+function workerHasActiveJob(id:WorkerId,{allowWaitingEvidence=false,allowContinuable=false}:{allowWaitingEvidence?:boolean;allowContinuable?:boolean}={}){
   const activeUiJob=uiJobLedger.active(id);
-  if(activeUiJob&&!(allowWaitingEvidence&&activeUiJob.stage==='WAITING_EVIDENCE'))return true;
+  const continuable=Boolean(activeUiJob&&['SUBMITTED','WORKING','WAITING_EVIDENCE','VERIFY'].includes(activeUiJob.stage));
+  if(activeUiJob&&!(allowWaitingEvidence&&activeUiJob.stage==='WAITING_EVIDENCE')&&!(allowContinuable&&continuable))return true;
   if(id==='NV02'){
     if(!config.autopilot.enabled)return false;
     if(autopilotState.pendingJobId||autopilotState.uncertainJobId)return true;
@@ -850,6 +862,8 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
       const data=await body(req);
       const reason=String(data.reason??'PLANNED_REFRESH').slice(0,96);
       const staleWorkingRecovery=reason==='WORKING_NO_PROGRESS_3_CHECKS';
+      const stalledRecovery=reason==='STALLED_3_CHECKS';
+      const boundedRecovery=staleWorkingRecovery||stalledRecovery;
       if(!state.enabled)throw new Error('WORKER_DISABLED:NV02');
       if(state.blocked)throw new Error('WORKER_BLOCKED:NV02');
       if(!recentHeartbeat('NV02'))throw new Error('NV02_HEARTBEAT_NOT_FRESH');
@@ -857,7 +871,7 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
       if(security)throw new Error(security);
       if(state.lastHeartbeat?.uiBusy!==false&&!staleWorkingRecovery)throw new Error('NV02_UI_NOT_IDLE');
       if(staleWorkingRecovery&&state.lastHeartbeat?.uiBusy!==true)throw new Error('NV02_STALE_WORKING_RESTART_REQUIRES_BUSY');
-      if(workerHasActiveJob('NV02'))throw new Error('NV02_ACTIVE_JOB');
+      if(workerHasActiveJob('NV02')&&!boundedRecovery)throw new Error('NV02_ACTIVE_JOB');
       if(commandQueues.get('NV02')!.length>0||[...waiters.values()].some((w)=>w.workerId==='NV02'))throw new Error('NV02_COMMAND_INFLIGHT');
       plannedRefreshWorkers.add('NV02');
       state.manualCloseSuppressed=false;
@@ -983,8 +997,12 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
         const state=states.get(workerId)!;
         const purpose=String(data.purpose??'NORMAL').trim().toUpperCase();
         const staleWorkingRecovery=workerId==='NV02'&&purpose==='STALE_WORKING_RECOVERY';
-        const projectContextRecovery=workerId==='NV02'&&purpose==='PROJECT_CONTEXT_RECOVERY';
-        if(paused&&!projectContextRecovery)throw new Error('OWNER_INTERACTION_READ_ONLY');
+        const stalledRecovery=workerId==='NV02'&&purpose==='STALLED_RECOVERY';
+        const modelProfileRecovery=workerId==='NV02'&&purpose==='MODEL_PROFILE_RECOVERY';
+        const checkpointRecovery=workerId==='NV02'&&purpose==='CHECKPOINT_DURABLE';
+        const chatRotation=workerId==='NV02'&&purpose==='CHAT_ROTATION';
+        const boundedRecovery=staleWorkingRecovery||stalledRecovery||modelProfileRecovery||checkpointRecovery||chatRotation;
+        if(paused)throw new Error('OWNER_INTERACTION_READ_ONLY');
         if(utilityPausedWorkers.has(workerId))throw new Error(`UTILITY_WORKER_PAUSED:${workerId}`);
         if(state.blocked)throw new Error(`WORKER_BLOCKED:${workerId}`);
         if(!recentHeartbeat(workerId))throw new Error(`WORKER_HEARTBEAT_NOT_READY:${workerId}`);
@@ -993,7 +1011,7 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
         if(state.lastHeartbeat?.uiBusy!==false&&!staleWorkingRecovery)throw new Error(`WORKER_UI_BUSY_OR_UNKNOWN:${workerId}`);
         if(staleWorkingRecovery&&state.lastHeartbeat?.uiBusy!==true)throw new Error(`STALE_WORKING_RECOVERY_REQUIRES_BUSY:${workerId}`);
         const continuityContinue=workerId==='NV02'&&purpose==='CONTINUITY_CONTINUE';
-        if(workerHasActiveJob(workerId,{allowWaitingEvidence:continuityContinue}))throw new Error(`WORKER_ACTIVE_JOB:${workerId}`);
+        if(workerHasActiveJob(workerId,{allowWaitingEvidence:continuityContinue,allowContinuable:continuityContinue})&&!boundedRecovery)throw new Error(`WORKER_ACTIVE_JOB:${workerId}`);
         if(commandQueues.get(workerId)!.length>0||[...waiters.values()].some((w)=>w.workerId===workerId))
           throw new Error(`WORKER_COMMAND_INFLIGHT:${workerId}`);
         const ttlMs=Number(data.ttlMs??30_000);

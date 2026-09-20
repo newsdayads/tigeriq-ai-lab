@@ -9,7 +9,7 @@ export interface EvidenceWorkerState {
   enabled: boolean;
   status: string;
   blocked: boolean;
-  lastHeartbeat?: { at: string; url?: string; windowId?: number; uiBusy?: boolean | null; uiPhase?: string; composerReady?: boolean; sendReady?: boolean; stopVisible?: boolean; scrollToBottomVisible?: boolean; securityBlock?: string | null; display?: { workArea?: WorkArea } };
+  lastHeartbeat?: { at: string; url?: string; windowId?: number; uiBusy?: boolean | null; uiPhase?: string; composerReady?: boolean; sendReady?: boolean; stopVisible?: boolean; scrollToBottomVisible?: boolean; securityBlock?: string | null; modelProfileStatus?: string | null; modelName?: string | null; reasoningEffort?: string | null; modelReady?: boolean | null; modelExact?: boolean | null; verifiedAt?: string | null; blockedReason?: string | null; display?: { workArea?: WorkArea } };
   lastError?: string;
   windowState?: 'OPEN' | 'CLOSED';
   manualCloseSuppressed?: boolean;
@@ -72,14 +72,23 @@ export function atomicWriteJsonWithRetry(path:string,value:unknown,ops:AtomicJso
 export function buildRuntimeEvidence(input: RuntimeEvidenceInput, now = new Date()) {
   const usableWorkArea = input.workArea && workAreaFitsLayout(input.config, input.workArea) ? input.workArea : undefined;
   const placements = computePlacements(input.config, usableWorkArea);
+  const nv02 = input.workers.find((worker) => worker.id === 'NV02');
+  const nv02Heartbeat = nv02?.lastHeartbeat;
+  const modelExact = nv02Heartbeat?.modelProfileStatus === 'MODEL_PROFILE_VERIFIED'
+    && nv02Heartbeat?.modelName === 'GPT-5.6 Sol'
+    && nv02Heartbeat?.reasoningEffort === 'High'
+    && nv02Heartbeat?.modelReady === true;
   return {
-    // Exact model verification: ensure the runtime matches the expected model hash.
-    // The controller config may list trusted model hashes in `trustedRuntimeHosts`.
-    // If the expected hash is present, we consider the model exactly verified.
     modelVerification: {
-      exact: input.config.trustedRuntimeHosts.includes('exact-model-hash'),
+      exact: modelExact,
+      modelProfileStatus: nv02Heartbeat?.modelProfileStatus ?? 'MODEL_PROFILE_UNKNOWN',
+      modelName: nv02Heartbeat?.modelName ?? null,
+      reasoningEffort: nv02Heartbeat?.reasoningEffort ?? null,
+      modelReady: nv02Heartbeat?.modelReady ?? false,
+      verifiedAt: modelExact ? nv02Heartbeat?.verifiedAt ?? null : null,
+      blockedReason: modelExact ? null : nv02Heartbeat?.blockedReason ?? 'MODEL_PROFILE_NOT_VERIFIED',
     },
-    
+
     schemaVersion: 'tigeriq.chrome-controller.runtime-evidence.v2',
     generatedAt: now.toISOString(),
     ownerInteractionMode: input.paused ? 'READ_ONLY' : 'AUTOMATION',
@@ -181,6 +190,13 @@ export function buildRuntimeEvidence(input: RuntimeEvidenceInput, now = new Date
       stopVisible: worker.lastHeartbeat?.stopVisible ?? null,
       scrollToBottomVisible: worker.lastHeartbeat?.scrollToBottomVisible ?? null,
       securityBlock: worker.lastHeartbeat?.securityBlock ?? null,
+      modelProfileStatus: worker.lastHeartbeat?.modelProfileStatus ?? null,
+      modelName: worker.lastHeartbeat?.modelName ?? null,
+      reasoningEffort: worker.lastHeartbeat?.reasoningEffort ?? null,
+      modelReady: worker.lastHeartbeat?.modelReady ?? null,
+      modelExact: worker.lastHeartbeat?.modelExact ?? null,
+      verifiedAt: worker.lastHeartbeat?.verifiedAt ?? null,
+      blockedReason: worker.lastHeartbeat?.blockedReason ?? null,
       windowState: worker.windowState ?? null,
       manualCloseSuppressed: worker.manualCloseSuppressed ?? false,
       lastError: worker.lastError ?? null,

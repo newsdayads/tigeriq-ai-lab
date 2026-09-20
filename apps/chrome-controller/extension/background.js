@@ -3,8 +3,8 @@ import { buildDurableSavePrompt, waitForDurableSaveReceipt } from './save-receip
 import { runArchiveCommand } from './archive-command.js';
 import {
   CONTINUE_MIN_MS, CONTINUE_MAX_MS, REFRESH_MIN_MS, REFRESH_MAX_MS,
-  MAX_STALLED_CHECKS, deriveNv02Phase, hasActiveNv02Work,
-  nextRandomAt, pickContinuePrompt, shouldRotateChat,
+  MAX_STALLED_CHECKS, deriveNv02Phase, hasActiveNv02Work, hasWaitingEvidenceNv02Work,
+  nextRandomAt, pickContinuePrompt,
 } from './continuity.js';
 
 const CONTROLLER = 'http://127.0.0.1:8798';
@@ -141,12 +141,19 @@ async function readUiState(ctx) {
       scrollToBottomVisible:value?.scrollToBottomVisible===true,
       authRequired:value?.authRequired===true,
       securityBlock:value?.securityBlock?String(value.securityBlock):null,
+      modelProfileStatus:value?.modelProfileStatus?String(value.modelProfileStatus):null,
+      modelName:value?.modelName?String(value.modelName):null,
+      reasoningEffort:value?.reasoningEffort?String(value.reasoningEffort):null,
+      modelReady:value?.modelReady===true,
+      modelExact:value?.exact===true,
+      verifiedAt:value?.verifiedAt?String(value.verifiedAt):null,
+      blockedReason:value?.blockedReason?String(value.blockedReason):null,
     };
   } catch { return { uiBusy:null, uiPhase:'STALLED', composerReady:false, sendReady:false, stopVisible:false, scrollToBottomVisible:false, authRequired:false, securityBlock:null }; }
 }
 async function heartbeat(workerId,ctx) {
   const ui=await readUiState(ctx);
-  await post('/api/heartbeat',{workerId,state:ui.uiPhase||'STALLED',...ctx,uiBusy:ui.uiBusy,uiPhase:ui.uiPhase,composerReady:ui.composerReady,sendReady:ui.sendReady,stopVisible:ui.stopVisible,scrollToBottomVisible:ui.scrollToBottomVisible,authRequired:ui.authRequired,securityBlock:ui.securityBlock,display:await displayInfo(ctx.windowId)});
+  await post('/api/heartbeat',{workerId,state:ui.uiPhase||'STALLED',...ctx,uiBusy:ui.uiBusy,uiPhase:ui.uiPhase,composerReady:ui.composerReady,sendReady:ui.sendReady,stopVisible:ui.stopVisible,scrollToBottomVisible:ui.scrollToBottomVisible,authRequired:ui.authRequired,securityBlock:ui.securityBlock,modelProfileStatus:ui.modelProfileStatus,modelName:ui.modelName,reasoningEffort:ui.reasoningEffort,modelReady:ui.modelReady,modelExact:ui.modelExact,verifiedAt:ui.verifiedAt,blockedReason:ui.blockedReason,display:await displayInfo(ctx.windowId)});
 }
 
 async function waitForTabComplete(tabId,timeoutMs=60000) {
@@ -219,7 +226,7 @@ async function saveAndArchive(workerId,{requireDone=true}={}){
     const dispatchedAt=new Date().toISOString();
     const saveText=buildDurableSavePrompt({saveToken,workerId,dispatchedAt});
     await chrome.tabs.update(ctx.tabId,{active:true});
-    const save=await chrome.tabs.sendMessage(ctx.tabId,{type:'TIGERIQ_DISPATCH',text:saveText});
+    const save=await chrome.tabs.sendMessage(ctx.tabId,{type:'TIGERIQ_DISPATCH',text:saveText,workerId});
     if(!save?.ok) throw new Error(String(save?.status||'SAVE_DISPATCH_FAILED'));
     await waitForSaveCompletion(ctx);
     const receipt=await waitForDurableSaveReceipt(saveToken,workerId,dispatchedAt);
@@ -248,6 +255,17 @@ async function maybeAutoArchive(workerId){
   try{await saveAndArchive(workerId,{requireDone:true});}catch{/* bounded fail-closed; evidence remains unmodified */}
 }
 
+
+async function precheckNv02Profile(ctx, purpose='DISPATCH') {
+  if (!ctx?.tabId) throw new Error('MODEL_PROFILE_BLOCKED:NO_TAB');
+  const profile = await chrome.tabs.sendMessage(ctx.tabId, { type: 'TIGERIQ_MODEL_PROFILE_PRECHECK', purpose });
+  try {
+    await post('/api/heartbeat', { workerId:'NV02', state: profile?.exact ? 'READY' : 'BLOCKED', ...ctx, modelProfileStatus:profile?.modelProfileStatus||'MODEL_PROFILE_BLOCKED', modelName:profile?.modelName||null, reasoningEffort:profile?.reasoningEffort||null, modelReady:profile?.modelReady===true, modelExact:profile?.exact===true, verifiedAt:profile?.verifiedAt||null, blockedReason:profile?.blockedReason||null, display:await displayInfo(ctx.windowId) });
+  } catch { /* heartbeat best effort; dispatch remains fail-closed */ }
+  if (!profile?.exact) throw new Error(`MODEL_PROFILE_BLOCKED:${profile?.blockedReason||profile?.modelProfileStatus||'UNVERIFIED'}`);
+  return profile;
+}
+
 async function execute(workerId,command) {
   const {action,payload={}}=command;
   const ctx=await findContext(workerId);
@@ -263,10 +281,15 @@ async function execute(workerId,command) {
     if(!allowedUrl(payload.url)||!matchesWorker(workerId,payload.url)) throw new Error('BLOCKED_URL');
     await chrome.tabs.update(ctx.tabId,{url:payload.url,active:true}); await waitForTabComplete(ctx.tabId); return{status:'NAVIGATED'};
   }
+  if(action==='MODEL_PREFLIGHT'){
+    if(workerId!=='NV02')return{status:'MODEL_PREFLIGHT_NOT_REQUIRED'};
+    return precheckNv02Profile(ctx,'COMMAND_PREFLIGHT');
+  }
   if(action==='DISPATCH'){
     if(!matchesWorker(workerId,ctx.url)) throw new Error('BLOCKED_URL');
     await chrome.tabs.update(ctx.tabId,{active:true});
-    const response=await chrome.tabs.sendMessage(ctx.tabId,{type:'TIGERIQ_DISPATCH',text:String(payload.text||'')});
+    if(workerId==='NV02')await precheckNv02Profile(ctx,'COMMAND_DISPATCH');
+    const response=await chrome.tabs.sendMessage(ctx.tabId,{type:'TIGERIQ_DISPATCH',text:String(payload.text||''),workerId});
     if(!response?.ok){const reason=response?.status||'DISPATCH_FAILED';const error=new Error(reason);error.status=reason;throw error;}
     return response;
   }
@@ -305,7 +328,8 @@ async function dispatchNaturalContinue(ctx,state,now){
     try{await chrome.tabs.sendMessage(ctx.tabId,{type:'TIGERIQ_SCROLL_TO_BOTTOM'});}catch{}
   }
   const prompt=pickContinuePrompt(state.lastPrompt);
-  const result=await chrome.tabs.sendMessage(ctx.tabId,{type:'TIGERIQ_DISPATCH',text:prompt});
+  await precheckNv02Profile(ctx,'NATURAL_CONTINUE');
+  const result=await chrome.tabs.sendMessage(ctx.tabId,{type:'TIGERIQ_DISPATCH',text:prompt,workerId:'NV02'});
   if(!result?.ok)throw new Error(String(result?.status||'CONTINUE_DISPATCH_FAILED'));
   const next={...state,lastPrompt:prompt,dispatchesInChat:state.dispatchesInChat+1,stalledChecks:0,lastPhase:'WORKING',nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
   await saveNv02Continuity(next);
@@ -317,7 +341,8 @@ async function checkpointBeforeRefresh(ctx){
   const saveToken=crypto.randomUUID();
   const dispatchedAt=new Date().toISOString();
   const saveText=buildDurableSavePrompt({saveToken,workerId:'NV02',dispatchedAt});
-  const save=await chrome.tabs.sendMessage(ctx.tabId,{type:'TIGERIQ_DISPATCH',text:saveText});
+  await precheckNv02Profile(ctx,'REFRESH_CHECKPOINT');
+  const save=await chrome.tabs.sendMessage(ctx.tabId,{type:'TIGERIQ_DISPATCH',text:saveText,workerId:'NV02'});
   if(!save?.ok)throw new Error(String(save?.status||'REFRESH_CHECKPOINT_DISPATCH_FAILED'));
   await waitForSaveCompletion(ctx);
   return waitForDurableSaveReceipt(saveToken,'NV02',dispatchedAt);
@@ -347,11 +372,18 @@ async function maybeNv02Continuity(ctx,ui){
     await emitContinuityEvent('BLOCKED',{securityBlock:ui?.securityBlock||null});
     return;
   }
+  if(controller?.paused===true||(controller?.utilityPausedWorkers||[]).includes('NV02')){
+    state={...state,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
+    await saveNv02Continuity(state);
+    await emitContinuityEvent('CONTINUITY_SKIPPED_PAUSED',{nextContinueAt:state.nextContinueAt});
+    return;
+  }
   const active=hasActiveNv02Work(controller);
-  if(now>=state.nextRefreshAt&&phase==='READY'&&!active){
+  const waitingEvidence=hasWaitingEvidenceNv02Work(controller);
+  if(now>=state.nextRefreshAt&&phase==='READY'&&!active&&!waitingEvidence){
     try{
       const receipt=await checkpointBeforeRefresh(ctx);
-      const next={...state,nextRefreshAt:nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS),nextContinueAt:now+15000,stalledChecks:0};
+      const next={...state,nextRefreshAt:nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS),nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),stalledChecks:0};
       await saveNv02Continuity(next);
       await emitContinuityEvent('REFRESH_SCHEDULED',{receiptRef:receipt?.receiptRef||null,checkpointRef:receipt?.checkpointRef||null,nextRefreshAt:next.nextRefreshAt});
       void post('/api/workers/NV02/restart-schedule',{reason:'RANDOM_2_4H'});
@@ -359,15 +391,6 @@ async function maybeNv02Continuity(ctx,ui){
       state={...state,nextRefreshAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
       await saveNv02Continuity(state);
       await emitContinuityEvent('REFRESH_DEFERRED',{error:String(error)});
-    }
-    return;
-  }
-  if(phase==='READY'&&!active&&shouldRotateChat(state,now)){
-    try{await rotateNv02Chat(ctx,state,now);}
-    catch(error){
-      state={...state,stalledChecks:Math.min(MAX_STALLED_CHECKS,state.stalledChecks+1),nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
-      await saveNv02Continuity(state);
-      await emitContinuityEvent('CHAT_ROTATE_FAILED',{error:String(error),stalledChecks:state.stalledChecks});
     }
     return;
   }
@@ -403,7 +426,7 @@ async function tickWorker(workerId) {
   lastWindowByWorker.set(workerId,ctx.windowId);
   await updateWorkerBadge(workerId, ctx);
   const ui=await readUiState(ctx);
-  await post('/api/heartbeat',{workerId,state:ui.uiPhase||'STALLED',...ctx,uiBusy:ui.uiBusy,uiPhase:ui.uiPhase,composerReady:ui.composerReady,sendReady:ui.sendReady,stopVisible:ui.stopVisible,scrollToBottomVisible:ui.scrollToBottomVisible,authRequired:ui.authRequired,securityBlock:ui.securityBlock,display:await displayInfo(ctx.windowId)});
+  await post('/api/heartbeat',{workerId,state:ui.uiPhase||'STALLED',...ctx,uiBusy:ui.uiBusy,uiPhase:ui.uiPhase,composerReady:ui.composerReady,sendReady:ui.sendReady,stopVisible:ui.stopVisible,scrollToBottomVisible:ui.scrollToBottomVisible,authRequired:ui.authRequired,securityBlock:ui.securityBlock,modelProfileStatus:ui.modelProfileStatus,modelName:ui.modelName,reasoningEffort:ui.reasoningEffort,modelReady:ui.modelReady,modelExact:ui.modelExact,verifiedAt:ui.verifiedAt,blockedReason:ui.blockedReason,display:await displayInfo(ctx.windowId)});
   const r=await fetch(`${CONTROLLER}/api/commands/${encodeURIComponent(workerId)}`); if(!r.ok) return;
   const {command}=await r.json();
   if(command){
@@ -411,24 +434,7 @@ async function tickWorker(workerId) {
     catch(error){ const status=error?.status||String(error?.message||error); await post('/api/result',{workerId,commandId:command.id,ok:false,status}); }
     return;
   }
-  if(workerId==='NV02'){
-        // Before proceeding with NV02 continuity, ensure the model has been exactly verified.
-        try {
-          const evRes = await fetch(`${CONTROLLER}/api/evidence`);
-          if (evRes.ok) {
-            const ev = await evRes.json();
-            if (!ev.modelVerification?.exact) {
-              console.warn('Model verification failed – blocking NV02 dispatch');
-              return; // Block further NV02 processing.
-            }
-          }
-        } catch (e) {
-          console.error('Failed to fetch model verification evidence', e);
-          // If we cannot verify, err on the side of safety and block.
-          return;
-        }
-        await maybeNv02Continuity(ctx,ui);
-      }
+  // Direct CDP Bridge is the single NV02 continuity owner. Extension stays heartbeat/command-only.
 }
 
 async function tick(){

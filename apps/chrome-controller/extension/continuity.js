@@ -31,8 +31,6 @@ export const CONTINUE_MAX_MS = 10 * 60 * 1000;
 export const REFRESH_MIN_MS = 2 * 60 * 60 * 1000;
 export const REFRESH_MAX_MS = 4 * 60 * 60 * 1000;
 export const MAX_STALLED_CHECKS = 3;
-export const CHAT_ROTATE_AFTER_DISPATCHES = 8;
-export const CHAT_ROTATE_AFTER_MS = 45 * 60 * 1000;
 
 export function randomDelay(minMs,maxMs,random=Math.random){
   if(!Number.isFinite(minMs)||!Number.isFinite(maxMs)||maxMs<minMs)throw new Error('RANDOM_DELAY_RANGE_INVALID');
@@ -74,8 +72,7 @@ export function hasWaitingEvidenceNv02Work(controller){
   return (controller?.jobs||[]).some((job)=>job?.workerId==='NV02'&&String(job?.stage||'')==='WAITING_EVIDENCE'&&!job?.completedAt);
 }
 
-export function shouldRotateChat(state,now){
-  const started=Number(state?.chatStartedAt||now);
-  const count=Number(state?.dispatchesInChat||0);
-  return count>=CHAT_ROTATE_AFTER_DISPATCHES||(now-started)>=CHAT_ROTATE_AFTER_MS;
+export function hasContinuableNv02Work(controller){
+  const continuableStages=new Set(['SUBMITTED','WORKING','WAITING_EVIDENCE','VERIFY']);
+  return (controller?.jobs||[]).some((job)=>job?.workerId==='NV02'&&continuableStages.has(String(job?.stage||''))&&!job?.completedAt);
 }

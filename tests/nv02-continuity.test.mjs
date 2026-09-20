@@ -3,8 +3,8 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { buildDurableSavePrompt, SAVE_RECEIPT_POLL_DELAYS_MS, waitForDurableSaveReceipt } from '../apps/chrome-controller/extension/save-receipt.js';
 import {
-  CONTINUE_PROMPTS, deriveNv02Phase, hasActiveNv02Work, hasWaitingEvidenceNv02Work, pickContinuePrompt,
-  randomDelay, shouldRotateChat,
+  CONTINUE_PROMPTS, deriveNv02Phase, hasActiveNv02Work, hasWaitingEvidenceNv02Work, hasContinuableNv02Work, pickContinuePrompt,
+  randomDelay,
 } from '../apps/chrome-controller/extension/continuity.js';
 
 describe('NV02 continuity policy', () => {
@@ -58,6 +58,8 @@ describe('NV02 continuity policy', () => {
     expect(hasActiveNv02Work({jobs:[{workerId:'NV02',stage:'WAITING_EVIDENCE',completedAt:null}],autopilot:{phase:'IDLE'}})).toBe(false);
     expect(hasWaitingEvidenceNv02Work({jobs:[{workerId:'NV02',stage:'WAITING_EVIDENCE',completedAt:null}]})).toBe(true);
     expect(hasWaitingEvidenceNv02Work({jobs:[{workerId:'NV02',stage:'DONE',completedAt:'2026-09-20T00:00:00Z'}]})).toBe(false);
+    for(const stage of ['SUBMITTED','WORKING','WAITING_EVIDENCE','VERIFY'])expect(hasContinuableNv02Work({jobs:[{workerId:'NV02',stage,completedAt:null}]})).toBe(true);
+    for(const stage of ['QUEUED','DISPATCHING','DONE','BLOCKED','ERROR'])expect(hasContinuableNv02Work({jobs:[{workerId:'NV02',stage,completedAt:stage==='DONE'?'2026-09-20T00:00:00Z':null}]})).toBe(false);
     expect(hasActiveNv02Work({jobs:[{workerId:'NV02',stage:'VERIFY',completedAt:null}],autopilot:{phase:'IDLE'}})).toBe(true);
     expect(hasActiveNv02Work({jobs:[],autopilot:{pendingJobId:'GH-1'}})).toBe(true);
     expect(hasActiveNv02Work({jobs:[],autopilot:{phase:'IDLE'}})).toBe(false);
@@ -97,7 +99,7 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("return dispatchNaturalContinueLocked(target,next,now)");
     expect(source).not.toContain("return dispatchNaturalContinue(target,next,now)");
     expect(source).toContain("ROTATE_MODEL_PROFILE_NOT_READY");
-    expect(source).toContain("freshUi?.modelReady!==true");
+    expect(source).toContain("freshUi?.modelExact!==true");
     expect(source).toContain("NV02_HOME_URL");
     expect(source).toContain("projectNewChatExpr");
     expect(source).toContain("recoverNv02ProjectContext");
@@ -155,7 +157,10 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("đang suy nghĩ|thinking|generating|đang tạo");
     expect(source).toContain("/(^|\\\\s)(đang suy nghĩ|thinking|generating|đang tạo)(\\\\s|$)/i");
     expect(source).toContain(".replace(/\\\\s+/g,' ')");
-    expect(source).toContain("phase==='READY'&&!active&&!waitingEvidence&&now>=state.nextContinueAt&&shouldRotateChat(state,now)");
+    expect(source).not.toContain('shouldRotateChat');
+    expect(source).toContain("CONTINUE_SKIPPED_NO_CURRENT_WORK");
+    expect(source).toContain("const continuable=hasContinuableNv02Work(controller)");
+    expect(source).toContain("const currentTrackedWork=continuable");
     expect(source).toContain("now>=state.nextRefreshAt&&phase==='READY'&&!active&&!waitingEvidence");
     expect(source).not.toContain('WAITING_EVIDENCE_CONTINUE_ACCELERATED');
     expect(source).not.toContain('IDLE_CONTINUE_ACCELERATED');
@@ -167,8 +172,7 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("error.startsWith('BROWSER_MUTATION_LEASE_BUSY:')");
     expect(source).toContain("const checkpointed={...state,dispatchesInChat:0,chatStartedAt:now");
     expect(source).toContain("nextRefreshAt:nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS)");
-    expect(source).toContain("PROJECT_CONTEXT_RECOVERY_AFTER_ROTATE_FAILED");
-    expect(source).toContain("state={...latest,dispatchesInChat:0,chatStartedAt:now");
+    expect(source).not.toContain("PROJECT_CONTEXT_RECOVERY_AFTER_ROTATE_FAILED");
     expect(source).toContain("nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)");
     expect(source).toContain("'CONTINUITY_CONTINUE'");
     const leaseServerSource = readFileSync('apps/chrome-controller/src/server.ts','utf8');
@@ -183,15 +187,29 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("activitySignature");
     expect(source).toContain("workingUnchangedChecks");
     const serverSource=readFileSync('apps/chrome-controller/src/server.ts','utf8');
-    expect(serverSource).toContain("const projectContextRecovery=workerId==='NV02'&&purpose==='PROJECT_CONTEXT_RECOVERY';");
-    expect(serverSource).toContain("if(paused&&!projectContextRecovery)throw new Error('OWNER_INTERACTION_READ_ONLY');");
+    expect(serverSource).not.toContain("paused&&!projectContextRecovery");
+    expect(serverSource).toContain("if(paused)throw new Error('OWNER_INTERACTION_READ_ONLY');");
+    expect(serverSource).toContain("const boundedRecovery=staleWorkingRecovery||stalledRecovery||modelProfileRecovery||checkpointRecovery||chatRotation");
+    expect(serverSource).toContain("allowContinuable:continuityContinue");
+    const backgroundSource=readFileSync('apps/chrome-controller/extension/background.js','utf8');
+    expect(backgroundSource).not.toContain("if(workerId==='NV02')await maybeNv02Continuity(ctx,ui)");
+    expect(backgroundSource).toContain('single NV02 continuity owner');
+    expect(source).toContain('ensureNv02ModelProfile');
+    expect(source).toContain('MODEL_56_SOL_CLICK_EXPR');
+    expect(source).toContain("'MODEL_PROFILE_RECOVERY'");
+    expect(source).toContain("'ARCHIVE_CONFIRMED'");
+    expect(source).toContain("'NEW_CHAT_CREATED'");
+    expect(source).toContain("'CONTEXT_RECOVERY_ROTATED'");
+    expect(source).toContain("modelName==='GPT-5.6 Sol'");
+    expect(source).toContain("reasoningEffort==='High'");
   });
 
-  it('rotates chat by bounded count or age instead of every job', () => {
-    const now=1_000_000_000;
-    expect(shouldRotateChat({chatStartedAt:now,dispatchesInChat:7},now)).toBe(false);
-    expect(shouldRotateChat({chatStartedAt:now,dispatchesInChat:8},now)).toBe(true);
-    expect(shouldRotateChat({chatStartedAt:now-46*60*1000,dispatchesInChat:1},now)).toBe(true);
+  it('does not auto-rotate chat by age or dispatch count', () => {
+    const continuity=readFileSync('apps/chrome-controller/extension/continuity.js','utf8');
+    const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    expect(continuity).not.toContain('CHAT_ROTATE_AFTER');
+    expect(continuity).not.toContain('shouldRotateChat');
+    expect(bridge).not.toContain('shouldRotateChat');
   });
   it('ships one-shot NV02 continuity installer with exact-head deploy and rollback',()=>{
     const installer=readFileSync('apps/chrome-controller/runtime/Install-NV02-Continuity.ps1','utf8');
