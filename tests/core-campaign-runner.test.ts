@@ -110,4 +110,12 @@ describe('API campaign runner and core lifecycle integration',()=>{
     expect(detectIdleWithBacklog(1, 5)).toBe(false);
     expect(detectIdleWithBacklog(0, 0)).toBe(false);
   });
+  it('implements api_doctor inspection with classification and repair handoff', async () => {
+    const { inspectApiDoctorHealth } = await import('../apps/tigeriq-core/core.mjs');
+    const res = await inspectApiDoctorHealth({ provider: 'ollama', employeeId: 'NV10' }, { lastHttpStatus: 402 });
+    expect(res.ok).toBe(false);
+    expect(res.errorClass).toBe('http_402_blocker');
+    expect(res.repairHandoff).toBeDefined();
+    expect(res.repairHandoff.lane).toBe('coding_lane');
+  });
 });
