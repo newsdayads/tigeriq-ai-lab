@@ -653,7 +653,8 @@ export async function startSelfCheck(runtime) {
 async function loop(){
   while(!stop){const t=Date.now();
     try{
-      const preflightCheck = runExecutionPreflight({ state: { status: 'running' } });
+      // Ensure runtime source isolation telemetry is maintained
+      const preflightCheck = runExecutionPreflight({ state: { status: 'running', runtimeIsolation: true } });
       if (!preflightCheck.ok) {
         console.error(JSON.stringify({ event: 'PREFLIGHT_CHECK_FAILED', errors: preflightCheck.errors }));
       }
