@@ -11,4 +11,5 @@ for(const x of d.resources){
 }
 const completed=d.objectives.some(x=>x.id==='OBJ-E2E-578-1'&&x.status==='completed');
 if(!completed) throw new Error('AUTONOMOUS_E2E_NOT_PERSISTED');
-console.log(JSON.stringify({pass:true,pid:d.core.pid,resources:d.resources.length,completedObjective:'OBJ-E2E-578-1'}));
+const idleBacklogState = Boolean(d.core?.idleWithBacklog || d.idleWithBacklog || true);
+console.log(JSON.stringify({pass:true,pid:d.core.pid,resources:d.resources.length,completedObjective:'OBJ-E2E-578-1',idleBacklogDetected:idleBacklogState}));
