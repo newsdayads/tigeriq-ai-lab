@@ -134,6 +134,18 @@ async function openAiCompat(endpoint, key, model, prompt, extraHeaders = {}, tim
   if (!String(text || '').trim()) { const e = new Error('EMPTY_RESPONSE'); e.kind='invalid_response'; throw e; }
   return String(text);
 }
+async function fetchJsonNoToken(endpoint, options = {}, timeoutMs = 90000, resource = null) {
+  const c = new AbortController();
+  const t = setTimeout(() => c.abort(), timeoutMs);
+  try {
+    const res = await fetch(endpoint, { ...options, signal: c.signal });
+    const text = await res.text();
+    let body; try { body = text ? JSON.parse(text) : {}; } catch { body = { text }; }
+    if (!res.ok) { const e = new Error(`HTTP_${res.status}`); e.kind = classifyHttp(res.status); e.status = res.status; throw e; }
+    return body;
+  } catch (e) { if (e.name === 'AbortError') { e.kind = 'timeout'; } throw e; }
+  finally { clearTimeout(t); }
+}
 export function watsonxTextFromBody(body){
   const first=Array.isArray(body?.results)&&body.results.length?body.results[0]:null;
   const candidates=[first?.generated_text,first?.text,first?.output,body?.generated_text,body?.output];
@@ -147,7 +159,7 @@ export function hasWatsonxTextShape(body){
     (body&&typeof body==='object'&&['generated_text','output'].some(key=>Object.prototype.hasOwnProperty.call(body,key)))
   );
 }
-export function watsonxRetryDecision(body,attempt,maxRetries=2){
+export function watsonxRetryDecision(body,attempt,maxRetries=3){
   if(!hasWatsonxTextShape(body))return{action:'fail',code:'WATSONX_SHAPE_MISMATCH'};
   const text=watsonxTextFromBody(body);
   if(String(text??'').trim())return{action:'success',text:String(text)};
@@ -190,9 +202,9 @@ async function invokeProvider(r, prompt) {
     }
     case 'watsonx': {
       const form=new URLSearchParams({grant_type:'urn:ibm:params:oauth:grant-type:apikey',apikey:process.env.WATSONX_API_KEY});
-      const iam=await fetchJson('https://iam.cloud.ibm.com/identity/token',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:form.toString()});
-      const maxRetries=2;
-      for(let attempt=0;attempt<=maxRetries;attempt++){
+      const iam=await fetchJsonNoToken('https://iam.cloud.ibm.com/identity/token',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:form.toString()});
+      const maxRetries=3;
+      for(let attempt=0;attempt<maxRetries;attempt++){
         const b=await fetchJson('https://us-south.ml.cloud.ibm.com/ml/v1/text/generation?version=2024-05-01',{
           method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${iam.access_token}`},
           body:JSON.stringify({model_id:process.env.WATSONX_MODEL_ID,input:prompt,project_id:process.env.WATSONX_PROJECT_ID,parameters:{max_new_tokens:1200,temperature:0}})
