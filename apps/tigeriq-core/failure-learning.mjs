@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 
+import { repairLoop } from './repair-loop.mjs';
 export const failureLearningEventTypes=Object.freeze([
   'RESOURCE_FAILURE',
   'RESOURCE_PROBE_FAIL',
@@ -23,6 +24,9 @@ function normalizedMessage(value){
 }
 
 export function normalizeFailureEvent(row){
+  // Example usage of the new RepairLoop normalization (not required for core logic)
+  // const decision = repairLoop.normalize(row?.type || '');
+
   if(!row||!failureLearningEventTypes.includes(String(row.type||'')))return null;
   if(row.seq===undefined||row.seq===null||!row.ts)return null;
   const data=row.data&&typeof row.data==='object'?row.data:{};
