@@ -30,8 +30,10 @@ export function sortBacklogSpecs(specs){
 export function evaluateIdleWithBacklogPolicy({ status, activeCount, backlogItems } = {}) {
   const isIdle = String(status || '').toUpperCase() === 'IDLE';
   const hasBacklog = Array.isArray(backlogItems) && backlogItems.length > 0;
+  const idleWithBacklog = (isIdle || status === 'IDLE') && Number(activeCount || 0) === 0 && hasBacklog;
   return {
-    idleWithBacklog: isIdle && Number(activeCount || 0) === 0 && hasBacklog,
-    nextEligibleItem: hasBacklog ? sortBacklogSpecs(backlogItems)[0] : null
+    idleWithBacklog,
+    nextEligibleItem: hasBacklog ? sortBacklogSpecs(backlogItems)[0] : null,
+    autoDispatched: idleWithBacklog
   };
 }
