@@ -693,7 +693,6 @@ async function loop(){
           const updatedMeta = { ...(j.metadata || {}), resourceWaitAttempts: attempts };
           await pool.query("update tigeriq_jobs set status='queued', metadata=$2, started_at=null where id=$1", [j.id, JSON.stringify(updatedMeta)]);
           await event('RESOURCE_WAIT_QUEUED', { jobId: j.id, attempts, delayMs: backlogDelayMs, nextAttemptAt: nextAttemptAt.toISOString() });
-          await event('RESOURCE_WAIT_RELEASED', { jobId: j.id, attempts });
           continue;
         }
         dispatchedCount++;
