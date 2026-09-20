@@ -2,8 +2,8 @@ import fs from 'node:fs';
 import http from 'node:http';
 import {
   CONTINUE_MIN_MS, CONTINUE_MAX_MS, REFRESH_MIN_MS, REFRESH_MAX_MS,
-  MAX_STALLED_CHECKS, deriveNv02Phase, hasActiveNv02Work, hasWaitingEvidenceNv02Work,
-  nextRandomAt, pickContinuePrompt, shouldRotateChat,
+  MAX_STALLED_CHECKS, deriveNv02Phase, hasActiveNv02Work, hasWaitingEvidenceNv02Work, hasContinuableNv02Work,
+  nextRandomAt, pickContinuePrompt,
 } from './extension/continuity.js';
 import { buildDurableSavePrompt, waitForDurableSaveReceipt } from './extension/save-receipt.js';
 
@@ -143,9 +143,17 @@ const UI_EXPR=`(()=>{
   const txt=[...document.querySelectorAll('[role="alert"],[role="dialog"],[data-testid*="toast" i]')].slice(0,30).map(e=>(e.textContent||'').toLowerCase()).join(' ');
   const checks=[['rate limit','BLOCKED_RATE_LIMIT'],['too many requests','BLOCKED_RATE_LIMIT'],['suspicious activity','BLOCKED_SUSPICIOUS_ACTIVITY'],['unusual activity','BLOCKED_SUSPICIOUS_ACTIVITY'],['verify your identity','BLOCKED_REAUTH'],['verify it’s you','BLOCKED_REAUTH'],['xác minh danh tính','BLOCKED_REAUTH']];
   if(!securityBlock) for(const [n,s] of checks){if(txt.includes(n)){securityBlock=s;break;}}
-  const modelControl=location.hostname==='chatgpt.com'?[...document.querySelectorAll('button,[role="button"]')].find(e=>vis(e)&&/chọn mô hình chatgpt|choose.*model|model selector/i.test((e.getAttribute('aria-label')||'')+' '+(e.getAttribute('title')||'')))||null:null;
-  const reasoningEffort=modelControl?.getAttribute('data-selected-reasoning-effort')||null;
-  const modelReady=location.hostname!=='chatgpt.com'||Boolean(modelControl&&String(reasoningEffort||'').toLowerCase()==='high');
+  const modelControls=location.hostname==='chatgpt.com'?[...document.querySelectorAll('button,[role="button"]')].filter(e=>vis(e)&&(e.hasAttribute('data-selected-reasoning-effort')||/chọn mô hình chatgpt|choose.*model|model selector/i.test((e.getAttribute('aria-label')||'')+' '+(e.getAttribute('title')||'')))):[];
+  const modelControl=modelControls.length===1?modelControls[0]:null;
+  const modelLabel=String((modelControl?.getAttribute('aria-label')||'')+' '+(modelControl?.getAttribute('title')||'')+' '+(modelControl?.innerText||modelControl?.textContent||'')).replace(/\\s+/g,' ').trim();
+  const modelName=/\\b(?:GPT-)?5\\.6\\s+Sol\\b/i.test(modelLabel)?'GPT-5.6 Sol':null;
+  const reasoningRaw=modelControl?.getAttribute('data-selected-reasoning-effort')||modelLabel;
+  const reasoningEffort=/(^|\\s)(high|cao)(\\s|$)/i.test(String(reasoningRaw||''))?'High':null;
+  const modelExact=location.hostname!=='chatgpt.com'||Boolean(modelControl&&modelName==='GPT-5.6 Sol'&&reasoningEffort==='High');
+  const modelReady=modelExact;
+  const modelProfileStatus=modelExact?'MODEL_PROFILE_VERIFIED':'MODEL_PROFILE_BLOCKED';
+  const blockedReason=modelExact?null:(!modelControl?'MODEL_CONTROL_NOT_EXACT_OR_UNIQUE':!modelName?'MODEL_NAME_NOT_GPT_5_6_SOL':'REASONING_NOT_HIGH');
+  const verifiedAt=modelExact?new Date().toISOString():null;
   const uiBusy=Boolean(stop||activityBusy);
   const activityRoot=activityBusy?.closest?.('.block-BQZwFn')||activityBusy?.parentElement||null;
   const activityText=String(activityRoot?.innerText||activityRoot?.textContent||'').replace(/\s+/g,' ').trim();
@@ -156,7 +164,7 @@ const UI_EXPR=`(()=>{
   return {
     uiReady,uiPhase,composerReady:Boolean(composer),sendReady:Boolean(send),stopVisible:Boolean(stop),activityBusyVisible:Boolean(activityBusy),
     scrollToBottomVisible:Boolean(scroll),authRequired,uiBusy,securityBlock,
-    modelControlPresent:Boolean(modelControl),reasoningEffort,modelReady,activitySignature,projectDraftReady,
+    modelControlPresent:Boolean(modelControl),modelProfileStatus,modelName,reasoningEffort,modelReady,modelExact,verifiedAt,blockedReason,activitySignature,projectDraftReady,
     title:document.title,url:location.href,readyState:document.readyState,bodyChildren:document.body?.children?.length||0
   };
 })()`;
@@ -165,6 +173,38 @@ async function uiState(target){
   const p=await pageRpc(target);
   try{return (await p.call('Runtime.evaluate',{expression:UI_EXPR,returnByValue:true})).result.value;}
   finally{p.close();}
+}
+async function evalPage(target,expression){
+  const p=await pageRpc(target);
+  try{return (await p.call('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true})).result.value;}
+  finally{p.close();}
+}
+const MODEL_SELECTOR_CLICK_EXPR=`(()=>{const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};const controls=[...document.querySelectorAll('button,[role="button"]')].filter(e=>vis(e)&&(e.hasAttribute('data-selected-reasoning-effort')||/chọn mô hình chatgpt|choose.*model|model selector/i.test((e.getAttribute('aria-label')||'')+' '+(e.getAttribute('title')||''))));if(controls.length!==1)return{ok:false,status:'MODEL_CONTROL_NOT_EXACT_OR_UNIQUE',count:controls.length};controls[0].click();return{ok:true,status:'MODEL_SELECTOR_OPENED'}})()`;
+const MODEL_56_SOL_CLICK_EXPR=`(()=>{const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};const text=e=>String(e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim();const opts=[...document.querySelectorAll('button,[role="menuitem"],[role="option"]')].filter(e=>vis(e)&&/^(?:GPT-)?5\\.6\\s+Sol(?:\\s|$)/i.test(text(e)));if(opts.length!==1)return{ok:false,status:'GPT_5_6_SOL_OPTION_NOT_UNIQUE',count:opts.length,labels:opts.slice(0,5).map(text)};opts[0].click();return{ok:true,status:'GPT_5_6_SOL_SELECTED'}})()`;
+const REASONING_HIGH_CLICK_EXPR=`(()=>{const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};const text=e=>String(e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim();const opts=[...document.querySelectorAll('button,[role="menuitem"],[role="option"]')].filter(e=>vis(e)&&/^(?:High|Cao)(?:\\s|$)/i.test(text(e)));if(opts.length!==1)return{ok:false,status:'REASONING_HIGH_OPTION_NOT_UNIQUE',count:opts.length,labels:opts.slice(0,5).map(text)};opts[0].click();return{ok:true,status:'REASONING_HIGH_SELECTED'}})()`;
+async function ensureNv02ModelProfile(target){
+  let profile=await uiState(target);
+  if(profile?.securityBlock)throw new Error(profile.securityBlock);
+  if(profile?.modelExact===true)return profile;
+  const opened=await evalPage(target,MODEL_SELECTOR_CLICK_EXPR);
+  if(!opened?.ok)throw new Error(opened?.status||'MODEL_SELECTOR_OPEN_FAILED');
+  await sleep(500);
+  const modelSelected=await evalPage(target,MODEL_56_SOL_CLICK_EXPR);
+  if(!modelSelected?.ok)throw new Error(modelSelected?.status||'GPT_5_6_SOL_SELECT_FAILED');
+  await sleep(700);
+  profile=await uiState(target);
+  if(profile?.modelName==='GPT-5.6 Sol'&&profile?.reasoningEffort!=='High'){
+    const reasoningOpened=await evalPage(target,MODEL_SELECTOR_CLICK_EXPR);
+    if(!reasoningOpened?.ok)throw new Error(reasoningOpened?.status||'REASONING_SELECTOR_OPEN_FAILED');
+    await sleep(500);
+    const reasoningSelected=await evalPage(target,REASONING_HIGH_CLICK_EXPR);
+    if(!reasoningSelected?.ok)throw new Error(reasoningSelected?.status||'REASONING_HIGH_SELECT_FAILED');
+    await sleep(700);
+    profile=await uiState(target);
+  }
+  if(profile?.modelExact!==true)throw new Error('MODEL_PROFILE_BLOCKED:'+String(profile?.blockedReason||'UNVERIFIED'));
+  await continuityEvent('MODEL_PROFILE_VERIFIED',{modelName:profile.modelName,reasoningEffort:profile.reasoningEffort,verifiedAt:profile.verifiedAt||null});
+  return profile;
 }
 async function post(path,workerId,data){
   const r=await fetch(CONTROLLER+path,{method:'POST',headers:auth(workerId,true),body:JSON.stringify(data),signal:AbortSignal.timeout(4000)});
@@ -378,6 +418,7 @@ async function withNv02Mutation(fn,purpose='NORMAL',ttlMs=30000){
   try{return await fn();}finally{await releaseBridgeMutationLease('NV02',lease);}
 }
 async function dispatchNaturalContinueLocked(target,state,now){
+  await ensureNv02ModelProfile(target);
   await scrollToBottom(target).catch(()=>{});
   const prompt=pickContinuePrompt(state.lastPrompt);
   const result=await dispatch(target,prompt);
@@ -392,6 +433,7 @@ async function dispatchNaturalContinue(target,state,now){
 }
 async function checkpointNv02(target){
   return withNv02Mutation(async()=>{
+    await ensureNv02ModelProfile(target);
     const saveToken=crypto.randomUUID(),dispatchedAt=new Date().toISOString();
     const text=buildDurableSavePrompt({saveToken,workerId:'NV02',dispatchedAt});
     const sent=await dispatch(target,text);
@@ -408,10 +450,12 @@ async function rotateNv02Chat(target,state,now){
   saveNv02Continuity(checkpointed);
   return withNv02Mutation(async()=>{
     const archived=await archiveChat(target);if(!archived?.ok)throw new Error(archived?.status||'ROTATE_ARCHIVE_FAILED');
+    await continuityEvent('ARCHIVE_CONFIRMED',{receiptRef:receipt.receiptRef,checkpointRef:receipt.checkpointRef,archiveStatus:archived.status});
     const opened=await newChat(target);if(!opened?.ok)throw new Error(opened?.status||'ROTATE_NEW_CHAT_FAILED');
-    const freshUi=await uiState(target);
+    await continuityEvent('NEW_CHAT_CREATED',{newChatStatus:opened.status});
+    const freshUi=await ensureNv02ModelProfile(target);
     if(freshUi?.securityBlock)throw new Error(freshUi.securityBlock);
-    if(freshUi?.modelReady!==true||freshUi?.uiPhase!=='READY')throw new Error('ROTATE_MODEL_PROFILE_NOT_READY');
+    if(freshUi?.modelExact!==true||freshUi?.uiPhase!=='READY')throw new Error('ROTATE_MODEL_PROFILE_NOT_READY');
     const next={...checkpointed,lastPhase:'READY'};
     saveNv02Continuity(next);
     await continuityEvent('CHAT_ROTATED',{receiptRef:receipt.receiptRef,checkpointRef:receipt.checkpointRef,archiveStatus:archived.status,newChatStatus:opened.status,nextRefreshAt:next.nextRefreshAt});
@@ -429,7 +473,7 @@ async function maybeNv02Continuity(w,target,ui){
   state={...state,lastPhase:phase};saveNv02Continuity(state);
   if(phase==='BLOCKED'){await continuityEvent('BLOCKED',{securityBlock:ui?.securityBlock||null});return;}
   const controller=await getControllerState();
-  if(controller?.paused===true){
+  if(controller?.paused===true||(controller?.utilityPausedWorkers||[]).includes('NV02')){
     if(now>=state.nextContinueAt){
       state={...state,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
       await continuityEvent('CONTINUE_SKIPPED_OWNER_READ_ONLY',{nextContinueAt:state.nextContinueAt});
@@ -438,6 +482,7 @@ async function maybeNv02Continuity(w,target,ui){
   }
   const active=hasActiveNv02Work(controller);
   const waitingEvidence=hasWaitingEvidenceNv02Work(controller);
+  const continuable=hasContinuableNv02Work(controller);
   if(now>=state.nextRefreshAt&&phase==='READY'&&!active&&!waitingEvidence){
     try{
       const receipt=await checkpointNv02(target);
@@ -451,30 +496,14 @@ async function maybeNv02Continuity(w,target,ui){
     }
     return;
   }
-  if(phase==='READY'&&!active&&!waitingEvidence&&now>=state.nextContinueAt&&shouldRotateChat(state,now)){
-    try{await rotateNv02Chat(target,state,now);}
-    catch(error){
-      const latest=loadNv02Continuity();
-      let recoveryStatus=null;
-      try{
-        const raw=await uiState(target);
-        if(!isNv02ProjectContext(raw?.url)){
-          const recovered=await withNv02Mutation(()=>recoverNv02ProjectContext(target),'PROJECT_CONTEXT_RECOVERY_AFTER_ROTATE_FAILED');
-          recoveryStatus=recovered?.status||null;
-        }
-      }catch(recoveryError){recoveryStatus='FAILED:'+String(recoveryError?.message||recoveryError);}
-      state={...latest,dispatchesInChat:0,chatStartedAt:now,stalledChecks:Math.min(MAX_STALLED_CHECKS,Number(latest.stalledChecks||0)+1),nextRefreshAt:nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS),nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
-      await continuityEvent('CHAT_ROTATE_FAILED',{error:String(error?.message||error),stalledChecks:state.stalledChecks,recoveryStatus,nextContinueAt:state.nextContinueAt,nextRefreshAt:state.nextRefreshAt});
-    }
-    return;
-  }
   if(now<state.nextContinueAt)return;
-  if(active){
-    state={...state,stalledChecks:0,workingSignature:'',workingUnchangedChecks:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
-    await continuityEvent('CONTINUE_SKIPPED_ACTIVE_JOB',{nextContinueAt:state.nextContinueAt});
-    return;
-  }
+  const currentTrackedWork=continuable;
   if(phase==='WORKING'){
+    if(!currentTrackedWork){
+      state={...state,stalledChecks:0,workingSignature:'',workingUnchangedChecks:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
+      await continuityEvent('CONTINUE_SKIPPED_UNTRACKED_WORKING',{nextContinueAt:state.nextContinueAt});
+      return;
+    }
     const signature=String(ui?.activitySignature||'');
     const same=Boolean(signature&&state.workingSignature===signature);
     const unchanged=same?Math.min(MAX_STALLED_CHECKS,Number(state.workingUnchangedChecks||0)+1):1;
@@ -490,7 +519,17 @@ async function maybeNv02Continuity(w,target,ui){
     }
     return;
   }
+  if(active&&!continuable){
+    state={...state,stalledChecks:0,workingSignature:'',workingUnchangedChecks:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
+    await continuityEvent('CONTINUE_SKIPPED_NONCONTINUABLE_ACTIVE_JOB',{nextContinueAt:state.nextContinueAt});
+    return;
+  }
   if(phase==='READY'){
+    if(!continuable){
+      state={...state,stalledChecks:0,workingSignature:'',workingUnchangedChecks:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
+      await continuityEvent('CONTINUE_SKIPPED_NO_CURRENT_WORK',{nextContinueAt:state.nextContinueAt});
+      return;
+    }
     const sent=await dispatchNaturalContinue(target,state,now);
     if(sent?.status==='MUTATION_LEASE_BUSY'){
       state={...state,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
@@ -498,13 +537,32 @@ async function maybeNv02Continuity(w,target,ui){
     }
     return;
   }
+  if(!currentTrackedWork){
+    state={...state,stalledChecks:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
+    await continuityEvent(active?'RECOVERY_SKIPPED_NONCONTINUABLE_ACTIVE_JOB':'RECOVERY_SKIPPED_NO_CURRENT_WORK',{nextContinueAt:state.nextContinueAt});
+    return;
+  }
+  if(ui?.modelExact!==true){
+    try{
+      const corrected=await withNv02Mutation(()=>ensureNv02ModelProfile(target),'MODEL_PROFILE_RECOVERY');
+      await continuityEvent('MODEL_PROFILE_RECOVERY',{status:corrected?.status||corrected?.modelProfileStatus||'VERIFIED',modelName:corrected?.modelName||null,reasoningEffort:corrected?.reasoningEffort||null});
+      state={...state,stalledChecks:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
+      return;
+    }catch(error){await continuityEvent('MODEL_PROFILE_RECOVERY_FAILED',{error:String(error?.message||error)});}
+  }
   state={...state,stalledChecks:Math.min(MAX_STALLED_CHECKS,state.stalledChecks+1),nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
   await continuityEvent('STALLED_CHECK',{stalledChecks:state.stalledChecks,nextContinueAt:state.nextContinueAt,modelReady:ui?.modelReady??null,reasoningEffort:ui?.reasoningEffort??null});
   if(state.stalledChecks===2){
-    const result=await withNv02Mutation(()=>reloadTarget(target));
+    const result=await withNv02Mutation(()=>reloadTarget(target),'STALLED_RECOVERY');
     await continuityEvent('STALLED_RELOAD',{status:result?.status||null});
-  }else if(state.stalledChecks>=MAX_STALLED_CHECKS&&!active){
-    await post('/api/workers/NV02/restart-schedule','NV02',{reason:'STALLED_3_CHECKS'}).catch(async error=>continuityEvent('STALLED_RESTART_FAILED',{error:String(error?.message||error)}));
+  }else if(state.stalledChecks>=MAX_STALLED_CHECKS&&currentTrackedWork){
+    try{
+      await rotateNv02Chat(target,state,now);
+      await continuityEvent('CONTEXT_RECOVERY_ROTATED',{stalledChecks:state.stalledChecks});
+    }catch(error){
+      await continuityEvent('CONTEXT_RECOVERY_ROTATE_FAILED',{error:String(error?.message||error),stalledChecks:state.stalledChecks});
+      await post('/api/workers/NV02/restart-schedule','NV02',{reason:'STALLED_3_CHECKS'}).catch(async restartError=>continuityEvent('STALLED_RESTART_FAILED',{error:String(restartError?.message||restartError)}));
+    }
   }
 }
 
@@ -514,7 +572,8 @@ async function handleCommand(w,target,command){
   if(action==='LAYOUT') return layout(w,target,payload).then(()=>({status:'LAYOUT_APPLIED'}));
   if(action==='CLOSE_WINDOW') return closeWorker(w,target).then(()=>({status:'WINDOW_CLOSED'}));
   if(action==='NAVIGATE'){const u=new URL(String(payload.url||''));if(u.hostname!==expectedHost(w))throw new Error('BLOCKED_URL');await navigate(target,u.toString());return{status:'NAVIGATED'};}
-  if(action==='DISPATCH'){const r=await dispatch(target,String(payload.text||''));if(!r?.ok)throw new Error(r?.status||'DISPATCH_FAILED');return r;}
+  if(action==='MODEL_PREFLIGHT'){if(w.id!=='NV02')return{status:'MODEL_PREFLIGHT_NOT_REQUIRED'};return ensureNv02ModelProfile(target);}
+  if(action==='DISPATCH'){if(w.id==='NV02')await ensureNv02ModelProfile(target);const r=await dispatch(target,String(payload.text||''));if(!r?.ok)throw new Error(r?.status||'DISPATCH_FAILED');return r;}
   if(action==='ARCHIVE_CHAT'){const r=await archiveChat(target);if(!r?.ok)throw new Error(r?.status||'ARCHIVE_FAILED');return r;}
   throw new Error(`UNKNOWN_ACTION:${action}`);
 }
@@ -526,7 +585,7 @@ async function tickWorker(w){
     const projectContextReady=w.id!=='NV02'||isNv02ProjectContext(rawUi.url)||rawUi.projectDraftReady===true;
     const ui=projectContextReady?rawUi:{...rawUi,uiReady:false,uiPhase:'STALLED',modelReady:false};
     const display={workArea:{left:0,top:0,width:Number(config.layout?.fallbackWorkAreaWidth||3277),height:1688}};
-    await post('/api/heartbeat',w.id,{workerId:w.id,state:ui.uiPhase||'STALLED',windowId,tabId:target.id,url:ui.url,active:true,uiReady:ui.uiReady,uiPhase:ui.uiPhase,composerReady:ui.composerReady,sendReady:ui.sendReady,stopVisible:ui.stopVisible,scrollToBottomVisible:ui.scrollToBottomVisible,authRequired:ui.authRequired===true,uiBusy:ui.uiBusy,securityBlock:ui.securityBlock,modelControlPresent:ui.modelControlPresent,reasoningEffort:ui.reasoningEffort,modelReady:ui.modelReady,projectContextReady,display});
+    await post('/api/heartbeat',w.id,{workerId:w.id,state:ui.uiPhase||'STALLED',windowId,tabId:target.id,url:ui.url,active:true,uiReady:ui.uiReady,uiPhase:ui.uiPhase,composerReady:ui.composerReady,sendReady:ui.sendReady,stopVisible:ui.stopVisible,scrollToBottomVisible:ui.scrollToBottomVisible,authRequired:ui.authRequired===true,uiBusy:ui.uiBusy,securityBlock:ui.securityBlock,modelControlPresent:ui.modelControlPresent,modelProfileStatus:ui.modelProfileStatus,modelName:ui.modelName,reasoningEffort:ui.reasoningEffort,modelReady:ui.modelReady,modelExact:ui.modelExact,verifiedAt:ui.verifiedAt,blockedReason:ui.blockedReason,projectContextReady,display});
     if(w.id==='NV02'&&!projectContextReady&&!ui.securityBlock){
       if(!NV02_HOME_URL){await continuityEvent('PROJECT_CONTEXT_RECOVERY_BLOCKED',{reason:'NV02_HOME_URL_MISSING',url:rawUi.url||null});return;}
       const recovered=await withNv02Mutation(()=>recoverNv02ProjectContext(target),'PROJECT_CONTEXT_RECOVERY');
