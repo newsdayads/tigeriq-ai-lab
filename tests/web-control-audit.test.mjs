@@ -13,12 +13,17 @@ test('Resolution Matrix includes required formats', () => {
   assert.ok(RESOLUTION_MATRIX.find(r => r.name === 'Mobile'));
 });
 
-test('Repair handoff generates machine-readable file', () => {
+test('Repair handoff generates machine-readable file and deduplicates', () => {
   const mockAudit = { failures: [{ resolution: '4K', error: 'fail' }], metrics: {} };
   const testDir = 'Evidence/test-handoffs';
-  const { filePath, handoff } = generateRepairHandoff(mockAudit, testDir);
-  assert.ok(fs.existsSync(filePath));
-  assert.strictEqual(handoff.failures.length, 1);
+  fs.rmSync(testDir, { recursive: true, force: true });
+  const res1 = generateRepairHandoff(mockAudit, testDir);
+  assert.ok(fs.existsSync(res1.filePath));
+  assert.strictEqual(res1.deduplicated, false);
+  
+  const res2 = generateRepairHandoff(mockAudit, testDir);
+  assert.strictEqual(res2.deduplicated, true);
+  assert.strictEqual(res1.handoff.id, res2.handoff.id);
   fs.rmSync(testDir, { recursive: true, force: true });
 });
 
