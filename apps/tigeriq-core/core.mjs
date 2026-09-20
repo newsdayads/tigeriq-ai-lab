@@ -670,6 +670,11 @@ async function loop(){
       const recoveryCheck = checkAutomatedRecovery({ backlogCount: pendingJobsCount, activeCount: active.size, lastActivityAgeMs: t - (typeof lastJobActivity !== 'undefined' ? lastJobActivity : t - 31000), idleThresholdMs: 30000 });
       if (recoveryCheck.shouldRecover) {
         await event('AUTOMATED_RECOVERY_RESUMPTION', { backlog: pendingJobsCount, autoDispatched: recoveryCheck.autoDispatched });
+        const nextJob = await claimJob();
+        if (nextJob) {
+          active.add(nextJob.id);
+          void runJob(nextJob).finally(() => active.delete(nextJob.id));
+        }
       }
 
       while(active.size<MAX_PARALLEL){const j=await claimJob();if(!j)break;active.add(j.id);void runJob(j).finally(()=>active.delete(j.id));}
