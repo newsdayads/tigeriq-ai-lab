@@ -79,3 +79,65 @@ export function normalizeWorkItemLifecycle(input = {}) {
     nextAction
   };
 }
+
+export function executeCoreWorkItemLifecycle({ workItem, preflightFn, repairFn, reviewFn, maxRepairCycles = 3 } = {}) {
+  const item = normalizeWorkItemLifecycle(workItem);
+  const preflight = typeof preflightFn === 'function' ? preflightFn(item) : { ok: true, errors: [] };
+  if (!preflight.ok) {
+    return {
+      ok: false,
+      stage: 'preflight_failed',
+      errors: preflight.errors,
+      item: { ...item, stage: 'blocked', blocker: `Preflight failed: ${preflight.errors.join(', ')}` }
+    };
+  }
+
+  let currentCycle = 0;
+  let lastError = null;
+  let reviewed = false;
+  let reviewDecision = 'pending';
+
+  while (currentCycle <= maxRepairCycles) {
+    try {
+      if (typeof repairFn === 'function' && currentCycle > 0) {
+        repairFn({ cycle: currentCycle, lastError });
+      }
+      
+      if (typeof reviewFn === 'function') {
+        const rev = reviewFn({ item, cycle: currentCycle });
+        reviewDecision = rev?.decision || 'approve';
+        reviewed = true;
+        if (reviewDecision !== 'approve' && reviewDecision !== 'approved') {
+          throw new Error(`REVIEW_CHANGES_UNRESOLVED:${rev?.reason || 'Changes requested by independent reviewer'}`);
+        }
+      }
+
+      return {
+        ok: true,
+        stage: 'completed',
+        repairCycles: currentCycle,
+        item: { ...item, stage: 'completed', blocker: '', nextAction: 'done' }
+      };
+    } catch (err) {
+      lastError = err;
+      const errMessage = String(err?.message || err);
+      currentCycle++;
+      if (currentCycle > maxRepairCycles) {
+        return {
+          ok: false,
+          stage: 'repair_exhausted',
+          repairCycles: currentCycle - 1,
+          error: errMessage,
+          item: { ...item, stage: 'failed', blocker: `Repair exhausted after ${currentCycle - 1} cycles: ${errMessage}` }
+        };
+      }
+    }
+  }
+
+  return {
+    ok: false,
+    stage: 'failed',
+    repairCycles: currentCycle,
+    item: { ...item, stage: 'failed', blocker: 'Lifecycle execution terminated' }
+  };
+}
