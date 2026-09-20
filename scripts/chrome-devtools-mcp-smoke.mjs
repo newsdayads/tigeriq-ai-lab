@@ -1,7 +1,7 @@
 ﻿import fs from 'node:fs';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-const target=process.argv[2]||'http://127.0.0.1:18787'; const out=process.argv[3]||'D:/TigerIQ/Evidence/chrome-devtools-mcp-582';
+const target=process.argv[2]||'http://127.0.0.1:8796'; const out=process.argv[3]||'D:/TigerIQ/Evidence/chrome-devtools-mcp-658';
 fs.mkdirSync(out,{recursive:true}); const clean=t=>(t||'').replace(/\r/g,''); const text=r=>r?.content?.map(x=>x.text||'').join('\n')||''; const results=[];
 for(let i=1;i<=3;i++){
  const transport=new StdioClientTransport({command:'node',args:['node_modules/chrome-devtools-mcp/build/src/bin/chrome-devtools-mcp.js','--headless','--isolated','--no-performance-crux'],env:{...process.env,CHROME_DEVTOOLS_MCP_NO_USAGE_STATISTICS:'1'}});
