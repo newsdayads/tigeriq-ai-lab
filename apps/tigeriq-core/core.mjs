@@ -576,7 +576,12 @@ async function runFailureLearningScan(){
   return {eventsIn:rows.length,candidatesCreated:candidates.length};
 }
 
-let stop=false, lastRefresh=0, lastRecover=0, lastManager=0, lastProbe=0, lastFailureLearning=0; const active=new Set(); const MAX_PARALLEL=3;
+let stop=false, lastRefresh=0, lastRecover=0, lastManager=0, lastProbe=0, lastFailureLearning=0; const active=new Set();
+function getDynamicMaxParallel() {
+  const resList = typeof resources !== 'undefined' ? resources : [];
+  const healthyCount = Array.isArray(resList) ? resList.filter(r => r && (r.status === 'ready' || r.status === 'healthy' || r.healthy || r.health_state === 'READY' || r.health_state === 'ONLINE' || r.credential_state === 'LOCAL')).length : 0;
+  return Math.max(3, Math.min(20, healthyCount));
+}
 let lastLightAudit = 0, lastDeepAudit = 0, activeDeepAudit = false;
 export async function startSelfCheck(runtime) {
   const now = runtime?.now ? runtime.now() : Date.now();
@@ -665,7 +670,8 @@ async function loop(){
       if(t-lastFailureLearning>FAILURE_LEARNING_INTERVAL_MS){lastFailureLearning=t;await runFailureLearningScan();}
       await startSelfCheck({ now: () => Date.now(), store: pool });
       let dispatchedCount = 0;
-      while(active.size<MAX_PARALLEL){
+      const currentMaxParallel = getDynamicMaxParallel();
+      while(active.size < currentMaxParallel){
         const j = await claimJob();
         if(!j) {
           const pendingCount = (await pool.query("select count(*)::int as count from tigeriq_jobs where status='queued'")).rows[0]?.count || 0;
