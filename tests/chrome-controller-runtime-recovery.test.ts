@@ -3,8 +3,11 @@ import { restoreGpt5_6SolProfile } from '../apps/chrome-controller/src/model';
 import { watchAndRestoreModelProfile } from '../apps/chrome-controller/src/runtime-evidence';
 import { checkAndHandleModelProfileRecovery } from '../apps/chrome-controller/src/security-gate';
 
+import { clearRestoredReopenFlags } from '../apps/chrome-controller/src/runtime-evidence';
+
 describe('Chrome Controller Runtime Recovery', () => {
   it('simulates controlled interruption, forces blocked state, and verifies exactly-once restore dispatch with original workItem ID', () => {
+    clearRestoredReopenFlags();
     const dispatchMock = vi.fn();
     const workerId = 'NV02';
     const workItemId = 'WORK-ITEM-123';
