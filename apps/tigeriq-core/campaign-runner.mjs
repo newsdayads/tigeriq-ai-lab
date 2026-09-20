@@ -13,6 +13,19 @@ export function normalizeCampaignPhases(input) {
   });
 }
 
+export function checkCampaignRecovery({ objective, phases, currentPhase = 0, state = 'idle', backlogCount = 0 } = {}) {
+  const list = normalizeCampaignPhases(phases);
+  if (!list.length || backlogCount <= 0) return { shouldResume: false, nextGoal: null };
+  if (state === 'idle' || state === 'blocked' || state === 'paused') {
+    return {
+      shouldResume: true,
+      nextGoal: currentCampaignGoal(objective, list, currentPhase),
+      reason: 'IDLE_WITH_BACKLOG_AUTO_RESUMPTION'
+    };
+  }
+  return { shouldResume: false, nextGoal: null };
+}
+
 export function currentCampaignGoal(objective, phases, currentPhase=0) {
   const list = Array.isArray(phases) ? phases : [];
   if (!list.length) return String(objective || '');
