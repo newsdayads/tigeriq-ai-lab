@@ -99,3 +99,41 @@ export function loadConfig(configPath?:string):ControllerConfig{
   return validateConfig(JSON.parse(text) as unknown);
 }
 export function computePlacements(config:ControllerConfig,workArea?:WorkArea):Record<WorkerId,WindowPlacement>{const fallback:WorkArea={left:config.layout.fallbackWorkAreaLeft,top:0,width:config.layout.fallbackWorkAreaWidth,height:config.layout.top+config.layout.height};const area=workArea&&workAreaFitsLayout(config,workArea)?workArea:fallback;if(!workAreaFitsLayout(config,area))throw new Error('LAYOUT_DOES_NOT_FIT_WORK_AREA');const total=config.workers.length*config.layout.width+(config.workers.length-1)*config.layout.gap;const first=area.left+area.width-config.layout.rightMargin-total;return Object.fromEntries(config.workers.map((w,i)=>[w.id,{left:first+i*(config.layout.width+config.layout.gap),top:area.top+config.layout.top,width:config.layout.width,height:config.layout.height}]))as Record<WorkerId,WindowPlacement>}
+
+export interface ProfileRestoreDispatchResult {
+  dispatched: boolean;
+  workItemId: string;
+  modelProfile: string;
+  reasoningEffort: string;
+  dispatchedAt: string;
+}
+
+let lastRestoredWorkItemId: string | null = null;
+let restoreAttemptCount = 0;
+
+export function restoreGpt5_6SolProfile(workItemId: string, forceReset = false): ProfileRestoreDispatchResult {
+  if (!workItemId || typeof workItemId !== 'string') {
+    throw new Error('RESTORE_WORK_ITEM_ID_REQUIRED');
+  }
+  if (!forceReset && lastRestoredWorkItemId === workItemId) {
+    return {
+      dispatched: false,
+      workItemId,
+      modelProfile: 'GPT-5.6 Sol',
+      reasoningEffort: 'High',
+      dispatchedAt: new Date().toISOString(),
+    };
+  }
+  lastRestoredWorkItemId = workItemId;
+  restoreAttemptCount++;
+  if (restoreAttemptCount > 1000) {
+    restoreAttemptCount = 1;
+  }
+  return {
+    dispatched: true,
+    workItemId,
+    modelProfile: 'GPT-5.6 Sol',
+    reasoningEffort: 'High',
+    dispatchedAt: new Date().toISOString(),
+  };
+}
