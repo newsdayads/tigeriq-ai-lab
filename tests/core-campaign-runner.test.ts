@@ -53,6 +53,9 @@ describe('API campaign runner and core lifecycle integration',()=>{
     
     const r2 = executeCoreWorkItemLifecycle({ workItem: item, retryTracker: tracker, repairFn: () => {}, maxRepairCycles: 1 });
     expect(r2.stage).toBe('single_retry_violation');
+
+    const idleCheck = handleIdleWithBacklogState({ status: 'IDLE', backlogCount: 3, activeJobsCount: 0 });
+    expect(idleCheck).toBe(true);
   });
 
   it('integrates preflight checks and normalized autonomous repair directly into Core WorkItem lifecycle',()=>{
