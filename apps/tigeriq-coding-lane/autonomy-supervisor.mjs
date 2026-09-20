@@ -57,7 +57,17 @@ async function githubIssueIsOpen(issueNumber,fetchImpl=fetch){
     const res=await fetchImpl(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/issues/${issueNumber}`,{headers:{accept:'application/vnd.github+json',authorization:`Bearer ${token}`,'user-agent':'TigerIQ-Autonomy-Supervisor/1.0'},signal:AbortSignal.timeout(10000)});
     if(!res.ok)return false;
     const body=await res.json();
-    return body?.state==='open'&&!body?.pull_request;
+    if(body?.state!=='open'||body?.pull_request)return false;
+    const bodyText=String(body?.body||'');
+    const labels=(Array.isArray(body?.labels)?body.labels:[]).map(l=>String(l?.name||l||'').trim());
+    if(labels.includes('NV02_SELF_MODIFICATION_GUARD')||labels.includes('MANUAL_HOLD')||labels.includes('HOLD'))return false;
+    if(/\bNV02_SELF_MODIFICATION_GUARD\b/i.test(bodyText)||/\bMANUAL_HOLD\b/i.test(bodyText)||/\bHOLD\b/i.test(bodyText))return false;
+    const hasExecTrue=/(?:^|\s|;)TIGERIQ_EXECUTABLE\s*[:=]\s*true\b/i.test(bodyText)||labels.includes('TIGERIQ_EXECUTABLE=true');
+    const hasExecFalse=/(?:^|\s|;)TIGERIQ_EXECUTABLE\s*[:=]\s*false\b/i.test(bodyText)||labels.includes('TIGERIQ_EXECUTABLE=false');
+    if(hasExecFalse||!hasExecTrue)return false;
+    const hasAutoOwner=/(?:^|\s|;)OWNER_POLICY\s*[:=]\s*AUTO\b/i.test(bodyText)||labels.includes('OWNER_POLICY=AUTO');
+    if(!hasAutoOwner)return false;
+    return true;
   }catch{return false;}
 }
 async function objectiveIsEligible(pool,objectiveId,fetchImpl=fetch){
