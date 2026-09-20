@@ -118,6 +118,9 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("until=Date.now()+${SEND_BUTTON_WAIT_MS}");
     expect(source).toContain("first?.status!=='SEND_BUTTON_NOT_FOUND'");
     expect(source).toContain("enterSubmitStateExpr(text)");
+    expect(source).toContain("expectedNormalized=String(text||'').replace(/\\\\s+/g,' ').trim()");
+    expect(source).toContain("currentNormalized=current.replace(/\\\\s+/g,' ').trim()");
+    expect(source).toContain("currentNormalized===expectedNormalized");
     expect(source).toContain("Input.dispatchKeyEvent");
     expect(source).toContain("ENTER_COMPOSER_CLEARED");
     expect(source).toContain("ENTER_USER_MESSAGE_VISIBLE");
