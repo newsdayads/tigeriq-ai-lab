@@ -665,6 +665,10 @@ async function loop(){
       if(t-lastFailureLearning>FAILURE_LEARNING_INTERVAL_MS){lastFailureLearning=t;await runFailureLearningScan();}
       await startSelfCheck({ now: () => Date.now(), store: pool });
       while(active.size<MAX_PARALLEL){const j=await claimJob();if(!j)break;active.add(j.id);void runJob(j).finally(()=>active.delete(j.id));}
+      if (active.size === 0 && typeof storeGetBacklogCount === 'function' && (await storeGetBacklogCount()) > 0) {
+        console.log(JSON.stringify({ event: 'CAMPAIGN_AUTO_RESUME_TRIGGERED', timestamp: new Date().toISOString() }));
+        await managerTick();
+      }
     }catch(e){console.error(JSON.stringify({event:'CORE_LOOP_ERROR',error:String(e?.message||e)}));}
     await sleep(POLL_MS);
   }
