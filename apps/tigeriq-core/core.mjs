@@ -578,7 +578,8 @@ async function runFailureLearningScan(){
 
 let stop=false, lastRefresh=0, lastRecover=0, lastManager=0, lastProbe=0, lastFailureLearning=0; const active=new Set();
 function getDynamicMaxParallel() {
-  const healthyCount = Array.isArray(resources) ? resources.filter(r => r && (r.status === 'ready' || r.status === 'healthy' || r.healthy)).length : 0;
+  const resList = typeof resources !== 'undefined' ? resources : [];
+  const healthyCount = Array.isArray(resList) ? resList.filter(r => r && (r.status === 'ready' || r.status === 'healthy' || r.healthy || r.health_state === 'READY' || r.health_state === 'ONLINE' || r.credential_state === 'LOCAL')).length : 0;
   return Math.max(3, Math.min(20, healthyCount));
 }
 let lastLightAudit = 0, lastDeepAudit = 0, activeDeepAudit = false;
