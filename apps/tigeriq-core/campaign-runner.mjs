@@ -86,7 +86,7 @@ export function checkAutomatedRecovery({ backlogCount = 0, activeCount = 0, last
     return { shouldRecover: true, reason: 'IDLE_WITH_BACKLOG_RESUMPTION', autoDispatched: true };
   }
   return { shouldRecover: false, reason: 'NORMAL', autoDispatched: false };
-}er(currentPhase)||0,0),list.length-1);
+}
   const phase = list[index];
   return [
     String(objective || ''),
