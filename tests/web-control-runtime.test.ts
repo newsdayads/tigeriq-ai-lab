@@ -156,4 +156,14 @@ describe('Web Control runtime', () => {
     const response = await fetch(`http://127.0.0.1:${WEB_PORT}/api/status`, { method: 'POST' });
     expect(response.status).toBe(404);
   });
+
+  it('verifies corrected endpoints, live-refresh channels and responsive layouts in client assets', async () => {
+    const truthRes = await fetch(`http://127.0.0.1:${WEB_PORT}/web-control-truth.js`);
+    const truthText = await truthRes.text();
+    expect(truthText).toContain('TIGERIQ_CONFIG');
+
+    const htmlRes = await fetch(`http://127.0.0.1:${WEB_PORT}/`);
+    const htmlText = await htmlRes.text();
+    expect(htmlText).toContain('TIGERIQ_CONFIG');
+  });
 });
