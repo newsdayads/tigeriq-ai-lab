@@ -50,7 +50,7 @@ async function emit(pool,kind,payload){
   await pool.query('insert into tigeriq_coding_watchdog_events(kind,payload) values($1,$2)',[kind,JSON.stringify(payload)]);
   console.log(JSON.stringify({event:'CODING_AUTONOMY_WATCHDOG',kind,...payload}));
 }
-async function githubIssueIsOpen(issueNumber,fetchImpl=fetch){
+export async function githubIssueIsOpen(issueNumber,fetchImpl=fetch){
   const token=(process.env.TIGERIQ_GITHUB_TOKEN||process.env.GITHUB_TOKEN||'').trim();
   if(!token||!issueNumber)return false;
   try{
