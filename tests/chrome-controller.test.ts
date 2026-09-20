@@ -79,6 +79,27 @@ describe('review evidence and extension lifecycle',()=>{
   it('persists crash-bubble suppression and manual-close/owner-mode safeguards in controller source',()=>{const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');const broker=readFileSync('apps/chrome-controller/src/chrome-launch-broker.ts','utf8');expect(broker).toContain("'--disable-session-crashed-bubble'");expect(server).toContain('CHROME_LAUNCH_REQUESTED_VIA_BROKER');expect(server).not.toContain("spawn(config.chromePath");expect(server).toContain('manualCloseSuppressed');expect(server).toContain('workerHasActiveJob');expect(server).toContain('recoveryEligible');expect(server).toContain('OWNER_INTERACTION_READ_ONLY');expect(server).toContain("await sendCommand(workerId,'DISPATCH'");expect(server).not.toContain("runWithRetry(`${source.toLowerCase()}:${workerId}`");expect(server).toContain('AUTO_CONTINUE_COMMITTED');expect(server).toContain('resetKnownNotDelivered');expect(server).toContain('PERSIST_EVIDENCE_FAILED');expect(server).toContain('pendingJobId');expect(server).toContain("typeof data.text!=='string'");expect(server).toContain('DISPATCH_TEXT_MUST_BE_STRING');expect(server).not.toContain("String(data.text??'')");});
 });
 
+describe('bounded DOM model and thinking profile precheck and dispatch gating',()=>{
+  it('verifies exact GPT-5.6 Sol and High reasoning effort runtime evidence and content script precheck',()=>{
+    const content=readFileSync('apps/chrome-controller/extension/content.js','utf8');
+    const background=readFileSync('apps/chrome-controller/extension/background.js','utf8');
+    const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
+    const evidence=buildRuntimeEvidence({config:baseConfig(),workArea:{left:0,top:0,width:4096,height:2120},workers:baseConfig().workers.map(w=>({id:w.id,enabled:true,status:'READY',blocked:false})),jobs:[],autopilot:freshAutopilotState(),snapshot:snapshot(),paused:false,killed:false,recoveryAttempts:{NV02:0,NV03:0,NV04:0},startupReady:true,interactiveSession:true,sessionName:'Console'});
+    expect(content).toContain('verifyModelAndThinkingProfile');
+    expect(content).toContain('GPT-5.6 Sol');
+    expect(content).toContain('High');
+    expect(background).toContain('MODEL_VERIFICATION_EXACT_GPT56_SOL_HIGH_REQUIRED') || expect(background).toContain('exact GPT-5.6 Sol and High reasoning effort');
+    expect(server).toContain('MODEL_VERIFICATION_EXACT_GPT56_SOL_HIGH_REQUIRED');
+    expect(evidence).toHaveProperty('modelVerification');
+    expect((evidence as any).modelVerification).toMatchObject({
+      requiredModel: 'GPT-5.6 Sol',
+      requiredReasoningEffort: 'High',
+      exact: true,
+      boundedDomModelPrecheck: true,
+    });
+  });
+});
+
 describe('completion-aware UTF-8 supervisor and Owner workspace',()=>{
   it('reports UI generation state without parsing AI output and gates auto-continue',()=>{const content=readFileSync('apps/chrome-controller/extension/content.js','utf8');const background=readFileSync('apps/chrome-controller/extension/background.js','utf8');const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');expect(content).toContain('function detectUiBusy()');expect(content).toContain('button[type="submit"]');expect(content).toContain('composerText(composer) !== expectedText');expect(content).toContain('waitForSubmissionEvidence(expectedText)');expect(content).toContain("status: 'SUBMITTED', evidence: submitted.evidence");expect(content).toContain("message?.type === 'TIGERIQ_UI_STATE'");expect(background).toContain('uiBusy:ui.uiBusy');expect(server).toContain('AUTOPILOT_WAIT_UI_BUSY');expect(server).toContain('AUTOPILOT_SECURITY_STOP');});
   it('keeps Vietnamese dispatch UTF-8 end-to-end',()=>{const sample='Tiáº¿ng Viá»‡t â€” Äáº·ng, áº¥, Æ°, â‚¬';const bytes=new TextEncoder().encode(JSON.stringify({text:sample}));expect(JSON.parse(new TextDecoder('utf-8').decode(bytes)).text).toBe(sample);const background=readFileSync('apps/chrome-controller/extension/background.js','utf8');const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');expect(background).toContain("content-type':'application/json; charset=utf-8");expect(server).toContain("toString('utf8')");});
