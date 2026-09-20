@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { SAVE_RECEIPT_POLL_DELAYS_MS, waitForDurableSaveReceipt } from '../apps/chrome-controller/extension/save-receipt.js';
+import { buildDurableSavePrompt, SAVE_RECEIPT_POLL_DELAYS_MS, waitForDurableSaveReceipt } from '../apps/chrome-controller/extension/save-receipt.js';
 import {
   CONTINUE_PROMPTS, deriveNv02Phase, hasActiveNv02Work, hasWaitingEvidenceNv02Work, pickContinuePrompt,
   randomDelay, shouldRotateChat,
@@ -19,6 +19,17 @@ describe('NV02 continuity policy', () => {
     });
     expect(receipt.status).toBe('DURABLE');
     expect(slept).toEqual([5000,10000,15000,30000]);
+  });
+
+  it('scopes durable save to current GitHub work without Core/backlog discovery', () => {
+    const prompt=buildDurableSavePrompt({saveToken:'token-1',workerId:'NV02',dispatchedAt:'2026-09-20T00:00:00Z'});
+    expect(prompt).toContain('CÔNG VIỆC HIỆN TẠI');
+    expect(prompt).toContain('KHÔNG tìm việc mới');
+    expect(prompt).toContain('KHÔNG chọn P0');
+    expect(prompt).toContain('KHÔNG đọc backlog');
+    expect(prompt).toContain('KHÔNG kiểm tra hoặc phụ thuộc Core, PC01 runtime hay port 8795');
+    expect(prompt).toContain('GitHub write + readback thành công');
+    expect(prompt).toContain('TIGERIQ_SAVE_TOKEN=token-1');
   });
 
   it('keeps exactly the approved 25 natural continue prompts', () => {
@@ -134,7 +145,10 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("currentNormalized=current.replace(/\\\\s+/g,' ').trim()");
     expect(source).toContain("currentNormalized===expectedNormalized");
     expect(source).toContain("Input.dispatchKeyEvent");
-    expect(source).toContain("ENTER_COMPOSER_CLEARED");
+    expect(source).not.toContain("ENTER_COMPOSER_CLEARED");
+    expect(source).toContain(".rich-text-user-turn");
+    expect(source).toContain("data-user-message-bubble");
+    expect(source).toContain("data-content-search-unit-key$");
     expect(source).toContain("ENTER_USER_MESSAGE_VISIBLE");
     expect(source).toContain("ENTER_SUBMIT_EVIDENCE_MISSING");
     expect(source).toContain("activityBusyVisible:Boolean(activityBusy)");
