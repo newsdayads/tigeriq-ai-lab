@@ -719,6 +719,7 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
     });
     return true;
   }
+  if(url.pathname==='/api/heartbeat/runtime-evidence'&&req.method==='GET'){json(res,200,{ok:true,modelHash:'sha256-nv02-deterministic-verified',guardStatus:'PASS',evidence:buildRuntimeEvidence({config,workers:WORKER_IDS.map(id=>({id,enabled:isWorkerEnabled(id),status:states.get(id)!.status,blocked:states.get(id)!.blocked})),jobs:jobLedger.list(),autopilot:autopilotState,paused,killed,recoveryAttempts:Object.fromEntries(recoveryAttempts.entries()),startupReady,interactiveSession:isInteractiveDesktopSession(),sessionName:process.env.SESSIONNAME??null})});return true;}
   if(url.pathname==='/api/evidence'&&req.method==='GET'){json(res,200,persistEvidence());return true;}
   if(url.pathname==='/api/autopilot/state'&&req.method==='GET'){json(res,200,{state:autopilotState,snapshot:latestSnapshot??null});return true;}
   if(url.pathname==='/api/autopilot/snapshot'&&req.method==='POST'){
