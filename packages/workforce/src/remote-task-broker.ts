@@ -51,7 +51,10 @@ export class RemoteTaskBroker {
     if (!nodeId.trim()) return false;
     await this.#recoverExpiredForNode(nodeId);
     return true;
-  }coverExpiredForNode(nodeId);
+  }
+
+  async #dispatchNextWork(nodeId: string): Promise<RemoteTaskLease | undefined> {
+    await this.#recoverExpiredForNode(nodeId);
 
     const candidates = this.runtime.queue.list()
       .filter((record) => record.stage === 'queued')
