@@ -67,6 +67,12 @@ export interface ExternalAutopilotSnapshot {
   previousJob?: ExternalJob;
   nextJob?: ExternalJob;
   requiredWorkers?: WorkerId[];
+  coreSelectedRouting?: {
+    workItemId: string;
+    status: string;
+    kind: string;
+    routePath?: string;
+  };
 }
 
 export interface DurableAutopilotState {
