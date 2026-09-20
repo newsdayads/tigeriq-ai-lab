@@ -656,6 +656,29 @@ export async function startSelfCheck(runtime) {
   }
 }
 
+async function executeJobWithRetry(j) {
+  let attempt = 0;
+  const maxBackoff = 30000; // 30 seconds max backoff
+  while (true) {
+    try {
+      await runJob(j);
+      console.log(JSON.stringify({ event: 'RESOURCE_WAIT_RELEASED', jobId: j.id }));
+      break;
+    } catch (err) {
+      const msg = String(err?.message || err);
+      if (/resource busy|temporarily unavailable/i.test(msg)) {
+        const backoff = Math.min(1000 * 2 ** attempt, maxBackoff);
+        console.log(JSON.stringify({ event: 'RESOURCE_WAIT_QUEUED', jobId: j.id, backoffMs: backoff }));
+        await sleep(backoff);
+        attempt++;
+        // retry loop continues
+      } else {
+        throw err; // propagate non‑temporary errors
+      }
+    }
+  }
+}
+
 async function loop(){
   while(!stop){const t=Date.now();
     try{
@@ -674,6 +697,16 @@ async function loop(){
       while(active.size < currentMaxParallel){
         const j = await claimJob();
         if(!j) {
+          const pendingCount = (await pool.query("select count(*)::int as count from tigeriq_jobs where status='queued'")).rows[0]?.count || 0;
+          if (detectIdleWithBacklog(active.size, pendingCount)) {
+            console.log(JSON.stringify({ event: 'IDLE_WITH_BACKLOG', timestamp: new Date().toISOString(), pendingQueueCount: pendingCount }));
+          }
+          break;
+        }
+        dispatchedCount++;
+        active.add(j.id);
+        // Use retry wrapper to handle temporary resource contention
+        void executeJobWithRetry(j).finally(() => active.delete(j.id));
           const pendingCount = (await pool.query("select count(*)::int as count from tigeriq_jobs where status='queued'")).rows[0]?.count || 0;
           if (detectIdleWithBacklog(active.size, pendingCount)) {
             console.log(JSON.stringify({ event: 'IDLE_WITH_BACKLOG', timestamp: new Date().toISOString(), pendingQueueCount: pendingCount }));
