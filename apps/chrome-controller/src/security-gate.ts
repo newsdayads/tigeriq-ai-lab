@@ -61,6 +61,42 @@ export function verifySaveReceiptV1(input: SaveReceiptVerificationInput): { vali
   return { valid: true };
 }
 
+const restoredReopenFlags = new Set<string>();
+
+export function resetRuntimeRecoveryGuards(): void {
+  restoredReopenFlags.clear();
+}
+
+export function checkAndRestoreModelProfileAfterReopen(worker: { id: any; windowState?: string; blocked?: boolean; blockedReason?: string | null; lastHeartbeat?: any }, activeWorkItemId?: string, dispatchBridge?: (p: any) => boolean): { restored: boolean; reason?: string } {
+  const workerId = worker.id;
+  const guardKey = `${workerId}:${worker.windowState ?? 'UNKNOWN'}`;
+  if (restoredReopenFlags.has(guardKey)) {
+    return { restored: false, reason: 'ALREADY_RESTORED_FOR_REOPEN' };
+  }
+  
+  const isBlocked = checkModelProfileBlockedMockOrDirect(worker);
+  if (!isBlocked) {
+    return { restored: false, reason: 'NOT_BLOCKED' };
+  }
+
+  restoredReopenFlags.add(guardKey);
+  try {
+    const res = restoreGpt5_6SolProfile(workerId, activeWorkItemId, dispatchBridge);
+    return { restored: res.dispatched, reason: res.dispatched ? 'RESTORED' : 'DISPATCH_FAILED' };
+  } catch (err: any) {
+    return { restored: false, reason: `RESTORE_ERROR:${err?.message ?? String(err)}` };
+  }
+}
+
+function checkModelProfileBlockedMockOrDirect(worker: any): boolean {
+  const blockedReason = String(worker.blockedReason || worker.lastHeartbeat?.blockedReason || worker.lastHeartbeat?.securityBlock || '').trim().toUpperCase();
+  const profileStatus = String(worker.lastHeartbeat?.modelProfileStatus || '').trim().toUpperCase();
+  const modelName = String(worker.lastHeartbeat?.modelName || '').trim().toUpperCase();
+  return Boolean(worker.blocked || blockedReason.includes('MODEL_PROFILE_BLOCKED') || blockedReason.includes('MODEL_NAME_NOT_GPT_5_6_SOL') || profileStatus.includes('BLOCKED') || modelName.includes('NOT_GPT_5_6'));
+}
+
+import { restoreGpt5_6SolProfile } from './model.js';
+
 export function heartbeatStopReason(hb:HeartbeatSecuritySignals|undefined):string|undefined{
   if(!hb)return;
   if(hb.authRequired)return 'AUTH_REQUIRED';
