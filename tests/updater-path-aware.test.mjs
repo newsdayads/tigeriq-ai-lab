@@ -10,6 +10,11 @@ test('updater never relies on Nullable HasValue/Value',()=>{
   assert.match(script,/previousCorePid=\$oldPid/);
 });
 
+test('updater ensures node_modules deterministically and fails closed',()=>{
+  assert.match(script,/Ensure-NodeModules/);
+  assert.match(script,/--ignore-scripts --no-audit --no-fund/);
+});
+
 test('updater is path aware for core, web control, and coding lane',()=>{
   assert.match(script,/function Get-Impact/);
   assert.match(script,/apps\/tigeriq-coding-lane/);
