@@ -125,14 +125,16 @@ while($true){
     $watchdog=Runtime-Watchdog
     if(-not(Test-Path -LiteralPath $tokenPath)){Save-State @{result='GITHUB_TOKEN_MISSING';watchdog=$watchdog};continue}
     $env:GH_TOKEN=[IO.File]::ReadAllText($tokenPath).Trim();if(-not $env:GH_TOKEN){Save-State @{result='GITHUB_TOKEN_EMPTY';watchdog=$watchdog};continue}
-    if((git -C $repo status --porcelain)){Save-State @{result='BLOCKED_DIRTY_WORKTREE';watchdog=$watchdog};continue}
+    $runtimePaths = @('apps/tigeriq-core', 'apps/tigeriq-coding-lane', 'scripts/tigeriq-core')
+    $dirtyRuntime = @(git -C $repo status --porcelain -- $runtimePaths)
+    if($dirtyRuntime) { Save-State @{result='BLOCKED_DIRTY_RUNTIME';watchdog=$watchdog}; continue }
     git -C $repo fetch origin main --prune|Out-Null;if($LASTEXITCODE -ne 0){throw 'FETCH_FAILED'}
     $local=Head 'HEAD';$remote=Head 'origin/main';if($local -eq $remote){Save-State @{result='NO_CHANGE';installedSha=$local;watchdog=$watchdog};continue}
     $gateSha=Resolve-GateSha $remote
     if(-not $gateSha){Save-State @{result='WAIT_GATES';candidateSha=$remote;watchdog=$watchdog};continue}
     [string[]]$changed=@(git -C $repo diff --name-only $local $remote);$impact=Get-Impact $changed
     $oldCore=HealthInfo 'http://100.97.23.87:8795/health';$oldPid=if($oldCore){[int]$oldCore.pid}else{$null}
-    git -C $repo merge --ff-only origin/main|Out-Null;if($LASTEXITCODE -ne 0){throw 'FAST_FORWARD_FAILED'}
+    git -C $repo checkout -B core-runtime-sync origin/main|Out-Null;if($LASTEXITCODE -ne 0){throw 'CHECKOUT_FAILED'}
     $coreHealth=$oldCore;$webHealth=$null;$codingHealth=$null
     try{
       if($impact.core){$coreHealth=Restart-Core $oldPid;if(-not $coreHealth){throw 'CORE_HEALTH_OR_PID_FAILED'}}
@@ -140,7 +142,7 @@ while($true){
       if($impact.web){Sync-WebRuntime;$webHealth=Restart-ServiceTask $webTask 'http://100.97.23.87:8796/health' $webPath;if(-not $webHealth){throw 'WEB_CONTROL_HEALTH_OR_PID_FAILED'}}
       if($impact.coding){$codingHealth=Restart-ServiceTask $codingTask 'http://100.97.23.87:8797/health' $codingPath;if(-not $codingHealth){throw 'CODING_LANE_HEALTH_OR_PID_FAILED'}}
     }catch{
-      git -C $repo reset --hard $local|Out-Null
+      git -C $repo checkout $local|Out-Null
       if($impact.core){$null=Restart-Core $null}
       if($impact.web -and (Task-Exists $webTask)){Sync-WebRuntime;$null=Restart-ServiceTask $webTask 'http://100.97.23.87:8796/health' $webPath}
       if($impact.coding -and (Task-Exists $codingTask)){$null=Restart-ServiceTask $codingTask 'http://100.97.23.87:8797/health' $codingPath}
