@@ -84,7 +84,7 @@ export function normalizeWorkItemLifecycle(input = {}) {
   };
 }
 
-export function executeCoreWorkItemLifecycle({ workItem, preflightFn, repairFn, reviewFn, maxRepairCycles = 3, heartbeatFn, ackFn, autoChainFn } = {}) {
+export function executeCoreWorkItemLifecycle({ workItem, preflightFn, repairFn, reviewFn, maxRepairCycles = 3, maxHeartbeatRetries = 2, maxAckRetries = 2, heartbeatFn, ackFn, autoChainFn } = {}) {
   const item = normalizeWorkItemLifecycle(workItem);
   const preflight = typeof preflightFn === 'function' ? preflightFn(item) : { ok: true, errors: [] };
   if (!preflight.ok) {
@@ -97,6 +97,8 @@ export function executeCoreWorkItemLifecycle({ workItem, preflightFn, repairFn, 
   }
 
   let currentCycle = 0;
+  let heartbeatFailures = 0;
+  let ackFailures = 0;
   let lastError = null;
   let reviewed = false;
   let reviewDecision = 'pending';
@@ -106,6 +108,10 @@ export function executeCoreWorkItemLifecycle({ workItem, preflightFn, repairFn, 
       if (typeof heartbeatFn === 'function') {
         const hb = heartbeatFn({ item, cycle: currentCycle });
         if (hb && hb.ok === false) {
+          heartbeatFailures++;
+          if (heartbeatFailures > maxHeartbeatRetries) {
+            throw new Error(`HEARTBEAT_RETRIES_EXHAUSTED:${hb.reason || 'Heartbeat checks failed'}`);
+          }
           throw new Error(`HEARTBEAT_FAILURE:${hb.reason || 'Heartbeat check failed'}`);
         }
       }
@@ -126,6 +132,10 @@ export function executeCoreWorkItemLifecycle({ workItem, preflightFn, repairFn, 
       if (typeof ackFn === 'function') {
         const ack = ackFn({ item, cycle: currentCycle });
         if (ack && ack.ok === false) {
+          ackFailures++;
+          if (ackFailures > maxAckRetries) {
+            throw new Error(`ACK_RETRIES_EXHAUSTED:${ack.reason || 'Acknowledgement failed'}`);
+          }
           throw new Error(`ACK_FAILURE:${ack.reason || 'Acknowledgement failed'}`);
         }
       }
