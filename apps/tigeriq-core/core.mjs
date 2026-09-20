@@ -650,9 +650,25 @@ export async function startSelfCheck(runtime) {
   }
 }
 
+async function handleHeartbeatOrAckFailureWithRetry(job, errorFn) {
+  const maxRetries = 1;
+  job.retryCount = (job.retryCount || 0) + 1;
+  if (job.retryCount <= maxRetries) {
+    console.warn(JSON.stringify({ event: 'JOB_RETRY_ATTEMPT', jobId: job.id, retryCount: job.retryCount }));
+    return true;
+  }
+  if (typeof errorFn === 'function') errorFn(job);
+  return false;
+}
+
 async function loop(){
   while(!stop){const t=Date.now();
     try{
+      const backlogCount = typeof store?.getBacklogCount === 'function' ? await store.getBacklogCount() : (global.BACKLOG_COUNT || 0);
+      const isIdleWithBacklog = active.size === 0 && backlogCount > 0;
+      if (isIdleWithBacklog) {
+        console.log(JSON.stringify({ event: 'IDLE_WITH_BACKLOG_DETECTED', backlogCount }));
+      }
       // Ensure runtime source isolation telemetry is maintained
       const preflightCheck = runExecutionPreflight({ state: { status: 'running', runtimeIsolation: true } });
       if (!preflightCheck.ok) {
@@ -664,7 +680,18 @@ async function loop(){
       if(t-lastProbe>60000){await probeReadyResources();lastProbe=t;}
       if(t-lastFailureLearning>FAILURE_LEARNING_INTERVAL_MS){lastFailureLearning=t;await runFailureLearningScan();}
       await startSelfCheck({ now: () => Date.now(), store: pool });
-      while(active.size<MAX_PARALLEL){const j=await claimJob();if(!j)break;active.add(j.id);void runJob(j).finally(()=>active.delete(j.id));}
+      while(active.size<MAX_PARALLEL){const j=await claimJob();if(!j)break;active.add(j.id);
+        void runJob(j).finally(async () => {
+          active.delete(j.id);
+          if (active.size === 0) {
+            const nextJob = await claimJob();
+            if (nextJob) {
+              active.add(nextJob.id);
+              void runJob(nextJob).finally(() => active.delete(nextJob.id));
+            }
+          }
+        });
+      }
     }catch(e){console.error(JSON.stringify({event:'CORE_LOOP_ERROR',error:String(e?.message||e)}));}
     await sleep(POLL_MS);
   }
