@@ -80,7 +80,7 @@ describe('review evidence and extension lifecycle',()=>{
 });
 
 describe('NV02 Model Guard and Runtime Evidence Heartbeat',()=>{
-  it('verifies guard blocks disallowed profiles, allows permitted ones, and returns runtime evidence',async()=>{const content=readFileSync('apps/chrome-controller/extension/content.js','utf8');const background=readFileSync('apps/chrome-controller/extension/background.js','utf8');const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');expect(content).toContain('TIGERIQ_MODEL_CHECK');expect(background).toContain('MODEL_PROFILE_BLOCKED');expect(server).toContain('/api/heartbeat/runtime-evidence');expect(server).toContain('modelHash');expect(server).toContain('guardStatus');});
+  it('verifies guard blocks disallowed profiles, allows permitted ones, and returns runtime evidence',async()=>{const content=readFileSync('apps/chrome-controller/extension/content.js','utf8');const background=readFileSync('apps/chrome-controller/extension/background.js','utf8');const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');expect(content).toContain('TIGERIQ_MODEL_CHECK');expect(background).toContain('MODEL_PROFILE_BLOCKED');expect(background).toContain('tasks: []');expect(server).toContain('/api/heartbeat/runtime-evidence');expect(server).toContain('modelHash');expect(server).toContain('guardStatus');});
 });
 
 describe('completion-aware UTF-8 supervisor and Owner workspace',()=>{
