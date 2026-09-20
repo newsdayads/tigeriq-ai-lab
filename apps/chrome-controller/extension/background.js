@@ -404,9 +404,9 @@ async function validateModelProfileAndThinking(ctx) {
     if (!response || !response.ok || !response.profile) {
       return { ok: false, error: 'MODEL_PROFILE_BLOCKED' };
     }
-    const allowedProfiles = ['NV02', 'NV02-PLUS', 'GPT-4O', 'GPT-4', 'OPENAI'];
-    const profile = String(response.profile).toUpperCase();
-    const isAllowed = allowedProfiles.some((p) => profile.includes(p));
+    const allowedProfiles = new Set(['NV02', 'NV02-PLUS', 'GPT-4O', 'GPT-4', 'OPENAI']);
+    const profile = String(response.profile).trim().toUpperCase();
+    const isAllowed = allowedProfiles.has(profile);
     if (!isAllowed) {
       return { ok: false, error: 'MODEL_PROFILE_BLOCKED' };
     }
@@ -423,7 +423,7 @@ async function tickWorker(workerId) {
   if (workerId === 'NV02') {
     const modelCheck = await validateModelProfileAndThinking(ctx);
     if (!modelCheck.ok) {
-      await post('/api/result', { workerId, ok: false, status: modelCheck.error, tasks: [] });
+      await post('/api/result', { workerId, commandId: null, ok: false, status: modelCheck.error, tasks: [] });
       return;
     }
   }
