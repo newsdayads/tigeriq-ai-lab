@@ -667,8 +667,9 @@ async function loop(){
       while(active.size<MAX_PARALLEL){
         const j = await claimJob();
         if(!j) {
-          if (active.size === 0 && dispatchedCount === 0) {
-            console.log(JSON.stringify({ event: 'IDLE_WITH_BACKLOG', timestamp: new Date().toISOString() }));
+          const pendingCount = (await pool.query("select count(*)::int as count from tigeriq_jobs where status='queued'")).rows[0]?.count || 0;
+          if (detectIdleWithBacklog(active.size, pendingCount)) {
+            console.log(JSON.stringify({ event: 'IDLE_WITH_BACKLOG', timestamp: new Date().toISOString(), pendingQueueCount: pendingCount }));
           }
           break;
         }
