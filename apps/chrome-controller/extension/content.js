@@ -143,6 +143,14 @@ function findScrollToBottomButton() {
     .find((el) => visible(el) && labels.some((label) => (el.getAttribute('aria-label') || el.textContent || '').trim().toLowerCase() === label.toLowerCase())) || null;
 }
 
+function verifyModelAndThinkingProfile() {
+  const modelSelector = document.querySelector('[data-testid="model-selector"], button[id*="model"], [aria-label*="Model"], [aria-label*="GPT"]');
+  const text = (modelSelector?.textContent || '') + ' ' + (document.body?.innerText || '');
+  const exactGpt56Sol = /GPT-5\.6\s+Sol/i.test(text);
+  const highReasoning = /High/i.test(text);
+  return { exact: exactGpt56Sol && highReasoning, model: exactGpt56Sol ? 'GPT-5.6 Sol' : null, profile: highReasoning ? 'High' : null };
+}
+
 function detectUiBusy() {
   return Boolean(findStopButton() || findActiveGenerationIndicator());
 }
