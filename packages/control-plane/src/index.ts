@@ -2,7 +2,14 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { AuditLogEntry } from '../../audit-log/src/index.js';
 import type { EvidenceRecord } from '../../evidence/src/index.js';
 import type { Gate } from '../../gate-engine/src/index.js';
-import type { WorkOrder, WorkOrderStatus } from '../../work-orders/src/index.js';
+import type {
+  CoreWorkItemProjection,
+  CoreWorkItemStatus,
+  ScopeLeaseProjection,
+  WorkOrder,
+  WorkOrderProjectionMetadataPatch,
+  WorkOrderStatus,
+} from '../../work-orders/src/index.js';
 import { validateWorkOrder } from '../../work-orders/src/index.js';
 
 export type ActorRole = 'planner' | 'approver' | 'coder' | 'reviewer' | 'judge' | 'operator';
@@ -37,6 +44,35 @@ const allowedTransitions: Record<WorkOrderStatus, readonly WorkOrderStatus[]> = 
   blocked: ['approved', 'running'],
   verified: [],
 };
+
+export function projectCoreWorkItem(snapshot: WorkOrderSnapshot): CoreWorkItemProjection {
+  const latestDecision = snapshot.decisions.at(-1);
+  const status = canonicalStatus(snapshot, latestDecision);
+  const timestamps = projectionTimestamps(snapshot);
+  const evidenceRefs = unique([
+    ...(snapshot.order.evidenceRefs ?? []),
+    ...snapshot.evidence.flatMap((record) => record.artifactUris ?? []),
+  ]);
+  const blockers = projectionBlockers(snapshot, latestDecision);
+  return {
+    workItemId: snapshot.order.id,
+    sourceRef: snapshot.order.sourceRef ?? snapshot.order.issueRef ?? null,
+    issueRef: snapshot.order.issueRef ?? null,
+    pr: snapshot.order.pr ?? null,
+    kind: snapshot.order.kind ?? inferKind(snapshot),
+    status,
+    assignedExecutor: snapshot.order.assignedExecutor ?? snapshot.implementerId ?? null,
+    implementer: snapshot.implementerId ?? null,
+    reviewer: latestDecision?.evaluatorId ?? snapshot.order.reviewer ?? null,
+    stage: snapshot.order.stage ?? latestDecision?.gate ?? snapshot.order.status,
+    priority: snapshot.order.priority ?? null,
+    scopeLease: projectedScopeLease(snapshot, status),
+    blockers,
+    evidenceRefs,
+    nextAction: projectedNextAction(snapshot.order.nextAction, status, blockers),
+    timestamps,
+  };
+}
 
 export class ControlPlane {
   readonly #orders = new Map<string, WorkOrderSnapshot>();
@@ -113,6 +149,22 @@ export class ControlPlane {
     return this.#save(id, this.#withAudit(updated, actor, `gate.${decision.status}`, { gate: decision.gate }));
   }
 
+  updateProjectionMetadata(id: string, patch: WorkOrderProjectionMetadataPatch, actor: Actor): WorkOrderSnapshot {
+    if (!['planner', 'coder', 'reviewer', 'operator'].includes(actor.role)) {
+      throw new Error('projection metadata update requires planner, coder, reviewer, or operator role');
+    }
+    const current = this.#require(id);
+    const updatedOrder: WorkOrder = { ...current.order, ...structuredClone(patch) };
+    const errors = validateWorkOrder(updatedOrder);
+    if (errors.length > 0) throw new Error(`invalid work order: ${errors.join(', ')}`);
+    if (!projectionMetadataChanged(current.order, updatedOrder)) return structuredClone(current);
+
+    const updated: WorkOrderSnapshot = { ...current, order: updatedOrder };
+    return this.#save(id, this.#withAudit(updated, actor, 'projection-metadata.updated', {
+      fields: Object.keys(patch).sort(),
+    }));
+  }
+
   get(id: string): WorkOrderSnapshot {
     return structuredClone(this.#require(id));
   }
@@ -141,6 +193,92 @@ export class ControlPlane {
     });
     return { ...snapshot, audit: [...snapshot.audit, entry] };
   }
+}
+
+function canonicalStatus(snapshot: WorkOrderSnapshot, latestDecision: GateDecision | undefined): CoreWorkItemStatus {
+  if (snapshot.order.status === 'draft') return 'QUEUED';
+  if (snapshot.order.status === 'approved') return 'CLAIMED';
+  if (snapshot.order.status === 'verified') return 'DONE';
+  if (snapshot.order.status === 'failed' || snapshot.order.status === 'blocked') return 'BLOCKED';
+  if (latestDecision?.status === 'fail' || latestDecision?.status === 'blocked') return 'BLOCKED';
+  if (snapshot.order.status === 'running' && snapshot.evidence.length === 0) return 'WORKING';
+  if (snapshot.order.status === 'running' && !latestDecision) return 'EVIDENCE';
+  return 'VERIFY';
+}
+
+function projectedScopeLease(snapshot: WorkOrderSnapshot, status: CoreWorkItemStatus): ScopeLeaseProjection | null {
+  const base = snapshot.order.scopeLease ?? (snapshot.implementerId
+    ? { ownerId: snapshot.implementerId, scope: snapshot.order.scope, state: 'unknown' as const }
+    : null);
+  if (!base) return null;
+  return { ...base, state: projectedScopeLeaseState(status) };
+}
+
+function projectedScopeLeaseState(status: CoreWorkItemStatus): ScopeLeaseProjection['state'] {
+  if (status === 'DONE') return 'released';
+  if (status === 'BLOCKED') return 'blocked';
+  if (status === 'QUEUED') return 'unknown';
+  return 'active';
+}
+
+function projectionTimestamps(snapshot: WorkOrderSnapshot): CoreWorkItemProjection['timestamps'] {
+  return {
+    createdAt: snapshot.audit[0]?.timestamp ?? null,
+    startedAt: snapshot.audit.find((entry) => entry.action === 'work-order.running')?.timestamp ?? null,
+    lastActivityAt: snapshot.audit.at(-1)?.timestamp ?? null,
+    completedAt: snapshot.order.status === 'verified' || snapshot.order.status === 'failed' || snapshot.order.status === 'blocked'
+      ? snapshot.audit.at(-1)?.timestamp ?? null
+      : null,
+  };
+}
+
+function projectionBlockers(snapshot: WorkOrderSnapshot, latestDecision: GateDecision | undefined): string[] {
+  return unique([
+    ...(snapshot.order.blockers ?? []),
+    ...snapshot.evidence
+      .filter((record) => record.status !== 'pass' || record.exitCode !== 0)
+      .map((record) => `${record.gate}:${record.status}:exitCode=${record.exitCode}`),
+    ...(latestDecision?.status === 'fail' || latestDecision?.status === 'blocked'
+      ? [`${latestDecision.gate}:${latestDecision.status}${latestDecision.reason ? `:${latestDecision.reason}` : ''}`]
+      : []),
+    ...(snapshot.order.status === 'failed' || snapshot.order.status === 'blocked' ? [snapshot.order.status] : []),
+  ]);
+}
+
+function projectedNextAction(ownerNextAction: string | undefined, status: CoreWorkItemStatus, blockers: readonly string[]): string | null {
+  if (status === 'QUEUED' || status === 'CLAIMED' || status === 'WORKING') return ownerNextAction ?? defaultNextAction(status, blockers);
+  return defaultNextAction(status, blockers);
+}
+
+function defaultNextAction(status: CoreWorkItemStatus, blockers: readonly string[]): string | null {
+  if (status === 'DONE') return null;
+  if (status === 'BLOCKED') return blockers[0] ? 'Resolve blocker and retry safely' : 'Resolve blocker';
+  if (status === 'QUEUED') return 'Claim work item';
+  if (status === 'CLAIMED') return 'Start execution';
+  if (status === 'WORKING') return 'Attach evidence';
+  if (status === 'EVIDENCE') return 'Run independent verification';
+  return 'Finish verification';
+}
+
+function inferKind(snapshot: WorkOrderSnapshot): CoreWorkItemProjection['kind'] {
+  const text = `${snapshot.order.id} ${snapshot.order.project} ${snapshot.order.goal} ${snapshot.order.scope.join(' ')}`.toLowerCase();
+  if (text.includes('chrome') || text.includes('nv02')) return 'ui';
+  if (text.includes('coding') || text.includes('github') || text.includes('pr') || snapshot.order.pr) return 'coding';
+  if (text.includes('review')) return 'review';
+  if (text.includes('research')) return 'research';
+  return 'general';
+}
+
+function projectionMetadataChanged(before: WorkOrder, after: WorkOrder): boolean {
+  const fields: readonly (keyof WorkOrderProjectionMetadataPatch)[] = [
+    'issueRef', 'sourceRef', 'pr', 'kind', 'assignedExecutor', 'reviewer', 'stage', 'priority',
+    'scopeLease', 'blockers', 'evidenceRefs', 'nextAction',
+  ];
+  return fields.some((field) => JSON.stringify(before[field]) !== JSON.stringify(after[field]));
+}
+
+function unique(values: readonly string[]): string[] {
+  return [...new Set(values.filter((value) => value.trim().length > 0))];
 }
 
 function digest(value: string): string {

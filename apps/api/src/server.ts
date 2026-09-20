@@ -1,13 +1,19 @@
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { ControlPlane, type Actor, type GateDecision, type WorkOrderSnapshot } from '../../../packages/control-plane/src/index.js';
+import { ControlPlane, projectCoreWorkItem, type Actor, type GateDecision, type WorkOrderSnapshot } from '../../../packages/control-plane/src/index.js';
 import { DurableControlPlane } from '../../../packages/durable-control-plane/src/index.js';
 import type { EvidenceRecord } from '../../../packages/evidence/src/index.js';
 import { FileJournal } from '../../../packages/event-store/src/index.js';
 import { JournalIdempotencyStore, MemoryIdempotencyStore, type IdempotencyStore } from '../../../packages/idempotency/src/index.js';
 import { ApiMetrics, ConcurrencyLimiter, FixedWindowRateLimiter } from '../../../packages/runtime/src/index.js';
-import type { WorkOrder, WorkOrderStatus } from '../../../packages/work-orders/src/index.js';
+import type {
+  CoreWorkItemKind,
+  ScopeLeaseProjection,
+  WorkOrder,
+  WorkOrderProjectionMetadataPatch,
+  WorkOrderStatus,
+} from '../../../packages/work-orders/src/index.js';
 import { health } from './index.js';
 
 interface ApiOptions {
@@ -121,6 +127,15 @@ async function route(
     if (actor.role !== 'operator') throw new HttpError(403, 'operator role required');
     return send(response, 200, metrics.snapshot(limiter.active));
   }
+  const workItemMatch = /^\/v1\/work-items\/([^/]+)$/.exec(path);
+  if (method === 'GET' && workItemMatch?.[1]) {
+    return send(response, 200, projectCoreWorkItem(await plane.get(decodeURIComponent(workItemMatch[1]))));
+  }
+  const workOrderWorkItemMatch = /^\/v1\/work-orders\/([^/]+)\/work-item$/.exec(path);
+  if (method === 'GET' && workOrderWorkItemMatch?.[1]) {
+    return send(response, 200, projectCoreWorkItem(await plane.get(decodeURIComponent(workOrderWorkItemMatch[1]))));
+  }
+  const projectionMetadataMatch = /^\/v1\/work-orders\/([^/]+)\/projection-metadata$/.exec(path);
   const match = /^\/v1\/work-orders\/([^/]+)(?:\/(transitions|evidence|gates))?$/.exec(path);
   if (method === 'GET' && match?.[1] && !match[2]) return send(response, 200, await plane.get(decodeURIComponent(match[1])));
   if (method !== 'POST') throw new HttpError(404, 'not_found');
@@ -141,6 +156,12 @@ async function route(
   if (path === '/v1/work-orders') {
     result = await plane.create(asWorkOrder(body), actor);
     status = 201;
+  } else if (projectionMetadataMatch?.[1]) {
+    result = projectCoreWorkItem(await plane.updateProjectionMetadata(
+      decodeURIComponent(projectionMetadataMatch[1]),
+      asProjectionMetadataPatch(body),
+      actor,
+    ));
   } else if (match?.[1] && match[2] === 'transitions') {
     result = await plane.transition(decodeURIComponent(match[1]), asStatus(body.status), actor);
   } else if (match?.[1] && match[2] === 'evidence') {
@@ -195,7 +216,38 @@ function asWorkOrder(body: Record<string, unknown>): WorkOrder {
     ...(body.dependencies === undefined ? {} : { dependencies: stringArray(body, 'dependencies') }),
     ...(body.edgeCases === undefined ? {} : { edgeCases: stringArray(body, 'edgeCases') }),
     ...(body.rollback === undefined ? {} : { rollback: requiredString(body, 'rollback') }),
+    ...(body.issueRef === undefined ? {} : { issueRef: requiredString(body, 'issueRef') }),
+    ...(body.sourceRef === undefined ? {} : { sourceRef: requiredString(body, 'sourceRef') }),
+    ...(body.pr === undefined ? {} : { pr: requiredString(body, 'pr') }),
+    ...(body.kind === undefined ? {} : { kind: asKind(body.kind) }),
+    ...(body.assignedExecutor === undefined ? {} : { assignedExecutor: requiredString(body, 'assignedExecutor') }),
+    ...(body.reviewer === undefined ? {} : { reviewer: requiredString(body, 'reviewer') }),
+    ...(body.stage === undefined ? {} : { stage: requiredString(body, 'stage') }),
+    ...(body.priority === undefined ? {} : { priority: requiredString(body, 'priority') }),
+    ...(body.scopeLease === undefined ? {} : { scopeLease: asScopeLease(body.scopeLease) }),
+    ...(body.blockers === undefined ? {} : { blockers: stringArray(body, 'blockers') }),
+    ...(body.evidenceRefs === undefined ? {} : { evidenceRefs: stringArray(body, 'evidenceRefs') }),
+    ...(body.nextAction === undefined ? {} : { nextAction: requiredString(body, 'nextAction') }),
   };
+}
+
+function asProjectionMetadataPatch(body: Record<string, unknown>): WorkOrderProjectionMetadataPatch {
+  const patch: WorkOrderProjectionMetadataPatch = {
+    ...(body.issueRef === undefined ? {} : { issueRef: requiredString(body, 'issueRef') }),
+    ...(body.sourceRef === undefined ? {} : { sourceRef: requiredString(body, 'sourceRef') }),
+    ...(body.pr === undefined ? {} : { pr: requiredString(body, 'pr') }),
+    ...(body.kind === undefined ? {} : { kind: asKind(body.kind) }),
+    ...(body.assignedExecutor === undefined ? {} : { assignedExecutor: requiredString(body, 'assignedExecutor') }),
+    ...(body.reviewer === undefined ? {} : { reviewer: requiredString(body, 'reviewer') }),
+    ...(body.stage === undefined ? {} : { stage: requiredString(body, 'stage') }),
+    ...(body.priority === undefined ? {} : { priority: requiredString(body, 'priority') }),
+    ...(body.scopeLease === undefined ? {} : { scopeLease: asScopeLease(body.scopeLease) }),
+    ...(body.blockers === undefined ? {} : { blockers: stringArray(body, 'blockers') }),
+    ...(body.evidenceRefs === undefined ? {} : { evidenceRefs: stringArray(body, 'evidenceRefs') }),
+    ...(body.nextAction === undefined ? {} : { nextAction: requiredString(body, 'nextAction') }),
+  };
+  if (Object.keys(patch).length === 0) throw new HttpError(400, 'projection metadata update requires at least one field');
+  return patch;
 }
 
 function asEvidence(body: Record<string, unknown>): EvidenceRecord {
@@ -222,11 +274,31 @@ function asDecision(body: Record<string, unknown>): GateDecision {
   };
 }
 
+function asScopeLease(value: unknown): ScopeLeaseProjection {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new HttpError(400, 'scopeLease must be an object');
+  const body = value as Record<string, unknown>;
+  const state = requiredString(body, 'state');
+  if (!['active', 'released', 'blocked', 'unknown'].includes(state)) throw new HttpError(400, 'invalid scopeLease state');
+  return {
+    ownerId: requiredString(body, 'ownerId'),
+    scope: stringArray(body, 'scope'),
+    state: state as ScopeLeaseProjection['state'],
+    ...(body.expiresAt === undefined ? {} : { expiresAt: requiredString(body, 'expiresAt') }),
+  };
+}
+
 function asStatus(value: unknown): WorkOrderStatus {
   if (typeof value !== 'string' || !['draft', 'approved', 'running', 'failed', 'blocked', 'verified'].includes(value)) {
     throw new HttpError(400, 'invalid work order status');
   }
   return value as WorkOrderStatus;
+}
+
+function asKind(value: unknown): CoreWorkItemKind {
+  if (typeof value !== 'string' || !['ui', 'coding', 'review', 'research', 'general'].includes(value)) {
+    throw new HttpError(400, 'invalid work item kind');
+  }
+  return value as CoreWorkItemKind;
 }
 
 function stringArray(body: Record<string, unknown>, key: string): string[] {
@@ -269,6 +341,7 @@ interface Plane {
   transition(id: string, status: WorkOrderStatus, actor: Actor): WorkOrderSnapshot | Promise<WorkOrderSnapshot>;
   recordEvidence(id: string, evidence: EvidenceRecord, actor: Actor): WorkOrderSnapshot | Promise<WorkOrderSnapshot>;
   recordGateDecision(id: string, decision: GateDecision, actor: Actor): WorkOrderSnapshot | Promise<WorkOrderSnapshot>;
+  updateProjectionMetadata(id: string, patch: WorkOrderProjectionMetadataPatch, actor: Actor): WorkOrderSnapshot | Promise<WorkOrderSnapshot>;
   get(id: string): WorkOrderSnapshot | Promise<WorkOrderSnapshot>;
 }
 
