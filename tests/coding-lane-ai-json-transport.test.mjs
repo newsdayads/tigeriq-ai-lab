@@ -10,6 +10,16 @@ describe('coding lane AI JSON transport',()=>{
     const init=prepareAiJsonRequest('https://api.groq.com/openai/v1/chat/completions',{method:'POST',body:JSON.stringify({model:'x'})});
     expect(JSON.parse(init.body).response_format).toEqual({type:'json_object'});
   });
+  it('supports NVIDIA OpenAI-compatible JSON mode',()=>{
+    const init=prepareAiJsonRequest('https://integrate.api.nvidia.com/v1/chat/completions',{method:'POST',body:JSON.stringify({model:'x'})});
+    expect(isAiUrl('https://integrate.api.nvidia.com/v1/chat/completions')).toBe(true);
+    expect(JSON.parse(init.body).response_format).toEqual({type:'json_object'});
+    expect(extractModelText('https://integrate.api.nvidia.com/v1/chat/completions',{choices:[{message:{content:'{"ok":true}'}}]})).toBe('{"ok":true}');
+  });
+  it('supports Cloudflare Workers AI prompt and response shape',()=>{
+    expect(isAiUrl('https://api.cloudflare.com/client/v4/accounts/a/ai/run/@cf/meta/llama')).toBe(true);
+    expect(extractModelText('https://api.cloudflare.com/client/v4/accounts/a/ai/run/@cf/meta/llama',{result:{response:'{"ok":true}'}})).toBe('{"ok":true}');
+  });
   it('detects valid versus malformed model JSON',()=>{
     expect(looksLikeJsonObject('\n{"ok":true}\n')).toBe(true);
     expect(looksLikeJsonObject('{bad json}')).toBe(false);
