@@ -184,7 +184,12 @@ async function acquireBridgeMutationLease(workerId,purpose='NORMAL',ttlMs=30000)
   const r=await fetch(`${CONTROLLER}/api/utility/workers/${workerId}/mutation-lease/acquire`,{
     method:'POST',headers:auth(workerId,true),body:JSON.stringify({ownerId,ttlMs,purpose}),signal:AbortSignal.timeout(4000)
   });
-  if(r.status===409)return null;
+  if(r.status===409){
+    const data=await r.json().catch(()=>({}));
+    const error=String(data?.error||'');
+    if(error.startsWith('BROWSER_MUTATION_LEASE_BUSY:'))return null;
+    throw new Error(error||`HTTP_409:mutation-lease-acquire`);
+  }
   if(!r.ok)throw new Error(`HTTP_${r.status}:mutation-lease-acquire`);
   const data=await r.json();return data.lease?{ownerId,leaseId:data.lease.leaseId}:null;
 }
@@ -369,12 +374,19 @@ async function maybeNv02Continuity(w,target,ui){
   state={...state,lastPhase:phase};saveNv02Continuity(state);
   if(phase==='BLOCKED'){await continuityEvent('BLOCKED',{securityBlock:ui?.securityBlock||null});return;}
   const controller=await getControllerState();
+  if(controller?.paused===true){
+    if(now>=state.nextContinueAt){
+      state={...state,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
+      await continuityEvent('CONTINUE_SKIPPED_OWNER_READ_ONLY',{nextContinueAt:state.nextContinueAt});
+    }
+    return;
+  }
   const active=hasActiveNv02Work(controller);
   const waitingEvidence=hasWaitingEvidenceNv02Work(controller);
   if(now>=state.nextRefreshAt&&phase==='READY'&&!active&&!waitingEvidence){
     try{
       const receipt=await checkpointNv02(target);
-      state={...state,nextRefreshAt:nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS),nextContinueAt:now+15000,stalledChecks:0};
+      state={...state,nextRefreshAt:nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS),nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),stalledChecks:0};
       saveNv02Continuity(state);
       await continuityEvent('REFRESH_SCHEDULED',{receiptRef:receipt.receiptRef,checkpointRef:receipt.checkpointRef,nextRefreshAt:state.nextRefreshAt});
       await post('/api/workers/NV02/restart-schedule','NV02',{reason:'RANDOM_2_4H'});
@@ -396,19 +408,9 @@ async function maybeNv02Continuity(w,target,ui){
           recoveryStatus=recovered?.status||null;
         }
       }catch(recoveryError){recoveryStatus='FAILED:'+String(recoveryError?.message||recoveryError);}
-      state={...latest,dispatchesInChat:0,chatStartedAt:now,stalledChecks:Math.min(MAX_STALLED_CHECKS,Number(latest.stalledChecks||0)+1),nextRefreshAt:nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS),nextContinueAt:now+5000};saveNv02Continuity(state);
+      state={...latest,dispatchesInChat:0,chatStartedAt:now,stalledChecks:Math.min(MAX_STALLED_CHECKS,Number(latest.stalledChecks||0)+1),nextRefreshAt:nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS),nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
       await continuityEvent('CHAT_ROTATE_FAILED',{error:String(error?.message||error),stalledChecks:state.stalledChecks,recoveryStatus,nextContinueAt:state.nextContinueAt,nextRefreshAt:state.nextRefreshAt});
     }
-    return;
-  }
-  if(phase==='READY'&&waitingEvidence&&!active&&state.nextContinueAt-now>15000){
-    state={...state,nextContinueAt:now+5000};saveNv02Continuity(state);
-    await continuityEvent('WAITING_EVIDENCE_CONTINUE_ACCELERATED',{nextContinueAt:state.nextContinueAt,maxDelayMs:15000});
-    return;
-  }
-  if(phase==='READY'&&!waitingEvidence&&!active&&state.nextContinueAt-now>30000){
-    state={...state,nextContinueAt:now+20000};saveNv02Continuity(state);
-    await continuityEvent('IDLE_CONTINUE_ACCELERATED',{nextContinueAt:state.nextContinueAt,maxDelayMs:30000});
     return;
   }
   if(now<state.nextContinueAt)return;
