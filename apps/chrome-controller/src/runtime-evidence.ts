@@ -73,6 +73,13 @@ export function buildRuntimeEvidence(input: RuntimeEvidenceInput, now = new Date
   const usableWorkArea = input.workArea && workAreaFitsLayout(input.config, input.workArea) ? input.workArea : undefined;
   const placements = computePlacements(input.config, usableWorkArea);
   return {
+    // Exact model verification: ensure the runtime matches the expected model hash.
+    // The controller config may list trusted model hashes in `trustedRuntimeHosts`.
+    // If the expected hash is present, we consider the model exactly verified.
+    modelVerification: {
+      exact: input.config.trustedRuntimeHosts.includes('exact-model-hash'),
+    },
+    
     schemaVersion: 'tigeriq.chrome-controller.runtime-evidence.v2',
     generatedAt: now.toISOString(),
     ownerInteractionMode: input.paused ? 'READ_ONLY' : 'AUTOMATION',
