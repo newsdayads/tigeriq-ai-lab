@@ -86,3 +86,15 @@ describe('completion-aware UTF-8 supervisor and Owner workspace',()=>{
 });
 
 describe('SerialQueue',()=>{it('runs exactly one task at a time',async()=>{const q=new SerialQueue(0);const order:string[]=[];const a=q.enqueue(async()=>{order.push('a:start');await new Promise(r=>setTimeout(r,20));order.push('a:end');});const b=q.enqueue(async()=>{order.push('b:start');order.push('b:end');});await Promise.all([a,b]);expect(order).toEqual(['a:start','a:end','b:start','b:end']);});});
+
+describe('getVerifiedModelProfile and MODEL_PROFILE_BLOCKED handling',()=>{ 
+  it('simulates wrong model profile, expects 400 response with MODEL_PROFILE_BLOCKED and notification', async () => {
+    const { getVerifiedModelProfile } = await import('../apps/chrome-controller/src/runtime-evidence.js');
+    const res = getVerifiedModelProfile({ model: 'gpt-4', tier: 'standard' });
+    expect(res).toBeNull();
+    const backgroundCode = readFileSync('apps/chrome-controller/extension/background.js', 'utf8');
+    const contentCode = readFileSync('apps/chrome-controller/extension/content.js', 'utf8');
+    expect(backgroundCode).toContain('TIGERIQ_MODEL_PROFILE_BLOCKED');
+    expect(contentCode).toContain('TIGERIQ_SHOW_MODEL_NOTIFICATION');
+  });
+});
