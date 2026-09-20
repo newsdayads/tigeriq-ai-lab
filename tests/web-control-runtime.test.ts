@@ -166,5 +166,6 @@ describe('Web Control runtime', () => {
     const htmlTxt = await htmlRes.text();
     expect(htmlTxt).toContain('aria-label');
     expect(htmlTxt).toContain('container-fluid');
+    expect(htmlTxt).toContain('responsive-layout');
   });
 });
