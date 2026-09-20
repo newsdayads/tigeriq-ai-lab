@@ -42,7 +42,7 @@ const R = (id, name, provider, model, req = [], rank = 50) => ({
   accountBinding:'default', runtimeBinding:'core', costTier:provider==='ollama'?'LOCAL':'FREE', zeroOutOfPocket:true,
   capabilities: ['general', 'reasoning', 'review'],
 });
-export const resources = [
+const resources = [
   R(OLLAMA_EMPLOYEE_ID,'Ollama','ollama',process.env.TIGERIQ_OLLAMA_MODEL || 'qwen3:4b',[],90),
   R('NV11','Groq','groq',process.env.TIGERIQ_GROQ_MODEL || 'openai/gpt-oss-120b',[['GROQ_API_KEY'],['TIGERIQ_GROQ_FREE_TIER_VERIFIED','true']],10),
   R('NV12','Gemini','gemini',process.env.TIGERIQ_GEMINI_MODEL || 'gemini-3.5-flash-lite',[['GEMINI_API_KEY'],['TIGERIQ_GEMINI_FREE_TIER_VERIFIED','true']],20),
@@ -579,9 +579,8 @@ async function runFailureLearningScan(){
 let stop=false, lastRefresh=0, lastRecover=0, lastManager=0, lastProbe=0, lastFailureLearning=0; const active=new Set();
 export function getDynamicMaxParallel(customResources = resources) {
   const healthyEligible = Array.isArray(customResources) ? customResources.filter(r => r && (r.status === 'ready' || r.health_state === 'READY' || r.health_state === 'ONLINE') && r.eligible !== false).length : 0;
-  const base = Math.max(3, healthyEligible);
   const workloadSafetyCap = 32;
-  return Math.min(base, workloadSafetyCap);
+  return Math.min(healthyEligible, workloadSafetyCap);
 }
 let lastLightAudit = 0, lastDeepAudit = 0, activeDeepAudit = false;
 export async function startSelfCheck(runtime) {
