@@ -240,15 +240,39 @@ function enterSubmitStateExpr(text){
   const expectedNormalized=String(text||'').replace(/\\s+/g,' ').trim();
   return `(()=>{const expected=${JSON.stringify(text.trim())},expectedNormalized=${JSON.stringify(expectedNormalized)};const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};const securityBlock=()=>{if(document.querySelector('iframe[src*="captcha" i],iframe[src*="challenge" i],[class*="captcha" i],[id*="captcha" i]'))return'BLOCKED_CAPTCHA';const t=[...document.querySelectorAll('[role="alert"],[role="dialog"],[data-testid*="toast" i]')].slice(0,30).map(e=>(e.textContent||'').toLowerCase()).join(' '),m=[['rate limit','BLOCKED_RATE_LIMIT'],['too many requests','BLOCKED_RATE_LIMIT'],['suspicious activity','BLOCKED_SUSPICIOUS_ACTIVITY'],['unusual activity','BLOCKED_SUSPICIOUS_ACTIVITY'],['verify your identity','BLOCKED_REAUTH'],['verify it’s you','BLOCKED_REAUTH'],['xác minh danh tính','BLOCKED_REAUTH']];for(const [n,x] of m)if(t.includes(n))return x;return null;};const sels=['#prompt-textarea','div[contenteditable="true"][data-lexical-editor="true"]','[contenteditable="true"][role="textbox"]','textarea'];const c=sels.flatMap(x=>[...document.querySelectorAll(x)]).find(vis)||null;const composerText=e=>e instanceof HTMLTextAreaElement||e instanceof HTMLInputElement?String(e.value||'').trim():String(e?.innerText||e?.textContent||'').trim();const busy=['button[data-testid="stop-button"]','button[aria-label*="Stop" i]','button[aria-label*="Dừng" i]'].some(x=>[...document.querySelectorAll(x)].some(vis))||[...document.querySelectorAll('button,[role="button"],[aria-live]')].some(e=>vis(e)&&/(^|\\s)(đang suy nghĩ|thinking|generating|đang tạo)(\\s|$)/i.test((e.getAttribute('aria-label')||e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim()));const userVisible=[...document.querySelectorAll('[data-message-author-role="user"]')].some(e=>vis(e)&&String(e.textContent||'').trim()===expected);const current=composerText(c),currentNormalized=current.replace(/\\s+/g,' ').trim();return{securityBlock:securityBlock(),composerMatches:Boolean(c)&&currentNormalized===expectedNormalized,composerEmpty:Boolean(c)&&current==='',busy,userVisible};})()`;
 }
+function focusComposerExpr(){
+  return `(()=>{const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};const sels=['#prompt-textarea','div[contenteditable="true"][data-lexical-editor="true"]','[contenteditable="true"][role="textbox"]','textarea'];const c=sels.flatMap(x=>[...document.querySelectorAll(x)]).find(vis)||null;if(!c)return{ok:false,status:'COMPOSER_NOT_FOUND'};c.focus();return{ok:true,status:'COMPOSER_FOCUSED'}})()`;
+}
+async function rewriteComposerViaCdp(p,text){
+  const focused=(await p.call('Runtime.evaluate',{expression:focusComposerExpr(),returnByValue:true,userGesture:true},3000)).result.value;
+  if(!focused?.ok)return focused||{ok:false,status:'COMPOSER_NOT_FOUND'};
+  await p.call('Input.dispatchKeyEvent',{type:'keyDown',key:'Control',code:'ControlLeft',windowsVirtualKeyCode:17,nativeVirtualKeyCode:17,modifiers:2});
+  await p.call('Input.dispatchKeyEvent',{type:'keyDown',key:'a',code:'KeyA',windowsVirtualKeyCode:65,nativeVirtualKeyCode:65,modifiers:2});
+  await p.call('Input.dispatchKeyEvent',{type:'keyUp',key:'a',code:'KeyA',windowsVirtualKeyCode:65,nativeVirtualKeyCode:65,modifiers:2});
+  await p.call('Input.dispatchKeyEvent',{type:'keyUp',key:'Control',code:'ControlLeft',windowsVirtualKeyCode:17,nativeVirtualKeyCode:17});
+  await p.call('Input.dispatchKeyEvent',{type:'keyDown',key:'Backspace',code:'Backspace',windowsVirtualKeyCode:8,nativeVirtualKeyCode:8});
+  await p.call('Input.dispatchKeyEvent',{type:'keyUp',key:'Backspace',code:'Backspace',windowsVirtualKeyCode:8,nativeVirtualKeyCode:8});
+  await p.call('Input.insertText',{text});
+  const verify=(await p.call('Runtime.evaluate',{expression:enterSubmitStateExpr(text),returnByValue:true,userGesture:true},3000)).result.value;
+  if(verify?.securityBlock)return{ok:false,status:verify.securityBlock};
+  if(verify?.composerMatches!==true)return{ok:false,status:'CDP_TEXT_INSERT_EVIDENCE_MISSING'};
+  return{ok:true,status:'CDP_TEXT_INSERT_VERIFIED'};
+}
 async function dispatch(target,text){
   const p=await pageRpc(target);
   try{
     const first=(await p.call('Runtime.evaluate',{expression:dispatchExpr(text),awaitPromise:true,returnByValue:true,userGesture:true},SEND_BUTTON_WAIT_MS+6000)).result.value;
     if(first?.status!=='SEND_BUTTON_NOT_FOUND')return first;
-    const before=(await p.call('Runtime.evaluate',{expression:enterSubmitStateExpr(text),returnByValue:true,userGesture:true},3000)).result.value;
+    let before=(await p.call('Runtime.evaluate',{expression:enterSubmitStateExpr(text),returnByValue:true,userGesture:true},3000)).result.value;
     if(before?.securityBlock)return{ok:false,status:before.securityBlock};
     if(before?.userVisible)return{ok:true,status:'SUBMITTED',evidence:'USER_MESSAGE_VISIBLE_BEFORE_ENTER'};
-    if(before?.composerMatches!==true)return first;
+    if(before?.composerMatches!==true){
+      const rewritten=await rewriteComposerViaCdp(p,text);
+      if(!rewritten?.ok)return rewritten;
+      before=(await p.call('Runtime.evaluate',{expression:enterSubmitStateExpr(text),returnByValue:true,userGesture:true},3000)).result.value;
+      if(before?.securityBlock)return{ok:false,status:before.securityBlock};
+      if(before?.composerMatches!==true)return{ok:false,status:'CDP_TEXT_INSERT_EVIDENCE_MISSING'};
+    }
     await p.call('Input.dispatchKeyEvent',{type:'keyDown',key:'Enter',code:'Enter',windowsVirtualKeyCode:13,nativeVirtualKeyCode:13});
     await p.call('Input.dispatchKeyEvent',{type:'keyUp',key:'Enter',code:'Enter',windowsVirtualKeyCode:13,nativeVirtualKeyCode:13});
     const deadline=Date.now()+3500;

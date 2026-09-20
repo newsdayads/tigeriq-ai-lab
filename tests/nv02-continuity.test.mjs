@@ -125,6 +125,11 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("until=Date.now()+${SEND_BUTTON_WAIT_MS}");
     expect(source).toContain("first?.status!=='SEND_BUTTON_NOT_FOUND'");
     expect(source).toContain("enterSubmitStateExpr(text)");
+    expect(source).toContain("function focusComposerExpr");
+    expect(source).toContain("async function rewriteComposerViaCdp");
+    expect(source).toContain("Input.insertText");
+    expect(source).toContain("CDP_TEXT_INSERT_VERIFIED");
+    expect(source).toContain("CDP_TEXT_INSERT_EVIDENCE_MISSING");
     expect(source).toContain("expectedNormalized=String(text||'').replace(/\\\\s+/g,' ').trim()");
     expect(source).toContain("currentNormalized=current.replace(/\\\\s+/g,' ').trim()");
     expect(source).toContain("currentNormalized===expectedNormalized");
