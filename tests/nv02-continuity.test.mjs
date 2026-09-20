@@ -52,6 +52,7 @@ describe('NV02 continuity policy', () => {
     expect(hasActiveNv02Work({jobs:[],autopilot:{phase:'IDLE'}})).toBe(false);
     expect(hasActiveNv02Work({jobs:[],autopilot:{phase:'BUSY',lastDispatchedJobId:'GH-1',lastCompletedJobId:'GH-1'}})).toBe(false);
     expect(hasActiveNv02Work({jobs:[],autopilot:{phase:'BUSY',lastDispatchedJobId:'GH-2',lastCompletedJobId:'GH-1'}})).toBe(true);
+    expect(hasActiveNv02Work({externalWorkAutopilotEnabled:false,jobs:[],autopilot:{pendingJobId:'GH-STALE',phase:'BUSY'}})).toBe(false);
     expect(hasActiveNv02Work({jobs:[{workerId:'NV02',stage:'BLOCKED',completedAt:'2026-09-18T23:07:35.468Z'}],autopilot:{phase:'IDLE'}})).toBe(false);
   });
 
@@ -144,6 +145,9 @@ describe('NV02 continuity policy', () => {
     const leaseServerSource = readFileSync('apps/chrome-controller/src/server.ts','utf8');
     expect(leaseServerSource).toContain("allowWaitingEvidence:continuityContinue");
     expect(leaseServerSource).toContain("purpose==='CONTINUITY_CONTINUE'");
+    expect(leaseServerSource).toContain("if(!config.autopilot.enabled)return false;");
+    expect(leaseServerSource).toContain("externalWorkAutopilotEnabled:config.autopilot.enabled");
+    expect(leaseServerSource).toContain("EXTERNAL_WORK_AUTOPILOT_DISABLED");
     expect(source).toContain("WORKING_NO_PROGRESS_CHECK");
     expect(source).toContain("WORKING_STALE_RELOAD");
     expect(source).toContain("WORKING_NO_PROGRESS_3_CHECKS");
