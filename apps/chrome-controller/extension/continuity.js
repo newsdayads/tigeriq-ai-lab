@@ -62,6 +62,7 @@ export function deriveNv02Phase(ui,{heartbeatStale=false}={}){
 export function hasActiveNv02Work(controller){
   const activeStages=new Set(['QUEUED','DISPATCHING','SUBMITTED','WORKING','VERIFY','BLOCKED']);
   if((controller?.jobs||[]).some((job)=>job?.workerId==='NV02'&&activeStages.has(String(job?.stage||''))&&!job?.completedAt))return true;
+  if(controller?.externalWorkAutopilotEnabled===false)return false;
   const autopilot=controller?.autopilot||{};
   if(autopilot.pendingJobId||autopilot.uncertainJobId)return true;
   const dispatched=String(autopilot.lastDispatchedJobId||'');
