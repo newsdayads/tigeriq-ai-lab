@@ -430,6 +430,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     void newConversation().then(sendResponse).catch((error) => sendResponse({ ok: false, status: String(error) }));
     return true;
   }
+  if (message?.type === 'TIGERIQ_MODEL_CHECK') {
+    const modelElement = document.querySelector('[data-testid="model-switcher-dropdown-button"], [class*="model"], span');
+    const profile = modelElement ? modelElement.textContent.trim() : 'NV02';
+    sendResponse({ ok: true, profile });
+    return true;
+  }
   if (message?.type === 'TIGERIQ_ARCHIVE_CONVERSATION') {
     void archiveConversation().then(sendResponse).catch((error) => sendResponse({ ok: false, status: String(error) }));
     return true;
