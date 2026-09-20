@@ -19,6 +19,7 @@ $manifest=Join-Path $runtime 'nv02-continuity-install.json'
 $stamp=Get-Date -Format 'yyyyMMdd-HHmmss'
 $backupDir=Join-Path $runtime ("backup-nv02-continuity-"+$stamp)
 $previousLauncher=$null
+$configBackup=$null
 $pausedBefore=$false
 
 function Assert-Ok([bool]$Condition,[string]$Message){if(-not $Condition){throw $Message}}
@@ -110,6 +111,16 @@ try{
     Copy-Item $launcher $previousLauncher -Force
   }
   if(Test-Path $manifest){Copy-Item $manifest (Join-Path $backupDir 'nv02-continuity-install.json') -Force}
+  $configBackup=Join-Path $backupDir 'chrome-controller.json'
+  Copy-Item $ConfigPath $configBackup -Force
+  $effectiveConfig=Get-Content $ConfigPath -Raw | ConvertFrom-Json
+  Assert-Ok ($null -ne $effectiveConfig.autopilot) 'AUTOPILOT_CONFIG_MISSING'
+  $effectiveConfig.autopilot.enabled=$false
+  $effectiveConfig.autopilot.stateUrl=''
+  [IO.File]::WriteAllText($ConfigPath,($effectiveConfig|ConvertTo-Json -Depth 20),[Text.UTF8Encoding]::new($false))
+  $effectiveConfig=Get-Content $ConfigPath -Raw | ConvertFrom-Json
+  Assert-Ok ($effectiveConfig.autopilot.enabled -eq $false) 'APP_CHROME_AUTOPILOT_DISABLE_FAILED'
+  Assert-Ok ([string]::IsNullOrWhiteSpace([string]$effectiveConfig.autopilot.stateUrl)) 'APP_CHROME_STATE_URL_DISABLE_FAILED'
 
   try{
     $state=Invoke-RestMethod -Uri 'http://127.0.0.1:8798/api/state' -TimeoutSec 3
@@ -171,6 +182,8 @@ try{
     modelReady=$worker.lastHeartbeat.modelReady
     reasoningEffort=$worker.lastHeartbeat.reasoningEffort
     ownerInteractionMode=if($ResumeAutomation){'AUTOMATION'}else{'READ_ONLY'}
+    chromeUiOnlyMode=$true
+    externalWorkAutopilotEnabled=$false
     backupDir=$backupDir
     installedAt=(Get-Date).ToUniversalTime().ToString('o')
   }
@@ -180,6 +193,7 @@ try{
   $message=$_.Exception.Message
   try{
     if($previousLauncher -and (Test-Path $previousLauncher)){Copy-Item $previousLauncher $launcher -Force}
+    if($configBackup -and (Test-Path $configBackup)){Copy-Item $configBackup $ConfigPath -Force}
     Stop-Port 8799
     Stop-Port 8798
     Start-Sleep -Seconds 1
