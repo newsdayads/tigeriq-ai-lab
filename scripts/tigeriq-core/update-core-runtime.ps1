@@ -133,6 +133,7 @@ while($true){
 
     git -C $repo fetch origin main --prune|Out-Null;if($LASTEXITCODE -ne 0){throw 'FETCH_FAILED'}
     $local=Head 'HEAD';$remote=Head 'origin/main';if($local -eq $remote){Save-State @{result='NO_CHANGE';installedSha=$local;watchdog=$watchdog};node -e "import('./scripts/tigeriq-core/runtime-isolation.mjs').then(m => m.cleanup())";continue}
+    git -C $repo merge --ff-only origin/main|Out-Null;if($LASTEXITCODE -ne 0){git -C $repo reset --hard $local|Out-Null;throw 'FF_MERGE_FAILED'}
     $gateSha=Resolve-GateSha $remote
     if(-not $gateSha){Save-State @{result='WAIT_GATES';candidateSha=$remote;watchdog=$watchdog};node -e "import('./scripts/tigeriq-core/runtime-isolation.mjs').then(m => m.cleanup())";continue}
     [string[]]$changed=@(git -C $isolatedPath diff --name-only $local $remote);$impact=Get-Impact $changed
@@ -155,6 +156,7 @@ while($true){
     node -e "import('./scripts/tigeriq-core/runtime-isolation.mjs').then(m => m.cleanup())"
     if($impact.updater){Restart-UpdaterAfterExit;exit 75}
   }catch{
+    try{ git -C $repo reset --hard $local 2>$null|Out-Null }catch{}
     Save-State @{result='FAILED';error=$_.Exception.Message;watchdog=$watchdog}
     try{ node -e "import('./scripts/tigeriq-core/runtime-isolation.mjs').then(m => m.cleanup())" }catch{}
   }
