@@ -1099,6 +1099,7 @@ const dashboard=readFileSync(dashboardPath,'utf8');
 const server=createServer(async(req,res)=>{
   try{
     const url=new URL(req.url??'/',`http://${config.host}:${config.port}`);
+    if(url.pathname==='/model-evidence'){json(res,200,{ok:true,evidence:getLatestModelEvidence()});return;}
     if(await handleApi(req,res,url))return;
     if(url.pathname==='/'||url.pathname==='/index.html'){
       res.writeHead(200,{'content-type':'text/html; charset=utf-8'});
