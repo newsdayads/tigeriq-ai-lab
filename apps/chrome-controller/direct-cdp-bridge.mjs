@@ -308,6 +308,9 @@ async function archiveChat(target){
 }
 
 function newChatExpr(){return `(async()=>{const sleep=ms=>new Promise(r=>setTimeout(r,ms));const vis=e=>{const r=e?.getBoundingClientRect(),s=e&&getComputedStyle(e);return !!e&&r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const before=location.href;const buttons=[...document.querySelectorAll('button,[role="button"]')].filter(e=>vis(e)&&/trò chuyện mới|đoạn chat mới|new chat/i.test((e.getAttribute('aria-label')||e.innerText||'').trim()));const preferred=buttons.find(e=>/trong tigeriq ai lab/i.test((e.getAttribute('aria-label')||'').trim()))||buttons[0];if(!preferred)return{ok:false,status:'NEW_CHAT_BUTTON_NOT_FOUND'};preferred.click();for(let i=0;i<40;i++){await sleep(250);const c=[...document.querySelectorAll('#prompt-textarea,[contenteditable="true"][role="textbox"],textarea')].find(vis);if(c&&(!/\\/c\\//.test(location.pathname)||location.href!==before))return{ok:true,status:'NEW_CHAT_READY',url:location.href}}return{ok:false,status:'NEW_CHAT_NOT_CONFIRMED',url:location.href}})()`; }
+function newChatContextExpr(){
+  return `(()=>{const v=e=>{const r=e?.getBoundingClientRect(),s=e&&getComputedStyle(e);return !!e&&r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const composer=Boolean([...document.querySelectorAll('#prompt-textarea,[contenteditable="true"][role="textbox"],textarea')].find(v));const projectDraftLabels=['thay đổi dự án: tigeriq ai lab','change project: tigeriq ai lab'];const projectDraftReady=[...document.querySelectorAll('button,[role="button"]')].some(e=>v(e)&&projectDraftLabels.includes((e.getAttribute('aria-label')||'').trim().toLowerCase()));return{url:location.href,pathname:location.pathname,composer,projectDraftReady}})()`;
+}
 async function newChat(target){
   const p=await pageRpc(target);
   try{
@@ -315,14 +318,16 @@ async function newChat(target){
     if(!first?.ok)return first;
     if(!NV02_HOME_URL)return{ok:false,status:'NV02_HOME_URL_MISSING'};
     const expected=new URL(NV02_HOME_URL);
-    const current=(await p.call('Runtime.evaluate',{expression:'({url:location.href,pathname:location.pathname})',returnByValue:true},3000)).result.value;
-    if(current?.pathname===expected.pathname)return first;
+    const current=(await p.call('Runtime.evaluate',{expression:newChatContextExpr(),returnByValue:true},3000)).result.value;
+    if(current?.composer&&current?.projectDraftReady===true)return{ok:true,status:'NEW_CHAT_PROJECT_DRAFT_READY',url:current.url};
+    if(current?.pathname===expected.pathname&&current?.composer)return first;
     await p.call('Page.navigate',{url:NV02_HOME_URL});
     const deadline=Date.now()+12000;
     while(Date.now()<deadline){
       await sleep(250);
       try{
-        const state=(await p.call('Runtime.evaluate',{expression:`(()=>{const v=e=>{const r=e?.getBoundingClientRect(),s=e&&getComputedStyle(e);return !!e&&r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};return{url:location.href,pathname:location.pathname,composer:Boolean([...document.querySelectorAll('#prompt-textarea,[contenteditable="true"][role="textbox"],textarea')].find(v))}})()`,returnByValue:true},3000)).result.value;
+        const state=(await p.call('Runtime.evaluate',{expression:newChatContextExpr(),returnByValue:true},3000)).result.value;
+        if(state?.composer&&state?.projectDraftReady===true)return{ok:true,status:'NEW_CHAT_PROJECT_DRAFT_READY',url:state.url};
         if(state?.pathname===expected.pathname&&state?.composer)return{ok:true,status:'NEW_CHAT_PROJECT_CONTEXT_RECOVERED',url:state.url};
       }catch{}
     }
