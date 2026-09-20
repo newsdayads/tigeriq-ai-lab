@@ -11,9 +11,11 @@ for(const x of d.resources){
 }
 const completed=d.objectives.some(x=>x.id==='OBJ-E2E-578-1'&&x.status==='completed');
 if(!completed) throw new Error('AUTONOMOUS_E2E_NOT_PERSISTED');
-const idleWithBacklogFlag = d.core?.idleWithBacklog || (d.resources.every(x => x.status === 'IDLE') && (d.jobs?.filter(x => x.status === 'queued')?.length || 0) > 0);
+const backlogCount = (d.jobs || []).filter(x => x.status === 'queued').length;
+const activeJobsCount = (d.resources || []).filter(x => x.status === 'BUSY' || x.current_job_id).length;
+const idleWithBacklogFlag = (d.resources.every(x => x.status === 'IDLE') || activeJobsCount === 0) && backlogCount > 0;
 const autoDispatchedFlag = d.core?.autoDispatched !== false;
-if(idleWithBacklogFlag && !autoDispatchedFlag) {
+if (idleWithBacklogFlag && !autoDispatchedFlag) {
   throw new Error('AUTO_DISPATCH_CHAINING_FAILED');
 }
 console.log(JSON.stringify({pass:true,pid:d.core.pid,resources:d.resources.length,completedObjective:'OBJ-E2E-578-1',recoveryLoopActive:true,autoDispatch:true}));
