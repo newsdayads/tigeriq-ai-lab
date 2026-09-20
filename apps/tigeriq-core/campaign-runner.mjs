@@ -16,7 +16,58 @@ export function normalizeCampaignPhases(input) {
 export function currentCampaignGoal(objective, phases, currentPhase=0) {
   const list = Array.isArray(phases) ? phases : [];
   if (!list.length) return String(objective || '');
-  const index = Math.min(Math.max(Number(currentPhase)||0,0),list.length-1);
+  const index = Math.min(Math.max(Number(currentPhase) || 0, 0), list.length - 1);
+  const phase = list[index];
+  const title = typeof phase === 'string' ? phase : (phase?.title || '');
+  const prompt = typeof phase === 'string' ? phase : (phase?.prompt || phase?.goal || title);
+  return `[Campaign Phase ${index + 1}/${list.length}: ${title}] ${prompt} (Objective: ${objective})`;
+}
+
+export function campaignTransition(currentPhase = 0, phases = [], success = true) {
+  const list = Array.isArray(phases) ? phases : [];
+  if (!list.length || !success) return Math.max(0, Number(currentPhase) || 0);
+  const next = (Number(currentPhase) || 0) + 1;
+  return next >= list.length ? list.length - 1 : next;
+}
+
+export function makePhaseCheckpoint({ currentPhase = 0, phases = [], summary = '', completedAt = new Date().toISOString() } = {}) {
+  const list = Array.isArray(phases) ? phases : [];
+  const index = Math.min(Math.max(Number(currentPhase) || 0, 0), Math.max(0, list.length - 1));
+  const phase = list[index];
+  const title = typeof phase === 'string' ? phase : (phase?.title || `Phase ${index + 1}`);
+  return {
+    phaseIndex: index,
+    phaseNumber: index + 1,
+    phaseCount: list.length,
+    phaseTitle: title,
+    summary: String(summary || '').trim(),
+    completedAt,
+  };
+}
+
+export function campaignNeedsEvidence(phases = [], currentPhase = 0) {
+  const list = Array.isArray(phases) ? phases : [];
+  const index = Math.min(Math.max(Number(currentPhase) || 0, 0), Math.max(0, list.length - 1));
+  return index > 0;
+}
+
+export function campaignEvidenceJobId(objectiveId, currentPhase = 0) {
+  const base = String(objectiveId || 'CAMPAIGN').trim();
+  const phaseNum = Math.max(1, (Number(currentPhase) || 0) + 1);
+  return `${base}-P${phaseNum}`;
+}
+
+export function normalizeWorkItemLifecycle(workItem) {
+  const raw = workItem && typeof workItem === 'object' ? workItem : {};
+  return {
+    issueOrPr: String(raw.issueOrPr || raw.jobId || '').trim(),
+    implementer: String(raw.implementer || '').trim(),
+    reviewer: String(raw.reviewer || '').trim(),
+    stage: String(raw.stage || 'queued').trim().toLowerCase(),
+    blocker: String(raw.blocker || '').trim(),
+    nextAction: String(raw.nextAction || '').trim(),
+  };
+}er(currentPhase)||0,0),list.length-1);
   const phase = list[index];
   return [
     String(objective || ''),
