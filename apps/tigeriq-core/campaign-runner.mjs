@@ -16,7 +16,77 @@ export function normalizeCampaignPhases(input) {
 export function currentCampaignGoal(objective, phases, currentPhase=0) {
   const list = Array.isArray(phases) ? phases : [];
   if (!list.length) return String(objective || '');
-  const index = Math.min(Math.max(Number(currentPhase)||0,0),list.length-1);
+  const index = Math.min(Math.max(Number(currentPhase) || 0, 0), list.length - 1);
+  const phase = list[index];
+  const title = typeof phase === 'string' ? phase : (phase?.title || phase?.goal || '');
+  const prompt = typeof phase === 'string' ? phase : (phase?.prompt || phase?.goal || phase?.title || '');
+  return String(objective || '').trim() + ' [Phase ' + (index + 1) + '/' + list.length + ': ' + title + '] ' + prompt;
+}
+
+export function campaignTransition({ status, currentPhase = 0, phases = [], doneJobs = 0 } = {}) {
+  const list = Array.isArray(phases) ? phases : [];
+  const idx = Number(currentPhase) || 0;
+  const st = String(status || '').trim().toLowerCase();
+  if (!list.length || st === 'complete' || st === 'completed') {
+    if (idx >= list.length - 1 || !list.length) {
+      return { action: 'complete', terminal: true, nextPhase: null };
+    }
+    return { action: 'next_phase', terminal: false, nextPhase: idx + 1 };
+  }
+  if (st === 'blocked' || st === 'fail' || st === 'failed') {
+    return { action: 'blocked', terminal: true, nextPhase: null };
+  }
+  return { action: 'continue', terminal: false, nextPhase: idx };
+}
+
+export function makePhaseCheckpoint({ currentPhase = 0, phases = [], summary = '', completedAt = new Date().toISOString() } = {}) {
+  const list = Array.isArray(phases) ? phases : [];
+  const idx = Math.min(Math.max(Number(currentPhase) || 0, 0), Math.max(list.length - 1, 0));
+  const phase = list[idx] || {};
+  return {
+    phaseIndex: idx,
+    phaseNumber: idx + 1,
+    phaseCount: list.length,
+    phaseTitle: typeof phase === 'string' ? phase : (phase?.title || ''),
+    summary: String(summary || '').trim(),
+    completedAt: String(completedAt || new Date().toISOString())
+  };
+}
+
+export function campaignNeedsEvidence({ status, phases = [], doneJobs = 0 } = {}) {
+  const st = String(status || '').trim().toLowerCase();
+  const list = Array.isArray(phases) ? phases : [];
+  if (!list.length) return false;
+  if (st !== 'complete' && st !== 'completed') return false;
+  return Number(doneJobs || 0) <= 0;
+}
+
+export function campaignEvidenceJobId(objectiveId, phaseIndex = 0) {
+  return 'JOB-EVID-' + String(objectiveId || 'OBJECTIVE') + '-P' + (Number(phaseIndex) || 0);
+}
+
+export function runExecutionPreflight({ workItem, state } = {}) {
+  const errors = [];
+  const item = workItem ? normalizeWorkItemLifecycle(workItem) : null;
+  if (item && item.implementer && item.reviewer && item.implementer.toLowerCase() === item.reviewer.toLowerCase()) {
+    errors.push('IMPLEMENTER_REVIEWER_COLLISION');
+  }
+  if (state && state.status === 'blocked') {
+    errors.push('STATE_BLOCKED');
+  }
+  return { ok: errors.length === 0, errors };
+}
+
+export function checkAutomatedRecovery({ backlogCount = 0, activeCount = 0, lastActivityAgeMs = 0, idleThresholdMs = 30000 } = {}) {
+  const backlog = Number(backlogCount) || 0;
+  const active = Number(activeCount) || 0;
+  const age = Number(lastActivityAgeMs) || 0;
+  const threshold = Number(idleThresholdMs) || 30000;
+  if (backlog > 0 && active === 0 && age >= threshold) {
+    return { shouldRecover: true, reason: 'IDLE_WITH_BACKLOG_RESUMPTION', autoDispatched: true };
+  }
+  return { shouldRecover: false, reason: 'NORMAL', autoDispatched: false };
+}er(currentPhase)||0,0),list.length-1);
   const phase = list[index];
   return [
     String(objective || ''),
