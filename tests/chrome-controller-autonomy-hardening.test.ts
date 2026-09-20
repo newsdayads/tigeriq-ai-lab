@@ -252,6 +252,16 @@ describe('orphan pre-dispatch recovery proof',()=>{
     expect(canResetOrphanUnpersistedDispatch('GH-1042',false,lease('COMMITTED','2026-09-19T06:04:49Z'),now)).toBe(false);
     expect(canResetOrphanUnpersistedDispatch('GH-1042',false,lease('DISPATCHING','2026-09-19T06:04:49Z','GH-X'),now)).toBe(false);
   });
+  it('validates correct GPT-5.6 Sol+High profile evidence verification', () => {
+    const { getVerifiedModelProfile } = require('../apps/chrome-controller/src/runtime-evidence.js');
+    const profile = getVerifiedModelProfile({ model: 'gpt-5.6', tier: 'sol+high', timestamp: '2026-09-17T00:00:00.000Z' });
+    expect(profile).toEqual({
+      model: 'gpt-5.6',
+      tier: 'sol+high',
+      timestamp: '2026-09-17T00:00:00.000Z'
+    });
+  });
+
   it('preserves ordering invariant: durable ledger transition happens before any browser command is queued',()=>{
     const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
     const ledgerCreate=server.indexOf('uiJobLedger.create');
