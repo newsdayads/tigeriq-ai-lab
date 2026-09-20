@@ -11,6 +11,7 @@ import { normalizeCampaignPhases, currentCampaignGoal, campaignTransition, makeP
 import { normalizeTerminalWorkItems, handoffGenerationKey, evaluateChildObjectiveStates, isCodingHandoff } from './work-handoff.mjs';
 import { ROUTING_PROFILE_LABELS, createResourceId, deriveRoutingProfile, failurePolicy, normalizeQuota, rankCandidates, rateLimitFailureState } from './smart-router.mjs';
 import { runExecutionPreflight } from './execution-preflight.mjs';
+import { repairLoop, RepairDecision } from './repair-loop.mjs';
 
 const DATABASE_URL = process.env.DATABASE_URL?.trim();
 if (!DATABASE_URL) throw new Error('DATABASE_URL_MISSING');
@@ -664,7 +665,18 @@ async function loop(){
       if(t-lastFailureLearning>FAILURE_LEARNING_INTERVAL_MS){lastFailureLearning=t;await runFailureLearningScan();}
       await startSelfCheck({ now: () => Date.now(), store: pool });
       while(active.size<MAX_PARALLEL){const j=await claimJob();if(!j)break;active.add(j.id);void runJob(j).finally(()=>active.delete(j.id));}
-    }catch(e){console.error(JSON.stringify({event:'CORE_LOOP_ERROR',error:String(e?.message||e)}));}
+    }catch (e) {
+        console.error(JSON.stringify({ event: 'CORE_LOOP_ERROR', error: String(e?.message || e) }));
+        try {
+          const decision = await repairLoop.handleFailure(e);
+          if (decision === RepairDecision.BLOCK) {
+            console.error(JSON.stringify({ event: 'CORE_LOOP_BLOCKED', reason: 'max retries exceeded' }));
+            stop = true; // terminate the main loop gracefully
+          }
+        } catch (inner) {
+          console.error(JSON.stringify({ event: 'REPAIR_LOOP_FAILURE', error: String(inner?.message || inner) }));
+        }
+      }
     await sleep(POLL_MS);
   }
 }
