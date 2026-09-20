@@ -118,6 +118,9 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain(".replace(/\\\\s+/g,' ')");
     expect(source).toContain("phase==='READY'&&!active&&!waitingEvidence&&now>=state.nextContinueAt&&shouldRotateChat(state,now)");
     expect(source).toContain("now>=state.nextRefreshAt&&phase==='READY'&&!active&&!waitingEvidence");
+    expect(source).toContain("phase==='READY'&&waitingEvidence&&!active&&state.nextContinueAt-now>15000");
+    expect(source).toContain("nextContinueAt:now+5000");
+    expect(source).toContain("WAITING_EVIDENCE_CONTINUE_ACCELERATED");
     expect(source).toContain("'CONTINUITY_CONTINUE'");
     const leaseServerSource = readFileSync('apps/chrome-controller/src/server.ts','utf8');
     expect(leaseServerSource).toContain("allowWaitingEvidence:continuityContinue");
