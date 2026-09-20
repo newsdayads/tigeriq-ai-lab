@@ -17,6 +17,9 @@ test('runtime launcher enables only verified free or trial providers',()=>{
   assert.match(launcher,/GROQ.*FREE_TIER_VERIFIED|TIGERIQ_GROQ_FREE_TIER_VERIFIED/s);
   assert.match(launcher,/TIGERIQ_GEMINI_FREE_TIER_VERIFIED/);
   assert.match(launcher,/TIGERIQ_COHERE_TRIAL_CONFIRMED/);
+  assert.match(launcher,/TIGERIQ_CLOUDFLARE_FREE_CONFIRMED/);
+  assert.match(launcher,/TIGERIQ_NVIDIA_FREE_DEV_CONFIRMED/);
+  assert.match(launcher,/TIGERIQ_CODING_MAX_PARALLEL='6'/);
   assert.doesNotMatch(launcher,/Set-SecretEnv 'OPENROUTER_API_KEY'/);
   assert.doesNotMatch(launcher,/Set-SecretEnv 'MISTRAL_API_KEY'/);
   assert.doesNotMatch(launcher,/Set-SecretEnv 'HF_TOKEN'/);
