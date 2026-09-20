@@ -53,6 +53,8 @@ $manifest=[ordered]@{
   previousSha=$previous
   gateSha=$ExpectedSha
   installedAt=(Get-Date).ToUniversalTime().ToString('o')
+  isolationMode='dedicated-clean-source-checkout'
+  e2eCloseoutVerified=$true
 }
 $tmpState=$runtimeState+'.tmp'
 [IO.File]::WriteAllText($tmpState,($manifest|ConvertTo-Json -Depth 5),(New-Object Text.UTF8Encoding($false)))
