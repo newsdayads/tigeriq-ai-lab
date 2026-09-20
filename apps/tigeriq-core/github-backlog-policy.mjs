@@ -26,3 +26,7 @@ export function compareBacklogSpecs(a,b){
 export function sortBacklogSpecs(specs){
   return (Array.isArray(specs)?specs:[]).filter(Boolean).slice().sort(compareBacklogSpecs);
 }
+
+export function detectIdleWithBacklog(activeCount, pendingQueueCount){
+  return Number(activeCount || 0) === 0 && Number(pendingQueueCount || 0) > 0;
+}
