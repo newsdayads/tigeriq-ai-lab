@@ -178,4 +178,32 @@ describe('Core WorkItem projection', () => {
     expect(snapshot.audit).toHaveLength(auditLength);
     expect(projectCoreWorkItem(snapshot)).toMatchObject(updated);
   });
+
+  it('projects Core-selected WorkItem UI routing and integration mapping for autopilot snapshot consumption', () => {
+    const plane = new ControlPlane();
+    const orderItem: WorkOrder = {
+      id: 'CORE-CORE-SELECTED',
+      project: 'TigerIQ',
+      goal: 'Core UI routing integration',
+      scope: ['apps/tigeriq-core/ui-autopilot-snapshot.mjs'],
+      invariants: ['Core is sole selector'],
+      acceptanceCriteria: ['Core-selected WorkItem mapped cleanly'],
+      status: 'draft',
+      issueRef: 'https://github.com/newsdayads/tigeriq-ai-lab/issues/1150',
+      sourceRef: 'https://github.com/newsdayads/tigeriq-ai-lab/issues/1150',
+      kind: 'coding',
+      priority: 'P0',
+      stage: 'queued',
+      nextAction: 'Execute Core-selected WorkItem',
+    };
+    plane.create(orderItem, planner);
+    plane.transition('CORE-CORE-SELECTED', 'approved', approver);
+    const snapshot = plane.transition('CORE-CORE-SELECTED', 'running', coder);
+    const projected = projectCoreWorkItem(snapshot);
+    expect(projected).toMatchObject({
+      workItemId: 'CORE-CORE-SELECTED',
+      status: 'IN_PROGRESS',
+      stage: 'running',
+    });
+  });
 });
