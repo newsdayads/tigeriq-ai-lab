@@ -100,9 +100,13 @@ export async function archiveConversation({target,evaluate}){
   return result;
 }
 
+const TERMINAL_STATUSES = new Set(['COMPLETED','FAILED','CANCELED']);
 export async function runDirectCdpArchive({workerId,target,payload,getJson,dispatch,uiState,evaluate,fetchImpl=fetch,sleep=(ms)=>new Promise((resolve)=>setTimeout(resolve,ms)),randomUUID=()=>crypto.randomUUID(),saveCompletionOptions={},receiptOptions={}}){
   const upstreamReceiptRef=validateArchiveCommand(workerId,payload);
   const proof=await assertArchiveAllowed(workerId,{getJson,requireDone:true});
+  // Guard: only archive when job is in a terminal state
+  if(!proof?.job?.status||!TERMINAL_STATUSES.has(proof.job.status))
+    throw new Error('ARCHIVE_NOT_TERMINAL');
   if(!target?.url) throw new Error('ARCHIVE_WORKER_WINDOW_AMBIGUOUS_OR_MISSING');
   const url=new URL(target.url);
   if(url.hostname!=='chatgpt.com'||!/\/c\//.test(url.pathname)) throw new Error('ARCHIVE_WORKER_WINDOW_AMBIGUOUS_OR_MISSING');
@@ -114,7 +118,33 @@ export async function runDirectCdpArchive({workerId,target,payload,getJson,dispa
   if(!save?.ok) throw new Error(String(save?.status||'SAVE_DISPATCH_FAILED'));
   await waitForSaveCompletion(uiState,{sleep,...saveCompletionOptions});
   const receipt=await waitForDurableSaveReceipt(saveToken,workerId,dispatchedAt,{fetchImpl,sleep,...receiptOptions});
-  await assertArchiveAllowed(workerId,{getJson,requireDone:true});
+
+  // Send the archive command (the UI interaction)
   await archiveConversation({target,evaluate});
-  return {ok:true,status:'ARCHIVED',workerId,jobId:proof.jobId,evidenceRef:proof.evidenceRef,receiptRef:receipt.receiptRef,checkpointRef:receipt.checkpointRef,receiptVerifiedAt:receipt.verifiedAt,upstreamReceiptRef};
+
+  // Verify a fresh receipt appears after the archive action, with bounded retries
+  const maxAttempts=3;
+  let attempt=0;
+  let freshReceipt=null;
+  while(attempt<maxAttempts){
+    attempt++;
+    try{
+      const newReceipt=await waitForDurableSaveReceipt(saveToken,workerId,dispatchedAt,{fetchImpl,sleep,...receiptOptions});
+      if(newReceipt.receiptRef!==receipt.receiptRef && new Date(newReceipt.verifiedAt)>new Date(receipt.verifiedAt)){
+        freshReceipt=newReceipt;break;
+      }
+    }catch(err){
+      const msg=String(err);
+      if(/CAPTCHA|RATE[_-]LIMIT|SECURITY|CHALLENGE/i.test(msg)){
+        // Abort flow and log safe‑stop event
+        console.error('SAFE_STOP', {reason:msg,workerId});
+        throw new Error('ARCHIVE_ABORTED_SECURITY_CHALLENGE');
+      }
+    }
+    // exponential back‑off
+    await sleep(500*Math.pow(2,attempt-1));
+  }
+  if(!freshReceipt) throw new Error('ARCHIVE_FRESH_RECEIPT_MISMATCH');
+
+  return {ok:true,status:'ARCHIVED',workerId,jobId:proof.jobId,evidenceRef:proof.evidenceRef,receiptRef:freshReceipt.receiptRef,checkpointRef:freshReceipt.checkpointRef,receiptVerifiedAt:freshReceipt.verifiedAt,upstreamReceiptRef};
 }
