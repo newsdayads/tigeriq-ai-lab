@@ -412,6 +412,29 @@ function scrollToBottom() {
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type === 'TIGERIQ_SHOW_MODEL_NOTIFICATION') {
+    const bannerId = 'tigeriq-model-notification';
+    if (!document.getElementById(bannerId)) {
+      const banner = document.createElement('div');
+      banner.id = bannerId;
+      banner.style.cssText = 'position:fixed;top:10px;right:10px;z-index:999999;background:#b91c1c;color:#fff;padding:12px 16px;border-radius:6px;font-family:sans-serif;box-shadow:0 4px 6px rgba(0,0,0,0.1);display:flex;align-items:center;gap:12px;';
+      banner.innerHTML = '<span>Please switch the model to GPT-5.6 Sol+High.</span><button id="tigeriq-switch-btn" style="background:#fff;color:#b91c1c;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;font-weight:bold;">Switch Model</button><button id="tigeriq-dismiss-btn" style="background:transparent;color:#fff;border:1px solid #fff;padding:6px 8px;border-radius:4px;cursor:pointer;">Dismiss</button>';
+      document.body.appendChild(banner);
+      console.log('TIGERIQ_NOTIFICATION_SHOWN: MODEL_PROFILE_BLOCKED');
+      document.getElementById('tigeriq-dismiss-btn')?.addEventListener('click', () => {
+        banner.remove();
+        console.log('TIGERIQ_NOTIFICATION_DISMISSED');
+      });
+      document.getElementById('tigeriq-switch-btn')?.addEventListener('click', () => {
+        console.log('TIGERIQ_MODEL_SWITCH_CONFIRMED');
+        chrome.runtime.sendMessage({ type: 'TIGERIQ_TRIGGER_MODEL_SWITCH', targetModel: 'gpt-5.6', targetTier: 'sol+high' }, () => {
+          banner.remove();
+        });
+      });
+    }
+    sendResponse({ ok: true });
+    return;
+  }
   if (message?.type === 'TIGERIQ_WORKER_BADGE') {
     if (message.workerId) showWorkerBadge(String(message.workerId), String(message.label || ''));
     else removeWorkerBadge();
