@@ -1,7 +1,13 @@
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 $root=$PSScriptRoot
-$sourceRoot='D:\TigerIQ\Workspace\tigeriq-ai-lab\apps\tigeriq-core'
+$defaultRepo='D:\TigerIQ\Workspace\tigeriq-ai-lab'
+$runtimeSourceState='D:\TigerIQ\State\core-runtime-source.json'
+$repo=$defaultRepo
+if(Test-Path -LiteralPath $runtimeSourceState){
+  try{$meta=Get-Content -Raw -LiteralPath $runtimeSourceState|ConvertFrom-Json;if($meta.sourcePath -and (Test-Path -LiteralPath ([string]$meta.sourcePath))){$repo=[string]$meta.sourcePath}}catch{}
+}
+$sourceRoot=Join-Path $repo 'apps\tigeriq-core'
 
 # Keep the runtime bundle complete and future-proof. The updater fast-forwards the
 # canonical repo before restarting this task, then this launcher atomically syncs
