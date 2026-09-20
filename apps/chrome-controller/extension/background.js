@@ -411,7 +411,24 @@ async function tickWorker(workerId) {
     catch(error){ const status=error?.status||String(error?.message||error); await post('/api/result',{workerId,commandId:command.id,ok:false,status}); }
     return;
   }
-  if(workerId==='NV02')await maybeNv02Continuity(ctx,ui);
+  if(workerId==='NV02'){
+        // Before proceeding with NV02 continuity, ensure the model has been exactly verified.
+        try {
+          const evRes = await fetch(`${CONTROLLER}/api/evidence`);
+          if (evRes.ok) {
+            const ev = await evRes.json();
+            if (!ev.modelVerification?.exact) {
+              console.warn('Model verification failed – blocking NV02 dispatch');
+              return; // Block further NV02 processing.
+            }
+          }
+        } catch (e) {
+          console.error('Failed to fetch model verification evidence', e);
+          // If we cannot verify, err on the side of safety and block.
+          return;
+        }
+        await maybeNv02Continuity(ctx,ui);
+      }
 }
 
 async function tick(){
