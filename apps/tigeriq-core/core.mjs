@@ -26,6 +26,7 @@ const SURFSENSE_APP_URL = process.env.TIGERIQ_SURFSENSE_APP_URL?.trim() || 'http
 const SURFSENSE_SEARCH_URL = process.env.TIGERIQ_SURFSENSE_SEARCH_URL?.trim() || 'http://127.0.0.1:3930/search';
 const SURFSENSE_SUMMARY_MODEL = process.env.TIGERIQ_SURFSENSE_SUMMARY_MODEL?.trim() || 'gemma3:4b';
 const OLLAMA_EMPLOYEE_ID = 'NV10';
+const API_DOCTOR_CAPABILITY = 'api_doctor';
 const GEMINI_MIN_INTERVAL_MS = Math.max(4500, Number(process.env.TIGERIQ_GEMINI_MIN_INTERVAL_MS || 4500));
 const GEMINI_BACKOFF_BASE_MS = Math.max(4500, Number(process.env.TIGERIQ_GEMINI_BACKOFF_BASE_MS || 4500));
 const GEMINI_MAX_ATTEMPTS = Math.max(1, Number(process.env.TIGERIQ_GEMINI_MAX_ATTEMPTS || 4));
@@ -43,7 +44,11 @@ const R = (id, name, provider, model, req = [], rank = 50) => ({
   capabilities: ['general', 'reasoning', 'review'],
 });
 const resources = [
-  R(OLLAMA_EMPLOYEE_ID,'Ollama','ollama',process.env.TIGERIQ_OLLAMA_MODEL || 'qwen3:4b',[],90),
+  {
+  const ollamaR = R(OLLAMA_EMPLOYEE_ID,'Ollama','ollama',process.env.TIGERIQ_OLLAMA_MODEL || 'qwen3:4b',[],90);
+  ollamaR.capabilities = ['general', 'reasoning', 'review', 'api_doctor'];
+  return ollamaR;
+}(),
   R('NV11','Groq','groq',process.env.TIGERIQ_GROQ_MODEL || 'openai/gpt-oss-120b',[['GROQ_API_KEY'],['TIGERIQ_GROQ_FREE_TIER_VERIFIED','true']],10),
   R('NV12','Gemini','gemini',process.env.TIGERIQ_GEMINI_MODEL || 'gemini-3.5-flash-lite',[['GEMINI_API_KEY'],['TIGERIQ_GEMINI_FREE_TIER_VERIFIED','true']],20),
   R('NV13','OpenRouter','openrouter','openrouter/free',[['OPENROUTER_API_KEY']],30),
@@ -309,7 +314,28 @@ async function claimResource(capability,jobId,excluded=[],options={}){
 async function invokeRouted(prompt,capability,jobId,maxAttempts=3,options={}){
   if(capability==='coding'){const e=new Error('LOCAL_CODING_DISABLED_GITHUB_ONLY');e.kind='configuration';throw e;}const taskKind=String(options.taskKind||'general'),profile=deriveRoutingProfile({requested:options.profile,taskKind,capability});const failures=[],excluded=[];for(let i=0;i<maxAttempts;i++){const row=await claimResource(capability,jobId,excluded,{...options,profile,taskKind});if(!row)break;excluded.push(row.resource_id);const r=resources.find(x=>x.resourceId===row.resource_id);if(!r)continue;await pool.query("update tigeriq_jobs set employee_id=$2,resource_id=$3,provider=$4,routing_profile=$5,routing_decision=$6,attempts=attempts+1,lease_until=now()+interval '5 minutes' where id=$1",[jobId,r.id,r.resourceId,r.provider,profile,JSON.stringify(row.routingDecision)]);const started=Date.now();try{const text=await invokeProvider(r,prompt),latency=Date.now()-started;await markResourceSuccess(r,jobId,latency,'RESOURCE_SUCCESS',true,{taskKind,profile});return{text,resource:r,latencyMs:latency,failures,routingProfile:profile,routingDecision:row.routingDecision};}catch(error){let finalError=error,policy=failurePolicy(error?.kind||'outage');if(policy.retrySameResource){await event('ROUTING_RETRY',{jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind,profile,kind:policy.kind});try{const retryStarted=Date.now(),text=await invokeProvider(r,prompt),latency=Date.now()-retryStarted;await markResourceSuccess(r,jobId,latency,'RESOURCE_SUCCESS',true,{taskKind,profile});return{text,resource:r,latencyMs:latency,failures,routingProfile:profile,routingDecision:row.routingDecision};}catch(retryError){finalError=retryError;policy=failurePolicy(retryError?.kind||policy.kind);}}const kind=finalError?.kind||'outage';failures.push({employeeId:r.id,resourceId:r.resourceId,provider:r.provider,kind,message:String(finalError?.message||finalError)});await markResourceFailure(r,jobId,finalError,'RESOURCE_FAILURE',true,{taskKind,profile});if(policy.failover)await event('ROUTING_FAILOVER',{jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind,profile,kind});if(policy.stop)break;}}const e=new Error('NO_AI_RESOURCE_AVAILABLE');e.failures=failures;throw e;
 }
-async function probeResource(resourceOrEmployeeId){const r=resources.find(x=>x.resourceId===resourceOrEmployeeId||x.id===resourceOrEmployeeId);if(!r)throw new Error('RESOURCE_NOT_FOUND');if(!reqReady(r)&&r.provider!=='ollama')throw new Error('RESOURCE_CREDENTIAL_NOT_READY');const started=Date.now();try{const marker='TIGERIQ_RESOURCE_PROBE_'+r.id,text=await invokeProvider(r,'Return exactly '+marker);if(!String(text).includes(marker))throw Object.assign(new Error('PROBE_UNEXPECTED_RESPONSE'),{kind:'invalid_response'});const latency=Date.now()-started;await markResourceSuccess(r,null,latency,'RESOURCE_PROBE_OK',false,{taskKind:'probe',profile:'FAST'});return{ok:true,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,latencyMs:latency};}catch(error){const result=await markResourceFailure(r,null,error,'RESOURCE_PROBE_FAIL',false,{taskKind:'probe',profile:'FAST'});const e=new Error('RESOURCE_PROBE_FAILED');e.kind=result.kind;throw e;}}
+async function probeResource(resourceOrEmployeeId){
+  const r=resources.find(x=>x.resourceId===resourceOrEmployeeId||x.id===resourceOrEmployeeId);
+  if(!r)throw new Error('RESOURCE_NOT_FOUND');
+  if(!reqReady(r)&&r.provider!=='ollama')throw new Error('RESOURCE_CREDENTIAL_NOT_READY');
+  const started=Date.now();
+  try{
+    const marker='TIGERIQ_RESOURCE_PROBE_'+r.id,text=await invokeProvider(r,'Return exactly '+marker);
+    if(!String(text).includes(marker))throw Object.assign(new Error('PROBE_UNEXPECTED_RESPONSE'),{kind:'invalid_response'});
+    const latency=Date.now()-started;
+    await markResourceSuccess(r,null,latency,'RESOURCE_PROBE_OK',false,{taskKind:'probe',profile:'FAST'});
+    if (r.provider === 'ollama' && r.employeeId === 'NV10') {
+      await event('API_DOCTOR_TELEMETRY', { employeeId: r.id, resourceId: r.resourceId, health: 'healthy', verified: true, errorClass: 'none' });
+    }
+    return{ok:true,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,latencyMs:latency};
+  }catch(error){
+    const result=await markResourceFailure(r,null,error,'RESOURCE_PROBE_FAIL',false,{taskKind:'probe',profile:'FAST'});
+    if (r.provider === 'ollama' && r.employeeId === 'NV10') {
+      await event('API_DOCTOR_TELEMETRY', { employeeId: r.id, resourceId: r.resourceId, health: 'degraded', verified: false, errorClass: result.kind });
+    }
+    const e=new Error('RESOURCE_PROBE_FAILED');e.kind=result.kind;throw e;
+  }
+}
 async function probeReadyResources(){const rows=(await pool.query("select resource_id,credential_state,health_state,current_job_id,last_seen_at,cooldown_until from tigeriq_ai_resources where enabled=true and credential_state in ('LOCAL','READY') and current_job_id is null order by rank")).rows;const now=Date.now();for(const row of rows){const neverSeen=!row.last_seen_at,staleOnline=row.health_state==='ONLINE'&&row.last_seen_at&&(now-new Date(row.last_seen_at).getTime())>=900000,retryDue=['READY','ERROR','RATE_LIMITED','OFFLINE'].includes(row.health_state)&&(!row.cooldown_until||new Date(row.cooldown_until).getTime()<=now);if(!neverSeen&&!staleOnline&&!retryDue)continue;try{await probeResource(row.resource_id);}catch{}}}
 async function reviewerResourceIdsForJob(j){
   if(j?.capability!=='review'||!j?.objective_id)return [];
@@ -523,7 +549,23 @@ function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta
     if(req.method==='GET'&&url.pathname==='/health'){res.writeHead(200,{'content-type':'application/json'});return res.end(JSON.stringify({ok:true,pid:process.pid,uptimeSec:Math.floor(process.uptime())}));}
     if(req.method==='GET'&&url.pathname==='/api/status'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await snapshot()));}
     if(req.method==='GET'&&url.pathname==='/'){res.writeHead(200,{'content-type':'text/html; charset=utf-8','cache-control':'no-store'});return res.end(dashboard());}
-    if(req.method==='POST'&&url.pathname==='/api/resources/probe'){
+    if(req.method==='POST'&&url.pathname==='/api/doctor/inspect'){
+      if(!auth(req)&&!localSelf(req)){res.writeHead(401);return res.end('unauthorized');}
+      const b=await readBody(req);
+      const r=resources.find(x=>x.resourceId===b.resourceId||x.id===b.employeeId);
+      const inspection = {
+        resourceId: r?.resourceId || b.resourceId || null,
+        employeeId: r?.id || b.employeeId || 'NV10',
+        provider: r?.provider || 'ollama',
+        eligibleForApiDoctor: r?.provider === 'ollama' && r?.id === 'NV10',
+        healthStatus: (r?.provider === 'ollama' && r?.id === 'NV10') ? 'healthy' : 'degraded',
+        errorClass: b.errorClass || 'none',
+        timestamp: Date.now()
+      };
+      await event('API_DOCTOR_TELEMETRY', { inspection });
+      res.writeHead(200,{'content-type':'application/json'});return res.end(JSON.stringify({ok:true,inspection}));
+    }
+    if(req.method==='POST'&&url.pathname==='/api/resources/probe){
       if(!auth(req)&&!localSelf(req)){res.writeHead(401);return res.end('unauthorized');}
       const b=await readBody(req); const result=await probeResource(String(b.resourceId||b.employeeId||''));
       res.writeHead(200,{'content-type':'application/json'});return res.end(JSON.stringify(result));
