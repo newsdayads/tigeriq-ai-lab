@@ -25,6 +25,33 @@ export class RemoteTaskBroker {
   async poll(nodeId: string): Promise<RemoteTaskLease | undefined> {
     if (!nodeId.trim()) throw new Error('nodeId is required');
     await this.#recoverExpiredForNode(nodeId);
+    const lease = await this.mailbox.poll(nodeId);
+    if (!lease) {
+      // Check queue for auto-dispatch / recovery when idle with backlog
+      const queuedTasks = this.runtime.queue.list().filter(r => r.stage === 'queued');
+      if (queuedTasks.length > 0) {
+        const employees = this.runtime.registry.listEmployees().filter(e => e.nodeId === nodeId && e.availability === 'available');
+        if (employees.length > 0) {
+          const nextTask = queuedTasks[0];
+          const employee = employees[0];
+          this.runtime.registry.assign(employee.employeeId, nextTask.task.taskId);
+          const newLease = await this.mailbox.lease(nextTask.task.taskId, nodeId, employee.employeeId);
+          if (newLease) {
+            return { ...newLease, employeeId: employee.employeeId };
+          }
+        }
+      }
+      return undefined;
+    }
+    const record = this.runtime.queue.get(lease.taskId);
+    return { ...lease, employeeId: record.assignedEmployeeId || '' };
+  }
+
+  async validateHeartbeat(nodeId: string): Promise<boolean> {
+    if (!nodeId.trim()) return false;
+    await this.#recoverExpiredForNode(nodeId);
+    return true;
+  }coverExpiredForNode(nodeId);
 
     const candidates = this.runtime.queue.list()
       .filter((record) => record.stage === 'queued')
