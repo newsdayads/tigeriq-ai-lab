@@ -87,6 +87,15 @@ export function checkAutomatedRecovery({ backlogCount = 0, activeCount = 0, last
   }
   return { shouldRecover: false, reason: 'NORMAL', autoDispatched: false };
 }
+
+export function validateCampaignHeartbeat({ lastHeartbeatAgeMs = 0, maxHeartbeatAgeMs = 60000 } = {}) {
+  const age = Number(lastHeartbeatAgeMs) || 0;
+  const maxAge = Number(maxHeartbeatAgeMs) || 60000;
+  if (age > maxAge) {
+    return { valid: false, reason: 'HEARTBEAT_EXPIRED' };
+  }
+  return { valid: true, reason: 'HEARTBEAT_VALID' };
+}
   const phase = list[index];
   return [
     String(objective || ''),
