@@ -268,6 +268,7 @@ async function waitForSubmissionEvidence(expectedText, timeoutMs = 4000) {
 
 const REQUIRED_MODEL_NAME = 'GPT-5.6 Sol';
 const REQUIRED_REASONING_EFFORT = 'High';
+let lastVerifiedModelProfile = null;
 
 function compactVisibleText(element) {
   return String(element?.getAttribute?.('aria-label') || element?.getAttribute?.('title') || element?.textContent || '')
@@ -284,6 +285,9 @@ function modelCandidateControls() {
   return Array.from(document.querySelectorAll('header button, main button, header [role="button"], main [role="button"], [data-testid*="model" i], [aria-label*="model" i], [aria-label*="gpt" i]'))
     .filter((el) => visible(el))
     .filter((el) => {
+      const aria = String(el.getAttribute?.('aria-label') || '');
+      if (el.hasAttribute?.('data-selected-reasoning-effort')) return true;
+      if (/chọn mô hình chatgpt|choose.*model|model selector/i.test(aria)) return true;
       const text = compactVisibleText(el);
       if (isGenericModelText(text)) return false;
       return /GPT-5\.6\s+Sol|GPT-5|GPT-4|Instant|Thinking|Suy luận|High|Cao/i.test(text);
@@ -293,7 +297,7 @@ function modelCandidateControls() {
 function reasoningCandidateControls() {
   return Array.from(document.querySelectorAll('header button, main button, header [role="button"], main [role="button"], [data-testid*="reason" i], [data-testid*="thinking" i], [aria-label*="thinking" i], [aria-label*="reason" i]'))
     .filter((el) => visible(el))
-    .filter((el) => /High|Cao|Thinking|Suy luận|reasoning/i.test(compactVisibleText(el)));
+    .filter((el) => el.hasAttribute?.('data-selected-reasoning-effort') || /High|Cao|Thinking|Suy luận|reasoning/i.test(compactVisibleText(el)));
 }
 
 function parseModelName(text) {
@@ -314,9 +318,11 @@ function readModelProfileState() {
   const modelControls = modelCandidateControls();
   const reasoningControls = reasoningCandidateControls();
   const modelNames = [...new Set(modelControls.map((el) => parseModelName(compactVisibleText(el))).filter(Boolean))];
-  const reasoningValues = [...new Set(reasoningControls.map((el) => parseReasoningEffort(compactVisibleText(el))).filter(Boolean))];
-  const modelName = modelNames.length === 1 ? modelNames[0] : null;
+  const reasoningValues = [...new Set(reasoningControls.map((el) => parseReasoningEffort(el.getAttribute?.('data-selected-reasoning-effort') || compactVisibleText(el))).filter(Boolean))];
+  let modelName = modelNames.length === 1 ? modelNames[0] : null;
   const reasoningEffort = reasoningValues.length === 1 ? reasoningValues[0] : null;
+  const cached = lastVerifiedModelProfile && lastVerifiedModelProfile.url === location.href && reasoningEffort === REQUIRED_REASONING_EFFORT;
+  if (!modelName && cached) modelName = lastVerifiedModelProfile.modelName;
   const exact = modelName === REQUIRED_MODEL_NAME && reasoningEffort === REQUIRED_REASONING_EFFORT;
   const blockedReason = exact ? null : (!modelName ? 'MODEL_CONTROL_NOT_EXACT_OR_UNIQUE' : 'REASONING_CONTROL_NOT_EXACT_OR_UNIQUE');
   return {
@@ -325,7 +331,7 @@ function readModelProfileState() {
     reasoningEffort,
     modelReady: exact,
     exact,
-    verifiedAt: exact ? new Date().toISOString() : null,
+    verifiedAt: exact ? (lastVerifiedModelProfile?.verifiedAt || new Date().toISOString()) : null,
     blockedReason,
   };
 }
@@ -334,12 +340,35 @@ function visibleMenuItemsByExactText(expected) {
   const wanted = String(expected).toLowerCase();
   return deepElements()
     .filter((el) => visible(el))
-    .filter((el) => ['BUTTON', 'DIV', 'SPAN'].includes(el.tagName) || String(el.getAttribute?.('role') || '').includes('menuitem'))
+    .filter((el) => ['BUTTON'].includes(el.tagName) || ['menuitem', 'menuitemradio', 'option'].includes(String(el.getAttribute?.('role') || '')))
     .filter((el) => compactVisibleText(el).toLowerCase() === wanted);
+}
+
+function selectedModelNameFromOpenMenu() {
+  const selected = deepElements()
+    .filter((el) => visible(el))
+    .filter((el) => el.getAttribute?.('role') === 'menuitemradio' && el.getAttribute?.('aria-checked') === 'true')
+    .map((el) => parseModelName(compactVisibleText(el)))
+    .filter(Boolean);
+  const unique = [...new Set(selected)];
+  return unique.length === 1 ? unique[0] : null;
 }
 
 async function clickUniqueVisibleOption(expected) {
   const options = [...new Set(visibleMenuItemsByExactText(expected))];
+  const preferred = options.filter((el) => ['menuitemradio', 'menuitem', 'option'].includes(String(el.getAttribute?.('role') || '')));
+  const targets = preferred.length ? preferred : options;
+  if (targets.length !== 1) return false;
+  targets[0].click();
+  await sleep(450);
+  return true;
+}
+
+async function clickReasoningHighOption() {
+  const options = deepElements()
+    .filter((el) => visible(el))
+    .filter((el) => ['menuitem', 'menuitemradio', 'option'].includes(String(el.getAttribute?.('role') || '')))
+    .filter((el) => /^(High|Cao)$/i.test(compactVisibleText(el)));
   if (options.length !== 1) return false;
   options[0].click();
   await sleep(450);
@@ -348,23 +377,55 @@ async function clickUniqueVisibleOption(expected) {
 
 async function precheckModelProfile() {
   let profile = readModelProfileState();
-  if (profile.exact) return profile;
   if (profile.blockedReason && /^BLOCKED_/.test(profile.blockedReason)) return profile;
-  const modelControls = modelCandidateControls();
+  let modelControls = modelCandidateControls();
   if (modelControls.length !== 1) return profile;
   modelControls[0].click();
   await sleep(500);
-  const selectedModel = await clickUniqueVisibleOption(REQUIRED_MODEL_NAME);
+  let selectedModelName = selectedModelNameFromOpenMenu();
+  if (selectedModelName !== REQUIRED_MODEL_NAME) {
+    const selectedModel = await clickUniqueVisibleOption(REQUIRED_MODEL_NAME);
+    if (!selectedModel) {
+      dismissMenu();
+      return { ...readModelProfileState(), modelProfileStatus: 'MODEL_PROFILE_BLOCKED', exact: false, modelReady: false, blockedReason: 'GPT_5_6_SOL_OPTION_NOT_UNIQUE' };
+    }
+    await sleep(350);
+    modelControls = modelCandidateControls();
+    if (modelControls.length !== 1) return readModelProfileState();
+    modelControls[0].click();
+    await sleep(400);
+    selectedModelName = selectedModelNameFromOpenMenu();
+  }
   dismissMenu();
-  if (!selectedModel) return readModelProfileState();
   const reasoningControls = reasoningCandidateControls();
-  if (reasoningControls.length !== 1) return readModelProfileState();
-  reasoningControls[0].click();
-  await sleep(500);
-  const selectedReasoning = await clickUniqueVisibleOption(REQUIRED_REASONING_EFFORT);
+  const reasoningEffort = reasoningControls.length === 1
+    ? parseReasoningEffort(reasoningControls[0].getAttribute?.('data-selected-reasoning-effort') || compactVisibleText(reasoningControls[0]))
+    : null;
+  if (selectedModelName === REQUIRED_MODEL_NAME && reasoningEffort !== REQUIRED_REASONING_EFFORT) {
+    if (modelControls.length !== 1) return readModelProfileState();
+    modelControls[0].click();
+    await sleep(400);
+    const selectedReasoning = await clickReasoningHighOption();
+    dismissMenu();
+    if (!selectedReasoning) return { ...readModelProfileState(), modelProfileStatus: 'MODEL_PROFILE_BLOCKED', exact: false, modelReady: false, blockedReason: 'REASONING_HIGH_OPTION_NOT_UNIQUE' };
+  }
+  modelControls = modelCandidateControls();
+  if (modelControls.length !== 1) return readModelProfileState();
+  modelControls[0].click();
+  await sleep(400);
+  selectedModelName = selectedModelNameFromOpenMenu();
   dismissMenu();
+  const finalReasoningControls = reasoningCandidateControls();
+  const finalReasoning = finalReasoningControls.length === 1
+    ? parseReasoningEffort(finalReasoningControls[0].getAttribute?.('data-selected-reasoning-effort') || compactVisibleText(finalReasoningControls[0]))
+    : null;
+  if (selectedModelName === REQUIRED_MODEL_NAME && finalReasoning === REQUIRED_REASONING_EFFORT) {
+    lastVerifiedModelProfile = { url: location.href, modelName: REQUIRED_MODEL_NAME, verifiedAt: new Date().toISOString() };
+  } else if (lastVerifiedModelProfile?.url === location.href) {
+    lastVerifiedModelProfile = null;
+  }
   profile = readModelProfileState();
-  return selectedReasoning ? profile : { ...profile, modelProfileStatus: 'MODEL_PROFILE_BLOCKED', exact: false, modelReady: false, blockedReason: 'REASONING_HIGH_OPTION_NOT_UNIQUE' };
+  return profile;
 }
 
 async function dispatch(text, options = {}) {

@@ -20,6 +20,15 @@ const NV02_PROJECT_PREFIX=(()=>{try{return new URL(NV02_HOME_URL).pathname.repla
 const NV02_PROJECT_ID=(()=>{const m=NV02_PROJECT_PREFIX.match(/^\/g\/(g-p-[a-z0-9]+)(?:-[^/]+)?$/i);return m?.[1]||''})();
 const NV02_PROJECT_ID_PREFIX=NV02_PROJECT_ID?`/g/${NV02_PROJECT_ID}`:'';
 const busy=new Set();
+let nv02VerifiedModelProfile=null;
+function applyNv02VerifiedModelProfile(ui){
+  const sameUrl=Boolean(nv02VerifiedModelProfile&&ui?.url&&nv02VerifiedModelProfile.url===ui.url);
+  const reasoningHigh=ui?.reasoningEffort==='High';
+  if(!sameUrl||!reasoningHigh)return ui;
+  const exact={...ui,modelProfileStatus:'MODEL_PROFILE_VERIFIED',modelName:'GPT-5.6 Sol',reasoningEffort:'High',modelReady:true,modelExact:true,verifiedAt:nv02VerifiedModelProfile.verifiedAt,blockedReason:null};
+  exact.uiPhase=exact.securityBlock?'BLOCKED':exact.uiBusy?'WORKING':exact.uiReady?'READY':'STALLED';
+  return exact;
+}
 
 function isNv02ProjectContext(url){
   if(!NV02_PROJECT_PREFIX)return false;
@@ -169,38 +178,59 @@ const UI_EXPR=`(()=>{
   };
 })()`;
 
-async function uiState(target){
+async function uiStateRaw(target){
   const p=await pageRpc(target);
   try{return (await p.call('Runtime.evaluate',{expression:UI_EXPR,returnByValue:true})).result.value;}
   finally{p.close();}
 }
+async function uiState(target){return applyNv02VerifiedModelProfile(await uiStateRaw(target));}
 async function evalPage(target,expression){
   const p=await pageRpc(target);
   try{return (await p.call('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true})).result.value;}
   finally{p.close();}
 }
 const MODEL_SELECTOR_CLICK_EXPR=`(()=>{const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};const controls=[...document.querySelectorAll('button,[role="button"]')].filter(e=>vis(e)&&(e.hasAttribute('data-selected-reasoning-effort')||/chọn mô hình chatgpt|choose.*model|model selector/i.test((e.getAttribute('aria-label')||'')+' '+(e.getAttribute('title')||''))));if(controls.length!==1)return{ok:false,status:'MODEL_CONTROL_NOT_EXACT_OR_UNIQUE',count:controls.length};controls[0].click();return{ok:true,status:'MODEL_SELECTOR_OPENED'}})()`;
-const MODEL_56_SOL_CLICK_EXPR=`(()=>{const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};const text=e=>String(e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim();const opts=[...document.querySelectorAll('button,[role="menuitem"],[role="option"]')].filter(e=>vis(e)&&/^(?:GPT-)?5\\.6\\s+Sol(?:\\s|$)/i.test(text(e)));if(opts.length!==1)return{ok:false,status:'GPT_5_6_SOL_OPTION_NOT_UNIQUE',count:opts.length,labels:opts.slice(0,5).map(text)};opts[0].click();return{ok:true,status:'GPT_5_6_SOL_SELECTED'}})()`;
-const REASONING_HIGH_CLICK_EXPR=`(()=>{const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};const text=e=>String(e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim();const opts=[...document.querySelectorAll('button,[role="menuitem"],[role="option"]')].filter(e=>vis(e)&&/^(?:High|Cao)(?:\\s|$)/i.test(text(e)));if(opts.length!==1)return{ok:false,status:'REASONING_HIGH_OPTION_NOT_UNIQUE',count:opts.length,labels:opts.slice(0,5).map(text)};opts[0].click();return{ok:true,status:'REASONING_HIGH_SELECTED'}})()`;
-async function ensureNv02ModelProfile(target){
-  let profile=await uiState(target);
-  if(profile?.securityBlock)throw new Error(profile.securityBlock);
-  if(profile?.modelExact===true)return profile;
+const MODEL_56_SOL_CLICK_EXPR=`(()=>{const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};const text=e=>String(e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim();const opts=[...document.querySelectorAll('button,[role="menuitem"],[role="menuitemradio"],[role="option"]')].filter(e=>vis(e)&&/^(?:GPT-)?5\\.6\\s+Sol(?:\\s|$)/i.test(text(e)));if(opts.length!==1)return{ok:false,status:'GPT_5_6_SOL_OPTION_NOT_UNIQUE',count:opts.length,labels:opts.slice(0,5).map(text)};opts[0].click();return{ok:true,status:'GPT_5_6_SOL_SELECTED'}})()`;
+const REASONING_HIGH_CLICK_EXPR=`(()=>{const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};const text=e=>String(e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim();const opts=[...document.querySelectorAll('button,[role="menuitem"],[role="menuitemradio"],[role="option"]')].filter(e=>vis(e)&&/^(?:High|Cao)(?:\\s|$)/i.test(text(e)));if(opts.length!==1)return{ok:false,status:'REASONING_HIGH_OPTION_NOT_UNIQUE',count:opts.length,labels:opts.slice(0,5).map(text)};opts[0].click();return{ok:true,status:'REASONING_HIGH_SELECTED'}})()`;
+const MODEL_SELECTED_EXPR=`(()=>{const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};const text=e=>String(e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim();const checked=[...document.querySelectorAll('[role="menuitemradio"][aria-checked="true"],[role="option"][aria-selected="true"]')].filter(vis);const labels=checked.map(text);const exact=labels.filter(x=>/^(?:GPT-)?5\\.6\\s+Sol$/i.test(x));return{ok:exact.length===1,modelName:exact.length===1?'GPT-5.6 Sol':null,checkedLabels:labels.slice(0,10)}})()`;
+const MODEL_MENU_DISMISS_EXPR=`(()=>{document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',bubbles:true}));return{ok:true}})()`;
+async function inspectNv02SelectedModel(target){
+  const raw=await uiStateRaw(target);
+  if(raw?.securityBlock)throw new Error(raw.securityBlock);
   const opened=await evalPage(target,MODEL_SELECTOR_CLICK_EXPR);
   if(!opened?.ok)throw new Error(opened?.status||'MODEL_SELECTOR_OPEN_FAILED');
-  await sleep(500);
-  const modelSelected=await evalPage(target,MODEL_56_SOL_CLICK_EXPR);
-  if(!modelSelected?.ok)throw new Error(modelSelected?.status||'GPT_5_6_SOL_SELECT_FAILED');
-  await sleep(700);
-  profile=await uiState(target);
+  await sleep(400);
+  const selected=await evalPage(target,MODEL_SELECTED_EXPR);
+  await evalPage(target,MODEL_MENU_DISMISS_EXPR).catch(()=>{});
+  const after=await uiStateRaw(target);
+  const modelName=selected?.modelName||null;
+  const reasoningEffort=after?.reasoningEffort||null;
+  const exact=modelName==='GPT-5.6 Sol'&&reasoningEffort==='High';
+  if(exact)nv02VerifiedModelProfile={url:after.url,verifiedAt:new Date().toISOString()};
+  else if(nv02VerifiedModelProfile?.url===after?.url)nv02VerifiedModelProfile=null;
+  return exact
+    ? applyNv02VerifiedModelProfile({...after,modelName,reasoningEffort})
+    : {...after,modelName,modelProfileStatus:'MODEL_PROFILE_BLOCKED',modelReady:false,modelExact:false,verifiedAt:null,blockedReason:modelName!=='GPT-5.6 Sol'?'MODEL_NAME_NOT_GPT_5_6_SOL':'REASONING_NOT_HIGH'};
+}
+async function ensureNv02ModelProfile(target){
+  let profile=await inspectNv02SelectedModel(target);
+  if(profile?.modelExact!==true&&profile?.modelName!=='GPT-5.6 Sol'){
+    const opened=await evalPage(target,MODEL_SELECTOR_CLICK_EXPR);
+    if(!opened?.ok)throw new Error(opened?.status||'MODEL_SELECTOR_OPEN_FAILED');
+    await sleep(400);
+    const modelSelected=await evalPage(target,MODEL_56_SOL_CLICK_EXPR);
+    if(!modelSelected?.ok)throw new Error(modelSelected?.status||'GPT_5_6_SOL_SELECT_FAILED');
+    await sleep(650);
+    profile=await inspectNv02SelectedModel(target);
+  }
   if(profile?.modelName==='GPT-5.6 Sol'&&profile?.reasoningEffort!=='High'){
     const reasoningOpened=await evalPage(target,MODEL_SELECTOR_CLICK_EXPR);
     if(!reasoningOpened?.ok)throw new Error(reasoningOpened?.status||'REASONING_SELECTOR_OPEN_FAILED');
-    await sleep(500);
+    await sleep(400);
     const reasoningSelected=await evalPage(target,REASONING_HIGH_CLICK_EXPR);
     if(!reasoningSelected?.ok)throw new Error(reasoningSelected?.status||'REASONING_HIGH_SELECT_FAILED');
-    await sleep(700);
-    profile=await uiState(target);
+    await sleep(650);
+    profile=await inspectNv02SelectedModel(target);
   }
   if(profile?.modelExact!==true)throw new Error('MODEL_PROFILE_BLOCKED:'+String(profile?.blockedReason||'UNVERIFIED'));
   await continuityEvent('MODEL_PROFILE_VERIFIED',{modelName:profile.modelName,reasoningEffort:profile.reasoningEffort,verifiedAt:profile.verifiedAt||null});
