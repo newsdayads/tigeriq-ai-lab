@@ -2,6 +2,9 @@ import fs from 'node:fs';
 import { RESOLUTION_MATRIX } from './resolution-matrix.mjs';
 import { generateRepairHandoff } from './repair-handoff.mjs';
 
+import { spawnSync } from 'node:child_process';
+import path from 'node:path';
+
 async function selectWorker() {
   const workers = [
     { url: 'http://127.0.0.1:8796', status: 'READY' },
@@ -9,7 +12,7 @@ async function selectWorker() {
   ];
   for (const w of workers) {
     try {
-      const res = await fetch(`${w.url}/health`).catch(() => ({ ok: true }));
+      const res = await fetch(`${w.url}/health`);
       if (res.ok) return w.url;
     } catch (e) {}
   }
@@ -23,6 +26,13 @@ export async function runAudit(targetOverride) {
 
   for (const res of RESOLUTION_MATRIX) {
     try {
+      const evidenceDir = path.join('Evidence', `chrome-devtools-mcp-${res.name.toLowerCase()}`);
+      const smokePath = path.resolve('scripts/chrome-devtools-mcp-smoke.mjs');
+      const child = spawnSync('node', [smokePath, target, evidenceDir], { encoding: 'utf8' });
+      const passed = child.status === 0;
+      if (!passed) {
+        throw new Error(`Smoke test failed for resolution ${res.name} with exit code ${child.status}`);
+      }
       results.push({ resolution: res.name, pass: true, width: res.width, height: res.height });
     } catch (err) {
       failures.push({ resolution: res.name, error: err.message });
