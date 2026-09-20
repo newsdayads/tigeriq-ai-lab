@@ -677,6 +677,17 @@ async function handleCoreContinuousRecoveryAndAutoDispatch() {
   return { isIdleWithBacklog, backlogCount, activeJobsCount };
 }
 
+async function handleHeartbeatOrAckFailureWithRetry(job, errorFn) {
+  const maxRetries = 1;
+  job.retryCount = (job.retryCount || 0) + 1;
+  if (job.retryCount <= maxRetries) {
+    await event('JOB_RETRY_ATTEMPT', { jobId: job.id, retryCount: job.retryCount });
+    return true;
+  }
+  if (typeof errorFn === 'function') errorFn(job);
+  return false;
+}
+
 async function loop(){
   while(!stop){const t=Date.now();
     try{
