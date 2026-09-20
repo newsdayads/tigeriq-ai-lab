@@ -78,6 +78,11 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("ROTATE_MODEL_PROFILE_NOT_READY");
     expect(source).toContain("freshUi?.modelReady!==true");
     expect(source).toContain("NV02_HOME_URL");
+    expect(source).toContain("projectNewChatExpr");
+    expect(source).toContain("recoverNv02ProjectContext");
+    expect(source).toContain("Trò chuyện mới trong TigerIQ AI Lab");
+    expect(source).toContain("New chat in TigerIQ AI Lab");
+    expect(source).toContain("PROJECT_NEW_CHAT_CLICKED");
     expect(source).toContain("NEW_CHAT_PROJECT_CONTEXT_RECOVERED");
     expect(source).toContain("Page.navigate',{url:NV02_HOME_URL}");
     expect(source).toContain("NV02_PROJECT_PREFIX");
