@@ -90,10 +90,12 @@ export function handleIdleWithBacklogState({ status, backlogCount, activeJobsCou
 }
 
 export function handleHeartbeatOrAckFailure({ retryCount = 0, maxRetries = 1 } = {}) {
-  if (retryCount >= maxRetries) {
+  const currentRetry = Number(retryCount) || 0;
+  const maxAllowed = Number(maxRetries) || 1;
+  if (currentRetry >= maxAllowed) {
     return { action: 'terminate', retryable: false, error: 'HEARTBEAT_OR_ACK_FAILURE_EXCEEDED' };
   }
-  return { action: 'retry', retryable: true, nextRetryCount: retryCount + 1 };
+  return { action: 'retry', retryable: true, nextRetryCount: currentRetry + 1 };
 }
 
 export function executeCoreWorkItemLifecycle({ workItem, preflightFn, repairFn, reviewFn, maxRepairCycles = 3, retryTracker = new Set() } = {}) {
