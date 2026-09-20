@@ -251,8 +251,13 @@ async function archiveChat(target){
     const menuPoint=(await p.call('Runtime.evaluate',{expression:archiveMenuPointExpr(),awaitPromise:true,returnByValue:true,userGesture:true},10000)).result.value;
     if(!menuPoint?.ok)return menuPoint||{ok:false,status:'ARCHIVE_MENU_POINT_MISSING'};
     await cdpMouseClick(p,menuPoint);
-    await sleep(500);
-    const archivePoint=(await p.call('Runtime.evaluate',{expression:archiveItemPointExpr(),returnByValue:true},6000)).result.value;
+    let archivePoint=null;
+    const actionDeadline=Date.now()+4000;
+    while(Date.now()<actionDeadline){
+      await sleep(200);
+      archivePoint=(await p.call('Runtime.evaluate',{expression:archiveItemPointExpr(),returnByValue:true},3000)).result.value;
+      if(archivePoint?.ok)break;
+    }
     if(!archivePoint?.ok){
       await p.call('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27,nativeVirtualKeyCode:27}).catch(()=>{});
       await p.call('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27,nativeVirtualKeyCode:27}).catch(()=>{});
