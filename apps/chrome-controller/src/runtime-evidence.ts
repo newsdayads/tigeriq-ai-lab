@@ -17,6 +17,10 @@ export interface EvidenceWorkerState {
 
 const restoredReopenFlags = new Set<string>();
 
+export function clearRestoredReopenFlags(): void {
+  restoredReopenFlags.clear();
+}
+
 export function watchAndRestoreModelProfile(workerId: WorkerId, hb: EvidenceWorkerState['lastHeartbeat'], workItemId: string | undefined, dispatchFn: (payload: { modelProfile: string; reasoningEffort: string; workItemId?: string }) => void): boolean {
   if (!hb) return false;
   const statusStr = String(hb.modelProfileStatus || '').toUpperCase();
