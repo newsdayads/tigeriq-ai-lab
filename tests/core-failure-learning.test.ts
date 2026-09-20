@@ -15,6 +15,45 @@ const ev=(seq:number,overrides:any={})=>({
   data:{kind:'rate_limit',message:'HTTP 429 request 123',...overrides}
 });
 
+import { processFailure } from '../apps/tigeriq-core/repair-loop.mjs';
+
+describe('Repair Loop and Failure Processing', () => {
+  it('handles CI repair (rawDecision = "CI_FAIL")', () => {
+    const res = processFailure('fail-ci-1', 'CI_FAIL');
+    expect(res.status).toBe('ACTION');
+    expect(res.decision).toBe('CI_FAIL');
+    expect(res.action).toBe('FIX_CI_AND_CREATE_PR');
+  });
+
+  it('handles review changes (rawDecision = "REVIEW_CHANGES")', () => {
+    const res = processFailure('fail-rev-1', 'REVIEW_CHANGES');
+    expect(res.status).toBe('ACTION');
+    expect(res.decision).toBe('REVIEW_CHANGES');
+    expect(res.action).toBe('ADDRESS_REVIEW_AND_UPDATE_PR');
+  });
+
+  it('handles provider failure/failover (rawDecision = "FAIL")', () => {
+    const res = processFailure('fail-prov-1', 'FAIL');
+    expect(res.status).toBe('ACTION');
+    expect(res.decision).toBe('FAIL');
+    expect(res.action).toBe('FAILOVER_AND_CREATE_PR');
+  });
+
+  it('handles hard blocker (rawDecision = "STALL")', () => {
+    const res = processFailure('fail-stall-1', 'STALL');
+    expect(res).toEqual({ status: 'BLOCKED', reason: 'STALL_DECISION' });
+  });
+
+  it('handles retry exhaustion after the max retry count, asserting the BLOCKED response', () => {
+    const id = 'fail-exhaust-1';
+    expect(processFailure(id, 'FAIL').status).toBe('ACTION'); // retry 1
+    expect(processFailure(id, 'FAIL').status).toBe('NOOP'); // retry 2 (duplicate PR prevention)
+    expect(processFailure(id, 'FAIL').status).toBe('NOOP'); // retry 3
+    const exhausted = processFailure(id, 'FAIL'); // retry 4 (> 3)
+    expect(exhausted).toEqual({ status: 'BLOCKED' });
+  });
+});
+
 describe('Learn From Failure',()=>{
   it('normalizes equivalent verified failures to the same deterministic signature',()=>{
     const a=normalizeFailureEvent(ev(1));
