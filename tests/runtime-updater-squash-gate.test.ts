@@ -38,6 +38,13 @@ describe('runtime updater squash merge gate resolution',()=>{
     expect(restartCore).toContain('[int]$newPid-ne[int]$previousPid');
   });
 
+  it('enforces clean runtime checkouts and fail-closed checks separately from general dirty worktrees with SHA rollback',()=>{
+    const src=readFileSync('scripts/tigeriq-core/update-core-runtime.ps1','utf8');
+    expect(src).toContain('BLOCKED_DIRTY_RUNTIME');
+    expect(src).toContain('checkout -B core-runtime-sync origin/main');
+    expect(src).toContain('git -C $repo checkout $local');
+  });
+
   it('self-syncs every current/future web-control asset plus workforce registry before launch',()=>{
     const launcher=readFileSync('scripts/tigeriq-core/run-web-control-bundle.ps1','utf8');
     expect(launcher).toContain("$sourceRoot='D:\\TigerIQ\\Workspace\\tigeriq-ai-lab\\apps\\tigeriq-core'");
