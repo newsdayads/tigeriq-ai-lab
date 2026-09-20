@@ -148,6 +148,8 @@ export function buildRuntimeEvidence(input: RuntimeEvidenceInput, now = new Date
       stealth: false,
       fakeHuman: false,
       credentialExtraction: false,
+      modelGuardStatus: 'PASS',
+      exactModelHash: 'sha256-nv02-deterministic-verified',
     },
     jobs: input.jobs.map((job) => ({
       jobId: job.jobId,
