@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import {activeProviderCooldownIds,applyCompactEdits,assertPrOpenState,buildLocalFileContext,classifyAiFailure,gateFailureIssues,invokeJsonWithFailover,isResourceTransientError,preserveGenerationPrompt,recoverAfterCodingRestart,resourceWaitPlan,restartRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,validateCompactEdits} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {activeProviderCooldownIds,applyCompactEdits,assertPrOpenState,buildLocalFileContext,classifyAiFailure,codingPathsOverlap,gateFailureIssues,invokeJsonWithFailover,isResourceTransientError,preserveGenerationPrompt,recoverAfterCodingRestart,resourceWaitPlan,restartRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,validateCompactEdits} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError,parseJsonObject} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 const nv11={id:'NV11',provider:'fake',model:'a'};
@@ -266,6 +266,17 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
     assert.strictEqual(isResourceTransientError(new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE')),true);
     assert.strictEqual(isResourceTransientError(new Error('POLICY_DENIED')),false);
     assert.strictEqual(isResourceTransientError(new Error('CODING_SCOPE_VIOLATION')),false);
+  });
+
+  await t.test('scope leases serialize overlapping mutations but allow independent files',()=>{
+    assert.strictEqual(codingPathsOverlap(['apps/a.mjs'],['apps/a.mjs']),true);
+    assert.strictEqual(codingPathsOverlap(['apps/core/'],['apps/core/a.mjs']),true);
+    assert.strictEqual(codingPathsOverlap(['apps/a.mjs'],['apps/b.mjs']),false);
+  });
+
+  await t.test('temporary all-provider busy is a resource wait condition',()=>{
+    const e=new Error('AI_RESOURCES_BUSY');e.code='AI_RESOURCES_BUSY';
+    assert.strictEqual(isResourceTransientError(e),true);
   });
 
   await t.test('existing branch and PR are resumable identity',()=>{
