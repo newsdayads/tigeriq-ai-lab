@@ -664,7 +664,7 @@ async function handleHeartbeatOrAckFailureWithRetry(job, errorFn) {
 async function handleCoreContinuousRecoveryAndAutoDispatch() {
   const backlogCount = (await pool.query("select count(*)::int as cnt from tigeriq_jobs where status='queued'")).rows[0]?.cnt || 0;
   const activeJobsCount = active.size;
-  const isIdleWithBacklog = handleIdleWithBacklogState({ status: activeJobsCount === 0 ? 'IDLE' : 'BUSY', backlogCount, activeJobsCount });
+  const isIdleWithBacklog = activeJobsCount === 0 && backlogCount > 0;
   if (isIdleWithBacklog) {
     await event('IDLE_WITH_BACKLOG_DETECTED', { backlogCount, activeJobsCount });
     const nextJob = await claimJob();
