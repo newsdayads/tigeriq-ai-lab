@@ -153,7 +153,8 @@ render = function renderTruth(d) {
 
 async function pollWebHealth() {
   try {
-    const response = await fetch((window.TIGERIQ_CONFIG && window.TIGERIQ_CONFIG.healthUrl) || '/health',{cache:'no-store'});
+    const healthEndpoint = (window.TIGERIQ_CONFIG && window.TIGERIQ_CONFIG.healthUrl) || '/health';
+    const response = await fetch(healthEndpoint,{cache:'no-store'});
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     latestWebHealth = await response.json();
     latestWebHealthError = null;
