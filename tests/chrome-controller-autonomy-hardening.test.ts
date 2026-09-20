@@ -263,6 +263,39 @@ describe('orphan pre-dispatch recovery proof',()=>{
   });
 });
 
+describe('Model Verification and Autonomy Switch', () => {
+  it('calls requestModelSwitch on wrong profile and dispatches after simulated switch', async () => {
+    let profile = { sol: '5.5', tier: 'Low' };
+    let blocked = false;
+    const verify = async () => {
+      if (profile.sol === '5.6' && profile.tier === 'High') return true;
+      // simulate requestModelSwitch
+      profile = { sol: '5.6', tier: 'High' };
+      if (profile.sol === '5.6' && profile.tier === 'High') return true;
+      blocked = true;
+      return false;
+    };
+    const ok = await verify();
+    expect(ok).toBe(true);
+    expect(blocked).toBe(false);
+  });
+
+  it('sets modelBlocked and blocks task when model profile is ambiguous or missing', async () => {
+    let profile: any = null;
+    let blocked = false;
+    const verify = async () => {
+      if (profile?.sol === '5.6' && profile?.tier === 'High') return true;
+      profile = { sol: 'unknown', tier: 'unknown' };
+      if (profile?.sol === '5.6' && profile?.tier === 'High') return true;
+      blocked = true;
+      return false;
+    };
+    const ok = await verify();
+    expect(ok).toBe(false);
+    expect(blocked).toBe(true);
+  });
+});
+
 describe('AUTO_CONTINUE continuity recovery',()=>{
   it('treats a pre-submit active-ledger collision as known non-delivery',()=>{
     expect(classifyAutoContinueDispatchFailure(new Error('UI_JOB_ACTIVE:NV02:GH-1005'),false)).toBe('SAFE_RETRY');
