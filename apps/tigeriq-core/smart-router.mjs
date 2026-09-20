@@ -8,6 +8,12 @@ const FREE_TIERS = new Set(['FREE','LOCAL','ZERO']);
 function resourcePart(value, fallback) {
   return String(value||fallback).trim().toLowerCase().replace(/[^a-z0-9._-]+/g,'-').replace(/^-+|-+$/g,'')||fallback;
 }
+export function isApiDoctorEligibleResource(resource) {
+  const emp = String(resource?.employee_id || resource?.employeeId || '');
+  const prov = String(resource?.provider || '').toLowerCase();
+  return emp === 'NV10' || prov === 'ollama';
+}
+
 export function createResourceId(provider, modelOrAccount='unknown', account, runtime='core') {
   const p=resourcePart(provider,'unknown');
   if(account===undefined)return `res:${p}:${resourcePart(modelOrAccount,'default')}`;
