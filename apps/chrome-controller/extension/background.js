@@ -422,7 +422,7 @@ async function tickWorker(workerId) {
                 const text = (modelSelector?.textContent || '') + ' ' + (document.body?.innerText || '');
                 const exactGpt56Sol = /GPT-5\.6\s+Sol/i.test(text);
                 const highReasoning = /High/i.test(text);
-                return { exact: exactGpt56Sol && highReasoning, model: exactGpt56Sol ? 'GPT-5.6 Sol' : null, profile: highReasoning ? 'High' : null };
+                return { exact: exactGpt56Sol && highReasoning, model: exactGpt56Sol ? 'GPT-5.6 Sol' : null, profile: highReasoning ? 'High' : null, boundedDomModelPrecheck: true };
               }
             });
             const verification = results?.[0]?.result;
