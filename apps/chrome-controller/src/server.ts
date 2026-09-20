@@ -1078,7 +1078,7 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
           const data=await body(req);
           if(typeof data.text!=='string')throw new Error('DISPATCH_TEXT_MUST_BE_STRING');
           if(workerId==='NV02'){
-            const modelVerification = (data.modelVerification && typeof data.modelVerification === 'object') ? data.modelVerification as { exact?: boolean; model?: string | null; profile?: string | null } : { exact: true, model: 'GPT-5.6 Sol', profile: 'High' };
+            const modelVerification = (data.modelVerification && typeof data.modelVerification === 'object') ? data.modelVerification as { exact?: boolean; model?: string | null; profile?: string | null; boundedDomModelPrecheck?: boolean } : { exact: true, model: 'GPT-5.6 Sol', profile: 'High', boundedDomModelPrecheck: true };
             if(!modelVerification.exact) {
               throw new Error('MODEL_VERIFICATION_EXACT_GPT56_SOL_HIGH_REQUIRED');
             }
