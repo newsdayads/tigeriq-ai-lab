@@ -120,19 +120,24 @@ function Restart-UpdaterAfterExit(){
 }
 while($true){
   $locked=$false
+  $isolatedPath=$null
   try{
     $locked=$mutex.WaitOne(0);if(-not $locked){Start-Sleep -Seconds $IntervalSeconds;continue}
     $watchdog=Runtime-Watchdog
     if(-not(Test-Path -LiteralPath $tokenPath)){Save-State @{result='GITHUB_TOKEN_MISSING';watchdog=$watchdog};continue}
     $env:GH_TOKEN=[IO.File]::ReadAllText($tokenPath).Trim();if(-not $env:GH_TOKEN){Save-State @{result='GITHUB_TOKEN_EMPTY';watchdog=$watchdog};continue}
-    if((git -C $repo status --porcelain)){Save-State @{result='BLOCKED_DIRTY_WORKTREE';watchdog=$watchdog};continue}
+    
+    $isolatedPath=(node -e "import('./scripts/tigeriq-core/runtime-isolation.mjs').then(m => console.log(m.getIsolatedPath())).catch(e => { console.error(e.message); process.exit(1); })")
+    if($LASTEXITCODE -ne 0 -or -not $isolatedPath){throw 'ISOLATED_CHECKOUT_FAILED'}
+    $isolatedPath=$isolatedPath.Trim()
+
     git -C $repo fetch origin main --prune|Out-Null;if($LASTEXITCODE -ne 0){throw 'FETCH_FAILED'}
-    $local=Head 'HEAD';$remote=Head 'origin/main';if($local -eq $remote){Save-State @{result='NO_CHANGE';installedSha=$local;watchdog=$watchdog};continue}
+    $local=Head 'HEAD';$remote=Head 'origin/main';if($local -eq $remote){Save-State @{result='NO_CHANGE';installedSha=$local;watchdog=$watchdog};node -e "import('./scripts/tigeriq-core/runtime-isolation.mjs').then(m => m.cleanup())";continue}
     $gateSha=Resolve-GateSha $remote
-    if(-not $gateSha){Save-State @{result='WAIT_GATES';candidateSha=$remote;watchdog=$watchdog};continue}
-    [string[]]$changed=@(git -C $repo diff --name-only $local $remote);$impact=Get-Impact $changed
+    if(-not $gateSha){Save-State @{result='WAIT_GATES';candidateSha=$remote;watchdog=$watchdog};node -e "import('./scripts/tigeriq-core/runtime-isolation.mjs').then(m => m.cleanup())";continue}
+    [string[]]$changed=@(git -C $isolatedPath diff --name-only $local $remote);$impact=Get-Impact $changed
     $oldCore=HealthInfo 'http://100.97.23.87:8795/health';$oldPid=if($oldCore){[int]$oldCore.pid}else{$null}
-    git -C $repo merge --ff-only origin/main|Out-Null;if($LASTEXITCODE -ne 0){throw 'FAST_FORWARD_FAILED'}
+    
     $coreHealth=$oldCore;$webHealth=$null;$codingHealth=$null
     try{
       if($impact.core){$coreHealth=Restart-Core $oldPid;if(-not $coreHealth){throw 'CORE_HEALTH_OR_PID_FAILED'}}
@@ -140,7 +145,6 @@ while($true){
       if($impact.web){Sync-WebRuntime;$webHealth=Restart-ServiceTask $webTask 'http://100.97.23.87:8796/health' $webPath;if(-not $webHealth){throw 'WEB_CONTROL_HEALTH_OR_PID_FAILED'}}
       if($impact.coding){$codingHealth=Restart-ServiceTask $codingTask 'http://100.97.23.87:8797/health' $codingPath;if(-not $codingHealth){throw 'CODING_LANE_HEALTH_OR_PID_FAILED'}}
     }catch{
-      git -C $repo reset --hard $local|Out-Null
       if($impact.core){$null=Restart-Core $null}
       if($impact.web -and (Task-Exists $webTask)){Sync-WebRuntime;$null=Restart-ServiceTask $webTask 'http://100.97.23.87:8796/health' $webPath}
       if($impact.coding -and (Task-Exists $codingTask)){$null=Restart-ServiceTask $codingTask 'http://100.97.23.87:8797/health' $codingPath}
@@ -148,8 +152,12 @@ while($true){
     }
     $newCore=HealthInfo 'http://100.97.23.87:8795/health'
     Save-State @{result='UPDATED';installedSha=$remote;gateSha=$gateSha;previousSha=$local;changedPaths=$changed;impact=$impact;corePid=if($newCore){[int]$newCore.pid}else{$null};previousCorePid=$oldPid;coreRestarted=$impact.core;webRestarted=$impact.web;codingRestarted=$impact.coding;webPid=if($webHealth){$webHealth.pid}else{$null};codingPid=if($codingHealth){$codingHealth.pid}else{$null};watchdog=$watchdog}
+    node -e "import('./scripts/tigeriq-core/runtime-isolation.mjs').then(m => m.cleanup())"
     if($impact.updater){Restart-UpdaterAfterExit;exit 75}
-  }catch{Save-State @{result='FAILED';error=$_.Exception.Message;watchdog=$watchdog}}
+  }catch{
+    Save-State @{result='FAILED';error=$_.Exception.Message;watchdog=$watchdog}
+    try{ node -e "import('./scripts/tigeriq-core/runtime-isolation.mjs').then(m => m.cleanup())" }catch{}
+  }
   finally{Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue;if($locked){$mutex.ReleaseMutex()|Out-Null}}
   Start-Sleep -Seconds $IntervalSeconds
 }
