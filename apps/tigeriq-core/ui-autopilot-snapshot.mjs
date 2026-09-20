@@ -106,7 +106,9 @@ export async function readPreviousJobIdFromController({fetchImpl=fetch,stateUrl=
   return /^GH-\d+$/.test(id)?id:undefined;
 }
 
-export async function buildUiAutopilotSnapshot({fetchImpl=fetch,token='',owner=DEFAULT_OWNER,repo=DEFAULT_REPO,previousJobId}={}){
+export function projectCoreSelectedWorkItem(workItem){return{workItemId:workItem?.id||'CORE-DEFAULT',status:workItem?.status==='running'?'IN_PROGRESS':(workItem?.status?.toUpperCase()||'QUEUED'),kind:workItem?.kind||'coding',issueRef:workItem?.issueRef||null,pr:workItem?.pr||null,priority:workItem?.priority||'P0',stage:workItem?.stage||'running',assignedExecutor:workItem?.assignedExecutor||null};}
+
+export async function buildUiAutopilotSnapshot({fetchImpl=fetch,token='',owner=DEFAULT_OWNER,repo=DEFAULT_REPO,previousJobId}={}){ 
   const observedAt=new Date().toISOString();
   let previousJob;
   let previousNumber;
