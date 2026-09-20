@@ -390,6 +390,16 @@ async function maybeNv02Continuity(w,target,ui){
     }
     return;
   }
+  if(phase==='READY'&&waitingEvidence&&!active&&state.nextContinueAt-now>15000){
+    state={...state,nextContinueAt:now+5000};saveNv02Continuity(state);
+    await continuityEvent('WAITING_EVIDENCE_CONTINUE_ACCELERATED',{nextContinueAt:state.nextContinueAt,maxDelayMs:15000});
+    return;
+  }
+  if(phase==='READY'&&!waitingEvidence&&!active&&state.nextContinueAt-now>30000){
+    state={...state,nextContinueAt:now+20000};saveNv02Continuity(state);
+    await continuityEvent('IDLE_CONTINUE_ACCELERATED',{nextContinueAt:state.nextContinueAt,maxDelayMs:30000});
+    return;
+  }
   if(now<state.nextContinueAt)return;
   if(active){
     state={...state,stalledChecks:0,workingSignature:'',workingUnchangedChecks:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
