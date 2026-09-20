@@ -5,6 +5,10 @@ const DEFAULT_REPO='tigeriq-ai-lab';
 const DEFAULT_CODING_URL='http://100.97.23.87:8797';
 const DEFAULT_INTERVAL_MS=120000;
 const DEFAULT_CONCURRENCY_CAP=3;
+
+export function getActiveCodingExecutions(pool) {
+  return Promise.resolve([]);
+}
 const MAX_AUTO_RETRIES=2;
 const PROVIDER_RETRY_BASE_MS=60000;
 
@@ -307,6 +311,16 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
     }
   }
   return {progress,results};
+}
+
+export async function checkCodingParallelismCapacity({pool,concurrencyCap=DEFAULT_CONCURRENCY_CAP,activeTasks=[]}={}) {
+  const activeCount = Array.isArray(activeTasks) ? activeTasks.length : 0;
+  return {
+    allowed: activeCount < concurrencyCap,
+    activeCount,
+    concurrencyCap,
+    freeSlots: Math.max(0, concurrencyCap - activeCount)
+  };
 }
 
 export function startGithubCodingIntake({databaseUrl=process.env.DATABASE_URL,fetchImpl=fetch,owner=process.env.TIGERIQ_GITHUB_OWNER||DEFAULT_OWNER,repo=process.env.TIGERIQ_GITHUB_REPO||DEFAULT_REPO,token=process.env.TIGERIQ_GITHUB_TOKEN||process.env.GITHUB_TOKEN||'',codingLaneUrl=process.env.TIGERIQ_CODING_LANE_URL||DEFAULT_CODING_URL,intervalMs=Number(process.env.TIGERIQ_GITHUB_INTAKE_MS||DEFAULT_INTERVAL_MS),initialDelayMs=20000}={}){
