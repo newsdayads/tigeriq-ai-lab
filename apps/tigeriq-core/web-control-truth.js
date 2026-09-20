@@ -167,3 +167,4 @@ pollWebHealth();
 const _webHealthInterval = setInterval(pollWebHealth, 2000);
 window.addEventListener('beforeunload', () => clearInterval(_webHealthInterval));
 window.addEventListener('focus', pollWebHealth);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) pollWebHealth(); });
