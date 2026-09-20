@@ -344,15 +344,17 @@ async function checkpointNv02(target){
 }
 async function rotateNv02Chat(target,state,now){
   const receipt=await checkpointNv02(target);
+  const checkpointed={...state,dispatchesInChat:0,chatStartedAt:now,stalledChecks:0,lastPhase:'READY',nextRefreshAt:nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS)};
+  saveNv02Continuity(checkpointed);
   return withNv02Mutation(async()=>{
     const archived=await archiveChat(target);if(!archived?.ok)throw new Error(archived?.status||'ROTATE_ARCHIVE_FAILED');
     const opened=await newChat(target);if(!opened?.ok)throw new Error(opened?.status||'ROTATE_NEW_CHAT_FAILED');
     const freshUi=await uiState(target);
     if(freshUi?.securityBlock)throw new Error(freshUi.securityBlock);
     if(freshUi?.modelReady!==true||freshUi?.uiPhase!=='READY')throw new Error('ROTATE_MODEL_PROFILE_NOT_READY');
-    const next={...state,dispatchesInChat:0,chatStartedAt:now,stalledChecks:0,lastPhase:'READY'};
+    const next={...checkpointed,lastPhase:'READY'};
     saveNv02Continuity(next);
-    await continuityEvent('CHAT_ROTATED',{receiptRef:receipt.receiptRef,checkpointRef:receipt.checkpointRef,archiveStatus:archived.status,newChatStatus:opened.status});
+    await continuityEvent('CHAT_ROTATED',{receiptRef:receipt.receiptRef,checkpointRef:receipt.checkpointRef,archiveStatus:archived.status,newChatStatus:opened.status,nextRefreshAt:next.nextRefreshAt});
     return dispatchNaturalContinueLocked(target,next,now);
   },'CHAT_ROTATION',60000);
 }
@@ -385,8 +387,17 @@ async function maybeNv02Continuity(w,target,ui){
   if(phase==='READY'&&!active&&!waitingEvidence&&now>=state.nextContinueAt&&shouldRotateChat(state,now)){
     try{await rotateNv02Chat(target,state,now);}
     catch(error){
-      state={...state,stalledChecks:Math.min(MAX_STALLED_CHECKS,state.stalledChecks+1),nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
-      await continuityEvent('CHAT_ROTATE_FAILED',{error:String(error?.message||error),stalledChecks:state.stalledChecks});
+      const latest=loadNv02Continuity();
+      let recoveryStatus=null;
+      try{
+        const raw=await uiState(target);
+        if(!isNv02ProjectContext(raw?.url)){
+          const recovered=await withNv02Mutation(()=>recoverNv02ProjectContext(target),'PROJECT_CONTEXT_RECOVERY_AFTER_ROTATE_FAILED');
+          recoveryStatus=recovered?.status||null;
+        }
+      }catch(recoveryError){recoveryStatus='FAILED:'+String(recoveryError?.message||recoveryError);}
+      state={...latest,dispatchesInChat:0,chatStartedAt:now,stalledChecks:Math.min(MAX_STALLED_CHECKS,Number(latest.stalledChecks||0)+1),nextRefreshAt:nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS),nextContinueAt:now+5000};saveNv02Continuity(state);
+      await continuityEvent('CHAT_ROTATE_FAILED',{error:String(error?.message||error),stalledChecks:state.stalledChecks,recoveryStatus,nextContinueAt:state.nextContinueAt,nextRefreshAt:state.nextRefreshAt});
     }
     return;
   }
