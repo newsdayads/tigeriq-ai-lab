@@ -7,7 +7,7 @@ export interface UnifiedWorkItem {
   assignedExecutor: string | null;
   stage: string;
   priority: number;
-  lease: any;
+  lease: unknown;
   blockers: string[];
   evidenceRefs: string[];
   nextAction: string | null;
