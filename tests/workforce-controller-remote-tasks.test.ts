@@ -94,6 +94,10 @@ describe('Workforce Controller remote task API', () => {
     const duplicate = await fetch(`${app.url}/api/node/tasks/result`, { method: 'POST', headers: nodeHeaders(), body: JSON.stringify(envelope) });
     expect(duplicate.status).toBe(200);
     expect((await json(duplicate)).result.conclusion).toBe('remote done');
+
+    const heartbeat = await fetch(`${app.url}/api/node/heartbeat`, { method: 'POST', headers: nodeHeaders() });
+    expect(heartbeat.status).toBe(200);
+    expect((await json(heartbeat)).healthy).toBe(true);
   });
 
   it('rejects malformed task contracts instead of enqueueing ambiguous work', async () => {
