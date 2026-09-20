@@ -163,5 +163,17 @@ describe('API campaign runner and core lifecycle integration',()=>{
       expect(res.action).toBe('fail');
       expect(res.code).toBe('WATSONX_SHAPE_MISMATCH');
     });
+
+    it('performs exactly 3 attempts before final failure when empty', () => {
+      let attempt = 0;
+      const res = watsonxRetryDecision({ results: [{ generated_text: '' }] }, attempt, 3);
+      expect(res.action).toBe('retry');
+      attempt = 1;
+      expect(watsonxRetryDecision({ results: [{ generated_text: '' }] }, attempt, 3).action).toBe('retry');
+      attempt = 2;
+      expect(watsonxRetryDecision({ results: [{ generated_text: '' }] }, attempt, 3).action).toBe('retry');
+      attempt = 3;
+      expect(watsonxRetryDecision({ results: [{ generated_text: '' }] }, attempt, 3).action).toBe('fail');
+    });
   });
 });
