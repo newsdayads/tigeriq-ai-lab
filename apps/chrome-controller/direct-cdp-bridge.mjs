@@ -126,6 +126,7 @@ const UI_EXPR=`(()=>{
     ? ['#prompt-textarea','div[contenteditable="true"][data-lexical-editor="true"]','[contenteditable="true"][role="textbox"]','textarea']
     : ['rich-textarea .ql-editor[contenteditable="true"]','.ql-editor[contenteditable="true"]','[contenteditable="true"][role="textbox"]','textarea'];
   const composer=sels.flatMap(s=>[...document.querySelectorAll(s)]).find(vis)||null;
+  const projectDraftReady=location.hostname==='chatgpt.com'&&[...document.querySelectorAll('button,[role="button"]')].some(e=>vis(e)&&/(thay đổi dự án|change project)\s*:\s*tigeriq ai lab/i.test((e.getAttribute('aria-label')||'').trim()));
   const authRequired=[...document.querySelectorAll('button,a')].some(e=>vis(e)&&/^(đăng nhập|sign in|log in)$/i.test((e.textContent||'').trim()));
   const stop=[...document.querySelectorAll('button[data-testid="stop-button"],button[aria-label*="Stop" i],button[aria-label*="Dừng" i]')].find(vis)||null;
   const activityBusy=[...document.querySelectorAll('button,[role="button"],[aria-live]')].find(e=>vis(e)&&/(^|\\s)(đang suy nghĩ|thinking|generating|đang tạo)(\\s|$)/i.test((e.getAttribute('aria-label')||e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim()))||null;
@@ -149,7 +150,7 @@ const UI_EXPR=`(()=>{
   return {
     uiReady,uiPhase,composerReady:Boolean(composer),sendReady:Boolean(send),stopVisible:Boolean(stop),activityBusyVisible:Boolean(activityBusy),
     scrollToBottomVisible:Boolean(scroll),authRequired,uiBusy,securityBlock,
-    modelControlPresent:Boolean(modelControl),reasoningEffort,modelReady,activitySignature,
+    modelControlPresent:Boolean(modelControl),reasoningEffort,modelReady,activitySignature,projectDraftReady,
     title:document.title,url:location.href,readyState:document.readyState,bodyChildren:document.body?.children?.length||0
   };
 })()`;
@@ -199,11 +200,14 @@ function projectNewChatExpr(){
   return `(()=>{const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};const labels=['Trò chuyện mới trong TigerIQ AI Lab','New chat in TigerIQ AI Lab'];const matches=[...document.querySelectorAll('button,[role="button"]')].filter(e=>vis(e)&&labels.includes((e.getAttribute('aria-label')||'').trim()));if(matches.length!==1)return{ok:false,status:'PROJECT_NEW_CHAT_BUTTON_COUNT_'+matches.length};matches[0].click();return{ok:true,status:'PROJECT_NEW_CHAT_CLICKED'}})()`;
 }
 async function recoverNv02ProjectContext(target){
-  const p=await pageRpc(target);
-  try{
-    const clicked=(await p.call('Runtime.evaluate',{expression:projectNewChatExpr(),returnByValue:true,userGesture:true})).result.value;
-    if(clicked?.ok)return clicked;
-  }finally{p.close();}
+  for(let attempt=0;attempt<12;attempt+=1){
+    const p=await pageRpc(target);
+    try{
+      const clicked=(await p.call('Runtime.evaluate',{expression:projectNewChatExpr(),returnByValue:true,userGesture:true})).result.value;
+      if(clicked?.ok)return clicked;
+    }finally{p.close();}
+    await sleep(250);
+  }
   await navigate(target,NV02_HOME_URL);
   return{ok:true,status:'PROJECT_CONTEXT_NAVIGATED'};
 }
@@ -434,10 +438,10 @@ async function tickWorker(w){
   try{
     const port=workerPort(w);let list=await targets(port);let target=await pruneDuplicates(w,list);if(!target)return;
     const rawUi=await uiState(target);const windowId=await windowIdFor(port,target.id);
-    const projectContextReady=w.id!=='NV02'||isNv02ProjectContext(rawUi.url);
+    const projectContextReady=w.id!=='NV02'||isNv02ProjectContext(rawUi.url)||rawUi.projectDraftReady===true;
     const ui=projectContextReady?rawUi:{...rawUi,uiReady:false,uiPhase:'STALLED',modelReady:false};
     const display={workArea:{left:0,top:0,width:Number(config.layout?.fallbackWorkAreaWidth||3277),height:1688}};
-    await post('/api/heartbeat',w.id,{workerId:w.id,state:ui.uiPhase||'STALLED',windowId,tabId:target.id,url:ui.url,active:true,uiReady:ui.uiReady,uiPhase:ui.uiPhase,composerReady:ui.composerReady,sendReady:ui.sendReady,stopVisible:ui.stopVisible,scrollToBottomVisible:ui.scrollToBottomVisible,authRequired:ui.authRequired===true,uiBusy:ui.uiBusy,securityBlock:ui.securityBlock,modelControlPresent:ui.modelControlPresent,reasoningEffort:ui.reasoningEffort,modelReady:ui.modelReady,display});
+    await post('/api/heartbeat',w.id,{workerId:w.id,state:ui.uiPhase||'STALLED',windowId,tabId:target.id,url:ui.url,active:true,uiReady:ui.uiReady,uiPhase:ui.uiPhase,composerReady:ui.composerReady,sendReady:ui.sendReady,stopVisible:ui.stopVisible,scrollToBottomVisible:ui.scrollToBottomVisible,authRequired:ui.authRequired===true,uiBusy:ui.uiBusy,securityBlock:ui.securityBlock,modelControlPresent:ui.modelControlPresent,reasoningEffort:ui.reasoningEffort,modelReady:ui.modelReady,projectContextReady,display});
     if(w.id==='NV02'&&!projectContextReady&&!ui.securityBlock){
       if(!NV02_HOME_URL){await continuityEvent('PROJECT_CONTEXT_RECOVERY_BLOCKED',{reason:'NV02_HOME_URL_MISSING',url:rawUi.url||null});return;}
       const recovered=await withNv02Mutation(()=>recoverNv02ProjectContext(target),'PROJECT_CONTEXT_RECOVERY');
