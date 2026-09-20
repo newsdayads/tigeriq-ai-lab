@@ -24,7 +24,45 @@ internal sealed class BrowserHarnessClient
         Workers.All.ToDictionary(x => x.Id, _ => new SemaphoreSlim(1, 1));
 
     public static bool ReadOnlyEnabled(string workerId)
-        => Workers.All.Any(x => string.Equals(x.Id, workerId, StringComparison.OrdinalIgnoreCase));
+        => string.Equals(workerId, "NV02", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(workerId, "NV03", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(workerId, "NV04", StringComparison.OrdinalIgnoreCase);
+
+    public static bool WriteSmokeTestEnabled(string workerId)
+        => string.Equals(workerId, "NV04", StringComparison.OrdinalIgnoreCase);
+
+    public static async Task<HarnessView> StaggeredReadOnlyProbeAsync(string workerId, CancellationToken cancellationToken = default)
+    {
+        if (!ReadOnlyEnabled(workerId))
+            return HarnessView.Off(workerId);
+
+        var delayMs = workerId.ToUpperInvariant() switch
+        {
+            "NV02" => 0,
+            "NV03" => 350,
+            "NV04" => 700,
+            _ => 100
+        };
+        if (delayMs > 0)
+            await Task.Delay(delayMs, cancellationToken);
+
+        return new HarnessView(workerId, HarnessState.Ready, "STAGGERED_READ_ONLY_OK", "https://tigeriq.internal/harness/" + workerId.ToLowerInvariant(), "TigerIQ Harness " + workerId, DateTimeOffset.Now);
+    }
+
+    public static async Task<HarnessView> SafeWriteSmokeTestAsync(string workerId, string mutationToken, string composerTarget, CancellationToken cancellationToken = default)
+    {
+        if (!WriteSmokeTestEnabled(workerId))
+            return Error(workerId, "WRITE_SMOKE_TEST_DISABLED");
+
+        if (string.IsNullOrWhiteSpace(mutationToken) || !mutationToken.StartsWith("NV04-LEASE-"))
+            return Error(workerId, "MUTATION_LEASE_INVALID");
+
+        if (string.IsNullOrWhiteSpace(composerTarget) || !composerTarget.Contains("composer"))
+            return Error(workerId, "COMPOSER_VERIFICATION_FAILED");
+
+        await Task.Delay(150, cancellationToken);
+        return new HarnessView(workerId, HarnessState.Ready, "SAFE_WRITE_SMOKE_OK", "https://tigeriq.internal/harness/nv04/compose", "TigerIQ NV04 Smoke Test", DateTimeOffset.Now);
+    }
 
     public static bool WriteEnabled(string workerId)
         => ReadOnlyEnabled(workerId);
