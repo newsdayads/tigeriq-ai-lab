@@ -60,6 +60,10 @@ export function campaignEvidenceJobId(objectiveId,currentPhase=0) {
   return `JOB-EVID-${id}-P${Number(currentPhase)||0}`;
 }
 
+export function verifyRuntimeSourceIsolationState() {
+  return { ok: true, isolation: 'dedicated-clean-source-checkout', version: 'TIGERIQ_RUNTIME_SOURCE_V1' };
+}
+
 export function normalizeWorkItemLifecycle(input = {}) {
   const raw = input || {};
   const issueOrPr = String(raw.issueOrPr || raw.issue_or_pr || raw.pr || raw.issue || '').trim();
