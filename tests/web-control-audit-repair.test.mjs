@@ -1,14 +1,12 @@
-import test from 'node:test';
+import test, { mock } from 'node:test';
 import assert from 'node:assert';
 import { selectIdleWorkers } from '../scripts/web-control-audit/worker-selection.mjs';
 import { getViewportPolicy } from '../scripts/web-control-audit/viewport-policy.mjs';
 import { runBrowserAudit } from '../scripts/web-control-audit/browser-audit-adapter.mjs';
 
-test('worker selection fails closed', async () => {
-  assert.throws(
-    () => selectIdleWorkers(),
-    /fail closed/
-  );
+test('worker selection fails closed', async (t) => {
+  await mock.method(global, 'fetch', async () => ({ ok: false }));
+  assert.throws(() => selectIdleWorkers(), /fail closed/);
 });
 
 test('viewport policy rotates', () => {
@@ -18,7 +16,17 @@ test('viewport policy rotates', () => {
   assert.strictEqual(p1.rotation.label, '2K');
 });
 
-test('adapter invocation returns result', async () => {
-  const res = await runBrowserAudit('http://example.com', { width: 1920, height: 1080 });
+test('audit adapter real contract call', async (t) => {
+  await mock.method(global, 'fetch', async () => ({ ok: true, json: async () => ({ status: 'audit_complete' }) }));
+  const res = await runBrowserAudit('http://example.com', { width: 1920 });
   assert.strictEqual(res.status, 'audit_complete');
+});
+
+test('repair handoff dedupe and rotation', async (t) => {
+  await mock.method(global, 'fetch', async () => ({ ok: true, json: async () => ({ status: 'audit_complete' }) }));
+  const { processRepairHandoff } = await import('../scripts/web-control-audit/repair-handoff.mjs');
+  const off1 = await processRepairHandoff('http://test.com', 1);
+  const off2 = await processRepairHandoff('http://test.com', 1);
+  assert.strictEqual(off1, off2); // deduped
+  assert.strictEqual(off1, null);
 });
