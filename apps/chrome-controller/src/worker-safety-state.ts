@@ -4,6 +4,7 @@ import { WORKER_IDS, type WorkerId } from './model.js';
 export interface WorkerSafetySnapshot {
   pausedWorkers:WorkerId[];
   manualCloseSuppressedWorkers:WorkerId[];
+  modelProfile?: { model: string; profile: string; restoredAt: string };
 }
 export interface WorkerSafetyRestoreResult {
   state:WorkerSafetySnapshot;
@@ -30,9 +31,17 @@ function normalizeList(value:unknown):WorkerId[]{
 function parseSafety(text:string):WorkerSafetySnapshot{
   const value=JSON.parse(text) as Partial<WorkerSafetyFile>;
   if(value.schemaVersion!=='tigeriq.chrome-controller.worker-safety.v1')throw new Error('WORKER_SAFETY_SCHEMA_INVALID');
+  let modelProfile: { model: string; profile: string; restoredAt: string } | undefined;
+  if (value.modelProfile && typeof value.modelProfile === 'object') {
+    const m = String(value.modelProfile.model ?? '');
+    const p = String(value.modelProfile.profile ?? '');
+    const r = String(value.modelProfile.restoredAt ?? '');
+    if (m && p) modelProfile = { model: m, profile: p, restoredAt: r || new Date().toISOString() };
+  }
   return{
     pausedWorkers:normalizeList(value.pausedWorkers),
     manualCloseSuppressedWorkers:normalizeList(value.manualCloseSuppressedWorkers),
+    ...(modelProfile ? { modelProfile } : {}),
   };
 }
 
@@ -40,6 +49,7 @@ export function failClosedWorkerSafetyState():WorkerSafetySnapshot {
   return{
     pausedWorkers:[...WORKER_IDS],
     manualCloseSuppressedWorkers:[...WORKER_IDS],
+    modelProfile: { model: 'GPT-5.6 Sol', profile: 'High', restoredAt: new Date().toISOString() },
   };
 }
 
