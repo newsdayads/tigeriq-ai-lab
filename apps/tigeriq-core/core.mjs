@@ -10,6 +10,7 @@ import { buildFailureLearningCandidates, failureLearningEventTypes } from './fai
 import { normalizeCampaignPhases, currentCampaignGoal, campaignTransition, makePhaseCheckpoint, campaignNeedsEvidence, campaignEvidenceJobId } from './campaign-runner.mjs';
 import { normalizeTerminalWorkItems, handoffGenerationKey, evaluateChildObjectiveStates, isCodingHandoff } from './work-handoff.mjs';
 import { ROUTING_PROFILE_LABELS, createResourceId, deriveRoutingProfile, failurePolicy, normalizeQuota, rankCandidates, rateLimitFailureState } from './smart-router.mjs';
+import { runExecutionPreflight } from './execution-preflight.mjs';
 
 const DATABASE_URL = process.env.DATABASE_URL?.trim();
 if (!DATABASE_URL) throw new Error('DATABASE_URL_MISSING');
@@ -652,6 +653,10 @@ export async function startSelfCheck(runtime) {
 async function loop(){
   while(!stop){const t=Date.now();
     try{
+      const preflightCheck = runExecutionPreflight({ state: { status: 'running' } });
+      if (!preflightCheck.ok) {
+        console.error(JSON.stringify({ event: 'PREFLIGHT_CHECK_FAILED', errors: preflightCheck.errors }));
+      }
       if(t-lastRefresh>15000){await refreshResources();lastRefresh=t;}
       if(t-lastRecover>10000){await recoverStale();lastRecover=t;}
       if(t-lastManager>MANAGER_IDLE_MS){await managerTick();lastManager=t;}
