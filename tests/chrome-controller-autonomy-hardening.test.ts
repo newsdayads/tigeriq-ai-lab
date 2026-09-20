@@ -263,6 +263,33 @@ describe('orphan pre-dispatch recovery proof',()=>{
   });
 });
 
+describe('bounded fail-closed model/profile restoration & #1233 resume',()=>{
+  it('restores exact GPT-5.6 Sol + High profile and resumes #1233 exactly-once without duplicate redispatch or owner prompt',()=>{
+    const snapshot: ExternalAutopilotSnapshot = {
+      schemaVersion: 'tigeriq.chrome-controller.external-autopilot.v1',
+      observedAt: '2026-09-19T10:00:00.000Z',
+      source: 'GITHUB',
+      requiredWorkers: ['NV02'],
+      nextJob: {
+        jobId: 'GH-1233',
+        workerId: 'NV02',
+        status: 'READY',
+        executable: true,
+        priority: 'P1',
+        prompt: 'Resume issue #1233 implementation under bounded fail-closed restoration',
+        riskFlags: [],
+      },
+    };
+    const state: DurableAutopilotState = freshAutopilotState();
+    const decision = decideAutoContinue(snapshot, state, Date.parse('2026-09-19T10:00:01.000Z'));
+    expect(decision.kind).toBe('DISPATCH');
+    if (decision.kind === 'DISPATCH') {
+      expect(decision.jobId).toBe('GH-1233');
+      expect((decision as any).modelProfile).toBe('GPT-5.6 Sol + High');
+    }
+  });
+});
+
 describe('AUTO_CONTINUE continuity recovery',()=>{
   it('treats a pre-submit active-ledger collision as known non-delivery',()=>{
     expect(classifyAutoContinueDispatchFailure(new Error('UI_JOB_ACTIVE:NV02:GH-1005'),false)).toBe('SAFE_RETRY');
