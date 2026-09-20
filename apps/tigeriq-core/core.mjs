@@ -181,7 +181,7 @@ async function invokeProvider(r, prompt) {
           
           let text = null;
           const rawResults = b?.results;
-          const hasValidShape = (Array.isArray(rawResults) && rawResults.length > 0) || b?.generated_text !== undefined || b?.output !== undefined;
+          const hasValidShape = (Array.isArray(rawResults) && rawResults.length > 0) || b?.generated_text !== undefined || b?.output !== undefined || b?.text !== undefined;
           if (!hasValidShape) {
             const e = new Error('WATSONX_SHAPE_MISMATCH');
             e.kind = 'invalid_response';
@@ -189,11 +189,13 @@ async function invokeProvider(r, prompt) {
           }
           if (Array.isArray(rawResults) && rawResults.length > 0) {
             const item = rawResults[0];
-            text = item?.generated_text ?? item?.text ?? item?.output;
+            text = item?.generated_text ?? item?.text ?? item?.output ?? item?.content;
           } else if (b?.generated_text !== undefined) {
             text = b.generated_text;
           } else if (b?.output !== undefined) {
             text = b.output;
+          } else if (b?.text !== undefined) {
+            text = b.text;
           }
           
           if (text === undefined || text === null || String(text).trim() === '') {
