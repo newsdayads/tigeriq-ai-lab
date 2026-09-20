@@ -35,6 +35,24 @@ function Runtime-Source-Dirty(){
   if($LASTEXITCODE -ne 0 -or $inside -ne 'true'){throw 'RUNTIME_SOURCE_INVALID'}
   return [bool](@(git -C $runtimeRepo status --porcelain).Count)
 }
+function Ensure-NodeModules(){param([string]$repoPath)
+  $modulesPath=Join-Path $repoPath 'node_modules'
+  $packageLock=Join-Path $repoPath 'package-lock.json'
+  $packageJson=Join-Path $repoPath 'package.json'
+  $valid=$true
+  if(-not(Test-Path -LiteralPath $modulesPath)){$valid=$false}
+  elseif((Test-Path -LiteralPath $packageLock) -and (Test-Path -LiteralPath $packageJson)){
+    $lockTime=(Get-Item -LiteralPath $packageLock).LastWriteTimeUtc
+    $jsonTime=(Get-Item -LiteralPath $packageJson).LastWriteTimeUtc
+    $modTime=(Get-Item -LiteralPath $modulesPath).LastWriteTimeUtc
+    if($lockTime -gt $modTime -or $jsonTime -gt $modTime){$valid=$false}
+  }
+  if(-not $valid){
+    if(-not(Test-Path -LiteralPath $packageLock)){throw 'PACKAGE_LOCK_MISSING'}
+    & npm --prefix $repoPath ci --ignore-scripts --no-audit --no-fund
+    if($LASTEXITCODE -ne 0){throw 'NPM_CI_FAILED'}
+  }
+}
 function Ensure-RuntimeSource([string]$targetSha){
   if(Test-Path -LiteralPath $runtimeRepo){
     if(Runtime-Source-Dirty){throw 'RUNTIME_SOURCE_DIRTY'}
@@ -181,6 +199,7 @@ while($true){
     $oldCore=HealthInfo 'http://100.97.23.87:8795/health';$oldPid=if($oldCore){[int]$oldCore.pid}else{$null}
     $previousRuntimeSha=$local
     Ensure-RuntimeSource $remote
+    Ensure-NodeModules $runtimeRepo
     Save-RuntimeSourceState $remote $previousRuntimeSha $gateSha
     Sync-Launchers
     if($impact.updater){Sync-UpdaterRuntime}
