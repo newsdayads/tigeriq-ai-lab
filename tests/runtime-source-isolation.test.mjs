@@ -23,6 +23,17 @@ describe('runtime source isolation',()=>{
     expect(src).toContain("throw 'RUNTIME_SOURCE_DIRTY'");
   });
 
+  it('migrates scheduled tasks to stable runtime launcher and updater copies',()=>{
+    const src=readFileSync('scripts/tigeriq-core/install-runtime-source-isolation.ps1','utf8');
+    expect(src).toContain("Set-TaskAction $coreTask");
+    expect(src).toContain("Set-TaskAction $codingTask");
+    expect(src).toContain("Set-TaskAction $updaterTask");
+    expect(src).toContain("D:\\TigerIQ\\Runtime\\CoreLaunchers");
+    expect(src).toContain("D:\\TigerIQ\\Runtime\\CoreUpdater\\update-core-runtime.ps1");
+    expect(src).toContain('REMOTE_HEAD_MISMATCH');
+    expect(src).toContain('RUNTIME_SOURCE_DIRTY');
+  });
+
   it('persists current and previous SHA rollback metadata',()=>{
     const src=readFileSync('scripts/tigeriq-core/update-core-runtime.ps1','utf8');
     expect(src).toContain("schema='TIGERIQ_RUNTIME_SOURCE_V1'");
