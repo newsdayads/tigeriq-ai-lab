@@ -35,7 +35,7 @@ import type { WorkerPresence } from './worker-presence.js';
 import { persistWorkerSafetyStateOrFailClosed, restoreWorkerSafetyState, workerStartGate, type WorkerSafetySnapshot } from './worker-safety-state.js';
 
 type Command = { id:string; workerId:WorkerId; action:string; payload?:Record<string,unknown>; createdAt:string };
-type Heartbeat = { workerId:WorkerId; url?:string; windowId?:number; tabId?:number; state?:string; uiReady?:boolean; authRequired?:boolean; reauthRequired?:boolean; captchaRequired?:boolean; rateLimited?:boolean; rateLimitCode?:number|string; uiBusy?:boolean|null; uiPhase?:'WORKING'|'READY'|'STALLED'|'BLOCKED'|string; composerReady?:boolean; sendReady?:boolean; stopVisible?:boolean; scrollToBottomVisible?:boolean; securityBlock?:string|null; display?:{workArea?:WorkArea}; at:string };
+type Heartbeat = { workerId:WorkerId; url?:string; windowId?:number; tabId?:number; state?:string; uiReady?:boolean; authRequired?:boolean; reauthRequired?:boolean; captchaRequired?:boolean; rateLimited?:boolean; rateLimitCode?:number|string; uiBusy?:boolean|null; uiPhase?:'WORKING'|'READY'|'STALLED'|'BLOCKED'|string; composerReady?:boolean; sendReady?:boolean; stopVisible?:boolean; scrollToBottomVisible?:boolean; securityBlock?:string|null; modelProfileStatus?:string|null; modelName?:string|null; reasoningEffort?:string|null; modelReady?:boolean|null; modelExact?:boolean|null; verifiedAt?:string|null; blockedReason?:string|null; display?:{workArea?:WorkArea}; at:string };
 type WindowState = 'OPEN' | 'CLOSED';
 type WorkerState = {
   id:WorkerId;
@@ -355,6 +355,12 @@ async function startWorker(workerId:WorkerId){
   });
 }
 
+
+function modelProfileGateReason(hb:Heartbeat|undefined){
+  if(hb?.modelProfileStatus==='MODEL_PROFILE_VERIFIED'&&hb.modelName==='GPT-5.6 Sol'&&hb.reasoningEffort==='High'&&hb.modelReady===true)return '';
+  return hb?.blockedReason||hb?.modelProfileStatus||'MODEL_PROFILE_UNVERIFIED';
+}
+
 async function dispatch(
   workerId:WorkerId,
   text:string,
@@ -364,6 +370,7 @@ async function dispatch(
 ){
   assertWorkerEnabled(workerId);
   if(!text.trim())throw new Error('DISPATCH_TEXT_REQUIRED');
+  if(workerId==='NV02') { const modelGate=modelProfileGateReason(states.get('NV02')?.lastHeartbeat); if(modelGate)throw new Error(`MODEL_PROFILE_BLOCKED:${modelGate}`); }
   const worker=getWorker(workerId)!;
   browserMutationLeases.assertControllerAllowed(workerId);
   const requestedJobId=String(metadata.jobId??'').trim();
@@ -529,6 +536,12 @@ async function autopilotTick(){
     if(uiSecurity){
       primary.blocked=true;primary.status='BLOCKED';primary.lastError=uiSecurity;
       stopAutopilot(uiSecurity);log('AUTOPILOT_SECURITY_STOP',{workerId:'NV02',status:uiSecurity});persistEvidence();return;
+    }
+    const modelGate=modelProfileGateReason(primary.lastHeartbeat);
+    if(modelGate){
+      stopAutopilot(`MODEL_PROFILE_BLOCKED:${modelGate}`);
+      log('AUTOPILOT_MODEL_PROFILE_BLOCKED',{workerId:'NV02',reason:modelGate,modelName:primary.lastHeartbeat?.modelName??null,reasoningEffort:primary.lastHeartbeat?.reasoningEffort??null});
+      persistEvidence();return;
     }
     if(autopilotState.lastDispatchedJobId&&primary.lastHeartbeat?.uiBusy!==false){
       setAutopilotPhase('BUSY');

@@ -265,9 +265,115 @@ async function waitForSubmissionEvidence(expectedText, timeoutMs = 4000) {
   return { ok: false, status: 'SUBMIT_EVIDENCE_MISSING' };
 }
 
-async function dispatch(text) {
+
+const REQUIRED_MODEL_NAME = 'GPT-5.6 Sol';
+const REQUIRED_REASONING_EFFORT = 'High';
+
+function compactVisibleText(element) {
+  return String(element?.getAttribute?.('aria-label') || element?.getAttribute?.('title') || element?.textContent || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isGenericModelText(text) {
+  const normalized = String(text || '').trim().toLowerCase();
+  return !normalized || ['plus', 'gpt-4', 'model', 'models', 'chatgpt', 'account', 'profile'].includes(normalized);
+}
+
+function modelCandidateControls() {
+  return Array.from(document.querySelectorAll('header button, main button, header [role="button"], main [role="button"], [data-testid*="model" i], [aria-label*="model" i], [aria-label*="gpt" i]'))
+    .filter((el) => visible(el))
+    .filter((el) => {
+      const text = compactVisibleText(el);
+      if (isGenericModelText(text)) return false;
+      return /GPT-5\.6\s+Sol|GPT-5|GPT-4|Instant|Thinking|Suy luận|High|Cao/i.test(text);
+    });
+}
+
+function reasoningCandidateControls() {
+  return Array.from(document.querySelectorAll('header button, main button, header [role="button"], main [role="button"], [data-testid*="reason" i], [data-testid*="thinking" i], [aria-label*="thinking" i], [aria-label*="reason" i]'))
+    .filter((el) => visible(el))
+    .filter((el) => /High|Cao|Thinking|Suy luận|reasoning/i.test(compactVisibleText(el)));
+}
+
+function parseModelName(text) {
+  const clean = String(text || '').replace(/\s+/g, ' ').trim();
+  return /\bGPT-5\.6\s+Sol\b/i.test(clean) ? REQUIRED_MODEL_NAME : null;
+}
+
+function parseReasoningEffort(text) {
+  const clean = String(text || '').replace(/\s+/g, ' ').trim();
+  return /\bHigh\b|\bCao\b/i.test(clean) ? REQUIRED_REASONING_EFFORT : null;
+}
+
+function readModelProfileState() {
+  const securityBlock = detectSecurityBlock();
+  if (securityBlock) {
+    return { modelProfileStatus: 'MODEL_PROFILE_BLOCKED', modelName: null, reasoningEffort: null, modelReady: false, exact: false, verifiedAt: null, blockedReason: securityBlock };
+  }
+  const modelControls = modelCandidateControls();
+  const reasoningControls = reasoningCandidateControls();
+  const modelNames = [...new Set(modelControls.map((el) => parseModelName(compactVisibleText(el))).filter(Boolean))];
+  const reasoningValues = [...new Set(reasoningControls.map((el) => parseReasoningEffort(compactVisibleText(el))).filter(Boolean))];
+  const modelName = modelNames.length === 1 ? modelNames[0] : null;
+  const reasoningEffort = reasoningValues.length === 1 ? reasoningValues[0] : null;
+  const exact = modelName === REQUIRED_MODEL_NAME && reasoningEffort === REQUIRED_REASONING_EFFORT;
+  const blockedReason = exact ? null : (!modelName ? 'MODEL_CONTROL_NOT_EXACT_OR_UNIQUE' : 'REASONING_CONTROL_NOT_EXACT_OR_UNIQUE');
+  return {
+    modelProfileStatus: exact ? 'MODEL_PROFILE_VERIFIED' : 'MODEL_PROFILE_BLOCKED',
+    modelName,
+    reasoningEffort,
+    modelReady: exact,
+    exact,
+    verifiedAt: exact ? new Date().toISOString() : null,
+    blockedReason,
+  };
+}
+
+function visibleMenuItemsByExactText(expected) {
+  const wanted = String(expected).toLowerCase();
+  return deepElements()
+    .filter((el) => visible(el))
+    .filter((el) => ['BUTTON', 'DIV', 'SPAN'].includes(el.tagName) || String(el.getAttribute?.('role') || '').includes('menuitem'))
+    .filter((el) => compactVisibleText(el).toLowerCase() === wanted);
+}
+
+async function clickUniqueVisibleOption(expected) {
+  const options = [...new Set(visibleMenuItemsByExactText(expected))];
+  if (options.length !== 1) return false;
+  options[0].click();
+  await sleep(450);
+  return true;
+}
+
+async function precheckModelProfile() {
+  let profile = readModelProfileState();
+  if (profile.exact) return profile;
+  if (profile.blockedReason && /^BLOCKED_/.test(profile.blockedReason)) return profile;
+  const modelControls = modelCandidateControls();
+  if (modelControls.length !== 1) return profile;
+  modelControls[0].click();
+  await sleep(500);
+  const selectedModel = await clickUniqueVisibleOption(REQUIRED_MODEL_NAME);
+  dismissMenu();
+  if (!selectedModel) return readModelProfileState();
+  const reasoningControls = reasoningCandidateControls();
+  if (reasoningControls.length !== 1) return readModelProfileState();
+  reasoningControls[0].click();
+  await sleep(500);
+  const selectedReasoning = await clickUniqueVisibleOption(REQUIRED_REASONING_EFFORT);
+  dismissMenu();
+  profile = readModelProfileState();
+  return selectedReasoning ? profile : { ...profile, modelProfileStatus: 'MODEL_PROFILE_BLOCKED', exact: false, modelReady: false, blockedReason: 'REASONING_HIGH_OPTION_NOT_UNIQUE' };
+}
+
+async function dispatch(text, options = {}) {
   const blocked = detectSecurityBlock();
   if (blocked) return { ok: false, status: blocked };
+  if (options.workerId === 'NV02') {
+    const profile = await precheckModelProfile();
+    if (!profile.exact) return { ok: false, status: profile.blockedReason || profile.modelProfileStatus || 'MODEL_PROFILE_BLOCKED', modelProfile: profile };
+  }
   const expectedText = text.trim();
   if (!expectedText) return { ok: false, status: 'EMPTY_WORK_ORDER' };
   const composer = findComposer();
@@ -419,7 +525,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return;
   }
   if (message?.type === 'TIGERIQ_UI_STATE') {
-    sendResponse({ ok: true, ...detectUiSignals() });
+    sendResponse({ ok: true, ...detectUiSignals(), ...readModelProfileState() });
     return;
   }
   if (message?.type === 'TIGERIQ_SCROLL_TO_BOTTOM') {
@@ -434,7 +540,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     void archiveConversation().then(sendResponse).catch((error) => sendResponse({ ok: false, status: String(error) }));
     return true;
   }
+  if (message?.type === 'TIGERIQ_MODEL_PROFILE_PRECHECK') {
+    void precheckModelProfile().then(sendResponse).catch((error) => sendResponse({ modelProfileStatus: 'MODEL_PROFILE_BLOCKED', exact: false, modelReady: false, blockedReason: String(error) }));
+    return true;
+  }
   if (message?.type !== 'TIGERIQ_DISPATCH') return;
-  void dispatch(String(message.text || '')).then(sendResponse).catch((error) => sendResponse({ ok: false, status: String(error) }));
+  void dispatch(String(message.text || ''), { workerId: String(message.workerId || '') }).then(sendResponse).catch((error) => sendResponse({ ok: false, status: String(error) }));
   return true;
 });

@@ -75,6 +75,27 @@ describe('NV02 completion watcher/autopilot',()=>{
 describe('review evidence and extension lifecycle',()=>{
   it('exports visible-only session policy, owner read-only mode and no stealth/output parsing',()=>{const evidence=buildRuntimeEvidence({config:baseConfig(),workArea:{left:0,top:0,width:4096,height:2120},workers:baseConfig().workers.map(w=>({id:w.id,enabled:true,status:'READY',blocked:false,manualCloseSuppressed:w.id==='NV03'})),jobs:[],autopilot:freshAutopilotState(),snapshot:snapshot(),paused:true,killed:false,recoveryAttempts:{NV02:0,NV03:0,NV04:0},startupReady:true,interactiveSession:true,sessionName:'Console'});expect(evidence.layout.order).toEqual(['NV02','NV03','NV04']);expect(evidence.queue.globalUiConcurrency).toBe(1);expect(evidence.ownerInteractionMode).toBe('READ_ONLY');expect(evidence.autopilot).toMatchObject({fixedTrigger:'AUTO_CONTINUE',browserAction:'DISPATCH',aiOutputParsed:false});expect(evidence.sessionPolicy).toMatchObject({chromeVisibleOnly:true,interactiveSession:true,hiddenChromeAllowed:false,ownerReadOnlyStopsUiMutation:true});expect(evidence.security).toMatchObject({stealth:false,fakeHuman:false,credentialExtraction:false});expect(evidence.workers.find(w=>w.id==='NV03')?.manualCloseSuppressed).toBe(true);});
   it('keeps exact ChatGPT/Gemini routes',()=>{expect(matchesWorker('NV03','https://chatgpt.com/g/g-p-6a9e19b4deac8191938cca4486a7e12b-tigeriq-ai-lab/c/test')).toBe(true);expect(matchesWorker('NV04','https://gemini.google.com/app/85001b78fca5a010')).toBe(true);expect(allowedUrl('https://example.com/')).toBe(false);});
+
+  it('gates NV02 dispatch on exact visible model profile without fake hashes or page-body heuristics',()=>{
+    const content=readFileSync('apps/chrome-controller/extension/content.js','utf8');
+    const background=readFileSync('apps/chrome-controller/extension/background.js','utf8');
+    const runtimeEvidence=readFileSync('apps/chrome-controller/src/runtime-evidence.ts','utf8');
+    const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
+    expect(content).toContain('TIGERIQ_MODEL_PROFILE_PRECHECK');
+    expect(content).toContain("REQUIRED_MODEL_NAME = 'GPT-5.6 Sol'");
+    expect(content).toContain("REQUIRED_REASONING_EFFORT = 'High'");
+    expect(content).toContain('MODEL_PROFILE_BLOCKED');
+    expect(content).not.toContain('document.body.innerText');
+    expect(content).not.toContain("includes('Plus')");
+    expect(background).toContain('precheckNv02Profile');
+    expect(background).toContain("type: 'TIGERIQ_MODEL_PROFILE_PRECHECK'");
+    expect(background).toContain("workerId:'NV02'");
+    expect(runtimeEvidence).not.toContain('exact-model-hash');
+    expect(runtimeEvidence).toContain('modelProfileStatus');
+    expect(server).toContain('modelProfileGateReason');
+    expect(server).toContain('AUTOPILOT_MODEL_PROFILE_BLOCKED');
+  });
+
   it('keeps badge repair idempotent, heartbeat alarm durable, and close events explicit',()=>{const content=readFileSync('apps/chrome-controller/extension/content.js','utf8');const background=readFileSync('apps/chrome-controller/extension/background.js','utf8');expect(content).toContain('badge.textContent !== wantedText');expect(content).not.toContain('characterData: true');expect(background).toContain('ensureTickAlarm');expect(background).toContain("periodInMinutes:0.5");expect(background).toContain("post('/api/window-event',{workerId,event:'CLOSED',windowId:ctx.windowId})");});
   it('persists crash-bubble suppression and manual-close/owner-mode safeguards in controller source',()=>{const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');const broker=readFileSync('apps/chrome-controller/src/chrome-launch-broker.ts','utf8');expect(broker).toContain("'--disable-session-crashed-bubble'");expect(server).toContain('CHROME_LAUNCH_REQUESTED_VIA_BROKER');expect(server).not.toContain("spawn(config.chromePath");expect(server).toContain('manualCloseSuppressed');expect(server).toContain('workerHasActiveJob');expect(server).toContain('recoveryEligible');expect(server).toContain('OWNER_INTERACTION_READ_ONLY');expect(server).toContain("await sendCommand(workerId,'DISPATCH'");expect(server).not.toContain("runWithRetry(`${source.toLowerCase()}:${workerId}`");expect(server).toContain('AUTO_CONTINUE_COMMITTED');expect(server).toContain('resetKnownNotDelivered');expect(server).toContain('PERSIST_EVIDENCE_FAILED');expect(server).toContain('pendingJobId');expect(server).toContain("typeof data.text!=='string'");expect(server).toContain('DISPATCH_TEXT_MUST_BE_STRING');expect(server).not.toContain("String(data.text??'')");});
 });
