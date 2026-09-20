@@ -85,4 +85,12 @@ describe('completion-aware UTF-8 supervisor and Owner workspace',()=>{
   it('reserves the lower workspace for Owner while workers stay top-right',()=>{const evidence=buildRuntimeEvidence({config:baseConfig(),workArea:{left:0,top:0,width:4096,height:2120},workers:baseConfig().workers.map(w=>({id:w.id,enabled:true,status:'READY',blocked:false})),jobs:[],autopilot:freshAutopilotState(),snapshot:snapshot(),paused:false,killed:false,recoveryAttempts:{NV02:0,NV03:0,NV04:0},startupReady:true,interactiveSession:true,sessionName:'Console'});expect(evidence.layout.ownerWorkspace).toEqual({workerRegion:'TOP_RIGHT',reservedBelowY:834,overlapByDesign:false});expect(evidence.autopilot).toMatchObject({completionAwareUiState:true,utf8JsonDispatch:true});});
 });
 
+describe('model verification and evidence', () => {
+  it('captures and serves model evidence', () => {
+    recordModelEvidence({ sol: '5.6', tier: 'High' });
+    const ev = getLatestModelEvidence();
+    expect(ev?.profile).toEqual({ sol: '5.6', tier: 'High' });
+  });
+});
+
 describe('SerialQueue',()=>{it('runs exactly one task at a time',async()=>{const q=new SerialQueue(0);const order:string[]=[];const a=q.enqueue(async()=>{order.push('a:start');await new Promise(r=>setTimeout(r,20));order.push('a:end');});const b=q.enqueue(async()=>{order.push('b:start');order.push('b:end');});await Promise.all([a,b]);expect(order).toEqual(['a:start','a:end','b:start','b:end']);});});
