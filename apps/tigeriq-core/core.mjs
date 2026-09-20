@@ -168,13 +168,54 @@ async function invokeProvider(r, prompt) {
       return String(text);
     }
     case 'watsonx': {
-      const form = new URLSearchParams({grant_type:'urn:ibm:params:oauth:grant-type:apikey',apikey:process.env.WATSONX_API_KEY});
-      const iam = await fetchJson('https://iam.cloud.ibm.com/identity/token',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:form.toString()});
-      const b = await fetchJson('https://us-south.ml.cloud.ibm.com/ml/v1/text/generation?version=2024-05-01',{
-        method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${iam.access_token}`},
-        body:JSON.stringify({model_id:process.env.WATSONX_MODEL_ID,input:prompt,project_id:process.env.WATSONX_PROJECT_ID,parameters:{max_new_tokens:1200,temperature:0}})});
-      const text=b?.results?.[0]?.generated_text;
-      if(!String(text||'').trim()){const e=new Error('EMPTY_RESPONSE');e.kind='invalid_response';throw e;} return String(text);
+      const maxWatsonxRetries = 2;
+      let lastWatsonxError = null;
+      for (let attempt = 0; attempt <= maxWatsonxRetries; attempt++) {
+        try {
+          const form = new URLSearchParams({grant_type:'urn:ibm:params:oauth:grant-type:apikey',apikey:process.env.WATSONX_API_KEY});
+          const iam = await fetchJson('https://iam.cloud.ibm.com/identity/token',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:form.toString()});
+          const b = await fetchJson('https://us-south.ml.cloud.ibm.com/ml/v1/text/generation?version=2024-05-01',{
+            method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${iam.access_token}`},
+            body:JSON.stringify({model_id:process.env.WATSONX_MODEL_ID,input:prompt,project_id:process.env.WATSONX_PROJECT_ID,parameters:{max_new_tokens:1200,temperature:0}})});
+          
+          let text = null;
+          const rawResults = b?.results;
+          if (Array.isArray(rawResults) && rawResults.length > 0) {
+            const item = rawResults[0];
+            text = item?.generated_text ?? item?.text ?? item?.output;
+          } else if (b?.generated_text) {
+            text = b.generated_text;
+          } else if (b?.output) {
+            text = b.output;
+          } else if (rawResults !== undefined) {
+            const e = new Error('WATSONX_SHAPE_MISMATCH');
+            e.kind = 'invalid_response';
+            throw e;
+          }
+          
+          if (text === undefined || text === null || String(text).trim() === '') {
+            const e = new Error(attempt < maxWatsonxRetries ? 'WATSONX_TRANSIENT_EMPTY' : 'EMPTY_RESPONSE');
+            e.kind = 'invalid_response';
+            lastWatsonxError = e;
+            if (attempt < maxWatsonxRetries) {
+              await sleep(400 * (attempt + 1));
+              continue;
+            }
+            throw e;
+          }
+          return String(text);
+        } catch (err) {
+          lastWatsonxError = err;
+          if (err?.kind === 'invalid_response' && err.message === 'WATSONX_TRANSIENT_EMPTY' && attempt < maxWatsonxRetries) {
+            await sleep(400 * (attempt + 1));
+            continue;
+          }
+          if (attempt >= maxWatsonxRetries) throw err;
+        }
+      }
+      const e = new Error('EMPTY_RESPONSE');
+      e.kind = 'invalid_response';
+      throw lastWatsonxError || e;
     }
     default: { const e=new Error('PROVIDER_UNSUPPORTED'); e.kind='configuration'; throw e; }
   }
