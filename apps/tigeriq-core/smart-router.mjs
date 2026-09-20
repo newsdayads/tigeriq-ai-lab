@@ -1,4 +1,63 @@
 export const ROUTING_PROFILES = Object.freeze(['AUTO','CODING','FAST','CHEAP','LOCAL','RESEARCH','REVIEW']);
+export const API_DOCTOR_CAPABILITY = 'api_doctor';
+
+export function classifyApiDoctorError(err) {
+  const msg = String(err?.message || err || '').toLowerCase();
+  if (msg.includes('rate limit') || msg.includes('429') || msg.includes('quota')) return 'rate_limit';
+  if (msg.includes('402') || msg.includes('payment required') || msg.includes('external blocker')) return 'http_402_blocker';
+  if (msg.includes('timeout') || msg.includes('transient') || msg.includes('ECONNRESET') || msg.includes('ETIMEDOUT') || msg.includes('503') || msg.includes('502')) return 'transient_outage';
+  return 'source_level_failure';
+}
+
+export function runDeterministicHealthInspection(resource, context = {}) {
+  const provider = String(resource?.provider || '').toLowerCase();
+  const employeeId = String(resource?.employee_id || resource?.employeeId || '').toUpperCase();
+  const isOllamaNv10 = provider === 'ollama' && employeeId === 'NV10';
+  const errorClass = classifyApiDoctorError(context.error);
+  const eligible = isOllamaNv10 && errorClass !== 'http_402_blocker';
+  return {
+    resourceId: resource?.resourceId || resource?.resource_id || null,
+    employeeId,
+    provider,
+    eligibleForApiDoctor: isOllamaNv10,
+    healthStatus: eligible ? 'healthy' : 'degraded',
+    errorClass,
+    handoffRequired: errorClass === 'source_level_failure' || errorClass === 'http_402_blocker',
+    timestamp: Date.now()
+  };
+}
+
+export function generateDeduplicatedRepairHandoff(issues = []) {
+  const seen = new Set();
+  const handoffs = [];
+  for (const issue of Array.isArray(issues) ? issues : [issues]) {
+    const key = `${issue?.resourceId || 'unknown'}:${issue?.errorClass || 'unknown'}:${issue?.message || issue || ''}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      handoffs.push({
+        lane: 'coding_lane',
+        action: 'repair_handoff',
+        resourceId: issue?.resourceId || null,
+        errorClass: issue?.errorClass || 'source_level_failure',
+        detail: String(issue?.message || issue || 'Persistent bug detected'),
+        deduplicatedKey: key,
+        timestamp: Date.now()
+      });
+    }
+  }
+  return handoffs;
+}
+
+export function verifyPostRepairLive(resource, probeResult) {
+  const inspection = runDeterministicHealthInspection(resource);
+  const probeOk = Boolean(probeResult?.ok || probeResult === true);
+  return {
+    verified: inspection.eligibleForApiDoctor && inspection.healthStatus === 'healthy' && probeOk,
+    inspection,
+    probeOk,
+    timestamp: Date.now()
+  };
+}
 export const ROUTING_PROFILE_LABELS = Object.freeze({
   AUTO:'Tự động',CODING:'Lập trình',FAST:'Nhanh',CHEAP:'Tiết kiệm',LOCAL:'Cục bộ',RESEARCH:'Nghiên cứu',REVIEW:'Kiểm tra độc lập',
 });
