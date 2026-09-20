@@ -4,6 +4,19 @@ import { WORKER_IDS, computePlacements, workAreaFitsLayout, type ControllerConfi
 import type { DurableAutopilotState, ExternalAutopilotSnapshot } from './autopilot.js';
 import type { UiJobRecord } from './job-ledger.js';
 
+let latestModelEvidence: { recordedAt: string; profile: { sol?: string; tier?: string } } | null = null;
+
+export function recordModelEvidence(profile: { sol?: string; tier?: string }): void {
+  latestModelEvidence = {
+    recordedAt: new Date().toISOString(),
+    profile: { ...profile },
+  };
+}
+
+export function getLatestModelEvidence() {
+  return latestModelEvidence;
+}
+
 export interface EvidenceWorkerState {
   id: WorkerId;
   enabled: boolean;
