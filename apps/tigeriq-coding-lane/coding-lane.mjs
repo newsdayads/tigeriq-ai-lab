@@ -251,6 +251,67 @@ async function managerTick(){
   }catch(e){await pool.query("update tigeriq_coding_objectives set status='blocked',summary=$2,manager_employee_id=$3,updated_at=now() where id=$1",[o.id,String(e.message).slice(0,1000),manager.id])}
 }
 
+export function restartRecoveryDecision(job,pr){
+  const status=String(job?.status||'').toLowerCase();
+  if(!['running','waiting_ci','review'].includes(status))return{action:'ignore',code:'CODING_RESTART_NOT_ORPHANED'};
+  const prNumber=Number(job?.pr_number||0);
+  if(!Number.isInteger(prNumber)||prNumber<=0)return{action:'fail',code:'CODING_RESTART_RESUME_IDENTITY_INCOMPLETE'};
+  const prState=String(pr?.state||'').toLowerCase();
+  if(pr?.merged===true||pr?.merged_at)return{action:'done',code:'CODING_RESTART_PR_ALREADY_MERGED',prNumber};
+  if(prState==='closed')return{action:'fail',code:'CODING_RESTART_PR_CLOSED',prNumber};
+  if(prState==='open'){
+    if(!String(job?.branch||'').trim())return{action:'fail',code:'CODING_RESTART_RESUME_IDENTITY_INCOMPLETE',prNumber};
+    return{action:'queue',code:'CODING_RESTART_RESUME_PR_OPEN',prNumber};
+  }
+  return{action:'defer',code:'CODING_RESTART_PR_STATE_UNVERIFIED',prNumber};
+}
+
+export async function recoverAfterCodingRestart({db=pool,fetchPr=async(number)=>gh(`/pulls/${number}`)}={}){
+  if(!db)return{requeued:0,completed:0,failed:0,deferred:0};
+  const rows=(await db.query("select * from tigeriq_coding_jobs where status in ('running','waiting_ci','review') order by created_at")).rows||[];
+  const out={requeued:0,completed:0,failed:0,deferred:0};
+  for(const job of rows){
+    let pr=null;
+    const prNumber=Number(job?.pr_number||0);
+    if(Number.isInteger(prNumber)&&prNumber>0){
+      try{pr=await fetchPr(prNumber)}
+      catch(error){
+        out.deferred++;
+        console.warn(JSON.stringify({event:'CODING_RESTART_RECOVERY_DEFERRED',jobId:job.id,prNumber,error:String(error?.message||error)}));
+        continue;
+      }
+    }
+    const decision=restartRecoveryDecision(job,pr);
+    if(decision.action==='ignore')continue;
+    if(decision.action==='defer'){out.deferred++;continue}
+    if(decision.action==='queue'){
+      const changed=await db.query("update tigeriq_coding_jobs set status='queued',completed_at=null,next_attempt_at=null where id=$1 and status=$2",[job.id,job.status]);
+      if(changed.rowCount){
+        await db.query("update tigeriq_coding_objectives set status='active',summary=$2,updated_at=now() where id=$1",[job.objective_id,`Restart recovery queued existing PR #${decision.prNumber}`]);
+        out.requeued++;
+      }
+      continue;
+    }
+    if(decision.action==='done'){
+      const result={recoveredAfterRestart:true,prNumber:decision.prNumber,merge:{merged:true,message:'PR already merged before restart reconciliation'}};
+      const changed=await db.query("update tigeriq_coding_jobs set status='done',result=$2,failure=null,completed_at=coalesce(completed_at,now()),next_attempt_at=null where id=$1 and status=$3",[job.id,JSON.stringify(result),job.status]);
+      if(changed.rowCount){
+        await db.query("update tigeriq_coding_objectives set status='completed',summary=$2,updated_at=now() where id=$1",[job.objective_id,`Restart recovery observed merged PR #${decision.prNumber}`]);
+        out.completed++;
+      }
+      continue;
+    }
+    const failure={code:decision.code,message:decision.code==='CODING_RESTART_PR_CLOSED'?`PR #${decision.prNumber} is closed and unmerged; stale runtime job terminalized after restart.`:'Restart recovery cannot safely resume this orphaned coding job.'};
+    const changed=await db.query("update tigeriq_coding_jobs set status='failed',failure=$2,completed_at=now(),next_attempt_at=null where id=$1 and status=$3",[job.id,JSON.stringify(failure),job.status]);
+    if(changed.rowCount){
+      await db.query("update tigeriq_coding_objectives set status='blocked',summary=$2,updated_at=now() where id=$1",[job.objective_id,failure.message]);
+      out.failed++;
+    }
+  }
+  if(rows.length)console.log(JSON.stringify({event:'CODING_RESTART_RECOVERY',orphaned:rows.length,...out}));
+  return out;
+}
+
 async function claimJob(){const c=await pool.connect();try{await c.query('begin');const q=await c.query("select * from tigeriq_coding_jobs where status='queued' or (status='waiting_resource' and coalesce(next_attempt_at,now())<=now()) order by case when status='waiting_resource' then 0 else 1 end,created_at for update skip locked limit 1");if(!q.rows[0]){await c.query('commit');return null}const j=q.rows[0];await c.query("update tigeriq_coding_jobs set status='running',started_at=coalesce(started_at,now()),attempts=attempts+1,completed_at=null where id=$1",[j.id]);await c.query('commit');return j}catch(e){await c.query('rollback');throw e}finally{c.release()}}
 export function buildLocalFileContext(files=[]){return files.map(file=>`FILE ${file.path}\n${String(file.content??'')}`).join('\n\n---\n\n')}
 async function contextFor(paths,ref='main'){const files=[];for(const p of paths){const f=await readRepoFile(p,ref);files.push({path:p,content:f.content})}return buildLocalFileContext(files)}
@@ -389,6 +450,7 @@ const server=createServer(async(req,res)=>{const u=new URL(req.url||'/','http://
 
 if(process.env.NODE_ENV!=='test'){
   await initDb();
+  await recoverAfterCodingRestart();
   await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(PORT,HOST,resolve)});
   console.log(JSON.stringify({event:'TIGERIQ_CODING_LANE_STARTED',host:HOST,port:PORT,pid:process.pid,resources:resources.map(x=>x.id),autoMerge:AUTO_MERGE}));
   let stop=false;
