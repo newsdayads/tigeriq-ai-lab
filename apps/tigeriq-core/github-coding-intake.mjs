@@ -26,9 +26,10 @@ export function parseCodingScope(body){
   const ambiguous=(!resourceScope&&!paths.length)||paths.some(path=>path==='*'||path.includes('..'));
   return {resourceScope,paths,ambiguous};
 }
-function codingScopesOverlap(a,b){
+export function codingScopesOverlap(a,b){
   if(!a||!b||a.ambiguous||b.ambiguous)return true;
   if(a.resourceScope&&b.resourceScope&&a.resourceScope===b.resourceScope)return true;
+  if(!a.paths.length||!b.paths.length)return false;
   return a.paths.some(left=>b.paths.some(right=>left===right||left.startsWith(`${right}/`)||right.startsWith(`${left}/`)));
 }
 
