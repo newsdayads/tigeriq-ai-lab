@@ -38,6 +38,15 @@ describe('runtime updater squash merge gate resolution',()=>{
     expect(restartCore).toContain('[int]$newPid-ne[int]$previousPid');
   });
 
+  it('ensures node_modules via deterministic package-lock install with scripts disabled and fails closed if invalid or failed',()=>{
+    const src=readFileSync('scripts/tigeriq-core/update-core-runtime.ps1','utf8');
+    expect(src).toContain('function Ensure-NodeModules');
+    expect(src).toContain('npm --prefix $repoPath ci --ignore-scripts --no-audit --no-fund');
+    expect(src).toContain("throw 'NPM_CI_FAILED'");
+    expect(src).toContain("throw 'PACKAGE_LOCK_MISSING'");
+    expect(src).toContain('Ensure-NodeModules $runtimeRepo');
+  });
+
   it('isolates runtime source from the developer worktree with SHA rollback',()=>{
     const src=readFileSync('scripts/tigeriq-core/update-core-runtime.ps1','utf8');
     expect(src).toContain("$controlRepo='D:\\TigerIQ\\Workspace\\tigeriq-ai-lab'");

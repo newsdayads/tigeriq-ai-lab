@@ -14,6 +14,12 @@ describe('runtime source isolation',()=>{
     }
   });
 
+  it('ensures deterministic node_modules installation prior to runtime restart',()=>{
+    const src=readFileSync('scripts/tigeriq-core/update-core-runtime.ps1','utf8');
+    expect(src).toContain('Ensure-NodeModules');
+    expect(src).toContain('--ignore-scripts --no-audit --no-fund');
+  });
+
   it('updater fetches through control repo but mutates only dedicated runtime source',()=>{
     const src=readFileSync('scripts/tigeriq-core/update-core-runtime.ps1','utf8');
     expect(src).toContain('git -C $controlRepo fetch origin main --prune');
