@@ -84,7 +84,23 @@ export function normalizeWorkItemLifecycle(input = {}) {
   };
 }
 
-export function executeCoreWorkItemLifecycle({ workItem, preflightFn, repairFn, reviewFn, maxRepairCycles = 3 } = {}) {
+export function handleIdleWithBacklogState({ status, backlogCount, activeJobsCount } = {}) {
+  return status === 'IDLE' && Number(backlogCount || 0) > 0 && Number(activeJobsCount || 0) === 0;
+}
+
+export function executeCoreWorkItemLifecycle({ workItem, preflightFn, repairFn, reviewFn, maxRepairCycles = 3, retryTracker = new Set() } = {}) {
+  const item = normalizeWorkItemLifecycle(workItem);
+  const itemKey = item.issueOrPr || JSON.stringify(item);
+  if (retryTracker.has(itemKey)) {
+    return {
+      ok: false,
+      stage: 'single_retry_violation',
+      errors: ['SINGLE_RETRY_EXECUTION_EXCEEDED'],
+      item: { ...item, stage: 'failed', blocker: 'Single retry execution limit reached' }
+    };
+  }
+  retryTracker.add(itemKey);
+
   const item = normalizeWorkItemLifecycle(workItem);
   const preflight = typeof preflightFn === 'function' ? preflightFn(item) : { ok: true, errors: [] };
   if (!preflight.ok) {
