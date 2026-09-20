@@ -15,6 +15,17 @@ export interface EvidenceWorkerState {
   manualCloseSuppressed?: boolean;
 }
 
+export function checkModelProfileBlockedAfterReopen(worker: EvidenceWorkerState, windowStateHistory?: { reopenCount?: number }): boolean {
+  if (!worker || worker.windowState !== 'OPEN') {
+    return false;
+  }
+  const blockedReason = String(worker.blockedReason || worker.lastHeartbeat?.blockedReason || worker.lastHeartbeat?.securityBlock || '').trim().toUpperCase();
+  const profileStatus = String(worker.lastHeartbeat?.modelProfileStatus || '').trim().toUpperCase();
+  const modelName = String(worker.lastHeartbeat?.modelName || '').trim().toUpperCase();
+  const isBlockedState = worker.blocked || blockedReason.includes('MODEL_PROFILE_BLOCKED') || blockedReason.includes('MODEL_NAME_NOT_GPT_5_6_SOL') || profileStatus.includes('BLOCKED') || modelName.includes('NOT_GPT_5_6');
+  return isBlockedState;
+}
+
 export interface RuntimeEvidenceInput {
   config: ControllerConfig;
   workArea?: WorkArea;
