@@ -398,6 +398,42 @@ async function maybeNv02Continuity(ctx,ui){
   }
 }
 
+let modelBlocked = false;
+
+async function verifyExactModel() {
+  let profile = null;
+  try {
+    profile = await new Promise((resolve) => {
+      chrome.runtime.sendMessage({ type: "getModelProfile" }, (res) => {
+        resolve(res || null);
+      });
+    });
+  } catch (_e) {}
+  const sol = profile?.sol;
+  const tier = profile?.tier;
+  if (sol === "5.6" && tier === "High") {
+    return true;
+  }
+  requestModelSwitch();
+  let recheckProfile = null;
+  try {
+    recheckProfile = await new Promise((resolve) => {
+      chrome.runtime.sendMessage({ type: "getModelProfile" }, (res) => {
+        resolve(res || null);
+      });
+    });
+  } catch (_e) {}
+  if (recheckProfile?.sol === "5.6" && recheckProfile?.tier === "High") {
+    return true;
+  }
+  modelBlocked = true;
+  return false;
+}
+
+function requestModelSwitch() {
+  try { typeof alert === 'function' && alert('Switching to GPT‑5.6 Sol + High'); } catch(_e) {}
+}
+
 async function tickWorker(workerId) {
   const ctx=await findContext(workerId); if(!ctx) return;
   lastWindowByWorker.set(workerId,ctx.windowId);
@@ -411,7 +447,13 @@ async function tickWorker(workerId) {
     catch(error){ const status=error?.status||String(error?.message||error); await post('/api/result',{workerId,commandId:command.id,ok:false,status}); }
     return;
   }
-  if(workerId==='NV02')await maybeNv02Continuity(ctx,ui);
+  if (workerId === 'NV02') {
+    const verified = await verifyExactModel();
+    if (!verified && modelBlocked) {
+      return;
+    }
+    await maybeNv02Continuity(ctx, ui);
+  }
 }
 
 async function tick(){
