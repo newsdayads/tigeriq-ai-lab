@@ -9,8 +9,8 @@
 @media (max-width:1500px){.workers{grid-template-columns:repeat(auto-fit,minmax(150px,1fr));}}@media (max-width:1150px){.workers{grid-template-columns:repeat(auto-fit,minmax(130px,1fr));}}@media (max-width:760px){.workers{grid-template-columns:repeat(auto-fit,minmax(110px,1fr));}}@media (max-width:480px){.workers{grid-template-columns:1fr;}}@media(max-width:1500px){}@media(max-width:1150px){}@media(max-width:760px){}@media(max-width:480px){}
 </style>
 </head>
-<body class="layout-sidebar-v2 responsive-layout">
-<div class="shell container-fluid" role="region" aria-label="TigerIQ Web Control Dashboard">
+<body class="layout-sidebar-v2">
+<div class="shell container-fluid responsive-layout" role="region" aria-label="TigerIQ Web Control Dashboard">
 <aside class="sidebar" aria-label="Sidebar Navigation" role="navigation">
   <div class="brand"><span class="mark">🐯</span><span>TigerIQ</span></div>
   <nav class="nav" id="nav">
@@ -82,8 +82,6 @@ function eventRow(e){return `<div class="event"><span class="ico">${eventIcon(e.
 function renderEvents(d){const es=d.events||[];document.getElementById('eventsPreview').innerHTML=es.slice(0,10).map(eventRow).join('')||'<div class="placeholder">Chưa có sự kiện.</div>';document.getElementById('historyFull').innerHTML=es.map(eventRow).join('')||'<div class="placeholder">Chưa có sự kiện.</div>'}
 function renderJobs(d){const rows=(d.jobs||[]).map(j=>`<tr><td>${esc(j.id)}</td><td>${esc(j.title)}</td><td>${esc(j.objective_id||'—')}</td><td>${esc(j.employee_id||'—')}</td><td>${esc(j.provider||'—')}</td><td class="${j.status==='failed'?'red':j.status==='done'?'green':j.status==='running'?'blue':'amber'}">${esc(j.status)}</td><td>${esc(duration(j.started_at,j.completed_at))}</td></tr>`).join('');document.getElementById('jobsTable').innerHTML=rows||'<tr><td colspan="7">Chưa có công việc.</td></tr>'}
 function renderSystem(d){const c=counts(d);document.getElementById('sysCore').textContent=`PID ${d.core?.pid??'—'} · uptime ${duration(new Date(Date.now()-(d.core?.uptimeSec||0)*1000))} · cổng ${d.core?.port??'—'}`;document.getElementById('sysSurf').textContent=d.integrations?.surfsense?.ok?`Hoạt động · ${d.integrations.surfsense.latencyMs??'—'} ms`:'Không hoạt động / chỉ bật khi cần';document.getElementById('sysResources').textContent=`${c.active}/${c.resources} sẵn sàng hoặc đang hoạt động · ${c.problems} cần chú ý`;document.getElementById('sysWeb').textContent='Đã kết nối dữ liệu Core.'}
-let _dashInterval = setInterval(refresh, 2000);
-window.addEventListener('beforeunload', () => clearInterval(_dashInterval));
 window.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
 function render(d){S.data=d;renderMetrics(d);renderWorkers(d);renderPipeline(d);renderObjectives(d);renderEvents(d);renderJobs(d);renderSystem(d);const when=new Date();document.getElementById('syncText').textContent='Đồng bộ '+when.toLocaleTimeString('vi-VN');document.getElementById('foot').textContent='Cập nhật '+when.toLocaleTimeString('vi-VN');document.getElementById('sideHealth').textContent='Không có lỗi kết nối Web Control';const h=document.getElementById('topHealth');h.innerHTML='<span class="dot"></span><span>HỆ THỐNG ĐANG HOẠT ĐỘNG</span>';document.getElementById('error').classList.remove('on')}
 async function refresh(){try{const r=await fetch('/api/status',{cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);const d=await r.json();if(!d.ok)throw new Error('Dữ liệu Core không hợp lệ');S.lastOk=Date.now();render(d)}catch(e){const el=document.getElementById('error');el.textContent='Mất kết nối Web Control: '+e.message+' · đang giữ dữ liệu cuối.';el.classList.add('on');const h=document.getElementById('topHealth');h.innerHTML='<span class="dot"></span><span>MẤT KẾT NỐI</span>';h.style.color='#ff9aa4';h.style.borderColor='#a6414c';h.style.background='#35131a';document.getElementById('sideHealth').textContent='Không lấy được dữ liệu Core'}}
