@@ -1,4 +1,4 @@
-import { projectWorkItem } from '../src/unifiedWorkItem';
+import { projectWorkItem } from '../src/unifiedWorkItem.js';
 import * as dbHelpers from '../src/dbHelpers';
 
 jest.mock('../src/dbHelpers');
