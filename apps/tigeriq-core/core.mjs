@@ -43,12 +43,13 @@ const R = (id, name, provider, model, req = [], rank = 50) => ({
   accountBinding:'default', runtimeBinding:'core', costTier:provider==='ollama'?'LOCAL':'FREE', zeroOutOfPocket:true,
   capabilities: ['general', 'reasoning', 'review'],
 });
+const ollamaResource = (() => {
+  const r = R(OLLAMA_EMPLOYEE_ID, 'Ollama', 'ollama', process.env.TIGERIQ_OLLAMA_MODEL || 'qwen3:4b', [], 90);
+  r.capabilities = ['general', 'reasoning', 'review', 'api_doctor'];
+  return r;
+})();
 const resources = [
-  {
-  const ollamaR = R(OLLAMA_EMPLOYEE_ID,'Ollama','ollama',process.env.TIGERIQ_OLLAMA_MODEL || 'qwen3:4b',[],90);
-  ollamaR.capabilities = ['general', 'reasoning', 'review', 'api_doctor'];
-  return ollamaR;
-}(),
+  ollamaResource,
   R('NV11','Groq','groq',process.env.TIGERIQ_GROQ_MODEL || 'openai/gpt-oss-120b',[['GROQ_API_KEY'],['TIGERIQ_GROQ_FREE_TIER_VERIFIED','true']],10),
   R('NV12','Gemini','gemini',process.env.TIGERIQ_GEMINI_MODEL || 'gemini-3.5-flash-lite',[['GEMINI_API_KEY'],['TIGERIQ_GEMINI_FREE_TIER_VERIFIED','true']],20),
   R('NV13','OpenRouter','openrouter','openrouter/free',[['OPENROUTER_API_KEY']],30),
@@ -565,7 +566,7 @@ function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta
       await event('API_DOCTOR_TELEMETRY', { inspection });
       res.writeHead(200,{'content-type':'application/json'});return res.end(JSON.stringify({ok:true,inspection}));
     }
-    if(req.method==='POST'&&url.pathname==='/api/resources/probe){
+    if(req.method==='POST'&&url.pathname==='/api/resources/probe'){
       if(!auth(req)&&!localSelf(req)){res.writeHead(401);return res.end('unauthorized');}
       const b=await readBody(req); const result=await probeResource(String(b.resourceId||b.employeeId||''));
       res.writeHead(200,{'content-type':'application/json'});return res.end(JSON.stringify(result));
