@@ -14,6 +14,12 @@ export function isApiDoctorEligibleResource(resource) {
   return emp === 'NV10' || prov === 'ollama';
 }
 
+export function isApiDoctorEligibleResource(resource) {
+  const emp = String(resource?.employee_id || resource?.employeeId || '');
+  const prov = String(resource?.provider || '').toLowerCase();
+  return emp === 'NV10' || prov === 'ollama';
+}
+
 export function createResourceId(provider, modelOrAccount='unknown', account, runtime='core') {
   const p=resourcePart(provider,'unknown');
   if(account===undefined)return `res:${p}:${resourcePart(modelOrAccount,'default')}`;
@@ -135,6 +141,7 @@ export function scoreResource(resource,{profile='AUTO',capability='general',task
   if(normalizedProfile==='REVIEW'&&reviewerExclusions.has(resourceId))return {eligible:false,resourceId,score:Infinity,reasons:['reviewer_independence']};
   const caps=capabilities(resource);
   const wanted=String(capability||'general').toLowerCase();
+  if(wanted === 'api_doctor' && !isApiDoctorEligibleResource(resource)) return {eligible:false,resourceId,score:Infinity,reasons:['api_doctor_exclusivity']};
   if(!caps.includes(wanted)&&!caps.includes('general'))return {eligible:false,resourceId,score:Infinity,reasons:['capability']};
   if(normalizedProfile==='CODING'&&!caps.includes('coding'))return {eligible:false,resourceId,score:Infinity,reasons:['coding_capability']};
 
