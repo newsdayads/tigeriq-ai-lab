@@ -1076,6 +1076,15 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
           recoveryAttempts.set(workerId,0);
         }else if(action==='dispatch'){
           const data=await body(req);
+          if(workerId==='NV02'){
+            const modelProfileInput = (data.modelProfile && typeof data.modelProfile === 'object') ? (data.modelProfile as any) : undefined;
+            const verifiedModel = getVerifiedModelProfile(modelProfileInput);
+            if(!verifiedModel){
+              json(res,400,{ok:false,error:'MODEL_PROFILE_BLOCKED'});
+              return true;
+            }
+            (res as any).__tigeriqVerifiedModel = verifiedModel;
+          }
           if(typeof data.text!=='string')throw new Error('DISPATCH_TEXT_MUST_BE_STRING');
           const jobData=data.job&&typeof data.job==='object'&&!Array.isArray(data.job)?data.job as Record<string,unknown>:{};
           await dispatch(workerId,data.text,data.navigate!==false,'MANUAL',{
@@ -1087,7 +1096,11 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
         }
       }
       persistEvidence();
-      json(res,200,{ok:true,enabled:states.get(workerId)!.enabled});
+      const responsePayload: Record<string,any> = {ok:true,enabled:states.get(workerId)!.enabled};
+      if((res as any).__tigeriqVerifiedModel){
+        responsePayload.evidence = { modelVerification: (res as any).__tigeriqVerifiedModel };
+      }
+      json(res,200,responsePayload);
     }catch(error){json(res,409,{ok:false,error:String(error)});}
     return true;
   }
