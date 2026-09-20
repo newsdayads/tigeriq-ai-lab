@@ -323,9 +323,19 @@ async function claimJob() {
       where j.status='queued' and j.attempts<j.max_attempts and o.status='active'
       order by case o.priority when 'P0' then 0 when 'P1' then 1 when 'P2' then 2 else 3 end,j.created_at for update skip locked limit 1`);
     if(!q.rows[0]){await c.query('commit');return null;} const j=q.rows[0];
+    const busyCheck = await c.query("select count(*)::int as count from tigeriq_ai_resources where work_state='BUSY' or current_job_id is not null");
+    const busyCount = busyCheck.rows[0]?.count || 0;
+    if (busyCount >= resources.length) {
+      const backoffSec = Math.min(60, Math.pow(2, Math.min(j.attempts, 5)));
+      await c.query("update tigeriq_jobs set attempts=attempts+1,lease_until=now()+make_interval(secs => $2) where id=$1", [j.id, backoffSec]);
+      await c.query('commit');
+      await event('RESOURCE_WAIT_QUEUED', { jobId: j.id, busyCount, backoffSec, attempts: j.attempts + 1 });
+      return null;
+    }
     await c.query("update tigeriq_jobs set status='running',started_at=coalesce(started_at,now()),lease_until=now()+interval '5 minutes' where id=$1",[j.id]);
     await c.query('commit');
     const claimed={...j,started_at:j.started_at||new Date()};
+    await event('RESOURCE_WAIT_RELEASED', { jobId: j.id, busyCount });
     await hotPathStage(claimed,'CLAIMED');
     return claimed;
   } catch(e){await c.query('rollback');throw e;} finally{c.release();}
