@@ -16,7 +16,55 @@ export function normalizeCampaignPhases(input) {
 export function currentCampaignGoal(objective, phases, currentPhase=0) {
   const list = Array.isArray(phases) ? phases : [];
   if (!list.length) return String(objective || '');
-  const index = Math.min(Math.max(Number(currentPhase)||0,0),list.length-1);
+  const index = Math.min(Math.max(Number(currentPhase) || 0, 0), list.length - 1);
+  const phase = list[index];
+  const title = typeof phase === 'string' ? phase : (phase?.title || '');
+  const prompt = typeof phase === 'string' ? phase : (phase?.prompt || phase?.goal || title);
+  return `Objective: ${objective}\nPhase ${index + 1} of ${list.length} [${title}]:\n${prompt}`;
+}
+
+export function campaignTransition({ status, currentPhase = 0, phases = [], doneJobs = 0 } = {}) {
+  const list = Array.isArray(phases) ? phases : [];
+  const idx = Number(currentPhase) || 0;
+  const st = String(status || '').trim().toLowerCase();
+  if (st === 'blocked' || st === 'fail' || st === 'failed') {
+    return { action: 'blocked', terminal: true, nextPhase: null };
+  }
+  if ((st === 'complete' || st === 'completed' || st === 'success') && idx < list.length - 1) {
+    return { action: 'continue', terminal: false, nextPhase: idx + 1 };
+  }
+  if (st === 'complete' || st === 'completed' || st === 'success') {
+    return { action: 'complete', terminal: true, nextPhase: null };
+  }
+  return { action: 'continue', terminal: false, nextPhase: idx };
+}
+
+export function makePhaseCheckpoint({ currentPhase = 0, phases = [], summary = '', completedAt = new Date().toISOString() } = {}) {
+  const list = Array.isArray(phases) ? phases : [];
+  const idx = Math.min(Math.max(Number(currentPhase) || 0, 0), Math.max(0, list.length - 1));
+  const phase = list[idx] || {};
+  return {
+    phaseIndex: idx,
+    phaseNumber: idx + 1,
+    phaseCount: list.length,
+    phaseTitle: typeof phase === 'string' ? phase : (phase?.title || 'Phase'),
+    summary: String(summary || '').trim(),
+    completedAt: String(completedAt || new Date().toISOString())
+  };
+}
+
+export function campaignNeedsEvidence({ status, phases = [], doneJobs = 0 } = {}) {
+  const st = String(status || '').trim().toLowerCase();
+  const list = Array.isArray(phases) ? phases : [];
+  if ((st === 'complete' || st === 'completed') && list.length > 0 && Number(doneJobs || 0) <= 0) {
+    return true;
+  }
+  return false;
+}
+
+export function campaignEvidenceJobId(objectiveId, phaseIndex) {
+  return `JOB-EVID-${String(objectiveId || 'OBJ')}-P${Number(phaseIndex || 0)}`;
+}er(currentPhase)||0,0),list.length-1);
   const phase = list[index];
   return [
     String(objective || ''),
