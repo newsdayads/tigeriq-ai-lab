@@ -291,9 +291,26 @@ export async function startWorkforceController(options: WorkforceControllerOptio
       }
 
       if (request.method === 'POST' && url.pathname === '/api/node/heartbeat') {
-        if (!options.remoteTasks) throw new HttpError(503, 'remote_tasks_not_configured');
-        const authenticated = await authenticateNode(request, options.credentials, 'task:read');
-        return json(response, 200, { ok: true, nodeId: authenticated.nodeId, healthy: true, timestamp: new Date().toISOString() });
+        const authenticated = await authenticateNode(request, options.credentials, 'heartbeat');
+        const data = await body(request);
+        const requestedStatus = text(data.status, 32);
+        const status: NodeStatus = requestedStatus === 'degraded' ? 'degraded' : 'online';
+        const batteryPct = numberInRange(data.batteryPct, 0, 100);
+        const temperatureC = numberInRange(data.temperatureC, -20, 100);
+        const agentVersion = text(data.agentVersion, 64) || undefined;
+        if (!options.runtime.registry.getNode(authenticated.nodeId)) throw new HttpError(404, 'node_not_found');
+        const healthyNode = options.runtime.registry.heartbeat(authenticated.nodeId, {
+          status,
+          lastHeartbeatAt: new Date().toISOString(),
+          batteryPct,
+          temperatureC,
+          agentVersion,
+        });
+        if (options.remoteTasks) {
+          await options.remoteTasks.validateHeartbeat(authenticated.nodeId);
+        }
+        await options.runtime.checkpoint();
+        return json(response, 200, { ok: true, node: healthyNode, healthy: true, timestamp: new Date().toISOString() });
       }
 
       if (request.method === 'POST' && url.pathname === '/api/node/tasks/result') {
