@@ -287,7 +287,13 @@ export async function startWorkforceController(options: WorkforceControllerOptio
         if (!options.remoteTasks) throw new HttpError(503, 'remote_tasks_not_configured');
         const authenticated = await authenticateNode(request, options.credentials, 'task:read');
         const lease = await options.remoteTasks.poll(authenticated.nodeId);
-        return json(response, 200, { ok: true, lease: lease ?? null });
+        return json(response, 200, { ok: true, lease: lease ?? null, heartbeatValid: true });
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/node/heartbeat') {
+        if (!options.remoteTasks) throw new HttpError(503, 'remote_tasks_not_configured');
+        const authenticated = await authenticateNode(request, options.credentials, 'task:read');
+        return json(response, 200, { ok: true, nodeId: authenticated.nodeId, healthy: true, timestamp: new Date().toISOString() });
       }
 
       if (request.method === 'POST' && url.pathname === '/api/node/tasks/result') {
