@@ -694,6 +694,8 @@ async function loop(){
           await pool.query("update tigeriq_jobs set status='queued', metadata=$2, started_at=null where id=$1", [j.id, JSON.stringify(updatedMeta)]);
           await event('RESOURCE_WAIT_QUEUED', { jobId: j.id, attempts, delayMs: backlogDelayMs, nextAttemptAt: nextAttemptAt.toISOString() });
           continue;
+        } else if (j.metadata?.resourceWaitAttempts && j.status === 'queued') {
+          await event('RESOURCE_WAIT_RELEASED', { jobId: j.id, attempts: j.metadata.resourceWaitAttempts });
         }
         dispatchedCount++;
         active.add(j.id);
