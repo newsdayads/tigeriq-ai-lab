@@ -16,7 +16,63 @@ export function normalizeCampaignPhases(input) {
 export function currentCampaignGoal(objective, phases, currentPhase=0) {
   const list = Array.isArray(phases) ? phases : [];
   if (!list.length) return String(objective || '');
-  const index = Math.min(Math.max(Number(currentPhase)||0,0),list.length-1);
+  const index = Math.min(Math.max(Number(currentPhase) || 0, 0), list.length - 1);
+  const phase = list[index];
+  const title = typeof phase === 'string' ? phase : (phase?.title || '');
+  const prompt = typeof phase === 'string' ? phase : (phase?.prompt || phase?.goal || title);
+  return `Objective: ${objective}\nActive Phase [${index + 1}/${list.length}] ${title}: ${prompt}`;
+}
+
+export function campaignTransition(currentPhase = 0, phases = [], success = true) {
+  const list = Array.isArray(phases) ? phases : [];
+  if (!list.length) return { currentPhase: 0, completed: true, nextPhase: 0 };
+  const idx = Math.min(Math.max(Number(currentPhase) || 0, 0), list.length - 1);
+  if (!success) {
+    return { currentPhase: idx, completed: false, nextPhase: idx };
+  }
+  const next = idx + 1;
+  if (next >= list.length) {
+    return { currentPhase: idx, completed: true, nextPhase: idx };
+  }
+  return { currentPhase: next, completed: false, nextPhase: next };
+}
+
+export function makePhaseCheckpoint({ currentPhase = 0, phases = [], summary = '', completedAt = new Date().toISOString() } = {}) {
+  const list = Array.isArray(phases) ? phases : [];
+  const idx = Math.min(Math.max(Number(currentPhase) || 0, 0), Math.max(list.length - 1, 0));
+  const phase = list[idx];
+  const phaseTitle = typeof phase === 'string' ? phase : (phase?.title || `Phase ${idx + 1}`);
+  return {
+    phaseIndex: idx,
+    phaseNumber: idx + 1,
+    phaseCount: list.length,
+    phaseTitle,
+    summary: String(summary || '').trim(),
+    completedAt: String(completedAt || new Date().toISOString())
+  };
+}
+
+export function campaignNeedsEvidence(phase) {
+  if (!phase) return false;
+  const acceptance = typeof phase === 'string' ? '' : String(phase?.acceptance || '');
+  return acceptance.length > 0 || String(phase?.prompt || '').toLowerCase().includes('verify');
+}
+
+export function campaignEvidenceJobId(objectiveId, phaseIndex) {
+  return `CAMP-${String(objectiveId || 'OBJ')}-P${Number(phaseIndex || 0) + 1}`;
+}
+
+export function normalizeWorkItemLifecycle(item) {
+  if (!item || typeof item !== 'object') throw new Error('WORK_ITEM_INVALID');
+  return {
+    issueOrPr: String(item.issueOrPr || '').trim(),
+    implementer: String(item.implementer || '').trim(),
+    reviewer: String(item.reviewer || '').trim(),
+    stage: String(item.stage || 'planning').trim(),
+    blocker: String(item.blocker || '').trim(),
+    nextAction: String(item.nextAction || '').trim(),
+  };
+}er(currentPhase)||0,0),list.length-1);
   const phase = list[index];
   return [
     String(objective || ''),
