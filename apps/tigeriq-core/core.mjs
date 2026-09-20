@@ -134,6 +134,27 @@ async function openAiCompat(endpoint, key, model, prompt, extraHeaders = {}, tim
   if (!String(text || '').trim()) { const e = new Error('EMPTY_RESPONSE'); e.kind='invalid_response'; throw e; }
   return String(text);
 }
+export function watsonxTextFromBody(body){
+  const first=Array.isArray(body?.results)&&body.results.length?body.results[0]:null;
+  const candidates=[first?.generated_text,first?.text,first?.output,body?.generated_text,body?.output];
+  const found=candidates.find(value=>typeof value==='string');
+  return found===undefined?null:found;
+}
+export function hasWatsonxTextShape(body){
+  const first=Array.isArray(body?.results)&&body.results.length?body.results[0]:null;
+  return Boolean(
+    (first&&['generated_text','text','output'].some(key=>Object.prototype.hasOwnProperty.call(first,key)))||
+    (body&&typeof body==='object'&&['generated_text','output'].some(key=>Object.prototype.hasOwnProperty.call(body,key)))
+  );
+}
+export function watsonxRetryDecision(body,attempt,maxRetries=2){
+  if(!hasWatsonxTextShape(body))return{action:'fail',code:'WATSONX_SHAPE_MISMATCH'};
+  const text=watsonxTextFromBody(body);
+  if(String(text??'').trim())return{action:'success',text:String(text)};
+  if(Number(attempt)<Number(maxRetries))return{action:'retry',code:'WATSONX_TRANSIENT_EMPTY'};
+  return{action:'fail',code:'EMPTY_RESPONSE'};
+}
+
 async function invokeProvider(r, prompt) {
   switch (r.provider) {
     case 'ollama': return openAiCompat('http://127.0.0.1:11434/v1/chat/completions','',r.model,prompt,{authorization:undefined},OLLAMA_TIMEOUT_MS,r);
@@ -168,13 +189,20 @@ async function invokeProvider(r, prompt) {
       return String(text);
     }
     case 'watsonx': {
-      const form = new URLSearchParams({grant_type:'urn:ibm:params:oauth:grant-type:apikey',apikey:process.env.WATSONX_API_KEY});
-      const iam = await fetchJson('https://iam.cloud.ibm.com/identity/token',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:form.toString()});
-      const b = await fetchJson('https://us-south.ml.cloud.ibm.com/ml/v1/text/generation?version=2024-05-01',{
-        method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${iam.access_token}`},
-        body:JSON.stringify({model_id:process.env.WATSONX_MODEL_ID,input:prompt,project_id:process.env.WATSONX_PROJECT_ID,parameters:{max_new_tokens:1200,temperature:0}})});
-      const text=b?.results?.[0]?.generated_text;
-      if(!String(text||'').trim()){const e=new Error('EMPTY_RESPONSE');e.kind='invalid_response';throw e;} return String(text);
+      const form=new URLSearchParams({grant_type:'urn:ibm:params:oauth:grant-type:apikey',apikey:process.env.WATSONX_API_KEY});
+      const iam=await fetchJson('https://iam.cloud.ibm.com/identity/token',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:form.toString()});
+      const maxRetries=2;
+      for(let attempt=0;attempt<=maxRetries;attempt++){
+        const b=await fetchJson('https://us-south.ml.cloud.ibm.com/ml/v1/text/generation?version=2024-05-01',{
+          method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${iam.access_token}`},
+          body:JSON.stringify({model_id:process.env.WATSONX_MODEL_ID,input:prompt,project_id:process.env.WATSONX_PROJECT_ID,parameters:{max_new_tokens:1200,temperature:0}})
+        });
+        const decision=watsonxRetryDecision(b,attempt,maxRetries);
+        if(decision.action==='success')return decision.text;
+        if(decision.action==='retry'){await sleep(400*(attempt+1));continue;}
+        const e=new Error(decision.code);e.kind='invalid_response';throw e;
+      }
+      const e=new Error('EMPTY_RESPONSE');e.kind='invalid_response';throw e;
     }
     default: { const e=new Error('PROVIDER_UNSUPPORTED'); e.kind='configuration'; throw e; }
   }
