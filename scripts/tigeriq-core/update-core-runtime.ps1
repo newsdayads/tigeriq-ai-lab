@@ -128,7 +128,6 @@ while($true){
     $runtimePaths = @('apps/tigeriq-core', 'apps/tigeriq-coding-lane', 'scripts/tigeriq-core')
     $dirtyRuntime = @(git -C $repo status --porcelain -- $runtimePaths)
     if($dirtyRuntime) { Save-State @{result='BLOCKED_DIRTY_RUNTIME';watchdog=$watchdog}; continue }
-    if((git -C $repo status --porcelain)){Save-State @{result='BLOCKED_DIRTY_WORKTREE';watchdog=$watchdog};continue}
     git -C $repo fetch origin main --prune|Out-Null;if($LASTEXITCODE -ne 0){throw 'FETCH_FAILED'}
     $local=Head 'HEAD';$remote=Head 'origin/main';if($local -eq $remote){Save-State @{result='NO_CHANGE';installedSha=$local;watchdog=$watchdog};continue}
     $gateSha=Resolve-GateSha $remote
