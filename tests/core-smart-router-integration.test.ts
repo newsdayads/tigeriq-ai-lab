@@ -18,6 +18,7 @@ describe('#777 Core Smart Router integration',()=>{
     expect(core).toContain('WATSONX_SHAPE_MISMATCH');
     expect(core).toContain('WATSONX_TRANSIENT_EMPTY');
     expect(core).toContain('maxWatsonxRetries');
+    expect(core).toContain('hasValidShape');
     expect(core).not.toContain('process.env.WATSONX_API_KEY');
   });
 });
