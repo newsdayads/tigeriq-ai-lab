@@ -3,6 +3,7 @@ import {describe,it,expect} from 'vitest';
 import {normalizeCampaignPhases,currentCampaignGoal,campaignTransition,makePhaseCheckpoint,campaignNeedsEvidence,campaignEvidenceJobId,normalizeWorkItemLifecycle,executeCoreWorkItemLifecycle} from '../apps/tigeriq-core/campaign-runner.mjs';
 import {detectIdleWithBacklog} from '../apps/tigeriq-core/github-backlog-policy.mjs';
 import {runExecutionPreflight} from '../apps/tigeriq-core/execution-preflight.mjs';
+import {watsonxTextFromBody,hasWatsonxTextShape,watsonxRetryDecision} from '../apps/tigeriq-core/core.mjs';
 
 const phases=[
   {title:'Checkpoint',prompt:'Design durable resume',acceptance:'Resume without Owner'},
@@ -109,5 +110,58 @@ describe('API campaign runner and core lifecycle integration',()=>{
     expect(detectIdleWithBacklog(0, 5)).toBe(true);
     expect(detectIdleWithBacklog(1, 5)).toBe(false);
     expect(detectIdleWithBacklog(0, 0)).toBe(false);
+  });
+  describe('NV18 Watsonx text result normalization and retry', () => {
+    it('normalizes valid shape with results array and generated_text', () => {
+      const body = { results: [{ generated_text: 'hello' }] };
+      expect(hasWatsonxTextShape(body)).toBe(true);
+      expect(watsonxTextFromBody(body)).toBe('hello');
+    });
+
+    it('normalizes valid shape with body generated_text directly', () => {
+      const body = { generated_text: 'hello' };
+      expect(hasWatsonxTextShape(body)).toBe(true);
+      expect(watsonxTextFromBody(body)).toBe('hello');
+    });
+
+    it('normalizes valid shape with body output directly', () => {
+      const body = { output: 'hello' };
+      expect(hasWatsonxTextShape(body)).toBe(true);
+      expect(watsonxTextFromBody(body)).toBe('hello');
+    });
+
+    it('returns null for empty or non-object responses', () => {
+      expect(watsonxTextFromBody(null)).toBe(null);
+      expect(watsonxTextFromBody({})).toBe(null);
+      expect(hasWatsonxTextShape({})).toBe(false);
+    });
+
+    it('returns success action when text is found', () => {
+      const body = { results: [{ generated_text: 'hello' }] };
+      const res = watsonxRetryDecision(body, 0, 2);
+      expect(res.action).toBe('success');
+      expect(res.text).toBe('hello');
+    });
+
+    it('returns retry action on transient empty response under max attempts', () => {
+      const body = { results: [{ generated_text: '' }] };
+      const res = watsonxRetryDecision(body, 0, 2);
+      expect(res.action).toBe('retry');
+      expect(res.code).toBe('WATSONX_TRANSIENT_EMPTY');
+    });
+
+    it('returns fail action on empty response after max attempts reached', () => {
+      const body = { results: [{ generated_text: '' }] };
+      const res = watsonxRetryDecision(body, 3, 2);
+      expect(res.action).toBe('fail');
+      expect(res.code).toBe('EMPTY_RESPONSE');
+    });
+
+    it('returns fail action on non-normalized shapes', () => {
+      const body = { data: 'unexpected' };
+      const res = watsonxRetryDecision(body, 0, 2);
+      expect(res.action).toBe('fail');
+      expect(res.code).toBe('WATSONX_SHAPE_MISMATCH');
+    });
   });
 });
