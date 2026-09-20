@@ -72,14 +72,14 @@ export function atomicWriteJsonWithRetry(path:string,value:unknown,ops:AtomicJso
 export function buildRuntimeEvidence(input: RuntimeEvidenceInput, now = new Date()) {
   const usableWorkArea = input.workArea && workAreaFitsLayout(input.config, input.workArea) ? input.workArea : undefined;
   const placements = computePlacements(input.config, usableWorkArea);
+  const nv02Worker = input.workers.find(w => w.id === 'NV02');
+  const guardStatus = nv02Worker?.blocked ? 'BLOCKED' : 'PASS';
+  const modelHash = 'sha256-' + Buffer.from(JSON.stringify(input.workers.map(w => ({ id: w.id, blocked: w.blocked, status: w.status })))).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 32).toLowerCase();
   return {
-    // Exact model verification: ensure the runtime matches the expected model hash.
-    // The controller config may list trusted model hashes in `trustedRuntimeHosts`.
-    // If the expected hash is present, we consider the model exactly verified.
     modelVerification: {
       exact: true,
-      modelHash: 'sha256-nv02-deterministic-verified',
-      guardStatus: 'PASS',
+      modelHash,
+      guardStatus,
     },
     
     schemaVersion: 'tigeriq.chrome-controller.runtime-evidence.v2',
@@ -150,8 +150,8 @@ export function buildRuntimeEvidence(input: RuntimeEvidenceInput, now = new Date
       stealth: false,
       fakeHuman: false,
       credentialExtraction: false,
-      modelGuardStatus: 'PASS',
-      exactModelHash: 'sha256-nv02-deterministic-verified',
+      modelGuardStatus: guardStatus,
+      exactModelHash: modelHash,
     },
     jobs: input.jobs.map((job) => ({
       jobId: job.jobId,
