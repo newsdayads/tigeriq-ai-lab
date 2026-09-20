@@ -1,5 +1,8 @@
-import {describe,expect,it} from 'vitest';
+import {describe,expect,it,vi} from 'vitest';
 import {isRetryableFailure,isStaleJob,normalizeRepairFailure,repairInstruction,shouldRetry} from '../apps/tigeriq-coding-lane/autonomy-supervisor.mjs';
+
+// We need to test githubIssueIsOpen or objectiveIsEligible via exported functions or by mocking fetch.
+// Since githubIssueIsOpen is not exported directly, we can test it through mock fetch or test helper exports if available, or we can test handleFailed / objectiveIsEligible if exported or test logic via mock.
 
 describe('coding autonomy supervisor repair policy',()=>{
   it('normalizes known repairable failures',()=>{
@@ -28,4 +31,9 @@ describe('coding autonomy supervisor repair policy',()=>{
     expect(p).toContain('PREVIOUS_FAILURE=CI_GATES_FAILED');
     expect(p).toContain('Do not broaden scope');
   });
+});
+
+describe('coding autonomy supervisor GitHub issue eligibility checks',()=>{
+  // Test githubIssueIsOpen validation rules indirectly or directly if we import/export or test via module evaluation.
+  // Since githubIssueIsOpen is module-scoped, let's test via handleFailed/objectiveIsEligible with a mock Pool and mock fetch.
 });
