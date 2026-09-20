@@ -57,58 +57,69 @@ export function campaignEvidenceJobId(objectiveId, currentPhase = 0) {
   return `${base}-P${phaseNum}`;
 }
 
-export function normalizeWorkItemLifecycle(workItem) {
-  const raw = workItem && typeof workItem === 'object' ? workItem : {};
-  return {
-    issueOrPr: String(raw.issueOrPr || raw.jobId || '').trim(),
-    implementer: String(raw.implementer || '').trim(),
-    reviewer: String(raw.reviewer || '').trim(),
-    stage: String(raw.stage || 'queued').trim().toLowerCase(),
-    blocker: String(raw.blocker || '').trim(),
-    nextAction: String(raw.nextAction || '').trim(),
-  };
-}er(currentPhase)||0,0),list.length-1);
+export function currentCampaignGoal(objective, phases, currentPhase = 0) {
+  const list = Array.isArray(phases) ? phases : [];
+  if (!list.length) return String(objective || '');
+  const index = Math.min(Math.max(Number(currentPhase) || 0, 0), list.length - 1);
   const phase = list[index];
+  const title = typeof phase === 'string' ? phase : (phase?.title || '');
+  const prompt = typeof phase === 'string' ? phase : (phase?.prompt || phase?.goal || title);
   return [
     String(objective || ''),
-    `Campaign phase ${index+1}/${list.length}: ${phase.title}`,
-    `Phase task: ${phase.prompt}`,
-    phase.acceptance ? `Phase acceptance: ${phase.acceptance}` : ''
+    `Campaign phase ${index + 1}/${list.length}: ${title}`,
+    `Phase task: ${prompt}`,
+    phase && typeof phase === 'object' && phase.acceptance ? `Phase acceptance: ${phase.acceptance}` : ''
   ].filter(Boolean).join('\n');
 }
 
-export function campaignTransition({status,currentPhase=0,phases=[]}) {
+export function campaignTransition(arg = {}) {
+  const { status, currentPhase = 0, phases = [], success = true } = arg;
   const list = Array.isArray(phases) ? phases : [];
-  if (status === 'blocked') return { action:'blocked', terminal:true, nextPhase:null };
-  if (status === 'continue') return { action:'continue', terminal:false, nextPhase:Number(currentPhase)||0 };
-  if (status !== 'complete') throw new Error('CAMPAIGN_STATUS_INVALID');
-  if (!list.length) return { action:'complete', terminal:true, nextPhase:null };
-  const index = Number(currentPhase)||0;
-  if (index < list.length-1) return { action:'advance', terminal:false, nextPhase:index+1 };
-  return { action:'complete', terminal:true, nextPhase:null };
+  if (status) {
+    if (status === 'blocked') return { action:'blocked', terminal:true, nextPhase:null };
+    if (status === 'continue') return { action:'continue', terminal:false, nextPhase:Number(currentPhase)||0 };
+    if (status !== 'complete') throw new Error('CAMPAIGN_STATUS_INVALID');
+    if (!list.length) return { action:'complete', terminal:true, nextPhase:null };
+    const index = Number(currentPhase)||0;
+    if (index < list.length-1) return { action:'advance', terminal:false, nextPhase:index+1 };
+    return { action:'complete', terminal:true, nextPhase:null };
+  }
+  if (!list.length || !success) return Math.max(0, Number(currentPhase) || 0);
+  const next = (Number(currentPhase) || 0) + 1;
+  return next >= list.length ? list.length - 1 : next;
 }
 
-export function makePhaseCheckpoint({currentPhase=0,phases=[],summary='',completedAt}) {
+export function makePhaseCheckpoint(arg = {}) {
+  const { currentPhase = 0, phases = [], summary = '', completedAt = new Date().toISOString() } = arg;
   const list = Array.isArray(phases) ? phases : [];
-  const index = Number(currentPhase)||0;
+  const index = Math.min(Math.max(Number(currentPhase) || 0, 0), Math.max(0, list.length - 1));
+  const phase = list[index];
+  const title = typeof phase === 'string' ? phase : (phase?.title || `Phase ${index + 1}`);
   return {
-    phaseIndex:index,
-    phaseNumber:index+1,
-    phaseCount:list.length,
-    phaseTitle:list[index]?.title || null,
-    summary:String(summary||'').slice(0,2000),
-    completedAt:completedAt || new Date().toISOString()
+    phaseIndex: index,
+    phaseNumber: index + 1,
+    phaseCount: list.length,
+    phaseTitle: title,
+    summary: String(summary || '').slice(0, 2000),
+    completedAt,
   };
 }
 
-export function campaignNeedsEvidence({status,phases=[],doneJobs=0}) {
-  return status === 'complete' && Array.isArray(phases) && phases.length > 0 && Number(doneJobs || 0) < 1;
+export function campaignNeedsEvidence(arg = {}) {
+  const { status, phases = [], doneJobs = 0, currentPhase = 0 } = arg;
+  if (status !== undefined) {
+    return status === 'complete' && Array.isArray(phases) && phases.length > 0 && Number(doneJobs || 0) < 1;
+  }
+  const list = Array.isArray(phases) ? phases : [];
+  const index = Math.min(Math.max(Number(currentPhase) || 0, 0), Math.max(0, list.length - 1));
+  return index > 0;
 }
 
-export function campaignEvidenceJobId(objectiveId,currentPhase=0) {
-  const id=String(objectiveId||'').trim();
-  if(!id) throw new Error('CAMPAIGN_OBJECTIVE_ID_REQUIRED');
-  return `JOB-EVID-${id}-P${Number(currentPhase)||0}`;
+export function campaignEvidenceJobId(objectiveId, currentPhase = 0) {
+  const id = String(objectiveId || '').trim();
+  if (!id) throw new Error('CAMPAIGN_OBJECTIVE_ID_REQUIRED');
+  const phaseNum = Math.max(1, (Number(currentPhase) || 0) + 1);
+  return `${id}-P${phaseNum}`;
 }
 
 export function verifyRuntimeSourceIsolationState() {
@@ -116,8 +127,8 @@ export function verifyRuntimeSourceIsolationState() {
 }
 
 export function normalizeWorkItemLifecycle(input = {}) {
-  const raw = input || {};
-  const issueOrPr = String(raw.issueOrPr || raw.issue_or_pr || raw.pr || raw.issue || '').trim();
+  const raw = input && typeof input === 'object' ? input : {};
+  const issueOrPr = String(raw.issueOrPr || raw.issue_or_pr || raw.pr || raw.issue || raw.jobId || '').trim();
   const implementer = String(raw.implementer || raw.assignee || raw.employee_id || '').trim();
   const reviewer = String(raw.reviewer || raw.review_employee_id || '').trim();
   const stage = String(raw.stage || raw.status || 'planning').trim().toLowerCase();
