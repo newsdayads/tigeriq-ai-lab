@@ -680,6 +680,22 @@ async function loop(){
           }
           break;
         }
+        if (j.status === 'resource_wait') {
+          const attempts = Number(j.metadata?.resourceWaitAttempts || 0) + 1;
+          const maxAttempts = 5;
+          if (attempts > maxAttempts) {
+            await pool.query("update tigeriq_jobs set status='failed', failure=$2, completed_at=now() where id=$1", [j.id, 'RESOURCE_WAIT_EXHAUSTED']);
+            await event('RESOURCE_WAIT_EXHAUSTED', { jobId: j.id, attempts });
+            continue;
+          }
+          const backlogDelayMs = Math.min(30000, 1000 * Math.pow(2, attempts));
+          const nextAttemptAt = new Date(Date.now() + backlogDelayMs);
+          const updatedMeta = { ...(j.metadata || {}), resourceWaitAttempts: attempts };
+          await pool.query("update tigeriq_jobs set status='queued', metadata=$2, started_at=null where id=$1", [j.id, JSON.stringify(updatedMeta)]);
+          await event('RESOURCE_WAIT_QUEUED', { jobId: j.id, attempts, delayMs: backlogDelayMs, nextAttemptAt: nextAttemptAt.toISOString() });
+          await event('RESOURCE_WAIT_RELEASED', { jobId: j.id, attempts });
+          continue;
+        }
         dispatchedCount++;
         active.add(j.id);
         void runJob(j).finally(()=>active.delete(j.id));
