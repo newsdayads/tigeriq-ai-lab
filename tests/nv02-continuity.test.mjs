@@ -115,6 +115,10 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("/(^|\\\\s)(đang suy nghĩ|thinking|generating|đang tạo)(\\\\s|$)/i");
     expect(source).toContain(".replace(/\\\\s+/g,' ')");
     expect(source).toContain("phase==='READY'&&!active&&now>=state.nextContinueAt&&shouldRotateChat(state,now)");
+    expect(source).toContain("'CONTINUITY_CONTINUE'");
+    const leaseServerSource = readFileSync('apps/chrome-controller/src/server.ts','utf8');
+    expect(leaseServerSource).toContain("allowWaitingEvidence:continuityContinue");
+    expect(leaseServerSource).toContain("purpose==='CONTINUITY_CONTINUE'");
     expect(source).toContain("WORKING_NO_PROGRESS_CHECK");
     expect(source).toContain("WORKING_STALE_RELOAD");
     expect(source).toContain("WORKING_NO_PROGRESS_3_CHECKS");
