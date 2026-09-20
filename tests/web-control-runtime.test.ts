@@ -161,11 +161,13 @@ describe('Web Control runtime', () => {
     const truthRes = await fetch(`http://127.0.0.1:${WEB_PORT}/web-control-truth.js`);
     const truthText = await truthRes.text();
     expect(truthText).toContain('TIGERIQ_CONFIG');
+    expect(truthText).toContain('healthUrl');
 
     const htmlRes = await fetch(`http://127.0.0.1:${WEB_PORT}/`);
     const htmlText = await htmlRes.text();
     expect(htmlText).toContain('TIGERIQ_CONFIG');
     expect(htmlText).toContain('statusUrl');
     expect(htmlText).toContain('healthUrl');
+    expect(htmlText).toContain('channel');
   });
 });
