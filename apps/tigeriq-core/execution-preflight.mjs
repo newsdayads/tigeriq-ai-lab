@@ -1,4 +1,4 @@
-export function runExecutionPreflight({ skill, tool, state, context } = {}) {
+export function runExecutionPreflight({ skill, tool, state, context, workItem } = {}) {
   const errors = [];
   
   if (skill) {
@@ -26,6 +26,19 @@ export function runExecutionPreflight({ skill, tool, state, context } = {}) {
       errors.push('INVALID_STATE_FORMAT');
     } else if (state.status === 'blocked' || state.status === 'failed' || state.terminated === true) {
       errors.push(`STATE_TERMINATED_OR_BLOCKED:${state.status || 'terminated'}`);
+    }
+  }
+
+  if (workItem) {
+    if (typeof workItem !== 'object' || Array.isArray(workItem)) {
+      errors.push('INVALID_WORK_ITEM_FORMAT');
+    } else {
+      if (!workItem.issueOrPr && !workItem.issue_or_pr && !workItem.pr && !workItem.issue) {
+        errors.push('WORK_ITEM_MISSING_IDENTIFIER');
+      }
+      if (workItem.implementer && workItem.reviewer && workItem.implementer === workItem.reviewer) {
+        errors.push('IMPLEMENTER_REVIEWER_COLLISION');
+      }
     }
   }
 
