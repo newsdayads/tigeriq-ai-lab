@@ -409,6 +409,7 @@ function workerHasActiveJob(id:WorkerId,{allowWaitingEvidence=false}:{allowWaiti
   const activeUiJob=uiJobLedger.active(id);
   if(activeUiJob&&!(allowWaitingEvidence&&activeUiJob.stage==='WAITING_EVIDENCE'))return true;
   if(id==='NV02'){
+    if(!config.autopilot.enabled)return false;
     if(autopilotState.pendingJobId||autopilotState.uncertainJobId)return true;
     const previous=latestSnapshot?.previousJob;
     return Boolean(previous&&previous.workerId==='NV02'&&previous.jobId===autopilotState.lastDispatchedJobId&&['QUEUED','READY','RUNNING'].includes(previous.status));
@@ -708,6 +709,7 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
       interactiveSession:isInteractiveDesktopSession(),
       sessionName:process.env.SESSIONNAME??null,
       autopilot:autopilotState,
+      externalWorkAutopilotEnabled:config.autopilot.enabled,
       utilityPausedWorkers:[...utilityPausedWorkers],
       recovery:{attempts:Object.fromEntries(recoveryAttempts),maxReopenAttempts:config.recovery.maxReopenAttempts},
       evidencePath:runtimeEvidencePath,
@@ -721,6 +723,7 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
   if(url.pathname==='/api/autopilot/state'&&req.method==='GET'){json(res,200,{state:autopilotState,snapshot:latestSnapshot??null});return true;}
   if(url.pathname==='/api/autopilot/snapshot'&&req.method==='POST'){
     try{
+      if(!config.autopilot.enabled)throw new Error('EXTERNAL_WORK_AUTOPILOT_DISABLED');
       const snapshot=validateExternalSnapshot(await body(req));
       latestSnapshot=snapshot;
       atomicJson(autopilotSnapshotPath,snapshot);
@@ -733,6 +736,7 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
   }
   if(url.pathname==='/api/autopilot/continue-now'&&req.method==='POST'){
     try{
+      if(!config.autopilot.enabled)throw new Error('EXTERNAL_WORK_AUTOPILOT_DISABLED');
       if(paused)throw new Error('OWNER_INTERACTION_READ_ONLY');
       if(killed)throw new Error('CONTROLLER_KILLED');
       await fetchExternalSnapshot();
