@@ -61,6 +61,9 @@ export function verifySaveReceiptV1(input: SaveReceiptVerificationInput): { vali
   return { valid: true };
 }
 
+import { restoreGpt5_6SolProfile } from './model.js';
+import { checkModelProfileBlockedAfterReopen } from './runtime-evidence.js';
+
 const restoredReopenFlags = new Set<string>();
 
 export function resetRuntimeRecoveryGuards(): void {
@@ -74,7 +77,7 @@ export function checkAndRestoreModelProfileAfterReopen(worker: { id: any; window
     return { restored: false, reason: 'ALREADY_RESTORED_FOR_REOPEN' };
   }
   
-  const isBlocked = checkModelProfileBlockedMockOrDirect(worker);
+  const isBlocked = checkModelProfileBlockedAfterReopen(worker as any);
   if (!isBlocked) {
     return { restored: false, reason: 'NOT_BLOCKED' };
   }
@@ -87,15 +90,6 @@ export function checkAndRestoreModelProfileAfterReopen(worker: { id: any; window
     return { restored: false, reason: `RESTORE_ERROR:${err?.message ?? String(err)}` };
   }
 }
-
-function checkModelProfileBlockedMockOrDirect(worker: any): boolean {
-  const blockedReason = String(worker.blockedReason || worker.lastHeartbeat?.blockedReason || worker.lastHeartbeat?.securityBlock || '').trim().toUpperCase();
-  const profileStatus = String(worker.lastHeartbeat?.modelProfileStatus || '').trim().toUpperCase();
-  const modelName = String(worker.lastHeartbeat?.modelName || '').trim().toUpperCase();
-  return Boolean(worker.blocked || blockedReason.includes('MODEL_PROFILE_BLOCKED') || blockedReason.includes('MODEL_NAME_NOT_GPT_5_6_SOL') || profileStatus.includes('BLOCKED') || modelName.includes('NOT_GPT_5_6'));
-}
-
-import { restoreGpt5_6SolProfile } from './model.js';
 
 export function heartbeatStopReason(hb:HeartbeatSecuritySignals|undefined):string|undefined{
   if(!hb)return;
