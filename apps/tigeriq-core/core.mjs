@@ -653,7 +653,6 @@ export async function startSelfCheck(runtime) {
 async function loop(){
   while(!stop){const t=Date.now();
     try{
-      // Ensure runtime source isolation telemetry is maintained
       const preflightCheck = runExecutionPreflight({ state: { status: 'running', runtimeIsolation: true } });
       if (!preflightCheck.ok) {
         console.error(JSON.stringify({ event: 'PREFLIGHT_CHECK_FAILED', errors: preflightCheck.errors }));
@@ -664,7 +663,20 @@ async function loop(){
       if(t-lastProbe>60000){await probeReadyResources();lastProbe=t;}
       if(t-lastFailureLearning>FAILURE_LEARNING_INTERVAL_MS){lastFailureLearning=t;await runFailureLearningScan();}
       await startSelfCheck({ now: () => Date.now(), store: pool });
-      while(active.size<MAX_PARALLEL){const j=await claimJob();if(!j)break;active.add(j.id);void runJob(j).finally(()=>active.delete(j.id));}
+      let dispatchedCount = 0;
+      while(active.size<MAX_PARALLEL){
+        const j = await claimJob();
+        if(!j) {
+          const pendingCount = (await pool.query("select count(*)::int as count from tigeriq_jobs where status='queued'")).rows[0]?.count || 0;
+          if (detectIdleWithBacklog(active.size, pendingCount)) {
+            console.log(JSON.stringify({ event: 'IDLE_WITH_BACKLOG', timestamp: new Date().toISOString(), pendingQueueCount: pendingCount }));
+          }
+          break;
+        }
+        dispatchedCount++;
+        active.add(j.id);
+        void runJob(j).finally(()=>active.delete(j.id));
+      }
     }catch(e){console.error(JSON.stringify({event:'CORE_LOOP_ERROR',error:String(e?.message||e)}));}
     await sleep(POLL_MS);
   }

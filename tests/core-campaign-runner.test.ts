@@ -68,6 +68,35 @@ describe('API campaign runner and core lifecycle integration',()=>{
     expect(repairs).toBe(2);
     expect(result.item.stage).toBe('completed');
   });
+  it('handles bounded retries on heartbeat or ACK failure with single retry execution and auto-chaining', () => {
+    let heartbeats = 0;
+    let acks = 0;
+    let chains = 0;
+    const result = executeCoreWorkItemLifecycle({
+      workItem: { issueOrPr: 'PR #1122', implementer: 'NV02', reviewer: 'NV10' },
+      preflightFn: (item) => ({ ok: true, errors: [] }),
+      heartbeatFn: () => {
+        heartbeats++;
+        if (heartbeats === 1) return { ok: false, reason: 'HB timeout' };
+        return { ok: true };
+      },
+      ackFn: () => {
+        acks++;
+        return { ok: true };
+      },
+      autoChainFn: () => {
+        chains++;
+        return { issueOrPr: 'PR #1123', stage: 'claimed' };
+      },
+      maxRepairCycles: 3
+    });
+    expect(result.ok).toBe(true);
+    expect(result.repairCycles).toBe(1);
+    expect(heartbeats).toBe(2);
+    expect(acks).toBe(1);
+    expect(chains).toBe(1);
+    expect(result.nextChainedItem).toMatchObject({ issueOrPr: 'PR #1123' });
+  });
   it('enforces independent review without role collision',()=>{
     const preflightRes = runExecutionPreflight({
       workItem: { issueOrPr: 'PR #1002', implementer: 'NV11', reviewer: 'NV11' }
