@@ -1,0 +1,1 @@
+{"$schema":"http://json-schema.org/draft-07/schema#","title":"External Skill Definition","type":"object","additionalProperties":false,"required":["name","version","inputs","outputs","securityPolicy"],"properties":{"name":{"type":"string"},"version":{"type":"string"},"inputs":{"type":"object"},"outputs":{"type":"object"},"securityPolicy":{"type":"object"}}}
