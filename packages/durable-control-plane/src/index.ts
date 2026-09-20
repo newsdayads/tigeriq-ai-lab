@@ -1,7 +1,7 @@
 import { ControlPlane, type Actor, type GateDecision, type WorkOrderSnapshot } from '../../control-plane/src/index.js';
 import type { EvidenceRecord } from '../../evidence/src/index.js';
 import { FileJournal } from '../../event-store/src/index.js';
-import type { WorkOrder, WorkOrderStatus } from '../../work-orders/src/index.js';
+import type { WorkOrder, WorkOrderProjectionMetadataPatch, WorkOrderStatus } from '../../work-orders/src/index.js';
 
 export class DurableControlPlane {
   readonly #journal: FileJournal;
@@ -28,6 +28,10 @@ export class DurableControlPlane {
     return this.#mutate(id, actor, 'snapshot.gate-decided', (plane) => plane.recordGateDecision(id, decision, actor));
   }
 
+  async updateProjectionMetadata(id: string, patch: WorkOrderProjectionMetadataPatch, actor: Actor): Promise<WorkOrderSnapshot> {
+    return this.#mutate(id, actor, 'snapshot.projection-metadata-updated', (plane) => plane.updateProjectionMetadata(id, patch, actor));
+  }
+
   async get(id: string): Promise<WorkOrderSnapshot> {
     return (await this.#load(id)).snapshot;
   }
@@ -47,6 +51,7 @@ export class DurableControlPlane {
   ): Promise<WorkOrderSnapshot> {
     const { snapshot, version } = await this.#load(id);
     const next = mutation(new ControlPlane([snapshot]));
+    if (JSON.stringify(next) === JSON.stringify(snapshot)) return next;
     await this.#journal.append(id, version, { type, actor: actor.id, payload: next });
     return next;
   }
