@@ -19,8 +19,9 @@ async function loadRealFlow(done:boolean,events:string[]){
     storage:{local:{get:vi.fn(async()=>({})),set:vi.fn(async()=>{}),remove:vi.fn(async()=>{})}},
     windows:{getAll:vi.fn(async()=>windows),get:vi.fn(async()=>({left:0,top:0,width:500,height:800})),update:vi.fn(async()=>({})),remove:vi.fn(async()=>{}),onRemoved:{addListener:vi.fn()}},
     tabs:{get:vi.fn(async()=>({status:'complete'})),update:vi.fn(async()=>({})),sendMessage:vi.fn(async(_id:number,msg:any)=>{
+      if(msg.type==='TIGERIQ_MODEL_PROFILE_PRECHECK'){events.push('profile-precheck');return {modelProfileStatus:'MODEL_PROFILE_VERIFIED',modelName:'GPT-5.6 Sol',reasoningEffort:'High',modelReady:true,exact:true,verifiedAt:'2026-09-17T00:00:00Z',blockedReason:null};}
       if(msg.type==='TIGERIQ_DISPATCH'){events.push('save-dispatch');return {ok:true};}
-      if(msg.type==='TIGERIQ_UI_STATE'){events.push('ui-state');uiReads+=1;return {uiBusy:uiReads===1,securityBlock:null};}
+      if(msg.type==='TIGERIQ_UI_STATE'){events.push('ui-state');uiReads+=1;return {uiBusy:uiReads===1,securityBlock:null,modelProfileStatus:'MODEL_PROFILE_VERIFIED',modelName:'GPT-5.6 Sol',reasoningEffort:'High',modelReady:true,exact:true,verifiedAt:'2026-09-17T00:00:00Z',blockedReason:null};}
       if(msg.type==='TIGERIQ_ARCHIVE_CONVERSATION'){events.push('archive');return {ok:true};}
       return {ok:true};
     }),onUpdated:{addListener:vi.fn(),removeListener:vi.fn()}},
@@ -31,7 +32,7 @@ async function loadRealFlow(done:boolean,events:string[]){
   };
   (globalThis as any).fetch=vi.fn(async(input:any)=>{
     const url=String(input);
-    if(url.includes('/api/state')){events.push('guard-state');return jsonResponse({killed:false,paused:false,workers:[{id:'NV02',enabled:true,blocked:false,lastHeartbeat:{uiBusy:false,securityBlock:null}}]});}
+    if(url.includes('/api/state')){events.push('guard-state');return jsonResponse({killed:false,paused:false,workers:[{id:'NV02',enabled:true,blocked:false,lastHeartbeat:{uiBusy:false,securityBlock:null,modelProfileStatus:'MODEL_PROFILE_VERIFIED',modelName:'GPT-5.6 Sol',reasoningEffort:'High',modelReady:true,modelExact:true,verifiedAt:'2026-09-17T00:00:00Z',blockedReason:null}}]});}
     if(url.includes('/api/autopilot/state')){events.push('guard-autopilot');return jsonResponse({state:{},snapshot:{previousJob:done?{workerId:'NV02',jobId:'GH-802',status:'DONE',evidence:[{source:'GITHUB',ref:'https://github.com/newsdayads/tigeriq-ai-lab/issues/802',verifiedAt:'2026-09-17T00:00:00Z'}]}:null}});}
     if(url.includes('/api/ui-autopilot/save-receipt')){events.push('durable-receipt');return jsonResponse({ok:true,status:'DURABLE',receiptRef:'https://github.com/newsdayads/tigeriq-ai-lab/issues/788#receipt',checkpointRef:'https://github.com/newsdayads/tigeriq-ai-lab/issues/802',verifiedAt:'2026-09-17T00:00:01Z'});}
     throw new Error('UNEXPECTED_FETCH:'+url);
