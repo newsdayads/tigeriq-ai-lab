@@ -33,24 +33,29 @@ describe('runtime updater squash merge gate resolution',()=>{
     expect(restartCore).toContain('Stop-ScheduledTask -TaskName $coreTask');
     expect(restartCore).toContain('Stop-CoreProcesses');
     expect(restartCore).toContain('Start-ScheduledTask -TaskName $coreTask');
-    expect(restartCore).toContain('$previousPid=if($null-ne$oldPid){[int]$oldPid}else{Get-NodePidByMatch $corePath}');
-    expect(restartCore).toContain('$newPid=Get-NodePidByMatch $corePath');
+    expect(restartCore).toContain('$previousPid=if($null-ne$oldPid){[int]$oldPid}else{Get-CorePid}');
+    expect(restartCore).toContain('$newPid=Get-CorePid');
     expect(restartCore).toContain('[int]$newPid-ne[int]$previousPid');
   });
 
-  it('enforces clean runtime checkouts and fail-closed checks separately from general dirty worktrees with SHA rollback',()=>{
+  it('isolates runtime source from the developer worktree with SHA rollback',()=>{
     const src=readFileSync('scripts/tigeriq-core/update-core-runtime.ps1','utf8');
-    expect(src).toContain('BLOCKED_DIRTY_RUNTIME');
-    expect(src).not.toContain('BLOCKED_DIRTY_WORKTREE');
-    expect(src).toContain('checkout -B core-runtime-sync origin/main');
-    expect(src).toContain('git -C $repo checkout $local');
-    const hasRuntimePathsCheck = src.includes("apps/tigeriq-core") && src.includes("apps/tigeriq-coding-lane");
-    expect(hasRuntimePathsCheck).toBe(true);
+    expect(src).toContain("$controlRepo='D:\\TigerIQ\\Workspace\\tigeriq-ai-lab'");
+    expect(src).toContain("$runtimeRepo='D:\\TigerIQ\\Runtime\\CoreSource'");
+    expect(src).toContain('worktree add --detach $runtimeRepo $targetSha');
+    expect(src).toContain('git -C $runtimeRepo status --porcelain');
+    expect(src).toContain('git -C $runtimeRepo reset --hard $targetSha');
+    expect(src).toContain('git -C $runtimeRepo reset --hard $previousRuntimeSha');
+    expect(src).toContain('core-runtime-source.json');
+    expect(src).toContain('Sync-Launchers');
+    expect(src).not.toContain('checkout -B core-runtime-sync origin/main');
+    expect(src).not.toContain('merge --ff-only origin/main');
   });
 
   it('self-syncs every current/future web-control asset plus workforce registry before launch',()=>{
     const launcher=readFileSync('scripts/tigeriq-core/run-web-control-bundle.ps1','utf8');
-    expect(launcher).toContain("$sourceRoot='D:\\TigerIQ\\Workspace\\tigeriq-ai-lab\\apps\\tigeriq-core'");
+    expect(launcher).toContain("core-runtime-source.json");
+    expect(launcher).toContain("$sourceRoot=Join-Path $repo 'apps\\tigeriq-core'");
     expect(launcher).toContain("$_.Name -like 'web-control-*.js'");
     expect(launcher).toContain("$_.Name -like 'web-control-*.css'");
     expect(launcher).toContain("$_.Name -eq 'web-control-server.mjs'");
