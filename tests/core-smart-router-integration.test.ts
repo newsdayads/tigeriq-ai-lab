@@ -14,12 +14,17 @@ describe('#777 Core Smart Router integration',()=>{
   it('uses task-kind performance and bounded failure-aware failover without paid fallback',()=>{expect(core).toContain('avg_latency_ms');expect(core).toContain('failurePolicy(kind)');expect(core).toContain('if(policy.stop)break');expect(router).toContain('paid_fallback_forbidden');expect(router).toContain("'security','credential','paid','production','irreversible'");});
   it('exposes routing/performance truth through the existing status snapshot',()=>{expect(core).toContain('routingDecisions');expect(core).toContain('performanceByTask');expect(core).toContain('quota_state');});
   it('ensures Core remains sole AUTO_UI selector and coordinates NV02/NV03/NV04 routing cleanly without duplicate schedulers',()=>{expect(core).not.toContain('setInterval');});
-  it('handles alternate Watsonx shapes safely and retries transient empty responses without leaking secrets', () => {
-    expect(core).toContain('WATSONX_SHAPE_MISMATCH');
-    expect(core).toContain('WATSONX_TRANSIENT_EMPTY');
-    expect(core).toContain('maxWatsonxRetries');
-    expect(core).toContain('hasValidShape');
-    expect(core).not.toContain('process.env.WATSONX_API_KEY');
-    expect(core).toContain('b?.text');
+  it('normalizes Watsonx shapes and retries only valid empty responses',()=>{
+    const start=core.indexOf('export function watsonxTextFromBody');
+    const end=core.indexOf('\nasync function invokeProvider',start);
+    expect(start).toBeGreaterThanOrEqual(0);expect(end).toBeGreaterThan(start);
+    const src=core.slice(start,end).replaceAll('export ','');
+    const fn=new Function(`${src}; return {watsonxTextFromBody,hasWatsonxTextShape,watsonxRetryDecision};`)();
+    expect(fn.watsonxRetryDecision({results:[{generated_text:'ok'}]},0)).toEqual({action:'success',text:'ok'});
+    expect(fn.watsonxRetryDecision({results:[{text:'alt'}]},0)).toEqual({action:'success',text:'alt'});
+    expect(fn.watsonxRetryDecision({results:[{generated_text:''}]},0)).toEqual({action:'retry',code:'WATSONX_TRANSIENT_EMPTY'});
+    expect(fn.watsonxRetryDecision({results:[{generated_text:''}]},2)).toEqual({action:'fail',code:'EMPTY_RESPONSE'});
+    expect(fn.watsonxRetryDecision({unexpected:true},0)).toEqual({action:'fail',code:'WATSONX_SHAPE_MISMATCH'});
+    expect(core).toContain("apikey:process.env.WATSONX_API_KEY");
   });
 });
