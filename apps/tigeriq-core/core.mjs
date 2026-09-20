@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { Pool } from 'pg';
 import { createGeminiRateController } from '../shared/gemini-rate-control.mjs';
 import { runBoundedManagerDecision } from './manager-json.mjs';
@@ -11,6 +11,20 @@ import { normalizeCampaignPhases, currentCampaignGoal, campaignTransition, makeP
 import { normalizeTerminalWorkItems, handoffGenerationKey, evaluateChildObjectiveStates, isCodingHandoff } from './work-handoff.mjs';
 import { ROUTING_PROFILE_LABELS, createResourceId, deriveRoutingProfile, failurePolicy, normalizeQuota, rankCandidates, rateLimitFailureState } from './smart-router.mjs';
 import { runExecutionPreflight } from './execution-preflight.mjs';
+
+const RUNTIME_SOURCE_STATE_PATH = 'D:\\TigerIQ\\State\\core-runtime-source.json';
+function resolveRuntimeSourcePath(relativePath) {
+  try {
+    if (existsSync(RUNTIME_SOURCE_STATE_PATH)) {
+      const state = JSON.parse(readFileSync(RUNTIME_SOURCE_STATE_PATH, 'utf8'));
+      if (state?.sourcePath) {
+        const full = `${state.sourcePath}\\${relativePath.replace(/\//g, '\\')}`;
+        if (existsSync(full)) return full;
+      }
+    }
+  } catch {}
+  return new URL(`./${relativePath}`, import.meta.url);
+}
 
 const DATABASE_URL = process.env.DATABASE_URL?.trim();
 if (!DATABASE_URL) throw new Error('DATABASE_URL_MISSING');
