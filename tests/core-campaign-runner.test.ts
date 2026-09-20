@@ -1,6 +1,6 @@
 // @ts-nocheck
 import {describe,it,expect} from 'vitest';
-import {normalizeCampaignPhases,currentCampaignGoal,campaignTransition,makePhaseCheckpoint,campaignNeedsEvidence,campaignEvidenceJobId,normalizeWorkItemLifecycle,executeCoreWorkItemLifecycle} from '../apps/tigeriq-core/campaign-runner.mjs';
+import {normalizeCampaignPhases,currentCampaignGoal,campaignTransition,makePhaseCheckpoint,campaignNeedsEvidence,campaignEvidenceJobId,normalizeWorkItemLifecycle,executeCoreWorkItemLifecycle,checkCampaignRecovery} from '../apps/tigeriq-core/campaign-runner.mjs';
 import {runExecutionPreflight} from '../apps/tigeriq-core/execution-preflight.mjs';
 
 const phases=[
@@ -68,6 +68,14 @@ describe('API campaign runner and core lifecycle integration',()=>{
     expect(repairs).toBe(2);
     expect(result.item.stage).toBe('completed');
   });
+  it('automatically triggers resumption when idle with backlog', () =>{
+    const recovery = checkCampaignRecovery({ objective: 'Auto Resume', phases, currentPhase: 0, state: 'idle', backlogCount: 5 });
+    expect(recovery.shouldResume).toBe(true);
+    expect(recovery.nextGoal).toBeTruthy();
+    const noRecovery = checkCampaignRecovery({ objective: 'Auto Resume', phases, currentPhase: 0, state: 'idle', backlogCount: 0 });
+    expect(noRecovery.shouldResume).toBe(false);
+  });
+
   it('enforces independent review without role collision',()=>{
     const preflightRes = runExecutionPreflight({
       workItem: { issueOrPr: 'PR #1002', implementer: 'NV11', reviewer: 'NV11' }
