@@ -52,7 +52,11 @@ export function normalizeFailureEvent(row){
   };
 }
 
-export function buildFailureLearningCandidates(events,options={}){
+import { processFailure } from './repair-loop.mjs';
+
+export { processFailure };
+
+export function buildFailureLearningCandidates(events,options={}){}
   const minOccurrences=Math.max(2,Number(options.minOccurrences||2));
   const existing=new Set(Array.from(options.existingSignatures||[]).map(String));
   const groups=new Map();
