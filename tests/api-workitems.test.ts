@@ -70,4 +70,74 @@ describe('WorkItem projection API', () => {
     expect(alias.status).toBe(200);
     expect(await alias.json()).toMatchObject({ workItemId: 'CORE-API-1033', status: 'WORKING' });
   });
+
+  it('attaches Coding Lane metadata to the same WorkItem identity idempotently after PR creation', async () => {
+    const workOrder = {
+      id: 'CORE-API-ATTACH',
+      project: 'TigerIQ',
+      goal: 'Core WorkItem V1',
+      scope: ['packages/control-plane/src/index.ts', 'apps/api/src/server.ts'],
+      invariants: ['No second queue'],
+      acceptanceCriteria: ['owner-visible projection'],
+      status: 'draft',
+      issueRef: 'https://github.com/newsdayads/tigeriq-ai-lab/issues/1033',
+      sourceRef: 'https://github.com/newsdayads/tigeriq-ai-lab/issues/1033',
+      kind: 'coding',
+      priority: 'P0',
+      stage: 'claimed',
+      nextAction: 'Open PR',
+    };
+
+    expect((await call('/v1/work-orders', 'planner-secret', workOrder)).status).toBe(201);
+    expect((await call('/v1/work-orders/CORE-API-ATTACH/transitions', 'approver-secret', { status: 'approved' })).status).toBe(200);
+    expect((await call('/v1/work-orders/CORE-API-ATTACH/transitions', 'coder-secret', { status: 'running' })).status).toBe(200);
+
+    const before = await call('/v1/work-items/CORE-API-ATTACH', 'planner-secret');
+    expect(before.status).toBe(200);
+    expect(await before.json()).toMatchObject({
+      workItemId: 'CORE-API-ATTACH',
+      pr: null,
+      reviewer: null,
+      stage: 'claimed',
+      nextAction: 'Open PR',
+    });
+
+    const patch = {
+      pr: 'https://github.com/newsdayads/tigeriq-ai-lab/pull/1145',
+      reviewer: 'NV19',
+      stage: 'waiting_ci',
+      nextAction: 'Wait exact-head checks',
+      evidenceRefs: ['https://github.com/newsdayads/tigeriq-ai-lab/pull/1145/checks'],
+    };
+
+    const updated = await call('/v1/work-orders/CORE-API-ATTACH/projection-metadata', 'coder-secret', patch, 'attach-pr-1145');
+    expect(updated.status).toBe(200);
+    expect(await updated.json()).toMatchObject({
+      workItemId: 'CORE-API-ATTACH',
+      pr: 'https://github.com/newsdayads/tigeriq-ai-lab/pull/1145',
+      reviewer: 'NV19',
+      stage: 'waiting_ci',
+      nextAction: 'Wait exact-head checks',
+      evidenceRefs: ['https://github.com/newsdayads/tigeriq-ai-lab/pull/1145/checks'],
+    });
+
+    const replay = await call('/v1/work-orders/CORE-API-ATTACH/projection-metadata', 'coder-secret', patch, 'attach-pr-1145');
+    expect(replay.status).toBe(200);
+    expect(await replay.json()).toMatchObject({
+      workItemId: 'CORE-API-ATTACH',
+      pr: 'https://github.com/newsdayads/tigeriq-ai-lab/pull/1145',
+      reviewer: 'NV19',
+    });
+
+    const after = await call('/v1/work-items/CORE-API-ATTACH', 'planner-secret');
+    expect(after.status).toBe(200);
+    expect(await after.json()).toMatchObject({
+      workItemId: 'CORE-API-ATTACH',
+      pr: 'https://github.com/newsdayads/tigeriq-ai-lab/pull/1145',
+      reviewer: 'NV19',
+      stage: 'waiting_ci',
+      nextAction: 'Wait exact-head checks',
+      evidenceRefs: ['https://github.com/newsdayads/tigeriq-ai-lab/pull/1145/checks'],
+    });
+  });
 });
