@@ -75,4 +75,11 @@ describe('API campaign runner and core lifecycle integration',()=>{
     expect(preflightRes.ok).toBe(false);
     expect(preflightRes.errors).toContain('IMPLEMENTER_REVIEWER_COLLISION');
   });
+  it('triggers automated recovery and auto-dispatch validation when idle with backlog', async () => {
+    const { checkAutomatedRecovery } = await import('../apps/tigeriq-core/campaign-runner.mjs');
+    const recovery = checkAutomatedRecovery({ backlogCount: 5, activeCount: 0, lastActivityAgeMs: 45000, idleThresholdMs: 30000 });
+    expect(recovery.shouldRecover).toBe(true);
+    expect(recovery.autoDispatched).toBe(true);
+    expect(recovery.reason).toBe('IDLE_WITH_BACKLOG_RESUMPTION');
+  });
 });
