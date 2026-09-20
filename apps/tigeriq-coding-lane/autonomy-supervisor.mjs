@@ -4,11 +4,22 @@ import {Pool} from 'pg';
 const DEFAULT_INTERVAL_MS=15000;
 const DEFAULT_STALE_MS=45*60*1000;
 const DEFAULT_MAX_JOBS_PER_OBJECTIVE=3;
-const RETRYABLE_FAILURES=new Set(['CI_GATES_FAILED','CI_GATES_TIMEOUT','REVIEW_CHANGES_UNRESOLVED','FAIL','STALL']);
+const RETRYABLE_FAILURES=new Set(['CI_GATES_FAILED','CI_GATES_TIMEOUT','REVIEW_CHANGES_UNRESOLVED','STALL_TIMEOUT','CODING_COMPACT_EDIT_INVALID','CODING_COMPACT_EDITS_COUNT_INVALID','CODING_COMPACT_EDIT_OLD_NOT_FOUND']);
 const GH_OWNER=process.env.TIGERIQ_GITHUB_OWNER||'newsdayads';
 const GH_REPO=process.env.TIGERIQ_GITHUB_REPO||'tigeriq-ai-lab';
 
-export function isRetryableFailure(message){return RETRYABLE_FAILURES.has(String(message||''));}
+export function normalizeRepairFailure(message){
+  const raw=String(message||'').trim();
+  if(/REVIEW_CHANGES_UNRESOLVED|REVIEW_NOT_APPROVED/.test(raw))return 'REVIEW_CHANGES_UNRESOLVED';
+  if(/CI_GATE_REPAIR_EXHAUSTED|CI_GATES_FAILED/.test(raw))return 'CI_GATES_FAILED';
+  if(/CI_GATES_TIMEOUT/.test(raw))return 'CI_GATES_TIMEOUT';
+  if(/CODING_COMPACT_EDITS_COUNT_INVALID/.test(raw))return 'CODING_COMPACT_EDITS_COUNT_INVALID';
+  if(/CODING_COMPACT_EDIT_OLD_NOT_FOUND/.test(raw))return 'CODING_COMPACT_EDIT_OLD_NOT_FOUND';
+  if(/CODING_COMPACT_EDIT_INVALID/.test(raw))return 'CODING_COMPACT_EDIT_INVALID';
+  if(/STALL_TIMEOUT|\bSTALL\b/.test(raw))return 'STALL_TIMEOUT';
+  return raw.split(':')[0]||'UNKNOWN_FAILURE';
+}
+export function isRetryableFailure(message){return RETRYABLE_FAILURES.has(normalizeRepairFailure(message));}
 export function shouldRetry(totalJobs,maxJobs=DEFAULT_MAX_JOBS_PER_OBJECTIVE){return Number(totalJobs)<Number(maxJobs);}
 export function isStaleJob(job,now=Date.now(),staleMs=DEFAULT_STALE_MS){
   if(!job||!['running','waiting_ci','review'].includes(job.status))return false;
@@ -81,17 +92,15 @@ async function queueRetry(pool,job,reason,maxJobs){
   return true;
 }
 async function handleFailed(pool,maxJobs){
-  const q=await pool.query("select * from tigeriq_coding_jobs where status in ('failed','review_failed') and coalesce(failure->>'supervisorHandled','false')<>'true' order by completed_at nulls last,created_at limit 10");
+  const q=await pool.query("select * from tigeriq_coding_jobs where status='failed' and coalesce(failure->>'supervisorHandled','false')<>'true' order by completed_at nulls last,created_at limit 10");
   for(const job of q.rows){
-    const reason=String(job.failure?.message||job.status||'FAIL');
-    const normalizedReason = reason.includes('REVIEW_CHANGES') ? 'REVIEW_CHANGES_UNRESOLVED' : (reason.includes('CI_GATES') ? 'CI_GATES_FAILED' : reason);
-    if(!isRetryableFailure(normalizedReason) && !isRetryableFailure(job.status)){
-      await pool.query("update tigeriq_coding_objectives set status='blocked',summary=$2,updated_at=now() where id=$1",[job.objective_id,`BLOCKED:RETRY_EXHAUSTED:${normalizedReason}`]);
-      await emit(pool,'BLOCKED',{objectiveId:job.objective_id,jobId:job.id,reason:normalizedReason,status:'BLOCKED'});
+    const normalizedReason=normalizeRepairFailure(job.failure?.message||job.failure?.code||'UNKNOWN_FAILURE');
+    await pool.query("update tigeriq_coding_jobs set failure=coalesce(failure,'{}'::jsonb)||'{\"supervisorHandled\":true}'::jsonb where id=$1",[job.id]);
+    if(!isRetryableFailure(normalizedReason)){
+      await emit(pool,'REPAIR_SKIPPED',{objectiveId:job.objective_id,jobId:job.id,reason:'NON_RETRYABLE_FAILURE',failure:normalizedReason});
       continue;
     }
     const gate=await objectiveIsEligible(pool,job.objective_id);
-    await pool.query("update tigeriq_coding_jobs set failure=coalesce(failure,'{}'::jsonb)||'{"supervisorHandled":true}'::jsonb where id=$1",[job.id]);
     if(!gate.eligible){await emit(pool,'REPAIR_SKIPPED',{objectiveId:job.objective_id,jobId:job.id,reason:'ISSUE_NOT_OPEN',issueNumber:gate.issueNumber});continue;}
     await queueRetry(pool,job,normalizedReason,maxJobs);
   }
@@ -102,13 +111,13 @@ async function handleStale(pool,staleMs,maxJobs,onStall){
     if(!isStaleJob(job,Date.now(),staleMs))continue;
     const gate=await objectiveIsEligible(pool,job.objective_id);
     if(!gate.eligible)continue;
-    const reason='STALL';
+    const reason='STALL_TIMEOUT';
     await pool.query("update tigeriq_coding_jobs set status='failed',failure=$2,completed_at=now() where id=$1",[job.id,JSON.stringify({message:reason,supervisorHandled:true,previousStatus:job.status})]);
     const queued=await queueRetry(pool,job,reason,maxJobs);
-    await emit(pool,'STALL_DETECTED',{objectiveId:job.objective_id,jobId:job.id,previousStatus:job.status,retryQueued:queued,issueNumber:gate.issueNumber,status:'STALL'});
+    await emit(pool,'STALL_DETECTED',{objectiveId:job.objective_id,jobId:job.id,previousStatus:job.status,retryQueued:queued,issueNumber:gate.issueNumber,status:'STALL_TIMEOUT'});
     if(!queued){
       await pool.query("update tigeriq_coding_objectives set status='blocked',summary=$2,updated_at=now() where id=$1",[job.objective_id,`BLOCKED:STALL_RETRY_EXHAUSTED`]);
-      await emit(pool,'BLOCKED',{objectiveId:job.objective_id,jobId:job.id,reason:'STALL',status:'BLOCKED'});
+      await emit(pool,'BLOCKED',{objectiveId:job.objective_id,jobId:job.id,reason:'STALL_TIMEOUT',status:'BLOCKED'});
     }
     if(typeof onStall==='function')onStall({job,retryQueued:queued});
     return true;
