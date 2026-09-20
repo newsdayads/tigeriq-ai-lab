@@ -45,7 +45,7 @@ describe('API campaign runner and core lifecycle integration',()=>{
     const item = normalizeWorkItemLifecycle({ issueOrPr: 'PR #42', implementer: 'NV05', reviewer: 'NV10', stage: 'coding', blocker: 'tests failing', nextAction: 'fix test runner' });
     expect(item).toMatchObject({ issueOrPr: 'PR #42', implementer: 'NV05', reviewer: 'NV10', stage: 'coding', blocker: 'tests failing', nextAction: 'fix test runner' });
   });
-  it('enforces single retry execution and IDLE_WITH_BACKLOG recovery closeout handling', () => {
+  it('enforces single retry execution, heartbeat/ACK failure recovery, and IDLE_WITH_BACKLOG recovery closeout handling', () => {
     const tracker = new Set();
     const item = { issueOrPr: 'PR #1122', implementer: 'NV02', reviewer: 'NV11' };
     const r1 = executeCoreWorkItemLifecycle({ workItem: item, retryTracker: tracker, repairFn: () => { throw new Error('fail'); }, maxRepairCycles: 1 });
@@ -56,6 +56,15 @@ describe('API campaign runner and core lifecycle integration',()=>{
 
     const idleCheck = handleIdleWithBacklogState({ status: 'IDLE', backlogCount: 3, activeJobsCount: 0 });
     expect(idleCheck).toBe(true);
+
+    const failRes1 = handleHeartbeatOrAckFailure({ retryCount: 0, maxRetries: 1 });
+    expect(failRes1.action).toBe('retry');
+    expect(failRes1.retryable).toBe(true);
+    expect(failRes1.nextRetryCount).toBe(1);
+
+    const failRes2 = handleHeartbeatOrAckFailure({ retryCount: 1, maxRetries: 1 });
+    expect(failRes2.action).toBe('terminate');
+    expect(failRes2.retryable).toBe(false);
   });
 
   it('integrates preflight checks and normalized autonomous repair directly into Core WorkItem lifecycle',()=>{
