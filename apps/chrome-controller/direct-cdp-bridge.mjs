@@ -195,6 +195,18 @@ async function releaseBridgeMutationLease(workerId,lease){
 async function navigate(target,url){
   const p=await pageRpc(target);try{await p.call('Page.enable');await p.call('Page.navigate',{url});}finally{p.close();}
 }
+function projectNewChatExpr(){
+  return `(()=>{const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};const labels=['Trò chuyện mới trong TigerIQ AI Lab','New chat in TigerIQ AI Lab'];const matches=[...document.querySelectorAll('button,[role="button"]')].filter(e=>vis(e)&&labels.includes((e.getAttribute('aria-label')||'').trim()));if(matches.length!==1)return{ok:false,status:'PROJECT_NEW_CHAT_BUTTON_COUNT_'+matches.length};matches[0].click();return{ok:true,status:'PROJECT_NEW_CHAT_CLICKED'}})()`;
+}
+async function recoverNv02ProjectContext(target){
+  const p=await pageRpc(target);
+  try{
+    const clicked=(await p.call('Runtime.evaluate',{expression:projectNewChatExpr(),returnByValue:true,userGesture:true})).result.value;
+    if(clicked?.ok)return clicked;
+  }finally{p.close();}
+  await navigate(target,NV02_HOME_URL);
+  return{ok:true,status:'PROJECT_CONTEXT_NAVIGATED'};
+}
 async function focus(target){const p=await pageRpc(target);try{await p.call('Page.bringToFront');}finally{p.close();}}
 async function layout(w,target,bounds){
   const port=workerPort(w),b=await browserRpc(port);
@@ -428,7 +440,7 @@ async function tickWorker(w){
     await post('/api/heartbeat',w.id,{workerId:w.id,state:ui.uiPhase||'STALLED',windowId,tabId:target.id,url:ui.url,active:true,uiReady:ui.uiReady,uiPhase:ui.uiPhase,composerReady:ui.composerReady,sendReady:ui.sendReady,stopVisible:ui.stopVisible,scrollToBottomVisible:ui.scrollToBottomVisible,authRequired:ui.authRequired===true,uiBusy:ui.uiBusy,securityBlock:ui.securityBlock,modelControlPresent:ui.modelControlPresent,reasoningEffort:ui.reasoningEffort,modelReady:ui.modelReady,display});
     if(w.id==='NV02'&&!projectContextReady&&!ui.securityBlock){
       if(!NV02_HOME_URL){await continuityEvent('PROJECT_CONTEXT_RECOVERY_BLOCKED',{reason:'NV02_HOME_URL_MISSING',url:rawUi.url||null});return;}
-      const recovered=await withNv02Mutation(async()=>{await navigate(target,NV02_HOME_URL);return{ok:true,status:'PROJECT_CONTEXT_NAVIGATED'};},'PROJECT_CONTEXT_RECOVERY');
+      const recovered=await withNv02Mutation(()=>recoverNv02ProjectContext(target),'PROJECT_CONTEXT_RECOVERY');
       await continuityEvent(recovered?.status==='MUTATION_LEASE_BUSY'?'PROJECT_CONTEXT_RECOVERY_DEFERRED':'PROJECT_CONTEXT_RECOVERY_NAVIGATED',{status:recovered?.status||null,fromUrl:rawUi.url||null});
       return;
     }
