@@ -412,19 +412,27 @@ async function tickWorker(workerId) {
     return;
   }
   if(workerId==='NV02'){
-        // Before proceeding with NV02 continuity, ensure the model has been exactly verified.
         try {
-          const evRes = await fetch(`${CONTROLLER}/api/evidence`);
-          if (evRes.ok) {
-            const ev = await evRes.json();
-            if (!ev.modelVerification?.exact) {
-              console.warn('Model verification failed – blocking NV02 dispatch');
-              return; // Block further NV02 processing.
+          const tabId = ctx.tabId;
+          if (tabId) {
+            const results = await chrome.scripting.executeScript({
+              target: { tabId },
+              func: () => {
+                const modelSelector = document.querySelector('[data-testid="model-selector"], button[id*="model"], [aria-label*="Model"], [aria-label*="GPT"]');
+                const text = (modelSelector?.textContent || '') + ' ' + (document.body?.innerText || '');
+                const exactGpt56Sol = /GPT-5\.6\s+Sol/i.test(text);
+                const highReasoning = /High/i.test(text);
+                return { exact: exactGpt56Sol && highReasoning, model: exactGpt56Sol ? 'GPT-5.6 Sol' : null, profile: highReasoning ? 'High' : null };
+              }
+            });
+            const verification = results?.[0]?.result;
+            if (!verification || !verification.exact) {
+              console.warn('Exact GPT-5.6 Sol and High reasoning effort verification failed – gating NV02 dispatch');
+              return;
             }
           }
         } catch (e) {
-          console.error('Failed to fetch model verification evidence', e);
-          // If we cannot verify, err on the side of safety and block.
+          console.error('Model and thinking profile precheck error', e);
           return;
         }
         await maybeNv02Continuity(ctx,ui);
