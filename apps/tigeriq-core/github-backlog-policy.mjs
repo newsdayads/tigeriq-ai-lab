@@ -26,3 +26,12 @@ export function compareBacklogSpecs(a,b){
 export function sortBacklogSpecs(specs){
   return (Array.isArray(specs)?specs:[]).filter(Boolean).slice().sort(compareBacklogSpecs);
 }
+
+export function evaluateIdleWithBacklogPolicy({ status, activeCount, backlogItems } = {}) {
+  const isIdle = String(status || '').toUpperCase() === 'IDLE';
+  const hasBacklog = Array.isArray(backlogItems) && backlogItems.length > 0;
+  return {
+    idleWithBacklog: isIdle && Number(activeCount || 0) === 0 && hasBacklog,
+    nextEligibleItem: hasBacklog ? sortBacklogSpecs(backlogItems)[0] : null
+  };
+}
