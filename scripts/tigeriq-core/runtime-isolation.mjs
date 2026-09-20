@@ -34,7 +34,11 @@ function makeReadOnly(dir) {
       if (existsSync(fullPath)) {
         try {
           chmodSync(fullPath, 0o444);
-        } catch {}
+        } catch {
+          try {
+            execSync(`attrib +R "${fullPath}"`, { stdio: 'ignore' });
+          } catch {}
+        }
       }
     }
   } catch {}
@@ -116,7 +120,11 @@ export function cleanup() {
         if (existsSync(fullPath)) {
           try {
             chmodSync(fullPath, 0o666);
-          } catch {}
+          } catch {
+            try {
+              execSync(`attrib -R "${fullPath}"`, { stdio: 'ignore' });
+            } catch {}
+          }
         }
       }
     } catch {}
@@ -130,10 +138,5 @@ export function cleanup() {
       }
     }
     activeWorktreePath = null;
-  }
-  if (existsSync(META_PATH)) {
-    try {
-      rmSync(META_PATH, { force: true });
-    } catch {}
   }
 }
