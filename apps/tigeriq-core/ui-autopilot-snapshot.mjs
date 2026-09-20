@@ -125,7 +125,7 @@ export async function buildUiAutopilotSnapshot({fetchImpl=fetch,token='',owner=D
     .filter(x=>x.spec&&x.spec.number!==previousNumber)
     .sort((a,b)=>priorityRank(a.spec.priority)-priorityRank(b.spec.priority)||a.spec.number-b.spec.number);
   const chosen=eligible[0];
-  const nextJob=chosen?{jobId:chosen.spec.jobId,workerId:'NV02',status:'READY',executable:true,priority:chosen.spec.priority,prompt:buildPrompt(chosen.spec,`${owner}/${repo}`),riskFlags:[]}:undefined;
+  const nextJob=chosen?{jobId:chosen.spec.jobId,workerId:'NV02',status:'READY',executable:true,priority:chosen.spec.priority,prompt:buildPrompt(chosen.spec,`${owner}/${repo}`),riskFlags:[],coreSelected:true,workItemGroup:'CORE-SELECTED-WORKITEM'}:undefined;
   const revision=['github-ui-v2',previousJob?.jobId||'none',previousJob?.status||'none',chosen?.spec.jobId||'none',chosen?.spec.updatedAt||'none'].join(':');
   return{source:'GITHUB',observedAt,revision,previousJob,nextJob,requiredWorkers:[]};
 }
