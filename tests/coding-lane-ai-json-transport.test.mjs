@@ -79,6 +79,39 @@ describe('coding lane AI JSON transport',()=>{
     expect(()=>expandCompactChanges(prompt,model)).toThrow('COMPACT_EDIT_DESTRUCTIVE_SHRINK:apps/a.mjs');
   });
 
+  it('uses a smaller coding prompt on retry after malformed compact JSON',async()=>{
+    const previousFetch=globalThis.fetch;
+    const previousInstalled=globalThis.__tigeriqAiJsonTransportInstalled;
+    let calls=0;
+    const promptLengths=[];
+    try{
+      globalThis.__tigeriqAiJsonTransportInstalled=false;
+      globalThis.fetch=async(_input,init)=>{
+        calls++;
+        const body=JSON.parse(String(init?.body||'{}'));
+        promptLengths.push(String(body?.messages?.[0]?.content||'').length);
+        const content=calls===1
+          ?'{"summary":"truncated","edits":[{"path":"apps/a.mjs","search":"const n=1;","replace":"const n=2;'
+          :JSON.stringify({summary:'small patch',edits:[{path:'apps/a.mjs',search:'const n=1;',replace:'const n=2;'}]});
+        return new Response(JSON.stringify({choices:[{message:{content}}]}),{status:200,headers:{'content-type':'application/json'}});
+      };
+      installAiJsonTransport({maxAttempts:2,baseDelayMs:1,attemptTimeoutMs:1000});
+      const large='x'.repeat(30000);
+      const prompt=`TASK: x\nCURRENT FILES:\nFILE apps/a.mjs\nconst n=1;\n${large}\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}. Do not touch paths outside ALLOWED PATHS. Never output secrets. Keep changes minimal and testable.`;
+      const res=await fetch('https://api.groq.com/openai/v1/chat/completions',{method:'POST',body:JSON.stringify({messages:[{role:'user',content:prompt}]})});
+      const data=await res.json();
+      expect(calls).toBe(2);
+      expect(promptLengths[1]).toBeLessThan(promptLengths[0]);
+      expect(promptLengths[0]).toBeLessThan(15000);
+      expect(data.choices[0].message.content).toContain('"changes"');
+      expect(data.choices[0].message.content).toContain('const n=2;');
+    }finally{
+      globalThis.fetch=previousFetch;
+      if(previousInstalled===undefined) delete globalThis.__tigeriqAiJsonTransportInstalled;
+      else globalThis.__tigeriqAiJsonTransportInstalled=previousInstalled;
+    }
+  });
+
   it('retries transient AI fetch aborts before failing the job',async()=>{
     const previousFetch=globalThis.fetch;
     const previousInstalled=globalThis.__tigeriqAiJsonTransportInstalled;
