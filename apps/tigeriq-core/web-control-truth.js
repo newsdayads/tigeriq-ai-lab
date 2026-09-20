@@ -155,7 +155,8 @@ async function pollWebHealth() {
   try {
     const config = window.TIGERIQ_CONFIG || {};
     const healthEndpoint = config.healthUrl || '/health';
-    const response = await fetch(healthEndpoint,{cache:'no-store'});
+    const channelParam = config.channel ? `?channel=${encodeURIComponent(config.channel)}` : '';
+    const response = await fetch(healthEndpoint + channelParam,{cache:'no-store'});
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     latestWebHealth = await response.json();
     latestWebHealthError = null;
