@@ -44,6 +44,11 @@ export function shouldBlock(retryCount, maxRetries = 3) {
   return null;
 }
 
+export function resetRetryStore() {
+  retryStore.clear();
+  emittedRepairStore.clear();
+}
+
 export function processFailure(failureId, rawDecision) {
   const id = String(failureId);
   const decision = normalizeFailure(rawDecision);
