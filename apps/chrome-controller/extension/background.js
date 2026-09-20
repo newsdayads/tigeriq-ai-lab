@@ -398,10 +398,35 @@ async function maybeNv02Continuity(ctx,ui){
   }
 }
 
+async function validateModelProfileAndThinking(ctx) {
+  try {
+    const response = await chrome.tabs.sendMessage(ctx.tabId, { type: 'TIGERIQ_MODEL_CHECK' });
+    if (!response || !response.ok || !response.profile) {
+      return { ok: false, error: 'MODEL_PROFILE_BLOCKED' };
+    }
+    const allowedProfiles = ['NV02', 'NV02-PLUS', 'GPT-4O', 'GPT-4', 'OPENAI'];
+    const profile = String(response.profile).toUpperCase();
+    const isAllowed = allowedProfiles.some(p => profile.includes(p));
+    if (!isAllowed) {
+      return { ok: false, error: 'MODEL_PROFILE_BLOCKED' };
+    }
+    return { ok: true, profile };
+  } catch (err) {
+    return { ok: false, error: 'MODEL_PROFILE_BLOCKED' };
+  }
+}
+
 async function tickWorker(workerId) {
   const ctx=await findContext(workerId); if(!ctx) return;
   lastWindowByWorker.set(workerId,ctx.windowId);
   await updateWorkerBadge(workerId, ctx);
+  if (workerId === 'NV02') {
+    const modelCheck = await validateModelProfileAndThinking(ctx);
+    if (!modelCheck.ok) {
+      await post('/api/result', { workerId, ok: false, status: modelCheck.error });
+      return;
+    }
+  }
   const ui=await readUiState(ctx);
   await post('/api/heartbeat',{workerId,state:ui.uiPhase||'STALLED',...ctx,uiBusy:ui.uiBusy,uiPhase:ui.uiPhase,composerReady:ui.composerReady,sendReady:ui.sendReady,stopVisible:ui.stopVisible,scrollToBottomVisible:ui.scrollToBottomVisible,authRequired:ui.authRequired,securityBlock:ui.securityBlock,display:await displayInfo(ctx.windowId)});
   const r=await fetch(`${CONTROLLER}/api/commands/${encodeURIComponent(workerId)}`); if(!r.ok) return;
