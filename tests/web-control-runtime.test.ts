@@ -165,5 +165,7 @@ describe('Web Control runtime', () => {
     const htmlRes = await fetch(`http://127.0.0.1:${WEB_PORT}/`);
     const htmlText = await htmlRes.text();
     expect(htmlText).toContain('TIGERIQ_CONFIG');
+    expect(htmlText).toContain('statusUrl');
+    expect(htmlText).toContain('healthUrl');
   });
 });
