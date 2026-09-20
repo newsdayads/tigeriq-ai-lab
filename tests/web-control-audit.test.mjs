@@ -15,7 +15,7 @@ test('Resolution Matrix includes required formats', () => {
 
 test('Repair handoff generates machine-readable file', () => {
   const mockAudit = { failures: [{ resolution: '4K', error: 'fail' }], metrics: {} };
-  const testDir = 'D:/TigerIQ/Evidence/test-handoffs';
+  const testDir = 'Evidence/test-handoffs';
   const { filePath, handoff } = generateRepairHandoff(mockAudit, testDir);
   assert.ok(fs.existsSync(filePath));
   assert.strictEqual(handoff.failures.length, 1);
