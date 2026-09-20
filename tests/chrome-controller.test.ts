@@ -80,7 +80,42 @@ describe('review evidence and extension lifecycle',()=>{
 });
 
 describe('NV02 Model Guard and Runtime Evidence Heartbeat',()=>{
-  it('verifies guard blocks disallowed profiles, allows permitted ones, and returns runtime evidence',async()=>{const content=readFileSync('apps/chrome-controller/extension/content.js','utf8');const background=readFileSync('apps/chrome-controller/extension/background.js','utf8');const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');expect(content).toContain('TIGERIQ_MODEL_CHECK');expect(background).toContain('MODEL_PROFILE_BLOCKED');expect(background).toContain('tasks: []');expect(server).toContain('/api/heartbeat/runtime-evidence');expect(server).toContain('modelHash');expect(server).toContain('guardStatus');});
+  it('verifies guard blocks disallowed profiles, allows permitted ones, and returns runtime evidence',async()=>{
+    const content=readFileSync('apps/chrome-controller/extension/content.js','utf8');
+    const background=readFileSync('apps/chrome-controller/extension/background.js','utf8');
+    const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
+    expect(content).toContain('TIGERIQ_MODEL_CHECK');
+    expect(background).toContain('MODEL_PROFILE_BLOCKED');
+    expect(background).toContain('tasks: []');
+    expect(server).toContain('/api/heartbeat/runtime-evidence');
+    expect(server).toContain('modelHash');
+    expect(server).toContain('guardStatus');
+
+    const allowedProfiles = new Set(['NV02', 'NV02-PLUS', 'GPT-4O', 'GPT-4', 'OPENAI']);
+    expect(allowedProfiles.has('NV02')).toBe(true);
+    expect(allowedProfiles.has('GPT-4')).toBe(true);
+    expect(allowedProfiles.has('MALICIOUS-PROFILE')).toBe(false);
+    expect(allowedProfiles.has('NOT-NV02')).toBe(false);
+
+    const ev = buildRuntimeEvidence({
+      config: baseConfig(),
+      workArea: { left: 0, top: 0, width: 4096, height: 2120 },
+      workers: baseConfig().workers.map(w => ({ id: w.id, enabled: true, status: 'READY', blocked: w.id === 'NV02' })),
+      jobs: [],
+      autopilot: freshAutopilotState(),
+      snapshot: snapshot(),
+      paused: false,
+      killed: false,
+      recoveryAttempts: { NV02: 0, NV03: 0, NV04: 0 },
+      startupReady: true,
+      interactiveSession: true,
+      sessionName: 'Console',
+    });
+    expect(ev.modelVerification.exact).toBe(true);
+    expect(ev.modelVerification.guardStatus).toBe('BLOCKED');
+    expect(typeof ev.modelVerification.modelHash).toBe('string');
+    expect(ev.modelVerification.modelHash.startsWith('sha256-')).toBe(true);
+  });
 });
 
 describe('completion-aware UTF-8 supervisor and Owner workspace',()=>{
