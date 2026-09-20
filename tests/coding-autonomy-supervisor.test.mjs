@@ -1,5 +1,5 @@
-import {describe,expect,it,vi} from 'vitest';
-import {isRetryableFailure,isStaleJob,normalizeRepairFailure,repairInstruction,shouldRetry} from '../apps/tigeriq-coding-lane/autonomy-supervisor.mjs';
+import {describe,expect,it} from 'vitest';
+import {githubIssueIsOpen,isRetryableFailure,isStaleJob,normalizeRepairFailure,repairInstruction,shouldRetry} from '../apps/tigeriq-coding-lane/autonomy-supervisor.mjs';
 
 // We need to test githubIssueIsOpen or objectiveIsEligible via exported functions or by mocking fetch.
 // Since githubIssueIsOpen is not exported directly, we can test it through mock fetch or test helper exports if available, or we can test handleFailed / objectiveIsEligible if exported or test logic via mock.
@@ -34,6 +34,48 @@ describe('coding autonomy supervisor repair policy',()=>{
 });
 
 describe('coding autonomy supervisor GitHub issue eligibility checks',()=>{
-  // Test githubIssueIsOpen validation rules indirectly or directly if we import/export or test via module evaluation.
-  // Since githubIssueIsOpen is module-scoped, let's test via handleFailed/objectiveIsEligible with a mock Pool and mock fetch.
+  it('returns false when token or issueNumber is missing',async()=>{
+    expect(await githubIssueIsOpen(null)).toBe(false);
+  });
+
+  it('returns false on fetch failure',async()=>{
+    process.env.TIGERIQ_GITHUB_TOKEN='fake-token';
+    const fetchMock=async()=>{
+      throw new Error('Network error');
+    };
+    expect(await githubIssueIsOpen(123,fetchMock)).toBe(false);
+  });
+
+  it('returns false when issue is closed or is a pull request',async()=>{
+    process.env.TIGERIQ_GITHUB_TOKEN='fake-token';
+    const fetchMock=async()=>({ok:true,json:async()=>({state:'closed',body:'TIGERIQ_EXECUTABLE=true OWNER_POLICY=AUTO'})});
+    expect(await githubIssueIsOpen(123,fetchMock)).toBe(false);
+
+    const fetchPrMock=async()=>({ok:true,json:async()=>({state:'open',pull_request:{},body:'TIGERIQ_EXECUTABLE=true OWNER_POLICY=AUTO'})});
+    expect(await githubIssueIsOpen(123,fetchPrMock)).toBe(false);
+  });
+
+  it('returns false when self-mod guard or manual hold is present',async()=>{
+    process.env.TIGERIQ_GITHUB_TOKEN='fake-token';
+    const fetchGuardMock=async()=>({ok:true,json:async()=>({state:'open',body:'TIGERIQ_EXECUTABLE=true OWNER_POLICY=AUTO NV02_SELF_MODIFICATION_GUARD'})});
+    expect(await githubIssueIsOpen(123,fetchGuardMock)).toBe(false);
+
+    const fetchHoldMock=async()=>({ok:true,json:async()=>({state:'open',body:'TIGERIQ_EXECUTABLE=true OWNER_POLICY=AUTO MANUAL_HOLD'})});
+    expect(await githubIssueIsOpen(123,fetchHoldMock)).toBe(false);
+  });
+
+  it('returns false when TIGERIQ_EXECUTABLE is false or missing',async()=>{
+    process.env.TIGERIQ_GITHUB_TOKEN='fake-token';
+    const fetchFalseMock=async()=>({ok:true,json:async()=>({state:'open',body:'TIGERIQ_EXECUTABLE=false OWNER_POLICY=AUTO'})});
+    expect(await githubIssueIsOpen(123,fetchFalseMock)).toBe(false);
+
+    const fetchMissingMock=async()=>({ok:true,json:async()=>({state:'open',body:'OWNER_POLICY=AUTO'})});
+    expect(await githubIssueIsOpen(123,fetchMissingMock)).toBe(false);
+  });
+
+  it('returns true for valid open auto issue with executable true and owner policy auto',async()=>{
+    process.env.TIGERIQ_GITHUB_TOKEN='fake-token';
+    const fetchValidMock=async()=>({ok:true,json:async()=>({state:'open',body:'TIGERIQ_EXECUTABLE=true OWNER_POLICY=AUTO'})});
+    expect(await githubIssueIsOpen(123,fetchValidMock)).toBe(true);
+  });
 });
