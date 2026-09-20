@@ -9,7 +9,7 @@ function generateSignature(targetUrl, cycleIndex, auditResult) {
 }
 
 function isSafeForQueue(auditResult) {
-  return auditResult.status === 'audit_complete' && auditResult.score > 50;
+  return auditResult.status === 'audit_complete' && (auditResult.score === undefined || auditResult.score > 50) && auditResult.sweepVerified;
 }
 
 export async function processRepairHandoff(targetUrl, cycleIndex) {
