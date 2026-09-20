@@ -112,6 +112,12 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("SEND_BUTTON_WAIT_MS+6000");
     expect((source.match(/composer-submit-button/g)||[]).length).toBeGreaterThanOrEqual(3);
     expect(source).toContain("until=Date.now()+${SEND_BUTTON_WAIT_MS}");
+    expect(source).toContain("first?.status!=='SEND_BUTTON_NOT_FOUND'");
+    expect(source).toContain("enterSubmitStateExpr(text)");
+    expect(source).toContain("Input.dispatchKeyEvent");
+    expect(source).toContain("ENTER_COMPOSER_CLEARED");
+    expect(source).toContain("ENTER_USER_MESSAGE_VISIBLE");
+    expect(source).toContain("ENTER_SUBMIT_EVIDENCE_MISSING");
     expect(source).toContain("activityBusyVisible:Boolean(activityBusy)");
     expect(source).toContain("đang suy nghĩ|thinking|generating|đang tạo");
     expect(source).toContain("/(^|\\\\s)(đang suy nghĩ|thinking|generating|đang tạo)(\\\\s|$)/i");
