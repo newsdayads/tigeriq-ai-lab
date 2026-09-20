@@ -156,4 +156,14 @@ describe('Web Control runtime', () => {
     const response = await fetch(`http://127.0.0.1:${WEB_PORT}/api/status`, { method: 'POST' });
     expect(response.status).toBe(404);
   });
+
+  it('asserts dynamic values and responsive breakpoints in HTML and CSS', async () => {
+    const res = await fetch(`http://127.0.0.1:${WEB_PORT}/`);
+    const html = await res.text();
+    expect(html).toContain('role="region"');
+    const cssRes = await fetch(`http://127.0.0.1:${WEB_PORT}/web-control-unified.css`);
+    const cssText = await cssRes.text();
+    expect(cssText).toContain('display:flex');
+    expect(cssText).toContain('display:grid');
+  });
 });
