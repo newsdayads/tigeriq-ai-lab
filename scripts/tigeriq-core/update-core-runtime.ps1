@@ -1,7 +1,11 @@
 param([int]$IntervalSeconds=120)
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
-$repo='D:\TigerIQ\Workspace\tigeriq-ai-lab'
+$controlRepo='D:\TigerIQ\Workspace\tigeriq-ai-lab'
+$runtimeRepo='D:\TigerIQ\Runtime\CoreSource'
+$runtimeSourceState='D:\TigerIQ\State\core-runtime-source.json'
+$updaterRuntime='D:\TigerIQ\Runtime\CoreUpdater\update-core-runtime.ps1'
+$launcherRuntime='D:\TigerIQ\Runtime\CoreLaunchers'
 $state='D:\TigerIQ\State\core-runtime-updater.json'
 $coreTask='TigerIQ Core 24x7'
 $webTask='TigerIQ Web Control 24x7'
@@ -9,8 +13,10 @@ $codingTask='TigerIQ Coding Lane 24x7'
 $updaterTask='TigerIQ Core Runtime Updater'
 $webRuntime='D:\TigerIQ\Runtime\WebControl24x7'
 $tokenPath='D:\TigerIQ\Secrets\github-command-center.token'
-$corePath=(Join-Path $repo 'apps\tigeriq-core\core-entry.mjs').ToLowerInvariant()
-$codingPath=(Join-Path $repo 'apps\tigeriq-coding-lane\coding-entry.mjs').ToLowerInvariant()
+$corePath=(Join-Path $runtimeRepo 'apps\tigeriq-core\core-entry.mjs').ToLowerInvariant()
+$legacyCorePath=(Join-Path $controlRepo 'apps\tigeriq-core\core-entry.mjs').ToLowerInvariant()
+$codingPath=(Join-Path $runtimeRepo 'apps\tigeriq-coding-lane\coding-entry.mjs').ToLowerInvariant()
+$legacyCodingPath=(Join-Path $controlRepo 'apps\tigeriq-coding-lane\coding-entry.mjs').ToLowerInvariant()
 $webPath=(Join-Path $webRuntime 'web-control-server.mjs').ToLowerInvariant()
 $mutex=New-Object Threading.Mutex($false,'Global\TigerIQCoreRuntimeUpdaterV2')
 $healthFailures=@{core=0;web=0;coding=0}
@@ -18,7 +24,40 @@ $lastHeal=@{core=[DateTime]::MinValue;web=[DateTime]::MinValue;coding=[DateTime]
 $healCooldownSec=300
 $watchdog=$null
 function Save-State([hashtable]$d){$d.updatedAt=(Get-Date).ToUniversalTime().ToString('o');$tmp="$state.tmp";[IO.File]::WriteAllText($tmp,($d|ConvertTo-Json -Depth 10),(New-Object Text.UTF8Encoding($false)));Move-Item -Force $tmp $state}
-function Head([string]$ref){(& git -C $repo rev-parse $ref 2>$null|Out-String).Trim()}
+function Head([string]$repoPath,[string]$ref){(& git -C $repoPath rev-parse $ref 2>$null|Out-String).Trim()}
+function Save-RuntimeSourceState([string]$currentSha,[string]$previousSha,[string]$gateSha){
+  $d=[ordered]@{schema='TIGERIQ_RUNTIME_SOURCE_V1';sourcePath=$runtimeRepo;currentSha=$currentSha;previousSha=$previousSha;gateSha=$gateSha;updatedAt=(Get-Date).ToUniversalTime().ToString('o')}
+  $tmp="$runtimeSourceState.tmp";[IO.File]::WriteAllText($tmp,($d|ConvertTo-Json -Depth 5),(New-Object Text.UTF8Encoding($false)));Move-Item -Force $tmp $runtimeSourceState
+}
+function Runtime-Source-Dirty(){
+  if(-not(Test-Path -LiteralPath $runtimeRepo)){return $false}
+  $inside=(& git -C $runtimeRepo rev-parse --is-inside-work-tree 2>$null|Out-String).Trim()
+  if($LASTEXITCODE -ne 0 -or $inside -ne 'true'){throw 'RUNTIME_SOURCE_INVALID'}
+  return [bool](@(git -C $runtimeRepo status --porcelain).Count)
+}
+function Ensure-RuntimeSource([string]$targetSha){
+  if(Test-Path -LiteralPath $runtimeRepo){
+    if(Runtime-Source-Dirty){throw 'RUNTIME_SOURCE_DIRTY'}
+    git -C $runtimeRepo reset --hard $targetSha|Out-Null
+    if($LASTEXITCODE -ne 0){throw 'RUNTIME_SOURCE_RESET_FAILED'}
+    return
+  }
+  New-Item -ItemType Directory -Path (Split-Path -Parent $runtimeRepo) -Force|Out-Null
+  git -C $controlRepo worktree add --detach $runtimeRepo $targetSha|Out-Null
+  if($LASTEXITCODE -ne 0){throw 'RUNTIME_SOURCE_CREATE_FAILED'}
+}
+function Sync-Launchers(){
+  New-Item -ItemType Directory -Path $launcherRuntime -Force|Out-Null
+  foreach($name in @('run-core.ps1','run-coding-lane.ps1')){
+    $source=Join-Path $runtimeRepo ('scripts\tigeriq-core\'+$name);if(-not(Test-Path -LiteralPath $source)){throw ('LAUNCHER_SOURCE_MISSING:'+ $name)}
+    $target=Join-Path $launcherRuntime $name;$tmp=$target+'.tmp';Copy-Item -LiteralPath $source -Destination $tmp -Force;Move-Item -LiteralPath $tmp -Destination $target -Force
+  }
+}
+function Sync-UpdaterRuntime(){
+  $source=Join-Path $runtimeRepo 'scripts\tigeriq-core\update-core-runtime.ps1';if(-not(Test-Path -LiteralPath $source)){throw 'UPDATER_SOURCE_MISSING'}
+  New-Item -ItemType Directory -Path (Split-Path -Parent $updaterRuntime) -Force|Out-Null
+  $tmp=$updaterRuntime+'.tmp';Copy-Item -LiteralPath $source -Destination $tmp -Force;Move-Item -LiteralPath $tmp -Destination $updaterRuntime -Force
+}
 function HealthInfo([string]$url){try{$r=Invoke-RestMethod -Uri $url -TimeoutSec 5;if($r.ok){return $r}}catch{};return $null}
 function Task-Exists([string]$name){return [bool](Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue)}
 function Gates-Pass([string]$sha){
@@ -43,26 +82,30 @@ function Stop-NodeProcessesByMatch([string]$match){
   $procs=Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue | Where-Object {$_.CommandLine -and $_.CommandLine.ToLowerInvariant().Contains($m)}
   foreach($p in $procs){try{Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop}catch{}}
 }
-function Stop-CoreProcesses(){Stop-NodeProcessesByMatch $corePath}
+function Get-CorePid(){$p=Get-NodePidByMatch $corePath;if($p){return $p};return Get-NodePidByMatch $legacyCorePath}
+function Stop-CoreProcesses(){Stop-NodeProcessesByMatch $corePath;Stop-NodeProcessesByMatch $legacyCorePath}
 function Restart-Core($oldPid){
   if(-not(Task-Exists $coreTask)){throw ('TASK_MISSING:'+ $coreTask)}
-  $previousPid=if($null-ne$oldPid){[int]$oldPid}else{Get-NodePidByMatch $corePath}
+  $previousPid=if($null-ne$oldPid){[int]$oldPid}else{Get-CorePid}
   Stop-ScheduledTask -TaskName $coreTask -ErrorAction SilentlyContinue;Start-Sleep -Seconds 2
   Stop-CoreProcesses;Start-Sleep -Seconds 1
   Start-ScheduledTask -TaskName $coreTask
   $deadline=(Get-Date).AddSeconds(60)
   while((Get-Date)-lt$deadline){
-    $h=HealthInfo 'http://100.97.23.87:8795/health';$newPid=Get-NodePidByMatch $corePath
+    $h=HealthInfo 'http://100.97.23.87:8795/health';$newPid=Get-CorePid
     if($h -and $newPid -and (($null-eq$previousPid)-or([int]$newPid-ne[int]$previousPid))){return $h}
     Start-Sleep -Seconds 2
   }
   return $null
 }
-function Restart-ServiceTask([string]$name,[string]$healthUrl,[string]$processMatch){
+function Restart-ServiceTask([string]$name,[string]$healthUrl,[string]$processMatch,[string]$legacyProcessMatch=''){
   if(-not(Task-Exists $name)){throw ('TASK_MISSING:'+ $name)}
   $oldPid=Get-NodePidByMatch $processMatch
+  if(-not $oldPid -and $legacyProcessMatch){$oldPid=Get-NodePidByMatch $legacyProcessMatch}
   Stop-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue;Start-Sleep -Seconds 2
-  Stop-NodeProcessesByMatch $processMatch;Start-Sleep -Seconds 1
+  Stop-NodeProcessesByMatch $processMatch
+  if($legacyProcessMatch){Stop-NodeProcessesByMatch $legacyProcessMatch}
+  Start-Sleep -Seconds 1
   Start-ScheduledTask -TaskName $name
   $deadline=(Get-Date).AddSeconds(45)
   while((Get-Date)-lt$deadline){
@@ -80,7 +123,7 @@ function Sync-WebRuntime(){
     @{src='apps\tigeriq-core\web-control.html';dst='web-control.html'},
     @{src='scripts\tigeriq-core\run-web-control-bundle.ps1';dst='run-web-control-bundle.ps1'}
   )
-  foreach($f in $files){$source=Join-Path $repo $f.src;if(-not(Test-Path -LiteralPath $source)){throw ('WEB_RUNTIME_SOURCE_MISSING:'+ $f.src)};$target=Join-Path $webRuntime $f.dst;$tmp=$target+'.tmp';Copy-Item -LiteralPath $source -Destination $tmp -Force;Move-Item -LiteralPath $tmp -Destination $target -Force}
+  foreach($f in $files){$source=Join-Path $runtimeRepo $f.src;if(-not(Test-Path -LiteralPath $source)){throw ('WEB_RUNTIME_SOURCE_MISSING:'+ $f.src)};$target=Join-Path $webRuntime $f.dst;$tmp=$target+'.tmp';Copy-Item -LiteralPath $source -Destination $tmp -Force;Move-Item -LiteralPath $tmp -Destination $target -Force}
 }
 function Ensure-ServiceHealth([string]$key,[string]$url){
   $h=HealthInfo $url
@@ -93,7 +136,7 @@ function Ensure-ServiceHealth([string]$key,[string]$url){
   try{
     if($key-eq'core'){$after=Restart-Core $null}
     elseif($key-eq'web'){Sync-WebRuntime;$after=Restart-ServiceTask $webTask 'http://100.97.23.87:8796/health' $webPath}
-    elseif($key-eq'coding'){$after=Restart-ServiceTask $codingTask 'http://100.97.23.87:8797/health' $codingPath}
+    elseif($key-eq'coding'){$after=Restart-ServiceTask $codingTask 'http://100.97.23.87:8797/health' $codingPath $legacyCodingPath}
     else{throw ('UNKNOWN_SERVICE:'+ $key)}
     if($after){$healthFailures[$key]=0;return @{service=$key;healthy=$true;action='restarted';pid=$after.pid;previousPid=$after.previousPid}}
     return @{service=$key;healthy=$false;action='restart_failed';failures=$healthFailures[$key]}
@@ -125,31 +168,45 @@ while($true){
     $watchdog=Runtime-Watchdog
     if(-not(Test-Path -LiteralPath $tokenPath)){Save-State @{result='GITHUB_TOKEN_MISSING';watchdog=$watchdog};continue}
     $env:GH_TOKEN=[IO.File]::ReadAllText($tokenPath).Trim();if(-not $env:GH_TOKEN){Save-State @{result='GITHUB_TOKEN_EMPTY';watchdog=$watchdog};continue}
-    $runtimePaths = @('apps/tigeriq-core', 'apps/tigeriq-coding-lane', 'scripts/tigeriq-core')
-    $dirtyRuntime = @(git -C $repo status --porcelain -- $runtimePaths)
-    if($dirtyRuntime) { Save-State @{result='BLOCKED_DIRTY_RUNTIME';watchdog=$watchdog}; continue }
-    git -C $repo fetch origin main --prune|Out-Null;if($LASTEXITCODE -ne 0){throw 'FETCH_FAILED'}
-    $local=Head 'HEAD';$remote=Head 'origin/main';if($local -eq $remote){Save-State @{result='NO_CHANGE';installedSha=$local;watchdog=$watchdog};continue}
+    git -C $controlRepo fetch origin main --prune|Out-Null;if($LASTEXITCODE -ne 0){throw 'FETCH_FAILED'}
+    $remote=Head $controlRepo 'origin/main';if(-not $remote){throw 'REMOTE_MAIN_MISSING'}
+    $runtimeExists=Test-Path -LiteralPath $runtimeRepo
+    if($runtimeExists -and (Runtime-Source-Dirty)){Save-State @{result='BLOCKED_DIRTY_RUNTIME';runtimeSource=$runtimeRepo;watchdog=$watchdog};continue}
+    $local=if($runtimeExists){Head $runtimeRepo 'HEAD'}else{$null}
+    if($runtimeExists -and $local -eq $remote){Save-State @{result='NO_CHANGE';installedSha=$local;runtimeSource=$runtimeRepo;watchdog=$watchdog};continue}
     $gateSha=Resolve-GateSha $remote
-    if(-not $gateSha){Save-State @{result='WAIT_GATES';candidateSha=$remote;watchdog=$watchdog};continue}
-    [string[]]$changed=@(git -C $repo diff --name-only $local $remote);$impact=Get-Impact $changed
+    if(-not $gateSha){Save-State @{result='WAIT_GATES';candidateSha=$remote;runtimeSource=$runtimeRepo;watchdog=$watchdog};continue}
+    [string[]]$changed=if($runtimeExists){@(git -C $controlRepo diff --name-only $local $remote)}else{@('apps/tigeriq-core/','apps/tigeriq-coding-lane/','scripts/tigeriq-core/')}
+    $impact=if($runtimeExists){Get-Impact $changed}else{@{core=$true;web=$true;coding=$true;updater=$true;bootstrap=$true}}
     $oldCore=HealthInfo 'http://100.97.23.87:8795/health';$oldPid=if($oldCore){[int]$oldCore.pid}else{$null}
-    git -C $repo checkout -B core-runtime-sync origin/main|Out-Null;if($LASTEXITCODE -ne 0){throw 'CHECKOUT_FAILED'}
+    $previousRuntimeSha=$local
+    Ensure-RuntimeSource $remote
+    Save-RuntimeSourceState $remote $previousRuntimeSha $gateSha
+    Sync-Launchers
+    if($impact.updater){Sync-UpdaterRuntime}
     $coreHealth=$oldCore;$webHealth=$null;$codingHealth=$null
     try{
       if($impact.core){$coreHealth=Restart-Core $oldPid;if(-not $coreHealth){throw 'CORE_HEALTH_OR_PID_FAILED'}}
       elseif(-not(HealthInfo 'http://100.97.23.87:8795/health')){throw 'CORE_HEALTH_LOST_WITHOUT_CORE_CHANGE'}
       if($impact.web){Sync-WebRuntime;$webHealth=Restart-ServiceTask $webTask 'http://100.97.23.87:8796/health' $webPath;if(-not $webHealth){throw 'WEB_CONTROL_HEALTH_OR_PID_FAILED'}}
-      if($impact.coding){$codingHealth=Restart-ServiceTask $codingTask 'http://100.97.23.87:8797/health' $codingPath;if(-not $codingHealth){throw 'CODING_LANE_HEALTH_OR_PID_FAILED'}}
+      if($impact.coding){$codingHealth=Restart-ServiceTask $codingTask 'http://100.97.23.87:8797/health' $codingPath $legacyCodingPath;if(-not $codingHealth){throw 'CODING_LANE_HEALTH_OR_PID_FAILED'}}
     }catch{
-      git -C $repo checkout $local|Out-Null
+      if($previousRuntimeSha){
+        git -C $runtimeRepo reset --hard $previousRuntimeSha|Out-Null
+        Save-RuntimeSourceState $previousRuntimeSha $remote $previousRuntimeSha
+        Sync-Launchers
+        if($impact.updater){Sync-UpdaterRuntime}
+      }else{
+        git -C $controlRepo worktree remove --force $runtimeRepo 2>$null|Out-Null
+        Remove-Item -LiteralPath $runtimeSourceState -Force -ErrorAction SilentlyContinue
+      }
       if($impact.core){$null=Restart-Core $null}
       if($impact.web -and (Task-Exists $webTask)){Sync-WebRuntime;$null=Restart-ServiceTask $webTask 'http://100.97.23.87:8796/health' $webPath}
-      if($impact.coding -and (Task-Exists $codingTask)){$null=Restart-ServiceTask $codingTask 'http://100.97.23.87:8797/health' $codingPath}
+      if($impact.coding -and (Task-Exists $codingTask)){$null=Restart-ServiceTask $codingTask 'http://100.97.23.87:8797/health' $codingPath $legacyCodingPath}
       throw ('ROLLED_BACK:'+ $_.Exception.Message)
     }
     $newCore=HealthInfo 'http://100.97.23.87:8795/health'
-    Save-State @{result='UPDATED';installedSha=$remote;gateSha=$gateSha;previousSha=$local;changedPaths=$changed;impact=$impact;corePid=if($newCore){[int]$newCore.pid}else{$null};previousCorePid=$oldPid;coreRestarted=$impact.core;webRestarted=$impact.web;codingRestarted=$impact.coding;webPid=if($webHealth){$webHealth.pid}else{$null};codingPid=if($codingHealth){$codingHealth.pid}else{$null};watchdog=$watchdog}
+    Save-State @{result='UPDATED';installedSha=$remote;gateSha=$gateSha;previousSha=$previousRuntimeSha;runtimeSource=$runtimeRepo;changedPaths=$changed;impact=$impact;corePid=if($newCore){[int]$newCore.pid}else{$null};previousCorePid=$oldPid;coreRestarted=$impact.core;webRestarted=$impact.web;codingRestarted=$impact.coding;webPid=if($webHealth){$webHealth.pid}else{$null};codingPid=if($codingHealth){$codingHealth.pid}else{$null};watchdog=$watchdog}
     if($impact.updater){Restart-UpdaterAfterExit;exit 75}
   }catch{Save-State @{result='FAILED';error=$_.Exception.Message;watchdog=$watchdog}}
   finally{Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue;if($locked){$mutex.ReleaseMutex()|Out-Null}}

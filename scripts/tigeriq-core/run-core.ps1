@@ -1,7 +1,12 @@
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 . 'D:\TigerIQ\Rebuild\credential-store.ps1'
-$repo='D:\TigerIQ\Workspace\tigeriq-ai-lab'
+$defaultRepo='D:\TigerIQ\Workspace\tigeriq-ai-lab'
+$runtimeSourceState='D:\TigerIQ\State\core-runtime-source.json'
+$repo=$defaultRepo
+if(Test-Path -LiteralPath $runtimeSourceState){
+  try{$meta=Get-Content -Raw -LiteralPath $runtimeSourceState|ConvertFrom-Json;if($meta.sourcePath -and (Test-Path -LiteralPath ([string]$meta.sourcePath))){$repo=[string]$meta.sourcePath}}catch{}
+}
 $core=Join-Path $repo 'apps\tigeriq-core\core-entry.mjs'
 $coreMatch=$core.ToLowerInvariant()
 $logDir='D:\TigerIQ\Logs\Core24x7'
