@@ -99,7 +99,12 @@ export function makePhaseCheckpoint({currentPhase=0,phases=[],summary='',complet
 }
 
 export function campaignNeedsEvidence({status,phases=[],doneJobs=0}) {
-  return status === 'complete' && Array.isArray(phases) && phases.length > 0 && Number(doneJobs || 0) < 1;
+  const st = String(status || '').trim().toLowerCase();
+  const list = Array.isArray(phases) ? phases : [];
+  if ((st === 'complete' || st === 'completed') && list.length > 0 && Number(doneJobs || 0) <= 0) {
+    return true;
+  }
+  return false;
 }
 
 export function campaignEvidenceJobId(objectiveId,currentPhase=0) {
