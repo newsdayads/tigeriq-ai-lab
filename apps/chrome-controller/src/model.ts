@@ -99,3 +99,34 @@ export function loadConfig(configPath?:string):ControllerConfig{
   return validateConfig(JSON.parse(text) as unknown);
 }
 export function computePlacements(config:ControllerConfig,workArea?:WorkArea):Record<WorkerId,WindowPlacement>{const fallback:WorkArea={left:config.layout.fallbackWorkAreaLeft,top:0,width:config.layout.fallbackWorkAreaWidth,height:config.layout.top+config.layout.height};const area=workArea&&workAreaFitsLayout(config,workArea)?workArea:fallback;if(!workAreaFitsLayout(config,area))throw new Error('LAYOUT_DOES_NOT_FIT_WORK_AREA');const total=config.workers.length*config.layout.width+(config.workers.length-1)*config.layout.gap;const first=area.left+area.width-config.layout.rightMargin-total;return Object.fromEntries(config.workers.map((w,i)=>[w.id,{left:first+i*(config.layout.width+config.layout.gap),top:area.top+config.layout.top,width:config.layout.width,height:config.layout.height}]))as Record<WorkerId,WindowPlacement>}
+
+export interface RestoreProfileDispatchResult {
+  dispatched: boolean;
+  workerId: WorkerId;
+  workItemId?: string;
+  profile: string;
+  effort: string;
+  idempotencyKey: string;
+}
+
+export function restoreGpt5_6SolProfile(workerId: WorkerId, workItemId?: string, dispatchBridge?: (payload: any) => boolean): RestoreProfileDispatchResult {
+  const idempotencyKey = `RESTORE_GPT_5_6_SOL_${workerId}_${workItemId ?? 'DEFAULT'}`;
+  const payload = {
+    action: 'SET_MODEL_PROFILE',
+    workerId,
+    workItemId: workItemId ?? null,
+    profile: 'GPT-5.6 Sol',
+    reasoningEffort: 'High',
+    idempotencyKey,
+    dispatchedAt: new Date().toISOString(),
+  };
+  const success = dispatchBridge ? dispatchBridge(payload) : true;
+  return {
+    dispatched: success,
+    workerId,
+    workItemId,
+    profile: 'GPT-5.6 Sol',
+    effort: 'High',
+    idempotencyKey,
+  };
+}
