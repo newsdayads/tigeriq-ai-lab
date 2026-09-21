@@ -20,11 +20,17 @@ describe('#777 Core Smart Router integration',()=>{
     expect(start).toBeGreaterThanOrEqual(0);expect(end).toBeGreaterThan(start);
     const src=core.slice(start,end).replaceAll('export ','');
     const fn=new Function(`${src}; return {watsonxTextFromBody,hasWatsonxTextShape,watsonxRetryDecision};`)();
+    expect(fn.watsonxRetryDecision({choices:[{message:{content:'chat-ok'}}]},0)).toEqual({action:'success',text:'chat-ok'});
+    expect(fn.watsonxRetryDecision({choices:[{message:{content:[{type:'text',text:'array-ok'}]}}]},0)).toEqual({action:'success',text:'array-ok'});
     expect(fn.watsonxRetryDecision({results:[{generated_text:'ok'}]},0)).toEqual({action:'success',text:'ok'});
     expect(fn.watsonxRetryDecision({results:[{text:'alt'}]},0)).toEqual({action:'success',text:'alt'});
     expect(fn.watsonxRetryDecision({results:[{generated_text:''}]},0)).toEqual({action:'retry',code:'WATSONX_TRANSIENT_EMPTY'});
     expect(fn.watsonxRetryDecision({results:[{generated_text:''}]},2)).toEqual({action:'fail',code:'EMPTY_RESPONSE'});
     expect(fn.watsonxRetryDecision({unexpected:true},0)).toEqual({action:'fail',code:'WATSONX_SHAPE_MISMATCH'});
     expect(core).toContain("apikey:process.env.WATSONX_API_KEY");
+    expect(core).toContain("/ml/v1/text/chat?version=2025-10-25");
+    expect(core).toContain("messages:[{role:'user',content:prompt}]");
+    expect(core).toContain("max_completion_tokens:1200");
+    expect(core).not.toContain("/ml/v1/text/generation?version=2024-05-01");
   });
 });
