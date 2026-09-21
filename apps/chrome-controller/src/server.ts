@@ -434,8 +434,7 @@ function workerHasActiveJob(id:WorkerId,{allowWaitingEvidence=false,allowContinu
 function workerNeeded(id:WorkerId){
   const state=states.get(id);
   if(!state?.enabled||state.manualCloseSuppressed||utilityPausedWorkers.has(id))return false;
-  if(id==='NV02')return true;
-  return snapshotRequiredWorkers().includes(id)||workerHasActiveJob(id);
+  return true;
 }
 async function fetchExternalSnapshot(){
   if(!config.autopilot.stateUrl)return;
@@ -731,7 +730,7 @@ async function startupRecovery(){
     persistEvidence();
     return;
   }
-  const needed=new Set<WorkerId>(['NV02',...snapshotRequiredWorkers()]);
+  const needed=new Set<WorkerId>(WORKER_IDS);
   for(const id of WORKER_IDS){
     if(!needed.has(id)||!states.get(id)?.enabled||states.get(id)?.blocked||states.get(id)?.manualCloseSuppressed)continue;
     try{
@@ -892,32 +891,38 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
     json(res,202,{ok:true});
     return true;
   }
-  if(url.pathname==='/api/workers/NV02/restart-schedule'&&req.method==='POST'){
+  const restartScheduleMatch=url.pathname.match(/^\/api\/workers\/(NV02|NV03|NV04)\/restart-schedule$/);
+  if(restartScheduleMatch&&req.method==='POST'){
+    const workerId=restartScheduleMatch[1] as WorkerId;
     try{
       if(paused)throw new Error('OWNER_INTERACTION_READ_ONLY');
       if(killed)throw new Error('CONTROLLER_KILLED');
-      const state=states.get('NV02')!;
+      const state=states.get(workerId)!;
       const data=await body(req);
       const reason=String(data.reason??'PLANNED_REFRESH').slice(0,96);
       const staleWorkingRecovery=reason==='WORKING_NO_PROGRESS_3_CHECKS';
       const stalledRecovery=reason==='STALLED_3_CHECKS';
-      const boundedRecovery=staleWorkingRecovery||stalledRecovery;
-      if(!state.enabled)throw new Error('WORKER_DISABLED:NV02');
-      if(state.blocked)throw new Error('WORKER_BLOCKED:NV02');
-      if(!recentHeartbeat('NV02'))throw new Error('NV02_HEARTBEAT_NOT_FRESH');
+      const periodicReset=reason==='PERIODIC_2_4H_RESET';
+      const boundedRecovery=staleWorkingRecovery||stalledRecovery||periodicReset;
+      if(!state.enabled)throw new Error(`WORKER_DISABLED:${workerId}`);
+      if(state.blocked)throw new Error(`WORKER_BLOCKED:${workerId}`);
+      if(!recentHeartbeat(workerId))throw new Error(`WORKER_HEARTBEAT_NOT_FRESH:${workerId}`);
       const security=heartbeatStopReason(state.lastHeartbeat);
       if(security)throw new Error(security);
-      if(state.lastHeartbeat?.uiBusy!==false&&!staleWorkingRecovery)throw new Error('NV02_UI_NOT_IDLE');
-      if(staleWorkingRecovery&&state.lastHeartbeat?.uiBusy!==true)throw new Error('NV02_STALE_WORKING_RESTART_REQUIRES_BUSY');
-      if(workerHasActiveJob('NV02')&&!boundedRecovery)throw new Error('NV02_ACTIVE_JOB');
-      if(commandQueues.get('NV02')!.length>0||[...waiters.values()].some((w)=>w.workerId==='NV02'))throw new Error('NV02_COMMAND_INFLIGHT');
-      plannedRefreshWorkers.add('NV02');
+      if(state.lastHeartbeat?.uiBusy!==false&&!staleWorkingRecovery)throw new Error(`WORKER_UI_NOT_IDLE:${workerId}`);
+      if(staleWorkingRecovery&&state.lastHeartbeat?.uiBusy!==true)throw new Error(`STALE_WORKING_RESTART_REQUIRES_BUSY:${workerId}`);
+      if(workerHasActiveJob(workerId)&&!boundedRecovery)throw new Error(`WORKER_ACTIVE_JOB:${workerId}`);
+      if(commandQueues.get(workerId)!.length>0||[...waiters.values()].some((w)=>w.workerId===workerId))throw new Error(`WORKER_COMMAND_INFLIGHT:${workerId}`);
+      plannedRefreshWorkers.add(workerId);
       state.manualCloseSuppressed=false;
       persistWorkerSafetyState();
-      log('NV02_PLANNED_REFRESH_QUEUED',{workerId:'NV02',reason});
-      void uiQueue.enqueue(()=>sendCommand('NV02','CLOSE_WINDOW')).catch((error)=>{
-        plannedRefreshWorkers.delete('NV02');
-        log('NV02_PLANNED_REFRESH_QUEUE_FAILED',{workerId:'NV02',reason,error:String(error)});
+      const prepareOnly=data.prepareOnly===true;
+      log('WORKER_PLANNED_REFRESH_PREPARED',{workerId,reason,prepareOnly});
+      if(prepareOnly){json(res,202,{ok:true,prepared:true});return true;}
+      log(workerId==='NV02'?'NV02_PLANNED_REFRESH_QUEUED':'WORKER_PLANNED_REFRESH_QUEUED',{workerId,reason});
+      void uiQueue.enqueue(()=>sendCommand(workerId,'CLOSE_WINDOW')).catch((error)=>{
+        plannedRefreshWorkers.delete(workerId);
+        log(workerId==='NV02'?'NV02_PLANNED_REFRESH_QUEUE_FAILED':'WORKER_PLANNED_REFRESH_QUEUE_FAILED',{workerId,reason,error:String(error)});
         persistEvidence();
       });
       json(res,202,{ok:true,queued:true});
