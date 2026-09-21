@@ -33,6 +33,7 @@ const NV02_PROJECT_PREFIX=(()=>{try{return new URL(NV02_HOME_URL).pathname.repla
 const NV02_PROJECT_ID=(()=>{const m=NV02_PROJECT_PREFIX.match(/^\/g\/(g-p-[a-z0-9]+)(?:-[^/]+)?$/i);return m?.[1]||''})();
 const NV02_PROJECT_ID_PREFIX=NV02_PROJECT_ID?`/g/${NV02_PROJECT_ID}`:'';
 const busy=new Set();
+const transportFailureCounts=new Map();
 let nv02VerifiedModelProfile=null;
 let nv02MutationBusy=false;
 const NV02_ISOLATED_AUTO_CONTINUE=true;
@@ -148,7 +149,7 @@ async function reopenWorker(w,target,state,now,reason){
   saveWorkerContinuity(w.id,checkpointed);
   await genericWorkerEvent(w.id,'RESET_CHECKPOINTED',{reason,resumeUrl,recoveryAttempt:checkpointed.recoveryAttempts});
   const result=await withWorkerMutation(w.id,async()=>{
-    await post(`/api/utility/workers/${w.id}/plan-refresh`,w.id,{reason});
+    await post(`/api/utility/workers/${w.id}/plan-refresh`,w.id,{reason,transportStalled:reason==='CDP_TRANSPORT_STALLED'});
     await closeWorker(w,target);
     await sleep(1200);
     let lastError=null;
@@ -970,9 +971,11 @@ async function postWorkerHeartbeat(w,target,ui,projectContextReady){
 
 async function tickWorker(w){
   if(busy.has(w.id))return;busy.add(w.id);
+  let target=null;
   try{
-    const port=workerPort(w);const list=await targets(port);const target=await pruneDuplicates(w,list);if(!target)return;
+    const port=workerPort(w);const list=await targets(port);target=await pruneDuplicates(w,list);if(!target)return;
     const rawUi=await uiState(target);
+    transportFailureCounts.set(w.id,0);
     const projectContextReady=w.id!=='NV02'||isNv02ProjectContext(rawUi.url)||rawUi.projectDraftReady===true;
     const ui=projectContextReady?rawUi:{...rawUi,uiReady:false,uiPhase:'STALLED',modelReady:false};
     await postWorkerHeartbeat(w,target,ui,projectContextReady).catch(error=>log('CONTROLLER_TELEMETRY_UNAVAILABLE',{error:String(error?.message||error)}));
@@ -1013,6 +1016,25 @@ async function tickWorker(w){
     else if(CONTINUITY_WORKERS.includes(w.id))await maybeWorkerContinuity(w,target,ui);
   }catch(error){
     const msg=String(error?.message||error);
+    const transportStall=/CDP_TIMEOUT:Runtime\.evaluate|CDP_OPEN_TIMEOUT|CDP_OPEN_ERROR|fetch failed/.test(msg);
+    if(transportStall){
+      const count=Number(transportFailureCounts.get(w.id)||0)+1;
+      transportFailureCounts.set(w.id,count);
+      log('WORKER_TRANSPORT_STALL',{workerId:w.id,count,error:msg});
+      if(count>=2&&target){
+        try{
+          if(!(await workerAutomationPaused(w.id))){
+            const state=loadWorkerContinuity(w.id);
+            await reopenWorker(w,target,state,Date.now(),'CDP_TRANSPORT_STALLED');
+            transportFailureCounts.set(w.id,0);
+            log('WORKER_TRANSPORT_RECOVERED',{workerId:w.id});
+            return;
+          }
+        }catch(recoveryError){
+          log('WORKER_TRANSPORT_RECOVERY_FAILED',{workerId:w.id,error:String(recoveryError?.message||recoveryError)});
+        }
+      }
+    }
     if(!/CDP_LIST|AbortError|TimeoutError/.test(msg))log('WORKER_TICK_ERROR',{workerId:w.id,error:msg});
   }finally{busy.delete(w.id);}
 }
