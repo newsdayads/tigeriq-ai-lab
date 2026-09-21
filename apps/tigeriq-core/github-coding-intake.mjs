@@ -1,3 +1,4 @@
+import {createHash} from 'node:crypto';
 import {Pool} from 'pg';
 import {backlogOwnerDirect,sortBacklogSpecs} from './github-backlog-policy.mjs';
 import {controlPlaneRepairIntent,isProtectedControlPlanePath} from '../shared/control-plane-lock.mjs';
@@ -11,6 +12,29 @@ const PROVIDER_RETRY_BASE_MS=60000;
 
 function exactFlag(body,key,value='true'){
   return new RegExp(`^${key.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}=${value.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}$`,'m').test(String(body||''));
+}
+
+export function codingSourceTruthRevision(issue,comments=[]){
+  const body=String(issue?.body||'');
+  const title=String(issue?.title||'');
+  const ownerLogin=String(issue?.repository_owner||DEFAULT_OWNER).toLowerCase();
+  const ownerDirective=(Array.isArray(comments)?comments:[])
+    .filter(c=>String(c?.user?.login||'').toLowerCase()===ownerLogin)
+    .filter(c=>/^\[(?:OWNER_REARM|OWNERSHIP_HANDOFF|OWNER_DIRECTIVE|OWNER_OVERRIDE)\]/mi.test(String(c?.body||'')))
+    .sort((a,b)=>Number(a?.id||0)-Number(b?.id||0))
+    .at(-1);
+  const digest=createHash('sha256').update(title).update('\n').update(body).digest('hex').slice(0,20);
+  return ownerDirective?.id?`body-${digest}:owner-${ownerDirective.id}`:`body-${digest}`;
+}
+
+async function codingSourceRevision(fetchImpl,owner,repo,token,issue){
+  let comments=[];
+  try{
+    comments=await gh(fetchImpl,owner,repo,`/issues/${Number(issue?.number)}/comments?per_page=100`,token);
+  }catch{
+    // Body still gives a stable fail-closed Source-of-Truth revision when comment lookup is unavailable.
+  }
+  return codingSourceTruthRevision({...issue,repository_owner:owner},comments);
 }
 
 export function extractCodingDependencies(body){
@@ -257,7 +281,7 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
       console.warn(JSON.stringify({event:'GITHUB_CODING_SOURCE_RECONCILE_WAIT',issueNumber:n,codingObjectiveId:id,error:String(error?.message||error)}));
       continue;
     }
-    const currentSourceRevision=String(currentIssue?.updated_at||'').trim();
+    const currentSourceRevision=await codingSourceRevision(fetchImpl,owner,repo,token,currentIssue);
     if(await hasEffectiveBlockedFinal(pool,n,objective?.summary,id,currentMainSha,currentSourceRevision))continue;
     const job=(status.jobs||[]).find(x=>x.objective_id===id);
     if(job&&!(await markerExists(pool,'GITHUB_CODING_PROGRESS_REPORTED',n))){
