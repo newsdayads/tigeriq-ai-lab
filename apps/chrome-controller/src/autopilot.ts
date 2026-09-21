@@ -214,6 +214,53 @@ export function decideAutoContinue(
   };
 }
 
+export interface WorkingWatchdogState {
+  lastSignature?: string;
+  unchangedCount: number;
+  recoveryAttempts: number;
+}
+
+export function checkWorkingWatchdog(params: {
+  phase: string;
+  activitySignature: string;
+  watchdogState: WorkingWatchdogState;
+  maxUnchangedChecks?: number;
+  maxRecoveryAttempts?: number;
+}): { action: 'NONE' | 'TRIGGER_F5' | 'TRIGGER_REOPEN'; watchdogState: WorkingWatchdogState } {
+  const maxChecks = params.maxUnchangedChecks ?? 3;
+  const maxReopen = params.maxRecoveryAttempts ?? 1;
+  const st = { ...params.watchdogState };
+
+  if (params.phase !== 'WORKING') {
+    st.unchangedCount = 0;
+    st.lastSignature = undefined;
+    st.recoveryAttempts = 0;
+    return { action: 'NONE', watchdogState: st };
+  }
+
+  if (st.lastSignature === params.activitySignature) {
+    st.unchangedCount += 1;
+  } else {
+    st.lastSignature = params.activitySignature;
+    st.unchangedCount = 0;
+    st.recoveryAttempts = 0;
+  }
+
+  if (st.unchangedCount >= maxChecks) {
+    if (st.recoveryAttempts < maxReopen) {
+      st.recoveryAttempts += 1;
+      st.unchangedCount = 0;
+      return { action: 'TRIGGER_F5', watchdogState: st };
+    } else {
+      st.unchangedCount = 0;
+      st.recoveryAttempts += 1;
+      return { action: 'TRIGGER_REOPEN', watchdogState: st };
+    }
+  }
+
+  return { action: 'NONE', watchdogState: st };
+}
+
 export function freshAutopilotState(now = new Date()): DurableAutopilotState {
   return { phase: 'IDLE', updatedAt: now.toISOString() };
 }
