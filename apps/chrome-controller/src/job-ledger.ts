@@ -113,6 +113,31 @@ export class DurableUiJobLedger {
     this.save();
     return {...record,evidenceRefs:[...record.evidenceRefs]};
   }
+
+  resumeWaitingEvidence(
+    workerId: WorkerId,
+    jobId: string,
+    patch: UiJobPatch = {},
+    now: Date = new Date(),
+  ): UiJobRecord {
+    const record=this.value.jobs.find((job)=>job.workerId===workerId&&job.jobId===jobId);
+    if (!record) throw new Error(`UI_JOB_NOT_FOUND:${workerId}:${jobId}`);
+    if (record.stage!=='WAITING_EVIDENCE') throw new Error(`UI_JOB_RECOVERY_RESUME_INVALID:${record.stage}`);
+    const at=now.toISOString();
+    record.stage='WORKING';
+    record.progress=uiJobProgress('WORKING');
+    record.lastActivityAt=at;
+    record.completedAt=null;
+    record.nextAction=patch.nextAction!==undefined?patch.nextAction:'Resume current work after recovery';
+    record.blocker=patch.blocker!==undefined?patch.blocker:null;
+    if (patch.result!==undefined) record.result=patch.result;
+    if (patch.evidenceRef) {
+      const ref=patch.evidenceRef.trim();
+      if (ref && !record.evidenceRefs.includes(ref)) record.evidenceRefs.push(ref);
+    }
+    this.save();
+    return {...record,evidenceRefs:[...record.evidenceRefs]};
+  }
   private value: LedgerFile;
   constructor(
     private readonly path: string,
