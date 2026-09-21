@@ -222,6 +222,10 @@ describe('safe recovery contracts',()=>{
     expect(utility).toContain('cancel-refresh');
     expect(utility).toContain('plannedRefreshWorkers.add(workerId)');
     expect(utility).toContain('plannedRefreshWorkers.delete(workerId)');
+    const cancelStart=utility.indexOf("if(action==='cancel-refresh')");
+    const safeStart=utility.indexOf("if(action==='safe-recover')");
+    const cancelBlock=utility.slice(cancelStart,safeStart);
+    expect(cancelBlock).not.toContain('assertControllerAllowed');
     expect(utility).toContain('MANUAL_CLOSE_SUPPRESSED');
     expect(utility).toContain("OWNER_INTERACTION_READ_ONLY");
     expect(utility).toContain("if(state.windowState==='CLOSED')");
