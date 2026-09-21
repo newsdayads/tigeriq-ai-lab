@@ -16,6 +16,8 @@ describe('#1255 NV10 API Doctor policy',()=>{
     expect(classifyApiDoctorFailure({kind:'configuration',message:'HTTP_402'})).toBe('external_blocked');
     expect(classifyApiDoctorFailure({kind:'invalid_response',message:'EMPTY_RESPONSE'})).toBe('source_contract');
     expect(classifyApiDoctorFailure({kind:'auth',message:'HTTP_401'})).toBe('auth');
+    expect(classifyApiDoctorFailure({kind:'security',message:'credential change required'})).toBe('hard_blocked');
+    expect(classifyApiDoctorFailure({kind:'outage',message:'Production browser-auth action required'})).toBe('hard_blocked');
   });
 
   it('waits through a live cooldown and probes exactly when it is due',()=>{
@@ -37,6 +39,11 @@ describe('#1255 NV10 API Doctor policy',()=>{
       healthState:'ERROR',credentialState:'READY',
       latestFailure:{kind:'configuration',message:'HTTP_402'},
     })).toMatchObject({action:'external_blocked',failureClass:'external_blocked'});
+    expect(apiDoctorAction({
+      healthState:'ERROR',credentialState:'READY',
+      latestFailure:{kind:'security',message:'Production browser-auth action required'},
+    })).toMatchObject({action:'external_blocked',failureClass:'hard_blocked'});
+
     expect(apiDoctorAction({
       healthState:'ERROR',credentialState:'READY',
       latestFailure:{kind:'invalid_response',message:'EMPTY_RESPONSE'},
