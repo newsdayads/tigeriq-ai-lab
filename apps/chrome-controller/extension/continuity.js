@@ -24,6 +24,21 @@ export const CONTINUE_PROMPTS = Object.freeze([
 
 export const CONTINUE_MIN_MS = 5 * 60 * 1000;
 export const CONTINUE_MAX_MS = 10 * 60 * 1000;
+export const REFRESH_MIN_MS = 5 * 60 * 1000;
+export const REFRESH_MAX_MS = 10 * 60 * 1000;
+export const MAX_STALLED_CHECKS = 6;
+export const WORKING_PROGRESS_CHECK_MS = 30000;
+export const MAX_WORKING_UNCHANGED_CHECKS = 4;
+
+export function nextRandomAt(minMs, maxMs) {
+  return Date.now() + minMs + Math.floor(Math.random() * (maxMs - minMs + 1));
+}
+
+export function pickContinuePrompt(lastPrompt = null) {
+  const pool = CONTINUE_PROMPTS.filter((p) => p !== lastPrompt);
+  if (pool.length === 0) return CONTINUE_PROMPTS[0];
+  return pool[Math.floor(Math.random() * pool.length)];
+}onst CONTINUE_MAX_MS = 10 * 60 * 1000;
 export const REFRESH_MIN_MS = 2 * 60 * 60 * 1000;
 export const REFRESH_MAX_MS = 4 * 60 * 60 * 1000;
 export const MAX_STALLED_CHECKS = 3;
@@ -75,11 +90,30 @@ export function hasActiveNv02Work(controller){
   return Boolean((autopilot.phase==='BUSY'||autopilot.phase==='WAIT_EVIDENCE')&&dispatched&&dispatched!==completed);
 }
 
-export function hasWaitingEvidenceNv02Work(controller){
-  return (controller?.jobs||[]).some((job)=>job?.workerId==='NV02'&&String(job?.stage||'')==='WAITING_EVIDENCE'&&!job?.completedAt);
+export function hasWaitingEvidenceWork(controller, workerId){
+  return (controller?.jobs||[]).some((job)=>job?.workerId===workerId&&String(job?.stage||'')==='WAITING_EVIDENCE'&&!job?.completedAt);
 }
 
-export function hasContinuableNv02Work(controller){
+export function hasContinuableWork(controller, workerId){
   const continuableStages=new Set(['SUBMITTED','WORKING','WAITING_EVIDENCE','VERIFY']);
-  return (controller?.jobs||[]).some((job)=>job?.workerId==='NV02'&&continuableStages.has(String(job?.stage||''))&&!job?.completedAt);
+  return (controller?.jobs||[]).some((job)=>job?.workerId===workerId&&continuableStages.has(String(job?.stage||''))&&!job?.completedAt);
+}
+
+export function hasActiveWork(controller, workerId){
+  const activeStages=new Set(['QUEUED','DISPATCHING','SUBMITTED','WORKING','VERIFY','BLOCKED']);
+  if((controller?.jobs||[]).some((job)=>job?.workerId===workerId&&activeStages.has(String(job?.stage||''))&&!job?.completedAt))return true;
+  if(controller?.externalWorkAutopilotEnabled===false)return false;
+  const autopilot=controller?.autopilot||{};
+  if(autopilot.pendingJobId||autopilot.uncertainJobId)return true;
+  const dispatched=String(autopilot.lastDispatchedJobId||'');
+  const completed=String(autopilot.lastCompletedJobId||'');
+  return Boolean((autopilot.phase==='BUSY'||autopilot.phase==='WAIT_EVIDENCE')&&dispatched&&dispatched!==completed);
+}
+
+export function shouldRotateChat(workerState){
+  return Boolean(workerState?.needsChatRotation);
+}
+
+export function derivePhase(workerState){
+  return workerState?.phase || 'IDLE';
 }
