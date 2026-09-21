@@ -137,7 +137,7 @@ describe('safe recovery contracts',()=>{
 
   it('keeps paused workers out of unattended start/autopilot paths',()=>{
     expect(server).toContain('START_ALL_SKIPPED_UTILITY_PAUSED');
-    expect(server).toContain("if(utilityPausedWorkers.has('NV02')){setAutopilotPhase('IDLE')");
+    expect(server).toContain("if(utilityPausedWorkers.has(workerId)){setAutopilotPhase('IDLE')");
     expect(server).toContain("state.status='PAUSED'");
   });
 });

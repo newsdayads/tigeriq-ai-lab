@@ -15,9 +15,9 @@ const verifiedAt='2026-09-17T00:00:09.000Z';
 const now=Date.parse(observedAt);
 const dispatchedState=():DurableAutopilotState=>({...freshAutopilotState(),lastDispatchedJobId:'GH-1',lastDispatchedAt:'2026-09-17T00:00:01.000Z'});
 function snapshot(riskFlags:string[]=[]):ExternalAutopilotSnapshot{return{
-  source:'GITHUB',observedAt,revision:'github-ui-v2:test',
+  source:'CORE',observedAt,revision:'core-ui-v1:test',
   previousJob:{jobId:'GH-1',workerId:'NV02',status:'DONE',executable:true,priority:'P0',completedAt,completionRevision:'closure-1',evidence:[{source:'GITHUB',ref:'https://github.com/x/1',verifiedAt,jobId:'GH-1',completedAt,completionRevision:'closure-1'}]},
-  nextJob:{jobId:'GH-2',workerId:'NV02',status:'READY',executable:true,priority:'P0',prompt:'safe',riskFlags},requiredWorkers:[],
+  nextJob:{jobId:'GH-2',workerId:'NV02',status:'READY',executable:true,priority:'P0',prompt:'safe',riskFlags,issueRef:'https://github.com/newsdayads/tigeriq-ai-lab/issues/2',coreSelected:true},requiredWorkers:['NV02'],
 };}
 
 describe('durable dispatch lease',()=>{
@@ -109,7 +109,7 @@ describe('crash-safe atomic persistence',()=>{
 });
 
 describe('withdrawn pending source contract',()=>{
-  it('keeps pending executable only while the fresh snapshot still offers the exact NV02 job',()=>{
+  it('keeps pending executable only while fresh Core authority offers the exact assigned UI job',()=>{
     const s=snapshot();
     expect(sourceStillOffersPendingJob(s,'GH-2')).toBe(true);
     expect(sourceStillOffersPendingJob(s,'GH-X')).toBe(false);
@@ -119,6 +119,8 @@ describe('withdrawn pending source contract',()=>{
   it('wires source withdrawal into terminal local cleanup before any retry',()=>{
     const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
     expect(server).toContain('sourceStillOffersPendingJob(latestSnapshot,pendingJobId)');
+    expect(server).toContain('const workerId=decision.workerId');
+    expect(server).toContain("await dispatch(workerId,decision.text,false,'AUTO_CONTINUE'");
     expect(server).toContain("blocker:'SOURCE_JOB_NO_LONGER_EXECUTABLE'");
     expect(server).toContain('dispatchLease.retireNoLongerExecutable(pendingJobId,Date.now())');
     expect(server).toContain("log('AUTO_CONTINUE_PENDING_SOURCE_WITHDRAWN'");
@@ -127,7 +129,11 @@ describe('withdrawn pending source contract',()=>{
 
 describe('fresh completion evidence',()=>{
   it('requires durable proof of the exact prior dispatch and completion after it',()=>{
-    expect(decideAutoContinue(snapshot(),dispatchedState(),now)).toMatchObject({kind:'DISPATCH',jobId:'GH-2'});
+    expect(decideAutoContinue(snapshot(),dispatchedState(),now)).toMatchObject({kind:'DISPATCH',jobId:'GH-2',workerId:'NV02'});
+    const nv03=snapshot();nv03.nextJob={...nv03.nextJob!,workerId:'NV03',coreSelected:true};nv03.requiredWorkers=['NV03'];
+    expect(decideAutoContinue(nv03,dispatchedState(),now)).toMatchObject({kind:'DISPATCH',jobId:'GH-2',workerId:'NV03'});
+    const legacy=snapshot();legacy.source='GITHUB';
+    expect(decideAutoContinue(legacy,dispatchedState(),now)).toMatchObject({kind:'STOP',reason:'NEXT_JOB_NOT_CORE_SELECTED'});
     expect(decideAutoContinue(snapshot(),freshAutopilotState(),now)).toMatchObject({kind:'WAIT_EVIDENCE'});
     expect(decideAutoContinue(snapshot(),{...freshAutopilotState(),lastDispatchedJobId:'GH-1'},now)).toMatchObject({kind:'WAIT_EVIDENCE'});
     const wrong=snapshot();wrong.previousJob!.evidence![0].jobId='GH-X';expect(decideAutoContinue(wrong,dispatchedState(),now)).toMatchObject({kind:'WAIT_EVIDENCE'});
@@ -216,8 +222,8 @@ describe('Direct CDP live dispatch hardening',()=>{
 describe('AUTO_CONTINUE current-chat dispatch contract',()=>{
   it('does not navigate to project home before dispatching the queued job',()=>{
     const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
-    expect(server).toContain("await dispatch('NV02',decision.text,false,'AUTO_CONTINUE',{jobId:decision.jobId");
-    expect(server).not.toContain("await dispatch('NV02',decision.text,true,'AUTO_CONTINUE')");
+    expect(server).toContain("await dispatch(workerId,decision.text,false,'AUTO_CONTINUE',{jobId:decision.jobId");
+    expect(server).not.toContain("await dispatch(workerId,decision.text,true,'AUTO_CONTINUE')");
     expect(server).toContain("await dispatch(workerId,data.text,data.navigate!==false,'MANUAL',{");
   });
 });
