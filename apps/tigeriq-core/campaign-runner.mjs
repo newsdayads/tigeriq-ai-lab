@@ -84,6 +84,73 @@ export function normalizeWorkItemLifecycle(input = {}) {
   };
 }
 
+export function executeRecoverableDispatcher({ workItem, dispatcherFn, maxRetries = 3, staleThresholdMs = 30000, leaseToken = null, autoRearm = true, recoveryLog = [] } = {}) {
+  const startTime = Date.now();
+  let attempts = 0;
+  let lastError = null;
+  let activeLease = leaseToken || `lease-${Math.random().toString(36).slice(2)}`;
+
+  const isStale = workItem?.lastActivity && (startTime - workItem.lastActivity > staleThresholdMs);
+  const shouldRearm = autoRearm && (isStale || workItem?.status === 'stale' || workItem?.stale === true);
+
+  if (shouldRearm) {
+    recoveryLog.push({ timestamp: new Date().toISOString(), action: 'stale_objective_auto_rearm', leaseToken: activeLease, workItem: workItem?.issueOrPr });
+    workItem = { ...workItem, status: 'rearmed', stale: false, lastActivity: startTime, leaseToken: activeLease };
+  }
+
+  while (attempts <= maxRetries) {
+    try {
+      if (workItem?.implementer === 'NV02' && workItem?._nv02Dispatched) {
+        throw new Error('DUPLICATE_NV02_DISPATCH_PREVENTED');
+      }
+
+      if (typeof dispatcherFn === 'function') {
+        if (workItem?.implementer === 'NV02') {
+          workItem._nv02Dispatched = true;
+        }
+        const res = dispatcherFn({ workItem, attempt: attempts, leaseToken: activeLease });
+        if (res && res.ok === false) {
+          throw new Error(res.error || 'DISPATCHER_FAILED');
+        }
+        return {
+          ok: true,
+          attempts,
+          leaseToken: activeLease,
+          rearmed: shouldRearm,
+          recoveryEvidence: recoveryLog,
+          item: { ...workItem, stage: 'dispatched', leaseToken: activeLease, blocker: '' }
+        };
+      }
+
+      return {
+        ok: true,
+        attempts,
+        leaseToken: activeLease,
+        rearmed: shouldRearm,
+        recoveryEvidence: recoveryLog,
+        item: { ...workItem, stage: 'dispatched', leaseToken: activeLease }
+      };
+    } catch (err) {
+      lastError = err;
+      attempts++;
+      recoveryLog.push({ timestamp: new Date().toISOString(), attempt: attempts, error: String(err?.message || err) });
+      if (attempts > maxRetries) {
+        break;
+      }
+    }
+  }
+
+  return {
+    ok: false,
+    attempts,
+    leaseToken: activeLease,
+    rearmed: shouldRearm,
+    recoveryEvidence: recoveryLog,
+    error: String(lastError?.message || lastError || 'DISPATCH_RETRY_EXHAUSTED'),
+    item: { ...workItem, stage: 'failed', blocker: `Dispatcher failed after ${attempts} attempts: ${lastError?.message || lastError}` }
+  };
+}
+
 export function executeCoreWorkItemLifecycle({ workItem, preflightFn, repairFn, reviewFn, maxRepairCycles = 3, maxHeartbeatRetries = 2, maxAckRetries = 2, heartbeatFn, ackFn, autoChainFn } = {}) {
   const item = normalizeWorkItemLifecycle(workItem);
   const preflight = typeof preflightFn === 'function' ? preflightFn(item) : { ok: true, errors: [] };
