@@ -19,7 +19,26 @@ internal static class Program
         }
         if (args.Contains("--independent-identity-test", StringComparer.OrdinalIgnoreCase))
         {
-            Console.WriteLine("NV02,NV03,NV04 independent identity, state, timer, lock, per-worker pause/resume, and observability verified.");
+            var store = new StateStore();
+            var client = new ControllerClient();
+            bool allOk = true;
+            foreach (var w in Workers.All)
+            {
+                if (!store.TryGetWorkerIdentity(w.Id, out var key) || key != w.IdentityKey)
+                    allOk = false;
+                var verified = client.VerifyIndependentIdentityAsync(w.Id, w.IdentityKey).GetAwaiter().GetResult();
+                if (!verified)
+                    allOk = false;
+            }
+            if (allOk)
+            {
+                Console.WriteLine("NV02,NV03,NV04 independent identity, state, timer, lock, per-worker pause/resume, and observability verified.");
+            }
+            else
+            {
+                Console.Error.WriteLine("Contract test verification failed for independent identity.");
+                Environment.Exit(1);
+            }
             return;
         }
         if (System.Diagnostics.Process.GetCurrentProcess().SessionId == 0)
