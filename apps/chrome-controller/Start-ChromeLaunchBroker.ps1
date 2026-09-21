@@ -8,18 +8,25 @@ $broker = Join-Path $root "dist\apps\chrome-controller\src\chrome-launch-broker.
 if (-not (Test-Path $Config)) { throw "Config not found: $Config" }
 if (-not (Test-Path $broker)) { throw "Chrome launch broker runtime not found: $broker" }
 $env:TIGERIQ_CHROME_CONFIG = $Config
-# Prevent duplicate broker launch via lock file (idempotent)
+# Block legacy config locations robustly
+$resolvedConfigPath = [System.IO.Path]::GetFullPath($Config)
+if ($resolvedConfigPath -match "[\\/](legacy|old|deprecated)[\\/]") {
+  throw "Legacy config paths are blocked: $Config"
+}
+# Prevent duplicate broker launch via atomic lock file (idempotent)
 $brokerLock = Join-Path $root "dist\apps\chrome-controller\broker.lock"
-if (Test-Path $brokerLock) {
+$brokerLockDir = Split-Path $brokerLock -Parent
+if (-not (Test-Path $brokerLockDir)) {
+  New-Item -ItemType Directory -Path $brokerLockDir -Force | Out-Null
+}
+try {
+  $fs = [System.IO.File]::Open($brokerLock, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+  $fs.Close()
+  $fs.Dispose()
+} catch {
   Write-Host "Chrome launch broker already running (lock file present). Exiting."
   exit 0
 }
-# Block legacy config locations
-if ($Config -match "legacy") {
-  throw "Legacy config paths are blocked: $Config"
-}
-# Create lock file for broker instance
-New-Item -ItemType File -Path $brokerLock -Force | Out-Null
 try {
   # Scheduled interactive tasks can have SESSIONNAME unset even though they run in
   # the signed-in user's desktop session. Pass the actual Windows SessionId to
