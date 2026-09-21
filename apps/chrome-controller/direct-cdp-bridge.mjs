@@ -811,6 +811,7 @@ const WORKER_OWNER_LOCKS={
   NV03:'D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\nv03-canonical-owner.lock',
   NV04:'D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\nv04-canonical-owner.lock'
 };
+const WORKER_PORTS={NV02:8799,NV03:8800,NV04:8801};
 const WORKER_CONTINUITY_STATES={
   NV02:'D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\nv02-continuity-state.json',
   NV03:'D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\nv03-continuity-state.json',
@@ -819,8 +820,9 @@ const WORKER_CONTINUITY_STATES={
 function pidAlive(pid){try{process.kill(pid,0);return true;}catch{return false;}}
 const activeWorkerId = WORKER_IDS.includes(String(process.env.TIGERIQ_WORKER_ID||'').trim()) ? String(process.env.TIGERIQ_WORKER_ID||'').trim() : 'NV02';
 const activeOwnerLock = WORKER_OWNER_LOCKS[activeWorkerId] || WORKER_OWNER_LOCKS.NV02;
+const activePort = WORKER_PORTS[activeWorkerId] || 8799;
 function acquireCanonicalOwnership(workerId = activeWorkerId){
-  const lockPath = WORKER_OWNer_LOCKS[workerId] || activeOwnerLock;
+  const lockPath = WORKER_OWNER_LOCKS[workerId] || activeOwnerLock;
   for(let attempt=0;attempt<2;attempt++){
     try{
       const fd=fs.openSync(lockPath,'wx');
@@ -841,17 +843,24 @@ function acquireCanonicalOwnership(workerId = activeWorkerId){
 }
 function releaseCanonicalOwnership(workerId = activeWorkerId){
   try{
-    const lockPath = WORKER_OWNer_LOCKS[workerId] || activeOwnerLock;
+    const lockPath = WORKER_OWNER_LOCKS[workerId] || activeOwnerLock;
     const existing=JSON.parse(fs.readFileSync(lockPath,'utf8'));
     if(Number(existing.pid)===process.pid)fs.unlinkSync(lockPath);
   }catch{}
+}
+function loadWorkerContinuity(workerId = activeWorkerId){
+  try{
+    const path = WORKER_CONTINUITY_STATES[workerId] || NV02_CONTINUITY_STATE;
+    if(fs.existsSync(path))return JSON.parse(fs.readFileSync(path,'utf8'));
+  }catch{}
+  return {phase:'IDLE',updatedAt:new Date().toISOString()};
 }
 acquireCanonicalOwnership(activeWorkerId);
 process.once('exit',()=>releaseCanonicalOwnership(activeWorkerId));
 process.once('SIGTERM',()=>{releaseCanonicalOwnership(activeWorkerId);process.exit(0);});
 process.once('SIGINT',()=>{releaseCanonicalOwnership(activeWorkerId);process.exit(0);});
 const bridgeServer=http.createServer((req,res)=>{if(req.url==='/health'){const provenanceVerified=Boolean(APPROVED_HEAD&&DEPLOY_ROOT&&EXPECTED_BRIDGE_SHA256&&EXPECTED_BRIDGE_SHA256===BRIDGE_SHA256);res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({ok:true,mode:'NV02_ISOLATED_AUTO_CONTINUE',controllerRequired:false,controllerEnabledFlagIgnored:true,worker:'NV02',canonicalOwnership:true,pid:process.pid,approvedHead:APPROVED_HEAD||null,deployRoot:DEPLOY_ROOT||null,sourceSha256:BRIDGE_SHA256,expectedSourceSha256:EXPECTED_BRIDGE_SHA256||null,provenanceVerified,continuity:loadNv02Continuity()}));return;}res.writeHead(404);res.end();});
-bridgeServer.on('error',(error)=>{log('NV02_CANONICAL_OWNER_BIND_FAILED',{error:String(error),code:error?.code||null});releaseNv02CanonicalOwnership();process.exit(42);});
-bridgeServer.listen(8799,'127.0.0.1',()=>log('BRIDGE_READY',{port:8799,mode:'NV02_ISOLATED_AUTO_CONTINUE',controllerRequired:false,controllerEnabledFlagIgnored:true,canonicalOwnership:true,pid:process.pid,approvedHead:APPROVED_HEAD||null,sourceSha256:BRIDGE_SHA256,provenanceVerified:Boolean(APPROVED_HEAD&&DEPLOY_ROOT&&EXPECTED_BRIDGE_SHA256&&EXPECTED_BRIDGE_SHA256===BRIDGE_SHA256)}));
+bridgeServer.on('error',(error)=>{log(`${activeWorkerId}_CANONICAL_OWNER_BIND_FAILED`,{error:String(error),code:error?.code||null});releaseCanonicalOwnership(activeWorkerId);process.exit(42);});
+bridgeServer.listen(activePort,'127.0.0.1',()=>log('BRIDGE_READY',{port:activePort,mode:`${activeWorkerId}_ISOLATED_AUTO_CONTINUE`,controllerRequired:false,controllerEnabledFlagIgnored:true,worker:activeWorkerId,canonicalOwnership:true,pid:process.pid,approvedHead:APPROVED_HEAD||null,sourceSha256:BRIDGE_SHA256,provenanceVerified:Boolean(APPROVED_HEAD&&DEPLOY_ROOT&&EXPECTED_BRIDGE_SHA256&&EXPECTED_BRIDGE_SHA256===BRIDGE_SHA256)}));
 setInterval(()=>void tick(),3000).unref();
 void tick();
