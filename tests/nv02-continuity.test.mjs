@@ -87,6 +87,13 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("await postWorkerHeartbeat(w,target,ui,projectContextReady).catch");
     const tick=source.slice(source.indexOf('async function tickWorker(w){'),source.indexOf('\n\nasync function tick()'));
     expect(tick).not.toContain('getCommand(');
+    const backgroundSource=readFileSync('apps/chrome-controller/extension/background.js','utf8');
+    expect(backgroundSource).toContain("if(workerId==='NV02'){");
+    expect(backgroundSource).toContain('HARD ISOLATION: NV02 commands are owned only by Direct CDP Bridge continuity.');
+    const bgNv02Guard=backgroundSource.indexOf("if(workerId==='NV02'){");
+    const bgCommandFetch=backgroundSource.indexOf('/api/commands/',bgNv02Guard);
+    expect(bgNv02Guard).toBeGreaterThan(-1);
+    expect(bgCommandFetch).toBeGreaterThan(bgNv02Guard);
     const continuity=source.slice(source.indexOf('async function maybeNv02Continuity'),source.indexOf('\nasync function handleCommand'));
     expect(continuity).not.toContain('getControllerState(');
     expect(continuity).not.toContain('hasActiveNv02Work(');
