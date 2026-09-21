@@ -179,13 +179,13 @@ async function invoke(r,prompt){
   throw new Error('PROVIDER_UNSUPPORTED');
 }
 
-export async function invokeJsonWithFailover(initialResource,prompt,{exclude=[],resourcePool=resources,invokeFn=invoke,shrinkPrompt=shrinkAiPrompt,maxResources=5,validateData=null,sleepFn=sleep,randomFn=Math.random,backoffBaseMs=1000}={}){
+export async function invokeJsonWithFailover(initialResource,prompt,{exclude=[],resourcePool=resources,invokeFn=invoke,shrinkPrompt=shrinkAiPrompt,maxResources=resources.length,validateData=null,sleepFn=sleep,randomFn=Math.random,backoffBaseMs=1000}={}){
   const eligible=resourcePool.filter(r=>r&&!exclude.includes(r.id)&&!busyAiResources.has(r.id));
   const initial=(initialResource&&!exclude.includes(initialResource.id)&&!busyAiResources.has(initialResource.id))?initialResource:eligible[0];
   if(!initial){const e=new Error('AI_RESOURCES_BUSY');e.code='AI_RESOURCES_BUSY';throw e;}
   const ordered=[initial,...eligible.filter(r=>r?.id!==initial.id)];
   const unique=[];const ids=new Set();
-  for(const r of ordered){if(!r||exclude.includes(r.id)||ids.has(r.id)||busyAiResources.has(r.id))continue;ids.add(r.id);unique.push(r);if(unique.length>=Math.min(5,maxResources))break;}
+  for(const r of ordered){if(!r||exclude.includes(r.id)||ids.has(r.id)||busyAiResources.has(r.id))continue;ids.add(r.id);unique.push(r);if(unique.length>=Math.min(resourcePool.length,maxResources))break;}
   const failureLedger=[];let attempts=0;
   for(let resourceIndex=0;resourceIndex<unique.length;resourceIndex++){
     const resource=unique[resourceIndex];
