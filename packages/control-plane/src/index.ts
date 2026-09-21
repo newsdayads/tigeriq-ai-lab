@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { setAgentStatus } from './dbHelpers.js';
 import type { AuditLogEntry } from '../../audit-log/src/index.js';
 import type { EvidenceRecord } from '../../evidence/src/index.js';
