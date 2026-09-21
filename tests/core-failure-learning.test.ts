@@ -15,7 +15,18 @@ const ev=(seq:number,overrides:any={})=>({
   data:{kind:'rate_limit',message:'HTTP 429 request 123',...overrides}
 });
 
+import { autoRearmBlockedObjectives } from '../apps/tigeriq-core/failure-learning.mjs';
+
 describe('Learn From Failure',()=>{
+  it('auto-rearms blocked objectives with bounded retry',()=>{
+    const objs = [{ id: 'OBJ-1', status: 'blocked', retryCount: 1 }, { id: 'OBJ-2', status: 'blocked', retryCount: 3 }];
+    const rearmed = autoRearmBlockedObjectives(objs, { maxRetries: 3 });
+    expect(rearmed[0].status).toBe('active');
+    expect(rearmed[0].retryCount).toBe(2);
+    expect(rearmed[0].autoRearmed).toBe(true);
+    expect(rearmed[1].status).toBe('blocked');
+    expect(rearmed[1].retryCount).toBe(3);
+  });
   it('normalizes equivalent verified failures to the same deterministic signature',()=>{
     const a=normalizeFailureEvent(ev(1));
     const b=normalizeFailureEvent(ev(2,{message:'HTTP 429 request 999'}));
