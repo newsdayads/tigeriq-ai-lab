@@ -54,7 +54,7 @@ describe('#1255 NV10 API Doctor policy',()=>{
     const prompt=buildApiDoctorPrompt([{employeeId:'NV18',provider:'watsonx',health:'ERROR',failureClass:'source_contract',action:'probe_then_handoff'}]);
     expect(prompt).toContain('NV10');
     expect(prompt).toContain('Return ONLY one compact JSON object');
-    expect(prompt).not.toContain('paid upgrade');
+    expect(prompt).toContain('Do not suggest paid upgrades');
     expect(parseApiDoctorDecision('{"summary":"x","attention":["NV18"],"sourceRepair":["NV18"]}')).toEqual({
       summary:'x',attention:['NV18'],sourceRepair:['NV18'],
     });
