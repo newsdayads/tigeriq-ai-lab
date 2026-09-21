@@ -388,12 +388,7 @@ async function writeRepairEdits(branch,edits){
     await writeFile(branch,{path,content});
   }
 }
-async function generateChanges(worker,j,context,reviewIssues=[],exclude=[]){
-  const prompt=`You are ${worker.id}, an autonomous TigerIQ repository engineer. Implement ONLY the assigned task on a GitHub branch.\nTASK: ${j.instruction}\nALLOWED PATHS: ${j.paths.join(', ')}\n${reviewIssues.length?`REVIEW ISSUES TO FIX: ${JSON.stringify(reviewIssues)}\n`:''}CURRENT FILES:\n${context}\nReturn ONLY compact JSON {"summary":"short","edits":[{"path":"exact allowed path","old":"exact UNIQUE existing snippet","new":"replacement snippet"}]}. Never return a complete existing file. Each old snippet must exist exactly once. Keep edits minimal and testable. Do not touch paths outside ALLOWED PATHS. Never output secrets.`;
-  const validateData=d=>validateCompactEdits(d.edits,j.paths);
-  const invoked=await invokeJsonWithFailover(worker,prompt,{exclude,validateData});
-  return {payload:invoked.data,resource:invoked.resource};
-}
+async function generateChanges(worker,j,context,reviewIssues=[],exclude=[]){const prompt=`You are ${worker.id}, an autonomous TigerIQ repository engineer. Implement ONLY the assigned task on a GitHub branch.\nTASK: ${j.instruction}\nALLOWED PATHS: ${j.paths.join(', ')}\n${reviewIssues.length?`REVIEW ISSUES TO FIX: ${JSON.stringify(reviewIssues)}\n`:''}CURRENT FILES:\n${context}\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}. Do not touch paths outside ALLOWED PATHS. Never output secrets. Keep changes minimal and testable.`;const validateData=d=>{validateChanges(d.changes,j.paths);validateJobScope(j.paths,d.changes)};const invoked=await invokeJsonWithFailover(worker,prompt,{exclude,validateData,shrinkPrompt:preserveGenerationPrompt});const d=invoked.data;return {payload:d,resource:invoked.resource}}
 async function reviewPr(reviewer,j,diff,implementerId,extraExclude=[]){const prompt=`You are ${reviewer.id}, independent TigerIQ code reviewer. Review against the task and safety boundaries. TASK: ${j.instruction}\nDIFF:\n${diff.slice(0,180000)}\nReturn ONLY JSON {"decision":"approve|changes_requested","summary":"short","issues":["specific issue"]}. Reject unsafe, untested, out-of-scope, credential/security/production changes.`;const invoked=await invokeJsonWithFailover(reviewer,prompt,{exclude:[implementerId,...extraExclude]});const d=invoked.data;if(!['approve','changes_requested'].includes(d.decision)){const e=new Error('REVIEW_DECISION_INVALID');e.code='REVIEW_SCHEMA_INVALID';throw e}d.issues=Array.isArray(d.issues)?d.issues.slice(0,8):[];return {review:d,resource:invoked.resource}}
 
 async function runJob(j){
@@ -413,10 +408,11 @@ async function runJob(j){
     await pool.query("update tigeriq_coding_jobs set employee_id=$2,status='running',next_attempt_at=null where id=$1",[j.id,worker.id]);
     generated=await generateChanges(worker,j,context,[],cooldownExcludes);worker=generated.resource;gen=generated.payload;
     await pool.query("update tigeriq_coding_jobs set employee_id=$2 where id=$1",[j.id,worker.id]);
+    validateJobScope(j.paths,gen.changes);
     reviewer=pickResource([worker.id,...cooldownExcludes]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE');
     const base=await mainSha();branch=branchName(worker.id,j.id);await createBranch(branch,base);
-    await pool.query("update tigeriq_coding_jobs set reviewer_employee_id=$2,branch=$3,next_attempt_at=null where id=$1",[j.id,reviewer.id,branch]);
-    await writeRepairEdits(branch,gen.edits);
+    await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,branch=$4,next_attempt_at=null where id=$1",[j.id,worker.id,reviewer.id,branch]);
+    for(const ch of gen.changes)await writeFile(branch,ch);
     pr=await openPr(branch,`[${worker.id}] ${j.title}`,`Automated TigerIQ Coding Lane job \`${j.id}\`.\n\nImplementer: ${worker.id}\nIndependent reviewer: ${reviewer.id}\nDirect writes to main are forbidden. Merge is attempted only after CI gates and reviewer approval.`);
     await pool.query("update tigeriq_coding_jobs set pr_number=$2,status='waiting_ci' where id=$1",[j.id,pr.number]);
   }
