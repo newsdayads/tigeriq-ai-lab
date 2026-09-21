@@ -128,6 +128,16 @@ describe('NV02 continuity policy', () => {
     expect(continuityLoop).not.toContain('rotateNv02Chat(');
     expect(continuityLoop).not.toContain('checkpointNv02(');
     expect(source).toContain("nextProgressCheckAt:now+60000");
+    expect(source).toContain("const NV02_F5_MIN_MS=5*60*1000");
+    expect(source).toContain("const NV02_F5_MAX_MS=10*60*1000");
+    expect(source).toContain("'PERIODIC_F5_REFRESH'");
+    expect(source).toContain("nextRefreshAt:nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS)");
+    const f5Block=source.slice(source.indexOf("if(now>=Number(state.nextRefreshAt||0))"),source.indexOf("if(phase==='STALLED'&&ui?.modelExact!==true)"));
+    expect(f5Block).toContain("reloadTarget(target)");
+    expect(f5Block).not.toContain("ensureNv02ModelProfile");
+    expect(f5Block).not.toContain("checkpointNv02");
+    expect(f5Block).not.toContain("rotateNv02Chat");
+
     expect(source).toContain("[data-message-author-role=\\\"assistant\\\"]");
 
     expect(source).toContain('button[aria-label*="Ngừng" i]');
