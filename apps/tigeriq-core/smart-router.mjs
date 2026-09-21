@@ -25,6 +25,7 @@ export function deriveRoutingProfile({requested,taskKind,capability}={}) {
   const kind=String(taskKind||'').toLowerCase();
   const cap=String(capability||'general').toLowerCase();
   if(cap==='coding'||kind==='coding')return 'CODING';
+  if(cap==='api_doctor'||kind==='api_doctor')return 'LOCAL';
   if(cap==='review'||kind==='review')return 'REVIEW';
   if(kind==='research')return 'RESEARCH';
   return 'AUTO';
@@ -129,7 +130,8 @@ export function scoreResource(resource,{profile='AUTO',capability='general',task
   if(normalizedProfile==='REVIEW'&&reviewerExclusions.has(resourceId))return {eligible:false,resourceId,score:Infinity,reasons:['reviewer_independence']};
   const caps=capabilities(resource);
   const wanted=String(capability||'general').toLowerCase();
-  if(!caps.includes(wanted)&&!caps.includes('general'))return {eligible:false,resourceId,score:Infinity,reasons:['capability']};
+  if(wanted==='api_doctor'&&!caps.includes('api_doctor'))return {eligible:false,resourceId,score:Infinity,reasons:['capability']};
+  if(wanted!=='api_doctor'&&!caps.includes(wanted)&&!caps.includes('general'))return {eligible:false,resourceId,score:Infinity,reasons:['capability']};
   if(normalizedProfile==='CODING'&&!caps.includes('coding'))return {eligible:false,resourceId,score:Infinity,reasons:['coding_capability']};
 
   const baseRank=Math.max(0,Number(resource.rank??50));
