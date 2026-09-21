@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { buildDurableSavePrompt, SAVE_RECEIPT_POLL_DELAYS_MS, waitForDurableSaveReceipt } from '../apps/chrome-controller/extension/save-receipt.js';
 import {
   CONTINUE_PROMPTS, deriveNv02Phase, hasActiveNv02Work, hasWaitingEvidenceNv02Work, hasContinuableNv02Work, pickContinuePrompt,
-  randomDelay,
+  randomDelay, shouldRotateNv02Chat,
 } from '../apps/chrome-controller/extension/continuity.js';
 
 describe('NV02 continuity policy', () => {
@@ -126,8 +126,9 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("WORKING_STALLED_STOPPED");
     expect(source).toContain("STALLED_HOT_LOOP_NO_CHECKPOINT");
     const continuityLoop=source.slice(source.indexOf('async function maybeNv02Continuity'),source.indexOf('async function handleCommand'));
-    expect(continuityLoop).not.toContain('rotateNv02Chat(');
-    expect(continuityLoop).not.toContain('checkpointNv02(');
+    expect(continuityLoop).toContain('shouldRotateNv02Chat({');
+    expect(continuityLoop).toContain('rotateNv02Chat(target,state,now)');
+    expect(continuityLoop.indexOf("if(phase==='WORKING')")).toBeLessThan(continuityLoop.indexOf('if(now<state.nextContinueAt)return;'));
     expect(source).toContain("nextProgressCheckAt:now+60000");
     expect(source).toContain("const NV02_F5_MIN_MS=5*60*1000");
     expect(source).toContain("const NV02_F5_MAX_MS=10*60*1000");
@@ -165,12 +166,12 @@ describe('NV02 continuity policy', () => {
     expect(contentSource).toContain('button[aria-label*="Ngừng" i]');
   });
 
-  it('does not auto-rotate chat by age or dispatch count', () => {
-    const continuity=readFileSync('apps/chrome-controller/extension/continuity.js','utf8');
-    const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
-    expect(continuity).not.toContain('CHAT_ROTATE_AFTER');
-    expect(continuity).not.toContain('shouldRotateChat');
-    expect(bridge).not.toContain('shouldRotateChat');
+  it('rotates only idle tracked chat when refresh/age/dispatch threshold is due', () => {
+    const now=Date.parse('2026-09-21T12:00:00Z');
+    expect(shouldRotateNv02Chat({phase:'READY',currentTrackedWork:true,uiBusy:false,nextRefreshAt:now-1,dispatchesInChat:1,chatStartedAt:now-1000,now})).toBe(true);
+    expect(shouldRotateNv02Chat({phase:'READY',currentTrackedWork:true,uiBusy:false,nextRefreshAt:now+999999,dispatchesInChat:40,chatStartedAt:now-1000,now})).toBe(true);
+    expect(shouldRotateNv02Chat({phase:'WORKING',currentTrackedWork:true,uiBusy:true,nextRefreshAt:now-1,dispatchesInChat:99,chatStartedAt:now-99999999,now})).toBe(false);
+    expect(shouldRotateNv02Chat({phase:'READY',currentTrackedWork:false,uiBusy:false,nextRefreshAt:now-1,dispatchesInChat:99,chatStartedAt:now-99999999,now})).toBe(false);
   });
   it('keeps NV02 hot-loop recovery local, same-chat, and checkpoint-free', () => {
     const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
@@ -180,8 +181,10 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("'PERIODIC_F5_REFRESH'");
     expect(source).toContain("stopAndClearComposerExpr");
     const continuityLoop=source.slice(source.indexOf('async function maybeNv02Continuity'),source.indexOf('async function handleCommand'));
-    expect(continuityLoop).not.toContain("rotateNv02Chat(");
-    expect(continuityLoop).not.toContain("checkpointNv02(");
+    expect(continuityLoop).toContain("rotateNv02Chat(target,state,now)");
+    const workingBlock=continuityLoop.slice(continuityLoop.indexOf("if(phase==='WORKING')"),continuityLoop.indexOf("if(shouldRotateNv02Chat"));
+    expect(workingBlock).not.toContain("rotateNv02Chat(");
+    expect(workingBlock).not.toContain("checkpointNv02(");
     const recovery=source.slice(source.indexOf('async function recoverStalledWorking'),source.indexOf('async function checkpointNv02'));
     expect(recovery).not.toContain("checkpointNv02(");
     expect(recovery).not.toContain("archiveChat(");
