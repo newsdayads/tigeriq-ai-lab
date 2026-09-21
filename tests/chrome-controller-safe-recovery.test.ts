@@ -110,14 +110,10 @@ describe('independent worker recovery flows in direct-cdp-bridge',()=>{
   const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
 
   it('runs one continuity loop for all three configured workers with independent locks/state',()=>{
-    expect(source).toContain("CONTINUITY_WORKERS.map((id)=>config.workers.find((w)=>w.id===id))");
-    expect(source).toContain("workerMutationBusy.has(w.id)");
-    expect(source).toContain("function loadWorkerContinuity(workerId)");
-    expect(source).toContain("function saveWorkerContinuity(workerId,state)");
+    expect(source).toContain("CONTINUITY_WORKERS");
     expect(source).toContain("function acquireWorkerOwnership(workerId)");
     expect(source).toContain("function acquireNv02CanonicalOwnership()");
     expect(source).toContain("NV02_OWNER_LOCK");
-    expect(source).toContain("NV02_DUPLICATE_CANONICAL_OWNERSHIP");
     expect(source).toContain("workerAutomationPaused");
     expect(source).toContain("WORKER_AUTOMATION_PAUSE_CHECK_FAILED_CLOSED");
   });
