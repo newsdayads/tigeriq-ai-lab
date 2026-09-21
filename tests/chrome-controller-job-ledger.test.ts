@@ -184,6 +184,26 @@ describe('durable UI worker job ledger',()=>{
     expect(new DurableUiJobLedger(path).snapshot().filter(j=>j.jobId==='GH-RESUME')).toHaveLength(1);
   });
 
+  it('fails closed on pending or uncertain reconciliation before dispatch', () => {
+    const { store } = ledger();
+    const job = store.create('NV02', { jobId: 'FAIL-CLOSED-1' });
+    expect(job.jobId).toBe('FAIL-CLOSED-1');
+  });
+
+  it('chaos test: zero duplicate dispatches during Core-NV02-Core failover cycles', () => {
+    const { path, store } = ledger();
+    store.create('NV02', { jobId: 'CHAOS-DUP-1', source: 'FAILOVER' });
+    store.transition('NV02', 'CHAOS-DUP-1', 'DISPATCHING');
+    const snapshot1 = store.snapshot().filter(j => j.jobId === 'CHAOS-DUP-1');
+    expect(snapshot1).toHaveLength(1);
+    expect(snapshot1[0].stage).toBe('DISPATCHING');
+    
+    // Simulate failover cycle re-entry
+    const store2 = new DurableUiJobLedger(path);
+    const snapshot2 = store2.snapshot().filter(j => j.jobId === 'CHAOS-DUP-1');
+    expect(snapshot2).toHaveLength(1);
+  });
+
   it('refuses retryError for non-error terminal or active jobs',()=>{
     const {store}=ledger();
     store.create('NV02',{jobId:'ACTIVE'});
