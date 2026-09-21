@@ -135,6 +135,13 @@ describe('safe recovery contracts',()=>{
     expect(broker).toContain('WORKER_PROCESS_AMBIGUOUS');
   });
 
+  it('fails closed before heartbeat-driven mutation for disabled workers',()=>{
+    const disabled="if(!state.enabled){\n      state.status='DISABLED';";
+    expect(server).toContain(disabled);
+    expect(server.indexOf(disabled)).toBeLessThan(server.indexOf('const hbStop=heartbeatStopReason(hb)'));
+    expect(server).not.toContain("recoveryAttempts.set(workerId,0);\n    if(!state.enabled)");
+  });
+
   it('keeps paused workers out of unattended start/autopilot paths',()=>{
     expect(server).toContain('START_ALL_SKIPPED_UTILITY_PAUSED');
     expect(server).toContain("if(utilityPausedWorkers.has(workerId)){setAutopilotPhase('IDLE')");
