@@ -13,6 +13,7 @@ import { ROUTING_PROFILE_LABELS, createResourceId, deriveRoutingProfile, failure
 import { runExecutionPreflight } from './execution-preflight.mjs';
 import { detectIdleWithBacklog } from './github-backlog-policy.mjs';
 import { API_DOCTOR_CAPABILITY, apiDoctorAction, apiDoctorExistingHandoffAction, apiDoctorRepairSignature, buildApiDoctorPrompt, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
+import { buildUiAutopilotSnapshot, projectCoreOwnedUiSnapshot } from './ui-autopilot-snapshot.mjs';
 
 const DATABASE_URL = process.env.DATABASE_URL?.trim();
 if (!DATABASE_URL) throw new Error('DATABASE_URL_MISSING');
@@ -33,6 +34,9 @@ const API_DOCTOR_VALIDATION_POLICY_VERSION = 'nonempty-v2';
 const CODING_LANE_HOST = process.env.TIGERIQ_CODING_HOST?.trim() || HOST;
 const CODING_LANE_PORT = Number(process.env.TIGERIQ_CODING_PORT || 8797);
 const CODING_LANE_URL = process.env.TIGERIQ_CODING_URL?.trim() || `http://${CODING_LANE_HOST}:${CODING_LANE_PORT}`;
+const GITHUB_TOKEN = process.env.TIGERIQ_GITHUB_TOKEN?.trim() || process.env.GITHUB_TOKEN?.trim() || '';
+const GITHUB_OWNER = process.env.TIGERIQ_GITHUB_OWNER?.trim() || 'newsdayads';
+const GITHUB_REPO = process.env.TIGERIQ_GITHUB_REPO?.trim() || 'tigeriq-ai-lab';
 const GEMINI_MIN_INTERVAL_MS = Math.max(4500, Number(process.env.TIGERIQ_GEMINI_MIN_INTERVAL_MS || 4500));
 const GEMINI_BACKOFF_BASE_MS = Math.max(4500, Number(process.env.TIGERIQ_GEMINI_BACKOFF_BASE_MS || 4500));
 const GEMINI_MAX_ATTEMPTS = Math.max(1, Number(process.env.TIGERIQ_GEMINI_MAX_ATTEMPTS || 4));
@@ -815,6 +819,14 @@ function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta
   try{
     if(req.method==='GET'&&url.pathname==='/health'){res.writeHead(200,{'content-type':'application/json'});return res.end(JSON.stringify({ok:true,pid:process.pid,uptimeSec:Math.floor(process.uptime())}));}
     if(req.method==='GET'&&url.pathname==='/api/status'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await snapshot()));}
+    if(req.method==='GET'&&url.pathname==='/api/ui-assignment'){
+      if(!auth(req)&&!localSelf(req)){res.writeHead(401);return res.end('unauthorized');}
+      const previousJobId=url.searchParams.get('previousJobId')||undefined;
+      const selected=await buildUiAutopilotSnapshot({token:GITHUB_TOKEN,owner:GITHUB_OWNER,repo:GITHUB_REPO,previousJobId});
+      const projected=projectCoreOwnedUiSnapshot(selected);
+      res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});
+      return res.end(JSON.stringify(projected));
+    }
     if(req.method==='GET'&&url.pathname==='/'){res.writeHead(200,{'content-type':'text/html; charset=utf-8','cache-control':'no-store'});return res.end(dashboard());}
     if(req.method==='POST'&&url.pathname==='/api/resources/probe'){
       if(!auth(req)&&!localSelf(req)){res.writeHead(401);return res.end('unauthorized');}
