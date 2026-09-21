@@ -143,6 +143,14 @@ export function validateCompactContract(edits){
   return true;
 }
 
+export function detectContractTruncation(text){
+  const raw=String(text||'').trim();
+  if(!raw) return 'empty';
+  if(/JSON_OBJECT_INVALID|COMPACT_CONTRACT_OLD_TOO_LARGE|COMPACT_CONTRACT_TOTAL_SIZE_EXCEEDED/i.test(raw)) return 'over_sized';
+  if(/JSON_OBJECT_MISSING/i.test(raw)) return 'missing';
+  return 'valid';
+}
+
 export function branchName(employeeId,jobId){
   const e=String(employeeId||'nv').toLowerCase().replace(/[^a-z0-9-]/g,'-').slice(0,20);
   const j=String(jobId||'job').toLowerCase().replace(/[^a-z0-9-]/g,'-').slice(-48);
