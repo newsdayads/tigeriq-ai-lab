@@ -2,7 +2,7 @@ export function normalizeCampaignPhases(input) {
   if (input == null) return [];
   if (!Array.isArray(input)) throw new Error('CAMPAIGN_PHASES_INVALID');
   if (input.length === 0) return [];
-  if (input.length < 3 || input.length > 12) throw new Error('CAMPAIGN_PHASE_COUNT_INVALID');
+  if (input.length < 3 || input.length > 12) throw new Error('CAMPAIGN_PHASE_COUNT_INVALID');if(input.length>12)throw new Error('CAMPAIGN_PHASE_COUNT_INVALID');
   return input.map((phase,index)=>{
     const raw = typeof phase === 'string' ? { title: phase, prompt: phase } : phase;
     const title = String(raw?.title || '').trim();
