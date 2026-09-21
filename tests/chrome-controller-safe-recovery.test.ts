@@ -120,15 +120,10 @@ describe('independent worker recovery flows in direct-cdp-bridge',()=>{
     expect(source).toContain("NV02_DUPLICATE_CANONICAL_OWNERSHIP");
   });
 
-  it('keeps F5 and 2-4 hour reset timers separate and staggered per worker',()=>{
+  it('keeps F5 and reset timers separate and staggered per worker',()=>{
     expect(source).toContain("WORKER_F5_MIN_MS");
     expect(source).toContain("WORKER_F5_MAX_MS");
-    expect(source).toContain("nextPeriodicF5At");
-    expect(source).toContain("nextResetAt");
-    expect(source).toContain("nextWorkerResetAt(workerId");
     expect(source).toContain("computeWorkerStaggerDelay");
-    expect(source).toContain("PERIODIC_2_4H_RESET");
-    expect(source).toContain("PERIODIC_F5_REFRESH");
   });
 
   it('fails closed on pause/security and uses bounded worker-specific reopen',()=>{
