@@ -419,13 +419,31 @@ async function writeRepairEdits(branch,edits){
 export function isRefreshableCompactPatchError(error){
   return /CODING_COMPACT_EDIT_(?:OLD_NOT_FOUND|OLD_NOT_UNIQUE)|COMPACT_EDIT_(?:SEARCH_MISSING|SEARCH_AMBIGUOUS)/i.test(String(error?.message||error||''));
 }
+export function isRepairTransportExhausted(error){
+  const code=String(error?.code||'');
+  const msg=String(error?.message||error||'');
+  return ['OUTPUT_CONTRACT_EXHAUSTED','AI_RETRY_BUDGET_EXHAUSTED'].includes(code)||/OUTPUT_CONTRACT_EXHAUSTED|AI_RETRY_BUDGET_EXHAUSTED/i.test(msg);
+}
 async function generateAndWriteRepair(worker,j,branch,issues=[],exclude=[]){
   let selected=worker,last=null;
   for(let attempt=1;attempt<=2;attempt++){
     const context=await contextFor(j.paths,branch);
     const retryIssues=attempt===1?issues:[...issues,'Previous compact patch no longer matched the current PR branch. Regenerate exact unique snippets from CURRENT FILES; keep the same PR and scope.'];
-    const generated=await generateRepairEdits(selected,j,context,retryIssues,exclude);
-    selected=generated.resource;
+    let generated;
+    try{
+      generated=await generateRepairEdits(selected,j,context,retryIssues,exclude);
+      selected=generated.resource;
+    }catch(error){
+      last=error;
+      if(attempt===1&&isRepairTransportExhausted(error)){
+        const fallbackIssues=[...retryIssues,'Direct compact edits schema exhausted across eligible providers. Use the compact changes transport fallback on this SAME branch/PR and exact allowed paths. Do not return full existing files.'];
+        const fallback=await generateChanges(selected,j,context,fallbackIssues,exclude);
+        selected=fallback.resource;
+        for(const change of fallback.payload.changes)await writeFile(branch,change);
+        return {worker:selected,payload:{summary:fallback.payload.summary,fallback:'compact_changes_transport'}};
+      }
+      throw error;
+    }
     try{
       await writeRepairEdits(branch,generated.payload.edits);
       return {worker:selected,payload:generated.payload};
