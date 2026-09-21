@@ -535,7 +535,28 @@ async function maybeNv02Continuity(w,target,ui){
   const active=hasActiveNv02Work(controller);
   const waitingEvidence=hasWaitingEvidenceNv02Work(controller);
   const continuable=hasContinuableNv02Work(controller);
+  const currentTrackedWork=continuable;
   const waitingEvidenceJobId=String((controller?.jobs||[]).find((job)=>job?.workerId==='NV02'&&job?.stage==='WAITING_EVIDENCE'&&!job?.completedAt)?.jobId||'')||null;
+  if(currentTrackedWork&&phase==='STALLED'&&ui?.modelExact!==true){
+    try{
+      const corrected=await withNv02Mutation(()=>ensureNv02ModelProfile(target),'MODEL_PROFILE_RECOVERY');
+      await continuityEvent('MODEL_PROFILE_RECOVERY',{status:corrected?.status||corrected?.modelProfileStatus||'VERIFIED',modelName:corrected?.modelName||null,reasoningEffort:corrected?.reasoningEffort||null});
+      if(corrected?.status==='MUTATION_LEASE_BUSY'){
+        state={...state,stalledChecks:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
+        return;
+      }
+      const recoveredProjectContext=isNv02ProjectContext(corrected?.url)||corrected?.projectDraftReady===true;
+      if(!recoveredProjectContext)throw new Error('PROJECT_CONTEXT_NOT_READY_AFTER_MODEL_RECOVERY');
+      await postWorkerHeartbeat(w,target,corrected,recoveredProjectContext);
+      await continuityEvent('MODEL_PROFILE_HEARTBEAT_REFRESHED',{modelName:corrected?.modelName||null,reasoningEffort:corrected?.reasoningEffort||null,verifiedAt:corrected?.verifiedAt||null});
+      state={...state,stalledChecks:0,nextContinueAt:now};saveNv02Continuity(state);
+      const sent=await dispatchNaturalContinue(target,state,now,waitingEvidenceJobId);
+      if(sent?.status==='MUTATION_LEASE_BUSY'){
+        state={...state,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
+      }
+      return;
+    }catch(error){await continuityEvent('MODEL_PROFILE_RECOVERY_FAILED',{error:String(error?.message||error)});}
+  }
   if(now>=state.nextRefreshAt&&phase==='READY'&&!active&&!waitingEvidence){
     try{
       const receipt=await checkpointNv02(target);
@@ -550,7 +571,6 @@ async function maybeNv02Continuity(w,target,ui){
     return;
   }
   if(now<state.nextContinueAt)return;
-  const currentTrackedWork=continuable;
   if(phase==='WORKING'){
     if(!currentTrackedWork){
       state={...state,stalledChecks:0,workingSignature:'',workingUnchangedChecks:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
@@ -594,26 +614,6 @@ async function maybeNv02Continuity(w,target,ui){
     state={...state,stalledChecks:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
     await continuityEvent(active?'RECOVERY_SKIPPED_NONCONTINUABLE_ACTIVE_JOB':'RECOVERY_SKIPPED_NO_CURRENT_WORK',{nextContinueAt:state.nextContinueAt});
     return;
-  }
-  if(ui?.modelExact!==true){
-    try{
-      const corrected=await withNv02Mutation(()=>ensureNv02ModelProfile(target),'MODEL_PROFILE_RECOVERY');
-      await continuityEvent('MODEL_PROFILE_RECOVERY',{status:corrected?.status||corrected?.modelProfileStatus||'VERIFIED',modelName:corrected?.modelName||null,reasoningEffort:corrected?.reasoningEffort||null});
-      if(corrected?.status==='MUTATION_LEASE_BUSY'){
-        state={...state,stalledChecks:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
-        return;
-      }
-      const recoveredProjectContext=isNv02ProjectContext(corrected?.url)||corrected?.projectDraftReady===true;
-      if(!recoveredProjectContext)throw new Error('PROJECT_CONTEXT_NOT_READY_AFTER_MODEL_RECOVERY');
-      await postWorkerHeartbeat(w,target,corrected,recoveredProjectContext);
-      await continuityEvent('MODEL_PROFILE_HEARTBEAT_REFRESHED',{modelName:corrected?.modelName||null,reasoningEffort:corrected?.reasoningEffort||null,verifiedAt:corrected?.verifiedAt||null});
-      state={...state,stalledChecks:0,nextContinueAt:now};saveNv02Continuity(state);
-      const sent=await dispatchNaturalContinue(target,state,now,waitingEvidenceJobId);
-      if(sent?.status==='MUTATION_LEASE_BUSY'){
-        state={...state,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
-      }
-      return;
-    }catch(error){await continuityEvent('MODEL_PROFILE_RECOVERY_FAILED',{error:String(error?.message||error)});}
   }
   state={...state,stalledChecks:Math.min(MAX_STALLED_CHECKS,state.stalledChecks+1),nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
   await continuityEvent('STALLED_CHECK',{stalledChecks:state.stalledChecks,nextContinueAt:state.nextContinueAt,modelReady:ui?.modelReady??null,reasoningEffort:ui?.reasoningEffort??null});
