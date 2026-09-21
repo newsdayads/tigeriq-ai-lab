@@ -214,7 +214,7 @@ async function maybeWorkerContinuity(w,target,ui){
     return;
   }
 
-  if(now>=Number(state.nextPeriodicF5At||0)){
+  if(Number(state.nextPeriodicF5At||0)<=now){
     const refreshed=await withWorkerMutation(w.id,async()=>{
       const beforeUrl=ui?.url||null,beforePhase=phase;
       const result=await reloadTarget(target);
