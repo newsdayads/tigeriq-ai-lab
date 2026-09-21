@@ -108,6 +108,10 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain('ensureNv02ModelProfile');
     expect(source).toContain("modelName==='GPT-5.6 Sol'");
     expect(source).toContain("reasoningEffort==='High'");
+    expect(source).toContain('button[aria-label*="Ngừng" i]');
+    expect(backgroundSource).toBeTruthy();
+    const contentSource=readFileSync('apps/chrome-controller/extension/content.js','utf8');
+    expect(contentSource).toContain('button[aria-label*="Ngừng" i]');
   });
 
   it('does not auto-rotate chat by age or dispatch count', () => {
