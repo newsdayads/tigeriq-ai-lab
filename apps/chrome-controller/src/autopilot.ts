@@ -242,7 +242,7 @@ export function checkWorkingWatchdog(params: {
     st.unchangedCount += 1;
   } else {
     st.lastSignature = params.activitySignature;
-    st.unchangedCount = 0;
+    st.unchangedCount = 1;
     st.recoveryAttempts = 0;
   }
 
