@@ -75,14 +75,17 @@ export interface ExternalAutopilotSnapshot {
 export interface DurableAutopilotState {
   phase: AutopilotPhase;
   lastDispatchedJobId?: string;
+  lastDispatchedWorkerId?: WorkerId;
   lastDispatchedAt?: string;
   lastCompletedJobId?: string;
   lastEvidenceRef?: string;
   lastCompletedEvidenceRevision?: string;
   lastTrigger?: typeof AUTO_CONTINUE;
   pendingJobId?: string;
+  pendingWorkerId?: WorkerId;
   pendingReservedAt?: string;
   uncertainJobId?: string;
+  uncertainWorkerId?: WorkerId;
   dispatchFailureClass?: AutoContinueDispatchFailureClass;
   retryAt?: string;
   updatedAt: string;
