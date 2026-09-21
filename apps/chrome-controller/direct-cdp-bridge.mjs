@@ -233,6 +233,7 @@ async function ensureNv02ModelProfile(target){
     profile=await inspectNv02SelectedModel(target);
   }
   if(profile?.modelExact!==true)throw new Error('MODEL_PROFILE_BLOCKED:'+String(profile?.blockedReason||'UNVERIFIED'));
+  if(profile?.modelName!=='GPT-5.6 Sol'||profile?.reasoningEffort!=='High')throw new Error('MODEL_PROFILE_MISMATCH');
   await continuityEvent('MODEL_PROFILE_VERIFIED',{modelName:profile.modelName,reasoningEffort:profile.reasoningEffort,verifiedAt:profile.verifiedAt||null});
   return profile;
 }
