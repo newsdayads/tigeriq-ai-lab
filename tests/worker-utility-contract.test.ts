@@ -31,6 +31,7 @@ it('implements isolated worker profiles, independent state, per-worker pause ove
   const contextCode = readFileSync('apps/worker-utility/UtilityContext.cs', 'utf8');
   const storeCode = readFileSync('apps/worker-utility/StateStore.cs', 'utf8');
   const modelsCode = readFileSync('apps/worker-utility/Models.cs', 'utf8');
+  const watchdogCode = readFileSync('apps/worker-utility/Watchdog.cs', 'utf8');
   expect(contextCode).toContain('NV02');
   expect(contextCode).toContain('NV03');
   expect(contextCode).toContain('NV04');
@@ -38,6 +39,7 @@ it('implements isolated worker profiles, independent state, per-worker pause ove
   expect(modelsCode).toContain('NV02');
   expect(modelsCode).toContain('NV03');
   expect(modelsCode).toContain('NV04');
+  expect(watchdogCode).toContain('HealthBand');
 });
 
 });
