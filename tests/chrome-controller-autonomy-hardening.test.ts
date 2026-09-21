@@ -317,3 +317,19 @@ describe('AUTO_CONTINUE continuity recovery',()=>{
     expect(server).toContain('resetKnownNotDelivered');
   });
 });
+
+
+describe('NV02 owner-proxy live handoff coordination',()=>{
+  it('waits for an idle UI and coordinates Controller/Direct-CDP mutation ownership',()=>{
+    const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
+    expect(server).toContain("if(primary.lastHeartbeat?.uiBusy!==false){");
+    expect(server).not.toContain("if(autopilotState.lastDispatchedJobId&&primary.lastHeartbeat?.uiBusy!==false){");
+    expect(server).toContain("browserMutationLeases.active(workerId)");
+    expect(server).toContain("AUTOPILOT_WAIT_BROWSER_MUTATION_LEASE");
+    const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    expect(bridge).toContain("externalAutopilotOwnsNextNv02Job");
+    expect(bridge).toContain("acquireBridgeMutationLease('NV02',purpose,ttlMs)");
+    expect(bridge).toContain("NV02_SHARED_MUTATION_CONTROLLER_UNAVAILABLE");
+    expect(bridge).toContain("CONTINUE_DEFERRED_TO_EXTERNAL_AUTOPILOT");
+  });
+});
