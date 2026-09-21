@@ -27,11 +27,6 @@ export interface MockJob {
 }
 
 export interface MockEvent { id: string; objectiveId: string; stage?: string; timestamp: string; }
-  id: string;
-  objectiveId: string;
-  stage?: string;
-  timestamp: string;
-}
 
 export const objectivesStore = new Map<string, MockObjective>();
 export const jobsStore = new Map<string, MockJob>();
