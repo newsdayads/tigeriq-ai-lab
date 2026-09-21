@@ -1,5 +1,25 @@
 export const CONTINUE_PROMPTS = Object.freeze([
   'Tiếp tục',
+  'Làm tiếp',
+  'Tiếp đi',
+  'Xử lý tiếp',
+  'Thực hiện tiếp',
+  'Tiếp tục công việc hiện tại',
+  'Làm tiếp công việc hiện tại',
+  'Tiếp tục việc đang làm',
+  'Làm tiếp phần đang dở',
+  'Tiếp tục từ chỗ hiện tại',
+  'Tiếp tục đúng việc này',
+  'Xử lý tiếp việc hiện tại',
+  'Thực hiện tiếp việc đang làm',
+  'Tiếp tục phần còn dở',
+  'Tiếp tục từ trạng thái hiện tại',
+  'Tiếp tục xử lý việc đang dở',
+  'Tiếp tục công việc đang dang dở',
+  'Thực thi tiếp việc hiện tại',
+  'Làm tiếp nhiệm vụ đang thực hiện',
+  'Tiếp tục đúng việc đang được giao',
+  'Làm tiếp, không đổi việc',
 ]);
 
 export const CONTINUE_MIN_MS = 5 * 60 * 1000;
