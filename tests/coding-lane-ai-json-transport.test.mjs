@@ -1,3 +1,4 @@
+import {readFileSync} from 'node:fs';
 import {describe,expect,it} from 'vitest';
 import {compactCurrentFilesForModel,compactPromptForChanges,compactPromptForEdits,currentFilesFromPrompt,expandCompactChanges,extractModelText,isAiUrl,looksLikeJsonObject,matchesExpectedSchema,prepareAiJsonRequest,installAiJsonTransport} from '../apps/tigeriq-coding-lane/ai-json-transport.mjs';
 
@@ -183,4 +184,13 @@ describe('coding lane AI JSON transport',()=>{
     const model=JSON.stringify({summary:'x',edits:[{path:'apps/a.mjs',search:'foo();',replace:'bar();'}]});
     expect(()=>expandCompactChanges(prompt,model)).toThrow('COMPACT_EDIT_SEARCH_AMBIGUOUS');
   });
+  it('runtime wires compact transport before manager loop',()=>{
+    const src=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
+    expect(src).toContain("import {installAiJsonTransport} from './ai-json-transport.mjs';");
+    const install=src.indexOf('installAiJsonTransport({maxAttempts:1');
+    const manager=src.indexOf('await managerTick()');
+    expect(install).toBeGreaterThanOrEqual(0);
+    expect(manager).toBeGreaterThan(install);
+  });
+
 });
