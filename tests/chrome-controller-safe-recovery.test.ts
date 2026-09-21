@@ -138,6 +138,15 @@ describe('independent worker recovery flows in direct-cdp-bridge',()=>{
     expect(source).toContain("resumeUrl");
   });
 
+  it('recovers repeated CDP Runtime.evaluate stalls through bounded planned refresh',()=>{
+    expect(source).toContain("const transportFailureCounts=new Map()");
+    expect(source).toContain("CDP_TIMEOUT:Runtime\\.evaluate");
+    expect(source).toContain("count>=2&&target");
+    expect(source).toContain("reopenWorker(w,target,state,Date.now(),'CDP_TRANSPORT_STALLED')");
+    expect(source).toContain("transportStalled:reason==='CDP_TRANSPORT_STALLED'");
+    expect(source).toContain("WORKER_TRANSPORT_RECOVERED");
+  });
+
   it('fails closed unless READY worker still has continuable current work',()=>{
     const readyStart=source.indexOf("if(phase==='READY')");
     const readyEnd=source.indexOf("const stalledChecks=",readyStart);
@@ -223,6 +232,17 @@ describe('safe recovery contracts',()=>{
     expect(windowEvent).toContain('const plannedRefresh=plannedRefreshWorkers.has(workerId)');
     expect(windowEvent).toContain('state.manualCloseSuppressed=!recoveryEligible');
     expect(windowEvent).toContain('if(plannedRefresh)plannedRefreshWorkers.delete(workerId)');
+  });
+
+  it('allows stale-heartbeat planned refresh only for proven running transport stalls',()=>{
+    const utilityStart=server.indexOf('const utilityMatch=');
+    const utility=server.slice(utilityStart,server.indexOf('const match=url.pathname.match',utilityStart));
+    expect(utility).toContain("refreshData.transportStalled===true&&refreshData.reason==='CDP_TRANSPORT_STALLED'");
+    expect(utility).toContain("if(!transportStalled)throw new Error(\`WORKER_HEARTBEAT_NOT_READY:\${workerId}\`)");
+    expect(utility).toContain("const presence=await brokerWorkerPresence(workerId)");
+    expect(utility).toContain("if(presence!=='RUNNING')throw new Error");
+    expect(utility).toContain("MANUAL_CLOSE_SUPPRESSED");
+    expect(utility).toContain("PLANNED_REFRESH_BLOCKED");
   });
 
   it('keeps paused workers out of unattended start/autopilot paths',()=>{
