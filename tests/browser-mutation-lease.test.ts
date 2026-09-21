@@ -59,10 +59,15 @@ describe('controller and direct-CDP lease wiring',()=>{
     expect(server).toContain('if(mutationLease){json(res,200,{command:null');
   });
 
-  it('requires a controller lease before direct-CDP duplicate pruning',()=>{
+  it('keeps NV02 isolated duplicate observation independent of Controller lease',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
-    expect(bridge).toContain('acquireBridgeMutationLease');
-    expect(bridge).toContain('DUPLICATE_TABS_PRUNE_DEFERRED_LEASE_BUSY');
-    expect(bridge).toContain('releaseBridgeMutationLease');
+    expect(bridge).toContain('DUPLICATE_TABS_OBSERVED_NO_MUTATION');
+    expect(bridge).toContain('NV02_LOCAL_MUTATION_ACQUIRED');
+    const prune=bridge.slice(
+      bridge.indexOf('async function pruneDuplicates'),
+      bridge.indexOf('async function windowIdFor'),
+    );
+    expect(prune).not.toContain('acquireBridgeMutationLease');
+    expect(prune).not.toContain('releaseBridgeMutationLease');
   });
 });
