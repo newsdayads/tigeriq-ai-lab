@@ -30,6 +30,19 @@ export function validateSourceScope(proposedPaths,canonicalPaths){
   return true;
 }
 
+export function validateManagerJobPaths(decision,canonicalPaths=[]){
+  if(decision?.status!=='continue')return [];
+  const raw=[...new Set((decision?.job?.paths||[]).map(String))];
+  if(!decision?.job||raw.length<1||raw.length>8||raw.some(p=>!safeRepoPath(p))){
+    const e=new Error('MANAGER_PATHS_INVALID');e.code='MANAGER_PATHS_INVALID';throw e;
+  }
+  try{validateSourceScope(raw,canonicalPaths)}catch(error){
+    const offending=Array.isArray(error?.offending)?error.offending:raw.filter(p=>!(canonicalPaths||[]).includes(p));
+    const e=new Error('MANAGER_SCOPE_MISMATCH:'+offending.join(', '));e.code='MANAGER_SCOPE_MISMATCH';e.detail={offending};throw e;
+  }
+  return raw;
+}
+
 export function shrinkAiPrompt(prompt,maxChars=18000){
   const p=String(prompt||'');
   if(p.length<=maxChars)return p;
@@ -104,7 +117,7 @@ export function classifyAiFailure(error){
   const msg=String(error?.message||error||'');
   if(status===429||/HTTP_429\b|RATE_LIMIT|RESOURCE_EXHAUSTED/i.test(msg))return 'rate_limit';
   if(error?.name==='AbortError'||/ETIMEDOUT|timeout|aborted|ECONNRESET|socket/i.test(msg))return 'timeout';
-  if(/JSON_OBJECT_(?:INVALID|MISSING)|CODING_CHANGES_COUNT_INVALID|schema|unterminated|truncat|COMPACT_EDIT/i.test(msg))return 'output_contract';
+  if(/MANAGER_(?:SOFT_BLOCK|SCOPE_MISMATCH|PATHS_INVALID)|JSON_OBJECT_(?:INVALID|MISSING)|CODING_CHANGES_COUNT_INVALID|schema|unterminated|truncat|COMPACT_EDIT/i.test(msg))return 'output_contract';
   if(/EMPTY_RESPONSE|invalid_response/i.test(msg))return 'invalid_response';
   if([408,409,413,500,502,503,504].includes(status)||/fetch failed|HTTP_(?:408|409|413|500|502|503|504)\b/i.test(msg))return 'provider_unavailable';
   return isRetryableAiError(error)?'other_retryable':'other';
@@ -264,11 +277,11 @@ async function managerTick(){
         e.code='MANAGER_SOFT_BLOCK';
         throw e;
       }
+      validateManagerJobPaths(d,canonical);
     };
     const invoked=await invokeJsonWithFailover(manager,prompt,{validateData:validateManagerDecision});manager=invoked.resource;const d=invoked.data;
     if(d.status!=='continue'||!d.job){await pool.query("update tigeriq_coding_objectives set status='blocked',summary=$2,manager_employee_id=$3,updated_at=now() where id=$1",[o.id,String(d.summary||'manager blocked').slice(0,1000),manager.id]);return}
-    const paths=[...new Set((d.job.paths||[]).map(String))].filter(safeRepoPath).slice(0,8);if(!paths.length)throw new Error('MANAGER_PATHS_EMPTY');
-    validateSourceScope(paths,canonical);
+    const paths=validateManagerJobPaths(d,canonical);
     const id=`CODE-${randomUUID()}`;
     await pool.query('insert into tigeriq_coding_jobs(id,objective_id,title,instruction,paths) values($1,$2,$3,$4,$5)',[id,o.id,String(d.job.title||'Coding job').slice(0,180),String(d.job.instruction||o.objective).slice(0,12000),JSON.stringify(paths)]);
     await pool.query("update tigeriq_coding_objectives set manager_employee_id=$2,summary=$3,updated_at=now() where id=$1",[o.id,manager.id,String(d.summary||'coding job created').slice(0,1000)]);

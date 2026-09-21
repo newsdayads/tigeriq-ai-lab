@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import {activeProviderCooldownIds,applyCompactEdits,assertPrOpenState,buildLocalFileContext,classifyAiFailure,codingPathsOverlap,gateFailureIssues,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,preserveGenerationPrompt,recoverAfterCodingRestart,resourceWaitPlan,restartRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,validateCompactEdits} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {activeProviderCooldownIds,applyCompactEdits,assertPrOpenState,buildLocalFileContext,classifyAiFailure,codingPathsOverlap,gateFailureIssues,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,preserveGenerationPrompt,recoverAfterCodingRestart,resourceWaitPlan,restartRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,validateCompactEdits,validateManagerJobPaths} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError,parseJsonObject} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 const nv11={id:'NV11',provider:'fake',model:'a'};
@@ -61,6 +61,27 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
     let count=0;
     await assert.rejects(()=>invokeJsonWithFailover(nv11,'x',{resourcePool:[nv11,nv19],invokeFn:async()=>{count++;return '{"summary":"x","changes":[{"path":"bad","content":"x"}]}'},validateData:()=>{throw new Error('CODING_SCOPE_VIOLATION')}}),/CODING_SCOPE_VIOLATION/);
     assert.strictEqual(count,1);
+  });
+
+  await t.test('manager out-of-scope proposal retries/fails over instead of terminal blocking',async()=>{
+    const canonical=['tests/coding-lane-ai-json-transport.test.mjs'];
+    const calls=[];
+    const invokeFn=async r=>{
+      calls.push(r.id);
+      if(r.id==='NV11')return '{"status":"continue","summary":"bad scope","job":{"title":"x","instruction":"x","paths":["apps/tigeriq-core/core.mjs"]}}';
+      return '{"status":"continue","summary":"ok","job":{"title":"x","instruction":"x","paths":["tests/coding-lane-ai-json-transport.test.mjs"]}}';
+    };
+    const out=await invokeJsonWithFailover(nv11,'manager',{resourcePool:[nv11,nv19],maxResources:2,invokeFn,validateData:d=>validateManagerJobPaths(d,canonical)});
+    assert.strictEqual(out.resource.id,'NV19');
+    assert.deepStrictEqual(calls,['NV11','NV11','NV19']);
+    assert.strictEqual(classifyAiFailure(new Error('MANAGER_SCOPE_MISMATCH:apps/tigeriq-core/core.mjs')),'output_contract');
+    assert.strictEqual(isRetryableAiError(new Error('MANAGER_SCOPE_MISMATCH:apps/tigeriq-core/core.mjs')),true);
+  });
+
+  await t.test('manager path validation stays fail-closed for unsafe paths',()=>{
+    const canonical=['tests/coding-lane-ai-json-transport.test.mjs'];
+    assert.throws(()=>validateManagerJobPaths({status:'continue',job:{paths:['../escape.mjs']}},canonical),/MANAGER_PATHS_INVALID/);
+    assert.deepStrictEqual(validateManagerJobPaths({status:'continue',job:{paths:canonical}},canonical),canonical);
   });
 
   await t.test('default failover can reach the sixth eligible coding provider',async()=>{
