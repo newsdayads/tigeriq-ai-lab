@@ -761,9 +761,10 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
       reconcileCompletedUiJobFromSnapshot();
       if(autopilotState.uncertainJobId){
         const uncertain=autopilotState.uncertainJobId;
-        const existing=uiJobLedger.get('NV02',uncertain);
-        const active=uiJobLedger.active('NV02');
-        const worker=states.get('NV02')!;
+        const uncertainWorkerId=autopilotState.uncertainWorkerId??autopilotState.lastDispatchedWorkerId??latestSnapshot?.previousJob?.workerId??latestSnapshot?.nextJob?.workerId??'NV02';
+        const existing=uiJobLedger.get(uncertainWorkerId,uncertain);
+        const active=uiJobLedger.active(uncertainWorkerId);
+        const worker=states.get(uncertainWorkerId)!;
         const leaseState=dispatchLease.read();
         if(existing)throw new Error(`AUTOPILOT_UNCERTAIN_POSSIBLY_DELIVERED:${uncertain}`);
         if(active)throw new Error(`AUTOPILOT_ACTIVE_JOB:${active.jobId}`);
@@ -771,7 +772,7 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
         if(!leaseState.lease||leaseState.lease.jobId!==uncertain||leaseState.lease.state!=='DISPATCHING')
           throw new Error(`AUTOPILOT_UNCERTAIN_LEASE_NOT_PROVABLY_NOT_DELIVERED:${uncertain}`);
         dispatchLease.resetKnownNotDelivered(uncertain,Date.now(),0);
-        const {uncertainJobId:_uncertain,...rest}=autopilotState;
+        const {uncertainJobId:_uncertain,uncertainWorkerId:_uncertainWorkerId,...rest}=autopilotState;
         autopilotState={...rest,phase:'IDLE',updatedAt:new Date().toISOString()};
         persistAutopilotState();
         log('AUTOPILOT_MANUAL_KNOWN_NONDELIVERY_RESET',{jobId:uncertain});

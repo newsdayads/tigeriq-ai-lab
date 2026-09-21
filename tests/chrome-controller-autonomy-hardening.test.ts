@@ -121,6 +121,8 @@ describe('withdrawn pending source contract',()=>{
     expect(server).toContain('sourceStillOffersPendingJob(latestSnapshot,pendingJobId)');
     expect(server).toContain('const workerId=decision.workerId');
     expect(server).toContain("await dispatch(workerId,decision.text,false,'AUTO_CONTINUE'");
+    expect(server).toContain("const uncertainWorkerId=autopilotState.uncertainWorkerId??autopilotState.lastDispatchedWorkerId");
+    expect(server).toContain("uiJobLedger.get(uncertainWorkerId,uncertain)");
     expect(server).toContain("blocker:'SOURCE_JOB_NO_LONGER_EXECUTABLE'");
     expect(server).toContain('dispatchLease.retireNoLongerExecutable(pendingJobId,Date.now())');
     expect(server).toContain("log('AUTO_CONTINUE_PENDING_SOURCE_WITHDRAWN'");
