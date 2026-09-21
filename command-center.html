@@ -44,6 +44,8 @@ button{font:inherit}
 .badge.blocked{background:#3b1d23;color:#ffb0b6;border:1px solid #6b3039}
 .badge.idle{background:#1a2736;color:#b7c5d5;border:1px solid #34495f}
 .badge.paused{background:#222a34;color:#98a7b7;border:1px solid #394756}
+.badge.unknown{background:#242b39;color:#bac7d5;border:1px solid #465568}
+.live.warn{border-color:#705322;background:#332714;color:#ffd187}.live.warn .live-dot{background:var(--amber);animation:none}
 .job{font-size:14px;font-weight:750;line-height:1.35;margin-top:12px}
 .detail{font-size:11px;color:var(--muted);line-height:1.4;margin-top:5px}
 .progress{margin-top:10px;height:5px;background:#172b43;border-radius:999px;overflow:hidden}
@@ -74,16 +76,17 @@ button{font:inherit}
   <button class="filter" data-filter="waiting">Chờ</button>
   <button class="filter" data-filter="blocked">Bị chặn</button>
   <button class="filter" data-filter="idle">Rảnh</button>
+  <button class="filter" data-filter="unknown">Chưa rõ</button>
   <button class="filter" data-filter="paused">Tạm ngưng</button>
 </nav>
 <div class="meta-row"><span id="workerCount">—</span><span id="updated">Chưa cập nhật</span></div>
 <section id="workers" class="list"></section>
-<footer class="page-foot">Dữ liệu từ GitHub + Registry · không có nút điều khiển · tự làm mới mỗi 10 giây</footer>
+<footer class="page-foot">Nguồn chính: PC01 Core + Coding Lane · chỉ xem · tự làm mới mỗi 5 giây</footer>
 </main>
 <script>
 const $=id=>document.getElementById(id);
 let snapshot=null,activeFilter='all';
-const stateLabel={working:'ĐANG LÀM',waiting:'CHỜ',blocked:'BỊ CHẶN',idle:'RẢNH',paused:'TẠM NGƯNG'};
+const stateLabel={working:'ĐANG LÀM',waiting:'CHỜ',blocked:'BỊ CHẶN',idle:'RẢNH',unknown:'CHƯA RÕ',paused:'TẠM NGƯNG'};
 function age(iso){
   if(!iso)return 'chưa có mốc';
   const s=Math.max(0,Math.floor((Date.now()-Date.parse(iso))/1000));
@@ -94,6 +97,7 @@ function age(iso){
 }
 function sourceLabel(s){
   if(!s)return '';
+  if(typeof s==='string')return s;
   if(s.type==='PR'&&s.number)return 'PR #'+s.number;
   if(s.type==='Workflow'&&s.number)return 'Luồng #'+s.number;
   return s.type||'Nguồn';
@@ -109,10 +113,13 @@ function render(){
   const box=$('workers');box.innerHTML='';
   if(!rows.length){box.innerHTML='<div class="empty">Không có nhân sự ở trạng thái này.</div>';return}
   rows.forEach(w=>{
-    const el=document.createElement(w.source?.url?'a':'article');el.className='worker';
-    if(w.source?.url){el.href=w.source.url;el.target='_blank';el.rel='noopener'}
+    const sourceUrl=(w.source&&typeof w.source==='object')?w.source.url:null;
+    const el=document.createElement(sourceUrl?'a':'article');el.className='worker';
+    if(sourceUrl){el.href=sourceUrl;el.target='_blank';el.rel='noopener'}
     const pct=w.progress?.percent;
-    el.innerHTML='<div class="head"><div class="identity"><b>'+esc(w.employeeId+' · '+w.label)+'</b><small>'+(w.command?'Lệnh '+esc(w.command)+' · ':'')+esc(w.adminState||'Registry')+'</small></div><span class="badge '+esc(w.state)+'">'+esc(stateLabel[w.state]||w.status||'—')+'</span></div><div class="job">'+esc(w.job||'Không có việc đang chạy')+'</div><div class="detail">'+esc(w.detail||'—')+'</div>'+(pct==null?'':'<div class="progress"><i style="width:'+Math.max(0,Math.min(100,pct))+'%"></i></div>')+'<div class="foot"><span>'+esc(age(w.updatedAt))+'</span><span class="source">'+esc(sourceLabel(w.source))+(w.source?.url?' ↗':'')+'</span></div>';
+    const meta=w.kind?((w.kind==='api'?'API':'UI')+' · '+sourceLabel(w.source)):(w.command?'Lệnh '+w.command+' · '+(w.adminState||'Registry'):(w.adminState||'Registry'));
+    const stamp=w.heartbeatAt?('Heartbeat '+age(w.heartbeatAt)):('Cập nhật '+age(w.updatedAt));
+    el.innerHTML='<div class="head"><div class="identity"><b>'+esc(w.employeeId+' · '+w.label)+'</b><small>'+esc(meta)+'</small></div><span class="badge '+esc(w.state)+'">'+esc(stateLabel[w.state]||w.status||'—')+'</span></div><div class="job">'+esc(w.job||'Không có dữ liệu việc hiện tại')+'</div><div class="detail">'+esc(w.detail||'—')+'</div>'+(pct==null?'':'<div class="progress"><i style="width:'+Math.max(0,Math.min(100,pct))+'%"></i></div>')+'<div class="foot"><span>'+esc(stamp)+'</span><span class="source">'+esc(w.prNumber?'PR #'+w.prNumber:sourceLabel(w.source))+(sourceUrl?' ↗':'')+'</span></div>';
     box.append(el);
   });
 }
@@ -120,7 +127,7 @@ async function load(){
   try{
     const r=await fetch('/api/live-status',{cache:'no-store'}),d=await r.json();
     if(!d?.ok)throw new Error(d?.reason||'Nguồn trạng thái chưa sẵn sàng');
-    snapshot=d;$('err').style.display='none';$('liveLabel').textContent='TRỰC TUYẾN';render();
+    snapshot=d;$('err').style.display='none';const live=$('liveLabel').parentElement;live.classList.toggle('warn',!d.liveConnected);$('liveLabel').textContent=d.liveConnected?'PC01 LIVE':'DỰ PHÒNG';render();
   }catch(e){
     $('liveLabel').textContent='MẤT DỮ LIỆU';$('err').textContent='Không tải được trạng thái thật. Trang không tự đoán: '+String(e?.message||e);$('err').style.display='block';
   }
@@ -129,7 +136,7 @@ document.querySelectorAll('.filter').forEach(btn=>btn.addEventListener('click',(
   document.querySelectorAll('.filter').forEach(x=>x.classList.remove('active'));btn.classList.add('active');activeFilter=btn.dataset.filter;render();
 }));
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)load()});
-load();setInterval(()=>{if(!document.hidden)load()},10000);
+load();setInterval(()=>{if(!document.hidden)load()},5000);
 </script>
 </body>
 </html>

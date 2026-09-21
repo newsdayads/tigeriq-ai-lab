@@ -1,7 +1,11 @@
 const REPO = process.env.TIGERIQ_REPO || 'newsdayads/tigeriq-ai-lab';
 const REGISTRY_ISSUE = 335;
 const FETCH_TIMEOUT_MS = 5000;
-const CACHE_MS = 8000;
+const CACHE_MS = 3000;
+const RUNTIME_POINTER_ISSUE = 1402;
+const RUNTIME_FETCH_TIMEOUT_MS = 4500;
+const POINTER_CACHE_MS = 60000;
+let pointerCache = { at: 0, url: null };
 let cache = { at: 0, value: null };
 
 function json(res, status, body) {
@@ -237,20 +241,136 @@ export async function buildLiveStatus(fetchImpl = fetch) {
   };
 }
 
+export function parseRuntimeBridgeUrl(body = '') {
+  const match = String(body).match(/^LIVE_STATUS_BRIDGE_URL=(https:\/\/\S+)$/mi);
+  if (!match) throw new Error('runtime_bridge_pointer_missing');
+  const url = new URL(match[1].trim());
+  if (url.protocol !== 'https:' || url.username || url.password) throw new Error('runtime_bridge_pointer_invalid');
+  const host = url.hostname.toLowerCase();
+  if (!(host.endsWith('.trycloudflare.com') || host.endsWith('.ts.net'))) throw new Error('runtime_bridge_host_not_allowed');
+  return url.origin;
+}
+
+function cleanText(value, max = 220) {
+  return String(value ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
+}
+
+function sanitizeRuntimeWorker(worker = {}) {
+  const allowedStates = new Set(['working', 'waiting', 'blocked', 'idle', 'unknown', 'paused']);
+  const employeeId = String(worker.employeeId || '').toUpperCase();
+  if (!/^NV\d{2}$/.test(employeeId)) return null;
+  const state = allowedStates.has(worker.state) ? worker.state : 'unknown';
+  return {
+    employeeId,
+    label: cleanText(worker.label || employeeId, 80),
+    kind: worker.kind === 'ui' ? 'ui' : 'api',
+    state,
+    status: cleanText(worker.status || 'CHƯA RÕ', 32),
+    job: cleanText(worker.job || 'Không có dữ liệu việc hiện tại', 220),
+    detail: cleanText(worker.detail || '', 220),
+    updatedAt: typeof worker.updatedAt === 'string' ? worker.updatedAt.slice(0, 64) : null,
+    heartbeatAt: typeof worker.heartbeatAt === 'string' ? worker.heartbeatAt.slice(0, 64) : null,
+    currentJobId: worker.currentJobId ? cleanText(worker.currentJobId, 100) : null,
+    prNumber: Number.isInteger(worker.prNumber) ? worker.prNumber : null,
+    provider: worker.provider ? cleanText(worker.provider, 64) : null,
+    model: worker.model ? cleanText(worker.model, 100) : null,
+    cooldownUntil: typeof worker.cooldownUntil === 'string' ? worker.cooldownUntil.slice(0, 64) : null,
+    lastError: worker.lastError ? cleanText(worker.lastError, 80) : null,
+    source: 'PC01 live runtime',
+  };
+}
+
+export function sanitizeRuntimePayload(payload) {
+  if (!payload || payload.ok !== true || !Array.isArray(payload.workers)) throw new Error('runtime_bridge_payload_invalid');
+  const workers = payload.workers.map(sanitizeRuntimeWorker).filter(Boolean);
+  const summary = {
+    working: workers.filter((w) => w.state === 'working').length,
+    waiting: workers.filter((w) => w.state === 'waiting').length,
+    blocked: workers.filter((w) => w.state === 'blocked').length,
+    idle: workers.filter((w) => w.state === 'idle').length,
+    unknown: workers.filter((w) => w.state === 'unknown').length,
+    paused: workers.filter((w) => w.state === 'paused').length,
+    total: workers.length,
+  };
+  return {
+    ok: true,
+    liveConnected: true,
+    mode: 'pc01-live',
+    authority: 'PC01 live runtime',
+    generatedAt: typeof payload.generatedAt === 'string' ? payload.generatedAt.slice(0, 64) : new Date().toISOString(),
+    refreshSeconds: 5,
+    source: {
+      runtime: 'PC01 Core + Coding Lane',
+      core: payload.source?.core === true,
+      coding: payload.source?.coding === true,
+      uiAutopilot: payload.source?.uiAutopilot === true,
+    },
+    summary,
+    workers,
+  };
+}
+
+async function resolveRuntimeBridge(fetchImpl = fetch) {
+  const now = Date.now();
+  if (pointerCache.url && now - pointerCache.at < POINTER_CACHE_MS) return pointerCache.url;
+  const { owner, repo } = repoParts();
+  const issue = await gh(`/repos/${owner}/${repo}/issues/${RUNTIME_POINTER_ISSUE}`, fetchImpl);
+  const url = parseRuntimeBridgeUrl(issue.body || '');
+  pointerCache = { at: now, url };
+  return url;
+}
+
+export async function fetchPc01Live(fetchImpl = fetch) {
+  const base = await resolveRuntimeBridge(fetchImpl);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), RUNTIME_FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetchImpl(`${base}/status`, {
+      method: 'GET',
+      headers: { accept: 'application/json' },
+      signal: controller.signal,
+      redirect: 'error',
+      cache: 'no-store',
+    });
+    if (!response.ok) throw new Error(`runtime_bridge_http_${response.status}`);
+    return sanitizeRuntimePayload(await response.json());
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'GET') return json(res, 405, { error: 'method_not_allowed' });
+  const now = Date.now();
+  if (cache.value && now - cache.at < CACHE_MS) return json(res, 200, cache.value);
+
+  let liveError = null;
   try {
-    const now = Date.now();
-    if (cache.value && now - cache.at < CACHE_MS) return json(res, 200, cache.value);
+    const value = await fetchPc01Live();
+    cache = { at: now, value };
+    return json(res, 200, value);
+  } catch (error) {
+    liveError = String(error instanceof Error ? error.message : error).slice(0, 120);
+  }
+
+  try {
     const value = await buildLiveStatus();
+    value.liveConnected = false;
+    value.mode = 'github-fallback';
+    value.authority = 'GitHub/Registry fallback';
+    value.refreshSeconds = 5;
+    value.liveReason = liveError;
     cache = { at: now, value };
     return json(res, 200, value);
   } catch (error) {
     return json(res, 200, {
       ok: false,
+      liveConnected: false,
+      mode: 'unavailable',
+      authority: 'Không có nguồn live',
       generatedAt: new Date().toISOString(),
-      reason: String(error instanceof Error ? error.message : error).slice(0, 120),
-      summary: { working: 0, waiting: 0, blocked: 0, idle: 0, paused: 0, total: 0 },
+      reason: liveError || String(error instanceof Error ? error.message : error).slice(0, 120),
+      summary: { working: 0, waiting: 0, blocked: 0, idle: 0, unknown: 0, paused: 0, total: 0 },
       workers: [],
     });
   }
