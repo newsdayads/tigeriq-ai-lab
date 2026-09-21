@@ -341,6 +341,25 @@ describe('NV02 owner-proxy live handoff coordination',()=>{
 });
 
 
+import { enforceCanonicalRuntimeOwner, verifyRuntimeProvenance } from '../apps/chrome-controller/direct-cdp-bridge.mjs';
+
+describe('NV02 Canonical Runtime Owner and Provenance Enforcement',()=>{
+  it('enforces single canonical runtime owner and rejects duplicates',()=>{
+    const tokenA = 'owner-token-1';
+    const tokenB = 'owner-token-2';
+    expect(() => enforceCanonicalRuntimeOwner('NV02-TEST', tokenA)).not.toThrow();
+    expect(() => enforceCanonicalRuntimeOwner('NV02-TEST', tokenB)).toThrow('DUPLICATE_RUNTIME_OWNER_REJECTED');
+  });
+
+  it('verifies exact file hash and provenance evidence',()=>{
+    const code = 'console.log("nv02-provenance");';
+    const crypto = require('node:crypto');
+    const expected = crypto.createHash('sha256').update(code).digest('hex');
+    expect(verifyRuntimeProvenance(code, expected)).toBe(expected);
+    expect(() => verifyRuntimeProvenance(code, 'badhash')).toThrow('RUNTIME_PROVENANCE_HASH_MISMATCH');
+  });
+});
+
 describe('Direct-CDP Controller command transport',()=>{
   it('polls, executes and acknowledges Controller commands before continuity automation',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
