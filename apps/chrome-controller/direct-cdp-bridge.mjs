@@ -1002,7 +1002,9 @@ async function tickWorker(w){
 }
 
 async function tick(){
-    const workers=CONTINUITY_WORKERS.map((id)=>config.workers.find((w)=>w.id===id)).filter((w)=>w&&w.enabled!==false);
+  const worker=config.workers.find(w=>w.id==='NV02');
+  const workers=CONTINUITY_WORKERS.map((id)=>config.workers.find((w)=>w.id===id)).filter((w)=>w&&w.enabled!==false);
+  if(!worker)log('NV02_CONFIG_MISSING');
   if(!workers.length){log('WORKER_CONFIG_MISSING',{expected:CONTINUITY_WORKERS});return;}
   await Promise.allSettled(workers.map((w)=>tickWorker(w)));
 }
