@@ -25,6 +25,7 @@ export function looksLikeJsonObject(text){return !!parseModelJson(text)}
 export function expectedSchemaFromPrompt(prompt){
   const p=String(prompt||'');
   if(p.includes('"decision":"approve|changes_requested"'))return 'review';
+  if(p.includes('"edits":[{"path"'))return 'edits';
   if(p.includes('"changes":[{"path"'))return 'changes';
   if(p.includes('"status":"continue|blocked"'))return 'manager';
   return 'json';
@@ -34,6 +35,7 @@ export function matchesExpectedSchema(prompt,text){
   const d=parseModelJson(text); if(!d||typeof d!=='object'||Array.isArray(d))return false;
   const schema=expectedSchemaFromPrompt(prompt);
   if(schema==='review')return ['approve','changes_requested'].includes(d.decision)&&typeof d.summary==='string'&&Array.isArray(d.issues);
+  if(schema==='edits')return typeof d.summary==='string'&&Array.isArray(d.edits)&&d.edits.length>0&&d.edits.every(x=>x&&typeof x.path==='string'&&typeof x.old==='string'&&x.old.length>0&&typeof x.new==='string');
   if(schema==='changes')return typeof d.summary==='string'&&Array.isArray(d.changes)&&d.changes.length>0&&d.changes.every(x=>x&&typeof x.path==='string'&&typeof x.content==='string');
   if(schema==='manager')return ['continue','blocked'].includes(d.status)&&typeof d.summary==='string'&&(d.status==='blocked'||(d.job&&typeof d.job.title==='string'&&typeof d.job.instruction==='string'&&Array.isArray(d.job.paths)));
   return true;
@@ -88,6 +90,14 @@ export function compactPromptForChanges(prompt,{maxContextChars=12000,maxOutputC
   const old='Return ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}. Do not touch paths outside ALLOWED PATHS. Never output secrets. Keep changes minimal and testable.';
   const compact=`Return ONLY compact JSON {"summary":"short","edits":[{"path":"exact allowed path","search":"exact existing UTF-8 snippet","replace":"replacement UTF-8 snippet"}]}. For a new or empty small file you may use {"path":"exact allowed path","content":"complete UTF-8 file content"}. Keep the ENTIRE JSON response under ${maxOutputChars} characters. For existing files, each search snippet must be <=1200 characters and each replacement <=2400 characters; prefer several small exact edits over one large edit. Each search must match exactly once. Do not return full existing files or copy omitted context blocks. Do not touch paths outside ALLOWED PATHS. Never output secrets. Keep edits minimal and testable.`;
   const rewritten=p.includes(old)?p.replace(old,compact):`${p}\n\nIMPORTANT: ${compact}`;
+  return compactCurrentFilesForModel(rewritten,maxContextChars);
+}
+
+export function compactPromptForEdits(prompt,{maxContextChars=7000,maxOutputChars=3500}={}){
+  const p=String(prompt||'');
+  if(expectedSchemaFromPrompt(p)!=='edits')return p;
+  const guard=`Keep the ENTIRE JSON response under ${maxOutputChars} characters. Each old snippet must be exact, unique and <=800 characters; each new snippet must be <=1600 characters. Prefer multiple small edits over copying large functions or files. Never include omitted context blocks.`;
+  const rewritten=p.includes(guard)?p:`${p}\n\nREPAIR PATCH LIMITS: ${guard}`;
   return compactCurrentFilesForModel(rewritten,maxContextChars);
 }
 
@@ -203,7 +213,12 @@ export function installAiJsonTransport({maxAttempts=3,baseDelayMs=350,attemptTim
           maxContextChars:attempt===1?12000:7000,
           maxOutputChars:attempt===1?6000:3500,
         }))
-        :jsonPrepared;
+        :schema==='edits'
+          ?rewritePromptInRequest(input,jsonPrepared,compactPromptForEdits(originalPrompt,{
+            maxContextChars:attempt===1?7000:4500,
+            maxOutputChars:attempt===1?3500:2400,
+          }))
+          :jsonPrepared;
       const attemptRequest=request?.signal?{...request,signal:AbortSignal.timeout(attemptTimeoutMs)}:request;
       try{res=await original(input,attemptRequest);last=res;}
       catch(error){
