@@ -216,8 +216,8 @@ describe('stale-working restart schedule scope',()=>{
     const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
     expect(server).toContain("const staleWorkingRecovery=reason==='WORKING_NO_PROGRESS_3_CHECKS'");
     expect(server).toContain("state.lastHeartbeat?.uiBusy!==false&&!staleWorkingRecovery");
-    expect(server).toContain("NV02_STALE_WORKING_RESTART_REQUIRES_BUSY");
-    expect(server).toContain("NV02_COMMAND_INFLIGHT");
+    expect(server).toContain("STALE_WORKING_RESTART_REQUIRES_BUSY:${workerId}");
+    expect(server).toContain("WORKER_COMMAND_INFLIGHT:${workerId}");
     expect(server).toContain("heartbeatStopReason(state.lastHeartbeat)");
   });
 });
