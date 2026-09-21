@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import {activeProviderCooldownIds,applyCompactEdits,assertPrOpenState,buildLocalFileContext,classifyAiFailure,codingPathsOverlap,gateFailureIssues,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,preserveGenerationPrompt,recoverAfterCodingRestart,resourceWaitPlan,restartRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,validateCompactEdits,validateManagerJobPaths} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {activeProviderCooldownIds,applyCompactEdits,assertPrOpenState,buildLocalFileContext,classifyAiFailure,codingPathsOverlap,gateFailureIssues,invokeJsonWithFailover,isRefreshableCompactPatchError,isRepairTransportExhausted,isResourceTransientError,preserveGenerationPrompt,recoverAfterCodingRestart,resourceWaitPlan,restartRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,validateCompactEdits,validateManagerJobPaths} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError,parseJsonObject} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 const nv11={id:'NV11',provider:'fake',model:'a'};
@@ -82,6 +82,21 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
     const canonical=['tests/coding-lane-ai-json-transport.test.mjs'];
     assert.throws(()=>validateManagerJobPaths({status:'continue',job:{paths:['../escape.mjs']}},canonical),/MANAGER_PATHS_INVALID/);
     assert.deepStrictEqual(validateManagerJobPaths({status:'continue',job:{paths:canonical}},canonical),canonical);
+  });
+
+  await t.test('repair transport exhaustion is eligible for one bounded compact-changes fallback',()=>{
+    const output=Object.assign(new Error('OUTPUT_CONTRACT_EXHAUSTED'),{code:'OUTPUT_CONTRACT_EXHAUSTED'});
+    const budget=Object.assign(new Error('AI_RETRY_BUDGET_EXHAUSTED'),{code:'AI_RETRY_BUDGET_EXHAUSTED'});
+    assert.strictEqual(isRepairTransportExhausted(output),true);
+    assert.strictEqual(isRepairTransportExhausted(budget),true);
+    assert.strictEqual(isRepairTransportExhausted(new Error('CODING_SCOPE_VIOLATION')),false);
+  });
+
+  await t.test('same-PR repair source contains compact changes fallback after direct edit-schema exhaustion',()=>{
+    const src=require('node:fs').readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
+    assert.match(src,/isRepairTransportExhausted\(error\)/);
+    assert.match(src,/fallback=await generateChanges\(selected,j,context,fallbackIssues,exclude\)/);
+    assert.match(src,/fallback:'compact_changes_transport'/);
   });
 
   await t.test('default failover can reach the sixth eligible coding provider',async()=>{
