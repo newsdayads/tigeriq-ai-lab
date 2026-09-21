@@ -374,7 +374,7 @@ async function dispatch(
   browserMutationLeases.assertControllerAllowed(workerId);
   const requestedJobId=String(metadata.jobId??'').trim();
   const prior=requestedJobId?uiJobLedger.get(workerId,requestedJobId):undefined;
-  const retryKnownNotDelivered=source==='AUTO_CONTINUE'&&prior?.stage==='ERROR'&&classifyAutoContinueDispatchFailure(new Error(prior.blocker??''),false)==='SAFE_RETRY';
+  const retryKnownNotDelivered=prior?.stage==='ERROR'&&prior.workerId===workerId&&classifyAutoContinueDispatchFailure(new Error(prior.blocker??''),false)==='SAFE_RETRY';
   const job=retryKnownNotDelivered
     ? uiJobLedger.retryError(workerId,requestedJobId,{...metadata,source:metadata.source??source})
     : uiJobLedger.create(workerId,{...metadata,source:metadata.source??source});
