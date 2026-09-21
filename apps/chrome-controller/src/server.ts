@@ -943,6 +943,31 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
     for(const queue of commandQueues.values())queue.splice(0);
     log('KILL_SWITCH');persistEvidence();json(res,200,{ok:true});return true;
   }
+  if(url.pathname==='/api/utility/workers/NV02/job/recovery-resume'){
+    if(req.method!=='POST'){json(res,405,{ok:false,error:'METHOD_NOT_ALLOWED'});return true;}
+    try{
+      if(paused)throw new Error('OWNER_INTERACTION_READ_ONLY');
+      const state=states.get('NV02')!;
+      if(!recentHeartbeat('NV02'))throw new Error('WORKER_HEARTBEAT_NOT_READY:NV02');
+      const security=heartbeatStopReason(state.lastHeartbeat);
+      if(security)throw new Error(security);
+      const hb=state.lastHeartbeat;
+      if(hb?.modelExact!==true||hb.modelName!=='GPT-5.6 Sol'||hb.reasoningEffort!=='High'||hb.modelReady!==true)
+        throw new Error('MODEL_PROFILE_BLOCKED:RECOVERY_RESUME_REQUIRES_GPT_5_6_SOL_HIGH');
+      if(!browserMutationLeases.active('NV02'))throw new Error('BROWSER_MUTATION_LEASE_REQUIRED:NV02');
+      const data=await body(req);
+      const jobId=String(data.jobId??'').trim();
+      if(!jobId)throw new Error('UI_JOB_ID_REQUIRED');
+      const record=uiJobLedger.resumeWaitingEvidence('NV02',jobId,{
+        nextAction:'Continue same work after model recovery',
+        blocker:null,
+      });
+      log('UI_JOB_WAITING_EVIDENCE_RESUMED',{workerId:'NV02',jobId,stage:record.stage,progress:record.progress});
+      persistEvidence();
+      json(res,200,{ok:true,job:record});
+    }catch(error){json(res,409,{ok:false,error:String(error)});}
+    return true;
+  }
   const jobMatch=url.pathname.match(/^\/api\/utility\/workers\/(NV02|NV03|NV04)\/job(?:\/status)?$/);
   if(jobMatch){
     const workerId=jobMatch[1] as WorkerId;
