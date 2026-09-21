@@ -243,6 +243,12 @@ alter table tigeriq_coding_jobs add column if not exists resource_retry_started_
 create index if not exists tigeriq_coding_jobs_status_idx on tigeriq_coding_jobs(status,created_at);
 `)}
 
+export function managerBlockKind(summary=''){
+  const text=String(summary||'').trim().toUpperCase();
+  if(/SECURITY|CREDENTIAL|PAID|DESTRUCTIVE|PRODUCTION|BROWSER[_ -]?AUTH|AUTHORIZATION[_ -]?REQUIRED|POLICY[_ -]?BLOCK|OUT[_ -]?OF[_ -]?SCOPE|NO[_ -]?SAFE[_ -]?PATH/.test(text))return 'hard';
+  return 'soft';
+}
+
 async function managerTick(){
   const q=await pool.query("select * from tigeriq_coding_objectives where status='active' and not exists(select 1 from tigeriq_coding_jobs j where j.objective_id=tigeriq_coding_objectives.id and j.status in ('queued','running','review','waiting_ci','waiting_resource')) order by case priority when 'P0' then 0 when 'P1' then 1 else 2 end,created_at limit 1");
   const o=q.rows[0];if(!o)return;
@@ -250,9 +256,16 @@ async function managerTick(){
   const canonical=extractCanonicalAllowedPaths(o.objective);
   const tree=await repoTree();
   const scopeText=canonical.length?`\nCANONICAL ALLOWED PATHS (MUST NOT EXPAND):\n${canonical.join('\n')}\n`:'';
-  const prompt=`You are TigerIQ Coding Manager. Decompose this repository objective into ONE safe coding job. Repository files:\n${tree.join('\n').slice(0,45000)}\n\nOBJECTIVE: ${o.objective}${scopeText}\nDependencies and backlog eligibility were already validated by Core before this objective reached Coding Lane. Do NOT block because a DEPENDS_ON issue is not represented in repository files or because you cannot independently confirm a GitHub dependency. Decompose only the repository implementation requested here. Return ONLY JSON {"status":"continue|blocked","summary":"short","job":{"title":"short","instruction":"standalone implementation instruction","paths":["exact/repo/path"]}}. Max 8 paths. Include relevant tests only when they are inside canonical scope. Never select .github/workflows, credentials/secrets, production/deploy config, docs/EXECUTION_BOUNDARY.md, docs/SECURITY.md, scripts/tigeriq-core/run-core.ps1, or main/release controls.`;
+  const prompt=`You are TigerIQ Coding Manager. Decompose this repository objective into ONE safe coding job. Repository files:\n${tree.join('\n').slice(0,45000)}\n\nOBJECTIVE: ${o.objective}${scopeText}\nDependencies and backlog eligibility were already validated by Core before this objective reached Coding Lane. Do NOT block because a DEPENDS_ON issue is not represented in repository files or because you cannot independently confirm a GitHub dependency. Decompose only the repository implementation requested here. Use status=blocked ONLY for a concrete hard safety/policy condition such as security, credential, paid cost, Production, destructive action, browser authentication, authorization required, or canonical out-of-scope. Uncertainty, preference, placeholder text, inability to independently reconfirm eligibility, or "reason for blocking" are NOT valid blockers. Return ONLY JSON {"status":"continue|blocked","summary":"short","job":{"title":"short","instruction":"standalone implementation instruction","paths":["exact/repo/path"]}}. Max 8 paths. Include relevant tests only when they are inside canonical scope. Never select .github/workflows, credentials/secrets, production/deploy config, docs/EXECUTION_BOUNDARY.md, docs/SECURITY.md, scripts/tigeriq-core/run-core.ps1, or main/release controls.`;
   try{
-    const invoked=await invokeJsonWithFailover(manager,prompt);manager=invoked.resource;const d=invoked.data;
+    const validateManagerDecision=d=>{
+      if(d?.status==='blocked'&&managerBlockKind(d?.summary)!=='hard'){
+        const e=new Error(`MANAGER_SOFT_BLOCK:${String(d?.summary||'unspecified').slice(0,300)}`);
+        e.code='MANAGER_SOFT_BLOCK';
+        throw e;
+      }
+    };
+    const invoked=await invokeJsonWithFailover(manager,prompt,{validateData:validateManagerDecision});manager=invoked.resource;const d=invoked.data;
     if(d.status!=='continue'||!d.job){await pool.query("update tigeriq_coding_objectives set status='blocked',summary=$2,manager_employee_id=$3,updated_at=now() where id=$1",[o.id,String(d.summary||'manager blocked').slice(0,1000),manager.id]);return}
     const paths=[...new Set((d.job.paths||[]).map(String))].filter(safeRepoPath).slice(0,8);if(!paths.length)throw new Error('MANAGER_PATHS_EMPTY');
     validateSourceScope(paths,canonical);
