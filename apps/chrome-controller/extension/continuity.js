@@ -26,6 +26,7 @@ export const CONTINUE_MIN_MS = 5 * 60 * 1000;
 export const CONTINUE_MAX_MS = 10 * 60 * 1000;
 export const REFRESH_MIN_MS = 2 * 60 * 60 * 1000;
 export const REFRESH_MAX_MS = 4 * 60 * 60 * 1000;
+export const CHAT_ROTATE_AFTER_DISPATCHES = 40;
 export const MAX_STALLED_CHECKS = 3;
 
 export function randomDelay(minMs,maxMs,random=Math.random){
@@ -41,6 +42,22 @@ export function pickContinuePrompt(previous='',random=Math.random){
   if(CONTINUE_PROMPTS.length===1)return CONTINUE_PROMPTS[0];
   const candidates=CONTINUE_PROMPTS.filter((text)=>text!==previous);
   return candidates[Math.min(candidates.length-1,Math.floor(random()*candidates.length))];
+}
+
+export function shouldRotateNv02Chat({
+  phase,
+  currentTrackedWork,
+  uiBusy=false,
+  nextRefreshAt=0,
+  dispatchesInChat=0,
+  chatStartedAt=0,
+  now=Date.now(),
+}={}){
+  if(phase!=='READY'||currentTrackedWork!==true||uiBusy===true)return false;
+  const refreshDue=Number(nextRefreshAt)>0&&Number(now)>=Number(nextRefreshAt);
+  const dispatchDue=Number(dispatchesInChat)>=CHAT_ROTATE_AFTER_DISPATCHES;
+  const ageDue=Number(chatStartedAt)>0&&Number(now)-Number(chatStartedAt)>=REFRESH_MAX_MS;
+  return refreshDue||dispatchDue||ageDue;
 }
 
 export function deriveNv02Phase(ui,{heartbeatStale=false}={}){
