@@ -86,7 +86,7 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("const currentTrackedWork=hasCurrentNv02Chat(ui?.url)");
     expect(source).toContain("CONTINUE_SKIPPED_NO_CURRENT_CHAT");
     expect(source).toContain("CONTINUE_DISPATCHED");
-    expect(source).toContain("CONTEXT_RECOVERY_ROTATED");
+    expect(source).not.toContain("CONTEXT_RECOVERY_ROTATED");
     expect(source).toContain("controllerRequired:false");
     expect(source).toContain("CONTROLLER_TELEMETRY_UNAVAILABLE");
     expect(source).toContain("NV02_LOCAL_MUTATION_ACQUIRED");
@@ -155,13 +155,20 @@ describe('NV02 continuity policy', () => {
     expect(continuity).not.toContain('shouldRotateChat');
     expect(bridge).not.toContain('shouldRotateChat');
   });
-  it('keeps NV02 recovery local to the isolated bridge', () => {
+  it('keeps NV02 hot-loop recovery local, same-chat, and checkpoint-free', () => {
     const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(source).toContain("'MODEL_PROFILE_RECOVERY'");
     expect(source).toContain("'STALLED_RECOVERY'");
-    expect(source).toContain("'STALE_WORKING_RECOVERY'");
-    expect(source).toContain("rotateNv02Chat(target,state,now)");
-    expect(source).toContain("checkpointNv02(target)");
+    expect(source).toContain("'WORKING_STALLED_RECOVERY'");
+    expect(source).toContain("'PERIODIC_F5_REFRESH'");
+    expect(source).toContain("stopAndClearComposerExpr");
+    const continuityLoop=source.slice(source.indexOf('async function maybeNv02Continuity'),source.indexOf('async function handleCommand'));
+    expect(continuityLoop).not.toContain("rotateNv02Chat(");
+    expect(continuityLoop).not.toContain("checkpointNv02(");
+    const recovery=source.slice(source.indexOf('async function recoverStalledWorking'),source.indexOf('async function checkpointNv02'));
+    expect(recovery).not.toContain("checkpointNv02(");
+    expect(recovery).not.toContain("archiveChat(");
+    expect(recovery).not.toContain("newChat(");
   });
 
   it('ships one-shot NV02 continuity installer with exact-head deploy and rollback',()=>{
