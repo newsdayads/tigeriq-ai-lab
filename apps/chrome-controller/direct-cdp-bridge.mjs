@@ -619,7 +619,11 @@ async function tickWorker(w){
   }finally{busy.delete(w.id);}
 }
 
-async function tick(){await Promise.all(config.workers.filter(w=>w.enabled!==false&&w.id==='NV02').map(tickWorker));}
-http.createServer((req,res)=>{if(req.url==='/health'){res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({ok:true,mode:'NV02_ISOLATED_AUTO_CONTINUE',controllerRequired:false,worker:'NV02',continuity:loadNv02Continuity()}));return;}res.writeHead(404);res.end();}).listen(8799,'127.0.0.1',()=>log('BRIDGE_READY',{port:8799,mode:'NV02_ISOLATED_AUTO_CONTINUE',controllerRequired:false}));
+async function tick(){
+  const worker=config.workers.find(w=>w.id==='NV02');
+  if(!worker){log('NV02_CONFIG_MISSING');return;}
+  await tickWorker(worker);
+}
+http.createServer((req,res)=>{if(req.url==='/health'){res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({ok:true,mode:'NV02_ISOLATED_AUTO_CONTINUE',controllerRequired:false,controllerEnabledFlagIgnored:true,worker:'NV02',continuity:loadNv02Continuity()}));return;}res.writeHead(404);res.end();}).listen(8799,'127.0.0.1',()=>log('BRIDGE_READY',{port:8799,mode:'NV02_ISOLATED_AUTO_CONTINUE',controllerRequired:false,controllerEnabledFlagIgnored:true}));
 setInterval(()=>void tick(),3000).unref();
 void tick();
