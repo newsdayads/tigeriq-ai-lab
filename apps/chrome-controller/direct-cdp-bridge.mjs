@@ -13,6 +13,8 @@ const CONFIG='D:\\TigerIQ\\Apps\\ChromeController\\Config\\chrome-controller.jso
 const LOG='D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\direct-cdp-bridge.jsonl';
 const SEND_BUTTON_WAIT_MS=10000;
 const NV02_CONTINUITY_STATE='D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\nv02-continuity-state.json';
+const WORKER_CONFIG_DIR='D:\\TigerIQ\Apps\ChromeController\Config';
+const WORKER_RUNTIME_DIR='D:\\TigerIQ\Apps\ChromeController\Runtime';
 const CONTROLLER='http://127.0.0.1:8798';
 const BINDING='2';
 const NV02_TOKEN=String(process.env.TIGERIQ_NV02_WORKER_TOKEN||'').trim();
@@ -803,7 +805,8 @@ async function tick(){
   if(!worker){log('NV02_CONFIG_MISSING');return;}
   await tickWorker(worker);
 }
-const NV02_OWNER_LOCK='D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\nv02-canonical-owner.lock';
+const WORKER_IDS=['NV02','NV03','NV04'];
+const WORKER_OWNer_LOCKS={NV02:'D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\nv02-canonical-owner.lock',NV03:'D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\nv03-canonical-owner.lock',NV04:'D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\nv04-canonical-owner.lock'};
 function pidAlive(pid){try{process.kill(pid,0);return true;}catch{return false;}}
 function acquireNv02CanonicalOwnership(){
   for(let attempt=0;attempt<2;attempt++){
