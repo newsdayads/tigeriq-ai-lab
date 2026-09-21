@@ -179,10 +179,15 @@ describe('NV02 continuity policy', () => {
     expect(shouldRotateNv02Chat({phase:'WORKING',currentTrackedWork:true,now:100,nextRefreshAt:99,dispatchesInChat:30})).toBe(false);
     expect(shouldRotateNv02Chat({phase:'READY',currentTrackedWork:false,now:100,nextRefreshAt:99,dispatchesInChat:30})).toBe(false);
     expect(shouldRotateNv02Chat({phase:'READY',currentTrackedWork:true,now:100,nextRefreshAt:200,dispatchesInChat:29})).toBe(false);
+    expect(shouldRotateNv02Chat({phase:'READY',currentTrackedWork:true,now:100,nextRefreshAt:99,dispatchesInChat:30,rotationRetryAt:101})).toBe(false);
+    expect(shouldRotateNv02Chat({phase:'READY',currentTrackedWork:true,now:102,nextRefreshAt:99,dispatchesInChat:30,rotationRetryAt:101})).toBe(true);
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(bridge).toContain("CHAT_ROTATION_DUE");
     expect(bridge).toContain("CHAT_ROTATION_FAILED");
     expect(bridge).toContain("CHAT_ROTATION_DEFERRED_TO_EXTERNAL_AUTOPILOT");
+    expect(bridge).toContain("rotationRetryAt:Number(raw.rotationRetryAt)||0");
+    expect(bridge).toContain("WORKING_STALLED_RECOVERED_OUTSIDE_PROJECT");
+    expect(bridge).toContain("allowContinue:false");
     expect(bridge).toContain("const verified=loadNv02Continuity();");
   });
   it('recovers stale WORKING independently of continue timing and escalates bounded reopen without checkpointing', () => {
