@@ -17,6 +17,11 @@ internal sealed class WatchdogTracker
     public TimeSpan StalledAfter { get; set; } = TimeSpan.FromMinutes(2);
     public TimeSpan RecoverAfter { get; set; } = TimeSpan.FromMinutes(5);
 
+    public WatchdogView ObserveWorker(string workerId, WorkerView view, DateTimeOffset now)
+    {
+        return Observe(view, now);
+    }
+
     public WatchdogView Observe(WorkerView view, DateTimeOffset now)
     {
         if (!states.TryGetValue(view.Id, out var s))

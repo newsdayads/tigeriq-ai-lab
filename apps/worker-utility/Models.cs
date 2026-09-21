@@ -6,14 +6,21 @@ internal static class Workers
 {
     public static readonly WorkerDefinition[] All =
     [
-        new("NV02", "ChatGPT Plus", 9222),
-        new("NV03", "ChatGPT Go", 9223),
-        new("NV04", "Gemini Pro", 9224),
+        new("NV02", "ChatGPT Plus", 9222, "NV02-IDENTITY-KEY"),
+        new("NV03", "ChatGPT Go", 9223, "NV03-IDENTITY-KEY"),
+        new("NV04", "Gemini Pro", 9224, "NV04-IDENTITY-KEY"),
     ];
     public static WorkerDefinition Get(string id) => All.Single(x => x.Id == id);
 }
 
-internal sealed record WorkerDefinition(string Id, string Name, int DebugPort);
+internal sealed record WorkerIdentity(string Id, string Key);
+internal sealed record WorkerStateToken(string Id, string Token, DateTimeOffset IssuedAt);
+internal sealed record WorkerTimerState(string Id, TimeSpan Interval, DateTimeOffset? NextTick);
+internal sealed record WorkerLockState(string Id, bool Locked, string? OwnerId);
+internal sealed record WorkerPauseState(string Id, bool Paused);
+internal sealed record WorkerObservabilitySnapshot(string Id, string Health, string State, bool Paused, bool Locked);
+
+internal sealed record WorkerDefinition(string Id, string Name, int DebugPort, string IdentityKey);
 internal enum WorkerUiState { Ready, Working, Blocked, Paused }
 internal sealed record WorkerView(
     string Id, WorkerUiState State, string Reason, string? JobId,
