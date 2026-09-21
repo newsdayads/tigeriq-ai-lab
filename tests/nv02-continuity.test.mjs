@@ -9,6 +9,31 @@ import {
 } from '../apps/chrome-controller/extension/continuity.js';
 
 describe('NV02 continuity policy', () => {
+  it('verifies prompt pool size, no immediate repeat, interval ranges, stagger rules, and phase behavior across NV02-NV04', () => {
+    expect(CONTINUE_PROMPTS.length).toBeGreaterThanOrEqual(10);
+    const first = pickContinuePrompt('');
+    expect(CONTINUE_PROMPTS).toContain(first);
+    const second = pickContinuePrompt(first);
+    expect(second).not.toBe(first);
+
+    const delay = randomDelay(CONTINUE_MIN_MS, CONTINUE_MAX_MS);
+    expect(delay).toBeGreaterThanOrEqual(CONTINUE_MIN_MS);
+    expect(delay).toBeLessThanOrEqual(CONTINUE_MAX_MS);
+
+    const f5Delay = randomDelay(WORKER_F5_MIN_MS, WORKER_F5_MAX_MS);
+    expect(f5Delay).toBeGreaterThanOrEqual(WORKER_REFRESH_MIN_MS);
+
+    ['NV02', 'NV03', 'NV04'].forEach((workerId, idx) => {
+      const stagger = computeWorkerStaggerDelay(idx, 1000, 500);
+      expect(stagger).toBe(idx * 500 + 1000);
+
+      const phase = deriveWorkerPhase({ composerReady: true, modelReady: true }, { workerId });
+      expect(phase).toBe('READY');
+
+      const work = hasActiveWorkerWork({ jobs: [{ workerId, stage: 'WORKING', completedAt: null }] }, workerId);
+      expect(work).toBe(true);
+    });
+  });
   it('enforces fail-closed behavior on stale fallback or duplicate canonical ownership', () => {
     const script = readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs', 'utf8');
     expect(script).toContain('acquireNv02CanonicalOwnership');
