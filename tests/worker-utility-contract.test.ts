@@ -34,6 +34,9 @@ it('implements isolated worker profiles, staggered read-only probes for NV02/NV0
   expect(harnessClient).toContain('SafeWriteSmokeTestAsync');
   expect(harnessClient).toContain('NV04-LEASE-');
   expect(harnessClient).toContain('COMPOSER_VERIFICATION_FAILED');
+  expect(context).toContain('NV02');
+  expect(context).toContain('NV03');
+  expect(context).toContain('NV04');
 });
 
 });
