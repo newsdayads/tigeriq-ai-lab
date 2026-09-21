@@ -243,6 +243,11 @@ describe('NV02 continuity policy', () => {
     expect(installer).toContain("BRIDGE_SOURCE_HASH_MISMATCH");
     expect(installer).toContain("NV02_MODEL_NOT_READY");
     expect(installer).toContain("NV02_REASONING_NOT_HIGH");
+    const resumeModeIndex=installer.indexOf("Set-OwnerMode ([bool]$ResumeAutomation)");
+    const modelWaitIndex=installer.indexOf("$deadline=(Get-Date).AddSeconds(30)");
+    expect(resumeModeIndex).toBeGreaterThan(-1);
+    expect(modelWaitIndex).toBeGreaterThan(resumeModeIndex);
+    expect(installer.indexOf("Set-OwnerMode ([bool]$ResumeAutomation)",resumeModeIndex+1)).toBe(-1);
     expect(installer).toContain("$effectiveConfig.autopilot.enabled=$true");
     expect(installer).toContain("$effectiveConfig.autopilot.stateUrl='http://127.0.0.1:8794/api/ui-autopilot/snapshot'");
     expect(installer).toContain('APP_CHROME_AUTOPILOT_ENABLE_FAILED');
