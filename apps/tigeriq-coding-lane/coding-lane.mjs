@@ -400,21 +400,17 @@ export function applyCompactEdits(content,edits){
   return out;
 }
 
-async function generateRepairEdits(worker,j,context,issues=[],exclude=[]){
-  const prompt=`You are ${worker.id}, an autonomous TigerIQ repository engineer. Fix ONLY the listed issues on the existing branch.\nTASK: ${j.instruction}\nALLOWED PATHS: ${j.paths.join(', ')}\nISSUES TO FIX: ${JSON.stringify(issues)}\nCURRENT FILES:\n${context}\nReturn ONLY compact JSON {"summary":"short","edits":[{"path":"exact allowed path","old":"exact UNIQUE existing snippet","new":"replacement snippet"}]}. Never return a complete file. Edits may target multiple ALLOWED PATHS when the listed CI/review issues require coordinated changes. Each old snippet must exist exactly once. Keep edits minimal. Do not touch paths outside ALLOWED PATHS. Never output secrets.`;
-  const validateData=d=>validateCompactEdits(d.edits,j.paths);
-  const invoked=await invokeJsonWithFailover(worker,prompt,{exclude,validateData,shrinkPrompt:value=>value});
+export function buildRepairGenerationPrompt(worker,j,context,issues=[]){
+  return `You are ${worker.id}, an autonomous TigerIQ repository engineer. Fix ONLY the listed issues on the existing branch.\nTASK: ${j.instruction}\nALLOWED PATHS: ${j.paths.join(', ')}\nREVIEW ISSUES TO FIX: ${JSON.stringify(issues)}\nCURRENT FILES:\n${context}\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}. Do not touch paths outside ALLOWED PATHS. Never output secrets. Keep changes minimal and testable.`;
+}
+async function generateRepairChanges(worker,j,context,issues=[],exclude=[]){
+  const prompt=buildRepairGenerationPrompt(worker,j,context,issues);
+  const validateData=d=>{validateChanges(d.changes,j.paths);validateJobScope(j.paths,d.changes)};
+  const invoked=await invokeJsonWithFailover(worker,prompt,{exclude,validateData,shrinkPrompt:preserveGenerationPrompt});
   return {payload:invoked.data,resource:invoked.resource};
 }
-async function writeRepairEdits(branch,edits){
-  const byPath=new Map();
-  for(const edit of edits){if(!byPath.has(edit.path))byPath.set(edit.path,[]);byPath.get(edit.path).push(edit)}
-  for(const [path,pathEdits] of byPath){
-    const current=await readRepoFile(path,branch);
-    if(!current.sha)throw new Error(`CODING_COMPACT_EDIT_FILE_MISSING:${path}`);
-    const content=applyCompactEdits(current.content,pathEdits);
-    await writeFile(branch,{path,content});
-  }
+async function writeRepairChanges(branch,changes){
+  for(const change of changes)await writeFile(branch,change);
 }
 export function isRefreshableCompactPatchError(error){
   return /CODING_COMPACT_EDIT_(?:OLD_NOT_FOUND|OLD_NOT_UNIQUE)|COMPACT_EDIT_(?:SEARCH_MISSING|SEARCH_AMBIGUOUS)/i.test(String(error?.message||error||''));
@@ -423,11 +419,11 @@ async function generateAndWriteRepair(worker,j,branch,issues=[],exclude=[]){
   let selected=worker,last=null;
   for(let attempt=1;attempt<=2;attempt++){
     const context=await contextFor(j.paths,branch);
-    const retryIssues=attempt===1?issues:[...issues,'Previous compact patch no longer matched the current PR branch. Regenerate exact unique snippets from CURRENT FILES; keep the same PR and scope.'];
-    const generated=await generateRepairEdits(selected,j,context,retryIssues,exclude);
-    selected=generated.resource;
+    const retryIssues=attempt===1?issues:[...issues,'Refresh the CURRENT FILES from this same PR branch and regenerate the compact patch; keep the same PR and scope.'];
     try{
-      await writeRepairEdits(branch,generated.payload.edits);
+      const generated=await generateRepairChanges(selected,j,context,retryIssues,exclude);
+      selected=generated.resource;
+      await writeRepairChanges(branch,generated.payload.changes);
       return {worker:selected,payload:generated.payload};
     }catch(error){
       last=error;
