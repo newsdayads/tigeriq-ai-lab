@@ -60,7 +60,7 @@ export function validateConfig(raw:unknown):ControllerConfig{
   if(!config.chromePath)throw new Error('CONFIG_CHROME_PATH_REQUIRED');
   if(!config.logDir)throw new Error('CONFIG_LOG_DIR_REQUIRED');
   if(!Array.isArray(config.workers)||config.workers.length!==3)throw new Error('CONFIG_REQUIRES_3_WORKERS');
-  const ids=config.workers.map(w=>w.id);if(ids.join('|')!==WORKER_IDS.join('|'))throw new Error('CONFIG_WORKER_ORDER_MUST_BE_NV02_NV03_NV04');
+  const ids=config.workers.map(w=>w.id.trim());if(ids.join('|')!==WORKER_IDS.join('|'))throw new Error('CONFIG_WORKER_ORDER_MUST_BE_NV02_NV03_NV04');
   const targets=new Set<string>();
   const debugPorts=new Set<number>();
   for(const worker of config.workers){
