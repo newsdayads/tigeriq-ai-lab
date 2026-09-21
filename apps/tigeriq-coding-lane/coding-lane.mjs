@@ -394,6 +394,8 @@ async function reviewPr(reviewer,j,diff,implementerId,extraExclude=[]){const pro
 async function runJob(j){
   const cooldownExcludes=activeProviderCooldownIds(j.failure);
   let worker=resources.find(r=>r.id===j.employee_id&&!cooldownExcludes.includes(r.id))||pickResource(cooldownExcludes);if(!worker)throw new Error('NO_IMPLEMENTER_AVAILABLE');
+  await pool.query("update tigeriq_coding_jobs set employee_id=$2,status='running' where id=$1",[j.id,worker.id]);
+  j.employee_id=worker.id;
   j.paths=Array.isArray(j.paths)?j.paths:j.paths||[];
   let context=null,generated=null,gen={summary:'resumed existing PR'},reviewer=null;
   let branch=j.branch||null,pr=j.pr_number?{number:Number(j.pr_number)}:null;
