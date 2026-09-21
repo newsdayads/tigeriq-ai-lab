@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { DurableUiJobLedger, reconcileUiJobStage, uiJobProgress } from '../apps/chrome-controller/src/job-ledger.js';
+import { continuityResumeIdentityMatches, DurableUiJobLedger, reconcileUiJobStage, uiJobProgress } from '../apps/chrome-controller/src/job-ledger.js';
 
 const roots:string[]=[];
 function ledger(){
@@ -83,6 +83,18 @@ describe('durable UI worker job ledger',()=>{
     expect(reconcileUiJobStage('WAITING_EVIDENCE',true)).toBeUndefined();
     expect(reconcileUiJobStage('VERIFY',false)).toBeUndefined();
     expect(reconcileUiJobStage('DONE',false)).toBeUndefined();
+  });
+
+  it('allows continuity lease identity only for the exact same NV02 job',()=>{
+    const same={jobId:'GH-1232',workerId:'NV02',stage:'WAITING_EVIDENCE',completedAt:null} as const;
+    const prior={workerId:'NV02',jobId:'GH-1232',status:'RUNNING'};
+    const autopilot={lastDispatchedJobId:'GH-1232',pendingJobId:null,uncertainJobId:null};
+    expect(continuityResumeIdentityMatches(same,prior,autopilot)).toBe(true);
+    expect(continuityResumeIdentityMatches({...same,jobId:'GH-OTHER'},prior,autopilot)).toBe(false);
+    expect(continuityResumeIdentityMatches(same,{...prior,jobId:'GH-OTHER'},autopilot)).toBe(false);
+    expect(continuityResumeIdentityMatches(same,prior,{...autopilot,lastDispatchedJobId:'GH-OTHER'})).toBe(false);
+    expect(continuityResumeIdentityMatches(same,prior,{...autopilot,pendingJobId:'GH-NEW'})).toBe(false);
+    expect(continuityResumeIdentityMatches({...same,stage:'DONE',completedAt:'2026-09-21T00:00:00Z'},prior,autopilot)).toBe(false);
   });
 
   it('keeps milestone progress deterministic',()=>{
