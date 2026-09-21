@@ -25,20 +25,20 @@ $lockDir = Split-Path $lockFile -Parent
 if (-not (Test-Path $lockDir)) {
   New-Item -ItemType Directory -Path $lockDir -Force | Out-Null
 }
+$global:controllerLockStream = $null
 try {
-  $fs = [System.IO.File]::Open($lockFile, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
-  $fs.Close()
-  $fs.Dispose()
+  $global:controllerLockStream = [System.IO.File]::Open($lockFile, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
 } catch {
   Write-Host "Chrome controller already running (lock file present). Exiting."
   exit 0
 }
-# Create lock file to indicate running instance
-New-Item -ItemType File -Path $lockFile -Force | Out-Null
 try {
   Set-Location $root
   & node $server
 } finally {
+  if ($global:controllerLockStream) {
+    try { $global:controllerLockStream.Close(); $global:controllerLockStream.Dispose() } catch {}
+  }
   if (Test-Path $lockFile) {
     Remove-Item $lockFile -Force -ErrorAction SilentlyContinue
   }
