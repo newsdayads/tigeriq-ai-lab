@@ -219,7 +219,7 @@ export function installAiJsonTransport({maxAttempts=3,baseDelayMs=350,attemptTim
             maxOutputChars:attempt===1?3500:2400,
           }))
           :jsonPrepared;
-      const attemptRequest=request?.signal?{...request,signal:AbortSignal.timeout(attemptTimeoutMs)}:request;
+      const attemptRequest={...request,signal:AbortSignal.timeout(attemptTimeoutMs)};
       try{res=await original(input,attemptRequest);last=res;}
       catch(error){
         const transient=error?.name==='AbortError'||/aborted|fetch failed|ECONNRESET|ETIMEDOUT|socket/i.test(String(error?.message||error));
