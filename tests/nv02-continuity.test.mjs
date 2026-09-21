@@ -205,6 +205,13 @@ describe('NV02 continuity policy', () => {
     expect(contentSource).toContain('lastVerifiedModelProfile');
     expect(contentSource).toContain("data-selected-reasoning-effort");
     expect(source).toContain("'MODEL_PROFILE_RECOVERY'");
+    expect(source).toContain("'MODEL_PROFILE_HEARTBEAT_REFRESHED'");
+    expect(source).toContain("await postWorkerHeartbeat(w,target,corrected,recoveredProjectContext)");
+    const recoveryStart=source.indexOf("const corrected=await withNv02Mutation(()=>ensureNv02ModelProfile(target),'MODEL_PROFILE_RECOVERY')");
+    const recoveryEnd=source.indexOf("state={...state,stalledChecks:Math.min(MAX_STALLED_CHECKS",recoveryStart);
+    const recoverySlice=source.slice(recoveryStart,recoveryEnd);
+    expect(recoverySlice.indexOf("postWorkerHeartbeat(w,target,corrected,recoveredProjectContext)")).toBeGreaterThan(-1);
+    expect(recoverySlice.indexOf("postWorkerHeartbeat(w,target,corrected,recoveredProjectContext)")).toBeLessThan(recoverySlice.indexOf("dispatchNaturalContinue(target,state,now,waitingEvidenceJobId)"));
     expect(source).toContain("'/api/utility/workers/NV02/job/recovery-resume'");
     expect(source).toContain("'WAITING_EVIDENCE_RESUMED'");
     expect(source).toContain("nextContinueAt:now");
