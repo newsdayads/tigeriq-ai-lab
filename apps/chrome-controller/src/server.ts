@@ -361,6 +361,61 @@ function modelProfileGateReason(hb:Heartbeat|undefined){
   return hb?.blockedReason||hb?.modelProfileStatus||'MODEL_PROFILE_UNVERIFIED';
 }
 
+export function nv02RecoveryAction(stage:string|undefined,modelReady:boolean|undefined){
+  const continuable=new Set(['SUBMITTED','WORKING','WAITING_EVIDENCE','VERIFY']);
+  if(!stage||!continuable.has(stage))return 'NONE';
+  if(modelReady!==true)return stage==='WAITING_EVIDENCE'?'RESTORE_AND_RESUME':'RESTORE_ONLY';
+  return stage==='WAITING_EVIDENCE'?'RESUME_ONLY':'NONE';
+}
+
+let nv02ProfileRecoveryInFlight=false;
+let nv02ProfileRecoveryLastAttemptAt=0;
+const NV02_PROFILE_RECOVERY_COOLDOWN_MS=30_000;
+
+async function recoverNv02ProfileAndContinuableJob(reason:string){
+  if(nv02ProfileRecoveryInFlight||paused||killed||!startupReady)return false;
+  const state=states.get('NV02')!;
+  const active=uiJobLedger.active('NV02');
+  const action=nv02RecoveryAction(active?.stage,state.lastHeartbeat?.modelReady??undefined);
+  if(action==='NONE')return false;
+  const now=Date.now();
+  if(now-nv02ProfileRecoveryLastAttemptAt<NV02_PROFILE_RECOVERY_COOLDOWN_MS)return false;
+  nv02ProfileRecoveryLastAttemptAt=now;
+  nv02ProfileRecoveryInFlight=true;
+  try{
+    const security=heartbeatStopReason(state.lastHeartbeat);
+    if(security)throw new Error(security);
+    if(!recentHeartbeat('NV02'))throw new Error('NV02_RECOVERY_HEARTBEAT_NOT_FRESH');
+    if(action==='RESTORE_ONLY'||action==='RESTORE_AND_RESUME'){
+      log('NV02_MODEL_PROFILE_RESTORE_STARTED',{workerId:'NV02',jobId:active?.jobId??null,reason});
+      const profile=await sendCommand('NV02','MODEL_PREFLIGHT');
+      const exact=(profile as any)?.exact===true||(profile as any)?.modelExact===true;
+      if(!exact||(profile as any)?.modelName!=='GPT-5.6 Sol'||(profile as any)?.reasoningEffort!=='High')
+        throw new Error(`MODEL_PROFILE_BLOCKED:${(profile as any)?.blockedReason||'UNVERIFIED'}`);
+      log('NV02_MODEL_PROFILE_RESTORE_OK',{workerId:'NV02',jobId:active?.jobId??null,reason,modelName:'GPT-5.6 Sol',reasoningEffort:'High'});
+    }
+    if(active?.stage==='WAITING_EVIDENCE'){
+      const marker=`RECOVERY_CONTINUE_INFLIGHT:${randomUUID()}`;
+      uiJobLedger.transition('NV02',active.jobId,'WAITING_EVIDENCE',{nextAction:marker});
+      const result=await sendCommand('NV02','DISPATCH',{text:'Tiếp tục đúng việc này'});
+      uiJobLedger.transition('NV02',active.jobId,'WORKING',{nextAction:'Continue current work'});
+      state.status='WORKING';
+      state.lastError=undefined;
+      log('NV02_CONTINUATION_RESUMED_SAME_JOB',{workerId:'NV02',jobId:active.jobId,issueRef:active.issueRef,reason,status:(result as any)?.status??null});
+    }
+    persistEvidence();
+    return true;
+  }catch(error){
+    state.status='STALLED';
+    state.lastError=String(error);
+    log('NV02_PROFILE_RECOVERY_FAILED',{workerId:'NV02',jobId:active?.jobId??null,reason,error:String(error)});
+    persistEvidence();
+    return false;
+  }finally{
+    nv02ProfileRecoveryInFlight=false;
+  }
+}
+
 async function dispatch(
   workerId:WorkerId,
   text:string,
@@ -515,6 +570,10 @@ async function autopilotTick(){
     }
     if(!latestSnapshot){setAutopilotPhase('IDLE');persistEvidence();return;}
     reconcileCompletedUiJobFromSnapshot();
+    const nv02ActiveForRecovery=uiJobLedger.active('NV02');
+    if(nv02ActiveForRecovery&&nv02RecoveryAction(nv02ActiveForRecovery.stage,states.get('NV02')?.lastHeartbeat?.modelReady??undefined)!=='NONE'){
+      await recoverNv02ProfileAndContinuableJob('AUTOPILOT_ACTIVE_JOB');
+    }
     if(autopilotState.uncertainJobId){
       const uncertainJobId=autopilotState.uncertainJobId;
       const uncertain=uiJobLedger.get('NV02',uncertainJobId);
@@ -652,6 +711,7 @@ async function recoverWorker(workerId:WorkerId){
     await delay(config.recovery.reopenBackoffMs);
     await startWorker(workerId);
     log('RECOVERY_REOPEN_OK',{workerId,attempt:attempts+1});
+    if(workerId==='NV02')await recoverNv02ProfileAndContinuableJob('RECOVERY_REOPEN_OK');
   }catch(error){
     state.status=String(error).includes('RECOVERY_AMBIGUOUS_WINDOW')?'RECOVERY_AMBIGUOUS_WINDOW':'RECOVERY_ERROR';
     state.lastError=String(error);
@@ -706,6 +766,7 @@ async function startupRecovery(){
       const attached=await waitForStartupAttach(id);
       if(attached){await layoutWorker(id);states.get(id)!.status='READY';log('STARTUP_WORKER_REATTACHED',{workerId:id});}
       else await startWorker(id);
+      if(id==='NV02')await recoverNv02ProfileAndContinuableJob(attached?'STARTUP_REATTACHED':'STARTUP_REOPENED');
     }catch(error){log('STARTUP_WORKER_RECOVERY_FAILED',{workerId:id,error:String(error)});}
   }
   persistEvidence();
