@@ -56,7 +56,7 @@ function Set-OwnerMode([bool]$Automation){
   $uri=if($Automation){'http://127.0.0.1:8798/api/resume'}else{'http://127.0.0.1:8798/api/pause'}
   Invoke-RestMethod -Method Post -Uri $uri -TimeoutSec 10 | Out-Null
 }
-function Write-Launcher([string]$Root){
+function Write-Launcher([string]$Root,[string]$BridgeHash){
   $content=@"
 `$ErrorActionPreference='Stop'
 `$root='$Root'
@@ -68,6 +68,9 @@ if(`$selfSession -eq 0){throw 'INTERACTIVE_SESSION_REQUIRED'}
 `$env:TIGERIQ_INTERACTIVE_SESSION='1'
 `$env:TIGERIQ_SESSION_ID=[string]`$selfSession
 `$env:SESSIONNAME='Console'
+`$env:TIGERIQ_APPROVED_HEAD='$ExpectedHead'
+`$env:TIGERIQ_DEPLOY_ROOT=`$root
+`$env:TIGERIQ_NV02_BRIDGE_SHA256='$BridgeHash'
 `$controller=Get-NetTCPConnection -LocalPort 8798 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
 if(-not `$controller){
   `$server=Join-Path `$root 'dist\apps\chrome-controller\src\server.js'
@@ -115,12 +118,12 @@ try{
   Copy-Item $ConfigPath $configBackup -Force
   $effectiveConfig=Get-Content $ConfigPath -Raw | ConvertFrom-Json
   Assert-Ok ($null -ne $effectiveConfig.autopilot) 'AUTOPILOT_CONFIG_MISSING'
-  $effectiveConfig.autopilot.enabled=$false
-  $effectiveConfig.autopilot.stateUrl=''
+  $effectiveConfig.autopilot.enabled=$true
+  $effectiveConfig.autopilot.stateUrl='http://127.0.0.1:8794/api/ui-autopilot/snapshot'
   [IO.File]::WriteAllText($ConfigPath,($effectiveConfig|ConvertTo-Json -Depth 20),[Text.UTF8Encoding]::new($false))
   $effectiveConfig=Get-Content $ConfigPath -Raw | ConvertFrom-Json
-  Assert-Ok ($effectiveConfig.autopilot.enabled -eq $false) 'APP_CHROME_AUTOPILOT_DISABLE_FAILED'
-  Assert-Ok ([string]::IsNullOrWhiteSpace([string]$effectiveConfig.autopilot.stateUrl)) 'APP_CHROME_STATE_URL_DISABLE_FAILED'
+  Assert-Ok ($effectiveConfig.autopilot.enabled -eq $true) 'APP_CHROME_AUTOPILOT_ENABLE_FAILED'
+  Assert-Ok ([string]$effectiveConfig.autopilot.stateUrl -eq 'http://127.0.0.1:8794/api/ui-autopilot/snapshot') 'APP_CHROME_STATE_URL_MISMATCH'
 
   try{
     $state=Invoke-RestMethod -Uri 'http://127.0.0.1:8798/api/state' -TimeoutSec 3
@@ -128,24 +131,44 @@ try{
     Set-OwnerMode $false
   }catch{}
 
-  if(-not (Test-Path $deploy)){
+  $sourceBridge=Join-Path $RepoRoot 'apps\chrome-controller\direct-cdp-bridge.mjs'
+  $sourceBridgeHash=(Get-FileHash -Algorithm SHA256 $sourceBridge).Hash.ToLowerInvariant()
+  $deployNeedsCreate=(-not (Test-Path $deploy))
+  if(-not $deployNeedsCreate){
+    $version=(Get-Content (Join-Path $deploy 'VERSION.txt') -Raw).Trim()
+    Assert-Ok ($version -eq $ExpectedHead) "DEPLOY_VERSION_MISMATCH:$version"
+    $existingBridge=Join-Path $deploy 'apps\chrome-controller\direct-cdp-bridge.mjs'
+    if((-not (Test-Path $existingBridge)) -or ((Get-FileHash -Algorithm SHA256 $existingBridge).Hash.ToLowerInvariant() -ne $sourceBridgeHash)){
+      $staleDeploy=Join-Path $backupDir ('stale-'+(Split-Path $deploy -Leaf))
+      Move-Item $deploy $staleDeploy
+      $deployNeedsCreate=$true
+    }
+  }
+  if($deployNeedsCreate){
     New-Item -ItemType Directory -Path (Join-Path $deploy 'apps') -Force | Out-Null
     New-Item -ItemType Directory -Path (Join-Path $deploy 'dist\apps') -Force | Out-Null
     Copy-Item (Join-Path $RepoRoot 'apps\chrome-controller') (Join-Path $deploy 'apps\chrome-controller') -Recurse
     Copy-Item (Join-Path $RepoRoot 'dist\apps\chrome-controller') (Join-Path $deploy 'dist\apps\chrome-controller') -Recurse
     Set-Content -Path (Join-Path $deploy 'VERSION.txt') -Value $ExpectedHead -Encoding ascii
-  }else{
-    $version=(Get-Content (Join-Path $deploy 'VERSION.txt') -Raw).Trim()
-    Assert-Ok ($version -eq $ExpectedHead) "DEPLOY_VERSION_MISMATCH:$version"
   }
+  $deployBridge=Join-Path $deploy 'apps\chrome-controller\direct-cdp-bridge.mjs'
+  $deployBridgeHash=(Get-FileHash -Algorithm SHA256 $deployBridge).Hash.ToLowerInvariant()
+  Assert-Ok ($deployBridgeHash -eq $sourceBridgeHash) 'DEPLOY_SOURCE_HASH_MISMATCH'
 
-  Write-Launcher $deploy
+  Write-Launcher $deploy $deployBridgeHash
   Stop-Port 8799
   Stop-Port 8798
   Start-Sleep -Seconds 1
   $started=Start-Workspace
 
   $controller=$started.controller
+  $bridgeHealth=$started.bridge
+  Assert-Ok ([string]$controller.runtimeProvenance.approvedHead -eq $ExpectedHead) 'CONTROLLER_APPROVED_HEAD_MISMATCH'
+  Assert-Ok ([string]$controller.runtimeProvenance.deployRoot -eq $deploy) 'CONTROLLER_DEPLOY_ROOT_MISMATCH'
+  Assert-Ok ($bridgeHealth.provenanceVerified -eq $true) 'BRIDGE_PROVENANCE_NOT_VERIFIED'
+  Assert-Ok ([string]$bridgeHealth.approvedHead -eq $ExpectedHead) 'BRIDGE_APPROVED_HEAD_MISMATCH'
+  Assert-Ok ([string]$bridgeHealth.deployRoot -eq $deploy) 'BRIDGE_DEPLOY_ROOT_MISMATCH'
+  Assert-Ok ([string]$bridgeHealth.sourceSha256 -eq $deployBridgeHash) 'BRIDGE_SOURCE_HASH_MISMATCH'
   $worker=@($controller.workers|Where-Object id -eq 'NV02')|Select-Object -First 1
   Assert-Ok ($null -ne $worker) 'NV02_STATE_MISSING'
 
@@ -183,7 +206,10 @@ try{
     reasoningEffort=$worker.lastHeartbeat.reasoningEffort
     ownerInteractionMode=if($ResumeAutomation){'AUTOMATION'}else{'READ_ONLY'}
     chromeUiOnlyMode=$true
-    externalWorkAutopilotEnabled=$false
+    externalWorkAutopilotEnabled=$true
+    approvedHead=$ExpectedHead
+    bridgeSourceSha256=$deployBridgeHash
+    bridgeHealthPid=$bridgeHealth.pid
     backupDir=$backupDir
     installedAt=(Get-Date).ToUniversalTime().ToString('o')
   }

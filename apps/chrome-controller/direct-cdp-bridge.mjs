@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import http from 'node:http';
+import { createHash } from 'node:crypto';
 import {
   CONTINUE_MIN_MS, CONTINUE_MAX_MS, REFRESH_MIN_MS, REFRESH_MAX_MS,
   MAX_STALLED_CHECKS, WORKING_PROGRESS_CHECK_MS, MAX_WORKING_UNCHANGED_CHECKS, shouldRotateNv02Chat,
@@ -15,6 +16,15 @@ const NV02_CONTINUITY_STATE='D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\nv02-
 const CONTROLLER='http://127.0.0.1:8798';
 const BINDING='2';
 const NV02_TOKEN=String(process.env.TIGERIQ_NV02_WORKER_TOKEN||'').trim();
+const APPROVED_HEAD=String(process.env.TIGERIQ_APPROVED_HEAD||'').trim();
+const DEPLOY_ROOT=String(process.env.TIGERIQ_DEPLOY_ROOT||'').trim();
+const EXPECTED_BRIDGE_SHA256=String(process.env.TIGERIQ_NV02_BRIDGE_SHA256||'').trim().toLowerCase();
+const BRIDGE_PATH=fs.realpathSync(process.argv[1]);
+const BRIDGE_SHA256=createHash('sha256').update(fs.readFileSync(BRIDGE_PATH)).digest('hex');
+if(EXPECTED_BRIDGE_SHA256&&EXPECTED_BRIDGE_SHA256!==BRIDGE_SHA256){
+  console.error('FAIL_CLOSED: NV02 bridge source hash does not match approved artifact.');
+  process.exit(44);
+}
 const config=JSON.parse(fs.readFileSync(CONFIG,'utf8'));
 const NV02_HOME_URL=String(config.workers.find((worker)=>worker.id==='NV02')?.homeUrl||'').trim();
 const NV02_PROJECT_PREFIX=(()=>{try{return new URL(NV02_HOME_URL).pathname.replace(/\/project\/?$/,'')}catch{return''}})();
@@ -581,11 +591,11 @@ async function recoverStalledWorking(target,state,now,{allowContinue=true}={}){
       return clean;
     }
     if(!ui?.securityBlock){
-      const reopen=await post('/api/workers/NV02/restart-schedule','NV02',{reason:'STALLED_3_CHECKS'});
+      const reopen=await post('/api/workers/NV02/restart-schedule','NV02',{reason:'WORKING_NO_PROGRESS_3_CHECKS'});
       await continuityEvent('WORKING_STALLED_REOPEN_SCHEDULED',{status:reopen?.ok===true?'QUEUED':'UNKNOWN',uiPhase:ui?.uiPhase||null});
     }
     return clean;
-  },'WORKING_STALLED_RECOVERY',30000);
+  },'STALE_WORKING_RECOVERY',30000);
 }
 
 async function checkpointNv02(target){
@@ -793,16 +803,39 @@ async function tick(){
   if(!worker){log('NV02_CONFIG_MISSING');return;}
   await tickWorker(worker);
 }
-const activeBridgeLocks=new Set();
-function acquireNv02CanonicalOwnership(bridgeId){
-  if(activeBridgeLocks.size>0){
-    log('NV02_DUPLICATE_CANONICAL_OWNERSHIP',{existing:[...activeBridgeLocks],incoming:bridgeId});
-    console.error('FAIL_CLOSED: Duplicate NV02 runtime ownership detected.');
-    process.exit(42);
+const NV02_OWNER_LOCK='D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\nv02-canonical-owner.lock';
+function pidAlive(pid){try{process.kill(pid,0);return true;}catch{return false;}}
+function acquireNv02CanonicalOwnership(){
+  for(let attempt=0;attempt<2;attempt++){
+    try{
+      const fd=fs.openSync(NV02_OWNER_LOCK,'wx');
+      try{fs.writeFileSync(fd,JSON.stringify({pid:process.pid,approvedHead:APPROVED_HEAD,sourceSha256:BRIDGE_SHA256,bridgePath:BRIDGE_PATH,acquiredAt:new Date().toISOString()}),'utf8');}finally{fs.closeSync(fd);}
+      return;
+    }catch(error){
+      if(error?.code!=='EEXIST')throw error;
+      let existing={};
+      try{existing=JSON.parse(fs.readFileSync(NV02_OWNER_LOCK,'utf8'));}catch{}
+      if(Number(existing.pid)>0&&pidAlive(Number(existing.pid))){
+        log('NV02_DUPLICATE_CANONICAL_OWNERSHIP',{existingPid:Number(existing.pid),incomingPid:process.pid,existingHead:existing.approvedHead||null});
+        throw new Error('NV02_DUPLICATE_CANONICAL_OWNERSHIP');
+      }
+      try{fs.unlinkSync(NV02_OWNER_LOCK);}catch{}
+    }
   }
-  activeBridgeLocks.add(bridgeId);
+  throw new Error('NV02_CANONICAL_OWNERSHIP_LOCK_FAILED');
 }
-acquireNv02CanonicalOwnership('direct-cdp-bridge-8799');
-http.createServer((req,res)=>{if(req.url==='/health'){res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({ok:true,mode:'NV02_ISOLATED_AUTO_CONTINUE',controllerRequired:false,controllerEnabledFlagIgnored:true,worker:'NV02',canonicalOwnership:true,continuity:loadNv02Continuity()}));return;}res.writeHead(404);res.end();}).listen(8799,'127.0.0.1',()=>log('BRIDGE_READY',{port:8799,mode:'NV02_ISOLATED_AUTO_CONTINUE',controllerRequired:false,controllerEnabledFlagIgnored:true,canonicalOwnership:true}));
+function releaseNv02CanonicalOwnership(){
+  try{
+    const existing=JSON.parse(fs.readFileSync(NV02_OWNER_LOCK,'utf8'));
+    if(Number(existing.pid)===process.pid)fs.unlinkSync(NV02_OWNER_LOCK);
+  }catch{}
+}
+acquireNv02CanonicalOwnership();
+process.once('exit',releaseNv02CanonicalOwnership);
+process.once('SIGTERM',()=>{releaseNv02CanonicalOwnership();process.exit(0);});
+process.once('SIGINT',()=>{releaseNv02CanonicalOwnership();process.exit(0);});
+const bridgeServer=http.createServer((req,res)=>{if(req.url==='/health'){const provenanceVerified=Boolean(APPROVED_HEAD&&DEPLOY_ROOT&&EXPECTED_BRIDGE_SHA256&&EXPECTED_BRIDGE_SHA256===BRIDGE_SHA256);res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({ok:true,mode:'NV02_ISOLATED_AUTO_CONTINUE',controllerRequired:false,controllerEnabledFlagIgnored:true,worker:'NV02',canonicalOwnership:true,pid:process.pid,approvedHead:APPROVED_HEAD||null,deployRoot:DEPLOY_ROOT||null,sourceSha256:BRIDGE_SHA256,expectedSourceSha256:EXPECTED_BRIDGE_SHA256||null,provenanceVerified,continuity:loadNv02Continuity()}));return;}res.writeHead(404);res.end();});
+bridgeServer.on('error',(error)=>{log('NV02_CANONICAL_OWNER_BIND_FAILED',{error:String(error),code:error?.code||null});releaseNv02CanonicalOwnership();process.exit(42);});
+bridgeServer.listen(8799,'127.0.0.1',()=>log('BRIDGE_READY',{port:8799,mode:'NV02_ISOLATED_AUTO_CONTINUE',controllerRequired:false,controllerEnabledFlagIgnored:true,canonicalOwnership:true,pid:process.pid,approvedHead:APPROVED_HEAD||null,sourceSha256:BRIDGE_SHA256,provenanceVerified:Boolean(APPROVED_HEAD&&DEPLOY_ROOT&&EXPECTED_BRIDGE_SHA256&&EXPECTED_BRIDGE_SHA256===BRIDGE_SHA256)}));
 setInterval(()=>void tick(),3000).unref();
 void tick();

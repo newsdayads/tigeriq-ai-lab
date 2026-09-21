@@ -13,9 +13,14 @@ describe('NV02 continuity policy', () => {
     const script = readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs', 'utf8');
     expect(script).toContain('acquireNv02CanonicalOwnership');
     expect(script).toContain('NV02_DUPLICATE_CANONICAL_OWNERSHIP');
+    expect(script).toContain('NV02_OWNER_LOCK');
+    expect(script).toContain('provenanceVerified');
+    expect(script).toContain('sourceSha256');
     expect(script).toContain('FAIL_CLOSED');
     const installer = readFileSync('apps/chrome-controller/runtime/Install-NV02-Continuity.ps1', 'utf8');
     expect(installer).toContain('NV02_FAIL_CLOSED_STALE_OR_MISSING_OWNERSHIP');
+    expect(installer).toContain('DEPLOY_SOURCE_HASH_MISMATCH');
+    expect(installer).toContain('BRIDGE_PROVENANCE_NOT_VERIFIED');
   });
 
   it('waits long enough for durable receipt propagation without real sleeping', async () => {
@@ -203,10 +208,11 @@ describe('NV02 continuity policy', () => {
     const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(source).toContain("'MODEL_PROFILE_RECOVERY'");
     expect(source).toContain("'STALLED_RECOVERY'");
-    expect(source).toContain("'WORKING_STALLED_RECOVERY'");
+    expect(source).toContain("'STALE_WORKING_RECOVERY'");
     expect(source).toContain("'PERIODIC_F5_REFRESH'");
     expect(source).toContain("stopAndClearComposerExpr");
     expect(source).toContain("'/api/workers/NV02/restart-schedule'");
+    expect(source).toContain("reason:'WORKING_NO_PROGRESS_3_CHECKS'");
     expect(source).toContain("'WORKING_STALLED_REOPEN_SCHEDULED'");
     const recovery=source.slice(source.indexOf('async function recoverStalledWorking'),source.indexOf('async function checkpointNv02'));
     expect(recovery).toContain("reloadTarget(target)");
@@ -232,14 +238,18 @@ describe('NV02 continuity policy', () => {
     expect(installer).toContain("NV02_PACKAGE_FAILED_ROLLBACK_APPLIED");
     expect(installer).toContain("CONTROLLER_NOT_RUNNING_DEPLOY_HEAD");
     expect(installer).toContain("BRIDGE_NOT_RUNNING_DEPLOY_HEAD");
+    expect(installer).toContain("CONTROLLER_APPROVED_HEAD_MISMATCH");
+    expect(installer).toContain("BRIDGE_APPROVED_HEAD_MISMATCH");
+    expect(installer).toContain("BRIDGE_SOURCE_HASH_MISMATCH");
     expect(installer).toContain("NV02_MODEL_NOT_READY");
     expect(installer).toContain("NV02_REASONING_NOT_HIGH");
-    expect(installer).toContain("$effectiveConfig.autopilot.enabled=$false");
-    expect(installer).toContain("$effectiveConfig.autopilot.stateUrl=''");
-    expect(installer).toContain('APP_CHROME_AUTOPILOT_DISABLE_FAILED');
+    expect(installer).toContain("$effectiveConfig.autopilot.enabled=$true");
+    expect(installer).toContain("$effectiveConfig.autopilot.stateUrl='http://127.0.0.1:8794/api/ui-autopilot/snapshot'");
+    expect(installer).toContain('APP_CHROME_AUTOPILOT_ENABLE_FAILED');
+    expect(installer).toContain('APP_CHROME_STATE_URL_MISMATCH');
     const example=JSON.parse(readFileSync('apps/chrome-controller/chrome-controller.config.example.json','utf8'));
-    expect(example.autopilot.enabled).toBe(false);
-    expect(example.autopilot.stateUrl).toBe('');
+    expect(example.autopilot.enabled).toBe(true);
+    expect(example.autopilot.stateUrl).toBe('http://127.0.0.1:8794/api/ui-autopilot/snapshot');
     expect(installer).toContain("Invoke-Native -File 'git' -ArgumentList");
     expect(installer).toContain("Invoke-Native -File 'npm' -ArgumentList");
     expect(installer).not.toContain("Invoke-Native 'git' @(");

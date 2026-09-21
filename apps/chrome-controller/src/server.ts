@@ -471,6 +471,22 @@ function reconcileCompletedUiJobFromSnapshot(){
   }
   return true;
 }
+function reconcileCancelledUiJobFromSnapshot(){
+  const previous=latestSnapshot?.previousJob;
+  if(!previous||previous.status!=='CANCELLED')return false;
+  const active=uiJobLedger.active(previous.workerId);
+  if(active?.jobId===previous.jobId&&!isTerminalUiJobStage(active.stage)){
+    uiJobLedger.transition(previous.workerId,previous.jobId,'BLOCKED',{nextAction:null,blocker:'SOURCE_JOB_CANCELLED',result:'Authoritative source cancelled or superseded the previous job'});
+  }
+  const sameDispatched=autopilotState.lastDispatchedJobId===previous.jobId;
+  const sameUncertain=autopilotState.uncertainJobId===previous.jobId;
+  if(sameDispatched||sameUncertain){
+    autopilotState={...clearPending(autopilotState),phase:'IDLE',uncertainJobId:sameUncertain?undefined:autopilotState.uncertainJobId,uncertainWorkerId:sameUncertain?undefined:autopilotState.uncertainWorkerId,dispatchFailureClass:sameUncertain?undefined:autopilotState.dispatchFailureClass,retryAt:sameUncertain?undefined:autopilotState.retryAt,updatedAt:new Date().toISOString()};
+    persistAutopilotState();
+  }
+  log('AUTO_CONTINUE_CANCELLED_PREVIOUS_RECONCILED',{workerId:previous.workerId,jobId:previous.jobId,sameDispatched,sameUncertain});
+  return true;
+}
 async function autopilotTick(){
   if(autopilotTicking||!config.autopilot.enabled||paused||killed)return;
   autopilotTicking=true;
@@ -517,6 +533,7 @@ async function autopilotTick(){
     }
     if(!latestSnapshot){setAutopilotPhase('IDLE');persistEvidence();return;}
     reconcileCompletedUiJobFromSnapshot();
+    reconcileCancelledUiJobFromSnapshot();
     if(autopilotState.uncertainJobId){
       const uncertainJobId=autopilotState.uncertainJobId;
       const uncertainWorkerId=autopilotState.uncertainWorkerId??autopilotState.lastDispatchedWorkerId??latestSnapshot?.previousJob?.workerId??'NV02';
@@ -737,6 +754,7 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
       utilityPausedWorkers:[...utilityPausedWorkers],
       recovery:{attempts:Object.fromEntries(recoveryAttempts),maxReopenAttempts:config.recovery.maxReopenAttempts},
       evidencePath:runtimeEvidencePath,
+      runtimeProvenance:{approvedHead:process.env.TIGERIQ_APPROVED_HEAD??null,deployRoot:process.env.TIGERIQ_DEPLOY_ROOT??null,pid:process.pid},
       browserMutationLeases:browserMutationLeases.snapshot(),
       jobs:uiJobLedger.snapshot(),
       workers:[...states.values()],

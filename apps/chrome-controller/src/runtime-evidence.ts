@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { existsSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, openSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { WORKER_IDS, computePlacements, workAreaFitsLayout, type ControllerConfig, type WindowPlacement, type WorkArea, type WorkerId } from './model.js';
 import type { DurableAutopilotState, ExternalAutopilotSnapshot } from './autopilot.js';
 import type { UiJobRecord } from './job-ledger.js';
@@ -44,6 +44,27 @@ export interface AtomicJsonFileOps {
   unlink(path:string):void;
   sleep(ms:number):void;
   tempId():string;
+  acquireLock?(path:string):()=>void;
+}
+
+function nativeSleep(ms:number){Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,ms);}
+function acquireNativeAtomicJsonLock(path:string){
+  const lockPath=`${path}.write.lock`;
+  for(let attempt=0;attempt<=8;attempt++){
+    try{
+      const fd=openSync(lockPath,'wx');
+      try{writeFileSync(fd,JSON.stringify({pid:process.pid,acquiredAt:new Date().toISOString()}),'utf8');}finally{closeSync(fd);}
+      return ()=>{try{unlinkSync(lockPath);}catch{}};
+    }catch(error){
+      const code=atomicJsonErrorCode(error);
+      if(code==='EEXIST'){
+        try{if(Date.now()-statSync(lockPath).mtimeMs>30_000){unlinkSync(lockPath);continue;}}catch{}
+      }
+      if(!['EEXIST','EPERM','EBUSY'].includes(code)||attempt>=8)throw error;
+      nativeSleep(Math.min(500,25*(2**attempt)));
+    }
+  }
+  throw new Error('ATOMIC_JSON_LOCK_EXHAUSTED');
 }
 
 const defaultAtomicJsonFileOps:AtomicJsonFileOps = {
@@ -51,28 +72,31 @@ const defaultAtomicJsonFileOps:AtomicJsonFileOps = {
   rename:(from,to)=>renameSync(from,to),
   exists:(path)=>existsSync(path),
   unlink:(path)=>unlinkSync(path),
-  sleep:(ms)=>Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,ms),
+  sleep:nativeSleep,
   tempId:()=>randomUUID(),
+  acquireLock:acquireNativeAtomicJsonLock,
 };
 
 function atomicJsonErrorCode(error:unknown){
   return error instanceof Error&&'code' in error?String((error as NodeJS.ErrnoException).code??''):'';
 }
 
-export function atomicWriteJsonWithRetry(path:string,value:unknown,ops:AtomicJsonFileOps=defaultAtomicJsonFileOps,maxRetries=3){
+export function atomicWriteJsonWithRetry(path:string,value:unknown,ops:AtomicJsonFileOps=defaultAtomicJsonFileOps,maxRetries=8){
+  const release=ops.acquireLock?.(path);
   const temp=`${path}.${process.pid}.${ops.tempId()}.tmp`;
-  ops.write(temp,`${JSON.stringify(value,null,2)}\n`);
   try{
+    ops.write(temp,`${JSON.stringify(value,null,2)}\n`);
     for(let attempt=0;;attempt++){
       try{ops.rename(temp,path);return;}
       catch(error){
         const code=atomicJsonErrorCode(error);
         if(!['EPERM','EBUSY'].includes(code)||attempt>=maxRetries)throw error;
-        ops.sleep(20*(attempt+1));
+        ops.sleep(Math.min(500,25*(2**attempt)));
       }
     }
   }finally{
     if(ops.exists(temp)){try{ops.unlink(temp);}catch{}}
+    release?.();
   }
 }
 
