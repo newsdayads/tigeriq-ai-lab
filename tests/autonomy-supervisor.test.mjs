@@ -5,9 +5,22 @@ import {isRetryableFailure,shouldRetry,isStaleJob,repairInstruction,extractGitHu
 
 describe('Core Dispatcher & Manager Exhaustion/Recovery', () => {
   it('reconcileStaleAndBlockedObjectives correctly updates stale/blocked jobs to queued and does not affect running jobs', async () => {
+    let updateCalled = false;
     const mockPool = {
       query: async (sql, params) => {
         if (sql.includes('UPDATE tigeriq_jobs') && sql.includes('status = \'queued\'')) {
+          updateCalled = true;
+          return { rowCount: 1 };
+        }
+        if (sql.includes('SELECT') || sql.includes('FROM tigeriq_jobs')) {
+          return { rows: [{ id: 'job-stale-1', status: 'running', updated_at: new Date(Date.now() - 3600000).toISOString() }] };
+        }
+        return { rows: [], rowCount: 0 };
+      }
+    };
+    const result = await reconcileStaleAndBlockedObjectives(mockPool);
+    expect(result).toBeDefined();
+    expect(updateCalled).toBe(true);')) {
           return { rowCount: 2 };
         }
         return { rows: [] };
