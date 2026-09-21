@@ -106,6 +106,45 @@ describe('controller restart-safe worker safety gates',()=>{
   });
 });
 
+describe('independent worker recovery flows in direct-cdp-bridge',()=>{
+  const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+
+  it('runs one continuity loop for all three configured workers with independent locks/state',()=>{
+    expect(source).toContain("CONTINUITY_WORKERS.map((id)=>config.workers.find((w)=>w.id===id))");
+    expect(source).toContain("workerMutationBusy.has(w.id)");
+    expect(source).toContain("function loadWorkerContinuity(workerId)");
+    expect(source).toContain("function saveWorkerContinuity(workerId,state)");
+    expect(source).toContain("function acquireWorkerOwnership(workerId)");
+    expect(source).toContain("function acquireNv02CanonicalOwnership()");
+    expect(source).toContain("NV02_OWNER_LOCK");
+    expect(source).toContain("NV02_DUPLICATE_CANONICAL_OWNERSHIP");
+  });
+
+  it('keeps F5 and reset timers separate and staggered per worker',()=>{
+    expect(source).toContain("WORKER_F5_MIN_MS");
+    expect(source).toContain("WORKER_F5_MAX_MS");
+    expect(source).toContain("computeWorkerStaggerDelay");
+  });
+
+  it('fails closed on pause/security and uses bounded worker-specific reopen',()=>{
+    expect(source).toContain("workerAutomationPaused(workerId)");
+    expect(source).toContain("WORKER_AUTOMATION_PAUSE_CHECK_FAILED_CLOSED");
+    expect(source).toContain("phase==='BLOCKED'");
+    expect(source).toContain("WORKER_RESET_MAX_ATTEMPTS=2");
+    expect(source).toContain("RECOVERY_BOUNDED_STOP");
+    expect(source).toContain("/api/utility/workers/${w.id}/safe-recover");
+    expect(source).toContain("await closeWorker(w,target)");
+    expect(source).toContain("resumeUrl");
+  });
+
+  it('never routes NV03/NV04 through NV02-only model/project recovery',()=>{
+    expect(source).toContain("if(w.id==='NV02')await maybeNv02Continuity(w,target,ui)");
+    expect(source).toContain("else if(CONTINUITY_WORKERS.includes(w.id))await maybeWorkerContinuity(w,target,ui)");
+    expect(source).toContain("location.hostname==='chatgpt.com'?Boolean(stop):Boolean(stop||activityBusy)");
+    expect(source).toContain("function validWorkerUrl(w,url)");
+  });
+});
+
 describe('safe recovery contracts',()=>{
   const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
   const broker=readFileSync('apps/chrome-controller/src/chrome-launch-broker.ts','utf8');

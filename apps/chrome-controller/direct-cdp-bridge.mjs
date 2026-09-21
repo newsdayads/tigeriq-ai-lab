@@ -1,11 +1,13 @@
 import fs from 'node:fs';
 import http from 'node:http';
 import { createHash } from 'node:crypto';
+import { join } from 'node:path';
 import {
   CONTINUE_MIN_MS, CONTINUE_MAX_MS, REFRESH_MIN_MS, REFRESH_MAX_MS,
+  WORKER_F5_MIN_MS, WORKER_F5_MAX_MS, CONTINUITY_WORKERS,
   MAX_STALLED_CHECKS, WORKING_PROGRESS_CHECK_MS, MAX_WORKING_UNCHANGED_CHECKS, shouldRotateNv02Chat,
-  deriveNv02Phase, hasActiveNv02Work, hasWaitingEvidenceNv02Work, hasContinuableNv02Work,
-  nextRandomAt, pickContinuePrompt,
+  deriveNv02Phase, deriveWorkerPhase, hasActiveNv02Work, hasWaitingEvidenceNv02Work, hasContinuableNv02Work,
+  nextRandomAt, randomDelay, pickContinuePrompt, computeWorkerStaggerDelay,
 } from './extension/continuity.js';
 import { buildDurableSavePrompt, waitForDurableSaveReceipt } from './extension/save-receipt.js';
 
@@ -65,6 +67,201 @@ function sameNv02Chat(a,b){
     const x=new URL(String(a||'')),y=new URL(String(b||''));
     return x.origin===y.origin&&x.pathname===y.pathname&&/\/c\//.test(x.pathname);
   }catch{return false}
+}
+
+
+const WORKER_CONTINUITY_DIR='D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\worker-continuity';
+try{fs.mkdirSync(WORKER_CONTINUITY_DIR,{recursive:true});}catch{}
+const workerMutationBusy=new Set();
+const WORKER_RESET_MAX_ATTEMPTS=2;
+const WORKER_RESET_STAGGER_MS=2*60*1000;
+function workerStatePath(workerId){return join(WORKER_CONTINUITY_DIR,`${String(workerId).toLowerCase()}.json`);}
+function nextWorkerResetAt(workerId,now=Date.now(),random=Math.random){
+  const index=Math.max(0,CONTINUITY_WORKERS.indexOf(workerId));
+  const offset=computeWorkerStaggerDelay(index,0,WORKER_RESET_STAGGER_MS);
+  const maxDelay=Math.max(REFRESH_MIN_MS,REFRESH_MAX_MS-offset);
+  return now+offset+randomDelay(REFRESH_MIN_MS,maxDelay,random);
+}
+function loadWorkerContinuity(workerId){
+  const now=Date.now();let raw={};
+  try{raw=JSON.parse(fs.readFileSync(workerStatePath(workerId),'utf8'));}catch{}
+  return {
+    workerId,
+    nextContinueAt:Number(raw.nextContinueAt)||nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),
+    nextPeriodicF5At:Number(raw.nextPeriodicF5At)||nextRandomAt(now,WORKER_F5_MIN_MS,WORKER_F5_MAX_MS),
+    nextResetAt:Number(raw.nextResetAt)||nextWorkerResetAt(workerId,now),
+    lastPrompt:String(raw.lastPrompt||''),
+    lastPhase:String(raw.lastPhase||'STALLED'),
+    resumeUrl:String(raw.resumeUrl||''),
+    workingSignature:String(raw.workingSignature||''),
+    workingUnchangedChecks:Number(raw.workingUnchangedChecks)||0,
+    nextProgressCheckAt:Number(raw.nextProgressCheckAt)||0,
+    stalledChecks:Number(raw.stalledChecks)||0,
+    recoveryAttempts:Number(raw.recoveryAttempts)||0,
+    recoveryBlockedUntil:Number(raw.recoveryBlockedUntil)||0,
+  };
+}
+function saveWorkerContinuity(workerId,state){
+  const target=workerStatePath(workerId),tmp=target+'.tmp';
+  fs.writeFileSync(tmp,JSON.stringify({...state,workerId,updatedAt:new Date().toISOString()},null,2));
+  fs.renameSync(tmp,target);
+}
+function validWorkerUrl(w,url){
+  try{return new URL(String(url||'')).hostname===expectedHost(w);}catch{return false}
+}
+async function workerAutomationPaused(workerId){
+  try{
+    const state=await getControllerState();
+    return state?.paused===true||state?.killed===true||(state?.utilityPausedWorkers||[]).includes(workerId);
+  }catch(error){
+    log('WORKER_AUTOMATION_PAUSE_CHECK_FAILED_CLOSED',{workerId,error:String(error?.message||error)});
+    return true;
+  }
+}
+async function withWorkerMutation(workerId,fn,purpose='CONTINUITY',ttlMs=30000){
+  if(workerMutationBusy.has(workerId))return{ok:false,status:'MUTATION_LEASE_BUSY'};
+  const lease=await acquireBridgeMutationLease(workerId,purpose,ttlMs);
+  if(!lease)return{ok:false,status:'MUTATION_LEASE_BUSY'};
+  workerMutationBusy.add(workerId);
+  try{
+    log('WORKER_LOCAL_MUTATION_ACQUIRED',{workerId,purpose,leaseId:lease.leaseId});
+    return await fn();
+  }finally{
+    workerMutationBusy.delete(workerId);
+    await releaseBridgeMutationLease(workerId,lease);
+    log('WORKER_LOCAL_MUTATION_RELEASED',{workerId,purpose,leaseId:lease.leaseId});
+  }
+}
+async function genericWorkerEvent(workerId,event,data={}){
+  log('WORKER_CONTINUITY_EVENT',{workerId,event,...data});
+}
+async function reopenWorker(w,target,state,now,reason){
+  if(Number(state.recoveryBlockedUntil)>now)return state;
+  if(state.recoveryAttempts>=WORKER_RESET_MAX_ATTEMPTS){
+    const blocked={...state,recoveryAttempts:0,recoveryBlockedUntil:now+15*60*1000,lastPhase:'STALLED'};
+    saveWorkerContinuity(w.id,blocked);
+    await genericWorkerEvent(w.id,'RECOVERY_BOUNDED_STOP',{reason,recoveryBlockedUntil:blocked.recoveryBlockedUntil});
+    return blocked;
+  }
+  const resumeUrl=validWorkerUrl(w,state.resumeUrl)?state.resumeUrl:(validWorkerUrl(w,target?.url)?target.url:'');
+  const checkpointed={...state,resumeUrl,recoveryAttempts:state.recoveryAttempts+1,lastPhase:'STALLED'};
+  saveWorkerContinuity(w.id,checkpointed);
+  await genericWorkerEvent(w.id,'RESET_CHECKPOINTED',{reason,resumeUrl,recoveryAttempt:checkpointed.recoveryAttempts});
+  const result=await withWorkerMutation(w.id,async()=>{
+    await closeWorker(w,target);
+    await sleep(1200);
+    let lastError=null;
+    for(let attempt=1;attempt<=WORKER_RESET_MAX_ATTEMPTS;attempt+=1){
+      try{
+        await post(`/api/utility/workers/${w.id}/safe-recover`,w.id,{reason});
+        let replacement=null;
+        for(let poll=0;poll<20;poll+=1){
+          await sleep(750);
+          try{
+            const list=await targets(workerPort(w));
+            replacement=await pruneDuplicates(w,list);
+            if(replacement)break;
+          }catch{}
+        }
+        if(!replacement)throw new Error('WORKER_REOPEN_TARGET_NOT_FOUND');
+        if(resumeUrl&&validWorkerUrl(w,resumeUrl)&&replacement.url!==resumeUrl){
+          await navigate(replacement,resumeUrl);
+          await sleep(1200);
+        }
+        return {ok:true,status:'WORKER_REOPENED',attempt,resumeUrl};
+      }catch(error){
+        lastError=error;
+        await sleep(attempt*1500);
+      }
+    }
+    throw lastError||new Error('WORKER_REOPEN_FAILED');
+  },`WORKER_REOPEN:${reason}`,60000);
+  if(result?.status==='MUTATION_LEASE_BUSY'){
+    const deferred={...checkpointed,recoveryBlockedUntil:now+5000};
+    saveWorkerContinuity(w.id,deferred);
+    return deferred;
+  }
+  const recovered={...checkpointed,recoveryAttempts:0,recoveryBlockedUntil:0,stalledChecks:0,workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),nextPeriodicF5At:nextRandomAt(now,WORKER_F5_MIN_MS,WORKER_F5_MAX_MS),nextResetAt:nextWorkerResetAt(w.id,now),lastPhase:'STALLED'};
+  saveWorkerContinuity(w.id,recovered);
+  await genericWorkerEvent(w.id,'WORKER_REOPENED',{reason,resumeUrl,nextResetAt:recovered.nextResetAt});
+  return recovered;
+}
+async function maybeWorkerContinuity(w,target,ui){
+  const now=Date.now();
+  let state=loadWorkerContinuity(w.id);
+  const phase=deriveWorkerPhase(ui||{},{workerId:w.id});
+  if(validWorkerUrl(w,ui?.url))state={...state,resumeUrl:String(ui.url||''),lastPhase:phase};
+  else state={...state,lastPhase:phase};
+  saveWorkerContinuity(w.id,state);
+
+  if(await workerAutomationPaused(w.id)){
+    await genericWorkerEvent(w.id,'AUTO_ACTION_PAUSED',{phase});
+    return;
+  }
+  if(phase==='BLOCKED'){
+    await genericWorkerEvent(w.id,'BLOCKED',{securityBlock:ui?.securityBlock||null});
+    return;
+  }
+  if(!validWorkerUrl(w,ui?.url)){
+    await genericWorkerEvent(w.id,'WRONG_WORKER_CONTEXT',{url:ui?.url||null,expectedHost:expectedHost(w)});
+    return;
+  }
+
+  if(phase!=='WORKING'&&now>=Number(state.nextResetAt||0)){
+    await reopenWorker(w,target,state,now,'PERIODIC_2_4H_RESET');
+    return;
+  }
+
+  if(Number(state.nextPeriodicF5At||0)<=now){
+    const refreshed=await withWorkerMutation(w.id,async()=>{
+      const beforeUrl=ui?.url||null,beforePhase=phase;
+      const result=await reloadTarget(target);
+      await sleep(1600);
+      const after=await uiStateRaw(target).catch(()=>null);
+      return {ok:true,status:result?.status||'RELOADED',beforeUrl,beforePhase,afterUrl:after?.url||null,afterPhase:deriveWorkerPhase(after||{},{workerId:w.id})};
+    },'PERIODIC_F5_REFRESH',15000);
+    const next={...state,nextPeriodicF5At:refreshed?.status==='MUTATION_LEASE_BUSY'?now+5000:nextRandomAt(now,WORKER_F5_MIN_MS,WORKER_F5_MAX_MS),workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:0};
+    saveWorkerContinuity(w.id,next);
+    await genericWorkerEvent(w.id,'PERIODIC_F5_REFRESH',{status:refreshed?.status||null,beforeUrl:refreshed?.beforeUrl||ui?.url||null,afterUrl:refreshed?.afterUrl||null,nextPeriodicF5At:next.nextPeriodicF5At});
+    return;
+  }
+
+  if(phase==='WORKING'){
+    if(now<Number(state.nextProgressCheckAt||0))return;
+    const signature=String(ui?.activitySignature||'');
+    const unchanged=Boolean(signature&&state.workingSignature===signature)?Number(state.workingUnchangedChecks||0)+1:0;
+    const next={...state,workingSignature:signature,workingUnchangedChecks:unchanged,nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS,stalledChecks:0};
+    saveWorkerContinuity(w.id,next);
+    await genericWorkerEvent(w.id,'WORKING_PROGRESS_CHECK',{workingUnchangedChecks:unchanged});
+    if(unchanged>=MAX_WORKING_UNCHANGED_CHECKS)await reopenWorker(w,target,next,now,'WORKING_NO_PROGRESS_3_CHECKS');
+    return;
+  }
+
+  if(phase==='READY'){
+    if(now<Number(state.nextContinueAt||0))return;
+    const prompt=pickContinuePrompt(state.lastPrompt);
+    const sent=await withWorkerMutation(w.id,()=>dispatch(target,prompt),'CONTINUITY_CONTINUE',30000);
+    if(sent?.status==='MUTATION_LEASE_BUSY'){
+      saveWorkerContinuity(w.id,{...state,nextContinueAt:now+5000});
+      return;
+    }
+    if(!sent?.ok)throw new Error(sent?.status||'CONTINUE_DISPATCH_FAILED');
+    const next={...state,lastPrompt:prompt,lastPhase:'WORKING',stalledChecks:0,recoveryAttempts:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
+    saveWorkerContinuity(w.id,next);
+    await genericWorkerEvent(w.id,'CONTINUE_DISPATCHED',{prompt,nextContinueAt:next.nextContinueAt});
+    return;
+  }
+
+  const stalledChecks=Math.min(MAX_STALLED_CHECKS,Number(state.stalledChecks||0)+1);
+  const next={...state,stalledChecks,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
+  saveWorkerContinuity(w.id,next);
+  await genericWorkerEvent(w.id,'STALLED_CHECK',{stalledChecks});
+  if(stalledChecks===2){
+    const refreshed=await withWorkerMutation(w.id,()=>reloadTarget(target),'STALLED_RECOVERY',15000);
+    await genericWorkerEvent(w.id,'STALLED_RELOAD',{status:refreshed?.status||null});
+  }else if(stalledChecks>=MAX_STALLED_CHECKS){
+    await reopenWorker(w,target,next,now,'STALLED_3_CHECKS');
+  }
 }
 
 function log(event,data={}){
@@ -763,12 +960,14 @@ async function tickWorker(w){
     const projectContextReady=w.id!=='NV02'||isNv02ProjectContext(rawUi.url)||rawUi.projectDraftReady===true;
     const ui=projectContextReady?rawUi:{...rawUi,uiReady:false,uiPhase:'STALLED',modelReady:false};
     await postWorkerHeartbeat(w,target,ui,projectContextReady).catch(error=>log('CONTROLLER_TELEMETRY_UNAVAILABLE',{error:String(error?.message||error)}));
-    if(!nv02MutationBusy){
+    const localMutationBusy=workerMutationBusy.has(w.id)||(w.id==='NV02'&&nv02MutationBusy);
+    if(!localMutationBusy){
       let command=null;
       try{command=await getCommand(w.id);}
       catch(error){log('CONTROLLER_COMMAND_POLL_FAILED',{workerId:w.id,error:String(error?.message||error)});}
       if(command){
-        nv02MutationBusy=true;
+        workerMutationBusy.add(w.id);
+        if(w.id==='NV02')nv02MutationBusy=true;
         try{
           const result=await handleCommand(w,target,command);
           await post('/api/result',w.id,{workerId:w.id,commandId:command.id,ok:true,...(result||{})});
@@ -777,7 +976,10 @@ async function tickWorker(w){
           const status=String(error?.status||error?.message||error);
           await post('/api/result',w.id,{workerId:w.id,commandId:command.id,ok:false,status}).catch(postError=>log('CONTROLLER_COMMAND_RESULT_POST_FAILED',{workerId:w.id,commandId:command.id,error:String(postError?.message||postError)}));
           log('CONTROLLER_COMMAND_FAILED',{workerId:w.id,commandId:command.id,action:command.action,status});
-        }finally{nv02MutationBusy=false;}
+        }finally{
+          workerMutationBusy.delete(w.id);
+          if(w.id==='NV02')nv02MutationBusy=false;
+        }
         return;
       }
     }
@@ -792,6 +994,7 @@ async function tickWorker(w){
       return;
     }
     if(w.id==='NV02')await maybeNv02Continuity(w,target,ui);
+    else if(CONTINUITY_WORKERS.includes(w.id))await maybeWorkerContinuity(w,target,ui);
   }catch(error){
     const msg=String(error?.message||error);
     if(!/CDP_LIST|AbortError|TimeoutError/.test(msg))log('WORKER_TICK_ERROR',{workerId:w.id,error:msg});
@@ -800,42 +1003,56 @@ async function tickWorker(w){
 
 async function tick(){
   const worker=config.workers.find(w=>w.id==='NV02');
-  if(!worker){log('NV02_CONFIG_MISSING');return;}
-  await tickWorker(worker);
+  const workers=CONTINUITY_WORKERS.map((id)=>config.workers.find((w)=>w.id===id)).filter((w)=>w&&w.enabled!==false);
+  if(!worker)log('NV02_CONFIG_MISSING');
+  if(!workers.length){log('WORKER_CONFIG_MISSING',{expected:CONTINUITY_WORKERS});return;}
+  await Promise.allSettled(workers.map((w)=>tickWorker(w)));
 }
 const NV02_OWNER_LOCK='D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\nv02-canonical-owner.lock';
+const WORKER_LOCK_DIR='D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\worker-locks';
+try{fs.mkdirSync(WORKER_LOCK_DIR,{recursive:true});}catch{}
 function pidAlive(pid){try{process.kill(pid,0);return true;}catch{return false;}}
-function acquireNv02CanonicalOwnership(){
+function workerOwnerLockPath(workerId){return workerId==='NV02'?NV02_OWNER_LOCK:join(WORKER_LOCK_DIR,`${workerId.toLowerCase()}-canonical-owner.lock`);}
+function acquireWorkerOwnership(workerId){
+  const lockPath=workerOwnerLockPath(workerId);
   for(let attempt=0;attempt<2;attempt++){
     try{
-      const fd=fs.openSync(NV02_OWNER_LOCK,'wx');
-      try{fs.writeFileSync(fd,JSON.stringify({pid:process.pid,approvedHead:APPROVED_HEAD,sourceSha256:BRIDGE_SHA256,bridgePath:BRIDGE_PATH,acquiredAt:new Date().toISOString()}),'utf8');}finally{fs.closeSync(fd);}
+      const fd=fs.openSync(lockPath,'wx');
+      try{fs.writeFileSync(fd,JSON.stringify({workerId,pid:process.pid,approvedHead:APPROVED_HEAD,sourceSha256:BRIDGE_SHA256,bridgePath:BRIDGE_PATH,acquiredAt:new Date().toISOString()}),'utf8');}finally{fs.closeSync(fd);}
       return;
     }catch(error){
       if(error?.code!=='EEXIST')throw error;
       let existing={};
-      try{existing=JSON.parse(fs.readFileSync(NV02_OWNER_LOCK,'utf8'));}catch{}
+      try{existing=JSON.parse(fs.readFileSync(lockPath,'utf8'));}catch{}
       if(Number(existing.pid)>0&&pidAlive(Number(existing.pid))){
-        log('NV02_DUPLICATE_CANONICAL_OWNERSHIP',{existingPid:Number(existing.pid),incomingPid:process.pid,existingHead:existing.approvedHead||null});
-        throw new Error('NV02_DUPLICATE_CANONICAL_OWNERSHIP');
+        const legacy=workerId==='NV02'?'NV02_DUPLICATE_CANONICAL_OWNERSHIP':`WORKER_DUPLICATE_CANONICAL_OWNERSHIP:${workerId}`;
+        log(workerId==='NV02'?'NV02_DUPLICATE_CANONICAL_OWNERSHIP':'WORKER_DUPLICATE_CANONICAL_OWNERSHIP',{workerId,existingPid:Number(existing.pid),incomingPid:process.pid,existingHead:existing.approvedHead||null});
+        throw new Error(legacy);
       }
-      try{fs.unlinkSync(NV02_OWNER_LOCK);}catch{}
+      try{fs.unlinkSync(lockPath);}catch{}
     }
   }
-  throw new Error('NV02_CANONICAL_OWNERSHIP_LOCK_FAILED');
+  throw new Error(workerId==='NV02'?'NV02_CANONICAL_OWNERSHIP_LOCK_FAILED':`WORKER_CANONICAL_OWNERSHIP_LOCK_FAILED:${workerId}`);
 }
-function releaseNv02CanonicalOwnership(){
+function releaseWorkerOwnership(workerId){
   try{
-    const existing=JSON.parse(fs.readFileSync(NV02_OWNER_LOCK,'utf8'));
-    if(Number(existing.pid)===process.pid)fs.unlinkSync(NV02_OWNER_LOCK);
+    const lockPath=workerOwnerLockPath(workerId);
+    const existing=JSON.parse(fs.readFileSync(lockPath,'utf8'));
+    if(Number(existing.pid)===process.pid)fs.unlinkSync(lockPath);
   }catch{}
 }
-acquireNv02CanonicalOwnership();
-process.once('exit',releaseNv02CanonicalOwnership);
-process.once('SIGTERM',()=>{releaseNv02CanonicalOwnership();process.exit(0);});
-process.once('SIGINT',()=>{releaseNv02CanonicalOwnership();process.exit(0);});
-const bridgeServer=http.createServer((req,res)=>{if(req.url==='/health'){const provenanceVerified=Boolean(APPROVED_HEAD&&DEPLOY_ROOT&&EXPECTED_BRIDGE_SHA256&&EXPECTED_BRIDGE_SHA256===BRIDGE_SHA256);res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({ok:true,mode:'NV02_ISOLATED_AUTO_CONTINUE',controllerRequired:false,controllerEnabledFlagIgnored:true,worker:'NV02',canonicalOwnership:true,pid:process.pid,approvedHead:APPROVED_HEAD||null,deployRoot:DEPLOY_ROOT||null,sourceSha256:BRIDGE_SHA256,expectedSourceSha256:EXPECTED_BRIDGE_SHA256||null,provenanceVerified,continuity:loadNv02Continuity()}));return;}res.writeHead(404);res.end();});
-bridgeServer.on('error',(error)=>{log('NV02_CANONICAL_OWNER_BIND_FAILED',{error:String(error),code:error?.code||null});releaseNv02CanonicalOwnership();process.exit(42);});
+function acquireNv02CanonicalOwnership(){return acquireWorkerOwnership('NV02');}
+function releaseNv02CanonicalOwnership(){return releaseWorkerOwnership('NV02');}
+const ownedWorkers=CONTINUITY_WORKERS.filter((id)=>config.workers.some((w)=>w.id===id&&w.enabled!==false));
+if(ownedWorkers.includes('NV02'))acquireNv02CanonicalOwnership();
+for(const id of ownedWorkers.filter((id)=>id!=='NV02'))acquireWorkerOwnership(id);
+function releaseAllWorkerOwnership(){for(const id of ownedWorkers)releaseWorkerOwnership(id);}
+process.once('exit',releaseAllWorkerOwnership);
+process.once('SIGTERM',()=>{releaseAllWorkerOwnership();process.exit(0);});
+process.once('SIGINT',()=>{releaseAllWorkerOwnership();process.exit(0);});
+
+const bridgeServer=http.createServer((req,res)=>{if(req.url==='/health'){const provenanceVerified=Boolean(APPROVED_HEAD&&DEPLOY_ROOT&&EXPECTED_BRIDGE_SHA256&&EXPECTED_BRIDGE_SHA256===BRIDGE_SHA256);res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({ok:true,mode:'NV02_ISOLATED_AUTO_CONTINUE',controllerRequired:false,controllerEnabledFlagIgnored:true,worker:'NV02',canonicalOwnership:true,workers:ownedWorkers,pid:process.pid,approvedHead:APPROVED_HEAD||null,deployRoot:DEPLOY_ROOT||null,sourceSha256:BRIDGE_SHA256,expectedSourceSha256:EXPECTED_BRIDGE_SHA256||null,provenanceVerified,continuity:loadNv02Continuity()}));return;}res.writeHead(404);res.end();});
+bridgeServer.on('error',(error)=>{log('NV02_CANONICAL_OWNER_BIND_FAILED',{error:String(error),code:error?.code||null});releaseAllWorkerOwnership();process.exit(42);});
 bridgeServer.listen(8799,'127.0.0.1',()=>log('BRIDGE_READY',{port:8799,mode:'NV02_ISOLATED_AUTO_CONTINUE',controllerRequired:false,controllerEnabledFlagIgnored:true,canonicalOwnership:true,pid:process.pid,approvedHead:APPROVED_HEAD||null,sourceSha256:BRIDGE_SHA256,provenanceVerified:Boolean(APPROVED_HEAD&&DEPLOY_ROOT&&EXPECTED_BRIDGE_SHA256&&EXPECTED_BRIDGE_SHA256===BRIDGE_SHA256)}));
 setInterval(()=>void tick(),3000).unref();
 void tick();
