@@ -189,7 +189,8 @@ describe('NV02 continuity policy', () => {
     const serverSource=readFileSync('apps/chrome-controller/src/server.ts','utf8');
     expect(serverSource).not.toContain("paused&&!projectContextRecovery");
     expect(serverSource).toContain("if(paused)throw new Error('OWNER_INTERACTION_READ_ONLY');");
-    expect(serverSource).toContain("const boundedRecovery=staleWorkingRecovery||stalledRecovery||modelProfileRecovery||checkpointRecovery||chatRotation");
+    expect(serverSource).toContain("const boundedRecovery=staleWorkingRecovery||stalledRecovery||modelProfileRecovery||checkpointRecovery||chatRotation||continuityContinue");
+    expect(serverSource).toContain("const continuityContinue=workerId==='NV02'&&purpose==='CONTINUITY_CONTINUE'");
     expect(serverSource).toContain("allowContinuable:continuityContinue");
     const backgroundSource=readFileSync('apps/chrome-controller/extension/background.js','utf8');
     expect(backgroundSource).not.toContain("if(workerId==='NV02')await maybeNv02Continuity(ctx,ui)");
