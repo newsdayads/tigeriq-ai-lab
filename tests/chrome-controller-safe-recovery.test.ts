@@ -132,8 +132,8 @@ describe('independent worker recovery flows in direct-cdp-bridge',()=>{
     expect(source).toContain("phase==='BLOCKED'");
     expect(source).toContain("WORKER_RESET_MAX_ATTEMPTS=2");
     expect(source).toContain("RECOVERY_BOUNDED_STOP");
-    expect(source).toContain("/api/workers/${w.id}/restart-schedule");
-    expect(source).toContain("prepareOnly:true");
+    expect(bridge).toContain("/api/workers/${w.id}/restart-schedule");
+    expect(bridge).toContain("prepareOnly:true");
     expect(source).toContain("await closeWorker(w,target)");
     expect(source).toContain("WORKER_REOPEN_CLOSE:");
     expect(source).not.toContain("/api/utility/workers/${w.id}/safe-recover");
@@ -163,6 +163,7 @@ describe('independent worker recovery flows in direct-cdp-bridge',()=>{
 describe('safe recovery contracts',()=>{
   const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
   const broker=readFileSync('apps/chrome-controller/src/chrome-launch-broker.ts','utf8');
+  const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
 
   it('uses tested boot/persist fail-closed helpers in Controller runtime',()=>{
     expect(server).toContain('restoreWorkerSafetyState(workerSafetyStatePath)');
