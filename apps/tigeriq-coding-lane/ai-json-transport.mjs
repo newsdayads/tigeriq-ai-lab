@@ -13,11 +13,56 @@ export function extractModelText(input,data){
   return data?.choices?.[0]?.message?.content||'';
 }
 
+export function salvageTruncatedCompactEdits(text){
+  const clean=String(text||'').replace(/```json|```/gi,'').trim();
+  const key=clean.indexOf('"edits"');
+  if(key<0)return null;
+  const arrayStart=clean.indexOf('[',key);
+  if(arrayStart<0)return null;
+  const edits=[];
+  let depth=0,start=-1,inString=false,escaped=false;
+  for(let i=arrayStart+1;i<clean.length;i++){
+    const ch=clean[i];
+    if(inString){
+      if(escaped){escaped=false;continue}
+      if(ch==='\\'){escaped=true;continue}
+      if(ch==='"')inString=false;
+      continue;
+    }
+    if(ch==='"'){inString=true;continue}
+    if(ch==='{'){
+      if(depth===0)start=i;
+      depth++;
+      continue;
+    }
+    if(ch==='}'&&depth>0){
+      depth--;
+      if(depth===0&&start>=0){
+        try{
+          const edit=JSON.parse(clean.slice(start,i+1));
+          if(edit&&typeof edit==='object'&&!Array.isArray(edit))edits.push(edit);
+        }catch{}
+        start=-1;
+      }
+      continue;
+    }
+    if(ch===']'&&depth===0)break;
+  }
+  if(!edits.length)return null;
+  let summary='salvaged compact edits';
+  const prefix=clean.slice(0,arrayStart);
+  const match=prefix.match(/"summary"\s*:\s*"((?:\\.|[^"\\])*)"/);
+  if(match){
+    try{summary=JSON.parse(`"${match[1]}"`)}catch{}
+  }
+  return {summary,edits};
+}
+
 export function parseModelJson(text){
   const clean=String(text||'').replace(/```json|```/gi,'').trim();
   const a=clean.indexOf('{'),b=clean.lastIndexOf('}');
-  if(a<0||b<a)return null;
-  try{return JSON.parse(clean.slice(a,b+1))}catch{return null}
+  if(a<0||b<a)return salvageTruncatedCompactEdits(clean);
+  try{return JSON.parse(clean.slice(a,b+1))}catch{return salvageTruncatedCompactEdits(clean)}
 }
 
 export function looksLikeJsonObject(text){return !!parseModelJson(text)}
