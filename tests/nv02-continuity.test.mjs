@@ -137,13 +137,18 @@ describe('NV02 continuity policy', () => {
 
     expect(source).toContain("verifiedChatUrl:String(raw.verifiedChatUrl||'')");
     expect(source).toContain("sameNv02Chat(state.verifiedChatUrl,ui?.url)");
-    expect(source).toContain("const modelCheckRequired=now>=Number(state.modelCheckBlockedUntil||0)&&(!state.verifiedChatUrl||!sameNv02Chat(state.verifiedChatUrl,ui?.url))");
+    expect(source).toContain("const modelCheckRequired=now>=Number(state.modelCheckBlockedUntil||0)&&!sameVerifiedSession");
     expect(source).toContain("phase==='STALLED'&&ui?.modelExact!==true&&modelCheckRequired");
 
     expect(source).not.toContain("state.verifiedChatUrl===ui?.url");
     expect(source).toContain("verifiedChatUrl:String(profile.url||'')");
     expect(source).toContain("location.hostname==='chatgpt.com'?Boolean(stop):Boolean(stop||activityBusy)");
     expect(source).toContain("function sameNv02Chat(a,b)");
+    expect(source).toContain("verifiedTargetId:String(raw.verifiedTargetId||'')");
+    expect(source).toContain("state.verifiedTargetId===String(target.id||'')");
+    expect(source).toContain("MODEL_SESSION_TARGET_PINNED");
+    expect(source).toContain("pages.find(t=>state?.verifiedTargetId&&t.id===state.verifiedTargetId)");
+
     expect(source).toContain("pages.find(t=>sameNv02Chat(t.url,state?.verifiedChatUrl))");
 
 
