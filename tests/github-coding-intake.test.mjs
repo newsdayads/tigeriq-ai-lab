@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {classifyCodingBlocker,extractCodingDependencies,materializeGithubCodingIssues,parseCodingIssue,syncGithubCodingOutcomes} from '../apps/tigeriq-core/github-coding-intake.mjs';
+import {classifyCodingBlocker,extractCodingDependencies,materializeGithubCodingIssues,parseCodingIssue,shouldRearmRecoverableFinal,syncGithubCodingOutcomes} from '../apps/tigeriq-core/github-coding-intake.mjs';
 
 function issue(body,extra={}){
   return {number:777,title:'Safe autonomous coding task',body,state:'open',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/777',...extra};
@@ -279,6 +279,31 @@ describe('GitHub coding continuity supervisor',()=>{
     await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
     expect(posted).toBe(0);
     expect(pool.events.filter(e=>e.type==='GITHUB_CODING_BLOCKED_FINAL')[0]?.data.reason).toBe('HARD_BLOCKER');
+  });
+
+  it('re-arms a recoverable exhausted issue once after main changes',async()=>{
+    const pool=fakePool();let posted=0;
+    pool.events.push(
+      {type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:804,codingObjectiveId:'obj-804-r2'}},
+      {type:'GITHUB_CODING_RETRY_DISPATCHED',data:{issueNumber:804,codingObjectiveId:'obj-804-r1',retryAttempt:1}},
+      {type:'GITHUB_CODING_RETRY_DISPATCHED',data:{issueNumber:804,codingObjectiveId:'obj-804-r2',retryAttempt:2}},
+      {type:'GITHUB_CODING_BLOCKED_FINAL',data:{issueNumber:804,codingObjectiveId:'obj-804-r2',status:'blocked',reason:'RETRY_BUDGET_EXHAUSTED',terminalReason:'OUTPUT_CONTRACT_EXHAUSTED',mainSha:'old-main'}}
+    );
+    expect(shouldRearmRecoverableFinal(pool.events.at(-1).data,'new-main',[])).toBe(true);
+    const current=issue(SAFE,{number:804});
+    const fetchImpl=async(url,init={})=>{
+      if(url.includes('/api/status'))return response({objectives:[{id:'obj-804-r2',status:'blocked',summary:'OUTPUT_CONTRACT_EXHAUSTED'}],jobs:[]});
+      if(url.includes('/git/ref/heads/main'))return response({object:{sha:'new-main'}});
+      if(url.includes('/api/objectives')){posted++;const body=JSON.parse(init.body);expect(body.objective).toContain('RECOVERY_KEY=GITHUB-ISSUE-804-RECOVERY-new-main');return response({id:'obj-804-recovery'});}
+      if(url.includes('/issues/804'))return response(current);
+      if(url.includes('/comments'))return response({});
+      return response({});
+    };
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+    expect(posted).toBe(1);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_RECOVERY_REARMED')).toHaveLength(1);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_DISPATCHED').at(-1)?.data.codingObjectiveId).toBe('obj-804-recovery');
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_BLOCKED_FINAL')).toHaveLength(1);
   });
 
   it('emits BLOCKED_FINAL after the retry budget is exhausted',async()=>{
