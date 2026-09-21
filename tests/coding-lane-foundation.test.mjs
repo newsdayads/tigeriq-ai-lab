@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
+import {readFileSync} from 'node:fs';
 import {activeProviderCooldownIds,applyCompactEdits,assertPrOpenState,buildLocalFileContext,classifyAiFailure,codingPathsOverlap,gateFailureIssues,invokeJsonWithFailover,isResourceTransientError,preserveGenerationPrompt,recoverAfterCodingRestart,resourceWaitPlan,restartRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,validateCompactEdits} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError,parseJsonObject} from '../apps/tigeriq-coding-lane/policy.mjs';
 
@@ -277,6 +278,16 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
   await t.test('temporary all-provider busy is a resource wait condition',()=>{
     const e=new Error('AI_RESOURCES_BUSY');e.code='AI_RESOURCES_BUSY';
     assert.strictEqual(isResourceTransientError(e),true);
+  });
+
+  await t.test('initial coding generation uses compact edits and exposes implementer before generation',()=>{
+    const source=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
+    const assignment=source.indexOf("set employee_id=$2,status='running'");
+    const generation=source.indexOf("generated=await generateChanges");
+    assert.ok(assignment>=0&&assignment<generation);
+    assert.ok(source.includes('Return ONLY compact JSON {"summary":"short","edits"'));
+    assert.ok(source.includes('await writeRepairEdits(branch,gen.edits)'));
+    assert.ok(!source.includes('for(const ch of gen.changes)await writeFile(branch,ch)'));
   });
 
   await t.test('existing branch and PR are resumable identity',()=>{
