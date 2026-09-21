@@ -797,6 +797,7 @@ import crypto from 'node:crypto';
 export function verifyRuntimeProvenance(sourceCode, expectedHash){const hash=crypto.createHash('sha256').update(sourceCode).digest('hex');if(expectedHash && hash!==expectedHash){throw new Error(`RUNTIME_PROVENANCE_HASH_MISMATCH:${hash}`);}return hash;}
 const activeRuntimeOwners = new Map();
 export const activeRuntimeOwners = new Map();
+export const activeRuntimeOwners = new Map();
 export function enforceCanonicalRuntimeOwner(workerId, ownerToken) {
   if (!ownerToken) throw new Error(`STALE_FALLBACK_RUNTIME_REJECTED:${workerId}`);
   const existing = activeRuntimeOwners.get(workerId);
