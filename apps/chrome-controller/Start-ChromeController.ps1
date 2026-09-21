@@ -14,6 +14,18 @@ if (-not (Test-Path $server)) {
 }
 
 $env:TIGERIQ_CHROME_CONFIG = $Config
+# Prevent launching if a lock file exists (idempotent start)
+$lockFile = Join-Path $root "dist\apps\chrome-controller\controller.lock"
+if (Test-Path $lockFile) {
+  Write-Host "Chrome controller already running (lock file present). Exiting."
+  exit 0
+}
+# Block legacy config locations (e.g., paths containing 'legacy')
+if ($Config -match "legacy") {
+  throw "Legacy config paths are blocked: $Config"
+}
+# Create lock file to indicate running instance
+New-Item -ItemType File -Path $lockFile -Force | Out-Null
 Set-Location $root
 & node $server
 exit $LASTEXITCODE
