@@ -1140,6 +1140,8 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
         if(state.manualCloseSuppressed)throw new Error(`MANUAL_CLOSE_SUPPRESSED:${workerId}`);
         if(state.blocked)throw new Error('PLANNED_REFRESH_BLOCKED');
         if(!recentHeartbeat(workerId))throw new Error(`WORKER_HEARTBEAT_NOT_READY:${workerId}`);
+        const security=heartbeatStopReason(state.lastHeartbeat);
+        if(security)throw new Error(security);
         const data=await body(req);
         const leaseOwnerId=String(data.leaseOwnerId??'').trim();
         const leaseId=String(data.leaseId??'').trim();
