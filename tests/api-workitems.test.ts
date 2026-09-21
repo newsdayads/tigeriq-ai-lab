@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { startApi } from '../apps/api/src/server.js';
 import type { Actor } from '../packages/control-plane/src/index.js';
+import { agentStatusStore } from '../packages/control-plane/src/dbHelpers.js';
 
 const actors: [string, Actor][] = [
   ['planner-secret', { id: 'planner-1', role: 'planner' }],
@@ -12,7 +13,7 @@ const actors: [string, Actor][] = [
 let api: Awaited<ReturnType<typeof startApi>>;
 
 beforeEach(async () => { api = await startApi({ tokens: new Map(actors) }); });
-afterEach(async () => api.close());
+afterEach(async () => { api.close(); agentStatusStore.clear(); });
 
 async function call(path: string, token?: string, body?: unknown, key: string = crypto.randomUUID()) {
   return fetch(`${api.url}${path}`, {
