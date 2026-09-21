@@ -1104,7 +1104,7 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
     }catch(error){json(res,409,{ok:false,error:String(error)});}
     return true;
   }
-  const utilityMatch=url.pathname.match(/^\/api\/utility\/workers\/(NV02|NV03|NV04)\/(health|pause|resume|open-canonical|archive|safe-recover)$/);
+  const utilityMatch=url.pathname.match(/^\/api\/utility\/workers\/(NV02|NV03|NV04)\/(health|pause|resume|open-canonical|archive|safe-recover|plan-refresh)$/);
   if(utilityMatch){
     const workerId=utilityMatch[1] as WorkerId; const action=utilityMatch[2]; const state=states.get(workerId)!; const worker=getWorker(workerId)!;
     try{
@@ -1133,6 +1133,19 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
       }
       assertWorkerEnabled(workerId);
       if(action==='open-canonical'){await uiQueue.enqueue(()=>sendCommand(workerId,'NAVIGATE',{url:worker.homeUrl}));json(res,200,{ok:true});return true;}
+      if(action==='plan-refresh'){
+        browserMutationLeases.assertControllerAllowed(workerId);
+        if(paused)throw new Error('OWNER_INTERACTION_READ_ONLY');
+        if(utilityPausedWorkers.has(workerId))throw new Error(`UTILITY_WORKER_PAUSED:${workerId}`);
+        if(state.manualCloseSuppressed)throw new Error(`MANUAL_CLOSE_SUPPRESSED:${workerId}`);
+        if(state.blocked)throw new Error('PLANNED_REFRESH_BLOCKED');
+        if(!recentHeartbeat(workerId))throw new Error(`WORKER_HEARTBEAT_NOT_READY:${workerId}`);
+        plannedRefreshWorkers.add(workerId);
+        log('WORKER_PLANNED_REFRESH_MARKED',{workerId});
+        persistEvidence();
+        json(res,202,{ok:true,plannedRefresh:true});
+        return true;
+      }
       if(action==='safe-recover'){browserMutationLeases.assertControllerAllowed(workerId);if(utilityPausedWorkers.has(workerId))throw new Error(`UTILITY_WORKER_PAUSED:${workerId}`);if(state.blocked)throw new Error('SAFE_RECOVER_BLOCKED'); if(recentHeartbeat(workerId)){await layoutWorker(workerId);json(res,200,{ok:true,mode:'ATTACH_EXISTING'});return true;} await startWorker(workerId);json(res,200,{ok:true,mode:'BROKER_LAUNCH'});return true;}
       if(action==='archive'){const data=await body(req);if(typeof data.receiptRef!=='string'||!data.receiptRef.startsWith('https://github.com/'))throw new Error('ARCHIVE_DURABLE_RECEIPT_REQUIRED');if(workerHasActiveJob(workerId)||state.lastHeartbeat?.uiBusy)throw new Error('ARCHIVE_ACTIVE_JOB_FORBIDDEN');await uiQueue.enqueue(()=>sendCommand(workerId,'ARCHIVE_CHAT',{receiptRef:data.receiptRef}));json(res,200,{ok:true});return true;}
     }catch(error){json(res,409,{ok:false,error:String(error)});return true;}

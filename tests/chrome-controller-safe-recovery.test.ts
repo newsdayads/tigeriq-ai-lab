@@ -126,14 +126,15 @@ describe('independent worker recovery flows in direct-cdp-bridge',()=>{
     expect(source).toContain("computeWorkerStaggerDelay");
   });
 
-  it('fails closed on pause/security and uses bounded worker-specific reopen',()=>{
+  it('fails closed on pause/security and uses bounded worker-specific planned reopen',()=>{
     expect(source).toContain("workerAutomationPaused(workerId)");
     expect(source).toContain("WORKER_AUTOMATION_PAUSE_CHECK_FAILED_CLOSED");
     expect(source).toContain("phase==='BLOCKED'");
     expect(source).toContain("WORKER_RESET_MAX_ATTEMPTS=2");
     expect(source).toContain("RECOVERY_BOUNDED_STOP");
+    expect(source).toContain("/api/utility/workers/${w.id}/plan-refresh");
     expect(source).toContain("/api/utility/workers/${w.id}/safe-recover");
-    expect(source).toContain("await closeWorker(w,target)");
+    expect(source.indexOf("/api/utility/workers/${w.id}/plan-refresh")).toBeLessThan(source.indexOf("await closeWorker(w,target)"));
     expect(source).toContain("resumeUrl");
   });
 
@@ -147,6 +148,13 @@ describe('independent worker recovery flows in direct-cdp-bridge',()=>{
     expect(readyBlock).toContain('CONTINUE_SKIPPED_NO_CURRENT_WORK');
     expect(readyBlock.indexOf('hasContinuableWorkerWork(controllerState,w.id)')).toBeLessThan(readyBlock.indexOf('pickContinuePrompt(state.lastPrompt)'));
     expect(readyBlock.indexOf('hasContinuableWorkerWork(controllerState,w.id)')).toBeLessThan(readyBlock.indexOf("dispatch(target,prompt)"));
+  });
+
+  it('normalizes generic heartbeat phase without weakening NV02 exact-model semantics',()=>{
+    const heartbeat=source.slice(source.indexOf('async function postWorkerHeartbeat'),source.indexOf('async function tickWorker'));
+    expect(heartbeat).toContain("w.id==='NV02'?String(ui?.uiPhase||'STALLED'):deriveWorkerPhase(ui||{},{workerId:w.id})");
+    expect(heartbeat).toContain('state:normalizedPhase');
+    expect(heartbeat).toContain('uiPhase:normalizedPhase');
   });
 
   it('never routes NV03/NV04 through NV02-only model/project recovery',()=>{
@@ -201,6 +209,20 @@ describe('safe recovery contracts',()=>{
     expect(needed).not.toContain('snapshotRequiredWorkers().includes(id)||workerHasActiveJob(id)');
     expect(startup).toContain('const needed=new Set<WorkerId>(WORKER_IDS)');
     expect(startup).toContain('states.get(id)?.manualCloseSuppressed');
+  });
+
+  it('marks bridge-owned reset as planned while keeping manual close fail-closed',()=>{
+    const utilityStart=server.indexOf('const utilityMatch=');
+    const utility=server.slice(utilityStart,server.indexOf('const match=url.pathname.match',utilityStart));
+    const windowStart=server.indexOf("if(url.pathname==='/api/window-event'");
+    const windowEvent=server.slice(windowStart,server.indexOf("if(url.pathname==='/api/continuity/event'",windowStart));
+    expect(utility).toContain('plan-refresh');
+    expect(utility).toContain('plannedRefreshWorkers.add(workerId)');
+    expect(utility).toContain('MANUAL_CLOSE_SUPPRESSED');
+    expect(utility).toContain("OWNER_INTERACTION_READ_ONLY");
+    expect(windowEvent).toContain('const plannedRefresh=plannedRefreshWorkers.has(workerId)');
+    expect(windowEvent).toContain('state.manualCloseSuppressed=!recoveryEligible');
+    expect(windowEvent).toContain('if(plannedRefresh)plannedRefreshWorkers.delete(workerId)');
   });
 
   it('keeps paused workers out of unattended start/autopilot paths',()=>{

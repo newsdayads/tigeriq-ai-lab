@@ -148,6 +148,7 @@ async function reopenWorker(w,target,state,now,reason){
   saveWorkerContinuity(w.id,checkpointed);
   await genericWorkerEvent(w.id,'RESET_CHECKPOINTED',{reason,resumeUrl,recoveryAttempt:checkpointed.recoveryAttempts});
   const result=await withWorkerMutation(w.id,async()=>{
+    await post(`/api/utility/workers/${w.id}/plan-refresh`,w.id,{reason});
     await closeWorker(w,target);
     await sleep(1200);
     let lastError=null;
@@ -963,7 +964,8 @@ async function handleCommand(w,target,command){
 async function postWorkerHeartbeat(w,target,ui,projectContextReady){
   const windowId=await windowIdFor(workerPort(w),target.id);
   const display={workArea:{left:0,top:0,width:Number(config.layout?.fallbackWorkAreaWidth||3277),height:1688}};
-  await post('/api/heartbeat',w.id,{workerId:w.id,state:ui.uiPhase||'STALLED',windowId,tabId:target.id,url:ui.url,active:true,uiReady:ui.uiReady,uiPhase:ui.uiPhase,composerReady:ui.composerReady,sendReady:ui.sendReady,stopVisible:ui.stopVisible,scrollToBottomVisible:ui.scrollToBottomVisible,authRequired:ui.authRequired===true,uiBusy:ui.uiBusy,securityBlock:ui.securityBlock,modelControlPresent:ui.modelControlPresent,modelProfileStatus:ui.modelProfileStatus,modelName:ui.modelName,reasoningEffort:ui.reasoningEffort,modelReady:ui.modelReady,modelExact:ui.modelExact,verifiedAt:ui.verifiedAt,blockedReason:ui.blockedReason,projectContextReady,display});
+  const normalizedPhase=w.id==='NV02'?String(ui?.uiPhase||'STALLED'):deriveWorkerPhase(ui||{},{workerId:w.id});
+  await post('/api/heartbeat',w.id,{workerId:w.id,state:normalizedPhase,windowId,tabId:target.id,url:ui.url,active:true,uiReady:ui.uiReady,uiPhase:normalizedPhase,composerReady:ui.composerReady,sendReady:ui.sendReady,stopVisible:ui.stopVisible,scrollToBottomVisible:ui.scrollToBottomVisible,authRequired:ui.authRequired===true,uiBusy:ui.uiBusy,securityBlock:ui.securityBlock,modelControlPresent:ui.modelControlPresent,modelProfileStatus:ui.modelProfileStatus,modelName:ui.modelName,reasoningEffort:ui.reasoningEffort,modelReady:ui.modelReady,modelExact:ui.modelExact,verifiedAt:ui.verifiedAt,blockedReason:ui.blockedReason,projectContextReady,display});
 }
 
 async function tickWorker(w){
