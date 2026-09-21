@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync,mkdtempSync,readFileSync,readdirSync,renameSync,unlinkSync,writeFileSync } from 'node:fs';
+import { copyFileSync,existsSync,mkdtempSync,readFileSync,readdirSync,renameSync,unlinkSync,writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as ts from 'typescript';
@@ -7,7 +7,7 @@ import { describe,expect,it } from 'vitest';
 import { DurableDispatchLeaseStore } from '../apps/chrome-controller/src/dispatch-lease.js';
 import { canResetOrphanUnpersistedDispatch,classifyAutoContinueDispatchFailure,decideAutoContinue,freshAutopilotState,sourceStillOffersPendingJob,type DurableAutopilotState,type ExternalAutopilotSnapshot } from '../apps/chrome-controller/src/autopilot.js';
 import { heartbeatStopReason } from '../apps/chrome-controller/src/security-gate.js';
-import { atomicWriteJsonWithRetry, type AtomicJsonFileOps } from '../apps/chrome-controller/src/runtime-evidence.js';
+import { atomicWriteJsonWithRetry, persistRuntimeEvidenceJson, type AtomicJsonFileOps } from '../apps/chrome-controller/src/runtime-evidence.js';
 
 const observedAt='2026-09-17T00:00:10.000Z';
 const completedAt='2026-09-17T00:00:05.000Z';
@@ -105,6 +105,20 @@ describe('crash-safe atomic persistence',()=>{
     expect(()=>atomicWriteJsonWithRetry(path,{generation:'never-written'},ops(()=>{throw errorWithCode('EBUSY');},'persistent-busy'),3)).toThrow('EBUSY');
     expect(readFileSync(path,'utf8')).toBe(lastGood);
     expect(readdirSync(dir).filter((name)=>name.endsWith('.tmp'))).toEqual([]);
+  });
+
+  it('uses a verified copy fallback for non-authoritative runtime evidence after persistent Windows EPERM',()=>{
+    const dir=mkdtempSync(join(tmpdir(),'tigeriq-evidence-'));const path=join(dir,'runtime-evidence.json');
+    writeFileSync(path,'{"generation":"last-good"}\n','utf8');let attempts=0;
+    const custom:AtomicJsonFileOps={
+      ...ops(()=>{attempts++;throw errorWithCode('EPERM');},'copy-fallback'),
+      copy:(from,to)=>copyFileSync(from,to),
+      read:(file)=>readFileSync(file,'utf8'),
+    };
+    const result=persistRuntimeEvidenceJson(path,{generation:'fallback'},custom);
+    expect(attempts).toBe(9);expect(result).toEqual({mode:'COPY_FALLBACK',code:'EPERM'});
+    expect(JSON.parse(readFileSync(path,'utf8'))).toEqual({generation:'fallback'});
+    expect(JSON.parse(readFileSync(`${path}.last-good`,'utf8'))).toEqual({generation:'last-good'});
   });
 
   it('holds a serialization lock for the complete atomic replace transaction',()=>{
