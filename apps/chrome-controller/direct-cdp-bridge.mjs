@@ -603,6 +603,10 @@ async function maybeNv02Continuity(w,target,ui){
         state={...state,stalledChecks:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
         return;
       }
+      const recoveredProjectContext=isNv02ProjectContext(corrected?.url)||corrected?.projectDraftReady===true;
+      if(!recoveredProjectContext)throw new Error('PROJECT_CONTEXT_NOT_READY_AFTER_MODEL_RECOVERY');
+      await postWorkerHeartbeat(w,target,corrected,recoveredProjectContext);
+      await continuityEvent('MODEL_PROFILE_HEARTBEAT_REFRESHED',{modelName:corrected?.modelName||null,reasoningEffort:corrected?.reasoningEffort||null,verifiedAt:corrected?.verifiedAt||null});
       state={...state,stalledChecks:0,nextContinueAt:now};saveNv02Continuity(state);
       const sent=await dispatchNaturalContinue(target,state,now,waitingEvidenceJobId);
       if(sent?.status==='MUTATION_LEASE_BUSY'){
@@ -638,15 +642,20 @@ async function handleCommand(w,target,command){
   if(action==='ARCHIVE_CHAT'){const r=await archiveChat(target);if(!r?.ok)throw new Error(r?.status||'ARCHIVE_FAILED');return r;}
   throw new Error(`UNKNOWN_ACTION:${action}`);
 }
+async function postWorkerHeartbeat(w,target,ui,projectContextReady){
+  const windowId=await windowIdFor(workerPort(w),target.id);
+  const display={workArea:{left:0,top:0,width:Number(config.layout?.fallbackWorkAreaWidth||3277),height:1688}};
+  await post('/api/heartbeat',w.id,{workerId:w.id,state:ui.uiPhase||'STALLED',windowId,tabId:target.id,url:ui.url,active:true,uiReady:ui.uiReady,uiPhase:ui.uiPhase,composerReady:ui.composerReady,sendReady:ui.sendReady,stopVisible:ui.stopVisible,scrollToBottomVisible:ui.scrollToBottomVisible,authRequired:ui.authRequired===true,uiBusy:ui.uiBusy,securityBlock:ui.securityBlock,modelControlPresent:ui.modelControlPresent,modelProfileStatus:ui.modelProfileStatus,modelName:ui.modelName,reasoningEffort:ui.reasoningEffort,modelReady:ui.modelReady,modelExact:ui.modelExact,verifiedAt:ui.verifiedAt,blockedReason:ui.blockedReason,projectContextReady,display});
+}
+
 async function tickWorker(w){
   if(busy.has(w.id)) return; busy.add(w.id);
   try{
     const port=workerPort(w);let list=await targets(port);let target=await pruneDuplicates(w,list);if(!target)return;
-    const rawUi=await uiState(target);const windowId=await windowIdFor(port,target.id);
+    const rawUi=await uiState(target);
     const projectContextReady=w.id!=='NV02'||isNv02ProjectContext(rawUi.url)||rawUi.projectDraftReady===true;
     const ui=projectContextReady?rawUi:{...rawUi,uiReady:false,uiPhase:'STALLED',modelReady:false};
-    const display={workArea:{left:0,top:0,width:Number(config.layout?.fallbackWorkAreaWidth||3277),height:1688}};
-    await post('/api/heartbeat',w.id,{workerId:w.id,state:ui.uiPhase||'STALLED',windowId,tabId:target.id,url:ui.url,active:true,uiReady:ui.uiReady,uiPhase:ui.uiPhase,composerReady:ui.composerReady,sendReady:ui.sendReady,stopVisible:ui.stopVisible,scrollToBottomVisible:ui.scrollToBottomVisible,authRequired:ui.authRequired===true,uiBusy:ui.uiBusy,securityBlock:ui.securityBlock,modelControlPresent:ui.modelControlPresent,modelProfileStatus:ui.modelProfileStatus,modelName:ui.modelName,reasoningEffort:ui.reasoningEffort,modelReady:ui.modelReady,modelExact:ui.modelExact,verifiedAt:ui.verifiedAt,blockedReason:ui.blockedReason,projectContextReady,display});
+    await postWorkerHeartbeat(w,target,ui,projectContextReady);
     if(w.id==='NV02'&&!projectContextReady&&!ui.securityBlock){
       if(!NV02_HOME_URL){await continuityEvent('PROJECT_CONTEXT_RECOVERY_BLOCKED',{reason:'NV02_HOME_URL_MISSING',url:rawUi.url||null});return;}
       const recovered=await withNv02Mutation(()=>recoverNv02ProjectContext(target),'PROJECT_CONTEXT_RECOVERY');
