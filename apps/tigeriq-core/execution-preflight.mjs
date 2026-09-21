@@ -39,7 +39,7 @@ export function runExecutionPreflight({ skill, tool, state, context, workItem } 
       if (workItem.implementer && workItem.reviewer && workItem.implementer === workItem.reviewer) {
         errors.push('IMPLEMENTER_REVIEWER_COLLISION');
       }
-      if (workItem.implementer === 'NV02' && workItem.duplicateNV02Dispatch === true) {
+      if (workItem.implementer === 'NV02' && (workItem.duplicateNV02Dispatch === true || workItem._nv02Dispatched === true)) {
         errors.push('DUPLICATE_NV02_DISPATCH_PREVENTED');
       }
     }
