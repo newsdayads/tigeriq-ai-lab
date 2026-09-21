@@ -2,6 +2,11 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 
 export type DispatchLeaseState='RESERVED'|'DISPATCHING'|'COMMITTED';
+export interface ResourceMutationScope {
+  resourceScopeId: string;
+  exclusiveOwnerId: string;
+  durableVersion: number;
+}
 export interface DispatchLease {
   schemaVersion:'tigeriq.chrome-controller.dispatch-lease.v3';
   leaseId:string;
@@ -200,6 +205,13 @@ export class DurableDispatchLeaseStore{
 
   #newLease(jobId:string,nowMs:number,epoch:number,takeoverOf?:string):DispatchLease{
     return{schemaVersion:'tigeriq.chrome-controller.dispatch-lease.v3',leaseId:randomUUID(),leaseEpoch:epoch,ownerId:this.#ownerId,jobId,state:'RESERVED',acquiredAt:iso(nowMs),heartbeatAt:iso(nowMs),expiresAt:iso(nowMs+this.#ttlMs),...(takeoverOf?{takeoverOf}: {})};
+  }
+  public enforceSingleMutationOwner(scopeId: string): boolean {
+    const current = this.read();
+    if (current.lease && current.lease.ownerId !== this.#ownerId && current.lease.state === 'COMMITTED') {
+      return false;
+    }
+    return true;
   }
 
   #atomicReplace(lease:DispatchLease){
