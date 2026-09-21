@@ -4,7 +4,7 @@ import {Pool} from 'pg';
 const DEFAULT_INTERVAL_MS=15000;
 const DEFAULT_STALE_MS=45*60*1000;
 const DEFAULT_MAX_JOBS_PER_OBJECTIVE=3;
-const RETRYABLE_FAILURES=new Set(['CI_GATES_FAILED','CI_GATES_TIMEOUT','REVIEW_CHANGES_UNRESOLVED','STALL_TIMEOUT','CODING_COMPACT_EDIT_INVALID','CODING_COMPACT_EDITS_COUNT_INVALID','CODING_COMPACT_EDIT_OLD_NOT_FOUND']);
+const RETRYABLE_FAILURES=new Set(['CI_GATES_FAILED','CI_GATES_TIMEOUT','REVIEW_CHANGES_UNRESOLVED','STALL_TIMEOUT','OUTPUT_CONTRACT_EXHAUSTED','CODING_COMPACT_EDIT_INVALID','CODING_COMPACT_EDITS_COUNT_INVALID','CODING_COMPACT_EDIT_OLD_NOT_FOUND','CODING_COMPACT_EDIT_OLD_NOT_UNIQUE']);
 const GH_OWNER=process.env.TIGERIQ_GITHUB_OWNER||'newsdayads';
 const GH_REPO=process.env.TIGERIQ_GITHUB_REPO||'tigeriq-ai-lab';
 
@@ -33,9 +33,17 @@ export function extractGitHubIssueNumber(text){
   const url=s.match(/github\.com\/[^/]+\/[^/]+\/issues\/(\d+)/i);
   return url?Number(url[1]):null;
 }
+export function retryResumeIdentity(job){
+  const branch=String(job?.branch||'').trim();
+  const prNumber=Number(job?.pr_number||0);
+  if(!branch||!Number.isInteger(prNumber)||prNumber<=0)return {branch:null,prNumber:null,headSha:null};
+  return {branch,prNumber,headSha:String(job?.head_sha||'').trim()||null};
+}
 export function repairInstruction(job,reason,cycle){
   const detail=typeof job.failure==='object'&&job.failure?JSON.stringify(job.failure):String(job.failure||'');
-  return `${job.instruction}\n\nAUTONOMOUS_REPAIR_CYCLE=${cycle}\nPREVIOUS_FAILURE=${reason}\nPREVIOUS_FAILURE_DETAIL=${detail.slice(0,3000)}\nRegenerate the implementation from current main, keep the same allowed paths, and explicitly fix the previous failure. Do not broaden scope.`;
+  const resume=retryResumeIdentity(job);
+  const source=resume.prNumber?`the existing PR #${resume.prNumber} branch`:'current main';
+  return `${job.instruction}\n\nAUTONOMOUS_REPAIR_CYCLE=${cycle}\nPREVIOUS_FAILURE=${reason}\nPREVIOUS_FAILURE_DETAIL=${detail.slice(0,3000)}\nRegenerate the implementation from ${source}, keep the same allowed paths, and explicitly fix the previous failure. Do not broaden scope.`;
 }
 
 async function ensureSchema(pool){
@@ -94,8 +102,9 @@ async function queueRetry(pool,job,reason,maxJobs){
   const retryId=`CODE-${randomUUID()}`;
   const cycle=total+1;
   const paths=Array.isArray(job.paths)?job.paths:[];
-  await pool.query('insert into tigeriq_coding_jobs(id,objective_id,title,instruction,paths,status) values($1,$2,$3,$4,$5,\'queued\')',[
-    retryId,job.objective_id,`${String(job.title||'Coding job').slice(0,140)} [repair ${cycle}]`,repairInstruction(job,reason,cycle),JSON.stringify(paths)
+  const resume=retryResumeIdentity(job);
+  await pool.query('insert into tigeriq_coding_jobs(id,objective_id,title,instruction,paths,status,branch,pr_number,head_sha) values($1,$2,$3,$4,$5,\'queued\',$6,$7,$8)',[
+    retryId,job.objective_id,`${String(job.title||'Coding job').slice(0,140)} [repair ${cycle}]`,repairInstruction(job,reason,cycle),JSON.stringify(paths),resume.branch,resume.prNumber,resume.headSha
   ]);
   await pool.query("update tigeriq_coding_objectives set status='active',summary=$2,updated_at=now() where id=$1",[job.objective_id,`AUTO_REPAIR_QUEUED:${retryId}:${reason}`]);
   await emit(pool,'RETRY_QUEUED',{objectiveId:job.objective_id,sourceJobId:job.id,retryJobId:retryId,reason,cycle});
