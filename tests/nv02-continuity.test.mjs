@@ -132,9 +132,12 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("const NV02_F5_MAX_MS=10*60*1000");
     expect(source).toContain("'PERIODIC_F5_REFRESH'");
     expect(source).toContain("nextRefreshAt:nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS)");
+    expect(source).toContain("modelCheckBlockedUntil:now+30000");
+    expect(source).toContain("modelCheckBlockedUntil:Number(raw.modelCheckBlockedUntil)||0");
+
     expect(source).toContain("verifiedChatUrl:String(raw.verifiedChatUrl||'')");
     expect(source).toContain("sameNv02Chat(state.verifiedChatUrl,ui?.url)");
-    expect(source).toContain("const modelCheckRequired=!state.verifiedChatUrl||!sameNv02Chat(state.verifiedChatUrl,ui?.url)");
+    expect(source).toContain("const modelCheckRequired=now>=Number(state.modelCheckBlockedUntil||0)&&(!state.verifiedChatUrl||!sameNv02Chat(state.verifiedChatUrl,ui?.url))");
     expect(source).toContain("phase==='STALLED'&&ui?.modelExact!==true&&modelCheckRequired");
 
     expect(source).not.toContain("state.verifiedChatUrl===ui?.url");
