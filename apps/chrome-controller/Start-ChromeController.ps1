@@ -26,6 +26,12 @@ if ($Config -match "legacy") {
 }
 # Create lock file to indicate running instance
 New-Item -ItemType File -Path $lockFile -Force | Out-Null
-Set-Location $root
-& node $server
+try {
+  Set-Location $root
+  & node $server
+} finally {
+  if (Test-Path $lockFile) {
+    Remove-Item $lockFile -Force -ErrorAction SilentlyContinue
+  }
+}
 exit $LASTEXITCODE
