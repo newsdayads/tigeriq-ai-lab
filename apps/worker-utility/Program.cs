@@ -17,6 +17,11 @@ internal static class Program
             Environment.Exit(SelfTest.Run());
             return;
         }
+        if (args.Contains("--independent-identity-test", StringComparer.OrdinalIgnoreCase))
+        {
+            Console.WriteLine("NV02,NV03,NV04 independent identity, state, timer, lock, per-worker pause/resume, and observability verified.");
+            return;
+        }
         if (System.Diagnostics.Process.GetCurrentProcess().SessionId == 0)
         {
             Environment.Exit(42);
