@@ -1,8 +1,8 @@
 const SAFE_PATH_RE=/^[A-Za-z0-9._/-]+$/;
 const PROTECTED=[
-  /^\.github\/workflows\//i,
+  /^\.github\/workflows\/\i,
   /^\.github\/CODEOWNERS$/i,
-  /^\.env(?:\.|$)/i,
+  /^\.env(?:\.|$)\i,
   /(^|\/)secrets?(\/|$)/i,
   /credential/i,
   /^docs\/EXECUTION_BOUNDARY\.md$/i,
@@ -91,9 +91,8 @@ function repairInvalidJsonEscapes(input){
       if(backslashes%2===0) inString=false;
       continue;
     }
-    if(ch==='\\'){
-      const next=s[i+1];
-      if(next&&'"\\/bfnrtu'.includes(next)) out+='\\';
+    if(ch==='\\'){\n      const next=s[i+1];
+      if(next&&'"\\bfnrtu'.includes(next)) out+='\\';
       else out+='\\\\';
       continue;
     }
@@ -127,6 +126,20 @@ export function parseJsonObject(text){
   }
 }
 
+export function validateCompactContract(edits){
+  if(!Array.isArray(edits)) throw new Error('COMPACT_CONTRACT_EDITS_ARRAY_REQUIRED');
+  if(edits.length===0) throw new Error('COMPACT_CONTRACT_NO_EDITS');
+  if(edits.length>20) throw new Error('COMPACT_CONTRACT_TOO_MANY_EDITS');
+  for(const edit of edits){
+    if(typeof edit.path!=='string'&&!edit.path) throw new Error(`COMPACT_CONTRACT_INVALID_PATH: ${edit.path}`);
+    if(typeof edit.old!=='string'&&!edit.old) throw new Error(`COMPACT_CONTRACT_EMPTY_OLD: ${edit.path}`);
+    if(typeof edit.new!=='string') throw new Error(`COMPACT_CONTRACT_NEW_REQUIRED: ${edit.path}`);
+    if(edit.old.length>3000) throw new Error(`COMPACT_CONTRACT_OLD_TOO_LARGE: ${edit.path}`);
+    if(edit.new.length>6000) throw new Error(`COMPACT_CONTRACT_NEW_TOO_LARGE: ${edit.path}`);
+  }
+  return true;
+}
+
 export function branchName(employeeId,jobId){
   const e=String(employeeId||'nv').toLowerCase().replace(/[^a-z0-9-]/g,'-').slice(0,20);
   const j=String(jobId||'job').toLowerCase().replace(/[^a-z0-9-]/g,'-').slice(-48);
@@ -147,7 +160,7 @@ export function changedPathImpact(paths){
   const list=(paths||[]).map(String);
   const web=list.some(p=>/^apps\/tigeriq-core\/web-control(?:\.|-)|^scripts\/tigeriq-core\/run-web-control/i.test(p));
   const coding=list.some(p=>/^apps\/tigeriq-coding-lane\//i.test(p)||/^scripts\/tigeriq-core\/(?:run|install)-coding-lane/i.test(p));
-  const core=list.some(p=>/^apps\/tigeriq-core\//i.test(p)&&!/^apps\/tigeriq-core\/web-control(?:\.|-)/i.test(p))||list.some(p=>/^scripts\/tigeriq-core\/(?:run-core|install-core-task)\.ps1$/i.test(p));
+  const core=list.some(p=>/^apps\/tigeriq-core\//i.test(p)&&!/^apps\/tigeriq-core\/web-control(?:\.|-)\i.test(p))||list.some(p=>/^scripts\/tigeriq-core\/(?:run-core|install-core-task)\.ps1$/i.test(p));
   const updater=list.some(p=>p==='scripts/tigeriq-core/update-core-runtime.ps1');
   return {core,web,coding,updater,none:!core&&!web&&!coding&&!updater};
 }
