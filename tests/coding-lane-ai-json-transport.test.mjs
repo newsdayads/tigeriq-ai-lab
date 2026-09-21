@@ -8,6 +8,7 @@ describe('coding lane AI JSON transport',()=>{
   it('routes same-PR CI repair through the compact changes transport',()=>{
     const prompt=buildRepairGenerationPrompt({id:'NV17'},{instruction:'fix CI',paths:['tests/a.test.mjs']},'FILE tests/a.test.mjs\nconst x=1;',['CI Verify: failure']);
     expect(prompt).toContain('REVIEW ISSUES TO FIX');
+    expect(prompt).toContain('tests/a.test.mjs');
     expect(prompt).toContain('"changes":[{"path"');
     expect(compactPromptForChanges(prompt)).toContain('"edits":[{"path"');
     expect(compactPromptForChanges(prompt)).toContain('CURRENT FILES:');
