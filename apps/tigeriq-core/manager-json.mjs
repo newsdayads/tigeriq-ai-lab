@@ -8,7 +8,17 @@ export function parseManagerJson(text){
   try{value=JSON.parse(clean);}catch(error){throw managerError('MANAGER_JSON_INVALID',error);}
   if(!value||typeof value!=='object'||Array.isArray(value))throw managerError('MANAGER_SCHEMA_INVALID');
   if(!['continue','complete','blocked'].includes(value.status))throw managerError('MANAGER_STATUS_INVALID');
-  if(value.auto_ui_dependencies && (!Array.isArray(value.auto_ui_dependencies) || value.auto_ui_dependencies.some(d => typeof d !== 'string'))){
+  const result={status:value.status,summary:String(value.summary||''),jobs:Array.isArray(value.jobs)?value.jobs:[]};
+  if(Array.isArray(value.auto_ui_dependencies)){
+    result.auto_ui_dependencies=value.auto_ui_dependencies.map(x=>String(x));
+  }
+  if(value.retry_state&&typeof value.retry_state==='object'&&!Array.isArray(value.retry_state)){
+    result.retry_state={attempt:Number(value.retry_state.attempt||0),maxAttempts:Number(value.retry_state.maxAttempts||3),backoffMs:Number(value.retry_state.backoffMs||1000)};
+  }
+  return result;
+}
+
+export function runBoundedManagerDecisiono_ui_dependencies && (!Array.isArray(value.auto_ui_dependencies) || value.auto_ui_dependencies.some(d => typeof d !== 'string'))){
     throw managerError('MANAGER_SCHEMA_INVALID');
   }
   if(value.retry_state !== undefined && (typeof value.retry_state !== 'object' || Array.isArray(value.retry_state) || value.retry_state === null)){
