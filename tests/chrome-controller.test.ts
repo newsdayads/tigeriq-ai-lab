@@ -146,14 +146,13 @@ describe('three-worker controller/broker/config source integration',()=>{
 
 describe('Worker Identity, Isolation, Leases, and Pause Precedence', () => {
   it('verifies worker configuration validation and profile isolation for NV02, NV03, and NV04', () => {
-    const config = baseConfig();
+    const config = JSON.parse(readFileSync('apps/chrome-controller/chrome-controller.config.example.json','utf8'));
     expect(() => validateConfig(config)).not.toThrow();
-    const ids = config.workers.map(w => w.id);
+    const ids = config.workers.map((w:any) => w.id);
     expect(ids).toEqual(['NV02', 'NV03', 'NV04']);
-    const profiles = new Set(config.workers.map(w => w.profileDirectory));
-    expect(profiles.size).toBe(3);
-    const ports = new Set(config.workers.map(w => w.debugPort));
-    expect(ports.size).toBe(3);
+    expect(new Set(config.workers.map((w:any) => w.profileDirectory)).size).toBe(3);
+    expect(new Set(config.workers.map((w:any) => w.debugPort)).size).toBe(3);
+    expect(new Set(config.workers.map((w:any) => w.userDataDir)).size).toBe(3);
   });
 
   it('verifies identity routing and exclusive mutation leases per worker', () => {
