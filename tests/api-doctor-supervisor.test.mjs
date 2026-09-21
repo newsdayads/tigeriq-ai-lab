@@ -3,6 +3,7 @@ import {describe,expect,it} from 'vitest';
 import {
   API_DOCTOR_CAPABILITY,
   apiDoctorAction,
+  apiDoctorExistingHandoffAction,
   apiDoctorRepairSignature,
   buildApiDoctorPrompt,
   classifyApiDoctorFailure,
@@ -51,6 +52,16 @@ describe('#1255 NV10 API Doctor policy',()=>{
     })).toMatchObject({action:'probe_then_handoff',failureClass:'source_contract'});
   });
 
+  it('waits on an existing repair handoff instead of probing the provider again',()=>{
+    expect(apiDoctorExistingHandoffAction({existingHandoff:true,successAfterHandoff:false})).toEqual({
+      action:'wait_repair',reason:'repair_handoff_pending_live_work',
+    });
+    expect(apiDoctorExistingHandoffAction({existingHandoff:true,successAfterHandoff:true})).toEqual({
+      action:'recovered',reason:'live_work_success_after_handoff',
+    });
+    expect(apiDoctorExistingHandoffAction({existingHandoff:false,successAfterHandoff:false})).toEqual({action:'proceed'});
+  });
+
   it('uses a stable dedupe signature for the same provider/failure class',()=>{
     const a=apiDoctorRepairSignature({employeeId:'NV18',provider:'watsonx',failureClass:'source_contract',message:'EMPTY_RESPONSE attempt 12'});
     const b=apiDoctorRepairSignature({employeeId:'NV18',provider:'watsonx',failureClass:'source_contract',message:'EMPTY_RESPONSE attempt 77'});
@@ -90,6 +101,8 @@ describe('#1255 routing/runtime integration',()=>{
     expect(core).toContain("API_DOCTOR_REPAIR_HANDOFF");
     expect(core).toContain("API_DOCTOR_EXTERNAL_BLOCKED");
     expect(core).toContain("API_DOCTOR_RECOVERED");
+    expect(core).toContain("row.action='wait_repair'");
+    expect(core).toContain("coalesce(task_kind,'')<>'api_doctor'");
     expect(core).toContain('apiDoctor:await apiDoctorTelemetry()');
     expect(core).not.toContain("retryDue=['READY','ERROR','RATE_LIMITED','OFFLINE']");
   });
