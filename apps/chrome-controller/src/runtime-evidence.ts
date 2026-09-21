@@ -84,13 +84,21 @@ function atomicJsonErrorCode(error:unknown){
 export function atomicWriteJsonWithRetry(path:string,value:unknown,ops:AtomicJsonFileOps=defaultAtomicJsonFileOps,maxRetries=8){
   const release=ops.acquireLock?.(path);
   const temp=`${path}.${process.pid}.${ops.tempId()}.tmp`;
+  const content=`${JSON.stringify(value,null,2)}\n`;
   try{
-    ops.write(temp,`${JSON.stringify(value,null,2)}\n`);
+    ops.write(temp,content);
     for(let attempt=0;;attempt++){
       try{ops.rename(temp,path);return;}
       catch(error){
         const code=atomicJsonErrorCode(error);
-        if(!['EPERM','EBUSY'].includes(code)||attempt>=maxRetries)throw error;
+        if(!['EPERM','EBUSY'].includes(code))throw error;
+        if(attempt>=maxRetries){
+          // Windows readers can allow writes while denying delete/replace sharing.
+          // The controller-wide write lock still serializes TigerIQ writers, so
+          // fall back to an in-place refresh instead of permanently losing evidence.
+          ops.write(path,content);
+          return;
+        }
         ops.sleep(Math.min(500,25*(2**attempt)));
       }
     }
