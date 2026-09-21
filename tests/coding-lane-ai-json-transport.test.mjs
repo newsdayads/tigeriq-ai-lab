@@ -11,7 +11,7 @@ describe('coding lane AI JSON transport',()=>{
     expect(prompt).toContain('"changes":[{"path"');
     expect(compactPromptForChanges(prompt)).toContain('"edits":[{"path"');
     expect(compactPromptForChanges(prompt)).toContain('CURRENT FILES:');
-    expect(prompt).toContain('tests/a.test.mjs');
+    expect(prompt).toContain('INTENTIONAL_CI_FAIL_CANARY');
     expect(prompt).toContain('CI Verify: failure');
   });
 
