@@ -106,6 +106,17 @@ describe('crash-safe atomic persistence',()=>{
     expect(readFileSync(path,'utf8')).toBe(lastGood);
     expect(readdirSync(dir).filter((name)=>name.endsWith('.tmp'))).toEqual([]);
   });
+
+  it('holds a serialization lock for the complete atomic replace transaction',()=>{
+    const dir=mkdtempSync(join(tmpdir(),'tigeriq-evidence-'));const path=join(dir,'runtime-evidence.json');
+    let lockHeld=false,released=false,renameSawLock=false;
+    const custom:AtomicJsonFileOps={
+      ...ops((from,to)=>{renameSawLock=lockHeld;renameSync(from,to);},'serialized'),
+      acquireLock:()=>{expect(lockHeld).toBe(false);lockHeld=true;return()=>{lockHeld=false;released=true;};},
+    };
+    atomicWriteJsonWithRetry(path,{generation:'serialized'},custom);
+    expect(renameSawLock).toBe(true);expect(released).toBe(true);expect(lockHeld).toBe(false);
+  });
 });
 
 describe('withdrawn pending source contract',()=>{
@@ -148,6 +159,10 @@ describe('fresh completion evidence',()=>{
     expect(decideAutoContinue(snapshot(),{...freshAutopilotState(),lastDispatchedJobId:'GH-1'},now)).toMatchObject({kind:'WAIT_EVIDENCE'});
     const wrong=snapshot();wrong.previousJob!.evidence![0].jobId='GH-X';expect(decideAutoContinue(wrong,dispatchedState(),now)).toMatchObject({kind:'WAIT_EVIDENCE'});
     const old=snapshot();old.previousJob!.completedAt='2026-09-17T00:00:00.000Z';old.previousJob!.evidence![0].completedAt='2026-09-17T00:00:00.000Z';expect(decideAutoContinue(old,dispatchedState(),now)).toMatchObject({kind:'WAIT_EVIDENCE'});
+    const cancelled=snapshot();cancelled.previousJob={...cancelled.previousJob!,status:'CANCELLED',executable:false,evidence:undefined,completedAt:undefined,completionRevision:undefined};
+    expect(decideAutoContinue(cancelled,dispatchedState(),now)).toMatchObject({kind:'DISPATCH',jobId:'GH-2',workerId:'NV02'});
+    const cancelledNoNext={...cancelled,nextJob:undefined};
+    expect(decideAutoContinue(cancelledNoNext,dispatchedState(),now)).toMatchObject({kind:'IDLE',reason:'NO_EXECUTABLE_JOB'});
   });
 });
 
@@ -196,8 +211,9 @@ describe('stale-working restart schedule scope',()=>{
 describe('isolated NV02 stall/F5 recovery scope',()=>{
   it('keeps stale-WORKING recovery bounded while allowing explicit durable long-chat rotation',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
-    expect(bridge).toContain("'WORKING_STALLED_RECOVERY'");
+    expect(bridge).toContain("'STALE_WORKING_RECOVERY'");
     expect(bridge).toContain("'WORKING_STALLED_REOPEN_SCHEDULED'");
+    expect(bridge).toContain("reason:'WORKING_NO_PROGRESS_3_CHECKS'");
     expect(bridge).toContain("'PERIODIC_F5_REFRESH'");
     expect(bridge).toContain("stopAndClearComposerExpr");
     expect(bridge).toContain("nextPeriodicF5At:Number(raw.nextPeriodicF5At)||nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS)");
