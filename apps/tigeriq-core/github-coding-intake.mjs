@@ -79,7 +79,8 @@ export function classifyCodingBlocker(summary){
 }
 export function shouldRearmRecoverableFinal(final,currentMainSha,rearms=[]){
   const mainSha=String(currentMainSha||'').trim();
-  if(!mainSha||String(final?.reason||'').toUpperCase()!=='RETRY_BUDGET_EXHAUSTED')return false;
+  const finalReason=String(final?.reason||'').toUpperCase();
+  if(!mainSha||!['RETRY_BUDGET_EXHAUSTED','HARD_BLOCKER'].includes(finalReason))return false;
   const terminalReason=String(final?.terminalReason||'');
   if(classifyCodingBlocker(terminalReason).kind!=='RECOVERABLE')return false;
   if(String(final?.mainSha||'').trim()===mainSha)return false;
