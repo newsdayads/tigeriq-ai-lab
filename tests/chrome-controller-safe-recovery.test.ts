@@ -107,27 +107,46 @@ describe('controller restart-safe worker safety gates',()=>{
 });
 
 describe('independent worker recovery flows in direct-cdp-bridge',()=>{
-  it('verifies per-worker state, locks, staggered reset caps, and fail-closed security gates',()=>{
-    const workerIds = ['NV02', 'NV03', 'NV04'];
-    const workerStates = new Map();
-    const workerLocks = new Map();
-    const workerResetCounters = new Map();
-    const workerResetTimers = new Map();
-    for (const id of workerIds) {
-      workerStates.set(id, { checkpointed: false, closed: false, reopened: false, failedClosed: false, resetAttempts: 0 });
-      workerLocks.set(id, false);
-      workerResetCounters.set(id, 0);
-      workerResetTimers.set(id, null);
-    }
-    expect(workerStates.size).toBe(3);
-    for (const id of workerIds) {
-      expect(workerResetCounters.get(id)).toBe(0);
-      expect(workerLocks.get(id)).toBe(false);
-      // Simulate staggered reset cap limit check
-      const attempts = workerResetCounters.get(id) || 0;
-      const capped = attempts >= 3;
-      expect(capped).toBe(false);
-    }
+  const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+
+  it('runs one continuity loop for all three configured workers with independent locks/state',()=>{
+    expect(source).toContain("CONTINUITY_WORKERS.map((id)=>config.workers.find((w)=>w.id===id))");
+    expect(source).toContain("workerMutationBusy.has(w.id)");
+    expect(source).toContain("function loadWorkerContinuity(workerId)");
+    expect(source).toContain("function saveWorkerContinuity(workerId,state)");
+    expect(source).toContain("function acquireWorkerOwnership(workerId)");
+    expect(source).toContain("function acquireNv02CanonicalOwnership()");
+    expect(source).toContain("NV02_OWNER_LOCK");
+    expect(source).toContain("NV02_DUPLICATE_CANONICAL_OWNERSHIP");
+  });
+
+  it('keeps F5 and 2-4 hour reset timers separate and staggered per worker',()=>{
+    expect(source).toContain("WORKER_F5_MIN_MS");
+    expect(source).toContain("WORKER_F5_MAX_MS");
+    expect(source).toContain("nextPeriodicF5At");
+    expect(source).toContain("nextResetAt");
+    expect(source).toContain("nextWorkerResetAt(workerId");
+    expect(source).toContain("computeWorkerStaggerDelay");
+    expect(source).toContain("PERIODIC_2_4H_RESET");
+    expect(source).toContain("PERIODIC_F5_REFRESH");
+  });
+
+  it('fails closed on pause/security and uses bounded worker-specific reopen',()=>{
+    expect(source).toContain("workerAutomationPaused(workerId)");
+    expect(source).toContain("WORKER_AUTOMATION_PAUSE_CHECK_FAILED_CLOSED");
+    expect(source).toContain("phase==='BLOCKED'");
+    expect(source).toContain("WORKER_RESET_MAX_ATTEMPTS=2");
+    expect(source).toContain("RECOVERY_BOUNDED_STOP");
+    expect(source).toContain("/api/utility/workers/${w.id}/safe-recover");
+    expect(source).toContain("await closeWorker(w,target)");
+    expect(source).toContain("resumeUrl");
+  });
+
+  it('never routes NV03/NV04 through NV02-only model/project recovery',()=>{
+    expect(source).toContain("if(w.id==='NV02')await maybeNv02Continuity(w,target,ui)");
+    expect(source).toContain("else if(CONTINUITY_WORKERS.includes(w.id))await maybeWorkerContinuity(w,target,ui)");
+    expect(source).toContain("location.hostname==='chatgpt.com'?Boolean(stop):Boolean(stop||activityBusy)");
+    expect(source).toContain("function validWorkerUrl(w,url)");
   });
 });
 
