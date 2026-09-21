@@ -21,6 +21,13 @@ internal sealed class StateStore
 
     public bool TryGetWorkerIdentity(string workerId, out string? key)
     {
+        var def = Workers.All.FirstOrDefault(w => w.Id.Equals(workerId, StringComparison.OrdinalIgnoreCase));
+        key = def?.IdentityKey;
+        return key is not null;
+    }
+
+    public bool TryGetWorkerIdentity_Old(string workerId, out string? key)
+    {
         key = null;
         var s = Load();
         if (s.Workers.TryGetValue(workerId, out var w))
