@@ -777,7 +777,10 @@ async function tickWorker(w){
         return;
       }
       if(!NV02_HOME_URL){await continuityEvent('PROJECT_CONTEXT_RECOVERY_BLOCKED',{reason:'NV02_HOME_URL_MISSING',url:rawUi.url||null});return;}
-      const recovered=await withNv02Mutation(()=>recoverNv02ProjectContext(target),'PROJECT_CONTEXT_RECOVERY');
+      // Project-context loss is a bounded STALLED recovery. Using the Controller's
+      // STALLED_RECOVERY lease keeps the same active NV02 job allowed while the UI
+      // is idle, without permitting a new prompt or backlog selection.
+      const recovered=await withNv02Mutation(()=>recoverNv02ProjectContext(target),'STALLED_RECOVERY');
       await continuityEvent(recovered?.status==='MUTATION_LEASE_BUSY'?'PROJECT_CONTEXT_RECOVERY_DEFERRED':'PROJECT_CONTEXT_RECOVERY_NAVIGATED',{status:recovered?.status||null,fromUrl:rawUi.url||null});
       return;
     }
