@@ -18,7 +18,8 @@ internal static class WorkerStateEvidenceRegistry
     static readonly Dictionary<string, WorkerEvidenceRecord> evidence = new(StringComparer.OrdinalIgnoreCase);
     public static void Record(string id, string status, string lastPrompt, string lastAction, bool paused)
     {
-        evidence[id] = new WorkerEvidenceRecord(status, lastPrompt, lastAction, DateTimeOffset.UtcNow, paused);
+        evidence[id] = new WorkerEvidenceRecord(status, lastPrompt, lastAction, paused, DateTimeOffset.UtcNow);
+    }stPrompt, lastAction, DateTimeOffset.UtcNow, paused);
     }
     public static WorkerEvidenceRecord? Get(string id) => evidence.TryGetValue(id, out var r) ? r : null;
 }
