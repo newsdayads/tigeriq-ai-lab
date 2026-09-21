@@ -12,6 +12,7 @@ import { normalizeTerminalWorkItems, handoffGenerationKey, evaluateChildObjectiv
 import { ROUTING_PROFILE_LABELS, createResourceId, deriveRoutingProfile, failurePolicy, normalizeQuota, rankCandidates, rateLimitFailureState } from './smart-router.mjs';
 import { runExecutionPreflight } from './execution-preflight.mjs';
 import { detectIdleWithBacklog } from './github-backlog-policy.mjs';
+import { API_DOCTOR_CAPABILITY, apiDoctorAction, apiDoctorRepairSignature, buildApiDoctorPrompt, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
 
 const DATABASE_URL = process.env.DATABASE_URL?.trim();
 if (!DATABASE_URL) throw new Error('DATABASE_URL_MISSING');
@@ -26,6 +27,11 @@ const SURFSENSE_APP_URL = process.env.TIGERIQ_SURFSENSE_APP_URL?.trim() || 'http
 const SURFSENSE_SEARCH_URL = process.env.TIGERIQ_SURFSENSE_SEARCH_URL?.trim() || 'http://127.0.0.1:3930/search';
 const SURFSENSE_SUMMARY_MODEL = process.env.TIGERIQ_SURFSENSE_SUMMARY_MODEL?.trim() || 'gemma3:4b';
 const OLLAMA_EMPLOYEE_ID = 'NV10';
+const API_DOCTOR_INTERVAL_MS = Math.max(60000, Number(process.env.TIGERIQ_API_DOCTOR_INTERVAL_MS || 120000));
+const API_DOCTOR_ANALYSIS_DEDUPE_MS = Math.max(60000, Number(process.env.TIGERIQ_API_DOCTOR_ANALYSIS_DEDUPE_MS || 600000));
+const CODING_LANE_HOST = process.env.TIGERIQ_CODING_HOST?.trim() || '127.0.0.1';
+const CODING_LANE_PORT = Number(process.env.TIGERIQ_CODING_PORT || 8797);
+const CODING_LANE_URL = process.env.TIGERIQ_CODING_URL?.trim() || `http://${CODING_LANE_HOST}:${CODING_LANE_PORT}`;
 const GEMINI_MIN_INTERVAL_MS = Math.max(4500, Number(process.env.TIGERIQ_GEMINI_MIN_INTERVAL_MS || 4500));
 const GEMINI_BACKOFF_BASE_MS = Math.max(4500, Number(process.env.TIGERIQ_GEMINI_BACKOFF_BASE_MS || 4500));
 const GEMINI_MAX_ATTEMPTS = Math.max(1, Number(process.env.TIGERIQ_GEMINI_MAX_ATTEMPTS || 4));
@@ -42,8 +48,10 @@ const R = (id, name, provider, model, req = [], rank = 50) => ({
   accountBinding:'default', runtimeBinding:'core', costTier:provider==='ollama'?'LOCAL':'FREE', zeroOutOfPocket:true,
   capabilities: ['general', 'reasoning', 'review'],
 });
+const nv10Resource = R(OLLAMA_EMPLOYEE_ID,'Ollama','ollama',process.env.TIGERIQ_OLLAMA_MODEL || 'qwen3:4b',[],90);
+nv10Resource.capabilities = ['general','reasoning','review',API_DOCTOR_CAPABILITY];
 const resources = [
-  R(OLLAMA_EMPLOYEE_ID,'Ollama','ollama',process.env.TIGERIQ_OLLAMA_MODEL || 'qwen3:4b',[],90),
+  nv10Resource,
   R('NV11','Groq','groq',process.env.TIGERIQ_GROQ_MODEL || 'openai/gpt-oss-120b',[['GROQ_API_KEY'],['TIGERIQ_GROQ_FREE_TIER_VERIFIED','true']],10),
   R('NV12','Gemini','gemini',process.env.TIGERIQ_GEMINI_MODEL || 'gemini-3.5-flash-lite',[['GEMINI_API_KEY'],['TIGERIQ_GEMINI_FREE_TIER_VERIFIED','true']],20),
   R('NV13','OpenRouter','openrouter','openrouter/free',[['OPENROUTER_API_KEY']],30),
@@ -341,7 +349,136 @@ async function invokeRouted(prompt,capability,jobId,maxAttempts=3,options={}){
   if(capability==='coding'){const e=new Error('LOCAL_CODING_DISABLED_GITHUB_ONLY');e.kind='configuration';throw e;}const taskKind=String(options.taskKind||'general'),profile=deriveRoutingProfile({requested:options.profile,taskKind,capability});const failures=[],excluded=[];for(let i=0;i<maxAttempts;i++){const row=await claimResource(capability,jobId,excluded,{...options,profile,taskKind});if(!row)break;excluded.push(row.resource_id);const r=resources.find(x=>x.resourceId===row.resource_id);if(!r)continue;await pool.query("update tigeriq_jobs set employee_id=$2,resource_id=$3,provider=$4,routing_profile=$5,routing_decision=$6,attempts=attempts+1,lease_until=now()+interval '5 minutes' where id=$1",[jobId,r.id,r.resourceId,r.provider,profile,JSON.stringify(row.routingDecision)]);const started=Date.now();try{const text=await invokeProvider(r,prompt),latency=Date.now()-started;await markResourceSuccess(r,jobId,latency,'RESOURCE_SUCCESS',true,{taskKind,profile});return{text,resource:r,latencyMs:latency,failures,routingProfile:profile,routingDecision:row.routingDecision};}catch(error){let finalError=error,policy=failurePolicy(error?.kind||'outage');if(policy.retrySameResource){await event('ROUTING_RETRY',{jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind,profile,kind:policy.kind});try{const retryStarted=Date.now(),text=await invokeProvider(r,prompt),latency=Date.now()-retryStarted;await markResourceSuccess(r,jobId,latency,'RESOURCE_SUCCESS',true,{taskKind,profile});return{text,resource:r,latencyMs:latency,failures,routingProfile:profile,routingDecision:row.routingDecision};}catch(retryError){finalError=retryError;policy=failurePolicy(retryError?.kind||policy.kind);}}const kind=finalError?.kind||'outage';failures.push({employeeId:r.id,resourceId:r.resourceId,provider:r.provider,kind,message:String(finalError?.message||finalError)});await markResourceFailure(r,jobId,finalError,'RESOURCE_FAILURE',true,{taskKind,profile});if(policy.failover)await event('ROUTING_FAILOVER',{jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind,profile,kind});if(policy.stop)break;}}const e=new Error('NO_AI_RESOURCE_AVAILABLE');e.failures=failures;throw e;
 }
 async function probeResource(resourceOrEmployeeId){const r=resources.find(x=>x.resourceId===resourceOrEmployeeId||x.id===resourceOrEmployeeId);if(!r)throw new Error('RESOURCE_NOT_FOUND');if(!reqReady(r)&&r.provider!=='ollama')throw new Error('RESOURCE_CREDENTIAL_NOT_READY');const started=Date.now();try{const marker='TIGERIQ_RESOURCE_PROBE_'+r.id,text=await invokeProvider(r,'Return exactly '+marker);if(!String(text).includes(marker))throw Object.assign(new Error('PROBE_UNEXPECTED_RESPONSE'),{kind:'invalid_response'});const latency=Date.now()-started;await markResourceSuccess(r,null,latency,'RESOURCE_PROBE_OK',false,{taskKind:'probe',profile:'FAST'});return{ok:true,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,latencyMs:latency};}catch(error){const result=await markResourceFailure(r,null,error,'RESOURCE_PROBE_FAIL',false,{taskKind:'probe',profile:'FAST'});const e=new Error('RESOURCE_PROBE_FAILED');e.kind=result.kind;throw e;}}
-async function probeReadyResources(){const rows=(await pool.query("select resource_id,credential_state,health_state,current_job_id,last_seen_at,cooldown_until from tigeriq_ai_resources where enabled=true and credential_state in ('LOCAL','READY') and current_job_id is null order by rank")).rows;const now=Date.now();for(const row of rows){const neverSeen=!row.last_seen_at,staleOnline=row.health_state==='ONLINE'&&row.last_seen_at&&(now-new Date(row.last_seen_at).getTime())>=900000,retryDue=['READY','ERROR','RATE_LIMITED','OFFLINE'].includes(row.health_state)&&(!row.cooldown_until||new Date(row.cooldown_until).getTime()<=now);if(!neverSeen&&!staleOnline&&!retryDue)continue;try{await probeResource(row.resource_id);}catch{}}}
+async function probeReadyResources(){const rows=(await pool.query("select resource_id,credential_state,health_state,current_job_id,last_seen_at,cooldown_until from tigeriq_ai_resources where enabled=true and credential_state in ('LOCAL','READY') and current_job_id is null order by rank")).rows;const now=Date.now();for(const row of rows){const neverSeen=!row.last_seen_at,staleOnline=row.health_state==='ONLINE'&&row.last_seen_at&&(now-new Date(row.last_seen_at).getTime())>=900000;if(!neverSeen&&!staleOnline)continue;try{await probeResource(row.resource_id);}catch{}}}
+async function apiDoctorRecentResourceEvents(resourceId){
+  return (await pool.query(`select seq,ts,type,task_kind,data from tigeriq_events where resource_id=$1 and type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK','RESOURCE_FAILURE','RESOURCE_PROBE_FAIL') and ts>=now()-interval '12 hours' order by seq desc limit 30`,[resourceId])).rows;
+}
+function consecutiveWorkFailureEvidence(events=[]){
+  const work=(Array.isArray(events)?events:[]).filter(x=>String(x.task_kind||'')!=='probe'&&(x.type==='RESOURCE_SUCCESS'||x.type==='RESOURCE_FAILURE'));
+  const failures=[];
+  for(const row of work){
+    if(row.type==='RESOURCE_SUCCESS')break;
+    if(row.type==='RESOURCE_FAILURE')failures.push(row);
+  }
+  return failures;
+}
+async function apiDoctorEventBySignature(type,signature){
+  return (await pool.query("select ts,data from tigeriq_events where type=$1 and data->>'signature'=$2 order by seq desc limit 1",[type,signature])).rows[0]||null;
+}
+async function createApiDoctorRepairHandoff(resource,failureClass,latestFailure){
+  const message=String(latestFailure?.data?.message||latestFailure?.data?.kind||failureClass||'source_contract');
+  const signature=apiDoctorRepairSignature({employeeId:resource.employee_id,provider:resource.provider,failureClass,message});
+  const prior=await apiDoctorEventBySignature('API_DOCTOR_REPAIR_HANDOFF',signature);
+  if(prior)return {created:false,signature,codingObjectiveId:prior.data?.codingObjectiveId||null,priorAt:prior.ts};
+  const objective=[
+    `API Doctor source-contract repair for ${resource.employee_id} / ${resource.provider}.`,
+    `Failure class: ${failureClass}. Evidence: ${message.slice(0,300)}.`,
+    '',
+    'CANONICAL ALLOWED PATHS (MUST NOT EXPAND):',
+    'apps/tigeriq-core/core.mjs',
+    'tests/api-doctor-provider-contract.test.mjs',
+    '',
+    'Goal: fix only the provider response/adapter behavior that causes healthy credentials/probes to fail real Core work. Preserve zero-cost/free-only behavior. Add focused regression coverage. Branch -> PR -> exact-head checks -> independent review. No direct main, credentials, billing, Production, browser auth, paid action, or destructive action.'
+  ].join('\n');
+  const response=await fetchJson(`${CODING_LANE_URL}/api/objectives`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({objective,priority:'P0'})},10000);
+  await event('API_DOCTOR_REPAIR_HANDOFF',{employeeId:resource.employee_id,resourceId:resource.resource_id,provider:resource.provider,taskKind:'api_doctor',signature,failureClass,message:message.slice(0,300),codingObjectiveId:response?.id||null});
+  return {created:true,signature,codingObjectiveId:response?.id||null};
+}
+async function invokeApiDoctorLocal(prompt){
+  const body=await fetchJson('http://127.0.0.1:11434/api/generate',{
+    method:'POST',headers:{'content-type':'application/json'},
+    body:JSON.stringify({model:process.env.TIGERIQ_OLLAMA_MODEL||'qwen3:4b',prompt,stream:false,think:false,format:'json',options:{temperature:0,num_predict:160}})
+  },60000);
+  return parseApiDoctorDecision(body?.response||'');
+}
+async function runApiDoctorAnalysisJob(items,scanSignature){
+  const recent=(await pool.query("select 1 from tigeriq_events where type='API_DOCTOR_ANALYSIS_DONE' and data->>'signature'=$1 and ts>now()-($2::text||' milliseconds')::interval limit 1",[scanSignature,String(API_DOCTOR_ANALYSIS_DEDUPE_MS)])).rows[0];
+  if(recent)return {skipped:'deduped'};
+  const id=`API-DOC-${randomUUID()}`;
+  const prompt=buildApiDoctorPrompt(items);
+  await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,started_at,attempts,max_attempts) values($1,null,$2,$3,$4,'api_doctor','running',now(),0,1)",[id,'NV10 API Doctor analysis',prompt,API_DOCTOR_CAPABILITY]);
+  const row=await claimResource(API_DOCTOR_CAPABILITY,id,[],{profile:'LOCAL',taskKind:'api_doctor'});
+  if(!row){
+    await pool.query("update tigeriq_jobs set status='failed',failure=$2,completed_at=now() where id=$1",[id,JSON.stringify({message:'NV10_API_DOCTOR_UNAVAILABLE'})]);
+    await event('API_DOCTOR_ANALYSIS_SKIPPED',{jobId:id,taskKind:'api_doctor',signature,reason:'nv10_unavailable'});
+    return {skipped:'nv10_unavailable'};
+  }
+  const r=resources.find(x=>x.resourceId===row.resource_id);
+  const started=Date.now();
+  try{
+    const decision=await invokeApiDoctorLocal(prompt);
+    const latency=Date.now()-started;
+    await markResourceSuccess(r,id,latency,'RESOURCE_SUCCESS',true,{taskKind:'api_doctor',profile:'LOCAL'});
+    await pool.query("update tigeriq_jobs set status='done',employee_id=$2,resource_id=$3,provider=$4,routing_profile='LOCAL',result=$5,lease_until=null,completed_at=now() where id=$1",[id,r.id,r.resourceId,r.provider,JSON.stringify({decision,latencyMs:latency})]);
+    await event('API_DOCTOR_ANALYSIS_DONE',{jobId:id,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind:'api_doctor',signature:scanSignature,decision});
+    return {ok:true,jobId:id,decision};
+  }catch(error){
+    await markResourceFailure(r,id,error,'RESOURCE_FAILURE',true,{taskKind:'api_doctor',profile:'LOCAL'});
+    await pool.query("update tigeriq_jobs set status='failed',failure=$2,lease_until=null,completed_at=now() where id=$1",[id,JSON.stringify({message:String(error?.message||error)})]);
+    await event('API_DOCTOR_ANALYSIS_FAILED',{jobId:id,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind:'api_doctor',signature:scanSignature,message:String(error?.message||error).slice(0,200)});
+    return {ok:false,jobId:id};
+  }
+}
+async function runApiDoctorScan(){
+  const rows=(await pool.query("select * from tigeriq_ai_resources where enabled=true and employee_id<>$1 order by employee_id",[OLLAMA_EMPLOYEE_ID])).rows;
+  const actions=[];
+  for(const resource of rows){
+    const events=await apiDoctorRecentResourceEvents(resource.resource_id);
+    const latestFailure=events.find(x=>x.type==='RESOURCE_FAILURE'||x.type==='RESOURCE_PROBE_FAIL')||null;
+    const workFailures=consecutiveWorkFailureEvidence(events);
+    const repeatedSourceFailures=workFailures.filter(x=>classifyApiDoctorFailure({kind:x.data?.kind,message:x.data?.message})==='source_contract').length;
+    const plan=apiDoctorAction({healthState:resource.health_state,credentialState:resource.credential_state,cooldownUntil:resource.cooldown_until,latestFailure:latestFailure?{kind:latestFailure.data?.kind,message:latestFailure.data?.message}:null,repeatedWorkFailures:repeatedSourceFailures});
+    const row={employeeId:resource.employee_id,resourceId:resource.resource_id,provider:resource.provider,health:resource.health_state,failureClass:plan.failureClass,action:plan.action,reason:plan.reason};
+    if(resource.current_job_id){row.action='busy_skip';row.reason='resource_busy';actions.push(row);continue;}
+    if(plan.action==='wait'||plan.action==='idle'){actions.push(row);continue;}
+    if(plan.action==='external_blocked'){
+      const signature=apiDoctorRepairSignature({employeeId:resource.employee_id,provider:resource.provider,failureClass:plan.failureClass,message:latestFailure?.data?.message||plan.reason});
+      if(!await apiDoctorEventBySignature('API_DOCTOR_EXTERNAL_BLOCKED',signature))await event('API_DOCTOR_EXTERNAL_BLOCKED',{employeeId:resource.employee_id,resourceId:resource.resource_id,provider:resource.provider,taskKind:'api_doctor',signature,failureClass:plan.failureClass,reason:plan.reason});
+      actions.push(row);continue;
+    }
+    let probeOk=false;
+    try{
+      const probe=await probeResource(resource.resource_id);
+      probeOk=Boolean(probe?.ok);
+      row.probe='ok';
+      const existingHandoff=await apiDoctorEventBySignature('API_DOCTOR_REPAIR_HANDOFF',apiDoctorRepairSignature({employeeId:resource.employee_id,provider:resource.provider,failureClass:plan.failureClass,message:latestFailure?.data?.message||plan.reason}));
+      if(existingHandoff){
+        const successAfter=(await pool.query("select 1 from tigeriq_events where resource_id=$1 and type='RESOURCE_SUCCESS' and coalesce(task_kind,'')<>'probe' and ts>$2 order by seq desc limit 1",[resource.resource_id,existingHandoff.ts])).rows[0];
+        if(successAfter){
+          const signature=existingHandoff.data?.signature;
+          if(signature&&!await apiDoctorEventBySignature('API_DOCTOR_RECOVERED',signature))await event('API_DOCTOR_RECOVERED',{employeeId:resource.employee_id,resourceId:resource.resource_id,provider:resource.provider,taskKind:'api_doctor',signature,evidence:'live_work_success_after_handoff'});
+          row.recovered=true;
+        }
+      }
+    }catch(error){row.probe='failed';row.probeError=String(error?.kind||error?.message||error).slice(0,120);}
+    if(plan.action==='probe_then_handoff'&&probeOk&&repeatedSourceFailures>=2){
+      const handoff=await createApiDoctorRepairHandoff(resource,plan.failureClass,latestFailure);
+      row.handoff=handoff.created?'created':'deduped';
+      row.codingObjectiveId=handoff.codingObjectiveId||null;
+    }
+    actions.push(row);
+  }
+  const degraded=actions.filter(x=>!['idle'].includes(x.action));
+  const scanSignature=apiDoctorRepairSignature({employeeId:'SCAN',provider:'core',failureClass:'state',message:degraded.map(x=>`${x.employeeId}:${x.action}:${x.failureClass}`).join(',')});
+  const analysis=degraded.length?await runApiDoctorAnalysisJob(degraded,scanSignature):{skipped:'no_degraded'};
+  await event('API_DOCTOR_SCAN',{employeeId:OLLAMA_EMPLOYEE_ID,resourceId:nv10Resource.resourceId,provider:'ollama',taskKind:'api_doctor',signature:scanSignature,degradedCount:degraded.length,actions,analysis:analysis?.ok===true?'done':analysis?.skipped||'failed'});
+  return {degradedCount:degraded.length,actions,analysis};
+}
+async function apiDoctorTelemetry(){
+  const last=(await pool.query("select ts,data from tigeriq_events where type='API_DOCTOR_SCAN' order by seq desc limit 1")).rows[0]||null;
+  const counts=(await pool.query(`select type,count(*)::int as count from tigeriq_events where type in ('API_DOCTOR_REPAIR_HANDOFF','API_DOCTOR_RECOVERED','API_DOCTOR_EXTERNAL_BLOCKED','API_DOCTOR_ANALYSIS_DONE') and ts>=now()-interval '24 hours' group by type`)).rows;
+  const map=Object.fromEntries(counts.map(x=>[x.type,Number(x.count||0)]));
+  return {
+    lastScanAt:last?.ts||null,
+    degradedProviders:last?.data?.actions?.filter?.(x=>!['idle'].includes(x.action))||[],
+    actions:last?.data?.actions||[],
+    handoffs24h:map.API_DOCTOR_REPAIR_HANDOFF||0,
+    recovered24h:map.API_DOCTOR_RECOVERED||0,
+    externalBlockers24h:map.API_DOCTOR_EXTERNAL_BLOCKED||0,
+    analyses24h:map.API_DOCTOR_ANALYSIS_DONE||0,
+  };
+}
+
 const RESOURCE_WAIT_MAX_RETRIES=6;
 const RESOURCE_WAIT_MAX_WINDOW_MS=60*60*1000;
 const RESOURCE_WAIT_BASE_MS=30*1000;
@@ -587,7 +724,7 @@ async function managerTick() {
   return 'READY';
 }
 async function snapshot(){
-  const base=(await pool.query('select * from tigeriq_ai_resources where enabled=true order by employee_id nulls last,resource_id')).rows;const failures=(await pool.query(`select distinct on(resource_id) resource_id,ts,type,data from tigeriq_events where resource_id is not null and type in ('RESOURCE_FAILURE','RESOURCE_PROBE_FAIL') order by resource_id,seq desc`)).rows,failureMap=new Map(failures.map(x=>[x.resource_id,x]));const callStats=(await pool.query(`select resource_id,count(*) filter(where type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK'))::int as ok,count(*) filter(where type in ('RESOURCE_FAILURE','RESOURCE_PROBE_FAIL'))::int as fail from tigeriq_events where resource_id is not null and ts>=now()-interval '24 hours' and type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK','RESOURCE_FAILURE','RESOURCE_PROBE_FAIL') group by resource_id`)).rows,statMap=new Map(callStats.map(x=>[x.resource_id,x]));const rr=base.map(x=>{const f=failureMap.get(x.resource_id),st=statMap.get(x.resource_id)||{ok:0,fail:0};return{...x,quota_state:normalizeQuota(x.quota_state||{}),status:publicStatus(x),last_error:f?.data?.kind||f?.data?.message||null,last_error_at:f?.ts||null,calls_success_24h:Number(st.ok||0),calls_failure_24h:Number(st.fail||0)}});const objectives=(await pool.query("select id,objective,priority,status,summary,manager_cycles,metadata,updated_at from tigeriq_objectives order by created_at desc limit 20")).rows;const jobs=(await pool.query("select id,objective_id,title,capability,kind,status,employee_id,resource_id,provider,routing_profile,routing_decision,phase_index,attempts,created_at,started_at,completed_at from tigeriq_jobs order by created_at desc limit 40")).rows;const events=(await pool.query("select seq,ts,type,objective_id,job_id,employee_id,resource_id,task_kind,data from tigeriq_events order by seq desc limit 80")).rows;const telemetry=(await pool.query(`select ts,employee_id,resource_id,task_kind,type,(data->>'latencyMs')::int as latency_ms from tigeriq_events where ts>=now()-interval '24 hours' and type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK') and data ? 'latencyMs' order by ts asc limit 500`)).rows;const performanceByTask=(await pool.query(`select resource_id,coalesce(task_kind,'general') as task_kind,count(*) filter(where type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK'))::int as success,count(*) filter(where type in ('RESOURCE_FAILURE','RESOURCE_PROBE_FAIL'))::int as failure,count(*) filter(where type='ROUTING_RETRY')::int as retries,count(*) filter(where type='ROUTING_FAILOVER')::int as failovers,round(avg((data->>'latencyMs')::numeric) filter(where data ? 'latencyMs'))::int as avg_latency_ms from tigeriq_events where resource_id is not null and ts>=now()-interval '7 days' group by resource_id,coalesce(task_kind,'general') order by resource_id,task_kind`)).rows;const routingDecisions=(await pool.query("select seq,ts,job_id,employee_id,resource_id,task_kind,data from tigeriq_events where type='ROUTING_DECISION' order by seq desc limit 20")).rows;return {ok:true,core:{host:HOST,port:PORT,pid:process.pid,uptimeSec:Math.floor(process.uptime()),time:nowIso()},integrations:{surfsense:await surfSenseHealth()},resources:rr,objectives,jobs,events,telemetry,routing:{profiles:ROUTING_PROFILE_LABELS,routingDecisions,performanceByTask}};
+  const base=(await pool.query('select * from tigeriq_ai_resources where enabled=true order by employee_id nulls last,resource_id')).rows;const failures=(await pool.query(`select distinct on(resource_id) resource_id,ts,type,data from tigeriq_events where resource_id is not null and type in ('RESOURCE_FAILURE','RESOURCE_PROBE_FAIL') order by resource_id,seq desc`)).rows,failureMap=new Map(failures.map(x=>[x.resource_id,x]));const callStats=(await pool.query(`select resource_id,count(*) filter(where type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK'))::int as ok,count(*) filter(where type in ('RESOURCE_FAILURE','RESOURCE_PROBE_FAIL'))::int as fail from tigeriq_events where resource_id is not null and ts>=now()-interval '24 hours' and type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK','RESOURCE_FAILURE','RESOURCE_PROBE_FAIL') group by resource_id`)).rows,statMap=new Map(callStats.map(x=>[x.resource_id,x]));const rr=base.map(x=>{const f=failureMap.get(x.resource_id),st=statMap.get(x.resource_id)||{ok:0,fail:0};return{...x,quota_state:normalizeQuota(x.quota_state||{}),status:publicStatus(x),last_error:f?.data?.kind||f?.data?.message||null,last_error_at:f?.ts||null,calls_success_24h:Number(st.ok||0),calls_failure_24h:Number(st.fail||0)}});const objectives=(await pool.query("select id,objective,priority,status,summary,manager_cycles,metadata,updated_at from tigeriq_objectives order by created_at desc limit 20")).rows;const jobs=(await pool.query("select id,objective_id,title,capability,kind,status,employee_id,resource_id,provider,routing_profile,routing_decision,phase_index,attempts,created_at,started_at,completed_at from tigeriq_jobs order by created_at desc limit 40")).rows;const events=(await pool.query("select seq,ts,type,objective_id,job_id,employee_id,resource_id,task_kind,data from tigeriq_events order by seq desc limit 80")).rows;const telemetry=(await pool.query(`select ts,employee_id,resource_id,task_kind,type,(data->>'latencyMs')::int as latency_ms from tigeriq_events where ts>=now()-interval '24 hours' and type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK') and data ? 'latencyMs' order by ts asc limit 500`)).rows;const performanceByTask=(await pool.query(`select resource_id,coalesce(task_kind,'general') as task_kind,count(*) filter(where type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK'))::int as success,count(*) filter(where type in ('RESOURCE_FAILURE','RESOURCE_PROBE_FAIL'))::int as failure,count(*) filter(where type='ROUTING_RETRY')::int as retries,count(*) filter(where type='ROUTING_FAILOVER')::int as failovers,round(avg((data->>'latencyMs')::numeric) filter(where data ? 'latencyMs'))::int as avg_latency_ms from tigeriq_events where resource_id is not null and ts>=now()-interval '7 days' group by resource_id,coalesce(task_kind,'general') order by resource_id,task_kind`)).rows;const routingDecisions=(await pool.query("select seq,ts,job_id,employee_id,resource_id,task_kind,data from tigeriq_events where type='ROUTING_DECISION' order by seq desc limit 20")).rows;return {ok:true,core:{host:HOST,port:PORT,pid:process.pid,uptimeSec:Math.floor(process.uptime()),time:nowIso()},integrations:{surfsense:await surfSenseHealth()},resources:rr,objectives,jobs,events,telemetry,apiDoctor:await apiDoctorTelemetry(),routing:{profiles:ROUTING_PROFILE_LABELS,routingDecisions,performanceByTask}};
 }
 function auth(req){return TOKEN && req.headers.authorization===`Bearer ${TOKEN}`;}
 function localSelf(req){const a=String(req.socket.remoteAddress||'').replace('::ffff:','');return a==='127.0.0.1'||a==='::1'||a===HOST;}
@@ -652,7 +789,7 @@ async function runFailureLearningScan(){
   return {eventsIn:rows.length,candidatesCreated:candidates.length};
 }
 
-let stop=false, lastRefresh=0, lastRecover=0, lastManager=0, lastProbe=0, lastFailureLearning=0; const active=new Set();
+let stop=false, lastRefresh=0, lastRecover=0, lastManager=0, lastProbe=0, lastFailureLearning=0, lastApiDoctor=0, apiDoctorScanRunning=false; const active=new Set();
 function getDynamicMaxParallel() {
   const resList = typeof resources !== 'undefined' ? resources : [];
   const healthyCount = Array.isArray(resList) ? resList.filter(r => r && (r.status === 'ready' || r.status === 'healthy' || r.healthy || r.health_state === 'READY' || r.health_state === 'ONLINE' || r.credential_state === 'LOCAL')).length : 0;
@@ -743,6 +880,7 @@ async function loop(){
       if(t-lastRecover>10000){await recoverStale();lastRecover=t;}
       if(t-lastManager>MANAGER_IDLE_MS){await managerTick();lastManager=t;}
       if(t-lastProbe>60000){await probeReadyResources();lastProbe=t;}
+      if(!apiDoctorScanRunning&&t-lastApiDoctor>API_DOCTOR_INTERVAL_MS){lastApiDoctor=t;apiDoctorScanRunning=true;void runApiDoctorScan().catch(error=>console.error(JSON.stringify({event:'API_DOCTOR_SCAN_ERROR',error:String(error?.message||error)}))).finally(()=>{apiDoctorScanRunning=false;});}
       if(t-lastFailureLearning>FAILURE_LEARNING_INTERVAL_MS){lastFailureLearning=t;await runFailureLearningScan();}
       await startSelfCheck({ now: () => Date.now(), store: pool });
       let dispatchedCount = 0;
