@@ -6,7 +6,7 @@ import {
   CONTINUE_MIN_MS, CONTINUE_MAX_MS, REFRESH_MIN_MS, REFRESH_MAX_MS,
   WORKER_F5_MIN_MS, WORKER_F5_MAX_MS, CONTINUITY_WORKERS,
   MAX_STALLED_CHECKS, WORKING_PROGRESS_CHECK_MS, MAX_WORKING_UNCHANGED_CHECKS, shouldRotateNv02Chat,
-  deriveNv02Phase, deriveWorkerPhase, hasActiveNv02Work, hasWaitingEvidenceNv02Work, hasContinuableNv02Work,
+  deriveNv02Phase, deriveWorkerPhase, hasActiveNv02Work, hasWaitingEvidenceNv02Work, hasContinuableNv02Work, hasContinuableWorkerWork,
   nextRandomAt, randomDelay, pickContinuePrompt, computeWorkerStaggerDelay,
 } from './extension/continuity.js';
 import { buildDurableSavePrompt, waitForDurableSaveReceipt } from './extension/save-receipt.js';
@@ -239,6 +239,20 @@ async function maybeWorkerContinuity(w,target,ui){
 
   if(phase==='READY'){
     if(now<Number(state.nextContinueAt||0))return;
+    let controllerState=null;
+    try{controllerState=await getControllerState();}
+    catch(error){
+      const deferred={...state,nextContinueAt:now+60_000};
+      saveWorkerContinuity(w.id,deferred);
+      await genericWorkerEvent(w.id,'CONTINUABLE_WORK_CHECK_FAILED_CLOSED',{error:String(error?.message||error),nextContinueAt:deferred.nextContinueAt});
+      return;
+    }
+    if(!hasContinuableWorkerWork(controllerState,w.id)){
+      const deferred={...state,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
+      saveWorkerContinuity(w.id,deferred);
+      await genericWorkerEvent(w.id,'CONTINUE_SKIPPED_NO_CURRENT_WORK',{nextContinueAt:deferred.nextContinueAt});
+      return;
+    }
     const prompt=pickContinuePrompt(state.lastPrompt);
     const sent=await withWorkerMutation(w.id,()=>dispatch(target,prompt),'CONTINUITY_CONTINUE',30000);
     if(sent?.status==='MUTATION_LEASE_BUSY'){
