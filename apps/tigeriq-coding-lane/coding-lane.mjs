@@ -388,6 +388,27 @@ async function writeRepairEdits(branch,edits){
     await writeFile(branch,{path,content});
   }
 }
+export function isRefreshableCompactPatchError(error){
+  return /CODING_COMPACT_EDIT_(?:OLD_NOT_FOUND|OLD_NOT_UNIQUE)|COMPACT_EDIT_(?:SEARCH_MISSING|SEARCH_AMBIGUOUS)/i.test(String(error?.message||error||''));
+}
+async function generateAndWriteRepair(worker,j,branch,issues=[],exclude=[]){
+  let selected=worker,last=null;
+  for(let attempt=1;attempt<=2;attempt++){
+    const context=await contextFor(j.paths,branch);
+    const retryIssues=attempt===1?issues:[...issues,'Previous compact patch no longer matched the current PR branch. Regenerate exact unique snippets from CURRENT FILES; keep the same PR and scope.'];
+    const generated=await generateRepairEdits(selected,j,context,retryIssues,exclude);
+    selected=generated.resource;
+    try{
+      await writeRepairEdits(branch,generated.payload.edits);
+      return {worker:selected,payload:generated.payload};
+    }catch(error){
+      last=error;
+      if(attempt<2&&isRefreshableCompactPatchError(error))continue;
+      throw error;
+    }
+  }
+  throw last||new Error('CODING_COMPACT_PATCH_REFRESH_EXHAUSTED');
+}
 async function generateChanges(worker,j,context,reviewIssues=[],exclude=[]){const prompt=`You are ${worker.id}, an autonomous TigerIQ repository engineer. Implement ONLY the assigned task on a GitHub branch.\nTASK: ${j.instruction}\nALLOWED PATHS: ${j.paths.join(', ')}\n${reviewIssues.length?`REVIEW ISSUES TO FIX: ${JSON.stringify(reviewIssues)}\n`:''}CURRENT FILES:\n${context}\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}. Do not touch paths outside ALLOWED PATHS. Never output secrets. Keep changes minimal and testable.`;const validateData=d=>{validateChanges(d.changes,j.paths);validateJobScope(j.paths,d.changes)};const invoked=await invokeJsonWithFailover(worker,prompt,{exclude,validateData,shrinkPrompt:preserveGenerationPrompt});const d=invoked.data;return {payload:d,resource:invoked.resource}}
 async function reviewPr(reviewer,j,diff,implementerId,extraExclude=[]){const prompt=`You are ${reviewer.id}, independent TigerIQ code reviewer. Review against the task and safety boundaries. TASK: ${j.instruction}\nDIFF:\n${diff.slice(0,180000)}\nReturn ONLY JSON {"decision":"approve|changes_requested","summary":"short","issues":["specific issue"]}. Reject unsafe, untested, out-of-scope, credential/security/production changes.`;const invoked=await invokeJsonWithFailover(reviewer,prompt,{exclude:[implementerId,...extraExclude]});const d=invoked.data;if(!['approve','changes_requested'].includes(d.decision)){const e=new Error('REVIEW_DECISION_INVALID');e.code='REVIEW_SCHEMA_INVALID';throw e}d.issues=Array.isArray(d.issues)?d.issues.slice(0,8):[];return {review:d,resource:invoked.resource}}
 
@@ -422,12 +443,10 @@ async function runJob(j){
       waitFn:()=>waitGates(branch,pr.number),
       onWaiting:async()=>{await pool.query("update tigeriq_coding_jobs set status='waiting_ci' where id=$1",[j.id])},
       repairFn:async({evidence})=>{
-        context=await contextFor(j.paths,branch);
-        generated=await generateRepairEdits(worker,j,context,[`CI gate failure on same PR #${pr.number}`,...evidence],[reviewer.id,...cooldownExcludes]);
-        worker=generated.resource;gen=generated.payload;
+        const repaired=await generateAndWriteRepair(worker,j,branch,[`CI gate failure on same PR #${pr.number}`,...evidence],[reviewer.id,...cooldownExcludes]);
+        worker=repaired.worker;gen=repaired.payload;
         if(reviewer?.id===worker.id){reviewer=pickResource([worker.id,...cooldownExcludes]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE')}
         await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,status='waiting_ci' where id=$1",[j.id,worker.id,reviewer.id]);
-        await writeRepairEdits(branch,gen.edits);
       },
       maxRepairCycles:3,
       timeoutRetries:1,
@@ -440,11 +459,9 @@ async function runJob(j){
     await pool.query("update tigeriq_coding_jobs set reviewer_employee_id=$2 where id=$1",[j.id,reviewer.id]);
     if(review.decision==='approve')break;
     if(reviewCycle===2)throw Object.assign(new Error('REVIEW_CHANGES_UNRESOLVED'),{detail:review});
-    context=await contextFor(j.paths,branch);
-    generated=await generateRepairEdits(worker,j,context,review.issues,[reviewer.id,...cooldownExcludes]);worker=generated.resource;gen=generated.payload;
+    const repaired=await generateAndWriteRepair(worker,j,branch,review.issues,[reviewer.id,...cooldownExcludes]);worker=repaired.worker;gen=repaired.payload;
     if(reviewer.id===worker.id){reviewer=pickResource([worker.id,...cooldownExcludes]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE')}
     await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,status='waiting_ci' where id=$1",[j.id,worker.id,reviewer.id]);
-    await writeRepairEdits(branch,gen.edits);
   }
   if(review?.decision!=='approve')throw new Error('REVIEW_NOT_APPROVED');
   assertPrOpenState(await gh(`/pulls/${pr.number}`));
