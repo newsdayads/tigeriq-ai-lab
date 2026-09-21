@@ -54,6 +54,9 @@ export interface ExternalJob {
   executable: boolean;
   priority: JobPriority;
   prompt?: string;
+  issueRef?: string;
+  workItemId?: string;
+  coreSelected?: boolean;
   evidence?: ExternalEvidence[];
   riskFlags?: string[];
   completionRevision?: string;
@@ -90,7 +93,7 @@ export type AutopilotDecision =
   | { kind: 'WAIT_EVIDENCE'; reason: string }
   | { kind: 'STOP'; reason: string }
   | { kind: 'DUPLICATE_NOOP'; reason: string; jobId: string }
-  | { kind: 'DISPATCH'; trigger: typeof AUTO_CONTINUE; jobId: string; text: string; issueRef?: string; evidenceRef?: string; evidenceRevision?: string };
+  | { kind: 'DISPATCH'; trigger: typeof AUTO_CONTINUE; jobId: string; workerId: WorkerId; text: string; issueRef?: string; evidenceRef?: string; evidenceRevision?: string };
 
 function parsed(value:string|undefined):number|undefined {
   if(!value)return;
@@ -105,7 +108,7 @@ export function canonicalGithubIssueRef(jobId:string):string|undefined {
 
 export function sourceStillOffersPendingJob(snapshot:ExternalAutopilotSnapshot,jobId:string):boolean {
   const next=snapshot.nextJob;
-  return Boolean(next&&next.jobId===jobId&&next.workerId==='NV02'&&next.executable&&EXECUTABLE_JOB_STATUSES.has(next.status));
+  return Boolean(snapshot.source==='CORE'&&next&&next.coreSelected===true&&next.jobId===jobId&&['NV02','NV03','NV04'].includes(next.workerId)&&next.executable&&EXECUTABLE_JOB_STATUSES.has(next.status));
 }
 
 export function selectFreshCompletionEvidence(job:ExternalJob|undefined,state:DurableAutopilotState,observedAtMs:number):ExternalEvidence|undefined {
@@ -177,7 +180,8 @@ export function decideAutoContinue(
 
   if (!next) return { kind: 'IDLE', reason: 'NO_EXECUTABLE_JOB' };
   if (previous?.jobId === next.jobId) return { kind: 'STOP', reason: 'NEXT_JOB_EQUALS_PREVIOUS_JOB' };
-  if (next.workerId !== 'NV02') return { kind: 'IDLE', reason: 'NEXT_JOB_NOT_NV02' };
+  if (snapshot.source !== 'CORE' || next.coreSelected !== true) return { kind: 'STOP', reason: 'NEXT_JOB_NOT_CORE_SELECTED' };
+  if (!['NV02','NV03','NV04'].includes(next.workerId)) return { kind: 'STOP', reason: 'NEXT_JOB_WORKER_NOT_SUPPORTED' };
   if (!next.executable) return { kind: 'IDLE', reason: 'NEXT_JOB_NOT_EXECUTABLE' };
   if (!['P0', 'P1'].includes(next.priority)) return { kind: 'IDLE', reason: 'NEXT_JOB_PRIORITY_NOT_ALLOWED' };
   if (!EXECUTABLE_JOB_STATUSES.has(next.status)) return { kind: 'BUSY', reason: `NEXT_JOB_${next.status}` };
@@ -187,11 +191,12 @@ export function decideAutoContinue(
   if (!next.prompt?.trim()) return { kind: 'STOP', reason: 'NEXT_JOB_PROMPT_REQUIRED' };
   if (state.lastDispatchedJobId === next.jobId) return { kind: 'DUPLICATE_NOOP', reason: 'JOB_ALREADY_DISPATCHED', jobId: next.jobId };
 
-  const currentIssueRef=snapshot.source==='GITHUB'?canonicalGithubIssueRef(next.jobId):undefined;
+  const currentIssueRef=snapshot.source==='CORE'?next.issueRef:(snapshot.source==='GITHUB'?canonicalGithubIssueRef(next.jobId):undefined);
   return {
     kind:'DISPATCH',
     trigger:AUTO_CONTINUE,
     jobId:next.jobId,
+    workerId:next.workerId,
     text:next.prompt.trim(),
     ...(currentIssueRef?{issueRef:currentIssueRef}:{}),
     evidenceRef:completionEvidence?.ref,
