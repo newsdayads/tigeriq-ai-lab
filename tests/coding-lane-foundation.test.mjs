@@ -280,14 +280,21 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
     assert.strictEqual(isResourceTransientError(e),true);
   });
 
-  await t.test('initial coding generation uses compact edits and exposes implementer before generation',()=>{
+  await t.test('initial coding generation exposes implementer and uses a bounded provider budget',async()=>{
     const source=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
+    const entry=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-entry.mjs',import.meta.url),'utf8');
     const assignment=source.indexOf("set employee_id=$2,status='running'");
     const generation=source.indexOf("generated=await generateChanges");
     assert.ok(assignment>=0&&assignment<generation);
-    assert.ok(source.includes('Return ONLY compact JSON {"summary":"short","edits"'));
-    assert.ok(source.includes('await writeRepairEdits(branch,gen.edits)'));
-    assert.ok(!source.includes('for(const ch of gen.changes)await writeFile(branch,ch)'));
+    assert.ok(source.includes('maxResources:3,attemptsPerResource:1'));
+    assert.ok(entry.includes('installAiJsonTransport({maxAttempts:1,attemptTimeoutMs:30000})'));
+    const calls=[];
+    const invokeFn=async r=>{calls.push(r.id);throw new Error('JSON_OBJECT_INVALID:bad')};
+    await assert.rejects(
+      ()=>invokeJsonWithFailover(nv11,'x',{resourcePool:[nv11,nv19,nv13],invokeFn,maxResources:3,attemptsPerResource:1}),
+      /OUTPUT_CONTRACT_EXHAUSTED/
+    );
+    assert.deepStrictEqual(calls,['NV11','NV19','NV13']);
   });
 
   await t.test('existing branch and PR are resumable identity',()=>{
