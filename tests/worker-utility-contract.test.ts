@@ -28,6 +28,10 @@ describe('Worker Utility V1 contract',()=>{
  it('keeps utility controller timeout above controller pacing',()=>{expect(client).toContain('TimeSpan.FromSeconds(20)');expect(server).toContain('minUiActionGapMs');expect(client).not.toContain('TimeSpan.FromSeconds(8)');});
  it('locks final approved popup/tray behavior and prevents previous regressions',()=>{expect(popup).not.toContain('AutoScroll = true');expect(popup).toContain('Đóng an toàn');expect(popup).toContain('TabControl');expect(popup).toContain('Thông tin');expect(popup).toContain('Tùy chọn');expect(popup).toContain('Bảo mật');expect(context).not.toContain('HideForPopup');expect(context).not.toContain('ShowAllPopups');expect(context).toContain('worker.Id == id) continue');expect(context).toContain('RefreshBadgeVisibility');expect(context).toContain('badges[id].Hide()');expect(context).toContain('badge ẩn khi popup mở');expect(context).toContain('TogglePopup');expect(client).toContain('CONTROLLER_TIMEOUT');}); it('reports truthful Run behavior when AUTO_UI queue is empty or queued',()=>{expect(context).toContain('RUN_NO_AUTO_UI_JOB');expect(context).toContain('Không có việc AUTO_UI');expect(context).toContain('Đang chờ hệ thống giao');expect(client).toContain('NextEligibleAutoUiJobAsync');expect(client).toContain('/api/ui-autopilot/snapshot');});
 it('implements independent identity, state, timer, lock, per-worker Pause/Resume overriding automatic actions, and observability surfaces for WORKING, READY, STALLED, BLOCKED, F5, reload/reopen, 2-4h reset, and last prompt/action across NV02, NV03, and NV04', () => {
+  const popupCode = readFileSync('apps/worker-utility/PopupForm.cs', 'utf8');
+  expect(popupCode).toContain('LastPrompt');
+  expect(popupCode).toContain('LastAction');
+  expect(popupCode).toContain('F5');
   const contextCode = readFileSync('apps/worker-utility/UtilityContext.cs', 'utf8');
   expect(contextCode).toContain('NV02');
   expect(contextCode).toContain('NV03');
