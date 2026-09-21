@@ -32,6 +32,10 @@ describe('worker-generic primitives and staggered recovery',()=>{
       writeWorkerSafetyState(safetyPath, { pausedWorkers: [], manualCloseSuppressedWorkers: [] });
       const restored = restoreWorkerSafetyState(safetyPath);
       expect(restored.failClosed).toBe(false);
+      expect(restored.state.pausedWorkers).toEqual([]);
+    }
+  });ed = restoreWorkerSafetyState(safetyPath);
+      expect(restored.failClosed).toBe(false);
       expect(workerStartGate(id, { globalPaused: false, utilityPaused: false, manualCloseSuppressed: false })).toBeNull();
     }
   });
