@@ -115,6 +115,15 @@ export function persistWorkerSafetyStateOrFailClosed(
   }
 }
 
+export function probeWorkerSafetyHealth(path:string): { healthy: boolean; error?: unknown } {
+  try {
+    const snapshot = readWorkerSafetyState(path);
+    return { healthy: Array.isArray(snapshot.pausedWorkers) };
+  } catch (error) {
+    return { healthy: false, error };
+  }
+}
+
 export function workerStartGate(workerId:WorkerId,input:{globalPaused:boolean;utilityPaused:boolean;manualCloseSuppressed:boolean}):string|null {
   if(input.globalPaused)return 'OWNER_INTERACTION_READ_ONLY';
   if(input.utilityPaused)return `UTILITY_WORKER_PAUSED:${workerId}`;
