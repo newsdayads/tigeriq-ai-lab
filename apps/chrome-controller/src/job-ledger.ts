@@ -82,6 +82,28 @@ export function reconcileUiJobStage(stage: UiJobStage, uiBusy: boolean|null|unde
 }
 
 export class DurableUiJobLedger {
+  /**
+   * Retry a job that ended in an ERROR state.
+   * Resets the job to QUEUED so it can be dispatched again.
+   * Throws if the job is not in ERROR state.
+   */
+  retryError(
+    workerId: WorkerId,
+    jobId: string,
+    patch: Partial<UiJobPatch & { source?: string }> = {},
+    now: Date = new Date()
+  ): UiJobRecord {
+    const rec = this.record(workerId, jobId);
+    if (!rec) throw new Error('UI_JOB_NOT_FOUND');
+    if (rec.stage !== 'ERROR') throw new Error('UI_JOB_ACTIVE');
+    const basePatch: UiJobPatch = {
+      nextAction: 'Retry dispatch to worker',
+      blocker: null,
+    } as any;
+    const mergedPatch = { ...basePatch, ...patch } as UiJobPatch;
+    // Transition back to QUEUED, preserving other fields via merge
+    return this.transition(workerId, jobId, 'QUEUED', mergedPatch, now);
+  }
   private value: LedgerFile;
   constructor(
     private readonly path: string,
