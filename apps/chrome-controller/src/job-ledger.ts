@@ -225,7 +225,8 @@ export class DurableUiJobLedger {
     const record=this.value.jobs.find((job)=>job.workerId===workerId&&job.jobId===jobId);
     if (!record) throw new Error(`UI_JOB_NOT_FOUND:${workerId}:${jobId}`);
     if (record.stage!=='ERROR') throw new Error(`UI_JOB_RETRY_REQUIRES_ERROR:${record.stage}`);
-    const at=now.toISOString();
+    console.log(JSON.stringify({event:'JOB_RESUME_RETRIED',jobId:record.jobId,reason:'ERROR_RECOVERY',at:at}));
+    const at=now.toISOString()
     if (metadata.issueRef!==undefined) record.issueRef=String(metadata.issueRef??'').trim()||null;
     if (metadata.title!==undefined) record.title=String(metadata.title??'').trim()||record.title;
     if (metadata.source!==undefined) record.source=String(metadata.source??'').trim()||record.source;
