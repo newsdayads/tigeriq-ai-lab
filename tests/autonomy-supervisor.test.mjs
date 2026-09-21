@@ -1,6 +1,21 @@
 import {describe,it,expect} from 'vitest';
+import {reconcileStaleAndBlockedObjectives, handleManagerExhaustionOrRecovery} from '../apps/tigeriq-core/core.mjs';
 import {readFileSync} from 'node:fs';
 import {isRetryableFailure,shouldRetry,isStaleJob,repairInstruction,extractGitHubIssueNumber} from '../apps/tigeriq-coding-lane/autonomy-supervisor.mjs';
+
+describe('Core Dispatcher & Manager Exhaustion/Recovery', () => {
+  it('automatically re-arms soft-exhausted or recoverable runtimes', () => {
+    const res1 = handleManagerExhaustionOrRecovery('soft_exhausted');
+    expect(res1.rearm).toBe(true);
+    expect(res1.mode).toBe('auto_rearm');
+
+    const res2 = handleManagerExhaustionOrRecovery('recoverable_error');
+    expect(res2.rearm).toBe(true);
+
+    const res3 = handleManagerExhaustionOrRecovery('healthy');
+    expect(res3.rearm).toBe(false);
+  });
+});
 
 describe('Autonomy supervisor policy',()=>{
   it('retries CI failures but not arbitrary blockers',()=>{
