@@ -132,6 +132,11 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("const NV02_F5_MAX_MS=10*60*1000");
     expect(source).toContain("'PERIODIC_F5_REFRESH'");
     expect(source).toContain("nextRefreshAt:nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS)");
+    expect(source).toContain("verifiedChatUrl:String(raw.verifiedChatUrl||'')");
+    expect(source).toContain("state.verifiedChatUrl===ui?.url");
+    expect(source).toContain("verifiedChatUrl:String(profile.url||'')");
+    expect(source).toContain("location.hostname==='chatgpt.com'?Boolean(stop):Boolean(stop||activityBusy)");
+
     const f5Block=source.slice(source.indexOf("if(now>=Number(state.nextRefreshAt||0))"),source.indexOf("if(phase==='STALLED'&&ui?.modelExact!==true)"));
     expect(f5Block).toContain("reloadTarget(target)");
     expect(f5Block).not.toContain("ensureNv02ModelProfile");
