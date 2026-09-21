@@ -11,6 +11,8 @@ describe('coding lane AI JSON transport',()=>{
     expect(prompt).toContain('"changes":[{"path"');
     expect(compactPromptForChanges(prompt)).toContain('"edits":[{"path"');
     expect(compactPromptForChanges(prompt)).toContain('CURRENT FILES:');
+    expect(prompt).toContain('tests/a.test.mjs');
+    expect(prompt).toContain('CI Verify: failure');
   });
 
   it('forces JSON mode for Gemini',()=>{
@@ -41,9 +43,9 @@ describe('coding lane AI JSON transport',()=>{
     expect(matchesExpectedSchema(prompt,'{"decision":"approve","summary":"x","issues":[]}')).toBe(true);
   });
   it('rejects schema-invalid manager and change payloads',()=>{
-    const manager='Return ONLY JSON {"status":"continue|blocked","summary":"short","job":{"title":"short","instruction":"standalone implementation instruction","paths":["exact/repo/path"]}}.';
+    const manager='Return ONLY JSON {"status":"continue|blocked","summary":"short","job":{"title":"short","instruction":"standalone implementation instruction","paths":["exact/repo/path"]}}}.';
     const changes='Return ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}.';
-    expect(matchesExpectedSchema(manager,'{"status":"continue","summary":"x"}')).toBe(false);
+    expect(matchesExpectedSchema(manager,'{"status":"continue","summary":"x"')).toBe(false);
     expect(matchesExpectedSchema(changes,'{"summary":"x","changes":[]}')).toBe(false);
   });
   it('extracts provider model text and ignores non AI URLs',()=>{
@@ -152,7 +154,7 @@ describe('coding lane AI JSON transport',()=>{
       globalThis.__tigeriqAiJsonTransportInstalled=false;
       globalThis.fetch=async(_input,init)=>{
         seen.push(Boolean(init?.signal));
-        return new Response(JSON.stringify({choices:[{message:{content:'{"status":"blocked","summary":"ok"}'}}]}),{status:200,headers:{'content-type':'application/json'}});
+        return new Response(JSON.stringify({choices:[{message:{content:'{"status":"blocked","summary":"ok"'}}]}),{status:200,headers:{'content-type':'application/json'}});
       };
       installAiJsonTransport({maxAttempts:1,attemptTimeoutMs:25});
       await fetch('https://api.groq.com/openai/v1/chat/completions',{method:'POST',body:JSON.stringify({messages:[{role:'user',content:'Return ONLY JSON {"status":"continue|blocked","summary":"short","job":{"title":"short","instruction":"standalone implementation instruction","paths":["exact/repo/path"]}}.'}]})});
@@ -175,7 +177,7 @@ describe('coding lane AI JSON transport',()=>{
         calls++;
         signals.push(Boolean(init?.signal?.aborted));
         if(calls===1) throw new DOMException('This operation was aborted','AbortError');
-        return new Response(JSON.stringify({choices:[{message:{content:'{"status":"blocked","summary":"ok"}'}}]}),{status:200,headers:{'content-type':'application/json'}});
+        return new Response(JSON.stringify({choices:[{message:{content:'{"status":"blocked","summary":"ok"'}}]}),{status:200,headers:{'content-type':'application/json'}});
       };
       installAiJsonTransport({maxAttempts:2,baseDelayMs:1,attemptTimeoutMs:1000});
       const prompt='Return ONLY JSON {"status":"continue|blocked","summary":"short","job":{"title":"short","instruction":"standalone implementation instruction","paths":["exact/repo/path"]}}.';
