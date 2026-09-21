@@ -169,6 +169,7 @@ async function reopenWorker(w,target,state,now,reason){
       releaseLease:(_workerId,lease)=>releaseBridgeMutationLease(w.id,lease),
       closeWorker:()=>closeWorker(w,target),
       safeRecover:async()=>{
+        await sleep(1200);
         let lastError=null;
         for(let attempt=1;attempt<=WORKER_RESET_MAX_ATTEMPTS;attempt+=1){
           try{
