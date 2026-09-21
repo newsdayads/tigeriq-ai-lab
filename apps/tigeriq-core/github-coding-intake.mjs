@@ -26,10 +26,16 @@ export function parseCodingScope(body){
   const ambiguous=(!resourceScope&&!paths.length)||paths.some(path=>path==='*'||path.includes('..'));
   return {resourceScope,paths,ambiguous};
 }
-function codingScopesOverlap(a,b){
+export function codingScopesOverlap(a,b){
   if(!a||!b||a.ambiguous||b.ambiguous)return true;
   if(a.resourceScope&&b.resourceScope&&a.resourceScope===b.resourceScope)return true;
-  return a.paths.some(left=>b.paths.some(right=>left===right||left.startsWith(`${right}/`)||right.startsWith(`${left}/`)));
+  const overlaps=(leftPaths,rightPaths)=>leftPaths.some(left=>rightPaths.some(right=>left===right||left.startsWith(`${right}/`)||right.startsWith(`${left}/`)));
+  if(a.resourceScope&&b.resourceScope&&a.resourceScope!==b.resourceScope){
+    const left=(a.paths||[]).filter(path=>!/^tests\/?$/i.test(String(path)));
+    const right=(b.paths||[]).filter(path=>!/^tests\/?$/i.test(String(path)));
+    return overlaps(left,right);
+  }
+  return overlaps(a.paths||[],b.paths||[]);
 }
 
 export function parseCodingIssue(issue){
@@ -95,7 +101,7 @@ function issueSuperseded(issue){
 function objectiveTerminal(objective){return ['completed','blocked'].includes(String(objective?.status||'').toLowerCase())}
 function objectiveMentionsIssue(objective,n){return new RegExp(`(?:issue\\s+|#)${n}\\b`,'i').test(String(objective?.objective||''))}
 function objectiveIssueNumber(objective){const m=String(objective?.objective||'').match(/\bissue\s+#(\d+)\b/i);const n=Number(m?.[1]||0);return Number.isInteger(n)&&n>0?n:null}
-async function activeCodingOwnerBlocksRetry({pool,status,fetchImpl,owner,repo,token,excludeObjectiveIds=[]}){
+async function activeCodingOwnerBlocksRetry({pool,status,fetchImpl,owner,repo,token,excludeObjectiveIds=[],targetScope=null}){
   const excluded=new Set(excludeObjectiveIds.filter(Boolean));
   for(const active of status.objectives||[]){
     if(excluded.has(active?.id)||objectiveTerminal(active))continue;
@@ -103,7 +109,11 @@ async function activeCodingOwnerBlocksRetry({pool,status,fetchImpl,owner,repo,to
     if(!sourceIssueNumber)return true;
     let sourceIssue;
     try{sourceIssue=await gh(fetchImpl,owner,repo,`/issues/${sourceIssueNumber}`,token)}catch{return true}
-    if(sourceIssue?.state==='open'&&!sourceIssue?.pull_request)return true;
+    if(sourceIssue?.state==='open'&&!sourceIssue?.pull_request){
+      const activeScope=parseCodingScope(sourceIssue.body);
+      if(codingScopesOverlap(targetScope,activeScope))return true;
+      continue;
+    }
     if(!(await markerExists(pool,'GITHUB_CODING_STALE_OWNER_IGNORED',sourceIssueNumber))){
       await mark(pool,'GITHUB_CODING_STALE_OWNER_IGNORED',{issueNumber:sourceIssueNumber,codingObjectiveId:active.id,sourceState:String(sourceIssue?.state||'unknown')});
     }
@@ -284,7 +294,7 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
       const rearms=await eventData(pool,'GITHUB_CODING_RECOVERY_REARMED',n);
       if(shouldRearmRecoverableFinal(latestFinal,currentMainSha,rearms)){
         if(retryCreatedThisTick)continue;
-        const blockedByActiveOwner=await activeCodingOwnerBlocksRetry({pool,status,fetchImpl,owner,repo,token,excludeObjectiveIds:[id]});
+        const blockedByActiveOwner=await activeCodingOwnerBlocksRetry({pool,status,fetchImpl,owner,repo,token,excludeObjectiveIds:[id],targetScope:spec.scopeLease});
         if(blockedByActiveOwner)continue;
         const recoveryKey=`GITHUB-ISSUE-${n}-RECOVERY-${currentMainSha.slice(0,12)}`;
         let recoveryObjective=(status.objectives||[]).find(x=>String(x.objective||'').includes(`RECOVERY_KEY=${recoveryKey}`));
@@ -312,7 +322,7 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
     const otherActiveForIssue=(status.objectives||[]).some(x=>x.id!==id&&x.id!==retryObjective?.id&&!objectiveTerminal(x)&&objectiveMentionsIssue(x,n));
     if(otherActiveForIssue)continue;
     if(!retryObjective){
-      const blockedByActiveOwner=await activeCodingOwnerBlocksRetry({pool,status,fetchImpl,owner,repo,token,excludeObjectiveIds:[id]});
+      const blockedByActiveOwner=await activeCodingOwnerBlocksRetry({pool,status,fetchImpl,owner,repo,token,excludeObjectiveIds:[id],targetScope:spec.scopeLease});
       if(blockedByActiveOwner||retryCreatedThisTick)continue;
     }
 
