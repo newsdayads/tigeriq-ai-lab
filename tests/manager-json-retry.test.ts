@@ -5,7 +5,20 @@ import {parseManagerJson,runBoundedManagerDecision} from '../apps/tigeriq-core/m
 const valid=(summary='ok')=>JSON.stringify({status:'complete',summary,jobs:[]});
 const resource=id=>({id,provider:id==='NV11'?'groq':'openrouter'});
 
-describe('manager JSON parsing',()=>{
+describe('AUTO_UI dependencies and retry state',()=>{
+  it('parses valid auto_ui_dependencies and retry_state',()=>{
+    const input=JSON.stringify({status:'continue',summary:'checking',jobs:[],auto_ui_dependencies:['snapshot-1'],retry_state:{attempt:1}});
+    const parsed=parseManagerJson(input);
+    expect(parsed.auto_ui_dependencies).toEqual(['snapshot-1']);
+    expect(parsed.retry_state).toEqual({attempt:1});
+  });
+  it('rejects invalid auto_ui_dependencies or retry_state types',()=>{
+    expect(()=>parseManagerJson(JSON.stringify({status:'continue',summary:'x',jobs:[],auto_ui_dependencies:[123]}))).toThrow('MANAGER_SCHEMA_INVALID');
+    expect(()=>parseManagerJson(JSON.stringify({status:'continue',summary:'x',jobs:[],retry_state:'invalid'}))).toThrow('MANAGER_SCHEMA_INVALID');
+  });
+});
+
+describe('manager JSON parsingspec',()=>{
   it('strips only outer fence and preserves inner literal byte-for-byte',()=>{
     const literal="replace(/```json|```/gi,'')";
     const input='```json\n'+JSON.stringify({status:'complete',summary:literal,jobs:[]})+'\n```';
