@@ -28,7 +28,7 @@ function isLoopbackUrl(value){
 
 export function extractAutoReleaseDependencies(body){
   const raw=String(body||'').match(/^AUTO_RELEASE_AFTER=(.+)$/m)?.[1]||'';
-  const values=(raw.match(/#?\d+/g)||[]).map(x=>Number(x.replace(/^#/,'')).filter(n=>Number.isInteger(n)&&n>0);
+  const values=(raw.match(/#?\d+/g)||[]).map(x=>Number(x.replace(/^#/,''))).filter(n=>Number.isInteger(n)&&n>0);
   return [...new Set(values)].slice(0,16);
 }
 
