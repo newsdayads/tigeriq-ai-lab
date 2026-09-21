@@ -34,8 +34,8 @@ describe('coding lane AI JSON transport',()=>{
   it('salvages complete compact edits from a truncated JSON tail',()=>{
     const truncated='{"summary":"partial","edits":[{"path":"apps/a.mjs","search":"const n=1;","replace":"const n=2;"},{"path":"apps/a.mjs","search":"console.log(n);","replace":"console.log(';
     expect(salvageTruncatedCompactEdits(truncated)).toEqual({summary:'partial',edits:[{path:'apps/a.mjs',search:'const n=1;',replace:'const n=2;'}]});
-    const prompt='TASK: x\\nCURRENT FILES:\\nFILE apps/a.mjs\\nconst n=1;\\nconsole.log(n);\\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}.';
-    expect(expandCompactChanges(prompt,truncated).changes).toEqual([{path:'apps/a.mjs',content:'const n=2;\\nconsole.log(n);'}]);
+    const prompt='TASK: x\nCURRENT FILES:\nFILE apps/a.mjs\nconst n=1;\nconsole.log(n);\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}.';
+    expect(expandCompactChanges(prompt,truncated).changes).toEqual([{path:'apps/a.mjs',content:'const n=2;\nconsole.log(n);'}]);
   });
 
   it('does not salvage a truncated compact payload without any complete edit',()=>{
@@ -168,12 +168,12 @@ describe('coding lane AI JSON transport',()=>{
         return new Response(JSON.stringify({choices:[{message:{content}}]}),{status:200,headers:{'content-type':'application/json'}});
       };
       installAiJsonTransport({maxAttempts:1,attemptTimeoutMs:1000});
-      const prompt='TASK: x\\nCURRENT FILES:\\nFILE apps/a.mjs\\nconst n=1;\\nconsole.log(n);\\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}. Do not touch paths outside ALLOWED PATHS. Never output secrets. Keep changes minimal and testable.';
+      const prompt='TASK: x\nCURRENT FILES:\nFILE apps/a.mjs\nconst n=1;\nconsole.log(n);\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}. Do not touch paths outside ALLOWED PATHS. Never output secrets. Keep changes minimal and testable.';
       const res=await fetch('https://api.groq.com/openai/v1/chat/completions',{method:'POST',body:JSON.stringify({messages:[{role:'user',content:prompt}]})});
       const data=await res.json();
       expect(calls).toBe(1);
       const normalized=JSON.parse(data.choices[0].message.content);
-      expect(normalized.changes).toEqual([{path:'apps/a.mjs',content:'const n=2;\\nconsole.log(n);'}]);
+      expect(normalized.changes).toEqual([{path:'apps/a.mjs',content:'const n=2;\nconsole.log(n);'}]);
     }finally{
       globalThis.fetch=previousFetch;
       if(previousInstalled===undefined) delete globalThis.__tigeriqAiJsonTransportInstalled;
