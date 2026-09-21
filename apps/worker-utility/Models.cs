@@ -18,6 +18,12 @@ internal enum WorkerUiState { Ready, Working, Blocked, Paused }
 internal sealed record WorkerView(
     string Id, WorkerUiState State, string Reason, string? JobId,
     string? JobTitle, string? JobStage, int? JobProgress,
+    string? JobNextAction, string? LastPrompt, string? LastAction,
+    bool UiBusy, bool UiReady, bool AuthRequired, bool SecurityBlock,
+    string? Url, bool WindowOpen, DateTimeOffset? HeartbeatAt,
+    DateTimeOffset? JobLastActivityAt);
+    string Id, WorkerUiState State, string Reason, string? JobId,
+    string? JobTitle, string? JobStage, int? JobProgress,
     string? JobNextAction, string? JobEvidenceRef, string? JobResult,
     DateTimeOffset? JobLastActivityAt,
     DateTimeOffset? StatusSince, bool UiReady, bool AuthRequired,
