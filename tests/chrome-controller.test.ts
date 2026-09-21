@@ -114,7 +114,7 @@ describe('SerialQueue',()=>{it('runs exactly one task at a time',async()=>{const
 describe('Working State Watchdog', () => {
   it('detects hangs and triggers F5 then reopen without owner intervention', () => {
     let wdState = { unchangedCount: 0, recoveryAttempts: 0 };
-    const sig = JSON.stringify({ pausedWorkers: [] });
+    const sig = getActivitySignature({ pausedWorkers: [], manualCloseSuppressedWorkers: [] });
     
     let res = checkWorkingWatchdog({ phase: 'WORKING', activitySignature: sig, watchdogState: wdState, maxUnchangedChecks: 3 });
     expect(res.action).toBe('NONE');
