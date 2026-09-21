@@ -116,6 +116,8 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("modelName==='GPT-5.6 Sol'");
     expect(source).toContain("reasoningEffort==='High'");
     expect(source).toContain('button[aria-label*="Ngừng" i]');
+    const dispatchExprSource=source.slice(source.indexOf('function dispatchExpr'),source.indexOf('function enterSubmitStateExpr'));
+    expect(dispatchExprSource).toContain('button[aria-label*=\\\"Ngừng\\\" i]');
     expect(backgroundSource).toBeTruthy();
     const contentSource=readFileSync('apps/chrome-controller/extension/content.js','utf8');
     expect(contentSource).toContain('button[aria-label*="Ngừng" i]');
