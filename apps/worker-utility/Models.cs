@@ -10,6 +10,7 @@ internal static class Workers
         new("NV03", "ChatGPT Go", 9223),
         new("NV04", "Gemini Pro", 9224),
     ];
+    public static bool IsIndependentWorker(string id) => All.Any(w => w.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
     public static WorkerDefinition Get(string id) => All.Single(x => x.Id == id);
 }
 
