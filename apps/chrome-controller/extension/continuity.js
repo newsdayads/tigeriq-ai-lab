@@ -98,3 +98,14 @@ export function computeWorkerStaggerDelay(workerIndex=0,baseMs=1000,multiplier=5
 export function computeNv02StaggerDelay(workerIndex,baseMs,multiplier){
   return computeWorkerStaggerDelay(workerIndex,baseMs,multiplier);
 }
+
+export const WORKER_GENERIC_CONSTANTS = Object.freeze({
+  CONTINUE_MIN_MS,
+  CONTINUE_MAX_MS,
+  REFRESH_MIN_MS,
+  REFRESH_MAX_MS,
+  WORKER_REFRESH_MIN_MS,
+  WORKER_REFRESH_MAX_MS,
+  WORKER_F5_MIN_MS,
+  WORKER_F5_MAX_MS
+});
