@@ -400,7 +400,7 @@ async function runApiDoctorAnalysisJob(items,scanSignature){
   const row=await claimResource(API_DOCTOR_CAPABILITY,id,[],{profile:'LOCAL',taskKind:'api_doctor'});
   if(!row){
     await pool.query("update tigeriq_jobs set status='failed',failure=$2,completed_at=now() where id=$1",[id,JSON.stringify({message:'NV10_API_DOCTOR_UNAVAILABLE'})]);
-    await event('API_DOCTOR_ANALYSIS_SKIPPED',{jobId:id,taskKind:'api_doctor',signature,reason:'nv10_unavailable'});
+    await event('API_DOCTOR_ANALYSIS_SKIPPED',{jobId:id,taskKind:'api_doctor',signature:scanSignature,reason:'nv10_unavailable'});
     return {skipped:'nv10_unavailable'};
   }
   const r=resources.find(x=>x.resourceId===row.resource_id);
