@@ -134,16 +134,21 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("nextRefreshAt:nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS)");
     expect(source).toContain("verifiedChatUrl:String(raw.verifiedChatUrl||'')");
     expect(source).toContain("sameNv02Chat(state.verifiedChatUrl,ui?.url)");
-    expect(source).toContain("phase==='STALLED'&&ui?.modelExact!==true&&!sameNv02Chat(state.verifiedChatUrl,ui?.url)");
+    expect(source).toContain("phase==='STALLED'&&ui?.modelExact!==true&&!sameVerifiedSession");
 
     expect(source).not.toContain("state.verifiedChatUrl===ui?.url");
     expect(source).toContain("verifiedChatUrl:String(profile.url||'')");
     expect(source).toContain("location.hostname==='chatgpt.com'?Boolean(stop):Boolean(stop||activityBusy)");
     expect(source).toContain("function sameNv02Chat(a,b)");
+    expect(source).toContain("verifiedTargetId:String(raw.verifiedTargetId||'')");
+    expect(source).toContain("state.verifiedTargetId===String(target.id||'')");
+    expect(source).toContain("MODEL_SESSION_TARGET_PINNED");
+    expect(source).toContain("pages.find(t=>state?.verifiedTargetId&&t.id===state.verifiedTargetId)");
+
     expect(source).toContain("pages.find(t=>sameNv02Chat(t.url,state?.verifiedChatUrl))");
 
 
-    const f5Block=source.slice(source.indexOf("if(now>=Number(state.nextRefreshAt||0))"),source.indexOf("if(phase==='STALLED'&&ui?.modelExact!==true&&!sameNv02Chat(state.verifiedChatUrl,ui?.url))"));
+    const f5Block=source.slice(source.indexOf("if(now>=Number(state.nextRefreshAt||0))"),source.indexOf("if(phase==='STALLED'&&ui?.modelExact!==true&&!sameVerifiedSession)"));
     expect(f5Block).toContain("reloadTarget(target)");
     expect(f5Block).not.toContain("ensureNv02ModelProfile");
     expect(f5Block).not.toContain("checkpointNv02");
