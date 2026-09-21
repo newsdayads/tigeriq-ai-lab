@@ -22,6 +22,16 @@ function normalizedMessage(value){
     .replace(/\b\d+\b/g,'<n>');
 }
 
+export function autoRearmBlockedObjectives(objecties = [], options = {}) {
+  const maxRetries = options.maxRetries ?? 3;
+  return (objecties || []).map(obj => {
+    if (obj.status === 'blocked' && (obj.retryCount || 0) < maxRetries) {
+      return { ...obj, status: 'active', retryCount: (obj.retryCount || 0) + 1, autoRearmed: true };
+    }
+    return obj;
+  });
+}
+
 export function normalizeFailureEvent(row){
   if(!row||!failureLearningEventTypes.includes(String(row.type||'')))return null;
   if(row.seq===undefined||row.seq===null||!row.ts)return null;
