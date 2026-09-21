@@ -179,7 +179,7 @@ async function invoke(r,prompt){
   throw new Error('PROVIDER_UNSUPPORTED');
 }
 
-export async function invokeJsonWithFailover(initialResource,prompt,{exclude=[],resourcePool=resources,invokeFn=invoke,shrinkPrompt=shrinkAiPrompt,maxResources=5,validateData=null,sleepFn=sleep,randomFn=Math.random,backoffBaseMs=1000}={}){
+export async function invokeJsonWithFailover(initialResource,prompt,{exclude=[],resourcePool=resources,invokeFn=invoke,shrinkPrompt=shrinkAiPrompt,maxResources=5,attemptsPerResource=2,validateData=null,sleepFn=sleep,randomFn=Math.random,backoffBaseMs=1000}={}){
   const eligible=resourcePool.filter(r=>r&&!exclude.includes(r.id)&&!busyAiResources.has(r.id));
   const initial=(initialResource&&!exclude.includes(initialResource.id)&&!busyAiResources.has(initialResource.id))?initialResource:eligible[0];
   if(!initial){const e=new Error('AI_RESOURCES_BUSY');e.code='AI_RESOURCES_BUSY';throw e;}
@@ -189,7 +189,7 @@ export async function invokeJsonWithFailover(initialResource,prompt,{exclude=[],
   const failureLedger=[];let attempts=0;
   for(let resourceIndex=0;resourceIndex<unique.length;resourceIndex++){
     const resource=unique[resourceIndex];
-    for(let same=0;same<2;same++){
+    for(let same=0;same<Math.max(1,Math.min(2,Number(attemptsPerResource)||1));same++){
       if(busyAiResources.has(resource.id))break;
       attempts++;
       busyAiResources.add(resource.id);
@@ -388,7 +388,7 @@ async function writeRepairEdits(branch,edits){
     await writeFile(branch,{path,content});
   }
 }
-async function generateChanges(worker,j,context,reviewIssues=[],exclude=[]){const prompt=`You are ${worker.id}, an autonomous TigerIQ repository engineer. Implement ONLY the assigned task on a GitHub branch.\nTASK: ${j.instruction}\nALLOWED PATHS: ${j.paths.join(', ')}\n${reviewIssues.length?`REVIEW ISSUES TO FIX: ${JSON.stringify(reviewIssues)}\n`:''}CURRENT FILES:\n${context}\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}. Do not touch paths outside ALLOWED PATHS. Never output secrets. Keep changes minimal and testable.`;const validateData=d=>{validateChanges(d.changes,j.paths);validateJobScope(j.paths,d.changes)};const invoked=await invokeJsonWithFailover(worker,prompt,{exclude,validateData,shrinkPrompt:preserveGenerationPrompt});const d=invoked.data;return {payload:d,resource:invoked.resource}}
+async function generateChanges(worker,j,context,reviewIssues=[],exclude=[]){const prompt=`You are ${worker.id}, an autonomous TigerIQ repository engineer. Implement ONLY the assigned task on a GitHub branch.\nTASK: ${j.instruction}\nALLOWED PATHS: ${j.paths.join(', ')}\n${reviewIssues.length?`REVIEW ISSUES TO FIX: ${JSON.stringify(reviewIssues)}\n`:''}CURRENT FILES:\n${context}\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}. Do not touch paths outside ALLOWED PATHS. Never output secrets. Keep changes minimal and testable.`;const validateData=d=>{validateChanges(d.changes,j.paths);validateJobScope(j.paths,d.changes)};const invoked=await invokeJsonWithFailover(worker,prompt,{exclude,validateData,shrinkPrompt:preserveGenerationPrompt,maxResources:3,attemptsPerResource:1});const d=invoked.data;return {payload:d,resource:invoked.resource}}
 async function reviewPr(reviewer,j,diff,implementerId,extraExclude=[]){const prompt=`You are ${reviewer.id}, independent TigerIQ code reviewer. Review against the task and safety boundaries. TASK: ${j.instruction}\nDIFF:\n${diff.slice(0,180000)}\nReturn ONLY JSON {"decision":"approve|changes_requested","summary":"short","issues":["specific issue"]}. Reject unsafe, untested, out-of-scope, credential/security/production changes.`;const invoked=await invokeJsonWithFailover(reviewer,prompt,{exclude:[implementerId,...extraExclude]});const d=invoked.data;if(!['approve','changes_requested'].includes(d.decision)){const e=new Error('REVIEW_DECISION_INVALID');e.code='REVIEW_SCHEMA_INVALID';throw e}d.issues=Array.isArray(d.issues)?d.issues.slice(0,8):[];return {review:d,resource:invoked.resource}}
 
 async function runJob(j){
