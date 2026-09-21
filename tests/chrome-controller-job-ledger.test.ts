@@ -137,6 +137,16 @@ describe('durable UI worker job ledger',()=>{
     expect(waiting.progress).toBe(80);
     expect(waiting.evidenceRefs).toContain('https://github.com/newsdayads/tigeriq-ai-lab/issues/1042');
   });
+  it('enforces exact job resumption path on retry',()=>{
+    const {path,store}=ledger();
+    const created=store.create('NV02',{jobId:'GH-RESUME-2',source:'AUTO_CONTINUE'});
+    store.transition('NV02','GH-RESUME-2','DISPATCHING');
+    store.transition('NV02','GH-RESUME-2','SUBMITTED');
+    store.transition('NV02','GH-RESUME-2','ERROR',{blocker:'UI_JOB_ACTIVE'});
+    const resumed=store.retryError('NV02','GH-RESUME-2');
+    expect(resumed.stage).toBe('QUEUED');
+    expect(resumed.completedAt).toBe(null);
+  });
 
   it('resumes the same JOB id from ERROR to QUEUED without duplication',()=>{
     const {path,store}=ledger();
