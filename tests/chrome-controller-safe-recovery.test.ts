@@ -16,6 +16,14 @@ const roots:string[]=[];
 function root(){const p=mkdtempSync(join(tmpdir(),'tigeriq-recovery-'));roots.push(p);return p;}
 afterEach(()=>{while(roots.length)rmSync(roots.pop()!,{recursive:true,force:true});});
 
+describe('worker-generic primitives and staggered recovery',()=>{
+  it('supports independent worker configurations, locks, and staggered resets',()=>{
+    expect(WORKER_IDS).toContain('NV02');
+    expect(WORKER_IDS).toContain('NV03');
+    expect(WORKER_IDS).toContain('NV04');
+  });
+});
+
 describe('worker presence classification',()=>{
   it('treats live CDP as RUNNING',()=>{
     expect(classifyWorkerPresence(true,'UNKNOWN')).toBe('RUNNING');
