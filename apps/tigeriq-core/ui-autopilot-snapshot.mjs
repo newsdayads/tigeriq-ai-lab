@@ -27,16 +27,22 @@ function isLoopbackUrl(value){
 
 export function parseAutoUiIssue(issue,{allowClosed=false}={}){
   if(!issue||issue.pull_request)return null;
+  const closed=issue.state==='closed';
   if(!allowClosed&&issue.state!=='open')return null;
   const body=String(issue.body||'');
-  if(REQUIRED_TRUE_FLAGS.some(key=>!exactTrue(body,key)))return null;
-  if(exactValue(body,'OWNER_POLICY')!=='AUTO_UI')return null;
-  if(exactValue(body,'PRIMARY_EMPLOYEE')!=='NV02')return null;
+  const workerId=exactValue(body,'PRIMARY_EMPLOYEE');
+  if(!SUPPORTED_WORKERS.has(workerId))return null;
   const priority=exactValue(body,'PRIORITY');
   if(!['P0','P1'].includes(priority))return null;
   const number=Number(issue.number);
   if(!Number.isInteger(number)||number<=0)return null;
-  return{number,jobId:`GH-${number}`,title:cleanTitle(issue.title),priority,url:String(issue.html_url||''),updatedAt:String(issue.updated_at||'')};
+  // Historical correlation must survive later owner holds/supersession metadata changes.
+  // Closed work is never executable here; only its durable identity/evidence is projected.
+  if(!(allowClosed&&closed)){
+    if(REQUIRED_TRUE_FLAGS.some(key=>!exactTrue(body,key)))return null;
+    if(exactValue(body,'OWNER_POLICY')!=='AUTO_UI')return null;
+  }
+  return{number,jobId:`GH-${number}`,workerId,title:cleanTitle(issue.title),priority,url:String(issue.html_url||''),updatedAt:String(issue.updated_at||'')};
 }
 
 export function buildPrompt(spec,repoFullName=`${DEFAULT_OWNER}/${DEFAULT_REPO}`){
@@ -47,7 +53,7 @@ function jobFromIssue(issue,spec,verifiedAt){
   const completed=issue.state==='closed'&&issue.state_reason==='completed';
   const cancelled=issue.state==='closed'&&!completed;
   const status=completed?'DONE':cancelled?'CANCELLED':'RUNNING';
-  const job={jobId:spec.jobId,workerId:'NV02',status,executable:true,priority:spec.priority};
+  const job={jobId:spec.jobId,workerId:spec.workerId,status,executable:!completed&&!cancelled,priority:spec.priority,issueRef:spec.url};
   if(completed){
     const completedAt=String(issue.closed_at||issue.updated_at||'');
     const completionRevision=['github-issue-closure-v2',spec.jobId,completedAt,String(issue.updated_at||'')].join(':');
@@ -125,14 +131,50 @@ export async function buildUiAutopilotSnapshot({fetchImpl=fetch,token='',owner=D
     .filter(x=>x.spec&&x.spec.number!==previousNumber)
     .sort((a,b)=>priorityRank(a.spec.priority)-priorityRank(b.spec.priority)||a.spec.number-b.spec.number);
   const chosen=eligible[0];
-  const nextJob=chosen?{jobId:chosen.spec.jobId,workerId:'NV02',status:'READY',executable:true,priority:chosen.spec.priority,prompt:buildPrompt(chosen.spec,`${owner}/${repo}`),riskFlags:[],coreSelected:true,workItemGroup:'CORE-SELECTED-WORKITEM'}:undefined;
-  const revision=['github-ui-v2',previousJob?.jobId||'none',previousJob?.status||'none',chosen?.spec.jobId||'none',chosen?.spec.updatedAt||'none'].join(':');
-  return{source:'GITHUB',observedAt,revision,previousJob,nextJob,requiredWorkers:[]};
+  const nextJob=chosen?{jobId:chosen.spec.jobId,workerId:chosen.spec.workerId,status:'READY',executable:true,priority:chosen.spec.priority,prompt:buildPrompt(chosen.spec,`${owner}/${repo}`),riskFlags:[],issueRef:chosen.spec.url,coreSelected:true,workItemGroup:'CORE-SELECTED-WORKITEM'}:undefined;
+  const revision=['github-ui-v3',previousJob?.jobId||'none',previousJob?.status||'none',chosen?.spec.jobId||'none',chosen?.spec.workerId||'none',chosen?.spec.updatedAt||'none'].join(':');
+  return{source:'GITHUB',observedAt,revision,previousJob,nextJob,requiredWorkers:nextJob?[nextJob.workerId]:[]};
+}
+
+export function projectCoreOwnedUiSnapshot(snapshot){
+  if(!snapshot||typeof snapshot!=='object')throw new Error('CORE_UI_SNAPSHOT_INVALID');
+  const mapJob=job=>job?{...job,coreSelected:true,workItemId:job.workItemId||job.jobId,issueRef:job.issueRef||(/^(?:GH-)(\\d+)$/.test(String(job.jobId||''))?`https://github.com/${DEFAULT_OWNER}/${DEFAULT_REPO}/issues/${String(job.jobId).slice(3)}`:undefined)}:undefined;
+  return{
+    ...snapshot,
+    source:'CORE',
+    revision:`core-ui-v1:${String(snapshot.revision||'')}`,
+    previousJob:mapJob(snapshot.previousJob),
+    nextJob:mapJob(snapshot.nextJob),
+  };
+}
+
+function isAllowedCoreAssignmentUrl(value){
+  try{
+    const u=new URL(value);
+    if(u.protocol!=='http:')return false;
+    const h=u.hostname;
+    if(['127.0.0.1','localhost','::1'].includes(h))return true;
+    const m=h.match(/^100\\.(\\d{1,3})\\./);
+    return Boolean(m&&Number(m[1])>=64&&Number(m[1])<=127);
+  }catch{return false;}
+}
+
+export async function readCoreUiAssignment({fetchImpl=fetch,coreAssignmentUrl,previousJobId}={}){
+  if(!coreAssignmentUrl||!isAllowedCoreAssignmentUrl(coreAssignmentUrl))throw new Error('CORE_UI_ASSIGNMENT_URL_INVALID');
+  const u=new URL(coreAssignmentUrl);
+  if(previousJobId)u.searchParams.set('previousJobId',String(previousJobId));
+  let response;
+  try{response=await fetchImpl(u.toString(),{signal:AbortSignal.timeout(5000)});}catch{throw new Error('CORE_UI_ASSIGNMENT_UNAVAILABLE');}
+  if(!response.ok)throw new Error(`CORE_UI_ASSIGNMENT_HTTP_${response.status}`);
+  const snapshot=await response.json();
+  if(snapshot?.source!=='CORE'||!snapshot?.revision||!snapshot?.observedAt)throw new Error('CORE_UI_ASSIGNMENT_INVALID');
+  return snapshot;
 }
 
 export function startUiAutopilotSnapshotServer({
   token=process.env.TIGERIQ_GITHUB_TOKEN||process.env.GITHUB_TOKEN||'',owner=process.env.TIGERIQ_GITHUB_OWNER||DEFAULT_OWNER,repo=process.env.TIGERIQ_GITHUB_REPO||DEFAULT_REPO,
   host='127.0.0.1',port=Number(process.env.TIGERIQ_UI_AUTOPILOT_PORT||8794),fetchImpl=fetch,controllerStateUrl=process.env.TIGERIQ_CHROME_CONTROLLER_STATE_URL||DEFAULT_CONTROLLER_STATE_URL,
+  coreAssignmentUrl=process.env.TIGERIQ_CORE_UI_ASSIGNMENT_URL||'',
   saveLedgerIssue=Number(process.env.TIGERIQ_SAVE_LEDGER_ISSUE||DEFAULT_SAVE_LEDGER_ISSUE),
 }={}){
   if(host!=='127.0.0.1')throw new Error('UI_AUTOPILOT_HOST_MUST_BE_LOOPBACK');
@@ -146,7 +188,7 @@ export function startUiAutopilotSnapshotServer({
       if(req.method==='GET'&&url.pathname==='/api/ui-autopilot/snapshot'){
         const explicit=url.searchParams.get('previousJobId')||undefined;
         const previousJobId=explicit||await readPreviousJobIdFromController({fetchImpl,stateUrl:controllerStateUrl});
-        const snapshot=await buildUiAutopilotSnapshot({fetchImpl,token,owner,repo,previousJobId});
+        const snapshot=await readCoreUiAssignment({fetchImpl,coreAssignmentUrl,previousJobId});
         res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(snapshot));
       }
       if(req.method==='GET'&&url.pathname==='/api/ui-autopilot/save-receipt'){
