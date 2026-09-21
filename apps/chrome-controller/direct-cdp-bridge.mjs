@@ -22,7 +22,9 @@ const EXPECTED_BRIDGE_SHA256=String(process.env.TIGERIQ_NV02_BRIDGE_SHA256||'').
 const BRIDGE_PATH=fs.realpathSync(process.argv[1]);
 const BRIDGE_SHA256=createHash('sha256').update(fs.readFileSync(BRIDGE_PATH)).digest('hex');
 if(EXPECTED_BRIDGE_SHA256&&EXPECTED_BRIDGE_SHA256!==BRIDGE_SHA256){
-  console.error('FAIL_CLOSED: NV02 bridge source hash does not match approved artifact.');
+  console.error('FAIL_CLOSED: NV02 bridge source hash does not match expected SHA256');
+  process.exit(42);
+}tch approved artifact.');
   process.exit(44);
 }
 const config=JSON.parse(fs.readFileSync(CONFIG,'utf8'));
