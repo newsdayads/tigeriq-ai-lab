@@ -6,6 +6,7 @@ export function classifyApiDoctorFailure(input={}){
   const kind=safeText(input.kind||input.errorClass||'',80).toLowerCase();
   const message=safeText(input.message||input.error||'',500).toLowerCase();
   const status=Number(input.status||0);
+  if(/credential|password|2fa|security|production|browser[-_ ]?auth|destructive|irreversible|paid[-_ ]?action|account[-_ ]?setting/.test(kind+' '+message))return 'hard_blocked';
   if(status===401||status===403||kind==='auth'||/\bhttp[_ -]?(401|403)\b/.test(message))return 'auth';
   if(status===402||/\bhttp[_ -]?402\b|payment required|free[- ]?tier.*exhaust|billing/.test(message))return 'external_blocked';
   if(status===429||kind==='rate_limit'||/\bhttp[_ -]?429\b|rate.?limit|quota/.test(message))return 'rate_limit';
@@ -31,6 +32,7 @@ export function apiDoctorAction({
   const cooling=Number.isFinite(cooldownMs)&&cooldownMs>nowMs;
 
   if(['WAIT_KEY','BLOCKED'].includes(credential))return {action:'external_blocked',failureClass:'configuration',reason:'credential_or_account_gate'};
+  if(cls==='hard_blocked')return {action:'external_blocked',failureClass:cls,reason:'security_or_owner_gate'};
   if(cls==='auth')return {action:'external_blocked',failureClass:cls,reason:'auth_gate'};
   if(cls==='external_blocked')return {action:'external_blocked',failureClass:cls,reason:'http_402_or_free_tier'};
   if((health==='RATE_LIMITED'||cls==='rate_limit')&&cooling)return {action:'wait',failureClass:'rate_limit',reason:'cooldown_active'};
