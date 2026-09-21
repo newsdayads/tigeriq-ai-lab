@@ -1026,7 +1026,8 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
         const modelProfileRecovery=workerId==='NV02'&&purpose==='MODEL_PROFILE_RECOVERY';
         const checkpointRecovery=workerId==='NV02'&&purpose==='CHECKPOINT_DURABLE';
         const chatRotation=workerId==='NV02'&&purpose==='CHAT_ROTATION';
-        const boundedRecovery=staleWorkingRecovery||stalledRecovery||modelProfileRecovery||checkpointRecovery||chatRotation;
+        const continuityContinue=workerId==='NV02'&&purpose==='CONTINUITY_CONTINUE';
+        const boundedRecovery=staleWorkingRecovery||stalledRecovery||modelProfileRecovery||checkpointRecovery||chatRotation||continuityContinue;
         if(paused)throw new Error('OWNER_INTERACTION_READ_ONLY');
         if(utilityPausedWorkers.has(workerId))throw new Error(`UTILITY_WORKER_PAUSED:${workerId}`);
         if(state.blocked)throw new Error(`WORKER_BLOCKED:${workerId}`);
@@ -1035,7 +1036,6 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
         if(security)throw new Error(security);
         if(state.lastHeartbeat?.uiBusy!==false&&!staleWorkingRecovery)throw new Error(`WORKER_UI_BUSY_OR_UNKNOWN:${workerId}`);
         if(staleWorkingRecovery&&state.lastHeartbeat?.uiBusy!==true)throw new Error(`STALE_WORKING_RECOVERY_REQUIRES_BUSY:${workerId}`);
-        const continuityContinue=workerId==='NV02'&&purpose==='CONTINUITY_CONTINUE';
         if(workerHasActiveJob(workerId,{allowWaitingEvidence:continuityContinue,allowContinuable:continuityContinue})&&!boundedRecovery)throw new Error(`WORKER_ACTIVE_JOB:${workerId}`);
         if(commandQueues.get(workerId)!.length>0||[...waiters.values()].some((w)=>w.workerId===workerId))
           throw new Error(`WORKER_COMMAND_INFLIGHT:${workerId}`);
