@@ -49,6 +49,12 @@ function hasCurrentNv02Chat(url){
   if(!isNv02ProjectContext(url))return false;
   try{return /\/c\//.test(new URL(String(url||'')).pathname);}catch{return false}
 }
+function sameNv02Chat(a,b){
+  try{
+    const x=new URL(String(a||'')),y=new URL(String(b||''));
+    return x.origin===y.origin&&x.pathname===y.pathname&&/\/c\//.test(x.pathname);
+  }catch{return false}
+}
 
 function log(event,data={}){
   const line=JSON.stringify({ts:new Date().toISOString(),event,...data});
@@ -144,8 +150,12 @@ function pageTargetsFor(w,list){
 }
 async function pruneDuplicates(w,list){
   const pages=pageTargetsFor(w,list);if(pages.length<=1)return pages[0]||null;
-  const keep=pages.find(t=>hasCurrentNv02Chat(t.url))||pages.find(t=>{try{return new URL(t.url).pathname===new URL(w.homeUrl).pathname}catch{return false}})||pages[0];
-  log('DUPLICATE_TABS_OBSERVED_NO_MUTATION',{workerId:w.id,count:pages.length,kept:keep.id});
+  const state=w.id==='NV02'?loadNv02Continuity():null;
+  const keep=pages.find(t=>sameNv02Chat(t.url,state?.verifiedChatUrl))
+    ||pages.find(t=>hasCurrentNv02Chat(t.url))
+    ||pages.find(t=>{try{return new URL(t.url).pathname===new URL(w.homeUrl).pathname}catch{return false}})
+    ||pages[0];
+  log('DUPLICATE_TABS_OBSERVED_NO_MUTATION',{workerId:w.id,count:pages.length,kept:keep.id,keptUrl:keep.url,preferredChatUrl:state?.verifiedChatUrl||null});
   return keep;
 }
 
@@ -560,7 +570,7 @@ async function noteNv02CommandDispatch(){
 }
 async function maybeNv02Continuity(w,target,ui){
   const now=Date.now();let state=loadNv02Continuity();
-  if(state.verifiedChatUrl&&state.verifiedChatUrl===ui?.url&&ui?.modelExact!==true){
+  if(state.verifiedChatUrl&&sameNv02Chat(state.verifiedChatUrl,ui?.url)&&ui?.modelExact!==true){
     ui={...ui,modelProfileStatus:'MODEL_PROFILE_VERIFIED',modelName:'GPT-5.6 Sol',modelReady:true,modelExact:true,verifiedAt:state.modelVerifiedAt||null,blockedReason:null};
     ui.uiPhase=ui.securityBlock?'BLOCKED':ui.uiBusy?'WORKING':ui.uiReady?'READY':'STALLED';
   }
