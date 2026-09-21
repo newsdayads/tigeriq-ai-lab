@@ -6,12 +6,19 @@ import {branchName,checkGateState,changedPathImpact,extractCanonicalAllowedPaths
 const service=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
 const updater=readFileSync(new URL('../scripts/tigeriq-core/update-core-runtime.ps1',import.meta.url),'utf8');
 
-import {validateRedToGreenRequirements} from '../apps/tigeriq-coding-lane/policy.mjs';
+import {validateRedToGreenRequirements,validateCompactContract} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 test('specification-first and RED-to-GREEN TDD regression contract checks',()=>{
   assert.equal(validateRedToGreenRequirements({isDocOrConfig:true}),true);
   assert.equal(validateRedToGreenRequirements({isBugFix:true,hasPreFixFailureEvidence:true}),true);
   assert.throws(()=>validateRedToGreenRequirements({isBugFix:true,hasPreFixFailureEvidence:false}),/RED_TDD_PRE_FIX_EVIDENCE_REQUIRED/);
+});
+
+test('compact contract validator detects malformed edits',()=>{
+  assert.throws(()=>validateCompactContract([]),/NO_EDITS/);
+  assert.throws(()=>validateCompactContract([{path:'a.md',old:'x'}]),/NEW_REQUIRED/);
+  assert.throws(()=>validateCompactContract([{path:'a.md',old:'x'.repeat(4000),new:'y'}]),/OLD_TOO_LARGE/);
+  assert.doesNotThrow(()=>validateCompactContract([{path:'a.md',old:'x',new:'y'}]));
 });
 
 test('coding lane cannot target protected or unsafe paths',()=>{
@@ -24,7 +31,7 @@ test('coding lane cannot target protected or unsafe paths',()=>{
 });
 
 test('canonical MUST NOT EXPAND header is an enforceable source scope',()=>{
-  const objective='CANONICAL ALLOWED PATHS (MUST NOT EXPAND):\\ntests/coding-lane-ai-json-transport.test.mjs\\n\\nGoal: test-only canary';
+  const objective='CANONICAL ALLOWED PATHS (MUST NOT EXPAND):\ntests/coding-lane-ai-json-transport.test.mjs\n\nGoal: test-only canary';
   assert.deepEqual(extractCanonicalAllowedPaths(objective),['tests/coding-lane-ai-json-transport.test.mjs']);
 });
 
@@ -61,4 +68,19 @@ test('PowerShell updater is path-aware and leaves Core alone for non-Core change
   assert.match(updater,/coreRestarted=\$impact\.core/);
   assert.match(updater,/webRestarted=\$impact\.web/);
   assert.match(updater,/codingRestarted=\$impact\.coding/);
+});
+
+test('truncated edits trigger context refresh',()=>{
+  assert.match(service,/isRefreshableCompactPatchError/);
+  assert.match(service,/OLD_NOT_FOUND/);
+});
+
+test('same-PR repair maintains identity',()=>{
+  assert.match(service,/shouldResumeExistingPr/);
+  assert.match(service,/pr_number/);
+});
+
+test('failover handles contract errors',()=>{
+  assert.match(service,/classifyAiFailure/);
+  assert.match(service,/OUTPUT_CONTRACT_EXHAUSTED/);
 });
