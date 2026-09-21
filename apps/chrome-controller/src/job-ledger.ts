@@ -83,8 +83,9 @@ export function reconcileUiJobStage(stage: UiJobStage, uiBusy: boolean|null|unde
 
 export class DurableUiJobLedger {
   /**
-   * Retry a job that ended in an ERROR state.
+   * Retry a job that ended in an ERROR state (resume logic).
    * Resets the job to QUEUED so it can be dispatched again.
+   * Does not create duplicate WorkItem.
    * Throws if the job is not in ERROR state.
    */
   retryError(
