@@ -26,7 +26,7 @@ import {
   type DurableAutopilotState,
   type ExternalAutopilotSnapshot,
 } from './autopilot.js';
-import { atomicWriteJsonWithRetry, buildRuntimeEvidence } from './runtime-evidence.js';
+import { atomicWriteJsonWithRetry, buildRuntimeEvidence, persistRuntimeEvidenceJson } from './runtime-evidence.js';
 import { DurableDispatchLeaseStore } from './dispatch-lease.js';
 import { BrowserMutationLeaseStore } from './browser-mutation-lease.js';
 import { heartbeatStopReason } from './security-gate.js';
@@ -228,7 +228,10 @@ function evidence(){
 }
 function persistEvidence(){
   const value=evidence();
-  try{atomicJson(runtimeEvidencePath,value);}
+  try{
+    const persisted=persistRuntimeEvidenceJson(runtimeEvidencePath,value);
+    if(persisted.mode==='COPY_FALLBACK')log('PERSIST_EVIDENCE_COPY_FALLBACK',{path:runtimeEvidencePath,code:persisted.code});
+  }
   catch(error){log('PERSIST_EVIDENCE_FAILED',{path:runtimeEvidencePath,error:String(error),code:fsErrorCode(error)});}
   return value;
 }

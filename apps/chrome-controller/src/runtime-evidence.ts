@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { closeSync, existsSync, openSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { closeSync, copyFileSync, existsSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { WORKER_IDS, computePlacements, workAreaFitsLayout, type ControllerConfig, type WindowPlacement, type WorkArea, type WorkerId } from './model.js';
 import type { DurableAutopilotState, ExternalAutopilotSnapshot } from './autopilot.js';
 import type { UiJobRecord } from './job-ledger.js';
@@ -45,6 +45,8 @@ export interface AtomicJsonFileOps {
   sleep(ms:number):void;
   tempId():string;
   acquireLock?(path:string):()=>void;
+  copy?(from:string,to:string):void;
+  read?(path:string):string;
 }
 
 function nativeSleep(ms:number){Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,ms);}
@@ -75,6 +77,8 @@ const defaultAtomicJsonFileOps:AtomicJsonFileOps = {
   sleep:nativeSleep,
   tempId:()=>randomUUID(),
   acquireLock:acquireNativeAtomicJsonLock,
+  copy:(from,to)=>copyFileSync(from,to),
+  read:(path)=>readFileSync(path,'utf8'),
 };
 
 function atomicJsonErrorCode(error:unknown){
@@ -97,6 +101,28 @@ export function atomicWriteJsonWithRetry(path:string,value:unknown,ops:AtomicJso
   }finally{
     if(ops.exists(temp)){try{ops.unlink(temp);}catch{}}
     release?.();
+  }
+}
+
+export function persistRuntimeEvidenceJson(path:string,value:unknown,ops:AtomicJsonFileOps=defaultAtomicJsonFileOps){
+  try{
+    atomicWriteJsonWithRetry(path,value,ops);
+    return {mode:'ATOMIC' as const};
+  }catch(error){
+    const code=atomicJsonErrorCode(error);
+    if(!['EPERM','EBUSY'].includes(code)||!ops.copy||!ops.read)throw error;
+    const content=`${JSON.stringify(value,null,2)}\n`;
+    const lastGood=`${path}.last-good`;
+    const temp=`${path}.${process.pid}.${ops.tempId()}.fallback.tmp`;
+    if(ops.exists(path))ops.copy(path,lastGood);
+    try{
+      ops.write(temp,content);
+      ops.copy(temp,path);
+      if(ops.read(path)!==content)throw new Error('RUNTIME_EVIDENCE_FALLBACK_VERIFY_FAILED');
+      return {mode:'COPY_FALLBACK' as const,code};
+    }finally{
+      if(ops.exists(temp)){try{ops.unlink(temp);}catch{}}
+    }
   }
 }
 
