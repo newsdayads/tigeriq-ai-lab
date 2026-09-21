@@ -109,9 +109,13 @@ describe('crash-safe atomic persistence',()=>{
 });
 
 describe('withdrawn pending source contract',()=>{
-  it('keeps pending executable only while fresh Core authority offers the exact assigned UI job',()=>{
+  it('keeps pending executable only while a trusted Core or NV02 fallback authority offers the exact assigned UI job',()=>{
     const s=snapshot();
     expect(sourceStillOffersPendingJob(s,'GH-2')).toBe(true);
+    const fallback={...s,source:'GITHUB' as const,authority:'NV02_OWNER_PROXY_FALLBACK' as const,nextJob:{...s.nextJob!,coreSelected:false}};
+    expect(sourceStillOffersPendingJob(fallback,'GH-2')).toBe(true);
+    const badFallback={...fallback,nextJob:{...fallback.nextJob!,workerId:'NV03' as const}};
+    expect(sourceStillOffersPendingJob(badFallback,'GH-2')).toBe(false);
     expect(sourceStillOffersPendingJob(s,'GH-X')).toBe(false);
     const none={...s,nextJob:undefined};expect(sourceStillOffersPendingJob(none,'GH-2')).toBe(false);
     const cancelled={...s,nextJob:{...s.nextJob!,status:'CANCELLED' as const,executable:false}};expect(sourceStillOffersPendingJob(cancelled,'GH-2')).toBe(false);
@@ -132,8 +136,12 @@ describe('fresh completion evidence',()=>{
     expect(decideAutoContinue(snapshot(),dispatchedState(),now)).toMatchObject({kind:'DISPATCH',jobId:'GH-2',workerId:'NV02'});
     const nv03=snapshot();nv03.nextJob={...nv03.nextJob!,workerId:'NV03',coreSelected:true};nv03.requiredWorkers=['NV03'];
     expect(decideAutoContinue(nv03,dispatchedState(),now)).toMatchObject({kind:'DISPATCH',jobId:'GH-2',workerId:'NV03'});
-    const legacy=snapshot();legacy.source='GITHUB';
-    expect(decideAutoContinue(legacy,dispatchedState(),now)).toMatchObject({kind:'STOP',reason:'NEXT_JOB_NOT_CORE_SELECTED'});
+    const fallback=snapshot();fallback.source='GITHUB';fallback.authority='NV02_OWNER_PROXY_FALLBACK';fallback.nextJob={...fallback.nextJob!,coreSelected:false};
+    expect(decideAutoContinue(fallback,dispatchedState(),now)).toMatchObject({kind:'DISPATCH',jobId:'GH-2',workerId:'NV02'});
+    const fallbackNv03={...fallback,nextJob:{...fallback.nextJob!,workerId:'NV03' as const}};
+    expect(decideAutoContinue(fallbackNv03,dispatchedState(),now)).toMatchObject({kind:'STOP',reason:'NEXT_JOB_NOT_TRUSTED_SELECTION'});
+    const legacy=snapshot();legacy.source='GITHUB';legacy.nextJob={...legacy.nextJob!,coreSelected:false};
+    expect(decideAutoContinue(legacy,dispatchedState(),now)).toMatchObject({kind:'STOP',reason:'NEXT_JOB_NOT_TRUSTED_SELECTION'});
     expect(decideAutoContinue(snapshot(),freshAutopilotState(),now)).toMatchObject({kind:'WAIT_EVIDENCE'});
     expect(decideAutoContinue(snapshot(),{...freshAutopilotState(),lastDispatchedJobId:'GH-1'},now)).toMatchObject({kind:'WAIT_EVIDENCE'});
     const wrong=snapshot();wrong.previousJob!.evidence![0].jobId='GH-X';expect(decideAutoContinue(wrong,dispatchedState(),now)).toMatchObject({kind:'WAIT_EVIDENCE'});
