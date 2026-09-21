@@ -37,6 +37,13 @@ export class BrowserMutationLeaseStore{
     return lease&&this.#active(lease,nowMs)?lease:undefined;
   }
 
+  assertOwned(workerId:string,ownerId:string,leaseId:string,nowMs=Date.now()):BrowserMutationLease{
+    const lease=this.active(workerId,nowMs);
+    if(!lease)throw new Error(`BROWSER_MUTATION_LEASE_REQUIRED:${workerId}`);
+    if(lease.ownerId!==ownerId||lease.leaseId!==leaseId)throw new Error(`BROWSER_MUTATION_LEASE_NOT_OWNED:${workerId}`);
+    return lease;
+  }
+
   acquire(workerId:string,ownerId:string,ttlMs=30_000,nowMs=Date.now()):BrowserLeaseAcquireResult{
     if(!workerId.trim())throw new Error('BROWSER_MUTATION_WORKER_REQUIRED');
     if(!ownerId.trim())throw new Error('BROWSER_MUTATION_OWNER_REQUIRED');

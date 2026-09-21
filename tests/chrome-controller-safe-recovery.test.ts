@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { WORKER_IDS } from '../apps/chrome-controller/src/model.js';
 import { classifyWorkerPresence, processProbeFromCount } from '../apps/chrome-controller/src/worker-presence.js';
+import { BrowserMutationLeaseStore } from '../apps/chrome-controller/src/browser-mutation-lease.js';
 import {
   persistWorkerSafetyStateOrFailClosed,
   readWorkerSafetyState,
@@ -29,6 +30,21 @@ describe('worker presence classification',()=>{
     expect(classifyWorkerPresence(false,'ABSENT')).toBe('ABSENT');
     expect(classifyWorkerPresence(false,'PRESENT')).toBe('AMBIGUOUS');
     expect(classifyWorkerPresence(false,'UNKNOWN')).toBe('AMBIGUOUS');
+  });
+});
+
+describe('planned reset mutation lease handoff',()=>{
+  it('executes bridge ownership validation then releases before controller recovery',()=>{
+    const path=join(root(),'browser-mutation-leases.json');
+    const store=new BrowserMutationLeaseStore(path);
+    const ownerId='DIRECT_CDP_BRIDGE:123:NV03';
+    const acquired=store.acquire('NV03',ownerId,60_000,1_000);
+    expect(acquired.kind).toBe('ACQUIRED');
+    if(acquired.kind!=='ACQUIRED')throw new Error('lease not acquired');
+    expect(store.assertOwned('NV03',ownerId,acquired.lease.leaseId,1_001).leaseId).toBe(acquired.lease.leaseId);
+    expect(()=>store.assertControllerAllowed('NV03',1_001)).toThrow(/BROWSER_MUTATION_LEASE_BUSY/);
+    expect(store.release('NV03',ownerId,acquired.lease.leaseId)).toBe(true);
+    expect(()=>store.assertControllerAllowed('NV03',1_002)).not.toThrow();
   });
 });
 
@@ -135,6 +151,12 @@ describe('independent worker recovery flows in direct-cdp-bridge',()=>{
     expect(source).toContain("/api/utility/workers/${w.id}/plan-refresh");
     expect(source).toContain("/api/utility/workers/${w.id}/safe-recover");
     expect(source.indexOf("/api/utility/workers/${w.id}/plan-refresh")).toBeLessThan(source.indexOf("await closeWorker(w,target)"));
+    const reopen=source.slice(source.indexOf('async function reopenWorker'),source.indexOf('async function maybeWorkerContinuity'));
+    const closePhaseEnd=reopen.indexOf("await sleep(1200)");
+    expect(reopen.slice(0,closePhaseEnd)).not.toContain("/safe-recover");
+    expect(reopen.indexOf("/safe-recover")).toBeGreaterThan(closePhaseEnd);
+    expect(reopen).toContain("post(`/api/utility/workers/${w.id}/safe-recover`,w.id,{reason},120000)");
+    expect(reopen).toContain("leaseOwnerId:lease.ownerId,leaseId:lease.leaseId");
     expect(source).toContain("resumeUrl");
   });
 
@@ -218,11 +240,15 @@ describe('safe recovery contracts',()=>{
     const windowEvent=server.slice(windowStart,server.indexOf("if(url.pathname==='/api/continuity/event'",windowStart));
     expect(utility).toContain('plan-refresh');
     expect(utility).toContain('plannedRefreshWorkers.add(workerId)');
+    expect(utility).toContain('browserMutationLeases.assertOwned(workerId,leaseOwnerId,leaseId)');
+    expect(utility).toContain('heartbeatStopReason(state.lastHeartbeat)');
     expect(utility).toContain('MANUAL_CLOSE_SUPPRESSED');
     expect(utility).toContain("OWNER_INTERACTION_READ_ONLY");
     expect(windowEvent).toContain('const plannedRefresh=plannedRefreshWorkers.has(workerId)');
     expect(windowEvent).toContain('state.manualCloseSuppressed=!recoveryEligible');
+    expect(windowEvent).toContain('state.lastHeartbeat=undefined');
     expect(windowEvent).toContain('if(plannedRefresh)plannedRefreshWorkers.delete(workerId)');
+    expect(windowEvent).toContain('if(recoveryEligible&&!plannedRefresh)void recoveryTick()');
   });
 
   it('keeps paused workers out of unattended start/autopilot paths',()=>{
