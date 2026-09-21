@@ -118,6 +118,9 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("async open(timeout=4000)");
     expect(source).toContain("fail(new Error('CDP_OPEN_TIMEOUT'))");
     expect(source).toContain("fail(new Error('CDP_OPEN_ERROR'))");
+    expect(source).toContain("const worker=config.workers.find(w=>w.id==='NV02')");
+    expect(source).not.toContain("config.workers.filter(w=>w.enabled!==false&&w.id==='NV02')");
+    expect(source).toContain("controllerEnabledFlagIgnored:true");
     expect(source).toContain('button[aria-label*="Ngừng" i]');
     const dispatchExprSource=source.slice(source.indexOf('function dispatchExpr'),source.indexOf('function enterSubmitStateExpr'));
     expect(dispatchExprSource).toContain('button[aria-label*=\\\"Ngừng\\\" i]');
