@@ -127,6 +127,16 @@ describe('durable UI worker job ledger',()=>{
     expect(new DurableUiJobLedger(path).snapshot().filter(job=>job.jobId==='GH-1041')).toHaveLength(1);
   });
 
+  it('resumes the same JOB id from ERROR to QUEUED without duplication',()=>{
+    const {path,store}=ledger();
+    store.create('NV02',{jobId:'GH-RESUME',source:'AUTO_CONTINUE'});
+    store.transition('NV02','GH-RESUME','DISPATCHING');
+    store.transition('NV02','GH-RESUME','ERROR',{blocker:'SEND_FAIL'});
+    const resume=store.retryError('NV02','GH-RESUME',{source:'AUTO_CONTINUE'});
+    expect(resume.stage).toBe('QUEUED');
+    expect(new DurableUiJobLedger(path).snapshot().filter(j=>j.jobId==='GH-RESUME')).toHaveLength(1);
+  });
+
   it('refuses retryError for non-error terminal or active jobs',()=>{
     const {store}=ledger();
     store.create('NV02',{jobId:'ACTIVE'});
