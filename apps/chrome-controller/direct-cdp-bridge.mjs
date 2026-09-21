@@ -21,6 +21,8 @@ const NV02_PROJECT_ID=(()=>{const m=NV02_PROJECT_PREFIX.match(/^\/g\/(g-p-[a-z0-
 const NV02_PROJECT_ID_PREFIX=NV02_PROJECT_ID?`/g/${NV02_PROJECT_ID}`:'';
 const busy=new Set();
 let nv02VerifiedModelProfile=null;
+let nv02MutationBusy=false;
+const NV02_ISOLATED_AUTO_CONTINUE=true;
 function applyNv02VerifiedModelProfile(ui){
   const sameUrl=Boolean(nv02VerifiedModelProfile&&ui?.url&&nv02VerifiedModelProfile.url===ui.url);
   const reasoningHigh=ui?.reasoningEffort==='High';
@@ -40,6 +42,10 @@ function isNv02ProjectContext(url){
     if(current.pathname.startsWith(NV02_PROJECT_PREFIX+'/c/'))return true;
     return Boolean(NV02_PROJECT_ID_PREFIX)&&current.pathname.startsWith(NV02_PROJECT_ID_PREFIX+'/c/');
   }catch{return false}
+}
+function hasCurrentNv02Chat(url){
+  if(!isNv02ProjectContext(url))return false;
+  try{return /\/c\//.test(new URL(String(url||'')).pathname);}catch{return false}
 }
 
 function log(event,data={}){
@@ -116,16 +122,9 @@ function pageTargetsFor(w,list){
   return list.filter(t=>t.type==='page'&&(()=>{try{return new URL(t.url).hostname===host}catch{return false}})());
 }
 async function pruneDuplicates(w,list){
-  const pages=pageTargetsFor(w,list);if(pages.length<=1) return pages[0]||null;
-  const homePath=new URL(w.homeUrl).pathname;
-  const keep=pages.find(t=>{try{return new URL(t.url).pathname===homePath}catch{return false}})||pages[0];
-  const lease=await acquireBridgeMutationLease(w.id);
-  if(!lease){log('DUPLICATE_TABS_PRUNE_DEFERRED_LEASE_BUSY',{workerId:w.id,count:pages.length});return keep;}
-  const b=await browserRpc(workerPort(w));
-  try{
-    for(const t of pages){if(t.id!==keep.id) await b.call('Target.closeTarget',{targetId:t.id});}
-    log('DUPLICATE_TABS_PRUNED',{workerId:w.id,removed:pages.length-1,kept:keep.id});
-  }finally{b.close();await releaseBridgeMutationLease(w.id,lease);}
+  const pages=pageTargetsFor(w,list);if(pages.length<=1)return pages[0]||null;
+  const keep=pages.find(t=>hasCurrentNv02Chat(t.url))||pages.find(t=>{try{return new URL(t.url).pathname===new URL(w.homeUrl).pathname}catch{return false}})||pages[0];
+  log('DUPLICATE_TABS_OBSERVED_NO_MUTATION',{workerId:w.id,count:pages.length,kept:keep.id});
   return keep;
 }
 
@@ -447,41 +446,25 @@ async function waitForIdleAfterSubmission(target,timeoutMs=45000,stableReadyMs=5
   throw new Error('NV02_STABLE_READY_TIMEOUT');
 }
 async function withNv02Mutation(fn,purpose='NORMAL',ttlMs=30000){
-  const lease=await acquireBridgeMutationLease('NV02',purpose,ttlMs);
-  if(!lease)return{ok:false,status:'MUTATION_LEASE_BUSY'};
-  try{return await fn();}finally{await releaseBridgeMutationLease('NV02',lease);}
+  if(nv02MutationBusy)return{ok:false,status:'MUTATION_LEASE_BUSY'};
+  nv02MutationBusy=true;
+  log('NV02_LOCAL_MUTATION_ACQUIRED',{purpose,ttlMs});
+  try{return await fn();}
+  finally{nv02MutationBusy=false;log('NV02_LOCAL_MUTATION_RELEASED',{purpose});}
 }
-async function dispatchNaturalContinueLocked(target,state,now,resumeJobId=null){
+async function dispatchNaturalContinueLocked(target,state,now){
   await ensureNv02ModelProfile(target);
-  let recoveryReserved=false;
-  if(resumeJobId){
-    await post('/api/utility/workers/NV02/job/recovery-resume','NV02',{jobId:resumeJobId});
-    recoveryReserved=true;
-  }
-  try{
-    await scrollToBottom(target).catch(()=>{});
-    const prompt=pickContinuePrompt(state.lastPrompt);
-    const result=await dispatch(target,prompt);
-    if(!result?.ok)throw new Error(result?.status||'CONTINUE_DISPATCH_FAILED');
-    const next={...state,lastPrompt:prompt,dispatchesInChat:Number(state.dispatchesInChat||0)+1,stalledChecks:0,lastPhase:'WORKING',nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
-    saveNv02Continuity(next);
-    if(resumeJobId)await continuityEvent('WAITING_EVIDENCE_RESUMED',{jobId:resumeJobId,prompt,evidence:result.evidence||null});
-    await continuityEvent('CONTINUE_DISPATCHED',{prompt,evidence:result.evidence||null,nextContinueAt:next.nextContinueAt,dispatchesInChat:next.dispatchesInChat});
-    return next;
-  }catch(error){
-    if(recoveryReserved){
-      await post('/api/utility/workers/NV02/job','NV02',{
-        jobId:resumeJobId,
-        stage:'WAITING_EVIDENCE',
-        nextAction:'Retry same-job recovery continue',
-        blocker:'RECOVERY_CONTINUE_NOT_DELIVERED',
-      }).catch(()=>{});
-    }
-    throw error;
-  }
+  await scrollToBottom(target).catch(()=>{});
+  const prompt=pickContinuePrompt(state.lastPrompt);
+  const result=await dispatch(target,prompt);
+  if(!result?.ok)throw new Error(result?.status||'CONTINUE_DISPATCH_FAILED');
+  const next={...state,lastPrompt:prompt,dispatchesInChat:Number(state.dispatchesInChat||0)+1,stalledChecks:0,lastPhase:'WORKING',nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
+  saveNv02Continuity(next);
+  await continuityEvent('CONTINUE_DISPATCHED',{prompt,evidence:result.evidence||null,nextContinueAt:next.nextContinueAt,dispatchesInChat:next.dispatchesInChat});
+  return next;
 }
-async function dispatchNaturalContinue(target,state,now,resumeJobId=null){
-  return withNv02Mutation(()=>dispatchNaturalContinueLocked(target,state,now,resumeJobId),'CONTINUITY_CONTINUE');
+async function dispatchNaturalContinue(target,state,now){
+  return withNv02Mutation(()=>dispatchNaturalContinueLocked(target,state,now),'CONTINUITY_CONTINUE');
 }
 async function checkpointNv02(target){
   return withNv02Mutation(async()=>{
@@ -522,115 +505,64 @@ async function noteNv02CommandDispatch(){
 async function maybeNv02Continuity(w,target,ui){
   const now=Date.now();let state=loadNv02Continuity();
   const phase=deriveNv02Phase(ui||{});
+  const currentTrackedWork=hasCurrentNv02Chat(ui?.url);
   state={...state,lastPhase:phase};saveNv02Continuity(state);
   if(phase==='BLOCKED'){await continuityEvent('BLOCKED',{securityBlock:ui?.securityBlock||null});return;}
-  const controller=await getControllerState();
-  if(controller?.paused===true||(controller?.utilityPausedWorkers||[]).includes('NV02')){
+  if(!currentTrackedWork){
     if(now>=state.nextContinueAt){
-      state={...state,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
-      await continuityEvent('CONTINUE_SKIPPED_OWNER_READ_ONLY',{nextContinueAt:state.nextContinueAt});
+      state={...state,stalledChecks:0,workingSignature:'',workingUnchangedChecks:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
+      saveNv02Continuity(state);
+      await continuityEvent('CONTINUE_SKIPPED_NO_CURRENT_CHAT',{nextContinueAt:state.nextContinueAt});
     }
     return;
   }
-  const active=hasActiveNv02Work(controller);
-  const waitingEvidence=hasWaitingEvidenceNv02Work(controller);
-  const continuable=hasContinuableNv02Work(controller);
-  const currentTrackedWork=continuable;
-  const waitingEvidenceJobId=String((controller?.jobs||[]).find((job)=>job?.workerId==='NV02'&&job?.stage==='WAITING_EVIDENCE'&&!job?.completedAt)?.jobId||'')||null;
-  if(currentTrackedWork&&phase==='STALLED'&&ui?.modelExact!==true){
+  if(phase==='STALLED'&&ui?.modelExact!==true){
     try{
       const corrected=await withNv02Mutation(()=>ensureNv02ModelProfile(target),'MODEL_PROFILE_RECOVERY');
-      await continuityEvent('MODEL_PROFILE_RECOVERY',{status:corrected?.status||corrected?.modelProfileStatus||'VERIFIED',modelName:corrected?.modelName||null,reasoningEffort:corrected?.reasoningEffort||null});
-      if(corrected?.status==='MUTATION_LEASE_BUSY'){
-        state={...state,stalledChecks:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
-        return;
-      }
+      if(corrected?.status==='MUTATION_LEASE_BUSY')return;
       const recoveredProjectContext=isNv02ProjectContext(corrected?.url)||corrected?.projectDraftReady===true;
       if(!recoveredProjectContext)throw new Error('PROJECT_CONTEXT_NOT_READY_AFTER_MODEL_RECOVERY');
-      await postWorkerHeartbeat(w,target,corrected,recoveredProjectContext);
-      await continuityEvent('MODEL_PROFILE_HEARTBEAT_REFRESHED',{modelName:corrected?.modelName||null,reasoningEffort:corrected?.reasoningEffort||null,verifiedAt:corrected?.verifiedAt||null});
+      await postWorkerHeartbeat(w,target,corrected,recoveredProjectContext).catch(()=>{});
       state={...state,stalledChecks:0,nextContinueAt:now};saveNv02Continuity(state);
-      const sent=await dispatchNaturalContinue(target,state,now,waitingEvidenceJobId);
-      if(sent?.status==='MUTATION_LEASE_BUSY'){
-        state={...state,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
-      }
+      if(corrected?.uiPhase==='READY')await dispatchNaturalContinue(target,state,now);
       return;
     }catch(error){await continuityEvent('MODEL_PROFILE_RECOVERY_FAILED',{error:String(error?.message||error)});}
   }
-  if(now>=state.nextRefreshAt&&phase==='READY'&&!active&&!waitingEvidence){
-    try{
-      const receipt=await checkpointNv02(target);
-      state={...state,nextRefreshAt:nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS),nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),stalledChecks:0};
-      saveNv02Continuity(state);
-      await continuityEvent('REFRESH_SCHEDULED',{receiptRef:receipt.receiptRef,checkpointRef:receipt.checkpointRef,nextRefreshAt:state.nextRefreshAt});
-      await post('/api/workers/NV02/restart-schedule','NV02',{reason:'RANDOM_2_4H'});
-    }catch(error){
-      state={...state,nextRefreshAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
-      await continuityEvent('REFRESH_DEFERRED',{error:String(error?.message||error)});
-    }
-    return;
-  }
   if(now<state.nextContinueAt)return;
   if(phase==='WORKING'){
-    if(!currentTrackedWork){
-      state={...state,stalledChecks:0,workingSignature:'',workingUnchangedChecks:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
-      await continuityEvent('CONTINUE_SKIPPED_UNTRACKED_WORKING',{nextContinueAt:state.nextContinueAt});
-      return;
-    }
     const signature=String(ui?.activitySignature||'');
     const same=Boolean(signature&&state.workingSignature===signature);
     const unchanged=same?Math.min(MAX_STALLED_CHECKS,Number(state.workingUnchangedChecks||0)+1):1;
-    state={...state,stalledChecks:0,workingSignature:signature,workingUnchangedChecks:unchanged,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
+    state={...state,stalledChecks:0,workingSignature:signature,workingUnchangedChecks:unchanged,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
+    saveNv02Continuity(state);
     await continuityEvent('WORKING_NO_PROGRESS_CHECK',{workingUnchangedChecks:unchanged,nextContinueAt:state.nextContinueAt,signaturePresent:Boolean(signature)});
     if(unchanged===2){
       const result=await withNv02Mutation(()=>reloadTarget(target),'STALE_WORKING_RECOVERY');
       await continuityEvent('WORKING_STALE_RELOAD',{status:result?.status||null,workingUnchangedChecks:unchanged});
     }else if(unchanged>=MAX_STALLED_CHECKS){
-      await post('/api/workers/NV02/restart-schedule','NV02',{reason:'WORKING_NO_PROGRESS_3_CHECKS'}).catch(async error=>continuityEvent('WORKING_STALE_RESTART_FAILED',{error:String(error?.message||error)}));
-    }else{
-      await continuityEvent('CONTINUE_SKIPPED_WORKING',{nextContinueAt:state.nextContinueAt});
+      try{await rotateNv02Chat(target,state,now);await continuityEvent('CONTEXT_RECOVERY_ROTATED',{reason:'WORKING_NO_PROGRESS_3_CHECKS'});}
+      catch(error){await continuityEvent('CONTEXT_RECOVERY_ROTATE_FAILED',{error:String(error?.message||error)});}
     }
-    return;
-  }
-  if(active&&!continuable){
-    state={...state,stalledChecks:0,workingSignature:'',workingUnchangedChecks:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
-    await continuityEvent('CONTINUE_SKIPPED_NONCONTINUABLE_ACTIVE_JOB',{nextContinueAt:state.nextContinueAt});
     return;
   }
   if(phase==='READY'){
-    if(!continuable){
-      state={...state,stalledChecks:0,workingSignature:'',workingUnchangedChecks:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
-      await continuityEvent('CONTINUE_SKIPPED_NO_CURRENT_WORK',{nextContinueAt:state.nextContinueAt});
-      return;
-    }
-    const sent=await dispatchNaturalContinue(target,state,now,waitingEvidenceJobId);
+    const sent=await dispatchNaturalContinue(target,state,now);
     if(sent?.status==='MUTATION_LEASE_BUSY'){
       state={...state,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
-      await continuityEvent('CONTINUE_SKIPPED_LEASE_BUSY',{nextContinueAt:state.nextContinueAt});
     }
     return;
   }
-  if(!currentTrackedWork){
-    state={...state,stalledChecks:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
-    await continuityEvent(active?'RECOVERY_SKIPPED_NONCONTINUABLE_ACTIVE_JOB':'RECOVERY_SKIPPED_NO_CURRENT_WORK',{nextContinueAt:state.nextContinueAt});
-    return;
-  }
-  state={...state,stalledChecks:Math.min(MAX_STALLED_CHECKS,state.stalledChecks+1),nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
-  await continuityEvent('STALLED_CHECK',{stalledChecks:state.stalledChecks,nextContinueAt:state.nextContinueAt,modelReady:ui?.modelReady??null,reasoningEffort:ui?.reasoningEffort??null});
+  state={...state,stalledChecks:Math.min(MAX_STALLED_CHECKS,state.stalledChecks+1),nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
+  saveNv02Continuity(state);
+  await continuityEvent('STALLED_CHECK',{stalledChecks:state.stalledChecks,nextContinueAt:state.nextContinueAt});
   if(state.stalledChecks===2){
     const result=await withNv02Mutation(()=>reloadTarget(target),'STALLED_RECOVERY');
     await continuityEvent('STALLED_RELOAD',{status:result?.status||null});
-  }else if(state.stalledChecks>=MAX_STALLED_CHECKS&&currentTrackedWork){
-    try{
-      await rotateNv02Chat(target,state,now);
-      await continuityEvent('CONTEXT_RECOVERY_ROTATED',{stalledChecks:state.stalledChecks});
-    }catch(error){
-      await continuityEvent('CONTEXT_RECOVERY_ROTATE_FAILED',{error:String(error?.message||error),stalledChecks:state.stalledChecks});
-      await post('/api/workers/NV02/restart-schedule','NV02',{reason:'STALLED_3_CHECKS'}).catch(async restartError=>continuityEvent('STALLED_RESTART_FAILED',{error:String(restartError?.message||restartError)}));
-    }
+  }else if(state.stalledChecks>=MAX_STALLED_CHECKS){
+    try{await rotateNv02Chat(target,state,now);await continuityEvent('CONTEXT_RECOVERY_ROTATED',{reason:'STALLED_3_CHECKS'});}
+    catch(error){await continuityEvent('CONTEXT_RECOVERY_ROTATE_FAILED',{error:String(error?.message||error)});}
   }
 }
-
 async function handleCommand(w,target,command){
   const {action,payload={}}=command;
   if(action==='FOCUS') return focus(target).then(()=>({status:'FOCUSED'}));
@@ -649,36 +581,27 @@ async function postWorkerHeartbeat(w,target,ui,projectContextReady){
 }
 
 async function tickWorker(w){
-  if(busy.has(w.id)) return; busy.add(w.id);
+  if(busy.has(w.id))return;busy.add(w.id);
   try{
-    const port=workerPort(w);let list=await targets(port);let target=await pruneDuplicates(w,list);if(!target)return;
+    const port=workerPort(w);const list=await targets(port);const target=await pruneDuplicates(w,list);if(!target)return;
     const rawUi=await uiState(target);
     const projectContextReady=w.id!=='NV02'||isNv02ProjectContext(rawUi.url)||rawUi.projectDraftReady===true;
     const ui=projectContextReady?rawUi:{...rawUi,uiReady:false,uiPhase:'STALLED',modelReady:false};
-    await postWorkerHeartbeat(w,target,ui,projectContextReady);
+    await postWorkerHeartbeat(w,target,ui,projectContextReady).catch(error=>log('CONTROLLER_TELEMETRY_UNAVAILABLE',{error:String(error?.message||error)}));
     if(w.id==='NV02'&&!projectContextReady&&!ui.securityBlock){
       if(!NV02_HOME_URL){await continuityEvent('PROJECT_CONTEXT_RECOVERY_BLOCKED',{reason:'NV02_HOME_URL_MISSING',url:rawUi.url||null});return;}
       const recovered=await withNv02Mutation(()=>recoverNv02ProjectContext(target),'PROJECT_CONTEXT_RECOVERY');
       await continuityEvent(recovered?.status==='MUTATION_LEASE_BUSY'?'PROJECT_CONTEXT_RECOVERY_DEFERRED':'PROJECT_CONTEXT_RECOVERY_NAVIGATED',{status:recovered?.status||null,fromUrl:rawUi.url||null});
       return;
     }
-    const command=await getCommand(w.id);
-    if(command){
-      try{
-        const result=await handleCommand(w,target,command);
-        await post('/api/result',w.id,{workerId:w.id,commandId:command.id,ok:true,...result});
-        if(w.id==='NV02'&&command.action==='DISPATCH')noteNv02CommandDispatch();
-      }catch(error){await post('/api/result',w.id,{workerId:w.id,commandId:command.id,ok:false,status:String(error?.message||error)}).catch(()=>{});}
-      return;
-    }
     if(w.id==='NV02')await maybeNv02Continuity(w,target,ui);
   }catch(error){
     const msg=String(error?.message||error);
-    if(!/fetch failed|ECONNREFUSED|CDP_LIST|AbortError|TimeoutError/.test(msg)) log('WORKER_TICK_ERROR',{workerId:w.id,error:msg});
+    if(!/CDP_LIST|AbortError|TimeoutError/.test(msg))log('WORKER_TICK_ERROR',{workerId:w.id,error:msg});
   }finally{busy.delete(w.id);}
 }
 
 async function tick(){await Promise.all(config.workers.filter(w=>w.enabled!==false&&w.id==='NV02').map(tickWorker));}
-http.createServer((req,res)=>{if(req.url==='/health'){res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({ok:true,workers:config.workers.map(w=>w.id)}));return;}res.writeHead(404);res.end();}).listen(8799,'127.0.0.1',()=>log('BRIDGE_READY',{port:8799}));
+http.createServer((req,res)=>{if(req.url==='/health'){res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({ok:true,mode:'NV02_ISOLATED_AUTO_CONTINUE',controllerRequired:false,worker:'NV02',continuity:loadNv02Continuity()}));return;}res.writeHead(404);res.end();}).listen(8799,'127.0.0.1',()=>log('BRIDGE_READY',{port:8799,mode:'NV02_ISOLATED_AUTO_CONTINUE',controllerRequired:false}));
 setInterval(()=>void tick(),3000).unref();
 void tick();
