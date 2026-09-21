@@ -4,6 +4,7 @@ const DEFAULT_OWNER='newsdayads';
 const DEFAULT_REPO='tigeriq-ai-lab';
 const DEFAULT_CONTROLLER_STATE_URL='http://127.0.0.1:8798/api/autopilot/state';
 const DEFAULT_SAVE_LEDGER_ISSUE=788;
+const DEFAULT_CORE_FAILOVER_GRACE_MS=15000;
 const SUPPORTED_WORKERS=new Set(['NV02','NV03','NV04']);
 const REQUIRED_TRUE_FLAGS=[
   'TIGERIQ_EXECUTABLE','NO_DIRECT_MAIN','NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_DESTRUCTIVE','NO_PRODUCTION_RELEASE',
@@ -112,7 +113,7 @@ export async function readPreviousJobIdFromController({fetchImpl=fetch,stateUrl=
   return /^GH-\d+$/.test(id)?id:undefined;
 }
 
-export async function buildUiAutopilotSnapshot({fetchImpl=fetch,token='',owner=DEFAULT_OWNER,repo=DEFAULT_REPO,previousJobId}={}){
+export async function buildUiAutopilotSnapshot({fetchImpl=fetch,token='',owner=DEFAULT_OWNER,repo=DEFAULT_REPO,previousJobId,fallbackWorkerId}={}){
   const observedAt=new Date().toISOString();
   let previousJob;
   let previousNumber;
@@ -129,10 +130,11 @@ export async function buildUiAutopilotSnapshot({fetchImpl=fetch,token='',owner=D
   const eligible=(Array.isArray(rows)?rows:[])
     .map(issue=>({issue,spec:parseAutoUiIssue(issue)}))
     .filter(x=>x.spec&&x.spec.number!==previousNumber)
+    .filter(x=>!fallbackWorkerId||x.spec.workerId===fallbackWorkerId)
     .sort((a,b)=>priorityRank(a.spec.priority)-priorityRank(b.spec.priority)||a.spec.number-b.spec.number);
   const chosen=eligible[0];
-  const nextJob=chosen?{jobId:chosen.spec.jobId,workerId:chosen.spec.workerId,status:'READY',executable:true,priority:chosen.spec.priority,prompt:buildPrompt(chosen.spec,`${owner}/${repo}`),riskFlags:[],issueRef:chosen.spec.url,coreSelected:true,workItemGroup:'CORE-SELECTED-WORKITEM'}:undefined;
-  const revision=['github-ui-v3',previousJob?.jobId||'none',previousJob?.status||'none',chosen?.spec.jobId||'none',chosen?.spec.workerId||'none',chosen?.spec.updatedAt||'none'].join(':');
+  const nextJob=chosen?{jobId:chosen.spec.jobId,workerId:chosen.spec.workerId,status:'READY',executable:true,priority:chosen.spec.priority,prompt:buildPrompt(chosen.spec,`${owner}/${repo}`),riskFlags:[],issueRef:chosen.spec.url,coreSelected:false,workItemGroup:fallbackWorkerId?'NV02-OWNER-PROXY-FALLBACK':'GITHUB-CANDIDATE'}:undefined;
+  const revision=['github-ui-v4',fallbackWorkerId||'all',previousJob?.jobId||'none',previousJob?.status||'none',chosen?.spec.jobId||'none',chosen?.spec.workerId||'none',chosen?.spec.updatedAt||'none'].join(':');
   return{source:'GITHUB',observedAt,revision,previousJob,nextJob,requiredWorkers:nextJob?[nextJob.workerId]:[]};
 }
 
@@ -142,6 +144,7 @@ export function projectCoreOwnedUiSnapshot(snapshot){
   return{
     ...snapshot,
     source:'CORE',
+    authority:'CORE',
     revision:`core-ui-v1:${String(snapshot.revision||'')}`,
     previousJob:mapJob(snapshot.previousJob),
     nextJob:mapJob(snapshot.nextJob),
@@ -182,19 +185,38 @@ export function startUiAutopilotSnapshotServer({
   host='127.0.0.1',port=Number(process.env.TIGERIQ_UI_AUTOPILOT_PORT||8794),fetchImpl=fetch,controllerStateUrl=process.env.TIGERIQ_CHROME_CONTROLLER_STATE_URL||DEFAULT_CONTROLLER_STATE_URL,
   coreAssignmentUrl=process.env.TIGERIQ_CORE_UI_ASSIGNMENT_URL||defaultCoreAssignmentUrl(),
   saveLedgerIssue=Number(process.env.TIGERIQ_SAVE_LEDGER_ISSUE||DEFAULT_SAVE_LEDGER_ISSUE),
+  coreFailoverGraceMs=Math.max(5000,Math.min(60000,Number(process.env.TIGERIQ_CORE_FAILOVER_GRACE_MS||DEFAULT_CORE_FAILOVER_GRACE_MS))),
 }={}){
+
   if(host!=='127.0.0.1')throw new Error('UI_AUTOPILOT_HOST_MUST_BE_LOOPBACK');
   if(!isLoopbackUrl(controllerStateUrl))throw new Error('CONTROLLER_STATE_URL_MUST_BE_LOOPBACK');
+  let coreUnavailableSince=0;
+  const preferredSnapshot=async(previousJobId)=>{
+    try{
+      const snapshot=await readCoreUiAssignment({fetchImpl,coreAssignmentUrl,previousJobId});
+      coreUnavailableSince=0;
+      return snapshot;
+    }catch(error){
+      const now=Date.now();
+      if(!coreUnavailableSince)coreUnavailableSince=now;
+      const unavailableMs=Math.max(0,now-coreUnavailableSince);
+      if(unavailableMs<coreFailoverGraceMs){
+        const e=new Error(`CORE_FAILOVER_ARMING:${unavailableMs}/${coreFailoverGraceMs}`);e.cause=error;throw e;
+      }
+      const fallback=await buildUiAutopilotSnapshot({fetchImpl,token,owner,repo,previousJobId,fallbackWorkerId:'NV02'});
+      return {...fallback,authority:'NV02_OWNER_PROXY_FALLBACK',revision:`nv02-owner-proxy-fallback-v1:${fallback.revision}`,coreFailover:{active:true,unavailableMs,graceMs:coreFailoverGraceMs}};
+    }
+  };
   const server=createServer(async(req,res)=>{
     const url=new URL(req.url||'/','http://127.0.0.1');
     try{
       if(req.method==='GET'&&url.pathname==='/health'){
-        res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify({ok:true,service:'ui-autopilot-snapshot'}));
+        res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify({ok:true,service:'ui-autopilot-snapshot',coreFailoverGraceMs,coreUnavailableSince:coreUnavailableSince?new Date(coreUnavailableSince).toISOString():null}));
       }
       if(req.method==='GET'&&url.pathname==='/api/ui-autopilot/snapshot'){
         const explicit=url.searchParams.get('previousJobId')||undefined;
         const previousJobId=explicit||await readPreviousJobIdFromController({fetchImpl,stateUrl:controllerStateUrl});
-        const snapshot=await readCoreUiAssignment({fetchImpl,coreAssignmentUrl,previousJobId});
+        const snapshot=await preferredSnapshot(previousJobId);
         res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(snapshot));
       }
       if(req.method==='GET'&&url.pathname==='/api/ui-autopilot/save-receipt'){

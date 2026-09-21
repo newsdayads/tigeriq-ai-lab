@@ -5,7 +5,7 @@ import {branchName,checkGateState,extractCanonicalAllowedPaths,isRetryableAiErro
 import {assertSafeFileChange} from './safety-guard.mjs';
 import {installAiJsonTransport} from './ai-json-transport.mjs';
 import { createGeminiRateController } from '../shared/gemini-rate-control.mjs';
-import {assertExecutionPlaneMutationPaths} from '../shared/control-plane-lock.mjs';
+import {assertExecutionPlaneMutationPaths,controlPlaneRepairIntent} from '../shared/control-plane-lock.mjs';
 
 export class CodingScopeViolationError extends Error {
   constructor(offending) {
@@ -31,13 +31,13 @@ export function validateSourceScope(proposedPaths,canonicalPaths){
   return true;
 }
 
-export function validateManagerJobPaths(decision,canonicalPaths=[]){
+export function validateManagerJobPaths(decision,canonicalPaths=[],mutationAuth={}){
   if(decision?.status!=='continue')return [];
   const raw=[...new Set((decision?.job?.paths||[]).map(String))];
   if(!decision?.job||raw.length<1||raw.length>8||raw.some(p=>!safeRepoPath(p))){
     const e=new Error('MANAGER_PATHS_INVALID');e.code='MANAGER_PATHS_INVALID';throw e;
   }
-  assertExecutionPlaneMutationPaths(raw);
+  assertExecutionPlaneMutationPaths(raw,mutationAuth);
   try{validateSourceScope(raw,canonicalPaths)}catch(error){
     const offending=Array.isArray(error?.offending)?error.offending:raw.filter(p=>!(canonicalPaths||[]).includes(p));
     const e=new Error('MANAGER_SCOPE_MISMATCH:'+offending.join(', '));e.code='MANAGER_SCOPE_MISMATCH';e.detail={offending};throw e;
@@ -243,7 +243,7 @@ async function mainSha(){return (await gh('/git/ref/heads/main')).object.sha}
 async function repoTree(){const sha=await mainSha();const t=await gh(`/git/trees/${sha}?recursive=1`);return (t.tree||[]).filter(x=>x.type==='blob').map(x=>x.path).filter(safeRepoPath).slice(0,3000)}
 async function readRepoFile(path,ref='main'){try{const x=await gh(`/contents/${path.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(ref)}`);return {path,sha:x.sha,content:Buffer.from(x.content||'','base64').toString('utf8')};}catch(e){if(e.status===404)return {path,sha:null,content:''};throw e}}
 async function createBranch(name,sha){await gh('/git/refs',{method:'POST',body:JSON.stringify({ref:`refs/heads/${name}`,sha})})}
-async function writeFile(branch,change){assertExecutionPlaneMutationPaths([change.path]);const old=await readRepoFile(change.path,branch);assertSafeFileChange({path:change.path,before:old.sha?old.content:null,after:change.content,isNew:!old.sha});const body={message:`TigerIQ ${change.path}`,content:Buffer.from(change.content,'utf8').toString('base64'),branch};if(old.sha)body.sha=old.sha;return gh(`/contents/${change.path.split('/').map(encodeURIComponent).join('/')}`,{method:'PUT',body:JSON.stringify(body)})}
+async function writeFile(branch,change,mutationAuth={}){assertExecutionPlaneMutationPaths([change.path],mutationAuth);const old=await readRepoFile(change.path,branch);assertSafeFileChange({path:change.path,before:old.sha?old.content:null,after:change.content,isNew:!old.sha});const body={message:`TigerIQ ${change.path}`,content:Buffer.from(change.content,'utf8').toString('base64'),branch};if(old.sha)body.sha=old.sha;return gh(`/contents/${change.path.split('/').map(encodeURIComponent).join('/')}`,{method:'PUT',body:JSON.stringify(body)})}
 async function openPr(branch,title,body){return gh('/pulls',{method:'POST',body:JSON.stringify({title,head:branch,base:'main',body,draft:false,maintainer_can_modify:true})})}
 async function headSha(branch){return (await gh(`/git/ref/heads/${encodeURIComponent(branch)}`)).object.sha}
 async function waitGates(branch,prNumber,timeoutMs=20*60*1000){const deadline=Date.now()+timeoutMs;while(Date.now()<deadline){assertPrOpenState(await gh(`/pulls/${prNumber}`));const sha=await headSha(branch);const x=await gh(`/commits/${sha}/check-runs?per_page=100`);const g=checkGateState(x.check_runs||[]);if(g.state==='passed')return {sha,...g};if(g.state==='failed'){const e=Object.assign(new Error('CI_GATES_FAILED'),{code:'CI_GATES_FAILED',detail:g});throw e}await sleep(15000)}const e=new Error('CI_GATES_TIMEOUT');e.code='CI_GATES_TIMEOUT';throw e}
@@ -269,6 +269,7 @@ async function managerTick(){
   const o=q.rows[0];if(!o)return;
   let manager=pickResource();if(!manager)return
   const canonical=extractCanonicalAllowedPaths(o.objective);
+  const mutationAuth={...controlPlaneRepairIntent(o.objective),executorClass:'CODING_LANE_MANAGER'};
   const tree=await repoTree();
   const scopeText=canonical.length?`\nCANONICAL ALLOWED PATHS (MUST NOT EXPAND):\n${canonical.join('\n')}\n`:'';
   const prompt=`You are TigerIQ Coding Manager. Decompose this repository objective into ONE safe coding job. Repository files:\n${tree.join('\n').slice(0,45000)}\n\nOBJECTIVE: ${o.objective}${scopeText}\nDependencies and backlog eligibility were already validated by Core before this objective reached Coding Lane. Do NOT block because a DEPENDS_ON issue is not represented in repository files or because you cannot independently confirm a GitHub dependency. Decompose only the repository implementation requested here. Use status=blocked ONLY for a concrete hard safety/policy condition such as security, credential, paid cost, Production, destructive action, browser authentication, authorization required, or canonical out-of-scope. Uncertainty, preference, placeholder text, inability to independently reconfirm eligibility, or "reason for blocking" are NOT valid blockers. Return ONLY JSON {"status":"continue|blocked","summary":"short","job":{"title":"short","instruction":"standalone implementation instruction","paths":["exact/repo/path"]}}. Max 8 paths. Include relevant tests only when they are inside canonical scope. Never select .github/workflows, credentials/secrets, production/deploy config, docs/EXECUTION_BOUNDARY.md, docs/SECURITY.md, scripts/tigeriq-core/run-core.ps1, or main/release controls.`;
@@ -279,11 +280,11 @@ async function managerTick(){
         e.code='MANAGER_SOFT_BLOCK';
         throw e;
       }
-      validateManagerJobPaths(d,canonical);
+      validateManagerJobPaths(d,canonical,mutationAuth);
     };
     const invoked=await invokeJsonWithFailover(manager,prompt,{validateData:validateManagerDecision});manager=invoked.resource;const d=invoked.data;
     if(d.status!=='continue'||!d.job){await pool.query("update tigeriq_coding_objectives set status='blocked',summary=$2,manager_employee_id=$3,updated_at=now() where id=$1",[o.id,String(d.summary||'manager blocked').slice(0,1000),manager.id]);return}
-    const paths=validateManagerJobPaths(d,canonical);
+    const paths=validateManagerJobPaths(d,canonical,mutationAuth);
     const id=`CODE-${randomUUID()}`;
     await pool.query('insert into tigeriq_coding_jobs(id,objective_id,title,instruction,paths) values($1,$2,$3,$4,$5)',[id,o.id,String(d.job.title||'Coding job').slice(0,180),String(d.job.instruction||o.objective).slice(0,12000),JSON.stringify(paths)]);
     await pool.query("update tigeriq_coding_objectives set manager_employee_id=$2,summary=$3,updated_at=now() where id=$1",[o.id,manager.id,String(d.summary||'coding job created').slice(0,1000)]);
@@ -411,13 +412,13 @@ async function generateRepairChanges(worker,j,context,issues=[],exclude=[]){
   const invoked=await invokeJsonWithFailover(worker,prompt,{exclude,validateData,shrinkPrompt:preserveGenerationPrompt});
   return {payload:invoked.data,resource:invoked.resource};
 }
-async function writeRepairChanges(branch,changes){
-  for(const change of changes)await writeFile(branch,change);
+async function writeRepairChanges(branch,changes,mutationAuth={}){
+  for(const change of changes)await writeFile(branch,change,mutationAuth);
 }
 export function isRefreshableCompactPatchError(error){
   return /CODING_COMPACT_EDIT_(?:OLD_NOT_FOUND|OLD_NOT_UNIQUE)|COMPACT_EDIT_(?:SEARCH_MISSING|SEARCH_AMBIGUOUS)/i.test(String(error?.message||error||''));
 }
-async function generateAndWriteRepair(worker,j,branch,issues=[],exclude=[]){
+async function generateAndWriteRepair(worker,j,branch,issues=[],exclude=[],mutationAuth={}){
   let selected=worker,last=null;
   for(let attempt=1;attempt<=2;attempt++){
     const context=await contextFor(j.paths,branch);
@@ -425,7 +426,7 @@ async function generateAndWriteRepair(worker,j,branch,issues=[],exclude=[]){
     try{
       const generated=await generateRepairChanges(selected,j,context,retryIssues,exclude);
       selected=generated.resource;
-      await writeRepairChanges(branch,generated.payload.changes);
+      await writeRepairChanges(branch,generated.payload.changes,mutationAuth);
       return {worker:selected,payload:generated.payload};
     }catch(error){
       last=error;
@@ -440,7 +441,9 @@ async function reviewPr(reviewer,j,diff,implementerId,extraExclude=[]){const pro
 
 async function runJob(j){
   j.paths=Array.isArray(j.paths)?j.paths:j.paths||[];
-  assertExecutionPlaneMutationPaths(j.paths);
+  const objectiveRow=(await pool.query('select objective from tigeriq_coding_objectives where id=$1',[j.objective_id])).rows[0];
+  const mutationAuth={...controlPlaneRepairIntent(objectiveRow?.objective||''),executorClass:'CODING_LANE'};
+  assertExecutionPlaneMutationPaths(j.paths,mutationAuth);
   const cooldownExcludes=activeProviderCooldownIds(j.failure);
   let worker=resources.find(r=>r.id===j.employee_id&&!cooldownExcludes.includes(r.id))||pickResource(cooldownExcludes);if(!worker)throw new Error('NO_IMPLEMENTER_AVAILABLE');
   await pool.query("update tigeriq_coding_jobs set employee_id=$2,status='running' where id=$1",[j.id,worker.id]);
@@ -460,7 +463,7 @@ async function runJob(j){
     reviewer=pickResource([worker.id,...cooldownExcludes]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE');
     const base=await mainSha();branch=branchName(worker.id,j.id);await createBranch(branch,base);
     await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,branch=$4,next_attempt_at=null where id=$1",[j.id,worker.id,reviewer.id,branch]);
-    for(const ch of gen.changes)await writeFile(branch,ch);
+    for(const ch of gen.changes)await writeFile(branch,ch,mutationAuth);
     pr=await openPr(branch,`[${worker.id}] ${j.title}`,`Automated TigerIQ Coding Lane job \`${j.id}\`.\n\nImplementer: ${worker.id}\nIndependent reviewer: ${reviewer.id}\nDirect writes to main are forbidden. Merge is attempted only after CI gates and reviewer approval.`);
     await pool.query("update tigeriq_coding_jobs set pr_number=$2,status='waiting_ci' where id=$1",[j.id,pr.number]);
   }
@@ -470,7 +473,7 @@ async function runJob(j){
       waitFn:()=>waitGates(branch,pr.number),
       onWaiting:async()=>{await pool.query("update tigeriq_coding_jobs set status='waiting_ci' where id=$1",[j.id])},
       repairFn:async({evidence})=>{
-        const repaired=await generateAndWriteRepair(worker,j,branch,[`CI gate failure on same PR #${pr.number}`,...evidence],[reviewer.id,...cooldownExcludes]);
+        const repaired=await generateAndWriteRepair(worker,j,branch,[`CI gate failure on same PR #${pr.number}`,...evidence],[reviewer.id,...cooldownExcludes],mutationAuth);
         worker=repaired.worker;gen=repaired.payload;
         if(reviewer?.id===worker.id){reviewer=pickResource([worker.id,...cooldownExcludes]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE')}
         await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,status='waiting_ci' where id=$1",[j.id,worker.id,reviewer.id]);
@@ -486,7 +489,7 @@ async function runJob(j){
     await pool.query("update tigeriq_coding_jobs set reviewer_employee_id=$2 where id=$1",[j.id,reviewer.id]);
     if(review.decision==='approve')break;
     if(reviewCycle===2)throw Object.assign(new Error('REVIEW_CHANGES_UNRESOLVED'),{detail:review});
-    const repaired=await generateAndWriteRepair(worker,j,branch,review.issues,[reviewer.id,...cooldownExcludes]);worker=repaired.worker;gen=repaired.payload;
+    const repaired=await generateAndWriteRepair(worker,j,branch,review.issues,[reviewer.id,...cooldownExcludes],mutationAuth);worker=repaired.worker;gen=repaired.payload;
     if(reviewer.id===worker.id){reviewer=pickResource([worker.id,...cooldownExcludes]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE')}
     await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,status='waiting_ci' where id=$1",[j.id,worker.id,reviewer.id]);
   }
