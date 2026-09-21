@@ -32,9 +32,15 @@ describe('NV02 continuity policy', () => {
     expect(prompt).toContain('TIGERIQ_SAVE_TOKEN=token-1');
   });
 
-  it('uses exactly one fixed continue command', () => {
-    expect(CONTINUE_PROMPTS).toEqual(['Tiếp tục']);
-    expect(pickContinuePrompt('anything',()=>0)).toBe('Tiếp tục');
+  it('uses exactly the approved 21 continue commands without immediate repetition', () => {
+    expect(CONTINUE_PROMPTS).toEqual(["Tiếp tục","Làm tiếp","Tiếp đi","Xử lý tiếp","Thực hiện tiếp","Tiếp tục công việc hiện tại","Làm tiếp công việc hiện tại","Tiếp tục việc đang làm","Làm tiếp phần đang dở","Tiếp tục từ chỗ hiện tại","Tiếp tục đúng việc này","Xử lý tiếp việc hiện tại","Thực hiện tiếp việc đang làm","Tiếp tục phần còn dở","Tiếp tục từ trạng thái hiện tại","Tiếp tục xử lý việc đang dở","Tiếp tục công việc đang dang dở","Thực thi tiếp việc hiện tại","Làm tiếp nhiệm vụ đang thực hiện","Tiếp tục đúng việc đang được giao","Làm tiếp, không đổi việc"]);
+    expect(CONTINUE_PROMPTS).toHaveLength(21);
+    expect(new Set(CONTINUE_PROMPTS).size).toBe(21);
+    expect(pickContinuePrompt('Tiếp tục',()=>0)).toBe('Làm tiếp');
+    expect(pickContinuePrompt('Làm tiếp, không đổi việc',()=>0.999999)).not.toBe('Làm tiếp, không đổi việc');
+    for(const prompt of CONTINUE_PROMPTS){
+      expect(prompt).not.toMatch(/tự (lấy|chọn)|việc tiếp theo|hàng đợi|ưu tiên cao nhất/i);
+    }
   });
 
   it('classifies DOM-backed UI state fail closed', () => {
