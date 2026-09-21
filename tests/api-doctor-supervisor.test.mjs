@@ -102,6 +102,8 @@ describe('#1255 routing/runtime integration',()=>{
     expect(core).toContain("API_DOCTOR_EXTERNAL_BLOCKED");
     expect(core).toContain("API_DOCTOR_RECOVERED");
     expect(core).toContain("row.action='wait_repair'");
+    expect(core).toContain("apiDoctorLatestResourceHandoff(resource.resource_id)");
+    expect(core.indexOf("apiDoctorLatestResourceHandoff(resource.resource_id)")).toBeLessThan(core.indexOf("if(plan.action==='wait'||plan.action==='idle')"));
     expect(core).toContain("coalesce(task_kind,'')<>'api_doctor'");
     expect(core).toContain('apiDoctor:await apiDoctorTelemetry()');
     expect(core).not.toContain("retryDue=['READY','ERROR','RATE_LIMITED','OFFLINE']");
