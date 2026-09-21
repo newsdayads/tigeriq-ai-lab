@@ -560,7 +560,7 @@ async function noteNv02CommandDispatch(){
 }
 async function maybeNv02Continuity(w,target,ui){
   const now=Date.now();let state=loadNv02Continuity();
-  if(state.verifiedChatUrl&&state.verifiedChatUrl===ui?.url&&ui?.reasoningEffort==='High'&&ui?.modelExact!==true){
+  if(state.verifiedChatUrl&&state.verifiedChatUrl===ui?.url&&ui?.modelExact!==true){
     ui={...ui,modelProfileStatus:'MODEL_PROFILE_VERIFIED',modelName:'GPT-5.6 Sol',modelReady:true,modelExact:true,verifiedAt:state.modelVerifiedAt||null,blockedReason:null};
     ui.uiPhase=ui.securityBlock?'BLOCKED':ui.uiBusy?'WORKING':ui.uiReady?'READY':'STALLED';
   }
