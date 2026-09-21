@@ -180,10 +180,11 @@ export function decideAutoContinue(
     if (previous.jobId !== state.lastDispatchedJobId) return { kind: 'STOP', reason: 'PREVIOUS_JOB_CORRELATION_MISMATCH' };
   }
   if (previous && !TERMINAL_JOB_STATUSES.has(previous.status)) return { kind: 'BUSY', reason: `PREVIOUS_JOB_${previous.status}` };
-  if (previous && ['FAILED', 'BLOCKED', 'CANCELLED'].includes(previous.status)) return { kind: 'STOP', reason: `PREVIOUS_JOB_${previous.status}` };
+  const previousCancelled=previous?.status==='CANCELLED';
+  if (previous && ['FAILED', 'BLOCKED'].includes(previous.status)) return { kind: 'STOP', reason: `PREVIOUS_JOB_${previous.status}` };
 
   let completionEvidence: ExternalEvidence | undefined;
-  if (previous) {
+  if (previous && !previousCancelled) {
     completionEvidence = selectFreshCompletionEvidence(previous,state,observedAtMs);
     if (!completionEvidence) return { kind: 'WAIT_EVIDENCE', reason: 'PREVIOUS_DONE_WITHOUT_FRESH_JOB_CORRELATED_EVIDENCE' };
   }
