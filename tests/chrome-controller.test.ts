@@ -170,4 +170,10 @@ describe('Worker Identity, Isolation, Leases, and Pause Precedence', () => {
     expect(workerPaused.get('NV03')).toBe(false);
     expect(workerPaused.get('NV04')).toBe(false);
   });
+
+  it('validates config schema for three distinct workers NV02, NV03, NV04', () => {
+    const cfg = JSON.parse(readFileSync(new URL('../apps/chrome-controller/chrome-controller.config.example.json', import.meta.url), 'utf8'));
+    expect(() => validateConfig(cfg)).not.toThrow();
+    expect(cfg.workers.map((w: any) => w.id)).toEqual(['NV02', 'NV03', 'NV04']);
+  });
 });
