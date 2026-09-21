@@ -9,6 +9,15 @@ import {
 } from '../apps/chrome-controller/extension/continuity.js';
 
 describe('NV02 continuity policy', () => {
+  it('enforces fail-closed behavior on stale fallback or duplicate canonical ownership', () => {
+    const script = readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs', 'utf8');
+    expect(script).toContain('acquireNv02CanonicalOwnership');
+    expect(script).toContain('NV02_DUPLICATE_CANONICAL_OWNERSHIP');
+    expect(script).toContain('FAIL_CLOSED');
+    const installer = readFileSync('apps/chrome-controller/runtime/Install-NV02-Continuity.ps1', 'utf8');
+    expect(installer).toContain('NV02_FAIL_CLOSED_STALE_OR_MISSING_OWNERSHIP');
+  });
+
   it('waits long enough for durable receipt propagation without real sleeping', async () => {
     expect(SAVE_RECEIPT_POLL_DELAYS_MS.reduce((sum,ms)=>sum+ms,0)).toBe(60000);
     const slept=[];let reads=0;

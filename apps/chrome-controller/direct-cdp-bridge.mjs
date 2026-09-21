@@ -793,6 +793,16 @@ async function tick(){
   if(!worker){log('NV02_CONFIG_MISSING');return;}
   await tickWorker(worker);
 }
-http.createServer((req,res)=>{if(req.url==='/health'){res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({ok:true,mode:'NV02_ISOLATED_AUTO_CONTINUE',controllerRequired:false,controllerEnabledFlagIgnored:true,worker:'NV02',continuity:loadNv02Continuity()}));return;}res.writeHead(404);res.end();}).listen(8799,'127.0.0.1',()=>log('BRIDGE_READY',{port:8799,mode:'NV02_ISOLATED_AUTO_CONTINUE',controllerRequired:false,controllerEnabledFlagIgnored:true}));
+const activeBridgeLocks=new Set();
+function acquireNv02CanonicalOwnership(bridgeId){
+  if(activeBridgeLocks.size>0){
+    log('NV02_DUPLICATE_CANONICAL_OWNERSHIP',{existing:[...activeBridgeLocks],incoming:bridgeId});
+    console.error('FAIL_CLOSED: Duplicate NV02 runtime ownership detected.');
+    process.exit(42);
+  }
+  activeBridgeLocks.add(bridgeId);
+}
+acquireNv02CanonicalOwnership('direct-cdp-bridge-8799');
+http.createServer((req,res)=>{if(req.url==='/health'){res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({ok:true,mode:'NV02_ISOLATED_AUTO_CONTINUE',controllerRequired:false,controllerEnabledFlagIgnored:true,worker:'NV02',canonicalOwnership:true,continuity:loadNv02Continuity()}));return;}res.writeHead(404);res.end();}).listen(8799,'127.0.0.1',()=>log('BRIDGE_READY',{port:8799,mode:'NV02_ISOLATED_AUTO_CONTINUE',controllerRequired:false,controllerEnabledFlagIgnored:true,canonicalOwnership:true}));
 setInterval(()=>void tick(),3000).unref();
 void tick();
