@@ -116,6 +116,8 @@ describe('#1255 routing/runtime integration',()=>{
     expect(core).toContain("API_DOCTOR_POST_REPAIR_VALIDATION");
     expect(core).toContain("maxValidationAttempts:2");
     expect(core).toContain("post_repair_live_validation_job");
+    expect(core).toContain("API_DOCTOR_VALIDATION_POLICY_VERSION = 'nonempty-v2'");
+    expect(core).toContain("data->>'policyVersion'=$3");
     expect(core).toContain("Provide one short useful sentence confirming this provider can complete a normal TigerIQ Core reasoning request.");
     expect(core).toContain("API_DOCTOR_VALIDATION_EMPTY_RESPONSE");
     expect(core).not.toContain("API_DOCTOR_VALIDATION_UNEXPECTED_RESPONSE");

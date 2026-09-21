@@ -29,6 +29,7 @@ const SURFSENSE_SUMMARY_MODEL = process.env.TIGERIQ_SURFSENSE_SUMMARY_MODEL?.tri
 const OLLAMA_EMPLOYEE_ID = 'NV10';
 const API_DOCTOR_INTERVAL_MS = Math.max(60000, Number(process.env.TIGERIQ_API_DOCTOR_INTERVAL_MS || 120000));
 const API_DOCTOR_ANALYSIS_DEDUPE_MS = Math.max(60000, Number(process.env.TIGERIQ_API_DOCTOR_ANALYSIS_DEDUPE_MS || 600000));
+const API_DOCTOR_VALIDATION_POLICY_VERSION = 'nonempty-v2';
 const CODING_LANE_HOST = process.env.TIGERIQ_CODING_HOST?.trim() || HOST;
 const CODING_LANE_PORT = Number(process.env.TIGERIQ_CODING_PORT || 8797);
 const CODING_LANE_URL = process.env.TIGERIQ_CODING_URL?.trim() || `http://${CODING_LANE_HOST}:${CODING_LANE_PORT}`;
@@ -369,7 +370,7 @@ async function apiDoctorLatestResourceHandoff(resourceId){
   return (await pool.query("select ts,data from tigeriq_events where type='API_DOCTOR_REPAIR_HANDOFF' and resource_id=$1 order by seq desc limit 1",[resourceId])).rows[0]||null;
 }
 async function apiDoctorPostRepairValidationAttempts(resourceId,handoffAt){
-  const row=(await pool.query("select count(*)::int as count from tigeriq_events where type='API_DOCTOR_POST_REPAIR_VALIDATION' and resource_id=$1 and ts>$2",[resourceId,handoffAt])).rows[0];
+  const row=(await pool.query("select count(*)::int as count from tigeriq_events where type='API_DOCTOR_POST_REPAIR_VALIDATION' and resource_id=$1 and ts>$2 and data->>'policyVersion'=$3",[resourceId,handoffAt,API_DOCTOR_VALIDATION_POLICY_VERSION])).rows[0];
   return Number(row?.count||0);
 }
 async function runApiDoctorPostRepairValidation(resource,existingHandoff){
@@ -386,12 +387,12 @@ async function runApiDoctorPostRepairValidation(resource,existingHandoff){
     const latency=Date.now()-started;
     await markResourceSuccess(r,id,latency,'RESOURCE_SUCCESS',true,{taskKind:'api_doctor_validation',profile:'VALIDATION'});
     await pool.query("update tigeriq_jobs set status='done',result=$2,lease_until=null,completed_at=now() where id=$1",[id,JSON.stringify({text:String(text).slice(0,300),latencyMs:latency,validation:true})]);
-    await event('API_DOCTOR_POST_REPAIR_VALIDATION',{jobId:id,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind:'api_doctor_validation',signature,ok:true,latencyMs:latency});
+    await event('API_DOCTOR_POST_REPAIR_VALIDATION',{jobId:id,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind:'api_doctor_validation',signature,policyVersion:API_DOCTOR_VALIDATION_POLICY_VERSION,ok:true,latencyMs:latency});
     return {ok:true,jobId:id,latencyMs:latency};
   }catch(error){
     await markResourceFailure(r,id,error,'RESOURCE_FAILURE',true,{taskKind:'api_doctor_validation',profile:'VALIDATION'});
     await pool.query("update tigeriq_jobs set status='failed',failure=$2,lease_until=null,completed_at=now() where id=$1",[id,JSON.stringify({message:String(error?.message||error).slice(0,300)})]);
-    await event('API_DOCTOR_POST_REPAIR_VALIDATION',{jobId:id,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind:'api_doctor_validation',signature,ok:false,message:String(error?.message||error).slice(0,200)});
+    await event('API_DOCTOR_POST_REPAIR_VALIDATION',{jobId:id,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind:'api_doctor_validation',signature,policyVersion:API_DOCTOR_VALIDATION_POLICY_VERSION,ok:false,message:String(error?.message||error).slice(0,200)});
     return {ok:false,jobId:id,reason:String(error?.kind||error?.message||error).slice(0,120)};
   }
 }
@@ -488,7 +489,7 @@ async function runApiDoctorScan(){
           row.postRepairProbe=probe?.ok?'ok':'failed';
         }catch(error){
           row.postRepairProbe='failed';row.validationError=String(error?.kind||error?.message||error).slice(0,120);
-          await event('API_DOCTOR_POST_REPAIR_VALIDATION',{employeeId:resource.employee_id,resourceId:resource.resource_id,provider:resource.provider,taskKind:'api_doctor_validation',signature:existingHandoff.data?.signature||'',ok:false,phase:'probe',message:row.validationError});
+          await event('API_DOCTOR_POST_REPAIR_VALIDATION',{employeeId:resource.employee_id,resourceId:resource.resource_id,provider:resource.provider,taskKind:'api_doctor_validation',signature:existingHandoff.data?.signature||'',policyVersion:API_DOCTOR_VALIDATION_POLICY_VERSION,ok:false,phase:'probe',message:row.validationError});
           actions.push(row);continue;
         }
         const validation=await runApiDoctorPostRepairValidation(resource,existingHandoff);
