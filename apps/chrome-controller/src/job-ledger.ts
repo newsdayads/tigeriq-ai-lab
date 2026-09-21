@@ -97,6 +97,7 @@ export class DurableUiJobLedger {
     const rec = this.record(workerId, jobId);
     if (!rec) throw new Error('UI_JOB_NOT_FOUND');
     if (rec.stage !== 'ERROR') throw new Error('UI_JOB_ACTIVE');
+    if (rec.completedAt) throw new Error('UI_JOB_COMPLETED');
     const basePatch: UiJobPatch = {
       nextAction: 'Retry dispatch to worker',
       blocker: null,
