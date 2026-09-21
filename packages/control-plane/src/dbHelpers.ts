@@ -26,7 +26,7 @@ export interface MockJob {
   telemetry?: Record<string, unknown>;
 }
 
-export interface MockEvent {
+export interface MockEvent { id: string; objectiveId: string; stage?: string; timestamp: string; }
   id: string;
   objectiveId: string;
   stage?: string;
