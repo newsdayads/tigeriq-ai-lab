@@ -26,6 +26,10 @@ export const CONTINUE_MIN_MS = 5 * 60 * 1000;
 export const CONTINUE_MAX_MS = 10 * 60 * 1000;
 export const REFRESH_MIN_MS = 2 * 60 * 60 * 1000;
 export const REFRESH_MAX_MS = 4 * 60 * 60 * 1000;
+export const WORKER_REFRESH_MIN_MS = REFRESH_MIN_MS;
+export const WORKER_REFRESH_MAX_MS = REFRESH_MAX_MS;
+export const WORKER_F5_MIN_MS = REFRESH_MIN_MS;
+export const WORKER_F5_MAX_MS = REFRESH_MAX_MS;
 export const MAX_STALLED_CHECKS = 3;
 export const WORKING_PROGRESS_CHECK_MS = 60 * 1000;
 export const MAX_WORKING_UNCHANGED_CHECKS = 3;
@@ -54,7 +58,7 @@ export function pickContinuePrompt(previous='',random=Math.random){
   return candidates[Math.min(candidates.length-1,Math.floor(random()*candidates.length))];
 }
 
-export function deriveNv02Phase(ui,{heartbeatStale=false}={}){
+export function deriveWorkerPhase(ui,{heartbeatStale=false}={}){
   if(ui?.securityBlock)return 'BLOCKED';
   if(heartbeatStale)return 'STALLED';
   if(ui?.stopVisible===true||ui?.uiBusy===true)return 'WORKING';
@@ -63,10 +67,11 @@ export function deriveNv02Phase(ui,{heartbeatStale=false}={}){
   if(ui?.composerReady===true&&ui?.authRequired!==true)return 'READY';
   return 'STALLED';
 }
+export function deriveNv02Phase(ui,opts){return deriveWorkerPhase(ui,opts);}
 
-export function hasActiveNv02Work(controller){
+export function hasActiveWorkerWork(controller,workerId='NV02'){
   const activeStages=new Set(['QUEUED','DISPATCHING','SUBMITTED','WORKING','VERIFY','BLOCKED']);
-  if((controller?.jobs||[]).some((job)=>job?.workerId==='NV02'&&activeStages.has(String(job?.stage||''))&&!job?.completedAt))return true;
+  if((controller?.jobs||[]).some((job)=>job?.workerId===workerId&&activeStages.has(String(job?.stage||''))&&!job?.completedAt))return true;
   if(controller?.externalWorkAutopilotEnabled===false)return false;
   const autopilot=controller?.autopilot||{};
   if(autopilot.pendingJobId||autopilot.uncertainJobId)return true;
@@ -74,12 +79,22 @@ export function hasActiveNv02Work(controller){
   const completed=String(autopilot.lastCompletedJobId||'');
   return Boolean((autopilot.phase==='BUSY'||autopilot.phase==='WAIT_EVIDENCE')&&dispatched&&dispatched!==completed);
 }
+export function hasActiveNv02Work(controller){return hasActiveWorkerWork(controller,'NV02');}
 
-export function hasWaitingEvidenceNv02Work(controller){
-  return (controller?.jobs||[]).some((job)=>job?.workerId==='NV02'&&String(job?.stage||'')==='WAITING_EVIDENCE'&&!job?.completedAt);
+export function hasWaitingEvidenceWorkerWork(controller,workerId='NV02'){
+  return (controller?.jobs||[]).some((job)=>job?.workerId===workerId&&String(job?.stage||'')==='WAITING_EVIDENCE'&&!job?.completedAt);
 }
+export function hasWaitingEvidenceNv02Work(controller){return hasWaitingEvidenceWorkerWork(controller,'NV02');}
 
-export function hasContinuableNv02Work(controller){
+export function hasContinuableWorkerWork(controller,workerId='NV02'){
   const continuableStages=new Set(['SUBMITTED','WORKING','WAITING_EVIDENCE','VERIFY']);
-  return (controller?.jobs||[]).some((job)=>job?.workerId==='NV02'&&continuableStages.has(String(job?.stage||''))&&!job?.completedAt);
+  return (controller?.jobs||[]).some((job)=>job?.workerId===workerId&&continuableStages.has(String(job?.stage||''))&&!job?.completedAt);
+}
+export function hasContinuableNv02Work(controller){return hasContinuableWorkerWork(controller,'NV02');}
+
+export function computeWorkerStaggerDelay(workerIndex=0,baseMs=1000,multiplier=500){
+  return Number(workerIndex)*Number(multiplier)+Number(baseMs);
+}
+export function computeNv02StaggerDelay(workerIndex,baseMs,multiplier){
+  return computeWorkerStaggerDelay(workerIndex,baseMs,multiplier);
 }
