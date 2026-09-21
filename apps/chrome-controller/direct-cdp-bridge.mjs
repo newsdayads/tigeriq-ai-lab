@@ -453,7 +453,9 @@ async function withNv02Mutation(fn,purpose='NORMAL',ttlMs=30000){
   finally{nv02MutationBusy=false;log('NV02_LOCAL_MUTATION_RELEASED',{purpose});}
 }
 async function dispatchNaturalContinueLocked(target,state,now){
-  await ensureNv02ModelProfile(target);
+  // Model/profile is verified once per opened chat/session and again only after
+  // reopen/project recovery/URL change. The hot continue loop must not open
+  // the model selector before every command.
   await scrollToBottom(target).catch(()=>{});
   const prompt=pickContinuePrompt(state.lastPrompt);
   const result=await dispatch(target,prompt);
