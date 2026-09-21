@@ -67,6 +67,7 @@ function loadNv02Continuity(){
     lastPhase:String(raw.lastPhase||'STALLED'),
     workingSignature:String(raw.workingSignature||''),
     workingUnchangedChecks:Number(raw.workingUnchangedChecks)||0,
+    nextProgressCheckAt:Number(raw.nextProgressCheckAt)||0,
   };
 }
 function saveNv02Continuity(state){
@@ -181,8 +182,11 @@ const UI_EXPR=`(()=>{
   const uiBusy=Boolean(stop||activityBusy);
   const activityRoot=activityBusy?.closest?.('.block-BQZwFn')||activityBusy?.parentElement||null;
   const activityText=String(activityRoot?.innerText||activityRoot?.textContent||'').replace(/\s+/g,' ').trim();
-  let activityHash=0;for(let i=0;i<activityText.length;i+=1)activityHash=((activityHash*31)+activityText.charCodeAt(i))>>>0;
-  const activitySignature=uiBusy?(String(activityText.length)+':'+String(activityHash)):'';
+  const assistantNodes=[...document.querySelectorAll('[data-message-author-role="assistant"],[data-content-search-unit-key$=":assistant"]')].filter(vis);
+  const assistantText=String(assistantNodes.at(-1)?.innerText||assistantNodes.at(-1)?.textContent||'').replace(/\s+/g,' ').trim();
+  const progressText=(assistantText+'|'+activityText).trim();
+  let activityHash=0;for(let i=0;i<progressText.length;i+=1)activityHash=((activityHash*31)+progressText.charCodeAt(i))>>>0;
+  const activitySignature=uiBusy?(String(progressText.length)+':'+String(activityHash)):'';
   const uiReady=document.readyState==='complete'&&!!composer&&!authRequired;
   const uiPhase=securityBlock?'BLOCKED':uiBusy?'WORKING':uiReady&&modelReady?'READY':'STALLED';
   return {
@@ -484,6 +488,34 @@ async function dispatchNaturalContinueLocked(target,state,now){
 async function dispatchNaturalContinue(target,state,now){
   return withNv02Mutation(()=>dispatchNaturalContinueLocked(target,state,now),'CONTINUITY_CONTINUE');
 }
+function stopAndClearComposerExpr(){
+  return `(async()=>{const sleep=ms=>new Promise(r=>setTimeout(r,ms));const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const stop=[...document.querySelectorAll('button[data-testid="stop-button"],button[aria-label*="Stop" i],button[aria-label*="Dừng" i],button[aria-label*="Ngừng" i]')].find(vis);if(stop){stop.click();await sleep(800);}const sels=['#prompt-textarea','div[contenteditable="true"][data-lexical-editor="true"]','[contenteditable="true"][role="textbox"]','textarea'];const c=sels.flatMap(s=>[...document.querySelectorAll(s)]).find(vis)||null;if(c){c.focus();if(c instanceof HTMLTextAreaElement||c instanceof HTMLInputElement){const p=c instanceof HTMLTextAreaElement?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(p,'value')?.set?.call(c,'');c.dispatchEvent(new Event('input',{bubbles:true}));}else{c.innerHTML='<p><br></p>';c.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'deleteContentBackward',data:null}));}}return{ok:true,stopped:Boolean(stop),composerCleared:!c||!(c.innerText||c.textContent||c.value||'').trim()};})()`;
+}
+async function recoverStalledWorking(target,state,now){
+  return withNv02Mutation(async()=>{
+    const stopped=await evalPage(target,stopAndClearComposerExpr());
+    await continuityEvent('WORKING_STALLED_STOPPED',{stopped:stopped?.stopped===true,composerCleared:stopped?.composerCleared===true});
+    let ui=null;
+    for(let i=0;i<8;i+=1){
+      await sleep(500);
+      ui=await uiState(target);
+      if(!ui?.uiBusy)break;
+    }
+    if(ui?.uiBusy){
+      await reloadTarget(target);
+      await sleep(1800);
+      ui=await uiState(target);
+      await continuityEvent('WORKING_STALLED_RELOADED',{uiPhase:ui?.uiPhase||null});
+    }
+    const clean={...state,workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:0,lastPhase:ui?.uiPhase||'STALLED'};
+    saveNv02Continuity(clean);
+    if(ui?.uiPhase==='READY'&&!ui?.uiBusy){
+      return dispatchNaturalContinueLocked(target,clean,now);
+    }
+    return clean;
+  },'WORKING_STALLED_RECOVERY',30000);
+}
+
 async function checkpointNv02(target){
   return withNv02Mutation(async()=>{
     await ensureNv02ModelProfile(target);
@@ -548,18 +580,15 @@ async function maybeNv02Continuity(w,target,ui){
   }
   if(now<state.nextContinueAt)return;
   if(phase==='WORKING'){
+    if(now<Number(state.nextProgressCheckAt||0))return;
     const signature=String(ui?.activitySignature||'');
     const same=Boolean(signature&&state.workingSignature===signature);
-    const unchanged=same?Math.min(MAX_STALLED_CHECKS,Number(state.workingUnchangedChecks||0)+1):1;
-    state={...state,stalledChecks:0,workingSignature:signature,workingUnchangedChecks:unchanged,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
+    const unchanged=same?Number(state.workingUnchangedChecks||0)+1:0;
+    state={...state,stalledChecks:0,workingSignature:signature,workingUnchangedChecks:unchanged,nextProgressCheckAt:now+60000};
     saveNv02Continuity(state);
-    await continuityEvent('WORKING_NO_PROGRESS_CHECK',{workingUnchangedChecks:unchanged,nextContinueAt:state.nextContinueAt,signaturePresent:Boolean(signature)});
-    if(unchanged===2){
-      const result=await withNv02Mutation(()=>reloadTarget(target),'STALE_WORKING_RECOVERY');
-      await continuityEvent('WORKING_STALE_RELOAD',{status:result?.status||null,workingUnchangedChecks:unchanged});
-    }else if(unchanged>=MAX_STALLED_CHECKS){
-      try{await rotateNv02Chat(target,state,now);await continuityEvent('CONTEXT_RECOVERY_ROTATED',{reason:'WORKING_NO_PROGRESS_3_CHECKS'});}
-      catch(error){await continuityEvent('CONTEXT_RECOVERY_ROTATE_FAILED',{error:String(error?.message||error)});}
+    await continuityEvent('WORKING_PROGRESS_CHECK',{workingUnchangedChecks:unchanged,nextProgressCheckAt:state.nextProgressCheckAt,signaturePresent:Boolean(signature)});
+    if(unchanged>=3){
+      await recoverStalledWorking(target,state,now);
     }
     return;
   }
@@ -577,8 +606,9 @@ async function maybeNv02Continuity(w,target,ui){
     const result=await withNv02Mutation(()=>reloadTarget(target),'STALLED_RECOVERY');
     await continuityEvent('STALLED_RELOAD',{status:result?.status||null});
   }else if(state.stalledChecks>=MAX_STALLED_CHECKS){
-    try{await rotateNv02Chat(target,state,now);await continuityEvent('CONTEXT_RECOVERY_ROTATED',{reason:'STALLED_3_CHECKS'});}
-    catch(error){await continuityEvent('CONTEXT_RECOVERY_ROTATE_FAILED',{error:String(error?.message||error)});}
+    await continuityEvent('STALLED_HOT_LOOP_NO_CHECKPOINT',{stalledChecks:state.stalledChecks});
+    const clean={...state,stalledChecks:0,workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:0,nextContinueAt:now};
+    saveNv02Continuity(clean);
   }
 }
 async function handleCommand(w,target,command){
