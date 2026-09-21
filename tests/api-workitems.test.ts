@@ -47,7 +47,7 @@ describe('WorkItem projection API', () => {
 
     expect((await call('/v1/work-orders', 'planner-secret', workOrder)).status).toBe(201);
     expect((await call('/v1/work-orders/CORE-API-1033/transitions', 'approver-secret', { status: 'approved' })).status).toBe(200);
-    expect((await call('/v1/work-orders/CORE-API-1033/transitions', 'coder-secret', { status: 'running' })).status).toBe(200);
+    expect((await call('/v1/work-orders/CORE-API-1033/transitions', 'coder-secret', { status: 'running' })).status).toBe(200); expect(await call('/v1/agents/NV12/telemetry', 'coder-secret', { requestCount: 1 }));
 
     const projection = await call('/v1/work-items/CORE-API-1033', 'planner-secret');
     expect(projection.status).toBe(200);
