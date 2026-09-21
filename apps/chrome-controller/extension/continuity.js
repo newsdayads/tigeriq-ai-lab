@@ -88,3 +88,7 @@ export function pickWorkerPrompt(){
   const idx=Math.floor(Math.random()*CONTINUE_PROMPTS.length);
   return CONTINUE_PROMPTS[idx]||CONTINUE_PROMPTS[0];
 }
+
+export function getWorkerProfilePath(workerId){
+  return `D:\\TigerIQ\\Chrome\\${workerId}-Worker\\UserData`;
+}
