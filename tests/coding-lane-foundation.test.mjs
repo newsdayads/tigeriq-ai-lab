@@ -84,7 +84,7 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
     assert.deepStrictEqual(validateManagerJobPaths({status:'continue',job:{paths:canonical}},canonical),canonical);
   });
 
-  await t.test('repair transport exhaustion is eligible for one bounded compact-changes fallback',()=>{
+  await t.test('repair transport exhaustion triggers one bounded compact-changes fallback only',()=>{
     const output=Object.assign(new Error('OUTPUT_CONTRACT_EXHAUSTED'),{code:'OUTPUT_CONTRACT_EXHAUSTED'});
     const budget=Object.assign(new Error('AI_RETRY_BUDGET_EXHAUSTED'),{code:'AI_RETRY_BUDGET_EXHAUSTED'});
     assert.strictEqual(isRepairTransportExhausted(output),true);
