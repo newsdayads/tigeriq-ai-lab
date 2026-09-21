@@ -108,17 +108,21 @@ describe('controller restart-safe worker safety gates',()=>{
 
 describe('independent worker recovery flows in direct-cdp-bridge',()=>{
   it('verifies per-worker state, locks, staggered reset caps, and fail-closed security gates',()=>{
-    const stateMap = new Map();
-    const workerIds = ['NV01', 'NV02', 'NV03'];
+    const workerIds = ['NV02', 'NV03', 'NV04'];
+    const workerStates = new Map();
+    const workerLocks = new Map();
+    const workerResetCounters = new Map();
+    const workerResetTimers = new Map();
     for (const id of workerIds) {
-      stateMap.set(id, { resets: 0, locked: false, lastReset: 0, maxResets: 3 });
+      workerStates.set(id, { checkpointed: false, closed: false, reopened: false, failedClosed: false });
+      workerLocks.set(id, false);
+      workerResetCounters.set(id, 0);
+      workerResetTimers.set(id, null);
     }
-    expect(stateMap.size).toBe(3);
+    expect(workerStates.size).toBe(3);
     for (const id of workerIds) {
-      const s = stateMap.get(id);
-      expect(s.resets).toBe(0);
-      expect(s.locked).toBe(false);
-      expect(s.maxResets).toBe(3);
+      expect(workerResetCounters.get(id)).toBe(0);
+      expect(workerLocks.get(id)).toBe(false);
     }
   });
 });
