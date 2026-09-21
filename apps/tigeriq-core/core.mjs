@@ -144,16 +144,30 @@ async function openAiCompat(endpoint, key, model, prompt, extraHeaders = {}, tim
   return String(text);
 }
 export function watsonxTextFromBody(body){
-  const first=Array.isArray(body?.results)&&body.results.length?body.results[0]:null;
-  const candidates=[first?.generated_text,first?.text,first?.output,body?.generated_text,body?.output];
+  const firstResult=Array.isArray(body?.results)&&body.results.length?body.results[0]:null;
+  const firstChoice=Array.isArray(body?.choices)&&body.choices.length?body.choices[0]:null;
+  const chatContent=firstChoice?.message?.content;
+  const chatText=typeof chatContent==='string'
+    ?chatContent
+    :Array.isArray(chatContent)
+      ?chatContent.map(part=>typeof part==='string'?part:(typeof part?.text==='string'?part.text:'')).join('')
+      :null;
+  const candidates=[chatText,firstChoice?.text,firstResult?.generated_text,firstResult?.text,firstResult?.output,body?.generated_text,body?.output];
   const found=candidates.find(value=>typeof value==='string');
   return found===undefined?null:found;
 }
 export function hasWatsonxTextShape(body){
-  const first=Array.isArray(body?.results)&&body.results.length?body.results[0]:null;
+  const firstResult=Array.isArray(body?.results)&&body.results.length?body.results[0]:null;
+  const firstChoice=Array.isArray(body?.choices)&&body.choices.length?body.choices[0]:null;
+  const chatContent=firstChoice?.message?.content;
   return Boolean(
-    (first&&['generated_text','text','output'].some(key=>Object.prototype.hasOwnProperty.call(first,key)))||
-    (body&&typeof body==='object'&&['generated_text','output'].some(key=>Object.prototype.hasOwnProperty.call(body,key)))
+    (firstChoice&&(
+      Object.prototype.hasOwnProperty.call(firstChoice,'text')||
+      (firstChoice.message&&Object.prototype.hasOwnProperty.call(firstChoice.message,'content'))
+    ))||
+    (firstResult&&['generated_text','text','output'].some(key=>Object.prototype.hasOwnProperty.call(firstResult,key)))||
+    (body&&typeof body==='object'&&['generated_text','output'].some(key=>Object.prototype.hasOwnProperty.call(body,key)))||
+    Array.isArray(chatContent)
   );
 }
 export function watsonxRetryDecision(body,attempt,maxRetries=2){
@@ -202,9 +216,15 @@ async function invokeProvider(r, prompt) {
       const iam=await fetchJson('https://iam.cloud.ibm.com/identity/token',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:form.toString()});
       const maxRetries=2;
       for(let attempt=0;attempt<=maxRetries;attempt++){
-        const b=await fetchJson('https://us-south.ml.cloud.ibm.com/ml/v1/text/generation?version=2024-05-01',{
-          method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${iam.access_token}`},
-          body:JSON.stringify({model_id:process.env.WATSONX_MODEL_ID,input:prompt,project_id:process.env.WATSONX_PROJECT_ID,parameters:{max_new_tokens:1200,temperature:0}})
+        const b=await fetchJson('https://us-south.ml.cloud.ibm.com/ml/v1/text/chat?version=2025-10-25',{
+          method:'POST',headers:{accept:'application/json','content-type':'application/json',authorization:`Bearer ${iam.access_token}`},
+          body:JSON.stringify({
+            model_id:process.env.WATSONX_MODEL_ID,
+            project_id:process.env.WATSONX_PROJECT_ID,
+            messages:[{role:'user',content:prompt}],
+            max_completion_tokens:1200,
+            temperature:0
+          })
         });
         const decision=watsonxRetryDecision(b,attempt,maxRetries);
         if(decision.action==='success')return decision.text;
