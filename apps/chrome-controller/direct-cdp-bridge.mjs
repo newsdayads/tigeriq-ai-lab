@@ -162,7 +162,7 @@ async function reopenWorker(w,target,state,now,reason){
   let reopened=null,lastError=null;
   for(let attempt=1;attempt<=WORKER_RESET_MAX_ATTEMPTS;attempt+=1){
     try{
-      await post(`/api/utility/workers/${w.id}/safe-recover`,w.id,{reason});
+      await post(`/api/utility/workers/${w.id}/safe-recover`,w.id,{reason},120000);
       let replacement=null;
       for(let poll=0;poll<20;poll+=1){
         await sleep(750);
@@ -508,8 +508,8 @@ async function ensureNv02ModelProfile(target){
   await continuityEvent('MODEL_PROFILE_VERIFIED',{modelName:profile.modelName,reasoningEffort:profile.reasoningEffort,verifiedAt:profile.verifiedAt||null});
   return profile;
 }
-async function post(path,workerId,data){
-  const r=await fetch(CONTROLLER+path,{method:'POST',headers:auth(workerId,true),body:JSON.stringify(data),signal:AbortSignal.timeout(4000)});
+async function post(path,workerId,data,timeoutMs=4000){
+  const r=await fetch(CONTROLLER+path,{method:'POST',headers:auth(workerId,true),body:JSON.stringify(data),signal:AbortSignal.timeout(timeoutMs)});
   if(!r.ok) throw new Error(`HTTP_${r.status}:${path}`);return r.json();
 }
 async function getCommand(workerId){
