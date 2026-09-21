@@ -71,6 +71,13 @@ describe('WorkItem projection API', () => {
     expect(await alias.json()).toMatchObject({ workItemId: 'CORE-API-1033', status: 'WORKING' });
   });
 
+  it('exposes telemetry for agents without creating a second queue', async () => {
+    expect((await call('/v1/work-orders', 'planner-secret', { id: 'wo-999', project: 'TigerIQ', goal: 'Telemetry', scope: ['test'], status: 'draft' })).status).toBe(201);
+    const telemetry = await call('/v1/agents/NV12/telemetry', 'planner-secret');
+    expect(telemetry.status).toBe(200);
+    expect(await telemetry.json()).toHaveProperty('requestCount');
+  });
+
   it('attaches Coding Lane metadata to the same WorkItem identity idempotently after PR creation', async () => {
     const workOrder = {
       id: 'CORE-API-ATTACH',
