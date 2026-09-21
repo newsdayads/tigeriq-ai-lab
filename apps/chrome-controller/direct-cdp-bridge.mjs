@@ -9,8 +9,8 @@ import {
 } from './extension/continuity.js';
 import { buildDurableSavePrompt, waitForDurableSaveReceipt } from './extension/save-receipt.js';
 
-const CONFIG='D:\\TigerIQ\\Apps\\ChromeController\\Config\\chrome-controller.json';
-const LOG='D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\direct-cdp-bridge.jsonl';
+const CONFIG=process.env.CHROME_CONTROLLER_CONFIG_PATH||'D:\\TigerIQ\\Apps\\ChromeController\\Config\\chrome-controller.json';
+const LOG=process.env.CHROME_CONTROLLER_LOG_PATH||'D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\direct-cdp-bridge.jsonl';
 const SEND_BUTTON_WAIT_MS=10000;
 const NV02_CONTINUITY_STATE='D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\nv02-continuity-state.json';
 const CONTROLLER='http://127.0.0.1:8798';
