@@ -1147,7 +1147,6 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
         return true;
       }
       if(action==='cancel-refresh'){
-        browserMutationLeases.assertControllerAllowed(workerId);
         const cancelled=plannedRefreshWorkers.delete(workerId);
         log('WORKER_PLANNED_REFRESH_CANCELLED',{workerId,cancelled});
         persistEvidence();
