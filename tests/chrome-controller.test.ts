@@ -110,3 +110,33 @@ describe('completion-aware UTF-8 supervisor and Owner workspace',()=>{
 });
 
 describe('SerialQueue',()=>{it('runs exactly one task at a time',async()=>{const q=new SerialQueue(0);const order:string[]=[];const a=q.enqueue(async()=>{order.push('a:start');await new Promise(r=>setTimeout(r,20));order.push('a:end');});const b=q.enqueue(async()=>{order.push('b:start');order.push('b:end');});await Promise.all([a,b]);expect(order).toEqual(['a:start','a:end','b:start','b:end']);});});
+
+describe('Working State Watchdog', () => {
+  it('detects hangs and triggers F5 then reopen without owner intervention', () => {
+    let wdState = { unchangedCount: 0, recoveryAttempts: 0 };
+    const sig = JSON.stringify({ pausedWorkers: [] });
+    
+    let res = checkWorkingWatchdog({ phase: 'WORKING', activitySignature: sig, watchdogState: wdState, maxUnchangedChecks: 3 });
+    expect(res.action).toBe('NONE');
+    wdState = res.watchdogState;
+
+    res = checkWorkingWatchdog({ phase: 'WORKING', activitySignature: sig, watchdogState: wdState, maxUnchangedChecks: 3 });
+    expect(res.action).toBe('NONE');
+    wdState = res.watchdogState;
+
+    res = checkWorkingWatchdog({ phase: 'WORKING', activitySignature: sig, watchdogState: wdState, maxUnchangedChecks: 3 });
+    expect(res.action).toBe('TRIGGER_F5');
+    wdState = res.watchdogState;
+
+    res = checkWorkingWatchdog({ phase: 'WORKING', activitySignature: sig, watchdogState: wdState, maxUnchangedChecks: 3 });
+    expect(res.action).toBe('NONE');
+    wdState = res.watchdogState;
+
+    res = checkWorkingWatchdog({ phase: 'WORKING', activitySignature: sig, watchdogState: wdState, maxUnchangedChecks: 3 });
+    expect(res.action).toBe('NONE');
+    wdState = res.watchdogState;
+
+    res = checkWorkingWatchdog({ phase: 'WORKING', activitySignature: sig, watchdogState: wdState, maxUnchangedChecks: 3 });
+    expect(res.action).toBe('TRIGGER_REOPEN');
+  });
+});
