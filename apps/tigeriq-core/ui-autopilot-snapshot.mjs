@@ -159,6 +159,12 @@ function isAllowedCoreAssignmentUrl(value){
   }catch{return false;}
 }
 
+export function defaultCoreAssignmentUrl(env=process.env){
+  const host=String(env.TIGERIQ_CORE_HOST||'').trim()||'127.0.0.1';
+  const port=Number(env.TIGERIQ_CORE_PORT||8795);
+  return `http://${host}:${port}/api/ui-assignment`;
+}
+
 export async function readCoreUiAssignment({fetchImpl=fetch,coreAssignmentUrl,previousJobId}={}){
   if(!coreAssignmentUrl||!isAllowedCoreAssignmentUrl(coreAssignmentUrl))throw new Error('CORE_UI_ASSIGNMENT_URL_INVALID');
   const u=new URL(coreAssignmentUrl);
@@ -174,7 +180,7 @@ export async function readCoreUiAssignment({fetchImpl=fetch,coreAssignmentUrl,pr
 export function startUiAutopilotSnapshotServer({
   token=process.env.TIGERIQ_GITHUB_TOKEN||process.env.GITHUB_TOKEN||'',owner=process.env.TIGERIQ_GITHUB_OWNER||DEFAULT_OWNER,repo=process.env.TIGERIQ_GITHUB_REPO||DEFAULT_REPO,
   host='127.0.0.1',port=Number(process.env.TIGERIQ_UI_AUTOPILOT_PORT||8794),fetchImpl=fetch,controllerStateUrl=process.env.TIGERIQ_CHROME_CONTROLLER_STATE_URL||DEFAULT_CONTROLLER_STATE_URL,
-  coreAssignmentUrl=process.env.TIGERIQ_CORE_UI_ASSIGNMENT_URL||'http://127.0.0.1:8795/api/ui-assignment',
+  coreAssignmentUrl=process.env.TIGERIQ_CORE_UI_ASSIGNMENT_URL||defaultCoreAssignmentUrl(),
   saveLedgerIssue=Number(process.env.TIGERIQ_SAVE_LEDGER_ISSUE||DEFAULT_SAVE_LEDGER_ISSUE),
 }={}){
   if(host!=='127.0.0.1')throw new Error('UI_AUTOPILOT_HOST_MUST_BE_LOOPBACK');
