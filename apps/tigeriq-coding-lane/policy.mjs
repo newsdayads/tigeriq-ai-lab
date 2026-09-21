@@ -129,14 +129,17 @@ export function parseJsonObject(text){
 export function validateCompactContract(edits){
   if(!Array.isArray(edits)) throw new Error('COMPACT_CONTRACT_EDITS_ARRAY_REQUIRED');
   if(edits.length===0) throw new Error('COMPACT_CONTRACT_NO_EDITS');
-  if(edits.length>20) throw new Error('COMPACT_CONTRACT_TOO_MANY_EDITS');
+  if(edits.length>12) throw new Error('COMPACT_CONTRACT_TOO_MANY_EDITS');
+  let bytes=0;
   for(const edit of edits){
     if(typeof edit.path!=='string'||!edit.path) throw new Error(`COMPACT_CONTRACT_INVALID_PATH: ${edit.path}`);
     if(typeof edit.old!=='string'||!edit.old) throw new Error(`COMPACT_CONTRACT_EMPTY_OLD: ${edit.path}`);
     if(typeof edit.new!=='string'||!edit.new) throw new Error(`COMPACT_CONTRACT_EMPTY_NEW: ${edit.path}`);
-    if(edit.old.length>3000) throw new Error(`COMPACT_CONTRACT_OLD_TOO_LARGE: ${edit.path}`);
-    if(edit.new.length>6000) throw new Error(`COMPACT_CONTRACT_NEW_TOO_LARGE: ${edit.path}`);
+    if(edit.old.length>1800) throw new Error(`COMPACT_CONTRACT_OLD_TOO_LARGE: ${edit.path}`);
+    if(edit.new.length>3600) throw new Error(`COMPACT_CONTRACT_NEW_TOO_LARGE: ${edit.path}`);
+    bytes+=edit.old.length+edit.new.length;
   }
+  if(bytes>120000) throw new Error('COMPACT_CONTRACT_TOTAL_SIZE_EXCEEDED');
   return true;
 }
 
