@@ -81,6 +81,18 @@ export function reconcileUiJobStage(stage: UiJobStage, uiBusy: boolean|null|unde
   return undefined;
 }
 
+export function continuityResumeIdentityMatches(
+  job: Pick<UiJobRecord,'jobId'|'workerId'|'stage'|'completedAt'>|undefined,
+  previous: {workerId?:string;jobId?:string;status?:string}|undefined,
+  autopilot: {lastDispatchedJobId?:string|null;pendingJobId?:string|null;uncertainJobId?:string|null},
+): boolean {
+  if(!job||job.workerId!=='NV02'||job.completedAt)return false;
+  if(!['SUBMITTED','WORKING','WAITING_EVIDENCE','VERIFY'].includes(job.stage))return false;
+  if(autopilot.pendingJobId||autopilot.uncertainJobId)return false;
+  if(!previous||previous.workerId!=='NV02'||!['QUEUED','READY','RUNNING'].includes(String(previous.status||'')))return false;
+  return previous.jobId===job.jobId&&autopilot.lastDispatchedJobId===job.jobId;
+}
+
 export class DurableUiJobLedger {
   /**
    * Retry a job that ended in an ERROR state (resume logic).

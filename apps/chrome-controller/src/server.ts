@@ -30,7 +30,7 @@ import { atomicWriteJsonWithRetry, buildRuntimeEvidence } from './runtime-eviden
 import { DurableDispatchLeaseStore } from './dispatch-lease.js';
 import { BrowserMutationLeaseStore } from './browser-mutation-lease.js';
 import { heartbeatStopReason } from './security-gate.js';
-import { DurableUiJobLedger, isTerminalUiJobStage, isUiJobStage, reconcileUiJobStage, type UiJobMetadata } from './job-ledger.js';
+import { continuityResumeIdentityMatches, DurableUiJobLedger, isTerminalUiJobStage, isUiJobStage, reconcileUiJobStage, type UiJobMetadata } from './job-ledger.js';
 import type { WorkerPresence } from './worker-presence.js';
 import { persistWorkerSafetyStateOrFailClosed, restoreWorkerSafetyState, workerStartGate, type WorkerSafetySnapshot } from './worker-safety-state.js';
 
@@ -1026,6 +1026,12 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
         const modelProfileRecovery=workerId==='NV02'&&purpose==='MODEL_PROFILE_RECOVERY';
         const checkpointRecovery=workerId==='NV02'&&purpose==='CHECKPOINT_DURABLE';
         const chatRotation=workerId==='NV02'&&purpose==='CHAT_ROTATION';
+        const continuityContinue=workerId==='NV02'&&purpose==='CONTINUITY_CONTINUE';
+        const continuitySameJob=continuityContinue&&continuityResumeIdentityMatches(
+          uiJobLedger.active('NV02'),
+          latestSnapshot?.previousJob,
+          autopilotState,
+        );
         const boundedRecovery=staleWorkingRecovery||stalledRecovery||modelProfileRecovery||checkpointRecovery||chatRotation;
         if(paused)throw new Error('OWNER_INTERACTION_READ_ONLY');
         if(utilityPausedWorkers.has(workerId))throw new Error(`UTILITY_WORKER_PAUSED:${workerId}`);
@@ -1035,8 +1041,8 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
         if(security)throw new Error(security);
         if(state.lastHeartbeat?.uiBusy!==false&&!staleWorkingRecovery)throw new Error(`WORKER_UI_BUSY_OR_UNKNOWN:${workerId}`);
         if(staleWorkingRecovery&&state.lastHeartbeat?.uiBusy!==true)throw new Error(`STALE_WORKING_RECOVERY_REQUIRES_BUSY:${workerId}`);
-        const continuityContinue=workerId==='NV02'&&purpose==='CONTINUITY_CONTINUE';
-        if(workerHasActiveJob(workerId,{allowWaitingEvidence:continuityContinue,allowContinuable:continuityContinue})&&!boundedRecovery)throw new Error(`WORKER_ACTIVE_JOB:${workerId}`);
+        if(continuityContinue&&!continuitySameJob)throw new Error('CONTINUITY_SAME_JOB_IDENTITY_REQUIRED:NV02');
+        if(workerHasActiveJob(workerId,{allowWaitingEvidence:continuityContinue,allowContinuable:continuityContinue})&&!boundedRecovery&&!continuitySameJob)throw new Error(`WORKER_ACTIVE_JOB:${workerId}`);
         if(commandQueues.get(workerId)!.length>0||[...waiters.values()].some((w)=>w.workerId===workerId))
           throw new Error(`WORKER_COMMAND_INFLIGHT:${workerId}`);
         const ttlMs=Number(data.ttlMs??30_000);
