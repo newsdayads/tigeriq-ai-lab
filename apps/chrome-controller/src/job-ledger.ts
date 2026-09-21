@@ -94,16 +94,24 @@ export class DurableUiJobLedger {
     patch: Partial<UiJobPatch & { source?: string }> = {},
     now: Date = new Date()
   ): UiJobRecord {
-    const rec = this.record(workerId, jobId);
-    if (!rec) throw new Error('UI_JOB_NOT_FOUND');
-    if (rec.stage !== 'ERROR') throw new Error('UI_JOB_ACTIVE');
-    if (rec.completedAt) throw new Error('UI_JOB_COMPLETED');
-    const basePatch: UiJobPatch = {
-      nextAction: 'Retry dispatch to worker',
-      blocker: null,
-    } as any;
-    const mergedPatch = { ...basePatch, ...patch } as UiJobPatch;
-    return this.transition(workerId, jobId, 'QUEUED', mergedPatch, now);
+    const record=this.value.jobs.find((job)=>job.workerId===workerId&&job.jobId===jobId);
+    if (!record) throw new Error(`UI_JOB_NOT_FOUND:${workerId}:${jobId}`);
+    if (record.stage !== 'ERROR') throw new Error('UI_JOB_ACTIVE');
+    const at=now.toISOString();
+    record.stage='QUEUED';
+    record.progress=uiJobProgress('QUEUED');
+    record.lastActivityAt=at;
+    record.completedAt=null;
+    record.nextAction=patch.nextAction!==undefined?patch.nextAction:'Retry dispatch to worker';
+    record.blocker=patch.blocker!==undefined?patch.blocker:null;
+    if (patch.result!==undefined) record.result=patch.result;
+    if (patch.source?.trim()) record.source=patch.source.trim();
+    if (patch.evidenceRef) {
+      const ref=patch.evidenceRef.trim();
+      if (ref && !record.evidenceRefs.includes(ref)) record.evidenceRefs.push(ref);
+    }
+    this.save();
+    return {...record,evidenceRefs:[...record.evidenceRefs]};
   }
   private value: LedgerFile;
   constructor(
