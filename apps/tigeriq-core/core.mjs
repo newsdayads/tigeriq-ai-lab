@@ -7,7 +7,29 @@ import { runBoundedManagerDecision } from './manager-json.mjs';
 import { appendSkillContextToPrompt, matchAndLoadSkills } from './skill-loader.mjs';
 import { buildManagerHistoryContext } from './context-gateway.mjs';
 import { buildFailureLearningCandidates, failureLearningEventTypes } from './failure-learning.mjs';
-import { normalizeCampaignPhases, currentCampaignGoal, campaignTransition, makePhaseCheckpoint, campaignNeedsEvidence, campaignEvidenceJobId } from './campaign-runner.mjs';
+import { normalizeCampaignPhases, currentCampaignGoal, campaignTransition, makePhaseCheckpoint, campaignNeedsEvidence, campaignEvidenceJobId } from './c
+
+/**
+ * Simple API Doctor that sends error context to an Ollama model for diagnostics.
+ * Returns a textual suggestion or an empty string on failure.
+ */
+async function apiDoctor(errorContext) {
+  try {
+    const ollamaHost = process.env.OLLAMA_HOST || 'http://localhost:11434';
+    const model = process.env.OLLAMA_MODEL || 'llama2';
+    const prompt = `You are an API doctor. Diagnose the following error and suggest a concise fix.\n\nError:\n${String(errorContext)}`;
+    const response = await fetch(`${ollamaHost}/api/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, prompt, stream: false })
+    });
+    const data = await response.json();
+    return typeof data?.response === 'string' ? data.response.trim() : '';
+  } catch (_) {
+    return '';
+  }
+}
+ampaign-runner.mjs';
 import { normalizeTerminalWorkItems, handoffGenerationKey, evaluateChildObjectiveStates, isCodingHandoff } from './work-handoff.mjs';
 import { ROUTING_PROFILE_LABELS, createResourceId, deriveRoutingProfile, failurePolicy, normalizeQuota, rankCandidates, rateLimitFailureState } from './smart-router.mjs';
 import { runExecutionPreflight } from './execution-preflight.mjs';
