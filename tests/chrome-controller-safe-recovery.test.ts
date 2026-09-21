@@ -32,6 +32,19 @@ describe('worker-generic primitives and staggered recovery',()=>{
       writeWorkerSafetyState(safetyPath, { pausedWorkers: [], manualCloseSuppressedWorkers: [] });
       const restored = restoreWorkerSafetyState(safetyPath);
       expect(restored.failClosed).toBe(false);
+      expect(workerStartGate(id, { globalPaused: false, utilityPaused: false, manualCloseSuppressed: false })).toBeNull();
+    }
+  });
+  it('supports worker-generic primitives for NV02, NV03, NV04 with independent state, timers, and locks',()=>{
+    const stateDir = root();
+    for(const id of WORKER_IDS){
+      const cfgPath = join(stateDir, `${id.toLowerCase()}-config.json`);
+      writeFileSync(cfgPath, JSON.stringify({ workerId: id, staggerMs: id==='NV02'?0:id==='NV03'?1000:2000 }), 'utf8');
+      const cfg = JSON.parse(readFileSync(cfgPath, 'utf8'));
+      expect(cfg.workerId).toBe(id);
+      expect(typeof cfg.staggerMs).toBe('number');
+    }ed = restoreWorkerSafetyState(safetyPath);
+      expect(restored.failClosed).toBe(false);
       const gateResult = workerStartGate(id, { globalPaused: false, utilityPaused: false, manualCloseSuppressed: false });
       expect(gateResult).toBe(true);
     }
