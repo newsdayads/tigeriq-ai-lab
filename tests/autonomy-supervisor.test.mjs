@@ -2,6 +2,20 @@ import {describe,it,expect} from 'vitest';
 import {readFileSync} from 'node:fs';
 import {isRetryableFailure,shouldRetry,isStaleJob,repairInstruction,extractGitHubIssueNumber} from '../apps/tigeriq-coding-lane/autonomy-supervisor.mjs';
 
+function normalizeRepairFailure(message){
+  const raw=String(message||'').trim();
+  if(/REVIEW_CHANGES_UNRESOLVED|REVIEW_NOT_APPROVED/.test(raw))return 'REVIEW_CHANGES_UNRESOLVED';
+  if(/CI_GATE_REPAIR_EXHAUSTED|CI_GATES_FAILED/.test(raw))return 'CI_GATES_FAILED';
+  if(/OUTPUT_CONTRACT_EXHAUSTED/.test(raw))return 'OUTPUT_CONTRACT_EXHAUSTED';
+  if(/CI_GATES_TIMEOUT/.test(raw))return 'CI_GATES_TIMEOUT';
+  if(/NON_RETRYABLE_FAILURE/.test(raw))return 'NON_RETRYABLE_FAILURE';
+  if(/CODING_COMPACT_EDITS_COUNT_INVALID/.test(raw))return 'CODING_COMPACT_EDITS_COUNT_INVALID';
+  if(/CODING_COMPACT_EDIT_OLD_NOT_FOUND/.test(raw))return 'CODING_COMPACT_EDIT_OLD_NOT_FOUND';
+  if(/CODING_COMPACT_EDIT_INVALID/.test(raw))return 'CODING_COMPACT_EDIT_INVALID';
+  if(/STALL_TIMEOUT|\bSTALL\b/.test(raw))return 'STALL_TIMEOUT';
+  return raw.split(':')[0]||'UNKNOWN_FAILURE';
+}
+
 describe('Autonomy supervisor policy',()=>{
   it('retries CI failures but not arbitrary blockers',()=>{
     expect(isRetryableFailure('CI_GATES_FAILED')).toBe(true);
@@ -35,6 +49,14 @@ describe('Autonomy supervisor policy',()=>{
     expect(text).toContain('AUTONOMOUS_REPAIR_CYCLE=2');
     expect(text).toContain('PREVIOUS_FAILURE=CI_GATES_FAILED');
     expect(text).toContain('Do not broaden scope');
+  });
+
+  it('normalizes known failure codes for routing',()=>{
+    expect(normalizeRepairFailure('REVIEW_CHANGES_UNRESOLVED')).toBe('REVIEW_CHANGES_UNRESOLVED');
+    expect(normalizeRepairFailure('CI_GATE_REPAIR_EXHAUSTED')).toBe('CI_GATES_FAILED');
+    expect(normalizeRepairFailure('CI_GATES_TIMEOUT')).toBe('CI_GATES_TIMEOUT');
+    expect(normalizeRepairFailure('NO_FREE_API_CODING_RESOURCE')).toBe('NO_FREE_API_CODING_RESOURCE');
+    expect(normalizeRepairFailure('NON_RETRYABLE_FAILURE')).toBe('NON_RETRYABLE_FAILURE');
   });
 });
 
