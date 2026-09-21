@@ -697,14 +697,6 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
     await continuityEvent('PERIODIC_F5_REFRESH',{beforeUrl:refreshed?.beforeUrl||null,beforePhase:refreshed?.beforePhase||phase,afterUrl:refreshed?.afterUrl||null,afterPhase:refreshed?.afterPhase||null,nextPeriodicF5At:state.nextPeriodicF5At});
     return;
   }
-  if(!currentTrackedWork){
-    if(now>=state.nextContinueAt){
-      state={...state,stalledChecks:0,workingSignature:'',workingUnchangedChecks:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
-      saveNv02Continuity(state);
-      await continuityEvent('CONTINUE_SKIPPED_NO_CURRENT_CHAT',{nextContinueAt:state.nextContinueAt});
-    }
-    return;
-  }
   const modelCheckRequired=now>=Number(state.modelCheckBlockedUntil||0)&&(ui?.modelExact!==true||!state.verifiedChatUrl||!sameNv02Chat(state.verifiedChatUrl,ui?.url));
   if(phase==='STALLED'&&ui?.modelExact!==true&&modelCheckRequired){
     try{
@@ -717,6 +709,14 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
       if(corrected?.uiPhase==='READY')await dispatchNaturalContinue(target,state,now);
       return;
     }catch(error){await continuityEvent('MODEL_PROFILE_RECOVERY_FAILED',{error:String(error?.message||error)});}
+  }
+  if(!currentTrackedWork){
+    if(now>=state.nextContinueAt){
+      state={...state,stalledChecks:0,workingSignature:'',workingUnchangedChecks:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
+      saveNv02Continuity(state);
+      await continuityEvent('CONTINUE_SKIPPED_NO_CURRENT_CHAT',{nextContinueAt:state.nextContinueAt});
+    }
+    return;
   }
   if(now<state.nextContinueAt)return;
   if(phase==='READY'){

@@ -161,6 +161,10 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("const modelCheckRequired=now>=Number(state.modelCheckBlockedUntil||0)&&(ui?.modelExact!==true||!state.verifiedChatUrl||!sameNv02Chat(state.verifiedChatUrl,ui?.url))");
     expect(source).toContain("phase==='STALLED'&&ui?.modelExact!==true&&modelCheckRequired");
     expect(source).toContain("phase==='STALLED'&&ui?.modelExact!==true&&modelCheckRequired");
+    const modelRecoveryGate=continuityLoop.indexOf("if(phase==='STALLED'&&ui?.modelExact!==true&&modelCheckRequired)");
+    const noCurrentChatGate=continuityLoop.indexOf("if(!currentTrackedWork)");
+    expect(modelRecoveryGate).toBeGreaterThan(-1);
+    expect(noCurrentChatGate).toBeGreaterThan(modelRecoveryGate);
 
     expect(source).not.toContain("state.verifiedChatUrl===ui?.url");
     expect(source).toContain("verifiedChatUrl:String(profile.url||'')");
@@ -169,7 +173,7 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("pages.find(t=>sameNv02Chat(t.url,state?.verifiedChatUrl))");
 
 
-    const f5Block=source.slice(source.indexOf("if(now>=Number(state.nextPeriodicF5At||0))"),source.indexOf("if(!currentTrackedWork)"));
+    const f5Block=source.slice(source.indexOf("if(now>=Number(state.nextPeriodicF5At||0))"),source.indexOf("const modelCheckRequired="));
     expect(f5Block).toContain("reloadTarget(target)");
     expect(f5Block).not.toContain("ensureNv02ModelProfile");
     expect(f5Block).not.toContain("checkpointNv02");
