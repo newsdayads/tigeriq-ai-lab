@@ -132,8 +132,11 @@ describe('independent worker recovery flows in direct-cdp-bridge',()=>{
     expect(source).toContain("phase==='BLOCKED'");
     expect(source).toContain("WORKER_RESET_MAX_ATTEMPTS=2");
     expect(source).toContain("RECOVERY_BOUNDED_STOP");
-    expect(source).toContain("/api/utility/workers/${w.id}/safe-recover");
+    expect(source).toContain("/api/workers/${w.id}/restart-schedule");
+    expect(source).toContain("prepareOnly:true");
     expect(source).toContain("await closeWorker(w,target)");
+    expect(source).toContain("WORKER_REOPEN_CLOSE:");
+    expect(source).not.toContain("/api/utility/workers/${w.id}/safe-recover");
     expect(source).toContain("resumeUrl");
   });
 
@@ -191,6 +194,17 @@ describe('safe recovery contracts',()=>{
     expect(server).toContain(disabled);
     expect(server.indexOf(disabled)).toBeLessThan(server.indexOf('const hbStop=heartbeatStopReason(hb)'));
     expect(server).not.toContain("recoveryAttempts.set(workerId,0);\n    if(!state.enabled)");
+  });
+
+  it('keeps all three enabled workers alive and uses a planned recovery handshake before generic close',()=>{
+    expect(server).toContain("function workerNeeded(id:WorkerId)");
+    expect(server).toContain("return true;");
+    expect(server).toContain("const needed=new Set<WorkerId>(WORKER_IDS)");
+    expect(server).toContain("restartScheduleMatch=url.pathname.match(/^\\/api\\/workers\\/(NV02|NV03|NV04)\\/restart-schedule$/)");
+    expect(server).toContain("const prepareOnly=data.prepareOnly===true");
+    expect(server).toContain("WORKER_PLANNED_REFRESH_PREPARED");
+    expect(source).toContain("/api/workers/${w.id}/restart-schedule");
+    expect(source).toContain("prepareOnly:true");
   });
 
   it('keeps paused workers out of unattended start/autopilot paths',()=>{
