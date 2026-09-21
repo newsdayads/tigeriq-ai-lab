@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import {activeProviderCooldownIds,applyCompactEdits,assertPrOpenState,buildLocalFileContext,classifyAiFailure,codingPathsOverlap,gateFailureIssues,invokeJsonWithFailover,isResourceTransientError,preserveGenerationPrompt,recoverAfterCodingRestart,resourceWaitPlan,restartRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,validateCompactEdits} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {activeProviderCooldownIds,applyCompactEdits,assertPrOpenState,buildLocalFileContext,classifyAiFailure,codingPathsOverlap,gateFailureIssues,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,preserveGenerationPrompt,recoverAfterCodingRestart,resourceWaitPlan,restartRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,validateCompactEdits} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError,parseJsonObject} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 const nv11={id:'NV11',provider:'fake',model:'a'};
@@ -177,6 +177,8 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
   await t.test('retry classifier covers malformed JSON and transport failures',()=>{
     assert.strictEqual(isRetryableAiError(new Error('JSON_OBJECT_INVALID:unterminated string')),true);
     assert.strictEqual(isRetryableAiError(new Error('CODING_CHANGES_COUNT_INVALID')),true);
+    assert.strictEqual(isRetryableAiError(new Error('CODING_COMPACT_EDIT_INVALID')),true);
+    assert.strictEqual(isRetryableAiError(new Error('CODING_COMPACT_EDIT_OLD_NOT_FOUND')),true);
     const e413=new Error('HTTP_413:payload too large');e413.status=413;
     assert.strictEqual(isRetryableAiError(e413),true);
     const e429=new Error('rate');e429.status=429;
@@ -298,6 +300,12 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
     assert.strictEqual(shouldResumeExistingPr({branch:'',pr_number:722}),false);
     assert.strictEqual(shouldResumeExistingPr({branch:'tigeriq/nv12/job',pr_number:null}),false);
   });
+  await t.test('stale compact patch errors are refreshable on the same PR',()=>{
+    assert.strictEqual(isRefreshableCompactPatchError(new Error('CODING_COMPACT_EDIT_OLD_NOT_FOUND')),true);
+    assert.strictEqual(isRefreshableCompactPatchError(new Error('CODING_COMPACT_EDIT_OLD_NOT_UNIQUE')),true);
+    assert.strictEqual(isRefreshableCompactPatchError(new Error('CODING_SCOPE_VIOLATION')),false);
+  });
+
   await t.test('compact repair applies one exact unique snippet only',()=>{
     const path='apps/tigeriq-core/core.mjs';
     const edits=[{path,old:'JSON.stringify(stateData)',new:'stateData'}];
