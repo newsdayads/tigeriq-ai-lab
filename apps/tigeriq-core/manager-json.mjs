@@ -1,5 +1,12 @@
 function managerError(code,cause){const error=new Error(code);error.code=code;error.kind='invalid_response';if(cause)error.cause=cause;return error;}
 
+export function reconcileFallbackState(value) {
+  if (!value || value.status === 'pending' || value.status === 'uncertain') {
+    return { ...value, status: 'blocked', summary: 'fail-closed due to pending or uncertain fallback state' };
+  }
+  return value;
+}
+
 export function parseManagerJson(text){
   const raw=String(text||'').trim();
   const clean=raw.replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'').trim();
@@ -7,7 +14,9 @@ export function parseManagerJson(text){
   let value;
   try{value=JSON.parse(clean);}catch(error){throw managerError('MANAGER_JSON_INVALID',error);}
   if(!value||typeof value!=='object'||Array.isArray(value))throw managerError('MANAGER_SCHEMA_INVALID');
-  if(!['continue','complete','blocked'].includes(value.status))throw managerError('MANAGER_STATUS_INVALID');
+  const reconciled = reconcileFallbackState(value);
+  if(!['continue','complete','blocked'].includes(reconciled.status))throw managerError('MANAGER_STATUS_INVALID');
+  value = reconciled;
   if(typeof value.summary!=='string')throw managerError('MANAGER_SCHEMA_INVALID');
   let jobs = [];
   if (value.status === 'continue') {
