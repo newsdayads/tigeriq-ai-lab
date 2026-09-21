@@ -2,7 +2,8 @@ import fs from 'node:fs';
 import http from 'node:http';
 import {
   CONTINUE_MIN_MS, CONTINUE_MAX_MS, REFRESH_MIN_MS, REFRESH_MAX_MS,
-  MAX_STALLED_CHECKS, deriveNv02Phase, hasActiveNv02Work, hasWaitingEvidenceNv02Work, hasContinuableNv02Work,
+  MAX_STALLED_CHECKS, WORKING_PROGRESS_CHECK_MS, MAX_WORKING_UNCHANGED_CHECKS, shouldRotateNv02Chat,
+  deriveNv02Phase, hasActiveNv02Work, hasWaitingEvidenceNv02Work, hasContinuableNv02Work,
   nextRandomAt, pickContinuePrompt,
 } from './extension/continuity.js';
 import { buildDurableSavePrompt, waitForDurableSaveReceipt } from './extension/save-receipt.js';
@@ -561,16 +562,24 @@ async function recoverStalledWorking(target,state,now){
       ui=await uiState(target);
       if(!ui?.uiBusy)break;
     }
-    if(ui?.uiBusy){
-      await reloadTarget(target);
-      await sleep(1800);
-      ui=await uiState(target);
-      await continuityEvent('WORKING_STALLED_RELOADED',{uiPhase:ui?.uiPhase||null});
+    if(ui?.securityBlock){
+      const blocked={...state,lastPhase:'BLOCKED',nextProgressCheckAt:0};
+      saveNv02Continuity(blocked);
+      await continuityEvent('WORKING_STALLED_RECOVERY_BLOCKED',{securityBlock:ui.securityBlock});
+      return blocked;
     }
-    const clean={...state,workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:0,lastPhase:ui?.uiPhase||'STALLED'};
+    await reloadTarget(target);
+    await sleep(1800);
+    ui=await uiState(target);
+    await continuityEvent('WORKING_STALLED_RELOADED',{uiPhase:ui?.uiPhase||null,uiBusy:ui?.uiBusy===true});
+    const clean={...state,workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:0,lastPhase:ui?.uiPhase||'STALLED',nextContinueAt:now+WORKING_PROGRESS_CHECK_MS};
     saveNv02Continuity(clean);
     if(ui?.uiPhase==='READY'&&!ui?.uiBusy){
       return dispatchNaturalContinueLocked(target,clean,now);
+    }
+    if(!ui?.securityBlock){
+      const reopen=await post('/api/workers/NV02/restart-schedule','NV02',{reason:'STALLED_3_CHECKS'});
+      await continuityEvent('WORKING_STALLED_REOPEN_SCHEDULED',{status:reopen?.ok===true?'QUEUED':'UNKNOWN',uiPhase:ui?.uiPhase||null});
     }
     return clean;
   },'WORKING_STALLED_RECOVERY',30000);
@@ -601,7 +610,8 @@ async function rotateNv02Chat(target,state,now){
     const freshUi=await ensureNv02ModelProfile(target);
     if(freshUi?.securityBlock)throw new Error(freshUi.securityBlock);
     if(freshUi?.modelExact!==true||freshUi?.uiPhase!=='READY')throw new Error('ROTATE_MODEL_PROFILE_NOT_READY');
-    const next={...checkpointed,lastPhase:'READY'};
+    const verified=loadNv02Continuity();
+    const next={...checkpointed,lastPhase:'READY',verifiedChatUrl:verified.verifiedChatUrl,modelVerifiedAt:verified.modelVerifiedAt,modelCheckBlockedUntil:verified.modelCheckBlockedUntil};
     saveNv02Continuity(next);
     await continuityEvent('CHAT_ROTATED',{receiptRef:receipt.receiptRef,checkpointRef:receipt.checkpointRef,archiveStatus:archived.status,newChatStatus:opened.status,nextRefreshAt:next.nextRefreshAt});
     return dispatchNaturalContinueLocked(target,next,now);
@@ -622,6 +632,32 @@ async function maybeNv02Continuity(w,target,ui){
   const currentTrackedWork=hasCurrentNv02Chat(ui?.url);
   state={...state,lastPhase:phase};saveNv02Continuity(state);
   if(phase==='BLOCKED'){await continuityEvent('BLOCKED',{securityBlock:ui?.securityBlock||null});return;}
+  if(phase==='WORKING'){
+    if(now<Number(state.nextProgressCheckAt||0))return;
+    const signature=String(ui?.activitySignature||'');
+    const same=Boolean(signature&&state.workingSignature===signature);
+    const unchanged=same?Number(state.workingUnchangedChecks||0)+1:0;
+    state={...state,stalledChecks:0,workingSignature:signature,workingUnchangedChecks:unchanged,nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS};
+    saveNv02Continuity(state);
+    await continuityEvent('WORKING_PROGRESS_CHECK',{workingUnchangedChecks:unchanged,nextProgressCheckAt:state.nextProgressCheckAt,signaturePresent:Boolean(signature)});
+    if(unchanged>=MAX_WORKING_UNCHANGED_CHECKS)await recoverStalledWorking(target,state,now);
+    return;
+  }
+  if(shouldRotateNv02Chat({phase,currentTrackedWork,now,nextRefreshAt:state.nextRefreshAt,dispatchesInChat:state.dispatchesInChat})){
+    if(await externalAutopilotOwnsNextNv02Job()){
+      state={...state,nextRefreshAt:now+60_000};saveNv02Continuity(state);
+      await continuityEvent('CHAT_ROTATION_DEFERRED_TO_EXTERNAL_AUTOPILOT',{nextRefreshAt:state.nextRefreshAt});
+      return;
+    }
+    await continuityEvent('CHAT_ROTATION_DUE',{dispatchesInChat:state.dispatchesInChat,chatStartedAt:state.chatStartedAt,nextRefreshAt:state.nextRefreshAt});
+    try{await rotateNv02Chat(target,state,now);}
+    catch(error){
+      const retry={...state,nextRefreshAt:now+5*60*1000};
+      saveNv02Continuity(retry);
+      await continuityEvent('CHAT_ROTATION_FAILED',{error:String(error?.message||error),nextRefreshAt:retry.nextRefreshAt});
+    }
+    return;
+  }
   if(now>=Number(state.nextPeriodicF5At||0)){
     const refreshed=await withNv02Mutation(async()=>{
       const beforeUrl=ui?.url||null;
@@ -670,19 +706,6 @@ async function maybeNv02Continuity(w,target,ui){
     }catch(error){await continuityEvent('MODEL_PROFILE_RECOVERY_FAILED',{error:String(error?.message||error)});}
   }
   if(now<state.nextContinueAt)return;
-  if(phase==='WORKING'){
-    if(now<Number(state.nextProgressCheckAt||0))return;
-    const signature=String(ui?.activitySignature||'');
-    const same=Boolean(signature&&state.workingSignature===signature);
-    const unchanged=same?Number(state.workingUnchangedChecks||0)+1:0;
-    state={...state,stalledChecks:0,workingSignature:signature,workingUnchangedChecks:unchanged,nextProgressCheckAt:now+60000};
-    saveNv02Continuity(state);
-    await continuityEvent('WORKING_PROGRESS_CHECK',{workingUnchangedChecks:unchanged,nextProgressCheckAt:state.nextProgressCheckAt,signaturePresent:Boolean(signature)});
-    if(unchanged>=3){
-      await recoverStalledWorking(target,state,now);
-    }
-    return;
-  }
   if(phase==='READY'){
     const sent=await dispatchNaturalContinue(target,state,now);
     if(sent?.status==='MUTATION_LEASE_BUSY'){

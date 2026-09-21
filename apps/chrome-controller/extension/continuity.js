@@ -27,6 +27,16 @@ export const CONTINUE_MAX_MS = 10 * 60 * 1000;
 export const REFRESH_MIN_MS = 2 * 60 * 60 * 1000;
 export const REFRESH_MAX_MS = 4 * 60 * 60 * 1000;
 export const MAX_STALLED_CHECKS = 3;
+export const WORKING_PROGRESS_CHECK_MS = 60 * 1000;
+export const MAX_WORKING_UNCHANGED_CHECKS = 3;
+export const CHAT_ROTATE_AFTER_DISPATCHES = 30;
+
+export function shouldRotateNv02Chat({phase,currentTrackedWork,now,nextRefreshAt,dispatchesInChat}={}){
+  if(phase!=='READY'||currentTrackedWork!==true)return false;
+  const dueByTime=Number(nextRefreshAt)>0&&Number(now)>=Number(nextRefreshAt);
+  const dueByDispatch=Number(dispatchesInChat||0)>=CHAT_ROTATE_AFTER_DISPATCHES;
+  return dueByTime||dueByDispatch;
+}
 
 export function randomDelay(minMs,maxMs,random=Math.random){
   if(!Number.isFinite(minMs)||!Number.isFinite(maxMs)||maxMs<minMs)throw new Error('RANDOM_DELAY_RANGE_INVALID');

@@ -194,14 +194,17 @@ describe('stale-working restart schedule scope',()=>{
 });
 
 describe('isolated NV02 stall/F5 recovery scope',()=>{
-  it('keeps recovery local to the isolated runner and never checkpoints/archives from the hot loop',()=>{
+  it('keeps stale-WORKING recovery bounded while allowing explicit durable long-chat rotation',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(bridge).toContain("'WORKING_STALLED_RECOVERY'");
+    expect(bridge).toContain("'WORKING_STALLED_REOPEN_SCHEDULED'");
     expect(bridge).toContain("'PERIODIC_F5_REFRESH'");
     expect(bridge).toContain("stopAndClearComposerExpr");
     expect(bridge).toContain("nextPeriodicF5At:Number(raw.nextPeriodicF5At)||nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS)");
     expect(bridge).toContain("nextPeriodicF5At:nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS)");
-    expect(bridge.indexOf("if(now>=Number(state.nextPeriodicF5At||0))")).toBeLessThan(bridge.indexOf("if(!currentTrackedWork)"));
+    const hotLoop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
+    expect(hotLoop.indexOf("if(phase==='WORKING')")).toBeLessThan(hotLoop.indexOf("if(now>=Number(state.nextPeriodicF5At||0))"));
+    expect(hotLoop.indexOf("if(phase==='WORKING')")).toBeLessThan(hotLoop.indexOf("if(now<state.nextContinueAt)return"));
     const f5Block=bridge.slice(bridge.indexOf("if(now>=Number(state.nextPeriodicF5At||0))"),bridge.indexOf("if(!currentTrackedWork)"));
     expect(f5Block).not.toContain("nextContinueAt:now");
     expect(bridge).toContain("sameNv02Chat(state.verifiedChatUrl,ui?.url)");
@@ -209,9 +212,9 @@ describe('isolated NV02 stall/F5 recovery scope',()=>{
     expect(server).toContain("const periodicF5=workerId==='NV02'&&purpose==='PERIODIC_F5_REFRESH'");
     expect(server).toContain("if(paused&&!periodicF5)");
     expect(server).toContain("state.lastHeartbeat?.uiBusy!==false&&!staleWorkingRecovery&&!periodicF5");
-    const hotLoop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
     expect(hotLoop).not.toContain("checkpointNv02(");
-    expect(hotLoop).not.toContain("rotateNv02Chat(");
+    expect(hotLoop).toContain("rotateNv02Chat(target,state,now)");
+    expect(hotLoop).toContain("shouldRotateNv02Chat");
     expect(hotLoop).not.toContain("getControllerState(");
     expect(hotLoop).not.toContain("hasActiveNv02Work(");
   });
