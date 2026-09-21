@@ -451,19 +451,37 @@ async function withNv02Mutation(fn,purpose='NORMAL',ttlMs=30000){
   if(!lease)return{ok:false,status:'MUTATION_LEASE_BUSY'};
   try{return await fn();}finally{await releaseBridgeMutationLease('NV02',lease);}
 }
-async function dispatchNaturalContinueLocked(target,state,now){
+async function dispatchNaturalContinueLocked(target,state,now,resumeJobId=null){
   await ensureNv02ModelProfile(target);
-  await scrollToBottom(target).catch(()=>{});
-  const prompt=pickContinuePrompt(state.lastPrompt);
-  const result=await dispatch(target,prompt);
-  if(!result?.ok)throw new Error(result?.status||'CONTINUE_DISPATCH_FAILED');
-  const next={...state,lastPrompt:prompt,dispatchesInChat:Number(state.dispatchesInChat||0)+1,stalledChecks:0,lastPhase:'WORKING',nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
-  saveNv02Continuity(next);
-  await continuityEvent('CONTINUE_DISPATCHED',{prompt,evidence:result.evidence||null,nextContinueAt:next.nextContinueAt,dispatchesInChat:next.dispatchesInChat});
-  return next;
+  let recoveryReserved=false;
+  if(resumeJobId){
+    await post('/api/utility/workers/NV02/job/recovery-resume','NV02',{jobId:resumeJobId});
+    recoveryReserved=true;
+  }
+  try{
+    await scrollToBottom(target).catch(()=>{});
+    const prompt=pickContinuePrompt(state.lastPrompt);
+    const result=await dispatch(target,prompt);
+    if(!result?.ok)throw new Error(result?.status||'CONTINUE_DISPATCH_FAILED');
+    const next={...state,lastPrompt:prompt,dispatchesInChat:Number(state.dispatchesInChat||0)+1,stalledChecks:0,lastPhase:'WORKING',nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
+    saveNv02Continuity(next);
+    if(resumeJobId)await continuityEvent('WAITING_EVIDENCE_RESUMED',{jobId:resumeJobId,prompt,evidence:result.evidence||null});
+    await continuityEvent('CONTINUE_DISPATCHED',{prompt,evidence:result.evidence||null,nextContinueAt:next.nextContinueAt,dispatchesInChat:next.dispatchesInChat});
+    return next;
+  }catch(error){
+    if(recoveryReserved){
+      await post('/api/utility/workers/NV02/job','NV02',{
+        jobId:resumeJobId,
+        stage:'WAITING_EVIDENCE',
+        nextAction:'Retry same-job recovery continue',
+        blocker:'RECOVERY_CONTINUE_NOT_DELIVERED',
+      }).catch(()=>{});
+    }
+    throw error;
+  }
 }
-async function dispatchNaturalContinue(target,state,now){
-  return withNv02Mutation(()=>dispatchNaturalContinueLocked(target,state,now),'CONTINUITY_CONTINUE');
+async function dispatchNaturalContinue(target,state,now,resumeJobId=null){
+  return withNv02Mutation(()=>dispatchNaturalContinueLocked(target,state,now,resumeJobId),'CONTINUITY_CONTINUE');
 }
 async function checkpointNv02(target){
   return withNv02Mutation(async()=>{
@@ -517,6 +535,7 @@ async function maybeNv02Continuity(w,target,ui){
   const active=hasActiveNv02Work(controller);
   const waitingEvidence=hasWaitingEvidenceNv02Work(controller);
   const continuable=hasContinuableNv02Work(controller);
+  const waitingEvidenceJobId=String((controller?.jobs||[]).find((job)=>job?.workerId==='NV02'&&job?.stage==='WAITING_EVIDENCE'&&!job?.completedAt)?.jobId||'')||null;
   if(now>=state.nextRefreshAt&&phase==='READY'&&!active&&!waitingEvidence){
     try{
       const receipt=await checkpointNv02(target);
@@ -564,7 +583,7 @@ async function maybeNv02Continuity(w,target,ui){
       await continuityEvent('CONTINUE_SKIPPED_NO_CURRENT_WORK',{nextContinueAt:state.nextContinueAt});
       return;
     }
-    const sent=await dispatchNaturalContinue(target,state,now);
+    const sent=await dispatchNaturalContinue(target,state,now,waitingEvidenceJobId);
     if(sent?.status==='MUTATION_LEASE_BUSY'){
       state={...state,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
       await continuityEvent('CONTINUE_SKIPPED_LEASE_BUSY',{nextContinueAt:state.nextContinueAt});
@@ -580,7 +599,19 @@ async function maybeNv02Continuity(w,target,ui){
     try{
       const corrected=await withNv02Mutation(()=>ensureNv02ModelProfile(target),'MODEL_PROFILE_RECOVERY');
       await continuityEvent('MODEL_PROFILE_RECOVERY',{status:corrected?.status||corrected?.modelProfileStatus||'VERIFIED',modelName:corrected?.modelName||null,reasoningEffort:corrected?.reasoningEffort||null});
-      state={...state,stalledChecks:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
+      if(corrected?.status==='MUTATION_LEASE_BUSY'){
+        state={...state,stalledChecks:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
+        return;
+      }
+      const recoveredProjectContext=isNv02ProjectContext(corrected?.url)||corrected?.projectDraftReady===true;
+      if(!recoveredProjectContext)throw new Error('PROJECT_CONTEXT_NOT_READY_AFTER_MODEL_RECOVERY');
+      await postWorkerHeartbeat(w,target,corrected,recoveredProjectContext);
+      await continuityEvent('MODEL_PROFILE_HEARTBEAT_REFRESHED',{modelName:corrected?.modelName||null,reasoningEffort:corrected?.reasoningEffort||null,verifiedAt:corrected?.verifiedAt||null});
+      state={...state,stalledChecks:0,nextContinueAt:now};saveNv02Continuity(state);
+      const sent=await dispatchNaturalContinue(target,state,now,waitingEvidenceJobId);
+      if(sent?.status==='MUTATION_LEASE_BUSY'){
+        state={...state,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
+      }
       return;
     }catch(error){await continuityEvent('MODEL_PROFILE_RECOVERY_FAILED',{error:String(error?.message||error)});}
   }
@@ -611,15 +642,20 @@ async function handleCommand(w,target,command){
   if(action==='ARCHIVE_CHAT'){const r=await archiveChat(target);if(!r?.ok)throw new Error(r?.status||'ARCHIVE_FAILED');return r;}
   throw new Error(`UNKNOWN_ACTION:${action}`);
 }
+async function postWorkerHeartbeat(w,target,ui,projectContextReady){
+  const windowId=await windowIdFor(workerPort(w),target.id);
+  const display={workArea:{left:0,top:0,width:Number(config.layout?.fallbackWorkAreaWidth||3277),height:1688}};
+  await post('/api/heartbeat',w.id,{workerId:w.id,state:ui.uiPhase||'STALLED',windowId,tabId:target.id,url:ui.url,active:true,uiReady:ui.uiReady,uiPhase:ui.uiPhase,composerReady:ui.composerReady,sendReady:ui.sendReady,stopVisible:ui.stopVisible,scrollToBottomVisible:ui.scrollToBottomVisible,authRequired:ui.authRequired===true,uiBusy:ui.uiBusy,securityBlock:ui.securityBlock,modelControlPresent:ui.modelControlPresent,modelProfileStatus:ui.modelProfileStatus,modelName:ui.modelName,reasoningEffort:ui.reasoningEffort,modelReady:ui.modelReady,modelExact:ui.modelExact,verifiedAt:ui.verifiedAt,blockedReason:ui.blockedReason,projectContextReady,display});
+}
+
 async function tickWorker(w){
   if(busy.has(w.id)) return; busy.add(w.id);
   try{
     const port=workerPort(w);let list=await targets(port);let target=await pruneDuplicates(w,list);if(!target)return;
-    const rawUi=await uiState(target);const windowId=await windowIdFor(port,target.id);
+    const rawUi=await uiState(target);
     const projectContextReady=w.id!=='NV02'||isNv02ProjectContext(rawUi.url)||rawUi.projectDraftReady===true;
     const ui=projectContextReady?rawUi:{...rawUi,uiReady:false,uiPhase:'STALLED',modelReady:false};
-    const display={workArea:{left:0,top:0,width:Number(config.layout?.fallbackWorkAreaWidth||3277),height:1688}};
-    await post('/api/heartbeat',w.id,{workerId:w.id,state:ui.uiPhase||'STALLED',windowId,tabId:target.id,url:ui.url,active:true,uiReady:ui.uiReady,uiPhase:ui.uiPhase,composerReady:ui.composerReady,sendReady:ui.sendReady,stopVisible:ui.stopVisible,scrollToBottomVisible:ui.scrollToBottomVisible,authRequired:ui.authRequired===true,uiBusy:ui.uiBusy,securityBlock:ui.securityBlock,modelControlPresent:ui.modelControlPresent,modelProfileStatus:ui.modelProfileStatus,modelName:ui.modelName,reasoningEffort:ui.reasoningEffort,modelReady:ui.modelReady,modelExact:ui.modelExact,verifiedAt:ui.verifiedAt,blockedReason:ui.blockedReason,projectContextReady,display});
+    await postWorkerHeartbeat(w,target,ui,projectContextReady);
     if(w.id==='NV02'&&!projectContextReady&&!ui.securityBlock){
       if(!NV02_HOME_URL){await continuityEvent('PROJECT_CONTEXT_RECOVERY_BLOCKED',{reason:'NV02_HOME_URL_MISSING',url:rawUi.url||null});return;}
       const recovered=await withNv02Mutation(()=>recoverNv02ProjectContext(target),'PROJECT_CONTEXT_RECOVERY');

@@ -205,6 +205,18 @@ describe('NV02 continuity policy', () => {
     expect(contentSource).toContain('lastVerifiedModelProfile');
     expect(contentSource).toContain("data-selected-reasoning-effort");
     expect(source).toContain("'MODEL_PROFILE_RECOVERY'");
+    expect(source).toContain("'MODEL_PROFILE_HEARTBEAT_REFRESHED'");
+    expect(source).toContain("await postWorkerHeartbeat(w,target,corrected,recoveredProjectContext)");
+    const recoveryStart=source.indexOf("const corrected=await withNv02Mutation(()=>ensureNv02ModelProfile(target),'MODEL_PROFILE_RECOVERY')");
+    const recoveryEnd=source.indexOf("state={...state,stalledChecks:Math.min(MAX_STALLED_CHECKS",recoveryStart);
+    const recoverySlice=source.slice(recoveryStart,recoveryEnd);
+    expect(recoverySlice.indexOf("postWorkerHeartbeat(w,target,corrected,recoveredProjectContext)")).toBeGreaterThan(-1);
+    expect(recoverySlice.indexOf("postWorkerHeartbeat(w,target,corrected,recoveredProjectContext)")).toBeLessThan(recoverySlice.indexOf("dispatchNaturalContinue(target,state,now,waitingEvidenceJobId)"));
+    expect(source).toContain("'/api/utility/workers/NV02/job/recovery-resume'");
+    expect(source).toContain("'WAITING_EVIDENCE_RESUMED'");
+    expect(source).toContain("nextContinueAt:now");
+    expect(source).toContain("waitingEvidenceJobId");
+    expect(source).toContain("'RECOVERY_CONTINUE_NOT_DELIVERED'");
     expect(source).toContain("'ARCHIVE_CONFIRMED'");
     expect(source).toContain("'NEW_CHAT_CREATED'");
     expect(source).toContain("'CONTEXT_RECOVERY_ROTATED'");
@@ -227,6 +239,10 @@ describe('NV02 continuity policy', () => {
     expect(ledgerSource).toContain('QUEUED');
     expect(serverSource).toContain('retryKnownNotDelivered');
     expect(serverSource).toContain('uiJobLedger.retryError');
+    expect(serverSource).toContain("'/api/utility/workers/NV02/job/recovery-resume'");
+    expect(serverSource).toContain("uiJobLedger.resumeWaitingEvidence('NV02',jobId");
+    expect(serverSource).toContain("RECOVERY_RESUME_REQUIRES_GPT_5_6_SOL_HIGH");
+    expect(serverSource).toContain("BROWSER_MUTATION_LEASE_REQUIRED:NV02");
   });
   it('ships one-shot NV02 continuity installer with exact-head deploy and rollback',()=>{
     const installer=readFileSync('apps/chrome-controller/runtime/Install-NV02-Continuity.ps1','utf8');

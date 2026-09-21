@@ -137,6 +137,20 @@ describe('durable UI worker job ledger',()=>{
     expect(waiting.progress).toBe(80);
     expect(waiting.evidenceRefs).toContain('https://github.com/newsdayads/tigeriq-ai-lab/issues/1042');
   });
+  it('resumes the same WAITING_EVIDENCE job as WORKING only through recovery method',()=>{
+    const {path,store}=ledger();
+    store.create('NV02',{jobId:'GH-WAIT-RESUME',issueRef:'https://github.com/newsdayads/tigeriq-ai-lab/issues/1232',source:'AUTO_CONTINUE'});
+    store.transition('NV02','GH-WAIT-RESUME','DISPATCHING');
+    store.transition('NV02','GH-WAIT-RESUME','SUBMITTED');
+    store.transition('NV02','GH-WAIT-RESUME','WORKING');
+    store.transition('NV02','GH-WAIT-RESUME','WAITING_EVIDENCE',{evidenceRef:'https://github.com/newsdayads/tigeriq-ai-lab/issues/1232'});
+    const resumed=store.resumeWaitingEvidence('NV02','GH-WAIT-RESUME');
+    expect(resumed).toMatchObject({jobId:'GH-WAIT-RESUME',stage:'WORKING',progress:60,completedAt:null,blocker:null});
+    expect(resumed.evidenceRefs).toContain('https://github.com/newsdayads/tigeriq-ai-lab/issues/1232');
+    expect(new DurableUiJobLedger(path).snapshot().filter(job=>job.jobId==='GH-WAIT-RESUME')).toHaveLength(1);
+    expect(()=>store.resumeWaitingEvidence('NV02','GH-WAIT-RESUME')).toThrow('UI_JOB_RECOVERY_RESUME_INVALID:WORKING');
+  });
+
   it('enforces exact job resumption path on retry',()=>{
     const {path,store}=ledger();
     const created=store.create('NV02',{jobId:'GH-RESUME-2',source:'AUTO_CONTINUE'});
