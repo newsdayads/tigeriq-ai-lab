@@ -793,6 +793,11 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
     state.windowState='OPEN';
     state.windowEventAt=hb.at;
     state.lastWindowId=hb.windowId;
+    if(!state.enabled){
+      state.status='DISABLED';
+      json(res,200,{ok:true,enabled:false});
+      return true;
+    }
     const hbStop=heartbeatStopReason(hb);
     if(hbStop){
       state.blocked=true;state.status='BLOCKED';state.lastError=hbStop;
@@ -820,7 +825,6 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
       }
     }
     recoveryAttempts.set(workerId,0);
-    if(!state.enabled){state.status='DISABLED';json(res,200,{ok:true,enabled:false});return true;}
     if(!utilityPausedWorkers.has(workerId)&&['IDLE','STARTING','RECOVERING','RECOVERY_ERROR','RECOVERY_AMBIGUOUS_WINDOW','RECOVERY_RUNNING_WITHOUT_HEARTBEAT','RECOVERY_EXHAUSTED','WINDOW_CLOSED_IDLE','WINDOW_CLOSED_ACTIVE'].includes(state.status))state.status='ONLINE';
     json(res,200,{ok:true,enabled:true});
     return true;
