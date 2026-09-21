@@ -11,6 +11,7 @@ export interface UnifiedWorkItem {
   blockers: string[];
   evidenceRefs: string[];
   nextAction?: string;
+  telemetry?: Record<string, unknown>;
 }
 
 export function projectWorkItem(objectiveId: string): UnifiedWorkItem {
@@ -50,5 +51,6 @@ export function projectWorkItem(objectiveId: string): UnifiedWorkItem {
     blockers,
     evidenceRefs,
     nextAction,
+    telemetry,
   };
 }
