@@ -378,7 +378,7 @@ async function dispatch(
   const job=retryKnownNotDelivered
     ? uiJobLedger.retryError(workerId,requestedJobId,{...metadata,source:metadata.source??source})
     : uiJobLedger.create(workerId,{...metadata,source:metadata.source??source});
-  if(retryKnownNotDelivered)log('UI_JOB_ERROR_REOPENED_SAFE_RETRY',{workerId,jobId:job.jobId});
+  if(retryKnownNotDelivered)log('UI_JOB_RESUME_RECOVERED',{workerId,jobId:job.jobId,stage:'QUEUED'});
   uiJobLedger.transition(workerId,job.jobId,'DISPATCHING',{nextAction:'Deliver to worker UI'});
   states.get(workerId)!.status=source==='AUTO_CONTINUE'?'AUTOPILOT_DISPATCHING':'DISPATCHING';
   persistEvidence();
