@@ -546,9 +546,15 @@ async function autopilotTick(){
       primary.blocked=true;primary.status='BLOCKED';primary.lastError=uiSecurity;
       stopAutopilot(uiSecurity);log('AUTOPILOT_SECURITY_STOP',{workerId,status:uiSecurity});persistEvidence();return;
     }
-    if(autopilotState.lastDispatchedJobId&&primary.lastHeartbeat?.uiBusy!==false){
+    if(primary.lastHeartbeat?.uiBusy!==false){
       setAutopilotPhase('BUSY');
-      log('AUTOPILOT_WAIT_UI_BUSY',{workerId,uiBusy:primary.lastHeartbeat?.uiBusy??null,lastDispatchedJobId:autopilotState.lastDispatchedJobId});
+      log('AUTOPILOT_WAIT_UI_BUSY',{workerId,uiBusy:primary.lastHeartbeat?.uiBusy??null,lastDispatchedJobId:autopilotState.lastDispatchedJobId??null});
+      persistEvidence();return;
+    }
+    const activeBrowserLease=browserMutationLeases.active(workerId);
+    if(activeBrowserLease){
+      setAutopilotPhase('BUSY');
+      log('AUTOPILOT_WAIT_BROWSER_MUTATION_LEASE',{workerId,leaseId:activeBrowserLease.leaseId,ownerId:activeBrowserLease.ownerId,expiresAt:activeBrowserLease.expiresAt});
       persistEvidence();return;
     }
     const leaseResult=dispatchLease.acquire(decision.jobId);
