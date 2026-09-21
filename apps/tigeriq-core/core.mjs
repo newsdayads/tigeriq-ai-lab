@@ -352,6 +352,27 @@ async function refreshResources() {
       on conflict(employee_id) do update set name=excluded.name,provider=excluded.provider,model=excluded.model,credential_state=excluded.credential_state,health_state=excluded.health_state,work_state=excluded.work_state,current_job_id=excluded.current_job_id,capabilities=excluded.capabilities,rank=excluded.rank,updated_at=now()`,[r.id,r.name,r.provider,r.model,credential,health,work,old?.current_job_id||null,r.capabilities,r.rank]);
   }
 }
+export async function reconcileStaleAndBlockedObjectives(pool) {
+  try {
+    const res = await pool.query("select id, objective_id, status from tigeriq_jobs where status in ('running', 'blocked', 'stale')");
+    for (const row of res.rows || []) {
+      if (row.status === 'stale' || row.status === 'blocked') {
+        await pool.query("update tigeriq_jobs set status='queued', blocker=null, updated_at=now() where id=$1 and status in ('stale', 'blocked')", [row.id]);
+      }
+    }
+  } catch (e) {
+    console.error(JSON.stringify({ event: 'RECONCILE_OBJECTIVES_ERROR', error: String(e?.message || e) }));
+  }
+}
+
+export function handleManagerExhaustionOrRecovery(runtimeStatus) {
+  const status = String(runtimeStatus || '').toLowerCase();
+  if (status.includes('soft_exhausted') || status.includes('recoverable') || status.includes('rate_limit') || status.includes('degraded')) {
+    return { rearm: true, mode: 'auto_rearm' };
+  }
+  return { rearm: false, mode: 'none' };
+}
+
 async function recoverAfterCoreRestart() {
   const q=await pool.query("select id,employee_id,resource_id from tigeriq_jobs where status='running' and kind='ai'");
   for(const j of q.rows){await pool.query("update tigeriq_jobs set status='queued',employee_id=null,resource_id=null,provider=null,lease_until=null where id=$1",[j.id]);if(j.resource_id)await pool.query("update tigeriq_ai_resources set current_job_id=null,work_state='IDLE',health_state=case when credential_state in ('WAIT_KEY','BLOCKED') then 'OFFLINE' else 'READY' end,updated_at=now() where resource_id=$1",[j.resource_id]);if(j.employee_id)await pool.query("update tigeriq_resources set current_job_id=null,work_state='IDLE',health_state=case when credential_state in ('WAIT_KEY','BLOCKED') then 'OFFLINE' else 'READY' end,updated_at=now() where employee_id=$1",[j.employee_id]);await event('JOB_RECOVERED_AFTER_CORE_RESTART',{jobId:j.id,employeeId:j.employee_id,resourceId:j.resource_id});}
@@ -996,6 +1017,7 @@ async function loop(){
 }
 await initDb();
 await recoverAfterCoreRestart();
+await reconcileStaleAndBlockedObjectives(pool);
 await refreshResources();
 await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(PORT,HOST,resolve);});
 void probeReadyResources();
