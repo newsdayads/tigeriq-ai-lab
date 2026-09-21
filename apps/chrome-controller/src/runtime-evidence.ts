@@ -4,6 +4,13 @@ import { WORKER_IDS, computePlacements, workAreaFitsLayout, type ControllerConfi
 import type { DurableAutopilotState, ExternalAutopilotSnapshot } from './autopilot.js';
 import type { UiJobRecord } from './job-ledger.js';
 
+export interface DurableDispatchEvidenceState {
+  schemaVersion: 'tigeriq.chrome-controller.evidence.v1';
+  lastConfirmedState: 'COMMITTED' | 'DISPATCHING' | 'RESERVED' | 'UNKNOWN';
+  verifiedEvidenceHash?: string;
+  failClosed: boolean;
+}
+
 export interface EvidenceWorkerState {
   id: WorkerId;
   enabled: boolean;
