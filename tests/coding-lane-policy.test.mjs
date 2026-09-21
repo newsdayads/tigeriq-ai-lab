@@ -84,3 +84,16 @@ test('failover handles contract errors',()=>{
   assert.match(service,/classifyAiFailure/);
   assert.match(service,/OUTPUT_CONTRACT_EXHAUSTED/);
 });
+test('truncated edits trigger context refresh',()=>{
+  assert.match(service,/isRefreshableCompactPatchError/);
+  assert.match(service,/OLD_NOT_FOUND/);
+  assert.match(service,/contextFor/);
+});
+test('same-PR repair maintains identity',()=>{
+  assert.match(service,/shouldResumeExistingPr/);
+  assert.match(service,/pr_number/);
+});
+test('compact contract enforces deterministic validation',()=>{
+  assert.match(service,/validateCompactEdits/);
+  assert.match(service,/validateCompactContract/);
+});
