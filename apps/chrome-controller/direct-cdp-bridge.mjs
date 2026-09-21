@@ -23,6 +23,8 @@ const busy=new Set();
 let nv02VerifiedModelProfile=null;
 let nv02MutationBusy=false;
 const NV02_ISOLATED_AUTO_CONTINUE=true;
+const NV02_F5_MIN_MS=5*60*1000;
+const NV02_F5_MAX_MS=10*60*1000;
 function applyNv02VerifiedModelProfile(ui){
   const sameUrl=Boolean(nv02VerifiedModelProfile&&ui?.url&&nv02VerifiedModelProfile.url===ui.url);
   const reasoningHigh=ui?.reasoningEffort==='High';
@@ -564,6 +566,30 @@ async function maybeNv02Continuity(w,target,ui){
       saveNv02Continuity(state);
       await continuityEvent('CONTINUE_SKIPPED_NO_CURRENT_CHAT',{nextContinueAt:state.nextContinueAt});
     }
+    return;
+  }
+  if(now>=Number(state.nextRefreshAt||0)){
+    const refreshed=await withNv02Mutation(async()=>{
+      const beforeUrl=ui?.url||null;
+      const result=await reloadTarget(target);
+      await sleep(1800);
+      const after=await uiState(target).catch(()=>null);
+      return {ok:true,status:result?.status||'RELOADED',beforeUrl,afterUrl:after?.url||null,afterPhase:after?.uiPhase||null};
+    },'PERIODIC_F5_REFRESH',15000);
+    if(refreshed?.status==='MUTATION_LEASE_BUSY'){
+      state={...state,nextRefreshAt:now+15000};saveNv02Continuity(state);
+      return;
+    }
+    state={...state,
+      nextRefreshAt:nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS),
+      nextContinueAt:now,
+      workingSignature:'',
+      workingUnchangedChecks:0,
+      nextProgressCheckAt:0,
+      stalledChecks:0,
+    };
+    saveNv02Continuity(state);
+    await continuityEvent('PERIODIC_F5_REFRESH',{beforeUrl:refreshed?.beforeUrl||null,afterUrl:refreshed?.afterUrl||null,afterPhase:refreshed?.afterPhase||null,nextRefreshAt:state.nextRefreshAt});
     return;
   }
   if(phase==='STALLED'&&ui?.modelExact!==true){
