@@ -8,6 +8,12 @@ export function parseManagerJson(text){
   try{value=JSON.parse(clean);}catch(error){throw managerError('MANAGER_JSON_INVALID',error);}
   if(!value||typeof value!=='object'||Array.isArray(value))throw managerError('MANAGER_SCHEMA_INVALID');
   if(!['continue','complete','blocked'].includes(value.status))throw managerError('MANAGER_STATUS_INVALID');
+  if(value.auto_ui_dependencies && (!Array.isArray(value.auto_ui_dependencies) || value.auto_ui_dependencies.some(d => typeof d !== 'string'))){
+    throw managerError('MANAGER_SCHEMA_INVALID');
+  }
+  if(value.retry_state !== undefined && (typeof value.retry_state !== 'object' || Array.isArray(value.retry_state) || value.retry_state === null)){
+    throw managerError('MANAGER_SCHEMA_INVALID');
+  }
   if(typeof value.summary!=='string')throw managerError('MANAGER_SCHEMA_INVALID');
   let jobs = [];
   if (value.status === 'continue') {
