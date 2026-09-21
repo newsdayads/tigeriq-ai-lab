@@ -63,6 +63,14 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
     assert.strictEqual(count,1);
   });
 
+  await t.test('default failover can reach the sixth eligible coding provider',async()=>{
+    const pool=Array.from({length:6},(_,i)=>({id:`NV${i+11}`,provider:'fake',model:String(i)}));
+    const calls=[];
+    const out=await invokeJsonWithFailover(pool[0],'x',{resourcePool:pool,invokeFn:async r=>{calls.push(r.id);if(r.id!=='NV16')return '{bad json';return '{"status":"blocked","summary":"ok"}';}});
+    assert.strictEqual(out.resource.id,'NV16');
+    assert.deepStrictEqual(calls.map(x=>x),['NV11','NV11','NV12','NV12','NV13','NV13','NV14','NV14','NV15','NV15','NV16']);
+  });
+
   await t.test('HTTP 429 skips the limited provider immediately and fails over',async()=>{
     const calls=[];
     const invokeFn=async(r)=>{
