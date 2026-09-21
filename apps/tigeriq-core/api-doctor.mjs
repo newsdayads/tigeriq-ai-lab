@@ -43,6 +43,12 @@ export function apiDoctorAction({
   return {action:'idle',failureClass:cls,reason:'healthy_or_no_action'};
 }
 
+export function apiDoctorExistingHandoffAction({existingHandoff=false,successAfterHandoff=false}={}){
+  if(!existingHandoff)return {action:'proceed'};
+  if(successAfterHandoff)return {action:'recovered',reason:'live_work_success_after_handoff'};
+  return {action:'wait_repair',reason:'repair_handoff_pending_live_work'};
+}
+
 export function apiDoctorRepairSignature({employeeId,provider,failureClass,message}={}){
   const normalized=safeText(message,180).toLowerCase().replace(/\d+/g,'#').replace(/\s+/g,' ');
   return [safeText(employeeId,32).toUpperCase(),safeText(provider,64).toLowerCase(),safeText(failureClass,64).toLowerCase(),normalized].join('|');
