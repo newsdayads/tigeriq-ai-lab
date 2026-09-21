@@ -122,10 +122,20 @@ export function workerStartGate(workerId:WorkerId,input:{globalPaused:boolean;ut
   return null;
 }
 
-export function getActivitySignature(state:WorkerSafetySnapshot):string {
+export interface WorkerActivitySignatureInput {
+  pausedWorkers: WorkerId[];
+  manualCloseSuppressedWorkers: WorkerId[];
+  modelProfile?: { model: string; profile: string; restoredAt: string };
+  uiBusy?: boolean;
+  lastDispatchedJobId?: string;
+}
+
+export function getActivitySignature(state: WorkerSafetySnapshot | WorkerActivitySignatureInput): string {
   return JSON.stringify({
     pausedWorkers: [...state.pausedWorkers].sort(),
     manualCloseSuppressedWorkers: [...state.manualCloseSuppressedWorkers].sort(),
     modelProfile: state.modelProfile ?? null,
+    uiBusy: 'uiBusy' in state ? !!state.uiBusy : false,
+    lastDispatchedJobId: 'lastDispatchedJobId' in state ? (state.lastDispatchedJobId ?? null) : null,
   });
 }
