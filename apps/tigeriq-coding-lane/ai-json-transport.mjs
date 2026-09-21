@@ -1,4 +1,4 @@
-const AI_HOSTS=['api.groq.com','openrouter.ai','api.mistral.ai','router.huggingface.co','generativelanguage.googleapis.com','api.cohere.com','integrate.api.nvidia.com','api.cloudflare.com'];
+const AI_HOSTS=['api.groq.com','openrouter.ai','api.mistral.ai','router.huggingface.co','generativelanguage.googleapis.com','api.cohere.com','integrate.api.nvidia.com','api.cloudflare.com','api.inceptionlabs.ai'];
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
 export function isAiUrl(input){
@@ -54,8 +54,17 @@ export function prepareAiJsonRequest(input,init={}){
   if(!isAiUrl(input)||String(init?.method||'GET').toUpperCase()!=='POST'||!init?.body)return init;
   let body;try{body=JSON.parse(String(init.body))}catch{return init}
   const host=new URL(String(input)).hostname;
-  if(host==='generativelanguage.googleapis.com') body.generationConfig={...(body.generationConfig||{}),responseMimeType:'application/json'};
-  else if(['api.groq.com','openrouter.ai','api.cohere.com','integrate.api.nvidia.com'].includes(host)) body.response_format={type:'json_object'};
+  const schema=expectedSchemaFromPrompt(promptFromRequest(input,init));
+  const compactMaxTokens=schema==='changes'?1800:schema==='edits'?1200:null;
+  if(host==='generativelanguage.googleapis.com'){
+    body.generationConfig={...(body.generationConfig||{}),responseMimeType:'application/json'};
+    if(compactMaxTokens)body.generationConfig.maxOutputTokens=Math.min(Number(body.generationConfig.maxOutputTokens||compactMaxTokens),compactMaxTokens);
+  }else if(['api.groq.com','openrouter.ai','api.cohere.com','integrate.api.nvidia.com','api.inceptionlabs.ai'].includes(host)){
+    body.response_format={type:'json_object'};
+    if(compactMaxTokens)body.max_tokens=Math.min(Number(body.max_tokens||compactMaxTokens),compactMaxTokens);
+  }else if(compactMaxTokens&&host==='api.cloudflare.com'){
+    body.max_tokens=Math.min(Number(body.max_tokens||compactMaxTokens),compactMaxTokens);
+  }
   return {...init,body:JSON.stringify(body)};
 }
 
