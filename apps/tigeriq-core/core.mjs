@@ -12,7 +12,7 @@ import { normalizeTerminalWorkItems, handoffGenerationKey, evaluateChildObjectiv
 import { ROUTING_PROFILE_LABELS, createResourceId, deriveRoutingProfile, failurePolicy, normalizeQuota, rankCandidates, rateLimitFailureState } from './smart-router.mjs';
 import { runExecutionPreflight } from './execution-preflight.mjs';
 import { detectIdleWithBacklog } from './github-backlog-policy.mjs';
-import { API_DOCTOR_CAPABILITY, apiDoctorAction, apiDoctorRepairSignature, buildApiDoctorPrompt, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
+import { API_DOCTOR_CAPABILITY, apiDoctorAction, apiDoctorExistingHandoffAction, apiDoctorRepairSignature, buildApiDoctorPrompt, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
 
 const DATABASE_URL = process.env.DATABASE_URL?.trim();
 if (!DATABASE_URL) throw new Error('DATABASE_URL_MISSING');
@@ -436,20 +436,23 @@ async function runApiDoctorScan(){
       if(!await apiDoctorEventBySignature('API_DOCTOR_EXTERNAL_BLOCKED',signature))await event('API_DOCTOR_EXTERNAL_BLOCKED',{employeeId:resource.employee_id,resourceId:resource.resource_id,provider:resource.provider,taskKind:'api_doctor',signature,failureClass:plan.failureClass,reason:plan.reason});
       actions.push(row);continue;
     }
+    const repairSignature=apiDoctorRepairSignature({employeeId:resource.employee_id,provider:resource.provider,failureClass:plan.failureClass,message:latestFailure?.data?.message||plan.reason});
+    const existingHandoff=plan.failureClass==='source_contract'?await apiDoctorEventBySignature('API_DOCTOR_REPAIR_HANDOFF',repairSignature):null;
+    if(existingHandoff){
+      const successAfter=(await pool.query("select 1 from tigeriq_events where resource_id=$1 and type='RESOURCE_SUCCESS' and coalesce(task_kind,'')<>'probe' and coalesce(task_kind,'')<>'api_doctor' and ts>$2 order by seq desc limit 1",[resource.resource_id,existingHandoff.ts])).rows[0];
+      const handoffPlan=apiDoctorExistingHandoffAction({existingHandoff:true,successAfterHandoff:Boolean(successAfter)});
+      if(handoffPlan.action==='recovered'){
+        const signature=existingHandoff.data?.signature;
+        if(signature&&!await apiDoctorEventBySignature('API_DOCTOR_RECOVERED',signature))await event('API_DOCTOR_RECOVERED',{employeeId:resource.employee_id,resourceId:resource.resource_id,provider:resource.provider,taskKind:'api_doctor',signature,evidence:'live_work_success_after_handoff'});
+        row.action='recovered';row.reason=handoffPlan.reason;row.recovered=true;actions.push(row);continue;
+      }
+      row.action='wait_repair';row.reason=handoffPlan.reason;row.handoff='deduped';row.codingObjectiveId=existingHandoff.data?.codingObjectiveId||null;actions.push(row);continue;
+    }
     let probeOk=false;
     try{
       const probe=await probeResource(resource.resource_id);
       probeOk=Boolean(probe?.ok);
       row.probe='ok';
-      const existingHandoff=await apiDoctorEventBySignature('API_DOCTOR_REPAIR_HANDOFF',apiDoctorRepairSignature({employeeId:resource.employee_id,provider:resource.provider,failureClass:plan.failureClass,message:latestFailure?.data?.message||plan.reason}));
-      if(existingHandoff){
-        const successAfter=(await pool.query("select 1 from tigeriq_events where resource_id=$1 and type='RESOURCE_SUCCESS' and coalesce(task_kind,'')<>'probe' and ts>$2 order by seq desc limit 1",[resource.resource_id,existingHandoff.ts])).rows[0];
-        if(successAfter){
-          const signature=existingHandoff.data?.signature;
-          if(signature&&!await apiDoctorEventBySignature('API_DOCTOR_RECOVERED',signature))await event('API_DOCTOR_RECOVERED',{employeeId:resource.employee_id,resourceId:resource.resource_id,provider:resource.provider,taskKind:'api_doctor',signature,evidence:'live_work_success_after_handoff'});
-          row.recovered=true;
-        }
-      }
     }catch(error){row.probe='failed';row.probeError=String(error?.kind||error?.message||error).slice(0,120);}
     if(plan.action==='probe_then_handoff'&&probeOk&&repeatedSourceFailures>=2){
       const handoff=await createApiDoctorRepairHandoff(resource,plan.failureClass,latestFailure);
