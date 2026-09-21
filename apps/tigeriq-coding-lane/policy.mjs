@@ -148,6 +148,7 @@ export function detectContractTruncation(text){
   if(!raw) return 'empty';
   if(/JSON_OBJECT_INVALID|COMPACT_CONTRACT_OLD_TOO_LARGE|COMPACT_CONTRACT_TOTAL_SIZE_EXCEEDED/i.test(raw)) return 'over_sized';
   if(/JSON_OBJECT_MISSING/i.test(raw)) return 'missing';
+  if(/COMPACT_EDIT_SEARCH_MISSING|COMPACT_EDIT_SEARCH_AMBIGUOUS/i.test(raw)) return 'truncated';
   return 'valid';
 }
 
