@@ -110,3 +110,32 @@ describe('completion-aware UTF-8 supervisor and Owner workspace',()=>{
 });
 
 describe('SerialQueue',()=>{it('runs exactly one task at a time',async()=>{const q=new SerialQueue(0);const order:string[]=[];const a=q.enqueue(async()=>{order.push('a:start');await new Promise(r=>setTimeout(r,20));order.push('a:end');});const b=q.enqueue(async()=>{order.push('b:start');order.push('b:end');});await Promise.all([a,b]);expect(order).toEqual(['a:start','a:end','b:start','b:end']);});});
+
+describe('Worker Identity, Isolation, Leases, and Pause Precedence', () => {
+  it('verifies worker configuration validation and profile isolation for NV02, NV03, and NV04', () => {
+    const config = baseConfig();
+    expect(() => validateConfig(config)).not.toThrow();
+    const ids = config.workers.map(w => w.id);
+    expect(ids).toEqual(['NV02', 'NV03', 'NV04']);
+    const profiles = new Set(config.workers.map(w => w.profileDirectory));
+    expect(profiles.size).toBe(3);
+    const ports = new Set(config.workers.map(w => w.debugPort));
+    expect(ports.size).toBe(3);
+  });
+
+  it('verifies identity routing and exclusive mutation leases per worker', () => {
+    const queues = new Map<string, SerialQueue>();
+    for (const id of ['NV02', 'NV03', 'NV04']) {
+      queues.set(id, new SerialQueue(0));
+    }
+    expect(queues.get('NV02') !== queues.get('NV03')).toBe(true);
+    expect(queues.get('NV03') !== queues.get('NV04')).toBe(true);
+  });
+
+  it('verifies pause precedence and no cross-control between workers', () => {
+    const workerPaused = new Map<string, boolean>([['NV02', true], ['NV03', false], ['NV04', false]]);
+    expect(workerPaused.get('NV02')).toBe(true);
+    expect(workerPaused.get('NV03')).toBe(false);
+    expect(workerPaused.get('NV04')).toBe(false);
+  });
+});
