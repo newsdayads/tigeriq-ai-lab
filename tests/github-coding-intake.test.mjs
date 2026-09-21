@@ -56,6 +56,7 @@ describe('GitHub coding scope concurrency',()=>{
     const lane={resourceScope:'CODING_LANE_PATCH_CONTRACT_V2',paths:['apps/tigeriq-coding-lane','tests'],ambiguous:false};
     expect(codingScopesOverlap(api,lane)).toBe(false);
     expect(codingScopesOverlap(api,{...lane,paths:['apps/tigeriq-core','tests']})).toBe(true);
+    expect(codingScopesOverlap(api,{resourceScope:'OTHER',paths:['tests'],ambiguous:false})).toBe(false);
     expect(codingScopesOverlap(api,{...api})).toBe(true);
     expect(codingScopesOverlap(api,{resourceScope:'X',paths:[],ambiguous:true})).toBe(true);
   });
