@@ -154,7 +154,7 @@ function isAllowedCoreAssignmentUrl(value){
     if(u.protocol!=='http:')return false;
     const h=u.hostname;
     if(['127.0.0.1','localhost','::1'].includes(h))return true;
-    const m=h.match(/^100\\.(\\d{1,3})\\./);
+    const m=h.match(/^100\.(\d{1,3})\./);
     return Boolean(m&&Number(m[1])>=64&&Number(m[1])<=127);
   }catch{return false;}
 }
