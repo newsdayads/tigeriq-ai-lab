@@ -13,7 +13,7 @@ if(!paidAllowed){
   delete process.env.MISTRAL_API_KEY;
   delete process.env.HF_TOKEN;
 }
-installAiJsonTransport({maxAttempts:3});
+installAiJsonTransport({maxAttempts:2,attemptTimeoutMs:45000});
 const autonomySupervisor=startAutonomySupervisor();
 try{
   await import('./coding-lane.mjs');
