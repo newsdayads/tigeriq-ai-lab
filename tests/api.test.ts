@@ -107,6 +107,13 @@ describe('HTTP API', () => {
     expect(await response.json()).toMatchObject({ requestsCompleted: expect.any(Number), activeRequests: 1 });
   });
 
+  it('exposes telemetry and agent status', async () => {
+    const telemetry = await call('/telemetry', 'planner-secret');
+    expect(telemetry.status).toBe(200);
+    const status = await call('/agents', 'planner-secret');
+    expect(status.status).toBe(200);
+  });
+
   it('rate limits actors independently and returns retry guidance', async () => {
     await api.close();
     api = await startApi({ tokens: new Map(actors), actorRequestLimit: 1, actorRateWindowMs: 60_000 });
