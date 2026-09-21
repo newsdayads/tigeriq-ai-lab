@@ -78,6 +78,7 @@ function loadNv02Continuity(){
     nextProgressCheckAt:Number(raw.nextProgressCheckAt)||0,
     verifiedChatUrl:String(raw.verifiedChatUrl||''),
     modelVerifiedAt:String(raw.modelVerifiedAt||''),
+    verifiedTargetId:String(raw.verifiedTargetId||''),
   };
 }
 function saveNv02Continuity(state){
@@ -151,7 +152,8 @@ function pageTargetsFor(w,list){
 async function pruneDuplicates(w,list){
   const pages=pageTargetsFor(w,list);if(pages.length<=1)return pages[0]||null;
   const state=w.id==='NV02'?loadNv02Continuity():null;
-  const keep=pages.find(t=>sameNv02Chat(t.url,state?.verifiedChatUrl))
+  const keep=pages.find(t=>state?.verifiedTargetId&&t.id===state.verifiedTargetId)
+    ||pages.find(t=>sameNv02Chat(t.url,state?.verifiedChatUrl))
     ||pages.find(t=>hasCurrentNv02Chat(t.url))
     ||pages.find(t=>{try{return new URL(t.url).pathname===new URL(w.homeUrl).pathname}catch{return false}})
     ||pages[0];
@@ -271,7 +273,7 @@ async function ensureNv02ModelProfile(target){
   }
   if(profile?.modelExact!==true||profile?.modelName!=='GPT-5.6 Sol'||profile?.reasoningEffort!=='High')throw new Error('MODEL_PROFILE_MISMATCH');
   const state=loadNv02Continuity();
-  saveNv02Continuity({...state,verifiedChatUrl:String(profile.url||''),modelVerifiedAt:String(profile.verifiedAt||new Date().toISOString())});
+  saveNv02Continuity({...state,verifiedChatUrl:String(profile.url||''),verifiedTargetId:String(target.id||''),modelVerifiedAt:String(profile.verifiedAt||new Date().toISOString())});
   await continuityEvent('MODEL_PROFILE_VERIFIED',{modelName:profile.modelName,reasoningEffort:profile.reasoningEffort,verifiedAt:profile.verifiedAt||null});
   return profile;
 }
@@ -570,7 +572,13 @@ async function noteNv02CommandDispatch(){
 }
 async function maybeNv02Continuity(w,target,ui){
   const now=Date.now();let state=loadNv02Continuity();
-  if(state.verifiedChatUrl&&sameNv02Chat(state.verifiedChatUrl,ui?.url)&&ui?.modelExact!==true){
+  if(!state.verifiedTargetId&&state.modelVerifiedAt&&state.verifiedChatUrl&&sameNv02Chat(state.verifiedChatUrl,ui?.url)){
+    state={...state,verifiedTargetId:String(target.id||'')};
+    saveNv02Continuity(state);
+    await continuityEvent('MODEL_SESSION_TARGET_PINNED',{targetId:state.verifiedTargetId,verifiedAt:state.modelVerifiedAt});
+  }
+  const sameVerifiedSession=Boolean(state.modelVerifiedAt&&state.verifiedTargetId&&state.verifiedTargetId===String(target.id||''));
+  if(sameVerifiedSession&&ui?.modelExact!==true){
     ui={...ui,modelProfileStatus:'MODEL_PROFILE_VERIFIED',modelName:'GPT-5.6 Sol',modelReady:true,modelExact:true,verifiedAt:state.modelVerifiedAt||null,blockedReason:null};
     ui.uiPhase=ui.securityBlock?'BLOCKED':ui.uiBusy?'WORKING':ui.uiReady?'READY':'STALLED';
   }
@@ -610,7 +618,7 @@ async function maybeNv02Continuity(w,target,ui){
     await continuityEvent('PERIODIC_F5_REFRESH',{beforeUrl:refreshed?.beforeUrl||null,afterUrl:refreshed?.afterUrl||null,afterPhase:refreshed?.afterPhase||null,nextRefreshAt:state.nextRefreshAt});
     return;
   }
-  if(phase==='STALLED'&&ui?.modelExact!==true&&!sameNv02Chat(state.verifiedChatUrl,ui?.url)){
+  if(phase==='STALLED'&&ui?.modelExact!==true&&!sameVerifiedSession){
     try{
       const corrected=await withNv02Mutation(()=>ensureNv02ModelProfile(target),'MODEL_PROFILE_RECOVERY');
       if(corrected?.status==='MUTATION_LEASE_BUSY')return;
