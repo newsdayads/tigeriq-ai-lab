@@ -1027,19 +1027,20 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
         const checkpointRecovery=workerId==='NV02'&&purpose==='CHECKPOINT_DURABLE';
         const chatRotation=workerId==='NV02'&&purpose==='CHAT_ROTATION';
         const continuityContinue=workerId==='NV02'&&purpose==='CONTINUITY_CONTINUE';
+        const periodicF5=workerId==='NV02'&&purpose==='PERIODIC_F5_REFRESH';
         const continuitySameJob=continuityContinue&&continuityResumeIdentityMatches(
           uiJobLedger.active('NV02'),
           latestSnapshot?.previousJob,
           autopilotState,
         );
-        const boundedRecovery=staleWorkingRecovery||stalledRecovery||modelProfileRecovery||checkpointRecovery||chatRotation;
-        if(paused)throw new Error('OWNER_INTERACTION_READ_ONLY');
-        if(utilityPausedWorkers.has(workerId))throw new Error(`UTILITY_WORKER_PAUSED:${workerId}`);
-        if(state.blocked)throw new Error(`WORKER_BLOCKED:${workerId}`);
-        if(!recentHeartbeat(workerId))throw new Error(`WORKER_HEARTBEAT_NOT_READY:${workerId}`);
+        const boundedRecovery=staleWorkingRecovery||stalledRecovery||modelProfileRecovery||checkpointRecovery||chatRotation||periodicF5;
+        if(paused&&!periodicF5)throw new Error('OWNER_INTERACTION_READ_ONLY');
+        if(utilityPausedWorkers.has(workerId)&&!periodicF5)throw new Error(`UTILITY_WORKER_PAUSED:${workerId}`);
+        if(state.blocked&&!periodicF5)throw new Error(`WORKER_BLOCKED:${workerId}`);
+        if(!recentHeartbeat(workerId)&&!periodicF5)throw new Error(`WORKER_HEARTBEAT_NOT_READY:${workerId}`);
         const security=heartbeatStopReason(state.lastHeartbeat);
         if(security)throw new Error(security);
-        if(state.lastHeartbeat?.uiBusy!==false&&!staleWorkingRecovery)throw new Error(`WORKER_UI_BUSY_OR_UNKNOWN:${workerId}`);
+        if(state.lastHeartbeat?.uiBusy!==false&&!staleWorkingRecovery&&!periodicF5)throw new Error(`WORKER_UI_BUSY_OR_UNKNOWN:${workerId}`);
         if(staleWorkingRecovery&&state.lastHeartbeat?.uiBusy!==true)throw new Error(`STALE_WORKING_RECOVERY_REQUIRES_BUSY:${workerId}`);
         if(continuityContinue&&!continuitySameJob)throw new Error('CONTINUITY_SAME_JOB_IDENTITY_REQUIRED:NV02');
         if(workerHasActiveJob(workerId,{allowWaitingEvidence:continuityContinue,allowContinuable:continuityContinue})&&!boundedRecovery&&!continuitySameJob)throw new Error(`WORKER_ACTIVE_JOB:${workerId}`);

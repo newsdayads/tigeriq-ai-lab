@@ -67,6 +67,7 @@ function loadNv02Continuity(){
   try{raw=JSON.parse(fs.readFileSync(NV02_CONTINUITY_STATE,'utf8'));}catch{}
   return {
     nextContinueAt:Number(raw.nextContinueAt)||nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),
+    nextPeriodicF5At:Number(raw.nextPeriodicF5At)||nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS),
     nextRefreshAt:Number(raw.nextRefreshAt)||nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS),
     stalledChecks:Number(raw.stalledChecks)||0,
     lastPrompt:String(raw.lastPrompt||''),
@@ -579,29 +580,22 @@ async function maybeNv02Continuity(w,target,ui){
   const currentTrackedWork=hasCurrentNv02Chat(ui?.url);
   state={...state,lastPhase:phase};saveNv02Continuity(state);
   if(phase==='BLOCKED'){await continuityEvent('BLOCKED',{securityBlock:ui?.securityBlock||null});return;}
-  if(!currentTrackedWork){
-    if(now>=state.nextContinueAt){
-      state={...state,stalledChecks:0,workingSignature:'',workingUnchangedChecks:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
-      saveNv02Continuity(state);
-      await continuityEvent('CONTINUE_SKIPPED_NO_CURRENT_CHAT',{nextContinueAt:state.nextContinueAt});
-    }
-    return;
-  }
-  if(now>=Number(state.nextRefreshAt||0)){
+  if(now>=Number(state.nextPeriodicF5At||0)){
     const refreshed=await withNv02Mutation(async()=>{
       const beforeUrl=ui?.url||null;
+      const beforePhase=phase;
       const result=await reloadTarget(target);
       await sleep(1800);
       const after=await uiState(target).catch(()=>null);
-      return {ok:true,status:result?.status||'RELOADED',beforeUrl,afterUrl:after?.url||null,afterPhase:after?.uiPhase||null};
+      return {ok:true,status:result?.status||'RELOADED',beforeUrl,beforePhase,afterUrl:after?.url||null,afterPhase:after?.uiPhase||null};
     },'PERIODIC_F5_REFRESH',15000);
     if(refreshed?.status==='MUTATION_LEASE_BUSY'){
-      state={...state,nextRefreshAt:now+15000};saveNv02Continuity(state);
+      state={...state,nextPeriodicF5At:now+5000};saveNv02Continuity(state);
+      await continuityEvent('PERIODIC_F5_RETRY_LEASE_BUSY',{nextPeriodicF5At:state.nextPeriodicF5At});
       return;
     }
     state={...state,
-      nextRefreshAt:nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS),
-      nextContinueAt:now,
+      nextPeriodicF5At:nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS),
       workingSignature:'',
       workingUnchangedChecks:0,
       nextProgressCheckAt:0,
@@ -609,7 +603,15 @@ async function maybeNv02Continuity(w,target,ui){
       modelCheckBlockedUntil:now+30000,
     };
     saveNv02Continuity(state);
-    await continuityEvent('PERIODIC_F5_REFRESH',{beforeUrl:refreshed?.beforeUrl||null,afterUrl:refreshed?.afterUrl||null,afterPhase:refreshed?.afterPhase||null,nextRefreshAt:state.nextRefreshAt});
+    await continuityEvent('PERIODIC_F5_REFRESH',{beforeUrl:refreshed?.beforeUrl||null,beforePhase:refreshed?.beforePhase||phase,afterUrl:refreshed?.afterUrl||null,afterPhase:refreshed?.afterPhase||null,nextPeriodicF5At:state.nextPeriodicF5At});
+    return;
+  }
+  if(!currentTrackedWork){
+    if(now>=state.nextContinueAt){
+      state={...state,stalledChecks:0,workingSignature:'',workingUnchangedChecks:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
+      saveNv02Continuity(state);
+      await continuityEvent('CONTINUE_SKIPPED_NO_CURRENT_CHAT',{nextContinueAt:state.nextContinueAt});
+    }
     return;
   }
   const modelCheckRequired=now>=Number(state.modelCheckBlockedUntil||0)&&(!state.verifiedChatUrl||!sameNv02Chat(state.verifiedChatUrl,ui?.url));
