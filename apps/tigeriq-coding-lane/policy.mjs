@@ -51,7 +51,7 @@ export function extractCanonicalAllowedPaths(text){
   let active=false;
   for(const raw of lines){
     const line=raw.trim();
-    const header=line.match(/^(?:[-*]\s*)?(?:#{1,6}\s*)?(?:exact\s+hard\s+scope|allowed\s+paths\s+only)\s*:?(.*)$/i);
+    const header=line.match(/^(?:[-*]\s*)?(?:#{1,6}\s*)?(?:exact\s+hard\s+scope|allowed\s+paths\s+only|canonical\s+allowed\s+paths(?:\s*\(\s*must\s+not\s+expand\s*\))?)\s*:?(.*)$/i);
     if(header){
       active=true;
       for(const token of pathTokens(header[1]))out.push(token);
