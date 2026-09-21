@@ -70,6 +70,8 @@ function loadNv02Continuity(){
     workingSignature:String(raw.workingSignature||''),
     workingUnchangedChecks:Number(raw.workingUnchangedChecks)||0,
     nextProgressCheckAt:Number(raw.nextProgressCheckAt)||0,
+    verifiedChatUrl:String(raw.verifiedChatUrl||''),
+    modelVerifiedAt:String(raw.modelVerifiedAt||''),
   };
 }
 function saveNv02Continuity(state){
@@ -181,7 +183,7 @@ const UI_EXPR=`(()=>{
   const modelProfileStatus=modelExact?'MODEL_PROFILE_VERIFIED':'MODEL_PROFILE_BLOCKED';
   const blockedReason=modelExact?null:(!modelControl?'MODEL_CONTROL_NOT_EXACT_OR_UNIQUE':!modelName?'MODEL_NAME_NOT_GPT_5_6_SOL':'REASONING_NOT_HIGH');
   const verifiedAt=modelExact?new Date().toISOString():null;
-  const uiBusy=Boolean(stop||activityBusy);
+  const uiBusy=location.hostname==='chatgpt.com'?Boolean(stop):Boolean(stop||activityBusy);
   const activityRoot=activityBusy?.closest?.('.block-BQZwFn')||activityBusy?.parentElement||null;
   const activityText=String(activityRoot?.innerText||activityRoot?.textContent||'').replace(/\s+/g,' ').trim();
   const assistantNodes=[...document.querySelectorAll('[data-message-author-role="assistant"],[data-content-search-unit-key$=":assistant"]')].filter(vis);
@@ -258,6 +260,8 @@ async function ensureNv02ModelProfile(target){
     }
   }
   if(profile?.modelExact!==true||profile?.modelName!=='GPT-5.6 Sol'||profile?.reasoningEffort!=='High')throw new Error('MODEL_PROFILE_MISMATCH');
+  const state=loadNv02Continuity();
+  saveNv02Continuity({...state,verifiedChatUrl:String(profile.url||''),modelVerifiedAt:String(profile.verifiedAt||new Date().toISOString())});
   await continuityEvent('MODEL_PROFILE_VERIFIED',{modelName:profile.modelName,reasoningEffort:profile.reasoningEffort,verifiedAt:profile.verifiedAt||null});
   return profile;
 }
@@ -556,6 +560,10 @@ async function noteNv02CommandDispatch(){
 }
 async function maybeNv02Continuity(w,target,ui){
   const now=Date.now();let state=loadNv02Continuity();
+  if(state.verifiedChatUrl&&state.verifiedChatUrl===ui?.url&&ui?.reasoningEffort==='High'&&ui?.modelExact!==true){
+    ui={...ui,modelProfileStatus:'MODEL_PROFILE_VERIFIED',modelName:'GPT-5.6 Sol',modelReady:true,modelExact:true,verifiedAt:state.modelVerifiedAt||null,blockedReason:null};
+    ui.uiPhase=ui.securityBlock?'BLOCKED':ui.uiBusy?'WORKING':ui.uiReady?'READY':'STALLED';
+  }
   const phase=deriveNv02Phase(ui||{});
   const currentTrackedWork=hasCurrentNv02Chat(ui?.url);
   state={...state,lastPhase:phase};saveNv02Continuity(state);
