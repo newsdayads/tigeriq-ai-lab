@@ -793,6 +793,18 @@ async function tick(){
   if(!worker){log('NV02_CONFIG_MISSING');return;}
   await tickWorker(worker);
 }
-http.createServer((req,res)=>{if(req.url==='/health'){res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({ok:true,mode:'NV02_ISOLATED_AUTO_CONTINUE',controllerRequired:false,controllerEnabledFlagIgnored:true,worker:'NV02',continuity:loadNv02Continuity()}));return;}res.writeHead(404);res.end();}).listen(8799,'127.0.0.1',()=>log('BRIDGE_READY',{port:8799,mode:'NV02_ISOLATED_AUTO_CONTINUE',controllerRequired:false,controllerEnabledFlagIgnored:true}));
+import crypto from 'node:crypto';
+export function verifyRuntimeProvenance(sourceCode, expectedHash){const hash=crypto.createHash('sha256').update(sourceCode).digest('hex');if(expectedHash && hash!==expectedHash){throw new Error(`RUNTIME_PROVENANCE_HASH_MISMATCH:${hash}`);}return hash;}
+const activeRuntimeOwners=new Map();
+export function enforceCanonicalRuntimeOwner(workerId,ownerToken){
+  const existing=activeRuntimeOwners.get(workerId);
+  if(existing && existing!==ownerToken){
+    throw new Error(`DUPLICATE_RUNTIME_OWNER_REJECTED:${workerId}`);
+  }
+  activeRuntimeOwners.set(workerId,ownerToken);
+}
+const bridgeOwnerToken=crypto.randomUUID();
+try{enforceCanonicalRuntimeOwner('NV02',bridgeOwnerToken);}catch(err){console.error(err.message);process.exit(1);}
+http.createServer((req,res)=>{if(req.url==='/health'){res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({ok:true,mode:'NV02_ISOLATED_AUTO_CONTINUE',controllerRequired:false,controllerEnabledFlagIgnored:true,worker:'NV02',ownerToken:bridgeOwnerToken,continuity:loadNv02Continuity()}));return;}res.writeHead(404);res.end();}).listen(8799,'127.0.0.1',()=>log('BRIDGE_READY',{port:8799,mode:'NV02_ISOLATED_AUTO_CONTINUE',controllerRequired:false,controllerEnabledFlagIgnored:true,ownerToken:bridgeOwnerToken}));
 setInterval(()=>void tick(),3000).unref();
 void tick();
