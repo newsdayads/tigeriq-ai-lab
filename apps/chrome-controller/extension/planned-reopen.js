@@ -24,7 +24,7 @@ export async function runPlannedWorkerReset({
       await closeWorker(workerId,reason);
       closed=true;
     }finally{
-      await releaseLease(workerId,lease).catch(()=>{});
+      await releaseLease(workerId,lease);
       lease=null;
     }
     await safeRecover(workerId,reason);
