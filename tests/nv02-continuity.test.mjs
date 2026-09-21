@@ -79,7 +79,7 @@ describe('NV02 continuity policy', () => {
     expect(pickContinuePrompt('02',()=>0)).not.toBe('02');
   });
 
-  it('isolates NV02 auto-continue from Controller/Core jobs', () => {
+  it('keeps NV02 continuity isolated while allowing Controller command transport', () => {
     execFileSync(process.execPath,['--check','apps/chrome-controller/direct-cdp-bridge.mjs'],{stdio:'pipe'});
     const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(source).toContain('NV02_ISOLATED_AUTO_CONTINUE');
@@ -92,7 +92,8 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("NV02_LOCAL_MUTATION_ACQUIRED");
     expect(source).toContain("await postWorkerHeartbeat(w,target,ui,projectContextReady).catch");
     const tick=source.slice(source.indexOf('async function tickWorker(w){'),source.indexOf('\n\nasync function tick()'));
-    expect(tick).not.toContain('getCommand(');
+    expect(tick).toContain('getCommand(w.id)');
+    expect(tick.indexOf('getCommand(w.id)')).toBeLessThan(tick.indexOf("if(w.id==='NV02')await maybeNv02Continuity"));
     const backgroundSource=readFileSync('apps/chrome-controller/extension/background.js','utf8');
     expect(backgroundSource).toContain("if(workerId==='NV02'){");
     expect(backgroundSource).toContain('HARD ISOLATION: NV02 commands are owned only by Direct CDP Bridge continuity.');
