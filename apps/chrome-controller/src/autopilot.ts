@@ -65,6 +65,7 @@ export interface ExternalJob {
 
 export interface ExternalAutopilotSnapshot {
   source: EvidenceSource;
+  authority?: 'CORE' | 'NV02_OWNER_PROXY_FALLBACK';
   observedAt: string;
   revision?: string;
   previousJob?: ExternalJob;
@@ -109,9 +110,15 @@ export function canonicalGithubIssueRef(jobId:string):string|undefined {
   return `https://github.com/newsdayads/tigeriq-ai-lab/issues/${match[1]}`;
 }
 
+export function isTrustedAutopilotSelection(snapshot:ExternalAutopilotSnapshot,job:ExternalJob|undefined):boolean {
+  if(!job)return false;
+  if(snapshot.source==='CORE')return job.coreSelected===true&&['NV02','NV03','NV04'].includes(job.workerId);
+  return snapshot.source==='GITHUB'&&snapshot.authority==='NV02_OWNER_PROXY_FALLBACK'&&job.workerId==='NV02'&&job.coreSelected!==true;
+}
+
 export function sourceStillOffersPendingJob(snapshot:ExternalAutopilotSnapshot,jobId:string):boolean {
   const next=snapshot.nextJob;
-  return Boolean(snapshot.source==='CORE'&&next&&next.coreSelected===true&&next.jobId===jobId&&['NV02','NV03','NV04'].includes(next.workerId)&&next.executable&&EXECUTABLE_JOB_STATUSES.has(next.status));
+  return Boolean(next&&isTrustedAutopilotSelection(snapshot,next)&&next.jobId===jobId&&next.executable&&EXECUTABLE_JOB_STATUSES.has(next.status));
 }
 
 export function selectFreshCompletionEvidence(job:ExternalJob|undefined,state:DurableAutopilotState,observedAtMs:number):ExternalEvidence|undefined {
@@ -183,7 +190,7 @@ export function decideAutoContinue(
 
   if (!next) return { kind: 'IDLE', reason: 'NO_EXECUTABLE_JOB' };
   if (previous?.jobId === next.jobId) return { kind: 'STOP', reason: 'NEXT_JOB_EQUALS_PREVIOUS_JOB' };
-  if (snapshot.source !== 'CORE' || next.coreSelected !== true) return { kind: 'STOP', reason: 'NEXT_JOB_NOT_CORE_SELECTED' };
+  if (!isTrustedAutopilotSelection(snapshot,next)) return { kind: 'STOP', reason: 'NEXT_JOB_NOT_TRUSTED_SELECTION' };
   if (!['NV02','NV03','NV04'].includes(next.workerId)) return { kind: 'STOP', reason: 'NEXT_JOB_WORKER_NOT_SUPPORTED' };
   if (!next.executable) return { kind: 'IDLE', reason: 'NEXT_JOB_NOT_EXECUTABLE' };
   if (!['P0', 'P1'].includes(next.priority)) return { kind: 'IDLE', reason: 'NEXT_JOB_PRIORITY_NOT_ALLOWED' };
