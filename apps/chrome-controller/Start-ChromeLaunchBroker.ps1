@@ -20,11 +20,17 @@ if ($Config -match "legacy") {
 }
 # Create lock file for broker instance
 New-Item -ItemType File -Path $brokerLock -Force | Out-Null
-# Scheduled interactive tasks can have SESSIONNAME unset even though they run in
-# the signed-in user's desktop session. Pass the actual Windows SessionId to
-# the broker; model.ts still fails closed for Session 0 / Services.
-$sessionId = (Get-Process -Id $PID).SessionId
-$env:TIGERIQ_WINDOWS_SESSION_ID = [string]$sessionId
-Set-Location $root
-& node $broker $Config
+try {
+  # Scheduled interactive tasks can have SESSIONNAME unset even though they run in
+  # the signed-in user's desktop session. Pass the actual Windows SessionId to
+  # the broker; model.ts still fails closed for Session 0 / Services.
+  $sessionId = (Get-Process -Id $PID).SessionId
+  $env:TIGERIQ_WINDOWS_SESSION_ID = [string]$sessionId
+  Set-Location $root
+  & node $broker $Config
+} finally {
+  if (Test-Path $brokerLock) {
+    Remove-Item $brokerLock -Force -ErrorAction SilentlyContinue
+  }
+}
 exit $LASTEXITCODE
