@@ -25,7 +25,16 @@ export function runExecutionPreflight({ skill, tool, state, context, workItem } 
     if (typeof state !== 'object' || Array.isArray(state)) {
       errors.push('INVALID_STATE_FORMAT');
     } else if (state.status === 'blocked' || state.status === 'failed' || state.terminated === true) {
-      errors.push(`STATE_TERMINATED_OR_BLOCKED:${state.status || 'terminated'}`);
+      if ((state.retryCount || 0) >= (state.maxRetries || 3)) {
+        errors.push(`STATE_TERMINATED_OR_BLOCKED:${state.status || 'terminated'}`);
+      }
+    }
+    if (Array.isArray(state.auto_ui_dependencies)) {
+      for (const dep of state.auto_ui_dependencies) {
+        if (!dep || typeof dep !== 'string') {
+          errors.push('INVALID_AUTO_UI_DEPENDENCY');
+        }
+      }
     }
   }
 
