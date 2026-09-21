@@ -86,7 +86,7 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("const currentTrackedWork=hasCurrentNv02Chat(ui?.url)");
     expect(source).toContain("CONTINUE_SKIPPED_NO_CURRENT_CHAT");
     expect(source).toContain("CONTINUE_DISPATCHED");
-    expect(source).toContain("CONTEXT_RECOVERY_ROTATED");
+    expect(source).not.toContain("CONTEXT_RECOVERY_ROTATED");
     expect(source).toContain("controllerRequired:false");
     expect(source).toContain("CONTROLLER_TELEMETRY_UNAVAILABLE");
     expect(source).toContain("NV02_LOCAL_MUTATION_ACQUIRED");
@@ -121,6 +121,34 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("const worker=config.workers.find(w=>w.id==='NV02')");
     expect(source).not.toContain("config.workers.filter(w=>w.enabled!==false&&w.id==='NV02')");
     expect(source).toContain("controllerEnabledFlagIgnored:true");
+    expect(source).toContain("WORKING_STALLED_RECOVERY");
+    expect(source).toContain("WORKING_STALLED_STOPPED");
+    expect(source).toContain("STALLED_HOT_LOOP_NO_CHECKPOINT");
+    const continuityLoop=source.slice(source.indexOf('async function maybeNv02Continuity'),source.indexOf('async function handleCommand'));
+    expect(continuityLoop).not.toContain('rotateNv02Chat(');
+    expect(continuityLoop).not.toContain('checkpointNv02(');
+    expect(source).toContain("nextProgressCheckAt:now+60000");
+    expect(source).toContain("const NV02_F5_MIN_MS=5*60*1000");
+    expect(source).toContain("const NV02_F5_MAX_MS=10*60*1000");
+    expect(source).toContain("'PERIODIC_F5_REFRESH'");
+    expect(source).toContain("nextRefreshAt:nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS)");
+    expect(source).toContain("verifiedChatUrl:String(raw.verifiedChatUrl||'')");
+    expect(source).toContain("sameNv02Chat(state.verifiedChatUrl,ui?.url)");
+    expect(source).not.toContain("state.verifiedChatUrl===ui?.url");
+    expect(source).toContain("verifiedChatUrl:String(profile.url||'')");
+    expect(source).toContain("location.hostname==='chatgpt.com'?Boolean(stop):Boolean(stop||activityBusy)");
+    expect(source).toContain("function sameNv02Chat(a,b)");
+    expect(source).toContain("pages.find(t=>sameNv02Chat(t.url,state?.verifiedChatUrl))");
+
+
+    const f5Block=source.slice(source.indexOf("if(now>=Number(state.nextRefreshAt||0))"),source.indexOf("if(phase==='STALLED'&&ui?.modelExact!==true)"));
+    expect(f5Block).toContain("reloadTarget(target)");
+    expect(f5Block).not.toContain("ensureNv02ModelProfile");
+    expect(f5Block).not.toContain("checkpointNv02");
+    expect(f5Block).not.toContain("rotateNv02Chat");
+
+    expect(source).toContain('[data-message-author-role="assistant"]');
+
     expect(source).toContain('button[aria-label*="Ngừng" i]');
     const dispatchExprSource=source.slice(source.indexOf('function dispatchExpr'),source.indexOf('function enterSubmitStateExpr'));
     expect(dispatchExprSource).toContain('button[aria-label*=\\\"Ngừng\\\" i]');
@@ -136,13 +164,20 @@ describe('NV02 continuity policy', () => {
     expect(continuity).not.toContain('shouldRotateChat');
     expect(bridge).not.toContain('shouldRotateChat');
   });
-  it('keeps NV02 recovery local to the isolated bridge', () => {
+  it('keeps NV02 hot-loop recovery local, same-chat, and checkpoint-free', () => {
     const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(source).toContain("'MODEL_PROFILE_RECOVERY'");
     expect(source).toContain("'STALLED_RECOVERY'");
-    expect(source).toContain("'STALE_WORKING_RECOVERY'");
-    expect(source).toContain("rotateNv02Chat(target,state,now)");
-    expect(source).toContain("checkpointNv02(target)");
+    expect(source).toContain("'WORKING_STALLED_RECOVERY'");
+    expect(source).toContain("'PERIODIC_F5_REFRESH'");
+    expect(source).toContain("stopAndClearComposerExpr");
+    const continuityLoop=source.slice(source.indexOf('async function maybeNv02Continuity'),source.indexOf('async function handleCommand'));
+    expect(continuityLoop).not.toContain("rotateNv02Chat(");
+    expect(continuityLoop).not.toContain("checkpointNv02(");
+    const recovery=source.slice(source.indexOf('async function recoverStalledWorking'),source.indexOf('async function checkpointNv02'));
+    expect(recovery).not.toContain("checkpointNv02(");
+    expect(recovery).not.toContain("archiveChat(");
+    expect(recovery).not.toContain("newChat(");
   });
 
   it('ships one-shot NV02 continuity installer with exact-head deploy and rollback',()=>{
