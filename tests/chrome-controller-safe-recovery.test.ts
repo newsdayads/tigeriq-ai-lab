@@ -137,6 +137,18 @@ describe('independent worker recovery flows in direct-cdp-bridge',()=>{
     expect(source).toContain("resumeUrl");
   });
 
+  it('fails closed unless READY worker still has continuable current work',()=>{
+    const readyStart=source.indexOf("if(phase==='READY')");
+    const readyEnd=source.indexOf("const stalledChecks=",readyStart);
+    const readyBlock=source.slice(readyStart,readyEnd);
+    expect(readyBlock).toContain('getControllerState()');
+    expect(readyBlock).toContain('hasContinuableWorkerWork(controllerState,w.id)');
+    expect(readyBlock).toContain('CONTINUABLE_WORK_CHECK_FAILED_CLOSED');
+    expect(readyBlock).toContain('CONTINUE_SKIPPED_NO_CURRENT_WORK');
+    expect(readyBlock.indexOf('hasContinuableWorkerWork(controllerState,w.id)')).toBeLessThan(readyBlock.indexOf('pickContinuePrompt(state.lastPrompt)'));
+    expect(readyBlock.indexOf('hasContinuableWorkerWork(controllerState,w.id)')).toBeLessThan(readyBlock.indexOf("dispatch(target,prompt)"));
+  });
+
   it('never routes NV03/NV04 through NV02-only model/project recovery',()=>{
     expect(source).toContain("if(w.id==='NV02')await maybeNv02Continuity(w,target,ui)");
     expect(source).toContain("else if(CONTINUITY_WORKERS.includes(w.id))await maybeWorkerContinuity(w,target,ui)");
