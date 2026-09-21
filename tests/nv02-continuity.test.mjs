@@ -4,8 +4,10 @@ import { describe, expect, it } from 'vitest';
 import { buildDurableSavePrompt, SAVE_RECEIPT_POLL_DELAYS_MS, waitForDurableSaveReceipt } from '../apps/chrome-controller/extension/save-receipt.js';
 import {
   CONTINUE_PROMPTS, CHAT_ROTATE_AFTER_DISPATCHES, MAX_WORKING_UNCHANGED_CHECKS, WORKING_PROGRESS_CHECK_MS,
-  deriveNv02Phase, hasActiveNv02Work, hasWaitingEvidenceNv02Work, hasContinuableNv02Work, pickContinuePrompt,
-  randomDelay, shouldRotateNv02Chat,
+  CONTINUE_MIN_MS, CONTINUE_MAX_MS, WORKER_REFRESH_MIN_MS, WORKER_REFRESH_MAX_MS,
+  WORKER_F5_MIN_MS, WORKER_F5_MAX_MS,
+  deriveNv02Phase, deriveWorkerPhase, hasActiveNv02Work, hasActiveWorkerWork, hasWaitingEvidenceNv02Work, hasWaitingEvidenceWorkerWork, hasContinuableNv02Work, hasContinuableWorkerWork, pickContinuePrompt,
+  randomDelay, shouldRotateNv02Chat, computeWorkerStaggerDelay, computeNv02StaggerDelay,
 } from '../apps/chrome-controller/extension/continuity.js';
 
 describe('NV02 continuity policy', () => {
@@ -26,6 +28,35 @@ describe('NV02 continuity policy', () => {
     ['NV02', 'NV03', 'NV04'].forEach((workerId, idx) => {
       const stagger = computeWorkerStaggerDelay(idx, 1000, 500);
       expect(stagger).toBe(idx * 500 + 1000);
+      const nv02Stagger = computeNv02StaggerDelay(idx, 1000, 500);
+      expect(nv02Stagger).toBe(stagger);
+
+      const phaseWorker = deriveWorkerPhase({ composerReady: true, authRequired: false }, { workerId });
+      expect(phaseWorker).toBe('READY');
+      const phaseNv02 = deriveNv02Phase({ composerReady: true, authRequired: false }, { workerId });
+      expect(phaseNv02).toBe('READY');
+
+      const controllerMock = {
+        jobs: [{ workerId, stage: 'WORKING', completedAt: null }]
+      };
+      expect(hasActiveWorkerWork(controllerMock, workerId)).toBe(true);
+      expect(hasActiveNv02Work(controllerMock)).toBe(true);
+
+      const waitingMock = {
+        jobs: [{ workerId, stage: 'WAITING_EVIDENCE', completedAt: null }]
+      };
+      expect(hasWaitingEvidenceWorkerWork(waitingMock, workerId)).toBe(true);
+      expect(hasWaitingEvidenceNv02Work(waitingMock)).toBe(true);
+
+      const continuableMock = {
+        jobs: [{ workerId, stage: 'SUBMITTED', completedAt: null }]
+      };
+      expect(hasContinuableWorkerWork(continuableMock, workerId)).toBe(true);
+      expect(hasContinuableNv02Work(continuableMock)).toBe(true);
+    });
+  });
+
+  it('verifies extra NV02-NV04 assertions', () => { + 1000);
 
       const phase = deriveWorkerPhase({ composerReady: true, modelReady: true }, { workerId });
       expect(phase).toBe('READY');
