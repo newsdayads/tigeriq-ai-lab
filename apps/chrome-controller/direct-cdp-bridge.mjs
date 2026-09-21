@@ -806,37 +806,50 @@ async function tick(){
   await tickWorker(worker);
 }
 const WORKER_IDS=['NV02','NV03','NV04'];
-const WORKER_OWNer_LOCKS={NV02:'D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\nv02-canonical-owner.lock',NV03:'D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\nv03-canonical-owner.lock',NV04:'D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\nv04-canonical-owner.lock'};
+const WORKER_OWNER_LOCKS={
+  NV02:'D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\nv02-canonical-owner.lock',
+  NV03:'D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\nv03-canonical-owner.lock',
+  NV04:'D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\nv04-canonical-owner.lock'
+};
+const WORKER_CONTINUITY_STATES={
+  NV02:'D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\nv02-continuity-state.json',
+  NV03:'D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\nv03-continuity-state.json',
+  NV04:'D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\nv04-continuity-state.json'
+};
 function pidAlive(pid){try{process.kill(pid,0);return true;}catch{return false;}}
-function acquireNv02CanonicalOwnership(){
+const activeWorkerId = WORKER_IDS.includes(String(process.env.TIGERIQ_WORKER_ID||'').trim()) ? String(process.env.TIGERIQ_WORKER_ID||'').trim() : 'NV02';
+const activeOwnerLock = WORKER_OWNER_LOCKS[activeWorkerId] || WORKER_OWNER_LOCKS.NV02;
+function acquireCanonicalOwnership(workerId = activeWorkerId){
+  const lockPath = WORKER_OWNer_LOCKS[workerId] || activeOwnerLock;
   for(let attempt=0;attempt<2;attempt++){
     try{
-      const fd=fs.openSync(NV02_OWNER_LOCK,'wx');
-      try{fs.writeFileSync(fd,JSON.stringify({pid:process.pid,approvedHead:APPROVED_HEAD,sourceSha256:BRIDGE_SHA256,bridgePath:BRIDGE_PATH,acquiredAt:new Date().toISOString()}),'utf8');}finally{fs.closeSync(fd);}
+      const fd=fs.openSync(lockPath,'wx');
+      try{fs.writeFileSync(fd,JSON.stringify({workerId,pid:process.pid,approvedHead:APPROVED_HEAD,sourceSha256:BRIDGE_SHA256,bridgePath:BRIDGE_PATH,acquiredAt:new Date().toISOString()}),'utf8');}finally{fs.closeSync(fd);}
       return;
     }catch(error){
       if(error?.code!=='EEXIST')throw error;
       let existing={};
-      try{existing=JSON.parse(fs.readFileSync(NV02_OWNER_LOCK,'utf8'));}catch{}
+      try{existing=JSON.parse(fs.readFileSync(lockPath,'utf8'));}catch{}
       if(Number(existing.pid)>0&&pidAlive(Number(existing.pid))){
-        log('NV02_DUPLICATE_CANONICAL_OWNERSHIP',{existingPid:Number(existing.pid),incomingPid:process.pid,existingHead:existing.approvedHead||null});
-        throw new Error('NV02_DUPLICATE_CANONICAL_OWNERSHIP');
+        log('DUPLICATE_CANONICAL_OWNERSHIP',{workerId,existingPid:Number(existing.pid),incomingPid:process.pid,existingHead:existing.approvedHead||null});
+        throw new Error(`${workerId}_DUPLICATE_CANONICAL_OWNERSHIP`);
       }
-      try{fs.unlinkSync(NV02_OWNER_LOCK);}catch{}
+      try{fs.unlinkSync(lockPath);}catch{}
     }
   }
-  throw new Error('NV02_CANONICAL_OWNERSHIP_LOCK_FAILED');
+  throw new Error(`${workerId}_CANONICAL_OWNERSHIP_LOCK_FAILED`);
 }
-function releaseNv02CanonicalOwnership(){
+function releaseCanonicalOwnership(workerId = activeWorkerId){
   try{
-    const existing=JSON.parse(fs.readFileSync(NV02_OWNER_LOCK,'utf8'));
-    if(Number(existing.pid)===process.pid)fs.unlinkSync(NV02_OWNER_LOCK);
+    const lockPath = WORKER_OWNer_LOCKS[workerId] || activeOwnerLock;
+    const existing=JSON.parse(fs.readFileSync(lockPath,'utf8'));
+    if(Number(existing.pid)===process.pid)fs.unlinkSync(lockPath);
   }catch{}
 }
-acquireNv02CanonicalOwnership();
-process.once('exit',releaseNv02CanonicalOwnership);
-process.once('SIGTERM',()=>{releaseNv02CanonicalOwnership();process.exit(0);});
-process.once('SIGINT',()=>{releaseNv02CanonicalOwnership();process.exit(0);});
+acquireCanonicalOwnership(activeWorkerId);
+process.once('exit',()=>releaseCanonicalOwnership(activeWorkerId));
+process.once('SIGTERM',()=>{releaseCanonicalOwnership(activeWorkerId);process.exit(0);});
+process.once('SIGINT',()=>{releaseCanonicalOwnership(activeWorkerId);process.exit(0);});
 const bridgeServer=http.createServer((req,res)=>{if(req.url==='/health'){const provenanceVerified=Boolean(APPROVED_HEAD&&DEPLOY_ROOT&&EXPECTED_BRIDGE_SHA256&&EXPECTED_BRIDGE_SHA256===BRIDGE_SHA256);res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({ok:true,mode:'NV02_ISOLATED_AUTO_CONTINUE',controllerRequired:false,controllerEnabledFlagIgnored:true,worker:'NV02',canonicalOwnership:true,pid:process.pid,approvedHead:APPROVED_HEAD||null,deployRoot:DEPLOY_ROOT||null,sourceSha256:BRIDGE_SHA256,expectedSourceSha256:EXPECTED_BRIDGE_SHA256||null,provenanceVerified,continuity:loadNv02Continuity()}));return;}res.writeHead(404);res.end();});
 bridgeServer.on('error',(error)=>{log('NV02_CANONICAL_OWNER_BIND_FAILED',{error:String(error),code:error?.code||null});releaseNv02CanonicalOwnership();process.exit(42);});
 bridgeServer.listen(8799,'127.0.0.1',()=>log('BRIDGE_READY',{port:8799,mode:'NV02_ISOLATED_AUTO_CONTINUE',controllerRequired:false,controllerEnabledFlagIgnored:true,canonicalOwnership:true,pid:process.pid,approvedHead:APPROVED_HEAD||null,sourceSha256:BRIDGE_SHA256,provenanceVerified:Boolean(APPROVED_HEAD&&DEPLOY_ROOT&&EXPECTED_BRIDGE_SHA256&&EXPECTED_BRIDGE_SHA256===BRIDGE_SHA256)}));
