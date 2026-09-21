@@ -94,6 +94,12 @@ export function continuityResumeIdentityMatches(
 }
 
 export class DurableUiJobLedger {
+  #enforceDurableLeasePersistence(workerId: WorkerId, jobId: string): void {
+    const record = this.value.jobs.find(j => j.workerId === workerId && j.jobId === jobId);
+    if (record && record.stage === 'DISPATCHING') {
+      this.save();
+    }
+  }
   /**
    * Retry a job that ended in an ERROR state (resume logic).
    * Resets the job to QUEUED so it can be dispatched again.
