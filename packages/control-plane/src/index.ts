@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { setAgentStatus } from './dbHelpers.js';
 import type { AuditLogEntry } from '../../audit-log/src/index.js';
 import type { EvidenceRecord } from '../../evidence/src/index.js';
 import type { Gate } from '../../gate-engine/src/index.js';
@@ -178,6 +179,7 @@ export class ControlPlane {
   recordTelemetry(actorId: string, metrics: { requestCount: number }) {
     const count = this.#agentTelemetry.get(actorId) ?? 0;
     this.#agentTelemetry.set(actorId, count + metrics.requestCount);
+    setAgentStatus(actorId, 'active', { requestCount: count + metrics.requestCount });
   }
 
   getAgentTelemetry() {
