@@ -111,6 +111,38 @@ describe('completion-aware UTF-8 supervisor and Owner workspace',()=>{
 
 describe('SerialQueue',()=>{it('runs exactly one task at a time',async()=>{const q=new SerialQueue(0);const order:string[]=[];const a=q.enqueue(async()=>{order.push('a:start');await new Promise(r=>setTimeout(r,20));order.push('a:end');});const b=q.enqueue(async()=>{order.push('b:start');order.push('b:end');});await Promise.all([a,b]);expect(order).toEqual(['a:start','a:end','b:start','b:end']);});});
 
+describe('three-worker controller/broker/config source integration',()=>{
+  const serverSource=readFileSync('apps/chrome-controller/src/server.ts','utf8');
+  const brokerSource=readFileSync('apps/chrome-controller/src/chrome-launch-broker.ts','utf8');
+  const example=JSON.parse(readFileSync('apps/chrome-controller/chrome-controller.config.example.json','utf8'));
+
+  it('routes broker launch strictly through the requested worker config',()=>{
+    expect(brokerSource).toContain("config.workers.find(item=>item.id===workerId&&item.enabled!==false)");
+    expect(brokerSource).toContain("worker.userDataDir??config.userDataDir");
+    expect(brokerSource).toContain("`--remote-debugging-port=${worker.debugPort}`");
+    expect(brokerSource).toContain("`--profile-directory=${worker.profileDirectory}`");
+    expect(brokerSource).toContain("['NV02','NV03','NV04'].includes(workerId)");
+  });
+
+  it('keeps pause and mutation ownership worker-scoped',()=>{
+    expect(serverSource).toContain("utilityPausedWorkers.add(workerId)");
+    expect(serverSource).toContain("utilityPausedWorkers.delete(workerId)");
+    expect(serverSource).toContain("UTILITY_WORKER_PAUSED:${workerId}");
+    expect(serverSource).toContain("browserMutationLeases.assertControllerAllowed(workerId)");
+    expect(serverSource).toContain("mutation-lease/acquire");
+    expect(serverSource).toContain("mutation-lease/release");
+  });
+
+  it('exposes independent canonical config identities for all three workers',()=>{
+    const workers=example.workers;
+    expect(workers.map((w:any)=>w.id)).toEqual(['NV02','NV03','NV04']);
+    expect(new Set(workers.map((w:any)=>w.profileDirectory)).size).toBe(3);
+    expect(new Set(workers.map((w:any)=>w.userDataDir)).size).toBe(3);
+    expect(new Set(workers.map((w:any)=>w.debugPort)).size).toBe(3);
+    expect(workers.find((w:any)=>w.id==='NV04').homeUrl).toContain('gemini.google.com');
+  });
+});
+
 describe('Worker Identity, Isolation, Leases, and Pause Precedence', () => {
   it('verifies worker configuration validation and profile isolation for NV02, NV03, and NV04', () => {
     const config = baseConfig();
