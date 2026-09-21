@@ -21,7 +21,7 @@ export function projectWorkItem(objectiveId: string): UnifiedWorkItem {
 
   const kind = objective?.kind ?? job?.kind ?? 'general';
   const assignedExecutor = objective?.assignedExecutor ?? job?.assignedExecutor;
-  const telemetry = objective?.telemetry ?? job?.telemetry ?? {};
+  const telemetry = objective?.telemetry ?? job?.telemetry ?? { requestCount: 0 };
   const priority = objective?.priority ?? job?.priority ?? 100;
   const lease = objective?.lease ?? job?.lease;
   const blockers = objective?.blockers ?? job?.blockers ?? [];
