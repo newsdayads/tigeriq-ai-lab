@@ -106,6 +106,13 @@ describe('NV02 continuity policy', () => {
     expect(continuity).not.toContain('hasContinuableNv02Work(');
     expect(continuity).not.toContain('/api/utility/workers/NV02/job/recovery-resume');
     expect(source).toContain('ensureNv02ModelProfile');
+    const continueDispatch=source.slice(
+      source.indexOf('async function dispatchNaturalContinueLocked'),
+      source.indexOf('async function dispatchNaturalContinue(target'),
+    );
+    expect(continueDispatch).not.toContain('ensureNv02ModelProfile');
+    expect(source).toContain("if(phase==='STALLED'&&ui?.modelExact!==true)");
+    expect(source).toContain("withNv02Mutation(()=>ensureNv02ModelProfile(target),'MODEL_PROFILE_RECOVERY')");
     expect(source).toContain("modelName==='GPT-5.6 Sol'");
     expect(source).toContain("reasoningEffort==='High'");
     expect(source).toContain('button[aria-label*="Ngừng" i]');
