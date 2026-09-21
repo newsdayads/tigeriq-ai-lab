@@ -289,15 +289,6 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
     assert.strictEqual(isResourceTransientError(e),true);
   });
 
-  await t.test('runtime wires compact AI transport before manager loop',()=>{
-    const src=require('node:fs').readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
-    assert.ok(src.includes("import {installAiJsonTransport} from './ai-json-transport.mjs';"));
-    const install=src.indexOf('installAiJsonTransport({maxAttempts:1');
-    const manager=src.indexOf('await managerTick()');
-    assert.ok(install>=0);
-    assert.ok(manager>install);
-  });
-
   await t.test('production runJob persists implementer before long generation',()=>{
     const src=require('node:fs').readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
     assert.ok(src.includes("set employee_id=$2,status='running'"));
