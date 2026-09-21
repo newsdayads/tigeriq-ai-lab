@@ -85,13 +85,13 @@ describe('coding lane AI JSON transport',()=>{
     expect(matchesExpectedSchema(prompt,JSON.stringify(expanded))).toBe(true);
   });
   it('rejects model fallback to full-file replacement for an existing file',()=>{
-    const prompt='TASK: x\nCURRENT FILES:\nFILE apps/a.mjs\nconst n=1;\nconsole.log(n);\n\n---\n\nFILE tests/new.test.mjs\n\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}.';
+    const prompt='TASK: x\nCURRENT FILES:\nFILE apps/a.mjs\nconst n=1;\nconsole.log(n);\n\n---\n\nFILE tests/new.test.mjs\n\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}.');
     const model=JSON.stringify({summary:'unsafe whole file',changes:[{path:'apps/a.mjs',content:'const n=2;'}]});
     expect(()=>expandCompactChanges(prompt,model)).toThrow('COMPACT_EDIT_FULL_CONTENT_FOR_EXISTING:apps/a.mjs');
   });
 
   it('still allows complete content for a new empty file',()=>{
-    const prompt='TASK: x\nCURRENT FILES:\nFILE tests/new.test.mjs\n\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}.';
+    const prompt='TASK: x\nCURRENT FILES:\nFILE tests/new.test.mjs\n\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}.');
     const model=JSON.stringify({summary:'new file',changes:[{path:'tests/new.test.mjs',content:'export const ok=true;\\n'}]});
     expect(expandCompactChanges(prompt,model).changes).toEqual([{path:'tests/new.test.mjs',content:'export const ok=true;\\n'}]);
   });
@@ -182,7 +182,7 @@ describe('coding lane AI JSON transport',()=>{
       else globalThis.__tigeriqAiJsonTransportInstalled=previousInstalled;
     }
   });  it('rejects ambiguous compact search instead of corrupting a file',()=>{
-    const prompt='CURRENT FILES:\nFILE apps/a.mjs\nfoo();\nfoo();\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}.';
+    const prompt='CURRENT FILES:\nFILE apps/a.mjs\nfoo();\nfoo();\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}.');
     const model=JSON.stringify({summary:'x',edits:[{path:'apps/a.mjs',search:'foo();',replace:'bar();'}]});
     expect(()=>expandCompactChanges(prompt,model)).toThrow('COMPACT_EDIT_SEARCH_AMBIGUOUS');
   });
@@ -201,6 +201,26 @@ describe('coding lane AI JSON transport',()=>{
     expect(managerBlockKind('SECURITY policy block requires authorization')).toBe('hard');
     expect(managerBlockKind('credential change required')).toBe('hard');
     expect(isRetryableAiError(new Error('MANAGER_SOFT_BLOCK:reason for blocking'))).toBe(true);
+  });
+
+  it('covers production transport options maxAttempts=1 and attemptTimeoutMs=45000',async()=>{
+    const previousFetch=globalThis.fetch;
+    const previousInstalled=globalThis.__tigeriqAiJsonTransportInstalled;
+    const seen=[];
+    try{
+      globalThis.__tigeriqAiJsonTransportInstalled=false;
+      globalThis.fetch=async(_input,init)=>{
+        seen.push(Boolean(init?.signal));
+        return new Response(JSON.stringify({choices:[{message:{content:'{"status":"ok"}'}}]}),{status:200,headers:{'content-type':'application/json'}});
+      };
+      installAiJsonTransport({maxAttempts:1,attemptTimeoutMs:45000});
+      await fetch('https://api.groq.com/openai/v1/chat/completions',{method:'POST',body:JSON.stringify({messages:[{role:'user',content:'{"status":"ok"}'}]})});
+      expect(seen).toEqual([true]);
+    }finally{
+      globalThis.fetch=previousFetch;
+      if(previousInstalled===undefined) delete globalThis.__tigeriqAiJsonTransportInstalled;
+      else globalThis.__tigeriqAiJsonTransportInstalled=previousInstalled;
+    }
   });
 
 });
