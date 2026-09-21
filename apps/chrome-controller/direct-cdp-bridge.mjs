@@ -808,12 +808,15 @@ try{fs.mkdirSync(WORKER_LOCK_DIR,{recursive:true});}catch{}
 function pidAlive(pid){try{process.kill(pid,0);return true;}catch{return false;}}
 const workerResetCounters=new Map();
 const workerResetTimers=new Map();
+const workerLocks=new Map();
+const MAX_RESET_ATTEMPTS=3;
 function acquireWorkerOwnership(workerId){
   const lockPath=join(WORKER_LOCK_DIR,`${workerId.toLowerCase()}-canonical-owner.lock`);
   for(let attempt=0;attempt<2;attempt++){
     try{
       const fd=fs.openSync(lockPath,'wx');
       try{fs.writeFileSync(fd,JSON.stringify({workerId,pid:process.pid,approvedHead:APPROVED_HEAD,sourceSha256:BRIDGE_SHA256,bridgePath:BRIDGE_PATH,acquiredAt:new Date().toISOString()}),'utf8');}finally{fs.closeSync(fd);}
+      workerLocks.set(workerId,true);
       return;
     }catch(error){
       if(error?.code!=='EEXIST')throw error;
@@ -834,6 +837,24 @@ function releaseWorkerOwnership(workerId){
     const existing=JSON.parse(fs.readFileSync(lockPath,'utf8'));
     if(Number(existing.pid)===process.pid)fs.unlinkSync(lockPath);
   }catch{}
+  workerLocks.set(workerId,false);
+}
+async function staggeredResetWorker(workerId, resetFn){
+  const attempts = workerResetCounters.get(workerId) || 0;
+  if(attempts >= MAX_RESET_ATTEMPTS){
+    log('WORKER_RESET_CAP_EXCEEDED',{workerId,attempts});
+    return { ok: false, error: 'RESET_CAP_EXCEEDED' };
+  }
+  workerResetCounters.set(workerId, attempts + 1);
+  log('WORKER_STAGGERED_RESET_CHECKPOINT',{workerId,attempt: attempts + 1});
+  try{
+    await resetFn();
+    log('WORKER_STAGGERED_RESET_REOPENED',{workerId});
+    return { ok: true };
+  }catch(error){
+    log('WORKER_STAGGERED_RESET_FAILED',{workerId,error:String(error?.message||error)});
+    return { ok: false, error: String(error?.message||error) };
+  }
 }
 
 const bridgeServer=http.createServer((req,res)=>{if(req.url==='/health'){const provenanceVerified=Boolean(APPROVED_HEAD&&DEPLOY_ROOT&&EXPECTED_BRIDGE_SHA256&&EXPECTED_BRIDGE_SHA256===BRIDGE_SHA256);res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({ok:true,mode:'NV02_ISOLATED_AUTO_CONTINUE',controllerRequired:false,controllerEnabledFlagIgnored:true,worker:'NV02',canonicalOwnership:true,pid:process.pid,approvedHead:APPROVED_HEAD||null,deployRoot:DEPLOY_ROOT||null,sourceSha256:BRIDGE_SHA256,expectedSourceSha256:EXPECTED_BRIDGE_SHA256||null,provenanceVerified,continuity:loadNv02Continuity()}));return;}res.writeHead(404);res.end();});
