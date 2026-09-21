@@ -1,7 +1,7 @@
 import {createServer} from 'node:http';
 import {randomUUID} from 'node:crypto';
 import {Pool} from 'pg';
-import {branchName,checkGateState,extractCanonicalAllowedPaths,isRetryableAiError,parseJsonObject,safeRepoPath,validateChanges} from './policy.mjs';
+import {branchName,checkGateState,extractCanonicalAllowedPaths,isRetryableAiError,parseJsonObject,safeRepoPath,validateChanges,validateCompactContract} from './policy.mjs';
 import {assertSafeFileChange} from './safety-guard.mjs';
 import {installAiJsonTransport} from './ai-json-transport.mjs';
 import { createGeminiRateController } from '../shared/gemini-rate-control.mjs';
