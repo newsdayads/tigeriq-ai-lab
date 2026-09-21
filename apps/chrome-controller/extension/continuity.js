@@ -28,12 +28,13 @@ export const REFRESH_MIN_MS = 2 * 60 * 60 * 1000;
 export const REFRESH_MAX_MS = 4 * 60 * 60 * 1000;
 export const WORKER_REFRESH_MIN_MS = REFRESH_MIN_MS;
 export const WORKER_REFRESH_MAX_MS = REFRESH_MAX_MS;
-export const WORKER_F5_MIN_MS = REFRESH_MIN_MS;
-export const WORKER_F5_MAX_MS = REFRESH_MAX_MS;
+export const WORKER_F5_MIN_MS = CONTINUE_MIN_MS;
+export const WORKER_F5_MAX_MS = CONTINUE_MAX_MS;
 export const MAX_STALLED_CHECKS = 3;
 export const WORKING_PROGRESS_CHECK_MS = 60 * 1000;
 export const MAX_WORKING_UNCHANGED_CHECKS = 3;
 export const CHAT_ROTATE_AFTER_DISPATCHES = 30;
+export const CONTINUITY_WORKERS = Object.freeze(['NV02','NV03','NV04']);
 
 export function shouldRotateNv02Chat({phase,currentTrackedWork,now,nextRefreshAt,dispatchesInChat,rotationRetryAt}={}){
   if(phase!=='READY'||currentTrackedWork!==true)return false;
@@ -69,11 +70,20 @@ export function deriveWorkerPhase(ui,{heartbeatStale=false,workerId='NV02'}={}){
 }
 export function deriveNv02Phase(ui,opts){return deriveWorkerPhase(ui,opts);}
 
+function workerAutopilot(controller,workerId){
+  const direct=controller?.autopilotByWorker?.[workerId]||controller?.workerAutopilot?.[workerId];
+  if(direct)return direct;
+  const workers=controller?.workers;
+  const row=Array.isArray(workers)?workers.find((item)=>item?.id===workerId):workers?.[workerId];
+  if(row?.autopilot)return row.autopilot;
+  return workerId==='NV02'?(controller?.autopilot||{}):{};
+}
+
 export function hasActiveWorkerWork(controller,workerId='NV02'){
   const activeStages=new Set(['QUEUED','DISPATCHING','SUBMITTED','WORKING','VERIFY','BLOCKED']);
   if((controller?.jobs||[]).some((job)=>job?.workerId===workerId&&activeStages.has(String(job?.stage||''))&&!job?.completedAt))return true;
   if(controller?.externalWorkAutopilotEnabled===false)return false;
-  const autopilot=controller?.autopilot||{};
+  const autopilot=workerAutopilot(controller,workerId);
   if(autopilot.pendingJobId||autopilot.uncertainJobId)return true;
   const dispatched=String(autopilot.lastDispatchedJobId||'');
   const completed=String(autopilot.lastCompletedJobId||'');
