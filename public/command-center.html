@@ -3,53 +3,133 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#081322">
+<meta name="theme-color" content="#07111f">
 <meta name="color-scheme" content="dark">
-<title>TigerIQ · Bảng điều hành</title>
+<title>TigerIQ Live · Trạng thái NV</title>
 <style>
-:root{font-family:"Segoe UI",system-ui,-apple-system,BlinkMacSystemFont,sans-serif;--bg:#07111f;--panel:#0d1a2b;--panel2:#102139;--line:#1f3858;--text:#eef5ff;--muted:#92a5bd;--blue:#58a6ff;--green:#48d597;--amber:#f0ba63;--red:#ff7a86}*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text)}body{background:radial-gradient(circle at 85% -10%,#173b6e 0,transparent 34%),linear-gradient(180deg,#081322,#060d17);overflow-x:hidden}button{font:inherit}.shell{width:min(1180px,100%);margin:auto;padding:max(14px,env(safe-area-inset-top)) 14px max(28px,env(safe-area-inset-bottom))}.top{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:5px 0 16px}.brand h1{margin:0;font-size:21px;letter-spacing:.1px}.brand p{margin:4px 0 0;color:var(--muted);font-size:12px}.tools{display:flex;gap:8px;align-items:center}.pill,.refresh{border:1px solid var(--line);background:#0b1828;color:#cfe1f6;border-radius:999px;padding:8px 11px;font-size:12px}.pill{color:#86e8b2;border-color:#24533f}.refresh{cursor:pointer}.refresh:disabled{opacity:.55}.hero{display:grid;grid-template-columns:1.25fr .75fr;gap:12px}.panel,.card{border:1px solid var(--line);background:linear-gradient(180deg,rgba(16,33,57,.96),rgba(11,23,39,.96));border-radius:18px;box-shadow:0 14px 32px #0003}.panel{padding:16px}.eyebrow{color:var(--blue);font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.08em}.focus h2{font-size:22px;line-height:1.25;margin:7px 0 8px}.meta{display:flex;gap:8px;flex-wrap:wrap;color:var(--muted);font-size:12px}.state{margin-top:14px;padding:11px 12px;border:1px solid #28486d;background:#0a1728;border-radius:12px;font-size:13px}.ownerbox{display:flex;flex-direction:column;justify-content:space-between;min-height:100%}.ownerbox strong{font-size:18px}.ownerbox p{color:var(--muted);font-size:13px;line-height:1.45}.ownerflag{padding:11px 12px;border-radius:12px;border:1px solid #24533f;background:#0c2a20;color:#93efba;font-weight:750;font-size:13px}.ownerflag.need{border-color:#6b4d28;background:#2c2113;color:#ffd38b}.kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:12px 0}.card{padding:13px;min-width:0}.card .label{color:var(--muted);font-size:11px}.card strong{display:block;margin-top:5px;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.card small{display:block;margin-top:4px;color:#7187a3;font-size:10px}.grid{display:grid;grid-template-columns:1.15fr .85fr;gap:12px}.section-title{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}.section-title h3{font-size:14px;margin:0}.section-title span{font-size:11px;color:var(--muted)}.priority-list,.employees,.systems,.activity{display:grid;gap:9px}.priority{display:grid;grid-template-columns:42px 1fr auto;gap:9px;align-items:center;padding:10px;border:1px solid #1c3450;background:#0a1727;border-radius:12px}.prio{font-size:10px;font-weight:850;text-align:center;padding:5px;border-radius:8px;background:#26384e}.prio.P0{background:#55262c;color:#ffb8bd}.prio.P1{background:#4b3a20;color:#ffd78d}.prio.P2{background:#1d3f64;color:#aed6ff}.priority b{display:block;font-size:12px}.priority small{display:block;color:var(--muted);font-size:10px;margin-top:2px}.status{font-size:10px;font-weight:800;padding:5px 7px;border-radius:999px;background:#17304d;color:#a8d5ff}.status.done{background:#123629;color:#8ee6b3}.viz{margin-top:12px;display:grid;gap:10px}.vizrow{display:grid;grid-template-columns:110px 1fr 34px;gap:8px;align-items:center;font-size:11px;color:var(--muted)}.track{height:9px;border-radius:999px;background:#13263d;overflow:hidden}.fill{height:100%;border-radius:999px;background:linear-gradient(90deg,#428eea,#67c5ff)}.fill.good{background:linear-gradient(90deg,#2ea66e,#56df9b)}.employee{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;padding:10px;border-bottom:1px solid #17304a}.employee:last-child{border-bottom:0}.employee b{font-size:12px}.employee small{display:block;margin-top:2px;color:var(--muted);font-size:10px}.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#6c7d92;margin-right:6px}.dot.ok{background:var(--green)}.dot.pause{background:var(--amber)}.system{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;padding:10px;border:1px solid #1c3450;border-radius:12px;background:#0a1727}.system b{font-size:12px}.system small{display:block;color:var(--muted);font-size:10px;margin-top:2px}.activity-item{padding:10px 0;border-bottom:1px solid #17304a}.activity-item:last-child{border-bottom:0}.activity-item b{display:block;font-size:12px}.activity-item small{color:var(--muted);font-size:10px}.empty{padding:18px 4px;color:var(--muted);font-size:12px}.footer{display:flex;justify-content:space-between;gap:10px;color:#6f849e;font-size:10px;padding:14px 2px 0}.error{margin:12px 0;padding:12px;border:1px solid #66313a;background:#30181d;color:#ffb1b9;border-radius:12px;font-size:12px;display:none}@media(max-width:900px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.card:last-child{grid-column:1/-1}.grid{grid-template-columns:1fr}.hero{grid-template-columns:1fr}}@media(max-width:560px){.shell{padding-left:10px;padding-right:10px}.top{align-items:flex-start}.tools .pill{display:none}.brand h1{font-size:19px}.focus h2{font-size:19px}.kpis{gap:8px}.card{padding:11px}.priority{grid-template-columns:38px 1fr}.priority .status{grid-column:2;justify-self:start}.vizrow{grid-template-columns:82px 1fr 28px}.footer{display:block;line-height:1.6}}
+:root{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;--bg:#07111f;--panel:#0e1b2b;--panel2:#102239;--line:#203953;--text:#f2f7fd;--muted:#91a4ba;--blue:#58a6ff;--green:#46d48f;--amber:#efb85c;--red:#ff747e;--gray:#77899e}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text)}
+body{background:radial-gradient(circle at 90% -12%,#173b6e 0,transparent 36%),linear-gradient(180deg,#081322,#060d17);overflow-x:hidden}
+a{color:inherit;text-decoration:none}
+button{font:inherit}
+.wrap{width:min(760px,100%);margin:auto;padding:max(14px,env(safe-area-inset-top)) 12px max(28px,env(safe-area-inset-bottom))}
+.top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:4px 2px 14px}
+.brand h1{font-size:22px;line-height:1.1;margin:0}
+.brand p{font-size:12px;color:var(--muted);margin:5px 0 0}
+.live{display:flex;align-items:center;gap:7px;border:1px solid #23513e;background:#0b241b;border-radius:999px;padding:7px 10px;font-size:11px;color:#9aebbd;white-space:nowrap}
+.live-dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 0 0 rgba(70,212,143,.5);animation:pulse 1.8s infinite}
+@keyframes pulse{70%{box-shadow:0 0 0 7px rgba(70,212,143,0)}100%{box-shadow:0 0 0 0 rgba(70,212,143,0)}}
+.err{display:none;border:1px solid #6d3038;background:#31191e;color:#ffb7bd;border-radius:14px;padding:11px 12px;margin-bottom:10px;font-size:12px}
+.summary{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:10px}
+.sum{border:1px solid var(--line);background:linear-gradient(180deg,#102139,#0b1727);border-radius:14px;padding:10px 8px;min-width:0}
+.sum span{display:block;font-size:10px;color:var(--muted);white-space:nowrap}
+.sum b{display:block;font-size:22px;line-height:1;margin-top:6px}
+.sum.work b{color:var(--green)}.sum.wait b{color:var(--amber)}.sum.block b{color:var(--red)}.sum.idle b{color:#aebdcc}
+.filters{display:flex;gap:7px;overflow:auto;padding:1px 1px 10px;scrollbar-width:none}
+.filters::-webkit-scrollbar{display:none}
+.filter{border:1px solid var(--line);background:#0a1727;color:#aabbd0;border-radius:999px;padding:7px 10px;font-size:11px;white-space:nowrap}
+.filter.active{border-color:#3f78b7;background:#112b49;color:#d9ebff}
+.meta-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:2px 2px 9px;color:var(--muted);font-size:10px}
+.list{display:grid;gap:9px}
+.worker{display:block;border:1px solid var(--line);background:linear-gradient(180deg,rgba(16,34,57,.98),rgba(10,23,39,.98));border-radius:17px;padding:13px;box-shadow:0 8px 24px #0002}
+.worker:active{transform:scale(.997)}
+.head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.identity{min-width:0}
+.identity b{display:block;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.identity small{display:block;color:var(--muted);font-size:10px;margin-top:3px}
+.badge{flex:none;border-radius:999px;padding:6px 8px;font-size:10px;font-weight:850;letter-spacing:.01em}
+.badge.working{background:#103526;color:#8de7b1;border:1px solid #24533f}
+.badge.waiting{background:#392b17;color:#ffd18b;border:1px solid #6a4d26}
+.badge.blocked{background:#3b1d23;color:#ffb0b6;border:1px solid #6b3039}
+.badge.idle{background:#1a2736;color:#b7c5d5;border:1px solid #34495f}
+.badge.paused{background:#222a34;color:#98a7b7;border:1px solid #394756}
+.job{font-size:14px;font-weight:750;line-height:1.35;margin-top:12px}
+.detail{font-size:11px;color:var(--muted);line-height:1.4;margin-top:5px}
+.progress{margin-top:10px;height:5px;background:#172b43;border-radius:999px;overflow:hidden}
+.progress>i{display:block;height:100%;background:linear-gradient(90deg,#3b91e8,#60d9a0);border-radius:999px}
+.foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px;padding-top:9px;border-top:1px solid #183047;font-size:10px;color:#8296ad}
+.source{color:#86bfff;white-space:nowrap}
+.empty{border:1px dashed #2a425d;border-radius:16px;padding:24px 14px;text-align:center;color:var(--muted);font-size:12px}
+.page-foot{padding:14px 2px 0;color:#6d8097;font-size:9px;line-height:1.5;text-align:center}
+@media(max-width:390px){.summary{gap:5px}.sum{padding:9px 6px}.sum span{font-size:9px}.sum b{font-size:20px}.brand h1{font-size:20px}.worker{padding:12px}.job{font-size:13px}}
 </style>
 </head>
 <body>
-<main class="shell">
-<header class="top"><div class="brand"><h1>TigerIQ · Bảng điều hành</h1><p>View quản trị chỉ xem · dữ liệu thật từ Nguồn Sự Thật</p></div><div class="tools"><span class="pill">CHỈ XEM</span><button id="refresh" class="refresh" type="button">Cập nhật</button></div></header>
-<div id="error" class="error"></div>
-<section class="hero">
-<article class="panel focus"><div class="eyebrow">Ưu tiên hiện tại</div><h2 id="workTitle">Đang đọc CENTRAL…</h2><div class="meta"><span id="workOwner">Người phụ trách: —</span><span id="workStatus">Trạng thái: —</span></div><div class="state"><b id="currentStep">Đang tải trạng thái…</b><div id="nextStep" style="margin-top:5px;color:var(--muted);font-size:11px">—</div></div></article>
-<article class="panel ownerbox"><div><div class="eyebrow">Cần anh Sơn</div><strong id="ownerHeadline">Đang kiểm tra</strong><p id="ownerSummary">Hệ thống chỉ hiện yêu cầu khi Nguồn Sự Thật ghi rõ cần thao tác của anh Sơn.</p></div><div id="ownerFlag" class="ownerflag">Không có việc bắt buộc thao tác</div></article>
+<main class="wrap">
+<header class="top">
+  <div class="brand"><h1>TigerIQ Live</h1><p>Trạng thái nhân sự · chỉ xem</p></div>
+  <div class="live"><span class="live-dot"></span><span id="liveLabel">ĐANG CẬP NHẬT</span></div>
+</header>
+<div id="err" class="err"></div>
+<section class="summary">
+  <div class="sum work"><span>Đang làm</span><b id="sumWork">0</b></div>
+  <div class="sum wait"><span>Chờ</span><b id="sumWait">0</b></div>
+  <div class="sum block"><span>Bị chặn</span><b id="sumBlock">0</b></div>
+  <div class="sum idle"><span>Rảnh</span><b id="sumIdle">0</b></div>
 </section>
-<section class="kpis">
-<div class="card"><div class="label">Đang làm</div><strong id="kpiWork">—</strong><small>Ưu tiên từ CENTRAL</small></div>
-<div class="card"><div class="label">Ai phụ trách</div><strong id="kpiOwner">—</strong><small>Resolve từ danh mục ánh xạ</small></div>
-<div class="card"><div class="label">Tiến độ</div><strong id="kpiProgress">—</strong><small>Không dựng % khi thiếu bằng chứng</small></div>
-<div class="card"><div class="label">Vướng mắc</div><strong id="kpiBlocker">—</strong><small>Chỉ hiện blocker được ghi nhận</small></div>
-<div class="card"><div class="label">Nguồn dữ liệu</div><strong id="kpiSource">—</strong><small>CENTRAL + danh mục động</small></div>
-</section>
-<section class="grid">
-<div>
-<article class="panel"><div class="section-title"><h3>Hạng mục ưu tiên</h3><span id="priorityMeta">—</span></div><div id="priorities" class="priority-list"></div><div class="viz"><div class="vizrow"><span>Đang mở</span><div class="track"><div id="openBar" class="fill" style="width:0"></div></div><b id="openCount">0</b></div><div class="vizrow"><span>Hoàn tất</span><div class="track"><div id="doneBar" class="fill good" style="width:0"></div></div><b id="doneCount">0</b></div></div></article>
-<article class="panel" style="margin-top:12px"><div class="section-title"><h3>Hoạt động gần nhất</h3><span>Issue hiện hành</span></div><div id="activity" class="activity"></div></article>
-</div>
-<div>
-<article class="panel"><div class="section-title"><h3>Nhân sự AI</h3><span id="employeeMeta">—</span></div><div id="employees" class="employees"></div><div class="viz"><div class="vizrow"><span>Đang bật</span><div class="track"><div id="activeBar" class="fill good" style="width:0"></div></div><b id="activeCount">0</b></div><div class="vizrow"><span>Tạm ngưng</span><div class="track"><div id="pausedBar" class="fill" style="width:0"></div></div><b id="pausedCount">0</b></div></div></article>
-<article class="panel" style="margin-top:12px"><div class="section-title"><h3>Trạng thái hệ thống</h3><span>Không suy đoán PC01</span></div><div id="systems" class="systems"></div></article>
-</div>
-</section>
-<footer class="footer"><span id="updated">Chưa cập nhật</span><span>Không có nút ghi dữ liệu · không yêu cầu VPN/Tailscale</span></footer>
+<nav class="filters" aria-label="Bộ lọc trạng thái">
+  <button class="filter active" data-filter="all">Tất cả</button>
+  <button class="filter" data-filter="working">Đang làm</button>
+  <button class="filter" data-filter="waiting">Chờ</button>
+  <button class="filter" data-filter="blocked">Bị chặn</button>
+  <button class="filter" data-filter="idle">Rảnh</button>
+  <button class="filter" data-filter="paused">Tạm ngưng</button>
+</nav>
+<div class="meta-row"><span id="workerCount">—</span><span id="updated">Chưa cập nhật</span></div>
+<section id="workers" class="list"></section>
+<footer class="page-foot">Dữ liệu từ GitHub + Registry · không có nút điều khiển · tự làm mới mỗi 10 giây</footer>
 </main>
 <script>
-const $=id=>document.getElementById(id);const commandOwners={1:'Minh (NV01 — Thực thi trực tiếp)',2:'Khoa (NV02 — Vận hành tự động)',3:'Huy (NV03 — AI PC01 / Kỹ sư Hệ thống Local)',4:'Khải (NV04 — Kỹ sư Tích hợp AI/API)'};
-function txt(id,value){$(id).textContent=value??'—'}
-function pct(part,total){return total>0?Math.max(0,Math.min(100,Math.round(part/total*100))):0}
-function clear(id){const node=$(id);while(node.firstChild)node.removeChild(node.firstChild);return node}
-function employeeOwner(data){if(!data?.activeWork?.active)return '—';const body=(data.employees||[]).find(e=>e.active&&String(data.activeWork.title||'').includes(e.employeeId));if(body)return body.label;const cmd=(data.employees||[]).find(e=>e.command===2&&e.active);return cmd?.label||commandOwners[2]}
-function renderPriorities(data){const box=clear('priorities');const rows=data.priorityIssues||[];if(!rows.length){box.innerHTML='<div class="empty">Chưa có danh sách ưu tiên xác minh.</div>';return}rows.forEach(r=>{const el=document.createElement('div');el.className='priority';const p=document.createElement('span');p.className='prio '+(r.priority||'');p.textContent=r.priority||'—';const mid=document.createElement('div');const b=document.createElement('b');b.textContent='#'+r.number+' · '+(r.title||'Không có tiêu đề');const s=document.createElement('small');s.textContent=r.updatedAt?'Cập nhật '+new Date(r.updatedAt).toLocaleString('vi-VN'):'Chưa có mốc cập nhật';mid.append(b,s);const st=document.createElement('span');st.className='status '+(r.open===false?'done':'');st.textContent=r.status||'CHƯA XÁC MINH';el.append(p,mid,st);box.append(el)});const total=data.summary?.total||rows.length,open=data.summary?.open||0,done=data.summary?.completed||0;txt('priorityMeta',`${open} mở · ${done} hoàn tất`);txt('openCount',open);txt('doneCount',done);$('openBar').style.width=pct(open,total)+'%';$('doneBar').style.width=pct(done,total)+'%'}
-function renderEmployees(data){const box=clear('employees');const rows=data.employees||[];if(!rows.length){box.innerHTML='<div class="empty">Chưa đọc được danh mục nhân sự.</div>';return}rows.forEach(e=>{const el=document.createElement('div');el.className='employee';const left=document.createElement('div');const b=document.createElement('b');b.textContent=e.label;const s=document.createElement('small');s.textContent=`Lệnh ${e.command} · ${e.employeeId}`;left.append(b,s);const st=document.createElement('span');st.className='status';st.innerHTML=`<span class="dot ${e.active?'ok':'pause'}"></span>${e.active?'Đang bật':'Tạm ngưng'}`;el.append(left,st);box.append(el)});const total=data.employeeSummary?.total||rows.length,active=data.employeeSummary?.active||0,paused=data.employeeSummary?.paused||0;txt('employeeMeta',`${active}/${total} đang bật`);txt('activeCount',active);txt('pausedCount',paused);$('activeBar').style.width=pct(active,total)+'%';$('pausedBar').style.width=pct(paused,total)+'%'}
-function renderSystems(data){const box=clear('systems');(data.systems||[]).forEach(s=>{const el=document.createElement('div');el.className='system';const left=document.createElement('div');const b=document.createElement('b');b.textContent=s.name;const sm=document.createElement('small');sm.textContent=s.detail||'';left.append(b,sm);const st=document.createElement('span');st.className='status';st.textContent=s.state;el.append(left,st);box.append(el)});if(!box.childNodes.length)box.innerHTML='<div class="empty">Chưa có dữ liệu hệ thống.</div>'}
-function renderActivity(data){const box=clear('activity');const rows=data.activity||[];if(!rows.length){box.innerHTML='<div class="empty">Chưa có hoạt động mới được xác minh.</div>';return}rows.forEach(a=>{const el=document.createElement('div');el.className='activity-item';const b=document.createElement('b');b.textContent=a.name||'Cập nhật';const s=document.createElement('small');s.textContent=(a.at?new Date(a.at).toLocaleString('vi-VN'):'Không rõ thời gian')+' · '+(a.status||'ĐÃ GHI NHẬN');el.append(b,s);box.append(el)})}
-function render(data){if(!data?.ok)throw new Error(data?.reason||'Nguồn dữ liệu chưa sẵn sàng');const w=data.activeWork||{},owner=employeeOwner(data);txt('workTitle',w.active?`#${w.number} · ${w.title}`:w.title);txt('workOwner','Người phụ trách: '+owner);txt('workStatus','Trạng thái: '+(w.status||'—'));txt('currentStep',w.currentStep||'—');txt('nextStep','Tiếp theo: '+(w.nextStep||'—'));txt('kpiWork',w.active?`#${w.number} · ${w.priority||'P0'}`:'Không có việc mở');txt('kpiOwner',owner);txt('kpiProgress',w.progressPct==null?(w.progressText||'Theo bằng chứng'):`${w.progressPct}%`);const need=!!data.ownerAction?.required;txt('kpiBlocker',need?'Cần anh Sơn':'Không có blocker bắt buộc');txt('kpiSource',`#${data.source?.centralIssue||280} + #${data.source?.registryIssue||335}`);txt('ownerHeadline',need?'Có việc cần anh Sơn':'Không cần thao tác');txt('ownerSummary',data.ownerAction?.summary||'—');const flag=$('ownerFlag');flag.classList.toggle('need',need);flag.textContent=need?'Cần anh Sơn xử lý theo Nguồn Sự Thật':'Không có việc bắt buộc thao tác';renderPriorities(data);renderEmployees(data);renderSystems(data);renderActivity(data);txt('updated','Cập nhật '+new Date(data.generatedAt||Date.now()).toLocaleString('vi-VN'));$('error').style.display='none'}
-async function load(){const btn=$('refresh');btn.disabled=true;try{const r=await fetch('/api/company-progress',{cache:'no-store'});const data=await r.json();render(data)}catch(e){$('error').textContent='Không tải được Nguồn Sự Thật. View không tự đoán trạng thái. '+String(e?.message||'');$('error').style.display='block'}finally{btn.disabled=false}}
-$('refresh').addEventListener('click',load);document.addEventListener('visibilitychange',()=>{if(!document.hidden)load()});load();setInterval(()=>{if(!document.hidden)load()},15000);
+const $=id=>document.getElementById(id);
+let snapshot=null,activeFilter='all';
+const stateLabel={working:'ĐANG LÀM',waiting:'CHỜ',blocked:'BỊ CHẶN',idle:'RẢNH',paused:'TẠM NGƯNG'};
+function age(iso){
+  if(!iso)return 'chưa có mốc';
+  const s=Math.max(0,Math.floor((Date.now()-Date.parse(iso))/1000));
+  if(s<60)return s+' giây trước';
+  const m=Math.floor(s/60);if(m<60)return m+' phút trước';
+  const h=Math.floor(m/60);if(h<24)return h+' giờ trước';
+  return Math.floor(h/24)+' ngày trước';
+}
+function sourceLabel(s){
+  if(!s)return '';
+  if(s.type==='PR'&&s.number)return 'PR #'+s.number;
+  if(s.type==='Workflow'&&s.number)return 'Luồng #'+s.number;
+  return s.type||'Nguồn';
+}
+function esc(t){const d=document.createElement('div');d.textContent=String(t??'');return d.innerHTML}
+function render(){
+  if(!snapshot)return;
+  const s=snapshot.summary||{};
+  $('sumWork').textContent=s.working||0;$('sumWait').textContent=s.waiting||0;$('sumBlock').textContent=s.blocked||0;$('sumIdle').textContent=s.idle||0;
+  const all=snapshot.workers||[],rows=activeFilter==='all'?all:all.filter(x=>x.state===activeFilter);
+  $('workerCount').textContent=rows.length+'/'+all.length+' nhân sự';
+  $('updated').textContent='Cập nhật '+new Date(snapshot.generatedAt||Date.now()).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  const box=$('workers');box.innerHTML='';
+  if(!rows.length){box.innerHTML='<div class="empty">Không có nhân sự ở trạng thái này.</div>';return}
+  rows.forEach(w=>{
+    const el=document.createElement(w.source?.url?'a':'article');el.className='worker';
+    if(w.source?.url){el.href=w.source.url;el.target='_blank';el.rel='noopener'}
+    const pct=w.progress?.percent;
+    el.innerHTML='<div class="head"><div class="identity"><b>'+esc(w.employeeId+' · '+w.label)+'</b><small>'+(w.command?'Lệnh '+esc(w.command)+' · ':'')+esc(w.adminState||'Registry')+'</small></div><span class="badge '+esc(w.state)+'">'+esc(stateLabel[w.state]||w.status||'—')+'</span></div><div class="job">'+esc(w.job||'Không có việc đang chạy')+'</div><div class="detail">'+esc(w.detail||'—')+'</div>'+(pct==null?'':'<div class="progress"><i style="width:'+Math.max(0,Math.min(100,pct))+'%"></i></div>')+'<div class="foot"><span>'+esc(age(w.updatedAt))+'</span><span class="source">'+esc(sourceLabel(w.source))+(w.source?.url?' ↗':'')+'</span></div>';
+    box.append(el);
+  });
+}
+async function load(){
+  try{
+    const r=await fetch('/api/live-status',{cache:'no-store'}),d=await r.json();
+    if(!d?.ok)throw new Error(d?.reason||'Nguồn trạng thái chưa sẵn sàng');
+    snapshot=d;$('err').style.display='none';$('liveLabel').textContent='TRỰC TUYẾN';render();
+  }catch(e){
+    $('liveLabel').textContent='MẤT DỮ LIỆU';$('err').textContent='Không tải được trạng thái thật. Trang không tự đoán: '+String(e?.message||e);$('err').style.display='block';
+  }
+}
+document.querySelectorAll('.filter').forEach(btn=>btn.addEventListener('click',()=>{
+  document.querySelectorAll('.filter').forEach(x=>x.classList.remove('active'));btn.classList.add('active');activeFilter=btn.dataset.filter;render();
+}));
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)load()});
+load();setInterval(()=>{if(!document.hidden)load()},10000);
 </script>
 </body>
 </html>
