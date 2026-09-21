@@ -155,6 +155,7 @@ describe('independent worker recovery flows in direct-cdp-bridge',()=>{
     const closePhaseEnd=reopen.indexOf("await sleep(1200)");
     expect(reopen.slice(0,closePhaseEnd)).not.toContain("/safe-recover");
     expect(reopen.indexOf("/safe-recover")).toBeGreaterThan(closePhaseEnd);
+    expect(reopen).toContain("post(`/api/utility/workers/${w.id}/safe-recover`,w.id,{reason},120000)");
     expect(reopen).toContain("leaseOwnerId:lease.ownerId,leaseId:lease.leaseId");
     expect(source).toContain("resumeUrl");
   });
@@ -240,6 +241,7 @@ describe('safe recovery contracts',()=>{
     expect(utility).toContain('plan-refresh');
     expect(utility).toContain('plannedRefreshWorkers.add(workerId)');
     expect(utility).toContain('browserMutationLeases.assertOwned(workerId,leaseOwnerId,leaseId)');
+    expect(utility).toContain('heartbeatStopReason(state.lastHeartbeat)');
     expect(utility).toContain('MANUAL_CLOSE_SUPPRESSED');
     expect(utility).toContain("OWNER_INTERACTION_READ_ONLY");
     expect(windowEvent).toContain('const plannedRefresh=plannedRefreshWorkers.has(workerId)');
