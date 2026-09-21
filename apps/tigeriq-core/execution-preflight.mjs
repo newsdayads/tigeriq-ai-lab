@@ -42,8 +42,12 @@ export function runExecutionPreflight({ skill, tool, state, context, workItem } 
     }
   }
 
+  const watchdogPass = !state || state.watchdogFailed !== true;
+  if (!watchdogPass) {
+    errors.push('INDEPENDENT_WATCHDOG_REPAIR_REQUIRED');
+  }
   return {
-    ok: errors.length === 0,
+    ok: errors.length === 0 && watchdogPass,
     errors,
     timestamp: new Date().toISOString()
   };
