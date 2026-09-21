@@ -109,6 +109,14 @@ describe('controller restart-safe worker safety gates',()=>{
 describe('safe recovery contracts',()=>{
   const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
   const broker=readFileSync('apps/chrome-controller/src/chrome-launch-broker.ts','utf8');
+  const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+
+  it('encapsulates generic worker class with isolated config, timers, locks, and reset staggering',()=>{
+    expect(bridge).toContain('class ChromeWorker');
+    expect(bridge).toContain('resetStaggerMs');
+    expect(bridge).toContain('statePath');
+    expect(bridge).toContain('debugPort');
+  });
 
   it('uses tested boot/persist fail-closed helpers in Controller runtime',()=>{
     expect(server).toContain('restoreWorkerSafetyState(workerSafetyStatePath)');
