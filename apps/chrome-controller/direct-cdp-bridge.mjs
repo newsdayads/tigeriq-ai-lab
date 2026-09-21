@@ -85,9 +85,25 @@ function workerPort(w){return Number(w.debugPort||({NV02:9222,NV03:9223,NV04:922
 function expectedHost(w){return new URL(w.homeUrl).hostname;}
 class Rpc{
   constructor(url){this.url=url;this.ws=null;this.seq=0;this.wait=new Map();}
-  async open(){
+  async open(timeout=4000){
     this.ws=new WebSocket(this.url);
-    await new Promise((ok,fail)=>{this.ws.onopen=ok;this.ws.onerror=fail;});
+    await new Promise((ok,fail)=>{
+      let settled=false;
+      const timer=setTimeout(()=>{
+        if(settled)return;
+        settled=true;
+        try{this.ws?.close();}catch{}
+        fail(new Error('CDP_OPEN_TIMEOUT'));
+      },timeout);
+      this.ws.onopen=()=>{
+        if(settled)return;
+        settled=true;clearTimeout(timer);ok();
+      };
+      this.ws.onerror=()=>{
+        if(settled)return;
+        settled=true;clearTimeout(timer);fail(new Error('CDP_OPEN_ERROR'));
+      };
+    });
     this.ws.onmessage=(e)=>{
       const m=JSON.parse(e.data);
       if(!m.id||!this.wait.has(m.id)) return;
