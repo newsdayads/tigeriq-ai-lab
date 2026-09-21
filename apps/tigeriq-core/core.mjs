@@ -368,6 +368,34 @@ async function apiDoctorEventBySignature(type,signature){
 async function apiDoctorLatestResourceHandoff(resourceId){
   return (await pool.query("select ts,data from tigeriq_events where type='API_DOCTOR_REPAIR_HANDOFF' and resource_id=$1 order by seq desc limit 1",[resourceId])).rows[0]||null;
 }
+async function apiDoctorPostRepairValidationAttempts(resourceId,handoffAt){
+  const row=(await pool.query("select count(*)::int as count from tigeriq_events where type='API_DOCTOR_POST_REPAIR_VALIDATION' and resource_id=$1 and ts>$2",[resourceId,handoffAt])).rows[0];
+  return Number(row?.count||0);
+}
+async function runApiDoctorPostRepairValidation(resource,existingHandoff){
+  const r=resources.find(x=>x.resourceId===resource.resource_id);
+  if(!r)return {ok:false,reason:'resource_definition_missing'};
+  const signature=String(existingHandoff?.data?.signature||'');
+  const id=`API-VAL-${randomUUID()}`;
+  const marker=`TIGERIQ_API_DOCTOR_RECOVERY_${r.id}`;
+  const prompt=`Return exactly ${marker}`;
+  await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,employee_id,resource_id,provider,routing_profile,started_at,attempts,max_attempts) values($1,null,$2,$3,'general','api_doctor_validation','running',$4,$5,$6,'VALIDATION',now(),1,1)",[id,`${r.id} post-repair live validation`,prompt,r.id,r.resourceId,r.provider]);
+  const started=Date.now();
+  try{
+    const text=await invokeProvider(r,prompt);
+    if(!String(text||'').includes(marker)){const e=new Error('API_DOCTOR_VALIDATION_UNEXPECTED_RESPONSE');e.kind='invalid_response';throw e;}
+    const latency=Date.now()-started;
+    await markResourceSuccess(r,id,latency,'RESOURCE_SUCCESS',true,{taskKind:'api_doctor_validation',profile:'VALIDATION'});
+    await pool.query("update tigeriq_jobs set status='done',result=$2,lease_until=null,completed_at=now() where id=$1",[id,JSON.stringify({text:String(text).slice(0,300),latencyMs:latency,validation:true})]);
+    await event('API_DOCTOR_POST_REPAIR_VALIDATION',{jobId:id,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind:'api_doctor_validation',signature,ok:true,latencyMs:latency});
+    return {ok:true,jobId:id,latencyMs:latency};
+  }catch(error){
+    await markResourceFailure(r,id,error,'RESOURCE_FAILURE',true,{taskKind:'api_doctor_validation',profile:'VALIDATION'});
+    await pool.query("update tigeriq_jobs set status='failed',failure=$2,lease_until=null,completed_at=now() where id=$1",[id,JSON.stringify({message:String(error?.message||error).slice(0,300)})]);
+    await event('API_DOCTOR_POST_REPAIR_VALIDATION',{jobId:id,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind:'api_doctor_validation',signature,ok:false,message:String(error?.message||error).slice(0,200)});
+    return {ok:false,jobId:id,reason:String(error?.kind||error?.message||error).slice(0,120)};
+  }
+}
 async function createApiDoctorRepairHandoff(resource,failureClass,latestFailure){
   const message=String(latestFailure?.data?.message||latestFailure?.data?.kind||failureClass||'source_contract');
   const signature=apiDoctorRepairSignature({employeeId:resource.employee_id,provider:resource.provider,failureClass,message});
@@ -441,13 +469,39 @@ async function runApiDoctorScan(){
     const existingHandoff=await apiDoctorLatestResourceHandoff(resource.resource_id);
     if(existingHandoff){
       const successAfter=(await pool.query("select 1 from tigeriq_events where resource_id=$1 and type='RESOURCE_SUCCESS' and coalesce(task_kind,'')<>'probe' and coalesce(task_kind,'')<>'api_doctor' and ts>$2 order by seq desc limit 1",[resource.resource_id,existingHandoff.ts])).rows[0];
-      const handoffPlan=apiDoctorExistingHandoffAction({existingHandoff:true,successAfterHandoff:Boolean(successAfter)});
+      const validationAttempts=await apiDoctorPostRepairValidationAttempts(resource.resource_id,existingHandoff.ts);
+      const handoffPlan=apiDoctorExistingHandoffAction({
+        existingHandoff:true,
+        successAfterHandoff:Boolean(successAfter),
+        cooldownUntil:resource.cooldown_until,
+        validationAttempts,
+        maxValidationAttempts:2,
+      });
       if(handoffPlan.action==='recovered'){
         const signature=existingHandoff.data?.signature;
         if(signature&&!await apiDoctorEventBySignature('API_DOCTOR_RECOVERED',signature))await event('API_DOCTOR_RECOVERED',{employeeId:resource.employee_id,resourceId:resource.resource_id,provider:resource.provider,taskKind:'api_doctor',signature,evidence:'live_work_success_after_handoff'});
         row.action='recovered';row.reason=handoffPlan.reason;row.recovered=true;actions.push(row);continue;
       }
-      row.action='wait_repair';row.reason=handoffPlan.reason;row.handoff='deduped';row.codingObjectiveId=existingHandoff.data?.codingObjectiveId||null;actions.push(row);continue;
+      if(handoffPlan.action==='validate_repair'){
+        row.action='validate_repair';row.reason=handoffPlan.reason;row.handoff='deduped';row.validationAttempts=validationAttempts;row.codingObjectiveId=existingHandoff.data?.codingObjectiveId||null;
+        try{
+          const probe=await probeResource(resource.resource_id);
+          row.postRepairProbe=probe?.ok?'ok':'failed';
+        }catch(error){
+          row.postRepairProbe='failed';row.validationError=String(error?.kind||error?.message||error).slice(0,120);
+          await event('API_DOCTOR_POST_REPAIR_VALIDATION',{employeeId:resource.employee_id,resourceId:resource.resource_id,provider:resource.provider,taskKind:'api_doctor_validation',signature:existingHandoff.data?.signature||'',ok:false,phase:'probe',message:row.validationError});
+          actions.push(row);continue;
+        }
+        const validation=await runApiDoctorPostRepairValidation(resource,existingHandoff);
+        row.validationJobId=validation.jobId||null;row.validation=validation.ok?'ok':'failed';
+        if(validation.ok){
+          const signature=existingHandoff.data?.signature;
+          if(signature&&!await apiDoctorEventBySignature('API_DOCTOR_RECOVERED',signature))await event('API_DOCTOR_RECOVERED',{employeeId:resource.employee_id,resourceId:resource.resource_id,provider:resource.provider,taskKind:'api_doctor',signature,evidence:'post_repair_live_validation_job'});
+          row.action='recovered';row.reason='post_repair_live_validation_job';row.recovered=true;
+        }
+        actions.push(row);continue;
+      }
+      row.action='wait_repair';row.reason=handoffPlan.reason;row.handoff='deduped';row.validationAttempts=validationAttempts;row.codingObjectiveId=existingHandoff.data?.codingObjectiveId||null;actions.push(row);continue;
     }
     if(plan.action==='wait'||plan.action==='idle'){actions.push(row);continue;}
     let probeOk=false;
@@ -471,7 +525,7 @@ async function runApiDoctorScan(){
 }
 async function apiDoctorTelemetry(){
   const last=(await pool.query("select ts,data from tigeriq_events where type='API_DOCTOR_SCAN' order by seq desc limit 1")).rows[0]||null;
-  const counts=(await pool.query(`select type,count(*)::int as count from tigeriq_events where type in ('API_DOCTOR_REPAIR_HANDOFF','API_DOCTOR_RECOVERED','API_DOCTOR_EXTERNAL_BLOCKED','API_DOCTOR_ANALYSIS_DONE') and ts>=now()-interval '24 hours' group by type`)).rows;
+  const counts=(await pool.query(`select type,count(*)::int as count from tigeriq_events where type in ('API_DOCTOR_REPAIR_HANDOFF','API_DOCTOR_RECOVERED','API_DOCTOR_EXTERNAL_BLOCKED','API_DOCTOR_ANALYSIS_DONE','API_DOCTOR_POST_REPAIR_VALIDATION') and ts>=now()-interval '24 hours' group by type`)).rows;
   const map=Object.fromEntries(counts.map(x=>[x.type,Number(x.count||0)]));
   return {
     lastScanAt:last?.ts||null,
@@ -481,6 +535,7 @@ async function apiDoctorTelemetry(){
     recovered24h:map.API_DOCTOR_RECOVERED||0,
     externalBlockers24h:map.API_DOCTOR_EXTERNAL_BLOCKED||0,
     analyses24h:map.API_DOCTOR_ANALYSIS_DONE||0,
+    postRepairValidations24h:map.API_DOCTOR_POST_REPAIR_VALIDATION||0,
   };
 }
 

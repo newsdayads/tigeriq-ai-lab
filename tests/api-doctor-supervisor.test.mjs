@@ -52,14 +52,21 @@ describe('#1255 NV10 API Doctor policy',()=>{
     })).toMatchObject({action:'probe_then_handoff',failureClass:'source_contract'});
   });
 
-  it('waits on an existing repair handoff instead of probing the provider again',()=>{
-    expect(apiDoctorExistingHandoffAction({existingHandoff:true,successAfterHandoff:false})).toEqual({
-      action:'wait_repair',reason:'repair_handoff_pending_live_work',
-    });
-    expect(apiDoctorExistingHandoffAction({existingHandoff:true,successAfterHandoff:true})).toEqual({
+  it('bounds post-repair validation and respects cooldown before probing again',()=>{
+    const now=Date.parse('2026-09-21T07:00:00Z');
+    expect(apiDoctorExistingHandoffAction({
+      existingHandoff:true,successAfterHandoff:false,cooldownUntil:'2026-09-21T07:10:00Z',validationAttempts:0,nowMs:now,
+    })).toEqual({action:'wait_repair',reason:'repair_handoff_cooldown_active'});
+    expect(apiDoctorExistingHandoffAction({
+      existingHandoff:true,successAfterHandoff:false,cooldownUntil:'2026-09-21T06:59:00Z',validationAttempts:0,nowMs:now,
+    })).toEqual({action:'validate_repair',reason:'post_repair_validation_due'});
+    expect(apiDoctorExistingHandoffAction({
+      existingHandoff:true,successAfterHandoff:false,cooldownUntil:null,validationAttempts:2,nowMs:now,
+    })).toEqual({action:'wait_repair',reason:'post_repair_validation_budget_exhausted'});
+    expect(apiDoctorExistingHandoffAction({existingHandoff:true,successAfterHandoff:true,nowMs:now})).toEqual({
       action:'recovered',reason:'live_work_success_after_handoff',
     });
-    expect(apiDoctorExistingHandoffAction({existingHandoff:false,successAfterHandoff:false})).toEqual({action:'proceed'});
+    expect(apiDoctorExistingHandoffAction({existingHandoff:false,successAfterHandoff:false,nowMs:now})).toEqual({action:'proceed'});
   });
 
   it('uses a stable dedupe signature for the same provider/failure class',()=>{
@@ -105,6 +112,10 @@ describe('#1255 routing/runtime integration',()=>{
     expect(core).toContain("apiDoctorLatestResourceHandoff(resource.resource_id)");
     expect(core.indexOf("apiDoctorLatestResourceHandoff(resource.resource_id)")).toBeLessThan(core.indexOf("if(plan.action==='wait'||plan.action==='idle')"));
     expect(core).toContain("coalesce(task_kind,'')<>'api_doctor'");
+    expect(core).toContain("kind,'api_doctor_validation'");
+    expect(core).toContain("API_DOCTOR_POST_REPAIR_VALIDATION");
+    expect(core).toContain("maxValidationAttempts:2");
+    expect(core).toContain("post_repair_live_validation_job");
     expect(core).toContain('apiDoctor:await apiDoctorTelemetry()');
     expect(core).not.toContain("retryDue=['READY','ERROR','RATE_LIMITED','OFFLINE']");
   });
