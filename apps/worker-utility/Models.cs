@@ -13,6 +13,18 @@ internal static class Workers
     public static WorkerDefinition Get(string id) => All.Single(x => x.Id == id);
 }
 
+internal static class WorkerStateEvidenceRegistry
+{
+    static readonly Dictionary<string, WorkerEvidenceRecord> evidence = new(StringComparer.OrdinalIgnoreCase);
+    public static void Record(string id, string status, string lastPrompt, string lastAction, bool paused)
+    {
+        evidence[id] = new WorkerEvidenceRecord(status, lastPrompt, lastAction, DateTimeOffset.UtcNow, paused);
+    }
+    public static WorkerEvidenceRecord? Get(string id) => evidence.TryGetValue(id, out var r) ? r : null;
+}
+
+internal sealed record WorkerEvidenceRecord(string Status, string LastPrompt, string LastAction, DateTimeOffset Timestamp, bool Paused);
+
 internal sealed record WorkerDefinition(string Id, string Name, int DebugPort);
 internal enum WorkerUiState { Ready, Working, Blocked, Paused }
 internal sealed record WorkerView(
