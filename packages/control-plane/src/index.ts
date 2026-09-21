@@ -16,7 +16,7 @@ import { validateWorkOrder } from '../../work-orders/src/index.js';
 export { UnifiedWorkItem, projectWorkItem } from './unifiedWorkItem.js';
 export type ActorRole = 'planner' | 'approver' | 'coder' | 'reviewer' | 'judge' | 'operator';
 export function validateAgentDoctor(id: string): boolean { return /^NV(1[1-9]|20)$/.test(id); }
-export { agentStatusStore, getAgentStatus, getAgentStatuses } from './dbHelpers.js';
+export { agentStatusStore, getAgentStatus, getAgentStatuses, getAgentTelemetry } from './dbHelpers.js';
 
 export interface Actor {
   id: string;
