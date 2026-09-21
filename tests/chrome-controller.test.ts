@@ -16,7 +16,7 @@ import {
   validateConfig,
   type ControllerConfig,
 } from '../apps/chrome-controller/src/model.js';
-import { buildRuntimeEvidence } from '../apps/chrome-controller/src/runtime-evidence.js';
+import { atomicWriteJsonWithRetry, buildRuntimeEvidence } from '../apps/chrome-controller/src/runtime-evidence.js';
 import { SerialQueue } from '../apps/chrome-controller/src/serial-queue.js';
 import { allowedUrl, matchesWorker } from '../apps/chrome-controller/extension/url-policy.js';
 
@@ -71,6 +71,28 @@ describe('NV02 completion watcher/autopilot',()=>{
   it('fails closed on stale, uncorrelated, pending or uncertain state',()=>{expect(decideAutoContinue(snapshot(),freshAutopilotState(),NOW+600000)).toMatchObject({kind:'STOP',reason:'SNAPSHOT_STALE'});expect(decideAutoContinue(snapshot(),{...freshAutopilotState(),lastDispatchedJobId:'OTHER'},NOW)).toMatchObject({kind:'STOP',reason:'PREVIOUS_JOB_CORRELATION_MISMATCH'});expect(decideAutoContinue(snapshot(),{...freshAutopilotState(),pendingJobId:'JOB-2'},NOW)).toMatchObject({kind:'BUSY'});expect(decideAutoContinue(snapshot(),{...freshAutopilotState(),uncertainJobId:'JOB-2'},NOW)).toMatchObject({kind:'STOP'});});
   it('never duplicates the same job',()=>{expect(decideAutoContinue(snapshot(),{...freshAutopilotState(),lastDispatchedJobId:'JOB-2'},NOW)).toMatchObject({kind:'STOP',reason:'PREVIOUS_JOB_CORRELATION_MISMATCH'});});
   it('stops on gated risks and rejects snapshots without revision',()=>{expect(decideAutoContinue(snapshot({nextJob:{jobId:'J',workerId:'NV02',status:'READY',executable:true,priority:'P0',prompt:'x',riskFlags:['PRODUCTION_RELEASE'],coreSelected:true}}),{...freshAutopilotState(),lastDispatchedJobId:'JOB-1',lastDispatchedAt:'2026-09-15T00:59:58.000Z'},NOW)).toMatchObject({kind:'STOP'});expect(()=>validateExternalSnapshot({...snapshot(),revision:''})).toThrow('AUTOPILOT_SNAPSHOT_REVISION_REQUIRED');});
+});
+
+describe('runtime evidence persistence',()=>{
+  it('falls back to locked in-place refresh when Windows denies atomic replace after bounded retries',()=>{
+    const writes:Array<{path:string;content:string}>=[],sleeps:number[]=[];
+    let renames=0,released=false;
+    const ops={
+      write:(path:string,content:string)=>{writes.push({path,content});},
+      rename:()=>{renames+=1;const error=Object.assign(new Error('busy'),{code:'EPERM'});throw error;},
+      exists:(path:string)=>path.endsWith('.tmp'),
+      unlink:()=>{},
+      sleep:(ms:number)=>{sleeps.push(ms);},
+      tempId:()=> 'fixed',
+      acquireLock:()=>()=>{released=true;},
+    };
+    atomicWriteJsonWithRetry('runtime-evidence.json',{ok:true},ops,1);
+    expect(renames).toBe(2);
+    expect(writes.at(-1)?.path).toBe('runtime-evidence.json');
+    expect(writes.at(-1)?.content).toContain('"ok": true');
+    expect(sleeps).toEqual([25]);
+    expect(released).toBe(true);
+  });
 });
 
 describe('review evidence and extension lifecycle',()=>{
