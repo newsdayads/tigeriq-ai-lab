@@ -287,6 +287,12 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
     assert.strictEqual(isResourceTransientError(e),true);
   });
 
+  await t.test('production runJob persists implementer before long generation',()=>{
+    const src=require('node:fs').readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
+    assert.ok(src.includes("set employee_id=$2,status='running'"));
+    assert.ok(src.indexOf("set employee_id=$2,status='running'")<src.indexOf('generated=await generateChanges'));
+  });
+
   await t.test('existing branch and PR are resumable identity',()=>{
     assert.strictEqual(shouldResumeExistingPr({branch:'tigeriq/nv12/job',pr_number:722}),true);
     assert.strictEqual(shouldResumeExistingPr({branch:'',pr_number:722}),false);
