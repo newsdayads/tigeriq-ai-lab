@@ -1178,7 +1178,16 @@ const server=createServer(async(req,res)=>{
     json(res,500,{ok:false,error:String(error)});
   }
 });
+const activeServerLocks=new Set();
+function acquireCanonicalServerOwnership(port:number){
+  if(activeServerLocks.size>0){
+    console.error('FAIL_CLOSED: Duplicate controller runtime ownership detected.');
+    process.exit(43);
+  }
+  activeServerLocks.add(port);
+}
 server.listen(config.port,config.host,()=>{
+  acquireCanonicalServerOwnership(config.port);
   log('CONTROLLER_READY',{
     host:config.host,
     port:config.port,
