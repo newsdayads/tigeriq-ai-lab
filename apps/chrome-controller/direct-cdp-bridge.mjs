@@ -1011,6 +1011,20 @@ async function tick(){
 const NV02_OWNER_LOCK='D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\nv02-canonical-owner.lock';
 const WORKER_LOCK_DIR='D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\worker-locks';
 try{fs.mkdirSync(WORKER_LOCK_DIR,{recursive:true});}catch{}
+
+function workerAutomationPaused(workerId){
+  try{
+    const statePath=workerId==='NV02'?NV02_CONTINUITY_STATE:join(WORKER_LOCK_DIR,`${workerId.toLowerCase()}-continuity-state.json`);
+    if(fs.existsSync(statePath)){
+      const st=JSON.parse(fs.readFileSync(statePath,'utf8'));
+      if(st?.paused===true||st?.status==='PAUSED')return true;
+    }
+  }catch(e){
+    log('WORKER_AUTOMATION_PAUSE_CHECK_FAILED_CLOSED',{workerId,error:String(e?.message||e)});
+    return true;
+  }
+  return false;
+}
 function pidAlive(pid){try{process.kill(pid,0);return true;}catch{return false;}}
 function workerOwnerLockPath(workerId){return workerId==='NV02'?NV02_OWNER_LOCK:join(WORKER_LOCK_DIR,`${workerId.toLowerCase()}-canonical-owner.lock`);}
 function acquireWorkerOwnership(workerId){
@@ -1051,7 +1065,7 @@ process.once('exit',releaseAllWorkerOwnership);
 process.once('SIGTERM',()=>{releaseAllWorkerOwnership();process.exit(0);});
 process.once('SIGINT',()=>{releaseAllWorkerOwnership();process.exit(0);});
 
-const bridgeServer=http.createServer((req,res)=>{if(req.url==='/health'){const provenanceVerified=Boolean(APPROVED_HEAD&&DEPLOY_ROOT&&EXPECTED_BRIDGE_SHA256&&EXPECTED_BRIDGE_SHA256===BRIDGE_SHA256);res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({ok:true,mode:'NV02_ISOLATED_AUTO_CONTINUE',controllerRequired:false,controllerEnabledFlagIgnored:true,worker:'NV02',canonicalOwnership:true,workers:ownedWorkers,pid:process.pid,approvedHead:APPROVED_HEAD||null,deployRoot:DEPLOY_ROOT||null,sourceSha256:BRIDGE_SHA256,expectedSourceSha256:EXPECTED_BRIDGE_SHA256||null,provenanceVerified,continuity:loadNv02Continuity()}));return;}res.writeHead(404);res.end();});
+const bridgeServer=http.createServer((req,res)=>{if(req.url==='/health'){const provenanceVerified=Boolean(APPROVED_HEAD&&DEPLOY_ROOT&&EXPECTED_BRIDGE_SHA256&&EXPECTED_BRIDGE_SHA256===BRIDGE_SHA256);res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({ok:true,mode:'MULTI_WORKER_DIRECT_CDP_BRIDGE',controllerRequired:false,controllerEnabledFlagIgnored:true,workers:ownedWorkers,pid:process.pid,approvedHead:APPROVED_HEAD||null,deployRoot:DEPLOY_ROOT||null,sourceSha256:BRIDGE_SHA256,expectedSourceSha256:EXPECTED_BRIDGE_SHA256||null,provenanceVerified,continuity:loadNv02Continuity()}));return;}res.writeHead(404);res.end();});
 bridgeServer.on('error',(error)=>{log('NV02_CANONICAL_OWNER_BIND_FAILED',{error:String(error),code:error?.code||null});releaseAllWorkerOwnership();process.exit(42);});
 bridgeServer.listen(8799,'127.0.0.1',()=>log('BRIDGE_READY',{port:8799,mode:'NV02_ISOLATED_AUTO_CONTINUE',controllerRequired:false,controllerEnabledFlagIgnored:true,canonicalOwnership:true,pid:process.pid,approvedHead:APPROVED_HEAD||null,sourceSha256:BRIDGE_SHA256,provenanceVerified:Boolean(APPROVED_HEAD&&DEPLOY_ROOT&&EXPECTED_BRIDGE_SHA256&&EXPECTED_BRIDGE_SHA256===BRIDGE_SHA256)}));
 setInterval(()=>void tick(),3000).unref();
