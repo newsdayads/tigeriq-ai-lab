@@ -147,40 +147,46 @@ async function reopenWorker(w,target,state,now,reason){
   const checkpointed={...state,resumeUrl,recoveryAttempts:state.recoveryAttempts+1,lastPhase:'STALLED'};
   saveWorkerContinuity(w.id,checkpointed);
   await genericWorkerEvent(w.id,'RESET_CHECKPOINTED',{reason,resumeUrl,recoveryAttempt:checkpointed.recoveryAttempts});
-  const result=await withWorkerMutation(w.id,async()=>{
+  const closeResult=await withWorkerMutation(w.id,async()=>{
+    const prepared=await post(`/api/workers/${w.id}/restart-schedule`,w.id,{reason,prepareOnly:true});
+    if(prepared?.ok!==true)throw new Error('WORKER_REOPEN_PREPARE_FAILED');
     await closeWorker(w,target);
-    await sleep(1200);
-    let lastError=null;
-    for(let attempt=1;attempt<=WORKER_RESET_MAX_ATTEMPTS;attempt+=1){
-      try{
-        await post(`/api/utility/workers/${w.id}/safe-recover`,w.id,{reason});
-        let replacement=null;
-        for(let poll=0;poll<20;poll+=1){
-          await sleep(750);
-          try{
-            const list=await targets(workerPort(w));
-            replacement=await pruneDuplicates(w,list);
-            if(replacement)break;
-          }catch{}
-        }
-        if(!replacement)throw new Error('WORKER_REOPEN_TARGET_NOT_FOUND');
-        if(resumeUrl&&validWorkerUrl(w,resumeUrl)&&replacement.url!==resumeUrl){
-          await navigate(replacement,resumeUrl);
-          await sleep(1200);
-        }
-        return {ok:true,status:'WORKER_REOPENED',attempt,resumeUrl};
-      }catch(error){
-        lastError=error;
-        await sleep(attempt*1500);
-      }
-    }
-    throw lastError||new Error('WORKER_REOPEN_FAILED');
-  },`WORKER_REOPEN:${reason}`,60000);
-  if(result?.status==='MUTATION_LEASE_BUSY'){
+    return {ok:true,status:'WORKER_CLOSE_REQUESTED'};
+  },`WORKER_REOPEN_CLOSE:${reason}`,30000);
+  if(closeResult?.status==='MUTATION_LEASE_BUSY'){
     const deferred={...checkpointed,recoveryBlockedUntil:now+5000};
     saveWorkerContinuity(w.id,deferred);
     return deferred;
   }
+  let replacement=null,lastError=null;
+  for(let attempt=1;attempt<=WORKER_RESET_MAX_ATTEMPTS;attempt+=1){
+    try{
+      for(let poll=0;poll<60;poll+=1){
+        await sleep(750);
+        try{
+          const list=await targets(workerPort(w));
+          replacement=await pruneDuplicates(w,list);
+          if(replacement)break;
+        }catch{}
+      }
+      if(!replacement)throw new Error('WORKER_REOPEN_TARGET_NOT_FOUND');
+      if(resumeUrl&&validWorkerUrl(w,resumeUrl)&&replacement.url!==resumeUrl){
+        const resumed=await withWorkerMutation(w.id,async()=>{
+          await navigate(replacement,resumeUrl);
+          await sleep(1200);
+          return {ok:true,status:'WORKER_RESUME_URL_RESTORED'};
+        },`WORKER_REOPEN_RESUME:${reason}`,30000);
+        if(resumed?.status==='MUTATION_LEASE_BUSY')throw new Error('WORKER_REOPEN_RESUME_LEASE_BUSY');
+      }
+      lastError=null;
+      break;
+    }catch(error){
+      lastError=error;
+      replacement=null;
+      await sleep(attempt*1500);
+    }
+  }
+  if(lastError||!replacement)throw lastError||new Error('WORKER_REOPEN_FAILED');
   const recovered={...checkpointed,recoveryAttempts:0,recoveryBlockedUntil:0,stalledChecks:0,workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),nextPeriodicF5At:nextRandomAt(now,WORKER_F5_MIN_MS,WORKER_F5_MAX_MS),nextResetAt:nextWorkerResetAt(w.id,now),lastPhase:'STALLED'};
   saveWorkerContinuity(w.id,recovered);
   await genericWorkerEvent(w.id,'WORKER_REOPENED',{reason,resumeUrl,nextResetAt:recovered.nextResetAt});
