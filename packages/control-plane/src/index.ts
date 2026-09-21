@@ -15,6 +15,7 @@ import { validateWorkOrder } from '../../work-orders/src/index.js';
 
 export { UnifiedWorkItem, projectWorkItem } from './unifiedWorkItem.js';
 export type ActorRole = 'planner' | 'approver' | 'coder' | 'reviewer' | 'judge' | 'operator';
+export function validateAgentDoctor(id: string): boolean { return /^NV(10|11|12|13|14|15|16|17|18|19|20)$/.test(id); }
 
 export interface Actor {
   id: string;
