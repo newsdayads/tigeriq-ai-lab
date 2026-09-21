@@ -11,9 +11,7 @@ internal static class Workers
         new("NV04", "Gemini Pro", 9224),
     ];
     public static bool IsIndependentWorker(string id) => All.Any(w => w.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
-    public static WorkerDefinition Get(string id) => All.Single(x => x.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
-    public static bool IsIndependentWorker(string id) => All.Any(w => w.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
-    public static WorkerDefinition Get(string id) => All.Single(x => x.Id == id);
+    public static WorkerDefinition Get(string id)) => All.Single(x => x.Id == id);
 }
 
 internal sealed record WorkerIdentityState(
