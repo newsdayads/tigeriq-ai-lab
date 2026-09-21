@@ -9,6 +9,11 @@ internal sealed record WorkerObservabilityView(
 
 internal static class WorkerObservability
 {
+    public static WorkerObservabilitySnapshot BuildSnapshot(string workerId, WorkerView view, WorkerSettings settings, WatchdogView? watchdog)
+    {
+        return new(workerId, watchdog?.Health.ToString() ?? "Healthy", view.State.ToString(), settings.Paused, settings.PositionLocked);
+    }
+
     public static WorkerObservabilityView Build(
         WorkerView view,
         HarnessView? harness,
