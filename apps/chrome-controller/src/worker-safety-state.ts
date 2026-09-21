@@ -115,6 +115,16 @@ export function persistWorkerSafetyStateOrFailClosed(
   }
 }
 
+export function probeWorkerSafetyHealth(path:string): { healthy: boolean; error?: unknown; restartCount?: number } {
+  try {
+    const snapshot = readWorkerSafetyState(path);
+    const healthy = Boolean(snapshot && Array.isArray(snapshot.pausedWorkers));
+    return { healthy, restartCount: 0 };
+  } catch (error) {
+    return { healthy: false, error };
+  }
+}
+
 export function workerStartGate(workerId:WorkerId,input:{globalPaused:boolean;utilityPaused:boolean;manualCloseSuppressed:boolean}):string|null {
   if(input.globalPaused)return 'OWNER_INTERACTION_READ_ONLY';
   if(input.utilityPaused)return `UTILITY_WORKER_PAUSED:${workerId}`;

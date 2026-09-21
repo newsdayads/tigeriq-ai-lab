@@ -42,8 +42,21 @@ export function runExecutionPreflight({ skill, tool, state, context, workItem } 
     }
   }
 
+  const restartCount = Number(state?.restartCount ?? state?.restarts ?? 0);
+  const maxRestarts = Number(state?.maxRestarts ?? 3);
+  const healthProbeHealthy = state?.healthProbeHealthy ?? (state?.status !== 'ERROR' && state?.status !== 'OFFLINE' && state?.status !== 'FAILED');
+  const watchdogPass = !state || (state.watchdogFailed !== true && healthProbeHealthy !== false && restartCount <= maxRestarts);
+  if (!watchdogPass) {
+    errors.push('INDEPENDENT_WATCHDOG_REPAIR_REQUIRED');
+  }
+  if (state && restartCount > maxRestarts) {
+    errors.push('BOUNDED_RESTART_EXHAUSTED');
+  }
+  if (state && (state.requiresRollback === true || state.rollbackRequired === true) && !state.lastKnownGoodRestored && !state.rolledBackToLastKnownGood) {
+    errors.push('LAST_KNOWN_GOOD_ROLLBACK_REQUIRED');
+  }
   return {
-    ok: errors.length === 0,
+    ok: errors.length === 0 && watchdogPass,
     errors,
     timestamp: new Date().toISOString()
   };
