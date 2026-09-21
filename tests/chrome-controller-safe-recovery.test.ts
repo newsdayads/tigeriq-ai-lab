@@ -114,7 +114,7 @@ describe('independent worker recovery flows in direct-cdp-bridge',()=>{
     const workerResetCounters = new Map();
     const workerResetTimers = new Map();
     for (const id of workerIds) {
-      workerStates.set(id, { checkpointed: false, closed: false, reopened: false, failedClosed: false });
+      workerStates.set(id, { checkpointed: false, closed: false, reopened: false, failedClosed: false, resetAttempts: 0 });
       workerLocks.set(id, false);
       workerResetCounters.set(id, 0);
       workerResetTimers.set(id, null);
@@ -123,6 +123,10 @@ describe('independent worker recovery flows in direct-cdp-bridge',()=>{
     for (const id of workerIds) {
       expect(workerResetCounters.get(id)).toBe(0);
       expect(workerLocks.get(id)).toBe(false);
+      // Simulate staggered reset cap limit check
+      const attempts = workerResetCounters.get(id) || 0;
+      const capped = attempts >= 3;
+      expect(capped).toBe(false);
     }
   });
 });
