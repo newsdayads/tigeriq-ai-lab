@@ -19,23 +19,22 @@ $brokerLockDir = Split-Path $brokerLock -Parent
 if (-not (Test-Path $brokerLockDir)) {
   New-Item -ItemType Directory -Path $brokerLockDir -Force | Out-Null
 }
+$global:brokerLockStream = $null
 try {
-  $fs = [System.IO.File]::Open($brokerLock, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
-  $fs.Close()
-  $fs.Dispose()
+  $global:brokerLockStream = [System.IO.File]::Open($brokerLock, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
 } catch {
   Write-Host "Chrome launch broker already running (lock file present). Exiting."
   exit 0
 }
 try {
-  # Scheduled interactive tasks can have SESSIONNAME unset even though they run in
-  # the signed-in user's desktop session. Pass the actual Windows SessionId to
-  # the broker; model.ts still fails closed for Session 0 / Services.
   $sessionId = (Get-Process -Id $PID).SessionId
   $env:TIGERIQ_WINDOWS_SESSION_ID = [string]$sessionId
   Set-Location $root
-  & node $broker $Config
+  & node $broker $Config --workers NV02,NV03,NV04 --profiles Profile_NV02,Profile_NV03,Profile_NV04
 } finally {
+  if ($global:brokerLockStream) {
+    try { $global:brokerLockStream.Close(); $global:brokerLockStream.Dispose() } catch {}
+  }
   if (Test-Path $brokerLock) {
     Remove-Item $brokerLock -Force -ErrorAction SilentlyContinue
   }
