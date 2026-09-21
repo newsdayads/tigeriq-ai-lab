@@ -188,6 +188,8 @@ describe('NV02 continuity policy', () => {
     expect(bridge).toContain("rotationRetryAt:Number(raw.rotationRetryAt)||0");
     expect(bridge).toContain("WORKING_STALLED_RECOVERED_OUTSIDE_PROJECT");
     expect(bridge).toContain("allowContinue:false");
+    expect(bridge).toContain("withNv02Mutation(()=>recoverNv02ProjectContext(target),'STALLED_RECOVERY')");
+    expect(bridge).not.toContain("withNv02Mutation(()=>recoverNv02ProjectContext(target),'PROJECT_CONTEXT_RECOVERY')");
     expect(bridge).toContain("const verified=loadNv02Continuity();");
   });
   it('recovers stale WORKING independently of continue timing and escalates bounded reopen without checkpointing', () => {
