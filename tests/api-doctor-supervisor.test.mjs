@@ -84,6 +84,7 @@ describe('#1255 routing/runtime integration',()=>{
     const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
     expect(core).toContain("nv10Resource.capabilities = ['general','reasoning','review',API_DOCTOR_CAPABILITY]");
     expect(core).toContain('async function runApiDoctorScan()');
+    expect(core).toContain("const CODING_LANE_HOST = process.env.TIGERIQ_CODING_HOST?.trim() || HOST;");
     expect(core).toContain("think:false");
     expect(core).toContain('num_predict:160');
     expect(core).toContain("API_DOCTOR_REPAIR_HANDOFF");
