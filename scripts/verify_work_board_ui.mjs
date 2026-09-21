@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 
 const publicView = readFileSync('command-center.html', 'utf8');
+const deployedView = readFileSync('public/command-center.html', 'utf8');
 const liveApi = readFileSync('api/live-status.mjs', 'utf8');
 const config = JSON.parse(readFileSync('vercel.json', 'utf8'));
 
@@ -9,7 +10,9 @@ assert.equal(existsSync('public/index.html'), false);
 assert.equal(config?.cleanUrls, true);
 assert.equal(config?.rewrites?.find((route) => route?.source === '/')?.destination, '/command-center');
 
+assert.equal(deployedView, publicView, 'Vercel public command-center must match canonical TigerIQ Live view');
 assert.match(publicView, /TigerIQ Live/);
+assert.match(deployedView, /TigerIQ Live/);
 assert.match(publicView, /Trạng thái nhân sự/);
 assert.match(publicView, /api\/live-status/);
 assert.match(publicView, /Đang làm/);
