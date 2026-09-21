@@ -187,6 +187,9 @@ try{
     backupDir=$backupDir
     installedAt=(Get-Date).ToUniversalTime().ToString('o')
   }
+  if (-not $result.bridgePid -or -not $result.controllerPid) {
+    throw 'NV02_FAIL_CLOSED_STALE_OR_MISSING_OWNERSHIP'
+  }
   $result|ConvertTo-Json -Depth 6|Set-Content -Path $manifest -Encoding utf8
   $result|ConvertTo-Json -Depth 6
 }catch{
