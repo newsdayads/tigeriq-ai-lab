@@ -110,6 +110,7 @@ describe('HTTP API', () => {
   it('exposes telemetry and agent status', async () => {
     const telemetry = await call('/telemetry', 'planner-secret');
     expect(telemetry.status).toBe(200);
+    expect(await telemetry.json()).toHaveProperty('requestCount');
     const status = await call('/agents', 'planner-secret');
     expect(status.status).toBe(200);
   });
