@@ -125,7 +125,7 @@ async function withWorkerMutation(workerId,fn,purpose='CONTINUITY',ttlMs=30000){
   workerMutationBusy.add(workerId);
   try{
     log('WORKER_LOCAL_MUTATION_ACQUIRED',{workerId,purpose,leaseId:lease.leaseId});
-    return await fn();
+    return await fn(lease);
   }finally{
     workerMutationBusy.delete(workerId);
     await releaseBridgeMutationLease(workerId,lease);
@@ -147,41 +147,48 @@ async function reopenWorker(w,target,state,now,reason){
   const checkpointed={...state,resumeUrl,recoveryAttempts:state.recoveryAttempts+1,lastPhase:'STALLED'};
   saveWorkerContinuity(w.id,checkpointed);
   await genericWorkerEvent(w.id,'RESET_CHECKPOINTED',{reason,resumeUrl,recoveryAttempt:checkpointed.recoveryAttempts});
-  const result=await withWorkerMutation(w.id,async()=>{
-    await post(`/api/utility/workers/${w.id}/plan-refresh`,w.id,{reason});
+  const closeResult=await withWorkerMutation(w.id,async(lease)=>{
+    await post(`/api/utility/workers/${w.id}/plan-refresh`,w.id,{reason,leaseOwnerId:lease.ownerId,leaseId:lease.leaseId});
     await closeWorker(w,target);
-    await sleep(1200);
-    let lastError=null;
-    for(let attempt=1;attempt<=WORKER_RESET_MAX_ATTEMPTS;attempt+=1){
-      try{
-        await post(`/api/utility/workers/${w.id}/safe-recover`,w.id,{reason});
-        let replacement=null;
-        for(let poll=0;poll<20;poll+=1){
-          await sleep(750);
-          try{
-            const list=await targets(workerPort(w));
-            replacement=await pruneDuplicates(w,list);
-            if(replacement)break;
-          }catch{}
-        }
-        if(!replacement)throw new Error('WORKER_REOPEN_TARGET_NOT_FOUND');
-        if(resumeUrl&&validWorkerUrl(w,resumeUrl)&&replacement.url!==resumeUrl){
-          await navigate(replacement,resumeUrl);
-          await sleep(1200);
-        }
-        return {ok:true,status:'WORKER_REOPENED',attempt,resumeUrl};
-      }catch(error){
-        lastError=error;
-        await sleep(attempt*1500);
-      }
-    }
-    throw lastError||new Error('WORKER_REOPEN_FAILED');
-  },`WORKER_REOPEN:${reason}`,60000);
-  if(result?.status==='MUTATION_LEASE_BUSY'){
+    return {ok:true,status:'WORKER_CLOSED_FOR_REOPEN'};
+  },`WORKER_REOPEN_CLOSE:${reason}`,60000);
+  if(closeResult?.status==='MUTATION_LEASE_BUSY'){
     const deferred={...checkpointed,recoveryBlockedUntil:now+5000};
     saveWorkerContinuity(w.id,deferred);
     return deferred;
   }
+
+  await sleep(1200);
+  let reopened=null,lastError=null;
+  for(let attempt=1;attempt<=WORKER_RESET_MAX_ATTEMPTS;attempt+=1){
+    try{
+      await post(`/api/utility/workers/${w.id}/safe-recover`,w.id,{reason});
+      let replacement=null;
+      for(let poll=0;poll<20;poll+=1){
+        await sleep(750);
+        try{
+          const list=await targets(workerPort(w));
+          replacement=await pruneDuplicates(w,list);
+          if(replacement)break;
+        }catch{}
+      }
+      if(!replacement)throw new Error('WORKER_REOPEN_TARGET_NOT_FOUND');
+      if(resumeUrl&&validWorkerUrl(w,resumeUrl)&&replacement.url!==resumeUrl){
+        const restoreResult=await withWorkerMutation(w.id,async()=>{
+          await navigate(replacement,resumeUrl);
+          await sleep(1200);
+          return {ok:true,status:'WORKER_RESUME_URL_RESTORED'};
+        },`WORKER_RESUME_NAVIGATE:${reason}`,30000);
+        if(restoreResult?.status==='MUTATION_LEASE_BUSY')throw new Error('MUTATION_LEASE_BUSY');
+      }
+      reopened={ok:true,status:'WORKER_REOPENED',attempt,resumeUrl};
+      break;
+    }catch(error){
+      lastError=error;
+      await sleep(attempt*1500);
+    }
+  }
+  if(!reopened)throw lastError||new Error('WORKER_REOPEN_FAILED');
   const recovered={...checkpointed,recoveryAttempts:0,recoveryBlockedUntil:0,stalledChecks:0,workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),nextPeriodicF5At:nextRandomAt(now,WORKER_F5_MIN_MS,WORKER_F5_MAX_MS),nextResetAt:nextWorkerResetAt(w.id,now),lastPhase:'STALLED'};
   saveWorkerContinuity(w.id,recovered);
   await genericWorkerEvent(w.id,'WORKER_REOPENED',{reason,resumeUrl,nextResetAt:recovered.nextResetAt});
