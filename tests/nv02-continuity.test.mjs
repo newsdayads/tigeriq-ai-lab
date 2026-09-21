@@ -121,6 +121,15 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("const worker=config.workers.find(w=>w.id==='NV02')");
     expect(source).not.toContain("config.workers.filter(w=>w.enabled!==false&&w.id==='NV02')");
     expect(source).toContain("controllerEnabledFlagIgnored:true");
+    expect(source).toContain("WORKING_STALLED_RECOVERY");
+    expect(source).toContain("WORKING_STALLED_STOPPED");
+    expect(source).toContain("STALLED_HOT_LOOP_NO_CHECKPOINT");
+    const continuityLoop=source.slice(source.indexOf('async function maybeNv02Continuity'),source.indexOf('async function handleCommand'));
+    expect(continuityLoop).not.toContain('rotateNv02Chat(');
+    expect(continuityLoop).not.toContain('checkpointNv02(');
+    expect(source).toContain("nextProgressCheckAt:now+60000");
+    expect(source).toContain("[data-message-author-role=\\\"assistant\\\"]");
+
     expect(source).toContain('button[aria-label*="Ngừng" i]');
     const dispatchExprSource=source.slice(source.indexOf('function dispatchExpr'),source.indexOf('function enterSubmitStateExpr'));
     expect(dispatchExprSource).toContain('button[aria-label*=\\\"Ngừng\\\" i]');
