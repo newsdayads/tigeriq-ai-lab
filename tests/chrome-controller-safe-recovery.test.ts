@@ -132,8 +132,8 @@ describe('independent worker recovery flows in direct-cdp-bridge',()=>{
     expect(source).toContain("phase==='BLOCKED'");
     expect(source).toContain("WORKER_RESET_MAX_ATTEMPTS=2");
     expect(source).toContain("RECOVERY_BOUNDED_STOP");
-    expect(bridge).toContain("/api/workers/${w.id}/restart-schedule");
-    expect(bridge).toContain("prepareOnly:true");
+    expect(source).toContain("/api/workers/${w.id}/restart-schedule");
+    expect(source).toContain("prepareOnly:true");
     expect(source).toContain("await closeWorker(w,target)");
     expect(source).toContain("WORKER_REOPEN_CLOSE:");
     expect(source).not.toContain("/api/utility/workers/${w.id}/safe-recover");
@@ -204,8 +204,8 @@ describe('safe recovery contracts',()=>{
     expect(server).toContain("restartScheduleMatch=url.pathname.match(/^\\/api\\/workers\\/(NV02|NV03|NV04)\\/restart-schedule$/)");
     expect(server).toContain("const prepareOnly=data.prepareOnly===true");
     expect(server).toContain("WORKER_PLANNED_REFRESH_PREPARED");
-    expect(source).toContain("/api/workers/${w.id}/restart-schedule");
-    expect(source).toContain("prepareOnly:true");
+    expect(bridge).toContain("/api/workers/${w.id}/restart-schedule");
+    expect(bridge).toContain("prepareOnly:true");
   });
 
   it('keeps paused workers out of unattended start/autopilot paths',()=>{
