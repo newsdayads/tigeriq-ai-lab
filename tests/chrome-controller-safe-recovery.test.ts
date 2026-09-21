@@ -118,6 +118,8 @@ describe('independent worker recovery flows in direct-cdp-bridge',()=>{
     expect(source).toContain("function acquireNv02CanonicalOwnership()");
     expect(source).toContain("NV02_OWNER_LOCK");
     expect(source).toContain("NV02_DUPLICATE_CANONICAL_OWNERSHIP");
+    expect(source).toContain("workerAutomationPaused");
+    expect(source).toContain("WORKER_AUTOMATION_PAUSE_CHECK_FAILED_CLOSED");
   });
 
   it('keeps F5 and reset timers separate and staggered per worker',()=>{
