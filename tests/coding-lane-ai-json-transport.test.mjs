@@ -1,3 +1,4 @@
+import {readFileSync} from 'node:fs';
 import {describe,expect,it} from 'vitest';
 import {compactCurrentFilesForModel,compactPromptForChanges,compactPromptForEdits,currentFilesFromPrompt,expandCompactChanges,extractModelText,isAiUrl,looksLikeJsonObject,matchesExpectedSchema,prepareAiJsonRequest,installAiJsonTransport} from '../apps/tigeriq-coding-lane/ai-json-transport.mjs';
 
@@ -49,7 +50,7 @@ describe('coding lane AI JSON transport',()=>{
     expect(compact).toContain('HEAD');
     expect(compact).toContain('TAIL');
     expect(compact).toContain('full file retained locally');
-    expect(currentFilesFromPrompt(prompt).get('apps/a.mjs')).toContain('.'.repeat(30000));
+    expect(currentFilesFromPrompt(prompt).get('apps/a.mjs')).toBe(body);
   });  it('recognizes and compacts repair-edit prompts separately from generation',()=>{
     const large='x'.repeat(30000);
     const prompt=`TASK: fix\nCURRENT FILES:\nFILE apps/a.mjs\nconst n=1;\n${large}\nReturn ONLY compact JSON {"summary":"short","edits":[{"path":"exact allowed path","old":"exact UNIQUE existing snippet","new":"replacement snippet"}]}. Never return a complete file.`;
@@ -82,13 +83,13 @@ describe('coding lane AI JSON transport',()=>{
     expect(matchesExpectedSchema(prompt,JSON.stringify(expanded))).toBe(true);
   });
   it('rejects model fallback to full-file replacement for an existing file',()=>{
-    const prompt='TASK: x\\nCURRENT FILES:\\nFILE apps/a.mjs\\nconst n=1;\\nconsole.log(n);\\n\\n---\\n\\nFILE tests/new.test.mjs\\n\\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}.';
+    const prompt='TASK: x\nCURRENT FILES:\nFILE apps/a.mjs\nconst n=1;\nconsole.log(n);\n\n---\n\nFILE tests/new.test.mjs\n\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}.';
     const model=JSON.stringify({summary:'unsafe whole file',changes:[{path:'apps/a.mjs',content:'const n=2;'}]});
     expect(()=>expandCompactChanges(prompt,model)).toThrow('COMPACT_EDIT_FULL_CONTENT_FOR_EXISTING:apps/a.mjs');
   });
 
   it('still allows complete content for a new empty file',()=>{
-    const prompt='TASK: x\\nCURRENT FILES:\\nFILE tests/new.test.mjs\\n\\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}.';
+    const prompt='TASK: x\nCURRENT FILES:\nFILE tests/new.test.mjs\n\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}.';
     const model=JSON.stringify({summary:'new file',changes:[{path:'tests/new.test.mjs',content:'export const ok=true;\\n'}]});
     expect(expandCompactChanges(prompt,model).changes).toEqual([{path:'tests/new.test.mjs',content:'export const ok=true;\\n'}]);
   });
@@ -183,4 +184,13 @@ describe('coding lane AI JSON transport',()=>{
     const model=JSON.stringify({summary:'x',edits:[{path:'apps/a.mjs',search:'foo();',replace:'bar();'}]});
     expect(()=>expandCompactChanges(prompt,model)).toThrow('COMPACT_EDIT_SEARCH_AMBIGUOUS');
   });
+  it('runtime wires compact transport before manager loop',()=>{
+    const src=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
+    expect(src).toContain("import {installAiJsonTransport} from './ai-json-transport.mjs';");
+    const install=src.indexOf('installAiJsonTransport({maxAttempts:1');
+    const manager=src.indexOf('await managerTick()');
+    expect(install).toBeGreaterThanOrEqual(0);
+    expect(manager).toBeGreaterThan(install);
+  });
+
 });
