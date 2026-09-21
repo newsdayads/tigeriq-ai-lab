@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { describe,expect,it } from 'vitest';
-import { buildPrompt,buildUiAutopilotSnapshot,defaultCoreAssignmentUrl,findDurableSaveReceipt,parseAutoUiIssue,projectCoreOwnedUiSnapshot,readCoreUiAssignment,readDurableSaveReceipt,readPreviousJobIdFromController } from '../apps/tigeriq-core/ui-autopilot-snapshot.mjs';
+import { buildPrompt,buildUiAutopilotSnapshot,defaultCoreAssignmentUrl,extractAutoReleaseDependencies,findDurableSaveReceipt,parseAutoUiIssue,projectCoreOwnedUiSnapshot,readCoreUiAssignment,readDurableSaveReceipt,readPreviousJobIdFromController } from '../apps/tigeriq-core/ui-autopilot-snapshot.mjs';
 
 const body=(priority='P0',worker='NV02')=>[
   'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO_UI',`PRIORITY=${priority}`,`PRIMARY_EMPLOYEE=${worker}`,
@@ -18,15 +18,52 @@ describe('UI autopilot issue contract',()=>{
     expect(parseAutoUiIssue(issue(14,{body:body().replace('OWNER_POLICY=AUTO_UI','OWNER_POLICY=AUTO')}))).toBeNull();
   });
   it('fails closed when a required safety flag or employee is wrong',()=>{expect(parseAutoUiIssue(issue(15,{body:body().replace('NO_DESTRUCTIVE=true','NO_DESTRUCTIVE=false')}))).toBeNull();expect(parseAutoUiIssue(issue(16,{body:body('P0','NV05')}))).toBeNull();});
+  it('keeps staged AUTO_UI ineligible until dependency release is explicitly satisfied',()=>{
+    const staged=issue(17,{body:`${body().replace('TIGERIQ_EXECUTABLE=true','TIGERIQ_EXECUTABLE=false')}\nAUTO_RELEASE_AFTER=#1330,#1333`});
+    expect(extractAutoReleaseDependencies(staged.body)).toEqual([1330,1333]);
+    expect(parseAutoUiIssue(staged)).toBeNull();
+    expect(parseAutoUiIssue(staged,{releaseSatisfied:true})).toMatchObject({jobId:'GH-17',workerId:'NV02',priority:'P0',autoReleased:true,autoReleaseAfter:[1330,1333]});
+  });
   it('ignores pull requests',()=>{expect(parseAutoUiIssue(issue(18,{pull_request:{url:'x'}}))).toBeNull();});
   it('builds deterministic prompt without copying issue body',()=>{const spec=parseAutoUiIssue(issue(19,{title:'  Fix   safe UI\nflow '}));const prompt=buildPrompt(spec);expect(prompt).toContain('#19 - Fix safe UI flow');expect(prompt).not.toContain('OWNER_POLICY');});
 });
 
 describe('UI autopilot snapshot',()=>{
   it('supports public read-only GitHub without a token and selects P0 first',async()=>{const rows=[issue(21,{body:body('P1')}),issue(23),issue(22)];const fetchImpl=async()=>response(rows);const s=await buildUiAutopilotSnapshot({fetchImpl,token:''});expect(s.nextJob).toMatchObject({jobId:'GH-22',workerId:'NV02',status:'READY',priority:'P0',issueRef:'https://github.com/newsdayads/tigeriq-ai-lab/issues/22'});expect(s.revision).toContain('GH-22');});
-  it('filters GitHub owner-proxy fallback to NV02 and leaves it non-Core-selected',async()=>{const rows=[issue(24,{body:body('P0','NV03')}),issue(25,{body:body('P1','NV02')}),issue(26,{body:body('P0','NV04')})];const fetchImpl=async()=>response(rows);const s=await buildUiAutopilotSnapshot({fetchImpl,token:'',fallbackWorkerId:'NV02'});expect(s).toMatchObject({source:'GITHUB',nextJob:{jobId:'GH-25',workerId:'NV02',coreSelected:false,workItemGroup:'NV02-OWNER-PROXY-FALLBACK'}});expect(s.revision).toContain('github-ui-v4:NV02');});
+  it('auto-releases staged AUTO_UI only after every dependency is closed/completed, preserving assignment and priority',async()=>{
+    const staged=issue(27,{body:`${body('P1','NV03').replace('TIGERIQ_EXECUTABLE=true','TIGERIQ_EXECUTABLE=false')}\nAUTO_RELEASE_AFTER=#1330,#1333`});
+    let dep1333='open';
+    const fetchImpl=async(url)=>{
+      if(url.includes('/issues/1330'))return response({number:1330,state:'closed',state_reason:'completed'});
+      if(url.includes('/issues/1333'))return response({number:1333,state:dep1333,state_reason:dep1333==='closed'?'completed':null});
+      return response([staged]);
+    };
+    let snap=await buildUiAutopilotSnapshot({fetchImpl,token:'x'});
+    expect(snap.nextJob).toBeUndefined();
+    dep1333='closed';
+    snap=await buildUiAutopilotSnapshot({fetchImpl,token:'x'});
+    expect(snap.nextJob).toMatchObject({jobId:'GH-27',workerId:'NV03',priority:'P1',autoReleased:true,autoReleaseAfter:[1330,1333]});
+    expect(snap.revision).toContain('release-1330.1333');
+  });
+
+  it('does not release staged AUTO_UI when a dependency is cancelled/not-planned',async()=>{
+    const staged=issue(28,{body:`${body().replace('TIGERIQ_EXECUTABLE=true','TIGERIQ_EXECUTABLE=false')}\nAUTO_RELEASE_AFTER=#1330`});
+    const fetchImpl=async(url)=>url.includes('/issues/1330')?response({number:1330,state:'closed',state_reason:'not_planned'}):response([staged]);
+    const snap=await buildUiAutopilotSnapshot({fetchImpl,token:'x'});
+    expect(snap.nextJob).toBeUndefined();
+  });
+
+  it('filters GitHub owner-proxy fallback to NV02 and leaves it non-Core-selected',async()=>{const rows=[issue(24,{body:body('P0','NV03')}),issue(25,{body:body('P1','NV02')}),issue(26,{body:body('P0','NV04')})];const fetchImpl=async()=>response(rows);const s=await buildUiAutopilotSnapshot({fetchImpl,token:'',fallbackWorkerId:'NV02'});expect(s).toMatchObject({source:'GITHUB',nextJob:{jobId:'GH-25',workerId:'NV02',coreSelected:false,workItemGroup:'NV02-OWNER-PROXY-FALLBACK'}});expect(s.revision).toContain('github-ui-v5:NV02');});
+  it('preserves previous staged-job correlation without redispatch even if dependency later reopens',async()=>{
+    const previous=issue(29,{body:`${body().replace('TIGERIQ_EXECUTABLE=true','TIGERIQ_EXECUTABLE=false')}\nAUTO_RELEASE_AFTER=#1330`});
+    const rows=[previous,issue(31)];
+    const fetchImpl=async(url)=>response(url.includes('/issues/29')?previous:rows);
+    const snap=await buildUiAutopilotSnapshot({fetchImpl,token:'x',previousJobId:'GH-29'});
+    expect(snap.previousJob).toMatchObject({jobId:'GH-29',workerId:'NV02',status:'RUNNING'});
+    expect(snap.nextJob).toMatchObject({jobId:'GH-31'});
+  });
   it('correlates open previous job as RUNNING and excludes it from next',async()=>{const previous=issue(30);const rows=[previous,issue(31)];const fetchImpl=async(url)=>response(url.includes('/issues/30')?previous:rows);const s=await buildUiAutopilotSnapshot({fetchImpl,token:'x',previousJobId:'GH-30'});expect(s.previousJob).toMatchObject({jobId:'GH-30',status:'RUNNING'});expect(s.nextJob).toMatchObject({jobId:'GH-31'});});
-  it('maps completed previous issue to DONE with fresh job-correlated GitHub evidence',async()=>{const previous=issue(40,{state:'closed',state_reason:'completed',closed_at:'2026-09-15T02:00:00Z'});const fetchImpl=async(url)=>response(url.includes('/issues/40')?previous:[]);const snap=await buildUiAutopilotSnapshot({fetchImpl,token:'x',previousJobId:'GH-40'});expect(snap.previousJob).toMatchObject({jobId:'GH-40',status:'DONE',completedAt:'2026-09-15T02:00:00Z',evidence:[{source:'GITHUB',ref:previous.html_url,jobId:'GH-40',completedAt:'2026-09-15T02:00:00Z'}]});expect(snap.previousJob.completionRevision).toContain('GH-40');expect(snap.previousJob.evidence[0].completionRevision).toBe(snap.previousJob.completionRevision);expect(Date.parse(snap.previousJob.evidence[0].verifiedAt)).toBeGreaterThanOrEqual(Date.parse(snap.previousJob.completedAt));expect(snap.revision).toContain('github-ui-v4');expect(snap.nextJob).toBeUndefined();});
+  it('maps completed previous issue to DONE with fresh job-correlated GitHub evidence',async()=>{const previous=issue(40,{state:'closed',state_reason:'completed',closed_at:'2026-09-15T02:00:00Z'});const fetchImpl=async(url)=>response(url.includes('/issues/40')?previous:[]);const snap=await buildUiAutopilotSnapshot({fetchImpl,token:'x',previousJobId:'GH-40'});expect(snap.previousJob).toMatchObject({jobId:'GH-40',status:'DONE',completedAt:'2026-09-15T02:00:00Z',evidence:[{source:'GITHUB',ref:previous.html_url,jobId:'GH-40',completedAt:'2026-09-15T02:00:00Z'}]});expect(snap.previousJob.completionRevision).toContain('GH-40');expect(snap.previousJob.evidence[0].completionRevision).toBe(snap.previousJob.completionRevision);expect(Date.parse(snap.previousJob.evidence[0].verifiedAt)).toBeGreaterThanOrEqual(Date.parse(snap.previousJob.completedAt));expect(snap.revision).toContain('github-ui-v5');expect(snap.nextJob).toBeUndefined();});
   it('maps non-completed closure to CANCELLED',async()=>{const previous=issue(41,{state:'closed',state_reason:'not_planned',closed_at:'2026-09-15T02:00:00Z'});const fetchImpl=async(url)=>response(url.includes('/issues/41')?previous:[]);const s=await buildUiAutopilotSnapshot({fetchImpl,token:'x',previousJobId:'GH-41'});expect(s.previousJob.status).toBe('CANCELLED');});
   it('fails closed on invalid previous identity but preserves closed historical correlation after owner policy changes',async()=>{
     await expect(buildUiAutopilotSnapshot({fetchImpl:async()=>response([]),token:'x',previousJobId:'bad'})).rejects.toThrow('PREVIOUS_JOB_ID_INVALID');

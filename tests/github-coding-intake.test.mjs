@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {classifyCodingBlocker,codingScopesOverlap,extractCodingDependencies,materializeGithubCodingIssues,parseCodingIssue,shouldRearmRecoverableFinal,syncGithubCodingOutcomes} from '../apps/tigeriq-core/github-coding-intake.mjs';
+import {classifyCodingBlocker,codingScopesOverlap,codingSourceTruthRevision,extractCodingDependencies,materializeGithubCodingIssues,parseCodingIssue,shouldRearmRecoverableFinal,syncGithubCodingOutcomes} from '../apps/tigeriq-core/github-coding-intake.mjs';
 
 function issue(body,extra={}){
   return {number:777,title:'Safe autonomous coding task',body,state:'open',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/777',...extra};
@@ -321,6 +321,62 @@ describe('GitHub coding continuity supervisor',()=>{
     expect(pool.events.filter(e=>e.type==='GITHUB_CODING_RECOVERY_REARMED')).toHaveLength(1);
     expect(pool.events.filter(e=>e.type==='GITHUB_CODING_DISPATCHED').at(-1)?.data.codingObjectiveId).toBe('obj-804-recovery');
     expect(pool.events.filter(e=>e.type==='GITHUB_CODING_BLOCKED_FINAL')).toHaveLength(1);
+  });
+
+  it('uses stable issue body + owner directive evidence for Source-of-Truth revision',()=>{
+    const current=issue(SAFE,{number:809,title:'Stable source'});
+    const base=codingSourceTruthRevision(current,[]);
+    const progress=codingSourceTruthRevision(current,[{id:400,user:{login:'newsdayads'},body:'[PROGRESS] internal retry comment'}]);
+    const owner=codingSourceTruthRevision(current,[{id:500,user:{login:'newsdayads'},body:'[OWNER_REARM] continue canonical issue'}]);
+    const foreign=codingSourceTruthRevision(current,[{id:600,user:{login:'someone-else'},body:'[OWNER_REARM] not authoritative'}]);
+    expect(progress).toBe(base);
+    expect(foreign).toBe(base);
+    expect(owner).not.toBe(base);
+    expect(owner).toContain(':owner-500');
+  });
+
+  it('re-arms once when Source of Truth changes on the same main and stays idempotent after restart',async()=>{
+    const pool=fakePool();let posted=0;
+    pool.events.push(
+      {type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:809,codingObjectiveId:'obj-809-r2'}},
+      {type:'GITHUB_CODING_RETRY_DISPATCHED',data:{issueNumber:809,codingObjectiveId:'obj-809-r1',retryAttempt:1}},
+      {type:'GITHUB_CODING_RETRY_DISPATCHED',data:{issueNumber:809,codingObjectiveId:'obj-809-r2',retryAttempt:2}},
+      {type:'GITHUB_CODING_BLOCKED_FINAL',data:{issueNumber:809,codingObjectiveId:'obj-809-r2',status:'blocked',reason:'RETRY_BUDGET_EXHAUSTED',terminalReason:'OUTPUT_CONTRACT_EXHAUSTED',mainSha:'same-main',sourceRevision:'old-revision'}}
+    );
+    const current=issue(SAFE,{number:809,title:'Canonical source'});
+    const ownerDirective={id:500,user:{login:'newsdayads'},body:'[OWNER_REARM] continue canonical issue'};
+    const sourceRevision=codingSourceTruthRevision(current,[ownerDirective]);
+    const sourceKey=sourceRevision.replace(/[^0-9A-Za-z]/g,'').slice(-20)||'no-source';
+    expect(shouldRearmRecoverableFinal(pool.events.at(-1).data,'same-main',[],sourceRevision)).toBe(true);
+    expect(shouldRearmRecoverableFinal(pool.events.at(-1).data,'same-main',[{mainSha:'same-main',sourceRevision,priorObjectiveId:'obj-809-r2'}],sourceRevision)).toBe(false);
+
+    let recoveryObjective=null;
+    const fetchImpl=async(url,init={})=>{
+      if(url.includes('/api/status'))return response({objectives:[
+        {id:'obj-809-r2',status:'blocked',summary:'OUTPUT_CONTRACT_EXHAUSTED'},
+        ...(recoveryObjective?[recoveryObjective]:[])
+      ],jobs:[]});
+      if(url.includes('/git/ref/heads/main'))return response({object:{sha:'same-main'}});
+      if(url.includes('/issues/809/comments'))return response([ownerDirective]);
+      if(url.includes('/api/objectives')){
+        posted++;
+        const body=JSON.parse(init.body);
+        expect(body.objective).toContain(`SOURCE_REVISION=${sourceRevision}`);
+        expect(body.objective).toContain(`RECOVERY_KEY=GITHUB-ISSUE-809-RECOVERY-same-main-${sourceKey}`);
+        recoveryObjective={id:'obj-809-recovery',status:'queued',objective:body.objective};
+        return response({id:recoveryObjective.id});
+      }
+      if(url.includes('/issues/809'))return response(current);
+      if(url.includes('/comments'))return response({});
+      return response({});
+    };
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+    expect(posted).toBe(1);
+    const rearms=pool.events.filter(e=>e.type==='GITHUB_CODING_RECOVERY_REARMED');
+    expect(rearms).toHaveLength(1);
+    expect(rearms[0].data).toMatchObject({mainSha:'same-main',sourceRevision,priorObjectiveId:'obj-809-r2',codingObjectiveId:'obj-809-recovery'});
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_DISPATCHED'&&e.data.issueNumber===809)).toHaveLength(2);
   });
 
   it('emits BLOCKED_FINAL after the retry budget is exhausted',async()=>{

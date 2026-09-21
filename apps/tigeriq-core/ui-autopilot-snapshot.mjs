@@ -7,7 +7,7 @@ const DEFAULT_SAVE_LEDGER_ISSUE=788;
 const DEFAULT_CORE_FAILOVER_GRACE_MS=15000;
 const SUPPORTED_WORKERS=new Set(['NV02','NV03','NV04']);
 const REQUIRED_TRUE_FLAGS=[
-  'TIGERIQ_EXECUTABLE','NO_DIRECT_MAIN','NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_DESTRUCTIVE','NO_PRODUCTION_RELEASE',
+  'NO_DIRECT_MAIN','NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_DESTRUCTIVE','NO_PRODUCTION_RELEASE',
 ];
 const REQUIRED_SAVE_FIELDS=[
   'TIGERIQ_SAVE_DISPATCHED_AT','TIGERIQ_SAVE_STATE','TIGERIQ_SAVE_FOCUS','TIGERIQ_SAVE_DECISIONS','TIGERIQ_SAVE_DONE',
@@ -26,7 +26,33 @@ function isLoopbackUrl(value){
   try{const u=new URL(value);return u.protocol==='http:'&&['127.0.0.1','localhost','::1'].includes(u.hostname);}catch{return false;}
 }
 
-export function parseAutoUiIssue(issue,{allowClosed=false}={}){
+export function extractAutoReleaseDependencies(body){
+  const raw=String(body||'').match(/^AUTO_RELEASE_AFTER=(.+)$/m)?.[1]||'';
+  const values=(raw.match(/#?\d+/g)||[]).map(x=>Number(x.replace(/^#/,''))).filter(n=>Number.isInteger(n)&&n>0);
+  return [...new Set(values)].slice(0,16);
+}
+
+function dependencyCompleted(issue){
+  if(!issue||issue.pull_request||issue.state!=='closed')return false;
+  return !issue.state_reason||issue.state_reason==='completed';
+}
+
+async function resolveAutoUiIssue({fetchImpl,owner,repo,token,issue,allowClosed=false}){
+  const direct=parseAutoUiIssue(issue,{allowClosed});
+  if(direct)return direct;
+  if(!issue||issue.pull_request||issue.state!=='open')return null;
+  const deps=extractAutoReleaseDependencies(issue.body);
+  if(!deps.length||exactValue(issue.body,'TIGERIQ_EXECUTABLE')!=='false')return null;
+  for(const n of deps){
+    let dep;
+    try{dep=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/${n}`,token);}
+    catch{return null;}
+    if(!dependencyCompleted(dep))return null;
+  }
+  return parseAutoUiIssue(issue,{allowClosed,releaseSatisfied:true});
+}
+
+export function parseAutoUiIssue(issue,{allowClosed=false,releaseSatisfied=false}={}){
   if(!issue||issue.pull_request)return null;
   const closed=issue.state==='closed';
   if(!allowClosed&&issue.state!=='open')return null;
@@ -37,13 +63,17 @@ export function parseAutoUiIssue(issue,{allowClosed=false}={}){
   if(!['P0','P1'].includes(priority))return null;
   const number=Number(issue.number);
   if(!Number.isInteger(number)||number<=0)return null;
+  const autoReleaseAfter=extractAutoReleaseDependencies(body);
+  const executable=exactTrue(body,'TIGERIQ_EXECUTABLE');
+  const staged=!executable&&autoReleaseAfter.length>0;
   // Historical correlation must survive later owner holds/supersession metadata changes.
   // Closed work is never executable here; only its durable identity/evidence is projected.
   if(!(allowClosed&&closed)){
     if(REQUIRED_TRUE_FLAGS.some(key=>!exactTrue(body,key)))return null;
     if(exactValue(body,'OWNER_POLICY')!=='AUTO_UI')return null;
+    if(!executable&&!(staged&&releaseSatisfied))return null;
   }
-  return{number,jobId:`GH-${number}`,workerId,title:cleanTitle(issue.title),priority,url:String(issue.html_url||''),updatedAt:String(issue.updated_at||'')};
+  return{number,jobId:`GH-${number}`,workerId,title:cleanTitle(issue.title),priority,url:String(issue.html_url||''),updatedAt:String(issue.updated_at||''),autoReleaseAfter,autoReleased:Boolean(staged&&releaseSatisfied)};
 }
 
 export function buildPrompt(spec,repoFullName=`${DEFAULT_OWNER}/${DEFAULT_REPO}`){
@@ -122,19 +152,26 @@ export async function buildUiAutopilotSnapshot({fetchImpl=fetch,token='',owner=D
   if(match){
     previousNumber=Number(match[1]);
     const issue=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/${previousNumber}`,token);
-    const spec=parseAutoUiIssue(issue,{allowClosed:true});
+    // Previous-job identity is already protected by the durable controller lease; keep
+    // correlation stable even if a staged dependency is later reopened.
+    const spec=parseAutoUiIssue(issue,{allowClosed:true,releaseSatisfied:true});
     if(!spec)throw new Error('PREVIOUS_JOB_NOT_AUTHORIZED_AUTO_UI');
     previousJob=jobFromIssue(issue,spec,observedAt);
   }
   const rows=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues?state=open&per_page=100&sort=created&direction=asc`,token);
-  const eligible=(Array.isArray(rows)?rows:[])
-    .map(issue=>({issue,spec:parseAutoUiIssue(issue)}))
-    .filter(x=>x.spec&&x.spec.number!==previousNumber)
+  const resolved=[];
+  for(const issue of Array.isArray(rows)?rows:[]){
+    const spec=await resolveAutoUiIssue({fetchImpl,owner,repo,token,issue});
+    if(spec)resolved.push({issue,spec});
+  }
+  const eligible=resolved
+    .filter(x=>x.spec.number!==previousNumber)
     .filter(x=>!fallbackWorkerId||x.spec.workerId===fallbackWorkerId)
     .sort((a,b)=>priorityRank(a.spec.priority)-priorityRank(b.spec.priority)||a.spec.number-b.spec.number);
   const chosen=eligible[0];
-  const nextJob=chosen?{jobId:chosen.spec.jobId,workerId:chosen.spec.workerId,status:'READY',executable:true,priority:chosen.spec.priority,prompt:buildPrompt(chosen.spec,`${owner}/${repo}`),riskFlags:[],issueRef:chosen.spec.url,coreSelected:false,workItemGroup:fallbackWorkerId?'NV02-OWNER-PROXY-FALLBACK':'GITHUB-CANDIDATE'}:undefined;
-  const revision=['github-ui-v4',fallbackWorkerId||'all',previousJob?.jobId||'none',previousJob?.status||'none',chosen?.spec.jobId||'none',chosen?.spec.workerId||'none',chosen?.spec.updatedAt||'none'].join(':');
+  const nextJob=chosen?{jobId:chosen.spec.jobId,workerId:chosen.spec.workerId,status:'READY',executable:true,priority:chosen.spec.priority,prompt:buildPrompt(chosen.spec,`${owner}/${repo}`),riskFlags:[],issueRef:chosen.spec.url,autoReleased:chosen.spec.autoReleased,autoReleaseAfter:chosen.spec.autoReleaseAfter,coreSelected:false,workItemGroup:fallbackWorkerId?'NV02-OWNER-PROXY-FALLBACK':'GITHUB-CANDIDATE'}:undefined;
+  const releaseRevision=chosen?.spec.autoReleased?`release-${chosen.spec.autoReleaseAfter.join('.')}`:'direct';
+  const revision=['github-ui-v5',fallbackWorkerId||'all',previousJob?.jobId||'none',previousJob?.status||'none',chosen?.spec.jobId||'none',chosen?.spec.workerId||'none',releaseRevision,chosen?.spec.updatedAt||'none'].join(':');
   return{source:'GITHUB',observedAt,revision,previousJob,nextJob,requiredWorkers:nextJob?[nextJob.workerId]:[]};
 }
 
