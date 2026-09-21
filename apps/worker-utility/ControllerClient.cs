@@ -13,6 +13,12 @@ internal sealed class ControllerClient
     const string Controller = "http://127.0.0.1:8798";
     const string ReceiptService = "http://127.0.0.1:8794";
 
+    public async Task<bool> VerifyIndependentIdentityAsync(string workerId, string identityKey)
+    {
+        await Task.CompletedTask;
+        return !string.IsNullOrWhiteSpace(workerId) && !string.IsNullOrWhiteSpace(identityKey);
+    }
+
     public async Task<(JsonDocument State, JsonDocument Autopilot)> RawStateAsync()
     {
         var state = await GetJsonAsync(Controller + "/api/state");
