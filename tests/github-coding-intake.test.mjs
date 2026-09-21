@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {classifyCodingBlocker,extractCodingDependencies,materializeGithubCodingIssues,parseCodingIssue,shouldRearmRecoverableFinal,syncGithubCodingOutcomes} from '../apps/tigeriq-core/github-coding-intake.mjs';
+import {classifyCodingBlocker,codingScopesOverlap,extractCodingDependencies,materializeGithubCodingIssues,parseCodingIssue,shouldRearmRecoverableFinal,syncGithubCodingOutcomes} from '../apps/tigeriq-core/github-coding-intake.mjs';
 
 function issue(body,extra={}){
   return {number:777,title:'Safe autonomous coding task',body,state:'open',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/777',...extra};
@@ -49,6 +49,17 @@ function fakePool(){
 }
 
 function response(data,ok=true,status=200){return {ok,status,text:async()=>JSON.stringify(data)};}
+
+describe('GitHub coding scope concurrency',()=>{
+  it('treats generic tests root as non-colliding across distinct resource scopes',()=>{
+    const api={resourceScope:'NV10_API_DOCTOR_SUPERVISOR',paths:['apps/tigeriq-core','tests'],ambiguous:false};
+    const lane={resourceScope:'CODING_LANE_PATCH_CONTRACT_V2',paths:['apps/tigeriq-coding-lane','tests'],ambiguous:false};
+    expect(codingScopesOverlap(api,lane)).toBe(false);
+    expect(codingScopesOverlap(api,{...lane,paths:['apps/tigeriq-core','tests']})).toBe(true);
+    expect(codingScopesOverlap(api,{...api})).toBe(true);
+    expect(codingScopesOverlap(api,{resourceScope:'X',paths:[],ambiguous:true})).toBe(true);
+  });
+});
 
 describe('GitHub coding intake guard',()=>{
   it('accepts only explicit safe autonomous coding issues',()=>{
