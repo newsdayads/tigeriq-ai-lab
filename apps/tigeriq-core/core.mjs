@@ -7,7 +7,7 @@ import { runBoundedManagerDecision } from './manager-json.mjs';
 import { appendSkillContextToPrompt, matchAndLoadSkills } from './skill-loader.mjs';
 import { buildManagerHistoryContext } from './context-gateway.mjs';
 import { buildFailureLearningCandidates, failureLearningEventTypes } from './failure-learning.mjs';
-import { normalizeCampaignPhases, currentCampaignGoal, campaignTransition, makePhaseCheckpoint, campaignNeedsEvidence, campaignEvidenceJobId } from './campaign-runner.mjs';
+import { normalizeCampaignPhases, currentCampaignGoal, campaignTransition, makePhaseCheckpoint, campaignNeedsEvidence, campaignEvidenceJobId } from './campaign-runner.mjs';ampaign-runner.mjs';
 
 /**
  * Simple API Doctor that sends error context to an Ollama model for diagnostics.
