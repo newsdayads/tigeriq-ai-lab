@@ -19,7 +19,7 @@ export function projectWorkItem(objectiveId: string): UnifiedWorkItem {
   const job = getJob(objectiveId);
   const events = getEventsForObjective(objectiveId);
 
-  const kind = objective?.kind ?? job?.kind ?? 'general';
+  const kind = objective?.kind ?? job?.kind ?? 'coding';
   const assignedExecutor = objective?.assignedExecutor ?? job?.assignedExecutor;
   const telemetry = { requestCount: (objective?.telemetry?.requestCount ?? job?.telemetry?.requestCount ?? 0) };
   const priority = objective?.priority ?? job?.priority ?? 100;
