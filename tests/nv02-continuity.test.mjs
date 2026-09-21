@@ -216,6 +216,8 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("'WAITING_EVIDENCE_RESUMED'");
     expect(source).toContain("nextContinueAt:now");
     expect(source).toContain("waitingEvidenceJobId");
+    expect(source).toContain("if(currentTrackedWork&&phase==='STALLED'&&ui?.modelExact!==true)");
+    expect(source.indexOf("if(currentTrackedWork&&phase==='STALLED'&&ui?.modelExact!==true)")).toBeLessThan(source.indexOf("if(now<state.nextContinueAt)return;"));
     expect(source).toContain("'RECOVERY_CONTINUE_NOT_DELIVERED'");
     expect(source).toContain("'ARCHIVE_CONFIRMED'");
     expect(source).toContain("'NEW_CHAT_CREATED'");
