@@ -727,6 +727,24 @@ async function tickWorker(w){
     const projectContextReady=w.id!=='NV02'||isNv02ProjectContext(rawUi.url)||rawUi.projectDraftReady===true;
     const ui=projectContextReady?rawUi:{...rawUi,uiReady:false,uiPhase:'STALLED',modelReady:false};
     await postWorkerHeartbeat(w,target,ui,projectContextReady).catch(error=>log('CONTROLLER_TELEMETRY_UNAVAILABLE',{error:String(error?.message||error)}));
+    if(!nv02MutationBusy){
+      let command=null;
+      try{command=await getCommand(w.id);}
+      catch(error){log('CONTROLLER_COMMAND_POLL_FAILED',{workerId:w.id,error:String(error?.message||error)});}
+      if(command){
+        nv02MutationBusy=true;
+        try{
+          const result=await handleCommand(w,target,command);
+          await post('/api/result',w.id,{workerId:w.id,commandId:command.id,ok:true,...(result||{})});
+          log('CONTROLLER_COMMAND_EXECUTED',{workerId:w.id,commandId:command.id,action:command.action,status:result?.status||'OK'});
+        }catch(error){
+          const status=String(error?.status||error?.message||error);
+          await post('/api/result',w.id,{workerId:w.id,commandId:command.id,ok:false,status}).catch(postError=>log('CONTROLLER_COMMAND_RESULT_POST_FAILED',{workerId:w.id,commandId:command.id,error:String(postError?.message||postError)}));
+          log('CONTROLLER_COMMAND_FAILED',{workerId:w.id,commandId:command.id,action:command.action,status});
+        }finally{nv02MutationBusy=false;}
+        return;
+      }
+    }
     if(w.id==='NV02'&&!projectContextReady&&!ui.securityBlock){
       if(!NV02_HOME_URL){await continuityEvent('PROJECT_CONTEXT_RECOVERY_BLOCKED',{reason:'NV02_HOME_URL_MISSING',url:rawUi.url||null});return;}
       const recovered=await withNv02Mutation(()=>recoverNv02ProjectContext(target),'PROJECT_CONTEXT_RECOVERY');
