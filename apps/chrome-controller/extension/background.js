@@ -427,6 +427,11 @@ async function tickWorker(workerId) {
   await updateWorkerBadge(workerId, ctx);
   const ui=await readUiState(ctx);
   await post('/api/heartbeat',{workerId,state:ui.uiPhase||'STALLED',...ctx,uiBusy:ui.uiBusy,uiPhase:ui.uiPhase,composerReady:ui.composerReady,sendReady:ui.sendReady,stopVisible:ui.stopVisible,scrollToBottomVisible:ui.scrollToBottomVisible,authRequired:ui.authRequired,securityBlock:ui.securityBlock,modelProfileStatus:ui.modelProfileStatus,modelName:ui.modelName,reasoningEffort:ui.reasoningEffort,modelReady:ui.modelReady,modelExact:ui.modelExact,verifiedAt:ui.verifiedAt,blockedReason:ui.blockedReason,display:await displayInfo(ctx.windowId)});
+  if(workerId==='NV02'){
+    // HARD ISOLATION: NV02 commands are owned only by Direct CDP Bridge continuity.
+    // Controller/Core/API command queues are telemetry-only for NV02 and must never execute in the extension.
+    return;
+  }
   const r=await fetch(`${CONTROLLER}/api/commands/${encodeURIComponent(workerId)}`); if(!r.ok) return;
   const {command}=await r.json();
   if(command){
