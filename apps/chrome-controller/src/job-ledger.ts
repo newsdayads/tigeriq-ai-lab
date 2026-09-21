@@ -52,7 +52,7 @@ const ALLOWED_NEXT: Record<UiJobStage,ReadonlySet<UiJobStage>> = {
   DISPATCHING: new Set(['SUBMITTED','BLOCKED','ERROR']),
   SUBMITTED: new Set(['WORKING','WAITING_EVIDENCE','BLOCKED','ERROR']),
   WORKING: new Set(['WAITING_EVIDENCE','BLOCKED','ERROR']),
-  WAITING_EVIDENCE: new Set(['VERIFY','BLOCKED','ERROR']),
+  WAITING_EVIDENCE: new Set(['WORKING','VERIFY','BLOCKED','ERROR']),
   VERIFY: new Set(['DONE','BLOCKED','ERROR']),
   DONE: new Set(),
   BLOCKED: new Set(),
