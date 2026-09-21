@@ -104,7 +104,6 @@ export class DurableUiJobLedger {
     return this.transition(workerId, jobId, 'QUEUED', mergedPatch, now);
   }
   private value: LedgerFile;
-  private value: LedgerFile;
   constructor(
     private readonly path: string,
     private readonly atomicWriter: (path:string,value:unknown)=>void = atomicWriteJsonWithRetry,
