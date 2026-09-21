@@ -144,6 +144,7 @@ export function projectCoreOwnedUiSnapshot(snapshot){
   return{
     ...snapshot,
     source:'CORE',
+    authority:'CORE',
     revision:`core-ui-v1:${String(snapshot.revision||'')}`,
     previousJob:mapJob(snapshot.previousJob),
     nextJob:mapJob(snapshot.nextJob),
@@ -203,7 +204,7 @@ export function startUiAutopilotSnapshotServer({
         const e=new Error(`CORE_FAILOVER_ARMING:${unavailableMs}/${coreFailoverGraceMs}`);e.cause=error;throw e;
       }
       const fallback=await buildUiAutopilotSnapshot({fetchImpl,token,owner,repo,previousJobId,fallbackWorkerId:'NV02'});
-      return {...fallback,revision:`nv02-owner-proxy-fallback-v1:${fallback.revision}`,coreFailover:{active:true,unavailableMs,graceMs:coreFailoverGraceMs}};
+      return {...fallback,authority:'NV02_OWNER_PROXY_FALLBACK',revision:`nv02-owner-proxy-fallback-v1:${fallback.revision}`,coreFailover:{active:true,unavailableMs,graceMs:coreFailoverGraceMs}};
     }
   };
   const server=createServer(async(req,res)=>{
