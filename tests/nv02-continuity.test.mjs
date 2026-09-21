@@ -161,6 +161,10 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("const modelCheckRequired=now>=Number(state.modelCheckBlockedUntil||0)&&(ui?.modelExact!==true||!state.verifiedChatUrl||!sameNv02Chat(state.verifiedChatUrl,ui?.url))");
     expect(source).toContain("phase==='STALLED'&&ui?.modelExact!==true&&modelCheckRequired");
     expect(source).toContain("phase==='STALLED'&&ui?.modelExact!==true&&modelCheckRequired");
+    const modelRecoveryGate=continuityLoop.indexOf("if(phase==='STALLED'&&ui?.modelExact!==true&&modelCheckRequired)");
+    const noCurrentChatGate=continuityLoop.indexOf("if(!currentTrackedWork)");
+    expect(modelRecoveryGate).toBeGreaterThan(-1);
+    expect(noCurrentChatGate).toBeGreaterThan(modelRecoveryGate);
 
     expect(source).not.toContain("state.verifiedChatUrl===ui?.url");
     expect(source).toContain("verifiedChatUrl:String(profile.url||'')");
