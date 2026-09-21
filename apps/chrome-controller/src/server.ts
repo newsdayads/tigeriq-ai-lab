@@ -1139,11 +1139,17 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
         if(utilityPausedWorkers.has(workerId))throw new Error(`UTILITY_WORKER_PAUSED:${workerId}`);
         if(state.manualCloseSuppressed)throw new Error(`MANUAL_CLOSE_SUPPRESSED:${workerId}`);
         if(state.blocked)throw new Error('PLANNED_REFRESH_BLOCKED');
-        if(!recentHeartbeat(workerId))throw new Error(`WORKER_HEARTBEAT_NOT_READY:${workerId}`);
+        const refreshData=await body(req);
+        const transportStalled=refreshData.transportStalled===true&&refreshData.reason==='CDP_TRANSPORT_STALLED';
+        if(!recentHeartbeat(workerId)){
+          if(!transportStalled)throw new Error(`WORKER_HEARTBEAT_NOT_READY:${workerId}`);
+          const presence=await brokerWorkerPresence(workerId);
+          if(presence!=='RUNNING')throw new Error(`TRANSPORT_STALL_PRESENCE_NOT_RUNNING:${workerId}:${presence}`);
+        }
         plannedRefreshWorkers.add(workerId);
-        log('WORKER_PLANNED_REFRESH_MARKED',{workerId});
+        log('WORKER_PLANNED_REFRESH_MARKED',{workerId,transportStalled,reason:typeof refreshData.reason==='string'?refreshData.reason:null});
         persistEvidence();
-        json(res,202,{ok:true,plannedRefresh:true});
+        json(res,202,{ok:true,plannedRefresh:true,transportStalled});
         return true;
       }
       if(action==='safe-recover'){browserMutationLeases.assertControllerAllowed(workerId);if(utilityPausedWorkers.has(workerId))throw new Error(`UTILITY_WORKER_PAUSED:${workerId}`);if(state.blocked)throw new Error('SAFE_RECOVER_BLOCKED'); if(recentHeartbeat(workerId)){await layoutWorker(workerId);json(res,200,{ok:true,mode:'ATTACH_EXISTING'});return true;} await startWorker(workerId);json(res,200,{ok:true,mode:'BROKER_LAUNCH'});return true;}
