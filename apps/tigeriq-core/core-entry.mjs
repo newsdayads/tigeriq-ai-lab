@@ -15,4 +15,6 @@ const stop=async()=>{
 };
 process.once('SIGINT',()=>void stop());
 process.once('SIGTERM',()=>void stop());
+import { reconcileStaleObjectives } from './core.mjs';
+try { await reconcileStaleObjectives?.(); } catch {}
 await import('./core.mjs');
