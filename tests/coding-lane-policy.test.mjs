@@ -103,3 +103,28 @@ test('failover handles contract errors without exhausting cycles',()=>{
   assert.match(service,/runGateWithRepair/);
   assert.match(service,/maxRepairCycles=3/);
 });
+
+test('truncated edits trigger context refresh and model failover',()=>{
+  const code=service;
+  assert.match(code,/isRefreshableCompactPatchError/);
+  assert.match(code,/OLD_NOT_FOUND/);
+  assert.match(code,/contextFor/);
+});
+
+test('stale context refresh on OLD_NOT_FOUND maintains branch identity',()=>{
+  const code=service;
+  assert.match(code,/shouldResumeExistingPr/);
+  assert.match(code,/pr_number/);
+});
+
+test('same-PR repair preserves PR number across repair cycles',()=>{
+  const code=service;
+  assert.match(code,/pr.number/);
+  assert.match(code,/generateAndWriteRepair/);
+});
+
+test('failover handles contract errors without exhausting cycles',()=>{
+  const code=service;
+  assert.match(code,/classifyAiFailure/);
+  assert.match(code,/OUTPUT_CONTRACT_EXHAUSTED/);
+});
