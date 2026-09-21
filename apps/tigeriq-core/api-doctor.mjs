@@ -43,10 +43,20 @@ export function apiDoctorAction({
   return {action:'idle',failureClass:cls,reason:'healthy_or_no_action'};
 }
 
-export function apiDoctorExistingHandoffAction({existingHandoff=false,successAfterHandoff=false}={}){
+export function apiDoctorExistingHandoffAction({
+  existingHandoff=false,
+  successAfterHandoff=false,
+  cooldownUntil=null,
+  validationAttempts=0,
+  maxValidationAttempts=2,
+  nowMs=Date.now(),
+}={}){
   if(!existingHandoff)return {action:'proceed'};
   if(successAfterHandoff)return {action:'recovered',reason:'live_work_success_after_handoff'};
-  return {action:'wait_repair',reason:'repair_handoff_pending_live_work'};
+  const cooldownMs=cooldownUntil?Date.parse(String(cooldownUntil)):NaN;
+  if(Number.isFinite(cooldownMs)&&cooldownMs>Number(nowMs))return {action:'wait_repair',reason:'repair_handoff_cooldown_active'};
+  if(Number(validationAttempts)<Number(maxValidationAttempts))return {action:'validate_repair',reason:'post_repair_validation_due'};
+  return {action:'wait_repair',reason:'post_repair_validation_budget_exhausted'};
 }
 
 export function apiDoctorRepairSignature({employeeId,provider,failureClass,message}={}){
