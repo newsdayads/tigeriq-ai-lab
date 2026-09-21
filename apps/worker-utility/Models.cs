@@ -13,6 +13,18 @@ internal static class Workers
     public static WorkerDefinition Get(string id) => All.Single(x => x.Id == id);
 }
 
+internal sealed record WorkerIdentityState(
+    string WorkerId,
+    string State,
+    string SubState,
+    DateTimeOffset? LastStateChangeAt,
+    bool IsPaused,
+    bool IsLocked,
+    DateTimeOffset? LastResetAt,
+    string? LastPrompt,
+    string? LastAction,
+    string? EvidenceSummary);
+
 internal sealed record WorkerDefinition(string Id, string Name, int DebugPort);
 internal enum WorkerUiState { Ready, Working, Blocked, Paused }
 internal sealed record WorkerView(
