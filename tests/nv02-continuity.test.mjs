@@ -131,7 +131,8 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("const NV02_F5_MIN_MS=5*60*1000");
     expect(source).toContain("const NV02_F5_MAX_MS=10*60*1000");
     expect(source).toContain("'PERIODIC_F5_REFRESH'");
-    expect(source).toContain("nextRefreshAt:nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS)");
+    expect(source).toContain("nextPeriodicF5At:Number(raw.nextPeriodicF5At)||nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS)");
+    expect(source).toContain("nextPeriodicF5At:nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS)");
     expect(source).toContain("modelCheckBlockedUntil:now+30000");
     expect(source).toContain("modelCheckBlockedUntil:Number(raw.modelCheckBlockedUntil)||0");
 
@@ -147,7 +148,7 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("pages.find(t=>sameNv02Chat(t.url,state?.verifiedChatUrl))");
 
 
-    const f5Block=source.slice(source.indexOf("if(now>=Number(state.nextRefreshAt||0))"),source.indexOf("const modelCheckRequired="));
+    const f5Block=source.slice(source.indexOf("if(now>=Number(state.nextPeriodicF5At||0))"),source.indexOf("if(!currentTrackedWork)"));
     expect(f5Block).toContain("reloadTarget(target)");
     expect(f5Block).not.toContain("ensureNv02ModelProfile");
     expect(f5Block).not.toContain("checkpointNv02");
