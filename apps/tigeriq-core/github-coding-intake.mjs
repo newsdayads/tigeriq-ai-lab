@@ -1,5 +1,6 @@
 import {Pool} from 'pg';
 import {backlogOwnerDirect,sortBacklogSpecs} from './github-backlog-policy.mjs';
+import {isProtectedControlPlanePath} from '../shared/control-plane-lock.mjs';
 const DEFAULT_OWNER='newsdayads';
 const DEFAULT_REPO='tigeriq-ai-lab';
 const DEFAULT_CODING_URL='http://100.97.23.87:8797';
@@ -45,7 +46,9 @@ export function parseCodingIssue(issue){
   if(required.some(([k,v])=>!exactFlag(body,k,v)))return null;
   const sourcePriority=body.match(/^PRIORITY=(P[0-3])$/m)?.[1]||'P1';
   const priority=sourcePriority==='P3'?'P2':sourcePriority;
-  return {number:Number(issue.number),title:String(issue.title||''),body,priority,sourcePriority,url:String(issue.html_url||''),dependsOn:extractCodingDependencies(body),ownerDirect:backlogOwnerDirect(body),scopeLease:parseCodingScope(body)};
+  const scopeLease=parseCodingScope(body);
+  if(scopeLease.paths.some(isProtectedControlPlanePath))return null;
+  return {number:Number(issue.number),title:String(issue.title||''),body,priority,sourcePriority,url:String(issue.html_url||''),dependsOn:extractCodingDependencies(body),ownerDirect:backlogOwnerDirect(body),scopeLease};
 }
 
 async function jsonFetch(fetchImpl,url,init={}){const res=await fetchImpl(url,{...init,signal:AbortSignal.timeout(12000)});const text=await res.text();let body={};try{body=text?JSON.parse(text):{}}catch{body={text}}if(!res.ok)throw new Error(`HTTP_${res.status}:${String(body?.error||body?.message||text).slice(0,300)}`);return body}
