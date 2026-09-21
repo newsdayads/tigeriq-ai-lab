@@ -1,6 +1,6 @@
 import {readFileSync} from 'node:fs';
 import {describe,expect,it} from 'vitest';
-import {compactCurrentFilesForModel,compactPromptForChanges,compactPromptForEdits,currentFilesFromPrompt,expandCompactChanges,extractModelText,isAiUrl,looksLikeJsonObject,matchesExpectedSchema,prepareAiJsonRequest,installAiJsonTransport} from '../apps/tigeriq-coding-lane/ai-json-transport.mjs';
+import {compactCurrentFilesForModel,compactPromptForChanges,compactPromptForEdits,currentFilesFromPrompt,expandCompactChanges,extractModelText,isAiUrl,looksLikeJsonObject,matchesExpectedSchema,prepareAiJsonRequest,installAiJsonTransport,salvageTruncatedCompactEdits} from '../apps/tigeriq-coding-lane/ai-json-transport.mjs';
 import {buildRepairGenerationPrompt,managerBlockKind} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError} from '../apps/tigeriq-coding-lane/policy.mjs';
 
@@ -48,6 +48,18 @@ describe('coding lane AI JSON transport',()=>{
     expect(isAiUrl('https://api.cloudflare.com/client/v4/accounts/a/ai/run/@cf/meta/llama')).toBe(true);
     expect(extractModelText('https://api.cloudflare.com/client/v4/accounts/a/ai/run/@cf/meta/llama',{result:{response:'{"ok":true}'}})).toBe('{"ok":true}');
   });
+  it('salvages complete compact edits from a truncated JSON tail',()=>{
+    const truncated='{"summary":"partial","edits":[{"path":"apps/a.mjs","search":"const n=1;","replace":"const n=2;"},{"path":"apps/a.mjs","search":"console.log(n);","replace":"console.log(';
+    expect(salvageTruncatedCompactEdits(truncated)).toEqual({summary:'partial',edits:[{path:'apps/a.mjs',search:'const n=1;',replace:'const n=2;'}]});
+    const prompt='TASK: x\nCURRENT FILES:\nFILE apps/a.mjs\nconst n=1;\nconsole.log(n);\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}.';
+    expect(expandCompactChanges(prompt,truncated).changes).toEqual([{path:'apps/a.mjs',content:'const n=2;\nconsole.log(n);'}]);
+  });
+
+  it('does not salvage a truncated compact payload without any complete edit',()=>{
+    const truncated='{"summary":"partial","edits":[{"path":"apps/a.mjs","search":"const n=1;","replace":"const n=2;';
+    expect(salvageTruncatedCompactEdits(truncated)).toBe(null);
+  });
+
   it('detects valid versus malformed model JSON',()=>{
     expect(looksLikeJsonObject('\n{"ok":true}\n')).toBe(true);
     expect(looksLikeJsonObject('{bad json}')).toBe(false);
@@ -154,6 +166,31 @@ describe('coding lane AI JSON transport',()=>{
       expect(promptLengths[0]).toBeLessThan(15000);
       expect(data.choices[0].message.content).toContain('"changes"');
       expect(data.choices[0].message.content).toContain('const n=2;');
+    }finally{
+      globalThis.fetch=previousFetch;
+      if(previousInstalled===undefined) delete globalThis.__tigeriqAiJsonTransportInstalled;
+      else globalThis.__tigeriqAiJsonTransportInstalled=previousInstalled;
+    }
+  });
+
+  it('normalizes a truncated compact tail with one complete edit in one provider attempt',async()=>{
+    const previousFetch=globalThis.fetch;
+    const previousInstalled=globalThis.__tigeriqAiJsonTransportInstalled;
+    let calls=0;
+    try{
+      globalThis.__tigeriqAiJsonTransportInstalled=false;
+      globalThis.fetch=async()=>{
+        calls++;
+        const content='{"summary":"partial","edits":[{"path":"apps/a.mjs","search":"const n=1;","replace":"const n=2;"},{"path":"apps/a.mjs","search":"console.log(n);","replace":"console.log(';
+        return new Response(JSON.stringify({choices:[{message:{content}}]}),{status:200,headers:{'content-type':'application/json'}});
+      };
+      installAiJsonTransport({maxAttempts:1,attemptTimeoutMs:1000});
+      const prompt='TASK: x\nCURRENT FILES:\nFILE apps/a.mjs\nconst n=1;\nconsole.log(n);\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}. Do not touch paths outside ALLOWED PATHS. Never output secrets. Keep changes minimal and testable.';
+      const res=await fetch('https://api.groq.com/openai/v1/chat/completions',{method:'POST',body:JSON.stringify({messages:[{role:'user',content:prompt}]})});
+      const data=await res.json();
+      expect(calls).toBe(1);
+      const normalized=JSON.parse(data.choices[0].message.content);
+      expect(normalized.changes).toEqual([{path:'apps/a.mjs',content:'const n=2;\nconsole.log(n);'}]);
     }finally{
       globalThis.fetch=previousFetch;
       if(previousInstalled===undefined) delete globalThis.__tigeriqAiJsonTransportInstalled;
