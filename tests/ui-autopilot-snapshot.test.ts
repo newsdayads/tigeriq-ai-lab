@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { describe,expect,it } from 'vitest';
-import { buildPrompt,buildUiAutopilotSnapshot,findDurableSaveReceipt,parseAutoUiIssue,projectCoreOwnedUiSnapshot,readCoreUiAssignment,readDurableSaveReceipt,readPreviousJobIdFromController } from '../apps/tigeriq-core/ui-autopilot-snapshot.mjs';
+import { buildPrompt,buildUiAutopilotSnapshot,defaultCoreAssignmentUrl,findDurableSaveReceipt,parseAutoUiIssue,projectCoreOwnedUiSnapshot,readCoreUiAssignment,readDurableSaveReceipt,readPreviousJobIdFromController } from '../apps/tigeriq-core/ui-autopilot-snapshot.mjs';
 
 const body=(priority='P0',worker='NV02')=>[
   'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO_UI',`PRIORITY=${priority}`,`PRIMARY_EMPLOYEE=${worker}`,
@@ -32,6 +32,10 @@ describe('UI autopilot snapshot',()=>{
     const closed=issue(50,{state:'closed',state_reason:'not_planned',closed_at:'2026-09-15T02:00:00Z',body:body().replace('TIGERIQ_EXECUTABLE=true','TIGERIQ_EXECUTABLE=false').replace('OWNER_POLICY=AUTO_UI','OWNER_POLICY=MANUAL_HOLD')});
     const snap=await buildUiAutopilotSnapshot({fetchImpl:async(url)=>response(url.includes('/issues/50')?closed:[]),token:'x',previousJobId:'GH-50'});
     expect(snap.previousJob).toMatchObject({jobId:'GH-50',workerId:'NV02',status:'CANCELLED',executable:false});
+  });
+  it('derives the local Core assignment URL from the live Core bind host',()=>{
+    expect(defaultCoreAssignmentUrl({TIGERIQ_CORE_HOST:'100.97.23.87',TIGERIQ_CORE_PORT:'8795'})).toBe('http://100.97.23.87:8795/api/ui-assignment');
+    expect(defaultCoreAssignmentUrl({})).toBe('http://127.0.0.1:8795/api/ui-assignment');
   });
   it('projects selected jobs as Core authority and reads only trusted Core assignment URLs',async()=>{
     const github=await buildUiAutopilotSnapshot({fetchImpl:async()=>response([issue(60,{body:body('P0','NV03')})]),token:''});
