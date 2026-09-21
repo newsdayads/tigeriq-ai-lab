@@ -36,7 +36,7 @@ export function projectWorkItem(objectiveId: string): UnifiedWorkItem {
     }
   }
 
-  if (stage === 'QUEUED' && (kind === 'coding')) {
+  if (stage === 'QUEUED' && (kind === 'coding' || kind === 'coding-lane')) {
     stage = 'coding-lane';
   }
 
