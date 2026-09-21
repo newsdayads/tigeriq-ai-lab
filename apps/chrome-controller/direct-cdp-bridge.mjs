@@ -10,6 +10,7 @@ import {
   nextRandomAt, randomDelay, pickContinuePrompt, computeWorkerStaggerDelay,
 } from './extension/continuity.js';
 import { buildDurableSavePrompt, waitForDurableSaveReceipt } from './extension/save-receipt.js';
+import { runPlannedWorkerReset } from './extension/planned-reopen.js';
 
 const CONFIG='D:\\TigerIQ\\Apps\\ChromeController\\Config\\chrome-controller.json';
 const LOG='D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\direct-cdp-bridge.jsonl';
@@ -132,6 +133,17 @@ async function withWorkerMutation(workerId,fn,purpose='CONTINUITY',ttlMs=30000){
     log('WORKER_LOCAL_MUTATION_RELEASED',{workerId,purpose,leaseId:lease.leaseId});
   }
 }
+async function withWorkerLocalMutation(workerId,fn,purpose='CONTINUITY_LOCAL'){
+  if(workerMutationBusy.has(workerId))return{ok:false,status:'MUTATION_LEASE_BUSY'};
+  workerMutationBusy.add(workerId);
+  try{
+    log('WORKER_LOCAL_ONLY_MUTATION_ACQUIRED',{workerId,purpose});
+    return await fn();
+  }finally{
+    workerMutationBusy.delete(workerId);
+    log('WORKER_LOCAL_ONLY_MUTATION_RELEASED',{workerId,purpose});
+  }
+}
 async function genericWorkerEvent(workerId,event,data={}){
   log('WORKER_CONTINUITY_EVENT',{workerId,event,...data});
 }
@@ -147,40 +159,49 @@ async function reopenWorker(w,target,state,now,reason){
   const checkpointed={...state,resumeUrl,recoveryAttempts:state.recoveryAttempts+1,lastPhase:'STALLED'};
   saveWorkerContinuity(w.id,checkpointed);
   await genericWorkerEvent(w.id,'RESET_CHECKPOINTED',{reason,resumeUrl,recoveryAttempt:checkpointed.recoveryAttempts});
-  const result=await withWorkerMutation(w.id,async()=>{
-    await post(`/api/utility/workers/${w.id}/plan-refresh`,w.id,{reason});
-    await closeWorker(w,target);
-    await sleep(1200);
-    let lastError=null;
-    for(let attempt=1;attempt<=WORKER_RESET_MAX_ATTEMPTS;attempt+=1){
-      try{
-        await post(`/api/utility/workers/${w.id}/safe-recover`,w.id,{reason});
-        let replacement=null;
-        for(let poll=0;poll<20;poll+=1){
-          await sleep(750);
+  const result=await withWorkerLocalMutation(w.id,async()=>{
+    return runPlannedWorkerReset({
+      workerId:w.id,
+      reason,
+      planRefresh:()=>post(`/api/utility/workers/${w.id}/plan-refresh`,w.id,{reason}),
+      cancelRefresh:()=>post(`/api/utility/workers/${w.id}/cancel-refresh`,w.id,{reason}),
+      acquireLease:()=>acquireBridgeMutationLease(w.id,`WORKER_CLOSE:${reason}`,20000),
+      releaseLease:(_workerId,lease)=>releaseBridgeMutationLease(w.id,lease),
+      closeWorker:()=>closeWorker(w,target),
+      safeRecover:async()=>{
+        let lastError=null;
+        for(let attempt=1;attempt<=WORKER_RESET_MAX_ATTEMPTS;attempt+=1){
           try{
-            const list=await targets(workerPort(w));
-            replacement=await pruneDuplicates(w,list);
-            if(replacement)break;
-          }catch{}
+            await post(`/api/utility/workers/${w.id}/safe-recover`,w.id,{reason,attempt});
+            return;
+          }catch(error){
+            lastError=error;
+            await sleep(attempt*1500);
+          }
         }
-        if(!replacement)throw new Error('WORKER_REOPEN_TARGET_NOT_FOUND');
-        if(resumeUrl&&validWorkerUrl(w,resumeUrl)&&replacement.url!==resumeUrl){
-          await navigate(replacement,resumeUrl);
-          await sleep(1200);
-        }
-        return {ok:true,status:'WORKER_REOPENED',attempt,resumeUrl};
-      }catch(error){
-        lastError=error;
-        await sleep(attempt*1500);
-      }
-    }
-    throw lastError||new Error('WORKER_REOPEN_FAILED');
-  },`WORKER_REOPEN:${reason}`,60000);
+        throw lastError||new Error('WORKER_SAFE_RECOVER_FAILED');
+      },
+    });
+  },`WORKER_REOPEN:${reason}`);
   if(result?.status==='MUTATION_LEASE_BUSY'){
     const deferred={...checkpointed,recoveryBlockedUntil:now+5000};
     saveWorkerContinuity(w.id,deferred);
     return deferred;
+  }
+  await sleep(1200);
+  let replacement=null;
+  for(let poll=0;poll<24;poll+=1){
+    await sleep(750);
+    try{
+      const list=await targets(workerPort(w));
+      replacement=await pruneDuplicates(w,list);
+      if(replacement)break;
+    }catch{}
+  }
+  if(!replacement)throw new Error('WORKER_REOPEN_TARGET_NOT_FOUND');
+  if(resumeUrl&&validWorkerUrl(w,resumeUrl)&&replacement.url!==resumeUrl){
+    await navigate(replacement,resumeUrl);
+    await sleep(1200);
   }
   const recovered={...checkpointed,recoveryAttempts:0,recoveryBlockedUntil:0,stalledChecks:0,workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),nextPeriodicF5At:nextRandomAt(now,WORKER_F5_MIN_MS,WORKER_F5_MAX_MS),nextResetAt:nextWorkerResetAt(w.id,now),lastPhase:'STALLED'};
   saveWorkerContinuity(w.id,recovered);
