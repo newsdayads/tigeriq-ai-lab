@@ -83,3 +83,8 @@ export function hasContinuableNv02Work(controller){
   const continuableStages=new Set(['SUBMITTED','WORKING','WAITING_EVIDENCE','VERIFY']);
   return (controller?.jobs||[]).some((job)=>job?.workerId==='NV02'&&continuableStages.has(String(job?.stage||''))&&!job?.completedAt);
 }
+
+export function pickWorkerPrompt(){
+  const idx=Math.floor(Math.random()*CONTINUE_PROMPTS.length);
+  return CONTINUE_PROMPTS[idx]||CONTINUE_PROMPTS[0];
+}
