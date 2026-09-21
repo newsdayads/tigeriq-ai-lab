@@ -374,11 +374,11 @@ async function dispatch(
   browserMutationLeases.assertControllerAllowed(workerId);
   const requestedJobId=String(metadata.jobId??'').trim();
   const prior=requestedJobId?uiJobLedger.get(workerId,requestedJobId):undefined;
-  const retryKnownNotDelivered=source==='AUTO_CONTINUE'&&prior?.stage==='ERROR'&&classifyAutoContinueDispatchFailure(new Error(prior.blocker??''),false)==='SAFE_RETRY';
+  const retryKnownNotDelivered=prior?.stage==='ERROR'&&prior.workerId===workerId&&classifyAutoContinueDispatchFailure(new Error(prior.blocker??''),false)==='SAFE_RETRY';
   const job=retryKnownNotDelivered
     ? uiJobLedger.retryError(workerId,requestedJobId,{...metadata,source:metadata.source??source})
     : uiJobLedger.create(workerId,{...metadata,source:metadata.source??source});
-  if(retryKnownNotDelivered)log('UI_JOB_ERROR_REOPENED_SAFE_RETRY',{workerId,jobId:job.jobId});
+  if(retryKnownNotDelivered)log('UI_JOB_RESUME_RECOVERED',{workerId,jobId:job.jobId,stage:'QUEUED'});
   uiJobLedger.transition(workerId,job.jobId,'DISPATCHING',{nextAction:'Deliver to worker UI'});
   states.get(workerId)!.status=source==='AUTO_CONTINUE'?'AUTOPILOT_DISPATCHING':'DISPATCHING';
   persistEvidence();

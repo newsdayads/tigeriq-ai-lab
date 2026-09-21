@@ -214,25 +214,29 @@ async function inspectNv02SelectedModel(target){
 }
 async function ensureNv02ModelProfile(target){
   let profile=await inspectNv02SelectedModel(target);
-  if(profile?.modelExact!==true&&profile?.modelName!=='GPT-5.6 Sol'){
-    const opened=await evalPage(target,MODEL_SELECTOR_CLICK_EXPR);
-    if(!opened?.ok)throw new Error(opened?.status||'MODEL_SELECTOR_OPEN_FAILED');
-    await sleep(400);
-    const modelSelected=await evalPage(target,MODEL_56_SOL_CLICK_EXPR);
-    if(!modelSelected?.ok)throw new Error(modelSelected?.status||'GPT_5_6_SOL_SELECT_FAILED');
-    await sleep(650);
-    profile=await inspectNv02SelectedModel(target);
+  const maxAttempts=3;
+  for(let i=0;i<maxAttempts;i++){
+    if(profile?.modelExact===true&&profile?.modelName==='GPT-5.6 Sol'&&profile?.reasoningEffort==='High')break;
+    if(profile?.modelName!=='GPT-5.6 Sol'){
+      const opened=await evalPage(target,MODEL_SELECTOR_CLICK_EXPR);
+      if(!opened?.ok)throw new Error(opened?.status||'MODEL_SELECTOR_OPEN_FAILED');
+      await sleep(400);
+      const modelSelected=await evalPage(target,MODEL_56_SOL_CLICK_EXPR);
+      if(!modelSelected?.ok)throw new Error(modelSelected?.status||'GPT_5_6_SOL_SELECT_FAILED');
+      await sleep(650);
+      profile=await inspectNv02SelectedModel(target);
+    }
+    if(profile?.modelName==='GPT-5.6 Sol'&&profile?.reasoningEffort!=='High'){
+      const reasoningOpened=await evalPage(target,MODEL_SELECTOR_CLICK_EXPR);
+      if(!reasoningOpened?.ok)throw new Error(reasoningOpened?.status||'REASONING_SELECTOR_OPEN_FAILED');
+      await sleep(400);
+      const reasoningSelected=await evalPage(target,REASONING_HIGH_CLICK_EXPR);
+      if(!reasoningSelected?.ok)throw new Error(reasoningSelected?.status||'REASONING_HIGH_SELECT_FAILED');
+      await sleep(650);
+      profile=await inspectNv02SelectedModel(target);
+    }
   }
-  if(profile?.modelName==='GPT-5.6 Sol'&&profile?.reasoningEffort!=='High'){
-    const reasoningOpened=await evalPage(target,MODEL_SELECTOR_CLICK_EXPR);
-    if(!reasoningOpened?.ok)throw new Error(reasoningOpened?.status||'REASONING_SELECTOR_OPEN_FAILED');
-    await sleep(400);
-    const reasoningSelected=await evalPage(target,REASONING_HIGH_CLICK_EXPR);
-    if(!reasoningSelected?.ok)throw new Error(reasoningSelected?.status||'REASONING_HIGH_SELECT_FAILED');
-    await sleep(650);
-    profile=await inspectNv02SelectedModel(target);
-  }
-  if(profile?.modelExact!==true)throw new Error('MODEL_PROFILE_BLOCKED:'+String(profile?.blockedReason||'UNVERIFIED'));
+  if(profile?.modelExact!==true||profile?.modelName!=='GPT-5.6 Sol'||profile?.reasoningEffort!=='High')throw new Error('MODEL_PROFILE_MISMATCH');
   await continuityEvent('MODEL_PROFILE_VERIFIED',{modelName:profile.modelName,reasoningEffort:profile.reasoningEffort,verifiedAt:profile.verifiedAt||null});
   return profile;
 }

@@ -219,6 +219,15 @@ describe('NV02 continuity policy', () => {
     expect(continuity).not.toContain('shouldRotateChat');
     expect(bridge).not.toContain('shouldRotateChat');
   });
+  it('wires reopen restore resume transition in ledger and server', () => {
+    const ledgerSource=readFileSync('apps/chrome-controller/src/job-ledger.ts','utf8');
+    const serverSource=readFileSync('apps/chrome-controller/src/server.ts','utf8');
+    expect(ledgerSource).toContain('retryError');
+    expect(ledgerSource).toContain('ERROR');
+    expect(ledgerSource).toContain('QUEUED');
+    expect(serverSource).toContain('retryKnownNotDelivered');
+    expect(serverSource).toContain('uiJobLedger.retryError');
+  });
   it('ships one-shot NV02 continuity installer with exact-head deploy and rollback',()=>{
     const installer=readFileSync('apps/chrome-controller/runtime/Install-NV02-Continuity.ps1','utf8');
     expect(installer).toContain('[Parameter(Mandatory=$true)][string]$ExpectedHead');

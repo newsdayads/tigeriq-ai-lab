@@ -82,6 +82,37 @@ export function reconcileUiJobStage(stage: UiJobStage, uiBusy: boolean|null|unde
 }
 
 export class DurableUiJobLedger {
+  /**
+   * Retry a job that ended in an ERROR state (resume logic).
+   * Resets the job to QUEUED so it can be dispatched again.
+   * Does not create duplicate WorkItem.
+   * Throws if the job is not in ERROR state.
+   */
+  retryError(
+    workerId: WorkerId,
+    jobId: string,
+    patch: Partial<UiJobPatch & { source?: string }> = {},
+    now: Date = new Date()
+  ): UiJobRecord {
+    const record=this.value.jobs.find((job)=>job.workerId===workerId&&job.jobId===jobId);
+    if (!record) throw new Error(`UI_JOB_NOT_FOUND:${workerId}:${jobId}`);
+    if (record.stage !== 'ERROR') throw new Error('UI_JOB_ACTIVE');
+    const at=now.toISOString();
+    record.stage='QUEUED';
+    record.progress=uiJobProgress('QUEUED');
+    record.lastActivityAt=at;
+    record.completedAt=null;
+    record.nextAction=patch.nextAction!==undefined?patch.nextAction:'Retry dispatch to worker';
+    record.blocker=patch.blocker!==undefined?patch.blocker:null;
+    if (patch.result!==undefined) record.result=patch.result;
+    if (patch.source?.trim()) record.source=patch.source.trim();
+    if (patch.evidenceRef) {
+      const ref=patch.evidenceRef.trim();
+      if (ref && !record.evidenceRefs.includes(ref)) record.evidenceRefs.push(ref);
+    }
+    this.save();
+    return {...record,evidenceRefs:[...record.evidenceRefs]};
+  }
   private value: LedgerFile;
   constructor(
     private readonly path: string,
@@ -198,25 +229,7 @@ export class DurableUiJobLedger {
     return {...record,evidenceRefs:[]};
   }
 
-  retryError(workerId: WorkerId, jobId: string, metadata: UiJobMetadata = {}, now = new Date()): UiJobRecord {
-    if (this.active(workerId)) throw new Error(`UI_JOB_ACTIVE:${workerId}:${this.active(workerId)!.jobId}`);
-    const record=this.value.jobs.find((job)=>job.workerId===workerId&&job.jobId===jobId);
-    if (!record) throw new Error(`UI_JOB_NOT_FOUND:${workerId}:${jobId}`);
-    if (record.stage!=='ERROR') throw new Error(`UI_JOB_RETRY_REQUIRES_ERROR:${record.stage}`);
-    const at=now.toISOString();
-    if (metadata.issueRef!==undefined) record.issueRef=String(metadata.issueRef??'').trim()||null;
-    if (metadata.title!==undefined) record.title=String(metadata.title??'').trim()||record.title;
-    if (metadata.source!==undefined) record.source=String(metadata.source??'').trim()||record.source;
-    record.stage='QUEUED';
-    record.progress=uiJobProgress('QUEUED');
-    record.lastActivityAt=at;
-    record.completedAt=null;
-    record.nextAction='Retry dispatch to worker';
-    record.blocker=null;
-    record.result=null;
-    this.save();
-    return {...record,evidenceRefs:[...record.evidenceRefs]};
-  }
+
 
   transition(workerId: WorkerId, jobId: string, stage: UiJobStage, patch: UiJobPatch = {}, now = new Date()): UiJobRecord {
     const record=this.value.jobs.find((job)=>job.workerId===workerId&&job.jobId===jobId);
