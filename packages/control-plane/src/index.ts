@@ -77,6 +77,7 @@ export function projectCoreWorkItem(snapshot: WorkOrderSnapshot): CoreWorkItemPr
 
 export class ControlPlane {
   readonly #orders = new Map<string, WorkOrderSnapshot>();
+  readonly #agentTelemetry = new Map<string, number>();
 
   constructor(snapshots: readonly WorkOrderSnapshot[] = []) {
     for (const snapshot of snapshots) {
@@ -172,6 +173,15 @@ export class ControlPlane {
 
   list(): WorkOrderSnapshot[] {
     return [...this.#orders.values()].map((snapshot) => structuredClone(snapshot));
+  }
+
+  recordTelemetry(actorId: string, metrics: { requestCount: number }) {
+    const count = this.#agentTelemetry.get(actorId) ?? 0;
+    this.#agentTelemetry.set(actorId, count + metrics.requestCount);
+  }
+
+  getAgentTelemetry() {
+    return Object.fromEntries(this.#agentTelemetry.entries());
   }
 
   #require(id: string): WorkOrderSnapshot {
