@@ -121,3 +121,15 @@ export function workerStartGate(workerId:WorkerId,input:{globalPaused:boolean;ut
   if(input.manualCloseSuppressed)return `MANUAL_CLOSE_SUPPRESSED:${workerId}`;
   return null;
 }
+
+export function getActivitySignature(state:WorkerSafetySnapshot):string {
+  return JSON.stringify({
+    pausedWorkers: [...state.pausedWorkers].sort(),
+    manualCloseSuppressedWorkers: [...state.manualCloseSuppressedWorkers].sort(),
+    modelProfile: state.modelProfile ?? null,
+  });
+  if(input.globalPaused)return 'OWNER_INTERACTION_READ_ONLY';
+  if(input.utilityPaused)return `UTILITY_WORKER_PAUSED:${workerId}`;
+  if(input.manualCloseSuppressed)return `MANUAL_CLOSE_SUPPRESSED:${workerId}`;
+  return null;
+}
