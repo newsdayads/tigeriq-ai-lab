@@ -128,8 +128,4 @@ export function getActivitySignature(state:WorkerSafetySnapshot):string {
     manualCloseSuppressedWorkers: [...state.manualCloseSuppressedWorkers].sort(),
     modelProfile: state.modelProfile ?? null,
   });
-  if(input.globalPaused)return 'OWNER_INTERACTION_READ_ONLY';
-  if(input.utilityPaused)return `UTILITY_WORKER_PAUSED:${workerId}`;
-  if(input.manualCloseSuppressed)return `MANUAL_CLOSE_SUPPRESSED:${workerId}`;
-  return null;
 }
