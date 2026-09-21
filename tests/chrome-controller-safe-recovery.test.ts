@@ -21,6 +21,9 @@ describe('worker-generic primitives and staggered recovery',()=>{
     expect(WORKER_IDS).toContain('NV02');
     expect(WORKER_IDS).toContain('NV03');
     expect(WORKER_IDS).toContain('NV04');
+    for(const id of WORKER_IDS){
+      expect(id).toBeTruthy();
+    }
   });
 });
 
