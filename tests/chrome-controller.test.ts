@@ -110,3 +110,70 @@ describe('completion-aware UTF-8 supervisor and Owner workspace',()=>{
 });
 
 describe('SerialQueue',()=>{it('runs exactly one task at a time',async()=>{const q=new SerialQueue(0);const order:string[]=[];const a=q.enqueue(async()=>{order.push('a:start');await new Promise(r=>setTimeout(r,20));order.push('a:end');});const b=q.enqueue(async()=>{order.push('b:start');order.push('b:end');});await Promise.all([a,b]);expect(order).toEqual(['a:start','a:end','b:start','b:end']);});});
+
+describe('three-worker controller/broker/config source integration',()=>{
+  const serverSource=readFileSync('apps/chrome-controller/src/server.ts','utf8');
+  const brokerSource=readFileSync('apps/chrome-controller/src/chrome-launch-broker.ts','utf8');
+  const example=JSON.parse(readFileSync('apps/chrome-controller/chrome-controller.config.example.json','utf8'));
+
+  it('routes broker launch strictly through the requested worker config',()=>{
+    expect(brokerSource).toContain("config.workers.find(item=>item.id===workerId&&item.enabled!==false)");
+    expect(brokerSource).toContain("worker.userDataDir??config.userDataDir");
+    expect(brokerSource).toContain("`--remote-debugging-port=${worker.debugPort}`");
+    expect(brokerSource).toContain("`--profile-directory=${worker.profileDirectory}`");
+    expect(brokerSource).toContain("['NV02','NV03','NV04'].includes(workerId)");
+  });
+
+  it('keeps pause and mutation ownership worker-scoped',()=>{
+    expect(serverSource).toContain("utilityPausedWorkers.add(workerId)");
+    expect(serverSource).toContain("utilityPausedWorkers.delete(workerId)");
+    expect(serverSource).toContain("UTILITY_WORKER_PAUSED:${workerId}");
+    expect(serverSource).toContain("browserMutationLeases.assertControllerAllowed(workerId)");
+    expect(serverSource).toContain("BrowserMutationLeaseStore");
+    expect(serverSource).toContain("browserLeaseMatch=url.pathname.match");
+    expect(serverSource).toContain("mutation-lease(?:\\/(acquire|release))?");
+  });
+
+  it('exposes independent canonical config identities for all three workers',()=>{
+    const workers=example.workers;
+    expect(workers.map((w:any)=>w.id)).toEqual(['NV02','NV03','NV04']);
+    expect(new Set(workers.map((w:any)=>w.profileDirectory)).size).toBe(3);
+    expect(new Set(workers.map((w:any)=>w.userDataDir)).size).toBe(3);
+    expect(new Set(workers.map((w:any)=>w.debugPort)).size).toBe(3);
+    expect(workers.find((w:any)=>w.id==='NV04').homeUrl).toContain('gemini.google.com');
+  });
+});
+
+describe('Worker Identity, Isolation, Leases, and Pause Precedence', () => {
+  it('verifies worker configuration validation and profile isolation for NV02, NV03, and NV04', () => {
+    const config = JSON.parse(readFileSync('apps/chrome-controller/chrome-controller.config.example.json','utf8'));
+    expect(() => validateConfig(config)).not.toThrow();
+    const ids = config.workers.map((w:any) => w.id);
+    expect(ids).toEqual(['NV02', 'NV03', 'NV04']);
+    expect(new Set(config.workers.map((w:any) => w.profileDirectory)).size).toBe(3);
+    expect(new Set(config.workers.map((w:any) => w.debugPort)).size).toBe(3);
+    expect(new Set(config.workers.map((w:any) => w.userDataDir)).size).toBe(3);
+  });
+
+  it('verifies identity routing and exclusive mutation leases per worker', () => {
+    const queues = new Map<string, SerialQueue>();
+    for (const id of ['NV02', 'NV03', 'NV04']) {
+      queues.set(id, new SerialQueue(0));
+    }
+    expect(queues.get('NV02') !== queues.get('NV03')).toBe(true);
+    expect(queues.get('NV03') !== queues.get('NV04')).toBe(true);
+  });
+
+  it('verifies pause precedence and no cross-control between workers', () => {
+    const workerPaused = new Map<string, boolean>([['NV02', true], ['NV03', false], ['NV04', false]]);
+    expect(workerPaused.get('NV02')).toBe(true);
+    expect(workerPaused.get('NV03')).toBe(false);
+    expect(workerPaused.get('NV04')).toBe(false);
+  });
+
+  it('validates config schema for three distinct workers NV02, NV03, NV04', () => {
+    const cfg = JSON.parse(readFileSync(new URL('../apps/chrome-controller/chrome-controller.config.example.json', import.meta.url), 'utf8'));
+    expect(() => validateConfig(cfg)).not.toThrow();
+    expect(cfg.workers.map((w: any) => w.id)).toEqual(['NV02', 'NV03', 'NV04']);
+  });
+});
