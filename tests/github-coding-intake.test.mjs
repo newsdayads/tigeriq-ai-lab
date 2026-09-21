@@ -323,6 +323,47 @@ describe('GitHub coding continuity supervisor',()=>{
     expect(pool.events.filter(e=>e.type==='GITHUB_CODING_BLOCKED_FINAL')).toHaveLength(1);
   });
 
+  it('re-arms once when Source of Truth changes on the same main and stays idempotent after restart',async()=>{
+    const pool=fakePool();let posted=0;
+    pool.events.push(
+      {type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:809,codingObjectiveId:'obj-809-r2'}},
+      {type:'GITHUB_CODING_RETRY_DISPATCHED',data:{issueNumber:809,codingObjectiveId:'obj-809-r1',retryAttempt:1}},
+      {type:'GITHUB_CODING_RETRY_DISPATCHED',data:{issueNumber:809,codingObjectiveId:'obj-809-r2',retryAttempt:2}},
+      {type:'GITHUB_CODING_BLOCKED_FINAL',data:{issueNumber:809,codingObjectiveId:'obj-809-r2',status:'blocked',reason:'RETRY_BUDGET_EXHAUSTED',terminalReason:'OUTPUT_CONTRACT_EXHAUSTED',mainSha:'same-main',sourceRevision:'old-revision'}}
+    );
+    const updatedAt='2026-09-21T12:30:00Z';
+    expect(shouldRearmRecoverableFinal(pool.events.at(-1).data,'same-main',[],updatedAt)).toBe(true);
+    expect(shouldRearmRecoverableFinal(pool.events.at(-1).data,'same-main',[{mainSha:'same-main',sourceRevision:updatedAt,priorObjectiveId:'obj-809-r2'}],updatedAt)).toBe(false);
+
+    const current=issue(SAFE,{number:809,updated_at:updatedAt});
+    let recoveryObjective=null;
+    const fetchImpl=async(url,init={})=>{
+      if(url.includes('/api/status'))return response({objectives:[
+        {id:'obj-809-r2',status:'blocked',summary:'OUTPUT_CONTRACT_EXHAUSTED'},
+        ...(recoveryObjective?[recoveryObjective]:[])
+      ],jobs:[]});
+      if(url.includes('/git/ref/heads/main'))return response({object:{sha:'same-main'}});
+      if(url.includes('/api/objectives')){
+        posted++;
+        const body=JSON.parse(init.body);
+        expect(body.objective).toContain('SOURCE_REVISION=2026-09-21T12:30:00Z');
+        expect(body.objective).toContain('RECOVERY_KEY=GITHUB-ISSUE-809-RECOVERY-same-main-20260921T123000Z');
+        recoveryObjective={id:'obj-809-recovery',status:'queued',objective:body.objective};
+        return response({id:recoveryObjective.id});
+      }
+      if(url.includes('/issues/809'))return response(current);
+      if(url.includes('/comments'))return response({});
+      return response({});
+    };
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+    expect(posted).toBe(1);
+    const rearms=pool.events.filter(e=>e.type==='GITHUB_CODING_RECOVERY_REARMED');
+    expect(rearms).toHaveLength(1);
+    expect(rearms[0].data).toMatchObject({mainSha:'same-main',sourceRevision:updatedAt,priorObjectiveId:'obj-809-r2',codingObjectiveId:'obj-809-recovery'});
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_DISPATCHED'&&e.data.issueNumber===809)).toHaveLength(2);
+  });
+
   it('emits BLOCKED_FINAL after the retry budget is exhausted',async()=>{
     const pool=fakePool();
     pool.events.push(
