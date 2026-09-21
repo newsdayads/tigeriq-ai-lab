@@ -181,7 +181,8 @@ export class ControlPlane {
   }
 
   getAgentTelemetry() {
-    return Object.fromEntries(this.#agentTelemetry.entries());
+    const total = [...this.#agentTelemetry.values()].reduce((a, b) => a + b, 0);
+    return { requestCount: total };
   }
 
   #require(id: string): WorkOrderSnapshot {
