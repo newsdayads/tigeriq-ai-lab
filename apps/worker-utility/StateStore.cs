@@ -19,6 +19,18 @@ internal sealed class StateStore
         logPath = Path.Combine(root, "worker-utility.jsonl");
     }
 
+    public bool TryGetWorkerIdentity(string workerId, out string? key)
+    {
+        key = null;
+        var s = Load();
+        if (s.Workers.TryGetValue(workerId, out var w))
+        {
+            key = workerId;
+            return true;
+        }
+        return false;
+    }
+
     public UtilitySettings Load()
     {
         try
