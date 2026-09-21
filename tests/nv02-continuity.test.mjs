@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { buildDurableSavePrompt, SAVE_RECEIPT_POLL_DELAYS_MS, waitForDurableSaveReceipt } from '../apps/chrome-controller/extension/save-receipt.js';
+import { runPlannedWorkerReset } from '../apps/chrome-controller/extension/planned-reopen.js';
 import {
   CONTINUE_PROMPTS, CHAT_ROTATE_AFTER_DISPATCHES, MAX_WORKING_UNCHANGED_CHECKS, WORKING_PROGRESS_CHECK_MS,
   CONTINUE_MIN_MS, CONTINUE_MAX_MS, REFRESH_MIN_MS, REFRESH_MAX_MS, WORKER_F5_MIN_MS, WORKER_F5_MAX_MS,
@@ -9,6 +10,42 @@ import {
   hasWaitingEvidenceNv02Work, hasWaitingEvidenceWorkerWork, hasContinuableNv02Work, hasContinuableWorkerWork,
   pickContinuePrompt, randomDelay, shouldRotateNv02Chat, computeWorkerStaggerDelay,
 } from '../apps/chrome-controller/extension/continuity.js';
+
+describe('planned worker reset transaction', () => {
+  it('releases the shared browser lease before controller safe recovery', async () => {
+    const order=[];
+    let leaseHeld=false;
+    const result=await runPlannedWorkerReset({
+      workerId:'NV03',
+      reason:'PERIODIC_2_4H_RESET',
+      planRefresh:async()=>{expect(leaseHeld).toBe(false);order.push('plan');},
+      cancelRefresh:async()=>{order.push('cancel');},
+      acquireLease:async()=>{expect(leaseHeld).toBe(false);leaseHeld=true;order.push('acquire');return{leaseId:'L1'};},
+      releaseLease:async()=>{expect(leaseHeld).toBe(true);leaseHeld=false;order.push('release');},
+      closeWorker:async()=>{expect(leaseHeld).toBe(true);order.push('close');},
+      safeRecover:async()=>{expect(leaseHeld).toBe(false);order.push('recover');},
+    });
+    expect(result).toEqual({ok:true,status:'PLANNED_RESET_RECOVER_REQUESTED'});
+    expect(order).toEqual(['plan','acquire','close','release','recover']);
+    expect(leaseHeld).toBe(false);
+  });
+
+  it('cancels planned refresh when the shared browser lease cannot be acquired', async () => {
+    const order=[];
+    const result=await runPlannedWorkerReset({
+      workerId:'NV04',
+      reason:'PERIODIC_2_4H_RESET',
+      planRefresh:async()=>{order.push('plan');},
+      cancelRefresh:async()=>{order.push('cancel');},
+      acquireLease:async()=>{order.push('acquire');return null;},
+      releaseLease:async()=>{order.push('release');},
+      closeWorker:async()=>{order.push('close');},
+      safeRecover:async()=>{order.push('recover');},
+    });
+    expect(result).toEqual({ok:false,status:'MUTATION_LEASE_BUSY'});
+    expect(order).toEqual(['plan','acquire','cancel']);
+  });
+});
 
 describe('NV02 continuity policy', () => {
   it('exposes isolated worker-generic continuity primitives for NV02/NV03/NV04', () => {
