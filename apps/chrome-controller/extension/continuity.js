@@ -58,7 +58,7 @@ export function pickContinuePrompt(previous='',random=Math.random){
   return candidates[Math.min(candidates.length-1,Math.floor(random()*candidates.length))];
 }
 
-export function deriveWorkerPhase(ui,{heartbeatStale=false}={}){
+export function deriveWorkerPhase(ui,{heartbeatStale=false,workerId='NV02'}={}){
   if(ui?.securityBlock)return 'BLOCKED';
   if(heartbeatStale)return 'STALLED';
   if(ui?.stopVisible===true||ui?.uiBusy===true)return 'WORKING';
