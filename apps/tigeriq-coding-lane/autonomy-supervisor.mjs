@@ -12,6 +12,7 @@ export function normalizeRepairFailure(message){
   const raw=String(message||'').trim();
   if(/REVIEW_CHANGES_UNRESOLVED|REVIEW_NOT_APPROVED/.test(raw))return 'REVIEW_CHANGES_UNRESOLVED';
   if(/CI_GATE_REPAIR_EXHAUSTED|CI_GATES_FAILED/.test(raw))return 'CI_GATES_FAILED';
+  if(/OUTPUT_CONTRACT_EXHAUSTED/.test(raw))return 'OUTPUT_CONTRACT_EXHAUSTED';
   if(/CI_GATES_TIMEOUT/.test(raw))return 'CI_GATES_TIMEOUT';
   if(/CODING_COMPACT_EDITS_COUNT_INVALID/.test(raw))return 'CODING_COMPACT_EDITS_COUNT_INVALID';
   if(/CODING_COMPACT_EDIT_OLD_NOT_FOUND/.test(raw))return 'CODING_COMPACT_EDIT_OLD_NOT_FOUND';
