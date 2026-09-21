@@ -138,7 +138,7 @@ describe('NV02 continuity policy', () => {
     expect(f5Block).not.toContain("checkpointNv02");
     expect(f5Block).not.toContain("rotateNv02Chat");
 
-    expect(source).toContain("[data-message-author-role=\\\"assistant\\\"]");
+    expect(source).toContain('[data-message-author-role="assistant"]');
 
     expect(source).toContain('button[aria-label*="Ngừng" i]');
     const dispatchExprSource=source.slice(source.indexOf('function dispatchExpr'),source.indexOf('function enterSubmitStateExpr'));
