@@ -31,6 +31,9 @@ it('implements independent identity, state, timer, lock, per-worker pause/resume
   for (const workerId of ['NV02', 'NV03', 'NV04']) {
     expect(context).toContain(workerId);
   }
+  for (const workerId of ['NV02', 'NV03', 'NV04']) {
+    expect(context).toContain(workerId);
+  }
   expect(context).toContain('WORKING');
   expect(context).toContain('READY');
   expect(context).toContain('STALLED');
