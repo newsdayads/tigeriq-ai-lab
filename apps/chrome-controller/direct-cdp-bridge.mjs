@@ -315,6 +315,19 @@ async function releaseBridgeMutationLease(workerId,lease){
     method:'POST',headers:auth(workerId,true),body:JSON.stringify(lease),signal:AbortSignal.timeout(4000)
   }).catch(()=>{});
 }
+async function externalAutopilotOwnsNextNv02Job(){
+  try{
+    const stateResponse=await fetch(`${CONTROLLER}/api/state`,{signal:AbortSignal.timeout(2500)});
+    if(!stateResponse.ok)return false;
+    const state=await stateResponse.json();
+    if(state?.externalWorkAutopilotEnabled!==true||state?.ownerInteractionMode==='READ_ONLY')return false;
+    const autoResponse=await fetch(`${CONTROLLER}/api/autopilot/state`,{signal:AbortSignal.timeout(2500)});
+    if(!autoResponse.ok)return false;
+    const auto=await autoResponse.json();
+    const next=auto?.snapshot?.nextJob;
+    return Boolean(next&&next.workerId==='NV02'&&next.executable===true&&['QUEUED','READY'].includes(String(next.status||'')));
+  }catch{return false;}
+}
 async function navigate(target,url){
   const p=await pageRpc(target);try{await p.call('Page.enable');await p.call('Page.navigate',{url});}finally{p.close();}
 }
@@ -486,11 +499,40 @@ async function waitForIdleAfterSubmission(target,timeoutMs=45000,stableReadyMs=5
 async function withNv02Mutation(fn,purpose='NORMAL',ttlMs=30000){
   if(nv02MutationBusy)return{ok:false,status:'MUTATION_LEASE_BUSY'};
   nv02MutationBusy=true;
-  log('NV02_LOCAL_MUTATION_ACQUIRED',{purpose,ttlMs});
-  try{return await fn();}
-  finally{nv02MutationBusy=false;log('NV02_LOCAL_MUTATION_RELEASED',{purpose});}
+  let sharedLease=null;
+  let sharedMode='CONTROLLER';
+  try{
+    try{
+      sharedLease=await acquireBridgeMutationLease('NV02',purpose,ttlMs);
+      if(!sharedLease){
+        log('NV02_SHARED_MUTATION_BUSY',{purpose,ttlMs});
+        return{ok:false,status:'MUTATION_LEASE_BUSY'};
+      }
+    }catch(error){
+      const message=String(error?.message||error);
+      const unavailable=/fetch failed|ECONNREFUSED|ECONNRESET|AbortError|TimeoutError|UND_ERR_CONNECT_TIMEOUT/i.test(message);
+      if(!unavailable){
+        log('NV02_SHARED_MUTATION_DENIED',{purpose,error:message});
+        return{ok:false,status:'MUTATION_LEASE_BUSY'};
+      }
+      sharedMode='LOCAL_FALLBACK';
+      log('NV02_SHARED_MUTATION_CONTROLLER_UNAVAILABLE',{purpose,error:message});
+    }
+    log('NV02_LOCAL_MUTATION_ACQUIRED',{purpose,ttlMs,sharedMode});
+    return await fn();
+  }finally{
+    if(sharedLease)await releaseBridgeMutationLease('NV02',sharedLease);
+    nv02MutationBusy=false;
+    log('NV02_LOCAL_MUTATION_RELEASED',{purpose,sharedMode});
+  }
 }
 async function dispatchNaturalContinueLocked(target,state,now){
+  if(await externalAutopilotOwnsNextNv02Job()){
+    const next={...state,nextContinueAt:now+5000};
+    saveNv02Continuity(next);
+    await continuityEvent('CONTINUE_DEFERRED_TO_EXTERNAL_AUTOPILOT',{nextContinueAt:next.nextContinueAt});
+    return next;
+  }
   // Model/profile is verified once per opened chat/session and again only after
   // reopen/project recovery/URL change. The hot continue loop must not open
   // the model selector before every command.
