@@ -133,6 +133,26 @@ describe('coding lane AI JSON transport',()=>{
     }
   });
 
+  it('always installs a bounded timeout signal even when caller provides none',async()=>{
+    const previousFetch=globalThis.fetch;
+    const previousInstalled=globalThis.__tigeriqAiJsonTransportInstalled;
+    const seen=[];
+    try{
+      globalThis.__tigeriqAiJsonTransportInstalled=false;
+      globalThis.fetch=async(_input,init)=>{
+        seen.push(Boolean(init?.signal));
+        return new Response(JSON.stringify({choices:[{message:{content:'{"status":"blocked","summary":"ok"}'}}]}),{status:200,headers:{'content-type':'application/json'}});
+      };
+      installAiJsonTransport({maxAttempts:1,attemptTimeoutMs:25});
+      await fetch('https://api.groq.com/openai/v1/chat/completions',{method:'POST',body:JSON.stringify({messages:[{role:'user',content:'Return ONLY JSON {"status":"continue|blocked","summary":"short","job":{"title":"short","instruction":"standalone implementation instruction","paths":["exact/repo/path"]}}.'}]})});
+      expect(seen).toEqual([true]);
+    }finally{
+      globalThis.fetch=previousFetch;
+      if(previousInstalled===undefined) delete globalThis.__tigeriqAiJsonTransportInstalled;
+      else globalThis.__tigeriqAiJsonTransportInstalled=previousInstalled;
+    }
+  });
+
   it('retries transient AI fetch aborts before failing the job',async()=>{
     const previousFetch=globalThis.fetch;
     const previousInstalled=globalThis.__tigeriqAiJsonTransportInstalled;
