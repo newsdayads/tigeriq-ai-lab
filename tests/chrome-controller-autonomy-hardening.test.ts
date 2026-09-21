@@ -210,8 +210,11 @@ describe('isolated NV02 stall/F5 recovery scope',()=>{
     expect(server).toContain("if(paused&&!periodicF5)");
     expect(server).toContain("state.lastHeartbeat?.uiBusy!==false&&!staleWorkingRecovery&&!periodicF5");
     const hotLoop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
-    expect(hotLoop).not.toContain("checkpointNv02(");
-    expect(hotLoop).not.toContain("rotateNv02Chat(");
+    const workingRecovery=hotLoop.slice(hotLoop.indexOf("if(phase==='WORKING')"),hotLoop.indexOf("if(shouldRotateNv02Chat"));
+    expect(workingRecovery).not.toContain("checkpointNv02(");
+    expect(workingRecovery).not.toContain("rotateNv02Chat(");
+    expect(hotLoop).toContain("shouldRotateNv02Chat({");
+    expect(hotLoop).toContain("rotateNv02Chat(target,state,now)");
     expect(hotLoop).not.toContain("getControllerState(");
     expect(hotLoop).not.toContain("hasActiveNv02Work(");
   });
