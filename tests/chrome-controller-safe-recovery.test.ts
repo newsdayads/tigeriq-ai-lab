@@ -193,6 +193,16 @@ describe('safe recovery contracts',()=>{
     expect(server).not.toContain("recoveryAttempts.set(workerId,0);\n    if(!state.enabled)");
   });
 
+  it('keeps all enabled canonical workers alive independent of backlog demand',()=>{
+    const needed=server.slice(server.indexOf('function workerNeeded'),server.indexOf('async function fetchExternalSnapshot'));
+    const startup=server.slice(server.indexOf('async function startupRecovery'),server.indexOf('async function handleApi'));
+    expect(needed).toContain('return WORKER_IDS.includes(id)');
+    expect(needed).not.toContain("if(id==='NV02')return true");
+    expect(needed).not.toContain('snapshotRequiredWorkers().includes(id)||workerHasActiveJob(id)');
+    expect(startup).toContain('const needed=new Set<WorkerId>(WORKER_IDS)');
+    expect(startup).toContain('states.get(id)?.manualCloseSuppressed');
+  });
+
   it('keeps paused workers out of unattended start/autopilot paths',()=>{
     expect(server).toContain('START_ALL_SKIPPED_UTILITY_PAUSED');
     expect(server).toContain("if(utilityPausedWorkers.has(workerId)){setAutopilotPhase('IDLE')");

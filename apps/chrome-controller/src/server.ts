@@ -434,8 +434,7 @@ function workerHasActiveJob(id:WorkerId,{allowWaitingEvidence=false,allowContinu
 function workerNeeded(id:WorkerId){
   const state=states.get(id);
   if(!state?.enabled||state.manualCloseSuppressed||utilityPausedWorkers.has(id))return false;
-  if(id==='NV02')return true;
-  return snapshotRequiredWorkers().includes(id)||workerHasActiveJob(id);
+  return WORKER_IDS.includes(id);
 }
 async function fetchExternalSnapshot(){
   if(!config.autopilot.stateUrl)return;
@@ -731,7 +730,7 @@ async function startupRecovery(){
     persistEvidence();
     return;
   }
-  const needed=new Set<WorkerId>(['NV02',...snapshotRequiredWorkers()]);
+  const needed=new Set<WorkerId>(WORKER_IDS);
   for(const id of WORKER_IDS){
     if(!needed.has(id)||!states.get(id)?.enabled||states.get(id)?.blocked||states.get(id)?.manualCloseSuppressed)continue;
     try{

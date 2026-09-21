@@ -38,6 +38,10 @@ describe('NV02 continuity policy', () => {
       }
     }
 
+    expect(deriveWorkerPhase({composerReady:true,authRequired:false,uiBusy:false,modelReady:false,uiPhase:'STALLED'},{workerId:'NV03'})).toBe('READY');
+    expect(deriveWorkerPhase({composerReady:true,authRequired:false,uiBusy:false,modelReady:false,uiPhase:'STALLED'},{workerId:'NV04'})).toBe('READY');
+    expect(deriveWorkerPhase({composerReady:true,authRequired:false,uiBusy:false,modelReady:false,uiPhase:'STALLED'},{workerId:'NV02'})).toBe('STALLED');
+
     expect(hasActiveWorkerWork({autopilot:{pendingJobId:'NV02-ONLY'}},'NV02')).toBe(true);
     expect(hasActiveWorkerWork({autopilot:{pendingJobId:'NV02-ONLY'}},'NV03')).toBe(false);
     expect(hasActiveWorkerWork({autopilotByWorker:{NV03:{pendingJobId:'NV03-ONLY'}}},'NV03')).toBe(true);
