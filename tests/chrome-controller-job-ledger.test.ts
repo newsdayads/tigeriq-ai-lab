@@ -126,6 +126,17 @@ describe('durable UI worker job ledger',()=>{
     expect(retried).toMatchObject({jobId:'GH-1041',stage:'QUEUED',progress:5,blocker:null,completedAt:null,nextAction:'Retry dispatch to worker'});
     expect(new DurableUiJobLedger(path).snapshot().filter(job=>job.jobId==='GH-1041')).toHaveLength(1);
   });
+  it('verifies WAITING_EVIDENCE recovery and exact model gate',()=>{
+    const {path,store}=ledger();
+    store.create('NV02',{jobId:'GH-EVIDENCE',issueRef:'https://github.com/newsdayads/tigeriq-ai-lab/issues/1042',source:'AUTO_CONTINUE'});
+    store.transition('NV02','GH-EVIDENCE','DISPATCHING');
+    store.transition('NV02','GH-EVIDENCE','SUBMITTED');
+    store.transition('NV02','GH-EVIDENCE','WORKING');
+    const waiting=store.transition('NV02','GH-EVIDENCE','WAITING_EVIDENCE',{evidenceRef:'https://github.com/newsdayads/tigeriq-ai-lab/issues/1042'});
+    expect(waiting.stage).toBe('WAITING_EVIDENCE');
+    expect(waiting.progress).toBe(80);
+    expect(waiting.evidenceRefs).toContain('https://github.com/newsdayads/tigeriq-ai-lab/issues/1042');
+  });
 
   it('resumes the same JOB id from ERROR to QUEUED without duplication',()=>{
     const {path,store}=ledger();
