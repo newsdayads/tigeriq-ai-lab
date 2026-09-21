@@ -801,8 +801,8 @@ async function tickWorker(w){
 }
 
 async function tick(){
-  const worker=config.workers.find(w=>w.id==='NV02');
-  if(!worker){log('NV02_CONFIG_MISSING');return;}
+  const worker=config.workers.find(w=>w.id===activeWorkerId);
+  if(!worker){log(`${activeWorkerId}_CONFIG_MISSING`);return;}
   await tickWorker(worker);
 }
 const WORKER_IDS=['NV02','NV03','NV04'];
@@ -855,6 +855,7 @@ function loadWorkerContinuity(workerId = activeWorkerId){
   }catch{}
   return {phase:'IDLE',updatedAt:new Date().toISOString()};
 }
+function loadNv02Continuity(){ return loadWorkerContinuity(activeWorkerId); }
 acquireCanonicalOwnership(activeWorkerId);
 process.once('exit',()=>releaseCanonicalOwnership(activeWorkerId));
 process.once('SIGTERM',()=>{releaseCanonicalOwnership(activeWorkerId);process.exit(0);});
