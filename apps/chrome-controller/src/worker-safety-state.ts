@@ -115,10 +115,11 @@ export function persistWorkerSafetyStateOrFailClosed(
   }
 }
 
-export function probeWorkerSafetyHealth(path:string): { healthy: boolean; error?: unknown } {
+export function probeWorkerSafetyHealth(path:string): { healthy: boolean; error?: unknown; restartCount?: number } {
   try {
     const snapshot = readWorkerSafetyState(path);
-    return { healthy: Array.isArray(snapshot.pausedWorkers) };
+    const healthy = Boolean(snapshot && Array.isArray(snapshot.pausedWorkers));
+    return { healthy, restartCount: 0 };
   } catch (error) {
     return { healthy: false, error };
   }
