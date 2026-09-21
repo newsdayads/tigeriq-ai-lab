@@ -23,10 +23,18 @@ test('audit adapter real contract call', async (t) => {
 });
 
 test('repair handoff dedupe and rotation', async (t) => {
-  await mock.method(global, 'fetch', async () => ({ ok: true, json: async () => ({ status: 'audit_complete' }) }));
+  await mock.method(global, 'fetch', async () => ({ ok: true, json: async () => ({ workers: [{ status: 'online', state: 'idle', cost: 0 }], status: 'audit_complete', sweepVerified: true }) }));
   const { processRepairHandoff } = await import('../scripts/web-control-audit/repair-handoff.mjs');
   const off1 = await processRepairHandoff('http://test.com', 1);
   const off2 = await processRepairHandoff('http://test.com', 1);
-  assert.strictEqual(off1, off2); // deduped
-  assert.strictEqual(off1, null);
+  assert.notStrictEqual(off1, null);
+  assert.strictEqual(off2, null); // deduped second call returns null
+});
+
+test('hourly runner executes audit cycle', async (t) => {
+  await mock.method(global, 'fetch', async () => ({ ok: true, json: async () => ({ workers: [{ status: 'online', state: 'idle', cost: 0 }], status: 'audit_complete', sweepVerified: true }) }));
+  const { runHourlyAuditCycle } = await import('../scripts/web-control-audit/hourly-runner.mjs');
+  const results = await runHourlyAuditCycle(['http://example.com']);
+  assert.strictEqual(results.length, 1);
+  assert.strictEqual(results[0].status, 'success');
 });
