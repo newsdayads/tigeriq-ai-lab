@@ -25,6 +25,17 @@ describe('worker-generic primitives and staggered recovery',()=>{
       expect(id).toBeTruthy();
     }
   });
+  it('validates safe bounded recovery and staggered reset isolation per worker',()=>{
+    const stateDir = root();
+    for(const id of WORKER_IDS){
+      const safetyPath = join(stateDir, `${id.toLowerCase()}-safety.json`);
+      writeWorkerSafetyState(safetyPath, { pausedWorkers: [], manualCloseSuppressedWorkers: [] });
+      const restored = restoreWorkerSafetyState(safetyPath);
+      expect(restored.failClosed).toBe(false);
+      const gateResult = workerStartGate(id, { globalPaused: false, utilityPaused: false, manualCloseSuppressed: false });
+      expect(gateResult).toBe(true);
+    }
+  });
 });
 
 describe('worker presence classification',()=>{
