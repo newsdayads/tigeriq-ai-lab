@@ -187,6 +187,8 @@ try{
     backupDir=$backupDir
     installedAt=(Get-Date).ToUniversalTime().ToString('o')
   }
+  $manifestHash = (Get-FileHash -Path $manifest -Algorithm SHA256).Hash
+  $result | Add-Member -MemberType NoteProperty -Name 'manifestHash' -Value $manifestHash -Force
   $result|ConvertTo-Json -Depth 6|Set-Content -Path $manifest -Encoding utf8
   $result|ConvertTo-Json -Depth 6
 }catch{
