@@ -1,6 +1,8 @@
 import {readFileSync} from 'node:fs';
 import {describe,expect,it} from 'vitest';
 import {compactCurrentFilesForModel,compactPromptForChanges,compactPromptForEdits,currentFilesFromPrompt,expandCompactChanges,extractModelText,isAiUrl,looksLikeJsonObject,matchesExpectedSchema,prepareAiJsonRequest,installAiJsonTransport} from '../apps/tigeriq-coding-lane/ai-json-transport.mjs';
+import {managerBlockKind} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {isRetryableAiError} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 describe('coding lane AI JSON transport',()=>{
   it('forces JSON mode for Gemini',()=>{
@@ -191,6 +193,14 @@ describe('coding lane AI JSON transport',()=>{
     const manager=src.indexOf('await managerTick()');
     expect(install).toBeGreaterThanOrEqual(0);
     expect(manager).toBeGreaterThan(install);
+  });
+
+  it('manager soft blocker classification fails over instead of terminal blocking',()=>{
+    expect(managerBlockKind('reason for blocking')).toBe('soft');
+    expect(managerBlockKind('cannot confirm dependency')).toBe('soft');
+    expect(managerBlockKind('SECURITY policy block requires authorization')).toBe('hard');
+    expect(managerBlockKind('credential change required')).toBe('hard');
+    expect(isRetryableAiError(new Error('MANAGER_SOFT_BLOCK:reason for blocking'))).toBe(true);
   });
 
 });
