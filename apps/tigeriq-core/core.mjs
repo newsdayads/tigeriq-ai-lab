@@ -365,6 +365,9 @@ function consecutiveWorkFailureEvidence(events=[]){
 async function apiDoctorEventBySignature(type,signature){
   return (await pool.query("select ts,data from tigeriq_events where type=$1 and data->>'signature'=$2 order by seq desc limit 1",[type,signature])).rows[0]||null;
 }
+async function apiDoctorLatestResourceHandoff(resourceId){
+  return (await pool.query("select ts,data from tigeriq_events where type='API_DOCTOR_REPAIR_HANDOFF' and resource_id=$1 order by seq desc limit 1",[resourceId])).rows[0]||null;
+}
 async function createApiDoctorRepairHandoff(resource,failureClass,latestFailure){
   const message=String(latestFailure?.data?.message||latestFailure?.data?.kind||failureClass||'source_contract');
   const signature=apiDoctorRepairSignature({employeeId:resource.employee_id,provider:resource.provider,failureClass,message});
@@ -430,14 +433,12 @@ async function runApiDoctorScan(){
     const plan=apiDoctorAction({healthState:resource.health_state,credentialState:resource.credential_state,cooldownUntil:resource.cooldown_until,latestFailure:latestFailure?{kind:latestFailure.data?.kind,message:latestFailure.data?.message}:null,repeatedWorkFailures:repeatedSourceFailures});
     const row={employeeId:resource.employee_id,resourceId:resource.resource_id,provider:resource.provider,health:resource.health_state,failureClass:plan.failureClass,action:plan.action,reason:plan.reason};
     if(resource.current_job_id){row.action='busy_skip';row.reason='resource_busy';actions.push(row);continue;}
-    if(plan.action==='wait'||plan.action==='idle'){actions.push(row);continue;}
     if(plan.action==='external_blocked'){
       const signature=apiDoctorRepairSignature({employeeId:resource.employee_id,provider:resource.provider,failureClass:plan.failureClass,message:latestFailure?.data?.message||plan.reason});
       if(!await apiDoctorEventBySignature('API_DOCTOR_EXTERNAL_BLOCKED',signature))await event('API_DOCTOR_EXTERNAL_BLOCKED',{employeeId:resource.employee_id,resourceId:resource.resource_id,provider:resource.provider,taskKind:'api_doctor',signature,failureClass:plan.failureClass,reason:plan.reason});
       actions.push(row);continue;
     }
-    const repairSignature=apiDoctorRepairSignature({employeeId:resource.employee_id,provider:resource.provider,failureClass:plan.failureClass,message:latestFailure?.data?.message||plan.reason});
-    const existingHandoff=plan.failureClass==='source_contract'?await apiDoctorEventBySignature('API_DOCTOR_REPAIR_HANDOFF',repairSignature):null;
+    const existingHandoff=await apiDoctorLatestResourceHandoff(resource.resource_id);
     if(existingHandoff){
       const successAfter=(await pool.query("select 1 from tigeriq_events where resource_id=$1 and type='RESOURCE_SUCCESS' and coalesce(task_kind,'')<>'probe' and coalesce(task_kind,'')<>'api_doctor' and ts>$2 order by seq desc limit 1",[resource.resource_id,existingHandoff.ts])).rows[0];
       const handoffPlan=apiDoctorExistingHandoffAction({existingHandoff:true,successAfterHandoff:Boolean(successAfter)});
@@ -448,6 +449,7 @@ async function runApiDoctorScan(){
       }
       row.action='wait_repair';row.reason=handoffPlan.reason;row.handoff='deduped';row.codingObjectiveId=existingHandoff.data?.codingObjectiveId||null;actions.push(row);continue;
     }
+    if(plan.action==='wait'||plan.action==='idle'){actions.push(row);continue;}
     let probeOk=false;
     try{
       const probe=await probeResource(resource.resource_id);
