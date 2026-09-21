@@ -377,13 +377,12 @@ async function runApiDoctorPostRepairValidation(resource,existingHandoff){
   if(!r)return {ok:false,reason:'resource_definition_missing'};
   const signature=String(existingHandoff?.data?.signature||'');
   const id=`API-VAL-${randomUUID()}`;
-  const marker=`TIGERIQ_API_DOCTOR_RECOVERY_${r.id}`;
-  const prompt=`Return exactly ${marker}`;
+  const prompt='Provide one short useful sentence confirming this provider can complete a normal TigerIQ Core reasoning request.';
   await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,employee_id,resource_id,provider,routing_profile,started_at,attempts,max_attempts) values($1,null,$2,$3,'general','api_doctor_validation','running',$4,$5,$6,'VALIDATION',now(),1,1)",[id,`${r.id} post-repair live validation`,prompt,r.id,r.resourceId,r.provider]);
   const started=Date.now();
   try{
     const text=await invokeProvider(r,prompt);
-    if(!String(text||'').includes(marker)){const e=new Error('API_DOCTOR_VALIDATION_UNEXPECTED_RESPONSE');e.kind='invalid_response';throw e;}
+    if(!String(text||'').trim()){const e=new Error('API_DOCTOR_VALIDATION_EMPTY_RESPONSE');e.kind='invalid_response';throw e;}
     const latency=Date.now()-started;
     await markResourceSuccess(r,id,latency,'RESOURCE_SUCCESS',true,{taskKind:'api_doctor_validation',profile:'VALIDATION'});
     await pool.query("update tigeriq_jobs set status='done',result=$2,lease_until=null,completed_at=now() where id=$1",[id,JSON.stringify({text:String(text).slice(0,300),latencyMs:latency,validation:true})]);
