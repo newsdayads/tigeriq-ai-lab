@@ -169,6 +169,11 @@ try{
   Assert-Ok ([string]$bridgeHealth.approvedHead -eq $ExpectedHead) 'BRIDGE_APPROVED_HEAD_MISMATCH'
   Assert-Ok ([string]$bridgeHealth.deployRoot -eq $deploy) 'BRIDGE_DEPLOY_ROOT_MISMATCH'
   Assert-Ok ([string]$bridgeHealth.sourceSha256 -eq $deployBridgeHash) 'BRIDGE_SOURCE_HASH_MISMATCH'
+
+  # Resume bounded automation before strict model/profile acceptance so the fresh
+  # Direct-CDP runtime can repair project/model state instead of deadlocking in READ_ONLY.
+  Set-OwnerMode ([bool]$ResumeAutomation)
+
   $worker=@($controller.workers|Where-Object id -eq 'NV02')|Select-Object -First 1
   Assert-Ok ($null -ne $worker) 'NV02_STATE_MISSING'
 
@@ -190,8 +195,6 @@ try{
   $bridgeCmd=(Get-CimInstance Win32_Process -Filter "ProcessId=$bridgePid").CommandLine
   Assert-Ok ($controllerCmd -like "*$deploy*") 'CONTROLLER_NOT_RUNNING_DEPLOY_HEAD'
   Assert-Ok ($bridgeCmd -like "*$deploy*") 'BRIDGE_NOT_RUNNING_DEPLOY_HEAD'
-
-  Set-OwnerMode ([bool]$ResumeAutomation)
 
   $result=[ordered]@{
     schemaVersion='tigeriq.nv02-continuity-install.v1'
