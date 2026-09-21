@@ -7,3 +7,11 @@ export function spawnDetachedProcess(executable:string,args:string[],options:Pic
   child.unref();
   return{pid:child.pid??null,detached:true};
 }
+
+export function boundedRestartProcess(executable:string, args:string[], currentRestarts:number, maxRestarts:number=3): { success: boolean; restarts: number; receipt?: DetachedProcessReceipt } {
+  if (currentRestarts >= maxRestarts) {
+    return { success: false, restarts: currentRestarts };
+  }
+  const receipt = spawnDetachedProcess(executable, args);
+  return { success: true, restarts: currentRestarts + 1, receipt };
+}
