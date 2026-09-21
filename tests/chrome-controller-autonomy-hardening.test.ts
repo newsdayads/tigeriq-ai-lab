@@ -217,6 +217,9 @@ describe('isolated NV02 stall/F5 recovery scope',()=>{
     expect(hotLoop).toContain("shouldRotateNv02Chat");
     expect(hotLoop).toContain("rotationRetryAt:now+5*60*1000");
     expect(bridge).toContain("await maybeNv02Continuity(w,target,ui,{allowContinue:false})");
+    expect(bridge).toContain("withNv02Mutation(()=>recoverNv02ProjectContext(target),'STALLED_RECOVERY')");
+    expect(server).toContain("const stalledRecovery=workerId==='NV02'&&purpose==='STALLED_RECOVERY'");
+    expect(server).toContain("const boundedRecovery=staleWorkingRecovery||stalledRecovery");
     expect(bridge).toContain("WORKING_STALLED_RECOVERED_OUTSIDE_PROJECT");
     expect(hotLoop).not.toContain("getControllerState(");
     expect(hotLoop).not.toContain("hasActiveNv02Work(");
