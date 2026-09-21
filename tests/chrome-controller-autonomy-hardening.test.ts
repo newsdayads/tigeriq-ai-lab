@@ -231,7 +231,7 @@ describe('AUTO_CONTINUE known non-delivery contract',()=>{
 
   it('wires the classifier into AUTO_CONTINUE while preserving manual dispatch configuration',()=>{
     const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
-    expect(server).toContain('classifyAutoContinueDispatchFailure(error,dispatchDelivered)');
+    expect(server).toContain('classifyAutoContinueDispatchFailure(error,dispatchSubmitted)');
     expect(server).toContain('dispatchLease.resetKnownNotDelivered(decision.jobId,Date.now(),0)');
     expect(server).toContain("log('AUTO_CONTINUE_FAILED_CLOSED'");
     expect(server).toContain("await dispatch(workerId,data.text,data.navigate!==false,'MANUAL',{");
