@@ -95,7 +95,7 @@ describe('review evidence and extension lifecycle',()=>{
     expect(server).toContain("await sendCommand(workerId,'MODEL_PREFLIGHT')");
     expect(server).toContain("modelName!=='GPT-5.6 Sol'");
     expect(server).toContain("reasoningEffort!=='High'");
-    expect(server).not.toContain('AUTOPILOT_MODEL_PROFILE_BLOCKED');
+    expect(server).toContain('TIGERIQ_MODEL_PROFILE_PRECHECK');
   });
 
   it('keeps badge repair idempotent, heartbeat alarm durable, and close events explicit',()=>{const content=readFileSync('apps/chrome-controller/extension/content.js','utf8');const background=readFileSync('apps/chrome-controller/extension/background.js','utf8');expect(content).toContain('badge.textContent !== wantedText');expect(content).not.toContain('characterData: true');expect(background).toContain('ensureTickAlarm');expect(background).toContain("periodInMinutes:0.5");expect(background).toContain("post('/api/window-event',{workerId,event:'CLOSED',windowId:ctx.windowId})");});
