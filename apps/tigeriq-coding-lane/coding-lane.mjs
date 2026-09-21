@@ -408,9 +408,9 @@ export function isRefreshableCompactPatchError(error){
 }
 async function generateAndWriteRepair(worker,j,branch,issues=[],exclude=[]){
   let selected=worker,last=null;
-  for(let attempt=1;attempt<=2;attempt++){
+  for(let attempt=1;attempt<=3;attempt++){
     const context=await contextFor(j.paths,branch);
-    const retryIssues=attempt===1?issues:[...issues,'Previous compact patch no longer matched the current PR branch. Regenerate exact unique snippets from CURRENT FILES; keep the same PR and scope.'];
+    const retryIssues=attempt===1?issues:[...issues,'Current branch content changed; refresh context and regenerate exact unique snippets; same PR/scope.'];
     const generated=await generateRepairEdits(selected,j,context,retryIssues,exclude);
     selected=generated.resource;
     try{
@@ -418,7 +418,7 @@ async function generateAndWriteRepair(worker,j,branch,issues=[],exclude=[]){
       return {worker:selected,payload:generated.payload};
     }catch(error){
       last=error;
-      if(attempt<2&&isRefreshableCompactPatchError(error))continue;
+      if(attempt<3&&isRefreshableCompactPatchError(error))continue;
       throw error;
     }
   }
