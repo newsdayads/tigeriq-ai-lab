@@ -81,6 +81,7 @@ function loadNv02Continuity(){
     verifiedChatUrl:String(raw.verifiedChatUrl||''),
     modelVerifiedAt:String(raw.modelVerifiedAt||''),
     modelCheckBlockedUntil:Number(raw.modelCheckBlockedUntil)||0,
+    rotationRetryAt:Number(raw.rotationRetryAt)||0,
   };
 }
 function saveNv02Continuity(state){
@@ -552,7 +553,7 @@ async function dispatchNaturalContinue(target,state,now){
 function stopAndClearComposerExpr(){
   return `(async()=>{const sleep=ms=>new Promise(r=>setTimeout(r,ms));const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const stop=[...document.querySelectorAll('button[data-testid="stop-button"],button[aria-label*="Stop" i],button[aria-label*="Dừng" i],button[aria-label*="Ngừng" i]')].find(vis);if(stop){stop.click();await sleep(800);}const sels=['#prompt-textarea','div[contenteditable="true"][data-lexical-editor="true"]','[contenteditable="true"][role="textbox"]','textarea'];const c=sels.flatMap(s=>[...document.querySelectorAll(s)]).find(vis)||null;if(c){c.focus();if(c instanceof HTMLTextAreaElement||c instanceof HTMLInputElement){const p=c instanceof HTMLTextAreaElement?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(p,'value')?.set?.call(c,'');c.dispatchEvent(new Event('input',{bubbles:true}));}else{c.innerHTML='<p><br></p>';c.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'deleteContentBackward',data:null}));}}return{ok:true,stopped:Boolean(stop),composerCleared:!c||!(c.innerText||c.textContent||c.value||'').trim()};})()`;
 }
-async function recoverStalledWorking(target,state,now){
+async function recoverStalledWorking(target,state,now,{allowContinue=true}={}){
   return withNv02Mutation(async()=>{
     const stopped=await evalPage(target,stopAndClearComposerExpr());
     await continuityEvent('WORKING_STALLED_STOPPED',{stopped:stopped?.stopped===true,composerCleared:stopped?.composerCleared===true});
@@ -575,7 +576,9 @@ async function recoverStalledWorking(target,state,now){
     const clean={...state,workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:0,lastPhase:ui?.uiPhase||'STALLED',nextContinueAt:now+WORKING_PROGRESS_CHECK_MS};
     saveNv02Continuity(clean);
     if(ui?.uiPhase==='READY'&&!ui?.uiBusy){
-      return dispatchNaturalContinueLocked(target,clean,now);
+      if(allowContinue)return dispatchNaturalContinueLocked(target,clean,now);
+      await continuityEvent('WORKING_STALLED_RECOVERED_OUTSIDE_PROJECT',{uiPhase:ui.uiPhase});
+      return clean;
     }
     if(!ui?.securityBlock){
       const reopen=await post('/api/workers/NV02/restart-schedule','NV02',{reason:'STALLED_3_CHECKS'});
@@ -600,7 +603,7 @@ async function checkpointNv02(target){
 }
 async function rotateNv02Chat(target,state,now){
   const receipt=await checkpointNv02(target);
-  const checkpointed={...state,dispatchesInChat:0,chatStartedAt:now,stalledChecks:0,lastPhase:'READY',nextRefreshAt:nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS)};
+  const checkpointed={...state,dispatchesInChat:0,chatStartedAt:now,stalledChecks:0,lastPhase:'READY',nextRefreshAt:nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS),rotationRetryAt:0};
   saveNv02Continuity(checkpointed);
   return withNv02Mutation(async()=>{
     const archived=await archiveChat(target);if(!archived?.ok)throw new Error(archived?.status||'ROTATE_ARCHIVE_FAILED');
@@ -622,7 +625,7 @@ async function noteNv02CommandDispatch(){
   state.dispatchesInChat=Number(state.dispatchesInChat||0)+1;
   saveNv02Continuity(state);
 }
-async function maybeNv02Continuity(w,target,ui){
+async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
   const now=Date.now();let state=loadNv02Continuity();
   if(state.verifiedChatUrl&&sameNv02Chat(state.verifiedChatUrl,ui?.url)&&ui?.modelExact!==true){
     ui={...ui,modelProfileStatus:'MODEL_PROFILE_VERIFIED',modelName:'GPT-5.6 Sol',modelReady:true,modelExact:true,verifiedAt:state.modelVerifiedAt||null,blockedReason:null};
@@ -640,21 +643,21 @@ async function maybeNv02Continuity(w,target,ui){
     state={...state,stalledChecks:0,workingSignature:signature,workingUnchangedChecks:unchanged,nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS};
     saveNv02Continuity(state);
     await continuityEvent('WORKING_PROGRESS_CHECK',{workingUnchangedChecks:unchanged,nextProgressCheckAt:state.nextProgressCheckAt,signaturePresent:Boolean(signature)});
-    if(unchanged>=MAX_WORKING_UNCHANGED_CHECKS)await recoverStalledWorking(target,state,now);
+    if(unchanged>=MAX_WORKING_UNCHANGED_CHECKS)await recoverStalledWorking(target,state,now,{allowContinue});
     return;
   }
-  if(shouldRotateNv02Chat({phase,currentTrackedWork,now,nextRefreshAt:state.nextRefreshAt,dispatchesInChat:state.dispatchesInChat})){
+  if(shouldRotateNv02Chat({phase,currentTrackedWork,now,nextRefreshAt:state.nextRefreshAt,dispatchesInChat:state.dispatchesInChat,rotationRetryAt:state.rotationRetryAt})){
     if(await externalAutopilotOwnsNextNv02Job()){
-      state={...state,nextRefreshAt:now+60_000};saveNv02Continuity(state);
-      await continuityEvent('CHAT_ROTATION_DEFERRED_TO_EXTERNAL_AUTOPILOT',{nextRefreshAt:state.nextRefreshAt});
+      state={...state,rotationRetryAt:now+60_000};saveNv02Continuity(state);
+      await continuityEvent('CHAT_ROTATION_DEFERRED_TO_EXTERNAL_AUTOPILOT',{rotationRetryAt:state.rotationRetryAt});
       return;
     }
     await continuityEvent('CHAT_ROTATION_DUE',{dispatchesInChat:state.dispatchesInChat,chatStartedAt:state.chatStartedAt,nextRefreshAt:state.nextRefreshAt});
     try{await rotateNv02Chat(target,state,now);}
     catch(error){
-      const retry={...state,nextRefreshAt:now+5*60*1000};
+      const retry={...state,rotationRetryAt:now+5*60*1000};
       saveNv02Continuity(retry);
-      await continuityEvent('CHAT_ROTATION_FAILED',{error:String(error?.message||error),nextRefreshAt:retry.nextRefreshAt});
+      await continuityEvent('CHAT_ROTATION_FAILED',{error:String(error?.message||error),rotationRetryAt:retry.rotationRetryAt});
     }
     return;
   }
@@ -769,6 +772,10 @@ async function tickWorker(w){
       }
     }
     if(w.id==='NV02'&&!projectContextReady&&!ui.securityBlock){
+      if(ui.uiBusy===true||ui.stopVisible===true){
+        await maybeNv02Continuity(w,target,ui,{allowContinue:false});
+        return;
+      }
       if(!NV02_HOME_URL){await continuityEvent('PROJECT_CONTEXT_RECOVERY_BLOCKED',{reason:'NV02_HOME_URL_MISSING',url:rawUi.url||null});return;}
       const recovered=await withNv02Mutation(()=>recoverNv02ProjectContext(target),'PROJECT_CONTEXT_RECOVERY');
       await continuityEvent(recovered?.status==='MUTATION_LEASE_BUSY'?'PROJECT_CONTEXT_RECOVERY_DEFERRED':'PROJECT_CONTEXT_RECOVERY_NAVIGATED',{status:recovered?.status||null,fromUrl:rawUi.url||null});
