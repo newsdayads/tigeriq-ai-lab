@@ -30,10 +30,14 @@ describe('Worker Utility V1 contract',()=>{
 it('implements isolated worker profiles, independent state, per-worker pause override, evidence exposure for NV02, NV03, NV04, and staggered probes without NV02-only continuity assumptions', () => {
   const contextCode = readFileSync('apps/worker-utility/UtilityContext.cs', 'utf8');
   const storeCode = readFileSync('apps/worker-utility/StateStore.cs', 'utf8');
+  const modelsCode = readFileSync('apps/worker-utility/Models.cs', 'utf8');
   expect(contextCode).toContain('NV02');
   expect(contextCode).toContain('NV03');
   expect(contextCode).toContain('NV04');
   expect(storeCode).toContain('Workers');
+  expect(modelsCode).toContain('NV02');
+  expect(modelsCode).toContain('NV03');
+  expect(modelsCode).toContain('NV04');
 });
 
 });
