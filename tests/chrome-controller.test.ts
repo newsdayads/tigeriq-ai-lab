@@ -36,9 +36,9 @@ function baseConfig():ControllerConfig{return{
   ],
 };}
 function snapshot(overrides:Partial<ExternalAutopilotSnapshot>={}):ExternalAutopilotSnapshot{return{
-  source:'GITHUB',observedAt:OBSERVED_AT,revision:'issue-763-v1',
+  source:'CORE',observedAt:OBSERVED_AT,revision:'core-ui-v1:issue-763-v1',
   previousJob:{jobId:'JOB-1',workerId:'NV02',status:'DONE',executable:true,priority:'P0',completedAt:'2026-09-15T00:59:59.000Z',completionRevision:'completion-1',evidence:[{source:'GITHUB',ref:'https://github.com/newsdayads/tigeriq-ai-lab/issues/763#evidence',verifiedAt:OBSERVED_AT,jobId:'JOB-1',completedAt:'2026-09-15T00:59:59.000Z',completionRevision:'completion-1'}]},
-  nextJob:{jobId:'JOB-2',workerId:'NV02',status:'READY',executable:true,priority:'P0',prompt:'LÃ€M â€” NO YAPPING. Execute JOB-2 from authoritative state.'},
+  nextJob:{jobId:'JOB-2',workerId:'NV02',status:'READY',executable:true,priority:'P0',prompt:'LÃ€M â€” NO YAPPING. Execute JOB-2 from authoritative state.',coreSelected:true},
   ...overrides,
 };}
 
@@ -64,12 +64,12 @@ describe('NV02 completion watcher/autopilot',()=>{
     expect(classifyAutoContinueDispatchFailure(new Error('anything'),true)).toBe('UNCERTAIN');
   });
   it('uses AUTO_CONTINUE as trigger metadata but DISPATCH as the browser action',()=>{expect(AUTO_CONTINUE).toBe('AUTO_CONTINUE');expect(decideAutoContinue(snapshot(),{...freshAutopilotState(),lastDispatchedJobId:'JOB-1',lastDispatchedAt:'2026-09-15T00:59:58.000Z'},NOW)).toMatchObject({kind:'DISPATCH',trigger:'AUTO_CONTINUE',jobId:'JOB-2'});});
-  it('persists canonical current GitHub issue identity for AUTO_UI jobs',()=>{expect(decideAutoContinue(snapshot({nextJob:{jobId:'GH-968',workerId:'NV02',status:'READY',executable:true,priority:'P0',prompt:'x'}}),{...freshAutopilotState(),lastDispatchedJobId:'JOB-1',lastDispatchedAt:'2026-09-15T00:59:58.000Z'},NOW)).toMatchObject({kind:'DISPATCH',jobId:'GH-968',issueRef:'https://github.com/newsdayads/tigeriq-ai-lab/issues/968'});});
+  it('persists Core-selected issue identity and assigned worker for UI jobs',()=>{expect(decideAutoContinue(snapshot({nextJob:{jobId:'GH-968',workerId:'NV03',status:'READY',executable:true,priority:'P0',prompt:'x',issueRef:'https://github.com/newsdayads/tigeriq-ai-lab/issues/968',coreSelected:true},requiredWorkers:['NV03']}),{...freshAutopilotState(),lastDispatchedJobId:'JOB-1',lastDispatchedAt:'2026-09-15T00:59:58.000Z'},NOW)).toMatchObject({kind:'DISPATCH',jobId:'GH-968',workerId:'NV03',issueRef:'https://github.com/newsdayads/tigeriq-ai-lab/issues/968'});});
   it('waits for running or missing evidence',()=>{expect(decideAutoContinue(snapshot({previousJob:{jobId:'J1',workerId:'NV02',status:'RUNNING',executable:true,priority:'P0'}}),freshAutopilotState(),NOW)).toMatchObject({kind:'BUSY'});expect(decideAutoContinue(snapshot({previousJob:{jobId:'J1',workerId:'NV02',status:'DONE',executable:true,priority:'P0'}}),freshAutopilotState(),NOW)).toMatchObject({kind:'WAIT_EVIDENCE'});});
   it('stops after FAILED/BLOCKED/CANCELLED instead of continuing',()=>{for(const status of ['FAILED','BLOCKED','CANCELLED'] as const){expect(decideAutoContinue(snapshot({previousJob:{jobId:'J1',workerId:'NV02',status,executable:true,priority:'P0',evidence:[{source:'GITHUB',ref:'x',verifiedAt:OBSERVED_AT}]}}),freshAutopilotState(),NOW)).toMatchObject({kind:'STOP',reason:`PREVIOUS_JOB_${status}`});}});
   it('fails closed on stale, uncorrelated, pending or uncertain state',()=>{expect(decideAutoContinue(snapshot(),freshAutopilotState(),NOW+600000)).toMatchObject({kind:'STOP',reason:'SNAPSHOT_STALE'});expect(decideAutoContinue(snapshot(),{...freshAutopilotState(),lastDispatchedJobId:'OTHER'},NOW)).toMatchObject({kind:'STOP',reason:'PREVIOUS_JOB_CORRELATION_MISMATCH'});expect(decideAutoContinue(snapshot(),{...freshAutopilotState(),pendingJobId:'JOB-2'},NOW)).toMatchObject({kind:'BUSY'});expect(decideAutoContinue(snapshot(),{...freshAutopilotState(),uncertainJobId:'JOB-2'},NOW)).toMatchObject({kind:'STOP'});});
   it('never duplicates the same job',()=>{expect(decideAutoContinue(snapshot(),{...freshAutopilotState(),lastDispatchedJobId:'JOB-2'},NOW)).toMatchObject({kind:'STOP',reason:'PREVIOUS_JOB_CORRELATION_MISMATCH'});});
-  it('stops on gated risks and rejects snapshots without revision',()=>{expect(decideAutoContinue(snapshot({nextJob:{jobId:'J',workerId:'NV02',status:'READY',executable:true,priority:'P0',prompt:'x',riskFlags:['PRODUCTION_RELEASE']}}),{...freshAutopilotState(),lastDispatchedJobId:'JOB-1',lastDispatchedAt:'2026-09-15T00:59:58.000Z'},NOW)).toMatchObject({kind:'STOP'});expect(()=>validateExternalSnapshot({...snapshot(),revision:''})).toThrow('AUTOPILOT_SNAPSHOT_REVISION_REQUIRED');});
+  it('stops on gated risks and rejects snapshots without revision',()=>{expect(decideAutoContinue(snapshot({nextJob:{jobId:'J',workerId:'NV02',status:'READY',executable:true,priority:'P0',prompt:'x',riskFlags:['PRODUCTION_RELEASE'],coreSelected:true}}),{...freshAutopilotState(),lastDispatchedJobId:'JOB-1',lastDispatchedAt:'2026-09-15T00:59:58.000Z'},NOW)).toMatchObject({kind:'STOP'});expect(()=>validateExternalSnapshot({...snapshot(),revision:''})).toThrow('AUTOPILOT_SNAPSHOT_REVISION_REQUIRED');});
 });
 
 describe('review evidence and extension lifecycle',()=>{
