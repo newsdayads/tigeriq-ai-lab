@@ -111,6 +111,9 @@ describe('completion-aware UTF-8 supervisor and Owner workspace',()=>{
 
 describe('SerialQueue',()=>{it('runs exactly one task at a time',async()=>{const q=new SerialQueue(0);const order:string[]=[];const a=q.enqueue(async()=>{order.push('a:start');await new Promise(r=>setTimeout(r,20));order.push('a:end');});const b=q.enqueue(async()=>{order.push('b:start');order.push('b:end');});await Promise.all([a,b]);expect(order).toEqual(['a:start','a:end','b:start','b:end']);});});
 
+import { getActivitySignature } from '../apps/chrome-controller/src/worker-safety-state.js';
+import { checkWorkingWatchdog } from '../apps/chrome-controller/src/autopilot.js';
+
 describe('Working State Watchdog', () => {
   it('detects hangs and triggers F5 then reopen without owner intervention', () => {
     let wdState = { unchangedCount: 0, recoveryAttempts: 0 };
