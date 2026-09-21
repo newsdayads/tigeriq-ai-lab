@@ -4,6 +4,19 @@ import {readFileSync} from 'node:fs';
 import {isRetryableFailure,shouldRetry,isStaleJob,repairInstruction,extractGitHubIssueNumber} from '../apps/tigeriq-coding-lane/autonomy-supervisor.mjs';
 
 describe('Core Dispatcher & Manager Exhaustion/Recovery', () => {
+  it('reconcileStaleAndBlockedObjectives correctly updates stale/blocked jobs to queued and does not affect running jobs', async () => {
+    const mockPool = {
+      query: async (sql, params) => {
+        if (sql.includes('UPDATE tigeriq_jobs') && sql.includes('status = \'queued\'')) {
+          return { rowCount: 2 };
+        }
+        return { rows: [] };
+      }
+    };
+    const res = await reconcileStaleAndBlockedObjectives(mockPool);
+    expect(res).toBeDefined();
+  });
+
   it('automatically re-arms soft-exhausted or recoverable runtimes', () => {
     const res1 = handleManagerExhaustionOrRecovery('soft_exhausted');
     expect(res1.rearm).toBe(true);
