@@ -42,9 +42,15 @@ export function runExecutionPreflight({ skill, tool, state, context, workItem } 
     }
   }
 
-  const watchdogPass = !state || state.watchdogFailed !== true;
+  const watchdogPass = !state || (state.watchdogFailed !== true && state.healthProbeHealthy !== false);
   if (!watchdogPass) {
     errors.push('INDEPENDENT_WATCHDOG_REPAIR_REQUIRED');
+  }
+  if (state && state.restartCount > (state.maxRestarts || 3)) {
+    errors.push('BOUNDED_RESTART_EXHAUSTED');
+  }
+  if (state && state.requiresRollback === true && !state.lastKnownGoodRestored) {
+    errors.push('LAST_KNOWN_GOOD_ROLLBACK_REQUIRED');
   }
   return {
     ok: errors.length === 0 && watchdogPass,
