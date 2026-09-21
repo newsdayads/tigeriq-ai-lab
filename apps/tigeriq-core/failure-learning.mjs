@@ -22,6 +22,24 @@ function normalizedMessage(value){
     .replace(/\b\d+\b/g,'<n>');
 }
 
+export async function autoRearmBlockedObjectives({ db, maxRetries = 3 } = {}) {
+  if (!db) return [];
+  const rearmed = [];
+  try {
+    const rows = await db.query?.("SELECT id, status, metadata FROM objectives WHERE status = 'blocked'") || [];
+    for (const row of rows) {
+      const metadata = row.metadata || {};
+      const retryCount = Number(metadata.retryCount || 0);
+      if (retryCount < maxRetries) {
+        metadata.retryCount = retryCount + 1;
+        await db.query?.("UPDATE objectives SET status = 'active', metadata = $1 WHERE id = $2", [metadata, row.id]);
+        rearmed.push(row.id);
+      }
+    }
+  } catch {}
+  return rearmed;
+}
+
 export function autoRearmBlockedObjectives(objecties = [], options = {}) {
   const maxRetries = options.maxRetries ?? 3;
   return (objecties || []).map(obj => {
