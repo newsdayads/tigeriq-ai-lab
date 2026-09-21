@@ -133,8 +133,10 @@ describe('independent worker recovery flows in direct-cdp-bridge',()=>{
     expect(source).toContain("WORKER_RESET_MAX_ATTEMPTS=2");
     expect(source).toContain("RECOVERY_BOUNDED_STOP");
     expect(source).toContain("/api/utility/workers/${w.id}/plan-refresh");
+    expect(source).toContain("/api/utility/workers/${w.id}/cancel-refresh");
     expect(source).toContain("/api/utility/workers/${w.id}/safe-recover");
-    expect(source.indexOf("/api/utility/workers/${w.id}/plan-refresh")).toBeLessThan(source.indexOf("await closeWorker(w,target)"));
+    expect(source).toContain("runPlannedWorkerReset");
+    expect(source).toContain("withWorkerLocalMutation");
     expect(source).toContain("resumeUrl");
   });
 
@@ -217,12 +219,17 @@ describe('safe recovery contracts',()=>{
     const windowStart=server.indexOf("if(url.pathname==='/api/window-event'");
     const windowEvent=server.slice(windowStart,server.indexOf("if(url.pathname==='/api/continuity/event'",windowStart));
     expect(utility).toContain('plan-refresh');
+    expect(utility).toContain('cancel-refresh');
     expect(utility).toContain('plannedRefreshWorkers.add(workerId)');
+    expect(utility).toContain('plannedRefreshWorkers.delete(workerId)');
     expect(utility).toContain('MANUAL_CLOSE_SUPPRESSED');
     expect(utility).toContain("OWNER_INTERACTION_READ_ONLY");
+    expect(utility).toContain("if(state.windowState==='CLOSED')");
+    expect(utility).toContain("mode:'BROKER_LAUNCH_CLOSED'");
     expect(windowEvent).toContain('const plannedRefresh=plannedRefreshWorkers.has(workerId)');
     expect(windowEvent).toContain('state.manualCloseSuppressed=!recoveryEligible');
     expect(windowEvent).toContain('if(plannedRefresh)plannedRefreshWorkers.delete(workerId)');
+    expect(windowEvent).toContain('if(recoveryEligible&&!plannedRefresh)void recoveryTick()');
   });
 
   it('keeps paused workers out of unattended start/autopilot paths',()=>{
