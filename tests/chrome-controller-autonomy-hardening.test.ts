@@ -360,6 +360,18 @@ describe('NV02 Canonical Runtime Owner and Provenance Enforcement',()=>{
   });
 });
 
+describe('Direct-CDP Controller runtime ownership and provenance', () => {
+  it('rejects duplicate runtime owners and stale fallback runtimes', () => {
+    const bridgeCode = readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs', 'utf8');
+    expect(bridgeCode).toContain('DUPLICATE_RUNTIME_OWNER_REJECTED');
+    expect(bridgeCode).toContain('STALE_FALLBACK_RUNTIME_REJECTED');
+  });
+  it('verifies exact deploy-source equality within allowed paths', () => {
+    const psScript = readFileSync('apps/chrome-controller/runtime/Install-NV02-Continuity.ps1', 'utf8');
+    expect(psScript).toContain('ExpectedHead');
+  });
+});
+
 describe('Direct-CDP Controller command transport',()=>{
   it('polls, executes and acknowledges Controller commands before continuity automation',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
