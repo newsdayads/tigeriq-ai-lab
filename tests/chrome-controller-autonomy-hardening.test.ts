@@ -333,3 +333,21 @@ describe('NV02 owner-proxy live handoff coordination',()=>{
     expect(bridge).toContain("CONTINUE_DEFERRED_TO_EXTERNAL_AUTOPILOT");
   });
 });
+
+
+describe('Direct-CDP Controller command transport',()=>{
+  it('polls, executes and acknowledges Controller commands before continuity automation',()=>{
+    const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    const heartbeat=bridge.indexOf("await postWorkerHeartbeat(w,target,ui,projectContextReady)");
+    const poll=bridge.indexOf("command=await getCommand(w.id)");
+    const execute=bridge.indexOf("const result=await handleCommand(w,target,command)");
+    const result=bridge.indexOf("await post('/api/result',w.id,{workerId:w.id,commandId:command.id,ok:true");
+    const continuity=bridge.indexOf("if(w.id==='NV02')await maybeNv02Continuity(w,target,ui)");
+    expect(heartbeat).toBeGreaterThan(-1);
+    expect(poll).toBeGreaterThan(heartbeat);
+    expect(execute).toBeGreaterThan(poll);
+    expect(result).toBeGreaterThan(execute);
+    expect(continuity).toBeGreaterThan(result);
+    expect(bridge).toContain("CONTROLLER_COMMAND_FAILED");
+  });
+});
