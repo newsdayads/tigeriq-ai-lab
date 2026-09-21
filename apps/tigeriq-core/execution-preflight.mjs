@@ -24,8 +24,13 @@ export function runExecutionPreflight({ skill, tool, state, context, workItem } 
   if (state) {
     if (typeof state !== 'object' || Array.isArray(state)) {
       errors.push('INVALID_STATE_FORMAT');
-    } else if (state.status === 'blocked' || state.status === 'failed' || state.terminated === true) {
-      errors.push(`STATE_TERMINATED_OR_BLOCKED:${state.status || 'terminated'}`);
+    } else {
+      if (state.status === 'blocked' || state.status === 'failed' || state.terminated === true) {
+        errors.push(`STATE_TERMINATED_OR_BLOCKED:${state.status || 'terminated'}`);
+      }
+      if (state.dispatchUncertain === true || state.authorityShiftUnresolved === true) {
+        errors.push('DISPATCH_FAIL_CLOSED_UNCERTAIN_AUTHORITY');
+      }
     }
   }
 
