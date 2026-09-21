@@ -158,7 +158,8 @@ describe('NV02 continuity policy', () => {
 
     expect(source).toContain("verifiedChatUrl:String(raw.verifiedChatUrl||'')");
     expect(source).toContain("sameNv02Chat(state.verifiedChatUrl,ui?.url)");
-    expect(source).toContain("const modelCheckRequired=now>=Number(state.modelCheckBlockedUntil||0)&&(!state.verifiedChatUrl||!sameNv02Chat(state.verifiedChatUrl,ui?.url))");
+    expect(source).toContain("const modelCheckRequired=now>=Number(state.modelCheckBlockedUntil||0)&&(ui?.modelExact!==true||!state.verifiedChatUrl||!sameNv02Chat(state.verifiedChatUrl,ui?.url))");
+    expect(source).toContain("phase==='STALLED'&&ui?.modelExact!==true&&modelCheckRequired");
     expect(source).toContain("phase==='STALLED'&&ui?.modelExact!==true&&modelCheckRequired");
 
     expect(source).not.toContain("state.verifiedChatUrl===ui?.url");
