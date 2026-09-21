@@ -221,7 +221,7 @@ describe('isolated NV02 stall/F5 recovery scope',()=>{
     const hotLoop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
     expect(hotLoop.indexOf("if(phase==='WORKING')")).toBeLessThan(hotLoop.indexOf("if(now>=Number(state.nextPeriodicF5At||0))"));
     expect(hotLoop.indexOf("if(phase==='WORKING')")).toBeLessThan(hotLoop.indexOf("if(now<state.nextContinueAt)return"));
-    const f5Block=bridge.slice(bridge.indexOf("if(now>=Number(state.nextPeriodicF5At||0))"),bridge.indexOf("if(!currentTrackedWork)"));
+    const f5Block=bridge.slice(bridge.indexOf("if(now>=Number(state.nextPeriodicF5At||0))"),bridge.indexOf("const modelCheckRequired="));
     expect(f5Block).not.toContain("nextContinueAt:now");
     expect(bridge).toContain("sameNv02Chat(state.verifiedChatUrl,ui?.url)");
     const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
