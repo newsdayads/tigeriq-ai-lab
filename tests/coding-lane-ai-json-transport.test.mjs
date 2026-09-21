@@ -1,10 +1,18 @@
 import {readFileSync} from 'node:fs';
 import {describe,expect,it} from 'vitest';
 import {compactCurrentFilesForModel,compactPromptForChanges,compactPromptForEdits,currentFilesFromPrompt,expandCompactChanges,extractModelText,isAiUrl,looksLikeJsonObject,matchesExpectedSchema,prepareAiJsonRequest,installAiJsonTransport} from '../apps/tigeriq-coding-lane/ai-json-transport.mjs';
-import {managerBlockKind} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {buildRepairGenerationPrompt,managerBlockKind} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 describe('coding lane AI JSON transport',()=>{
+  it('routes same-PR CI repair through the compact changes transport',()=>{
+    const prompt=buildRepairGenerationPrompt({id:'NV17'},{instruction:'fix CI',paths:['tests/a.test.mjs']},'FILE tests/a.test.mjs\nconst x=1;',['CI Verify: failure']);
+    expect(prompt).toContain('REVIEW ISSUES TO FIX');
+    expect(prompt).toContain('"changes":[{"path"');
+    expect(compactPromptForChanges(prompt)).toContain('"edits":[{"path"');
+    expect(compactPromptForChanges(prompt)).toContain('CURRENT FILES:');
+  });
+
   it('forces JSON mode for Gemini',()=>{
     const init=prepareAiJsonRequest('https://generativelanguage.googleapis.com/v1beta/models/x:generateContent',{method:'POST',body:JSON.stringify({generationConfig:{temperature:0}})});
     expect(JSON.parse(init.body).generationConfig.responseMimeType).toBe('application/json');
