@@ -38,6 +38,9 @@ export const jobsStore = new Map<string, MockJob>();
 export const eventsStore = new Map<string, MockEvent[]>();
 export const agentStatusStore = new Map<string, { status: string; timestamp: string; telemetry?: Record<string, unknown> }>();
 
+export function getAgentTelemetry() { return { requestCount: [...agentStatusStore.values()].reduce((a, b) => a + (b.telemetry?.requestCount ?? 0), 0) }; }
+
+
 export function getObjective(id: string): MockObjective | undefined {
   return objectivesStore.get(id);
 }
