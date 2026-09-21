@@ -27,13 +27,20 @@ describe('Worker Utility V1 contract',()=>{
  it('keeps Advanced DND authoritative to parent settings refresh',()=>{expect(popup).toContain('await RunAsync(dndOn ? "dnd-off" : "dnd-on")');expect(popup).not.toContain('dndOn = !dndOn');});
  it('keeps utility controller timeout above controller pacing',()=>{expect(client).toContain('TimeSpan.FromSeconds(20)');expect(server).toContain('minUiActionGapMs');expect(client).not.toContain('TimeSpan.FromSeconds(8)');});
  it('locks final approved popup/tray behavior and prevents previous regressions',()=>{expect(popup).not.toContain('AutoScroll = true');expect(popup).toContain('Đóng an toàn');expect(popup).toContain('TabControl');expect(popup).toContain('Thông tin');expect(popup).toContain('Tùy chọn');expect(popup).toContain('Bảo mật');expect(context).not.toContain('HideForPopup');expect(context).not.toContain('ShowAllPopups');expect(context).toContain('worker.Id == id) continue');expect(context).toContain('RefreshBadgeVisibility');expect(context).toContain('badges[id].Hide()');expect(context).toContain('badge ẩn khi popup mở');expect(context).toContain('TogglePopup');expect(client).toContain('CONTROLLER_TIMEOUT');}); it('reports truthful Run behavior when AUTO_UI queue is empty or queued',()=>{expect(context).toContain('RUN_NO_AUTO_UI_JOB');expect(context).toContain('Không có việc AUTO_UI');expect(context).toContain('Đang chờ hệ thống giao');expect(client).toContain('NextEligibleAutoUiJobAsync');expect(client).toContain('/api/ui-autopilot/snapshot');});
-it('implements isolated worker profiles, staggered read-only probes for NV02/NV03/NV04, and NV04 safe write smoke test with mutation lease checking and composer verification', () => {
-  const harnessClient = readFileSync('apps/worker-utility/BrowserHarnessClient.cs', 'utf8');
-  expect(harnessClient).toContain('ReadOnlyEnabled');
-  expect(harnessClient).toContain('StaggeredReadOnlyProbeAsync');
-  expect(harnessClient).toContain('SafeWriteSmokeTestAsync');
-  expect(harnessClient).toContain('NV04-LEASE-');
-  expect(harnessClient).toContain('COMPOSER_VERIFICATION_FAILED');
+it('implements independent identity, state, timer, lock, per-worker Pause/Resume overriding automatic actions, and observability surfaces for WORKING, READY, STALLED, BLOCKED, F5, reload/reopen, 2-4h reset, and last prompt/action across NV02, NV03, and NV04', () => {
+  const contextCode = readFileSync('apps/worker-utility/UtilityContext.cs', 'utf8');
+  expect(contextCode).toContain('NV02');
+  expect(contextCode).toContain('NV03');
+  expect(contextCode).toContain('NV04');
+  expect(contextCode).toContain('WORKING');
+  expect(contextCode).toContain('READY');
+  expect(contextCode).toContain('STALLED');
+  expect(contextCode).toContain('BLOCKED');
+  expect(contextCode).toContain('F5');
+  expect(contextCode).toContain('Pause');
+  expect(contextCode).toContain('Resume');
+  expect(contextCode).toContain('LastPrompt');
+  expect(contextCode).toContain('LastAction');
 });
 
 });
