@@ -27,10 +27,15 @@ export function projectWorkItem(objectiveId: string): UnifiedWorkItem {
   const nextAction = objective?.nextAction ?? job?.nextAction;
 
   let stage = objective?.stage ?? job?.stage ?? 'QUEUED';
+
   for (const event of events) {
     if (event.stage) {
       stage = event.stage;
     }
+  }
+
+  if (stage === 'QUEUED' && (kind === 'coding')) {
+    stage = 'coding-lane';
   }
 
   return {
