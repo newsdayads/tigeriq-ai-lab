@@ -70,44 +70,36 @@ test('PowerShell updater is path-aware and leaves Core alone for non-Core change
   assert.match(updater,/codingRestarted=\$impact\.coding/);
 });
 
-test('truncated edits trigger context refresh',()=>{
-  assert.match(service,/isRefreshableCompactPatchError/);
-  assert.match(service,/OLD_NOT_FOUND/);
-});
-
-test('same-PR repair maintains identity',()=>{
-  assert.match(service,/shouldResumeExistingPr/);
-  assert.match(service,/pr_number/);
-});
-
-test('failover handles contract errors',()=>{
-  assert.match(service,/classifyAiFailure/);
-  assert.match(service,/OUTPUT_CONTRACT_EXHAUSTED/);
-});
-test('stale context refresh on OLD_NOT_FOUND',()=>{
-  assert.match(service,/isRefreshableCompactPatchError/);
-  assert.match(service,/OLD_NOT_FOUND/);
-  assert.match(service,/contextFor/);
-});
-test('same-PR repair preserves identity',()=>{
-  assert.match(service,/shouldResumeExistingPr/);
-  assert.match(service,/pr_number/);
-});
-test('compact contract enforces deterministic validation',()=>{
-  assert.match(service,/validateCompactEdits/);
-  assert.match(service,/validateCompactContract/);
-});
 test('truncated edits trigger context refresh and model failover',()=>{
   assert.match(service,/isRefreshableCompactPatchError/);
+  assert.match(service,/OLD_NOT_FOUND/);
+  assert.match(service,/invokeJsonWithFailover/);
   assert.match(service,/classifyAiFailure/);
   assert.match(service,/OUTPUT_CONTRACT_EXHAUSTED/);
 });
+
 test('stale context refresh on OLD_NOT_FOUND maintains branch identity',()=>{
   assert.match(service,/contextFor/);
   assert.match(service,/OLD_NOT_FOUND/);
   assert.match(service,/shouldResumeExistingPr/);
+  assert.match(service,/pr_number/);
 });
-test('same-PR repair preserves PR number across cycles',()=>{
+
+test('same-PR repair preserves PR number across repair cycles',()=>{
+  assert.match(service,/shouldResumeExistingPr/);
   assert.match(service,/pr_number/);
   assert.match(service,/runGateWithRepair/);
+});
+
+test('compact contract enforces deterministic validation and truncation detection',()=>{
+  const policy=readFileSync(new URL('../apps/tigeriq-coding-lane/policy.mjs',import.meta.url),'utf8');
+  assert.match(policy,/validateCompactContract/);
+  assert.match(policy,/detectContractTruncation/);
+});
+
+test('failover handles contract errors without exhausting cycles',()=>{
+  assert.match(service,/classifyAiFailure/);
+  assert.match(service,/OUTPUT_CONTRACT_EXHAUSTED/);
+  assert.match(service,/runGateWithRepair/);
+  assert.match(service,/maxRepairCycles=3/);
 });
