@@ -9,6 +9,7 @@ export interface MockObjective {
   blockers?: string[];
   evidenceRefs?: string[];
   nextAction?: string;
+  telemetry?: Record<string, unknown>;
 }
 
 export interface MockJob {
@@ -22,6 +23,7 @@ export interface MockJob {
   evidenceRefs?: string[];
   sourceRef?: string;
   nextAction?: string;
+  telemetry?: Record<string, unknown>;
 }
 
 export interface MockEvent {
