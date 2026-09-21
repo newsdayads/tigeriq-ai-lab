@@ -610,7 +610,7 @@ async function maybeNv02Continuity(w,target,ui){
     await continuityEvent('PERIODIC_F5_REFRESH',{beforeUrl:refreshed?.beforeUrl||null,afterUrl:refreshed?.afterUrl||null,afterPhase:refreshed?.afterPhase||null,nextRefreshAt:state.nextRefreshAt});
     return;
   }
-  if(phase==='STALLED'&&ui?.modelExact!==true){
+  if(phase==='STALLED'&&ui?.modelExact!==true&&!sameNv02Chat(state.verifiedChatUrl,ui?.url)){
     try{
       const corrected=await withNv02Mutation(()=>ensureNv02ModelProfile(target),'MODEL_PROFILE_RECOVERY');
       if(corrected?.status==='MUTATION_LEASE_BUSY')return;
