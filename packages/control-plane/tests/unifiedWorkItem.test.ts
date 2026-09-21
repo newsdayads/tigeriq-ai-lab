@@ -22,11 +22,13 @@ describe('projectWorkItem', () => {
       blockers: ['missing-key'],
       evidenceRefs: ['ev-1'],
       nextAction: 'review',
+      telemetry: { req: 42 },
     });
 
     jobsStore.set(id, {
       workItemId: id,
       stage: 'WORKING',
+      telemetry: { req: 99 },
     });
 
     eventsStore.set(id, [
@@ -44,5 +46,12 @@ describe('projectWorkItem', () => {
     expect(unified.blockers).toEqual(['missing-key']);
     expect(unified.evidenceRefs).toEqual(['ev-1']);
     expect(unified.nextAction).toBe('review');
+  });
+
+  it('should include telemetry in projection', () => {
+    const id = 'obj-456';
+    objectivesStore.set(id, { workItemId: id, telemetry: { req: 100 } });
+    const unified = projectWorkItem(id);
+    expect(unified).toHaveProperty('telemetry');
   });
 });
