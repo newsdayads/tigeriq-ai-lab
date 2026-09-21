@@ -177,17 +177,19 @@ describe('stale-working restart schedule scope',()=>{
   });
 });
 
-describe('stale-working recovery lease scope',()=>{
-  it('keeps busy mutation blocked except for the narrow NV02 recovery purpose',()=>{
-    const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
+describe('isolated NV02 stall/F5 recovery scope',()=>{
+  it('keeps recovery local to the isolated runner and never checkpoints/archives from the hot loop',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
-    expect(server).toContain("const staleWorkingRecovery=workerId==='NV02'&&purpose==='STALE_WORKING_RECOVERY'");
-    expect(server).toContain("state.lastHeartbeat?.uiBusy!==false&&!staleWorkingRecovery");
-    expect(server).toContain("STALE_WORKING_RECOVERY_REQUIRES_BUSY");
-    expect(server).toContain("workerHasActiveJob(workerId)");
-    expect(server).toContain("WORKER_COMMAND_INFLIGHT");
-    expect(bridge).toContain("withNv02Mutation(()=>reloadTarget(target),'STALE_WORKING_RECOVERY')");
-    expect(bridge).toContain("JSON.stringify({ownerId,ttlMs,purpose})");
+    expect(bridge).toContain("'WORKING_STALLED_RECOVERY'");
+    expect(bridge).toContain("'PERIODIC_F5_REFRESH'");
+    expect(bridge).toContain("stopAndClearComposerExpr");
+    expect(bridge).toContain("nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS)");
+    expect(bridge).toContain("sameNv02Chat(state.verifiedChatUrl,ui?.url)");
+    const hotLoop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
+    expect(hotLoop).not.toContain("checkpointNv02(");
+    expect(hotLoop).not.toContain("rotateNv02Chat(");
+    expect(hotLoop).not.toContain("getControllerState(");
+    expect(hotLoop).not.toContain("hasActiveNv02Work(");
   });
 });
 
