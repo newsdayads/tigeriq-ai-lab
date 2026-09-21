@@ -129,8 +129,9 @@ describe('three-worker controller/broker/config source integration',()=>{
     expect(serverSource).toContain("utilityPausedWorkers.delete(workerId)");
     expect(serverSource).toContain("UTILITY_WORKER_PAUSED:${workerId}");
     expect(serverSource).toContain("browserMutationLeases.assertControllerAllowed(workerId)");
-    expect(serverSource).toContain("mutation-lease/acquire");
-    expect(serverSource).toContain("mutation-lease/release");
+    expect(serverSource).toContain("BrowserMutationLeaseStore");
+    expect(serverSource).toContain("browserLeaseMatch=url.pathname.match");
+    expect(serverSource).toContain("mutation-lease(?:\\/(acquire|release))?");
   });
 
   it('exposes independent canonical config identities for all three workers',()=>{
