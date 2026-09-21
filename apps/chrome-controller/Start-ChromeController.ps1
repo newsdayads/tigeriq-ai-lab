@@ -14,15 +14,24 @@ if (-not (Test-Path $server)) {
 }
 
 $env:TIGERIQ_CHROME_CONFIG = $Config
-# Prevent launching if a lock file exists (idempotent start)
+# Block legacy config locations robustly
+$resolvedConfigPath = [System.IO.Path]::GetFullPath($Config)
+if ($resolvedConfigPath -match "[\\/](legacy|old|deprecated)[\\/]") {
+  throw "Legacy config paths are blocked: $Config"
+}
+# Prevent launching if a lock file exists atomically (idempotent start)
 $lockFile = Join-Path $root "dist\apps\chrome-controller\controller.lock"
-if (Test-Path $lockFile) {
+$lockDir = Split-Path $lockFile -Parent
+if (-not (Test-Path $lockDir)) {
+  New-Item -ItemType Directory -Path $lockDir -Force | Out-Null
+}
+try {
+  $fs = [System.IO.File]::Open($lockFile, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+  $fs.Close()
+  $fs.Dispose()
+} catch {
   Write-Host "Chrome controller already running (lock file present). Exiting."
   exit 0
-}
-# Block legacy config locations (e.g., paths containing 'legacy')
-if ($Config -match "legacy") {
-  throw "Legacy config paths are blocked: $Config"
 }
 # Create lock file to indicate running instance
 New-Item -ItemType File -Path $lockFile -Force | Out-Null
