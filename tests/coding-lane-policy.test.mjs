@@ -1,7 +1,7 @@
 import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {branchName,checkGateState,changedPathImpact,safeRepoPath,validateChanges} from '../apps/tigeriq-coding-lane/policy.mjs';
+import {branchName,checkGateState,changedPathImpact,extractCanonicalAllowedPaths,safeRepoPath,validateChanges} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 const service=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
 const updater=readFileSync(new URL('../scripts/tigeriq-core/update-core-runtime.ps1',import.meta.url),'utf8');
@@ -21,6 +21,11 @@ test('coding lane cannot target protected or unsafe paths',()=>{
   assert.equal(safeRepoPath('scripts/tigeriq-core/run-core.ps1'),false);
   assert.equal(safeRepoPath('../escape.ts'),false);
   assert.throws(()=>validateChanges([{path:'apps/b.ts',content:'x'}],['apps/a.ts']),/OUTSIDE_MANAGER_SCOPE/);
+});
+
+test('canonical MUST NOT EXPAND header is an enforceable source scope',()=>{
+  const objective='CANONICAL ALLOWED PATHS (MUST NOT EXPAND):\\ntests/coding-lane-ai-json-transport.test.mjs\\n\\nGoal: test-only canary';
+  assert.deepEqual(extractCanonicalAllowedPaths(objective),['tests/coding-lane-ai-json-transport.test.mjs']);
 });
 
 test('every coding job receives a non-main isolated branch',()=>{
