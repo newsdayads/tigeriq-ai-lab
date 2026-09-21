@@ -346,6 +346,7 @@ export function validateCompactEdits(edits,allowedPaths=[]){
   let bytes=0;
   for(const edit of edits){
     const path=String(edit?.path||'').trim(),old=String(edit?.old??''),next=String(edit?.new??'');
+    if(/^exact allowed path$/i.test(path))throw new Error('CODING_COMPACT_EDIT_PATH_PLACEHOLDER');
     if(!safeRepoPath(path)||!allow.has(path))throw new CodingScopeViolationError([path||'<empty>']);
     paths.add(path);
     if(!old||old===next)throw new Error('CODING_COMPACT_EDIT_INVALID');

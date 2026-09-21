@@ -322,6 +322,12 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
     assert.ok(context.length>60000);
   });
 
+  await t.test('model path placeholder is retryable output-contract noise, not a real scope violation',()=>{
+    const error=()=>validateCompactEdits([{path:'exact allowed path',old:'a',new:'b'}],['apps/tigeriq-core/core.mjs']);
+    assert.throws(error,/CODING_COMPACT_EDIT_PATH_PLACEHOLDER/);
+    assert.strictEqual(isRetryableAiError(new Error('CODING_COMPACT_EDIT_PATH_PLACEHOLDER')),true);
+  });
+
   await t.test('compact repair remains fail-closed outside allowed scope',()=>{
     assert.throws(()=>validateCompactEdits([{path:'docs/SECURITY.md',old:'a',new:'b'}],['apps/tigeriq-core/core.mjs']),/CODING_SCOPE_VIOLATION/);
     assert.throws(()=>validateCompactEdits([{path:'apps/tigeriq-core/core.mjs',old:'same',new:'same'}],['apps/tigeriq-core/core.mjs']),/CODING_COMPACT_EDIT_INVALID/);
