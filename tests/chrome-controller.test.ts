@@ -1,6 +1,5 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-// @ts-expect-error TS7016 untyped js module
 import * as continuity from '../apps/chrome-controller/extension/continuity.js';
 import {
   AUTO_CONTINUE,
