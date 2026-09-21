@@ -4,11 +4,50 @@ import { describe, expect, it } from 'vitest';
 import { buildDurableSavePrompt, SAVE_RECEIPT_POLL_DELAYS_MS, waitForDurableSaveReceipt } from '../apps/chrome-controller/extension/save-receipt.js';
 import {
   CONTINUE_PROMPTS, CHAT_ROTATE_AFTER_DISPATCHES, MAX_WORKING_UNCHANGED_CHECKS, WORKING_PROGRESS_CHECK_MS,
-  deriveNv02Phase, hasActiveNv02Work, hasWaitingEvidenceNv02Work, hasContinuableNv02Work, pickContinuePrompt,
-  randomDelay, shouldRotateNv02Chat,
+  CONTINUE_MIN_MS, CONTINUE_MAX_MS, REFRESH_MIN_MS, REFRESH_MAX_MS, WORKER_F5_MIN_MS, WORKER_F5_MAX_MS,
+  CONTINUITY_WORKERS, deriveNv02Phase, deriveWorkerPhase, hasActiveNv02Work, hasActiveWorkerWork,
+  hasWaitingEvidenceNv02Work, hasWaitingEvidenceWorkerWork, hasContinuableNv02Work, hasContinuableWorkerWork,
+  pickContinuePrompt, randomDelay, shouldRotateNv02Chat, computeWorkerStaggerDelay,
 } from '../apps/chrome-controller/extension/continuity.js';
 
 describe('NV02 continuity policy', () => {
+  it('exposes isolated worker-generic continuity primitives for NV02/NV03/NV04', () => {
+    expect(CONTINUITY_WORKERS).toEqual(['NV02','NV03','NV04']);
+    expect(CONTINUE_PROMPTS).toHaveLength(21);
+    expect(WORKER_F5_MIN_MS).toBe(5*60*1000);
+    expect(WORKER_F5_MAX_MS).toBe(10*60*1000);
+    expect(WORKER_F5_MIN_MS).toBe(CONTINUE_MIN_MS);
+    expect(WORKER_F5_MAX_MS).toBe(CONTINUE_MAX_MS);
+    expect(REFRESH_MIN_MS).toBe(2*60*60*1000);
+    expect(REFRESH_MAX_MS).toBe(4*60*60*1000);
+    expect(pickContinuePrompt('Tiếp tục',()=>0)).not.toBe('Tiếp tục');
+
+    for(const workerId of CONTINUITY_WORKERS){
+      expect(deriveWorkerPhase({stopVisible:true,composerReady:true},{workerId})).toBe('WORKING');
+      expect(deriveWorkerPhase({composerReady:true,uiBusy:false},{workerId})).toBe('READY');
+      expect(deriveWorkerPhase({composerReady:false,uiBusy:false},{workerId})).toBe('STALLED');
+      expect(deriveWorkerPhase({securityBlock:'CAPTCHA'},{workerId})).toBe('BLOCKED');
+
+      const own={jobs:[{workerId,stage:'WORKING',completedAt:null}]};
+      expect(hasActiveWorkerWork(own,workerId)).toBe(true);
+      expect(hasContinuableWorkerWork(own,workerId)).toBe(true);
+      expect(hasWaitingEvidenceWorkerWork({jobs:[{workerId,stage:'WAITING_EVIDENCE',completedAt:null}]},workerId)).toBe(true);
+      for(const other of CONTINUITY_WORKERS.filter((id)=>id!==workerId)){
+        expect(hasActiveWorkerWork(own,other)).toBe(false);
+        expect(hasContinuableWorkerWork(own,other)).toBe(false);
+      }
+    }
+
+    expect(hasActiveWorkerWork({autopilot:{pendingJobId:'NV02-ONLY'}},'NV02')).toBe(true);
+    expect(hasActiveWorkerWork({autopilot:{pendingJobId:'NV02-ONLY'}},'NV03')).toBe(false);
+    expect(hasActiveWorkerWork({autopilotByWorker:{NV03:{pendingJobId:'NV03-ONLY'}}},'NV03')).toBe(true);
+    expect(hasActiveNv02Work({jobs:[{workerId:'NV03',stage:'WORKING',completedAt:null}]})).toBe(false);
+
+    const stagger=CONTINUITY_WORKERS.map((_,index)=>computeWorkerStaggerDelay(index,0,60_000));
+    expect(new Set(stagger).size).toBe(3);
+    expect(stagger).toEqual([0,60_000,120_000]);
+  });
+
   it('enforces fail-closed behavior on stale fallback or duplicate canonical ownership', () => {
     const script = readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs', 'utf8');
     expect(script).toContain('acquireNv02CanonicalOwnership');
