@@ -560,6 +560,19 @@ function chatLoadRetryExpr(){
 function loadContinuityFor(w){return w.id==='NV02'?loadNv02Continuity():loadWorkerContinuity(w.id);}
 function saveContinuityFor(w,state){if(w.id==='NV02')saveNv02Continuity(state);else saveWorkerContinuity(w.id,state);}
 async function continuityEventFor(w,event,data={}){if(w.id==='NV02')await continuityEvent(event,data);else await genericWorkerEvent(w.id,event,data);}
+function chatLoadUiUsable(ui){
+  return Boolean(ui&&!ui.chatLoadError&&(ui.uiBusy===true||ui.uiReady===true||ui.composerReady===true));
+}
+async function waitForChatLoadOutcome(target,timeoutMs){
+  const deadline=Date.now()+timeoutMs;let last=null;
+  while(Date.now()<deadline){
+    await sleep(500);
+    last=await uiStateRaw(target).catch(()=>null);
+    if(last?.chatLoadError)return{status:'ERROR',ui:last};
+    if(chatLoadUiUsable(last))return{status:'RECOVERED',ui:last};
+  }
+  return{status:'UNKNOWN',ui:last};
+}
 async function withWorkerUiMutation(w,fn,purpose,ttlMs=30000){
   return w.id==='NV02'?withNv02Mutation(fn,purpose,ttlMs):withWorkerMutation(w.id,fn,purpose,ttlMs);
 }
@@ -572,9 +585,14 @@ async function clearChatLoadRecovery(w,state,event,data={}){
 async function maybeRecoverChatLoadError(w,target,ui,now=Date.now()){
   let state=loadContinuityFor(w);
   if(!ui?.chatLoadError){
-    if(Number(state.chatLoadRecoveryStage||0)>0||Number(state.chatLoadBlockedUntil||0)>0)
+    const recoveryActive=Number(state.chatLoadRecoveryStage||0)>0||Number(state.chatLoadBlockedUntil||0)>0;
+    if(!recoveryActive)return false;
+    if(chatLoadUiUsable(ui)){
       await clearChatLoadRecovery(w,state,'CHAT_LOAD_RECOVERED',{url:ui?.url||null});
-    return false;
+      return false;
+    }
+    await continuityEventFor(w,'CHAT_LOAD_RECOVERY_PENDING',{url:ui?.url||null,stage:Number(state.chatLoadRecoveryStage||0)});
+    return true;
   }
   if(now<Number(state.chatLoadBlockedUntil||0)){
     await continuityEventFor(w,'CHAT_UNLOADABLE_BACKOFF',{url:ui?.url||null,blockedUntil:state.chatLoadBlockedUntil});
@@ -583,9 +601,9 @@ async function maybeRecoverChatLoadError(w,target,ui,now=Date.now()){
   const stage=Number(state.chatLoadRecoveryStage||0);
   if(stage===0){
     const result=await withWorkerUiMutation(w,()=>evalPage(target,chatLoadRetryExpr()),'CHAT_LOAD_RETRY',15000);
-    await sleep(2200);
-    const after=await uiStateRaw(target).catch(()=>null);
-    if(after&&!after.chatLoadError){await clearChatLoadRecovery(w,state,'CHAT_LOAD_RECOVERED_AFTER_RETRY',{url:after.url||null});return true;}
+    const outcome=await waitForChatLoadOutcome(target,8000);
+    const after=outcome.ui;
+    if(outcome.status==='RECOVERED'){await clearChatLoadRecovery(w,state,'CHAT_LOAD_RECOVERED_AFTER_RETRY',{url:after?.url||null});return true;}
     state={...state,chatLoadRecoveryStage:1};
     saveContinuityFor(w,state);
     await continuityEventFor(w,'CHAT_LOAD_RETRY_EXHAUSTED',{status:result?.status||null,url:ui?.url||null});
@@ -593,9 +611,9 @@ async function maybeRecoverChatLoadError(w,target,ui,now=Date.now()){
   }
   if(stage===1){
     const result=await withWorkerUiMutation(w,()=>reloadTarget(target),'CHAT_LOAD_F5',20000);
-    await sleep(2500);
-    const after=await uiStateRaw(target).catch(()=>null);
-    if(after&&!after.chatLoadError){await clearChatLoadRecovery(w,state,'CHAT_LOAD_RECOVERED_AFTER_F5',{url:after.url||null});return true;}
+    const outcome=await waitForChatLoadOutcome(target,10000);
+    const after=outcome.ui;
+    if(outcome.status==='RECOVERED'){await clearChatLoadRecovery(w,state,'CHAT_LOAD_RECOVERED_AFTER_F5',{url:after?.url||null});return true;}
     state={...state,chatLoadRecoveryStage:2};
     saveContinuityFor(w,state);
     await continuityEventFor(w,'CHAT_LOAD_F5_EXHAUSTED',{status:result?.status||null,url:ui?.url||null});
