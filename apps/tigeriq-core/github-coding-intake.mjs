@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto';
 import {Pool} from 'pg';
-import {backlogOwnerDirect,sortBacklogSpecs,exactBodyFlag,backlogPriority,compareBacklogSpecs} from './github-backlog-policy.mjs';
+import {backlogOwnerDirect,sortBacklogSpecs,exactBodyFlag,backlogPriority,compareBacklogSpecs,parseExecutableIssue,validateBacklogContract} from './github-backlog-policy.mjs';
 import {controlPlaneRepairIntent,isProtectedControlPlanePath} from '../shared/control-plane-lock.mjs';
 const DEFAULT_OWNER='newsdayads';
 const DEFAULT_REPO='tigeriq-ai-lab';
