@@ -8,6 +8,7 @@ import {
   validateExternalSnapshot,
   type ExternalAutopilotSnapshot,
 } from '../apps/chrome-controller/src/autopilot.js';
+import { WORKER_IDS } from '../apps/chrome-controller/src/model.js';
 import {
   computePlacements,
   isInteractiveDesktopSession,
