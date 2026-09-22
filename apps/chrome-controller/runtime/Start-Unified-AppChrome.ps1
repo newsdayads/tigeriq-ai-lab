@@ -15,6 +15,7 @@ $supervisorLog=Join-Path $runtime 'appchrome-supervisor.jsonl'
 $tokenFile=Join-Path $runtime 'NV02-ProfileToken.value'
 $ownerStatePath=Join-Path $runtime 'owner-interaction-state.json'
 $lastHead=''
+$supervisorEpoch=[guid]::NewGuid().ToString('N')
 $supervisorMutex=[Threading.Mutex]::new($false,'Global\TigerIQ.AppChrome.Unified.Supervisor')
 $ownsSupervisorMutex=$false
 try{$ownsSupervisorMutex=$supervisorMutex.WaitOne(0)}catch{}
@@ -53,6 +54,7 @@ function Set-RuntimeEnvironment($Active){
   $env:TIGERIQ_APPROVED_HEAD=$Active.head
   $env:TIGERIQ_DEPLOY_ROOT=$Active.deploy
   $env:TIGERIQ_NV02_BRIDGE_SHA256=$Active.bridgeHash
+  $env:TIGERIQ_APPCHROME_SUPERVISOR_EPOCH=$supervisorEpoch
   $env:TIGERIQ_INTERACTIVE_SESSION='1'
   $env:TIGERIQ_SESSION_ID=[string](Get-Process -Id $PID).SessionId
   $env:TIGERIQ_WINDOWS_SESSION_ID=$env:TIGERIQ_SESSION_ID
@@ -193,7 +195,7 @@ function Ensure-AppChrome{
   $script:lastHead=$active.head
 }
 
-Write-SupervisorEvent 'SUPERVISOR_STARTED' @{pid=$PID;pollSeconds=$PollSeconds}
+Write-SupervisorEvent 'SUPERVISOR_STARTED' @{pid=$PID;pollSeconds=$PollSeconds;supervisorEpoch=$supervisorEpoch}
 try{
   while($true){
     try{Ensure-AppChrome}
