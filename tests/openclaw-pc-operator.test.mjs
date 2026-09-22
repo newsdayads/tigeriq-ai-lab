@@ -19,9 +19,11 @@ describe('OpenClaw PC01 guarded local operator', () => {
   });
 
   it('blocks direct source/runtime-source writes while allowing state/evidence writes', () => {
-    expect(() => assertWritePathAllowed('D:\\TigerIQ\\Workspace\\tigeriq-ai-lab\\x.txt')).toThrow('TIGERIQ_PC_SOURCE_WRITE_BLOCKED');
-    expect(() => assertWritePathAllowed('D:\\TigerIQ\\Runtime\\CoreSource\\x.txt')).toThrow('TIGERIQ_PC_SOURCE_WRITE_BLOCKED');
+    expect(() => assertWritePathAllowed('D:\\TigerIQ\\Workspace\\tigeriq-ai-lab\\x.txt')).toThrow('TIGERIQ_PC_WRITE_PATH_NOT_ALLOWED');
+    expect(() => assertWritePathAllowed('D:\\TigerIQ\\Runtime\\CoreSource\\x.txt')).toThrow('TIGERIQ_PC_WRITE_PATH_NOT_ALLOWED');
+    expect(() => assertWritePathAllowed('D:\\OpenClaw\\npm-global\\openclaw.cmd')).toThrow('TIGERIQ_PC_WRITE_PATH_NOT_ALLOWED');
     expect(() => assertWritePathAllowed('D:\\TigerIQ\\State\\x.json')).not.toThrow();
+    expect(() => assertWritePathAllowed('D:\\TigerIQ\\Evidence\\x.json')).not.toThrow();
   });
 
   it('allows only a narrow diagnostic shell command set', () => {
