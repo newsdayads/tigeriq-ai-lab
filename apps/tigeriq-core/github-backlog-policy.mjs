@@ -68,30 +68,3 @@ export function sortBacklogSpecs(specs){
 export function detectIdleWithBacklog(activeCount, pendingQueueCount){
   return Number(activeCount || 0) === 0 && Number(pendingQueueCount || 0) > 0;
 }
-,'mi').test(text))missing.push(section);
-  }
-  return missing;
-}
-
-export function isActiveExecutionSpec(body){
-  if(isReviewOnlySpec(body))return false;
-  if(!isExecutionContractV1(body))return true;
-  return executionContractV1Missing(body).length===0;
-}
-
-export function compareBacklogSpecs(a,b){
-  const ownerA=Boolean(a?.ownerDirect),ownerB=Boolean(b?.ownerDirect);
-  if(ownerA!==ownerB)return ownerA?-1:1;
-  const pa=PRIORITY_RANK[a?.sourcePriority||a?.priority]??PRIORITY_RANK.P2;
-  const pb=PRIORITY_RANK[b?.sourcePriority||b?.priority]??PRIORITY_RANK.P2;
-  if(pa!==pb)return pa-pb;
-  return Number(a?.number||0)-Number(b?.number||0);
-}
-
-export function sortBacklogSpecs(specs){
-  return (Array.isArray(specs)?specs:[]).filter(Boolean).slice().sort(compareBacklogSpecs);
-}
-
-export function detectIdleWithBacklog(activeCount, pendingQueueCount){
-  return Number(activeCount || 0) === 0 && Number(pendingQueueCount || 0) > 0;
-}
