@@ -483,10 +483,21 @@ function reconcileCancelledUiJobFromSnapshot(){
   const sameDispatched=autopilotState.lastDispatchedJobId===previous.jobId;
   const sameUncertain=autopilotState.uncertainJobId===previous.jobId;
   if(sameDispatched||sameUncertain){
-    autopilotState={...clearPending(autopilotState),phase:'IDLE',uncertainJobId:sameUncertain?undefined:autopilotState.uncertainJobId,uncertainWorkerId:sameUncertain?undefined:autopilotState.uncertainWorkerId,dispatchFailureClass:sameUncertain?undefined:autopilotState.dispatchFailureClass,retryAt:sameUncertain?undefined:autopilotState.retryAt,updatedAt:new Date().toISOString()};
+    autopilotState={
+      ...clearPending(autopilotState),
+      phase:'IDLE',
+      lastDispatchedJobId:sameDispatched?undefined:autopilotState.lastDispatchedJobId,
+      lastDispatchedWorkerId:sameDispatched?undefined:autopilotState.lastDispatchedWorkerId,
+      lastDispatchedAt:sameDispatched?undefined:autopilotState.lastDispatchedAt,
+      uncertainJobId:sameUncertain?undefined:autopilotState.uncertainJobId,
+      uncertainWorkerId:sameUncertain?undefined:autopilotState.uncertainWorkerId,
+      dispatchFailureClass:sameUncertain?undefined:autopilotState.dispatchFailureClass,
+      retryAt:sameUncertain?undefined:autopilotState.retryAt,
+      updatedAt:new Date().toISOString(),
+    };
     persistAutopilotState();
+    log('AUTO_CONTINUE_CANCELLED_PREVIOUS_RETIRED',{workerId:previous.workerId,jobId:previous.jobId,sameDispatched,sameUncertain});
   }
-  log('AUTO_CONTINUE_CANCELLED_PREVIOUS_RECONCILED',{workerId:previous.workerId,jobId:previous.jobId,sameDispatched,sameUncertain});
   return true;
 }
 async function autopilotTick(){
@@ -735,8 +746,13 @@ async function startupRecovery(){
     if(!needed.has(id)||!states.get(id)?.enabled||states.get(id)?.blocked||states.get(id)?.manualCloseSuppressed)continue;
     try{
       const attached=await waitForStartupAttach(id);
-      if(attached){await layoutWorker(id);states.get(id)!.status='READY';log('STARTUP_WORKER_REATTACHED',{workerId:id});}
-      else await startWorker(id);
+      if(attached){
+        await layoutWorker(id);
+        const state=states.get(id)!;
+        const uiPhase=String(state.lastHeartbeat?.uiPhase||'').toUpperCase();
+        state.status=['WORKING','READY','STALLED'].includes(uiPhase)?uiPhase:'ONLINE';
+        log('STARTUP_WORKER_REATTACHED',{workerId:id,uiPhase:state.lastHeartbeat?.uiPhase??null,status:state.status});
+      }else await startWorker(id);
     }catch(error){log('STARTUP_WORKER_RECOVERY_FAILED',{workerId:id,error:String(error)});}
   }
   persistEvidence();
