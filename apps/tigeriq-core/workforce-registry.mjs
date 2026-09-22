@@ -123,7 +123,26 @@ export function normalizeRuntimeResources(resources, workforce){
       });
     }
   }
-  return mapped.sort((a,b)=>a.employee_id.localeCompare(b.employee_id));
+  const fullSet = [];
+  for (const [id] of roster.entries()) {
+    const found = mapped.find(m => m.employee_id === id);
+    if (found) {
+      fullSet.push(found);
+    } else {
+      const base = roster.get(id);
+      const isChrome = (id >= 'NV02' && id <= 'NV04');
+      const isOpenClaw = (id === 'NV06');
+      fullSet.push({
+        employee_id: id,
+        name: base?.name || id,
+        role: base?.role || 'Worker',
+        type_badge: isChrome ? 'Chrome Controller' : isOpenClaw ? 'OpenClaw Gateway' : 'Core/Ollama/API',
+        live_status: 'OFFLINE',
+        stale_fallback: true
+      });
+    }
+  }
+  return fullSet.sort((a,b)=>a.employee_id.localeCompare(b.employee_id));
 }
 
 export { parseRegistryBody, completeRoster, normalizeRuntimeResources };
