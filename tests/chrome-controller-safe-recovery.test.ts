@@ -261,6 +261,24 @@ describe('safe recovery contracts',()=>{
     expect(source).toContain("'WORKER_CONNECTIVITY_RECOVERED'");
   });
 
+  it('retires a cancelled previous UI job so Core does not poll stale identity forever',()=>{
+    const source=readFileSync('apps/chrome-controller/src/server.ts','utf8');
+    const cancelled=source.slice(source.indexOf('function reconcileCancelledUiJobFromSnapshot'),source.indexOf('async function autopilotTick'));
+    expect(cancelled).toContain("lastDispatchedJobId:sameDispatched?undefined");
+    expect(cancelled).toContain("lastDispatchedWorkerId:sameDispatched?undefined");
+    expect(cancelled).toContain("lastDispatchedAt:sameDispatched?undefined");
+    expect(cancelled).toContain("'AUTO_CONTINUE_CANCELLED_PREVIOUS_RETIRED'");
+    expect(cancelled).not.toContain("'AUTO_CONTINUE_CANCELLED_PREVIOUS_RECONCILED'");
+  });
+
+  it('preserves the live heartbeat phase when reattaching workers at startup',()=>{
+    const source=readFileSync('apps/chrome-controller/src/server.ts','utf8');
+    const startup=source.slice(source.indexOf('async function startupRecovery'),source.indexOf('async function handleApi'));
+    expect(startup).toContain("const uiPhase=String(state.lastHeartbeat?.uiPhase||'').toUpperCase()");
+    expect(startup).toContain("state.status=['WORKING','READY','STALLED'].includes(uiPhase)?uiPhase:'ONLINE'");
+    expect(startup).not.toContain("states.get(id)!.status='READY'");
+  });
+
   it('keeps all enabled canonical workers alive independent of backlog demand',()=>{
     const needed=server.slice(server.indexOf('function workerNeeded'),server.indexOf('async function fetchExternalSnapshot'));
     const startup=server.slice(server.indexOf('async function startupRecovery'),server.indexOf('async function handleApi'));
