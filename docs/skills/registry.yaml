@@ -80,12 +80,12 @@ skills:
 
   - id: external-skill-security-gate
     title: External Skill Security Gate
-    state: CANDIDATE
+    state: ACTIVE
     version: 1.0.0
     provenance_batch: owner-video-lessons-2026-09-18
     source_log: learning-log/2026-09-18-owner-video-lessons.md
     target: skill-intake
-    summary: Audit provenance, pinned version, installer behavior and capabilities before executable use.
+    summary: Audit provenance, pinned version, installer behavior and capabilities before executable use. Verified against security gate acceptance criteria.
 
   - id: minimal-change-output
     title: Minimal Change Output
