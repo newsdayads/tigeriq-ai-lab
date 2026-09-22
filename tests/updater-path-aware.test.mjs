@@ -90,3 +90,14 @@ test('updater scheduled task executes the runtime self-updated copy and self-hea
   assert.match(script,/updaterTaskTarget=\$updaterTaskTarget/);
   assert.match(script,/Restart-UpdaterAfterExit;exit 75/);
 });
+
+test('updater retires the stale Supervisor V2 OpenClaw lifecycle owner before reconcile',()=>{
+  assert.match(script,/\$legacyAutonomySupervisorTask='TigerIQ Autonomy Supervisor V2'/);
+  assert.match(script,/function Retire-LegacyOpenClawLifecycleOwner/);
+  assert.match(script,/Stop-ScheduledTask -TaskName \$legacyAutonomySupervisorTask/);
+  assert.match(script,/Disable-ScheduledTask -TaskName \$legacyAutonomySupervisorTask/);
+  const retire=script.indexOf('$legacyLifecycleRetire=Retire-LegacyOpenClawLifecycleOwner');
+  const reconcile=script.indexOf('$openclawReconcile=if($runtimeExists)');
+  assert.ok(retire>=0 && reconcile>retire,'legacy lifecycle owner must be retired before OpenClaw reconcile');
+  assert.match(script,/legacyLifecycleRetire=\$legacyLifecycleRetire/);
+});
