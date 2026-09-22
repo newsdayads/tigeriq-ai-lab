@@ -32,8 +32,8 @@ states:
 skills:
   - id: contextual-skill-loading
     title: Contextual Skill Loading
-    state: CANDIDATE
-    version: 0.1.0
+    state: ACTIVE
+    version: 1.0.0
     provenance_batch: owner-video-lessons-2026-09-18
     source_log: learning-log/2026-09-18-owner-video-lessons.md
     target: core-context-routing
@@ -51,8 +51,8 @@ skills:
 
   - id: spec-first-tdd
     title: SPEC-First and TDD When Appropriate
-    state: CANDIDATE
-    version: 0.1.0
+    state: ACTIVE
+    version: 1.0.0
     provenance_batch: owner-video-lessons-2026-09-18
     source_log: learning-log/2026-09-18-owner-video-lessons.md
     target: coding-lane
@@ -80,8 +80,8 @@ skills:
 
   - id: external-skill-security-gate
     title: External Skill Security Gate
-    state: CANDIDATE
-    version: 0.1.0
+    state: ACTIVE
+    version: 1.0.0
     provenance_batch: owner-video-lessons-2026-09-18
     source_log: learning-log/2026-09-18-owner-video-lessons.md
     target: skill-intake
@@ -89,8 +89,8 @@ skills:
 
   - id: minimal-change-output
     title: Minimal Change Output
-    state: CANDIDATE
-    version: 0.1.0
+    state: ACTIVE
+    version: 1.0.0
     provenance_batch: owner-video-lessons-2026-09-18
     source_log: learning-log/2026-09-18-owner-video-lessons.md
     target: coding-lane
