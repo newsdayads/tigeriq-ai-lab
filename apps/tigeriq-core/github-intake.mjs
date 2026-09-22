@@ -1,5 +1,5 @@
 import { Pool } from 'pg';
-import { backlogOwnerDirect, sortBacklogSpecs } from './github-backlog-policy.mjs';
+import { backlogOwnerDirect, sortBacklogSpecs, exactBodyFlag } from './github-backlog-policy.mjs';
 
 const DEFAULT_OWNER='newsdayads';
 const DEFAULT_REPO='tigeriq-ai-lab';
@@ -78,7 +78,11 @@ async function closeIssue(fetchImpl,owner,repo,issueNumber,token){
   return true;
 }
 
-export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token=''}){
+export async function materializeGithubIssues
+{
+  const reservedScopes=new Set();
+  // existing implementation continues below
+}({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token=''}){
   const rows=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues?state=open&per_page=100&sort=updated&direction=desc`,token);
   const specs=sortBacklogSpecs(rows.map(parseExecutableIssue).filter(Boolean));
   const active=(await pool.query("select 1 from tigeriq_objectives where metadata->>'source'='github' and status='active' limit 1")).rowCount>0;
