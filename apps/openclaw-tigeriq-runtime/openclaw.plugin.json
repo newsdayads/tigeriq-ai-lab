@@ -1,8 +1,8 @@
 {
   "id": "tigeriq-runtime",
   "name": "TigerIQ Runtime",
-  "description": "Bounded PC01 runtime control for TigerIQ Core and Chrome Controller. No shell or arbitrary file access.",
-  "version": "0.1.2",
+  "description": "TigerIQ runtime control plus guarded local PC01 shell and workspace file operations.",
+  "version": "0.2.0",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
@@ -12,5 +12,5 @@
     }
   },
   "activation": { "onStartup": true },
-  "contracts": { "tools": ["tigeriq_runtime"] }
+  "contracts": { "tools": ["tigeriq_runtime", "tigeriq_pc"] }
 }
