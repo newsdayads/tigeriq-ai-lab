@@ -85,22 +85,44 @@ export async function refreshRegistryWorkforce(force=false){
 
 export function normalizeRuntimeResources(resources, workforce){
   const roster=new Map((workforce||[]).map(x=>[x.employee_id,x]));
-  return (Array.isArray(resources)?resources:[]).map(resource=>{
+  const rawResources = Array.isArray(resources) ? resources : [];
+  const mapped = rawResources.map(resource => {
     let empId = resource?.employee_id;
     if(empId==='NV02' && String(resource?.provider||'').toLowerCase()==='ollama' && roster.get('NV02')?.name==='ChatGPT Plus' && roster.get('NV10')?.name==='Ollama') {
       empId='NV10';
     }
     const base = roster.get(empId) || {};
+    const isChrome = (empId >= 'NV02' && empId <= 'NV04');
+    const isOpenClaw = (empId === 'NV06');
+    const typeBadge = resource?.type_badge || base.type_badge || (isChrome ? 'Chrome Controller' : isOpenClaw ? 'OpenClaw Gateway' : 'Core/Ollama/API');
+    const liveStatus = resource?.live_status || resource?.status || base.status || 'OFFLINE';
+    const staleFallback = Boolean(resource?.stales || resource?.stale_fallback || false);
     return {
       ...resource,
       employee_id: empId,
       name: resource?.name || base.name || empId,
       role: resource?.role || base.role || 'Worker',
-      type_badge: resource?.type_badge || base.type_badge || (empId >= 'NV02' && empId <= 'NV04' ? 'Chrome Controller' : empId === 'NV06' ? 'OpenClaw Gateway' : 'Core/Ollama/API'),
-      live_status: resource?.live_status || (resource?.status || base.status || 'OFFLINE'),
-      stale_fallback: resource?.stales || resource?.stale_fallback || false
+      type_badge: typeBadge,
+      live_status: liveStatus,
+      stale_fallback: staleFallback
     };
   });
+  const presentIds = new Set(mapped.map(m => m.employee_id));
+  for (const [id, base] of roster.entries()) {
+    if (!presentIds.has(id)) {
+      const isChrome = (id >= 'NV02' && id <= 'NV04');
+      const isOpenClaw = (id === 'NV06');
+      mapped.push({
+        employee_id: id,
+        name: base.name || id,
+        role: base.role || 'Worker',
+        type_badge: base.type_badge || (isChrome ? 'Chrome Controller' : isOpenClaw ? 'OpenClaw Gateway' : 'Core/Ollama/API'),
+        live_status: base.status || 'OFFLINE',
+        stale_fallback: true
+      });
+    }
+  }
+  return mapped.sort((a,b)=>a.employee_id.localeCompare(b.employee_id));
 }
 
 export { parseRegistryBody, completeRoster };
