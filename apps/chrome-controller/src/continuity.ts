@@ -17,6 +17,7 @@ export class ContinuityEngine {
 
   public evaluate(snapshot: ExternalAutopilotSnapshot, now: Date = new Date()): ReturnType<typeof decideAutoContinue> {
     const decision = decideAutoContinue(this.state, snapshot, now);
+    if (snapshot && typeof snapshot === 'object') {}
     if (decision.kind === 'DISPATCH' || decision.kind === 'BUSY' || decision.kind === 'STOP') {
       this.state = {
         ...this.state,
