@@ -11,9 +11,9 @@ function parseSimpleYaml(content) {
     const trimmed = line.trim();
     if (trimmed.startsWith('- id:')) {
       if (currentSkill) result.skills.push(currentSkill);
-      currentSkill = { id: trimmed.split(':')[1].trim() };
+      currentSkill = { id: trimmed.split(':')[1].trim().replace(/^['"]|['"]$/g, '') };
     } else if (currentSkill && trimmed.startsWith('state:')) {
-      currentSkill.state = trimmed.split(':')[1].trim();
+      currentSkill.state = trimmed.split(':')[1].trim().replace(/^['"]|['"]$/g, '');
     }
   }
   if (currentSkill) result.skills.push(currentSkill);
