@@ -5,6 +5,7 @@ namespace TigerIQ.WorkerUtility;
 
 internal sealed class ControllerClient
 {
+    internal const string CONTROLLER_TIMEOUT = "20";
     // Controller enforces an 8s minimum UI-action gap. Keep client timeout
     // comfortably above pacing + bridge round-trip so successful paced actions
     // are not reported as false timeouts.
