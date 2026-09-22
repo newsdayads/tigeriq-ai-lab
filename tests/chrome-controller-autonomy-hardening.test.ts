@@ -457,6 +457,11 @@ describe('APP Chrome UI-only continuity regression #1525',()=>{
     expect(recovery).toContain('stage===2');
     expect(recovery).toContain('15*60*1000');
     expect(recovery).toContain("CHAT_UNLOADABLE_BLOCKED");
+    expect(bridge).toContain('function chatLoadUiUsable');
+    expect(bridge).toContain("ui.uiBusy===true||ui.uiReady===true||ui.composerReady===true");
+    expect(bridge).toContain('waitForChatLoadOutcome(target,8000)');
+    expect(bridge).toContain('waitForChatLoadOutcome(target,10000)');
+    expect(recovery).toContain("CHAT_LOAD_RECOVERY_PENDING");
   });
 
   it('never treats a project home page as an assigned ChatGPT conversation',()=>{
