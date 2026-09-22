@@ -40,4 +40,5 @@ it('verifies robust startup/reboot restoration, UI continuity, and bounded recov
   const watchdog = readFileSync('apps/worker-utility/Watchdog.cs', 'utf8');
   expect(watchdog).toContain('BeginRecovery');
   expect(watchdog).toContain('EndRecovery');
+  expect(watchdog).toContain('RecoverAfter');
 });
