@@ -7,6 +7,7 @@ $runtimeSourceState='D:\TigerIQ\State\core-runtime-source.json'
 $updaterRuntime='D:\TigerIQ\Runtime\CoreUpdater\update-core-runtime.ps1'
 $launcherRuntime='D:\TigerIQ\Runtime\CoreLaunchers'
 $state='D:\TigerIQ\State\core-runtime-updater.json'
+$openclawState='D:\TigerIQ\State\openclaw-runtime-applied.json'
 $coreTask='TigerIQ Core 24x7'
 $webTask='TigerIQ Web Control 24x7'
 $codingTask='TigerIQ Coding Lane 24x7'
@@ -89,6 +90,20 @@ function Test-TcpPort([string]$targetHost,[int]$port,[int]$timeoutMs=2500){
   }catch{return $false}
   finally{$client.Close()}
 }
+function OpenClaw-TreeSha(){
+  if(-not(Test-Path -LiteralPath $runtimeRepo)){return $null}
+  $sha=(& git -C $runtimeRepo rev-parse 'HEAD:apps/openclaw-tigeriq-runtime' 2>$null|Out-String).Trim()
+  if($LASTEXITCODE -ne 0 -or -not $sha){return $null}
+  return $sha
+}
+function Save-OpenClawAppliedState([string]$treeSha){
+  $d=[ordered]@{schema='TIGERIQ_OPENCLAW_RUNTIME_V1';treeSha=$treeSha;port=18789;updatedAt=(Get-Date).ToUniversalTime().ToString('o')}
+  $tmp="$openclawState.tmp";[IO.File]::WriteAllText($tmp,($d|ConvertTo-Json -Depth 5),(New-Object Text.UTF8Encoding($false)));Move-Item -Force $tmp $openclawState
+}
+function Get-OpenClawAppliedTree(){
+  try{if(Test-Path -LiteralPath $openclawState){$d=Get-Content -LiteralPath $openclawState -Raw|ConvertFrom-Json;return [string]$d.treeSha}}catch{}
+  return $null
+}
 function Restart-OpenClawGateway(){
   if(-not(Task-Exists $openclawTask)){throw ('TASK_MISSING:'+ $openclawTask)}
   Stop-ScheduledTask -TaskName $openclawTask -ErrorAction SilentlyContinue
@@ -101,6 +116,19 @@ function Restart-OpenClawGateway(){
     Start-Sleep -Seconds 2
   }
   return $null
+}
+function Reconcile-OpenClawRuntime(){
+  $treeSha=OpenClaw-TreeSha
+  if(-not $treeSha){return @{action='skip';reason='plugin_tree_missing'}}
+  $applied=Get-OpenClawAppliedTree
+  if($applied -eq $treeSha){
+    return @{action='none';treeSha=$treeSha;portHealthy=(Test-TcpPort '127.0.0.1' 18789)}
+  }
+  if(-not(Task-Exists $openclawTask)){return @{action='blocked';reason='task_missing';treeSha=$treeSha}}
+  $health=Restart-OpenClawGateway
+  if(-not $health){throw 'OPENCLAW_GATEWAY_HEALTH_FAILED'}
+  Save-OpenClawAppliedState $treeSha
+  return @{action='restarted';treeSha=$treeSha;portHealthy=$true}
 }
 function Gates-Pass([string]$sha){
   $runs=gh api "repos/newsdayads/tigeriq-ai-lab/actions/runs?head_sha=$sha&status=completed&per_page=30"|ConvertFrom-Json
@@ -216,7 +244,8 @@ while($true){
     $runtimeExists=Test-Path -LiteralPath $runtimeRepo
     if($runtimeExists -and (Runtime-Source-Dirty)){Save-State @{result='BLOCKED_DIRTY_RUNTIME';runtimeSource=$runtimeRepo;watchdog=$watchdog};continue}
     $local=if($runtimeExists){Head $runtimeRepo 'HEAD'}else{$null}
-    if($runtimeExists -and $local -eq $remote){Save-State @{result='NO_CHANGE';installedSha=$local;runtimeSource=$runtimeRepo;watchdog=$watchdog};continue}
+    $openclawReconcile=if($runtimeExists){Reconcile-OpenClawRuntime}else{@{action='skip';reason='runtime_missing'}}
+    if($runtimeExists -and $local -eq $remote){Save-State @{result='NO_CHANGE';installedSha=$local;runtimeSource=$runtimeRepo;openclawReconcile=$openclawReconcile;watchdog=$watchdog};continue}
     $gateSha=Resolve-GateSha $remote
     if(-not $gateSha){Save-State @{result='WAIT_GATES';candidateSha=$remote;runtimeSource=$runtimeRepo;watchdog=$watchdog};continue}
     [string[]]$changed=if($runtimeExists){@(git -C $controlRepo diff --name-only $local $remote)}else{@('apps/tigeriq-core/','apps/tigeriq-coding-lane/','scripts/tigeriq-core/')}
@@ -234,7 +263,7 @@ while($true){
       elseif(-not(HealthInfo 'http://100.97.23.87:8795/health')){throw 'CORE_HEALTH_LOST_WITHOUT_CORE_CHANGE'}
       if($impact.web){Sync-WebRuntime;$webHealth=Restart-ServiceTask $webTask 'http://100.97.23.87:8796/health' $webPath;if(-not $webHealth){throw 'WEB_CONTROL_HEALTH_OR_PID_FAILED'}}
       if($impact.coding){$codingHealth=Restart-ServiceTask $codingTask 'http://100.97.23.87:8797/health' $codingPath $legacyCodingPath;if(-not $codingHealth){throw 'CODING_LANE_HEALTH_OR_PID_FAILED'}}
-      if($impact.openclaw){$openclawHealth=Restart-OpenClawGateway;if(-not $openclawHealth){throw 'OPENCLAW_GATEWAY_HEALTH_FAILED'}}
+      if($impact.openclaw){$openclawHealth=Restart-OpenClawGateway;if(-not $openclawHealth){throw 'OPENCLAW_GATEWAY_HEALTH_FAILED'};Save-OpenClawAppliedState (OpenClaw-TreeSha)}
     }catch{
       if($previousRuntimeSha){
         git -C $runtimeRepo reset --hard $previousRuntimeSha|Out-Null
@@ -248,11 +277,11 @@ while($true){
       if($impact.core){$null=Restart-Core $null}
       if($impact.web -and (Task-Exists $webTask)){Sync-WebRuntime;$null=Restart-ServiceTask $webTask 'http://100.97.23.87:8796/health' $webPath}
       if($impact.coding -and (Task-Exists $codingTask)){$null=Restart-ServiceTask $codingTask 'http://100.97.23.87:8797/health' $codingPath $legacyCodingPath}
-      if($impact.openclaw -and (Task-Exists $openclawTask)){$null=Restart-OpenClawGateway}
+      if($impact.openclaw -and (Task-Exists $openclawTask)){$null=Restart-OpenClawGateway;$rollbackTree=OpenClaw-TreeSha;if($rollbackTree){Save-OpenClawAppliedState $rollbackTree}}
       throw ('ROLLED_BACK:'+ $_.Exception.Message)
     }
     $newCore=HealthInfo 'http://100.97.23.87:8795/health'
-    Save-State @{result='UPDATED';installedSha=$remote;gateSha=$gateSha;previousSha=$previousRuntimeSha;runtimeSource=$runtimeRepo;changedPaths=$changed;impact=$impact;corePid=if($newCore){[int]$newCore.pid}else{$null};previousCorePid=$oldPid;coreRestarted=$impact.core;webRestarted=$impact.web;codingRestarted=$impact.coding;openclawRestarted=$impact.openclaw;openclawPortHealthy=if($openclawHealth){[bool]$openclawHealth.healthy}else{$null};webPid=if($webHealth){$webHealth.pid}else{$null};codingPid=if($codingHealth){$codingHealth.pid}else{$null};watchdog=$watchdog}
+    Save-State @{result='UPDATED';installedSha=$remote;gateSha=$gateSha;previousSha=$previousRuntimeSha;runtimeSource=$runtimeRepo;changedPaths=$changed;impact=$impact;openclawReconcile=$openclawReconcile;corePid=if($newCore){[int]$newCore.pid}else{$null};previousCorePid=$oldPid;coreRestarted=$impact.core;webRestarted=$impact.web;codingRestarted=$impact.coding;openclawRestarted=$impact.openclaw;openclawPortHealthy=if($openclawHealth){[bool]$openclawHealth.healthy}else{$null};webPid=if($webHealth){$webHealth.pid}else{$null};codingPid=if($codingHealth){$codingHealth.pid}else{$null};watchdog=$watchdog}
     if($impact.updater){Restart-UpdaterAfterExit;exit 75}
   }catch{Save-State @{result='FAILED';error=$_.Exception.Message;watchdog=$watchdog}}
   finally{Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue;if($locked){$mutex.ReleaseMutex()|Out-Null}}
