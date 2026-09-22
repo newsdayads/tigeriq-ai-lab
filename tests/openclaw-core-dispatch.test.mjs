@@ -133,6 +133,29 @@ describe('Core -> OpenClaw bounded dispatch #1528', () => {
     }
   });
 
+  it('classifies provider rate-limit text as retryable rate_limit without broadening generic errors', async () => {
+    const root=await mkdtemp(path.join(tmpdir(),'tigeriq-oc-1528-rate-'));
+    try{
+      const env=envelope({idempotencyKey:'core:OBJ-OC-RATE:JOB-OC-RATE-0001',jobId:'JOB-OC-RATE-0001',workOrderId:'OBJ-OC-RATE'});
+      const first=await ensureOpenClawDispatch(env,{root,spawnWorker:()=>({pid:401}),processAlive:()=>false});
+      await writeOpenClawDispatchRecord(first.recordPath,{...first.record,state:'failed',attempts:1,workerPid:401,failure:{kind:'rate_limit',message:'API rate limit reached'},completedAt:new Date().toISOString()});
+      const retried=await ensureOpenClawDispatch(env,{root,retryFailed:true,spawnWorker:()=>({pid:402}),processAlive:()=>false});
+      expect(retried.launched).toBe(true);
+      expect(retried.record.attempts).toBe(2);
+      expect(retried.record.envelope.idempotencyKey).toBe(env.idempotencyKey);
+    } finally {
+      await rm(root,{recursive:true,force:true});
+    }
+  });
+
+  it('source classifies API rate-limit text before generic error and Core marks rate_limit retryable', async () => {
+    const dispatch=await readFile(new URL('../apps/openclaw-tigeriq-runtime/dispatch.mjs',import.meta.url),'utf8');
+    const core=await readFile(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+    expect(dispatch).toContain("rateLimited?'rate_limit'");
+    expect(dispatch).toContain("'timeout','rate_limit'");
+    expect(core).toContain("'busy','rate_limit'");
+  });
+
   it('classifies exit-zero prose without structured terminal evidence as invalid', () => {
     const result=compactOpenClawCliResult({
       status:'ok',
