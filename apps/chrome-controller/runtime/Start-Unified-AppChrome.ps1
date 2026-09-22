@@ -68,6 +68,33 @@ function Get-ProcessCommandLine([int]$ProcessId){
   try{[string](Get-CimInstance Win32_Process -Filter "ProcessId=$ProcessId" -ErrorAction Stop).CommandLine}catch{''}
 }
 
+function Get-TrustedRuntimeIdentity([int]$Port,[int]$OwnerPid){
+  $processPath=''
+  try{$processPath=[string](Get-Process -Id $OwnerPid -ErrorAction Stop).Path}catch{}
+  try{
+    if($Port-eq 8800){
+      $health=Invoke-RestMethod -Uri 'http://127.0.0.1:8800/health' -TimeoutSec 3
+      $trusted=([bool]$health.ok)-and([string]$health.service-eq'chrome-launch-broker')-and([IO.Path]::GetFileName($processPath)-ieq'node.exe')
+      return [pscustomobject]@{trusted=$trusted;deploy=[string]$health.deployRoot;head=[string]$health.approvedHead;source='BROKER_HEALTH';processPath=$processPath}
+    }
+    if($Port-eq 8798){
+      $state=Invoke-RestMethod -Uri 'http://127.0.0.1:8798/api/state' -TimeoutSec 3
+      $deploy=[string]$state.runtimeProvenance.deployRoot
+      $head=[string]$state.runtimeProvenance.approvedHead
+      $trusted=(-not[string]::IsNullOrWhiteSpace($deploy))-and($deploy-like($InstallRoot+'*'))
+      return [pscustomobject]@{trusted=$trusted;deploy=$deploy;head=$head;source='CONTROLLER_PROVENANCE';processPath=$processPath}
+    }
+    if($Port-eq 8799){
+      $health=Invoke-RestMethod -Uri 'http://127.0.0.1:8799/health' -TimeoutSec 3
+      $deploy=[string]$health.deployRoot
+      $head=[string]$health.approvedHead
+      $trusted=([bool]$health.provenanceVerified)-and(-not[string]::IsNullOrWhiteSpace($deploy))-and($deploy-like($InstallRoot+'*'))
+      return [pscustomobject]@{trusted=$trusted;deploy=$deploy;head=$head;source='BRIDGE_PROVENANCE';processPath=$processPath}
+    }
+  }catch{}
+  [pscustomobject]@{trusted=$false;deploy='';head='';source='NONE';processPath=$processPath}
+}
+
 function Owner-AutomationAllowed{
   try{
     if(Test-Path -LiteralPath $ownerStatePath){
@@ -92,14 +119,18 @@ function Stop-StaleTrustedListener([int]$Port,[string]$ExpectedDeploy){
   if(-not$listener){return $false}
   $ownerPid=[int]$listener.OwningProcess
   $cmd=Get-ProcessCommandLine $ownerPid
-  if([string]::IsNullOrWhiteSpace($cmd)){
+  if(-not[string]::IsNullOrWhiteSpace($cmd)){
+    if($cmd-like("*"+$ExpectedDeploy+"*")){return $false}
+    if($cmd-notlike("*"+$InstallRoot+"*")){throw "PORT_OWNED_BY_UNTRUSTED_PROCESS:${Port}:$ownerPid"}
+    Write-SupervisorEvent 'STALE_RUNTIME_STOP' @{port=$Port;pid=$ownerPid;commandLine=$cmd;expectedDeploy=$ExpectedDeploy;identitySource='COMMAND_LINE'}
+  }else{
     $again=Get-PortListener $Port
     if(-not$again -or [int]$again.OwningProcess-ne$ownerPid){return $true}
-    throw "PORT_OWNER_COMMANDLINE_UNAVAILABLE:${Port}:$ownerPid"
+    $identity=Get-TrustedRuntimeIdentity $Port $ownerPid
+    if(-not$identity.trusted){throw "PORT_OWNER_COMMANDLINE_UNAVAILABLE:${Port}:$ownerPid"}
+    if(-not[string]::IsNullOrWhiteSpace([string]$identity.deploy)-and[string]$identity.deploy-eq$ExpectedDeploy){return $false}
+    Write-SupervisorEvent 'STALE_RUNTIME_STOP' @{port=$Port;pid=$ownerPid;commandLine=$null;expectedDeploy=$ExpectedDeploy;reportedDeploy=[string]$identity.deploy;reportedHead=[string]$identity.head;identitySource=[string]$identity.source;processPath=[string]$identity.processPath}
   }
-  if($cmd-like("*"+$ExpectedDeploy+"*")){return $false}
-  if($cmd-notlike("*"+$InstallRoot+"*")){throw "PORT_OWNED_BY_UNTRUSTED_PROCESS:${Port}:$ownerPid"}
-  Write-SupervisorEvent 'STALE_RUNTIME_STOP' @{port=$Port;pid=$ownerPid;commandLine=$cmd;expectedDeploy=$ExpectedDeploy}
   Stop-Process -Id $ownerPid -Force -ErrorAction Stop
   $deadline=(Get-Date).AddSeconds(10)
   do{
