@@ -29,7 +29,7 @@ export function parseManagerJson(text){
 }
 
 export function isRetryableManagerOutputError(error){
-  return ['MANAGER_JSON_MISSING','MANAGER_JSON_INVALID','MANAGER_STATUS_INVALID','MANAGER_SCHEMA_INVALID'].includes(error?.code||error?.message);
+  return ['MANAGER_JSON_MISSING','MANAGER_JSON_INVALID','MANAGER_JSON_AMBIGUOUS','MANAGER_STATUS_INVALID','MANAGER_SCHEMA_INVALID'].includes(error?.code||error?.message);
 }
 export function strictManagerRetryPrompt(prompt){
   return `${prompt}\nSTRICT RETRY: return exactly one JSON object and nothing else. No markdown fences, prose, comments, or trailing text. Keep the required schema exactly.`;
