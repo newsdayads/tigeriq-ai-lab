@@ -55,6 +55,8 @@ jobs:
           cp -R dist/apps/chrome-controller/src/* "$ROOT/dist/apps/chrome-controller/src/"
           cp -R apps/chrome-controller/extension "$ROOT/apps/chrome-controller/"
           cp -R apps/chrome-controller/public "$ROOT/apps/chrome-controller/"
+          cp apps/chrome-controller/direct-cdp-bridge.mjs "$ROOT/apps/chrome-controller/"
+          test -s "$ROOT/apps/chrome-controller/direct-cdp-bridge.mjs"
           cp -R apps/chrome-controller/runtime "$ROOT/apps/chrome-controller/"
           cp apps/chrome-controller/chrome-controller.config.example.json "$ROOT/apps/chrome-controller/"
           cp apps/chrome-controller/runtime-evidence.schema.json "$ROOT/apps/chrome-controller/"
