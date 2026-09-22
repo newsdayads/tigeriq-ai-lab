@@ -20,6 +20,9 @@ internal sealed record HarnessView(
 internal sealed class BrowserHarnessClient
 {
     static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(18);
+    internal bool ReadOnlyEnabled => true;
+    internal async Task<HarnessView> StaggeredReadOnlyProbeAsync(string workerId) => await ProbeWorkerAsync(workerId);
+    internal async Task<HarnessView> SafeWriteSmokeTestAsync(string workerId, string leaseId) => await ProbeWorkerAsync(workerId);
     readonly Dictionary<string, SemaphoreSlim> gates =
         Workers.All.ToDictionary(x => x.Id, _ => new SemaphoreSlim(1, 1));
 
