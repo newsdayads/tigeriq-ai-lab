@@ -12,6 +12,7 @@ $openclawCanaryState='D:\TigerIQ\State\openclaw-runtime-canary.json'
 $openclawCli='D:\OpenClaw\npm-global\openclaw.cmd'
 $openclawAgent='operator-local'
 $openclawCanaryIssue=1430
+$openclawCanaryPolicyGeneration='20260922_LIFECYCLE_REPAIR_1'
 $appChromeIssue=1372
 $appChromeController='http://127.0.0.1:8798'
 $appChromeResumeState='D:\TigerIQ\State\app-chrome-runtime-recovery.json'
@@ -222,7 +223,7 @@ function Reconcile-OpenClawRuntime([string]$installedSha){
     return @{action='none';treeSha=$treeSha;portHealthy=(Test-TcpPort '127.0.0.1' 18789)}
   }
   $previous=Get-OpenClawCanaryState
-  if($previous -and [string]$previous.installedSha -eq $installedSha -and [string]$previous.treeSha -eq $treeSha -and [string]$previous.result -ne 'PASS'){
+  if($previous -and [string]$previous.installedSha -eq $installedSha -and [string]$previous.treeSha -eq $treeSha -and ($previous.PSObject.Properties.Name -contains 'policyGeneration') -and [string]$previous.policyGeneration -eq $openclawCanaryPolicyGeneration -and [string]$previous.result -ne 'PASS'){
     return @{action='blocked';reason='terminal_canary_blocked';treeSha=$treeSha;portHealthy=(Test-TcpPort '127.0.0.1' 18789)}
   }
   if(-not(Task-Exists $openclawTask)){return @{action='blocked';reason='task_missing';treeSha=$treeSha}}
@@ -235,12 +236,13 @@ function Get-OpenClawCanaryState(){
   return $null
 }
 function Save-OpenClawCanaryState([string]$installedSha,[string]$treeSha,[string]$result,[string]$reason,[bool]$reported){
-  $d=[ordered]@{schema='TIGERIQ_OPENCLAW_CANARY_V2';installedSha=$installedSha;treeSha=$treeSha;result=$result;reason=$reason;reported=$reported;updatedAt=(Get-Date).ToUniversalTime().ToString('o')}
+  $d=[ordered]@{schema='TIGERIQ_OPENCLAW_CANARY_V2';policyGeneration=$openclawCanaryPolicyGeneration;installedSha=$installedSha;treeSha=$treeSha;result=$result;reason=$reason;reported=$reported;updatedAt=(Get-Date).ToUniversalTime().ToString('o')}
   $tmp=$openclawCanaryState+'.tmp';[IO.File]::WriteAllText($tmp,($d|ConvertTo-Json -Depth 5),(New-Object Text.UTF8Encoding($false)));Move-Item -Force $tmp $openclawCanaryState
 }
 function Report-OpenClawCanary([string]$installedSha,[string]$treeSha,[string]$result,[string]$reason){
   $body=@(
     'TIGERIQ_OPENCLAW_CANARY_V2',
+    ('policyGeneration='+$openclawCanaryPolicyGeneration),
     ('installedSha='+$installedSha),
     ('pluginTreeSha='+$treeSha),
     ('result='+$result),
@@ -259,7 +261,7 @@ function Report-OpenClawCanary([string]$installedSha,[string]$treeSha,[string]$r
 function Invoke-OpenClawCanary([string]$installedSha,[string]$treeSha){
   if(-not $installedSha -or -not $treeSha){return @{action='skip';reason='identity_missing'}}
   $previous=Get-OpenClawCanaryState
-  if($previous -and [string]$previous.installedSha -eq $installedSha -and [string]$previous.treeSha -eq $treeSha){
+  if($previous -and [string]$previous.installedSha -eq $installedSha -and [string]$previous.treeSha -eq $treeSha -and ($previous.PSObject.Properties.Name -contains 'policyGeneration') -and [string]$previous.policyGeneration -eq $openclawCanaryPolicyGeneration){
     $previousReported=[bool]$previous.reported
     if(-not $previousReported){
       $previousReported=Report-OpenClawCanary $installedSha $treeSha ([string]$previous.result) ([string]$previous.reason)
