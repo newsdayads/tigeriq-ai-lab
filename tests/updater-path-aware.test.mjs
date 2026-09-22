@@ -54,3 +54,17 @@ test('updater emits one sanitized OpenClaw typed-tool canary per installed SHA a
   assert.match(script,/if\(-not \$previousReported\)/);
   assert.doesNotMatch(script,/^\)\{\$result=/m);
 });
+
+
+test('updater restores owner-resumed APP Chrome before OpenClaw acceptance gating',()=>{
+  assert.match(script,/OWNER_RUNTIME_RESUME=true/);
+  assert.match(script,/function Invoke-AppChromeOwnerResume/);
+  assert.match(script,/\/api\/resume/);
+  assert.match(script,/\/api\/workers\/NV02\/unblock/);
+  assert.match(script,/\/api\/start-all/);
+  assert.match(script,/TIGERIQ_APP_CHROME_RUNTIME_RECOVERY_V1/);
+  assert.match(script,/NV02_RUNTIME_RESUMED/);
+  const recovery=script.indexOf('$appChromeRecovery=Invoke-AppChromeOwnerResume');
+  const reconcile=script.indexOf('$openclawReconcile=if($runtimeExists)');
+  assert.ok(recovery>=0 && reconcile>recovery,'APP Chrome recovery must run before OpenClaw reconcile/canary gating');
+});
