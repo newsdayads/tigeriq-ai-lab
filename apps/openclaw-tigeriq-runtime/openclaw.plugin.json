@@ -2,7 +2,7 @@
   "id": "tigeriq-runtime",
   "name": "TigerIQ Runtime",
   "description": "TigerIQ runtime control plus guarded local PC01 operations.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
