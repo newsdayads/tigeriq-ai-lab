@@ -20,6 +20,7 @@ $webTask='TigerIQ Web Control 24x7'
 $codingTask='TigerIQ Coding Lane 24x7'
 $openclawTask='TigerIQ OpenClaw Gateway'
 $updaterTask='TigerIQ Core Runtime Updater'
+$legacyAutonomySupervisorTask='TigerIQ Autonomy Supervisor V2'
 $webRuntime='D:\TigerIQ\Runtime\WebControl24x7'
 $tokenPath='D:\TigerIQ\Secrets\github-command-center.token'
 $corePath=(Join-Path $runtimeRepo 'apps\tigeriq-core\core-entry.mjs').ToLowerInvariant()
@@ -99,6 +100,17 @@ function Ensure-UpdaterTaskRuntimeTarget(){
   $newAction=New-ScheduledTaskAction -Execute $expectedExe -Argument $expectedArgs
   Set-ScheduledTask -TaskName $updaterTask -Action $newAction|Out-Null
   return @{action='retargeted';target=$updaterRuntime;previousExecute=$currentExe;previousArguments=$currentArgs}
+}
+function Retire-LegacyOpenClawLifecycleOwner(){
+  $task=Get-ScheduledTask -TaskName $legacyAutonomySupervisorTask -ErrorAction SilentlyContinue
+  if(-not $task){return @{action='none';reason='legacy_task_absent'}}
+  try{
+    if([string]$task.State -eq 'Running'){Stop-ScheduledTask -TaskName $legacyAutonomySupervisorTask -ErrorAction SilentlyContinue}
+    Disable-ScheduledTask -TaskName $legacyAutonomySupervisorTask -ErrorAction Stop|Out-Null
+    return @{action='disabled';task=$legacyAutonomySupervisorTask;reason='superseded_openclaw_lifecycle_owner'}
+  }catch{
+    return @{action='blocked';task=$legacyAutonomySupervisorTask;reason=('legacy_retire_'+$_.Exception.GetType().Name)}
+  }
 }
 function HealthInfo([string]$url){try{$r=Invoke-RestMethod -Uri $url -TimeoutSec 5;if($r.ok){return $r}}catch{};return $null}
 function Owner-AppChromeResumeRequested(){
@@ -390,6 +402,7 @@ while($true){
   try{
     $locked=$mutex.WaitOne(0);if(-not $locked){Start-Sleep -Seconds $IntervalSeconds;continue}
     $watchdog=Runtime-Watchdog
+    $legacyLifecycleRetire=Retire-LegacyOpenClawLifecycleOwner
     if(-not(Test-Path -LiteralPath $tokenPath)){Save-State @{result='GITHUB_TOKEN_MISSING';watchdog=$watchdog};continue}
     $env:GH_TOKEN=[IO.File]::ReadAllText($tokenPath).Trim();if(-not $env:GH_TOKEN){Save-State @{result='GITHUB_TOKEN_EMPTY';watchdog=$watchdog};continue}
     $runtimeIdentity=if(Test-Path -LiteralPath $runtimeRepo){Head $runtimeRepo 'HEAD'}else{'BOOTSTRAP'}
@@ -405,7 +418,7 @@ while($true){
       if([string]$preOpenclawCanary.result -eq 'PASS'){Save-OpenClawAppliedState (OpenClaw-TreeSha)}
       else{Save-State @{result='OPENCLAW_CANARY_BLOCKED';installedSha=$local;runtimeSource=$runtimeRepo;openclawReconcile=$openclawReconcile;openclawCanary=$preOpenclawCanary;watchdog=$watchdog};Start-Sleep -Seconds $IntervalSeconds;continue}
     }
-    if($runtimeExists -and $local -eq $remote){Save-State @{result='NO_CHANGE';installedSha=$local;runtimeSource=$runtimeRepo;appChromeRecovery=$appChromeRecovery;openclawReconcile=$openclawReconcile;openclawCanary=$preOpenclawCanary;watchdog=$watchdog};Start-Sleep -Seconds $IntervalSeconds;continue}
+    if($runtimeExists -and $local -eq $remote){Save-State @{result='NO_CHANGE';installedSha=$local;runtimeSource=$runtimeRepo;appChromeRecovery=$appChromeRecovery;legacyLifecycleRetire=$legacyLifecycleRetire;openclawReconcile=$openclawReconcile;openclawCanary=$preOpenclawCanary;watchdog=$watchdog};Start-Sleep -Seconds $IntervalSeconds;continue}
     $gateSha=Resolve-GateSha $remote
     if(-not $gateSha){Save-State @{result='WAIT_GATES';candidateSha=$remote;runtimeSource=$runtimeRepo;watchdog=$watchdog};continue}
     [string[]]$changed=if($runtimeExists){@(git -C $controlRepo diff --name-only $local $remote)}else{@('apps/tigeriq-core/','apps/tigeriq-coding-lane/','scripts/tigeriq-core/')}
@@ -452,7 +465,7 @@ while($true){
     }
     $newCore=HealthInfo 'http://100.97.23.87:8795/health'
     if($null -eq $openclawCanary){$openclawCanary=Invoke-OpenClawCanary $remote (OpenClaw-TreeSha)}
-    Save-State @{result='UPDATED';installedSha=$remote;gateSha=$gateSha;previousSha=$previousRuntimeSha;runtimeSource=$runtimeRepo;appChromeRecovery=$appChromeRecovery;changedPaths=$changed;impact=$impact;updaterTaskTarget=$updaterTaskTarget;openclawReconcile=$openclawReconcile;openclawCanary=$openclawCanary;corePid=if($newCore){[int]$newCore.pid}else{$null};previousCorePid=$oldPid;coreRestarted=$impact.core;webRestarted=$impact.web;codingRestarted=$impact.coding;openclawRestarted=$impact.openclaw;openclawPortHealthy=if($openclawHealth){[bool]$openclawHealth.healthy}else{$null};webPid=if($webHealth){$webHealth.pid}else{$null};codingPid=if($codingHealth){$codingHealth.pid}else{$null};watchdog=$watchdog}
+    Save-State @{result='UPDATED';installedSha=$remote;gateSha=$gateSha;previousSha=$previousRuntimeSha;runtimeSource=$runtimeRepo;appChromeRecovery=$appChromeRecovery;legacyLifecycleRetire=$legacyLifecycleRetire;changedPaths=$changed;impact=$impact;updaterTaskTarget=$updaterTaskTarget;openclawReconcile=$openclawReconcile;openclawCanary=$openclawCanary;corePid=if($newCore){[int]$newCore.pid}else{$null};previousCorePid=$oldPid;coreRestarted=$impact.core;webRestarted=$impact.web;codingRestarted=$impact.coding;openclawRestarted=$impact.openclaw;openclawPortHealthy=if($openclawHealth){[bool]$openclawHealth.healthy}else{$null};webPid=if($webHealth){$webHealth.pid}else{$null};codingPid=if($codingHealth){$codingHealth.pid}else{$null};watchdog=$watchdog}
     if($impact.updater){Restart-UpdaterAfterExit;exit 75}
   }catch{Save-State @{result='FAILED';error=$_.Exception.Message;watchdog=$watchdog}}
   finally{Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue;if($locked){$mutex.ReleaseMutex()|Out-Null}}

@@ -1,7 +1,13 @@
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 $taskName='TigerIQ Core Runtime Updater'
+$legacyAutonomySupervisorTask='TigerIQ Autonomy Supervisor V2'
 $sourceScript='D:\TigerIQ\Workspace\tigeriq-ai-lab\scripts\tigeriq-core\update-core-runtime.ps1'
+$legacyTask=Get-ScheduledTask -TaskName $legacyAutonomySupervisorTask -ErrorAction SilentlyContinue
+if($legacyTask){
+  if([string]$legacyTask.State -eq 'Running'){Stop-ScheduledTask -TaskName $legacyAutonomySupervisorTask -ErrorAction SilentlyContinue}
+  Disable-ScheduledTask -TaskName $legacyAutonomySupervisorTask -ErrorAction Stop|Out-Null
+}
 $runtimeScript='D:\TigerIQ\Runtime\CoreUpdater\update-core-runtime.ps1'
 if(-not(Test-Path -LiteralPath $sourceScript)){throw 'UPDATER_SCRIPT_MISSING'}
 New-Item -ItemType Directory -Path (Split-Path -Parent $runtimeScript) -Force|Out-Null
