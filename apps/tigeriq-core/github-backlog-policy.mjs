@@ -28,11 +28,11 @@ export function isReviewOnlySpec(body){
 export function isActiveExecutionSpec(body){
   if(isReviewOnlySpec(body)) return false;
   const role = backlogRole(body).toUpperCase();
-  if(role && role !== 'ACTIVE' && role !== 'WRITER' && role !== 'EXECUTOR') return false;
+  if(!role || (role !== 'ACTIVE' && role !== 'WRITER' && role !== 'EXECUTOR')) return false;
   const execStatus = String(body||'').match(/^EXECUTION_STATUS=(.+)$/m)?.[1]?.trim()?.toUpperCase();
   if(execStatus && execStatus !== 'ACTIVE' && execStatus !== 'READY') return false;
   const contract = String(body||'').match(/^EXECUTION_CONTRACT=(.+)$/m)?.[1]?.trim()?.toUpperCase();
-  if(contract && contract !== 'V1' && contract !== 'VERSION_1') return false;
+  if(!contract || (contract !== 'V1' && contract !== 'VERSION_1')) return false;
   return true;
 }
 
