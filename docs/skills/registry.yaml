@@ -32,11 +32,12 @@ states:
 skills:
   - id: contextual-skill-loading
     title: Contextual Skill Loading
-    state: CANDIDATE
-    version: 0.1.0
+    state: ACTIVE
+    version: 1.0.0
     provenance_batch: owner-video-lessons-2026-09-18
     source_log: learning-log/2026-09-18-owner-video-lessons.md
     target: core-context-routing
+    triggers: context load skill dynamic routing objective relevant knowledge
     summary: Load only skills relevant to the current objective instead of preloading all knowledge.
 
   - id: context-budget-compaction
@@ -51,11 +52,12 @@ skills:
 
   - id: spec-first-tdd
     title: SPEC-First and TDD When Appropriate
-    state: CANDIDATE
-    version: 0.1.0
+    state: ACTIVE
+    version: 1.0.0
     provenance_batch: owner-video-lessons-2026-09-18
     source_log: learning-log/2026-09-18-owner-video-lessons.md
     target: coding-lane
+    triggers: spec tdd test driven development red green acceptance scope bug test
     summary: Define scope and acceptance before code; for suitable bugs prove RED before GREEN.
 
   - id: learn-from-failure
@@ -80,11 +82,17 @@ skills:
 
   - id: external-skill-security-gate
     title: External Skill Security Gate
-    state: CANDIDATE
-    version: 0.1.0
+    state: ACTIVE
+    version: 1.0.0
+    origin: external
+    provenance_url: https://github.com/tigeriq/skills
+    audit_status: PASSED
+    installer_reviewed: true
+    capabilities_declared: read-only
     provenance_batch: owner-video-lessons-2026-09-18
     source_log: learning-log/2026-09-18-owner-video-lessons.md
     target: skill-intake
+    triggers: security gate external skill audit provenance installer capability
     summary: Audit provenance, pinned version, installer behavior and capabilities before executable use.
 
   - id: minimal-change-output
