@@ -17,7 +17,25 @@ const TERMINAL=new Set(['completed','failed','rejected']);
 const RETRYABLE_FAILED_KINDS=new Set(['openclaw_failure','worker_timeout','spawn_error','agent_terminal_invalid','outage','timeout']);
 const SAFE_KEY=/^[A-Za-z0-9._:-]{8,160}$/;
 const SAFE_SCOPE=/^[A-Za-z0-9._:/#-]{3,240}$/;
-const HARD_GATE_TEXT=/\b(?:production\s+(?:deploy|release|publish)|direct\s+(?:main|master)|credential\s+(?:change|rotate|write)|password\s+(?:change|reset)|security[- ]boundary|paid\s+(?:service|action|purchase)|purchase\b|delete\s+(?:repository|database|volume)|format\s+(?:disk|drive)|rm\s+-rf|reboot|shutdown)\b/i;
+const HARD_GATE_PATTERN='(?:production\\s+(?:deploy|release|publish)|direct\\s+(?:main|master)|credential\\s+(?:change|rotate|write)|password\\s+(?:change|reset)|security[- ]boundary|paid\\s+(?:service|action|purchase)|purchase\\b|delete\\s+(?:repository|database|volume)|format\\s+(?:disk|drive)|rm\\s+-rf|reboot|shutdown)';
+const NEGATION=/\\b(?:do\\s+not|don't|never|must\\s+not|forbidden\\s+to)\\b/i;
+const REVERSAL=/\\b(?:avoid|refuse|block|prevent|prohibit|forbid|skip)\\b/i;
+
+export function hasHardGateTextIntent(value){
+  const text=String(value||'');
+  const matcher=new RegExp('\\\\b'+HARD_GATE_PATTERN+'\\\\b','ig');
+  for(const match of text.matchAll(matcher)){
+    const index=Number(match.index)||0;
+    const prefix=text.slice(Math.max(0,index-160),index);
+    const boundary=Math.max(prefix.lastIndexOf('.'),prefix.lastIndexOf('!'),prefix.lastIndexOf('?'),prefix.lastIndexOf(';'),prefix.lastIndexOf('\\n'));
+    const clause=prefix.slice(boundary+1);
+    const negation=clause.match(NEGATION);
+    const directNo=/\\bno\\s*$/i.test(clause.slice(-24));
+    if((negation||directNo)&&!REVERSAL.test(negation?clause.slice((negation.index||0)+negation[0].length):''))continue;
+    return true;
+  }
+  return false;
+}
 
 function sha(value){return createHash('sha256').update(String(value)).digest('hex');}
 function clip(value,max){const s=String(value??'');return s.length<=max?s:s.slice(0,max);}
@@ -60,7 +78,7 @@ export function normalizeOpenClawDispatchEnvelope(raw={}){
   if(!SAFE_SCOPE.test(resourceScope))throw new Error('OPENCLAW_RESOURCE_SCOPE_INVALID');
   if(instruction.length<8||instruction.length>6000)throw new Error('OPENCLAW_INSTRUCTION_INVALID');
   if(acceptance.length<4||acceptance.length>2000)throw new Error('OPENCLAW_ACCEPTANCE_INVALID');
-  if(HARD_GATE_TEXT.test(instruction)||HARD_GATE_TEXT.test(acceptance))throw new Error('OPENCLAW_HARD_GATE_TEXT_REFUSED');
+  if(hasHardGateTextIntent(instruction)||hasHardGateTextIntent(acceptance))throw new Error('OPENCLAW_HARD_GATE_TEXT_REFUSED');
   const authority=normalizeOpenClawAuthority(raw.authority);
   const normalized={
     schema:'TIGERIQ_OPENCLAW_DISPATCH_V1',
