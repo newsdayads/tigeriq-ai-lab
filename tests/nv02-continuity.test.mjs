@@ -172,7 +172,9 @@ describe('NV02 continuity policy', () => {
     expect(continueDispatch).not.toContain('ensureNv02ModelProfile');
     expect(continueDispatch).toContain('getControllerState()');
     expect(continueDispatch).toContain('hasContinuableNv02Work(controllerState)');
-    expect(continueDispatch).toContain("typeof job?.issueRef==='string'");
+    expect(continueDispatch).toContain('findContinuableNv02Work(controllerState)');
+    expect(source).toContain("function findContinuableNv02Work(controllerState)");
+    expect(source).toContain("typeof job?.issueRef==='string'");
     expect(continueDispatch).toContain('CONTINUE_CURRENT_WORK_VERIFIED');
     expect(continueDispatch).toContain('CONTINUE_SKIPPED_NO_CURRENT_WORK');
     expect(continueDispatch).toContain('CONTINUE_SKIPPED_CURRENT_WORK_UNVERIFIED');
@@ -299,6 +301,25 @@ describe('NV02 continuity policy', () => {
     const rotation=source.slice(source.indexOf('async function rotateNv02Chat'),source.indexOf('async function noteNv02CommandDispatch'));
     expect(rotation).toContain("resumeChatUrl:''");
     expect(rotation).toContain("verifiedChatUrl:''");
+  });
+
+  it('restores the exact durable CURRENT_WORK_ORDER after archive instead of blind continue', () => {
+    const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    expect(source).toContain('function buildCurrentWorkRestorePrompt');
+    expect(source).toContain('CURRENT_WORK_ORDER=');
+    expect(source).toContain('CURRENT_CHECKPOINT=');
+    expect(source).toContain('DURABLE_SAVE_RECEIPT=');
+    expect(source).toContain('CURRENT_WORK_RESTORE_DISPATCHED');
+    expect(source).toContain('CURRENT_WORK_RESTORE_SKIPPED_CHANGED_WORK');
+    expect(source).toContain('CHAT_ROTATION_SKIPPED_NO_CURRENT_WORK');
+    expect(source).toContain('checkpointNv02(target,currentWork)');
+    const rotation=source.slice(source.indexOf('async function rotateNv02Chat'),source.indexOf('async function noteNv02CommandDispatch'));
+    expect(rotation).toContain('CHAT_ROTATION_CURRENT_WORK_VERIFIED');
+    expect(rotation).toContain('dispatchCurrentWorkRestoreLocked(target,next,now,currentWork,receipt)');
+    expect(rotation).not.toContain('dispatchNaturalContinueLocked(target,next,now)');
+    const checkpoint=source.slice(source.indexOf('async function checkpointNv02'),source.indexOf('async function rotateNv02Chat'));
+    expect(checkpoint).toContain('CHECKPOINT_CURRENT_WORK_REQUIRED');
+    expect(checkpoint).toContain('CURRENT_WORK_ORDER=');
   });
 
   it('ships one-shot NV02 continuity installer with exact-head deploy and rollback',()=>{
