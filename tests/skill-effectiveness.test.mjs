@@ -31,7 +31,7 @@ test('Registry validation for skill states and actual loader behavior', () => {
 
   assert.strictEqual(contextualSkill.state, 'ACTIVE');
   assert.strictEqual(tddSkill.state, 'ACTIVE');
-  assert.strictEqual(securitySkill.state, 'CANDIDATE');
+  assert.strictEqual(securitySkill.state, 'ACTIVE');
   assert.strictEqual(minimalSkill.state, 'ACTIVE');
 
   // Verify actual loader behavior via useSkill & measureEffectiveness
