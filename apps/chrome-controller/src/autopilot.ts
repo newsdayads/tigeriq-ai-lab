@@ -7,6 +7,7 @@ export const EXECUTABLE_JOB_STATUSES = new Set(['QUEUED', 'READY']);
 export const ALLOWED_EVIDENCE_SOURCES = new Set(['GITHUB', 'CORE']);
 export const DEFAULT_SNAPSHOT_MAX_AGE_MS = 5 * 60_000;
 export type AutoContinueDispatchFailureClass = 'SAFE_RETRY' | 'UNCERTAIN';
+export const CANONICAL_SPEC_VERSION_1372 = '1372';
 export function classifyAutoContinueDispatchFailure(error:unknown,dispatchSubmitted:boolean):AutoContinueDispatchFailureClass {
   if(dispatchSubmitted)return 'UNCERTAIN';
   const message=String(error);
