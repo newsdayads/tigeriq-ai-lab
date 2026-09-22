@@ -123,7 +123,7 @@ function Stop-StaleTrustedListener([int]$Port,[string]$ExpectedDeploy,[bool]$For
   if(-not$identity.trusted){
     $again=Get-PortListener $Port
     if(-not$again -or [int]$again.OwningProcess-ne$ownerPid){return $true}
-    throw "PORT_OWNED_BY_UNTRUSTED_PROCESS:${Port}:$ownerPid:$($identity.reason)"
+    throw "PORT_OWNED_BY_UNTRUSTED_PROCESS:${Port}:${ownerPid}:$($identity.reason)"
   }
   Write-SupervisorEvent 'STALE_RUNTIME_STOP' @{port=$Port;pid=$ownerPid;identity=$identity.identity;expectedDeploy=$ExpectedDeploy}
   Stop-Process -Id $ownerPid -Force -ErrorAction Stop
