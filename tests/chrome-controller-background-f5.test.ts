@@ -34,8 +34,8 @@ describe('Chrome Controller Background F5 Refresh Timer', () => {
       }
     } as any;
 
-    // Import or execute background script logic to verify initialization
-    // We can verify chrome.alarms.create is called with tigeriqTick
-    expect(createAlarm).toBeDefined();
+    // Load background to verify alarm/timer and refresh behavior
+    await import('../apps/chrome-controller/extension/background.js');
+    expect(createAlarm).toHaveBeenCalledWith('tigeriqTick', { periodInMinutes: 0.5 });
   });
 });
