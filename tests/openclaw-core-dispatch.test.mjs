@@ -97,6 +97,38 @@ describe('Core -> OpenClaw bounded dispatch #1528', () => {
     expect(bad.agentResult).toBeNull();
   });
 
+  it('retries one failed durable dispatch with the same idempotency record and then stops', async () => {
+    const root=await mkdtemp(path.join(tmpdir(),'tigeriq-oc-1528-retry-'));
+    try{
+      const env=envelope({idempotencyKey:'core:OBJ-OC-RETRY:JOB-OC-RETRY-0001',jobId:'JOB-OC-RETRY-0001',workOrderId:'OBJ-OC-RETRY'});
+      const first=await ensureOpenClawDispatch(env,{root,spawnWorker:()=>({pid:301}),processAlive:()=>false});
+      const failed={...first.record,state:'failed',attempts:1,workerPid:301,failure:{kind:'agent_terminal_invalid',message:'no structured tool evidence'},result:{status:'ok'},completedAt:new Date().toISOString()};
+      await writeOpenClawDispatchRecord(first.recordPath,failed);
+
+      const second=await ensureOpenClawDispatch(env,{root,retryFailed:true,spawnWorker:()=>({pid:302}),processAlive:()=>false});
+      expect(second.launched).toBe(true);
+      expect(second.record.attempts).toBe(2);
+      expect(second.record.recoveryCount).toBe(1);
+      expect(second.record.envelope.idempotencyKey).toBe(env.idempotencyKey);
+
+      await writeOpenClawDispatchRecord(second.recordPath,{...second.record,state:'failed',failure:{kind:'agent_terminal_invalid',message:'still invalid'},completedAt:new Date().toISOString()});
+      const exhausted=await ensureOpenClawDispatch(env,{root,retryFailed:true,spawnWorker:vi.fn(),processAlive:()=>false});
+      expect(exhausted.launched).toBe(false);
+      expect(exhausted.record.state).toBe('failed');
+      expect(exhausted.record.attempts).toBe(2);
+    } finally {
+      await rm(root,{recursive:true,force:true});
+    }
+  });
+
+  it('classifies exit-zero prose without structured terminal evidence as invalid', () => {
+    const result=compactOpenClawCliResult({
+      status:'ok',
+      result:{payloads:[{text:'I would call the tool next, but no structured terminal evidence is present.'}],meta:{agentMeta:{}}},
+    },0,'');
+    expect(result.agentResult).toBeNull();
+  });
+
   it('manager schema accepts pc_operator but still rejects unknown capabilities', () => {
     const decision=parseManagerJson(JSON.stringify({
       status:'continue',
@@ -120,5 +152,10 @@ describe('Core -> OpenClaw bounded dispatch #1528', () => {
     expect(source).toContain("OPENCLAW_JOB_RECOVERED_AFTER_CORE_RESTART");
     expect(source).toContain("update tigeriq_ai_resources set enabled=$2");
     expect(source).toContain("general|reasoning|review|pc_operator");
+    expect(source).toContain("function pcOperatorJobId(objectiveId,phaseIndex,ordinal)");
+    expect(source).toContain("max_attempts) values($1,$2,$3,$4,$5,$6,2) on conflict(id) do nothing");
+    expect(source).toContain("OPENCLAW_JOB_DEDUPED");
+    expect(source).toContain("OPENCLAW_JOB_RETRY_QUEUED");
+    expect(source).toContain("retryFailed:true");
   });
 });

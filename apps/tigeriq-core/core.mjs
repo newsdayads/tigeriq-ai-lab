@@ -1,5 +1,5 @@
 import { createServer } from 'node:http';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { Pool } from 'pg';
 import { createGeminiRateController } from '../shared/gemini-rate-control.mjs';
@@ -662,6 +662,11 @@ async function releaseOpenClawLease(jobId){
   await pool.query("update tigeriq_ai_resources set current_job_id=case when current_job_id=$2 then null else current_job_id end,health_state=$3,work_state=case when current_job_id=$2 then $4 else work_state end,last_seen_at=now(),updated_at=now() where resource_id=$1",[OPENCLAW_RESOURCE_ID,jobId,state,work]).catch(()=>{});
   await pool.query("update tigeriq_resources set current_job_id=case when current_job_id=$2 then null else current_job_id end,health_state=$3,work_state=case when current_job_id=$2 then $4 else work_state end,last_seen_at=now(),updated_at=now() where employee_id=$1",[OPENCLAW_EMPLOYEE_ID,jobId,state,work]).catch(()=>{});
 }
+function pcOperatorJobId(objectiveId,phaseIndex,ordinal){
+  const key=`${String(objectiveId)}:${Number(phaseIndex)||0}:${Number(ordinal)||0}`;
+  return `JOB-OC-${createHash('sha256').update(key).digest('hex').slice(0,24)}`;
+}
+const OPENCLAW_RETRYABLE_JOB_KINDS=new Set(['outage','timeout','openclaw_failure','worker_timeout','spawn_error','agent_terminal_invalid','busy']);
 function openClawEnvelopeForJob(j){
   const objectiveId=String(j.objective_id||j.id);
   return normalizeOpenClawDispatchEnvelope({
@@ -675,15 +680,18 @@ function openClawEnvelopeForJob(j){
   });
 }
 async function runOpenClawOperatorJob(j){
-  const gateway=await probeOpenClawGateway();
-  if(!gateway.ok)throw Object.assign(new Error('OPENCLAW_GATEWAY_UNAVAILABLE'),{kind:'outage'});
   const envelope=openClawEnvelopeForJob(j);
+  const gateway=await probeOpenClawGateway();
+  if(!gateway.ok){
+    await pool.query("update tigeriq_jobs set attempts=attempts+1 where id=$1",[j.id]);
+    throw Object.assign(new Error('OPENCLAW_GATEWAY_UNAVAILABLE'),{kind:'outage'});
+  }
   await claimOpenClawLease(j.id);
   const started=Date.now();
   try{
     await pool.query("update tigeriq_jobs set employee_id=$2,resource_id=$3,provider=$4,routing_profile='PC_OPERATOR',routing_decision=$5,attempts=attempts+1,lease_until=now()+interval '5 minutes' where id=$1",[j.id,OPENCLAW_EMPLOYEE_ID,OPENCLAW_RESOURCE_ID,OPENCLAW_PROVIDER,JSON.stringify({profile:'PC_OPERATOR',capability:'pc_operator',chosen:{employeeId:OPENCLAW_EMPLOYEE_ID,resourceId:OPENCLAW_RESOURCE_ID,provider:OPENCLAW_PROVIDER},idempotencyKey:envelope.idempotencyKey,envelopeHash:envelope.envelopeHash})]);
     await event('OPENCLAW_DISPATCH_ADMITTED',{jobId:j.id,objectiveId:j.objective_id,employeeId:OPENCLAW_EMPLOYEE_ID,resourceId:OPENCLAW_RESOURCE_ID,provider:OPENCLAW_PROVIDER,taskKind:'pc_operator',idempotencyKey:envelope.idempotencyKey,envelopeHash:envelope.envelopeHash});
-    const dispatch=await waitOpenClawDispatch(envelope,{timeoutMs:190000});
+    const dispatch=await waitOpenClawDispatch(envelope,{timeoutMs:190000,retryFailed:true});
     if(!dispatch.terminal)throw Object.assign(new Error('OPENCLAW_DISPATCH_TIMEOUT'),{kind:'timeout'});
     if(dispatch.record?.state!=='completed'){
       const failure=dispatch.record?.failure||{};
@@ -746,6 +754,19 @@ async function claimJob() {
   } catch(error) {
     const message=String(error?.message||error);
     const failures=Array.isArray(error?.failures)?error.failures:[];
+    if(j.capability==='pc_operator'){
+      const current=(await pool.query('select attempts,max_attempts from tigeriq_jobs where id=$1',[j.id])).rows[0]||{};
+      const attempts=Math.max(0,Number(current.attempts)||0);
+      const maxAttempts=Math.max(1,Number(current.max_attempts)||2);
+      const kind=String(error?.kind||'');
+      if(OPENCLAW_RETRYABLE_JOB_KINDS.has(kind)&&attempts<maxAttempts){
+        const nextAttemptAt=new Date(Date.now()+5000);
+        await pool.query("update tigeriq_jobs set status='waiting_resource',failure=$2,lease_until=null,completed_at=null,next_attempt_at=$3 where id=$1",[j.id,JSON.stringify({message,kind,failures,retry:{attempts,maxAttempts,nextAttemptAt}}),nextAttemptAt]);
+        await event('OPENCLAW_JOB_RETRY_QUEUED',{jobId:j.id,objectiveId:j.objective_id,employeeId:OPENCLAW_EMPLOYEE_ID,resourceId:OPENCLAW_RESOURCE_ID,provider:OPENCLAW_PROVIDER,taskKind:'pc_operator',kind,attempts,maxAttempts,nextAttemptAt});
+        await hotPathStage(j,'WAITING_RESOURCE',{reason:kind||message.slice(0,120),attempts,maxAttempts,nextAttemptAt});
+        return;
+      }
+    }
     const busyCount=message==='NO_AI_RESOURCE_AVAILABLE'&&failures.length===0?await busyCapableResourceCount(j.capability):0;
     if(shouldWaitForBusyResource({message,failures,busyCapableCount:busyCount})){
       const current=(await pool.query('select resource_wait_count,resource_wait_started_at from tigeriq_jobs where id=$1',[j.id])).rows[0]||{};
@@ -931,9 +952,21 @@ async function managerTick() {
       if(advanced.rowCount===1){await event('CAMPAIGN_PHASE_COMPLETED',{objectiveId:o.id,phaseIndex:currentPhase,nextPhaseIndex:transition.nextPhase,checkpoint});await event('CAMPAIGN_PHASE_ADVANCED',{objectiveId:o.id,phaseIndex:transition.nextPhase,phaseCount:phases.length});}
       return;
     }
+    let pcOperatorOrdinal=0;
     for(const spec of decision.jobs){
-      if(!spec?.title||!spec?.prompt) continue; const id=`JOB-${randomUUID()}`;
-      await pool.query('insert into tigeriq_jobs(id,objective_id,title,prompt,capability,phase_index) values($1,$2,$3,$4,$5,$6)',[id,o.id,String(spec.title).slice(0,200),String(spec.prompt).slice(0,12000),['general','reasoning','review','pc_operator'].includes(spec.capability)?spec.capability:'general',currentPhase]);
+      if(!spec?.title||!spec?.prompt) continue;
+      const capability=['general','reasoning','review','pc_operator'].includes(spec.capability)?spec.capability:'general';
+      const id=capability==='pc_operator'?pcOperatorJobId(o.id,currentPhase,pcOperatorOrdinal++):`JOB-${randomUUID()}`;
+      if(capability==='pc_operator'){
+        const inserted=await pool.query('insert into tigeriq_jobs(id,objective_id,title,prompt,capability,phase_index,max_attempts) values($1,$2,$3,$4,$5,$6,2) on conflict(id) do nothing',[id,o.id,String(spec.title).slice(0,200),String(spec.prompt).slice(0,12000),capability,currentPhase]);
+        if(inserted.rowCount===0){
+          const existing=(await pool.query('select status,attempts,max_attempts from tigeriq_jobs where id=$1',[id])).rows[0]||{};
+          await event('OPENCLAW_JOB_DEDUPED',{objectiveId:o.id,jobId:id,phaseIndex:currentPhase,status:existing.status||'unknown',attempts:Number(existing.attempts)||0,maxAttempts:Number(existing.max_attempts)||2});
+          continue;
+        }
+      }else{
+        await pool.query('insert into tigeriq_jobs(id,objective_id,title,prompt,capability,phase_index) values($1,$2,$3,$4,$5,$6)',[id,o.id,String(spec.title).slice(0,200),String(spec.prompt).slice(0,12000),capability,currentPhase]);
+      }
       await event('JOB_CREATED',{objectiveId:o.id,jobId:id,phaseIndex:currentPhase});
     }
   } catch(error){await pool.query("update tigeriq_objectives set summary=$2,next_check_at=now()+interval '1 minute',updated_at=now() where id=$1",[o.id,`manager error: ${String(error?.message||error).slice(0,500)}`]);await event('MANAGER_ERROR',{objectiveId:o.id,phaseIndex:currentPhase});}
