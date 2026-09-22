@@ -73,6 +73,7 @@ function sameNv02Chat(a,b){
 const WORKER_CONTINUITY_DIR='D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\worker-continuity';
 try{fs.mkdirSync(WORKER_CONTINUITY_DIR,{recursive:true});}catch{}
 const workerMutationBusy=new Set();
+const bootResetScheduleInitialized=new Set();
 const WORKER_RESET_MAX_ATTEMPTS=2;
 const WORKER_RESET_STAGGER_MS=2*60*1000;
 function workerStatePath(workerId){return join(WORKER_CONTINUITY_DIR,`${String(workerId).toLowerCase()}.json`);}
@@ -85,11 +86,20 @@ function nextWorkerResetAt(workerId,now=Date.now(),random=Math.random){
 function loadWorkerContinuity(workerId){
   const now=Date.now();let raw={};
   try{raw=JSON.parse(fs.readFileSync(workerStatePath(workerId),'utf8'));}catch{}
+  let nextResetAt=Number(raw.nextResetAt)||nextWorkerResetAt(workerId,now);
+  if(!bootResetScheduleInitialized.has(workerId)){
+    bootResetScheduleInitialized.add(workerId);
+    if(nextResetAt<=now){
+      const previousNextResetAt=nextResetAt;
+      nextResetAt=nextWorkerResetAt(workerId,now);
+      log('WORKER_RESET_TIMER_REBASED_AFTER_RESTART',{workerId,previousNextResetAt,nextResetAt});
+    }
+  }
   return {
     workerId,
     nextContinueAt:Number(raw.nextContinueAt)||nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),
     nextPeriodicF5At:Number(raw.nextPeriodicF5At)||nextRandomAt(now,WORKER_F5_MIN_MS,WORKER_F5_MAX_MS),
-    nextResetAt:Number(raw.nextResetAt)||nextWorkerResetAt(workerId,now),
+    nextResetAt,
     lastPrompt:String(raw.lastPrompt||''),
     lastPhase:String(raw.lastPhase||'STALLED'),
     resumeUrl:String(raw.resumeUrl||''),
