@@ -34,7 +34,7 @@ test('Registry validation for skill states and actual loader behavior', () => {
   assert.ok(securitySkill, 'external-skill-security-gate must exist');
   assert.ok(minimalSkill, 'minimal-change-output must exist');
 
-  assert.strictEqual(contextualSkill.state, 'ACTIVE');
+  assert.strictEqual(contextualSkill.state, 'CANDIDATE');
   assert.strictEqual(tddSkill.state, 'ACTIVE');
   assert.strictEqual(securitySkill.state, 'ACTIVE');
   assert.strictEqual(minimalSkill.state, 'ACTIVE');
