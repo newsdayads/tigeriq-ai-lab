@@ -142,6 +142,16 @@ describe('independent worker recovery flows in direct-cdp-bridge',()=>{
     expect(source).toContain("computeWorkerStaggerDelay");
   });
 
+  it('rebases only an already-expired deep-reset timer once after bridge restart',()=>{
+    expect(source).toContain("const bootResetScheduleInitialized=new Set()");
+    expect(source).toContain("if(!bootResetScheduleInitialized.has(workerId)){");
+    expect(source).toContain("if(nextResetAt<=now){");
+    expect(source).toContain("nextResetAt=nextWorkerResetAt(workerId,now)");
+    expect(source).toContain("WORKER_RESET_TIMER_REBASED_AFTER_RESTART");
+    const load=source.slice(source.indexOf('function loadWorkerContinuity'),source.indexOf('function saveWorkerContinuity'));
+    expect(load.indexOf("bootResetScheduleInitialized.add(workerId)")).toBeLessThan(load.indexOf("if(nextResetAt<=now)"));
+  });
+
   it('fails closed on pause/security and uses bounded worker-specific planned reopen',()=>{
     expect(source).toContain("workerAutomationPaused(workerId)");
     expect(source).toContain("WORKER_AUTOMATION_PAUSE_CHECK_FAILED_CLOSED");
