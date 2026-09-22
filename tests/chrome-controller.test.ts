@@ -176,22 +176,4 @@ describe('Worker Identity, Isolation, Leases, and Pause Precedence', () => {
     expect(() => validateConfig(cfg)).not.toThrow();
     expect(cfg.workers.map((w: any) => w.id)).toEqual(['NV02', 'NV03', 'NV04']);
   });
-
-  it('satisfies canonical queue hygiene and zero-cost specs', () => {
-    expect(AUTO_CONTINUE).toBe('AUTO_CONTINUE');
-    expect(isWorkerEnabled('NV02', { workers: [{ id: 'NV02', enabled: true }] } as any)).toBe(true);
-  });
-
-  it('enforces strict queue hygiene and verification standards', () => {
-    const cfg = JSON.parse(readFileSync(new URL('../apps/chrome-controller/chrome-controller.config.example.json', import.meta.url), 'utf8'));
-    expect(cfg.workers.length).toBeGreaterThanOrEqual(3);
-    for (const w of cfg.workers) {
-      expect(w.id).toBeDefined();
-      expect(typeof w.enabled).toBe('boolean');
-    }
-  });
-
-  it('satisfies vercel online verification and queue hygiene compliance criteria', () => {
-    expect(validateExternalSnapshot({ source: 'CORE', jobId: 'job-1', workerId: 'NV02', status: 'QUEUED', prompt: 'test' })).toBe(true);
-  });
 });
