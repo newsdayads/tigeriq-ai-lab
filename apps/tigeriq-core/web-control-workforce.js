@@ -82,9 +82,15 @@
     return true;
   }
 
+  function sourceBadge(sourceType) {
+    const type = String(sourceType || 'Local').toUpperCase();
+    const label = type === 'AUTOMATION' ? 'Automation' : type === 'API' ? 'API' : type === 'UI' ? 'UI' : 'Local';
+    return `<span class="source-badge source-${label.toLowerCase()}">${label}</span>`;
+  }
   function card(person) {
     const cls=statusClass(person.status);
-    return `<article class="worker workforce-card ${cls}" data-employee="${safe(person.employee_id)}" data-status="${safe(person.status)}" data-provider="${safe(person.runtime?.provider||'none')}" title="${safe(techTitle(person))}" tabindex="0"><div class="workforce-card-head"><strong>${safe(person.employee_id)} · ${safe(person.name)}</strong><span class="workforce-badge ${cls}"><span class="dot"></span>${safe(LABEL[person.status]||person.status)}</span></div><div class="workforce-card-role">${safe(person.role)}</div></article>`;
+    const sourceType = person.runtime?.source_type || person.source_type || 'Local';
+    return `<article class="worker workforce-card ${cls}" data-employee="${safe(person.employee_id)}" data-status="${safe(person.status)}" data-provider="${safe(person.runtime?.provider||'none')}" title="${safe(techTitle(person))}" tabindex="0"><div class="workforce-card-head"><strong>${safe(person.employee_id)} · ${safe(person.name)}</strong>${sourceBadge(sourceType)}<span class="workforce-badge ${cls}"><span class="dot"></span>${safe(LABEL[person.status]||person.status)}</span></div><div class="workforce-card-role">${safe(person.role)}</div></article>`;
   }
 
   function renderWorkforceCards(d) {
