@@ -6,6 +6,7 @@ import {
   executeRuntimeAction,
   redactSensitive,
   resolveChromeAction,
+  resolveCoreBaseUrl,
 } from '../apps/openclaw-tigeriq-runtime/bridge.mjs';
 
 function response(body, status = 200) {
@@ -24,6 +25,12 @@ describe('OpenClaw TigerIQ bounded runtime bridge', () => {
     expect(assertLoopbackBaseUrl('http://127.0.0.1:8798', 8798)).toBe('http://127.0.0.1:8798');
     expect(() => assertLoopbackBaseUrl('http://100.97.23.87:8798', 8798)).toThrow('TIGERIQ_RUNTIME_LOOPBACK_ONLY');
     expect(() => assertLoopbackBaseUrl('http://127.0.0.1:9999', 8798)).toThrow('TIGERIQ_RUNTIME_PORT_NOT_ALLOWED');
+  });
+
+  it('migrates the legacy loopback Core default to the canonical Core address', () => {
+    expect(resolveCoreBaseUrl()).toBe('http://100.97.23.87:8795');
+    expect(resolveCoreBaseUrl('http://127.0.0.1:8795')).toBe('http://100.97.23.87:8795');
+    expect(resolveCoreBaseUrl('http://100.97.23.87:8795')).toBe('http://100.97.23.87:8795');
   });
 
   it('keeps Chrome actions inside the existing allowlist', () => {
