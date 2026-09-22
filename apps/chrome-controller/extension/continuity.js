@@ -26,6 +26,37 @@ export const CONTINUE_MIN_MS = 5 * 60 * 1000;
 export const CONTINUE_MAX_MS = 10 * 60 * 1000;
 export const REFRESH_MIN_MS = 30 * 1000;
 export const REFRESH_MAX_MS = 60 * 1000;
+export const WORKER_REFRESH_MIN_MS = 30 * 1000;
+export const WORKER_REFRESH_MAX_MS = 60 * 1000;
+export const WORKER_F5_MIN_MS = 5 * 60 * 1000;
+export const WORKER_F5_MAX_MS = 10 * 60 * 1000;
+
+export function createContinuityManager() {
+  const states = new Map();
+  return {
+    getState(workerId) {
+      if (!states.has(workerId)) {
+        states.set(workerId, { status: 'READY', lastUpdated: Date.now(), checkCount: 0 });
+      }
+      return states.get(workerId);
+    },
+    setState(workerId, status) {
+      const current = this.getState(workerId);
+      current.status = status;
+      current.lastUpdated = Date.now();
+      return current;
+    },
+    reset(workerId) {
+      if (workerId) {
+        states.set(workerId, { status: 'READY', lastUpdated: Date.now(), checkCount: 0 });
+      } else {
+        states.clear();
+      }
+    }
+  };
+}onst CONTINUE_MAX_MS = 10 * 60 * 1000;
+export const REFRESH_MIN_MS = 30 * 1000;
+export const REFRESH_MAX_MS = 60 * 1000;
 export const WORKER_REFRESH_MIN_MS = 10 * 1000;
 export const WORKER_REFRESH_MAX_MS = 30 * 1000;
 export const WORKER_F5_MIN_MS = 5 * 60 * 1000;
