@@ -31,9 +31,6 @@ states:
 
 skills:
   - id: contextual-skill-loading
-    summary: Load only skills relevant to the current objective instead of preloading all knowledge.
-  - id: contextual-skill-loading
-    summary: Load only skills relevant to the current objective instead of preloading all knowledge.
     title: Contextual Skill Loading
     state: ACTIVE
     version: 1.0.0
