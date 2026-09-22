@@ -457,6 +457,11 @@ describe('APP Chrome UI-only continuity regression #1525',()=>{
     expect(recovery).toContain('stage===2');
     expect(recovery).toContain('15*60*1000');
     expect(recovery).toContain("CHAT_UNLOADABLE_BLOCKED");
+    expect(bridge).toContain('function chatLoadUiUsable');
+    expect(bridge).toContain("ui.uiBusy===true||ui.uiReady===true||ui.composerReady===true");
+    expect(bridge).toContain('waitForChatLoadOutcome(target,8000)');
+    expect(bridge).toContain('waitForChatLoadOutcome(target,10000)');
+    expect(recovery).toContain("CHAT_LOAD_RECOVERY_PENDING");
   });
 
   it('never treats a project home page as an assigned ChatGPT conversation',()=>{
@@ -513,6 +518,11 @@ describe('APP Chrome unified runtime supervisor #1525',()=>{
     expect(launcher).toContain('Owner-AutomationAllowed');
     expect(launcher).toContain("OWNER_PAUSE_PRESERVED");
     expect(launcher).toContain('PORT_OWNER_COMMANDLINE_UNAVAILABLE');
+    expect(launcher).toContain('Get-TrustedRuntimeIdentity');
+    expect(launcher).toContain("http://127.0.0.1:8800/health");
+    expect(launcher).toContain("source='CONTROLLER_PROVENANCE'");
+    expect(launcher).toContain("source='BRIDGE_PROVENANCE'");
+    expect(launcher).toContain("identitySource='COMMAND_LINE'");
     expect(launcher).not.toMatch(/^\\s*\\$pid\\s*=/im);
     expect(launcher).not.toContain('Stop-Process -Name chrome');
   });
