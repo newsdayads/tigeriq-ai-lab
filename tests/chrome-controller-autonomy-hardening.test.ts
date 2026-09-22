@@ -487,3 +487,12 @@ describe('NV03/NV04 UI continuity lease regression #1525',()=>{
     expect(server).toContain("if(commandQueues.get(workerId)!.length>0||[...waiters.values()].some((w)=>w.workerId===workerId))");
   });
 });
+
+describe('NV04 Gemini assigned-route continuity #1525',()=>{
+  it('accepts the live Gemini /app conversation route produced from the configured notebook entrypoint',()=>{
+    const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    expect(bridge).toContain("if(current.hostname==='gemini.google.com')");
+    expect(bridge).toContain("/^\\/app\\/[A-Za-z0-9_-]+\\/?$/.test(current.pathname)");
+    expect(bridge).toContain("if(isAssignedWorkerChat(w,ui?.url))state={...state,resumeUrl:String(ui.url||''),lastPhase:phase}");
+  });
+});
