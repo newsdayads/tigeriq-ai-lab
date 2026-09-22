@@ -211,28 +211,32 @@ describe('controller-independent Chrome lifecycle contract',()=>{
   });
 });
 
-describe('stale-working restart schedule scope',()=>{
-  it('allows busy restart only for the bounded stale-working reason',()=>{
+describe('NV02 restart schedule WORKING safety',()=>{
+  it('forbids restart while NV02 is busy and rejects the legacy stale-working reason',()=>{
     const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
-    expect(server).toContain("const staleWorkingRecovery=reason==='WORKING_NO_PROGRESS_3_CHECKS'");
-    expect(server).toContain("state.lastHeartbeat?.uiBusy!==false&&!staleWorkingRecovery");
-    expect(server).toContain("NV02_STALE_WORKING_RESTART_REQUIRES_BUSY");
+    expect(server).toContain("if(reason==='WORKING_NO_PROGRESS_3_CHECKS')throw new Error('NV02_WORKING_RESTART_FORBIDDEN')");
+    expect(server).toContain("if(state.lastHeartbeat?.uiBusy!==false)throw new Error('NV02_UI_NOT_IDLE')");
+    expect(server).not.toContain("NV02_STALE_WORKING_RESTART_REQUIRES_BUSY");
     expect(server).toContain("NV02_COMMAND_INFLIGHT");
     expect(server).toContain("heartbeatStopReason(state.lastHeartbeat)");
   });
 });
 
-describe('isolated NV02 stall/F5 recovery scope',()=>{
-  it('keeps stale-WORKING recovery bounded while allowing explicit durable long-chat rotation',()=>{
+describe('isolated NV02 WORKING/F5 safety scope',()=>{
+  it('keeps WORKING strictly non-mutating while preserving idle F5 and durable rotation',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
-    expect(bridge).toContain("'STALE_WORKING_RECOVERY'");
-    expect(bridge).toContain("'WORKING_STALLED_REOPEN_SCHEDULED'");
-    expect(bridge).toContain("reason:'WORKING_NO_PROGRESS_3_CHECKS'");
+    expect(bridge).not.toContain("'STALE_WORKING_RECOVERY'");
+    expect(bridge).not.toContain("'WORKING_STALLED_REOPEN_SCHEDULED'");
+    expect(bridge).not.toContain("reason:'WORKING_NO_PROGRESS_3_CHECKS'");
+    expect(bridge).not.toContain("stopAndClearComposerExpr");
+    expect(bridge).toContain("'WORKING_LONG_RUNNING_NO_MUTATION'");
     expect(bridge).toContain("'PERIODIC_F5_REFRESH'");
-    expect(bridge).toContain("stopAndClearComposerExpr");
     expect(bridge).toContain("nextPeriodicF5At:Number(raw.nextPeriodicF5At)||nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS)");
     expect(bridge).toContain("nextPeriodicF5At:nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS)");
     const hotLoop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
+    const working=hotLoop.slice(hotLoop.indexOf("if(phase==='WORKING')"),hotLoop.indexOf('if(shouldRotateNv02Chat'));
+    expect(working).not.toContain('reloadTarget(target)');
+    expect(working).not.toContain('restart-schedule');
     expect(hotLoop.indexOf("if(phase==='WORKING')")).toBeLessThan(hotLoop.indexOf("if(now>=Number(state.nextPeriodicF5At||0))"));
     expect(hotLoop.indexOf("if(phase==='WORKING')")).toBeLessThan(hotLoop.indexOf("if(now<state.nextContinueAt)return"));
     const f5Block=bridge.slice(bridge.indexOf("if(now>=Number(state.nextPeriodicF5At||0))"),bridge.indexOf("const modelCheckRequired="));
@@ -241,13 +245,11 @@ describe('isolated NV02 stall/F5 recovery scope',()=>{
     const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
     expect(server).toContain("const periodicF5=workerId==='NV02'&&purpose==='PERIODIC_F5_REFRESH'");
     expect(server).toContain("if(paused&&!periodicF5)");
-    expect(server).toContain("state.lastHeartbeat?.uiBusy!==false&&!staleWorkingRecovery&&!periodicF5");
     expect(hotLoop).not.toContain("checkpointNv02(");
     expect(hotLoop).toContain("rotateNv02Chat(target,state,now)");
     expect(hotLoop).toContain("shouldRotateNv02Chat");
     expect(hotLoop).toContain("rotationRetryAt:now+5*60*1000");
     expect(bridge).toContain("await maybeNv02Continuity(w,target,ui,{allowContinue:false})");
-    expect(bridge).toContain("WORKING_STALLED_RECOVERED_OUTSIDE_PROJECT");
     expect(hotLoop).not.toContain("getControllerState(");
     expect(hotLoop).not.toContain("hasActiveNv02Work(");
   });
