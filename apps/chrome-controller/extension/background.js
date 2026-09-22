@@ -454,30 +454,26 @@ async function tick(){
 }
 async function ensureTickAlarm(){ await chrome.alarms.create('tigeriqTick',{periodInMinutes:0.5}); }
 
-export const F5_REFRESH_MIN_MS = 5 * 60 * 1000;
-export const F5_REFRESH_MAX_MS = 10 * 60 * 1000;
+export const F5_REFRESH_MIN_MS = CONTINUE_MIN_MS;
+export const F5_REFRESH_MAX_MS = CONTINUE_MAX_MS;
 export let nextF5RefreshAt = 0;
 export function setNextF5RefreshAt(val) { nextF5RefreshAt = val; }
-
-export function nextRandTime(now, minMs, maxMs) {
-  return now + minMs + Math.floor(Math.random() * (maxMs - minMs + 1));
-}
 
 export async function scheduleF5Refresh() {
   const now = Date.now();
   if (!nextF5RefreshAt || now >= nextF5RefreshAt) {
-    nextF5RefreshAt = nextRandTime(now, F5_REFRESH_MIN_MS, F5_REFRESH_MAX_MS);
+    nextF5RefreshAt = nextRandomAt(now, F5_REFRESH_MIN_MS, F5_REFRESH_MAX_MS);
   }
 }
 
 export async function checkF5Refresh() {
   const now = Date.now();
   if (!nextF5RefreshAt) {
-    nextF5RefreshAt = nextRandTime(now, F5_REFRESH_MIN_MS, F5_REFRESH_MAX_MS);
+    nextF5RefreshAt = nextRandomAt(now, F5_REFRESH_MIN_MS, F5_REFRESH_MAX_MS);
     return;
   }
   if (now >= nextF5RefreshAt) {
-    nextF5RefreshAt = nextRandTime(now, F5_REFRESH_MIN_MS, F5_REFRESH_MAX_MS);
+    nextF5RefreshAt = nextRandomAt(now, F5_REFRESH_MIN_MS, F5_REFRESH_MAX_MS);
     const workerIds = await getWorkerIds();
     for (const workerId of workerIds) {
       const ctx = await findContext(workerId);
