@@ -24,6 +24,8 @@ export const CONTINUE_PROMPTS = Object.freeze([
 
 export const CONTINUE_MIN_MS = 5 * 60 * 1000;
 export const CONTINUE_MAX_MS = 10 * 60 * 1000;
+export const READY_CONTINUATION_ENABLED = true;
+export const DURABLE_CHECKPOINT_SEMANTICS = true;
 export const REFRESH_MIN_MS = 60 * 1000;
 export const REFRESH_MAX_MS = 2 * 60 * 1000;
 export const WORKER_REFRESH_MIN_MS = 60 * 1000;
