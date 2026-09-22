@@ -24,6 +24,36 @@ export const CONTINUE_PROMPTS = Object.freeze([
 
 export const CONTINUE_MIN_MS = 5 * 60 * 1000;
 export const CONTINUE_MAX_MS = 10 * 60 * 1000;
+export const REFRESH_MIN_MS = 30 * 60 * 1000;
+export const REFRESH_MAX_MS = 45 * 60 * 1000;
+export const MAX_STALLED_CHECKS = 3;
+
+export function createContinuityManager() {
+  const states = new Map();
+  return {
+    getState(workerId) {
+      if (!states.has(workerId)) {
+        states.set(workerId, {
+          phase: 'READY',
+          stalledCount: 0,
+          lastActive: Date.now(),
+          checkpoint: null,
+          errorCount: 0
+        });
+      }
+      return states.get(workerId);
+    },
+    reset(workerId) {
+      states.set(workerId, {
+        phase: 'READY',
+        stalledCount: 0,
+        lastActive: Date.now(),
+        checkpoint: null,
+        errorCount: 0
+      });
+    }
+  };
+}onst CONTINUE_MAX_MS = 10 * 60 * 1000;
 export const DEEP_RESET_MIN_MS = 2 * 60 * 60 * 1000;
 export const DEEP_RESET_MAX_MS = 4 * 60 * 60 * 1000;
 
