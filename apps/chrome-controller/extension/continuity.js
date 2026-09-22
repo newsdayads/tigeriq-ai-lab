@@ -36,12 +36,10 @@ export const MAX_WORKING_UNCHANGED_CHECKS = 3;
 export const CHAT_ROTATE_AFTER_DISPATCHES = 30;
 export const CONTINUITY_WORKERS = Object.freeze(['NV02','NV03','NV04']);
 
-export function shouldRotateNv02Chat({phase,currentTrackedWork,now,nextRefreshAt,dispatchesInChat,rotationRetryAt}={}){
+export function shouldRotateNv02Chat({phase,currentTrackedWork,now,nextRefreshAt,rotationRetryAt}={}){
   if(phase!=='READY'||currentTrackedWork!==true)return false;
   if(Number(rotationRetryAt)>Number(now))return false;
-  const dueByTime=Number(nextRefreshAt)>0&&Number(now)>=Number(nextRefreshAt);
-  const dueByDispatch=Number(dispatchesInChat||0)>=CHAT_ROTATE_AFTER_DISPATCHES;
-  return dueByTime||dueByDispatch;
+  return Number(nextRefreshAt)>0&&Number(now)>=Number(nextRefreshAt);
 }
 
 export function randomDelay(minMs,maxMs,random=Math.random){
