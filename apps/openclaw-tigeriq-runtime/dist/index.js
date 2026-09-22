@@ -6,7 +6,7 @@ import { executePcAction } from '../operator.mjs';
 export default defineToolPlugin({
   id: 'tigeriq-runtime',
   name: 'TigerIQ Runtime',
-  description: 'TigerIQ Core/Chrome control plus guarded local PC01 shell and workspace file operations.',
+  description: 'TigerIQ Core/Chrome control plus guarded local PC01 operations.',
   configSchema: Type.Object({
     coreBaseUrl: Type.Optional(Type.String({ default: 'http://100.97.23.87:8795' })),
     chromeBaseUrl: Type.Optional(Type.String({ default: 'http://127.0.0.1:8798' })),
@@ -73,10 +73,16 @@ export default defineToolPlugin({
     tool({
       name: 'tigeriq_pc',
       label: 'TigerIQ PC Operator',
-      description: 'Operate PC01 locally: run PowerShell/CMD and read/write/list/stat files inside TigerIQ/OpenClaw work roots. Destructive/system/Production/credential paths are blocked by default.',
+      description: 'Operate PC01 with typed task/process/TCP/file actions plus a strict allowlist of diagnostic shell commands. Secret paths, source writes, arbitrary shell, and Production mutations are blocked.',
       parameters: Type.Object({
         action: Type.Union([
           Type.Literal('shell_exec'),
+          Type.Literal('task_status'),
+          Type.Literal('task_start'),
+          Type.Literal('task_stop'),
+          Type.Literal('task_restart'),
+          Type.Literal('process_list'),
+          Type.Literal('tcp_probe'),
           Type.Literal('file_read'),
           Type.Literal('file_write'),
           Type.Literal('file_list'),
@@ -86,6 +92,9 @@ export default defineToolPlugin({
         shell: Type.Optional(Type.Union([Type.Literal('powershell'), Type.Literal('cmd')])),
         cwd: Type.Optional(Type.String({ minLength: 3, maxLength: 512 })),
         timeoutSec: Type.Optional(Type.Number({ minimum: 1, maximum: 120 })),
+        taskName: Type.Optional(Type.String({ minLength: 8, maxLength: 110 })),
+        host: Type.Optional(Type.String({ minLength: 3, maxLength: 64 })),
+        port: Type.Optional(Type.Number({ minimum: 1, maximum: 65535 })),
         path: Type.Optional(Type.String({ minLength: 3, maxLength: 1024 })),
         content: Type.Optional(Type.String({ maxLength: 524288 })),
       }, { additionalProperties: false }),
