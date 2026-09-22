@@ -142,6 +142,16 @@ describe('independent worker recovery flows in direct-cdp-bridge',()=>{
     expect(source).toContain("computeWorkerStaggerDelay");
   });
 
+  it('reuses one browser CDP session for planned worker close with bounded close wait',()=>{
+    const start=source.indexOf('async function closeWorker');
+    const end=source.indexOf('function dispatchExpr',start);
+    const close=source.slice(start,end);
+    expect((close.match(/browserRpc\(port\)/g)||[]).length).toBe(1);
+    expect(close.indexOf("Browser.getWindowForTarget")).toBeLessThan(close.indexOf("/api/window-event"));
+    expect(close.indexOf("/api/window-event")).toBeLessThan(close.indexOf("Browser.close"));
+    expect(close).toContain("b.call('Browser.close',{},1500).catch(()=>{})");
+  });
+
   it('fails closed on pause/security and uses bounded worker-specific planned reopen',()=>{
     expect(source).toContain("workerAutomationPaused(workerId)");
     expect(source).toContain("WORKER_AUTOMATION_PAUSE_CHECK_FAILED_CLOSED");
