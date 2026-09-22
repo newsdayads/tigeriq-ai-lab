@@ -50,16 +50,7 @@ try{
 
   $taskName='TigerIQ APP Chrome Unified'
   $task=Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
-  $taskActivation='TASK_ABSENT'
-  if($task){
-    $taskUser=[string]$task.Principal.UserId
-    if([string]::IsNullOrWhiteSpace($taskUser)){throw 'APPCHROME_TASK_USER_MISSING'}
-    $ps='C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
-    $taskAction=New-ScheduledTaskAction -Execute $ps -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$launcherLegacy`""
-    $taskPrincipal=New-ScheduledTaskPrincipal -UserId $taskUser -LogonType Interactive -RunLevel Highest
-    Set-ScheduledTask -TaskName $taskName -Action $taskAction -Principal $taskPrincipal|Out-Null
-    $taskActivation='TASK_CONFIGURED_HIGHEST'
-  }
+  $taskActivation=if($task){'TASK_PRESENT'}else{'TASK_ABSENT'}
 
   $active=[ordered]@{
     schemaVersion='tigeriq.appchrome.active-deploy.v1'
