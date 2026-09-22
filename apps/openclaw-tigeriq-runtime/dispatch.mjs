@@ -23,6 +23,13 @@ function clip(value,max){const s=String(value??'');return s.length<=max?s:s.slic
 function dispatchFile(root,key){return path.join(root,sha(key)+'.json');}
 function launchFile(recordPath){return recordPath+'.launch';}
 
+export function deriveOpenClawCoreIds(idempotencyKey){
+  const key=String(idempotencyKey||'').trim();
+  if(!SAFE_KEY.test(key))throw new Error('OPENCLAW_IDEMPOTENCY_KEY_INVALID');
+  const short=sha(key).slice(0,24);
+  return {objectiveId:`OBJ-OC-${short}`,jobId:`JOB-OC-${short}`};
+}
+
 export function deriveOpenClawSessionKey(idempotencyKey){
   const short=sha(idempotencyKey).slice(0,32);
   return `agent:operator-local:tigeriq-${short}`;
