@@ -15,11 +15,13 @@ const MAX_OUTPUT_CHARS = 64 * 1024;
 const MAX_TIMEOUT_SEC = 120;
 
 const DENIED_PATH_FRAGMENTS = [
-  '\\secrets\\',
+  '\\tigeriq\\secrets\\',
+  '\\tigeriq-openclaw\\state\\',
   '\\.ssh\\',
-  '\\windows\\system32\\config\\',
   '\\appdata\\local\\google\\chrome\\user data\\',
   '\\appdata\\local\\microsoft\\edge\\user data\\',
+  '\\.env\\',
+  '\\.npmrc\\',
 ];
 
 const DENIED_COMMAND_PATTERNS = [
@@ -27,7 +29,7 @@ const DENIED_COMMAND_PATTERNS = [
   /\b(?:rd|rmdir|del|erase|remove-item)\b/i,
   /\b(?:format|diskpart|bcdedit|cipher)\b/i,
   /\b(?:stop-process|stop-service|set-service|taskkill|takeown|icacls)\b/i,
-  /\b(?:reg|sc)\s+delete\b/i,
+  /\b(?:reg|cmdkey|vaultcmd|rundll32)\b/i,
   /\bschtasks\b[^\r\n]*\/delete\b/i,
   /\bgit\s+(?:clean\b|reset\b[^\r\n]*--hard|checkout\b[^\r\n]*--\s*\.|restore\b[^\r\n]*\s\.)(?:[^\r\n]*)/i,
   /\b(?:invoke-expression|iex|start-process)\b/i,
@@ -37,7 +39,12 @@ const DENIED_COMMAND_PATTERNS = [
   /\bgit\s+push\b[^\r\n]*(?:\bmain\b|\bmaster\b)/i,
   /\bgh\s+pr\s+merge\b/i,
   /\bnpm\s+publish\b/i,
-  /\\tigeriq\\secrets\\/i,
+  /(?:^|[\\/])\.\.(?:[\\/]|$)/,
+  /\$env:/i,
+  /\b(?:get-childitem|dir|set)\s+env:/i,
+  /%[A-Za-z_][A-Za-z0-9_]*%/,
+  /(?:^|[\\/])(?:secrets|\.ssh)(?:[\\/]|$)/i,
+  /tigeriq-openclaw[\\/]state/i,
   /github-command-center\.token/i,
 ];
 
@@ -72,8 +79,15 @@ export function assertShellCommandAllowed(command) {
   const explicitPaths = text.match(/[A-Za-z]:\\[^"'\`\r\n|;&)]*/g) || [];
   for (const rawPath of explicitPaths) {
     const candidate = rawPath.trim().toLowerCase();
-    const allowed = PC_OPERATOR_ROOTS.some((root) => candidate.startsWith(root.toLowerCase()));
+    const allowed = PC_OPERATOR_ROOTS.some((root) => {
+      const base = root.toLowerCase();
+      return candidate === base || candidate.startsWith(base + '\\');
+    });
     if (!allowed) throw new Error('TIGERIQ_PC_COMMAND_PATH_NOT_ALLOWED');
+    const fenced = '\\' + candidate + (candidate.endsWith('\\') ? '' : '\\');
+    if (DENIED_PATH_FRAGMENTS.some((fragment) => fenced.includes(fragment))) {
+      throw new Error('TIGERIQ_PC_COMMAND_REQUIRES_OWNER_APPROVAL');
+    }
   }
   return text;
 }
@@ -81,6 +95,11 @@ export function assertShellCommandAllowed(command) {
 function boundedText(value) {
   const text = String(value || '');
   return text.length <= MAX_OUTPUT_CHARS ? text : text.slice(0, MAX_OUTPUT_CHARS) + '\n[TRUNCATED]';
+}
+
+function childEnvironment() {
+  const keys = ['SystemRoot', 'WINDIR', 'ComSpec', 'PATH', 'PATHEXT', 'TEMP', 'TMP'];
+  return Object.fromEntries(keys.filter((key) => process.env[key]).map((key) => [key, process.env[key]]));
 }
 
 async function runShell({ command, cwd, shell = 'powershell', timeoutSec = 60 }) {
@@ -97,7 +116,7 @@ async function runShell({ command, cwd, shell = 'powershell', timeoutSec = 60 })
     const child = spawn(exe, args, {
       cwd: safeCwd,
       windowsHide: true,
-      env: process.env,
+      env: childEnvironment(),
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     let stdout = '';
@@ -200,6 +219,7 @@ export async function executePcAction(input) {
       destructiveDelete: false,
       sensitivePathsBlocked: true,
       productionMutationBlocked: true,
+      inheritedProcessSecrets: false,
     },
   };
 }
