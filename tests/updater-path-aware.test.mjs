@@ -101,3 +101,13 @@ test('updater retires the stale Supervisor V2 OpenClaw lifecycle owner before re
   assert.ok(retire>=0 && reconcile>retire,'legacy lifecycle owner must be retired before OpenClaw reconcile');
   assert.match(script,/legacyLifecycleRetire=\$legacyLifecycleRetire/);
 });
+
+test('installer retires stale Supervisor V2 before starting the runtime updater',()=>{
+  const installer=readFileSync(new URL('../scripts/tigeriq-core/install-core-updater.ps1',import.meta.url),'utf8');
+  assert.match(installer,/\$legacyAutonomySupervisorTask='TigerIQ Autonomy Supervisor V2'/);
+  assert.match(installer,/Stop-ScheduledTask -TaskName \$legacyAutonomySupervisorTask/);
+  assert.match(installer,/Disable-ScheduledTask -TaskName \$legacyAutonomySupervisorTask/);
+  const retire=installer.indexOf('Disable-ScheduledTask -TaskName $legacyAutonomySupervisorTask');
+  const start=installer.indexOf('Start-ScheduledTask -TaskName $taskName');
+  assert.ok(retire>=0 && start>retire,'legacy Supervisor V2 must be retired before updater starts');
+});
