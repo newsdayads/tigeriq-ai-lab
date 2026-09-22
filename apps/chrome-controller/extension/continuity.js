@@ -53,6 +53,19 @@ export function nextRandomAt(now,minMs,maxMs,random=Math.random){
   return now+randomDelay(minMs,maxMs,random);
 }
 
+export function beginWorkerRecoveryLifecycle(inFlight,workerId,state={},now=Date.now(),nextResetAt=now+1){
+  if(!(inFlight instanceof Set))throw new Error('WORKER_RECOVERY_GUARD_SET_REQUIRED');
+  if(inFlight.has(workerId))return {acquired:false,state};
+  const futureResetAt=Math.max(Number(nextResetAt)||0,Number(now)+1);
+  inFlight.add(workerId);
+  return {acquired:true,state:{...state,nextResetAt:futureResetAt}};
+}
+
+export function endWorkerRecoveryLifecycle(inFlight,workerId){
+  if(!(inFlight instanceof Set))throw new Error('WORKER_RECOVERY_GUARD_SET_REQUIRED');
+  inFlight.delete(workerId);
+}
+
 export function pickContinuePrompt(previous='',random=Math.random){
   if(CONTINUE_PROMPTS.length===1)return CONTINUE_PROMPTS[0];
   const candidates=CONTINUE_PROMPTS.filter((text)=>text!==previous);
