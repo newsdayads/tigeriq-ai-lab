@@ -117,6 +117,16 @@ test('max three skills and context budget are hard limits', () => {
   } finally { f.cleanup(); }
 });
 
+test('registry contains all required active skills', () => {
+  const reg = loadSkillRegistry();
+  const required = ['contextual-skill-loading', 'minimal-change-output', 'spec-first-tdd', 'external-skill-security-gate'];
+  for (const id of required) {
+    const found = reg.skills.find(s => s.id === id);
+    assert.ok(found, `Missing required skill: ${id}`);
+    assert.equal(found.state, 'ACTIVE');
+  }
+});
+
 test('manager prompt integration appends only matched ACTIVE skill context', () => {
   const f = fixture([
     { id: 'role-separation', state: 'ACTIVE', triggers: 'review reviewer implementation' },
