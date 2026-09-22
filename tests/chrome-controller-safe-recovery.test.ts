@@ -257,7 +257,7 @@ describe('safe recovery contracts',()=>{
     expect(server).toContain("state.status='PAUSED'");
   });
 
-  it('verifies canonical spec #1372 worker utility and controller runtime resilience',()=>{
+  it('verifies canonical spec #1372 worker utility and controller runtime resilience', () => {
     expect(WORKER_IDS.length).toBeGreaterThan(0);
     for (const workerId of WORKER_IDS) {
       const presence = classifyWorkerPresence({ workerId, lastSeenMsAgo: 1000, activeJobs: 0 });
