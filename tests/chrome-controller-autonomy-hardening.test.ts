@@ -512,7 +512,10 @@ describe('APP Chrome unified runtime supervisor #1525',()=>{
     expect(launcher).toContain("Global\\TigerIQ.AppChrome.Unified.Supervisor");
     expect(launcher).toContain('Owner-AutomationAllowed');
     expect(launcher).toContain("OWNER_PAUSE_PRESERVED");
-    expect(launcher).toContain('PORT_OWNER_COMMANDLINE_UNAVAILABLE');
+    expect(launcher).toContain('PORT_IDENTITY_PROBE_FAILED');
+    expect(launcher).toContain("service-ne'chrome-launch-broker'");
+    expect(launcher).toContain('runtimeProvenance.deployRoot');
+    expect(launcher).not.toContain('Get-CimInstance Win32_Process');
     expect(launcher).not.toMatch(/^\\s*\\$pid\\s*=/im);
     expect(launcher).not.toContain('Stop-Process -Name chrome');
   });
@@ -526,6 +529,7 @@ describe('APP Chrome unified runtime supervisor #1525',()=>{
     expect(stopStale).toBeGreaterThan(-1);
     expect(verify).toBeGreaterThan(readActive);
     expect(launcher).toContain('$headChanged=$lastHead-ne$active.head');
-    expect(launcher).toContain('$cmd-notlike("*"+$InstallRoot+"*")');
+    expect(launcher).toContain("Start-Component 8800 $broker @($broker,$ConfigPath) 'broker' $active $headChanged");
+    expect(launcher).toContain('Get-TrustedListenerIdentity');
   });
 });
