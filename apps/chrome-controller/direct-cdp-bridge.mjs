@@ -849,24 +849,14 @@ async function checkpointNv02(target){
     return receipt;
   },'CHECKPOINT_DURABLE',120000);
 }
-async function rotateNv02Chat(target,state,now){
+async function resetNv02BrowserSession(target,state,now){
   const receipt=await checkpointNv02(target);
-  const checkpointed={...state,dispatchesInChat:0,chatStartedAt:now,stalledChecks:0,lastPhase:'READY',nextRefreshAt:nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS),rotationRetryAt:0};
-  saveNv02Continuity(checkpointed);
-  return withNv02Mutation(async()=>{
-    const archived=await archiveChat(target);if(!archived?.ok)throw new Error(archived?.status||'ROTATE_ARCHIVE_FAILED');
-    await continuityEvent('ARCHIVE_CONFIRMED',{receiptRef:receipt.receiptRef,checkpointRef:receipt.checkpointRef,archiveStatus:archived.status});
-    const opened=await newChat(target);if(!opened?.ok)throw new Error(opened?.status||'ROTATE_NEW_CHAT_FAILED');
-    await continuityEvent('NEW_CHAT_CREATED',{newChatStatus:opened.status});
-    const freshUi=await ensureNv02ModelProfile(target);
-    if(freshUi?.securityBlock)throw new Error(freshUi.securityBlock);
-    if(freshUi?.modelExact!==true||freshUi?.uiPhase!=='READY')throw new Error('ROTATE_MODEL_PROFILE_NOT_READY');
-    const verified=loadNv02Continuity();
-    const next={...checkpointed,lastPhase:'READY',verifiedChatUrl:verified.verifiedChatUrl,modelVerifiedAt:verified.modelVerifiedAt,modelCheckBlockedUntil:verified.modelCheckBlockedUntil};
-    saveNv02Continuity(next);
-    await continuityEvent('CHAT_ROTATED',{receiptRef:receipt.receiptRef,checkpointRef:receipt.checkpointRef,archiveStatus:archived.status,newChatStatus:opened.status,nextRefreshAt:next.nextRefreshAt});
-    return dispatchNaturalContinueLocked(target,next,now);
-  },'CHAT_ROTATION',60000);
+  const next={...state,dispatchesInChat:0,stalledChecks:0,lastPhase:'READY',nextRefreshAt:nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS),rotationRetryAt:0};
+  saveNv02Continuity(next);
+  const scheduled=await post('/api/workers/NV02/restart-schedule','NV02',{reason:'PERIODIC_2_4H_RESET'});
+  if(scheduled?.ok!==true)throw new Error(scheduled?.error||scheduled?.status||'PERIODIC_RESET_SCHEDULE_FAILED');
+  await continuityEvent('PERIODIC_2_4H_RESET_SCHEDULED',{receiptRef:receipt.receiptRef,checkpointRef:receipt.checkpointRef,resumeChatUrl:next.resumeChatUrl||null,nextRefreshAt:next.nextRefreshAt});
+  return next;
 }
 async function noteNv02CommandDispatch(){
   const state=loadNv02Continuity();
@@ -894,18 +884,18 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
     if(unchanged>=MAX_WORKING_UNCHANGED_CHECKS)await recoverStalledWorking(target,state,now,{allowContinue});
     return;
   }
-  if(shouldRotateNv02Chat({phase,currentTrackedWork,now,nextRefreshAt:state.nextRefreshAt,dispatchesInChat:state.dispatchesInChat,rotationRetryAt:state.rotationRetryAt})){
+  if(shouldRotateNv02Chat({phase,currentTrackedWork,now,nextRefreshAt:state.nextRefreshAt,rotationRetryAt:state.rotationRetryAt})){
     if(await externalAutopilotOwnsNextNv02Job()){
       state={...state,rotationRetryAt:now+60_000};saveNv02Continuity(state);
-      await continuityEvent('CHAT_ROTATION_DEFERRED_TO_EXTERNAL_AUTOPILOT',{rotationRetryAt:state.rotationRetryAt});
+      await continuityEvent('PERIODIC_2_4H_RESET_DEFERRED_TO_EXTERNAL_AUTOPILOT',{rotationRetryAt:state.rotationRetryAt});
       return;
     }
-    await continuityEvent('CHAT_ROTATION_DUE',{dispatchesInChat:state.dispatchesInChat,chatStartedAt:state.chatStartedAt,nextRefreshAt:state.nextRefreshAt});
-    try{await rotateNv02Chat(target,state,now);}
+    await continuityEvent('PERIODIC_2_4H_RESET_DUE',{nextRefreshAt:state.nextRefreshAt,resumeChatUrl:state.resumeChatUrl||null});
+    try{await resetNv02BrowserSession(target,state,now);}
     catch(error){
       const retry={...state,rotationRetryAt:now+5*60*1000};
       saveNv02Continuity(retry);
-      await continuityEvent('CHAT_ROTATION_FAILED',{error:String(error?.message||error),rotationRetryAt:retry.rotationRetryAt});
+      await continuityEvent('PERIODIC_2_4H_RESET_FAILED',{error:String(error?.message||error),rotationRetryAt:retry.rotationRetryAt});
     }
     return;
   }
