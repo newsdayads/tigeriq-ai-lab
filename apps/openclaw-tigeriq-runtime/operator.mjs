@@ -25,11 +25,12 @@ const DENIED_PATH_FRAGMENTS = [
   '\\appdata\\local\\microsoft\\edge\\user data\\',
 ];
 
-const WRITE_DENIED_FRAGMENTS = [
-  '\\.git\\',
-  '\\workspace\\tigeriq-ai-lab\\',
-  '\\runtime\\coresource\\',
-];
+export const PC_WRITE_ROOTS = Object.freeze([
+  'D:\\TigerIQ\\State',
+  'D:\\TigerIQ\\Evidence',
+  'D:\\TigerIQ\\Logs',
+  'D:\\TigerIQ-OpenClaw\\state',
+]);
 
 const SAFE_SHELL_PATTERNS = [
   /^git\s+status(?:\s+--short|\s+--porcelain(?:=v1)?)?$/i,
@@ -52,12 +53,16 @@ function fencedPath(value) {
   return '\\' + lower.replaceAll('/', '\\') + (lower.endsWith('\\') ? '' : '\\');
 }
 
-function isInsideAllowedRoot(candidate) {
+function isInsideRoots(candidate, roots) {
   const lower = normalizeWinPath(candidate).toLowerCase();
-  return PC_OPERATOR_ROOTS.some((root) => {
+  return roots.some((root) => {
     const base = normalizeWinPath(root).toLowerCase();
     return lower === base || lower.startsWith(base + '\\');
   });
+}
+
+function isInsideAllowedRoot(candidate) {
+  return isInsideRoots(candidate, PC_OPERATOR_ROOTS);
 }
 
 function assertNotSensitive(candidate) {
@@ -79,9 +84,8 @@ export function resolveOperatorPath(value, { allowRoot = true } = {}) {
 
 export function assertWritePathAllowed(value) {
   const candidate = resolveOperatorPath(value, { allowRoot: false });
-  const fenced = fencedPath(candidate);
-  if (WRITE_DENIED_FRAGMENTS.some((fragment) => fenced.includes(fragment))) {
-    throw new Error('TIGERIQ_PC_SOURCE_WRITE_BLOCKED');
+  if (!isInsideRoots(candidate, PC_WRITE_ROOTS)) {
+    throw new Error('TIGERIQ_PC_WRITE_PATH_NOT_ALLOWED');
   }
   return candidate;
 }
@@ -105,9 +109,6 @@ async function realPathInsideRoots(candidate, { forWrite = false } = {}) {
   const realProbe = normalizeWinPath(await fs.realpath(probe));
   if (!isInsideAllowedRoot(realProbe)) throw new Error('TIGERIQ_PC_REALPATH_ESCAPE_BLOCKED');
   assertNotSensitive(realProbe);
-  if (forWrite && WRITE_DENIED_FRAGMENTS.some((fragment) => fencedPath(realProbe).includes(fragment))) {
-    throw new Error('TIGERIQ_PC_SOURCE_WRITE_BLOCKED');
-  }
   return lexical;
 }
 
@@ -245,9 +246,7 @@ async function writeTextFile(filePath, content) {
   const text = String(content ?? '');
   if (Buffer.byteLength(text, 'utf8') > MAX_WRITE_BYTES) throw new Error('TIGERIQ_PC_WRITE_TOO_LARGE');
   await fs.mkdir(win.dirname(safePath), { recursive: true });
-  const tmp = safePath + '.tigeriq.tmp';
-  await fs.writeFile(tmp, text, 'utf8');
-  await fs.rename(tmp, safePath);
+  await fs.writeFile(safePath, text, 'utf8');
   const stat = await fs.stat(safePath);
   return { path: safePath, size: stat.size };
 }
@@ -313,6 +312,7 @@ export async function executePcAction(input) {
       allowedRoots: PC_OPERATOR_ROOTS,
       inheritedSecretEnvironment: false,
       destructiveDelete: false,
+      writeRoots: PC_WRITE_ROOTS,
       sourceWriteBlocked: true,
       sensitivePathsBlocked: true,
       productionMutationBlocked: true,
