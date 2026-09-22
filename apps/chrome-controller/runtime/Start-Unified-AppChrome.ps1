@@ -15,7 +15,7 @@ $supervisorLog=Join-Path $runtime 'appchrome-supervisor.jsonl'
 $tokenFile=Join-Path $runtime 'NV02-ProfileToken.value'
 $ownerStatePath=Join-Path $runtime 'owner-interaction-state.json'
 $lastHead=''
-$supervisorMutex=[Threading.Mutex]::new($false,'Global\\TigerIQ.AppChrome.Unified.Supervisor')
+$supervisorMutex=[Threading.Mutex]::new($false,'Global\TigerIQ.AppChrome.Unified.Supervisor')
 $ownsSupervisorMutex=$false
 try{$ownsSupervisorMutex=$supervisorMutex.WaitOne(0)}catch{}
 if(-not$ownsSupervisorMutex){exit 0}
