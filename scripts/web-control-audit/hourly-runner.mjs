@@ -1,45 +1,30 @@
 import {pathToFileURL} from 'node:url';
 import {processRepairHandoff} from './repair-handoff.mjs';
 
-const HOUR_MS=60*60*1000;
-
-export function cycleIndexForTime(now=Date.now()){
-  return Math.floor(Number(now)/HOUR_MS);
-}
-
-export async function runHourlyAuditCycle(targetUrls,options={}){
+export async function runHourlyAuditCycle(targetUrls=['http://100.97.23.87:8796'],options={}){
   const results=[];
-  const cycleIndex=options.cycleIndex??cycleIndexForTime(options.now??Date.now());
-  for(const url of targetUrls){
+  const baseCycle=Number(options.cycleIndex||0);
+  for(let i=0;i<targetUrls.length;i++){
+    const url=targetUrls[i];
     try{
-      const cycle=await (options.processCycle||processRepairHandoff)(url,cycleIndex,options.processOptions||{});
-      results.push({
-        url,
-        status:cycle.status==='PASS'?'pass':'material_failure',
-        cycleIndex,
-        cycle
-      });
-    }catch(error){
-      results.push({url,status:'failed',cycleIndex,error:String(error?.message||error)});
+      const handoff=await processRepairHandoff(url,baseCycle+i,options);
+      results.push({url,status:handoff?.audit?.sweepVerified===true?'success':'failed',handoff});
+    }catch(err){
+      results.push({url,status:'failed',error:String(err?.message||err)});
     }
   }
-  return results;
-}
-
-async function main(){
-  const targets=process.argv.slice(2).filter(Boolean);
-  const urls=targets.length?targets:['http://100.97.23.87:8796'];
-  const results=await runHourlyAuditCycle(urls);
-  const output={
-    schema:'TIGERIQ_WEB_AUDIT_HOURLY_V1',
+  return {
+    schema:'TIGERIQ_WEB_CONTROL_HOURLY_AUDIT_V1',
     at:new Date().toISOString(),
-    pass:results.every(row=>row.status==='pass'),
+    pass:results.every((x)=>x.status==='success'),
     results
   };
-  console.log(JSON.stringify(output,null,2));
-  if(!output.pass) process.exitCode=2;
 }
 
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
-  await main();
+  const target=process.argv[2]||'http://100.97.23.87:8796';
+  const cycleIndex=Number(process.argv[3]||0);
+  const result=await runHourlyAuditCycle([target],{cycleIndex});
+  console.log(JSON.stringify(result,null,2));
+  if(!result.pass)process.exitCode=2;
 }
