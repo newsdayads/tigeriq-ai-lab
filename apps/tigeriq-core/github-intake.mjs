@@ -16,6 +16,8 @@ export function parseExecutableIssue(issue){
   if(!issue||issue.pull_request||issue.state!=='open') return null;
   const body=String(issue.body||'');
   if(!hasExactFlag(body,'TIGERIQ_EXECUTABLE')) return null;
+  const ownerDirect=hasExactFlag(body,'OWNER_DIRECT');dy||'');
+  if(!hasExactFlag(body,'TIGERIQ_EXECUTABLE')) return null;
   const ownerPolicy=(body.match(/^OWNER_POLICY=(.+)$/m)?.[1]||'AUTO').trim();dy||'');
   if(!hasExactFlag(body,'TIGERIQ_EXECUTABLE')||!hasExactFlag(body,'OWNER_POLICY','AUTO')) return null;
   if(!hasExactFlag(body,'NO_CODE_CHANGE')||!hasExactFlag(body,'NO_PC01_SHELL')) return null;
