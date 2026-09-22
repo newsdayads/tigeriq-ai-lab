@@ -74,9 +74,19 @@ const WORKER_CONTINUITY_DIR='D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\worke
 try{fs.mkdirSync(WORKER_CONTINUITY_DIR,{recursive:true});}catch{}
 const workerMutationBusy=new Set();
 const bootResetScheduleInitialized=new Set();
+const workerStartupGraceUntil=new Map();
+const WORKER_STARTUP_GRACE_MS=60*1000;
 const WORKER_RESET_MAX_ATTEMPTS=2;
 const WORKER_RESET_STAGGER_MS=2*60*1000;
 function workerStatePath(workerId){return join(WORKER_CONTINUITY_DIR,`${String(workerId).toLowerCase()}.json`);}
+function getWorkerStartupGraceUntil(workerId,now=Date.now()){
+  if(!workerStartupGraceUntil.has(workerId)){
+    const until=now+WORKER_STARTUP_GRACE_MS;
+    workerStartupGraceUntil.set(workerId,until);
+    log('WORKER_STARTUP_GRACE_ARMED',{workerId,until});
+  }
+  return workerStartupGraceUntil.get(workerId);
+}
 function nextWorkerResetAt(workerId,now=Date.now(),random=Math.random){
   const index=Math.max(0,CONTINUITY_WORKERS.indexOf(workerId));
   const offset=computeWorkerStaggerDelay(index,0,WORKER_RESET_STAGGER_MS);
@@ -223,6 +233,25 @@ async function maybeWorkerContinuity(w,target,ui){
   if(!validWorkerUrl(w,ui?.url)){
     await genericWorkerEvent(w.id,'WRONG_WORKER_CONTEXT',{url:ui?.url||null,expectedHost:expectedHost(w)});
     return;
+  }
+
+  const startupGraceUntil=getWorkerStartupGraceUntil(w.id,now);
+  if(now<startupGraceUntil){
+    const nextPeriodicF5At=Number(state.nextPeriodicF5At||0)<=startupGraceUntil
+      ? nextRandomAt(now,WORKER_F5_MIN_MS,WORKER_F5_MAX_MS)
+      : state.nextPeriodicF5At;
+    const stable=phase==='READY'||phase==='WORKING';
+    state={...state,stalledChecks:0,nextPeriodicF5At,recoveryAttempts:stable?0:state.recoveryAttempts,recoveryBlockedUntil:stable?0:state.recoveryBlockedUntil};
+    saveWorkerContinuity(w.id,state);
+    return;
+  }
+
+  if(phase==='READY'||phase==='WORKING'){
+    const stableState={...state,stalledChecks:0,recoveryAttempts:0,recoveryBlockedUntil:0};
+    if(state.stalledChecks!==0||state.recoveryAttempts!==0||state.recoveryBlockedUntil!==0){
+      state=stableState;
+      saveWorkerContinuity(w.id,state);
+    }else state=stableState;
   }
 
   if(phase!=='WORKING'&&now>=Number(state.nextResetAt||0)){
