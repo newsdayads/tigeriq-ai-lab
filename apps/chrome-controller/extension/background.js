@@ -10,6 +10,22 @@ import {
 
 const continuityManager = createContinuityManager();
 
+chrome.runtime.onMessage.addListener((m, _sender, sendResponse) => {
+  if (m?.type === 'TIGERIQ_GET_CONTINUITY_STATE') {
+    const statesObj = {};
+    ['NV02', 'NV03', 'NV04'].forEach(id => {
+      statesObj[id] = continuityManager.getState(id);
+    });
+    sendResponse({ ok: true, states: statesObj });
+    return true;
+  }
+  if (m?.type === 'TIGERIQ_RESET_CONTINUITY') {
+    continuityManager.reset(m.workerId);
+    sendResponse({ ok: true });
+    return true;
+  }
+});
+
 const CONTROLLER = 'http://127.0.0.1:8798';
 const LEGACY_PLUS_ID = ['NV','05'].join('');
 const WORKER_LABELS = {
