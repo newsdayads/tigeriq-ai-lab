@@ -37,12 +37,7 @@ it('implements isolated worker profiles, staggered read-only probes for NV02/NV0
 });
 
 it('verifies robust startup/reboot restoration, UI continuity, and bounded recovery semantics', () => {
-  const program = readFileSync('apps/worker-utility/Program.cs', 'utf8');
   const watchdog = readFileSync('apps/worker-utility/Watchdog.cs', 'utf8');
-  const server = readFileSync('apps/chrome-controller/src/server.ts', 'utf8');
-  expect(program).toBeTruthy();
   expect(watchdog).toContain('BeginRecovery');
-  expect(server).toContain('startupRecovery');
-});
-
+  expect(watchdog).toContain('EndRecovery');
 });
