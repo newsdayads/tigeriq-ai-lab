@@ -466,3 +466,24 @@ describe('APP Chrome UI-only continuity regression #1525',()=>{
   });
 });
 
+
+describe('NV03/NV04 UI continuity lease regression #1525',()=>{
+  it('allows only bounded generic UI maintenance to coexist with a stale active UI ledger record',()=>{
+    const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
+    expect(server).toContain("const genericUiContinuityMaintenance=workerId!=='NV02'");
+    for(const purpose of [
+      "purpose==='CONTINUITY_CONTINUE'",
+      "purpose==='PERIODIC_F5_REFRESH'",
+      "purpose==='STALLED_RECOVERY'",
+      "purpose==='CHAT_LOAD_RETRY'",
+      "purpose==='CHAT_LOAD_F5'",
+      "purpose==='DUPLICATE_TAB_PRUNE'",
+      "purpose.startsWith('WORKER_REOPEN_CLOSE:')",
+    ]) expect(server).toContain(purpose);
+    expect(server).toContain('const uiContinuityLeaseAllowed=continuityLeaseAllowed||genericUiContinuityMaintenance');
+    expect(server).toContain('||genericUiContinuityMaintenance;');
+    expect(server).toContain('&&!uiContinuityLeaseAllowed)throw new Error(`WORKER_ACTIVE_JOB:${workerId}`)');
+    expect(server).toContain("if(state.lastHeartbeat?.uiBusy!==false&&!staleWorkingRecovery&&!periodicF5)throw new Error(`WORKER_UI_BUSY_OR_UNKNOWN:${workerId}`)");
+    expect(server).toContain("if(commandQueues.get(workerId)!.length>0||[...waiters.values()].some((w)=>w.workerId===workerId))");
+  });
+});
