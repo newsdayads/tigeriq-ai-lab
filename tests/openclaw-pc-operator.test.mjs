@@ -1,9 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { assertShellCommandAllowed, resolveOperatorPath } from '../apps/openclaw-tigeriq-runtime/operator.mjs';
+import {
+  assertShellCommandAllowed,
+  assertTigerIQTaskName,
+  assertWritePathAllowed,
+  resolveOperatorPath,
+} from '../apps/openclaw-tigeriq-runtime/operator.mjs';
 
 describe('OpenClaw PC01 guarded local operator', () => {
   it('allows TigerIQ/OpenClaw work roots', () => {
-    expect(resolveOperatorPath('D:\\TigerIQ\\Workspace\\repo')).toBe('D:\\TigerIQ\\Workspace\\repo');
+    expect(resolveOperatorPath('D:\\TigerIQ\\Evidence\\x.json')).toBe('D:\\TigerIQ\\Evidence\\x.json');
     expect(resolveOperatorPath('D:\\OpenClaw\\npm-global')).toBe('D:\\OpenClaw\\npm-global');
     expect(resolveOperatorPath('D:\\TigerIQ-OpenClaw\\state')).toBe('D:\\TigerIQ-OpenClaw\\state');
   });
@@ -13,32 +18,36 @@ describe('OpenClaw PC01 guarded local operator', () => {
     expect(() => resolveOperatorPath('D:\\TigerIQ\\Secrets\\x.txt')).toThrow('TIGERIQ_PC_SENSITIVE_PATH_BLOCKED');
   });
 
-  it('allows normal operator shell work', () => {
-    expect(assertShellCommandAllowed('git status')).toBe('git status');
-    expect(assertShellCommandAllowed('Get-Process | Select-Object -First 5')).toContain('Get-Process');
-    expect(assertShellCommandAllowed('Get-ChildItem D:\\TigerIQ\\State')).toContain('D:\\TigerIQ\\State');
+  it('blocks direct source/runtime-source writes while allowing state/evidence writes', () => {
+    expect(() => assertWritePathAllowed('D:\\TigerIQ\\Workspace\\tigeriq-ai-lab\\x.txt')).toThrow('TIGERIQ_PC_WRITE_PATH_NOT_ALLOWED');
+    expect(() => assertWritePathAllowed('D:\\TigerIQ\\Runtime\\CoreSource\\x.txt')).toThrow('TIGERIQ_PC_WRITE_PATH_NOT_ALLOWED');
+    expect(() => assertWritePathAllowed('D:\\OpenClaw\\npm-global\\openclaw.cmd')).toThrow('TIGERIQ_PC_WRITE_PATH_NOT_ALLOWED');
+    expect(() => assertWritePathAllowed('D:\\TigerIQ\\State\\x.json')).not.toThrow();
+    expect(() => assertWritePathAllowed('D:\\TigerIQ\\Evidence\\x.json')).not.toThrow();
   });
 
-  it('blocks destructive/system/Production/direct-main mutations by default', () => {
+  it('allows only a narrow diagnostic shell command set', () => {
+    expect(assertShellCommandAllowed('git status')).toBe('git status');
+    expect(assertShellCommandAllowed('ollama ps')).toBe('ollama ps');
+    expect(assertShellCommandAllowed('openclaw plugins inspect tigeriq-runtime --json')).toContain('tigeriq-runtime');
     for (const command of [
+      'Get-Process | Select-Object -First 5',
+      'Get-ChildItem C:\\',
+      'echo $env:GH_TOKEN',
+      'cmd /c whoami',
       'shutdown /s /t 0',
-      'Remove-Item D:\\TigerIQ\\Workspace\\x.txt',
-      'del D:\\TigerIQ\\Workspace\\x.txt',
-      'git reset --hard HEAD~1',
-      'git clean -fd',
-      'Stop-Process -Name node',
-      'Start-Process powershell.exe',
-      'powershell.exe -EncodedCommand AAAA',
+      'Remove-Item D:\\TigerIQ\\Workspace -Recurse -Force',
       'git push origin main',
       'vercel deploy --prod',
       'gh pr merge 123',
       'type D:\\TigerIQ\\Secrets\\github-command-center.token',
     ]) {
-      expect(() => assertShellCommandAllowed(command)).toThrow('TIGERIQ_PC_COMMAND_REQUIRES_OWNER_APPROVAL');
+      expect(() => assertShellCommandAllowed(command)).toThrow('TIGERIQ_PC_COMMAND_NOT_ALLOWLISTED');
     }
   });
 
-  it('blocks explicit shell paths outside TigerIQ/OpenClaw roots', () => {
-    expect(() => assertShellCommandAllowed('Get-ChildItem C:\\Windows')).toThrow('TIGERIQ_PC_COMMAND_PATH_NOT_ALLOWED');
+  it('limits scheduled-task actions to TigerIQ task names', () => {
+    expect(assertTigerIQTaskName('TigerIQ OpenClaw Gateway')).toBe('TigerIQ OpenClaw Gateway');
+    expect(() => assertTigerIQTaskName('Microsoft\\Windows\\Defrag\\ScheduledDefrag')).toThrow('TIGERIQ_PC_TASK_NOT_ALLOWED');
   });
 });
