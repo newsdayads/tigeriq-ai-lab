@@ -152,6 +152,27 @@ describe('independent worker recovery flows in direct-cdp-bridge',()=>{
     expect(load.indexOf("bootResetScheduleInitialized.add(workerId)")).toBeLessThan(load.indexOf("if(nextResetAt<=now)"));
   });
 
+  it('gives each worker a startup settle window before F5 or stalled recovery',()=>{
+    expect(source).toContain("const workerStartupGraceUntil=new Map()");
+    expect(source).toContain("const WORKER_STARTUP_GRACE_MS=60*1000");
+    expect(source).toContain("WORKER_STARTUP_GRACE_ARMED");
+    const continuity=source.slice(source.indexOf('async function maybeWorkerContinuity'),source.indexOf('function log('));
+    const grace=continuity.indexOf("const startupGraceUntil=getWorkerStartupGraceUntil(w.id,now)");
+    expect(grace).toBeGreaterThanOrEqual(0);
+    expect(continuity.indexOf("now>=Number(state.nextResetAt||0)")).toBeGreaterThan(grace);
+    expect(continuity.indexOf("Number(state.nextPeriodicF5At||0)<=now")).toBeGreaterThan(grace);
+    expect(continuity.indexOf("const stalledChecks=")).toBeGreaterThan(grace);
+    expect(continuity).toContain("stalledChecks:0,nextPeriodicF5At");
+    expect(continuity).toContain("nextRandomAt(now,WORKER_F5_MIN_MS,WORKER_F5_MAX_MS)");
+  });
+
+  it('clears bounded-recovery counters after a worker is stably READY or WORKING',()=>{
+    const continuity=source.slice(source.indexOf('async function maybeWorkerContinuity'),source.indexOf('function log('));
+    expect(continuity).toContain("if(phase==='READY'||phase==='WORKING'){");
+    expect(continuity).toContain("recoveryAttempts:0,recoveryBlockedUntil:0");
+    expect(continuity.indexOf("if(phase==='READY'||phase==='WORKING'){")).toBeLessThan(continuity.indexOf("const stalledChecks="));
+  });
+
   it('fails closed on pause/security and uses bounded worker-specific planned reopen',()=>{
     expect(source).toContain("workerAutomationPaused(workerId)");
     expect(source).toContain("WORKER_AUTOMATION_PAUSE_CHECK_FAILED_CLOSED");
