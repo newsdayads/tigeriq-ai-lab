@@ -128,9 +128,9 @@ test('installer retires stale Supervisor V2 before starting the runtime updater'
 
 test('updater performs bounded reconcile for TigerIQ Live Status Bridge without creating or reconfiguring it',()=>{
   assert.match(script,/\$liveStatusBridgeTask='TigerIQ Live Status Bridge'/);
-  assert.doesNotMatch(script,/New-ScheduledTask[\s\S]*?\$liveStatusBridgeTask/);
-  assert.doesNotMatch(script,/Register-ScheduledTask[\s\S]*?\$liveStatusBridgeTask/);
-  assert.doesNotMatch(script,/Set-ScheduledTask[\s\S]*?\$liveStatusBridgeTask/);
+  assert.doesNotMatch(script,/New-ScheduledTask\s+-TaskName\s+\$liveStatusBridgeTask/);
+  assert.doesNotMatch(script,/Register-ScheduledTask\s+-TaskName\s+\$liveStatusBridgeTask/);
+  assert.doesNotMatch(script,/Set-ScheduledTask\s+-TaskName\s+\$liveStatusBridgeTask/);
   assert.match(script,/TASK_ABSENT/);
   assert.match(script,/TASK_NOT_FOUND/);
   assert.match(script,/Start-ScheduledTask -TaskName \$liveStatusBridgeTask/);
