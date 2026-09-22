@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { Pool } from 'pg';
 import { createGeminiRateController } from '../shared/gemini-rate-control.mjs';
-import { runBoundedManagerDecision } from './manager-json.mjs';
+import { isManagerPrompt, managerResponseFormatForHost, runBoundedManagerDecision } from './manager-json.mjs';
 import { appendSkillContextToPrompt, matchAndLoadSkills } from './skill-loader.mjs';
 import { buildManagerHistoryContext } from './context-gateway.mjs';
 import { buildFailureLearningCandidates, failureLearningEventTypes } from './failure-learning.mjs';
@@ -139,9 +139,12 @@ async function runSurfSenseResearch(query, limit=6) {
 }
 
 async function openAiCompat(endpoint, key, model, prompt, extraHeaders = {}, timeoutMs = 90000, resource = null) {
+  const requestBody={ model, messages:[{role:'user',content:prompt}], temperature:0, max_tokens:isManagerPrompt(prompt)?800:1200, stream:false };
+  const responseFormat=managerResponseFormatForHost(new URL(endpoint).hostname,prompt);
+  if(responseFormat)requestBody.response_format=responseFormat;
   const body = await fetchJson(endpoint, {
     method: 'POST', headers: { 'content-type':'application/json', authorization:`Bearer ${key}`, ...extraHeaders },
-    body: JSON.stringify({ model, messages:[{role:'user',content:prompt}], temperature:0, max_tokens:1200, stream:false }),
+    body: JSON.stringify(requestBody),
   }, timeoutMs, resource?res=>syncQuotaFromHeaders(resource,res):null);
   const text = body?.choices?.[0]?.message?.content;
   if (!String(text || '').trim()) { const e = new Error('EMPTY_RESPONSE'); e.kind='invalid_response'; throw e; }
@@ -194,7 +197,7 @@ async function invokeProvider(r, prompt) {
     case 'gemini': return geminiRateController.run(async()=>{
       const b = await fetchJson(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(r.model)}:generateContent`, {
         method:'POST', headers:{'content-type':'application/json','x-goog-api-key':process.env.GEMINI_API_KEY},
-        body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}]}) });
+        body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],...(isManagerPrompt(prompt)?{generationConfig:{responseMimeType:'application/json'}}:{})}) });
       const text = b?.candidates?.[0]?.content?.parts?.map(x=>x.text||'').join('\n');
       if (!String(text||'').trim()) { const e=new Error('EMPTY_RESPONSE'); e.kind='invalid_response'; throw e; }
       return String(text);
@@ -210,7 +213,7 @@ async function invokeProvider(r, prompt) {
     case 'cohere': {
       const b = await fetchJson('https://api.cohere.com/v2/chat', {
         method:'POST', headers:{'content-type':'application/json',authorization:`Bearer ${process.env.COHERE_API_KEY}`},
-        body:JSON.stringify({model:r.model,messages:[{role:'user',content:prompt}],temperature:0,max_tokens:1200}) });
+        body:JSON.stringify({model:r.model,messages:[{role:'user',content:prompt}],temperature:0,max_tokens:isManagerPrompt(prompt)?800:1200,...(managerResponseFormatForHost('api.cohere.com',prompt)?{response_format:{type:'json_object'}}:{})}) });
       const text = b?.message?.content?.map(x=>x.text||'').join('');
       if (!String(text||'').trim()) { const e=new Error('EMPTY_RESPONSE'); e.kind='invalid_response'; throw e; }
       return String(text);
