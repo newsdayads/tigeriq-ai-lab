@@ -41,6 +41,11 @@ test('browser audit applies each real MCP viewport and full audit contract',asyn
       calls.push({name,args});
       if(name==='new_page'||name==='list_pages')return {content:[{text:'## Pages\n2: TigerIQ Web Control [selected]'}]};
       if(name==='resize_page'){active={width:args.width,height:args.height};return {content:[{text:'resized'}]};}
+      if(name==='emulate'){
+        const match=String(args.viewport||'').match(/^(\d+)x(\d+)x/);
+        if(match)active={width:Number(match[1]),height:Number(match[2])};
+        return {content:[{text:'Emulation configured successfully'}]};
+      }
       if(name==='take_snapshot')return {content:[{text:'RootWebArea TigerIQ Tổng quan Nhân sự AI'}]};
       if(name==='evaluate_script'&&args.function.includes('bodyLength')){
         return toolJson({title:'TigerIQ',readyState:'complete',width:active.width,height:active.height,bodyLength:100,overflowX:false,scrollWidth:active.width});
@@ -60,6 +65,10 @@ test('browser audit applies each real MCP viewport and full audit contract',asyn
   assert.deepEqual(
     calls.filter(call=>call.name==='resize_page').map(call=>[call.args.width,call.args.height]),
     [[1920,1080],[390,844],[1024,768]]
+  );
+  assert.deepEqual(
+    calls.filter(call=>call.name==='emulate').map(call=>call.args.viewport),
+    ['1920x1080x1','390x844x1,mobile,touch','1024x768x1']
   );
   assert.equal(calls.filter(call=>call.name==='take_snapshot').length,3);
 });
