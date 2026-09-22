@@ -39,8 +39,9 @@ test('Registry validation for skill states and actual loader behavior', () => {
   assert.strictEqual(securitySkill.state, 'ACTIVE');
   assert.strictEqual(minimalSkill.state, 'ACTIVE');
 
-  // Verify actual loader behavior via useSkill & measureEffectiveness
+  // Verify actual loader behavior via useSkill & measureEffectiveness with cleanup
   const loaderSkillId = 'contextual-skill-loading';
+  retireSkill(loaderSkillId);
   const initialLoadState = measureEffectiveness(loaderSkillId);
   assert.strictEqual(initialLoadState.total, 0);
 
@@ -48,6 +49,7 @@ test('Registry validation for skill states and actual loader behavior', () => {
   const loadedState = measureEffectiveness(loaderSkillId);
   assert.strictEqual(loadedState.total, 1);
   assert.strictEqual(loadedState.successRate, 1);
+  retireSkill(loaderSkillId);
 });
 
 test('Security gate logic functional test with isolated state', () => {
