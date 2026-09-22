@@ -266,7 +266,7 @@ describe('NV02 continuity policy', () => {
     expect(bridge).toContain("allowContinue:false");
     expect(bridge).toContain("const verified=loadNv02Continuity();");
   });
-  it('never stops or reloads NV02 while UI is WORKING, even when progress signature is unchanged', () => {
+  it('re-syncs an unchanged long-running NV02 with F5 but never clicks Stop or restarts it', () => {
     const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(source).toContain("'MODEL_PROFILE_RECOVERY'");
     expect(source).toContain("'STALLED_RECOVERY'");
@@ -276,8 +276,11 @@ describe('NV02 continuity policy', () => {
     expect(source).not.toContain("recoverStalledWorking(target,state,now");
     const continuity=source.slice(source.indexOf('async function maybeNv02Continuity'),source.indexOf('\nasync function handleCommand'));
     const working=continuity.slice(continuity.indexOf("if(phase==='WORKING')"),continuity.indexOf('if(shouldRotateNv02Chat'));
-    expect(working).toContain("WORKING_LONG_RUNNING_NO_MUTATION");
-    expect(working).not.toContain("reloadTarget(target)");
+    expect(working).toContain("WORKING_UNCHANGED_F5_RECHECK");
+    expect(working).toContain("reloadTarget(target)");
+    expect(working).toContain("afterPhase==='READY'");
+    expect(working).toContain("dispatchNaturalContinue");
+    expect(working).not.toContain("stop");
     expect(working).not.toContain("restart-schedule");
   });
 
