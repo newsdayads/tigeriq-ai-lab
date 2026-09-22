@@ -499,6 +499,14 @@ describe('NV04 Gemini assigned-route continuity #1525',()=>{
 
 
 describe('APP Chrome unified runtime supervisor #1525',()=>{
+  it('broker health publishes exact runtime provenance',()=>{
+    const broker=readFileSync('apps/chrome-controller/src/chrome-launch-broker.ts','utf8');
+    expect(broker).toContain("process.env.TIGERIQ_APPROVED_HEAD");
+    expect(broker).toContain("process.env.TIGERIQ_DEPLOY_ROOT");
+    expect(broker).toContain("approvedHead:approvedHead||null");
+    expect(broker).toContain("deployRoot:deployRoot||null");
+  });
+
   it('keeps the unified task alive, re-reads active deploy, and self-heals only trusted ChromeController listeners',()=>{
     const launcher=readFileSync('apps/chrome-controller/runtime/Start-Unified-AppChrome.ps1','utf8');
     expect(launcher).toContain('while($true)');
