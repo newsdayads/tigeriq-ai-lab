@@ -221,7 +221,8 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("verifiedChatUrl:currentUrl");
     expect(source).toContain("location.hostname==='chatgpt.com'?Boolean(stop):Boolean(stop||activityBusy)");
     expect(source).toContain("function sameNv02Chat(a,b)");
-    expect(source).toContain("pages.find(t=>sameNv02Chat(t.url,state?.verifiedChatUrl))");
+    expect(source).toContain("const preferredChatUrl=state?.resumeChatUrl||state?.verifiedChatUrl||''");
+    expect(source).toContain("pages.find(t=>sameNv02Chat(t.url,preferredChatUrl))");
 
 
     const f5Block=source.slice(source.indexOf("if(now>=Number(state.nextPeriodicF5At||0))"),source.indexOf("const modelCheckRequired="));
