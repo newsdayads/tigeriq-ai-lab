@@ -37,7 +37,7 @@ test('updater is path aware for core, web control, coding lane, and OpenClaw',()
 
 test('updater uses a bounded OpenClaw startup window that covers observed PC01 latency',()=>{
   const timeout=Number(script.match(/\$openclawGatewayStartupTimeoutSec=(\d+)/)?.[1]);
-  assert.ok(Number.isFinite(timeout) && timeout>=60 && timeout<=120);
+  assert.ok(Number.isFinite(timeout) && timeout>=100 && timeout<=120);
   assert.match(script,/AddSeconds\(\$openclawGatewayStartupTimeoutSec\)/);
   const restartBody=script.slice(script.indexOf('function Restart-OpenClawGateway'),script.indexOf('function Reconcile-OpenClawRuntime'));
   assert.doesNotMatch(restartBody,/AddSeconds\(45\)/);
