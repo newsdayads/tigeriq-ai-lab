@@ -18,6 +18,48 @@ NO_BROWSER_AUTH=true
 NO_DIRECT_MAIN=true
 PRIORITY=P1`;
 
+
+const V1_COMPLETE=`${SAFE}
+EXECUTION_POLICY=#1456
+ACTIVE_EXECUTION=true
+CANONICAL_SPEC=#1456
+RESOURCE_SCOPE=EXECUTION_CONTRACT_TEST
+MUTATION_OWNER=NV12
+
+## GOAL
+Test one bounded mutation contract.
+
+## CURRENT_STATE
+READY.
+
+## IN_SCOPE
+- test fixture
+
+## OUT_OF_SCOPE
+- everything else
+
+## NON_NEGOTIABLE_RULES
+- one mutation owner
+
+## DEPENDENCIES
+- #1456
+
+## EXECUTION_ORDER
+1. parse
+
+## ACCEPTANCE
+Parser accepts only complete active V1 contracts.
+
+## RECOVERY_RULE
+Fail closed.
+
+## STOP_CONDITIONS
+DONE_WITH_EVIDENCE
+
+## EVIDENCE_FORMAT
+test result
+`;
+
 function fakePool(){
   const events=[];
   return {events,async query(q,params=[]){
@@ -69,6 +111,14 @@ describe('GitHub coding intake guard',()=>{
     expect(parsed?.priority).toBe('P1');
     expect(parsed?.dependsOn).toEqual([]);
   });
+  it('keeps legacy safe coding issues backward compatible',()=>{expect(parseCodingIssue(issue(SAFE))?.number).toBe(777);});
+  it('rejects REVIEW_ONLY work from mutation coding intake',()=>{expect(parseCodingIssue(issue(`${SAFE}\nREVIEW_ONLY=true`))).toBeNull();});
+  it('rejects V1 canonical or non-active work from mutation coding intake',()=>{
+    expect(parseCodingIssue(issue(V1_COMPLETE.replace('ACTIVE_EXECUTION=true','ACTIVE_EXECUTION=false')))).toBeNull();
+    expect(parseCodingIssue(issue(V1_COMPLETE.replace('CANONICAL_SPEC=#1456','CANONICAL_SPEC=true')))).toBeNull();
+  });
+  it('accepts a complete V1 ACTIVE_EXECUTION contract',()=>{expect(parseCodingIssue(issue(V1_COMPLETE))?.number).toBe(777);});
+  it('rejects an incomplete V1 ACTIVE_EXECUTION contract',()=>{expect(parseCodingIssue(issue(V1_COMPLETE.replace('## DEPENDENCIES','## DEPENDENCIES_MISSING')))).toBeNull();});
   it('fails closed when a required guard is missing',()=>{expect(parseCodingIssue(issue(SAFE.replace('NO_DIRECT_MAIN=true','')))).toBeNull();});
   it('ignores pull requests and closed issues',()=>{
     expect(parseCodingIssue(issue(SAFE,{pull_request:{}}))).toBeNull();
