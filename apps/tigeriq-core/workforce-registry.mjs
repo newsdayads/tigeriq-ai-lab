@@ -136,7 +136,7 @@ export function normalizeRuntimeResources(resources, workforce){
         employee_id: id,
         name: base?.name || id,
         role: base?.role || 'Worker',
-        type_badge: isChrome ? 'Chrome Controller' : isOpenClaw ? 'OpenClaw Gateway' : 'Core/Ollama/API',
+        type_badge: base?.type_badge || (isChrome ? 'Chrome Controller' : isOpenClaw ? 'OpenClaw Gateway' : 'Core/Ollama/API'),
         live_status: 'OFFLINE',
         stale_fallback: true
       });
