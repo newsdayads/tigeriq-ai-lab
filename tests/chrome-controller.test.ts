@@ -162,6 +162,7 @@ describe('Worker Identity, Isolation, Leases, and Pause Precedence', () => {
     }
     expect(queues.get('NV02') !== queues.get('NV03')).toBe(true);
     expect(queues.get('NV03') !== queues.get('NV04')).toBe(true);
+    expect(queues.get('NV02') !== queues.get('NV04')).toBe(true);
   });
 
   it('verifies pause precedence and no cross-control between workers', () => {
