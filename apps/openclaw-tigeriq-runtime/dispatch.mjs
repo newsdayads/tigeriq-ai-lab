@@ -14,6 +14,7 @@ export const DEFAULT_OPENCLAW_CONFIG=process.env.TIGERIQ_OPENCLAW_CONFIG_PATH||'
 export const DEFAULT_OPENCLAW_STATE_DIR=process.env.TIGERIQ_OPENCLAW_STATE_DIR||'D:\\TigerIQ-OpenClaw\\state';
 const WORKER_PATH=fileURLToPath(new URL('./dispatch-worker.mjs',import.meta.url));
 const TERMINAL=new Set(['completed','failed','rejected']);
+const RETRYABLE_FAILED_KINDS=new Set(['openclaw_failure','worker_timeout','spawn_error','agent_terminal_invalid','outage','timeout']);
 const SAFE_KEY=/^[A-Za-z0-9._:-]{8,160}$/;
 const SAFE_SCOPE=/^[A-Za-z0-9._:/#-]{3,240}$/;
 const HARD_GATE_TEXT=/\b(?:production\s+(?:deploy|release|publish)|direct\s+(?:main|master)|credential\s+(?:change|rotate|write)|password\s+(?:change|reset)|security[- ]boundary|paid\s+(?:service|action|purchase)|purchase\b|delete\s+(?:repository|database|volume)|format\s+(?:disk|drive)|rm\s+-rf|reboot|shutdown)\b/i;
@@ -147,6 +148,14 @@ export async function ensureOpenClawDispatch(rawEnvelope,options={}){
     }
   }
   if(record?.envelope?.envelopeHash!==envelope.envelopeHash)throw new Error('OPENCLAW_IDEMPOTENCY_CONFLICT');
+  if(record.state==='failed'&&options.retryFailed===true){
+    const attempts=Math.max(0,Number(record.attempts)||0);
+    const failureKind=String(record?.failure?.kind||'');
+    if(attempts<2&&RETRYABLE_FAILED_KINDS.has(failureKind)){
+      record={...record,state:'prepared',workerPid:null,previousWorkerPid:record.workerPid||null,result:null,failure:null,completedAt:null,recoveryCount:Math.max(0,Number(record.recoveryCount)||0)+1,updatedAt:new Date().toISOString()};
+      await atomicWrite(recordPath,record);
+    }
+  }
   if(TERMINAL.has(record.state))return {created:false,launched:false,recordPath,record};
   if(record.state==='running'&&processAlive(record.workerPid))return {created:false,launched:false,recordPath,record};
   if(record.state==='running'&&!processAlive(record.workerPid)){
@@ -259,9 +268,11 @@ export async function runDispatchWorkerRecord(recordPath,options={}){
   const agentStatus=String(result.agentResult?.status||'').toLowerCase();
   const successAgentStatuses=new Set(['pass','passed','ok','success','completed','done']);
   const success=!timedOut&&exitCode===0&&parsed&&!['timeout','failed','error','aborted'].includes(String(result.status||'').toLowerCase())&&result.agentResult&&successAgentStatuses.has(agentStatus);
+  const invalidTerminal=!timedOut&&exitCode===0&&parsed&&(!result.agentResult||!successAgentStatuses.has(agentStatus));
   const finalState=success?'completed':'failed';
+  const failureKind=timedOut?'worker_timeout':(invalidTerminal?'agent_terminal_invalid':(agentStatus||result.status||'openclaw_failure'));
   const final={...running,state:finalState,result,updatedAt:new Date().toISOString(),completedAt:new Date().toISOString(),
-    ...(success?{}:{failure:{kind:timedOut?'worker_timeout':(agentStatus||result.status||'openclaw_failure'),message:String(result.agentResult?.blocker||result.text||result.stderr||'OPENCLAW_DISPATCH_FAILED').slice(0,2000)}})};
+    ...(success?{}:{failure:{kind:failureKind,message:String(result.agentResult?.blocker||result.text||result.stderr||'OPENCLAW_DISPATCH_FAILED').slice(0,2000)}})};
   await atomicWrite(recordPath,final);
   return final;
 }
