@@ -179,6 +179,25 @@ function Invoke-AppChromeOwnerResume([string]$installedSha){
   }
 }
 function Task-Exists([string]$name){return [bool](Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue)}
+function Invoke-LiveStatusBridgeReconcile(){
+  try {
+    if(-not (Task-Exists $liveStatusBridgeTask)) {
+      return [ordered]@{status='BLOCKED';reason='TASK_ABSENT';action='NONE'}
+    }
+    $st=(Get-ScheduledTask -TaskName $liveStatusBridgeTask -ErrorAction SilentlyContinue)
+    $stateName = if ($st -and $st.PSObject.Properties['State']) { [string]$st.State } else { '' }
+    if(-not $st) {
+      return [ordered]@{status='BLOCKED';reason='TASK_NOT_FOUND';action='NONE'}
+    }
+    if($stateName -ne 'Running') {
+      Start-ScheduledTask -TaskName $liveStatusBridgeTask -ErrorAction Stop
+      return [ordered]@{status='RECONCILED';reason='STARTED_ONCE';action='START'}
+    }
+    return [ordered]@{status='HEALTHY';reason='ALREADY_RUNNING';action='NONE'}
+  } catch {
+    return [ordered]@{status='BLOCKED';reason=$_.Exception.Message;action='NONE'}
+  }
+}
 function Test-TcpPort([string]$targetHost,[int]$port,[int]$timeoutMs=2500){
   $client=New-Object Net.Sockets.TcpClient
   try{
@@ -406,24 +425,25 @@ while($true){
     $locked=$mutex.WaitOne(0);if(-not $locked){Start-Sleep -Seconds $IntervalSeconds;continue}
     $watchdog=Runtime-Watchdog
     $legacyLifecycleRetire=Retire-LegacyOpenClawLifecycleOwner
-    if(-not(Test-Path -LiteralPath $tokenPath)){Save-State @{result='GITHUB_TOKEN_MISSING';watchdog=$watchdog};continue}
-    $env:GH_TOKEN=[IO.File]::ReadAllText($tokenPath).Trim();if(-not $env:GH_TOKEN){Save-State @{result='GITHUB_TOKEN_EMPTY';watchdog=$watchdog};continue}
+    $liveStatusBridgeReconcile=Invoke-LiveStatusBridgeReconcile
+    if(-not(Test-Path -LiteralPath $tokenPath)){Save-State @{result='GITHUB_TOKEN_MISSING';liveStatusBridgeReconcile=$liveStatusBridgeReconcile;watchdog=$watchdog};continue}
+    $env:GH_TOKEN=[IO.File]::ReadAllText($tokenPath).Trim();if(-not $env:GH_TOKEN){Save-State @{result='GITHUB_TOKEN_EMPTY';liveStatusBridgeReconcile=$liveStatusBridgeReconcile;watchdog=$watchdog};continue}
     $runtimeIdentity=if(Test-Path -LiteralPath $runtimeRepo){Head $runtimeRepo 'HEAD'}else{'BOOTSTRAP'}
     $appChromeRecovery=Invoke-AppChromeOwnerResume $runtimeIdentity
     git -C $controlRepo fetch origin main --prune|Out-Null;if($LASTEXITCODE -ne 0){throw 'FETCH_FAILED'}
     $remote=Head $controlRepo 'origin/main';if(-not $remote){throw 'REMOTE_MAIN_MISSING'}
     $runtimeExists=Test-Path -LiteralPath $runtimeRepo
-    if($runtimeExists -and (Runtime-Source-Dirty)){Save-State @{result='BLOCKED_DIRTY_RUNTIME';runtimeSource=$runtimeRepo;watchdog=$watchdog};continue}
+    if($runtimeExists -and (Runtime-Source-Dirty)){Save-State @{result='BLOCKED_DIRTY_RUNTIME';runtimeSource=$runtimeRepo;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;watchdog=$watchdog};continue}
     $local=if($runtimeExists){Head $runtimeRepo 'HEAD'}else{$null}
     $openclawReconcile=if($runtimeExists){Reconcile-OpenClawRuntime $local}else{@{action='skip';reason='runtime_missing'}}
     $preOpenclawCanary=if($runtimeExists -and $local){Invoke-OpenClawCanary $local (OpenClaw-TreeSha)}else{@{action='skip';reason='runtime_missing'}}
     if([string]$openclawReconcile.action -eq 'restarted'){
       if([string]$preOpenclawCanary.result -eq 'PASS'){Save-OpenClawAppliedState (OpenClaw-TreeSha)}
-      else{Save-State @{result='OPENCLAW_CANARY_BLOCKED';installedSha=$local;runtimeSource=$runtimeRepo;openclawReconcile=$openclawReconcile;openclawCanary=$preOpenclawCanary;watchdog=$watchdog};Start-Sleep -Seconds $IntervalSeconds;continue}
+      else{Save-State @{result='OPENCLAW_CANARY_BLOCKED';installedSha=$local;runtimeSource=$runtimeRepo;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;openclawReconcile=$openclawReconcile;openclawCanary=$preOpenclawCanary;watchdog=$watchdog};Start-Sleep -Seconds $IntervalSeconds;continue}
     }
-    if($runtimeExists -and $local -eq $remote){Save-State @{result='NO_CHANGE';installedSha=$local;runtimeSource=$runtimeRepo;appChromeRecovery=$appChromeRecovery;legacyLifecycleRetire=$legacyLifecycleRetire;openclawReconcile=$openclawReconcile;openclawCanary=$preOpenclawCanary;watchdog=$watchdog};Start-Sleep -Seconds $IntervalSeconds;continue}
+    if($runtimeExists -and $local -eq $remote){Save-State @{result='NO_CHANGE';installedSha=$local;runtimeSource=$runtimeRepo;appChromeRecovery=$appChromeRecovery;legacyLifecycleRetire=$legacyLifecycleRetire;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;openclawReconcile=$openclawReconcile;openclawCanary=$preOpenclawCanary;watchdog=$watchdog};Start-Sleep -Seconds $IntervalSeconds;continue}
     $gateSha=Resolve-GateSha $remote
-    if(-not $gateSha){Save-State @{result='WAIT_GATES';candidateSha=$remote;runtimeSource=$runtimeRepo;watchdog=$watchdog};continue}
+    if(-not $gateSha){Save-State @{result='WAIT_GATES';candidateSha=$remote;runtimeSource=$runtimeRepo;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;watchdog=$watchdog};continue}
     [string[]]$changed=if($runtimeExists){@(git -C $controlRepo diff --name-only $local $remote)}else{@('apps/tigeriq-core/','apps/tigeriq-coding-lane/','scripts/tigeriq-core/')}
     $impact=if($runtimeExists){Get-Impact $changed}else{@{core=$true;web=$true;coding=$true;openclaw=$false;updater=$true;bootstrap=$true}}
     $oldCore=HealthInfo 'http://100.97.23.87:8795/health';$oldPid=if($oldCore){[int]$oldCore.pid}else{$null}
@@ -465,24 +485,6 @@ while($true){
       if($impact.coding -and (Task-Exists $codingTask)){$null=Restart-ServiceTask $codingTask 'http://100.97.23.87:8797/health' $codingPath $legacyCodingPath}
       if($impact.openclaw -and (Task-Exists $openclawTask)){$null=Restart-OpenClawGateway;$rollbackTree=OpenClaw-TreeSha;if($rollbackTree){Save-OpenClawAppliedState $rollbackTree}}
       throw ('ROLLED_BACK:'+ $_.Exception.Message)
-    }
-    $liveStatusBridgeReconcile=try {
-      if(-not (Task-Exists $liveStatusBridgeTask)) {
-        [ordered]@{status='BLOCKED';reason='TASK_ABSENT';action='NONE'}
-      } else {
-        $st=(Get-ScheduledTask -TaskName $liveStatusBridgeTask -ErrorAction SilentlyContinue)
-        $stateName = if ($st -and $st.PSObject.Properties['State']) { [string]$st.State } else { '' }
-        if(-not $st) {
-          [ordered]@{status='BLOCKED';reason='TASK_NOT_FOUND';action='NONE'}
-        } elseif($stateName -ne 'Running') {
-          Start-ScheduledTask -TaskName $liveStatusBridgeTask -ErrorAction Stop
-          [ordered]@{status='RECONCILED';reason='STARTED_ONCE';action='START'}
-        } else {
-          [ordered]@{status='HEALTHY';reason='ALREADY_RUNNING';action='NONE'}
-        }
-      }
-    } catch {
-      [ordered]@{status='BLOCKED';reason=$_.Exception.Message;action='NONE'}
     }
     $newCore=HealthInfo 'http://100.97.23.87:8795/health'
     if($null -eq $openclawCanary){$openclawCanary=Invoke-OpenClawCanary $remote (OpenClaw-TreeSha)}
