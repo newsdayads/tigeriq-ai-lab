@@ -24,6 +24,93 @@ export const CONTINUE_PROMPTS = Object.freeze([
 
 export const CONTINUE_MIN_MS = 5 * 60 * 1000;
 export const CONTINUE_MAX_MS = 10 * 60 * 1000;
+export const DEEP_RESET_MIN_MS = 2 * 60 * 60 * 1000;
+export const DEEP_RESET_MAX_MS = 4 * 60 * 60 * 1000;
+
+export function createContinuityManager(storage = chrome.storage.local) {
+  const states = new Map();
+
+  async function getState(workerId) {
+    if (states.has(workerId)) return states.get(workerId);
+    try {
+      const res = await storage.get(`continuity_${workerId}`);
+      const val = res[`continuity_${workerId}`] || {
+        phase: 'READY',
+        lastActive: Date.now(),
+        stalledCount: 0,
+        loadErrors: 0,
+        checkpoint: null
+      };
+      states.set(workerId, val);
+      return val;
+    } catch {
+      return { phase: 'READY', lastActive: Date.now(), stalledCount: 0, loadErrors: 0, checkpoint: null };
+    }
+  }
+
+  async function setState(workerId, state) {
+    states.set(workerId, state);
+    try {
+      await storage.set({ [`continuity_${workerId}`]: state });
+    } catch (e) {
+      console.error('[TigerIQ] Continuity save error:', e);
+    }
+  }
+
+  return {
+    async evaluate(workerId, metrics) {
+      const st = await getState(workerId);
+      const now = Date.now();
+      const elapsed = now - st.lastActive;
+
+      if (metrics?.loadError) {
+        st.loadErrors = (st.loadErrors || 0) + 1;
+        if (st.loadErrors > 3) {
+          st.phase = 'STALLED';
+        } else {
+          st.phase = 'RETRY';
+        }
+        await setState(workerId, st);
+        return st;
+      }
+
+      if (elapsed > DEEP_RESET_MIN_MS) {
+        st.checkpoint = { time: now, data: metrics?.snapshot || null };
+        st.phase = 'DEEP_RESET';
+        st.lastActive = now;
+        st.stalledCount = 0;
+        st.loadErrors = 0;
+        await setState(workerId, st);
+        return st;
+      }
+
+      if (metrics?.stalled) {
+        st.stalledCount = (st.stalledCount || 0) + 1;
+        if (st.stalledCount >= 3) {
+          st.phase = 'STALLED';
+        } else {
+          st.phase = 'RECOVERY';
+        }
+        await setState(workerId, st);
+        return st;
+      }
+
+      if (st.phase === 'READY' && elapsed >= CONTINUE_MIN_MS) {
+        st.phase = 'CONTINUING';
+        st.lastActive = now;
+        await setState(workerId, st);
+        return st;
+      }
+
+      return st;
+    },
+    async reset(workerId) {
+      const fresh = { phase: 'READY', lastActive: Date.now(), stalledCount: 0, loadErrors: 0, checkpoint: null };
+      await setState(workerId, fresh);
+      return fresh;
+    }
+  };
+}onst CONTINUE_MAX_MS = 10 * 60 * 1000;
 export const REFRESH_MIN_MS = 2 * 60 * 60 * 1000;
 export const REFRESH_MAX_MS = 4 * 60 * 60 * 1000;
 export const WORKER_REFRESH_MIN_MS = REFRESH_MIN_MS;
