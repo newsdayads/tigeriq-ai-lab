@@ -459,7 +459,7 @@ export const F5_REFRESH_MAX_MS = 10 * 60 * 1000;
 export let nextF5RefreshAt = 0;
 export function setNextF5RefreshAt(val) { nextF5RefreshAt = val; }
 
-async function scheduleF5Refresh() {
+export async function scheduleF5Refresh() {
   const now = Date.now();
   if (!nextF5RefreshAt || now >= nextF5RefreshAt) {
     nextF5RefreshAt = nextRandTime(now, F5_REFRESH_MIN_MS, F5_REFRESH_MAX_MS);
@@ -470,7 +470,7 @@ function nextRandTime(now, minMs, maxMs) {
   return now + minMs + Math.floor(Math.random() * (maxMs - minMs + 1));
 }
 
-async function checkF5Refresh() {
+export async function checkF5Refresh() {
   const now = Date.now();
   if (!nextF5RefreshAt) {
     nextF5RefreshAt = nextRandTime(now, F5_REFRESH_MIN_MS, F5_REFRESH_MAX_MS);
