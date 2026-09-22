@@ -1,6 +1,6 @@
 # TigerIQ Runtime OpenClaw plugin
 
-A single bounded OpenClaw tool, `tigeriq_runtime`, for PC01 runtime operations.
+A single bounded OpenClaw tool, `tigeriq_runtime`, for PC01 runtime operations. Core uses the canonical PC01 Tailscale address; Chrome Controller remains loopback-only.
 
 Allowed surfaces:
 - TigerIQ Core `GET /api/status`
@@ -9,7 +9,8 @@ Allowed surfaces:
 - Existing allowlisted Chrome worker/global actions
 
 Security properties:
-- loopback HTTP only, fixed ports 8795/8798;
+- Core HTTP is restricted to the canonical PC01 Core host `100.97.23.87:8795` (loopback remains accepted for local recovery/tests);
+- Chrome Controller remains loopback-only on `127.0.0.1:8798`;
 - no shell/exec primitive;
 - no arbitrary file access;
 - no credential/session-store reads;

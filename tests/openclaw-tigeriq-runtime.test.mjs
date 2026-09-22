@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import {
+  assertCoreBaseUrl,
   assertLoopbackBaseUrl,
   executeRuntimeAction,
   redactSensitive,
   resolveChromeAction,
+  resolveCoreBaseUrl,
 } from '../apps/openclaw-tigeriq-runtime/bridge.mjs';
 
 function response(body, status = 200) {
@@ -16,10 +18,19 @@ function response(body, status = 200) {
 }
 
 describe('OpenClaw TigerIQ bounded runtime bridge', () => {
-  it('accepts only loopback HTTP and fixed runtime ports', () => {
-    expect(assertLoopbackBaseUrl('http://127.0.0.1:8795', 8795)).toBe('http://127.0.0.1:8795');
-    expect(() => assertLoopbackBaseUrl('https://example.com:8795', 8795)).toThrow('TIGERIQ_RUNTIME_LOOPBACK_ONLY');
-    expect(() => assertLoopbackBaseUrl('http://127.0.0.1:9999', 8795)).toThrow('TIGERIQ_RUNTIME_PORT_NOT_ALLOWED');
+  it('accepts only the canonical Core host and loopback Chrome host on fixed ports', () => {
+    expect(assertCoreBaseUrl('http://100.97.23.87:8795')).toBe('http://100.97.23.87:8795');
+    expect(assertCoreBaseUrl('http://127.0.0.1:8795')).toBe('http://127.0.0.1:8795');
+    expect(() => assertCoreBaseUrl('http://100.97.23.88:8795')).toThrow('TIGERIQ_RUNTIME_CORE_HOST_NOT_ALLOWED');
+    expect(assertLoopbackBaseUrl('http://127.0.0.1:8798', 8798)).toBe('http://127.0.0.1:8798');
+    expect(() => assertLoopbackBaseUrl('http://100.97.23.87:8798', 8798)).toThrow('TIGERIQ_RUNTIME_LOOPBACK_ONLY');
+    expect(() => assertLoopbackBaseUrl('http://127.0.0.1:9999', 8798)).toThrow('TIGERIQ_RUNTIME_PORT_NOT_ALLOWED');
+  });
+
+  it('migrates the legacy loopback Core default to the canonical Core address', () => {
+    expect(resolveCoreBaseUrl()).toBe('http://100.97.23.87:8795');
+    expect(resolveCoreBaseUrl('http://127.0.0.1:8795')).toBe('http://100.97.23.87:8795');
+    expect(resolveCoreBaseUrl('http://100.97.23.87:8795')).toBe('http://100.97.23.87:8795');
   });
 
   it('keeps Chrome actions inside the existing allowlist', () => {
@@ -37,9 +48,9 @@ describe('OpenClaw TigerIQ bounded runtime bridge', () => {
       objectives: [{ id: 'OBJ-1', status: 'active', summary: 'work', updated_at: 'now' }],
     }));
     const result = await executeRuntimeAction({ action: 'core_status' }, { fetchImpl });
-    expect(fetchImpl).toHaveBeenCalledWith('http://127.0.0.1:8795/api/status', expect.objectContaining({ method: 'GET' }));
+    expect(fetchImpl).toHaveBeenCalledWith('http://100.97.23.87:8795/api/status', expect.objectContaining({ method: 'GET' }));
     expect(result.evidence).toEqual({
-      transport: 'loopback-http',
+      transport: 'bounded-http',
       shell: false,
       arbitraryFileAccess: false,
       arbitraryCommandExecution: false,

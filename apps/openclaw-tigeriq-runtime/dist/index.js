@@ -7,7 +7,7 @@ export default defineToolPlugin({
   name: 'TigerIQ Runtime',
   description: 'Bounded PC01 runtime control for TigerIQ Core and Chrome Controller. No shell or arbitrary file access.',
   configSchema: Type.Object({
-    coreBaseUrl: Type.Optional(Type.String({ default: 'http://127.0.0.1:8795' })),
+    coreBaseUrl: Type.Optional(Type.String({ default: 'http://100.97.23.87:8795' })),
     chromeBaseUrl: Type.Optional(Type.String({ default: 'http://127.0.0.1:8798' })),
   }, { additionalProperties: false }),
   tools: (tool) => [
@@ -54,7 +54,7 @@ export default defineToolPlugin({
         elapsedMs: Type.Number(),
         data: Type.Unknown(),
         evidence: Type.Object({
-          transport: Type.Literal('loopback-http'),
+          transport: Type.Literal('bounded-http'),
           shell: Type.Literal(false),
           arbitraryFileAccess: Type.Literal(false),
           arbitraryCommandExecution: Type.Literal(false),

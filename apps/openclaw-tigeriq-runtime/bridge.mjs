@@ -1,5 +1,6 @@
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]']);
-export const DEFAULT_CORE_BASE_URL = 'http://127.0.0.1:8795';
+const CORE_HOSTS = new Set([...LOOPBACK_HOSTS, '100.97.23.87']);
+export const DEFAULT_CORE_BASE_URL = 'http://100.97.23.87:8795';
 export const DEFAULT_CHROME_BASE_URL = 'http://127.0.0.1:8798';
 
 const WORKER_ACTIONS = new Set(['start', 'focus', 'layout', 'close', 'unblock', 'enable', 'disable']);
@@ -12,15 +13,29 @@ const WORKERS = new Set(['NV02', 'NV03', 'NV04']);
 const SENSITIVE_KEY = /(secret|token|password|credential|authorization|cookie|api[-_]?key)/i;
 const SECRET_TEXT = /\b(?:gsk_|ghp_|github_pat_|sk-|AIza)[A-Za-z0-9_\-.]{8,}\b/g;
 
-export function assertLoopbackBaseUrl(value, expectedPort) {
+function assertBoundedBaseUrl(value, expectedPort, allowedHosts, hostError) {
   const url = new URL(String(value || ''));
-  if (url.protocol !== 'http:' || !LOOPBACK_HOSTS.has(url.hostname)) {
-    throw new Error('TIGERIQ_RUNTIME_LOOPBACK_ONLY');
+  if (url.protocol !== 'http:' || !allowedHosts.has(url.hostname)) {
+    throw new Error(hostError);
   }
   if (expectedPort && Number(url.port || 80) !== Number(expectedPort)) {
     throw new Error('TIGERIQ_RUNTIME_PORT_NOT_ALLOWED');
   }
   return url.origin;
+}
+
+export function assertLoopbackBaseUrl(value, expectedPort) {
+  return assertBoundedBaseUrl(value, expectedPort, LOOPBACK_HOSTS, 'TIGERIQ_RUNTIME_LOOPBACK_ONLY');
+}
+
+export function assertCoreBaseUrl(value, expectedPort = 8795) {
+  return assertBoundedBaseUrl(value, expectedPort, CORE_HOSTS, 'TIGERIQ_RUNTIME_CORE_HOST_NOT_ALLOWED');
+}
+
+export function resolveCoreBaseUrl(value) {
+  const configured = String(value || '').trim();
+  if (!configured || configured === 'http://127.0.0.1:8795') return DEFAULT_CORE_BASE_URL;
+  return configured;
 }
 
 export function redactSensitive(value) {
@@ -43,8 +58,11 @@ async function requestJson(path, {
   timeoutMs = 5000,
   fetchImpl = fetch,
   signal,
+  allowCoreHost = false,
 } = {}) {
-  const origin = assertLoopbackBaseUrl(baseUrl, expectedPort);
+  const origin = allowCoreHost
+    ? assertCoreBaseUrl(baseUrl, expectedPort)
+    : assertLoopbackBaseUrl(baseUrl, expectedPort);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(new Error('TIGERIQ_RUNTIME_TIMEOUT')), timeoutMs);
   const abort = () => controller.abort(signal?.reason || new Error('TIGERIQ_RUNTIME_ABORTED'));
@@ -135,7 +153,7 @@ export function resolveChromeAction(command, workerId) {
 export async function executeRuntimeAction(input, options = {}) {
   const started = Date.now();
   const action = String(input?.action || '');
-  const coreBaseUrl = options.coreBaseUrl || DEFAULT_CORE_BASE_URL;
+  const coreBaseUrl = resolveCoreBaseUrl(options.coreBaseUrl);
   const chromeBaseUrl = options.chromeBaseUrl || DEFAULT_CHROME_BASE_URL;
   const common = { fetchImpl: options.fetchImpl, signal: options.signal };
 
@@ -144,7 +162,7 @@ export async function executeRuntimeAction(input, options = {}) {
   if (action === 'core_status') {
     target = 'core';
     data = compactCoreStatus(await requestJson('/api/status', {
-      ...common, baseUrl: coreBaseUrl, expectedPort: 8795, timeoutMs: 5000,
+      ...common, baseUrl: coreBaseUrl, expectedPort: 8795, timeoutMs: 5000, allowCoreHost: true,
     }));
   } else if (action === 'chrome_snapshot') {
     target = 'chrome-controller';
@@ -171,6 +189,7 @@ export async function executeRuntimeAction(input, options = {}) {
       method: 'POST',
       payload: { objective, priority },
       timeoutMs: 10000,
+      allowCoreHost: true,
     });
   } else {
     throw new Error('TIGERIQ_RUNTIME_ACTION_NOT_ALLOWED');
@@ -183,7 +202,7 @@ export async function executeRuntimeAction(input, options = {}) {
     elapsedMs: Date.now() - started,
     data: redactSensitive(data),
     evidence: {
-      transport: 'loopback-http',
+      transport: 'bounded-http',
       shell: false,
       arbitraryFileAccess: false,
       arbitraryCommandExecution: false,
