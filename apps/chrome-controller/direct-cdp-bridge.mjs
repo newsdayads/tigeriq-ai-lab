@@ -144,6 +144,10 @@ function isAssignedWorkerChat(w,url){
       return /\/c\//.test(current.pathname)
         &&(current.pathname.startsWith(homePrefix+'/c/')||Boolean(idPrefix)&&current.pathname.startsWith(idPrefix+'/c/'));
     }
+    if(current.hostname==='gemini.google.com'){
+      return current.origin===home.origin
+        &&(current.pathname===home.pathname||/^\/app\/[A-Za-z0-9_-]+\/?$/.test(current.pathname));
+    }
     return current.origin===home.origin&&current.pathname===home.pathname;
   }catch{return false}
 }
