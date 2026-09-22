@@ -14,6 +14,29 @@ const errorBox = document.getElementById('error');
 if (manualReset) {
   manualReset.addEventListener('click', async () => {
     try {
+      await chrome.runtime.sendMessage({ type: 'TIGERIQ_RESET_CONTINUITY' });
+      window.location.reload();
+    } catch (e) {
+      showError('Không thể reset continuity: ' + (e?.message || e));
+    }
+  });
+}
+
+async function loadContinuityStates() {
+  try {
+    const res = await chrome.runtime.sendMessage({ type: 'TIGERIQ_GET_CONTINUITY_STATE' });
+    if (res?.ok && res.states) {
+      for (const [id, st] of Object.entries(res.states)) {
+        const row = document.getElementById(`continuity-${id}`);
+        if (row) {
+          row.textContent = `${st.phase} (Stalled: ${st.stalledCount || 0})`;
+        }
+      }
+    }
+  } catch {}
+}
+EventListener('click', async () => {
+    try {
       await chrome.storage.local.clear();
       window.location.reload();
     } catch (e) {
