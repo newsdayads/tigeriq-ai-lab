@@ -156,6 +156,7 @@ describe('Worker Identity, Isolation, Leases, and Pause Precedence', () => {
   });
 
   it('verifies identity routing and exclusive mutation leases per worker', () => {
+    expect(AUTO_CONTINUE).toBe('AUTO_CONTINUE');
     const queues = new Map<string, SerialQueue>();
     for (const id of ['NV02', 'NV03', 'NV04']) {
       queues.set(id, new SerialQueue(0));
