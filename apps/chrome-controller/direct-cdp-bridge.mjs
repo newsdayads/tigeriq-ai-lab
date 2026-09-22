@@ -991,6 +991,20 @@ async function dispatchNaturalContinueLocked(target,state,now){
     await continuityEvent('CONTINUE_DEFERRED_TO_EXTERNAL_AUTOPILOT',{nextContinueAt:next.nextContinueAt});
     return next;
   }
+  let controllerState;
+  try{controllerState=await getControllerState();}
+  catch(error){
+    const next={...state,lastPhase:'STALLED',nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
+    saveNv02Continuity(next);
+    await continuityEvent('CONTINUE_SKIPPED_CURRENT_WORK_UNVERIFIED',{error:String(error?.message||error),nextContinueAt:next.nextContinueAt});
+    return next;
+  }
+  if(!hasContinuableNv02Work(controllerState)){
+    const next={...state,lastPhase:'READY',workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
+    saveNv02Continuity(next);
+    await continuityEvent('CONTINUE_SKIPPED_NO_CURRENT_WORK',{nextContinueAt:next.nextContinueAt});
+    return next;
+  }
   // Model/profile is verified once per opened chat/session and again only after
   // reopen/project recovery/URL change. The hot continue loop must not open
   // the model selector before every command.
