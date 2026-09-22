@@ -14,6 +14,26 @@ export function backlogOwnerDirect(body){
   return exactBodyFlag(body,'OWNER_DIRECT','true');
 }
 
+export function backlogRole(body){
+  const match = String(body||'').match(/^ROLE=(.+)$/m);
+  return match ? match[1].trim() : '';
+}
+
+export function isReviewOnlySpec(body){
+  const role = backlogRole(body).toUpperCase();
+  if(role === 'REVIEW_ONLY') return true;
+  return exactBodyFlag(body, 'REVIEW_ONLY', 'true') || exactBodyFlag(body, 'ROLE', 'REVIEW_ONLY');
+}
+
+export function isActiveExecutionSpec(body){
+  if(isReviewOnlySpec(body)) return false;
+  const role = backlogRole(body).toUpperCase();
+  if(role && role !== 'ACTIVE' && role !== 'WRITER' && role !== 'EXECUTOR') return false;
+  const execStatus = String(body||'').match(/^EXECUTION_STATUS=(.+)$/m)?.[1]?.trim()?.toUpperCase();
+  if(execStatus && execStatus !== 'ACTIVE' && execStatus !== 'READY') return false;
+  return true;
+}
+
 export function compareBacklogSpecs(a,b){
   const ownerA=Boolean(a?.ownerDirect),ownerB=Boolean(b?.ownerDirect);
   if(ownerA!==ownerB)return ownerA?-1:1;
