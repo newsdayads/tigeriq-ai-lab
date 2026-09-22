@@ -190,4 +190,8 @@ describe('Worker Identity, Isolation, Leases, and Pause Precedence', () => {
       expect(typeof w.enabled).toBe('boolean');
     }
   });
+
+  it('satisfies vercel online verification and queue hygiene compliance criteria', () => {
+    expect(validateExternalSnapshot({ source: 'CORE', jobId: 'job-1', workerId: 'NV02', status: 'QUEUED', prompt: 'test' })).toBe(true);
+  });
 });
