@@ -1,16 +1,29 @@
 {
   "id": "tigeriq-runtime",
   "name": "TigerIQ Runtime",
-  "description": "TigerIQ runtime control plus guarded local PC01 shell and workspace file operations.",
+  "description": "TigerIQ runtime control plus guarded local PC01 operations.",
   "version": "0.2.0",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
     "properties": {
-      "coreBaseUrl": { "type": "string", "default": "http://100.97.23.87:8795" },
-      "chromeBaseUrl": { "type": "string", "default": "http://127.0.0.1:8798" }
+      "coreBaseUrl": {
+        "type": "string",
+        "default": "http://100.97.23.87:8795"
+      },
+      "chromeBaseUrl": {
+        "type": "string",
+        "default": "http://127.0.0.1:8798"
+      }
     }
   },
-  "activation": { "onStartup": true },
-  "contracts": { "tools": ["tigeriq_runtime", "tigeriq_pc"] }
+  "activation": {
+    "onStartup": true
+  },
+  "contracts": {
+    "tools": [
+      "tigeriq_runtime",
+      "tigeriq_pc"
+    ]
+  }
 }
