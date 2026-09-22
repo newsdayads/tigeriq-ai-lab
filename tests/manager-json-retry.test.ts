@@ -1,6 +1,6 @@
 // @ts-nocheck
 import {describe,it,expect} from 'vitest';
-import {managerResponseFormatForHost,parseManagerJson,runBoundedManagerDecision} from '../apps/tigeriq-core/manager-json.mjs';
+import {managerLocalRequestBody,managerResponseFormatForHost,managerShouldUseLocalFallback,parseManagerJson,runBoundedManagerDecision} from '../apps/tigeriq-core/manager-json.mjs';
 
 const valid=(summary='ok')=>JSON.stringify({status:'complete',summary,jobs:[]});
 const resource=id=>({id,provider:id==='NV11'?'groq':'openrouter'});
@@ -31,6 +31,22 @@ describe('manager JSON parsing',()=>{
     expect(managerResponseFormatForHost('integrate.api.nvidia.com',prompt)).toEqual({type:'json_object'});
     expect(managerResponseFormatForHost('api.cloudflare.com',prompt)).toBeNull();
     expect(managerResponseFormatForHost('api.groq.com','ordinary job')).toBeNull();
+  });
+  it('builds a lean deterministic local-manager request',()=>{
+    expect(managerLocalRequestBody('qwen3:4b','manager prompt')).toEqual({
+      model:'qwen3:4b',
+      prompt:'manager prompt',
+      stream:false,
+      think:false,
+      format:'json',
+      options:{temperature:0,num_ctx:4096,num_predict:512},
+    });
+  });
+  it('reserves the final manager stage for local fallback',()=>{
+    expect(managerShouldUseLocalFallback(0,2)).toBe(false);
+    expect(managerShouldUseLocalFallback(1,2)).toBe(false);
+    expect(managerShouldUseLocalFallback(2,2)).toBe(true);
+    expect(managerShouldUseLocalFallback(3,2)).toBe(true);
   });
 });
 

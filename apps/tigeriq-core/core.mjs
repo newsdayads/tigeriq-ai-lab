@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { Pool } from 'pg';
 import { createGeminiRateController } from '../shared/gemini-rate-control.mjs';
-import { isManagerPrompt, managerResponseFormatForHost, runBoundedManagerDecision } from './manager-json.mjs';
+import { isManagerPrompt, managerLocalRequestBody, managerResponseFormatForHost, managerShouldUseLocalFallback, runBoundedManagerDecision } from './manager-json.mjs';
 import { appendSkillContextToPrompt, matchAndLoadSkills } from './skill-loader.mjs';
 import { buildManagerHistoryContext } from './context-gateway.mjs';
 import { buildFailureLearningCandidates, failureLearningEventTypes } from './failure-learning.mjs';
@@ -136,6 +136,17 @@ async function runSurfSenseResearch(query, limit=6) {
   try { const sources=await surfSenseSearch(query,limit); const evidence=sources.map(x=>`[${x.index}] ${x.title}\nURL: ${x.url}\n${x.snippet}`).join('\n\n'); const local=await summarizeSurfSense(evidence,query);
     const ollama=resources.find(x=>x.provider==='ollama'); const result={text:local.text,sources,researchProvider:'surfsense',aiProvider:'ollama',employeeId:OLLAMA_EMPLOYEE_ID,resourceId:ollama?.resourceId||null,model:SURFSENSE_SUMMARY_MODEL,latencyMs:local.latencyMs}; await pool.query("update tigeriq_jobs set status='done',employee_id=$2,resource_id=$3,provider='ollama',result=$4,lease_until=null,completed_at=now() where id=$1",[id,OLLAMA_EMPLOYEE_ID,ollama?.resourceId||null,JSON.stringify(result)]); await event('SURFSENSE_RESEARCH_DONE',{jobId:id,employeeId:OLLAMA_EMPLOYEE_ID,resourceId:ollama?.resourceId||null,provider:'ollama'}); return {ok:true,jobId:id,...result};
   } catch(error){ await pool.query("update tigeriq_jobs set status='failed',failure=$2,lease_until=null,completed_at=now() where id=$1",[id,JSON.stringify({message:String(error?.message||error)})]); await event('SURFSENSE_RESEARCH_FAILED',{jobId:id}); throw error; }
+}
+
+async function invokeLocalManager(prompt) {
+  const body=await fetchJson('http://127.0.0.1:11434/api/generate',{
+    method:'POST',
+    headers:{'content-type':'application/json'},
+    body:JSON.stringify(managerLocalRequestBody(nv10Resource.model,prompt)),
+  },OLLAMA_TIMEOUT_MS);
+  const text=String(body?.response||'').trim();
+  if(!text){const e=new Error('OLLAMA_MANAGER_EMPTY');e.kind='invalid_response';throw e;}
+  return text;
 }
 
 async function openAiCompat(endpoint, key, model, prompt, extraHeaders = {}, timeoutMs = 90000, resource = null) {
@@ -659,7 +670,35 @@ async function claimJob() {
     await hotPathStage(j,'FAILED',{reason:message.slice(0,180)});
   }
 }
-async function callManagerDecision(prompt,objectiveId){const jobId=`MGR-${objectiveId}`,starts=new Map();return runBoundedManagerDecision({prompt,maxProviders:3,acquire:async excluded=>{const excludedResources=excluded.map(id=>resources.find(x=>x.id===id)?.resourceId||id),row=await claimResource('reasoning',jobId,excludedResources,{profile:'AUTO',taskKind:'manager'});if(!row)return null;return resources.find(x=>x.resourceId===row.resource_id)||null;},invoke:async(r,nextPrompt)=>{starts.set(r.id,Date.now());return invokeProvider(r,nextPrompt);},onRetry:async(r,error)=>event('MANAGER_OUTPUT_RETRY',{objectiveId,jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind:'manager',kind:error?.code||error?.message||'invalid_response'}),onSuccess:async r=>markResourceSuccess(r,jobId,Math.max(0,Date.now()-(starts.get(r.id)||Date.now())),'RESOURCE_SUCCESS',true,{taskKind:'manager',profile:'AUTO'}),onFailure:async(r,error)=>markResourceFailure(r,jobId,error,'RESOURCE_FAILURE',true,{taskKind:'manager',profile:'AUTO'})});
+async function callManagerDecision(prompt,objectiveId){
+  const jobId=`MGR-${objectiveId}`,starts=new Map();
+  const localResource=resources.find(x=>x.id===OLLAMA_EMPLOYEE_ID&&x.provider==='ollama')||resources.find(x=>x.provider==='ollama')||null;
+  const localResourceId=localResource?.resourceId||null;
+  return runBoundedManagerDecision({
+    prompt,
+    maxProviders:3,
+    acquire:async excluded=>{
+      const excludedResources=excluded.map(id=>resources.find(x=>x.id===id)?.resourceId||id);
+      let row=null;
+      if(!managerShouldUseLocalFallback(excluded.length,2)){
+        const cloudExcludes=localResourceId?[...new Set([...excludedResources,localResourceId])]:excludedResources;
+        row=await claimResource('reasoning',jobId,cloudExcludes,{profile:'AUTO',taskKind:'manager'});
+      }
+      if(!row&&localResourceId&&!excludedResources.includes(localResourceId)){
+        const nonLocalIds=resources.filter(x=>x.provider!=='ollama').map(x=>x.resourceId);
+        row=await claimResource('reasoning',jobId,[...new Set([...excludedResources,...nonLocalIds])],{profile:'LOCAL',taskKind:'manager'});
+      }
+      if(!row)return null;
+      return resources.find(x=>x.resourceId===row.resource_id)||null;
+    },
+    invoke:async(r,nextPrompt)=>{
+      starts.set(r.id,Date.now());
+      return r.provider==='ollama'?invokeLocalManager(nextPrompt):invokeProvider(r,nextPrompt);
+    },
+    onRetry:async(r,error)=>event('MANAGER_OUTPUT_RETRY',{objectiveId,jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind:'manager',kind:error?.code||error?.message||'invalid_response'}),
+    onSuccess:async r=>markResourceSuccess(r,jobId,Math.max(0,Date.now()-(starts.get(r.id)||Date.now())),'RESOURCE_SUCCESS',true,{taskKind:'manager',profile:r.provider==='ollama'?'LOCAL':'AUTO'}),
+    onFailure:async(r,error)=>markResourceFailure(r,jobId,error,'RESOURCE_FAILURE',true,{taskKind:'manager',profile:r.provider==='ollama'?'LOCAL':'AUTO'}),
+  });
 }
 async function reconcileAutonomousHandoff(o){
   const handoff=o?.metadata?.handoff;
