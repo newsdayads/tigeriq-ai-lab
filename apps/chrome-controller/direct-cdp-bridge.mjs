@@ -798,44 +798,6 @@ async function dispatchNaturalContinueLocked(target,state,now){
 async function dispatchNaturalContinue(target,state,now){
   return withNv02Mutation(()=>dispatchNaturalContinueLocked(target,state,now),'CONTINUITY_CONTINUE');
 }
-function stopAndClearComposerExpr(){
-  return `(async()=>{const sleep=ms=>new Promise(r=>setTimeout(r,ms));const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const stop=[...document.querySelectorAll('button[data-testid="stop-button"],button[aria-label*="Stop" i],button[aria-label*="Dừng" i],button[aria-label*="Ngừng" i]')].find(vis);if(stop){stop.click();await sleep(800);}const sels=['#prompt-textarea','div[contenteditable="true"][data-lexical-editor="true"]','[contenteditable="true"][role="textbox"]','textarea'];const c=sels.flatMap(s=>[...document.querySelectorAll(s)]).find(vis)||null;if(c){c.focus();if(c instanceof HTMLTextAreaElement||c instanceof HTMLInputElement){const p=c instanceof HTMLTextAreaElement?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(p,'value')?.set?.call(c,'');c.dispatchEvent(new Event('input',{bubbles:true}));}else{c.innerHTML='<p><br></p>';c.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'deleteContentBackward',data:null}));}}return{ok:true,stopped:Boolean(stop),composerCleared:!c||!(c.innerText||c.textContent||c.value||'').trim()};})()`;
-}
-async function recoverStalledWorking(target,state,now,{allowContinue=true}={}){
-  return withNv02Mutation(async()=>{
-    const stopped=await evalPage(target,stopAndClearComposerExpr());
-    await continuityEvent('WORKING_STALLED_STOPPED',{stopped:stopped?.stopped===true,composerCleared:stopped?.composerCleared===true});
-    let ui=null;
-    for(let i=0;i<8;i+=1){
-      await sleep(500);
-      ui=await uiState(target);
-      if(!ui?.uiBusy)break;
-    }
-    if(ui?.securityBlock){
-      const blocked={...state,lastPhase:'BLOCKED',nextProgressCheckAt:0};
-      saveNv02Continuity(blocked);
-      await continuityEvent('WORKING_STALLED_RECOVERY_BLOCKED',{securityBlock:ui.securityBlock});
-      return blocked;
-    }
-    await reloadTarget(target);
-    await sleep(1800);
-    ui=await uiState(target);
-    await continuityEvent('WORKING_STALLED_RELOADED',{uiPhase:ui?.uiPhase||null,uiBusy:ui?.uiBusy===true});
-    const clean={...state,workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:0,lastPhase:ui?.uiPhase||'STALLED',nextContinueAt:now+WORKING_PROGRESS_CHECK_MS};
-    saveNv02Continuity(clean);
-    if(ui?.uiPhase==='READY'&&!ui?.uiBusy){
-      if(allowContinue)return dispatchNaturalContinueLocked(target,clean,now);
-      await continuityEvent('WORKING_STALLED_RECOVERED_OUTSIDE_PROJECT',{uiPhase:ui.uiPhase});
-      return clean;
-    }
-    if(!ui?.securityBlock){
-      const reopen=await post('/api/workers/NV02/restart-schedule','NV02',{reason:'WORKING_NO_PROGRESS_3_CHECKS'});
-      await continuityEvent('WORKING_STALLED_REOPEN_SCHEDULED',{status:reopen?.ok===true?'QUEUED':'UNKNOWN',uiPhase:ui?.uiPhase||null});
-    }
-    return clean;
-  },'STALE_WORKING_RECOVERY',30000);
-}
-
 async function checkpointNv02(target){
   return withNv02Mutation(async()=>{
     await ensureNv02ModelProfile(target);
@@ -891,7 +853,11 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
     state={...state,stalledChecks:0,workingSignature:signature,workingUnchangedChecks:unchanged,nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS};
     saveNv02Continuity(state);
     await continuityEvent('WORKING_PROGRESS_CHECK',{workingUnchangedChecks:unchanged,nextProgressCheckAt:state.nextProgressCheckAt,signaturePresent:Boolean(signature)});
-    if(unchanged>=MAX_WORKING_UNCHANGED_CHECKS)await recoverStalledWorking(target,state,now,{allowContinue});
+    if(unchanged>=MAX_WORKING_UNCHANGED_CHECKS){
+      state={...state,workingUnchangedChecks:MAX_WORKING_UNCHANGED_CHECKS,nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS};
+      saveNv02Continuity(state);
+      await continuityEvent('WORKING_LONG_RUNNING_NO_MUTATION',{workingUnchangedChecks:state.workingUnchangedChecks,nextProgressCheckAt:state.nextProgressCheckAt});
+    }
     return;
   }
   if(shouldRotateNv02Chat({phase,currentTrackedWork,now,nextRefreshAt:state.nextRefreshAt,dispatchesInChat:state.dispatchesInChat,rotationRetryAt:state.rotationRetryAt})){
