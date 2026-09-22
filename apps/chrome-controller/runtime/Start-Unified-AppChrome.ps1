@@ -74,7 +74,7 @@ function Owner-AutomationAllowed{
   return $true
 }
 
-function Get-TrustedListenerIdentity([int]$Port,[string]$ExpectedDeploy,[bool]$ForceRestartTrusted=$false){
+function Get-TrustedListenerIdentity([int]$Port,[string]$ExpectedDeploy){
   try{
     if($Port -eq 8798){
       $state=Invoke-RestMethod -Uri 'http://127.0.0.1:8798/api/state' -TimeoutSec 3
@@ -82,7 +82,7 @@ function Get-TrustedListenerIdentity([int]$Port,[string]$ExpectedDeploy,[bool]$F
       if([string]::IsNullOrWhiteSpace($deploy) -or $deploy -notlike ($InstallRoot+'*')){
         return @{trusted=$false;current=$false;reason='CONTROLLER_PROVENANCE_INVALID'}
       }
-      return @{trusted=$true;current=(-not $ForceRestartTrusted -and $deploy -eq $ExpectedDeploy);identity=('controller:'+ $deploy)}
+      return @{trusted=$true;current=($deploy -eq $ExpectedDeploy);identity=('controller:'+ $deploy)}
     }
     if($Port -eq 8799){
       $health=Invoke-RestMethod -Uri 'http://127.0.0.1:8799/health' -TimeoutSec 3
@@ -90,14 +90,16 @@ function Get-TrustedListenerIdentity([int]$Port,[string]$ExpectedDeploy,[bool]$F
       if($health.ok -ne $true -or [string]::IsNullOrWhiteSpace($deploy) -or $deploy -notlike ($InstallRoot+'*')){
         return @{trusted=$false;current=$false;reason='BRIDGE_PROVENANCE_INVALID'}
       }
-      return @{trusted=$true;current=(-not $ForceRestartTrusted -and $deploy -eq $ExpectedDeploy);identity=('bridge:'+ $deploy)}
+      return @{trusted=$true;current=($deploy -eq $ExpectedDeploy);identity=('bridge:'+ $deploy)}
     }
     if($Port -eq 8800){
       $health=Invoke-RestMethod -Uri 'http://127.0.0.1:8800/health' -TimeoutSec 3
-      if($health.ok -ne $true -or [string]$health.service -ne 'chrome-launch-broker'){
-        return @{trusted=$false;current=$false;reason='BROKER_IDENTITY_INVALID'}
+      $deploy=[string]$health.deployRoot
+      $head=[string]$health.approvedHead
+      if($health.ok -ne $true -or [string]$health.service -ne 'chrome-launch-broker' -or [string]::IsNullOrWhiteSpace($deploy) -or $deploy -notlike ($InstallRoot+'*') -or [string]::IsNullOrWhiteSpace($head)){
+        return @{trusted=$false;current=$false;reason='BROKER_PROVENANCE_INVALID'}
       }
-      return @{trusted=$true;current=(-not $ForceRestartTrusted);identity='chrome-launch-broker'}
+      return @{trusted=$true;current=($deploy -eq $ExpectedDeploy);identity=('broker:'+ $head+':'+ $deploy)}
     }
     return @{trusted=$false;current=$false;reason='UNSUPPORTED_PORT'}
   }catch{
@@ -114,11 +116,11 @@ function Wait-Port([int]$Port,[int]$Seconds=30){
   throw "PORT_TIMEOUT:$Port"
 }
 
-function Stop-StaleTrustedListener([int]$Port,[string]$ExpectedDeploy,[bool]$ForceRestartTrusted=$false){
+function Stop-StaleTrustedListener([int]$Port,[string]$ExpectedDeploy){
   $listener=Get-PortListener $Port
   if(-not$listener){return $false}
   $ownerPid=[int]$listener.OwningProcess
-  $identity=Get-TrustedListenerIdentity $Port $ExpectedDeploy $ForceRestartTrusted
+  $identity=Get-TrustedListenerIdentity $Port $ExpectedDeploy
   if($identity.current){return $false}
   if(-not $identity.trusted){
     $again=Get-PortListener $Port
@@ -135,8 +137,8 @@ function Stop-StaleTrustedListener([int]$Port,[string]$ExpectedDeploy,[bool]$For
   throw "STALE_PORT_DID_NOT_STOP:$Port"
 }
 
-function Start-Component([int]$Port,[string]$ScriptPath,[string[]]$Arguments,[string]$Name,$Active,[bool]$ForceRestartTrusted=$false){
-  $stale=Stop-StaleTrustedListener $Port $Active.deploy $ForceRestartTrusted
+function Start-Component([int]$Port,[string]$ScriptPath,[string[]]$Arguments,[string]$Name,$Active){
+  $stale=Stop-StaleTrustedListener $Port $Active.deploy
   if(Get-PortListener $Port){return @{started=$false;staleStopped=$stale}}
   if(-not(Test-Path -LiteralPath $ScriptPath)){throw "COMPONENT_SCRIPT_MISSING:${Name}:$ScriptPath"}
   $out=Join-Path $runtime ($Name+'.out.log')
@@ -174,7 +176,7 @@ function Ensure-AppChrome{
 
   $broker=Join-Path $active.deploy 'dist\apps\chrome-controller\src\chrome-launch-broker.js'
   $server=Join-Path $active.deploy 'dist\apps\chrome-controller\src\server.js'
-  $b=Start-Component 8800 $broker @($broker,$ConfigPath) 'broker' $active $headChanged
+  $b=Start-Component 8800 $broker @($broker,$ConfigPath) 'broker' $active
   $c=Start-Component 8798 $server @($server) 'controller' $active
   $g=Start-Component 8799 $active.bridge @($active.bridge) 'bridge' $active
 
