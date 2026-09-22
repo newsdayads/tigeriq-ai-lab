@@ -466,24 +466,6 @@ while($true){
       if($impact.openclaw -and (Task-Exists $openclawTask)){$null=Restart-OpenClawGateway;$rollbackTree=OpenClaw-TreeSha;if($rollbackTree){Save-OpenClawAppliedState $rollbackTree}}
       throw ('ROLLED_BACK:'+ $_.Exception.Message)
     }
-    $liveStatusBridgeReconcile=try {
-      if(-not (Task-Exists $liveStatusBridgeTask)) {
-        [ordered]@{status='BLOCKED';reason='TASK_ABSENT';action='NONE'}
-      } else {
-        $st=(Get-ScheduledTask -TaskName $liveStatusBridgeTask -ErrorAction SilentlyContinue)
-        $stateName = if ($st -and $st.PSObject.Properties['State']) { [string]$st.State } else { '' }
-        if(-not $st) {
-          [ordered]@{status='BLOCKED';reason='TASK_NOT_FOUND';action='NONE'}
-        } elseif($stateName -ne 'Running') {
-          Start-ScheduledTask -TaskName $liveStatusBridgeTask -ErrorAction Stop
-          [ordered]@{status='RECONCILED';reason='STARTED_ONCE';action='START'}
-        } else {
-          [ordered]@{status='HEALTHY';reason='ALREADY_RUNNING';action='NONE'}
-        }
-      }
-    } catch {
-      [ordered]@{status='BLOCKED';reason=$_.Exception.Message;action='NONE'}
-    }
     $newCore=HealthInfo 'http://100.97.23.87:8795/health'
     if($null -eq $openclawCanary){$openclawCanary=Invoke-OpenClawCanary $remote (OpenClaw-TreeSha)}
     Save-State @{result='UPDATED';liveStatusBridgeReconcile=$liveStatusBridgeReconcile;installedSha=$remote;gateSha=$gateSha;previousSha=$previousRuntimeSha;runtimeSource=$runtimeRepo;appChromeRecovery=$appChromeRecovery;legacyLifecycleRetire=$legacyLifecycleRetire;changedPaths=$changed;impact=$impact;updaterTaskTarget=$updaterTaskTarget;openclawReconcile=$openclawReconcile;openclawCanary=$openclawCanary;corePid=if($newCore){[int]$newCore.pid}else{$null};previousCorePid=$oldPid;coreRestarted=$impact.core;webRestarted=$impact.web;codingRestarted=$impact.coding;openclawRestarted=$impact.openclaw;openclawPortHealthy=if($openclawHealth){[bool]$openclawHealth.healthy}else{$null};webPid=if($webHealth){$webHealth.pid}else{$null};codingPid=if($codingHealth){$codingHealth.pid}else{$null};watchdog=$watchdog}
