@@ -64,4 +64,12 @@ describe('Web Control workforce projection',()=>{
     expect(server).toContain('normalizeRuntimeResources(core.resources,workforce)');
     expect(server).toContain('workforceMeta');
   });
+
+  it('validates upstream URLs, sanitizes health details, and uses 500ms timeout', () => {
+    expect(server).toContain('isValidUrl');
+    expect(server).toContain("source_type: 'Automation'");
+    expect(server).toContain("source_type: 'API'");
+    expect(server).toContain('500');
+    expect(server).not.toContain('1200');
+  });
 });

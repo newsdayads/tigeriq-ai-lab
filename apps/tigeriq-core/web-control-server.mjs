@@ -135,9 +135,40 @@ const server = createServer(async (req, res) => {
       } catch (error) {
         coding = { ok: false, error: String(error?.name === 'AbortError' ? 'CODING_TIMEOUT' : error?.message || error) };
       }
+      const isValidUrl = (u) => { try { const parsed = new URL(u); return parsed.protocol === 'http:' || parsed.protocol === 'https:'; } catch { return false; } };
+      const rawChromeUrl = process.env.TIGERIQ_CHROME_CONTROLLER_URL?.trim() || 'http://127.0.0.1:9222';
+      const chromeControllerUrl = isValidUrl(rawChromeUrl) ? rawChromeUrl : 'http://127.0.0.1:9222';
+      let chromeController = { ok: false, source_type: 'Automation' };
+      try {
+        const response = await upstream(chromeControllerUrl, '/json/version', 500);
+        if (response.status === 200) {
+          const parsedDetails = safeJson(response.text, {});
+          const sanitizedDetails = parsedDetails && typeof parsedDetails === 'object' ? { Browser: parsedDetails.Browser, 'Protocol-Version': parsedDetails['Protocol-Version'] } : {};
+          chromeController = { ok: true, source_type: 'Automation', details: sanitizedDetails };
+        } else {
+          chromeController = { ok: false, source_type: 'Automation', status: response.status };
+        }
+      } catch (error) {
+        chromeController = { ok: false, source_type: 'Automation', error: String(error?.message || error) };
+      }
+      const rawOpenclawUrl = process.env.TIGERIQ_OPENCLAW_GATEWAY_URL?.trim() || 'http://127.0.0.1:8798';
+      const openclawUrl = isValidUrl(rawOpenclawUrl) ? rawOpenclawUrl : 'http://127.0.0.1:8798';
+      let openclaw = { ok: false, source_type: 'API' };
+      try {
+        const response = await upstream(openclawUrl, '/health', 500);
+        if (response.status === 200) {
+          const parsedOpenclaw = safeJson(response.text, {});
+          const sanitizedOpenclaw = parsedOpenclaw && typeof parsedOpenclaw === 'object' ? { ok: parsedOpenclaw.ok, status: parsedOpenclaw.status } : {};
+          openclaw = { ok: true, source_type: 'API', ...sanitizedOpenclaw };
+        } else {
+          openclaw = { ok: false, source_type: 'API', status: response.status };
+        }
+      } catch (error) {
+        openclaw = { ok: false, source_type: 'API', error: String(error?.message || error) };
+      }
       const ok = core?.ok === true;
       res.writeHead(ok ? 200 : 503, { 'content-type': 'application/json' });
-      return res.end(JSON.stringify({ ok, service: 'tigeriq-web-control', host: HOST, port: PORT, core, coding }));
+      return res.end(JSON.stringify({ ok, service: 'tigeriq-web-control', host: HOST, port: PORT, core, coding, sources: { chromeController, openclaw } }));
     }
     res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
     return res.end('not_found');
