@@ -40,7 +40,18 @@ export function executionContractV1Missing(body){
   if(!/^RESOURCE_SCOPE=\S.+$/m.test(text))missing.push('RESOURCE_SCOPE');
   if(!/^MUTATION_OWNER=\S.+$/m.test(text))missing.push('MUTATION_OWNER');
   for(const section of ['GOAL','CURRENT_STATE','IN_SCOPE','OUT_OF_SCOPE','NON_NEGOTIABLE_RULES','DEPENDENCIES','EXECUTION_ORDER','ACCEPTANCE','RECOVERY_RULE','STOP_CONDITIONS','EVIDENCE_FORMAT']){
-    if(!new RegExp('^##\\s+'+section+'\\s*
+    const heading='## '+section;
+    if(!text.split(/\r?\n/).some(line=>line.trim()===heading))missing.push(section);
+  }
+  return missing;
+}
+
+export function isActiveExecutionSpec(body){
+  if(isReviewOnlySpec(body))return false;
+  if(!isExecutionContractV1(body))return true;
+  return executionContractV1Missing(body).length===0;
+}
+
 export function compareBacklogSpecs(a,b){
   const ownerA=Boolean(a?.ownerDirect),ownerB=Boolean(b?.ownerDirect);
   if(ownerA!==ownerB)return ownerA?-1:1;
