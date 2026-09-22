@@ -19,7 +19,7 @@ internal sealed record HarnessView(
 
 internal sealed class BrowserHarnessClient
 {
-    static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(18);
+    static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(15);
     readonly Dictionary<string, SemaphoreSlim> gates =
         Workers.All.ToDictionary(x => x.Id, _ => new SemaphoreSlim(1, 1));
 
