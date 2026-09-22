@@ -316,6 +316,7 @@ function loadNv02Continuity(){
     lastPhase:String(raw.lastPhase||'STALLED'),
     workingSignature:String(raw.workingSignature||''),
     workingUnchangedChecks:Number(raw.workingUnchangedChecks)||0,
+    workingRecheckAt:Number(raw.workingRecheckAt)||0,
     nextProgressCheckAt:Number(raw.nextProgressCheckAt)||0,
     verifiedChatUrl:String(raw.verifiedChatUrl||''),
     resumeChatUrl:String(raw.resumeChatUrl||(hasCurrentNv02Chat(raw.verifiedChatUrl)?raw.verifiedChatUrl:'')||''),
@@ -790,7 +791,7 @@ async function dispatchNaturalContinueLocked(target,state,now){
   const prompt=pickContinuePrompt(state.lastPrompt);
   const result=await dispatch(target,prompt);
   if(!result?.ok)throw new Error(result?.status||'CONTINUE_DISPATCH_FAILED');
-  const next={...state,lastPrompt:prompt,dispatchesInChat:Number(state.dispatchesInChat||0)+1,stalledChecks:0,lastPhase:'WORKING',nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
+  const next={...state,lastPrompt:prompt,dispatchesInChat:Number(state.dispatchesInChat||0)+1,stalledChecks:0,lastPhase:'WORKING',workingSignature:'',workingUnchangedChecks:0,workingRecheckAt:nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS),nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
   saveNv02Continuity(next);
   await continuityEvent('CONTINUE_DISPATCHED',{prompt,evidence:result.evidence||null,nextContinueAt:next.nextContinueAt,dispatchesInChat:next.dispatchesInChat});
   return next;
@@ -850,13 +851,45 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
     const signature=String(ui?.activitySignature||'');
     const same=Boolean(signature&&state.workingSignature===signature);
     const unchanged=same?Number(state.workingUnchangedChecks||0)+1:0;
-    state={...state,stalledChecks:0,workingSignature:signature,workingUnchangedChecks:unchanged,nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS};
+    const workingRecheckAt=same
+      ? (Number(state.workingRecheckAt)||nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS))
+      : nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS);
+    state={...state,stalledChecks:0,workingSignature:signature,workingUnchangedChecks:unchanged,workingRecheckAt,nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS};
     saveNv02Continuity(state);
-    await continuityEvent('WORKING_PROGRESS_CHECK',{workingUnchangedChecks:unchanged,nextProgressCheckAt:state.nextProgressCheckAt,signaturePresent:Boolean(signature)});
-    if(unchanged>=MAX_WORKING_UNCHANGED_CHECKS){
-      state={...state,workingUnchangedChecks:MAX_WORKING_UNCHANGED_CHECKS,nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS};
+    await continuityEvent('WORKING_PROGRESS_CHECK',{workingUnchangedChecks:unchanged,workingRecheckAt:state.workingRecheckAt,nextProgressCheckAt:state.nextProgressCheckAt,signaturePresent:Boolean(signature)});
+    if(same&&now>=Number(state.workingRecheckAt||0)){
+      const refreshed=await withNv02Mutation(async()=>{
+        const beforeUrl=ui?.url||null;
+        const beforeSignature=signature;
+        await reloadTarget(target);
+        await sleep(2200);
+        const after=await uiState(target).catch(()=>null);
+        return {ok:true,status:'RELOADED',beforeUrl,beforeSignature,afterUrl:after?.url||null,afterPhase:after?.uiPhase||null,afterBusy:after?.uiBusy===true,afterSignature:String(after?.activitySignature||'')};
+      },'WORKING_UNCHANGED_F5_RECHECK',20000);
+      if(refreshed?.status==='MUTATION_LEASE_BUSY'){
+        state={...state,workingRecheckAt:now+30_000};
+        saveNv02Continuity(state);
+        await continuityEvent('WORKING_F5_RECHECK_DEFERRED',{workingRecheckAt:state.workingRecheckAt});
+        return;
+      }
+      state={...state,
+        lastPhase:refreshed?.afterPhase||'STALLED',
+        workingSignature:refreshed?.afterSignature||'',
+        workingUnchangedChecks:0,
+        workingRecheckAt:nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS),
+        nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS,
+        nextPeriodicF5At:nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS),
+        stalledChecks:0,
+      };
       saveNv02Continuity(state);
-      await continuityEvent('WORKING_LONG_RUNNING_NO_MUTATION',{workingUnchangedChecks:state.workingUnchangedChecks,nextProgressCheckAt:state.nextProgressCheckAt});
+      await continuityEvent('WORKING_UNCHANGED_F5_RECHECK',{beforeUrl:refreshed?.beforeUrl||null,afterUrl:refreshed?.afterUrl||null,afterPhase:refreshed?.afterPhase||null,afterBusy:refreshed?.afterBusy===true,workingRecheckAt:state.workingRecheckAt});
+      if(allowContinue&&refreshed?.afterPhase==='READY'&&hasCurrentNv02Chat(refreshed?.afterUrl)){
+        await dispatchNaturalContinue(target,{...state,nextContinueAt:now},now);
+      }
+      return;
+    }
+    if(unchanged>=MAX_WORKING_UNCHANGED_CHECKS){
+      await continuityEvent('WORKING_LONG_RUNNING_NO_MUTATION',{workingUnchangedChecks:Math.min(unchanged,MAX_WORKING_UNCHANGED_CHECKS),workingRecheckAt:state.workingRecheckAt,nextProgressCheckAt:state.nextProgressCheckAt});
     }
     return;
   }
