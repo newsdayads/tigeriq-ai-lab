@@ -48,13 +48,17 @@ try{
   Copy-Item $launcherSource $launcherCanonical -Force
   Copy-Item $launcherSource $launcherLegacy -Force
 
+  $taskName='TigerIQ APP Chrome Unified'
+  $task=Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+  $taskActivation=if($task){'TASK_PRESENT'}else{'TASK_ABSENT'}
+
   $active=[ordered]@{
     schemaVersion='tigeriq.appchrome.active-deploy.v1'
     exactHead=$ExpectedHead
     deploy=$deploy
     bridgeSha256=$bridgeHash
     installedAt=(Get-Date).ToUniversalTime().ToString('o')
-    activation='NEXT_REBOOT'
+    activation='SUPERVISOR_PENDING'
   }
   $activeTmp=Join-Path $runtime 'active-deploy.json.tmp'
   $activePath=Join-Path $runtime 'active-deploy.json'
@@ -68,11 +72,19 @@ try{
     bridgeSha256=$bridgeHash
     activeDeploy=$activePath
     launcher=$launcherLegacy
-    activation='NEXT_REBOOT'
+    activation='SUPERVISOR_PENDING'
+    taskActivation=$taskActivation
     installedAt=$active.installedAt
   }
   $manifestPath=Join-Path $runtime 'artifact-install-final.json'
   [IO.File]::WriteAllText($manifestPath,($manifest|ConvertTo-Json -Depth 5),[Text.UTF8Encoding]::new($false))
+  if($task){
+    Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+    Start-ScheduledTask -TaskName $taskName
+    $taskActivation='TASK_RESTARTED'
+    $manifest.taskActivation=$taskActivation
+    [IO.File]::WriteAllText($manifestPath,($manifest|ConvertTo-Json -Depth 5),[Text.UTF8Encoding]::new($false))
+  }
   $manifest|ConvertTo-Json -Compress
 }finally{
   if($lock){$lock.Close();$lock.Dispose()}

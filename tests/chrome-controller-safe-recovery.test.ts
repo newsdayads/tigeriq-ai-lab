@@ -308,7 +308,7 @@ describe('safe recovery contracts',()=>{
     expect(installer).toContain("[IO.File]::Open($lockPath");
     expect(installer).toContain("'APPCHROME_DEPLOYMENT_LOCKED'");
     expect(installer).toContain("'active-deploy.json'");
-    expect(installer).toContain("activation='NEXT_REBOOT'");
+    expect(installer).toContain("activation='SUPERVISOR_PENDING'");
     expect(installer).not.toContain('git ');
     expect(installer).not.toContain('npm ');
     expect(installer).not.toContain('npx ');
