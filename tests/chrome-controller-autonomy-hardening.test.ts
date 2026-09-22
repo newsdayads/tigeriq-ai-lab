@@ -464,6 +464,14 @@ describe('APP Chrome UI-only continuity regression #1525',()=>{
     expect(bridge).toContain("return /\\/c\\//.test(current.pathname)");
     expect(bridge).toContain("CONTINUE_SKIPPED_NO_ASSIGNED_CHAT");
   });
+
+  it('accepts the live Gemini /app conversation and defaults external work autopilot off',()=>{
+    const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    expect(bridge).toContain("if(current.hostname==='gemini.google.com')");
+    expect(bridge).toContain("/^\\/app\\/[A-Za-z0-9_-]+\\/?$/");
+    const config=JSON.parse(readFileSync('apps/chrome-controller/chrome-controller.config.example.json','utf8'));
+    expect(config.autopilot.enabled).toBe(false);
+  });
 });
 
 
