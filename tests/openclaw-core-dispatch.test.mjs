@@ -49,6 +49,10 @@ describe('Core -> OpenClaw bounded dispatch #1528', () => {
     expect(hasHardGateTextIntent('Never reboot or shutdown this PC.')).toBe(false);
     expect(hasHardGateTextIntent('No paid action.')).toBe(false);
     expect(hasHardGateTextIntent('Perform a production deploy now.')).toBe(true);
+    expect(hasHardGateTextIntent('Deploy this change to Production now.')).toBe(true);
+    expect(hasHardGateTextIntent('Push this commit directly to main now.')).toBe(true);
+    expect(hasHardGateTextIntent('Do not deploy this change to Production.')).toBe(false);
+    expect(hasHardGateTextIntent('Never push this commit to main.')).toBe(false);
     expect(hasHardGateTextIntent('Do not avoid production deploy.')).toBe(true);
     expect(() => normalizeOpenClawDispatchEnvelope(envelope({
       instruction:'Verify TCP 127.0.0.1:18789. Do not use paid action, Production release, reboot or shutdown.',
