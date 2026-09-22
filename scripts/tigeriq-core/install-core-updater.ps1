@@ -14,6 +14,8 @@ New-Item -ItemType Directory -Path (Split-Path -Parent $runtimeScript) -Force|Ou
 $tmp=$runtimeScript+'.tmp'
 Copy-Item -LiteralPath $sourceScript -Destination $tmp -Force
 Move-Item -LiteralPath $tmp -Destination $runtimeScript -Force
+Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 1
 $ps='C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
 $action=New-ScheduledTaskAction -Execute $ps -Argument "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$runtimeScript`" -IntervalSeconds 120"
 $trigger=New-ScheduledTaskTrigger -AtStartup
