@@ -56,6 +56,13 @@ test('updater emits one sanitized OpenClaw typed-tool canary per installed SHA a
 });
 
 
+test('OpenClaw plugin manifest advances runtime tree for post-bootstrap canary rearm',()=>{
+  const plugin=JSON.parse(readFileSync(new URL('../apps/openclaw-tigeriq-runtime/openclaw.plugin.json',import.meta.url),'utf8'));
+  assert.equal(plugin.id,'tigeriq-runtime');
+  assert.equal(plugin.version,'0.2.1');
+  assert.deepEqual(plugin.contracts?.tools,['tigeriq_runtime','tigeriq_pc']);
+});
+
 test('updater rearms exactly one OpenClaw canary when policy generation changes',()=>{
   assert.match(script,/\\$openclawCanaryPolicyGeneration='20260922_LIFECYCLE_REPAIR_1'/);
   assert.match(script,/policyGeneration=\\$openclawCanaryPolicyGeneration/);
