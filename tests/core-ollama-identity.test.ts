@@ -8,11 +8,6 @@ describe('#775/#777 Core Ollama identity',()=>{
     expect(coreSource).toContain("IDLE_ON_DEMAND");
     expect(coreSource).toContain("BUSY");
     expect(coreSource).toContain("ERROR");
-    expect(coreSource).toContain("NV09");
-    expect(coreSource).toContain("Qwen3-Coder");
-    expect(coreSource).toContain("IDLE_ON_DEMAND");
-    expect(coreSource).toContain("BUSY");
-    expect(coreSource).toContain("ERROR");
   });
   it('uses NV10 as canonical Ollama identity',()=>{expect(coreSource).toContain("const OLLAMA_EMPLOYEE_ID = 'NV10';");expect(coreSource).toContain("R(OLLAMA_EMPLOYEE_ID,'Ollama','ollama'");expect(coreSource).not.toContain("R('NV02','Ollama','ollama'");});
   it('does not write new Ollama/SurfSense runtime records as NV02',()=>{expect(coreSource).not.toContain("employeeId:'NV02',provider:'ollama'");expect(coreSource).not.toContain("employee_id='NV02',provider='ollama'");expect(coreSource).toContain('employeeId:OLLAMA_EMPLOYEE_ID');expect(coreSource).toContain('resourceId:ollama?.resourceId||null');});
