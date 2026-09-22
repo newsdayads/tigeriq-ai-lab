@@ -13,7 +13,12 @@ $runtime=Join-Path $InstallRoot 'Runtime'
 $activePath=Join-Path $runtime 'active-deploy.json'
 $supervisorLog=Join-Path $runtime 'appchrome-supervisor.jsonl'
 $tokenFile=Join-Path $runtime 'NV02-ProfileToken.value'
+$ownerStatePath=Join-Path $runtime 'owner-interaction-state.json'
 $lastHead=''
+$supervisorMutex=[Threading.Mutex]::new($false,'Global\\TigerIQ.AppChrome.Unified.Supervisor')
+$ownsSupervisorMutex=$false
+try{$ownsSupervisorMutex=$supervisorMutex.WaitOne(0)}catch{}
+if(-not$ownsSupervisorMutex){exit 0}
 
 function Write-SupervisorEvent([string]$Event,$Data=@{}){
   $payload=[ordered]@{ts=(Get-Date).ToUniversalTime().ToString('o');event=$Event}
@@ -63,6 +68,16 @@ function Get-ProcessCommandLine([int]$ProcessId){
   try{[string](Get-CimInstance Win32_Process -Filter "ProcessId=$ProcessId" -ErrorAction Stop).CommandLine}catch{''}
 }
 
+function Owner-AutomationAllowed{
+  try{
+    if(Test-Path -LiteralPath $ownerStatePath){
+      $state=Get-Content -LiteralPath $ownerStatePath -Raw|ConvertFrom-Json
+      if($state.PSObject.Properties.Name -contains 'readOnly'){return -not[bool]$state.readOnly}
+    }
+  }catch{}
+  return $true
+}
+
 function Wait-Port([int]$Port,[int]$Seconds=30){
   $deadline=(Get-Date).AddSeconds($Seconds)
   do{
@@ -77,6 +92,11 @@ function Stop-StaleTrustedListener([int]$Port,[string]$ExpectedDeploy){
   if(-not$listener){return $false}
   $pid=[int]$listener.OwningProcess
   $cmd=Get-ProcessCommandLine $pid
+  if([string]::IsNullOrWhiteSpace($cmd)){
+    $again=Get-PortListener $Port
+    if(-not$again -or [int]$again.OwningProcess-ne$pid){return $true}
+    throw "PORT_OWNER_COMMANDLINE_UNAVAILABLE:$Port:$pid"
+  }
   if($cmd-like("*"+$ExpectedDeploy+"*")){return $false}
   if($cmd-notlike("*"+$InstallRoot+"*")){throw "PORT_OWNED_BY_UNTRUSTED_PROCESS:$Port:$pid"}
   Write-SupervisorEvent 'STALE_RUNTIME_STOP' @{port=$Port;pid=$pid;commandLine=$cmd;expectedDeploy=$ExpectedDeploy}
@@ -135,17 +155,26 @@ function Ensure-AppChrome{
   $live=Wait-LiveVerified $active
   $changed=$headChanged-or$b.started-or$c.started-or$g.started-or$b.staleStopped-or$c.staleStopped-or$g.staleStopped
   if($changed){
-    try{Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:8798/api/resume' -TimeoutSec 5|Out-Null}catch{}
+    if(Owner-AutomationAllowed){
+      try{Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:8798/api/resume' -TimeoutSec 5|Out-Null}catch{}
+    }else{
+      Write-SupervisorEvent 'OWNER_PAUSE_PRESERVED' @{head=$active.head}
+    }
     Write-SupervisorEvent 'LIVE_VERIFIED' @{head=$active.head;deploy=$active.deploy;externalWorkAutopilotEnabled=[bool]$live.controller.externalWorkAutopilotEnabled}
   }
   $script:lastHead=$active.head
 }
 
 Write-SupervisorEvent 'SUPERVISOR_STARTED' @{pid=$PID;pollSeconds=$PollSeconds}
-while($true){
-  try{Ensure-AppChrome}
-  catch{
-    Write-SupervisorEvent 'SUPERVISOR_RECOVERY_ERROR' @{error=$_.Exception.Message}
+try{
+  while($true){
+    try{Ensure-AppChrome}
+    catch{
+      Write-SupervisorEvent 'SUPERVISOR_RECOVERY_ERROR' @{error=$_.Exception.Message}
+    }
+    Start-Sleep -Seconds $PollSeconds
   }
-  Start-Sleep -Seconds $PollSeconds
+}finally{
+  if($ownsSupervisorMutex){try{$supervisorMutex.ReleaseMutex()}catch{}}
+  $supervisorMutex.Dispose()
 }
