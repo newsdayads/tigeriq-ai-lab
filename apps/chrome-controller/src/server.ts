@@ -71,6 +71,8 @@ const utilityPausedWorkers = new Set<WorkerId>();
 const recoveryAttempts = new Map<WorkerId,number>(WORKER_IDS.map((id) => [id,0]));
 const recoveryInFlight = new Set<WorkerId>();
 const plannedRefreshWorkers = new Set<WorkerId>();
+const bridgeRecoveryHandoffs = new Set<WorkerId>();
+const BRIDGE_RECOVERY_HANDOFF_TTL_MS=30_000;
 let paused=false;
 let killed=false;
 let startAllRunning=false;
@@ -645,7 +647,7 @@ async function autopilotTick(){
 
 async function recoverWorker(workerId:WorkerId){
   const state=states.get(workerId)!;
-  if(!state.enabled||state.blocked||state.manualCloseSuppressed||utilityPausedWorkers.has(workerId)||paused||killed||!startupReady||recoveryInFlight.has(workerId)||!workerNeeded(workerId))return;
+  if(!state.enabled||state.blocked||state.manualCloseSuppressed||utilityPausedWorkers.has(workerId)||paused||killed||!startupReady||recoveryInFlight.has(workerId)||bridgeRecoveryHandoffs.has(workerId)||!workerNeeded(workerId))return;
   if(recentHeartbeat(workerId))return;
   if(state.lastHeartbeat&&state.windowState!=='CLOSED'){
     const presence=await brokerWorkerPresence(workerId);
@@ -864,6 +866,7 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
     const windowId=Number(data.windowId);
     if(state.lastWindowId&&Number.isFinite(windowId)&&state.lastWindowId!==windowId){json(res,202,{ok:true,ignored:'STALE_WINDOW_EVENT'});return true;}
     const plannedRefresh=plannedRefreshWorkers.has(workerId);
+    const bridgeRecoveryHandoff=bridgeRecoveryHandoffs.has(workerId);
     const recoveryEligible=!paused&&!utilityPausedWorkers.has(workerId)&&!state.manualCloseSuppressed&&(plannedRefresh||workerHasActiveJob(workerId));
     if(plannedRefresh)plannedRefreshWorkers.delete(workerId);
     state.windowState='CLOSED';
@@ -874,10 +877,17 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
     state.status=recoveryEligible?'WINDOW_CLOSED_ACTIVE':'WINDOW_CLOSED_IDLE';
     state.lastError=undefined;
     recoveryAttempts.set(workerId,0);
-    log('WORKER_WINDOW_CLOSED',{workerId,windowId:Number.isFinite(windowId)?windowId:null,recoveryEligible,plannedRefresh,ownerInteractionMode:paused?'READ_ONLY':'AUTOMATION'});
+    log('WORKER_WINDOW_CLOSED',{workerId,windowId:Number.isFinite(windowId)?windowId:null,recoveryEligible,plannedRefresh,bridgeRecoveryHandoff,ownerInteractionMode:paused?'READ_ONLY':'AUTOMATION'});
     persistEvidence();
-    if(recoveryEligible&&!plannedRefresh)void recoveryTick();
-    json(res,202,{ok:true,recoveryEligible});
+    if(bridgeRecoveryHandoff){
+      setTimeout(()=>{
+        if(!bridgeRecoveryHandoffs.delete(workerId))return;
+        log('BRIDGE_RECOVERY_HANDOFF_EXPIRED',{workerId});
+        persistEvidence();
+        if(!recentHeartbeat(workerId))void recoveryTick();
+      },BRIDGE_RECOVERY_HANDOFF_TTL_MS).unref();
+    }else if(recoveryEligible&&!plannedRefresh)void recoveryTick();
+    json(res,202,{ok:true,recoveryEligible,bridgeRecoveryHandoff});
     return true;
   }
   if(url.pathname==='/api/continuity/event'&&req.method==='POST'){
@@ -1148,12 +1158,28 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
         if(!leaseOwnerId.startsWith('DIRECT_CDP_BRIDGE:'))throw new Error('PLANNED_REFRESH_BRIDGE_OWNER_REQUIRED');
         browserMutationLeases.assertOwned(workerId,leaseOwnerId,leaseId);
         plannedRefreshWorkers.add(workerId);
-        log('WORKER_PLANNED_REFRESH_MARKED',{workerId,leaseOwnerId,leaseId});
+        bridgeRecoveryHandoffs.add(workerId);
+        log('WORKER_PLANNED_REFRESH_MARKED',{workerId,leaseOwnerId,leaseId,bridgeRecoveryHandoff:true});
         persistEvidence();
         json(res,202,{ok:true,plannedRefresh:true});
         return true;
       }
-      if(action==='safe-recover'){browserMutationLeases.assertControllerAllowed(workerId);if(utilityPausedWorkers.has(workerId))throw new Error(`UTILITY_WORKER_PAUSED:${workerId}`);if(state.blocked)throw new Error('SAFE_RECOVER_BLOCKED'); if(recentHeartbeat(workerId)){await layoutWorker(workerId);json(res,200,{ok:true,mode:'ATTACH_EXISTING'});return true;} await startWorker(workerId);json(res,200,{ok:true,mode:'BROKER_LAUNCH'});return true;}
+      if(action==='safe-recover'){
+        browserMutationLeases.assertControllerAllowed(workerId);
+        if(utilityPausedWorkers.has(workerId))throw new Error(`UTILITY_WORKER_PAUSED:${workerId}`);
+        if(state.blocked)throw new Error('SAFE_RECOVER_BLOCKED');
+        if(recoveryInFlight.has(workerId))throw new Error(`RECOVERY_IN_FLIGHT:${workerId}`);
+        recoveryInFlight.add(workerId);
+        bridgeRecoveryHandoffs.delete(workerId);
+        try{
+          if(recentHeartbeat(workerId)){await layoutWorker(workerId);json(res,200,{ok:true,mode:'ATTACH_EXISTING'});return true;}
+          await startWorker(workerId);
+          json(res,200,{ok:true,mode:'BROKER_LAUNCH'});
+          return true;
+        }finally{
+          recoveryInFlight.delete(workerId);
+        }
+      }
       if(action==='archive'){const data=await body(req);if(typeof data.receiptRef!=='string'||!data.receiptRef.startsWith('https://github.com/'))throw new Error('ARCHIVE_DURABLE_RECEIPT_REQUIRED');if(workerHasActiveJob(workerId)||state.lastHeartbeat?.uiBusy)throw new Error('ARCHIVE_ACTIVE_JOB_FORBIDDEN');await uiQueue.enqueue(()=>sendCommand(workerId,'ARCHIVE_CHAT',{receiptRef:data.receiptRef}));json(res,200,{ok:true});return true;}
     }catch(error){json(res,409,{ok:false,error:String(error)});return true;}
   }
