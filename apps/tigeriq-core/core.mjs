@@ -666,7 +666,7 @@ function pcOperatorJobId(objectiveId,phaseIndex,ordinal){
   const key=`${String(objectiveId)}:${Number(phaseIndex)||0}:${Number(ordinal)||0}`;
   return `JOB-OC-${createHash('sha256').update(key).digest('hex').slice(0,24)}`;
 }
-const OPENCLAW_RETRYABLE_JOB_KINDS=new Set(['outage','timeout','openclaw_failure','worker_timeout','spawn_error','agent_terminal_invalid','busy']);
+const OPENCLAW_RETRYABLE_JOB_KINDS=new Set(['outage','timeout','openclaw_failure','worker_timeout','spawn_error','agent_terminal_invalid','busy','rate_limit']);
 function openClawEnvelopeForJob(j){
   const objectiveId=String(j.objective_id||j.id);
   return normalizeOpenClawDispatchEnvelope({
