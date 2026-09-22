@@ -38,13 +38,7 @@ skills:
     source_log: learning-log/2026-09-18-owner-video-lessons.md
     target: loader
     triggers: contextual skill load registry match budget prompt core
-    summary: Load only relevant active skills based on goal triggers within strict character and count limits.ontextual Skill Loading
-    state: ACTIVE
-    version: 1.0.0
-    provenance_batch: owner-video-lessons-2026-09-18
-    source_log: learning-log/2026-09-18-owner-video-lessons.md
-    target: core-context-routing
-    triggers: context load skill dynamic routing objective relevant knowledge
+    summary: Load only relevant active skills based on goal triggers within strict character and count limits.c routing objective relevant knowledge
     summary: Load only skills relevant to the current objective instead of preloading all knowledge.
 
   - id: context-budget-compaction
