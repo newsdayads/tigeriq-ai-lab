@@ -251,6 +251,16 @@ describe('safe recovery contracts',()=>{
     expect(pruner).toContain("if(w.id!=='NV03'||!keep||ui?.uiBusy===true)return");
   });
 
+  it('backs off NV03/NV04 CDP connectivity failures instead of retrying every 3 seconds',()=>{
+    const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    expect(source).toContain('const workerConnectivityBackoff=new Map()');
+    expect(source).toContain("if(backoff&&Date.now()<Number(backoff.until||0))return");
+    expect(source).toContain("w.id!=='NV02'&&connectivityFailure");
+    expect(source).toContain("Math.min(60_000,5_000*(2**(attempt-1)))");
+    expect(source).toContain("'WORKER_CONNECTIVITY_BACKOFF'");
+    expect(source).toContain("'WORKER_CONNECTIVITY_RECOVERED'");
+  });
+
   it('keeps all enabled canonical workers alive independent of backlog demand',()=>{
     const needed=server.slice(server.indexOf('function workerNeeded'),server.indexOf('async function fetchExternalSnapshot'));
     const startup=server.slice(server.indexOf('async function startupRecovery'),server.indexOf('async function handleApi'));
