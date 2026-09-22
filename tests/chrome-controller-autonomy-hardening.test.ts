@@ -371,6 +371,19 @@ describe('NV02 owner-proxy live handoff coordination',()=>{
 });
 
 
+describe('NV02 current-chat continuity lease guard',()=>{
+  it('allows only conflict-free current-chat continuation when no tracked NV02 job exists',()=>{
+    const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
+    expect(server).toContain("const activeNv02Job=uiJobLedger.active('NV02')");
+    expect(server).toContain("const continuityCurrentChatOnly=continuityContinue");
+    expect(server).toContain("!autopilotState.pendingJobId");
+    expect(server).toContain("!autopilotState.uncertainJobId");
+    expect(server).toContain("nv02NextJob?.workerId==='NV02'");
+    expect(server).toContain("const continuityLeaseAllowed=continuitySameJob||continuityCurrentChatOnly");
+    expect(server).toContain("if(continuityContinue&&!continuityLeaseAllowed)throw new Error('CONTINUITY_SAME_JOB_IDENTITY_REQUIRED:NV02')");
+  });
+});
+
 describe('Direct-CDP Controller command transport',()=>{
   it('polls, executes and acknowledges Controller commands before continuity automation',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
