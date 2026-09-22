@@ -9,6 +9,21 @@ export function managerResponseFormatForHost(host,prompt){
   return isManagerPrompt(prompt)&&STRUCTURED_JSON_HOSTS.has(String(host||'').toLowerCase())?{type:'json_object'}:null;
 }
 
+export function managerLocalRequestBody(model,prompt){
+  return {
+    model:String(model||'qwen3:4b'),
+    prompt:String(prompt||''),
+    stream:false,
+    think:false,
+    format:'json',
+    options:{temperature:0,num_ctx:4096,num_predict:512},
+  };
+}
+
+export function managerShouldUseLocalFallback(excludedCount,cloudBudget=2){
+  return Math.max(0,Number(excludedCount)||0)>=Math.max(0,Number(cloudBudget)||0);
+}
+
 function parseableJsonObjects(text){
   const s=String(text||'');const out=[];
   for(let start=0;start<s.length;start++){
