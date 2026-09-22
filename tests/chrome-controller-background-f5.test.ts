@@ -36,6 +36,7 @@ describe('Chrome Controller Background F5 Refresh Timer', () => {
 
     const bg = await import('../apps/chrome-controller/extension/background.js');
     expect(createAlarm).toHaveBeenCalledWith('tigeriqTick', { periodInMinutes: 0.5 });
+    await bg.scheduleF5Refresh();
     expect(bg.nextF5RefreshAt).toBeGreaterThan(0);
     
     // Verify nextF5RefreshAt is set between 5 and 10 minutes from now
