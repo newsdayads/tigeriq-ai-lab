@@ -444,11 +444,52 @@ async function tickWorker(workerId) {
 
 async function tick(){
   if(ticking) return; ticking=true;
-  try { for(const workerId of await getWorkerIds()) await tickWorker(workerId); }
+  try {
+    await scheduleF5Refresh();
+    await checkF5Refresh();
+    for(const workerId of await getWorkerIds()) await tickWorker(workerId);
+  }
   catch { /* Controller may be offline; retry later. */ }
   finally { ticking=false; }
 }
 async function ensureTickAlarm(){ await chrome.alarms.create('tigeriqTick',{periodInMinutes:0.5}); }
+
+const F5_REFRESH_MIN_MS = 5 * 60 * 1000;
+const F5_REFRESH_MAX_MS = 10 * 60 * 1000;
+let nextF5RefreshAt = 0;
+
+async function scheduleF5Refresh() {
+  const now = Date.now();
+  if (!nextF5RefreshAt || now >= nextF5RefreshAt) {
+    nextF5RefreshAt = nextRandTime(now, F5_REFRESH_MIN_MS, F5_REFRESH_MAX_MS);
+  }
+}
+
+function nextRandTime(now, minMs, maxMs) {
+  return now + minMs + Math.floor(Math.random() * (maxMs - minMs + 1));
+}
+
+async function checkF5Refresh() {
+  const now = Date.now();
+  if (!nextF5RefreshAt) {
+    nextF5RefreshAt = nextRandTime(now, F5_REFRESH_MIN_MS, F5_REFRESH_MAX_MS);
+    return;
+  }
+  if (now >= nextF5RefreshAt) {
+    nextF5RefreshAt = nextRandTime(now, F5_REFRESH_MIN_MS, F5_REFRESH_MAX_MS);
+    const workerIds = await getWorkerIds();
+    for (const workerId of workerIds) {
+      const ctx = await findContext(workerId);
+      if (ctx?.tabId) {
+        try {
+          await chrome.tabs.reload(ctx.tabId);
+        } catch {
+          // ignore tab reload errors if tab is missing
+        }
+      }
+    }
+  }
+}
 
 chrome.windows.onRemoved.addListener((windowId)=>{
   void (async()=>{
