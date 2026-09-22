@@ -126,4 +126,4 @@ export function normalizeRuntimeResources(resources, workforce){
   return mapped.sort((a,b)=>a.employee_id.localeCompare(b.employee_id));
 }
 
-export { parseRegistryBody, completeRoster };
+export { parseRegistryBody, completeRoster, normalizeRuntimeResources };
