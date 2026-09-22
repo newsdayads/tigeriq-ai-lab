@@ -170,6 +170,10 @@ describe('NV02 continuity policy', () => {
       source.indexOf('async function dispatchNaturalContinue(target'),
     );
     expect(continueDispatch).not.toContain('ensureNv02ModelProfile');
+    expect(continueDispatch).toContain('getControllerState()');
+    expect(continueDispatch).toContain('hasContinuableNv02Work(controllerState)');
+    expect(continueDispatch).toContain('CONTINUE_SKIPPED_NO_CURRENT_WORK');
+    expect(continueDispatch).toContain('CONTINUE_SKIPPED_CURRENT_WORK_UNVERIFIED');
     expect(source).toContain("if(phase==='STALLED'&&ui?.modelExact!==true&&modelCheckRequired)");
     expect(source).toContain("withNv02Mutation(()=>ensureNv02ModelProfile(target),'MODEL_PROFILE_RECOVERY')");
     expect(source).toContain("modelName==='GPT-5.6 Sol'");
