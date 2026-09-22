@@ -41,4 +41,6 @@ it('verifies robust startup/reboot restoration, UI continuity, and bounded recov
   expect(watchdog).toContain('BeginRecovery');
   expect(watchdog).toContain('EndRecovery');
   expect(watchdog).toContain('RecoverAfter');
+  const client = readFileSync('apps/worker-utility/ControllerClient.cs', 'utf8');
+  expect(client).toBeDefined();
 });
