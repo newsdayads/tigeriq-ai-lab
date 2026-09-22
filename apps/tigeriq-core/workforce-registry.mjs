@@ -112,11 +112,12 @@ export function normalizeRuntimeResources(resources, workforce){
     if (!presentIds.has(id)) {
       const isChrome = (id >= 'NV02' && id <= 'NV04');
       const isOpenClaw = (id === 'NV06');
+      const typeBadge = base.type_badge || (isChrome ? 'Chrome Controller' : isOpenClaw ? 'OpenClaw Gateway' : 'Core/Ollama/API');
       mapped.push({
         employee_id: id,
         name: base.name || id,
         role: base.role || 'Worker',
-        type_badge: base.type_badge || (isChrome ? 'Chrome Controller' : isOpenClaw ? 'OpenClaw Gateway' : 'Core/Ollama/API'),
+        type_badge: typeBadge,
         live_status: base.status || 'OFFLINE',
         stale_fallback: true
       });
