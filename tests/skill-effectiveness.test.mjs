@@ -8,6 +8,7 @@ import yaml from 'node:yaml'; // fallback or simple parse if needed, or read reg
 test('Registry validation for skill states and actual loader behavior', () => {
   const registryContent = fs.readFileSync(new URL('../docs/skills/registry.yaml', import.meta.url), 'utf8');
   assert.ok(registryContent.includes('id: contextual-skill-loading'));
+  assert.ok(registryContent.includes('state: ACTIVE'));
   assert.ok(registryContent.includes('id: spec-first-tdd'));
   assert.ok(registryContent.includes('id: external-skill-security-gate'));
   assert.ok(registryContent.includes('id: minimal-change-output'));
