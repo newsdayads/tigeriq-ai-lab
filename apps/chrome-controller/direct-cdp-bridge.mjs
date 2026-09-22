@@ -393,16 +393,54 @@ function pageTargetsFor(w,list){
   const host=expectedHost(w);
   return list.filter(t=>t.type==='page'&&(()=>{try{return new URL(t.url).hostname===host}catch{return false}})());
 }
+const duplicateObservationSignature=new Map();
+function sameWorkerLocation(a,b){
+  try{
+    const x=new URL(String(a||'')),y=new URL(String(b||''));
+    return x.origin===y.origin&&x.pathname===y.pathname;
+  }catch{return false}
+}
+function preferredWorkerUrl(w){
+  if(w.id==='NV02'){
+    const state=loadNv02Continuity();
+    return state.resumeChatUrl||state.verifiedChatUrl||'';
+  }
+  return loadWorkerContinuity(w.id).resumeUrl||'';
+}
 async function pruneDuplicates(w,list){
   const pages=pageTargetsFor(w,list);if(pages.length<=1)return pages[0]||null;
-  const state=w.id==='NV02'?loadNv02Continuity():null;
-  const preferredChatUrl=state?.resumeChatUrl||state?.verifiedChatUrl||'';
-  const keep=pages.find(t=>sameNv02Chat(t.url,preferredChatUrl))
-    ||pages.find(t=>hasCurrentNv02Chat(t.url))
-    ||pages.find(t=>{try{return new URL(t.url).pathname===new URL(w.homeUrl).pathname}catch{return false}})
+  const preferredUrl=preferredWorkerUrl(w);
+  const homePath=(()=>{try{return new URL(w.homeUrl).pathname}catch{return''}})();
+  const keep=pages.find(t=>sameWorkerLocation(t.url,preferredUrl))
+    ||pages.find(t=>{try{return /\/c\//.test(new URL(t.url).pathname)}catch{return false}})
+    ||pages.find(t=>{try{return new URL(t.url).pathname===homePath}catch{return false}})
     ||pages[0];
-  log('DUPLICATE_TABS_OBSERVED_NO_MUTATION',{workerId:w.id,count:pages.length,kept:keep.id,keptUrl:keep.url,preferredChatUrl:state?.verifiedChatUrl||null});
+  const signature=pages.map(t=>t.id).sort().join(',')+'|'+keep.id;
+  if(duplicateObservationSignature.get(w.id)!==signature){
+    duplicateObservationSignature.set(w.id,signature);
+    log('DUPLICATE_TABS_OBSERVED',{workerId:w.id,count:pages.length,kept:keep.id,keptUrl:keep.url,preferredUrl:preferredUrl||null});
+  }
   return keep;
+}
+async function pruneNv03DuplicateTabs(w,list,keep,ui){
+  if(w.id!=='NV03'||!keep||ui?.uiBusy===true)return;
+  const pages=pageTargetsFor(w,list);
+  const extras=pages.filter(t=>t.id!==keep.id);
+  if(!extras.length)return;
+  const pruned=await withWorkerMutation(w.id,async()=>{
+    const rpc=await browserRpc(workerPort(w));
+    let closed=0;
+    try{
+      for(const target of extras){
+        const result=await rpc.call('Target.closeTarget',{targetId:target.id},4000).catch(()=>null);
+        if(result?.success!==false)closed+=1;
+      }
+    }finally{rpc.close();}
+    return{ok:true,status:'DUPLICATES_PRUNED',closed};
+  },'DUPLICATE_TAB_PRUNE',15000);
+  if(pruned?.status==='MUTATION_LEASE_BUSY')return;
+  duplicateObservationSignature.delete(w.id);
+  log('DUPLICATE_TABS_PRUNED',{workerId:w.id,kept:keep.id,keptUrl:keep.url,closed:Number(pruned?.closed||0)});
 }
 
 async function windowIdFor(port,targetId){
@@ -1014,6 +1052,9 @@ async function tickWorker(w){
     const projectContextReady=w.id!=='NV02'||isNv02ProjectContext(rawUi.url)||rawUi.projectDraftReady===true;
     const ui=projectContextReady?rawUi:{...rawUi,uiReady:false,uiPhase:'STALLED',modelReady:false};
     await postWorkerHeartbeat(w,target,ui,projectContextReady).catch(error=>log('CONTROLLER_TELEMETRY_UNAVAILABLE',{error:String(error?.message||error)}));
+    if(w.id==='NV03'&&ui.uiBusy!==true){
+      await pruneNv03DuplicateTabs(w,list,target,ui).catch(error=>log('DUPLICATE_TAB_PRUNE_FAILED',{workerId:w.id,error:String(error?.message||error)}));
+    }
     const localMutationBusy=workerMutationBusy.has(w.id)||(w.id==='NV02'&&nv02MutationBusy);
     if(!localMutationBusy){
       let command=null;

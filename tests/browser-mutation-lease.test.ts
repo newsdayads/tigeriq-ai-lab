@@ -59,15 +59,22 @@ describe('controller and direct-CDP lease wiring',()=>{
     expect(server).toContain('if(mutationLease){json(res,200,{command:null');
   });
 
-  it('keeps NV02 isolated duplicate observation independent of Controller lease',()=>{
+  it('keeps canonical selection read-only and performs NV03 duplicate pruning only under a lease',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
-    expect(bridge).toContain('DUPLICATE_TABS_OBSERVED_NO_MUTATION');
+    expect(bridge).toContain('DUPLICATE_TABS_OBSERVED');
+    expect(bridge).toContain('DUPLICATE_TABS_PRUNED');
     expect(bridge).toContain('NV02_LOCAL_MUTATION_ACQUIRED');
-    const prune=bridge.slice(
+    const selector=bridge.slice(
       bridge.indexOf('async function pruneDuplicates'),
+      bridge.indexOf('async function pruneNv03DuplicateTabs'),
+    );
+    expect(selector).not.toContain('acquireBridgeMutationLease');
+    expect(selector).not.toContain('releaseBridgeMutationLease');
+    const pruner=bridge.slice(
+      bridge.indexOf('async function pruneNv03DuplicateTabs'),
       bridge.indexOf('async function windowIdFor'),
     );
-    expect(prune).not.toContain('acquireBridgeMutationLease');
-    expect(prune).not.toContain('releaseBridgeMutationLease');
+    expect(pruner).toContain("withWorkerMutation(w.id");
+    expect(pruner).toContain("'DUPLICATE_TAB_PRUNE'");
   });
 });

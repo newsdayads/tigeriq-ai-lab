@@ -238,6 +238,19 @@ describe('safe recovery contracts',()=>{
     expect(server).not.toContain("recoveryAttempts.set(workerId,0);\n    if(!state.enabled)");
   });
 
+  it('selects one canonical NV03 tab and prunes idle duplicates under a mutation lease',()=>{
+    const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    expect(source).toContain("function preferredWorkerUrl(w)");
+    expect(source).toContain("loadWorkerContinuity(w.id).resumeUrl");
+    expect(source).toContain("async function pruneNv03DuplicateTabs");
+    expect(source).toContain("'DUPLICATE_TAB_PRUNE'");
+    expect(source).toContain("rpc.call('Target.closeTarget'");
+    expect(source).toContain("'DUPLICATE_TABS_PRUNED'");
+    expect(source).toContain("if(w.id==='NV03'&&ui.uiBusy!==true)");
+    const pruner=source.slice(source.indexOf('async function pruneNv03DuplicateTabs'),source.indexOf('async function windowIdFor'));
+    expect(pruner).toContain("if(w.id!=='NV03'||!keep||ui?.uiBusy===true)return");
+  });
+
   it('keeps all enabled canonical workers alive independent of backlog demand',()=>{
     const needed=server.slice(server.indexOf('function workerNeeded'),server.indexOf('async function fetchExternalSnapshot'));
     const startup=server.slice(server.indexOf('async function startupRecovery'),server.indexOf('async function handleApi'));
