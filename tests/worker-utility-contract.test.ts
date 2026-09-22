@@ -47,6 +47,11 @@ it('verifies robust startup/reboot restoration, UI continuity, and bounded recov
   expect(program).toBeDefined();
 });
 
+it('verifies required client connection reliability and endpoints', () => {
+  const client = readFileSync('apps/worker-utility/ControllerClient.cs', 'utf8');
+  expect(client).toContain('ControllerTimeout');
+});
+
 it('verifies worker utility browser harness client and program continuity semantics', () => {
   const client = readFileSync('apps/worker-utility/BrowserHarnessClient.cs', 'utf8');
   expect(client).toContain('StaggeredReadOnlyProbeAsync');
