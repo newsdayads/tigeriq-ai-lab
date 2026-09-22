@@ -1,11 +1,54 @@
 function managerError(code,cause){const error=new Error(code);error.code=code;error.kind='invalid_response';if(cause)error.cause=cause;return error;}
 
+export function isManagerPrompt(prompt){
+  return String(prompt||'').trimStart().startsWith('You are TigerIQ AI Manager.');
+}
+
+const STRUCTURED_JSON_HOSTS=new Set(['api.groq.com','openrouter.ai','api.cohere.com','integrate.api.nvidia.com','api.inceptionlabs.ai']);
+export function managerResponseFormatForHost(host,prompt){
+  return isManagerPrompt(prompt)&&STRUCTURED_JSON_HOSTS.has(String(host||'').toLowerCase())?{type:'json_object'}:null;
+}
+
+function parseableJsonObjects(text){
+  const s=String(text||'');const out=[];
+  for(let start=0;start<s.length;start++){
+    if(s[start]!=='{')continue;
+    let depth=0,inString=false,escaped=false;
+    for(let i=start;i<s.length;i++){
+      const ch=s[i];
+      if(inString){
+        if(escaped){escaped=false;continue;}
+        if(ch==='\\'){escaped=true;continue;}
+        if(ch==='"')inString=false;
+        continue;
+      }
+      if(ch==='"'){inString=true;continue;}
+      if(ch==='{')depth++;
+      else if(ch==='}'){
+        depth--;
+        if(depth===0){
+          const candidate=s.slice(start,i+1);
+          try{out.push({candidate,value:JSON.parse(candidate)});}catch{}
+          start=i;
+          break;
+        }
+      }
+    }
+  }
+  return out;
+}
+
 export function parseManagerJson(text){
   const raw=String(text||'').trim();
-  const clean=raw.replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'').trim();
+  const clean=raw.replace(/^\`\`\`(?:json)?\s*/i,'').replace(/\s*\`\`\`$/,'').trim();
   if(!clean)throw managerError('MANAGER_JSON_MISSING');
   let value;
-  try{value=JSON.parse(clean);}catch(error){throw managerError('MANAGER_JSON_INVALID',error);}
+  try{value=JSON.parse(clean);}catch(error){
+    const candidates=parseableJsonObjects(clean);
+    if(candidates.length>1)throw managerError('MANAGER_JSON_AMBIGUOUS',error);
+    if(candidates.length!==1)throw managerError('MANAGER_JSON_INVALID',error);
+    value=candidates[0].value;
+  }
   if(!value||typeof value!=='object'||Array.isArray(value))throw managerError('MANAGER_SCHEMA_INVALID');
   if(!['continue','complete','blocked'].includes(value.status))throw managerError('MANAGER_STATUS_INVALID');
   if(typeof value.summary!=='string')throw managerError('MANAGER_SCHEMA_INVALID');
