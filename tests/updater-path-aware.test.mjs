@@ -33,3 +33,16 @@ test('updater is path aware for core, web control, coding lane, and OpenClaw',()
   assert.match(script,/function Reconcile-OpenClawRuntime/);
   assert.match(script,/openclawReconcile=\$openclawReconcile/);
 });
+
+test('updater emits one sanitized OpenClaw typed-tool canary per installed SHA and plugin tree',()=>{
+  assert.match(script,/TIGERIQ_OPENCLAW_CANARY_V1/);
+  assert.match(script,/function Invoke-OpenClawCanary/);
+  assert.match(script,/\$openclawAgent='operator-local'/);
+  assert.match(script,/Use only tigeriq_runtime\. Call core_status exactly once\./);
+  assert.match(script,/TIGERIQ_OPENCLAW_CANARY_PASS/);
+  assert.match(script,/rawOutputPublished=false/);
+  assert.match(script,/\$previous\.installedSha -eq \$installedSha/);
+  assert.match(script,/\$previous\.treeSha -eq \$treeSha/);
+  assert.match(script,/--timeout 90/);
+  assert.match(script,/openclawCanary=\$openclawCanary/);
+});
