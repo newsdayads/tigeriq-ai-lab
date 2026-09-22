@@ -209,7 +209,7 @@ try{
     reasoningEffort=$worker.lastHeartbeat.reasoningEffort
     ownerInteractionMode=if($ResumeAutomation){'AUTOMATION'}else{'READ_ONLY'}
     chromeUiOnlyMode=$true
-    externalWorkAutopilotEnabled=$true
+    externalWorkAutopilotEnabled=$false
     approvedHead=$ExpectedHead
     bridgeSourceSha256=$deployBridgeHash
     bridgeHealthPid=$bridgeHealth.pid
