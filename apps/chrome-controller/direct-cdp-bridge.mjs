@@ -1098,18 +1098,20 @@ async function rotateNv02Chat(target,state,now){
   }
   await continuityEvent('CHAT_ROTATION_CURRENT_WORK_VERIFIED',{jobId:currentWork.jobId||null,issueRef:currentWork.issueRef});
   const receipt=await checkpointNv02(target,currentWork);
-  const checkpointed={...state,dispatchesInChat:0,chatStartedAt:now,stalledChecks:0,lastPhase:'READY',resumeChatUrl:'',verifiedChatUrl:'',modelVerifiedAt:'',nextRefreshAt:nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS),rotationRetryAt:0};
+  const checkpointed={...state,dispatchesInChat:0,chatStartedAt:now,stalledChecks:0,lastPhase:'READY',nextRefreshAt:nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS),rotationRetryAt:0};
   saveNv02Continuity(checkpointed);
   return withNv02Mutation(async()=>{
     const archived=await archiveChat(target);if(!archived?.ok)throw new Error(archived?.status||'ROTATE_ARCHIVE_FAILED');
     await continuityEvent('ARCHIVE_CONFIRMED',{jobId:currentWork.jobId||null,issueRef:currentWork.issueRef,receiptRef:receipt.receiptRef,checkpointRef:receipt.checkpointRef,archiveStatus:archived.status});
+    const archivedState={...checkpointed,resumeChatUrl:'',verifiedChatUrl:'',modelVerifiedAt:''};
+    saveNv02Continuity(archivedState);
     const opened=await newChat(target);if(!opened?.ok)throw new Error(opened?.status||'ROTATE_NEW_CHAT_FAILED');
     await continuityEvent('NEW_CHAT_CREATED',{newChatStatus:opened.status});
     const freshUi=await ensureNv02ModelProfile(target);
     if(freshUi?.securityBlock)throw new Error(freshUi.securityBlock);
     if(freshUi?.modelExact!==true||freshUi?.uiPhase!=='READY')throw new Error('ROTATE_MODEL_PROFILE_NOT_READY');
     const verified=loadNv02Continuity();
-    const next={...checkpointed,lastPhase:'READY',verifiedChatUrl:verified.verifiedChatUrl,modelVerifiedAt:verified.modelVerifiedAt,modelCheckBlockedUntil:verified.modelCheckBlockedUntil};
+    const next={...archivedState,lastPhase:'READY',verifiedChatUrl:verified.verifiedChatUrl,modelVerifiedAt:verified.modelVerifiedAt,modelCheckBlockedUntil:verified.modelCheckBlockedUntil};
     saveNv02Continuity(next);
     await continuityEvent('CHAT_ROTATED',{jobId:currentWork.jobId||null,issueRef:currentWork.issueRef,receiptRef:receipt.receiptRef,checkpointRef:receipt.checkpointRef,archiveStatus:archived.status,newChatStatus:opened.status,nextRefreshAt:next.nextRefreshAt});
     return dispatchCurrentWorkRestoreLocked(target,next,now,currentWork,receipt);
