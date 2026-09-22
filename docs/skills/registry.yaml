@@ -97,11 +97,12 @@ skills:
 
   - id: minimal-change-output
     title: Minimal Change Output
-    state: CANDIDATE
-    version: 0.1.0
+    state: ACTIVE
+    version: 1.0.0
     provenance_batch: owner-video-lessons-2026-09-18
     source_log: learning-log/2026-09-18-owner-video-lessons.md
     target: coding-lane
+    triggers: minimal change diff edit scope whole-file regeneration
     summary: Prefer scoped diffs and minimal edits; avoid whole-file regeneration when unnecessary.
 
   - id: capability-aware-model-routing
