@@ -935,6 +935,15 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
     await continuityEvent('PERIODIC_F5_REFRESH',{beforeUrl:refreshed?.beforeUrl||null,beforePhase:refreshed?.beforePhase||phase,afterUrl:refreshed?.afterUrl||null,afterPhase:refreshed?.afterPhase||null,nextPeriodicF5At:state.nextPeriodicF5At});
     return;
   }
+  if(!currentTrackedWork&&hasCurrentNv02Chat(state.resumeChatUrl)){
+    const restored=await withNv02Mutation(async()=>{
+      await navigate(target,state.resumeChatUrl);
+      await sleep(1200);
+      return{ok:true,status:'CURRENT_CHAT_RESTORED',url:state.resumeChatUrl};
+    },'CURRENT_CHAT_RESTORE',30000);
+    await continuityEvent(restored?.status==='MUTATION_LEASE_BUSY'?'CURRENT_CHAT_RESTORE_DEFERRED':'CURRENT_CHAT_RESTORED',{status:restored?.status||null,url:state.resumeChatUrl});
+    return;
+  }
   const modelCheckRequired=now>=Number(state.modelCheckBlockedUntil||0)&&(ui?.modelExact!==true||!state.verifiedChatUrl||!sameNv02Chat(state.verifiedChatUrl,ui?.url));
   if(phase==='STALLED'&&ui?.modelExact!==true&&modelCheckRequired){
     try{
@@ -946,16 +955,11 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
       state={...state,stalledChecks:0,nextContinueAt:now};saveNv02Continuity(state);
       if(corrected?.uiPhase==='READY')await dispatchNaturalContinue(target,state,now);
       return;
-    }catch(error){await continuityEvent('MODEL_PROFILE_RECOVERY_FAILED',{error:String(error?.message||error)});}
-  }
-  if(!currentTrackedWork&&hasCurrentNv02Chat(state.resumeChatUrl)){
-    const restored=await withNv02Mutation(async()=>{
-      await navigate(target,state.resumeChatUrl);
-      await sleep(1200);
-      return{ok:true,status:'CURRENT_CHAT_RESTORED',url:state.resumeChatUrl};
-    },'CURRENT_CHAT_RESTORE',30000);
-    await continuityEvent(restored?.status==='MUTATION_LEASE_BUSY'?'CURRENT_CHAT_RESTORE_DEFERRED':'CURRENT_CHAT_RESTORED',{status:restored?.status||null,url:state.resumeChatUrl});
-    return;
+    }catch(error){
+      state={...state,modelCheckBlockedUntil:now+60_000};
+      saveNv02Continuity(state);
+      await continuityEvent('MODEL_PROFILE_RECOVERY_FAILED',{error:String(error?.message||error),modelCheckBlockedUntil:state.modelCheckBlockedUntil});
+    }
   }
   if(!currentTrackedWork){
     if(now>=state.nextContinueAt){
