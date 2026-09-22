@@ -172,6 +172,8 @@ describe('NV02 continuity policy', () => {
     expect(continueDispatch).not.toContain('ensureNv02ModelProfile');
     expect(continueDispatch).toContain('getControllerState()');
     expect(continueDispatch).toContain('hasContinuableNv02Work(controllerState)');
+    expect(continueDispatch).toContain("typeof job?.issueRef==='string'");
+    expect(continueDispatch).toContain('CONTINUE_CURRENT_WORK_VERIFIED');
     expect(continueDispatch).toContain('CONTINUE_SKIPPED_NO_CURRENT_WORK');
     expect(continueDispatch).toContain('CONTINUE_SKIPPED_CURRENT_WORK_UNVERIFIED');
     expect(source).toContain("if(phase==='STALLED'&&ui?.modelExact!==true&&modelCheckRequired)");
