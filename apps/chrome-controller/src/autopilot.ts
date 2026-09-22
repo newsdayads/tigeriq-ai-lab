@@ -218,7 +218,3 @@ export function decideAutoContinue(
 export function freshAutopilotState(now = new Date()): DurableAutopilotState {
   return { phase: 'IDLE', updatedAt: now.toISOString() };
 }
-
-export function verifyAutopilotSpecCompliance(): boolean {
-  return true;
-}
