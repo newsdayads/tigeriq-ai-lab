@@ -102,6 +102,21 @@ async function fetchJson(url, init = {}, timeoutMs = 90000, onResponse = null) {
   } catch (e) { if (e.name === 'AbortError') { e.kind = 'timeout'; } throw e; }
   finally { clearTimeout(t); }
 }
+function openClawResourceActivated(){
+  try{
+    const parsed=JSON.parse(readFileSync(OPENCLAW_ACTIVATION_FILE,'utf8'));
+    return parsed?.enabled===true&&Number(parsed?.acceptanceIssue)===1528&&String(parsed?.runtimeState||'').toUpperCase()==='PASS';
+  }catch{return false;}
+}
+async function probeOpenClawGateway(){
+  const started=Date.now();
+  try{
+    const body=await fetchJson(OPENCLAW_GATEWAY_HEALTH_URL,{},3000);
+    return {ok:body?.ok===true||String(body?.status||'').toLowerCase()==='live',latencyMs:Date.now()-started,body};
+  }catch(error){
+    return {ok:false,latencyMs:Date.now()-started,error:String(error?.message||error)};
+  }
+}
 function quotaHeaderNumber(headers,name){const value=headers?.get?.(name);if(value===null||value===undefined||String(value).trim()==='')return null;const n=Number(value);return Number.isFinite(n)?Math.max(0,n):null;}
 function quotaResetDurationMs(value){
   const text=String(value||'').trim();if(!text)return null;
