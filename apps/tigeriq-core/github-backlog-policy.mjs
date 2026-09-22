@@ -30,3 +30,15 @@ export function sortBacklogSpecs(specs){
 export function detectIdleWithBacklog(activeCount, pendingQueueCount){
   return Number(activeCount || 0) === 0 && Number(pendingQueueCount || 0) > 0;
 }
+
+export function parseExecutableIssue(issue){
+  if(!issue||issue.pull_request||issue.state==='closed')return null;
+  const body=String(issue.body||'');
+  if(!exactBodyFlag(body,'TIGERIQ_EXECUTABLE','true'))return null;
+  if(exactBodyFlag(body,'SUPERSEDED_BY','true')||exactBodyFlag(body,'REVIEW_ONLY','true')||(exactBodyFlag(body,'CANONICAL_SPEC','true')&&!exactBodyFlag(body,'ACTIVE_EXECUTION','true')))return null;
+  return {number:issue.number,title:issue.title,body,state:issue.state,html_url:issue.html_url,ownerDirect:backlogOwnerDirect(body),priority:backlogPriority(body)};
+}
+
+export function validateBacklogContract(issue){
+  return parseExecutableIssue(issue)!==null;
+}
