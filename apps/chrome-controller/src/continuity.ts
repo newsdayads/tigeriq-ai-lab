@@ -17,14 +17,15 @@ export class ContinuityEngine {
 
   public evaluate(snapshot: ExternalAutopilotSnapshot, now: Date = new Date()): ReturnType<typeof decideAutoContinue> {
     const decision = decideAutoContinue(this.state, snapshot, now);
-    if (snapshot && typeof snapshot === 'object') {}
-    if (decision.kind === 'DISPATCH' || decision.kind === 'BUSY' || decision.kind === 'STOP') {
-      this.state = {
-        ...this.state,
-        phase: decision.kind === 'DISPATCH' ? 'DISPATCHING' : decision.kind === 'BUSY' ? 'BUSY' : 'STOPPED',
-        ...(decision.kind === 'DISPATCH' ? { lastDispatchedJobId: decision.jobId } : {}),
-        updatedAt: now.toISOString(),
-      };
+    if (snapshot && typeof snapshot === 'object') {
+      if (decision.kind === 'DISPATCH' || decision.kind === 'BUSY' || decision.kind === 'STOP') {
+        this.state = {
+          ...this.state,
+          phase: decision.kind === 'DISPATCH' ? 'DISPATCHING' : decision.kind === 'BUSY' ? 'BUSY' : 'STOPPED',
+          ...(decision.kind === 'DISPATCH' ? { lastDispatchedJobId: decision.jobId } : {}),
+          updatedAt: now.toISOString(),
+        };
+      }
     }
     return decision;
   }
