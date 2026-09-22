@@ -233,7 +233,8 @@ describe('isolated NV02 WORKING/F5 safety scope',()=>{
     expect(bridge).toContain("'WORKING_UNCHANGED_F5_RECHECK'");
     expect(bridge).toContain("'PERIODIC_F5_REFRESH'");
     expect(bridge).toContain("workingRecheckAt:Number(raw.workingRecheckAt)||0");
-    expect(bridge).toContain("nextPeriodicF5At:Number(raw.nextPeriodicF5At)||nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS)");
+    expect(bridge).toContain("let nextPeriodicF5At=Number(raw.nextPeriodicF5At)||nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS)");
+    expect(bridge).toContain("'NV02_F5_TIMERS_REBASED_AFTER_RESTART'");
     const hotLoop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
     const working=hotLoop.slice(hotLoop.indexOf("if(phase==='WORKING')"),hotLoop.indexOf('if(shouldRotateNv02Chat'));
     expect(working).toContain('reloadTarget(target)');
@@ -241,9 +242,13 @@ describe('isolated NV02 WORKING/F5 safety scope',()=>{
     expect(working).toContain('dispatchNaturalContinue');
     expect(working).not.toContain('stop');
     expect(working).not.toContain('restart-schedule');
-    expect(hotLoop.indexOf("if(phase==='WORKING')")).toBeLessThan(hotLoop.indexOf("if(now>=Number(state.nextPeriodicF5At||0))"));
+    expect(hotLoop.indexOf("if(phase==='WORKING')")).toBeLessThan(hotLoop.indexOf("if(currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0))"));
     expect(hotLoop.indexOf("if(phase==='WORKING')")).toBeLessThan(hotLoop.indexOf("if(now<state.nextContinueAt)return"));
-    const f5Block=bridge.slice(bridge.indexOf("if(now>=Number(state.nextPeriodicF5At||0))"),bridge.indexOf("const modelCheckRequired="));
+    const restoreGate=hotLoop.indexOf("if(!currentTrackedWork&&hasCurrentNv02Chat(state.resumeChatUrl))");
+    const periodicF5Gate=hotLoop.indexOf("if(currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0))");
+    expect(restoreGate).toBeGreaterThan(-1);
+    expect(periodicF5Gate).toBeGreaterThan(restoreGate);
+    const f5Block=bridge.slice(bridge.indexOf("if(currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0))"),bridge.indexOf("const modelCheckRequired="));
     expect(f5Block).not.toContain("nextContinueAt:now");
     expect(bridge).toContain("sameNv02Chat(state.verifiedChatUrl,ui?.url)");
     const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
