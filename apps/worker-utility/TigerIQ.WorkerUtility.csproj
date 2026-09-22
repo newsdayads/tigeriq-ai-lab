@@ -5,7 +5,7 @@
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <NoWarn>$(NoWarn);CS0169;CS0414;CS8618</NoWarn>
+    <NoWarn>$(NoWarn);CS0169;CS0414;CS8618;CS0168</NoWarn>
     <AssemblyName>TigerIQ.WorkerUtility</AssemblyName>
     <RootNamespace>TigerIQ.WorkerUtility</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
