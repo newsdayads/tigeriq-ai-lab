@@ -121,7 +121,7 @@ test('registry contains all required active skills', () => {
   const reg = loadSkillRegistry();
   const required = ['contextual-skill-loading', 'minimal-change-output', 'spec-first-tdd', 'external-skill-security-gate'];
   for (const id of required) {
-    const found = reg.skills.find(s => s.id === id);
+    const found = reg.skills.find((s: Entry) => s.id === id);
     assert.ok(found, `Missing required skill: ${id}`);
     assert.equal(found.state, 'ACTIVE');
   }
