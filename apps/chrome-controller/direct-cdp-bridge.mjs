@@ -123,6 +123,8 @@ function loadWorkerContinuity(workerId){
     recoveryBlockedUntil:Number(raw.recoveryBlockedUntil)||0,
     chatLoadRecoveryStage:Number(raw.chatLoadRecoveryStage)||0,
     chatLoadBlockedUntil:Number(raw.chatLoadBlockedUntil)||0,
+    chatLoadClearCandidateAt:Number(raw.chatLoadClearCandidateAt)||0,
+    chatLoadClearCandidateAt:Number(raw.chatLoadClearCandidateAt)||0,
   };
 }
 function saveWorkerContinuity(workerId,state){
@@ -564,17 +566,41 @@ async function withWorkerUiMutation(w,fn,purpose,ttlMs=30000){
   return w.id==='NV02'?withNv02Mutation(fn,purpose,ttlMs):withWorkerMutation(w.id,fn,purpose,ttlMs);
 }
 async function clearChatLoadRecovery(w,state,event,data={}){
-  const clean={...state,chatLoadRecoveryStage:0,chatLoadBlockedUntil:0};
+  const clean={...state,chatLoadRecoveryStage:0,chatLoadBlockedUntil:0,chatLoadClearCandidateAt:0};
   saveContinuityFor(w,clean);
   await continuityEventFor(w,event,data);
   return clean;
 }
+function chatLoadStableUi(ui){
+  return Boolean(ui&&!ui.chatLoadError&&!ui.authRequired&&!ui.securityBlock&&(ui.uiBusy===true||ui.composerReady===true));
+}
 async function maybeRecoverChatLoadError(w,target,ui,now=Date.now()){
   let state=loadContinuityFor(w);
   if(!ui?.chatLoadError){
-    if(Number(state.chatLoadRecoveryStage||0)>0||Number(state.chatLoadBlockedUntil||0)>0)
-      await clearChatLoadRecovery(w,state,'CHAT_LOAD_RECOVERED',{url:ui?.url||null});
+    const recoveryActive=Number(state.chatLoadRecoveryStage||0)>0||Number(state.chatLoadBlockedUntil||0)>0||Number(state.chatLoadClearCandidateAt||0)>0;
+    if(!recoveryActive)return false;
+    if(!chatLoadStableUi(ui)){
+      if(Number(state.chatLoadClearCandidateAt||0)>0){
+        state={...state,chatLoadClearCandidateAt:0};
+        saveContinuityFor(w,state);
+      }
+      await continuityEventFor(w,'CHAT_LOAD_RECOVERY_WAITING_STABLE_UI',{url:ui?.url||null,phase:ui?.uiPhase||null});
+      return true;
+    }
+    const candidateAt=Number(state.chatLoadClearCandidateAt||0);
+    if(!candidateAt){
+      state={...state,chatLoadClearCandidateAt:now};
+      saveContinuityFor(w,state);
+      await continuityEventFor(w,'CHAT_LOAD_RECOVERY_STABLE_CANDIDATE',{url:ui?.url||null});
+      return true;
+    }
+    if(now-candidateAt<5000)return true;
+    await clearChatLoadRecovery(w,state,'CHAT_LOAD_RECOVERED_STABLE',{url:ui?.url||null,stableMs:now-candidateAt});
     return false;
+  }
+  if(Number(state.chatLoadClearCandidateAt||0)>0){
+    state={...state,chatLoadClearCandidateAt:0};
+    saveContinuityFor(w,state);
   }
   if(now<Number(state.chatLoadBlockedUntil||0)){
     await continuityEventFor(w,'CHAT_UNLOADABLE_BACKOFF',{url:ui?.url||null,blockedUntil:state.chatLoadBlockedUntil});
@@ -585,7 +611,12 @@ async function maybeRecoverChatLoadError(w,target,ui,now=Date.now()){
     const result=await withWorkerUiMutation(w,()=>evalPage(target,chatLoadRetryExpr()),'CHAT_LOAD_RETRY',15000);
     await sleep(2200);
     const after=await uiStateRaw(target).catch(()=>null);
-    if(after&&!after.chatLoadError){await clearChatLoadRecovery(w,state,'CHAT_LOAD_RECOVERED_AFTER_RETRY',{url:after.url||null});return true;}
+    if(chatLoadStableUi(after)){
+      const candidate={...state,chatLoadRecoveryStage:1,chatLoadClearCandidateAt:Date.now()};
+      saveContinuityFor(w,candidate);
+      await continuityEventFor(w,'CHAT_LOAD_RETRY_STABLE_CANDIDATE',{url:after?.url||null});
+      return true;
+    }
     state={...state,chatLoadRecoveryStage:1};
     saveContinuityFor(w,state);
     await continuityEventFor(w,'CHAT_LOAD_RETRY_EXHAUSTED',{status:result?.status||null,url:ui?.url||null});
@@ -595,7 +626,12 @@ async function maybeRecoverChatLoadError(w,target,ui,now=Date.now()){
     const result=await withWorkerUiMutation(w,()=>reloadTarget(target),'CHAT_LOAD_F5',20000);
     await sleep(2500);
     const after=await uiStateRaw(target).catch(()=>null);
-    if(after&&!after.chatLoadError){await clearChatLoadRecovery(w,state,'CHAT_LOAD_RECOVERED_AFTER_F5',{url:after.url||null});return true;}
+    if(chatLoadStableUi(after)){
+      const candidate={...state,chatLoadRecoveryStage:2,chatLoadClearCandidateAt:Date.now()};
+      saveContinuityFor(w,candidate);
+      await continuityEventFor(w,'CHAT_LOAD_F5_STABLE_CANDIDATE',{url:after?.url||null});
+      return true;
+    }
     state={...state,chatLoadRecoveryStage:2};
     saveContinuityFor(w,state);
     await continuityEventFor(w,'CHAT_LOAD_F5_EXHAUSTED',{status:result?.status||null,url:ui?.url||null});
