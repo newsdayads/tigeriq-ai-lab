@@ -84,6 +84,7 @@ export function buildOpenClawPrompt(envelope){
     `INSTRUCTION=${e.instruction}`,
     `ACCEPTANCE=${e.acceptance}`,
     'Execute ONLY this assigned work through the bounded TigerIQ tools. Do not inspect or choose other work.',
+    'On retry/recovery, inspect current state first. If acceptance already holds, do not repeat the mutation; return evidence of the already-satisfied state.',
     'Return a concise final JSON object with status, evidence, and blocker. Never claim success without tool evidence.',
   ].join('\n');
 }
@@ -134,7 +135,7 @@ export async function ensureOpenClawDispatch(rawEnvelope,options={}){
   let record=await readOpenClawDispatchRecord(recordPath);
   let created=false;
   if(!record){
-    record={schema:'TIGERIQ_OPENCLAW_DISPATCH_STATE_V1',state:'prepared',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),envelope};
+    record={schema:'TIGERIQ_OPENCLAW_DISPATCH_STATE_V1',state:'prepared',attempts:0,recoveryCount:0,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),envelope};
     try{
       const handle=await fs.open(recordPath,'wx');
       await handle.writeFile(JSON.stringify(record,null,2),'utf8');
@@ -149,9 +150,14 @@ export async function ensureOpenClawDispatch(rawEnvelope,options={}){
   if(TERMINAL.has(record.state))return {created:false,launched:false,recordPath,record};
   if(record.state==='running'&&processAlive(record.workerPid))return {created:false,launched:false,recordPath,record};
   if(record.state==='running'&&!processAlive(record.workerPid)){
-    const blocked={...record,state:'failed',failure:{kind:'orphaned_worker',message:'OPENCLAW_DISPATCH_WORKER_MISSING_AFTER_DURABLE_ADMISSION'},updatedAt:new Date().toISOString(),completedAt:new Date().toISOString()};
-    await atomicWrite(recordPath,blocked);
-    return {created:false,launched:false,recordPath,record:blocked};
+    const attempts=Math.max(0,Number(record.attempts)||0);
+    if(attempts>=2){
+      const blocked={...record,state:'failed',failure:{kind:'orphaned_worker_retry_exhausted',message:'OPENCLAW_DISPATCH_WORKER_MISSING_AFTER_BOUNDED_RECOVERY'},updatedAt:new Date().toISOString(),completedAt:new Date().toISOString()};
+      await atomicWrite(recordPath,blocked);
+      return {created:false,launched:false,recordPath,record:blocked};
+    }
+    record={...record,state:'prepared',previousWorkerPid:record.workerPid||null,workerPid:null,recoveryCount:Math.max(0,Number(record.recoveryCount)||0)+1,updatedAt:new Date().toISOString()};
+    await atomicWrite(recordPath,record);
   }
   const lockPath=launchFile(recordPath);
   let lock;
@@ -163,7 +169,7 @@ export async function ensureOpenClawDispatch(rawEnvelope,options={}){
   }
   try{
     const child=spawnWorker(recordPath);
-    const next={...record,state:'running',workerPid:Number(child?.pid)||null,launchedAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
+    const next={...record,state:'running',attempts:Math.max(0,Number(record.attempts)||0)+1,workerPid:Number(child?.pid)||null,launchedAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
     await atomicWrite(recordPath,next);
     return {created,launched:true,recordPath,record:next};
   }finally{
@@ -185,6 +191,17 @@ export async function waitOpenClawDispatch(rawEnvelope,options={}){
   return {...first,record,terminal:TERMINAL.has(record?.state),elapsedMs:Date.now()-started};
 }
 
+export function parseOpenClawAgentResult(payloadText){
+  const raw=String(payloadText||'').trim();
+  if(!raw)return null;
+  const fenced=raw.match(/```json\s*([\s\S]*?)```/i);
+  const candidate=(fenced?.[1]||raw).trim();
+  try{return JSON.parse(candidate);}catch{}
+  const first=candidate.indexOf('{'),last=candidate.lastIndexOf('}');
+  if(first>=0&&last>first){try{return JSON.parse(candidate.slice(first,last+1));}catch{}}
+  return null;
+}
+
 export function compactOpenClawCliResult(parsed,exitCode,stderr=''){
   const status=String(parsed?.status||'').toLowerCase();
   const payloadText=Array.isArray(parsed?.result?.payloads)
@@ -192,9 +209,11 @@ export function compactOpenClawCliResult(parsed,exitCode,stderr=''){
     :'';
   const meta=parsed?.result?.meta?.agentMeta||{};
   const receipt=meta?.terminalReceipt||{};
+  const agentResult=parseOpenClawAgentResult(payloadText);
   return {
     exitCode:Number(exitCode),
     status:status||null,
+    agentResult,
     runId:parsed?.runId||receipt?.runId||null,
     sessionId:meta?.sessionId||receipt?.sessionId||null,
     provider:meta?.provider||receipt?.effective?.provider||null,
@@ -237,10 +256,12 @@ export async function runDispatchWorkerRecord(recordPath,options={}){
     if(first>=0&&last>first)parsed=JSON.parse(stdout.slice(first,last+1));
   }catch{}
   const result=compactOpenClawCliResult(parsed,exitCode,stderr);
-  const success=!timedOut&&exitCode===0&&parsed&& !['timeout','failed','error','aborted'].includes(String(result.status||'').toLowerCase());
+  const agentStatus=String(result.agentResult?.status||'').toLowerCase();
+  const successAgentStatuses=new Set(['pass','passed','ok','success','completed','done']);
+  const success=!timedOut&&exitCode===0&&parsed&&!['timeout','failed','error','aborted'].includes(String(result.status||'').toLowerCase())&&result.agentResult&&successAgentStatuses.has(agentStatus);
   const finalState=success?'completed':'failed';
   const final={...running,state:finalState,result,updatedAt:new Date().toISOString(),completedAt:new Date().toISOString(),
-    ...(success?{}:{failure:{kind:timedOut?'worker_timeout':(result.status||'openclaw_failure'),message:result.text||result.stderr||'OPENCLAW_DISPATCH_FAILED'}})};
+    ...(success?{}:{failure:{kind:timedOut?'worker_timeout':(agentStatus||result.status||'openclaw_failure'),message:String(result.agentResult?.blocker||result.text||result.stderr||'OPENCLAW_DISPATCH_FAILED').slice(0,2000)}})};
   await atomicWrite(recordPath,final);
   return final;
 }
