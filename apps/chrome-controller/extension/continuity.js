@@ -24,6 +24,38 @@ export const CONTINUE_PROMPTS = Object.freeze([
 
 export const CONTINUE_MIN_MS = 5 * 60 * 1000;
 export const CONTINUE_MAX_MS = 10 * 60 * 1000;
+export const REFRESH_MIN_MS = 30 * 60 * 1000;
+export const REFRESH_MAX_MS = 60 * 60 * 1000;
+export const WORKER_REFRESH_MIN_MS = 30 * 60 * 1000;
+export const WORKER_REFRESH_MAX_MS = 60 * 60 * 1000;
+export const WORKER_F5_MIN_MS = 5 * 60 * 1000;
+export const WORKER_F5_MAX_MS = 10 * 60 * 1000;
+export const MAX_STALLED_CHECKS = 3;
+
+export function createContinuityManager() {
+  const states = new Map();
+  return {
+    getState(workerId) {
+      return states.get(workerId) || { status: 'READY', stalledCount: 0, lastCheck: Date.now() };
+    },
+    setState(workerId, state) {
+      states.set(workerId, { ...this.getState(workerId), ...state, lastCheck: Date.now() });
+    },
+    reset() {
+      states.clear();
+    }
+  };
+}
+
+export function deriveNv02Phase(job) {
+  if (!job) return 'IDLE';
+  if (job.completedAt) return 'DONE';
+  return job.stage || 'WORKING';
+}
+
+export function hasActiveNv02Work(controller) {
+  return (controller?.jobs || []).some((job) => !job?.completedAt);
+}onst CONTINUE_MAX_MS = 10 * 60 * 1000;
 export const REFRESH_MIN_MS = 2 * 60 * 60 * 1000;
 export const REFRESH_MAX_MS = 4 * 60 * 60 * 1000;
 export const MAX_STALLED_CHECKS = 3;
