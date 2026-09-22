@@ -73,4 +73,16 @@ describe('runtime updater squash merge gate resolution',()=>{
     expect(launcher).toContain('Copy-Item -LiteralPath $asset.FullName -Destination $tmp -Force');
     expect(launcher).toContain('Move-Item -LiteralPath $tmp -Destination $target -Force');
   });
+  it('gates OpenClaw apply on functional canary, rolls updater/plugin changes back on failure, and avoids reconcile restart loops',()=>{
+    const src=readFileSync('scripts/tigeriq-core/update-core-runtime.ps1','utf8');
+    expect(src).toContain('function Reconcile-OpenClawRuntime([string]$installedSha)');
+    expect(src).toContain("reason='terminal_canary_blocked'");
+    expect(src).toContain("if([string]$openclawReconcile.action -eq 'restarted')");
+    expect(src).toContain("if([string]$preOpenclawCanary.result -eq 'PASS'){Save-OpenClawAppliedState (OpenClaw-TreeSha)}");
+    expect(src).toContain('if($impact.updater -or $impact.openclaw)');
+    expect(src).toContain("throw ('OPENCLAW_FUNCTIONAL_CANARY_FAILED:'+ $why)");
+    expect(src).toContain('if($impact.openclaw){Save-OpenClawAppliedState $tree}');
+    expect(src).toContain('if($null -eq $openclawCanary){$openclawCanary=Invoke-OpenClawCanary $remote (OpenClaw-TreeSha)}');
+  });
+
 });
