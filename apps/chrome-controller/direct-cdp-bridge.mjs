@@ -33,6 +33,7 @@ const NV02_PROJECT_PREFIX=(()=>{try{return new URL(NV02_HOME_URL).pathname.repla
 const NV02_PROJECT_ID=(()=>{const m=NV02_PROJECT_PREFIX.match(/^\/g\/(g-p-[a-z0-9]+)(?:-[^/]+)?$/i);return m?.[1]||''})();
 const NV02_PROJECT_ID_PREFIX=NV02_PROJECT_ID?`/g/${NV02_PROJECT_ID}`:'';
 const busy=new Set();
+const workerConnectivityBackoff=new Map();
 let nv02VerifiedModelProfile=null;
 let nv02MutationBusy=false;
 const NV02_ISOLATED_AUTO_CONTINUE=true;
@@ -1045,9 +1046,16 @@ async function postWorkerHeartbeat(w,target,ui,projectContextReady){
 }
 
 async function tickWorker(w){
+  const backoff=workerConnectivityBackoff.get(w.id);
+  if(backoff&&Date.now()<Number(backoff.until||0))return;
   if(busy.has(w.id))return;busy.add(w.id);
   try{
-    const port=workerPort(w);const list=await targets(port);const target=await pruneDuplicates(w,list);if(!target)return;
+    const port=workerPort(w);const list=await targets(port);
+    if(backoff){
+      workerConnectivityBackoff.delete(w.id);
+      log('WORKER_CONNECTIVITY_RECOVERED',{workerId:w.id,attempt:Number(backoff.attempt||0)});
+    }
+    const target=await pruneDuplicates(w,list);if(!target)return;
     const rawUi=await uiState(target);
     const projectContextReady=w.id!=='NV02'||isNv02ProjectContext(rawUi.url)||rawUi.projectDraftReady===true;
     const ui=projectContextReady?rawUi:{...rawUi,uiReady:false,uiPhase:'STALLED',modelReady:false};
@@ -1092,7 +1100,17 @@ async function tickWorker(w){
     else if(CONTINUITY_WORKERS.includes(w.id))await maybeWorkerContinuity(w,target,ui);
   }catch(error){
     const msg=String(error?.message||error);
-    if(!/CDP_LIST|AbortError|TimeoutError/.test(msg))log('WORKER_TICK_ERROR',{workerId:w.id,error:msg});
+    const connectivityFailure=/fetch failed|ECONNREFUSED|ECONNRESET|CDP_LIST|CDP_OPEN|AbortError|TimeoutError|UND_ERR_CONNECT_TIMEOUT/i.test(msg);
+    if(w.id!=='NV02'&&connectivityFailure){
+      const prior=workerConnectivityBackoff.get(w.id);
+      const attempt=Math.min(Number(prior?.attempt||0)+1,5);
+      const delayMs=Math.min(60_000,5_000*(2**(attempt-1)));
+      const until=Date.now()+delayMs;
+      workerConnectivityBackoff.set(w.id,{attempt,until,lastError:msg});
+      log('WORKER_CONNECTIVITY_BACKOFF',{workerId:w.id,attempt,delayMs,until,error:msg});
+    }else if(!/CDP_LIST|AbortError|TimeoutError/.test(msg)){
+      log('WORKER_TICK_ERROR',{workerId:w.id,error:msg});
+    }
   }finally{busy.delete(w.id);}
 }
 
