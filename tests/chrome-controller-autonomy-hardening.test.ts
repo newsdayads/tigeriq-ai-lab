@@ -232,7 +232,7 @@ describe('isolated NV02 WORKING/F5 safety scope',()=>{
     expect(bridge).toContain("'WORKING_LONG_RUNNING_NO_MUTATION'");
     expect(bridge).toContain("'WORKING_UNCHANGED_F5_RECHECK'");
     expect(bridge).toContain("'PERIODIC_F5_REFRESH'");
-    expect(bridge).toContain("workingRecheckAt:Number(raw.workingRecheckAt)||0");
+    expect(bridge).toContain("let workingRecheckAt=Number(raw.workingRecheckAt)||0");
     expect(bridge).toContain("let nextPeriodicF5At=Number(raw.nextPeriodicF5At)||nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS)");
     expect(bridge).toContain("'NV02_F5_TIMERS_REBASED_AFTER_RESTART'");
     const hotLoop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
