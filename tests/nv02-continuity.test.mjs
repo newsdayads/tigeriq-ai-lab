@@ -317,12 +317,12 @@ describe('NV02 continuity policy', () => {
     expect(resumeModeIndex).toBeGreaterThan(-1);
     expect(modelWaitIndex).toBeGreaterThan(resumeModeIndex);
     expect(installer.indexOf("Set-OwnerMode ([bool]$ResumeAutomation)",resumeModeIndex+1)).toBe(-1);
-    expect(installer).toContain("$effectiveConfig.autopilot.enabled=$true");
+    expect(installer).toContain("$effectiveConfig.autopilot.enabled=$false");
     expect(installer).toContain("$effectiveConfig.autopilot.stateUrl='http://127.0.0.1:8794/api/ui-autopilot/snapshot'");
-    expect(installer).toContain('APP_CHROME_AUTOPILOT_ENABLE_FAILED');
+    expect(installer).toContain('APP_CHROME_AUTOPILOT_DISABLE_FAILED');
     expect(installer).toContain('APP_CHROME_STATE_URL_MISMATCH');
     const example=JSON.parse(readFileSync('apps/chrome-controller/chrome-controller.config.example.json','utf8'));
-    expect(example.autopilot.enabled).toBe(true);
+    expect(example.autopilot.enabled).toBe(false);
     expect(example.autopilot.stateUrl).toBe('http://127.0.0.1:8794/api/ui-autopilot/snapshot');
     expect(installer).toContain("Invoke-Native -File 'git' -ArgumentList");
     expect(installer).toContain("Invoke-Native -File 'npm' -ArgumentList");
