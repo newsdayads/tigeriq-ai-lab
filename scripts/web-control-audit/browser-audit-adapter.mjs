@@ -72,6 +72,9 @@ export async function runBrowserAudit(targetUrl,viewports,options={}){
       const viewport=viewportList[index];
       const label=viewport.label||`${viewport.width}x${viewport.height}`;
       await client.callTool({name:'resize_page',arguments:{pageId,width:viewport.width,height:viewport.height}});
+      const mobile=String(label).toLowerCase()==='mobile';
+      const emulatedViewport=`${viewport.width}x${viewport.height}x1${mobile?',mobile,touch':''}`;
+      await client.callTool({name:'emulate',arguments:{pageId,viewport:emulatedViewport}});
 
       const dom=await evalJson(client,pageId,`() => ({
         title:document.title,
@@ -126,7 +129,7 @@ export async function runBrowserAudit(targetUrl,viewports,options={}){
       if(badConsole.length)failures.push('MATERIAL_CONSOLE_ERROR');
       if(badNetwork.length)failures.push('MATERIAL_NETWORK_ERROR');
 
-      const row={viewport:{...viewport,label},pass:failures.length===0,resized,dom,live,badConsole,badNetwork,snapshotLength:snapshot.length,failures};
+      const row={viewport:{...viewport,label},emulatedViewport,pass:failures.length===0,resized,dom,live,badConsole,badNetwork,snapshotLength:snapshot.length,failures};
       results.push(row);
       if(evidenceDir){
         fs.writeFileSync(path.join(evidenceDir,`snapshot-${index}-${label}.txt`),snapshot);
