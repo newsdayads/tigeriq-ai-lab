@@ -12,7 +12,7 @@ export function hasExactFlag(body,key,value='true'){
   return new RegExp(`^${key.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}=${value.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}$`,'m').test(String(body||''));
 }
 
-export function parseExecutableIssue(issue){
+export function parseExecutableIssue(issue){if(!issue||issue.pull_request||issue.state!=='open') return null;
   if(!issue||issue.pull_request||issue.state!=='open') return null;
   const body=String(issue.body||'');
   if(!hasExactFlag(body,'TIGERIQ_EXECUTABLE')) return null;
