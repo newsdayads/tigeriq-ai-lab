@@ -57,7 +57,8 @@ test('updater runs one sanitized deterministic OpenClaw canary per installed SHA
   assert.match(script,/if\(-not \$previousReported\)/);
   assert.doesNotMatch(script,/openclaw\.cmd[^\n]*\sagent\b|--agent\b|--timeout 90/);
 
-  assert.match(canary,/runtimeAction = executeRuntimeAction/);\n  assert.match(canary,/runtimeAction\(\{ action: 'core_status' \}\)/);
+  assert.match(canary,/runtimeAction = executeRuntimeAction/);
+  assert.match(canary,/runtimeAction\(\{ action: 'core_status' \}\)/);
   assert.match(canary,/action: 'task_status', taskName: GATEWAY_TASK/);
   assert.match(canary,/action: 'tcp_probe', host: '127\.0\.0\.1', port: 18789/);
   assert.match(canary,/action: 'shell_exec'/);
@@ -76,7 +77,7 @@ test('OpenClaw plugin manifest advances runtime tree for post-bootstrap canary r
 
 test('updater rearms exactly one OpenClaw canary when policy generation changes',()=>{
   assert.match(script,/\$openclawCanaryPolicyGeneration='20260922_DETERMINISTIC_CANARY_2'/);
-  assert.match(script,/policyGeneration=\\$openclawCanaryPolicyGeneration/);
+  assert.match(script,/\('policyGeneration='\+\$openclawCanaryPolicyGeneration\)/);
   assert.equal((script.match(/PSObject\.Properties\.Name -contains 'policyGeneration'/g)||[]).length,2);
   assert.equal((script.match(/\[string\]\$previous\.policyGeneration -eq \$openclawCanaryPolicyGeneration/g)||[]).length,2);
 });
