@@ -56,6 +56,13 @@ test('updater emits one sanitized OpenClaw typed-tool canary per installed SHA a
 });
 
 
+test('updater rearms exactly one OpenClaw canary when policy generation changes',()=>{
+  assert.match(script,/\\$openclawCanaryPolicyGeneration='20260922_LIFECYCLE_REPAIR_1'/);
+  assert.match(script,/policyGeneration=\\$openclawCanaryPolicyGeneration/);
+  assert.equal((script.match(/PSObject\\.Properties\\.Name -contains 'policyGeneration'/g)||[]).length,2);
+  assert.equal((script.match(/\\[string\\]\\$previous\\.policyGeneration -eq \\$openclawCanaryPolicyGeneration/g)||[]).length,2);
+});
+
 test('updater restores owner-resumed APP Chrome before OpenClaw acceptance gating',()=>{
   assert.match(script,/OWNER_RUNTIME_RESUME=true/);
   assert.match(script,/function Invoke-AppChromeOwnerResume/);
