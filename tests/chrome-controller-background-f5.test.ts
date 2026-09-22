@@ -39,7 +39,7 @@ describe('Chrome Controller Background F5 Refresh Timer', () => {
     await bg.scheduleF5Refresh();
     expect(bg.nextF5RefreshAt).toBeGreaterThan(0);
     
-    // Verify nextF5RefreshAt is set between 5 and 10 minutes from now
+    // Verify nextF5RefreshAt is set within configured refresh bounds
     const diff = bg.nextF5RefreshAt - Date.now();
     expect(diff).toBeGreaterThanOrEqual(bg.F5_REFRESH_MIN_MS - 100);
     expect(diff).toBeLessThanOrEqual(bg.F5_REFRESH_MAX_MS + 100);
