@@ -4,6 +4,7 @@ const CACHE_MS = Number(process.env.TIGERIQ_REGISTRY_CACHE_MS || 60000);
 
 const fallbackAssignments = new Map([
   ['NV01',{ employee_id:'NV01', name:'Minh', admin_state:'MANUAL_ONLY / READY' }],
+  ['NV09',{ employee_id:'NV09', name:'Qwen3-Coder Local', admin_state:'IDLE_ON_DEMAND / LOCAL_OLLAMA_11434 / CODING_CAPABILITY / RANK_PRIMARY' }],
   ['NV02',{ employee_id:'NV02', name:'ChatGPT Plus', admin_state:'AVAILABLE_MANUAL / PRIMARY_UI_EXECUTOR / SEPARATE_CHROME_SESSION / NOT_CHIEF_OF_STAFF' }],
   ['NV03',{ employee_id:'NV03', name:'ChatGPT Go', admin_state:'AVAILABLE_MANUAL / SECOND_REVIEW / SUPPORT_UI_ACCOUNT' }],
   ['NV04',{ employee_id:'NV04', name:'Gemini Pro', admin_state:'AVAILABLE_MANUAL / DEEP_RESEARCH / INDEPENDENT_REVIEW / PAID_SUBSCRIPTION_CONFIRMED_2026-09-14' }],
