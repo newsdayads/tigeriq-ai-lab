@@ -19,6 +19,16 @@ chrome.runtime.onMessage.addListener((m, _sender, sendResponse) => {
     sendResponse({ ok: true, states: statesObj });
     return true;
   }
+  if (m?.type === 'TIGERIQ_MANUAL_RESET_CONTINUITY') {
+    continuityManager.reset(m?.workerId);
+    sendResponse({ ok: true });
+    return true;
+  }3', 'NV04'].forEach(id => {
+      statesObj[id] = continuityManager.getState(id);
+    });
+    sendResponse({ ok: true, states: statesObj });
+    return true;
+  }
   if (m?.type === 'TIGERIQ_RESET_CONTINUITY') {
     continuityManager.reset(m.workerId);
     sendResponse({ ok: true });
