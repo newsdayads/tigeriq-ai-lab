@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { WORKER_IDS } from '../apps/chrome-controller/src/model.js';
 import { classifyWorkerPresence, processProbeFromCount } from '../apps/chrome-controller/src/worker-presence.js';
 import { BrowserMutationLeaseStore } from '../apps/chrome-controller/src/browser-mutation-lease.js';
+import { beginWorkerRecoveryLifecycle, endWorkerRecoveryLifecycle } from '../apps/chrome-controller/extension/continuity.js';
 import {
   persistWorkerSafetyStateOrFailClosed,
   readWorkerSafetyState,
@@ -45,6 +46,28 @@ describe('planned reset mutation lease handoff',()=>{
     expect(()=>store.assertControllerAllowed('NV03',1_001)).toThrow(/BROWSER_MUTATION_LEASE_BUSY/);
     expect(store.release('NV03',ownerId,acquired.lease.leaseId)).toBe(true);
     expect(()=>store.assertControllerAllowed('NV03',1_002)).not.toThrow();
+  });
+});
+
+describe('worker recovery lifecycle guard',()=>{
+  it('suppresses reentrant recovery and advances reset eligibility before async recovery',()=>{
+    const inFlight=new Set();
+    const first=beginWorkerRecoveryLifecycle(inFlight,'NV03',{nextResetAt:1,recoveryAttempts:0},1_000,5_000);
+    expect(first.acquired).toBe(true);
+    expect(first.state.nextResetAt).toBe(5_000);
+    expect(first.state.nextResetAt).toBeGreaterThan(1_000);
+    expect(inFlight.has('NV03')).toBe(true);
+
+    const second=beginWorkerRecoveryLifecycle(inFlight,'NV03',{nextResetAt:1,recoveryAttempts:0},1_100,6_000);
+    expect(second.acquired).toBe(false);
+    expect(second.state.recoveryAttempts).toBe(0);
+
+    endWorkerRecoveryLifecycle(inFlight,'NV03');
+    expect(inFlight.has('NV03')).toBe(false);
+    const third=beginWorkerRecoveryLifecycle(inFlight,'NV03',{nextResetAt:1,recoveryAttempts:0},1_200,6_500);
+    expect(third.acquired).toBe(true);
+    expect(third.state.nextResetAt).toBe(6_500);
+    endWorkerRecoveryLifecycle(inFlight,'NV03');
   });
 });
 
@@ -128,6 +151,7 @@ describe('independent worker recovery flows in direct-cdp-bridge',()=>{
   it('runs one continuity loop for all three configured workers with independent locks/state',()=>{
     expect(source).toContain("CONTINUITY_WORKERS.map((id)=>config.workers.find((w)=>w.id===id))");
     expect(source).toContain("workerMutationBusy.has(w.id)");
+    expect(source).toContain("const workerRecoveryBusy=new Set()");
     expect(source).toContain("function loadWorkerContinuity(workerId)");
     expect(source).toContain("function saveWorkerContinuity(workerId,state)");
     expect(source).toContain("function acquireWorkerOwnership(workerId)");
@@ -157,6 +181,11 @@ describe('independent worker recovery flows in direct-cdp-bridge',()=>{
     expect(reopen.indexOf("/safe-recover")).toBeGreaterThan(closePhaseEnd);
     expect(reopen).toContain("post(`/api/utility/workers/${w.id}/safe-recover`,w.id,{reason},120000)");
     expect(reopen).toContain("leaseOwnerId:lease.ownerId,leaseId:lease.leaseId");
+    expect(reopen).toContain("beginWorkerRecoveryLifecycle(workerRecoveryBusy,w.id,state,now,nextWorkerResetAt(w.id,now))");
+    expect(reopen).toContain("RECOVERY_IN_FLIGHT_DEFERRED");
+    expect(reopen).toContain("endWorkerRecoveryLifecycle(workerRecoveryBusy,w.id)");
+    expect(reopen.indexOf("saveWorkerContinuity(w.id,checkpointed)")).toBeLessThan(reopen.indexOf("/safe-recover"));
+    expect(reopen).not.toContain("nextResetAt:nextWorkerResetAt(w.id,now),lastPhase:'STALLED'");
     expect(source).toContain("resumeUrl");
   });
 
