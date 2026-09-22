@@ -200,6 +200,13 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("modelCheckBlockedUntil:Number(raw.modelCheckBlockedUntil)||0");
 
     expect(source).toContain("verifiedChatUrl:String(raw.verifiedChatUrl||'')");
+    expect(source).toContain("resumeChatUrl:String(raw.resumeChatUrl||(hasCurrentNv02Chat(raw.verifiedChatUrl)?raw.verifiedChatUrl:'')||'')");
+    expect(source).toContain("resumeChatUrl:hasCurrentNv02Chat(currentUrl)?currentUrl:state.resumeChatUrl");
+    expect(source).toContain("if(hasCurrentNv02Chat(state.resumeChatUrl)){");
+    expect(source).toContain("await navigate(target,state.resumeChatUrl)");
+    expect(source).toContain("'CURRENT_CHAT_RESTORE'");
+    expect(source).toContain("'CURRENT_CHAT_RESTORED'");
+
     expect(source).toContain("sameNv02Chat(state.verifiedChatUrl,ui?.url)");
     expect(source).toContain("const modelCheckRequired=now>=Number(state.modelCheckBlockedUntil||0)&&(ui?.modelExact!==true||!state.verifiedChatUrl||!sameNv02Chat(state.verifiedChatUrl,ui?.url))");
     expect(source).toContain("phase==='STALLED'&&ui?.modelExact!==true&&modelCheckRequired");
@@ -210,10 +217,12 @@ describe('NV02 continuity policy', () => {
     expect(noCurrentChatGate).toBeGreaterThan(modelRecoveryGate);
 
     expect(source).not.toContain("state.verifiedChatUrl===ui?.url");
-    expect(source).toContain("verifiedChatUrl:String(profile.url||'')");
+    expect(source).toContain("const currentUrl=String(profile.url||'')");
+    expect(source).toContain("verifiedChatUrl:currentUrl");
     expect(source).toContain("location.hostname==='chatgpt.com'?Boolean(stop):Boolean(stop||activityBusy)");
     expect(source).toContain("function sameNv02Chat(a,b)");
-    expect(source).toContain("pages.find(t=>sameNv02Chat(t.url,state?.verifiedChatUrl))");
+    expect(source).toContain("const preferredChatUrl=state?.resumeChatUrl||state?.verifiedChatUrl||''");
+    expect(source).toContain("pages.find(t=>sameNv02Chat(t.url,preferredChatUrl))");
 
 
     const f5Block=source.slice(source.indexOf("if(now>=Number(state.nextPeriodicF5At||0))"),source.indexOf("const modelCheckRequired="));

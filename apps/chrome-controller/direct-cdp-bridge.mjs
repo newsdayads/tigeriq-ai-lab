@@ -318,6 +318,7 @@ function loadNv02Continuity(){
     workingUnchangedChecks:Number(raw.workingUnchangedChecks)||0,
     nextProgressCheckAt:Number(raw.nextProgressCheckAt)||0,
     verifiedChatUrl:String(raw.verifiedChatUrl||''),
+    resumeChatUrl:String(raw.resumeChatUrl||(hasCurrentNv02Chat(raw.verifiedChatUrl)?raw.verifiedChatUrl:'')||''),
     modelVerifiedAt:String(raw.modelVerifiedAt||''),
     modelCheckBlockedUntil:Number(raw.modelCheckBlockedUntil)||0,
     rotationRetryAt:Number(raw.rotationRetryAt)||0,
@@ -394,7 +395,8 @@ function pageTargetsFor(w,list){
 async function pruneDuplicates(w,list){
   const pages=pageTargetsFor(w,list);if(pages.length<=1)return pages[0]||null;
   const state=w.id==='NV02'?loadNv02Continuity():null;
-  const keep=pages.find(t=>sameNv02Chat(t.url,state?.verifiedChatUrl))
+  const preferredChatUrl=state?.resumeChatUrl||state?.verifiedChatUrl||'';
+  const keep=pages.find(t=>sameNv02Chat(t.url,preferredChatUrl))
     ||pages.find(t=>hasCurrentNv02Chat(t.url))
     ||pages.find(t=>{try{return new URL(t.url).pathname===new URL(w.homeUrl).pathname}catch{return false}})
     ||pages[0];
@@ -514,7 +516,8 @@ async function ensureNv02ModelProfile(target){
   }
   if(profile?.modelExact!==true||profile?.modelName!=='GPT-5.6 Sol'||profile?.reasoningEffort!=='High')throw new Error('MODEL_PROFILE_MISMATCH');
   const state=loadNv02Continuity();
-  saveNv02Continuity({...state,verifiedChatUrl:String(profile.url||''),modelVerifiedAt:String(profile.verifiedAt||new Date().toISOString())});
+  const currentUrl=String(profile.url||'');
+  saveNv02Continuity({...state,verifiedChatUrl:currentUrl,resumeChatUrl:hasCurrentNv02Chat(currentUrl)?currentUrl:state.resumeChatUrl,modelVerifiedAt:String(profile.verifiedAt||new Date().toISOString())});
   await continuityEvent('MODEL_PROFILE_VERIFIED',{modelName:profile.modelName,reasoningEffort:profile.reasoningEffort,verifiedAt:profile.verifiedAt||null});
   return profile;
 }
@@ -576,6 +579,12 @@ function projectNewChatExpr(){
   return `(()=>{const labels=['Trò chuyện mới trong TigerIQ AI Lab','New chat in TigerIQ AI Lab'];const matches=[...document.querySelectorAll('button,[role="button"]')].filter(e=>labels.includes((e.getAttribute('aria-label')||'').trim()));if(matches.length!==1)return{ok:false,status:'PROJECT_NEW_CHAT_BUTTON_COUNT_'+matches.length};matches[0].click();return{ok:true,status:'PROJECT_NEW_CHAT_CLICKED'}})()`;
 }
 async function recoverNv02ProjectContext(target){
+  const state=loadNv02Continuity();
+  if(hasCurrentNv02Chat(state.resumeChatUrl)){
+    await navigate(target,state.resumeChatUrl);
+    await sleep(1200);
+    return{ok:true,status:'CURRENT_CHAT_RESTORED',url:state.resumeChatUrl};
+  }
   for(let attempt=0;attempt<12;attempt+=1){
     const p=await pageRpc(target);
     try{
@@ -872,7 +881,7 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
   }
   const phase=deriveNv02Phase(ui||{});
   const currentTrackedWork=hasCurrentNv02Chat(ui?.url);
-  state={...state,lastPhase:phase};saveNv02Continuity(state);
+  state={...state,lastPhase:phase,...(currentTrackedWork?{resumeChatUrl:String(ui.url||'')}:{})};saveNv02Continuity(state);
   if(phase==='BLOCKED'){await continuityEvent('BLOCKED',{securityBlock:ui?.securityBlock||null});return;}
   if(phase==='WORKING'){
     if(now<Number(state.nextProgressCheckAt||0))return;
@@ -938,6 +947,15 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
       if(corrected?.uiPhase==='READY')await dispatchNaturalContinue(target,state,now);
       return;
     }catch(error){await continuityEvent('MODEL_PROFILE_RECOVERY_FAILED',{error:String(error?.message||error)});}
+  }
+  if(!currentTrackedWork&&hasCurrentNv02Chat(state.resumeChatUrl)){
+    const restored=await withNv02Mutation(async()=>{
+      await navigate(target,state.resumeChatUrl);
+      await sleep(1200);
+      return{ok:true,status:'CURRENT_CHAT_RESTORED',url:state.resumeChatUrl};
+    },'CURRENT_CHAT_RESTORE',30000);
+    await continuityEvent(restored?.status==='MUTATION_LEASE_BUSY'?'CURRENT_CHAT_RESTORE_DEFERRED':'CURRENT_CHAT_RESTORED',{status:restored?.status||null,url:state.resumeChatUrl});
+    return;
   }
   if(!currentTrackedWork){
     if(now>=state.nextContinueAt){
