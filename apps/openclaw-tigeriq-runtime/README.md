@@ -8,7 +8,8 @@ OpenClaw tools for PC01:
 `tigeriq_pc` supports:
 - exact `TigerIQ ...` Scheduled Task status/start/stop/restart;
 - process listing and allowlisted local TCP probes;
-- text file read/write/list/stat inside `D:\TigerIQ`, `D:\OpenClaw`, and `D:\TigerIQ-OpenClaw`;
+- text file read/list/stat inside `D:\TigerIQ`, `D:\OpenClaw`, and `D:\TigerIQ-OpenClaw`;
+- text file writes only inside `D:\TigerIQ\State`, `D:\TigerIQ\Evidence`, `D:\TigerIQ\Logs`, and `D:\TigerIQ-OpenClaw\state`;
 - a strict diagnostic shell allowlist for read-only Git/OpenClaw/Ollama inspection.
 
 Guardrails:
