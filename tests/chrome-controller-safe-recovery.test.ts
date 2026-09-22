@@ -251,6 +251,15 @@ describe('safe recovery contracts',()=>{
     expect(windowEvent).toContain('if(recoveryEligible&&!plannedRefresh)void recoveryTick()');
   });
 
+  it('returns safe-recover before waiting for the replacement heartbeat',()=>{
+    const utilityStart=server.indexOf('const utilityMatch=');
+    const utility=server.slice(utilityStart,server.indexOf('const match=url.pathname.match',utilityStart));
+    const safeRecover=utility.slice(utility.indexOf("if(action==='safe-recover')"),utility.indexOf("if(action==='archive')"));
+    expect(safeRecover).toContain('void recoverWorker(workerId)');
+    expect(safeRecover).toContain("json(res,202,{ok:true,mode:'BROKER_LAUNCH_SCHEDULED'})");
+    expect(safeRecover).not.toContain('await startWorker(workerId)');
+  });
+
   it('keeps paused workers out of unattended start/autopilot paths',()=>{
     expect(server).toContain('START_ALL_SKIPPED_UTILITY_PAUSED');
     expect(server).toContain("if(utilityPausedWorkers.has(workerId)){setAutopilotPhase('IDLE')");
