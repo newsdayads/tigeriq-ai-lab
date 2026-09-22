@@ -408,6 +408,23 @@ describe('Direct-CDP Controller command transport',()=>{
 });
 
 
+
+describe('NV02 reboot F5 consolidation #1525',()=>{
+  it('rebases stale NV02 F5 timers once and restores current chat before periodic F5',()=>{
+    const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    expect(bridge).toContain('let nv02BootF5ScheduleInitialized=false');
+    expect(bridge).toContain("'NV02_F5_TIMERS_REBASED_AFTER_RESTART'");
+    const loop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
+    const restore=loop.indexOf("if(!currentTrackedWork&&hasCurrentNv02Chat(state.resumeChatUrl))");
+    const f5=loop.indexOf("if(currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0))");
+    expect(restore).toBeGreaterThan(-1);
+    expect(f5).toBeGreaterThan(restore);
+    const f5Block=loop.slice(f5,loop.indexOf('const modelCheckRequired='));
+    expect(f5Block).toContain('reloadTarget(target)');
+    expect(f5Block).not.toContain('nextContinueAt:now');
+  });
+});
+
 describe('APP Chrome UI-only continuity regression #1525',()=>{
   it('keeps NV03/NV04 continuation on the assigned UI chat without Core/controller job truth',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
