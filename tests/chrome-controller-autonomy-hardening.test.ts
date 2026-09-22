@@ -513,7 +513,7 @@ describe('APP Chrome unified runtime supervisor #1525',()=>{
     expect(launcher).toContain('Owner-AutomationAllowed');
     expect(launcher).toContain("OWNER_PAUSE_PRESERVED");
     expect(launcher).toContain('PORT_IDENTITY_PROBE_FAILED');
-    expect(launcher).toContain("service-ne'chrome-launch-broker'");
+    expect(launcher).toContain("service -ne 'chrome-launch-broker'");
     expect(launcher).toContain('runtimeProvenance.deployRoot');
     expect(launcher).not.toContain('Get-CimInstance Win32_Process');
     expect(launcher).not.toMatch(/^\\s*\\$pid\\s*=/im);
