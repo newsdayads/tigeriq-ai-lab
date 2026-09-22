@@ -509,6 +509,10 @@ describe('APP Chrome unified runtime supervisor #1525',()=>{
     expect(launcher).toContain("Invoke-RestMethod -Uri 'http://127.0.0.1:8798/api/state'");
     expect(launcher).toContain("Invoke-RestMethod -Uri 'http://127.0.0.1:8799/health'");
     expect(launcher).toContain('Start-Sleep -Seconds $PollSeconds');
+    expect(launcher).toContain("Global\\\\TigerIQ.AppChrome.Unified.Supervisor");
+    expect(launcher).toContain('Owner-AutomationAllowed');
+    expect(launcher).toContain("OWNER_PAUSE_PRESERVED");
+    expect(launcher).toContain('PORT_OWNER_COMMANDLINE_UNAVAILABLE');
     expect(launcher).not.toContain('Stop-Process -Name chrome');
   });
 
