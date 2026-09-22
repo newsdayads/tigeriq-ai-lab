@@ -15,6 +15,8 @@ type BrokerLaunchState={
 const config=loadConfig(process.argv[2]);
 const host='127.0.0.1';
 const port=Number(process.env.TIGERIQ_CHROME_LAUNCH_BROKER_PORT||8800);
+const approvedHead=String(process.env.TIGERIQ_APPROVED_HEAD||'').trim();
+const deployRoot=String(process.env.TIGERIQ_DEPLOY_ROOT||'').trim();
 mkdirSync(config.logDir,{recursive:true});
 const launchStatePath=resolve(config.logDir,'chrome-launch-broker-state.json');
 
@@ -96,7 +98,7 @@ async function launch(workerId:WorkerId,p:WindowPlacement){
 const server=createServer(async(req,res)=>{
   try{
     const url=new URL(req.url||'/','http://127.0.0.1');
-    if(req.method==='GET'&&url.pathname==='/health')return json(res,200,{ok:true,service:'chrome-launch-broker',port});
+    if(req.method==='GET'&&url.pathname==='/health')return json(res,200,{ok:true,service:'chrome-launch-broker',port,approvedHead:approvedHead||null,deployRoot:deployRoot||null});
     const presenceMatch=url.pathname.match(/^\/api\/presence\/(NV02|NV03|NV04)$/);
     if(req.method==='GET'&&presenceMatch)return json(res,200,await presence(presenceMatch[1] as WorkerId));
     if(req.method==='POST'&&url.pathname==='/api/launch'){
