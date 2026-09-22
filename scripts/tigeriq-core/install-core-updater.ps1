@@ -1,10 +1,15 @@
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 $taskName='TigerIQ Core Runtime Updater'
-$script='D:\TigerIQ\Workspace\tigeriq-ai-lab\scripts\tigeriq-core\update-core-runtime.ps1'
-if(-not(Test-Path -LiteralPath $script)){throw 'UPDATER_SCRIPT_MISSING'}
+$sourceScript='D:\TigerIQ\Workspace\tigeriq-ai-lab\scripts\tigeriq-core\update-core-runtime.ps1'
+$runtimeScript='D:\TigerIQ\Runtime\CoreUpdater\update-core-runtime.ps1'
+if(-not(Test-Path -LiteralPath $sourceScript)){throw 'UPDATER_SCRIPT_MISSING'}
+New-Item -ItemType Directory -Path (Split-Path -Parent $runtimeScript) -Force|Out-Null
+$tmp=$runtimeScript+'.tmp'
+Copy-Item -LiteralPath $sourceScript -Destination $tmp -Force
+Move-Item -LiteralPath $tmp -Destination $runtimeScript -Force
 $ps='C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
-$action=New-ScheduledTaskAction -Execute $ps -Argument "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$script`" -IntervalSeconds 120"
+$action=New-ScheduledTaskAction -Execute $ps -Argument "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$runtimeScript`" -IntervalSeconds 120"
 $trigger=New-ScheduledTaskTrigger -AtStartup
 $settings=New-ScheduledTaskSettingsSet -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero) -StartWhenAvailable
 $principal=New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest

@@ -77,3 +77,16 @@ test('updater canary control flow remains single-copy and syntactically complete
   assert.match(script,/elseif\(\$output -match 'TIGERIQ_OPENCLAW_PC_OPERATOR_BLOCKED'\)\{\$reason='AGENT_REPORTED_BLOCKED'\}/);
   assert.doesNotMatch(script,/\n\)\{\$result='PASS';\$reason='PC_OPERATOR_E2E_PASS'\}/);
 });
+
+test('updater scheduled task executes the runtime self-updated copy and self-heals drift',()=>{
+  const installer=readFileSync(new URL('../scripts/tigeriq-core/install-core-updater.ps1',import.meta.url),'utf8');
+  assert.match(installer,/\$runtimeScript='D:\\\\TigerIQ\\Runtime\\CoreUpdater\\update-core-runtime\.ps1'/);
+  assert.match(installer,/Copy-Item -LiteralPath \$sourceScript -Destination \$tmp -Force/);
+  assert.match(installer,/New-ScheduledTaskAction -Execute \$ps -Argument ".*\$runtimeScript.*"/);
+  assert.doesNotMatch(installer,/New-ScheduledTaskAction[^\n]+\$sourceScript/);
+  assert.match(script,/function Ensure-UpdaterTaskRuntimeTarget/);
+  assert.match(script,/Set-ScheduledTask -TaskName \$updaterTask -Action \$newAction/);
+  assert.match(script,/if\(\$impact\.updater\)\{Sync-UpdaterRuntime;\$updaterTaskTarget=Ensure-UpdaterTaskRuntimeTarget\}/);
+  assert.match(script,/updaterTaskTarget=\$updaterTaskTarget/);
+  assert.match(script,/Restart-UpdaterAfterExit;exit 75/);
+});

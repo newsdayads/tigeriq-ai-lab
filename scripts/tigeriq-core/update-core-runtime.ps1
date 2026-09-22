@@ -85,6 +85,21 @@ function Sync-UpdaterRuntime(){
   New-Item -ItemType Directory -Path (Split-Path -Parent $updaterRuntime) -Force|Out-Null
   $tmp=$updaterRuntime+'.tmp';Copy-Item -LiteralPath $source -Destination $tmp -Force;Move-Item -LiteralPath $tmp -Destination $updaterRuntime -Force
 }
+function Ensure-UpdaterTaskRuntimeTarget(){
+  $task=Get-ScheduledTask -TaskName $updaterTask -ErrorAction SilentlyContinue
+  if(-not $task){return @{action='missing';reason='UPDATER_TASK_MISSING'}}
+  $action=@($task.Actions|Select-Object -First 1)
+  $expectedExe='C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
+  $expectedArgs="-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$updaterRuntime`" -IntervalSeconds $IntervalSeconds"
+  $currentExe=[string]$action.Execute
+  $currentArgs=[string]$action.Arguments
+  if($currentExe -ieq $expectedExe -and $currentArgs -match [regex]::Escape($updaterRuntime)){
+    return @{action='none';target=$updaterRuntime}
+  }
+  $newAction=New-ScheduledTaskAction -Execute $expectedExe -Argument $expectedArgs
+  Set-ScheduledTask -TaskName $updaterTask -Action $newAction|Out-Null
+  return @{action='retargeted';target=$updaterRuntime;previousExecute=$currentExe;previousArguments=$currentArgs}
+}
 function HealthInfo([string]$url){try{$r=Invoke-RestMethod -Uri $url -TimeoutSec 5;if($r.ok){return $r}}catch{};return $null}
 function Owner-AppChromeResumeRequested(){
   try{
@@ -401,7 +416,8 @@ while($true){
     Ensure-NodeModules $runtimeRepo
     Save-RuntimeSourceState $remote $previousRuntimeSha $gateSha
     Sync-Launchers
-    if($impact.updater){Sync-UpdaterRuntime}
+    $updaterTaskTarget=@{action='none';target=$updaterRuntime}
+    if($impact.updater){Sync-UpdaterRuntime;$updaterTaskTarget=Ensure-UpdaterTaskRuntimeTarget}
     $coreHealth=$oldCore;$webHealth=$null;$codingHealth=$null;$openclawHealth=$null;$openclawCanary=$null
     try{
       if($impact.core){$coreHealth=Restart-Core $oldPid;if(-not $coreHealth){throw 'CORE_HEALTH_OR_PID_FAILED'}}
@@ -436,7 +452,7 @@ while($true){
     }
     $newCore=HealthInfo 'http://100.97.23.87:8795/health'
     if($null -eq $openclawCanary){$openclawCanary=Invoke-OpenClawCanary $remote (OpenClaw-TreeSha)}
-    Save-State @{result='UPDATED';installedSha=$remote;gateSha=$gateSha;previousSha=$previousRuntimeSha;runtimeSource=$runtimeRepo;appChromeRecovery=$appChromeRecovery;changedPaths=$changed;impact=$impact;openclawReconcile=$openclawReconcile;openclawCanary=$openclawCanary;corePid=if($newCore){[int]$newCore.pid}else{$null};previousCorePid=$oldPid;coreRestarted=$impact.core;webRestarted=$impact.web;codingRestarted=$impact.coding;openclawRestarted=$impact.openclaw;openclawPortHealthy=if($openclawHealth){[bool]$openclawHealth.healthy}else{$null};webPid=if($webHealth){$webHealth.pid}else{$null};codingPid=if($codingHealth){$codingHealth.pid}else{$null};watchdog=$watchdog}
+    Save-State @{result='UPDATED';installedSha=$remote;gateSha=$gateSha;previousSha=$previousRuntimeSha;runtimeSource=$runtimeRepo;appChromeRecovery=$appChromeRecovery;changedPaths=$changed;impact=$impact;updaterTaskTarget=$updaterTaskTarget;openclawReconcile=$openclawReconcile;openclawCanary=$openclawCanary;corePid=if($newCore){[int]$newCore.pid}else{$null};previousCorePid=$oldPid;coreRestarted=$impact.core;webRestarted=$impact.web;codingRestarted=$impact.coding;openclawRestarted=$impact.openclaw;openclawPortHealthy=if($openclawHealth){[bool]$openclawHealth.healthy}else{$null};webPid=if($webHealth){$webHealth.pid}else{$null};codingPid=if($codingHealth){$codingHealth.pid}else{$null};watchdog=$watchdog}
     if($impact.updater){Restart-UpdaterAfterExit;exit 75}
   }catch{Save-State @{result='FAILED';error=$_.Exception.Message;watchdog=$watchdog}}
   finally{Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue;if($locked){$mutex.ReleaseMutex()|Out-Null}}
