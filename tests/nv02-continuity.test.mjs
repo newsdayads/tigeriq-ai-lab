@@ -197,6 +197,8 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("nextPeriodicF5At:Number(raw.nextPeriodicF5At)||nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS)");
     expect(source).toContain("nextPeriodicF5At:nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS)");
     expect(source).toContain("modelCheckBlockedUntil:now+30000");
+    expect(source).toContain("modelCheckBlockedUntil:now+60_000");
+    expect(source).toContain("MODEL_PROFILE_RECOVERY_FAILED");
     expect(source).toContain("modelCheckBlockedUntil:Number(raw.modelCheckBlockedUntil)||0");
 
     expect(source).toContain("verifiedChatUrl:String(raw.verifiedChatUrl||'')");
@@ -211,8 +213,11 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("const modelCheckRequired=now>=Number(state.modelCheckBlockedUntil||0)&&(ui?.modelExact!==true||!state.verifiedChatUrl||!sameNv02Chat(state.verifiedChatUrl,ui?.url))");
     expect(source).toContain("phase==='STALLED'&&ui?.modelExact!==true&&modelCheckRequired");
     expect(source).toContain("phase==='STALLED'&&ui?.modelExact!==true&&modelCheckRequired");
+    const currentChatRestoreGate=continuityLoop.indexOf("if(!currentTrackedWork&&hasCurrentNv02Chat(state.resumeChatUrl))");
     const modelRecoveryGate=continuityLoop.indexOf("if(phase==='STALLED'&&ui?.modelExact!==true&&modelCheckRequired)");
     const noCurrentChatGate=continuityLoop.indexOf("if(!currentTrackedWork)");
+    expect(currentChatRestoreGate).toBeGreaterThan(-1);
+    expect(currentChatRestoreGate).toBeLessThan(modelRecoveryGate);
     expect(modelRecoveryGate).toBeGreaterThan(-1);
     expect(noCurrentChatGate).toBeGreaterThan(modelRecoveryGate);
 
