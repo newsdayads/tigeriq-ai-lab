@@ -128,14 +128,20 @@ test('installer retires stale Supervisor V2 before starting the runtime updater'
 
 test('updater performs bounded reconcile for TigerIQ Live Status Bridge without creating or reconfiguring it',()=>{
   assert.match(script,/\$liveStatusBridgeTask='TigerIQ Live Status Bridge'/);
-  assert.doesNotMatch(script,/New-ScheduledTask[\s\S]*?\$liveStatusBridgeTask/);
-  assert.doesNotMatch(script,/Register-ScheduledTask[\s\S]*?\$liveStatusBridgeTask/);
-  assert.doesNotMatch(script,/Set-ScheduledTask[\s\S]*?\$liveStatusBridgeTask/);
+  assert.doesNotMatch(script,/New-ScheduledTask\s+-TaskName\s+\$liveStatusBridgeTask/);
+  assert.doesNotMatch(script,/Register-ScheduledTask\s+-TaskName\s+\$liveStatusBridgeTask/);
+  assert.doesNotMatch(script,/Set-ScheduledTask\s+-TaskName\s+\$liveStatusBridgeTask/);
   assert.match(script,/TASK_ABSENT/);
   assert.match(script,/TASK_NOT_FOUND/);
   assert.match(script,/Start-ScheduledTask -TaskName \$liveStatusBridgeTask/);
   assert.match(script,/liveStatusBridgeReconcile=\$liveStatusBridgeReconcile/);
   assert.match(script,/stateName -ne 'Running'/);
+  assert.match(script,/function Invoke-LiveStatusBridgeReconcile/);
+  const steadyStateReconcile=script.indexOf('$liveStatusBridgeReconcile=Invoke-LiveStatusBridgeReconcile');
+  const noChange=script.indexOf("if($runtimeExists -and $local -eq $remote)");
+  assert.ok(steadyStateReconcile>=0 && noChange>steadyStateReconcile,'Live Status Bridge reconcile must run before NO_CHANGE');
+  assert.equal((script.match(/\$liveStatusBridgeReconcile=Invoke-LiveStatusBridgeReconcile/g)||[]).length,1);
+  assert.match(script,/result='NO_CHANGE'[^\n]+liveStatusBridgeReconcile=\$liveStatusBridgeReconcile/);
 });
 
 test('bootstrap stops the old updater instance before re-registering its task',()=>{
