@@ -75,6 +75,7 @@ const WORKER_CONTINUITY_DIR='D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\worke
 try{fs.mkdirSync(WORKER_CONTINUITY_DIR,{recursive:true});}catch{}
 const workerMutationBusy=new Set();
 const bootResetScheduleInitialized=new Set();
+const bootF5ScheduleInitialized=new Set();
 const WORKER_RESET_MAX_ATTEMPTS=2;
 const WORKER_RESET_STAGGER_MS=2*60*1000;
 function workerStatePath(workerId){return join(WORKER_CONTINUITY_DIR,`${String(workerId).toLowerCase()}.json`);}
@@ -96,10 +97,19 @@ function loadWorkerContinuity(workerId){
       log('WORKER_RESET_TIMER_REBASED_AFTER_RESTART',{workerId,previousNextResetAt,nextResetAt});
     }
   }
+  let nextPeriodicF5At=Number(raw.nextPeriodicF5At)||nextRandomAt(now,WORKER_F5_MIN_MS,WORKER_F5_MAX_MS);
+  if(!bootF5ScheduleInitialized.has(workerId)){
+    bootF5ScheduleInitialized.add(workerId);
+    if(nextPeriodicF5At<=now){
+      const previousNextPeriodicF5At=nextPeriodicF5At;
+      nextPeriodicF5At=nextRandomAt(now,WORKER_F5_MIN_MS,WORKER_F5_MAX_MS);
+      log('WORKER_F5_TIMER_REBASED_AFTER_RESTART',{workerId,previousNextPeriodicF5At,nextPeriodicF5At});
+    }
+  }
   return {
     workerId,
     nextContinueAt:Number(raw.nextContinueAt)||nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),
-    nextPeriodicF5At:Number(raw.nextPeriodicF5At)||nextRandomAt(now,WORKER_F5_MIN_MS,WORKER_F5_MAX_MS),
+    nextPeriodicF5At,
     nextResetAt,
     lastPrompt:String(raw.lastPrompt||''),
     lastPhase:String(raw.lastPhase||'STALLED'),
@@ -231,7 +241,7 @@ async function maybeWorkerContinuity(w,target,ui){
     return;
   }
 
-  if(Number(state.nextPeriodicF5At||0)<=now){
+  if(phase!=='WORKING'&&Number(state.nextPeriodicF5At||0)<=now){
     const refreshed=await withWorkerMutation(w.id,async()=>{
       const beforeUrl=ui?.url||null,beforePhase=phase;
       const result=await reloadTarget(target);
@@ -252,11 +262,18 @@ async function maybeWorkerContinuity(w,target,ui){
     const next={...state,workingSignature:signature,workingUnchangedChecks:unchanged,nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS,stalledChecks:0};
     saveWorkerContinuity(w.id,next);
     await genericWorkerEvent(w.id,'WORKING_PROGRESS_CHECK',{workingUnchangedChecks:unchanged});
-    if(unchanged>=MAX_WORKING_UNCHANGED_CHECKS)await reopenWorker(w,target,next,now,'WORKING_NO_PROGRESS_3_CHECKS');
+    if(unchanged>=MAX_WORKING_UNCHANGED_CHECKS){
+      await genericWorkerEvent(w.id,'WORKING_LONG_RUNNING_NO_MUTATION',{workingUnchangedChecks:unchanged});
+    }
     return;
   }
 
   if(phase==='READY'){
+    if(state.stalledChecks||state.recoveryAttempts||state.recoveryBlockedUntil){
+      state={...state,stalledChecks:0,recoveryAttempts:0,recoveryBlockedUntil:0};
+      saveWorkerContinuity(w.id,state);
+      await genericWorkerEvent(w.id,'READY_RECOVERY_STATE_CLEARED');
+    }
     if(now<Number(state.nextContinueAt||0))return;
     let controllerState=null;
     try{controllerState=await getControllerState();}
@@ -1104,7 +1121,7 @@ async function tickWorker(w){
     if(w.id!=='NV02'&&connectivityFailure){
       const prior=workerConnectivityBackoff.get(w.id);
       const attempt=Math.min(Number(prior?.attempt||0)+1,5);
-      const delayMs=Math.min(60_000,5_000*(2**(attempt-1)));
+      const delayMs=Math.min(20_000,5_000*(2**(attempt-1)));
       const until=Date.now()+delayMs;
       workerConnectivityBackoff.set(w.id,{attempt,until,lastError:msg});
       log('WORKER_CONNECTIVITY_BACKOFF',{workerId:w.id,attempt,delayMs,until,error:msg});
