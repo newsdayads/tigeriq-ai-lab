@@ -32,7 +32,7 @@ states:
 skills:
   - id: contextual-skill-loading
     title: Contextual Skill Loading
-    state: CANDIDATE
+    state: ACTIVE
     version: 1.0.0
     provenance_batch: owner-video-lessons-2026-09-18
     source_log: learning-log/2026-09-18-owner-video-lessons.md
@@ -51,7 +51,7 @@ skills:
 
   - id: spec-first-tdd
     title: SPEC-First and TDD When Appropriate
-    state: CANDIDATE
+    state: ACTIVE
     version: 1.0.0
     provenance_batch: owner-video-lessons-2026-09-18
     source_log: learning-log/2026-09-18-owner-video-lessons.md
@@ -89,7 +89,7 @@ skills:
 
   - id: minimal-change-output
     title: Minimal Change Output
-    state: CANDIDATE
+    state: ACTIVE
     version: 1.0.0
     provenance_batch: owner-video-lessons-2026-09-18
     source_log: learning-log/2026-09-18-owner-video-lessons.md
