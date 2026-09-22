@@ -31,6 +31,12 @@ states:
 
 skills:
   - id: contextual-skill-loading
+    state: ACTIVE
+    version: 1.0.0
+    provenance_batch: owner-video-lessons-2026-09-18
+    source_log: learning-log/2026-09-18-owner-video-lessons.md
+    target: skill-intake
+    summary: Contextual skill loading based on immediate environment.
     title: Contextual Skill Loading
     state: CANDIDATE
     version: 0.1.0
@@ -50,6 +56,12 @@ skills:
     summary: Filter irrelevant context, reserve headroom, compact milestones and resume from durable references.
 
   - id: spec-first-tdd
+    state: ACTIVE
+    version: 1.0.0
+    provenance_batch: owner-video-lessons-2026-09-18
+    source_log: learning-log/2026-09-18-owner-video-lessons.md
+    target: testing-lane
+    summary: Specification-first TDD based on immediate environment.
     title: SPEC-First and TDD When Appropriate
     state: CANDIDATE
     version: 0.1.0
@@ -79,6 +91,12 @@ skills:
     summary: Separate planning, implementation, review and verification where risk or value justifies it.
 
   - id: external-skill-security-gate
+    state: ACTIVE
+    version: 1.0.0
+    provenance_batch: owner-video-lessons-2026-09-18
+    source_log: learning-log/2026-09-18-owner-video-lessons.md
+    target: skill-intake
+    summary: External skill security gate based on audit provenance, pinned version, installer behavior and capabilities.
     title: External Skill Security Gate
     state: CANDIDATE
     version: 0.1.0
@@ -88,6 +106,12 @@ skills:
     summary: Audit provenance, pinned version, installer behavior and capabilities before executable use.
 
   - id: minimal-change-output
+    state: ACTIVE
+    version: 1.0.0
+    provenance_batch: owner-video-lessons-2026-09-18
+    source_log: learning-log/2026-09-18-owner-video-lessons.md
+    target: coding-lane
+    summary: Minimal change output based on scoped diffs and minimal edits.
     title: Minimal Change Output
     state: CANDIDATE
     version: 0.1.0
