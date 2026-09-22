@@ -496,3 +496,35 @@ describe('NV04 Gemini assigned-route continuity #1525',()=>{
     expect(bridge).toContain("if(isAssignedWorkerChat(w,ui?.url))state={...state,resumeUrl:String(ui.url||''),lastPhase:phase}");
   });
 });
+
+
+describe('APP Chrome unified runtime supervisor #1525',()=>{
+  it('keeps the unified task alive, re-reads active deploy, and self-heals only trusted ChromeController listeners',()=>{
+    const launcher=readFileSync('apps/chrome-controller/runtime/Start-Unified-AppChrome.ps1','utf8');
+    expect(launcher).toContain('while($true)');
+    expect(launcher).toContain('Read-ValidatedActive');
+    expect(launcher).toContain('Stop-StaleTrustedListener');
+    expect(launcher).toContain('PORT_OWNED_BY_UNTRUSTED_PROCESS');
+    expect(launcher).toContain("Write-SupervisorEvent 'LIVE_VERIFIED'");
+    expect(launcher).toContain("Invoke-RestMethod -Uri 'http://127.0.0.1:8798/api/state'");
+    expect(launcher).toContain("Invoke-RestMethod -Uri 'http://127.0.0.1:8799/health'");
+    expect(launcher).toContain('Start-Sleep -Seconds $PollSeconds');
+    expect(launcher).toContain("Global\\\\TigerIQ.AppChrome.Unified.Supervisor");
+    expect(launcher).toContain('Owner-AutomationAllowed');
+    expect(launcher).toContain("OWNER_PAUSE_PRESERVED");
+    expect(launcher).toContain('PORT_OWNER_COMMANDLINE_UNAVAILABLE');
+    expect(launcher).not.toContain('Stop-Process -Name chrome');
+  });
+
+  it('activates a new exact-head deploy without requiring a PC reboot',()=>{
+    const launcher=readFileSync('apps/chrome-controller/runtime/Start-Unified-AppChrome.ps1','utf8');
+    const readActive=launcher.indexOf('$active=Read-ValidatedActive');
+    const stopStale=launcher.indexOf('Stop-StaleTrustedListener');
+    const verify=launcher.indexOf('Wait-LiveVerified $active');
+    expect(readActive).toBeGreaterThan(-1);
+    expect(stopStale).toBeGreaterThan(-1);
+    expect(verify).toBeGreaterThan(readActive);
+    expect(launcher).toContain('$headChanged=$lastHead-ne$active.head');
+    expect(launcher).toContain('$cmd-notlike("*"+$InstallRoot+"*")');
+  });
+});
