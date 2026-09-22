@@ -8,6 +8,7 @@ import {
   MAX_STALLED_CHECKS, WORKING_PROGRESS_CHECK_MS, MAX_WORKING_UNCHANGED_CHECKS, shouldRotateNv02Chat,
   deriveNv02Phase, deriveWorkerPhase, hasActiveNv02Work, hasWaitingEvidenceNv02Work, hasContinuableNv02Work, hasContinuableWorkerWork,
   nextRandomAt, randomDelay, pickContinuePrompt, computeWorkerStaggerDelay,
+  beginWorkerRecoveryLifecycle, endWorkerRecoveryLifecycle,
 } from './extension/continuity.js';
 import { buildDurableSavePrompt, waitForDurableSaveReceipt } from './extension/save-receipt.js';
 
@@ -73,6 +74,7 @@ function sameNv02Chat(a,b){
 const WORKER_CONTINUITY_DIR='D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\worker-continuity';
 try{fs.mkdirSync(WORKER_CONTINUITY_DIR,{recursive:true});}catch{}
 const workerMutationBusy=new Set();
+const workerRecoveryBusy=new Set();
 const WORKER_RESET_MAX_ATTEMPTS=2;
 const WORKER_RESET_STAGGER_MS=2*60*1000;
 function workerStatePath(workerId){return join(WORKER_CONTINUITY_DIR,`${String(workerId).toLowerCase()}.json`);}
@@ -136,63 +138,75 @@ async function genericWorkerEvent(workerId,event,data={}){
   log('WORKER_CONTINUITY_EVENT',{workerId,event,...data});
 }
 async function reopenWorker(w,target,state,now,reason){
-  if(Number(state.recoveryBlockedUntil)>now)return state;
-  if(state.recoveryAttempts>=WORKER_RESET_MAX_ATTEMPTS){
-    const blocked={...state,recoveryAttempts:0,recoveryBlockedUntil:now+15*60*1000,lastPhase:'STALLED'};
-    saveWorkerContinuity(w.id,blocked);
-    await genericWorkerEvent(w.id,'RECOVERY_BOUNDED_STOP',{reason,recoveryBlockedUntil:blocked.recoveryBlockedUntil});
-    return blocked;
-  }
-  const resumeUrl=validWorkerUrl(w,state.resumeUrl)?state.resumeUrl:(validWorkerUrl(w,target?.url)?target.url:'');
-  const checkpointed={...state,resumeUrl,recoveryAttempts:state.recoveryAttempts+1,lastPhase:'STALLED'};
-  saveWorkerContinuity(w.id,checkpointed);
-  await genericWorkerEvent(w.id,'RESET_CHECKPOINTED',{reason,resumeUrl,recoveryAttempt:checkpointed.recoveryAttempts});
-  const closeResult=await withWorkerMutation(w.id,async(lease)=>{
-    await post(`/api/utility/workers/${w.id}/plan-refresh`,w.id,{reason,leaseOwnerId:lease.ownerId,leaseId:lease.leaseId});
-    await closeWorker(w,target);
-    return {ok:true,status:'WORKER_CLOSED_FOR_REOPEN'};
-  },`WORKER_REOPEN_CLOSE:${reason}`,60000);
-  if(closeResult?.status==='MUTATION_LEASE_BUSY'){
-    const deferred={...checkpointed,recoveryBlockedUntil:now+5000};
+  const lifecycle=beginWorkerRecoveryLifecycle(workerRecoveryBusy,w.id,state,now,nextWorkerResetAt(w.id,now));
+  if(!lifecycle.acquired){
+    const deferred={...state,recoveryBlockedUntil:Math.max(Number(state.recoveryBlockedUntil)||0,now+5000)};
     saveWorkerContinuity(w.id,deferred);
+    await genericWorkerEvent(w.id,'RECOVERY_IN_FLIGHT_DEFERRED',{reason,recoveryBlockedUntil:deferred.recoveryBlockedUntil});
     return deferred;
   }
-
-  await sleep(1200);
-  let reopened=null,lastError=null;
-  for(let attempt=1;attempt<=WORKER_RESET_MAX_ATTEMPTS;attempt+=1){
-    try{
-      await post(`/api/utility/workers/${w.id}/safe-recover`,w.id,{reason},120000);
-      let replacement=null;
-      for(let poll=0;poll<20;poll+=1){
-        await sleep(750);
-        try{
-          const list=await targets(workerPort(w));
-          replacement=await pruneDuplicates(w,list);
-          if(replacement)break;
-        }catch{}
-      }
-      if(!replacement)throw new Error('WORKER_REOPEN_TARGET_NOT_FOUND');
-      if(resumeUrl&&validWorkerUrl(w,resumeUrl)&&replacement.url!==resumeUrl){
-        const restoreResult=await withWorkerMutation(w.id,async()=>{
-          await navigate(replacement,resumeUrl);
-          await sleep(1200);
-          return {ok:true,status:'WORKER_RESUME_URL_RESTORED'};
-        },`WORKER_RESUME_NAVIGATE:${reason}`,30000);
-        if(restoreResult?.status==='MUTATION_LEASE_BUSY')throw new Error('MUTATION_LEASE_BUSY');
-      }
-      reopened={ok:true,status:'WORKER_REOPENED',attempt,resumeUrl};
-      break;
-    }catch(error){
-      lastError=error;
-      await sleep(attempt*1500);
+  state=lifecycle.state;
+  try{
+    if(Number(state.recoveryBlockedUntil)>now)return state;
+    if(state.recoveryAttempts>=WORKER_RESET_MAX_ATTEMPTS){
+      const blocked={...state,recoveryAttempts:0,recoveryBlockedUntil:now+15*60*1000,lastPhase:'STALLED'};
+      saveWorkerContinuity(w.id,blocked);
+      await genericWorkerEvent(w.id,'RECOVERY_BOUNDED_STOP',{reason,recoveryBlockedUntil:blocked.recoveryBlockedUntil});
+      return blocked;
     }
+    const resumeUrl=validWorkerUrl(w,state.resumeUrl)?state.resumeUrl:(validWorkerUrl(w,target?.url)?target.url:'');
+    const checkpointed={...state,resumeUrl,recoveryAttempts:state.recoveryAttempts+1,lastPhase:'STALLED'};
+    saveWorkerContinuity(w.id,checkpointed);
+    await genericWorkerEvent(w.id,'RESET_CHECKPOINTED',{reason,resumeUrl,recoveryAttempt:checkpointed.recoveryAttempts,nextResetAt:checkpointed.nextResetAt});
+    const closeResult=await withWorkerMutation(w.id,async(lease)=>{
+      await post(`/api/utility/workers/${w.id}/plan-refresh`,w.id,{reason,leaseOwnerId:lease.ownerId,leaseId:lease.leaseId});
+      await closeWorker(w,target);
+      return {ok:true,status:'WORKER_CLOSED_FOR_REOPEN'};
+    },`WORKER_REOPEN_CLOSE:${reason}`,60000);
+    if(closeResult?.status==='MUTATION_LEASE_BUSY'){
+      const deferred={...checkpointed,recoveryBlockedUntil:now+5000};
+      saveWorkerContinuity(w.id,deferred);
+      return deferred;
+    }
+
+    await sleep(1200);
+    let reopened=null,lastError=null;
+    for(let attempt=1;attempt<=WORKER_RESET_MAX_ATTEMPTS;attempt+=1){
+      try{
+        await post(`/api/utility/workers/${w.id}/safe-recover`,w.id,{reason},120000);
+        let replacement=null;
+        for(let poll=0;poll<20;poll+=1){
+          await sleep(750);
+          try{
+            const list=await targets(workerPort(w));
+            replacement=await pruneDuplicates(w,list);
+            if(replacement)break;
+          }catch{}
+        }
+        if(!replacement)throw new Error('WORKER_REOPEN_TARGET_NOT_FOUND');
+        if(resumeUrl&&validWorkerUrl(w,resumeUrl)&&replacement.url!==resumeUrl){
+          const restoreResult=await withWorkerMutation(w.id,async()=>{
+            await navigate(replacement,resumeUrl);
+            await sleep(1200);
+            return {ok:true,status:'WORKER_RESUME_URL_RESTORED'};
+          },`WORKER_RESUME_NAVIGATE:${reason}`,30000);
+          if(restoreResult?.status==='MUTATION_LEASE_BUSY')throw new Error('MUTATION_LEASE_BUSY');
+        }
+        reopened={ok:true,status:'WORKER_REOPENED',attempt,resumeUrl};
+        break;
+      }catch(error){
+        lastError=error;
+        await sleep(attempt*1500);
+      }
+    }
+    if(!reopened)throw lastError||new Error('WORKER_REOPEN_FAILED');
+    const recovered={...checkpointed,recoveryAttempts:0,recoveryBlockedUntil:0,stalledChecks:0,workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),nextPeriodicF5At:nextRandomAt(now,WORKER_F5_MIN_MS,WORKER_F5_MAX_MS),lastPhase:'STALLED'};
+    saveWorkerContinuity(w.id,recovered);
+    await genericWorkerEvent(w.id,'WORKER_REOPENED',{reason,resumeUrl,nextResetAt:recovered.nextResetAt});
+    return recovered;
+  }finally{
+    endWorkerRecoveryLifecycle(workerRecoveryBusy,w.id);
   }
-  if(!reopened)throw lastError||new Error('WORKER_REOPEN_FAILED');
-  const recovered={...checkpointed,recoveryAttempts:0,recoveryBlockedUntil:0,stalledChecks:0,workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),nextPeriodicF5At:nextRandomAt(now,WORKER_F5_MIN_MS,WORKER_F5_MAX_MS),nextResetAt:nextWorkerResetAt(w.id,now),lastPhase:'STALLED'};
-  saveWorkerContinuity(w.id,recovered);
-  await genericWorkerEvent(w.id,'WORKER_REOPENED',{reason,resumeUrl,nextResetAt:recovered.nextResetAt});
-  return recovered;
 }
 async function maybeWorkerContinuity(w,target,ui){
   const now=Date.now();
