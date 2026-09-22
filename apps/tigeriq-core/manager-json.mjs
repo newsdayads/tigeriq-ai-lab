@@ -81,7 +81,7 @@ export function parseManagerJson(text){
   }
   for(const job of jobs){
     if(!job||typeof job!=='object'||typeof job.title!=='string'||typeof job.prompt!=='string')throw managerError('MANAGER_SCHEMA_INVALID');
-    if(job.capability!==undefined&&!['general','reasoning','review'].includes(job.capability))throw managerError('MANAGER_SCHEMA_INVALID');
+    if(job.capability!==undefined&&!['general','reasoning','review','pc_operator'].includes(job.capability))throw managerError('MANAGER_SCHEMA_INVALID');
   }
   return {...value,jobs};
 }
