@@ -116,6 +116,8 @@ internal sealed class StateStore
         catch { return line; }
     }
 
+    internal static readonly string SpecVersion = "1372";
+
     public void EnsureAutostart()
     {
         using var key = Registry.CurrentUser.CreateSubKey(
