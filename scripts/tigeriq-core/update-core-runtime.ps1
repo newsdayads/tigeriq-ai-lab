@@ -472,7 +472,9 @@ while($true){
       } else {
         $st=(Get-ScheduledTask -TaskName $liveStatusBridgeTask -ErrorAction SilentlyContinue)
         $stateName = if ($st -and $st.PSObject.Properties['State']) { [string]$st.State } else { '' }
-        if($st -and $stateName -ne 'Running' -and $stateName -ne 'Ready') {
+        if(-not $st) {
+          [ordered]@{status='BLOCKED';reason='TASK_NOT_FOUND';action='NONE'}
+        } elseif($stateName -ne 'Running') {
           Start-ScheduledTask -TaskName $liveStatusBridgeTask -ErrorAction Stop
           [ordered]@{status='RECONCILED';reason='STARTED_ONCE';action='START'}
         } else {
