@@ -317,6 +317,14 @@ describe('NV02 continuity policy', () => {
     expect(rotation).toContain('CHAT_ROTATION_CURRENT_WORK_VERIFIED');
     expect(rotation).toContain('dispatchCurrentWorkRestoreLocked(target,next,now,currentWork,receipt)');
     expect(rotation).not.toContain('dispatchNaturalContinueLocked(target,next,now)');
+    const archiveCall=rotation.indexOf('const archived=await archiveChat(target)');
+    const clearResume=rotation.indexOf("resumeChatUrl:''");
+    const newChatCall=rotation.indexOf('const opened=await newChat(target)');
+    expect(archiveCall).toBeGreaterThan(-1);
+    expect(clearResume).toBeGreaterThan(archiveCall);
+    expect(newChatCall).toBeGreaterThan(clearResume);
+    const beforeArchive=rotation.slice(0,archiveCall);
+    expect(beforeArchive).not.toContain("resumeChatUrl:''");
     const checkpoint=source.slice(source.indexOf('async function checkpointNv02'),source.indexOf('async function rotateNv02Chat'));
     expect(checkpoint).toContain('CHECKPOINT_CURRENT_WORK_REQUIRED');
     expect(checkpoint).toContain('CURRENT_WORK_ORDER=');
