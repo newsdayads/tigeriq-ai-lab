@@ -64,6 +64,16 @@ export function codingScopesOverlap(a,b){
 }
 
 export function parseCodingIssue(issue){
+  if(!issue||issue.pull_request||issue.state!=='open') return null;
+  const body=String(issue.body||'');
+  if(!exactFlag(body,'TIGERIQ_EXECUTABLE','true')||!exactFlag(body,'AUTONOMOUS_CODE','true')) return null;
+  const allowed=[
+    'apps/tigeriq-core/github-coding-intake.mjs',
+    'apps/tigeriq-core/github-intake.mjs',
+    'apps/tigeriq-core/github-backlog-policy.mjs',
+    'tests/github-coding-intake.test.mjs',
+    'tests/github-intake.test.mjs'
+  ];
   if(!issue||issue.pull_request||issue.state!=='open')return null;
   const body=String(issue.body||'');
   const required=[['TIGERIQ_EXECUTABLE','true'],['OWNER_POLICY','AUTO'],['AUTONOMOUS_CODE','true'],['ZERO_COST','true'],['NO_PC01_SHELL','true'],['NO_PAID_COST','true'],['NO_CREDENTIAL_CHANGE','true'],['NO_DESTRUCTIVE','true'],['NO_PRODUCTION_RELEASE','true'],['NO_BROWSER_AUTH','true'],['NO_DIRECT_MAIN','true']];
