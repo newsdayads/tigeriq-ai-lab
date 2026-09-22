@@ -42,5 +42,12 @@ describe('Chrome Controller Background F5 Refresh Timer', () => {
     const diff = bg.nextF5RefreshAt - Date.now();
     expect(diff).toBeGreaterThanOrEqual(bg.F5_REFRESH_MIN_MS - 100);
     expect(diff).toBeLessThanOrEqual(bg.F5_REFRESH_MAX_MS + 100);
+
+    // Test checkF5Refresh triggers reload when time is reached
+    vi.spyOn(bg, 'getWorkerIds').mockResolvedValue(['NV02']);
+    vi.spyOn(bg, 'findContext').mockResolvedValue({ tabId: 123 } as any);
+    bg.setNextF5RefreshAt(Date.now() - 1000);
+    await bg.checkF5Refresh();
+    expect(reloadTab).toHaveBeenCalledWith(123);
   });
 });
