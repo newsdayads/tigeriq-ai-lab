@@ -14,6 +14,14 @@ const errorBox = document.getElementById('error');
 if (manualReset) {
   manualReset.addEventListener('click', async () => {
     try {
+      await chrome.runtime.sendMessage({ type: 'TIGERIQ_MANUAL_RESET_CONTINUITY' });
+      await load();
+    } catch (err) {
+      showError('Không thể reset continuity.');
+    }
+  });
+}EventListener('click', async () => {
+    try {
       await chrome.runtime.sendMessage({ type: 'TIGERIQ_RESET_CONTINUITY' });
       window.location.reload();
     } catch (e) {
