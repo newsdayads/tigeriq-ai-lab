@@ -168,6 +168,8 @@ describe('independent worker recovery flows in direct-cdp-bridge',()=>{
     expect(reopen).toContain("post(`/api/utility/workers/${w.id}/safe-recover`,w.id,{reason},120000)");
     expect(reopen).toContain("leaseOwnerId:lease.ownerId,leaseId:lease.leaseId");
     expect(source).toContain("resumeUrl");
+    expect(source).toContain("CURRENT_CHAT_RESTORED");
+
   });
 
   it('fails closed unless READY worker still has continuable current work',()=>{
@@ -206,6 +208,9 @@ describe('safe recovery contracts',()=>{
     expect(server).toContain('persistWorkerSafetyStateOrFailClosed(workerSafetyStatePath,intended)');
     expect(server).toContain('applyWorkerSafetySnapshot(persisted.state)');
     expect(server).toContain('WORKER_SAFETY_STATE_PERSIST_FAIL_CLOSED');
+    expect(server).toContain("purpose==='CURRENT_CHAT_RESTORE'");
+    expect(server).toContain("periodicF5||currentChatRestore");
+
   });
 
   it('makes utility pause and manual close hard gates for worker start/recovery',()=>{
