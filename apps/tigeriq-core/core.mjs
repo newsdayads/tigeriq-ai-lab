@@ -28,6 +28,7 @@ const SURFSENSE_APP_URL = process.env.TIGERIQ_SURFSENSE_APP_URL?.trim() || 'http
 const SURFSENSE_SEARCH_URL = process.env.TIGERIQ_SURFSENSE_SEARCH_URL?.trim() || 'http://127.0.0.1:3930/search';
 const SURFSENSE_SUMMARY_MODEL = process.env.TIGERIQ_SURFSENSE_SUMMARY_MODEL?.trim() || 'gemma3:4b';
 const NV09_EMPLOYEE_ID = 'NV09';
+const NV09_EMPLOYEE_ID = 'NV09';
 const OLLAMA_EMPLOYEE_ID = 'NV10';
 const NV09_EMPLOYEE_ID = 'NV09';
 const API_DOCTOR_INTERVAL_MS = Math.max(60000, Number(process.env.TIGERIQ_API_DOCTOR_INTERVAL_MS || 120000));
