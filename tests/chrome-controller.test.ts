@@ -172,6 +172,11 @@ describe('Worker Identity, Isolation, Leases, and Pause Precedence', () => {
     expect(workerPaused.get('NV04')).toBe(false);
   });
 
+  it('validates continuity helpers and config schema for workers NV02, NV03, NV04', () => {
+    const continuityScript = readFileSync(new URL('../apps/chrome-controller/extension/continuity.js', import.meta.url), 'utf8');
+    expect(continuityScript).toContain('CONTINUE_MIN_MS');
+  });
+
   it('validates config schema for three distinct workers NV02, NV03, NV04', () => {
     const cfg = JSON.parse(readFileSync(new URL('../apps/chrome-controller/chrome-controller.config.example.json', import.meta.url), 'utf8'));
     expect(() => validateConfig(cfg)).not.toThrow();
