@@ -1,6 +1,6 @@
 {
   "name": "@tigeriq/openclaw-tigeriq-runtime",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "type": "module",
   "files": ["dist", "bridge.mjs", "openclaw.plugin.json", "README.md"],

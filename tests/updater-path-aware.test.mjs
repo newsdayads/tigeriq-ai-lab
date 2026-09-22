@@ -15,11 +15,21 @@ test('updater ensures node_modules deterministically and fails closed',()=>{
   assert.match(script,/--ignore-scripts --no-audit --no-fund/);
 });
 
-test('updater is path aware for core, web control, and coding lane',()=>{
+test('updater is path aware for core, web control, coding lane, and OpenClaw',()=>{
   assert.match(script,/function Get-Impact/);
   assert.match(script,/apps\/tigeriq-coding-lane/);
   assert.match(script,/web-control/);
   assert.match(script,/coreRestarted=\$impact\.core/);
   assert.match(script,/webRestarted=\$impact\.web/);
   assert.match(script,/codingRestarted=\$impact\.coding/);
+  assert.match(script,/apps\/openclaw-tigeriq-runtime\//);
+  assert.match(script,/\$openclawTask='TigerIQ OpenClaw Gateway'/);
+  assert.match(script,/function Restart-OpenClawGateway/);
+  assert.match(script,/Test-TcpPort '127\.0\.0\.1' 18789/);
+  assert.match(script,/openclawRestarted=\$impact\.openclaw/);
+  assert.match(script,/OPENCLAW_GATEWAY_HEALTH_FAILED/);
+  assert.match(script,/TIGERIQ_OPENCLAW_RUNTIME_V1/);
+  assert.match(script,/HEAD:apps\/openclaw-tigeriq-runtime/);
+  assert.match(script,/function Reconcile-OpenClawRuntime/);
+  assert.match(script,/openclawReconcile=\$openclawReconcile/);
 });
