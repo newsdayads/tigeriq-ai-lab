@@ -45,4 +45,6 @@ test('updater emits one sanitized OpenClaw typed-tool canary per installed SHA a
   assert.match(script,/\$previous\.treeSha -eq \$treeSha/);
   assert.match(script,/--timeout 90/);
   assert.match(script,/openclawCanary=\$openclawCanary/);
+  assert.match(script,/reported=\$reported/);
+  assert.match(script,/if\(-not \$previousReported\)/);
 });

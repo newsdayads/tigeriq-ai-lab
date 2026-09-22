@@ -138,8 +138,8 @@ function Get-OpenClawCanaryState(){
   try{if(Test-Path -LiteralPath $openclawCanaryState){return (Get-Content -LiteralPath $openclawCanaryState -Raw|ConvertFrom-Json)}}catch{}
   return $null
 }
-function Save-OpenClawCanaryState([string]$installedSha,[string]$treeSha,[string]$result,[string]$reason){
-  $d=[ordered]@{schema='TIGERIQ_OPENCLAW_CANARY_V1';installedSha=$installedSha;treeSha=$treeSha;result=$result;reason=$reason;updatedAt=(Get-Date).ToUniversalTime().ToString('o')}
+function Save-OpenClawCanaryState([string]$installedSha,[string]$treeSha,[string]$result,[string]$reason,[bool]$reported){
+  $d=[ordered]@{schema='TIGERIQ_OPENCLAW_CANARY_V1';installedSha=$installedSha;treeSha=$treeSha;result=$result;reason=$reason;reported=$reported;updatedAt=(Get-Date).ToUniversalTime().ToString('o')}
   $tmp=$openclawCanaryState+'.tmp';[IO.File]::WriteAllText($tmp,($d|ConvertTo-Json -Depth 5),(New-Object Text.UTF8Encoding($false)));Move-Item -Force $tmp $openclawCanaryState
 }
 function Report-OpenClawCanary([string]$installedSha,[string]$treeSha,[string]$result,[string]$reason){
@@ -161,7 +161,12 @@ function Invoke-OpenClawCanary([string]$installedSha,[string]$treeSha){
   if(-not $installedSha -or -not $treeSha){return @{action='skip';reason='identity_missing'}}
   $previous=Get-OpenClawCanaryState
   if($previous -and [string]$previous.installedSha -eq $installedSha -and [string]$previous.treeSha -eq $treeSha){
-    return @{action='none';result=[string]$previous.result;reason=[string]$previous.reason;reported=$true}
+    $previousReported=[bool]$previous.reported
+    if(-not $previousReported){
+      $previousReported=Report-OpenClawCanary $installedSha $treeSha ([string]$previous.result) ([string]$previous.reason)
+      Save-OpenClawCanaryState $installedSha $treeSha ([string]$previous.result) ([string]$previous.reason) $previousReported
+    }
+    return @{action='none';result=[string]$previous.result;reason=[string]$previous.reason;reported=$previousReported}
   }
   $result='BLOCKED';$reason='UNKNOWN';$reported=$false
   try{
@@ -187,8 +192,8 @@ function Invoke-OpenClawCanary([string]$installedSha,[string]$treeSha){
       }
     }
   }catch{$reason=('CANARY_EXCEPTION_'+$_.Exception.GetType().Name)}
-  Save-OpenClawCanaryState $installedSha $treeSha $result $reason
   $reported=Report-OpenClawCanary $installedSha $treeSha $result $reason
+  Save-OpenClawCanaryState $installedSha $treeSha $result $reason $reported
   return @{action='executed';result=$result;reason=$reason;reported=$reported}
 }
 function Gates-Pass([string]$sha){
