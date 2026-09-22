@@ -36,6 +36,13 @@ skills:
     version: 1.0.0
     provenance_batch: owner-video-lessons-2026-09-18
     source_log: learning-log/2026-09-18-owner-video-lessons.md
+    target: loader
+    triggers: contextual skill load registry match budget prompt core
+    summary: Load only relevant active skills based on goal triggers within strict character and count limits.ontextual Skill Loading
+    state: ACTIVE
+    version: 1.0.0
+    provenance_batch: owner-video-lessons-2026-09-18
+    source_log: learning-log/2026-09-18-owner-video-lessons.md
     target: core-context-routing
     triggers: context load skill dynamic routing objective relevant knowledge
     summary: Load only skills relevant to the current objective instead of preloading all knowledge.
@@ -51,6 +58,24 @@ skills:
     summary: Filter irrelevant context, reserve headroom, compact milestones and resume from durable references.
 
   - id: spec-first-tdd
+    title: Spec-First TDD
+    state: ACTIVE
+    version: 1.0.0
+    provenance_batch: owner-video-lessons-2026-09-18
+    source_log: learning-log/2026-09-18-owner-video-lessons.md
+    target: tdd
+    triggers: spec first tdd test driven development red green refactor specification
+    summary: Write failing tests against concrete specifications before implementing the solution.
+
+- id: external-skill-security-gate
+    title: External Skill Security Gate
+    state: ACTIVE
+    version: 1.0.0
+    provenance_batch: owner-video-lessons-2026-09-18
+    source_log: learning-log/2026-09-18-owner-video-lessons.md
+    target: security
+    triggers: security gate external skill audit provenance installer capability
+    summary: Audit provenance, pinned version, installer behavior and capabilities before executable use.
     summary: Define scope and acceptance before code; for suitable bugs prove RED before GREEN.
     title: SPEC-First and TDD When Appropriate
     state: ACTIVE
