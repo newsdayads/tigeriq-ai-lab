@@ -86,10 +86,20 @@ export async function refreshRegistryWorkforce(force=false){
 export function normalizeRuntimeResources(resources, workforce){
   const roster=new Map((workforce||[]).map(x=>[x.employee_id,x]));
   return (Array.isArray(resources)?resources:[]).map(resource=>{
-    if(resource?.employee_id==='NV02' && String(resource?.provider||'').toLowerCase()==='ollama' && roster.get('NV02')?.name==='ChatGPT Plus' && roster.get('NV10')?.name==='Ollama') {
-      return {...resource,employee_id:'NV10',runtime_source_employee_id:'NV02',identity_migrated:true};
+    let empId = resource?.employee_id;
+    if(empId==='NV02' && String(resource?.provider||'').toLowerCase()==='ollama' && roster.get('NV02')?.name==='ChatGPT Plus' && roster.get('NV10')?.name==='Ollama') {
+      empId='NV10';
     }
-    return resource;
+    const base = roster.get(empId) || {};
+    return {
+      ...resource,
+      employee_id: empId,
+      name: resource?.name || base.name || empId,
+      role: resource?.role || base.role || 'Worker',
+      type_badge: resource?.type_badge || base.type_badge || (empId >= 'NV02' && empId <= 'NV04' ? 'Chrome Controller' : empId === 'NV06' ? 'OpenClaw Gateway' : 'Core/Ollama/API'),
+      live_status: resource?.live_status || (resource?.status || base.status || 'OFFLINE'),
+      stale_fallback: resource?.stales || resource?.stale_fallback || false
+    };
   });
 }
 
