@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto';
 import {Pool} from 'pg';
-import {backlogOwnerDirect,sortBacklogSpecs} from './github-backlog-policy.mjs';
+import {backlogOwnerDirect,isActiveExecutionSpec,sortBacklogSpecs} from './github-backlog-policy.mjs';
 import {controlPlaneRepairIntent,isProtectedControlPlanePath} from '../shared/control-plane-lock.mjs';
 const DEFAULT_OWNER='newsdayads';
 const DEFAULT_REPO='tigeriq-ai-lab';
@@ -68,6 +68,7 @@ export function parseCodingIssue(issue){
   const body=String(issue.body||'');
   const required=[['TIGERIQ_EXECUTABLE','true'],['OWNER_POLICY','AUTO'],['AUTONOMOUS_CODE','true'],['ZERO_COST','true'],['NO_PC01_SHELL','true'],['NO_PAID_COST','true'],['NO_CREDENTIAL_CHANGE','true'],['NO_DESTRUCTIVE','true'],['NO_PRODUCTION_RELEASE','true'],['NO_BROWSER_AUTH','true'],['NO_DIRECT_MAIN','true']];
   if(required.some(([k,v])=>!exactFlag(body,k,v)))return null;
+  if(!isActiveExecutionSpec(body))return null;
   const sourcePriority=body.match(/^PRIORITY=(P[0-3])$/m)?.[1]||'P1';
   const priority=sourcePriority==='P3'?'P2':sourcePriority;
   const scopeLease=parseCodingScope(body);
