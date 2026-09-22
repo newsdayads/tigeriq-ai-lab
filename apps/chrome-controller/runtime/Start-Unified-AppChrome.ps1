@@ -76,28 +76,28 @@ function Owner-AutomationAllowed{
 
 function Get-TrustedListenerIdentity([int]$Port,[string]$ExpectedDeploy,[bool]$ForceRestartTrusted=$false){
   try{
-    if($Port-eq8798){
+    if($Port -eq 8798){
       $state=Invoke-RestMethod -Uri 'http://127.0.0.1:8798/api/state' -TimeoutSec 3
       $deploy=[string]$state.runtimeProvenance.deployRoot
-      if([string]::IsNullOrWhiteSpace($deploy)-or$deploy-notlike($InstallRoot+'*')){
+      if([string]::IsNullOrWhiteSpace($deploy) -or $deploy -notlike ($InstallRoot+'*')){
         return @{trusted=$false;current=$false;reason='CONTROLLER_PROVENANCE_INVALID'}
       }
-      return @{trusted=$true;current=(-not$ForceRestartTrusted-and$deploy-eq$ExpectedDeploy);identity=('controller:'+ $deploy)}
+      return @{trusted=$true;current=(-not $ForceRestartTrusted -and $deploy -eq $ExpectedDeploy);identity=('controller:'+ $deploy)}
     }
-    if($Port-eq8799){
+    if($Port -eq 8799){
       $health=Invoke-RestMethod -Uri 'http://127.0.0.1:8799/health' -TimeoutSec 3
       $deploy=[string]$health.deployRoot
-      if($health.ok-ne$true-or[string]::IsNullOrWhiteSpace($deploy)-or$deploy-notlike($InstallRoot+'*')){
+      if($health.ok -ne $true -or [string]::IsNullOrWhiteSpace($deploy) -or $deploy -notlike ($InstallRoot+'*')){
         return @{trusted=$false;current=$false;reason='BRIDGE_PROVENANCE_INVALID'}
       }
-      return @{trusted=$true;current=(-not$ForceRestartTrusted-and$deploy-eq$ExpectedDeploy);identity=('bridge:'+ $deploy)}
+      return @{trusted=$true;current=(-not $ForceRestartTrusted -and $deploy -eq $ExpectedDeploy);identity=('bridge:'+ $deploy)}
     }
-    if($Port-eq8800){
+    if($Port -eq 8800){
       $health=Invoke-RestMethod -Uri 'http://127.0.0.1:8800/health' -TimeoutSec 3
-      if($health.ok-ne$true-or[string]$health.service-ne'chrome-launch-broker'){
+      if($health.ok -ne $true -or [string]$health.service -ne 'chrome-launch-broker'){
         return @{trusted=$false;current=$false;reason='BROKER_IDENTITY_INVALID'}
       }
-      return @{trusted=$true;current=(-not$ForceRestartTrusted);identity='chrome-launch-broker'}
+      return @{trusted=$true;current=(-not $ForceRestartTrusted);identity='chrome-launch-broker'}
     }
     return @{trusted=$false;current=$false;reason='UNSUPPORTED_PORT'}
   }catch{
@@ -120,9 +120,9 @@ function Stop-StaleTrustedListener([int]$Port,[string]$ExpectedDeploy,[bool]$For
   $ownerPid=[int]$listener.OwningProcess
   $identity=Get-TrustedListenerIdentity $Port $ExpectedDeploy $ForceRestartTrusted
   if($identity.current){return $false}
-  if(-not$identity.trusted){
+  if(-not $identity.trusted){
     $again=Get-PortListener $Port
-    if(-not$again -or [int]$again.OwningProcess-ne$ownerPid){return $true}
+    if(-not $again -or [int]$again.OwningProcess -ne $ownerPid){return $true}
     throw "PORT_OWNED_BY_UNTRUSTED_PROCESS:${Port}:${ownerPid}:$($identity.reason)"
   }
   Write-SupervisorEvent 'STALE_RUNTIME_STOP' @{port=$Port;pid=$ownerPid;identity=$identity.identity;expectedDeploy=$ExpectedDeploy}
