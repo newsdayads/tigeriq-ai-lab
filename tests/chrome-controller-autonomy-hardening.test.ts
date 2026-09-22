@@ -406,3 +406,43 @@ describe('Direct-CDP Controller command transport',()=>{
     expect(bridge).toContain("CONTROLLER_COMMAND_FAILED");
   });
 });
+
+
+describe('APP Chrome UI-only continuity regression #1525',()=>{
+  it('keeps NV03/NV04 continuation on the assigned UI chat without Core/controller job truth',()=>{
+    const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    const start=bridge.indexOf("if(phase==='READY'){",bridge.indexOf('async function maybeWorkerContinuity'));
+    const end=bridge.indexOf("const stalledChecks=",start);
+    const readyBlock=bridge.slice(start,end);
+    expect(readyBlock).toContain('isAssignedWorkerChat(w,ui?.url)');
+    expect(readyBlock).toContain('pickContinuePrompt(state.lastPrompt)');
+    expect(readyBlock).not.toContain('hasContinuableWorkerWork');
+    expect(readyBlock).not.toContain('CONTINUABLE_WORK_CHECK_FAILED_CLOSED');
+    expect(readyBlock).not.toContain('CONTINUE_SKIPPED_NO_CURRENT_WORK');
+  });
+
+  it('detects ChatGPT conversation load failure and performs bounded retry -> F5 -> reopen -> backoff',()=>{
+    const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    expect(bridge).toContain('không thể tải cuộc hội thoại chatgpt này');
+    expect(bridge).toContain('chatLoadError');
+    expect(bridge).toContain('CHAT_LOAD_RETRY_EXHAUSTED');
+    expect(bridge).toContain('CHAT_LOAD_F5_EXHAUSTED');
+    expect(bridge).toContain('CHAT_LOAD_REOPEN_REQUESTED');
+    expect(bridge).toContain('CHAT_UNLOADABLE_BLOCKED');
+    const start=bridge.indexOf('async function maybeRecoverChatLoadError');
+    const end=bridge.indexOf('async function reloadTarget',start);
+    const recovery=bridge.slice(start,end);
+    expect(recovery).toContain('stage===0');
+    expect(recovery).toContain('stage===1');
+    expect(recovery).toContain('stage===2');
+    expect(recovery).toContain('15*60*1000');
+    expect(recovery).not.toContain('projectNewChatExpr');
+    expect(recovery).not.toContain('rotateNv02Chat');
+  });
+
+  it('never treats a project home page as an assigned ChatGPT conversation',()=>{
+    const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    expect(bridge).toContain("return /\\/c\\//.test(current.pathname)");
+    expect(bridge).toContain("CONTINUE_SKIPPED_NO_ASSIGNED_CHAT");
+  });
+});
