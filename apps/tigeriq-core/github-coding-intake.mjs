@@ -64,6 +64,9 @@ export function codingScopesOverlap(a,b){
 }
 
 export function parseCodingIssue(issue){
+  if(!issue||issue.pull_request||issue.state!=='open') return null;
+  const body=String(issue.body||'');
+  if(!exactFlag(body,'TIGERIQ_EXECUTABLE')) return null;
   if(!issue||issue.pull_request||issue.state!=='open')return null;
   const body=String(issue.body||'');
   if(!exactFlag(body,'TIGERIQ_EXECUTABLE'))return null;
