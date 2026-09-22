@@ -68,3 +68,12 @@ test('updater restores owner-resumed APP Chrome before OpenClaw acceptance gatin
   const reconcile=script.indexOf('$openclawReconcile=if($runtimeExists)');
   assert.ok(recovery>=0 && reconcile>recovery,'APP Chrome recovery must run before OpenClaw reconcile/canary gating');
 });
+
+test('updater canary control flow remains single-copy and syntactically complete',()=>{
+  assert.equal((script.match(/function Invoke-OpenClawCanary/g)||[]).length,1);
+  assert.equal((script.match(/function Gates-Pass/g)||[]).length,1);
+  assert.match(script,/if\(\$exitCode -eq 0 -and \$output -match '\(\?m\)\^\\s\*TIGERIQ_OPENCLAW_PC_OPERATOR_PASS\\s\*\$'\)\{\$result='PASS';\$reason='PC_OPERATOR_E2E_PASS'\}/);
+  assert.match(script,/elseif\(\$exitCode -ne 0\)\{\$reason=\('OPENCLAW_AGENT_EXIT_'\+\$exitCode\)\}/);
+  assert.match(script,/elseif\(\$output -match 'TIGERIQ_OPENCLAW_PC_OPERATOR_BLOCKED'\)\{\$reason='AGENT_REPORTED_BLOCKED'\}/);
+  assert.doesNotMatch(script,/\n\)\{\$result='PASS';\$reason='PC_OPERATOR_E2E_PASS'\}/);
+});
