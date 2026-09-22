@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { WORKER_IDS } from '../apps/chrome-controller/src/model.js';
 import { classifyWorkerPresence, processProbeFromCount } from '../apps/chrome-controller/src/worker-presence.js';
 import { BrowserMutationLeaseStore } from '../apps/chrome-controller/src/browser-mutation-lease.js';
+// @ts-expect-error runtime ESM module is JavaScript; this test executes the real exported helpers.
 import { beginWorkerRecoveryLifecycle, endWorkerRecoveryLifecycle } from '../apps/chrome-controller/extension/continuity.js';
 import {
   persistWorkerSafetyStateOrFailClosed,
