@@ -237,11 +237,14 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("pages.find(t=>sameWorkerLocation(t.url,preferredUrl))");
 
 
-    const f5Block=source.slice(source.indexOf("if(currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0))"),source.indexOf("const modelCheckRequired="));
+    const f5Start=source.indexOf("if(currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0))");
+    const f5End=source.indexOf("if(phase==='WORKING')",f5Start);
+    const f5Block=source.slice(f5Start,f5End);
     expect(f5Block).toContain("reloadTarget(target)");
     expect(f5Block).not.toContain("ensureNv02ModelProfile");
     expect(f5Block).not.toContain("checkpointNv02");
     expect(f5Block).not.toContain("rotateNv02Chat");
+    expect(f5Block).not.toContain("dispatchNaturalContinue");
 
     expect(source).toContain('[data-message-author-role="assistant"]');
 
