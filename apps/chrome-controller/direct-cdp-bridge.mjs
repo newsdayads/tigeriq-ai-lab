@@ -984,6 +984,53 @@ async function withNv02Mutation(fn,purpose='NORMAL',ttlMs=30000){
     log('NV02_LOCAL_MUTATION_RELEASED',{purpose,sharedMode});
   }
 }
+function findContinuableNv02Work(controllerState){
+  return (controllerState?.jobs||[]).find((job)=>
+    job?.workerId==='NV02'
+    &&['SUBMITTED','WORKING','WAITING_EVIDENCE','VERIFY'].includes(String(job?.stage||''))
+    &&!job?.completedAt
+    &&typeof job?.issueRef==='string'
+    &&job.issueRef.trim().length>0
+  )||null;
+}
+function sameContinuableNv02Work(expected,current){
+  if(!expected||!current)return false;
+  const sameIssue=String(expected.issueRef||'').trim()===String(current.issueRef||'').trim();
+  const expectedJob=String(expected.jobId||'').trim(),currentJob=String(current.jobId||'').trim();
+  return sameIssue&&(!expectedJob||!currentJob||expectedJob===currentJob);
+}
+function buildCurrentWorkRestorePrompt({currentWork,receipt}){
+  const issueRef=String(currentWork?.issueRef||'').trim();
+  const jobId=String(currentWork?.jobId||'').trim();
+  const checkpointRef=String(receipt?.checkpointRef||'').trim();
+  const receiptRef=String(receipt?.receiptRef||'').trim();
+  if(!issueRef||!checkpointRef||!receiptRef)throw new Error('CURRENT_WORK_RESTORE_INPUT_INVALID');
+  return `LÀM — NO YAPPING. CURRENT_WORK_ORDER=${issueRef}${jobId?` | JOB_ID=${jobId}`:''}. CURRENT_CHECKPOINT=${checkpointRef}. DURABLE_SAVE_RECEIPT=${receiptRef}. Đọc đầy đủ CURRENT_WORK_ORDER và CURRENT_CHECKPOINT từ GitHub, xác minh trạng thái hiện hành rồi tiếp tục đúng công việc đó từ checkpoint. Không tự chọn backlog/P0/việc khác. Không dùng lệnh “Tiếp tục” chung chung để tự suy công việc. Chỉ dừng khi DONE có evidence, BLOCKED thật, EXTERNAL_WAIT hoặc hard gate.`;
+}
+async function dispatchCurrentWorkRestoreLocked(target,state,now,expectedWork,receipt){
+  let controllerState;
+  try{controllerState=await getControllerState();}
+  catch(error){
+    const next={...state,lastPhase:'STALLED',nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
+    saveNv02Continuity(next);
+    await continuityEvent('CURRENT_WORK_RESTORE_SKIPPED_UNVERIFIED',{error:String(error?.message||error),nextContinueAt:next.nextContinueAt});
+    return next;
+  }
+  const currentWork=findContinuableNv02Work(controllerState);
+  if(!hasContinuableNv02Work(controllerState)||!sameContinuableNv02Work(expectedWork,currentWork)){
+    const next={...state,lastPhase:'READY',workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
+    saveNv02Continuity(next);
+    await continuityEvent('CURRENT_WORK_RESTORE_SKIPPED_CHANGED_WORK',{expectedJobId:expectedWork?.jobId||null,expectedIssueRef:expectedWork?.issueRef||null,currentJobId:currentWork?.jobId||null,currentIssueRef:currentWork?.issueRef||null,nextContinueAt:next.nextContinueAt});
+    return next;
+  }
+  const prompt=buildCurrentWorkRestorePrompt({currentWork,receipt});
+  const result=await dispatch(target,prompt);
+  if(!result?.ok)throw new Error(result?.status||'CURRENT_WORK_RESTORE_DISPATCH_FAILED');
+  const next={...state,lastPrompt:'CURRENT_WORK_RESTORE',dispatchesInChat:Number(state.dispatchesInChat||0)+1,stalledChecks:0,lastPhase:'WORKING',workingSignature:'',workingUnchangedChecks:0,workingRecheckAt:nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS),nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
+  saveNv02Continuity(next);
+  await continuityEvent('CURRENT_WORK_RESTORE_DISPATCHED',{jobId:currentWork.jobId||null,issueRef:currentWork.issueRef,checkpointRef:receipt.checkpointRef,receiptRef:receipt.receiptRef,evidence:result.evidence||null,nextContinueAt:next.nextContinueAt});
+  return next;
+}
 async function dispatchNaturalContinueLocked(target,state,now){
   if(await externalAutopilotOwnsNextNv02Job()){
     const next={...state,nextContinueAt:now+5000};
@@ -999,13 +1046,7 @@ async function dispatchNaturalContinueLocked(target,state,now){
     await continuityEvent('CONTINUE_SKIPPED_CURRENT_WORK_UNVERIFIED',{error:String(error?.message||error),nextContinueAt:next.nextContinueAt});
     return next;
   }
-  const currentWork=(controllerState?.jobs||[]).find((job)=>
-    job?.workerId==='NV02'
-    &&['SUBMITTED','WORKING','WAITING_EVIDENCE','VERIFY'].includes(String(job?.stage||''))
-    &&!job?.completedAt
-    &&typeof job?.issueRef==='string'
-    &&job.issueRef.trim().length>0
-  );
+  const currentWork=findContinuableNv02Work(controllerState);
   if(!hasContinuableNv02Work(controllerState)||!currentWork){
     const next={...state,lastPhase:'READY',workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
     saveNv02Continuity(next);
@@ -1028,11 +1069,13 @@ async function dispatchNaturalContinueLocked(target,state,now){
 async function dispatchNaturalContinue(target,state,now){
   return withNv02Mutation(()=>dispatchNaturalContinueLocked(target,state,now),'CONTINUITY_CONTINUE');
 }
-async function checkpointNv02(target){
+async function checkpointNv02(target,currentWork){
+  if(!currentWork?.issueRef)throw new Error('CHECKPOINT_CURRENT_WORK_REQUIRED');
   return withNv02Mutation(async()=>{
     await ensureNv02ModelProfile(target);
     const saveToken=crypto.randomUUID(),dispatchedAt=new Date().toISOString();
-    const text=buildDurableSavePrompt({saveToken,workerId:'NV02',dispatchedAt});
+    const workRef=String(currentWork.issueRef).trim(),jobId=String(currentWork.jobId||'').trim()||'UNKNOWN';
+    const text=`${buildDurableSavePrompt({saveToken,workerId:'NV02',dispatchedAt})}\nCURRENT_WORK_ORDER=${workRef}\nCURRENT_WORK_JOB_ID=${jobId}\nCheckpoint đúng công việc này; không chuyển sang việc khác.`;
     const sent=await dispatch(target,text);
     if(!sent?.ok)throw new Error(sent?.status||'SAVE_DISPATCH_FAILED');
     const receipt=await waitForDurableSaveReceipt(saveToken,'NV02',dispatchedAt);
@@ -1042,12 +1085,24 @@ async function checkpointNv02(target){
   },'CHECKPOINT_DURABLE',120000);
 }
 async function rotateNv02Chat(target,state,now){
-  const receipt=await checkpointNv02(target);
+  let controllerState;
+  try{controllerState=await getControllerState();}
+  catch(error){
+    await continuityEvent('CHAT_ROTATION_SKIPPED_CURRENT_WORK_UNVERIFIED',{error:String(error?.message||error)});
+    return state;
+  }
+  const currentWork=findContinuableNv02Work(controllerState);
+  if(!hasContinuableNv02Work(controllerState)||!currentWork){
+    await continuityEvent('CHAT_ROTATION_SKIPPED_NO_CURRENT_WORK',{lastPhase:state.lastPhase||null});
+    return state;
+  }
+  await continuityEvent('CHAT_ROTATION_CURRENT_WORK_VERIFIED',{jobId:currentWork.jobId||null,issueRef:currentWork.issueRef});
+  const receipt=await checkpointNv02(target,currentWork);
   const checkpointed={...state,dispatchesInChat:0,chatStartedAt:now,stalledChecks:0,lastPhase:'READY',resumeChatUrl:'',verifiedChatUrl:'',modelVerifiedAt:'',nextRefreshAt:nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS),rotationRetryAt:0};
   saveNv02Continuity(checkpointed);
   return withNv02Mutation(async()=>{
     const archived=await archiveChat(target);if(!archived?.ok)throw new Error(archived?.status||'ROTATE_ARCHIVE_FAILED');
-    await continuityEvent('ARCHIVE_CONFIRMED',{receiptRef:receipt.receiptRef,checkpointRef:receipt.checkpointRef,archiveStatus:archived.status});
+    await continuityEvent('ARCHIVE_CONFIRMED',{jobId:currentWork.jobId||null,issueRef:currentWork.issueRef,receiptRef:receipt.receiptRef,checkpointRef:receipt.checkpointRef,archiveStatus:archived.status});
     const opened=await newChat(target);if(!opened?.ok)throw new Error(opened?.status||'ROTATE_NEW_CHAT_FAILED');
     await continuityEvent('NEW_CHAT_CREATED',{newChatStatus:opened.status});
     const freshUi=await ensureNv02ModelProfile(target);
@@ -1056,8 +1111,8 @@ async function rotateNv02Chat(target,state,now){
     const verified=loadNv02Continuity();
     const next={...checkpointed,lastPhase:'READY',verifiedChatUrl:verified.verifiedChatUrl,modelVerifiedAt:verified.modelVerifiedAt,modelCheckBlockedUntil:verified.modelCheckBlockedUntil};
     saveNv02Continuity(next);
-    await continuityEvent('CHAT_ROTATED',{receiptRef:receipt.receiptRef,checkpointRef:receipt.checkpointRef,archiveStatus:archived.status,newChatStatus:opened.status,nextRefreshAt:next.nextRefreshAt});
-    return dispatchNaturalContinueLocked(target,next,now);
+    await continuityEvent('CHAT_ROTATED',{jobId:currentWork.jobId||null,issueRef:currentWork.issueRef,receiptRef:receipt.receiptRef,checkpointRef:receipt.checkpointRef,archiveStatus:archived.status,newChatStatus:opened.status,nextRefreshAt:next.nextRefreshAt});
+    return dispatchCurrentWorkRestoreLocked(target,next,now,currentWork,receipt);
   },'CHAT_ROTATION',60000);
 }
 async function noteNv02CommandDispatch(){
