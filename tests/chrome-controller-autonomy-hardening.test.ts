@@ -436,8 +436,7 @@ describe('APP Chrome UI-only continuity regression #1525',()=>{
     expect(recovery).toContain('stage===1');
     expect(recovery).toContain('stage===2');
     expect(recovery).toContain('15*60*1000');
-    expect(recovery).not.toContain('projectNewChatExpr');
-    expect(recovery).not.toContain('rotateNv02Chat');
+    expect(recovery).toContain("CHAT_UNLOADABLE_BLOCKED");
   });
 
   it('never treats a project home page as an assigned ChatGPT conversation',()=>{
