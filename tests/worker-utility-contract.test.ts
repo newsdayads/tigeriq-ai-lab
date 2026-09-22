@@ -46,3 +46,10 @@ it('verifies robust startup/reboot restoration, UI continuity, and bounded recov
   const program = readFileSync('apps/worker-utility/Program.cs', 'utf8');
   expect(program).toBeDefined();
 });
+
+it('verifies worker utility browser harness client and program continuity semantics', () => {
+  const client = readFileSync('apps/worker-utility/BrowserHarnessClient.cs', 'utf8');
+  expect(client).toContain('StaggeredReadOnlyProbeAsync');
+  const prog = readFileSync('apps/worker-utility/Program.cs', 'utf8');
+  expect(prog).toContain('HighDpiMode.DpiUnaware');
+});
