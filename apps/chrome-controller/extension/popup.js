@@ -8,7 +8,19 @@ const workerStates = document.getElementById('workerStates');
 const archiveWorker = document.getElementById('archiveWorker');
 const saveArchive = document.getElementById('saveArchive');
 const archiveAfterDone = document.getElementById('archiveAfterDone');
+const manualReset = document.getElementById('manualReset');
 const errorBox = document.getElementById('error');
+
+if (manualReset) {
+  manualReset.addEventListener('click', async () => {
+    try {
+      await chrome.storage.local.clear();
+      window.location.reload();
+    } catch (e) {
+      showError('Không thể reset continuity.');
+    }
+  });
+}
 
 document.getElementById('options').addEventListener('click', () => chrome.runtime.openOptionsPage());
 
