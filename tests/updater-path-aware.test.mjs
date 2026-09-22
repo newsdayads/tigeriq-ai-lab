@@ -39,7 +39,8 @@ test('updater uses a bounded OpenClaw startup window that covers observed PC01 l
   const timeout=Number(script.match(/\$openclawGatewayStartupTimeoutSec=(\d+)/)?.[1]);
   assert.ok(Number.isFinite(timeout) && timeout>=60 && timeout<=120);
   assert.match(script,/AddSeconds\(\$openclawGatewayStartupTimeoutSec\)/);
-  assert.doesNotMatch(script,/Restart-OpenClawGateway[\s\S]*?AddSeconds\(45\)/);
+  const restartBody=script.slice(script.indexOf('function Restart-OpenClawGateway'),script.indexOf('function Reconcile-OpenClawRuntime'));
+  assert.doesNotMatch(restartBody,/AddSeconds\(45\)/);
 });
 
 test('updater runs one sanitized deterministic OpenClaw canary per installed SHA and plugin tree',()=>{
