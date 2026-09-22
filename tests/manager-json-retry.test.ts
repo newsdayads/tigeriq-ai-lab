@@ -1,6 +1,6 @@
 // @ts-nocheck
 import {describe,it,expect} from 'vitest';
-import {parseManagerJson,runBoundedManagerDecision} from '../apps/tigeriq-core/manager-json.mjs';
+import {managerResponseFormatForHost,parseManagerJson,runBoundedManagerDecision} from '../apps/tigeriq-core/manager-json.mjs';
 
 const valid=(summary='ok')=>JSON.stringify({status:'complete',summary,jobs:[]});
 const resource=id=>({id,provider:id==='NV11'?'groq':'openrouter'});
@@ -11,8 +11,11 @@ describe('manager JSON parsing',()=>{
     const input='```json\n'+JSON.stringify({status:'complete',summary:literal,jobs:[]})+'\n```';
     expect(parseManagerJson(input).summary).toBe(literal);
   });
-  it('rejects trailing prose, invalid status, and invalid jobs per status',()=>{
-    expect(()=>parseManagerJson(valid()+' trailing')).toThrow('MANAGER_JSON_INVALID');
+  it('salvages one valid JSON object wrapped in provider prose but rejects ambiguity',()=>{
+    expect(parseManagerJson('Result follows:\n'+valid('wrapped')+'\nDone.').summary).toBe('wrapped');
+    expect(()=>parseManagerJson(valid('one')+'\n'+valid('two'))).toThrow('MANAGER_JSON_AMBIGUOUS');
+  });
+  it('rejects invalid status and invalid jobs per status',()=>{
     expect(()=>parseManagerJson(JSON.stringify({status:'maybe',summary:'x',jobs:[]}))).toThrow('MANAGER_STATUS_INVALID');
     expect(()=>parseManagerJson(JSON.stringify({status:'continue',summary:'x',jobs:[]}))).toThrow('MANAGER_SCHEMA_INVALID');
     expect(()=>parseManagerJson(JSON.stringify({status:'continue',summary:'x',jobs:[{title:'t',prompt:'p'},{title:'t',prompt:'p'},{title:'t',prompt:'p'},{title:'t',prompt:'p'}]}))).toThrow('MANAGER_SCHEMA_INVALID');
@@ -20,6 +23,14 @@ describe('manager JSON parsing',()=>{
     expect(()=>parseManagerJson(JSON.stringify({status:'blocked',summary:'x',jobs:[{title:'t',prompt:'p'}]}))).toThrow('MANAGER_SCHEMA_INVALID');
     expect(parseManagerJson(JSON.stringify({status:'complete',summary:'x',jobs:[]}))).toMatchObject({status:'complete',jobs:[]});
     expect(parseManagerJson(JSON.stringify({status:'continue',summary:'x',jobs:[{title:'t',prompt:'p'}]}))).toMatchObject({status:'continue',jobs:[{title:'t',prompt:'p'}]});
+  });
+  it('requests structured JSON only for supported manager transports',()=>{
+    const prompt='You are TigerIQ AI Manager. Return ONLY JSON.';
+    expect(managerResponseFormatForHost('api.groq.com',prompt)).toEqual({type:'json_object'});
+    expect(managerResponseFormatForHost('openrouter.ai',prompt)).toEqual({type:'json_object'});
+    expect(managerResponseFormatForHost('integrate.api.nvidia.com',prompt)).toEqual({type:'json_object'});
+    expect(managerResponseFormatForHost('api.cloudflare.com',prompt)).toBeNull();
+    expect(managerResponseFormatForHost('api.groq.com','ordinary job')).toBeNull();
   });
 });
 
