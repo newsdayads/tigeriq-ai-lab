@@ -23,10 +23,16 @@ const DENIED_PATH_FRAGMENTS = [
 ];
 
 const DENIED_COMMAND_PATTERNS = [
-  /\b(?:format|diskpart|bcdedit|shutdown|restart-computer|stop-computer)\b/i,
-  /\bcipher\s+\/w\b/i,
-  /\b(?:rd|rmdir|del)\b[^\r\n]*\/s\b/i,
-  /\bremove-item\b[^\r\n]*(?:-recurse|-force)/i,
+  /\b(?:shutdown|restart-computer|stop-computer)\b/i,
+  /\b(?:rd|rmdir|del|erase|remove-item)\b/i,
+  /\b(?:format|diskpart|bcdedit|cipher)\b/i,
+  /\b(?:stop-process|stop-service|set-service|taskkill|takeown|icacls)\b/i,
+  /\b(?:reg|sc)\s+delete\b/i,
+  /\bschtasks\b[^\r\n]*\/delete\b/i,
+  /\bgit\s+(?:clean\b|reset\b[^\r\n]*--hard|checkout\b[^\r\n]*--\s*\.|restore\b[^\r\n]*\s\.)(?:[^\r\n]*)/i,
+  /\b(?:invoke-expression|iex|start-process)\b/i,
+  /\b(?:powershell|pwsh|cmd)(?:\.exe)?\b/i,
+  /-(?:encodedcommand|enc)\b/i,
   /\bvercel\b[^\r\n]*--prod\b/i,
   /\bgit\s+push\b[^\r\n]*(?:\bmain\b|\bmaster\b)/i,
   /\bgh\s+pr\s+merge\b/i,
@@ -62,6 +68,12 @@ export function assertShellCommandAllowed(command) {
   if (!text || text.length > 8000) throw new Error('TIGERIQ_PC_COMMAND_INVALID');
   if (DENIED_COMMAND_PATTERNS.some((pattern) => pattern.test(text))) {
     throw new Error('TIGERIQ_PC_COMMAND_REQUIRES_OWNER_APPROVAL');
+  }
+  const explicitPaths = text.match(/[A-Za-z]:\\[^"'\`\r\n|;&)]*/g) || [];
+  for (const rawPath of explicitPaths) {
+    const candidate = rawPath.trim().toLowerCase();
+    const allowed = PC_OPERATOR_ROOTS.some((root) => candidate.startsWith(root.toLowerCase()));
+    if (!allowed) throw new Error('TIGERIQ_PC_COMMAND_PATH_NOT_ALLOWED');
   }
   return text;
 }

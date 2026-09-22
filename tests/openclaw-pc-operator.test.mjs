@@ -16,12 +16,19 @@ describe('OpenClaw PC01 guarded local operator', () => {
   it('allows normal operator shell work', () => {
     expect(assertShellCommandAllowed('git status')).toBe('git status');
     expect(assertShellCommandAllowed('Get-Process | Select-Object -First 5')).toContain('Get-Process');
+    expect(assertShellCommandAllowed('Get-ChildItem D:\\TigerIQ\\State')).toContain('D:\\TigerIQ\\State');
   });
 
   it('blocks destructive/system/Production/direct-main mutations by default', () => {
     for (const command of [
       'shutdown /s /t 0',
-      'Remove-Item D:\\TigerIQ\\Workspace -Recurse -Force',
+      'Remove-Item D:\\TigerIQ\\Workspace\\x.txt',
+      'del D:\\TigerIQ\\Workspace\\x.txt',
+      'git reset --hard HEAD~1',
+      'git clean -fd',
+      'Stop-Process -Name node',
+      'Start-Process powershell.exe',
+      'powershell.exe -EncodedCommand AAAA',
       'git push origin main',
       'vercel deploy --prod',
       'gh pr merge 123',
@@ -29,5 +36,9 @@ describe('OpenClaw PC01 guarded local operator', () => {
     ]) {
       expect(() => assertShellCommandAllowed(command)).toThrow('TIGERIQ_PC_COMMAND_REQUIRES_OWNER_APPROVAL');
     }
+  });
+
+  it('blocks explicit shell paths outside TigerIQ/OpenClaw roots', () => {
+    expect(() => assertShellCommandAllowed('Get-ChildItem C:\\Windows')).toThrow('TIGERIQ_PC_COMMAND_PATH_NOT_ALLOWED');
   });
 });
