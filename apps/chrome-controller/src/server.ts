@@ -77,6 +77,7 @@ let startAllRunning=false;
 let autopilotTicking=false;
 let recoveryTicking=false;
 let startupReady=false;
+let startupRecoveryInFlight=false;
 let lastAutopilotStopReason='';
 
 mkdirSync(config.logDir,{recursive:true});
@@ -347,13 +348,14 @@ async function startWorker(workerId:WorkerId){
     assertWorkerEnabled(workerId);
     if(utilityPausedWorkers.has(workerId))throw new Error(`UTILITY_WORKER_PAUSED:${workerId}`);
     await layoutWorker(workerId);
-    state.status='READY';
+    const uiPhase=String(state.lastHeartbeat?.uiPhase||'').toUpperCase();
+    state.status=['WORKING','READY','STALLED'].includes(uiPhase)?uiPhase:'ONLINE';
     state.lastError=undefined;
     state.windowState='OPEN';
     state.manualCloseSuppressed=false;
     persistWorkerSafetyState();
     recoveryAttempts.set(workerId,0);
-    log('WORKER_READY',{workerId});
+    log('WORKER_READY',{workerId,status:state.status,uiPhase:state.lastHeartbeat?.uiPhase??null});
     persistEvidence();
   });
 }
@@ -704,7 +706,7 @@ async function recoverWorker(workerId:WorkerId){
   }
 }
 async function recoveryTick(){
-  if(recoveryTicking||paused||killed||!startupReady)return;
+  if(recoveryTicking||startupRecoveryInFlight||paused||killed||!startupReady)return;
   recoveryTicking=true;
   try{
     for(const id of WORKER_IDS){
@@ -729,34 +731,40 @@ async function waitForStartupAttach(workerId:WorkerId){
   return false;
 }
 async function startupRecovery(){
-  startupReady=await waitForStartupRuntime();
-  if(!startupReady){
-    log('STARTUP_RUNTIME_WAIT_TIMEOUT',{url:config.recovery.startupReadyUrl??null,timeoutMs:config.recovery.startupReadyTimeoutMs});
+  if(startupRecoveryInFlight)return;
+  startupRecoveryInFlight=true;
+  try{
+    startupReady=await waitForStartupRuntime();
+    if(!startupReady){
+      log('STARTUP_RUNTIME_WAIT_TIMEOUT',{url:config.recovery.startupReadyUrl??null,timeoutMs:config.recovery.startupReadyTimeoutMs});
+      persistEvidence();
+      return;
+    }
+    log('STARTUP_RUNTIME_READY',{url:config.recovery.startupReadyUrl??null,interactiveSession:isInteractiveDesktopSession(),sessionName:process.env.SESSIONNAME??null});
+    if(paused){
+      log('STARTUP_OWNER_INTERACTION_READ_ONLY');
+      persistEvidence();
+      return;
+    }
+    const needed=new Set<WorkerId>(WORKER_IDS);
+    for(const id of WORKER_IDS){
+      if(!needed.has(id)||!states.get(id)?.enabled||states.get(id)?.blocked||states.get(id)?.manualCloseSuppressed)continue;
+      try{
+        const attached=await waitForStartupAttach(id);
+        if(attached){
+          await layoutWorker(id);
+          const state=states.get(id)!;
+          const uiPhase=String(state.lastHeartbeat?.uiPhase||'').toUpperCase();
+          state.status=['WORKING','READY','STALLED'].includes(uiPhase)?uiPhase:'ONLINE';
+          log('STARTUP_WORKER_REATTACHED',{workerId:id,uiPhase:state.lastHeartbeat?.uiPhase??null,status:state.status});
+        }else await startWorker(id);
+      }catch(error){log('STARTUP_WORKER_RECOVERY_FAILED',{workerId:id,error:String(error)});}
+    }
     persistEvidence();
-    return;
+    void autopilotTick();
+  }finally{
+    startupRecoveryInFlight=false;
   }
-  log('STARTUP_RUNTIME_READY',{url:config.recovery.startupReadyUrl??null,interactiveSession:isInteractiveDesktopSession(),sessionName:process.env.SESSIONNAME??null});
-  if(paused){
-    log('STARTUP_OWNER_INTERACTION_READ_ONLY');
-    persistEvidence();
-    return;
-  }
-  const needed=new Set<WorkerId>(WORKER_IDS);
-  for(const id of WORKER_IDS){
-    if(!needed.has(id)||!states.get(id)?.enabled||states.get(id)?.blocked||states.get(id)?.manualCloseSuppressed)continue;
-    try{
-      const attached=await waitForStartupAttach(id);
-      if(attached){
-        await layoutWorker(id);
-        const state=states.get(id)!;
-        const uiPhase=String(state.lastHeartbeat?.uiPhase||'').toUpperCase();
-        state.status=['WORKING','READY','STALLED'].includes(uiPhase)?uiPhase:'ONLINE';
-        log('STARTUP_WORKER_REATTACHED',{workerId:id,uiPhase:state.lastHeartbeat?.uiPhase??null,status:state.status});
-      }else await startWorker(id);
-    }catch(error){log('STARTUP_WORKER_RECOVERY_FAILED',{workerId:id,error:String(error)});}
-  }
-  persistEvidence();
-  void autopilotTick();
 }
 
 async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise<boolean>{

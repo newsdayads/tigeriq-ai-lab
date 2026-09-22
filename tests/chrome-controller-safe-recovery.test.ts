@@ -271,6 +271,26 @@ describe('safe recovery contracts',()=>{
     expect(cancelled).not.toContain("'AUTO_CONTINUE_CANCELLED_PREVIOUS_RECONCILED'");
   });
 
+  it('serializes startup recovery against the periodic recovery tick',()=>{
+    const source=readFileSync('apps/chrome-controller/src/server.ts','utf8');
+    expect(source).toContain('let startupRecoveryInFlight=false');
+    const tick=source.slice(source.indexOf('async function recoveryTick'),source.indexOf('async function waitForStartupRuntime'));
+    expect(tick).toContain('startupRecoveryInFlight');
+    const startup=source.slice(source.indexOf('async function startupRecovery'),source.indexOf('async function handleApi'));
+    expect(startup).toContain('if(startupRecoveryInFlight)return');
+    expect(startup).toContain('startupRecoveryInFlight=true');
+    expect(startup).toContain('finally');
+    expect(startup).toContain('startupRecoveryInFlight=false');
+  });
+
+  it('does not force a freshly started worker to READY over a WORKING heartbeat',()=>{
+    const source=readFileSync('apps/chrome-controller/src/server.ts','utf8');
+    const start=source.slice(source.indexOf('async function startWorker'),source.indexOf('function modelProfileGateReason'));
+    expect(start).toContain("const uiPhase=String(state.lastHeartbeat?.uiPhase||'').toUpperCase()");
+    expect(start).toContain("state.status=['WORKING','READY','STALLED'].includes(uiPhase)?uiPhase:'ONLINE'");
+    expect(start).not.toContain("state.status='READY'");
+  });
+
   it('preserves the live heartbeat phase when reattaching workers at startup',()=>{
     const source=readFileSync('apps/chrome-controller/src/server.ts','utf8');
     const startup=source.slice(source.indexOf('async function startupRecovery'),source.indexOf('async function handleApi'));
