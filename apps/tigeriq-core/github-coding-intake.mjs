@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto';
 import {Pool} from 'pg';
-import {backlogOwnerDirect,sortBacklogSpecs} from './github-backlog-policy.mjs';
+import {backlogOwnerDirect,sortBacklogSpecs,exactBodyFlag} from './github-backlog-policy.mjs';
 import {controlPlaneRepairIntent,isProtectedControlPlanePath} from '../shared/control-plane-lock.mjs';
 const DEFAULT_OWNER='newsdayads';
 const DEFAULT_REPO='tigeriq-ai-lab';
@@ -197,7 +197,28 @@ async function dependencyGate(fetchImpl,owner,repo,token,dependsOn){
   return {ok:true};
 }
 
-export async function materializeGithubCodingIssues({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token='',codingLaneUrl=process.env.TIGERIQ_CODING_LANE_URL||DEFAULT_CODING_URL,concurrencyCap=Number(process.env.TIGERIQ_GITHUB_CODING_CONCURRENCY||DEFAULT_CONCURRENCY_CAP)}){
+export async function materializeGithubCodingIssues
+{
+  const reservedScopes=new Set();
+  // existing implementation continues below
+  for(const issue of candidates){
+    // Contract checks
+    if(!exactBodyFlag(issue.body,'TIGERIQ_EXECUTABLE','true')) continue;
+    if(exactBodyFlag(issue.body,'SUPERSEDED_BY')) continue;
+    if(issue.state!=='open') continue;
+    if(exactBodyFlag(issue.body,'REVIEW_ONLY','true')) continue;
+    if(exactBodyFlag(issue.body,'CANONICAL_SPEC') && !exactBodyFlag(issue.body,'ACTIVE_EXECUTION')) continue;
+    const spec=parseCodingIssue(issue);
+    if(!spec) continue;
+    // Same‑tick resource scope reservation
+    const rs=spec.resourceScope;
+    if(rs){
+      if(reservedScopes.has(rs)) continue; // already reserved this tick
+      reservedScopes.add(rs);
+    }
+    // ... original dispatch logic ...
+  }
+}({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token='',codingLaneUrl=process.env.TIGERIQ_CODING_LANE_URL||DEFAULT_CODING_URL,concurrencyCap=Number(process.env.TIGERIQ_GITHUB_CODING_CONCURRENCY||DEFAULT_CONCURRENCY_CAP)}){
   const cap=Math.max(1,Math.min(8,Number.isFinite(Number(concurrencyCap))?Math.floor(Number(concurrencyCap)):DEFAULT_CONCURRENCY_CAP));
   const issues=await gh(fetchImpl,owner,repo,'/issues?state=open&per_page=100&sort=updated&direction=desc',token);
   const specs=sortBacklogSpecs(issues.map(parseCodingIssue).filter(Boolean));
