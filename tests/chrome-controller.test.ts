@@ -171,11 +171,22 @@ describe('Worker Identity, Isolation, Leases, and Pause Precedence', () => {
     expect(workerPaused.get('NV04')).toBe(false);
   });
 
-  it('validates config schema for three distinct workers NV02, NV03, NV04', () => {
+  it('validates config schema for three distinct workers NV02, NV03, NV04 and continuity features', () => {
     const continuityTestFile = readFileSync(new URL('../apps/chrome-controller/extension/continuity.js', import.meta.url), 'utf8');
     expect(continuityTestFile.length).toBeGreaterThan(100);
     expect(continuityTestFile).toContain('createContinuityManager');
     expect(continuityTestFile).toContain('CONTINUE_MAX_MS');
+    expect(continuityTestFile).toContain('STALLED');
+    expect(continuityTestFile).toContain('DEEP_RESET');
+
+    const backgroundFile = readFileSync(new URL('../apps/chrome-controller/extension/background.js', import.meta.url), 'utf8');
+    expect(backgroundFile).toContain('TIGERIQ_GET_CONTINUITY_STATE');
+
+    const popupJsFile = readFileSync(new URL('../apps/chrome-controller/extension/popup.js', import.meta.url), 'utf8');
+    expect(popupJsFile).toContain('manualReset');
+
+    const popupHtmlFile = readFileSync(new URL('../apps/chrome-controller/extension/popup.html', import.meta.url), 'utf8');
+    expect(popupHtmlFile).toContain('continuity-NV02');
 
     const cfg = JSON.parse(readFileSync(new URL('../apps/chrome-controller/chrome-controller.config.example.json', import.meta.url), 'utf8'));
     expect(() => validateConfig(cfg)).not.toThrow();
