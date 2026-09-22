@@ -175,6 +175,7 @@ describe('Worker Identity, Isolation, Leases, and Pause Precedence', () => {
   it('validates continuity helpers and config schema for workers NV02, NV03, NV04', () => {
     const continuityScript = readFileSync(new URL('../apps/chrome-controller/extension/continuity.js', import.meta.url), 'utf8');
     expect(continuityScript).toContain('CONTINUE_MIN_MS');
+    expect(continuityScript).toContain('hasContinuableWorkerWork');
   });
 
   it('validates config schema for three distinct workers NV02, NV03, NV04', () => {
