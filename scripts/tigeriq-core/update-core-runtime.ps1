@@ -142,19 +142,21 @@ function Get-OpenClawCanaryState(){
   return $null
 }
 function Save-OpenClawCanaryState([string]$installedSha,[string]$treeSha,[string]$result,[string]$reason,[bool]$reported){
-  $d=[ordered]@{schema='TIGERIQ_OPENCLAW_CANARY_V1';installedSha=$installedSha;treeSha=$treeSha;result=$result;reason=$reason;reported=$reported;updatedAt=(Get-Date).ToUniversalTime().ToString('o')}
+  $d=[ordered]@{schema='TIGERIQ_OPENCLAW_CANARY_V2';installedSha=$installedSha;treeSha=$treeSha;result=$result;reason=$reason;reported=$reported;updatedAt=(Get-Date).ToUniversalTime().ToString('o')}
   $tmp=$openclawCanaryState+'.tmp';[IO.File]::WriteAllText($tmp,($d|ConvertTo-Json -Depth 5),(New-Object Text.UTF8Encoding($false)));Move-Item -Force $tmp $openclawCanaryState
 }
 function Report-OpenClawCanary([string]$installedSha,[string]$treeSha,[string]$result,[string]$reason){
   $body=@(
-    'TIGERIQ_OPENCLAW_CANARY_V1',
+    'TIGERIQ_OPENCLAW_CANARY_V2',
     ('installedSha='+$installedSha),
     ('pluginTreeSha='+$treeSha),
     ('result='+$result),
     ('reason='+$reason),
     'agent=operator-local',
-    'tool=tigeriq_runtime',
-    'action=core_status',
+    'tools=tigeriq_runtime,tigeriq_pc',
+    'actions=core_status,shell_exec,file_write,file_read',
+    'pcShellCommand=Write-Output TIGERIQ_PC_SHELL_OK',
+    'pcCanaryFile=D:\TigerIQ\State\openclaw-pc-operator-canary.txt',
     'rawOutputPublished=false'
   ) -join [Environment]::NewLine
   & gh issue comment $openclawCanaryIssue --repo newsdayads/tigeriq-ai-lab --body $body 2>$null|Out-Null
@@ -181,10 +183,197 @@ function Invoke-OpenClawCanary([string]$installedSha,[string]$treeSha){
         $env:OPENCLAW_HOME='D:\OpenClaw'
         $env:OPENCLAW_STATE_DIR='D:\TigerIQ-OpenClaw\state'
         $env:OPENCLAW_CONFIG_PATH='D:\TigerIQ-OpenClaw\state\openclaw.json'
-        $message='Use only tigeriq_runtime. Call core_status exactly once. If the tool call succeeds and its evidence reports shell=false, arbitraryFileAccess=false, arbitraryCommandExecution=false, reply exactly TIGERIQ_OPENCLAW_CANARY_PASS. Otherwise reply exactly TIGERIQ_OPENCLAW_CANARY_BLOCKED.'
+        $message='Use only tigeriq_runtime and tigeriq_pc. Call tigeriq_runtime action=core_status exactly once. Then call tigeriq_pc action=shell_exec shell=powershell cwd=D:\TigerIQ command=Write-Output TIGERIQ_PC_SHELL_OK exactly once. Then call tigeriq_pc action=file_write path=D:\TigerIQ\State\openclaw-pc-operator-canary.txt content=TIGERIQ_PC_FILE_WRITE_OK exactly once. Then call tigeriq_pc action=file_read path=D:\TigerIQ\State\openclaw-pc-operator-canary.txt exactly once. If core_status succeeds, shell_exec returns exitCode=0 with stdout containing TIGERIQ_PC_SHELL_OK, file_write succeeds, and file_read returns TIGERIQ_PC_FILE_WRITE_OK, reply exactly TIGERIQ_OPENCLAW_PC_OPERATOR_PASS. Otherwise reply exactly TIGERIQ_OPENCLAW_PC_OPERATOR_BLOCKED.'
         $output=(& $openclawCli agent --agent $openclawAgent --message $message --timeout 90 2>&1|Out-String)
         $exitCode=$LASTEXITCODE
-        if($exitCode -eq 0 -and $output -match '(?m)^\s*TIGERIQ_OPENCLAW_CANARY_PASS\s*$'){$result='PASS';$reason='CORE_STATUS_TYPED_TOOL_PASS'}
+        if($exitCode -eq 0 -and $output -match '(?m)^\s*TIGERIQ_OPENCLAW_PC_OPERATOR_PASS\s*
+        elseif($exitCode -ne 0){$reason=('OPENCLAW_AGENT_EXIT_'+$exitCode)}
+        elseif($output -match 'TIGERIQ_OPENCLAW_PC_OPERATOR_BLOCKED'){$reason='AGENT_REPORTED_BLOCKED'}
+        else{$reason='UNEXPECTED_AGENT_REPLY'}
+      }finally{
+        if($null-eq$oldHome){Remove-Item Env:OPENCLAW_HOME -ErrorAction SilentlyContinue}else{$env:OPENCLAW_HOME=$oldHome}
+        if($null-eq$oldState){Remove-Item Env:OPENCLAW_STATE_DIR -ErrorAction SilentlyContinue}else{$env:OPENCLAW_STATE_DIR=$oldState}
+        if($null-eq$oldConfig){Remove-Item Env:OPENCLAW_CONFIG_PATH -ErrorAction SilentlyContinue}else{$env:OPENCLAW_CONFIG_PATH=$oldConfig}
+      }
+    }
+  }catch{$reason=('CANARY_EXCEPTION_'+$_.Exception.GetType().Name)}
+  $reported=Report-OpenClawCanary $installedSha $treeSha $result $reason
+  Save-OpenClawCanaryState $installedSha $treeSha $result $reason $reported
+  return @{action='executed';result=$result;reason=$reason;reported=$reported}
+}
+function Gates-Pass([string]$sha){
+  $runs=gh api "repos/newsdayads/tigeriq-ai-lab/actions/runs?head_sha=$sha&status=completed&per_page=30"|ConvertFrom-Json
+  $need=@('CI','WO-014 Queue Hygiene','WO-012/013 Vercel Online Verify')
+  foreach($n in $need){if(-not(@($runs.workflow_runs|Where-Object{$_.name -eq $n -and $_.conclusion -eq 'success'}))){return $false}}
+  return $true
+}
+function Resolve-GateSha([string]$remote){
+  if(Gates-Pass $remote){return $remote}
+  try{$prs=gh api -H 'Accept: application/vnd.github+json' "repos/newsdayads/tigeriq-ai-lab/commits/$remote/pulls"|ConvertFrom-Json}catch{return $null}
+  foreach($pr in @($prs)){$head=[string]$pr.head.sha;if($head -and (Gates-Pass $head)){return $head}}
+  return $null
+}
+function Get-NodePidByMatch([string]$match){
+  $m=$match.ToLowerInvariant()
+  $p=Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue | Where-Object {$_.CommandLine -and $_.CommandLine.ToLowerInvariant().Contains($m)} | Select-Object -First 1
+  if($p){return [int]$p.ProcessId};return $null
+}
+function Stop-NodeProcessesByMatch([string]$match){
+  $m=$match.ToLowerInvariant()
+  $procs=Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue | Where-Object {$_.CommandLine -and $_.CommandLine.ToLowerInvariant().Contains($m)}
+  foreach($p in $procs){try{Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop}catch{}}
+}
+function Get-CorePid(){$p=Get-NodePidByMatch $corePath;if($p){return $p};return Get-NodePidByMatch $legacyCorePath}
+function Stop-CoreProcesses(){Stop-NodeProcessesByMatch $corePath;Stop-NodeProcessesByMatch $legacyCorePath}
+function Restart-Core($oldPid){
+  if(-not(Task-Exists $coreTask)){throw ('TASK_MISSING:'+ $coreTask)}
+  $previousPid=if($null-ne$oldPid){[int]$oldPid}else{Get-CorePid}
+  Stop-ScheduledTask -TaskName $coreTask -ErrorAction SilentlyContinue;Start-Sleep -Seconds 2
+  Stop-CoreProcesses;Start-Sleep -Seconds 1
+  Start-ScheduledTask -TaskName $coreTask
+  $deadline=(Get-Date).AddSeconds(60)
+  while((Get-Date)-lt$deadline){
+    $h=HealthInfo 'http://100.97.23.87:8795/health';$newPid=Get-CorePid
+    if($h -and $newPid -and (($null-eq$previousPid)-or([int]$newPid-ne[int]$previousPid))){return $h}
+    Start-Sleep -Seconds 2
+  }
+  return $null
+}
+function Restart-ServiceTask([string]$name,[string]$healthUrl,[string]$processMatch,[string]$legacyProcessMatch=''){
+  if(-not(Task-Exists $name)){throw ('TASK_MISSING:'+ $name)}
+  $oldPid=Get-NodePidByMatch $processMatch
+  if(-not $oldPid -and $legacyProcessMatch){$oldPid=Get-NodePidByMatch $legacyProcessMatch}
+  Stop-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue;Start-Sleep -Seconds 2
+  Stop-NodeProcessesByMatch $processMatch
+  if($legacyProcessMatch){Stop-NodeProcessesByMatch $legacyProcessMatch}
+  Start-Sleep -Seconds 1
+  Start-ScheduledTask -TaskName $name
+  $deadline=(Get-Date).AddSeconds(45)
+  while((Get-Date)-lt$deadline){
+    $h=HealthInfo $healthUrl;$newPid=Get-NodePidByMatch $processMatch
+    if($h -and $newPid -and (($null-eq$oldPid)-or([int]$newPid-ne[int]$oldPid))){return @{health=$h;pid=[int]$newPid;previousPid=$oldPid}}
+    Start-Sleep -Seconds 2
+  }
+  return $null
+}
+function Sync-WebRuntime(){
+  New-Item -ItemType Directory -Path $webRuntime -Force|Out-Null
+  $files=@(
+    @{src='apps\tigeriq-core\web-control-server.mjs';dst='web-control-server.mjs'},
+    @{src='apps\tigeriq-core\web-control-truth.js';dst='web-control-truth.js'},
+    @{src='apps\tigeriq-core\web-control.html';dst='web-control.html'},
+    @{src='scripts\tigeriq-core\run-web-control-bundle.ps1';dst='run-web-control-bundle.ps1'}
+  )
+  foreach($f in $files){$source=Join-Path $runtimeRepo $f.src;if(-not(Test-Path -LiteralPath $source)){throw ('WEB_RUNTIME_SOURCE_MISSING:'+ $f.src)};$target=Join-Path $webRuntime $f.dst;$tmp=$target+'.tmp';Copy-Item -LiteralPath $source -Destination $tmp -Force;Move-Item -LiteralPath $tmp -Destination $target -Force}
+}
+function Ensure-ServiceHealth([string]$key,[string]$url){
+  $h=HealthInfo $url
+  if($h){$healthFailures[$key]=0;return @{service=$key;healthy=$true;action='none';pid=if($key-eq'web'){Get-NodePidByMatch $webPath}elseif($key-eq'coding'){Get-NodePidByMatch $codingPath}else{$h.pid}}}
+  $healthFailures[$key]=[int]$healthFailures[$key]+1
+  if($healthFailures[$key]-lt 2){return @{service=$key;healthy=$false;action='observe';failures=$healthFailures[$key]}}
+  $since=((Get-Date)-[DateTime]$lastHeal[$key]).TotalSeconds
+  if($since-lt$healCooldownSec){return @{service=$key;healthy=$false;action='cooldown';failures=$healthFailures[$key];cooldownRemainingSec=[int]($healCooldownSec-$since)}}
+  $lastHeal[$key]=Get-Date
+  try{
+    if($key-eq'core'){$after=Restart-Core $null}
+    elseif($key-eq'web'){Sync-WebRuntime;$after=Restart-ServiceTask $webTask 'http://100.97.23.87:8796/health' $webPath}
+    elseif($key-eq'coding'){$after=Restart-ServiceTask $codingTask 'http://100.97.23.87:8797/health' $codingPath $legacyCodingPath}
+    else{throw ('UNKNOWN_SERVICE:'+ $key)}
+    if($after){$healthFailures[$key]=0;return @{service=$key;healthy=$true;action='restarted';pid=$after.pid;previousPid=$after.previousPid}}
+    return @{service=$key;healthy=$false;action='restart_failed';failures=$healthFailures[$key]}
+  }catch{return @{service=$key;healthy=$false;action='restart_error';error=$_.Exception.Message;failures=$healthFailures[$key]}}
+}
+function Runtime-Watchdog(){
+  $events=@(
+    (Ensure-ServiceHealth 'core' 'http://100.97.23.87:8795/health'),
+    (Ensure-ServiceHealth 'web' 'http://100.97.23.87:8796/health'),
+    (Ensure-ServiceHealth 'coding' 'http://100.97.23.87:8797/health')
+  )
+  return @{ok=(@($events|Where-Object{-not $_.healthy}).Count-eq 0);updaterRunning=$true;services=$events;checkedAt=(Get-Date).ToUniversalTime().ToString('o')}
+}
+function Get-Impact([string[]]$paths){
+  $web=[bool](@($paths|Where-Object{$_ -match '^apps/tigeriq-core/web-control(?:\.|-)' -or $_ -match '^scripts/tigeriq-core/(?:run|install)-web-control'}).Count)
+  $coding=[bool](@($paths|Where-Object{$_ -match '^apps/tigeriq-coding-lane/' -or $_ -match '^scripts/tigeriq-core/(?:run|install)-coding-lane'}).Count)
+  $core=[bool](@($paths|Where-Object{($_ -match '^apps/tigeriq-core/' -and $_ -notmatch '^apps/tigeriq-core/web-control(?:\.|-)') -or $_ -match '^scripts/tigeriq-core/(?:run-core|install-core-task)\.ps1$'}).Count)
+  $openclaw=[bool](@($paths|Where-Object{$_ -match '^apps/openclaw-tigeriq-runtime/'}).Count)
+  $updater=[bool](@($paths|Where-Object{$_ -eq 'scripts/tigeriq-core/update-core-runtime.ps1'}).Count)
+  return @{core=$core;web=$web;coding=$coding;openclaw=$openclaw;updater=$updater}
+}
+function Restart-UpdaterAfterExit(){
+  $cmd="Start-Sleep -Seconds 4; Start-ScheduledTask -TaskName '$updaterTask'"
+  Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-WindowStyle','Hidden','-Command',$cmd) -WindowStyle Hidden|Out-Null
+}
+while($true){
+  $locked=$false
+  try{
+    $locked=$mutex.WaitOne(0);if(-not $locked){Start-Sleep -Seconds $IntervalSeconds;continue}
+    $watchdog=Runtime-Watchdog
+    if(-not(Test-Path -LiteralPath $tokenPath)){Save-State @{result='GITHUB_TOKEN_MISSING';watchdog=$watchdog};continue}
+    $env:GH_TOKEN=[IO.File]::ReadAllText($tokenPath).Trim();if(-not $env:GH_TOKEN){Save-State @{result='GITHUB_TOKEN_EMPTY';watchdog=$watchdog};continue}
+    git -C $controlRepo fetch origin main --prune|Out-Null;if($LASTEXITCODE -ne 0){throw 'FETCH_FAILED'}
+    $remote=Head $controlRepo 'origin/main';if(-not $remote){throw 'REMOTE_MAIN_MISSING'}
+    $runtimeExists=Test-Path -LiteralPath $runtimeRepo
+    if($runtimeExists -and (Runtime-Source-Dirty)){Save-State @{result='BLOCKED_DIRTY_RUNTIME';runtimeSource=$runtimeRepo;watchdog=$watchdog};continue}
+    $local=if($runtimeExists){Head $runtimeRepo 'HEAD'}else{$null}
+    $openclawReconcile=if($runtimeExists){Reconcile-OpenClawRuntime $local}else{@{action='skip';reason='runtime_missing'}}
+    $preOpenclawCanary=if($runtimeExists -and $local){Invoke-OpenClawCanary $local (OpenClaw-TreeSha)}else{@{action='skip';reason='runtime_missing'}}
+    if([string]$openclawReconcile.action -eq 'restarted'){
+      if([string]$preOpenclawCanary.result -eq 'PASS'){Save-OpenClawAppliedState (OpenClaw-TreeSha)}
+      else{Save-State @{result='OPENCLAW_CANARY_BLOCKED';installedSha=$local;runtimeSource=$runtimeRepo;openclawReconcile=$openclawReconcile;openclawCanary=$preOpenclawCanary;watchdog=$watchdog};Start-Sleep -Seconds $IntervalSeconds;continue}
+    }
+    if($runtimeExists -and $local -eq $remote){Save-State @{result='NO_CHANGE';installedSha=$local;runtimeSource=$runtimeRepo;openclawReconcile=$openclawReconcile;openclawCanary=$preOpenclawCanary;watchdog=$watchdog};Start-Sleep -Seconds $IntervalSeconds;continue}
+    $gateSha=Resolve-GateSha $remote
+    if(-not $gateSha){Save-State @{result='WAIT_GATES';candidateSha=$remote;runtimeSource=$runtimeRepo;watchdog=$watchdog};continue}
+    [string[]]$changed=if($runtimeExists){@(git -C $controlRepo diff --name-only $local $remote)}else{@('apps/tigeriq-core/','apps/tigeriq-coding-lane/','scripts/tigeriq-core/')}
+    $impact=if($runtimeExists){Get-Impact $changed}else{@{core=$true;web=$true;coding=$true;openclaw=$false;updater=$true;bootstrap=$true}}
+    $oldCore=HealthInfo 'http://100.97.23.87:8795/health';$oldPid=if($oldCore){[int]$oldCore.pid}else{$null}
+    $previousRuntimeSha=$local
+    Ensure-RuntimeSource $remote
+    Ensure-NodeModules $runtimeRepo
+    Save-RuntimeSourceState $remote $previousRuntimeSha $gateSha
+    Sync-Launchers
+    if($impact.updater){Sync-UpdaterRuntime}
+    $coreHealth=$oldCore;$webHealth=$null;$codingHealth=$null;$openclawHealth=$null;$openclawCanary=$null
+    try{
+      if($impact.core){$coreHealth=Restart-Core $oldPid;if(-not $coreHealth){throw 'CORE_HEALTH_OR_PID_FAILED'}}
+      elseif(-not(HealthInfo 'http://100.97.23.87:8795/health')){throw 'CORE_HEALTH_LOST_WITHOUT_CORE_CHANGE'}
+      if($impact.web){Sync-WebRuntime;$webHealth=Restart-ServiceTask $webTask 'http://100.97.23.87:8796/health' $webPath;if(-not $webHealth){throw 'WEB_CONTROL_HEALTH_OR_PID_FAILED'}}
+      if($impact.coding){$codingHealth=Restart-ServiceTask $codingTask 'http://100.97.23.87:8797/health' $codingPath $legacyCodingPath;if(-not $codingHealth){throw 'CODING_LANE_HEALTH_OR_PID_FAILED'}}
+      if($impact.openclaw){$openclawHealth=Restart-OpenClawGateway;if(-not $openclawHealth){throw 'OPENCLAW_GATEWAY_HEALTH_FAILED'}}
+      if($impact.updater -or $impact.openclaw){
+        $tree=OpenClaw-TreeSha
+        $openclawCanary=Invoke-OpenClawCanary $remote $tree
+        if(-not $openclawCanary -or [string]$openclawCanary.result -ne 'PASS'){
+          $why=if($openclawCanary){[string]$openclawCanary.reason}else{'NO_RESULT'}
+          throw ('OPENCLAW_FUNCTIONAL_CANARY_FAILED:'+ $why)
+        }
+        if($impact.openclaw){Save-OpenClawAppliedState $tree}
+      }
+    }catch{
+      if($previousRuntimeSha){
+        git -C $runtimeRepo reset --hard $previousRuntimeSha|Out-Null
+        Save-RuntimeSourceState $previousRuntimeSha $remote $previousRuntimeSha
+        Sync-Launchers
+        if($impact.updater){Sync-UpdaterRuntime}
+      }else{
+        git -C $controlRepo worktree remove --force $runtimeRepo 2>$null|Out-Null
+        Remove-Item -LiteralPath $runtimeSourceState -Force -ErrorAction SilentlyContinue
+      }
+      if($impact.core){$null=Restart-Core $null}
+      if($impact.web -and (Task-Exists $webTask)){Sync-WebRuntime;$null=Restart-ServiceTask $webTask 'http://100.97.23.87:8796/health' $webPath}
+      if($impact.coding -and (Task-Exists $codingTask)){$null=Restart-ServiceTask $codingTask 'http://100.97.23.87:8797/health' $codingPath $legacyCodingPath}
+      if($impact.openclaw -and (Task-Exists $openclawTask)){$null=Restart-OpenClawGateway;$rollbackTree=OpenClaw-TreeSha;if($rollbackTree){Save-OpenClawAppliedState $rollbackTree}}
+      throw ('ROLLED_BACK:'+ $_.Exception.Message)
+    }
+    $newCore=HealthInfo 'http://100.97.23.87:8795/health'
+    if($null -eq $openclawCanary){$openclawCanary=Invoke-OpenClawCanary $remote (OpenClaw-TreeSha)}
+    Save-State @{result='UPDATED';installedSha=$remote;gateSha=$gateSha;previousSha=$previousRuntimeSha;runtimeSource=$runtimeRepo;changedPaths=$changed;impact=$impact;openclawReconcile=$openclawReconcile;openclawCanary=$openclawCanary;corePid=if($newCore){[int]$newCore.pid}else{$null};previousCorePid=$oldPid;coreRestarted=$impact.core;webRestarted=$impact.web;codingRestarted=$impact.coding;openclawRestarted=$impact.openclaw;openclawPortHealthy=if($openclawHealth){[bool]$openclawHealth.healthy}else{$null};webPid=if($webHealth){$webHealth.pid}else{$null};codingPid=if($codingHealth){$codingHealth.pid}else{$null};watchdog=$watchdog}
+    if($impact.updater){Restart-UpdaterAfterExit;exit 75}
+  }catch{Save-State @{result='FAILED';error=$_.Exception.Message;watchdog=$watchdog}}
+  finally{Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue;if($locked){$mutex.ReleaseMutex()|Out-Null}}
+  Start-Sleep -Seconds $IntervalSeconds
+}
+){$result='PASS';$reason='PC_OPERATOR_E2E_PASS'}
         elseif($exitCode -ne 0){$reason=('OPENCLAW_AGENT_EXIT_'+$exitCode)}
         elseif($output -match 'TIGERIQ_OPENCLAW_CANARY_BLOCKED'){$reason='AGENT_REPORTED_BLOCKED'}
         else{$reason='UNEXPECTED_AGENT_REPLY'}
