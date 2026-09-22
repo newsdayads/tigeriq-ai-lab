@@ -12,6 +12,9 @@ $openclawCanaryState='D:\TigerIQ\State\openclaw-runtime-canary.json'
 $openclawCli='D:\OpenClaw\npm-global\openclaw.cmd'
 $openclawAgent='operator-local'
 $openclawCanaryIssue=1430
+$appChromeIssue=1372
+$appChromeController='http://127.0.0.1:8798'
+$appChromeResumeState='D:\TigerIQ\State\app-chrome-runtime-recovery.json'
 $coreTask='TigerIQ Core 24x7'
 $webTask='TigerIQ Web Control 24x7'
 $codingTask='TigerIQ Coding Lane 24x7'
@@ -83,6 +86,69 @@ function Sync-UpdaterRuntime(){
   $tmp=$updaterRuntime+'.tmp';Copy-Item -LiteralPath $source -Destination $tmp -Force;Move-Item -LiteralPath $tmp -Destination $updaterRuntime -Force
 }
 function HealthInfo([string]$url){try{$r=Invoke-RestMethod -Uri $url -TimeoutSec 5;if($r.ok){return $r}}catch{};return $null}
+function Owner-AppChromeResumeRequested(){
+  try{
+    $body=(& gh issue view $appChromeIssue --repo newsdayads/tigeriq-ai-lab --json body --jq '.body' 2>$null|Out-String)
+    if($LASTEXITCODE -ne 0){return $false}
+    return [bool]($body -match '(?m)^OWNER_RUNTIME_RESUME=true\s*$')
+  }catch{return $false}
+}
+function Get-AppChromeResumeState(){
+  try{if(Test-Path -LiteralPath $appChromeResumeState){return (Get-Content -LiteralPath $appChromeResumeState -Raw|ConvertFrom-Json)}}catch{}
+  return $null
+}
+function Save-AppChromeResumeState([string]$installedSha,[string]$result,[string]$reason,[bool]$reported){
+  $d=[ordered]@{schema='TIGERIQ_APP_CHROME_RUNTIME_RECOVERY_V1';installedSha=$installedSha;result=$result;reason=$reason;reported=$reported;updatedAt=(Get-Date).ToUniversalTime().ToString('o')}
+  $tmp="$appChromeResumeState.tmp";[IO.File]::WriteAllText($tmp,($d|ConvertTo-Json -Depth 5),(New-Object Text.UTF8Encoding($false)));Move-Item -Force $tmp $appChromeResumeState
+}
+function Report-AppChromeResume([string]$installedSha,[string]$result,[string]$reason,$state){
+  $nv02=@($state.workers|Where-Object{$_.id -eq 'NV02'}|Select-Object -First 1)
+  $body=@(
+    'TIGERIQ_APP_CHROME_RUNTIME_RECOVERY_V1',
+    ('installedSha='+$installedSha),
+    ('result='+$result),
+    ('reason='+$reason),
+    ('paused='+[string][bool]$state.paused),
+    ('killed='+[string][bool]$state.killed),
+    ('ownerInteractionMode='+[string]$state.ownerInteractionMode),
+    ('externalWorkAutopilotEnabled='+[string][bool]$state.externalWorkAutopilotEnabled),
+    ('nv02WindowState='+[string]$nv02.windowState),
+    ('nv02Blocked='+[string][bool]$nv02.blocked),
+    'rawOutputPublished=false'
+  ) -join [Environment]::NewLine
+  & gh issue comment $appChromeIssue --repo newsdayads/tigeriq-ai-lab --body $body 2>$null|Out-Null
+  return ($LASTEXITCODE -eq 0)
+}
+function Invoke-AppChromeOwnerResume([string]$installedSha){
+  if(-not(Owner-AppChromeResumeRequested)){return @{action='none';reason='not_requested'}}
+  $after=$null
+  try{
+    $before=Invoke-RestMethod -Uri ($appChromeController+'/api/state') -TimeoutSec 5
+    $workers=@($before.workers)
+    $nv02=@($workers|Where-Object{$_.id -eq 'NV02'}|Select-Object -First 1)
+    $needsResume=[bool]$before.paused -or [bool]$before.killed -or [string]$before.ownerInteractionMode -eq 'READ_ONLY' -or -not [bool]$before.externalWorkAutopilotEnabled
+    $needsStart=($null -eq $nv02) -or ([string]$nv02.windowState -notmatch 'OPEN|RUNNING|READY|WORKING')
+    $needsUnblock=($null -ne $nv02) -and [bool]$nv02.blocked
+    if($needsResume){Invoke-WebRequest -UseBasicParsing -Method Post -Uri ($appChromeController+'/api/resume') -TimeoutSec 10|Out-Null}
+    if($needsUnblock){Invoke-WebRequest -UseBasicParsing -Method Post -Uri ($appChromeController+'/api/workers/NV02/unblock') -TimeoutSec 15|Out-Null}
+    if($needsStart){Invoke-WebRequest -UseBasicParsing -Method Post -Uri ($appChromeController+'/api/start-all') -TimeoutSec 20|Out-Null}
+    if($needsResume -or $needsUnblock -or $needsStart){Start-Sleep -Seconds 3}
+    $after=Invoke-RestMethod -Uri ($appChromeController+'/api/state') -TimeoutSec 5
+    $nv02After=@($after.workers|Where-Object{$_.id -eq 'NV02'}|Select-Object -First 1)
+    $ok=(-not [bool]$after.paused) -and (-not [bool]$after.killed) -and ([string]$after.ownerInteractionMode -ne 'READ_ONLY') -and ($null -ne $nv02After) -and (-not [bool]$nv02After.blocked)
+    $result=if($ok){'PASS'}else{'BLOCKED'}
+    $reason=if($ok){'NV02_RUNTIME_RESUMED'}else{'CONTROLLER_STATE_NOT_RECOVERED'}
+    $previous=Get-AppChromeResumeState
+    $reported=[bool]($previous -and [string]$previous.installedSha -eq $installedSha -and [string]$previous.result -eq $result -and [bool]$previous.reported)
+    if(-not $reported){$reported=Report-AppChromeResume $installedSha $result $reason $after}
+    Save-AppChromeResumeState $installedSha $result $reason $reported
+    return @{action=if($needsResume -or $needsUnblock -or $needsStart){'recovered'}else{'verified'};result=$result;reason=$reason;reported=$reported}
+  }catch{
+    $reason=('APP_CHROME_RECOVERY_EXCEPTION_'+$_.Exception.GetType().Name)
+    Save-AppChromeResumeState $installedSha 'BLOCKED' $reason $false
+    return @{action='blocked';result='BLOCKED';reason=$reason;reported=$false}
+  }
+}
 function Task-Exists([string]$name){return [bool](Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue)}
 function Test-TcpPort([string]$targetHost,[int]$port,[int]$timeoutMs=2500){
   $client=New-Object Net.Sockets.TcpClient
@@ -309,6 +375,8 @@ while($true){
     $watchdog=Runtime-Watchdog
     if(-not(Test-Path -LiteralPath $tokenPath)){Save-State @{result='GITHUB_TOKEN_MISSING';watchdog=$watchdog};continue}
     $env:GH_TOKEN=[IO.File]::ReadAllText($tokenPath).Trim();if(-not $env:GH_TOKEN){Save-State @{result='GITHUB_TOKEN_EMPTY';watchdog=$watchdog};continue}
+    $runtimeIdentity=if(Test-Path -LiteralPath $runtimeRepo){Head $runtimeRepo 'HEAD'}else{'BOOTSTRAP'}
+    $appChromeRecovery=Invoke-AppChromeOwnerResume $runtimeIdentity
     git -C $controlRepo fetch origin main --prune|Out-Null;if($LASTEXITCODE -ne 0){throw 'FETCH_FAILED'}
     $remote=Head $controlRepo 'origin/main';if(-not $remote){throw 'REMOTE_MAIN_MISSING'}
     $runtimeExists=Test-Path -LiteralPath $runtimeRepo
@@ -320,7 +388,7 @@ while($true){
       if([string]$preOpenclawCanary.result -eq 'PASS'){Save-OpenClawAppliedState (OpenClaw-TreeSha)}
       else{Save-State @{result='OPENCLAW_CANARY_BLOCKED';installedSha=$local;runtimeSource=$runtimeRepo;openclawReconcile=$openclawReconcile;openclawCanary=$preOpenclawCanary;watchdog=$watchdog};Start-Sleep -Seconds $IntervalSeconds;continue}
     }
-    if($runtimeExists -and $local -eq $remote){Save-State @{result='NO_CHANGE';installedSha=$local;runtimeSource=$runtimeRepo;openclawReconcile=$openclawReconcile;openclawCanary=$preOpenclawCanary;watchdog=$watchdog};Start-Sleep -Seconds $IntervalSeconds;continue}
+    if($runtimeExists -and $local -eq $remote){Save-State @{result='NO_CHANGE';installedSha=$local;runtimeSource=$runtimeRepo;appChromeRecovery=$appChromeRecovery;openclawReconcile=$openclawReconcile;openclawCanary=$preOpenclawCanary;watchdog=$watchdog};Start-Sleep -Seconds $IntervalSeconds;continue}
     $gateSha=Resolve-GateSha $remote
     if(-not $gateSha){Save-State @{result='WAIT_GATES';candidateSha=$remote;runtimeSource=$runtimeRepo;watchdog=$watchdog};continue}
     [string[]]$changed=if($runtimeExists){@(git -C $controlRepo diff --name-only $local $remote)}else{@('apps/tigeriq-core/','apps/tigeriq-coding-lane/','scripts/tigeriq-core/')}
@@ -366,7 +434,7 @@ while($true){
     }
     $newCore=HealthInfo 'http://100.97.23.87:8795/health'
     if($null -eq $openclawCanary){$openclawCanary=Invoke-OpenClawCanary $remote (OpenClaw-TreeSha)}
-    Save-State @{result='UPDATED';installedSha=$remote;gateSha=$gateSha;previousSha=$previousRuntimeSha;runtimeSource=$runtimeRepo;changedPaths=$changed;impact=$impact;openclawReconcile=$openclawReconcile;openclawCanary=$openclawCanary;corePid=if($newCore){[int]$newCore.pid}else{$null};previousCorePid=$oldPid;coreRestarted=$impact.core;webRestarted=$impact.web;codingRestarted=$impact.coding;openclawRestarted=$impact.openclaw;openclawPortHealthy=if($openclawHealth){[bool]$openclawHealth.healthy}else{$null};webPid=if($webHealth){$webHealth.pid}else{$null};codingPid=if($codingHealth){$codingHealth.pid}else{$null};watchdog=$watchdog}
+    Save-State @{result='UPDATED';installedSha=$remote;gateSha=$gateSha;previousSha=$previousRuntimeSha;runtimeSource=$runtimeRepo;appChromeRecovery=$appChromeRecovery;changedPaths=$changed;impact=$impact;openclawReconcile=$openclawReconcile;openclawCanary=$openclawCanary;corePid=if($newCore){[int]$newCore.pid}else{$null};previousCorePid=$oldPid;coreRestarted=$impact.core;webRestarted=$impact.web;codingRestarted=$impact.coding;openclawRestarted=$impact.openclaw;openclawPortHealthy=if($openclawHealth){[bool]$openclawHealth.healthy}else{$null};webPid=if($webHealth){$webHealth.pid}else{$null};codingPid=if($codingHealth){$codingHealth.pid}else{$null};watchdog=$watchdog}
     if($impact.updater){Restart-UpdaterAfterExit;exit 75}
   }catch{Save-State @{result='FAILED';error=$_.Exception.Message;watchdog=$watchdog}}
   finally{Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue;if($locked){$mutex.ReleaseMutex()|Out-Null}}
