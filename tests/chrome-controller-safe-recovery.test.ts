@@ -134,6 +134,10 @@ describe('independent worker recovery flows in direct-cdp-bridge',()=>{
     expect(source).toContain("function acquireNv02CanonicalOwnership()");
     expect(source).toContain("NV02_OWNER_LOCK");
     expect(source).toContain("NV02_DUPLICATE_CANONICAL_OWNERSHIP");
+    expect(source).toContain("TIGERIQ_APPCHROME_SUPERVISOR_EPOCH");
+    expect(source).toContain("supervisorEpoch:APPCHROME_SUPERVISOR_EPOCH");
+    expect(source).toContain("sameSupervisorEpoch");
+    expect(source).toContain("WORKER_STALE_CANONICAL_OWNERSHIP_CLEARED");
   });
 
   it('keeps F5 and reset timers separate and staggered per worker',()=>{
@@ -320,6 +324,8 @@ describe('safe recovery contracts',()=>{
     expect(launcher).toContain('ACTIVE_VERSION_MISMATCH');
     expect(launcher).toContain('ACTIVE_BRIDGE_HASH_MISMATCH');
     expect(launcher).toContain('TIGERIQ_APPROVED_HEAD');
+    expect(launcher).toContain('TIGERIQ_APPCHROME_SUPERVISOR_EPOCH');
+    expect(launcher).toContain("[guid]::NewGuid().ToString('N')");
     expect(launcher).not.toContain('/safe-recover');
     expect(launcher).not.toContain("foreach($id in @('NV02','NV03','NV04'))");
   });
