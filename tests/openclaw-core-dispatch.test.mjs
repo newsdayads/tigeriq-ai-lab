@@ -8,6 +8,7 @@ import {
   compactOpenClawCliResult,
   ensureOpenClawDispatch,
   normalizeOpenClawDispatchEnvelope,
+  hasHardGateTextIntent,
   parseOpenClawAgentResult,
   readOpenClawDispatchRecord,
   writeOpenClawDispatchRecord,
@@ -41,6 +42,17 @@ describe('Core -> OpenClaw bounded dispatch #1528', () => {
     expect(() => normalizeOpenClawDispatchEnvelope(envelope({
       authority:{production:false,paid:false,credentialSecurity:false,destructiveIrreversible:false,sourceMutation:true,arbitraryShell:false},
     }))).toThrow('OPENCLAW_HARD_GATE_REFUSED');
+  });
+
+  it('allows explicit negated hard-gate guardrails but still rejects positive or double-negative intent', () => {
+    expect(hasHardGateTextIntent('Do not use paid action, Production release, reboot or shutdown.')).toBe(false);
+    expect(hasHardGateTextIntent('Never reboot or shutdown this PC.')).toBe(false);
+    expect(hasHardGateTextIntent('No paid action.')).toBe(false);
+    expect(hasHardGateTextIntent('Perform a production deploy now.')).toBe(true);
+    expect(hasHardGateTextIntent('Do not avoid production deploy.')).toBe(true);
+    expect(() => normalizeOpenClawDispatchEnvelope(envelope({
+      instruction:'Verify TCP 127.0.0.1:18789. Do not use paid action, Production release, reboot or shutdown.',
+    }))).not.toThrow();
   });
 
   it('never asks OpenClaw to select backlog and makes retry behavior idempotency-aware', () => {
