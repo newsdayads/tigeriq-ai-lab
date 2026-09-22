@@ -542,13 +542,15 @@ describe('APP Chrome unified runtime supervisor #1525',()=>{
     expect(launcher).toContain('Get-TrustedListenerIdentity');
   });
 
-  it('artifact install elevates and restarts the existing unified task instead of requiring a PC reboot',()=>{
+  it('artifact install restarts the existing unified task without privilege escalation or requiring a PC reboot',()=>{
     const installer=readFileSync('apps/chrome-controller/runtime/Install-ApprovedArtifact.ps1','utf8');
     expect(installer).toContain("$taskName='TigerIQ APP Chrome Unified'");
-    expect(installer).toContain('New-ScheduledTaskPrincipal -UserId $taskUser -LogonType Interactive -RunLevel Highest');
-    expect(installer).toContain('Set-ScheduledTask -TaskName $taskName -Action $taskAction -Principal $taskPrincipal');
+    expect(installer).toContain("$taskActivation=if($task){'TASK_PRESENT'}else{'TASK_ABSENT'}");
     expect(installer).toContain("activation='SUPERVISOR_PENDING'");
     expect(installer).toContain("Stop-ScheduledTask -TaskName $taskName");
     expect(installer).toContain("Start-ScheduledTask -TaskName $taskName");
+    expect(installer).not.toContain('New-ScheduledTaskPrincipal');
+    expect(installer).not.toContain('Set-ScheduledTask -TaskName $taskName');
+    expect(installer).not.toContain('RunLevel Highest');
   });
 });
