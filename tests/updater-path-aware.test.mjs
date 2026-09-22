@@ -34,6 +34,13 @@ test('updater is path aware for core, web control, coding lane, and OpenClaw',()
   assert.match(script,/openclawReconcile=\$openclawReconcile/);
 });
 
+test('updater uses a bounded OpenClaw startup window that covers observed PC01 latency',()=>{
+  const timeout=Number(script.match(/\\$openclawGatewayStartupTimeoutSec=(\\d+)/)?.[1]);
+  assert.ok(Number.isFinite(timeout) && timeout>=60 && timeout<=120);
+  assert.match(script,/AddSeconds\\(\\$openclawGatewayStartupTimeoutSec\\)/);
+  assert.doesNotMatch(script,/Restart-OpenClawGateway[\\s\\S]*?AddSeconds\\(45\\)/);
+});
+
 test('updater emits one sanitized OpenClaw typed-tool canary per installed SHA and plugin tree',()=>{
   assert.match(script,/TIGERIQ_OPENCLAW_CANARY_V2/);
   assert.match(script,/function Invoke-OpenClawCanary/);

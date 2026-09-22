@@ -13,6 +13,7 @@ $openclawCli='D:\OpenClaw\npm-global\openclaw.cmd'
 $openclawAgent='operator-local'
 $openclawCanaryIssue=1430
 $openclawCanaryPolicyGeneration='20260922_LIFECYCLE_REPAIR_1'
+$openclawGatewayStartupTimeoutSec=75
 $appChromeIssue=1372
 $appChromeController='http://127.0.0.1:8798'
 $appChromeResumeState='D:\TigerIQ\State\app-chrome-runtime-recovery.json'
@@ -227,7 +228,7 @@ function Restart-OpenClawGateway(){
   Stop-ScheduledTask -TaskName $openclawTask -ErrorAction SilentlyContinue
   Start-Sleep -Seconds 2
   Start-ScheduledTask -TaskName $openclawTask
-  $deadline=(Get-Date).AddSeconds(45)
+  $deadline=(Get-Date).AddSeconds($openclawGatewayStartupTimeoutSec)
   while((Get-Date)-lt$deadline){
     $task=Get-ScheduledTask -TaskName $openclawTask -ErrorAction SilentlyContinue
     if($task -and $task.State -eq 'Running' -and (Test-TcpPort '127.0.0.1' 18789)){return @{healthy=$true;port=18789;taskState=[string]$task.State}}
