@@ -90,17 +90,17 @@ function Wait-Port([int]$Port,[int]$Seconds=30){
 function Stop-StaleTrustedListener([int]$Port,[string]$ExpectedDeploy){
   $listener=Get-PortListener $Port
   if(-not$listener){return $false}
-  $pid=[int]$listener.OwningProcess
-  $cmd=Get-ProcessCommandLine $pid
+  $ownerPid=[int]$listener.OwningProcess
+  $cmd=Get-ProcessCommandLine $ownerPid
   if([string]::IsNullOrWhiteSpace($cmd)){
     $again=Get-PortListener $Port
-    if(-not$again -or [int]$again.OwningProcess-ne$pid){return $true}
-    throw "PORT_OWNER_COMMANDLINE_UNAVAILABLE:${Port}:$pid"
+    if(-not$again -or [int]$again.OwningProcess-ne$ownerPid){return $true}
+    throw "PORT_OWNER_COMMANDLINE_UNAVAILABLE:${Port}:$ownerPid"
   }
   if($cmd-like("*"+$ExpectedDeploy+"*")){return $false}
-  if($cmd-notlike("*"+$InstallRoot+"*")){throw "PORT_OWNED_BY_UNTRUSTED_PROCESS:${Port}:$pid"}
-  Write-SupervisorEvent 'STALE_RUNTIME_STOP' @{port=$Port;pid=$pid;commandLine=$cmd;expectedDeploy=$ExpectedDeploy}
-  Stop-Process -Id $pid -Force -ErrorAction Stop
+  if($cmd-notlike("*"+$InstallRoot+"*")){throw "PORT_OWNED_BY_UNTRUSTED_PROCESS:${Port}:$ownerPid"}
+  Write-SupervisorEvent 'STALE_RUNTIME_STOP' @{port=$Port;pid=$ownerPid;commandLine=$cmd;expectedDeploy=$ExpectedDeploy}
+  Stop-Process -Id $ownerPid -Force -ErrorAction Stop
   $deadline=(Get-Date).AddSeconds(10)
   do{
     if(-not(Get-PortListener $Port)){return $true}
