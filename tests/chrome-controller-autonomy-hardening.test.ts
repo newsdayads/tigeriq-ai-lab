@@ -513,6 +513,7 @@ describe('APP Chrome unified runtime supervisor #1525',()=>{
     expect(launcher).toContain('Owner-AutomationAllowed');
     expect(launcher).toContain("OWNER_PAUSE_PRESERVED");
     expect(launcher).toContain('PORT_OWNER_COMMANDLINE_UNAVAILABLE');
+    expect(launcher).not.toMatch(/^\\s*\\$pid\\s*=/im);
     expect(launcher).not.toContain('Stop-Process -Name chrome');
   });
 
