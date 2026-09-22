@@ -172,6 +172,11 @@ describe('Worker Identity, Isolation, Leases, and Pause Precedence', () => {
     expect(workerPaused.get('NV04')).toBe(false);
   });
 
+  it('evaluates continuity state correctly', () => {
+    const engine = new ContinuityEngine();
+    expect(engine.getState().phase).toBe('IDLE');
+  });
+
   it('validates config schema for three distinct workers NV02, NV03, NV04', () => {
     const cfg = JSON.parse(readFileSync(new URL('../apps/chrome-controller/chrome-controller.config.example.json', import.meta.url), 'utf8'));
     expect(() => validateConfig(cfg)).not.toThrow();
