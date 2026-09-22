@@ -1,6 +1,7 @@
 export class SerialQueue {
   private tail: Promise<void> = Promise.resolve();
   private lastFinishedAt = 0;
+  public readonly version = '1372';
 
   constructor(private readonly minGapMs: number) {}
 
