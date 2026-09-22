@@ -95,10 +95,10 @@ function Stop-StaleTrustedListener([int]$Port,[string]$ExpectedDeploy){
   if([string]::IsNullOrWhiteSpace($cmd)){
     $again=Get-PortListener $Port
     if(-not$again -or [int]$again.OwningProcess-ne$pid){return $true}
-    throw "PORT_OWNER_COMMANDLINE_UNAVAILABLE:$Port:$pid"
+    throw "PORT_OWNER_COMMANDLINE_UNAVAILABLE:${Port}:$pid"
   }
   if($cmd-like("*"+$ExpectedDeploy+"*")){return $false}
-  if($cmd-notlike("*"+$InstallRoot+"*")){throw "PORT_OWNED_BY_UNTRUSTED_PROCESS:$Port:$pid"}
+  if($cmd-notlike("*"+$InstallRoot+"*")){throw "PORT_OWNED_BY_UNTRUSTED_PROCESS:${Port}:$pid"}
   Write-SupervisorEvent 'STALE_RUNTIME_STOP' @{port=$Port;pid=$pid;commandLine=$cmd;expectedDeploy=$ExpectedDeploy}
   Stop-Process -Id $pid -Force -ErrorAction Stop
   $deadline=(Get-Date).AddSeconds(10)
@@ -112,7 +112,7 @@ function Stop-StaleTrustedListener([int]$Port,[string]$ExpectedDeploy){
 function Start-Component([int]$Port,[string]$ScriptPath,[string[]]$Arguments,[string]$Name,$Active){
   $stale=Stop-StaleTrustedListener $Port $Active.deploy
   if(Get-PortListener $Port){return @{started=$false;staleStopped=$stale}}
-  if(-not(Test-Path -LiteralPath $ScriptPath)){throw "COMPONENT_SCRIPT_MISSING:$Name:$ScriptPath"}
+  if(-not(Test-Path -LiteralPath $ScriptPath)){throw "COMPONENT_SCRIPT_MISSING:${Name}:$ScriptPath"}
   $out=Join-Path $runtime ($Name+'.out.log')
   $err=Join-Path $runtime ($Name+'.err.log')
   Start-Process node.exe -ArgumentList $Arguments -WorkingDirectory $Active.deploy -WindowStyle Hidden -RedirectStandardOutput $out -RedirectStandardError $err
@@ -134,7 +134,7 @@ function Wait-LiveVerified($Active,[int]$Seconds=30){
       if($controllerHead-eq$Active.head-and$bridgeHead-eq$Active.head-and$bridgeSource-eq$Active.bridgeHash){
         return [pscustomobject]@{controller=$controller;bridge=$bridge}
       }
-      $last="HEAD_OR_HASH_MISMATCH:controller=$controllerHead:bridge=$bridgeHead:source=$bridgeSource"
+      $last="HEAD_OR_HASH_MISMATCH:controller=${controllerHead}:bridge=${bridgeHead}:source=$bridgeSource"
     }catch{$last=$_.Exception.Message}
     Start-Sleep -Milliseconds 750
   }while((Get-Date)-lt$deadline)
