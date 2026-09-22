@@ -24,6 +24,49 @@ export const CONTINUE_PROMPTS = Object.freeze([
 
 export const CONTINUE_MIN_MS = 5 * 60 * 1000;
 export const CONTINUE_MAX_MS = 10 * 60 * 1000;
+export const REFRESH_MIN_MS = 30 * 1000;
+export const REFRESH_MAX_MS = 60 * 1000;
+export const MAX_STALLED_CHECKS = 3;
+
+export function createContinuityManager() {
+  const states = new Map();
+  return {
+    getState(workerId) {
+      return states.get(workerId) || { state: 'READY', stalledCount: 0, lastActivity: Date.now() };
+    },
+    setState(workerId, state, extra = {}) {
+      const current = this.getState(workerId);
+      states.set(workerId, { ...current, ...extra, state, lastActivity: Date.now() });
+    },
+    reset(workerId) {
+      if (workerId) {
+        states.set(workerId, { state: 'READY', stalledCount: 0, lastActivity: Date.now() });
+      } else {
+        states.clear();
+      }
+    }
+  };
+}
+
+export function deriveNv02Phase(controller) {
+  return 'ACTIVE';
+}
+
+export function hasActiveNv02Work(controller) {
+  return (controller?.jobs || []).some(j => !j?.completedAt);
+}
+
+export function hasWaitingEvidenceNv02Work(controller) {
+  return (controller?.jobs || []).some(j => j?.stage === 'WAITING_EVIDENCE' && !j?.completedAt);
+}
+
+export function nextRandomAt(min, max) {
+  return Date.now() + min + Math.random() * (max - min);
+}
+
+export function pickContinuePrompt() {
+  return CONTINUE_PROMPTS[Math.floor(Math.random() * CONTINUE_PROMPTS.length)];
+}onst CONTINUE_MAX_MS = 10 * 60 * 1000;
 export const REFRESH_MIN_MS = 30 * 60 * 1000;
 export const REFRESH_MAX_MS = 60 * 60 * 1000;
 export const WORKER_REFRESH_MIN_MS = 30 * 60 * 1000;
