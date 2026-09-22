@@ -264,7 +264,7 @@ async function maybeWorkerContinuity(w,target,ui){
     return;
   }
 
-  if(phase!=='WORKING'&&Number(state.nextPeriodicF5At||0)<=now){
+  if(Number(state.nextPeriodicF5At||0)<=now){
     const refreshed=await withWorkerMutation(w.id,async()=>{
       const beforeUrl=ui?.url||null,beforePhase=phase;
       const result=await reloadTarget(target);
@@ -1034,6 +1034,32 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
   state={...state,lastPhase:phase,...(currentTrackedWork?{resumeChatUrl:String(ui.url||'')}:{})};saveNv02Continuity(state);
   if(phase==='BLOCKED'){await continuityEvent('BLOCKED',{securityBlock:ui?.securityBlock||null});return;}
   if(await maybeRecoverChatLoadError(w,target,ui,now))return;
+  if(currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0)){
+    const refreshed=await withNv02Mutation(async()=>{
+      const beforeUrl=ui?.url||null;
+      const beforePhase=phase;
+      const result=await reloadTarget(target);
+      await sleep(1800);
+      const after=await uiState(target).catch(()=>null);
+      return {ok:true,status:result?.status||'RELOADED',beforeUrl,beforePhase,afterUrl:after?.url||null,afterPhase:after?.uiPhase||null};
+    },'PERIODIC_F5_REFRESH',15000);
+    if(refreshed?.status==='MUTATION_LEASE_BUSY'){
+      state={...state,nextPeriodicF5At:now+5000};saveNv02Continuity(state);
+      await continuityEvent('PERIODIC_F5_RETRY_LEASE_BUSY',{nextPeriodicF5At:state.nextPeriodicF5At});
+      return;
+    }
+    state={...state,
+      nextPeriodicF5At:nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS),
+      workingSignature:'',
+      workingUnchangedChecks:0,
+      nextProgressCheckAt:0,
+      stalledChecks:0,
+      modelCheckBlockedUntil:now+30000,
+    };
+    saveNv02Continuity(state);
+    await continuityEvent('PERIODIC_F5_REFRESH',{beforeUrl:refreshed?.beforeUrl||null,beforePhase:refreshed?.beforePhase||phase,afterUrl:refreshed?.afterUrl||null,afterPhase:refreshed?.afterPhase||null,nextPeriodicF5At:state.nextPeriodicF5At});
+    return;
+  }
   if(phase==='WORKING'){
     if(now<Number(state.nextProgressCheckAt||0))return;
     const signature=String(ui?.activitySignature||'');
@@ -1103,32 +1129,6 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
       return{ok:true,status:'CURRENT_CHAT_RESTORED',url:state.resumeChatUrl};
     },'CURRENT_CHAT_RESTORE',30000);
     await continuityEvent(restored?.status==='MUTATION_LEASE_BUSY'?'CURRENT_CHAT_RESTORE_DEFERRED':'CURRENT_CHAT_RESTORED',{status:restored?.status||null,url:state.resumeChatUrl});
-    return;
-  }
-  if(currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0)){
-    const refreshed=await withNv02Mutation(async()=>{
-      const beforeUrl=ui?.url||null;
-      const beforePhase=phase;
-      const result=await reloadTarget(target);
-      await sleep(1800);
-      const after=await uiState(target).catch(()=>null);
-      return {ok:true,status:result?.status||'RELOADED',beforeUrl,beforePhase,afterUrl:after?.url||null,afterPhase:after?.uiPhase||null};
-    },'PERIODIC_F5_REFRESH',15000);
-    if(refreshed?.status==='MUTATION_LEASE_BUSY'){
-      state={...state,nextPeriodicF5At:now+5000};saveNv02Continuity(state);
-      await continuityEvent('PERIODIC_F5_RETRY_LEASE_BUSY',{nextPeriodicF5At:state.nextPeriodicF5At});
-      return;
-    }
-    state={...state,
-      nextPeriodicF5At:nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS),
-      workingSignature:'',
-      workingUnchangedChecks:0,
-      nextProgressCheckAt:0,
-      stalledChecks:0,
-      modelCheckBlockedUntil:now+30000,
-    };
-    saveNv02Continuity(state);
-    await continuityEvent('PERIODIC_F5_REFRESH',{beforeUrl:refreshed?.beforeUrl||null,beforePhase:refreshed?.beforePhase||phase,afterUrl:refreshed?.afterUrl||null,afterPhase:refreshed?.afterPhase||null,nextPeriodicF5At:state.nextPeriodicF5At});
     return;
   }
   const modelCheckRequired=now>=Number(state.modelCheckBlockedUntil||0)&&(ui?.modelExact!==true||!state.verifiedChatUrl||!sameNv02Chat(state.verifiedChatUrl,ui?.url));
