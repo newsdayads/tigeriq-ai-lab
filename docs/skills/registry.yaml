@@ -31,6 +31,7 @@ states:
 
 skills:
   - id: contextual-skill-loading
+    summary: Load only skills relevant to the current objective instead of preloading all knowledge.
     title: Contextual Skill Loading
     state: ACTIVE
     version: 1.0.0
@@ -51,6 +52,7 @@ skills:
     summary: Filter irrelevant context, reserve headroom, compact milestones and resume from durable references.
 
   - id: spec-first-tdd
+    summary: Define scope and acceptance before code; for suitable bugs prove RED before GREEN.
     title: SPEC-First and TDD When Appropriate
     state: ACTIVE
     version: 1.0.0
@@ -81,6 +83,7 @@ skills:
     summary: Separate planning, implementation, review and verification where risk or value justifies it.
 
   - id: external-skill-security-gate
+    summary: Audit provenance, pinned version, installer behavior and capabilities before executable use.
     title: External Skill Security Gate
     state: ACTIVE
     version: 1.0.0
@@ -96,6 +99,7 @@ skills:
     summary: Audit provenance, pinned version, installer behavior and capabilities before executable use.
 
   - id: minimal-change-output
+    summary: Prefer scoped diffs and minimal edits; avoid whole-file regeneration when unnecessary.
     title: Minimal Change Output
     state: ACTIVE
     version: 1.0.0
