@@ -140,6 +140,16 @@ function syncHealthLabels(d) {
   const h = document.getElementById('topHealth');
   if (h && !webOk) { h.style.color='#ff9aa4'; h.style.borderColor='#a6414c'; h.style.background='#35131a'; h.innerHTML='<span class="dot"></span><span>WEB CONTROL OFFLINE</span>'; }
   else if (h && d?.ok) { h.style.color=''; h.style.borderColor=''; h.style.background=''; h.innerHTML='<span class="dot"></span><span>HỆ THỐNG ĐANG HOẠT ĐỘNG</span>'; }
+  
+  const aggregatedContainer = document.getElementById('healthAggregationView');
+  if (aggregatedContainer && latestWebHealth?.sources) {
+    const sources = latestWebHealth.sources;
+    aggregatedContainer.innerHTML = Object.entries(sources).map(([k, v]) => {
+      const st = v.source_type || (k === 'chromeController' ? 'Automation' : 'API');
+      const statusClass = v.ok ? 'text-success' : 'text-danger';
+      return `<div class="health-agg-item"><span class="source-badge source-${st.toLowerCase()}">${st}</span><strong>${k}</strong>: <span class="${statusClass}">${v.ok ? 'ONLINE' : 'OFFLINE'}</span></div>`;
+    }).join('');
+  }
 }
 const renderBase = render;
 render = function renderTruth(d) {
