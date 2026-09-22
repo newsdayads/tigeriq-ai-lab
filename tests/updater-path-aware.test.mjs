@@ -28,4 +28,8 @@ test('updater is path aware for core, web control, coding lane, and OpenClaw',()
   assert.match(script,/Test-TcpPort '127\.0\.0\.1' 18789/);
   assert.match(script,/openclawRestarted=\$impact\.openclaw/);
   assert.match(script,/OPENCLAW_GATEWAY_HEALTH_FAILED/);
+  assert.match(script,/TIGERIQ_OPENCLAW_RUNTIME_V1/);
+  assert.match(script,/HEAD:apps\/openclaw-tigeriq-runtime/);
+  assert.match(script,/function Reconcile-OpenClawRuntime/);
+  assert.match(script,/openclawReconcile=\$openclawReconcile/);
 });
