@@ -220,7 +220,8 @@ describe('NV02 continuity policy', () => {
     const modelRecoveryGate=continuityLoop.indexOf("if(phase==='STALLED'&&ui?.modelExact!==true&&modelCheckRequired)");
     const noCurrentChatGate=continuityLoop.indexOf("if(!currentTrackedWork)");
     expect(currentChatRestoreGate).toBeGreaterThan(-1);
-    expect(periodicF5Gate).toBeGreaterThan(currentChatRestoreGate);
+    expect(periodicF5Gate).toBeGreaterThan(-1);
+    expect(periodicF5Gate).toBeLessThan(currentChatRestoreGate);
     expect(periodicF5Gate).toBeLessThan(modelRecoveryGate);
     expect(currentChatRestoreGate).toBeLessThan(modelRecoveryGate);
     expect(modelRecoveryGate).toBeGreaterThan(-1);
