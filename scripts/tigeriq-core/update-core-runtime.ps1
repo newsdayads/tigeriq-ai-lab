@@ -8,6 +8,10 @@ $updaterRuntime='D:\TigerIQ\Runtime\CoreUpdater\update-core-runtime.ps1'
 $launcherRuntime='D:\TigerIQ\Runtime\CoreLaunchers'
 $state='D:\TigerIQ\State\core-runtime-updater.json'
 $openclawState='D:\TigerIQ\State\openclaw-runtime-applied.json'
+$openclawCanaryState='D:\TigerIQ\State\openclaw-runtime-canary.json'
+$openclawCli='D:\OpenClaw\npm-global\openclaw.cmd'
+$openclawAgent='operator-local'
+$openclawCanaryIssue=1430
 $coreTask='TigerIQ Core 24x7'
 $webTask='TigerIQ Web Control 24x7'
 $codingTask='TigerIQ Coding Lane 24x7'
@@ -130,6 +134,68 @@ function Reconcile-OpenClawRuntime(){
   Save-OpenClawAppliedState $treeSha
   return @{action='restarted';treeSha=$treeSha;portHealthy=$true}
 }
+function Get-OpenClawCanaryState(){
+  try{if(Test-Path -LiteralPath $openclawCanaryState){return (Get-Content -LiteralPath $openclawCanaryState -Raw|ConvertFrom-Json)}}catch{}
+  return $null
+}
+function Save-OpenClawCanaryState([string]$installedSha,[string]$treeSha,[string]$result,[string]$reason,[bool]$reported){
+  $d=[ordered]@{schema='TIGERIQ_OPENCLAW_CANARY_V1';installedSha=$installedSha;treeSha=$treeSha;result=$result;reason=$reason;reported=$reported;updatedAt=(Get-Date).ToUniversalTime().ToString('o')}
+  $tmp=$openclawCanaryState+'.tmp';[IO.File]::WriteAllText($tmp,($d|ConvertTo-Json -Depth 5),(New-Object Text.UTF8Encoding($false)));Move-Item -Force $tmp $openclawCanaryState
+}
+function Report-OpenClawCanary([string]$installedSha,[string]$treeSha,[string]$result,[string]$reason){
+  $body=@(
+    'TIGERIQ_OPENCLAW_CANARY_V1',
+    ('installedSha='+$installedSha),
+    ('pluginTreeSha='+$treeSha),
+    ('result='+$result),
+    ('reason='+$reason),
+    'agent=operator-local',
+    'tool=tigeriq_runtime',
+    'action=core_status',
+    'rawOutputPublished=false'
+  ) -join [Environment]::NewLine
+  & gh issue comment $openclawCanaryIssue --repo newsdayads/tigeriq-ai-lab --body $body 2>$null|Out-Null
+  return ($LASTEXITCODE -eq 0)
+}
+function Invoke-OpenClawCanary([string]$installedSha,[string]$treeSha){
+  if(-not $installedSha -or -not $treeSha){return @{action='skip';reason='identity_missing'}}
+  $previous=Get-OpenClawCanaryState
+  if($previous -and [string]$previous.installedSha -eq $installedSha -and [string]$previous.treeSha -eq $treeSha){
+    $previousReported=[bool]$previous.reported
+    if(-not $previousReported){
+      $previousReported=Report-OpenClawCanary $installedSha $treeSha ([string]$previous.result) ([string]$previous.reason)
+      Save-OpenClawCanaryState $installedSha $treeSha ([string]$previous.result) ([string]$previous.reason) $previousReported
+    }
+    return @{action='none';result=[string]$previous.result;reason=[string]$previous.reason;reported=$previousReported}
+  }
+  $result='BLOCKED';$reason='UNKNOWN';$reported=$false
+  try{
+    if(-not(Test-Path -LiteralPath $openclawCli)){$reason='OPENCLAW_CLI_MISSING'}
+    elseif(-not(Task-Exists $openclawTask) -or -not(Test-TcpPort '127.0.0.1' 18789)){$reason='OPENCLAW_GATEWAY_UNHEALTHY'}
+    else{
+      $oldHome=$env:OPENCLAW_HOME;$oldState=$env:OPENCLAW_STATE_DIR;$oldConfig=$env:OPENCLAW_CONFIG_PATH
+      try{
+        $env:OPENCLAW_HOME='D:\OpenClaw'
+        $env:OPENCLAW_STATE_DIR='D:\TigerIQ-OpenClaw\state'
+        $env:OPENCLAW_CONFIG_PATH='D:\TigerIQ-OpenClaw\state\openclaw.json'
+        $message='Use only tigeriq_runtime. Call core_status exactly once. If the tool call succeeds and its evidence reports shell=false, arbitraryFileAccess=false, arbitraryCommandExecution=false, reply exactly TIGERIQ_OPENCLAW_CANARY_PASS. Otherwise reply exactly TIGERIQ_OPENCLAW_CANARY_BLOCKED.'
+        $output=(& $openclawCli agent --agent $openclawAgent --message $message --timeout 90 2>&1|Out-String)
+        $exitCode=$LASTEXITCODE
+        if($exitCode -eq 0 -and $output -match '(?m)^\s*TIGERIQ_OPENCLAW_CANARY_PASS\s*$'){$result='PASS';$reason='CORE_STATUS_TYPED_TOOL_PASS'}
+        elseif($exitCode -ne 0){$reason=('OPENCLAW_AGENT_EXIT_'+$exitCode)}
+        elseif($output -match 'TIGERIQ_OPENCLAW_CANARY_BLOCKED'){$reason='AGENT_REPORTED_BLOCKED'}
+        else{$reason='UNEXPECTED_AGENT_REPLY'}
+      }finally{
+        if($null-eq$oldHome){Remove-Item Env:OPENCLAW_HOME -ErrorAction SilentlyContinue}else{$env:OPENCLAW_HOME=$oldHome}
+        if($null-eq$oldState){Remove-Item Env:OPENCLAW_STATE_DIR -ErrorAction SilentlyContinue}else{$env:OPENCLAW_STATE_DIR=$oldState}
+        if($null-eq$oldConfig){Remove-Item Env:OPENCLAW_CONFIG_PATH -ErrorAction SilentlyContinue}else{$env:OPENCLAW_CONFIG_PATH=$oldConfig}
+      }
+    }
+  }catch{$reason=('CANARY_EXCEPTION_'+$_.Exception.GetType().Name)}
+  $reported=Report-OpenClawCanary $installedSha $treeSha $result $reason
+  Save-OpenClawCanaryState $installedSha $treeSha $result $reason $reported
+  return @{action='executed';result=$result;reason=$reason;reported=$reported}
+}
 function Gates-Pass([string]$sha){
   $runs=gh api "repos/newsdayads/tigeriq-ai-lab/actions/runs?head_sha=$sha&status=completed&per_page=30"|ConvertFrom-Json
   $need=@('CI','WO-014 Queue Hygiene','WO-012/013 Vercel Online Verify')
@@ -245,7 +311,8 @@ while($true){
     if($runtimeExists -and (Runtime-Source-Dirty)){Save-State @{result='BLOCKED_DIRTY_RUNTIME';runtimeSource=$runtimeRepo;watchdog=$watchdog};continue}
     $local=if($runtimeExists){Head $runtimeRepo 'HEAD'}else{$null}
     $openclawReconcile=if($runtimeExists){Reconcile-OpenClawRuntime}else{@{action='skip';reason='runtime_missing'}}
-    if($runtimeExists -and $local -eq $remote){Save-State @{result='NO_CHANGE';installedSha=$local;runtimeSource=$runtimeRepo;openclawReconcile=$openclawReconcile;watchdog=$watchdog};continue}
+    $openclawCanary=if($runtimeExists -and $local){Invoke-OpenClawCanary $local (OpenClaw-TreeSha)}else{@{action='skip';reason='runtime_missing'}}
+    if($runtimeExists -and $local -eq $remote){Save-State @{result='NO_CHANGE';installedSha=$local;runtimeSource=$runtimeRepo;openclawReconcile=$openclawReconcile;openclawCanary=$openclawCanary;watchdog=$watchdog};continue}
     $gateSha=Resolve-GateSha $remote
     if(-not $gateSha){Save-State @{result='WAIT_GATES';candidateSha=$remote;runtimeSource=$runtimeRepo;watchdog=$watchdog};continue}
     [string[]]$changed=if($runtimeExists){@(git -C $controlRepo diff --name-only $local $remote)}else{@('apps/tigeriq-core/','apps/tigeriq-coding-lane/','scripts/tigeriq-core/')}
@@ -281,7 +348,8 @@ while($true){
       throw ('ROLLED_BACK:'+ $_.Exception.Message)
     }
     $newCore=HealthInfo 'http://100.97.23.87:8795/health'
-    Save-State @{result='UPDATED';installedSha=$remote;gateSha=$gateSha;previousSha=$previousRuntimeSha;runtimeSource=$runtimeRepo;changedPaths=$changed;impact=$impact;openclawReconcile=$openclawReconcile;corePid=if($newCore){[int]$newCore.pid}else{$null};previousCorePid=$oldPid;coreRestarted=$impact.core;webRestarted=$impact.web;codingRestarted=$impact.coding;openclawRestarted=$impact.openclaw;openclawPortHealthy=if($openclawHealth){[bool]$openclawHealth.healthy}else{$null};webPid=if($webHealth){$webHealth.pid}else{$null};codingPid=if($codingHealth){$codingHealth.pid}else{$null};watchdog=$watchdog}
+    $openclawCanary=Invoke-OpenClawCanary $remote (OpenClaw-TreeSha)
+    Save-State @{result='UPDATED';installedSha=$remote;gateSha=$gateSha;previousSha=$previousRuntimeSha;runtimeSource=$runtimeRepo;changedPaths=$changed;impact=$impact;openclawReconcile=$openclawReconcile;openclawCanary=$openclawCanary;corePid=if($newCore){[int]$newCore.pid}else{$null};previousCorePid=$oldPid;coreRestarted=$impact.core;webRestarted=$impact.web;codingRestarted=$impact.coding;openclawRestarted=$impact.openclaw;openclawPortHealthy=if($openclawHealth){[bool]$openclawHealth.healthy}else{$null};webPid=if($webHealth){$webHealth.pid}else{$null};codingPid=if($codingHealth){$codingHealth.pid}else{$null};watchdog=$watchdog}
     if($impact.updater){Restart-UpdaterAfterExit;exit 75}
   }catch{Save-State @{result='FAILED';error=$_.Exception.Message;watchdog=$watchdog}}
   finally{Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue;if($locked){$mutex.ReleaseMutex()|Out-Null}}
