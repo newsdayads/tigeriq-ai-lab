@@ -259,5 +259,20 @@ describe('safe recovery contracts',()=>{
 
   it('verifies canonical spec #1372 worker utility and controller runtime resilience',()=>{
     expect(WORKER_IDS.length).toBeGreaterThan(0);
+    for (const workerId of WORKER_IDS) {
+      const presence = classifyWorkerPresence({ workerId, lastSeenMsAgo: 1000, activeJobs: 0 });
+      expect(presence).toBeDefined();
+    }
+    const tmpDir = mkdtempSync(join(tmpdir(), 'spec-1372-'));
+    try {
+      const leaseStore = new BrowserMutationLeaseStore(join(tmpDir, 'leases.json'));
+      const lease = leaseStore.acquire('worker-1', 'owner-1', 60000);
+      expect(lease.leaseId).toBeTruthy();
+      expect(leaseStore.isActive('worker-1', lease.leaseId)).toBe(true);
+      leaseStore.release('worker-1', lease.leaseId);
+      expect(leaseStore.isActive('worker-1', lease.leaseId)).toBe(false);
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 });
