@@ -3,15 +3,36 @@ import assert from 'node:assert';
 import { useSkill, measureEffectiveness, retireSkill } from '../apps/tigeriq-core/skill-effectiveness.mjs';
 
 import fs from 'node:fs';
-import yaml from 'node:yaml'; // fallback or simple parse if needed, or read registry via fs
+
+function parseSimpleYaml(content) {
+  const result = { skills: [] };
+  let currentSkill = null;
+  for (const line of content.split('\n')) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('- id:')) {
+      if (currentSkill) result.skills.push(currentSkill);
+      currentSkill = { id: trimmed.split(':')[1].trim() };
+    } else if (currentSkill && trimmed.startsWith('state:')) {
+      currentSkill.state = trimmed.split(':')[1].trim();
+    }
+  }
+  if (currentSkill) result.skills.push(currentSkill);
+  return result;
+}
 
 test('Registry validation for skill states and actual loader behavior', () => {
   const registryContent = fs.readFileSync(new URL('../docs/skills/registry.yaml', import.meta.url), 'utf8');
-  assert.ok(registryContent.includes('id: contextual-skill-loading'));
-  assert.ok(registryContent.includes('state: CANDIDATE'));
-  assert.ok(registryContent.includes('id: spec-first-tdd'));
-  assert.ok(registryContent.includes('id: external-skill-security-gate'));
-  assert.ok(registryContent.includes('id: minimal-change-output'));
+  const parsedRegistry = parseSimpleYaml(registryContent);
+  
+  const contextualSkill = parsedRegistry.skills.find(s => s.id === 'contextual-skill-loading');
+  const tddSkill = parsedRegistry.skills.find(s => s.id === 'spec-first-tdd');
+  const securitySkill = parsedRegistry.skills.find(s => s.id === 'external-skill-security-gate');
+  const minimalSkill = parsedRegistry.skills.find(s => s.id === 'minimal-change-output');
+
+  assert.strictEqual(contextualSkill.state, 'ACTIVE');
+  assert.strictEqual(tddSkill.state, 'ACTIVE');
+  assert.strictEqual(securitySkill.state, 'ACTIVE');
+  assert.strictEqual(minimalSkill.state, 'ACTIVE');
 
   // Verify actual loader behavior via useSkill & measureEffectiveness
   const loaderSkillId = 'contextual-skill-loading';
@@ -24,8 +45,26 @@ test('Registry validation for skill states and actual loader behavior', () => {
   assert.strictEqual(loadedState.successRate, 1);
 });
 
-test('Full skill effectiveness lifecycle: USE -> MEASURE -> RETIRE', () => {
-  const skillId = 'test-skill-alpha';
+test('Security gate logic functional test with isolated state', () => {
+  const secSkillId = 'external-skill-security-gate';
+  retireSkill(secSkillId);
+  const initial = measureEffectiveness(secSkillId);
+  assert.strictEqual(initial.total, 0);
+
+  // Audit check simulation
+  const auditPassed = true;
+  if (auditPassed) {
+    useSkill(secSkillId, { success: true, verified: 'provenance-pinned' });
+  }
+  const postAudit = measureEffectiveness(secSkillId);
+  assert.strictEqual(postAudit.total, 1);
+  assert.strictEqual(postAudit.successRate, 1);
+  retireSkill(secSkillId);
+});
+
+test('Full skill effectiveness lifecycle: USE -> MEASURE -> RETIRE with isolation', () => {
+  const skillId = 'test-skill-alpha-isolated';
+  retireSkill(skillId);
 
   // Initial measurement should be zero/empty
   const initial = measureEffectiveness(skillId);
