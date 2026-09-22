@@ -140,10 +140,9 @@ async function genericWorkerEvent(workerId,event,data={}){
 async function reopenWorker(w,target,state,now,reason){
   const lifecycle=beginWorkerRecoveryLifecycle(workerRecoveryBusy,w.id,state,now,nextWorkerResetAt(w.id,now));
   if(!lifecycle.acquired){
-    const deferred={...state,recoveryBlockedUntil:Math.max(Number(state.recoveryBlockedUntil)||0,now+5000)};
-    saveWorkerContinuity(w.id,deferred);
-    await genericWorkerEvent(w.id,'RECOVERY_IN_FLIGHT_DEFERRED',{reason,recoveryBlockedUntil:deferred.recoveryBlockedUntil});
-    return deferred;
+    const current=loadWorkerContinuity(w.id);
+    await genericWorkerEvent(w.id,'RECOVERY_IN_FLIGHT_DEFERRED',{reason,recoveryBlockedUntil:current.recoveryBlockedUntil});
+    return current;
   }
   state=lifecycle.state;
   try{
