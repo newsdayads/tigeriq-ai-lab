@@ -36,6 +36,7 @@ const busy=new Set();
 const workerConnectivityBackoff=new Map();
 let nv02VerifiedModelProfile=null;
 let nv02MutationBusy=false;
+let nv02BootF5ScheduleInitialized=false;
 const NV02_ISOLATED_AUTO_CONTINUE=true;
 const NV02_F5_MIN_MS=5*60*1000;
 const NV02_F5_MAX_MS=10*60*1000;
@@ -323,9 +324,21 @@ function loadNv02Continuity(){
   const now=Date.now();
   let raw={};
   try{raw=JSON.parse(fs.readFileSync(NV02_CONTINUITY_STATE,'utf8'));}catch{}
+  let nextPeriodicF5At=Number(raw.nextPeriodicF5At)||nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS);
+  let workingRecheckAt=Number(raw.workingRecheckAt)||0;
+  if(!nv02BootF5ScheduleInitialized){
+    nv02BootF5ScheduleInitialized=true;
+    const previousNextPeriodicF5At=nextPeriodicF5At;
+    const previousWorkingRecheckAt=workingRecheckAt;
+    if(nextPeriodicF5At<=now)nextPeriodicF5At=nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS);
+    if(workingRecheckAt&&workingRecheckAt<=now)workingRecheckAt=nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS);
+    if(previousNextPeriodicF5At!==nextPeriodicF5At||previousWorkingRecheckAt!==workingRecheckAt){
+      log('NV02_F5_TIMERS_REBASED_AFTER_RESTART',{previousNextPeriodicF5At,nextPeriodicF5At,previousWorkingRecheckAt,workingRecheckAt});
+    }
+  }
   return {
     nextContinueAt:Number(raw.nextContinueAt)||nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),
-    nextPeriodicF5At:Number(raw.nextPeriodicF5At)||nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS),
+    nextPeriodicF5At,
     nextRefreshAt:Number(raw.nextRefreshAt)||nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS),
     stalledChecks:Number(raw.stalledChecks)||0,
     lastPrompt:String(raw.lastPrompt||''),
@@ -334,7 +347,7 @@ function loadNv02Continuity(){
     lastPhase:String(raw.lastPhase||'STALLED'),
     workingSignature:String(raw.workingSignature||''),
     workingUnchangedChecks:Number(raw.workingUnchangedChecks)||0,
-    workingRecheckAt:Number(raw.workingRecheckAt)||0,
+    workingRecheckAt,
     nextProgressCheckAt:Number(raw.nextProgressCheckAt)||0,
     verifiedChatUrl:String(raw.verifiedChatUrl||''),
     resumeChatUrl:String(raw.resumeChatUrl||(hasCurrentNv02Chat(raw.verifiedChatUrl)?raw.verifiedChatUrl:'')||''),
@@ -964,7 +977,16 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
     }
     return;
   }
-  if(now>=Number(state.nextPeriodicF5At||0)){
+  if(!currentTrackedWork&&hasCurrentNv02Chat(state.resumeChatUrl)){
+    const restored=await withNv02Mutation(async()=>{
+      await navigate(target,state.resumeChatUrl);
+      await sleep(1200);
+      return{ok:true,status:'CURRENT_CHAT_RESTORED',url:state.resumeChatUrl};
+    },'CURRENT_CHAT_RESTORE',30000);
+    await continuityEvent(restored?.status==='MUTATION_LEASE_BUSY'?'CURRENT_CHAT_RESTORE_DEFERRED':'CURRENT_CHAT_RESTORED',{status:restored?.status||null,url:state.resumeChatUrl});
+    return;
+  }
+  if(currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0)){
     const refreshed=await withNv02Mutation(async()=>{
       const beforeUrl=ui?.url||null;
       const beforePhase=phase;
@@ -988,15 +1010,6 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
     };
     saveNv02Continuity(state);
     await continuityEvent('PERIODIC_F5_REFRESH',{beforeUrl:refreshed?.beforeUrl||null,beforePhase:refreshed?.beforePhase||phase,afterUrl:refreshed?.afterUrl||null,afterPhase:refreshed?.afterPhase||null,nextPeriodicF5At:state.nextPeriodicF5At});
-    return;
-  }
-  if(!currentTrackedWork&&hasCurrentNv02Chat(state.resumeChatUrl)){
-    const restored=await withNv02Mutation(async()=>{
-      await navigate(target,state.resumeChatUrl);
-      await sleep(1200);
-      return{ok:true,status:'CURRENT_CHAT_RESTORED',url:state.resumeChatUrl};
-    },'CURRENT_CHAT_RESTORE',30000);
-    await continuityEvent(restored?.status==='MUTATION_LEASE_BUSY'?'CURRENT_CHAT_RESTORE_DEFERRED':'CURRENT_CHAT_RESTORED',{status:restored?.status||null,url:state.resumeChatUrl});
     return;
   }
   const modelCheckRequired=now>=Number(state.modelCheckBlockedUntil||0)&&(ui?.modelExact!==true||!state.verifiedChatUrl||!sameNv02Chat(state.verifiedChatUrl,ui?.url));
