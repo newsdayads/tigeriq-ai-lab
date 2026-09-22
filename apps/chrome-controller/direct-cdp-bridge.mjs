@@ -21,6 +21,7 @@ const NV02_TOKEN=String(process.env.TIGERIQ_NV02_WORKER_TOKEN||'').trim();
 const APPROVED_HEAD=String(process.env.TIGERIQ_APPROVED_HEAD||'').trim();
 const DEPLOY_ROOT=String(process.env.TIGERIQ_DEPLOY_ROOT||'').trim();
 const EXPECTED_BRIDGE_SHA256=String(process.env.TIGERIQ_NV02_BRIDGE_SHA256||'').trim().toLowerCase();
+const APPCHROME_SUPERVISOR_EPOCH=String(process.env.TIGERIQ_APPCHROME_SUPERVISOR_EPOCH||'').trim();
 const BRIDGE_PATH=fs.realpathSync(process.argv[1]);
 const BRIDGE_SHA256=createHash('sha256').update(fs.readFileSync(BRIDGE_PATH)).digest('hex');
 if(EXPECTED_BRIDGE_SHA256&&EXPECTED_BRIDGE_SHA256!==BRIDGE_SHA256){
@@ -1280,16 +1281,22 @@ function acquireWorkerOwnership(workerId){
   for(let attempt=0;attempt<2;attempt++){
     try{
       const fd=fs.openSync(lockPath,'wx');
-      try{fs.writeFileSync(fd,JSON.stringify({workerId,pid:process.pid,approvedHead:APPROVED_HEAD,sourceSha256:BRIDGE_SHA256,bridgePath:BRIDGE_PATH,acquiredAt:new Date().toISOString()}),'utf8');}finally{fs.closeSync(fd);}
+      try{fs.writeFileSync(fd,JSON.stringify({workerId,pid:process.pid,approvedHead:APPROVED_HEAD,sourceSha256:BRIDGE_SHA256,bridgePath:BRIDGE_PATH,supervisorEpoch:APPCHROME_SUPERVISOR_EPOCH,acquiredAt:new Date().toISOString()}),'utf8');}finally{fs.closeSync(fd);}
       return;
     }catch(error){
       if(error?.code!=='EEXIST')throw error;
       let existing={};
       try{existing=JSON.parse(fs.readFileSync(lockPath,'utf8'));}catch{}
-      if(Number(existing.pid)>0&&pidAlive(Number(existing.pid))){
+      const existingPid=Number(existing.pid);
+      const sameSupervisorEpoch=Boolean(APPCHROME_SUPERVISOR_EPOCH)&&String(existing.supervisorEpoch||'')===APPCHROME_SUPERVISOR_EPOCH;
+      const legacyNoEpoch=!APPCHROME_SUPERVISOR_EPOCH;
+      if(existingPid>0&&pidAlive(existingPid)&&(legacyNoEpoch||sameSupervisorEpoch)){
         const legacy=workerId==='NV02'?'NV02_DUPLICATE_CANONICAL_OWNERSHIP':`WORKER_DUPLICATE_CANONICAL_OWNERSHIP:${workerId}`;
-        log(workerId==='NV02'?'NV02_DUPLICATE_CANONICAL_OWNERSHIP':'WORKER_DUPLICATE_CANONICAL_OWNERSHIP',{workerId,existingPid:Number(existing.pid),incomingPid:process.pid,existingHead:existing.approvedHead||null});
+        log(workerId==='NV02'?'NV02_DUPLICATE_CANONICAL_OWNERSHIP':'WORKER_DUPLICATE_CANONICAL_OWNERSHIP',{workerId,existingPid,incomingPid:process.pid,existingHead:existing.approvedHead||null,supervisorEpoch:String(existing.supervisorEpoch||'')||null});
         throw new Error(legacy);
+      }
+      if(existingPid>0&&pidAlive(existingPid)&&APPCHROME_SUPERVISOR_EPOCH&&!sameSupervisorEpoch){
+        log('WORKER_STALE_CANONICAL_OWNERSHIP_CLEARED',{workerId,existingPid,incomingPid:process.pid,existingHead:existing.approvedHead||null,existingSupervisorEpoch:String(existing.supervisorEpoch||'')||null,currentSupervisorEpoch:APPCHROME_SUPERVISOR_EPOCH});
       }
       try{fs.unlinkSync(lockPath);}catch{}
     }
