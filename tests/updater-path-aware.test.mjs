@@ -136,6 +136,9 @@ test('updater performs bounded reconcile for TigerIQ Live Status Bridge without 
   assert.match(script,/Start-ScheduledTask -TaskName \$liveStatusBridgeTask/);
   assert.match(script,/liveStatusBridgeReconcile=\$liveStatusBridgeReconcile/);
   assert.match(script,/stateName -ne 'Running'/);
+  const noChangeIdx = script.indexOf('NO_CHANGE');
+  const reconcileIdx = script.indexOf('liveStatusBridgeReconcile');
+  assert.ok(reconcileIdx >= 0 && noChangeIdx > reconcileIdx, 'liveStatusBridgeReconcile must precede NO_CHANGE early-exit check');
 });
 
 test('bootstrap stops the old updater instance before re-registering its task',()=>{
