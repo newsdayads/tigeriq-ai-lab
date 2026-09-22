@@ -64,10 +64,6 @@ function Get-PortListener([int]$Port){
   Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue|Select-Object -First 1
 }
 
-function Get-ProcessCommandLine([int]$ProcessId){
-  try{[string](Get-CimInstance Win32_Process -Filter "ProcessId=$ProcessId" -ErrorAction Stop).CommandLine}catch{''}
-}
-
 function Owner-AutomationAllowed{
   try{
     if(Test-Path -LiteralPath $ownerStatePath){
@@ -76,6 +72,37 @@ function Owner-AutomationAllowed{
     }
   }catch{}
   return $true
+}
+
+function Get-TrustedListenerIdentity([int]$Port,[string]$ExpectedDeploy,[bool]$ForceRestartTrusted=$false){
+  try{
+    if($Port-eq8798){
+      $state=Invoke-RestMethod -Uri 'http://127.0.0.1:8798/api/state' -TimeoutSec 3
+      $deploy=[string]$state.runtimeProvenance.deployRoot
+      if([string]::IsNullOrWhiteSpace($deploy)-or$deploy-notlike($InstallRoot+'*')){
+        return @{trusted=$false;current=$false;reason='CONTROLLER_PROVENANCE_INVALID'}
+      }
+      return @{trusted=$true;current=(-not$ForceRestartTrusted-and$deploy-eq$ExpectedDeploy);identity=('controller:'+ $deploy)}
+    }
+    if($Port-eq8799){
+      $health=Invoke-RestMethod -Uri 'http://127.0.0.1:8799/health' -TimeoutSec 3
+      $deploy=[string]$health.deployRoot
+      if($health.ok-ne$true-or[string]::IsNullOrWhiteSpace($deploy)-or$deploy-notlike($InstallRoot+'*')){
+        return @{trusted=$false;current=$false;reason='BRIDGE_PROVENANCE_INVALID'}
+      }
+      return @{trusted=$true;current=(-not$ForceRestartTrusted-and$deploy-eq$ExpectedDeploy);identity=('bridge:'+ $deploy)}
+    }
+    if($Port-eq8800){
+      $health=Invoke-RestMethod -Uri 'http://127.0.0.1:8800/health' -TimeoutSec 3
+      if($health.ok-ne$true-or[string]$health.service-ne'chrome-launch-broker'){
+        return @{trusted=$false;current=$false;reason='BROKER_IDENTITY_INVALID'}
+      }
+      return @{trusted=$true;current=(-not$ForceRestartTrusted);identity='chrome-launch-broker'}
+    }
+    return @{trusted=$false;current=$false;reason='UNSUPPORTED_PORT'}
+  }catch{
+    return @{trusted=$false;current=$false;reason=('PORT_IDENTITY_PROBE_FAILED:'+ $_.Exception.Message)}
+  }
 }
 
 function Wait-Port([int]$Port,[int]$Seconds=30){
@@ -87,19 +114,18 @@ function Wait-Port([int]$Port,[int]$Seconds=30){
   throw "PORT_TIMEOUT:$Port"
 }
 
-function Stop-StaleTrustedListener([int]$Port,[string]$ExpectedDeploy){
+function Stop-StaleTrustedListener([int]$Port,[string]$ExpectedDeploy,[bool]$ForceRestartTrusted=$false){
   $listener=Get-PortListener $Port
   if(-not$listener){return $false}
   $ownerPid=[int]$listener.OwningProcess
-  $cmd=Get-ProcessCommandLine $ownerPid
-  if([string]::IsNullOrWhiteSpace($cmd)){
+  $identity=Get-TrustedListenerIdentity $Port $ExpectedDeploy $ForceRestartTrusted
+  if($identity.current){return $false}
+  if(-not$identity.trusted){
     $again=Get-PortListener $Port
     if(-not$again -or [int]$again.OwningProcess-ne$ownerPid){return $true}
-    throw "PORT_OWNER_COMMANDLINE_UNAVAILABLE:${Port}:$ownerPid"
+    throw "PORT_OWNED_BY_UNTRUSTED_PROCESS:${Port}:$ownerPid:$($identity.reason)"
   }
-  if($cmd-like("*"+$ExpectedDeploy+"*")){return $false}
-  if($cmd-notlike("*"+$InstallRoot+"*")){throw "PORT_OWNED_BY_UNTRUSTED_PROCESS:${Port}:$ownerPid"}
-  Write-SupervisorEvent 'STALE_RUNTIME_STOP' @{port=$Port;pid=$ownerPid;commandLine=$cmd;expectedDeploy=$ExpectedDeploy}
+  Write-SupervisorEvent 'STALE_RUNTIME_STOP' @{port=$Port;pid=$ownerPid;identity=$identity.identity;expectedDeploy=$ExpectedDeploy}
   Stop-Process -Id $ownerPid -Force -ErrorAction Stop
   $deadline=(Get-Date).AddSeconds(10)
   do{
@@ -109,8 +135,8 @@ function Stop-StaleTrustedListener([int]$Port,[string]$ExpectedDeploy){
   throw "STALE_PORT_DID_NOT_STOP:$Port"
 }
 
-function Start-Component([int]$Port,[string]$ScriptPath,[string[]]$Arguments,[string]$Name,$Active){
-  $stale=Stop-StaleTrustedListener $Port $Active.deploy
+function Start-Component([int]$Port,[string]$ScriptPath,[string[]]$Arguments,[string]$Name,$Active,[bool]$ForceRestartTrusted=$false){
+  $stale=Stop-StaleTrustedListener $Port $Active.deploy $ForceRestartTrusted
   if(Get-PortListener $Port){return @{started=$false;staleStopped=$stale}}
   if(-not(Test-Path -LiteralPath $ScriptPath)){throw "COMPONENT_SCRIPT_MISSING:${Name}:$ScriptPath"}
   $out=Join-Path $runtime ($Name+'.out.log')
@@ -148,7 +174,7 @@ function Ensure-AppChrome{
 
   $broker=Join-Path $active.deploy 'dist\apps\chrome-controller\src\chrome-launch-broker.js'
   $server=Join-Path $active.deploy 'dist\apps\chrome-controller\src\server.js'
-  $b=Start-Component 8800 $broker @($broker,$ConfigPath) 'broker' $active
+  $b=Start-Component 8800 $broker @($broker,$ConfigPath) 'broker' $active $headChanged
   $c=Start-Component 8798 $server @($server) 'controller' $active
   $g=Start-Component 8799 $active.bridge @($active.bridge) 'bridge' $active
 
