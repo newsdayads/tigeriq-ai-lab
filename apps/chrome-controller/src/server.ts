@@ -1067,11 +1067,19 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
         const continuityContinue=workerId==='NV02'&&purpose==='CONTINUITY_CONTINUE';
         const periodicF5=workerId==='NV02'&&purpose==='PERIODIC_F5_REFRESH';
         const currentChatRestore=workerId==='NV02'&&purpose==='CURRENT_CHAT_RESTORE';
+        const activeNv02Job=uiJobLedger.active('NV02');
         const continuitySameJob=continuityContinue&&continuityResumeIdentityMatches(
-          uiJobLedger.active('NV02'),
+          activeNv02Job,
           latestSnapshot?.previousJob,
           autopilotState,
         );
+        const nv02NextJob=latestSnapshot?.nextJob;
+        const continuityCurrentChatOnly=continuityContinue
+          && !activeNv02Job
+          && !autopilotState.pendingJobId
+          && !autopilotState.uncertainJobId
+          && !(nv02NextJob?.workerId==='NV02'&&['QUEUED','READY','RUNNING'].includes(String(nv02NextJob.status||'')));
+        const continuityLeaseAllowed=continuitySameJob||continuityCurrentChatOnly;
         const boundedRecovery=staleWorkingRecovery||stalledRecovery||modelProfileRecovery||checkpointRecovery||chatRotation||periodicF5||currentChatRestore;
         if(paused&&!periodicF5)throw new Error('OWNER_INTERACTION_READ_ONLY');
         if(utilityPausedWorkers.has(workerId)&&!periodicF5)throw new Error(`UTILITY_WORKER_PAUSED:${workerId}`);
@@ -1081,8 +1089,8 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
         if(security)throw new Error(security);
         if(state.lastHeartbeat?.uiBusy!==false&&!staleWorkingRecovery&&!periodicF5)throw new Error(`WORKER_UI_BUSY_OR_UNKNOWN:${workerId}`);
         if(staleWorkingRecovery&&state.lastHeartbeat?.uiBusy!==true)throw new Error(`STALE_WORKING_RECOVERY_REQUIRES_BUSY:${workerId}`);
-        if(continuityContinue&&!continuitySameJob)throw new Error('CONTINUITY_SAME_JOB_IDENTITY_REQUIRED:NV02');
-        if(workerHasActiveJob(workerId,{allowWaitingEvidence:continuityContinue,allowContinuable:continuityContinue})&&!boundedRecovery&&!continuitySameJob)throw new Error(`WORKER_ACTIVE_JOB:${workerId}`);
+        if(continuityContinue&&!continuityLeaseAllowed)throw new Error('CONTINUITY_SAME_JOB_IDENTITY_REQUIRED:NV02');
+        if(workerHasActiveJob(workerId,{allowWaitingEvidence:continuityContinue,allowContinuable:continuityContinue})&&!boundedRecovery&&!continuityLeaseAllowed)throw new Error(`WORKER_ACTIVE_JOB:${workerId}`);
         if(commandQueues.get(workerId)!.length>0||[...waiters.values()].some((w)=>w.workerId===workerId))
           throw new Error(`WORKER_COMMAND_INFLIGHT:${workerId}`);
         const ttlMs=Number(data.ttlMs??30_000);
