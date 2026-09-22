@@ -1064,7 +1064,7 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
         const checkpointRecovery=workerId==='NV02'&&purpose==='CHECKPOINT_DURABLE';
         const chatRotation=workerId==='NV02'&&purpose==='CHAT_ROTATION';
         const continuityContinue=workerId==='NV02'&&purpose==='CONTINUITY_CONTINUE';
-        const periodicF5=workerId==='NV02'&&purpose==='PERIODIC_F5_REFRESH';
+        const periodicF5=workerId==='NV02'&&['PERIODIC_F5_REFRESH','WORKING_UNCHANGED_F5_RECHECK'].includes(purpose);
         const currentChatRestore=workerId==='NV02'&&purpose==='CURRENT_CHAT_RESTORE';
         const activeNv02Job=uiJobLedger.active('NV02');
         const continuitySameJob=continuityContinue&&continuityResumeIdentityMatches(
