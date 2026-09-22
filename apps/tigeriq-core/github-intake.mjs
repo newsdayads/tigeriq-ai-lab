@@ -1,5 +1,5 @@
 import { Pool } from 'pg';
-import { backlogOwnerDirect, sortBacklogSpecs, exactBodyFlag, backlogPriority, compareBacklogSpecs } from './github-backlog-policy.mjs';
+import { backlogOwnerDirect, sortBacklogSpecs, exactBodyFlag, backlogPriority, compareBacklogSpecs, parseExecutableIssue, validateBacklogContract } from './github-backlog-policy.mjs';
 
 const DEFAULT_OWNER='newsdayads';
 const DEFAULT_REPO='tigeriq-ai-lab';
