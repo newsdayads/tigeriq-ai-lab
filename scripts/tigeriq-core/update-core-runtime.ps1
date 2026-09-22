@@ -121,17 +121,20 @@ function Restart-OpenClawGateway(){
   }
   return $null
 }
-function Reconcile-OpenClawRuntime(){
+function Reconcile-OpenClawRuntime([string]$installedSha){
   $treeSha=OpenClaw-TreeSha
   if(-not $treeSha){return @{action='skip';reason='plugin_tree_missing'}}
   $applied=Get-OpenClawAppliedTree
   if($applied -eq $treeSha){
     return @{action='none';treeSha=$treeSha;portHealthy=(Test-TcpPort '127.0.0.1' 18789)}
   }
+  $previous=Get-OpenClawCanaryState
+  if($previous -and [string]$previous.installedSha -eq $installedSha -and [string]$previous.treeSha -eq $treeSha -and [string]$previous.result -ne 'PASS'){
+    return @{action='blocked';reason='terminal_canary_blocked';treeSha=$treeSha;portHealthy=(Test-TcpPort '127.0.0.1' 18789)}
+  }
   if(-not(Task-Exists $openclawTask)){return @{action='blocked';reason='task_missing';treeSha=$treeSha}}
   $health=Restart-OpenClawGateway
   if(-not $health){throw 'OPENCLAW_GATEWAY_HEALTH_FAILED'}
-  Save-OpenClawAppliedState $treeSha
   return @{action='restarted';treeSha=$treeSha;portHealthy=$true}
 }
 function Get-OpenClawCanaryState(){
@@ -310,9 +313,13 @@ while($true){
     $runtimeExists=Test-Path -LiteralPath $runtimeRepo
     if($runtimeExists -and (Runtime-Source-Dirty)){Save-State @{result='BLOCKED_DIRTY_RUNTIME';runtimeSource=$runtimeRepo;watchdog=$watchdog};continue}
     $local=if($runtimeExists){Head $runtimeRepo 'HEAD'}else{$null}
-    $openclawReconcile=if($runtimeExists){Reconcile-OpenClawRuntime}else{@{action='skip';reason='runtime_missing'}}
-    $openclawCanary=if($runtimeExists -and $local){Invoke-OpenClawCanary $local (OpenClaw-TreeSha)}else{@{action='skip';reason='runtime_missing'}}
-    if($runtimeExists -and $local -eq $remote){Save-State @{result='NO_CHANGE';installedSha=$local;runtimeSource=$runtimeRepo;openclawReconcile=$openclawReconcile;openclawCanary=$openclawCanary;watchdog=$watchdog};continue}
+    $openclawReconcile=if($runtimeExists){Reconcile-OpenClawRuntime $local}else{@{action='skip';reason='runtime_missing'}}
+    $preOpenclawCanary=if($runtimeExists -and $local){Invoke-OpenClawCanary $local (OpenClaw-TreeSha)}else{@{action='skip';reason='runtime_missing'}}
+    if([string]$openclawReconcile.action -eq 'restarted'){
+      if([string]$preOpenclawCanary.result -eq 'PASS'){Save-OpenClawAppliedState (OpenClaw-TreeSha)}
+      else{Save-State @{result='OPENCLAW_CANARY_BLOCKED';installedSha=$local;runtimeSource=$runtimeRepo;openclawReconcile=$openclawReconcile;openclawCanary=$preOpenclawCanary;watchdog=$watchdog};Start-Sleep -Seconds $IntervalSeconds;continue}
+    }
+    if($runtimeExists -and $local -eq $remote){Save-State @{result='NO_CHANGE';installedSha=$local;runtimeSource=$runtimeRepo;openclawReconcile=$openclawReconcile;openclawCanary=$preOpenclawCanary;watchdog=$watchdog};Start-Sleep -Seconds $IntervalSeconds;continue}
     $gateSha=Resolve-GateSha $remote
     if(-not $gateSha){Save-State @{result='WAIT_GATES';candidateSha=$remote;runtimeSource=$runtimeRepo;watchdog=$watchdog};continue}
     [string[]]$changed=if($runtimeExists){@(git -C $controlRepo diff --name-only $local $remote)}else{@('apps/tigeriq-core/','apps/tigeriq-coding-lane/','scripts/tigeriq-core/')}
@@ -324,13 +331,22 @@ while($true){
     Save-RuntimeSourceState $remote $previousRuntimeSha $gateSha
     Sync-Launchers
     if($impact.updater){Sync-UpdaterRuntime}
-    $coreHealth=$oldCore;$webHealth=$null;$codingHealth=$null;$openclawHealth=$null
+    $coreHealth=$oldCore;$webHealth=$null;$codingHealth=$null;$openclawHealth=$null;$openclawCanary=$null
     try{
       if($impact.core){$coreHealth=Restart-Core $oldPid;if(-not $coreHealth){throw 'CORE_HEALTH_OR_PID_FAILED'}}
       elseif(-not(HealthInfo 'http://100.97.23.87:8795/health')){throw 'CORE_HEALTH_LOST_WITHOUT_CORE_CHANGE'}
       if($impact.web){Sync-WebRuntime;$webHealth=Restart-ServiceTask $webTask 'http://100.97.23.87:8796/health' $webPath;if(-not $webHealth){throw 'WEB_CONTROL_HEALTH_OR_PID_FAILED'}}
       if($impact.coding){$codingHealth=Restart-ServiceTask $codingTask 'http://100.97.23.87:8797/health' $codingPath $legacyCodingPath;if(-not $codingHealth){throw 'CODING_LANE_HEALTH_OR_PID_FAILED'}}
-      if($impact.openclaw){$openclawHealth=Restart-OpenClawGateway;if(-not $openclawHealth){throw 'OPENCLAW_GATEWAY_HEALTH_FAILED'};Save-OpenClawAppliedState (OpenClaw-TreeSha)}
+      if($impact.openclaw){$openclawHealth=Restart-OpenClawGateway;if(-not $openclawHealth){throw 'OPENCLAW_GATEWAY_HEALTH_FAILED'}}
+      if($impact.updater -or $impact.openclaw){
+        $tree=OpenClaw-TreeSha
+        $openclawCanary=Invoke-OpenClawCanary $remote $tree
+        if(-not $openclawCanary -or [string]$openclawCanary.result -ne 'PASS'){
+          $why=if($openclawCanary){[string]$openclawCanary.reason}else{'NO_RESULT'}
+          throw ('OPENCLAW_FUNCTIONAL_CANARY_FAILED:'+ $why)
+        }
+        if($impact.openclaw){Save-OpenClawAppliedState $tree}
+      }
     }catch{
       if($previousRuntimeSha){
         git -C $runtimeRepo reset --hard $previousRuntimeSha|Out-Null
@@ -348,7 +364,7 @@ while($true){
       throw ('ROLLED_BACK:'+ $_.Exception.Message)
     }
     $newCore=HealthInfo 'http://100.97.23.87:8795/health'
-    $openclawCanary=Invoke-OpenClawCanary $remote (OpenClaw-TreeSha)
+    if($null -eq $openclawCanary){$openclawCanary=Invoke-OpenClawCanary $remote (OpenClaw-TreeSha)}
     Save-State @{result='UPDATED';installedSha=$remote;gateSha=$gateSha;previousSha=$previousRuntimeSha;runtimeSource=$runtimeRepo;changedPaths=$changed;impact=$impact;openclawReconcile=$openclawReconcile;openclawCanary=$openclawCanary;corePid=if($newCore){[int]$newCore.pid}else{$null};previousCorePid=$oldPid;coreRestarted=$impact.core;webRestarted=$impact.web;codingRestarted=$impact.coding;openclawRestarted=$impact.openclaw;openclawPortHealthy=if($openclawHealth){[bool]$openclawHealth.healthy}else{$null};webPid=if($webHealth){$webHealth.pid}else{$null};codingPid=if($codingHealth){$codingHealth.pid}else{$null};watchdog=$watchdog}
     if($impact.updater){Restart-UpdaterAfterExit;exit 75}
   }catch{Save-State @{result='FAILED';error=$_.Exception.Message;watchdog=$watchdog}}
