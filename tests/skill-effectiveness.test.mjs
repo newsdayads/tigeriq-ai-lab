@@ -5,12 +5,12 @@ import { useSkill, measureEffectiveness, retireSkill } from '../apps/tigeriq-cor
 import fs from 'node:fs';
 import yaml from 'node:yaml'; // fallback or simple parse if needed, or read registry via fs
 
-test('Registry validation for promoted skills (contextual-skill-loading, spec-first-tdd, minimal-change-output, external-skill-security-gate)', () => {
+test('Registry validation for candidate skills (contextual-skill-loading, spec-first-tdd, minimal-change-output, external-skill-security-gate)', () => {
   const registryContent = fs.readFileSync(new URL('../docs/skills/registry.yaml', import.meta.url), 'utf8');
-  assert.ok(registryContent.includes('id: contextual-skill-loading\n    title: Contextual Skill Loading\n    state: ACTIVE'));
-  assert.ok(registryContent.includes('id: spec-first-tdd\n    title: SPEC-First and TDD When Appropriate\n    state: ACTIVE'));
-  assert.ok(registryContent.includes('id: external-skill-security-gate\n    title: External Skill Security Gate\n    state: ACTIVE'));
-  assert.ok(registryContent.includes('id: minimal-change-output\n    title: Minimal Change Output\n    state: ACTIVE'));
+  assert.ok(registryContent.includes('id: contextual-skill-loading\n    title: Contextual Skill Loading\n    state: CANDIDATE'));
+  assert.ok(registryContent.includes('id: spec-first-tdd\n    title: SPEC-First and TDD When Appropriate\n    state: CANDIDATE'));
+  assert.ok(registryContent.includes('id: external-skill-security-gate\n    title: External Skill Security Gate\n    state: CANDIDATE'));
+  assert.ok(registryContent.includes('id: minimal-change-output\n    title: Minimal Change Output\n    state: CANDIDATE'));
 });
 
 test('Full skill effectiveness lifecycle: USE -> MEASURE -> RETIRE', () => {
