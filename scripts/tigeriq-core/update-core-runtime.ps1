@@ -10,6 +10,7 @@ $state='D:\TigerIQ\State\core-runtime-updater.json'
 $coreTask='TigerIQ Core 24x7'
 $webTask='TigerIQ Web Control 24x7'
 $codingTask='TigerIQ Coding Lane 24x7'
+$openclawTask='TigerIQ OpenClaw Gateway'
 $updaterTask='TigerIQ Core Runtime Updater'
 $webRuntime='D:\TigerIQ\Runtime\WebControl24x7'
 $tokenPath='D:\TigerIQ\Secrets\github-command-center.token'
@@ -78,6 +79,29 @@ function Sync-UpdaterRuntime(){
 }
 function HealthInfo([string]$url){try{$r=Invoke-RestMethod -Uri $url -TimeoutSec 5;if($r.ok){return $r}}catch{};return $null}
 function Task-Exists([string]$name){return [bool](Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue)}
+function Test-TcpPort([string]$targetHost,[int]$port,[int]$timeoutMs=2500){
+  $client=New-Object Net.Sockets.TcpClient
+  try{
+    $async=$client.BeginConnect($targetHost,$port,$null,$null)
+    if(-not $async.AsyncWaitHandle.WaitOne($timeoutMs,$false)){return $false}
+    $client.EndConnect($async)
+    return [bool]$client.Connected
+  }catch{return $false}
+  finally{$client.Close()}
+}
+function Restart-OpenClawGateway(){
+  if(-not(Task-Exists $openclawTask)){throw ('TASK_MISSING:'+ $openclawTask)}
+  Stop-ScheduledTask -TaskName $openclawTask -ErrorAction SilentlyContinue
+  Start-Sleep -Seconds 2
+  Start-ScheduledTask -TaskName $openclawTask
+  $deadline=(Get-Date).AddSeconds(45)
+  while((Get-Date)-lt$deadline){
+    $task=Get-ScheduledTask -TaskName $openclawTask -ErrorAction SilentlyContinue
+    if($task -and $task.State -eq 'Running' -and (Test-TcpPort '127.0.0.1' 18789)){return @{healthy=$true;port=18789;taskState=[string]$task.State}}
+    Start-Sleep -Seconds 2
+  }
+  return $null
+}
 function Gates-Pass([string]$sha){
   $runs=gh api "repos/newsdayads/tigeriq-ai-lab/actions/runs?head_sha=$sha&status=completed&per_page=30"|ConvertFrom-Json
   $need=@('CI','WO-014 Queue Hygiene','WO-012/013 Vercel Online Verify')
@@ -172,8 +196,9 @@ function Get-Impact([string[]]$paths){
   $web=[bool](@($paths|Where-Object{$_ -match '^apps/tigeriq-core/web-control(?:\.|-)' -or $_ -match '^scripts/tigeriq-core/(?:run|install)-web-control'}).Count)
   $coding=[bool](@($paths|Where-Object{$_ -match '^apps/tigeriq-coding-lane/' -or $_ -match '^scripts/tigeriq-core/(?:run|install)-coding-lane'}).Count)
   $core=[bool](@($paths|Where-Object{($_ -match '^apps/tigeriq-core/' -and $_ -notmatch '^apps/tigeriq-core/web-control(?:\.|-)') -or $_ -match '^scripts/tigeriq-core/(?:run-core|install-core-task)\.ps1$'}).Count)
+  $openclaw=[bool](@($paths|Where-Object{$_ -match '^apps/openclaw-tigeriq-runtime/'}).Count)
   $updater=[bool](@($paths|Where-Object{$_ -eq 'scripts/tigeriq-core/update-core-runtime.ps1'}).Count)
-  return @{core=$core;web=$web;coding=$coding;updater=$updater}
+  return @{core=$core;web=$web;coding=$coding;openclaw=$openclaw;updater=$updater}
 }
 function Restart-UpdaterAfterExit(){
   $cmd="Start-Sleep -Seconds 4; Start-ScheduledTask -TaskName '$updaterTask'"
@@ -195,7 +220,7 @@ while($true){
     $gateSha=Resolve-GateSha $remote
     if(-not $gateSha){Save-State @{result='WAIT_GATES';candidateSha=$remote;runtimeSource=$runtimeRepo;watchdog=$watchdog};continue}
     [string[]]$changed=if($runtimeExists){@(git -C $controlRepo diff --name-only $local $remote)}else{@('apps/tigeriq-core/','apps/tigeriq-coding-lane/','scripts/tigeriq-core/')}
-    $impact=if($runtimeExists){Get-Impact $changed}else{@{core=$true;web=$true;coding=$true;updater=$true;bootstrap=$true}}
+    $impact=if($runtimeExists){Get-Impact $changed}else{@{core=$true;web=$true;coding=$true;openclaw=$false;updater=$true;bootstrap=$true}}
     $oldCore=HealthInfo 'http://100.97.23.87:8795/health';$oldPid=if($oldCore){[int]$oldCore.pid}else{$null}
     $previousRuntimeSha=$local
     Ensure-RuntimeSource $remote
@@ -203,12 +228,13 @@ while($true){
     Save-RuntimeSourceState $remote $previousRuntimeSha $gateSha
     Sync-Launchers
     if($impact.updater){Sync-UpdaterRuntime}
-    $coreHealth=$oldCore;$webHealth=$null;$codingHealth=$null
+    $coreHealth=$oldCore;$webHealth=$null;$codingHealth=$null;$openclawHealth=$null
     try{
       if($impact.core){$coreHealth=Restart-Core $oldPid;if(-not $coreHealth){throw 'CORE_HEALTH_OR_PID_FAILED'}}
       elseif(-not(HealthInfo 'http://100.97.23.87:8795/health')){throw 'CORE_HEALTH_LOST_WITHOUT_CORE_CHANGE'}
       if($impact.web){Sync-WebRuntime;$webHealth=Restart-ServiceTask $webTask 'http://100.97.23.87:8796/health' $webPath;if(-not $webHealth){throw 'WEB_CONTROL_HEALTH_OR_PID_FAILED'}}
       if($impact.coding){$codingHealth=Restart-ServiceTask $codingTask 'http://100.97.23.87:8797/health' $codingPath $legacyCodingPath;if(-not $codingHealth){throw 'CODING_LANE_HEALTH_OR_PID_FAILED'}}
+      if($impact.openclaw){$openclawHealth=Restart-OpenClawGateway;if(-not $openclawHealth){throw 'OPENCLAW_GATEWAY_HEALTH_FAILED'}}
     }catch{
       if($previousRuntimeSha){
         git -C $runtimeRepo reset --hard $previousRuntimeSha|Out-Null
@@ -222,10 +248,11 @@ while($true){
       if($impact.core){$null=Restart-Core $null}
       if($impact.web -and (Task-Exists $webTask)){Sync-WebRuntime;$null=Restart-ServiceTask $webTask 'http://100.97.23.87:8796/health' $webPath}
       if($impact.coding -and (Task-Exists $codingTask)){$null=Restart-ServiceTask $codingTask 'http://100.97.23.87:8797/health' $codingPath $legacyCodingPath}
+      if($impact.openclaw -and (Task-Exists $openclawTask)){$null=Restart-OpenClawGateway}
       throw ('ROLLED_BACK:'+ $_.Exception.Message)
     }
     $newCore=HealthInfo 'http://100.97.23.87:8795/health'
-    Save-State @{result='UPDATED';installedSha=$remote;gateSha=$gateSha;previousSha=$previousRuntimeSha;runtimeSource=$runtimeRepo;changedPaths=$changed;impact=$impact;corePid=if($newCore){[int]$newCore.pid}else{$null};previousCorePid=$oldPid;coreRestarted=$impact.core;webRestarted=$impact.web;codingRestarted=$impact.coding;webPid=if($webHealth){$webHealth.pid}else{$null};codingPid=if($codingHealth){$codingHealth.pid}else{$null};watchdog=$watchdog}
+    Save-State @{result='UPDATED';installedSha=$remote;gateSha=$gateSha;previousSha=$previousRuntimeSha;runtimeSource=$runtimeRepo;changedPaths=$changed;impact=$impact;corePid=if($newCore){[int]$newCore.pid}else{$null};previousCorePid=$oldPid;coreRestarted=$impact.core;webRestarted=$impact.web;codingRestarted=$impact.coding;openclawRestarted=$impact.openclaw;openclawPortHealthy=if($openclawHealth){[bool]$openclawHealth.healthy}else{$null};webPid=if($webHealth){$webHealth.pid}else{$null};codingPid=if($codingHealth){$codingHealth.pid}else{$null};watchdog=$watchdog}
     if($impact.updater){Restart-UpdaterAfterExit;exit 75}
   }catch{Save-State @{result='FAILED';error=$_.Exception.Message;watchdog=$watchdog}}
   finally{Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue;if($locked){$mutex.ReleaseMutex()|Out-Null}}
