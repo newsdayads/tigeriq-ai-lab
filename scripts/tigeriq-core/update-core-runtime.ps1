@@ -186,7 +186,7 @@ function Invoke-OpenClawCanary([string]$installedSha,[string]$treeSha){
         $message='Use only tigeriq_runtime and tigeriq_pc. Call tigeriq_runtime action=core_status exactly once. Then call tigeriq_pc action=shell_exec shell=powershell cwd=D:\TigerIQ command=Write-Output TIGERIQ_PC_SHELL_OK exactly once. Then call tigeriq_pc action=file_write path=D:\TigerIQ\State\openclaw-pc-operator-canary.txt content=TIGERIQ_PC_FILE_WRITE_OK exactly once. Then call tigeriq_pc action=file_read path=D:\TigerIQ\State\openclaw-pc-operator-canary.txt exactly once. If core_status succeeds, shell_exec returns exitCode=0 with stdout containing TIGERIQ_PC_SHELL_OK, file_write succeeds, and file_read returns TIGERIQ_PC_FILE_WRITE_OK, reply exactly TIGERIQ_OPENCLAW_PC_OPERATOR_PASS. Otherwise reply exactly TIGERIQ_OPENCLAW_PC_OPERATOR_BLOCKED.'
         $output=(& $openclawCli agent --agent $openclawAgent --message $message --timeout 90 2>&1|Out-String)
         $exitCode=$LASTEXITCODE
-        if($exitCode -eq 0 -and $output -match '(?m)^\s*TIGERIQ_OPENCLAW_PC_OPERATOR_PASS\s*
+        if($exitCode -eq 0 -and $output -match '(?m)^\s*TIGERIQ_OPENCLAW_PC_OPERATOR_PASS\s*$'){$result='PASS';$reason='PC_OPERATOR_E2E_PASS'}
         elseif($exitCode -ne 0){$reason=('OPENCLAW_AGENT_EXIT_'+$exitCode)}
         elseif($output -match 'TIGERIQ_OPENCLAW_PC_OPERATOR_BLOCKED'){$reason='AGENT_REPORTED_BLOCKED'}
         else{$reason='UNEXPECTED_AGENT_REPLY'}
