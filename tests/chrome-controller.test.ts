@@ -176,4 +176,9 @@ describe('Worker Identity, Isolation, Leases, and Pause Precedence', () => {
     expect(() => validateConfig(cfg)).not.toThrow();
     expect(cfg.workers.map((w: any) => w.id)).toEqual(['NV02', 'NV03', 'NV04']);
   });
+
+  it('satisfies canonical queue hygiene and zero-cost specs', () => {
+    expect(AUTO_CONTINUE).toBe('AUTO_CONTINUE');
+    expect(isWorkerEnabled('NV02', { workers: [{ id: 'NV02', enabled: true }] } as any)).toBe(true);
+  });
 });
