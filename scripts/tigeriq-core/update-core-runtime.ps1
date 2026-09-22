@@ -9,10 +9,9 @@ $launcherRuntime='D:\TigerIQ\Runtime\CoreLaunchers'
 $state='D:\TigerIQ\State\core-runtime-updater.json'
 $openclawState='D:\TigerIQ\State\openclaw-runtime-applied.json'
 $openclawCanaryState='D:\TigerIQ\State\openclaw-runtime-canary.json'
-$openclawCli='D:\OpenClaw\npm-global\openclaw.cmd'
-$openclawAgent='operator-local'
+$openclawCanaryScript=(Join-Path $runtimeRepo 'apps\openclaw-tigeriq-runtime\canary.mjs')
 $openclawCanaryIssue=1430
-$openclawCanaryPolicyGeneration='20260922_LIFECYCLE_REPAIR_1'
+$openclawCanaryPolicyGeneration='20260922_DETERMINISTIC_CANARY_2'
 $openclawGatewayStartupTimeoutSec=75
 $appChromeIssue=1372
 $appChromeController='http://127.0.0.1:8798'
@@ -268,11 +267,11 @@ function Report-OpenClawCanary([string]$installedSha,[string]$treeSha,[string]$r
     ('pluginTreeSha='+$treeSha),
     ('result='+$result),
     ('reason='+$reason),
-    'agent=operator-local',
+    'runner=deterministic-node',
     'tools=tigeriq_runtime,tigeriq_pc',
     'actions=core_status,task_status,tcp_probe,shell_exec,file_write,file_read',
     'pcTask=TigerIQ OpenClaw Gateway',
-    'pcShellCommand=D:\TigerIQ\Runtime\CoreSource\apps\openclaw-tigeriq-runtime\operator.mjs',
+    'canaryScript=D:\TigerIQ\Runtime\CoreSource\apps\openclaw-tigeriq-runtime\canary.mjs',
     'pcCanaryFile=D:\TigerIQ\State\openclaw-pc-operator-canary.txt',
     'rawOutputPublished=false'
   ) -join [Environment]::NewLine
@@ -292,25 +291,25 @@ function Invoke-OpenClawCanary([string]$installedSha,[string]$treeSha){
   }
   $result='BLOCKED';$reason='UNKNOWN';$reported=$false
   try{
-    if(-not(Test-Path -LiteralPath $openclawCli)){$reason='OPENCLAW_CLI_MISSING'}
+    if(-not(Test-Path -LiteralPath $openclawCanaryScript)){$reason='OPENCLAW_CANARY_SCRIPT_MISSING'}
     elseif(-not(Task-Exists $openclawTask) -or -not(Test-TcpPort '127.0.0.1' 18789)){$reason='OPENCLAW_GATEWAY_UNHEALTHY'}
     else{
-      $oldHome=$env:OPENCLAW_HOME;$oldState=$env:OPENCLAW_STATE_DIR;$oldConfig=$env:OPENCLAW_CONFIG_PATH
+      $oldGh=$env:GH_TOKEN
       try{
-        $env:OPENCLAW_HOME='D:\OpenClaw'
-        $env:OPENCLAW_STATE_DIR='D:\TigerIQ-OpenClaw\state'
-        $env:OPENCLAW_CONFIG_PATH='D:\TigerIQ-OpenClaw\state\openclaw.json'
-        $message='Use only tigeriq_runtime and tigeriq_pc. Call tigeriq_runtime action=core_status exactly once. Call tigeriq_pc action=task_status taskName=TigerIQ OpenClaw Gateway exactly once. Call tigeriq_pc action=tcp_probe host=127.0.0.1 port=18789 exactly once. Call tigeriq_pc action=shell_exec shell=cmd cwd=D:\TigerIQ command=D:\OpenClaw\npm-global\openclaw.cmd --version exactly once. Call tigeriq_pc action=file_write path=D:\TigerIQ\State\openclaw-pc-operator-canary.txt content=TIGERIQ_PC_FILE_WRITE_OK exactly once. Call tigeriq_pc action=file_read path=D:\TigerIQ\State\openclaw-pc-operator-canary.txt exactly once. If all six tool calls succeed, shell_exec returns exitCode=0, tcp_probe reports reachable=true, and file_read returns TIGERIQ_PC_FILE_WRITE_OK, reply exactly TIGERIQ_OPENCLAW_PC_OPERATOR_PASS. Otherwise reply exactly TIGERIQ_OPENCLAW_PC_OPERATOR_BLOCKED.'
-        $output=(& $openclawCli agent --agent $openclawAgent --message $message --timeout 90 2>&1|Out-String)
+        Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue
+        $output=(& node $openclawCanaryScript 2>&1|Out-String).Trim()
         $exitCode=$LASTEXITCODE
-        if($exitCode -eq 0 -and $output -match '(?m)^\s*TIGERIQ_OPENCLAW_PC_OPERATOR_PASS\s*$'){$result='PASS';$reason='PC_OPERATOR_E2E_PASS'}
-        elseif($exitCode -ne 0){$reason=('OPENCLAW_AGENT_EXIT_'+$exitCode)}
-        elseif($output -match 'TIGERIQ_OPENCLAW_PC_OPERATOR_BLOCKED'){$reason='AGENT_REPORTED_BLOCKED'}
-        else{$reason='UNEXPECTED_AGENT_REPLY'}
       }finally{
-        if($null-eq$oldHome){Remove-Item Env:OPENCLAW_HOME -ErrorAction SilentlyContinue}else{$env:OPENCLAW_HOME=$oldHome}
-        if($null-eq$oldState){Remove-Item Env:OPENCLAW_STATE_DIR -ErrorAction SilentlyContinue}else{$env:OPENCLAW_STATE_DIR=$oldState}
-        if($null-eq$oldConfig){Remove-Item Env:OPENCLAW_CONFIG_PATH -ErrorAction SilentlyContinue}else{$env:OPENCLAW_CONFIG_PATH=$oldConfig}
+        if($null -ne $oldGh){$env:GH_TOKEN=$oldGh}else{Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue}
+      }
+      if($exitCode -ne 0){$reason=('OPENCLAW_CANARY_EXIT_'+$exitCode)}
+      else{
+        try{
+          $parsed=$output|ConvertFrom-Json -ErrorAction Stop
+          if([string]$parsed.schema -ne 'TIGERIQ_OPENCLAW_CANARY_EXEC_V1'){$reason='DETERMINISTIC_CANARY_INVALID_SCHEMA'}
+          elseif([string]$parsed.result -eq 'PASS' -and [string]$parsed.reason -eq 'PC_OPERATOR_E2E_PASS'){$result='PASS';$reason='PC_OPERATOR_E2E_PASS'}
+          else{$reason='DETERMINISTIC_CANARY_BLOCKED'}
+        }catch{$reason='DETERMINISTIC_CANARY_INVALID_OUTPUT'}
       }
     }
   }catch{$reason=('CANARY_EXCEPTION_'+$_.Exception.GetType().Name)}
