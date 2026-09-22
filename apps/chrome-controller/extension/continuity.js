@@ -24,6 +24,13 @@ export const CONTINUE_PROMPTS = Object.freeze([
 
 export const CONTINUE_MIN_MS = 5 * 60 * 1000;
 export const CONTINUE_MAX_MS = 10 * 60 * 1000;
+export const REFRESH_MIN_MS = 60 * 1000;
+export const REFRESH_MAX_MS = 2 * 60 * 1000;
+export const WORKER_REFRESH_MIN_MS = 60 * 1000;
+export const WORKER_REFRESH_MAX_MS = 2 * 60 * 1000;
+export const WORKER_F5_MIN_MS = 5 * 60 * 1000;
+export const WORKER_F5_MAX_MS = 10 * 60 * 1000;
+export const CONTINUE_MAX_MS = 10 * 60 * 1000;
 export const CONTINUE_MAX_MS = 10 * 60 * 1000;
 export const REFRESH_MIN_MS = 2 * 60 * 60 * 1000;
 export const REFRESH_MAX_MS = 4 * 60 * 60 * 1000;
