@@ -126,6 +126,16 @@ test('installer retires stale Supervisor V2 before starting the runtime updater'
   assert.ok(retire>=0 && start>retire,'legacy Supervisor V2 must be retired before updater starts');
 });
 
+test('updater performs bounded reconcile for TigerIQ Live Status Bridge without creating or reconfiguring it',()=>{
+  assert.match(script,/\$liveStatusBridgeTask='TigerIQ Live Status Bridge'/);
+  assert.doesNotMatch(script,/New-ScheduledTask[\s\S]*?\$liveStatusBridgeTask/);
+  assert.doesNotMatch(script,/Register-ScheduledTask[\s\S]*?\$liveStatusBridgeTask/);
+  assert.doesNotMatch(script,/Set-ScheduledTask[\s\S]*?\$liveStatusBridgeTask/);
+  assert.match(script,/TASK_ABSENT/);
+  assert.match(script,/Start-ScheduledTask -TaskName \$liveStatusBridgeTask/);
+  assert.match(script,/liveStatusBridgeReconcile=\$liveStatusBridgeReconcile/);
+});
+
 test('bootstrap stops the old updater instance before re-registering its task',()=>{
   const installer=readFileSync(new URL('../scripts/tigeriq-core/install-core-updater.ps1',import.meta.url),'utf8');
   const stop=installer.indexOf('Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue');
