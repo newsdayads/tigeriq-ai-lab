@@ -26,6 +26,43 @@ export const CONTINUE_MIN_MS = 5 * 60 * 1000;
 export const CONTINUE_MAX_MS = 10 * 60 * 1000;
 export const REFRESH_MIN_MS = 30 * 1000;
 export const REFRESH_MAX_MS = 60 * 1000;
+export const WORKER_REFRESH_MIN_MS = 10 * 1000;
+export const WORKER_REFRESH_MAX_MS = 30 * 1000;
+export const WORKER_F5_MIN_MS = 5 * 60 * 1000;
+export const WORKER_F5_MAX_MS = 10 * 60 * 1000;
+export const MAX_STALLED_CHECKS = 3;
+
+export function createContinuityManager() {
+  const states = new Map();
+  return {
+    getState(workerId) {
+      if (!states.has(workerId)) {
+        states.set(workerId, { phase: 'READY', lastActivity: Date.now(), stalledCount: 0, deepResetCount: 0 });
+      }
+      return states.get(workerId);
+    },
+    setState(workerId, state) {
+      states.set(workerId, { ...this.getState(workerId), ...state });
+    },
+    reset(workerId) {
+      if (workerId) {
+        states.set(workerId, { phase: 'READY', lastActivity: Date.now(), stalledCount: 0, deepResetCount: 0 });
+      } else {
+        states.clear();
+      }
+    }
+  };
+}
+
+export function deriveNv02Phase(state) {
+  return state?.phase || 'READY';
+}
+
+export function hasActiveNv02Work(controller) {
+  return (controller?.jobs || []).some((job) => !job?.completedAt);
+}onst CONTINUE_MAX_MS = 10 * 60 * 1000;
+export const REFRESH_MIN_MS = 30 * 1000;
+export const REFRESH_MAX_MS = 60 * 1000;
 export const MAX_STALLED_CHECKS = 3;
 
 export function createContinuityManager() {
