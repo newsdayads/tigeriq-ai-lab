@@ -471,12 +471,16 @@ while($true){
         [ordered]@{status='BLOCKED';reason='TASK_ABSENT';action='NONE'}
       } else {
         $st=(Get-ScheduledTask -TaskName $liveStatusBridgeTask -ErrorAction SilentlyContinue)
-        $stateName = if ($st -and $st.PSObject.Properties['State']) { [string]$st.State } else { '' }
-        if($st -and $stateName -ne 'Running' -and $stateName -ne 'Ready') {
-          Start-ScheduledTask -TaskName $liveStatusBridgeTask -ErrorAction Stop
-          [ordered]@{status='RECONCILED';reason='STARTED_ONCE';action='START'}
+        if(-not $st) {
+          [ordered]@{status='BLOCKED';reason='TASK_NOT_FOUND_AFTER_LOOKUP';action='NONE'}
         } else {
-          [ordered]@{status='HEALTHY';reason='ALREADY_RUNNING';action='NONE'}
+          $stateName = if ($st.PSObject.Properties['State']) { [string]$st.State } else { '' }
+          if($stateName -ne 'Running') {
+            Start-ScheduledTask -TaskName $liveStatusBridgeTask -ErrorAction Stop
+            [ordered]@{status='RECONCILED';reason='STARTED_ONCE';action='START';previousState=$stateName}
+          } else {
+            [ordered]@{status='HEALTHY';reason='ALREADY_RUNNING';action='NONE';previousState=$stateName}
+          }
         }
       }
     } catch {
