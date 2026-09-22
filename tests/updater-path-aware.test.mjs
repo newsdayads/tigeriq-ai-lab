@@ -111,3 +111,11 @@ test('installer retires stale Supervisor V2 before starting the runtime updater'
   const start=installer.indexOf('Start-ScheduledTask -TaskName $taskName');
   assert.ok(retire>=0 && start>retire,'legacy Supervisor V2 must be retired before updater starts');
 });
+
+test('bootstrap stops the old updater instance before re-registering its task',()=>{
+  const installer=readFileSync(new URL('../scripts/tigeriq-core/install-core-updater.ps1',import.meta.url),'utf8');
+  const stop=installer.indexOf('Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue');
+  const register=installer.indexOf('Register-ScheduledTask -TaskName $taskName');
+  const start=installer.indexOf('Start-ScheduledTask -TaskName $taskName');
+  assert.ok(stop>=0 && register>stop && start>register,'old updater must be stopped before task action replacement and restart');
+});
