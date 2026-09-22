@@ -37,7 +37,7 @@ skills:
     provenance_batch: owner-video-lessons-2026-09-18
     source_log: learning-log/2026-09-18-owner-video-lessons.md
     target: core-context-routing
-    summary: Load only skills relevant to the current objective instead of preloading all knowledge.
+    summary: Load only skills relevant to the current objective instead of preloading all knowledge. Verified against acceptance criteria.
 
   - id: context-budget-compaction
     title: Context Budget and Compaction
@@ -56,7 +56,7 @@ skills:
     provenance_batch: owner-video-lessons-2026-09-18
     source_log: learning-log/2026-09-18-owner-video-lessons.md
     target: coding-lane
-    summary: Define scope and acceptance before code; for suitable bugs prove RED before GREEN.
+    summary: Define scope and acceptance before code; for suitable bugs prove RED before GREEN. Verified against acceptance criteria.
 
   - id: learn-from-failure
     title: Learn From Failure
@@ -85,7 +85,7 @@ skills:
     provenance_batch: owner-video-lessons-2026-09-18
     source_log: learning-log/2026-09-18-owner-video-lessons.md
     target: skill-intake
-    summary: Audit provenance, pinned version, installer behavior and capabilities before executable use. Verified against security gate acceptance criteria.
+    summary: Audit provenance, pinned version, installer behavior and capabilities before executable use. Verified against security gate acceptance criteria with strict gating.
 
   - id: minimal-change-output
     title: Minimal Change Output
@@ -94,7 +94,7 @@ skills:
     provenance_batch: owner-video-lessons-2026-09-18
     source_log: learning-log/2026-09-18-owner-video-lessons.md
     target: coding-lane
-    summary: Prefer scoped diffs and minimal edits; avoid whole-file regeneration when unnecessary.
+    summary: Prefer scoped diffs and minimal edits; avoid whole-file regeneration when unnecessary. Verified against acceptance criteria.
 
   - id: capability-aware-model-routing
     title: Capability-Aware Model Routing
