@@ -118,7 +118,7 @@ export function normalizeRuntimeResources(resources, workforce){
         name: base.name || id,
         role: base.role || 'Worker',
         type_badge: typeBadge,
-        live_status: base.status || 'OFFLINE',
+        live_status: 'OFFLINE',
         stale_fallback: true
       });
     }
