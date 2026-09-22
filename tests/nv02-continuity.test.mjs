@@ -185,7 +185,7 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("STALLED_HOT_LOOP_NO_CHECKPOINT");
     const continuityLoop=source.slice(source.indexOf('async function maybeNv02Continuity'),source.indexOf('async function handleCommand'));
     expect(continuityLoop).toContain('shouldRotateNv02Chat');
-    expect(continuityLoop).toContain('rotateNv02Chat(target,state,now)');
+    expect(continuityLoop).toContain('resetNv02BrowserSession(target,state,now)');
     expect(continuityLoop).not.toContain('checkpointNv02(');
     expect(source).toContain("nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS");
     expect(source).toContain("unchanged>=MAX_WORKING_UNCHANGED_CHECKS");
@@ -229,7 +229,7 @@ describe('NV02 continuity policy', () => {
     expect(f5Block).toContain("reloadTarget(target)");
     expect(f5Block).not.toContain("ensureNv02ModelProfile");
     expect(f5Block).not.toContain("checkpointNv02");
-    expect(f5Block).not.toContain("rotateNv02Chat");
+    expect(f5Block).not.toContain("resetNv02BrowserSession");
 
     expect(source).toContain('[data-message-author-role="assistant"]');
 
@@ -241,25 +241,30 @@ describe('NV02 continuity policy', () => {
     expect(contentSource).toContain('button[aria-label*="Ngừng" i]');
   });
 
-  it('rotates only an idle tracked chat when age or dispatch threshold is due', () => {
+  it('uses age-only NV02 browser reset and preserves the current chat', () => {
     expect(CHAT_ROTATE_AFTER_DISPATCHES).toBe(30);
     expect(WORKING_PROGRESS_CHECK_MS).toBe(60_000);
     expect(MAX_WORKING_UNCHANGED_CHECKS).toBe(3);
     expect(shouldRotateNv02Chat({phase:'READY',currentTrackedWork:true,now:100,nextRefreshAt:99,dispatchesInChat:0})).toBe(true);
-    expect(shouldRotateNv02Chat({phase:'READY',currentTrackedWork:true,now:100,nextRefreshAt:200,dispatchesInChat:30})).toBe(true);
+    expect(shouldRotateNv02Chat({phase:'READY',currentTrackedWork:true,now:100,nextRefreshAt:200,dispatchesInChat:30})).toBe(false);
     expect(shouldRotateNv02Chat({phase:'WORKING',currentTrackedWork:true,now:100,nextRefreshAt:99,dispatchesInChat:30})).toBe(false);
     expect(shouldRotateNv02Chat({phase:'READY',currentTrackedWork:false,now:100,nextRefreshAt:99,dispatchesInChat:30})).toBe(false);
-    expect(shouldRotateNv02Chat({phase:'READY',currentTrackedWork:true,now:100,nextRefreshAt:200,dispatchesInChat:29})).toBe(false);
-    expect(shouldRotateNv02Chat({phase:'READY',currentTrackedWork:true,now:100,nextRefreshAt:99,dispatchesInChat:30,rotationRetryAt:101})).toBe(false);
-    expect(shouldRotateNv02Chat({phase:'READY',currentTrackedWork:true,now:102,nextRefreshAt:99,dispatchesInChat:30,rotationRetryAt:101})).toBe(true);
+    expect(shouldRotateNv02Chat({phase:'READY',currentTrackedWork:true,now:100,nextRefreshAt:99,rotationRetryAt:101})).toBe(false);
+    expect(shouldRotateNv02Chat({phase:'READY',currentTrackedWork:true,now:102,nextRefreshAt:99,rotationRetryAt:101})).toBe(true);
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
-    expect(bridge).toContain("CHAT_ROTATION_DUE");
-    expect(bridge).toContain("CHAT_ROTATION_FAILED");
-    expect(bridge).toContain("CHAT_ROTATION_DEFERRED_TO_EXTERNAL_AUTOPILOT");
+    expect(bridge).toContain("PERIODIC_2_4H_RESET_DUE");
+    expect(bridge).toContain("PERIODIC_2_4H_RESET_FAILED");
+    expect(bridge).toContain("PERIODIC_2_4H_RESET_DEFERRED_TO_EXTERNAL_AUTOPILOT");
+    expect(bridge).toContain("PERIODIC_2_4H_RESET_SCHEDULED");
+    expect(bridge).toContain("resetNv02BrowserSession");
+    const reset=bridge.slice(bridge.indexOf('async function resetNv02BrowserSession'),bridge.indexOf('async function noteNv02CommandDispatch'));
+    expect(reset).toContain("reason:'PERIODIC_2_4H_RESET'");
+    expect(reset).toContain("resumeChatUrl:next.resumeChatUrl||null");
+    expect(reset).not.toContain("archiveChat(");
+    expect(reset).not.toContain("newChat(");
     expect(bridge).toContain("rotationRetryAt:Number(raw.rotationRetryAt)||0");
     expect(bridge).toContain("WORKING_STALLED_RECOVERED_OUTSIDE_PROJECT");
     expect(bridge).toContain("allowContinue:false");
-    expect(bridge).toContain("const verified=loadNv02Continuity();");
   });
   it('recovers stale WORKING independently of continue timing and escalates bounded reopen without checkpointing', () => {
     const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
