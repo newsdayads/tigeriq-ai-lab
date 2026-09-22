@@ -270,15 +270,31 @@ describe('safe recovery contracts',()=>{
     const windowEvent=server.slice(windowStart,server.indexOf("if(url.pathname==='/api/continuity/event'",windowStart));
     expect(utility).toContain('plan-refresh');
     expect(utility).toContain('plannedRefreshWorkers.add(workerId)');
+    expect(utility).toContain('bridgeRecoveryHandoffs.add(workerId)');
     expect(utility).toContain('browserMutationLeases.assertOwned(workerId,leaseOwnerId,leaseId)');
     expect(utility).toContain('heartbeatStopReason(state.lastHeartbeat)');
     expect(utility).toContain('MANUAL_CLOSE_SUPPRESSED');
     expect(utility).toContain("OWNER_INTERACTION_READ_ONLY");
     expect(windowEvent).toContain('const plannedRefresh=plannedRefreshWorkers.has(workerId)');
+    expect(windowEvent).toContain('const bridgeRecoveryHandoff=bridgeRecoveryHandoffs.has(workerId)');
     expect(windowEvent).toContain('state.manualCloseSuppressed=!recoveryEligible');
     expect(windowEvent).toContain('state.lastHeartbeat=undefined');
     expect(windowEvent).toContain('if(plannedRefresh)plannedRefreshWorkers.delete(workerId)');
-    expect(windowEvent).toContain('if(recoveryEligible&&!plannedRefresh)void recoveryTick()');
+    expect(windowEvent).toContain('BRIDGE_RECOVERY_HANDOFF_EXPIRED');
+    expect(windowEvent).toContain('else if(recoveryEligible&&!plannedRefresh)void recoveryTick()');
+  });
+
+  it('reserves Controller recovery during bridge handoff and lets safe-recover claim it exclusively',()=>{
+    const recovery=server.slice(server.indexOf('async function recoverWorker'),server.indexOf('async function recoveryTick'));
+    const utilityStart=server.indexOf('const utilityMatch=');
+    const utility=server.slice(utilityStart,server.indexOf('const match=url.pathname.match',utilityStart));
+    expect(server).toContain('const bridgeRecoveryHandoffs = new Set<WorkerId>()');
+    expect(recovery).toContain('bridgeRecoveryHandoffs.has(workerId)');
+    expect(utility).toContain("if(action==='safe-recover')");
+    expect(utility).toContain('if(recoveryInFlight.has(workerId))');
+    expect(utility).toContain('recoveryInFlight.add(workerId)');
+    expect(utility).toContain('bridgeRecoveryHandoffs.delete(workerId)');
+    expect(utility).toContain('recoveryInFlight.delete(workerId)');
   });
 
   it('keeps paused workers out of unattended start/autopilot paths',()=>{
