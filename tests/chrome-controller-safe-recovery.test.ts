@@ -256,7 +256,7 @@ describe('safe recovery contracts',()=>{
     expect(source).toContain('const workerConnectivityBackoff=new Map()');
     expect(source).toContain("if(backoff&&Date.now()<Number(backoff.until||0))return");
     expect(source).toContain("w.id!=='NV02'&&connectivityFailure");
-    expect(source).toContain("Math.min(60_000,5_000*(2**(attempt-1)))");
+    expect(source).toContain("Math.min(20_000,5_000*(2**(attempt-1)))");
     expect(source).toContain("'WORKER_CONNECTIVITY_BACKOFF'");
     expect(source).toContain("'WORKER_CONNECTIVITY_RECOVERED'");
   });
@@ -319,6 +319,36 @@ describe('safe recovery contracts',()=>{
     expect(launcher).toContain('TIGERIQ_APPROVED_HEAD');
     expect(launcher).not.toContain('/safe-recover');
     expect(launcher).not.toContain("foreach($id in @('NV02','NV03','NV04'))");
+  });
+
+  it('never F5s or reopens NV03/NV04 while their UI is WORKING',()=>{
+    const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    const continuity=source.slice(source.indexOf('async function maybeWorkerContinuity'),source.indexOf('\nfunction log(event'));
+    expect(continuity).toContain("if(phase!=='WORKING'&&Number(state.nextPeriodicF5At||0)<=now)");
+    const working=continuity.slice(continuity.indexOf("if(phase==='WORKING')"),continuity.indexOf("if(phase==='READY')"));
+    expect(working).toContain("'WORKING_LONG_RUNNING_NO_MUTATION'");
+    expect(working).not.toContain('reopenWorker(');
+    expect(working).not.toContain('reloadTarget(');
+    expect(working).not.toContain('WORKING_NO_PROGRESS_3_CHECKS');
+  });
+
+  it('clears stale recovery counters immediately when NV03/NV04 are READY',()=>{
+    const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    const continuity=source.slice(source.indexOf('async function maybeWorkerContinuity'),source.indexOf('\nfunction log(event'));
+    const ready=continuity.slice(continuity.indexOf("if(phase==='READY')"),continuity.indexOf("const stalledChecks="));
+    expect(ready).toContain('stalledChecks:0');
+    expect(ready).toContain('recoveryAttempts:0');
+    expect(ready).toContain('recoveryBlockedUntil:0');
+    expect(ready).toContain("'READY_RECOVERY_STATE_CLEARED'");
+  });
+
+  it('rebases stale periodic-F5 timers once after bridge restart',()=>{
+    const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    const load=source.slice(source.indexOf('function loadWorkerContinuity'),source.indexOf('function saveWorkerContinuity'));
+    expect(source).toContain('const bootF5ScheduleInitialized=new Set()');
+    expect(load).toContain('bootF5ScheduleInitialized.has(workerId)');
+    expect(load).toContain("'WORKER_F5_TIMER_REBASED_AFTER_RESTART'");
+    expect(load).toContain('nextPeriodicF5At=nextRandomAt(now,WORKER_F5_MIN_MS,WORKER_F5_MAX_MS)');
   });
 
   it('keeps all enabled canonical workers alive independent of backlog demand',()=>{
