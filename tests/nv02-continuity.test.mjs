@@ -180,8 +180,8 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("const worker=config.workers.find(w=>w.id==='NV02')");
     expect(source).not.toContain("config.workers.filter(w=>w.enabled!==false&&w.id==='NV02')");
     expect(source).toContain("controllerEnabledFlagIgnored:true");
-    expect(source).toContain("WORKING_STALLED_RECOVERY");
-    expect(source).toContain("WORKING_STALLED_STOPPED");
+    expect(source).toContain("WORKING_LONG_RUNNING_NO_MUTATION");
+    expect(source).not.toContain("WORKING_STALLED_STOPPED");
     expect(source).toContain("STALLED_HOT_LOOP_NO_CHECKPOINT");
     const continuityLoop=source.slice(source.indexOf('async function maybeNv02Continuity'),source.indexOf('async function handleCommand'));
     expect(continuityLoop).toContain('shouldRotateNv02Chat');
@@ -262,25 +262,23 @@ describe('NV02 continuity policy', () => {
     expect(bridge).toContain("CHAT_ROTATION_FAILED");
     expect(bridge).toContain("CHAT_ROTATION_DEFERRED_TO_EXTERNAL_AUTOPILOT");
     expect(bridge).toContain("rotationRetryAt:Number(raw.rotationRetryAt)||0");
-    expect(bridge).toContain("WORKING_STALLED_RECOVERED_OUTSIDE_PROJECT");
+    expect(bridge).toContain("WORKING_LONG_RUNNING_NO_MUTATION");
     expect(bridge).toContain("allowContinue:false");
     expect(bridge).toContain("const verified=loadNv02Continuity();");
   });
-  it('recovers stale WORKING independently of continue timing and escalates bounded reopen without checkpointing', () => {
+  it('never stops or reloads NV02 while UI is WORKING, even when progress signature is unchanged', () => {
     const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(source).toContain("'MODEL_PROFILE_RECOVERY'");
     expect(source).toContain("'STALLED_RECOVERY'");
-    expect(source).toContain("'STALE_WORKING_RECOVERY'");
     expect(source).toContain("'PERIODIC_F5_REFRESH'");
-    expect(source).toContain("stopAndClearComposerExpr");
-    expect(source).toContain("'/api/workers/NV02/restart-schedule'");
-    expect(source).toContain("reason:'WORKING_NO_PROGRESS_3_CHECKS'");
-    expect(source).toContain("'WORKING_STALLED_REOPEN_SCHEDULED'");
-    const recovery=source.slice(source.indexOf('async function recoverStalledWorking'),source.indexOf('async function checkpointNv02'));
-    expect(recovery).toContain("reloadTarget(target)");
-    expect(recovery).not.toContain("checkpointNv02(");
-    expect(recovery).not.toContain("archiveChat(");
-    expect(recovery).not.toContain("newChat(");
+    expect(source).not.toContain("stopAndClearComposerExpr");
+    expect(source).not.toContain("WORKING_STALLED_STOPPED");
+    expect(source).not.toContain("recoverStalledWorking(target,state,now");
+    const continuity=source.slice(source.indexOf('async function maybeNv02Continuity'),source.indexOf('\nasync function handleCommand'));
+    const working=continuity.slice(continuity.indexOf("if(phase==='WORKING')"),continuity.indexOf('if(shouldRotateNv02Chat'));
+    expect(working).toContain("WORKING_LONG_RUNNING_NO_MUTATION");
+    expect(working).not.toContain("reloadTarget(target)");
+    expect(working).not.toContain("restart-schedule");
   });
 
   it('ships one-shot NV02 continuity installer with exact-head deploy and rollback',()=>{
