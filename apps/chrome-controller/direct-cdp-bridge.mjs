@@ -851,6 +851,26 @@ async function dispatch(target,text){
 function scrollBottomExpr(){return `(()=>{const vis=e=>{const r=e?.getBoundingClientRect(),s=e&&getComputedStyle(e);return !!e&&r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const b=[...document.querySelectorAll('button,[role="button"]')].find(e=>vis(e)&&/^(cuộn xuống cuối|scroll to bottom|jump to bottom)$/i.test((e.getAttribute('aria-label')||e.textContent||'').trim()));if(!b)return{ok:true,status:'ALREADY_AT_BOTTOM'};b.click();return{ok:true,status:'SCROLL_TO_BOTTOM_CLICKED'}})()`; }
 async function scrollToBottom(target){const p=await pageRpc(target);try{return (await p.call('Runtime.evaluate',{expression:scrollBottomExpr(),returnByValue:true,userGesture:true})).result.value;}finally{p.close();}}
 
+function stopStalledWorkingExpr(){return `(()=>{const vis=e=>{const r=e?.getBoundingClientRect(),s=e&&getComputedStyle(e);return !!e&&r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const buttons=[...document.querySelectorAll('button[data-testid="stop-button"],button[aria-label*="Stop" i],button[aria-label*="Dừng" i],button[aria-label*="Ngừng" i]')].filter(vis);if(buttons.length!==1)return{ok:false,status:'WORKING_STALLED_STOP_BUTTON_COUNT_'+buttons.length};buttons[0].click();return{ok:true,status:'WORKING_STALLED_STOP_CLICKED'}})()`;}
+async function stopStalledWorking(target){
+  const p=await pageRpc(target);
+  let clicked;
+  try{clicked=(await p.call('Runtime.evaluate',{expression:stopStalledWorkingExpr(),returnByValue:true,userGesture:true},5000)).result.value;}
+  finally{p.close();}
+  if(!clicked?.ok){
+    const after=await uiState(target).catch(()=>null);
+    if(after&&after.uiBusy!==true&&after.stopVisible!==true)return{ok:true,status:'WORKING_RECOVERED_BEFORE_STOP',afterPhase:after.uiPhase||null,afterUrl:after.url||null,afterSignature:String(after.activitySignature||'')};
+    return clicked||{ok:false,status:'WORKING_STALLED_STOP_FAILED'};
+  }
+  const deadline=Date.now()+15000;
+  while(Date.now()<deadline){
+    await sleep(500);
+    const after=await uiState(target).catch(()=>null);
+    if(after&&after.uiBusy!==true&&after.stopVisible!==true)return{ok:true,status:'WORKING_STALLED_STOPPED',afterPhase:after.uiPhase||null,afterUrl:after.url||null,afterSignature:String(after.activitySignature||'')};
+  }
+  return{ok:false,status:'WORKING_STALLED_STOP_TIMEOUT'};
+}
+
 function archiveMenuPointExpr(){return `(async()=>{const sleep=ms=>new Promise(r=>setTimeout(r,ms));const vis=e=>{const r=e?.getBoundingClientRect(),s=e&&getComputedStyle(e);return !!e&&r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};if(!/\\/c\\//.test(location.pathname))return{ok:false,status:'ARCHIVE_REQUIRES_CONVERSATION_URL'};const before=location.href,title=document.title.trim();const open=[...document.querySelectorAll('button,[role="button"]')].find(e=>vis(e)&&/mở sidebar|hiện thanh bên|open sidebar/i.test((e.getAttribute('aria-label')||e.innerText||'').trim()));if(open){open.click();await sleep(450)}const rows=[...document.querySelectorAll('[role="listitem"]')].filter(e=>vis(e)&&String(e.innerText||'').trim()===title);const exact=rows.filter(row=>[...row.querySelectorAll('button')].some(b=>/hành động trong trò chuyện|conversation actions|chat actions/i.test(b.getAttribute('aria-label')||'')));if(exact.length!==1)return{ok:false,status:'ARCHIVE_CURRENT_ROW_COUNT_'+exact.length,title};const menu=[...exact[0].querySelectorAll('button')].filter(b=>vis(b)&&/hành động trong trò chuyện|conversation actions|chat actions/i.test(b.getAttribute('aria-label')||''));if(menu.length!==1)return{ok:false,status:'ARCHIVE_MENU_BUTTON_COUNT_'+menu.length,title};const r=menu[0].getBoundingClientRect();return{ok:true,status:'ARCHIVE_MENU_POINT',before,title,x:r.left+r.width/2,y:r.top+r.height/2}})()`; }
 function archiveItemPointExpr(){return `(()=>{const vis=e=>{const r=e?.getBoundingClientRect(),s=e&&getComputedStyle(e);return !!e&&r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const items=[...document.querySelectorAll('[role="menuitem"]')].filter(vis).filter(e=>/^(archive|lưu trữ)$/i.test((e.innerText||e.textContent||e.getAttribute('aria-label')||'').replace(/\\s+/g,' ').trim()));if(items.length!==1)return{ok:false,status:'ARCHIVE_ACTION_COUNT_'+items.length};const r=items[0].getBoundingClientRect();return{ok:true,status:'ARCHIVE_ACTION_POINT',x:r.left+r.width/2,y:r.top+r.height/2,text:(items[0].innerText||items[0].textContent||'').trim()}})()`; }
 async function cdpMouseClick(p,point){
@@ -1001,7 +1021,7 @@ async function checkpointNv02(target){
 }
 async function rotateNv02Chat(target,state,now){
   const receipt=await checkpointNv02(target);
-  const checkpointed={...state,dispatchesInChat:0,chatStartedAt:now,stalledChecks:0,lastPhase:'READY',nextRefreshAt:nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS),rotationRetryAt:0};
+  const checkpointed={...state,dispatchesInChat:0,chatStartedAt:now,stalledChecks:0,lastPhase:'READY',resumeChatUrl:'',verifiedChatUrl:'',modelVerifiedAt:'',nextRefreshAt:nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS),rotationRetryAt:0};
   saveNv02Continuity(checkpointed);
   return withNv02Mutation(async()=>{
     const archived=await archiveChat(target);if(!archived?.ok)throw new Error(archived?.status||'ROTATE_ARCHIVE_FAILED');
@@ -1058,6 +1078,37 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
         state={...state,workingRecheckAt:now+30_000};
         saveNv02Continuity(state);
         await continuityEvent('WORKING_F5_RECHECK_DEFERRED',{workingRecheckAt:state.workingRecheckAt});
+        return;
+      }
+      const provenStalledWorking=Boolean(
+        unchanged>=MAX_WORKING_UNCHANGED_CHECKS
+        &&refreshed?.afterBusy===true
+        &&refreshed?.beforeSignature
+        &&refreshed?.afterSignature===refreshed.beforeSignature
+      );
+      if(provenStalledWorking){
+        const stopped=await withNv02Mutation(()=>stopStalledWorking(target),'WORKING_STALLED_STOP',30000);
+        if(stopped?.status==='MUTATION_LEASE_BUSY'){
+          state={...state,workingRecheckAt:now+30_000,nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS};
+          saveNv02Continuity(state);
+          await continuityEvent('WORKING_STALLED_STOP_DEFERRED',{workingRecheckAt:state.workingRecheckAt});
+          return;
+        }
+        await continuityEvent('WORKING_STALLED_STOPPED',{status:stopped?.status||null,afterPhase:stopped?.afterPhase||null,afterUrl:stopped?.afterUrl||null});
+        if(!stopped?.ok||stopped?.afterPhase!=='READY'||!hasCurrentNv02Chat(stopped?.afterUrl)){
+          state={...state,lastPhase:stopped?.afterPhase||'STALLED',workingSignature:stopped?.afterSignature||refreshed?.afterSignature||'',workingUnchangedChecks:MAX_WORKING_UNCHANGED_CHECKS,workingRecheckAt:now+30_000,nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS};
+          saveNv02Continuity(state);
+          return;
+        }
+        const rotationState={...state,lastPhase:'READY',workingSignature:'',workingUnchangedChecks:0,workingRecheckAt:0,nextProgressCheckAt:0,stalledChecks:0,nextRefreshAt:now,rotationRetryAt:0};
+        saveNv02Continuity(rotationState);
+        await continuityEvent('WORKING_STALLED_ROTATION_DUE',{afterUrl:stopped.afterUrl,workingUnchangedChecks:unchanged});
+        try{await rotateNv02Chat(target,rotationState,now);}
+        catch(error){
+          const retry={...rotationState,rotationRetryAt:now+5*60*1000};
+          saveNv02Continuity(retry);
+          await continuityEvent('WORKING_STALLED_ROTATION_FAILED',{error:String(error?.message||error),rotationRetryAt:retry.rotationRetryAt});
+        }
         return;
       }
       state={...state,
