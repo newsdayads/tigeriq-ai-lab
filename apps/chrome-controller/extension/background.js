@@ -454,8 +454,8 @@ async function tick(){
 }
 async function ensureTickAlarm(){ await chrome.alarms.create('tigeriqTick',{periodInMinutes:0.5}); }
 
-export const F5_REFRESH_MIN_MS = CONTINUE_MIN_MS;
-export const F5_REFRESH_MAX_MS = CONTINUE_MAX_MS;
+export const F5_REFRESH_MIN_MS = 5 * 60 * 1000;
+export const F5_REFRESH_MAX_MS = 10 * 60 * 1000;
 export let nextF5RefreshAt = 0;
 export function setNextF5RefreshAt(val) { nextF5RefreshAt = val; }
 
