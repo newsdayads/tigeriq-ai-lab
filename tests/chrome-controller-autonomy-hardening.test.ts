@@ -253,7 +253,7 @@ describe('isolated NV02 WORKING/F5 safety scope',()=>{
     expect(bridge).toContain("sameNv02Chat(state.verifiedChatUrl,ui?.url)");
     const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
     expect(server).toContain("['PERIODIC_F5_REFRESH','WORKING_UNCHANGED_F5_RECHECK'].includes(purpose)");
-    expect(server).toContain("if(paused&&!periodicF5)");
+    expect(server).toContain("if(paused&&!nv02PeriodicF5)");
     expect(hotLoop).not.toContain("checkpointNv02(");
     expect(hotLoop).toContain("rotateNv02Chat(target,state,now)");
     expect(hotLoop).toContain("shouldRotateNv02Chat");
@@ -390,8 +390,8 @@ describe('NV02 current-chat continuity lease guard',()=>{
     expect(server).toContain("!autopilotState.pendingJobId");
     expect(server).toContain("!autopilotState.uncertainJobId");
     expect(server).toContain("nv02NextJob?.workerId==='NV02'");
-    expect(server).toContain("const continuityLeaseAllowed=continuitySameJob||continuityCurrentChatOnly");
-    expect(server).toContain("if(continuityContinue&&!continuityLeaseAllowed)throw new Error('CONTINUITY_SAME_JOB_IDENTITY_REQUIRED:NV02')");
+    expect(server).toContain("const continuityLeaseAllowed=nv02ContinuityContinue");
+    expect(server).toContain("if(nv02ContinuityContinue&&!continuityLeaseAllowed)throw new Error('CONTINUITY_SAME_JOB_IDENTITY_REQUIRED:NV02')");
   });
 });
 
@@ -466,3 +466,21 @@ describe('APP Chrome UI-only continuity regression #1525',()=>{
   });
 });
 
+
+
+describe('generic UI-only continuity lease #1525 live-canary repair',()=>{
+  it('lets NV03/NV04 continuity mutate the existing UI despite active controller work while retaining fail-closed gates',()=>{
+    const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
+    expect(server).toContain("const genericContinuityContinue=workerId!=='NV02'&&purpose==='CONTINUITY_CONTINUE'");
+    expect(server).toContain("const genericPeriodicF5=workerId!=='NV02'&&purpose==='PERIODIC_F5_REFRESH'");
+    expect(server).toContain("const genericChatLoadRecovery=workerId!=='NV02'&&['CHAT_LOAD_RETRY','CHAT_LOAD_F5','WORKER_REOPEN_CLOSE:CHAT_LOAD_ERROR'].includes(purpose)");
+    expect(server).toContain("const genericDuplicatePrune=workerId==='NV03'&&purpose==='DUPLICATE_TAB_PRUNE'");
+    expect(server).toContain(": genericContinuityContinue");
+    expect(server).toContain("||genericPeriodicF5||genericChatLoadRecovery||genericDuplicatePrune");
+    expect(server).toContain("if(paused&&!nv02PeriodicF5)throw new Error('OWNER_INTERACTION_READ_ONLY')");
+    expect(server).toContain("if(utilityPausedWorkers.has(workerId)&&!nv02PeriodicF5)");
+    expect(server).toContain("if(state.lastHeartbeat?.uiBusy!==false&&!staleWorkingRecovery&&!nv02PeriodicF5)");
+    expect(server).toContain("const security=heartbeatStopReason(state.lastHeartbeat)");
+    expect(server).toContain("if(commandQueues.get(workerId)!.length>0||[...waiters.values()].some((w)=>w.workerId===workerId))");
+  });
+});
