@@ -32,6 +32,12 @@ export function assertCoreBaseUrl(value, expectedPort = 8795) {
   return assertBoundedBaseUrl(value, expectedPort, CORE_HOSTS, 'TIGERIQ_RUNTIME_CORE_HOST_NOT_ALLOWED');
 }
 
+export function resolveCoreBaseUrl(value) {
+  const configured = String(value || '').trim();
+  if (!configured || configured === 'http://127.0.0.1:8795') return DEFAULT_CORE_BASE_URL;
+  return configured;
+}
+
 export function redactSensitive(value) {
   if (Array.isArray(value)) return value.map(redactSensitive);
   if (value && typeof value === 'object') {
@@ -147,7 +153,7 @@ export function resolveChromeAction(command, workerId) {
 export async function executeRuntimeAction(input, options = {}) {
   const started = Date.now();
   const action = String(input?.action || '');
-  const coreBaseUrl = options.coreBaseUrl || DEFAULT_CORE_BASE_URL;
+  const coreBaseUrl = resolveCoreBaseUrl(options.coreBaseUrl);
   const chromeBaseUrl = options.chromeBaseUrl || DEFAULT_CHROME_BASE_URL;
   const common = { fetchImpl: options.fetchImpl, signal: options.signal };
 
