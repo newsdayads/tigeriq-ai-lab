@@ -324,10 +324,14 @@ describe('safe recovery contracts',()=>{
     expect(launcher).not.toContain("foreach($id in @('NV02','NV03','NV04'))");
   });
 
-  it('never F5s or reopens NV03/NV04 while their UI is WORKING',()=>{
+  it('allows independent periodic F5 but never reopens NV03/NV04 merely because UI is WORKING',()=>{
     const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     const continuity=source.slice(source.indexOf('async function maybeWorkerContinuity'),source.indexOf('\nfunction log(event'));
-    expect(continuity).toContain("if(phase!=='WORKING'&&Number(state.nextPeriodicF5At||0)<=now)");
+    expect(continuity).toContain("if(Number(state.nextPeriodicF5At||0)<=now)");
+    expect(continuity).not.toContain("if(phase!=='WORKING'&&Number(state.nextPeriodicF5At||0)<=now)");
+    const f5=continuity.slice(continuity.indexOf("if(Number(state.nextPeriodicF5At||0)<=now)"),continuity.indexOf("if(phase==='WORKING')"));
+    expect(f5).toContain('reloadTarget(target)');
+    expect(f5).not.toContain('dispatch(target,prompt)');
     const working=continuity.slice(continuity.indexOf("if(phase==='WORKING')"),continuity.indexOf("if(phase==='READY')"));
     expect(working).toContain("'WORKING_LONG_RUNNING_NO_MUTATION'");
     expect(working).not.toContain('reopenWorker(');
