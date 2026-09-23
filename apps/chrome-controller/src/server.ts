@@ -535,23 +535,39 @@ function completeSelfRunJob(workerId:WorkerId,jobId:string,evidenceRef:string,re
   if(job.stage==='WAITING_EVIDENCE')job=uiJobLedger.transition(workerId,jobId,'VERIFY',{evidenceRef,nextAction:'Verify GitHub terminal state'});
   if(job.stage==='VERIFY')uiJobLedger.transition(workerId,jobId,'DONE',{evidenceRef,result});
 }
+async function releaseSelfRunClaimRecord(
+  claim:{claimId:string;workerId:WorkerId;issueNumber:number},
+  state:string,
+){
+  try{
+    await releaseGithubClaim({
+      claimId:claim.claimId,workerId:claim.workerId,issueNumber:claim.issueNumber,state,
+      owner:selfRunGithubOwner,repo:selfRunGithubRepo,token:selfRunGithubToken,
+    });
+    selfRunClaims.release(claim.claimId);
+    log('APP_CHROME_SELF_RUN_CLAIM_RELEASE_COMMITTED',{
+      workerId:claim.workerId,issueNumber:claim.issueNumber,claimId:claim.claimId,state,
+    });
+    return true;
+  }catch(error){
+    log('APP_CHROME_SELF_RUN_CLAIM_RELEASE_DEFERRED',{
+      workerId:claim.workerId,issueNumber:claim.issueNumber,claimId:claim.claimId,state,error:String(error),
+    });
+    return false;
+  }
+}
 async function releaseSelfRunClaim(workerId:WorkerId,issueNumber:number,state:string){
   const local=selfRunClaims.find(issueNumber,workerId);
-  if(!local)return;
-  await releaseGithubClaim({claimId:local.claimId,workerId,issueNumber,state,owner:selfRunGithubOwner,repo:selfRunGithubRepo,token:selfRunGithubToken}).catch(()=>{});
-  selfRunClaims.release(local.claimId);
+  if(!local)return true;
+  return releaseSelfRunClaimRecord(local,state);
 }
 async function cleanupOrphanSelfRunClaims(){
   for(const claim of selfRunClaims.snapshot()){
     const active=uiJobLedger.active(claim.workerId);
     const activeIssue=issueNumberFromRef(active?.issueRef);
     if(active?.source==='APP_CHROME_SELF_RUN'&&activeIssue===claim.issueNumber)continue;
-    await releaseGithubClaim({
-      claimId:claim.claimId,workerId:claim.workerId,issueNumber:claim.issueNumber,state:'ORPHAN_RECOVERY',
-      owner:selfRunGithubOwner,repo:selfRunGithubRepo,token:selfRunGithubToken,
-    }).catch(()=>{});
-    selfRunClaims.release(claim.claimId);
-    log('APP_CHROME_SELF_RUN_ORPHAN_CLAIM_RELEASED',{workerId:claim.workerId,issueNumber:claim.issueNumber,claimId:claim.claimId});
+    const released=await releaseSelfRunClaimRecord(claim,'ORPHAN_RECOVERY');
+    if(released)log('APP_CHROME_SELF_RUN_ORPHAN_CLAIM_RELEASED',{workerId:claim.workerId,issueNumber:claim.issueNumber,claimId:claim.claimId});
   }
 }
 async function reconcileSelfRunWorker(workerId:WorkerId){
@@ -564,13 +580,7 @@ async function reconcileSelfRunWorker(workerId:WorkerId){
   if(issue.state==='closed'){
     const localClaim=selfRunClaims.find(issueNumber,workerId);
     const completed=String(issue.state_reason||'')==='completed';
-    if(localClaim){
-      await releaseGithubClaim({
-        claimId:localClaim.claimId,workerId,issueNumber,state:completed?'DONE':'BLOCKED',
-        owner:selfRunGithubOwner,repo:selfRunGithubRepo,token:selfRunGithubToken,
-      }).catch(()=>{});
-      selfRunClaims.release(localClaim.claimId);
-    }
+    if(localClaim)await releaseSelfRunClaimRecord(localClaim,completed?'DONE':'BLOCKED');
     if(completed){
       completeSelfRunJob(workerId,active.jobId,evidenceRef,`GitHub issue #${issueNumber} closed completed; self-run work terminalized.`);
       log('APP_CHROME_SELF_RUN_DONE',{workerId,jobId:active.jobId,issueNumber,stateReason:issue.state_reason??null});
@@ -588,20 +598,19 @@ async function reconcileSelfRunWorker(workerId:WorkerId){
   }
   if(active.stage!=='WAITING_EVIDENCE'&&active.stage!=='VERIFY')return false;
   const comments=await fetchIssueComments({issueNumber,owner:selfRunGithubOwner,repo:selfRunGithubRepo,token:selfRunGithubToken});
-  const terminal=terminalMarkerFromComments(comments);
-  if(!terminal)return false;
   const claim=selfRunClaims.find(issueNumber,workerId)??activeAppChromeClaims(comments).find((x)=>x.workerId===workerId&&x.issueNumber===issueNumber);
+  if(!claim)return false;
+  const terminal=terminalMarkerFromComments(comments,claim.claimId);
+  if(!terminal)return false;
+  const released=await releaseSelfRunClaimRecord(claim,terminal);
+  if(!released)return false;
   if(terminal==='DONE'){
-    if(claim)await releaseGithubClaim({claimId:claim.claimId,workerId,issueNumber,state:'DONE',owner:selfRunGithubOwner,repo:selfRunGithubRepo,token:selfRunGithubToken}).catch(()=>{});
-    if(claim)selfRunClaims.release(claim.claimId);
     await closeGithubIssueCompleted({issueNumber,owner:selfRunGithubOwner,repo:selfRunGithubRepo,token:selfRunGithubToken});
-    completeSelfRunJob(workerId,active.jobId,evidenceRef,`GitHub terminal marker ${terminal} verified and issue closed.`);
-    log('APP_CHROME_SELF_RUN_DONE',{workerId,jobId:active.jobId,issueNumber,terminal});
+    completeSelfRunJob(workerId,active.jobId,evidenceRef,`GitHub terminal marker ${terminal} verified for current claim and issue closed.`);
+    log('APP_CHROME_SELF_RUN_DONE',{workerId,jobId:active.jobId,issueNumber,terminal,claimId:claim.claimId});
   }else{
-    if(claim)await releaseGithubClaim({claimId:claim.claimId,workerId,issueNumber,state:terminal,owner:selfRunGithubOwner,repo:selfRunGithubRepo,token:selfRunGithubToken}).catch(()=>{});
-    if(claim)selfRunClaims.release(claim.claimId);
-    uiJobLedger.transition(workerId,active.jobId,'BLOCKED',{evidenceRef,blocker:terminal,nextAction:null,result:`GitHub worker reported ${terminal}`});
-    log('APP_CHROME_SELF_RUN_RELEASED',{workerId,jobId:active.jobId,issueNumber,terminal});
+    uiJobLedger.transition(workerId,active.jobId,'BLOCKED',{evidenceRef,blocker:terminal,nextAction:null,result:`GitHub worker reported ${terminal} for current claim`});
+    log('APP_CHROME_SELF_RUN_RELEASED',{workerId,jobId:active.jobId,issueNumber,terminal,claimId:claim.claimId});
   }
   persistEvidence();
   return true;
@@ -644,11 +653,11 @@ async function selfRunTick(){
           workerId,issue,claimId:local.claim.claimId,ttlMs:6*60*60*1000,
           owner:selfRunGithubOwner,repo:selfRunGithubRepo,token:selfRunGithubToken,
         }).catch((error)=>{
-          selfRunClaims.release(local.claim.claimId);
-          log('APP_CHROME_SELF_RUN_GITHUB_CLAIM_FAILED',{workerId,issueNumber:issue.number,error:String(error)});
-          return null;
+          log('APP_CHROME_SELF_RUN_GITHUB_CLAIM_UNCERTAIN',{workerId,issueNumber:issue.number,claimId:local.claim.claimId,error:String(error)});
+          return undefined;
         });
-        if(!claim){selfRunClaims.release(local.claim.claimId);continue;}
+        if(claim===undefined)continue;
+        if(claim===null){selfRunClaims.release(local.claim.claimId);continue;}
         try{
           const comments=await fetchIssueComments({issueNumber:issue.number,owner:selfRunGithubOwner,repo:selfRunGithubRepo,token:selfRunGithubToken});
           const prompt=buildSelfRunPrompt(workerId,issue,comments,claim);
@@ -666,9 +675,8 @@ async function selfRunTick(){
           selfRunState.lastClaimWorker=workerId;
           log('APP_CHROME_SELF_RUN_CLAIMED',{workerId,issueNumber:issue.number,scope:resourceScopeOf(issue),jobId,claimId:claim.claimId});
         }catch(error){
-          await releaseGithubClaim({claimId:claim.claimId,workerId,issueNumber:issue.number,state:'DISPATCH_ERROR',owner:selfRunGithubOwner,repo:selfRunGithubRepo,token:selfRunGithubToken}).catch(()=>{});
-          selfRunClaims.release(claim.claimId);
-          log('APP_CHROME_SELF_RUN_DISPATCH_FAILED',{workerId,issueNumber:issue.number,error:String(error)});
+          const released=await releaseSelfRunClaimRecord(claim,'DISPATCH_ERROR');
+          log('APP_CHROME_SELF_RUN_DISPATCH_FAILED',{workerId,issueNumber:issue.number,claimId:claim.claimId,claimReleased:released,error:String(error)});
         }
         break;
       }
