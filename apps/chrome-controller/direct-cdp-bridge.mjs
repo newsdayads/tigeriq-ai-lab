@@ -84,6 +84,7 @@ const bootResetScheduleInitialized=new Set();
 const bootF5ScheduleInitialized=new Set();
 const WORKER_RESET_MAX_ATTEMPTS=2;
 const WORKER_RESET_STAGGER_MS=2*60*1000;
+const STALLED_CONFIRM_GRACE_MS=20*1000;
 function workerStatePath(workerId){return join(WORKER_CONTINUITY_DIR,`${String(workerId).toLowerCase()}.json`);}
 function nextWorkerResetAt(workerId,now=Date.now(),random=Math.random){
   const index=Math.max(0,CONTINUITY_WORKERS.indexOf(workerId));
@@ -264,6 +265,10 @@ async function maybeWorkerContinuity(w,target,ui){
   }
   if(await maybeRecoverChatLoadError(w,target,ui,now))return;
 
+  if(phase==='STALLED'&&Number(state.recoveryBlockedUntil||0)>now){
+    return;
+  }
+
   if(phase!=='WORKING'&&now>=Number(state.nextResetAt||0)){
     await reopenWorker(w,target,state,now,'PERIODIC_2_4H_RESET');
     return;
@@ -342,7 +347,10 @@ async function maybeWorkerContinuity(w,target,ui){
   await genericWorkerEvent(w.id,'STALLED_CHECK',{stalledChecks});
   if(stalledChecks===2){
     const refreshed=await withWorkerMutation(w.id,()=>reloadTarget(target),'STALLED_RECOVERY',15000);
-    await genericWorkerEvent(w.id,'STALLED_RELOAD',{status:refreshed?.status||null});
+    const confirmAfter=Date.now()+STALLED_CONFIRM_GRACE_MS;
+    const guarded={...next,recoveryBlockedUntil:confirmAfter};
+    saveWorkerContinuity(w.id,guarded);
+    await genericWorkerEvent(w.id,'STALLED_RELOAD',{status:refreshed?.status||null,confirmAfter});
   }else if(stalledChecks>=MAX_STALLED_CHECKS){
     await reopenWorker(w,target,next,now,'STALLED_3_CHECKS');
   }
