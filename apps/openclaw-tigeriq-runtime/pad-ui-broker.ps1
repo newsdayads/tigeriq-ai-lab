@@ -10,6 +10,7 @@ public static class TigerIQPadNative {
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int X, int Y);
   [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extraInfo);
   [DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr extraInfo);
+  [DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);
 }
 "@
 
@@ -76,6 +77,34 @@ function Find-PadWindow($Request) {
   return [System.Windows.Automation.AutomationElement]::FromHandle((Get-Process -Id $windows[0].ProcessId).MainWindowHandle)
 }
 
+function Get-PadOwnedModalWindow($OwnerWindow) {
+  $ownerHandle = [IntPtr][int64]$OwnerWindow.Current.NativeWindowHandle
+  if ($ownerHandle -eq [IntPtr]::Zero) { return $null }
+
+  $root = [System.Windows.Automation.AutomationElement]::RootElement
+  $all = $root.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition)
+  $matches = @()
+  foreach ($candidate in $all) {
+    try {
+      $candidateHandle = [IntPtr][int64]$candidate.Current.NativeWindowHandle
+      if ($candidateHandle -eq [IntPtr]::Zero -or $candidateHandle -eq $ownerHandle) { continue }
+      $probe = $candidateHandle
+      $owned = $false
+      for ($depth = 0; $depth -lt 8; $depth++) {
+        $probe = [TigerIQPadNative]::GetWindow($probe, 4)
+        if ($probe -eq [IntPtr]::Zero) { break }
+        if ($probe -eq $ownerHandle) { $owned = $true; break }
+      }
+      if (-not $owned) { continue }
+      if ($candidate.Current.IsOffscreen -or -not $candidate.Current.IsEnabled) { continue }
+      $matches += $candidate
+    } catch {}
+  }
+  if ($matches.Count -eq 0) { return $null }
+  if ($matches.Count -ne 1) { throw 'TIGERIQ_PAD_UI_OWNED_MODAL_AMBIGUOUS' }
+  return $matches[0]
+}
+
 function Get-TopWindowElement($Request) {
   $root = [System.Windows.Automation.AutomationElement]::RootElement
   $all = $root.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition)
@@ -91,7 +120,13 @@ function Get-TopWindowElement($Request) {
     if ($named.Count -eq 1) { $matches = $named }
   }
   if ($matches.Count -ne 1) { throw 'TIGERIQ_PAD_UI_WINDOW_AMBIGUOUS' }
-  return $matches[0]
+
+  $window = $matches[0]
+  if (-not $window.Current.IsEnabled) {
+    $ownedModal = Get-PadOwnedModalWindow $window
+    if ($null -ne $ownedModal) { return $ownedModal }
+  }
+  return $window
 }
 
 function Element-ToObject($e) {

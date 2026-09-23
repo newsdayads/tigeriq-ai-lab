@@ -92,4 +92,12 @@ describe('Power Automate Desktop guarded UI contract', () => {
     const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/pad-ui-broker.ps1', import.meta.url), 'utf8');
     expect(source).not.toContain('LegacyIAccessiblePattern');
   });
+
+  it('resolves only owned modal UI when a verified PAD designer is disabled', async () => {
+    const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/pad-ui-broker.ps1', import.meta.url), 'utf8');
+    expect(source).toContain('Get-PadOwnedModalWindow');
+    expect(source).toContain('[TigerIQPadNative]::GetWindow($probe, 4)');
+    expect(source).toContain("TIGERIQ_PAD_UI_OWNED_MODAL_AMBIGUOUS");
+    expect(source).toContain("if (-not $window.Current.IsEnabled)");
+  });
 });
