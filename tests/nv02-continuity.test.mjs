@@ -182,6 +182,8 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("const UI_STABILITY_PACING_MIN_MS=1200");
     expect(source).toContain("VIEW_FOLLOW_BOTTOM");
     expect(source).toContain("nextViewFollowAt");
+    expect(source).toContain("await scrollToBottom(target).catch");
+    expect(source).not.toContain("withNv02Mutation(()=>scrollToBottom(target),'VIEW_FOLLOW_BOTTOM'");
     expect(source).toContain("reasoningEffort==='High'");
     expect(source).toContain("async open(timeout=4000)");
     expect(source).toContain("fail(new Error('CDP_OPEN_TIMEOUT'))");

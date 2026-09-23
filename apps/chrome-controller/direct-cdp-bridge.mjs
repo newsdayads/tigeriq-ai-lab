@@ -1192,11 +1192,15 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
   const currentTrackedWork=hasCurrentNv02Chat(ui?.url);
   state={...state,lastPhase:phase,...(currentTrackedWork?{resumeChatUrl:String(ui.url||'')}:{})};saveNv02Continuity(state);
   if(phase!=='BLOCKED'&&ui?.scrollToBottomVisible===true&&now>=Number(state.nextViewFollowAt||0)){
-    const followed=await withNv02Mutation(()=>scrollToBottom(target),'VIEW_FOLLOW_BOTTOM',10000);
+    const locallyBusy=nv02MutationBusy||workerMutationBusy.has('NV02');
+    const followed=locallyBusy
+      ? {ok:false,status:'VIEW_FOLLOW_LOCAL_BUSY'}
+      : await scrollToBottom(target).catch(error=>({ok:false,status:'VIEW_FOLLOW_ERROR',error:String(error?.message||error)}));
     state=loadNv02Continuity();
-    state={...state,nextViewFollowAt:followed?.status==='MUTATION_LEASE_BUSY'?now+5000:nextRandomAt(now,VIEW_FOLLOW_MIN_MS,VIEW_FOLLOW_MAX_MS)};
+    const deferred=followed?.status==='VIEW_FOLLOW_LOCAL_BUSY';
+    state={...state,nextViewFollowAt:deferred?now+5000:nextRandomAt(now,VIEW_FOLLOW_MIN_MS,VIEW_FOLLOW_MAX_MS)};
     saveNv02Continuity(state);
-    await continuityEvent(followed?.status==='MUTATION_LEASE_BUSY'?'VIEW_FOLLOW_BOTTOM_DEFERRED':'VIEW_FOLLOW_BOTTOM',{status:followed?.status||null,pacingMs:followed?.pacingMs||null,nextViewFollowAt:state.nextViewFollowAt});
+    await continuityEvent(deferred?'VIEW_FOLLOW_BOTTOM_DEFERRED':'VIEW_FOLLOW_BOTTOM',{status:followed?.status||null,pacingMs:followed?.pacingMs||null,nextViewFollowAt:state.nextViewFollowAt});
   }
   if(phase==='BLOCKED'){await continuityEvent('BLOCKED',{securityBlock:ui?.securityBlock||null});return;}
   if(phase==='WORKING'){
