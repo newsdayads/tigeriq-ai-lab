@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
+import { readFileSync } from 'node:fs';
 import { processGitHubIssue, classifyRisk, isZeroCost } from '../apps/tigeriq-coding-lane/github-intake.mjs';
 import { materializeGithubIssues } from '../apps/tigeriq-core/github-intake.mjs';
 
@@ -50,8 +51,8 @@ test('persistence verification through injected evidence sink', () => {
 function response(data,ok=true,status=200){return {ok,status,json:async()=>data};}
 
 function coreBacklogPool(){
-  const objectives=[]; const events=[];
-  return {objectives,events,async query(q,params=[]){
+  const objectives=[]; const events=[]; const jobs=[];
+  return {objectives,events,jobs,async query(q,params=[]){
     if(q.includes("metadata->>'source'='github' and status='active'")){
       const active=objectives.some(o=>o.metadata?.source==='github'&&o.status==='active');
       return {rowCount:active?1:0,rows:active?[{id:'active'}]:[]};
@@ -64,8 +65,12 @@ function coreBacklogPool(){
       objectives.push({id:params[0],objective:params[1],priority:params[2],metadata:JSON.parse(params[3]),status:'active'});
       return {rowCount:1,rows:[]};
     }
+    if(q.includes('insert into tigeriq_jobs')){
+      jobs.push({id:params[0],objective_id:params[1],title:params[2],prompt:params[3],capability:'pc_operator',kind:'pc_operator',status:'queued',max_attempts:2});
+      return {rowCount:1,rows:[]};
+    }
     if(q.includes("insert into tigeriq_events")){
-      events.push({type:'GITHUB_OBJECTIVE_MATERIALIZED',objectiveId:params[0],data:JSON.parse(params[1])});
+      events.push({type:q.includes('GITHUB_PC_OPERATOR_JOB_MATERIALIZED')?'GITHUB_PC_OPERATOR_JOB_MATERIALIZED':'GITHUB_OBJECTIVE_MATERIALIZED',objectiveId:params[0],jobId:params[1]||null});
       return {rowCount:1,rows:[]};
     }
     return {rowCount:0,rows:[]};
@@ -87,7 +92,12 @@ PRIORITY=P0
 CAPABILITY=pc_operator
 NO_CODE_CHANGE=true
 NO_PC01_SHELL=true
-Perform only the assigned bounded PC canary through OpenClaw.`;
+RESOURCE_SCOPE=OPENCLAW_TEST_SCOPE
+ASSIGNED_ACTION
+1. tigeriq_pc tcp_probe host=127.0.0.1 port=18789
+2. tigeriq_pc file_write path=D:\\TigerIQ\\State\\canary.txt content=PASS
+ACCEPTANCE
+Return structured PASS evidence.`;
   const issues=[{number:1608,state:'open',title:'OpenClaw canary',body,html_url:'https://example/1608'}];
   const fetchImpl=async(url)=>url.includes('/issues?')?response(issues):response({});
   const out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
@@ -96,6 +106,16 @@ Perform only the assigned bounded PC canary through OpenClaw.`;
   assert.strictEqual(pool.objectives[0].metadata.executionSurface,'CORE_OPENCLAW_BOUNDED');
   assert.match(pool.objectives[0].objective,/Core must create only the assigned pc_operator work/);
   assert.match(pool.objectives[0].objective,/NO arbitrary PC01 shell/);
+  assert.strictEqual(pool.jobs.length,1);
+  assert.strictEqual(pool.jobs[0].id,'JOB-GH-1608-PC');
+  assert.strictEqual(pool.jobs[0].capability,'pc_operator');
+  assert.match(pool.jobs[0].prompt,/tcp_probe host=127.0.0.1 port=18789/);
+  assert.doesNotMatch(pool.jobs[0].prompt,/Production\/main/);
+});
+
+test('Core manager excludes deterministic CORE_OPENCLAW_BOUNDED objectives',()=>{
+  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+  assert.match(core,/executionSurface',''\)<>'CORE_OPENCLAW_BOUNDED'/);
 });
 
 test('read-only GitHub backlog runs one-at-a-time and chains by OWNER_DIRECT then priority',async()=>{
