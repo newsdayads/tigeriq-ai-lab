@@ -351,6 +351,9 @@ describe('NV02 continuity policy', () => {
     expect(ui).toContain('request (?:has )?timed out');
     expect(ui).toContain('request timeout');
     expect(ui).toContain('Boolean(chatRetry)');
+    expect(ui).toContain("const parts=[]");
+    expect(ui).toContain("parts.push(text)");
+    expect(ui).toContain("parts.join(' | ')");
     expect(source).toContain("function chatLoadRetryExpr()");
     expect(source).toContain("CHAT_LOAD_RETRY");
     expect(source).toContain("CHAT_LOAD_F5");
