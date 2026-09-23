@@ -16,6 +16,7 @@ import { API_DOCTOR_CAPABILITY, apiDoctorAction, apiDoctorExistingHandoffAction,
 import { buildUiAutopilotSnapshot, projectCoreOwnedUiSnapshot } from './ui-autopilot-snapshot.mjs';
 import { refreshRegistryWorkforce, normalizeRuntimeResources } from './workforce-registry.mjs';
 import { OPENCLAW_EMPLOYEE_ID, OPENCLAW_MODEL, OPENCLAW_PROVIDER, OPENCLAW_RESOURCE_ID, normalizeOpenClawDispatchEnvelope, waitOpenClawDispatch } from '../openclaw-tigeriq-runtime/dispatch.mjs';
+import { boundedOpenClawObjectiveState } from './openclaw-objective-policy.mjs';
 
 const DATABASE_URL = process.env.DATABASE_URL?.trim();
 if (!DATABASE_URL) throw new Error('DATABASE_URL_MISSING');
@@ -892,6 +893,17 @@ async function managerTick() {
     and not exists(select 1 from tigeriq_jobs j where j.objective_id=o.id and j.status in ('queued','running'))
     order by case o.priority when 'P0' then 0 when 'P1' then 1 else 2 end,case when o.metadata#>>'{handoff,state}'='waiting_children' then 1 else 0 end,o.created_at limit 1`);
   const o=q.rows[0]; if(!o) return;
+  if(o.metadata?.executionSurface==='CORE_OPENCLAW_BOUNDED'){
+    const boundedJobs=(await pool.query("select id,status,attempts,max_attempts from tigeriq_jobs where objective_id=$1 order by created_at",[o.id])).rows;
+    const bounded=boundedOpenClawObjectiveState(boundedJobs);
+    if(!bounded.terminal){
+      await pool.query("update tigeriq_objectives set summary=$2,next_check_at=now()+interval '5 seconds',updated_at=now() where id=$1",[o.id,bounded.summary]);
+      return;
+    }
+    await pool.query("update tigeriq_objectives set status=$2,summary=$3,updated_at=now() where id=$1",[o.id,bounded.status,bounded.summary]);
+    await event(bounded.status==='completed'?'OBJECTIVE_COMPLETE':'OBJECTIVE_BLOCKED',{objectiveId:o.id,executionSurface:'CORE_OPENCLAW_BOUNDED',reason:bounded.reason,jobId:boundedJobs[0]?.id||null});
+    return;
+  }
   if(await reconcileAutonomousHandoff(o)) return;
   const campaign=o.metadata?.campaign||null;
   const phases=Array.isArray(campaign?.phases)?campaign.phases:[];
