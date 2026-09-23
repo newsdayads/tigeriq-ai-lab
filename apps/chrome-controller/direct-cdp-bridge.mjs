@@ -156,7 +156,7 @@ function isAssignedWorkerChat(w,url){
 async function workerAutomationPaused(workerId){
   try{
     const state=await getControllerState();
-    return state?.paused===true||state?.killed===true||(state?.utilityPausedWorkers||[]).includes(workerId);
+    return state?.paused===true||state?.killed===true||String(state?.ownerInteractionMode||'')==='READ_ONLY'||(state?.utilityPausedWorkers||[]).includes(workerId);
   }catch(error){
     log('WORKER_AUTOMATION_PAUSE_CHECK_FAILED_CLOSED',{workerId,error:String(error?.message||error)});
     return true;
@@ -1323,6 +1323,11 @@ async function tickWorker(w){
     const projectContextReady=w.id!=='NV02'||isNv02ProjectContext(rawUi.url)||rawUi.projectDraftReady===true;
     const ui=projectContextReady?rawUi:{...rawUi,uiReady:false,uiPhase:'STALLED',modelReady:false};
     await postWorkerHeartbeat(w,target,ui,projectContextReady).catch(error=>log('CONTROLLER_TELEMETRY_UNAVAILABLE',{error:String(error?.message||error)}));
+    if(await workerAutomationPaused(w.id)){
+      if(w.id==='NV02')await continuityEvent('AUTO_ACTION_PAUSED',{phase:String(ui?.uiPhase||'STALLED')});
+      else await genericWorkerEvent(w.id,'AUTO_ACTION_PAUSED',{phase:String(ui?.uiPhase||'STALLED')});
+      return;
+    }
     if(w.id==='NV03'&&ui.uiBusy!==true){
       await pruneNv03DuplicateTabs(w,list,target,ui).catch(error=>log('DUPLICATE_TAB_PRUNE_FAILED',{workerId:w.id,error:String(error?.message||error)}));
     }
