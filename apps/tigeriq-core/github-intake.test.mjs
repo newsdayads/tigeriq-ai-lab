@@ -7,5 +7,10 @@ describe('GitHub Core intake guardrails',()=>{
   it('fails closed if shell/code guardrails are missing',()=>{expect(parseExecutableIssue({...base,body:'TIGERIQ_EXECUTABLE=true\nOWNER_POLICY=AUTO'})).toBeNull();});
   it('does not treat CENTRAL prose/backticks as an executable marker',()=>{expect(parseExecutableIssue({...base,body:'Rule: `TIGERIQ_EXECUTABLE=true`; OWNER_POLICY=AUTO'})).toBeNull();});
   it('extracts bounded issue refs and safe repository paths',()=>{expect(extractIssueRefs(base.body,588)).toEqual([280,335]);expect(extractRepoPaths(base.body)).toEqual(['docs/CURRENT_STATE.md']);});
+  it('accepts OWNER_DIRECT bounded pc_operator but rejects non-owner pc_operator',()=>{
+    const owner={...base,number:1528,body:'TIGERIQ_EXECUTABLE=true\nOWNER_POLICY=AUTO\nOWNER_DIRECT=true\nPRIORITY=P0\nCAPABILITY=pc_operator\nNO_CODE_CHANGE=true\nNO_PC01_SHELL=true'};
+    expect(parseExecutableIssue(owner)).toMatchObject({number:1528,priority:'P0',capability:'pc_operator',ownerDirect:true});
+    expect(parseExecutableIssue({...owner,body:owner.body.replace('OWNER_DIRECT=true\n','')})).toBeNull();
+  });
   it('formats a terminal result with objective evidence',()=>{expect(formatResultComment({id:'OBJ-GH-588',status:'completed',summary:'ok'})).toContain('[RESULT] TigerIQ Core completed OBJ-GH-588');});
 });
