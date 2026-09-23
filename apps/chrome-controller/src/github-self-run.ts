@@ -34,6 +34,32 @@ export interface SelfRunRuntimeState {
   lastClaimWorker:WorkerId|null;
 }
 
+export type SelfRunContinuityJob = {
+  jobId?:string|null;
+  workerId?:WorkerId|string|null;
+  issueRef?:string|null;
+  source?:string|null;
+  stage?:string|null;
+  completedAt?:string|null;
+};
+
+export function selfRunContinuityClaimMatches(
+  job:SelfRunContinuityJob|undefined,
+  claim:AppChromeClaim|undefined,
+  workerId:WorkerId,
+):boolean{
+  if(!job||!claim)return false;
+  if(job.workerId!==workerId||claim.workerId!==workerId)return false;
+  if(job.source!=='APP_CHROME_SELF_RUN')return false;
+  if(!['SUBMITTED','WORKING','WAITING_EVIDENCE','VERIFY'].includes(String(job.stage??'')))return false;
+  if(job.completedAt)return false;
+  const issueMatch=String(job.issueRef??'').match(/\/issues\/(\d+)(?:$|[?#/])/);
+  const issueNumber=issueMatch?Number(issueMatch[1]):0;
+  if(!issueNumber||claim.issueNumber!==issueNumber)return false;
+  const expectedJobId=`APP-GH-${issueNumber}-${workerId}-${claim.claimId.slice(0,8)}`;
+  return job.jobId===expectedJobId;
+}
+
 const PRIORITY:Record<string,number>={P0:0,P1:1,P2:2,P3:3};
 const TERMINAL_OR_HOLD_STATE_RE=/(DONE|COMPLETED|SUPERSEDED|CANCELLED|CANCELED|MANUAL_HOLD|FROZEN|WAIT_DEPENDENCY|EXTERNAL_WAIT|BLOCKED)/i;
 const SAFE_FALSE_KEYS=['NO_DIRECT_MAIN','NO_PRODUCTION_RELEASE','NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_DESTRUCTIVE'];
