@@ -34,6 +34,14 @@ function Get-ProcessName([int]$PidValue) {
   try { return (Get-Process -Id $PidValue -ErrorAction Stop).ProcessName } catch { return '' }
 }
 
+function Convert-FiniteUiNumber($Value) {
+  try {
+    $n = [double]$Value
+    if ([double]::IsNaN($n) -or [double]::IsInfinity($n)) { return $null }
+    return [math]::Round($n,0)
+  } catch { return $null }
+}
+
 function Test-PadWindow($Window) {
   try {
     $name = [string]$Window.Current.Name
@@ -56,7 +64,7 @@ function Get-PadWindows {
         AutomationId=[string]$w.Current.AutomationId
         ProcessId=[int]$w.Current.ProcessId
         Process=(Get-ProcessName $w.Current.ProcessId)
-        X=[math]::Round($r.X,0); Y=[math]::Round($r.Y,0); Width=[math]::Round($r.Width,0); Height=[math]::Round($r.Height,0)
+        X=(Convert-FiniteUiNumber $r.X); Y=(Convert-FiniteUiNumber $r.Y); Width=(Convert-FiniteUiNumber $r.Width); Height=(Convert-FiniteUiNumber $r.Height)
       }
     } catch {}
   }

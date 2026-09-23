@@ -100,4 +100,12 @@ describe('Power Automate Desktop guarded UI contract', () => {
     expect(source).toContain("TIGERIQ_PAD_UI_OWNED_MODAL_AMBIGUOUS");
     expect(source).toContain("if (-not $window.Current.IsEnabled)");
   });
+
+  it('sanitizes non-finite UIAutomation rectangle values before JSON serialization', async () => {
+    const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/pad-ui-broker.ps1', import.meta.url), 'utf8');
+    expect(source).toContain('Convert-FiniteUiNumber');
+    expect(source).toContain('[double]::IsInfinity($n)');
+    expect(source).toContain('[double]::IsNaN($n)');
+    expect(source).not.toContain('X=[math]::Round($r.X,0)');
+  });
 });
