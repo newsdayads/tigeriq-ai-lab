@@ -71,6 +71,27 @@ const utilityPausedWorkers = new Set<WorkerId>();
 const recoveryAttempts = new Map<WorkerId,number>(WORKER_IDS.map((id) => [id,0]));
 const recoveryInFlight = new Set<WorkerId>();
 const plannedRefreshWorkers = new Set<WorkerId>();
+const plannedRefreshDeadlines = new Map<WorkerId,number>();
+function markPlannedRefresh(workerId:WorkerId){
+  plannedRefreshWorkers.add(workerId);
+  const graceMs=Math.max(config.pacing.workerReadyTimeoutMs,config.recovery.startupAttachGraceMs)+30_000;
+  const deadline=Date.now()+graceMs;
+  plannedRefreshDeadlines.set(workerId,deadline);
+  return deadline;
+}
+function clearPlannedRefresh(workerId:WorkerId,reason:string){
+  const existed=plannedRefreshWorkers.delete(workerId);
+  plannedRefreshDeadlines.delete(workerId);
+  if(existed)log('WORKER_PLANNED_REFRESH_CLEARED',{workerId,reason});
+}
+function plannedRefreshInFlight(workerId:WorkerId){
+  if(!plannedRefreshWorkers.has(workerId))return false;
+  const deadline=plannedRefreshDeadlines.get(workerId)??0;
+  if(deadline>Date.now())return true;
+  clearPlannedRefresh(workerId,'DEADLINE_EXPIRED');
+  log('WORKER_PLANNED_REFRESH_EXPIRED',{workerId,deadline});
+  return false;
+}
 let paused=false;
 let killed=false;
 let startAllRunning=false;
@@ -338,10 +359,17 @@ async function startWorker(workerId:WorkerId){
     if(queuedGate)throw new Error(queuedGate);
     if(!recentHeartbeat(workerId)){
       const presence=await brokerWorkerPresence(workerId);
-      if(presence==='RUNNING')throw new Error(`WORKER_RUNNING_WITHOUT_HEARTBEAT:${workerId}`);
-      if(presence!=='ABSENT')throw new Error(`RECOVERY_AMBIGUOUS_WINDOW:${workerId}`);
-      state.windowState='CLOSED';
-      await launchChrome(workerId);
+      if(presence==='RUNNING'){
+        state.status='WAITING_HEARTBEAT_ATTACH';
+        log('WORKER_RUNNING_WAIT_HEARTBEAT_ATTACH',{workerId,graceMs:config.recovery.startupAttachGraceMs});
+        const attached=await waitForStartupAttach(workerId);
+        if(!attached)throw new Error(`WORKER_RUNNING_WITHOUT_HEARTBEAT:${workerId}`);
+        log('WORKER_RUNNING_HEARTBEAT_REATTACHED',{workerId});
+      }else{
+        if(presence!=='ABSENT')throw new Error(`RECOVERY_AMBIGUOUS_WINDOW:${workerId}`);
+        state.windowState='CLOSED';
+        await launchChrome(workerId);
+      }
     }
     await waitForHeartbeat(workerId);
     await delay(config.pacing.postReadySettlingMs);
@@ -660,6 +688,15 @@ async function recoverWorker(workerId:WorkerId){
   const state=states.get(workerId)!;
   if(!state.enabled||state.blocked||state.manualCloseSuppressed||utilityPausedWorkers.has(workerId)||paused||killed||!startupReady||recoveryInFlight.has(workerId)||!workerNeeded(workerId))return;
   if(recentHeartbeat(workerId))return;
+  if(plannedRefreshInFlight(workerId)){
+    if(state.status!=='PLANNED_REFRESH_WAIT_HEARTBEAT'){
+      state.status='PLANNED_REFRESH_WAIT_HEARTBEAT';
+      state.lastError=undefined;
+      log('RECOVERY_DEFERRED_PLANNED_REFRESH',{workerId,deadline:plannedRefreshDeadlines.get(workerId)??null});
+      persistEvidence();
+    }
+    return;
+  }
   if(state.lastHeartbeat&&state.windowState!=='CLOSED'){
     const presence=await brokerWorkerPresence(workerId);
     if(presence==='ABSENT'){
@@ -843,6 +880,7 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
     state.windowState='OPEN';
     state.windowEventAt=hb.at;
     state.lastWindowId=hb.windowId;
+    if(plannedRefreshWorkers.has(workerId))clearPlannedRefresh(workerId,'HEARTBEAT_REATTACHED');
     if(!state.enabled){
       state.status='DISABLED';
       json(res,200,{ok:true,enabled:false});
@@ -887,9 +925,8 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
     if(data.event!=='CLOSED'){json(res,400,{ok:false,error:'UNSUPPORTED_WINDOW_EVENT'});return true;}
     const windowId=Number(data.windowId);
     if(state.lastWindowId&&Number.isFinite(windowId)&&state.lastWindowId!==windowId){json(res,202,{ok:true,ignored:'STALE_WINDOW_EVENT'});return true;}
-    const plannedRefresh=plannedRefreshWorkers.has(workerId);
+    const plannedRefresh=plannedRefreshInFlight(workerId);
     const recoveryEligible=!paused&&!utilityPausedWorkers.has(workerId)&&!state.manualCloseSuppressed&&(plannedRefresh||workerHasActiveJob(workerId));
-    if(plannedRefresh)plannedRefreshWorkers.delete(workerId);
     state.windowState='CLOSED';
     state.windowEventAt=new Date().toISOString();
     state.manualCloseSuppressed=!recoveryEligible;
@@ -934,12 +971,12 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
       if(state.lastHeartbeat?.uiBusy!==false)throw new Error('NV02_UI_NOT_IDLE');
       if(workerHasActiveJob('NV02')&&!boundedRecovery)throw new Error('NV02_ACTIVE_JOB');
       if(commandQueues.get('NV02')!.length>0||[...waiters.values()].some((w)=>w.workerId==='NV02'))throw new Error('NV02_COMMAND_INFLIGHT');
-      plannedRefreshWorkers.add('NV02');
+      const plannedRefreshDeadline=markPlannedRefresh('NV02');
       state.manualCloseSuppressed=false;
       persistWorkerSafetyState();
-      log('NV02_PLANNED_REFRESH_QUEUED',{workerId:'NV02',reason});
+      log('NV02_PLANNED_REFRESH_QUEUED',{workerId:'NV02',reason,plannedRefreshDeadline});
       void uiQueue.enqueue(()=>sendCommand('NV02','CLOSE_WINDOW')).catch((error)=>{
-        plannedRefreshWorkers.delete('NV02');
+        clearPlannedRefresh('NV02','QUEUE_FAILED');
         log('NV02_PLANNED_REFRESH_QUEUE_FAILED',{workerId:'NV02',reason,error:String(error)});
         persistEvidence();
       });
@@ -1196,8 +1233,8 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
         const leaseId=String(data.leaseId??'').trim();
         if(!leaseOwnerId.startsWith('DIRECT_CDP_BRIDGE:'))throw new Error('PLANNED_REFRESH_BRIDGE_OWNER_REQUIRED');
         browserMutationLeases.assertOwned(workerId,leaseOwnerId,leaseId);
-        plannedRefreshWorkers.add(workerId);
-        log('WORKER_PLANNED_REFRESH_MARKED',{workerId,leaseOwnerId,leaseId});
+        const plannedRefreshDeadline=markPlannedRefresh(workerId);
+        log('WORKER_PLANNED_REFRESH_MARKED',{workerId,leaseOwnerId,leaseId,plannedRefreshDeadline});
         persistEvidence();
         json(res,202,{ok:true,plannedRefresh:true});
         return true;
