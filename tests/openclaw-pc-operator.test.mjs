@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   assertShellCommandAllowed,
@@ -77,5 +78,18 @@ describe('Power Automate Desktop guarded UI contract', () => {
   it('does not accept coordinate-style fields through the typed PAD request', () => {
     const normalized = assertPadUiRequest({ action: 'pad_windows', x: 10, y: 20 });
     expect(normalized).toEqual({ action: 'pad_windows' });
+  });
+});
+
+
+describe('Power Automate broker PowerShell compatibility', () => {
+  const brokerText = readFileSync(new URL('../apps/openclaw-tigeriq-runtime/pad-ui-broker.ps1', import.meta.url), 'utf8');
+
+  it('does not reference LegacyIAccessiblePattern, which is unavailable on some PAD hosts', () => {
+    expect(brokerText).not.toContain('LegacyIAccessiblePattern');
+  });
+
+  it('returns pad_tree as a stable object envelope', () => {
+    expect(brokerText).toContain("RawCount=[int]$all.Count; Items=@($out)");
   });
 });
