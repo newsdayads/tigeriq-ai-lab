@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
-import { normalizeRuntimeResources, refreshRegistryWorkforce, workforceSnapshot } from './workforce-registry.mjs';
+import { normalizeRuntimeResources, refreshRegistryWorkforce, workforceSnapshot, aggregateWorkforceHealth } from './workforce-registry.mjs';
 
 const HOST = process.env.TIGERIQ_WEB_CONTROL_HOST?.trim() || '127.0.0.1';
 const PORT = Number(process.env.TIGERIQ_WEB_CONTROL_PORT || 8796);
@@ -167,8 +167,10 @@ const server = createServer(async (req, res) => {
         openclaw = { ok: false, source_type: 'API', error: String(error?.message || error) };
       }
       const ok = core?.ok === true;
+      const wfSnap = workforceSnapshot();
+      const unifiedWorkforceHealth = aggregateWorkforceHealth(wfSnap?.workforce, core?.resources);
       res.writeHead(ok ? 200 : 503, { 'content-type': 'application/json' });
-      return res.end(JSON.stringify({ ok, service: 'tigeriq-web-control', host: HOST, port: PORT, core, coding, sources: { chromeController, openclaw } }));
+      return res.end(JSON.stringify({ ok, service: 'tigeriq-web-control', host: HOST, port: PORT, core, coding, workforceHealth: unifiedWorkforceHealth, sources: { chromeController, openclaw } }));
     }
     res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
     return res.end('not_found');

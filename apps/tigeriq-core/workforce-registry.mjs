@@ -94,4 +94,44 @@ export function normalizeRuntimeResources(resources, workforce){
   });
 }
 
+export function aggregateWorkforceHealth(workforce = [], resources = []) {
+  const roster = Array.isArray(workforce) ? workforce : [];
+  const activeResources = Array.isArray(resources) ? resources : [];
+  const resourceMap = new Map(activeResources.map(r => [r.employee_id, r]));
+  
+  let healthyCount = 0;
+  let degradedCount = 0;
+  let offlineCount = 0;
+
+  const members = roster.map(member => {
+    const id = member.employee_id;
+    const res = resourceMap.get(id);
+    const status = res?.status || (member.admin_state?.includes('READY') ? 'ready' : 'idle');
+    const ok = res?.ok !== false && !/offline|error|dead/i.test(status);
+
+    if (ok) healthyCount++;
+    else if (res?.status === 'degraded') degradedCount++;
+    else offlineCount++;
+
+    return {
+      employee_id: id,
+      name: member.name,
+      admin_state: member.admin_state,
+      status,
+      ok,
+      provider: res?.provider || null,
+      last_active: res?.last_active || null,
+    };
+  });
+
+  return {
+    total: members.length,
+    healthy: healthyCount,
+    degraded: degradedCount,
+    offline: offlineCount,
+    members,
+    aggregatedAt: new Date().toISOString(),
+  };
+}
+
 export { parseRegistryBody, completeRoster };
