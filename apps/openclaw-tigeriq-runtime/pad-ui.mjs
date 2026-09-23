@@ -64,8 +64,12 @@ export function assertPadUiRequest(raw = {}) {
   return out;
 }
 
+export function parsePadBrokerJson(text) {
+  return JSON.parse(String(text ?? '').replace(/^\uFEFF/, ''));
+}
+
 async function readJson(filePath) {
-  return JSON.parse(await fs.readFile(filePath, 'utf8'));
+  return parsePadBrokerJson(await fs.readFile(filePath, 'utf8'));
 }
 
 export async function getPadUiBrokerHealth() {
