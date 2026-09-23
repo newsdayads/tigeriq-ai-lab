@@ -43,6 +43,11 @@ test('modern Core UI contract removes legacy AUTO_UI/PRIMARY_EMPLOYEE selection'
   assert.equal(parseCoreUiIssue({...issue(201),body:body().replace('OWNER_POLICY=AUTO','OWNER_POLICY=AUTO_UI')}),null);
   assert.equal(parseCoreUiIssue({...issue(202),body:body().replace('EXECUTION_SURFACE=UI\n','')}),null);
   assert.equal(parseCoreUiIssue({...issue(203),body:body().replace('NO_CODE_CHANGE=true','NO_CODE_CHANGE=false')}),null);
+  const codingBody=body('general').replace('NO_CODE_CHANGE=true','NO_CODE_CHANGE=false\nAUTONOMOUS_CODE=true');
+  const coding=parseCoreUiIssue({...issue(204,'general'),body:codingBody});
+  assert.equal(coding.workerId,'NV02');assert.equal(coding.autonomousCode,true);assert.equal(coding.readOnly,false);
+  const missingAuthority=body('general').replace('NO_CODE_CHANGE=true','NO_CODE_CHANGE=false');
+  assert.equal(parseCoreUiIssue({...issue(205,'general'),body:missingAuthority}),null);
 });
 
 test('Core persists one current UI assignment, projects working without duplicate, and terminalizes from GitHub evidence',async()=>{
