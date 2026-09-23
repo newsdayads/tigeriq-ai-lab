@@ -278,6 +278,10 @@ describe('NV02 continuity policy', () => {
     expect(bridge).toContain("rotationRetryAt:Number(raw.rotationRetryAt)||0");
     expect(bridge).toContain("WORKING_LONG_RUNNING_NO_MUTATION");
     expect(bridge).toContain("allowContinue:false");
+    expect(bridge).toContain("conversationId=(location.pathname.match(");
+    expect(bridge).toContain("chatgpt:conversation:\'+conversationId");
+    expect(bridge).toContain("identityRows.length?identityRows");
+    expect(bridge).toContain("archiveConfirmExpr(menuPoint.title,menuPoint.conversationId)");
     expect(bridge).toContain("const verified=loadNv02Continuity();");
   });
   it('stops only a proven no-progress WORKING chat after bounded F5 proof, then rotates it', () => {
