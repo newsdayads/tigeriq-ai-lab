@@ -26,9 +26,7 @@ export function setModelHealth(employeeId, healthState) {
 
 export async function runBoundedInferenceNv09(prompt, timeoutMs = 5000) {
   const entry = registeredModels.get('NV09') || registerNv09();
-setModelHealth('NV09', HEALTH_STATES.IDLE_ON_DEMAND);
-  entry.health = HEALTH_STATES.BUSY;
-try { setModelHealth('NV09', HEALTH_STATES.BUSY); } catch (err) { }
+  setModelHealth('NV09', HEALTH_STATES.BUSY);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -40,19 +38,19 @@ try { setModelHealth('NV09', HEALTH_STATES.BUSY); } catch (err) { }
     });
     clearTimeout(timer);
     if (!res.ok) {
-      entry.health = HEALTH_STATES.ERROR;
+      setModelHealth('NV09', HEALTH_STATES.ERROR);
       throw new Error(`Inference failed with status ${res.status}`);
     }
     const json = await res.json();
-    entry.health = HEALTH_STATES.IDLE_ON_DEMAND;
-try { setModelHealth('NV09', HEALTH_STATES.IDLE_ON_DEMAND); } catch (err) { }
+    setModelHealth('NV09', HEALTH_STATES.IDLE_ON_DEMAND);
     return json.response || json.text || JSON.stringify(json);
   } catch (err) {
     clearTimeout(timer);
-    entry.health = HEALTH_STATES.ERROR;
-    if (err.name === 'AbortError') { entry.health = HEALTH_STATES.IDLE_ON_DEMAND; }
+    if (err.name === 'AbortError') {
+      setModelHealth('NV09', HEALTH_STATES.IDLE_ON_DEMAND);
       throw new Error('NV09 inference timed out');
     }
+    setModelHealth('NV09', HEALTH_STATES.ERROR);
     throw err;
   }
 }
