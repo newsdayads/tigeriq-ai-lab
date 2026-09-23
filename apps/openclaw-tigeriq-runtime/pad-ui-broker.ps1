@@ -54,7 +54,7 @@ function Get-PadWindows {
         AutomationId=[string]$w.Current.AutomationId
         ProcessId=[int]$w.Current.ProcessId
         Process=(Get-ProcessName $w.Current.ProcessId)
-        X=[math]::Round($r.X,0); Y=[math]::Round($r.Y,0); Width=[math]::Round($r.Width,0); Height=[math]::Round($r.Height,0)
+        X=(Safe-UiNumber $r.X); Y=(Safe-UiNumber $r.Y); Width=(Safe-UiNumber $r.Width); Height=(Safe-UiNumber $r.Height)
       }
     } catch {}
   }
@@ -91,6 +91,14 @@ function Get-TopWindowElement($Request) {
   }
   if ($matches.Count -ne 1) { throw 'TIGERIQ_PAD_UI_WINDOW_AMBIGUOUS' }
   return $matches[0]
+}
+
+function Safe-UiNumber($Value) {
+  try {
+    $n=[double]$Value
+    if ([double]::IsNaN($n) -or [double]::IsInfinity($n)) { return $null }
+    return [math]::Round($n,0)
+  } catch { return $null }
 }
 
 function Element-ToObject($e) {
