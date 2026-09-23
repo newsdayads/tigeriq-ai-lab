@@ -123,6 +123,8 @@ describe('#1255 routing/runtime integration',()=>{
     expect(core).not.toContain("API_DOCTOR_VALIDATION_UNEXPECTED_RESPONSE");
     expect(core).toContain('apiDoctor:await apiDoctorTelemetry()');
     expect(core).toContain("failure=jsonb_build_object('message','RESTART_RECONCILIATION_FAIL_CLOSED')");
+    expect(core).toContain("legacy_nv10_unavailable_reclassified");
+    expect(core).toContain("e.type='API_DOCTOR_ANALYSIS_SKIPPED' and e.data->>'reason'='nv10_unavailable'");
     expect(core).not.toContain("error_message='RESTART_RECONCILIATION_FAIL_CLOSED'");
     expect(core).toContain("API_DOCTOR_STALE_JOB_RECOVERED");
     expect(core).toContain("kind='api_doctor' and started_at < now()-interval '2 minutes'");
