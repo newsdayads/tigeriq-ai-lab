@@ -12,6 +12,12 @@ export function hasExactFlag(body,key,value='true'){
   return new RegExp(`^${key.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}=${value.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}$`,'m').test(String(body||''));
 }
 
+export function extractPcOperatorInstruction(body){
+  const text=String(body||'');
+  const match=text.match(/(?:^|\n)(?:##\s*)?ASSIGNED_ACTION\s*\n([\s\S]*?)(?=\n(?:##\s*)?ACCEPTANCE\s*\n|$)/i);
+  return String(match?.[1]||'').trim();
+}
+
 export function parseExecutableIssue(issue){
   if(!issue||issue.pull_request||issue.state!=='open') return null;
   const body=String(issue.body||'');
@@ -20,7 +26,7 @@ export function parseExecutableIssue(issue){
   const p=body.match(/^PRIORITY=(P[0-3])$/m)?.[1]||'P2';
   const capability=body.match(/^CAPABILITY=(general|reasoning|review|pc_operator)$/m)?.[1]||'reasoning';
   const ownerDirect=backlogOwnerDirect(body);
-  if(capability==='pc_operator'&&!ownerDirect)return null;
+  if(capability==='pc_operator'&&(!ownerDirect||!/^RESOURCE_SCOPE=\S.+$/m.test(body)||!extractPcOperatorInstruction(body)))return null;
   return {number:Number(issue.number),title:String(issue.title||''),body,priority:p,capability,url:String(issue.html_url||''),ownerDirect};
 }
 
@@ -96,6 +102,13 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
       : `GitHub autonomous work item #${spec.number}. Execute only the read-only task below. Do not edit repository source, use PC01 shell, deploy, change credentials/security, spend money, reboot, or perform destructive actions. Ground conclusions only in the supplied GitHub context. When the requested analysis is satisfied, complete the objective.\n\n${context}`;
     const metadata={source:'github',issueNumber:spec.number,issueUrl:spec.url,capability:spec.capability,ownerDirect:spec.ownerDirect,dispatchReason:spec.ownerDirect?`OWNER_DIRECT>${spec.priority}`:`PRIORITY_${spec.priority}`,executionSurface:spec.capability==='pc_operator'?'CORE_OPENCLAW_BOUNDED':'READ_ONLY'};
     await pool.query('insert into tigeriq_objectives(id,objective,priority,metadata) values($1,$2,$3,$4) on conflict(id) do nothing',[id,objective,spec.priority,JSON.stringify(metadata)]);
+    if(spec.capability==='pc_operator'){
+      const assigned=extractPcOperatorInstruction(spec.body);
+      const jobId=`JOB-GH-${spec.number}-PC`;
+      const prompt=`Execute ONLY this Owner-assigned bounded PC action through NV06/OpenClaw. Do not choose backlog, P0, or new work. Use approved tigeriq_pc/tigeriq_runtime tools only.\n\nASSIGNED ACTION:\n${assigned}`;
+      await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,max_attempts) values($1,$2,$3,$4,'pc_operator','pc_operator','queued',2) on conflict(id) do nothing",[jobId,id,`GitHub #${spec.number} bounded PC operator`,prompt]);
+      await pool.query("insert into tigeriq_events(type,objective_id,job_id,task_kind,data) values('GITHUB_PC_OPERATOR_JOB_MATERIALIZED',$1,$2,'pc_operator',$3)",[id,jobId,JSON.stringify({issueNumber:spec.number,executionSurface:'CORE_OPENCLAW_BOUNDED'})]);
+    }
     await pool.query("insert into tigeriq_events(type,objective_id,data) values('GITHUB_OBJECTIVE_MATERIALIZED',$1,$2)",[id,JSON.stringify({issueNumber:spec.number,issueUrl:spec.url,ownerDirect:spec.ownerDirect,priority:spec.priority,dispatchReason:metadata.dispatchReason})]);
     return {created:1,skipped,active:0,considered:specs.length,issueNumber:spec.number};
   }
@@ -108,6 +121,18 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
   let claims=0,results=0;
   for(const row of rows){
     const number=Number(row.metadata?.issueNumber); if(!number) continue;
+    if(row.status==='active'&&row.metadata?.executionSurface==='CORE_OPENCLAW_BOUNDED'){
+      const job=(await pool.query("select id,status,employee_id,resource_id,provider,result,failure,completed_at from tigeriq_jobs where objective_id=$1 and capability='pc_operator' order by created_at desc limit 1",[row.id])).rows[0];
+      if(job?.status==='done'){
+        row.status='completed';
+        row.summary=`bounded pc_operator completed via ${job.employee_id||'NV06'}/${job.provider||'openclaw'}; job=${job.id}`;
+        await pool.query("update tigeriq_objectives set status='completed',summary=$2,updated_at=now() where id=$1",[row.id,row.summary]);
+      }else if(job?.status==='failed'){
+        row.status='blocked';
+        row.summary=`bounded pc_operator failed; job=${job.id}; failure=${String(job.failure?.message||job.failure?.kind||'terminal_failure').slice(0,300)}`;
+        await pool.query("update tigeriq_objectives set status='blocked',summary=$2,updated_at=now() where id=$1",[row.id,row.summary]);
+      }
+    }
     if(!row.metadata?.githubClaimReported){
       await commentIssue(fetchImpl,owner,repo,number,`[CLAIM] TigerIQ Core accepted this issue as ${row.id}. Automatic processing is active.`,token);
       await pool.query("update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1",[row.id,JSON.stringify({githubClaimReported:true})]);
