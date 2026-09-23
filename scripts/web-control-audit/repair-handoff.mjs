@@ -12,10 +12,10 @@ export function normalizeFailure(failure){
 }
 
 export function failureIdentity(targetUrl,auditResult){
-  const normalized=(auditResult?.failures?.length?auditResult.failures:[auditResult?.error||auditResult?.status||'unknown'])
-    .map(normalizeFailure)
-    .sort();
-  return createHash('sha256').update(JSON.stringify({targetUrl,normalized})).digest('hex');
+  const failures = auditResult?.failures?.length ? auditResult.failures : [auditResult?.error||auditResult?.status||'unknown'];
+  const normalized = failures.map(normalizeFailure).sort();
+  const payload = JSON.stringify({targetUrl, failures: normalized});
+  return createHash('sha256').update(payload).digest('hex');fy({targetUrl,normalized})).digest('hex');
 }
 
 function isMaterialFailure(auditResult){
