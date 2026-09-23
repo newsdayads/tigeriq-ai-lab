@@ -158,6 +158,7 @@ export function scoreResource(resource,{profile='AUTO',capability='general',task
 }
 
 export function rankCandidates(resources,{profile='AUTO',capability='general',taskKind='general',reviewerResourceId=null,reviewerResourceIds=[],nowMs=Date.now()}={}) {
+  if (!Array.isArray(resources)) resources = [];
   const normalizedProfile=normalizeRoutingProfile(profile);
   const evaluated=(Array.isArray(resources)?resources:[]).map(resource=>({resource,...scoreResource(resource,{profile:normalizedProfile,capability,taskKind,reviewerResourceId,reviewerResourceIds,nowMs})}));
   const eligible=evaluated.filter(x=>x.eligible).sort((a,b)=>a.score-b.score||a.resourceId.localeCompare(b.resourceId));
