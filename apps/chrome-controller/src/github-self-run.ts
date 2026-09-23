@@ -93,7 +93,7 @@ export function eligibleIssuesForWorker(workerId:WorkerId,issues:GithubIssue[],b
     .filter((issue)=>!excludedIssues.has(issue.number))
     .filter((issue)=>workerEligibleForIssue(workerId,issue))
     .filter((issue)=>!blockedScopes.has(resourceScopeOf(issue)))
-    .sort((a,b)=>priorityOf(a)-priorityOf(b)||Date.parse(String(a.updated_at||0))-Date.parse(String(b.updated_at||0))||a.number-b.number);
+    .sort((a,b)=>priorityOf(a)-priorityOf(b)||(Date.parse(String(a.updated_at||''))||0)-(Date.parse(String(b.updated_at||''))||0)||a.number-b.number);
 }
 function parseKeyValueBlock(body:string|null|undefined,header:string):Record<string,string>|null{
   const text=String(body??'');
@@ -116,7 +116,7 @@ export function activeAppChromeClaims(comments:GithubComment[],nowMs=Date.now())
     const release=parseKeyValueBlock(comment.body,RELEASE_HEADER);
     if(release?.claim_id)released.add(release.claim_id);
     const claim=parseKeyValueBlock(comment.body,CLAIM_HEADER);
-    if(!claim?.claim_id||!claim.worker||!claim.expires_at||!claim.issue)return;
+    if(!claim?.claim_id||!claim.worker||!claim.expires_at||!claim.issue)continue;
     const workerId=claim.worker as WorkerId;
     if(!['NV02','NV03','NV04'].includes(workerId))continue;
     claims.push({
