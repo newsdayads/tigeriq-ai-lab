@@ -185,8 +185,14 @@ describe('App Chrome self-run wiring',()=>{
     expect(server).not.toContain('if(!config.autopilot.enabled)return false; // self-run gate');
   });
 
-  it('reuses the existing PC01 GitHub token file without changing credentials',()=>{
+  it('reuses existing GitHub auth without changing credentials or crashing on protected-file ACL',()=>{
+    expect(supervisor).toContain('function Resolve-GitHubToken');
+    expect(supervisor).toContain('Get-Command gh.exe');
+    expect(supervisor).toContain('auth token');
+    expect(supervisor).toContain("source='GH_KEYRING'");
     expect(supervisor).toContain("github-command-center.token");
+    expect(supervisor).toContain("source='PROTECTED_TOKEN_FILE'");
+    expect(supervisor).toContain("GITHUB_AUTH_SOURCE_UNAVAILABLE");
     expect(supervisor).toContain('$env:TIGERIQ_GITHUB_TOKEN=');
     expect(supervisor).toContain("$env:TIGERIQ_APP_CHROME_SELF_RUN='1'");
   });
