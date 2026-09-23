@@ -78,6 +78,26 @@ NO_CODE_CHANGE=true
 NO_PC01_SHELL=true
 CAPABILITY=review`;
 
+test('owner-direct pc_operator GitHub intake materializes bounded OpenClaw objective',async()=>{
+  const pool=coreBacklogPool();
+  const body=`TIGERIQ_EXECUTABLE=true
+OWNER_POLICY=AUTO
+OWNER_DIRECT=true
+PRIORITY=P0
+CAPABILITY=pc_operator
+NO_CODE_CHANGE=true
+NO_PC01_SHELL=true
+Perform only the assigned bounded PC canary through OpenClaw.`;
+  const issues=[{number:1608,state:'open',title:'OpenClaw canary',body,html_url:'https://example/1608'}];
+  const fetchImpl=async(url)=>url.includes('/issues?')?response(issues):response({});
+  const out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
+  assert.strictEqual(out.issueNumber,1608);
+  assert.strictEqual(pool.objectives[0].metadata.capability,'pc_operator');
+  assert.strictEqual(pool.objectives[0].metadata.executionSurface,'CORE_OPENCLAW_BOUNDED');
+  assert.match(pool.objectives[0].objective,/Core must create only the assigned pc_operator work/);
+  assert.match(pool.objectives[0].objective,/NO arbitrary PC01 shell/);
+});
+
 test('read-only GitHub backlog runs one-at-a-time and chains by OWNER_DIRECT then priority',async()=>{
   const pool=coreBacklogPool();
   const issues=[
