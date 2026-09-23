@@ -343,6 +343,20 @@ describe('NV02 continuity policy', () => {
     expect(checkpoint).toContain('CURRENT_WORK_ORDER=');
   });
 
+  it('classifies ChatGPT request-timeout retry cards as recoverable chat errors', () => {
+    const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    const ui=source.slice(source.indexOf('const UI_EXPR='),source.indexOf('async function uiStateRaw'));
+    expect(ui).toContain('requestTimeoutError');
+    expect(ui).toContain('yêu cầu (?:đã )?hết thời gian chờ');
+    expect(ui).toContain('request (?:has )?timed out');
+    expect(ui).toContain('request timeout');
+    expect(ui).toContain('Boolean(chatRetry)');
+    expect(source).toContain("function chatLoadRetryExpr()");
+    expect(source).toContain("CHAT_LOAD_RETRY");
+    expect(source).toContain("CHAT_LOAD_F5");
+    expect(source).toContain("CHAT_LOAD_REOPEN");
+  });
+
   it('ships one-shot NV02 continuity installer with exact-head deploy and rollback',()=>{
     const installer=readFileSync('apps/chrome-controller/runtime/Install-NV02-Continuity.ps1','utf8');
     expect(installer).toContain('[Parameter(Mandatory=$true)][string]$ExpectedHead');
