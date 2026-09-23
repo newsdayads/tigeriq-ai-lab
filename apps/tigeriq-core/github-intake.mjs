@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { Pool } from 'pg';
 import { backlogOwnerDirect, sortBacklogSpecs } from './github-backlog-policy.mjs';
 
@@ -28,7 +29,9 @@ export function parseExecutableIssue(issue){
   const capability=body.match(/^CAPABILITY=(general|reasoning|review|pc_operator)$/m)?.[1]||'reasoning';
   const ownerDirect=backlogOwnerDirect(body);
   if(capability==='pc_operator'&&(!ownerDirect||!/^RESOURCE_SCOPE=\S.+$/m.test(body)||!extractPcOperatorInstruction(body)))return null;
-  return {number:Number(issue.number),title:String(issue.title||''),body,priority:p,capability,url:String(issue.html_url||''),ownerDirect};
+  const title=String(issue.title||'');
+  const sourceRevision=createHash('sha256').update(title).update('\n').update(body).update('\n').update(String(issue.state_reason||'')).digest('hex').slice(0,12);
+  return {number:Number(issue.number),title,body,priority:p,capability,url:String(issue.html_url||''),ownerDirect,sourceRevision,updatedAt:String(issue.updated_at||'')};
 }
 
 export function extractIssueRefs(body,currentNumber){
@@ -87,21 +90,43 @@ async function closeIssue(fetchImpl,owner,repo,issueNumber,token){
   return true;
 }
 
+export async function cleanupTerminalObjectiveJobs({pool}={}){
+  if(!pool)throw new Error('CORE_GITHUB_POOL_REQUIRED');
+  const reason={kind:'ORPHANED_BY_TERMINAL_OBJECTIVE',message:'Parent objective is terminal; queued/waiting_resource job cannot remain claimable.'};
+  const q=await pool.query(`update tigeriq_jobs j
+    set status='failed',lease_until=null,completed_at=coalesce(completed_at,now()),failure=coalesce(failure,'{}'::jsonb)||$1::jsonb
+    where j.status in ('queued','waiting_resource')
+      and exists(select 1 from tigeriq_objectives o where o.id=j.objective_id and o.status in ('completed','blocked'))
+    returning j.id,j.objective_id`,[JSON.stringify(reason)]);
+  return {cleaned:q.rowCount||0,jobs:q.rows||[]};
+}
+
+function rearmKey(spec){
+  const stamp=String(spec.updatedAt||'').replace(/\D/g,'').slice(0,14)||'nostamp';
+  return `${spec.sourceRevision}-${stamp}`;
+}
+
 export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token=''}){
+  const cleanup=await cleanupTerminalObjectiveJobs({pool});
   const rows=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues?state=open&per_page=100&sort=updated&direction=desc`,token);
   const specs=sortBacklogSpecs(rows.map(parseExecutableIssue).filter(Boolean));
   const active=(await pool.query("select 1 from tigeriq_objectives where metadata->>'source'='github' and status='active' limit 1")).rowCount>0;
   if(active)return {created:0,skipped:0,active:1,considered:specs.length};
   let skipped=0;
   for(const spec of specs){
-    const id=`OBJ-GH-${spec.number}`;
+    const prior=(await pool.query("select id,status,metadata from tigeriq_objectives where metadata->>'source'='github' and metadata->>'issueNumber'=$1 order by created_at desc limit 1",[String(spec.number)])).rows[0]||null;
+    if(prior?.status==='active'){skipped++;continue;}
+    const sourceChanged=Boolean(prior&&String(prior.metadata?.sourceRevision||'')!==spec.sourceRevision);
+    const reopenedAfterCompletion=Boolean(prior?.metadata?.githubClosed===true);
+    if(prior&&!sourceChanged&&!reopenedAfterCompletion){skipped++;continue;}
+    const id=prior?`OBJ-GH-${spec.number}-R${rearmKey(spec)}`:`OBJ-GH-${spec.number}`;
     const exists=(await pool.query('select 1 from tigeriq_objectives where id=$1',[id])).rowCount>0;
     if(exists){skipped++;continue;}
     const context=await hydrateContext(fetchImpl,owner,repo,spec,token);
     const objective=spec.capability==='pc_operator'
       ? `GitHub OWNER_DIRECT bounded PC operator work item #${spec.number}. Core must create only the assigned pc_operator work and dispatch it through NV06/OpenClaw. Use only approved bounded TigerIQ/OpenClaw tools; NO arbitrary PC01 shell, repository source edit, Production/main mutation, paid action, credential/security change, reboot/shutdown, or destructive action. OpenClaw must not choose backlog/P0/new work. Return structured verified evidence and complete only when the assigned bounded action is satisfied.\n\n${context}`
       : `GitHub autonomous work item #${spec.number}. Execute only the read-only task below. Do not edit repository source, use PC01 shell, deploy, change credentials/security, spend money, reboot, or perform destructive actions. Ground conclusions only in the supplied GitHub context. When the requested analysis is satisfied, complete the objective.\n\n${context}`;
-    const metadata={source:'github',issueNumber:spec.number,issueUrl:spec.url,capability:spec.capability,ownerDirect:spec.ownerDirect,dispatchReason:spec.ownerDirect?`OWNER_DIRECT>${spec.priority}`:`PRIORITY_${spec.priority}`,executionSurface:spec.capability==='pc_operator'?'CORE_OPENCLAW_BOUNDED':'READ_ONLY'};
+    const metadata={source:'github',issueNumber:spec.number,issueUrl:spec.url,capability:spec.capability,ownerDirect:spec.ownerDirect,sourceRevision:spec.sourceRevision,sourceUpdatedAt:spec.updatedAt,rearmedFromObjectiveId:prior?.id||null,dispatchReason:spec.ownerDirect?`OWNER_DIRECT>${spec.priority}`:`PRIORITY_${spec.priority}`,executionSurface:spec.capability==='pc_operator'?'CORE_OPENCLAW_BOUNDED':'READ_ONLY'};
     await pool.query('insert into tigeriq_objectives(id,objective,priority,metadata) values($1,$2,$3,$4) on conflict(id) do nothing',[id,objective,spec.priority,JSON.stringify(metadata)]);
     if(spec.capability==='pc_operator'){
       const assigned=extractPcOperatorInstruction(spec.body);
@@ -111,9 +136,9 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
       await pool.query("insert into tigeriq_events(type,objective_id,job_id,task_kind,data) values('GITHUB_PC_OPERATOR_JOB_MATERIALIZED',$1,$2,'pc_operator',$3)",[id,jobId,JSON.stringify({issueNumber:spec.number,executionSurface:'CORE_OPENCLAW_BOUNDED'})]);
     }
     await pool.query("insert into tigeriq_events(type,objective_id,data) values('GITHUB_OBJECTIVE_MATERIALIZED',$1,$2)",[id,JSON.stringify({issueNumber:spec.number,issueUrl:spec.url,ownerDirect:spec.ownerDirect,priority:spec.priority,dispatchReason:metadata.dispatchReason})]);
-    return {created:1,skipped,active:0,considered:specs.length,issueNumber:spec.number};
+    return {created:1,skipped,active:0,considered:specs.length,issueNumber:spec.number,objectiveId:id,cleanedOrphans:cleanup.cleaned};
   }
-  return {created:0,skipped,active:0,considered:specs.length};
+  return {created:0,skipped,active:0,considered:specs.length,cleanedOrphans:cleanup.cleaned};
 }
 
 export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token=''}){
