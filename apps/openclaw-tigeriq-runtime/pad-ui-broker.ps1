@@ -9,6 +9,7 @@ public static class TigerIQPadNative {
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int X, int Y);
   [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extraInfo);
+  [DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr extraInfo);
 }
 "@
 
@@ -186,12 +187,14 @@ function Send-PadKey($Request) {
     $found.Element.SetFocus()
   }
   $map = @{
-    'ENTER'='{ENTER}'; 'ESC'='{ESC}'; 'TAB'='{TAB}'; 'CTRL+A'='^a'; 'CTRL+F'='^f'; 'CTRL+N'='^n'; 'F5'='{F5}'
+    'ENTER'=@(0x0D); 'ESC'=@(0x1B); 'TAB'=@(0x09); 'F5'=@(0x74)
+    'CTRL+A'=@(0x11,0x41); 'CTRL+F'=@(0x11,0x46); 'CTRL+N'=@(0x11,0x4E)
   }
-  $token = $map[[string]$Request.key]
-  if (-not $token) { throw 'TIGERIQ_PAD_UI_KEY_NOT_ALLOWED' }
-  [System.Windows.Forms.SendKeys]::Send($token)
-  return [pscustomobject]@{ Key=[string]$Request.key }
+  $keys = $map[[string]$Request.key]
+  if (-not $keys) { throw 'TIGERIQ_PAD_UI_KEY_NOT_ALLOWED' }
+  foreach ($vk in $keys) { [TigerIQPadNative]::keybd_event([byte]$vk,0,0,[UIntPtr]::Zero) }
+  for ($i=$keys.Count-1; $i -ge 0; $i--) { [TigerIQPadNative]::keybd_event([byte]$keys[$i],0,0x0002,[UIntPtr]::Zero) }
+  return [pscustomobject]@{ Key=[string]$Request.key; Method='NativeKeyEvent' }
 }
 
 function Invoke-Request($Request) {

@@ -80,9 +80,11 @@ describe('Power Automate Desktop guarded UI contract', () => {
     expect(normalized).toEqual({ action: 'pad_windows' });
   });
 
-  it('dispatches PAD keys without waiting on modal UI completion', async () => {
+  it('dispatches PAD keys with native nonblocking key events', async () => {
     const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/pad-ui-broker.ps1', import.meta.url), 'utf8');
-    expect(source).toContain('[System.Windows.Forms.SendKeys]::Send($token)');
-    expect(source).not.toContain('[System.Windows.Forms.SendKeys]::SendWait($token)');
+    expect(source).toContain('keybd_event');
+    expect(source).toContain("Method='NativeKeyEvent'");
+    expect(source).not.toContain('[System.Windows.Forms.SendKeys]::Send(');
+    expect(source).not.toContain('[System.Windows.Forms.SendKeys]::SendWait(');
   });
 });
