@@ -516,7 +516,7 @@ const UI_EXPR=`(()=>{
   if(!securityBlock) for(const [n,s] of checks){if(txt.includes(n)){securityBlock=s;break;}}
   const pageText=String(document.body?.innerText||'').replace(/\s+/g,' ').trim();
   const chatRetry=[...document.querySelectorAll('button,[role="button"]')].find(e=>vis(e)&&/^(retry|thử lại)$/i.test((e.innerText||e.textContent||e.getAttribute('aria-label')||'').trim()))||null;
-  const retryContext=(()=>{let e=chatRetry;for(let i=0;i<6&&e;i+=1,e=e.parentElement){const text=String(e.innerText||e.textContent||'').replace(/\s+/g,' ').trim();if(text&&text.length<=800)return text;}return''})();
+  const retryContext=(()=>{let e=chatRetry;const parts=[];for(let i=0;i<6&&e;i+=1,e=e.parentElement){const text=String(e.innerText||e.textContent||'').replace(/\s+/g,' ').trim();if(text&&text.length<=800&&!parts.includes(text))parts.push(text);}return parts.join(' | ')})();
   const conversationLoadError=/(không thể tải cuộc hội thoại chatgpt này|unable to load (?:this )?(?:chatgpt )?conversation|failed to load (?:this )?(?:chatgpt )?conversation)/i.test(pageText);
   const requestTimeoutError=Boolean(chatRetry)&&/(yêu cầu (?:đã )?hết thời gian chờ|request (?:has )?timed out|request timeout)/i.test(retryContext);
   const chatLoadError=location.hostname==='chatgpt.com'&&Boolean(conversationLoadError||requestTimeoutError);
