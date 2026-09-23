@@ -226,6 +226,26 @@ describe('safe recovery contracts',()=>{
     expect(broker).toContain('WORKER_PROCESS_AMBIGUOUS');
   });
 
+  it('keeps bridge-triggered safe recovery non-blocking so heartbeat polling cannot deadlock',()=>{
+    const utility=server.slice(server.indexOf("if(action==='safe-recover')"),server.indexOf("if(action==='archive')"));
+    expect(utility).toContain("presence==='RUNNING'");
+    expect(utility).toContain("mode:'ATTACH_EXISTING_STALE_HEARTBEAT'");
+    expect(utility).toContain("mode:'BROKER_LAUNCH_REQUESTED'");
+    expect(utility).toContain("await launchChrome(workerId)");
+    expect(utility).not.toContain("await startWorker(workerId)");
+    expect(utility).toContain("json(res,202");
+  });
+
+  it('gives generic workers a post-reload settle grace before escalating STALLED to reopen',()=>{
+    const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    const continuity=bridge.slice(bridge.indexOf('async function maybeWorkerContinuity'),bridge.indexOf('function log(event'));
+    expect(bridge).toContain("const WORKER_UI_SETTLE_GRACE_MS=20*1000");
+    expect(bridge).toContain("settleUntil:Number(raw.settleUntil)||0");
+    expect(continuity).toContain("STALLED_SETTLE_GRACE");
+    expect(continuity).toContain("Date.now()+WORKER_UI_SETTLE_GRACE_MS");
+    expect(continuity).toContain("stalledChecks:0,settleUntil");
+  });
+
   it('fails closed before heartbeat-driven mutation for disabled workers',()=>{
     expect(server).toContain('state.status=\'DISABLED\'');
     expect(server.indexOf('state.status=\'DISABLED\'')).toBeLessThan(server.indexOf('const hbStop=heartbeatStopReason(hb)'));
