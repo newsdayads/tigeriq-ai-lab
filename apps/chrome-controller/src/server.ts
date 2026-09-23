@@ -1039,7 +1039,6 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
       autopilot:autopilotState,
       externalWorkAutopilotEnabled:config.autopilot.enabled,
       selfRun:selfRunState,
-      selfRunClaims:[...selfRunClaims.values()],
       githubSelfRun:{...selfRunState,tokenReady:Boolean(selfRunGithubToken),tickInFlight:selfRunTicking,claims:selfRunClaims.snapshot()},
       utilityPausedWorkers:[...utilityPausedWorkers],
       recovery:{attempts:Object.fromEntries(recoveryAttempts),maxReopenAttempts:config.recovery.maxReopenAttempts},
@@ -1583,4 +1582,3 @@ server.listen(config.port,config.host,()=>{
 });
 setInterval(()=>void autopilotTick(),config.autopilot.pollIntervalMs).unref();
 setInterval(()=>void recoveryTick(),config.recovery.checkIntervalMs).unref();
-setInterval(()=>void selfRunTick(),selfRunPollMs).unref();
