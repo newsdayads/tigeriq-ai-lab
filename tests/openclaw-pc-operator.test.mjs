@@ -106,6 +106,7 @@ describe('Power Automate Desktop guarded UI contract', () => {
     expect(source).toContain('Convert-FiniteUiNumber');
     expect(source).toContain('[double]::IsInfinity($n)');
     expect(source).toContain('[double]::IsNaN($n)');
-    expect(source).not.toContain('X=[math]::Round($r.X,0)');
+    expect(source).not.toContain('[math]::Round($r.');
+    expect((source.match(/Convert-FiniteUiNumber \\$r\\./g) ?? []).length).toBe(8);
   });
 });

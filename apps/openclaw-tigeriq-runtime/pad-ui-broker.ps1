@@ -154,7 +154,7 @@ function Element-ToObject($e) {
     ControlType=[string]$e.Current.ControlType.ProgrammaticName
     IsEnabled=[bool]$e.Current.IsEnabled
     IsOffscreen=[bool]$e.Current.IsOffscreen
-    X=[math]::Round($r.X,0); Y=[math]::Round($r.Y,0); Width=[math]::Round($r.Width,0); Height=[math]::Round($r.Height,0)
+    X=(Convert-FiniteUiNumber $r.X); Y=(Convert-FiniteUiNumber $r.Y); Width=(Convert-FiniteUiNumber $r.Width); Height=(Convert-FiniteUiNumber $r.Height)
     Patterns=$patterns
   }
 }
