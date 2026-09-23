@@ -1,6 +1,6 @@
 const OWNER='newsdayads',REPO='tigeriq-ai-lab';
 const WORKERS=['NV02','NV03','NV04'];
-const REQUIRED=['NO_CODE_CHANGE','NO_PC01_SHELL','NO_DIRECT_MAIN','NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_DESTRUCTIVE','NO_PRODUCTION_RELEASE'];
+const REQUIRED=['NO_PC01_SHELL','NO_DIRECT_MAIN','NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_DESTRUCTIVE','NO_PRODUCTION_RELEASE'];
 
 function value(body,key){const e=String(key).replace(/[.*+?^\${}()|[\]\\]/g,'\\$&');return String(body||'').match(new RegExp('^'+e+'=([^\\r\\n]+)$','m'))?.[1]?.trim();}
 function yes(body,key){return value(body,key)==='true';}
@@ -19,12 +19,15 @@ export function parseCoreUiIssue(issue){
   const body=String(issue.body||'');
   if(!yes(body,'TIGERIQ_EXECUTABLE')||value(body,'OWNER_POLICY')!=='AUTO'||String(value(body,'EXECUTION_SURFACE')||'').toUpperCase()!=='UI')return null;
   if(REQUIRED.some(k=>!yes(body,k)))return null;
+  const readOnly=yes(body,'NO_CODE_CHANGE');
+  const autonomousCode=yes(body,'AUTONOMOUS_CODE');
+  if(!readOnly&&!autonomousCode)return null;
   const priority=value(body,'PRIORITY'); if(!['P0','P1'].includes(priority))return null;
   const resourceScope=String(value(body,'RESOURCE_SCOPE')||'').trim(); if(!resourceScope)return null;
   const capability=String(value(body,'CAPABILITY')||'general').toLowerCase();
   if(!['ui','general','review','research','reasoning'].includes(capability))return null;
   const number=Number(issue.number); if(!Number.isInteger(number)||number<=0)return null;
-  return {number,jobId:'GH-'+number,workItemId:'CORE-UI-GH-'+number,title:clean(issue.title),url:String(issue.html_url||''),priority,capability,resourceScope,workerId:selectCoreUiWorker(capability),updatedAt:String(issue.updated_at||'')};
+  return {number,jobId:'GH-'+number,workItemId:'CORE-UI-GH-'+number,title:clean(issue.title),url:String(issue.html_url||''),priority,capability,resourceScope,workerId:selectCoreUiWorker(capability),readOnly,autonomousCode,updatedAt:String(issue.updated_at||'')};
 }
 
 export function buildCoreUiPrompt(spec,repo=OWNER+'/'+REPO){
@@ -60,9 +63,9 @@ async function materialize({pool,fetchImpl,owner,repo,token}){
   const specs=(Array.isArray(rows)?rows:[]).map(parseCoreUiIssue).filter(Boolean).sort((a,b)=>rank(a.priority)-rank(b.priority)||a.number-b.number);
   for(const spec of specs){
     const oid='OBJ-UI-GH-'+spec.number;if((await pool.query('select 1 from tigeriq_objectives where id=$1',[oid])).rowCount)continue;if(await scopeBusy(pool,spec.resourceScope))continue;
-    const metadata={source:'github_ui',issueNumber:spec.number,issueUrl:spec.url,capability:spec.capability,resourceScope:spec.resourceScope,executionSurface:'CORE_UI',uiWorkerId:spec.workerId,currentWorkOrder:'#'+spec.number+' - '+spec.title,assignmentAuthority:'CORE'};
+    const metadata={source:'github_ui',issueNumber:spec.number,issueUrl:spec.url,capability:spec.capability,resourceScope:spec.resourceScope,executionSurface:'CORE_UI',uiWorkerId:spec.workerId,currentWorkOrder:'#'+spec.number+' - '+spec.title,assignmentAuthority:'CORE',readOnly:spec.readOnly,autonomousCode:spec.autonomousCode};
     await pool.query("insert into tigeriq_objectives(id,objective,priority,status,summary,metadata) values($1,$2,$3,'active',$4,$5) on conflict(id) do nothing",[oid,'Core-selected UI Work Order #'+spec.number+' - '+spec.title,spec.priority,'CURRENT_WORK_ORDER=#'+spec.number+' - '+spec.title+'; worker='+spec.workerId,JSON.stringify(metadata)]);
-    await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,employee_id,resource_id,provider,routing_profile,routing_decision,max_attempts) values($1,$2,$3,$4,$5,'ui','ui_assigned',$6,$7,'ui','UI',$8,1) on conflict(id) do nothing",[spec.jobId,oid,'#'+spec.number+' - '+spec.title,buildCoreUiPrompt(spec,owner+'/'+repo),spec.capability,spec.workerId,resourceId(spec.workerId),JSON.stringify({authority:'CORE',workerId:spec.workerId,capability:spec.capability,resourceScope:spec.resourceScope})]);
+    await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,employee_id,resource_id,provider,routing_profile,routing_decision,max_attempts) values($1,$2,$3,$4,$5,'ui','ui_assigned',$6,$7,'ui','UI',$8,1) on conflict(id) do nothing",[spec.jobId,oid,'#'+spec.number+' - '+spec.title,buildCoreUiPrompt(spec,owner+'/'+repo),spec.capability,spec.workerId,resourceId(spec.workerId),JSON.stringify({authority:'CORE',workerId:spec.workerId,capability:spec.capability,resourceScope:spec.resourceScope,readOnly:spec.readOnly,autonomousCode:spec.autonomousCode})]);
     await pool.query("insert into tigeriq_events(type,objective_id,job_id,employee_id,resource_id,task_kind,data) values('CORE_UI_ASSIGNMENT_CREATED',$1,$2,$3,$4,'ui',$5)",[oid,spec.jobId,spec.workerId,resourceId(spec.workerId),JSON.stringify({issueNumber:spec.number,issueUrl:spec.url,resourceScope:spec.resourceScope,capability:spec.capability})]);
     return row(pool);
   } return null;
