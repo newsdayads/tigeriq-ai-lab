@@ -142,6 +142,11 @@ describe('independent worker recovery flows in direct-cdp-bridge',()=>{
     expect(source).toContain("computeWorkerStaggerDelay");
   });
 
+  it('imports the generic continuable-work gate used by READY workers',()=>{
+    expect(source).toContain('hasContinuableWorkerWork,');
+    expect(source).toContain('hasContinuableWorkerWork(controllerState, w.id)');
+  });
+
   it('rebases only an already-expired deep-reset timer once after bridge restart',()=>{
     expect(source).toContain("const bootResetScheduleInitialized=new Set()");
     expect(source).toContain("if(!bootResetScheduleInitialized.has(workerId)){");
