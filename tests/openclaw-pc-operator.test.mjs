@@ -93,3 +93,13 @@ describe('Power Automate broker PowerShell compatibility', () => {
     expect(brokerText).toContain("RawCount=[int]$all.Count; Items=@($out)");
   });
 });
+
+
+describe('Power Automate action-tree expansion', () => {
+  const brokerText = readFileSync(new URL('../apps/openclaw-tigeriq-runtime/pad-ui-broker.ps1', import.meta.url), 'utf8');
+
+  it('expands PAD action-tree items through UI Automation before coordinate fallback', () => {
+    expect(brokerText).toContain('ExpandCollapsePattern');
+    expect(brokerText).toContain("Method='ExpandCollapsePattern.Expand'");
+  });
+});
