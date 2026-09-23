@@ -516,10 +516,16 @@ const UI_EXPR=`(()=>{
   const checks=[['rate limit','BLOCKED_RATE_LIMIT'],['too many requests','BLOCKED_RATE_LIMIT'],['suspicious activity','BLOCKED_SUSPICIOUS_ACTIVITY'],['unusual activity','BLOCKED_SUSPICIOUS_ACTIVITY'],['verify your identity','BLOCKED_REAUTH'],['verify it’s you','BLOCKED_REAUTH'],['xác minh danh tính','BLOCKED_REAUTH']];
   if(!securityBlock) for(const [n,s] of checks){if(txt.includes(n)){securityBlock=s;break;}}
   const pageText=String(document.body?.innerText||'').replace(/\s+/g,' ').trim();
-  const chatRetry=[...document.querySelectorAll('button,[role="button"]')].find(e=>vis(e)&&/^(retry|thử lại)$/i.test((e.innerText||e.textContent||e.getAttribute('aria-label')||'').trim()))||null;
-  const retryContext=(()=>{let e=chatRetry;const parts=[];for(let i=0;i<6&&e;i+=1,e=e.parentElement){const text=String(e.innerText||e.textContent||'').replace(/\s+/g,' ').trim();if(text&&text.length<=800&&!parts.includes(text))parts.push(text);}return parts.join(' | ')})();
-  const conversationLoadError=/(không thể tải cuộc hội thoại chatgpt này|unable to load (?:this )?(?:chatgpt )?conversation|failed to load (?:this )?(?:chatgpt )?conversation)/i.test(pageText);
-  const requestTimeoutError=Boolean(chatRetry)&&/(yêu cầu (?:đã )?hết thời gian chờ|request (?:has )?timed out|request timeout)/i.test(retryContext);
+  const retryButtons=[...document.querySelectorAll('button,[role="button"]')].filter(e=>vis(e)&&/^(retry|thử lại)$/i.test((e.innerText||e.textContent||e.getAttribute('aria-label')||'').trim()));
+  const retryContextFor=(button)=>{let e=button;const parts=[];for(let i=0;i<6&&e;i+=1,e=e.parentElement){const text=String(e.innerText||e.textContent||'').replace(/\s+/g,' ').trim();if(text&&text.length<=800&&!parts.includes(text))parts.push(text);}return parts.join(' | ')};
+  const conversationLoadPattern=/(không thể tải cuộc hội thoại chatgpt này|unable to load (?:this )?(?:chatgpt )?conversation|failed to load (?:this )?(?:chatgpt )?conversation)/i;
+  const requestTimeoutPattern=/(yêu cầu (?:đã )?hết thời gian chờ|request (?:has )?timed out|request timeout)/i;
+  const retryContexts=retryButtons.map(button=>({button,context:retryContextFor(button)}));
+  const timeoutRetry=retryContexts.find(({context})=>requestTimeoutPattern.test(context))?.button||null;
+  const conversationRetry=retryContexts.find(({context})=>conversationLoadPattern.test(context))?.button||null;
+  const conversationLoadError=conversationLoadPattern.test(pageText);
+  const requestTimeoutError=Boolean(timeoutRetry);
+  const chatRetry=timeoutRetry||conversationRetry||(conversationLoadError&&retryButtons.length===1?retryButtons[0]:null);
   const chatLoadError=location.hostname==='chatgpt.com'&&Boolean(conversationLoadError||requestTimeoutError);
   const modelControls=location.hostname==='chatgpt.com'?[...document.querySelectorAll('button,[role="button"]')].filter(e=>vis(e)&&(e.hasAttribute('data-selected-reasoning-effort')||/chọn mô hình chatgpt|choose.*model|model selector/i.test((e.getAttribute('aria-label')||'')+' '+(e.getAttribute('title')||'')))):[];
   const modelControl=modelControls.length===1?modelControls[0]:null;
@@ -562,7 +568,7 @@ async function evalPage(target,expression){
   finally{p.close();}
 }
 function chatLoadRetryExpr(){
-  return `(()=>{const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};const b=[...document.querySelectorAll('button,[role="button"]')].find(e=>vis(e)&&/^(retry|thử lại)$/i.test((e.innerText||e.textContent||e.getAttribute('aria-label')||'').trim()));if(!b)return{ok:false,status:'CHAT_LOAD_RETRY_NOT_FOUND'};b.click();return{ok:true,status:'CHAT_LOAD_RETRY_CLICKED'}})()`;
+  return `(()=>{const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};const contextFor=(button)=>{let e=button;const parts=[];for(let i=0;i<6&&e;i+=1,e=e.parentElement){const text=String(e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim();if(text&&text.length<=800&&!parts.includes(text))parts.push(text);}return parts.join(' | ')};const buttons=[...document.querySelectorAll('button,[role="button"]')].filter(e=>vis(e)&&/^(retry|thử lại)$/i.test((e.innerText||e.textContent||e.getAttribute('aria-label')||'').trim()));const timeout=/(yêu cầu (?:đã )?hết thời gian chờ|request (?:has )?timed out|request timeout)/i;const conversation=/(không thể tải cuộc hội thoại chatgpt này|unable to load (?:this )?(?:chatgpt )?conversation|failed to load (?:this )?(?:chatgpt )?conversation)/i;const rows=buttons.map(button=>({button,context:contextFor(button)}));const preferred=rows.filter(({context})=>timeout.test(context));const secondary=rows.filter(({context})=>conversation.test(context));const b=preferred.at(-1)?.button||secondary.at(-1)?.button||(buttons.length===1?buttons[0]:null);if(!b)return{ok:false,status:'CHAT_LOAD_RETRY_NOT_UNIQUE',count:buttons.length,matched:preferred.length+secondary.length};b.click();return{ok:true,status:'CHAT_LOAD_RETRY_CLICKED',count:buttons.length,matched:preferred.length+secondary.length}})()`;
 }
 function loadContinuityFor(w){return w.id==='NV02'?loadNv02Continuity():loadWorkerContinuity(w.id);}
 function saveContinuityFor(w,state){if(w.id==='NV02')saveNv02Continuity(state);else saveWorkerContinuity(w.id,state);}
