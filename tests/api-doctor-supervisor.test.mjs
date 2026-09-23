@@ -122,6 +122,15 @@ describe('#1255 routing/runtime integration',()=>{
     expect(core).toContain("API_DOCTOR_VALIDATION_EMPTY_RESPONSE");
     expect(core).not.toContain("API_DOCTOR_VALIDATION_UNEXPECTED_RESPONSE");
     expect(core).toContain('apiDoctor:await apiDoctorTelemetry()');
+    expect(core).toContain("failure=jsonb_build_object('message','RESTART_RECONCILIATION_FAIL_CLOSED')");
+    expect(core).not.toContain("error_message='RESTART_RECONCILIATION_FAIL_CLOSED'");
+    expect(core).toContain("API_DOCTOR_STALE_JOB_RECOVERED");
+    expect(core).toContain("kind='api_doctor' and started_at < now()-interval '2 minutes'");
+    expect(core).toContain("data->>'reason'='nv10_unavailable'");
+    expect(core).toContain("skipped:'deduped_nv10_unavailable'");
+    expect(core).toContain("status='done',result=$2,lease_until=null,completed_at=now()");
+    expect(core).toContain("now()+interval '2 minutes',0,1");
+    expect(core).toContain("set employee_id=$2,resource_id=$3,provider=$4,routing_profile='LOCAL',lease_until=now()+interval '2 minutes'");
     expect(core).not.toContain("retryDue=['READY','ERROR','RATE_LIMITED','OFFLINE']");
   });
 });
