@@ -28,7 +28,7 @@ export async function runBoundedInferenceNv09(prompt, timeoutMs = 5000) {
   const entry = registeredModels.get('NV09') || registerNv09();
 setModelHealth('NV09', HEALTH_STATES.IDLE_ON_DEMAND);
   entry.health = HEALTH_STATES.BUSY;
-try { setModelHealth('NV09', HEALTH_STATES.BUSY); } catch (err) { console.error('Failed to update NV09 health:', err); }
+try { setModelHealth('NV09', HEALTH_STATES.BUSY); } catch (err) { }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -45,7 +45,7 @@ try { setModelHealth('NV09', HEALTH_STATES.BUSY); } catch (err) { console.error(
     }
     const json = await res.json();
     entry.health = HEALTH_STATES.IDLE_ON_DEMAND;
-try { setModelHealth('NV09', HEALTH_STATES.IDLE_ON_DEMAND); } catch (err) { console.error('Failed to update NV09 health:', err); }
+try { setModelHealth('NV09', HEALTH_STATES.IDLE_ON_DEMAND); } catch (err) { }
     return json.response || json.text || JSON.stringify(json);
   } catch (err) {
     clearTimeout(timer);
