@@ -6,7 +6,15 @@ const router=readFileSync('apps/tigeriq-core/smart-router.mjs','utf8');
 
 describe('NV09 and Core Smart Router Integration constraints', () => {
   it('verifies NV09 resource registration routing and idle-on-demand state', () => {
-    expect(router).toBeDefined();
+    expect(router).toContain('rankCandidates');
+    expect(router).toContain('scoreResource');
+    const mockResources = [
+      { employee_id: 'NV09', model: 'qwen3-coder:30b', provider: 'ollama', health: 'IDLE_ON_DEMAND', capabilities: ['coding', 'local'] }
+    ];
+    const evaluated = router.rankCandidates(mockResources, { profile: 'CODING', capability: 'coding', taskKind: 'general' });
+    expect(evaluated).toBeDefined();
+    expect(evaluated.chosen).not.toBeNull();
+    expect(evaluated.chosen?.employeeId).toBe('NV09');
   });
 });
 
