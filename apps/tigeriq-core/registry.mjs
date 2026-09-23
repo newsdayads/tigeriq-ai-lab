@@ -13,6 +13,26 @@ export function registerNv09() {
   return config;
 }
 
+export async function probeNv09Health() {
+  const entry = registeredModels.get('NV09') || registerNv09();
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 2000);
+    const res = await fetch(`${entry.endpoint}/api/tags`, { signal: controller.signal });
+    clearTimeout(timer);
+    if (res.ok) {
+      setModelHealth('NV09', HEALTH_STATES.IDLE_ON_DEMAND);
+      return HEALTH_STATES.IDLE_ON_DEMAND;
+    } else {
+      setModelHealth('NV09', HEALTH_STATES.ERROR);
+      return HEALTH_STATES.ERROR;
+    }
+  } catch (_err) {
+    setModelHealth('NV09', HEALTH_STATES.IDLE_ON_DEMAND);
+    return HEALTH_STATES.IDLE_ON_DEMAND;
+  }
+}
+
 export function getRegisteredModels() {
   return Array.from(registeredModels.values());
 }
