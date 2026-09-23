@@ -310,21 +310,14 @@ async function maybeWorkerContinuity(w,target,ui){
     if(unchanged>=MAX_WORKING_UNCHANGED_CHECKS){
       await genericWorkerEvent(w.id,'WORKING_LONG_RUNNING_NO_MUTATION',{workingUnchangedChecks:unchanged});
     }
-    if(unchanged>=MAX_WORKING_UNCHANGED_CHECKS+2){
-      const recovered=await withWorkerMutation(w.id,async()=>{
-        const stopped=await stopStalledWorking(target);
-        if(stopped?.ok)return {...stopped,method:'STOP'};
-        const reloaded=await reloadTarget(target);
-        await sleep(1800);
-        const after=await uiStateRaw(target).catch(()=>null);
-        return {ok:true,status:'WORKING_STUCK_RELOADED',method:'RELOAD',reloadStatus:reloaded?.status||null,afterBusy:after?.uiBusy===true,afterPhase:deriveWorkerPhase(after||{},{workerId:w.id})};
-      },'WORKING_STUCK_RECOVERY',30000);
+    if(unchanged>=MAX_WORKING_UNCHANGED_CHECKS+2&&now>=Number(state.recoveryBlockedUntil||0)){
+      const stopped=await withWorkerMutation(w.id,()=>stopStalledWorking(target),'WORKING_STUCK_STOP',30000);
       const attempts=Number(state.recoveryAttempts||0)+1;
-      const resolved=recovered?.status!=='MUTATION_LEASE_BUSY'&&(recovered?.afterBusy!==true);
-      const repaired={...loadWorkerContinuity(w.id),workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS,recoveryAttempts:resolved?0:attempts,recoveryBlockedUntil:resolved?0:now+60_000};
+      const resolved=stopped?.ok===true&&stopped?.status!=='MUTATION_LEASE_BUSY';
+      const boundedStop=!resolved&&attempts>=WORKER_RESET_MAX_ATTEMPTS;
+      const repaired={...loadWorkerContinuity(w.id),workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS,recoveryAttempts:resolved||boundedStop?0:attempts,recoveryBlockedUntil:resolved?0:(boundedStop?now+15*60_000:now+60_000)};
       saveWorkerContinuity(w.id,repaired);
-      await genericWorkerEvent(w.id,'WORKING_STUCK_RECOVERY',{status:recovered?.status||null,method:recovered?.method||null,resolved,recoveryAttempts:repaired.recoveryAttempts});
-      if(!resolved&&attempts>=WORKER_RESET_MAX_ATTEMPTS)await reopenWorker(w,target,repaired,now,'WORKING_STUCK_BOUNDED_REOPEN');
+      await genericWorkerEvent(w.id,boundedStop?'WORKING_STUCK_BOUNDED_STOP':'WORKING_STUCK_STOP',{status:stopped?.status||null,resolved,recoveryAttempts:repaired.recoveryAttempts,recoveryBlockedUntil:repaired.recoveryBlockedUntil});
     }
     return;
   }
@@ -1264,17 +1257,12 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
       await continuityEvent('WORKING_LONG_RUNNING_NO_MUTATION',{workingUnchangedChecks:unchanged,workingRecheckAt:state.workingRecheckAt,nextProgressCheckAt:state.nextProgressCheckAt});
     }
     if(unchanged>=MAX_WORKING_UNCHANGED_CHECKS+2){
-      const recovered=await withNv02Mutation(async()=>{
-        const stopped=await stopStalledWorking(target);
-        if(stopped?.ok)return {...stopped,method:'STOP'};
-        const reloaded=await reloadTarget(target);
-        const after=await waitForPostReloadNv02Ui(target,12000);
-        return {ok:true,status:'WORKING_STUCK_RELOADED',method:'RELOAD',reloadStatus:reloaded?.status||null,afterBusy:after?.uiBusy===true,afterPhase:after?.uiPhase||null};
-      },'WORKING_STUCK_RECOVERY',45000);
-      if(recovered?.status==='MUTATION_LEASE_BUSY')return;
-      state={...loadNv02Continuity(),workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:0,workingRecheckAt:0,chatLoadRecoveryStage:3,rotationRetryAt:0,nextContinueAt:now};
+      const stopped=await withNv02Mutation(()=>stopStalledWorking(target),'WORKING_STUCK_STOP',30000);
+      if(stopped?.status==='MUTATION_LEASE_BUSY')return;
+      const resolved=stopped?.ok===true;
+      state={...loadNv02Continuity(),workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS,workingRecheckAt:0,chatLoadRecoveryStage:resolved?3:state.chatLoadRecoveryStage,rotationRetryAt:resolved?0:now+5*60_000,nextContinueAt:now};
       saveNv02Continuity(state);
-      await continuityEvent('WORKING_STUCK_RECOVERY',{status:recovered?.status||null,method:recovered?.method||null,afterBusy:recovered?.afterBusy??false,rotationArmed:true});
+      await continuityEvent('WORKING_STUCK_STOP',{status:stopped?.status||null,resolved,rotationArmed:resolved,rotationRetryAt:state.rotationRetryAt});
     }
     return;
   }
