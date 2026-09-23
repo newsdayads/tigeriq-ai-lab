@@ -15,9 +15,9 @@ describe('NV02 continuity policy', () => {
     expect(CONTINUITY_WORKERS).toEqual(['NV02','NV03','NV04']);
     expect(CONTINUE_PROMPTS).toHaveLength(21);
     expect(WORKER_F5_MIN_MS).toBe(5*60*1000);
-    expect(WORKER_F5_MAX_MS).toBe(10*60*1000);
+    expect(WORKER_F5_MAX_MS).toBe(20*60*1000);
     expect(WORKER_F5_MIN_MS).toBe(CONTINUE_MIN_MS);
-    expect(WORKER_F5_MAX_MS).toBe(CONTINUE_MAX_MS);
+    expect(WORKER_F5_MAX_MS).toBeGreaterThan(CONTINUE_MAX_MS);
     expect(REFRESH_MIN_MS).toBe(2*60*60*1000);
     expect(REFRESH_MAX_MS).toBe(4*60*60*1000);
     expect(pickContinuePrompt('Tiếp tục',()=>0)).not.toBe('Tiếp tục');
@@ -178,6 +178,10 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("if(phase==='STALLED'&&ui?.modelExact!==true&&modelCheckRequired)");
     expect(source).toContain("withNv02Mutation(()=>ensureNv02ModelProfile(target),'MODEL_PROFILE_RECOVERY')");
     expect(source).toContain("modelName==='GPT-5.6 Sol'");
+    expect(source).toContain("const NV02_F5_MAX_MS=20*60*1000");
+    expect(source).toContain("const UI_STABILITY_PACING_MIN_MS=1200");
+    expect(source).toContain("VIEW_FOLLOW_BOTTOM");
+    expect(source).toContain("nextViewFollowAt");
     expect(source).toContain("reasoningEffort==='High'");
     expect(source).toContain("async open(timeout=4000)");
     expect(source).toContain("fail(new Error('CDP_OPEN_TIMEOUT'))");
@@ -197,7 +201,7 @@ describe('NV02 continuity policy', () => {
     expect(continuityLoop.indexOf("if(phase==='WORKING')")).toBeLessThan(continuityLoop.indexOf("if(currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0))"));
     expect(continuityLoop.indexOf("if(phase==='WORKING')")).toBeLessThan(continuityLoop.indexOf("if(now<state.nextContinueAt)return"));
     expect(source).toContain("const NV02_F5_MIN_MS=5*60*1000");
-    expect(source).toContain("const NV02_F5_MAX_MS=10*60*1000");
+    expect(source).toContain("const NV02_F5_MAX_MS=20*60*1000");
     expect(source).toContain("'PERIODIC_F5_REFRESH'");
     expect(source).toContain("let nextPeriodicF5At=Number(raw.nextPeriodicF5At)||nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS)");
     expect(source).toContain("let workingRecheckAt=Number(raw.workingRecheckAt)||0");
