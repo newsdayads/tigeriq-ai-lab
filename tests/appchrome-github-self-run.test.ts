@@ -69,14 +69,15 @@ describe('App Chrome GitHub self-run policy',()=>{
   it('arbitrates competing App workers locally before either may post a GitHub claim',()=>{
     const dir=mkdtempSync(join(tmpdir(),'tigeriq-self-run-claim-'));
     const store=new DurableSelfRunClaimStore(join(dir,'claims.json'));
-    const a=store.acquire({issueNumber:29,scope:'SAME_SCOPE',workerId:'NV03',ttlMs:60_000},Date.parse('2026-09-23T00:00:00Z'));
-    const b=store.acquire({issueNumber:29,scope:'SAME_SCOPE',workerId:'NV04',ttlMs:60_000},Date.parse('2026-09-23T00:00:00Z'));
+    const now=Date.now();
+    const a=store.acquire({issueNumber:29,scope:'SAME_SCOPE',workerId:'NV03',ttlMs:60_000},now);
+    const b=store.acquire({issueNumber:29,scope:'SAME_SCOPE',workerId:'NV04',ttlMs:60_000},now);
     expect(a.kind).toBe('ACQUIRED');
     expect(b.kind).toBe('BUSY');
     expect(b.claim.workerId).toBe('NV03');
 
     const restored=new DurableSelfRunClaimStore(join(dir,'claims.json'));
-    const c=restored.acquire({issueNumber:30,scope:'SAME_SCOPE',workerId:'NV04',ttlMs:60_000},Date.parse('2026-09-23T00:00:01Z'));
+    const c=restored.acquire({issueNumber:30,scope:'SAME_SCOPE',workerId:'NV04',ttlMs:60_000},now+1_000);
     expect(c.kind).toBe('BUSY');
     expect(restored.snapshot()).toHaveLength(1);
   });
