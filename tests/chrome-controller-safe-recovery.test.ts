@@ -408,7 +408,7 @@ describe('safe recovery contracts',()=>{
   it('requires a post-reload confirmation grace before generic STALLED reopen',()=>{
     const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     const continuity=source.slice(source.indexOf('async function maybeWorkerContinuity'),source.indexOf('\nfunction log(event'));
-    expect(source).toContain('const STALLED_CONFIRM_GRACE_MS=20*1000');
+    expect(source).toContain('const STALLED_CONFIRM_GRACE_MS=60*1000');
     expect(continuity).toContain("if(phase==='STALLED'&&Number(state.recoveryBlockedUntil||0)>now)");
     expect(continuity).toContain('const confirmAfter=Date.now()+STALLED_CONFIRM_GRACE_MS');
     expect(continuity).toContain('recoveryBlockedUntil:confirmAfter');
