@@ -5,6 +5,7 @@ import {
   assertWritePathAllowed,
   resolveOperatorPath,
 } from '../apps/openclaw-tigeriq-runtime/operator.mjs';
+import { PAD_UI_ACTIONS, assertPadUiRequest } from '../apps/openclaw-tigeriq-runtime/pad-ui.mjs';
 
 describe('OpenClaw PC01 guarded local operator', () => {
   it('allows TigerIQ/OpenClaw work roots', () => {
@@ -49,5 +50,28 @@ describe('OpenClaw PC01 guarded local operator', () => {
   it('limits scheduled-task actions to TigerIQ task names', () => {
     expect(assertTigerIQTaskName('TigerIQ OpenClaw Gateway')).toBe('TigerIQ OpenClaw Gateway');
     expect(() => assertTigerIQTaskName('Microsoft\\Windows\\Defrag\\ScheduledDefrag')).toThrow('TIGERIQ_PC_TASK_NOT_ALLOWED');
+  });
+});
+
+
+describe('Power Automate Desktop guarded UI contract', () => {
+  it('exposes only the bounded PAD action set', () => {
+    expect(PAD_UI_ACTIONS).toEqual([
+      'pad_health', 'pad_launch', 'pad_windows', 'pad_tree',
+      'pad_invoke', 'pad_set_value', 'pad_click', 'pad_keys',
+    ]);
+  });
+
+  it('requires selectors for PAD element mutations and bounds values', () => {
+    expect(assertPadUiRequest({ action: 'pad_invoke', name: 'New flow' })).toMatchObject({ action: 'pad_invoke', name: 'New flow' });
+    expect(assertPadUiRequest({ action: 'pad_set_value', automationId: 'NameBox', value: 'TigerIQ_CANARY_NOTEPAD' })).toMatchObject({ value: 'TigerIQ_CANARY_NOTEPAD' });
+    expect(() => assertPadUiRequest({ action: 'pad_click' })).toThrow('TIGERIQ_PAD_SELECTOR_REQUIRED');
+    expect(() => assertPadUiRequest({ action: 'pad_set_value', name: 'x' })).toThrow('TIGERIQ_PAD_VALUE_REQUIRED');
+    expect(() => assertPadUiRequest({ action: 'pad_keys', key: 'ALT+F4' })).toThrow('TIGERIQ_PAD_KEY_NOT_ALLOWED');
+  });
+
+  it('does not accept coordinate-style fields through the typed PAD request', () => {
+    const normalized = assertPadUiRequest({ action: 'pad_windows', x: 10, y: 20 });
+    expect(normalized).toEqual({ action: 'pad_windows' });
   });
 });
