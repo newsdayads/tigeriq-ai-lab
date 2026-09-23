@@ -223,7 +223,7 @@ describe('NV02 restart schedule WORKING safety',()=>{
 });
 
 describe('isolated NV02 WORKING/F5 safety scope',()=>{
-  it('allows only bounded F5 re-sync while WORKING and never Stop/restart mutation',()=>{
+  it('allows bounded F5 proof then one Stop/rotate for proven no-progress WORKING, but never restart mutation',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(bridge).not.toContain("'STALE_WORKING_RECOVERY'");
     expect(bridge).not.toContain("'WORKING_STALLED_REOPEN_SCHEDULED'");
@@ -240,7 +240,12 @@ describe('isolated NV02 WORKING/F5 safety scope',()=>{
     expect(working).toContain('reloadTarget(target)');
     expect(working).toContain("afterPhase==='READY'");
     expect(working).toContain('dispatchNaturalContinue');
-    expect(working).not.toContain('stop');
+    expect(working).toContain('const provenStalledWorking=Boolean(');
+    expect(working).toContain('unchanged>=MAX_WORKING_UNCHANGED_CHECKS');
+    expect(working).toContain('refreshed?.afterSignature===refreshed.beforeSignature');
+    expect(working).toContain('stopStalledWorking(target)');
+    expect(working).toContain('WORKING_STALLED_ROTATION_DUE');
+    expect(working).toContain('rotateNv02Chat(target,rotationState,now)');
     expect(working).not.toContain('restart-schedule');
     expect(hotLoop.indexOf("if(phase==='WORKING')")).toBeLessThan(hotLoop.indexOf("if(currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0))"));
     expect(hotLoop.indexOf("if(phase==='WORKING')")).toBeLessThan(hotLoop.indexOf("if(now<state.nextContinueAt)return"));
