@@ -42,3 +42,25 @@ test('4) confirms NV10 remains unchanged', () => {
   const hasNv10 = models.some(m => m.employee_id === 'NV10');
   assert.strictEqual(hasNv10, false);
 });
+
+test('5) verifies probeNv09Health handles success, non-OK response, and timeout/network error correctly', async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    // Success scenario
+    globalThis.fetch = async () => ({ ok: true, json: async () => ({}) });
+    const h1 = await probeNv09Health();
+    assert.strictEqual(h1, HEALTH_STATES.IDLE_ON_DEMAND);
+
+    // Non-OK response scenario
+    globalThis.fetch = async () => ({ ok: false, status: 500 });
+    const h2 = await probeNv09Health();
+    assert.strictEqual(h2, HEALTH_STATES.ERROR);
+
+    // Timeout / Network error scenario
+    globalThis.fetch = async () => { throw new Error('Network failure'); };
+    const h3 = await probeNv09Health();
+    assert.strictEqual(h3, HEALTH_STATES.ERROR);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
