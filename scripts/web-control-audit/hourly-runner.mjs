@@ -1,5 +1,6 @@
 import {pathToFileURL} from 'node:url';
 import {processRepairHandoff} from './repair-handoff.mjs';
+import {selectIdleWorker} from './worker-selection.mjs';
 
 const HOUR_MS=60*60*1000;
 
@@ -11,13 +12,37 @@ export async function runHourlyAuditCycle(targetUrls=['http://100.97.23.87:8796'
   const results=[];
   const cycleIndex=options.cycleIndex??cycleIndexForTime(options.now??Date.now());
   const processCycle=options.processCycle||processRepairHandoff;
+  const selectWorkerImpl=options.selectWorkers||options.selectWorker||selectIdleWorker;
+  let worker=null;
+  try{
+    worker=await selectWorkerImpl(options);
+  }catch(err){
+    const failErr='AUDIT_WORKER_SELECTION_EMPTY: '+String(err?.message||err);
+    return {
+      schema:'TIGERIQ_WEB_CONTROL_HOURLY_AUDIT_V1',
+      at:new Date().toISOString(),
+      cycleIndex,
+      pass:false,
+      results:targetUrls.map(url=>({url,status:'failed',cycleIndex,error:failErr}))
+    };
+  }
+  if(!worker){
+    return {
+      schema:'TIGERIQ_WEB_CONTROL_HOURLY_AUDIT_V1',
+      at:new Date().toISOString(),
+      cycleIndex,
+      pass:false,
+      results:targetUrls.map(url=>({url,status:'failed',cycleIndex,error:'AUDIT_WORKER_SELECTION_EMPTY'}))
+    };
+  }
   for(const url of targetUrls){
     try{
       const processOptions={
         ...options,
+        worker,
         auditOptions:{
           ...(options.auditOptions||{}),
-          ...(options.evidenceDir?{evidenceDir:options.evidenceDir}:{})
+          ...(options.evidenceDir?{evidenceDir:options.evidenceDir}:{}) 
         }
       };
       const handoff=await processCycle(url,cycleIndex,processOptions);
