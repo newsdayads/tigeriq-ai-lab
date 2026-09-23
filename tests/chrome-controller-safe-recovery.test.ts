@@ -326,12 +326,14 @@ describe('safe recovery contracts',()=>{
     expect(launcher).not.toContain("foreach($id in @('NV02','NV03','NV04'))");
   });
 
-  it('never F5s or reopens NV03/NV04 while their UI is WORKING',()=>{
+  it('never F5s or reopens NV03/NV04 while WORKING; bounded stuck recovery only clicks Stop',()=>{
     const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     const continuity=source.slice(source.indexOf('async function maybeWorkerContinuity'),source.indexOf('\nfunction log(event'));
     expect(continuity).toContain("if(phase!=='WORKING'&&Number(state.nextPeriodicF5At||0)<=now)");
     const working=continuity.slice(continuity.indexOf("if(phase==='WORKING')"),continuity.indexOf("if(phase==='READY')"));
     expect(working).toContain("'WORKING_LONG_RUNNING_NO_MUTATION'");
+    expect(working).toContain('stopStalledWorking');
+    expect(working).toContain("'WORKING_STUCK_STOP'");
     expect(working).not.toContain('reopenWorker(');
     expect(working).not.toContain('reloadTarget(');
     expect(working).not.toContain('WORKING_NO_PROGRESS_3_CHECKS');
