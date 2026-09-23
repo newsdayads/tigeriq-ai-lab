@@ -239,6 +239,8 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("verifiedChatUrl:currentUrl");
     expect(source).toContain("location.hostname==='chatgpt.com'?Boolean(stop):Boolean(stop||activityBusy)");
     expect(source).toContain("function sameNv02Chat(a,b)");
+    expect(source).toContain("currentProjectId=(current.pathname.match(");
+    expect(source).toContain("currentProjectId===NV02_PROJECT_ID");
     expect(source).toContain("function preferredWorkerUrl(w)");
     expect(source).toContain("state.resumeChatUrl||state.verifiedChatUrl||''");
     expect(source).toContain("pages.find(t=>sameWorkerLocation(t.url,preferredUrl))");
