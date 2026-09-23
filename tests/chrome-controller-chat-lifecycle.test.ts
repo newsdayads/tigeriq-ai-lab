@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+// @ts-ignore legacy JS module intentionally imported for behavioral regression coverage
 import { CHAT_ROTATE_AFTER_DISPATCHES, REFRESH_MAX_MS, shouldRotateNv02Chat } from '../apps/chrome-controller/extension/continuity.js';
 
 describe('App Chrome chat lifecycle',()=>{
