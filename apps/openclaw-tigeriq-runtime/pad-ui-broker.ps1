@@ -78,19 +78,19 @@ function Find-PadWindow($Request) {
 function Get-TopWindowElement($Request) {
   $root = [System.Windows.Automation.AutomationElement]::RootElement
   $all = $root.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition)
-  $matches = @()
+  $foundWindows = @()
   foreach ($w in $all) {
     if (-not (Test-PadWindow $w)) { continue }
     if ($Request.windowName -and [string]$w.Current.Name -ne [string]$Request.windowName) { continue }
-    $matches += $w
+    $foundWindows += $w
   }
-  if ($matches.Count -eq 0) { throw 'TIGERIQ_PAD_UI_WINDOW_NOT_FOUND' }
-  if ($matches.Count -gt 1 -and -not $Request.windowName) {
-    $named = @($matches | Where-Object { $_.Current.Name -match 'Power Automate' })
-    if ($named.Count -eq 1) { $matches = $named }
+  if ($foundWindows.Count -eq 0) { throw 'TIGERIQ_PAD_UI_WINDOW_NOT_FOUND' }
+  if ($foundWindows.Count -gt 1 -and -not $Request.windowName) {
+    $named = @($foundWindows | Where-Object { $_.Current.Name -match 'Power Automate' })
+    if ($named.Count -eq 1) { $foundWindows = $named }
   }
-  if ($matches.Count -ne 1) { throw 'TIGERIQ_PAD_UI_WINDOW_AMBIGUOUS' }
-  return $matches[0]
+  if ($foundWindows.Count -ne 1) { throw 'TIGERIQ_PAD_UI_WINDOW_AMBIGUOUS' }
+  return $foundWindows[0]
 }
 
 function Safe-UiNumber($Value) {
@@ -126,7 +126,7 @@ function Element-ToObject($e) {
 function Find-PadElement($Request) {
   $window = Get-TopWindowElement $Request
   $all = $window.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
-  $matches = @()
+  $foundElements = @()
   $mode = if ($Request.match) { [string]$Request.match } else { 'exact' }
   foreach ($e in $all) {
     try {
@@ -141,14 +141,14 @@ function Find-PadElement($Request) {
         $want = [string]$Request.controlType
         $ok = ($ct -eq $want -or $ct -eq "ControlType.$want")
       }
-      if ($ok) { $matches += $e }
+      if ($ok) { $foundElements += $e }
     } catch {}
   }
-  if ($matches.Count -eq 0) { throw 'TIGERIQ_PAD_UI_ELEMENT_NOT_FOUND' }
+  if ($foundElements.Count -eq 0) { throw 'TIGERIQ_PAD_UI_ELEMENT_NOT_FOUND' }
   $index = if ($null -ne $Request.index) { [int]$Request.index } else { 0 }
-  if ($matches.Count -gt 1 -and $null -eq $Request.index) { throw 'TIGERIQ_PAD_UI_ELEMENT_AMBIGUOUS' }
-  if ($index -ge $matches.Count) { throw 'TIGERIQ_PAD_UI_INDEX_OUT_OF_RANGE' }
-  return [pscustomobject]@{ Window=$window; Element=$matches[$index]; Count=$matches.Count }
+  if ($foundElements.Count -gt 1 -and $null -eq $Request.index) { throw 'TIGERIQ_PAD_UI_ELEMENT_AMBIGUOUS' }
+  if ($index -ge $foundElements.Count) { throw 'TIGERIQ_PAD_UI_INDEX_OUT_OF_RANGE' }
+  return [pscustomobject]@{ Window=$window; Element=$foundElements[$index]; Count=$foundElements.Count }
 }
 
 function Invoke-PadElement($Request, [bool]$AllowClickFallback) {
