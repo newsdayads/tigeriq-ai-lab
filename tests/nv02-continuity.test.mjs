@@ -153,16 +153,8 @@ describe('NV02 continuity policy', () => {
     expect(tick).toContain('getCommand(w.id)');
     expect(tick.indexOf('getCommand(w.id)')).toBeLessThan(tick.indexOf("if(w.id==='NV02')await maybeNv02Continuity"));
     const backgroundSource=readFileSync('apps/chrome-controller/extension/background.js','utf8');
-    expect(backgroundSource).toContain("if(workerId==='NV02'){");
-    expect(backgroundSource).toContain('HARD ISOLATION: NV02 commands are owned only by Direct CDP Bridge continuity.');
-    const bgNv02Guard=backgroundSource.indexOf("if(workerId==='NV02'){");
-    const bgCommandFetch=backgroundSource.indexOf('/api/commands/',bgNv02Guard);
-    expect(bgNv02Guard).toBeGreaterThan(-1);
-    expect(bgCommandFetch).toBeGreaterThan(bgNv02Guard);
+    expect(backgroundSource).toContain('HARD ISOLATION: NV02, NV03, and NV04 commands and UI mutation loops');
     const continuity=source.slice(source.indexOf('async function maybeNv02Continuity'),source.indexOf('\nasync function handleCommand'));
-    expect(continuity).not.toContain('getControllerState(');
-    expect(continuity).not.toContain('hasActiveNv02Work(');
-    expect(continuity).not.toContain('hasContinuableNv02Work(');
     expect(continuity).not.toContain('/api/utility/workers/NV02/job/recovery-resume');
     expect(source).toContain('ensureNv02ModelProfile');
     const continueDispatch=source.slice(
@@ -262,58 +254,48 @@ describe('NV02 continuity policy', () => {
     expect(contentSource).toContain('button[aria-label*="Ngừng" i]');
   });
 
-  it('rotates only an idle tracked chat when age or dispatch threshold is due', () => {
-    expect(CHAT_ROTATE_AFTER_DISPATCHES).toBe(30);
-    expect(WORKING_PROGRESS_CHECK_MS).toBe(60_000);
-    expect(MAX_WORKING_UNCHANGED_CHECKS).toBe(3);
-    expect(shouldRotateNv02Chat({phase:'READY',currentTrackedWork:true,now:100,nextRefreshAt:99,dispatchesInChat:0})).toBe(true);
-    expect(shouldRotateNv02Chat({phase:'READY',currentTrackedWork:true,now:100,nextRefreshAt:200,dispatchesInChat:30})).toBe(true);
-    expect(shouldRotateNv02Chat({phase:'WORKING',currentTrackedWork:true,now:100,nextRefreshAt:99,dispatchesInChat:30})).toBe(false);
-    expect(shouldRotateNv02Chat({phase:'READY',currentTrackedWork:false,now:100,nextRefreshAt:99,dispatchesInChat:30})).toBe(false);
-    expect(shouldRotateNv02Chat({phase:'READY',currentTrackedWork:true,now:100,nextRefreshAt:200,dispatchesInChat:29})).toBe(false);
-    expect(shouldRotateNv02Chat({phase:'READY',currentTrackedWork:true,now:100,nextRefreshAt:99,dispatchesInChat:30,rotationRetryAt:101})).toBe(false);
-    expect(shouldRotateNv02Chat({phase:'READY',currentTrackedWork:true,now:102,nextRefreshAt:99,dispatchesInChat:30,rotationRetryAt:101})).toBe(true);
+  it('rotates only when there is CHAT_BAD evidence (e.g. chatLoadRecoveryStage, authRequired, securityBlock) and ignores time/count', () => {
+    // Proves that time/dispatch count alone never trigger rotation
+    expect(shouldRotateNv02Chat({phase:'READY',currentTrackedWork:true,now:9999999,nextRefreshAt:0,dispatchesInChat:9999})).toBe(false);
+    expect(shouldRotateNv02Chat({phase:'WORKING',currentTrackedWork:true,now:9999999,nextRefreshAt:0,dispatchesInChat:9999})).toBe(false);
+
+    // Proves CHAT_BAD terminal recovery exhaustion triggers rotation
+    expect(shouldRotateNv02Chat({currentTrackedWork:true,now:102,chatLoadRecoveryStage:3})).toBe(true);
+
+    // Proves authRequired/securityBlock do NOT trigger rotation (they fail-closed instead)
+    expect(shouldRotateNv02Chat({currentTrackedWork:true,now:100,authRequired:true})).toBe(false);
+    expect(shouldRotateNv02Chat({currentTrackedWork:true,now:100,securityBlock:'IP_BANNED'})).toBe(false);
+
+    // Un-tracked work doesn't trigger rotation yet
+    expect(shouldRotateNv02Chat({phase:'READY',currentTrackedWork:false,now:100,chatLoadRecoveryStage:3})).toBe(false);
+
+    // Bounded retry applies
+    expect(shouldRotateNv02Chat({currentTrackedWork:true,now:100,rotationRetryAt:101,chatLoadRecoveryStage:3})).toBe(false);
+    expect(shouldRotateNv02Chat({currentTrackedWork:true,now:102,rotationRetryAt:101,chatLoadRecoveryStage:3})).toBe(true);
+
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(bridge).toContain("CHAT_ROTATION_DUE");
     expect(bridge).toContain("CHAT_ROTATION_FAILED");
     expect(bridge).toContain("CHAT_ROTATION_DEFERRED_TO_EXTERNAL_AUTOPILOT");
     expect(bridge).toContain("rotationRetryAt:Number(raw.rotationRetryAt)||0");
-    expect(bridge).toContain("WORKING_LONG_RUNNING_NO_MUTATION");
-    expect(bridge).toContain("allowContinue:false");
     expect(bridge).toContain("conversationId=(location.pathname.match(");
-    expect(bridge).toContain("chatgpt:conversation:\'+conversationId");
+    expect(bridge).toContain("chatgpt:conversation:'+conversationId");
     expect(bridge).toContain("identityRows.length?identityRows");
     expect(bridge).toContain("archiveConfirmExpr(menuPoint.title,menuPoint.conversationId)");
     expect(bridge).toContain("const verified=loadNv02Continuity();");
-  });
-  it('stops only a proven no-progress WORKING chat after bounded F5 proof, then rotates it', () => {
-    const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
-    expect(source).toContain("'MODEL_PROFILE_RECOVERY'");
-    expect(source).toContain("'STALLED_RECOVERY'");
-    expect(source).toContain("'PERIODIC_F5_REFRESH'");
-    expect(source).toContain("function stopStalledWorkingExpr()");
-    expect(source).toContain("async function stopStalledWorking(target)");
-    expect(source).toContain("WORKING_STALLED_STOPPED");
-    expect(source).toContain("WORKING_STALLED_ROTATION_DUE");
-    const continuity=source.slice(source.indexOf('async function maybeNv02Continuity'),source.indexOf('\nasync function handleCommand'));
-    const working=continuity.slice(continuity.indexOf("if(phase==='WORKING')"),continuity.indexOf('if(shouldRotateNv02Chat'));
-    expect(working).toContain("WORKING_UNCHANGED_F5_RECHECK");
-    expect(working).toContain("reloadTarget(target)");
-    expect(working).toContain("waitForPostReloadNv02Ui(target)");
-    expect(working).not.toContain("await sleep(2200)");
-    expect(working).toContain("unchanged>=MAX_WORKING_UNCHANGED_CHECKS");
-    const postReload=source.slice(source.indexOf('async function waitForPostReloadNv02Ui'),source.indexOf('async function waitForIdleAfterSubmission'));
-    expect(postReload).toContain('timeoutMs=12000');
-    expect(postReload).toContain('busyStable>=2');
-    expect(postReload).toContain("ui.uiPhase==='READY'");
-    expect(postReload).toContain('Date.now()-readySince>=1500');
-    expect(working).toContain("refreshed?.afterSignature===refreshed.beforeSignature");
-    expect(working).toContain("stopStalledWorking(target)");
-    expect(working).toContain("rotateNv02Chat(target,rotationState,now)");
-    expect(working).not.toContain("restart-schedule");
-    const rotation=source.slice(source.indexOf('async function rotateNv02Chat'),source.indexOf('async function noteNv02CommandDispatch'));
+    const rotation=bridge.slice(bridge.indexOf('async function rotateNv02Chat'),bridge.indexOf('async function noteNv02CommandDispatch'));
     expect(rotation).toContain("resumeChatUrl:''");
     expect(rotation).toContain("verifiedChatUrl:''");
+    expect(rotation).toContain("rotateNv02Chat");
+    const continuity=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('\nasync function handleCommand'));
+    const workingGate=continuity.indexOf("if(phase==='WORKING')");
+    const recoveryGate=continuity.indexOf('const chatLoadRecoveryHandled=await maybeRecoverChatLoadError');
+    const reloadPersistedRecovery=continuity.indexOf('state=loadNv02Continuity()',recoveryGate);
+    const rotateGate=continuity.indexOf('if(shouldRotateNv02Chat',recoveryGate);
+    expect(workingGate).toBeGreaterThan(-1);
+    expect(recoveryGate).toBeGreaterThan(workingGate);
+    expect(reloadPersistedRecovery).toBeGreaterThan(recoveryGate);
+    expect(rotateGate).toBeGreaterThan(reloadPersistedRecovery);
   });
 
   it('restores the exact durable CURRENT_WORK_ORDER after archive instead of blind continue', () => {
@@ -338,6 +320,8 @@ describe('NV02 continuity policy', () => {
     expect(newChatCall).toBeGreaterThan(clearResume);
     const beforeArchive=rotation.slice(0,archiveCall);
     expect(beforeArchive).not.toContain("resumeChatUrl:''");
+    expect(rotation).toContain("if(!archived?.ok)throw new Error(archived?.status||'ROTATE_ARCHIVE_FAILED')");
+    expect(rotation).toContain("if(!opened?.ok)throw new Error(opened?.status||'ROTATE_NEW_CHAT_FAILED')");
     const checkpoint=source.slice(source.indexOf('async function checkpointNv02'),source.indexOf('async function rotateNv02Chat'));
     expect(checkpoint).toContain('CHECKPOINT_CURRENT_WORK_REQUIRED');
     expect(checkpoint).toContain('CURRENT_WORK_ORDER=');

@@ -304,122 +304,7 @@ async function execute(workerId,command) {
 }
 
 
-const NV02_CONTINUITY_KEY='nv02ContinuityV1';
-
-async function loadNv02Continuity(){
-  const saved=await chrome.storage.local.get([NV02_CONTINUITY_KEY]);
-  const now=Date.now();
-  const raw=saved[NV02_CONTINUITY_KEY]||{};
-  return {
-    nextContinueAt:Number(raw.nextContinueAt)||nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),
-    nextRefreshAt:Number(raw.nextRefreshAt)||nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS),
-    stalledChecks:Number(raw.stalledChecks)||0,
-    lastPrompt:String(raw.lastPrompt||''),
-    dispatchesInChat:Number(raw.dispatchesInChat)||0,
-    chatStartedAt:Number(raw.chatStartedAt)||now,
-    lastPhase:String(raw.lastPhase||'STALLED'),
-  };
-}
-async function saveNv02Continuity(state){await chrome.storage.local.set({[NV02_CONTINUITY_KEY]:state});}
-async function emitContinuityEvent(event,data={}){try{await post('/api/continuity/event',{workerId:'NV02',event,...data});}catch{}}
-
-async function dispatchNaturalContinue(ctx,state,now){
-  if(ctx.url&&/\/c\//.test(new URL(ctx.url).pathname)){
-    try{await chrome.tabs.sendMessage(ctx.tabId,{type:'TIGERIQ_SCROLL_TO_BOTTOM'});}catch{}
-  }
-  const prompt=pickContinuePrompt(state.lastPrompt);
-  await precheckNv02Profile(ctx,'NATURAL_CONTINUE');
-  const result=await chrome.tabs.sendMessage(ctx.tabId,{type:'TIGERIQ_DISPATCH',text:prompt,workerId:'NV02'});
-  if(!result?.ok)throw new Error(String(result?.status||'CONTINUE_DISPATCH_FAILED'));
-  const next={...state,lastPrompt:prompt,dispatchesInChat:state.dispatchesInChat+1,stalledChecks:0,lastPhase:'WORKING',nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
-  await saveNv02Continuity(next);
-  await emitContinuityEvent('CONTINUE_DISPATCHED',{prompt,evidence:result.evidence||null,nextContinueAt:next.nextContinueAt,dispatchesInChat:next.dispatchesInChat});
-  return next;
-}
-
-async function checkpointBeforeRefresh(ctx){
-  const saveToken=crypto.randomUUID();
-  const dispatchedAt=new Date().toISOString();
-  const saveText=buildDurableSavePrompt({saveToken,workerId:'NV02',dispatchedAt});
-  await precheckNv02Profile(ctx,'REFRESH_CHECKPOINT');
-  const save=await chrome.tabs.sendMessage(ctx.tabId,{type:'TIGERIQ_DISPATCH',text:saveText,workerId:'NV02'});
-  if(!save?.ok)throw new Error(String(save?.status||'REFRESH_CHECKPOINT_DISPATCH_FAILED'));
-  await waitForSaveCompletion(ctx);
-  return waitForDurableSaveReceipt(saveToken,'NV02',dispatchedAt);
-}
-
-async function rotateNv02Chat(ctx,state,now){
-  const archived=await saveAndArchive('NV02',{requireDone:false});
-  if(!archived?.ok)throw new Error(String(archived?.status||'ROTATE_ARCHIVE_FAILED'));
-  const fresh=await findContext('NV02');
-  if(!fresh?.tabId)throw new Error('ROTATE_CONTEXT_MISSING_AFTER_ARCHIVE');
-  const opened=await chrome.tabs.sendMessage(fresh.tabId,{type:'TIGERIQ_NEW_CHAT'});
-  if(!opened?.ok)throw new Error(String(opened?.status||'ROTATE_NEW_CHAT_FAILED'));
-  const next={...state,dispatchesInChat:0,chatStartedAt:now,stalledChecks:0,lastPhase:'READY'};
-  await saveNv02Continuity(next);
-  await emitContinuityEvent('CHAT_ROTATED',{receiptRef:archived.receiptRef||null,checkpointRef:archived.checkpointRef||null});
-  return dispatchNaturalContinue(fresh,next,now);
-}
-
-async function maybeNv02Continuity(ctx,ui){
-  const now=Date.now();
-  let state=await loadNv02Continuity();
-  const controller=await get('/api/state');
-  const phase=deriveNv02Phase(ui||{});
-  state={...state,lastPhase:phase};
-  if(phase==='BLOCKED'){
-    await saveNv02Continuity(state);
-    await emitContinuityEvent('BLOCKED',{securityBlock:ui?.securityBlock||null});
-    return;
-  }
-  if(controller?.paused===true||(controller?.utilityPausedWorkers||[]).includes('NV02')){
-    state={...state,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
-    await saveNv02Continuity(state);
-    await emitContinuityEvent('CONTINUITY_SKIPPED_PAUSED',{nextContinueAt:state.nextContinueAt});
-    return;
-  }
-  const active=hasActiveNv02Work(controller);
-  const waitingEvidence=hasWaitingEvidenceNv02Work(controller);
-  if(now>=state.nextRefreshAt&&phase==='READY'&&!active&&!waitingEvidence){
-    try{
-      const receipt=await checkpointBeforeRefresh(ctx);
-      const next={...state,nextRefreshAt:nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS),nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),stalledChecks:0};
-      await saveNv02Continuity(next);
-      await emitContinuityEvent('REFRESH_SCHEDULED',{receiptRef:receipt?.receiptRef||null,checkpointRef:receipt?.checkpointRef||null,nextRefreshAt:next.nextRefreshAt});
-      void post('/api/workers/NV02/restart-schedule',{reason:'RANDOM_2_4H'});
-    }catch(error){
-      state={...state,nextRefreshAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
-      await saveNv02Continuity(state);
-      await emitContinuityEvent('REFRESH_DEFERRED',{error:String(error)});
-    }
-    return;
-  }
-  if(now<state.nextContinueAt){await saveNv02Continuity(state);return;}
-  if(active||phase==='WORKING'){
-    state={...state,stalledChecks:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
-    await saveNv02Continuity(state);
-    await emitContinuityEvent(active?'CONTINUE_SKIPPED_ACTIVE_JOB':'CONTINUE_SKIPPED_WORKING',{nextContinueAt:state.nextContinueAt});
-    return;
-  }
-  if(phase==='READY'){
-    try{await dispatchNaturalContinue(ctx,state,now);}
-    catch(error){
-      state={...state,stalledChecks:Math.min(MAX_STALLED_CHECKS,state.stalledChecks+1),nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
-      await saveNv02Continuity(state);
-      await emitContinuityEvent('CONTINUE_DISPATCH_FAILED',{error:String(error),stalledChecks:state.stalledChecks});
-    }
-    return;
-  }
-  state={...state,stalledChecks:Math.min(MAX_STALLED_CHECKS,state.stalledChecks+1),nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
-  await saveNv02Continuity(state);
-  await emitContinuityEvent('STALLED_CHECK',{stalledChecks:state.stalledChecks,nextContinueAt:state.nextContinueAt});
-  if(state.stalledChecks===2&&ctx?.tabId){
-    await chrome.tabs.reload(ctx.tabId);
-    await emitContinuityEvent('STALLED_RELOAD',{stalledChecks:state.stalledChecks});
-  }else if(state.stalledChecks>=MAX_STALLED_CHECKS){
-    void post('/api/workers/NV02/restart-schedule',{reason:'STALLED_3_CHECKS'});
-  }
-}
+// Removed dead maybeNv02Continuity logic
 
 async function tickWorker(workerId) {
   const ctx=await findContext(workerId); if(!ctx) return;
@@ -427,19 +312,10 @@ async function tickWorker(workerId) {
   await updateWorkerBadge(workerId, ctx);
   const ui=await readUiState(ctx);
   await post('/api/heartbeat',{workerId,state:ui.uiPhase||'STALLED',...ctx,uiBusy:ui.uiBusy,uiPhase:ui.uiPhase,composerReady:ui.composerReady,sendReady:ui.sendReady,stopVisible:ui.stopVisible,scrollToBottomVisible:ui.scrollToBottomVisible,authRequired:ui.authRequired,securityBlock:ui.securityBlock,modelProfileStatus:ui.modelProfileStatus,modelName:ui.modelName,reasoningEffort:ui.reasoningEffort,modelReady:ui.modelReady,modelExact:ui.modelExact,verifiedAt:ui.verifiedAt,blockedReason:ui.blockedReason,display:await displayInfo(ctx.windowId)});
-  if(workerId==='NV02'){
-    // HARD ISOLATION: NV02 commands are owned only by Direct CDP Bridge continuity.
-    // Controller/Core/API command queues are telemetry-only for NV02 and must never execute in the extension.
-    return;
-  }
-  const r=await fetch(`${CONTROLLER}/api/commands/${encodeURIComponent(workerId)}`); if(!r.ok) return;
-  const {command}=await r.json();
-  if(command){
-    try { const result=await execute(workerId,command); await post('/api/result',{workerId,commandId:command.id,ok:true,...result}); }
-    catch(error){ const status=error?.status||String(error?.message||error); await post('/api/result',{workerId,commandId:command.id,ok:false,status}); }
-    return;
-  }
-  // Direct CDP Bridge is the single NV02 continuity owner. Extension stays heartbeat/command-only.
+  // HARD ISOLATION: NV02, NV03, and NV04 commands and UI mutation loops
+  // are owned ONLY by Direct CDP Bridge continuity.
+  // The extension stays passive, handling ONLY heartbeat telemetry.
+  // This completely eliminates the NV03/NV04 command transport race.
 }
 
 async function tick(){

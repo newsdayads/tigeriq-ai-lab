@@ -305,6 +305,20 @@ async function maybeWorkerContinuity(w,target,ui){
       await genericWorkerEvent(w.id,'CONTINUE_SKIPPED_NO_ASSIGNED_CHAT',{url:ui?.url||null,nextContinueAt:deferred.nextContinueAt});
       return;
     }
+    let controllerState;
+    try{controllerState=await getControllerState();}
+    catch(error){
+      const deferred={...state,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
+      saveWorkerContinuity(w.id,deferred);
+      await genericWorkerEvent(w.id,'CONTINUE_SKIPPED_CONTROLLER_UNREACHABLE',{error:String(error?.message||error)});
+      return;
+    }
+    if(!hasContinuableWorkerWork(controllerState, w.id)){
+      const deferred={...state,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
+      saveWorkerContinuity(w.id,deferred);
+      await genericWorkerEvent(w.id,'CONTINUE_SKIPPED_NO_CURRENT_WORK',{url:ui?.url||null});
+      return;
+    }
     const prompt=pickContinuePrompt(state.lastPrompt);
     const sent=await withWorkerMutation(w.id,()=>dispatch(target,prompt),'CONTINUITY_CONTINUE',30000);
     if(sent?.status==='MUTATION_LEASE_BUSY'){
@@ -646,8 +660,9 @@ async function maybeRecoverChatLoadError(w,target,ui,now=Date.now()){
     state={...state,chatLoadRecoveryStage:3};
     saveContinuityFor(w,state);
     if(w.id==='NV02'){
-      await post('/api/workers/NV02/restart-schedule','NV02',{reason:'STALLED_3_CHECKS'},120000)
-        .catch(error=>continuityEventFor(w,'CHAT_LOAD_REOPEN_REQUEST_FAILED',{error:String(error?.message||error)}));
+      await continuityEventFor(w,'CHAT_LOAD_TERMINAL_FAILURE_REACHED',{url:ui?.url||null});
+      const hasWork=hasCurrentNv02Chat(ui?.url);
+      if(hasWork) return false;
     }else{
       await reopenWorker(w,target,state,now,'CHAT_LOAD_ERROR');
     }
@@ -1123,7 +1138,7 @@ async function rotateNv02Chat(target,state,now){
   }
   await continuityEvent('CHAT_ROTATION_CURRENT_WORK_VERIFIED',{jobId:currentWork.jobId||null,issueRef:currentWork.issueRef});
   const receipt=await checkpointNv02(target,currentWork);
-  const checkpointed={...state,dispatchesInChat:0,chatStartedAt:now,stalledChecks:0,lastPhase:'READY',nextRefreshAt:nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS),rotationRetryAt:0};
+  const checkpointed={...state,dispatchesInChat:0,chatStartedAt:now,stalledChecks:0,chatLoadRecoveryStage:0,lastPhase:'READY',nextRefreshAt:nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS),rotationRetryAt:0};
   saveNv02Continuity(checkpointed);
   return withNv02Mutation(async()=>{
     const archived=await archiveChat(target);if(!archived?.ok)throw new Error(archived?.status||'ROTATE_ARCHIVE_FAILED');
@@ -1157,7 +1172,6 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
   const currentTrackedWork=hasCurrentNv02Chat(ui?.url);
   state={...state,lastPhase:phase,...(currentTrackedWork?{resumeChatUrl:String(ui.url||'')}:{})};saveNv02Continuity(state);
   if(phase==='BLOCKED'){await continuityEvent('BLOCKED',{securityBlock:ui?.securityBlock||null});return;}
-  if(await maybeRecoverChatLoadError(w,target,ui,now))return;
   if(phase==='WORKING'){
     if(now<Number(state.nextProgressCheckAt||0))return;
     const signature=String(ui?.activitySignature||'');
@@ -1170,64 +1184,7 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
     saveNv02Continuity(state);
     await continuityEvent('WORKING_PROGRESS_CHECK',{workingUnchangedChecks:unchanged,workingRecheckAt:state.workingRecheckAt,nextProgressCheckAt:state.nextProgressCheckAt,signaturePresent:Boolean(signature)});
     if(same&&now>=Number(state.workingRecheckAt||0)){
-      const refreshed=await withNv02Mutation(async()=>{
-        const beforeUrl=ui?.url||null;
-        const beforeSignature=signature;
-        await reloadTarget(target);
-        const after=await waitForPostReloadNv02Ui(target);
-        return {ok:true,status:'RELOADED',beforeUrl,beforeSignature,afterUrl:after?.url||null,afterPhase:after?.uiPhase||null,afterBusy:after?.uiBusy===true,afterSignature:String(after?.activitySignature||'')};
-      },'WORKING_UNCHANGED_F5_RECHECK',20000);
-      if(refreshed?.status==='MUTATION_LEASE_BUSY'){
-        state={...state,workingRecheckAt:now+30_000};
-        saveNv02Continuity(state);
-        await continuityEvent('WORKING_F5_RECHECK_DEFERRED',{workingRecheckAt:state.workingRecheckAt});
-        return;
-      }
-      const provenStalledWorking=Boolean(
-        unchanged>=MAX_WORKING_UNCHANGED_CHECKS
-        &&refreshed?.afterBusy===true
-        &&refreshed?.beforeSignature
-        &&refreshed?.afterSignature===refreshed.beforeSignature
-      );
-      if(provenStalledWorking){
-        const stopped=await withNv02Mutation(()=>stopStalledWorking(target),'WORKING_STALLED_STOP',30000);
-        if(stopped?.status==='MUTATION_LEASE_BUSY'){
-          state={...state,workingRecheckAt:now+30_000,nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS};
-          saveNv02Continuity(state);
-          await continuityEvent('WORKING_STALLED_STOP_DEFERRED',{workingRecheckAt:state.workingRecheckAt});
-          return;
-        }
-        await continuityEvent('WORKING_STALLED_STOPPED',{status:stopped?.status||null,afterPhase:stopped?.afterPhase||null,afterUrl:stopped?.afterUrl||null});
-        if(!stopped?.ok||stopped?.afterPhase!=='READY'||!hasCurrentNv02Chat(stopped?.afterUrl)){
-          state={...state,lastPhase:stopped?.afterPhase||'STALLED',workingSignature:stopped?.afterSignature||refreshed?.afterSignature||'',workingUnchangedChecks:MAX_WORKING_UNCHANGED_CHECKS,workingRecheckAt:now+30_000,nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS};
-          saveNv02Continuity(state);
-          return;
-        }
-        const rotationState={...state,lastPhase:'READY',workingSignature:'',workingUnchangedChecks:0,workingRecheckAt:0,nextProgressCheckAt:0,stalledChecks:0,nextRefreshAt:now,rotationRetryAt:0};
-        saveNv02Continuity(rotationState);
-        await continuityEvent('WORKING_STALLED_ROTATION_DUE',{afterUrl:stopped.afterUrl,workingUnchangedChecks:unchanged});
-        try{await rotateNv02Chat(target,rotationState,now);}
-        catch(error){
-          const retry={...rotationState,rotationRetryAt:now+5*60*1000};
-          saveNv02Continuity(retry);
-          await continuityEvent('WORKING_STALLED_ROTATION_FAILED',{error:String(error?.message||error),rotationRetryAt:retry.rotationRetryAt});
-        }
-        return;
-      }
-      state={...state,
-        lastPhase:refreshed?.afterPhase||'STALLED',
-        workingSignature:refreshed?.afterSignature||'',
-        workingUnchangedChecks:0,
-        workingRecheckAt:nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS),
-        nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS,
-        nextPeriodicF5At:nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS),
-        stalledChecks:0,
-      };
-      saveNv02Continuity(state);
-      await continuityEvent('WORKING_UNCHANGED_F5_RECHECK',{beforeUrl:refreshed?.beforeUrl||null,afterUrl:refreshed?.afterUrl||null,afterPhase:refreshed?.afterPhase||null,afterBusy:refreshed?.afterBusy===true,workingRecheckAt:state.workingRecheckAt});
-      if(allowContinue&&refreshed?.afterPhase==='READY'&&hasCurrentNv02Chat(refreshed?.afterUrl)){
-        await dispatchNaturalContinue(target,{...state,nextContinueAt:now},now);
-      }
+      // Functional Spec V1: Không F5 nếu có nguy cơ làm gián đoạn tác vụ đang chạy.
       return;
     }
     if(unchanged>=MAX_WORKING_UNCHANGED_CHECKS){
@@ -1235,7 +1192,10 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
     }
     return;
   }
-  if(shouldRotateNv02Chat({phase,currentTrackedWork,now,nextRefreshAt:state.nextRefreshAt,dispatchesInChat:state.dispatchesInChat,rotationRetryAt:state.rotationRetryAt})){
+  const chatLoadRecoveryHandled=await maybeRecoverChatLoadError(w,target,ui,now);
+  if(chatLoadRecoveryHandled)return;
+  state=loadNv02Continuity();
+  if(shouldRotateNv02Chat({phase,currentTrackedWork,now,nextRefreshAt:state.nextRefreshAt,dispatchesInChat:state.dispatchesInChat,rotationRetryAt:state.rotationRetryAt,chatLoadRecoveryStage:state.chatLoadRecoveryStage})){
     if(await externalAutopilotOwnsNextNv02Job()){
       state={...state,rotationRetryAt:now+60_000};saveNv02Continuity(state);
       await continuityEvent('CHAT_ROTATION_DEFERRED_TO_EXTERNAL_AUTOPILOT',{rotationRetryAt:state.rotationRetryAt});

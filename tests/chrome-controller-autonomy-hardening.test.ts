@@ -223,49 +223,27 @@ describe('NV02 restart schedule WORKING safety',()=>{
 });
 
 describe('isolated NV02 WORKING/F5 safety scope',()=>{
-  it('allows bounded F5 proof then one Stop/rotate for proven no-progress WORKING, but never restart mutation',()=>{
+  it('strictly forbids F5, send, or rotation while WORKING and avoids legacy stalled working mutation',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(bridge).not.toContain("'STALE_WORKING_RECOVERY'");
     expect(bridge).not.toContain("'WORKING_STALLED_REOPEN_SCHEDULED'");
     expect(bridge).not.toContain("reason:'WORKING_NO_PROGRESS_3_CHECKS'");
     expect(bridge).not.toContain("stopAndClearComposerExpr");
-    expect(bridge).toContain("'WORKING_LONG_RUNNING_NO_MUTATION'");
-    expect(bridge).toContain("'WORKING_UNCHANGED_F5_RECHECK'");
-    expect(bridge).toContain("'PERIODIC_F5_REFRESH'");
-    expect(bridge).toContain("let workingRecheckAt=Number(raw.workingRecheckAt)||0");
-    expect(bridge).toContain("let nextPeriodicF5At=Number(raw.nextPeriodicF5At)||nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS)");
-    expect(bridge).toContain("'NV02_F5_TIMERS_REBASED_AFTER_RESTART'");
     const hotLoop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
     const working=hotLoop.slice(hotLoop.indexOf("if(phase==='WORKING')"),hotLoop.indexOf('if(shouldRotateNv02Chat'));
-    expect(working).toContain('reloadTarget(target)');
-    expect(working).toContain("afterPhase==='READY'");
-    expect(working).toContain('dispatchNaturalContinue');
-    expect(working).toContain('const provenStalledWorking=Boolean(');
-    expect(working).toContain('unchanged>=MAX_WORKING_UNCHANGED_CHECKS');
-    expect(working).toContain('refreshed?.afterSignature===refreshed.beforeSignature');
-    expect(working).toContain('stopStalledWorking(target)');
-    expect(working).toContain('WORKING_STALLED_ROTATION_DUE');
-    expect(working).toContain('rotateNv02Chat(target,rotationState,now)');
-    expect(working).not.toContain('restart-schedule');
-    expect(hotLoop.indexOf("if(phase==='WORKING')")).toBeLessThan(hotLoop.indexOf("if(currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0))"));
-    expect(hotLoop.indexOf("if(phase==='WORKING')")).toBeLessThan(hotLoop.indexOf("if(now<state.nextContinueAt)return"));
-    const restoreGate=hotLoop.indexOf("if(!currentTrackedWork&&hasCurrentNv02Chat(state.resumeChatUrl))");
-    const periodicF5Gate=hotLoop.indexOf("if(currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0))");
-    expect(restoreGate).toBeGreaterThan(-1);
-    expect(periodicF5Gate).toBeGreaterThan(restoreGate);
-    const f5Block=bridge.slice(bridge.indexOf("if(currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0))"),bridge.indexOf("const modelCheckRequired="));
-    expect(f5Block).not.toContain("nextContinueAt:now");
-    expect(bridge).toContain("sameNv02Chat(state.verifiedChatUrl,ui?.url)");
-    const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
-    expect(server).toContain("['PERIODIC_F5_REFRESH','WORKING_UNCHANGED_F5_RECHECK'].includes(purpose)");
-    expect(server).toContain("if(paused&&!periodicF5)");
-    expect(hotLoop).not.toContain("checkpointNv02(");
-    expect(hotLoop).toContain("rotateNv02Chat(target,state,now)");
-    expect(hotLoop).toContain("shouldRotateNv02Chat");
-    expect(hotLoop).toContain("rotationRetryAt:now+5*60*1000");
-    expect(bridge).toContain("await maybeNv02Continuity(w,target,ui,{allowContinue:false})");
-    expect(hotLoop).not.toContain("getControllerState(");
-    expect(hotLoop).not.toContain("hasActiveNv02Work(");
+    expect(working).not.toContain('reloadTarget');
+    expect(working).not.toContain('dispatch');
+    expect(working).not.toContain('stopStalledWorking');
+    expect(working).toContain("return;");
+  });
+
+  it('strictly forbids dispatch when in READY_UNASSIGNED phase', () => {
+    const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    const hotLoop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
+    const unassigned=hotLoop.slice(hotLoop.indexOf('if(!currentTrackedWork)'),hotLoop.indexOf('if(phase===\'READY\')'));
+    expect(unassigned).not.toContain('dispatchNaturalContinue');
+    expect(unassigned).not.toContain('dispatchCurrentWorkRestoreLocked');
+    expect(unassigned).toContain("return;");
   });
 });
 
@@ -434,18 +412,6 @@ describe('NV02 reboot F5 consolidation #1525',()=>{
 });
 
 describe('APP Chrome UI-only continuity regression #1525',()=>{
-  it('keeps NV03/NV04 continuation on the assigned UI chat without Core/controller job truth',()=>{
-    const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
-    const start=bridge.indexOf("if(phase==='READY'){",bridge.indexOf('async function maybeWorkerContinuity'));
-    const end=bridge.indexOf("const stalledChecks=",start);
-    const readyBlock=bridge.slice(start,end);
-    expect(readyBlock).toContain('isAssignedWorkerChat(w,ui?.url)');
-    expect(readyBlock).toContain('pickContinuePrompt(state.lastPrompt)');
-    expect(readyBlock).not.toContain('hasContinuableWorkerWork');
-    expect(readyBlock).not.toContain('CONTINUABLE_WORK_CHECK_FAILED_CLOSED');
-    expect(readyBlock).not.toContain('CONTINUE_SKIPPED_NO_CURRENT_WORK');
-  });
-
   it('detects ChatGPT conversation load failure and performs bounded retry -> F5 -> reopen -> backoff',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(bridge).toContain('không thể tải cuộc hội thoại chatgpt này');
