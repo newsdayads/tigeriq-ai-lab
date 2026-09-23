@@ -35,4 +35,13 @@ describe('App Chrome chat lifecycle',()=>{
     expect(bridge).toContain("nextViewFollowAt:Number(raw.nextViewFollowAt)");
     expect(bridge).toContain("chatStartedAt:state.chatStartedAt");
   });
+
+  it('controller admits stuck Stop only for a visible busy generation',()=>{
+    const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
+    expect(server).toContain("const workingStuckStop=purpose==='WORKING_STUCK_STOP'");
+    expect(server).toContain("state.lastHeartbeat?.uiBusy===true");
+    expect(server).toContain("state.lastHeartbeat?.stopVisible===true");
+    expect(server).toContain("!workingStuckStop&&!periodicF5");
+    expect(server).toContain("WORKING_STUCK_STOP_REQUIRES_VISIBLE_STOP");
+  });
 });
