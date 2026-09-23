@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { Pool } from 'pg';
 import { createGeminiRateController } from '../shared/gemini-rate-control.mjs';
 import { isManagerPrompt, managerLocalRequestBody, managerResponseFormatForHost, managerShouldUseLocalFallback, runBoundedManagerDecision } from './manager-json.mjs';
-import { registerNv09, getRegisteredModels, runBoundedInferenceNv09 } from './registry.mjs';
+import { NV09_EMPLOYEE_ID, NV09_MODEL, nv09ModelAvailability, registerNv09, runBoundedInferenceNv09 } from './registry.mjs';
 import { appendSkillContextToPrompt, matchAndLoadSkills } from './skill-loader.mjs';
 import { buildManagerHistoryContext } from './context-gateway.mjs';
 import { buildFailureLearningCandidates, failureLearningEventTypes } from './failure-learning.mjs';
@@ -31,6 +31,7 @@ const SURFSENSE_APP_URL = process.env.TIGERIQ_SURFSENSE_APP_URL?.trim() || 'http
 const SURFSENSE_SEARCH_URL = process.env.TIGERIQ_SURFSENSE_SEARCH_URL?.trim() || 'http://127.0.0.1:3930/search';
 const SURFSENSE_SUMMARY_MODEL = process.env.TIGERIQ_SURFSENSE_SUMMARY_MODEL?.trim() || 'gemma3:4b';
 const OLLAMA_EMPLOYEE_ID = 'NV10';
+const NV09_TIMEOUT_MS = Math.max(30000, Number(process.env.TIGERIQ_NV09_TIMEOUT_MS || 120000));
 const OPENCLAW_GATEWAY_HEALTH_URL = process.env.TIGERIQ_OPENCLAW_GATEWAY_HEALTH_URL?.trim() || 'http://127.0.0.1:18789/health';
 const OPENCLAW_ACTIVATION_FILE = process.env.TIGERIQ_OPENCLAW_ACTIVATION_FILE?.trim() || 'D:\\TigerIQ\\State\\openclaw-core-resource-enabled.json';
 const API_DOCTOR_INTERVAL_MS = Math.max(60000, Number(process.env.TIGERIQ_API_DOCTOR_INTERVAL_MS || 120000));
@@ -58,6 +59,10 @@ const R = (id, name, provider, model, req = [], rank = 50) => ({
   accountBinding:'default', runtimeBinding:'core', costTier:provider==='ollama'?'LOCAL':'FREE', zeroOutOfPocket:true,
   capabilities: ['general', 'reasoning', 'review'],
 });
+const nv09Registration = registerNv09();
+const nv09Resource = R(NV09_EMPLOYEE_ID,'Qwen3-Coder Local','ollama',NV09_MODEL,[],98);
+nv09Resource.capabilities = ['coding_local'];
+nv09Resource.runtimeBinding = 'ollama_on_demand';
 const nv10Resource = R(OLLAMA_EMPLOYEE_ID,'Ollama','ollama',process.env.TIGERIQ_OLLAMA_MODEL || 'qwen3:4b',[],90);
 nv10Resource.capabilities = ['general','reasoning','review',API_DOCTOR_CAPABILITY];
 const openclawResource={
@@ -65,6 +70,7 @@ const openclawResource={
   accountBinding:'default',runtimeBinding:'pc01',costTier:'LOCAL',zeroOutOfPocket:true,capabilities:['pc_operator'],
 };
 const resources = [
+  nv09Resource,
   nv10Resource,
   openclawResource,
   R('NV11','Groq','groq',process.env.TIGERIQ_GROQ_MODEL || 'openai/gpt-oss-120b',[['GROQ_API_KEY'],['TIGERIQ_GROQ_FREE_TIER_VERIFIED','true']],10),
@@ -223,7 +229,10 @@ export function watsonxRetryDecision(body,attempt,maxRetries=2){
 
 async function invokeProvider(r, prompt) {
   switch (r.provider) {
-    case 'ollama': return openAiCompat('http://127.0.0.1:11434/v1/chat/completions','',r.model,prompt,{authorization:undefined},OLLAMA_TIMEOUT_MS,r);
+    case 'ollama': {
+      if(r.id===NV09_EMPLOYEE_ID){const out=await runBoundedInferenceNv09(prompt,{timeoutMs:NV09_TIMEOUT_MS,numCtx:1024,numPredict:96,keepAlive:'30s'});return out.text;}
+      return openAiCompat('http://127.0.0.1:11434/v1/chat/completions','',r.model,prompt,{authorization:undefined},OLLAMA_TIMEOUT_MS,r);
+    }
     case 'groq': return openAiCompat('https://api.groq.com/openai/v1/chat/completions',process.env.GROQ_API_KEY,r.model,prompt,{},90000,r);
     case 'openrouter': return openAiCompat('https://openrouter.ai/api/v1/chat/completions',process.env.OPENROUTER_API_KEY,r.model,prompt,{},90000,r);
     case 'mistral': return openAiCompat('https://api.mistral.ai/v1/chat/completions',process.env.MISTRAL_API_KEY,r.model,prompt,{},90000,r);
@@ -363,9 +372,9 @@ async function markResourceFailure(r,jobId,error,eventType='RESOURCE_FAILURE',re
   const quarantine=await maybeQuarantineResource(r);return {kind,health,cooldownUntil,quarantine,policy};
 }
 async function refreshResources() {
-  const staleOllama=(await pool.query("select employee_id,current_job_id from tigeriq_resources where provider='ollama' and employee_id<>$1",[OLLAMA_EMPLOYEE_ID])).rows;
+  const staleOllama=(await pool.query("select employee_id,current_job_id from tigeriq_resources where provider='ollama' and employee_id not in ($1,$2)",[NV09_EMPLOYEE_ID,OLLAMA_EMPLOYEE_ID])).rows;
   if(staleOllama.some(x=>x.current_job_id))throw new Error('STALE_OLLAMA_IDENTITY_BUSY');
-  for(const stale of staleOllama){await pool.query("delete from tigeriq_resources where employee_id=$1 and provider='ollama'",[stale.employee_id]);await event('RESOURCE_IDENTITY_MIGRATED',{fromEmployeeId:stale.employee_id,toEmployeeId:OLLAMA_EMPLOYEE_ID,provider:'ollama'});}
+  for(const stale of staleOllama){await pool.query("delete from tigeriq_resources where employee_id=$1 and provider='ollama'",[stale.employee_id]);await event('RESOURCE_IDENTITY_MIGRATED',{fromEmployeeId:stale.employee_id,allowedEmployeeIds:[NV09_EMPLOYEE_ID,OLLAMA_EMPLOYEE_ID],provider:'ollama'});}
   for (const r of resources) {
     const staleSameEmployee=(await pool.query("select resource_id,current_job_id from tigeriq_ai_resources where employee_id=$1 and resource_id<>$2 and enabled=true",[r.id,r.resourceId])).rows;
     if(staleSameEmployee.some(x=>x.current_job_id))throw new Error(`STALE_RESOURCE_IDENTITY_BUSY:${r.id}`);
@@ -379,11 +388,20 @@ async function refreshResources() {
     let health = credential === 'WAIT_KEY' || credential === 'BLOCKED' ? 'OFFLINE' : 'READY';
     const old = (await pool.query('select health_state,work_state,last_seen_at,cooldown_until,current_job_id from tigeriq_ai_resources where resource_id=$1',[r.resourceId])).rows[0];
     if (r.provider === 'openclaw') { const gateway=await probeOpenClawGateway(); credential='LOCAL'; health=gateway.ok?'ONLINE':'OFFLINE'; }
+    else if (r.id === NV09_EMPLOYEE_ID) {
+      credential='LOCAL';
+      const availability=await nv09ModelAvailability();
+      const cooldownActive=old?.cooldown_until && new Date(old.cooldown_until)>new Date();
+      const recentlyVerified=old?.health_state==='ONLINE' && old?.last_seen_at && (Date.now()-new Date(old.last_seen_at).getTime())<900000;
+      if(!availability.ok)health='OFFLINE';
+      else if(cooldownActive&&['ERROR','RATE_LIMITED'].includes(old?.health_state))health=old.health_state;
+      else health=recentlyVerified?'ONLINE':'READY';
+    }
     else if (r.provider === 'ollama') { try { await fetchJson('http://127.0.0.1:11434/api/tags',{},3000); health='ONLINE'; } catch { health='OFFLINE'; } }
     else if (old?.health_state === 'ONLINE' && old?.last_seen_at && (Date.now()-new Date(old.last_seen_at).getTime()) < 900000) health='ONLINE';
     else if (old?.health_state === 'RATE_LIMITED' || old?.health_state === 'ERROR' || old?.health_state === 'OFFLINE') health=old.health_state;
     if (r.provider !== 'ollama' && old?.health_state === 'RATE_LIMITED' && old?.cooldown_until && new Date(old.cooldown_until) > new Date()) health='RATE_LIMITED';
-    const work = old?.current_job_id ? 'BUSY' : (health === 'ONLINE' ? 'IDLE' : (health === 'READY' ? 'READY' : health));
+    const work = old?.current_job_id ? 'BUSY' : (r.id===NV09_EMPLOYEE_ID && ['READY','ONLINE'].includes(health) ? 'ON_DEMAND' : (health === 'ONLINE' ? 'IDLE' : (health === 'READY' ? 'READY' : health)));
     await pool.query(`insert into tigeriq_ai_resources(resource_id,employee_id,name,provider,model,account_binding,runtime_binding,cost_tier,credential_state,health_state,work_state,current_job_id,capabilities,rank,updated_at)
       values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,now())
       on conflict(resource_id) do update set employee_id=excluded.employee_id,name=excluded.name,provider=excluded.provider,model=excluded.model,account_binding=excluded.account_binding,runtime_binding=excluded.runtime_binding,cost_tier=excluded.cost_tier,credential_state=excluded.credential_state,health_state=case when tigeriq_ai_resources.current_job_id is null then excluded.health_state else tigeriq_ai_resources.health_state end,work_state=case when tigeriq_ai_resources.current_job_id is null then excluded.work_state else 'BUSY' end,capabilities=excluded.capabilities,rank=excluded.rank,updated_at=now()`,[r.resourceId,r.id,r.name,r.provider,r.model,r.accountBinding,r.runtimeBinding,r.costTier,credential,health,work,old?.current_job_id||null,r.capabilities,r.rank]);
@@ -436,8 +454,39 @@ async function claimResource(capability,jobId,excluded=[],options={}){
 async function invokeRouted(prompt,capability,jobId,maxAttempts=3,options={}){
   if(capability==='coding'){const e=new Error('LOCAL_CODING_DISABLED_GITHUB_ONLY');e.kind='configuration';throw e;}const taskKind=String(options.taskKind||'general'),profile=deriveRoutingProfile({requested:options.profile,taskKind,capability});const failures=[],excluded=[];for(let i=0;i<maxAttempts;i++){const row=await claimResource(capability,jobId,excluded,{...options,profile,taskKind});if(!row)break;excluded.push(row.resource_id);const r=resources.find(x=>x.resourceId===row.resource_id);if(!r)continue;await pool.query("update tigeriq_jobs set employee_id=$2,resource_id=$3,provider=$4,routing_profile=$5,routing_decision=$6,attempts=attempts+1,lease_until=now()+interval '5 minutes' where id=$1",[jobId,r.id,r.resourceId,r.provider,profile,JSON.stringify(row.routingDecision)]);const started=Date.now();try{const text=await invokeProvider(r,prompt),latency=Date.now()-started;await markResourceSuccess(r,jobId,latency,'RESOURCE_SUCCESS',true,{taskKind,profile});return{text,resource:r,latencyMs:latency,failures,routingProfile:profile,routingDecision:row.routingDecision};}catch(error){let finalError=error,policy=failurePolicy(error?.kind||'outage');if(policy.retrySameResource){await event('ROUTING_RETRY',{jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind,profile,kind:policy.kind});try{const retryStarted=Date.now(),text=await invokeProvider(r,prompt),latency=Date.now()-retryStarted;await markResourceSuccess(r,jobId,latency,'RESOURCE_SUCCESS',true,{taskKind,profile});return{text,resource:r,latencyMs:latency,failures,routingProfile:profile,routingDecision:row.routingDecision};}catch(retryError){finalError=retryError;policy=failurePolicy(retryError?.kind||policy.kind);}}const kind=finalError?.kind||'outage';failures.push({employeeId:r.id,resourceId:r.resourceId,provider:r.provider,kind,message:String(finalError?.message||finalError)});await markResourceFailure(r,jobId,finalError,'RESOURCE_FAILURE',true,{taskKind,profile});if(policy.failover)await event('ROUTING_FAILOVER',{jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind,profile,kind});if(policy.stop)break;}}const e=new Error('NO_AI_RESOURCE_AVAILABLE');e.failures=failures;throw e;
 }
+async function runNv09Canary(inputPrompt=''){
+  const r=nv09Resource;
+  const id=`NV09-CANARY-${randomUUID()}`;
+  const marker='NV09_CORE_CANARY_OK';
+  const prompt=String(inputPrompt||`Evaluate this JavaScript expression: (2 + 3) === 5. If it is true, return exactly ${marker} and nothing else.`).trim().slice(0,1000);
+  const availability=await nv09ModelAvailability();
+  if(!availability.ok)return {ok:false,employeeId:r.id,resourceId:r.resourceId,model:r.model,error:availability.reason,availability};
+  const claimed=await pool.query("update tigeriq_ai_resources set current_job_id=$2,work_state='BUSY',updated_at=now() where resource_id=$1 and enabled=true and current_job_id is null returning resource_id",[r.resourceId,id]);
+  if(!claimed.rowCount)return {ok:false,employeeId:r.id,resourceId:r.resourceId,model:r.model,error:'NV09_RESOURCE_BUSY'};
+  await pool.query("update tigeriq_resources set current_job_id=$2,work_state='BUSY',updated_at=now() where employee_id=$1",[r.id,id]);
+  await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,employee_id,resource_id,provider,routing_profile,routing_decision,started_at,attempts,max_attempts) values($1,null,$2,$3,'coding_local','nv09_canary','running',$4,$5,'ollama','NV09_ON_DEMAND',$6,now(),1,1)",[id,'NV09 Core coding-safe live canary',prompt,r.id,r.resourceId,JSON.stringify({authority:'CORE',chosen:{employeeId:r.id,resourceId:r.resourceId,provider:r.provider,model:r.model},reason:'EXPLICIT_NV09_CANARY'})]);
+  await event('ROUTING_DECISION',{jobId:id,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind:'coding_canary',profile:'NV09_ON_DEMAND',decision:{chosen:{employeeId:r.id,resourceId:r.resourceId,model:r.model},explicit:true}});
+  const started=Date.now();
+  try{
+    const inference=await runBoundedInferenceNv09(prompt,{timeoutMs:NV09_TIMEOUT_MS,numCtx:1024,numPredict:96,keepAlive:'30s'});
+    const latency=Date.now()-started;
+    if(!String(inference.text||'').includes(marker)){const e=new Error('NV09_CANARY_MARKER_MISSING');e.kind='invalid_response';throw e;}
+    await markResourceSuccess(r,id,latency,'RESOURCE_SUCCESS',true,{taskKind:'coding_canary',profile:'NV09_ON_DEMAND'});
+    const result={ok:true,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,model:r.model,digest:availability.digest||null,size:availability.size||null,latencyMs:latency,text:String(inference.text).slice(0,300),evalCount:inference.evalCount,loadDurationNs:inference.loadDurationNs,evalDurationNs:inference.evalDurationNs};
+    await pool.query("update tigeriq_jobs set status='done',result=$2,lease_until=null,completed_at=now() where id=$1",[id,JSON.stringify(result)]);
+    await event('NV09_CANARY_PASS',{jobId:id,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind:'coding_canary',latencyMs:latency,model:r.model,digest:availability.digest||null});
+    return {jobId:id,...result};
+  }catch(error){
+    const latency=Date.now()-started;
+    await markResourceFailure(r,id,error,'RESOURCE_FAILURE',true,{taskKind:'coding_canary',profile:'NV09_ON_DEMAND'});
+    const failure={message:String(error?.message||error).slice(0,700),kind:String(error?.kind||'outage'),latencyMs:latency};
+    await pool.query("update tigeriq_jobs set status='failed',failure=$2,lease_until=null,completed_at=now() where id=$1",[id,JSON.stringify(failure)]);
+    await event('NV09_CANARY_FAIL',{jobId:id,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind:'coding_canary',latencyMs:latency,model:r.model,message:failure.message,kind:failure.kind});
+    return {ok:false,jobId:id,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,model:r.model,digest:availability.digest||null,latencyMs:latency,error:failure.message,kind:failure.kind};
+  }
+}
 async function probeResource(resourceOrEmployeeId){const r=resources.find(x=>x.resourceId===resourceOrEmployeeId||x.id===resourceOrEmployeeId);if(!r)throw new Error('RESOURCE_NOT_FOUND');if(!reqReady(r)&&!['ollama','openclaw'].includes(r.provider))throw new Error('RESOURCE_CREDENTIAL_NOT_READY');const started=Date.now();try{if(r.provider==='openclaw'){if(!openClawResourceActivated())throw Object.assign(new Error('OPENCLAW_RESOURCE_NOT_ACTIVATED'),{kind:'configuration'});const gateway=await probeOpenClawGateway();if(!gateway.ok)throw Object.assign(new Error('OPENCLAW_GATEWAY_UNAVAILABLE'),{kind:'outage'});const latency=Date.now()-started;await markResourceSuccess(r,null,latency,'RESOURCE_PROBE_OK',false,{taskKind:'probe',profile:'PC_OPERATOR'});return{ok:true,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,latencyMs:latency};}const marker='TIGERIQ_RESOURCE_PROBE_'+r.id,text=await invokeProvider(r,'Return exactly '+marker);if(!String(text).includes(marker))throw Object.assign(new Error('PROBE_UNEXPECTED_RESPONSE'),{kind:'invalid_response'});const latency=Date.now()-started;await markResourceSuccess(r,null,latency,'RESOURCE_PROBE_OK',false,{taskKind:'probe',profile:'FAST'});return{ok:true,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,latencyMs:latency};}catch(error){const result=await markResourceFailure(r,null,error,'RESOURCE_PROBE_FAIL',false,{taskKind:'probe',profile:'FAST'});const e=new Error('RESOURCE_PROBE_FAILED');e.kind=result.kind;throw e;}}
-async function probeReadyResources(){const rows=(await pool.query("select resource_id,credential_state,health_state,current_job_id,last_seen_at,cooldown_until from tigeriq_ai_resources where enabled=true and credential_state in ('LOCAL','READY') and current_job_id is null order by rank")).rows;const now=Date.now();for(const row of rows){const neverSeen=!row.last_seen_at,staleOnline=row.health_state==='ONLINE'&&row.last_seen_at&&(now-new Date(row.last_seen_at).getTime())>=900000;if(!neverSeen&&!staleOnline)continue;try{await probeResource(row.resource_id);}catch{}}}
+async function probeReadyResources(){const rows=(await pool.query("select resource_id,runtime_binding,credential_state,health_state,current_job_id,last_seen_at,cooldown_until from tigeriq_ai_resources where enabled=true and credential_state in ('LOCAL','READY') and current_job_id is null order by rank")).rows;const now=Date.now();for(const row of rows){if(row.runtime_binding==='ollama_on_demand')continue;const neverSeen=!row.last_seen_at,staleOnline=row.health_state==='ONLINE'&&row.last_seen_at&&(now-new Date(row.last_seen_at).getTime())>=900000;if(!neverSeen&&!staleOnline)continue;try{await probeResource(row.resource_id);}catch{}}}
 async function apiDoctorRecentResourceEvents(resourceId){
   return (await pool.query(`select seq,ts,type,task_kind,data from tigeriq_events where resource_id=$1 and type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK','RESOURCE_FAILURE','RESOURCE_PROBE_FAIL') and ts>=now()-interval '12 hours' order by seq desc limit 30`,[resourceId])).rows;
 }
@@ -993,6 +1042,7 @@ async function managerTick() {
   if(r.health_state==='RATE_LIMITED') return 'RATE_LIMITED';
   if(r.health_state==='ERROR') return 'ERROR';
   if(r.health_state==='OFFLINE') return 'OFFLINE';
+  if(r.work_state==='ON_DEMAND') return 'ON_DEMAND';
   if(r.health_state==='ONLINE') return 'IDLE';
   return 'READY';
 }
@@ -1021,6 +1071,11 @@ function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta
       if(!auth(req)&&!localSelf(req)){res.writeHead(401);return res.end('unauthorized');}
       const b=await readBody(req); const result=await probeResource(String(b.resourceId||b.employeeId||''));
       res.writeHead(200,{'content-type':'application/json'});return res.end(JSON.stringify(result));
+    }
+    if(req.method==='POST'&&url.pathname==='/api/nv09/canary'){
+      if(!auth(req)&&!localSelf(req)){res.writeHead(401);return res.end('unauthorized');}
+      const b=await readBody(req);const result=await runNv09Canary(String(b.prompt||''));
+      res.writeHead(result.ok?200:503,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(result));
     }
     if(req.method==='POST'&&url.pathname==='/api/research'){
       if(!auth(req)&&!localSelf(req)){res.writeHead(401);return res.end('unauthorized');}
