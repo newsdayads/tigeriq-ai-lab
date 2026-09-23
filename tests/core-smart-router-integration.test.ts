@@ -11,7 +11,7 @@ describe('NV09 and Core Smart Router Integration constraints', () => {
     const mockResources = [
       { employee_id: 'NV09', model: 'qwen3-coder:30b', provider: 'ollama', health: 'IDLE_ON_DEMAND', capabilities: ['coding', 'local'] }
     ];
-    const evaluated = router.rankCandidates(mockResources, { profile: 'CODING', capability: 'coding', taskKind: 'general' });
+    const evaluated = router.rankCandidates(mockResourcess, { profile: 'CODING', capability: 'coding', taskKind: 'general' });
     expect(evaluated).toBeDefined();
     expect(evaluated.chosen).not.toBeNull();
     expect(evaluated.chosen?.employeeId).toBe('NV09');
