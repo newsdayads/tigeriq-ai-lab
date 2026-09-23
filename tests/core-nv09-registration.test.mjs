@@ -2,12 +2,17 @@ import test from 'node:test';
 import assert from 'node:assert';
 import { registerNv09, getRegisteredModels, setModelHealth, runBoundedInferenceNv09, HEALTH_STATES } from '../apps/tigeriq-core/registry.mjs';
 
-test('1) registers NV09 correctly', () => {
-  const nv09 = registerNv09();
-  assert.strictEqual(nv09.employee_id, 'NV09');
-  assert.strictEqual(nv09.model, 'qwen3-coder:30b');
-  assert.strictEqual(nv09.endpoint, 'http://127.0.0.1:11434');
-  assert.strictEqual(nv09.health, HEALTH_STATES.IDLE_ON_DEMAND);
+test('1) registers NV09 correctly with IDLE_ON_DEMAND and supports restart idempotency', () => {
+  const nv09First = registerNv09();
+  assert.strictEqual(nv09First.employee_id, 'NV09');
+  assert.strictEqual(nv09First.model, 'qwen3-coder:30b');
+  assert.strictEqual(nv09First.endpoint, 'http://127.0.0.1:11434');
+  assert.strictEqual(nv09First.health, HEALTH_STATES.IDLE_ON_DEMAND);
+
+  // Idempotent re-registration check
+  const nv09Second = registerNv09();
+  assert.strictEqual(nv09Second.employee_id, 'NV09');
+  assert.strictEqual(nv09Second.health, HEALTH_STATES.IDLE_ON_DEMAND);
 });
 
 test('2) verifies Core status includes NV09 with correct model and health', () => {
