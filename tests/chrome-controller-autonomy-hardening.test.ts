@@ -456,12 +456,14 @@ describe('NV03/NV04 UI continuity lease regression #1525',()=>{
       "purpose==='CHAT_LOAD_RETRY'",
       "purpose==='CHAT_LOAD_F5'",
       "purpose==='DUPLICATE_TAB_PRUNE'",
+      "purpose==='WORKING_STUCK_STOP'",
       "purpose.startsWith('WORKER_REOPEN_CLOSE:')",
     ]) expect(server).toContain(purpose);
     expect(server).toContain('const uiContinuityLeaseAllowed=continuityLeaseAllowed||genericUiContinuityMaintenance');
     expect(server).toContain('||genericUiContinuityMaintenance;');
     expect(server).toContain('&&!uiContinuityLeaseAllowed)throw new Error(`WORKER_ACTIVE_JOB:${workerId}`)');
-    expect(server).toContain("if(state.lastHeartbeat?.uiBusy!==false&&!staleWorkingRecovery&&!periodicF5&&!chatLoadRecoveryStateAllowed)throw new Error(`WORKER_UI_BUSY_OR_UNKNOWN:${workerId}`)");
+    expect(server).toContain("if(state.lastHeartbeat?.uiBusy!==false&&!staleWorkingRecovery&&!workingStuckStop&&!periodicF5&&!chatLoadRecoveryStateAllowed)throw new Error(`WORKER_UI_BUSY_OR_UNKNOWN:${workerId}`)");
+    expect(server).toContain("if(purpose==='WORKING_STUCK_STOP'&&!workingStuckStop)throw new Error(`WORKING_STUCK_STOP_REQUIRES_VISIBLE_STOP:${workerId}`)");
     expect(server).toContain("if(commandQueues.get(workerId)!.length>0||[...waiters.values()].some((w)=>w.workerId===workerId))");
   });
 });
