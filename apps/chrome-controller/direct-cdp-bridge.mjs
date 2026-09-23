@@ -84,6 +84,7 @@ const bootResetScheduleInitialized=new Set();
 const bootF5ScheduleInitialized=new Set();
 const WORKER_RESET_MAX_ATTEMPTS=2;
 const WORKER_RESET_STAGGER_MS=2*60*1000;
+const WORKER_UI_SETTLE_GRACE_MS=20*1000;
 function workerStatePath(workerId){return join(WORKER_CONTINUITY_DIR,`${String(workerId).toLowerCase()}.json`);}
 function nextWorkerResetAt(workerId,now=Date.now(),random=Math.random){
   const index=Math.max(0,CONTINUITY_WORKERS.indexOf(workerId));
@@ -126,6 +127,7 @@ function loadWorkerContinuity(workerId){
     stalledChecks:Number(raw.stalledChecks)||0,
     recoveryAttempts:Number(raw.recoveryAttempts)||0,
     recoveryBlockedUntil:Number(raw.recoveryBlockedUntil)||0,
+    settleUntil:Number(raw.settleUntil)||0,
     chatLoadRecoveryStage:Number(raw.chatLoadRecoveryStage)||0,
     chatLoadBlockedUntil:Number(raw.chatLoadBlockedUntil)||0,
     chatLoadClearCandidateAt:Number(raw.chatLoadClearCandidateAt)||0,
@@ -237,7 +239,7 @@ async function reopenWorker(w,target,state,now,reason){
     }
   }
   if(!reopened)throw lastError||new Error('WORKER_REOPEN_FAILED');
-  const recovered={...checkpointed,recoveryAttempts:0,recoveryBlockedUntil:0,stalledChecks:0,workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),nextPeriodicF5At:nextRandomAt(now,WORKER_F5_MIN_MS,WORKER_F5_MAX_MS),nextResetAt:nextWorkerResetAt(w.id,now),lastPhase:'STALLED'};
+  const recovered={...checkpointed,recoveryAttempts:0,recoveryBlockedUntil:0,settleUntil:now+WORKER_UI_SETTLE_GRACE_MS,stalledChecks:0,workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),nextPeriodicF5At:nextRandomAt(now,WORKER_F5_MIN_MS,WORKER_F5_MAX_MS),nextResetAt:nextWorkerResetAt(w.id,now),lastPhase:'STALLED'};
   saveWorkerContinuity(w.id,recovered);
   await genericWorkerEvent(w.id,'WORKER_REOPENED',{reason,resumeUrl,nextResetAt:recovered.nextResetAt});
   return recovered;
@@ -277,7 +279,7 @@ async function maybeWorkerContinuity(w,target,ui){
       const after=await uiStateRaw(target).catch(()=>null);
       return {ok:true,status:result?.status||'RELOADED',beforeUrl,beforePhase,afterUrl:after?.url||null,afterPhase:deriveWorkerPhase(after||{},{workerId:w.id})};
     },'PERIODIC_F5_REFRESH',15000);
-    const next={...state,nextPeriodicF5At:refreshed?.status==='MUTATION_LEASE_BUSY'?now+5000:nextRandomAt(now,WORKER_F5_MIN_MS,WORKER_F5_MAX_MS),workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:0};
+    const next={...state,nextPeriodicF5At:refreshed?.status==='MUTATION_LEASE_BUSY'?now+5000:nextRandomAt(now,WORKER_F5_MIN_MS,WORKER_F5_MAX_MS),settleUntil:refreshed?.status==='MUTATION_LEASE_BUSY'?Number(state.settleUntil||0):Date.now()+WORKER_UI_SETTLE_GRACE_MS,stalledChecks:0,workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:0};
     saveWorkerContinuity(w.id,next);
     await genericWorkerEvent(w.id,'PERIODIC_F5_REFRESH',{status:refreshed?.status||null,beforeUrl:refreshed?.beforeUrl||ui?.url||null,afterUrl:refreshed?.afterUrl||null,nextPeriodicF5At:next.nextPeriodicF5At});
     return;
@@ -287,7 +289,7 @@ async function maybeWorkerContinuity(w,target,ui){
     if(now<Number(state.nextProgressCheckAt||0))return;
     const signature=String(ui?.activitySignature||'');
     const unchanged=Boolean(signature&&state.workingSignature===signature)?Number(state.workingUnchangedChecks||0)+1:0;
-    const next={...state,workingSignature:signature,workingUnchangedChecks:unchanged,nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS,stalledChecks:0};
+    const next={...state,workingSignature:signature,workingUnchangedChecks:unchanged,nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS,stalledChecks:0,settleUntil:0};
     saveWorkerContinuity(w.id,next);
     await genericWorkerEvent(w.id,'WORKING_PROGRESS_CHECK',{workingUnchangedChecks:unchanged});
     if(unchanged>=MAX_WORKING_UNCHANGED_CHECKS){
@@ -297,8 +299,8 @@ async function maybeWorkerContinuity(w,target,ui){
   }
 
   if(phase==='READY'){
-    if(state.stalledChecks||state.recoveryAttempts||state.recoveryBlockedUntil){
-      state={...state,stalledChecks:0,recoveryAttempts:0,recoveryBlockedUntil:0};
+    if(state.stalledChecks||state.recoveryAttempts||state.recoveryBlockedUntil||state.settleUntil){
+      state={...state,stalledChecks:0,recoveryAttempts:0,recoveryBlockedUntil:0,settleUntil:0};
       saveWorkerContinuity(w.id,state);
       await genericWorkerEvent(w.id,'READY_RECOVERY_STATE_CLEARED');
     }
@@ -336,13 +338,21 @@ async function maybeWorkerContinuity(w,target,ui){
     return;
   }
 
+  if(now<Number(state.settleUntil||0)){
+    await genericWorkerEvent(w.id,'STALLED_SETTLE_GRACE',{settleUntil:state.settleUntil});
+    return;
+  }
   const stalledChecks=Math.min(MAX_STALLED_CHECKS,Number(state.stalledChecks||0)+1);
   const next={...state,stalledChecks,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
   saveWorkerContinuity(w.id,next);
   await genericWorkerEvent(w.id,'STALLED_CHECK',{stalledChecks});
   if(stalledChecks===2){
     const refreshed=await withWorkerMutation(w.id,()=>reloadTarget(target),'STALLED_RECOVERY',15000);
-    await genericWorkerEvent(w.id,'STALLED_RELOAD',{status:refreshed?.status||null});
+    if(refreshed?.status!=='MUTATION_LEASE_BUSY'){
+      const settling={...next,stalledChecks:0,settleUntil:Date.now()+WORKER_UI_SETTLE_GRACE_MS};
+      saveWorkerContinuity(w.id,settling);
+    }
+    await genericWorkerEvent(w.id,'STALLED_RELOAD',{status:refreshed?.status||null,settleUntil:refreshed?.status==='MUTATION_LEASE_BUSY'?Number(state.settleUntil||0):Date.now()+WORKER_UI_SETTLE_GRACE_MS});
   }else if(stalledChecks>=MAX_STALLED_CHECKS){
     await reopenWorker(w,target,next,now,'STALLED_3_CHECKS');
   }
