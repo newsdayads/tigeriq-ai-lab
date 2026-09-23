@@ -54,7 +54,7 @@ function Get-PadWindows {
         AutomationId=[string]$w.Current.AutomationId
         ProcessId=[int]$w.Current.ProcessId
         Process=(Get-ProcessName $w.Current.ProcessId)
-        X=[math]::Round($r.X,0); Y=[math]::Round($r.Y,0); Width=[math]::Round($r.Width,0); Height=[math]::Round($r.Height,0)
+        X=(Safe-UiNumber $r.X); Y=(Safe-UiNumber $r.Y); Width=(Safe-UiNumber $r.Width); Height=(Safe-UiNumber $r.Height)
       }
     } catch {}
   }
@@ -78,19 +78,27 @@ function Find-PadWindow($Request) {
 function Get-TopWindowElement($Request) {
   $root = [System.Windows.Automation.AutomationElement]::RootElement
   $all = $root.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition)
-  $matches = @()
+  $foundWindows = @()
   foreach ($w in $all) {
     if (-not (Test-PadWindow $w)) { continue }
     if ($Request.windowName -and [string]$w.Current.Name -ne [string]$Request.windowName) { continue }
-    $matches += $w
+    $foundWindows += $w
   }
-  if ($matches.Count -eq 0) { throw 'TIGERIQ_PAD_UI_WINDOW_NOT_FOUND' }
-  if ($matches.Count -gt 1 -and -not $Request.windowName) {
-    $named = @($matches | Where-Object { $_.Current.Name -match 'Power Automate' })
-    if ($named.Count -eq 1) { $matches = $named }
+  if ($foundWindows.Count -eq 0) { throw 'TIGERIQ_PAD_UI_WINDOW_NOT_FOUND' }
+  if ($foundWindows.Count -gt 1 -and -not $Request.windowName) {
+    $named = @($foundWindows | Where-Object { $_.Current.Name -match 'Power Automate' })
+    if ($named.Count -eq 1) { $foundWindows = $named }
   }
-  if ($matches.Count -ne 1) { throw 'TIGERIQ_PAD_UI_WINDOW_AMBIGUOUS' }
-  return $matches[0]
+  if ($foundWindows.Count -ne 1) { throw 'TIGERIQ_PAD_UI_WINDOW_AMBIGUOUS' }
+  return $foundWindows[0]
+}
+
+function Safe-UiNumber($Value) {
+  try {
+    $n=[double]$Value
+    if ([double]::IsNaN($n) -or [double]::IsInfinity($n)) { return $null }
+    return [math]::Round($n,0)
+  } catch { return $null }
 }
 
 function Element-ToObject($e) {
@@ -100,7 +108,7 @@ function Element-ToObject($e) {
     [System.Windows.Automation.InvokePattern]::Pattern,
     [System.Windows.Automation.ValuePattern]::Pattern,
     [System.Windows.Automation.SelectionItemPattern]::Pattern,
-    [System.Windows.Automation.LegacyIAccessiblePattern]::Pattern
+    [System.Windows.Automation.ExpandCollapsePattern]::Pattern
   )) {
     $obj = $null
     try { if ($e.TryGetCurrentPattern($p,[ref]$obj)) { $patterns += $p.ProgrammaticName } } catch {}
@@ -111,7 +119,7 @@ function Element-ToObject($e) {
     ControlType=[string]$e.Current.ControlType.ProgrammaticName
     IsEnabled=[bool]$e.Current.IsEnabled
     IsOffscreen=[bool]$e.Current.IsOffscreen
-    X=[math]::Round($r.X,0); Y=[math]::Round($r.Y,0); Width=[math]::Round($r.Width,0); Height=[math]::Round($r.Height,0)
+    X=(Safe-UiNumber $r.X); Y=(Safe-UiNumber $r.Y); Width=(Safe-UiNumber $r.Width); Height=(Safe-UiNumber $r.Height)
     Patterns=$patterns
   }
 }
@@ -119,7 +127,7 @@ function Element-ToObject($e) {
 function Find-PadElement($Request) {
   $window = Get-TopWindowElement $Request
   $all = $window.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
-  $matches = @()
+  $foundElements = @()
   $mode = if ($Request.match) { [string]$Request.match } else { 'exact' }
   foreach ($e in $all) {
     try {
@@ -134,14 +142,14 @@ function Find-PadElement($Request) {
         $want = [string]$Request.controlType
         $ok = ($ct -eq $want -or $ct -eq "ControlType.$want")
       }
-      if ($ok) { $matches += $e }
+      if ($ok) { $foundElements += $e }
     } catch {}
   }
-  if ($matches.Count -eq 0) { throw 'TIGERIQ_PAD_UI_ELEMENT_NOT_FOUND' }
+  if ($foundElements.Count -eq 0) { throw 'TIGERIQ_PAD_UI_ELEMENT_NOT_FOUND' }
   $index = if ($null -ne $Request.index) { [int]$Request.index } else { 0 }
-  if ($matches.Count -gt 1 -and $null -eq $Request.index) { throw 'TIGERIQ_PAD_UI_ELEMENT_AMBIGUOUS' }
-  if ($index -ge $matches.Count) { throw 'TIGERIQ_PAD_UI_INDEX_OUT_OF_RANGE' }
-  return [pscustomobject]@{ Window=$window; Element=$matches[$index]; Count=$matches.Count }
+  if ($foundElements.Count -gt 1 -and $null -eq $Request.index) { throw 'TIGERIQ_PAD_UI_ELEMENT_AMBIGUOUS' }
+  if ($index -ge $foundElements.Count) { throw 'TIGERIQ_PAD_UI_INDEX_OUT_OF_RANGE' }
+  return [pscustomobject]@{ Window=$window; Element=$foundElements[$index]; Count=$foundElements.Count }
 }
 
 function Invoke-PadElement($Request, [bool]$AllowClickFallback) {
@@ -152,12 +160,14 @@ function Invoke-PadElement($Request, [bool]$AllowClickFallback) {
     $pattern.Invoke()
     return [pscustomobject]@{ Method='InvokePattern'; MatchCount=$found.Count; Element=(Element-ToObject $e) }
   }
-  $legacy = $null
-  if ($e.TryGetCurrentPattern([System.Windows.Automation.LegacyIAccessiblePattern]::Pattern,[ref]$legacy)) {
-    $legacy.DoDefaultAction()
-    return [pscustomobject]@{ Method='LegacyDefaultAction'; MatchCount=$found.Count; Element=(Element-ToObject $e) }
-  }
   if (-not $AllowClickFallback) { throw 'TIGERIQ_PAD_UI_INVOKE_PATTERN_UNAVAILABLE' }
+  $expand = $null
+  if ($e.Current.ControlType -eq [System.Windows.Automation.ControlType]::TreeItem -and $e.TryGetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern,[ref]$expand)) {
+    if ($expand.Current.ExpandCollapseState -eq [System.Windows.Automation.ExpandCollapseState]::Collapsed) {
+      $expand.Expand()
+      return [pscustomobject]@{ Method='ExpandCollapsePattern.Expand'; MatchCount=$found.Count; Element=(Element-ToObject $e) }
+    }
+  }
   $r = $e.Current.BoundingRectangle
   if ($r.Width -le 0 -or $r.Height -le 0) { throw 'TIGERIQ_PAD_UI_ELEMENT_NOT_CLICKABLE' }
   [TigerIQPadNative]::SetForegroundWindow([IntPtr]$found.Window.Current.NativeWindowHandle) | Out-Null
@@ -212,7 +222,7 @@ function Invoke-Request($Request) {
           if ([string]$e.Current.Name -or [string]$e.Current.AutomationId) { $out += (Element-ToObject $e) }
         } catch {}
       }
-      return @($out)
+      return [pscustomobject]@{ RawCount=[int]$all.Count; Items=@($out) }
     }
     'pad_invoke' { return Invoke-PadElement $Request $false }
     'pad_click' { return Invoke-PadElement $Request $true }
