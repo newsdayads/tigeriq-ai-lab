@@ -240,8 +240,12 @@ export function startUiAutopilotSnapshotServer({
       if(unavailableMs<coreFailoverGraceMs){
         const e=new Error(`CORE_FAILOVER_ARMING:${unavailableMs}/${coreFailoverGraceMs}`);e.cause=error;throw e;
       }
-      const fallback=await buildUiAutopilotSnapshot({fetchImpl,token,owner,repo,previousJobId,fallbackWorkerId:'NV02'});
-      return {...fallback,authority:'NV02_OWNER_PROXY_FALLBACK',revision:`nv02-owner-proxy-fallback-v1:${fallback.revision}`,coreFailover:{active:true,unavailableMs,graceMs:coreFailoverGraceMs}};
+      return {
+        source:'CORE',authority:'CORE',observedAt:new Date().toISOString(),
+        revision:`core-ui-failclosed-v1:${previousJobId||'none'}:${unavailableMs}`,
+        assignmentState:'READY_UNASSIGNED',requiredWorkers:[],
+        coreFailover:{active:true,failClosed:true,unavailableMs,graceMs:coreFailoverGraceMs},
+      };
     }
   };
   const server=createServer(async(req,res)=>{
