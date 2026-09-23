@@ -412,6 +412,16 @@ function loadNv02Continuity(){
     chatLoadClearCandidateAt:Number(raw.chatLoadClearCandidateAt)||0,
   };
 }
+function applyNv02DurableVerifiedModelProfile(ui){
+  if(!ui||ui.modelExact===true)return ui;
+  if(ui.securityBlock||ui.authRequired||ui.chatLoadError)return ui;
+  if(ui.modelControlPresent!==true||ui.reasoningEffort!=='High')return ui;
+  const state=loadNv02Continuity();
+  if(!state.verifiedChatUrl||!state.modelVerifiedAt||!sameNv02Chat(state.verifiedChatUrl,ui.url))return ui;
+  const exact={...ui,modelProfileStatus:'MODEL_PROFILE_VERIFIED',modelName:'GPT-5.6 Sol',reasoningEffort:'High',modelReady:true,modelExact:true,verifiedAt:state.modelVerifiedAt,blockedReason:null};
+  exact.uiPhase=exact.uiBusy?'WORKING':exact.uiReady?'READY':'STALLED';
+  return exact;
+}
 function saveNv02Continuity(state){
   const tmp=NV02_CONTINUITY_STATE+'.tmp';
   fs.writeFileSync(tmp,JSON.stringify({...state,updatedAt:new Date().toISOString()},null,2));
@@ -593,7 +603,10 @@ async function uiStateRaw(target){
   try{return (await p.call('Runtime.evaluate',{expression:UI_EXPR,returnByValue:true})).result.value;}
   finally{p.close();}
 }
-async function uiState(target){return applyNv02VerifiedModelProfile(await uiStateRaw(target));}
+async function uiState(target){
+  const raw=await uiStateRaw(target);
+  return applyNv02DurableVerifiedModelProfile(applyNv02VerifiedModelProfile(raw));
+}
 async function evalPage(target,expression){
   const p=await pageRpc(target);
   try{return (await p.call('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true})).result.value;}
@@ -1192,10 +1205,7 @@ async function noteNv02CommandDispatch(){
 }
 async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
   const now=Date.now();let state=loadNv02Continuity();
-  if(state.verifiedChatUrl&&sameNv02Chat(state.verifiedChatUrl,ui?.url)&&ui?.modelExact!==true){
-    ui={...ui,modelProfileStatus:'MODEL_PROFILE_VERIFIED',modelName:'GPT-5.6 Sol',modelReady:true,modelExact:true,verifiedAt:state.modelVerifiedAt||null,blockedReason:null};
-    ui.uiPhase=ui.securityBlock?'BLOCKED':ui.uiBusy?'WORKING':ui.uiReady?'READY':'STALLED';
-  }
+  ui=applyNv02DurableVerifiedModelProfile(ui);
   const phase=deriveNv02Phase(ui||{});
   const currentTrackedWork=hasCurrentNv02Chat(ui?.url);
   state={...state,lastPhase:phase,...(currentTrackedWork?{resumeChatUrl:String(ui.url||'')}:{})};saveNv02Continuity(state);
