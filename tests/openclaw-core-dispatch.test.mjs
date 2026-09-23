@@ -64,6 +64,9 @@ describe('Core -> OpenClaw bounded dispatch #1528', () => {
     expect(prompt).toContain('FORBIDDEN=backlog selection; P0 selection; new task selection');
     expect(prompt).toContain('On retry/recovery, inspect current state first');
     expect(prompt).toContain('do not repeat the mutation');
+    expect(prompt).toContain('action=tcp_probe');
+    expect(prompt).toContain('file_write then file_read');
+    expect(prompt).toContain('Never invent action names such as tcp_connect');
   });
 
   it('durably admits once, dedupes a live worker, and bounds orphan recovery', async () => {
