@@ -147,6 +147,24 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
   let claims=0,results=0;
   for(const row of rows){
     const number=Number(row.metadata?.issueNumber); if(!number) continue;
+    if(row.status==='active'){
+      try{
+        const sourceIssue=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/${number}`,token);
+        if(sourceIssue?.state==='closed'){
+          const sourceReason=String(sourceIssue.state_reason||'closed');
+          const terminalStatus=sourceReason==='completed'?'completed':'blocked';
+          const terminalSummary=terminalStatus==='completed'
+            ? `Source GitHub issue #${number} closed completed; terminalized stale active objective.`
+            : `Source GitHub issue #${number} closed (${sourceReason}); terminalized stale active objective fail-closed.`;
+          await pool.query("update tigeriq_objectives set status=$2,summary=$3,metadata=metadata||$4::jsonb,updated_at=now() where id=$1",[row.id,terminalStatus,terminalSummary,JSON.stringify({githubSourceState:'closed',githubSourceStateReason:sourceReason,githubSourceClosedAt:String(sourceIssue.closed_at||'')})]);
+          row.status=terminalStatus;
+          row.summary=terminalSummary;
+          row.metadata={...row.metadata,githubSourceState:'closed',githubSourceStateReason:sourceReason,githubSourceClosedAt:String(sourceIssue.closed_at||'')};
+        }
+      }catch(error){
+        console.error(JSON.stringify({event:'GITHUB_SOURCE_STATE_RECONCILE_ERROR',objectiveId:row.id,issueNumber:number,error:String(error?.message||error)}));
+      }
+    }
     if(row.status==='active'&&row.metadata?.executionSurface==='CORE_OPENCLAW_BOUNDED'){
       const job=(await pool.query("select id,status,employee_id,resource_id,provider,result,failure,completed_at from tigeriq_jobs where objective_id=$1 and capability='pc_operator' order by created_at desc limit 1",[row.id])).rows[0];
       if(job?.status==='done'){
