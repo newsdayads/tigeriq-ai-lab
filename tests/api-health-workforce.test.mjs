@@ -42,5 +42,11 @@ describe('#1600 full API Health workforce roster',()=>{
     expect(dashboard).toContain("id==='NV09'?'ollama'");
     expect(dashboard).toContain("qwen3-coder:30b");
     expect(dashboard).toContain("RETIRED:'ĐÃ NGỪNG'");
+    expect(dashboard).toContain("function shortRole(x)");
+    expect(dashboard).toContain("Gateway ONLINE");
+    expect(dashboard).toContain("WORKER TẠM DỪNG");
+    expect(dashboard).toContain("Registry #335");
+    expect(dashboard).toContain("if(!x.live_resource)");
+    expect(dashboard).not.toContain("Registry: ${esc(x.admin_state)}");
   });
 });
