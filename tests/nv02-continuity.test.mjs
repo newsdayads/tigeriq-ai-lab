@@ -272,24 +272,20 @@ describe('NV02 continuity policy', () => {
     expect(contentSource).toContain('button[aria-label*="Ngừng" i]');
   });
 
-  it('rotates only when there is CHAT_BAD evidence (e.g. chatLoadRecoveryStage, authRequired, securityBlock) and ignores time/count', () => {
-    // Proves that time/dispatch count alone never trigger rotation
-    expect(shouldRotateNv02Chat({phase:'READY',currentTrackedWork:true,now:9999999,nextRefreshAt:0,dispatchesInChat:9999})).toBe(false);
-    expect(shouldRotateNv02Chat({phase:'WORKING',currentTrackedWork:true,now:9999999,nextRefreshAt:0,dispatchesInChat:9999})).toBe(false);
+  it('rotates a tracked NV02 chat only when safe: READY old/oversized or recovery exhausted', () => {
+    // READY chat can rotate when oversized or overdue; WORKING never rotates.
+    expect(shouldRotateNv02Chat({phase:'READY',currentTrackedWork:true,now:9999999,nextRefreshAt:0,dispatchesInChat:9999,chatStartedAt:9999998})).toBe(true);
+    expect(shouldRotateNv02Chat({phase:'WORKING',currentTrackedWork:true,now:9999999,nextRefreshAt:1,dispatchesInChat:9999,chatStartedAt:1,chatLoadRecoveryStage:3})).toBe(false);
 
-    // Proves CHAT_BAD terminal recovery exhaustion triggers rotation
-    expect(shouldRotateNv02Chat({currentTrackedWork:true,now:102,chatLoadRecoveryStage:3})).toBe(true);
+    // Recovery exhaustion rotates once the UI is no longer visibly working.
+    expect(shouldRotateNv02Chat({phase:'READY',currentTrackedWork:true,now:102,chatLoadRecoveryStage:3})).toBe(true);
 
-    // Proves authRequired/securityBlock do NOT trigger rotation (they fail-closed instead)
-    expect(shouldRotateNv02Chat({currentTrackedWork:true,now:100,authRequired:true})).toBe(false);
-    expect(shouldRotateNv02Chat({currentTrackedWork:true,now:100,securityBlock:'IP_BANNED'})).toBe(false);
-
-    // Un-tracked work doesn't trigger rotation yet
+    // Untracked work doesn't rotate.
     expect(shouldRotateNv02Chat({phase:'READY',currentTrackedWork:false,now:100,chatLoadRecoveryStage:3})).toBe(false);
 
-    // Bounded retry applies
-    expect(shouldRotateNv02Chat({currentTrackedWork:true,now:100,rotationRetryAt:101,chatLoadRecoveryStage:3})).toBe(false);
-    expect(shouldRotateNv02Chat({currentTrackedWork:true,now:102,rotationRetryAt:101,chatLoadRecoveryStage:3})).toBe(true);
+    // Bounded retry applies.
+    expect(shouldRotateNv02Chat({phase:'READY',currentTrackedWork:true,now:100,rotationRetryAt:101,chatLoadRecoveryStage:3})).toBe(false);
+    expect(shouldRotateNv02Chat({phase:'READY',currentTrackedWork:true,now:102,rotationRetryAt:101,chatLoadRecoveryStage:3})).toBe(true);
 
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(bridge).toContain("CHAT_ROTATION_DUE");

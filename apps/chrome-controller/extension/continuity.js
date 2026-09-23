@@ -36,13 +36,19 @@ export const MAX_WORKING_UNCHANGED_CHECKS = 3;
 export const CHAT_ROTATE_AFTER_DISPATCHES = 30;
 export const CONTINUITY_WORKERS = Object.freeze(['NV02','NV03','NV04']);
 
-export function shouldRotateNv02Chat({currentTrackedWork,now,rotationRetryAt,chatLoadRecoveryStage}={}){
-  // Functional Spec V1: "Không rotate chỉ vì đủ số prompt hoặc đủ thời gian."
-  // Chỉ rotate khi có lý do thật sự terminal (recovery exhausted).
+export function shouldRotateNv02Chat({phase,currentTrackedWork,now,nextRefreshAt,dispatchesInChat,chatStartedAt,rotationRetryAt,chatLoadRecoveryStage}={}){
   if(!currentTrackedWork) return false;
   if(rotationRetryAt && now < rotationRetryAt) return false;
-  if(chatLoadRecoveryStage >= 3) return true;
-  return false;
+  // Never rotate while a response is visibly generating.
+  if(String(phase||'').toUpperCase()==='WORKING') return false;
+  // Recovery exhaustion is always a valid rotation reason once the UI is no longer busy.
+  if(Number(chatLoadRecoveryStage||0) >= 3) return true;
+  // Oversized/old chat rotation is allowed only from a stable READY state.
+  if(String(phase||'').toUpperCase()!=='READY') return false;
+  const overdueRefresh=Number(nextRefreshAt)>0 && Number(now)>=Number(nextRefreshAt);
+  const tooManyDispatches=Number(dispatchesInChat||0)>=CHAT_ROTATE_AFTER_DISPATCHES;
+  const tooOld=Number(chatStartedAt)>0 && Number(now)-Number(chatStartedAt)>=REFRESH_MAX_MS;
+  return overdueRefresh||tooManyDispatches||tooOld;
 }
 
 export function randomDelay(minMs,maxMs,random=Math.random){

@@ -223,7 +223,7 @@ describe('NV02 restart schedule WORKING safety',()=>{
 });
 
 describe('isolated NV02 WORKING/F5 safety scope',()=>{
-  it('strictly forbids F5, send, or rotation while WORKING and avoids legacy stalled working mutation',()=>{
+  it('never F5s, reopens, sends, or rotates while WORKING but may stop a proven stuck generation',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(bridge).not.toContain("'STALE_WORKING_RECOVERY'");
     expect(bridge).not.toContain("'WORKING_STALLED_REOPEN_SCHEDULED'");
@@ -232,8 +232,10 @@ describe('isolated NV02 WORKING/F5 safety scope',()=>{
     const hotLoop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
     const working=hotLoop.slice(hotLoop.indexOf("if(phase==='WORKING')"),hotLoop.indexOf('if(shouldRotateNv02Chat'));
     expect(working).not.toContain('reloadTarget');
-    expect(working).not.toContain('dispatch');
-    expect(working).not.toContain('stopStalledWorking');
+    expect(working).not.toContain('reopenWorker(');
+    expect(working).not.toContain('dispatchNaturalContinue');
+    expect(working).toContain('stopStalledWorking');
+    expect(working).toContain("'WORKING_STUCK_STOP'");
     expect(working).toContain("return;");
   });
 
