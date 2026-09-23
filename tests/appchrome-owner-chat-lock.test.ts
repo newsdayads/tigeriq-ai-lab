@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+// @ts-ignore legacy JS module
 import { safeRepoPath } from '../apps/tigeriq-coding-lane/policy.mjs';
+// @ts-ignore legacy JS module
 import { parseExecutableIssue } from '../apps/tigeriq-core/github-intake.mjs';
 import { isSelfRunSafe } from '../apps/chrome-controller/src/github-self-run.js';
 
