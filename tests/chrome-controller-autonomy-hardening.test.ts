@@ -368,14 +368,16 @@ describe('NV02 owner-proxy live handoff coordination',()=>{
 
 
 describe('NV02 current-chat continuity lease guard',()=>{
-  it('allows only conflict-free current-chat continuation when no tracked NV02 job exists',()=>{
+  it('allows conflict-free current-chat or exact claimed self-run continuation',()=>{
     const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
     expect(server).toContain("const activeNv02Job=uiJobLedger.active('NV02')");
     expect(server).toContain("const continuityCurrentChatOnly=continuityContinue");
     expect(server).toContain("!autopilotState.pendingJobId");
     expect(server).toContain("!autopilotState.uncertainJobId");
     expect(server).toContain("nv02NextJob?.workerId==='NV02'");
-    expect(server).toContain("const continuityLeaseAllowed=continuitySameJob||continuityCurrentChatOnly");
+    expect(server).toContain("const continuitySelfRunJob=continuityContinue&&selfRunContinuityClaimMatches(");
+    expect(server).toContain("selfRunClaims.find(activeNv02SelfRunIssue,'NV02')");
+    expect(server).toContain("const continuityLeaseAllowed=continuitySameJob||continuitySelfRunJob||continuityCurrentChatOnly");
     expect(server).toContain("if(continuityContinue&&!continuityLeaseAllowed)throw new Error('CONTINUITY_SAME_JOB_IDENTITY_REQUIRED:NV02')");
   });
 });
