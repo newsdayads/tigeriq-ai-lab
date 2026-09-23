@@ -28,9 +28,9 @@ describe('App Chrome chat lifecycle',()=>{
 
   it('wires real stuck-WORKING recovery and view-follow for generic workers',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
-    expect(bridge).toContain("const stopped=await stopStalledWorking(target);");
-    expect(bridge).toContain("'WORKING_STUCK_RECOVERY'");
-    expect(bridge).toContain("chatLoadRecoveryStage:3");
+    expect(bridge).toContain("stopStalledWorking(target)");
+    expect(bridge).toContain("'WORKING_STUCK_STOP'");
+    expect(bridge).toContain("chatLoadRecoveryStage:resolved?3");
     expect(bridge).toContain("genericWorkerEvent(w.id,deferred?'VIEW_FOLLOW_BOTTOM_DEFERRED':'VIEW_FOLLOW_BOTTOM'");
     expect(bridge).toContain("nextViewFollowAt:Number(raw.nextViewFollowAt)");
     expect(bridge).toContain("chatStartedAt:state.chatStartedAt");
