@@ -1,6 +1,6 @@
 {
   "name": "@tigeriq/openclaw-tigeriq-runtime",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "files": [
@@ -8,7 +8,11 @@
     "bridge.mjs",
     "operator.mjs",
     "openclaw.plugin.json",
-    "README.md"
+    "README.md",
+    "pad-ui.mjs",
+    "pad-ui-broker.ps1",
+    "Install-PadUiBroker.ps1",
+    "Uninstall-PadUiBroker.ps1"
   ],
   "dependencies": {
     "typebox": "1.3.30"

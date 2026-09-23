@@ -73,7 +73,7 @@ export default defineToolPlugin({
     tool({
       name: 'tigeriq_pc',
       label: 'TigerIQ PC Operator',
-      description: 'Operate PC01 with typed task/process/TCP/file actions plus a strict allowlist of diagnostic shell commands. Secret paths, source writes, arbitrary shell, and Production mutations are blocked.',
+      description: 'Operate PC01 with guarded task/process/TCP/file actions plus a bounded interactive Power Automate Desktop UI broker. Secret paths, source writes, arbitrary shell, generic desktop control, and Production mutations are blocked.',
       parameters: Type.Object({
         action: Type.Union([
           Type.Literal('shell_exec'),
@@ -87,6 +87,14 @@ export default defineToolPlugin({
           Type.Literal('file_write'),
           Type.Literal('file_list'),
           Type.Literal('file_stat'),
+          Type.Literal('pad_health'),
+          Type.Literal('pad_launch'),
+          Type.Literal('pad_windows'),
+          Type.Literal('pad_tree'),
+          Type.Literal('pad_invoke'),
+          Type.Literal('pad_set_value'),
+          Type.Literal('pad_click'),
+          Type.Literal('pad_keys'),
         ]),
         command: Type.Optional(Type.String({ minLength: 1, maxLength: 8000 })),
         shell: Type.Optional(Type.Union([Type.Literal('powershell'), Type.Literal('cmd')])),
@@ -97,6 +105,18 @@ export default defineToolPlugin({
         port: Type.Optional(Type.Number({ minimum: 1, maximum: 65535 })),
         path: Type.Optional(Type.String({ minLength: 3, maxLength: 1024 })),
         content: Type.Optional(Type.String({ maxLength: 524288 })),
+        windowName: Type.Optional(Type.String({ minLength: 1, maxLength: 160 })),
+        name: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+        automationId: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+        controlType: Type.Optional(Type.String({ minLength: 1, maxLength: 80 })),
+        match: Type.Optional(Type.Union([Type.Literal('exact'), Type.Literal('contains')])),
+        index: Type.Optional(Type.Number({ minimum: 0, maximum: 20 })),
+        maxResults: Type.Optional(Type.Number({ minimum: 1, maximum: 400 })),
+        value: Type.Optional(Type.String({ maxLength: 500 })),
+        key: Type.Optional(Type.Union([
+          Type.Literal('ENTER'), Type.Literal('ESC'), Type.Literal('TAB'), Type.Literal('CTRL+A'),
+          Type.Literal('CTRL+F'), Type.Literal('CTRL+N'), Type.Literal('F5'),
+        ])),
       }, { additionalProperties: false }),
       outputSchema: Type.Object({
         ok: Type.Boolean(),

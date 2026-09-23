@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import { spawn } from 'node:child_process';
 import net from 'node:net';
 import path from 'node:path';
+import { PAD_UI_ACTIONS, executePadUiAction } from './pad-ui.mjs';
 
 const win = path.win32;
 export const PC_OPERATOR_ROOTS = Object.freeze([
@@ -295,6 +296,8 @@ export async function executePcAction(input) {
     data = await listPath(input?.path);
   } else if (action === 'file_stat') {
     data = await statPath(input?.path);
+  } else if (PAD_UI_ACTIONS.includes(action)) {
+    data = await executePadUiAction(input || {});
   } else {
     throw new Error('TIGERIQ_PC_ACTION_NOT_ALLOWED');
   }
@@ -316,6 +319,9 @@ export async function executePcAction(input) {
       sourceWriteBlocked: true,
       sensitivePathsBlocked: true,
       productionMutationBlocked: true,
+      interactiveUiBroker: PAD_UI_ACTIONS.includes(action),
+      interactiveUiScope: PAD_UI_ACTIONS.includes(action) ? 'Power Automate Desktop only' : 'none',
+      arbitraryCoordinates: false,
     },
   };
 }
