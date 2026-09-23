@@ -1169,7 +1169,7 @@ async function loop(){
         const j = await claimJob();
         if(!j) {
           const pendingCount = (await pool.query("select count(*)::int as count from tigeriq_jobs where status='queued'")).rows[0]?.count || 0;
-          if (detectIdleWithBacklog(active.size, pendingCount)) {
+          if (detectIdleWithBacklog(active.size, pendingCount) || !registeredModels.has('NV09')) {
             console.log(JSON.stringify({ event: 'IDLE_WITH_BACKLOG', timestamp: new Date().toISOString(), pendingQueueCount: pendingCount }));
           }
           break;
