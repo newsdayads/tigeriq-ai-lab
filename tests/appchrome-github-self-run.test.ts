@@ -82,6 +82,35 @@ describe('App Chrome GitHub self-run policy',()=>{
     expect(restored.snapshot()).toHaveLength(1);
   });
 
+  it('serializes same-process competing worker reservations and only schedules self-run from the canonical controller listener',async()=>{
+    const dir=mkdtempSync(join(tmpdir(),'tigeriq-self-run-race-'));
+    const store=new DurableSelfRunClaimStore(join(dir,'claims.json'));
+    const now=Date.now();
+    const results=await Promise.all([
+      Promise.resolve().then(()=>store.acquire({issueNumber:31,scope:'RACE_SCOPE',workerId:'NV03',ttlMs:60_000},now)),
+      Promise.resolve().then(()=>store.acquire({issueNumber:31,scope:'RACE_SCOPE',workerId:'NV04',ttlMs:60_000},now)),
+    ]);
+    expect(results.filter(x=>x.kind==='ACQUIRED')).toHaveLength(1);
+    expect(results.filter(x=>x.kind==='BUSY')).toHaveLength(1);
+    expect(store.snapshot()).toHaveLength(1);
+
+    const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
+    const listen=server.slice(server.indexOf('server.listen(config.port'),server.indexOf("setInterval(()=>void autopilotTick()"));
+    expect(server).toContain('function acquireCanonicalServerOwnership(port:number)');
+    expect(listen).toContain('acquireCanonicalServerOwnership(config.port)');
+    expect(listen.indexOf('acquireCanonicalServerOwnership(config.port)')).toBeLessThan(listen.indexOf('scheduleSelfRunTick(5000)'));
+  });
+
+  it('releases GitHub + local claim when source issue closes and never maps not_planned close to DONE',()=>{
+    const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
+    const reconcile=server.slice(server.indexOf('async function reconcileSelfRunWorker'),server.indexOf('async function selfRunTick'));
+    expect(reconcile).toContain("if(issue.state==='closed')");
+    expect(reconcile).toContain("await releaseGithubClaim({");
+    expect(reconcile).toContain("selfRunClaims.release(localClaim.claimId)");
+    expect(reconcile).toContain("const completed=String(issue.state_reason||'')==='completed'");
+    expect(reconcile).toContain("SOURCE_ISSUE_CLOSED_");
+  });
+
   it('creates exactly one durable claim and refuses a second active claim',async()=>{
     const target=issue(30,'Review',SAFE+'\nREVIEW_ONLY=true\nCAPABILITY=review\nRESOURCE_SCOPE=REVIEW_30');
     const comments:any[]=[];
