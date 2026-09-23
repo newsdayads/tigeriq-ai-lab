@@ -343,6 +343,16 @@ describe('NV02 continuity policy', () => {
     expect(checkpoint).toContain('CURRENT_WORK_ORDER=');
   });
 
+  it('persists NV02 chat-load stable candidate across continuity ticks', () => {
+    const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    const loader=source.slice(source.indexOf('function loadNv02Continuity'),source.indexOf('function saveNv02Continuity'));
+    expect(loader).toContain('chatLoadClearCandidateAt:Number(raw.chatLoadClearCandidateAt)||0');
+    const recovery=source.slice(source.indexOf('async function maybeRecoverChatLoadError'),source.indexOf('const MODEL_SELECTOR_CLICK_EXPR'));
+    expect(recovery).toContain('chatLoadClearCandidateAt:now');
+    expect(recovery).toContain('now-candidateAt<5000');
+    expect(recovery).toContain("'CHAT_LOAD_RECOVERED_STABLE'");
+  });
+
   it('classifies ChatGPT request-timeout retry cards as recoverable chat errors', () => {
     const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     const ui=source.slice(source.indexOf('const UI_EXPR='),source.indexOf('async function uiStateRaw'));
