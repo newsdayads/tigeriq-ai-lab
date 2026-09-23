@@ -1185,6 +1185,25 @@ async function loop(){
 await initDb();
 await recoverAfterCoreRestart();
 await refreshResources();
+
+async function ensureNV09Registration() {
+  const existing = resources.find(r => r.employee_id === 'NV09');
+  if (!existing) {
+    try {
+      await pool.query(
+        `insert into tigeriq_resources (employee_id, model, capability, status, last_seen) values ($1, $2, $3, $4, now()) on conflict (employee_id) do update set model = excluded.model, capability = excluded.capability`,
+        ['NV09', 'qwen3-coder:30b', 'coding', 'idle']
+      );
+      await refreshResources();
+    } catch (err) {
+      console.error(JSON.stringify({ event: 'NV09_REGISTRATION_ERROR', error: String(err?.message || err) }));
+    }
+  }
+}
+export { ensureNV09Registration };
+
+await ensureNV09Registration();
+
 await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(PORT,HOST,resolve);});
 void probeReadyResources();
 console.log(JSON.stringify({event:'TIGERIQ_CORE_STARTED',host:HOST,port:PORT,pid:process.pid,resources:resources.length}));
