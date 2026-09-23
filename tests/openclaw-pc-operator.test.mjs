@@ -87,4 +87,9 @@ describe('Power Automate Desktop guarded UI contract', () => {
     expect(source).not.toContain('[System.Windows.Forms.SendKeys]::Send(');
     expect(source).not.toContain('[System.Windows.Forms.SendKeys]::SendWait(');
   });
+
+  it('avoids unavailable LegacyIAccessiblePattern on PC01 UIAutomation runtime', async () => {
+    const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/pad-ui-broker.ps1', import.meta.url), 'utf8');
+    expect(source).not.toContain('LegacyIAccessiblePattern');
+  });
 });

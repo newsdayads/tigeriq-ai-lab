@@ -100,8 +100,7 @@ function Element-ToObject($e) {
   foreach ($p in @(
     [System.Windows.Automation.InvokePattern]::Pattern,
     [System.Windows.Automation.ValuePattern]::Pattern,
-    [System.Windows.Automation.SelectionItemPattern]::Pattern,
-    [System.Windows.Automation.LegacyIAccessiblePattern]::Pattern
+    [System.Windows.Automation.SelectionItemPattern]::Pattern
   )) {
     $obj = $null
     try { if ($e.TryGetCurrentPattern($p,[ref]$obj)) { $patterns += $p.ProgrammaticName } } catch {}
@@ -152,11 +151,6 @@ function Invoke-PadElement($Request, [bool]$AllowClickFallback) {
   if ($e.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern,[ref]$pattern)) {
     $pattern.Invoke()
     return [pscustomobject]@{ Method='InvokePattern'; MatchCount=$found.Count; Element=(Element-ToObject $e) }
-  }
-  $legacy = $null
-  if ($e.TryGetCurrentPattern([System.Windows.Automation.LegacyIAccessiblePattern]::Pattern,[ref]$legacy)) {
-    $legacy.DoDefaultAction()
-    return [pscustomobject]@{ Method='LegacyDefaultAction'; MatchCount=$found.Count; Element=(Element-ToObject $e) }
   }
   if (-not $AllowClickFallback) { throw 'TIGERIQ_PAD_UI_INVOKE_PATTERN_UNAVAILABLE' }
   $r = $e.Current.BoundingRectangle
