@@ -13,7 +13,7 @@ import { ROUTING_PROFILE_LABELS, createResourceId, deriveRoutingProfile, failure
 import { runExecutionPreflight } from './execution-preflight.mjs';
 import { detectIdleWithBacklog } from './github-backlog-policy.mjs';
 import { API_DOCTOR_CAPABILITY, apiDoctorAction, apiDoctorExistingHandoffAction, apiDoctorRepairSignature, buildApiDoctorPrompt, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
-import { buildUiAutopilotSnapshot, projectCoreOwnedUiSnapshot } from './ui-autopilot-snapshot.mjs';
+import { buildCoreUiAssignmentSnapshot } from './core-ui-assignment.mjs';
 import { refreshRegistryWorkforce, normalizeRuntimeResources } from './workforce-registry.mjs';
 import { OPENCLAW_EMPLOYEE_ID, OPENCLAW_MODEL, OPENCLAW_PROVIDER, OPENCLAW_RESOURCE_ID, normalizeOpenClawDispatchEnvelope, waitOpenClawDispatch } from '../openclaw-tigeriq-runtime/dispatch.mjs';
 
@@ -889,8 +889,8 @@ async function persistTerminalHandoff(o,decision,currentPhase){
 
 async function managerTick() {
   const q=await pool.query(`select o.* from tigeriq_objectives o where o.status='active' and o.next_check_at<=now()
-    and coalesce(o.metadata->>'executionSurface','')<>'CORE_OPENCLAW_BOUNDED'
-    and not exists(select 1 from tigeriq_jobs j where j.objective_id=o.id and j.status in ('queued','running'))
+    and coalesce(o.metadata->>'executionSurface','') not in ('CORE_OPENCLAW_BOUNDED','CORE_UI')
+    and not exists(select 1 from tigeriq_jobs j where j.objective_id=o.id and j.status in ('queued','running','ui_assigned','ui_running'))
     order by case o.priority when 'P0' then 0 when 'P1' then 1 else 2 end,case when o.metadata#>>'{handoff,state}'='waiting_children' then 1 else 0 end,o.created_at limit 1`);
   const o=q.rows[0]; if(!o) return;
   if(await reconcileAutonomousHandoff(o)) return;
@@ -1011,8 +1011,7 @@ function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta
     if(req.method==='GET'&&url.pathname==='/api/ui-assignment'){
       if(!auth(req)&&!localSelf(req)){res.writeHead(401);return res.end('unauthorized');}
       const previousJobId=url.searchParams.get('previousJobId')||undefined;
-      const selected=await buildUiAutopilotSnapshot({token:GITHUB_TOKEN,owner:GITHUB_OWNER,repo:GITHUB_REPO,previousJobId});
-      const projected=projectCoreOwnedUiSnapshot(selected);
+      const projected=await buildCoreUiAssignmentSnapshot({pool,token:GITHUB_TOKEN,owner:GITHUB_OWNER,repo:GITHUB_REPO,previousJobId});
       res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});
       return res.end(JSON.stringify(projected));
     }
