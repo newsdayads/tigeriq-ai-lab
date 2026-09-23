@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { readFile } from 'node:fs/promises';
 import {
   assertShellCommandAllowed,
   assertTigerIQTaskName,
@@ -77,5 +78,11 @@ describe('Power Automate Desktop guarded UI contract', () => {
   it('does not accept coordinate-style fields through the typed PAD request', () => {
     const normalized = assertPadUiRequest({ action: 'pad_windows', x: 10, y: 20 });
     expect(normalized).toEqual({ action: 'pad_windows' });
+  });
+
+  it('dispatches PAD keys without waiting on modal UI completion', async () => {
+    const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/pad-ui-broker.ps1', import.meta.url), 'utf8');
+    expect(source).toContain('[System.Windows.Forms.SendKeys]::Send($token)');
+    expect(source).not.toContain('[System.Windows.Forms.SendKeys]::SendWait($token)');
   });
 });

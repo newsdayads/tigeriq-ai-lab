@@ -190,7 +190,7 @@ function Send-PadKey($Request) {
   }
   $token = $map[[string]$Request.key]
   if (-not $token) { throw 'TIGERIQ_PAD_UI_KEY_NOT_ALLOWED' }
-  [System.Windows.Forms.SendKeys]::SendWait($token)
+  [System.Windows.Forms.SendKeys]::Send($token)
   return [pscustomobject]@{ Key=[string]$Request.key }
 }
 
