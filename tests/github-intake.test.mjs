@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { processGitHubIssue, classifyRisk, isZeroCost } from '../apps/tigeriq-coding-lane/github-intake.mjs';
-import { cleanupTerminalObjectiveJobs, materializeGithubIssues } from '../apps/tigeriq-core/github-intake.mjs';
+import { cleanupTerminalObjectiveJobs, materializeGithubIssues, syncGithubOutcomes } from '../apps/tigeriq-core/github-intake.mjs';
 
 test('isZeroCost checks label correctly', () => {
   assert.strictEqual(isZeroCost([{ name: 'zero-cost-reversible' }]), true);
@@ -56,6 +56,15 @@ function coreBacklogPool(){
     if(q.includes("metadata->>'source'='github' and status='active'")){
       const active=objectives.some(o=>o.metadata?.source==='github'&&o.status==='active');
       return {rowCount:active?1:0,rows:active?[{id:'active'}]:[]};
+    }
+    if(q.includes("select id,status,summary,metadata from tigeriq_objectives where metadata->>'source'='github'")){
+      const rows=objectives.filter(o=>o.metadata?.source==='github').map(o=>({id:o.id,status:o.status,summary:o.summary||'',metadata:o.metadata}));
+      return {rowCount:rows.length,rows};
+    }
+    if(q.startsWith('update tigeriq_objectives set status=$2,summary=$3,metadata=metadata||$4::jsonb')){
+      const row=objectives.find(o=>o.id===params[0]);
+      if(row){row.status=params[1];row.summary=params[2];row.metadata={...row.metadata,...JSON.parse(params[3])};}
+      return {rowCount:row?1:0,rows:[]};
     }
     if(q.startsWith('update tigeriq_jobs j')){
       const terminal=new Set(objectives.filter(o=>['completed','blocked'].includes(o.status)).map(o=>o.id));
@@ -182,4 +191,39 @@ test('terminal objective orphan queued and waiting_resource jobs are failed clos
   assert.strictEqual(pool.jobs.find(j=>j.id==='JOB-Q').status,'failed');
   assert.strictEqual(pool.jobs.find(j=>j.id==='JOB-W').status,'failed');
   assert.strictEqual(pool.jobs.find(j=>j.id==='JOB-D').status,'done');
+});
+
+
+test('closed source issue terminalizes stale active GitHub objective and releases intake lock',async()=>{
+  const pool=coreBacklogPool();
+  pool.objectives.push({
+    id:'OBJ-GH-1620-Rstale',
+    status:'active',
+    summary:'',
+    metadata:{
+      source:'github',
+      issueNumber:1620,
+      executionSurface:'CORE_OPENCLAW_BOUNDED',
+      githubClaimReported:true,
+      githubResultReported:true,
+      sourceRevision:'old',
+    },
+  });
+  const closed={number:1620,state:'closed',state_reason:'not_planned',closed_at:'2026-09-23T10:43:42Z',title:'stale canary',body:''};
+  const nextIssue={number:60,state:'open',state_reason:null,updated_at:'2026-09-23T10:44:00Z',title:'next read-only work',body:READ_ONLY_BASE+'\\nOWNER_DIRECT=true\\nPRIORITY=P0',html_url:'https://example/60'};
+  const fetchImpl=async(url)=>{
+    if(url.endsWith('/issues/1620'))return response(closed);
+    if(url.includes('/issues?'))return response([nextIssue]);
+    return response({});
+  };
+  const sync=await syncGithubOutcomes({pool,fetchImpl,token:'fake'});
+  assert.deepStrictEqual(sync,{claims:0,results:0});
+  assert.strictEqual(pool.objectives[0].status,'blocked');
+  assert.strictEqual(pool.objectives[0].metadata.githubSourceState,'closed');
+  assert.strictEqual(pool.objectives[0].metadata.githubSourceStateReason,'not_planned');
+
+  const out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
+  assert.strictEqual(out.created,1);
+  assert.strictEqual(out.issueNumber,60);
+  assert.strictEqual(pool.objectives.at(-1).metadata.issueNumber,60);
 });
