@@ -56,8 +56,18 @@ export function priorityOf(issue:GithubIssue):number{
   const base=PRIORITY[String(meta.PRIORITY||'P3').toUpperCase()]??PRIORITY.P3;
   return meta.OWNER_DIRECT==='true'?base-10:base;
 }
+export function isManualOnlyAppChromeMaintenance(issue:GithubIssue):boolean{
+  const title=String(issue?.title??'');
+  const body=String(issue?.body??'');
+  return /\[APP-CHROME\]/i.test(title)
+    || /^RESOURCE_SCOPE=APP_CHROME_/mi.test(body)
+    || /^ALLOW_PATH_PREFIX=apps\/chrome-controller(?:\/|$)/mi.test(body)
+    || /apps\/chrome-controller\//i.test(body);
+}
+
 export function isSelfRunSafe(issue:GithubIssue):boolean{
   if(issue.pull_request||issue.state!=='open')return false;
+  if(isManualOnlyAppChromeMaintenance(issue))return false;
   const meta=parseWorkOrderMetadata(issue.body);
   if(meta.TIGERIQ_EXECUTABLE!=='true')return false;
   if(meta.AUTO_QUEUE==='EXCLUDED')return false;
