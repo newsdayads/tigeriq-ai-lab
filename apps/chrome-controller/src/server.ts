@@ -1354,6 +1354,9 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
         const state=states.get(workerId)!;
         const purpose=String(data.purpose??'NORMAL').trim().toUpperCase();
         const staleWorkingRecovery=workerId==='NV02'&&purpose==='STALE_WORKING_RECOVERY';
+        const workingStuckStop=purpose==='WORKING_STUCK_STOP'
+          && state.lastHeartbeat?.uiBusy===true
+          && state.lastHeartbeat?.stopVisible===true;
         const stalledRecovery=workerId==='NV02'&&purpose==='STALLED_RECOVERY';
         const modelProfileRecovery=workerId==='NV02'&&purpose==='MODEL_PROFILE_RECOVERY';
         const checkpointRecovery=workerId==='NV02'&&purpose==='CHECKPOINT_DURABLE';
@@ -1369,6 +1372,7 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
           ||purpose==='CHAT_LOAD_RETRY'
           ||purpose==='CHAT_LOAD_F5'
           ||purpose==='DUPLICATE_TAB_PRUNE'
+          ||purpose==='WORKING_STUCK_STOP'
           ||purpose.startsWith('WORKER_REOPEN_CLOSE:')
         );
         const periodicF5=workerId==='NV02'&&['PERIODIC_F5_REFRESH','WORKING_UNCHANGED_F5_RECHECK'].includes(purpose);
@@ -1387,7 +1391,7 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
           && !(nv02NextJob?.workerId==='NV02'&&['QUEUED','READY','RUNNING'].includes(String(nv02NextJob.status||'')));
         const continuityLeaseAllowed=continuitySameJob||continuityCurrentChatOnly;
         const uiContinuityLeaseAllowed=continuityLeaseAllowed||genericUiContinuityMaintenance;
-        const boundedRecovery=staleWorkingRecovery||stalledRecovery||modelProfileRecovery||checkpointRecovery||chatRotation||chatLoadRecovery||periodicF5||currentChatRestore||genericUiContinuityMaintenance;
+        const boundedRecovery=staleWorkingRecovery||workingStuckStop||stalledRecovery||modelProfileRecovery||checkpointRecovery||chatRotation||chatLoadRecovery||periodicF5||currentChatRestore||genericUiContinuityMaintenance;
         const chatLoadRecoveryStateAllowed=chatLoadRecovery
           && state.lastHeartbeat?.chatLoadError===true
           && (!chatLoadRetryRecovery||state.lastHeartbeat?.chatRetryReady===true);
@@ -1398,7 +1402,8 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
         const security=heartbeatStopReason(state.lastHeartbeat);
         if(security)throw new Error(security);
         if(chatLoadRecovery&&!chatLoadRecoveryStateAllowed)throw new Error(`CHAT_LOAD_RECOVERY_STATE_REQUIRED:${workerId}`);
-        if(state.lastHeartbeat?.uiBusy!==false&&!staleWorkingRecovery&&!periodicF5&&!chatLoadRecoveryStateAllowed)throw new Error(`WORKER_UI_BUSY_OR_UNKNOWN:${workerId}`);
+        if(state.lastHeartbeat?.uiBusy!==false&&!staleWorkingRecovery&&!workingStuckStop&&!periodicF5&&!chatLoadRecoveryStateAllowed)throw new Error(`WORKER_UI_BUSY_OR_UNKNOWN:${workerId}`);
+        if(purpose==='WORKING_STUCK_STOP'&&!workingStuckStop)throw new Error(`WORKING_STUCK_STOP_REQUIRES_VISIBLE_STOP:${workerId}`);
         if(staleWorkingRecovery&&state.lastHeartbeat?.uiBusy!==true)throw new Error(`STALE_WORKING_RECOVERY_REQUIRES_BUSY:${workerId}`);
         if(continuityContinue&&!continuityLeaseAllowed)throw new Error('CONTINUITY_SAME_JOB_IDENTITY_REQUIRED:NV02');
         if(workerHasActiveJob(workerId,{allowWaitingEvidence:continuityContinue,allowContinuable:continuityContinue})&&!boundedRecovery&&!uiContinuityLeaseAllowed)throw new Error(`WORKER_ACTIVE_JOB:${workerId}`);
