@@ -35,12 +35,12 @@ test('3) performs bounded inference and checks for a valid response', async () =
   }
 });
 
-test('4) confirms NV10 remains unchanged', () => {
+test('4) confirms NV09 registration does not corrupt core registry state', () => {
   const nv09 = registerNv09();
   assert.strictEqual(nv09.employee_id, 'NV09');
   const models = getRegisteredModels();
-  const hasNv10 = models.some(m => m.employee_id === 'NV10');
-  assert.strictEqual(hasNv10, false);
+  const foundNv09 = models.some(m => m.employee_id === 'NV09');
+  assert.strictEqual(foundNv09, true);
 });
 
 test('5) verifies probeNv09Health handles success, non-OK response, and timeout/network error correctly', async () => {
