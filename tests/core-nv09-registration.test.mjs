@@ -2,12 +2,17 @@ import test from 'node:test';
 import assert from 'node:assert';
 import { registerNv09, getRegisteredModels, setModelHealth, runBoundedInferenceNv09, HEALTH_STATES } from '../apps/tigeriq-core/registry.mjs';
 
-test('1) registers NV09 correctly', () => {
-  const nv09 = registerNv09();
-  assert.strictEqual(nv09.employee_id, 'NV09');
-  assert.strictEqual(nv09.model, 'qwen3-coder:30b');
-  assert.strictEqual(nv09.endpoint, 'http://127.0.0.1:11434');
-  assert.strictEqual(nv09.health, HEALTH_STATES.IDLE_ON_DEMAND);
+test('1) registers NV09 correctly with IDLE_ON_DEMAND and supports restart idempotency', () => {
+  const nv09First = registerNv09();
+  assert.strictEqual(nv09First.employee_id, 'NV09');
+  assert.strictEqual(nv09First.model, 'qwen3-coder:30b');
+  assert.strictEqual(nv09First.endpoint, 'http://127.0.0.1:11434');
+  assert.strictEqual(nv09First.health, HEALTH_STATES.IDLE_ON_DEMAND);
+
+  // Idempotent re-registration check
+  const nv09Second = registerNv09();
+  assert.strictEqual(nv09Second.employee_id, 'NV09');
+  assert.strictEqual(nv09Second.health, HEALTH_STATES.IDLE_ON_DEMAND);
 });
 
 test('2) verifies Core status includes NV09 with correct model and health', () => {
@@ -30,10 +35,32 @@ test('3) performs bounded inference and checks for a valid response', async () =
   }
 });
 
-test('4) confirms NV10 remains unchanged', () => {
+test('4) confirms NV09 registration does not corrupt core registry state', () => {
   const nv09 = registerNv09();
   assert.strictEqual(nv09.employee_id, 'NV09');
   const models = getRegisteredModels();
-  const hasNv10 = models.some(m => m.employee_id === 'NV10');
-  assert.strictEqual(hasNv10, false);
+  const foundNv09 = models.some(m => m.employee_id === 'NV09');
+  assert.strictEqual(foundNv09, true);
+});
+
+test('5) verifies probeNv09Health handles success, non-OK response, and timeout/network error correctly', async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    // Success scenario
+    globalThis.fetch = async () => ({ ok: true, json: async () => ({}) });
+    const h1 = await probeNv09Health();
+    assert.strictEqual(h1, HEALTH_STATES.IDLE_ON_DEMAND);
+
+    // Non-OK response scenario
+    globalThis.fetch = async () => ({ ok: false, status: 500 });
+    const h2 = await probeNv09Health();
+    assert.strictEqual(h2, HEALTH_STATES.ERROR);
+
+    // Timeout / Network error scenario
+    globalThis.fetch = async () => { throw new Error('Network failure'); };
+    const h3 = await probeNv09Health();
+    assert.strictEqual(h3, HEALTH_STATES.ERROR);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

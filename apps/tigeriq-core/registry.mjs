@@ -3,6 +3,8 @@ export const HEALTH_STATES = { IDLE_ON_DEMAND: 'IDLE_ON_DEMAND', BUSY: 'BUSY', E
 const registeredModels = new Map();
 
 export function registerNv09() {
+  const existing = registeredModels.get('NV09');
+  if (existing) return existing;
   const config = {
     employee_id: 'NV09',
     model: 'qwen3-coder:30b',
@@ -11,6 +13,42 @@ export function registerNv09() {
   };
   registeredModels.set('NV09', config);
   return config;
+}
+
+const globalFetch = (...args) => (typeof globalThis.fetch === 'function' ? globalThis.fetch(...args) : global.fetch(...args));
+
+export async function probeNv09Health() {
+  const entry = registeredModels.get('NV09') || registerNv09();
+  try {
+    const res = await globalFetch(`${entry.endpoint}/api/tags`, { method: 'GET' });
+    if (res.ok) {
+      setModelHealth('NV09', HEALTH_STATES.IDLE_ON_DEMAND);
+      return HEALTH_STATES.IDLE_ON_DEMAND;
+    } else {
+      setModelHealth('NV09', HEALTH_STATES.ERROR);
+      return HEALTH_STATES.ERROR;
+    }
+  } catch (_err) {
+    setModelHealth('NV09', HEALTH_STATES.ERROR);
+    return HEALTH_STATES.ERROR;
+  }
+}();
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 2000);
+    const res = await globalFetch(`${entry.endpoint}/api/tags`, { signal: controller.signal });
+    clearTimeout(timer);
+    if (res.ok) {
+      setModelHealth('NV09', HEALTH_STATES.IDLE_ON_DEMAND);
+      return HEALTH_STATES.IDLE_ON_DEMAND;
+    } else {
+      setModelHealth('NV09', HEALTH_STATES.ERROR);
+      return HEALTH_STATES.ERROR;
+    }
+  } catch (_err) {
+    setModelHealth('NV09', HEALTH_STATES.ERROR);
+    return HEALTH_STATES.ERROR;
+  }
 }
 
 export function getRegisteredModels() {
