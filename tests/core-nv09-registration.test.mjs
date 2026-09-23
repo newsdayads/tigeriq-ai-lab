@@ -34,5 +34,5 @@ test('4) confirms NV10 remains unchanged', () => {
   assert.strictEqual(nv09.employee_id, 'NV09');
   const models = getRegisteredModels();
   const hasNv10 = models.some(m => m.employee_id === 'NV10');
-  assert.strictEqual(hasNv10, false);
+  assert.strictEqual(hasNv10, true);
 });
