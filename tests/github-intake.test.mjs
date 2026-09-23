@@ -50,8 +50,8 @@ test('persistence verification through injected evidence sink', () => {
 function response(data,ok=true,status=200){return {ok,status,json:async()=>data};}
 
 function coreBacklogPool(){
-  const objectives=[]; const events=[];
-  return {objectives,events,async query(q,params=[]){
+  const objectives=[]; const events=[]; const jobs=[];
+  return {objectives,events,jobs,async query(q,params=[]){
     if(q.includes("metadata->>'source'='github' and status='active'")){
       const active=objectives.some(o=>o.metadata?.source==='github'&&o.status==='active');
       return {rowCount:active?1:0,rows:active?[{id:'active'}]:[]};
@@ -61,10 +61,22 @@ function coreBacklogPool(){
       return {rowCount:found?1:0,rows:found?[{id:params[0]}]:[]};
     }
     if(q.includes('insert into tigeriq_objectives')){
-      objectives.push({id:params[0],objective:params[1],priority:params[2],metadata:JSON.parse(params[3]),status:'active'});
+      objectives.push({id:params[0],objective:params[1],priority:params[2],metadata:JSON.parse(params[3]),status:'active',summary:null});
       return {rowCount:1,rows:[]};
     }
-    if(q.includes("insert into tigeriq_events")){
+    if(q.includes('insert into tigeriq_jobs')){
+      jobs.push({id:params[0],objective_id:params[1],title:params[2],prompt:params[3],capability:'pc_operator',phase_index:0,max_attempts:2,status:'queued'});
+      return {rowCount:1,rows:[]};
+    }
+    if(q.includes("update tigeriq_objectives set next_check_at=now(),summary='direct bounded OpenClaw job materialized'")){
+      const objective=objectives.find(o=>o.id===params[0]); if(objective)objective.summary='direct bounded OpenClaw job materialized';
+      return {rowCount:objective?1:0,rows:[]};
+    }
+    if(q.includes("GITHUB_PC_OPERATOR_JOB_MATERIALIZED")){
+      events.push({type:'GITHUB_PC_OPERATOR_JOB_MATERIALIZED',objectiveId:params[0],jobId:params[1],data:JSON.parse(params[2])});
+      return {rowCount:1,rows:[]};
+    }
+    if(q.includes("GITHUB_OBJECTIVE_MATERIALIZED")){
       events.push({type:'GITHUB_OBJECTIVE_MATERIALIZED',objectiveId:params[0],data:JSON.parse(params[1])});
       return {rowCount:1,rows:[]};
     }
@@ -78,7 +90,7 @@ NO_CODE_CHANGE=true
 NO_PC01_SHELL=true
 CAPABILITY=review`;
 
-test('owner-direct pc_operator GitHub intake materializes bounded OpenClaw objective',async()=>{
+test('owner-direct pc_operator GitHub intake materializes exactly one deterministic OpenClaw job without Manager AI',async()=>{
   const pool=coreBacklogPool();
   const body=`TIGERIQ_EXECUTABLE=true
 OWNER_POLICY=AUTO
@@ -87,15 +99,25 @@ PRIORITY=P0
 CAPABILITY=pc_operator
 NO_CODE_CHANGE=true
 NO_PC01_SHELL=true
-Perform only the assigned bounded PC canary through OpenClaw.`;
-  const issues=[{number:1608,state:'open',title:'OpenClaw canary',body,html_url:'https://example/1608'}];
+
+SINGLE ASSIGNED JOB
+Use tigeriq_pc tcp_probe on 127.0.0.1:18789, then write/read D:\\TigerIQ\\State\\canary.txt with exact content CANARY_OK.
+
+ACCEPTANCE
+Return structured tool evidence.`;
+  const issues=[{number:1611,state:'open',title:'OpenClaw canary',body,html_url:'https://example/1611'}];
   const fetchImpl=async(url)=>url.includes('/issues?')?response(issues):response({});
   const out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
-  assert.strictEqual(out.issueNumber,1608);
+  assert.strictEqual(out.issueNumber,1611);
   assert.strictEqual(pool.objectives[0].metadata.capability,'pc_operator');
   assert.strictEqual(pool.objectives[0].metadata.executionSurface,'CORE_OPENCLAW_BOUNDED');
-  assert.match(pool.objectives[0].objective,/Core must create only the assigned pc_operator work/);
-  assert.match(pool.objectives[0].objective,/NO arbitrary PC01 shell/);
+  assert.strictEqual(pool.jobs.length,1);
+  assert.strictEqual(pool.jobs[0].id,'JOB-OC-GH-1611');
+  assert.strictEqual(pool.jobs[0].capability,'pc_operator');
+  assert.strictEqual(pool.jobs[0].max_attempts,2);
+  assert.match(pool.jobs[0].prompt,/Use tigeriq_pc tcp_probe/);
+  assert.match(pool.jobs[0].prompt,/Do not inspect or choose backlog/);
+  assert.ok(pool.events.some(e=>e.type==='GITHUB_PC_OPERATOR_JOB_MATERIALIZED'&&e.jobId==='JOB-OC-GH-1611'));
 });
 
 test('read-only GitHub backlog runs one-at-a-time and chains by OWNER_DIRECT then priority',async()=>{
