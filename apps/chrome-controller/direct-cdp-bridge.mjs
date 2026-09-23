@@ -371,6 +371,7 @@ function loadNv02Continuity(){
     rotationRetryAt:Number(raw.rotationRetryAt)||0,
     chatLoadRecoveryStage:Number(raw.chatLoadRecoveryStage)||0,
     chatLoadBlockedUntil:Number(raw.chatLoadBlockedUntil)||0,
+    chatLoadClearCandidateAt:Number(raw.chatLoadClearCandidateAt)||0,
   };
 }
 function saveNv02Continuity(state){
