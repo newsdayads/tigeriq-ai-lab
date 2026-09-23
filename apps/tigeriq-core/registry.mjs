@@ -13,7 +13,7 @@ export function registerNv09() {
   return config;
 }
 
-const globalFetch = typeof globalThis.fetch === 'function' ? globalThis.fetch.bind(globalThis) : global.fetch;
+const globalFetch = (...args) => (typeof globalThis.fetch === 'function' ? globalThis.fetch(...args) : global.fetch(...args));
 
 export async function probeNv09Health() {
   const entry = registeredModels.get('NV09') || registerNv09();
