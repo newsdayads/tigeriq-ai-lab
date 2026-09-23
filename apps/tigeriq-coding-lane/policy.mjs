@@ -9,6 +9,7 @@ const PROTECTED=[
   /^docs\/SECURITY\.md$/i,
   /^scripts\/tigeriq-core\/(?:run-core|install-core-task|install-core-updater)\.ps1$/i,
   /^vercel\.json$/i,
+  /^apps\/chrome-controller(?:\/|$)/i,
 ];
 
 export function safeRepoPath(path){
