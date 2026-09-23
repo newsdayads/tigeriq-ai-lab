@@ -19,9 +19,19 @@ export function extractPcOperatorInstruction(body){
   return String(match?.[1]||'').trim();
 }
 
+export function isManualOnlyAppChromeMaintenance(title,body){
+  const t=String(title||'');
+  const b=String(body||'');
+  return /\[APP-CHROME\]/i.test(t)
+    || /^RESOURCE_SCOPE=APP_CHROME_/mi.test(b)
+    || /^ALLOW_PATH_PREFIX=apps\/chrome-controller(?:\/|$)/mi.test(b)
+    || /apps\/chrome-controller\//i.test(b);
+}
+
 export function parseExecutableIssue(issue){
   if(!issue||issue.pull_request||issue.state!=='open') return null;
   const body=String(issue.body||'');
+  if(isManualOnlyAppChromeMaintenance(issue.title,body)) return null;
   if(!hasExactFlag(body,'TIGERIQ_EXECUTABLE')||!hasExactFlag(body,'OWNER_POLICY','AUTO')) return null;
   if(/^EXECUTION_SURFACE=UI$/m.test(body)) return null;
   if(!hasExactFlag(body,'NO_CODE_CHANGE')||!hasExactFlag(body,'NO_PC01_SHELL')) return null;
