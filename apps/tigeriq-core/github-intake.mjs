@@ -1,5 +1,6 @@
 import { Pool } from 'pg';
 import { backlogOwnerDirect, sortBacklogSpecs } from './github-backlog-policy.mjs';
+import { buildDirectOpenClawGithubPrompt, directOpenClawGithubJobId, extractPcOperatorAssignment } from './openclaw-objective-policy.mjs';
 
 const DEFAULT_OWNER='newsdayads';
 const DEFAULT_REPO='tigeriq-ai-lab';
@@ -20,7 +21,7 @@ export function parseExecutableIssue(issue){
   const p=body.match(/^PRIORITY=(P[0-3])$/m)?.[1]||'P2';
   const capability=body.match(/^CAPABILITY=(general|reasoning|review|pc_operator)$/m)?.[1]||'reasoning';
   const ownerDirect=backlogOwnerDirect(body);
-  if(capability==='pc_operator'&&!ownerDirect)return null;
+  if(capability==='pc_operator'&&(!ownerDirect||!extractPcOperatorAssignment(body)))return null;
   return {number:Number(issue.number),title:String(issue.title||''),body,priority:p,capability,url:String(issue.html_url||''),ownerDirect};
 }
 
@@ -95,7 +96,16 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
       ? `GitHub OWNER_DIRECT bounded PC operator work item #${spec.number}. Core must create only the assigned pc_operator work and dispatch it through NV06/OpenClaw. Use only approved bounded TigerIQ/OpenClaw tools; NO arbitrary PC01 shell, repository source edit, Production/main mutation, paid action, credential/security change, reboot/shutdown, or destructive action. OpenClaw must not choose backlog/P0/new work. Return structured verified evidence and complete only when the assigned bounded action is satisfied.\n\n${context}`
       : `GitHub autonomous work item #${spec.number}. Execute only the read-only task below. Do not edit repository source, use PC01 shell, deploy, change credentials/security, spend money, reboot, or perform destructive actions. Ground conclusions only in the supplied GitHub context. When the requested analysis is satisfied, complete the objective.\n\n${context}`;
     const metadata={source:'github',issueNumber:spec.number,issueUrl:spec.url,capability:spec.capability,ownerDirect:spec.ownerDirect,dispatchReason:spec.ownerDirect?`OWNER_DIRECT>${spec.priority}`:`PRIORITY_${spec.priority}`,executionSurface:spec.capability==='pc_operator'?'CORE_OPENCLAW_BOUNDED':'READ_ONLY'};
-    await pool.query('insert into tigeriq_objectives(id,objective,priority,metadata) values($1,$2,$3,$4) on conflict(id) do nothing',[id,objective,spec.priority,JSON.stringify(metadata)]);
+    if(spec.capability==='pc_operator'){
+      await pool.query("insert into tigeriq_objectives(id,objective,priority,metadata,next_check_at) values($1,$2,$3,$4,now()+interval '1 minute') on conflict(id) do nothing",[id,objective,spec.priority,JSON.stringify(metadata)]);
+      const jobId=directOpenClawGithubJobId(spec.number);
+      const jobPrompt=buildDirectOpenClawGithubPrompt(spec);
+      await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,phase_index,max_attempts) values($1,$2,$3,$4,'pc_operator',0,2) on conflict(id) do nothing",[jobId,id,`GitHub #${spec.number} bounded OpenClaw job`.slice(0,200),jobPrompt]);
+      await pool.query("update tigeriq_objectives set next_check_at=now(),summary='direct bounded OpenClaw job materialized',updated_at=now() where id=$1",[id]);
+      await pool.query("insert into tigeriq_events(type,objective_id,job_id,data) values('GITHUB_PC_OPERATOR_JOB_MATERIALIZED',$1,$2,$3)",[id,jobId,JSON.stringify({issueNumber:spec.number,issueUrl:spec.url,capability:'pc_operator',executionSurface:'CORE_OPENCLAW_BOUNDED'})]);
+    }else{
+      await pool.query('insert into tigeriq_objectives(id,objective,priority,metadata) values($1,$2,$3,$4) on conflict(id) do nothing',[id,objective,spec.priority,JSON.stringify(metadata)]);
+    }
     await pool.query("insert into tigeriq_events(type,objective_id,data) values('GITHUB_OBJECTIVE_MATERIALIZED',$1,$2)",[id,JSON.stringify({issueNumber:spec.number,issueUrl:spec.url,ownerDirect:spec.ownerDirect,priority:spec.priority,dispatchReason:metadata.dispatchReason})]);
     return {created:1,skipped,active:0,considered:specs.length,issueNumber:spec.number};
   }
