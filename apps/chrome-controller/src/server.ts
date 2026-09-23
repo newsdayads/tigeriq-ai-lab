@@ -121,6 +121,8 @@ const selfRunEnabled=process.env.TIGERIQ_APP_CHROME_SELF_RUN!=='0';
 const selfRunGithubToken=String(process.env.TIGERIQ_GITHUB_TOKEN||process.env.GITHUB_TOKEN||'').trim();
 const selfRunGithubOwner=String(process.env.TIGERIQ_GITHUB_OWNER||'newsdayads').trim();
 const selfRunGithubRepo=String(process.env.TIGERIQ_GITHUB_REPO||'tigeriq-ai-lab').trim();
+const selfRunCoreStatusUrl=String(process.env.TIGERIQ_CORE_STATUS_URL||'http://100.97.23.87:8795/api/status').trim();
+const selfRunCodingStatusUrl=String(process.env.TIGERIQ_CODING_STATUS_URL||'http://100.97.23.87:8797/api/status').trim();
 const selfRunState:SelfRunRuntimeState={
   enabled:selfRunEnabled,
   lastTickAt:null,
@@ -510,7 +512,7 @@ function collectResourceScopes(value:unknown,scopes:Set<string>){
 }
 async function bestEffortExternalActiveScopes(){
   const scopes=new Set<string>();
-  for(const url of ['http://127.0.0.1:8795/api/status','http://127.0.0.1:8797/api/status']){
+  for(const url of [selfRunCoreStatusUrl,selfRunCodingStatusUrl]){
     try{
       const response=await fetch(url,{signal:AbortSignal.timeout(3000)});
       if(!response.ok)continue;
@@ -560,9 +562,27 @@ async function reconcileSelfRunWorker(workerId:WorkerId){
   const issue=await fetchGithubIssue({issueNumber,owner:selfRunGithubOwner,repo:selfRunGithubRepo,token:selfRunGithubToken});
   const evidenceRef=issue.html_url;
   if(issue.state==='closed'){
-    selfRunClaims.find(issueNumber,workerId)&&selfRunClaims.release(selfRunClaims.find(issueNumber,workerId)!.claimId);
-    completeSelfRunJob(workerId,active.jobId,evidenceRef,`GitHub issue #${issueNumber} closed; self-run work terminalized.`);
-    log('APP_CHROME_SELF_RUN_DONE',{workerId,jobId:active.jobId,issueNumber});
+    const localClaim=selfRunClaims.find(issueNumber,workerId);
+    const completed=String(issue.state_reason||'')==='completed';
+    if(localClaim){
+      await releaseGithubClaim({
+        claimId:localClaim.claimId,workerId,issueNumber,state:completed?'DONE':'BLOCKED',
+        owner:selfRunGithubOwner,repo:selfRunGithubRepo,token:selfRunGithubToken,
+      }).catch(()=>{});
+      selfRunClaims.release(localClaim.claimId);
+    }
+    if(completed){
+      completeSelfRunJob(workerId,active.jobId,evidenceRef,`GitHub issue #${issueNumber} closed completed; self-run work terminalized.`);
+      log('APP_CHROME_SELF_RUN_DONE',{workerId,jobId:active.jobId,issueNumber,stateReason:issue.state_reason??null});
+    }else{
+      uiJobLedger.transition(workerId,active.jobId,'BLOCKED',{
+        evidenceRef,
+        blocker:`SOURCE_ISSUE_CLOSED_${String(issue.state_reason||'UNKNOWN').toUpperCase()}`,
+        nextAction:null,
+        result:`GitHub issue #${issueNumber} closed without completed state.`,
+      });
+      log('APP_CHROME_SELF_RUN_RELEASED',{workerId,jobId:active.jobId,issueNumber,terminal:'BLOCKED',stateReason:issue.state_reason??null});
+    }
     persistEvidence();
     return true;
   }
