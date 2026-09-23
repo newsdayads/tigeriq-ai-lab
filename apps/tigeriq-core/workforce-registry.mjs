@@ -86,12 +86,64 @@ export async function refreshRegistryWorkforce(force=false){
 
 export function normalizeRuntimeResources(resources, workforce){
   const roster=new Map((workforce||[]).map(x=>[x.employee_id,x]));
-  return (Array.isArray(resources)?resources:[]).map(resource=>{
-    if(resource?.employee_id==='NV02' && String(resource?.provider||'').toLowerCase()==='ollama' && roster.get('NV02')?.name==='ChatGPT Plus' && roster.get('NV10')?.name==='Ollama') {
-      return {...resource,employee_id:'NV10',runtime_source_employee_id:'NV02',identity_migrated:true};
+  const rawResources = Array.isArray(resources) ? resources : [];
+  const mapped = rawResources.map(resource => {
+    let empId = resource?.employee_id;
+    if(empId==='NV02' && String(resource?.provider||'').toLowerCase()==='ollama' && roster.get('NV02')?.name==='ChatGPT Plus' && roster.get('NV10')?.name==='Ollama') {
+      empId='NV10';
     }
-    return resource;
+    const base = roster.get(empId) || {};
+    const isChrome = (empId >= 'NV02' && empId <= 'NV04');
+    const isOpenClaw = (empId === 'NV06');
+    const typeBadge = resource?.type_badge || base.type_badge || (isChrome ? 'Chrome Controller' : isOpenClaw ? 'OpenClaw Gateway' : 'Core/Ollama/API');
+    const liveStatus = resource?.live_status || resource?.status || base.status || 'OFFLINE';
+    const staleFallback = Boolean(resource?.stales || resource?.stale_fallback || false);
+    return {
+      ...resource,
+      employee_id: empId,
+      name: resource?.name || base.name || empId,
+      role: resource?.role || base.role || 'Worker',
+      type_badge: typeBadge,
+      live_status: liveStatus,
+      stale_fallback: staleFallback
+    };
   });
+  const presentIds = new Set(mapped.map(m => m.employee_id));
+  for (const [id, base] of roster.entries()) {
+    if (!presentIds.has(id)) {
+      const isChrome = (id >= 'NV02' && id <= 'NV04');
+      const isOpenClaw = (id === 'NV06');
+      const typeBadge = base.type_badge || (isChrome ? 'Chrome Controller' : isOpenClaw ? 'OpenClaw Gateway' : 'Core/Ollama/API');
+      mapped.push({
+        employee_id: id,
+        name: base.name || id,
+        role: base.role || 'Worker',
+        type_badge: typeBadge,
+        live_status: 'OFFLINE',
+        stale_fallback: true
+      });
+    }
+  }
+  const fullSet = [];
+  for (const [id] of roster.entries()) {
+    const found = mapped.find(m => m.employee_id === id);
+    if (found) {
+      fullSet.push(found);
+    } else {
+      const base = roster.get(id);
+      const isChrome = (id >= 'NV02' && id <= 'NV04');
+      const isOpenClaw = (id === 'NV06');
+      fullSet.push({
+        employee_id: id,
+        name: base?.name || id,
+        role: base?.role || 'Worker',
+        type_badge: base?.type_badge || (isChrome ? 'Chrome Controller' : isOpenClaw ? 'OpenClaw Gateway' : 'Core/Ollama/API'),
+        live_status: 'OFFLINE',
+        stale_fallback: true
+      });
+    }
+  }
+  return fullSet.sort((a,b)=>a.employee_id.localeCompare(b.employee_id));
 }
 
-export { parseRegistryBody, completeRoster };
+export { parseRegistryBody, completeRoster, normalizeRuntimeResources };
