@@ -1239,7 +1239,33 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
         json(res,202,{ok:true,plannedRefresh:true});
         return true;
       }
-      if(action==='safe-recover'){browserMutationLeases.assertControllerAllowed(workerId);if(utilityPausedWorkers.has(workerId))throw new Error(`UTILITY_WORKER_PAUSED:${workerId}`);if(state.blocked)throw new Error('SAFE_RECOVER_BLOCKED'); if(recentHeartbeat(workerId)){await layoutWorker(workerId);json(res,200,{ok:true,mode:'ATTACH_EXISTING'});return true;} await startWorker(workerId);json(res,200,{ok:true,mode:'BROKER_LAUNCH'});return true;}
+      if(action==='safe-recover'){
+        browserMutationLeases.assertControllerAllowed(workerId);
+        if(utilityPausedWorkers.has(workerId))throw new Error(`UTILITY_WORKER_PAUSED:${workerId}`);
+        if(state.blocked)throw new Error('SAFE_RECOVER_BLOCKED');
+        if(recentHeartbeat(workerId)){
+          await layoutWorker(workerId);
+          json(res,200,{ok:true,mode:'ATTACH_EXISTING'});
+          return true;
+        }
+        const presence=await brokerWorkerPresence(workerId);
+        if(presence==='AMBIGUOUS')throw new Error(`RECOVERY_AMBIGUOUS_WINDOW:${workerId}`);
+        if(presence==='RUNNING'){
+          state.status='RECOVERY_ATTACH_WAIT';
+          state.lastError=undefined;
+          log('SAFE_RECOVER_ATTACH_EXISTING_STALE_HEARTBEAT',{workerId,lastWindowId:state.lastWindowId??null});
+          persistEvidence();
+          json(res,202,{ok:true,mode:'ATTACH_EXISTING_STALE_HEARTBEAT'});
+          return true;
+        }
+        state.windowState='CLOSED';
+        state.lastError=undefined;
+        await launchChrome(workerId);
+        log('SAFE_RECOVER_BROKER_LAUNCH_REQUESTED',{workerId});
+        persistEvidence();
+        json(res,202,{ok:true,mode:'BROKER_LAUNCH_REQUESTED'});
+        return true;
+      }
       if(action==='archive'){const data=await body(req);if(typeof data.receiptRef!=='string'||!data.receiptRef.startsWith('https://github.com/'))throw new Error('ARCHIVE_DURABLE_RECEIPT_REQUIRED');if(workerHasActiveJob(workerId)||state.lastHeartbeat?.uiBusy)throw new Error('ARCHIVE_ACTIVE_JOB_FORBIDDEN');await uiQueue.enqueue(()=>sendCommand(workerId,'ARCHIVE_CHAT',{receiptRef:data.receiptRef}));json(res,200,{ok:true});return true;}
     }catch(error){json(res,409,{ok:false,error:String(error)});return true;}
   }
