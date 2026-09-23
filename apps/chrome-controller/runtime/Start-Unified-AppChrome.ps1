@@ -49,6 +49,32 @@ function Read-ValidatedActive{
   [pscustomobject]@{deploy=$deploy;head=$head;bridgeHash=$bridgeHash;bridge=$bridge}
 }
 
+function Resolve-GitHubToken{
+  if(-not[string]::IsNullOrWhiteSpace($env:TIGERIQ_GITHUB_TOKEN)){return $env:TIGERIQ_GITHUB_TOKEN.Trim()}
+  try{
+    $gh=Get-Command gh.exe -ErrorAction Stop
+    $token=(& $gh.Source auth token 2>$null|Select-Object -First 1)
+    if(-not[string]::IsNullOrWhiteSpace([string]$token)){
+      Write-SupervisorEvent 'GITHUB_AUTH_SOURCE' @{source='GH_KEYRING'}
+      return ([string]$token).Trim()
+    }
+  }catch{
+    Write-SupervisorEvent 'GITHUB_AUTH_SOURCE_UNAVAILABLE' @{source='GH_KEYRING';error=$_.Exception.Message}
+  }
+  try{
+    if(Test-Path -LiteralPath $githubTokenFile){
+      $token=(Get-Content -LiteralPath $githubTokenFile -Raw -ErrorAction Stop).Trim()
+      if(-not[string]::IsNullOrWhiteSpace($token)){
+        Write-SupervisorEvent 'GITHUB_AUTH_SOURCE' @{source='PROTECTED_TOKEN_FILE'}
+        return $token
+      }
+    }
+  }catch{
+    Write-SupervisorEvent 'GITHUB_AUTH_SOURCE_UNAVAILABLE' @{source='PROTECTED_TOKEN_FILE';error=$_.Exception.Message}
+  }
+  return ''
+}
+
 function Set-RuntimeEnvironment($Active){
   $env:TIGERIQ_CHROME_CONFIG=$ConfigPath
   $env:TIGERIQ_APPROVED_HEAD=$Active.head
@@ -59,7 +85,9 @@ function Set-RuntimeEnvironment($Active){
   $env:TIGERIQ_WINDOWS_SESSION_ID=$env:TIGERIQ_SESSION_ID
   $env:SESSIONNAME='Console'
   if(Test-Path -LiteralPath $tokenFile){$env:TIGERIQ_NV02_WORKER_TOKEN=(Get-Content -LiteralPath $tokenFile -Raw).Trim()}
-  if(Test-Path -LiteralPath $githubTokenFile){$env:TIGERIQ_GITHUB_TOKEN=(Get-Content -LiteralPath $githubTokenFile -Raw).Trim()}
+  $githubToken=Resolve-GitHubToken
+  if(-not[string]::IsNullOrWhiteSpace($githubToken)){$env:TIGERIQ_GITHUB_TOKEN=$githubToken}
+  else{$env:TIGERIQ_GITHUB_TOKEN=''}
   $env:TIGERIQ_APP_CHROME_SELF_RUN='1'
 }
 
