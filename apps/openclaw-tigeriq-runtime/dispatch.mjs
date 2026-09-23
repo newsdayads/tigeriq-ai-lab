@@ -18,8 +18,8 @@ const RETRYABLE_FAILED_KINDS=new Set(['openclaw_failure','worker_timeout','spawn
 const SAFE_KEY=/^[A-Za-z0-9._:-]{8,160}$/;
 const SAFE_SCOPE=/^[A-Za-z0-9._:/#-]{3,240}$/;
 const HARD_GATE_PATTERN='(?:production\\s+(?:deploy|release|publish)|(?:deploy|release|publish)\\b[^\\n.!?;]{0,80}\\bproduction|direct\\s+(?:main|master)|(?:push|merge|commit)\\b[^\\n.!?;]{0,80}\\b(?:main|master)|credential\\s+(?:change|rotate|write)|password\\s+(?:change|reset)|security[- ]boundary|paid\\s+(?:service|action|purchase)|purchase\\b|delete\\s+(?:repository|database|volume)|format\\s+(?:disk|drive)|rm\\s+-rf|reboot|shutdown)';
-const NEGATION=/\\b(?:do\\s+not|don't|never|must\\s+not|forbidden\\s+to)\\b/i;
-const REVERSAL=/\\b(?:avoid|refuse|block|prevent|prohibit|forbid|skip)\\b/i;
+const NEGATION=/\b(?:do\s+not|don't|never|must\s+not|forbidden\s+to)\b/i;
+const REVERSAL=/\b(?:avoid|refuse|block|prevent|prohibit|forbid|skip)\b/i;
 
 export function hasHardGateTextIntent(value){
   const text=String(value||'');
