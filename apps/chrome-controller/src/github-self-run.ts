@@ -185,7 +185,7 @@ export async function claimGithubIssue({
   const active=activeAppChromeClaims(after);
   const winner=active.sort((a,b)=>Date.parse(a.createdAt)-Date.parse(b.createdAt)||a.claimId.localeCompare(b.claimId))[0];
   if(!winner||winner.claimId!==claimId){
-    await releaseGithubClaim({claimId,workerId,issueNumber:issue.number,state:'CLAIM_LOST',fetchImpl,owner,repo,token}).catch(()=>{});
+    await releaseGithubClaim({claimId,workerId,issueNumber:issue.number,state:'CLAIM_LOST',fetchImpl,owner,repo,token});
     return null;
   }
   return winner;
@@ -205,14 +205,31 @@ export async function closeGithubIssueCompleted({
     method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({state:'closed',state_reason:'completed'}),
   });
 }
-export function terminalMarkerFromComments(comments:GithubComment[]):'DONE'|'BLOCKED'|'EXTERNAL_WAIT'|null{
-  for(const comment of [...comments].sort((a,b)=>Number(b.id)-Number(a.id))){
-    const body=String(comment.body??'');
-    if(/(?:^|\n)(?:STATE|RESULT)\s*=\s*(?:DONE|COMPLETED)(?:\n|$)/i.test(body)||/(?:^|\n)REVIEW\s*=\s*PASS(?:\n|$)/i.test(body))return 'DONE';
-    if(/(?:^|\n)(?:STATE|RESULT)\s*=\s*EXTERNAL_WAIT(?:\n|$)/i.test(body))return 'EXTERNAL_WAIT';
-    if(/(?:^|\n)(?:STATE|RESULT)\s*=\s*BLOCKED(?:\n|$)/i.test(body)||/(?:^|\n)REVIEW\s*=\s*BLOCKED(?:\n|$)/i.test(body))return 'BLOCKED';
-  }
+function terminalMarkerFromBody(body:string):'DONE'|'BLOCKED'|'EXTERNAL_WAIT'|null{
+  if(/(?:^|\n)(?:STATE|RESULT)\s*=\s*(?:DONE|COMPLETED)(?:\n|$)/i.test(body)||/(?:^|\n)REVIEW\s*=\s*PASS(?:\n|$)/i.test(body))return 'DONE';
+  if(/(?:^|\n)(?:STATE|RESULT)\s*=\s*EXTERNAL_WAIT(?:\n|$)/i.test(body))return 'EXTERNAL_WAIT';
+  if(/(?:^|\n)(?:STATE|RESULT)\s*=\s*BLOCKED(?:\n|$)/i.test(body)||/(?:^|\n)REVIEW\s*=\s*BLOCKED(?:\n|$)/i.test(body))return 'BLOCKED';
   return null;
+}
+export function terminalMarkerFromComments(comments:GithubComment[],claimId=''):'DONE'|'BLOCKED'|'EXTERNAL_WAIT'|null{
+  const ordered=[...comments].sort((a,b)=>Number(a.id)-Number(b.id));
+  let relevant=ordered.filter((comment)=>{
+    const body=String(comment.body??'');
+    return !body.includes(CLAIM_HEADER)&&!body.includes(RELEASE_HEADER);
+  });
+  if(claimId){
+    const claimComment=ordered.find((comment)=>parseKeyValueBlock(comment.body,CLAIM_HEADER)?.claim_id===claimId);
+    if(!claimComment)return null;
+    relevant=relevant.filter((comment)=>Number(comment.id)>Number(claimComment.id));
+  }
+  const latest=relevant.at(-1);
+  if(!latest)return null;
+  const body=String(latest.body??'');
+  if(claimId){
+    const evidenceClaimId=body.split(/\r?\n/).map((line)=>line.trim()).find((line)=>/^CLAIM_ID\s*=/i.test(line))?.split('=').slice(1).join('=').trim()??'';
+    if(evidenceClaimId!==claimId)return null;
+  }
+  return terminalMarkerFromBody(body);
 }
 export function buildSelfRunPrompt(workerId:WorkerId,issue:GithubIssue,comments:GithubComment[],claim:AppChromeClaim):string{
   const recent=comments.slice(-12).map((x)=>String(x.body??'').trim()).filter(Boolean).join('\n\n--- COMMENT ---\n\n');
@@ -225,8 +242,9 @@ export function buildSelfRunPrompt(workerId:WorkerId,issue:GithubIssue,comments:
     'Đây là việc App Chrome tự lấy từ GitHub. Chỉ làm đúng Work Order này; không tự chuyển sang việc khác trong chat.',
     'Tuân thủ guardrail trong issue. Không MAIN/Production, không chi phí, không đổi credential/security, không destructive/irreversible.',
     'Làm liên tục đến DONE có evidence, BLOCKED thật, EXTERNAL_WAIT hoặc hard gate.',
-    'Khi DONE: cập nhật GitHub evidence và đóng chính issue này với state_reason=completed.',
-    'Khi BLOCKED/EXTERNAL_WAIT: cập nhật comment machine-readable STATE=BLOCKED hoặc STATE=EXTERNAL_WAIT cùng evidence/blocker.',
+    `Terminal evidence bắt buộc là COMMENT MỚI NHẤT của worker và phải có dòng CLAIM_ID=${claim.claimId}.`,
+    `Khi DONE: comment CLAIM_ID=${claim.claimId} + STATE=DONE (hoặc REVIEW=PASS nếu review) cùng evidence, sau đó đóng chính issue này với state_reason=completed.`,
+    `Khi BLOCKED/EXTERNAL_WAIT: comment CLAIM_ID=${claim.claimId} + STATE=BLOCKED hoặc STATE=EXTERNAL_WAIT cùng evidence/blocker.`,
     '',
     '--- FULL ISSUE ---',
     String(issue.body??''),

@@ -124,14 +124,19 @@ describe('App Chrome GitHub self-run policy',()=>{
     expect(listen.indexOf('acquireCanonicalServerOwnership(config.port)')).toBeLessThan(listen.indexOf('scheduleSelfRunTick(5000)'));
   });
 
-  it('releases GitHub + local claim when source issue closes and never maps not_planned close to DONE',()=>{
+  it('releases remote claim before local claim and never maps not_planned close to DONE',()=>{
     const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
+    const release=server.slice(server.indexOf('async function releaseSelfRunClaimRecord'),server.indexOf('async function releaseSelfRunClaim('));
     const reconcile=server.slice(server.indexOf('async function reconcileSelfRunWorker'),server.indexOf('async function selfRunTick'));
+    expect(release).toContain('await releaseGithubClaim({');
+    expect(release).toContain('selfRunClaims.release(claim.claimId)');
+    expect(release.indexOf('await releaseGithubClaim({')).toBeLessThan(release.indexOf('selfRunClaims.release(claim.claimId)'));
+    expect(release).toContain("'APP_CHROME_SELF_RUN_CLAIM_RELEASE_DEFERRED'");
     expect(reconcile).toContain("if(issue.state==='closed')");
-    expect(reconcile).toContain("await releaseGithubClaim({");
-    expect(reconcile).toContain("selfRunClaims.release(localClaim.claimId)");
+    expect(reconcile).toContain("await releaseSelfRunClaimRecord(localClaim,completed?'DONE':'BLOCKED')");
     expect(reconcile).toContain("const completed=String(issue.state_reason||'')==='completed'");
     expect(reconcile).toContain("SOURCE_ISSUE_CLOSED_");
+    expect(reconcile).toContain('terminalMarkerFromComments(comments,claim.claimId)');
   });
 
   it('creates exactly one durable claim and refuses a second active claim',async()=>{
@@ -155,21 +160,41 @@ describe('App Chrome GitHub self-run policy',()=>{
     expect(activeAppChromeClaims(comments)).toHaveLength(1);
   });
 
-  it('recognizes terminal worker evidence and builds a bounded full-issue prompt',()=>{
-    expect(terminalMarkerFromComments([{id:1,body:'STATE=BLOCKED\nblocker=x'}])).toBe('BLOCKED');
-    expect(terminalMarkerFromComments([{id:2,body:'REVIEW=PASS\nevidence=ok'}])).toBe('DONE');
+  it('accepts terminal evidence only from the latest comment for the current claim',()=>{
+    const comments=[
+      {id:1,body:'STATE=DONE\nevidence=stale'},
+      {id:2,body:'[APP_CHROME_CLAIM]\nclaim_id=abc\nworker=NV03\nissue=40\nscope=R40\nexpires_at=2099-01-01T00:00:00Z'},
+      {id:3,body:'CLAIM_ID=abc\nSTATE=DONE\nevidence=current'},
+    ];
+    expect(terminalMarkerFromComments(comments,'abc')).toBe('DONE');
+    expect(terminalMarkerFromComments([...comments,{id:4,body:'progress still checking'}],'abc')).toBeNull();
+    expect(terminalMarkerFromComments([
+      comments[1],
+      {id:5,body:'CLAIM_ID=wrong\nREVIEW=PASS\nevidence=wrong-claim'},
+    ],'abc')).toBeNull();
+
     const target=issue(40,'Review',SAFE+'\nREVIEW_ONLY=true\nRESOURCE_SCOPE=R40');
     const prompt=buildSelfRunPrompt('NV03',target,[],{claimId:'abc',workerId:'NV03',scope:'R40',issueNumber:40,expiresAt:'2099-01-01T00:00:00Z',createdAt:'2026-09-23T00:00:00Z'});
     expect(prompt).toContain('APP_CHROME_SELF_RUN=true');
     expect(prompt).toContain('CURRENT_WORK_ORDER=#40 - Review');
+    expect(prompt).toContain('CLAIM_ID=abc');
+    expect(prompt).toContain('COMMENT MỚI NHẤT');
     expect(prompt).toContain('--- FULL ISSUE ---');
-    expect(prompt).toContain('đóng chính issue này');
   });
 });
 
 describe('App Chrome self-run wiring',()=>{
   const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
   const supervisor=readFileSync('apps/chrome-controller/runtime/Start-Unified-AppChrome.ps1','utf8');
+
+  it('keeps an uncertain GitHub claim/release locally reserved instead of failing open',()=>{
+    const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
+    const tick=server.slice(server.indexOf('async function selfRunTick'),server.indexOf('function scheduleSelfRunTick'));
+    expect(tick).toContain("'APP_CHROME_SELF_RUN_GITHUB_CLAIM_UNCERTAIN'");
+    expect(tick).toContain('if(claim===undefined)continue');
+    expect(tick).toContain("const released=await releaseSelfRunClaimRecord(claim,'DISPATCH_ERROR')");
+    expect(tick).not.toContain("releaseGithubClaim({claimId:claim.claimId,workerId,issueNumber:issue.number,state:'DISPATCH_ERROR'");
+  });
 
   it('runs independently of external Core assignment while keeping Core available for collision hints',()=>{
     expect(server).toContain("const selfRunEnabled=process.env.TIGERIQ_APP_CHROME_SELF_RUN!=='0'");
@@ -185,9 +210,13 @@ describe('App Chrome self-run wiring',()=>{
     expect(server).not.toContain('if(!config.autopilot.enabled)return false; // self-run gate');
   });
 
-  it('reuses the existing PC01 GitHub token file without changing credentials',()=>{
+  it('reuses existing GitHub auth from the logged-on user keyring without changing credential ACLs',()=>{
+    expect(supervisor).toContain("Get-Command gh.exe");
+    expect(supervisor).toContain("auth token");
+    expect(supervisor).toContain("APPCHROME_GITHUB_CREDENTIAL_UNAVAILABLE");
     expect(supervisor).toContain("github-command-center.token");
-    expect(supervisor).toContain('$env:TIGERIQ_GITHUB_TOKEN=');
+    expect(supervisor).toContain("Get-Content -LiteralPath $githubTokenFile -Raw -ErrorAction Stop");
     expect(supervisor).toContain("$env:TIGERIQ_APP_CHROME_SELF_RUN='1'");
+    expect(supervisor).not.toContain('Set-Acl');
   });
 });
