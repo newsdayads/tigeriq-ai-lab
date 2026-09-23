@@ -3,6 +3,7 @@ const REGISTRY_URL = process.env.TIGERIQ_REGISTRY_URL?.trim() || DEFAULT_REGISTR
 const CACHE_MS = Number(process.env.TIGERIQ_REGISTRY_CACHE_MS || 60000);
 
 const fallbackAssignments = new Map([
+  ['NV00',{ employee_id:'NV00', name:'Vy (Trợ lý)', admin_state:'CHIEF_OF_STAFF / PRIMARY_UI / OWNER_INTERFACE' }],
   ['NV01',{ employee_id:'NV01', name:'Minh', admin_state:'MANUAL_ONLY / READY' }],
   ['NV09',{ employee_id:'NV09', name:'Qwen3-Coder Local', admin_state:'IDLE_ON_DEMAND / LOCAL_OLLAMA_11434 / CODING_CAPABILITY / RANK_PRIMARY' }],
   ['NV02',{ employee_id:'NV02', name:'ChatGPT Plus', admin_state:'AVAILABLE_MANUAL / PRIMARY_UI_EXECUTOR / SEPARATE_CHROME_SESSION / NOT_CHIEF_OF_STAFF' }],
@@ -16,7 +17,7 @@ const fallbackAssignments = new Map([
   ['NV14',{ employee_id:'NV14', name:'Mistral', admin_state:'CREDENTIAL_INSTALLED / RATE_LIMIT_429 / CORE_COOLDOWN_30M' }],
   ['NV15',{ employee_id:'NV15', name:'Cloudflare Workers AI', admin_state:'LIVE_PASS / READY_WHEN_CALLED / CORE_RESOURCE' }],
   ['NV16',{ employee_id:'NV16', name:'Hugging Face', admin_state:'LIVE_PASS / READY_WHEN_CALLED / CORE_RESOURCE' }],
-  ['NV17',{ employee_id:'NV17', name:'Vercel AI Gateway', admin_state:'AUTH_VALID / BLOCKED_INFERENCE_403 / CORE_BLOCKED' }],
+  ['NV17',{ employee_id:'NV17', name:'Inception / Mercury 2.5', admin_state:'ONLINE / FREE_100M / NO_CARD / CORE+CODING_LANE / LIVE_PROBE_PASS' }],
   ['NV18',{ employee_id:'NV18', name:'IBM watsonx.ai Lite', admin_state:'CREDENTIAL_INSTALLED / RUNTIME_ASSOCIATION_BLOCKED / CORE_BLOCKED' }],
   ['NV19',{ employee_id:'NV19', name:'Cohere', admin_state:'LIVE_PASS / READY_WHEN_CALLED / CORE_RESOURCE' }],
   ['NV20',{ employee_id:'NV20', name:'NVIDIA NIM', admin_state:'WAIT_KEY / CORE_OFFLINE' }],
@@ -25,8 +26,8 @@ const fallbackAssignments = new Map([
 const slotId = n => `NV${String(n).padStart(2,'0')}`;
 
 function completeRoster(assignments, retired = new Set(['NV05','NV07','NV08'])) {
-  return Array.from({length:20},(_,i)=>{
-    const employee_id=slotId(i+1);
+  return Array.from({length:21},(_,i)=>{
+    const employee_id=slotId(i);
     const found=assignments.get(employee_id);
     if(found) return { ...found, assigned:true, retired:false };
     if(retired.has(employee_id)) return { employee_id, name:'Đã ngừng', admin_state:'RETIRED', assigned:false, retired:true };
@@ -41,7 +42,7 @@ function parseRegistryBody(body) {
     const cells=line.split('|').map(x=>x.trim()).filter(Boolean);
     if(cells.length>=3) {
       const code=cells[0].replaceAll('`','').trim();
-      if(/^NV\d{2}$/.test(code) && code!=='NV00') {
+      if(/^NV\d{2}$/.test(code)) {
         assignments.set(code,{ employee_id:code, name:cells[1].replaceAll('`','').trim(), admin_state:cells[2].replaceAll('`','').trim() });
       }
     }
@@ -56,7 +57,7 @@ function parseRegistryBody(body) {
 
 let cache={
   workforce:completeRoster(fallbackAssignments),
-  meta:{ source:'registry-335-fallback-v49', version:'49', fetchedAt:null, stale:true, error:null },
+  meta:{ source:'registry-335-fallback-v52', version:'52', fetchedAt:null, stale:true, error:null },
   expiresAt:0,
   refreshing:false,
 };
