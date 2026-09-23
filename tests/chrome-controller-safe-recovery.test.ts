@@ -226,6 +226,18 @@ describe('safe recovery contracts',()=>{
     expect(broker).toContain('WORKER_PROCESS_AMBIGUOUS');
   });
 
+  it('keeps bridge-triggered safe-recover non-blocking so its own heartbeat producer cannot self-wait',()=>{
+    const utilityStart=server.indexOf("if(action==='safe-recover')");
+    const utility=server.slice(utilityStart,server.indexOf("if(action==='archive')",utilityStart));
+    expect(utility).toContain("const presence=await brokerWorkerPresence(workerId)");
+    expect(utility).toContain("presence==='RUNNING'");
+    expect(utility).toContain("mode:'ATTACH_EXISTING_STALE_HEARTBEAT'");
+    expect(utility).toContain("mode:'BROKER_LAUNCH_REQUESTED'");
+    expect(utility).toContain('await launchChrome(workerId)');
+    expect(utility).not.toContain('await startWorker(workerId)');
+    expect(utility).toContain('json(res,202');
+  });
+
   it('fails closed before heartbeat-driven mutation for disabled workers',()=>{
     expect(server).toContain('state.status=\'DISABLED\'');
     expect(server.indexOf('state.status=\'DISABLED\'')).toBeLessThan(server.indexOf('const hbStop=heartbeatStopReason(hb)'));
