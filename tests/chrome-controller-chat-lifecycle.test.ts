@@ -44,4 +44,24 @@ describe('App Chrome chat lifecycle',()=>{
     expect(server).toContain("!workingStuckStop&&!periodicF5");
     expect(server).toContain("WORKING_STUCK_STOP_REQUIRES_VISIBLE_STOP");
   });
+
+  it('keeps F5 policy independent on all three workers and suppresses only while WORKING',()=>{
+    const continuity=readFileSync('apps/chrome-controller/extension/continuity.js','utf8');
+    const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    expect(continuity).toContain('WORKER_F5_MIN_MS = 5 * 60 * 1000');
+    expect(continuity).toContain('WORKER_F5_MAX_MS = 20 * 60 * 1000');
+    expect(bridge).toContain("if(phase!=='WORKING'&&Number(state.nextPeriodicF5At||0)<=now)");
+    expect(bridge).toContain('NV02_F5_MIN_MS=5*60*1000');
+    expect(bridge).toContain('NV02_F5_MAX_MS=20*60*1000');
+  });
+
+  it('does not close/reopen NV03 or NV04 for short or idle STALLED transients',()=>{
+    const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    expect(bridge).toContain('const STALLED_CONFIRM_GRACE_MS=60*1000');
+    expect(bridge).toContain('const STALLED_REOPEN_MIN_MS=3*60*1000');
+    expect(bridge).toContain("'STALLED_GRACE'");
+    expect(bridge).toContain("'STALLED_IDLE_NO_REOPEN'");
+    expect(bridge).toContain("hasContinuableWorkerWork(controllerState,w.id)");
+    expect(bridge).toContain("'STALLED_ACTIVE_WORK_RECOVERY'");
+  });
 });
