@@ -69,4 +69,14 @@ describe('durable autonomous work handoff',()=>{
     expect(normalized.implementer).toBe('NV01');
     expect(normalized.stage).toBe('review');
   });
+  it('includes unit tests for aggregateWorkforceHealth function', async () => {
+    // @ts-expect-error test import
+    const { aggregateWorkforceHealth } = await import('../apps/tigeriq-core/workforce-registry.mjs');
+    const workforceRoster = [{ employee_id: 'NV09', name: 'Qwen3', admin_state: 'READY' }];
+    const resources = [{ employee_id: 'NV09', status: 'ready', ok: true, provider: 'ollama' }];
+    const health = aggregateWorkforceHealth(workforceRoster, resources);
+    expect(health.total).toBe(1);
+    expect(health.healthy).toBe(1);
+    expect(health.members[0].employee_id).toBe('NV09');
+  });
 });
