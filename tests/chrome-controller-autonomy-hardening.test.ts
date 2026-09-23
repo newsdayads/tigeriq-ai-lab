@@ -493,8 +493,22 @@ describe('NV03/NV04 UI continuity lease regression #1525',()=>{
     expect(server).toContain('const uiContinuityLeaseAllowed=continuityLeaseAllowed||genericUiContinuityMaintenance');
     expect(server).toContain('||genericUiContinuityMaintenance;');
     expect(server).toContain('&&!uiContinuityLeaseAllowed)throw new Error(`WORKER_ACTIVE_JOB:${workerId}`)');
-    expect(server).toContain("if(state.lastHeartbeat?.uiBusy!==false&&!staleWorkingRecovery&&!periodicF5)throw new Error(`WORKER_UI_BUSY_OR_UNKNOWN:${workerId}`)");
+    expect(server).toContain("if(state.lastHeartbeat?.uiBusy!==false&&!staleWorkingRecovery&&!periodicF5&&!chatLoadRecoveryStateAllowed)throw new Error(`WORKER_UI_BUSY_OR_UNKNOWN:${workerId}`)");
     expect(server).toContain("if(commandQueues.get(workerId)!.length>0||[...waiters.values()].some((w)=>w.workerId===workerId))");
+  });
+});
+
+describe('NV02 chat-load recovery lease #1567',()=>{
+  it('allows only verified timeout/load-error recovery to bypass stale busy telemetry',()=>{
+    const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
+    expect(server).toContain("const chatLoadRetryRecovery=workerId==='NV02'&&purpose==='CHAT_LOAD_RETRY'");
+    expect(server).toContain("const chatLoadF5Recovery=workerId==='NV02'&&purpose==='CHAT_LOAD_F5'");
+    expect(server).toContain('const chatLoadRecovery=chatLoadRetryRecovery||chatLoadF5Recovery');
+    expect(server).toContain("state.lastHeartbeat?.chatLoadError===true");
+    expect(server).toContain("!chatLoadRetryRecovery||state.lastHeartbeat?.chatRetryReady===true");
+    expect(server).toContain("CHAT_LOAD_RECOVERY_STATE_REQUIRED:");
+    expect(server).toContain("!chatLoadRecoveryStateAllowed)throw new Error(`WORKER_UI_BUSY_OR_UNKNOWN:${workerId}`)");
+    expect(server).toContain('||chatLoadRecovery||periodicF5');
   });
 });
 
