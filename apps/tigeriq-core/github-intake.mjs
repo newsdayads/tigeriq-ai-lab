@@ -18,8 +18,10 @@ export function parseExecutableIssue(issue){
   if(!hasExactFlag(body,'TIGERIQ_EXECUTABLE')||!hasExactFlag(body,'OWNER_POLICY','AUTO')) return null;
   if(!hasExactFlag(body,'NO_CODE_CHANGE')||!hasExactFlag(body,'NO_PC01_SHELL')) return null;
   const p=body.match(/^PRIORITY=(P[0-3])$/m)?.[1]||'P2';
-  const capability=body.match(/^CAPABILITY=(general|reasoning|review)$/m)?.[1]||'reasoning';
-  return {number:Number(issue.number),title:String(issue.title||''),body,priority:p,capability,url:String(issue.html_url||''),ownerDirect:backlogOwnerDirect(body)};
+  const capability=body.match(/^CAPABILITY=(general|reasoning|review|pc_operator)$/m)?.[1]||'reasoning';
+  const ownerDirect=backlogOwnerDirect(body);
+  if(capability==='pc_operator'&&!ownerDirect)return null;
+  return {number:Number(issue.number),title:String(issue.title||''),body,priority:p,capability,url:String(issue.html_url||''),ownerDirect};
 }
 
 export function extractIssueRefs(body,currentNumber){
@@ -89,8 +91,10 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
     const exists=(await pool.query('select 1 from tigeriq_objectives where id=$1',[id])).rowCount>0;
     if(exists){skipped++;continue;}
     const context=await hydrateContext(fetchImpl,owner,repo,spec,token);
-    const objective=`GitHub autonomous work item #${spec.number}. Execute only the read-only task below. Do not edit repository source, use PC01 shell, deploy, change credentials/security, spend money, reboot, or perform destructive actions. Ground conclusions only in the supplied GitHub context. When the requested analysis is satisfied, complete the objective.\n\n${context}`;
-    const metadata={source:'github',issueNumber:spec.number,issueUrl:spec.url,capability:spec.capability,ownerDirect:spec.ownerDirect,dispatchReason:spec.ownerDirect?`OWNER_DIRECT>${spec.priority}`:`PRIORITY_${spec.priority}`};
+    const objective=spec.capability==='pc_operator'
+      ? `GitHub OWNER_DIRECT bounded PC operator work item #${spec.number}. Core must create only the assigned pc_operator work and dispatch it through NV06/OpenClaw. Use only approved bounded TigerIQ/OpenClaw tools; NO arbitrary PC01 shell, repository source edit, Production/main mutation, paid action, credential/security change, reboot/shutdown, or destructive action. OpenClaw must not choose backlog/P0/new work. Return structured verified evidence and complete only when the assigned bounded action is satisfied.\n\n${context}`
+      : `GitHub autonomous work item #${spec.number}. Execute only the read-only task below. Do not edit repository source, use PC01 shell, deploy, change credentials/security, spend money, reboot, or perform destructive actions. Ground conclusions only in the supplied GitHub context. When the requested analysis is satisfied, complete the objective.\n\n${context}`;
+    const metadata={source:'github',issueNumber:spec.number,issueUrl:spec.url,capability:spec.capability,ownerDirect:spec.ownerDirect,dispatchReason:spec.ownerDirect?`OWNER_DIRECT>${spec.priority}`:`PRIORITY_${spec.priority}`,executionSurface:spec.capability==='pc_operator'?'CORE_OPENCLAW_BOUNDED':'READ_ONLY'};
     await pool.query('insert into tigeriq_objectives(id,objective,priority,metadata) values($1,$2,$3,$4) on conflict(id) do nothing',[id,objective,spec.priority,JSON.stringify(metadata)]);
     await pool.query("insert into tigeriq_events(type,objective_id,data) values('GITHUB_OBJECTIVE_MATERIALIZED',$1,$2)",[id,JSON.stringify({issueNumber:spec.number,issueUrl:spec.url,ownerDirect:spec.ownerDirect,priority:spec.priority,dispatchReason:metadata.dispatchReason})]);
     return {created:1,skipped,active:0,considered:specs.length,issueNumber:spec.number};
