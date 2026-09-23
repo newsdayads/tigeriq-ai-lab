@@ -170,11 +170,11 @@ async function postIssueComment({
   });
 }
 export async function claimGithubIssue({
-  workerId,issue,ttlMs=2*60*60*1000,fetchImpl=fetch,owner='newsdayads',repo='tigeriq-ai-lab',token='',
-}:{workerId:WorkerId;issue:GithubIssue;ttlMs?:number;fetchImpl?:typeof fetch;owner?:string;repo?:string;token?:string}):Promise<AppChromeClaim|null>{
+  workerId,issue,claimId:requestedClaimId,ttlMs=2*60*60*1000,fetchImpl=fetch,owner='newsdayads',repo='tigeriq-ai-lab',token='',
+}:{workerId:WorkerId;issue:GithubIssue;claimId?:string;ttlMs?:number;fetchImpl?:typeof fetch;owner?:string;repo?:string;token?:string}):Promise<AppChromeClaim|null>{
   const before=await fetchIssueComments({issueNumber:issue.number,fetchImpl,owner,repo,token});
   if(activeAppChromeClaims(before).length)return null;
-  const claimId=randomUUID();
+  const claimId=requestedClaimId||randomUUID();
   const expiresAt=new Date(Date.now()+ttlMs).toISOString();
   const scope=resourceScopeOf(issue);
   await postIssueComment({
