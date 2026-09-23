@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -80,6 +80,28 @@ describe('App Chrome GitHub self-run policy',()=>{
     const c=restored.acquire({issueNumber:30,scope:'SAME_SCOPE',workerId:'NV04',ttlMs:60_000},now+1_000);
     expect(c.kind).toBe('BUSY');
     expect(restored.snapshot()).toHaveLength(1);
+  });
+
+  it('uses an exclusive filesystem lock and reload-under-lock for cross-process claim arbitration',()=>{
+    const dir=mkdtempSync(join(tmpdir(),'tigeriq-self-run-lock-'));
+    const path=join(dir,'claims.json');
+    const store=new DurableSelfRunClaimStore(path);
+    const source=readFileSync('apps/chrome-controller/src/self-run-claim-store.ts','utf8');
+    expect(source).toContain('mkdirSync(this.lockPath)');
+    expect(source).toContain('this.value=this.load()');
+    expect(source).toContain("throw new Error('SELF_RUN_CLAIM_STORE_LOCK_BUSY')");
+    expect(source.indexOf('this.acquireFileLock()')).toBeLessThan(source.indexOf('this.value=this.load()'));
+
+    mkdirSync(path+'.lock');
+    expect(()=>store.acquire({issueNumber:32,scope:'LOCK_SCOPE',workerId:'NV03',ttlMs:60_000})).toThrow('SELF_RUN_CLAIM_STORE_LOCK_BUSY');
+    rmdirSync(path+'.lock');
+
+    const first=store.acquire({issueNumber:32,scope:'LOCK_SCOPE',workerId:'NV03',ttlMs:60_000});
+    expect(first.kind).toBe('ACQUIRED');
+    const secondProcessView=new DurableSelfRunClaimStore(path);
+    const second=secondProcessView.acquire({issueNumber:33,scope:'LOCK_SCOPE',workerId:'NV04',ttlMs:60_000});
+    expect(second.kind).toBe('BUSY');
+    expect(second.claim.claimId).toBe(first.claim.claimId);
   });
 
   it('serializes same-process competing worker reservations and only schedules self-run from the canonical controller listener',async()=>{
