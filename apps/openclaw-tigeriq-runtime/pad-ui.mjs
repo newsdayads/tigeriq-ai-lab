@@ -59,7 +59,7 @@ export function assertPadUiRequest(raw = {}) {
   if (['pad_invoke', 'pad_set_value', 'pad_click'].includes(action) && !out.name && !out.automationId) {
     throw new Error('TIGERIQ_PAD_SELECTOR_REQUIRED');
   }
-  if (action === 'pad_set_value' && out.value === null) throw new Error('TIGERIQ_PAD_VALUE_REQUIRED');
+  if (action === 'pad_set_value' && (!Object.hasOwn(out, 'value') || out.value === null)) throw new Error('TIGERIQ_PAD_VALUE_REQUIRED');
   if (action === 'pad_keys' && !out.key) throw new Error('TIGERIQ_PAD_KEY_REQUIRED');
   return out;
 }
