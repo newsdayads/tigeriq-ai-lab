@@ -589,6 +589,71 @@ it('coding backlog serializes three issues by OWNER_DIRECT then priority',async(
 });
 
 
+
+
+describe('GitHub coding reopened-completion rearm',()=>{
+  it('rearms a completed issue exactly once after GitHub close -> reopen and does not rearm recurring open work without reopen',async()=>{
+    const pool=fakePool();
+    pool.events.push(
+      {type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:1530,codingObjectiveId:'old-1530',dispatchKey:'GITHUB-ISSUE-1530'}},
+      {type:'GITHUB_CODING_RESULT_REPORTED',data:{issueNumber:1530,codingObjectiveId:'old-1530',status:'completed'}}
+    );
+    let posted=0,rearmedObjective=null;
+    const reopened=issue(SAFE+'\nOWNER_DIRECT=true\nRESOURCE_SCOPE=NV09_CORE_RUNTIME_REGISTRATION\nALLOW_PATH_PREFIX=apps/tigeriq-core/nv09.mjs', {
+      number:1530,title:'NV09 live acceptance follow-up'
+    });
+    const timeline=[
+      {id:10,event:'closed',created_at:'2026-09-22T19:00:00Z'},
+      {id:20,event:'reopened',created_at:'2026-09-23T09:00:00Z'},
+    ];
+    const fetchImpl=async(url,init={})=>{
+      if(url.includes('/issues?'))return response([reopened]);
+      if(url.includes('/issues/1530/timeline'))return response(timeline);
+      if(url.includes('/issues/1530/comments'))return response([]);
+      if(url.includes('/api/status'))return response({objectives:rearmedObjective?[rearmedObjective]:[],jobs:[]});
+      if(url.includes('/api/objectives')){
+        posted++;
+        const body=JSON.parse(init.body);
+        expect(body.objective).toContain('DISPATCH_KEY=GITHUB-ISSUE-1530-REOPEN-');
+        expect(body.objective).toContain('REOPEN_KEY=');
+        rearmedObjective={id:'rearmed-1530',status:'queued',objective:body.objective};
+        return response({id:rearmedObjective.id});
+      }
+      if(url.includes('/comments'))return response({});
+      return response({});
+    };
+
+    const first=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake'});
+    expect(first.created).toBe(1);
+    expect(posted).toBe(1);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_COMPLETED_REARMED')).toHaveLength(1);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_DISPATCHED'&&e.data.issueNumber===1530)).toHaveLength(2);
+
+    const second=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake'});
+    expect(second.created).toBe(0);
+    expect(posted).toBe(1);
+
+    const recurringPool=fakePool();
+    recurringPool.events.push(
+      {type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:658,codingObjectiveId:'old-658'}},
+      {type:'GITHUB_CODING_RESULT_REPORTED',data:{issueNumber:658,codingObjectiveId:'old-658',status:'completed'}}
+    );
+    const recurring=issue(SAFE+'\nOWNER_DIRECT=true\nRESOURCE_SCOPE=WEB_CONTROL_HOURLY_AUDIT\nALLOW_PATH_PREFIX=docs/evidence/audit.md',{number:658,title:'Recurring healthy service'});
+    let recurringPosts=0;
+    const recurringFetch=async(url)=>{
+      if(url.includes('/issues?'))return response([recurring]);
+      if(url.includes('/issues/658/timeline'))return response([]);
+      if(url.includes('/issues/658/comments'))return response([]);
+      if(url.includes('/api/status'))return response({objectives:[],jobs:[]});
+      if(url.includes('/api/objectives')){recurringPosts++;return response({id:'unexpected'});}
+      return response({});
+    };
+    const recurringOut=await materializeGithubCodingIssues({pool:recurringPool,fetchImpl:recurringFetch,token:'fake'});
+    expect(recurringOut.created).toBe(0);
+    expect(recurringPosts).toBe(0);
+  });
+});
+
 describe('GitHub coding scope-aware pool refill',()=>{
   const scoped=(number,scope,path,priority='P1')=>issue(`${SAFE.replace('PRIORITY=P1',`PRIORITY=${priority}`)}\nRESOURCE_SCOPE=${scope}\nALLOW_PATH_PREFIX=${path}`,{number,title:`Scoped ${number}`});
 
