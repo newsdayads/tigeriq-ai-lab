@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { processGitHubIssue, classifyRisk, isZeroCost } from '../apps/tigeriq-coding-lane/github-intake.mjs';
-import { materializeGithubIssues } from '../apps/tigeriq-core/github-intake.mjs';
+import { cleanupTerminalObjectiveJobs, materializeGithubIssues } from '../apps/tigeriq-core/github-intake.mjs';
 
 test('isZeroCost checks label correctly', () => {
   assert.strictEqual(isZeroCost([{ name: 'zero-cost-reversible' }]), true);
@@ -56,6 +56,17 @@ function coreBacklogPool(){
     if(q.includes("metadata->>'source'='github' and status='active'")){
       const active=objectives.some(o=>o.metadata?.source==='github'&&o.status==='active');
       return {rowCount:active?1:0,rows:active?[{id:'active'}]:[]};
+    }
+    if(q.startsWith('update tigeriq_jobs j')){
+      const terminal=new Set(objectives.filter(o=>['completed','blocked'].includes(o.status)).map(o=>o.id));
+      const changed=[];
+      for(const j of jobs){if(terminal.has(j.objective_id)&&['queued','waiting_resource'].includes(j.status)){j.status='failed';j.failure=JSON.parse(params[0]);changed.push({id:j.id,objective_id:j.objective_id});}}
+      return {rowCount:changed.length,rows:changed};
+    }
+    if(q.includes("metadata->>'source'='github'")&&q.includes("metadata->>'issueNumber'=$1")){
+      const matches=objectives.filter(o=>o.metadata?.source==='github'&&String(o.metadata?.issueNumber)===String(params[0]));
+      const found=matches.at(-1);
+      return {rowCount:found?1:0,rows:found?[{id:found.id,status:found.status,metadata:found.metadata}]:[]};
     }
     if(q.includes('select 1 from tigeriq_objectives where id=$1')){
       const found=objectives.some(o=>o.id===params[0]);
@@ -142,4 +153,33 @@ test('read-only GitHub backlog runs one-at-a-time and chains by OWNER_DIRECT the
   out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
   assert.strictEqual(out.issueNumber,30);
   assert.deepStrictEqual(pool.objectives.map(o=>o.metadata.issueNumber),[10,20,30]);
+});
+
+
+test('reopened completed GitHub Work Order rearms instead of being skipped forever',async()=>{
+  const pool=coreBacklogPool();
+  let issues=[{number:50,state:'open',state_reason:null,updated_at:'2026-09-23T01:00:00Z',title:'Rearm me',body:`${READ_ONLY_BASE}\nOWNER_DIRECT=true\nPRIORITY=P0`,html_url:'https://example/50'}];
+  const fetchImpl=async(url)=>url.includes('/issues?')?response(issues):response({});
+  let out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
+  assert.strictEqual(out.issueNumber,50);
+  assert.strictEqual(pool.objectives.length,1);
+  pool.objectives[0].status='completed';
+  pool.objectives[0].metadata.githubClosed=true;
+  issues=[{...issues[0],state_reason:'reopened',updated_at:'2026-09-23T02:00:00Z'}];
+  out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
+  assert.strictEqual(out.issueNumber,50);
+  assert.strictEqual(pool.objectives.length,2);
+  assert.match(pool.objectives[1].id,/^OBJ-GH-50-R/);
+  assert.strictEqual(pool.objectives[1].metadata.rearmedFromObjectiveId,'OBJ-GH-50');
+});
+
+test('terminal objective orphan queued and waiting_resource jobs are failed closed',async()=>{
+  const pool=coreBacklogPool();
+  pool.objectives.push({id:'OBJ-OLD',status:'blocked',metadata:{source:'api'}});
+  pool.jobs.push({id:'JOB-Q',objective_id:'OBJ-OLD',status:'queued'},{id:'JOB-W',objective_id:'OBJ-OLD',status:'waiting_resource'},{id:'JOB-D',objective_id:'OBJ-OLD',status:'done'});
+  const out=await cleanupTerminalObjectiveJobs({pool});
+  assert.strictEqual(out.cleaned,2);
+  assert.strictEqual(pool.jobs.find(j=>j.id==='JOB-Q').status,'failed');
+  assert.strictEqual(pool.jobs.find(j=>j.id==='JOB-W').status,'failed');
+  assert.strictEqual(pool.jobs.find(j=>j.id==='JOB-D').status,'done');
 });
