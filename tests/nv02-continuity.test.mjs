@@ -151,6 +151,11 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("await postWorkerHeartbeat(w,target,ui,projectContextReady).catch");
     const tick=source.slice(source.indexOf('async function tickWorker(w){'),source.indexOf('\n\nasync function tick()'));
     expect(tick).toContain('getCommand(w.id)');
+    expect(source).toContain("String(state?.ownerInteractionMode||'')==='READ_ONLY'");
+    expect(tick).toContain('if(await workerAutomationPaused(w.id))');
+    expect(tick.indexOf('await postWorkerHeartbeat(w,target,ui,projectContextReady)')).toBeLessThan(tick.indexOf('if(await workerAutomationPaused(w.id))'));
+    expect(tick.indexOf('if(await workerAutomationPaused(w.id))')).toBeLessThan(tick.indexOf('getCommand(w.id)'));
+    expect(tick.indexOf('if(await workerAutomationPaused(w.id))')).toBeLessThan(tick.indexOf("if(w.id==='NV02'&&!projectContextReady&&!ui.securityBlock)"));
     expect(tick.indexOf('getCommand(w.id)')).toBeLessThan(tick.indexOf("if(w.id==='NV02')await maybeNv02Continuity"));
     const backgroundSource=readFileSync('apps/chrome-controller/extension/background.js','utf8');
     expect(backgroundSource).toContain('HARD ISOLATION: NV02, NV03, and NV04 commands and UI mutation loops');
