@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   activeAppChromeClaims,
   buildSelfRunPrompt,
@@ -11,6 +13,7 @@ import {
   workerEligibleForIssue,
   type GithubIssue,
 } from '../apps/chrome-controller/src/github-self-run.js';
+import { DurableSelfRunClaimStore } from '../apps/chrome-controller/src/self-run-claim-store.js';
 
 function issue(number:number,title:string,body:string):GithubIssue{
   return {number,title,body,html_url:`https://github.com/newsdayads/tigeriq-ai-lab/issues/${number}`,state:'open',updated_at:'2026-09-23T10:00:00Z'};
@@ -63,6 +66,21 @@ describe('App Chrome GitHub self-run policy',()=>{
     expect(out.map(x=>x.number)).toEqual([22,21]);
   });
 
+  it('arbitrates competing App workers locally before either may post a GitHub claim',()=>{
+    const dir=mkdtempSync(join(tmpdir(),'tigeriq-self-run-claim-'));
+    const store=new DurableSelfRunClaimStore(join(dir,'claims.json'));
+    const a=store.acquire({issueNumber:29,scope:'SAME_SCOPE',workerId:'NV03',ttlMs:60_000},Date.parse('2026-09-23T00:00:00Z'));
+    const b=store.acquire({issueNumber:29,scope:'SAME_SCOPE',workerId:'NV04',ttlMs:60_000},Date.parse('2026-09-23T00:00:00Z'));
+    expect(a.kind).toBe('ACQUIRED');
+    expect(b.kind).toBe('BUSY');
+    expect(b.claim.workerId).toBe('NV03');
+
+    const restored=new DurableSelfRunClaimStore(join(dir,'claims.json'));
+    const c=restored.acquire({issueNumber:30,scope:'SAME_SCOPE',workerId:'NV04',ttlMs:60_000},Date.parse('2026-09-23T00:00:01Z'));
+    expect(c.kind).toBe('BUSY');
+    expect(restored.snapshot()).toHaveLength(1);
+  });
+
   it('creates exactly one durable claim and refuses a second active claim',async()=>{
     const target=issue(30,'Review',SAFE+'\nREVIEW_ONLY=true\nCAPABILITY=review\nRESOURCE_SCOPE=REVIEW_30');
     const comments:any[]=[];
@@ -104,6 +122,9 @@ describe('App Chrome self-run wiring',()=>{
     expect(server).toContain("const selfRunEnabled=process.env.TIGERIQ_APP_CHROME_SELF_RUN!=='0'");
     expect(server).toContain('listOpenGithubIssues');
     expect(server).toContain('claimGithubIssue');
+    expect(server).toContain('new DurableSelfRunClaimStore');
+    expect(server).toContain("local.kind==='BUSY'");
+    expect(server).toContain('claimId:local.claim.claimId');
     expect(server).toContain('eligibleIssuesForWorker');
     expect(server).toContain('bestEffortExternalActiveScopes');
     expect(server).toContain('scheduleSelfRunTick(5000)');
