@@ -22,6 +22,7 @@ export function parseExecutableIssue(issue){
   if(!issue||issue.pull_request||issue.state!=='open') return null;
   const body=String(issue.body||'');
   if(!hasExactFlag(body,'TIGERIQ_EXECUTABLE')||!hasExactFlag(body,'OWNER_POLICY','AUTO')) return null;
+  if(/^EXECUTION_SURFACE=UI$/m.test(body)) return null;
   if(!hasExactFlag(body,'NO_CODE_CHANGE')||!hasExactFlag(body,'NO_PC01_SHELL')) return null;
   const p=body.match(/^PRIORITY=(P[0-3])$/m)?.[1]||'P2';
   const capability=body.match(/^CAPABILITY=(general|reasoning|review|pc_operator)$/m)?.[1]||'reasoning';

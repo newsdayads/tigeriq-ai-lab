@@ -118,11 +118,11 @@ try{
   Copy-Item $ConfigPath $configBackup -Force
   $effectiveConfig=Get-Content $ConfigPath -Raw | ConvertFrom-Json
   Assert-Ok ($null -ne $effectiveConfig.autopilot) 'AUTOPILOT_CONFIG_MISSING'
-  $effectiveConfig.autopilot.enabled=$false
+  $effectiveConfig.autopilot.enabled=$true
   $effectiveConfig.autopilot.stateUrl='http://127.0.0.1:8794/api/ui-autopilot/snapshot'
   [IO.File]::WriteAllText($ConfigPath,($effectiveConfig|ConvertTo-Json -Depth 20),[Text.UTF8Encoding]::new($false))
   $effectiveConfig=Get-Content $ConfigPath -Raw | ConvertFrom-Json
-  Assert-Ok ($effectiveConfig.autopilot.enabled -eq $false) 'APP_CHROME_AUTOPILOT_DISABLE_FAILED'
+  Assert-Ok ($effectiveConfig.autopilot.enabled -eq $true) 'APP_CHROME_EXTERNAL_AUTOPILOT_ENABLE_FAILED'
   Assert-Ok ([string]$effectiveConfig.autopilot.stateUrl -eq 'http://127.0.0.1:8794/api/ui-autopilot/snapshot') 'APP_CHROME_STATE_URL_MISMATCH'
 
   try{
@@ -209,7 +209,7 @@ try{
     reasoningEffort=$worker.lastHeartbeat.reasoningEffort
     ownerInteractionMode=if($ResumeAutomation){'AUTOMATION'}else{'READ_ONLY'}
     chromeUiOnlyMode=$true
-    externalWorkAutopilotEnabled=$false
+    externalWorkAutopilotEnabled=$true
     approvedHead=$ExpectedHead
     bridgeSourceSha256=$deployBridgeHash
     bridgeHealthPid=$bridgeHealth.pid
