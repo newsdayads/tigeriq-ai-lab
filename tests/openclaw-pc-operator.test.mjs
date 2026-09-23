@@ -5,7 +5,7 @@ import {
   assertWritePathAllowed,
   resolveOperatorPath,
 } from '../apps/openclaw-tigeriq-runtime/operator.mjs';
-import { PAD_UI_ACTIONS, assertPadUiRequest } from '../apps/openclaw-tigeriq-runtime/pad-ui.mjs';
+import { PAD_UI_ACTIONS, assertPadUiRequest, parsePadBrokerJson } from '../apps/openclaw-tigeriq-runtime/pad-ui.mjs';
 
 describe('OpenClaw PC01 guarded local operator', () => {
   it('allows TigerIQ/OpenClaw work roots', () => {
@@ -55,6 +55,10 @@ describe('OpenClaw PC01 guarded local operator', () => {
 
 
 describe('Power Automate Desktop guarded UI contract', () => {
+  it('accepts Windows PowerShell UTF-8 BOM on broker JSON files', () => {
+    expect(parsePadBrokerJson('\uFEFF{"available":true}')).toEqual({ available: true });
+  });
+
   it('exposes only the bounded PAD action set', () => {
     expect(PAD_UI_ACTIONS).toEqual([
       'pad_health', 'pad_launch', 'pad_windows', 'pad_tree',
