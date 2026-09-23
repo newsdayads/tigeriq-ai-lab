@@ -17,6 +17,7 @@ export function registerNv09() {
     employee_id: NV09_EMPLOYEE_ID,
     model: NV09_MODEL,
     endpoint: NV09_ENDPOINT,
+    capability: ['coding','review'],
     health: HEALTH_STATES.IDLE_ON_DEMAND
   };
   registeredModels.set(NV09_EMPLOYEE_ID, config);
