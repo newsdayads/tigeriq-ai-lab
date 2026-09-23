@@ -57,7 +57,8 @@ function isNv02ProjectContext(url){
     if(current.hostname!==expected.hostname)return false;
     if(current.pathname===expected.pathname)return true;
     if(current.pathname.startsWith(NV02_PROJECT_PREFIX+'/c/'))return true;
-    return Boolean(NV02_PROJECT_ID_PREFIX)&&current.pathname.startsWith(NV02_PROJECT_ID_PREFIX+'/c/');
+    const currentProjectId=(current.pathname.match(/^\/g\/(g-p-[a-z0-9]+)(?:-[^/]+)?(?:\/|$)/i)||[])[1]||'';
+    return Boolean(NV02_PROJECT_ID)&&currentProjectId===NV02_PROJECT_ID;
   }catch{return false}
 }
 function hasCurrentNv02Chat(url){
