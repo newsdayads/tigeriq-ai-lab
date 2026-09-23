@@ -354,22 +354,51 @@ describe('safe recovery contracts',()=>{
     expect(startup).toContain('states.get(id)?.manualCloseSuppressed');
   });
 
-  it('marks bridge-owned reset as planned while keeping manual close fail-closed',()=>{
+  it('keeps bridge-owned planned refresh exclusive until heartbeat reattaches or bounded deadline expires',()=>{
     const utilityStart=server.indexOf('const utilityMatch=');
     const utility=server.slice(utilityStart,server.indexOf('const match=url.pathname.match',utilityStart));
+    const heartbeatStart=server.indexOf("if(url.pathname==='/api/heartbeat'");
+    const heartbeat=server.slice(heartbeatStart,server.indexOf("if(url.pathname==='/api/window-event'",heartbeatStart));
     const windowStart=server.indexOf("if(url.pathname==='/api/window-event'");
     const windowEvent=server.slice(windowStart,server.indexOf("if(url.pathname==='/api/continuity/event'",windowStart));
+    const recoverStart=server.indexOf('async function recoverWorker');
+    const recover=server.slice(recoverStart,server.indexOf('async function recoveryTick',recoverStart));
+    expect(server).toContain('const plannedRefreshDeadlines = new Map<WorkerId,number>()');
+    expect(server).toContain('function markPlannedRefresh(workerId:WorkerId)');
+    expect(server).toContain("clearPlannedRefresh(workerId,'DEADLINE_EXPIRED')");
     expect(utility).toContain('plan-refresh');
-    expect(utility).toContain('plannedRefreshWorkers.add(workerId)');
+    expect(utility).toContain('markPlannedRefresh(workerId)');
     expect(utility).toContain('browserMutationLeases.assertOwned(workerId,leaseOwnerId,leaseId)');
     expect(utility).toContain('heartbeatStopReason(state.lastHeartbeat)');
     expect(utility).toContain('MANUAL_CLOSE_SUPPRESSED');
     expect(utility).toContain("OWNER_INTERACTION_READ_ONLY");
-    expect(windowEvent).toContain('const plannedRefresh=plannedRefreshWorkers.has(workerId)');
+    expect(heartbeat).toContain("clearPlannedRefresh(workerId,'HEARTBEAT_REATTACHED')");
+    expect(windowEvent).toContain('const plannedRefresh=plannedRefreshInFlight(workerId)');
     expect(windowEvent).toContain('state.manualCloseSuppressed=!recoveryEligible');
     expect(windowEvent).toContain('state.lastHeartbeat=undefined');
-    expect(windowEvent).toContain('if(plannedRefresh)plannedRefreshWorkers.delete(workerId)');
+    expect(windowEvent).not.toContain('plannedRefreshWorkers.delete(workerId)');
     expect(windowEvent).toContain('if(recoveryEligible&&!plannedRefresh)void recoveryTick()');
+    expect(recover).toContain('if(plannedRefreshInFlight(workerId))');
+    expect(recover).toContain("'RECOVERY_DEFERRED_PLANNED_REFRESH'");
+  });
+
+  it('waits bounded time for a running Chrome process to reattach heartbeat instead of relaunch racing it',()=>{
+    const start=server.slice(server.indexOf('async function startWorker'),server.indexOf('function modelProfileGateReason'));
+    expect(start).toContain("if(presence==='RUNNING')");
+    expect(start).toContain("state.status='WAITING_HEARTBEAT_ATTACH'");
+    expect(start).toContain('const attached=await waitForStartupAttach(workerId)');
+    expect(start).toContain("'WORKER_RUNNING_HEARTBEAT_REATTACHED'");
+    expect(start).toContain('WORKER_RUNNING_WITHOUT_HEARTBEAT');
+  });
+
+  it('requires a post-reload confirmation grace before generic STALLED reopen',()=>{
+    const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    const continuity=source.slice(source.indexOf('async function maybeWorkerContinuity'),source.indexOf('\nfunction log(event'));
+    expect(source).toContain('const STALLED_CONFIRM_GRACE_MS=20*1000');
+    expect(continuity).toContain("if(phase==='STALLED'&&Number(state.recoveryBlockedUntil||0)>now)");
+    expect(continuity).toContain('const confirmAfter=Date.now()+STALLED_CONFIRM_GRACE_MS');
+    expect(continuity).toContain('recoveryBlockedUntil:confirmAfter');
+    expect(continuity).toContain("'STALLED_RELOAD'");
   });
 
   it('keeps paused workers out of unattended start/autopilot paths',()=>{
