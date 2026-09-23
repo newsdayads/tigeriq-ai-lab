@@ -393,7 +393,9 @@ async function refreshResources() {
 }
 async function recoverAfterCoreRestart() {
   try {
-    await pool.query("UPDATE tigeriq_jobs SET status='failed', error_message='RESTART_RECONCILIATION_FAIL_CLOSED' WHERE status IN ('dispatching', 'running') AND capability<>'pc_operator'");
+    await pool.query("UPDATE tigeriq_jobs SET status='failed', failure=jsonb_build_object('message','RESTART_RECONCILIATION_FAIL_CLOSED'), lease_until=null, completed_at=coalesce(completed_at,now()) WHERE status IN ('dispatching', 'running') AND capability<>'pc_operator'");
+    await pool.query("update tigeriq_ai_resources r set current_job_id=null,work_state=case when health_state='ONLINE' then 'IDLE' else health_state end,updated_at=now() where current_job_id is not null and not exists(select 1 from tigeriq_jobs j where j.id=r.current_job_id and j.status in ('dispatching','running'))");
+    await pool.query("update tigeriq_resources r set current_job_id=null,work_state=case when health_state='ONLINE' then 'IDLE' else health_state end,updated_at=now() where current_job_id is not null and not exists(select 1 from tigeriq_jobs j where j.id=r.current_job_id and j.status in ('dispatching','running'))");
     const openclawJobs=(await pool.query("select id,employee_id,resource_id from tigeriq_jobs where status in ('dispatching','running') and capability='pc_operator'")).rows;
     for(const j of openclawJobs){
       await pool.query("update tigeriq_jobs set status='queued',employee_id=null,resource_id=null,provider=null,lease_until=null,completed_at=null where id=$1",[j.id]);
@@ -408,7 +410,14 @@ async function recoverAfterCoreRestart() {
   for(const j of q.rows){await pool.query("update tigeriq_jobs set status='queued',employee_id=null,resource_id=null,provider=null,lease_until=null where id=$1",[j.id]);if(j.resource_id)await pool.query("update tigeriq_ai_resources set current_job_id=null,work_state='IDLE',health_state=case when credential_state in ('WAIT_KEY','BLOCKED') then 'OFFLINE' else 'READY' end,updated_at=now() where resource_id=$1",[j.resource_id]);if(j.employee_id)await pool.query("update tigeriq_resources set current_job_id=null,work_state='IDLE',health_state=case when credential_state in ('WAIT_KEY','BLOCKED') then 'OFFLINE' else 'READY' end,updated_at=now() where employee_id=$1",[j.employee_id]);await event('JOB_RECOVERED_AFTER_CORE_RESTART',{jobId:j.id,employeeId:j.employee_id,resourceId:j.resource_id});}
 }
 async function recoverStale() {
-  const stale=await pool.query("select id,employee_id,resource_id from tigeriq_jobs where status='running' and lease_until < now()");
+  const staleDoctor=await pool.query("select id,employee_id,resource_id from tigeriq_jobs where status='running' and kind='api_doctor' and started_at < now()-interval '2 minutes' and (lease_until is null or lease_until < now())");
+  for(const j of staleDoctor.rows){
+    await pool.query("update tigeriq_jobs set status='done',result=jsonb_build_object('skipped','stale_recovered'),lease_until=null,completed_at=now() where id=$1",[j.id]);
+    await pool.query("update tigeriq_ai_resources set current_job_id=null,work_state=case when health_state='ONLINE' then 'IDLE' else health_state end,updated_at=now() where current_job_id=$1",[j.id]);
+    await pool.query("update tigeriq_resources set current_job_id=null,work_state=case when health_state='ONLINE' then 'IDLE' else health_state end,updated_at=now() where current_job_id=$1",[j.id]);
+    await event('API_DOCTOR_STALE_JOB_RECOVERED',{jobId:j.id,employeeId:j.employee_id,resourceId:j.resource_id});
+  }
+  const stale=await pool.query("select id,employee_id,resource_id from tigeriq_jobs where status='running' and kind<>'api_doctor' and lease_until < now()");
   for(const j of stale.rows){await pool.query("update tigeriq_jobs set status='queued',employee_id=null,resource_id=null,provider=null,lease_until=null,attempts=attempts+1 where id=$1",[j.id]);if(j.resource_id)await pool.query("update tigeriq_ai_resources set current_job_id=null,work_state='IDLE',health_state='READY',updated_at=now() where resource_id=$1",[j.resource_id]);if(j.employee_id)await pool.query("update tigeriq_resources set current_job_id=null,work_state='IDLE',health_state='READY',updated_at=now() where employee_id=$1",[j.employee_id]);await event('JOB_LEASE_RECOVERED',{jobId:j.id,employeeId:j.employee_id,resourceId:j.resource_id});}
 }
 async function taskPerformance(taskKind='general'){
@@ -500,16 +509,19 @@ async function invokeApiDoctorLocal(prompt){
 async function runApiDoctorAnalysisJob(items,scanSignature){
   const recent=(await pool.query("select 1 from tigeriq_events where type='API_DOCTOR_ANALYSIS_DONE' and data->>'signature'=$1 and ts>now()-($2::text||' milliseconds')::interval limit 1",[scanSignature,String(API_DOCTOR_ANALYSIS_DEDUPE_MS)])).rows[0];
   if(recent)return {skipped:'deduped'};
+  const recentUnavailable=(await pool.query("select 1 from tigeriq_events where type='API_DOCTOR_ANALYSIS_SKIPPED' and data->>'signature'=$1 and data->>'reason'='nv10_unavailable' and ts>now()-($2::text||' milliseconds')::interval limit 1",[scanSignature,String(API_DOCTOR_ANALYSIS_DEDUPE_MS)])).rows[0];
+  if(recentUnavailable)return {skipped:'deduped_nv10_unavailable'};
   const id=`API-DOC-${randomUUID()}`;
   const prompt=buildApiDoctorPrompt(items);
-  await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,started_at,attempts,max_attempts) values($1,null,$2,$3,$4,'api_doctor','running',now(),0,1)",[id,'NV10 API Doctor analysis',prompt,API_DOCTOR_CAPABILITY]);
+  await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,started_at,lease_until,attempts,max_attempts) values($1,null,$2,$3,$4,'api_doctor','running',now(),now()+interval '2 minutes',0,1)",[id,'NV10 API Doctor analysis',prompt,API_DOCTOR_CAPABILITY]);
   const row=await claimResource(API_DOCTOR_CAPABILITY,id,[],{profile:'LOCAL',taskKind:'api_doctor'});
   if(!row){
-    await pool.query("update tigeriq_jobs set status='failed',failure=$2,completed_at=now() where id=$1",[id,JSON.stringify({message:'NV10_API_DOCTOR_UNAVAILABLE'})]);
+    await pool.query("update tigeriq_jobs set status='done',result=$2,lease_until=null,completed_at=now() where id=$1",[id,JSON.stringify({skipped:'nv10_unavailable'})]);
     await event('API_DOCTOR_ANALYSIS_SKIPPED',{jobId:id,taskKind:'api_doctor',signature:scanSignature,reason:'nv10_unavailable'});
     return {skipped:'nv10_unavailable'};
   }
   const r=resources.find(x=>x.resourceId===row.resource_id);
+  await pool.query("update tigeriq_jobs set employee_id=$2,resource_id=$3,provider=$4,routing_profile='LOCAL',lease_until=now()+interval '2 minutes' where id=$1",[id,r.id,r.resourceId,r.provider]);
   const started=Date.now();
   try{
     const decision=await invokeApiDoctorLocal(prompt);
