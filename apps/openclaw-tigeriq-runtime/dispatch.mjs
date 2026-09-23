@@ -23,7 +23,7 @@ const REVERSAL=/\\b(?:avoid|refuse|block|prevent|prohibit|forbid|skip)\\b/i;
 
 export function hasHardGateTextIntent(value){
   const text=String(value||'');
-  const matcher=new RegExp('\\\\b'+HARD_GATE_PATTERN+'\\\\b','ig');
+  const matcher=new RegExp('\\b'+HARD_GATE_PATTERN+'\\b','ig');
   for(const match of text.matchAll(matcher)){
     const index=Number(match.index)||0;
     const prefix=text.slice(Math.max(0,index-160),index);
