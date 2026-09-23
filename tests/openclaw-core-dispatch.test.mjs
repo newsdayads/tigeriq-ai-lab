@@ -196,5 +196,10 @@ describe('Core -> OpenClaw bounded dispatch #1528', () => {
     expect(source).toContain("OPENCLAW_JOB_DEDUPED");
     expect(source).toContain("OPENCLAW_JOB_RETRY_QUEUED");
     expect(source).toContain("retryFailed:true");
+    expect(source).toContain("async function reconcileCoreOpenClawBoundedObjectives()");
+    expect(source).toContain("metadata->>'executionSurface'='CORE_OPENCLAW_BOUNDED'");
+    expect(source).toContain("j.status in ('done','failed')");
+    expect(source).toContain("CORE_OPENCLAW_OBJECTIVE_RECONCILED");
+    expect(source).toContain("if(t-lastOpenClawObjectiveReconcile>3000){await reconcileCoreOpenClawBoundedObjectives()");
   });
 });

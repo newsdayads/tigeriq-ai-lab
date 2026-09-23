@@ -937,6 +937,41 @@ async function persistTerminalHandoff(o,decision,currentPhase){
   }catch(error){await client.query('rollback');throw error;}finally{client.release();}
 }
 
+async function reconcileCoreOpenClawBoundedObjectives(){
+  const rows=(await pool.query(`select o.id as objective_id,j.id as job_id,j.status,j.employee_id,j.resource_id,j.provider,j.failure,j.result
+    from tigeriq_objectives o
+    join lateral (
+      select id,status,employee_id,resource_id,provider,failure,result
+      from tigeriq_jobs
+      where objective_id=o.id and capability='pc_operator'
+      order by created_at desc
+      limit 1
+    ) j on true
+    where o.status='active' and o.metadata->>'executionSurface'='CORE_OPENCLAW_BOUNDED'
+      and j.status in ('done','failed')
+    order by o.created_at
+    limit 20`)).rows;
+  let reconciled=0;
+  for(const row of rows){
+    const done=row.status==='done';
+    const reason=done?'job_done':String(row.failure?.kind||row.failure?.message||'terminal_failure').slice(0,300);
+    const summary=done
+      ? `bounded pc_operator completed via ${row.employee_id||'NV06'}/${row.provider||'openclaw'}; job=${row.job_id}`
+      : `bounded pc_operator failed; job=${row.job_id}; failure=${reason}`;
+    const updated=await pool.query("update tigeriq_objectives set status=$2,summary=$3,updated_at=now() where id=$1 and status='active'",[row.objective_id,done?'completed':'blocked',summary]);
+    if(updated.rowCount!==1)continue;
+    reconciled++;
+    await event(done?'OBJECTIVE_COMPLETE':'OBJECTIVE_BLOCKED',{
+      objectiveId:row.objective_id,jobId:row.job_id,executionSurface:'CORE_OPENCLAW_BOUNDED',
+      employeeId:row.employee_id||null,resourceId:row.resource_id||null,provider:row.provider||null,reason
+    });
+    await event('CORE_OPENCLAW_OBJECTIVE_RECONCILED',{
+      objectiveId:row.objective_id,jobId:row.job_id,terminalStatus:done?'completed':'blocked',reason
+    });
+  }
+  return reconciled;
+}
+
 async function managerTick() {
   const q=await pool.query(`select o.* from tigeriq_objectives o where o.status='active' and o.next_check_at<=now()
     and coalesce(o.metadata->>'executionSurface','') not in ('CORE_OPENCLAW_BOUNDED','CORE_UI')
@@ -1125,7 +1160,7 @@ async function runFailureLearningScan(){
   return {eventsIn:rows.length,candidatesCreated:candidates.length};
 }
 
-let stop=false, lastRefresh=0, lastRecover=0, lastManager=0, lastProbe=0, lastFailureLearning=0, lastApiDoctor=0, apiDoctorScanRunning=false; const active=new Set();
+let stop=false, lastRefresh=0, lastRecover=0, lastOpenClawObjectiveReconcile=0, lastManager=0, lastProbe=0, lastFailureLearning=0, lastApiDoctor=0, apiDoctorScanRunning=false; const active=new Set();
 function getDynamicMaxParallel() {
   const resList = typeof resources !== 'undefined' ? resources : [];
   const healthyCount = Array.isArray(resList) ? resList.filter(r => r && (r.status === 'ready' || r.status === 'healthy' || r.healthy || r.health_state === 'READY' || r.health_state === 'ONLINE' || r.credential_state === 'LOCAL')).length : 0;
@@ -1214,6 +1249,7 @@ async function loop(){
       }
       if(t-lastRefresh>15000){await refreshResources();lastRefresh=t;}
       if(t-lastRecover>10000){await recoverStale();lastRecover=t;}
+      if(t-lastOpenClawObjectiveReconcile>3000){await reconcileCoreOpenClawBoundedObjectives();lastOpenClawObjectiveReconcile=t;}
       if(t-lastManager>MANAGER_IDLE_MS){await managerTick();lastManager=t;}
       if(t-lastProbe>60000){await probeReadyResources();lastProbe=t;}
       if(!apiDoctorScanRunning&&t-lastApiDoctor>API_DOCTOR_INTERVAL_MS){lastApiDoctor=t;apiDoctorScanRunning=true;void runApiDoctorScan().catch(error=>console.error(JSON.stringify({event:'API_DOCTOR_SCAN_ERROR',error:String(error?.message||error)}))).finally(()=>{apiDoctorScanRunning=false;});}
