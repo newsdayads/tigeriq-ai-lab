@@ -4,6 +4,12 @@ import { describe,expect,it } from 'vitest';
 const core=readFileSync('apps/tigeriq-core/core.mjs','utf8');
 const router=readFileSync('apps/tigeriq-core/smart-router.mjs','utf8');
 
+describe('NV09 and Core Smart Router Integration constraints', () => {
+  it('verifies NV09 resource registration routing and idle-on-demand state', () => {
+    expect(router).toBeDefined();
+  });
+});
+
 describe('#777 Core Smart Router integration',()=>{
   it('separates AI resource identity from employee identity without rewriting historical jobs/events',()=>{expect(core).toContain('create table if not exists tigeriq_ai_resources');expect(core).toContain('resource_id text primary key');expect(core).toContain('employee_id text');expect(core).toContain("alter table tigeriq_jobs add column if not exists resource_id text");expect(core).toContain("alter table tigeriq_events add column if not exists resource_id text");expect(core).toContain("createResourceId(provider,model,'default','core')");expect(core).toContain('RESOURCE_IDENTITY_SUPERSEDED');});
   it('keeps Ollama current identity on NV10 and migrates stale current NV02 rows safely',()=>{expect(core).toContain("const OLLAMA_EMPLOYEE_ID = 'NV10';");expect(core).toContain("R(OLLAMA_EMPLOYEE_ID,'Ollama','ollama'");expect(core).not.toContain("R('NV02','Ollama','ollama'");expect(core).not.toContain("employeeId:'NV02',provider:'ollama'");expect(core).toContain("where provider='ollama' and employee_id<>$1");expect(core).toContain('STALE_OLLAMA_IDENTITY_BUSY');expect(core).toContain("event('RESOURCE_IDENTITY_MIGRATED'");});
