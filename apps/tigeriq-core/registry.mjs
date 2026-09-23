@@ -3,6 +3,8 @@ export const HEALTH_STATES = { IDLE_ON_DEMAND: 'IDLE_ON_DEMAND', BUSY: 'BUSY', E
 const registeredModels = new Map();
 
 export function registerNv09() {
+  const existing = registeredModels.get('NV09');
+  if (existing) return existing;
   const config = {
     employee_id: 'NV09',
     model: 'qwen3-coder:30b',
