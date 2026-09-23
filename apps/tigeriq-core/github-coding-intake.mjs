@@ -85,7 +85,31 @@ async function close(fetchImpl,owner,repo,n,token){if(token)await gh(fetchImpl,o
 async function markerExists(pool,type,n){const q=await pool.query("select 1 from tigeriq_events where type=$1 and data->>'issueNumber'=$2 limit 1",[type,String(n)]);return q.rowCount>0}
 async function eventData(pool,type,n){const q=await pool.query("select data from tigeriq_events where type=$1 and data->>'issueNumber'=$2 order by seq desc limit 100",[type,String(n)]);return q.rows.map(row=>row.data||{})}
 async function mark(pool,type,data){await pool.query('insert into tigeriq_events(type,data) values($1,$2)',[type,JSON.stringify(data)])}
-async function hasCompletedCodingResult(pool,n){return (await eventData(pool,'GITHUB_CODING_RESULT_REPORTED',n)).some(x=>String(x.status||'').toLowerCase()==='completed')}
+async function hasCompletedCodingResult(pool,n){
+  const dispatches=await eventData(pool,'GITHUB_CODING_DISPATCHED',n);
+  const latestObjectiveId=String(dispatches[0]?.codingObjectiveId||'');
+  if(!latestObjectiveId)return false;
+  const results=await eventData(pool,'GITHUB_CODING_RESULT_REPORTED',n);
+  if(results.some(x=>String(x.status||'').toLowerCase()==='completed'&&String(x.codingObjectiveId||'')===latestObjectiveId))return true;
+  // Legacy result markers predating objective correlation remain valid only before any rearm/new dispatch exists.
+  return dispatches.length===1&&results.some(x=>String(x.status||'').toLowerCase()==='completed'&&!String(x.codingObjectiveId||''));
+}
+async function reopenedCompletionKey(fetchImpl,owner,repo,token,issue){
+  if(!issue||issue.state!=='open')return '';
+  const n=Number(issue.number);if(!n)return '';
+  let timeline;
+  try{timeline=await gh(fetchImpl,owner,repo,`/issues/${n}/timeline?per_page=100`,token)}catch{return ''}
+  const transitions=(Array.isArray(timeline)?timeline:[])
+    .filter(x=>['closed','reopened'].includes(String(x?.event||'')))
+    .sort((a,b)=>String(a?.created_at||'').localeCompare(String(b?.created_at||''))||Number(a?.id||0)-Number(b?.id||0));
+  const latest=transitions.at(-1);
+  if(String(latest?.event||'')!=='reopened')return '';
+  const lastClose=[...transitions].reverse().find(x=>String(x?.event||'')==='closed');
+  if(!lastClose)return '';
+  const sourceRevision=await codingSourceRevision(fetchImpl,owner,repo,token,issue);
+  const reopenIdentity=String(latest?.id||latest?.created_at||'reopened').replace(/[^0-9A-Za-z]/g,'').slice(-32)||'reopened';
+  return `${sourceRevision}:reopen-${reopenIdentity}`;
+}
 async function hasEffectiveBlockedFinal(pool,n,fallbackSummary='',currentObjectiveId=null,currentMainSha='',currentSourceRevision=''){
   const finals=await eventData(pool,'GITHUB_CODING_BLOCKED_FINAL',n);
   if(!finals.length)return false;
@@ -218,7 +242,18 @@ export async function materializeGithubCodingIssues({pool,fetchImpl=fetch,owner=
       counters.skipReasons.push({issueNumber:spec.number,skipReason:'CAPACITY_FULL'});
       continue;
     }
-    if(await markerExists(pool,'GITHUB_CODING_DISPATCHED',spec.number)){
+    const hasDispatchMarker=await markerExists(pool,'GITHUB_CODING_DISPATCHED',spec.number);
+    let completedReopenKey='';
+    if(hasDispatchMarker&&await hasCompletedCodingResult(pool,spec.number)){
+      completedReopenKey=await reopenedCompletionKey(fetchImpl,owner,repo,token,{
+        number:spec.number,title:spec.title,body:spec.body,state:'open',html_url:spec.url
+      });
+      if(completedReopenKey){
+        const priorRearms=await eventData(pool,'GITHUB_CODING_COMPLETED_REARMED',spec.number);
+        if(priorRearms.some(x=>String(x.reopenKey||'')===completedReopenKey))completedReopenKey='';
+      }
+    }
+    if(hasDispatchMarker&&!completedReopenKey){
       counters.terminalOrDispatched++;
       counters.skipReasons.push({issueNumber:spec.number,skipReason:'ALREADY_DISPATCHED_OR_TERMINAL'});
       continue;
@@ -240,8 +275,9 @@ export async function materializeGithubCodingIssues({pool,fetchImpl=fetch,owner=
       await mark(pool,'GITHUB_DEPENDENCY_RELEASED',{issueNumber:spec.number,dependsOn:spec.dependsOn});
       console.log(JSON.stringify({event:'GITHUB_DEPENDENCY_RELEASED',issueNumber:spec.number,dependsOn:spec.dependsOn}));
     }
-    const dispatchKey=`GITHUB-ISSUE-${spec.number}`;
-    const objective=`GitHub autonomous coding issue #${spec.number}: ${spec.title}\n${spec.url}\n\nDISPATCH_KEY=${dispatchKey}\n\n${spec.body}\n\nExecute only zero-cost reversible repository work. Keep direct main writes, paid cost, credentials/security, destructive actions, production release, browser authentication and PC01 source editing blocked.`;
+    const reopenSuffix=completedReopenKey?'-REOPEN-'+createHash('sha256').update(completedReopenKey).digest('hex').slice(0,12):'';
+    const dispatchKey=`GITHUB-ISSUE-${spec.number}${reopenSuffix}`;
+    const objective=`GitHub autonomous coding issue #${spec.number}: ${spec.title}\n${spec.url}\n\nDISPATCH_KEY=${dispatchKey}\n${completedReopenKey?`REOPEN_KEY=${completedReopenKey}\n`:''}\n${spec.body}\n\nExecute only zero-cost reversible repository work. Keep direct main writes, paid cost, credentials/security, destructive actions, production release, browser authentication and PC01 source editing blocked.`;
     let out=(laneStatus?.objectives||[]).find(x=>String(x?.objective||'').includes(`DISPATCH_KEY=${dispatchKey}`));
     let recoveredExisting=false;
     if(out?.id){recoveredExisting=true}
@@ -251,8 +287,11 @@ export async function materializeGithubCodingIssues({pool,fetchImpl=fetch,owner=
       laneStatus={...(laneStatus||{}),objectives:[...(laneStatus?.objectives||[]),{id:out.id,objective,status:'queued'}]};
     }
     const dispatchReason=spec.ownerDirect?`OWNER_DIRECT>${spec.sourcePriority}`:`PRIORITY_${spec.sourcePriority}`;
-    await mark(pool,'GITHUB_CODING_DISPATCHED',{issueNumber:spec.number,issueUrl:spec.url,codingObjectiveId:out.id,ownerDirect:spec.ownerDirect,sourcePriority:spec.sourcePriority,dispatchPriority:spec.priority,dispatchReason,scopeLease:spec.scopeLease,dispatchKey,recoveredExisting});
-    await comment(fetchImpl,owner,repo,spec.number,token,recoveredExisting?`[CLAIM_RECOVERED] TigerIQ Coding Lane already had this issue as ${out.id}; durable dispatch state was restored. Dispatch: ${dispatchReason}.`:`[CLAIM] TigerIQ Coding Lane accepted this issue as ${out.id}. Automatic coding pipeline is active. Dispatch: ${dispatchReason}.`);
+    if(completedReopenKey){
+      await mark(pool,'GITHUB_CODING_COMPLETED_REARMED',{issueNumber:spec.number,priorObjectiveId:String((await eventData(pool,'GITHUB_CODING_RESULT_REPORTED',spec.number))[0]?.codingObjectiveId||''),codingObjectiveId:out.id,reopenKey:completedReopenKey,dispatchKey});
+    }
+    await mark(pool,'GITHUB_CODING_DISPATCHED',{issueNumber:spec.number,issueUrl:spec.url,codingObjectiveId:out.id,ownerDirect:spec.ownerDirect,sourcePriority:spec.sourcePriority,dispatchPriority:spec.priority,dispatchReason,scopeLease:spec.scopeLease,dispatchKey,recoveredExisting,reopenKey:completedReopenKey||null});
+    await comment(fetchImpl,owner,repo,spec.number,token,completedReopenKey?`[REOPEN_REARMED] TigerIQ Coding Lane rearmed this reopened Work Order as ${out.id}. Dispatch: ${dispatchReason}.`:recoveredExisting?`[CLAIM_RECOVERED] TigerIQ Coding Lane already had this issue as ${out.id}; durable dispatch state was restored. Dispatch: ${dispatchReason}.`:`[CLAIM] TigerIQ Coding Lane accepted this issue as ${out.id}. Automatic coding pipeline is active. Dispatch: ${dispatchReason}.`);
     activeScopes.push(spec.scopeLease);
     if(recoveredExisting)recovered++;else created++;
   }
