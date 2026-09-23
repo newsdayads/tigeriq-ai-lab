@@ -90,7 +90,8 @@ describe('App Chrome GitHub self-run policy',()=>{
     expect(source).toContain('mkdirSync(this.lockPath)');
     expect(source).toContain('this.value=this.load()');
     expect(source).toContain("throw new Error('SELF_RUN_CLAIM_STORE_LOCK_BUSY')");
-    expect(source.indexOf('this.acquireFileLock()')).toBeLessThan(source.indexOf('this.value=this.load()'));
+    const withLock=source.slice(source.indexOf('private withLock<T>'),source.indexOf('private pruneExpiredNoLock'));
+    expect(withLock.indexOf('this.acquireFileLock()')).toBeLessThan(withLock.indexOf('this.value=this.load()'));
 
     mkdirSync(path+'.lock');
     expect(()=>store.acquire({issueNumber:32,scope:'LOCK_SCOPE',workerId:'NV03',ttlMs:60_000})).toThrow('SELF_RUN_CLAIM_STORE_LOCK_BUSY');
