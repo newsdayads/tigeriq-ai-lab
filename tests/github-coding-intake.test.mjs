@@ -599,7 +599,7 @@ describe('GitHub coding reopened-completion rearm',()=>{
       {type:'GITHUB_CODING_RESULT_REPORTED',data:{issueNumber:1530,codingObjectiveId:'old-1530',status:'completed'}}
     );
     let posted=0,rearmedObjective=null;
-    const reopened=issue(SAFE+'\nOWNER_DIRECT=true\nRESOURCE_SCOPE=NV09_CORE_RUNTIME_REGISTRATION\nALLOW_PATH_PREFIX=apps/tigeriq-core/nv09.mjs', {
+    const reopened=issue(SAFE+'\nOWNER_DIRECT=true\nRESOURCE_SCOPE=REOPENED_COMPLETION_TEST\nALLOW_PATH_PREFIX=docs/evidence/reopened-completion.md', {
       number:1530,title:'NV09 live acceptance follow-up'
     });
     const timeline=[
