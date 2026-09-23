@@ -942,6 +942,26 @@ async function newChat(target){
 }
 
 async function reloadTarget(target){const p=await pageRpc(target);try{await p.call('Page.reload',{ignoreCache:false});return{ok:true,status:'RELOADED'};}finally{p.close();}}
+async function waitForPostReloadNv02Ui(target,timeoutMs=12000){
+  const deadline=Date.now()+timeoutMs;let last=null,busySignature='',busyStable=0,readySince=0;
+  while(Date.now()<deadline){
+    await sleep(750);
+    const ui=await uiState(target).catch(()=>null);if(!ui)continue;last=ui;
+    if(ui.securityBlock)return ui;
+    if(ui.uiBusy===true){
+      const sig=String(ui.activitySignature||'');
+      busyStable=sig&&sig===busySignature?busyStable+1:1;busySignature=sig;readySince=0;
+      if(busyStable>=2)return ui;
+      continue;
+    }
+    busySignature='';busyStable=0;
+    if(ui.uiPhase==='READY'){
+      if(!readySince)readySince=Date.now();
+      if(Date.now()-readySince>=1500)return ui;
+    }else readySince=0;
+  }
+  return last;
+}
 async function waitForIdleAfterSubmission(target,timeoutMs=45000,stableReadyMs=5000){
   const deadline=Date.now()+timeoutMs;let readySince=0;
   while(Date.now()<deadline){
@@ -1150,8 +1170,7 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
         const beforeUrl=ui?.url||null;
         const beforeSignature=signature;
         await reloadTarget(target);
-        await sleep(2200);
-        const after=await uiState(target).catch(()=>null);
+        const after=await waitForPostReloadNv02Ui(target);
         return {ok:true,status:'RELOADED',beforeUrl,beforeSignature,afterUrl:after?.url||null,afterPhase:after?.uiPhase||null,afterBusy:after?.uiBusy===true,afterSignature:String(after?.activitySignature||'')};
       },'WORKING_UNCHANGED_F5_RECHECK',20000);
       if(refreshed?.status==='MUTATION_LEASE_BUSY'){
