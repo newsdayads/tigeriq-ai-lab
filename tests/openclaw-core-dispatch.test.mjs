@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 
 import {
   buildOpenClawPrompt,
@@ -59,6 +60,13 @@ describe('Core -> OpenClaw bounded dispatch #1528', () => {
     expect(() => normalizeOpenClawDispatchEnvelope(envelope({
       instruction:'Verify TCP 127.0.0.1:18789. Do not use paid action, Production release, reboot or shutdown.',
     }))).not.toThrow();
+  });
+
+  it('matches hard gates under a fresh native Node runtime, not only the test transformer', () => {
+    const moduleUrl=new URL('../apps/openclaw-tigeriq-runtime/dispatch.mjs',import.meta.url).href;
+    const script=`import {hasHardGateTextIntent} from ${JSON.stringify(moduleUrl)}; const rows=['reboot now','Deploy this change to Production now.','Push this commit directly to main now.'].map(s=>hasHardGateTextIntent(s)); if(rows.some(v=>v!==true)) process.exit(7); process.stdout.write(JSON.stringify(rows));`;
+    const out=execFileSync(process.execPath,['--input-type=module','-e',script],{encoding:'utf8'}).trim();
+    expect(JSON.parse(out)).toEqual([true,true,true]);
   });
 
   it('never asks OpenClaw to select backlog and makes retry behavior idempotency-aware', () => {
