@@ -1,5 +1,5 @@
 # TIGERIQ — WORKFLOW
-Version: 3.4
+Version: 3.5
 Status: Source of Truth
 Priority: P0
 Updated: 2026-09-18
@@ -18,6 +18,15 @@ Updated: 2026-09-18
 - Không lặp context đã rõ và không tường thuật quá trình suy luận nội bộ.
 - Khi bước kế tiếp rõ, an toàn và trong quyền được giao: làm trước, báo kết quả sau.
 - Thứ tự phản hồi mặc định: `KẾT QUẢ → BỊ CHẶN (nếu có) → BƯỚC TIẾP THEO`.
+
+## 2.1. Khóa cứng hiển thị mã việc cho anh Sơn
+- Mọi tham chiếu Owner-facing tới GitHub Issue, Pull Request hoặc Work Order phải hiển thị theo dạng bắt buộc: `#<số> - <Tên việc canonical>`.
+- **CẤM** dùng `#<số>` đơn lẻ làm tham chiếu chính/hiện hành trong chat, trạng thái, queue, checkpoint, handoff, báo cáo hoặc dashboard.
+- Trước khi gửi nội dung cho anh Sơn, phải quét mọi token dạng `#\d+` có nghĩa là Issue/PR/Work Order. Nếu thiếu tên việc, phải resolve title canonical từ GitHub/Source of Truth rồi mới render; **không được đoán tên**.
+- Nếu không resolve được title canonical khi title là bắt buộc để hiển thị, fail closed: không phát bare reference; ghi rõ `BỊ CHẶN / WORK_ITEM_TITLE_UNRESOLVED` cùng ngữ cảnh đủ hiểu mà không dùng mã trần.
+- Khi một mã xuất hiện nhiều lần trong cùng phản hồi, lần đầu/current reference luôn phải đầy đủ `#<số> - <Tên việc>`; các lần sau cũng ưu tiên đầy đủ để tránh mất ngữ cảnh.
+- Quy tắc này là output invariant xuyên chat/NV và có precedence cao hơn thói quen rút gọn để NO YAPPING.
+- Regression bắt buộc: đầu ra chứa bare Issue/PR/Work Order reference phải KHÔNG ĐẠT; đầu ra `#<số> - <Tên việc canonical>` phải ĐẠT.
 
 ## 3. Hợp đồng nhận việc từ anh Sơn
 - Một tin nhắn có mục tiêu rõ ràng tự nó là lệnh giao việc; không bắt buộc tiền tố `LÀM`.
@@ -196,3 +205,4 @@ Với thay đổi Loader/Bootstrap cốt lõi: bắt buộc regression tối thi
 - NEW CHAT command số đã đăng ký → resolve từ Dynamic Registry.
 - Command không đăng ký/disabled → fail closed.
 - Xác minh Loader đọc được 5 Bootstrap canonical và nguồn động hiện hành.
+- Kiểm thử hiển thị mã việc: bare `#<số>` cho Issue/PR/Work Order phải KHÔNG ĐẠT; `#<số> - <Tên việc canonical>` phải ĐẠT.
