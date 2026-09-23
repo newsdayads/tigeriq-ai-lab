@@ -515,8 +515,11 @@ const UI_EXPR=`(()=>{
   const checks=[['rate limit','BLOCKED_RATE_LIMIT'],['too many requests','BLOCKED_RATE_LIMIT'],['suspicious activity','BLOCKED_SUSPICIOUS_ACTIVITY'],['unusual activity','BLOCKED_SUSPICIOUS_ACTIVITY'],['verify your identity','BLOCKED_REAUTH'],['verify it’s you','BLOCKED_REAUTH'],['xác minh danh tính','BLOCKED_REAUTH']];
   if(!securityBlock) for(const [n,s] of checks){if(txt.includes(n)){securityBlock=s;break;}}
   const pageText=String(document.body?.innerText||'').replace(/\s+/g,' ').trim();
-  const chatLoadError=location.hostname==='chatgpt.com'&&/(không thể tải cuộc hội thoại chatgpt này|unable to load (?:this )?(?:chatgpt )?conversation|failed to load (?:this )?(?:chatgpt )?conversation)/i.test(pageText);
   const chatRetry=[...document.querySelectorAll('button,[role="button"]')].find(e=>vis(e)&&/^(retry|thử lại)$/i.test((e.innerText||e.textContent||e.getAttribute('aria-label')||'').trim()))||null;
+  const retryContext=(()=>{let e=chatRetry;for(let i=0;i<6&&e;i+=1,e=e.parentElement){const text=String(e.innerText||e.textContent||'').replace(/\s+/g,' ').trim();if(text&&text.length<=800)return text;}return''})();
+  const conversationLoadError=/(không thể tải cuộc hội thoại chatgpt này|unable to load (?:this )?(?:chatgpt )?conversation|failed to load (?:this )?(?:chatgpt )?conversation)/i.test(pageText);
+  const requestTimeoutError=Boolean(chatRetry)&&/(yêu cầu (?:đã )?hết thời gian chờ|request (?:has )?timed out|request timeout)/i.test(retryContext);
+  const chatLoadError=location.hostname==='chatgpt.com'&&Boolean(conversationLoadError||requestTimeoutError);
   const modelControls=location.hostname==='chatgpt.com'?[...document.querySelectorAll('button,[role="button"]')].filter(e=>vis(e)&&(e.hasAttribute('data-selected-reasoning-effort')||/chọn mô hình chatgpt|choose.*model|model selector/i.test((e.getAttribute('aria-label')||'')+' '+(e.getAttribute('title')||'')))):[];
   const modelControl=modelControls.length===1?modelControls[0]:null;
   const modelLabel=String((modelControl?.getAttribute('aria-label')||'')+' '+(modelControl?.getAttribute('title')||'')+' '+(modelControl?.innerText||modelControl?.textContent||'')).replace(/\\s+/g,' ').trim();
