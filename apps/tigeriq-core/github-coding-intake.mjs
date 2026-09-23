@@ -89,9 +89,10 @@ async function hasCompletedCodingResult(pool,n){
   const dispatches=await eventData(pool,'GITHUB_CODING_DISPATCHED',n);
   const latestObjectiveId=String(dispatches[0]?.codingObjectiveId||'');
   if(!latestObjectiveId)return false;
-  return (await eventData(pool,'GITHUB_CODING_RESULT_REPORTED',n)).some(x=>
-    String(x.status||'').toLowerCase()==='completed'&&String(x.codingObjectiveId||'')===latestObjectiveId
-  );
+  const results=await eventData(pool,'GITHUB_CODING_RESULT_REPORTED',n);
+  if(results.some(x=>String(x.status||'').toLowerCase()==='completed'&&String(x.codingObjectiveId||'')===latestObjectiveId))return true;
+  // Legacy result markers predating objective correlation remain valid only before any rearm/new dispatch exists.
+  return dispatches.length===1&&results.some(x=>String(x.status||'').toLowerCase()==='completed'&&!String(x.codingObjectiveId||''));
 }
 async function reopenedCompletionKey(fetchImpl,owner,repo,token,issue){
   if(!issue||issue.state!=='open')return '';
