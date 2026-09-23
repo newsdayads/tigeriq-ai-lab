@@ -185,9 +185,15 @@ describe('App Chrome self-run wiring',()=>{
     expect(server).not.toContain('if(!config.autopilot.enabled)return false; // self-run gate');
   });
 
-  it('reuses the existing PC01 GitHub token file without changing credentials',()=>{
+  it('reuses existing GitHub authentication without changing credentials or requiring protected-file ACL changes',()=>{
+    expect(supervisor).toContain('function Resolve-GithubRuntimeToken');
+    expect(supervisor).toContain('Get-Command gh.exe');
+    expect(supervisor).toContain('auth token');
     expect(supervisor).toContain("github-command-center.token");
+    expect(supervisor).toContain("throw 'APPCHROME_GITHUB_AUTH_UNAVAILABLE'");
     expect(supervisor).toContain('$env:TIGERIQ_GITHUB_TOKEN=');
     expect(supervisor).toContain("$env:TIGERIQ_APP_CHROME_SELF_RUN='1'");
+    const resolver=supervisor.slice(supervisor.indexOf('function Resolve-GithubRuntimeToken'),supervisor.indexOf('function Set-RuntimeEnvironment'));
+    expect(resolver.indexOf('auth token')).toBeLessThan(resolver.indexOf('githubTokenFile'));
   });
 });
