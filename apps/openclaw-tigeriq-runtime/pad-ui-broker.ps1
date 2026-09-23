@@ -107,7 +107,8 @@ function Element-ToObject($e) {
   foreach ($p in @(
     [System.Windows.Automation.InvokePattern]::Pattern,
     [System.Windows.Automation.ValuePattern]::Pattern,
-    [System.Windows.Automation.SelectionItemPattern]::Pattern
+    [System.Windows.Automation.SelectionItemPattern]::Pattern,
+    [System.Windows.Automation.ExpandCollapsePattern]::Pattern
   )) {
     $obj = $null
     try { if ($e.TryGetCurrentPattern($p,[ref]$obj)) { $patterns += $p.ProgrammaticName } } catch {}
@@ -160,6 +161,13 @@ function Invoke-PadElement($Request, [bool]$AllowClickFallback) {
     return [pscustomobject]@{ Method='InvokePattern'; MatchCount=$found.Count; Element=(Element-ToObject $e) }
   }
   if (-not $AllowClickFallback) { throw 'TIGERIQ_PAD_UI_INVOKE_PATTERN_UNAVAILABLE' }
+  $expand = $null
+  if ($e.Current.ControlType -eq [System.Windows.Automation.ControlType]::TreeItem -and $e.TryGetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern,[ref]$expand)) {
+    if ($expand.Current.ExpandCollapseState -eq [System.Windows.Automation.ExpandCollapseState]::Collapsed) {
+      $expand.Expand()
+      return [pscustomobject]@{ Method='ExpandCollapsePattern.Expand'; MatchCount=$found.Count; Element=(Element-ToObject $e) }
+    }
+  }
   $r = $e.Current.BoundingRectangle
   if ($r.Width -le 0 -or $r.Height -le 0) { throw 'TIGERIQ_PAD_UI_ELEMENT_NOT_CLICKABLE' }
   [TigerIQPadNative]::SetForegroundWindow([IntPtr]$found.Window.Current.NativeWindowHandle) | Out-Null
