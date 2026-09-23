@@ -299,7 +299,14 @@ describe('NV02 continuity policy', () => {
     const working=continuity.slice(continuity.indexOf("if(phase==='WORKING')"),continuity.indexOf('if(shouldRotateNv02Chat'));
     expect(working).toContain("WORKING_UNCHANGED_F5_RECHECK");
     expect(working).toContain("reloadTarget(target)");
+    expect(working).toContain("waitForPostReloadNv02Ui(target)");
+    expect(working).not.toContain("await sleep(2200)");
     expect(working).toContain("unchanged>=MAX_WORKING_UNCHANGED_CHECKS");
+    const postReload=source.slice(source.indexOf('async function waitForPostReloadNv02Ui'),source.indexOf('async function waitForIdleAfterSubmission'));
+    expect(postReload).toContain('timeoutMs=12000');
+    expect(postReload).toContain('busyStable>=2');
+    expect(postReload).toContain("ui.uiPhase==='READY'");
+    expect(postReload).toContain('Date.now()-readySince>=1500');
     expect(working).toContain("refreshed?.afterSignature===refreshed.beforeSignature");
     expect(working).toContain("stopStalledWorking(target)");
     expect(working).toContain("rotateNv02Chat(target,rotationState,now)");
