@@ -44,6 +44,7 @@ import {
   listOpenGithubIssues,
   releaseGithubClaim,
   resourceScopeOf,
+  selfRunContinuityClaimMatches,
   terminalMarkerFromComments,
   type SelfRunRuntimeState,
 } from './github-self-run.js';
@@ -1379,13 +1380,22 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
           latestSnapshot?.previousJob,
           autopilotState,
         );
+        const activeNv02SelfRunIssue=issueNumberFromRef(activeNv02Job?.issueRef);
+        const activeNv02SelfRunClaim=activeNv02SelfRunIssue
+          ? selfRunClaims.find(activeNv02SelfRunIssue,'NV02')
+          : undefined;
+        const continuitySelfRunJob=continuityContinue&&selfRunContinuityClaimMatches(
+          activeNv02Job,
+          activeNv02SelfRunClaim,
+          'NV02',
+        );
         const nv02NextJob=latestSnapshot?.nextJob;
         const continuityCurrentChatOnly=continuityContinue
           && !activeNv02Job
           && !autopilotState.pendingJobId
           && !autopilotState.uncertainJobId
           && !(nv02NextJob?.workerId==='NV02'&&['QUEUED','READY','RUNNING'].includes(String(nv02NextJob.status||'')));
-        const continuityLeaseAllowed=continuitySameJob||continuityCurrentChatOnly;
+        const continuityLeaseAllowed=continuitySameJob||continuitySelfRunJob||continuityCurrentChatOnly;
         const uiContinuityLeaseAllowed=continuityLeaseAllowed||genericUiContinuityMaintenance;
         const boundedRecovery=staleWorkingRecovery||stalledRecovery||modelProfileRecovery||checkpointRecovery||chatRotation||chatLoadRecovery||periodicF5||currentChatRestore||genericUiContinuityMaintenance;
         const chatLoadRecoveryStateAllowed=chatLoadRecovery

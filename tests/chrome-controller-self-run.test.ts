@@ -7,6 +7,7 @@ import {
   parseWorkOrderMetadata,
   priorityOf,
   resourceScopeOf,
+  selfRunContinuityClaimMatches,
   terminalMarkerFromComments,
   workerEligibleForIssue,
   type GithubIssue,
@@ -81,6 +82,29 @@ describe('App Chrome GitHub self-run queue',()=>{
     expect(prompt).toContain('CURRENT_WORK_ORDER=#40 - review me');
     expect(prompt).toContain('CLAIM_ID=claim-1');
     expect(prompt).toContain('--- FULL ISSUE ---');
+  });
+
+  it('allows continuation only for the matching durable self-run claim',()=>{
+    const claim={
+      claimId:'27fbb5e4-16cd-4ef2-a57a-73a37b462849',
+      workerId:'NV02' as const,
+      scope:'OPENCLAW_TIGERIQ_BOUNDED_RUNTIME_BRIDGE',
+      issueNumber:1528,
+      expiresAt:'2026-09-24T02:00:00Z',
+      createdAt:'2026-09-23T12:47:36Z',
+    };
+    const job={
+      jobId:'APP-GH-1528-NV02-27fbb5e4',
+      workerId:'NV02' as const,
+      issueRef:'https://github.com/newsdayads/tigeriq-ai-lab/issues/1528',
+      source:'APP_CHROME_SELF_RUN',
+      stage:'WAITING_EVIDENCE',
+      completedAt:null,
+    };
+    expect(selfRunContinuityClaimMatches(job,claim,'NV02')).toBe(true);
+    expect(selfRunContinuityClaimMatches(job,undefined,'NV02')).toBe(false);
+    expect(selfRunContinuityClaimMatches(job,{...claim,claimId:'ffffffff-16cd-4ef2-a57a-73a37b462849'},'NV02')).toBe(false);
+    expect(selfRunContinuityClaimMatches({...job,issueRef:'https://github.com/newsdayads/tigeriq-ai-lab/issues/9999'},claim,'NV02')).toBe(false);
   });
 
   it('parses canonical metadata deterministically',()=>{
