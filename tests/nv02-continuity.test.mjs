@@ -261,7 +261,7 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("verifiedChatUrl:String(raw.verifiedChatUrl||'')");
     expect(source).toContain("function applyNv02DurableVerifiedModelProfile(ui)");
     expect(source).toContain("ui.modelControlPresent!==true||ui.reasoningEffort!=='High'");
-    expect(source).toContain("!sameNv02Chat(state.verifiedChatUrl,ui.url)");
+    expect(source).toContain("!sameNv02Chat(state.verifiedChatUrl,ui?.url)");
     expect(source).toContain("return applyNv02DurableVerifiedModelProfile(applyNv02VerifiedModelProfile(raw))");
     const tickWorker=source.slice(source.indexOf('async function tickWorker'),source.indexOf('async function tick()'));
     expect(tickWorker).toContain('const rawUi=await uiState(target)');
