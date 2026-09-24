@@ -82,6 +82,7 @@ try{fs.mkdirSync(WORKER_CONTINUITY_DIR,{recursive:true});}catch{}
 const workerMutationBusy=new Set();
 const bootResetScheduleInitialized=new Set();
 const bootF5ScheduleInitialized=new Set();
+const bootFreshContextPending=new Set(CONTINUITY_WORKERS);
 const WORKER_RESET_MAX_ATTEMPTS=2;
 const WORKER_RESET_STAGGER_MS=2*60*1000;
 const STALLED_CONFIRM_GRACE_MS=20*1000;
@@ -121,7 +122,7 @@ function loadWorkerContinuity(workerId){
     nextResetAt,
     lastPrompt:String(raw.lastPrompt||''),
     lastPhase:String(raw.lastPhase||'STALLED'),
-    resumeUrl:String(raw.resumeUrl||''),
+    resumeUrl:'', // legacy conversation pointers are never restored; Work Order state is authoritative
     workingSignature:String(raw.workingSignature||''),
     workingUnchangedChecks:Number(raw.workingUnchangedChecks)||0,
     nextProgressCheckAt:Number(raw.nextProgressCheckAt)||0,
@@ -159,6 +160,30 @@ function isAssignedWorkerChat(w,url){
     return current.origin===home.origin&&current.pathname===home.pathname;
   }catch{return false}
 }
+function isWorkerFreshContext(w,url){
+  try{
+    const current=new URL(String(url||'')),home=new URL(String(w.homeUrl||''));
+    if(current.origin!==home.origin)return false;
+    if(current.hostname==='chatgpt.com')return current.pathname===home.pathname;
+    if(current.hostname==='gemini.google.com')return current.pathname===home.pathname;
+    return current.pathname===home.pathname;
+  }catch{return false}
+}
+function findContinuableWorkerWorkForUi(controllerState,workerId){
+  return (controllerState?.jobs||[]).find((job)=>
+    job?.workerId===workerId
+    &&['SUBMITTED','WORKING','WAITING_EVIDENCE','VERIFY'].includes(String(job?.stage||''))
+    &&!job?.completedAt
+    &&typeof job?.issueRef==='string'
+    &&job.issueRef.trim().length>0
+  )||null;
+}
+function buildAssignedWorkRestorePrompt(currentWork){
+  const issueRef=String(currentWork?.issueRef||'').trim();
+  const jobId=String(currentWork?.jobId||'').trim();
+  if(!issueRef)throw new Error('CURRENT_WORK_RESTORE_ISSUE_REQUIRED');
+  return `LÀM — NO YAPPING. CURRENT_WORK_ORDER=${issueRef}${jobId?` | JOB_ID=${jobId}`:''}. Đây là chat mới. Đọc đầy đủ Work Order và checkpoint/evidence mới nhất từ GitHub rồi tiếp tục đúng công việc đang được giao. Không tự chọn backlog/P0/việc khác. Chỉ dừng khi DONE có evidence, BLOCKED thật, EXTERNAL_WAIT hoặc hard gate.`;
+}
 async function workerAutomationPaused(workerId){
   try{
     const state=await getControllerState();
@@ -193,10 +218,10 @@ async function reopenWorker(w,target,state,now,reason){
     await genericWorkerEvent(w.id,'RECOVERY_BOUNDED_STOP',{reason,recoveryBlockedUntil:blocked.recoveryBlockedUntil});
     return blocked;
   }
-  const resumeUrl=validWorkerUrl(w,state.resumeUrl)?state.resumeUrl:(validWorkerUrl(w,target?.url)?target.url:'');
-  const checkpointed={...state,resumeUrl,recoveryAttempts:state.recoveryAttempts+1,lastPhase:'STALLED'};
+  const freshUrl=String(w.homeUrl||'').trim();
+  const checkpointed={...state,resumeUrl:'',recoveryAttempts:state.recoveryAttempts+1,lastPhase:'STALLED'};
   saveWorkerContinuity(w.id,checkpointed);
-  await genericWorkerEvent(w.id,'RESET_CHECKPOINTED',{reason,resumeUrl,recoveryAttempt:checkpointed.recoveryAttempts});
+  await genericWorkerEvent(w.id,'RESET_CHECKPOINTED',{reason,freshUrl,recoveryAttempt:checkpointed.recoveryAttempts});
   const closeResult=await withWorkerMutation(w.id,async(lease)=>{
     await post(`/api/utility/workers/${w.id}/plan-refresh`,w.id,{reason,leaseOwnerId:lease.ownerId,leaseId:lease.leaseId});
     await closeWorker(w,target);
@@ -223,15 +248,15 @@ async function reopenWorker(w,target,state,now,reason){
         }catch{}
       }
       if(!replacement)throw new Error('WORKER_REOPEN_TARGET_NOT_FOUND');
-      if(resumeUrl&&validWorkerUrl(w,resumeUrl)&&replacement.url!==resumeUrl){
-        const restoreResult=await withWorkerMutation(w.id,async()=>{
-          await navigate(replacement,resumeUrl);
+      if(freshUrl&&validWorkerUrl(w,freshUrl)&&replacement.url!==freshUrl){
+        const freshResult=await withWorkerMutation(w.id,async()=>{
+          await navigate(replacement,freshUrl);
           await sleep(1200);
-          return {ok:true,status:'WORKER_RESUME_URL_RESTORED'};
-        },`WORKER_RESUME_NAVIGATE:${reason}`,30000);
-        if(restoreResult?.status==='MUTATION_LEASE_BUSY')throw new Error('MUTATION_LEASE_BUSY');
+          return {ok:true,status:'WORKER_FRESH_CONTEXT_OPENED'};
+        },`WORKER_FRESH_CONTEXT:${reason}`,30000);
+        if(freshResult?.status==='MUTATION_LEASE_BUSY')throw new Error('MUTATION_LEASE_BUSY');
       }
-      reopened={ok:true,status:'WORKER_REOPENED',attempt,resumeUrl};
+      reopened={ok:true,status:'WORKER_REOPENED',attempt,freshUrl};
       break;
     }catch(error){
       lastError=error;
@@ -241,15 +266,14 @@ async function reopenWorker(w,target,state,now,reason){
   if(!reopened)throw lastError||new Error('WORKER_REOPEN_FAILED');
   const recovered={...checkpointed,recoveryAttempts:0,recoveryBlockedUntil:0,stalledChecks:0,workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),nextPeriodicF5At:nextRandomAt(now,WORKER_F5_MIN_MS,WORKER_F5_MAX_MS),nextResetAt:nextWorkerResetAt(w.id,now),lastPhase:'STALLED'};
   saveWorkerContinuity(w.id,recovered);
-  await genericWorkerEvent(w.id,'WORKER_REOPENED',{reason,resumeUrl,nextResetAt:recovered.nextResetAt});
+  await genericWorkerEvent(w.id,'WORKER_REOPENED',{reason,freshUrl,nextResetAt:recovered.nextResetAt});
   return recovered;
 }
 async function maybeWorkerContinuity(w,target,ui){
   const now=Date.now();
   let state=loadWorkerContinuity(w.id);
   const phase=deriveWorkerPhase(ui||{},{workerId:w.id});
-  if(isAssignedWorkerChat(w,ui?.url))state={...state,resumeUrl:String(ui.url||''),lastPhase:phase};
-  else state={...state,lastPhase:phase};
+  state={...state,resumeUrl:'',lastPhase:phase};
   saveWorkerContinuity(w.id,state);
 
   if(await workerAutomationPaused(w.id)){
@@ -263,6 +287,20 @@ async function maybeWorkerContinuity(w,target,ui){
   if(!validWorkerUrl(w,ui?.url)){
     await genericWorkerEvent(w.id,'WRONG_WORKER_CONTEXT',{url:ui?.url||null,expectedHost:expectedHost(w)});
     return;
+  }
+  if(bootFreshContextPending.has(w.id)&&phase!=='WORKING'){
+    bootFreshContextPending.delete(w.id);
+    if(!isWorkerFreshContext(w,ui?.url)){
+      const opened=await withWorkerMutation(w.id,async()=>{
+        await navigate(target,String(w.homeUrl||''));
+        await sleep(1200);
+        return {ok:true,status:'BOOT_FRESH_CONTEXT_OPENED'};
+      },'BOOT_FRESH_CONTEXT',30000);
+      saveWorkerContinuity(w.id,{...state,resumeUrl:'',nextContinueAt:now});
+      await genericWorkerEvent(w.id,opened?.status==='MUTATION_LEASE_BUSY'?'BOOT_FRESH_CONTEXT_DEFERRED':'BOOT_FRESH_CONTEXT_OPENED',{status:opened?.status||null,fromUrl:ui?.url||null,homeUrl:w.homeUrl});
+      if(opened?.status==='MUTATION_LEASE_BUSY')bootFreshContextPending.add(w.id);
+      return;
+    }
   }
   if(ui?.scrollToBottomVisible===true&&now>=Number(state.nextViewFollowAt||0)){
     const locallyBusy=workerMutationBusy.has(w.id);
@@ -328,13 +366,6 @@ async function maybeWorkerContinuity(w,target,ui){
       saveWorkerContinuity(w.id,state);
       await genericWorkerEvent(w.id,'READY_RECOVERY_STATE_CLEARED');
     }
-    if(now<Number(state.nextContinueAt||0))return;
-    if(!isAssignedWorkerChat(w,ui?.url)){
-      const deferred={...state,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
-      saveWorkerContinuity(w.id,deferred);
-      await genericWorkerEvent(w.id,'CONTINUE_SKIPPED_NO_ASSIGNED_CHAT',{url:ui?.url||null,nextContinueAt:deferred.nextContinueAt});
-      return;
-    }
     let controllerState;
     try{controllerState=await getControllerState();}
     catch(error){
@@ -343,12 +374,37 @@ async function maybeWorkerContinuity(w,target,ui){
       await genericWorkerEvent(w.id,'CONTINUE_SKIPPED_CONTROLLER_UNREACHABLE',{error:String(error?.message||error)});
       return;
     }
-    if(!hasContinuableWorkerWork(controllerState, w.id)){
-      const deferred={...state,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
+    const currentWork=findContinuableWorkerWorkForUi(controllerState,w.id);
+    if(!currentWork){
+      const deferred={...state,resumeUrl:'',nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
       saveWorkerContinuity(w.id,deferred);
-      await genericWorkerEvent(w.id,'CONTINUE_SKIPPED_NO_CURRENT_WORK',{url:ui?.url||null});
+      await genericWorkerEvent(w.id,'READY_UNASSIGNED',{url:ui?.url||null,nextContinueAt:deferred.nextContinueAt});
       return;
     }
+    if(!isAssignedWorkerChat(w,ui?.url)){
+      if(!isWorkerFreshContext(w,ui?.url)){
+        const opened=await withWorkerMutation(w.id,async()=>{
+          await navigate(target,String(w.homeUrl||''));
+          await sleep(1200);
+          return {ok:true,status:'FRESH_CONTEXT_OPENED'};
+        },'FRESH_CONTEXT_FOR_CURRENT_WORK',30000);
+        saveWorkerContinuity(w.id,{...state,resumeUrl:'',nextContinueAt:now});
+        await genericWorkerEvent(w.id,'FRESH_CONTEXT_FOR_CURRENT_WORK',{status:opened?.status||null,issueRef:currentWork.issueRef});
+        return;
+      }
+      const prompt=buildAssignedWorkRestorePrompt(currentWork);
+      const sent=await withWorkerMutation(w.id,()=>dispatch(target,prompt),'CURRENT_WORK_NEW_CHAT_RESTORE',30000);
+      if(sent?.status==='MUTATION_LEASE_BUSY'){
+        saveWorkerContinuity(w.id,{...state,nextContinueAt:now+5000});
+        return;
+      }
+      if(!sent?.ok)throw new Error(sent?.status||'CURRENT_WORK_NEW_CHAT_RESTORE_FAILED');
+      const next={...state,lastPrompt:'CURRENT_WORK_NEW_CHAT_RESTORE',lastPhase:'WORKING',stalledChecks:0,recoveryAttempts:0,resumeUrl:'',nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
+      saveWorkerContinuity(w.id,next);
+      await genericWorkerEvent(w.id,'CURRENT_WORK_NEW_CHAT_RESTORED',{issueRef:currentWork.issueRef,jobId:currentWork.jobId||null,nextContinueAt:next.nextContinueAt});
+      return;
+    }
+    if(now<Number(state.nextContinueAt||0))return;
     const prompt=pickContinuePrompt(state.lastPrompt);
     const sent=await withWorkerMutation(w.id,()=>dispatch(target,prompt),'CONTINUITY_CONTINUE',30000);
     if(sent?.status==='MUTATION_LEASE_BUSY'){
@@ -356,7 +412,7 @@ async function maybeWorkerContinuity(w,target,ui){
       return;
     }
     if(!sent?.ok)throw new Error(sent?.status||'CONTINUE_DISPATCH_FAILED');
-    const next={...state,lastPrompt:prompt,lastPhase:'WORKING',stalledChecks:0,recoveryAttempts:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
+    const next={...state,lastPrompt:prompt,lastPhase:'WORKING',stalledChecks:0,recoveryAttempts:0,resumeUrl:'',nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
     saveWorkerContinuity(w.id,next);
     await genericWorkerEvent(w.id,'CONTINUE_DISPATCHED',{prompt,nextContinueAt:next.nextContinueAt});
     return;
@@ -424,7 +480,7 @@ function loadNv02Continuity(){
     workingRecheckAt,
     nextProgressCheckAt:Number(raw.nextProgressCheckAt)||0,
     verifiedChatUrl:String(raw.verifiedChatUrl||''),
-    resumeChatUrl:String(raw.resumeChatUrl||(hasCurrentNv02Chat(raw.verifiedChatUrl)?raw.verifiedChatUrl:'')||''),
+    resumeChatUrl:'', // legacy conversation pointers are intentionally discarded
     modelVerifiedAt:String(raw.modelVerifiedAt||''),
     modelCheckBlockedUntil:Number(raw.modelCheckBlockedUntil)||0,
     rotationRetryAt:Number(raw.rotationRetryAt)||0,
@@ -1101,6 +1157,12 @@ function sameContinuableNv02Work(expected,current){
   const expectedJob=String(expected.jobId||'').trim(),currentJob=String(current.jobId||'').trim();
   return sameIssue&&(!expectedJob||!currentJob||expectedJob===currentJob);
 }
+function buildCurrentWorkIssueRestorePrompt(currentWork){
+  const issueRef=String(currentWork?.issueRef||'').trim();
+  const jobId=String(currentWork?.jobId||'').trim();
+  if(!issueRef)throw new Error('CURRENT_WORK_RESTORE_ISSUE_REQUIRED');
+  return `LÀM — NO YAPPING. CURRENT_WORK_ORDER=${issueRef}${jobId?` | JOB_ID=${jobId}`:''}. Đây là chat mới. Đọc đầy đủ Work Order và checkpoint/evidence mới nhất từ GitHub, xác minh trạng thái hiện hành rồi tiếp tục đúng công việc đó. Không tự chọn backlog/P0/việc khác. Chỉ dừng khi DONE có evidence, BLOCKED thật, EXTERNAL_WAIT hoặc hard gate.`;
+}
 function buildCurrentWorkRestorePrompt({currentWork,receipt}){
   const issueRef=String(currentWork?.issueRef||'').trim();
   const jobId=String(currentWork?.jobId||'').trim();
@@ -1131,6 +1193,31 @@ async function dispatchCurrentWorkRestoreLocked(target,state,now,expectedWork,re
   const next={...state,lastPrompt:'CURRENT_WORK_RESTORE',dispatchesInChat:Number(state.dispatchesInChat||0)+1,stalledChecks:0,lastPhase:'WORKING',workingSignature:'',workingUnchangedChecks:0,workingRecheckAt:nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS),nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
   saveNv02Continuity(next);
   await continuityEvent('CURRENT_WORK_RESTORE_DISPATCHED',{jobId:currentWork.jobId||null,issueRef:currentWork.issueRef,checkpointRef:receipt.checkpointRef,receiptRef:receipt.receiptRef,evidence:result.evidence||null,nextContinueAt:next.nextContinueAt});
+  return next;
+}
+async function dispatchCurrentWorkIssueRestoreLocked(target,state,now,expectedWork){
+  let controllerState;
+  try{controllerState=await getControllerState();}
+  catch(error){
+    const next={...state,lastPhase:'STALLED',nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
+    saveNv02Continuity(next);
+    await continuityEvent('CURRENT_WORK_NEW_CHAT_RESTORE_SKIPPED_UNVERIFIED',{error:String(error?.message||error),nextContinueAt:next.nextContinueAt});
+    return next;
+  }
+  const currentWork=findContinuableNv02Work(controllerState);
+  if(!currentWork||!sameContinuableNv02Work(expectedWork,currentWork)){
+    const next={...state,resumeChatUrl:'',nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
+    saveNv02Continuity(next);
+    await continuityEvent('CURRENT_WORK_NEW_CHAT_RESTORE_SKIPPED_CHANGED_WORK',{expectedIssueRef:expectedWork?.issueRef||null,currentIssueRef:currentWork?.issueRef||null});
+    return next;
+  }
+  await ensureNv02ModelProfile(target);
+  const prompt=buildCurrentWorkIssueRestorePrompt(currentWork);
+  const result=await dispatch(target,prompt);
+  if(!result?.ok)throw new Error(result?.status||'CURRENT_WORK_NEW_CHAT_RESTORE_FAILED');
+  const next={...state,lastPrompt:'CURRENT_WORK_NEW_CHAT_RESTORE',dispatchesInChat:1,chatStartedAt:now,stalledChecks:0,lastPhase:'WORKING',resumeChatUrl:'',workingSignature:'',workingUnchangedChecks:0,workingRecheckAt:nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS),nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
+  saveNv02Continuity(next);
+  await continuityEvent('CURRENT_WORK_NEW_CHAT_RESTORED',{jobId:currentWork.jobId||null,issueRef:currentWork.issueRef,evidence:result.evidence||null,nextContinueAt:next.nextContinueAt});
   return next;
 }
 async function dispatchNaturalContinueLocked(target,state,now){
@@ -1228,8 +1315,12 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
   const now=Date.now();let state=loadNv02Continuity();
   ui=applyNv02DurableVerifiedModelProfile(ui);
   const phase=deriveNv02Phase(ui||{});
-  const currentTrackedWork=hasCurrentNv02Chat(ui?.url);
-  state={...state,lastPhase:phase,...(currentTrackedWork?{resumeChatUrl:String(ui.url||'')}:{})};saveNv02Continuity(state);
+  let controllerState=null;
+  try{controllerState=await getControllerState();}catch{}
+  const currentWork=controllerState?findContinuableNv02Work(controllerState):null;
+  const currentChat=hasCurrentNv02Chat(ui?.url);
+  const currentTrackedWork=Boolean(currentWork&&currentChat);
+  state={...state,lastPhase:phase,resumeChatUrl:''};saveNv02Continuity(state);
   if(phase!=='BLOCKED'&&ui?.scrollToBottomVisible===true&&now>=Number(state.nextViewFollowAt||0)){
     const locallyBusy=nv02MutationBusy||workerMutationBusy.has('NV02');
     const followed=locallyBusy
@@ -1269,6 +1360,20 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
   const chatLoadRecoveryHandled=await maybeRecoverChatLoadError(w,target,ui,now);
   if(chatLoadRecoveryHandled)return;
   state=loadNv02Continuity();
+  if(bootFreshContextPending.has('NV02')&&phase!=='WORKING'){
+    bootFreshContextPending.delete('NV02');
+    if(currentChat){
+      const opened=await withNv02Mutation(async()=>{
+        await navigate(target,NV02_HOME_URL);
+        await sleep(1200);
+        return {ok:true,status:'BOOT_FRESH_CONTEXT_OPENED'};
+      },'BOOT_FRESH_CONTEXT',30000);
+      saveNv02Continuity({...state,resumeChatUrl:'',verifiedChatUrl:'',modelVerifiedAt:'',nextContinueAt:now});
+      await continuityEvent(opened?.status==='MUTATION_LEASE_BUSY'?'BOOT_FRESH_CONTEXT_DEFERRED':'BOOT_FRESH_CONTEXT_OPENED',{status:opened?.status||null,fromUrl:ui?.url||null,homeUrl:NV02_HOME_URL});
+      if(opened?.status==='MUTATION_LEASE_BUSY')bootFreshContextPending.add('NV02');
+      return;
+    }
+  }
   if(shouldRotateNv02Chat({phase,currentTrackedWork,now,nextRefreshAt:state.nextRefreshAt,dispatchesInChat:state.dispatchesInChat,chatStartedAt:state.chatStartedAt,rotationRetryAt:state.rotationRetryAt,chatLoadRecoveryStage:state.chatLoadRecoveryStage})){
     if(await externalAutopilotOwnsNextNv02Job()){
       state={...state,rotationRetryAt:now+60_000};saveNv02Continuity(state);
@@ -1282,15 +1387,6 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
       saveNv02Continuity(retry);
       await continuityEvent('CHAT_ROTATION_FAILED',{error:String(error?.message||error),rotationRetryAt:retry.rotationRetryAt});
     }
-    return;
-  }
-  if(!currentTrackedWork&&hasCurrentNv02Chat(state.resumeChatUrl)){
-    const restored=await withNv02Mutation(async()=>{
-      await navigate(target,state.resumeChatUrl);
-      await sleep(1200);
-      return{ok:true,status:'CURRENT_CHAT_RESTORED',url:state.resumeChatUrl};
-    },'CURRENT_CHAT_RESTORE',30000);
-    await continuityEvent(restored?.status==='MUTATION_LEASE_BUSY'?'CURRENT_CHAT_RESTORE_DEFERRED':'CURRENT_CHAT_RESTORED',{status:restored?.status||null,url:state.resumeChatUrl});
     return;
   }
   if(currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0)){
@@ -1328,7 +1424,11 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
       if(!recoveredProjectContext)throw new Error('PROJECT_CONTEXT_NOT_READY_AFTER_MODEL_RECOVERY');
       await postWorkerHeartbeat(w,target,corrected,recoveredProjectContext).catch(()=>{});
       state={...state,stalledChecks:0,nextContinueAt:now};saveNv02Continuity(state);
-      if(corrected?.uiPhase==='READY')await dispatchNaturalContinue(target,state,now);
+      if(corrected?.uiPhase==='READY'){
+        const freshWork=controllerState?findContinuableNv02Work(controllerState):null;
+        if(freshWork&&!hasCurrentNv02Chat(corrected?.url))await withNv02Mutation(()=>dispatchCurrentWorkIssueRestoreLocked(target,state,now,freshWork),'CURRENT_WORK_NEW_CHAT_RESTORE',30000);
+        else await dispatchNaturalContinue(target,state,now);
+      }
       return;
     }catch(error){
       state={...state,modelCheckBlockedUntil:now+60_000};
@@ -1337,10 +1437,17 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
     }
   }
   if(!currentTrackedWork){
-    if(now>=state.nextContinueAt){
-      state={...state,stalledChecks:0,workingSignature:'',workingUnchangedChecks:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
+    if(currentWork&&phase==='READY'&&(isNv02ProjectContext(ui?.url)||ui?.projectDraftReady===true)){
+      const restored=await withNv02Mutation(()=>dispatchCurrentWorkIssueRestoreLocked(target,state,now,currentWork),'CURRENT_WORK_NEW_CHAT_RESTORE',30000);
+      if(restored?.status==='MUTATION_LEASE_BUSY'){
+        state={...state,nextContinueAt:now+5000};saveNv02Continuity(state);
+      }
+      return;
+    }
+    if(!currentWork&&now>=state.nextContinueAt){
+      state={...state,resumeChatUrl:'',stalledChecks:0,workingSignature:'',workingUnchangedChecks:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
       saveNv02Continuity(state);
-      await continuityEvent('CONTINUE_SKIPPED_NO_CURRENT_CHAT',{nextContinueAt:state.nextContinueAt});
+      await continuityEvent('READY_UNASSIGNED',{url:ui?.url||null,nextContinueAt:state.nextContinueAt});
     }
     return;
   }
