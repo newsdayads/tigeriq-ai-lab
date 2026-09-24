@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net.Http.Json;
 using System.Text.Json;
 
@@ -217,35 +218,49 @@ internal sealed class ControllerClient
         var current = await GetWorkerAsync(id);
         if (current.AuthRequired || !string.IsNullOrWhiteSpace(current.SecurityBlock))
             throw new InvalidOperationException($"OPEN_CANONICAL_BLOCKED:{current.Reason}");
-
-        // Approved utility behavior: if the worker is already in its canonical context,
-        // do not reload/navigate it. A simple focus is enough and avoids UI_NOT_READY churn.
-        if (current.WindowOpen && current.UiReady && IsCanonicalContext(id, current.Url))
-        {
-            using var focused = await FocusAsync(id);
-            return;
-        }
-
         using var response = await TryPostAsync($"/api/utility/workers/{id}/open-canonical");
-        if (response is not null) return;
-
-        current = await GetWorkerAsync(id);
-        if (IsCanonicalContext(id, current.Url))
-        {
-            using var focused = await FocusAsync(id);
-            return;
-        }
-        throw new InvalidOperationException("OPEN_CANONICAL_REQUIRES_CONTROLLER_UPGRADE");
+        if (response is null) throw new InvalidOperationException("OPEN_CANONICAL_REQUIRES_CONTROLLER_UPGRADE");
     }
-    static bool IsCanonicalContext(string id, string? url)
+
+    public async Task<string> RuntimeVersionAsync()
     {
-        if (string.IsNullOrWhiteSpace(url)) return false;
-        return id switch {
-            "NV02" => url.Contains("g-p-6a925c470aa08191a10595e215d04f4e-tigeriq-ai-lab", StringComparison.OrdinalIgnoreCase),
-            "NV03" => url.Contains("g-p-6a9e19b4deac8191938cca4486a7e12b-tigeriq-ai-lab", StringComparison.OrdinalIgnoreCase),
-            "NV04" => url.Contains("gemini.google.com", StringComparison.OrdinalIgnoreCase),
-            _ => false
-        };
+        var raw = await RawStateAsync();
+        using var state = raw.State;
+        using var auto = raw.Autopilot;
+        var root = state.RootElement;
+        if (!root.TryGetProperty("runtimeProvenance", out var provenance))
+            return $"App Chrome: chưa có dữ liệu · Utility: {Application.ProductVersion}";
+        var head = provenance.TryGetProperty("approvedHead", out var h) ? h.GetString() : null;
+        var shortHead = string.IsNullOrWhiteSpace(head) ? "UNKNOWN" : head[..Math.Min(7, head.Length)];
+        return $"App Chrome: {shortHead} · Utility: {Application.ProductVersion}";
+    }
+
+    public async Task<string> RestartRuntimeAsync()
+    {
+        const string taskName = "TigerIQ APP Chrome Unified";
+        await RunScheduledTaskAsync($"/End /TN \"{taskName}\"", allowFailure: true);
+        await Task.Delay(1200);
+        await RunScheduledTaskAsync($"/Run /TN \"{taskName}\"", allowFailure: false);
+        return "Đã khởi động lại App Chrome; không reboot máy.";
+    }
+
+    static async Task RunScheduledTaskAsync(string arguments, bool allowFailure)
+    {
+        using var process = Process.Start(new ProcessStartInfo
+        {
+            FileName = "schtasks.exe",
+            Arguments = arguments,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardError = true,
+            RedirectStandardOutput = true
+        }) ?? throw new InvalidOperationException("APP_CHROME_TASK_START_FAILED");
+        await process.WaitForExitAsync();
+        if (!allowFailure && process.ExitCode != 0)
+        {
+            var error = await process.StandardError.ReadToEndAsync();
+            throw new InvalidOperationException($"APP_CHROME_TASK_RESTART_FAILED:{process.ExitCode}:{error.Trim()}");
+        }
     }
 
     public async Task<BrowserMutationLeaseReceipt> AcquireBrowserMutationLeaseAsync(string id, string ownerId, int ttlMs = 30000)

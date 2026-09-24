@@ -399,19 +399,19 @@ describe('Direct-CDP Controller command transport',()=>{
   });
 });
 
-describe('NV02 reboot F5 consolidation #1525',()=>{
-  it('rebases stale NV02 F5 timers once and restores current chat before periodic F5',()=>{
+describe('NV02 reboot F5 consolidation #1739',()=>{
+  it('rebases stale F5 timers and opens a fresh project context before periodic F5',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(bridge).toContain('let nv02BootF5ScheduleInitialized=false');
     expect(bridge).toContain("'NV02_F5_TIMERS_REBASED_AFTER_RESTART'");
     const loop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
-    const restore=loop.indexOf("if(!currentTrackedWork&&hasCurrentNv02Chat(state.resumeChatUrl))");
+    const fresh=loop.indexOf("bootFreshContextPending.has('NV02')");
     const f5=loop.indexOf("if(currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0))");
-    expect(restore).toBeGreaterThan(-1);
-    expect(f5).toBeGreaterThan(restore);
+    expect(fresh).toBeGreaterThan(-1);
+    expect(f5).toBeGreaterThan(fresh);
+    expect(loop).not.toContain('state.resumeChatUrl');
     const f5Block=loop.slice(f5,loop.indexOf('const modelCheckRequired='));
     expect(f5Block).toContain('reloadTarget(target)');
-    expect(f5Block).not.toContain('nextContinueAt:now');
   });
 });
 
@@ -439,10 +439,12 @@ describe('APP Chrome UI-only continuity regression #1525',()=>{
     expect(recovery).not.toContain("if(after&&!after.chatLoadError)");
   });
 
-  it('never treats a project home page as an assigned ChatGPT conversation',()=>{
+  it('treats project home as fresh context, never as an old conversation',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(bridge).toContain("return /\\/c\\//.test(current.pathname)");
-    expect(bridge).toContain("CONTINUE_SKIPPED_NO_ASSIGNED_CHAT");
+    expect(bridge).toContain("isWorkerFreshContext");
+    expect(bridge).toContain("CURRENT_WORK_NEW_CHAT_RESTORED");
+    expect(bridge).toContain("READY_UNASSIGNED");
   });
 });
 
@@ -483,11 +485,12 @@ describe('NV02 chat-load recovery lease #1567',()=>{
 });
 
 describe('NV04 Gemini assigned-route continuity #1525',()=>{
-  it('accepts the live Gemini /app conversation route produced from the configured notebook entrypoint',()=>{
+  it('accepts Gemini routes but never persists a conversation URL as restart authority',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(bridge).toContain("if(current.hostname==='gemini.google.com')");
     expect(bridge).toContain("/^\\/app\\/[A-Za-z0-9_-]+\\/?$/.test(current.pathname)");
-    expect(bridge).toContain("if(isAssignedWorkerChat(w,ui?.url))state={...state,resumeUrl:String(ui.url||''),lastPhase:phase}");
+    expect(bridge).toContain("state={...state,resumeUrl:'',lastPhase:phase}");
+    expect(bridge).not.toContain("resumeUrl:String(ui.url||'')");
   });
 });
 

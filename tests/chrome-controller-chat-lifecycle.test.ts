@@ -26,6 +26,18 @@ describe('App Chrome chat lifecycle',()=>{
     expect(shouldRotateNv02Chat({phase:'READY',currentTrackedWork:true,now,nextRefreshAt:now-1,dispatchesInChat:99,chatStartedAt:now-REFRESH_MAX_MS-1,rotationRetryAt:now+60_000,chatLoadRecoveryStage:3})).toBe(false);
   });
 
+
+  it('never restores stale conversation URLs and opens a fresh context on boot/manual new chat',()=>{
+    const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    expect(bridge).toContain("const bootFreshContextPending=new Set(CONTINUITY_WORKERS)");
+    expect(bridge).toContain("resumeChatUrl:'', // legacy conversation pointers are intentionally discarded");
+    expect(bridge).toContain("resumeUrl:'', // legacy conversation pointers are never restored");
+    expect(bridge).not.toContain("await navigate(target,state.resumeChatUrl)");
+    expect(bridge).not.toContain("WORKER_RESUME_URL_RESTORED");
+    expect(bridge).toContain("CURRENT_WORK_NEW_CHAT_RESTORED");
+    expect(bridge).toContain("READY_UNASSIGNED");
+  });
+
   it('wires real stuck-WORKING recovery and view-follow for generic workers',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(bridge).toContain("stopStalledWorking(target)");

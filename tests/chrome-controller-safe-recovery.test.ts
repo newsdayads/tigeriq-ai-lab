@@ -142,9 +142,10 @@ describe('independent worker recovery flows in direct-cdp-bridge',()=>{
     expect(source).toContain("computeWorkerStaggerDelay");
   });
 
-  it('imports the generic continuable-work gate used by READY workers',()=>{
-    expect(source).toContain('hasContinuableWorkerWork,');
-    expect(source).toContain('hasContinuableWorkerWork(controllerState, w.id)');
+  it('binds READY workers to a concrete continuable Work Order instead of chat URL state',()=>{
+    expect(source).toContain('findContinuableWorkerWorkForUi(controllerState,w.id)');
+    expect(source).toContain('CURRENT_WORK_NEW_CHAT_RESTORED');
+    expect(source).toContain('READY_UNASSIGNED');
   });
 
   it('rebases only an already-expired deep-reset timer once after bridge restart',()=>{
@@ -172,8 +173,9 @@ describe('independent worker recovery flows in direct-cdp-bridge',()=>{
     expect(reopen.indexOf("/safe-recover")).toBeGreaterThan(closePhaseEnd);
     expect(reopen).toContain("post(`/api/utility/workers/${w.id}/safe-recover`,w.id,{reason},120000)");
     expect(reopen).toContain("leaseOwnerId:lease.ownerId,leaseId:lease.leaseId");
-    expect(source).toContain("resumeUrl");
-    expect(source).toContain("CURRENT_CHAT_RESTORED");
+    expect(source).toContain("resumeUrl:''");
+    expect(source).toContain("WORKER_FRESH_CONTEXT_OPENED");
+    expect(source).not.toContain("CURRENT_CHAT_RESTORED");
 
   });
 
@@ -246,7 +248,7 @@ describe('safe recovery contracts',()=>{
   it('selects one canonical NV03 tab and prunes idle duplicates under a mutation lease',()=>{
     const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(source).toContain("function preferredWorkerUrl(w)");
-    expect(source).toContain("loadWorkerContinuity(w.id).resumeUrl");
+    expect(source).toContain("return String(w.homeUrl||'').trim()");
     expect(source).toContain("async function pruneNv03DuplicateTabs");
     expect(source).toContain("'DUPLICATE_TAB_PRUNE'");
     expect(source).toContain("rpc.call('Target.closeTarget'");

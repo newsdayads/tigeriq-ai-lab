@@ -326,7 +326,7 @@ internal sealed class PopupForm : Form
             ("Ⅱ  Tạm dừng", "pause"),
             ("⌖  Về vị trí", "fix"),
             ("⌁  Khóa vị trí", "lock"),
-            ("↗  Mở đúng trang", "open"),
+            ("↗  Mở chat mới", "open"),
             ("⌕  Kiểm tra nhanh", "health"),
             ("▣  Lưu", "save"),
             ("▦  Lưu & Lưu trữ", "save-archive")
@@ -686,6 +686,7 @@ internal sealed class PopupForm : Form
         return
         [
             $"Worker       : {worker.Id} — {worker.Name}",
+            $"Utility ver  : {Application.ProductVersion}",
             $"CDP port     : {worker.DebugPort}",
             $"Session      : {(view.SessionOk ? "OK" : "KHÔNG ĐẠT")}",
             $"Window       : {(view.WindowOpen ? "OPEN" : "CLOSED")}",
@@ -817,7 +818,7 @@ internal sealed class AdvancedInfoForm : Form
         AutoScaleMode = AutoScaleMode.None;
         DoubleBuffered = true;
         Text = "TigerIQ — Nâng cao";
-        ClientSize = new Size(420, 420);
+        ClientSize = new Size(420, 480);
         MinimumSize = Size;
         MaximumSize = Size;
         StartPosition = FormStartPosition.CenterScreen;
@@ -881,6 +882,8 @@ internal sealed class AdvancedInfoForm : Form
             ("▣  Chụp ảnh nhanh cửa sổ", "screenshot"),
             ("↻  Thử lại an toàn", "safe-retry"),
             ("⟳  Khôi phục cửa sổ nếu dead", "recover"),
+            ("ⓘ  Phiên bản App Chrome", "version"),
+            ("⟳  Khởi động lại App Chrome", "restart-runtime"),
             ("↺  Đặt lại badge", "badge-reset"),
             ("🗑  Xóa lịch làm việc", "schedule-cancel"),
             ("⏻  Đóng NV an toàn", "close")

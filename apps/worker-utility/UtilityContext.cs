@@ -402,16 +402,10 @@ internal sealed class UtilityContext : ApplicationContext
                 {
                     popups[id].SetActionNotice($"✓ Đang chạy {resumed.JobId ?? ""}".Trim(), false);
                 }
-                else if (id == "NV02")
+                else
                 {
-                    var queuedJob = await controller.NextEligibleAutoUiJobAsync(id);
-                    if (!string.IsNullOrWhiteSpace(queuedJob))
-                        popups[id].SetActionNotice($"… Đang chờ hệ thống giao {queuedJob}", false);
-                    else
-                    {
-                        popups[id].SetActionNotice("Không có việc AUTO_UI", false);
-                        store.Log(id, "RUN_NO_AUTO_UI_JOB");
-                    }
+                    popups[id].SetActionNotice("✓ Sẵn sàng · chưa có việc được giao", false);
+                    store.Log(id, "RUN_READY_UNASSIGNED");
                 }
                 break;
             }
@@ -423,10 +417,20 @@ internal sealed class UtilityContext : ApplicationContext
             case "fix": await controller.FixPositionAsync(id); break;
             case "lock": settings.Workers[id].PositionLocked = !settings.Workers[id].PositionLocked; break;
             case "badge-reset": ResetBadgePosition(id); break;
-            case "open": await controller.OpenCanonicalAsync(id); break;
+            case "open":
+                await controller.OpenCanonicalAsync(id);
+                popups[id].SetActionNotice("✓ Đã mở ngữ cảnh chat mới", false);
+                break;
             case "view-job": await controller.FocusAsync(id); break;
             case "health":
                 popups[id].SetActionNotice("✓ " + await controller.QuickHealthAsync(id), false);
+                break;
+            case "version":
+                popups[id].SetActionNotice("✓ " + await controller.RuntimeVersionAsync(), false);
+                break;
+            case "restart-runtime":
+                popups[id].SetActionNotice("… Đang khởi động lại App Chrome", false);
+                popups[id].SetActionNotice("✓ " + await controller.RestartRuntimeAsync(), false);
                 break;
             case "harness-probe":
                 var harnessResult = await RefreshHarnessAsync(id, true);
