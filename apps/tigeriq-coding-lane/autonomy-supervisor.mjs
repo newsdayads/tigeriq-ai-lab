@@ -23,7 +23,7 @@ export function normalizeRepairFailure(message){
 export function isRetryableFailure(message){return RETRYABLE_FAILURES.has(normalizeRepairFailure(message));}
 export function shouldRetry(totalJobs,maxJobs=DEFAULT_MAX_JOBS_PER_OBJECTIVE){return Number(totalJobs)<Number(maxJobs);}
 export function repairJobTitle(title,cycle){
-  const base=String(title||'Coding job').replace(/(?:\s+\[(?:repair|sửa lần)\s*\d+\])+$/i,'').trim();
+  const base=String(title||'Công việc lập trình').replace(/(?:\s+\[(?:repair|sửa lần)\s*\d+\])+$/i,'').trim();
   return `${base} [sửa lần ${Math.max(1,Number(cycle)||1)}]`.slice(0,180);
 }
 export function isStaleJob(job,now=Date.now(),staleMs=DEFAULT_STALE_MS){
