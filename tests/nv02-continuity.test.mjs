@@ -344,10 +344,24 @@ describe('NV02 continuity policy', () => {
     const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     const loader=source.slice(source.indexOf('function loadNv02Continuity'),source.indexOf('function saveNv02Continuity'));
     expect(loader).toContain('chatLoadClearCandidateAt:Number(raw.chatLoadClearCandidateAt)||0');
-    const recovery=source.slice(source.indexOf('async function maybeRecoverChatLoadError'),source.indexOf('const MODEL_SELECTOR_CLICK_EXPR'));
+    const recovery=source.slice(source.indexOf('async function maybeRecoverChatLoadError'),source.indexOf('const MODEL_SELECTOR_POINT_EXPR'));
     expect(recovery).toContain('chatLoadClearCandidateAt:now');
     expect(recovery).toContain('now-candidateAt<5000');
     expect(recovery).toContain("'CHAT_LOAD_RECOVERED_STABLE'");
+  });
+
+  it('supports the current ChatGPT Cao/High composer model selector with exact visible verification', () => {
+    const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    expect(source).toContain("button.__composer-pill[aria-haspopup=\"menu\"]");
+    expect(source).toContain("Cao|High|Tiêu chuẩn|Standard|Nhanh|Fast|Tự động|Auto");
+    expect(source).toContain("const MODEL_SELECTOR_POINT_EXPR=");
+    expect(source).toContain("async function openNv02ModelSelector(target)");
+    expect(source).toContain("MODEL_SELECTOR_ALREADY_OPEN");
+    expect(source).toContain("cdpMouseClick(p,point)");
+    expect(source).toContain("[role=\"menuitemradio\"][aria-checked=\"true\"]");
+    expect(source).toContain("GPT-5.6 Sol");
+    expect(source).toContain("modelName==='GPT-5.6 Sol'&&reasoningEffort==='High'");
+    expect(source).not.toContain("const MODEL_SELECTOR_CLICK_EXPR=");
   });
 
   it('classifies ChatGPT request-timeout retry cards as recoverable chat errors', () => {
