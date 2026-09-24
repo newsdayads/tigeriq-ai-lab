@@ -1,7 +1,18 @@
+import { readFileSync } from 'node:fs';
 import { describe,expect,it } from 'vitest';
 import { extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,formatResultComment,githubDispatchLane,githubSpecBlockedByActive,isBoundedAppChromeRequestOnly,parseExecutableIssue } from './github-intake.mjs';
 
 describe('GitHub Core intake guardrails',()=>{
+
+  it('materializer has no global active-GitHub-objective stop gate',()=>{
+    const source=readFileSync(new URL('./github-intake.mjs',import.meta.url),'utf8');
+    expect(source).not.toContain("status='active' limit 1\")).rowCount>0");
+    expect(source).toContain("select metadata from tigeriq_objectives where metadata->>'source'='github' and status='active'");
+    expect(source).toContain('githubSpecBlockedByActive(spec,activeMetadata)');
+    expect(source).toContain('dispatchLane:spec.dispatchLane');
+  });
+
+
   const base={number:588,title:'safe test',state:'open',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/588',body:'TIGERIQ_EXECUTABLE=true\nPRIORITY=P2\nCAPABILITY=reasoning\nOWNER_POLICY=AUTO\nNO_CODE_CHANGE=true\nNO_PC01_SHELL=true\nRead #280 and #335 plus `docs/CURRENT_STATE.md`.'};
   it('accepts an explicitly safe autonomous issue',()=>{expect(parseExecutableIssue(base)).toMatchObject({number:588,priority:'P2',capability:'reasoning'});});
   it('supports fast hybrid change detection for Work Orders without unbounded full hydration and NV06/OpenClaw routing',()=>{const parsed=parseExecutableIssue({...base,body:'TIGERIQ_EXECUTABLE=true\nPRIORITY=P1\nCAPABILITY=pc_operator\nOWNER_POLICY=AUTO\nOWNER_DIRECT=true\nWORK_ORDER_HYBRID=fast\nCORE_DISPATCH=NV06_OPENCLAW\nNO_CMD_POWERSHELL=true\nASSIGNED_ACTION\ntigeriq_pc status\nACCEPTANCE\nPASS'});expect(parsed).toMatchObject({number:588,priority:'P1',capability:'pc_operator',coreDispatch:'NV06_OPENCLAW',workOrderHybrid:'fast',noCmdPowershell:true});});
