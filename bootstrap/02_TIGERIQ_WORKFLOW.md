@@ -1,8 +1,8 @@
 # TIGERIQ — WORKFLOW
-Version: 3.4
+Version: 3.5
 Status: Source of Truth
 Priority: P0
-Updated: 2026-09-18
+Updated: 2026-09-24
 
 ## 1. Ngôn ngữ và cách xưng hô
 - Mọi nội dung hiển thị trực tiếp cho anh Sơn phải dùng **TIẾNG VIỆT**.
@@ -164,16 +164,16 @@ Khi đó Vy phải tạo migration packet, cập nhật GitHub, kiểm thử NEW
 - Không lộ secret trong source/evidence.
 - Ưu tiên: an toàn → reversible → evidence → automation → low-cost.
 
-## 16.1. PC01 Shell Guard — hard gate xuyên chat
-- Áp dụng cho **mọi chat và NEW CHAT**: `CMD`/`PowerShell`/terminal trên PC01 mặc định **KHÔNG ĐƯỢC DÙNG**.
-- Trước mọi ý định gọi shell, bắt buộc kiểm tra theo thứ tự: **direct app/plugin tool → direct API/runtime endpoint → Desktop Commander direct file/process action → shell**.
-- Nếu tồn tại direct tool/API/action tương đương cho mục tiêu hiện tại thì **CẤM shell**, kể cả shell có thể nhanh hơn hoặc quen hơn.
-- Các việc đọc file, liệt kê thư mục, tìm file/nội dung, xem/kill process, xem session, đọc health/status/API, đọc GitHub source/issue/PR/evidence phải dùng direct action nếu có.
-- Shell chỉ được phép khi thao tác thật sự Windows/runtime-specific và **không có** direct action/API tương đương, hoặc direct path đã được xác minh không đáp ứng được.
-- Khi buộc dùng shell phải ghi ngắn `SHELL_EXCEPTION=<lý do>` vào evidence/state; không retry cùng kiểu lệnh/quoting quá 1 lần; không tạo chuỗi nhiều shell để audit.
-- **Cấm tuyệt đối code repository bằng CMD/PowerShell PC01.** Mã nguồn chỉ đi GitHub `branch → PR → checks → review → merge`.
+## 16.1. PC01 Tool Routing Guard — hard gate xuyên chat
+- Áp dụng cho **mọi chat và NEW CHAT**: `CMD` trong TigerIQ nghĩa là **Remote Desktop Commander / Remote MCP**; `SHELL` nghĩa là **cmd.exe / PowerShell / terminal**. Không được dùng `CMD` để chỉ Windows Command Prompt.
+- Thứ tự công cụ mặc định bắt buộc: **GitHub connector → direct app/API/HTTPS bridge → Vercel/read-only cloud view → CMD (Remote Desktop Commander) → SHELL**.
+- GitHub source, Issue/Work Order, PR, CI/checks, review, CENTRAL, Registry và evidence repository phải đọc/ghi bằng GitHub connector trực tiếp; **không đi vòng qua PC01/CMD**.
+- Runtime/status phải ưu tiên direct app/API/HTTPS bridge. Nếu endpoint đã trả đủ dữ liệu thì **cấm dùng CMD đọc lại cùng trạng thái**.
+- CMD chỉ dùng khi việc thực sự **device-bound hoặc break-glass** và không có đường trực tiếp phù hợp: cửa sổ/UI vật lý, process/service local-only, file local-only, screenshot, install/restart/reboot/canary local.
+- Một bước chỉ để quan sát trạng thái mà cần quá **2–3 CMD calls** phải dừng đường CMD và coi là **observability gap** cần sửa API/bridge; không tiếp tục polling qua Remote Desktop Commander.
+- SHELL là lớp cuối cùng, chỉ dùng cho thao tác Windows/runtime-specific khi các lớp trước không đáp ứng. Khi buộc dùng phải ghi `SHELL_EXCEPTION=<lý do>`; không retry cùng kiểu lệnh/quoting quá 1 lần.
+- **Cấm tuyệt đối code repository bằng CMD hoặc SHELL trên PC01.** Mã nguồn chỉ đi GitHub `branch → PR → checks → review → merge`.
 - PC01 ngoài ngoại lệ hợp lệ chỉ dùng cho runtime, chẩn đoán, thao tác gắn thiết bị, deploy local và xác minh máy thật.
-- Vi phạm gate này là lỗi vận hành P0: dừng đường shell, chuyển về direct path, ghi root cause → fix → retest.
 - Không được viện lý do phiên mới/chat khác/không nhớ policy; Loader + Bootstrap + Interaction Policy là authority xuyên chat.
 
 ## 16.2. Continuous Safe Execution — không chờ duyệt từng bước
