@@ -182,6 +182,24 @@ test('reopened completed GitHub Work Order rearms instead of being skipped forev
   assert.strictEqual(pool.objectives[1].metadata.rearmedFromObjectiveId,'OBJ-GH-50');
 });
 
+test('fast hybrid change detection and dispatch routing validation', async () => {
+  const pool = coreBacklogPool();
+  const issues = [{
+    number: 99,
+    state: 'open',
+    updated_at: '2026-09-23T12:00:00Z',
+    title: 'Hybrid change detection',
+    body: `${READ_ONLY_BASE}\nOWNER_DIRECT=true\nPRIORITY=P1\nEXECUTION_SURFACE=CORE_OPENCLAW_BOUNDED`,
+    html_url: 'https://example/99'
+  }];
+  const fetchImpl = async (url) => url.includes('/issues?') ? response(issues) : response({});
+  const out = await materializeGithubIssues({ pool, fetchImpl, token: 'fake' });
+  assert.strictEqual(out.issueNumber, 99);
+  const obj = pool.objectives.at(-1);
+  assert.strictEqual(obj.metadata.executionSurface, 'CORE_OPENCLAW_BOUNDED');
+  assert.strictEqual(obj.metadata.dispatchRouting, 'NV06_OPENCLAW');
+});
+
 test('terminal objective orphan queued and waiting_resource jobs are failed closed',async()=>{
   const pool=coreBacklogPool();
   pool.objectives.push({id:'OBJ-OLD',status:'blocked',metadata:{source:'api'}});
