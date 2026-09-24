@@ -575,11 +575,7 @@ function sameWorkerLocation(a,b){
   }catch{return false}
 }
 function preferredWorkerUrl(w){
-  if(w.id==='NV02'){
-    const state=loadNv02Continuity();
-    return state.resumeChatUrl||state.verifiedChatUrl||'';
-  }
-  return loadWorkerContinuity(w.id).resumeUrl||'';
+  return String(w.homeUrl||'').trim();
 }
 async function pruneDuplicates(w,list){
   const pages=pageTargetsFor(w,list);if(pages.length<=1)return pages[0]||null;
