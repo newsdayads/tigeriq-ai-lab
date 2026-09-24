@@ -490,6 +490,7 @@ describe('APP Chrome UI-only continuity regression #1525',()=>{
     expect(recovery).not.toContain("if(after&&!after.chatLoadError)");
   });
 
+  // READY_UNASSIGNED is NV04-only; keep the NV02 regression guard scoped to its own loop.
   it('keeps NV02 project-home continuity assignment-free while NV04 may be READY_UNASSIGNED',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(bridge).toContain("return /\\/c\\//.test(current.pathname)");
