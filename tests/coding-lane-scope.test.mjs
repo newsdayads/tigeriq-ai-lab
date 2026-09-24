@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import {CodingScopeViolationError,validateJobScope,validateSourceScope} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {CodingScopeViolationError,finalizeGeneratedChanges,validateJobScope,validateSourceScope} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {extractCanonicalAllowedPaths} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 test('coding lane scope validation tests',async(t)=>{
@@ -19,6 +19,12 @@ test('coding lane scope validation tests',async(t)=>{
   await t.test('allowed-only candidate passes',()=>{
     assert.strictEqual(validateSourceScope(['apps/tigeriq-coding-lane/policy.mjs'],allowedPaths),true);
     assert.strictEqual(validateJobScope(allowedPaths,[{path:'apps/tigeriq-coding-lane/policy.mjs',content:'x'}]),true);
+  });
+
+  await t.test('batch no-op cannot bypass the whole-job nonempty change gate',()=>{
+    assert.throws(()=>finalizeGeneratedChanges([],allowedPaths),/CODING_CHANGES_COUNT_INVALID/);
+    const one=[{path:'apps/tigeriq-coding-lane/policy.mjs',content:'x'}];
+    assert.deepStrictEqual(finalizeGeneratedChanges(one,allowedPaths),one);
   });
 
   await t.test('source manager scope expansion fails closed',()=>{
