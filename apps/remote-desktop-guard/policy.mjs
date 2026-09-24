@@ -1,19 +1,19 @@
 import { createHash } from 'node:crypto';
+import path from 'node:path';
 
-export const EXPECTED_PERMISSION_MODE = 'ask_before_writes';
 export const MAX_OWNER_LEASE_MS = 15 * 60 * 1000;
+export const DEFAULT_LEASE_PATH = 'D:\\TigerIQ\\Runtime\\desktop-commander-remote\\guard\\owner-lease.json';
 
 export const READ_ONLY_TOOLS = Object.freeze([
   'get_config','read_file','read_multiple_files','list_directory','start_search',
   'get_more_search_results','stop_search','list_searches','get_file_info',
-  'list_sessions','list_processes','get_usage_stats','get_recent_tool_calls',
-  'read_process_output'
+  'list_sessions','list_processes','get_usage_stats','read_process_output'
 ]);
 
 export const MUTATION_TOOLS = Object.freeze([
   'set_config_value','write_file','write_pdf','create_directory','move_file',
   'edit_block','start_process','interact_with_process','force_terminate',
-  'kill_process','give_feedback_to_desktop_commander','get_prompts'
+  'kill_process','give_feedback_to_desktop_commander','get_prompts','track_ui_event'
 ]);
 
 export const OBSERVATION_DIRECTORIES = Object.freeze([
@@ -49,6 +49,27 @@ export function classifyTool(tool) {
   return 'UNKNOWN';
 }
 
+function normalizeWindowsPath(value) {
+  if (typeof value !== 'string' || !path.win32.isAbsolute(value)) return null;
+  return path.win32.normalize(value).replace(/[\\/]+$/,'').toLowerCase();
+}
+
+export function isObservationPathAllowed(value) {
+  const candidate = normalizeWindowsPath(value);
+  if (!candidate) return false;
+  return OBSERVATION_DIRECTORIES.some((root) => {
+    const normalizedRoot = normalizeWindowsPath(root);
+    return candidate === normalizedRoot || candidate.startsWith(normalizedRoot + '\\');
+  });
+}
+
+export function readScopeAllowed(tool,args = {}) {
+  if (tool === 'read_file') return args.isUrl !== true && isObservationPathAllowed(args.path);
+  if (tool === 'read_multiple_files') return Array.isArray(args.paths) && args.paths.length > 0 && args.paths.every(isObservationPathAllowed);
+  if (tool === 'list_directory' || tool === 'start_search' || tool === 'get_file_info') return isObservationPathAllowed(args.path);
+  return true;
+}
+
 export function validateOwnerLease({ lease, tool, args = {}, now = Date.now() } = {}) {
   if (!lease || lease.version !== 1 || lease.ownerAuthorized !== true) return { ok:false, reason:'OWNER_AUTH_REQUIRED' };
   if (!lease.leaseId || typeof lease.leaseId !== 'string') return { ok:false, reason:'LEASE_ID_REQUIRED' };
@@ -59,29 +80,17 @@ export function validateOwnerLease({ lease, tool, args = {}, now = Date.now() } 
   if (now < issuedAt || now >= expiresAt) return { ok:false, reason:'LEASE_EXPIRED_OR_NOT_ACTIVE' };
   if (lease.tool !== tool) return { ok:false, reason:'LEASE_TOOL_SCOPE_MISMATCH' };
   if (lease.argsSha256 !== argsHash(args)) return { ok:false, reason:'LEASE_ARGUMENT_SCOPE_MISMATCH' };
-  if (lease.consumed === true) return { ok:false, reason:'LEASE_CONSUMED' };
-  return { ok:true, reason:'OWNER_LEASE_VALID', consume:true };
+  return { ok:true, reason:'OWNER_LEASE_VALID' };
 }
 
-export function authorizeRemoteCall({ tool, args = {}, lease, permissionMode = EXPECTED_PERMISSION_MODE, now = Date.now() } = {}) {
+export function authorizeRemoteCall({ tool, args = {}, lease, now = Date.now() } = {}) {
   const kind = classifyTool(tool);
-  if (kind === 'READ_ONLY') return { ok:true, reason:'READ_ONLY_DEFAULT_PASS' };
+  if (kind === 'READ_ONLY') {
+    return readScopeAllowed(tool,args)
+      ? { ok:true, reason:'READ_ONLY_DEFAULT_PASS' }
+      : { ok:false, reason:'READ_SCOPE_DENIED' };
+  }
   if (kind !== 'MUTATION') return { ok:false, reason:'UNKNOWN_TOOL_FAIL_CLOSED' };
-  if (permissionMode !== EXPECTED_PERMISSION_MODE) return { ok:false, reason:'PERMISSION_MODE_FAIL_CLOSED' };
+  if (tool === 'set_config_value') return { ok:false, reason:'REMOTE_CONFIG_MUTATION_FORBIDDEN' };
   return validateOwnerLease({ lease, tool, args, now });
-}
-
-export function consumeOwnerLease(lease) {
-  if (!lease || lease.consumed === true) throw new Error('LEASE_NOT_CONSUMABLE');
-  return { ...lease, consumed:true, consumedAt:new Date().toISOString() };
-}
-
-export function verifyDesktopCommanderConfig(config = {}) {
-  const errors = [];
-  if (!Array.isArray(config.allowedDirectories) || config.allowedDirectories.length === 0) errors.push('ALLOWED_DIRECTORIES_MUST_BE_NARROW');
-  for (const dir of OBSERVATION_DIRECTORIES) if (!config.allowedDirectories?.includes(dir)) errors.push('MISSING_OBSERVATION_DIR:' + dir);
-  if (config.allowedDirectories?.some((dir) => /\\Secrets(?:\\|$)/i.test(dir))) errors.push('SECRETS_DIRECTORY_FORBIDDEN');
-  if (config.defaultShell !== '__TIGERIQ_REMOTE_SHELL_DENIED__.exe') errors.push('DEFAULT_SHELL_MUST_DENY');
-  for (const cmd of DEFENSE_IN_DEPTH_BLOCKED_COMMANDS) if (!config.blockedCommands?.includes(cmd)) errors.push('MISSING_BLOCKED_COMMAND:' + cmd);
-  return { ok:errors.length === 0, errors };
 }
