@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {classifyCodingBlocker,codingScopesOverlap,codingSourceTruthRevision,extractCodingDependencies,materializeGithubCodingIssues,parseCodingIssue,shouldRearmRecoverableFinal,syncGithubCodingOutcomes} from '../apps/tigeriq-core/github-coding-intake.mjs';
+import {classifyCodingBlocker,codingScopesOverlap,codingSourceRevision,codingSourceTruthRevision,extractCodingDependencies,materializeGithubCodingIssues,parseCodingIssue,shouldRearmRecoverableFinal,syncGithubCodingOutcomes} from '../apps/tigeriq-core/github-coding-intake.mjs';
 
 function issue(body,extra={}){
   return {number:777,title:'Safe autonomous coding task',body,state:'open',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/777',...extra};
@@ -387,6 +387,22 @@ describe('GitHub coding continuity supervisor',()=>{
     expect(owner).toContain(':owner-500');
   });
 
+  it('keeps body-only revision when pagination fails after non-authoritative comments',async()=>{
+    const current=issue(SAFE,{number:810,title:'Paged source',comments:250});
+    const base=codingSourceTruthRevision({...current,repository_owner:'newsdayads'},[]);
+    const pages=[];
+    const fetchImpl=async(url)=>{
+      pages.push(url);
+      if(url.includes('page=3'))return response([{id:700,user:{login:'newsdayads'},body:'[PROGRESS] not a source directive'}]);
+      if(url.includes('page=2'))return response({message:'boom'},false,503);
+      return response([]);
+    };
+    const revision=await codingSourceRevision(fetchImpl,'newsdayads','tigeriq-ai-lab','fake',current);
+    expect(revision).toBe(base);
+    expect(pages.some(url=>new URL(url).searchParams.get('page')==='3')).toBe(true);
+    expect(pages.some(url=>new URL(url).searchParams.get('page')==='2')).toBe(true);
+  });
+
   it('re-arms once when Source of Truth changes on the same main and stays idempotent after restart',async()=>{
     const pool=fakePool();let posted=0;
     pool.events.push(
@@ -395,8 +411,9 @@ describe('GitHub coding continuity supervisor',()=>{
       {type:'GITHUB_CODING_RETRY_DISPATCHED',data:{issueNumber:809,codingObjectiveId:'obj-809-r2',retryAttempt:2}},
       {type:'GITHUB_CODING_BLOCKED_FINAL',data:{issueNumber:809,codingObjectiveId:'obj-809-r2',status:'blocked',reason:'RETRY_BUDGET_EXHAUSTED',terminalReason:'OUTPUT_CONTRACT_EXHAUSTED',mainSha:'same-main',sourceRevision:'old-revision'}}
     );
-    const current=issue(SAFE,{number:809,title:'Canonical source'});
+    const current=issue(SAFE,{number:809,title:'Canonical source',comments:329});
     const ownerDirective={id:500,user:{login:'newsdayads'},body:'[OWNER_REARM] continue canonical issue'};
+    const commentPages=[];
     const sourceRevision=codingSourceTruthRevision(current,[ownerDirective]);
     const sourceKey=sourceRevision.replace(/[^0-9A-Za-z]/g,'').slice(-20)||'no-source';
     expect(shouldRearmRecoverableFinal(pool.events.at(-1).data,'same-main',[],sourceRevision)).toBe(true);
@@ -409,7 +426,7 @@ describe('GitHub coding continuity supervisor',()=>{
         ...(recoveryObjective?[recoveryObjective]:[])
       ],jobs:[]});
       if(url.includes('/git/ref/heads/main'))return response({object:{sha:'same-main'}});
-      if(url.includes('/issues/809/comments'))return response([ownerDirective]);
+      if(url.includes('/issues/809/comments')){commentPages.push(url);return response(url.includes('page=4')?[ownerDirective]:[]);}
       if(url.includes('/api/objectives')){
         posted++;
         const body=JSON.parse(init.body);
@@ -425,6 +442,8 @@ describe('GitHub coding continuity supervisor',()=>{
     await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
     await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
     expect(posted).toBe(1);
+    expect(commentPages.some(url=>new URL(url).searchParams.get('page')==='4')).toBe(true);
+    expect(commentPages.some(url=>new URL(url).searchParams.get('page')==='1')).toBe(false);
     const rearms=pool.events.filter(e=>e.type==='GITHUB_CODING_RECOVERY_REARMED');
     expect(rearms).toHaveLength(1);
     expect(rearms[0].data).toMatchObject({mainSha:'same-main',sourceRevision,priorObjectiveId:'obj-809-r2',codingObjectiveId:'obj-809-recovery'});

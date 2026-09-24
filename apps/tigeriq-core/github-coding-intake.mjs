@@ -27,10 +27,21 @@ export function codingSourceTruthRevision(issue,comments=[]){
   return ownerDirective?.id?`body-${digest}:owner-${ownerDirective.id}`:`body-${digest}`;
 }
 
-async function codingSourceRevision(fetchImpl,owner,repo,token,issue){
+export async function codingSourceRevision(fetchImpl,owner,repo,token,issue){
   let comments=[];
+  const issueNumber=Number(issue?.number);
+  const totalComments=Math.max(0,Number(issue?.comments||0));
+  const lastPage=Math.max(1,Math.ceil(totalComments/100));
   try{
-    comments=await gh(fetchImpl,owner,repo,`/issues/${Number(issue?.number)}/comments?per_page=100`,token);
+    for(let page=lastPage;page>=1;page--){
+      const batch=await gh(fetchImpl,owner,repo,`/issues/${issueNumber}/comments?per_page=100&page=${page}`,token);
+      if(Array.isArray(batch))comments.push(...batch);
+      const hasOwnerDirective=(Array.isArray(batch)?batch:[]).some(c=>
+        String(c?.user?.login||'').toLowerCase()===String(owner||'').toLowerCase()&&
+        /^\[(?:OWNER_REARM|OWNERSHIP_HANDOFF|OWNER_DIRECTIVE|OWNER_OVERRIDE)\]/mi.test(String(c?.body||''))
+      );
+      if(hasOwnerDirective)break;
+    }
   }catch{
     // Body still gives a stable fail-closed Source-of-Truth revision when comment lookup is unavailable.
   }
