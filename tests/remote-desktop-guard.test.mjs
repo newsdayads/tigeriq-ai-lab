@@ -272,6 +272,21 @@ describe('Remote Desktop Commander hard runtime guard',()=>{
     })).toEqual({ok:false,reason:'ACTIVE_LEASE_EXISTS'});
   });
 
+  it('rolls over an expired stale lease only after fresh verified Owner authorization',async()=>{
+    const leasePath=await tempLeasePath();
+    const args={path:'D:\\TigerIQ\\Evidence\\renewed.txt',content:'ok',mode:'rewrite'};
+    const fresh=leaseFor('write_file',args);
+    const expired={...fresh,leaseId:'OLD-EXPIRED',issuedAt:'2026-09-24T23:40:00.000Z',expiresAt:'2026-09-24T23:45:00.000Z'};
+    await putLease(leasePath,expired);
+    const installed=await installOwnerLeaseFromAuthorization({authorizationUrl:fresh.authorizationUrl},{
+      leasePath,now:NOW,fetchImpl:authFetchFor(fresh)
+    });
+    expect(installed).toMatchObject({ok:true,reason:'OWNER_LEASE_INSTALLED',leaseId:'OWNER-TEST-1'});
+    expect(JSON.parse(await readFile(leasePath,'utf8'))).toEqual(fresh);
+    const files=await readdir(join(leasePath,'..'));
+    expect(files.some((name)=>name.startsWith('owner-lease.json.stale-'))).toBe(true);
+  });
+
   it('dedicated authorization tool returns terminal success before vendor dispatch',async()=>{
     const leasePath=await tempLeasePath();
     const args={command:'echo scoped',timeout_ms:1000};
