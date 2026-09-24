@@ -39,7 +39,7 @@ button{font:inherit}
 .identity{min-width:0}
 .identity b{display:block;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .identity small{display:block;color:var(--muted);font-size:10px;margin-top:3px}
-.badge{flex:none;border-radius:999px;padding:6px 8px;font-size:10px;font-weight:850;letter-spacing:.01em}
+.badge{display:inline-flex;align-items:center;gap:4px;flex:none;border-radius:999px;padding:6px 8px;font-size:10px;font-weight:850;letter-spacing:.01em}
 .badge.working{background:#103526;color:#8de7b1;border:1px solid #24533f}
 .badge.waiting{background:#392b17;color:#ffd18b;border:1px solid #6a4d26}
 .badge.blocked{background:#3b1d23;color:#ffb0b6;border:1px solid #6b3039}
@@ -57,18 +57,26 @@ button{font:inherit}
 .work-zone{margin:0 0 11px}
 .work-zone+.work-zone{margin-top:2px}
 .work-zone-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:1px 2px 7px}
-.work-zone-head h2{font-size:14px;line-height:1.2;margin:0}
-.work-zone-head span{font-size:10px;color:var(--muted)}
+.work-zone-head h2{display:flex;align-items:center;gap:7px;font-size:13px;line-height:1.2;margin:0;font-weight:900;letter-spacing:.055em;text-transform:uppercase}
+.work-zone-head>span{font-size:10px;color:var(--muted)}
+.zone-icon{width:16px;height:16px;flex:none;stroke:currentColor}
+.active-zone .work-zone-head h2{color:#72e0a5}
+.queue-zone .work-zone-head h2{color:#ffc56b}
+.recent-zone .work-zone-head h2{color:#79bfff}
+.workforce-zone .work-zone-head h2{color:#c5a6ff}
+.worker-rule{margin:-1px 2px 8px;color:#8296ad;font-size:9px;line-height:1.35}
 .work-list{display:grid;gap:7px}
 .work-card{display:block;border:1px solid var(--line);background:#0b1829;border-radius:14px;padding:10px 11px;min-width:0}
 .work-title{font-size:12px;font-weight:800;line-height:1.35;overflow-wrap:anywhere}
 .work-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:7px;font-size:10px;color:var(--muted)}
 .work-meta b{color:#cfe3fa}
-.work-state{border:1px solid #3a4d63;border-radius:999px;padding:3px 6px;font-weight:850;font-size:9px}
+.work-state{display:inline-flex;align-items:center;gap:4px;border:1px solid #3a4d63;border-radius:999px;padding:3px 6px;font-weight:850;font-size:9px}
 .work-state.working{border-color:#24533f;background:#103526;color:#8de7b1}
 .work-state.review,.work-state.waiting{border-color:#6a4d26;background:#392b17;color:#ffd18b}
 .work-state.blocked{border-color:#6b3039;background:#3b1d23;color:#ffb0b6}
 .work-state.queued{border-color:#315b8a;background:#102947;color:#a9d4ff}
+.work-state.done{border-color:#245c57;background:#0e302d;color:#82e0d3}
+.state-icon{width:11px;height:11px;flex:none;stroke:currentColor}
 .work-step{margin-top:6px;font-size:10px;line-height:1.4;color:#b5c5d7;overflow-wrap:anywhere}
 .work-proof{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:7px;padding-top:7px;border-top:1px solid #183047;font-size:9px;color:#8296ad}
 .work-proof span:last-child{text-align:right}
@@ -101,34 +109,44 @@ button{font:inherit}
   <div class="sum block"><span>Bị chặn</span><b id="sumBlock">0</b></div>
   <div class="sum idle"><span>Rảnh</span><b id="sumIdle">0</b></div>
 </section>
-<section class="work-zone" aria-labelledby="activeWorkHeading">
-  <div class="work-zone-head"><h2 id="activeWorkHeading">Công việc đang thực hiện</h2><span id="activeWorkCount">—</span></div>
+<section class="work-zone active-zone" aria-labelledby="activeWorkHeading">
+  <div class="work-zone-head"><h2 id="activeWorkHeading"><svg class="zone-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m10 8 6 4-6 4z"/></svg>CÔNG VIỆC ĐANG THỰC HIỆN</h2><span id="activeWorkCount">—</span></div>
   <div id="activeWork" class="work-list"></div>
 </section>
-<section class="work-zone" aria-labelledby="nextQueueHeading">
-  <div class="work-zone-head"><h2 id="nextQueueHeading">Hàng đợi tiếp theo</h2><span id="nextQueueCount">—</span></div>
+<section class="work-zone queue-zone" aria-labelledby="nextQueueHeading">
+  <div class="work-zone-head"><h2 id="nextQueueHeading"><svg class="zone-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg>HÀNG ĐỢI TIẾP THEO</h2><span id="nextQueueCount">—</span></div>
   <div id="nextQueue" class="work-list"></div>
 </section>
-<nav class="filters" aria-label="Bộ lọc trạng thái">
-  <button class="filter active" data-filter="all">Tất cả</button>
-  <button class="filter" data-filter="working">Đang làm</button>
-  <button class="filter" data-filter="waiting">Chờ</button>
-  <button class="filter" data-filter="blocked">Bị chặn</button>
-  <button class="filter" data-filter="idle">Rảnh</button>
-  <button class="filter" data-filter="unknown">Chưa rõ</button>
-  <button class="filter" data-filter="paused">Tạm ngưng</button>
-</nav>
-<div class="meta-row"><span id="workerCount">—</span><span id="updated">Chưa cập nhật</span></div>
-<section id="workers" class="list"></section>
-<footer class="page-foot">Nguồn chính: PC01 Core + Coding Lane · Nhân sự 5 giây · Công việc 30 giây · Hàng đợi 60 giây · chỉ xem</footer>
+<section class="work-zone recent-zone" aria-labelledby="recentWorkHeading">
+  <div class="work-zone-head"><h2 id="recentWorkHeading"><svg class="zone-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></svg>NHỮNG VIỆC GẦN ĐÂY</h2><span id="recentWorkCount">—</span></div>
+  <div id="recentWork" class="work-list"></div>
+</section>
+<section class="work-zone workforce-zone" aria-labelledby="workforceHeading">
+  <div class="work-zone-head"><h2 id="workforceHeading"><svg class="zone-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg><span id="workforceHeadingText">NHÂN SỰ ĐANG LÀM</span></h2><span id="workerCount">—</span></div>
+  <nav class="filters" aria-label="Bộ lọc trạng thái">
+    <button class="filter" data-filter="all">Tất cả</button>
+    <button class="filter active" data-filter="working">Đang làm</button>
+    <button class="filter" data-filter="waiting">Chờ</button>
+    <button class="filter" data-filter="blocked">Bị chặn</button>
+    <button class="filter" data-filter="idle">Rảnh</button>
+    <button class="filter" data-filter="unknown">Chưa rõ</button>
+    <button class="filter" data-filter="paused">Tạm ngưng</button>
+  </nav>
+  <div class="worker-rule">ĐANG LÀM = runtime báo working + có mã việc + heartbeat ≤ 60 giây.</div>
+  <div class="meta-row"><span id="workerAuthority">Nguồn: PC01 live runtime</span><span id="updated">Chưa cập nhật</span></div>
+  <section id="workers" class="list"></section>
+</section>
+<footer class="page-foot">Nguồn chính: PC01 Core + Coding Lane · Nhân sự 5 giây · Công việc 30 giây · Hàng đợi 60 giây · Gần đây 5 phút · chỉ xem</footer>
 </main>
 <script>
 const $=id=>document.getElementById(id);
-let snapshot=null,activeFilter='all';
+let snapshot=null,activeFilter='working';
 const ACTIVE_WORK_REFRESH_MS=30*1000;
 const NEXT_QUEUE_REFRESH_MS=60*1000;
+const RECENT_WORK_REFRESH_MS=5*60*1000;
 let activeWorkView={at:0,items:null};
 let nextQueueView={at:0,items:null,total:0};
+let recentWorkView={at:0,items:null};
 function applyWorkCadence(value){
   const now=Date.now();
   if(!activeWorkView.at||now-activeWorkView.at>=ACTIVE_WORK_REFRESH_MS){
@@ -138,19 +156,24 @@ function applyWorkCadence(value){
     const items=Array.isArray(value?.nextQueue)?value.nextQueue:[];
     nextQueueView={at:now,items,total:Number.isFinite(value?.nextQueueTotal)?value.nextQueueTotal:items.length};
   }
+  if(!recentWorkView.at||now-recentWorkView.at>=RECENT_WORK_REFRESH_MS){
+    recentWorkView={at:now,items:Array.isArray(value?.recentWork)?value.recentWork:[]};
+  }
   return {
     ...value,
     activeWork:activeWorkView.items||[],
     nextQueue:nextQueueView.items||[],
     nextQueueTotal:nextQueueView.total,
-    uiRefreshSeconds:{work:30,queue:60,workforce:5},
+    recentWork:recentWorkView.items||[],
+    uiRefreshSeconds:{work:30,queue:60,recent:300,workforce:5},
   };
 }
 const LAST_GOOD_KEY='tigeriq-live-last-good-v3';
 const LEGACY_LAST_GOOD_KEY='tigeriq-live-last-good-v2';
 const LAST_GOOD_MAX_MS=30*60*1000;
 const stateLabel={working:'ĐANG LÀM',waiting:'CHỜ',blocked:'BỊ CHẶN',idle:'RẢNH',unknown:'CHƯA RÕ',paused:'TẠM NGƯNG'};
-const workStateLabel={WORKING:'ĐANG LÀM',REVIEW:'ĐANG RÀ SOÁT',WAITING:'CHỜ',BLOCKED:'BỊ CHẶN',QUEUED:'XẾP HÀNG'};
+const workStateLabel={WORKING:'ĐANG LÀM',REVIEW:'ĐANG RÀ SOÁT',WAITING:'CHỜ',BLOCKED:'BỊ CHẶN',QUEUED:'XẾP HÀNG',DONE:'HOÀN TẤT'};
+const workforceHeadingLabel={all:'NHÂN SỰ · TẤT CẢ',working:'NHÂN SỰ ĐANG LÀM',waiting:'NHÂN SỰ ĐANG CHỜ',blocked:'NHÂN SỰ BỊ CHẶN',idle:'NHÂN SỰ ĐANG RẢNH',unknown:'NHÂN SỰ CHƯA RÕ',paused:'NHÂN SỰ TẠM NGƯNG'};
 function readLastGood(){
   try{
     const raw=JSON.parse(localStorage.getItem(LAST_GOOD_KEY)||'null');
@@ -179,6 +202,7 @@ function hydrateLastGood(value){
       activeWork:Array.isArray(cached.activeWork)?cached.activeWork:[],
       nextQueue:Array.isArray(cached.nextQueue)?cached.nextQueue:[],
       nextQueueTotal:Number.isFinite(cached.nextQueueTotal)?cached.nextQueueTotal:(cached.nextQueue||[]).length,
+      recentWork:Array.isArray(cached.recentWork)?cached.recentWork:[],
       workProjection:{
         ...(cached.workProjection||{}),
         mode:'client-stale-cache',
@@ -224,16 +248,33 @@ function sourceLabel(s){
 function esc(t){const d=document.createElement('div');d.textContent=String(t??'');return d.innerHTML}
 function workStateClass(value){return String(value||'').toLowerCase()}
 function workStateText(value){const key=String(value||'').toUpperCase();return workStateLabel[key]||value||'CHỜ'}
+function statusIcon(value){
+  const key=String(value||'').toLowerCase();
+  const paths={
+    working:'<circle cx="12" cy="12" r="9"/><path d="m10 8 6 4-6 4z"/>',
+    review:'<path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12"/><circle cx="12" cy="12" r="2.5"/>',
+    waiting:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    blocked:'<path d="M12 3 2.5 20h19L12 3z"/><path d="M12 9v5M12 17h.01"/>',
+    queued:'<path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>',
+    done:'<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>',
+    idle:'<circle cx="12" cy="12" r="9"/>',
+    unknown:'<circle cx="12" cy="12" r="9"/><path d="M9.8 9a2.4 2.4 0 1 1 3.7 2c-1 .6-1.5 1.1-1.5 2M12 17h.01"/>',
+    paused:'<circle cx="12" cy="12" r="9"/><path d="M10 9v6M14 9v6"/>'
+  };
+  return '<svg class="state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(paths[key]||paths.unknown)+'</svg>';
+}
 function renderWorkSections(){
   const projection=snapshot?.workProjection||{};
   const active=Array.isArray(snapshot?.activeWork)?snapshot.activeWork:[];
   const queue=Array.isArray(snapshot?.nextQueue)?snapshot.nextQueue:[];
+  const recent=Array.isArray(snapshot?.recentWork)?snapshot.recentWork:[];
   const queueTotal=Number.isFinite(snapshot?.nextQueueTotal)?snapshot.nextQueueTotal:queue.length;
   const staleMark=projection.stale?' · CŨ '+age(projection.staleAt||projection.verifiedAt):'';
   $('activeWorkCount').textContent=active.length+' việc'+staleMark;
   $('nextQueueCount').textContent=(queueTotal>queue.length?queue.length+'/'+queueTotal:queueTotal)+' việc'+staleMark;
-  const activeBox=$('activeWork'),queueBox=$('nextQueue');
-  activeBox.innerHTML='';queueBox.innerHTML='';
+  $('recentWorkCount').textContent=recent.length+' việc'+staleMark;
+  const activeBox=$('activeWork'),queueBox=$('nextQueue'),recentBox=$('recentWork');
+  activeBox.innerHTML='';queueBox.innerHTML='';recentBox.innerHTML='';
   if(!active.length){
     activeBox.innerHTML='<div class="work-empty">'+(projection.mode==='unavailable'?'Chưa xác minh được Work Order; không suy đoán.':'Không có Work Order đang chạy được xác minh.')+'</div>';
   }else{
@@ -244,7 +285,7 @@ function renderWorkSections(){
       if(w.prNumber)proof.push('PR #'+w.prNumber);
       if(w.checks)proof.push('kiểm tra '+w.checks.state+(Number.isFinite(w.checks.passed)&&Number.isFinite(w.checks.total)?' '+w.checks.passed+'/'+w.checks.total:''));
       const meta=[w.priority||'—',w.employeeId||'NV chưa xác minh'];
-      el.innerHTML='<div class="work-title">'+esc('#'+w.number+' - '+w.title)+'</div><div class="work-meta"><b>'+esc(meta[0])+'</b><span>'+esc(meta[1])+'</span><span class="work-state '+esc(workStateClass(w.status))+'">'+esc(workStateText(w.status))+'</span></div><div class="work-step">'+esc(w.currentStep||'Chưa có bước hiện tại được xác minh')+'</div><div class="work-proof"><span>'+esc(proof.join(' · ')||'Chưa có PR/check')+'</span><span>'+esc('Cập nhật '+age(w.updatedAt))+'</span></div>';
+      el.innerHTML='<div class="work-title">'+esc('#'+w.number+' - '+w.title)+'</div><div class="work-meta"><b>'+esc(meta[0])+'</b><span>'+esc(meta[1])+'</span><span class="work-state '+esc(workStateClass(w.status))+'">'+statusIcon(w.status)+esc(workStateText(w.status))+'</span></div><div class="work-step">'+esc(w.currentStep||'Chưa có bước hiện tại được xác minh')+'</div><div class="work-proof"><span>'+esc(proof.join(' · ')||'Chưa có PR/check')+'</span><span>'+esc('Cập nhật '+age(w.updatedAt))+'</span></div>';
       activeBox.append(el);
     });
   }
@@ -255,8 +296,18 @@ function renderWorkSections(){
       const el=document.createElement(w.url?'a':'article');el.className='work-card';
       if(w.url){el.href=w.url;el.target='_blank';el.rel='noopener'}
       const priority=(w.ownerDirect?'OWNER_DIRECT · ':'')+(w.priority||'—');
-      el.innerHTML='<div class="work-title">'+esc('#'+w.number+' - '+w.title)+'</div><div class="work-meta"><b>'+esc(priority)+'</b><span class="work-state '+esc(workStateClass(w.status))+'">'+esc(workStateText(w.status))+'</span></div>'+(w.waitReason?'<div class="work-step">'+esc(w.waitReason)+'</div>':'');
+      el.innerHTML='<div class="work-title">'+esc('#'+w.number+' - '+w.title)+'</div><div class="work-meta"><b>'+esc(priority)+'</b><span class="work-state '+esc(workStateClass(w.status))+'">'+statusIcon(w.status)+esc(workStateText(w.status))+'</span></div>'+(w.waitReason?'<div class="work-step">'+esc(w.waitReason)+'</div>':'');
       queueBox.append(el);
+    });
+  }
+  if(!recent.length){
+    recentBox.innerHTML='<div class="work-empty">Chưa có việc HOÀN TẤT trong 24 giờ gần nhất.</div>';
+  }else{
+    recent.forEach(w=>{
+      const el=document.createElement(w.url?'a':'article');el.className='work-card';
+      if(w.url){el.href=w.url;el.target='_blank';el.rel='noopener'}
+      el.innerHTML='<div class="work-title">'+esc('#'+w.number+' - '+w.title)+'</div><div class="work-meta"><span class="work-state done">'+statusIcon('done')+'HOÀN TẤT</span><span>'+esc('Hoàn tất '+age(w.completedAt||w.updatedAt))+'</span></div>';
+      recentBox.append(el);
     });
   }
 }
@@ -266,7 +317,9 @@ function render(){
   const s=snapshot.summary||{};
   $('sumWork').textContent=s.working||0;$('sumWait').textContent=s.waiting||0;$('sumBlock').textContent=s.blocked||0;$('sumIdle').textContent=s.idle||0;
   const all=snapshot.workers||[],rows=activeFilter==='all'?all:all.filter(x=>x.state===activeFilter);
+  $('workforceHeadingText').textContent=workforceHeadingLabel[activeFilter]||'NHÂN SỰ';
   $('workerCount').textContent=rows.length+'/'+all.length+' nhân sự';
+  $('workerAuthority').textContent='Nguồn: '+String(snapshot.authority||'chưa xác minh');
   $('updated').textContent='Cập nhật '+new Date(snapshot.generatedAt||Date.now()).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
   const box=$('workers');box.innerHTML='';
   if(!rows.length){box.innerHTML='<div class="empty">Không có nhân sự ở trạng thái này.</div>';return}
@@ -277,41 +330,68 @@ function render(){
     const pct=w.progress?.percent;
     const meta=w.kind?((w.kind==='api'?'API':'UI')+' · '+sourceLabel(w.source)):(w.command?'Lệnh '+w.command+' · '+(w.adminState||'Registry'):(w.adminState||'Registry'));
     const stamp=w.heartbeatAt?('Heartbeat '+age(w.heartbeatAt)):('Cập nhật '+age(w.updatedAt));
-    el.innerHTML='<div class="head"><div class="identity"><b>'+esc(w.employeeId+' · '+w.label)+'</b><small>'+esc(meta)+'</small></div><span class="badge '+esc(w.state)+'">'+esc(stateLabel[w.state]||w.status||'—')+'</span></div><div class="job">'+esc(w.job||'Không có dữ liệu việc hiện tại')+'</div><div class="detail">'+esc(w.detail||'—')+'</div>'+(pct==null?'':'<div class="progress"><i style="width:'+Math.max(0,Math.min(100,pct))+'%"></i></div>')+'<div class="foot"><span>'+esc(stamp)+'</span><span class="source">'+esc(w.prNumber?'PR #'+w.prNumber:sourceLabel(w.source))+(sourceUrl?' ↗':'')+'</span></div>';
+    el.innerHTML='<div class="head"><div class="identity"><b>'+esc(w.employeeId+' · '+w.label)+'</b><small>'+esc(meta)+'</small></div><span class="badge '+esc(w.state)+'">'+statusIcon(w.state)+esc(stateLabel[w.state]||w.status||'—')+'</span></div><div class="job">'+esc(w.job||'Không có dữ liệu việc hiện tại')+'</div><div class="detail">'+esc(w.detail||'—')+'</div>'+(pct==null?'':'<div class="progress"><i style="width:'+Math.max(0,Math.min(100,pct))+'%"></i></div>')+'<div class="foot"><span>'+esc(stamp)+'</span><span class="source">'+esc(w.prNumber?'PR #'+w.prNumber:sourceLabel(w.source))+(sourceUrl?' ↗':'')+'</span></div>';
     box.append(el);
   });
 }
-async function load(){
+function showSnapshot(d){
+  const projection=d.workProjection||{};
+  const stale=Boolean(d.staleAll||projection.stale);
+  const live=$('liveLabel').parentElement;
+  live.classList.toggle('warn',!d.liveConnected||stale);
+  $('liveLabel').textContent=stale?'DỮ LIỆU CŨ':(d.liveConnected?'PC01 LIVE':'DỰ PHÒNG');
+  if(stale){
+    const stamp=projection.staleAt||projection.verifiedAt||d.staleAt||d.generatedAt;
+    const reason=projection.reason||d.reason||d.liveReason||'unavailable';
+    const source=/^runtime_bridge_/i.test(reason)?'Cầu nối PC01':/^github_/i.test(reason)?'GitHub':'Nguồn dữ liệu';
+    $('err').classList.add('stale');
+    $('err').textContent=source+' tạm lỗi ('+reason+'). Đang giữ danh sách xác minh gần nhất từ '+(stamp?new Date(stamp).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'mốc trước')+'; không xóa về 0.';
+    $('err').style.display='block';
+  }else{
+    $('err').classList.remove('stale');
+    $('err').style.display='none';
+  }
+  render();
+}
+async function loadFull(){
   try{
     const r=await fetch('/api/live-status',{cache:'no-store'}),raw=await r.json(),d=applyWorkCadence(hydrateLastGood(raw));
     if(!d?.ok)throw new Error(d?.reason||'Nguồn trạng thái chưa sẵn sàng');
     snapshot=d;
-    const projection=d.workProjection||{};
-    const stale=Boolean(d.staleAll||projection.stale);
-    const live=$('liveLabel').parentElement;
-    live.classList.toggle('warn',!d.liveConnected||stale);
-    $('liveLabel').textContent=stale?'DỮ LIỆU CŨ':(d.liveConnected?'PC01 LIVE':'DỰ PHÒNG');
-    if(stale){
-      const stamp=projection.staleAt||projection.verifiedAt||d.staleAt||d.generatedAt;
-      const reason=projection.reason||d.reason||d.liveReason||'unavailable';
-      const source=/^runtime_bridge_/i.test(reason)?'Cầu nối PC01':/^github_/i.test(reason)?'GitHub':'Nguồn dữ liệu';
-      $('err').classList.add('stale');
-      $('err').textContent=source+' tạm lỗi ('+reason+'). Đang giữ danh sách xác minh gần nhất từ '+(stamp?new Date(stamp).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'mốc trước')+'; không xóa về 0.';
-      $('err').style.display='block';
-    }else{
-      $('err').classList.remove('stale');
-      $('err').style.display='none';
-    }
-    render();
+    showSnapshot(d);
   }catch(e){
     $('liveLabel').textContent='MẤT DỮ LIỆU';$('err').classList.remove('stale');$('err').textContent='Không có snapshot xác minh để hiển thị: '+String(e?.message||e);$('err').style.display='block';
+  }
+}
+async function loadWorkforce(){
+  try{
+    const r=await fetch('/api/live-status?scope=workforce',{cache:'no-store'}),raw=await r.json();
+    if(!raw?.ok)throw new Error(raw?.reason||'Nguồn nhân sự chưa sẵn sàng');
+    if(!snapshot)return;
+    snapshot={
+      ...snapshot,
+      ...raw,
+      activeWork:snapshot.activeWork,
+      nextQueue:snapshot.nextQueue,
+      nextQueueTotal:snapshot.nextQueueTotal,
+      recentWork:snapshot.recentWork,
+      workProjection:snapshot.workProjection,
+      staleAll:Boolean(raw.staleAll),
+    };
+    showSnapshot(snapshot);
+  }catch(e){
+    if(!snapshot)return;
+    snapshot={...snapshot,liveConnected:false,staleAll:true,staleAt:snapshot.generatedAt||null,liveReason:String(e?.message||e)};
+    showSnapshot(snapshot);
   }
 }
 document.querySelectorAll('.filter').forEach(btn=>btn.addEventListener('click',()=>{
   document.querySelectorAll('.filter').forEach(x=>x.classList.remove('active'));btn.classList.add('active');activeFilter=btn.dataset.filter;render();
 }));
-document.addEventListener('visibilitychange',()=>{if(!document.hidden)load()});
-load();setInterval(()=>{if(!document.hidden)load()},5000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){loadFull();loadWorkforce()}});
+loadFull();
+setInterval(()=>{if(!document.hidden)loadWorkforce()},5000);
+setInterval(()=>{if(!document.hidden)loadFull()},30000);
 </script>
 </body>
 </html>

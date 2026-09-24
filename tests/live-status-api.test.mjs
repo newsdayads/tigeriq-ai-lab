@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   compareQueueRows,
   fetchPc01Live,
+  normalizeRuntimeWorkerActivity,
   parseIssueNumber,
   parseQueueIssue,
+  parseRecentCompletedIssue,
   runtimeWorkRows,
   sanitizeRuntimePayload,
 } from '../api/live-status.mjs';
@@ -161,6 +163,50 @@ describe('TigerIQ Live Work Order projection', () => {
     const result = await fetchPc01Live(fetchImpl);
     expect(pointerCalls).toBe(2);
     expect(result).toMatchObject({ ok: true, liveConnected: true });
+  });
+
+
+  it('requires a current job and heartbeat no older than 60 seconds before showing ĐANG LÀM', () => {
+    const now = Date.parse('2026-09-25T00:01:00Z');
+    const base = {
+      employeeId: 'NV12',
+      state: 'working',
+      status: 'ĐANG LÀM',
+      detail: 'Đang xử lý',
+      currentJobId: 'MGR-OBJ-GH-1867',
+      heartbeatAt: '2026-09-25T00:00:20Z',
+    };
+    expect(normalizeRuntimeWorkerActivity(base, now).state).toBe('working');
+    expect(normalizeRuntimeWorkerActivity({ ...base, currentJobId: null }, now)).toMatchObject({ state: 'unknown', status: 'CHƯA RÕ' });
+    expect(normalizeRuntimeWorkerActivity({ ...base, heartbeatAt: '2026-09-24T23:59:59Z' }, now)).toMatchObject({ state: 'unknown', status: 'CHƯA RÕ' });
+  });
+
+  it('shows only completed issues from the last 24 hours in recent work', () => {
+    const now = Date.parse('2026-09-25T00:00:00Z');
+    const recent = parseRecentCompletedIssue({
+      number: 1861,
+      title: '[P0][VERCEL] Việc đã xong',
+      body: 'STATE=DONE',
+      state: 'closed',
+      state_reason: 'completed',
+      closed_at: '2026-09-24T23:30:00Z',
+      html_url: 'https://github.com/newsdayads/tigeriq-ai-lab/issues/1861',
+    }, now);
+    expect(recent).toMatchObject({ number: 1861, status: 'DONE' });
+    expect(parseRecentCompletedIssue({
+      number: 1800,
+      title: 'Việc cũ',
+      body: 'STATE=DONE',
+      state: 'closed',
+      closed_at: '2026-09-23T00:00:00Z',
+    }, now)).toBe(null);
+    expect(parseRecentCompletedIssue({
+      number: 1801,
+      title: 'Không làm',
+      body: 'STATE=CANCELLED',
+      state: 'closed',
+      closed_at: '2026-09-24T23:30:00Z',
+    }, now)).toBe(null);
   });
 
   it('keeps the existing workforce payload while adding read-only work projection fields', () => {
