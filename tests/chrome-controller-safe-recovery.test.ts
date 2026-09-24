@@ -142,10 +142,10 @@ describe('independent worker recovery flows in direct-cdp-bridge',()=>{
     expect(source).toContain("computeWorkerStaggerDelay");
   });
 
-  it('binds READY workers to a concrete continuable Work Order instead of chat URL state',()=>{
-    expect(source).toContain('findContinuableWorkerWorkForUi(controllerState,w.id)');
-    expect(source).toContain('CURRENT_WORK_NEW_CHAT_RESTORED');
-    expect(source).toContain('READY_UNASSIGNED');
+  it('keeps READY workers local-only and independent of Core assignment',()=>{
+    expect(source).not.toContain('findContinuableWorkerWorkForUi(controllerState,w.id)');
+    expect(source).toContain('LOCAL_CONTINUE_DISPATCHED');
+    expect(source).not.toContain('READY_UNASSIGNED');
   });
 
   it('rebases only an already-expired deep-reset timer once after bridge restart',()=>{
