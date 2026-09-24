@@ -157,6 +157,9 @@ export function salvageLooseCompactEdits(text){
     const path=decodeLooseJsonString(match[1]).trim();
     const search=decodeLooseJsonString(match[3]);
     const replace=decodeLooseJsonString(match[5]);
+    const ambiguousBoundary=/"\\s*,\\s*"(?:path|search|old|replace|new)"\\s*:/.test(match[3])
+      ||/"\\s*,\\s*"(?:path|search|old|replace|new)"\\s*:/.test(match[5]);
+    if(ambiguousBoundary)continue;
     if(path&&search)edits.push({path,search,replace});
   }
   if(!edits.length)return null;
