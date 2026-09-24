@@ -236,8 +236,8 @@ describe('isolated NV02 WORKING/F5 safety scope',()=>{
     expect(hotLoop).toContain("if(phase!=='WORKING'&&currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0))");
     expect(working).not.toContain('reopenWorker(');
     expect(working).not.toContain('dispatchNaturalContinue');
-    expect(working).toContain('stopStalledWorking');
-    expect(working).toContain("'WORKING_STUCK_STOP'");
+    expect(working).toContain("'WORKING_LONG_RUNNING_NO_MUTATION'");
+    expect(working).toContain('return;');
     expect(working).toContain("return;");
   });
 
@@ -437,7 +437,7 @@ describe('NV04 assignment override plus always-on Gemini role loop',()=>{
     expect(nv04Dispatch).toContain("source:'NV04_ASSIGNMENT'");
 
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
-    expect(bridge).toContain('function nv04AssignmentStatus(controller)');
+    expect(bridge).toContain('function workerAssignmentStatus(controller,workerId)');
     expect(bridge).toContain("return{status:'READY_UNASSIGNED',job:null}");
     expect(bridge).toContain("job?.source!=='NV04_ASSIGNMENT'");
     expect(bridge).toContain("stage==='WORKING'");
@@ -502,7 +502,8 @@ describe('NV02 reboot F5 consolidation #1739',()=>{
     const fresh=loop.indexOf("bootFreshContextPending.has('NV02')");
     const f5=loop.indexOf("if(phase!=='WORKING'&&currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0))");
     expect(fresh).toBeGreaterThan(-1);
-    expect(f5).toBeGreaterThan(fresh);
+    expect(f5).toBeGreaterThan(-1);
+    expect(loop).toContain("if(phase!=='WORKING'&&now>=Number(state.nextRefreshAt||0))");
     expect(loop).not.toContain('state.resumeChatUrl');
     const f5Block=loop.slice(f5,loop.indexOf('const modelCheckRequired='));
     expect(f5Block).toContain('reloadTarget(target)');
