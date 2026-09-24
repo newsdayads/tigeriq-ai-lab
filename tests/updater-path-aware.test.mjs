@@ -166,3 +166,54 @@ test('bootstrap stops the old updater instance before re-registering its task',(
   const start=installer.indexOf('Start-ScheduledTask -TaskName $taskName');
   assert.ok(stop>=0 && register>stop && start>register,'old updater must be stopped before task action replacement and restart');
 });
+
+
+test('updater consumes only owner-authorized exact-head App Chrome artifact requests from State',()=>{
+  assert.match(script,/\$appChromeInstallRequest='D:\\TigerIQ\\State\\appchrome-install-request\.json'/);
+  assert.match(script,/TIGERIQ_APP_CHROME_INSTALL_REQUEST_V1/);
+  assert.match(script,/APP_CHROME_DEPLOY_AUTHORIZED=true/);
+  assert.match(script,/MUTATION_OWNER=VY_OWNER_AUTHORIZED/);
+  assert.match(script,/TARGET_HEAD=/);
+  assert.match(script,/PACKAGE_ARTIFACT_ID=/);
+  assert.match(script,/APPCHROME_OWNER_AUTH_CONTRACT_MISMATCH/);
+  assert.match(script,/\^TigerIQ-Chrome-Controller-V1-\\d\+\$/);
+  assert.match(script,/APPCHROME_REQUEST_HEAD_INVALID/);
+});
+
+test('App Chrome zero-touch updater verifies artifact provenance and exact-head gates before install',()=>{
+  assert.match(script,/actions\/artifacts\//);
+  assert.match(script,/Chrome Controller Package/);
+  assert.match(script,/APPCHROME_ARTIFACT_HEAD_MISMATCH/);
+  assert.match(script,/APPCHROME_EXACT_HEAD_GATES_NOT_PASS/);
+  assert.match(script,/gh run download/);
+  assert.match(script,/Install-ApprovedArtifact\.ps1/);
+  assert.match(script,/APPCHROME_DOWNLOADED_HEAD_MISMATCH/);
+  const verify=script.indexOf('Get-VerifiedAppChromeArtifact $req');
+  const install=script.indexOf('& powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $installer');
+  assert.ok(verify>=0 && install>verify,'artifact provenance and gates must precede canonical installer');
+});
+
+test('App Chrome zero-touch updater waits for idle, preserves rollback, and verifies live provenance',()=>{
+  assert.match(script,/function Wait-AppChromeSafeBoundary/);
+  assert.match(script,/APPCHROME_SAFE_BOUNDARY_TIMEOUT/);
+  assert.match(script,/lastHeartbeat\.uiBusy/);
+  assert.match(script,/lastHeartbeat\.stopVisible/);
+  assert.match(script,/\/api\/pause/);
+  assert.match(script,/function Wait-AppChromeExactHead/);
+  assert.match(script,/provenanceVerified/);
+  assert.match(script,/externalWorkAutopilotEnabled/);
+  assert.match(script,/selfRun\.enabled/);
+  assert.match(script,/githubSelfRun\.enabled/);
+  assert.match(script,/rollback.*active-deploy\.json/i);
+  assert.match(script,/Start-Unified-AppChrome\.ps1/);
+  assert.match(script,/APP_CHROME_ZERO_TOUCH_INSTALL=PASS/);
+});
+
+test('App Chrome install request is idempotent and runs even when Core source has no change',()=>{
+  assert.match(script,/APPCHROME_INSTALL_RESULT_V1/);
+  assert.match(script,/reason='already_installed'/);
+  const request=script.indexOf('$appChromeInstall=Invoke-AppChromeInstallRequest');
+  const noChange=script.indexOf("if($runtimeExists -and $local -eq $remote)");
+  assert.ok(request>=0 && noChange>request,'deploy request must be consumed before Core NO_CHANGE short-circuit');
+  assert.match(script,/appChromeInstall=\$appChromeInstall/);
+});
