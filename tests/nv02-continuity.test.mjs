@@ -177,7 +177,7 @@ describe('NV02 continuity policy', () => {
     expect(continueDispatch).not.toContain('CONTINUE_CURRENT_WORK_VERIFIED');
     expect(continueDispatch).not.toContain('CONTINUE_SKIPPED_NO_CURRENT_WORK');
     expect(continueDispatch).not.toContain('CONTINUE_SKIPPED_CURRENT_WORK_UNVERIFIED');
-    expect(source).toContain("if(phase==='STALLED'&&ui?.modelExact!==true&&modelCheckRequired)");
+    expect(source).toContain("if(phase==='STALLED'&&ui?.modelExact!==true&&modelCheckRequired&&(ui?.composerReady===true||ui?.modelControlPresent===true))");
     expect(source).toContain("withNv02Mutation(()=>ensureNv02ModelProfile(target),'MODEL_PROFILE_RECOVERY')");
     expect(source).toContain("modelName==='GPT-5.6 Sol'");
     expect(source).toContain("const NV02_F5_MAX_MS=20*60*1000");
@@ -220,13 +220,21 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("ensureNv02LocalReadyLocked(target,raw,{forceFresh:false})");
     expect(source).toContain("'BOOT_LOCAL_CONTINUE_SUBMITTED'");
     expect(source).toContain("'LOCAL_CONTINUE_NOW',60000");
-    expect(source).toContain("async function waitForNv02Composer(target,timeoutMs=20000)");
+    expect(source).toContain("async function waitForNv02Composer(target,timeoutMs=30000)");
     expect(source).toContain("if(forceFresh||!inProject())");
     expect(source).toContain("await navigate(target,NV02_HOME_URL)");
-    expect(source).toContain("waitForNv02Composer(target,20000)");
+    expect(source).toContain("waitForNv02Composer(target,30000)");
     expect(source).toContain("recoverNv02ProjectContext(target)");
     expect(source).toContain("NV02_LOCAL_COMPOSER_NOT_READY");
     expect(source).toContain("NV02_LOCAL_READY_NOT_REACHED");
+    expect(source).toContain("const NV02_STALLED_RELOAD_CHECKS=10");
+    expect(source).toContain("const NV02_STALLED_RESET_CHECKS=14");
+    expect(source).toContain("const LOCAL_RUN_GRACE_MS=15000");
+    expect(source).toContain("'LOCAL_RUN_COMMAND_GRACE'");
+    expect(source).not.toContain("'LOCAL_RUN_KICKED'");
+    expect(source).toContain("stalledChecks:Math.min(NV02_STALLED_RESET_CHECKS,state.stalledChecks+1)");
+    expect(source).toContain("if(state.stalledChecks===NV02_STALLED_RELOAD_CHECKS)");
+    expect(source).toContain("else if(state.stalledChecks>=NV02_STALLED_RESET_CHECKS)");
 
     expect(source).toContain("verifiedChatUrl:String(raw.verifiedChatUrl||'')");
     expect(source).toContain("function applyNv02DurableVerifiedModelProfile(ui)");
