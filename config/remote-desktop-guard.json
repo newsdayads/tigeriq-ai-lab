@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "remoteMutationDefault": "DENY",
   "readOnlyDefault": "PASS_WITH_OBSERVATION_PATH_SCOPE",
   "ownerAuthRequired": true,
@@ -10,7 +10,7 @@
   "restartSafe": true,
   "failClosed": true,
   "runtimeGuardRequired": true,
-  "toolSurfaceDefault": "READ_ONLY",
+  "toolSurfaceDefault": "READ_ONLY_PLUS_OWNER_AUTHORIZER",
   "pluginPermissionDesired": "ask_before_writes",
   "pluginPermissionIsAuthority": false,
   "defaultLeasePath": "D:\\TigerIQ\\Runtime\\desktop-commander-remote\\guard\\owner-lease.json",
@@ -26,5 +26,8 @@
   "desktopCommanderVersionPinnedForPatch": "0.2.51",
   "launcherPreflightRequired": true,
   "noDirectMain": true,
-  "noProductionRelease": true
+  "noProductionRelease": true,
+  "ownerLeaseInstaller": "tigeriq_authorize_mutation",
+  "ownerLeaseInstallerExecutesTargetMutation": false,
+  "ownerAuthUnavailableBehavior": "FAIL_CLOSED"
 }
