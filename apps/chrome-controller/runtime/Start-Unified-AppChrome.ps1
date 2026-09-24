@@ -13,7 +13,6 @@ $runtime=Join-Path $InstallRoot 'Runtime'
 $activePath=Join-Path $runtime 'active-deploy.json'
 $supervisorLog=Join-Path $runtime 'appchrome-supervisor.jsonl'
 $tokenFile=Join-Path $runtime 'NV02-ProfileToken.value'
-$githubTokenFile='D:\\TigerIQ\\Secrets\\github-command-center.token'
 $ownerStatePath=Join-Path $runtime 'owner-interaction-state.json'
 $lastHead=''
 $supervisorMutex=[Threading.Mutex]::new($false,'Global\TigerIQ.AppChrome.Unified.Supervisor')
@@ -59,21 +58,11 @@ function Set-RuntimeEnvironment($Active){
   $env:TIGERIQ_WINDOWS_SESSION_ID=$env:TIGERIQ_SESSION_ID
   $env:SESSIONNAME='Console'
   if(Test-Path -LiteralPath $tokenFile){$env:TIGERIQ_NV02_WORKER_TOKEN=(Get-Content -LiteralPath $tokenFile -Raw).Trim()}
-  if([string]::IsNullOrWhiteSpace([string]$env:TIGERIQ_GITHUB_TOKEN)){
-    $gh=Get-Command gh.exe -ErrorAction SilentlyContinue
-    if(-not$gh){$gh=Get-Command gh -ErrorAction SilentlyContinue}
-    if($gh){
-      try{
-        $candidate=(& $gh.Source auth token 2>$null | Out-String).Trim()
-        if(-not[string]::IsNullOrWhiteSpace($candidate)){$env:TIGERIQ_GITHUB_TOKEN=$candidate}
-      }catch{}
-    }
-  }
-  if([string]::IsNullOrWhiteSpace([string]$env:TIGERIQ_GITHUB_TOKEN) -and (Test-Path -LiteralPath $githubTokenFile)){
-    try{$env:TIGERIQ_GITHUB_TOKEN=(Get-Content -LiteralPath $githubTokenFile -Raw -ErrorAction Stop).Trim()}catch{}
-  }
-  # #504: App Chrome only transports/continues assigned work. It must not select GitHub backlog.
+  # Local-only App Chrome: no GitHub/Core/queue credential or assignment dependency.
+  Remove-Item Env:TIGERIQ_GITHUB_TOKEN -ErrorAction SilentlyContinue
+  Remove-Item Env:GITHUB_TOKEN -ErrorAction SilentlyContinue
   $env:TIGERIQ_APP_CHROME_SELF_RUN='0'
+  $env:TIGERIQ_APP_CHROME_LOCAL_ONLY='1'
 }
 
 function Get-PortListener([int]$Port){
