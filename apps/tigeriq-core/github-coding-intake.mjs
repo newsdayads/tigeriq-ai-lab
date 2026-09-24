@@ -255,7 +255,7 @@ export async function materializeGithubCodingIssues({pool,fetchImpl=fetch,owner=
     }
     const hasDispatchMarker=await markerExists(pool,'GITHUB_CODING_DISPATCHED',spec.number);
     let completedReopenKey='';
-    if(hasDispatchMarker&&await hasCompletedCodingResult(pool,spec.number)){
+    if(hasDispatchMarker){
       completedReopenKey=await reopenedCompletionKey(fetchImpl,owner,repo,token,{
         number:spec.number,title:spec.title,body:spec.body,state:'open',html_url:spec.url
       });
