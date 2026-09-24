@@ -101,7 +101,7 @@ const READ_ONLY_BASE=`TIGERIQ_EXECUTABLE=true
 OWNER_POLICY=AUTO
 NO_CODE_CHANGE=true
 NO_PC01_SHELL=true
-CAPABILITY=review`;
+CAPABILITY=reasoning`;
 
 test('owner-direct pc_operator GitHub intake materializes bounded OpenClaw objective',async()=>{
   const pool=coreBacklogPool();
@@ -124,7 +124,7 @@ Return structured PASS evidence.`;
   assert.strictEqual(out.issueNumber,1608);
   assert.strictEqual(pool.objectives[0].metadata.capability,'pc_operator');
   assert.strictEqual(pool.objectives[0].metadata.executionSurface,'CORE_OPENCLAW_BOUNDED');
-  assert.match(pool.objectives[0].objective,/Core must create only the assigned pc_operator work/);
+  assert.match(pool.objectives[0].objective,/Core must dispatch only the assigned pc_operator action/);
   assert.match(pool.objectives[0].objective,/NO arbitrary PC01 shell/);
   assert.strictEqual(pool.jobs.length,1);
   assert.strictEqual(pool.jobs[0].id,'JOB-GH-1608-PC');
@@ -138,32 +138,22 @@ test('Core manager excludes deterministic CORE_OPENCLAW_BOUNDED objectives',()=>
   assert.match(core,/executionSurface',''\)<>'CORE_OPENCLAW_BOUNDED'/);
 });
 
-test('same GitHub dispatch lane stays serialized and chains by OWNER_DIRECT then priority',async()=>{
+test('autonomous priority is P1-P5 and independent scopes can materialize in parallel',async()=>{
   const pool=coreBacklogPool();
   const issues=[
-    {number:30,state:'open',title:'non-owner P0',body:`${READ_ONLY_BASE}\nPRIORITY=P0`,html_url:'https://example/30'},
-    {number:20,state:'open',title:'owner P2',body:`${READ_ONLY_BASE}\nOWNER_DIRECT=true\nPRIORITY=P2`,html_url:'https://example/20'},
-    {number:10,state:'open',title:'owner P1',body:`${READ_ONLY_BASE}\nOWNER_DIRECT=true\nPRIORITY=P1`,html_url:'https://example/10'},
+    {number:30,state:'open',title:'legacy P0',body:`${READ_ONLY_BASE}\nPRIORITY=P0\nRESOURCE_SCOPE=S30`,html_url:'https://example/30'},
+    {number:20,state:'open',title:'P2',body:`${READ_ONLY_BASE}\nOWNER_DIRECT=true\nPRIORITY=P2\nRESOURCE_SCOPE=S20`,html_url:'https://example/20'},
+    {number:10,state:'open',title:'P1',body:`${READ_ONLY_BASE}\nOWNER_DIRECT=true\nPRIORITY=P1\nRESOURCE_SCOPE=S10`,html_url:'https://example/10'},
   ];
   const fetchImpl=async(url)=>url.includes('/issues?')?response(issues):response({});
   let out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
-  assert.strictEqual(out.issueNumber,10);
-  assert.strictEqual(pool.objectives.at(-1).metadata.dispatchReason,'OWNER_DIRECT>P1');
-
+  assert.strictEqual(out.issueNumber,10);assert.strictEqual(pool.objectives.at(-1).priority,'P1');
   out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
-  assert.strictEqual(out.created,0);
-  assert.strictEqual(out.active,1);
-
-  pool.objectives.at(-1).status='completed';
+  assert.strictEqual(out.issueNumber,30);assert.strictEqual(pool.objectives.at(-1).priority,'P1');assert.strictEqual(pool.objectives.at(-1).metadata.legacyP0Autonomous,true);
   out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
-  assert.strictEqual(out.issueNumber,20);
-
-  pool.objectives.at(-1).status='completed';
-  out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
-  assert.strictEqual(out.issueNumber,30);
-  assert.deepStrictEqual(pool.objectives.map(o=>o.metadata.issueNumber),[10,20,30]);
+  assert.strictEqual(out.issueNumber,20);assert.strictEqual(pool.objectives.at(-1).priority,'P2');
+  assert.strictEqual(pool.objectives.filter(o=>o.status==='active').length,3);
 });
-
 
 test('reopened completed GitHub Work Order rearms instead of being skipped forever',async()=>{
   const pool=coreBacklogPool();
@@ -214,12 +204,11 @@ test('bounded App Chrome deploy-request State work is not treated as protected A
 
 test('preferred NV03 review is excluded from generic Core intake to avoid duplicate review',async()=>{
   const pool=coreBacklogPool();
-  const body=[READ_ONLY_BASE,'OWNER_DIRECT=true','PRIORITY=P1','PREFERRED_REVIEWER=NV03','RESOURCE_SCOPE=REVIEW_PR_X'].join('\n');
+  const body=['TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','NO_CODE_CHANGE=true','NO_PC01_SHELL=true','CAPABILITY=review','PRIORITY=P1','PREFERRED_REVIEWER=NV03','EXECUTION_SURFACE=CORE_READ_ONLY','RESOURCE_SCOPE=REVIEW_PR_X'].join('\n');
   const issues=[{number:1874,state:'open',title:'preferred UI review',body,html_url:'https://example/1874'}];
   const fetchImpl=async(url)=>url.includes('/issues?')?response(issues):response({});
   const out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
-  assert.strictEqual(out.created,0);
-  assert.strictEqual(pool.objectives.length,0);
+  assert.strictEqual(out.created,0);assert.strictEqual(pool.objectives.length,0);
 });
 test('terminal objective orphan queued and waiting_resource jobs are failed closed',async()=>{
   const pool=coreBacklogPool();
