@@ -172,7 +172,7 @@ async function pollWebHealth() {
     latestWebHealth = null;
     latestWebHealthError = `Health lỗi: ${error?.message || error}`;
   }
-  if (S.data) { renderMetrics(S.data); syncHealthLabels(S.data); }
+  if (S.data) { renderMetrics(S.data); syncHealthLabels(S.data); if(typeof window.__tigerIqApplyOwnerHealth==='function') window.__tigerIqApplyOwnerHealth(S.data); }
 }
 pollWebHealth();
 const _webHealthInterval = setInterval(pollWebHealth, 2000);
