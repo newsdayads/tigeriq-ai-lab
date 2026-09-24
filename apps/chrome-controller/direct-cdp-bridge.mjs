@@ -293,6 +293,22 @@ async function maybeWorkerContinuity(w,target,ui){
     await genericWorkerEvent(w.id,'WRONG_WORKER_CONTEXT',{url:ui?.url||null,expectedHost:expectedHost(w)});
     return;
   }
+  const assignment=await currentWorkerAssignmentStatus(w.id);
+  if(assignment.status!=='CONTINUABLE'){
+    state={...state,lastPhase:'READY',nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),stalledChecks:0,recoveryAttempts:0,recoveryBlockedUntil:0,workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:0};
+    if(now>=Number(state.nextResetAt||0)){
+      try{await reopenWorker(w,target,state,now,'PERIODIC_IDLE_2_4H_RESET');}
+      catch(error){
+        state={...state,nextResetAt:nextWorkerResetAt(w.id,now),recoveryBlockedUntil:now+15*60*1000};
+        saveWorkerContinuity(w.id,state);
+        await genericWorkerEvent(w.id,'IDLE_PERIODIC_RESTART_REARMED',{error:String(error?.message||error),nextResetAt:state.nextResetAt});
+      }
+      return;
+    }
+    saveWorkerContinuity(w.id,state);
+    await genericWorkerEvent(w.id,assignment.status,{jobId:assignment.job?.jobId||null,stage:assignment.job?.stage||null});
+    return;
+  }
   if(bootFreshContextPending.has(w.id)&&phase!=='WORKING'){
     bootFreshContextPending.delete(w.id);
     state={...state,resumeUrl:'',nextContinueAt:now,stalledChecks:0};
