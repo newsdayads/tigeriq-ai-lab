@@ -248,7 +248,7 @@ describe('safe recovery contracts',()=>{
   it('selects one canonical NV03 tab and prunes idle duplicates under a mutation lease',()=>{
     const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(source).toContain("function preferredWorkerUrl(w)");
-    expect(source).toContain("loadWorkerContinuity(w.id).resumeUrl");
+    expect(source).toContain("return String(w.homeUrl||'').trim()");
     expect(source).toContain("async function pruneNv03DuplicateTabs");
     expect(source).toContain("'DUPLICATE_TAB_PRUNE'");
     expect(source).toContain("rpc.call('Target.closeTarget'");
