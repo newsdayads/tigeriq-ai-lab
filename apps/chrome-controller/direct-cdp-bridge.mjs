@@ -1222,9 +1222,38 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
   if(runGraceUntil)workerRunGraceUntil.delete('NV02');
   ui=applyNv02DurableVerifiedModelProfile(ui);
   const phase=deriveNv02Phase(ui||{});
-  const currentChat=hasCurrentNv02Chat(ui?.url);
-  const currentTrackedWork=currentChat;
   state={...state,lastPhase:phase,resumeChatUrl:''};saveNv02Continuity(state);
+  if(phase==='BLOCKED'){await continuityEvent('BLOCKED',{securityBlock:ui?.securityBlock||null});return;}
+  const assignment=await currentWorkerAssignmentStatus('NV02');
+  if(assignment.status!=='CONTINUABLE'){
+    state={...state,lastPhase:'READY',nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),stalledChecks:0,workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:0};
+    if(now>=Number(state.nextRefreshAt||0)){
+      try{
+        const result=await withNv02Mutation(async(lease)=>{
+          await post('/api/utility/workers/NV02/plan-refresh','NV02',{reason:'PERIODIC_IDLE_2_4H_RESET',leaseOwnerId:lease.ownerId,leaseId:lease.leaseId});
+          await closeWorker(w,target);
+          return{ok:true,status:'IDLE_CLOSED_FOR_RESTART'};
+        },'PERIODIC_IDLE_2_4H_RESET',60000);
+        if(result?.status==='MUTATION_LEASE_BUSY'){
+          state.nextRefreshAt=now+5*60*1000;saveNv02Continuity(state);return;
+        }
+        await sleep(1200);
+        await post('/api/utility/workers/NV02/safe-recover','NV02',{reason:'PERIODIC_IDLE_2_4H_RESET'},120000);
+        state.nextRefreshAt=nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS);
+        saveNv02Continuity(state);
+        await continuityEvent('IDLE_PERIODIC_RESTART_COMPLETED',{nextRefreshAt:state.nextRefreshAt});
+      }catch(error){
+        state.nextRefreshAt=nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS);
+        saveNv02Continuity(state);
+        await continuityEvent('IDLE_PERIODIC_RESTART_REARMED',{error:String(error?.message||error),nextRefreshAt:state.nextRefreshAt});
+      }
+      return;
+    }
+    saveNv02Continuity(state);
+    await continuityEvent(assignment.status,{jobId:assignment.job?.jobId||null,stage:assignment.job?.stage||null});
+    return;
+  }
+  const currentTrackedWork=true;
   if(phase!=='BLOCKED'&&ui?.scrollToBottomVisible===true&&now>=Number(state.nextViewFollowAt||0)){
     const locallyBusy=nv02MutationBusy||workerMutationBusy.has('NV02');
     const followed=locallyBusy
@@ -1236,7 +1265,6 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
     saveNv02Continuity(state);
     await continuityEvent(deferred?'VIEW_FOLLOW_BOTTOM_DEFERRED':'VIEW_FOLLOW_BOTTOM',{status:followed?.status||null,pacingMs:followed?.pacingMs||null,nextViewFollowAt:state.nextViewFollowAt});
   }
-  if(phase==='BLOCKED'){await continuityEvent('BLOCKED',{securityBlock:ui?.securityBlock||null});return;}
   if(phase==='WORKING'){
     if(now<Number(state.nextProgressCheckAt||0))return;
     const signature=String(ui?.activitySignature||'');
