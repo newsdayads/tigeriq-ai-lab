@@ -285,7 +285,47 @@ async function invoke(r,prompt){
   throw new Error('PROVIDER_UNSUPPORTED');
 }
 
-export async function invokeJsonWithFailover(initialResource,prompt,{exclude=[],resourcePool=null,invokeFn=invoke,shrinkPrompt=shrinkAiPrompt,maxResources=null,validateData=null,sleepFn=sleep,randomFn=Math.random,backoffBaseMs=1000}={}){
+export function salvageCompactEditsJson(text){
+  const raw=String(text||'');
+  const marker=/["']edits["']\s*:\s*\[/i.exec(raw);
+  if(!marker)return null;
+  const edits=[];let start=-1,depth=0,inString=false,escape=false;
+  for(let i=marker.index+marker[0].length;i<raw.length;i++){
+    const ch=raw[i];
+    if(inString){
+      if(escape){escape=false;continue}
+      if(ch==='\\'){escape=true;continue}
+      if(ch==='"')inString=false;
+      continue;
+    }
+    if(ch==='"'){inString=true;continue}
+    if(ch==='{'){if(depth===0)start=i;depth++;continue}
+    if(ch==='}'&&depth>0){
+      depth--;
+      if(depth===0&&start>=0){
+        try{
+          const edit=JSON.parse(raw.slice(start,i+1));
+          const path=String(edit?.path||'').trim();
+          const search=typeof edit?.search==='string'?edit.search:typeof edit?.old==='string'?edit.old:null;
+          const replace=typeof edit?.replace==='string'?edit.replace:typeof edit?.new==='string'?edit.new:null;
+          if(path&&search&&replace!==null)edits.push({path,search,replace});
+        }catch{}
+        start=-1;
+      }
+    }
+  }
+  return edits.length?{summary:'salvaged complete compact edits from truncated model response',edits}:null;
+}
+export function parseCompactEditJson(text){
+  try{return parseJsonObject(text)}
+  catch(error){
+    const salvaged=salvageCompactEditsJson(text);
+    if(salvaged)return salvaged;
+    throw error;
+  }
+}
+
+export async function invokeJsonWithFailover(initialResource,prompt,{exclude=[],resourcePool=null,invokeFn=invoke,shrinkPrompt=shrinkAiPrompt,maxResources=null,validateData=null,parseData=parseJsonObject,sleepFn=sleep,randomFn=Math.random,backoffBaseMs=1000}={}){
   const poolResources=Array.isArray(resourcePool)?resourcePool:selectableResources([]);
   const eligible=poolResources.filter(r=>r&&!exclude.includes(r.id)&&!busyAiResources.has(r.id));
   const initial=eligible.find(r=>r.id===initialResource?.id)||eligible[0];
@@ -302,7 +342,7 @@ export async function invokeJsonWithFailover(initialResource,prompt,{exclude=[],
       attempts++;
       busyAiResources.add(resource.id);
       try{
-        const data=parseJsonObject(await invokeFn(resource,same===0?prompt:shrinkPrompt(prompt)));
+        const data=parseData(await invokeFn(resource,same===0?prompt:shrinkPrompt(prompt)));
         if(validateData)validateData(data,resource);
         return {data,resource,attempts,failureLedger};
       }catch(e){
@@ -550,7 +590,7 @@ async function invokeCompactGeneration(worker,prompt,allowedPaths,exclude=[]){
   const modelPrompt=compactPromptForChanges(prompt,{maxContextChars:6000,maxOutputChars:3200});
   const expand=d=>expandCompactChanges(prompt,JSON.stringify(d));
   const validateData=d=>{const expanded=expand(d);validateChanges(expanded.changes,allowedPaths);validateJobScope(allowedPaths,expanded.changes)};
-  const invoked=await invokeJsonWithFailover(worker,modelPrompt,{exclude,validateData,shrinkPrompt:preserveGenerationPrompt});
+  const invoked=await invokeJsonWithFailover(worker,modelPrompt,{exclude,validateData,parseData:parseCompactEditJson,shrinkPrompt:preserveGenerationPrompt});
   return {payload:expand(invoked.data),resource:invoked.resource};
 }
 async function generateRepairChanges(worker,j,ref='main',issues=[],exclude=[]){
