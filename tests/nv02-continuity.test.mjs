@@ -215,6 +215,14 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("modelCheckBlockedUntil:now+60_000");
     expect(source).toContain("MODEL_PROFILE_RECOVERY_FAILED");
     expect(source).toContain("modelCheckBlockedUntil:Number(raw.modelCheckBlockedUntil)||0");
+    expect(source).toContain("async function ensureNv02LocalReadyLocked(target,initialUi=null,{forceFresh=false}={})");
+    expect(source).toContain("ensureNv02LocalReadyLocked(target,ui,{forceFresh:true})");
+    expect(source).toContain("ensureNv02LocalReadyLocked(target,raw,{forceFresh:false})");
+    expect(source).toContain("'BOOT_LOCAL_CONTINUE_SUBMITTED'");
+    expect(source).toContain("'LOCAL_CONTINUE_NOW',60000");
+    expect(source).toContain("if(forceFresh||(!ui?.composerReady&&projectContext()))");
+    expect(source).toContain("await newChat(target)");
+    expect(source).toContain("NV02_LOCAL_READY_NOT_REACHED");
 
     expect(source).toContain("verifiedChatUrl:String(raw.verifiedChatUrl||'')");
     expect(source).toContain("function applyNv02DurableVerifiedModelProfile(ui)");
@@ -227,7 +235,7 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("resumeChatUrl:'', // legacy conversation pointers are intentionally discarded");
     expect(source).not.toContain("await navigate(target,state.resumeChatUrl)");
     expect(source).not.toContain("'CURRENT_CHAT_RESTORED'");
-    expect(source).toContain("'BOOT_FRESH_CONTEXT_OPENED'");
+    expect(source).toContain("'BOOT_FRESH_LOCAL_COMPLETE'");
     expect(source).not.toContain("'CURRENT_WORK_NEW_CHAT_RESTORED'");
 
     expect(source).toContain("sameNv02Chat(state.verifiedChatUrl,ui?.url)");
