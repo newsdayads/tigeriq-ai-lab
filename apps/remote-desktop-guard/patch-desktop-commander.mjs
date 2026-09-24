@@ -2,11 +2,11 @@ const IMPORT_ANCHOR = "import path from 'path';";
 const IMPORT_MARKER = "TIGERIQ_REMOTE_GUARD_IMPORT_V3";
 const LIST_MARKER = "TIGERIQ_REMOTE_GUARD_LIST_V3";
 const CALL_MARKER = "TIGERIQ_REMOTE_GUARD_CALL_V3";
-const IMPORT_LINE = "import { enforceRemoteToolCall, filterRemoteTools, formatRemoteGuardDenial } from './tigeriq-remote-guard/runtime-gate.mjs'; // " + IMPORT_MARKER;
+const IMPORT_LINE = "import { enforceRemoteToolCall, filterRemoteToolDefinitions, formatRemoteGuardDenial } from './tigeriq-remote-guard/runtime-gate.mjs'; // " + IMPORT_MARKER;
 const LIST_ANCHOR = "        const filteredTools = allTools.filter(tool => shouldIncludeTool(tool.name));";
 const LIST_BLOCK = [
   "        const tigerIqClientTools = allTools.filter(tool => shouldIncludeTool(tool.name));",
-  "        const filteredTools = await filterRemoteTools(tigerIqClientTools); // " + LIST_MARKER
+  "        const filteredTools = await filterRemoteToolDefinitions(tigerIqClientTools); // " + LIST_MARKER
 ].join('\n');
 const CALL_ANCHOR = "        setCurrentCallIsRemote(isRemoteCall);";
 const CALL_BLOCK = [
