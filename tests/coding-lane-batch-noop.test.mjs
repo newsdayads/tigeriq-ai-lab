@@ -54,6 +54,13 @@ describe('Coding Lane bounded batch no-op',()=>{
     });
   });
 
+  it('fails closed when loose recovery is ambiguous with embedded edit-field markers',()=>{
+    const content=String.raw`const obj={"search":"x","replace":"y"};`;
+    const prompt=generationPrompt('apps/a.mjs',content);
+    const malformed=String.raw`{"summary":"ambiguous","edits":[{"path":"exact allowed path","search":"const obj={"search":"x","replace":"y"};","replace":"const obj={"search":"x","replace":"z"};"}]}`;
+    expect(()=>expandCompactChanges(prompt,malformed)).toThrow('COMPACT_EDIT_JSON_INVALID');
+  });
+
   it('normalizes bounded schema drift but never guesses a placeholder across multiple files',()=>{
     const prompt=generationPrompt('apps/a.mjs','const a=1;');
     expect(expandCompactChanges(prompt,JSON.stringify({
