@@ -192,7 +192,8 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("withNv02Mutation(()=>ensureNv02ModelProfile(target),'MODEL_PROFILE_RECOVERY')");
     expect(source).toContain("modelName==='GPT-5.6 Sol'");
     expect(source).toContain("const NV02_F5_MAX_MS=20*60*1000");
-    expect(source).toContain("const UI_STABILITY_PACING_MIN_MS=1200");
+    expect(source).toContain("const UI_STABILITY_PACING_MIN_MS=3000");
+    expect(source).toContain("const UI_STABILITY_PACING_MAX_MS=8000");
     expect(source).toContain("VIEW_FOLLOW_BOTTOM");
     expect(source).toContain("nextViewFollowAt");
     expect(source).toContain("await scrollToBottom(target).catch");
@@ -213,7 +214,8 @@ describe('NV02 continuity policy', () => {
     expect(continuityLoop).not.toContain('checkpointNv02(');
     expect(source).toContain("nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS");
     expect(source).toContain("unchanged>=MAX_WORKING_UNCHANGED_CHECKS");
-    expect(continuityLoop.indexOf("if(phase==='WORKING')")).toBeLessThan(continuityLoop.indexOf("if(currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0))"));
+    expect(continuityLoop).toContain("if(phase!=='WORKING'&&currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0))");
+    expect(continuityLoop).toContain("if(phase!=='WORKING'&&now>=Number(state.nextRefreshAt||0))");
     expect(continuityLoop.indexOf("if(phase==='WORKING')")).toBeLessThan(continuityLoop.indexOf("if(now<Number(state.nextContinueAt||0))return"));
     expect(source).toContain("const NV02_F5_MIN_MS=5*60*1000");
     expect(source).toContain("const NV02_F5_MAX_MS=20*60*1000");
@@ -351,7 +353,7 @@ describe('NV02 continuity policy', () => {
     expect(source).not.toContain('rotateNv02Chat');
     expect(source).not.toContain('externalAutopilotOwnsNextNv02Job');
     const local=source.slice(source.indexOf('async function dispatchNaturalContinueLocked'),source.indexOf('async function dispatchNaturalContinue(target'));
-    expect(local).toContain('pickContinuePrompt(state.lastPrompt)');
+    expect(local).toContain("pickWorkerContinuePrompt('NV02',state.lastPrompt)");
     expect(local).toContain("continuityEvent('LOCAL_CONTINUE_DISPATCHED'");
     expect(local).not.toContain('getControllerState');
   });
