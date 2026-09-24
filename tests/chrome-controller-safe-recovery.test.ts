@@ -159,7 +159,7 @@ describe('independent worker recovery flows in direct-cdp-bridge',()=>{
   it('rechecks WORKING inside F5/restart mutation boundaries and never stops active work for maintenance',()=>{
     expect(source).toContain("MAINTENANCE_DEFERRED_WORKING");
     expect(source).toContain("PERIODIC_F5_DEFERRED_WORKING");
-    const prep=source.slice(source.indexOf('async function prepareWorkerForPlannedRestart'),source.indexOf('async function plannedRestart'));
+    const prep=source.slice(source.indexOf('async function prepareWorkerForPlannedRestart'),source.indexOf('function archiveMenuPointExpr'));
     expect(prep).not.toContain('stopStalledWorking(target)');
     const generic=source.slice(source.indexOf('async function maybeWorkerContinuity'),source.indexOf('\nfunction log('));
     expect(generic).toContain("const freshPhase=deriveWorkerPhase(fresh||{},{workerId:w.id})");
