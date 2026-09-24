@@ -1,3 +1,6 @@
+import { parseExecutableIssue } from '../apps/tigeriq-core/github-intake.mjs';
+import { parseCodingIssue } from '../apps/tigeriq-core/github-coding-intake.mjs';
+
 const REPO = process.env.TIGERIQ_REPO || 'newsdayads/tigeriq-ai-lab';
 const REGISTRY_ISSUE = 335;
 const FETCH_TIMEOUT_MS = 5000;
@@ -340,21 +343,18 @@ function queueDependencies(issue) {
 
 export function parseQueueIssue(issue) {
   if (issueIsTerminalOrExcluded(issue)) return null;
-  const body = String(issue.body || '');
-  const autoQueue = bodyValue(body, 'AUTO_QUEUE').toUpperCase();
-  const ownerPolicy = bodyValue(body, 'OWNER_POLICY').toUpperCase();
-  const executable = bodyFlag(body, 'TIGERIQ_EXECUTABLE');
-  if (!executable || (autoQueue !== 'INCLUDED' && ownerPolicy !== 'AUTO')) return null;
-  const priority = issuePriority(issue) || 'P2';
+  const coreSpec = parseExecutableIssue(issue);
+  const codingSpec = parseCodingIssue(issue);
+  if (!coreSpec && !codingSpec) return null;
   const holdReason = queueWaitReason(issue);
   return {
     number: Number(issue.number),
     title: String(issue.title || ''),
-    priority,
-    ownerDirect: bodyFlag(body, 'OWNER_DIRECT'),
+    priority: codingSpec?.sourcePriority || coreSpec?.priority || issuePriority(issue) || 'P2',
+    ownerDirect: Boolean(codingSpec?.ownerDirect ?? coreSpec?.ownerDirect ?? bodyFlag(issue?.body || '', 'OWNER_DIRECT')),
     status: holdReason && /BLOCKED/.test(holdReason) ? 'BLOCKED' : holdReason ? 'WAITING' : 'QUEUED',
     waitReason: holdReason,
-    dependencies: queueDependencies(issue),
+    dependencies: codingSpec?.dependsOn || queueDependencies(issue),
     updatedAt: issue.updated_at || null,
     url: issue.html_url || null,
   };
@@ -374,13 +374,29 @@ function runtimeState(state) {
   return null;
 }
 
-export function runtimeWorkRows(workers = []) {
+function normalizedRuntimeTitle(value = '') {
+  return String(value || '')
+    .replace(/\s+\[(?:sửa lần|repair|retry)\s+\d+\]\s*$/iu, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function runtimeWorkRows(workers = [], issues = []) {
   const rows = [];
   const seen = new Set();
+  const openIssues = (Array.isArray(issues) ? issues : []).filter((issue) => issue && !issue.pull_request && issue.state === 'open');
   for (const worker of workers) {
-    const issueNumber = parseIssueNumber(worker?.currentJobId, worker?.job, worker?.detail);
     const status = runtimeState(worker?.state);
-    if (!issueNumber || !status) continue;
+    if (!status) continue;
+    let issueNumber = parseIssueNumber(worker?.currentJobId, worker?.job, worker?.detail);
+    if (!issueNumber) {
+      const jobTitle = normalizedRuntimeTitle(worker?.job);
+      if (jobTitle) {
+        const matches = openIssues.filter((issue) => normalizedRuntimeTitle(issue?.title) === jobTitle);
+        if (matches.length === 1) issueNumber = Number(matches[0].number);
+      }
+    }
+    if (!issueNumber) continue;
     const key = issueNumber + ':' + String(worker?.employeeId || '');
     if (seen.has(key)) continue;
     seen.add(key);
@@ -466,7 +482,7 @@ async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
     const activeRows = [];
     const activeNumbers = new Set();
 
-    for (const row of runtimeWorkRows(base.workers || [])) {
+    for (const row of runtimeWorkRows(base.workers || [], openIssues)) {
       const issue = await githubIssue(owner, repo, row.issueNumber, issueMap, fetchImpl);
       if (!issue || issue.pull_request || issue.state !== 'open') continue;
       activeNumbers.add(row.issueNumber);
