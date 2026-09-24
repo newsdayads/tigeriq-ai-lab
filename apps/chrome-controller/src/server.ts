@@ -35,6 +35,8 @@ import type { WorkerPresence } from './worker-presence.js';
 import { persistWorkerSafetyStateOrFailClosed, restoreWorkerSafetyState, workerStartGate, type WorkerSafetySnapshot } from './worker-safety-state.js';
 import {
   activeAppChromeClaims,
+  appChromeClaimForJob,
+  authoritativeUiTerminalFromGithub,
   buildSelfRunPrompt,
   claimGithubIssue,
   closeGithubIssueCompleted,
