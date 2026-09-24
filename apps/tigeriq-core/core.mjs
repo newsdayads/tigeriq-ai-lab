@@ -512,6 +512,13 @@ async function apiDoctorLatestUnresolvedResourceHandoff(resourceId){
   const recovered=(await pool.query("select 1 from tigeriq_events where type='API_DOCTOR_RECOVERED' and resource_id=$1 and ts>$2 and ($3='' or data->>'signature'=$3) order by seq desc limit 1",[resourceId,handoff.ts,signature])).rows[0];
   return recovered?null:handoff;
 }
+async function apiDoctorLatestUnresolvedSignatureHandoff(resourceId,signature){
+  if(!signature)return null;
+  const handoff=(await pool.query("select ts,data from tigeriq_events where type='API_DOCTOR_REPAIR_HANDOFF' and resource_id=$1 and data->>'signature'=$2 order by seq desc limit 1",[resourceId,signature])).rows[0]||null;
+  if(!handoff)return null;
+  const recovered=(await pool.query("select 1 from tigeriq_events where type='API_DOCTOR_RECOVERED' and resource_id=$1 and ts>$2 and data->>'signature'=$3 order by seq desc limit 1",[resourceId,handoff.ts,signature])).rows[0];
+  return recovered?null:handoff;
+}
 async function apiDoctorPostRepairValidationAttempts(resourceId,handoffAt){
   const row=(await pool.query("select count(*)::int as count from tigeriq_events where type='API_DOCTOR_POST_REPAIR_VALIDATION' and resource_id=$1 and ts>$2 and data->>'policyVersion'=$3",[resourceId,handoffAt,API_DOCTOR_VALIDATION_POLICY_VERSION])).rows[0];
   return Number(row?.count||0);
@@ -542,7 +549,7 @@ async function runApiDoctorPostRepairValidation(resource,existingHandoff){
 async function createApiDoctorRepairHandoff(resource,failureClass,latestFailure){
   const message=String(latestFailure?.data?.message||latestFailure?.data?.kind||failureClass||'source_contract');
   const signature=apiDoctorRepairSignature({employeeId:resource.employee_id,provider:resource.provider,failureClass,message});
-  const prior=await apiDoctorEventBySignature('API_DOCTOR_REPAIR_HANDOFF',signature);
+  const prior=await apiDoctorLatestUnresolvedSignatureHandoff(resource.resource_id,signature);
   if(prior)return {created:false,signature,codingObjectiveId:prior.data?.codingObjectiveId||null,priorAt:prior.ts};
   const objective=[
     `API Doctor source-contract repair for ${resource.employee_id} / ${resource.provider}.`,
