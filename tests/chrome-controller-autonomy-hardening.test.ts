@@ -490,13 +490,15 @@ describe('APP Chrome UI-only continuity regression #1525',()=>{
     expect(recovery).not.toContain("if(after&&!after.chatLoadError)");
   });
 
-  it('treats project home as fresh local context and dispatches without assignment',()=>{
+  it('keeps NV02 project-home continuity assignment-free while NV04 may be READY_UNASSIGNED',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(bridge).toContain("return /\\/c\\//.test(current.pathname)");
     expect(bridge).toContain("isWorkerFreshContext");
     expect(bridge).toContain("BOOT_FRESH_CONTEXT_READY");
     expect(bridge).toContain("LOCAL_CONTINUE_DISPATCHED");
-    expect(bridge).not.toContain("READY_UNASSIGNED");
+    const nv02Loop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
+    expect(nv02Loop).not.toContain("READY_UNASSIGNED");
+    expect(bridge).toContain("READY_UNASSIGNED");
   });
 });
 
