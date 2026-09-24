@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {githubIssueIsOpen,isRetryableFailure,isStaleJob,normalizeRepairFailure,repairInstruction,retryResumeIdentity,shouldRetry} from '../apps/tigeriq-coding-lane/autonomy-supervisor.mjs';
+import {githubIssueIsOpen,isRetryableFailure,isStaleJob,normalizeRepairFailure,repairInstruction,retryResumeIdentity,shouldRetry,selectFreeResource} from '../apps/tigeriq-coding-lane/autonomy-supervisor.mjs';
 
 // We need to test githubIssueIsOpen or objectiveIsEligible via exported functions or by mocking fetch.
 // Since githubIssueIsOpen is not exported directly, we can test it through mock fetch or test helper exports if available, or we can test handleFailed / objectiveIsEligible if exported or test logic via mock.
@@ -28,6 +28,16 @@ describe('coding autonomy supervisor repair policy',()=>{
     const now=Date.parse('2026-09-20T12:00:00Z');
     expect(isStaleJob({status:'running',started_at:'2026-09-20T11:00:00Z'},now,30*60*1000)).toBe(true);
     expect(isStaleJob({status:'done',started_at:'2026-09-20T11:00:00Z'},now,30*60*1000)).toBe(false);
+  });
+  it('filters out unhealthy resources and binds a healthy free resource',()=>{
+    const resources=[
+      {id:'NV11',status:'free',health:'error'},
+      {id:'NV12',status:'free',health:'rate-limited'},
+      {id:'NV17',status:'free',health:'healthy'}
+    ];
+    const selected=selectFreeResource(resources);
+    expect(selected).toBeDefined();
+    expect(selected.id).toBe('NV17');
   });
   it('repair prompt preserves original instruction and bounded cycle evidence',()=>{
     const p=repairInstruction({instruction:'fix X',failure:{message:'CI_GATES_FAILED'}},'CI_GATES_FAILED',2);
