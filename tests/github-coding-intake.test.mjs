@@ -426,8 +426,8 @@ describe('GitHub coding continuity supervisor',()=>{
     await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
     await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
     expect(posted).toBe(1);
-    expect(commentPages.some(url=>url.includes('per_page=100&page=4'))).toBe(true);
-    expect(commentPages.some(url=>url.includes('page=1'))).toBe(false);
+    expect(commentPages.some(url=>new URL(url).searchParams.get('page')==='4')).toBe(true);
+    expect(commentPages.some(url=>new URL(url).searchParams.get('page')==='1')).toBe(false);
     const rearms=pool.events.filter(e=>e.type==='GITHUB_CODING_RECOVERY_REARMED');
     expect(rearms).toHaveLength(1);
     expect(rearms[0].data).toMatchObject({mainSha:'same-main',sourceRevision,priorObjectiveId:'obj-809-r2',codingObjectiveId:'obj-809-recovery'});
