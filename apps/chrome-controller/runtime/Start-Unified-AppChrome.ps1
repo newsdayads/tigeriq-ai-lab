@@ -72,8 +72,8 @@ function Set-RuntimeEnvironment($Active){
   if([string]::IsNullOrWhiteSpace([string]$env:TIGERIQ_GITHUB_TOKEN) -and (Test-Path -LiteralPath $githubTokenFile)){
     try{$env:TIGERIQ_GITHUB_TOKEN=(Get-Content -LiteralPath $githubTokenFile -Raw -ErrorAction Stop).Trim()}catch{}
   }
-  if([string]::IsNullOrWhiteSpace([string]$env:TIGERIQ_GITHUB_TOKEN)){throw 'APPCHROME_GITHUB_CREDENTIAL_UNAVAILABLE'}
-  $env:TIGERIQ_APP_CHROME_SELF_RUN='1'
+  # #504: App Chrome only transports/continues assigned work. It must not select GitHub backlog.
+  $env:TIGERIQ_APP_CHROME_SELF_RUN='0'
 }
 
 function Get-PortListener([int]$Port){
