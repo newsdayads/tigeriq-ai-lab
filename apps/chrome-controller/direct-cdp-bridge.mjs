@@ -169,25 +169,20 @@ function isWorkerFreshContext(w,url){
     return current.pathname===home.pathname;
   }catch{return false}
 }
-function findContinuableWorkerWorkForUi(controllerState,workerId){
-  return (controllerState?.jobs||[]).find((job)=>
-    job?.workerId===workerId
-    &&['SUBMITTED','WORKING','WAITING_EVIDENCE','VERIFY'].includes(String(job?.stage||''))
-    &&!job?.completedAt
-    &&typeof job?.issueRef==='string'
-    &&job.issueRef.trim().length>0
-  )||null;
-}
-function buildAssignedWorkRestorePrompt(currentWork){
-  const issueRef=String(currentWork?.issueRef||'').trim();
-  const jobId=String(currentWork?.jobId||'').trim();
-  if(!issueRef)throw new Error('CURRENT_WORK_RESTORE_ISSUE_REQUIRED');
-  return `LÀM — NO YAPPING. CURRENT_WORK_ORDER=${issueRef}${jobId?` | JOB_ID=${jobId}`:''}. Đây là chat mới. Đọc đầy đủ Work Order và checkpoint/evidence mới nhất từ GitHub rồi tiếp tục đúng công việc đang được giao. Không tự chọn backlog/P0/việc khác. Chỉ dừng khi DONE có evidence, BLOCKED thật, EXTERNAL_WAIT hoặc hard gate.`;
-}
+const workerPauseObserved=new Map();
 async function workerAutomationPaused(workerId){
   try{
-    const state=await getControllerState();
-    return state?.paused===true||state?.killed===true||String(state?.ownerInteractionMode||'')==='READ_ONLY'||(state?.utilityPausedWorkers||[]).includes(workerId);
+    const controller=await getControllerState();
+    const pausedNow=controller?.paused===true||controller?.killed===true||String(controller?.ownerInteractionMode||'')==='READ_ONLY'||(controller?.utilityPausedWorkers||[]).includes(workerId);
+    const previous=workerPauseObserved.get(workerId);
+    workerPauseObserved.set(workerId,pausedNow);
+    if(previous===true&&pausedNow===false){
+      const now=Date.now();
+      if(workerId==='NV02')saveNv02Continuity({...loadNv02Continuity(),nextContinueAt:now,stalledChecks:0});
+      else saveWorkerContinuity(workerId,{...loadWorkerContinuity(workerId),nextContinueAt:now,stalledChecks:0});
+      log('LOCAL_RUN_KICKED',{workerId});
+    }
+    return pausedNow;
   }catch(error){
     log('WORKER_AUTOMATION_PAUSE_CHECK_FAILED_CLOSED',{workerId,error:String(error?.message||error)});
     return true;
@@ -290,17 +285,19 @@ async function maybeWorkerContinuity(w,target,ui){
   }
   if(bootFreshContextPending.has(w.id)&&phase!=='WORKING'){
     bootFreshContextPending.delete(w.id);
+    state={...state,resumeUrl:'',nextContinueAt:now,stalledChecks:0};
+    saveWorkerContinuity(w.id,state);
     if(!isWorkerFreshContext(w,ui?.url)){
       const opened=await withWorkerMutation(w.id,async()=>{
         await navigate(target,String(w.homeUrl||''));
         await sleep(1200);
         return {ok:true,status:'BOOT_FRESH_CONTEXT_OPENED'};
       },'BOOT_FRESH_CONTEXT',30000);
-      saveWorkerContinuity(w.id,{...state,resumeUrl:'',nextContinueAt:now});
       await genericWorkerEvent(w.id,opened?.status==='MUTATION_LEASE_BUSY'?'BOOT_FRESH_CONTEXT_DEFERRED':'BOOT_FRESH_CONTEXT_OPENED',{status:opened?.status||null,fromUrl:ui?.url||null,homeUrl:w.homeUrl});
       if(opened?.status==='MUTATION_LEASE_BUSY')bootFreshContextPending.add(w.id);
       return;
     }
+    await genericWorkerEvent(w.id,'BOOT_FRESH_CONTEXT_READY',{homeUrl:w.homeUrl});
   }
   if(ui?.scrollToBottomVisible===true&&now>=Number(state.nextViewFollowAt||0)){
     const locallyBusy=workerMutationBusy.has(w.id);
@@ -366,55 +363,17 @@ async function maybeWorkerContinuity(w,target,ui){
       saveWorkerContinuity(w.id,state);
       await genericWorkerEvent(w.id,'READY_RECOVERY_STATE_CLEARED');
     }
-    let controllerState;
-    try{controllerState=await getControllerState();}
-    catch(error){
-      const deferred={...state,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
-      saveWorkerContinuity(w.id,deferred);
-      await genericWorkerEvent(w.id,'CONTINUE_SKIPPED_CONTROLLER_UNREACHABLE',{error:String(error?.message||error)});
-      return;
-    }
-    const currentWork=findContinuableWorkerWorkForUi(controllerState,w.id);
-    if(!currentWork){
-      const deferred={...state,resumeUrl:'',nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
-      saveWorkerContinuity(w.id,deferred);
-      await genericWorkerEvent(w.id,'READY_UNASSIGNED',{url:ui?.url||null,nextContinueAt:deferred.nextContinueAt});
-      return;
-    }
-    if(!isAssignedWorkerChat(w,ui?.url)){
-      if(!isWorkerFreshContext(w,ui?.url)){
-        const opened=await withWorkerMutation(w.id,async()=>{
-          await navigate(target,String(w.homeUrl||''));
-          await sleep(1200);
-          return {ok:true,status:'FRESH_CONTEXT_OPENED'};
-        },'FRESH_CONTEXT_FOR_CURRENT_WORK',30000);
-        saveWorkerContinuity(w.id,{...state,resumeUrl:'',nextContinueAt:now});
-        await genericWorkerEvent(w.id,'FRESH_CONTEXT_FOR_CURRENT_WORK',{status:opened?.status||null,issueRef:currentWork.issueRef});
-        return;
-      }
-      const prompt=buildAssignedWorkRestorePrompt(currentWork);
-      const sent=await withWorkerMutation(w.id,()=>dispatch(target,prompt),'CURRENT_WORK_NEW_CHAT_RESTORE',30000);
-      if(sent?.status==='MUTATION_LEASE_BUSY'){
-        saveWorkerContinuity(w.id,{...state,nextContinueAt:now+5000});
-        return;
-      }
-      if(!sent?.ok)throw new Error(sent?.status||'CURRENT_WORK_NEW_CHAT_RESTORE_FAILED');
-      const next={...state,lastPrompt:'CURRENT_WORK_NEW_CHAT_RESTORE',lastPhase:'WORKING',stalledChecks:0,recoveryAttempts:0,resumeUrl:'',nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
-      saveWorkerContinuity(w.id,next);
-      await genericWorkerEvent(w.id,'CURRENT_WORK_NEW_CHAT_RESTORED',{issueRef:currentWork.issueRef,jobId:currentWork.jobId||null,nextContinueAt:next.nextContinueAt});
-      return;
-    }
     if(now<Number(state.nextContinueAt||0))return;
     const prompt=pickContinuePrompt(state.lastPrompt);
-    const sent=await withWorkerMutation(w.id,()=>dispatch(target,prompt),'CONTINUITY_CONTINUE',30000);
+    const sent=await withWorkerMutation(w.id,()=>dispatch(target,prompt),'LOCAL_CONTINUITY_CONTINUE',30000);
     if(sent?.status==='MUTATION_LEASE_BUSY'){
       saveWorkerContinuity(w.id,{...state,nextContinueAt:now+5000});
       return;
     }
-    if(!sent?.ok)throw new Error(sent?.status||'CONTINUE_DISPATCH_FAILED');
+    if(!sent?.ok)throw new Error(sent?.status||'LOCAL_CONTINUE_DISPATCH_FAILED');
     const next={...state,lastPrompt:prompt,lastPhase:'WORKING',stalledChecks:0,recoveryAttempts:0,resumeUrl:'',nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
     saveWorkerContinuity(w.id,next);
-    await genericWorkerEvent(w.id,'CONTINUE_DISPATCHED',{prompt,nextContinueAt:next.nextContinueAt});
+    await genericWorkerEvent(w.id,'LOCAL_CONTINUE_DISPATCHED',{prompt,nextContinueAt:next.nextContinueAt});
     return;
   }
 
