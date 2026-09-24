@@ -404,6 +404,12 @@ describe('NV02 reboot F5 consolidation #1739',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(bridge).toContain('let nv02BootF5ScheduleInitialized=false');
     expect(bridge).toContain("'NV02_F5_TIMERS_REBASED_AFTER_RESTART'");
+    expect(bridge).toContain('if(persistBootSchedule)saveNv02Continuity(state)');
+    expect(bridge).toContain("'DISPATCH_F5_GUARD_ARMED'");
+    const dispatchNote=bridge.slice(bridge.indexOf('async function noteNv02CommandDispatch'),bridge.indexOf('async function maybeNv02Continuity'));
+    expect(dispatchNote).toContain('state.nextPeriodicF5At=nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS)');
+    expect(dispatchNote).toContain('state.workingRecheckAt=nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS)');
+    expect(bridge).toContain("if(w.id==='NV02')await noteNv02CommandDispatch()");
     const loop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
     const fresh=loop.indexOf("bootFreshContextPending.has('NV02')");
     const f5=loop.indexOf("if(currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0))");
