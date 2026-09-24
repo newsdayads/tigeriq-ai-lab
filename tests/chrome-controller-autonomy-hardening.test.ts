@@ -371,6 +371,9 @@ describe('App Chrome local-only coordination',()=>{
     const localRun=handleCommandSource.slice(handleCommandSource.indexOf("if(action==='LOCAL_CONTINUE_NOW')"),handleCommandSource.indexOf("if(action==='DISPATCH')"));
     expect(localRun).not.toContain("withNv02Mutation(");
     expect(localRun).toContain("ensureNv02LocalReadyLocked(target,raw,{forceFresh:false})");
+    expect(localRun).toContain("rearmWorkerRunGrace(workerRunGraceUntil.get('NV02'),submittedAt,LOCAL_RUN_GRACE_MS)");
+    expect(localRun).toContain("LOCAL_RUN_SUBMISSION_GRACE_REARMED");
+    expect(localRun.indexOf('dispatchNaturalContinueLocked')).toBeLessThan(localRun.indexOf('LOCAL_RUN_SUBMISSION_GRACE_REARMED'));
     expect(bridge).toContain("LOCAL_RUN_BACKGROUND_SUPPRESSED");
   });
 });
