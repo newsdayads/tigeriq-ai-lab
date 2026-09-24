@@ -711,6 +711,7 @@ describe('GitHub coding reopened-completion rearm',()=>{
     expect(first.created).toBe(1);
     expect(posted).toBe(1);
     expect(pool.events.filter(e=>e.type==='GITHUB_CODING_COMPLETED_REARMED')).toHaveLength(1);
+    expect(pool.events.find(e=>e.type==='GITHUB_CODING_COMPLETED_REARMED')?.data.priorObjectiveId).toBe('old-1268');
     expect(pool.events.filter(e=>e.type==='GITHUB_CODING_DISPATCHED'&&e.data.issueNumber===1268)).toHaveLength(2);
 
     const second=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake'});
