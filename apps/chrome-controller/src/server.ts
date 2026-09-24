@@ -1510,7 +1510,7 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
         json(res,202,{ok:true,mode:'BROKER_LAUNCH_REQUESTED'});
         return true;
       }
-      if(action==='archive'){const data=await body(req);if(typeof data.receiptRef!=='string'||!data.receiptRef.startsWith('https://github.com/'))throw new Error('ARCHIVE_DURABLE_RECEIPT_REQUIRED');if(workerHasActiveJob(workerId)||state.lastHeartbeat?.uiBusy)throw new Error('ARCHIVE_ACTIVE_JOB_FORBIDDEN');await uiQueue.enqueue(()=>sendCommand(workerId,'ARCHIVE_CHAT',{receiptRef:data.receiptRef}));json(res,200,{ok:true});return true;}
+      if(action==='archive'){if(state.lastHeartbeat?.uiBusy)throw new Error('ARCHIVE_ACTIVE_UI_FORBIDDEN');await uiQueue.enqueue(()=>sendCommand(workerId,'ARCHIVE_CHAT'));json(res,200,{ok:true,mode:'LOCAL_UI_ONLY'});return true;}
     }catch(error){json(res,409,{ok:false,error:String(error)});return true;}
   }
   const match=url.pathname.match(/^\/api\/workers\/(NV03|NV04|NV02)\/(start|focus|layout|dispatch|close|unblock|enable|disable)$/);
