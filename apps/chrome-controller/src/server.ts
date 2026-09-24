@@ -118,7 +118,7 @@ let startupRecoveryInFlight=false;
 let lastAutopilotStopReason='';
 let selfRunTicking=false;
 let selfRunTimer:NodeJS.Timeout|undefined;
-const selfRunEnabled=process.env.TIGERIQ_APP_CHROME_SELF_RUN!=='0';
+const selfRunEnabled=false; // #504: App Chrome is UI continuity only; backlog/job selection is external
 const selfRunGithubToken=String(process.env.TIGERIQ_GITHUB_TOKEN||process.env.GITHUB_TOKEN||'').trim();
 const selfRunGithubOwner=String(process.env.TIGERIQ_GITHUB_OWNER||'newsdayads').trim();
 const selfRunGithubRepo=String(process.env.TIGERIQ_GITHUB_REPO||'tigeriq-ai-lab').trim();
