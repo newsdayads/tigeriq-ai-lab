@@ -175,7 +175,7 @@ describe('coding lane AI JSON transport',()=>{
       const data=await res.json();
       expect(calls).toBe(2);
       expect(promptLengths[1]).toBeLessThan(promptLengths[0]);
-      expect(promptLengths[0]).toBeLessThan(15000);
+      expect(promptLengths[0]).toBeLessThan(9000);
       expect(data.choices[0].message.content).toContain('"changes"');
       expect(data.choices[0].message.content).toContain('const n=2;');
     }finally{
