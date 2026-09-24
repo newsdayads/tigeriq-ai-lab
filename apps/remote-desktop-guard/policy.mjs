@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 
-export const MAX_OWNER_LEASE_MS = 15 * 60 * 1000;
+export const MAX_OWNER_LEASE_MS = 5 * 60 * 1000;
 export const DEFAULT_LEASE_PATH = 'D:\\TigerIQ\\Runtime\\desktop-commander-remote\\guard\\owner-lease.json';
 
 export const READ_ONLY_TOOLS = Object.freeze([
@@ -21,14 +21,6 @@ export const OBSERVATION_DIRECTORIES = Object.freeze([
   'D:\\TigerIQ\\Evidence',
   'D:\\TigerIQ\\Logs',
   'D:\\TigerIQ\\Checkpoints'
-]);
-
-export const DEFENSE_IN_DEPTH_BLOCKED_COMMANDS = Object.freeze([
-  'powershell','powershell.exe','pwsh','pwsh.exe','cmd','cmd.exe',
-  'node','node.exe','node:local','python','python.exe','python3','py','py.exe',
-  'git','git.exe','vercel','vercel.exe','vercel.cmd','npm','npm.cmd','npx','npx.cmd',
-  'bash','bash.exe','sh','wsl','wsl.exe','curl','curl.exe','wget','certutil',
-  'mshta','rundll32','regsvr32','schtasks','taskkill'
 ]);
 
 function canonical(value) {
@@ -70,30 +62,49 @@ export function readScopeAllowed(tool,args = {}) {
   return true;
 }
 
-export function validateOwnerLease({ lease, tool, args = {}, now = Date.now() } = {}) {
-  if (!lease || lease.version !== 1 || lease.ownerAuthorized !== true) return { ok:false, reason:'OWNER_AUTH_REQUIRED' };
-  if (!lease.leaseId || typeof lease.leaseId !== 'string') return { ok:false, reason:'LEASE_ID_REQUIRED' };
-  if (typeof lease.authorizationUrl !== 'string' || !/^https:\/\/api\.github\.com\/repos\/newsdayads\/tigeriq-ai-lab\/issues\/comments\/\d+$/.test(lease.authorizationUrl)) {
-    return { ok:false, reason:'OWNER_AUTH_REF_INVALID' };
-  }
-  const issuedAt = Date.parse(lease.issuedAt);
-  const expiresAt = Date.parse(lease.expiresAt);
-  if (!Number.isFinite(issuedAt) || !Number.isFinite(expiresAt)) return { ok:false, reason:'LEASE_TIME_INVALID' };
-  if (expiresAt <= issuedAt || expiresAt - issuedAt > MAX_OWNER_LEASE_MS) return { ok:false, reason:'LEASE_BOUNDS_INVALID' };
-  if (now < issuedAt || now >= expiresAt) return { ok:false, reason:'LEASE_EXPIRED_OR_NOT_ACTIVE' };
-  if (lease.tool !== tool) return { ok:false, reason:'LEASE_TOOL_SCOPE_MISMATCH' };
-  if (lease.argsSha256 !== argsHash(args)) return { ok:false, reason:'LEASE_ARGUMENT_SCOPE_MISMATCH' };
-  return { ok:true, reason:'OWNER_LEASE_VALID' };
+export function requiredRiskClass(tool,args = {}) {
+  const text = canonical(args).toLowerCase();
+  if (/vercel[^\n]{0,160}(--prod|deploy\s+--prod|remove)|\bproduction\b/.test(text)) return 'PRODUCTION';
+  if (/credential|password|secret|token|api[-_ ]?key|gh\s+auth|vercel\s+env/.test(text)) return 'CREDENTIAL';
+  if (/git\s+(push|commit|reset|clean|checkout|switch|merge|rebase|tag)|\.git[\\/]/.test(text)) return 'SOURCE_MUTATION';
+  if (/\b(del|erase|rm|rmdir|remove-item|format|diskpart|shutdown|reboot|taskkill)\b|--force/.test(text)) return 'DESTRUCTIVE';
+  return 'STANDARD';
 }
 
-export function authorizeRemoteCall({ tool, args = {}, lease, now = Date.now() } = {}) {
-  const kind = classifyTool(tool);
+export function validateLeaseEnvelope(lease,{now=Date.now()}={}) {
+  if (!lease || lease.version !== 1 || lease.ownerAuthorized !== true) return {ok:false,reason:'OWNER_AUTH_REQUIRED'};
+  if (!lease.leaseId || typeof lease.leaseId !== 'string') return {ok:false,reason:'LEASE_ID_REQUIRED'};
+  if (typeof lease.authorizationUrl !== 'string' || !/^https:\/\/api\.github\.com\/repos\/newsdayads\/tigeriq-ai-lab\/issues\/comments\/\d+$/.test(lease.authorizationUrl)) {
+    return {ok:false,reason:'OWNER_AUTH_REF_INVALID'};
+  }
+  const issuedAt=Date.parse(lease.issuedAt);
+  const expiresAt=Date.parse(lease.expiresAt);
+  if (!Number.isFinite(issuedAt) || !Number.isFinite(expiresAt)) return {ok:false,reason:'LEASE_TIME_INVALID'};
+  if (expiresAt <= issuedAt || expiresAt-issuedAt > MAX_OWNER_LEASE_MS) return {ok:false,reason:'LEASE_BOUNDS_INVALID'};
+  if (now < issuedAt || now >= expiresAt) return {ok:false,reason:'LEASE_EXPIRED_OR_NOT_ACTIVE'};
+  if (classifyTool(lease.tool) !== 'MUTATION' || lease.tool === 'set_config_value') return {ok:false,reason:'LEASE_TOOL_NOT_ALLOWED'};
+  if (!['STANDARD','PRODUCTION','CREDENTIAL','SOURCE_MUTATION','DESTRUCTIVE'].includes(lease.riskClass)) return {ok:false,reason:'LEASE_RISK_CLASS_INVALID'};
+  if (!/^[a-f0-9]{64}$/.test(String(lease.argsSha256||''))) return {ok:false,reason:'LEASE_ARGS_HASH_INVALID'};
+  return {ok:true,reason:'LEASE_ENVELOPE_VALID'};
+}
+
+export function validateOwnerLease({lease,tool,args={},now=Date.now()}={}) {
+  const envelope=validateLeaseEnvelope(lease,{now});
+  if (!envelope.ok) return envelope;
+  if (lease.tool !== tool) return {ok:false,reason:'LEASE_TOOL_SCOPE_MISMATCH'};
+  if (lease.argsSha256 !== argsHash(args)) return {ok:false,reason:'LEASE_ARGUMENT_SCOPE_MISMATCH'};
+  if (lease.riskClass !== requiredRiskClass(tool,args)) return {ok:false,reason:'LEASE_RISK_SCOPE_MISMATCH'};
+  return {ok:true,reason:'OWNER_LEASE_VALID'};
+}
+
+export function authorizeRemoteCall({tool,args={},lease,now=Date.now()}={}) {
+  const kind=classifyTool(tool);
   if (kind === 'READ_ONLY') {
     return readScopeAllowed(tool,args)
-      ? { ok:true, reason:'READ_ONLY_DEFAULT_PASS' }
-      : { ok:false, reason:'READ_SCOPE_DENIED' };
+      ? {ok:true,reason:'READ_ONLY_DEFAULT_PASS'}
+      : {ok:false,reason:'READ_SCOPE_DENIED'};
   }
-  if (kind !== 'MUTATION') return { ok:false, reason:'UNKNOWN_TOOL_FAIL_CLOSED' };
-  if (tool === 'set_config_value') return { ok:false, reason:'REMOTE_CONFIG_MUTATION_FORBIDDEN' };
-  return validateOwnerLease({ lease, tool, args, now });
+  if (kind !== 'MUTATION') return {ok:false,reason:'UNKNOWN_TOOL_FAIL_CLOSED'};
+  if (tool === 'set_config_value') return {ok:false,reason:'REMOTE_CONFIG_MUTATION_FORBIDDEN'};
+  return validateOwnerLease({lease,tool,args,now});
 }
