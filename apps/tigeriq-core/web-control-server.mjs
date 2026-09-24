@@ -6,6 +6,13 @@ const HOST = process.env.TIGERIQ_WEB_CONTROL_HOST?.trim() || '127.0.0.1';
 const PORT = Number(process.env.TIGERIQ_WEB_CONTROL_PORT || 8796);
 const CORE_URL = (process.env.TIGERIQ_CORE_URL?.trim() || 'http://127.0.0.1:8795').replace(/\/$/, '');
 const CODING_URL = (process.env.TIGERIQ_CODING_LANE_URL?.trim() || CORE_URL.replace(/:8795$/, ':8797')).replace(/\/$/, '');
+const GITHUB_OWNER = process.env.TIGERIQ_GITHUB_OWNER?.trim() || 'newsdayads';
+const GITHUB_REPO = process.env.TIGERIQ_GITHUB_REPO?.trim() || 'tigeriq-ai-lab';
+const GITHUB_API_BASE = (process.env.TIGERIQ_GITHUB_API_BASE?.trim() || 'https://api.github.com').replace(/\/$/,'');
+const GITHUB_TOKEN = process.env.TIGERIQ_GITHUB_TOKEN?.trim() || process.env.GITHUB_TOKEN?.trim() || '';
+const GITHUB_WORK_ORDERS_DISABLED = process.env.TIGERIQ_GITHUB_WORK_ORDERS_DISABLE === '1';
+const WORK_ORDER_CACHE_MS = 30000;
+let workOrderCache = { at: 0, workOrders: [], meta: { ok: false, source: 'github', stale: true } };
 const baseHtml = readFileSync(new URL('./web-control.html', import.meta.url), 'utf8');
 const truthJs = readFileSync(new URL('./web-control-truth.js', import.meta.url), 'utf8');
 const unifiedJs = readFileSync(new URL('./web-control-unified.js', import.meta.url), 'utf8');
@@ -42,6 +49,189 @@ async function upstream(baseUrl, pathname, timeoutMs = 3000) {
 
 function safeJson(text, fallback = {}) {
   try { return JSON.parse(text); } catch { return fallback; }
+}
+
+function machineValue(body,key) {
+  const match=String(body||'').match(new RegExp('^'+key+'=([^\\r\\n]+)  try {
+    const response = await upstream(CODING_URL, '/api/status', 3000);
+    if (response.status !== 200) return { ok: false, status: response.status };
+    const data = safeJson(response.text, null);
+    return data && typeof data === 'object' ? data : { ok: false, error: 'CODING_INVALID_JSON' };
+  } catch (error) {
+    return { ok: false, error: String(error?.name === 'AbortError' ? 'CODING_TIMEOUT' : error?.message || error) };
+  }
+}
+
+void refreshRegistryWorkforce(true);
+const registryTimer=setInterval(()=>void refreshRegistryWorkforce(),60000);
+registryTimer.unref?.();
+
+const server = createServer(async (req, res) => {
+  const url = new URL(req.url || '/', 'http://localhost');
+  for (const [key, value] of Object.entries(securityHeaders)) res.setHeader(key, value);
+  try {
+    if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/web-control')) {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end(html);
+    }
+    if (req.method === 'GET' && url.pathname === '/favicon.ico') {
+      res.writeHead(204, { 'cache-control': 'public, max-age=86400' });
+      return res.end();
+    }
+    if (req.method === 'GET' && url.pathname === '/web-control-truth.js') {
+      res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8' });
+      return res.end(truthJs);
+    }
+    if (req.method === 'GET' && url.pathname === '/web-control-unified.js') {
+      res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8' });
+      return res.end(unifiedJs);
+    }
+    if (req.method === 'GET' && url.pathname === '/web-control-workforce.js') {
+      res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8' });
+      return res.end(workforceJs);
+    }
+    if (req.method === 'GET' && url.pathname === '/web-control-routing.js') {
+      res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8' });
+      return res.end(routingJs);
+    }
+    if (req.method === 'GET' && url.pathname === '/web-control-unified.css') {
+      res.writeHead(200, { 'content-type': 'text/css; charset=utf-8' });
+      return res.end(unifiedCss);
+    }
+    if (req.method === 'GET' && url.pathname === '/web-control-mobile.css') {
+      res.writeHead(200, { 'content-type': 'text/css; charset=utf-8' });
+      return res.end(mobileCss);
+    }
+    if (req.method === 'GET' && url.pathname === '/web-control-workforce.css') {
+      res.writeHead(200, { 'content-type': 'text/css; charset=utf-8' });
+      return res.end(workforceCss);
+    }
+    if (req.method === 'GET' && url.pathname === '/web-control-routing.css') {
+      res.writeHead(200, { 'content-type': 'text/css; charset=utf-8' });
+      return res.end(routingCss);
+    }
+    if (req.method === 'GET' && url.pathname === '/api/status') {
+      const coreResponse = await upstream(CORE_URL, '/api/status', 4000);
+      if (coreResponse.status !== 200) {
+        res.writeHead(coreResponse.status, { 'content-type': coreResponse.contentType });
+        return res.end(coreResponse.text);
+      }
+      const core = safeJson(coreResponse.text, null);
+      if (!core || typeof core !== 'object') {
+        res.writeHead(502, { 'content-type': 'application/json' });
+        return res.end(JSON.stringify({ ok: false, error: 'CORE_INVALID_JSON' }));
+      }
+      const {workforce,workforceMeta}=workforceSnapshot();
+      const resources=normalizeRuntimeResources(core.resources,workforce);
+      const [codingLane,workOrderSnapshot] = await Promise.all([codingStatus(),githubWorkOrders()]);
+      res.writeHead(200, { 'content-type': 'application/json' });
+      return res.end(JSON.stringify({ ...core, resources, workforce, workforceMeta, codingLane, workOrders: workOrderSnapshot.workOrders, workOrdersMeta: workOrderSnapshot.meta }));
+    }
+    if (req.method === 'GET' && url.pathname === '/health') {
+      let core = { ok: false };
+      try {
+        const response = await upstream(CORE_URL, '/health', 1500);
+        core = response.status === 200 ? safeJson(response.text, { ok: false }) : { ok: false, status: response.status };
+      } catch (error) {
+        core = { ok: false, error: String(error?.name === 'AbortError' ? 'CORE_TIMEOUT' : error?.message || error) };
+      }
+      let coding = { ok: false };
+      try {
+        const response = await upstream(CODING_URL, '/health', 1500);
+        coding = response.status === 200 ? safeJson(response.text, { ok: false }) : { ok: false, status: response.status };
+      } catch (error) {
+        coding = { ok: false, error: String(error?.name === 'AbortError' ? 'CODING_TIMEOUT' : error?.message || error) };
+      }
+      const isValidUrl = (u) => { try { const parsed = new URL(u); return parsed.protocol === 'http:' || parsed.protocol === 'https:'; } catch { return false; } };
+      const rawChromeUrl = process.env.TIGERIQ_CHROME_CONTROLLER_URL?.trim() || 'http://127.0.0.1:9222';
+      const chromeControllerUrl = isValidUrl(rawChromeUrl) ? rawChromeUrl : 'http://127.0.0.1:9222';
+      let chromeController = { ok: false, source_type: 'Automation' };
+      try {
+        const response = await upstream(chromeControllerUrl, '/json/version', 500);
+        if (response.status === 200) {
+          const parsedDetails = safeJson(response.text, {});
+          const sanitizedDetails = parsedDetails && typeof parsedDetails === 'object' ? { Browser: parsedDetails.Browser, 'Protocol-Version': parsedDetails['Protocol-Version'] } : {};
+          chromeController = { ok: true, source_type: 'Automation', details: sanitizedDetails };
+        } else {
+          chromeController = { ok: false, source_type: 'Automation', status: response.status };
+        }
+      } catch (error) {
+        chromeController = { ok: false, source_type: 'Automation', error: String(error?.message || error) };
+      }
+      const rawOpenclawUrl = process.env.TIGERIQ_OPENCLAW_GATEWAY_URL?.trim() || 'http://127.0.0.1:8798';
+      const openclawUrl = isValidUrl(rawOpenclawUrl) ? rawOpenclawUrl : 'http://127.0.0.1:8798';
+      let openclaw = { ok: false, source_type: 'API' };
+      try {
+        const response = await upstream(openclawUrl, '/health', 500);
+        if (response.status === 200) {
+          const parsedOpenclaw = safeJson(response.text, {});
+          const sanitizedOpenclaw = parsedOpenclaw && typeof parsedOpenclaw === 'object' ? { ok: parsedOpenclaw.ok, status: parsedOpenclaw.status } : {};
+          openclaw = { ok: true, source_type: 'API', ...sanitizedOpenclaw };
+        } else {
+          openclaw = { ok: false, source_type: 'API', status: response.status };
+        }
+      } catch (error) {
+        openclaw = { ok: false, source_type: 'API', error: String(error?.message || error) };
+      }
+      const ok = core?.ok === true;
+      const wfSnap = workforceSnapshot();
+      const unifiedWorkforceHealth = aggregateWorkforceHealth(wfSnap?.workforce, core?.resources);
+      res.writeHead(ok ? 200 : 503, { 'content-type': 'application/json' });
+      return res.end(JSON.stringify({ ok, service: 'tigeriq-web-control', host: HOST, port: PORT, core, coding, workforceHealth: unifiedWorkforceHealth, sources: { chromeController, openclaw } }));
+    }
+    res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
+    return res.end('not_found');
+  } catch (error) {
+    res.writeHead(502, { 'content-type': 'application/json' });
+    return res.end(JSON.stringify({ ok: false, error: String(error?.name === 'AbortError' ? 'CORE_TIMEOUT' : error?.message || error) }));
+  }
+});
+
+await new Promise((resolve, reject) => {
+  server.once('error', reject);
+  server.listen(PORT, HOST, resolve);
+});
+console.log(JSON.stringify({ event: 'TIGERIQ_WEB_CONTROL_STARTED', host: HOST, port: PORT, coreUrl: CORE_URL, codingUrl: CODING_URL, pid: process.pid }));
+
+process.on('SIGINT', () => server.close());
+process.on('SIGTERM', () => server.close());
+,'m'));
+  return match?.[1]?.trim() || '';
+}
+
+function projectWorkOrder(issue) {
+  const body=String(issue?.body||'');
+  const priority=machineValue(body,'PRIORITY') || (String(issue?.title||'').match(/\[(P[0-3])\]/)?.[1] || 'P2');
+  const marker=(machineValue(body,'CURRENT_STATE')+' '+machineValue(body,'STATE')).toUpperCase();
+  let state='MỞ';
+  if(/BLOCK/.test(marker)) state='BỊ CHẶN';
+  else if(/WAIT|PENDING/.test(marker)) state='CHỜ';
+  else if(machineValue(body,'ACTIVE_EXECUTION').toLowerCase()==='true' || /CLAIM|WORKING|ACTIVE/.test(marker)) state='ĐANG LÀM';
+  const owner=machineValue(body,'MUTATION_OWNER') || machineValue(body,'TARGET_EMPLOYEE') || machineValue(body,'OWNER_PROXY') || issue?.assignee?.login || '—';
+  return { issue_number:issue.number,title:issue.title,priority,state,owner,updated_at:issue.updated_at,url:issue.html_url };
+}
+
+async function githubWorkOrders() {
+  if (GITHUB_WORK_ORDERS_DISABLED) return { workOrders: [], meta: { ok: true, source: 'github', disabled: true, stale: false } };
+  const now=Date.now();
+  if (now-workOrderCache.at < WORK_ORDER_CACHE_MS) return workOrderCache;
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),1500);
+  try {
+    const headers={Accept:'application/vnd.github+json','User-Agent':'TigerIQ-Web-Control/1'};
+    if(GITHUB_TOKEN) headers.Authorization='Bearer '+GITHUB_TOKEN;
+    const response=await fetch(`${GITHUB_API_BASE}/repos/${GITHUB_OWNER}/${GITHUB_REPO}/issues?state=open&per_page=100&sort=updated&direction=desc`,{headers,signal:controller.signal,cache:'no-store'});
+    if(!response.ok) throw new Error('GITHUB_HTTP_'+response.status);
+    const rows=await response.json();
+    const workOrders=(Array.isArray(rows)?rows:[])
+      .filter(issue=>!issue.pull_request && /(?:^|\n)TIGERIQ_EXECUTABLE=true(?:\r?\n|$)/.test(String(issue.body||'')))
+      .map(projectWorkOrder)
+      .sort((a,b)=>({P0:0,P1:1,P2:2,P3:3}[a.priority]??9)-({P0:0,P1:1,P2:2,P3:3}[b.priority]??9) || String(b.updated_at).localeCompare(String(a.updated_at)));
+    workOrderCache={at:now,workOrders,meta:{ok:true,source:'github',stale:false,refreshed_at:new Date(now).toISOString()}};
+  } catch(error) {
+    workOrderCache={...workOrderCache,at:now,meta:{ok:false,source:'github',stale:true,error:String(error?.name==='AbortError'?'GITHUB_TIMEOUT':error?.message||error),refreshed_at:new Date(now).toISOString()}};
+  } finally { clearTimeout(timer); }
+  return workOrderCache;
 }
 
 async function codingStatus() {
