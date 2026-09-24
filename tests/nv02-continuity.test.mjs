@@ -224,25 +224,22 @@ describe('NV02 continuity policy', () => {
     const tickWorker=source.slice(source.indexOf('async function tickWorker'),source.indexOf('async function tick()'));
     expect(tickWorker).toContain('const rawUi=await uiState(target)');
     expect(tickWorker.indexOf('const rawUi=await uiState(target)')).toBeLessThan(tickWorker.indexOf('await postWorkerHeartbeat'));
-    expect(source).toContain("resumeChatUrl:String(raw.resumeChatUrl||(hasCurrentNv02Chat(raw.verifiedChatUrl)?raw.verifiedChatUrl:'')||'')");
-    expect(source).toContain("resumeChatUrl:hasCurrentNv02Chat(currentUrl)?currentUrl:state.resumeChatUrl");
-    expect(source).toContain("if(hasCurrentNv02Chat(state.resumeChatUrl)){");
-    expect(source).toContain("await navigate(target,state.resumeChatUrl)");
-    expect(source).toContain("'CURRENT_CHAT_RESTORE'");
-    expect(source).toContain("'CURRENT_CHAT_RESTORED'");
+    expect(source).toContain("resumeChatUrl:'', // legacy conversation pointers are intentionally discarded");
+    expect(source).not.toContain("await navigate(target,state.resumeChatUrl)");
+    expect(source).not.toContain("'CURRENT_CHAT_RESTORED'");
+    expect(source).toContain("'BOOT_FRESH_CONTEXT_OPENED'");
+    expect(source).toContain("'CURRENT_WORK_NEW_CHAT_RESTORED'");
 
     expect(source).toContain("sameNv02Chat(state.verifiedChatUrl,ui?.url)");
     expect(source).toContain("const modelCheckRequired=now>=Number(state.modelCheckBlockedUntil||0)&&(ui?.modelExact!==true||!state.verifiedChatUrl||!sameNv02Chat(state.verifiedChatUrl,ui?.url))");
     expect(source).toContain("phase==='STALLED'&&ui?.modelExact!==true&&modelCheckRequired");
-    expect(source).toContain("phase==='STALLED'&&ui?.modelExact!==true&&modelCheckRequired");
-    const currentChatRestoreGate=continuityLoop.indexOf("if(!currentTrackedWork&&hasCurrentNv02Chat(state.resumeChatUrl))");
+    const bootFreshGate=continuityLoop.indexOf("bootFreshContextPending.has('NV02')");
     const periodicF5Gate=continuityLoop.indexOf("if(currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0))");
     const modelRecoveryGate=continuityLoop.indexOf("if(phase==='STALLED'&&ui?.modelExact!==true&&modelCheckRequired)");
     const noCurrentChatGate=continuityLoop.indexOf("if(!currentTrackedWork)");
-    expect(currentChatRestoreGate).toBeGreaterThan(-1);
-    expect(periodicF5Gate).toBeGreaterThan(currentChatRestoreGate);
+    expect(bootFreshGate).toBeGreaterThan(-1);
+    expect(periodicF5Gate).toBeGreaterThan(bootFreshGate);
     expect(periodicF5Gate).toBeLessThan(modelRecoveryGate);
-    expect(currentChatRestoreGate).toBeLessThan(modelRecoveryGate);
     expect(modelRecoveryGate).toBeGreaterThan(-1);
     expect(noCurrentChatGate).toBeGreaterThan(modelRecoveryGate);
 
@@ -254,7 +251,7 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("currentProjectId=(current.pathname.match(");
     expect(source).toContain("currentProjectId===NV02_PROJECT_ID");
     expect(source).toContain("function preferredWorkerUrl(w)");
-    expect(source).toContain("state.resumeChatUrl||state.verifiedChatUrl||''");
+    expect(source).toContain("return String(w.homeUrl||'').trim()");
     expect(source).toContain("pages.find(t=>sameWorkerLocation(t.url,preferredUrl))");
 
 
