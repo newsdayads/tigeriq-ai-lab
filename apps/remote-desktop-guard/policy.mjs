@@ -73,6 +73,9 @@ export function readScopeAllowed(tool,args = {}) {
 export function validateOwnerLease({ lease, tool, args = {}, now = Date.now() } = {}) {
   if (!lease || lease.version !== 1 || lease.ownerAuthorized !== true) return { ok:false, reason:'OWNER_AUTH_REQUIRED' };
   if (!lease.leaseId || typeof lease.leaseId !== 'string') return { ok:false, reason:'LEASE_ID_REQUIRED' };
+  if (typeof lease.authorizationUrl !== 'string' || !/^https:\/\/api\.github\.com\/repos\/newsdayads\/tigeriq-ai-lab\/issues\/comments\/\d+$/.test(lease.authorizationUrl)) {
+    return { ok:false, reason:'OWNER_AUTH_REF_INVALID' };
+  }
   const issuedAt = Date.parse(lease.issuedAt);
   const expiresAt = Date.parse(lease.expiresAt);
   if (!Number.isFinite(issuedAt) || !Number.isFinite(expiresAt)) return { ok:false, reason:'LEASE_TIME_INVALID' };
