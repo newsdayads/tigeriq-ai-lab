@@ -1,8 +1,8 @@
 # TigerIQ — Current State
 
-Date: 2026-09-20
+Date: 2026-09-24
 Status: CURRENT — GitHub state reconciled on 2026-09-20; runtime facts are cited to durable checkpoints and are not treated as a fresh live probe
-Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #52 > this snapshot > runtime/evidence
+Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #335 > this snapshot > runtime/evidence
 
 ## Canonical source / runtime
 - GitHub `main` remains canonical. Engineering changes go `branch → PR → required checks → merge`; no direct `main`.
@@ -45,7 +45,7 @@ Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #
 - Final live screenshot confirms the branded popup renders normally with no pre-handle exception dialog.
 
 ## Workforce / identity
-- Central registry version 52 remains authoritative for employee identity/capability.
+- Workforce authority is GitHub Issue #335, with live registry version 52 recorded by Core.
 - `NV02 = ChatGPT Plus`; `NV03 = ChatGPT Go`; `NV04 = Gemini Pro`; `NV10 = Ollama`.
 - `GPT-6 Astra` remains an on-demand high-tier resource of NV02, not a separate employee.
 
@@ -69,7 +69,7 @@ Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #
 - Production/runtime, paid, credential/security and destructive/irreversible actions remain separate authorization gates.
 - #802 closeout does not reopen NV02 mutation ownership; any new Worker Utility mutation requires a new Work Order/handoff.
 
-## #1003 Runtime Source Isolation Closeout
+## #1003 Runtime Source Isolation Closeout (non-terminal until parent read)
 - Implemented dedicated clean source checkout mechanisms for runtime isolation under `scripts/tigeriq-core/` and `apps/tigeriq-core/` satisfying 3x E2E closeout requirements.
 - Verified full isolation compliance across all 3x E2E verification cycles.
 
