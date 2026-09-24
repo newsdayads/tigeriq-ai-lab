@@ -651,7 +651,12 @@ async function reconcileGithubTerminalUiJobs(){
   try{
     for(const workerId of WORKER_IDS){
       let active=uiJobLedger.active(workerId);
-      if(!active||isTerminalUiJobStage(active.stage)||active.source==='APP_CHROME_SELF_RUN')continue;
+      if(!active||isTerminalUiJobStage(active.stage))continue;
+      if(active.source==='APP_CHROME_SELF_RUN'){
+        try{await reconcileSelfRunWorker(workerId);}
+        catch(error){log('UI_JOB_GITHUB_SELF_RUN_RECONCILE_DEFERRED',{workerId,jobId:active.jobId,error:String(error)});}
+        continue;
+      }
       if(!['SUBMITTED','WORKING','WAITING_EVIDENCE','VERIFY'].includes(active.stage))continue;
       const issueNumber=localGithubIssueNumberFromRef(active.issueRef);
       if(!issueNumber)continue;
