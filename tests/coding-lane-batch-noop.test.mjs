@@ -44,6 +44,42 @@ describe('Coding Lane bounded batch no-op',()=>{
     expect(validateChanges(combined,['apps/a.mjs','tests/b.test.mjs'])).toBe(true);
   });
 
+  it('recovers malformed compact JSON with raw quotes and backslash escapes',()=>{
+    const content=String.raw`const re=/\\d+"quoted"/;`;
+    const prompt=generationPrompt('apps/a.mjs',content);
+    const malformed=String.raw`{"summary":"repair regex","edits":[{"path":"exact allowed path","search":"const re=/\\d+"quoted"/;","replace":"const re=/\\w+"quoted"/;"}]}`;
+    expect(expandCompactChanges(prompt,malformed)).toEqual({
+      summary:'repair regex',
+      changes:[{path:'apps/a.mjs',content:String.raw`const re=/\\w+"quoted"/;`}],
+    });
+  });
+
+  it('normalizes bounded schema drift but never guesses a placeholder across multiple files',()=>{
+    const prompt=generationPrompt('apps/a.mjs','const a=1;');
+    expect(expandCompactChanges(prompt,JSON.stringify({
+      changes:[{path:'exact allowed path',old:'const a=1;',new:'const a=2;'}],
+    }))).toEqual({
+      summary:'compact edits',
+      changes:[{path:'apps/a.mjs',content:'const a=2;'}],
+    });
+
+    const multi=`TASK: bounded
+BATCH_NOOP_ALLOWED=true
+CURRENT FILES:
+FILE apps/a.mjs
+const a=1;
+
+---
+
+FILE apps/b.mjs
+const b=1;
+Return ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}.`;
+    expect(()=>expandCompactChanges(multi,JSON.stringify({
+      summary:'ambiguous',
+      edits:[{path:'exact allowed path',search:'const a=1;',replace:'const a=2;'}],
+    }))).toThrow('COMPACT_EDIT_PATH_UNKNOWN:exact allowed path');
+  });
+
   it('still rejects an all-noop job before branch creation',()=>{
     const a=expandCompactChanges(generationPrompt('apps/a.mjs','const a=1;'),JSON.stringify({summary:'no change',noop:true,edits:[]}));
     const b=expandCompactChanges(generationPrompt('tests/b.test.mjs','const b=1;'),JSON.stringify({summary:'no change',noop:true,edits:[]}));
