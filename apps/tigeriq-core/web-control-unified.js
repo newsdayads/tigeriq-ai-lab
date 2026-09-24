@@ -99,7 +99,8 @@
 
   function renderOwnerHealth(d){
     const rs=d?.resources||[];
-    const critical=rs.filter(x=>['ERROR','OFFLINE'].includes(x.status)).length + (d?.codingLane && d.codingLane.ok!==true ? 1 : 0);
+    const webCritical=typeof latestWebHealth!=='undefined' && latestWebHealth!==null && latestWebHealth?.ok!==true ? 1 : 0;
+    const critical=rs.filter(x=>['ERROR','OFFLINE'].includes(x.status)).length + (d?.codingLane && d.codingLane.ok!==true ? 1 : 0) + webCritical;
     const warnings=rs.filter(x=>['RATE_LIMITED','WAIT_KEY'].includes(x.status)).length;
     const h=document.getElementById('topHealth');
     if(h){
