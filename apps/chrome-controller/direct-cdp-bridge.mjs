@@ -406,7 +406,10 @@ async function maybeWorkerContinuity(w,target,ui){
 
   if(phase!=='WORKING'&&Number(state.nextPeriodicF5At||0)<=now){
     const refreshed=await withWorkerMutation(w.id,async()=>{
-      const beforeUrl=ui?.url||null,beforePhase=phase;
+      const fresh=await uiStateRaw(target).catch(()=>null);
+      const freshPhase=deriveWorkerPhase(fresh||{},{workerId:w.id});
+      if(freshPhase==='WORKING'||fresh?.uiBusy===true||fresh?.stopVisible===true)return{ok:false,status:'PERIODIC_F5_DEFERRED_WORKING'};
+      const beforeUrl=fresh?.url||ui?.url||null,beforePhase=freshPhase||phase;
       const result=await reloadTarget(target);
       await sleep(1600);
       const after=await uiStateRaw(target).catch(()=>null);
@@ -1193,10 +1196,7 @@ async function prepareWorkerForPlannedRestart(w,target,initialUi){
   let ui=initialUi||await uiStateRaw(target).catch(()=>null);
   if(!ui)return{ok:false,status:'MAINTENANCE_UI_UNAVAILABLE'};
   if(ui.securityBlock)return{ok:false,status:ui.securityBlock};
-  if(ui.uiBusy===true||ui.stopVisible===true){
-    const stopped=await stopStalledWorking(target);
-    if(!stopped?.ok)return{ok:false,status:stopped?.status||'MAINTENANCE_STOP_FAILED'};
-  }
+  if(ui.uiBusy===true||ui.stopVisible===true)return{ok:false,status:'MAINTENANCE_DEFERRED_WORKING'};
   let ready=await waitWorkerReadyForMaintenance(target);
   if(!ready?.ok)return ready;
   const saved=await dispatch(target,'Lưu');
@@ -1467,8 +1467,11 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
   }
   if(phase!=='WORKING'&&currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0)){
     const refreshed=await withNv02Mutation(async()=>{
-      const beforeUrl=ui?.url||null;
-      const beforePhase=phase;
+      const fresh=applyNv02DurableVerifiedModelProfile(await uiState(target).catch(()=>null));
+      const freshPhase=deriveNv02Phase(fresh||{});
+      if(freshPhase==='WORKING'||fresh?.uiBusy===true||fresh?.stopVisible===true)return{ok:false,status:'PERIODIC_F5_DEFERRED_WORKING'};
+      const beforeUrl=fresh?.url||ui?.url||null;
+      const beforePhase=freshPhase||phase;
       const result=await reloadTarget(target);
       await sleep(1800);
       const after=await uiState(target).catch(()=>null);
