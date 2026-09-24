@@ -156,6 +156,19 @@ describe('independent worker recovery flows in direct-cdp-bridge',()=>{
     expect(source).toContain("return{status:'READY_UNASSIGNED',job:null}");
   });
 
+  it('uses a lightweight cached control-state endpoint instead of polling full controller state per worker',()=>{
+    const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
+    expect(server).toContain("'/api/continuity/control-state'");
+    expect(server).toContain('.filter((job)=>!job.completedAt)');
+    expect(server).toContain("ownerInteractionMode:paused?'READ_ONLY':'AUTOMATION'");
+    expect(server).toContain('utilityPausedWorkers:[...utilityPausedWorkers]');
+    expect(source).toContain('const CONTROLLER_STATE_CACHE_MS=2000');
+    expect(source).toContain('if(controllerStateFetch)return controllerStateFetch');
+    expect(source).toContain("CONTROLLER+'/api/continuity/control-state'");
+    expect(source).toContain('AbortSignal.timeout(3000)');
+    expect(source).not.toContain("CONTROLLER+'/api/state'");
+  });
+
   it('rearms a READY role loop if submit acknowledgement never transitions to WORKING',()=>{
     expect(source).toContain('const WORK_START_ACK_TIMEOUT_MS=90*1000');
     expect(source).toContain('awaitingWorkStartSince:Number(raw.awaitingWorkStartSince)||0');
