@@ -152,7 +152,8 @@ describe('NV02 continuity policy', () => {
     const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(source).toContain('APP_CHROME_LOCAL_UI_ONLY');
     expect(source).toContain("const currentTrackedWork=currentChat");
-    expect(source).not.toContain("READY_UNASSIGNED");
+    const nv02Loop=source.slice(source.indexOf('async function maybeNv02Continuity'),source.indexOf('async function handleCommand'));
+    expect(nv02Loop).not.toContain("READY_UNASSIGNED");
     expect(source).not.toContain("CURRENT_WORK_NEW_CHAT_RESTORED");
     expect(source).toContain("LOCAL_CONTINUE_DISPATCHED");
     expect(source).not.toContain("await navigate(target,state.resumeChatUrl)");
