@@ -153,7 +153,7 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("await postWorkerHeartbeat(w,target,ui,projectContextReady).catch");
     const tick=source.slice(source.indexOf('async function tickWorker(w){'),source.indexOf('\n\nasync function tick()'));
     expect(tick).toContain('getCommand(w.id)');
-    expect(source).toContain("String(state?.ownerInteractionMode||'')==='READ_ONLY'");
+    expect(source).toContain("String(controller?.ownerInteractionMode||'')==='READ_ONLY'");
     expect(tick).toContain('if(await workerAutomationPaused(w.id))');
     expect(tick.indexOf('await postWorkerHeartbeat(w,target,ui,projectContextReady)')).toBeLessThan(tick.indexOf('if(await workerAutomationPaused(w.id))'));
     expect(tick.indexOf('if(await workerAutomationPaused(w.id))')).toBeLessThan(tick.indexOf('getCommand(w.id)'));
