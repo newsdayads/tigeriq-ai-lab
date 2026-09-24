@@ -159,6 +159,10 @@ describe('NV02 continuity policy', () => {
     expect(tick.indexOf('if(await workerAutomationPaused(w.id))')).toBeLessThan(tick.indexOf('getCommand(w.id)'));
     expect(tick.indexOf('if(await workerAutomationPaused(w.id))')).toBeLessThan(tick.indexOf("if(w.id==='NV02'&&!projectContextReady&&!ui.securityBlock)"));
     expect(tick.indexOf('getCommand(w.id)')).toBeLessThan(tick.indexOf("if(w.id==='NV02')await maybeNv02Continuity"));
+    expect(tick).not.toContain("if(w.id==='NV02')nv02MutationBusy=true");
+    expect(tick).not.toContain("if(w.id==='NV02')nv02MutationBusy=false");
+    expect(source).toContain("withNv02Mutation(async()=>");
+    expect(source).toContain("'LOCAL_CONTINUE_NOW',60000");
     const backgroundSource=readFileSync('apps/chrome-controller/extension/background.js','utf8');
     expect(backgroundSource).toContain('HARD ISOLATION: NV02, NV03, and NV04 commands and UI mutation loops');
     const continuity=source.slice(source.indexOf('async function maybeNv02Continuity'),source.indexOf('\nasync function handleCommand'));

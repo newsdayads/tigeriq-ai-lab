@@ -1359,7 +1359,6 @@ async function tickWorker(w){
       catch(error){log('CONTROLLER_COMMAND_POLL_FAILED',{workerId:w.id,error:String(error?.message||error)});}
       if(command){
         workerMutationBusy.add(w.id);
-        if(w.id==='NV02')nv02MutationBusy=true;
         try{
           const result=await handleCommand(w,target,command);
           await post('/api/result',w.id,{workerId:w.id,commandId:command.id,ok:true,...(result||{})});
@@ -1370,7 +1369,6 @@ async function tickWorker(w){
           log('CONTROLLER_COMMAND_FAILED',{workerId:w.id,commandId:command.id,action:command.action,status});
         }finally{
           workerMutationBusy.delete(w.id);
-          if(w.id==='NV02')nv02MutationBusy=false;
         }
         return;
       }
