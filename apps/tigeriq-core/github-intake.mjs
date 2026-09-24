@@ -4,7 +4,7 @@ import { backlogOwnerDirect, sortBacklogSpecs } from './github-backlog-policy.mj
 
 const DEFAULT_OWNER='newsdayads';
 const DEFAULT_REPO='tigeriq-ai-lab';
-const DEFAULT_INTERVAL_MS=120000;
+const DEFAULT_INTERVAL_MS=Number(process.env.TIGERIQ_GITHUB_INTAKE_MS||5000);
 const DEFAULT_INITIAL_DELAY_MS=15000;
 const MAX_CONTEXT_CHARS=50000;
 const SAFE_PATH_RE=/^[A-Za-z0-9._/-]+\.(?:md|mjs|js|ts|json|ya?ml)$/i;
@@ -206,6 +206,6 @@ export function startGithubIntake({databaseUrl=process.env.DATABASE_URL,fetchImp
   if(!databaseUrl) return {enabled:false,stop(){}};
   const pool=new Pool({connectionString:databaseUrl,max:1}); let stopped=false,busy=false,timer=null,interval=null;
   const tick=async()=>{if(stopped||busy)return;busy=true;try{const b=await syncGithubOutcomes({pool,fetchImpl,owner,repo,token});const a=await materializeGithubIssues({pool,fetchImpl,owner,repo,token});if(a.created||b.claims||b.results)console.log(JSON.stringify({event:'GITHUB_INTAKE_SYNC',created:a.created,claims:b.claims,results:b.results,active:a.active||0,issueNumber:a.issueNumber||null}));}catch(e){console.error(JSON.stringify({event:'GITHUB_INTAKE_ERROR',error:String(e?.message||e)}));}finally{busy=false;}};
-  timer=setTimeout(()=>{void tick();interval=setInterval(()=>void tick(),Math.max(60000,intervalMs));interval.unref?.();},Math.max(1000,initialDelayMs)); timer.unref?.();
+  timer=setTimeout(()=>{void tick();interval=setInterval(()=>void tick(),Math.max(1000,intervalMs));interval.unref?.();},Math.max(1000,initialDelayMs)); timer.unref?.();
   return {enabled:true,async stop(){stopped=true;if(timer)clearTimeout(timer);if(interval)clearInterval(interval);await pool.end();}};
 }
