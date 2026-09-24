@@ -231,7 +231,9 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("async function ensureNv02LocalReadyLocked(target,initialUi=null,{forceFresh=false}={})");
     expect(source).toContain("ensureNv02LocalReadyLocked(target,ui,{forceFresh:true})");
     expect(source).toContain("ensureNv02LocalReadyLocked(target,raw,{forceFresh:false})");
-    expect(source).toContain("'BOOT_LOCAL_CONTINUE_SUBMITTED'");
+    expect(source).toContain("'BOOT_FRESH_LOCAL_COMPLETE'");
+    expect(source).toContain("'BOOT_FRESH_LOCAL_READY'");
+    expect(source).toContain("'BOOT_FRESH_LOCAL_READY_NO_CONTINUE'");
     const handleCommandSource=source.slice(source.indexOf('async function handleCommand'),source.indexOf('async function postWorkerHeartbeat'));
     const localRunCommand=handleCommandSource.slice(handleCommandSource.indexOf("if(action==='LOCAL_CONTINUE_NOW')"),handleCommandSource.indexOf("if(action==='DISPATCH')"));
     expect(localRunCommand).toContain("ensureNv02LocalReadyLocked(target,raw,{forceFresh:false})");
