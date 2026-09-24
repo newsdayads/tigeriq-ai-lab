@@ -21,10 +21,22 @@ async function tempLeasePath() {
   return join(dir,'owner-lease.json');
 }
 function leaseFor(tool,args,{issued='2026-09-25T00:00:00.000Z',expires='2026-09-25T00:05:00.000Z'}={}) {
-  return {version:1,leaseId:'OWNER-TEST-1',ownerAuthorized:true,tool,argsSha256:argsHash(args),issuedAt:issued,expiresAt:expires};
+  return {version:1,leaseId:'OWNER-TEST-1',ownerAuthorized:true,authorizationUrl:'https://api.github.com/repos/newsdayads/tigeriq-ai-lab/issues/comments/123456',tool,argsSha256:argsHash(args),issuedAt:issued,expiresAt:expires};
 }
 async function putLease(leasePath,lease) {
   await writeFile(leasePath,JSON.stringify(lease),'utf8');
+}
+function authFetchFor(lease,{login='newsdayads',ok=true,status=200,bodyOverride}={}) {
+  const body=bodyOverride ?? [
+    'TIGERIQ_REMOTE_MUTATION_AUTH_V1',
+    'OWNER_AUTHORIZED=true',
+    'LEASE_ID='+lease.leaseId,
+    'TOOL='+lease.tool,
+    'ARGS_SHA256='+lease.argsSha256,
+    'ISSUED_AT='+lease.issuedAt,
+    'EXPIRES_AT='+lease.expiresAt
+  ].join('\n');
+  return async()=>({ok,status,json:async()=>({user:{login},body})});
 }
 afterEach(async()=>{ while(tempDirs.length) await rm(tempDirs.pop(),{recursive:true,force:true}); });
 
@@ -70,8 +82,9 @@ describe('Remote Desktop Commander hard runtime guard',()=>{
   it('opens exactly one owner-authorized call then remains closed after restart/retry',async()=>{
     const leasePath=await tempLeasePath();
     const args={path:'D:\\TigerIQ\\Evidence\\guard-canary.txt',content:'ok',mode:'rewrite'};
-    await putLease(leasePath,leaseFor('write_file',args));
-    expect(await enforceRemoteToolCall({tool:'write_file',args,leasePath,now:NOW}))
+    const lease=leaseFor('write_file',args);
+    await putLease(leasePath,lease);
+    expect(await enforceRemoteToolCall({tool:'write_file',args,leasePath,now:NOW,fetchImpl:authFetchFor(lease)}))
       .toMatchObject({ok:true,reason:'OWNER_LEASE_VALID_SINGLE_USE',leaseId:'OWNER-TEST-1'});
     await expect(readFile(leasePath,'utf8')).rejects.toMatchObject({code:'ENOENT'});
     const claim=(await readdir(join(leasePath,'..'))).find((name)=>name.startsWith('owner-lease.json.claim-'));
@@ -84,13 +97,15 @@ describe('Remote Desktop Commander hard runtime guard',()=>{
   it('scope mismatch or expiry consumes the lease fail-closed',async()=>{
     const leasePath=await tempLeasePath();
     const args={command:'echo approved',timeout_ms:1000};
-    await putLease(leasePath,leaseFor('start_process',args));
-    expect(await enforceRemoteToolCall({tool:'start_process',args:{...args,command:'echo changed'},leasePath,now:NOW}))
+    const mismatchLease=leaseFor('start_process',args);
+    await putLease(leasePath,mismatchLease);
+    expect(await enforceRemoteToolCall({tool:'start_process',args:{...args,command:'echo changed'},leasePath,now:NOW,fetchImpl:authFetchFor(mismatchLease)}))
       .toMatchObject({ok:false,reason:'LEASE_ARGUMENT_SCOPE_MISMATCH'});
     await expect(readFile(leasePath,'utf8')).rejects.toMatchObject({code:'ENOENT'});
 
-    await putLease(leasePath,leaseFor('start_process',args,{issued:'2026-09-24T23:40:00.000Z',expires:'2026-09-24T23:45:00.000Z'}));
-    expect(await enforceRemoteToolCall({tool:'start_process',args,leasePath,now:NOW}))
+    const expiredLease=leaseFor('start_process',args,{issued:'2026-09-24T23:40:00.000Z',expires:'2026-09-24T23:45:00.000Z'});
+    await putLease(leasePath,expiredLease);
+    expect(await enforceRemoteToolCall({tool:'start_process',args,leasePath,now:NOW,fetchImpl:authFetchFor(expiredLease)}))
       .toMatchObject({ok:false,reason:'LEASE_EXPIRED_OR_NOT_ACTIVE'});
     await expect(readFile(leasePath,'utf8')).rejects.toMatchObject({code:'ENOENT'});
   });
@@ -101,6 +116,34 @@ describe('Remote Desktop Commander hard runtime guard',()=>{
     expect(authorizeRemoteCall({tool:'start_process',args,lease:tooLong,now:NOW})).toMatchObject({ok:false,reason:'LEASE_BOUNDS_INVALID'});
     expect(authorizeRemoteCall({tool:'start_process',args:{...args,timeout_ms:2000},lease:leaseFor('start_process',args),now:NOW}))
       .toMatchObject({ok:false,reason:'LEASE_ARGUMENT_SCOPE_MISMATCH'});
+  });
+
+  it('rejects forged/mismatched Owner authorization records fail closed',async()=>{
+    const leasePath=await tempLeasePath();
+    const args={path:'D:\\TigerIQ\\Evidence\\forged.txt',content:'x',mode:'rewrite'};
+    for (const fetchImpl of [
+      authFetchFor(leaseFor('write_file',args),{login:'attacker'}),
+      authFetchFor(leaseFor('write_file',args),{bodyOverride:'TIGERIQ_REMOTE_MUTATION_AUTH_V1\nOWNER_AUTHORIZED=true\nLEASE_ID=WRONG'})
+    ]) {
+      const lease=leaseFor('write_file',args);
+      await putLease(leasePath,lease);
+      const result=await enforceRemoteToolCall({tool:'write_file',args,leasePath,now:NOW,fetchImpl});
+      expect(result.ok).toBe(false);
+      await expect(readFile(leasePath,'utf8')).rejects.toMatchObject({code:'ENOENT'});
+    }
+  });
+
+  it('fails closed when Owner authorization verification is unavailable',async()=>{
+    const leasePath=await tempLeasePath();
+    const args={path:'D:\\TigerIQ\\Evidence\\offline.txt',content:'x',mode:'rewrite'};
+    const lease=leaseFor('write_file',args);
+    await putLease(leasePath,lease);
+    const result=await enforceRemoteToolCall({
+      tool:'write_file',args,leasePath,now:NOW,
+      fetchImpl:async()=>{ throw new Error('offline'); }
+    });
+    expect(result).toMatchObject({ok:false,reason:'OWNER_AUTH_VERIFY_FAILED'});
+    await expect(readFile(leasePath,'utf8')).rejects.toMatchObject({code:'ENOENT'});
   });
 
   it('forbids remote security config mutation even when a lease file exists',async()=>{
