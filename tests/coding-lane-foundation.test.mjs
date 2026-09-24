@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import {activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertPrOpenState,buildLocalFileContext,classifyAiFailure,codingPathsOverlap,coreResourceStateEligible,gateFailureIssues,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,partitionGenerationFiles,preserveGenerationPrompt,recoverAfterCodingRestart,resourceWaitPlan,restartRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,validateCompactEdits,validateManagerJobPaths} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertPrOpenState,buildLocalFileContext,classifyAiFailure,codingOutputTokenLimit,codingPathsOverlap,coreResourceStateEligible,gateFailureIssues,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,partitionGenerationFiles,preserveGenerationPrompt,recoverAfterCodingRestart,resourceWaitPlan,restartRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,validateCompactEdits,validateManagerJobPaths} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError,parseJsonObject} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 const nv11={id:'NV11',provider:'fake',model:'a'};
@@ -339,6 +339,15 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
       ['apps/large.mjs'],
       ['apps/small.mjs','tests/small.test.mjs'],
     ]);
+  });
+
+  await t.test('compact generation output is bounded at the provider request layer',()=>{
+    const edits='Return ONLY compact JSON {"summary":"short","edits":[{"path":"exact allowed path","search":"old","replace":"new"}]}.';
+    const changes='Return ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}.';
+    assert.strictEqual(codingOutputTokenLimit(edits),1200);
+    assert.strictEqual(codingOutputTokenLimit(changes),1800);
+    assert.strictEqual(codingOutputTokenLimit('manager prompt'),8000);
+    assert.strictEqual(codingOutputTokenLimit('manager prompt',8192),8192);
   });
 
   await t.test('generation context includes empty new files and fails closed on absent paths',()=>{
