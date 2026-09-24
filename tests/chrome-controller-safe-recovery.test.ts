@@ -148,6 +148,14 @@ describe('independent worker recovery flows in direct-cdp-bridge',()=>{
     expect(source).toContain('READY_UNASSIGNED');
   });
 
+  it('bounds READY_UNASSIGNED logging/checkpoint churn to the continuation cadence',()=>{
+    const ready=source.slice(source.indexOf("if(phase==='READY')"),source.indexOf("const stalledChecks=",source.indexOf("if(phase==='READY')")));
+    expect(ready).toContain("if(!currentWork){");
+    expect(ready).toContain("if(now<Number(state.nextContinueAt||0))return;");
+    expect(ready).toContain("'READY_UNASSIGNED'");
+    expect(ready.indexOf("if(now<Number(state.nextContinueAt||0))return;")).toBeLessThan(ready.indexOf("'READY_UNASSIGNED'"));
+  });
+
   it('rebases only an already-expired deep-reset timer once after bridge restart',()=>{
     expect(source).toContain("const bootResetScheduleInitialized=new Set()");
     expect(source).toContain("if(!bootResetScheduleInitialized.has(workerId)){");
