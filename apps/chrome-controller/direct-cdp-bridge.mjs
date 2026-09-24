@@ -43,6 +43,7 @@ const NV02_F5_MAX_MS=20*60*1000;
 const NV02_STALLED_RELOAD_CHECKS=10;
 const NV02_STALLED_RESET_CHECKS=14;
 const LOCAL_RUN_GRACE_MS=15000;
+const WORK_START_ACK_TIMEOUT_MS=90*1000;
 const UI_STABILITY_PACING_MIN_MS=3000;
 const UI_STABILITY_PACING_MAX_MS=8000;
 const VIEW_FOLLOW_MIN_MS=5*1000;
@@ -127,6 +128,7 @@ function loadWorkerContinuity(workerId){
     lastPrompt:String(raw.lastPrompt||''),
     pendingContinue:Boolean(raw.pendingContinue),
     awaitingWorkStart:Boolean(raw.awaitingWorkStart),
+    awaitingWorkStartSince:Number(raw.awaitingWorkStartSince)||0,
     modelCheckAttempted:Boolean(raw.modelCheckAttempted),
     lastPhase:String(raw.lastPhase||'STALLED'),
     resumeUrl:'', // legacy conversation pointers are never restored; Work Order state is authoritative
@@ -315,7 +317,7 @@ async function maybeWorkerContinuity(w,target,ui){
     const assignment=await currentWorkerAssignmentStatus(w.id);
     const roleLoopAllowed=assignment.status==='READY_UNASSIGNED'||assignment.status==='CONTINUABLE';
     if(!roleLoopAllowed){
-      state={...state,lastPhase:'READY',pendingContinue:false,awaitingWorkStart:false,stalledChecks:0,recoveryAttempts:0,recoveryBlockedUntil:0};
+      state={...state,lastPhase:'READY',pendingContinue:false,awaitingWorkStart:false,awaitingWorkStartSince:0,stalledChecks:0,recoveryAttempts:0,recoveryBlockedUntil:0};
       saveWorkerContinuity(w.id,state);
       await genericWorkerEvent(w.id,assignment.status,{jobId:assignment.job?.jobId||null,stage:assignment.job?.stage||null});
       return;
@@ -427,7 +429,7 @@ async function maybeWorkerContinuity(w,target,ui){
     if(now<Number(state.nextProgressCheckAt||0))return;
     const signature=String(ui?.activitySignature||'');
     const unchanged=Boolean(signature&&state.workingSignature===signature)?Number(state.workingUnchangedChecks||0)+1:0;
-    const next={...state,awaitingWorkStart:false,workingSignature:signature,workingUnchangedChecks:unchanged,nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS,stalledChecks:0};
+    const next={...state,awaitingWorkStart:false,awaitingWorkStartSince:0,workingSignature:signature,workingUnchangedChecks:unchanged,nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS,stalledChecks:0};
     saveWorkerContinuity(w.id,next);
     await genericWorkerEvent(w.id,'WORKING_PROGRESS_CHECK',{workingUnchangedChecks:unchanged});
     if(unchanged>=MAX_WORKING_UNCHANGED_CHECKS){
@@ -451,7 +453,14 @@ async function maybeWorkerContinuity(w,target,ui){
       saveWorkerContinuity(w.id,state);
       await genericWorkerEvent(w.id,'READY_RECOVERY_STATE_CLEARED');
     }
-    if(state.awaitingWorkStart===true)return;
+    if(state.awaitingWorkStart===true){
+      const since=Number(state.awaitingWorkStartSince||0);
+      if(since>0&&now-since<WORK_START_ACK_TIMEOUT_MS)return;
+      state={...state,awaitingWorkStart:false,awaitingWorkStartSince:0,pendingContinue:true,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
+      saveWorkerContinuity(w.id,state);
+      await genericWorkerEvent(w.id,'WORK_START_ACK_TIMEOUT_REARMED',{previousSince:since,nextContinueAt:state.nextContinueAt});
+      return;
+    }
     if(state.pendingContinue!==true){
       state={...state,pendingContinue:true,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
       saveWorkerContinuity(w.id,state);
@@ -467,7 +476,7 @@ async function maybeWorkerContinuity(w,target,ui){
       return;
     }
     if(!sent?.ok)throw new Error(sent?.status||'LOCAL_CONTINUE_DISPATCH_FAILED');
-    const next={...state,pendingContinue:false,awaitingWorkStart:true,lastPrompt:prompt,lastPhase:'WORKING',stalledChecks:0,recoveryAttempts:0,resumeUrl:'',workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
+    const next={...state,pendingContinue:false,awaitingWorkStart:true,awaitingWorkStartSince:now,lastPrompt:prompt,lastPhase:'WORKING',stalledChecks:0,recoveryAttempts:0,resumeUrl:'',workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
     saveWorkerContinuity(w.id,next);
     await genericWorkerEvent(w.id,'LOCAL_CONTINUE_DISPATCHED',{prompt,nextContinueAt:next.nextContinueAt,trigger:'START_OR_POST_F5'});
     return;
@@ -541,6 +550,7 @@ function loadNv02Continuity(){
     lastPrompt:String(raw.lastPrompt||''),
     pendingContinue:Boolean(raw.pendingContinue),
     awaitingWorkStart:Boolean(raw.awaitingWorkStart),
+    awaitingWorkStartSince:Number(raw.awaitingWorkStartSince)||0,
     dispatchesInChat:Number(raw.dispatchesInChat)||0,
     chatStartedAt:Number(raw.chatStartedAt)||now,
     lastPhase:String(raw.lastPhase||'STALLED'),
@@ -1362,7 +1372,7 @@ async function dispatchNaturalContinueLocked(target,state,now){
   const prompt=pickWorkerContinuePrompt('NV02',state.lastPrompt);
   const result=await dispatch(target,prompt);
   if(!result?.ok)throw new Error(result?.status||'LOCAL_CONTINUE_DISPATCH_FAILED');
-  const next={...state,pendingContinue:false,awaitingWorkStart:true,lastPrompt:prompt,dispatchesInChat:Number(state.dispatchesInChat||0)+1,stalledChecks:0,lastPhase:'WORKING',workingSignature:'',workingUnchangedChecks:0,workingRecheckAt:nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS),nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
+  const next={...state,pendingContinue:false,awaitingWorkStart:true,awaitingWorkStartSince:now,lastPrompt:prompt,dispatchesInChat:Number(state.dispatchesInChat||0)+1,stalledChecks:0,lastPhase:'WORKING',workingSignature:'',workingUnchangedChecks:0,workingRecheckAt:nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS),nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
   saveNv02Continuity(next);
   await continuityEvent('LOCAL_CONTINUE_DISPATCHED',{prompt,evidence:result.evidence||null,nextContinueAt:next.nextContinueAt,dispatchesInChat:next.dispatchesInChat});
   return next;
@@ -1380,6 +1390,7 @@ async function noteNv02CommandDispatch(){
   state.stalledChecks=0;
   state.pendingContinue=false;
   state.awaitingWorkStart=true;
+  state.awaitingWorkStartSince=now;
   saveNv02Continuity(state);
   await continuityEvent('DISPATCH_F5_GUARD_ARMED',{nextPeriodicF5At:state.nextPeriodicF5At,workingRecheckAt:state.workingRecheckAt});
 }
@@ -1474,7 +1485,7 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
     const workingRecheckAt=same
       ? (Number(state.workingRecheckAt)||nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS))
       : nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS);
-    state={...state,awaitingWorkStart:false,stalledChecks:0,workingSignature:signature,workingUnchangedChecks:unchanged,workingRecheckAt,nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS};
+    state={...state,awaitingWorkStart:false,awaitingWorkStartSince:0,stalledChecks:0,workingSignature:signature,workingUnchangedChecks:unchanged,workingRecheckAt,nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS};
     saveNv02Continuity(state);
     await continuityEvent('WORKING_PROGRESS_CHECK',{workingUnchangedChecks:unchanged,workingRecheckAt:state.workingRecheckAt,nextProgressCheckAt:state.nextProgressCheckAt,signaturePresent:Boolean(signature)});
     if(unchanged>=MAX_WORKING_UNCHANGED_CHECKS){
@@ -1519,7 +1530,14 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
     }
   }
   if(phase==='READY'){
-    if(state.awaitingWorkStart===true)return;
+    if(state.awaitingWorkStart===true){
+      const since=Number(state.awaitingWorkStartSince||0);
+      if(since>0&&now-since<WORK_START_ACK_TIMEOUT_MS)return;
+      state={...state,awaitingWorkStart:false,awaitingWorkStartSince:0,pendingContinue:true,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
+      saveNv02Continuity(state);
+      await continuityEvent('WORK_START_ACK_TIMEOUT_REARMED',{previousSince:since,nextContinueAt:state.nextContinueAt});
+      return;
+    }
     if(state.pendingContinue!==true){
       state={...state,pendingContinue:true,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
       saveNv02Continuity(state);
@@ -1580,7 +1598,7 @@ async function handleCommand(w,target,command){
     const state=loadWorkerContinuity(w.id),prompt=pickWorkerContinuePrompt(w.id,state.lastPrompt);
     const r=await dispatch(target,prompt);
     if(!r?.ok)throw new Error(r?.status||'LOCAL_CONTINUE_DISPATCH_FAILED');
-    saveWorkerContinuity(w.id,{...state,pendingContinue:false,awaitingWorkStart:true,lastPrompt:prompt,lastPhase:'WORKING',stalledChecks:0,workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:Date.now()+WORKING_PROGRESS_CHECK_MS,nextContinueAt:nextRandomAt(Date.now(),CONTINUE_MIN_MS,CONTINUE_MAX_MS)});
+    saveWorkerContinuity(w.id,{...state,pendingContinue:false,awaitingWorkStart:true,awaitingWorkStartSince:Date.now(),lastPrompt:prompt,lastPhase:'WORKING',stalledChecks:0,workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:Date.now()+WORKING_PROGRESS_CHECK_MS,nextContinueAt:nextRandomAt(Date.now(),CONTINUE_MIN_MS,CONTINUE_MAX_MS)});
     await genericWorkerEvent(w.id,'LOCAL_CONTINUE_DISPATCHED',{prompt});
     return{status:'LOCAL_CONTINUE_SUBMITTED',prompt};
   }
