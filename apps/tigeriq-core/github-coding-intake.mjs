@@ -440,12 +440,6 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
     }
 
     const alreadyDispatched=(await eventData(pool,'GITHUB_CODING_RETRY_DISPATCHED',n)).some(x=>Number(x.retryAttempt)===retryAttempt);
-    const alreadyRearmed=(await eventData(pool,'GITHUB_CODING_REOPEN_REARMED',n)).some(x=>String(x.retryKey||'')===String(retryKey||''));
-    if(!alreadyRearmed && String(issue.state||'').toLowerCase()==='closed'){
-      await mark(pool,'GITHUB_CODING_REOPEN_REARMED',{issueNumber:n,retryAttempt,retryKey});
-      await patchIssueState(fetchImpl,owner,repo,n,token,'open');
-      await comment(fetchImpl,owner,repo,n,token,`[REOPEN_REARM] Reopened issue for retry attempt ${retryAttempt}/${MAX_AUTO_RETRIES} (key=${retryKey})`);
-    }
     if(!alreadyDispatched){
       const dispatchReason=spec.ownerDirect?`OWNER_DIRECT>${spec.sourcePriority}`:`PRIORITY_${spec.sourcePriority}`;
       await mark(pool,'GITHUB_CODING_RETRY_DISPATCHED',{issueNumber:n,codingObjectiveId:retryObjective.id,priorObjectiveId:id,retryAttempt,retryKey,reason:classification.reason});
