@@ -126,14 +126,18 @@ button{font:inherit}
 const $=id=>document.getElementById(id);
 let snapshot=null,activeFilter='all';
 const LAST_GOOD_KEY='tigeriq-live-last-good-v3';
+const LEGACY_LAST_GOOD_KEY='tigeriq-live-last-good-v2';
 const LAST_GOOD_MAX_MS=30*60*1000;
 const stateLabel={working:'ĐANG LÀM',waiting:'CHỜ',blocked:'BỊ CHẶN',idle:'RẢNH',unknown:'CHƯA RÕ',paused:'TẠM NGƯNG'};
 const workStateLabel={WORKING:'ĐANG LÀM',REVIEW:'ĐANG RÀ SOÁT',WAITING:'CHỜ',BLOCKED:'BỊ CHẶN',QUEUED:'XẾP HÀNG'};
 function readLastGood(){
   try{
     const raw=JSON.parse(localStorage.getItem(LAST_GOOD_KEY)||'null');
-    if(!raw?.value||!Number.isFinite(raw.savedAt)||Date.now()-raw.savedAt>LAST_GOOD_MAX_MS)return null;
-    return raw.value;
+    if(raw?.value&&Number.isFinite(raw.savedAt)&&Date.now()-raw.savedAt<=LAST_GOOD_MAX_MS)return raw.value;
+    const legacy=JSON.parse(localStorage.getItem(LEGACY_LAST_GOOD_KEY)||'null');
+    const legacyAt=Date.parse(legacy?.workProjection?.verifiedAt||legacy?.generatedAt||0);
+    if(legacy&&legacyAt&&Date.now()-legacyAt<=LAST_GOOD_MAX_MS)return legacy;
+    return null;
   }catch{return null}
 }
 function writeLastGood(value){
