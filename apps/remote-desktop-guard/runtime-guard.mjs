@@ -1,10 +1,10 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
-import { dirname, resolve } from 'node:path';
+import path from 'node:path';
 
 export const REMOTE_GUARD_ENV = 'TIGERIQ_REMOTE_GUARD';
 export const MAX_OWNER_LEASE_MS = 5 * 60 * 1000;
-export const DEFAULT_LEASE_PATH = 'D:\\TigerIQ\\Runtime\\desktop-commander-remote\\owner-mutation-lease.json';
+export const DEFAULT_LEASE_PATH = 'D:\\TigerIQ\\Runtime\\desktop-commander-remote\\guard\\owner-lease.json';
 
 export const OBSERVATION_DIRECTORIES = Object.freeze([
   'D:\\TigerIQ\\Apps\\ChromeController\\Runtime',
@@ -24,6 +24,8 @@ export const READ_ONLY_TOOLS = Object.freeze([
   'list_sessions',
   'list_processes',
   'get_usage_stats',
+  'ping',
+  'who_am_i',
 ]);
 
 export const MUTATION_TOOLS = Object.freeze([
@@ -43,6 +45,7 @@ export const MUTATION_TOOLS = Object.freeze([
   'get_more_search_results',
   'list_searches',
   'get_recent_tool_calls',
+  'shutdown',
 ]);
 
 function canonical(value) {
@@ -58,7 +61,8 @@ export function argsHash(args = {}) {
 }
 
 function normalizeWindowsPath(value) {
-  return resolve(String(value || '')).replace(/\//g, '\\').replace(/\\+$/g, '').toLowerCase();
+  if (typeof value !== 'string' || !path.win32.isAbsolute(value)) return null;
+  return path.win32.normalize(value).replace(/[\\/]+$/g, '').toLowerCase();
 }
 
 function isAllowedObservationPath(value) {
@@ -175,7 +179,7 @@ export async function mintOwnerLease({ tool, args = {}, riskClass = requiredRisk
     expiresAt:new Date(now + ttlMs).toISOString(),
     consumed:false,
   };
-  await mkdir(dirname(leasePath), { recursive:true });
+  await mkdir(path.dirname(leasePath), { recursive:true });
   await writeFile(leasePath, JSON.stringify(lease, null, 2), { encoding:'utf8', flag:'wx' });
   return lease;
 }
