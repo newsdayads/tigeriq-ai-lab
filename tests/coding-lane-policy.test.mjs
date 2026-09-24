@@ -106,3 +106,8 @@ test('PowerShell updater is path-aware and leaves Core alone for non-Core change
   assert.match(updater,/webRestarted=\$impact\.web/);
   assert.match(updater,/codingRestarted=\$impact\.coding/);
 });
+
+test('owner-facing references require invariant format #<number> - <Name>',()=>{
+  const workflowDoc = readFileSync(new URL('../bootstrap/02_TIGERIQ_WORKFLOW.md', import.meta.url), 'utf8');
+  assert.match(workflowDoc, /#\d+\s+-\s+[\p{L}\p{N}\s]+/u);
+});
