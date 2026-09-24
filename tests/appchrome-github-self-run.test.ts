@@ -196,27 +196,21 @@ describe('App Chrome self-run wiring',()=>{
     expect(tick).not.toContain("releaseGithubClaim({claimId:claim.claimId,workerId,issueNumber:issue.number,state:'DISPATCH_ERROR'");
   });
 
-  it('runs independently of external Core assignment while keeping Core available for collision hints',()=>{
-    expect(server).toContain("const selfRunEnabled=process.env.TIGERIQ_APP_CHROME_SELF_RUN!=='0'");
+  it('keeps legacy self-run implementation inert under current #504 policy',()=>{
+    expect(server).toContain('const selfRunEnabled=false');
     expect(server).toContain('listOpenGithubIssues');
     expect(server).toContain('claimGithubIssue');
     expect(server).toContain('new DurableSelfRunClaimStore');
-    expect(server).toContain("local.kind==='BUSY'");
-    expect(server).toContain('claimId:local.claim.claimId');
-    expect(server).toContain('eligibleIssuesForWorker');
-    expect(server).toContain('bestEffortExternalActiveScopes');
     expect(server).toContain('scheduleSelfRunTick(5000)');
-    expect(server).toContain("source:'APP_CHROME_SELF_RUN'");
-    expect(server).not.toContain('if(!config.autopilot.enabled)return false; // self-run gate');
+    expect(supervisor).toContain("$env:TIGERIQ_APP_CHROME_SELF_RUN='0'");
+    expect(supervisor).not.toContain("APPCHROME_GITHUB_CREDENTIAL_UNAVAILABLE");
   });
 
-  it('reuses existing GitHub auth from the logged-on user keyring without changing credential ACLs',()=>{
+  it('does not change GitHub credential ACLs while self-run is disabled',()=>{
     expect(supervisor).toContain("Get-Command gh.exe");
     expect(supervisor).toContain("auth token");
-    expect(supervisor).toContain("APPCHROME_GITHUB_CREDENTIAL_UNAVAILABLE");
     expect(supervisor).toContain("github-command-center.token");
     expect(supervisor).toContain("Get-Content -LiteralPath $githubTokenFile -Raw -ErrorAction Stop");
-    expect(supervisor).toContain("$env:TIGERIQ_APP_CHROME_SELF_RUN='1'");
     expect(supervisor).not.toContain('Set-Acl');
   });
 });
