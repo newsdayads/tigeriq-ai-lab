@@ -53,8 +53,27 @@ button{font:inherit}
 .foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px;padding-top:9px;border-top:1px solid #183047;font-size:10px;color:#8296ad}
 .source{color:#86bfff;white-space:nowrap}
 .empty{border:1px dashed #2a425d;border-radius:16px;padding:24px 14px;text-align:center;color:var(--muted);font-size:12px}
+.work-zone{margin:0 0 11px}
+.work-zone+.work-zone{margin-top:2px}
+.work-zone-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:1px 2px 7px}
+.work-zone-head h2{font-size:14px;line-height:1.2;margin:0}
+.work-zone-head span{font-size:10px;color:var(--muted)}
+.work-list{display:grid;gap:7px}
+.work-card{display:block;border:1px solid var(--line);background:#0b1829;border-radius:14px;padding:10px 11px;min-width:0}
+.work-title{font-size:12px;font-weight:800;line-height:1.35;overflow-wrap:anywhere}
+.work-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:7px;font-size:10px;color:var(--muted)}
+.work-meta b{color:#cfe3fa}
+.work-state{border:1px solid #3a4d63;border-radius:999px;padding:3px 6px;font-weight:850;font-size:9px}
+.work-state.working{border-color:#24533f;background:#103526;color:#8de7b1}
+.work-state.review,.work-state.waiting{border-color:#6a4d26;background:#392b17;color:#ffd18b}
+.work-state.blocked{border-color:#6b3039;background:#3b1d23;color:#ffb0b6}
+.work-state.queued{border-color:#315b8a;background:#102947;color:#a9d4ff}
+.work-step{margin-top:6px;font-size:10px;line-height:1.4;color:#b5c5d7;overflow-wrap:anywhere}
+.work-proof{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:7px;padding-top:7px;border-top:1px solid #183047;font-size:9px;color:#8296ad}
+.work-proof span:last-child{text-align:right}
+.work-empty{border:1px dashed #253e58;border-radius:13px;padding:11px;color:var(--muted);font-size:10px}
 .page-foot{padding:14px 2px 0;color:#6d8097;font-size:9px;line-height:1.5;text-align:center}
-@media(max-width:390px){.summary{gap:5px}.sum{padding:9px 6px}.sum span{font-size:9px}.sum b{font-size:20px}.brand h1{font-size:20px}.worker{padding:12px}.job{font-size:13px}}
+@media(max-width:390px){.summary{gap:5px}.sum{padding:9px 6px}.sum span{font-size:9px}.sum b{font-size:20px}.brand h1{font-size:20px}.work-card{padding:9px 10px}.work-title{font-size:11px}.worker{padding:12px}.job{font-size:13px}}
 </style>
 </head>
 <body>
@@ -69,6 +88,14 @@ button{font:inherit}
   <div class="sum wait"><span>Chờ</span><b id="sumWait">0</b></div>
   <div class="sum block"><span>Bị chặn</span><b id="sumBlock">0</b></div>
   <div class="sum idle"><span>Rảnh</span><b id="sumIdle">0</b></div>
+</section>
+<section class="work-zone" aria-labelledby="activeWorkHeading">
+  <div class="work-zone-head"><h2 id="activeWorkHeading">Công việc đang thực hiện</h2><span id="activeWorkCount">—</span></div>
+  <div id="activeWork" class="work-list"></div>
+</section>
+<section class="work-zone" aria-labelledby="nextQueueHeading">
+  <div class="work-zone-head"><h2 id="nextQueueHeading">Hàng đợi tiếp theo</h2><span id="nextQueueCount">—</span></div>
+  <div id="nextQueue" class="work-list"></div>
 </section>
 <nav class="filters" aria-label="Bộ lọc trạng thái">
   <button class="filter active" data-filter="all">Tất cả</button>
@@ -103,8 +130,44 @@ function sourceLabel(s){
   return s.type||'Nguồn';
 }
 function esc(t){const d=document.createElement('div');d.textContent=String(t??'');return d.innerHTML}
+function workStateClass(value){return String(value||'').toLowerCase()}
+function renderWorkSections(){
+  const projection=snapshot?.workProjection||{};
+  const active=Array.isArray(snapshot?.activeWork)?snapshot.activeWork:[];
+  const queue=Array.isArray(snapshot?.nextQueue)?snapshot.nextQueue:[];
+  $('activeWorkCount').textContent=active.length+' việc';
+  $('nextQueueCount').textContent=queue.length+' việc';
+  const activeBox=$('activeWork'),queueBox=$('nextQueue');
+  activeBox.innerHTML='';queueBox.innerHTML='';
+  if(!active.length){
+    activeBox.innerHTML='<div class="work-empty">'+(projection.mode==='unavailable'?'Chưa xác minh được Work Order; không suy đoán.':'Không có Work Order đang chạy được xác minh.')+'</div>';
+  }else{
+    active.forEach(w=>{
+      const el=document.createElement(w.url?'a':'article');el.className='work-card';
+      if(w.url){el.href=w.url;el.target='_blank';el.rel='noopener'}
+      const proof=[];
+      if(w.prNumber)proof.push('PR #'+w.prNumber);
+      if(w.checks)proof.push('kiểm tra '+w.checks.state+(Number.isFinite(w.checks.passed)&&Number.isFinite(w.checks.total)?' '+w.checks.passed+'/'+w.checks.total:''));
+      const meta=[w.priority||'—',w.employeeId||'NV chưa xác minh'];
+      el.innerHTML='<div class="work-title">'+esc('#'+w.number+' - '+w.title)+'</div><div class="work-meta"><b>'+esc(meta[0])+'</b><span>'+esc(meta[1])+'</span><span class="work-state '+esc(workStateClass(w.status))+'">'+esc(w.status||'WAITING')+'</span></div><div class="work-step">'+esc(w.currentStep||'Chưa có bước hiện tại được xác minh')+'</div><div class="work-proof"><span>'+esc(proof.join(' · ')||'Chưa có PR/check')+'</span><span>'+esc('Cập nhật '+age(w.updatedAt))+'</span></div>';
+      activeBox.append(el);
+    });
+  }
+  if(!queue.length){
+    queueBox.innerHTML='<div class="work-empty">'+(projection.mode==='unavailable'?'Chưa xác minh được hàng đợi GitHub.':'Không có việc kế tiếp đủ điều kiện.')+'</div>';
+  }else{
+    queue.forEach(w=>{
+      const el=document.createElement(w.url?'a':'article');el.className='work-card';
+      if(w.url){el.href=w.url;el.target='_blank';el.rel='noopener'}
+      const priority=(w.ownerDirect?'OWNER_DIRECT · ':'')+(w.priority||'—');
+      el.innerHTML='<div class="work-title">'+esc('#'+w.number+' - '+w.title)+'</div><div class="work-meta"><b>'+esc(priority)+'</b><span class="work-state '+esc(workStateClass(w.status))+'">'+esc(w.status||'QUEUED')+'</span></div>'+(w.waitReason?'<div class="work-step">'+esc(w.waitReason)+'</div>':'');
+      queueBox.append(el);
+    });
+  }
+}
 function render(){
   if(!snapshot)return;
+  renderWorkSections();
   const s=snapshot.summary||{};
   $('sumWork').textContent=s.working||0;$('sumWait').textContent=s.waiting||0;$('sumBlock').textContent=s.blocked||0;$('sumIdle').textContent=s.idle||0;
   const all=snapshot.workers||[],rows=activeFilter==='all'?all:all.filter(x=>x.state===activeFilter);
