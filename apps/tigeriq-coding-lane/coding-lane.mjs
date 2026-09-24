@@ -154,8 +154,8 @@ const OWNER=process.env.TIGERIQ_GITHUB_OWNER||'newsdayads';
 const REPO=process.env.TIGERIQ_GITHUB_REPO||'tigeriq-ai-lab';
 const HOST=process.env.TIGERIQ_CODING_HOST||'127.0.0.1';
 const PORT=Number(process.env.TIGERIQ_CODING_PORT||8797);
-const CORE_STATUS_URL=process.env.TIGERIQ_CORE_STATUS_URL?.trim()||`http://${process.env.TIGERIQ_CORE_HOST?.trim()||'127.0.0.1'}:${Number(process.env.TIGERIQ_CORE_PORT||8795)}/api/status`;
-const CORE_RESOURCE_HEALTH_TTL_MS=Math.max(3000,Number(process.env.TIGERIQ_CODING_CORE_HEALTH_TTL_MS||10000));
+const CORE_STATUS_URL=process.env.TIGERIQ_CORE_STATUS_URL?.trim()||`http://${process.env.TIGERIQ_CORE_HOST?.trim()||HOST}:${Number(process.env.TIGERIQ_CORE_PORT||8795)}/api/status`;
+const CORE_RESOURCE_HEALTH_TTL_MS=Math.max(5000,Number(process.env.TIGERIQ_CODING_CORE_HEALTH_TTL_MS||10000));
 const AUTO_MERGE=String(process.env.TIGERIQ_CODING_AUTO_MERGE||'true').toLowerCase()==='true';
 export function normalizeCodingParallelLimit(value=6){const n=Number(value);return Math.max(1,Math.min(6,Number.isFinite(n)?Math.floor(n):6))}
 const MAX_PARALLEL=normalizeCodingParallelLimit(process.env.TIGERIQ_CODING_MAX_PARALLEL||6);
@@ -184,11 +184,12 @@ let coreResourceHealth={fetchedAt:0,byEmployee:new Map()};
 
 export function coreResourceStateEligible(state,nowMs=Date.now()){
   if(!state||typeof state!=='object')return false;
-  const health=String(state.health_state??state.healthState??state.status??'').toUpperCase();
+  const health=String(state.health_state??state.healthState??'').toUpperCase();
   const work=String(state.work_state??state.workState??'').toUpperCase();
   const status=String(state.status??'').toUpperCase();
   const cooldownUntil=Date.parse(String(state.cooldown_until??state.cooldownUntil??''));
-  if(state.enabled===false)return false;
+  const quota=state.quota_state??state.quotaState??{};
+  if(state.enabled===false||quota?.usable===false)return false;
   if(['ERROR','RATE_LIMITED','OFFLINE','DISABLED','WAIT_KEY'].includes(health)||['ERROR','RATE_LIMITED','OFFLINE','DISABLED','WAIT_KEY'].includes(status))return false;
   if(Number.isFinite(cooldownUntil)&&cooldownUntil>nowMs)return false;
   if(state.current_job_id??state.currentJobId)return false;
@@ -208,6 +209,8 @@ export function setCoreResourceHealthSnapshot(snapshot,nowMs=Date.now()){
 }
 
 async function refreshCoreResourceHealth(){
+  const nowMs=Date.now();
+  if(coreResourceHealth.fetchedAt&&nowMs-coreResourceHealth.fetchedAt<CORE_RESOURCE_HEALTH_TTL_MS)return true;
   try{
     const snapshot=await fetchJson(CORE_STATUS_URL,{},3000);
     setCoreResourceHealthSnapshot(snapshot,Date.now());
@@ -456,41 +459,14 @@ export function applyCompactEdits(content,edits){
   return out;
 }
 
-export function buildGenerationPrompt(worker,j,context,reviewIssues=[]){
-  return `You are ${worker.id}, an autonomous TigerIQ repository engineer. Implement ONLY the assigned task on a GitHub branch.\nTASK: ${j.instruction}\nALLOWED PATHS: ${j.paths.join(', ')}\n${reviewIssues.length?`REVIEW ISSUES TO FIX: ${JSON.stringify(reviewIssues)}\n`:''}CURRENT FILES:\n${context}\nReturn ONLY JSON {"summary":"short","edits":[{"path":"exact allowed path","old":"exact unique existing snippet copied verbatim from CURRENT FILES","new":"replacement snippet"}]}. Use compact edits only; do NOT return a complete replacement file. Each old snippet must exist exactly once in its file. Do not touch paths outside ALLOWED PATHS. Never output secrets. Keep changes minimal and testable.`;
-}
-
 export function buildRepairGenerationPrompt(worker,j,context,issues=[]){
-  return `You are ${worker.id}, an autonomous TigerIQ repository engineer. Fix ONLY the listed issues on the existing branch.\nTASK: ${j.instruction}\nALLOWED PATHS: ${j.paths.join(', ')}\nREVIEW ISSUES TO FIX: ${JSON.stringify(issues)}\nCURRENT FILES:\n${context}\nReturn ONLY JSON {"summary":"short","edits":[{"path":"exact allowed path","old":"exact unique existing snippet copied verbatim from CURRENT FILES","new":"replacement snippet"}]}. Use compact edits only; do NOT return a complete replacement file. Each old snippet must exist exactly once in its file. Do not touch paths outside ALLOWED PATHS. Never output secrets. Keep changes minimal and testable.`;
+  return `You are ${worker.id}, an autonomous TigerIQ repository engineer. Fix ONLY the listed issues on the existing branch.\nTASK: ${j.instruction}\nALLOWED PATHS: ${j.paths.join(', ')}\nREVIEW ISSUES TO FIX: ${JSON.stringify(issues)}\nCURRENT FILES:\n${context}\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}. Do not touch paths outside ALLOWED PATHS. Never output secrets. Keep changes minimal and testable.`;
 }
-
-export function validateCompactGenerationPayload(data,allowedPaths=[]){
-  validateCompactEdits(data?.edits,allowedPaths);
-  return true;
-}
-
-async function materializeCompactChanges(edits,ref='main'){
-  const grouped=new Map();
-  for(const edit of edits||[]){
-    if(!grouped.has(edit.path))grouped.set(edit.path,[]);
-    grouped.get(edit.path).push(edit);
-  }
-  const changes=[];
-  for(const [path,pathEdits] of grouped){
-    const current=await readRepoFile(path,ref);
-    if(!current.sha)throw new Error(`CODING_COMPACT_EDIT_EXISTING_FILE_REQUIRED:${path}`);
-    const content=applyCompactEdits(current.content,pathEdits);
-    assertSafeFileChange({path,before:current.content,after:content,isNew:false});
-    changes.push({path,content});
-  }
-  return changes;
-}
-async function generateRepairChanges(worker,j,context,issues=[],exclude=[],ref='main'){
+async function generateRepairChanges(worker,j,context,issues=[],exclude=[]){
   const prompt=buildRepairGenerationPrompt(worker,j,context,issues);
-  const validateData=d=>validateCompactGenerationPayload(d,j.paths);
+  const validateData=d=>{validateChanges(d.changes,j.paths);validateJobScope(j.paths,d.changes)};
   const invoked=await invokeJsonWithFailover(worker,prompt,{exclude,validateData,shrinkPrompt:preserveGenerationPrompt});
-  const changes=await materializeCompactChanges(invoked.data.edits,ref);
-  return {payload:{...invoked.data,changes},resource:invoked.resource};
+  return {payload:invoked.data,resource:invoked.resource};
 }
 async function writeRepairChanges(branch,changes,mutationAuth={}){
   for(const change of changes)await writeFile(branch,change,mutationAuth);
@@ -504,7 +480,7 @@ async function generateAndWriteRepair(worker,j,branch,issues=[],exclude=[],mutat
     const context=await contextFor(j.paths,branch);
     const retryIssues=attempt===1?issues:[...issues,'Refresh the CURRENT FILES from this same PR branch and regenerate the compact patch; keep the same PR and scope.'];
     try{
-      const generated=await generateRepairChanges(selected,j,context,retryIssues,exclude,branch);
+      const generated=await generateRepairChanges(selected,j,context,retryIssues,exclude);
       selected=generated.resource;
       await writeRepairChanges(branch,generated.payload.changes,mutationAuth);
       return {worker:selected,payload:generated.payload};
@@ -516,7 +492,7 @@ async function generateAndWriteRepair(worker,j,branch,issues=[],exclude=[],mutat
   }
   throw last||new Error('CODING_COMPACT_PATCH_REFRESH_EXHAUSTED');
 }
-async function generateChanges(worker,j,context,reviewIssues=[],exclude=[],ref='main'){const prompt=buildGenerationPrompt(worker,j,context,reviewIssues);const validateData=d=>validateCompactGenerationPayload(d,j.paths);const invoked=await invokeJsonWithFailover(worker,prompt,{exclude,validateData,shrinkPrompt:preserveGenerationPrompt});const changes=await materializeCompactChanges(invoked.data.edits,ref);return {payload:{...invoked.data,changes},resource:invoked.resource}}
+async function generateChanges(worker,j,context,reviewIssues=[],exclude=[]){const prompt=`You are ${worker.id}, an autonomous TigerIQ repository engineer. Implement ONLY the assigned task on a GitHub branch.\nTASK: ${j.instruction}\nALLOWED PATHS: ${j.paths.join(', ')}\n${reviewIssues.length?`REVIEW ISSUES TO FIX: ${JSON.stringify(reviewIssues)}\n`:''}CURRENT FILES:\n${context}\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}. Do not touch paths outside ALLOWED PATHS. Never output secrets. Keep changes minimal and testable.`;const validateData=d=>{validateChanges(d.changes,j.paths);validateJobScope(j.paths,d.changes)};const invoked=await invokeJsonWithFailover(worker,prompt,{exclude,validateData,shrinkPrompt:preserveGenerationPrompt});const d=invoked.data;return {payload:d,resource:invoked.resource}}
 async function reviewPr(reviewer,j,diff,implementerId,extraExclude=[]){const prompt=`You are ${reviewer.id}, independent TigerIQ code reviewer. Review against the task and safety boundaries. TASK: ${j.instruction}\nDIFF:\n${diff.slice(0,180000)}\nReturn ONLY JSON {"decision":"approve|changes_requested","summary":"short","issues":["specific issue"]}. Reject unsafe, untested, out-of-scope, credential/security/production changes.`;const invoked=await invokeJsonWithFailover(reviewer,prompt,{exclude:[implementerId,...extraExclude]});const d=invoked.data;if(!['approve','changes_requested'].includes(d.decision)){const e=new Error('REVIEW_DECISION_INVALID');e.code='REVIEW_SCHEMA_INVALID';throw e}d.issues=Array.isArray(d.issues)?d.issues.slice(0,8):[];return {review:d,resource:invoked.resource}}
 
 async function runJob(j){
