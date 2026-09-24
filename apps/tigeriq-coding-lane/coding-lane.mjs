@@ -3,7 +3,7 @@ import {randomUUID} from 'node:crypto';
 import {Pool} from 'pg';
 import {branchName,checkGateState,extractCanonicalAllowedPaths,isRetryableAiError,parseJsonObject,safeRepoPath,validateChanges} from './policy.mjs';
 import {assertSafeFileChange} from './safety-guard.mjs';
-import {compactPromptForChanges,currentFilesFromPrompt,expandCompactChanges,installAiJsonTransport} from './ai-json-transport.mjs';
+import {compactPromptForChanges,currentFilesFromPrompt,expandCompactChanges,installAiJsonTransport,parseModelJson} from './ai-json-transport.mjs';
 import { createGeminiRateController } from '../shared/gemini-rate-control.mjs';
 import {assertExecutionPlaneMutationPaths,controlPlaneRepairIntent} from '../shared/control-plane-lock.mjs';
 
@@ -348,12 +348,9 @@ export function salvageCompactEditsJson(text){
   return edits.length?{summary:'salvaged complete compact edits from truncated model response',edits}:null;
 }
 export function parseCompactEditJson(text){
-  try{return parseJsonObject(text)}
-  catch(error){
-    const salvaged=salvageCompactEditsJson(text);
-    if(salvaged)return salvaged;
-    throw error;
-  }
+  const parsed=parseModelJson(text);
+  if(parsed&&typeof parsed==='object'&&!Array.isArray(parsed))return parsed;
+  return parseJsonObject(text);
 }
 
 export async function invokeJsonWithFailover(initialResource,prompt,{exclude=[],resourcePool=null,invokeFn=invoke,shrinkPrompt=shrinkAiPrompt,maxResources=null,validateData=null,parseData=parseJsonObject,sleepFn=sleep,randomFn=Math.random,backoffBaseMs=1000}={}){

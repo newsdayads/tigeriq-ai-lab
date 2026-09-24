@@ -1,7 +1,7 @@
 import {readFileSync} from 'node:fs';
 import {describe,expect,it} from 'vitest';
 import {compactCurrentFilesForModel,compactPromptForChanges,compactPromptForEdits,currentFilesFromPrompt,expandCompactChanges,extractModelText,firstBalancedJsonObject,isAiUrl,looksLikeJsonObject,matchesExpectedSchema,parseModelJson,prepareAiJsonRequest,installAiJsonTransport,salvageTruncatedCompactEdits} from '../apps/tigeriq-coding-lane/ai-json-transport.mjs';
-import {buildRepairGenerationPrompt,managerBlockKind} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {buildRepairGenerationPrompt,managerBlockKind,parseCompactEditJson} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 describe('coding lane AI JSON transport',()=>{
@@ -70,6 +70,20 @@ describe('coding lane AI JSON transport',()=>{
   it('does not salvage a truncated compact payload without any complete edit',()=>{
     const truncated='{"summary":"partial","edits":[{"path":"apps/a.mjs","search":"const n=1;","replace":"const n=2;';
     expect(salvageTruncatedCompactEdits(truncated)).toBe(null);
+  });
+
+  it('uses the tolerant transport parser for invalid escapes and truncated compact generation',()=>{
+    const malformed=String.raw`{"summary":"ok","edits":[{"path":"apps/a.mjs","search":"C:\TigerIQ","replace":"D:\TigerIQ"}]}`;
+    expect(parseCompactEditJson(malformed)).toEqual({
+      summary:'ok',
+      edits:[{path:'apps/a.mjs',search:'C:\\TigerIQ',replace:'D:\\TigerIQ'}],
+    });
+
+    const truncated=String.raw`{"summary":"partial","edits":[{"path":"apps/a.mjs","search":"C:\TigerIQ","replace":"D:\TigerIQ"},{"path":"apps/a.mjs","search":"x","replace":"`;
+    expect(parseCompactEditJson(truncated)).toEqual({
+      summary:'partial',
+      edits:[{path:'apps/a.mjs',search:'C:\\TigerIQ',replace:'D:\\TigerIQ'}],
+    });
   });
 
   it('detects valid versus malformed model JSON',()=>{
