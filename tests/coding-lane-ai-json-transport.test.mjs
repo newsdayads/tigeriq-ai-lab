@@ -40,14 +40,14 @@ describe('coding lane AI JSON transport',()=>{
     const body=JSON.parse(init.body);
     expect(isAiUrl(url)).toBe(true);
     expect(body.response_format).toEqual({type:'json_object'});
-    expect(body.max_tokens).toBe(1800);
+    expect(body.max_tokens).toBe(2600);
   });
 
   it('caps compact edit responses below provider default token budgets',()=>{
     const url='https://api.groq.com/openai/v1/chat/completions';
     const prompt='Return ONLY compact JSON {"summary":"short","edits":[{"path":"exact allowed path","old":"exact UNIQUE existing snippet","new":"replacement snippet"}]}.';
     const init=prepareAiJsonRequest(url,{method:'POST',body:JSON.stringify({messages:[{role:'user',content:prompt}],max_tokens:8000})});
-    expect(JSON.parse(init.body).max_tokens).toBe(1200);
+    expect(JSON.parse(init.body).max_tokens).toBe(2200);
   });
 
   it('supports NVIDIA OpenAI-compatible JSON mode',()=>{
