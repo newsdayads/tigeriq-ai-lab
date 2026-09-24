@@ -220,8 +220,12 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("ensureNv02LocalReadyLocked(target,raw,{forceFresh:false})");
     expect(source).toContain("'BOOT_LOCAL_CONTINUE_SUBMITTED'");
     expect(source).toContain("'LOCAL_CONTINUE_NOW',60000");
-    expect(source).toContain("if(forceFresh||(!ui?.composerReady&&projectContext()))");
-    expect(source).toContain("await newChat(target)");
+    expect(source).toContain("async function waitForNv02Composer(target,timeoutMs=20000)");
+    expect(source).toContain("if(forceFresh||!inProject())");
+    expect(source).toContain("await navigate(target,NV02_HOME_URL)");
+    expect(source).toContain("waitForNv02Composer(target,20000)");
+    expect(source).toContain("recoverNv02ProjectContext(target)");
+    expect(source).toContain("NV02_LOCAL_COMPOSER_NOT_READY");
     expect(source).toContain("NV02_LOCAL_READY_NOT_REACHED");
 
     expect(source).toContain("verifiedChatUrl:String(raw.verifiedChatUrl||'')");
