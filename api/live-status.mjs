@@ -12,9 +12,14 @@ const POINTER_CACHE_MS = 10 * 60 * 1000;
 const GITHUB_PROJECTION_CACHE_MS = 30 * 1000;
 const DEPENDENCY_CACHE_MS = 60 * 1000;
 const QUEUE_LIMIT = 20;
+const RECENT_WORK_LIMIT = 5;
+const RECENT_WORK_WINDOW_MS = 24 * 60 * 60 * 1000;
+const RECENT_WORK_CACHE_MS = 5 * 60 * 1000;
+const WORKING_HEARTBEAT_MAX_MS = 60 * 1000;
 let pointerCache = { at: 0, url: null };
 let cache = { at: 0, value: null };
 let githubProjectionCache = { at: 0, verifiedAt: null, data: null };
+let recentWorkCache = { at: 0, data: null };
 const dependencyCache = new Map();
 
 function json(res, status, body) {
@@ -290,6 +295,25 @@ function sanitizeRuntimeWorker(worker = {}) {
   };
 }
 
+export function normalizeRuntimeWorkerActivity(worker, referenceAt = Date.now()) {
+  if (!worker || worker.state !== 'working') return worker;
+  const heartbeatAt = Date.parse(worker.heartbeatAt || '');
+  const heartbeatAge = Number.isFinite(heartbeatAt) ? Math.max(0, referenceAt - heartbeatAt) : Number.POSITIVE_INFINITY;
+  const hasCurrentJob = Boolean(worker.currentJobId);
+  const heartbeatFresh = heartbeatAge <= WORKING_HEARTBEAT_MAX_MS;
+  if (hasCurrentJob && heartbeatFresh) return worker;
+  const reason = [
+    !hasCurrentJob ? 'thiếu mã việc đang chạy' : '',
+    !heartbeatFresh ? 'heartbeat quá 60 giây' : '',
+  ].filter(Boolean).join(' · ');
+  return {
+    ...worker,
+    state: 'unknown',
+    status: 'CHƯA RÕ',
+    detail: cleanText([worker.detail, reason].filter(Boolean).join(' · '), 220),
+  };
+}
+
 
 export function parseIssueNumber(...values) {
   for (const value of values) {
@@ -330,6 +354,45 @@ function issueIsTerminalOrExcluded(issue) {
   const body = String(issue.body || '');
   const state = bodyValue(body, 'STATE').toUpperCase();
   return state === 'EXCLUDED' || bodyFlag(body, 'EXCLUDED') || bodyValue(body, 'AUTO_QUEUE').toUpperCase() === 'EXCLUDED';
+}
+
+export function parseRecentCompletedIssue(issue, now = Date.now()) {
+  if (!issue || issue.pull_request || issue.state !== 'closed') return null;
+  if (String(issue.state_reason || '').toLowerCase() === 'not_planned') return null;
+  const body = String(issue.body || '');
+  const terminalState = bodyValue(body, 'STATE').toUpperCase();
+  if (['CANCELLED', 'CANCELED', 'SUPERSEDED', 'NOT_PLANNED'].includes(terminalState)) return null;
+  if (/^SUPERSEDED(?:_BY)?=/mi.test(body)) return null;
+  const completedAt = issue.closed_at || issue.updated_at || null;
+  const completedMs = Date.parse(completedAt || '');
+  if (!Number.isFinite(completedMs) || completedMs > now || now - completedMs > RECENT_WORK_WINDOW_MS) return null;
+  return {
+    number: Number(issue.number),
+    title: String(issue.title || ''),
+    status: 'DONE',
+    completedAt,
+    updatedAt: completedAt,
+    url: issue.html_url || null,
+  };
+}
+
+async function recentCompletedWork(owner, repo, fetchImpl = fetch) {
+  const now = Date.now();
+  if (Array.isArray(recentWorkCache.data) && now - recentWorkCache.at < RECENT_WORK_CACHE_MS) {
+    return recentWorkCache.data;
+  }
+  try {
+    const issues = await gh('/repos/' + owner + '/' + repo + '/issues?state=closed&per_page=30&sort=updated&direction=desc', fetchImpl);
+    const rows = (Array.isArray(issues) ? issues : [])
+      .map((issue) => parseRecentCompletedIssue(issue, now))
+      .filter(Boolean)
+      .sort((a, b) => Date.parse(b.completedAt || 0) - Date.parse(a.completedAt || 0))
+      .slice(0, RECENT_WORK_LIMIT);
+    recentWorkCache = { at: now, data: rows };
+    return rows;
+  } catch {
+    return Array.isArray(recentWorkCache.data) ? recentWorkCache.data : [];
+  }
 }
 
 function queueWaitReason(issue) {
@@ -628,6 +691,7 @@ async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
       }
     }
 
+    const recentWork = await recentCompletedWork(owner, repo, fetchImpl);
     const specs = openIssues.map(parseQueueIssue).filter(Boolean).filter((row) => !activeNumbers.has(row.number)).sort(compareQueueRows);
     const queueCandidates = specs.slice(0, Math.max(QUEUE_LIMIT * 2, 12));
     const depStates = await dependencyStates(queueCandidates, owner, repo, fetchImpl);
@@ -656,6 +720,7 @@ async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
       )),
       nextQueue,
       nextQueueTotal: specs.length,
+      recentWork,
       workProjection: {
         mode: projectionStale ? 'stale-cache' : (base.liveConnected ? 'pc01-live+github' : 'github-fallback'),
         queuePolicy: 'OWNER_DIRECT>P0>P1>P2>P3',
@@ -672,6 +737,7 @@ async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
       activeWork: [],
       nextQueue: [],
       nextQueueTotal: 0,
+      recentWork: [],
       workProjection: {
         mode: 'unavailable',
         queuePolicy: 'OWNER_DIRECT>P0>P1>P2>P3',
@@ -685,7 +751,8 @@ async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
 
 export function sanitizeRuntimePayload(payload) {
   if (!payload || payload.ok !== true || !Array.isArray(payload.workers)) throw new Error('runtime_bridge_payload_invalid');
-  const workers = payload.workers.map(sanitizeRuntimeWorker).filter(Boolean);
+  const referenceAt = Date.parse(payload.generatedAt || '') || Date.now();
+  const workers = payload.workers.map(sanitizeRuntimeWorker).filter(Boolean).map((worker) => normalizeRuntimeWorkerActivity(worker, referenceAt));
   const summary = {
     working: workers.filter((w) => w.state === 'working').length,
     waiting: workers.filter((w) => w.state === 'waiting').length,
@@ -713,6 +780,7 @@ export function sanitizeRuntimePayload(payload) {
     activeWork: runtimeWorkRows(workers),
     nextQueue: [],
     nextQueueTotal: 0,
+    recentWork: [],
   };
 }
 
@@ -807,6 +875,7 @@ export default async function handler(req, res) {
       activeWork: [],
       nextQueue: [],
       nextQueueTotal: 0,
+      recentWork: [],
       workProjection: {
         mode: 'unavailable',
         queuePolicy: 'OWNER_DIRECT>P0>P1>P2>P3',
