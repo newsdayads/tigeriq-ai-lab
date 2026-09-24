@@ -1,5 +1,5 @@
 # TIGERIQ — WORKFLOW
-Version: 3.5
+Version: 3.6
 Status: Source of Truth
 Priority: P0
 Updated: 2026-09-24
@@ -97,8 +97,9 @@ Khi NEW CHAT trong Project chỉ nhận **một số nguyên `N`**:
 - Nếu gặp bước cần quyền/thao tác vật lý thật, ghi vào deferred Owner action; không ngắt anh Sơn bằng chuỗi thao tác thủ công rời rạc nếu còn phương án tự động an toàn khác.
 - Không báo “đang chạy nền” nếu runtime thực tế không có cơ chế đó.
 
-## 10. Báo cáo `bc / báo cáo / tiến độ`
-Bắt buộc đúng 6 phần và ngắn:
+## 10. Báo cáo `bc / báo cáo / tiến độ` + `bcct`
+### Báo cáo nhanh
+`bc`, `BC`, `báo cáo`, `tiến độ` bắt buộc đúng 6 phần, ngắn và **GIỮ ICON**:
 1. 📊 Tổng tiến độ — thanh + %.
 2. 🚦 Hạng mục chính — thanh + % + trạng thái.
 3. 🔴 P0 BỊ CHẶN — chỉ blocker quan trọng nhất.
@@ -106,9 +107,21 @@ Bắt buộc đúng 6 phần và ngắn:
 5. 👥 Nhân sự AI — đang làm/rà soát/chờ/rảnh; gộp khi phù hợp.
 6. 🎯 Mốc kế tiếp — một outcome cụ thể.
 
+### Báo cáo chi tiết
+`bcct`, `BCCT`, `bc chi tiết`, `báo cáo chi tiết` = dashboard kỹ thuật chi tiết:
+- Giữ icon/visual progress.
+- Mở rộng AI employees/resources, Work Order/GitHub, evidence kỹ thuật, failures/blockers, history/delta và execution progress.
+- Không hiển thị bare `#xxx`; dùng `#<số> - <tiêu đề chuẩn>`.
+
+### Shortcut hiển thị
+Khi hiển thị lệnh/shortcut, luôn có:
+- 📊 `bc` — Báo cáo nhanh.
+- 🧾 `bcct` — Báo cáo chi tiết.
+
 Quy tắc:
 - % phải có evidence; nếu chỉ quản trị thì ghi `ước lượng quản trị`.
-- Không show SHA/PR/log dài trừ khi đó là blocker hoặc anh Sơn hỏi.
+- Không trả dashboard chữ thuần bỏ icon.
+- Không show SHA/PR/log dài trong `bc` trừ khi đó là blocker hoặc anh Sơn hỏi; `bcct` được phép mở rộng bằng chứng kỹ thuật.
 - Nhân sự chỉ hiển thị active khi có runtime/evidence thật.
 
 ## 11. Câu lệnh giao việc / bàn giao sang AI khác
@@ -117,13 +130,14 @@ Khi anh Sơn yêu cầu `prompt`, `đưa prompt`, `qua Work`, `giao NV` hoặc t
 - Bắt đầu chính xác: `LÀM — NO YAPPING.`
 - Phải viết bằng tiếng Việt; chỉ giữ nguyên chuỗi kỹ thuật bắt buộc.
 - Phải giữ đầy đủ nội dung cần thiết để AI khác làm đúng.
-- Mặc định gói toàn bộ câu lệnh giao việc thành 01 dòng vật lý duy nhất nếu không làm thay đổi nghĩa.
+- Mặc định toàn bộ prompt là **01 dòng vật lý duy nhất**; không tự chèn newline nếu không bắt buộc bởi cú pháp.
+- Không giải thích dài trước/sau prompt.
 
 ## 12. Chuẩn hiển thị nội dung cần sao chép
-- Dùng khối mã native của ChatGPT làm chuẩn chung vì có nút Copy.
-- Prompt/text/command dài nhưng không phụ thuộc xuống dòng: đặt toàn bộ trong 01 dòng vật lý bên trong 01 khối mã duy nhất.
+- Dùng đúng **01 code block native** của ChatGPT để có nút Copy.
+- Prompt/text/command dài nhưng không phụ thuộc xuống dòng: giữ 01 dòng vật lý, dùng horizontal scroll; mục tiêu là **hộp thấp/gọn trên mobile**, không biến thành hộp dài nhiều dòng.
 - Không rút gọn, không thay bằng dấu `...`, không bỏ điều kiện, quyền hạn, kiểm tra hoặc bằng chứng chỉ để khối nhỏ hơn.
-- Nếu cú pháp bắt buộc nhiều dòng thì giữ đúng cú pháp.
+- Chỉ dùng nhiều dòng khi cú pháp thực sự bắt buộc nhiều dòng.
 - Không hiển thị mã thực thi nội bộ nếu anh Sơn không yêu cầu xem mã.
 
 ## 13. Quản lý thay đổi chính sách — single-source architecture
