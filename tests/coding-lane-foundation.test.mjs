@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import {activeProviderCooldownIds,applyCompactEdits,assertPrOpenState,buildLocalFileContext,classifyAiFailure,codingPathsOverlap,gateFailureIssues,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,preserveGenerationPrompt,recoverAfterCodingRestart,resourceWaitPlan,restartRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,validateCompactEdits,validateManagerJobPaths} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {activeProviderCooldownIds,applyCompactEdits,assertPrOpenState,buildLocalFileContext,classifyAiFailure,codingPathsOverlap,coreResourceStateEligible,gateFailureIssues,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,preserveGenerationPrompt,recoverAfterCodingRestart,resourceWaitPlan,restartRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,validateCompactEdits,validateManagerJobPaths} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError,parseJsonObject} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 const nv11={id:'NV11',provider:'fake',model:'a'};
@@ -308,6 +308,17 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
   await t.test('temporary all-provider busy is a resource wait condition',()=>{
     const e=new Error('AI_RESOURCES_BUSY');e.code='AI_RESOURCES_BUSY';
     assert.strictEqual(isResourceTransientError(e),true);
+  });
+
+  await t.test('Core health gate rejects unhealthy, limited, cooled-down or busy API resources',()=>{
+    const now=Date.parse('2026-09-24T02:30:00Z');
+    assert.strictEqual(coreResourceStateEligible({enabled:true,health_state:'ONLINE',work_state:'IDLE',status:'IDLE',quota_state:{usable:true}},now),true);
+    assert.strictEqual(coreResourceStateEligible({enabled:true,health_state:'ERROR',work_state:'ERROR',status:'ERROR'},now),false);
+    assert.strictEqual(coreResourceStateEligible({enabled:true,health_state:'ONLINE',work_state:'IDLE',status:'RATE_LIMITED'},now),false);
+    assert.strictEqual(coreResourceStateEligible({enabled:true,health_state:'ONLINE',work_state:'IDLE',status:'IDLE',quota_state:{usable:false}},now),false);
+    assert.strictEqual(coreResourceStateEligible({enabled:true,health_state:'ONLINE',work_state:'BUSY',status:'BUSY',current_job_id:'JOB-1'},now),false);
+    assert.strictEqual(coreResourceStateEligible({enabled:true,health_state:'ONLINE',work_state:'IDLE',status:'IDLE',cooldown_until:'2026-09-24T02:31:00Z'},now),false);
+    assert.strictEqual(coreResourceStateEligible({enabled:true,health_state:'ONLINE',work_state:'IDLE',status:'IDLE',cooldown_until:'2026-09-24T02:29:00Z'},now),true);
   });
 
   await t.test('production runJob persists implementer before long generation',()=>{

@@ -1,6 +1,6 @@
 import {readFileSync} from 'node:fs';
 import {describe,expect,it} from 'vitest';
-import {compactCurrentFilesForModel,compactPromptForChanges,compactPromptForEdits,currentFilesFromPrompt,expandCompactChanges,extractModelText,isAiUrl,looksLikeJsonObject,matchesExpectedSchema,prepareAiJsonRequest,installAiJsonTransport,salvageTruncatedCompactEdits} from '../apps/tigeriq-coding-lane/ai-json-transport.mjs';
+import {compactCurrentFilesForModel,compactPromptForChanges,compactPromptForEdits,currentFilesFromPrompt,expandCompactChanges,extractModelText,firstBalancedJsonObject,isAiUrl,looksLikeJsonObject,matchesExpectedSchema,parseModelJson,prepareAiJsonRequest,installAiJsonTransport,salvageTruncatedCompactEdits} from '../apps/tigeriq-coding-lane/ai-json-transport.mjs';
 import {buildRepairGenerationPrompt,managerBlockKind} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError} from '../apps/tigeriq-coding-lane/policy.mjs';
 
@@ -11,6 +11,18 @@ describe('coding lane AI JSON transport',()=>{
     expect(prompt).toContain('"changes":[{"path"');
     expect(compactPromptForChanges(prompt)).toContain('"edits":[{"path"');
     expect(compactPromptForChanges(prompt)).toContain('CURRENT FILES:');
+  });
+
+  it('parses the first complete JSON object when a provider appends another object',()=>{
+    const noisy='{"summary":"ok","edits":[{"path":"tests/a.test.mjs","search":"const x=1;","replace":"const x=2;"}]}\n{"note":"extra"}';
+    expect(firstBalancedJsonObject(noisy)).toBe('{"summary":"ok","edits":[{"path":"tests/a.test.mjs","search":"const x=1;","replace":"const x=2;"}]}');
+    expect(parseModelJson(noisy)?.summary).toBe('ok');
+  });
+
+  it('expands a compact edit despite trailing provider JSON noise',()=>{
+    const prompt='CURRENT FILES:\nFILE tests/a.test.mjs\nconst x=1;\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}. Do not touch paths outside ALLOWED PATHS. Never output secrets. Keep changes minimal and testable.';
+    const noisy='{"summary":"ok","edits":[{"path":"tests/a.test.mjs","search":"const x=1;","replace":"const x=2;"}]}\n{"note":"extra"}';
+    expect(expandCompactChanges(prompt,noisy)).toEqual({summary:'ok',changes:[{path:'tests/a.test.mjs',content:'const x=2;'}]});
   });
 
   it('forces JSON mode for Gemini',()=>{
