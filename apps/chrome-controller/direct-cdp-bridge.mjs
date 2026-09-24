@@ -3,13 +3,12 @@ import http from 'node:http';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import {
-  CONTINUE_MIN_MS, CONTINUE_MAX_MS, REFRESH_MIN_MS, REFRESH_MAX_MS,
+  CONTINUE_MIN_MS, CONTINUE_MAX_MS,
   WORKER_F5_MIN_MS, WORKER_F5_MAX_MS, CONTINUITY_WORKERS,
-  MAX_STALLED_CHECKS, WORKING_PROGRESS_CHECK_MS, MAX_WORKING_UNCHANGED_CHECKS, shouldRotateNv02Chat,
-  deriveNv02Phase, deriveWorkerPhase, hasActiveNv02Work, hasWaitingEvidenceNv02Work, hasContinuableNv02Work, hasContinuableWorkerWork,
+  MAX_STALLED_CHECKS, WORKING_PROGRESS_CHECK_MS, MAX_WORKING_UNCHANGED_CHECKS,
+  deriveNv02Phase, deriveWorkerPhase,
   nextRandomAt, randomDelay, pickContinuePrompt, computeWorkerStaggerDelay,
 } from './extension/continuity.js';
-import { buildDurableSavePrompt, waitForDurableSaveReceipt } from './extension/save-receipt.js';
 
 const CONFIG='D:\\TigerIQ\\Apps\\ChromeController\\Config\\chrome-controller.json';
 const LOG='D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\direct-cdp-bridge.jsonl';
@@ -856,19 +855,6 @@ async function releaseBridgeMutationLease(workerId,lease){
     method:'POST',headers:auth(workerId,true),body:JSON.stringify(lease),signal:AbortSignal.timeout(4000)
   }).catch(()=>{});
 }
-async function externalAutopilotOwnsNextNv02Job(){
-  try{
-    const stateResponse=await fetch(`${CONTROLLER}/api/state`,{signal:AbortSignal.timeout(2500)});
-    if(!stateResponse.ok)return false;
-    const state=await stateResponse.json();
-    if(state?.externalWorkAutopilotEnabled!==true||state?.ownerInteractionMode==='READ_ONLY')return false;
-    const autoResponse=await fetch(`${CONTROLLER}/api/autopilot/state`,{signal:AbortSignal.timeout(2500)});
-    if(!autoResponse.ok)return false;
-    const auto=await autoResponse.json();
-    const next=auto?.snapshot?.nextJob;
-    return Boolean(next&&next.workerId==='NV02'&&next.executable===true&&['QUEUED','READY'].includes(String(next.status||'')));
-  }catch{return false;}
-}
 async function navigate(target,url){
   const p=await pageRpc(target);try{await p.call('Page.enable');await p.call('Page.navigate',{url});}finally{p.close();}
 }
@@ -1111,84 +1097,6 @@ async function withNv02Mutation(fn,purpose='NORMAL',ttlMs=30000){
     log('NV02_LOCAL_MUTATION_RELEASED',{purpose,sharedMode});
   }
 }
-function findContinuableNv02Work(controllerState){
-  return (controllerState?.jobs||[]).find((job)=>
-    job?.workerId==='NV02'
-    &&['SUBMITTED','WORKING','WAITING_EVIDENCE','VERIFY'].includes(String(job?.stage||''))
-    &&!job?.completedAt
-    &&typeof job?.issueRef==='string'
-    &&job.issueRef.trim().length>0
-  )||null;
-}
-function sameContinuableNv02Work(expected,current){
-  if(!expected||!current)return false;
-  const sameIssue=String(expected.issueRef||'').trim()===String(current.issueRef||'').trim();
-  const expectedJob=String(expected.jobId||'').trim(),currentJob=String(current.jobId||'').trim();
-  return sameIssue&&(!expectedJob||!currentJob||expectedJob===currentJob);
-}
-function buildCurrentWorkIssueRestorePrompt(currentWork){
-  const issueRef=String(currentWork?.issueRef||'').trim();
-  const jobId=String(currentWork?.jobId||'').trim();
-  if(!issueRef)throw new Error('CURRENT_WORK_RESTORE_ISSUE_REQUIRED');
-  return `LÀM — NO YAPPING. CURRENT_WORK_ORDER=${issueRef}${jobId?` | JOB_ID=${jobId}`:''}. Đây là chat mới. Đọc đầy đủ Work Order và checkpoint/evidence mới nhất từ GitHub, xác minh trạng thái hiện hành rồi tiếp tục đúng công việc đó. Không tự chọn backlog/P0/việc khác. Chỉ dừng khi DONE có evidence, BLOCKED thật, EXTERNAL_WAIT hoặc hard gate.`;
-}
-function buildCurrentWorkRestorePrompt({currentWork,receipt}){
-  const issueRef=String(currentWork?.issueRef||'').trim();
-  const jobId=String(currentWork?.jobId||'').trim();
-  const checkpointRef=String(receipt?.checkpointRef||'').trim();
-  const receiptRef=String(receipt?.receiptRef||'').trim();
-  if(!issueRef||!checkpointRef||!receiptRef)throw new Error('CURRENT_WORK_RESTORE_INPUT_INVALID');
-  return `LÀM — NO YAPPING. CURRENT_WORK_ORDER=${issueRef}${jobId?` | JOB_ID=${jobId}`:''}. CURRENT_CHECKPOINT=${checkpointRef}. DURABLE_SAVE_RECEIPT=${receiptRef}. Đọc đầy đủ CURRENT_WORK_ORDER và CURRENT_CHECKPOINT từ GitHub, xác minh trạng thái hiện hành rồi tiếp tục đúng công việc đó từ checkpoint. Không tự chọn backlog/P0/việc khác. Không dùng lệnh “Tiếp tục” chung chung để tự suy công việc. Chỉ dừng khi DONE có evidence, BLOCKED thật, EXTERNAL_WAIT hoặc hard gate.`;
-}
-async function dispatchCurrentWorkRestoreLocked(target,state,now,expectedWork,receipt){
-  let controllerState;
-  try{controllerState=await getControllerState();}
-  catch(error){
-    const next={...state,lastPhase:'STALLED',nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
-    saveNv02Continuity(next);
-    await continuityEvent('CURRENT_WORK_RESTORE_SKIPPED_UNVERIFIED',{error:String(error?.message||error),nextContinueAt:next.nextContinueAt});
-    return next;
-  }
-  const currentWork=findContinuableNv02Work(controllerState);
-  if(!hasContinuableNv02Work(controllerState)||!sameContinuableNv02Work(expectedWork,currentWork)){
-    const next={...state,lastPhase:'READY',workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
-    saveNv02Continuity(next);
-    await continuityEvent('CURRENT_WORK_RESTORE_SKIPPED_CHANGED_WORK',{expectedJobId:expectedWork?.jobId||null,expectedIssueRef:expectedWork?.issueRef||null,currentJobId:currentWork?.jobId||null,currentIssueRef:currentWork?.issueRef||null,nextContinueAt:next.nextContinueAt});
-    return next;
-  }
-  const prompt=buildCurrentWorkRestorePrompt({currentWork,receipt});
-  const result=await dispatch(target,prompt);
-  if(!result?.ok)throw new Error(result?.status||'CURRENT_WORK_RESTORE_DISPATCH_FAILED');
-  const next={...state,lastPrompt:'CURRENT_WORK_RESTORE',dispatchesInChat:Number(state.dispatchesInChat||0)+1,stalledChecks:0,lastPhase:'WORKING',workingSignature:'',workingUnchangedChecks:0,workingRecheckAt:nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS),nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
-  saveNv02Continuity(next);
-  await continuityEvent('CURRENT_WORK_RESTORE_DISPATCHED',{jobId:currentWork.jobId||null,issueRef:currentWork.issueRef,checkpointRef:receipt.checkpointRef,receiptRef:receipt.receiptRef,evidence:result.evidence||null,nextContinueAt:next.nextContinueAt});
-  return next;
-}
-async function dispatchCurrentWorkIssueRestoreLocked(target,state,now,expectedWork){
-  let controllerState;
-  try{controllerState=await getControllerState();}
-  catch(error){
-    const next={...state,lastPhase:'STALLED',nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
-    saveNv02Continuity(next);
-    await continuityEvent('CURRENT_WORK_NEW_CHAT_RESTORE_SKIPPED_UNVERIFIED',{error:String(error?.message||error),nextContinueAt:next.nextContinueAt});
-    return next;
-  }
-  const currentWork=findContinuableNv02Work(controllerState);
-  if(!currentWork||!sameContinuableNv02Work(expectedWork,currentWork)){
-    const next={...state,resumeChatUrl:'',nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
-    saveNv02Continuity(next);
-    await continuityEvent('CURRENT_WORK_NEW_CHAT_RESTORE_SKIPPED_CHANGED_WORK',{expectedIssueRef:expectedWork?.issueRef||null,currentIssueRef:currentWork?.issueRef||null});
-    return next;
-  }
-  await ensureNv02ModelProfile(target);
-  const prompt=buildCurrentWorkIssueRestorePrompt(currentWork);
-  const result=await dispatch(target,prompt);
-  if(!result?.ok)throw new Error(result?.status||'CURRENT_WORK_NEW_CHAT_RESTORE_FAILED');
-  const next={...state,lastPrompt:'CURRENT_WORK_NEW_CHAT_RESTORE',dispatchesInChat:1,chatStartedAt:now,stalledChecks:0,lastPhase:'WORKING',resumeChatUrl:'',workingSignature:'',workingUnchangedChecks:0,workingRecheckAt:nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS),nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
-  saveNv02Continuity(next);
-  await continuityEvent('CURRENT_WORK_NEW_CHAT_RESTORED',{jobId:currentWork.jobId||null,issueRef:currentWork.issueRef,evidence:result.evidence||null,nextContinueAt:next.nextContinueAt});
-  return next;
-}
 async function dispatchNaturalContinueLocked(target,state,now){
   await scrollToBottom(target).catch(()=>{});
   const prompt=pickContinuePrompt(state.lastPrompt);
@@ -1201,54 +1109,6 @@ async function dispatchNaturalContinueLocked(target,state,now){
 }
 async function dispatchNaturalContinue(target,state,now){
   return withNv02Mutation(()=>dispatchNaturalContinueLocked(target,state,now),'CONTINUITY_CONTINUE');
-}
-async function checkpointNv02(target,currentWork){
-  if(!currentWork?.issueRef)throw new Error('CHECKPOINT_CURRENT_WORK_REQUIRED');
-  return withNv02Mutation(async()=>{
-    await ensureNv02ModelProfile(target);
-    const saveToken=crypto.randomUUID(),dispatchedAt=new Date().toISOString();
-    const workRef=String(currentWork.issueRef).trim(),jobId=String(currentWork.jobId||'').trim()||'UNKNOWN';
-    const text=`${buildDurableSavePrompt({saveToken,workerId:'NV02',dispatchedAt})}\nCURRENT_WORK_ORDER=${workRef}\nCURRENT_WORK_JOB_ID=${jobId}\nCheckpoint đúng công việc này; không chuyển sang việc khác.`;
-    const sent=await dispatch(target,text);
-    if(!sent?.ok)throw new Error(sent?.status||'SAVE_DISPATCH_FAILED');
-    const receipt=await waitForDurableSaveReceipt(saveToken,'NV02',dispatchedAt);
-    await waitForIdleAfterSubmission(target,45000,5000);
-    await continuityEvent('CHECKPOINT_DURABLE',{receiptRef:receipt.receiptRef,checkpointRef:receipt.checkpointRef,verifiedAt:receipt.verifiedAt});
-    return receipt;
-  },'CHECKPOINT_DURABLE',120000);
-}
-async function rotateNv02Chat(target,state,now){
-  let controllerState;
-  try{controllerState=await getControllerState();}
-  catch(error){
-    await continuityEvent('CHAT_ROTATION_SKIPPED_CURRENT_WORK_UNVERIFIED',{error:String(error?.message||error)});
-    return state;
-  }
-  const currentWork=findContinuableNv02Work(controllerState);
-  if(!hasContinuableNv02Work(controllerState)||!currentWork){
-    await continuityEvent('CHAT_ROTATION_SKIPPED_NO_CURRENT_WORK',{lastPhase:state.lastPhase||null});
-    return state;
-  }
-  await continuityEvent('CHAT_ROTATION_CURRENT_WORK_VERIFIED',{jobId:currentWork.jobId||null,issueRef:currentWork.issueRef});
-  const receipt=await checkpointNv02(target,currentWork);
-  const checkpointed={...state,dispatchesInChat:0,chatStartedAt:now,stalledChecks:0,chatLoadRecoveryStage:0,lastPhase:'READY',nextRefreshAt:nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS),rotationRetryAt:0};
-  saveNv02Continuity(checkpointed);
-  return withNv02Mutation(async()=>{
-    const archived=await archiveChat(target);if(!archived?.ok)throw new Error(archived?.status||'ROTATE_ARCHIVE_FAILED');
-    await continuityEvent('ARCHIVE_CONFIRMED',{jobId:currentWork.jobId||null,issueRef:currentWork.issueRef,receiptRef:receipt.receiptRef,checkpointRef:receipt.checkpointRef,archiveStatus:archived.status});
-    const archivedState={...checkpointed,resumeChatUrl:'',verifiedChatUrl:'',modelVerifiedAt:''};
-    saveNv02Continuity(archivedState);
-    const opened=await newChat(target);if(!opened?.ok)throw new Error(opened?.status||'ROTATE_NEW_CHAT_FAILED');
-    await continuityEvent('NEW_CHAT_CREATED',{newChatStatus:opened.status});
-    const freshUi=await ensureNv02ModelProfile(target);
-    if(freshUi?.securityBlock)throw new Error(freshUi.securityBlock);
-    if(freshUi?.modelExact!==true||freshUi?.uiPhase!=='READY')throw new Error('ROTATE_MODEL_PROFILE_NOT_READY');
-    const verified=loadNv02Continuity();
-    const next={...archivedState,lastPhase:'READY',verifiedChatUrl:verified.verifiedChatUrl,modelVerifiedAt:verified.modelVerifiedAt,modelCheckBlockedUntil:verified.modelCheckBlockedUntil};
-    saveNv02Continuity(next);
-    await continuityEvent('CHAT_ROTATED',{jobId:currentWork.jobId||null,issueRef:currentWork.issueRef,receiptRef:receipt.receiptRef,checkpointRef:receipt.checkpointRef,archiveStatus:archived.status,newChatStatus:opened.status,nextRefreshAt:next.nextRefreshAt});
-    return dispatchCurrentWorkRestoreLocked(target,next,now,currentWork,receipt);
-  },'CHAT_ROTATION',60000);
 }
 async function noteNv02CommandDispatch(){
   const now=Date.now();
