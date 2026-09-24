@@ -151,6 +151,8 @@ describe('independent worker recovery flows in direct-cdp-bridge',()=>{
     expect(genericLoop).toContain("currentWorkerAssignmentStatus(w.id)");
     expect(genericLoop).toContain("assignment.status==='READY_UNASSIGNED'||assignment.status==='CONTINUABLE'");
     expect(genericLoop).toContain('if(!roleLoopAllowed)');
+    expect(genericLoop).not.toContain("assignment.status!=='CONTINUABLE'");
+    expect(genericLoop).toContain("!['READY_UNASSIGNED','CONTINUABLE'].includes(assignment.status)");
     expect(source).toContain("return{status:'READY_UNASSIGNED',job:null}");
   });
 
@@ -273,13 +275,18 @@ describe('safe recovery contracts',()=>{
     expect(pruner).toContain("if(w.id!=='NV03'||!keep||ui?.uiBusy===true)return");
   });
 
-  it('backs off NV03/NV04 CDP connectivity failures instead of retrying every 3 seconds',()=>{
+  it('backs off worker CDP failures with bounded randomized retries before recovery',()=>{
     const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(source).toContain('const workerConnectivityBackoff=new Map()');
     expect(source).toContain("if(backoff&&Date.now()<Number(backoff.until||0))return");
-    expect(source).toContain("w.id!=='NV02'&&connectivityFailure");
-    expect(source).toContain("Math.min(20_000,5_000*(2**(attempt-1)))");
-    expect(source).toContain("'WORKER_CONNECTIVITY_BACKOFF'");
+    expect(source).toContain('if(connectivityFailure){');
+    expect(source).toContain('const maxAttempts=Number(prior?.maxAttempts)||Math.floor(2+Math.random()*4)');
+    expect(source).toContain('const delayMs=randomDelay(15_000,60_000)');
+    expect(source).toContain("'WORKER_CONNECTIVITY_RETRY_SCHEDULED'");
+    expect(source).toContain("'WORKER_CONNECTIVITY_RETRIES_EXHAUSTED'");
+    expect(source).toContain("reason:'CONNECTIVITY_RETRIES_EXHAUSTED'");
+    expect(source).toContain("'WORKER_CONNECTIVITY_CHROME_RESTART_REQUESTED'");
+    expect(source).toContain("'WORKER_CONNECTIVITY_RECOVERY_DEFERRED'");
     expect(source).toContain("'WORKER_CONNECTIVITY_RECOVERED'");
   });
 
