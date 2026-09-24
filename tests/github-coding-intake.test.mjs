@@ -356,6 +356,8 @@ describe('GitHub coding continuity supervisor',()=>{
     expect(shouldRearmRecoverableFinal(pool.events.at(-1).data,'new-main',[])).toBe(true);
     expect(shouldRearmRecoverableFinal({issueNumber:804,codingObjectiveId:'legacy',reason:'HARD_BLOCKER',terminalReason:'reason for blocking',mainSha:'old-main'},'new-main',[])).toBe(true);
     expect(shouldRearmRecoverableFinal({issueNumber:804,codingObjectiveId:'legacy',reason:'HARD_BLOCKER',terminalReason:'SECURITY POLICY_BLOCK requires human',mainSha:'old-main'},'new-main',[])).toBe(false);
+    expect(shouldRearmRecoverableFinal({issueNumber:804,codingObjectiveId:'legacy',reason:'ISSUE_CLOSED_OR_SUPERSEDED',mainSha:'old-main',sourceRevision:'old-revision'},'new-main',[],'new-revision')).toBe(true);
+    expect(shouldRearmRecoverableFinal({issueNumber:804,codingObjectiveId:'legacy',reason:'ISSUE_CLOSED_OR_SUPERSEDED',mainSha:'new-main',sourceRevision:'new-revision'},'new-main',[],'new-revision')).toBe(false);
 
     const current=issue(SAFE,{number:804});
     const fetchImpl=async(url,init={})=>{

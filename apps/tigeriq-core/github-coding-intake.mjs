@@ -141,7 +141,7 @@ export function shouldRearmRecoverableFinal(final,currentMainSha,rearms=[],curre
   const mainSha=String(currentMainSha||'').trim();
   const sourceRevision=String(currentSourceRevision||'').trim();
   const finalReason=String(final?.reason||'').toUpperCase();
-  if(!mainSha||!['RETRY_BUDGET_EXHAUSTED','HARD_BLOCKER'].includes(finalReason))return false;
+  if(!mainSha||!['RETRY_BUDGET_EXHAUSTED','HARD_BLOCKER','ISSUE_CLOSED_OR_SUPERSEDED'].includes(finalReason))return false;
   const terminalReason=String(final?.terminalReason||'');
   if(classifyCodingBlocker(terminalReason).kind!=='RECOVERABLE')return false;
   const mainChanged=String(final?.mainSha||'').trim()!==mainSha;
