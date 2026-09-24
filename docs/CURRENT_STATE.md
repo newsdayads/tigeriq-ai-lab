@@ -2,14 +2,14 @@
 
 Date: 2026-09-20
 Status: CURRENT — GitHub state reconciled on 2026-09-20; runtime facts are cited to durable checkpoints and are not treated as a fresh live probe
-Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #335 > this snapshot > runtime/evidence
+Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #52 > this snapshot > runtime/evidence
 
 ## Canonical source / runtime
 - GitHub `main` remains canonical. Engineering changes go `branch → PR → required checks → merge`; no direct `main`.
 - #763 Chrome autonomy hardening remains source/runtime verified after PR #798 and PR #799 merged.
 - Chrome Controller `127.0.0.1:8798` and Direct CDP Bridge `127.0.0.1:8799` are ONLINE; existing Chrome sessions are preserved.
 - UI Autopilot Snapshot Adapter `127.0.0.1:8794` remains on snapshot v2; latest verified queue revision remains `github-ui-v2:GH-797:DONE:none:none`.
-- TigerIQ Core `100.97.23.87:8795`, Web Control `100.97.23.87:8796`, and Coding Lane `8797` remain canonical service identities. Latest durable runtime checkpoint in #788 (2026-09-20T07:03:46Z) recorded Core/Web/Coding healthy and Coding Lane restarted; this docs-only reconciliation does not assert a newer live heartbeat.
+- TigerIQ Core `100.97.23.87:8795`, Web Control `100.97.23.87:8796`, and Coding Lane `8797` remain canonical service identities. Core serves as the authoritative work lifecycle. Latest durable runtime checkpoint in #788 (2026-09-20T07:03:46Z) recorded Core/Web/Coding healthy and Coding Lane restarted; #1714 restart continuity verified; this docs-only reconciliation does not assert a newer live heartbeat.
 
 ## #763 — Chrome autonomy final truth
 - PR #798 merged: `AUTO_CONTINUE` keeps the current worker chat (`navigate=false`).
@@ -45,7 +45,7 @@ Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #
 - Final live screenshot confirms the branded popup renders normally with no pre-handle exception dialog.
 
 ## Workforce / identity
-- Registry #335 remains authoritative for employee identity/capability.
+- Central registry version 52 remains authoritative for employee identity/capability.
 - `NV02 = ChatGPT Plus`; `NV03 = ChatGPT Go`; `NV04 = Gemini Pro`; `NV10 = Ollama`.
 - `GPT-6 Astra` remains an on-demand high-tier resource of NV02, not a separate employee.
 
@@ -61,7 +61,8 @@ Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #
 - #1038 and #1161 remain OPEN under NV02 self-modification/Chrome overlap guards; safe evidence-hygiene lanes must not mutate those scopes.
 - #1176 remains OPEN as a manually assigned, evidence-only hygiene lane; it forbids code/runtime/Chrome/Worker Utility mutation.
 - #658 remains OPEN pending real autonomous browser-cycle evidence. #773 remains OPEN because its temporary branch still exists and cleanup requires a separate mutation-authorized lane.
-- Registry #335 is the authority for current workforce/provider identity; do not infer provider identity from stale snapshots in this file.
+- #1811 and #993 closeout evidence strictly reconciled; #1766 NV02 UI dispatch, #1687 live acceptance with merged PR #1807/#1809 and #1812 failover evidence documented.
+- Central registry version 52 is the authority for current workforce/provider identity; do not infer provider identity from stale snapshots in this file.
 
 ## Governance
 - Interaction #504 remains the generic command policy; explicit Owner instructions can supersede delegation for a scoped Work Order.
