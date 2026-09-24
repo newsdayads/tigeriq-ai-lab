@@ -118,7 +118,7 @@ describe('authoritative UI terminal reconciliation',()=>{
   it('wires reconciliation outside self-run and prevents NV03/NV04 unassigned continue',()=>{
     const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
     const recovery=server.slice(server.indexOf('async function recoveryTick'),server.indexOf('async function waitForStartupRuntime'));
-    expect(recovery).toContain('await reconcileUiJobTerminalsFromGithub()');
+    expect(recovery).toContain('await reconcileGithubTerminalUiJobs()');
     expect(recovery).not.toContain('selfRunEnabled');
 
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
