@@ -1,7 +1,7 @@
 # TigerIQ — Current State
 
 Date: 2026-09-24
-Status: CURRENT — GitHub state reconciled on 2026-09-20; runtime facts are cited to durable checkpoints and are not treated as a fresh live probe
+Status: CURRENT — GitHub state reconciled on 2026-09-24; historical runtime facts remain explicitly dated and fresh live facts are tied to 2026-09-24 evidence
 Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #335 > this snapshot > runtime/evidence
 
 ## Canonical source / runtime
@@ -52,7 +52,7 @@ Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #
 ## Scheduler & Runtime Updates
 - #843 scheduler-starvation fix successfully implemented and verified, resolving queue starvation under high load.
 
-## GitHub reconciliation — 2026-09-20
+## Historical GitHub reconciliation — 2026-09-20
 - #937, #941, #926, #922, #924 and #962 are CLOSED in GitHub; older CENTRAL wording that listed them as OPEN is stale.
 - #1001 is CLOSED/COMPLETED and its scope-aware Coding Adapter acceptance was recorded PASS.
 - #1032 is CLOSED as duplicate; #1033 is CLOSED/COMPLETED; #1201 is CLOSED/COMPLETED.
@@ -61,17 +61,23 @@ Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #
 - #1038 and #1161 remain OPEN under NV02 self-modification/Chrome overlap guards; safe evidence-hygiene lanes must not mutate those scopes.
 - #1176 remains OPEN as a manually assigned, evidence-only hygiene lane; it forbids code/runtime/Chrome/Worker Utility mutation.
 - #658 remains OPEN pending real autonomous browser-cycle evidence. #773 remains OPEN because its temporary branch still exists and cleanup requires a separate mutation-authorized lane.
-- #1811 and #993 closeout evidence strictly reconciled; #1766 NV02 UI dispatch, #1687 live acceptance with merged PR #1807/#1809 and #1812 failover evidence documented.
-- Central registry version 52 is the authority for current workforce/provider identity; do not infer provider identity from stale snapshots in this file.
+
+## Unified Control Plane closeout evidence — 2026-09-24
+- Core is the authoritative executable-work lifecycle; Coding Lane and Chrome Controller remain executors/adapters rather than competing work authorities.
+- A / UI-read-review: #1766 is CLOSED/COMPLETED with durable NV02 post-fix dispatch/F5-guard evidence; later Core readback reconciled GH-1766 to DONE and READY_UNASSIGNED without terminal resurrection.
+- B / repository coding: #1687 records live Coding Lane acceptance with PR #1807 and PR #1809 merged after exact-head checks and independent review. #1812 adds fresh same-job bounded failover evidence: MGR-OBJ-GH-1812 failed on NV11 HTTP_429, rerouted to NV12, then completed the same objective.
+- C / restart continuity: #1714 is CLOSED/COMPLETED; JOB-GH-1714-PC survived a controlled Core restart, finished DONE, retained one durable dispatch record, and reported no duplicate tool execution.
+- Workforce authority remains Registry #335; Core live workforce metadata reported registry version 52. CENTRAL #280 remains the current queue/router authority.
+- #1811/#993 closeout evidence is assembled for final parent reconciliation; terminal parent state remains authoritative in the GitHub issues rather than this snapshot.
 
 ## Governance
 - Interaction #504 remains the generic command policy; explicit Owner instructions can supersede delegation for a scoped Work Order.
 - Production/runtime, paid, credential/security and destructive/irreversible actions remain separate authorization gates.
 - #802 closeout does not reopen NV02 mutation ownership; any new Worker Utility mutation requires a new Work Order/handoff.
 
-## #1003 Runtime Source Isolation Closeout (non-terminal until parent read)
+## #1003 Runtime Source Isolation Closeout
 - Implemented dedicated clean source checkout mechanisms for runtime isolation under `scripts/tigeriq-core/` and `apps/tigeriq-core/` satisfying 3x E2E closeout requirements.
 - Verified full isolation compliance across all 3x E2E verification cycles.
 
-STATE: `CURRENT_20260920_NV02_CONTINUOUS_RECOVERY_CLOSEOUT_VERIFIED`
-UI_STATE: `GITHUB_POLICY_1122_ACTIVE_RUNTIME_NOT_REPROBED`
+STATE: `CURRENT_20260924_UNIFIED_CONTROL_PLANE_CLOSEOUT_EVIDENCE_RECONCILED`
+UI_STATE: `CORE_UI_GH1766_DONE_READY_UNASSIGNED_20260924`
