@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 
 const script=readFileSync(new URL('../scripts/tigeriq-core/update-core-runtime.ps1',import.meta.url),'utf8');
 const canary=readFileSync(new URL('../apps/openclaw-tigeriq-runtime/canary.mjs',import.meta.url),'utf8');
+const zeroTouch=readFileSync(new URL('../scripts/tigeriq-core/appchrome-zero-touch.ps1',import.meta.url),'utf8');
+const psVerify=readFileSync(new URL('../scripts/verify-powershell.ps1',import.meta.url),'utf8');
 
 test('updater never relies on Nullable HasValue/Value',()=>{
   assert.doesNotMatch(script,/\.HasValue\b|\.Value\b/);
@@ -168,52 +170,74 @@ test('bootstrap stops the old updater instance before re-registering its task',(
 });
 
 
-test('updater consumes only owner-authorized exact-head App Chrome artifact requests from State',()=>{
-  assert.match(script,/\$appChromeInstallRequest='D:\\TigerIQ\\State\\appchrome-install-request\.json'/);
-  assert.match(script,/TIGERIQ_APP_CHROME_INSTALL_REQUEST_V1/);
-  assert.match(script,/APP_CHROME_DEPLOY_AUTHORIZED=true/);
-  assert.match(script,/MUTATION_OWNER=VY_OWNER_AUTHORIZED/);
-  assert.match(script,/TARGET_HEAD=/);
-  assert.match(script,/PACKAGE_ARTIFACT_ID=/);
-  assert.match(script,/APPCHROME_OWNER_AUTH_CONTRACT_MISMATCH/);
-  assert.match(script,/\^TigerIQ-Chrome-Controller-V1-\\d\+\$/);
-  assert.match(script,/APPCHROME_REQUEST_HEAD_INVALID/);
-});
-
-test('App Chrome zero-touch updater verifies artifact provenance and exact-head gates before install',()=>{
-  assert.match(script,/actions\/artifacts\//);
-  assert.match(script,/Chrome Controller Package/);
-  assert.match(script,/APPCHROME_ARTIFACT_HEAD_MISMATCH/);
-  assert.match(script,/APPCHROME_EXACT_HEAD_GATES_NOT_PASS/);
-  assert.match(script,/gh run download/);
-  assert.match(script,/Install-ApprovedArtifact\.ps1/);
-  assert.match(script,/APPCHROME_DOWNLOADED_HEAD_MISMATCH/);
-  const verify=script.indexOf('Get-VerifiedAppChromeArtifact $req');
-  const install=script.indexOf('& powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $installer');
-  assert.ok(verify>=0 && install>verify,'artifact provenance and gates must precede canonical installer');
-});
-
-test('App Chrome zero-touch updater waits for idle, preserves rollback, and verifies live provenance',()=>{
-  assert.match(script,/function Wait-AppChromeSafeBoundary/);
-  assert.match(script,/APPCHROME_SAFE_BOUNDARY_TIMEOUT/);
-  assert.match(script,/lastHeartbeat\.uiBusy/);
-  assert.match(script,/lastHeartbeat\.stopVisible/);
-  assert.match(script,/\/api\/pause/);
-  assert.match(script,/function Wait-AppChromeExactHead/);
-  assert.match(script,/provenanceVerified/);
-  assert.match(script,/externalWorkAutopilotEnabled/);
-  assert.match(script,/selfRun\.enabled/);
-  assert.match(script,/githubSelfRun\.enabled/);
-  assert.match(script,/rollback.*active-deploy\.json/i);
-  assert.match(script,/Start-Unified-AppChrome\.ps1/);
-  assert.match(script,/APP_CHROME_ZERO_TOUCH_INSTALL=PASS/);
-});
-
-test('App Chrome install request is idempotent and runs even when Core source has no change',()=>{
-  assert.match(script,/APPCHROME_INSTALL_RESULT_V1/);
-  assert.match(script,/reason='already_installed'/);
-  const request=script.indexOf('$appChromeInstall=Invoke-AppChromeInstallRequest');
+test('runtime updater structural gate prevents swallowed duplicate control loops',()=>{
+  assert.ok(script.length<60000,`updater unexpectedly large: ${script.length}`);
+  assert.equal((script.match(/function Invoke-LiveStatusBridgeReconcile/g)||[]).length,1);
+  assert.equal((script.match(/function Gates-Pass/g)||[]).length,1);
+  assert.equal((script.match(/function Invoke-AppChromeZeroTouchHelper/g)||[]).length,1);
+  assert.equal((script.match(/while\(\$true\)/g)||[]).length,1);
+  assert.match(script,/\$appChromeZeroTouchScript=\(Join-Path \$runtimeRepo 'scripts\\tigeriq-core\\appchrome-zero-touch\.ps1'\)/);
+  const helper=script.indexOf('$appChromeInstall=Invoke-AppChromeZeroTouchHelper');
   const noChange=script.indexOf("if($runtimeExists -and $local -eq $remote)");
-  assert.ok(request>=0 && noChange>request,'deploy request must be consumed before Core NO_CHANGE short-circuit');
-  assert.match(script,/appChromeInstall=\$appChromeInstall/);
+  assert.ok(helper>=0&&noChange>helper,'zero-touch helper must run before Core NO_CHANGE');
+  assert.match(script,/result='NO_CHANGE'[^\n]+appChromeInstall=\$appChromeInstall/);
+});
+
+test('required PowerShell syntax gate includes TigerIQ Core runtime scripts',()=>{
+  assert.match(psVerify,/Join-Path \$PSScriptRoot 'tigeriq-core'/);
+  assert.match(psVerify,/Get-ChildItem[^\n]+-Filter '\*\.ps1' -File/);
+});
+
+test('modular App Chrome zero-touch helper accepts only explicit Owner+Vy authorization',()=>{
+  assert.match(zeroTouch,/TIGERIQ_APP_CHROME_INSTALL_REQUEST_V1/);
+  assert.match(zeroTouch,/OWNER_DIRECT/);
+  assert.match(zeroTouch,/APP_CHROME_DEPLOY_AUTHORIZED/);
+  assert.match(zeroTouch,/MUTATION_OWNER/);
+  assert.match(zeroTouch,/VY_OWNER_AUTHORIZED/);
+  assert.match(zeroTouch,/ZERO_TOUCH_DEPLOY/);
+  assert.match(zeroTouch,/TARGET_HEAD/);
+  assert.match(zeroTouch,/PACKAGE_ARTIFACT_ID/);
+  assert.match(zeroTouch,/PACKAGE_ARTIFACT_NAME/);
+  const resolve=zeroTouch.slice(zeroTouch.indexOf('function Resolve-Request'),zeroTouch.indexOf('function Assert-Authorization'));
+  assert.ok(resolve.indexOf('Discover-AuthorizedRequest')<resolve.indexOf('Read-RequestFile'),'current GitHub Owner authorization must outrank stale State request');
+});
+
+test('modular App Chrome zero-touch helper verifies provenance and exact-head gates before install',()=>{
+  assert.match(zeroTouch,/actions\/artifacts\//);
+  assert.match(zeroTouch,/Chrome Controller Package/);
+  assert.match(zeroTouch,/APPCHROME_ARTIFACT_HEAD_MISMATCH/);
+  assert.match(zeroTouch,/CI/);
+  assert.match(zeroTouch,/WO-014 Queue Hygiene/);
+  assert.match(zeroTouch,/WO-012\/013 Vercel Online Verify/);
+  assert.match(zeroTouch,/gh run download/);
+  assert.match(zeroTouch,/Install-ApprovedArtifact\.ps1/);
+  assert.match(zeroTouch,/APPCHROME_DOWNLOADED_HEAD_MISMATCH/);
+  const verify=zeroTouch.indexOf('$verified=Verify-Artifact $req');
+  const install=zeroTouch.indexOf('& powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $installer');
+  assert.ok(verify>=0&&install>verify,'artifact provenance and gates must precede canonical installer');
+});
+
+test('modular App Chrome zero-touch helper waits for safe boundary, rolls back, and verifies live provenance',()=>{
+  assert.match(zeroTouch,/function Wait-SafeBoundary/);
+  assert.match(zeroTouch,/APPCHROME_SAFE_BOUNDARY_TIMEOUT/);
+  assert.match(zeroTouch,/lastHeartbeat\.uiBusy/);
+  assert.match(zeroTouch,/lastHeartbeat\.stopVisible/);
+  assert.match(zeroTouch,/\/api\/pause/);
+  assert.match(zeroTouch,/function Wait-ExactHead/);
+  assert.match(zeroTouch,/provenanceVerified/);
+  assert.match(zeroTouch,/externalWorkAutopilot/);
+  assert.match(zeroTouch,/selfRun/);
+  assert.match(zeroTouch,/githubSelfRun/);
+  assert.match(zeroTouch,/active-deploy\.json/);
+  assert.match(zeroTouch,/Start-Unified-AppChrome\.ps1/);
+  assert.match(zeroTouch,/APP_CHROME_ZERO_TOUCH_INSTALL=PASS/);
+  assert.match(zeroTouch,/APP_CHROME_ZERO_TOUCH_INSTALL=BLOCKED/);
+  assert.match(zeroTouch,/\$req=\$null;\$paused=\$false;\$rollback=\$null/);
+});
+
+test('modular App Chrome zero-touch activation is idempotent and RDC-free',()=>{
+  assert.match(zeroTouch,/TIGERIQ_APP_CHROME_INSTALL_RESULT_V1/);
+  assert.match(zeroTouch,/already_installed/);
+  assert.match(zeroTouch,/RDC_USED=false/);
+  assert.doesNotMatch(zeroTouch,/Remote_Desktop_Commander|mcp\.desktopcommander|execute_command/);
 });
