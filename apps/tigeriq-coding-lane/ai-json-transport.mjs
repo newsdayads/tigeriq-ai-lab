@@ -121,6 +121,52 @@ export function salvageTruncatedCompactEdits(text){
   return {summary,edits};
 }
 
+function decodeLooseJsonString(input){
+  const s=String(input??'');
+  let out='';
+  for(let i=0;i<s.length;i++){
+    const ch=s[i];
+    if(ch!=='\\'){out+=ch;continue}
+    const next=s[++i];
+    if(next===undefined){out+='\\';break}
+    if(next==='"'||next==='\\'||next==='/'){out+=next;continue}
+    if(next==='b'){out+='\b';continue}
+    if(next==='f'){out+='\f';continue}
+    if(next==='n'){out+='\n';continue}
+    if(next==='r'){out+='\r';continue}
+    if(next==='t'){out+='\t';continue}
+    if(next==='u'){
+      const hex=s.slice(i+1,i+5);
+      if(/^[0-9a-fA-F]{4}$/.test(hex)){out+=String.fromCharCode(Number.parseInt(hex,16));i+=4;continue}
+      out+='\\u';continue;
+    }
+    out+='\\'+next;
+  }
+  return out;
+}
+
+export function salvageLooseCompactEdits(text){
+  const clean=String(text||'').replace(/```json|```/gi,'').trim();
+  const keyMatch=/"(?:edits|changes)"\s*:\s*\[/.exec(clean);
+  if(!keyMatch)return null;
+  const tail=clean.slice((keyMatch.index||0)+keyMatch[0].length);
+  const edits=[];
+  const pattern=/"path"\s*:\s*"([\s\S]*?)"\s*,\s*"(search|old)"\s*:\s*"([\s\S]*?)"\s*,\s*"(replace|new)"\s*:\s*"([\s\S]*?)"\s*}(?=\s*(?:,|\]))/g;
+  let match;
+  while((match=pattern.exec(tail))){
+    const path=decodeLooseJsonString(match[1]).trim();
+    const search=decodeLooseJsonString(match[3]);
+    const replace=decodeLooseJsonString(match[5]);
+    if(path&&search)edits.push({path,search,replace});
+  }
+  if(!edits.length)return null;
+  let summary='salvaged compact edits';
+  const prefix=clean.slice(0,(keyMatch.index||0));
+  const summaryMatch=/"summary"\s*:\s*"([\s\S]*?)"\s*,\s*$/.exec(prefix);
+  if(summaryMatch)summary=decodeLooseJsonString(summaryMatch[1]);
+  return {summary,edits};
+}
+
 export function parseModelJson(text){
   const clean=String(text||'').replace(/```json|```/gi,'').trim();
   if(!clean)return null;
@@ -129,7 +175,7 @@ export function parseModelJson(text){
   if(candidate){
     try{return parseJsonCandidate(candidate)}catch{}
   }
-  return salvageTruncatedCompactEdits(clean);
+  return salvageTruncatedCompactEdits(clean)||salvageLooseCompactEdits(clean);
 }
 
 export function looksLikeJsonObject(text){return !!parseModelJson(text)}
@@ -219,7 +265,7 @@ export function compactPromptForChanges(prompt,{maxContextChars=12000,maxOutputC
   if(expectedSchemaFromPrompt(p)!=='changes')return p;
   const schema='Return ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}.';
   const noopRule=/^BATCH_NOOP_ALLOWED=true$/m.test(p)?' If this batch needs no mutation, return exactly {"summary":"no changes needed in this batch","noop":true,"edits":[]}.' :'';
-  const compact=`Return ONLY compact JSON {"summary":"short","edits":[{"path":"exact allowed path","search":"exact existing UTF-8 snippet","replace":"replacement UTF-8 snippet"}]}.${noopRule} For a new or empty small file you may use {"path":"exact allowed path","content":"complete UTF-8 file content"}. Keep the ENTIRE JSON response under ${maxOutputChars} characters. For existing files, each search snippet must be <=1200 characters and each replacement <=2400 characters; prefer several small exact edits over one large edit. Each search must match exactly once. Do not return full existing files or copy omitted context blocks. Never output secrets. Keep edits minimal and testable.`;
+  const compact=`Return ONLY compact JSON {"summary":"short","edits":[{"path":"COPY_VERBATIM_FROM_ALLOWED_PATHS_FOR_THIS_BATCH","search":"exact existing UTF-8 snippet","replace":"replacement UTF-8 snippet"}]}.${noopRule} The path value MUST be copied verbatim from ALLOWED PATHS FOR THIS BATCH; NEVER output the literal placeholders "exact allowed path" or "COPY_VERBATIM_FROM_ALLOWED_PATHS_FOR_THIS_BATCH". For a new or empty small file you may use {"path":"COPY_VERBATIM_FROM_ALLOWED_PATHS_FOR_THIS_BATCH","content":"complete UTF-8 file content"}. Keep the ENTIRE JSON response under ${maxOutputChars} characters. For existing files, each search snippet must be <=1200 characters and each replacement <=2400 characters; prefer several small exact edits over one large edit. Each search must match exactly once. Do not return full existing files or copy omitted context blocks. Never output secrets. Keep edits minimal and testable.`;
   const rewritten=p.includes(schema)?p.replace(schema,compact):`${p}\n\nIMPORTANT: ${compact}`;
   return compactCurrentFilesForModel(rewritten,maxContextChars);
 }
@@ -251,6 +297,19 @@ export function currentFilesFromPrompt(prompt){
   return files;
 }
 
+function normalizedCompactPath(rawPath,files){
+  const raw=String(rawPath||'').trim();
+  if(files.has(raw))return raw;
+  if(files.size===1&&/^(?:exact allowed path|copy_verbatim_from_allowed_paths_for_this_batch)$/i.test(raw))return files.keys().next().value;
+  return raw;
+}
+
+function patchLikeCompactChanges(changes){
+  return Array.isArray(changes)&&changes.length>0&&changes.every(edit=>edit&&typeof edit==='object'&&(
+    typeof edit.search==='string'||typeof edit.old==='string'||typeof edit.replace==='string'||typeof edit.new==='string'
+  ));
+}
+
 export function expandCompactChanges(prompt,text){
   const d=parseModelJson(text);
   if(!d||typeof d!=='object'||Array.isArray(d))throw new Error('COMPACT_EDIT_JSON_INVALID');
@@ -258,27 +317,32 @@ export function expandCompactChanges(prompt,text){
   const batchNoopAllowed=/^BATCH_NOOP_ALLOWED=true$/m.test(String(prompt||''));
   if(batchNoopAllowed&&d.noop===true&&Array.isArray(d.changes)&&d.changes.length===0)return {summary:String(d.summary||'no changes needed in this batch'),noop:true,changes:[]};
   if(batchNoopAllowed&&d.noop===true&&Array.isArray(d.edits)&&d.edits.length===0)return {summary:String(d.summary||'no changes needed in this batch'),noop:true,changes:[]};
-  if(Array.isArray(d.changes)&&d.changes.length>0){
-    for(const change of d.changes){
+
+  const patchEdits=Array.isArray(d.edits)&&d.edits.length?d.edits:patchLikeCompactChanges(d.changes)?d.changes:null;
+  if(!patchEdits&&Array.isArray(d.changes)&&d.changes.length>0){
+    const normalized=d.changes.map(change=>({...change,path:normalizedCompactPath(change?.path,files)}));
+    for(const change of normalized){
       const path=String(change?.path||'').trim();
       if(!path||!files.has(path))throw new Error(`COMPACT_EDIT_PATH_UNKNOWN:${path}`);
       const existing=files.get(path);
+      if(typeof change?.content!=='string')throw new Error('COMPACT_EDIT_SCHEMA_INVALID');
       if(String(existing||'').length>0)throw new Error(`COMPACT_EDIT_FULL_CONTENT_FOR_EXISTING:${path}`);
     }
-    return d;
+    return {summary:String(d.summary||'compact changes'),changes:normalized};
   }
-  if(typeof d.summary!=='string'||!Array.isArray(d.edits)||!d.edits.length)throw new Error('COMPACT_EDIT_SCHEMA_INVALID');
+  if(!Array.isArray(patchEdits)||!patchEdits.length)throw new Error('COMPACT_EDIT_SCHEMA_INVALID');
+
   const changed=new Map();
-  for(const edit of d.edits){
-    const path=String(edit?.path||'').trim();
+  for(const edit of patchEdits){
+    const path=normalizedCompactPath(edit?.path,files);
     if(!path||!files.has(path))throw new Error(`COMPACT_EDIT_PATH_UNKNOWN:${path}`);
     let content=changed.has(path)?changed.get(path):files.get(path);
     if(typeof edit?.content==='string'){
       if(content&&content.length>0)throw new Error(`COMPACT_EDIT_FULL_CONTENT_FOR_EXISTING:${path}`);
       content=edit.content;
     }else{
-      const search=String(edit?.search??'');
-      const replace=String(edit?.replace??'');
+      const search=String(edit?.search??edit?.old??'');
+      const replace=String(edit?.replace??edit?.new??'');
       if(!search)throw new Error(`COMPACT_EDIT_SEARCH_EMPTY:${path}`);
       const first=content.indexOf(search);
       if(first<0)throw new Error(`COMPACT_EDIT_SEARCH_MISSING:${path}`);
@@ -295,7 +359,7 @@ export function expandCompactChanges(prompt,text){
       if(removed>10000&&next.length<Math.floor(original.length*0.75))throw new Error(`COMPACT_EDIT_DESTRUCTIVE_SHRINK:${path}`);
     }
   }
-  return {summary:d.summary,changes:[...changed].map(([path,content])=>({path,content}))};
+  return {summary:String(d.summary||'compact edits'),changes:[...changed].map(([path,content])=>({path,content}))};
 }
 
 function rewritePromptInRequest(input,init,prompt){
