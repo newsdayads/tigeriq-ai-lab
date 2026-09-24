@@ -1448,9 +1448,14 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
           void recoverWorker(workerId);
           json(res,200,{ok:true,status:'LOCAL_RUN_RECOVERY_STARTED'});return true;
         }
-        const result=await sendCommand(workerId,'LOCAL_CONTINUE_NOW').catch(error=>({status:'LOCAL_CONTINUE_DEFERRED',error:String(error)}));
-        log('UTILITY_LOCAL_CONTINUE_NOW',{workerId,status:(result as any)?.status??null});
-        json(res,200,{ok:true,status:(result as any)?.status??'LOCAL_CONTINUE_DEFERRED'});return true;
+        let result:any={status:'LOCAL_CONTINUE_DEFERRED'};
+        for(let attempt=1;attempt<=3;attempt+=1){
+          result=await sendCommand(workerId,'LOCAL_CONTINUE_NOW').catch(error=>({status:'LOCAL_CONTINUE_DEFERRED',error:String(error)}));
+          log('UTILITY_LOCAL_CONTINUE_NOW',{workerId,status:result?.status??null,attempt});
+          if(result?.status!=='LOCAL_CONTINUE_DEFERRED')break;
+          if(attempt<3)await delay(2500);
+        }
+        json(res,200,{ok:true,status:result?.status??'LOCAL_CONTINUE_DEFERRED'});return true;
       }
       assertWorkerEnabled(workerId);
       if(action==='open-canonical'){await uiQueue.enqueue(()=>sendCommand(workerId,'NAVIGATE',{url:worker.homeUrl}));json(res,200,{ok:true});return true;}
