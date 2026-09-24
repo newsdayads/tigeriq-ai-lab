@@ -1,7 +1,7 @@
 import {readFileSync} from 'node:fs';
 import {describe,expect,it} from 'vitest';
 import {compactCurrentFilesForModel,compactPromptForChanges,compactPromptForEdits,currentFilesFromPrompt,expandCompactChanges,extractModelText,firstBalancedJsonObject,isAiUrl,looksLikeJsonObject,matchesExpectedSchema,parseModelJson,prepareAiJsonRequest,installAiJsonTransport,salvageTruncatedCompactEdits} from '../apps/tigeriq-coding-lane/ai-json-transport.mjs';
-import {buildRepairGenerationPrompt,managerBlockKind,parseCompactEditJson} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {buildRepairGenerationPrompt,classifyAiFailure,invokeJsonWithFailover,managerBlockKind,parseCompactEditJson} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 describe('coding lane AI JSON transport',()=>{
@@ -312,6 +312,56 @@ describe('coding lane AI JSON transport',()=>{
     const manager=src.indexOf('await managerTick()');
     expect(install).toBeGreaterThanOrEqual(0);
     expect(manager).toBeGreaterThan(install);
+  });
+
+  it('fails over to the next provider after one provider rejects the request with HTTP 400',async()=>{
+    const pool=[
+      {id:'NV11',provider:'groq'},
+      {id:'NV12',provider:'gemini'},
+    ];
+    const calls=[];
+    const result=await invokeJsonWithFailover(pool[0],'{"request":"json"}',{
+      resourcePool:pool,
+      maxResources:2,
+      invokeFn:async resource=>{
+        calls.push(resource.id);
+        if(resource.id==='NV11'){
+          const error=new Error('HTTP_400:provider rejected this request shape');
+          error.status=400;
+          throw error;
+        }
+        return '{"ok":true}';
+      },
+      parseData:JSON.parse,
+    });
+    expect(result.resource.id).toBe('NV12');
+    expect(calls).toEqual(['NV11','NV12']);
+    expect(result.failureLedger[0]).toMatchObject({
+      resourceId:'NV11',
+      class:'provider_request_rejected',
+      retryable:true,
+    });
+    expect(classifyAiFailure(Object.assign(new Error('HTTP_400:bad request'),{status:400}))).toBe('provider_request_rejected');
+  });
+
+  it('keeps credential HTTP failures terminal instead of failing over',async()=>{
+    const pool=[
+      {id:'NV11',provider:'groq'},
+      {id:'NV12',provider:'gemini'},
+    ];
+    const calls=[];
+    await expect(invokeJsonWithFailover(pool[0],'{"request":"json"}',{
+      resourcePool:pool,
+      maxResources:2,
+      invokeFn:async resource=>{
+        calls.push(resource.id);
+        const error=new Error('HTTP_401:unauthorized');
+        error.status=401;
+        throw error;
+      },
+      parseData:JSON.parse,
+    })).rejects.toThrow('HTTP_401');
+    expect(calls).toEqual(['NV11']);
   });
 
   it('manager soft blocker classification fails over instead of terminal blocking',()=>{

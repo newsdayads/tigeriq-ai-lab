@@ -145,9 +145,15 @@ const RESOURCE_WAIT_MAX_WINDOW_MS=60*60*1000;
 const RESOURCE_WAIT_BASE_MS=30*1000;
 const RESOURCE_WAIT_MAX_DELAY_MS=10*60*1000;
 
+export function isProviderRequestRejected(error){
+  const status=Number(error?.status||0);
+  const msg=String(error?.message||error||'');
+  return status===400||/HTTP_400\b/i.test(msg);
+}
 export function classifyAiFailure(error){
   const status=Number(error?.status||0);
   const msg=String(error?.message||error||'');
+  if(isProviderRequestRejected(error))return 'provider_request_rejected';
   if(status===429||/HTTP_429\b|RATE_LIMIT|RESOURCE_EXHAUSTED/i.test(msg))return 'rate_limit';
   if(error?.name==='AbortError'||/ETIMEDOUT|timeout|aborted|ECONNRESET|socket/i.test(msg))return 'timeout';
   if(/MANAGER_(?:SOFT_BLOCK|SCOPE_MISMATCH|PATHS_INVALID|TITLE_NOT_VI)|JSON_OBJECT_(?:INVALID|MISSING)|CODING_CHANGES_COUNT_INVALID|schema|unterminated|truncat|COMPACT_EDIT/i.test(msg))return 'output_contract';
@@ -374,7 +380,8 @@ export async function invokeJsonWithFailover(initialResource,prompt,{exclude=[],
         if(validateData)validateData(data,resource);
         return {data,resource,attempts,failureLedger};
       }catch(e){
-        const retryable=isRetryableAiError(e);
+        const providerRequestRejected=isProviderRequestRejected(e);
+        const retryable=isRetryableAiError(e)||providerRequestRejected;
         const failureClass=classifyAiFailure(e);
         const cooldownUntil=failureClass==='rate_limit'?new Date(Date.now()+30*60*1000).toISOString():null;
         failureLedger.push({resourceId:resource.id,provider:resource.provider,class:failureClass,retryable,cooldownUntil,message:String(e?.message||e).slice(0,500)});
@@ -382,7 +389,7 @@ export async function invokeJsonWithFailover(initialResource,prompt,{exclude=[],
           e.detail={...(e.detail||{}),attempts,tried:[...new Set(failureLedger.map(x=>x.resourceId))],failureLedger};
           throw e;
         }
-        if(failureClass==='rate_limit')break;
+        if(providerRequestRejected||failureClass==='rate_limit')break;
         if(same===0)continue;
         break;
       }finally{
