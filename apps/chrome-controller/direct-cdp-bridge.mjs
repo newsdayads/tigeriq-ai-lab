@@ -1054,30 +1054,36 @@ async function waitForPostReloadNv02Ui(target,timeoutMs=12000){
   }
   return last;
 }
+async function waitForNv02Composer(target,timeoutMs=20000){
+  const deadline=Date.now()+timeoutMs;let last=null;
+  while(Date.now()<deadline){
+    last=await uiState(target).catch(()=>null);
+    if(last?.securityBlock)throw new Error(last.securityBlock);
+    if(last?.uiBusy===true||last?.uiPhase==='WORKING'||last?.composerReady===true)return last;
+    await sleep(500);
+  }
+  return last;
+}
 async function ensureNv02LocalReadyLocked(target,initialUi=null,{forceFresh=false}={}){
   let ui=initialUi||await uiState(target);
   if(ui?.securityBlock)throw new Error(ui.securityBlock);
   if(ui?.uiBusy===true||ui?.uiPhase==='WORKING')return ui;
-  const projectContext=()=>isNv02ProjectContext(ui?.url)||ui?.projectDraftReady===true;
-  if(forceFresh||(!ui?.composerReady&&projectContext())){
-    let opened=await newChat(target);
-    if(!opened?.ok){
-      await navigate(target,NV02_HOME_URL);
-      await sleep(1200);
-      opened=await newChat(target);
-    }
-    if(!opened?.ok)throw new Error(opened?.status||'NV02_LOCAL_NEW_CHAT_FAILED');
-    ui=await waitForPostReloadNv02Ui(target,15000)||await uiState(target);
-  }
-  if(!isNv02ProjectContext(ui?.url)&&ui?.projectDraftReady!==true){
+  const inProject=()=>isNv02ProjectContext(ui?.url)||ui?.projectDraftReady===true;
+  if(forceFresh||!inProject()){
     await navigate(target,NV02_HOME_URL);
     await sleep(1200);
-    const opened=await newChat(target);
-    if(!opened?.ok)throw new Error(opened?.status||'NV02_LOCAL_PROJECT_CHAT_FAILED');
-    ui=await waitForPostReloadNv02Ui(target,15000)||await uiState(target);
+    ui=await waitForNv02Composer(target,20000)||await uiState(target);
+  }else if(ui?.composerReady!==true){
+    ui=await waitForNv02Composer(target,20000)||ui;
   }
   if(ui?.securityBlock)throw new Error(ui.securityBlock);
   if(ui?.uiBusy===true||ui?.uiPhase==='WORKING')return ui;
+  if(ui?.composerReady!==true){
+    const recovered=await recoverNv02ProjectContext(target);
+    if(!recovered?.ok)throw new Error(recovered?.status||'NV02_LOCAL_PROJECT_RECOVERY_FAILED');
+    ui=await waitForNv02Composer(target,15000)||await uiState(target);
+  }
+  if(ui?.composerReady!==true)throw new Error('NV02_LOCAL_COMPOSER_NOT_READY');
   const verified=await ensureNv02ModelProfile(target);
   if(verified?.securityBlock)throw new Error(verified.securityBlock);
   if(verified?.uiPhase!=='READY'||verified?.composerReady!==true)throw new Error('NV02_LOCAL_READY_NOT_REACHED');
