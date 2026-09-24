@@ -172,8 +172,8 @@ describe('NV02 continuity policy', () => {
     expect(continueDispatch).not.toContain('getControllerState()');
     expect(continueDispatch).not.toContain('hasContinuableNv02Work(controllerState)');
     expect(continueDispatch).not.toContain('findContinuableNv02Work(controllerState)');
-    expect(source).toContain("function findContinuableNv02Work(controllerState)");
-    expect(source).toContain("typeof job?.issueRef==='string'");
+    expect(source).not.toContain("function findContinuableNv02Work(controllerState)");
+    expect(source).not.toContain("typeof job?.issueRef==='string'");
     expect(continueDispatch).not.toContain('CONTINUE_CURRENT_WORK_VERIFIED');
     expect(continueDispatch).not.toContain('CONTINUE_SKIPPED_NO_CURRENT_WORK');
     expect(continueDispatch).not.toContain('CONTINUE_SKIPPED_CURRENT_WORK_UNVERIFIED');
@@ -197,13 +197,13 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("WORKING_STALLED_STOPPED");
     expect(source).toContain("STALLED_HOT_LOOP_NO_CHECKPOINT");
     const continuityLoop=source.slice(source.indexOf('async function maybeNv02Continuity'),source.indexOf('async function handleCommand'));
-    expect(continuityLoop).toContain('shouldRotateNv02Chat');
-    expect(continuityLoop).toContain('rotateNv02Chat(target,state,now)');
+    expect(continuityLoop).not.toContain('shouldRotateNv02Chat');
+    expect(continuityLoop).not.toContain('rotateNv02Chat(target,state,now)');
     expect(continuityLoop).not.toContain('checkpointNv02(');
     expect(source).toContain("nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS");
     expect(source).toContain("unchanged>=MAX_WORKING_UNCHANGED_CHECKS");
     expect(continuityLoop.indexOf("if(phase==='WORKING')")).toBeLessThan(continuityLoop.indexOf("if(currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0))"));
-    expect(continuityLoop.indexOf("if(phase==='WORKING')")).toBeLessThan(continuityLoop.indexOf("if(now<state.nextContinueAt)return"));
+    expect(continuityLoop.indexOf("if(phase==='WORKING')")).toBeLessThan(continuityLoop.indexOf("if(now<Number(state.nextContinueAt||0))return"));
     expect(source).toContain("const NV02_F5_MIN_MS=5*60*1000");
     expect(source).toContain("const NV02_F5_MAX_MS=20*60*1000");
     expect(source).toContain("'PERIODIC_F5_REFRESH'");
@@ -289,15 +289,9 @@ describe('NV02 continuity policy', () => {
     expect(bridge).not.toContain("CHAT_ROTATION_FAILED");
     expect(bridge).not.toContain("CHAT_ROTATION_DEFERRED_TO_EXTERNAL_AUTOPILOT");
     expect(bridge).toContain("rotationRetryAt:Number(raw.rotationRetryAt)||0");
-    expect(bridge).toContain("conversationId=(location.pathname.match(");
-    expect(bridge).toContain("chatgpt:conversation:'+conversationId");
-    expect(bridge).toContain("identityRows.length?identityRows");
-    expect(bridge).toContain("archiveConfirmExpr(menuPoint.title,menuPoint.conversationId)");
-    expect(bridge).toContain("const verified=loadNv02Continuity();");
-    const rotation=bridge.slice(bridge.indexOf('async function rotateNv02Chat'),bridge.indexOf('async function noteNv02CommandDispatch'));
-    expect(rotation).toContain("resumeChatUrl:''");
-    expect(rotation).toContain("verifiedChatUrl:''");
-    expect(rotation).toContain("rotateNv02Chat");
+    expect(bridge).not.toContain("async function rotateNv02Chat");
+    expect(bridge).not.toContain("async function checkpointNv02");
+    expect(bridge).not.toContain("CURRENT_WORK_ORDER=");
     const continuity=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('\nasync function handleCommand'));
     const workingGate=continuity.indexOf("if(phase==='WORKING')");
     const recoveryGate=continuity.indexOf('const chatLoadRecoveryHandled=await maybeRecoverChatLoadError');
@@ -307,33 +301,21 @@ describe('NV02 continuity policy', () => {
     expect(continuity).not.toContain('externalAutopilotOwnsNextNv02Job');
   });
 
-  it('restores the exact durable CURRENT_WORK_ORDER after archive instead of blind continue', () => {
+  it('has no Core/GitHub Work Order coupling in the local App Chrome bridge', () => {
     const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
-    expect(source).toContain('function buildCurrentWorkRestorePrompt');
-    expect(source).toContain('CURRENT_WORK_ORDER=');
-    expect(source).toContain('CURRENT_CHECKPOINT=');
-    expect(source).toContain('DURABLE_SAVE_RECEIPT=');
-    expect(source).toContain('CURRENT_WORK_RESTORE_DISPATCHED');
-    expect(source).toContain('CURRENT_WORK_RESTORE_SKIPPED_CHANGED_WORK');
-    expect(source).toContain('CHAT_ROTATION_SKIPPED_NO_CURRENT_WORK');
-    expect(source).toContain('checkpointNv02(target,currentWork)');
-    const rotation=source.slice(source.indexOf('async function rotateNv02Chat'),source.indexOf('async function noteNv02CommandDispatch'));
-    expect(rotation).toContain('CHAT_ROTATION_CURRENT_WORK_VERIFIED');
-    expect(rotation).toContain('dispatchCurrentWorkRestoreLocked(target,next,now,currentWork,receipt)');
-    expect(rotation).not.toContain('dispatchNaturalContinueLocked(target,next,now)');
-    const archiveCall=rotation.indexOf('const archived=await archiveChat(target)');
-    const clearResume=rotation.indexOf("resumeChatUrl:''");
-    const newChatCall=rotation.indexOf('const opened=await newChat(target)');
-    expect(archiveCall).toBeGreaterThan(-1);
-    expect(clearResume).toBeGreaterThan(archiveCall);
-    expect(newChatCall).toBeGreaterThan(clearResume);
-    const beforeArchive=rotation.slice(0,archiveCall);
-    expect(beforeArchive).not.toContain("resumeChatUrl:''");
-    expect(rotation).toContain("if(!archived?.ok)throw new Error(archived?.status||'ROTATE_ARCHIVE_FAILED')");
-    expect(rotation).toContain("if(!opened?.ok)throw new Error(opened?.status||'ROTATE_NEW_CHAT_FAILED')");
-    const checkpoint=source.slice(source.indexOf('async function checkpointNv02'),source.indexOf('async function rotateNv02Chat'));
-    expect(checkpoint).toContain('CHECKPOINT_CURRENT_WORK_REQUIRED');
-    expect(checkpoint).toContain('CURRENT_WORK_ORDER=');
+    expect(source).not.toContain('function buildCurrentWorkRestorePrompt');
+    expect(source).not.toContain('CURRENT_WORK_ORDER=');
+    expect(source).not.toContain('CURRENT_CHECKPOINT=');
+    expect(source).not.toContain('DURABLE_SAVE_RECEIPT=');
+    expect(source).not.toContain('CURRENT_WORK_RESTORE_DISPATCHED');
+    expect(source).not.toContain('findContinuableNv02Work');
+    expect(source).not.toContain('checkpointNv02');
+    expect(source).not.toContain('rotateNv02Chat');
+    expect(source).not.toContain('externalAutopilotOwnsNextNv02Job');
+    const local=source.slice(source.indexOf('async function dispatchNaturalContinueLocked'),source.indexOf('async function dispatchNaturalContinue(target'));
+    expect(local).toContain('pickContinuePrompt(state.lastPrompt)');
+    expect(local).toContain("continuityEvent('LOCAL_CONTINUE_DISPATCHED'");
+    expect(local).not.toContain('getControllerState');
   });
 
   it('persists NV02 chat-load stable candidate across continuity ticks', () => {
