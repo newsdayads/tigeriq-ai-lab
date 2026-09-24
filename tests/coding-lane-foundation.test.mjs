@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import {activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertPrOpenState,buildLocalFileContext,canonicalCodingJobTitle,canonicalWorkTitleFromObjective,classifyAiFailure,codingMergeCommitTitle,codingOutputTokenLimit,codingPathsOverlap,cooldownWaitFailure,coreResourceStateEligible,gateFailureIssues,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,managerResourceFailurePlan,partitionGenerationFiles,preserveGenerationPrompt,providerCooldownPollPlan,recoverAfterCodingRestart,resourceWaitPlan,restartRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,validateCompactEdits,validateManagerJobPaths} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertPrOpenState,buildLocalFileContext,canonicalCodingJobTitle,canonicalWorkTitleFromObjective,classifyAiFailure,codingMergeCommitTitle,codingOutputTokenLimit,codingPathsOverlap,cooldownWaitFailure,coreResourceStateEligible,gateFailureIssues,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,isVietnameseCodingTitle,managerResourceFailurePlan,partitionGenerationFiles,preserveGenerationPrompt,providerCooldownPollPlan,recoverAfterCodingRestart,resourceWaitPlan,restartRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,validateCompactEdits,validateManagerJobPaths} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError,parseJsonObject} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 const nv11={id:'NV11',provider:'fake',model:'a'};
@@ -14,7 +14,12 @@ test('canonical Vietnamese title inheritance',()=>{
   assert.strictEqual(canonicalWorkTitleFromObjective(`GitHub autonomous coding recovery after Source of Truth or engine update for issue #1796: ${title}\nhttps://example.invalid`),title);
   assert.strictEqual(canonicalCodingJobTitle(`GitHub autonomous coding issue #1796: ${title}`,'English fallback'),title);
   assert.strictEqual(canonicalCodingJobTitle('manual objective','Tên việc thủ công'),'Tên việc thủ công');
+  assert.strictEqual(canonicalCodingJobTitle('manual objective'),'Công việc lập trình');
+  assert.strictEqual(isVietnameseCodingTitle('Tên việc thủ công'),true);
+  assert.strictEqual(isVietnameseCodingTitle('Implement queue retry'),false);
+  assert.throws(()=>canonicalCodingJobTitle('manual objective','Implement queue retry'),/CODING_JOB_TITLE_NOT_VIETNAMESE/);
   assert.strictEqual(codingMergeCommitTitle(1800,title),`PR #1800 - ${title}`);
+  assert.strictEqual(codingMergeCommitTitle(1801,''),'PR #1801 - Công việc TigerIQ');
 });
 
 test('foundation bounded retry and autonomous repair',async(t)=>{
