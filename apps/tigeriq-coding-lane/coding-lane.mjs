@@ -425,7 +425,23 @@ async function claimJob(){
   }catch(e){await c.query('rollback');throw e}finally{c.release()}
 }
 export function buildLocalFileContext(files=[]){return files.map(file=>`FILE ${file.path}\n${String(file.content??'')}`).join('\n\n---\n\n')}
-async function contextFor(paths,ref='main'){const files=[];for(const p of paths){const f=await readRepoFile(p,ref);files.push({path:p,content:f.content})}return buildLocalFileContext(files)}
+async function filesFor(paths,ref='main'){const files=[];for(const p of paths){const f=await readRepoFile(p,ref);files.push({path:p,content:f.content})}return files}
+async function contextFor(paths,ref='main'){return buildLocalFileContext(await filesFor(paths,ref))}
+export function partitionGenerationFiles(files=[],maxBatchChars=9000){
+  const batches=[];let current=[],size=0;
+  const flush=()=>{if(current.length){batches.push(current);current=[];size=0}};
+  for(const file of files){
+    const fileSize=Buffer.byteLength(String(file?.content??''),'utf8')+Buffer.byteLength(String(file?.path??''),'utf8')+16;
+    if(fileSize>maxBatchChars){flush();batches.push([file]);continue}
+    if(current.length&&size+fileSize>maxBatchChars)flush();
+    current.push(file);size+=fileSize;
+  }
+  flush();
+  return batches;
+}
+async function generationContextsFor(paths,ref='main',maxBatchChars=9000){
+  return partitionGenerationFiles(await filesFor(paths,ref),maxBatchChars).map(files=>({paths:files.map(x=>x.path),context:buildLocalFileContext(files)}));
+}
 export function validateCompactEdits(edits,allowedPaths=[]){
   if(!Array.isArray(edits)||edits.length<1||edits.length>12)throw new Error('CODING_COMPACT_EDITS_COUNT_INVALID');
   const allow=new Set((allowedPaths||[]).map(String)),seen=new Set(),paths=new Set();
@@ -462,11 +478,20 @@ export function applyCompactEdits(content,edits){
 export function buildRepairGenerationPrompt(worker,j,context,issues=[]){
   return `You are ${worker.id}, an autonomous TigerIQ repository engineer. Fix ONLY the listed issues on the existing branch.\nTASK: ${j.instruction}\nALLOWED PATHS: ${j.paths.join(', ')}\nREVIEW ISSUES TO FIX: ${JSON.stringify(issues)}\nCURRENT FILES:\n${context}\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}. Do not touch paths outside ALLOWED PATHS. Never output secrets. Keep changes minimal and testable.`;
 }
-async function generateRepairChanges(worker,j,context,issues=[],exclude=[]){
-  const prompt=buildRepairGenerationPrompt(worker,j,context,issues);
-  const validateData=d=>{validateChanges(d.changes,j.paths);validateJobScope(j.paths,d.changes)};
-  const invoked=await invokeJsonWithFailover(worker,prompt,{exclude,validateData,shrinkPrompt:preserveGenerationPrompt});
-  return {payload:invoked.data,resource:invoked.resource};
+async function generateRepairChanges(worker,j,ref='main',issues=[],exclude=[]){
+  const batches=await generationContextsFor(j.paths,ref);
+  let selected=worker;const changes=[];const summaries=[];
+  for(const batch of batches){
+    const scopedJob={...j,paths:batch.paths};
+    const prompt=buildRepairGenerationPrompt(selected,scopedJob,batch.context,issues);
+    const validateData=d=>{validateChanges(d.changes,batch.paths);validateJobScope(batch.paths,d.changes)};
+    const invoked=await invokeJsonWithFailover(selected,prompt,{exclude,validateData,shrinkPrompt:preserveGenerationPrompt});
+    selected=invoked.resource;
+    summaries.push(String(invoked.data.summary||'').slice(0,300));
+    changes.push(...invoked.data.changes);
+  }
+  validateJobScope(j.paths,changes);
+  return {payload:{summary:summaries.filter(Boolean).join('; ').slice(0,1000)||'staged repair',changes},resource:selected};
 }
 async function writeRepairChanges(branch,changes,mutationAuth={}){
   for(const change of changes)await writeFile(branch,change,mutationAuth);
@@ -477,10 +502,9 @@ export function isRefreshableCompactPatchError(error){
 async function generateAndWriteRepair(worker,j,branch,issues=[],exclude=[],mutationAuth={}){
   let selected=worker,last=null;
   for(let attempt=1;attempt<=2;attempt++){
-    const context=await contextFor(j.paths,branch);
     const retryIssues=attempt===1?issues:[...issues,'Refresh the CURRENT FILES from this same PR branch and regenerate the compact patch; keep the same PR and scope.'];
     try{
-      const generated=await generateRepairChanges(selected,j,context,retryIssues,exclude);
+      const generated=await generateRepairChanges(selected,j,branch,retryIssues,exclude);
       selected=generated.resource;
       await writeRepairChanges(branch,generated.payload.changes,mutationAuth);
       return {worker:selected,payload:generated.payload};
@@ -492,7 +516,20 @@ async function generateAndWriteRepair(worker,j,branch,issues=[],exclude=[],mutat
   }
   throw last||new Error('CODING_COMPACT_PATCH_REFRESH_EXHAUSTED');
 }
-async function generateChanges(worker,j,context,reviewIssues=[],exclude=[]){const prompt=`You are ${worker.id}, an autonomous TigerIQ repository engineer. Implement ONLY the assigned task on a GitHub branch.\nTASK: ${j.instruction}\nALLOWED PATHS: ${j.paths.join(', ')}\n${reviewIssues.length?`REVIEW ISSUES TO FIX: ${JSON.stringify(reviewIssues)}\n`:''}CURRENT FILES:\n${context}\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}. Do not touch paths outside ALLOWED PATHS. Never output secrets. Keep changes minimal and testable.`;const validateData=d=>{validateChanges(d.changes,j.paths);validateJobScope(j.paths,d.changes)};const invoked=await invokeJsonWithFailover(worker,prompt,{exclude,validateData,shrinkPrompt:preserveGenerationPrompt});const d=invoked.data;return {payload:d,resource:invoked.resource}}
+async function generateChanges(worker,j,ref='main',reviewIssues=[],exclude=[]){
+  const batches=await generationContextsFor(j.paths,ref);
+  let selected=worker;const changes=[];const summaries=[];
+  for(const batch of batches){
+    const prompt=`You are ${selected.id}, an autonomous TigerIQ repository engineer. Implement ONLY the assigned task on a GitHub branch.\nTASK: ${j.instruction}\nALLOWED PATHS FOR THIS BATCH: ${batch.paths.join(', ')}\nOTHER ALLOWED PATHS are handled in separate bounded batches; do not emit them here.\n${reviewIssues.length?`REVIEW ISSUES TO FIX: ${JSON.stringify(reviewIssues)}\n`:''}CURRENT FILES:\n${batch.context}\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}. Do not touch paths outside this batch. Never output secrets. Keep changes minimal and testable.`;
+    const validateData=d=>{validateChanges(d.changes,batch.paths);validateJobScope(batch.paths,d.changes)};
+    const invoked=await invokeJsonWithFailover(selected,prompt,{exclude,validateData,shrinkPrompt:preserveGenerationPrompt});
+    selected=invoked.resource;
+    summaries.push(String(invoked.data.summary||'').slice(0,300));
+    changes.push(...invoked.data.changes);
+  }
+  validateJobScope(j.paths,changes);
+  return {payload:{summary:summaries.filter(Boolean).join('; ').slice(0,1000)||'staged implementation',changes},resource:selected};
+}
 async function reviewPr(reviewer,j,diff,implementerId,extraExclude=[]){const prompt=`You are ${reviewer.id}, independent TigerIQ code reviewer. Review against the task and safety boundaries. TASK: ${j.instruction}\nDIFF:\n${diff.slice(0,180000)}\nReturn ONLY JSON {"decision":"approve|changes_requested","summary":"short","issues":["specific issue"]}. Reject unsafe, untested, out-of-scope, credential/security/production changes.`;const invoked=await invokeJsonWithFailover(reviewer,prompt,{exclude:[implementerId,...extraExclude]});const d=invoked.data;if(!['approve','changes_requested'].includes(d.decision)){const e=new Error('REVIEW_DECISION_INVALID');e.code='REVIEW_SCHEMA_INVALID';throw e}d.issues=Array.isArray(d.issues)?d.issues.slice(0,8):[];return {review:d,resource:invoked.resource}}
 
 async function runJob(j){
@@ -514,8 +551,7 @@ async function runJob(j){
     if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE');
     await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,status='waiting_ci',next_attempt_at=null,completed_at=null where id=$1",[j.id,worker.id,reviewer.id]);
   }else{
-    context=await contextFor(j.paths,'main');
-    generated=await generateChanges(worker,j,context,[],cooldownExcludes);worker=generated.resource;gen=generated.payload;
+    generated=await generateChanges(worker,j,'main',[],cooldownExcludes);worker=generated.resource;gen=generated.payload;
     validateJobScope(j.paths,gen.changes);
     reviewer=pickResource([worker.id,...cooldownExcludes]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE');
     const base=await mainSha();branch=branchName(worker.id,j.id);await createBranch(branch,base);

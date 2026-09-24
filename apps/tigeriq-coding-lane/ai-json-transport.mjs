@@ -102,7 +102,7 @@ export function salvageTruncatedCompactEdits(text){
       depth--;
       if(depth===0&&start>=0){
         try{
-          const edit=JSON.parse(clean.slice(start,i+1));
+          const edit=parseJsonCandidate(clean.slice(start,i+1));
           if(edit&&typeof edit==='object'&&!Array.isArray(edit))edits.push(edit);
         }catch{}
         start=-1;
@@ -329,15 +329,16 @@ export function installAiJsonTransport({maxAttempts=3,baseDelayMs=350,attemptTim
     let last;
     for(let attempt=1;attempt<=maxAttempts;attempt++){
       let res;
+      const groqHost=new URL(String(input)).hostname==='api.groq.com';
       const request=schema==='changes'
         ?rewritePromptInRequest(input,jsonPrepared,compactPromptForChanges(originalPrompt,{
-          maxContextChars:attempt===1?12000:7000,
-          maxOutputChars:attempt===1?6000:3500,
+          maxContextChars:groqHost?(attempt===1?6000:4000):(attempt===1?12000:7000),
+          maxOutputChars:attempt===1?4200:2800,
         }))
         :schema==='edits'
           ?rewritePromptInRequest(input,jsonPrepared,compactPromptForEdits(originalPrompt,{
-            maxContextChars:attempt===1?7000:4500,
-            maxOutputChars:attempt===1?3500:2400,
+            maxContextChars:groqHost?(attempt===1?5000:3200):(attempt===1?7000:4500),
+            maxOutputChars:attempt===1?3000:2000,
           }))
           :jsonPrepared;
       const attemptRequest={...request,signal:AbortSignal.timeout(attemptTimeoutMs)};
