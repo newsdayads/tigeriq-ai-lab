@@ -240,7 +240,7 @@ describe('NV02 continuity policy', () => {
     expect(localRunCommand).not.toContain("withNv02Mutation(");
     expect(localRunCommand).not.toContain("workerRunGraceUntil.delete('NV02')");
     expect(source).toContain("const workerRunGraceUntil=new Map()");
-    expect(source).toContain("workerRunGraceUntil.set(workerId,nextContinueAt)");
+    expect(source).toContain("workerRunGraceUntil.set(workerId,now+LOCAL_RUN_GRACE_MS)");
     expect(source).toContain("'LOCAL_RUN_BACKGROUND_SUPPRESSED'");
     expect(source).toContain("async function waitForNv02Composer(target,timeoutMs=30000)");
     expect(source).toContain("if(forceFresh||!inProject())");
