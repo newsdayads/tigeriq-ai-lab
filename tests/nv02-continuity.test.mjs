@@ -252,7 +252,7 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("const NV02_STALLED_RELOAD_CHECKS=10");
     expect(source).toContain("const NV02_STALLED_RESET_CHECKS=14");
     expect(source).toContain("const LOCAL_RUN_GRACE_MS=15000");
-    expect(source).toContain("'LOCAL_RUN_COMMAND_GRACE'");
+    expect(source).toContain("'LOCAL_RUN_SUBMISSION_GRACE_REARMED'");
     expect(source).not.toContain("'LOCAL_RUN_KICKED'");
     expect(source).toContain("stalledChecks:Math.min(NV02_STALLED_RESET_CHECKS,state.stalledChecks+1)");
     expect(source).toContain("if(state.stalledChecks===NV02_STALLED_RELOAD_CHECKS)");
