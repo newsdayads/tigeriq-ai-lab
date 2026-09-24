@@ -19,6 +19,15 @@ function issue(number, title, body, extra = {}) {
   };
 }
 
+function coreQueueFlags() {
+  return [
+    'TIGERIQ_EXECUTABLE=true',
+    'OWNER_POLICY=AUTO',
+    'NO_CODE_CHANGE=true',
+    'NO_PC01_SHELL=true',
+  ];
+}
+
 describe('TigerIQ Live Work Order projection', () => {
   it('extracts GitHub issue identity from Core/Coding job ids without guessing unrelated numbers', () => {
     expect(parseIssueNumber('JOB-GH-1714-PC')).toBe(1714);
@@ -29,23 +38,20 @@ describe('TigerIQ Live Work Order projection', () => {
 
   it('preserves canonical GitHub title and AUTO queue policy', () => {
     const row = parseQueueIssue(issue(2001, '[P1][CORE] Việc chuẩn', [
-      'TIGERIQ_EXECUTABLE=true',
-      'OWNER_POLICY=AUTO',
+      ...coreQueueFlags(),
       'AUTO_QUEUE=INCLUDED',
       'PRIORITY=P1',
     ].join('\n')));
     expect(row).toMatchObject({ number: 2001, title: '[P1][CORE] Việc chuẩn', priority: 'P1', status: 'QUEUED' });
 
     expect(parseQueueIssue(issue(2002, '[P0] Không vào queue', [
-      'TIGERIQ_EXECUTABLE=true',
-      'OWNER_POLICY=AUTO',
+      ...coreQueueFlags(),
       'AUTO_QUEUE=EXCLUDED',
       'PRIORITY=P0',
     ].join('\n')))).toBe(null);
 
     expect(parseQueueIssue(issue(2003, '[P0] Đã superseded', [
-      'TIGERIQ_EXECUTABLE=true',
-      'OWNER_POLICY=AUTO',
+      ...coreQueueFlags(),
       'STATE=SUPERSEDED',
       'PRIORITY=P0',
     ].join('\n')))).toBe(null);
@@ -53,8 +59,7 @@ describe('TigerIQ Live Work Order projection', () => {
 
   it('keeps explicit dependency-wait state out of QUEUED', () => {
     const row = parseQueueIssue(issue(2005, '[P0] Chờ dependency', [
-      'TIGERIQ_EXECUTABLE=true',
-      'OWNER_POLICY=AUTO',
+      ...coreQueueFlags(),
       'AUTO_QUEUE=INCLUDED',
       'PRIORITY=P0',
       'STATE=WAIT_DEPENDENCY',
@@ -65,8 +70,7 @@ describe('TigerIQ Live Work Order projection', () => {
 
   it('keeps OWNER_HOLD visible as WAITING and records declared dependencies', () => {
     const row = parseQueueIssue(issue(2004, '[P0] Chờ Owner', [
-      'TIGERIQ_EXECUTABLE=true',
-      'OWNER_POLICY=AUTO',
+      ...coreQueueFlags(),
       'OWNER_HOLD=true',
       'OWNER_DIRECT=true',
       'PRIORITY=P0',
@@ -90,6 +94,31 @@ describe('TigerIQ Live Work Order projection', () => {
       { number: 50, priority: 'P3', ownerDirect: false },
     ].sort(compareQueueRows);
     expect(rows.map((row) => row.number)).toEqual([10, 20, 30, 40, 50]);
+  });
+
+  it('rejects GitHub items that are not eligible in existing Core/Coding schedulers', () => {
+    expect(parseQueueIssue(issue(2006, '[P0] Thiếu guard scheduler', [
+      'TIGERIQ_EXECUTABLE=true',
+      'OWNER_POLICY=AUTO',
+      'AUTO_QUEUE=INCLUDED',
+      'PRIORITY=P0',
+    ].join('\n')))).toBe(null);
+  });
+
+  it('maps a live Coding worker by one unique canonical title when its runtime id has no GitHub number', () => {
+    const workers = [{
+      employeeId: 'NV17',
+      state: 'working',
+      currentJobId: 'CODE-abc',
+      job: '[OWNER_DIRECT][P0][NV09] Core runtime registration + real inference acceptance [sửa lần 2]',
+      detail: 'inception · mercury-2.5',
+    }];
+    const issues = [
+      issue(1530, '[OWNER_DIRECT][P0][NV09] Core runtime registration + real inference acceptance', coreQueueFlags().join('\n')),
+    ];
+    expect(runtimeWorkRows(workers, issues)).toEqual([
+      expect.objectContaining({ issueNumber: 1530, employeeId: 'NV17', runtimeStatus: 'WORKING' }),
+    ]);
   });
 
   it('projects only verified live worker states with a GitHub issue identity', () => {
