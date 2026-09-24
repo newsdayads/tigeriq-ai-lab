@@ -22,6 +22,11 @@ export function validateJobScope(jobPaths,changes){
   if(offending.length) throw new CodingScopeViolationError(offending);
   return true;
 }
+export function finalizeGeneratedChanges(changes,allowedPaths=[]){
+  validateChanges(changes,allowedPaths);
+  validateJobScope(allowedPaths,changes);
+  return changes;
+}
 
 export function validateSourceScope(proposedPaths,canonicalPaths){
   const canonical=new Set((canonicalPaths||[]).map(String));
@@ -537,7 +542,7 @@ export function applyCompactEdits(content,edits){
 }
 
 export function buildRepairGenerationPrompt(worker,j,context,issues=[]){
-  return `You are ${worker.id}, an autonomous TigerIQ repository engineer. Fix ONLY the listed issues on the existing branch.\nTASK: ${j.instruction}\nALLOWED PATHS: ${j.paths.join(', ')}\nREVIEW ISSUES TO FIX: ${JSON.stringify(issues)}\nCURRENT FILES:\n${context}\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}. Do not touch paths outside ALLOWED PATHS. Never output secrets. Keep changes minimal and testable.`;
+  return `You are ${worker.id}, an autonomous TigerIQ repository engineer. Fix ONLY the listed issues on the existing branch.\nTASK: ${j.instruction}\nALLOWED PATHS: ${j.paths.join(', ')}\nREVIEW ISSUES TO FIX: ${JSON.stringify(issues)}\nBATCH_NO_CHANGE_ALLOWED=true\nIf this batch needs no mutation for the task, return a bounded no-change response instead of inventing an edit.\nCURRENT FILES:\n${context}\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}. Do not touch paths outside ALLOWED PATHS. Never output secrets. Keep changes minimal and testable.`;
 }
 export function assertGenerationContextPaths(prompt,allowedPaths=[]){
   const files=currentFilesFromPrompt(prompt);
@@ -549,7 +554,7 @@ async function invokeCompactGeneration(worker,prompt,allowedPaths,exclude=[]){
   assertGenerationContextPaths(prompt,allowedPaths);
   const modelPrompt=compactPromptForChanges(prompt,{maxContextChars:6000,maxOutputChars:3200});
   const expand=d=>expandCompactChanges(prompt,JSON.stringify(d));
-  const validateData=d=>{const expanded=expand(d);validateChanges(expanded.changes,allowedPaths);validateJobScope(allowedPaths,expanded.changes)};
+  const validateData=d=>{const expanded=expand(d);if(expanded.noChange===true&&expanded.changes.length===0)return true;validateChanges(expanded.changes,allowedPaths);validateJobScope(allowedPaths,expanded.changes);return true};
   const invoked=await invokeJsonWithFailover(worker,modelPrompt,{exclude,validateData,shrinkPrompt:preserveGenerationPrompt});
   return {payload:expand(invoked.data),resource:invoked.resource};
 }
@@ -564,7 +569,7 @@ async function generateRepairChanges(worker,j,ref='main',issues=[],exclude=[]){
     summaries.push(String(invoked.payload.summary||'').slice(0,300));
     changes.push(...invoked.payload.changes);
   }
-  validateJobScope(j.paths,changes);
+  finalizeGeneratedChanges(changes,j.paths);
   return {payload:{summary:summaries.filter(Boolean).join('; ').slice(0,1000)||'staged repair',changes},resource:selected};
 }
 async function writeRepairChanges(branch,changes,mutationAuth={}){
@@ -594,13 +599,13 @@ async function generateChanges(worker,j,ref='main',reviewIssues=[],exclude=[]){
   const batches=await generationContextsFor(j.paths,ref);
   let selected=worker;const changes=[];const summaries=[];
   for(const batch of batches){
-    const prompt=`You are ${selected.id}, an autonomous TigerIQ repository engineer. Implement ONLY the assigned task on a GitHub branch.\nTASK: ${j.instruction}\nALLOWED PATHS FOR THIS BATCH: ${batch.paths.join(', ')}\nOTHER ALLOWED PATHS are handled in separate bounded batches; do not emit them here.\n${reviewIssues.length?`REVIEW ISSUES TO FIX: ${JSON.stringify(reviewIssues)}\n`:''}CURRENT FILES:\n${batch.context}\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}. Do not touch paths outside this batch. Never output secrets. Keep changes minimal and testable.`;
+    const prompt=`You are ${selected.id}, an autonomous TigerIQ repository engineer. Implement ONLY the assigned task on a GitHub branch.\nTASK: ${j.instruction}\nALLOWED PATHS FOR THIS BATCH: ${batch.paths.join(', ')}\nOTHER ALLOWED PATHS are handled in separate bounded batches; do not emit them here.\nBATCH_NO_CHANGE_ALLOWED=true\nIf this batch needs no mutation for the task, return a bounded no-change response instead of inventing an edit.\n${reviewIssues.length?`REVIEW ISSUES TO FIX: ${JSON.stringify(reviewIssues)}\n`:''}CURRENT FILES:\n${batch.context}\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}. Do not touch paths outside this batch. Never output secrets. Keep changes minimal and testable.`;
     const invoked=await invokeCompactGeneration(selected,prompt,batch.paths,exclude);
     selected=invoked.resource;
     summaries.push(String(invoked.payload.summary||'').slice(0,300));
     changes.push(...invoked.payload.changes);
   }
-  validateJobScope(j.paths,changes);
+  finalizeGeneratedChanges(changes,j.paths);
   return {payload:{summary:summaries.filter(Boolean).join('; ').slice(0,1000)||'staged implementation',changes},resource:selected};
 }
 async function reviewPr(reviewer,j,diff,implementerId,extraExclude=[]){const prompt=`You are ${reviewer.id}, independent TigerIQ code reviewer. Review against the task and safety boundaries. TASK: ${j.instruction}\nDIFF:\n${diff.slice(0,180000)}\nReturn ONLY JSON {"decision":"approve|changes_requested","summary":"short","issues":["specific issue"]}. Reject unsafe, untested, out-of-scope, credential/security/production changes.`;const invoked=await invokeJsonWithFailover(reviewer,prompt,{exclude:[implementerId,...extraExclude]});const d=invoked.data;if(!['approve','changes_requested'].includes(d.decision)){const e=new Error('REVIEW_DECISION_INVALID');e.code='REVIEW_SCHEMA_INVALID';throw e}d.issues=Array.isArray(d.issues)?d.issues.slice(0,8):[];return {review:d,resource:invoked.resource}}
