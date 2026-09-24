@@ -6,11 +6,14 @@
 <meta name="theme-color" content="#07111f">
 <meta name="color-scheme" content="dark">
 <title>TigerIQ Live · Trạng thái NV</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto+Flex:opsz,wght@8..144,400..800&display=swap" rel="stylesheet">
 <style>
-:root{font-family:"Google Sans Flex","Google Sans","Helvetica Neue",sans-serif;--bg:#07111f;--panel:#0e1b2b;--panel2:#102239;--line:#203953;--text:#f2f7fd;--muted:#91a4ba;--blue:#58a6ff;--green:#46d48f;--amber:#efb85c;--red:#ff747e;--gray:#77899e}
+:root{font-family:"Roboto Flex","Segoe UI Variable Text","Segoe UI",Arial,sans-serif;font-optical-sizing:auto;--bg:#07111f;--panel:#0e1b2b;--panel2:#102239;--line:#203953;--text:#f2f7fd;--muted:#91a4ba;--blue:#58a6ff;--green:#46d48f;--amber:#efb85c;--red:#ff747e;--gray:#77899e}
 *{box-sizing:border-box}
 html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text)}
-body{font-family:"Google Sans Flex","Google Sans","Helvetica Neue",sans-serif;background:radial-gradient(circle at 90% -12%,#173b6e 0,transparent 36%),linear-gradient(180deg,#081322,#060d17);overflow-x:hidden}
+body{font-family:"Roboto Flex","Segoe UI Variable Text","Segoe UI",Arial,sans-serif;font-optical-sizing:auto;background:radial-gradient(circle at 90% -12%,#173b6e 0,transparent 36%),linear-gradient(180deg,#081322,#060d17);overflow-x:hidden}
 a{color:inherit;text-decoration:none}
 button{font:inherit}
 .wrap{width:min(760px,100%);margin:auto;padding:max(14px,env(safe-area-inset-top)) 12px max(28px,env(safe-area-inset-bottom))}
@@ -39,7 +42,7 @@ button{font:inherit}
 .identity{min-width:0}
 .identity b{display:block;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .identity small{display:block;color:var(--muted);font-size:10px;margin-top:3px}
-.badge{display:inline-flex;align-items:center;gap:4px;flex:none;border-radius:999px;padding:6px 8px;font-size:10px;font-weight:850;letter-spacing:.01em}
+.badge{display:inline-flex;align-items:center;gap:4px;flex:none;border-radius:999px;padding:6px 8px;font-size:10px;font-weight:800;letter-spacing:.01em}
 .badge.working{background:#103526;color:#8de7b1;border:1px solid #24533f}
 .badge.waiting{background:#392b17;color:#ffd18b;border:1px solid #6a4d26}
 .badge.blocked{background:#3b1d23;color:#ffb0b6;border:1px solid #6b3039}
@@ -57,7 +60,7 @@ button{font:inherit}
 .work-zone{margin:0 0 11px}
 .work-zone+.work-zone{margin-top:2px}
 .work-zone-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:1px 2px 7px}
-.work-zone-head h2{display:flex;align-items:center;gap:7px;font-size:13px;line-height:1.2;margin:0;font-weight:900;letter-spacing:.055em;text-transform:uppercase}
+.work-zone-head h2{display:flex;align-items:center;gap:7px;font-size:13px;line-height:1.2;margin:0;font-weight:800;letter-spacing:.02em;text-transform:uppercase}
 .work-zone-head>span{font-size:10px;color:var(--muted)}
 .zone-icon{width:16px;height:16px;flex:none;stroke:currentColor}
 .active-zone .work-zone-head h2{color:#72e0a5}
@@ -70,7 +73,7 @@ button{font:inherit}
 .work-title{font-size:12px;font-weight:800;line-height:1.35;overflow-wrap:anywhere}
 .work-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:7px;font-size:10px;color:var(--muted)}
 .work-meta b{color:#cfe3fa}
-.work-state{display:inline-flex;align-items:center;gap:4px;border:1px solid #3a4d63;border-radius:999px;padding:3px 6px;font-weight:850;font-size:9px}
+.work-state{display:inline-flex;align-items:center;gap:4px;border:1px solid #3a4d63;border-radius:999px;padding:3px 6px;font-weight:800;font-size:9px}
 .work-state.working{border-color:#24533f;background:#103526;color:#8de7b1}
 .work-state.review,.work-state.waiting{border-color:#6a4d26;background:#392b17;color:#ffd18b}
 .work-state.blocked{border-color:#6b3039;background:#3b1d23;color:#ffb0b6}
