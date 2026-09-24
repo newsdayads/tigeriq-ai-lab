@@ -368,8 +368,8 @@ async function maybeWorkerContinuity(w,target,ui){
   }
 
   if(phase==='READY'){
-    if(w.id==='NV04'){
-      const assignment=await currentNv04AssignmentStatus();
+    if(w.id==='NV03'||w.id==='NV04'){
+      const assignment=await currentWorkerAssignmentStatus(w.id);
       if(assignment.status!=='CONTINUABLE'){
         state={...state,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),stalledChecks:0};
         saveWorkerContinuity(w.id,state);
@@ -850,24 +850,26 @@ async function getControllerState(){
   if(!r.ok)throw new Error(`HTTP_${r.status}:state`);
   return r.json();
 }
-function nv04AssignmentStatus(controller){
-  const jobs=(controller?.jobs||[]).filter((job)=>job?.workerId==='NV04'&&!job?.completedAt);
+function workerAssignmentStatus(controller,workerId){
+  const jobs=(controller?.jobs||[]).filter((job)=>job?.workerId===workerId&&!job?.completedAt);
   if(!jobs.length)return{status:'READY_UNASSIGNED',job:null};
   const job=jobs.at(-1);
-  if(job?.source!=='NV04_ASSIGNMENT')return{status:'NV04_ASSIGNMENT_INVALID_SOURCE',job};
+  if(workerId==='NV04'&&job?.source!=='NV04_ASSIGNMENT')return{status:'NV04_ASSIGNMENT_INVALID_SOURCE',job};
   const stage=String(job?.stage||'');
   if(stage==='WORKING')return{status:'CONTINUABLE',job};
-  if(stage==='WAITING_EVIDENCE'||stage==='VERIFY')return{status:'NV04_WAITING_EVIDENCE',job};
-  if(stage==='SUBMITTED'||stage==='DISPATCHING'||stage==='QUEUED')return{status:'NV04_ASSIGNMENT_PENDING',job};
+  if(stage==='WAITING_EVIDENCE'||stage==='VERIFY')return{status:workerId==='NV04'?'NV04_WAITING_EVIDENCE':'NV03_WAITING_EVIDENCE',job};
+  if(stage==='SUBMITTED'||stage==='DISPATCHING'||stage==='QUEUED')return{status:workerId==='NV04'?'NV04_ASSIGNMENT_PENDING':'NV03_ASSIGNMENT_PENDING',job};
   return{status:'READY_UNASSIGNED',job:null};
 }
-async function currentNv04AssignmentStatus(){
-  try{return nv04AssignmentStatus(await getControllerState());}
+function nv04AssignmentStatus(controller){return workerAssignmentStatus(controller,'NV04');}
+async function currentWorkerAssignmentStatus(workerId){
+  try{return workerAssignmentStatus(await getControllerState(),workerId);}
   catch(error){
-    log('NV04_ASSIGNMENT_STATE_UNAVAILABLE',{error:String(error?.message||error)});
-    return{status:'NV04_ASSIGNMENT_STATE_UNAVAILABLE',job:null};
+    log('WORKER_ASSIGNMENT_STATE_UNAVAILABLE',{workerId,error:String(error?.message||error)});
+    return{status:'WORKER_ASSIGNMENT_STATE_UNAVAILABLE',job:null};
   }
 }
+async function currentNv04AssignmentStatus(){return currentWorkerAssignmentStatus('NV04');}
 async function continuityEvent(event,data={}){
   try{await post('/api/continuity/event','NV02',{workerId:'NV02',event,...data});}
   catch(error){log('NV02_CONTINUITY_EVENT_POST_FAILED',{event,error:String(error?.message||error)});}
@@ -1337,8 +1339,8 @@ async function handleCommand(w,target,command){
   if(action==='NAVIGATE'){const u=new URL(String(payload.url||''));if(u.hostname!==expectedHost(w))throw new Error('BLOCKED_URL');await navigate(target,u.toString());return{status:'NAVIGATED'};}
   if(action==='MODEL_PREFLIGHT'){if(w.id!=='NV02')return{status:'MODEL_PREFLIGHT_NOT_REQUIRED'};return ensureNv02ModelProfile(target);}
   if(action==='LOCAL_CONTINUE_NOW'){
-    if(w.id==='NV04'){
-      const assignment=await currentNv04AssignmentStatus();
+    if(w.id==='NV03'||w.id==='NV04'){
+      const assignment=await currentWorkerAssignmentStatus(w.id);
       if(assignment.status!=='CONTINUABLE')return{status:assignment.status,jobId:assignment.job?.jobId||null};
     }
     const raw=await uiState(target);
