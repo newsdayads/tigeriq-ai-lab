@@ -219,7 +219,13 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("ensureNv02LocalReadyLocked(target,ui,{forceFresh:true})");
     expect(source).toContain("ensureNv02LocalReadyLocked(target,raw,{forceFresh:false})");
     expect(source).toContain("'BOOT_LOCAL_CONTINUE_SUBMITTED'");
-    expect(source).toContain("'LOCAL_CONTINUE_NOW',60000");
+    const localRunCommand=source.slice(source.indexOf("if(action==='LOCAL_CONTINUE_NOW')"),source.indexOf("if(action==='DISPATCH')"));
+    expect(localRunCommand).toContain("ensureNv02LocalReadyLocked(target,raw,{forceFresh:false})");
+    expect(localRunCommand).not.toContain("withNv02Mutation(");
+    expect(localRunCommand).toContain("workerRunGraceUntil.delete('NV02')");
+    expect(source).toContain("const workerRunGraceUntil=new Map()");
+    expect(source).toContain("workerRunGraceUntil.set(workerId,nextContinueAt)");
+    expect(source).toContain("'LOCAL_RUN_BACKGROUND_SUPPRESSED'");
     expect(source).toContain("async function waitForNv02Composer(target,timeoutMs=30000)");
     expect(source).toContain("if(forceFresh||!inProject())");
     expect(source).toContain("await navigate(target,NV02_HOME_URL)");
