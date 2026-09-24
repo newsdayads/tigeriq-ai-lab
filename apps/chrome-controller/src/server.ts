@@ -117,6 +117,7 @@ let startupReady=false;
 let startupRecoveryInFlight=false;
 let lastAutopilotStopReason='';
 let selfRunTicking=false;
+let githubTerminalReconcileTicking=false;
 let selfRunTimer:NodeJS.Timeout|undefined;
 const selfRunEnabled=false;
 const externalWorkAutopilotEnabled=false; // App Chrome is local UI control only; no Core/queue/GitHub assignment
@@ -521,6 +522,17 @@ function issueNumberFromRef(ref:string|null|undefined){
   const m=String(ref??'').match(/\/issues\/(\d+)(?:$|[?#/])/);
   return m?Number(m[1]):0;
 }
+function localGithubIssueNumberFromRef(ref:string|null|undefined){
+  try{
+    const u=new URL(String(ref??''));
+    if(u.hostname.toLowerCase()!=='github.com')return 0;
+    const expectedPrefix=`/${selfRunGithubOwner}/${selfRunGithubRepo}/issues/`.toLowerCase();
+    if(!u.pathname.toLowerCase().startsWith(expectedPrefix))return 0;
+    const tail=u.pathname.slice(expectedPrefix.length);
+    if(!/^\d+\/?$/.test(tail))return 0;
+    return Number(tail.replace(/\/$/,''));
+  }catch{return 0;}
+}
 function collectResourceScopes(value:unknown,scopes:Set<string>){
   const text=typeof value==='string'?value:JSON.stringify(value??'');
   for(const match of text.matchAll(/RESOURCE_SCOPE=([^\s\\n\\r"'\x60]+)/g)){
@@ -633,6 +645,56 @@ async function reconcileSelfRunWorker(workerId:WorkerId){
   persistEvidence();
   return true;
 }
+async function reconcileGithubTerminalUiJobs(){
+  if(githubTerminalReconcileTicking||killed)return;
+  githubTerminalReconcileTicking=true;
+  try{
+    for(const workerId of WORKER_IDS){
+      let active=uiJobLedger.active(workerId);
+      if(!active||isTerminalUiJobStage(active.stage)||active.source==='APP_CHROME_SELF_RUN')continue;
+      if(!['SUBMITTED','WORKING','WAITING_EVIDENCE','VERIFY'].includes(active.stage))continue;
+      const issueNumber=localGithubIssueNumberFromRef(active.issueRef);
+      if(!issueNumber)continue;
+      const jobId=active.jobId;
+      try{
+        const issue=await fetchGithubIssue({issueNumber,owner:selfRunGithubOwner,repo:selfRunGithubRepo,token:selfRunGithubToken});
+        if(issue.state!=='closed')continue;
+        active=uiJobLedger.active(workerId);
+        if(!active||active.jobId!==jobId||isTerminalUiJobStage(active.stage))continue;
+        const evidenceRef=issue.html_url;
+        const completed=String(issue.state_reason||'')==='completed';
+        if(completed){
+          if(active.stage==='SUBMITTED'||active.stage==='WORKING'){
+            uiJobLedger.transition(workerId,jobId,'WAITING_EVIDENCE',{evidenceRef,nextAction:'Verify authoritative GitHub completion'});
+            active=uiJobLedger.active(workerId);
+          }
+          if(active?.jobId===jobId&&active.stage==='WAITING_EVIDENCE'){
+            uiJobLedger.transition(workerId,jobId,'VERIFY',{evidenceRef,nextAction:'Verify authoritative GitHub completion'});
+            active=uiJobLedger.active(workerId);
+          }
+          if(active?.jobId===jobId&&active.stage==='VERIFY'){
+            uiJobLedger.transition(workerId,jobId,'DONE',{evidenceRef,result:`GitHub issue #${issueNumber} closed completed; terminal state reconciled.`});
+            log('UI_JOB_GITHUB_TERMINAL_RECONCILED',{workerId,jobId,issueNumber,terminal:'DONE',evidenceRef});
+          }
+        }else{
+          uiJobLedger.transition(workerId,jobId,'BLOCKED',{
+            evidenceRef,
+            blocker:`SOURCE_ISSUE_CLOSED_${String(issue.state_reason||'UNKNOWN').toUpperCase()}`,
+            nextAction:null,
+            result:`GitHub issue #${issueNumber} closed without completed state.`,
+          });
+          log('UI_JOB_GITHUB_TERMINAL_RECONCILED',{workerId,jobId,issueNumber,terminal:'BLOCKED',evidenceRef,stateReason:issue.state_reason??null});
+        }
+        persistEvidence();
+      }catch(error){
+        log('UI_JOB_GITHUB_TERMINAL_RECONCILE_DEFERRED',{workerId,jobId,issueNumber,error:String(error)});
+      }
+    }
+  }finally{
+    githubTerminalReconcileTicking=false;
+  }
+}
+
 async function selfRunTick(){
   if(selfRunTicking||!selfRunEnabled||paused||killed||!startupReady)return;
   selfRunTicking=true;
@@ -1617,7 +1679,9 @@ server.listen(config.port,config.host,()=>{
   });
   persistEvidence();
   void startupRecovery();
+  void reconcileGithubTerminalUiJobs();
   scheduleSelfRunTick(5000);
 });
 setInterval(()=>void autopilotTick(),config.autopilot.pollIntervalMs).unref();
 setInterval(()=>void recoveryTick(),config.recovery.checkIntervalMs).unref();
+setInterval(()=>void reconcileGithubTerminalUiJobs(),30_000).unref();
