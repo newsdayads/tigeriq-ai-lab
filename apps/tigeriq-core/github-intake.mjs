@@ -166,15 +166,28 @@ function rearmKey(spec){
   return `${spec.sourceRevision}-${stamp}`;
 }
 
+async function readActiveExternalRoleClaim(fetchImpl,owner,repo,token,spec){
+  if(Number(spec?.commentCount||0)<=0)return null;
+  try{
+    const comments=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/${spec.number}/comments?per_page=100`,token);
+    return activeRoleClaim(comments);
+  }catch{return null;}
+}
+
+async function recordRoutingFault(pool,data){
+  await pool.query("insert into tigeriq_events(type,data) values('ROUTING_FAULT',$1)",[JSON.stringify(data)]).catch(()=>{});
+}
 export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token=''}){
   const cleanup=await cleanupTerminalObjectiveJobs({pool});
   const rows=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues?state=open&per_page=100&sort=updated&direction=desc`,token);
   const specs=sortBacklogSpecs(rows.map(parseExecutableIssue).filter(Boolean));
   const activeRows=(await pool.query("select metadata from tigeriq_objectives where metadata->>'source'='github' and status='active'")).rows||[];
   const activeMetadata=activeRows.map((row)=>row?.metadata||{});
-  let skipped=0;
+  let skipped=0,externalClaims=0;
   for(const spec of specs){
     if(githubSpecBlockedByActive(spec,activeMetadata)){skipped++;continue;}
+    const externalClaim=await readActiveExternalRoleClaim(fetchImpl,owner,repo,token,spec);
+    if(externalClaim){externalClaims++;skipped++;continue;}
     const prior=(await pool.query("select id,status,metadata from tigeriq_objectives where metadata->>'source'='github' and metadata->>'issueNumber'=$1 order by created_at desc limit 1",[String(spec.number)])).rows[0]||null;
     if(prior?.status==='active'){skipped++;continue;}
     const sourceChanged=Boolean(prior&&String(prior.metadata?.sourceRevision||'')!==spec.sourceRevision);
@@ -185,21 +198,30 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
     if(exists){skipped++;continue;}
     const context=await hydrateContext(fetchImpl,owner,repo,spec,token);
     const objective=spec.capability==='pc_operator'
-      ? `GitHub OWNER_DIRECT bounded PC operator work item #${spec.number}. Core must create only the assigned pc_operator work and dispatch it through NV06/OpenClaw. Use only approved bounded TigerIQ/OpenClaw tools; NO arbitrary PC01 shell, repository source edit, Production/main mutation, paid action, credential/security change, reboot/shutdown, or destructive action. OpenClaw must not choose backlog/P0/new work. Return structured verified evidence and complete only when the assigned bounded action is satisfied.\n\n${context}`
-      : `GitHub autonomous work item #${spec.number}. Execute only the read-only task below. Do not edit repository source, use PC01 shell, deploy, change credentials/security, spend money, reboot, or perform destructive actions. Ground conclusions only in the supplied GitHub context. When the requested analysis is satisfied, complete the objective.\n\n${context}`;
-    const metadata={source:'github',issueNumber:spec.number,issueUrl:spec.url,capability:spec.capability,dispatchLane:spec.dispatchLane,resourceScope:spec.resourceScope||null,ownerDirect:spec.ownerDirect,sourceRevision:spec.sourceRevision,sourceUpdatedAt:spec.updatedAt,rearmedFromObjectiveId:prior?.id||null,dispatchReason:spec.ownerDirect?`OWNER_DIRECT>${spec.priority}`:`PRIORITY_${spec.priority}`,executionSurface:spec.capability==='pc_operator'?'CORE_OPENCLAW_BOUNDED':'READ_ONLY'};
+      ? `GitHub bounded PC operator work item #${spec.number}. Core must dispatch only the assigned pc_operator action through NV06/OpenClaw. Use approved bounded TigerIQ/OpenClaw tools; NO arbitrary PC01 shell, repository source edit, Production/main mutation, paid action, credential/security change, reboot/shutdown, or destructive action. Return structured verified evidence and complete only when the assigned bounded action is satisfied.\n\n${context}`
+      : `GitHub autonomous ${spec.dispatchLane} work item #${spec.number}. Execute only the read-only task below. Do not edit repository source, use PC01 shell, deploy, change credentials/security, spend money, reboot, or perform destructive actions. Ground conclusions only in supplied GitHub context.\n\n${context}`;
+    const metadata={
+      source:'github',issueNumber:spec.number,issueUrl:spec.url,capability:spec.capability,dispatchLane:spec.dispatchLane,resourceScope:spec.resourceScope||null,
+      ownerDirect:spec.ownerDirect,ownerControlled:spec.ownerControlled,sourcePriority:spec.sourcePriority,legacyP0Autonomous:spec.legacyP0Autonomous,
+      targetWorker:spec.targetWorker||null,sourceRevision:spec.sourceRevision,sourceUpdatedAt:spec.updatedAt,rearmedFromObjectiveId:prior?.id||null,
+      dispatchReason:`PRIORITY_${spec.priority}`,executionSurface:spec.capability==='pc_operator'?'CORE_OPENCLAW_BOUNDED':'READ_ONLY'
+    };
     await pool.query('insert into tigeriq_objectives(id,objective,priority,metadata) values($1,$2,$3,$4) on conflict(id) do nothing',[id,objective,spec.priority,JSON.stringify(metadata)]);
     if(spec.capability==='pc_operator'){
       const assigned=extractPcOperatorInstruction(spec.body);
       const jobId=`JOB-GH-${spec.number}-PC`;
-      const prompt=`Execute ONLY this Owner-assigned bounded PC action through NV06/OpenClaw. Do not choose backlog, P0, or new work. Use approved tigeriq_pc/tigeriq_runtime tools only.\n\nASSIGNED ACTION:\n${assigned}`;
+      const prompt=`Execute ONLY this bounded PC action through NV06/OpenClaw. Do not choose backlog, P0, or new work. Use approved tigeriq_pc/tigeriq_runtime tools only.\n\nASSIGNED ACTION:\n${assigned}`;
       await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,max_attempts) values($1,$2,$3,$4,'pc_operator','pc_operator','queued',2) on conflict(id) do nothing",[jobId,id,`GitHub #${spec.number} bounded PC operator`,prompt]);
       await pool.query("insert into tigeriq_events(type,objective_id,job_id,task_kind,data) values('GITHUB_PC_OPERATOR_JOB_MATERIALIZED',$1,$2,'pc_operator',$3)",[id,jobId,JSON.stringify({issueNumber:spec.number,executionSurface:'CORE_OPENCLAW_BOUNDED'})]);
     }
-    await pool.query("insert into tigeriq_events(type,objective_id,data) values('GITHUB_OBJECTIVE_MATERIALIZED',$1,$2)",[id,JSON.stringify({issueNumber:spec.number,issueUrl:spec.url,ownerDirect:spec.ownerDirect,priority:spec.priority,dispatchReason:metadata.dispatchReason})]);
-    return {created:1,skipped,active:activeMetadata.length,considered:specs.length,issueNumber:spec.number,objectiveId:id,dispatchLane:spec.dispatchLane,cleanedOrphans:cleanup.cleaned};
+    await pool.query("insert into tigeriq_events(type,objective_id,data) values('GITHUB_OBJECTIVE_MATERIALIZED',$1,$2)",[id,JSON.stringify({issueNumber:spec.number,issueUrl:spec.url,priority:spec.priority,sourcePriority:spec.sourcePriority,dispatchLane:spec.dispatchLane})]);
+    return {created:1,skipped,externalClaims,active:activeMetadata.length,considered:specs.length,issueNumber:spec.number,objectiveId:id,dispatchLane:spec.dispatchLane,cleanedOrphans:cleanup.cleaned};
   }
-  return {created:0,skipped,active:activeMetadata.length,considered:specs.length,cleanedOrphans:cleanup.cleaned};
+  let idleWorkers=0;
+  try{idleWorkers=Number((await pool.query("select count(*)::int as count from tigeriq_ai_resources where enabled=true and current_job_id is null and credential_state in ('LOCAL','READY') and health_state in ('ONLINE','READY')")).rows[0]?.count||0);}catch{}
+  const fault=routingFault({eligibleBacklogCount:specs.length,activeWorkCount:activeMetadata.length+externalClaims,eligibleIdleWorkers:idleWorkers});
+  if(fault.fault)await recordRoutingFault(pool,{...fault,source:'github-intake',considered:specs.length,skipped});
+  return {created:0,skipped,externalClaims,active:activeMetadata.length,considered:specs.length,cleanedOrphans:cleanup.cleaned,routingFault:fault.fault};
 }
 
 export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token=''}){
