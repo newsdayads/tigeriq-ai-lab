@@ -441,7 +441,7 @@ async function maybeWorkerContinuity(w,target,ui){
   if(phase==='READY'){
     if(w.id==='NV03'||w.id==='NV04'){
       const assignment=await currentWorkerAssignmentStatus(w.id);
-      if(assignment.status!=='CONTINUABLE'){
+      if(!['READY_UNASSIGNED','CONTINUABLE'].includes(assignment.status)){
         state={...state,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),stalledChecks:0,pendingContinue:false,awaitingWorkStart:false};
         saveWorkerContinuity(w.id,state);
         await genericWorkerEvent(w.id,assignment.status,{jobId:assignment.job?.jobId||null,stage:assignment.job?.stage||null});
