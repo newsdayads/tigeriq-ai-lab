@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {classifyCodingBlocker,codingScopesOverlap,codingSourceTruthRevision,extractCodingDependencies,materializeGithubCodingIssues,parseCodingIssue,shouldRearmRecoverableFinal,syncGithubCodingOutcomes} from '../apps/tigeriq-core/github-coding-intake.mjs';
+import {classifyCodingBlocker,codingScopesOverlap,codingSourceRevision,codingSourceTruthRevision,extractCodingDependencies,materializeGithubCodingIssues,parseCodingIssue,shouldRearmRecoverableFinal,syncGithubCodingOutcomes} from '../apps/tigeriq-core/github-coding-intake.mjs';
 
 function issue(body,extra={}){
   return {number:777,title:'Safe autonomous coding task',body,state:'open',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/777',...extra};
@@ -385,6 +385,22 @@ describe('GitHub coding continuity supervisor',()=>{
     expect(foreign).toBe(base);
     expect(owner).not.toBe(base);
     expect(owner).toContain(':owner-500');
+  });
+
+  it('keeps body-only revision when pagination fails after non-authoritative comments',async()=>{
+    const current=issue(SAFE,{number:810,title:'Paged source',comments:250});
+    const base=codingSourceTruthRevision({...current,repository_owner:'newsdayads'},[]);
+    const pages=[];
+    const fetchImpl=async(url)=>{
+      pages.push(url);
+      if(url.includes('page=3'))return response([{id:700,user:{login:'newsdayads'},body:'[PROGRESS] not a source directive'}]);
+      if(url.includes('page=2'))return response({message:'boom'},false,503);
+      return response([]);
+    };
+    const revision=await codingSourceRevision(fetchImpl,'newsdayads','tigeriq-ai-lab','fake',current);
+    expect(revision).toBe(base);
+    expect(pages.some(url=>new URL(url).searchParams.get('page')==='3')).toBe(true);
+    expect(pages.some(url=>new URL(url).searchParams.get('page')==='2')).toBe(true);
   });
 
   it('re-arms once when Source of Truth changes on the same main and stays idempotent after restart',async()=>{
