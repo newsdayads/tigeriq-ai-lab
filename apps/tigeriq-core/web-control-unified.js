@@ -76,7 +76,8 @@
     const busy=rs.filter(x=>x.status==='BUSY').length;
     const available=rs.filter(x=>['READY','IDLE','MANUAL'].includes(x.status)).length;
     const rateLimited=rs.filter(x=>x.status==='RATE_LIMITED').length;
-    const critical=rs.filter(x=>['ERROR','OFFLINE'].includes(x.status)).length + (d?.codingLane && d.codingLane.ok!==true ? 1 : 0);
+    const webCritical=typeof latestWebHealth!=='undefined' && latestWebHealth!==null && latestWebHealth?.ok!==true ? 1 : 0;
+    const critical=rs.filter(x=>['ERROR','OFFLINE'].includes(x.status)).length + (d?.codingLane && d.codingLane.ok!==true ? 1 : 0) + webCritical;
     const warnings=rateLimited + rs.filter(x=>x.status==='WAIT_KEY').length;
     const alerts=critical+warnings;
     const running=js.filter(x=>x.status==='running').length;
@@ -192,6 +193,7 @@
       container.innerHTML = items || '<div style="color:#64748b;font-size:12px;">No active Coding Lane items.</div>';
     }
   }
+  window.__tigerIqApplyOwnerHealth=renderOwnerHealth;
   mountUnifiedOverview();
   renderCodingLaneWorkItems(window.S?.data);
   if(typeof workerCard==='function')workerCard=richWorkerCard;
