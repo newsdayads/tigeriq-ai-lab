@@ -132,11 +132,12 @@ describe('App Chrome GitHub self-run policy',()=>{
     expect(release).toContain('selfRunClaims.release(claim.claimId)');
     expect(release.indexOf('await releaseGithubClaim({')).toBeLessThan(release.indexOf('selfRunClaims.release(claim.claimId)'));
     expect(release).toContain("'APP_CHROME_SELF_RUN_CLAIM_RELEASE_DEFERRED'");
-    expect(reconcile).toContain("if(issue.state==='closed')");
-    expect(reconcile).toContain("await releaseSelfRunClaimRecord(localClaim,completed?'DONE':'BLOCKED')");
-    expect(reconcile).toContain("const completed=String(issue.state_reason||'')==='completed'");
+    expect(reconcile).toContain("const historical=appChromeClaimForJob(comments,workerId,issueNumber,active.jobId)");
+    expect(reconcile).toContain("historical?.released===true");
+    expect(reconcile).toContain("const terminal=authoritativeUiTerminalFromGithub(issue,comments,claimId)");
+    expect(reconcile).toContain("await releaseSelfRunClaimRecord(claim,terminal)");
     expect(reconcile).toContain("SOURCE_ISSUE_CLOSED_");
-    expect(reconcile).toContain('terminalMarkerFromComments(comments,claim.claimId)');
+    expect(reconcile).toContain("if(terminal==='EXTERNAL_WAIT')");
   });
 
   it('creates exactly one durable claim and refuses a second active claim',async()=>{
