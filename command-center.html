@@ -32,7 +32,7 @@ button{font:inherit}
 .filter{border:1px solid var(--line);background:#0a1727;color:#aabbd0;border-radius:999px;padding:7px 10px;font-size:11px;white-space:nowrap}
 .filter.active{border-color:#3f78b7;background:#112b49;color:#d9ebff}
 .meta-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:2px 2px 9px;color:var(--muted);font-size:10px}
-.list{display:grid;gap:9px}
+.list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
 .worker{display:block;border:1px solid var(--line);background:linear-gradient(180deg,rgba(16,34,57,.98),rgba(10,23,39,.98));border-radius:17px;padding:13px;box-shadow:0 8px 24px #0002}
 .worker:active{transform:scale(.997)}
 .head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
@@ -74,7 +74,18 @@ button{font:inherit}
 .work-proof span:last-child{text-align:right}
 .work-empty{border:1px dashed #253e58;border-radius:13px;padding:11px;color:var(--muted);font-size:10px}
 .page-foot{padding:14px 2px 0;color:#6d8097;font-size:9px;line-height:1.5;text-align:center}
-@media(max-width:390px){.summary{gap:5px}.sum{padding:9px 6px}.sum span{font-size:9px}.sum b{font-size:20px}.brand h1{font-size:20px}.work-card{padding:9px 10px}.work-title{font-size:11px}.worker{padding:12px}.job{font-size:13px}}
+@media(max-width:600px){
+  .list{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+  .summary{gap:5px}.sum{padding:9px 6px}.sum span{font-size:9px}.sum b{font-size:20px}.brand h1{font-size:20px}
+  .work-card{padding:9px 10px}.work-title{font-size:11px}
+  .worker{padding:10px;border-radius:14px;min-width:0}
+  .head{display:block}.identity b{font-size:12px}.identity small{font-size:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .badge{display:inline-block;margin-top:7px;padding:4px 6px;font-size:8px}
+  .job{font-size:11px;line-height:1.3;margin-top:8px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+  .detail{font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .foot{display:block;font-size:8px}.foot .source{display:block;margin-top:4px;overflow:hidden;text-overflow:ellipsis}
+}
+@media(max-width:340px){.list{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -114,13 +125,23 @@ button{font:inherit}
 <script>
 const $=id=>document.getElementById(id);
 let snapshot=null,activeFilter='all';
-const LAST_GOOD_KEY='tigeriq-live-last-good-v2';
+const LAST_GOOD_KEY='tigeriq-live-last-good-v3';
+const LEGACY_LAST_GOOD_KEY='tigeriq-live-last-good-v2';
+const LAST_GOOD_MAX_MS=30*60*1000;
 const stateLabel={working:'ĐANG LÀM',waiting:'CHỜ',blocked:'BỊ CHẶN',idle:'RẢNH',unknown:'CHƯA RÕ',paused:'TẠM NGƯNG'};
+const workStateLabel={WORKING:'ĐANG LÀM',REVIEW:'ĐANG RÀ SOÁT',WAITING:'CHỜ',BLOCKED:'BỊ CHẶN',QUEUED:'XẾP HÀNG'};
 function readLastGood(){
-  try{return JSON.parse(localStorage.getItem(LAST_GOOD_KEY)||'null')}catch{return null}
+  try{
+    const raw=JSON.parse(localStorage.getItem(LAST_GOOD_KEY)||'null');
+    if(raw?.value&&Number.isFinite(raw.savedAt)&&Date.now()-raw.savedAt<=LAST_GOOD_MAX_MS)return raw.value;
+    const legacy=JSON.parse(localStorage.getItem(LEGACY_LAST_GOOD_KEY)||'null');
+    const legacyAt=Date.parse(legacy?.workProjection?.verifiedAt||legacy?.generatedAt||0);
+    if(legacy&&legacyAt&&Date.now()-legacyAt<=LAST_GOOD_MAX_MS)return legacy;
+    return null;
+  }catch{return null}
 }
 function writeLastGood(value){
-  try{localStorage.setItem(LAST_GOOD_KEY,JSON.stringify(value))}catch{}
+  try{localStorage.setItem(LAST_GOOD_KEY,JSON.stringify({savedAt:Date.now(),value}))}catch{}
 }
 function hydrateLastGood(value){
   const cached=readLastGood();
@@ -181,6 +202,7 @@ function sourceLabel(s){
 }
 function esc(t){const d=document.createElement('div');d.textContent=String(t??'');return d.innerHTML}
 function workStateClass(value){return String(value||'').toLowerCase()}
+function workStateText(value){const key=String(value||'').toUpperCase();return workStateLabel[key]||value||'CHỜ'}
 function renderWorkSections(){
   const projection=snapshot?.workProjection||{};
   const active=Array.isArray(snapshot?.activeWork)?snapshot.activeWork:[];
@@ -201,7 +223,7 @@ function renderWorkSections(){
       if(w.prNumber)proof.push('PR #'+w.prNumber);
       if(w.checks)proof.push('kiểm tra '+w.checks.state+(Number.isFinite(w.checks.passed)&&Number.isFinite(w.checks.total)?' '+w.checks.passed+'/'+w.checks.total:''));
       const meta=[w.priority||'—',w.employeeId||'NV chưa xác minh'];
-      el.innerHTML='<div class="work-title">'+esc('#'+w.number+' - '+w.title)+'</div><div class="work-meta"><b>'+esc(meta[0])+'</b><span>'+esc(meta[1])+'</span><span class="work-state '+esc(workStateClass(w.status))+'">'+esc(w.status||'WAITING')+'</span></div><div class="work-step">'+esc(w.currentStep||'Chưa có bước hiện tại được xác minh')+'</div><div class="work-proof"><span>'+esc(proof.join(' · ')||'Chưa có PR/check')+'</span><span>'+esc('Cập nhật '+age(w.updatedAt))+'</span></div>';
+      el.innerHTML='<div class="work-title">'+esc('#'+w.number+' - '+w.title)+'</div><div class="work-meta"><b>'+esc(meta[0])+'</b><span>'+esc(meta[1])+'</span><span class="work-state '+esc(workStateClass(w.status))+'">'+esc(workStateText(w.status))+'</span></div><div class="work-step">'+esc(w.currentStep||'Chưa có bước hiện tại được xác minh')+'</div><div class="work-proof"><span>'+esc(proof.join(' · ')||'Chưa có PR/check')+'</span><span>'+esc('Cập nhật '+age(w.updatedAt))+'</span></div>';
       activeBox.append(el);
     });
   }
@@ -212,7 +234,7 @@ function renderWorkSections(){
       const el=document.createElement(w.url?'a':'article');el.className='work-card';
       if(w.url){el.href=w.url;el.target='_blank';el.rel='noopener'}
       const priority=(w.ownerDirect?'OWNER_DIRECT · ':'')+(w.priority||'—');
-      el.innerHTML='<div class="work-title">'+esc('#'+w.number+' - '+w.title)+'</div><div class="work-meta"><b>'+esc(priority)+'</b><span class="work-state '+esc(workStateClass(w.status))+'">'+esc(w.status||'QUEUED')+'</span></div>'+(w.waitReason?'<div class="work-step">'+esc(w.waitReason)+'</div>':'');
+      el.innerHTML='<div class="work-title">'+esc('#'+w.number+' - '+w.title)+'</div><div class="work-meta"><b>'+esc(priority)+'</b><span class="work-state '+esc(workStateClass(w.status))+'">'+esc(workStateText(w.status))+'</span></div>'+(w.waitReason?'<div class="work-step">'+esc(w.waitReason)+'</div>':'');
       queueBox.append(el);
     });
   }
@@ -250,8 +272,10 @@ async function load(){
     $('liveLabel').textContent=stale?'DỮ LIỆU CŨ':(d.liveConnected?'PC01 LIVE':'DỰ PHÒNG');
     if(stale){
       const stamp=projection.staleAt||projection.verifiedAt||d.staleAt||d.generatedAt;
+      const reason=projection.reason||d.reason||d.liveReason||'unavailable';
+      const source=/^runtime_bridge_/i.test(reason)?'Cầu nối PC01':/^github_/i.test(reason)?'GitHub':'Nguồn dữ liệu';
       $('err').classList.add('stale');
-      $('err').textContent='GitHub/live tạm lỗi ('+(projection.reason||d.reason||d.liveReason||'unavailable')+'). Đang giữ danh sách xác minh gần nhất từ '+(stamp?new Date(stamp).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'mốc trước')+'; không xóa về 0.';
+      $('err').textContent=source+' tạm lỗi ('+reason+'). Đang giữ danh sách xác minh gần nhất từ '+(stamp?new Date(stamp).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'mốc trước')+'; không xóa về 0.';
       $('err').style.display='block';
     }else{
       $('err').classList.remove('stale');

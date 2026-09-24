@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   compareQueueRows,
+  fetchPc01Live,
   parseIssueNumber,
   parseQueueIssue,
   runtimeWorkRows,
@@ -130,6 +131,36 @@ describe('TigerIQ Live Work Order projection', () => {
     expect(runtimeWorkRows(workers)).toEqual([
       expect.objectContaining({ issueNumber: 1812, employeeId: 'NV12', runtimeStatus: 'WORKING', currentStep: 'Đang sửa' }),
     ]);
+  });
+
+  it('re-resolves the runtime pointer and retries once after bridge HTTP 530', async () => {
+    let pointerCalls = 0;
+    const fetchImpl = async (url) => {
+      const value = String(url);
+      if (value.includes('/issues/1402')) {
+        pointerCalls += 1;
+        const bridge = pointerCalls === 1 ? 'https://old.trycloudflare.com' : 'https://new.trycloudflare.com';
+        return new Response(JSON.stringify({ body: 'LIVE_STATUS_BRIDGE_URL=' + bridge }), { status: 200 });
+      }
+      if (value === 'https://old.trycloudflare.com/status') {
+        return new Response('bad gateway', { status: 530 });
+      }
+      if (value === 'https://new.trycloudflare.com/status') {
+        return new Response(JSON.stringify({
+          ok: true,
+          generatedAt: '2026-09-25T00:00:00Z',
+          source: { core: true, coding: true, uiAutopilot: true },
+          workers: [],
+        }), { status: 200 });
+      }
+      if (value.includes('/issues?state=open')) return new Response(JSON.stringify([]), { status: 200 });
+      if (value.includes('/pulls?state=open')) return new Response(JSON.stringify([]), { status: 200 });
+      if (value.includes('/actions/runs?per_page=100')) return new Response(JSON.stringify({ workflow_runs: [] }), { status: 200 });
+      throw new Error('unexpected_url:' + value);
+    };
+    const result = await fetchPc01Live(fetchImpl);
+    expect(pointerCalls).toBe(2);
+    expect(result).toMatchObject({ ok: true, liveConnected: true });
   });
 
   it('keeps the existing workforce payload while adding read-only work projection fields', () => {
