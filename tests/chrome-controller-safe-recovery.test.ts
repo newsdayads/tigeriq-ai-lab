@@ -148,7 +148,7 @@ describe('independent worker recovery flows in direct-cdp-bridge',()=>{
     const genericLoop=source.slice(source.indexOf('async function maybeWorkerContinuity'),source.indexOf('\nfunction log('));
     expect(genericLoop).toContain("if(w.id==='NV04')");
     expect(genericLoop).toContain("assignment.status!=='CONTINUABLE'");
-    expect(genericLoop).toContain('READY_UNASSIGNED');
+    expect(source).toContain("return{status:'READY_UNASSIGNED',job:null}");
   });
 
   it('rebases only an already-expired deep-reset timer once after bridge restart',()=>{
