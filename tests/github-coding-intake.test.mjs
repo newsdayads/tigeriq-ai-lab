@@ -675,6 +675,50 @@ describe('GitHub coding reopened-completion rearm',()=>{
   });
 });
 
+
+  it('rearms a previously blocked terminal dispatch exactly once after a real GitHub close -> reopen',async()=>{
+    const pool=fakePool();
+    pool.events.push(
+      {type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:1268,codingObjectiveId:'old-1268',dispatchKey:'GITHUB-ISSUE-1268'}},
+      {type:'GITHUB_CODING_BLOCKED_FINAL',data:{issueNumber:1268,codingObjectiveId:'old-1268',status:'blocked',reason:'ISSUE_CLOSED_OR_SUPERSEDED',terminalReason:'ISSUE_CLOSED_OR_SUPERSEDED'}}
+    );
+    let posted=0,rearmedObjective=null;
+    const reopened=issue(SAFE+'\nOWNER_DIRECT=true\nRESOURCE_SCOPE=REOPENED_BLOCKED_TEST\nALLOW_PATH_PREFIX=docs/evidence/reopened-blocked.md', {
+      number:1268,title:'Reopened blocked regression'
+    });
+    const timeline=[
+      {id:30,event:'closed',created_at:'2026-09-24T08:40:00Z'},
+      {id:40,event:'reopened',created_at:'2026-09-24T08:45:00Z'},
+    ];
+    const fetchImpl=async(url,init={})=>{
+      if(url.includes('/issues?'))return response([reopened]);
+      if(url.includes('/issues/1268/timeline'))return response(timeline);
+      if(url.includes('/issues/1268/comments'))return response([]);
+      if(url.includes('/api/status'))return response({objectives:rearmedObjective?[rearmedObjective]:[],jobs:[]});
+      if(url.includes('/api/objectives')){
+        posted++;
+        const body=JSON.parse(init.body);
+        expect(body.objective).toContain('DISPATCH_KEY=GITHUB-ISSUE-1268-REOPEN-');
+        expect(body.objective).toContain('REOPEN_KEY=');
+        rearmedObjective={id:'rearmed-1268',status:'queued',objective:body.objective};
+        return response({id:rearmedObjective.id});
+      }
+      if(url.includes('/comments'))return response({});
+      return response({});
+    };
+
+    const first=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake'});
+    expect(first.created).toBe(1);
+    expect(posted).toBe(1);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_COMPLETED_REARMED')).toHaveLength(1);
+    expect(pool.events.find(e=>e.type==='GITHUB_CODING_COMPLETED_REARMED')?.data.priorObjectiveId).toBe('old-1268');
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_DISPATCHED'&&e.data.issueNumber===1268)).toHaveLength(2);
+
+    const second=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake'});
+    expect(second.created).toBe(0);
+    expect(posted).toBe(1);
+  });
+
 describe('GitHub coding scope-aware pool refill',()=>{
   const scoped=(number,scope,path,priority='P1')=>issue(`${SAFE.replace('PRIORITY=P1',`PRIORITY=${priority}`)}\nRESOURCE_SCOPE=${scope}\nALLOW_PATH_PREFIX=${path}`,{number,title:`Scoped ${number}`});
 
