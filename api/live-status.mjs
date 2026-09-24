@@ -5,12 +5,17 @@ const REPO = process.env.TIGERIQ_REPO || 'newsdayads/tigeriq-ai-lab';
 const REGISTRY_ISSUE = 335;
 const FETCH_TIMEOUT_MS = 5000;
 const CACHE_MS = 3000;
+const STALE_RESPONSE_MS = 30 * 60 * 1000;
 const RUNTIME_POINTER_ISSUE = 1402;
 const RUNTIME_FETCH_TIMEOUT_MS = 4500;
-const POINTER_CACHE_MS = 60000;
-const QUEUE_LIMIT = 8;
+const POINTER_CACHE_MS = 10 * 60 * 1000;
+const GITHUB_PROJECTION_CACHE_MS = 5 * 60 * 1000;
+const DEPENDENCY_CACHE_MS = 5 * 60 * 1000;
+const QUEUE_LIMIT = 20;
 let pointerCache = { at: 0, url: null };
 let cache = { at: 0, value: null };
+let githubProjectionCache = { at: 0, verifiedAt: null, data: null };
+const dependencyCache = new Map();
 
 function json(res, status, body) {
   res.statusCode = status;
@@ -439,12 +444,21 @@ function summarizeChecks(runs, pull) {
 async function dependencyStates(rows, owner, repo, fetchImpl) {
   const deps = [...new Set(rows.flatMap((row) => row.dependencies || []))];
   const results = new Map();
+  const now = Date.now();
   await Promise.all(deps.map(async (number) => {
+    const cached = dependencyCache.get(number);
+    if (cached && now - cached.at < DEPENDENCY_CACHE_MS) {
+      results.set(number, cached.value);
+      return;
+    }
     try {
       const dep = await gh('/repos/' + owner + '/' + repo + '/issues/' + number, fetchImpl);
-      results.set(number, { state: dep?.state || 'unknown', isPull: Boolean(dep?.pull_request) });
+      const value = { state: dep?.state || 'unknown', isPull: Boolean(dep?.pull_request) };
+      dependencyCache.set(number, { at: now, value });
+      results.set(number, value);
     } catch {
-      results.set(number, { state: 'unknown' });
+      const value = cached?.value || { state: 'unknown' };
+      results.set(number, value);
     }
   }));
   return results;
@@ -469,12 +483,35 @@ async function githubIssue(owner, repo, number, issueMap, fetchImpl) {
 
 async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
   const { owner, repo } = repoParts();
+  let projectionStale = false;
+  let projectionReason = null;
+  let issues;
+  let pulls;
+  let runPayload;
   try {
-    const [issues, pulls, runPayload] = await Promise.all([
-      gh('/repos/' + owner + '/' + repo + '/issues?state=open&per_page=100&sort=updated&direction=desc', fetchImpl),
-      known.pulls ? Promise.resolve(known.pulls) : gh('/repos/' + owner + '/' + repo + '/pulls?state=open&sort=updated&direction=desc&per_page=100', fetchImpl),
-      known.runs ? Promise.resolve({ workflow_runs: known.runs }) : gh('/repos/' + owner + '/' + repo + '/actions/runs?per_page=100', fetchImpl),
-    ]);
+    const now = Date.now();
+    const cached = githubProjectionCache.data && now - githubProjectionCache.at < GITHUB_PROJECTION_CACHE_MS;
+    if (cached) {
+      ({ issues, pulls, runPayload } = githubProjectionCache.data);
+    } else {
+      try {
+        [issues, pulls, runPayload] = await Promise.all([
+          gh('/repos/' + owner + '/' + repo + '/issues?state=open&per_page=100&sort=updated&direction=desc', fetchImpl),
+          known.pulls ? Promise.resolve(known.pulls) : gh('/repos/' + owner + '/' + repo + '/pulls?state=open&sort=updated&direction=desc&per_page=100', fetchImpl),
+          known.runs ? Promise.resolve({ workflow_runs: known.runs }) : gh('/repos/' + owner + '/' + repo + '/actions/runs?per_page=100', fetchImpl),
+        ]);
+        githubProjectionCache = {
+          at: now,
+          verifiedAt: new Date().toISOString(),
+          data: { issues, pulls, runPayload },
+        };
+      } catch (error) {
+        if (!githubProjectionCache.data) throw error;
+        ({ issues, pulls, runPayload } = githubProjectionCache.data);
+        projectionStale = true;
+        projectionReason = String(error instanceof Error ? error.message : error).slice(0, 120);
+      }
+    }
     const openIssues = (Array.isArray(issues) ? issues : []).filter((issue) => !issue?.pull_request);
     const openPulls = Array.isArray(pulls) ? pulls : [];
     const runs = Array.isArray(runPayload?.workflow_runs) ? runPayload.workflow_runs : [];
@@ -618,10 +655,15 @@ async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
         { ownerDirect: false, priority: b.priority || 'P2', number: b.number },
       )),
       nextQueue,
+      nextQueueTotal: specs.length,
       workProjection: {
-        mode: base.liveConnected ? 'pc01-live+github' : 'github-fallback',
+        mode: projectionStale ? 'stale-cache' : (base.liveConnected ? 'pc01-live+github' : 'github-fallback'),
         queuePolicy: 'OWNER_DIRECT>P0>P1>P2>P3',
-        source: 'PC01 runtime when available + GitHub canonical',
+        source: projectionStale ? 'GitHub snapshot xác minh gần nhất' : 'PC01 runtime when available + GitHub canonical',
+        verifiedAt: githubProjectionCache.verifiedAt,
+        stale: projectionStale,
+        reason: projectionReason,
+        queueLimit: QUEUE_LIMIT,
       },
     };
   } catch (error) {
@@ -629,11 +671,13 @@ async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
       ...base,
       activeWork: [],
       nextQueue: [],
+      nextQueueTotal: 0,
       workProjection: {
         mode: 'unavailable',
         queuePolicy: 'OWNER_DIRECT>P0>P1>P2>P3',
         source: 'GitHub unavailable',
         reason: String(error instanceof Error ? error.message : error).slice(0, 120),
+        queueLimit: QUEUE_LIMIT,
       },
     };
   }
@@ -668,6 +712,7 @@ export function sanitizeRuntimePayload(payload) {
     workers,
     activeWork: runtimeWorkRows(workers),
     nextQueue: [],
+    nextQueueTotal: 0,
   };
 }
 
@@ -712,6 +757,18 @@ export default async function handler(req, res) {
     return json(res, 200, value);
   } catch (error) {
     liveError = String(error instanceof Error ? error.message : error).slice(0, 120);
+    if (cache.value && now - cache.at < STALE_RESPONSE_MS) {
+      const value = {
+        ...cache.value,
+        liveConnected: false,
+        mode: 'stale-cache',
+        authority: 'Dữ liệu xác minh gần nhất',
+        staleAll: true,
+        staleAt: cache.value.generatedAt || null,
+        liveReason: liveError,
+      };
+      return json(res, 200, value);
+    }
   }
 
   try {
@@ -735,6 +792,7 @@ export default async function handler(req, res) {
       workers: [],
       activeWork: [],
       nextQueue: [],
+      nextQueueTotal: 0,
       workProjection: {
         mode: 'unavailable',
         queuePolicy: 'OWNER_DIRECT>P0>P1>P2>P3',
