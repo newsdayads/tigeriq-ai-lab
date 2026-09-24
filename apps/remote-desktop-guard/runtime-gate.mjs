@@ -41,14 +41,11 @@ async function persistClaimReceipt(claimPath, lease, decision, now) {
 }
 
 export async function enforceRemoteToolCall({
-  isRemoteCall,
   tool,
   args = {},
   now = Date.now(),
   leasePath = DEFAULT_LEASE_PATH
 } = {}) {
-  if (!isRemoteCall) return { ok:true, reason:'LOCAL_CALL_UNCHANGED' };
-
   const kind = classifyTool(tool);
   if (kind === 'READ_ONLY') return authorizeRemoteCall({tool,args,now});
   if (kind === 'UNKNOWN') return denial('UNKNOWN_TOOL_FAIL_CLOSED');
