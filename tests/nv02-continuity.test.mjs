@@ -7,7 +7,7 @@ import {
   CONTINUE_MIN_MS, CONTINUE_MAX_MS, REFRESH_MIN_MS, REFRESH_MAX_MS, WORKER_F5_MIN_MS, WORKER_F5_MAX_MS,
   CONTINUITY_WORKERS, deriveNv02Phase, deriveWorkerPhase, hasActiveNv02Work, hasActiveWorkerWork,
   hasWaitingEvidenceNv02Work, hasWaitingEvidenceWorkerWork, hasContinuableNv02Work, hasContinuableWorkerWork,
-  pickContinuePrompt, randomDelay, shouldRotateNv02Chat, computeWorkerStaggerDelay,
+  pickContinuePrompt, randomDelay, shouldRotateNv02Chat, computeWorkerStaggerDelay, rearmWorkerRunGrace,
 } from '../apps/chrome-controller/extension/continuity.js';
 
 describe('NV02 continuity policy', () => {
@@ -50,6 +50,16 @@ describe('NV02 continuity policy', () => {
     const stagger=CONTINUITY_WORKERS.map((_,index)=>computeWorkerStaggerDelay(index,0,60_000));
     expect(new Set(stagger).size).toBe(3);
     expect(stagger).toEqual([0,60_000,120_000]);
+  });
+
+  it('re-arms a full 15s Run grace from successful submission even after delayed preflight', () => {
+    const unpauseAt=1_000;
+    const initialGraceUntil=unpauseAt+15_000;
+    const submittedAt=unpauseAt+25_000;
+    const rearmedUntil=rearmWorkerRunGrace(initialGraceUntil,submittedAt,15_000);
+    expect(rearmedUntil).toBe(submittedAt+15_000);
+    expect(rearmedUntil-submittedAt).toBe(15_000);
+    expect(rearmedUntil).toBeGreaterThan(initialGraceUntil);
   });
 
   it('enforces fail-closed behavior on stale fallback or duplicate canonical ownership', () => {
