@@ -3,7 +3,7 @@ import {randomUUID} from 'node:crypto';
 import {Pool} from 'pg';
 import {branchName,checkGateState,extractCanonicalAllowedPaths,isRetryableAiError,parseJsonObject,safeRepoPath,validateChanges} from './policy.mjs';
 import {assertSafeFileChange} from './safety-guard.mjs';
-import {installAiJsonTransport} from './ai-json-transport.mjs';
+import {compactPromptForChanges,currentFilesFromPrompt,expandCompactChanges,installAiJsonTransport} from './ai-json-transport.mjs';
 import { createGeminiRateController } from '../shared/gemini-rate-control.mjs';
 import {assertExecutionPlaneMutationPaths,controlPlaneRepairIntent} from '../shared/control-plane-lock.mjs';
 
@@ -493,17 +493,30 @@ export function applyCompactEdits(content,edits){
 export function buildRepairGenerationPrompt(worker,j,context,issues=[]){
   return `You are ${worker.id}, an autonomous TigerIQ repository engineer. Fix ONLY the listed issues on the existing branch.\nTASK: ${j.instruction}\nALLOWED PATHS: ${j.paths.join(', ')}\nREVIEW ISSUES TO FIX: ${JSON.stringify(issues)}\nCURRENT FILES:\n${context}\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}. Do not touch paths outside ALLOWED PATHS. Never output secrets. Keep changes minimal and testable.`;
 }
+export function assertGenerationContextPaths(prompt,allowedPaths=[]){
+  const files=currentFilesFromPrompt(prompt);
+  const missing=(allowedPaths||[]).filter(path=>!files.has(String(path)));
+  if(missing.length){const e=new Error(`CODING_GENERATION_CONTEXT_PATH_MISSING:${missing.join(',')}`);e.code='CODING_GENERATION_CONTEXT_PATH_MISSING';throw e}
+  return true;
+}
+async function invokeCompactGeneration(worker,prompt,allowedPaths,exclude=[]){
+  assertGenerationContextPaths(prompt,allowedPaths);
+  const modelPrompt=compactPromptForChanges(prompt,{maxContextChars:6000,maxOutputChars:3200});
+  const expand=d=>expandCompactChanges(prompt,JSON.stringify(d));
+  const validateData=d=>{const expanded=expand(d);validateChanges(expanded.changes,allowedPaths);validateJobScope(allowedPaths,expanded.changes)};
+  const invoked=await invokeJsonWithFailover(worker,modelPrompt,{exclude,validateData,shrinkPrompt:preserveGenerationPrompt});
+  return {payload:expand(invoked.data),resource:invoked.resource};
+}
 async function generateRepairChanges(worker,j,ref='main',issues=[],exclude=[]){
   const batches=await generationContextsFor(j.paths,ref);
   let selected=worker;const changes=[];const summaries=[];
   for(const batch of batches){
     const scopedJob={...j,paths:batch.paths};
     const prompt=buildRepairGenerationPrompt(selected,scopedJob,batch.context,issues);
-    const validateData=d=>{validateChanges(d.changes,batch.paths);validateJobScope(batch.paths,d.changes)};
-    const invoked=await invokeJsonWithFailover(selected,prompt,{exclude,validateData,shrinkPrompt:preserveGenerationPrompt});
+    const invoked=await invokeCompactGeneration(selected,prompt,batch.paths,exclude);
     selected=invoked.resource;
-    summaries.push(String(invoked.data.summary||'').slice(0,300));
-    changes.push(...invoked.data.changes);
+    summaries.push(String(invoked.payload.summary||'').slice(0,300));
+    changes.push(...invoked.payload.changes);
   }
   validateJobScope(j.paths,changes);
   return {payload:{summary:summaries.filter(Boolean).join('; ').slice(0,1000)||'staged repair',changes},resource:selected};
@@ -536,11 +549,10 @@ async function generateChanges(worker,j,ref='main',reviewIssues=[],exclude=[]){
   let selected=worker;const changes=[];const summaries=[];
   for(const batch of batches){
     const prompt=`You are ${selected.id}, an autonomous TigerIQ repository engineer. Implement ONLY the assigned task on a GitHub branch.\nTASK: ${j.instruction}\nALLOWED PATHS FOR THIS BATCH: ${batch.paths.join(', ')}\nOTHER ALLOWED PATHS are handled in separate bounded batches; do not emit them here.\n${reviewIssues.length?`REVIEW ISSUES TO FIX: ${JSON.stringify(reviewIssues)}\n`:''}CURRENT FILES:\n${batch.context}\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}. Do not touch paths outside this batch. Never output secrets. Keep changes minimal and testable.`;
-    const validateData=d=>{validateChanges(d.changes,batch.paths);validateJobScope(batch.paths,d.changes)};
-    const invoked=await invokeJsonWithFailover(selected,prompt,{exclude,validateData,shrinkPrompt:preserveGenerationPrompt});
+    const invoked=await invokeCompactGeneration(selected,prompt,batch.paths,exclude);
     selected=invoked.resource;
-    summaries.push(String(invoked.data.summary||'').slice(0,300));
-    changes.push(...invoked.data.changes);
+    summaries.push(String(invoked.payload.summary||'').slice(0,300));
+    changes.push(...invoked.payload.changes);
   }
   validateJobScope(j.paths,changes);
   return {payload:{summary:summaries.filter(Boolean).join('; ').slice(0,1000)||'staged implementation',changes},resource:selected};
