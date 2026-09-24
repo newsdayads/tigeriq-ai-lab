@@ -7,7 +7,7 @@ import {
   WORKER_F5_MIN_MS, WORKER_F5_MAX_MS, CONTINUITY_WORKERS,
   MAX_STALLED_CHECKS, WORKING_PROGRESS_CHECK_MS, MAX_WORKING_UNCHANGED_CHECKS,
   deriveNv02Phase, deriveWorkerPhase,
-  nextRandomAt, randomDelay, pickContinuePrompt, computeWorkerStaggerDelay,
+  nextRandomAt, randomDelay, pickContinuePrompt, computeWorkerStaggerDelay, rearmWorkerRunGrace,
 } from './extension/continuity.js';
 
 const CONFIG='D:\\TigerIQ\\Apps\\ChromeController\\Config\\chrome-controller.json';
@@ -1321,6 +1321,10 @@ async function handleCommand(w,target,command){
       const ready=await ensureNv02LocalReadyLocked(target,raw,{forceFresh:false});
       if(ready?.uiBusy===true||ready?.uiPhase==='WORKING')return{status:'ALREADY_WORKING'};
       const next=await dispatchNaturalContinueLocked(target,loadNv02Continuity(),Date.now());
+      const submittedAt=Date.now();
+      const runGraceUntil=rearmWorkerRunGrace(workerRunGraceUntil.get('NV02'),submittedAt,LOCAL_RUN_GRACE_MS);
+      workerRunGraceUntil.set('NV02',runGraceUntil);
+      log('LOCAL_RUN_SUBMISSION_GRACE_REARMED',{workerId:'NV02',submittedAt,runGraceUntil});
       await noteNv02CommandDispatch();
       return{status:'LOCAL_CONTINUE_SUBMITTED',prompt:next.lastPrompt};
     }
