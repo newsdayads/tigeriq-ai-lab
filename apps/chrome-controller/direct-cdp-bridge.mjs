@@ -7,7 +7,7 @@ import {
   WORKER_F5_MIN_MS, WORKER_F5_MAX_MS, CONTINUITY_WORKERS,
   MAX_STALLED_CHECKS, WORKING_PROGRESS_CHECK_MS, MAX_WORKING_UNCHANGED_CHECKS,
   deriveNv02Phase, deriveWorkerPhase,
-  nextRandomAt, randomDelay, pickContinuePrompt, computeWorkerStaggerDelay, rearmWorkerRunGrace,
+  nextRandomAt, randomDelay, pickContinuePrompt, pickWorkerContinuePrompt, computeWorkerStaggerDelay, rearmWorkerRunGrace,
 } from './extension/continuity.js';
 
 const CONFIG='D:\\TigerIQ\\Apps\\ChromeController\\Config\\chrome-controller.json';
@@ -36,22 +36,23 @@ const workerConnectivityBackoff=new Map();
 let nv02VerifiedModelProfile=null;
 let nv02MutationBusy=false;
 let nv02BootF5ScheduleInitialized=false;
+let nv02BootRefreshScheduleInitialized=false;
 const APP_CHROME_LOCAL_UI_ONLY=true;
 const NV02_F5_MIN_MS=5*60*1000;
 const NV02_F5_MAX_MS=20*60*1000;
 const NV02_STALLED_RELOAD_CHECKS=10;
 const NV02_STALLED_RESET_CHECKS=14;
 const LOCAL_RUN_GRACE_MS=15000;
-const UI_STABILITY_PACING_MIN_MS=1200;
-const UI_STABILITY_PACING_MAX_MS=4000;
-const VIEW_FOLLOW_MIN_MS=30*1000;
-const VIEW_FOLLOW_MAX_MS=75*1000;
+const UI_STABILITY_PACING_MIN_MS=3000;
+const UI_STABILITY_PACING_MAX_MS=8000;
+const VIEW_FOLLOW_MIN_MS=5*1000;
+const VIEW_FOLLOW_MAX_MS=10*1000;
 function applyNv02VerifiedModelProfile(ui){
   const sameUrl=Boolean(nv02VerifiedModelProfile&&ui?.url&&nv02VerifiedModelProfile.url===ui.url);
   const reasoningHigh=ui?.reasoningEffort==='High';
   if(!sameUrl||!reasoningHigh)return ui;
   const exact={...ui,modelProfileStatus:'MODEL_PROFILE_VERIFIED',modelName:'GPT-5.6 Sol',reasoningEffort:'High',modelReady:true,modelExact:true,verifiedAt:nv02VerifiedModelProfile.verifiedAt,blockedReason:null};
-  exact.uiPhase=exact.securityBlock?'BLOCKED':exact.uiBusy?'WORKING':exact.uiReady?'READY':'STALLED';
+  exact.uiPhase=exact.securityBlock?'BLOCKED':(exact.chatLoadError||exact.connectionPending)?'STALLED':exact.uiBusy?'WORKING':exact.uiReady?'READY':'STALLED';
   return exact;
 }
 
@@ -85,6 +86,7 @@ const workerMutationBusy=new Set();
 const bootResetScheduleInitialized=new Set();
 const bootF5ScheduleInitialized=new Set();
 const bootFreshContextPending=new Set(CONTINUITY_WORKERS);
+const bootModelRetryAt=new Map();
 const WORKER_RESET_MAX_ATTEMPTS=2;
 const WORKER_RESET_STAGGER_MS=2*60*1000;
 const STALLED_CONFIRM_GRACE_MS=20*1000;
@@ -123,6 +125,9 @@ function loadWorkerContinuity(workerId){
     nextViewFollowAt:Number(raw.nextViewFollowAt)||nextRandomAt(now,VIEW_FOLLOW_MIN_MS,VIEW_FOLLOW_MAX_MS),
     nextResetAt,
     lastPrompt:String(raw.lastPrompt||''),
+    pendingContinue:Boolean(raw.pendingContinue),
+    awaitingWorkStart:Boolean(raw.awaitingWorkStart),
+    modelCheckAttempted:Boolean(raw.modelCheckAttempted),
     lastPhase:String(raw.lastPhase||'STALLED'),
     resumeUrl:'', // legacy conversation pointers are never restored; Work Order state is authoritative
     workingSignature:String(raw.workingSignature||''),
@@ -134,7 +139,7 @@ function loadWorkerContinuity(workerId){
     chatLoadRecoveryStage:Number(raw.chatLoadRecoveryStage)||0,
     chatLoadBlockedUntil:Number(raw.chatLoadBlockedUntil)||0,
     chatLoadClearCandidateAt:Number(raw.chatLoadClearCandidateAt)||0,
-    chatLoadClearCandidateAt:Number(raw.chatLoadClearCandidateAt)||0,
+    chatConnectingSince:Number(raw.chatConnectingSince)||0,
   };
 }
 function saveWorkerContinuity(workerId,state){
@@ -180,11 +185,11 @@ async function workerAutomationPaused(workerId){
     const previous=workerPauseObserved.get(workerId);
     workerPauseObserved.set(workerId,pausedNow);
     if(previous===true&&pausedNow===false){
-      const now=Date.now(),nextContinueAt=now+LOCAL_RUN_GRACE_MS;
-      workerRunGraceUntil.set(workerId,nextContinueAt);
-      if(workerId==='NV02')saveNv02Continuity({...loadNv02Continuity(),nextContinueAt,stalledChecks:0});
-      else saveWorkerContinuity(workerId,{...loadWorkerContinuity(workerId),nextContinueAt,stalledChecks:0});
-      log('LOCAL_RUN_COMMAND_GRACE',{workerId,nextContinueAt});
+      const now=Date.now(),nextContinueAt=now+randomDelay(CONTINUE_MIN_MS,CONTINUE_MAX_MS);
+      workerRunGraceUntil.set(workerId,now+LOCAL_RUN_GRACE_MS);
+      if(workerId==='NV02')saveNv02Continuity({...loadNv02Continuity(),pendingContinue:true,awaitingWorkStart:false,nextContinueAt,stalledChecks:0});
+      else saveWorkerContinuity(workerId,{...loadWorkerContinuity(workerId),pendingContinue:true,awaitingWorkStart:false,nextContinueAt,stalledChecks:0});
+      log('LOCAL_RUN_COMMAND_ARMED',{workerId,nextContinueAt});
     }
     return pausedNow;
   }catch(error){
@@ -208,6 +213,18 @@ async function withWorkerMutation(workerId,fn,purpose='CONTINUITY',ttlMs=30000){
 }
 async function genericWorkerEvent(workerId,event,data={}){
   log('WORKER_CONTINUITY_EVENT',{workerId,event,...data});
+}
+async function periodicReopenOrRearm(w,target,state,now,reason,status){
+  try{
+    const recovered=await reopenWorker(w,target,state,now,reason);
+    bootFreshContextPending.add(w.id);
+    return recovered;
+  }catch(error){
+    const deferred={...state,recoveryAttempts:0,recoveryBlockedUntil:now+15*60*1000,nextResetAt:nextWorkerResetAt(w.id,now),lastPhase:'STALLED'};
+    saveWorkerContinuity(w.id,deferred);
+    await genericWorkerEvent(w.id,'PERIODIC_RESTART_REARMED_AFTER_FAILURE',{status,reopenError:String(error?.message||error),nextResetAt:deferred.nextResetAt,recoveryBlockedUntil:deferred.recoveryBlockedUntil});
+    return deferred;
+  }
 }
 async function reopenWorker(w,target,state,now,reason){
   if(Number(state.recoveryBlockedUntil)>now)return state;
@@ -263,7 +280,7 @@ async function reopenWorker(w,target,state,now,reason){
     }
   }
   if(!reopened)throw lastError||new Error('WORKER_REOPEN_FAILED');
-  const recovered={...checkpointed,recoveryAttempts:0,recoveryBlockedUntil:0,stalledChecks:0,workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),nextPeriodicF5At:nextRandomAt(now,WORKER_F5_MIN_MS,WORKER_F5_MAX_MS),nextResetAt:nextWorkerResetAt(w.id,now),lastPhase:'STALLED'};
+  const recovered={...checkpointed,recoveryAttempts:0,recoveryBlockedUntil:0,stalledChecks:0,workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:0,pendingContinue:true,awaitingWorkStart:false,modelCheckAttempted:false,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),nextPeriodicF5At:nextRandomAt(now,WORKER_F5_MIN_MS,WORKER_F5_MAX_MS),nextResetAt:nextWorkerResetAt(w.id,now),lastPhase:'STALLED'};
   saveWorkerContinuity(w.id,recovered);
   await genericWorkerEvent(w.id,'WORKER_REOPENED',{reason,freshUrl,nextResetAt:recovered.nextResetAt});
   return recovered;
@@ -277,6 +294,7 @@ async function maybeWorkerContinuity(w,target,ui){
   if(runGraceUntil)workerRunGraceUntil.delete(w.id);
   const now=Date.now();
   let state=loadWorkerContinuity(w.id);
+  const previousPhase=String(state.lastPhase||'STALLED');
   const phase=deriveWorkerPhase(ui||{},{workerId:w.id});
   state={...state,resumeUrl:'',lastPhase:phase};
   saveWorkerContinuity(w.id,state);
@@ -293,9 +311,19 @@ async function maybeWorkerContinuity(w,target,ui){
     await genericWorkerEvent(w.id,'WRONG_WORKER_CONTEXT',{url:ui?.url||null,expectedHost:expectedHost(w)});
     return;
   }
+  if(w.id==='NV03'||w.id==='NV04'){
+    const assignment=await currentWorkerAssignmentStatus(w.id);
+    const roleLoopAllowed=assignment.status==='READY_UNASSIGNED'||assignment.status==='CONTINUABLE';
+    if(!roleLoopAllowed){
+      state={...state,lastPhase:'READY',pendingContinue:false,awaitingWorkStart:false,stalledChecks:0,recoveryAttempts:0,recoveryBlockedUntil:0};
+      saveWorkerContinuity(w.id,state);
+      await genericWorkerEvent(w.id,assignment.status,{jobId:assignment.job?.jobId||null,stage:assignment.job?.stage||null});
+      return;
+    }
+  }
   if(bootFreshContextPending.has(w.id)&&phase!=='WORKING'){
     bootFreshContextPending.delete(w.id);
-    state={...state,resumeUrl:'',nextContinueAt:now,stalledChecks:0};
+    state={...state,resumeUrl:'',pendingContinue:true,awaitingWorkStart:false,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),stalledChecks:0};
     saveWorkerContinuity(w.id,state);
     if(!isWorkerFreshContext(w,ui?.url)){
       const opened=await withWorkerMutation(w.id,async()=>{
@@ -304,10 +332,26 @@ async function maybeWorkerContinuity(w,target,ui){
         return {ok:true,status:'BOOT_FRESH_CONTEXT_OPENED'};
       },'BOOT_FRESH_CONTEXT',30000);
       await genericWorkerEvent(w.id,opened?.status==='MUTATION_LEASE_BUSY'?'BOOT_FRESH_CONTEXT_DEFERRED':'BOOT_FRESH_CONTEXT_OPENED',{status:opened?.status||null,fromUrl:ui?.url||null,homeUrl:w.homeUrl});
-      if(opened?.status==='MUTATION_LEASE_BUSY')bootFreshContextPending.add(w.id);
+      bootFreshContextPending.add(w.id);
       return;
     }
-    await genericWorkerEvent(w.id,'BOOT_FRESH_CONTEXT_READY',{homeUrl:w.homeUrl});
+    if(expectedHost(w)==='chatgpt.com'&&state.modelCheckAttempted!==true){
+      try{
+        const model=await withWorkerMutation(w.id,()=>ensureChatGptModelProfile(target),'BOOT_MODEL_PROFILE_ONCE',60000);
+        if(model?.status==='MUTATION_LEASE_BUSY'){
+          bootFreshContextPending.add(w.id);
+          return;
+        }
+        state={...loadWorkerContinuity(w.id),modelCheckAttempted:true};
+        saveWorkerContinuity(w.id,state);
+        await genericWorkerEvent(w.id,'BOOT_MODEL_PROFILE_VERIFIED',{modelName:model?.modelName||null,reasoningEffort:model?.reasoningEffort||null});
+      }catch(error){
+        state={...loadWorkerContinuity(w.id),modelCheckAttempted:true};
+        saveWorkerContinuity(w.id,state);
+        await genericWorkerEvent(w.id,'BOOT_MODEL_PROFILE_CHECK_ONCE_UNVERIFIED',{error:String(error?.message||error)});
+      }
+    }
+    await genericWorkerEvent(w.id,'BOOT_FRESH_CONTEXT_READY',{homeUrl:w.homeUrl,modelCheckAttempted:state.modelCheckAttempted===true});
   }
   if(ui?.scrollToBottomVisible===true&&now>=Number(state.nextViewFollowAt||0)){
     const locallyBusy=workerMutationBusy.has(w.id);
@@ -327,7 +371,34 @@ async function maybeWorkerContinuity(w,target,ui){
   }
 
   if(phase!=='WORKING'&&now>=Number(state.nextResetAt||0)){
+    let prepared;
+    try{
+      prepared=await withWorkerMutation(w.id,()=>prepareWorkerForPlannedRestart(w,target,ui),'PERIODIC_PREPARE_RESTART',240000);
+    }catch(error){
+      const status=String(error?.message||error);
+      if(!plannedRestartUiDeadStatus(status))throw error;
+      await genericWorkerEvent(w.id,'PERIODIC_RESTART_UI_DEAD_FALLBACK',{status});
+      await periodicReopenOrRearm(w,target,state,now,'PERIODIC_2_4H_RESET_UI_DEAD',status);
+      return;
+    }
+    if(prepared?.status==='MUTATION_LEASE_BUSY'){
+      saveWorkerContinuity(w.id,{...state,nextResetAt:now+5000});
+      return;
+    }
+    if(!prepared?.ok){
+      const status=String(prepared?.status||'MAINTENANCE_PREPARE_FAILED');
+      if(plannedRestartUiDeadStatus(status)){
+        await genericWorkerEvent(w.id,'PERIODIC_RESTART_UI_DEAD_FALLBACK',{status});
+        await periodicReopenOrRearm(w,target,state,now,'PERIODIC_2_4H_RESET_UI_DEAD',status);
+        return;
+      }
+      const deferred={...state,nextResetAt:now+5*60*1000};
+      saveWorkerContinuity(w.id,deferred);
+      await genericWorkerEvent(w.id,'PERIODIC_RESTART_PREPARE_FAILED',{status,nextResetAt:deferred.nextResetAt});
+      return;
+    }
     await reopenWorker(w,target,state,now,'PERIODIC_2_4H_RESET');
+    bootFreshContextPending.add(w.id);
     return;
   }
 
@@ -339,9 +410,16 @@ async function maybeWorkerContinuity(w,target,ui){
       const after=await uiStateRaw(target).catch(()=>null);
       return {ok:true,status:result?.status||'RELOADED',beforeUrl,beforePhase,afterUrl:after?.url||null,afterPhase:deriveWorkerPhase(after||{},{workerId:w.id})};
     },'PERIODIC_F5_REFRESH',15000);
-    const next={...state,nextPeriodicF5At:refreshed?.status==='MUTATION_LEASE_BUSY'?now+5000:nextRandomAt(now,WORKER_F5_MIN_MS,WORKER_F5_MAX_MS),workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:0};
+    const awaitingBeforeF5=state.awaitingWorkStart===true;
+    const next={...state,
+      nextPeriodicF5At:refreshed?.status==='MUTATION_LEASE_BUSY'?now+5000:nextRandomAt(now,WORKER_F5_MIN_MS,WORKER_F5_MAX_MS),
+      pendingContinue:refreshed?.status==='MUTATION_LEASE_BUSY'?state.pendingContinue:(awaitingBeforeF5?false:true),
+      awaitingWorkStart:refreshed?.status==='MUTATION_LEASE_BUSY'?state.awaitingWorkStart:awaitingBeforeF5,
+      nextContinueAt:refreshed?.status==='MUTATION_LEASE_BUSY'?now+5000:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),
+      workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:0
+    };
     saveWorkerContinuity(w.id,next);
-    await genericWorkerEvent(w.id,'PERIODIC_F5_REFRESH',{status:refreshed?.status||null,beforeUrl:refreshed?.beforeUrl||ui?.url||null,afterUrl:refreshed?.afterUrl||null,nextPeriodicF5At:next.nextPeriodicF5At});
+    await genericWorkerEvent(w.id,'PERIODIC_F5_REFRESH',{status:refreshed?.status||null,beforeUrl:refreshed?.beforeUrl||ui?.url||null,afterUrl:refreshed?.afterUrl||null,nextPeriodicF5At:next.nextPeriodicF5At,awaitingWorkStartPreserved:next.awaitingWorkStart===true});
     return;
   }
 
@@ -349,20 +427,11 @@ async function maybeWorkerContinuity(w,target,ui){
     if(now<Number(state.nextProgressCheckAt||0))return;
     const signature=String(ui?.activitySignature||'');
     const unchanged=Boolean(signature&&state.workingSignature===signature)?Number(state.workingUnchangedChecks||0)+1:0;
-    const next={...state,workingSignature:signature,workingUnchangedChecks:unchanged,nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS,stalledChecks:0};
+    const next={...state,awaitingWorkStart:false,workingSignature:signature,workingUnchangedChecks:unchanged,nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS,stalledChecks:0};
     saveWorkerContinuity(w.id,next);
     await genericWorkerEvent(w.id,'WORKING_PROGRESS_CHECK',{workingUnchangedChecks:unchanged});
     if(unchanged>=MAX_WORKING_UNCHANGED_CHECKS){
       await genericWorkerEvent(w.id,'WORKING_LONG_RUNNING_NO_MUTATION',{workingUnchangedChecks:unchanged});
-    }
-    if(unchanged>=MAX_WORKING_UNCHANGED_CHECKS+2&&now>=Number(state.recoveryBlockedUntil||0)){
-      const stopped=await withWorkerMutation(w.id,()=>stopStalledWorking(target),'WORKING_STUCK_STOP',30000);
-      const attempts=Number(state.recoveryAttempts||0)+1;
-      const resolved=stopped?.ok===true&&stopped?.status!=='MUTATION_LEASE_BUSY';
-      const boundedStop=!resolved&&attempts>=WORKER_RESET_MAX_ATTEMPTS;
-      const repaired={...loadWorkerContinuity(w.id),workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS,recoveryAttempts:resolved||boundedStop?0:attempts,recoveryBlockedUntil:resolved?0:(boundedStop?now+15*60_000:now+60_000)};
-      saveWorkerContinuity(w.id,repaired);
-      await genericWorkerEvent(w.id,boundedStop?'WORKING_STUCK_BOUNDED_STOP':'WORKING_STUCK_STOP',{status:stopped?.status||null,resolved,recoveryAttempts:repaired.recoveryAttempts,recoveryBlockedUntil:repaired.recoveryBlockedUntil});
     }
     return;
   }
@@ -371,7 +440,7 @@ async function maybeWorkerContinuity(w,target,ui){
     if(w.id==='NV03'||w.id==='NV04'){
       const assignment=await currentWorkerAssignmentStatus(w.id);
       if(assignment.status!=='CONTINUABLE'){
-        state={...state,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),stalledChecks:0};
+        state={...state,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),stalledChecks:0,pendingContinue:false,awaitingWorkStart:false};
         saveWorkerContinuity(w.id,state);
         await genericWorkerEvent(w.id,assignment.status,{jobId:assignment.job?.jobId||null,stage:assignment.job?.stage||null});
         return;
@@ -382,17 +451,25 @@ async function maybeWorkerContinuity(w,target,ui){
       saveWorkerContinuity(w.id,state);
       await genericWorkerEvent(w.id,'READY_RECOVERY_STATE_CLEARED');
     }
+    if(state.awaitingWorkStart===true)return;
+    if(state.pendingContinue!==true){
+      state={...state,pendingContinue:true,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
+      saveWorkerContinuity(w.id,state);
+      await genericWorkerEvent(w.id,previousPhase==='WORKING'?'READY_AFTER_WORKING_ARMED':'READY_ROLE_LOOP_ARMED',{nextContinueAt:state.nextContinueAt});
+      return;
+    }
+    if(state.pendingContinue!==true)return;
     if(now<Number(state.nextContinueAt||0))return;
-    const prompt=pickContinuePrompt(state.lastPrompt);
+    const prompt=pickWorkerContinuePrompt(w.id,state.lastPrompt);
     const sent=await withWorkerMutation(w.id,()=>dispatch(target,prompt),'LOCAL_CONTINUITY_CONTINUE',30000);
     if(sent?.status==='MUTATION_LEASE_BUSY'){
       saveWorkerContinuity(w.id,{...state,nextContinueAt:now+5000});
       return;
     }
     if(!sent?.ok)throw new Error(sent?.status||'LOCAL_CONTINUE_DISPATCH_FAILED');
-    const next={...state,lastPrompt:prompt,lastPhase:'WORKING',stalledChecks:0,recoveryAttempts:0,resumeUrl:'',nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
+    const next={...state,pendingContinue:false,awaitingWorkStart:true,lastPrompt:prompt,lastPhase:'WORKING',stalledChecks:0,recoveryAttempts:0,resumeUrl:'',workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
     saveWorkerContinuity(w.id,next);
-    await genericWorkerEvent(w.id,'LOCAL_CONTINUE_DISPATCHED',{prompt,nextContinueAt:next.nextContinueAt});
+    await genericWorkerEvent(w.id,'LOCAL_CONTINUE_DISPATCHED',{prompt,nextContinueAt:next.nextContinueAt,trigger:'START_OR_POST_F5'});
     return;
   }
 
@@ -427,6 +504,7 @@ function loadNv02Continuity(){
   try{raw=JSON.parse(fs.readFileSync(NV02_CONTINUITY_STATE,'utf8'));}catch{}
   const f5WindowVersion=2;
   let nextPeriodicF5At=Number(raw.nextPeriodicF5At)||nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS);
+  let nextRefreshAt=Number(raw.nextRefreshAt)||nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS);
   let workingRecheckAt=Number(raw.workingRecheckAt)||0;
   if(Number(raw.f5WindowVersion)!==f5WindowVersion){
     nextPeriodicF5At=nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS);
@@ -444,14 +522,25 @@ function loadNv02Continuity(){
       log('NV02_F5_TIMERS_REBASED_AFTER_RESTART',{previousNextPeriodicF5At,nextPeriodicF5At,previousWorkingRecheckAt,workingRecheckAt});
     }
   }
+  if(!nv02BootRefreshScheduleInitialized){
+    nv02BootRefreshScheduleInitialized=true;
+    const previousNextRefreshAt=nextRefreshAt;
+    if(nextRefreshAt<=now)nextRefreshAt=nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS);
+    if(previousNextRefreshAt!==nextRefreshAt){
+      persistBootSchedule=true;
+      log('NV02_REFRESH_TIMER_REBASED_AFTER_RESTART',{previousNextRefreshAt,nextRefreshAt});
+    }
+  }
   const state={
     nextContinueAt:Number(raw.nextContinueAt)||nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),
     nextPeriodicF5At,
     f5WindowVersion,
     nextViewFollowAt:Number(raw.nextViewFollowAt)||nextRandomAt(now,VIEW_FOLLOW_MIN_MS,VIEW_FOLLOW_MAX_MS),
-    nextRefreshAt:Number(raw.nextRefreshAt)||nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS),
+    nextRefreshAt,
     stalledChecks:Number(raw.stalledChecks)||0,
     lastPrompt:String(raw.lastPrompt||''),
+    pendingContinue:Boolean(raw.pendingContinue),
+    awaitingWorkStart:Boolean(raw.awaitingWorkStart),
     dispatchesInChat:Number(raw.dispatchesInChat)||0,
     chatStartedAt:Number(raw.chatStartedAt)||now,
     lastPhase:String(raw.lastPhase||'STALLED'),
@@ -467,18 +556,19 @@ function loadNv02Continuity(){
     chatLoadRecoveryStage:Number(raw.chatLoadRecoveryStage)||0,
     chatLoadBlockedUntil:Number(raw.chatLoadBlockedUntil)||0,
     chatLoadClearCandidateAt:Number(raw.chatLoadClearCandidateAt)||0,
+    chatConnectingSince:Number(raw.chatConnectingSince)||0,
   };
   if(persistBootSchedule)saveNv02Continuity(state);
   return state;
 }
 function applyNv02DurableVerifiedModelProfile(ui){
   if(!ui||ui.modelExact===true)return ui;
-  if(ui.securityBlock||ui.authRequired||ui.chatLoadError)return ui;
+  if(ui.securityBlock||ui.authRequired||ui.chatLoadError||ui.connectionPending)return ui;
   if(ui.modelControlPresent!==true||ui.reasoningEffort!=='High')return ui;
   const state=loadNv02Continuity();
-  if(!state.verifiedChatUrl||!state.modelVerifiedAt||!sameNv02Chat(state.verifiedChatUrl,ui.url))return ui;
+  if(!state.modelVerifiedAt||!isNv02ProjectContext(ui.url))return ui;
   const exact={...ui,modelProfileStatus:'MODEL_PROFILE_VERIFIED',modelName:'GPT-5.6 Sol',reasoningEffort:'High',modelReady:true,modelExact:true,verifiedAt:state.modelVerifiedAt,blockedReason:null};
-  exact.uiPhase=exact.uiBusy?'WORKING':exact.uiReady?'READY':'STALLED';
+  exact.uiPhase=(exact.chatLoadError||exact.connectionPending)?'STALLED':exact.uiBusy?'WORKING':exact.uiReady?'READY':'STALLED';
   return exact;
 }
 function saveNv02Continuity(state){
@@ -622,24 +712,22 @@ const UI_EXPR=`(()=>{
   const chatRetry=[...document.querySelectorAll('button,[role="button"]')].find(e=>vis(e)&&/^(retry|thử lại)$/i.test((e.innerText||e.textContent||e.getAttribute('aria-label')||'').trim()))||null;
   const retryContext=(()=>{let e=chatRetry;const parts=[];for(let i=0;i<6&&e;i+=1,e=e.parentElement){const text=String(e.innerText||e.textContent||'').replace(/\s+/g,' ').trim();if(text&&text.length<=800&&!parts.includes(text))parts.push(text);}return parts.join(' | ')})();
   const conversationLoadError=/(không thể tải cuộc hội thoại chatgpt này|unable to load (?:this )?(?:chatgpt )?conversation|failed to load (?:this )?(?:chatgpt )?conversation)/i.test(pageText);
-  const requestTimeoutError=Boolean(chatRetry)&&/(yêu cầu (?:đã )?hết thời gian chờ|request (?:has )?timed out|request timeout)/i.test(retryContext);
+  const requestTimeoutError=Boolean(chatRetry)&&/(yêu cầu (?:đã )?hết thời gian chờ|đã hết thời gian chờ gửi tin nhắn|request (?:has )?timed out|request timeout|timed out (?:while )?sending)/i.test(retryContext+' | '+pageText);
+  const connectionPending=location.hostname==='chatgpt.com'&&/(^|\\s)(đang kết nối\\.\\.\\.|connecting\\.\\.\\.)(\\s|$)/i.test(pageText);
   const chatLoadError=location.hostname==='chatgpt.com'&&Boolean(conversationLoadError||requestTimeoutError);
-  const modelControls=location.hostname==='chatgpt.com'?[...document.querySelectorAll('button,[role="button"]')].filter(e=>{
-    if(!vis(e))return false;
-    const label=String((e.innerText||e.textContent||'')).replace(/\\s+/g,' ').trim();
-    const legacy=e.hasAttribute('data-selected-reasoning-effort')||/chọn mô hình chatgpt|choose.*model|model selector/i.test((e.getAttribute('aria-label')||'')+' '+(e.getAttribute('title')||''));
-    const current=e.matches('button.__composer-pill[aria-haspopup="menu"]')&&/^(?:Cao|High|Tiêu chuẩn|Standard|Nhanh|Fast|Tự động|Auto)$/i.test(label);
-    return legacy||current;
-  }):[];
-  const modelControl=modelControls.length===1?modelControls[0]:null;
-  const modelLabel=String((modelControl?.getAttribute('aria-label')||'')+' '+(modelControl?.getAttribute('title')||'')+' '+(modelControl?.innerText||modelControl?.textContent||'')).replace(/\\s+/g,' ').trim();
-  const modelName=/\\b(?:GPT-)?5\\.6\\s+Sol\\b/i.test(modelLabel)?'GPT-5.6 Sol':null;
-  const reasoningRaw=modelControl?.getAttribute('data-selected-reasoning-effort')||modelLabel;
-  const reasoningEffort=/(^|\\s)(high|cao)(\\s|$)/i.test(String(reasoningRaw||''))?'High':null;
-  const modelExact=location.hostname!=='chatgpt.com'||Boolean(modelControl&&modelName==='GPT-5.6 Sol'&&reasoningEffort==='High');
+  const reasoningControls=location.hostname==='chatgpt.com'?[...document.querySelectorAll('button.__composer-pill')].filter(e=>vis(e)&&/^(?:cao|high)$/i.test(String((e.innerText||e.textContent||'')).replace(/\s+/g,' ').trim())):[];
+  const reasoningControl=reasoningControls.length===1?reasoningControls[0]:null;
+  const latestModelNode=location.hostname==='chatgpt.com'?[...document.querySelectorAll('[data-message-author-role="assistant"][data-message-model-slug]')].filter(vis).at(-1):null;
+  const modelSlug=String(latestModelNode?.getAttribute('data-message-model-slug')||'').trim();
+  const modelControl=reasoningControl;
+  const modelLabel=String((reasoningControl?.getAttribute('aria-label')||'')+' '+(reasoningControl?.getAttribute('title')||'')+' '+(reasoningControl?.innerText||reasoningControl?.textContent||'')).replace(/\s+/g,' ').trim();
+  const modelName=/^gpt-5-6-(?:thinking|sol)$/i.test(modelSlug)?'GPT-5.6 Sol':null;
+  const reasoningRaw=reasoningControl?.getAttribute('data-selected-reasoning-effort')||modelLabel;
+  const reasoningEffort=/(^|\s)(high|cao)(\s|$)/i.test(String(reasoningRaw||''))?'High':null;
+  const modelExact=location.hostname!=='chatgpt.com'||Boolean(reasoningControl&&modelName==='GPT-5.6 Sol'&&reasoningEffort==='High');
   const modelReady=modelExact;
   const modelProfileStatus=modelExact?'MODEL_PROFILE_VERIFIED':'MODEL_PROFILE_BLOCKED';
-  const blockedReason=modelExact?null:(!modelControl?'MODEL_CONTROL_NOT_EXACT_OR_UNIQUE':!modelName?'MODEL_NAME_NOT_GPT_5_6_SOL':'REASONING_NOT_HIGH');
+  const blockedReason=modelExact?null:(!reasoningControl?'REASONING_CONTROL_NOT_EXACT_OR_UNIQUE':!modelName?'MODEL_SLUG_NOT_GPT_5_6_SOL':'REASONING_NOT_HIGH');
   const verifiedAt=modelExact?new Date().toISOString():null;
   const uiBusy=location.hostname==='chatgpt.com'?Boolean(stop):Boolean(stop||activityBusy);
   const activityRoot=activityBusy?.closest?.('.block-BQZwFn')||activityBusy?.parentElement||null;
@@ -650,10 +738,10 @@ const UI_EXPR=`(()=>{
   let activityHash=0;for(let i=0;i<progressText.length;i+=1)activityHash=((activityHash*31)+progressText.charCodeAt(i))>>>0;
   const activitySignature=uiBusy?(String(progressText.length)+':'+String(activityHash)):'';
   const uiReady=document.readyState==='complete'&&!!composer&&!authRequired;
-  const uiPhase=securityBlock?'BLOCKED':chatLoadError?'STALLED':uiBusy?'WORKING':uiReady&&modelReady?'READY':'STALLED';
+  const uiPhase=securityBlock?'BLOCKED':(chatLoadError||connectionPending)?'STALLED':uiBusy?'WORKING':uiReady&&modelReady?'READY':'STALLED';
   return {
     uiReady,uiPhase,composerReady:Boolean(composer),sendReady:Boolean(send),stopVisible:Boolean(stop),activityBusyVisible:Boolean(activityBusy),
-    scrollToBottomVisible:Boolean(scroll),authRequired,uiBusy,securityBlock,chatLoadError,chatRetryReady:Boolean(chatRetry),
+    scrollToBottomVisible:Boolean(scroll),authRequired,uiBusy,securityBlock,chatLoadError,connectionPending,chatRetryReady:Boolean(chatRetry),
     modelControlPresent:Boolean(modelControl),modelProfileStatus,modelName,reasoningEffort,modelReady,modelExact,verifiedAt,blockedReason,activitySignature,projectDraftReady,
     title:document.title,url:location.href,readyState:document.readyState,bodyChildren:document.body?.children?.length||0
   };
@@ -683,16 +771,34 @@ async function withWorkerUiMutation(w,fn,purpose,ttlMs=30000){
   return w.id==='NV02'?withNv02Mutation(fn,purpose,ttlMs):withWorkerMutation(w.id,fn,purpose,ttlMs);
 }
 async function clearChatLoadRecovery(w,state,event,data={}){
-  const clean={...state,chatLoadRecoveryStage:0,chatLoadBlockedUntil:0,chatLoadClearCandidateAt:0};
+  const clean={...state,chatLoadRecoveryStage:0,chatLoadBlockedUntil:0,chatLoadClearCandidateAt:0,chatConnectingSince:0};
   saveContinuityFor(w,clean);
   await continuityEventFor(w,event,data);
   return clean;
 }
 function chatLoadStableUi(ui){
-  return Boolean(ui&&!ui.chatLoadError&&!ui.authRequired&&!ui.securityBlock&&(ui.uiBusy===true||ui.composerReady===true));
+  return Boolean(ui&&!ui.chatLoadError&&!ui.connectionPending&&!ui.authRequired&&!ui.securityBlock&&(ui.uiBusy===true||ui.composerReady===true));
 }
 async function maybeRecoverChatLoadError(w,target,ui,now=Date.now()){
   let state=loadContinuityFor(w);
+  if(ui?.connectionPending&&!ui?.chatLoadError){
+    const since=Number(state.chatConnectingSince||0)||now;
+    if(!Number(state.chatConnectingSince||0)){
+      state={...state,chatConnectingSince:since};
+      saveContinuityFor(w,state);
+      await continuityEventFor(w,'CHAT_CONNECTING_OBSERVED',{url:ui?.url||null,since});
+    }
+    if(now-since<90_000)return true;
+    if(Number(state.chatLoadRecoveryStage||0)===0){
+      state={...state,chatLoadRecoveryStage:1,chatConnectingSince:since};
+      saveContinuityFor(w,state);
+      await continuityEventFor(w,'CHAT_CONNECTING_STALE_ESCALATED',{url:ui?.url||null,stalledMs:now-since,nextRecovery:'F5'});
+    }
+    ui={...ui,chatLoadError:true,chatRetryReady:false};
+  }else if(!ui?.chatLoadError&&Number(state.chatConnectingSince||0)>0){
+    state={...state,chatConnectingSince:0};
+    saveContinuityFor(w,state);
+  }
   if(!ui?.chatLoadError){
     const recoveryActive=Number(state.chatLoadRecoveryStage||0)>0||Number(state.chatLoadBlockedUntil||0)>0||Number(state.chatLoadClearCandidateAt||0)>0;
     if(!recoveryActive)return false;
@@ -773,14 +879,14 @@ async function maybeRecoverChatLoadError(w,target,ui,now=Date.now()){
   await continuityEventFor(w,'CHAT_UNLOADABLE_BLOCKED',{url:ui?.url||null,blockedUntil});
   return true;
 }
-const MODEL_SELECTOR_POINT_EXPR=`(()=>{const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};const text=e=>String(e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim();const openMenus=[...document.querySelectorAll('[role="menu"][data-state="open"]')].filter(vis);if(openMenus.some(menu=>[...menu.querySelectorAll('[role="menuitemradio"][aria-checked="true"]')].some(e=>/^(?:GPT-)?5\\.6\\s+Sol$/i.test(text(e)))))return{ok:true,status:'MODEL_SELECTOR_ALREADY_OPEN',alreadyOpen:true};const controls=[...document.querySelectorAll('button,[role="button"]')].filter(e=>{if(!vis(e))return false;const legacy=e.hasAttribute('data-selected-reasoning-effort')||/chọn mô hình chatgpt|choose.*model|model selector/i.test((e.getAttribute('aria-label')||'')+' '+(e.getAttribute('title')||''));const current=e.matches('button.__composer-pill[aria-haspopup="menu"]')&&/^(?:Cao|High|Tiêu chuẩn|Standard|Nhanh|Fast|Tự động|Auto)$/i.test(text(e));return legacy||current});if(controls.length!==1)return{ok:false,status:'MODEL_CONTROL_NOT_EXACT_OR_UNIQUE',count:controls.length,labels:controls.slice(0,5).map(text)};const r=controls[0].getBoundingClientRect();return{ok:true,status:'MODEL_SELECTOR_POINT',alreadyOpen:false,x:r.left+r.width/2,y:r.top+r.height/2,label:text(controls[0])}})()`;
+const MODEL_SELECTOR_POINT_EXPR=`(()=>{const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};const text=e=>String(e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim();const openMenus=[...document.querySelectorAll('[role="menu"][data-state="open"]')].filter(vis);if(openMenus.some(menu=>[...menu.querySelectorAll('[role="menuitemradio"][aria-checked="true"],[role="option"][aria-selected="true"]')].some(e=>/^(?:GPT-)?5\\.6\\s+Sol$/i.test(text(e)))))return{ok:true,status:'MODEL_SELECTOR_ALREADY_OPEN',alreadyOpen:true};const current=[...document.querySelectorAll('button.__composer-pill[aria-haspopup="menu"]')].filter(e=>vis(e)&&/^(?:Cao|High|Tiêu chuẩn|Standard|Nhanh|Fast|Tự động|Auto)$/i.test(text(e)));const legacy=[...document.querySelectorAll('button,[role="button"]')].filter(e=>vis(e)&&(e.hasAttribute('data-selected-reasoning-effort')||e.getAttribute('data-testid')==='model-switcher-dropdown-button'||/trình chọn mô hình|chọn mô hình chatgpt|choose.*model|model selector/i.test((e.getAttribute('aria-label')||'')+' '+(e.getAttribute('title')||''))));const controls=current.length?current:legacy;if(controls.length!==1)return{ok:false,status:'MODEL_CONTROL_NOT_EXACT_OR_UNIQUE',count:controls.length,labels:controls.slice(0,5).map(text)};const r=controls[0].getBoundingClientRect();return{ok:true,status:'MODEL_SELECTOR_POINT',alreadyOpen:false,x:r.left+r.width/2,y:r.top+r.height/2,label:text(controls[0])}})()`;
 async function openNv02ModelSelector(target){
   const p=await pageRpc(target);
   try{
     const point=(await p.call('Runtime.evaluate',{expression:MODEL_SELECTOR_POINT_EXPR,returnByValue:true},5000)).result.value;
     if(!point?.ok)return point||{ok:false,status:'MODEL_CONTROL_NOT_EXACT_OR_UNIQUE'};
     if(!point.alreadyOpen)await cdpMouseClick(p,point);
-    await sleep(400);
+    await sleep(randomDelay(UI_STABILITY_PACING_MIN_MS,UI_STABILITY_PACING_MAX_MS));
     return{ok:true,status:point.alreadyOpen?'MODEL_SELECTOR_ALREADY_OPEN':'MODEL_SELECTOR_OPENED',label:point.label||null};
   }finally{p.close();}
 }
@@ -793,7 +899,7 @@ async function inspectNv02SelectedModel(target){
   if(raw?.securityBlock)throw new Error(raw.securityBlock);
   const opened=await openNv02ModelSelector(target);
   if(!opened?.ok)throw new Error(opened?.status||'MODEL_SELECTOR_OPEN_FAILED');
-  await sleep(400);
+  await sleep(randomDelay(UI_STABILITY_PACING_MIN_MS,UI_STABILITY_PACING_MAX_MS));
   const selected=await evalPage(target,MODEL_SELECTED_EXPR);
   await evalPage(target,MODEL_MENU_DISMISS_EXPR).catch(()=>{});
   const after=await uiStateRaw(target);
@@ -814,19 +920,19 @@ async function ensureNv02ModelProfile(target){
     if(profile?.modelName!=='GPT-5.6 Sol'){
       const opened=await openNv02ModelSelector(target);
       if(!opened?.ok)throw new Error(opened?.status||'MODEL_SELECTOR_OPEN_FAILED');
-      await sleep(400);
+      await sleep(randomDelay(UI_STABILITY_PACING_MIN_MS,UI_STABILITY_PACING_MAX_MS));
       const modelSelected=await evalPage(target,MODEL_56_SOL_CLICK_EXPR);
       if(!modelSelected?.ok)throw new Error(modelSelected?.status||'GPT_5_6_SOL_SELECT_FAILED');
-      await sleep(650);
+      await sleep(randomDelay(UI_STABILITY_PACING_MIN_MS,UI_STABILITY_PACING_MAX_MS));
       profile=await inspectNv02SelectedModel(target);
     }
     if(profile?.modelName==='GPT-5.6 Sol'&&profile?.reasoningEffort!=='High'){
       const reasoningOpened=await openNv02ModelSelector(target);
       if(!reasoningOpened?.ok)throw new Error(reasoningOpened?.status||'REASONING_SELECTOR_OPEN_FAILED');
-      await sleep(400);
+      await sleep(randomDelay(UI_STABILITY_PACING_MIN_MS,UI_STABILITY_PACING_MAX_MS));
       const reasoningSelected=await evalPage(target,REASONING_HIGH_CLICK_EXPR);
       if(!reasoningSelected?.ok)throw new Error(reasoningSelected?.status||'REASONING_HIGH_SELECT_FAILED');
-      await sleep(650);
+      await sleep(randomDelay(UI_STABILITY_PACING_MIN_MS,UI_STABILITY_PACING_MAX_MS));
       profile=await inspectNv02SelectedModel(target);
     }
   }
@@ -835,6 +941,44 @@ async function ensureNv02ModelProfile(target){
   const currentUrl=String(profile.url||'');
   saveNv02Continuity({...state,verifiedChatUrl:currentUrl,resumeChatUrl:hasCurrentNv02Chat(currentUrl)?currentUrl:state.resumeChatUrl,modelVerifiedAt:String(profile.verifiedAt||new Date().toISOString())});
   await continuityEvent('MODEL_PROFILE_VERIFIED',{modelName:profile.modelName,reasoningEffort:profile.reasoningEffort,verifiedAt:profile.verifiedAt||null});
+  return profile;
+}
+async function inspectChatGptSelectedModel(target){
+  const raw=await uiStateRaw(target);
+  if(raw?.securityBlock)throw new Error(raw.securityBlock);
+  if(raw?.modelExact===true)return raw;
+  const opened=await openNv02ModelSelector(target);
+  if(!opened?.ok)throw new Error(opened?.status||'MODEL_SELECTOR_OPEN_FAILED');
+  await sleep(randomDelay(UI_STABILITY_PACING_MIN_MS,UI_STABILITY_PACING_MAX_MS));
+  const selected=await evalPage(target,MODEL_SELECTED_EXPR);
+  await evalPage(target,MODEL_MENU_DISMISS_EXPR).catch(()=>{});
+  const after=await uiStateRaw(target);
+  const modelName=selected?.modelName||null,reasoningEffort=after?.reasoningEffort||null;
+  return{...after,modelName,reasoningEffort,modelExact:modelName==='GPT-5.6 Sol'&&reasoningEffort==='High'};
+}
+async function ensureChatGptModelProfile(target){
+  let profile=await inspectChatGptSelectedModel(target);
+  for(let i=0;i<3&&profile?.modelExact!==true;i+=1){
+    if(profile?.modelName!=='GPT-5.6 Sol'){
+      const opened=await openNv02ModelSelector(target);
+      if(!opened?.ok)throw new Error(opened?.status||'MODEL_SELECTOR_OPEN_FAILED');
+      await sleep(randomDelay(UI_STABILITY_PACING_MIN_MS,UI_STABILITY_PACING_MAX_MS));
+      const selected=await evalPage(target,MODEL_56_SOL_CLICK_EXPR);
+      if(!selected?.ok)throw new Error(selected?.status||'GPT_5_6_SOL_SELECT_FAILED');
+      await sleep(randomDelay(UI_STABILITY_PACING_MIN_MS,UI_STABILITY_PACING_MAX_MS));
+    }
+    profile=await inspectChatGptSelectedModel(target);
+    if(profile?.modelName==='GPT-5.6 Sol'&&profile?.reasoningEffort!=='High'){
+      const opened=await openNv02ModelSelector(target);
+      if(!opened?.ok)throw new Error(opened?.status||'REASONING_SELECTOR_OPEN_FAILED');
+      await sleep(randomDelay(UI_STABILITY_PACING_MIN_MS,UI_STABILITY_PACING_MAX_MS));
+      const selected=await evalPage(target,REASONING_HIGH_CLICK_EXPR);
+      if(!selected?.ok)throw new Error(selected?.status||'REASONING_HIGH_SELECT_FAILED');
+      await sleep(randomDelay(UI_STABILITY_PACING_MIN_MS,UI_STABILITY_PACING_MAX_MS));
+      profile=await inspectChatGptSelectedModel(target);
+    }
+  }
+  if(profile?.modelExact!==true)throw new Error('MODEL_PROFILE_MISMATCH');
   return profile;
 }
 async function post(path,workerId,data,timeoutMs=4000){
@@ -856,12 +1000,10 @@ function workerAssignmentStatus(controller,workerId){
   const job=jobs.at(-1);
   if(workerId==='NV04'&&job?.source!=='NV04_ASSIGNMENT')return{status:'NV04_ASSIGNMENT_INVALID_SOURCE',job};
   const stage=String(job?.stage||'');
-  if(stage==='WORKING')return{status:'CONTINUABLE',job};
-  if(stage==='WAITING_EVIDENCE'||stage==='VERIFY')return{status:workerId==='NV04'?'NV04_WAITING_EVIDENCE':'NV03_WAITING_EVIDENCE',job};
-  if(stage==='SUBMITTED'||stage==='DISPATCHING'||stage==='QUEUED')return{status:workerId==='NV04'?'NV04_ASSIGNMENT_PENDING':'NV03_ASSIGNMENT_PENDING',job};
+  if(stage==='SUBMITTED'||stage==='WORKING'||stage==='WAITING_EVIDENCE'||stage==='VERIFY')return{status:'CONTINUABLE',job};
+  if(stage==='DISPATCHING'||stage==='QUEUED')return{status:workerId==='NV04'?'NV04_ASSIGNMENT_PENDING':'NV03_ASSIGNMENT_PENDING',job};
   return{status:'READY_UNASSIGNED',job:null};
 }
-function nv04AssignmentStatus(controller){return workerAssignmentStatus(controller,'NV04');}
 async function currentWorkerAssignmentStatus(workerId){
   try{return workerAssignmentStatus(await getControllerState(),workerId);}
   catch(error){
@@ -869,7 +1011,6 @@ async function currentWorkerAssignmentStatus(workerId){
     return{status:'WORKER_ASSIGNMENT_STATE_UNAVAILABLE',job:null};
   }
 }
-async function currentNv04AssignmentStatus(){return currentWorkerAssignmentStatus('NV04');}
 async function continuityEvent(event,data={}){
   try{await post('/api/continuity/event','NV02',{workerId:'NV02',event,...data});}
   catch(error){log('NV02_CONTINUITY_EVENT_POST_FAILED',{event,error:String(error?.message||error)});}
@@ -883,7 +1024,7 @@ async function acquireBridgeMutationLease(workerId,purpose='NORMAL',ttlMs=30000)
   if(r.status===409){
     const data=await r.json().catch(()=>({}));
     const error=String(data?.error||'');
-    if(error.startsWith('BROWSER_MUTATION_LEASE_BUSY:'))return null;
+    if(error.startsWith('BROWSER_MUTATION_LEASE_BUSY:')||error.startsWith('WORKER_COMMAND_INFLIGHT:'))return null;
     throw new Error(error||`HTTP_409:mutation-lease-acquire`);
   }
   if(!r.ok)throw new Error(`HTTP_${r.status}:mutation-lease-acquire`);
@@ -896,6 +1037,7 @@ async function releaseBridgeMutationLease(workerId,lease){
   }).catch(()=>{});
 }
 async function navigate(target,url){
+  const pacingMs=await stabilityPace();log('UI_STABILITY_PACING',{action:'NAVIGATE',delayMs:pacingMs});
   const p=await pageRpc(target);try{await p.call('Page.enable');await p.call('Page.navigate',{url});}finally{p.close();}
 }
 function projectNewChatExpr(){
@@ -913,13 +1055,15 @@ async function recoverNv02ProjectContext(target){
   await navigate(target,NV02_HOME_URL);
   return{ok:true,status:'PROJECT_CONTEXT_NAVIGATED'};
 }
-async function focus(target){const p=await pageRpc(target);try{await p.call('Page.bringToFront');}finally{p.close();}}
+async function focus(target){const pacingMs=await stabilityPace();log('UI_STABILITY_PACING',{action:'FOCUS',delayMs:pacingMs});const p=await pageRpc(target);try{await p.call('Page.bringToFront');}finally{p.close();}}
 async function layout(w,target,bounds){
+  const pacingMs=await stabilityPace();log('UI_STABILITY_PACING',{action:'LAYOUT',workerId:w.id,delayMs:pacingMs});
   const port=workerPort(w),b=await browserRpc(port);
   try{const {windowId}=await b.call('Browser.getWindowForTarget',{targetId:target.id});await b.call('Browser.setWindowBounds',{windowId,bounds:{left:Number(bounds.left),top:Number(bounds.top),width:Number(bounds.width),height:Number(bounds.height),windowState:'normal'}});}
   finally{b.close();}
 }
 async function closeWorker(w,target){
+  const pacingMs=await stabilityPace();log('UI_STABILITY_PACING',{action:'CLOSE_WORKER',workerId:w.id,delayMs:pacingMs});
   const port=workerPort(w),windowId=await windowIdFor(port,target.id);
   await post('/api/window-event',w.id,{workerId:w.id,event:'CLOSED',windowId});
   const b=await browserRpc(port);try{await b.call('Browser.close',{}).catch(()=>{});}finally{b.close();}
@@ -984,6 +1128,7 @@ async function scrollToBottom(target){const p=await pageRpc(target);try{const pa
 
 function stopStalledWorkingExpr(){return `(()=>{const vis=e=>{const r=e?.getBoundingClientRect(),s=e&&getComputedStyle(e);return !!e&&r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const buttons=[...document.querySelectorAll('button[data-testid="stop-button"],button[aria-label*="Stop" i],button[aria-label*="Dừng" i],button[aria-label*="Ngừng" i]')].filter(vis);if(buttons.length!==1)return{ok:false,status:'WORKING_STALLED_STOP_BUTTON_COUNT_'+buttons.length};buttons[0].click();return{ok:true,status:'WORKING_STALLED_STOP_CLICKED'}})()`;}
 async function stopStalledWorking(target){
+  const pacingMs=await stabilityPace();log('UI_STABILITY_PACING',{action:'STOP_WORKING',delayMs:pacingMs});
   const p=await pageRpc(target);
   let clicked;
   try{clicked=(await p.call('Runtime.evaluate',{expression:stopStalledWorkingExpr(),returnByValue:true,userGesture:true},5000)).result.value;}
@@ -1002,7 +1147,47 @@ async function stopStalledWorking(target){
   return{ok:false,status:'WORKING_STALLED_STOP_TIMEOUT'};
 }
 
-function archiveMenuPointExpr(){return `(async()=>{const sleep=ms=>new Promise(r=>setTimeout(r,ms));const vis=e=>{const r=e?.getBoundingClientRect(),s=e&&getComputedStyle(e);return !!e&&r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};if(!/\\/c\\//.test(location.pathname))return{ok:false,status:'ARCHIVE_REQUIRES_CONVERSATION_URL'};const before=location.href,title=document.title.trim(),conversationId=(location.pathname.match(/\\/c\\/([^/?#]+)/)||[])[1]||'';const open=[...document.querySelectorAll('button,[role="button"]')].find(e=>vis(e)&&/mở sidebar|hiện thanh bên|open sidebar/i.test((e.getAttribute('aria-label')||e.innerText||'').trim()));if(open){open.click();await sleep(450)}const rows=[...document.querySelectorAll('[role="listitem"]')].filter(vis);const matchesConversation=row=>Boolean(conversationId)&&(row.getAttribute('data-pinned-content-tab-drop-key')===('chatgpt:conversation:'+conversationId)||row.querySelector('[data-pinned-content-tab-drop-key="chatgpt:conversation:'+conversationId+'"]')||row.querySelector('a[href*="/c/'+conversationId+'"]')||row.querySelector('[data-app-action-sidebar-thread-id="'+conversationId+'"]'));const identityRows=conversationId?rows.filter(matchesConversation):[];const candidates=identityRows.length?identityRows:rows.filter(row=>String(row.innerText||'').trim()===title);const exact=candidates.filter(row=>[...row.querySelectorAll('button')].some(b=>/hành động trong trò chuyện|conversation actions|chat actions/i.test(b.getAttribute('aria-label')||'')));if(exact.length!==1)return{ok:false,status:'ARCHIVE_CURRENT_ROW_COUNT_'+exact.length,title,conversationId,identityMatches:identityRows.length};const menu=[...exact[0].querySelectorAll('button')].filter(b=>vis(b)&&/hành động trong trò chuyện|conversation actions|chat actions/i.test(b.getAttribute('aria-label')||''));if(menu.length!==1)return{ok:false,status:'ARCHIVE_MENU_BUTTON_COUNT_'+menu.length,title};const r=menu[0].getBoundingClientRect();return{ok:true,status:'ARCHIVE_MENU_POINT',before,title,conversationId,x:r.left+r.width/2,y:r.top+r.height/2}})()`; }
+async function waitWorkerReadyForMaintenance(target,timeoutMs=180000){
+  const deadline=Date.now()+timeoutMs;let last=null;
+  while(Date.now()<deadline){
+    last=await uiStateRaw(target).catch(()=>null);
+    if(last?.securityBlock)return{ok:false,status:last.securityBlock,ui:last};
+    if(last&&last.uiBusy!==true&&last.stopVisible!==true&&last.composerReady===true)return{ok:true,status:'MAINTENANCE_READY',ui:last};
+    await sleep(randomDelay(5000,10000));
+  }
+  return{ok:false,status:'MAINTENANCE_READY_TIMEOUT',ui:last};
+}
+function plannedRestartUiDeadStatus(status){
+  const value=String(status||'');
+  return value==='MAINTENANCE_UI_UNAVAILABLE'
+    ||value==='MAINTENANCE_READY_TIMEOUT'
+    ||value==='WORKING_STALLED_STOP_BUTTON_COUNT_0'
+    ||value==='WORKING_STALLED_STOP_TIMEOUT'
+    ||/(?:CDP_TIMEOUT|CDP_LIST|TARGET_CLOSED|ECONNREFUSED|fetch failed)/i.test(value);
+}
+async function prepareWorkerForPlannedRestart(w,target,initialUi){
+  let ui=initialUi||await uiStateRaw(target).catch(()=>null);
+  if(!ui)return{ok:false,status:'MAINTENANCE_UI_UNAVAILABLE'};
+  if(ui.securityBlock)return{ok:false,status:ui.securityBlock};
+  if(ui.uiBusy===true||ui.stopVisible===true){
+    const stopped=await stopStalledWorking(target);
+    if(!stopped?.ok)return{ok:false,status:stopped?.status||'MAINTENANCE_STOP_FAILED'};
+  }
+  let ready=await waitWorkerReadyForMaintenance(target);
+  if(!ready?.ok)return ready;
+  const saved=await dispatch(target,'Lưu');
+  if(!saved?.ok)return{ok:false,status:saved?.status||'MAINTENANCE_SAVE_FAILED'};
+  ready=await waitWorkerReadyForMaintenance(target,180000);
+  if(!ready?.ok)return ready;
+  const currentUrl=String(ready.ui?.url||'');
+  if(expectedHost(w)==='chatgpt.com'&&/\/c\//.test(currentUrl)){
+    const archived=await archiveChat(target);
+    if(!archived?.ok)return{ok:false,status:archived?.status||'MAINTENANCE_ARCHIVE_FAILED'};
+  }
+  return{ok:true,status:'PLANNED_RESTART_PREPARED',url:currentUrl};
+}
+
+function archiveMenuPointExpr(){return `(async()=>{const sleep=ms=>new Promise(r=>setTimeout(r,ms));const vis=e=>{const r=e?.getBoundingClientRect(),s=e&&getComputedStyle(e);return !!e&&r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};if(!/\\/c\\//.test(location.pathname))return{ok:false,status:'ARCHIVE_REQUIRES_CONVERSATION_URL'};const before=location.href,title=document.title.trim(),conversationId=(location.pathname.match(/\\/c\\/([^/?#]+)/)||[])[1]||'';const header=[...document.querySelectorAll('button[data-testid="conversation-options-button"]')].filter(vis);if(header.length===1){const r=header[0].getBoundingClientRect();return{ok:true,status:'ARCHIVE_MENU_POINT',source:'HEADER_CONVERSATION_OPTIONS',before,title,conversationId,x:r.left+r.width/2,y:r.top+r.height/2}}const open=[...document.querySelectorAll('button,[role="button"]')].find(e=>vis(e)&&/mở sidebar|hiện thanh bên|open sidebar/i.test((e.getAttribute('aria-label')||e.innerText||'').trim()));if(open){open.click();await sleep(450)}const rows=[...document.querySelectorAll('[role="listitem"]')].filter(vis);const matchesConversation=row=>Boolean(conversationId)&&(row.getAttribute('data-pinned-content-tab-drop-key')===('chatgpt:conversation:'+conversationId)||row.querySelector('[data-pinned-content-tab-drop-key="chatgpt:conversation:'+conversationId+'"]')||row.querySelector('a[href*="/c/'+conversationId+'"]')||row.querySelector('[data-app-action-sidebar-thread-id="'+conversationId+'"]'));const identityRows=conversationId?rows.filter(matchesConversation):[];const candidates=identityRows.length?identityRows:rows.filter(row=>String(row.innerText||'').trim()===title);const exact=candidates.filter(row=>[...row.querySelectorAll('button')].some(b=>/hành động trong trò chuyện|conversation actions|chat actions/i.test(b.getAttribute('aria-label')||'')));if(exact.length!==1)return{ok:false,status:'ARCHIVE_CURRENT_ROW_COUNT_'+exact.length,title,conversationId,identityMatches:identityRows.length};const menu=[...exact[0].querySelectorAll('button')].filter(b=>vis(b)&&/hành động trong trò chuyện|conversation actions|chat actions/i.test(b.getAttribute('aria-label')||''));if(menu.length!==1)return{ok:false,status:'ARCHIVE_MENU_BUTTON_COUNT_'+menu.length,title};const r=menu[0].getBoundingClientRect();return{ok:true,status:'ARCHIVE_MENU_POINT',source:'SIDEBAR_ROW_FALLBACK',before,title,conversationId,x:r.left+r.width/2,y:r.top+r.height/2}})()`; }
 function archiveItemPointExpr(){return `(()=>{const vis=e=>{const r=e?.getBoundingClientRect(),s=e&&getComputedStyle(e);return !!e&&r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const items=[...document.querySelectorAll('[role="menuitem"]')].filter(vis).filter(e=>/^(archive|lưu trữ)$/i.test((e.innerText||e.textContent||e.getAttribute('aria-label')||'').replace(/\\s+/g,' ').trim()));if(items.length!==1)return{ok:false,status:'ARCHIVE_ACTION_COUNT_'+items.length};const r=items[0].getBoundingClientRect();return{ok:true,status:'ARCHIVE_ACTION_POINT',x:r.left+r.width/2,y:r.top+r.height/2,text:(items[0].innerText||items[0].textContent||'').trim()}})()`; }
 async function cdpMouseClick(p,point){
   const pacingMs=await stabilityPace();
@@ -1174,10 +1359,10 @@ async function withNv02Mutation(fn,purpose='NORMAL',ttlMs=30000){
 }
 async function dispatchNaturalContinueLocked(target,state,now){
   await scrollToBottom(target).catch(()=>{});
-  const prompt=pickContinuePrompt(state.lastPrompt);
+  const prompt=pickWorkerContinuePrompt('NV02',state.lastPrompt);
   const result=await dispatch(target,prompt);
   if(!result?.ok)throw new Error(result?.status||'LOCAL_CONTINUE_DISPATCH_FAILED');
-  const next={...state,lastPrompt:prompt,dispatchesInChat:Number(state.dispatchesInChat||0)+1,stalledChecks:0,lastPhase:'WORKING',workingSignature:'',workingUnchangedChecks:0,workingRecheckAt:nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS),nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
+  const next={...state,pendingContinue:false,awaitingWorkStart:true,lastPrompt:prompt,dispatchesInChat:Number(state.dispatchesInChat||0)+1,stalledChecks:0,lastPhase:'WORKING',workingSignature:'',workingUnchangedChecks:0,workingRecheckAt:nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS),nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
   saveNv02Continuity(next);
   await continuityEvent('LOCAL_CONTINUE_DISPATCHED',{prompt,evidence:result.evidence||null,nextContinueAt:next.nextContinueAt,dispatchesInChat:next.dispatchesInChat});
   return next;
@@ -1193,6 +1378,8 @@ async function noteNv02CommandDispatch(){
   state.workingRecheckAt=nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS);
   state.nextProgressCheckAt=now+WORKING_PROGRESS_CHECK_MS;
   state.stalledChecks=0;
+  state.pendingContinue=false;
+  state.awaitingWorkStart=true;
   saveNv02Continuity(state);
   await continuityEvent('DISPATCH_F5_GUARD_ARMED',{nextPeriodicF5At:state.nextPeriodicF5At,workingRecheckAt:state.workingRecheckAt});
 }
@@ -1204,6 +1391,7 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
     return;
   }
   if(runGraceUntil)workerRunGraceUntil.delete('NV02');
+  const previousPhase=String(state.lastPhase||'STALLED');
   ui=applyNv02DurableVerifiedModelProfile(ui);
   const phase=deriveNv02Phase(ui||{});
   const currentChat=hasCurrentNv02Chat(ui?.url);
@@ -1221,54 +1409,38 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
     await continuityEvent(deferred?'VIEW_FOLLOW_BOTTOM_DEFERRED':'VIEW_FOLLOW_BOTTOM',{status:followed?.status||null,pacingMs:followed?.pacingMs||null,nextViewFollowAt:state.nextViewFollowAt});
   }
   if(phase==='BLOCKED'){await continuityEvent('BLOCKED',{securityBlock:ui?.securityBlock||null});return;}
-  if(phase==='WORKING'){
-    if(now<Number(state.nextProgressCheckAt||0))return;
-    const signature=String(ui?.activitySignature||'');
-    const same=Boolean(signature&&state.workingSignature===signature);
-    const unchanged=same?Number(state.workingUnchangedChecks||0)+1:0;
-    const workingRecheckAt=same
-      ? (Number(state.workingRecheckAt)||nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS))
-      : nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS);
-    state={...state,stalledChecks:0,workingSignature:signature,workingUnchangedChecks:unchanged,workingRecheckAt,nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS};
-    saveNv02Continuity(state);
-    await continuityEvent('WORKING_PROGRESS_CHECK',{workingUnchangedChecks:unchanged,workingRecheckAt:state.workingRecheckAt,nextProgressCheckAt:state.nextProgressCheckAt,signaturePresent:Boolean(signature)});
-    if(unchanged>=MAX_WORKING_UNCHANGED_CHECKS){
-      await continuityEvent('WORKING_LONG_RUNNING_NO_MUTATION',{workingUnchangedChecks:unchanged,workingRecheckAt:state.workingRecheckAt,nextProgressCheckAt:state.nextProgressCheckAt});
+  if(phase!=='WORKING'&&now>=Number(state.nextRefreshAt||0)){
+    let prepared;
+    let uiDeadFallbackStatus='';
+    try{
+      prepared=await withNv02Mutation(()=>prepareWorkerForPlannedRestart(w,target,ui),'PERIODIC_PREPARE_RESTART',240000);
+    }catch(error){
+      const status=String(error?.message||error);
+      if(!plannedRestartUiDeadStatus(status))throw error;
+      uiDeadFallbackStatus=status;
     }
-    if(unchanged>=MAX_WORKING_UNCHANGED_CHECKS+2){
-      const stopped=await withNv02Mutation(()=>stopStalledWorking(target),'WORKING_STUCK_STOP',30000);
-      if(stopped?.status==='MUTATION_LEASE_BUSY')return;
-      const resolved=stopped?.ok===true;
-      state={...loadNv02Continuity(),workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS,workingRecheckAt:0,chatLoadRecoveryStage:resolved?3:state.chatLoadRecoveryStage,rotationRetryAt:resolved?0:now+5*60_000,nextContinueAt:now};
-      saveNv02Continuity(state);
-      await continuityEvent('WORKING_STUCK_STOP',{status:stopped?.status||null,resolved,rotationArmed:resolved,rotationRetryAt:state.rotationRetryAt});
-    }
-    return;
-  }
-  const chatLoadRecoveryHandled=await maybeRecoverChatLoadError(w,target,ui,now);
-  if(chatLoadRecoveryHandled)return;
-  state=loadNv02Continuity();
-  if(bootFreshContextPending.has('NV02')&&phase!=='WORKING'){
-    bootFreshContextPending.delete('NV02');
-    state={...state,resumeChatUrl:'',verifiedChatUrl:'',modelVerifiedAt:'',nextContinueAt:now,stalledChecks:0};
-    saveNv02Continuity(state);
-    const boot=await withNv02Mutation(async()=>{
-      const ready=await ensureNv02LocalReadyLocked(target,ui,{forceFresh:true});
-      if(ready?.uiBusy===true||ready?.uiPhase==='WORKING')return{ok:true,status:'BOOT_ALREADY_WORKING'};
-      if(!allowContinue)return{ok:true,status:'BOOT_FRESH_LOCAL_READY'};
-      const next=await dispatchNaturalContinueLocked(target,loadNv02Continuity(),Date.now());
-      await noteNv02CommandDispatch();
-      return{ok:true,status:'BOOT_LOCAL_CONTINUE_SUBMITTED',prompt:next.lastPrompt};
-    },'BOOT_FRESH_LOCAL_CONTINUE',60000);
-    if(boot?.status==='MUTATION_LEASE_BUSY'){
-      bootFreshContextPending.add('NV02');
-      await continuityEvent('BOOT_FRESH_CONTEXT_DEFERRED',{status:boot.status,homeUrl:NV02_HOME_URL});
+    if(prepared?.status==='MUTATION_LEASE_BUSY'){
+      state={...state,nextRefreshAt:now+5000};saveNv02Continuity(state);
       return;
     }
-    await continuityEvent('BOOT_FRESH_LOCAL_COMPLETE',{status:boot?.status||null,prompt:boot?.prompt||null,homeUrl:NV02_HOME_URL});
+    if(!uiDeadFallbackStatus&&!prepared?.ok){
+      const status=String(prepared?.status||'MAINTENANCE_PREPARE_FAILED');
+      if(plannedRestartUiDeadStatus(status))uiDeadFallbackStatus=status;
+      else{
+        state={...state,nextRefreshAt:now+5*60*1000};saveNv02Continuity(state);
+        await continuityEvent('PERIODIC_RESTART_PREPARE_FAILED',{status,nextRefreshAt:state.nextRefreshAt});
+        return;
+      }
+    }
+    if(uiDeadFallbackStatus)await continuityEvent('PERIODIC_RESTART_UI_DEAD_FALLBACK',{status:uiDeadFallbackStatus});
+    await reopenWorker(w,target,state,now,uiDeadFallbackStatus?'PERIODIC_2_4H_RESET_UI_DEAD':'PERIODIC_2_4H_RESET');
+    state={...loadNv02Continuity(),nextRefreshAt:nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS),verifiedChatUrl:'',modelVerifiedAt:'',resumeChatUrl:'',nextContinueAt:now};
+    saveNv02Continuity(state);
+    bootFreshContextPending.add('NV02');
+    await continuityEvent('PERIODIC_RESTART_COMPLETED',{nextRefreshAt:state.nextRefreshAt,uiDeadFallback:Boolean(uiDeadFallbackStatus)});
     return;
   }
-  if(currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0)){
+  if(phase!=='WORKING'&&currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0)){
     const refreshed=await withNv02Mutation(async()=>{
       const beforeUrl=ui?.url||null;
       const beforePhase=phase;
@@ -1282,16 +1454,52 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
       await continuityEvent('PERIODIC_F5_RETRY_LEASE_BUSY',{nextPeriodicF5At:state.nextPeriodicF5At});
       return;
     }
+    const awaitingBeforeF5=state.awaitingWorkStart===true;
     state={...state,
       nextPeriodicF5At:nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS),
-      workingSignature:'',
-      workingUnchangedChecks:0,
-      nextProgressCheckAt:0,
-      stalledChecks:0,
-      modelCheckBlockedUntil:now+30000,
+      pendingContinue:awaitingBeforeF5?false:true,
+      awaitingWorkStart:awaitingBeforeF5,
+      nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),
+      workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:0,stalledChecks:0,modelCheckBlockedUntil:now+30000
     };
     saveNv02Continuity(state);
-    await continuityEvent('PERIODIC_F5_REFRESH',{beforeUrl:refreshed?.beforeUrl||null,beforePhase:refreshed?.beforePhase||phase,afterUrl:refreshed?.afterUrl||null,afterPhase:refreshed?.afterPhase||null,nextPeriodicF5At:state.nextPeriodicF5At});
+    await continuityEvent('PERIODIC_F5_REFRESH',{beforeUrl:refreshed?.beforeUrl||null,beforePhase:refreshed?.beforePhase||phase,afterUrl:refreshed?.afterUrl||null,afterPhase:refreshed?.afterPhase||null,nextPeriodicF5At:state.nextPeriodicF5At,awaitingWorkStartPreserved:state.awaitingWorkStart===true});
+    return;
+  }
+  if(phase==='WORKING'){
+    if(now<Number(state.nextProgressCheckAt||0))return;
+    const signature=String(ui?.activitySignature||'');
+    const same=Boolean(signature&&state.workingSignature===signature);
+    const unchanged=same?Number(state.workingUnchangedChecks||0)+1:0;
+    const workingRecheckAt=same
+      ? (Number(state.workingRecheckAt)||nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS))
+      : nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS);
+    state={...state,awaitingWorkStart:false,stalledChecks:0,workingSignature:signature,workingUnchangedChecks:unchanged,workingRecheckAt,nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS};
+    saveNv02Continuity(state);
+    await continuityEvent('WORKING_PROGRESS_CHECK',{workingUnchangedChecks:unchanged,workingRecheckAt:state.workingRecheckAt,nextProgressCheckAt:state.nextProgressCheckAt,signaturePresent:Boolean(signature)});
+    if(unchanged>=MAX_WORKING_UNCHANGED_CHECKS){
+      await continuityEvent('WORKING_LONG_RUNNING_NO_MUTATION',{workingUnchangedChecks:unchanged,workingRecheckAt:state.workingRecheckAt,nextProgressCheckAt:state.nextProgressCheckAt});
+    }
+    return;
+  }
+  const chatLoadRecoveryHandled=await maybeRecoverChatLoadError(w,target,ui,now);
+  if(chatLoadRecoveryHandled)return;
+  state=loadNv02Continuity();
+  if(bootFreshContextPending.has('NV02')&&phase!=='WORKING'){
+    bootFreshContextPending.delete('NV02');
+    state={...state,resumeChatUrl:'',verifiedChatUrl:'',modelVerifiedAt:'',pendingContinue:true,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),stalledChecks:0};
+    saveNv02Continuity(state);
+    const boot=await withNv02Mutation(async()=>{
+      const ready=await ensureNv02LocalReadyLocked(target,ui,{forceFresh:true});
+      if(ready?.uiBusy===true||ready?.uiPhase==='WORKING')return{ok:true,status:'BOOT_ALREADY_WORKING'};
+      return{ok:true,status:allowContinue?'BOOT_FRESH_LOCAL_READY':'BOOT_FRESH_LOCAL_READY_NO_CONTINUE'};
+    },'BOOT_FRESH_LOCAL_CONTINUE',60000);
+    if(boot?.status==='MUTATION_LEASE_BUSY'){
+      bootFreshContextPending.add('NV02');
+      await continuityEvent('BOOT_FRESH_CONTEXT_DEFERRED',{status:boot.status,homeUrl:NV02_HOME_URL});
+      return;
+    }
+    await continuityEvent('BOOT_FRESH_LOCAL_COMPLETE',{status:boot?.status||null,prompt:boot?.prompt||null,homeUrl:NV02_HOME_URL});
     return;
   }
   const modelCheckRequired=now>=Number(state.modelCheckBlockedUntil||0)&&(ui?.modelExact!==true||!state.verifiedChatUrl||!sameNv02Chat(state.verifiedChatUrl,ui?.url));
@@ -1302,8 +1510,7 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
       const recoveredProjectContext=isNv02ProjectContext(corrected?.url)||corrected?.projectDraftReady===true;
       if(!recoveredProjectContext)throw new Error('PROJECT_CONTEXT_NOT_READY_AFTER_MODEL_RECOVERY');
       await postWorkerHeartbeat(w,target,corrected,recoveredProjectContext).catch(()=>{});
-      state={...state,stalledChecks:0,nextContinueAt:now};saveNv02Continuity(state);
-      if(corrected?.uiPhase==='READY')await dispatchNaturalContinue(target,state,now);
+      state={...state,stalledChecks:0};saveNv02Continuity(state);
       return;
     }catch(error){
       state={...state,modelCheckBlockedUntil:now+60_000};
@@ -1312,6 +1519,14 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
     }
   }
   if(phase==='READY'){
+    if(state.awaitingWorkStart===true)return;
+    if(state.pendingContinue!==true){
+      state={...state,pendingContinue:true,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
+      saveNv02Continuity(state);
+      await continuityEvent(previousPhase==='WORKING'?'READY_AFTER_WORKING_ARMED':'READY_ROLE_LOOP_ARMED',{nextContinueAt:state.nextContinueAt});
+      return;
+    }
+    if(state.pendingContinue!==true)return;
     if(now<Number(state.nextContinueAt||0))return;
     const sent=await dispatchNaturalContinue(target,state,now);
     if(sent?.status==='MUTATION_LEASE_BUSY'){
@@ -1341,8 +1556,11 @@ async function handleCommand(w,target,command){
   if(action==='LOCAL_CONTINUE_NOW'){
     if(w.id==='NV03'||w.id==='NV04'){
       const assignment=await currentWorkerAssignmentStatus(w.id);
-      if(assignment.status!=='CONTINUABLE')return{status:assignment.status,jobId:assignment.job?.jobId||null};
+      if(!['READY_UNASSIGNED','CONTINUABLE'].includes(assignment.status))return{status:assignment.status,jobId:assignment.job?.jobId||null};
     }
+    if(bootFreshContextPending.has(w.id))return{status:'LOCAL_CONTINUE_DEFERRED_BOOT'};
+    const stateBefore=w.id==='NV02'?loadNv02Continuity():loadWorkerContinuity(w.id);
+    if(stateBefore.awaitingWorkStart===true)return{status:'LOCAL_CONTINUE_ALREADY_DISPATCHED'};
     const raw=await uiState(target);
     const phase=w.id==='NV02'?deriveNv02Phase(raw||{}):deriveWorkerPhase(raw||{},{workerId:w.id});
     if(phase==='BLOCKED')throw new Error(raw?.securityBlock||'LOCAL_CONTINUE_BLOCKED');
@@ -1359,10 +1577,10 @@ async function handleCommand(w,target,command){
       return{status:'LOCAL_CONTINUE_SUBMITTED',prompt:next.lastPrompt};
     }
     if(phase!=='READY')return{status:'LOCAL_CONTINUE_NOT_READY',phase};
-    const state=loadWorkerContinuity(w.id),prompt=pickContinuePrompt(state.lastPrompt);
+    const state=loadWorkerContinuity(w.id),prompt=pickWorkerContinuePrompt(w.id,state.lastPrompt);
     const r=await dispatch(target,prompt);
     if(!r?.ok)throw new Error(r?.status||'LOCAL_CONTINUE_DISPATCH_FAILED');
-    saveWorkerContinuity(w.id,{...state,lastPrompt:prompt,lastPhase:'WORKING',stalledChecks:0,nextContinueAt:nextRandomAt(Date.now(),CONTINUE_MIN_MS,CONTINUE_MAX_MS)});
+    saveWorkerContinuity(w.id,{...state,pendingContinue:false,awaitingWorkStart:true,lastPrompt:prompt,lastPhase:'WORKING',stalledChecks:0,workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:Date.now()+WORKING_PROGRESS_CHECK_MS,nextContinueAt:nextRandomAt(Date.now(),CONTINUE_MIN_MS,CONTINUE_MAX_MS)});
     await genericWorkerEvent(w.id,'LOCAL_CONTINUE_DISPATCHED',{prompt});
     return{status:'LOCAL_CONTINUE_SUBMITTED',prompt};
   }
@@ -1374,7 +1592,7 @@ async function postWorkerHeartbeat(w,target,ui,projectContextReady){
   const windowId=await windowIdFor(workerPort(w),target.id);
   const display={workArea:{left:0,top:0,width:Number(config.layout?.fallbackWorkAreaWidth||3277),height:1688}};
   const normalizedPhase=w.id==='NV02'?String(ui?.uiPhase||'STALLED'):deriveWorkerPhase(ui||{},{workerId:w.id});
-  await post('/api/heartbeat',w.id,{workerId:w.id,state:normalizedPhase,windowId,tabId:target.id,url:ui.url,active:true,uiReady:ui.uiReady,uiPhase:normalizedPhase,composerReady:ui.composerReady,sendReady:ui.sendReady,stopVisible:ui.stopVisible,scrollToBottomVisible:ui.scrollToBottomVisible,authRequired:ui.authRequired===true,uiBusy:ui.uiBusy,securityBlock:ui.securityBlock,chatLoadError:ui.chatLoadError===true,chatRetryReady:ui.chatRetryReady===true,modelControlPresent:ui.modelControlPresent,modelProfileStatus:ui.modelProfileStatus,modelName:ui.modelName,reasoningEffort:ui.reasoningEffort,modelReady:ui.modelReady,modelExact:ui.modelExact,verifiedAt:ui.verifiedAt,blockedReason:ui.blockedReason,projectContextReady,display});
+  await post('/api/heartbeat',w.id,{workerId:w.id,state:normalizedPhase,windowId,tabId:target.id,url:ui.url,active:true,uiReady:ui.uiReady,uiPhase:normalizedPhase,composerReady:ui.composerReady,sendReady:ui.sendReady,stopVisible:ui.stopVisible,scrollToBottomVisible:ui.scrollToBottomVisible,authRequired:ui.authRequired===true,uiBusy:ui.uiBusy,securityBlock:ui.securityBlock,chatLoadError:ui.chatLoadError===true,connectionPending:ui.connectionPending===true,chatRetryReady:ui.chatRetryReady===true,modelControlPresent:ui.modelControlPresent,modelProfileStatus:ui.modelProfileStatus,modelName:ui.modelName,reasoningEffort:ui.reasoningEffort,modelReady:ui.modelReady,modelExact:ui.modelExact,verifiedAt:ui.verifiedAt,blockedReason:ui.blockedReason,projectContextReady,display});
 }
 
 async function tickWorker(w){
@@ -1390,7 +1608,9 @@ async function tickWorker(w){
     const target=await pruneDuplicates(w,list);if(!target)return;
     const rawUi=await uiState(target);
     const projectContextReady=w.id!=='NV02'||isNv02ProjectContext(rawUi.url)||rawUi.projectDraftReady===true;
-    const ui=projectContextReady?rawUi:{...rawUi,uiReady:false,uiPhase:'STALLED',modelReady:false};
+    const assignmentSnapshot=await currentWorkerAssignmentStatus(w.id);
+    const idleReady=assignmentSnapshot.status==='READY_UNASSIGNED'&&projectContextReady&&rawUi?.composerReady===true&&!rawUi?.securityBlock&&!rawUi?.authRequired&&!rawUi?.chatLoadError&&!rawUi?.connectionPending;
+    const ui=projectContextReady?(idleReady?{...rawUi,uiReady:true,uiPhase:'READY'}:rawUi):{...rawUi,uiReady:false,uiPhase:'STALLED',modelReady:false};
     await postWorkerHeartbeat(w,target,ui,projectContextReady).catch(error=>log('CONTROLLER_TELEMETRY_UNAVAILABLE',{error:String(error?.message||error)}));
     if(await workerAutomationPaused(w.id)){
       if(w.id==='NV02')await continuityEvent('AUTO_ACTION_PAUSED',{phase:String(ui?.uiPhase||'STALLED')});
@@ -1438,13 +1658,28 @@ async function tickWorker(w){
   }catch(error){
     const msg=String(error?.message||error);
     const connectivityFailure=/fetch failed|ECONNREFUSED|ECONNRESET|CDP_LIST|CDP_OPEN|AbortError|TimeoutError|UND_ERR_CONNECT_TIMEOUT/i.test(msg);
-    if(w.id!=='NV02'&&connectivityFailure){
+    if(connectivityFailure){
       const prior=workerConnectivityBackoff.get(w.id);
-      const attempt=Math.min(Number(prior?.attempt||0)+1,5);
-      const delayMs=Math.min(20_000,5_000*(2**(attempt-1)));
-      const until=Date.now()+delayMs;
-      workerConnectivityBackoff.set(w.id,{attempt,until,lastError:msg});
-      log('WORKER_CONNECTIVITY_BACKOFF',{workerId:w.id,attempt,delayMs,until,error:msg});
+      const maxAttempts=Number(prior?.maxAttempts)||Math.floor(2+Math.random()*4);
+      const attempt=Number(prior?.attempt||0)+1;
+      if(attempt<maxAttempts){
+        const delayMs=randomDelay(15_000,60_000);
+        const until=Date.now()+delayMs;
+        workerConnectivityBackoff.set(w.id,{attempt,maxAttempts,until,lastError:msg});
+        log('WORKER_CONNECTIVITY_RETRY_SCHEDULED',{workerId:w.id,attempt,maxAttempts,delayMs,until,error:msg});
+      }else{
+        workerConnectivityBackoff.delete(w.id);
+        log('WORKER_CONNECTIVITY_RETRIES_EXHAUSTED',{workerId:w.id,attempt,maxAttempts,error:msg});
+        try{
+          await post(`/api/utility/workers/${w.id}/safe-recover`,w.id,{reason:'CONNECTIVITY_RETRIES_EXHAUSTED'},120000);
+          bootFreshContextPending.add(w.id);
+          log('WORKER_CONNECTIVITY_CHROME_RESTART_REQUESTED',{workerId:w.id,attempt,maxAttempts});
+        }catch(recoverError){
+          const delayMs=randomDelay(15_000,60_000),until=Date.now()+delayMs;
+          workerConnectivityBackoff.set(w.id,{attempt:0,maxAttempts:Math.floor(2+Math.random()*4),until,lastError:String(recoverError?.message||recoverError)});
+          log('WORKER_CONNECTIVITY_RECOVERY_DEFERRED',{workerId:w.id,delayMs,until,error:String(recoverError?.message||recoverError)});
+        }
+      }
     }else if(!/CDP_LIST|AbortError|TimeoutError/.test(msg)){
       log('WORKER_TICK_ERROR',{workerId:w.id,error:msg});
     }
@@ -1506,3 +1741,4 @@ bridgeServer.on('error',(error)=>{log('NV02_CANONICAL_OWNER_BIND_FAILED',{error:
 bridgeServer.listen(8799,'127.0.0.1',()=>log('BRIDGE_READY',{port:8799,mode:'APP_CHROME_LOCAL_UI_ONLY',controllerRequired:false,controllerEnabledFlagIgnored:true,canonicalOwnership:true,pid:process.pid,approvedHead:APPROVED_HEAD||null,sourceSha256:BRIDGE_SHA256,provenanceVerified:Boolean(APPROVED_HEAD&&DEPLOY_ROOT&&EXPECTED_BRIDGE_SHA256&&EXPECTED_BRIDGE_SHA256===BRIDGE_SHA256)}));
 setInterval(()=>void tick(),3000).unref();
 void tick();
+
