@@ -1190,38 +1190,13 @@ async function dispatchCurrentWorkIssueRestoreLocked(target,state,now,expectedWo
   return next;
 }
 async function dispatchNaturalContinueLocked(target,state,now){
-  if(await externalAutopilotOwnsNextNv02Job()){
-    const next={...state,nextContinueAt:now+5000};
-    saveNv02Continuity(next);
-    await continuityEvent('CONTINUE_DEFERRED_TO_EXTERNAL_AUTOPILOT',{nextContinueAt:next.nextContinueAt});
-    return next;
-  }
-  let controllerState;
-  try{controllerState=await getControllerState();}
-  catch(error){
-    const next={...state,lastPhase:'STALLED',nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
-    saveNv02Continuity(next);
-    await continuityEvent('CONTINUE_SKIPPED_CURRENT_WORK_UNVERIFIED',{error:String(error?.message||error),nextContinueAt:next.nextContinueAt});
-    return next;
-  }
-  const currentWork=findContinuableNv02Work(controllerState);
-  if(!hasContinuableNv02Work(controllerState)||!currentWork){
-    const next={...state,lastPhase:'READY',workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
-    saveNv02Continuity(next);
-    await continuityEvent('CONTINUE_SKIPPED_NO_CURRENT_WORK',{nextContinueAt:next.nextContinueAt});
-    return next;
-  }
-  await continuityEvent('CONTINUE_CURRENT_WORK_VERIFIED',{jobId:currentWork.jobId||null,issueRef:currentWork.issueRef});
-  // Model/profile is verified once per opened chat/session and again only after
-  // reopen/project recovery/URL change. The hot continue loop must not open
-  // the model selector before every command.
   await scrollToBottom(target).catch(()=>{});
   const prompt=pickContinuePrompt(state.lastPrompt);
   const result=await dispatch(target,prompt);
-  if(!result?.ok)throw new Error(result?.status||'CONTINUE_DISPATCH_FAILED');
+  if(!result?.ok)throw new Error(result?.status||'LOCAL_CONTINUE_DISPATCH_FAILED');
   const next={...state,lastPrompt:prompt,dispatchesInChat:Number(state.dispatchesInChat||0)+1,stalledChecks:0,lastPhase:'WORKING',workingSignature:'',workingUnchangedChecks:0,workingRecheckAt:nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS),nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
   saveNv02Continuity(next);
-  await continuityEvent('CONTINUE_DISPATCHED',{prompt,evidence:result.evidence||null,nextContinueAt:next.nextContinueAt,dispatchesInChat:next.dispatchesInChat});
+  await continuityEvent('LOCAL_CONTINUE_DISPATCHED',{prompt,evidence:result.evidence||null,nextContinueAt:next.nextContinueAt,dispatchesInChat:next.dispatchesInChat});
   return next;
 }
 async function dispatchNaturalContinue(target,state,now){
@@ -1290,11 +1265,8 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
   const now=Date.now();let state=loadNv02Continuity();
   ui=applyNv02DurableVerifiedModelProfile(ui);
   const phase=deriveNv02Phase(ui||{});
-  let controllerState=null;
-  try{controllerState=await getControllerState();}catch{}
-  const currentWork=controllerState?findContinuableNv02Work(controllerState):null;
   const currentChat=hasCurrentNv02Chat(ui?.url);
-  const currentTrackedWork=Boolean(currentWork&&currentChat);
+  const currentTrackedWork=currentChat;
   state={...state,lastPhase:phase,resumeChatUrl:''};saveNv02Continuity(state);
   if(phase!=='BLOCKED'&&ui?.scrollToBottomVisible===true&&now>=Number(state.nextViewFollowAt||0)){
     const locallyBusy=nv02MutationBusy||workerMutationBusy.has('NV02');
@@ -1337,32 +1309,19 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
   state=loadNv02Continuity();
   if(bootFreshContextPending.has('NV02')&&phase!=='WORKING'){
     bootFreshContextPending.delete('NV02');
+    state={...state,resumeChatUrl:'',verifiedChatUrl:'',modelVerifiedAt:'',nextContinueAt:now,stalledChecks:0};
+    saveNv02Continuity(state);
     if(currentChat){
       const opened=await withNv02Mutation(async()=>{
         await navigate(target,NV02_HOME_URL);
         await sleep(1200);
-        return {ok:true,status:'BOOT_FRESH_CONTEXT_OPENED'};
+        return{ok:true,status:'BOOT_FRESH_CONTEXT_OPENED'};
       },'BOOT_FRESH_CONTEXT',30000);
-      saveNv02Continuity({...state,resumeChatUrl:'',verifiedChatUrl:'',modelVerifiedAt:'',nextContinueAt:now});
       await continuityEvent(opened?.status==='MUTATION_LEASE_BUSY'?'BOOT_FRESH_CONTEXT_DEFERRED':'BOOT_FRESH_CONTEXT_OPENED',{status:opened?.status||null,fromUrl:ui?.url||null,homeUrl:NV02_HOME_URL});
       if(opened?.status==='MUTATION_LEASE_BUSY')bootFreshContextPending.add('NV02');
       return;
     }
-  }
-  if(shouldRotateNv02Chat({phase,currentTrackedWork,now,nextRefreshAt:state.nextRefreshAt,dispatchesInChat:state.dispatchesInChat,chatStartedAt:state.chatStartedAt,rotationRetryAt:state.rotationRetryAt,chatLoadRecoveryStage:state.chatLoadRecoveryStage})){
-    if(await externalAutopilotOwnsNextNv02Job()){
-      state={...state,rotationRetryAt:now+60_000};saveNv02Continuity(state);
-      await continuityEvent('CHAT_ROTATION_DEFERRED_TO_EXTERNAL_AUTOPILOT',{rotationRetryAt:state.rotationRetryAt});
-      return;
-    }
-    await continuityEvent('CHAT_ROTATION_DUE',{dispatchesInChat:state.dispatchesInChat,chatStartedAt:state.chatStartedAt,nextRefreshAt:state.nextRefreshAt});
-    try{await rotateNv02Chat(target,state,now);}
-    catch(error){
-      const retry={...state,rotationRetryAt:now+5*60*1000};
-      saveNv02Continuity(retry);
-      await continuityEvent('CHAT_ROTATION_FAILED',{error:String(error?.message||error),rotationRetryAt:retry.rotationRetryAt});
-    }
-    return;
+    await continuityEvent('BOOT_FRESH_CONTEXT_READY',{homeUrl:NV02_HOME_URL});
   }
   if(currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0)){
     const refreshed=await withNv02Mutation(async()=>{
@@ -1399,11 +1358,7 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
       if(!recoveredProjectContext)throw new Error('PROJECT_CONTEXT_NOT_READY_AFTER_MODEL_RECOVERY');
       await postWorkerHeartbeat(w,target,corrected,recoveredProjectContext).catch(()=>{});
       state={...state,stalledChecks:0,nextContinueAt:now};saveNv02Continuity(state);
-      if(corrected?.uiPhase==='READY'){
-        const freshWork=controllerState?findContinuableNv02Work(controllerState):null;
-        if(freshWork&&!hasCurrentNv02Chat(corrected?.url))await withNv02Mutation(()=>dispatchCurrentWorkIssueRestoreLocked(target,state,now,freshWork),'CURRENT_WORK_NEW_CHAT_RESTORE',30000);
-        else await dispatchNaturalContinue(target,state,now);
-      }
+      if(corrected?.uiPhase==='READY')await dispatchNaturalContinue(target,state,now);
       return;
     }catch(error){
       state={...state,modelCheckBlockedUntil:now+60_000};
@@ -1411,26 +1366,11 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
       await continuityEvent('MODEL_PROFILE_RECOVERY_FAILED',{error:String(error?.message||error),modelCheckBlockedUntil:state.modelCheckBlockedUntil});
     }
   }
-  if(!currentTrackedWork){
-    if(currentWork&&phase==='READY'&&(isNv02ProjectContext(ui?.url)||ui?.projectDraftReady===true)){
-      const restored=await withNv02Mutation(()=>dispatchCurrentWorkIssueRestoreLocked(target,state,now,currentWork),'CURRENT_WORK_NEW_CHAT_RESTORE',30000);
-      if(restored?.status==='MUTATION_LEASE_BUSY'){
-        state={...state,nextContinueAt:now+5000};saveNv02Continuity(state);
-      }
-      return;
-    }
-    if(!currentWork&&now>=state.nextContinueAt){
-      state={...state,resumeChatUrl:'',stalledChecks:0,workingSignature:'',workingUnchangedChecks:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
-      saveNv02Continuity(state);
-      await continuityEvent('READY_UNASSIGNED',{url:ui?.url||null,nextContinueAt:state.nextContinueAt});
-    }
-    return;
-  }
-  if(now<state.nextContinueAt)return;
   if(phase==='READY'){
+    if(now<Number(state.nextContinueAt||0))return;
     const sent=await dispatchNaturalContinue(target,state,now);
     if(sent?.status==='MUTATION_LEASE_BUSY'){
-      state={...state,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
+      state={...state,nextContinueAt:now+5000};saveNv02Continuity(state);
     }
     return;
   }
@@ -1453,6 +1393,25 @@ async function handleCommand(w,target,command){
   if(action==='CLOSE_WINDOW') return closeWorker(w,target).then(()=>({status:'WINDOW_CLOSED'}));
   if(action==='NAVIGATE'){const u=new URL(String(payload.url||''));if(u.hostname!==expectedHost(w))throw new Error('BLOCKED_URL');await navigate(target,u.toString());return{status:'NAVIGATED'};}
   if(action==='MODEL_PREFLIGHT'){if(w.id!=='NV02')return{status:'MODEL_PREFLIGHT_NOT_REQUIRED'};return ensureNv02ModelProfile(target);}
+  if(action==='LOCAL_CONTINUE_NOW'){
+    const raw=await uiState(target);
+    const phase=w.id==='NV02'?deriveNv02Phase(raw||{}):deriveWorkerPhase(raw||{},{workerId:w.id});
+    if(phase==='BLOCKED')throw new Error(raw?.securityBlock||'LOCAL_CONTINUE_BLOCKED');
+    if(phase==='WORKING')return{status:'ALREADY_WORKING'};
+    if(phase!=='READY')return{status:'LOCAL_CONTINUE_NOT_READY',phase};
+    if(w.id==='NV02'){
+      await ensureNv02ModelProfile(target);
+      const next=await dispatchNaturalContinueLocked(target,loadNv02Continuity(),Date.now());
+      await noteNv02CommandDispatch();
+      return{status:'LOCAL_CONTINUE_SUBMITTED',prompt:next.lastPrompt};
+    }
+    const state=loadWorkerContinuity(w.id),prompt=pickContinuePrompt(state.lastPrompt);
+    const r=await dispatch(target,prompt);
+    if(!r?.ok)throw new Error(r?.status||'LOCAL_CONTINUE_DISPATCH_FAILED');
+    saveWorkerContinuity(w.id,{...state,lastPrompt:prompt,lastPhase:'WORKING',stalledChecks:0,nextContinueAt:nextRandomAt(Date.now(),CONTINUE_MIN_MS,CONTINUE_MAX_MS)});
+    await genericWorkerEvent(w.id,'LOCAL_CONTINUE_DISPATCHED',{prompt});
+    return{status:'LOCAL_CONTINUE_SUBMITTED',prompt};
+  }
   if(action==='DISPATCH'){if(w.id==='NV02')await ensureNv02ModelProfile(target);const r=await dispatch(target,String(payload.text||''));if(!r?.ok)throw new Error(r?.status||'DISPATCH_FAILED');if(w.id==='NV02')await noteNv02CommandDispatch();return r;}
   if(action==='ARCHIVE_CHAT'){const r=await archiveChat(target);if(!r?.ok)throw new Error(r?.status||'ARCHIVE_FAILED');return r;}
   throw new Error(`UNKNOWN_ACTION:${action}`);
