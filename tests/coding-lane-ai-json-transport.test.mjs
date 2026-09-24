@@ -88,6 +88,16 @@ describe('coding lane AI JSON transport',()=>{
     expect(matchesExpectedSchema(changes,'{"summary":"x","changes":[]}')).toBe(false);
   });
 
+  it('allows explicit no-change only for a bounded generation batch',()=>{
+    const base='CURRENT FILES:\\nFILE apps/a.mjs\\nconst n=1;\\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}.';
+    const batch='BATCH_NO_CHANGE_ALLOWED=true\\n'+base;
+    const noChange=JSON.stringify({summary:'no change needed in this batch',noChange:true,edits:[]});
+    expect(matchesExpectedSchema(compactPromptForChanges(batch),noChange)).toBe(true);
+    expect(matchesExpectedSchema(compactPromptForChanges(base),noChange)).toBe(false);
+    expect(expandCompactChanges(batch,noChange)).toEqual({summary:'no change needed in this batch',changes:[],noChange:true});
+    expect(()=>expandCompactChanges(base,noChange)).toThrow('COMPACT_EDIT_NO_CHANGE_INVALID');
+  });
+
   it('accepts compact search/replace and new-file content edit shapes',()=>{
     const edits='Return ONLY compact JSON {"summary":"short","edits":[{"path":"exact allowed path","search":"exact existing UTF-8 snippet","replace":"replacement UTF-8 snippet"}]}.';
     expect(matchesExpectedSchema(edits,JSON.stringify({summary:'ok',edits:[{path:'apps/a.mjs',search:'const x=1;',replace:'const x=2;'}]}))).toBe(true);
