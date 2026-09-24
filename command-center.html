@@ -120,11 +120,32 @@ button{font:inherit}
 </nav>
 <div class="meta-row"><span id="workerCount">—</span><span id="updated">Chưa cập nhật</span></div>
 <section id="workers" class="list"></section>
-<footer class="page-foot">Nguồn chính: PC01 Core + Coding Lane · chỉ xem · tự làm mới mỗi 5 giây</footer>
+<footer class="page-foot">Nhân sự 5 giây · Công việc 30 giây · Hàng đợi 60 giây · chỉ xem</footer>
 </main>
 <script>
 const $=id=>document.getElementById(id);
 let snapshot=null,activeFilter='all';
+const ACTIVE_WORK_REFRESH_MS=30*1000;
+const NEXT_QUEUE_REFRESH_MS=60*1000;
+let activeWorkView={at:0,items:null};
+let nextQueueView={at:0,items:null,total:0};
+function applyWorkCadence(value){
+  const now=Date.now();
+  if(!activeWorkView.at||now-activeWorkView.at>=ACTIVE_WORK_REFRESH_MS){
+    activeWorkView={at:now,items:Array.isArray(value?.activeWork)?value.activeWork:[]};
+  }
+  if(!nextQueueView.at||now-nextQueueView.at>=NEXT_QUEUE_REFRESH_MS){
+    const items=Array.isArray(value?.nextQueue)?value.nextQueue:[];
+    nextQueueView={at:now,items,total:Number.isFinite(value?.nextQueueTotal)?value.nextQueueTotal:items.length};
+  }
+  return {
+    ...value,
+    activeWork:activeWorkView.items||[],
+    nextQueue:nextQueueView.items||[],
+    nextQueueTotal:nextQueueView.total,
+    uiRefreshSeconds:{work:30,queue:60,workforce:5},
+  };
+}
 const LAST_GOOD_KEY='tigeriq-live-last-good-v3';
 const LEGACY_LAST_GOOD_KEY='tigeriq-live-last-good-v2';
 const LAST_GOOD_MAX_MS=30*60*1000;
@@ -262,7 +283,7 @@ function render(){
 }
 async function load(){
   try{
-    const r=await fetch('/api/live-status',{cache:'no-store'}),raw=await r.json(),d=hydrateLastGood(raw);
+    const r=await fetch('/api/live-status',{cache:'no-store'}),raw=await r.json(),d=applyWorkCadence(hydrateLastGood(raw));
     if(!d?.ok)throw new Error(d?.reason||'Nguồn trạng thái chưa sẵn sàng');
     snapshot=d;
     const projection=d.workProjection||{};
