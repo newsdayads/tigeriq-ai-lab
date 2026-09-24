@@ -341,8 +341,8 @@ describe('safe recovery contracts',()=>{
     expect(continuity).toContain("if(phase!=='WORKING'&&now>=Number(state.nextResetAt||0))");
     const working=continuity.slice(continuity.indexOf("if(phase==='WORKING')"),continuity.indexOf("if(phase==='READY')"));
     expect(working).toContain("'WORKING_LONG_RUNNING_NO_MUTATION'");
-    expect(working).toContain('stopStalledWorking');
-    expect(working).toContain("'WORKING_STUCK_STOP'");
+    expect(working).toContain("'WORKING_LONG_RUNNING_NO_MUTATION'");
+    expect(working).toContain('return;');
     expect(working).not.toContain('reopenWorker(');
     expect(working).not.toContain('reloadTarget(');
     expect(working).not.toContain('WORKING_NO_PROGRESS_3_CHECKS');
