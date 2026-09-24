@@ -32,7 +32,7 @@ describe('web typography baseline', () => {
   it('does not use synthetic ultra-heavy web weights', () => {
     for (const path of weightSurfaces) {
       const source = readFileSync(path, 'utf8');
-      expect(source, path).not.toMatch(/font-weight:(?:850|900|950)\b/);
+      expect(source, path).not.toMatch(/font-weight:\s*(?:850|900|950)\b/);
     }
   });
 
@@ -40,6 +40,8 @@ describe('web typography baseline', () => {
     const config = readFileSync('vercel.json', 'utf8');
     expect(config).toContain('https://fonts.googleapis.com');
     expect(config).toContain("font-src 'self' https://fonts.gstatic.com");
+    const unified = readFileSync('apps/tigeriq-core/web-control-unified.css', 'utf8');
+    expect(unified).toContain('--tq-font:"Roboto Flex","Segoe UI Variable Text","Segoe UI",Arial,sans-serif');
   });
 
   it('keeps the TigerIQ Live root/public mirrors identical', () => {
