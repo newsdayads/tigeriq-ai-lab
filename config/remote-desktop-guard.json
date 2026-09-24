@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "remoteMutationDefault": "DENY",
+  "readOnlyDefault": "PASS",
+  "ownerAuthRequired": true,
+  "authScopeBound": true,
+  "authExpiryBound": true,
+  "leaseMode": "ONE_TOOL_CALL",
+  "maxLeaseMs": 900000,
+  "restartSafe": true,
+  "failClosed": true,
+  "chatgptPluginPermissionMode": "ask_before_writes",
+  "defaultShell": "__TIGERIQ_REMOTE_SHELL_DENIED__.exe",
+  "allowedDirectories": [
+    "D:\\TigerIQ\\Apps\\ChromeController\\Runtime",
+    "D:\\TigerIQ\\Evidence",
+    "D:\\TigerIQ\\Logs",
+    "D:\\TigerIQ\\Checkpoints"
+  ],
+  "forbiddenDirectoryPatterns": ["\\\\Secrets(?:\\\\|$)"],
+  "noDirectMain": true,
+  "noProductionRelease": true
+}
