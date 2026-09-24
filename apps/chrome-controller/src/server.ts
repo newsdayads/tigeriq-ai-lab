@@ -429,6 +429,26 @@ function modelProfileGateReason(hb:Heartbeat|undefined){
   return hb?.blockedReason||hb?.modelProfileStatus||'MODEL_PROFILE_UNVERIFIED';
 }
 
+function validateNv04AssignmentContract(text:string){
+  const field=(name:string)=>String(text.match(new RegExp('(?:^|\\n)'+name+'\\s*=\\s*([^\\n\\r]+)','i'))?.[1]??'').trim();
+  const role=field('NV04_ROLE').toUpperCase();
+  if(!['DEEP_RESEARCH','INDEPENDENT_REVIEW'].includes(role))throw new Error('NV04_ASSIGNMENT_ROLE_REQUIRED');
+  const currentWorkOrder=field('CURRENT_WORK_ORDER');
+  if(!currentWorkOrder)throw new Error('NV04_CURRENT_WORK_ORDER_REQUIRED');
+  const exactHead=field('EXACT_HEAD');
+  const exactInput=field('EXACT_INPUT');
+  if(!exactHead&&!exactInput)throw new Error('NV04_EXACT_HEAD_OR_INPUT_REQUIRED');
+  const resourceScope=field('RESOURCE_SCOPE');
+  if(!resourceScope)throw new Error('NV04_RESOURCE_SCOPE_REQUIRED');
+  if(!field('CHECKLIST'))throw new Error('NV04_CHECKLIST_REQUIRED');
+  if(!field('OUTPUT'))throw new Error('NV04_OUTPUT_REQUIRED');
+  const evidenceDestination=field('EVIDENCE_DESTINATION');
+  if(!/^https:\/\/github\.com\//i.test(evidenceDestination))throw new Error('NV04_EVIDENCE_DESTINATION_REQUIRED');
+  if(/(?:^|\n)CAPABILITY\s*=\s*code(?:\n|$)/i.test(text)||/(?:^|\n)AUTONOMOUS_CODE\s*=\s*true(?:\n|$)/i.test(text)||/(?:^|\n)MUTATION_ALLOWED\s*=\s*true(?:\n|$)/i.test(text)||/(?:^|\n)ALLOW_PATH_PREFIX\s*=/i.test(text))
+    throw new Error('NV04_MUTATION_ASSIGNMENT_FORBIDDEN');
+  return {role,currentWorkOrder,exactHead,exactInput,resourceScope,evidenceDestination};
+}
+
 async function dispatch(
   workerId:WorkerId,
   text:string,
@@ -440,6 +460,12 @@ async function dispatch(
   if(!text.trim())throw new Error('DISPATCH_TEXT_REQUIRED');
   const worker=getWorker(workerId)!;
   browserMutationLeases.assertControllerAllowed(workerId);
+  if(workerId==='NV04'){
+    const contract=validateNv04AssignmentContract(text);
+    navigate=true;
+    metadata={...metadata,source:'NV04_ASSIGNMENT'};
+    log('NV04_ASSIGNMENT_ACCEPTED',{role:contract.role,currentWorkOrder:contract.currentWorkOrder,resourceScope:contract.resourceScope,evidenceDestination:contract.evidenceDestination,freshContext:true});
+  }
   const requestedJobId=String(metadata.jobId??'').trim();
   const prior=requestedJobId?uiJobLedger.get(workerId,requestedJobId):undefined;
   const retryKnownNotDelivered=prior?.stage==='ERROR'&&prior.workerId===workerId&&classifyAutoContinueDispatchFailure(new Error(prior.blocker??''),false)==='SAFE_RETRY';
