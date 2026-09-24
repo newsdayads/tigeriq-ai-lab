@@ -81,7 +81,8 @@ beforeAll(async () => {
       TIGERIQ_WEB_CONTROL_HOST: '127.0.0.1',
       TIGERIQ_WEB_CONTROL_PORT: String(WEB_PORT),
       TIGERIQ_CORE_URL: `http://127.0.0.1:${CORE_PORT}`,
-      TIGERIQ_CODING_LANE_URL: `http://127.0.0.1:${CODING_PORT}`
+      TIGERIQ_CODING_LANE_URL: `http://127.0.0.1:${CODING_PORT}`,
+      TIGERIQ_GITHUB_WORK_ORDERS_DISABLE: '1'
     },
     stdio: ['ignore', 'pipe', 'pipe']
   });
@@ -121,7 +122,7 @@ describe('Web Control runtime', () => {
     expect(truthJs).toContain("['Review'");
     expect(truthJs).toContain('reviewer_employee_id');
     expect(unifiedJs).toContain('Hiệu suất API');
-    expect(unifiedJs).toContain('Công việc gần nhất');
+    expect(unifiedJs).toContain('Hoạt động Core gần nhất');
     expect(unifiedJs).toContain('telemetry');
     expect(unifiedJs).toContain('LIVE · 2s');
     expect(unifiedStyle).toContain('"Segoe UI",Roboto,Helvetica,Arial,sans-serif');
@@ -140,6 +141,8 @@ describe('Web Control runtime', () => {
     expect(body.telemetry).toEqual(statusPayload.telemetry);
     expect(body.resources[0].last_latency_ms).toBe(210);
     expect(body.codingLane).toEqual(codingPayload);
+    expect(body.workOrders).toEqual([]);
+    expect(body.workOrdersMeta.disabled).toBe(true);
   });
 
   it('reports combined health without mutating Core', async () => {
