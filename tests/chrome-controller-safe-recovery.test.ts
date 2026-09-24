@@ -142,10 +142,13 @@ describe('independent worker recovery flows in direct-cdp-bridge',()=>{
     expect(source).toContain("computeWorkerStaggerDelay");
   });
 
-  it('keeps READY workers local-only and independent of Core assignment',()=>{
+  it('keeps NV03 local-only while NV04 READY is assignment-bound',()=>{
     expect(source).not.toContain('findContinuableWorkerWorkForUi(controllerState,w.id)');
     expect(source).toContain('LOCAL_CONTINUE_DISPATCHED');
-    expect(source).not.toContain('READY_UNASSIGNED');
+    const genericLoop=source.slice(source.indexOf('async function maybeWorkerContinuity'),source.indexOf('\nfunction log('));
+    expect(genericLoop).toContain("if(w.id==='NV04')");
+    expect(genericLoop).toContain("assignment.status!=='CONTINUABLE'");
+    expect(genericLoop).toContain('READY_UNASSIGNED');
   });
 
   it('rebases only an already-expired deep-reset timer once after bridge restart',()=>{
