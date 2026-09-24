@@ -18,6 +18,7 @@ const RECENT_WORK_CACHE_MS = 5 * 60 * 1000;
 const WORKING_HEARTBEAT_MAX_MS = 60 * 1000;
 let pointerCache = { at: 0, url: null };
 let cache = { at: 0, value: null };
+let runtimeCache = { at: 0, value: null };
 let githubProjectionCache = { at: 0, verifiedAt: null, data: null };
 let recentWorkCache = { at: 0, data: null };
 const dependencyCache = new Map();
@@ -812,10 +813,10 @@ async function fetchRuntimeBridgePayload(base, fetchImpl = fetch) {
   }
 }
 
-export async function fetchPc01Live(fetchImpl = fetch) {
+export async function fetchPc01Runtime(fetchImpl = fetch) {
   let base = await resolveRuntimeBridge(fetchImpl);
   try {
-    return buildWorkSections(sanitizeRuntimePayload(await fetchRuntimeBridgePayload(base, fetchImpl)), fetchImpl);
+    return sanitizeRuntimePayload(await fetchRuntimeBridgePayload(base, fetchImpl));
   } catch (error) {
     const reason = String(error instanceof Error ? error.message : error);
     if (!/^runtime_bridge_(?:http_|pointer_|payload_|fetch|timeout)/i.test(reason) && !/AbortError/i.test(reason)) throw error;
@@ -823,13 +824,58 @@ export async function fetchPc01Live(fetchImpl = fetch) {
     const refreshedBase = await resolveRuntimeBridge(fetchImpl);
     if (refreshedBase === base && !/^runtime_bridge_http_530$/i.test(reason)) throw error;
     base = refreshedBase;
-    return buildWorkSections(sanitizeRuntimePayload(await fetchRuntimeBridgePayload(base, fetchImpl)), fetchImpl);
+    return sanitizeRuntimePayload(await fetchRuntimeBridgePayload(base, fetchImpl));
   }
+}
+
+export async function fetchPc01Live(fetchImpl = fetch) {
+  const now = Date.now();
+  let runtime = runtimeCache.value && now - runtimeCache.at < CACHE_MS ? runtimeCache.value : null;
+  if (!runtime) {
+    runtime = await fetchPc01Runtime(fetchImpl);
+    runtimeCache = { at: now, value: runtime };
+  }
+  return buildWorkSections(runtime, fetchImpl);
 }
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') return json(res, 405, { error: 'method_not_allowed' });
   const now = Date.now();
+  const requestUrl = new URL(req.url || '/', 'http://localhost');
+  const workforceOnly = req.query?.scope === 'workforce' || requestUrl.searchParams.get('scope') === 'workforce';
+
+  if (workforceOnly) {
+    if (runtimeCache.value && now - runtimeCache.at < CACHE_MS) return json(res, 200, runtimeCache.value);
+    try {
+      const value = await fetchPc01Runtime();
+      runtimeCache = { at: now, value };
+      return json(res, 200, value);
+    } catch (error) {
+      const reason = String(error instanceof Error ? error.message : error).slice(0, 120);
+      if (runtimeCache.value && now - runtimeCache.at < STALE_RESPONSE_MS) {
+        return json(res, 200, {
+          ...runtimeCache.value,
+          liveConnected: false,
+          mode: 'stale-cache',
+          authority: 'Dữ liệu runtime xác minh gần nhất',
+          staleAll: true,
+          staleAt: runtimeCache.value.generatedAt || null,
+          liveReason: reason,
+        });
+      }
+      return json(res, 200, {
+        ok: false,
+        liveConnected: false,
+        mode: 'unavailable',
+        authority: 'Không có nguồn runtime',
+        generatedAt: new Date().toISOString(),
+        reason,
+        summary: { working: 0, waiting: 0, blocked: 0, idle: 0, unknown: 0, paused: 0, total: 0 },
+        workers: [],
+      });
+    }
+  }
+
   if (cache.value && now - cache.at < CACHE_MS) return json(res, 200, cache.value);
 
   let liveError = null;
