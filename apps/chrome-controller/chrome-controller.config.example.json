@@ -24,9 +24,8 @@
     "retryBackoffMs": 15000
   },
   "autopilot": {
-    "enabled": true,
+    "enabled": false,
     "pollIntervalMs": 15000,
-    "stateUrl": "http://127.0.0.1:8794/api/ui-autopilot/snapshot",
     "requestTimeoutMs": 5000,
     "maxSnapshotAgeMs": 300000,
     "dispatchLeaseTtlMs": 300000
@@ -36,7 +35,6 @@
     "checkIntervalMs": 15000,
     "maxReopenAttempts": 2,
     "reopenBackoffMs": 15000,
-    "startupReadyUrl": "http://127.0.0.1:8795/health",
     "startupReadyTimeoutMs": 120000,
     "startupAttachGraceMs": 20000,
     "launchBrokerUrl": "http://127.0.0.1:8800",
