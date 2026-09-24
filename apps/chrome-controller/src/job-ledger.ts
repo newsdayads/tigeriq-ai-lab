@@ -294,6 +294,61 @@ export class DurableUiJobLedger {
     return {...record,evidenceRefs:[...record.evidenceRefs]};
   }
 
+  reconcileAuthoritativeTerminal(
+    workerId: WorkerId,
+    jobId: string,
+    terminal: 'DONE'|'BLOCKED'|'EXTERNAL_WAIT',
+    patch: UiJobPatch = {},
+    now = new Date(),
+  ): UiJobRecord {
+    let record=this.get(workerId,jobId);
+    if(!record)throw new Error(`UI_JOB_NOT_FOUND:${workerId}:${jobId}`);
+    if(isTerminalUiJobStage(record.stage))return record;
+
+    if(terminal==='EXTERNAL_WAIT'){
+      if(record.stage==='SUBMITTED'||record.stage==='WORKING'){
+        return this.transition(workerId,jobId,'WAITING_EVIDENCE',{
+          ...patch,
+          nextAction:patch.nextAction??'External wait; preserve current assignment without continue spam',
+          blocker:patch.blocker??null,
+        },now);
+      }
+      return this.transition(workerId,jobId,record.stage,{
+        ...patch,
+        nextAction:patch.nextAction??'External wait; preserve current assignment without continue spam',
+        blocker:patch.blocker??null,
+      },now);
+    }
+
+    if(terminal==='BLOCKED'){
+      return this.transition(workerId,jobId,'BLOCKED',{
+        ...patch,
+        nextAction:null,
+      },now);
+    }
+
+    if(record.stage==='SUBMITTED'||record.stage==='WORKING'){
+      record=this.transition(workerId,jobId,'WAITING_EVIDENCE',{
+        ...patch,
+        nextAction:'Verify GitHub terminal state',
+      },now);
+    }
+    if(record.stage==='WAITING_EVIDENCE'){
+      record=this.transition(workerId,jobId,'VERIFY',{
+        ...patch,
+        nextAction:'Verify GitHub terminal state',
+      },now);
+    }
+    if(record.stage==='VERIFY'){
+      record=this.transition(workerId,jobId,'DONE',{
+        ...patch,
+        nextAction:null,
+        blocker:null,
+      },now);
+    }
+    return record;
+  }
+
   transitionActive(workerId: WorkerId, stage: UiJobStage, patch: UiJobPatch = {}, now = new Date()): UiJobRecord | undefined {
     const active=this.active(workerId);
     if (!active) return undefined;
