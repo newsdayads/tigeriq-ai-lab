@@ -237,8 +237,8 @@ function pickResource(exclude=[]){const available=selectableResources(exclude);i
 async function fetchJson(url,init={},timeout=90000){const c=new AbortController(),t=setTimeout(()=>c.abort(),timeout);try{const res=await fetch(url,{...init,signal:c.signal});const text=await res.text();let body={};try{body=text?JSON.parse(text):{};}catch{body={text};}if(!res.ok){const e=new Error(`HTTP_${res.status}:${String(body?.message||body?.error||text).slice(0,300)}`);e.status=res.status;throw e;}return body;}finally{clearTimeout(t)}}
 export function codingOutputTokenLimit(prompt,defaultMax=8000){
   const p=String(prompt||'');
-  if(p.includes('"edits":[{"path"'))return 1200;
-  if(p.includes('"changes":[{"path"'))return 1800;
+  if(p.includes('"edits":[{"path"'))return 2200;
+  if(p.includes('"changes":[{"path"'))return 2600;
   return Math.max(1,Number(defaultMax)||8000);
 }
 async function openAi(endpoint,key,model,prompt,maxTokens=codingOutputTokenLimit(prompt)){const b=await fetchJson(endpoint,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${key}`},body:JSON.stringify({model,messages:[{role:'user',content:prompt}],temperature:0,max_tokens:maxTokens,stream:false})});const text=b?.choices?.[0]?.message?.content;if(!String(text||'').trim())throw new Error('EMPTY_RESPONSE');return String(text)}
