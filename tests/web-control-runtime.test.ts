@@ -134,7 +134,7 @@ describe('Web Control runtime', () => {
     const truthJs = await truth.text(); const unifiedJs = await unified.text(); const unifiedStyle = await css.text(); const mobileStyle = await mobile.text();
     expect(truthJs).toContain('Không bịa %');
     expect(truthJs).toContain("['Review'");
-    expect(truthJs).toContain('reviewer_employee_id');
+    expect(unifiedJs).toContain('reviewer_employee_id');
     expect(unifiedJs).toContain('Hiệu suất API');
     expect(unifiedJs).toContain('Hoạt động Core gần nhất');
     expect(unifiedJs).toContain('telemetry');
