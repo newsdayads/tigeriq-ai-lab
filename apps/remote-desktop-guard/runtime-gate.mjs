@@ -75,12 +75,22 @@ export async function installOwnerLeaseFromAuthorization({authorizationUrl}={},{
   const lease=leaseFromAuthorizationRecord(verified.record,authorizationUrl);
   const envelope=validateLeaseEnvelope(lease,{now});
   if (!envelope.ok) return envelope;
+  await mkdir(path.dirname(leasePath),{recursive:true});
+  const payload=JSON.stringify(lease,null,2)+'\n';
   try {
-    await mkdir(path.dirname(leasePath),{recursive:true});
-    await writeFile(leasePath,JSON.stringify(lease,null,2)+'\n',{encoding:'utf8',flag:'wx'});
+    await writeFile(leasePath,payload,{encoding:'utf8',flag:'wx'});
   } catch(error) {
-    if (error?.code==='EEXIST') return denial('ACTIVE_LEASE_EXISTS');
-    return denial('LEASE_INSTALL_FAILED');
+    if (error?.code!=='EEXIST') return denial('LEASE_INSTALL_FAILED');
+    let existing=null;
+    try { existing=JSON.parse(await readFile(leasePath,'utf8')); } catch { /* stale/invalid is recoverable only after verified Owner auth */ }
+    if (validateLeaseEnvelope(existing,{now}).ok) return denial('ACTIVE_LEASE_EXISTS');
+    const stalePath=leasePath+'.stale-'+process.pid+'-'+now;
+    try { await rename(leasePath,stalePath); }
+    catch { return denial('LEASE_STALE_ROLLOVER_FAILED'); }
+    try { await writeFile(leasePath,payload,{encoding:'utf8',flag:'wx'}); }
+    catch(error2) {
+      return error2?.code==='EEXIST' ? denial('ACTIVE_LEASE_EXISTS') : denial('LEASE_INSTALL_FAILED');
+    }
   }
   return {ok:true,reason:'OWNER_LEASE_INSTALLED',leaseId:lease.leaseId,tool:lease.tool,expiresAt:lease.expiresAt};
 }
