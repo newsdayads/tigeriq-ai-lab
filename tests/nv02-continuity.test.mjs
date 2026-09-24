@@ -140,11 +140,11 @@ describe('NV02 continuity policy', () => {
   it('keeps NV02 continuity isolated while allowing Controller command transport', () => {
     execFileSync(process.execPath,['--check','apps/chrome-controller/direct-cdp-bridge.mjs'],{stdio:'pipe'});
     const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
-    expect(source).toContain('NV02_ISOLATED_AUTO_CONTINUE');
-    expect(source).toContain("const currentTrackedWork=Boolean(currentWork&&currentChat)");
-    expect(source).toContain("READY_UNASSIGNED");
-    expect(source).toContain("CURRENT_WORK_NEW_CHAT_RESTORED");
-    expect(source).toContain("CONTINUE_DISPATCHED");
+    expect(source).toContain('APP_CHROME_LOCAL_UI_ONLY');
+    expect(source).toContain("const currentTrackedWork=currentChat");
+    expect(source).not.toContain("READY_UNASSIGNED");
+    expect(source).not.toContain("CURRENT_WORK_NEW_CHAT_RESTORED");
+    expect(source).toContain("LOCAL_CONTINUE_DISPATCHED");
     expect(source).not.toContain("await navigate(target,state.resumeChatUrl)");
     expect(source).not.toContain("CONTEXT_RECOVERY_ROTATED");
     expect(source).toContain("controllerRequired:false");
@@ -169,14 +169,14 @@ describe('NV02 continuity policy', () => {
       source.indexOf('async function dispatchNaturalContinue(target'),
     );
     expect(continueDispatch).not.toContain('ensureNv02ModelProfile');
-    expect(continueDispatch).toContain('getControllerState()');
-    expect(continueDispatch).toContain('hasContinuableNv02Work(controllerState)');
-    expect(continueDispatch).toContain('findContinuableNv02Work(controllerState)');
+    expect(continueDispatch).not.toContain('getControllerState()');
+    expect(continueDispatch).not.toContain('hasContinuableNv02Work(controllerState)');
+    expect(continueDispatch).not.toContain('findContinuableNv02Work(controllerState)');
     expect(source).toContain("function findContinuableNv02Work(controllerState)");
     expect(source).toContain("typeof job?.issueRef==='string'");
-    expect(continueDispatch).toContain('CONTINUE_CURRENT_WORK_VERIFIED');
-    expect(continueDispatch).toContain('CONTINUE_SKIPPED_NO_CURRENT_WORK');
-    expect(continueDispatch).toContain('CONTINUE_SKIPPED_CURRENT_WORK_UNVERIFIED');
+    expect(continueDispatch).not.toContain('CONTINUE_CURRENT_WORK_VERIFIED');
+    expect(continueDispatch).not.toContain('CONTINUE_SKIPPED_NO_CURRENT_WORK');
+    expect(continueDispatch).not.toContain('CONTINUE_SKIPPED_CURRENT_WORK_UNVERIFIED');
     expect(source).toContain("if(phase==='STALLED'&&ui?.modelExact!==true&&modelCheckRequired)");
     expect(source).toContain("withNv02Mutation(()=>ensureNv02ModelProfile(target),'MODEL_PROFILE_RECOVERY')");
     expect(source).toContain("modelName==='GPT-5.6 Sol'");
@@ -228,7 +228,7 @@ describe('NV02 continuity policy', () => {
     expect(source).not.toContain("await navigate(target,state.resumeChatUrl)");
     expect(source).not.toContain("'CURRENT_CHAT_RESTORED'");
     expect(source).toContain("'BOOT_FRESH_CONTEXT_OPENED'");
-    expect(source).toContain("'CURRENT_WORK_NEW_CHAT_RESTORED'");
+    expect(source).not.toContain("'CURRENT_WORK_NEW_CHAT_RESTORED'");
 
     expect(source).toContain("sameNv02Chat(state.verifiedChatUrl,ui?.url)");
     expect(source).toContain("const modelCheckRequired=now>=Number(state.modelCheckBlockedUntil||0)&&(ui?.modelExact!==true||!state.verifiedChatUrl||!sameNv02Chat(state.verifiedChatUrl,ui?.url))");
@@ -236,12 +236,10 @@ describe('NV02 continuity policy', () => {
     const bootFreshGate=continuityLoop.indexOf("bootFreshContextPending.has('NV02')");
     const periodicF5Gate=continuityLoop.indexOf("if(currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0))");
     const modelRecoveryGate=continuityLoop.indexOf("if(phase==='STALLED'&&ui?.modelExact!==true&&modelCheckRequired)");
-    const noCurrentChatGate=continuityLoop.indexOf("if(!currentTrackedWork)");
     expect(bootFreshGate).toBeGreaterThan(-1);
     expect(periodicF5Gate).toBeGreaterThan(bootFreshGate);
     expect(periodicF5Gate).toBeLessThan(modelRecoveryGate);
     expect(modelRecoveryGate).toBeGreaterThan(-1);
-    expect(noCurrentChatGate).toBeGreaterThan(modelRecoveryGate);
 
     expect(source).not.toContain("state.verifiedChatUrl===ui?.url");
     expect(source).toContain("const currentUrl=String(profile.url||'')");
@@ -287,9 +285,9 @@ describe('NV02 continuity policy', () => {
     expect(shouldRotateNv02Chat({phase:'READY',currentTrackedWork:true,now:102,rotationRetryAt:101,chatLoadRecoveryStage:3})).toBe(true);
 
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
-    expect(bridge).toContain("CHAT_ROTATION_DUE");
-    expect(bridge).toContain("CHAT_ROTATION_FAILED");
-    expect(bridge).toContain("CHAT_ROTATION_DEFERRED_TO_EXTERNAL_AUTOPILOT");
+    expect(bridge).not.toContain("CHAT_ROTATION_DUE");
+    expect(bridge).not.toContain("CHAT_ROTATION_FAILED");
+    expect(bridge).not.toContain("CHAT_ROTATION_DEFERRED_TO_EXTERNAL_AUTOPILOT");
     expect(bridge).toContain("rotationRetryAt:Number(raw.rotationRetryAt)||0");
     expect(bridge).toContain("conversationId=(location.pathname.match(");
     expect(bridge).toContain("chatgpt:conversation:'+conversationId");
@@ -303,12 +301,10 @@ describe('NV02 continuity policy', () => {
     const continuity=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('\nasync function handleCommand'));
     const workingGate=continuity.indexOf("if(phase==='WORKING')");
     const recoveryGate=continuity.indexOf('const chatLoadRecoveryHandled=await maybeRecoverChatLoadError');
-    const reloadPersistedRecovery=continuity.indexOf('state=loadNv02Continuity()',recoveryGate);
-    const rotateGate=continuity.indexOf('if(shouldRotateNv02Chat',recoveryGate);
     expect(workingGate).toBeGreaterThan(-1);
     expect(recoveryGate).toBeGreaterThan(workingGate);
-    expect(reloadPersistedRecovery).toBeGreaterThan(recoveryGate);
-    expect(rotateGate).toBeGreaterThan(reloadPersistedRecovery);
+    expect(continuity).not.toContain('if(shouldRotateNv02Chat');
+    expect(continuity).not.toContain('externalAutopilotOwnsNextNv02Job');
   });
 
   it('restores the exact durable CURRENT_WORK_ORDER after archive instead of blind continue', () => {
@@ -408,13 +404,13 @@ describe('NV02 continuity policy', () => {
     expect(resumeModeIndex).toBeGreaterThan(-1);
     expect(modelWaitIndex).toBeGreaterThan(resumeModeIndex);
     expect(installer.indexOf("Set-OwnerMode ([bool]$ResumeAutomation)",resumeModeIndex+1)).toBe(-1);
-    expect(installer).toContain("$effectiveConfig.autopilot.enabled=$true");
-    expect(installer).toContain("$effectiveConfig.autopilot.stateUrl='http://127.0.0.1:8794/api/ui-autopilot/snapshot'");
-    expect(installer).toContain('APP_CHROME_EXTERNAL_AUTOPILOT_ENABLE_FAILED');
-    expect(installer).toContain('APP_CHROME_STATE_URL_MISMATCH');
+    expect(installer).not.toContain("$effectiveConfig.autopilot.enabled=$true");
+    expect(installer).not.toContain("$effectiveConfig.autopilot.stateUrl='http://127.0.0.1:8794/api/ui-autopilot/snapshot'");
+    expect(installer).not.toContain('APP_CHROME_EXTERNAL_AUTOPILOT_ENABLE_FAILED');
+    expect(installer).not.toContain('APP_CHROME_STATE_URL_MISMATCH');
     const example=JSON.parse(readFileSync('apps/chrome-controller/chrome-controller.config.example.json','utf8'));
-    expect(example.autopilot.enabled).toBe(true);
-    expect(example.autopilot.stateUrl).toBe('http://127.0.0.1:8794/api/ui-autopilot/snapshot');
+    expect(example.autopilot.enabled).toBe(false);
+    expect(example.autopilot.stateUrl).toBeUndefined();
     expect(installer).toContain("Invoke-Native -File 'git' -ArgumentList");
     expect(installer).toContain("Invoke-Native -File 'npm' -ArgumentList");
     expect(installer).not.toContain("Invoke-Native 'git' @(");
