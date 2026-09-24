@@ -107,10 +107,10 @@ test('PowerShell updater is path-aware and leaves Core alone for non-Core change
   assert.match(updater,/codingRestarted=\$impact\.coding/);
 });
 
-test('owner-facing references require invariant format #<number> - <Name>',()=>{
-  const workflowDoc = readFileSync(new URL('../bootstrap/02_TIGERIQ_WORKFLOW.md', import.meta.url), 'utf8');
+test('owner-facing references require invariant format #<number> - <Name> across codebase and workflow',()=>{
+  const workflowDoc = readFileSync(new URL('../bootstrap/02_TIGERIQ_WORKstr = readFileSync(new URL('../bootstrap/02_TIGERIQ_WORKFLOW.md', import.meta.url), 'utf8');
   assert.match(workflowDoc, /#\d+\s+-\s+[\p{L}\p{N}\s]+/u);
-  const bareRefRegex = /\b(?:task|issue|ticket)\s*#?\d+\b(?!\s*-\s*)/gi;
+  const bareRefRegex = /(?:\b(?:task|issue|ticket|item)\s*#?\d+)|(?:\b#\d+\b(?!\s*-\s*[\p{L}\p{N}]))/gi;
   const matches = [...workflowDoc.matchAll(bareRefRegex)];
   assert.equal(matches.length, 0, 'Found bare owner-facing references without name invariant');
 });
