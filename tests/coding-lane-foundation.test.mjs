@@ -1,11 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import {activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertPrOpenState,buildLocalFileContext,classifyAiFailure,codingOutputTokenLimit,codingPathsOverlap,cooldownWaitFailure,coreResourceStateEligible,gateFailureIssues,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,managerResourceFailurePlan,partitionGenerationFiles,preserveGenerationPrompt,providerCooldownPollPlan,recoverAfterCodingRestart,resourceWaitPlan,restartRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,validateCompactEdits,validateManagerJobPaths} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertPrOpenState,buildLocalFileContext,canonicalCodingJobTitle,canonicalWorkTitleFromObjective,classifyAiFailure,codingMergeCommitTitle,codingOutputTokenLimit,codingPathsOverlap,cooldownWaitFailure,coreResourceStateEligible,gateFailureIssues,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,managerResourceFailurePlan,partitionGenerationFiles,preserveGenerationPrompt,providerCooldownPollPlan,recoverAfterCodingRestart,resourceWaitPlan,restartRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,validateCompactEdits,validateManagerJobPaths} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError,parseJsonObject} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 const nv11={id:'NV11',provider:'fake',model:'a'};
 const nv19={id:'NV19',provider:'fake',model:'b'};
 const nv13={id:'NV13',provider:'fake',model:'c'};
+
+test('canonical Vietnamese title inheritance',()=>{
+  const title='[P0][CORE] Tăng tốc nhận việc GitHub xuống ≤5 giây';
+  assert.strictEqual(canonicalWorkTitleFromObjective(`GitHub autonomous coding issue #1796: ${title}\nhttps://example.invalid`),title);
+  assert.strictEqual(canonicalWorkTitleFromObjective(`GitHub autonomous coding retry 1/2 for issue #1796: ${title}\nhttps://example.invalid`),title);
+  assert.strictEqual(canonicalWorkTitleFromObjective(`GitHub autonomous coding recovery after Source of Truth or engine update for issue #1796: ${title}\nhttps://example.invalid`),title);
+  assert.strictEqual(canonicalCodingJobTitle(`GitHub autonomous coding issue #1796: ${title}`,'English fallback'),title);
+  assert.strictEqual(canonicalCodingJobTitle('manual objective','Tên việc thủ công'),'Tên việc thủ công');
+  assert.strictEqual(codingMergeCommitTitle(1800,title),`PR #1800 - ${title}`);
+});
 
 test('foundation bounded retry and autonomous repair',async(t)=>{
   await t.test('malformed JSON retries same NV once then fails over',async()=>{

@@ -22,6 +22,10 @@ export function normalizeRepairFailure(message){
 }
 export function isRetryableFailure(message){return RETRYABLE_FAILURES.has(normalizeRepairFailure(message));}
 export function shouldRetry(totalJobs,maxJobs=DEFAULT_MAX_JOBS_PER_OBJECTIVE){return Number(totalJobs)<Number(maxJobs);}
+export function repairJobTitle(title,cycle){
+  const base=String(title||'Coding job').replace(/(?:\s+\[(?:repair|sửa lần)\s*\d+\])+$/i,'').trim();
+  return `${base} [sửa lần ${Math.max(1,Number(cycle)||1)}]`.slice(0,180);
+}
 export function isStaleJob(job,now=Date.now(),staleMs=DEFAULT_STALE_MS){
   if(!job||!['running','waiting_ci','review'].includes(job.status))return false;
   const t=Date.parse(job.started_at||job.created_at||'');
@@ -105,7 +109,7 @@ async function queueRetry(pool,job,reason,maxJobs){
   const paths=Array.isArray(job.paths)?job.paths:[];
   const resume=retryResumeIdentity(job);
   await pool.query('insert into tigeriq_coding_jobs(id,objective_id,title,instruction,paths,status,branch,pr_number,head_sha) values($1,$2,$3,$4,$5,\'queued\',$6,$7,$8)',[
-    retryId,job.objective_id,`${String(job.title||'Coding job').slice(0,140)} [repair ${cycle}]`,repairInstruction(job,reason,cycle),JSON.stringify(paths),resume.branch,resume.prNumber,resume.headSha
+    retryId,job.objective_id,repairJobTitle(job.title,cycle),repairInstruction(job,reason,cycle),JSON.stringify(paths),resume.branch,resume.prNumber,resume.headSha
   ]);
   await pool.query("update tigeriq_coding_objectives set status='active',summary=$2,updated_at=now() where id=$1",[job.objective_id,`AUTO_REPAIR_QUEUED:${retryId}:${reason}`]);
   await emit(pool,'RETRY_QUEUED',{objectiveId:job.objective_id,sourceJobId:job.id,retryJobId:retryId,reason,cycle});
