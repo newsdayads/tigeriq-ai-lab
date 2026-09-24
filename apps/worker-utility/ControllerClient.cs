@@ -12,7 +12,6 @@ internal sealed class ControllerClient
     static readonly TimeSpan ControllerTimeout = TimeSpan.FromSeconds(20);
     readonly HttpClient http = new() { Timeout = ControllerTimeout };
     const string Controller = "http://127.0.0.1:8798";
-    const string ReceiptService = "http://127.0.0.1:8794";
 
     public async Task<bool> VerifyIndependentIdentityAsync(string workerId, string identityKey)
     {
@@ -23,8 +22,7 @@ internal sealed class ControllerClient
     public async Task<(JsonDocument State, JsonDocument Autopilot)> RawStateAsync()
     {
         var state = await GetJsonAsync(Controller + "/api/state");
-        var autopilot = await GetJsonAsync(Controller + "/api/autopilot/state");
-        return (state, autopilot);
+        return (state, JsonDocument.Parse("{}"));
     }
 
     async Task<JsonDocument?> TryGetJsonAsync(string url)
@@ -98,8 +96,8 @@ internal sealed class ControllerClient
         var url = hasHb && hb.TryGetProperty("url", out var u) ? u.GetString() : null;
         var windowOpen = worker.TryGetProperty("windowState", out var ws) && ws.GetString() == "OPEN";
         var status = worker.TryGetProperty("status", out var st) ? st.GetString() ?? "UNKNOWN" : "UNKNOWN";
-        var durableJob = CurrentDurableJob(root, workerId);
-        var jobId = durableJob.ActiveJobId ?? CurrentJob(auto.RootElement, workerId);
+        var durableJob = (ActiveJobId:(string?)null, Title:(string?)null, Stage:(string?)null, Progress:(int?)null, NextAction:(string?)null, EvidenceRef:(string?)null, Result:(string?)null, LastActivityAt:(DateTimeOffset?)null);
+        string? jobId = null;
         WorkerUiState viewState;
         string reason;
         if (paused) { viewState = WorkerUiState.Paused; reason = "Controller paused"; }
@@ -167,23 +165,6 @@ internal sealed class ControllerClient
         if (result is not null) return result;
         return id == "NV02" ? await PostAsync("/api/resume") : JsonDocument.Parse("{\"ok\":true,\"compat\":\"UTILITY_LOCAL_ONLY\"}");
     }
-    public async Task<string?> NextEligibleAutoUiJobAsync(string id)
-    {
-        if (id != "NV02") return null;
-        var snapshot = await TryGetJsonAsync(ReceiptService + "/api/ui-autopilot/snapshot");
-        if (snapshot is null) return null;
-        using (snapshot)
-        {
-            var root = snapshot.RootElement;
-            if (!root.TryGetProperty("nextJob", out var job) || job.ValueKind != JsonValueKind.Object) return null;
-            if (!job.TryGetProperty("workerId", out var wid) || wid.GetString() != id) return null;
-            if (!job.TryGetProperty("executable", out var executable) || executable.ValueKind != JsonValueKind.True) return null;
-            var status = job.TryGetProperty("status", out var statusEl) ? statusEl.GetString() : null;
-            if (status is not ("READY" or "QUEUED")) return null;
-            return job.TryGetProperty("jobId", out var jobId) ? jobId.GetString() : null;
-        }
-    }
-
     public async Task<JsonDocument> PauseAsync(string id)
     {
         var result = await TryPostAsync($"/api/utility/workers/{id}/pause");
@@ -206,8 +187,8 @@ internal sealed class ControllerClient
     public async Task<JsonDocument> SafeCloseAsync(string id)
     {
         var state = await GetWorkerAsync(id);
-        if (state.State == WorkerUiState.Working || state.UiBusy || !string.IsNullOrWhiteSpace(state.JobId))
-            throw new InvalidOperationException("SAFE_CLOSE_ACTIVE_JOB_FORBIDDEN");
+        if (state.State == WorkerUiState.Working || state.UiBusy)
+            throw new InvalidOperationException("SAFE_CLOSE_ACTIVE_UI_FORBIDDEN");
         if (state.State == WorkerUiState.Blocked && state.Reason != "WINDOW_NOT_OPEN")
             throw new InvalidOperationException($"SAFE_CLOSE_BLOCKED:{state.Reason}");
         return await PostAsync($"/api/workers/{id}/close");
@@ -290,33 +271,24 @@ internal sealed class ControllerClient
     {
         var v = await GetWorkerAsync(id);
         if (v.State == WorkerUiState.Blocked) throw new InvalidOperationException($"SAVE_BLOCKED:{v.Reason}");
-        if (v.UiBusy || !string.IsNullOrWhiteSpace(v.JobId)) throw new InvalidOperationException("SAVE_ACTIVE_MUTATION_FORBIDDEN");
+        if (v.UiBusy) throw new InvalidOperationException("SAVE_ACTIVE_UI_FORBIDDEN");
         var token = Guid.NewGuid().ToString();
         var dispatchedAt = DateTimeOffset.UtcNow;
         var prompt = SavePrompt.Build(token, id, dispatchedAt);
         using var sent = await PostAsync($"/api/workers/{id}/dispatch", new { text = prompt, navigate = false });
-        var receipt = await WaitReceiptAsync(token, id, dispatchedAt);
+        for (var attempt = 0; attempt < 20; attempt++)
+        {
+            await Task.Delay(1000);
+            var current = await GetWorkerAsync(id);
+            if (!current.UiBusy && current.UiReady) break;
+            if (attempt == 19) throw new InvalidOperationException("SAVE_UI_DID_NOT_RETURN_READY");
+        }
         if (archive)
         {
-            using var archived = await TryPostAsync($"/api/utility/workers/{id}/archive", new { receiptRef = receipt.ReceiptRef });
-            if (archived is null) throw new InvalidOperationException("ARCHIVE_REQUIRES_CONTROLLER_UPGRADE:DURABLE_RECEIPT_PRESERVED");
+            using var archived = await TryPostAsync($"/api/utility/workers/{id}/archive");
+            if (archived is null) throw new InvalidOperationException("ARCHIVE_REQUIRES_CONTROLLER_UPGRADE");
         }
-        return receipt;
-    }
-
-    async Task<SaveReceipt> WaitReceiptAsync(string token, string id, DateTimeOffset after)
-    {
-        for (var attempt = 0; attempt < 12; attempt++)
-        {
-            if (attempt > 0) await Task.Delay(2000);
-            var q = $"?token={Uri.EscapeDataString(token)}&workerId={id}&after={Uri.EscapeDataString(after.ToString("O"))}";
-            using var doc = await GetJsonAsync(ReceiptService + "/api/ui-autopilot/save-receipt" + q);
-            var r = doc.RootElement;
-            if (r.TryGetProperty("ok", out var ok) && ok.ValueKind == JsonValueKind.True
-                && r.TryGetProperty("status", out var status) && status.GetString() == "DURABLE")
-                return new SaveReceipt(r.GetProperty("receiptRef").GetString()!, r.GetProperty("checkpointRef").GetString()!);
-        }
-        throw new InvalidOperationException("SAVE_NOT_DURABLE");
+        return new SaveReceipt($"local-ui://{id}/{token}", $"local-ui://{id}/{token}");
     }
 }
 

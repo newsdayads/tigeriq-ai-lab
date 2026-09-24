@@ -5,11 +5,10 @@ import { join } from 'node:path';
 import {
   CONTINUE_MIN_MS, CONTINUE_MAX_MS, REFRESH_MIN_MS, REFRESH_MAX_MS,
   WORKER_F5_MIN_MS, WORKER_F5_MAX_MS, CONTINUITY_WORKERS,
-  MAX_STALLED_CHECKS, WORKING_PROGRESS_CHECK_MS, MAX_WORKING_UNCHANGED_CHECKS, shouldRotateNv02Chat,
-  deriveNv02Phase, deriveWorkerPhase, hasActiveNv02Work, hasWaitingEvidenceNv02Work, hasContinuableNv02Work, hasContinuableWorkerWork,
+  MAX_STALLED_CHECKS, WORKING_PROGRESS_CHECK_MS, MAX_WORKING_UNCHANGED_CHECKS,
+  deriveNv02Phase, deriveWorkerPhase,
   nextRandomAt, randomDelay, pickContinuePrompt, computeWorkerStaggerDelay,
 } from './extension/continuity.js';
-import { buildDurableSavePrompt, waitForDurableSaveReceipt } from './extension/save-receipt.js';
 
 const CONFIG='D:\\TigerIQ\\Apps\\ChromeController\\Config\\chrome-controller.json';
 const LOG='D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\direct-cdp-bridge.jsonl';
@@ -37,7 +36,7 @@ const workerConnectivityBackoff=new Map();
 let nv02VerifiedModelProfile=null;
 let nv02MutationBusy=false;
 let nv02BootF5ScheduleInitialized=false;
-const NV02_ISOLATED_AUTO_CONTINUE=true;
+const APP_CHROME_LOCAL_UI_ONLY=true;
 const NV02_F5_MIN_MS=5*60*1000;
 const NV02_F5_MAX_MS=20*60*1000;
 const UI_STABILITY_PACING_MIN_MS=1200;
@@ -169,25 +168,20 @@ function isWorkerFreshContext(w,url){
     return current.pathname===home.pathname;
   }catch{return false}
 }
-function findContinuableWorkerWorkForUi(controllerState,workerId){
-  return (controllerState?.jobs||[]).find((job)=>
-    job?.workerId===workerId
-    &&['SUBMITTED','WORKING','WAITING_EVIDENCE','VERIFY'].includes(String(job?.stage||''))
-    &&!job?.completedAt
-    &&typeof job?.issueRef==='string'
-    &&job.issueRef.trim().length>0
-  )||null;
-}
-function buildAssignedWorkRestorePrompt(currentWork){
-  const issueRef=String(currentWork?.issueRef||'').trim();
-  const jobId=String(currentWork?.jobId||'').trim();
-  if(!issueRef)throw new Error('CURRENT_WORK_RESTORE_ISSUE_REQUIRED');
-  return `LÀM — NO YAPPING. CURRENT_WORK_ORDER=${issueRef}${jobId?` | JOB_ID=${jobId}`:''}. Đây là chat mới. Đọc đầy đủ Work Order và checkpoint/evidence mới nhất từ GitHub rồi tiếp tục đúng công việc đang được giao. Không tự chọn backlog/P0/việc khác. Chỉ dừng khi DONE có evidence, BLOCKED thật, EXTERNAL_WAIT hoặc hard gate.`;
-}
+const workerPauseObserved=new Map();
 async function workerAutomationPaused(workerId){
   try{
-    const state=await getControllerState();
-    return state?.paused===true||state?.killed===true||String(state?.ownerInteractionMode||'')==='READ_ONLY'||(state?.utilityPausedWorkers||[]).includes(workerId);
+    const controller=await getControllerState();
+    const pausedNow=controller?.paused===true||controller?.killed===true||String(controller?.ownerInteractionMode||'')==='READ_ONLY'||(controller?.utilityPausedWorkers||[]).includes(workerId);
+    const previous=workerPauseObserved.get(workerId);
+    workerPauseObserved.set(workerId,pausedNow);
+    if(previous===true&&pausedNow===false){
+      const now=Date.now();
+      if(workerId==='NV02')saveNv02Continuity({...loadNv02Continuity(),nextContinueAt:now,stalledChecks:0});
+      else saveWorkerContinuity(workerId,{...loadWorkerContinuity(workerId),nextContinueAt:now,stalledChecks:0});
+      log('LOCAL_RUN_KICKED',{workerId});
+    }
+    return pausedNow;
   }catch(error){
     log('WORKER_AUTOMATION_PAUSE_CHECK_FAILED_CLOSED',{workerId,error:String(error?.message||error)});
     return true;
@@ -290,17 +284,19 @@ async function maybeWorkerContinuity(w,target,ui){
   }
   if(bootFreshContextPending.has(w.id)&&phase!=='WORKING'){
     bootFreshContextPending.delete(w.id);
+    state={...state,resumeUrl:'',nextContinueAt:now,stalledChecks:0};
+    saveWorkerContinuity(w.id,state);
     if(!isWorkerFreshContext(w,ui?.url)){
       const opened=await withWorkerMutation(w.id,async()=>{
         await navigate(target,String(w.homeUrl||''));
         await sleep(1200);
         return {ok:true,status:'BOOT_FRESH_CONTEXT_OPENED'};
       },'BOOT_FRESH_CONTEXT',30000);
-      saveWorkerContinuity(w.id,{...state,resumeUrl:'',nextContinueAt:now});
       await genericWorkerEvent(w.id,opened?.status==='MUTATION_LEASE_BUSY'?'BOOT_FRESH_CONTEXT_DEFERRED':'BOOT_FRESH_CONTEXT_OPENED',{status:opened?.status||null,fromUrl:ui?.url||null,homeUrl:w.homeUrl});
       if(opened?.status==='MUTATION_LEASE_BUSY')bootFreshContextPending.add(w.id);
       return;
     }
+    await genericWorkerEvent(w.id,'BOOT_FRESH_CONTEXT_READY',{homeUrl:w.homeUrl});
   }
   if(ui?.scrollToBottomVisible===true&&now>=Number(state.nextViewFollowAt||0)){
     const locallyBusy=workerMutationBusy.has(w.id);
@@ -366,55 +362,17 @@ async function maybeWorkerContinuity(w,target,ui){
       saveWorkerContinuity(w.id,state);
       await genericWorkerEvent(w.id,'READY_RECOVERY_STATE_CLEARED');
     }
-    let controllerState;
-    try{controllerState=await getControllerState();}
-    catch(error){
-      const deferred={...state,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
-      saveWorkerContinuity(w.id,deferred);
-      await genericWorkerEvent(w.id,'CONTINUE_SKIPPED_CONTROLLER_UNREACHABLE',{error:String(error?.message||error)});
-      return;
-    }
-    const currentWork=findContinuableWorkerWorkForUi(controllerState,w.id);
-    if(!currentWork){
-      const deferred={...state,resumeUrl:'',nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
-      saveWorkerContinuity(w.id,deferred);
-      await genericWorkerEvent(w.id,'READY_UNASSIGNED',{url:ui?.url||null,nextContinueAt:deferred.nextContinueAt});
-      return;
-    }
-    if(!isAssignedWorkerChat(w,ui?.url)){
-      if(!isWorkerFreshContext(w,ui?.url)){
-        const opened=await withWorkerMutation(w.id,async()=>{
-          await navigate(target,String(w.homeUrl||''));
-          await sleep(1200);
-          return {ok:true,status:'FRESH_CONTEXT_OPENED'};
-        },'FRESH_CONTEXT_FOR_CURRENT_WORK',30000);
-        saveWorkerContinuity(w.id,{...state,resumeUrl:'',nextContinueAt:now});
-        await genericWorkerEvent(w.id,'FRESH_CONTEXT_FOR_CURRENT_WORK',{status:opened?.status||null,issueRef:currentWork.issueRef});
-        return;
-      }
-      const prompt=buildAssignedWorkRestorePrompt(currentWork);
-      const sent=await withWorkerMutation(w.id,()=>dispatch(target,prompt),'CURRENT_WORK_NEW_CHAT_RESTORE',30000);
-      if(sent?.status==='MUTATION_LEASE_BUSY'){
-        saveWorkerContinuity(w.id,{...state,nextContinueAt:now+5000});
-        return;
-      }
-      if(!sent?.ok)throw new Error(sent?.status||'CURRENT_WORK_NEW_CHAT_RESTORE_FAILED');
-      const next={...state,lastPrompt:'CURRENT_WORK_NEW_CHAT_RESTORE',lastPhase:'WORKING',stalledChecks:0,recoveryAttempts:0,resumeUrl:'',nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
-      saveWorkerContinuity(w.id,next);
-      await genericWorkerEvent(w.id,'CURRENT_WORK_NEW_CHAT_RESTORED',{issueRef:currentWork.issueRef,jobId:currentWork.jobId||null,nextContinueAt:next.nextContinueAt});
-      return;
-    }
     if(now<Number(state.nextContinueAt||0))return;
     const prompt=pickContinuePrompt(state.lastPrompt);
-    const sent=await withWorkerMutation(w.id,()=>dispatch(target,prompt),'CONTINUITY_CONTINUE',30000);
+    const sent=await withWorkerMutation(w.id,()=>dispatch(target,prompt),'LOCAL_CONTINUITY_CONTINUE',30000);
     if(sent?.status==='MUTATION_LEASE_BUSY'){
       saveWorkerContinuity(w.id,{...state,nextContinueAt:now+5000});
       return;
     }
-    if(!sent?.ok)throw new Error(sent?.status||'CONTINUE_DISPATCH_FAILED');
+    if(!sent?.ok)throw new Error(sent?.status||'LOCAL_CONTINUE_DISPATCH_FAILED');
     const next={...state,lastPrompt:prompt,lastPhase:'WORKING',stalledChecks:0,recoveryAttempts:0,resumeUrl:'',nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
     saveWorkerContinuity(w.id,next);
-    await genericWorkerEvent(w.id,'CONTINUE_DISPATCHED',{prompt,nextContinueAt:next.nextContinueAt});
+    await genericWorkerEvent(w.id,'LOCAL_CONTINUE_DISPATCHED',{prompt,nextContinueAt:next.nextContinueAt});
     return;
   }
 
@@ -454,17 +412,19 @@ function loadNv02Continuity(){
     nextPeriodicF5At=nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS);
     if(workingRecheckAt)workingRecheckAt=nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS);
   }
+  let persistBootSchedule=false;
   if(!nv02BootF5ScheduleInitialized){
     nv02BootF5ScheduleInitialized=true;
     const previousNextPeriodicF5At=nextPeriodicF5At;
     const previousWorkingRecheckAt=workingRecheckAt;
     if(nextPeriodicF5At<=now)nextPeriodicF5At=nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS);
     if(workingRecheckAt&&workingRecheckAt<=now)workingRecheckAt=nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS);
+    persistBootSchedule=Number(raw.f5WindowVersion)!==f5WindowVersion||previousNextPeriodicF5At!==nextPeriodicF5At||previousWorkingRecheckAt!==workingRecheckAt;
     if(previousNextPeriodicF5At!==nextPeriodicF5At||previousWorkingRecheckAt!==workingRecheckAt){
       log('NV02_F5_TIMERS_REBASED_AFTER_RESTART',{previousNextPeriodicF5At,nextPeriodicF5At,previousWorkingRecheckAt,workingRecheckAt});
     }
   }
-  return {
+  const state={
     nextContinueAt:Number(raw.nextContinueAt)||nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),
     nextPeriodicF5At,
     f5WindowVersion,
@@ -488,6 +448,8 @@ function loadNv02Continuity(){
     chatLoadBlockedUntil:Number(raw.chatLoadBlockedUntil)||0,
     chatLoadClearCandidateAt:Number(raw.chatLoadClearCandidateAt)||0,
   };
+  if(persistBootSchedule)saveNv02Continuity(state);
+  return state;
 }
 function applyNv02DurableVerifiedModelProfile(ui){
   if(!ui||ui.modelExact===true)return ui;
@@ -642,7 +604,13 @@ const UI_EXPR=`(()=>{
   const conversationLoadError=/(không thể tải cuộc hội thoại chatgpt này|unable to load (?:this )?(?:chatgpt )?conversation|failed to load (?:this )?(?:chatgpt )?conversation)/i.test(pageText);
   const requestTimeoutError=Boolean(chatRetry)&&/(yêu cầu (?:đã )?hết thời gian chờ|request (?:has )?timed out|request timeout)/i.test(retryContext);
   const chatLoadError=location.hostname==='chatgpt.com'&&Boolean(conversationLoadError||requestTimeoutError);
-  const modelControls=location.hostname==='chatgpt.com'?[...document.querySelectorAll('button,[role="button"]')].filter(e=>vis(e)&&(e.hasAttribute('data-selected-reasoning-effort')||/chọn mô hình chatgpt|choose.*model|model selector/i.test((e.getAttribute('aria-label')||'')+' '+(e.getAttribute('title')||'')))):[];
+  const modelControls=location.hostname==='chatgpt.com'?[...document.querySelectorAll('button,[role="button"]')].filter(e=>{
+    if(!vis(e))return false;
+    const label=String((e.innerText||e.textContent||'')).replace(/\\s+/g,' ').trim();
+    const legacy=e.hasAttribute('data-selected-reasoning-effort')||/chọn mô hình chatgpt|choose.*model|model selector/i.test((e.getAttribute('aria-label')||'')+' '+(e.getAttribute('title')||''));
+    const current=e.matches('button.__composer-pill[aria-haspopup="menu"]')&&/^(?:Cao|High|Tiêu chuẩn|Standard|Nhanh|Fast|Tự động|Auto)$/i.test(label);
+    return legacy||current;
+  }):[];
   const modelControl=modelControls.length===1?modelControls[0]:null;
   const modelLabel=String((modelControl?.getAttribute('aria-label')||'')+' '+(modelControl?.getAttribute('title')||'')+' '+(modelControl?.innerText||modelControl?.textContent||'')).replace(/\\s+/g,' ').trim();
   const modelName=/\\b(?:GPT-)?5\\.6\\s+Sol\\b/i.test(modelLabel)?'GPT-5.6 Sol':null;
@@ -785,7 +753,17 @@ async function maybeRecoverChatLoadError(w,target,ui,now=Date.now()){
   await continuityEventFor(w,'CHAT_UNLOADABLE_BLOCKED',{url:ui?.url||null,blockedUntil});
   return true;
 }
-const MODEL_SELECTOR_CLICK_EXPR=`(()=>{const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};const controls=[...document.querySelectorAll('button,[role="button"]')].filter(e=>vis(e)&&(e.hasAttribute('data-selected-reasoning-effort')||/chọn mô hình chatgpt|choose.*model|model selector/i.test((e.getAttribute('aria-label')||'')+' '+(e.getAttribute('title')||''))));if(controls.length!==1)return{ok:false,status:'MODEL_CONTROL_NOT_EXACT_OR_UNIQUE',count:controls.length};controls[0].click();return{ok:true,status:'MODEL_SELECTOR_OPENED'}})()`;
+const MODEL_SELECTOR_POINT_EXPR=`(()=>{const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};const text=e=>String(e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim();const openMenus=[...document.querySelectorAll('[role="menu"][data-state="open"]')].filter(vis);if(openMenus.some(menu=>[...menu.querySelectorAll('[role="menuitemradio"][aria-checked="true"]')].some(e=>/^(?:GPT-)?5\\.6\\s+Sol$/i.test(text(e)))))return{ok:true,status:'MODEL_SELECTOR_ALREADY_OPEN',alreadyOpen:true};const controls=[...document.querySelectorAll('button,[role="button"]')].filter(e=>{if(!vis(e))return false;const legacy=e.hasAttribute('data-selected-reasoning-effort')||/chọn mô hình chatgpt|choose.*model|model selector/i.test((e.getAttribute('aria-label')||'')+' '+(e.getAttribute('title')||''));const current=e.matches('button.__composer-pill[aria-haspopup="menu"]')&&/^(?:Cao|High|Tiêu chuẩn|Standard|Nhanh|Fast|Tự động|Auto)$/i.test(text(e));return legacy||current});if(controls.length!==1)return{ok:false,status:'MODEL_CONTROL_NOT_EXACT_OR_UNIQUE',count:controls.length,labels:controls.slice(0,5).map(text)};const r=controls[0].getBoundingClientRect();return{ok:true,status:'MODEL_SELECTOR_POINT',alreadyOpen:false,x:r.left+r.width/2,y:r.top+r.height/2,label:text(controls[0])}})()`;
+async function openNv02ModelSelector(target){
+  const p=await pageRpc(target);
+  try{
+    const point=(await p.call('Runtime.evaluate',{expression:MODEL_SELECTOR_POINT_EXPR,returnByValue:true},5000)).result.value;
+    if(!point?.ok)return point||{ok:false,status:'MODEL_CONTROL_NOT_EXACT_OR_UNIQUE'};
+    if(!point.alreadyOpen)await cdpMouseClick(p,point);
+    await sleep(400);
+    return{ok:true,status:point.alreadyOpen?'MODEL_SELECTOR_ALREADY_OPEN':'MODEL_SELECTOR_OPENED',label:point.label||null};
+  }finally{p.close();}
+}
 const MODEL_56_SOL_CLICK_EXPR=`(()=>{const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};const text=e=>String(e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim();const opts=[...document.querySelectorAll('button,[role="menuitem"],[role="menuitemradio"],[role="option"]')].filter(e=>vis(e)&&/^(?:GPT-)?5\\.6\\s+Sol(?:\\s|$)/i.test(text(e)));if(opts.length!==1)return{ok:false,status:'GPT_5_6_SOL_OPTION_NOT_UNIQUE',count:opts.length,labels:opts.slice(0,5).map(text)};opts[0].click();return{ok:true,status:'GPT_5_6_SOL_SELECTED'}})()`;
 const REASONING_HIGH_CLICK_EXPR=`(()=>{const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};const text=e=>String(e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim();const opts=[...document.querySelectorAll('button,[role="menuitem"],[role="menuitemradio"],[role="option"]')].filter(e=>vis(e)&&/^(?:High|Cao)(?:\\s|$)/i.test(text(e)));if(opts.length!==1)return{ok:false,status:'REASONING_HIGH_OPTION_NOT_UNIQUE',count:opts.length,labels:opts.slice(0,5).map(text)};opts[0].click();return{ok:true,status:'REASONING_HIGH_SELECTED'}})()`;
 const MODEL_SELECTED_EXPR=`(()=>{const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};const text=e=>String(e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim();const checked=[...document.querySelectorAll('[role="menuitemradio"][aria-checked="true"],[role="option"][aria-selected="true"]')].filter(vis);const labels=checked.map(text);const exact=labels.filter(x=>/^(?:GPT-)?5\\.6\\s+Sol$/i.test(x));return{ok:exact.length===1,modelName:exact.length===1?'GPT-5.6 Sol':null,checkedLabels:labels.slice(0,10)}})()`;
@@ -793,7 +771,7 @@ const MODEL_MENU_DISMISS_EXPR=`(()=>{document.dispatchEvent(new KeyboardEvent('k
 async function inspectNv02SelectedModel(target){
   const raw=await uiStateRaw(target);
   if(raw?.securityBlock)throw new Error(raw.securityBlock);
-  const opened=await evalPage(target,MODEL_SELECTOR_CLICK_EXPR);
+  const opened=await openNv02ModelSelector(target);
   if(!opened?.ok)throw new Error(opened?.status||'MODEL_SELECTOR_OPEN_FAILED');
   await sleep(400);
   const selected=await evalPage(target,MODEL_SELECTED_EXPR);
@@ -814,7 +792,7 @@ async function ensureNv02ModelProfile(target){
   for(let i=0;i<maxAttempts;i++){
     if(profile?.modelExact===true&&profile?.modelName==='GPT-5.6 Sol'&&profile?.reasoningEffort==='High')break;
     if(profile?.modelName!=='GPT-5.6 Sol'){
-      const opened=await evalPage(target,MODEL_SELECTOR_CLICK_EXPR);
+      const opened=await openNv02ModelSelector(target);
       if(!opened?.ok)throw new Error(opened?.status||'MODEL_SELECTOR_OPEN_FAILED');
       await sleep(400);
       const modelSelected=await evalPage(target,MODEL_56_SOL_CLICK_EXPR);
@@ -823,7 +801,7 @@ async function ensureNv02ModelProfile(target){
       profile=await inspectNv02SelectedModel(target);
     }
     if(profile?.modelName==='GPT-5.6 Sol'&&profile?.reasoningEffort!=='High'){
-      const reasoningOpened=await evalPage(target,MODEL_SELECTOR_CLICK_EXPR);
+      const reasoningOpened=await openNv02ModelSelector(target);
       if(!reasoningOpened?.ok)throw new Error(reasoningOpened?.status||'REASONING_SELECTOR_OPEN_FAILED');
       await sleep(400);
       const reasoningSelected=await evalPage(target,REASONING_HIGH_CLICK_EXPR);
@@ -876,19 +854,6 @@ async function releaseBridgeMutationLease(workerId,lease){
   await fetch(`${CONTROLLER}/api/utility/workers/${workerId}/mutation-lease/release`,{
     method:'POST',headers:auth(workerId,true),body:JSON.stringify(lease),signal:AbortSignal.timeout(4000)
   }).catch(()=>{});
-}
-async function externalAutopilotOwnsNextNv02Job(){
-  try{
-    const stateResponse=await fetch(`${CONTROLLER}/api/state`,{signal:AbortSignal.timeout(2500)});
-    if(!stateResponse.ok)return false;
-    const state=await stateResponse.json();
-    if(state?.externalWorkAutopilotEnabled!==true||state?.ownerInteractionMode==='READ_ONLY')return false;
-    const autoResponse=await fetch(`${CONTROLLER}/api/autopilot/state`,{signal:AbortSignal.timeout(2500)});
-    if(!autoResponse.ok)return false;
-    const auto=await autoResponse.json();
-    const next=auto?.snapshot?.nextJob;
-    return Boolean(next&&next.workerId==='NV02'&&next.executable===true&&['QUEUED','READY'].includes(String(next.status||'')));
-  }catch{return false;}
 }
 async function navigate(target,url){
   const p=await pageRpc(target);try{await p.call('Page.enable');await p.call('Page.navigate',{url});}finally{p.close();}
@@ -1132,184 +1097,36 @@ async function withNv02Mutation(fn,purpose='NORMAL',ttlMs=30000){
     log('NV02_LOCAL_MUTATION_RELEASED',{purpose,sharedMode});
   }
 }
-function findContinuableNv02Work(controllerState){
-  return (controllerState?.jobs||[]).find((job)=>
-    job?.workerId==='NV02'
-    &&['SUBMITTED','WORKING','WAITING_EVIDENCE','VERIFY'].includes(String(job?.stage||''))
-    &&!job?.completedAt
-    &&typeof job?.issueRef==='string'
-    &&job.issueRef.trim().length>0
-  )||null;
-}
-function sameContinuableNv02Work(expected,current){
-  if(!expected||!current)return false;
-  const sameIssue=String(expected.issueRef||'').trim()===String(current.issueRef||'').trim();
-  const expectedJob=String(expected.jobId||'').trim(),currentJob=String(current.jobId||'').trim();
-  return sameIssue&&(!expectedJob||!currentJob||expectedJob===currentJob);
-}
-function buildCurrentWorkIssueRestorePrompt(currentWork){
-  const issueRef=String(currentWork?.issueRef||'').trim();
-  const jobId=String(currentWork?.jobId||'').trim();
-  if(!issueRef)throw new Error('CURRENT_WORK_RESTORE_ISSUE_REQUIRED');
-  return `LÀM — NO YAPPING. CURRENT_WORK_ORDER=${issueRef}${jobId?` | JOB_ID=${jobId}`:''}. Đây là chat mới. Đọc đầy đủ Work Order và checkpoint/evidence mới nhất từ GitHub, xác minh trạng thái hiện hành rồi tiếp tục đúng công việc đó. Không tự chọn backlog/P0/việc khác. Chỉ dừng khi DONE có evidence, BLOCKED thật, EXTERNAL_WAIT hoặc hard gate.`;
-}
-function buildCurrentWorkRestorePrompt({currentWork,receipt}){
-  const issueRef=String(currentWork?.issueRef||'').trim();
-  const jobId=String(currentWork?.jobId||'').trim();
-  const checkpointRef=String(receipt?.checkpointRef||'').trim();
-  const receiptRef=String(receipt?.receiptRef||'').trim();
-  if(!issueRef||!checkpointRef||!receiptRef)throw new Error('CURRENT_WORK_RESTORE_INPUT_INVALID');
-  return `LÀM — NO YAPPING. CURRENT_WORK_ORDER=${issueRef}${jobId?` | JOB_ID=${jobId}`:''}. CURRENT_CHECKPOINT=${checkpointRef}. DURABLE_SAVE_RECEIPT=${receiptRef}. Đọc đầy đủ CURRENT_WORK_ORDER và CURRENT_CHECKPOINT từ GitHub, xác minh trạng thái hiện hành rồi tiếp tục đúng công việc đó từ checkpoint. Không tự chọn backlog/P0/việc khác. Không dùng lệnh “Tiếp tục” chung chung để tự suy công việc. Chỉ dừng khi DONE có evidence, BLOCKED thật, EXTERNAL_WAIT hoặc hard gate.`;
-}
-async function dispatchCurrentWorkRestoreLocked(target,state,now,expectedWork,receipt){
-  let controllerState;
-  try{controllerState=await getControllerState();}
-  catch(error){
-    const next={...state,lastPhase:'STALLED',nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
-    saveNv02Continuity(next);
-    await continuityEvent('CURRENT_WORK_RESTORE_SKIPPED_UNVERIFIED',{error:String(error?.message||error),nextContinueAt:next.nextContinueAt});
-    return next;
-  }
-  const currentWork=findContinuableNv02Work(controllerState);
-  if(!hasContinuableNv02Work(controllerState)||!sameContinuableNv02Work(expectedWork,currentWork)){
-    const next={...state,lastPhase:'READY',workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
-    saveNv02Continuity(next);
-    await continuityEvent('CURRENT_WORK_RESTORE_SKIPPED_CHANGED_WORK',{expectedJobId:expectedWork?.jobId||null,expectedIssueRef:expectedWork?.issueRef||null,currentJobId:currentWork?.jobId||null,currentIssueRef:currentWork?.issueRef||null,nextContinueAt:next.nextContinueAt});
-    return next;
-  }
-  const prompt=buildCurrentWorkRestorePrompt({currentWork,receipt});
-  const result=await dispatch(target,prompt);
-  if(!result?.ok)throw new Error(result?.status||'CURRENT_WORK_RESTORE_DISPATCH_FAILED');
-  const next={...state,lastPrompt:'CURRENT_WORK_RESTORE',dispatchesInChat:Number(state.dispatchesInChat||0)+1,stalledChecks:0,lastPhase:'WORKING',workingSignature:'',workingUnchangedChecks:0,workingRecheckAt:nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS),nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
-  saveNv02Continuity(next);
-  await continuityEvent('CURRENT_WORK_RESTORE_DISPATCHED',{jobId:currentWork.jobId||null,issueRef:currentWork.issueRef,checkpointRef:receipt.checkpointRef,receiptRef:receipt.receiptRef,evidence:result.evidence||null,nextContinueAt:next.nextContinueAt});
-  return next;
-}
-async function dispatchCurrentWorkIssueRestoreLocked(target,state,now,expectedWork){
-  let controllerState;
-  try{controllerState=await getControllerState();}
-  catch(error){
-    const next={...state,lastPhase:'STALLED',nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
-    saveNv02Continuity(next);
-    await continuityEvent('CURRENT_WORK_NEW_CHAT_RESTORE_SKIPPED_UNVERIFIED',{error:String(error?.message||error),nextContinueAt:next.nextContinueAt});
-    return next;
-  }
-  const currentWork=findContinuableNv02Work(controllerState);
-  if(!currentWork||!sameContinuableNv02Work(expectedWork,currentWork)){
-    const next={...state,resumeChatUrl:'',nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
-    saveNv02Continuity(next);
-    await continuityEvent('CURRENT_WORK_NEW_CHAT_RESTORE_SKIPPED_CHANGED_WORK',{expectedIssueRef:expectedWork?.issueRef||null,currentIssueRef:currentWork?.issueRef||null});
-    return next;
-  }
-  await ensureNv02ModelProfile(target);
-  const prompt=buildCurrentWorkIssueRestorePrompt(currentWork);
-  const result=await dispatch(target,prompt);
-  if(!result?.ok)throw new Error(result?.status||'CURRENT_WORK_NEW_CHAT_RESTORE_FAILED');
-  const next={...state,lastPrompt:'CURRENT_WORK_NEW_CHAT_RESTORE',dispatchesInChat:1,chatStartedAt:now,stalledChecks:0,lastPhase:'WORKING',resumeChatUrl:'',workingSignature:'',workingUnchangedChecks:0,workingRecheckAt:nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS),nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
-  saveNv02Continuity(next);
-  await continuityEvent('CURRENT_WORK_NEW_CHAT_RESTORED',{jobId:currentWork.jobId||null,issueRef:currentWork.issueRef,evidence:result.evidence||null,nextContinueAt:next.nextContinueAt});
-  return next;
-}
 async function dispatchNaturalContinueLocked(target,state,now){
-  if(await externalAutopilotOwnsNextNv02Job()){
-    const next={...state,nextContinueAt:now+5000};
-    saveNv02Continuity(next);
-    await continuityEvent('CONTINUE_DEFERRED_TO_EXTERNAL_AUTOPILOT',{nextContinueAt:next.nextContinueAt});
-    return next;
-  }
-  let controllerState;
-  try{controllerState=await getControllerState();}
-  catch(error){
-    const next={...state,lastPhase:'STALLED',nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
-    saveNv02Continuity(next);
-    await continuityEvent('CONTINUE_SKIPPED_CURRENT_WORK_UNVERIFIED',{error:String(error?.message||error),nextContinueAt:next.nextContinueAt});
-    return next;
-  }
-  const currentWork=findContinuableNv02Work(controllerState);
-  if(!hasContinuableNv02Work(controllerState)||!currentWork){
-    const next={...state,lastPhase:'READY',workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
-    saveNv02Continuity(next);
-    await continuityEvent('CONTINUE_SKIPPED_NO_CURRENT_WORK',{nextContinueAt:next.nextContinueAt});
-    return next;
-  }
-  await continuityEvent('CONTINUE_CURRENT_WORK_VERIFIED',{jobId:currentWork.jobId||null,issueRef:currentWork.issueRef});
-  // Model/profile is verified once per opened chat/session and again only after
-  // reopen/project recovery/URL change. The hot continue loop must not open
-  // the model selector before every command.
   await scrollToBottom(target).catch(()=>{});
   const prompt=pickContinuePrompt(state.lastPrompt);
   const result=await dispatch(target,prompt);
-  if(!result?.ok)throw new Error(result?.status||'CONTINUE_DISPATCH_FAILED');
+  if(!result?.ok)throw new Error(result?.status||'LOCAL_CONTINUE_DISPATCH_FAILED');
   const next={...state,lastPrompt:prompt,dispatchesInChat:Number(state.dispatchesInChat||0)+1,stalledChecks:0,lastPhase:'WORKING',workingSignature:'',workingUnchangedChecks:0,workingRecheckAt:nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS),nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
   saveNv02Continuity(next);
-  await continuityEvent('CONTINUE_DISPATCHED',{prompt,evidence:result.evidence||null,nextContinueAt:next.nextContinueAt,dispatchesInChat:next.dispatchesInChat});
+  await continuityEvent('LOCAL_CONTINUE_DISPATCHED',{prompt,evidence:result.evidence||null,nextContinueAt:next.nextContinueAt,dispatchesInChat:next.dispatchesInChat});
   return next;
 }
 async function dispatchNaturalContinue(target,state,now){
   return withNv02Mutation(()=>dispatchNaturalContinueLocked(target,state,now),'CONTINUITY_CONTINUE');
 }
-async function checkpointNv02(target,currentWork){
-  if(!currentWork?.issueRef)throw new Error('CHECKPOINT_CURRENT_WORK_REQUIRED');
-  return withNv02Mutation(async()=>{
-    await ensureNv02ModelProfile(target);
-    const saveToken=crypto.randomUUID(),dispatchedAt=new Date().toISOString();
-    const workRef=String(currentWork.issueRef).trim(),jobId=String(currentWork.jobId||'').trim()||'UNKNOWN';
-    const text=`${buildDurableSavePrompt({saveToken,workerId:'NV02',dispatchedAt})}\nCURRENT_WORK_ORDER=${workRef}\nCURRENT_WORK_JOB_ID=${jobId}\nCheckpoint đúng công việc này; không chuyển sang việc khác.`;
-    const sent=await dispatch(target,text);
-    if(!sent?.ok)throw new Error(sent?.status||'SAVE_DISPATCH_FAILED');
-    const receipt=await waitForDurableSaveReceipt(saveToken,'NV02',dispatchedAt);
-    await waitForIdleAfterSubmission(target,45000,5000);
-    await continuityEvent('CHECKPOINT_DURABLE',{receiptRef:receipt.receiptRef,checkpointRef:receipt.checkpointRef,verifiedAt:receipt.verifiedAt});
-    return receipt;
-  },'CHECKPOINT_DURABLE',120000);
-}
-async function rotateNv02Chat(target,state,now){
-  let controllerState;
-  try{controllerState=await getControllerState();}
-  catch(error){
-    await continuityEvent('CHAT_ROTATION_SKIPPED_CURRENT_WORK_UNVERIFIED',{error:String(error?.message||error)});
-    return state;
-  }
-  const currentWork=findContinuableNv02Work(controllerState);
-  if(!hasContinuableNv02Work(controllerState)||!currentWork){
-    await continuityEvent('CHAT_ROTATION_SKIPPED_NO_CURRENT_WORK',{lastPhase:state.lastPhase||null});
-    return state;
-  }
-  await continuityEvent('CHAT_ROTATION_CURRENT_WORK_VERIFIED',{jobId:currentWork.jobId||null,issueRef:currentWork.issueRef});
-  const receipt=await checkpointNv02(target,currentWork);
-  const checkpointed={...state,dispatchesInChat:0,chatStartedAt:now,stalledChecks:0,chatLoadRecoveryStage:0,lastPhase:'READY',nextRefreshAt:nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS),rotationRetryAt:0};
-  saveNv02Continuity(checkpointed);
-  return withNv02Mutation(async()=>{
-    const archived=await archiveChat(target);if(!archived?.ok)throw new Error(archived?.status||'ROTATE_ARCHIVE_FAILED');
-    await continuityEvent('ARCHIVE_CONFIRMED',{jobId:currentWork.jobId||null,issueRef:currentWork.issueRef,receiptRef:receipt.receiptRef,checkpointRef:receipt.checkpointRef,archiveStatus:archived.status});
-    const archivedState={...checkpointed,resumeChatUrl:'',verifiedChatUrl:'',modelVerifiedAt:''};
-    saveNv02Continuity(archivedState);
-    const opened=await newChat(target);if(!opened?.ok)throw new Error(opened?.status||'ROTATE_NEW_CHAT_FAILED');
-    await continuityEvent('NEW_CHAT_CREATED',{newChatStatus:opened.status});
-    const freshUi=await ensureNv02ModelProfile(target);
-    if(freshUi?.securityBlock)throw new Error(freshUi.securityBlock);
-    if(freshUi?.modelExact!==true||freshUi?.uiPhase!=='READY')throw new Error('ROTATE_MODEL_PROFILE_NOT_READY');
-    const verified=loadNv02Continuity();
-    const next={...archivedState,lastPhase:'READY',verifiedChatUrl:verified.verifiedChatUrl,modelVerifiedAt:verified.modelVerifiedAt,modelCheckBlockedUntil:verified.modelCheckBlockedUntil};
-    saveNv02Continuity(next);
-    await continuityEvent('CHAT_ROTATED',{jobId:currentWork.jobId||null,issueRef:currentWork.issueRef,receiptRef:receipt.receiptRef,checkpointRef:receipt.checkpointRef,archiveStatus:archived.status,newChatStatus:opened.status,nextRefreshAt:next.nextRefreshAt});
-    return dispatchCurrentWorkRestoreLocked(target,next,now,currentWork,receipt);
-  },'CHAT_ROTATION',60000);
-}
 async function noteNv02CommandDispatch(){
+  const now=Date.now();
   const state=loadNv02Continuity();
   state.dispatchesInChat=Number(state.dispatchesInChat||0)+1;
+  state.nextPeriodicF5At=nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS);
+  state.workingRecheckAt=nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS);
+  state.nextProgressCheckAt=now+WORKING_PROGRESS_CHECK_MS;
+  state.stalledChecks=0;
   saveNv02Continuity(state);
+  await continuityEvent('DISPATCH_F5_GUARD_ARMED',{nextPeriodicF5At:state.nextPeriodicF5At,workingRecheckAt:state.workingRecheckAt});
 }
 async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
   const now=Date.now();let state=loadNv02Continuity();
   ui=applyNv02DurableVerifiedModelProfile(ui);
   const phase=deriveNv02Phase(ui||{});
-  let controllerState=null;
-  try{controllerState=await getControllerState();}catch{}
-  const currentWork=controllerState?findContinuableNv02Work(controllerState):null;
   const currentChat=hasCurrentNv02Chat(ui?.url);
-  const currentTrackedWork=Boolean(currentWork&&currentChat);
+  const currentTrackedWork=currentChat;
   state={...state,lastPhase:phase,resumeChatUrl:''};saveNv02Continuity(state);
   if(phase!=='BLOCKED'&&ui?.scrollToBottomVisible===true&&now>=Number(state.nextViewFollowAt||0)){
     const locallyBusy=nv02MutationBusy||workerMutationBusy.has('NV02');
@@ -1352,32 +1169,19 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
   state=loadNv02Continuity();
   if(bootFreshContextPending.has('NV02')&&phase!=='WORKING'){
     bootFreshContextPending.delete('NV02');
+    state={...state,resumeChatUrl:'',verifiedChatUrl:'',modelVerifiedAt:'',nextContinueAt:now,stalledChecks:0};
+    saveNv02Continuity(state);
     if(currentChat){
       const opened=await withNv02Mutation(async()=>{
         await navigate(target,NV02_HOME_URL);
         await sleep(1200);
-        return {ok:true,status:'BOOT_FRESH_CONTEXT_OPENED'};
+        return{ok:true,status:'BOOT_FRESH_CONTEXT_OPENED'};
       },'BOOT_FRESH_CONTEXT',30000);
-      saveNv02Continuity({...state,resumeChatUrl:'',verifiedChatUrl:'',modelVerifiedAt:'',nextContinueAt:now});
       await continuityEvent(opened?.status==='MUTATION_LEASE_BUSY'?'BOOT_FRESH_CONTEXT_DEFERRED':'BOOT_FRESH_CONTEXT_OPENED',{status:opened?.status||null,fromUrl:ui?.url||null,homeUrl:NV02_HOME_URL});
       if(opened?.status==='MUTATION_LEASE_BUSY')bootFreshContextPending.add('NV02');
       return;
     }
-  }
-  if(shouldRotateNv02Chat({phase,currentTrackedWork,now,nextRefreshAt:state.nextRefreshAt,dispatchesInChat:state.dispatchesInChat,chatStartedAt:state.chatStartedAt,rotationRetryAt:state.rotationRetryAt,chatLoadRecoveryStage:state.chatLoadRecoveryStage})){
-    if(await externalAutopilotOwnsNextNv02Job()){
-      state={...state,rotationRetryAt:now+60_000};saveNv02Continuity(state);
-      await continuityEvent('CHAT_ROTATION_DEFERRED_TO_EXTERNAL_AUTOPILOT',{rotationRetryAt:state.rotationRetryAt});
-      return;
-    }
-    await continuityEvent('CHAT_ROTATION_DUE',{dispatchesInChat:state.dispatchesInChat,chatStartedAt:state.chatStartedAt,nextRefreshAt:state.nextRefreshAt});
-    try{await rotateNv02Chat(target,state,now);}
-    catch(error){
-      const retry={...state,rotationRetryAt:now+5*60*1000};
-      saveNv02Continuity(retry);
-      await continuityEvent('CHAT_ROTATION_FAILED',{error:String(error?.message||error),rotationRetryAt:retry.rotationRetryAt});
-    }
-    return;
+    await continuityEvent('BOOT_FRESH_CONTEXT_READY',{homeUrl:NV02_HOME_URL});
   }
   if(currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0)){
     const refreshed=await withNv02Mutation(async()=>{
@@ -1414,11 +1218,7 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
       if(!recoveredProjectContext)throw new Error('PROJECT_CONTEXT_NOT_READY_AFTER_MODEL_RECOVERY');
       await postWorkerHeartbeat(w,target,corrected,recoveredProjectContext).catch(()=>{});
       state={...state,stalledChecks:0,nextContinueAt:now};saveNv02Continuity(state);
-      if(corrected?.uiPhase==='READY'){
-        const freshWork=controllerState?findContinuableNv02Work(controllerState):null;
-        if(freshWork&&!hasCurrentNv02Chat(corrected?.url))await withNv02Mutation(()=>dispatchCurrentWorkIssueRestoreLocked(target,state,now,freshWork),'CURRENT_WORK_NEW_CHAT_RESTORE',30000);
-        else await dispatchNaturalContinue(target,state,now);
-      }
+      if(corrected?.uiPhase==='READY')await dispatchNaturalContinue(target,state,now);
       return;
     }catch(error){
       state={...state,modelCheckBlockedUntil:now+60_000};
@@ -1426,26 +1226,11 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
       await continuityEvent('MODEL_PROFILE_RECOVERY_FAILED',{error:String(error?.message||error),modelCheckBlockedUntil:state.modelCheckBlockedUntil});
     }
   }
-  if(!currentTrackedWork){
-    if(currentWork&&phase==='READY'&&(isNv02ProjectContext(ui?.url)||ui?.projectDraftReady===true)){
-      const restored=await withNv02Mutation(()=>dispatchCurrentWorkIssueRestoreLocked(target,state,now,currentWork),'CURRENT_WORK_NEW_CHAT_RESTORE',30000);
-      if(restored?.status==='MUTATION_LEASE_BUSY'){
-        state={...state,nextContinueAt:now+5000};saveNv02Continuity(state);
-      }
-      return;
-    }
-    if(!currentWork&&now>=state.nextContinueAt){
-      state={...state,resumeChatUrl:'',stalledChecks:0,workingSignature:'',workingUnchangedChecks:0,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
-      saveNv02Continuity(state);
-      await continuityEvent('READY_UNASSIGNED',{url:ui?.url||null,nextContinueAt:state.nextContinueAt});
-    }
-    return;
-  }
-  if(now<state.nextContinueAt)return;
   if(phase==='READY'){
+    if(now<Number(state.nextContinueAt||0))return;
     const sent=await dispatchNaturalContinue(target,state,now);
     if(sent?.status==='MUTATION_LEASE_BUSY'){
-      state={...state,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};saveNv02Continuity(state);
+      state={...state,nextContinueAt:now+5000};saveNv02Continuity(state);
     }
     return;
   }
@@ -1468,7 +1253,26 @@ async function handleCommand(w,target,command){
   if(action==='CLOSE_WINDOW') return closeWorker(w,target).then(()=>({status:'WINDOW_CLOSED'}));
   if(action==='NAVIGATE'){const u=new URL(String(payload.url||''));if(u.hostname!==expectedHost(w))throw new Error('BLOCKED_URL');await navigate(target,u.toString());return{status:'NAVIGATED'};}
   if(action==='MODEL_PREFLIGHT'){if(w.id!=='NV02')return{status:'MODEL_PREFLIGHT_NOT_REQUIRED'};return ensureNv02ModelProfile(target);}
-  if(action==='DISPATCH'){if(w.id==='NV02')await ensureNv02ModelProfile(target);const r=await dispatch(target,String(payload.text||''));if(!r?.ok)throw new Error(r?.status||'DISPATCH_FAILED');return r;}
+  if(action==='LOCAL_CONTINUE_NOW'){
+    const raw=await uiState(target);
+    const phase=w.id==='NV02'?deriveNv02Phase(raw||{}):deriveWorkerPhase(raw||{},{workerId:w.id});
+    if(phase==='BLOCKED')throw new Error(raw?.securityBlock||'LOCAL_CONTINUE_BLOCKED');
+    if(phase==='WORKING')return{status:'ALREADY_WORKING'};
+    if(phase!=='READY')return{status:'LOCAL_CONTINUE_NOT_READY',phase};
+    if(w.id==='NV02'){
+      await ensureNv02ModelProfile(target);
+      const next=await dispatchNaturalContinueLocked(target,loadNv02Continuity(),Date.now());
+      await noteNv02CommandDispatch();
+      return{status:'LOCAL_CONTINUE_SUBMITTED',prompt:next.lastPrompt};
+    }
+    const state=loadWorkerContinuity(w.id),prompt=pickContinuePrompt(state.lastPrompt);
+    const r=await dispatch(target,prompt);
+    if(!r?.ok)throw new Error(r?.status||'LOCAL_CONTINUE_DISPATCH_FAILED');
+    saveWorkerContinuity(w.id,{...state,lastPrompt:prompt,lastPhase:'WORKING',stalledChecks:0,nextContinueAt:nextRandomAt(Date.now(),CONTINUE_MIN_MS,CONTINUE_MAX_MS)});
+    await genericWorkerEvent(w.id,'LOCAL_CONTINUE_DISPATCHED',{prompt});
+    return{status:'LOCAL_CONTINUE_SUBMITTED',prompt};
+  }
+  if(action==='DISPATCH'){if(w.id==='NV02')await ensureNv02ModelProfile(target);const r=await dispatch(target,String(payload.text||''));if(!r?.ok)throw new Error(r?.status||'DISPATCH_FAILED');if(w.id==='NV02')await noteNv02CommandDispatch();return r;}
   if(action==='ARCHIVE_CHAT'){const r=await archiveChat(target);if(!r?.ok)throw new Error(r?.status||'ARCHIVE_FAILED');return r;}
   throw new Error(`UNKNOWN_ACTION:${action}`);
 }
@@ -1603,8 +1407,8 @@ process.once('exit',releaseAllWorkerOwnership);
 process.once('SIGTERM',()=>{releaseAllWorkerOwnership();process.exit(0);});
 process.once('SIGINT',()=>{releaseAllWorkerOwnership();process.exit(0);});
 
-const bridgeServer=http.createServer((req,res)=>{if(req.url==='/health'){const provenanceVerified=Boolean(APPROVED_HEAD&&DEPLOY_ROOT&&EXPECTED_BRIDGE_SHA256&&EXPECTED_BRIDGE_SHA256===BRIDGE_SHA256);res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({ok:true,mode:'NV02_ISOLATED_AUTO_CONTINUE',controllerRequired:false,controllerEnabledFlagIgnored:true,worker:'NV02',canonicalOwnership:true,workers:ownedWorkers,pid:process.pid,approvedHead:APPROVED_HEAD||null,deployRoot:DEPLOY_ROOT||null,sourceSha256:BRIDGE_SHA256,expectedSourceSha256:EXPECTED_BRIDGE_SHA256||null,provenanceVerified,continuity:loadNv02Continuity()}));return;}res.writeHead(404);res.end();});
+const bridgeServer=http.createServer((req,res)=>{if(req.url==='/health'){const provenanceVerified=Boolean(APPROVED_HEAD&&DEPLOY_ROOT&&EXPECTED_BRIDGE_SHA256&&EXPECTED_BRIDGE_SHA256===BRIDGE_SHA256);res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({ok:true,mode:'APP_CHROME_LOCAL_UI_ONLY',controllerRequired:false,controllerEnabledFlagIgnored:true,worker:'NV02',canonicalOwnership:true,workers:ownedWorkers,pid:process.pid,approvedHead:APPROVED_HEAD||null,deployRoot:DEPLOY_ROOT||null,sourceSha256:BRIDGE_SHA256,expectedSourceSha256:EXPECTED_BRIDGE_SHA256||null,provenanceVerified,continuity:loadNv02Continuity()}));return;}res.writeHead(404);res.end();});
 bridgeServer.on('error',(error)=>{log('NV02_CANONICAL_OWNER_BIND_FAILED',{error:String(error),code:error?.code||null});releaseAllWorkerOwnership();process.exit(42);});
-bridgeServer.listen(8799,'127.0.0.1',()=>log('BRIDGE_READY',{port:8799,mode:'NV02_ISOLATED_AUTO_CONTINUE',controllerRequired:false,controllerEnabledFlagIgnored:true,canonicalOwnership:true,pid:process.pid,approvedHead:APPROVED_HEAD||null,sourceSha256:BRIDGE_SHA256,provenanceVerified:Boolean(APPROVED_HEAD&&DEPLOY_ROOT&&EXPECTED_BRIDGE_SHA256&&EXPECTED_BRIDGE_SHA256===BRIDGE_SHA256)}));
+bridgeServer.listen(8799,'127.0.0.1',()=>log('BRIDGE_READY',{port:8799,mode:'APP_CHROME_LOCAL_UI_ONLY',controllerRequired:false,controllerEnabledFlagIgnored:true,canonicalOwnership:true,pid:process.pid,approvedHead:APPROVED_HEAD||null,sourceSha256:BRIDGE_SHA256,provenanceVerified:Boolean(APPROVED_HEAD&&DEPLOY_ROOT&&EXPECTED_BRIDGE_SHA256&&EXPECTED_BRIDGE_SHA256===BRIDGE_SHA256)}));
 setInterval(()=>void tick(),3000).unref();
 void tick();

@@ -118,12 +118,16 @@ try{
   Copy-Item $ConfigPath $configBackup -Force
   $effectiveConfig=Get-Content $ConfigPath -Raw | ConvertFrom-Json
   Assert-Ok ($null -ne $effectiveConfig.autopilot) 'AUTOPILOT_CONFIG_MISSING'
-  $effectiveConfig.autopilot.enabled=$true
-  $effectiveConfig.autopilot.stateUrl='http://127.0.0.1:8794/api/ui-autopilot/snapshot'
+  $effectiveConfig.autopilot.enabled=$false
+  if($effectiveConfig.autopilot.PSObject.Properties.Name -contains 'stateUrl'){
+    $effectiveConfig.autopilot.PSObject.Properties.Remove('stateUrl')
+  }
+  if($effectiveConfig.recovery -and ($effectiveConfig.recovery.PSObject.Properties.Name -contains 'startupReadyUrl')){
+    $effectiveConfig.recovery.PSObject.Properties.Remove('startupReadyUrl')
+  }
   [IO.File]::WriteAllText($ConfigPath,($effectiveConfig|ConvertTo-Json -Depth 20),[Text.UTF8Encoding]::new($false))
   $effectiveConfig=Get-Content $ConfigPath -Raw | ConvertFrom-Json
-  Assert-Ok ($effectiveConfig.autopilot.enabled -eq $true) 'APP_CHROME_EXTERNAL_AUTOPILOT_ENABLE_FAILED'
-  Assert-Ok ([string]$effectiveConfig.autopilot.stateUrl -eq 'http://127.0.0.1:8794/api/ui-autopilot/snapshot') 'APP_CHROME_STATE_URL_MISMATCH'
+  Assert-Ok ($effectiveConfig.autopilot.enabled -eq $false) 'APP_CHROME_LOCAL_ONLY_AUTOPILOT_DISABLE_FAILED'
 
   try{
     $state=Invoke-RestMethod -Uri 'http://127.0.0.1:8798/api/state' -TimeoutSec 3

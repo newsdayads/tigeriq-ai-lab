@@ -34,8 +34,10 @@ describe('App Chrome chat lifecycle',()=>{
     expect(bridge).toContain("resumeUrl:'', // legacy conversation pointers are never restored");
     expect(bridge).not.toContain("await navigate(target,state.resumeChatUrl)");
     expect(bridge).not.toContain("WORKER_RESUME_URL_RESTORED");
-    expect(bridge).toContain("CURRENT_WORK_NEW_CHAT_RESTORED");
-    expect(bridge).toContain("READY_UNASSIGNED");
+    expect(bridge).not.toContain("CURRENT_WORK_NEW_CHAT_RESTORED");
+    expect(bridge).not.toContain("READY_UNASSIGNED");
+    expect(bridge).toContain("BOOT_FRESH_CONTEXT_READY");
+    expect(bridge).toContain("LOCAL_CONTINUE_DISPATCHED");
   });
 
   it('wires real stuck-WORKING recovery and view-follow for generic workers',()=>{
@@ -45,6 +47,6 @@ describe('App Chrome chat lifecycle',()=>{
     expect(bridge).toContain("chatLoadRecoveryStage:resolved?3");
     expect(bridge).toContain("genericWorkerEvent(w.id,deferred?'VIEW_FOLLOW_BOTTOM_DEFERRED':'VIEW_FOLLOW_BOTTOM'");
     expect(bridge).toContain("nextViewFollowAt:Number(raw.nextViewFollowAt)");
-    expect(bridge).toContain("chatStartedAt:state.chatStartedAt");
+    expect(bridge).toContain("nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)");
   });
 });

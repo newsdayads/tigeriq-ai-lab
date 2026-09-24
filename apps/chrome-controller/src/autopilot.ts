@@ -14,6 +14,12 @@ export function classifyAutoContinueDispatchFailure(error:unknown,dispatchSubmit
     'COMMAND_TIMEOUT_NOT_DELIVERED',
     'COMPOSER_NOT_FOUND',
     'SEND_BUTTON_NOT_FOUND',
+    'MODEL_CONTROL_NOT_EXACT_OR_UNIQUE',
+    'MODEL_PROFILE_BLOCKED:',
+    'MODEL_PROFILE_MISMATCH',
+    'MODEL_SELECTOR_OPEN_FAILED',
+    'GPT_5_6_SOL_',
+    'REASONING_',
     'UI_JOB_ACTIVE:',
     'UI_JOB_DUPLICATE_ACTIVE:',
   ].some((marker)=>message.includes(marker))?'SAFE_RETRY':'UNCERTAIN';

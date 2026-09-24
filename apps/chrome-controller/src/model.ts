@@ -14,8 +14,8 @@ export interface WorkArea { left:number; top:number; width:number; height:number
 export interface WindowPlacement { left:number; top:number; width:number; height:number }
 
 const ALLOWED_HOSTS=new Set(['chatgpt.com','gemini.google.com']);
-const DEFAULT_AUTOPILOT:AutopilotConfig={enabled:true,pollIntervalMs:15000,requestTimeoutMs:5000,maxSnapshotAgeMs:300000,dispatchLeaseTtlMs:300000};
-const DEFAULT_RECOVERY:RecoveryConfig={heartbeatStaleMs:90000,checkIntervalMs:15000,maxReopenAttempts:2,reopenBackoffMs:15000,startupReadyUrl:'http://127.0.0.1:8795/health',startupReadyTimeoutMs:120000,startupAttachGraceMs:20000,launchBrokerUrl:'http://127.0.0.1:8800',launchBrokerTimeoutMs:5000};
+const DEFAULT_AUTOPILOT:AutopilotConfig={enabled:false,pollIntervalMs:15000,requestTimeoutMs:5000,maxSnapshotAgeMs:300000,dispatchLeaseTtlMs:300000};
+const DEFAULT_RECOVERY:RecoveryConfig={heartbeatStaleMs:90000,checkIntervalMs:15000,maxReopenAttempts:2,reopenBackoffMs:15000,startupReadyTimeoutMs:120000,startupAttachGraceMs:20000,launchBrokerUrl:'http://127.0.0.1:8800',launchBrokerTimeoutMs:5000};
 
 export function isAllowedWorkerUrl(value:string):boolean{try{const u=new URL(value);return u.protocol==='https:'&&ALLOWED_HOSTS.has(u.hostname)}catch{return false}}
 export function isWorkerEnabled(worker:Pick<WorkerConfig,'enabled'>):boolean{return worker.enabled!==false}

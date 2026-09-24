@@ -118,7 +118,8 @@ let startupRecoveryInFlight=false;
 let lastAutopilotStopReason='';
 let selfRunTicking=false;
 let selfRunTimer:NodeJS.Timeout|undefined;
-const selfRunEnabled=false; // #504: App Chrome is UI continuity only; backlog/job selection is external
+const selfRunEnabled=false;
+const externalWorkAutopilotEnabled=false; // App Chrome is local UI control only; no Core/queue/GitHub assignment
 const selfRunGithubToken=String(process.env.TIGERIQ_GITHUB_TOKEN||process.env.GITHUB_TOKEN||'').trim();
 const selfRunGithubOwner=String(process.env.TIGERIQ_GITHUB_OWNER||'newsdayads').trim();
 const selfRunGithubRepo=String(process.env.TIGERIQ_GITHUB_REPO||'tigeriq-ai-lab').trim();
@@ -482,18 +483,8 @@ async function dispatch(
   });
 }
 
-function snapshotRequiredWorkers():WorkerId[]{return latestSnapshot?.requiredWorkers?.filter((id)=>states.get(id)?.enabled)??[];}
-function workerHasActiveJob(id:WorkerId,{allowWaitingEvidence=false,allowContinuable=false}:{allowWaitingEvidence?:boolean;allowContinuable?:boolean}={}){
-  const activeUiJob=uiJobLedger.active(id);
-  const continuable=Boolean(activeUiJob&&['SUBMITTED','WORKING','WAITING_EVIDENCE','VERIFY'].includes(activeUiJob.stage));
-  if(activeUiJob&&!(allowWaitingEvidence&&activeUiJob.stage==='WAITING_EVIDENCE')&&!(allowContinuable&&continuable))return true;
-  if(id==='NV02'){
-    if(!config.autopilot.enabled)return false;
-    if(autopilotState.pendingJobId||autopilotState.uncertainJobId)return true;
-    const previous=latestSnapshot?.previousJob;
-    return Boolean(previous&&previous.workerId==='NV02'&&previous.jobId===autopilotState.lastDispatchedJobId&&['QUEUED','READY','RUNNING'].includes(previous.status));
-  }
-  return snapshotRequiredWorkers().includes(id);
+function workerHasActiveJob(id:WorkerId,_options:{allowWaitingEvidence?:boolean;allowContinuable?:boolean}={}){
+  return states.get(id)?.lastHeartbeat?.uiBusy===true;
 }
 function workerNeeded(id:WorkerId){
   const state=states.get(id);
@@ -764,7 +755,7 @@ function reconcileCancelledUiJobFromSnapshot(){
   return true;
 }
 async function autopilotTick(){
-  if(autopilotTicking||!config.autopilot.enabled||paused||killed)return;
+  if(autopilotTicking||!externalWorkAutopilotEnabled||paused||killed)return;
   autopilotTicking=true;
   try{
     if(config.autopilot.stateUrl){
@@ -986,14 +977,9 @@ async function recoveryTick(){
   }finally{recoveryTicking=false;}
 }
 async function waitForStartupRuntime(){
-  const url=config.recovery.startupReadyUrl;
-  if(!url)return true;
-  const deadline=Date.now()+config.recovery.startupReadyTimeoutMs;
-  while(Date.now()<deadline){
-    try{const response=await fetch(url,{signal:AbortSignal.timeout(3000)});if(response.ok)return true;}catch{}
-    await delay(3000);
-  }
-  return false;
+  // App Chrome is intentionally isolated from Core/queue/runtime services.
+  // Local Chrome/CDP readiness is the only startup prerequisite.
+  return true;
 }
 async function waitForStartupAttach(workerId:WorkerId){
   const deadline=Date.now()+config.recovery.startupAttachGraceMs;
@@ -1010,7 +996,7 @@ async function startupRecovery(){
       persistEvidence();
       return;
     }
-    log('STARTUP_RUNTIME_READY',{url:config.recovery.startupReadyUrl??null,interactiveSession:isInteractiveDesktopSession(),sessionName:process.env.SESSIONNAME??null});
+    log('STARTUP_LOCAL_RUNTIME_READY',{interactiveSession:isInteractiveDesktopSession(),sessionName:process.env.SESSIONNAME??null,externalWorkAutopilotEnabled:false});
     if(paused){
       log('STARTUP_OWNER_INTERACTION_READ_ONLY');
       persistEvidence();
@@ -1046,7 +1032,7 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
       interactiveSession:isInteractiveDesktopSession(),
       sessionName:process.env.SESSIONNAME??null,
       autopilot:autopilotState,
-      externalWorkAutopilotEnabled:config.autopilot.enabled,
+      externalWorkAutopilotEnabled,
       selfRun:selfRunState,
       githubSelfRun:{...selfRunState,tokenReady:Boolean(selfRunGithubToken),tickInFlight:selfRunTicking,claims:selfRunClaims.snapshot()},
       utilityPausedWorkers:[...utilityPausedWorkers],
@@ -1063,7 +1049,7 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
   if(url.pathname==='/api/autopilot/state'&&req.method==='GET'){json(res,200,{state:autopilotState,snapshot:latestSnapshot??null});return true;}
   if(url.pathname==='/api/autopilot/snapshot'&&req.method==='POST'){
     try{
-      if(!config.autopilot.enabled)throw new Error('EXTERNAL_WORK_AUTOPILOT_DISABLED');
+      if(!externalWorkAutopilotEnabled)throw new Error('EXTERNAL_WORK_AUTOPILOT_DISABLED');
       const snapshot=validateExternalSnapshot(await body(req));
       latestSnapshot=snapshot;
       atomicJson(autopilotSnapshotPath,snapshot);
@@ -1076,7 +1062,7 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
   }
   if(url.pathname==='/api/autopilot/continue-now'&&req.method==='POST'){
     try{
-      if(!config.autopilot.enabled)throw new Error('EXTERNAL_WORK_AUTOPILOT_DISABLED');
+      if(!externalWorkAutopilotEnabled)throw new Error('EXTERNAL_WORK_AUTOPILOT_DISABLED');
       if(paused)throw new Error('OWNER_INTERACTION_READ_ONLY');
       if(killed)throw new Error('CONTROLLER_KILLED');
       await fetchExternalSnapshot();
@@ -1270,7 +1256,7 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
     return true;
   }
   if(url.pathname==='/api/pause'&&req.method==='POST'){setOwnerInteractionReadOnly(true);persistEvidence();json(res,200,{ok:true,ownerInteractionMode:'READ_ONLY'});return true;}
-  if(url.pathname==='/api/resume'&&req.method==='POST'){setOwnerInteractionReadOnly(false);killed=false;persistEvidence();void recoveryTick();void autopilotTick();json(res,200,{ok:true,ownerInteractionMode:'AUTOMATION'});return true;}
+  if(url.pathname==='/api/resume'&&req.method==='POST'){setOwnerInteractionReadOnly(false);killed=false;persistEvidence();void recoveryTick();json(res,200,{ok:true,ownerInteractionMode:'AUTOMATION',externalWorkAutopilotEnabled:false});return true;}
   if(url.pathname==='/api/kill'&&req.method==='POST'){
     killed=true;setOwnerInteractionReadOnly(true);
     for(const queue of commandQueues.values())queue.splice(0);
@@ -1458,9 +1444,13 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
         state.lastError=undefined;
         recoveryAttempts.set(workerId,0);
         log('UTILITY_WORKER_RESUMED',{workerId});persistEvidence();
-        if(!recentHeartbeat(workerId))void recoverWorker(workerId);
-        if(workerId==='NV02')void autopilotTick();
-        json(res,200,{ok:true});return true;
+        if(!recentHeartbeat(workerId)){
+          void recoverWorker(workerId);
+          json(res,200,{ok:true,status:'LOCAL_RUN_RECOVERY_STARTED'});return true;
+        }
+        const result=await sendCommand(workerId,'LOCAL_CONTINUE_NOW').catch(error=>({status:'LOCAL_CONTINUE_DEFERRED',error:String(error)}));
+        log('UTILITY_LOCAL_CONTINUE_NOW',{workerId,status:(result as any)?.status??null});
+        json(res,200,{ok:true,status:(result as any)?.status??'LOCAL_CONTINUE_DEFERRED'});return true;
       }
       assertWorkerEnabled(workerId);
       if(action==='open-canonical'){await uiQueue.enqueue(()=>sendCommand(workerId,'NAVIGATE',{url:worker.homeUrl}));json(res,200,{ok:true});return true;}
@@ -1510,7 +1500,7 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
         json(res,202,{ok:true,mode:'BROKER_LAUNCH_REQUESTED'});
         return true;
       }
-      if(action==='archive'){const data=await body(req);if(typeof data.receiptRef!=='string'||!data.receiptRef.startsWith('https://github.com/'))throw new Error('ARCHIVE_DURABLE_RECEIPT_REQUIRED');if(workerHasActiveJob(workerId)||state.lastHeartbeat?.uiBusy)throw new Error('ARCHIVE_ACTIVE_JOB_FORBIDDEN');await uiQueue.enqueue(()=>sendCommand(workerId,'ARCHIVE_CHAT',{receiptRef:data.receiptRef}));json(res,200,{ok:true});return true;}
+      if(action==='archive'){if(state.lastHeartbeat?.uiBusy)throw new Error('ARCHIVE_ACTIVE_UI_FORBIDDEN');await uiQueue.enqueue(()=>sendCommand(workerId,'ARCHIVE_CHAT'));json(res,200,{ok:true,mode:'LOCAL_UI_ONLY'});return true;}
     }catch(error){json(res,409,{ok:false,error:String(error)});return true;}
   }
   const match=url.pathname.match(/^\/api\/workers\/(NV03|NV04|NV02)\/(start|focus|layout|dispatch|close|unblock|enable|disable)$/);
