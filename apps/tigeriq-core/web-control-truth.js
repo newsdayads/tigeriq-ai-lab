@@ -126,7 +126,7 @@ function applyPeopleFullFilter() {
     const status = el.dataset.status;
     const text = el.textContent.toLowerCase();
     const gp = p === 'all' || (p === 'local' && provider === 'ollama') || (p === 'cloud' && provider !== 'ollama');
-    const gs = s === 'all' || (s === 'active' && ['BUSY','IDLE','READY'].includes(status)) || (s === 'problem' && ['ERROR','OFFLINE','RATE_LIMITED','WAIT_KEY'].includes(status));
+    const gs = s === 'all' || (s === 'working' && status === 'BUSY') || (s === 'active' && ['BUSY','IDLE','READY'].includes(status)) || (s === 'problem' && ['ERROR','OFFLINE','RATE_LIMITED','WAIT_KEY'].includes(status));
     el.style.display = gp && gs && (!q || text.includes(q)) ? '' : 'none';
   });
 }
