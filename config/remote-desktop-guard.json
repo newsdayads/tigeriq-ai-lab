@@ -5,12 +5,12 @@
   "ownerAuthRequired": true,
   "authScopeBound": true,
   "authExpiryBound": true,
-  "leaseMode": "ATOMIC_SINGLE_USE_FILE",
-  "maxLeaseMs": 900000,
+  "leaseMode": "ATOMIC_SINGLE_USE_EXACT_ARGS",
+  "maxLeaseMs": 300000,
   "restartSafe": true,
   "failClosed": true,
   "runtimeGuardRequired": true,
-  "remoteSetConfigAllowed": false,
+  "toolSurfaceDefault": "READ_ONLY",
   "pluginPermissionDesired": "ask_before_writes",
   "pluginPermissionIsAuthority": false,
   "defaultLeasePath": "D:\\TigerIQ\\Runtime\\desktop-commander-remote\\guard\\owner-lease.json",
@@ -24,15 +24,7 @@
     "\\\\Secrets(?:\\\\|$)"
   ],
   "desktopCommanderVersionPinnedForPatch": "0.2.51",
+  "launcherPreflightRequired": true,
   "noDirectMain": true,
-  "noProductionRelease": true,
-  "ownerAuthorizationVerification": {
-    "authority": "GitHub canonical issue comment",
-    "repository": "newsdayads/tigeriq-ai-lab",
-    "requiredAuthor": "newsdayads",
-    "failClosedOnNetworkOrMismatch": true,
-    "credentialOnPC01Required": false
-  },
-  "dedicatedRemoteRuntimeEnforcement": true,
-  "remoteMetadataIsAuthority": false
+  "noProductionRelease": true
 }
