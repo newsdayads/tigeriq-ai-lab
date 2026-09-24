@@ -483,18 +483,8 @@ async function dispatch(
   });
 }
 
-function snapshotRequiredWorkers():WorkerId[]{return latestSnapshot?.requiredWorkers?.filter((id)=>states.get(id)?.enabled)??[];}
-function workerHasActiveJob(id:WorkerId,{allowWaitingEvidence=false,allowContinuable=false}:{allowWaitingEvidence?:boolean;allowContinuable?:boolean}={}){
-  const activeUiJob=uiJobLedger.active(id);
-  const continuable=Boolean(activeUiJob&&['SUBMITTED','WORKING','WAITING_EVIDENCE','VERIFY'].includes(activeUiJob.stage));
-  if(activeUiJob&&!(allowWaitingEvidence&&activeUiJob.stage==='WAITING_EVIDENCE')&&!(allowContinuable&&continuable))return true;
-  if(id==='NV02'){
-    if(!externalWorkAutopilotEnabled)return false;
-    if(autopilotState.pendingJobId||autopilotState.uncertainJobId)return true;
-    const previous=latestSnapshot?.previousJob;
-    return Boolean(previous&&previous.workerId==='NV02'&&previous.jobId===autopilotState.lastDispatchedJobId&&['QUEUED','READY','RUNNING'].includes(previous.status));
-  }
-  return snapshotRequiredWorkers().includes(id);
+function workerHasActiveJob(id:WorkerId,_options:{allowWaitingEvidence?:boolean;allowContinuable?:boolean}={}){
+  return states.get(id)?.lastHeartbeat?.uiBusy===true;
 }
 function workerNeeded(id:WorkerId){
   const state=states.get(id);
