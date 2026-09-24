@@ -818,7 +818,7 @@ internal sealed class AdvancedInfoForm : Form
         AutoScaleMode = AutoScaleMode.None;
         DoubleBuffered = true;
         Text = "TigerIQ — Nâng cao";
-        ClientSize = new Size(420, 420);
+        ClientSize = new Size(420, 480);
         MinimumSize = Size;
         MaximumSize = Size;
         StartPosition = FormStartPosition.CenterScreen;
