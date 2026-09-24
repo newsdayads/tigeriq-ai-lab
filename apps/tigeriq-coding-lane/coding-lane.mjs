@@ -129,6 +129,16 @@ export function activeProviderCooldownIds(failure,nowMs=Date.now()){
   const ledger=Array.isArray(failure?.detail?.failureLedger)?failure.detail.failureLedger:[];
   return [...new Set(ledger.filter(x=>x?.class==='rate_limit'&&Date.parse(x?.cooldownUntil||0)>nowMs).map(x=>x.resourceId).filter(Boolean))];
 }
+export function providerCooldownPollPlan(failure,nowMs=Date.now(),maxPollMs=RESOURCE_WAIT_MAX_DELAY_MS){
+  const ledger=Array.isArray(failure?.detail?.failureLedger)?failure.detail.failureLedger:[];
+  const active=ledger.map(x=>({resourceId:x?.resourceId,until:Date.parse(x?.cooldownUntil||0)}))
+    .filter(x=>x.resourceId&&Number.isFinite(x.until)&&x.until>nowMs)
+    .sort((a,b)=>a.until-b.until);
+  if(!active.length)return {wait:false,nextAttemptAt:null,delayMs:0,resourceIds:[]};
+  const earliest=active[0].until;
+  const nextMs=Math.min(earliest,nowMs+Math.max(1000,Number(maxPollMs)||RESOURCE_WAIT_MAX_DELAY_MS));
+  return {wait:true,nextAttemptAt:new Date(nextMs).toISOString(),delayMs:nextMs-nowMs,resourceIds:[...new Set(active.map(x=>x.resourceId))],cooldownUntil:new Date(earliest).toISOString()};
+}
 
 export function isResourceTransientError(error){
   if(['AI_RESOURCES_UNAVAILABLE','AI_RESOURCES_BUSY'].includes(error?.code))return true;
@@ -648,6 +658,13 @@ async function failJob(j,e){
   const current=(await pool.query("select * from tigeriq_coding_jobs where id=$1",[j.id])).rows[0]||j;
   const failure={message:String(e?.message||e),code:e?.code||null,detail:e?.detail||null};
   if(isResourceTransientError(e)){
+    const cooldownPlan=/NO_(?:IMPLEMENTER_AVAILABLE|INDEPENDENT_REVIEWER_AVAILABLE)/i.test(failure.message)?providerCooldownPollPlan(current.failure):null;
+    if(cooldownPlan?.wait){
+      const preservedCount=Math.max(0,Number(current.resource_retry_count)||0);
+      await pool.query("update tigeriq_coding_jobs set status='waiting_resource',failure=$2,next_attempt_at=$3,completed_at=null where id=$1",[j.id,JSON.stringify({...failure,cooldownWait:{delayMs:cooldownPlan.delayMs,nextAttemptAt:cooldownPlan.nextAttemptAt,cooldownUntil:cooldownPlan.cooldownUntil,resourceIds:cooldownPlan.resourceIds,preservedRetryCount:preservedCount}}),cooldownPlan.nextAttemptAt]);
+      await pool.query("update tigeriq_coding_objectives set status='active',summary=$2,updated_at=now() where id=$1",[j.objective_id,`WAITING_RESOURCE_COOLDOWN retry ${preservedCount}/${RESOURCE_WAIT_MAX_RETRIES}: ${failure.message}`.slice(0,1000)]);
+      return;
+    }
     const plan=resourceWaitPlan({retryCount:current.resource_retry_count,startedAt:current.resource_retry_started_at});
     if(plan.wait){
       await pool.query("update tigeriq_coding_jobs set status='waiting_resource',failure=$2,next_attempt_at=$3,resource_retry_count=$4,resource_retry_started_at=coalesce(resource_retry_started_at,now()),completed_at=null where id=$1",[j.id,JSON.stringify({...failure,resourceWait:{retryCount:plan.retryCount,delayMs:plan.delayMs,nextAttemptAt:plan.nextAttemptAt}}),plan.nextAttemptAt,plan.retryCount]);
