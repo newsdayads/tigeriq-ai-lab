@@ -6,7 +6,7 @@
   const LABEL = {
     IDLE:'RẢNH', BUSY:'ĐANG LÀM', READY:'SẴN SÀNG', WAIT_KEY:'CHỜ KEY',
     RATE_LIMITED:'HẾT HẠN MỨC', OFFLINE:'NGOẠI TUYẾN', ERROR:'LỖI',
-    MANUAL:'THEO NHU CẦU', PAUSED:'TẠM DỪNG', NO_API:'THEO NHU CẦU', DISABLED:'TẮT',
+    MANUAL:'THEO NHU CẦU', PAUSED:'TẠM DỪNG', NO_API:'KHÔNG CÓ API', DISABLED:'TẮT',
     RETIRED:'ĐÃ NGỪNG', UNASSIGNED:'CHƯA CẤP'
   };
   const safe = value => String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
