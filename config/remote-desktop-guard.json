@@ -1,23 +1,27 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "remoteMutationDefault": "DENY",
-  "readOnlyDefault": "PASS",
+  "readOnlyDefault": "PASS_WITH_OBSERVATION_PATH_SCOPE",
   "ownerAuthRequired": true,
   "authScopeBound": true,
   "authExpiryBound": true,
-  "leaseMode": "ONE_TOOL_CALL",
+  "leaseMode": "ATOMIC_SINGLE_USE_FILE",
   "maxLeaseMs": 900000,
   "restartSafe": true,
   "failClosed": true,
-  "chatgptPluginPermissionMode": "ask_before_writes",
-  "defaultShell": "__TIGERIQ_REMOTE_SHELL_DENIED__.exe",
-  "allowedDirectories": [
+  "runtimeGuardRequired": true,
+  "remoteSetConfigAllowed": false,
+  "pluginPermissionDesired": "ask_before_writes",
+  "pluginPermissionIsAuthority": false,
+  "defaultLeasePath": "D:\\TigerIQ\\Runtime\\desktop-commander-remote\\guard\\owner-lease.json",
+  "allowedObservationDirectories": [
     "D:\\TigerIQ\\Apps\\ChromeController\\Runtime",
     "D:\\TigerIQ\\Evidence",
     "D:\\TigerIQ\\Logs",
     "D:\\TigerIQ\\Checkpoints"
   ],
   "forbiddenDirectoryPatterns": ["\\\\Secrets(?:\\\\|$)"],
+  "desktopCommanderVersionPinnedForPatch": "0.2.51",
   "noDirectMain": true,
   "noProductionRelease": true
 }
