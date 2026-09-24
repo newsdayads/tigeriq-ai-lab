@@ -4,12 +4,12 @@ const CACHE_MS = Number(process.env.TIGERIQ_REGISTRY_CACHE_MS || 60000);
 
 const fallbackAssignments = new Map([
   ['NV00',{ employee_id:'NV00', name:'Vy (Trợ lý)', admin_state:'CHIEF_OF_STAFF / PRIMARY_UI / OWNER_INTERFACE' }],
-  ['NV01',{ employee_id:'NV01', name:'Minh', admin_state:'MANUAL_ONLY / READY' }],
+  ['NV01',{ employee_id:'NV01', name:'MacroDroid Z Flip', admin_state:'OWNER_STOPPED / DO_NOT_ROUTE' }],
   ['NV09',{ employee_id:'NV09', name:'Qwen3-Coder Local', admin_state:'IDLE_ON_DEMAND / LOCAL_OLLAMA_11434 / CODING_CAPABILITY / RANK_PRIMARY' }],
   ['NV02',{ employee_id:'NV02', name:'ChatGPT Plus', admin_state:'AVAILABLE_MANUAL / PRIMARY_UI_EXECUTOR / SEPARATE_CHROME_SESSION / NOT_CHIEF_OF_STAFF' }],
   ['NV03',{ employee_id:'NV03', name:'ChatGPT Go', admin_state:'AVAILABLE_MANUAL / SECOND_REVIEW / SUPPORT_UI_ACCOUNT' }],
   ['NV04',{ employee_id:'NV04', name:'Gemini Pro', admin_state:'AVAILABLE_MANUAL / DEEP_RESEARCH / INDEPENDENT_REVIEW / PAID_SUBSCRIPTION_CONFIRMED_2026-09-14' }],
-  ['NV06',{ employee_id:'NV06', name:'OpenClaw', admin_state:'PAUSED' }],
+  ['NV06',{ employee_id:'NV06', name:'OpenClaw', admin_state:'ACTIVE_CORE_RESOURCE / PC_OPERATOR / ZERO_COST / ACCEPTANCE_1528_PASS' }],
   ['NV10',{ employee_id:'NV10', name:'Ollama', admin_state:'ACTIVE_CORE_RESOURCE / ONLINE_IDLE / LOCAL_AI' }],
   ['NV11',{ employee_id:'NV11', name:'Groq', admin_state:'LIVE_PASS / READY_WHEN_CALLED / CORE_RESOURCE' }],
   ['NV12',{ employee_id:'NV12', name:'Gemini', admin_state:'LIVE_PASS / READY_WHEN_CALLED / CORE_RESOURCE / FREE_GUARD' }],

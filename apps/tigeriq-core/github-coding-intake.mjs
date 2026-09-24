@@ -1,6 +1,7 @@
 import {createHash} from 'node:crypto';
 import {Pool} from 'pg';
-import {backlogOwnerDirect,isActiveExecutionSpec,sortBacklogSpecs} from './github-backlog-policy.mjs';
+import {backlogOwnerDirect,effectiveBacklogPriority,isActiveExecutionSpec,sortBacklogSpecs} from './github-backlog-policy.mjs';
+import {classifyWorkOrder} from './work-routing-policy.mjs';
 import {controlPlaneRepairIntent,isProtectedControlPlanePath} from '../shared/control-plane-lock.mjs';
 const DEFAULT_OWNER='newsdayads';
 const DEFAULT_REPO='tigeriq-ai-lab';
@@ -77,16 +78,16 @@ export function codingScopesOverlap(a,b){
 export function parseCodingIssue(issue){
   if(!issue||issue.pull_request||issue.state!=='open')return null;
   const body=String(issue.body||'');
-  if(/^EXECUTION_SURFACE=UI$/m.test(body))return null;
   const required=[['TIGERIQ_EXECUTABLE','true'],['OWNER_POLICY','AUTO'],['AUTONOMOUS_CODE','true'],['ZERO_COST','true'],['NO_PC01_SHELL','true'],['NO_PAID_COST','true'],['NO_CREDENTIAL_CHANGE','true'],['NO_DESTRUCTIVE','true'],['NO_PRODUCTION_RELEASE','true'],['NO_BROWSER_AUTH','true'],['NO_DIRECT_MAIN','true']];
   if(required.some(([k,v])=>!exactFlag(body,k,v)))return null;
   if(!isActiveExecutionSpec(body))return null;
-  const sourcePriority=body.match(/^PRIORITY=(P[0-3])$/m)?.[1]||'P1';
-  const priority=sourcePriority==='P3'?'P2':sourcePriority;
+  const classification=classifyWorkOrder(body);
+  if(classification.route!=='CODING')return null;
+  const {sourcePriority,priority,legacyP0Autonomous,ownerControlled,assignedExecutor}=effectiveBacklogPriority(body,'P3');
   const scopeLease=parseCodingScope(body);
   const controlRepair=controlPlaneRepairIntent(body);
   if(scopeLease.paths.some(isProtectedControlPlanePath)&&!controlRepair.delegated)return null;
-  return {number:Number(issue.number),title:String(issue.title||''),body,priority,sourcePriority,url:String(issue.html_url||''),dependsOn:extractCodingDependencies(body),ownerDirect:backlogOwnerDirect(body),scopeLease,controlRepair};
+  return {number:Number(issue.number),title:String(issue.title||''),body,priority,sourcePriority,legacyP0Autonomous,ownerControlled,assignedExecutor,url:String(issue.html_url||''),dependsOn:extractCodingDependencies(body),ownerDirect:backlogOwnerDirect(body),scopeLease,controlRepair};
 }
 
 async function jsonFetch(fetchImpl,url,init={}){const res=await fetchImpl(url,{...init,signal:AbortSignal.timeout(12000)});const text=await res.text();let body={};try{body=text?JSON.parse(text):{}}catch{body={text}}if(!res.ok)throw new Error(`HTTP_${res.status}:${String(body?.error||body?.message||text).slice(0,300)}`);return body}

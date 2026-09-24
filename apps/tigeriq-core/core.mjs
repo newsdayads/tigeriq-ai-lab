@@ -449,8 +449,29 @@ async function candidates(capability='general',options={}){
   const q=await pool.query(`select * from tigeriq_ai_resources where enabled=true and credential_state in ('LOCAL','READY') and health_state in ('READY','ONLINE') and current_job_id is null`);const taskKind=String(options.taskKind||'general');const stats=await taskPerformance(taskKind);const rows=q.rows.map(x=>({...x,taskStats:{[taskKind]:stats.get(x.resource_id)||{}}}));return rankCandidates(rows,{profile:deriveRoutingProfile({requested:options.profile,taskKind,capability}),capability,taskKind,reviewerResourceId:options.reviewerResourceId||null,reviewerResourceIds:options.reviewerResourceIds||[]});
 }
 async function claimResource(capability,jobId,excluded=[],options={}){
-  const taskKind=String(options.taskKind||'general'),profile=deriveRoutingProfile({requested:options.profile,taskKind,capability});const q=await pool.query(`select * from tigeriq_ai_resources where enabled=true and credential_state in ('LOCAL','READY') and health_state in ('READY','ONLINE') and current_job_id is null`);const stats=await taskPerformance(taskKind);const rows=q.rows.filter(x=>!excluded.includes(x.resource_id)).map(x=>({...x,taskStats:{[taskKind]:stats.get(x.resource_id)||{}}}));const decision=rankCandidates(rows,{profile,capability,taskKind,reviewerResourceId:options.reviewerResourceId||null,reviewerResourceIds:options.reviewerResourceIds||[]});if(!decision.chosen)return null;const c=await pool.connect();try{await c.query('begin');const locked=await c.query(`select * from tigeriq_ai_resources where resource_id=$1 and enabled=true and credential_state in ('LOCAL','READY') and health_state in ('READY','ONLINE') and current_job_id is null and (cooldown_until is null or cooldown_until<=now()) for update skip locked`,[decision.chosen.resourceId]);const r=locked.rows[0];if(!r){await c.query('commit');return null;}await c.query("update tigeriq_ai_resources set current_job_id=$2,work_state='BUSY',updated_at=now() where resource_id=$1",[r.resource_id,jobId]);await c.query('commit');const evidence={profile,taskKind,capability,candidates:decision.candidates,chosen:decision.chosen};await pool.query("update tigeriq_jobs set routing_profile=$2,routing_decision=$3 where id=$1",[jobId,profile,JSON.stringify(evidence)]).catch(()=>{});await event('ROUTING_DECISION',{jobId,employeeId:r.employee_id,resourceId:r.resource_id,provider:r.provider,taskKind,profile,decision:evidence});return {...r,routingProfile:profile,routingDecision:evidence};}catch(e){await c.query('rollback');throw e;}finally{c.release();}
+  const taskKind=String(options.taskKind||'general'),profile=deriveRoutingProfile({requested:options.profile,taskKind,capability});
+  const q=await pool.query(`select * from tigeriq_ai_resources where enabled=true and credential_state in ('LOCAL','READY') and health_state in ('READY','ONLINE') and current_job_id is null`);
+  const stats=await taskPerformance(taskKind);
+  const preferredEmployeeId=String(options.preferredEmployeeId||'').trim().toUpperCase();
+  let candidates=q.rows.filter(x=>!excluded.includes(x.resource_id));
+  if(preferredEmployeeId)candidates=candidates.filter(x=>String(x.employee_id||'').toUpperCase()===preferredEmployeeId);
+  const rows=candidates.map(x=>({...x,taskStats:{[taskKind]:stats.get(x.resource_id)||{}}}));
+  const decision=rankCandidates(rows,{profile,capability,taskKind,reviewerResourceId:options.reviewerResourceId||null,reviewerResourceIds:options.reviewerResourceIds||[]});
+  if(!decision.chosen)return null;
+  const client=await pool.connect();
+  try{
+    await client.query('begin');
+    const locked=await client.query(`select * from tigeriq_ai_resources where resource_id=$1 and enabled=true and credential_state in ('LOCAL','READY') and health_state in ('READY','ONLINE') and current_job_id is null and (cooldown_until is null or cooldown_until<=now()) for update skip locked`,[decision.chosen.resourceId]);
+    const r=locked.rows[0];if(!r){await client.query('commit');return null;}
+    await client.query("update tigeriq_ai_resources set current_job_id=$2,work_state='BUSY',updated_at=now() where resource_id=$1",[r.resource_id,jobId]);
+    await client.query('commit');
+    const evidence={profile,taskKind,capability,preferredEmployeeId:preferredEmployeeId||null,candidates:decision.candidates,chosen:decision.chosen};
+    await pool.query("update tigeriq_jobs set routing_profile=$2,routing_decision=$3 where id=$1",[jobId,profile,JSON.stringify(evidence)]).catch(()=>{});
+    await event('ROUTING_DECISION',{jobId,employeeId:r.employee_id,resourceId:r.resource_id,provider:r.provider,taskKind,profile,decision:evidence});
+    return {...r,routingProfile:profile,routingDecision:evidence};
+  }catch(e){await client.query('rollback');throw e;}finally{client.release();}
 }
+
 async function invokeRouted(prompt,capability,jobId,maxAttempts=3,options={}){
   if(capability==='coding'){const e=new Error('LOCAL_CODING_DISABLED_GITHUB_ONLY');e.kind='configuration';throw e;}const taskKind=String(options.taskKind||'general'),profile=deriveRoutingProfile({requested:options.profile,taskKind,capability});const failures=[],excluded=[];for(let i=0;i<maxAttempts;i++){const row=await claimResource(capability,jobId,excluded,{...options,profile,taskKind});if(!row)break;excluded.push(row.resource_id);const r=resources.find(x=>x.resourceId===row.resource_id);if(!r)continue;await pool.query("update tigeriq_jobs set employee_id=$2,resource_id=$3,provider=$4,routing_profile=$5,routing_decision=$6,attempts=attempts+1,lease_until=now()+interval '5 minutes' where id=$1",[jobId,r.id,r.resourceId,r.provider,profile,JSON.stringify(row.routingDecision)]);const started=Date.now();try{const text=await invokeProvider(r,prompt),latency=Date.now()-started;await markResourceSuccess(r,jobId,latency,'RESOURCE_SUCCESS',true,{taskKind,profile});return{text,resource:r,latencyMs:latency,failures,routingProfile:profile,routingDecision:row.routingDecision};}catch(error){let finalError=error,policy=failurePolicy(error?.kind||'outage');if(policy.retrySameResource){await event('ROUTING_RETRY',{jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind,profile,kind:policy.kind});try{const retryStarted=Date.now(),text=await invokeProvider(r,prompt),latency=Date.now()-retryStarted;await markResourceSuccess(r,jobId,latency,'RESOURCE_SUCCESS',true,{taskKind,profile});return{text,resource:r,latencyMs:latency,failures,routingProfile:profile,routingDecision:row.routingDecision};}catch(retryError){finalError=retryError;policy=failurePolicy(retryError?.kind||policy.kind);}}const kind=finalError?.kind||'outage';failures.push({employeeId:r.id,resourceId:r.resourceId,provider:r.provider,kind,message:String(finalError?.message||finalError)});await markResourceFailure(r,jobId,finalError,'RESOURCE_FAILURE',true,{taskKind,profile});if(policy.failover)await event('ROUTING_FAILOVER',{jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind,profile,kind});if(policy.stop)break;}}const e=new Error('NO_AI_RESOURCE_AVAILABLE');e.failures=failures;throw e;
 }
@@ -794,11 +815,11 @@ async function reviewerResourceIdsForJob(j){
 async function claimJob() {
   const c=await pool.connect();
   try { await c.query('begin');
-    const q=await c.query(`select j.* from tigeriq_jobs j join tigeriq_objectives o on o.id=j.objective_id
+    const q=await c.query(`select j.*,o.metadata as objective_metadata from tigeriq_jobs j join tigeriq_objectives o on o.id=j.objective_id
       where (j.status='queued' or (j.status='waiting_resource' and coalesce(j.next_attempt_at,now())<=now()))
         and j.attempts<j.max_attempts and o.status='active'
       order by case when j.status='waiting_resource' then 0 else 1 end,
-        case o.priority when 'P0' then 0 when 'P1' then 1 when 'P2' then 2 else 3 end,j.created_at
+        case o.priority when 'P0' then 0 when 'P1' then 1 when 'P2' then 2 when 'P3' then 3 when 'P4' then 4 when 'P5' then 5 else 6 end,j.created_at
       for update skip locked limit 1`);
     if(!q.rows[0]){await c.query('commit');return null;} const j=q.rows[0];
     await c.query("update tigeriq_jobs set status='running',started_at=coalesce(started_at,now()),lease_until=now()+interval '5 minutes' where id=$1",[j.id]);
@@ -822,7 +843,7 @@ async function claimJob() {
       return;
     }
     const reviewerResourceIds=await reviewerResourceIdsForJob(j);
-    const routed=await invokeRouted(j.prompt,j.capability,j.id,j.max_attempts-j.attempts,{taskKind:j.kind||'ai',profile:j.routing_profile||'AUTO',reviewerResourceIds});
+    const routed=await invokeRouted(j.prompt,j.capability,j.id,j.max_attempts-j.attempts,{taskKind:j.kind||'ai',profile:j.routing_profile||'AUTO',reviewerResourceIds,preferredEmployeeId:j.objective_metadata?.targetWorker||null});
     await hotPathStage(j,'EVIDENCE',{providerLatencyMs:routed.latencyMs,employeeId:routed.resource.id,resourceId:routed.resource.resourceId});
     const hadResourceWait=Number(j.resource_wait_count||0)>0;
     await pool.query("update tigeriq_jobs set status='done',employee_id=$2,resource_id=$3,provider=$4,routing_profile=$5,routing_decision=$6,result=$7,lease_until=null,completed_at=now(),next_attempt_at=null,resource_wait_count=0,resource_wait_started_at=null where id=$1",[j.id,routed.resource.id,routed.resource.resourceId,routed.resource.provider,routed.routingProfile,JSON.stringify(routed.routingDecision),JSON.stringify({text:routed.text,latencyMs:routed.latencyMs,failures:routed.failures,resourceId:routed.resource.resourceId,routingProfile:routed.routingProfile,routingDecision:routed.routingDecision})]);
@@ -990,7 +1011,7 @@ async function managerTick() {
   const q=await pool.query(`select o.* from tigeriq_objectives o where o.status='active' and o.next_check_at<=now()
     and coalesce(o.metadata->>'executionSurface','') not in ('CORE_OPENCLAW_BOUNDED','CORE_UI')
     and not exists(select 1 from tigeriq_jobs j where j.objective_id=o.id and j.status in ('queued','running','ui_assigned','ui_running'))
-    order by case o.priority when 'P0' then 0 when 'P1' then 1 else 2 end,case when o.metadata#>>'{handoff,state}'='waiting_children' then 1 else 0 end,o.created_at limit 1`);
+    order by case o.priority when 'P0' then 0 when 'P1' then 1 when 'P2' then 2 when 'P3' then 3 when 'P4' then 4 when 'P5' then 5 else 6 end,case when o.metadata#>>'{handoff,state}'='waiting_children' then 1 else 0 end,o.created_at limit 1`);
   const o=q.rows[0]; if(!o) return;
   if(await reconcileAutonomousHandoff(o)) return;
   const campaign=o.metadata?.campaign||null;
