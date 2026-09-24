@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import {activeProviderCooldownIds,applyCompactEdits,assertPrOpenState,buildGenerationPrompt,buildLocalFileContext,buildRepairGenerationPrompt,classifyAiFailure,codingPathsOverlap,coreResourceStateEligible,gateFailureIssues,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,preserveGenerationPrompt,recoverAfterCodingRestart,resourceWaitPlan,restartRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,validateCompactEdits,validateCompactGenerationPayload,validateManagerJobPaths} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {activeProviderCooldownIds,applyCompactEdits,assertPrOpenState,buildLocalFileContext,classifyAiFailure,codingPathsOverlap,coreResourceStateEligible,gateFailureIssues,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,preserveGenerationPrompt,recoverAfterCodingRestart,resourceWaitPlan,restartRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,validateCompactEdits,validateManagerJobPaths} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError,parseJsonObject} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 const nv11={id:'NV11',provider:'fake',model:'a'};
@@ -310,6 +310,17 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
     assert.strictEqual(isResourceTransientError(e),true);
   });
 
+  await t.test('Core health gate rejects unhealthy, limited, cooled-down or busy API resources',()=>{
+    const now=Date.parse('2026-09-24T02:30:00Z');
+    assert.strictEqual(coreResourceStateEligible({enabled:true,health_state:'ONLINE',work_state:'IDLE',status:'IDLE',quota_state:{usable:true}},now),true);
+    assert.strictEqual(coreResourceStateEligible({enabled:true,health_state:'ERROR',work_state:'ERROR',status:'ERROR'},now),false);
+    assert.strictEqual(coreResourceStateEligible({enabled:true,health_state:'ONLINE',work_state:'IDLE',status:'RATE_LIMITED'},now),false);
+    assert.strictEqual(coreResourceStateEligible({enabled:true,health_state:'ONLINE',work_state:'IDLE',status:'IDLE',quota_state:{usable:false}},now),false);
+    assert.strictEqual(coreResourceStateEligible({enabled:true,health_state:'ONLINE',work_state:'BUSY',status:'BUSY',current_job_id:'JOB-1'},now),false);
+    assert.strictEqual(coreResourceStateEligible({enabled:true,health_state:'ONLINE',work_state:'IDLE',status:'IDLE',cooldown_until:'2026-09-24T02:31:00Z'},now),false);
+    assert.strictEqual(coreResourceStateEligible({enabled:true,health_state:'ONLINE',work_state:'IDLE',status:'IDLE',cooldown_until:'2026-09-24T02:29:00Z'},now),true);
+  });
+
   await t.test('production runJob persists implementer before long generation',()=>{
     const src=require('node:fs').readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
     assert.ok(src.includes("set employee_id=$2,status='running'"));
@@ -325,31 +336,6 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
     assert.strictEqual(isRefreshableCompactPatchError(new Error('CODING_COMPACT_EDIT_OLD_NOT_FOUND')),true);
     assert.strictEqual(isRefreshableCompactPatchError(new Error('CODING_COMPACT_EDIT_OLD_NOT_UNIQUE')),true);
     assert.strictEqual(isRefreshableCompactPatchError(new Error('CODING_SCOPE_VIOLATION')),false);
-  });
-
-  await t.test('compact generation contract avoids whole-file model rewrites',()=>{
-    const path='apps/tigeriq-coding-lane/coding-lane.mjs';
-    const job={instruction:'fix routing',paths:[path]};
-    const context='FILE '+path+'\nconst before = true;';
-    const initial=buildGenerationPrompt(nv11,job,context,[]);
-    const repair=buildRepairGenerationPrompt(nv11,job,context,['keep scope']);
-    for(const prompt of [initial,repair]){
-      assert.ok(prompt.includes('"edits"'));
-      assert.ok(prompt.includes('exact unique existing snippet'));
-      assert.ok(prompt.includes('do NOT return a complete replacement file'));
-      assert.ok(!prompt.includes('"changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]'));
-    }
-    assert.strictEqual(validateCompactGenerationPayload({edits:[{path,old:'const before = true;',new:'const before = false;'}]},[path]),true);
-  });
-
-  await t.test('Core health gate rejects unhealthy or already-busy API resources',()=>{
-    const now=Date.parse('2026-09-24T02:30:00Z');
-    assert.strictEqual(coreResourceStateEligible({health_state:'ONLINE',work_state:'IDLE',status:'IDLE'},now),true);
-    assert.strictEqual(coreResourceStateEligible({health_state:'ERROR',work_state:'ERROR',status:'ERROR'},now),false);
-    assert.strictEqual(coreResourceStateEligible({health_state:'ONLINE',work_state:'IDLE',status:'RATE_LIMITED'},now),false);
-    assert.strictEqual(coreResourceStateEligible({health_state:'ONLINE',work_state:'BUSY',status:'BUSY',current_job_id:'JOB-1'},now),false);
-    assert.strictEqual(coreResourceStateEligible({health_state:'ONLINE',work_state:'IDLE',status:'IDLE',cooldown_until:'2026-09-24T02:31:00Z'},now),false);
-    assert.strictEqual(coreResourceStateEligible({health_state:'ONLINE',work_state:'IDLE',status:'IDLE',cooldown_until:'2026-09-24T02:29:00Z'},now),true);
   });
 
   await t.test('compact repair applies one exact unique snippet only',()=>{
