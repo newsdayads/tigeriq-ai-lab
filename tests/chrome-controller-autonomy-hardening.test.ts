@@ -239,13 +239,13 @@ describe('isolated NV02 WORKING/F5 safety scope',()=>{
     expect(working).toContain("return;");
   });
 
-  it('strictly forbids dispatch when in READY_UNASSIGNED phase', () => {
+  it('dispatches locally when READY without Core assignment', () => {
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     const hotLoop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
-    const unassigned=hotLoop.slice(hotLoop.indexOf('if(!currentTrackedWork)'),hotLoop.indexOf('if(phase===\'READY\')'));
-    expect(unassigned).not.toContain('dispatchNaturalContinue');
-    expect(unassigned).not.toContain('dispatchCurrentWorkRestoreLocked');
-    expect(unassigned).toContain("return;");
+    expect(hotLoop).toContain("if(phase==='READY')");
+    expect(hotLoop).toContain('dispatchNaturalContinue(target,state,now)');
+    expect(hotLoop).not.toContain('READY_UNASSIGNED');
+    expect(hotLoop).not.toContain('CURRENT_WORK_NEW_CHAT_RESTORE');
   });
 });
 
@@ -351,18 +351,18 @@ describe('AUTO_CONTINUE continuity recovery',()=>{
 });
 
 
-describe('NV02 owner-proxy live handoff coordination',()=>{
-  it('waits for an idle UI and coordinates Controller/Direct-CDP mutation ownership',()=>{
+describe('App Chrome local-only coordination',()=>{
+  it('keeps Controller as local command transport and disables external assignment ownership',()=>{
     const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
-    expect(server).toContain("if(primary.lastHeartbeat?.uiBusy!==false){");
-    expect(server).not.toContain("if(autopilotState.lastDispatchedJobId&&primary.lastHeartbeat?.uiBusy!==false){");
-    expect(server).toContain("browserMutationLeases.active(workerId)");
-    expect(server).toContain("AUTOPILOT_WAIT_BROWSER_MUTATION_LEASE");
+    expect(server).toContain('const externalWorkAutopilotEnabled=false');
+    expect(server).toContain("sendCommand(workerId,'LOCAL_CONTINUE_NOW')");
+    expect(server).toContain("UTILITY_LOCAL_CONTINUE_NOW");
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
-    expect(bridge).toContain("externalAutopilotOwnsNextNv02Job");
+    const loop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
+    expect(loop).not.toContain('externalAutopilotOwnsNextNv02Job');
+    expect(loop).not.toContain('findContinuableNv02Work');
+    expect(loop).toContain('LOCAL_CONTINUE_DISPATCHED');
     expect(bridge).toContain("acquireBridgeMutationLease('NV02',purpose,ttlMs)");
-    expect(bridge).toContain("NV02_SHARED_MUTATION_CONTROLLER_UNAVAILABLE");
-    expect(bridge).toContain("CONTINUE_DEFERRED_TO_EXTERNAL_AUTOPILOT");
   });
 });
 
@@ -445,12 +445,13 @@ describe('APP Chrome UI-only continuity regression #1525',()=>{
     expect(recovery).not.toContain("if(after&&!after.chatLoadError)");
   });
 
-  it('treats project home as fresh context, never as an old conversation',()=>{
+  it('treats project home as fresh local context and dispatches without assignment',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(bridge).toContain("return /\\/c\\//.test(current.pathname)");
     expect(bridge).toContain("isWorkerFreshContext");
-    expect(bridge).toContain("CURRENT_WORK_NEW_CHAT_RESTORED");
-    expect(bridge).toContain("READY_UNASSIGNED");
+    expect(bridge).toContain("BOOT_FRESH_CONTEXT_READY");
+    expect(bridge).toContain("LOCAL_CONTINUE_DISPATCHED");
+    expect(bridge).not.toContain("READY_UNASSIGNED");
   });
 });
 
