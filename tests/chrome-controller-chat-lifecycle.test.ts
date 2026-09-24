@@ -36,8 +36,10 @@ describe('App Chrome chat lifecycle',()=>{
     expect(bridge).not.toContain("WORKER_RESUME_URL_RESTORED");
     expect(bridge).not.toContain("CURRENT_WORK_NEW_CHAT_RESTORED");
     expect(bridge).not.toContain("READY_UNASSIGNED");
-    expect(bridge).toContain("BOOT_FRESH_CONTEXT_READY");
+    expect(bridge).toContain("BOOT_FRESH_LOCAL_COMPLETE");
     expect(bridge).toContain("LOCAL_CONTINUE_DISPATCHED");
+    expect(bridge).toContain("ensureNv02LocalReadyLocked(target,ui,{forceFresh:true})");
+    expect(bridge).toContain("ensureNv02LocalReadyLocked(target,raw,{forceFresh:false})");
   });
 
   it('wires real stuck-WORKING recovery and view-follow for generic workers',()=>{

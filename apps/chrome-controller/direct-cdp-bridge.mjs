@@ -1054,6 +1054,41 @@ async function waitForPostReloadNv02Ui(target,timeoutMs=12000){
   }
   return last;
 }
+async function waitForNv02Composer(target,timeoutMs=20000){
+  const deadline=Date.now()+timeoutMs;let last=null;
+  while(Date.now()<deadline){
+    last=await uiState(target).catch(()=>null);
+    if(last?.securityBlock)throw new Error(last.securityBlock);
+    if(last?.uiBusy===true||last?.uiPhase==='WORKING'||last?.composerReady===true)return last;
+    await sleep(500);
+  }
+  return last;
+}
+async function ensureNv02LocalReadyLocked(target,initialUi=null,{forceFresh=false}={}){
+  let ui=initialUi||await uiState(target);
+  if(ui?.securityBlock)throw new Error(ui.securityBlock);
+  if(ui?.uiBusy===true||ui?.uiPhase==='WORKING')return ui;
+  const inProject=()=>isNv02ProjectContext(ui?.url)||ui?.projectDraftReady===true;
+  if(forceFresh||!inProject()){
+    await navigate(target,NV02_HOME_URL);
+    await sleep(1200);
+    ui=await waitForNv02Composer(target,20000)||await uiState(target);
+  }else if(ui?.composerReady!==true){
+    ui=await waitForNv02Composer(target,20000)||ui;
+  }
+  if(ui?.securityBlock)throw new Error(ui.securityBlock);
+  if(ui?.uiBusy===true||ui?.uiPhase==='WORKING')return ui;
+  if(ui?.composerReady!==true){
+    const recovered=await recoverNv02ProjectContext(target);
+    if(!recovered?.ok)throw new Error(recovered?.status||'NV02_LOCAL_PROJECT_RECOVERY_FAILED');
+    ui=await waitForNv02Composer(target,15000)||await uiState(target);
+  }
+  if(ui?.composerReady!==true)throw new Error('NV02_LOCAL_COMPOSER_NOT_READY');
+  const verified=await ensureNv02ModelProfile(target);
+  if(verified?.securityBlock)throw new Error(verified.securityBlock);
+  if(verified?.uiPhase!=='READY'||verified?.composerReady!==true)throw new Error('NV02_LOCAL_READY_NOT_REACHED');
+  return verified;
+}
 async function waitForIdleAfterSubmission(target,timeoutMs=45000,stableReadyMs=5000){
   const deadline=Date.now()+timeoutMs;let readySince=0;
   while(Date.now()<deadline){
@@ -1171,17 +1206,21 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
     bootFreshContextPending.delete('NV02');
     state={...state,resumeChatUrl:'',verifiedChatUrl:'',modelVerifiedAt:'',nextContinueAt:now,stalledChecks:0};
     saveNv02Continuity(state);
-    if(currentChat){
-      const opened=await withNv02Mutation(async()=>{
-        await navigate(target,NV02_HOME_URL);
-        await sleep(1200);
-        return{ok:true,status:'BOOT_FRESH_CONTEXT_OPENED'};
-      },'BOOT_FRESH_CONTEXT',30000);
-      await continuityEvent(opened?.status==='MUTATION_LEASE_BUSY'?'BOOT_FRESH_CONTEXT_DEFERRED':'BOOT_FRESH_CONTEXT_OPENED',{status:opened?.status||null,fromUrl:ui?.url||null,homeUrl:NV02_HOME_URL});
-      if(opened?.status==='MUTATION_LEASE_BUSY')bootFreshContextPending.add('NV02');
+    const boot=await withNv02Mutation(async()=>{
+      const ready=await ensureNv02LocalReadyLocked(target,ui,{forceFresh:true});
+      if(ready?.uiBusy===true||ready?.uiPhase==='WORKING')return{ok:true,status:'BOOT_ALREADY_WORKING'};
+      if(!allowContinue)return{ok:true,status:'BOOT_FRESH_LOCAL_READY'};
+      const next=await dispatchNaturalContinueLocked(target,loadNv02Continuity(),Date.now());
+      await noteNv02CommandDispatch();
+      return{ok:true,status:'BOOT_LOCAL_CONTINUE_SUBMITTED',prompt:next.lastPrompt};
+    },'BOOT_FRESH_LOCAL_CONTINUE',60000);
+    if(boot?.status==='MUTATION_LEASE_BUSY'){
+      bootFreshContextPending.add('NV02');
+      await continuityEvent('BOOT_FRESH_CONTEXT_DEFERRED',{status:boot.status,homeUrl:NV02_HOME_URL});
       return;
     }
-    await continuityEvent('BOOT_FRESH_CONTEXT_READY',{homeUrl:NV02_HOME_URL});
+    await continuityEvent('BOOT_FRESH_LOCAL_COMPLETE',{status:boot?.status||null,prompt:boot?.prompt||null,homeUrl:NV02_HOME_URL});
+    return;
   }
   if(currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0)){
     const refreshed=await withNv02Mutation(async()=>{
@@ -1258,13 +1297,17 @@ async function handleCommand(w,target,command){
     const phase=w.id==='NV02'?deriveNv02Phase(raw||{}):deriveWorkerPhase(raw||{},{workerId:w.id});
     if(phase==='BLOCKED')throw new Error(raw?.securityBlock||'LOCAL_CONTINUE_BLOCKED');
     if(phase==='WORKING')return{status:'ALREADY_WORKING'};
-    if(phase!=='READY')return{status:'LOCAL_CONTINUE_NOT_READY',phase};
     if(w.id==='NV02'){
-      await ensureNv02ModelProfile(target);
-      const next=await dispatchNaturalContinueLocked(target,loadNv02Continuity(),Date.now());
-      await noteNv02CommandDispatch();
-      return{status:'LOCAL_CONTINUE_SUBMITTED',prompt:next.lastPrompt};
+      const submitted=await withNv02Mutation(async()=>{
+        const ready=await ensureNv02LocalReadyLocked(target,raw,{forceFresh:false});
+        if(ready?.uiBusy===true||ready?.uiPhase==='WORKING')return{status:'ALREADY_WORKING'};
+        const next=await dispatchNaturalContinueLocked(target,loadNv02Continuity(),Date.now());
+        await noteNv02CommandDispatch();
+        return{status:'LOCAL_CONTINUE_SUBMITTED',prompt:next.lastPrompt};
+      },'LOCAL_CONTINUE_NOW',60000);
+      return submitted?.status==='MUTATION_LEASE_BUSY'?{status:'LOCAL_CONTINUE_DEFERRED'}:submitted;
     }
+    if(phase!=='READY')return{status:'LOCAL_CONTINUE_NOT_READY',phase};
     const state=loadWorkerContinuity(w.id),prompt=pickContinuePrompt(state.lastPrompt);
     const r=await dispatch(target,prompt);
     if(!r?.ok)throw new Error(r?.status||'LOCAL_CONTINUE_DISPATCH_FAILED');
