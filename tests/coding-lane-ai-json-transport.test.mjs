@@ -182,6 +182,13 @@ describe('coding lane AI JSON transport',()=>{
     expect(expandCompactChanges(prompt,model).changes).toEqual([{path:'tests/new.test.mjs',content:'export const ok=true;\\n'}]);
   });
 
+  it('rejects copied path placeholders as retryable compact-output errors',()=>{
+    const prompt='TASK: x\nCURRENT FILES:\nFILE apps/a.mjs\nconst n=1;\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}.';
+    const model=JSON.stringify({summary:'bad placeholder',changes:[{path:'exact allowed path',content:'const n=2;'}]});
+    expect(()=>expandCompactChanges(prompt,model)).toThrow('COMPACT_EDIT_PATH_UNKNOWN:exact allowed path');
+    expect(isRetryableAiError(new Error('COMPACT_EDIT_PATH_UNKNOWN:exact allowed path'))).toBe(true);
+  });
+
   it('rejects a destructive compact shrink of a large existing file',()=>{
     const content='BEGIN\n'+'x'.repeat(20000)+'\nEND';
     const prompt=`TASK: x\nCURRENT FILES:\nFILE apps/a.mjs\n${content}\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}.`;
