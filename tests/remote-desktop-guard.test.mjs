@@ -9,8 +9,11 @@ import {
   enforceRemoteToolCall, filterRemoteToolDefinitions
 } from '../apps/remote-desktop-guard/runtime-gate.mjs';
 import {
-  patchDesktopCommanderServer, patchRemoteLauncher, verifyDesktopCommanderServerPatched
+  patchDesktopCommanderServer, verifyDesktopCommanderServerPatched
 } from '../apps/remote-desktop-guard/patch-desktop-commander.mjs';
+import {
+  patchRemoteLauncher, verifyRemoteLauncherPatched
+} from '../apps/remote-desktop-guard/patch-remote-launcher.mjs';
 
 const NOW=Date.parse('2026-09-25T00:01:00.000Z');
 const tempDirs=[];
@@ -203,8 +206,9 @@ describe('Remote Desktop Commander hard runtime guard',()=>{
   it('patches the launcher with fail-closed guard preflight for restart safety',()=>{
     const launcher='$log="x"\\nSet-Location $app\\nwhile($true){}';
     const patched=patchRemoteLauncher(launcher);
-    expect(patched).toMatch(/TIGERIQ_REMOTE_GUARD_LAUNCHER_V1/);
+    expect(patched).toMatch(/TIGERIQ_REMOTE_GUARD_LAUNCHER_V3/);
     expect(patched).toMatch(/exit 86/);
+    expect(verifyRemoteLauncherPatched(patched)).toBe(true);
     expect(patchRemoteLauncher(patched)).toBe(patched);
   });
 
