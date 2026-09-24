@@ -34,17 +34,20 @@ export function isManualOnlyAppChromeMaintenance(title,body){
 export function parseExecutableIssue(issue){
   if(!issue||issue.pull_request||issue.state!=='open') return null;
   const body=String(issue.body||'');
-  if(isManualOnlyAppChromeMaintenance(issue.title,body)) return null;
   if(!hasExactFlag(body,'TIGERIQ_EXECUTABLE')||!hasExactFlag(body,'OWNER_POLICY','AUTO')) return null;
   if(/^EXECUTION_SURFACE=UI$/m.test(body)) return null;
   if(!hasExactFlag(body,'NO_CODE_CHANGE')||!hasExactFlag(body,'NO_PC01_SHELL')) return null;
   const p=body.match(/^PRIORITY=(P[0-3])$/m)?.[1]||'P2';
   const capability=body.match(/^CAPABILITY=(general|reasoning|review|pc_operator)$/m)?.[1]||'reasoning';
+  const preferredWorker=preferredUiWorker(body);
+  if(capability==='review'&&preferredWorker)return null;
+  if(isManualOnlyAppChromeMaintenance(issue.title,body)) return null;
   const ownerDirect=backlogOwnerDirect(body);
-  if(capability==='pc_operator'&&(!ownerDirect||!/^RESOURCE_SCOPE=\S.+$/m.test(body)||!extractPcOperatorInstruction(body)))return null;
+  const resourceScope=bodyValue(body,'RESOURCE_SCOPE');
+  if(capability==='pc_operator'&&(!ownerDirect||!resourceScope||!extractPcOperatorInstruction(body)))return null;
   const title=String(issue.title||'');
   const sourceRevision=createHash('sha256').update(title).update('\n').update(body).update('\n').update(String(issue.state_reason||'')).digest('hex').slice(0,12);
-  return {number:Number(issue.number),title,body,priority:p,capability,url:String(issue.html_url||''),ownerDirect,sourceRevision,updatedAt:String(issue.updated_at||'')};
+  return {number:Number(issue.number),title,body,priority:p,capability,dispatchLane:githubDispatchLane(capability),resourceScope,preferredWorker,url:String(issue.html_url||''),ownerDirect,sourceRevision,updatedAt:String(issue.updated_at||'')};
 }
 
 export function extractIssueRefs(body,currentNumber){
