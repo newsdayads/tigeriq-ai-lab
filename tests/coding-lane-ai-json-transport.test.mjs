@@ -87,6 +87,20 @@ describe('coding lane AI JSON transport',()=>{
     expect(matchesExpectedSchema(manager,'{"status":"continue","summary":"x"}')).toBe(false);
     expect(matchesExpectedSchema(changes,'{"summary":"x","changes":[]}')).toBe(false);
   });
+
+  it('accepts compact search/replace and new-file content edit shapes',()=>{
+    const edits='Return ONLY compact JSON {"summary":"short","edits":[{"path":"exact allowed path","search":"exact existing UTF-8 snippet","replace":"replacement UTF-8 snippet"}]}.';
+    expect(matchesExpectedSchema(edits,JSON.stringify({summary:'ok',edits:[{path:'apps/a.mjs',search:'const x=1;',replace:'const x=2;'}]}))).toBe(true);
+    expect(matchesExpectedSchema(edits,JSON.stringify({summary:'ok',edits:[{path:'tests/new.test.mjs',content:'export const ok=true;'}]}))).toBe(true);
+  });
+
+  it('coding generator sends the model compact edits directly before local expansion',()=>{
+    const src=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
+    const helper=src.slice(src.indexOf('async function invokeCompactGeneration'),src.indexOf('async function generateRepairChanges'));
+    expect(helper).toContain('compactPromptForChanges(prompt');
+    expect(helper).toContain('expandCompactChanges(prompt,JSON.stringify(d))');
+    expect(helper).toContain('invokeJsonWithFailover(worker,modelPrompt');
+  });
   it('extracts provider model text and ignores non AI URLs',()=>{
     expect(isAiUrl('https://api.groq.com/openai/v1/chat/completions')).toBe(true);
     expect(isAiUrl('https://api.github.com/repos/a/b')).toBe(false);
