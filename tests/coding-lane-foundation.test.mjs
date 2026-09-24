@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import {activeProviderCooldownIds,applyCompactEdits,assertPrOpenState,buildLocalFileContext,classifyAiFailure,codingPathsOverlap,coreResourceStateEligible,gateFailureIssues,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,partitionGenerationFiles,preserveGenerationPrompt,recoverAfterCodingRestart,resourceWaitPlan,restartRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,validateCompactEdits,validateManagerJobPaths} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertPrOpenState,buildLocalFileContext,classifyAiFailure,codingPathsOverlap,coreResourceStateEligible,gateFailureIssues,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,partitionGenerationFiles,preserveGenerationPrompt,recoverAfterCodingRestart,resourceWaitPlan,restartRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,validateCompactEdits,validateManagerJobPaths} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError,parseJsonObject} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 const nv11={id:'NV11',provider:'fake',model:'a'};
@@ -339,6 +339,12 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
       ['apps/large.mjs'],
       ['apps/small.mjs','tests/small.test.mjs'],
     ]);
+  });
+
+  await t.test('generation context includes empty new files and fails closed on absent paths',()=>{
+    const prompt='TASK: x\nCURRENT FILES:\nFILE apps/existing.mjs\nexport const x=1;\n\n---\n\nFILE tests/new.test.mjs\n\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}.';
+    assert.strictEqual(assertGenerationContextPaths(prompt,['apps/existing.mjs','tests/new.test.mjs']),true);
+    assert.throws(()=>assertGenerationContextPaths(prompt,['tests/missing.test.mjs']),/CODING_GENERATION_CONTEXT_PATH_MISSING/);
   });
 
   await t.test('Core health gate rejects unhealthy, limited, cooled-down or busy API resources',()=>{
