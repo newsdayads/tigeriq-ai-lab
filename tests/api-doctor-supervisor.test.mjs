@@ -113,6 +113,11 @@ describe('#1255 routing/runtime integration',()=>{
     expect(core).toContain("apiDoctorLatestUnresolvedResourceHandoff(resource.resource_id)");
     expect(core).toContain("type='API_DOCTOR_RECOVERED' and resource_id=$1 and ts>$2");
     expect(core).toContain("return recovered?null:handoff");
+    expect(core).toContain("apiDoctorLatestUnresolvedSignatureHandoff(resource.resource_id,signature)");
+    expect(core).toContain("type='API_DOCTOR_REPAIR_HANDOFF' and resource_id=$1 and data->>'signature'=$2");
+    expect(core).toContain("type='API_DOCTOR_RECOVERED' and resource_id=$1 and ts>$2 and data->>'signature'=$3");
+    expect(core).not.toContain("apiDoctorEventBySignature('API_DOCTOR_REPAIR_HANDOFF',signature)");
+
     expect(core.indexOf("apiDoctorLatestUnresolvedResourceHandoff(resource.resource_id)")).toBeLessThan(core.indexOf("if(plan.action==='wait'||plan.action==='idle')"));
     expect(core).toContain("coalesce(task_kind,'')<>'api_doctor'");
     expect(core).toContain("kind,'api_doctor_validation'");
