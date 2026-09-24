@@ -376,6 +376,7 @@ async function maybeWorkerContinuity(w,target,ui){
     }
     const currentWork=findContinuableWorkerWorkForUi(controllerState,w.id);
     if(!currentWork){
+      if(now<Number(state.nextContinueAt||0))return;
       const deferred={...state,resumeUrl:'',nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
       saveWorkerContinuity(w.id,deferred);
       await genericWorkerEvent(w.id,'READY_UNASSIGNED',{url:ui?.url||null,nextContinueAt:deferred.nextContinueAt});
