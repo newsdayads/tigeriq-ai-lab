@@ -144,6 +144,10 @@ export function resourceWaitPlan({retryCount=0,startedAt=null,nowMs=Date.now(),m
   const delayMs=Math.min(RESOURCE_WAIT_MAX_DELAY_MS,RESOURCE_WAIT_BASE_MS*Math.pow(2,count));
   return {wait:true,retryCount:count+1,ageMs,delayMs,nextAttemptAt:new Date(nowMs+delayMs).toISOString()};
 }
+export function managerResourceFailurePlan(error,objective={},nowMs=Date.now()){
+  if(!isResourceTransientError(error))return {transient:false,wait:false,retryCount:Number(objective?.resource_retry_count||0),nextAttemptAt:null,delayMs:0};
+  return {transient:true,...resourceWaitPlan({retryCount:objective?.resource_retry_count,startedAt:objective?.resource_retry_started_at,nowMs})};
+}
 
 export function shouldResumeExistingPr(job){
   return Boolean(String(job?.branch||'').trim()&&Number(job?.pr_number)>0);
@@ -322,6 +326,9 @@ async function mergePr(number,sha){return gh(`/pulls/${number}/merge`,{method:'P
 
 async function initDb(){if(!pool)return;await pool.query(`
 create table if not exists tigeriq_coding_objectives(id text primary key,objective text not null,priority text not null default 'P1',status text not null default 'active',summary text,manager_employee_id text,created_at timestamptz not null default now(),updated_at timestamptz not null default now());
+alter table tigeriq_coding_objectives add column if not exists next_attempt_at timestamptz;
+alter table tigeriq_coding_objectives add column if not exists resource_retry_count int not null default 0;
+alter table tigeriq_coding_objectives add column if not exists resource_retry_started_at timestamptz;
 create table if not exists tigeriq_coding_jobs(id text primary key,objective_id text references tigeriq_coding_objectives(id),title text not null,instruction text not null,paths jsonb not null default '[]'::jsonb,status text not null default 'queued',employee_id text,reviewer_employee_id text,branch text,pr_number int,head_sha text,result jsonb,failure jsonb,attempts int not null default 0,created_at timestamptz not null default now(),started_at timestamptz,completed_at timestamptz);
 alter table tigeriq_coding_jobs add column if not exists next_attempt_at timestamptz;
 alter table tigeriq_coding_jobs add column if not exists resource_retry_count int not null default 0;
@@ -336,7 +343,7 @@ export function managerBlockKind(summary=''){
 }
 
 async function managerTick(){
-  const q=await pool.query("select * from tigeriq_coding_objectives where status='active' and not exists(select 1 from tigeriq_coding_jobs j where j.objective_id=tigeriq_coding_objectives.id and j.status in ('queued','running','review','waiting_ci','waiting_resource')) order by case priority when 'P0' then 0 when 'P1' then 1 else 2 end,created_at limit 1");
+  const q=await pool.query("select * from tigeriq_coding_objectives where status='active' and (next_attempt_at is null or next_attempt_at<=now()) and not exists(select 1 from tigeriq_coding_jobs j where j.objective_id=tigeriq_coding_objectives.id and j.status in ('queued','running','review','waiting_ci','waiting_resource')) order by case priority when 'P0' then 0 when 'P1' then 1 else 2 end,created_at limit 1");
   const o=q.rows[0];if(!o)return;
   let manager=pickResource();if(!manager)return
   const canonical=extractCanonicalAllowedPaths(o.objective);
@@ -354,12 +361,19 @@ async function managerTick(){
       validateManagerJobPaths(d,canonical,mutationAuth);
     };
     const invoked=await invokeJsonWithFailover(manager,prompt,{validateData:validateManagerDecision});manager=invoked.resource;const d=invoked.data;
-    if(d.status!=='continue'||!d.job){await pool.query("update tigeriq_coding_objectives set status='blocked',summary=$2,manager_employee_id=$3,updated_at=now() where id=$1",[o.id,String(d.summary||'manager blocked').slice(0,1000),manager.id]);return}
+    if(d.status!=='continue'||!d.job){await pool.query("update tigeriq_coding_objectives set status='blocked',summary=$2,manager_employee_id=$3,next_attempt_at=null,resource_retry_count=0,resource_retry_started_at=null,updated_at=now() where id=$1",[o.id,String(d.summary||'manager blocked').slice(0,1000),manager.id]);return}
     const paths=validateManagerJobPaths(d,canonical,mutationAuth);
     const id=`CODE-${randomUUID()}`;
     await pool.query('insert into tigeriq_coding_jobs(id,objective_id,title,instruction,paths) values($1,$2,$3,$4,$5)',[id,o.id,String(d.job.title||'Coding job').slice(0,180),String(d.job.instruction||o.objective).slice(0,12000),JSON.stringify(paths)]);
-    await pool.query("update tigeriq_coding_objectives set manager_employee_id=$2,summary=$3,updated_at=now() where id=$1",[o.id,manager.id,String(d.summary||'coding job created').slice(0,1000)]);
-  }catch(e){await pool.query("update tigeriq_coding_objectives set status='blocked',summary=$2,manager_employee_id=$3,updated_at=now() where id=$1",[o.id,String(e.message).slice(0,1000),manager.id])}
+    await pool.query("update tigeriq_coding_objectives set manager_employee_id=$2,summary=$3,next_attempt_at=null,resource_retry_count=0,resource_retry_started_at=null,updated_at=now() where id=$1",[o.id,manager.id,String(d.summary||'coding job created').slice(0,1000)]);
+  }catch(e){
+    const plan=managerResourceFailurePlan(e,o);
+    if(plan.transient&&plan.wait){
+      await pool.query("update tigeriq_coding_objectives set status='active',summary=$2,manager_employee_id=$3,next_attempt_at=$4,resource_retry_count=$5,resource_retry_started_at=coalesce(resource_retry_started_at,now()),updated_at=now() where id=$1",[o.id,`WAITING_RESOURCE_MANAGER retry ${plan.retryCount}/${RESOURCE_WAIT_MAX_RETRIES}: ${String(e?.message||e)}`.slice(0,1000),manager.id,plan.nextAttemptAt,plan.retryCount]);
+      return;
+    }
+    await pool.query("update tigeriq_coding_objectives set status='blocked',summary=$2,manager_employee_id=$3,next_attempt_at=null,updated_at=now() where id=$1",[o.id,String(e.message).slice(0,1000),manager.id]);
+  }
 }
 
 export function restartRecoveryDecision(job,pr){
