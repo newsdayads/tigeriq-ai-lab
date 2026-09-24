@@ -19,12 +19,12 @@ describe('GitHub Core intake guardrails',()=>{
   it('fails closed if shell/code guardrails are missing',()=>{expect(parseExecutableIssue({...base,body:'TIGERIQ_EXECUTABLE=true\nOWNER_POLICY=AUTO'})).toBeNull();});
   it('does not treat CENTRAL prose/backticks as an executable marker',()=>{expect(parseExecutableIssue({...base,body:'Rule: `TIGERIQ_EXECUTABLE=true`; OWNER_POLICY=AUTO'})).toBeNull();});
   it('extracts bounded issue refs and safe repository paths',()=>{expect(extractIssueRefs(base.body,588)).toEqual([280,335]);expect(extractRepoPaths(base.body)).toEqual(['docs/CURRENT_STATE.md']);});
-  it('accepts OWNER_DIRECT bounded pc_operator but rejects non-owner pc_operator',()=>{
-    const owner={...base,number:1528,body:'TIGERIQ_EXECUTABLE=true\nOWNER_POLICY=AUTO\nOWNER_DIRECT=true\nPRIORITY=P0\nCAPABILITY=pc_operator\nNO_CODE_CHANGE=true\nNO_PC01_SHELL=true\nRESOURCE_SCOPE=OPENCLAW_TEST\nASSIGNED_ACTION\ntigeriq_pc tcp_probe host=127.0.0.1 port=18789\nACCEPTANCE\nPASS'};
-    expect(parseExecutableIssue(owner)).toMatchObject({number:1528,priority:'P0',capability:'pc_operator',ownerDirect:true});
-    expect(extractPcOperatorInstruction(owner.body)).toContain('tcp_probe');
-    expect(parseExecutableIssue({...owner,body:owner.body.replace('OWNER_DIRECT=true\n','')})).toBeNull();
-    expect(parseExecutableIssue({...owner,body:owner.body.replace('ASSIGNED_ACTION\ntigeriq_pc tcp_probe host=127.0.0.1 port=18789\nACCEPTANCE\nPASS','')})).toBeNull();
+  it('legacy P0 pc_operator becomes autonomous P1; explicit Owner-assigned P0 stays P0',()=>{
+    const legacy={...base,number:1528,body:'TIGERIQ_EXECUTABLE=true\nOWNER_POLICY=AUTO\nOWNER_DIRECT=true\nPRIORITY=P0\nCAPABILITY=pc_operator\nNO_CODE_CHANGE=true\nNO_PC01_SHELL=true\nRESOURCE_SCOPE=OPENCLAW_TEST\nASSIGNED_ACTION\ntigeriq_pc tcp_probe host=127.0.0.1 port=18789\nACCEPTANCE\nPASS'};
+    expect(parseExecutableIssue(legacy)).toMatchObject({number:1528,priority:'P1',sourcePriority:'P0',legacyP0Autonomous:true,capability:'pc_operator'});
+    const assigned={...legacy,body:legacy.body.replace('CAPABILITY=pc_operator','CAPABILITY=pc_operator\nASSIGNED_EXECUTOR=NV06')};
+    expect(parseExecutableIssue(assigned)).toMatchObject({priority:'P0',ownerControlled:true,targetWorker:'NV06'});
+    expect(extractPcOperatorInstruction(legacy.body)).toContain('tcp_probe');
   });
 
   it('allows only explicitly bounded App Chrome request-state work through protected-scope filtering',()=>{
@@ -37,22 +37,20 @@ describe('GitHub Core intake guardrails',()=>{
     ].join('\n');
     assert.equal(isBoundedAppChromeRequestOnly(boundedBody),true);
     expect(parseExecutableIssue({...base,number:1881,title:'[P0][OPENCLAW] request only',body:boundedBody})).toMatchObject({
-      number:1881,capability:'pc_operator',dispatchLane:'PC_OPERATOR',resourceScope:'APP_CHROME_DEPLOY_REQUEST_STATE'
+      number:1881,priority:'P1',sourcePriority:'P0',capability:'pc_operator',dispatchLane:'PC_OPERATOR',resourceScope:'APP_CHROME_DEPLOY_REQUEST_STATE'
     });
     const mutation=boundedBody.replace('APP_CHROME_REQUEST_ONLY=true\n','').replace('ASSIGNED_ACTION\nUse tigeriq_pc file_write only:','ALLOW_PATH_PREFIX=apps/chrome-controller/\nASSIGNED_ACTION\nUse tigeriq_pc file_write only:');
     expect(parseExecutableIssue({...base,number:1882,title:'[APP-CHROME] mutation',body:mutation})).toBeNull();
   });
 
-  it('routes GitHub objectives by independent lanes instead of one global active lock',()=>{
+  it('active objectives block only the same RESOURCE_SCOPE, not an entire lane',()=>{
     const reasoning={capability:'reasoning',dispatchLane:githubDispatchLane('reasoning'),resourceScope:'SCOPE_A'};
     const pc={capability:'pc_operator',dispatchLane:githubDispatchLane('pc_operator'),resourceScope:'PC_STATE'};
-    const review={capability:'review',dispatchLane:githubDispatchLane('review'),resourceScope:'REVIEW_A'};
     const active=[{capability:'reasoning',dispatchLane:'CORE_REASONING',resourceScope:'OTHER'}];
-    expect(githubSpecBlockedByActive(reasoning,active)).toBe(true);
+    expect(githubSpecBlockedByActive(reasoning,active)).toBe(false);
     expect(githubSpecBlockedByActive(pc,active)).toBe(false);
-    expect(githubSpecBlockedByActive(review,active)).toBe(false);
-    expect(githubSpecBlockedByActive(pc,[{capability:'pc_operator',resourceScope:'OTHER_PC'}])).toBe(true);
-    expect(githubSpecBlockedByActive(pc,[{capability:'reasoning',resourceScope:'PC_STATE'}])).toBe(true);
+    expect(githubSpecBlockedByActive(reasoning,[{capability:'review',resourceScope:'SCOPE_A'}])).toBe(true);
+    expect(githubSpecBlockedByActive(pc,[{capability:'pc_operator',resourceScope:'PC_STATE'}])).toBe(true);
   });
 
   it('leaves preferred NV03/NV04 reviews to the UI role lane and avoids generic Core duplication',()=>{
@@ -61,8 +59,9 @@ describe('GitHub Core intake guardrails',()=>{
       'PREFERRED_REVIEWER=NV03','NO_CODE_CHANGE=true','NO_PC01_SHELL=true','RESOURCE_SCOPE=REVIEW_X'
     ].join('\n');
     expect(parseExecutableIssue({...base,number:1874,title:'review',body:reviewBody})).toBeNull();
-    expect(parseExecutableIssue({...base,number:1875,title:'generic review',body:reviewBody.replace('PREFERRED_REVIEWER=NV03\n','')})).toMatchObject({
-      capability:'review',dispatchLane:'CORE_REVIEW'
+    expect(parseExecutableIssue({...base,number:1875,title:'default review',body:reviewBody.replace('PREFERRED_REVIEWER=NV03\n','')})).toBeNull();
+    expect(parseExecutableIssue({...base,number:1876,title:'API review',body:reviewBody.replace('PREFERRED_REVIEWER=NV03','PREFERRED_REVIEWER=NV17')})).toMatchObject({
+      capability:'review',dispatchLane:'CORE_REVIEW',targetWorker:'NV17'
     });
   });
 
