@@ -3,13 +3,13 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
-  MAX_OWNER_LEASE_MS, OBSERVATION_DIRECTORIES, argsHash, authorizeRemoteCall
+  MAX_OWNER_LEASE_MS, OBSERVATION_DIRECTORIES, argsHash, authorizeRemoteCall, requiredRiskClass
 } from '../apps/remote-desktop-guard/policy.mjs';
 import {
-  enforceRemoteToolCall
+  enforceRemoteToolCall, filterRemoteToolDefinitions
 } from '../apps/remote-desktop-guard/runtime-gate.mjs';
 import {
-  patchDesktopCommanderServer, verifyDesktopCommanderServerPatched
+  patchDesktopCommanderServer, patchRemoteLauncher, verifyDesktopCommanderServerPatched
 } from '../apps/remote-desktop-guard/patch-desktop-commander.mjs';
 
 const NOW=Date.parse('2026-09-25T00:01:00.000Z');
@@ -21,7 +21,7 @@ async function tempLeasePath() {
   return join(dir,'owner-lease.json');
 }
 function leaseFor(tool,args,{issued='2026-09-25T00:00:00.000Z',expires='2026-09-25T00:05:00.000Z'}={}) {
-  return {version:1,leaseId:'OWNER-TEST-1',ownerAuthorized:true,authorizationUrl:'https://api.github.com/repos/newsdayads/tigeriq-ai-lab/issues/comments/123456',tool,argsSha256:argsHash(args),issuedAt:issued,expiresAt:expires};
+  return {version:1,leaseId:'OWNER-TEST-1',ownerAuthorized:true,authorizationUrl:'https://api.github.com/repos/newsdayads/tigeriq-ai-lab/issues/comments/123456',tool,argsSha256:argsHash(args),riskClass:requiredRiskClass(tool,args),issuedAt:issued,expiresAt:expires};
 }
 async function putLease(leasePath,lease) {
   await writeFile(leasePath,JSON.stringify(lease),'utf8');
@@ -33,6 +33,7 @@ function authFetchFor(lease,{login='newsdayads',ok=true,status=200,bodyOverride}
     'LEASE_ID='+lease.leaseId,
     'TOOL='+lease.tool,
     'ARGS_SHA256='+lease.argsSha256,
+    'RISK_CLASS='+lease.riskClass,
     'ISSUED_AT='+lease.issuedAt,
     'EXPIRES_AT='+lease.expiresAt
   ].join('\n');
@@ -170,6 +171,7 @@ describe('Remote Desktop Commander hard runtime guard',()=>{
       'async function handleCallToolRequest(request) {',
       '    const { name, arguments: args } = request.params;',
       '    const isRemoteCall = true;',
+      'const filteredTools = allTools.filter(tool => shouldIncludeTool(tool.name));',
       '        setCurrentCallIsRemote(isRemoteCall);',
       '}'
     ].join('\n');
@@ -178,6 +180,32 @@ describe('Remote Desktop Commander hard runtime guard',()=>{
     expect(twice).toBe(once);
     expect(verifyDesktopCommanderServerPatched(once)).toBe(true);
     expect(()=>patchDesktopCommanderServer('unexpected upstream')).toThrow('DESKTOP_COMMANDER_0_2_51_ANCHOR_MISMATCH');
+  });
+
+
+  it('requires explicit risk class for production mutation authorization',()=>{
+    const args={command:'vercel deploy --prod',timeout_ms:5000};
+    const lease=leaseFor('start_process',args);
+    expect(lease.riskClass).toBe('PRODUCTION');
+    expect(authorizeRemoteCall({tool:'start_process',args,lease:{...lease,riskClass:'STANDARD'},now:NOW}))
+      .toMatchObject({ok:false,reason:'LEASE_RISK_SCOPE_MISMATCH'});
+  });
+
+  it('hides mutators from the remote tool surface until a live bounded lease exists',async()=>{
+    const leasePath=await tempLeasePath();
+    const tools=[{name:'read_file'},{name:'list_processes'},{name:'start_process'},{name:'write_file'},{name:'set_config_value'}];
+    expect(await filterRemoteToolDefinitions(tools,{leasePath,now:NOW})).toEqual([{name:'read_file'},{name:'list_processes'}]);
+    const args={command:'echo bounded',timeout_ms:1000};
+    await putLease(leasePath,leaseFor('start_process',args));
+    expect(await filterRemoteToolDefinitions(tools,{leasePath,now:NOW})).toEqual([{name:'read_file'},{name:'list_processes'},{name:'start_process'}]);
+  });
+
+  it('patches the launcher with fail-closed guard preflight for restart safety',()=>{
+    const launcher='$log="x"\\nSet-Location $app\\nwhile($true){}';
+    const patched=patchRemoteLauncher(launcher);
+    expect(patched).toMatch(/TIGERIQ_REMOTE_GUARD_LAUNCHER_V1/);
+    expect(patched).toMatch(/exit 86/);
+    expect(patchRemoteLauncher(patched)).toBe(patched);
   });
 
   it('keeps the observation allowlist narrow and excludes Secrets',()=>{
