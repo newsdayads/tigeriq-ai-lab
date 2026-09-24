@@ -17,7 +17,8 @@ const CALL_BLOCK = [
   "                content: [{ type: \"text\", text: formatRemoteGuardDenial(tigerIqRemoteGuard) }],",
   "                isError: true,",
   "            };",
-  "        }"
+  "        }",
+  "        if (tigerIqRemoteGuard.terminalResult) return tigerIqRemoteGuard.terminalResult;"
 ].join('\n');
 
 function replaceExactlyOnce(source, anchor, replacement, marker) {
