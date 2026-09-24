@@ -61,6 +61,9 @@ describe('NV02 completion watcher/autopilot',()=>{
   it('classifies known non-delivery as immediate safe retry',()=>{
     expect(classifyAutoContinueDispatchFailure(new Error('SEND_BUTTON_NOT_FOUND'),false)).toBe('SAFE_RETRY');
     expect(classifyAutoContinueDispatchFailure(new Error('COMPOSER_NOT_FOUND'),false)).toBe('SAFE_RETRY');
+    expect(classifyAutoContinueDispatchFailure(new Error('MODEL_CONTROL_NOT_EXACT_OR_UNIQUE'),false)).toBe('SAFE_RETRY');
+    expect(classifyAutoContinueDispatchFailure(new Error('MODEL_PROFILE_BLOCKED:UNVERIFIED'),false)).toBe('SAFE_RETRY');
+    expect(classifyAutoContinueDispatchFailure(new Error('MODEL_CONTROL_NOT_EXACT_OR_UNIQUE'),true)).toBe('UNCERTAIN');
     expect(classifyAutoContinueDispatchFailure(new Error('anything'),true)).toBe('UNCERTAIN');
   });
   it('uses AUTO_CONTINUE as trigger metadata but DISPATCH as the browser action',()=>{expect(AUTO_CONTINUE).toBe('AUTO_CONTINUE');expect(decideAutoContinue(snapshot(),{...freshAutopilotState(),lastDispatchedJobId:'JOB-1',lastDispatchedAt:'2026-09-15T00:59:58.000Z'},NOW)).toMatchObject({kind:'DISPATCH',trigger:'AUTO_CONTINUE',jobId:'JOB-2'});});
