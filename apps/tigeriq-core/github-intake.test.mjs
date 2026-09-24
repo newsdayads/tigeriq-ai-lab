@@ -4,18 +4,7 @@ import { extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,formatRe
 describe('GitHub Core intake guardrails',()=>{
   const base={number:588,title:'safe test',state:'open',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/588',body:'TIGERIQ_EXECUTABLE=true\nPRIORITY=P2\nCAPABILITY=reasoning\nOWNER_POLICY=AUTO\nNO_CODE_CHANGE=true\nNO_PC01_SHELL=true\nRead #280 and #335 plus `docs/CURRENT_STATE.md`.'};
   it('accepts an explicitly safe autonomous issue',()=>{expect(parseExecutableIssue(base)).toMatchObject({number:588,priority:'P2',capability:'reasoning'});});
-  it('supports fast hybrid change detection for Work Orders without unbounded full hydration and NV06/OpenClaw routing',()=>{expect(parseExecutableIssue({...base,body:'TIGERIQ_EXECUTABLE=true
-PRIORITY=P1
-CAPABILITY=pc_operator
-OWNER_POLICY=AUTO
-OWNER_DIRECT=true
-WORK_ORDER_HYBRID=fast
-CORE_DISPATCH=NV06_OPENCLAW
-NO_CMD_POWERSHELL=true
-ASSIGNED_ACTION
-tigeriq_pc status
-ACCEPTANCE
-PASS'})).toMatchObject({number:588,priority:'P1',capability:'pc_operator',coreDispatch:'NV06_OPENCLAW'});});
+  it('supports fast hybrid change detection for Work Orders without unbounded full hydration and NV06/OpenClaw routing',()=>{const parsed=parseExecutableIssue({...base,body:'TIGERIQ_EXECUTABLE=true\nPRIORITY=P1\nCAPABILITY=pc_operator\nOWNER_POLICY=AUTO\nOWNER_DIRECT=true\nWORK_ORDER_HYBRID=fast\nCORE_DISPATCH=NV06_OPENCLAW\nNO_CMD_POWERSHELL=true\nASSIGNED_ACTION\ntigeriq_pc status\nACCEPTANCE\nPASS'});expect(parsed).toMatchObject({number:588,priority:'P1',capability:'pc_operator',coreDispatch:'NV06_OPENCLAW',workOrderHybrid:'fast',noCmdPowershell:true});});
   it('fails closed if shell/code guardrails are missing',()=>{expect(parseExecutableIssue({...base,body:'TIGERIQ_EXECUTABLE=true\nOWNER_POLICY=AUTO'})).toBeNull();});
   it('does not treat CENTRAL prose/backticks as an executable marker',()=>{expect(parseExecutableIssue({...base,body:'Rule: `TIGERIQ_EXECUTABLE=true`; OWNER_POLICY=AUTO'})).toBeNull();});
   it('extracts bounded issue refs and safe repository paths',()=>{expect(extractIssueRefs(base.body,588)).toEqual([280,335]);expect(extractRepoPaths(base.body)).toEqual(['docs/CURRENT_STATE.md']);});
