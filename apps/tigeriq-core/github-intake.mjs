@@ -24,6 +24,7 @@ export function bodyValue(body,key){
 export function isManualOnlyAppChromeMaintenance(title,body){
   const t=String(title||'');
   const b=String(body||'');
+  if(isBoundedAppChromeRequestOnly(b))return false;
   return /\[APP-CHROME\]/i.test(t)
     || /^RESOURCE_SCOPE=APP_CHROME_/mi.test(b)
     || /^ALLOW_PATH_PREFIX=apps\/chrome-controller(?:\/|$)/mi.test(b)
