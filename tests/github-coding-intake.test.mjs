@@ -808,6 +808,24 @@ describe('GitHub coding scope-aware pool refill',()=>{
     expect(pool.events.filter(e=>e.type==='GITHUB_CODING_STALE_SCOPE_IGNORED')).toHaveLength(1);
   });
 
+  it('re-arms exact-once reopen intake when a completed issue is reopened',async()=>{
+    const pool=fakePool();let posted=0;
+    pool.events.push({type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:960,codingObjectiveId:'obj-960'}});
+    const reopenedIssue=scoped(960,'REOPEN_SCOPE','apps/reopen');
+    reopenedIssue.state='open';
+    const fetchImpl=async(url)=>{
+      if(url.includes('/issues?'))return response([reopenedIssue]);
+      if(url.includes('/api/status'))return response({objectives:[{id:'obj-960',status:'done'}],jobs:[]});
+      if(url.includes('/api/objectives')){posted++;return response({id:'obj-960-rearmed'});}
+      if(url.includes('/comments'))return response({});
+      return response({});
+    };
+    const out=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake',concurrencyCap:3});
+    expect(out).toMatchObject({created:1,active:0});
+    expect(posted).toBe(1);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_REARMED')).toHaveLength(1);
+  });
+
   it('counts only dispatches whose Coding Lane objective is currently non-terminal',async()=>{
     const pool=fakePool();let posted=0;
     pool.events.push(
