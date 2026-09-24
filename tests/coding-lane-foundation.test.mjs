@@ -156,6 +156,8 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
     assert.deepStrictEqual(restartRecoveryDecision(job,{state:'closed',merged:false}),{action:'fail',code:'CODING_RESTART_PR_CLOSED',prNumber:1105});
     assert.deepStrictEqual(restartRecoveryDecision(job,{state:'open',merged:false}),{action:'queue',code:'CODING_RESTART_RESUME_PR_OPEN',prNumber:1105});
     assert.deepStrictEqual(restartRecoveryDecision(job,{state:'closed',merged:true,merged_at:'2026-09-20T00:00:00Z'}),{action:'done',code:'CODING_RESTART_PR_ALREADY_MERGED',prNumber:1105});
+    assert.deepStrictEqual(restartRecoveryDecision({status:'running',pr_number:null,branch:null},null),{action:'queue',code:'CODING_RESTART_REQUEUE_PRE_BRANCH',prNumber:null});
+    assert.strictEqual(restartRecoveryDecision({status:'running',pr_number:null,branch:'tigeriq/nv12/job'},null).code,'CODING_RESTART_RESUME_IDENTITY_INCOMPLETE');
     assert.strictEqual(restartRecoveryDecision({...job,pr_number:null},null).code,'CODING_RESTART_RESUME_IDENTITY_INCOMPLETE');
     assert.strictEqual(restartRecoveryDecision({...job,status:'done'},{state:'closed'}).action,'ignore');
   });
@@ -188,6 +190,22 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
     assert.deepStrictEqual(out,{requeued:1,completed:0,failed:0,deferred:0});
     assert.ok(calls.some(x=>x.sql.includes("status='queued'")));
     assert.ok(calls.some(x=>x.sql.includes("tigeriq_coding_objectives set status='active'")));
+  });
+
+  await t.test('restart recovery requeues a running pre-branch job without terminalizing the objective',async()=>{
+    const job={id:'job-prebranch',objective_id:'obj-prebranch',status:'running',pr_number:null,branch:null,created_at:'2026-09-24T03:15:00Z'};
+    const calls=[];
+    const db={async query(sql,params=[]){
+      calls.push({sql,params});
+      if(sql.startsWith('select * from tigeriq_coding_jobs'))return{rows:[job],rowCount:1};
+      if(sql.startsWith("update tigeriq_coding_jobs set status='queued'"))return{rows:[],rowCount:1};
+      return{rows:[],rowCount:1};
+    }};
+    const out=await recoverAfterCodingRestart({db,fetchPr:async()=>{throw new Error('must not fetch PR')}});
+    assert.deepStrictEqual(out,{requeued:1,completed:0,failed:0,deferred:0});
+    assert.ok(calls.some(x=>x.sql.includes("status='queued'")));
+    assert.ok(calls.some(x=>String(x.params?.[1]||'').includes('pre-branch generation')));
+    assert.ok(!calls.some(x=>x.sql.includes("status='failed'")));
   });
 
   await t.test('closed unmerged PR reconciles immediately',()=>{
