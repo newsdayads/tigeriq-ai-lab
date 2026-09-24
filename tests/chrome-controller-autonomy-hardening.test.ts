@@ -379,6 +379,45 @@ describe('App Chrome local-only coordination',()=>{
 });
 
 
+describe('GitHub terminal UI-job reconciliation #1843',()=>{
+  it('reconciles closed same-repo issueRefs independently of disabled autopilot/self-run',()=>{
+    const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
+    const start=server.indexOf('async function reconcileGithubTerminalUiJobs()');
+    const end=server.indexOf('async function selfRunTick()',start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const reconcile=server.slice(start,end);
+    expect(reconcile).toContain("['SUBMITTED','WORKING','WAITING_EVIDENCE','VERIFY'].includes(active.stage)");
+    expect(reconcile).toContain("active.source==='APP_CHROME_SELF_RUN'");
+    expect(reconcile).toContain('await reconcileSelfRunWorker(workerId)');
+    expect(reconcile).toContain('fetchGithubIssue');
+    expect(reconcile).toContain('active=uiJobLedger.active(workerId)');
+    expect(reconcile).toContain('active.jobId!==jobId');
+    expect(reconcile).toContain("'WAITING_EVIDENCE'");
+    expect(reconcile).toContain("'VERIFY'");
+    expect(reconcile).toContain("'DONE'");
+    expect(reconcile).toContain("'BLOCKED'");
+    expect(reconcile).toContain('UI_JOB_GITHUB_TERMINAL_RECONCILED');
+    expect(reconcile).toContain('UI_JOB_GITHUB_TERMINAL_RECONCILE_DEFERRED');
+    expect(reconcile).not.toContain('externalWorkAutopilotEnabled');
+    expect(reconcile).not.toContain('if(!selfRunEnabled)');
+    expect(server).toContain('void reconcileGithubTerminalUiJobs()');
+    expect(server).toContain('setInterval(()=>void reconcileGithubTerminalUiJobs(),30_000).unref()');
+  });
+
+  it('accepts terminal evidence only from this exact GitHub repository',()=>{
+    const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
+    const start=server.indexOf('function localGithubIssueNumberFromRef');
+    const end=server.indexOf('function collectResourceScopes',start);
+    const parser=server.slice(start,end);
+    expect(parser).toContain("u.hostname.toLowerCase()!=='github.com'");
+    expect(parser).toContain('selfRunGithubOwner');
+    expect(parser).toContain('selfRunGithubRepo');
+    expect(parser).toContain("if(!/^\\d+\\/?$/.test(tail))return 0");
+  });
+});
+
+
 describe('NV04 assignment-bound Gemini transport',()=>{
   it('requires an explicit review/research contract and refuses unassigned continuation',()=>{
     const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
