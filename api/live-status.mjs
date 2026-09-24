@@ -726,8 +726,7 @@ async function resolveRuntimeBridge(fetchImpl = fetch) {
   return url;
 }
 
-export async function fetchPc01Live(fetchImpl = fetch) {
-  const base = await resolveRuntimeBridge(fetchImpl);
+async function fetchRuntimeBridgePayload(base, fetchImpl = fetch) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), RUNTIME_FETCH_TIMEOUT_MS);
   try {
@@ -739,9 +738,24 @@ export async function fetchPc01Live(fetchImpl = fetch) {
       cache: 'no-store',
     });
     if (!response.ok) throw new Error(`runtime_bridge_http_${response.status}`);
-    return buildWorkSections(sanitizeRuntimePayload(await response.json()), fetchImpl);
+    return response.json();
   } finally {
     clearTimeout(timeout);
+  }
+}
+
+export async function fetchPc01Live(fetchImpl = fetch) {
+  let base = await resolveRuntimeBridge(fetchImpl);
+  try {
+    return buildWorkSections(sanitizeRuntimePayload(await fetchRuntimeBridgePayload(base, fetchImpl)), fetchImpl);
+  } catch (error) {
+    const reason = String(error instanceof Error ? error.message : error);
+    if (!/^runtime_bridge_(?:http_|pointer_|payload_|fetch|timeout)/i.test(reason) && !/AbortError/i.test(reason)) throw error;
+    pointerCache = { at: 0, url: null };
+    const refreshedBase = await resolveRuntimeBridge(fetchImpl);
+    if (refreshedBase === base && !/^runtime_bridge_http_530$/i.test(reason)) throw error;
+    base = refreshedBase;
+    return buildWorkSections(sanitizeRuntimePayload(await fetchRuntimeBridgePayload(base, fetchImpl)), fetchImpl);
   }
 }
 
