@@ -3,6 +3,7 @@ import path from 'node:path';
 
 export const MAX_OWNER_LEASE_MS = 5 * 60 * 1000;
 export const DEFAULT_LEASE_PATH = 'D:\\TigerIQ\\Runtime\\desktop-commander-remote\\guard\\owner-lease.json';
+export const AUTHORIZATION_TOOL = 'tigeriq_authorize_mutation';
 
 export const READ_ONLY_TOOLS = Object.freeze([
   'get_config','read_file','read_multiple_files','list_directory','start_search',
