@@ -147,10 +147,10 @@ export function matchesExpectedSchema(prompt,text){
   const d=parseModelJson(text); if(!d||typeof d!=='object'||Array.isArray(d))return false;
   const schema=expectedSchemaFromPrompt(prompt);
   if(schema==='review')return ['approve','changes_requested'].includes(d.decision)&&typeof d.summary==='string'&&Array.isArray(d.issues);
-  const batchNoopAllowed=/^BATCH_NOOP_ALLOWED=true$/m.test(p);
+  const batchNoopAllowed=/^BATCH_NOOP_ALLOWED=true$/m.test(String(prompt||''));
   if(schema==='edits'){
     const explicitNoop=batchNoopAllowed&&d.noop===true&&Array.isArray(d.edits)&&d.edits.length===0;
-    const editsValid=Array.isArray(d.edits)&&d.edits.length>0&&d.edits.every(x=>x&&typeof x.path==='string'&&((typeof x.old==='string'&&x.old.length>0&&typeof x.new==='string')||(typeof x.search==='string'&&x.search.length>0&&typeof x.replace==='string')||typeof x.content==='string');
+    const editsValid=Array.isArray(d.edits)&&d.edits.length>0&&d.edits.every(x=>x&&typeof x.path==='string'&&((typeof x.old==='string'&&x.old.length>0&&typeof x.new==='string')||(typeof x.search==='string'&&x.search.length>0&&typeof x.replace==='string')||typeof x.content==='string'));
     return typeof d.summary==='string'&&(explicitNoop||editsValid);
   }
   if(schema==='changes'){
