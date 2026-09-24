@@ -1,7 +1,7 @@
 # TIGERIQ — BASELINE DECISIONS
-Version: 2.4
+Version: 2.5
 Status: Bootstrap Baseline
-Updated: 2026-09-18
+Updated: 2026-09-24
 
 ## Mục đích
 File này chỉ giữ các quyết định nền tảng ổn định mà NEW CHAT cần biết sau khi nạp `bootstrap/00_TIGERIQ_LOADER.md`. Không dùng file này để lưu P0 hiện tại, lỗi runtime, model/API đang dùng, command→employee mapping, danh sách employee, Work Order, issue hoặc kế hoạch triển khai tạm thời.
@@ -28,7 +28,7 @@ File này chỉ giữ các quyết định nền tảng ổn định mà NEW CHA
 - Production, paid service, financial commitment, credential/security boundary và irreversible action luôn đi qua gate/quyền phù hợp.
 - Không giả vờ AI/NV đang chạy nền hoặc song song nếu runtime không thực sự hỗ trợ.
 - Một Work Order/resource scope chỉ có một active owner; takeover phải idempotent và theo policy động hợp lệ, không bypass Owner hold hay authorization gate.
-- PC01 shell (`CMD`/`PowerShell`/terminal) là **mặc định DENY xuyên chat**: nếu có direct tool/API/file/process action tương đương thì bắt buộc dùng direct path; shell chỉ cho thao tác Windows/runtime-specific không có đường tương đương. Tuyệt đối không code repository bằng shell PC01; source engineering chỉ GitHub branch → PR → checks → review → merge.
+- `CMD` = **Remote Desktop Commander / Remote MCP**; `SHELL` = **cmd.exe / PowerShell / terminal**. Routing xuyên chat: GitHub connector → direct app/API/HTTPS bridge → Vercel/read-only cloud view → CMD → SHELL. CMD chỉ device-bound/break-glass, không làm data bus/hot path; status-only vượt 2–3 CMD calls là observability gap phải sửa API/bridge. Tuyệt đối không code repository bằng CMD hoặc SHELL trên PC01; source engineering chỉ GitHub branch → PR → checks → review → merge.
 - Một mục tiêu đã được anh Sơn giao là standing authorization cho mọi bước safe/reversible/zero-cost trong cùng scope: tự chạy branch → PR → checks → review → merge → bước kế tiếp khi đủ gate; không xin duyệt từng bước. Chỉ dừng ở Production/runtime release, paid/financial, credential/security boundary, destructive/irreversible, physical action, intent xung đột, blocker thật hoặc external wait.
 
 ## Những gì CỐ Ý không lưu ở đây
