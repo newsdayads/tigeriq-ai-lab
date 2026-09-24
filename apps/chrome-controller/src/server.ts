@@ -622,23 +622,12 @@ async function reconcileUiJobWorkerFromGithub(workerId:WorkerId){
   if(!terminal)return false;
 
   if(terminal==='EXTERNAL_WAIT'){
-    const current=uiJobLedger.get(workerId,active.jobId);
-    if(!current||isTerminalUiJobStage(current.stage))return false;
-    if(current.stage==='SUBMITTED'||current.stage==='WORKING'){
-      uiJobLedger.transition(workerId,current.jobId,'WAITING_EVIDENCE',{
-        evidenceRef,
-        nextAction:'External wait; preserve current assignment without continue spam',
-        blocker:null,
-        result:'GitHub authoritative terminal marker is EXTERNAL_WAIT',
-      });
-    }else{
-      uiJobLedger.transition(workerId,current.jobId,current.stage,{
-        evidenceRef,
-        nextAction:'External wait; preserve current assignment without continue spam',
-        blocker:null,
-        result:'GitHub authoritative terminal marker is EXTERNAL_WAIT',
-      });
-    }
+    uiJobLedger.reconcileAuthoritativeTerminal(workerId,active.jobId,'EXTERNAL_WAIT',{
+      evidenceRef,
+      nextAction:'External wait; preserve current assignment without continue spam',
+      blocker:null,
+      result:'GitHub authoritative terminal marker is EXTERNAL_WAIT',
+    });
     log('UI_JOB_EXTERNAL_WAIT_RECONCILED',{workerId,jobId:active.jobId,issueNumber,source:active.source});
     persistEvidence();
     return true;
@@ -659,23 +648,19 @@ async function reconcileUiJobWorkerFromGithub(workerId:WorkerId){
     }
   }
 
-  if(terminal==='DONE'){
-    completeSelfRunJob(workerId,active.jobId,evidenceRef,`GitHub authoritative terminal state DONE for issue #${issueNumber}; stale UI assignment cleared.`);
-  }else{
-    const current=uiJobLedger.get(workerId,active.jobId);
-    if(current&&!isTerminalUiJobStage(current.stage)){
-      uiJobLedger.transition(workerId,current.jobId,'BLOCKED',{
-        evidenceRef,
-        blocker:issue.state==='closed'
-          ?`SOURCE_ISSUE_CLOSED_${String(issue.state_reason||'UNKNOWN').toUpperCase()}`
-          :'BLOCKED',
-        nextAction:null,
-        result:issue.state==='closed'
-          ?`GitHub issue #${issueNumber} closed without completed state.`
-          :'GitHub authoritative terminal evidence is BLOCKED.',
-      });
-    }
-  }
+  uiJobLedger.reconcileAuthoritativeTerminal(workerId,active.jobId,terminal,{
+    evidenceRef,
+    blocker:terminal==='BLOCKED'
+      ?(issue.state==='closed'
+        ?`SOURCE_ISSUE_CLOSED_${String(issue.state_reason||'UNKNOWN').toUpperCase()}`
+        :'BLOCKED')
+      :null,
+    result:terminal==='DONE'
+      ?`GitHub authoritative terminal state DONE for issue #${issueNumber}; stale UI assignment cleared.`
+      :(issue.state==='closed'
+        ?`GitHub issue #${issueNumber} closed without completed state.`
+        :'GitHub authoritative terminal evidence is BLOCKED.'),
+  });
   log('UI_JOB_TERMINAL_RECONCILED',{
     workerId,jobId:active.jobId,issueNumber,source:active.source,terminal,
     stateReason:issue.state_reason??null,claimId:claimId||null,
