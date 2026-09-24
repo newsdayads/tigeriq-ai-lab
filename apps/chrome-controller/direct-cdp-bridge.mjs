@@ -901,12 +901,6 @@ function projectNewChatExpr(){
   return `(()=>{const labels=['Trò chuyện mới trong TigerIQ AI Lab','New chat in TigerIQ AI Lab'];const matches=[...document.querySelectorAll('button,[role="button"]')].filter(e=>labels.includes((e.getAttribute('aria-label')||'').trim()));if(matches.length!==1)return{ok:false,status:'PROJECT_NEW_CHAT_BUTTON_COUNT_'+matches.length};matches[0].click();return{ok:true,status:'PROJECT_NEW_CHAT_CLICKED'}})()`;
 }
 async function recoverNv02ProjectContext(target){
-  const state=loadNv02Continuity();
-  if(hasCurrentNv02Chat(state.resumeChatUrl)){
-    await navigate(target,state.resumeChatUrl);
-    await sleep(1200);
-    return{ok:true,status:'CURRENT_CHAT_RESTORED',url:state.resumeChatUrl};
-  }
   for(let attempt=0;attempt<12;attempt+=1){
     const p=await pageRpc(target);
     try{
