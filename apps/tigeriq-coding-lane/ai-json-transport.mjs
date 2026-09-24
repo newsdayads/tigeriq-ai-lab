@@ -320,7 +320,7 @@ export function expandCompactChanges(prompt,text){
 
   const patchEdits=Array.isArray(d.edits)&&d.edits.length?d.edits:patchLikeCompactChanges(d.changes)?d.changes:null;
   if(!patchEdits&&Array.isArray(d.changes)&&d.changes.length>0){
-    const normalized=d.changes.map(change=>({...change,path:normalizedCompactPath(change?.path,files)}));
+    const normalized=d.changes;
     for(const change of normalized){
       const path=String(change?.path||'').trim();
       if(!path||!files.has(path))throw new Error(`COMPACT_EDIT_PATH_UNKNOWN:${path}`);
