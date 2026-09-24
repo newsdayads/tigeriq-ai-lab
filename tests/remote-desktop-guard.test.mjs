@@ -1,22 +1,58 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import {
-  DEFENSE_IN_DEPTH_BLOCKED_COMMANDS, EXPECTED_PERMISSION_MODE, OBSERVATION_DIRECTORIES,
-  argsHash, authorizeRemoteCall, consumeOwnerLease, verifyDesktopCommanderConfig
+  MAX_OWNER_LEASE_MS, OBSERVATION_DIRECTORIES, argsHash, authorizeRemoteCall
 } from '../apps/remote-desktop-guard/policy.mjs';
+import {
+  enforceRemoteToolCall
+} from '../apps/remote-desktop-guard/runtime-gate.mjs';
+import {
+  patchDesktopCommanderServer, verifyDesktopCommanderServerPatched
+} from '../apps/remote-desktop-guard/patch-desktop-commander.mjs';
 
-function leaseFor(tool,args,{issued='2026-09-25T00:00:00.000Z',expires='2026-09-25T00:05:00.000Z'}={}) {
-  return {version:1,leaseId:'OWNER-TEST-1',ownerAuthorized:true,tool,argsSha256:argsHash(args),issuedAt:issued,expiresAt:expires,consumed:false};
-}
 const NOW=Date.parse('2026-09-25T00:01:00.000Z');
+const tempDirs=[];
 
-describe('Remote Desktop Commander hard mutation guard',()=>{
-  it('passes read/list/search/health observation without mutation authorization',()=>{
-    for (const tool of ['read_file','list_directory','start_search','list_processes','get_config']) {
-      expect(authorizeRemoteCall({tool,now:NOW})).toEqual({ok:true,reason:'READ_ONLY_DEFAULT_PASS'});
-    }
+async function tempLeasePath() {
+  const dir=await mkdtemp(join(tmpdir(),'tigeriq-rdc-guard-'));
+  tempDirs.push(dir);
+  return join(dir,'owner-lease.json');
+}
+function leaseFor(tool,args,{issued='2026-09-25T00:00:00.000Z',expires='2026-09-25T00:05:00.000Z'}={}) {
+  return {version:1,leaseId:'OWNER-TEST-1',ownerAuthorized:true,tool,argsSha256:argsHash(args),issuedAt:issued,expiresAt:expires};
+}
+async function putLease(leasePath,lease) {
+  await writeFile(leasePath,JSON.stringify(lease),'utf8');
+}
+afterEach(async()=>{ while(tempDirs.length) await rm(tempDirs.pop(),{recursive:true,force:true}); });
+
+describe('Remote Desktop Commander hard runtime guard',()=>{
+  it('passes only approved observation paths for read/list/search/health',()=>{
+    expect(authorizeRemoteCall({tool:'read_file',args:{path:'D:\\TigerIQ\\Evidence\\x.txt'},now:NOW}))
+      .toEqual({ok:true,reason:'READ_ONLY_DEFAULT_PASS'});
+    expect(authorizeRemoteCall({tool:'list_directory',args:{path:'D:\\TigerIQ\\Logs'},now:NOW}))
+      .toEqual({ok:true,reason:'READ_ONLY_DEFAULT_PASS'});
+    expect(authorizeRemoteCall({tool:'start_search',args:{path:'D:\\TigerIQ\\Checkpoints'},now:NOW}))
+      .toEqual({ok:true,reason:'READ_ONLY_DEFAULT_PASS'});
+    expect(authorizeRemoteCall({tool:'list_processes',args:{},now:NOW}))
+      .toEqual({ok:true,reason:'READ_ONLY_DEFAULT_PASS'});
+    expect(authorizeRemoteCall({tool:'get_config',args:{},now:NOW}))
+      .toEqual({ok:true,reason:'READ_ONLY_DEFAULT_PASS'});
   });
 
-  it('fails closed for unauthorized shell/PowerShell/Node/Git/Vercel mutation',()=>{
+  it('blocks Secrets, broad TigerIQ roots, relative paths and URL reads',()=>{
+    for (const args of [
+      {path:'D:\\TigerIQ\\Secrets\\token.txt'},
+      {path:'D:\\TigerIQ'},
+      {path:'..\\Secrets\\token.txt'},
+      {path:'https://127.0.0.1:8795/health',isUrl:true}
+    ]) expect(authorizeRemoteCall({tool:'read_file',args,now:NOW})).toEqual({ok:false,reason:'READ_SCOPE_DENIED'});
+  });
+
+  it('fails closed for unauthorized PowerShell/CMD/Node/Python/Git/Vercel mutation',async()=>{
+    const leasePath=await tempLeasePath();
     for (const command of [
       'powershell.exe -NoProfile -Command "Set-Content x y"',
       'cmd.exe /c del x',
@@ -26,43 +62,81 @@ describe('Remote Desktop Commander hard mutation guard',()=>{
       'vercel deploy --prod',
       'vercel remove tigeriq --yes'
     ]) {
-      expect(authorizeRemoteCall({tool:'start_process',args:{command,timeout_ms:5000},now:NOW})).toMatchObject({ok:false,reason:'OWNER_AUTH_REQUIRED'});
+      const result=await enforceRemoteToolCall({isRemoteCall:true,tool:'start_process',args:{command,timeout_ms:5000},leasePath,now:NOW});
+      expect(result).toEqual({ok:false,reason:'OWNER_AUTH_REQUIRED'});
     }
   });
 
-  it('requires exact tool + exact arguments and bounded expiry',()=>{
-    const args={command:'echo bounded-canary',timeout_ms:5000,shell:'cmd.exe'};
-    const lease=leaseFor('start_process',args);
-    expect(authorizeRemoteCall({tool:'start_process',args,lease,now:NOW})).toMatchObject({ok:true,reason:'OWNER_LEASE_VALID'});
-    expect(authorizeRemoteCall({tool:'start_process',args:{...args,command:'echo changed'},lease,now:NOW})).toMatchObject({ok:false,reason:'LEASE_ARGUMENT_SCOPE_MISMATCH'});
-    expect(authorizeRemoteCall({tool:'write_file',args,lease,now:NOW})).toMatchObject({ok:false,reason:'LEASE_TOOL_SCOPE_MISMATCH'});
-    expect(authorizeRemoteCall({tool:'start_process',args,lease,now:Date.parse('2026-09-25T00:06:00.000Z')})).toMatchObject({ok:false,reason:'LEASE_EXPIRED_OR_NOT_ACTIVE'});
-  });
-
-  it('self-closes a single-use lease and remains closed after re-evaluation/restart',()=>{
+  it('opens exactly one owner-authorized call then remains closed after restart/retry',async()=>{
+    const leasePath=await tempLeasePath();
     const args={path:'D:\\TigerIQ\\Evidence\\guard-canary.txt',content:'ok',mode:'rewrite'};
-    const consumed=consumeOwnerLease(leaseFor('write_file',args));
-    expect(authorizeRemoteCall({tool:'write_file',args,lease:consumed,now:NOW})).toMatchObject({ok:false,reason:'LEASE_CONSUMED'});
-    const serialized=JSON.stringify(consumed);
-    const afterRestart=JSON.parse(serialized);
-    expect(authorizeRemoteCall({tool:'write_file',args,lease:afterRestart,now:NOW})).toMatchObject({ok:false,reason:'LEASE_CONSUMED'});
+    await putLease(leasePath,leaseFor('write_file',args));
+    expect(await enforceRemoteToolCall({isRemoteCall:true,tool:'write_file',args,leasePath,now:NOW}))
+      .toMatchObject({ok:true,reason:'OWNER_LEASE_VALID_SINGLE_USE',leaseId:'OWNER-TEST-1'});
+    await expect(readFile(leasePath,'utf8')).rejects.toMatchObject({code:'ENOENT'});
+    const claim=(await readdir(join(leasePath,'..'))).find((name)=>name.startsWith('owner-lease.json.claim-'));
+    const receipt=JSON.parse(await readFile(join(join(leasePath,'..'),claim),'utf8'));
+    expect(receipt).toMatchObject({consumed:true,decision:'ALLOW_ONCE'});
+    expect(await enforceRemoteToolCall({isRemoteCall:true,tool:'write_file',args,leasePath,now:NOW}))
+      .toEqual({ok:false,reason:'OWNER_AUTH_REQUIRED'});
   });
 
-  it('fails closed for unknown tools or weakened permission mode',()=>{
-    expect(authorizeRemoteCall({tool:'future_mutator',now:NOW})).toMatchObject({ok:false,reason:'UNKNOWN_TOOL_FAIL_CLOSED'});
-    const args={command:'echo x',timeout_ms:1000};
-    expect(authorizeRemoteCall({tool:'start_process',args,lease:leaseFor('start_process',args),permissionMode:'full_access',now:NOW}))
-      .toMatchObject({ok:false,reason:'PERMISSION_MODE_FAIL_CLOSED'});
+  it('scope mismatch or expiry consumes the lease fail-closed',async()=>{
+    const leasePath=await tempLeasePath();
+    const args={command:'echo approved',timeout_ms:1000};
+    await putLease(leasePath,leaseFor('start_process',args));
+    expect(await enforceRemoteToolCall({isRemoteCall:true,tool:'start_process',args:{...args,command:'echo changed'},leasePath,now:NOW}))
+      .toMatchObject({ok:false,reason:'LEASE_ARGUMENT_SCOPE_MISMATCH'});
+    await expect(readFile(leasePath,'utf8')).rejects.toMatchObject({code:'ENOENT'});
+
+    await putLease(leasePath,leaseFor('start_process',args,{issued:'2026-09-24T23:40:00.000Z',expires:'2026-09-24T23:45:00.000Z'}));
+    expect(await enforceRemoteToolCall({isRemoteCall:true,tool:'start_process',args,leasePath,now:NOW}))
+      .toMatchObject({ok:false,reason:'LEASE_EXPIRED_OR_NOT_ACTIVE'});
+    await expect(readFile(leasePath,'utf8')).rejects.toMatchObject({code:'ENOENT'});
   });
 
-  it('requires narrow observation directories, deny-shell default, and interpreter blocklist',()=>{
-    const config={allowedDirectories:[...OBSERVATION_DIRECTORIES],defaultShell:'__TIGERIQ_REMOTE_SHELL_DENIED__.exe',blockedCommands:[...DEFENSE_IN_DEPTH_BLOCKED_COMMANDS]};
-    expect(verifyDesktopCommanderConfig(config)).toEqual({ok:true,errors:[]});
-    expect(verifyDesktopCommanderConfig({...config,allowedDirectories:[]})).toMatchObject({ok:false});
-    expect(verifyDesktopCommanderConfig({...config,allowedDirectories:['D:\\TigerIQ\\Secrets']})).toMatchObject({ok:false});
+  it('enforces lease max lifetime and exact full argument hash',()=>{
+    const args={command:'echo bounded',timeout_ms:1000,shell:'cmd.exe'};
+    const tooLong=leaseFor('start_process',args,{issued:'2026-09-25T00:00:00.000Z',expires:new Date(Date.parse('2026-09-25T00:00:00.000Z')+MAX_OWNER_LEASE_MS+1).toISOString()});
+    expect(authorizeRemoteCall({tool:'start_process',args,lease:tooLong,now:NOW})).toMatchObject({ok:false,reason:'LEASE_BOUNDS_INVALID'});
+    expect(authorizeRemoteCall({tool:'start_process',args:{...args,timeout_ms:2000},lease:leaseFor('start_process',args),now:NOW}))
+      .toMatchObject({ok:false,reason:'LEASE_ARGUMENT_SCOPE_MISMATCH'});
   });
 
-  it('pins the platform mutation boundary to ask-before-writes',()=>{
-    expect(EXPECTED_PERMISSION_MODE).toBe('ask_before_writes');
+  it('forbids remote security config mutation even when a lease file exists',async()=>{
+    const leasePath=await tempLeasePath();
+    const args={key:'blockedCommands',value:['x']};
+    await putLease(leasePath,leaseFor('set_config_value',args));
+    expect(await enforceRemoteToolCall({isRemoteCall:true,tool:'set_config_value',args,leasePath,now:NOW}))
+      .toEqual({ok:false,reason:'REMOTE_CONFIG_MUTATION_FORBIDDEN'});
+    expect(JSON.parse(await readFile(leasePath,'utf8'))).toMatchObject({leaseId:'OWNER-TEST-1'});
+  });
+
+  it('unknown remote tools fail closed while local calls remain unchanged',async()=>{
+    expect(await enforceRemoteToolCall({isRemoteCall:true,tool:'future_mutator',args:{},now:NOW}))
+      .toEqual({ok:false,reason:'UNKNOWN_TOOL_FAIL_CLOSED'});
+    expect(await enforceRemoteToolCall({isRemoteCall:false,tool:'start_process',args:{command:'echo local'},now:NOW}))
+      .toEqual({ok:true,reason:'LOCAL_CALL_UNCHANGED'});
+  });
+
+  it('patches Desktop Commander dispatcher idempotently and rejects anchor drift',()=>{
+    const fixture=[
+      "import path from 'path';",
+      'async function handleCallToolRequest(request) {',
+      '    const { name, arguments: args } = request.params;',
+      '    const isRemoteCall = true;',
+      '        setCurrentCallIsRemote(isRemoteCall);',
+      '}'
+    ].join('\n');
+    const once=patchDesktopCommanderServer(fixture);
+    const twice=patchDesktopCommanderServer(once);
+    expect(twice).toBe(once);
+    expect(verifyDesktopCommanderServerPatched(once)).toBe(true);
+    expect(()=>patchDesktopCommanderServer('unexpected upstream')).toThrow('DESKTOP_COMMANDER_0_2_51_ANCHOR_MISMATCH');
+  });
+
+  it('keeps the observation allowlist narrow and excludes Secrets',()=>{
+    expect(OBSERVATION_DIRECTORIES.length).toBeGreaterThan(0);
+    expect(OBSERVATION_DIRECTORIES.some((x)=>/\\Secrets(?:\\|$)/i.test(x))).toBe(false);
   });
 });
