@@ -255,7 +255,7 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("phase==='STALLED'&&ui?.modelExact!==true&&modelCheckRequired");
     const bootFreshGate=continuityLoop.indexOf("bootFreshContextPending.has('NV02')");
     const periodicF5Gate=continuityLoop.indexOf("if(currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0))");
-    const modelRecoveryGate=continuityLoop.indexOf("if(phase==='STALLED'&&ui?.modelExact!==true&&modelCheckRequired)");
+    const modelRecoveryGate=continuityLoop.indexOf("if(phase==='STALLED'&&ui?.modelExact!==true&&modelCheckRequired&&");
     expect(bootFreshGate).toBeGreaterThan(-1);
     expect(periodicF5Gate).toBeGreaterThan(bootFreshGate);
     expect(periodicF5Gate).toBeLessThan(modelRecoveryGate);
