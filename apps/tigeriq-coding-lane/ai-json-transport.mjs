@@ -147,7 +147,7 @@ export function matchesExpectedSchema(prompt,text){
   const d=parseModelJson(text); if(!d||typeof d!=='object'||Array.isArray(d))return false;
   const schema=expectedSchemaFromPrompt(prompt);
   if(schema==='review')return ['approve','changes_requested'].includes(d.decision)&&typeof d.summary==='string'&&Array.isArray(d.issues);
-  if(schema==='edits')return typeof d.summary==='string'&&Array.isArray(d.edits)&&d.edits.length>0&&d.edits.every(x=>x&&typeof x.path==='string'&&typeof x.old==='string'&&x.old.length>0&&typeof x.new==='string');
+  if(schema==='edits')return typeof d.summary==='string'&&Array.isArray(d.edits)&&d.edits.length>0&&d.edits.every(x=>x&&typeof x.path==='string'&&((typeof x.old==='string'&&x.old.length>0&&typeof x.new==='string')||(typeof x.search==='string'&&x.search.length>0&&typeof x.replace==='string')||typeof x.content==='string'));
   if(schema==='changes')return typeof d.summary==='string'&&Array.isArray(d.changes)&&d.changes.length>0&&d.changes.every(x=>x&&typeof x.path==='string'&&typeof x.content==='string');
   if(schema==='manager')return Boolean(['continue','blocked'].includes(d.status)&&typeof d.summary==='string'&&(d.status==='blocked'||(d.job&&typeof d.job.title==='string'&&typeof d.job.instruction==='string'&&Array.isArray(d.job.paths))));
   return true;
@@ -359,6 +359,9 @@ export function installAiJsonTransport({maxAttempts=3,baseDelayMs=350,attemptTim
           if(schema==='changes'){
             const expanded=expandCompactChanges(originalPrompt,text);
             if(matchesExpectedSchema(originalPrompt,JSON.stringify(expanded)))return responseWithJson(res,replaceModelText(input,data,JSON.stringify(expanded)));
+          }else if(schema==='edits'){
+            const parsed=parseModelJson(text);
+            if(parsed&&matchesExpectedSchema(originalPrompt,JSON.stringify(parsed)))return responseWithJson(res,replaceModelText(input,data,JSON.stringify(parsed)));
           }else if(matchesExpectedSchema(originalPrompt,text))return res;
         }
       }catch{
