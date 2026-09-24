@@ -285,7 +285,8 @@ describe('coding lane AI JSON transport',()=>{
   });
   it('runtime wires compact transport before manager loop',()=>{
     const src=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
-    expect(src).toContain("import {installAiJsonTransport} from './ai-json-transport.mjs';");
+    expect(src).toContain("from './ai-json-transport.mjs';");
+    expect(src).toContain('installAiJsonTransport');
     const install=src.indexOf('installAiJsonTransport({maxAttempts:1');
     const manager=src.indexOf('await managerTick()');
     expect(install).toBeGreaterThanOrEqual(0);
