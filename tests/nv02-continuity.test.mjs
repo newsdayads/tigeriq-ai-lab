@@ -223,7 +223,7 @@ describe('NV02 continuity policy', () => {
     const localRunCommand=handleCommandSource.slice(handleCommandSource.indexOf("if(action==='LOCAL_CONTINUE_NOW')"),handleCommandSource.indexOf("if(action==='DISPATCH')"));
     expect(localRunCommand).toContain("ensureNv02LocalReadyLocked(target,raw,{forceFresh:false})");
     expect(localRunCommand).not.toContain("withNv02Mutation(");
-    expect(localRunCommand).toContain("workerRunGraceUntil.delete('NV02')");
+    expect(localRunCommand).not.toContain("workerRunGraceUntil.delete('NV02')");
     expect(source).toContain("const workerRunGraceUntil=new Map()");
     expect(source).toContain("workerRunGraceUntil.set(workerId,nextContinueAt)");
     expect(source).toContain("'LOCAL_RUN_BACKGROUND_SUPPRESSED'");
