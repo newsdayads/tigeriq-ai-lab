@@ -48,9 +48,11 @@ function Discover-AuthorizedRequest(){
   return $null
 }
 function Resolve-Request(){
-  $fileReq=Read-RequestFile
-  if($fileReq){return $fileReq}
-  return Discover-AuthorizedRequest
+  # Current OPEN Owner+Vy GitHub authorization is authoritative. A stale State
+  # request must never block a newer explicit Owner deployment authorization.
+  $ownerReq=Discover-AuthorizedRequest
+  if($ownerReq){return $ownerReq}
+  return Read-RequestFile
 }
 function Assert-Authorization($req){
   $issue=(& gh issue view ([int]$req.issueNumber) --repo $Repo --json state,body 2>$null|Out-String)|ConvertFrom-Json -ErrorAction Stop
@@ -126,7 +128,7 @@ function Wait-ExactHead([string]$head,[int]$timeoutSec=150){
 }
 function Restore-File([string]$backup,[string]$target){if(Test-Path -LiteralPath $backup){Copy-Item -LiteralPath $backup -Destination $target -Force}}
 
-$req=$null;$paused=$false
+$req=$null;$paused=$false;$rollback=$null
 try{
   New-Item -ItemType Directory -Path $StateRoot -Force|Out-Null
   $req=Resolve-Request
