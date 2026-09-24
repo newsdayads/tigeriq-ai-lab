@@ -999,10 +999,24 @@ async function getCommand(workerId){
   const r=await fetch(`${CONTROLLER}/api/commands/${encodeURIComponent(workerId)}`,{headers:auth(workerId),signal:AbortSignal.timeout(4000)});
   if(!r.ok) throw new Error(`HTTP_${r.status}:commands`);return (await r.json()).command||null;
 }
+const CONTROLLER_STATE_CACHE_MS=2000;
+let controllerStateCache=null;
+let controllerStateCacheAt=0;
+let controllerStateFetch=null;
 async function getControllerState(){
-  const r=await fetch(CONTROLLER+'/api/state',{headers:auth('NV02'),signal:AbortSignal.timeout(4000)});
-  if(!r.ok)throw new Error(`HTTP_${r.status}:state`);
-  return r.json();
+  const now=Date.now();
+  if(controllerStateCache&&now-controllerStateCacheAt<CONTROLLER_STATE_CACHE_MS)return controllerStateCache;
+  if(controllerStateFetch)return controllerStateFetch;
+  controllerStateFetch=(async()=>{
+    const r=await fetch(CONTROLLER+'/api/continuity/control-state',{headers:auth('NV02'),signal:AbortSignal.timeout(3000)});
+    if(!r.ok)throw new Error(`HTTP_${r.status}:continuity-control-state`);
+    const value=await r.json();
+    controllerStateCache=value;
+    controllerStateCacheAt=Date.now();
+    return value;
+  })();
+  try{return await controllerStateFetch;}
+  finally{controllerStateFetch=null;}
 }
 function workerAssignmentStatus(controller,workerId){
   const jobs=(controller?.jobs||[]).filter((job)=>job?.workerId===workerId&&!job?.completedAt);
