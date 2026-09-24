@@ -18,10 +18,6 @@ test('P1-P5 remain autonomous and keep their priority',()=>{
   }
 });
 
-test('specialist routing uses NV02 general, NV03 review, NV04 research, NV06 pc_operator, Coding Lane coding',()=>{
-  assert.deepEqual(({route,workerId}=classifyWorkOrder('PRIORITY=P2\nCAPABILITY=general'))=>({route,workerId}),undefined);
-});
-
 test('specialist routing table is deterministic',()=>{
   let s=classifyWorkOrder('PRIORITY=P2\nCAPABILITY=general');assert.equal(s.route,'UI');assert.equal(s.workerId,'NV02');
   s=classifyWorkOrder('PRIORITY=P2\nCAPABILITY=review');assert.equal(s.route,'UI');assert.equal(s.workerId,'NV03');
