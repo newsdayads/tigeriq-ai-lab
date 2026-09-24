@@ -808,22 +808,36 @@ describe('GitHub coding scope-aware pool refill',()=>{
     expect(pool.events.filter(e=>e.type==='GITHUB_CODING_STALE_SCOPE_IGNORED')).toHaveLength(1);
   });
 
-  it('re-arms exact-once reopen intake when a completed issue is reopened',async()=>{
+  it('re-arms exact-once reopen intake after a real completed closed→reopened transition',async()=>{
     const pool=fakePool();let posted=0;
-    pool.events.push({type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:960,codingObjectiveId:'obj-960'}});
+    pool.events.push(
+      {type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:960,codingObjectiveId:'obj-960'}},
+      {type:'GITHUB_CODING_RESULT_REPORTED',data:{issueNumber:960,codingObjectiveId:'obj-960',status:'completed'}}
+    );
     const reopenedIssue=scoped(960,'REOPEN_SCOPE','apps/reopen');
     reopenedIssue.state='open';
+    reopenedIssue.comments=0;
+    const timeline=[
+      {id:1,event:'closed',created_at:'2026-09-24T10:00:00Z'},
+      {id:2,event:'reopened',created_at:'2026-09-24T11:00:00Z'}
+    ];
     const fetchImpl=async(url)=>{
       if(url.includes('/issues?'))return response([reopenedIssue]);
-      if(url.includes('/api/status'))return response({objectives:[{id:'obj-960',status:'done'}],jobs:[]});
+      if(url.includes('/issues/960/timeline'))return response(timeline);
+      if(url.includes('/issues/960/comments'))return response([]);
+      if(url.includes('/api/status'))return response({objectives:[{id:'obj-960',status:'completed'}],jobs:[]});
       if(url.includes('/api/objectives')){posted++;return response({id:'obj-960-rearmed'});}
       if(url.includes('/comments'))return response({});
       return response({});
     };
-    const out=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake',concurrencyCap:3});
-    expect(out).toMatchObject({created:1,active:0});
+    const first=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake',concurrencyCap:3});
+    expect(first).toMatchObject({created:1,active:0});
     expect(posted).toBe(1);
-    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_REARMED')).toHaveLength(1);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_COMPLETED_REARMED')).toHaveLength(1);
+
+    const second=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake',concurrencyCap:3});
+    expect(second.created).toBe(0);
+    expect(posted).toBe(1);
   });
 
   it('counts only dispatches whose Coding Lane objective is currently non-terminal',async()=>{
