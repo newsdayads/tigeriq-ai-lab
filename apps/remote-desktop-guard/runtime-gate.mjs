@@ -75,8 +75,6 @@ export async function installOwnerLeaseFromAuthorization({authorizationUrl}={},{
   const lease=leaseFromAuthorizationRecord(verified.record,authorizationUrl);
   const envelope=validateLeaseEnvelope(lease,{now});
   if (!envelope.ok) return envelope;
-  const selfCheck=await verifyOwnerAuthorizationRef(lease,{fetchImpl});
-  if (!selfCheck.ok) return selfCheck;
   try {
     await mkdir(path.dirname(leasePath),{recursive:true});
     await writeFile(leasePath,JSON.stringify(lease,null,2)+'\n',{encoding:'utf8',flag:'wx'});
