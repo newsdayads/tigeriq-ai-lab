@@ -230,7 +230,7 @@ describe('isolated NV02 WORKING/F5 safety scope',()=>{
     expect(bridge).not.toContain("reason:'WORKING_NO_PROGRESS_3_CHECKS'");
     expect(bridge).not.toContain("stopAndClearComposerExpr");
     const hotLoop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
-    const working=hotLoop.slice(hotLoop.indexOf("if(phase==='WORKING')"),hotLoop.indexOf('if(shouldRotateNv02Chat'));
+    const working=hotLoop.slice(hotLoop.indexOf("if(phase==='WORKING')"),hotLoop.indexOf('const chatLoadRecoveryHandled=await maybeRecoverChatLoadError'));
     expect(working).not.toContain('reloadTarget');
     expect(working).not.toContain('reopenWorker(');
     expect(working).not.toContain('dispatchNaturalContinue');
@@ -361,7 +361,8 @@ describe('App Chrome local-only coordination',()=>{
     const loop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
     expect(loop).not.toContain('externalAutopilotOwnsNextNv02Job');
     expect(loop).not.toContain('findContinuableNv02Work');
-    expect(loop).toContain('LOCAL_CONTINUE_DISPATCHED');
+    expect(loop).toContain('dispatchNaturalContinue(target,state,now)');
+    expect(bridge).toContain("continuityEvent('LOCAL_CONTINUE_DISPATCHED'");
     expect(bridge).toContain("acquireBridgeMutationLease('NV02',purpose,ttlMs)");
   });
 });
