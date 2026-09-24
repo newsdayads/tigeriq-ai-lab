@@ -1,11 +1,22 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import {activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertPrOpenState,buildLocalFileContext,canonicalCodingJobTitle,canonicalWorkTitleFromObjective,classifyAiFailure,codingMergeCommitTitle,codingOutputTokenLimit,codingPathsOverlap,cooldownWaitFailure,coreResourceStateEligible,gateFailureIssues,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,managerResourceFailurePlan,partitionGenerationFiles,preserveGenerationPrompt,providerCooldownPollPlan,recoverAfterCodingRestart,resourceWaitPlan,restartRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,validateCompactEdits,validateManagerJobPaths} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertPrOpenState,buildLocalFileContext,canonicalCodingJobTitle,canonicalWorkTitleFromObjective,classifyAiFailure,codingMergeCommitTitle,codingOutputTokenLimit,codingPathsOverlap,cooldownWaitFailure,coreResourceStateEligible,gateFailureIssues,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,isVietnameseWorkTitle,managerResourceFailurePlan,partitionGenerationFiles,preserveGenerationPrompt,providerCooldownPollPlan,recoverAfterCodingRestart,resourceWaitPlan,restartRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,validateCompactEdits,validateManagerJobPaths,validateManagerJobTitle} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError,parseJsonObject} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 const nv11={id:'NV11',provider:'fake',model:'a'};
 const nv19={id:'NV19',provider:'fake',model:'b'};
 const nv13={id:'NV13',provider:'fake',model:'c'};
+
+test('Vietnamese title guard rejects English manager titles without canonical Work Order',()=>{
+  assert.strictEqual(isVietnameseWorkTitle('Sửa lỗi Core'),true);
+  assert.strictEqual(isVietnameseWorkTitle('Fix Core bug'),false);
+  assert.throws(()=>validateManagerJobTitle({status:'continue',job:{title:'Fix Core bug'}},'manual objective'),/MANAGER_TITLE_NOT_VI/);
+  assert.doesNotThrow(()=>validateManagerJobTitle({status:'continue',job:{title:'Fix Core bug'}},'GitHub autonomous coding issue #1799: [P0][CORE] Sửa lỗi tiêu đề'));
+  assert.strictEqual(canonicalCodingJobTitle('manual objective','Fix Core bug'),'Công việc Coding');
+  assert.strictEqual(canonicalCodingJobTitle('manual objective','Sửa lỗi API'),'Sửa lỗi API');
+  assert.strictEqual(codingMergeCommitTitle(1800,'Fix Core bug'),'PR #1800 - Công việc Coding');
+  assert.strictEqual(classifyAiFailure(new Error('MANAGER_TITLE_NOT_VI')),'output_contract');
+});
 
 test('canonical Vietnamese title inheritance',()=>{
   const title='[P0][CORE] Tăng tốc nhận việc GitHub xuống ≤5 giây';
