@@ -7,13 +7,13 @@ export const DEFAULT_LEASE_PATH = 'D:\\TigerIQ\\Runtime\\desktop-commander-remot
 export const READ_ONLY_TOOLS = Object.freeze([
   'get_config','read_file','read_multiple_files','list_directory','start_search',
   'get_more_search_results','stop_search','list_searches','get_file_info',
-  'list_sessions','list_processes','get_usage_stats','read_process_output'
+  'list_sessions','list_processes','get_usage_stats','read_process_output','ping','who_am_i'
 ]);
 
 export const MUTATION_TOOLS = Object.freeze([
   'set_config_value','write_file','write_pdf','create_directory','move_file',
   'edit_block','start_process','interact_with_process','force_terminate',
-  'kill_process','give_feedback_to_desktop_commander','get_prompts','track_ui_event'
+  'kill_process','give_feedback_to_desktop_commander','get_prompts','track_ui_event','shutdown'
 ]);
 
 export const OBSERVATION_DIRECTORIES = Object.freeze([
