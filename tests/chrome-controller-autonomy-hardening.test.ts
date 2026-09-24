@@ -357,6 +357,9 @@ describe('App Chrome local-only coordination',()=>{
     expect(server).toContain('const externalWorkAutopilotEnabled=false');
     expect(server).toContain("sendCommand(workerId,'LOCAL_CONTINUE_NOW')");
     expect(server).toContain("UTILITY_LOCAL_CONTINUE_NOW");
+    expect(server).toContain("for(let attempt=1;attempt<=3;attempt+=1)");
+    expect(server).toContain("if(result?.status!=='LOCAL_CONTINUE_DEFERRED')break");
+    expect(server).toContain("if(attempt<3)await delay(2500)");
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     const loop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
     expect(loop).not.toContain('externalAutopilotOwnsNextNv02Job');
