@@ -58,12 +58,26 @@ export function canonicalWorkTitleFromObjective(objective){
   const match=firstLine.match(/^GitHub autonomous coding.*?\bissue #\d+:\s*(.+)$/i);
   return String(match?.[1]||'').trim().slice(0,180);
 }
-export function canonicalCodingJobTitle(objective,managerTitle='Coding job'){
-  return canonicalWorkTitleFromObjective(objective)||String(managerTitle||'Coding job').trim().slice(0,180);
+const VIETNAMESE_TITLE_MARKER_RE=/[ăâđêôơưàáạảãằắặẳẵầấậẩẫèéẹẻẽềếệểễìíịỉĩòóọỏõồốộổỗờớợởỡùúụủũừứựửữỳýỵỷỹ]/i;
+export function isVietnameseCodingTitle(title){
+  const text=String(title||'').trim();
+  return text.length>0&&VIETNAMESE_TITLE_MARKER_RE.test(text);
+}
+export function canonicalCodingJobTitle(objective,managerTitle='Công việc lập trình'){
+  const canonical=canonicalWorkTitleFromObjective(objective);
+  if(canonical)return canonical;
+  const title=String(managerTitle||'Công việc lập trình').trim().slice(0,180);
+  if(!isVietnameseCodingTitle(title)){
+    const e=new Error('CODING_JOB_TITLE_NOT_VIETNAMESE');
+    e.code='CODING_JOB_TITLE_NOT_VIETNAMESE';
+    e.detail={title};
+    throw e;
+  }
+  return title;
 }
 export function codingMergeCommitTitle(number,title){
   const n=Math.max(1,Number(number)||1);
-  const work=String(title||'TigerIQ Coding Lane').trim().slice(0,180);
+  const work=String(title||'Công việc TigerIQ').trim().slice(0,180);
   return `PR #${n} - ${work}`;
 }
 
