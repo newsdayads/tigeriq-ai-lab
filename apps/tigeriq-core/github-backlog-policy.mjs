@@ -1,13 +1,49 @@
-const PRIORITY_RANK={P0:0,P1:1,P2:2,P3:3};
+export const BACKLOG_PRIORITIES=Object.freeze(['P0','P1','P2','P3','P4','P5']);
+export const PRIORITY_RANK=Object.freeze({P0:0,P1:1,P2:2,P3:3,P4:4,P5:5});
 
 function escapeRe(value){return String(value).replace(/[.*+?^\${}()|[\]\\]/g,'\\$&');}
 
-export function exactBodyFlag(body,key,value='true'){
-  return new RegExp(`^${escapeRe(key)}=${escapeRe(value)}$`,'m').test(String(body||''));
+export function bodyValue(body,key){
+  return String(body||'').match(new RegExp('^'+escapeRe(key)+'=([^\\r\\n]+)$','m'))?.[1]?.trim()||'';
 }
 
-export function backlogPriority(body,fallback='P2'){
-  return String(body||'').match(/^PRIORITY=(P[0-3])$/m)?.[1]||fallback;
+export function exactBodyFlag(body,key,value='true'){
+  return new RegExp('^'+escapeRe(key)+'='+escapeRe(value)+'$','m').test(String(body||''));
+}
+
+export function backlogPriority(body,fallback='P3'){
+  const fallbackPriority=BACKLOG_PRIORITIES.includes(String(fallback||'').toUpperCase())?String(fallback).toUpperCase():'P3';
+  return String(body||'').match(/^PRIORITY=(P[0-5])$/m)?.[1]||fallbackPriority;
+}
+
+export function backlogAssignedExecutor(body){
+  const text=String(body||'');
+  for(const key of ['ASSIGNED_EXECUTOR','PRIMARY_EMPLOYEE']){
+    const value=bodyValue(text,key).toUpperCase();
+    if(/^NV\d{2}$/.test(value))return value;
+  }
+  return '';
+}
+
+export function backlogOwnerControlled(body){
+  const text=String(body||'');
+  return exactBodyFlag(text,'OWNER_CONTROLLED','true')
+    || exactBodyFlag(text,'OWNER_GATE','true')
+    || exactBodyFlag(text,'OWNER_APPROVAL_REQUIRED','true')
+    || Boolean(backlogAssignedExecutor(text));
+}
+
+export function effectiveBacklogPriority(body,fallback='P3'){
+  const sourcePriority=backlogPriority(body,fallback);
+  const ownerControlled=backlogOwnerControlled(body);
+  const legacyP0Autonomous=sourcePriority==='P0'&&!ownerControlled;
+  return {
+    sourcePriority,
+    priority:legacyP0Autonomous?'P1':sourcePriority,
+    ownerControlled,
+    assignedExecutor:backlogAssignedExecutor(body),
+    legacyP0Autonomous,
+  };
 }
 
 export function backlogOwnerDirect(body){
@@ -53,10 +89,8 @@ export function isActiveExecutionSpec(body){
 }
 
 export function compareBacklogSpecs(a,b){
-  const ownerA=Boolean(a?.ownerDirect),ownerB=Boolean(b?.ownerDirect);
-  if(ownerA!==ownerB)return ownerA?-1:1;
-  const pa=PRIORITY_RANK[a?.sourcePriority||a?.priority]??PRIORITY_RANK.P2;
-  const pb=PRIORITY_RANK[b?.sourcePriority||b?.priority]??PRIORITY_RANK.P2;
+  const pa=PRIORITY_RANK[a?.priority||a?.effectivePriority||a?.sourcePriority]??PRIORITY_RANK.P3;
+  const pb=PRIORITY_RANK[b?.priority||b?.effectivePriority||b?.sourcePriority]??PRIORITY_RANK.P3;
   if(pa!==pb)return pa-pb;
   return Number(a?.number||0)-Number(b?.number||0);
 }
@@ -65,6 +99,14 @@ export function sortBacklogSpecs(specs){
   return (Array.isArray(specs)?specs:[]).filter(Boolean).slice().sort(compareBacklogSpecs);
 }
 
-export function detectIdleWithBacklog(activeCount, pendingQueueCount){
-  return Number(activeCount || 0) === 0 && Number(pendingQueueCount || 0) > 0;
+export function detectIdleWithBacklog(activeCount,pendingQueueCount){
+  return Number(activeCount||0)===0&&Number(pendingQueueCount||0)>0;
+}
+
+export function routingFault({eligibleBacklogCount=0,activeWorkCount=0,eligibleIdleWorkers=0}={}){
+  const backlog=Math.max(0,Number(eligibleBacklogCount)||0);
+  const active=Math.max(0,Number(activeWorkCount)||0);
+  const idle=Math.max(0,Number(eligibleIdleWorkers)||0);
+  const fault=backlog>0&&active===0&&idle>0;
+  return {fault,eligibleBacklogCount:backlog,activeWorkCount:active,eligibleIdleWorkers:idle,code:fault?'ROUTING_FAULT':'OK'};
 }
