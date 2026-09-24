@@ -7,7 +7,7 @@ import {
   CONTINUE_MIN_MS, CONTINUE_MAX_MS, REFRESH_MIN_MS, REFRESH_MAX_MS, WORKER_F5_MIN_MS, WORKER_F5_MAX_MS,
   CONTINUITY_WORKERS, deriveNv02Phase, deriveWorkerPhase, hasActiveNv02Work, hasActiveWorkerWork,
   hasWaitingEvidenceNv02Work, hasWaitingEvidenceWorkerWork, hasContinuableNv02Work, hasContinuableWorkerWork,
-  pickContinuePrompt, randomDelay, shouldRotateNv02Chat, computeWorkerStaggerDelay,
+  pickContinuePrompt, randomDelay, shouldRotateNv02Chat, computeWorkerStaggerDelay, rearmWorkerRunGrace,
 } from '../apps/chrome-controller/extension/continuity.js';
 
 describe('NV02 continuity policy', () => {
@@ -50,6 +50,16 @@ describe('NV02 continuity policy', () => {
     const stagger=CONTINUITY_WORKERS.map((_,index)=>computeWorkerStaggerDelay(index,0,60_000));
     expect(new Set(stagger).size).toBe(3);
     expect(stagger).toEqual([0,60_000,120_000]);
+  });
+
+  it('re-arms a full 15s Run grace from successful submission even after delayed preflight', () => {
+    const unpauseAt=1_000;
+    const initialGraceUntil=unpauseAt+15_000;
+    const submittedAt=unpauseAt+25_000;
+    const rearmedUntil=rearmWorkerRunGrace(initialGraceUntil,submittedAt,15_000);
+    expect(rearmedUntil).toBe(submittedAt+15_000);
+    expect(rearmedUntil-submittedAt).toBe(15_000);
+    expect(rearmedUntil).toBeGreaterThan(initialGraceUntil);
   });
 
   it('enforces fail-closed behavior on stale fallback or duplicate canonical ownership', () => {
@@ -159,10 +169,6 @@ describe('NV02 continuity policy', () => {
     expect(tick.indexOf('if(await workerAutomationPaused(w.id))')).toBeLessThan(tick.indexOf('getCommand(w.id)'));
     expect(tick.indexOf('if(await workerAutomationPaused(w.id))')).toBeLessThan(tick.indexOf("if(w.id==='NV02'&&!projectContextReady&&!ui.securityBlock)"));
     expect(tick.indexOf('getCommand(w.id)')).toBeLessThan(tick.indexOf("if(w.id==='NV02')await maybeNv02Continuity"));
-    expect(tick).not.toContain("if(w.id==='NV02')nv02MutationBusy=true");
-    expect(tick).not.toContain("if(w.id==='NV02')nv02MutationBusy=false");
-    expect(source).toContain("withNv02Mutation(async()=>");
-    expect(source).toContain("'LOCAL_CONTINUE_NOW',60000");
     const backgroundSource=readFileSync('apps/chrome-controller/extension/background.js','utf8');
     expect(backgroundSource).toContain('HARD ISOLATION: NV02, NV03, and NV04 commands and UI mutation loops');
     const continuity=source.slice(source.indexOf('async function maybeNv02Continuity'),source.indexOf('\nasync function handleCommand'));
@@ -223,7 +229,14 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("ensureNv02LocalReadyLocked(target,ui,{forceFresh:true})");
     expect(source).toContain("ensureNv02LocalReadyLocked(target,raw,{forceFresh:false})");
     expect(source).toContain("'BOOT_LOCAL_CONTINUE_SUBMITTED'");
-    expect(source).toContain("'LOCAL_CONTINUE_NOW',60000");
+    const handleCommandSource=source.slice(source.indexOf('async function handleCommand'),source.indexOf('async function postWorkerHeartbeat'));
+    const localRunCommand=handleCommandSource.slice(handleCommandSource.indexOf("if(action==='LOCAL_CONTINUE_NOW')"),handleCommandSource.indexOf("if(action==='DISPATCH')"));
+    expect(localRunCommand).toContain("ensureNv02LocalReadyLocked(target,raw,{forceFresh:false})");
+    expect(localRunCommand).not.toContain("withNv02Mutation(");
+    expect(localRunCommand).not.toContain("workerRunGraceUntil.delete('NV02')");
+    expect(source).toContain("const workerRunGraceUntil=new Map()");
+    expect(source).toContain("workerRunGraceUntil.set(workerId,nextContinueAt)");
+    expect(source).toContain("'LOCAL_RUN_BACKGROUND_SUPPRESSED'");
     expect(source).toContain("async function waitForNv02Composer(target,timeoutMs=30000)");
     expect(source).toContain("if(forceFresh||!inProject())");
     expect(source).toContain("await navigate(target,NV02_HOME_URL)");

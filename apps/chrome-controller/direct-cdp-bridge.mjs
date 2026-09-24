@@ -7,7 +7,7 @@ import {
   WORKER_F5_MIN_MS, WORKER_F5_MAX_MS, CONTINUITY_WORKERS,
   MAX_STALLED_CHECKS, WORKING_PROGRESS_CHECK_MS, MAX_WORKING_UNCHANGED_CHECKS,
   deriveNv02Phase, deriveWorkerPhase,
-  nextRandomAt, randomDelay, pickContinuePrompt, computeWorkerStaggerDelay,
+  nextRandomAt, randomDelay, pickContinuePrompt, computeWorkerStaggerDelay, rearmWorkerRunGrace,
 } from './extension/continuity.js';
 
 const CONFIG='D:\\TigerIQ\\Apps\\ChromeController\\Config\\chrome-controller.json';
@@ -172,6 +172,7 @@ function isWorkerFreshContext(w,url){
   }catch{return false}
 }
 const workerPauseObserved=new Map();
+const workerRunGraceUntil=new Map();
 async function workerAutomationPaused(workerId){
   try{
     const controller=await getControllerState();
@@ -180,6 +181,7 @@ async function workerAutomationPaused(workerId){
     workerPauseObserved.set(workerId,pausedNow);
     if(previous===true&&pausedNow===false){
       const now=Date.now(),nextContinueAt=now+LOCAL_RUN_GRACE_MS;
+      workerRunGraceUntil.set(workerId,nextContinueAt);
       if(workerId==='NV02')saveNv02Continuity({...loadNv02Continuity(),nextContinueAt,stalledChecks:0});
       else saveWorkerContinuity(workerId,{...loadWorkerContinuity(workerId),nextContinueAt,stalledChecks:0});
       log('LOCAL_RUN_COMMAND_GRACE',{workerId,nextContinueAt});
@@ -267,6 +269,12 @@ async function reopenWorker(w,target,state,now,reason){
   return recovered;
 }
 async function maybeWorkerContinuity(w,target,ui){
+  const runGraceUntil=Number(workerRunGraceUntil.get(w.id)||0);
+  if(runGraceUntil>Date.now()){
+    await genericWorkerEvent(w.id,'LOCAL_RUN_BACKGROUND_SUPPRESSED',{runGraceUntil});
+    return;
+  }
+  if(runGraceUntil)workerRunGraceUntil.delete(w.id);
   const now=Date.now();
   let state=loadWorkerContinuity(w.id);
   const phase=deriveWorkerPhase(ui||{},{workerId:w.id});
@@ -1161,6 +1169,12 @@ async function noteNv02CommandDispatch(){
 }
 async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
   const now=Date.now();let state=loadNv02Continuity();
+  const runGraceUntil=Number(workerRunGraceUntil.get('NV02')||0);
+  if(runGraceUntil>now){
+    await continuityEvent('LOCAL_RUN_BACKGROUND_SUPPRESSED',{runGraceUntil});
+    return;
+  }
+  if(runGraceUntil)workerRunGraceUntil.delete('NV02');
   ui=applyNv02DurableVerifiedModelProfile(ui);
   const phase=deriveNv02Phase(ui||{});
   const currentChat=hasCurrentNv02Chat(ui?.url);
@@ -1301,14 +1315,15 @@ async function handleCommand(w,target,command){
     if(phase==='BLOCKED')throw new Error(raw?.securityBlock||'LOCAL_CONTINUE_BLOCKED');
     if(phase==='WORKING')return{status:'ALREADY_WORKING'};
     if(w.id==='NV02'){
-      const submitted=await withNv02Mutation(async()=>{
-        const ready=await ensureNv02LocalReadyLocked(target,raw,{forceFresh:false});
-        if(ready?.uiBusy===true||ready?.uiPhase==='WORKING')return{status:'ALREADY_WORKING'};
-        const next=await dispatchNaturalContinueLocked(target,loadNv02Continuity(),Date.now());
-        await noteNv02CommandDispatch();
-        return{status:'LOCAL_CONTINUE_SUBMITTED',prompt:next.lastPrompt};
-      },'LOCAL_CONTINUE_NOW',60000);
-      return submitted?.status==='MUTATION_LEASE_BUSY'?{status:'LOCAL_CONTINUE_DEFERRED'}:submitted;
+      const ready=await ensureNv02LocalReadyLocked(target,raw,{forceFresh:false});
+      if(ready?.uiBusy===true||ready?.uiPhase==='WORKING')return{status:'ALREADY_WORKING'};
+      const next=await dispatchNaturalContinueLocked(target,loadNv02Continuity(),Date.now());
+      const submittedAt=Date.now();
+      const runGraceUntil=rearmWorkerRunGrace(workerRunGraceUntil.get('NV02'),submittedAt,LOCAL_RUN_GRACE_MS);
+      workerRunGraceUntil.set('NV02',runGraceUntil);
+      log('LOCAL_RUN_SUBMISSION_GRACE_REARMED',{workerId:'NV02',submittedAt,runGraceUntil});
+      await noteNv02CommandDispatch();
+      return{status:'LOCAL_CONTINUE_SUBMITTED',prompt:next.lastPrompt};
     }
     if(phase!=='READY')return{status:'LOCAL_CONTINUE_NOT_READY',phase};
     const state=loadWorkerContinuity(w.id),prompt=pickContinuePrompt(state.lastPrompt);
@@ -1359,6 +1374,7 @@ async function tickWorker(w){
       catch(error){log('CONTROLLER_COMMAND_POLL_FAILED',{workerId:w.id,error:String(error?.message||error)});}
       if(command){
         workerMutationBusy.add(w.id);
+        if(w.id==='NV02')nv02MutationBusy=true;
         try{
           const result=await handleCommand(w,target,command);
           await post('/api/result',w.id,{workerId:w.id,commandId:command.id,ok:true,...(result||{})});
@@ -1369,6 +1385,7 @@ async function tickWorker(w){
           log('CONTROLLER_COMMAND_FAILED',{workerId:w.id,commandId:command.id,action:command.action,status});
         }finally{
           workerMutationBusy.delete(w.id);
+          if(w.id==='NV02')nv02MutationBusy=false;
         }
         return;
       }

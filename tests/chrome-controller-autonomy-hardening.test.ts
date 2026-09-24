@@ -367,6 +367,14 @@ describe('App Chrome local-only coordination',()=>{
     expect(loop).toContain('dispatchNaturalContinue(target,state,now)');
     expect(bridge).toContain("continuityEvent('LOCAL_CONTINUE_DISPATCHED'");
     expect(bridge).toContain("acquireBridgeMutationLease('NV02',purpose,ttlMs)");
+    const handleCommandSource=bridge.slice(bridge.indexOf('async function handleCommand'),bridge.indexOf('async function postWorkerHeartbeat'));
+    const localRun=handleCommandSource.slice(handleCommandSource.indexOf("if(action==='LOCAL_CONTINUE_NOW')"),handleCommandSource.indexOf("if(action==='DISPATCH')"));
+    expect(localRun).not.toContain("withNv02Mutation(");
+    expect(localRun).toContain("ensureNv02LocalReadyLocked(target,raw,{forceFresh:false})");
+    expect(localRun).toContain("rearmWorkerRunGrace(workerRunGraceUntil.get('NV02'),submittedAt,LOCAL_RUN_GRACE_MS)");
+    expect(localRun).toContain("LOCAL_RUN_SUBMISSION_GRACE_REARMED");
+    expect(localRun.indexOf('dispatchNaturalContinueLocked')).toBeLessThan(localRun.indexOf('LOCAL_RUN_SUBMISSION_GRACE_REARMED'));
+    expect(bridge).toContain("LOCAL_RUN_BACKGROUND_SUPPRESSED");
   });
 });
 
