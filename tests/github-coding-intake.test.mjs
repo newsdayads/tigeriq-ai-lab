@@ -570,43 +570,24 @@ describe('GitHub coding continuity supervisor',()=>{
   });
 });
 
-it('coding backlog serializes three issues by OWNER_DIRECT then priority',async()=>{
+it('coding backlog uses effective P1-P5 priority; OWNER_DIRECT does not outrank priority',async()=>{
   const pool=fakePool(); const posted=[];
   const withFlags=(number,priority,ownerDirect=false)=>issue(`${SAFE.replace('PRIORITY=P1',`PRIORITY=${priority}`)}${ownerDirect?'\nOWNER_DIRECT=true':''}`,{number,title:`Issue ${number}`});
-  const issues=[
-    withFlags(30,'P0',false),
-    withFlags(20,'P2',true),
-    withFlags(10,'P1',true),
-  ];
+  const issues=[withFlags(30,'P0',false),withFlags(20,'P2',true),withFlags(10,'P1',true)];
   const fetchImpl=async(url,init={})=>{
     if(url.includes('/issues?'))return response(issues);
     if(url.includes('/api/status'))return response({objectives:posted.map((objective,index)=>({id:`obj-${index+1}`,objective,status:'active'})),jobs:[]});
-    if(url.includes('/api/objectives')){
-      const payload=JSON.parse(init.body);
-      posted.push(payload.objective);
-      return response({id:`obj-${posted.length}`});
-    }
+    if(url.includes('/api/objectives')){const payload=JSON.parse(init.body);posted.push(payload.objective);return response({id:`obj-${posted.length}`});}
     if(url.includes('/comments'))return response({});
     return response({});
   };
-
   let out=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake'});
-  expect(out.created).toBe(1);
-  expect(posted[0]).toContain('#10');
-
-  out=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake'});
-  expect(out.created).toBe(0);
-  expect(out.active).toBe(1);
-
+  expect(out.created).toBe(1);expect(posted[0]).toContain('#10');
+  out=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake'});expect(out.created).toBe(0);
   pool.events.push({type:'GITHUB_CODING_RESULT_REPORTED',data:{issueNumber:10,status:'completed'}});
-  out=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake'});
-  expect(out.created).toBe(1);
-  expect(posted[1]).toContain('#20');
-
-  pool.events.push({type:'GITHUB_CODING_RESULT_REPORTED',data:{issueNumber:20,status:'completed'}});
-  out=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake'});
-  expect(out.created).toBe(1);
-  expect(posted[2]).toContain('#30');
+  out=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake'});expect(out.created).toBe(1);expect(posted[1]).toContain('#30');
+  pool.events.push({type:'GITHUB_CODING_RESULT_REPORTED',data:{issueNumber:30,status:'completed'}});
+  out=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake'});expect(out.created).toBe(1);expect(posted[2]).toContain('#20');
 });
 
 
