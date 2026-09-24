@@ -334,37 +334,64 @@ function render(){
     box.append(el);
   });
 }
-async function load(){
+function showSnapshot(d){
+  const projection=d.workProjection||{};
+  const stale=Boolean(d.staleAll||projection.stale);
+  const live=$('liveLabel').parentElement;
+  live.classList.toggle('warn',!d.liveConnected||stale);
+  $('liveLabel').textContent=stale?'DỮ LIỆU CŨ':(d.liveConnected?'PC01 LIVE':'DỰ PHÒNG');
+  if(stale){
+    const stamp=projection.staleAt||projection.verifiedAt||d.staleAt||d.generatedAt;
+    const reason=projection.reason||d.reason||d.liveReason||'unavailable';
+    const source=/^runtime_bridge_/i.test(reason)?'Cầu nối PC01':/^github_/i.test(reason)?'GitHub':'Nguồn dữ liệu';
+    $('err').classList.add('stale');
+    $('err').textContent=source+' tạm lỗi ('+reason+'). Đang giữ danh sách xác minh gần nhất từ '+(stamp?new Date(stamp).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'mốc trước')+'; không xóa về 0.';
+    $('err').style.display='block';
+  }else{
+    $('err').classList.remove('stale');
+    $('err').style.display='none';
+  }
+  render();
+}
+async function loadFull(){
   try{
     const r=await fetch('/api/live-status',{cache:'no-store'}),raw=await r.json(),d=applyWorkCadence(hydrateLastGood(raw));
     if(!d?.ok)throw new Error(d?.reason||'Nguồn trạng thái chưa sẵn sàng');
     snapshot=d;
-    const projection=d.workProjection||{};
-    const stale=Boolean(d.staleAll||projection.stale);
-    const live=$('liveLabel').parentElement;
-    live.classList.toggle('warn',!d.liveConnected||stale);
-    $('liveLabel').textContent=stale?'DỮ LIỆU CŨ':(d.liveConnected?'PC01 LIVE':'DỰ PHÒNG');
-    if(stale){
-      const stamp=projection.staleAt||projection.verifiedAt||d.staleAt||d.generatedAt;
-      const reason=projection.reason||d.reason||d.liveReason||'unavailable';
-      const source=/^runtime_bridge_/i.test(reason)?'Cầu nối PC01':/^github_/i.test(reason)?'GitHub':'Nguồn dữ liệu';
-      $('err').classList.add('stale');
-      $('err').textContent=source+' tạm lỗi ('+reason+'). Đang giữ danh sách xác minh gần nhất từ '+(stamp?new Date(stamp).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'mốc trước')+'; không xóa về 0.';
-      $('err').style.display='block';
-    }else{
-      $('err').classList.remove('stale');
-      $('err').style.display='none';
-    }
-    render();
+    showSnapshot(d);
   }catch(e){
     $('liveLabel').textContent='MẤT DỮ LIỆU';$('err').classList.remove('stale');$('err').textContent='Không có snapshot xác minh để hiển thị: '+String(e?.message||e);$('err').style.display='block';
+  }
+}
+async function loadWorkforce(){
+  try{
+    const r=await fetch('/api/live-status?scope=workforce',{cache:'no-store'}),raw=await r.json();
+    if(!raw?.ok)throw new Error(raw?.reason||'Nguồn nhân sự chưa sẵn sàng');
+    if(!snapshot)return;
+    snapshot={
+      ...snapshot,
+      ...raw,
+      activeWork:snapshot.activeWork,
+      nextQueue:snapshot.nextQueue,
+      nextQueueTotal:snapshot.nextQueueTotal,
+      recentWork:snapshot.recentWork,
+      workProjection:snapshot.workProjection,
+      staleAll:Boolean(raw.staleAll),
+    };
+    showSnapshot(snapshot);
+  }catch(e){
+    if(!snapshot)return;
+    snapshot={...snapshot,liveConnected:false,staleAll:true,staleAt:snapshot.generatedAt||null,liveReason:String(e?.message||e)};
+    showSnapshot(snapshot);
   }
 }
 document.querySelectorAll('.filter').forEach(btn=>btn.addEventListener('click',()=>{
   document.querySelectorAll('.filter').forEach(x=>x.classList.remove('active'));btn.classList.add('active');activeFilter=btn.dataset.filter;render();
 }));
-document.addEventListener('visibilitychange',()=>{if(!document.hidden)load()});
-load();setInterval(()=>{if(!document.hidden)load()},5000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){loadFull();loadWorkforce()}});
+loadFull();
+setInterval(()=>{if(!document.hidden)loadWorkforce()},5000);
+setInterval(()=>{if(!document.hidden)loadFull()},30000);
 </script>
 </body>
 </html>
