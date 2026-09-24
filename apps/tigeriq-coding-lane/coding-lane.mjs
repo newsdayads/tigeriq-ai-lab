@@ -58,12 +58,29 @@ export function canonicalWorkTitleFromObjective(objective){
   const match=firstLine.match(/^GitHub autonomous coding.*?\bissue #\d+:\s*(.+)$/i);
   return String(match?.[1]||'').trim().slice(0,180);
 }
-export function canonicalCodingJobTitle(objective,managerTitle='Coding job'){
-  return canonicalWorkTitleFromObjective(objective)||String(managerTitle||'Coding job').trim().slice(0,180);
+export function isVietnameseWorkTitle(title){
+  const s=String(title||'').trim();
+  if(!s)return false;
+  if(/[ăâđêôơưàáảãạằắẳẵặầấẩẫậèéẻẽẹềếểễệìíỉĩịòóỏõọồốổỗộờớởỡợùúủũụừứửữựỳýỷỹỵ]/i.test(s))return true;
+  return /\b(và|của|cho|với|trong|không|sửa|kiểm|tăng|giảm|khóa|đăng|đối|rà|tổng|hợp|công|việc|tiêu|đề|nhận|lỗi|chạy|hàng|đợi|xử|lý|giám|sát|cập|nhật|kết|nối|bắt|buộc|hiển|thị|nguồn|mã|phục|hồi)\b/i.test(s);
+}
+export function validateManagerJobTitle(decision,objective=''){
+  if(decision?.status!=='continue'||!decision?.job)return true;
+  if(canonicalWorkTitleFromObjective(objective))return true;
+  if(isVietnameseWorkTitle(decision.job.title))return true;
+  const e=new Error('MANAGER_TITLE_NOT_VI');
+  e.code='MANAGER_TITLE_NOT_VI';
+  throw e;
+}
+export function canonicalCodingJobTitle(objective,managerTitle='Công việc Coding'){
+  const canonical=canonicalWorkTitleFromObjective(objective);
+  if(canonical)return canonical;
+  const manager=String(managerTitle||'').trim();
+  return (isVietnameseWorkTitle(manager)?manager:'Công việc Coding').slice(0,180);
 }
 export function codingMergeCommitTitle(number,title){
   const n=Math.max(1,Number(number)||1);
-  const work=String(title||'TigerIQ Coding Lane').trim().slice(0,180);
+  const work=canonicalCodingJobTitle('',title);
   return `PR #${n} - ${work}`;
 }
 
@@ -133,7 +150,7 @@ export function classifyAiFailure(error){
   const msg=String(error?.message||error||'');
   if(status===429||/HTTP_429\b|RATE_LIMIT|RESOURCE_EXHAUSTED/i.test(msg))return 'rate_limit';
   if(error?.name==='AbortError'||/ETIMEDOUT|timeout|aborted|ECONNRESET|socket/i.test(msg))return 'timeout';
-  if(/MANAGER_(?:SOFT_BLOCK|SCOPE_MISMATCH|PATHS_INVALID)|JSON_OBJECT_(?:INVALID|MISSING)|CODING_CHANGES_COUNT_INVALID|schema|unterminated|truncat|COMPACT_EDIT/i.test(msg))return 'output_contract';
+  if(/MANAGER_(?:SOFT_BLOCK|SCOPE_MISMATCH|PATHS_INVALID|TITLE_NOT_VI)|JSON_OBJECT_(?:INVALID|MISSING)|CODING_CHANGES_COUNT_INVALID|schema|unterminated|truncat|COMPACT_EDIT/i.test(msg))return 'output_contract';
   if(/EMPTY_RESPONSE|invalid_response/i.test(msg))return 'invalid_response';
   if([408,409,413,500,502,503,504].includes(status)||/fetch failed|HTTP_(?:408|409|413|500|502|503|504)\b/i.test(msg))return 'provider_unavailable';
   return isRetryableAiError(error)?'other_retryable':'other';
@@ -437,6 +454,7 @@ async function managerTick(){
         e.code='MANAGER_SOFT_BLOCK';
         throw e;
       }
+      validateManagerJobTitle(d,o.objective);
       validateManagerJobPaths(d,canonical,mutationAuth);
     };
     const invoked=await invokeJsonWithFailover(manager,prompt,{validateData:validateManagerDecision});manager=invoked.resource;const d=invoked.data;
