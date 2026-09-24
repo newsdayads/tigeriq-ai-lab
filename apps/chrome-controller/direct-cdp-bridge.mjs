@@ -1322,7 +1322,6 @@ async function handleCommand(w,target,command){
       if(ready?.uiBusy===true||ready?.uiPhase==='WORKING')return{status:'ALREADY_WORKING'};
       const next=await dispatchNaturalContinueLocked(target,loadNv02Continuity(),Date.now());
       await noteNv02CommandDispatch();
-      workerRunGraceUntil.delete('NV02');
       return{status:'LOCAL_CONTINUE_SUBMITTED',prompt:next.lastPrompt};
     }
     if(phase!=='READY')return{status:'LOCAL_CONTINUE_NOT_READY',phase};
