@@ -8,6 +8,8 @@ const RETRYABLE_FAILURES=new Set(['CI_GATES_FAILED','CI_GATES_TIMEOUT','REVIEW_C
 const GH_OWNER=process.env.TIGERIQ_GITHUB_OWNER||'newsdayads';
 const GH_REPO=process.env.TIGERIQ_GITHUB_REPO||'tigeriq-ai-lab';
 
+export function isHealthyResource(resource){if(!resource)return false;const status=String(resource.status||resource.state||'').toLowerCase();if(['error','failed','rate-limited','ratelimited','exhausted','disabled','blocked'].includes(status))return false;if(resource.error||resource.last_error||resource.rateLimited)return false;return true;}
+
 export function normalizeRepairFailure(message){
   const raw=String(message||'').trim();
   if(/REVIEW_CHANGES_UNRESOLVED|REVIEW_NOT_APPROVED/.test(raw))return 'REVIEW_CHANGES_UNRESOLVED';
