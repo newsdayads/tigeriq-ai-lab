@@ -120,6 +120,15 @@ describe('coding lane AI JSON transport',()=>{
     expect(compact).toContain('Do not return full existing files');
     expect(currentFilesFromPrompt(prompt).get('apps/a.mjs')).toBe('const n=1;');
   });
+
+  it('rewrites whole-file schema even when the surrounding scope guard wording changes',()=>{
+    const prompt='TASK: x\nCURRENT FILES:\nFILE apps/a.mjs\nconst n=1;\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}. Do not touch paths outside this batch. Never output secrets. Keep changes minimal and testable.';
+    const compact=compactPromptForChanges(prompt,{maxContextChars:6000,maxOutputChars:4200});
+    expect(compact).toContain('"edits"');
+    expect(compact).not.toContain('"changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]');
+    expect(compact).toContain('Do not touch paths outside this batch');
+    expect(compact).toContain('under 4200 characters');
+  });
   it('expands compact edits into complete replacement changes locally',()=>{
     const prompt='TASK: x\nCURRENT FILES:\nFILE apps/a.mjs\nconst n=1;\nconsole.log(n);\n\n---\n\nFILE tests/new.test.mjs\n\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}. Do not touch paths outside ALLOWED PATHS. Never output secrets. Keep changes minimal and testable.';
     const model=JSON.stringify({summary:'small patch',edits:[

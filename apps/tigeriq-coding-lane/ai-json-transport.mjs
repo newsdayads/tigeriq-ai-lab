@@ -208,9 +208,9 @@ export function compactCurrentFilesForModel(prompt,maxTotalChars=12000){
 export function compactPromptForChanges(prompt,{maxContextChars=12000,maxOutputChars=6000}={}){
   const p=String(prompt||'');
   if(expectedSchemaFromPrompt(p)!=='changes')return p;
-  const old='Return ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}. Do not touch paths outside ALLOWED PATHS. Never output secrets. Keep changes minimal and testable.';
-  const compact=`Return ONLY compact JSON {"summary":"short","edits":[{"path":"exact allowed path","search":"exact existing UTF-8 snippet","replace":"replacement UTF-8 snippet"}]}. For a new or empty small file you may use {"path":"exact allowed path","content":"complete UTF-8 file content"}. Keep the ENTIRE JSON response under ${maxOutputChars} characters. For existing files, each search snippet must be <=1200 characters and each replacement <=2400 characters; prefer several small exact edits over one large edit. Each search must match exactly once. Do not return full existing files or copy omitted context blocks. Do not touch paths outside ALLOWED PATHS. Never output secrets. Keep edits minimal and testable.`;
-  const rewritten=p.includes(old)?p.replace(old,compact):`${p}\n\nIMPORTANT: ${compact}`;
+  const schema='Return ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}.';
+  const compact=`Return ONLY compact JSON {"summary":"short","edits":[{"path":"exact allowed path","search":"exact existing UTF-8 snippet","replace":"replacement UTF-8 snippet"}]}. For a new or empty small file you may use {"path":"exact allowed path","content":"complete UTF-8 file content"}. Keep the ENTIRE JSON response under ${maxOutputChars} characters. For existing files, each search snippet must be <=1200 characters and each replacement <=2400 characters; prefer several small exact edits over one large edit. Each search must match exactly once. Do not return full existing files or copy omitted context blocks. Never output secrets. Keep edits minimal and testable.`;
+  const rewritten=p.includes(schema)?p.replace(schema,compact):`${p}\n\nIMPORTANT: ${compact}`;
   return compactCurrentFilesForModel(rewritten,maxContextChars);
 }
 
