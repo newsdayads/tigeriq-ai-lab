@@ -13,6 +13,69 @@ export function extractModelText(input,data){
   return data?.choices?.[0]?.message?.content||'';
 }
 
+function repairInvalidJsonEscapes(input){
+  const s=String(input||'');
+  let out='',inString=false;
+  for(let i=0;i<s.length;i++){
+    const ch=s[i];
+    if(!inString){out+=ch;if(ch==='"')inString=true;continue;}
+    if(ch==='"'){
+      let backslashes=0;
+      for(let j=i-1;j>=0&&s[j]==='\\';j--)backslashes++;
+      out+=ch;
+      if(backslashes%2===0)inString=false;
+      continue;
+    }
+    if(ch==='\\'){
+      const next=s[i+1];
+      if(next&&'"\\/bfnrtu'.includes(next))out+='\\';
+      else out+='\\\\';
+      continue;
+    }
+    const code=ch.charCodeAt(0);
+    if(code<=0x1f){
+      if(ch==='\n')out+='\\n';
+      else if(ch==='\r')out+='\\r';
+      else if(ch==='\t')out+='\\t';
+      else if(ch==='\b')out+='\\b';
+      else if(ch==='\f')out+='\\f';
+      else out+=`\\u${code.toString(16).padStart(4,'0')}`;
+      continue;
+    }
+    out+=ch;
+  }
+  return out;
+}
+
+function parseJsonCandidate(candidate){
+  try{return JSON.parse(candidate)}catch(first){
+    try{return JSON.parse(repairInvalidJsonEscapes(candidate))}catch{throw first}
+  }
+}
+
+export function firstBalancedJsonObject(text){
+  const s=String(text||'');
+  const start=s.indexOf('{');
+  if(start<0)return null;
+  let depth=0,inString=false,escaped=false;
+  for(let i=start;i<s.length;i++){
+    const ch=s[i];
+    if(inString){
+      if(escaped){escaped=false;continue}
+      if(ch==='\\'){escaped=true;continue}
+      if(ch==='"')inString=false;
+      continue;
+    }
+    if(ch==='"'){inString=true;continue}
+    if(ch==='{'){depth++;continue}
+    if(ch==='}'){
+      depth--;
+      if(depth===0)return s.slice(start,i+1);
+    }
+  }
+  return null;
+}
+
 export function salvageTruncatedCompactEdits(text){
   const clean=String(text||'').replace(/```json|```/gi,'').trim();
   const key=clean.indexOf('"edits"');
@@ -60,9 +123,13 @@ export function salvageTruncatedCompactEdits(text){
 
 export function parseModelJson(text){
   const clean=String(text||'').replace(/```json|```/gi,'').trim();
-  const a=clean.indexOf('{'),b=clean.lastIndexOf('}');
-  if(a<0||b<a)return salvageTruncatedCompactEdits(clean);
-  try{return JSON.parse(clean.slice(a,b+1))}catch{return salvageTruncatedCompactEdits(clean)}
+  if(!clean)return null;
+  try{return parseJsonCandidate(clean)}catch{}
+  const candidate=firstBalancedJsonObject(clean);
+  if(candidate){
+    try{return parseJsonCandidate(candidate)}catch{}
+  }
+  return salvageTruncatedCompactEdits(clean);
 }
 
 export function looksLikeJsonObject(text){return !!parseModelJson(text)}
