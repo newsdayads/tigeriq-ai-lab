@@ -167,7 +167,7 @@ export function prepareAiJsonRequest(input,init={}){
   let body;try{body=JSON.parse(String(init.body))}catch{return init}
   const host=new URL(String(input)).hostname;
   const schema=expectedSchemaFromPrompt(promptFromRequest(input,init));
-  const compactMaxTokens=schema==='changes'?1800:schema==='edits'?1200:null;
+  const compactMaxTokens=schema==='changes'?2600:schema==='edits'?2200:null;
   if(host==='generativelanguage.googleapis.com'){
     body.generationConfig={...(body.generationConfig||{}),responseMimeType:'application/json'};
     if(compactMaxTokens)body.generationConfig.maxOutputTokens=Math.min(Number(body.generationConfig.maxOutputTokens||compactMaxTokens),compactMaxTokens);
