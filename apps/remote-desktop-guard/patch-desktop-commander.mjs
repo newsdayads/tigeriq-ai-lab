@@ -3,7 +3,7 @@ const IMPORT_LINE = "import { enforceRemoteToolCall, formatRemoteGuardDenial } f
 const CALL_ANCHOR = "        setCurrentCallIsRemote(isRemoteCall);";
 const CALL_BLOCK = [
   CALL_ANCHOR,
-  "        const tigerIqRemoteGuard = await enforceRemoteToolCall({ isRemoteCall, tool: name, args });",
+  "        const tigerIqRemoteGuard = await enforceRemoteToolCall({ tool: name, args });",
   "        if (!tigerIqRemoteGuard.ok) {",
   "            return {",
   "                content: [{ type: \"text\", text: formatRemoteGuardDenial(tigerIqRemoteGuard) }],",
