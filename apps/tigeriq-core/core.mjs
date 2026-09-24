@@ -505,6 +505,13 @@ async function apiDoctorEventBySignature(type,signature){
 async function apiDoctorLatestResourceHandoff(resourceId){
   return (await pool.query("select ts,data from tigeriq_events where type='API_DOCTOR_REPAIR_HANDOFF' and resource_id=$1 order by seq desc limit 1",[resourceId])).rows[0]||null;
 }
+async function apiDoctorLatestUnresolvedResourceHandoff(resourceId){
+  const handoff=await apiDoctorLatestResourceHandoff(resourceId);
+  if(!handoff)return null;
+  const signature=String(handoff.data?.signature||'');
+  const recovered=(await pool.query("select 1 from tigeriq_events where type='API_DOCTOR_RECOVERED' and resource_id=$1 and ts>$2 and ($3='' or data->>'signature'=$3) order by seq desc limit 1",[resourceId,handoff.ts,signature])).rows[0];
+  return recovered?null:handoff;
+}
 async function apiDoctorPostRepairValidationAttempts(resourceId,handoffAt){
   const row=(await pool.query("select count(*)::int as count from tigeriq_events where type='API_DOCTOR_POST_REPAIR_VALIDATION' and resource_id=$1 and ts>$2 and data->>'policyVersion'=$3",[resourceId,handoffAt,API_DOCTOR_VALIDATION_POLICY_VERSION])).rows[0];
   return Number(row?.count||0);
@@ -605,7 +612,7 @@ async function runApiDoctorScan(){
       if(!await apiDoctorEventBySignature('API_DOCTOR_EXTERNAL_BLOCKED',signature))await event('API_DOCTOR_EXTERNAL_BLOCKED',{employeeId:resource.employee_id,resourceId:resource.resource_id,provider:resource.provider,taskKind:'api_doctor',signature,failureClass:plan.failureClass,reason:plan.reason});
       actions.push(row);continue;
     }
-    const existingHandoff=await apiDoctorLatestResourceHandoff(resource.resource_id);
+    const existingHandoff=await apiDoctorLatestUnresolvedResourceHandoff(resource.resource_id);
     if(existingHandoff){
       const successAfter=(await pool.query("select 1 from tigeriq_events where resource_id=$1 and type='RESOURCE_SUCCESS' and coalesce(task_kind,'')<>'probe' and coalesce(task_kind,'')<>'api_doctor' and ts>$2 order by seq desc limit 1",[resource.resource_id,existingHandoff.ts])).rows[0];
       const validationAttempts=await apiDoctorPostRepairValidationAttempts(resource.resource_id,existingHandoff.ts);
