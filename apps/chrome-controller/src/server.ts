@@ -118,7 +118,8 @@ let startupRecoveryInFlight=false;
 let lastAutopilotStopReason='';
 let selfRunTicking=false;
 let selfRunTimer:NodeJS.Timeout|undefined;
-const selfRunEnabled=false; // #504: App Chrome is UI continuity only; backlog/job selection is external
+const selfRunEnabled=false;
+const externalWorkAutopilotEnabled=false; // App Chrome is local UI control only; no Core/queue/GitHub assignment
 const selfRunGithubToken=String(process.env.TIGERIQ_GITHUB_TOKEN||process.env.GITHUB_TOKEN||'').trim();
 const selfRunGithubOwner=String(process.env.TIGERIQ_GITHUB_OWNER||'newsdayads').trim();
 const selfRunGithubRepo=String(process.env.TIGERIQ_GITHUB_REPO||'tigeriq-ai-lab').trim();
@@ -488,7 +489,7 @@ function workerHasActiveJob(id:WorkerId,{allowWaitingEvidence=false,allowContinu
   const continuable=Boolean(activeUiJob&&['SUBMITTED','WORKING','WAITING_EVIDENCE','VERIFY'].includes(activeUiJob.stage));
   if(activeUiJob&&!(allowWaitingEvidence&&activeUiJob.stage==='WAITING_EVIDENCE')&&!(allowContinuable&&continuable))return true;
   if(id==='NV02'){
-    if(!config.autopilot.enabled)return false;
+    if(!externalWorkAutopilotEnabled)return false;
     if(autopilotState.pendingJobId||autopilotState.uncertainJobId)return true;
     const previous=latestSnapshot?.previousJob;
     return Boolean(previous&&previous.workerId==='NV02'&&previous.jobId===autopilotState.lastDispatchedJobId&&['QUEUED','READY','RUNNING'].includes(previous.status));
@@ -764,7 +765,7 @@ function reconcileCancelledUiJobFromSnapshot(){
   return true;
 }
 async function autopilotTick(){
-  if(autopilotTicking||!config.autopilot.enabled||paused||killed)return;
+  if(autopilotTicking||!externalWorkAutopilotEnabled||paused||killed)return;
   autopilotTicking=true;
   try{
     if(config.autopilot.stateUrl){
@@ -1046,7 +1047,7 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
       interactiveSession:isInteractiveDesktopSession(),
       sessionName:process.env.SESSIONNAME??null,
       autopilot:autopilotState,
-      externalWorkAutopilotEnabled:config.autopilot.enabled,
+      externalWorkAutopilotEnabled,
       selfRun:selfRunState,
       githubSelfRun:{...selfRunState,tokenReady:Boolean(selfRunGithubToken),tickInFlight:selfRunTicking,claims:selfRunClaims.snapshot()},
       utilityPausedWorkers:[...utilityPausedWorkers],
@@ -1063,7 +1064,7 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
   if(url.pathname==='/api/autopilot/state'&&req.method==='GET'){json(res,200,{state:autopilotState,snapshot:latestSnapshot??null});return true;}
   if(url.pathname==='/api/autopilot/snapshot'&&req.method==='POST'){
     try{
-      if(!config.autopilot.enabled)throw new Error('EXTERNAL_WORK_AUTOPILOT_DISABLED');
+      if(!externalWorkAutopilotEnabled)throw new Error('EXTERNAL_WORK_AUTOPILOT_DISABLED');
       const snapshot=validateExternalSnapshot(await body(req));
       latestSnapshot=snapshot;
       atomicJson(autopilotSnapshotPath,snapshot);
@@ -1076,7 +1077,7 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
   }
   if(url.pathname==='/api/autopilot/continue-now'&&req.method==='POST'){
     try{
-      if(!config.autopilot.enabled)throw new Error('EXTERNAL_WORK_AUTOPILOT_DISABLED');
+      if(!externalWorkAutopilotEnabled)throw new Error('EXTERNAL_WORK_AUTOPILOT_DISABLED');
       if(paused)throw new Error('OWNER_INTERACTION_READ_ONLY');
       if(killed)throw new Error('CONTROLLER_KILLED');
       await fetchExternalSnapshot();
@@ -1270,7 +1271,7 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
     return true;
   }
   if(url.pathname==='/api/pause'&&req.method==='POST'){setOwnerInteractionReadOnly(true);persistEvidence();json(res,200,{ok:true,ownerInteractionMode:'READ_ONLY'});return true;}
-  if(url.pathname==='/api/resume'&&req.method==='POST'){setOwnerInteractionReadOnly(false);killed=false;persistEvidence();void recoveryTick();void autopilotTick();json(res,200,{ok:true,ownerInteractionMode:'AUTOMATION'});return true;}
+  if(url.pathname==='/api/resume'&&req.method==='POST'){setOwnerInteractionReadOnly(false);killed=false;persistEvidence();void recoveryTick();json(res,200,{ok:true,ownerInteractionMode:'AUTOMATION',externalWorkAutopilotEnabled:false});return true;}
   if(url.pathname==='/api/kill'&&req.method==='POST'){
     killed=true;setOwnerInteractionReadOnly(true);
     for(const queue of commandQueues.values())queue.splice(0);
@@ -1458,9 +1459,13 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
         state.lastError=undefined;
         recoveryAttempts.set(workerId,0);
         log('UTILITY_WORKER_RESUMED',{workerId});persistEvidence();
-        if(!recentHeartbeat(workerId))void recoverWorker(workerId);
-        if(workerId==='NV02')void autopilotTick();
-        json(res,200,{ok:true});return true;
+        if(!recentHeartbeat(workerId)){
+          void recoverWorker(workerId);
+          json(res,200,{ok:true,status:'LOCAL_RUN_RECOVERY_STARTED'});return true;
+        }
+        const result=await sendCommand(workerId,'LOCAL_CONTINUE_NOW').catch(error=>({status:'LOCAL_CONTINUE_DEFERRED',error:String(error)}));
+        log('UTILITY_LOCAL_CONTINUE_NOW',{workerId,status:(result as any)?.status??null});
+        json(res,200,{ok:true,status:(result as any)?.status??'LOCAL_CONTINUE_DEFERRED'});return true;
       }
       assertWorkerEnabled(workerId);
       if(action==='open-canonical'){await uiQueue.enqueue(()=>sendCommand(workerId,'NAVIGATE',{url:worker.homeUrl}));json(res,200,{ok:true});return true;}
