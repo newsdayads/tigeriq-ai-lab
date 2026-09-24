@@ -110,10 +110,11 @@ renderObjectives = function renderObjectivesTruth(d) {
 };
 
 renderJobs = function renderJobsTruth(d) {
-  const lane = codingTruth(d);
-  const jobs = lane?.jobs?.length ? lane.jobs : (d.jobs || []);
-  const rows = jobs.map(j => `<tr><td>${esc(j.id)}</td><td>${esc(j.title)}</td><td>${esc(j.objective_id || '—')}</td><td>${esc(j.employee_id || '—')}</td><td>${esc(j.reviewer_employee_id || j.provider || '—')}</td><td class="${j.status === 'failed' || j.status === 'blocked' ? 'red' : j.status === 'done' ? 'green' : ['running','review'].includes(j.status) ? 'blue' : 'amber'}">${esc(j.status)}</td><td>${esc(duration(j.started_at, j.completed_at))}</td></tr>`).join('');
-  document.getElementById('jobsTable').innerHTML = rows || '<tr><td colspan="7">Chưa có công việc.</td></tr>';
+  const priorityRank={P0:0,P1:1,P2:2,P3:3};
+  const workOrders=[...(d?.workOrders||[])].sort((a,b)=>(priorityRank[a.priority]??9)-(priorityRank[b.priority]??9)||String(b.updated_at||'').localeCompare(String(a.updated_at||'')));
+  const stateClass=state=>state==='BỊ CHẶN'?'red':state==='ĐANG LÀM'?'blue':state==='CHỜ'?'amber':'green';
+  const rows=workOrders.map(w => `<tr><td>#${esc(w.issue_number)}</td><td>${esc(w.title||'—')}</td><td><b>${esc(w.priority||'—')}</b></td><td class="${stateClass(w.state)}">${esc(w.state||'MỞ')}</td><td>${esc(w.owner||'—')}</td><td>${esc(ago(w.updated_at))}</td></tr>`).join('');
+  document.getElementById('jobsTable').innerHTML = rows || '<tr><td colspan="6">Không có Work Order GitHub đang mở.</td></tr>';
 };
 
 function applyPeopleFullFilter() {
