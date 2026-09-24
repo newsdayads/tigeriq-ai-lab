@@ -642,7 +642,13 @@ const UI_EXPR=`(()=>{
   const conversationLoadError=/(không thể tải cuộc hội thoại chatgpt này|unable to load (?:this )?(?:chatgpt )?conversation|failed to load (?:this )?(?:chatgpt )?conversation)/i.test(pageText);
   const requestTimeoutError=Boolean(chatRetry)&&/(yêu cầu (?:đã )?hết thời gian chờ|request (?:has )?timed out|request timeout)/i.test(retryContext);
   const chatLoadError=location.hostname==='chatgpt.com'&&Boolean(conversationLoadError||requestTimeoutError);
-  const modelControls=location.hostname==='chatgpt.com'?[...document.querySelectorAll('button,[role="button"]')].filter(e=>vis(e)&&(e.hasAttribute('data-selected-reasoning-effort')||/chọn mô hình chatgpt|choose.*model|model selector/i.test((e.getAttribute('aria-label')||'')+' '+(e.getAttribute('title')||'')))):[];
+  const modelControls=location.hostname==='chatgpt.com'?[...document.querySelectorAll('button,[role="button"]')].filter(e=>{
+    if(!vis(e))return false;
+    const label=String((e.innerText||e.textContent||'')).replace(/\s+/g,' ').trim();
+    const legacy=e.hasAttribute('data-selected-reasoning-effort')||/chọn mô hình chatgpt|choose.*model|model selector/i.test((e.getAttribute('aria-label')||'')+' '+(e.getAttribute('title')||''));
+    const current=e.matches('button.__composer-pill[aria-haspopup="menu"]')&&/^(?:Cao|High|Tiêu chuẩn|Standard|Nhanh|Fast|Tự động|Auto)$/i.test(label);
+    return legacy||current;
+  }):[];
   const modelControl=modelControls.length===1?modelControls[0]:null;
   const modelLabel=String((modelControl?.getAttribute('aria-label')||'')+' '+(modelControl?.getAttribute('title')||'')+' '+(modelControl?.innerText||modelControl?.textContent||'')).replace(/\\s+/g,' ').trim();
   const modelName=/\\b(?:GPT-)?5\\.6\\s+Sol\\b/i.test(modelLabel)?'GPT-5.6 Sol':null;
@@ -785,7 +791,17 @@ async function maybeRecoverChatLoadError(w,target,ui,now=Date.now()){
   await continuityEventFor(w,'CHAT_UNLOADABLE_BLOCKED',{url:ui?.url||null,blockedUntil});
   return true;
 }
-const MODEL_SELECTOR_CLICK_EXPR=`(()=>{const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};const controls=[...document.querySelectorAll('button,[role="button"]')].filter(e=>vis(e)&&(e.hasAttribute('data-selected-reasoning-effort')||/chọn mô hình chatgpt|choose.*model|model selector/i.test((e.getAttribute('aria-label')||'')+' '+(e.getAttribute('title')||''))));if(controls.length!==1)return{ok:false,status:'MODEL_CONTROL_NOT_EXACT_OR_UNIQUE',count:controls.length};controls[0].click();return{ok:true,status:'MODEL_SELECTOR_OPENED'}})()`;
+const MODEL_SELECTOR_POINT_EXPR=`(()=>{const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};const text=e=>String(e.innerText||e.textContent||'').replace(/\s+/g,' ').trim();const openMenus=[...document.querySelectorAll('[role="menu"][data-state="open"]')].filter(vis);if(openMenus.some(menu=>[...menu.querySelectorAll('[role="menuitemradio"][aria-checked="true"]')].some(e=>/^(?:GPT-)?5\.6\s+Sol$/i.test(text(e)))))return{ok:true,status:'MODEL_SELECTOR_ALREADY_OPEN',alreadyOpen:true};const controls=[...document.querySelectorAll('button,[role="button"]')].filter(e=>{if(!vis(e))return false;const legacy=e.hasAttribute('data-selected-reasoning-effort')||/chọn mô hình chatgpt|choose.*model|model selector/i.test((e.getAttribute('aria-label')||'')+' '+(e.getAttribute('title')||''));const current=e.matches('button.__composer-pill[aria-haspopup="menu"]')&&/^(?:Cao|High|Tiêu chuẩn|Standard|Nhanh|Fast|Tự động|Auto)$/i.test(text(e));return legacy||current});if(controls.length!==1)return{ok:false,status:'MODEL_CONTROL_NOT_EXACT_OR_UNIQUE',count:controls.length,labels:controls.slice(0,5).map(text)};const r=controls[0].getBoundingClientRect();return{ok:true,status:'MODEL_SELECTOR_POINT',alreadyOpen:false,x:r.left+r.width/2,y:r.top+r.height/2,label:text(controls[0])}})()`;
+async function openNv02ModelSelector(target){
+  const p=await pageRpc(target);
+  try{
+    const point=(await p.call('Runtime.evaluate',{expression:MODEL_SELECTOR_POINT_EXPR,returnByValue:true},5000)).result.value;
+    if(!point?.ok)return point||{ok:false,status:'MODEL_CONTROL_NOT_EXACT_OR_UNIQUE'};
+    if(!point.alreadyOpen)await cdpMouseClick(p,point);
+    await sleep(400);
+    return{ok:true,status:point.alreadyOpen?'MODEL_SELECTOR_ALREADY_OPEN':'MODEL_SELECTOR_OPENED',label:point.label||null};
+  }finally{p.close();}
+}
 const MODEL_56_SOL_CLICK_EXPR=`(()=>{const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};const text=e=>String(e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim();const opts=[...document.querySelectorAll('button,[role="menuitem"],[role="menuitemradio"],[role="option"]')].filter(e=>vis(e)&&/^(?:GPT-)?5\\.6\\s+Sol(?:\\s|$)/i.test(text(e)));if(opts.length!==1)return{ok:false,status:'GPT_5_6_SOL_OPTION_NOT_UNIQUE',count:opts.length,labels:opts.slice(0,5).map(text)};opts[0].click();return{ok:true,status:'GPT_5_6_SOL_SELECTED'}})()`;
 const REASONING_HIGH_CLICK_EXPR=`(()=>{const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};const text=e=>String(e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim();const opts=[...document.querySelectorAll('button,[role="menuitem"],[role="menuitemradio"],[role="option"]')].filter(e=>vis(e)&&/^(?:High|Cao)(?:\\s|$)/i.test(text(e)));if(opts.length!==1)return{ok:false,status:'REASONING_HIGH_OPTION_NOT_UNIQUE',count:opts.length,labels:opts.slice(0,5).map(text)};opts[0].click();return{ok:true,status:'REASONING_HIGH_SELECTED'}})()`;
 const MODEL_SELECTED_EXPR=`(()=>{const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};const text=e=>String(e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim();const checked=[...document.querySelectorAll('[role="menuitemradio"][aria-checked="true"],[role="option"][aria-selected="true"]')].filter(vis);const labels=checked.map(text);const exact=labels.filter(x=>/^(?:GPT-)?5\\.6\\s+Sol$/i.test(x));return{ok:exact.length===1,modelName:exact.length===1?'GPT-5.6 Sol':null,checkedLabels:labels.slice(0,10)}})()`;
@@ -793,7 +809,7 @@ const MODEL_MENU_DISMISS_EXPR=`(()=>{document.dispatchEvent(new KeyboardEvent('k
 async function inspectNv02SelectedModel(target){
   const raw=await uiStateRaw(target);
   if(raw?.securityBlock)throw new Error(raw.securityBlock);
-  const opened=await evalPage(target,MODEL_SELECTOR_CLICK_EXPR);
+  const opened=await openNv02ModelSelector(target);
   if(!opened?.ok)throw new Error(opened?.status||'MODEL_SELECTOR_OPEN_FAILED');
   await sleep(400);
   const selected=await evalPage(target,MODEL_SELECTED_EXPR);
@@ -814,7 +830,7 @@ async function ensureNv02ModelProfile(target){
   for(let i=0;i<maxAttempts;i++){
     if(profile?.modelExact===true&&profile?.modelName==='GPT-5.6 Sol'&&profile?.reasoningEffort==='High')break;
     if(profile?.modelName!=='GPT-5.6 Sol'){
-      const opened=await evalPage(target,MODEL_SELECTOR_CLICK_EXPR);
+      const opened=await openNv02ModelSelector(target);
       if(!opened?.ok)throw new Error(opened?.status||'MODEL_SELECTOR_OPEN_FAILED');
       await sleep(400);
       const modelSelected=await evalPage(target,MODEL_56_SOL_CLICK_EXPR);
@@ -823,7 +839,7 @@ async function ensureNv02ModelProfile(target){
       profile=await inspectNv02SelectedModel(target);
     }
     if(profile?.modelName==='GPT-5.6 Sol'&&profile?.reasoningEffort!=='High'){
-      const reasoningOpened=await evalPage(target,MODEL_SELECTOR_CLICK_EXPR);
+      const reasoningOpened=await openNv02ModelSelector(target);
       if(!reasoningOpened?.ok)throw new Error(reasoningOpened?.status||'REASONING_SELECTOR_OPEN_FAILED');
       await sleep(400);
       const reasoningSelected=await evalPage(target,REASONING_HIGH_CLICK_EXPR);
