@@ -252,7 +252,7 @@ async function invoke(r,prompt){
 export async function invokeJsonWithFailover(initialResource,prompt,{exclude=[],resourcePool=null,invokeFn=invoke,shrinkPrompt=shrinkAiPrompt,maxResources=null,validateData=null,sleepFn=sleep,randomFn=Math.random,backoffBaseMs=1000}={}){
   const poolResources=Array.isArray(resourcePool)?resourcePool:selectableResources([]);
   const eligible=poolResources.filter(r=>r&&!exclude.includes(r.id)&&!busyAiResources.has(r.id));
-  const initial=(initialResource&&!exclude.includes(initialResource.id)&&!busyAiResources.has(initialResource.id))?initialResource:eligible[0];
+  const initial=eligible.find(r=>r.id===initialResource?.id)||eligible[0];
   if(!initial){const e=new Error('AI_RESOURCES_BUSY');e.code='AI_RESOURCES_BUSY';throw e;}
   const ordered=[initial,...eligible.filter(r=>r?.id!==initial.id)];
   const unique=[];const ids=new Set();
@@ -502,7 +502,7 @@ async function runJob(j){
   const mutationAuth={...controlPlaneRepairIntent(objectiveRow?.objective||''),executorClass:'CODING_LANE'};
   assertExecutionPlaneMutationPaths(j.paths,mutationAuth);
   const cooldownExcludes=activeProviderCooldownIds(j.failure);
-  let worker=resources.find(r=>r.id===j.employee_id&&!cooldownExcludes.includes(r.id))||pickResource(cooldownExcludes);if(!worker)throw new Error('NO_IMPLEMENTER_AVAILABLE');
+  let worker=selectableResources(cooldownExcludes).find(r=>r.id===j.employee_id)||pickResource(cooldownExcludes);if(!worker)throw new Error('NO_IMPLEMENTER_AVAILABLE');
   await pool.query("update tigeriq_coding_jobs set employee_id=$2,status='running' where id=$1",[j.id,worker.id]);
   j.employee_id=worker.id;
   let context=null,generated=null,gen={summary:'resumed existing PR'},reviewer=null;
@@ -510,7 +510,7 @@ async function runJob(j){
   if(shouldResumeExistingPr(j)){
     assertPrOpenState(await gh(`/pulls/${pr.number}`));
     context=await contextFor(j.paths,branch);
-    reviewer=resources.find(r=>r.id===j.reviewer_employee_id&&r.id!==worker.id&&!cooldownExcludes.includes(r.id))||pickResource([worker.id,...cooldownExcludes]);
+    reviewer=selectableResources([worker.id,...cooldownExcludes]).find(r=>r.id===j.reviewer_employee_id)||pickResource([worker.id,...cooldownExcludes]);
     if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE');
     await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,status='waiting_ci',next_attempt_at=null,completed_at=null where id=$1",[j.id,worker.id,reviewer.id]);
   }else{
