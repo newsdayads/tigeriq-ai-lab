@@ -3,10 +3,10 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
-  MAX_OWNER_LEASE_MS, OBSERVATION_DIRECTORIES, argsHash, authorizeRemoteCall, requiredRiskClass
+  AUTHORIZATION_TOOL, MAX_OWNER_LEASE_MS, OBSERVATION_DIRECTORIES, argsHash, authorizeRemoteCall, requiredRiskClass
 } from '../apps/remote-desktop-guard/policy.mjs';
 import {
-  enforceRemoteToolCall, filterRemoteToolDefinitions, verifyRealReadScope
+  enforceRemoteToolCall, filterRemoteToolDefinitions, installOwnerLeaseFromAuthorization, verifyRealReadScope
 } from '../apps/remote-desktop-guard/runtime-gate.mjs';
 import {
   patchDesktopCommanderServer, verifyDesktopCommanderServerPatched
@@ -207,6 +207,7 @@ describe('Remote Desktop Commander hard runtime guard',()=>{
     const twice=patchDesktopCommanderServer(once);
     expect(twice).toBe(once);
     expect(verifyDesktopCommanderServerPatched(once)).toBe(true);
+    expect(once).toContain('if (tigerIqRemoteGuard.terminalResult) return tigerIqRemoteGuard.terminalResult;');
     expect(()=>patchDesktopCommanderServer('unexpected upstream')).toThrow('DESKTOP_COMMANDER_0_2_51_ANCHOR_MISMATCH');
   });
 
@@ -222,10 +223,65 @@ describe('Remote Desktop Commander hard runtime guard',()=>{
   it('hides mutators from the remote tool surface until a live bounded lease exists',async()=>{
     const leasePath=await tempLeasePath();
     const tools=[{name:'read_file'},{name:'list_processes'},{name:'start_process'},{name:'write_file'},{name:'set_config_value'}];
-    expect(await filterRemoteToolDefinitions(tools,{leasePath,now:NOW})).toEqual([{name:'read_file'},{name:'list_processes'}]);
+    const hidden=await filterRemoteToolDefinitions(tools,{leasePath,now:NOW});
+    expect(hidden.map((x)=>x.name)).toEqual(['read_file','list_processes',AUTHORIZATION_TOOL]);
     const args={command:'echo bounded',timeout_ms:1000};
     await putLease(leasePath,leaseFor('start_process',args));
-    expect(await filterRemoteToolDefinitions(tools,{leasePath,now:NOW})).toEqual([{name:'read_file'},{name:'list_processes'},{name:'start_process'}]);
+    const opened=await filterRemoteToolDefinitions(tools,{leasePath,now:NOW});
+    expect(opened.map((x)=>x.name)).toEqual(['read_file','list_processes','start_process',AUTHORIZATION_TOOL]);
+  });
+
+  it('installs a lease only through the dedicated Owner authorization tool and never executes the target mutation',async()=>{
+    const leasePath=await tempLeasePath();
+    const args={path:'D:\\TigerIQ\\Evidence\\authorized.txt',content:'ok',mode:'rewrite'};
+    const lease=leaseFor('write_file',args);
+    let fetchCalls=0;
+    const fetchImpl=async()=>{ fetchCalls+=1; return authFetchFor(lease)(); };
+    const installed=await installOwnerLeaseFromAuthorization({authorizationUrl:lease.authorizationUrl},{leasePath,now:NOW,fetchImpl});
+    expect(installed).toMatchObject({ok:true,reason:'OWNER_LEASE_INSTALLED',leaseId:'OWNER-TEST-1',tool:'write_file'});
+    expect(fetchCalls).toBe(1);
+    expect(JSON.parse(await readFile(leasePath,'utf8'))).toEqual(lease);
+  });
+
+  it('authorization tool is fail-closed on GitHub 403, forged author, expiry, and existing active lease',async()=>{
+    const args={path:'D:\\TigerIQ\\Evidence\\authorized.txt',content:'ok',mode:'rewrite'};
+    const lease=leaseFor('write_file',args);
+
+    const p403=await tempLeasePath();
+    expect(await installOwnerLeaseFromAuthorization({authorizationUrl:lease.authorizationUrl},{
+      leasePath:p403,now:NOW,fetchImpl:async()=>({ok:false,status:403,json:async()=>({})})
+    })).toEqual({ok:false,reason:'OWNER_AUTH_VERIFY_HTTP_403'});
+    await expect(readFile(p403,'utf8')).rejects.toMatchObject({code:'ENOENT'});
+
+    const forged=await tempLeasePath();
+    expect(await installOwnerLeaseFromAuthorization({authorizationUrl:lease.authorizationUrl},{
+      leasePath:forged,now:NOW,fetchImpl:authFetchFor(lease,{login:'attacker'})
+    })).toEqual({ok:false,reason:'OWNER_AUTH_AUTHOR_MISMATCH'});
+    await expect(readFile(forged,'utf8')).rejects.toMatchObject({code:'ENOENT'});
+
+    const expired=await tempLeasePath();
+    const oldLease=leaseFor('write_file',args,{issued:'2026-09-24T23:40:00.000Z',expires:'2026-09-24T23:45:00.000Z'});
+    expect(await installOwnerLeaseFromAuthorization({authorizationUrl:oldLease.authorizationUrl},{
+      leasePath:expired,now:NOW,fetchImpl:authFetchFor(oldLease)
+    })).toMatchObject({ok:false,reason:'LEASE_EXPIRED_OR_NOT_ACTIVE'});
+
+    const existing=await tempLeasePath();
+    await putLease(existing,lease);
+    expect(await installOwnerLeaseFromAuthorization({authorizationUrl:lease.authorizationUrl},{
+      leasePath:existing,now:NOW,fetchImpl:authFetchFor(lease)
+    })).toEqual({ok:false,reason:'ACTIVE_LEASE_EXISTS'});
+  });
+
+  it('dedicated authorization tool returns terminal success before vendor dispatch',async()=>{
+    const leasePath=await tempLeasePath();
+    const args={command:'echo scoped',timeout_ms:1000};
+    const lease=leaseFor('start_process',args);
+    const result=await enforceRemoteToolCall({
+      tool:AUTHORIZATION_TOOL,args:{authorizationUrl:lease.authorizationUrl},
+      leasePath,now:NOW,fetchImpl:authFetchFor(lease)
+    });
+    expect(result).toMatchObject({ok:true,reason:'OWNER_LEASE_INSTALLED',terminalResult:{isError:false}});
+    expect(result.terminalResult.content[0].text).toBe('TIGERIQ_OWNER_LEASE_INSTALLED:OWNER-TEST-1');
   });
 
   it('patches the launcher with fail-closed guard preflight for restart safety',()=>{
