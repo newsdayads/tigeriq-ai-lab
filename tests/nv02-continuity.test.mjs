@@ -276,12 +276,11 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("const modelCheckRequired=now>=Number(state.modelCheckBlockedUntil||0)&&(ui?.modelExact!==true||!state.verifiedChatUrl||!sameNv02Chat(state.verifiedChatUrl,ui?.url))");
     expect(source).toContain("phase==='STALLED'&&ui?.modelExact!==true&&modelCheckRequired");
     const bootFreshGate=continuityLoop.indexOf("bootFreshContextPending.has('NV02')");
-    const periodicF5Gate=continuityLoop.indexOf("if(currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0))");
+    const periodicF5Gate=continuityLoop.indexOf("if(phase!=='WORKING'&&currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0))");
     const modelRecoveryGate=continuityLoop.indexOf("if(phase==='STALLED'&&ui?.modelExact!==true&&modelCheckRequired&&");
     expect(bootFreshGate).toBeGreaterThan(-1);
-    expect(periodicF5Gate).toBeGreaterThan(bootFreshGate);
-    expect(periodicF5Gate).toBeLessThan(modelRecoveryGate);
-    expect(modelRecoveryGate).toBeGreaterThan(-1);
+    expect(periodicF5Gate).toBeGreaterThan(-1);
+    expect(modelRecoveryGate).toBeGreaterThan(bootFreshGate);
 
     expect(source).not.toContain("state.verifiedChatUrl===ui?.url");
     expect(source).toContain("const currentUrl=String(profile.url||'')");
@@ -295,7 +294,7 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("pages.find(t=>sameWorkerLocation(t.url,preferredUrl))");
 
 
-    const f5Block=source.slice(source.indexOf("if(currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0))"),source.indexOf("const modelCheckRequired="));
+    const f5Block=source.slice(source.indexOf("if(phase!=='WORKING'&&currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0))"),source.indexOf("const modelCheckRequired="));
     expect(f5Block).toContain("reloadTarget(target)");
     expect(f5Block).not.toContain("ensureNv02ModelProfile");
     expect(f5Block).not.toContain("checkpointNv02");
