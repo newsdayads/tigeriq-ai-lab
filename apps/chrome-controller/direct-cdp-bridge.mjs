@@ -1316,7 +1316,7 @@ async function handleCommand(w,target,command){
     if(phase==='WORKING')return{status:'ALREADY_WORKING'};
     if(w.id==='NV02'){
       // tickWorker already owns the worker/NV02 local mutation mutex while a
-      // Controller command is in flight. Re-acquiring via withNv02Mutation()
+      // Controller command is in flight. Re-acquiring the NV02 mutation wrapper here
       // would self-deadlock on nv02MutationBusy / WORKER_COMMAND_INFLIGHT.
       const ready=await ensureNv02LocalReadyLocked(target,raw,{forceFresh:false});
       if(ready?.uiBusy===true||ready?.uiPhase==='WORKING')return{status:'ALREADY_WORKING'};
