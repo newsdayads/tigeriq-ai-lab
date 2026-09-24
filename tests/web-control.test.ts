@@ -28,6 +28,9 @@ describe('TigerIQ Web Control owner dashboard', () => {
     expect(server).toContain('githubWorkOrders');
     expect(server).toContain('workOrdersMeta');
     expect(truth).toContain('d?.workOrders');
+    expect(truth).toContain("s === 'working' && status === 'BUSY'");
+    expect(unified).toContain('__tigerIqApplyOwnerHealth');
+    expect(unified).toContain("latestWebHealth?.ok!==true");
     expect(unified).toContain('PROVIDER_MARK');
     expect(unified).toContain('tq-logo');
     expect(unified).toContain('tq-spark');
