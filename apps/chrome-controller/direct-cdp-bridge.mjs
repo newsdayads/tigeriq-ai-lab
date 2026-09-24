@@ -1339,7 +1339,7 @@ async function handleCommand(w,target,command){
   if(action==='NAVIGATE'){const u=new URL(String(payload.url||''));if(u.hostname!==expectedHost(w))throw new Error('BLOCKED_URL');await navigate(target,u.toString());return{status:'NAVIGATED'};}
   if(action==='MODEL_PREFLIGHT'){if(w.id!=='NV02')return{status:'MODEL_PREFLIGHT_NOT_REQUIRED'};return ensureNv02ModelProfile(target);}
   if(action==='LOCAL_CONTINUE_NOW'){
-    if(w.id==='NV03'||w.id==='NV04'){
+    if(['NV02','NV03','NV04'].includes(w.id)){
       const assignment=await currentWorkerAssignmentStatus(w.id);
       if(assignment.status!=='CONTINUABLE')return{status:assignment.status,jobId:assignment.job?.jobId||null};
     }
