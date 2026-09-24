@@ -6,7 +6,7 @@ import {
   MAX_OWNER_LEASE_MS, OBSERVATION_DIRECTORIES, argsHash, authorizeRemoteCall, requiredRiskClass
 } from '../apps/remote-desktop-guard/policy.mjs';
 import {
-  enforceRemoteToolCall, filterRemoteToolDefinitions
+  enforceRemoteToolCall, filterRemoteToolDefinitions, verifyRealReadScope
 } from '../apps/remote-desktop-guard/runtime-gate.mjs';
 import {
   patchDesktopCommanderServer, verifyDesktopCommanderServerPatched
@@ -65,6 +65,31 @@ describe('Remote Desktop Commander hard runtime guard',()=>{
       {path:'..\\Secrets\\token.txt'},
       {path:'https://127.0.0.1:8795/health',isUrl:true}
     ]) expect(authorizeRemoteCall({tool:'read_file',args,now:NOW})).toEqual({ok:false,reason:'READ_SCOPE_DENIED'});
+  });
+
+  it('resolves real targets and blocks junction/reparse escape outside observation roots',async()=>{
+    const rootMap=new Map(OBSERVATION_DIRECTORIES.map((root)=>[root,root]));
+    const allowed='D:\\TigerIQ\\Evidence\\safe.txt';
+    const escaped='D:\\TigerIQ\\Evidence\\junction\\secret.txt';
+    const realpathImpl=async(value)=>{
+      if (rootMap.has(value)) return rootMap.get(value);
+      if (value===allowed) return allowed;
+      if (value===escaped) return 'D:\\TigerIQ\\Secrets\\secret.txt';
+      throw Object.assign(new Error('missing'),{code:'ENOENT'});
+    };
+    expect(await verifyRealReadScope('read_file',{path:allowed},{realpathImpl}))
+      .toEqual({ok:true,reason:'READ_REALPATH_SCOPE_PASS'});
+    expect(await verifyRealReadScope('read_file',{path:escaped},{realpathImpl}))
+      .toEqual({ok:false,reason:'READ_REPARSE_ESCAPE_DENIED'});
+  });
+
+  it('fails closed when a read target realpath cannot be resolved',async()=>{
+    const realpathImpl=async(value)=>{
+      if (OBSERVATION_DIRECTORIES.includes(value)) return value;
+      throw Object.assign(new Error('missing'),{code:'ENOENT'});
+    };
+    expect(await verifyRealReadScope('read_file',{path:'D:\\TigerIQ\\Evidence\\missing.txt'},{realpathImpl}))
+      .toEqual({ok:false,reason:'READ_REALPATH_UNRESOLVED'});
   });
 
   it('fails closed for unauthorized PowerShell/CMD/Node/Python/Git/Vercel mutation',async()=>{
@@ -174,7 +199,7 @@ describe('Remote Desktop Commander hard runtime guard',()=>{
       'async function handleCallToolRequest(request) {',
       '    const { name, arguments: args } = request.params;',
       '    const isRemoteCall = true;',
-      'const filteredTools = allTools.filter(tool => shouldIncludeTool(tool.name));',
+      '        const filteredTools = allTools.filter(tool => shouldIncludeTool(tool.name));',
       '        setCurrentCallIsRemote(isRemoteCall);',
       '}'
     ].join('\n');
