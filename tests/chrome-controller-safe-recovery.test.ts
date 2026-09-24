@@ -154,6 +154,15 @@ describe('independent worker recovery flows in direct-cdp-bridge',()=>{
     expect(source).toContain("return{status:'READY_UNASSIGNED',job:null}");
   });
 
+  it('rearms a READY role loop if submit acknowledgement never transitions to WORKING',()=>{
+    expect(source).toContain('const WORK_START_ACK_TIMEOUT_MS=90*1000');
+    expect(source).toContain('awaitingWorkStartSince:Number(raw.awaitingWorkStartSince)||0');
+    expect(source).toContain("'WORK_START_ACK_TIMEOUT_REARMED'");
+    expect(source).toContain('now-since<WORK_START_ACK_TIMEOUT_MS');
+    expect(source).toContain('awaitingWorkStartSince:now');
+    expect(source).toContain('awaitingWorkStartSince:Date.now()');
+  });
+
   it('rebases only an already-expired deep-reset timer once after bridge restart',()=>{
     expect(source).toContain("const bootResetScheduleInitialized=new Set()");
     expect(source).toContain("if(!bootResetScheduleInitialized.has(workerId)){");
