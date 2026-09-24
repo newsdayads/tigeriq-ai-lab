@@ -1,8 +1,16 @@
 import {describe,expect,it} from 'vitest';
-import {githubIssueIsOpen,isRetryableFailure,isStaleJob,normalizeRepairFailure,repairInstruction,retryResumeIdentity,shouldRetry} from '../apps/tigeriq-coding-lane/autonomy-supervisor.mjs';
+import {githubIssueIsOpen,isRetryableFailure,isStaleJob,normalizeRepairFailure,repairInstruction,repairJobTitle,retryResumeIdentity,shouldRetry} from '../apps/tigeriq-coding-lane/autonomy-supervisor.mjs';
 
 // We need to test githubIssueIsOpen or objectiveIsEligible via exported functions or by mocking fetch.
 // Since githubIssueIsOpen is not exported directly, we can test it through mock fetch or test helper exports if available, or we can test handleFailed / objectiveIsEligible if exported or test logic via mock.
+
+describe('coding title repair suffix',()=>{
+  it('uses Vietnamese repair suffix without stacking old suffixes',()=>{
+    expect(repairJobTitle('[P0][API] Sửa lỗi hàng đợi',2)).toBe('[P0][API] Sửa lỗi hàng đợi [sửa lần 2]');
+    expect(repairJobTitle('[P0][API] Sửa lỗi hàng đợi [repair 2]',3)).toBe('[P0][API] Sửa lỗi hàng đợi [sửa lần 3]');
+    expect(repairJobTitle('[P0][API] Sửa lỗi hàng đợi [sửa lần 3]',4)).toBe('[P0][API] Sửa lỗi hàng đợi [sửa lần 4]');
+  });
+});
 
 describe('coding autonomy supervisor repair policy',()=>{
   it('normalizes known repairable failures',()=>{
