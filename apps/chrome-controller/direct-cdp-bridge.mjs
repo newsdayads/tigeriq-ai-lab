@@ -3,7 +3,7 @@ import http from 'node:http';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import {
-  CONTINUE_MIN_MS, CONTINUE_MAX_MS,
+  CONTINUE_MIN_MS, CONTINUE_MAX_MS, REFRESH_MIN_MS, REFRESH_MAX_MS,
   WORKER_F5_MIN_MS, WORKER_F5_MAX_MS, CONTINUITY_WORKERS,
   MAX_STALLED_CHECKS, WORKING_PROGRESS_CHECK_MS, MAX_WORKING_UNCHANGED_CHECKS,
   deriveNv02Phase, deriveWorkerPhase,
