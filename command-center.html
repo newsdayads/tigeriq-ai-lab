@@ -21,6 +21,7 @@ button{font:inherit}
 .live-dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 0 0 rgba(70,212,143,.5);animation:pulse 1.8s infinite}
 @keyframes pulse{70%{box-shadow:0 0 0 7px rgba(70,212,143,0)}100%{box-shadow:0 0 0 0 rgba(70,212,143,0)}}
 .err{display:none;border:1px solid #6d3038;background:#31191e;color:#ffb7bd;border-radius:14px;padding:11px 12px;margin-bottom:10px;font-size:12px}
+.err.stale{border-color:#705322;background:#332714;color:#ffd187}
 .summary{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:10px}
 .sum{border:1px solid var(--line);background:linear-gradient(180deg,#102139,#0b1727);border-radius:14px;padding:10px 8px;min-width:0}
 .sum span{display:block;font-size:10px;color:var(--muted);white-space:nowrap}
@@ -113,7 +114,56 @@ button{font:inherit}
 <script>
 const $=id=>document.getElementById(id);
 let snapshot=null,activeFilter='all';
+const LAST_GOOD_KEY='tigeriq-live-last-good-v2';
 const stateLabel={working:'ĐANG LÀM',waiting:'CHỜ',blocked:'BỊ CHẶN',idle:'RẢNH',unknown:'CHƯA RÕ',paused:'TẠM NGƯNG'};
+function readLastGood(){
+  try{return JSON.parse(localStorage.getItem(LAST_GOOD_KEY)||'null')}catch{return null}
+}
+function writeLastGood(value){
+  try{localStorage.setItem(LAST_GOOD_KEY,JSON.stringify(value))}catch{}
+}
+function hydrateLastGood(value){
+  const cached=readLastGood();
+  const projection=value?.workProjection||{};
+  if(value?.ok&&projection.mode!=='unavailable'&&!projection.stale){
+    writeLastGood(value);
+    return value;
+  }
+  if(!cached)return value;
+  const staleAt=cached?.workProjection?.verifiedAt||cached?.generatedAt||null;
+  if(value?.ok){
+    return {
+      ...value,
+      activeWork:Array.isArray(cached.activeWork)?cached.activeWork:[],
+      nextQueue:Array.isArray(cached.nextQueue)?cached.nextQueue:[],
+      nextQueueTotal:Number.isFinite(cached.nextQueueTotal)?cached.nextQueueTotal:(cached.nextQueue||[]).length,
+      workProjection:{
+        ...(cached.workProjection||{}),
+        mode:'client-stale-cache',
+        stale:true,
+        staleAt,
+        reason:projection.reason||value.reason||'Nguồn GitHub tạm thời không sẵn sàng',
+      },
+    };
+  }
+  return {
+    ...cached,
+    ok:true,
+    liveConnected:false,
+    mode:'stale-cache',
+    authority:'Dữ liệu xác minh gần nhất',
+    staleAll:true,
+    staleAt,
+    reason:value?.reason||'Nguồn live tạm thời không sẵn sàng',
+    workProjection:{
+      ...(cached.workProjection||{}),
+      mode:'client-stale-cache',
+      stale:true,
+      staleAt,
+      reason:value?.reason||'Nguồn live tạm thời không sẵn sàng',
+    },
+  };
+}
 function age(iso){
   if(!iso)return 'chưa có mốc';
   const s=Math.max(0,Math.floor((Date.now()-Date.parse(iso))/1000));
@@ -135,8 +185,10 @@ function renderWorkSections(){
   const projection=snapshot?.workProjection||{};
   const active=Array.isArray(snapshot?.activeWork)?snapshot.activeWork:[];
   const queue=Array.isArray(snapshot?.nextQueue)?snapshot.nextQueue:[];
-  $('activeWorkCount').textContent=active.length+' việc';
-  $('nextQueueCount').textContent=queue.length+' việc';
+  const queueTotal=Number.isFinite(snapshot?.nextQueueTotal)?snapshot.nextQueueTotal:queue.length;
+  const staleMark=projection.stale?' · CŨ '+age(projection.staleAt||projection.verifiedAt):'';
+  $('activeWorkCount').textContent=active.length+' việc'+staleMark;
+  $('nextQueueCount').textContent=(queueTotal>queue.length?queue.length+'/'+queueTotal:queueTotal)+' việc'+staleMark;
   const activeBox=$('activeWork'),queueBox=$('nextQueue');
   activeBox.innerHTML='';queueBox.innerHTML='';
   if(!active.length){
@@ -188,11 +240,26 @@ function render(){
 }
 async function load(){
   try{
-    const r=await fetch('/api/live-status',{cache:'no-store'}),d=await r.json();
+    const r=await fetch('/api/live-status',{cache:'no-store'}),raw=await r.json(),d=hydrateLastGood(raw);
     if(!d?.ok)throw new Error(d?.reason||'Nguồn trạng thái chưa sẵn sàng');
-    snapshot=d;$('err').style.display='none';const live=$('liveLabel').parentElement;live.classList.toggle('warn',!d.liveConnected);$('liveLabel').textContent=d.liveConnected?'PC01 LIVE':'DỰ PHÒNG';render();
+    snapshot=d;
+    const projection=d.workProjection||{};
+    const stale=Boolean(d.staleAll||projection.stale);
+    const live=$('liveLabel').parentElement;
+    live.classList.toggle('warn',!d.liveConnected||stale);
+    $('liveLabel').textContent=stale?'DỮ LIỆU CŨ':(d.liveConnected?'PC01 LIVE':'DỰ PHÒNG');
+    if(stale){
+      const stamp=projection.staleAt||projection.verifiedAt||d.staleAt||d.generatedAt;
+      $('err').classList.add('stale');
+      $('err').textContent='GitHub/live tạm lỗi ('+(projection.reason||d.reason||d.liveReason||'unavailable')+'). Đang giữ danh sách xác minh gần nhất từ '+(stamp?new Date(stamp).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'mốc trước')+'; không xóa về 0.';
+      $('err').style.display='block';
+    }else{
+      $('err').classList.remove('stale');
+      $('err').style.display='none';
+    }
+    render();
   }catch(e){
-    $('liveLabel').textContent='MẤT DỮ LIỆU';$('err').textContent='Không tải được trạng thái thật. Trang không tự đoán: '+String(e?.message||e);$('err').style.display='block';
+    $('liveLabel').textContent='MẤT DỮ LIỆU';$('err').classList.remove('stale');$('err').textContent='Không có snapshot xác minh để hiển thị: '+String(e?.message||e);$('err').style.display='block';
   }
 }
 document.querySelectorAll('.filter').forEach(btn=>btn.addEventListener('click',()=>{
