@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import {activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertPrOpenState,buildLocalFileContext,classifyAiFailure,codingOutputTokenLimit,codingPathsOverlap,coreResourceStateEligible,gateFailureIssues,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,managerResourceFailurePlan,partitionGenerationFiles,preserveGenerationPrompt,recoverAfterCodingRestart,resourceWaitPlan,restartRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,validateCompactEdits,validateManagerJobPaths} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertPrOpenState,buildLocalFileContext,classifyAiFailure,codingOutputTokenLimit,codingPathsOverlap,coreResourceStateEligible,gateFailureIssues,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,managerResourceFailurePlan,partitionGenerationFiles,preserveGenerationPrompt,providerCooldownPollPlan,recoverAfterCodingRestart,resourceWaitPlan,restartRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,validateCompactEdits,validateManagerJobPaths} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError,parseJsonObject} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 const nv11={id:'NV11',provider:'fake',model:'a'};
@@ -342,6 +342,30 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
     const hard=managerResourceFailurePlan(new Error('POLICY_DENIED'),{},now);
     assert.strictEqual(hard.transient,false);
     assert.strictEqual(hard.wait,false);
+  });
+
+  await t.test('active provider cooldown polls without consuming job retry budget',()=>{
+    const now=Date.parse('2026-09-24T05:02:43.000Z');
+    const failure={detail:{failureLedger:[
+      {class:'rate_limit',resourceId:'NV11',cooldownUntil:'2026-09-24T05:32:43.000Z'},
+      {class:'rate_limit',resourceId:'NV12',cooldownUntil:'2026-09-24T05:25:34.000Z'},
+      {class:'provider_unavailable',resourceId:'NV15',cooldownUntil:'2026-09-24T05:03:00.000Z'},
+    ]}};
+    const plan=providerCooldownPollPlan(failure,now,120000);
+    assert.strictEqual(plan.wait,true);
+    assert.strictEqual(plan.delayMs,120000);
+    assert.strictEqual(plan.nextAttemptAt,'2026-09-24T05:04:43.000Z');
+    assert.strictEqual(plan.cooldownUntil,'2026-09-24T05:25:34.000Z');
+    assert.deepStrictEqual(plan.resourceIds.sort(),['NV11','NV12']);
+    assert.ok(!plan.resourceIds.includes('NV15'));
+    assert.strictEqual(providerCooldownPollPlan(failure,Date.parse('2026-09-24T05:40:00.000Z')).wait,false);
+  });
+
+  await t.test('job failover keeps retry count stable while excluded provider cooldown is active',()=>{
+    const src=require('node:fs').readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
+    assert.ok(src.includes("providerCooldownPollPlan(current.failure)"));
+    assert.ok(src.includes("WAITING_RESOURCE_COOLDOWN retry"));
+    assert.ok(src.includes("preservedRetryCount:preservedCount"));
   });
 
   await t.test('manager tick persists retry gate instead of hot-looping transient provider failure',()=>{
