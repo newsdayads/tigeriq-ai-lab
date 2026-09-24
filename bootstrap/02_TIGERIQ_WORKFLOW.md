@@ -187,6 +187,25 @@ Khi đó Vy phải tạo migration packet, cập nhật GitHub, kiểm thử NEW
 - Quy tắc này áp dụng xuyên NEW CHAT; không được viện lý do đổi chat/đổi phiên để quay lại cơ chế xin duyệt từng bước.
 
 ## 17. Định nghĩa HOÀN TẤT
+
+Với thay đổi Loader/Bootstrap cốt lõi: bắt buộc regression tối thiểu trên tài khoản có thể kiểm thử:
+- `vy` → Vy tự xưng `em`, gọi `anh Sơn`.
+- `bc` → đúng dashboard 6 phần, tiếng Việt.
+- `đưa prompt làm việc` → đúng 01 khối Copy, bắt đầu `LÀM — NO YAPPING.`.
+- NEW CHAT command số đã đăng ký → resolve từ Dynamic Registry.
+- Command không đăng ký/disabled → fail closed.
+- Xác minh Loader đọc được 5 Bootstrap canonical và nguồn động hiện hành.
+
+## 18. Invariant cho Owner‑facing references
+
+- Tất cả các tham chiếu **Owner‑facing** phải tuân theo định dạng bắt buộc `#<số> - <Tên việc>` (ví dụ: `#12 - Kiểm tra bảo mật`) cho mọi ngữ cảnh hiển thị trực tiếp cho anh Sơn hoặc trong Work Order/Issue/PR/báo cáo.
+- Vi phạm định dạng sẽ gây lỗi kiểm tra và ngăn không cho PR được merge.
+
+## 19. Regression test cho bare references
+
+- Thêm test **gate regression** bắt buộc trong pipeline để thực hiện full codebase scan toàn diện trên toàn bộ mã nguồn, tài liệu, markdown, script và code comment.
+- Regex và bộ quét phải bắt chính xác mọi mẫu tham chiếu trực tiếp dạng `#<number>` đứng độc lập hoặc thiếu phần `- <Tên việc>`, tránh bỏ sót bất kỳ biến thể bare reference nào.
+- Nếu phát hiện bất kỳ vi phạm nào, pipeline sẽ lập tức thất bại với thông báo `Owner-facing reference format violation`.
 Một task chỉ `HOÀN TẤT` khi outcome đã được thực hiện ở mức áp dụng, test/review cần thiết đạt, evidence có sẵn, state/docs được cập nhật và không còn blocker thật trong scope.
 
 Với thay đổi Loader/Bootstrap cốt lõi: bắt buộc regression tối thiểu trên tài khoản có thể kiểm thử:
