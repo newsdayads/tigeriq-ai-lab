@@ -3,7 +3,7 @@ import {randomUUID} from 'node:crypto';
 import {Pool} from 'pg';
 import {branchName,checkGateState,extractCanonicalAllowedPaths,isRetryableAiError,parseJsonObject,safeRepoPath,validateChanges} from './policy.mjs';
 import {assertSafeFileChange} from './safety-guard.mjs';
-import {compactPromptForChanges,expandCompactChanges,installAiJsonTransport} from './ai-json-transport.mjs';
+import {compactPromptForChanges,currentFilesFromPrompt,expandCompactChanges,installAiJsonTransport} from './ai-json-transport.mjs';
 import { createGeminiRateController } from '../shared/gemini-rate-control.mjs';
 import {assertExecutionPlaneMutationPaths,controlPlaneRepairIntent} from '../shared/control-plane-lock.mjs';
 
@@ -493,7 +493,14 @@ export function applyCompactEdits(content,edits){
 export function buildRepairGenerationPrompt(worker,j,context,issues=[]){
   return `You are ${worker.id}, an autonomous TigerIQ repository engineer. Fix ONLY the listed issues on the existing branch.\nTASK: ${j.instruction}\nALLOWED PATHS: ${j.paths.join(', ')}\nREVIEW ISSUES TO FIX: ${JSON.stringify(issues)}\nCURRENT FILES:\n${context}\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}. Do not touch paths outside ALLOWED PATHS. Never output secrets. Keep changes minimal and testable.`;
 }
+export function assertGenerationContextPaths(prompt,allowedPaths=[]){
+  const files=currentFilesFromPrompt(prompt);
+  const missing=(allowedPaths||[]).filter(path=>!files.has(String(path)));
+  if(missing.length){const e=new Error(`CODING_GENERATION_CONTEXT_PATH_MISSING:${missing.join(',')}`);e.code='CODING_GENERATION_CONTEXT_PATH_MISSING';throw e}
+  return true;
+}
 async function invokeCompactGeneration(worker,prompt,allowedPaths,exclude=[]){
+  assertGenerationContextPaths(prompt,allowedPaths);
   const modelPrompt=compactPromptForChanges(prompt,{maxContextChars:6000,maxOutputChars:3200});
   const expand=d=>expandCompactChanges(prompt,JSON.stringify(d));
   const validateData=d=>{const expanded=expand(d);validateChanges(expanded.changes,allowedPaths);validateJobScope(allowedPaths,expanded.changes)};
