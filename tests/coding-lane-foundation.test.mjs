@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import {activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertPrOpenState,buildLocalFileContext,classifyAiFailure,codingOutputTokenLimit,codingPathsOverlap,coreResourceStateEligible,gateFailureIssues,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,partitionGenerationFiles,preserveGenerationPrompt,recoverAfterCodingRestart,resourceWaitPlan,restartRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,validateCompactEdits,validateManagerJobPaths} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertPrOpenState,buildLocalFileContext,classifyAiFailure,codingOutputTokenLimit,codingPathsOverlap,coreResourceStateEligible,gateFailureIssues,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,managerResourceFailurePlan,partitionGenerationFiles,preserveGenerationPrompt,recoverAfterCodingRestart,resourceWaitPlan,restartRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,validateCompactEdits,validateManagerJobPaths} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError,parseJsonObject} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 const nv11={id:'NV11',provider:'fake',model:'a'};
@@ -326,6 +326,29 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
   await t.test('temporary all-provider busy is a resource wait condition',()=>{
     const e=new Error('AI_RESOURCES_BUSY');e.code='AI_RESOURCES_BUSY';
     assert.strictEqual(isResourceTransientError(e),true);
+  });
+
+  await t.test('manager provider exhaustion is deferred with bounded persistent retry',()=>{
+    const e=new Error('AI_RESOURCES_UNAVAILABLE');e.code='AI_RESOURCES_UNAVAILABLE';
+    const now=Date.parse('2026-09-24T04:40:00.000Z');
+    const first=managerResourceFailurePlan(e,{resource_retry_count:0,resource_retry_started_at:null},now);
+    assert.strictEqual(first.transient,true);
+    assert.strictEqual(first.wait,true);
+    assert.strictEqual(first.retryCount,1);
+    assert.strictEqual(first.delayMs,30000);
+    const exhausted=managerResourceFailurePlan(e,{resource_retry_count:6,resource_retry_started_at:'2026-09-24T04:30:00.000Z'},now);
+    assert.strictEqual(exhausted.transient,true);
+    assert.strictEqual(exhausted.wait,false);
+    const hard=managerResourceFailurePlan(new Error('POLICY_DENIED'),{},now);
+    assert.strictEqual(hard.transient,false);
+    assert.strictEqual(hard.wait,false);
+  });
+
+  await t.test('manager tick persists retry gate instead of hot-looping transient provider failure',()=>{
+    const src=require('node:fs').readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
+    assert.ok(src.includes("next_attempt_at is null or next_attempt_at<=now()"));
+    assert.ok(src.includes("WAITING_RESOURCE_MANAGER retry"));
+    assert.ok(src.includes("resource_retry_started_at=coalesce(resource_retry_started_at,now())"));
   });
 
   await t.test('large coding files are isolated into bounded generation batches',()=>{
