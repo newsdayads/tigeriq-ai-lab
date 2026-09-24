@@ -45,16 +45,11 @@ export function isBoundedAppChromeRequestOnly(body){
 }
 
 export function githubSpecBlockedByActive(spec,activeMetadata=[]){
-  const lane=spec?.dispatchLane||githubDispatchLane(spec?.capability);
   const scope=String(spec?.resourceScope||'');
-  return (Array.isArray(activeMetadata)?activeMetadata:[]).some((metadata)=>{
-    const m=metadata&&typeof metadata==='object'?metadata:{};
-    const activeLane=String(m.dispatchLane||githubDispatchLane(m.capability));
-    const activeScope=String(m.resourceScope||'');
-    if(scope&&activeScope&&scope===activeScope)return true;
-    return activeLane===lane;
-  });
+  if(!scope)return false;
+  return (Array.isArray(activeMetadata)?activeMetadata:[]).some((metadata)=>String(metadata?.resourceScope||'')===scope);
 }
+
 export function extractPcOperatorInstruction(body){
   const text=String(body||'');
   const match=text.match(/(?:^|\n)(?:##\s*)?ASSIGNED_ACTION\s*\n([\s\S]*?)(?=\n(?:##\s*)?ACCEPTANCE\s*\n|$)/i);
