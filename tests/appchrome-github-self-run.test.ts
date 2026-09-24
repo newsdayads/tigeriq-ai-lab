@@ -206,11 +206,12 @@ describe('App Chrome self-run wiring',()=>{
     expect(supervisor).not.toContain("APPCHROME_GITHUB_CREDENTIAL_UNAVAILABLE");
   });
 
-  it('does not change GitHub credential ACLs while self-run is disabled',()=>{
-    expect(supervisor).toContain("Get-Command gh.exe");
-    expect(supervisor).toContain("auth token");
-    expect(supervisor).toContain("github-command-center.token");
-    expect(supervisor).toContain("Get-Content -LiteralPath $githubTokenFile -Raw -ErrorAction Stop");
+  it('does not load or mutate GitHub credentials in local-only mode',()=>{
+    expect(supervisor).not.toContain("Get-Command gh.exe");
+    expect(supervisor).not.toContain("auth token");
+    expect(supervisor).not.toContain("github-command-center.token");
+    expect(supervisor).toContain("Remove-Item Env:TIGERIQ_GITHUB_TOKEN");
+    expect(supervisor).toContain("$env:TIGERIQ_APP_CHROME_LOCAL_ONLY='1'");
     expect(supervisor).not.toContain('Set-Acl');
   });
 });
