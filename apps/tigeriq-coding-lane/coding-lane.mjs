@@ -298,7 +298,15 @@ async function ghText(path,accept){const res=await fetch(`https://api.github.com
 async function mainSha(){return (await gh('/git/ref/heads/main')).object.sha}
 async function repoTree(){const sha=await mainSha();const t=await gh(`/git/trees/${sha}?recursive=1`);return (t.tree||[]).filter(x=>x.type==='blob').map(x=>x.path).filter(safeRepoPath).slice(0,3000)}
 async function readRepoFile(path,ref='main'){try{const x=await gh(`/contents/${path.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(ref)}`);return {path,sha:x.sha,content:Buffer.from(x.content||'','base64').toString('utf8')};}catch(e){if(e.status===404)return {path,sha:null,content:''};throw e}}
-async function createBranch(name,sha){await gh('/git/refs',{method:'POST',body:JSON.stringify({ref:`refs/heads/${name}`,sha})})}
+async function createBranch(name,sha){
+  try{return await gh('/git/refs',{method:'POST',body:JSON.stringify({ref:`refs/heads/${name}`,sha})})}
+  catch(error){
+    if(Number(error?.status)!==422)throw error;
+    const existing=await gh(`/git/ref/heads/${encodeURIComponent(name)}`);
+    if(String(existing?.object?.sha||'')===String(sha||''))return existing;
+    throw error;
+  }
+}
 async function writeFile(branch,change,mutationAuth={}){assertExecutionPlaneMutationPaths([change.path],mutationAuth);const old=await readRepoFile(change.path,branch);assertSafeFileChange({path:change.path,before:old.sha?old.content:null,after:change.content,isNew:!old.sha});const body={message:`TigerIQ ${change.path}`,content:Buffer.from(change.content,'utf8').toString('base64'),branch};if(old.sha)body.sha=old.sha;return gh(`/contents/${change.path.split('/').map(encodeURIComponent).join('/')}`,{method:'PUT',body:JSON.stringify(body)})}
 async function openPr(branch,title,body){return gh('/pulls',{method:'POST',body:JSON.stringify({title,head:branch,base:'main',body,draft:false,maintainer_can_modify:true})})}
 async function headSha(branch){return (await gh(`/git/ref/heads/${encodeURIComponent(branch)}`)).object.sha}
@@ -351,7 +359,11 @@ export function restartRecoveryDecision(job,pr){
   const status=String(job?.status||'').toLowerCase();
   if(!['running','waiting_ci','review'].includes(status))return{action:'ignore',code:'CODING_RESTART_NOT_ORPHANED'};
   const prNumber=Number(job?.pr_number||0);
-  if(!Number.isInteger(prNumber)||prNumber<=0)return{action:'fail',code:'CODING_RESTART_RESUME_IDENTITY_INCOMPLETE'};
+  if(!Number.isInteger(prNumber)||prNumber<=0){
+    const branch=String(job?.branch||'').trim();
+    if(status==='running'&&!branch)return{action:'queue',code:'CODING_RESTART_REQUEUE_PRE_BRANCH',prNumber:null};
+    return{action:'fail',code:'CODING_RESTART_RESUME_IDENTITY_INCOMPLETE'};
+  }
   const prState=String(pr?.state||'').toLowerCase();
   if(pr?.merged===true||pr?.merged_at)return{action:'done',code:'CODING_RESTART_PR_ALREADY_MERGED',prNumber};
   if(prState==='closed')return{action:'fail',code:'CODING_RESTART_PR_CLOSED',prNumber};
@@ -383,7 +395,10 @@ export async function recoverAfterCodingRestart({db=pool,fetchPr=async(number)=>
     if(decision.action==='queue'){
       const changed=await db.query("update tigeriq_coding_jobs set status='queued',completed_at=null,next_attempt_at=null where id=$1 and status=$2",[job.id,job.status]);
       if(changed.rowCount){
-        await db.query("update tigeriq_coding_objectives set status='active',summary=$2,updated_at=now() where id=$1",[job.objective_id,`Restart recovery queued existing PR #${decision.prNumber}`]);
+        const summary=decision.code==='CODING_RESTART_REQUEUE_PRE_BRANCH'
+          ?'Restart recovery safely requeued pre-branch generation.'
+          :`Restart recovery queued existing PR #${decision.prNumber}`;
+        await db.query("update tigeriq_coding_objectives set status='active',summary=$2,updated_at=now() where id=$1",[job.objective_id,summary]);
         out.requeued++;
       }
       continue;
