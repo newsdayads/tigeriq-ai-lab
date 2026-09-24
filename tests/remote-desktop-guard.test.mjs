@@ -62,7 +62,7 @@ describe('Remote Desktop Commander hard runtime guard',()=>{
       'vercel deploy --prod',
       'vercel remove tigeriq --yes'
     ]) {
-      const result=await enforceRemoteToolCall({isRemoteCall:true,tool:'start_process',args:{command,timeout_ms:5000},leasePath,now:NOW});
+      const result=await enforceRemoteToolCall({tool:'start_process',args:{command,timeout_ms:5000},leasePath,now:NOW});
       expect(result).toEqual({ok:false,reason:'OWNER_AUTH_REQUIRED'});
     }
   });
@@ -71,13 +71,13 @@ describe('Remote Desktop Commander hard runtime guard',()=>{
     const leasePath=await tempLeasePath();
     const args={path:'D:\\TigerIQ\\Evidence\\guard-canary.txt',content:'ok',mode:'rewrite'};
     await putLease(leasePath,leaseFor('write_file',args));
-    expect(await enforceRemoteToolCall({isRemoteCall:true,tool:'write_file',args,leasePath,now:NOW}))
+    expect(await enforceRemoteToolCall({tool:'write_file',args,leasePath,now:NOW}))
       .toMatchObject({ok:true,reason:'OWNER_LEASE_VALID_SINGLE_USE',leaseId:'OWNER-TEST-1'});
     await expect(readFile(leasePath,'utf8')).rejects.toMatchObject({code:'ENOENT'});
     const claim=(await readdir(join(leasePath,'..'))).find((name)=>name.startsWith('owner-lease.json.claim-'));
     const receipt=JSON.parse(await readFile(join(join(leasePath,'..'),claim),'utf8'));
     expect(receipt).toMatchObject({consumed:true,decision:'ALLOW_ONCE'});
-    expect(await enforceRemoteToolCall({isRemoteCall:true,tool:'write_file',args,leasePath,now:NOW}))
+    expect(await enforceRemoteToolCall({tool:'write_file',args,leasePath,now:NOW}))
       .toEqual({ok:false,reason:'OWNER_AUTH_REQUIRED'});
   });
 
@@ -85,12 +85,12 @@ describe('Remote Desktop Commander hard runtime guard',()=>{
     const leasePath=await tempLeasePath();
     const args={command:'echo approved',timeout_ms:1000};
     await putLease(leasePath,leaseFor('start_process',args));
-    expect(await enforceRemoteToolCall({isRemoteCall:true,tool:'start_process',args:{...args,command:'echo changed'},leasePath,now:NOW}))
+    expect(await enforceRemoteToolCall({tool:'start_process',args:{...args,command:'echo changed'},leasePath,now:NOW}))
       .toMatchObject({ok:false,reason:'LEASE_ARGUMENT_SCOPE_MISMATCH'});
     await expect(readFile(leasePath,'utf8')).rejects.toMatchObject({code:'ENOENT'});
 
     await putLease(leasePath,leaseFor('start_process',args,{issued:'2026-09-24T23:40:00.000Z',expires:'2026-09-24T23:45:00.000Z'}));
-    expect(await enforceRemoteToolCall({isRemoteCall:true,tool:'start_process',args,leasePath,now:NOW}))
+    expect(await enforceRemoteToolCall({tool:'start_process',args,leasePath,now:NOW}))
       .toMatchObject({ok:false,reason:'LEASE_EXPIRED_OR_NOT_ACTIVE'});
     await expect(readFile(leasePath,'utf8')).rejects.toMatchObject({code:'ENOENT'});
   });
@@ -107,16 +107,18 @@ describe('Remote Desktop Commander hard runtime guard',()=>{
     const leasePath=await tempLeasePath();
     const args={key:'blockedCommands',value:['x']};
     await putLease(leasePath,leaseFor('set_config_value',args));
-    expect(await enforceRemoteToolCall({isRemoteCall:true,tool:'set_config_value',args,leasePath,now:NOW}))
+    expect(await enforceRemoteToolCall({tool:'set_config_value',args,leasePath,now:NOW}))
       .toEqual({ok:false,reason:'REMOTE_CONFIG_MUTATION_FORBIDDEN'});
     expect(JSON.parse(await readFile(leasePath,'utf8'))).toMatchObject({leaseId:'OWNER-TEST-1'});
   });
 
-  it('unknown remote tools fail closed while local calls remain unchanged',async()=>{
-    expect(await enforceRemoteToolCall({isRemoteCall:true,tool:'future_mutator',args:{},now:NOW}))
+  it('unknown tools and shutdown fail closed even when remote metadata is absent',async()=>{
+    expect(await enforceRemoteToolCall({tool:'future_mutator',args:{},now:NOW}))
       .toEqual({ok:false,reason:'UNKNOWN_TOOL_FAIL_CLOSED'});
-    expect(await enforceRemoteToolCall({isRemoteCall:false,tool:'start_process',args:{command:'echo local'},now:NOW}))
-      .toEqual({ok:true,reason:'LOCAL_CALL_UNCHANGED'});
+    expect(await enforceRemoteToolCall({tool:'shutdown',args:{},now:NOW}))
+      .toEqual({ok:false,reason:'OWNER_AUTH_REQUIRED'});
+    expect(await enforceRemoteToolCall({tool:'start_process',args:{command:'echo metadata-bypass'},now:NOW}))
+      .toEqual({ok:false,reason:'OWNER_AUTH_REQUIRED'});
   });
 
   it('patches Desktop Commander dispatcher idempotently and rejects anchor drift',()=>{
