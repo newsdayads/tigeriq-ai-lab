@@ -27,7 +27,7 @@ export function codingSourceTruthRevision(issue,comments=[]){
   return ownerDirective?.id?`body-${digest}:owner-${ownerDirective.id}`:`body-${digest}`;
 }
 
-async function codingSourceRevision(fetchImpl,owner,repo,token,issue){
+export async function codingSourceRevision(fetchImpl,owner,repo,token,issue){
   let comments=[];
   const issueNumber=Number(issue?.number);
   const totalComments=Math.max(0,Number(issue?.comments||0));
