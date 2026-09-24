@@ -379,6 +379,39 @@ describe('App Chrome local-only coordination',()=>{
 });
 
 
+describe('NV04 assignment-bound Gemini transport',()=>{
+  it('requires an explicit review/research contract and refuses unassigned continuation',()=>{
+    const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
+    expect(server).toContain('function validateNv04AssignmentContract(text:string)');
+    expect(server).toContain("['DEEP_RESEARCH','INDEPENDENT_REVIEW'].includes(role)");
+    expect(server).toContain("'NV04_CURRENT_WORK_ORDER_REQUIRED'");
+    expect(server).toContain("'NV04_EXACT_HEAD_OR_INPUT_REQUIRED'");
+    expect(server).toContain("'NV04_RESOURCE_SCOPE_REQUIRED'");
+    expect(server).toContain("'NV04_CHECKLIST_REQUIRED'");
+    expect(server).toContain("'NV04_OUTPUT_REQUIRED'");
+    expect(server).toContain("'NV04_EVIDENCE_DESTINATION_REQUIRED'");
+    expect(server).toContain("'NV04_MUTATION_ASSIGNMENT_FORBIDDEN'");
+    const nv04Dispatch=server.slice(server.indexOf("if(workerId==='NV04'){"),server.indexOf("const requestedJobId="));
+    expect(nv04Dispatch).toContain('navigate=true');
+    expect(nv04Dispatch).toContain("source:'NV04_ASSIGNMENT'");
+
+    const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    expect(bridge).toContain('function nv04AssignmentStatus(controller)');
+    expect(bridge).toContain("return{status:'READY_UNASSIGNED',job:null}");
+    expect(bridge).toContain("job?.source!=='NV04_ASSIGNMENT'");
+    expect(bridge).toContain("stage==='WORKING'");
+    expect(bridge).toContain("stage==='WAITING_EVIDENCE'||stage==='VERIFY'");
+    const generic=bridge.slice(bridge.indexOf('async function maybeWorkerContinuity'),bridge.indexOf('\nfunction log('));
+    expect(generic).toContain("if(w.id==='NV04')");
+    expect(generic).toContain("assignment.status!=='CONTINUABLE'");
+    expect(generic).toContain("genericWorkerEvent(w.id,assignment.status");
+    const command=bridge.slice(bridge.indexOf('async function handleCommand'),bridge.indexOf('async function postWorkerHeartbeat'));
+    expect(command).toContain("if(w.id==='NV04')");
+    expect(command).toContain("return{status:assignment.status,jobId:assignment.job?.jobId||null}");
+  });
+});
+
+
 describe('NV02 current-chat continuity lease guard',()=>{
   it('allows conflict-free current-chat or exact claimed self-run continuation',()=>{
     const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
