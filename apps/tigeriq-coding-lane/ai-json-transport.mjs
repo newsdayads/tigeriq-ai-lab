@@ -248,8 +248,9 @@ export function expandCompactChanges(prompt,text){
   if(Array.isArray(d.changes)&&d.changes.length>0){
     for(const change of d.changes){
       const path=String(change?.path||'').trim();
+      if(!path||!files.has(path))throw new Error(`COMPACT_EDIT_PATH_UNKNOWN:${path}`);
       const existing=files.get(path);
-      if(files.has(path)&&String(existing||'').length>0)throw new Error(`COMPACT_EDIT_FULL_CONTENT_FOR_EXISTING:${path}`);
+      if(String(existing||'').length>0)throw new Error(`COMPACT_EDIT_FULL_CONTENT_FOR_EXISTING:${path}`);
     }
     return d;
   }
