@@ -52,7 +52,7 @@ describe('App Chrome chat lifecycle',()=>{
     expect(working).not.toContain('stopStalledWorking');
     expect(working).not.toContain('reloadTarget');
     expect(working).not.toContain('reopenWorker');
-    expect(bridge).toContain("chatLoadRecoveryStage:resolved?3");
+    expect(bridge).toContain("chatLoadRecoveryStage:Number(raw.chatLoadRecoveryStage)||0");
     expect(bridge).toContain("genericWorkerEvent(w.id,deferred?'VIEW_FOLLOW_BOTTOM_DEFERRED':'VIEW_FOLLOW_BOTTOM'");
     expect(bridge).toContain("nextViewFollowAt:Number(raw.nextViewFollowAt)");
     expect(bridge).toContain("nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)");
