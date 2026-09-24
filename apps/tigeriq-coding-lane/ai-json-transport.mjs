@@ -146,9 +146,10 @@ export function expectedSchemaFromPrompt(prompt){
 export function matchesExpectedSchema(prompt,text){
   const d=parseModelJson(text); if(!d||typeof d!=='object'||Array.isArray(d))return false;
   const schema=expectedSchemaFromPrompt(prompt);
+  const batchNoChange=String(prompt||'').includes('BATCH_NO_CHANGE_ALLOWED=true')&&d.noChange===true&&typeof d.summary==='string'&&(!Array.isArray(d.edits)||d.edits.length===0)&&(!Array.isArray(d.changes)||d.changes.length===0);
   if(schema==='review')return ['approve','changes_requested'].includes(d.decision)&&typeof d.summary==='string'&&Array.isArray(d.issues);
-  if(schema==='edits')return typeof d.summary==='string'&&Array.isArray(d.edits)&&d.edits.length>0&&d.edits.every(x=>x&&typeof x.path==='string'&&((typeof x.old==='string'&&x.old.length>0&&typeof x.new==='string')||(typeof x.search==='string'&&x.search.length>0&&typeof x.replace==='string')||typeof x.content==='string'));
-  if(schema==='changes')return typeof d.summary==='string'&&Array.isArray(d.changes)&&d.changes.length>0&&d.changes.every(x=>x&&typeof x.path==='string'&&typeof x.content==='string');
+  if(schema==='edits')return batchNoChange||(typeof d.summary==='string'&&Array.isArray(d.edits)&&d.edits.length>0&&d.edits.every(x=>x&&typeof x.path==='string'&&((typeof x.old==='string'&&x.old.length>0&&typeof x.new==='string')||(typeof x.search==='string'&&x.search.length>0&&typeof x.replace==='string')||typeof x.content==='string'));
+  if(schema==='changes')return batchNoChange||(typeof d.summary==='string'&&Array.isArray(d.changes)&&d.changes.length>0&&d.changes.every(x=>x&&typeof x.path==='string'&&typeof x.content==='string'));
   if(schema==='manager')return Boolean(['continue','blocked'].includes(d.status)&&typeof d.summary==='string'&&(d.status==='blocked'||(d.job&&typeof d.job.title==='string'&&typeof d.job.instruction==='string'&&Array.isArray(d.job.paths))));
   return true;
 }
@@ -209,7 +210,8 @@ export function compactPromptForChanges(prompt,{maxContextChars=12000,maxOutputC
   const p=String(prompt||'');
   if(expectedSchemaFromPrompt(p)!=='changes')return p;
   const schema='Return ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}.';
-  const compact=`Return ONLY compact JSON {"summary":"short","edits":[{"path":"exact allowed path","search":"exact existing UTF-8 snippet","replace":"replacement UTF-8 snippet"}]}. For a new or empty small file you may use {"path":"exact allowed path","content":"complete UTF-8 file content"}. Keep the ENTIRE JSON response under ${maxOutputChars} characters. For existing files, each search snippet must be <=1200 characters and each replacement <=2400 characters; prefer several small exact edits over one large edit. Each search must match exactly once. Do not return full existing files or copy omitted context blocks. Never output secrets. Keep edits minimal and testable.`;
+  const noChange=p.includes('BATCH_NO_CHANGE_ALLOWED=true')?' If this batch needs no mutation for the task, return exactly {"summary":"no change needed in this batch","noChange":true,"edits":[]}.':'';
+  const compact=`Return ONLY compact JSON {"summary":"short","edits":[{"path":"exact allowed path","search":"exact existing UTF-8 snippet","replace":"replacement UTF-8 snippet"}]}. For a new or empty small file you may use {"path":"exact allowed path","content":"complete UTF-8 file content"}.${noChange} Keep the ENTIRE JSON response under ${maxOutputChars} characters. For existing files, each search snippet must be <=1200 characters and each replacement <=2400 characters; prefer several small exact edits over one large edit. Each search must match exactly once. Do not return full existing files or copy omitted context blocks. Never output secrets. Keep edits minimal and testable.`;
   const rewritten=p.includes(schema)?p.replace(schema,compact):`${p}\n\nIMPORTANT: ${compact}`;
   return compactCurrentFilesForModel(rewritten,maxContextChars);
 }
@@ -245,6 +247,12 @@ export function expandCompactChanges(prompt,text){
   const d=parseModelJson(text);
   if(!d||typeof d!=='object'||Array.isArray(d))throw new Error('COMPACT_EDIT_JSON_INVALID');
   const files=currentFilesFromPrompt(prompt);
+  if(d.noChange===true){
+    const allowed=String(prompt||'').includes('BATCH_NO_CHANGE_ALLOWED=true');
+    const hasMutations=(Array.isArray(d.edits)&&d.edits.length>0)||(Array.isArray(d.changes)&&d.changes.length>0);
+    if(!allowed||hasMutations)throw new Error('COMPACT_EDIT_NO_CHANGE_INVALID');
+    return {summary:typeof d.summary==='string'?d.summary:'no change needed in this batch',changes:[],noChange:true};
+  }
   if(Array.isArray(d.changes)&&d.changes.length>0){
     for(const change of d.changes){
       const path=String(change?.path||'').trim();
