@@ -349,6 +349,7 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
     const failure={detail:{failureLedger:[
       {class:'rate_limit',resourceId:'NV11',cooldownUntil:'2026-09-24T05:32:43.000Z'},
       {class:'rate_limit',resourceId:'NV12',cooldownUntil:'2026-09-24T05:25:34.000Z'},
+      {class:'provider_unavailable',resourceId:'NV15',cooldownUntil:'2026-09-24T05:03:00.000Z'},
     ]}};
     const plan=providerCooldownPollPlan(failure,now,120000);
     assert.strictEqual(plan.wait,true);
@@ -356,6 +357,7 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
     assert.strictEqual(plan.nextAttemptAt,'2026-09-24T05:04:43.000Z');
     assert.strictEqual(plan.cooldownUntil,'2026-09-24T05:25:34.000Z');
     assert.deepStrictEqual(plan.resourceIds.sort(),['NV11','NV12']);
+    assert.ok(!plan.resourceIds.includes('NV15'));
     assert.strictEqual(providerCooldownPollPlan(failure,Date.parse('2026-09-24T05:40:00.000Z')).wait,false);
   });
 
