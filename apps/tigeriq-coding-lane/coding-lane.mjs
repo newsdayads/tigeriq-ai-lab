@@ -53,6 +53,20 @@ export function shrinkAiPrompt(prompt,maxChars=18000){
 }
 export function preserveGenerationPrompt(prompt){return String(prompt??'')}
 
+export function canonicalWorkTitleFromObjective(objective){
+  const firstLine=String(objective||'').split(/\r?\n/,1)[0].trim();
+  const match=firstLine.match(/^GitHub autonomous coding.*?\bissue #\d+:\s*(.+)$/i);
+  return String(match?.[1]||'').trim().slice(0,180);
+}
+export function canonicalCodingJobTitle(objective,managerTitle='Coding job'){
+  return canonicalWorkTitleFromObjective(objective)||String(managerTitle||'Coding job').trim().slice(0,180);
+}
+export function codingMergeCommitTitle(number,title){
+  const n=Math.max(1,Number(number)||1);
+  const work=String(title||'TigerIQ Coding Lane').trim().slice(0,180);
+  return `PR #${n} - ${work}`;
+}
+
 export function assertPrOpenState(pr){
   if(pr?.state==='open')return true;
   const code=pr?.merged?'PR_EXTERNALLY_MERGED':'PR_CLOSED_UNMERGED';
@@ -387,7 +401,7 @@ async function writeFile(branch,change,mutationAuth={}){assertExecutionPlaneMuta
 async function openPr(branch,title,body){return gh('/pulls',{method:'POST',body:JSON.stringify({title,head:branch,base:'main',body,draft:false,maintainer_can_modify:true})})}
 async function headSha(branch){return (await gh(`/git/ref/heads/${encodeURIComponent(branch)}`)).object.sha}
 async function waitGates(branch,prNumber,timeoutMs=20*60*1000){const deadline=Date.now()+timeoutMs;while(Date.now()<deadline){assertPrOpenState(await gh(`/pulls/${prNumber}`));const sha=await headSha(branch);const x=await gh(`/commits/${sha}/check-runs?per_page=100`);const g=checkGateState(x.check_runs||[]);if(g.state==='passed')return {sha,...g};if(g.state==='failed'){const e=Object.assign(new Error('CI_GATES_FAILED'),{code:'CI_GATES_FAILED',detail:g});throw e}await sleep(15000)}const e=new Error('CI_GATES_TIMEOUT');e.code='CI_GATES_TIMEOUT';throw e}
-async function mergePr(number,sha){return gh(`/pulls/${number}/merge`,{method:'PUT',body:JSON.stringify({sha,merge_method:'squash',commit_title:`TigerIQ Coding Lane PR #${number}`})})}
+async function mergePr(number,sha,title=''){return gh(`/pulls/${number}/merge`,{method:'PUT',body:JSON.stringify({sha,merge_method:'squash',commit_title:codingMergeCommitTitle(number,title)})})}
 
 async function initDb(){if(!pool)return;await pool.query(`
 create table if not exists tigeriq_coding_objectives(id text primary key,objective text not null,priority text not null default 'P1',status text not null default 'active',summary text,manager_employee_id text,created_at timestamptz not null default now(),updated_at timestamptz not null default now());
@@ -415,7 +429,7 @@ async function managerTick(){
   const mutationAuth={...controlPlaneRepairIntent(o.objective),executorClass:'CODING_LANE_MANAGER'};
   const tree=await repoTree();
   const scopeText=canonical.length?`\nCANONICAL ALLOWED PATHS (MUST NOT EXPAND):\n${canonical.join('\n')}\n`:'';
-  const prompt=`You are TigerIQ Coding Manager. Decompose this repository objective into ONE safe coding job. Repository files:\n${tree.join('\n').slice(0,45000)}\n\nOBJECTIVE: ${o.objective}${scopeText}\nDependencies and backlog eligibility were already validated by Core before this objective reached Coding Lane. Do NOT block because a DEPENDS_ON issue is not represented in repository files or because you cannot independently confirm a GitHub dependency. Decompose only the repository implementation requested here. Use status=blocked ONLY for a concrete hard safety/policy condition such as security, credential, paid cost, Production, destructive action, browser authentication, authorization required, or canonical out-of-scope. Uncertainty, preference, placeholder text, inability to independently reconfirm eligibility, or "reason for blocking" are NOT valid blockers. Return ONLY JSON {"status":"continue|blocked","summary":"short","job":{"title":"short","instruction":"standalone implementation instruction","paths":["exact/repo/path"]}}. Max 8 paths. Include relevant tests only when they are inside canonical scope. Never select .github/workflows, credentials/secrets, production/deploy config, docs/EXECUTION_BOUNDARY.md, docs/SECURITY.md, scripts/tigeriq-core/run-core.ps1, or main/release controls.`;
+  const prompt=`You are TigerIQ Coding Manager. Decompose this repository objective into ONE safe coding job. Repository files:\n${tree.join('\n').slice(0,45000)}\n\nOBJECTIVE: ${o.objective}${scopeText}\nDependencies and backlog eligibility were already validated by Core before this objective reached Coding Lane. Do NOT block because a DEPENDS_ON issue is not represented in repository files or because you cannot independently confirm a GitHub dependency. Decompose only the repository implementation requested here. Use status=blocked ONLY for a concrete hard safety/policy condition such as security, credential, paid cost, Production, destructive action, browser authentication, authorization required, or canonical out-of-scope. Uncertainty, preference, placeholder text, inability to independently reconfirm eligibility, or "reason for blocking" are NOT valid blockers. Return ONLY JSON {"status":"continue|blocked","summary":"short","job":{"title":"short Vietnamese work title","instruction":"standalone implementation instruction","paths":["exact/repo/path"]}}. job.title MUST be Vietnamese, concise, and preserve only necessary technical codes such as P0, CORE, API, NVxx, OpenClaw. Max 8 paths. Include relevant tests only when they are inside canonical scope. Never select .github/workflows, credentials/secrets, production/deploy config, docs/EXECUTION_BOUNDARY.md, docs/SECURITY.md, scripts/tigeriq-core/run-core.ps1, or main/release controls.`;
   try{
     const validateManagerDecision=d=>{
       if(d?.status==='blocked'&&managerBlockKind(d?.summary)!=='hard'){
@@ -429,7 +443,7 @@ async function managerTick(){
     if(d.status!=='continue'||!d.job){await pool.query("update tigeriq_coding_objectives set status='blocked',summary=$2,manager_employee_id=$3,next_attempt_at=null,resource_retry_count=0,resource_retry_started_at=null,updated_at=now() where id=$1",[o.id,String(d.summary||'manager blocked').slice(0,1000),manager.id]);return}
     const paths=validateManagerJobPaths(d,canonical,mutationAuth);
     const id=`CODE-${randomUUID()}`;
-    await pool.query('insert into tigeriq_coding_jobs(id,objective_id,title,instruction,paths) values($1,$2,$3,$4,$5)',[id,o.id,String(d.job.title||'Coding job').slice(0,180),String(d.job.instruction||o.objective).slice(0,12000),JSON.stringify(paths)]);
+    await pool.query('insert into tigeriq_coding_jobs(id,objective_id,title,instruction,paths) values($1,$2,$3,$4,$5)',[id,o.id,canonicalCodingJobTitle(o.objective,d.job.title),String(d.job.instruction||o.objective).slice(0,12000),JSON.stringify(paths)]);
     await pool.query("update tigeriq_coding_objectives set manager_employee_id=$2,summary=$3,next_attempt_at=null,resource_retry_count=0,resource_retry_started_at=null,updated_at=now() where id=$1",[o.id,manager.id,String(d.summary||'coding job created').slice(0,1000)]);
   }catch(e){
     const plan=managerResourceFailurePlan(e,o);
@@ -702,7 +716,7 @@ async function runJob(j){
   if(review?.decision!=='approve')throw new Error('REVIEW_NOT_APPROVED');
   assertPrOpenState(await gh(`/pulls/${pr.number}`));
   const finalSha=await headSha(branch);let merge={merged:false,message:'AUTO_MERGE_DISABLED'};
-  if(AUTO_MERGE){try{merge=await mergePr(pr.number,finalSha)}catch(e){merge={merged:false,message:String(e.message||e)}}}
+  if(AUTO_MERGE){try{merge=await mergePr(pr.number,finalSha,j.title)}catch(e){merge={merged:false,message:String(e.message||e)}}}
   const status=merge?.merged?'done':'blocked';
   await pool.query("update tigeriq_coding_jobs set status=$2,head_sha=$3,result=$4,completed_at=now(),next_attempt_at=null,resource_retry_count=0,resource_retry_started_at=null where id=$1",[j.id,status,finalSha,JSON.stringify({summary:gen.summary,prNumber:pr.number,branch,gates,review,merge})]);
   await pool.query("update tigeriq_coding_objectives set status=$2,summary=$3,updated_at=now() where id=$1",[j.objective_id,merge?.merged?'completed':'blocked',merge?.merged?`Merged PR #${pr.number}`:`PR #${pr.number} ready but merge blocked: ${String(merge?.message||'unknown').slice(0,500)}`]);
