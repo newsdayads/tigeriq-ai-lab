@@ -402,16 +402,10 @@ internal sealed class UtilityContext : ApplicationContext
                 {
                     popups[id].SetActionNotice($"✓ Đang chạy {resumed.JobId ?? ""}".Trim(), false);
                 }
-                else if (id == "NV02")
+                else
                 {
-                    var queuedJob = await controller.NextEligibleAutoUiJobAsync(id);
-                    if (!string.IsNullOrWhiteSpace(queuedJob))
-                        popups[id].SetActionNotice($"… Đang chờ hệ thống giao {queuedJob}", false);
-                    else
-                    {
-                        popups[id].SetActionNotice("Không có việc AUTO_UI", false);
-                        store.Log(id, "RUN_NO_AUTO_UI_JOB");
-                    }
+                    popups[id].SetActionNotice("✓ Sẵn sàng · chưa có việc được giao", false);
+                    store.Log(id, "RUN_READY_UNASSIGNED");
                 }
                 break;
             }
