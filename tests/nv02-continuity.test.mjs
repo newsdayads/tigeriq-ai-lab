@@ -141,9 +141,11 @@ describe('NV02 continuity policy', () => {
     execFileSync(process.execPath,['--check','apps/chrome-controller/direct-cdp-bridge.mjs'],{stdio:'pipe'});
     const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(source).toContain('NV02_ISOLATED_AUTO_CONTINUE');
-    expect(source).toContain("const currentTrackedWork=hasCurrentNv02Chat(ui?.url)");
-    expect(source).toContain("CONTINUE_SKIPPED_NO_CURRENT_CHAT");
+    expect(source).toContain("const currentTrackedWork=Boolean(currentWork&&currentChat)");
+    expect(source).toContain("READY_UNASSIGNED");
+    expect(source).toContain("CURRENT_WORK_NEW_CHAT_RESTORED");
     expect(source).toContain("CONTINUE_DISPATCHED");
+    expect(source).not.toContain("await navigate(target,state.resumeChatUrl)");
     expect(source).not.toContain("CONTEXT_RECOVERY_ROTATED");
     expect(source).toContain("controllerRequired:false");
     expect(source).toContain("CONTROLLER_TELEMETRY_UNAVAILABLE");
