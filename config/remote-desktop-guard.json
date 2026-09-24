@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "remoteMutationDefault": "DENY",
   "readOnlyDefault": "PASS_WITH_OBSERVATION_PATH_SCOPE",
   "ownerAuthRequired": true,
@@ -20,8 +20,19 @@
     "D:\\TigerIQ\\Logs",
     "D:\\TigerIQ\\Checkpoints"
   ],
-  "forbiddenDirectoryPatterns": ["\\\\Secrets(?:\\\\|$)"],
+  "forbiddenDirectoryPatterns": [
+    "\\\\Secrets(?:\\\\|$)"
+  ],
   "desktopCommanderVersionPinnedForPatch": "0.2.51",
   "noDirectMain": true,
-  "noProductionRelease": true
+  "noProductionRelease": true,
+  "ownerAuthorizationVerification": {
+    "authority": "GitHub canonical issue comment",
+    "repository": "newsdayads/tigeriq-ai-lab",
+    "requiredAuthor": "newsdayads",
+    "failClosedOnNetworkOrMismatch": true,
+    "credentialOnPC01Required": false
+  },
+  "dedicatedRemoteRuntimeEnforcement": true,
+  "remoteMetadataIsAuthority": false
 }
