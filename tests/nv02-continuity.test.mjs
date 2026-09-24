@@ -342,20 +342,26 @@ describe('NV02 continuity policy', () => {
     expect(continuity).not.toContain('externalAutopilotOwnsNextNv02Job');
   });
 
-  it('has no Core/GitHub Work Order coupling in the local App Chrome bridge', () => {
+  it('uses App Chrome as transport: Core assignment first, role fallback when Core has none/unavailable', () => {
     const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(source).not.toContain('function buildCurrentWorkRestorePrompt');
-    expect(source).not.toContain('CURRENT_WORK_ORDER=');
     expect(source).not.toContain('CURRENT_CHECKPOINT=');
     expect(source).not.toContain('DURABLE_SAVE_RECEIPT=');
-    expect(source).not.toContain('CURRENT_WORK_RESTORE_DISPATCHED');
     expect(source).not.toContain('findContinuableNv02Work');
     expect(source).not.toContain('checkpointNv02');
     expect(source).not.toContain('rotateNv02Chat');
     expect(source).not.toContain('externalAutopilotOwnsNextNv02Job');
+    expect(source).toContain("const CORE_UI_ASSIGNMENT='http://127.0.0.1:8795/api/ui-assignment'");
+    expect(source).toContain('async function coreRolePrompt(workerId,state={})');
+    expect(source).toContain("source:'CORE_ASSIGNMENT'");
+    expect(source).toContain("source:'CORE_CONTINUE'");
+    expect(source).toContain("source:'ROLE_FALLBACK'");
+    expect(source).toContain("source:'ROLE_FALLBACK_CORE_UNAVAILABLE'");
+    expect(source).toContain('async function chooseWorkerRolePrompt(workerId,state={})');
     const local=source.slice(source.indexOf('async function dispatchNaturalContinueLocked'),source.indexOf('async function dispatchNaturalContinue(target'));
-    expect(local).toContain("pickWorkerContinuePrompt('NV02',state.lastPrompt)");
+    expect(local).toContain("chooseWorkerRolePrompt('NV02',state)");
     expect(local).toContain("continuityEvent('LOCAL_CONTINUE_DISPATCHED'");
+    expect(local).toContain('coreJobId:selected.jobId');
     expect(local).not.toContain('getControllerState');
   });
 
