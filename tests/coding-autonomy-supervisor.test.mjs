@@ -9,6 +9,7 @@ describe('coding title repair suffix',()=>{
     expect(repairJobTitle('[P0][API] Sửa lỗi hàng đợi',2)).toBe('[P0][API] Sửa lỗi hàng đợi [sửa lần 2]');
     expect(repairJobTitle('[P0][API] Sửa lỗi hàng đợi [repair 2]',3)).toBe('[P0][API] Sửa lỗi hàng đợi [sửa lần 3]');
     expect(repairJobTitle('[P0][API] Sửa lỗi hàng đợi [sửa lần 3]',4)).toBe('[P0][API] Sửa lỗi hàng đợi [sửa lần 4]');
+    expect(repairJobTitle('[P0][API] Sửa lỗi hàng đợi [repair 2] [repair 3]',4)).toBe('[P0][API] Sửa lỗi hàng đợi [sửa lần 4]');
   });
 });
 
