@@ -140,6 +140,20 @@ export function providerCooldownPollPlan(failure,nowMs=Date.now(),maxPollMs=RESO
   const nextMs=Math.min(earliest,nowMs+Math.max(1000,Number(maxPollMs)||RESOURCE_WAIT_MAX_DELAY_MS));
   return {wait:true,nextAttemptAt:new Date(nextMs).toISOString(),delayMs:nextMs-nowMs,resourceIds:[...new Set(active.map(x=>x.resourceId))],cooldownUntil:new Date(earliest).toISOString()};
 }
+export function cooldownWaitFailure(errorFailure,priorFailure,cooldownPlan,preservedCount=0){
+  const ledger=Array.isArray(priorFailure?.detail?.failureLedger)?priorFailure.detail.failureLedger.filter(x=>x?.class==='rate_limit'):[];
+  return {
+    ...errorFailure,
+    detail:{...(errorFailure?.detail||{}),failureLedger:ledger},
+    cooldownWait:{
+      delayMs:cooldownPlan.delayMs,
+      nextAttemptAt:cooldownPlan.nextAttemptAt,
+      cooldownUntil:cooldownPlan.cooldownUntil,
+      resourceIds:cooldownPlan.resourceIds,
+      preservedRetryCount:Math.max(0,Number(preservedCount)||0),
+    },
+  };
+}
 
 export function isResourceTransientError(error){
   if(['AI_RESOURCES_UNAVAILABLE','AI_RESOURCES_BUSY'].includes(error?.code))return true;
@@ -662,7 +676,8 @@ async function failJob(j,e){
     const cooldownPlan=/NO_(?:IMPLEMENTER_AVAILABLE|INDEPENDENT_REVIEWER_AVAILABLE)/i.test(failure.message)?providerCooldownPollPlan(current.failure):null;
     if(cooldownPlan?.wait){
       const preservedCount=Math.max(0,Number(current.resource_retry_count)||0);
-      await pool.query("update tigeriq_coding_jobs set status='waiting_resource',failure=$2,next_attempt_at=$3,completed_at=null where id=$1",[j.id,JSON.stringify({...failure,cooldownWait:{delayMs:cooldownPlan.delayMs,nextAttemptAt:cooldownPlan.nextAttemptAt,cooldownUntil:cooldownPlan.cooldownUntil,resourceIds:cooldownPlan.resourceIds,preservedRetryCount:preservedCount}}),cooldownPlan.nextAttemptAt]);
+      const waitingFailure=cooldownWaitFailure(failure,current.failure,cooldownPlan,preservedCount);
+      await pool.query("update tigeriq_coding_jobs set status='waiting_resource',failure=$2,next_attempt_at=$3,completed_at=null where id=$1",[j.id,JSON.stringify(waitingFailure),cooldownPlan.nextAttemptAt]);
       await pool.query("update tigeriq_coding_objectives set status='active',summary=$2,updated_at=now() where id=$1",[j.objective_id,`WAITING_RESOURCE_COOLDOWN retry ${preservedCount}/${RESOURCE_WAIT_MAX_RETRIES}: ${failure.message}`.slice(0,1000)]);
       return;
     }
