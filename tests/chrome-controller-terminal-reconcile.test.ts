@@ -115,7 +115,7 @@ describe('authoritative UI terminal reconciliation',()=>{
     expect(store.active('NV03')?.jobId).toBe(jobId);
   });
 
-  it('wires reconciliation outside self-run and prevents NV03/NV04 unassigned continue',()=>{
+  it('wires reconciliation outside self-run while READY_UNASSIGNED returns to the worker role loop',()=>{
     const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
     const recovery=server.slice(server.indexOf('async function recoveryTick'),server.indexOf('async function waitForStartupRuntime'));
     expect(recovery).toContain('await reconcileGithubTerminalUiJobs()');
@@ -124,7 +124,8 @@ describe('authoritative UI terminal reconciliation',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(bridge).toContain("if(w.id==='NV03'||w.id==='NV04')");
     expect(bridge).toContain("const assignment=await currentWorkerAssignmentStatus(w.id)");
-    expect(bridge).toContain("assignment.status!=='CONTINUABLE'");
+    expect(bridge).toContain("assignment.status==='READY_UNASSIGNED'||assignment.status==='CONTINUABLE'");
+    expect(bridge).toContain('if(!roleLoopAllowed)');
     expect(bridge).toContain("return{status:'READY_UNASSIGNED',job:null}");
   });
 });
