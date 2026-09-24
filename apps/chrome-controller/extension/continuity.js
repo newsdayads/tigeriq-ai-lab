@@ -114,6 +114,14 @@ export function hasContinuableWorkerWork(controller,workerId='NV02'){
 }
 export function hasContinuableNv02Work(controller){return hasContinuableWorkerWork(controller,'NV02');}
 
+export function rearmWorkerRunGrace(existingUntil=0,submittedAt=Date.now(),graceMs=15000){
+  const current=Number(existingUntil)||0;
+  const submitted=Number(submittedAt);
+  const grace=Number(graceMs);
+  if(!Number.isFinite(submitted)||!Number.isFinite(grace)||grace<0)throw new Error('WORKER_RUN_GRACE_INPUT_INVALID');
+  return Math.max(current,submitted+grace);
+}
+
 export function computeWorkerStaggerDelay(workerIndex=0,baseMs=1000,multiplier=500){
   return Number(workerIndex)*Number(multiplier)+Number(baseMs);
 }
