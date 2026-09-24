@@ -142,11 +142,12 @@ describe('independent worker recovery flows in direct-cdp-bridge',()=>{
     expect(source).toContain("computeWorkerStaggerDelay");
   });
 
-  it('keeps NV03 local-only while NV04 READY is assignment-bound',()=>{
+  it('keeps NV03/NV04 local transport assignment-bound without Core discovery',()=>{
     expect(source).not.toContain('findContinuableWorkerWorkForUi(controllerState,w.id)');
     expect(source).toContain('LOCAL_CONTINUE_DISPATCHED');
     const genericLoop=source.slice(source.indexOf('async function maybeWorkerContinuity'),source.indexOf('\nfunction log('));
-    expect(genericLoop).toContain("if(w.id==='NV04')");
+    expect(genericLoop).toContain("if(w.id==='NV03'||w.id==='NV04')");
+    expect(genericLoop).toContain("currentWorkerAssignmentStatus(w.id)");
     expect(genericLoop).toContain("assignment.status!=='CONTINUABLE'");
     expect(source).toContain("return{status:'READY_UNASSIGNED',job:null}");
   });

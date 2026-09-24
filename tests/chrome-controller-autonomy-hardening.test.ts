@@ -441,11 +441,12 @@ describe('NV04 assignment-bound Gemini transport',()=>{
     expect(bridge).toContain("stage==='WORKING'");
     expect(bridge).toContain("stage==='WAITING_EVIDENCE'||stage==='VERIFY'");
     const generic=bridge.slice(bridge.indexOf('async function maybeWorkerContinuity'),bridge.indexOf('\nfunction log('));
-    expect(generic).toContain("if(w.id==='NV04')");
+    expect(generic).toContain("if(w.id==='NV03'||w.id==='NV04')");
+    expect(generic).toContain("currentWorkerAssignmentStatus(w.id)");
     expect(generic).toContain("assignment.status!=='CONTINUABLE'");
     expect(generic).toContain("genericWorkerEvent(w.id,assignment.status");
     const command=bridge.slice(bridge.indexOf('async function handleCommand'),bridge.indexOf('async function postWorkerHeartbeat'));
-    expect(command).toContain("if(w.id==='NV04')");
+    expect(command).toContain("if(w.id==='NV03'||w.id==='NV04')");
     expect(command).toContain("return{status:assignment.status,jobId:assignment.job?.jobId||null}");
   });
 });

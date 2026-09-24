@@ -145,7 +145,7 @@ function parseKeyValueBlock(body:string|null|undefined,header:string):Record<str
   }
   return out;
 }
-export function activeAppChromeClaims(comments:GithubComment[],nowMs=Date.now()):AppChromeClaim[]{
+function appChromeClaimHistory(comments:GithubComment[]){
   const released=new Set<string>();
   const claims:AppChromeClaim[]=[];
   for(const comment of [...comments].sort((a,b)=>Number(a.id)-Number(b.id))){
@@ -164,7 +164,26 @@ export function activeAppChromeClaims(comments:GithubComment[],nowMs=Date.now())
       createdAt:String(comment.created_at||''),
     });
   }
+  return {claims,released};
+}
+export function activeAppChromeClaims(comments:GithubComment[],nowMs=Date.now()):AppChromeClaim[]{
+  const {claims,released}=appChromeClaimHistory(comments);
   return claims.filter((x)=>!released.has(x.claimId)&&Date.parse(x.expiresAt)>nowMs);
+}
+export function appChromeClaimForJob(
+  comments:GithubComment[],
+  workerId:WorkerId,
+  issueNumber:number,
+  jobId:string,
+):({claim:AppChromeClaim;released:boolean}|null){
+  const prefix=`APP-GH-${issueNumber}-${workerId}-`;
+  if(!jobId.startsWith(prefix))return null;
+  const shortId=jobId.slice(prefix.length);
+  if(!shortId)return null;
+  const {claims,released}=appChromeClaimHistory(comments);
+  const matches=claims.filter((claim)=>claim.workerId===workerId&&claim.issueNumber===issueNumber&&claim.claimId.startsWith(shortId));
+  if(matches.length!==1)return null;
+  return {claim:matches[0],released:released.has(matches[0].claimId)};
 }
 async function githubJson(fetchImpl:typeof fetch,url:string,token:string,init:RequestInit={}):Promise<any>{
   const headers:Record<string,string>={
@@ -266,6 +285,14 @@ export function terminalMarkerFromComments(comments:GithubComment[],claimId=''):
     if(evidenceClaimId!==claimId)return null;
   }
   return terminalMarkerFromBody(body);
+}
+export function authoritativeUiTerminalFromGithub(
+  issue:Pick<GithubIssue,'state'|'state_reason'>,
+  comments:GithubComment[],
+  claimId='',
+):'DONE'|'BLOCKED'|'EXTERNAL_WAIT'|null{
+  if(issue.state==='closed')return String(issue.state_reason||'')==='completed'?'DONE':'BLOCKED';
+  return terminalMarkerFromComments(comments,claimId);
 }
 export function buildSelfRunPrompt(workerId:WorkerId,issue:GithubIssue,comments:GithubComment[],claim:AppChromeClaim):string{
   const recent=comments.slice(-12).map((x)=>String(x.body??'').trim()).filter(Boolean).join('\n\n--- COMMENT ---\n\n');

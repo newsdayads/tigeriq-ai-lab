@@ -35,6 +35,8 @@ import type { WorkerPresence } from './worker-presence.js';
 import { persistWorkerSafetyStateOrFailClosed, restoreWorkerSafetyState, workerStartGate, type WorkerSafetySnapshot } from './worker-safety-state.js';
 import {
   activeAppChromeClaims,
+  appChromeClaimForJob,
+  authoritativeUiTerminalFromGithub,
   buildSelfRunPrompt,
   claimGithubIssue,
   closeGithubIssueCompleted,
@@ -602,46 +604,63 @@ async function cleanupOrphanSelfRunClaims(){
 }
 async function reconcileSelfRunWorker(workerId:WorkerId){
   const active=uiJobLedger.active(workerId);
-  if(!active||active.source!=='APP_CHROME_SELF_RUN')return false;
+  if(!active||active.source!=='APP_CHROME_SELF_RUN'||!['SUBMITTED','WORKING','WAITING_EVIDENCE','VERIFY'].includes(active.stage))return false;
   const issueNumber=issueNumberFromRef(active.issueRef);
   if(!issueNumber)return false;
   const issue=await fetchGithubIssue({issueNumber,owner:selfRunGithubOwner,repo:selfRunGithubRepo,token:selfRunGithubToken});
+  const comments=await fetchIssueComments({issueNumber,owner:selfRunGithubOwner,repo:selfRunGithubRepo,token:selfRunGithubToken});
   const evidenceRef=issue.html_url;
-  if(issue.state==='closed'){
-    const localClaim=selfRunClaims.find(issueNumber,workerId);
-    const completed=String(issue.state_reason||'')==='completed';
-    if(localClaim)await releaseSelfRunClaimRecord(localClaim,completed?'DONE':'BLOCKED');
-    if(completed){
-      completeSelfRunJob(workerId,active.jobId,evidenceRef,`GitHub issue #${issueNumber} closed completed; self-run work terminalized.`);
-      log('APP_CHROME_SELF_RUN_DONE',{workerId,jobId:active.jobId,issueNumber,stateReason:issue.state_reason??null});
-    }else{
-      uiJobLedger.transition(workerId,active.jobId,'BLOCKED',{
-        evidenceRef,
-        blocker:`SOURCE_ISSUE_CLOSED_${String(issue.state_reason||'UNKNOWN').toUpperCase()}`,
-        nextAction:null,
-        result:`GitHub issue #${issueNumber} closed without completed state.`,
-      });
-      log('APP_CHROME_SELF_RUN_RELEASED',{workerId,jobId:active.jobId,issueNumber,terminal:'BLOCKED',stateReason:issue.state_reason??null});
-    }
+  const localClaim=selfRunClaims.find(issueNumber,workerId);
+  const historical=appChromeClaimForJob(comments,workerId,issueNumber,active.jobId);
+  const claim=localClaim??historical?.claim;
+  const claimId=claim?.claimId??'';
+  if(issue.state!=='closed'&&!claimId)return false;
+
+  const terminal=authoritativeUiTerminalFromGithub(issue,comments,claimId);
+  if(!terminal)return false;
+
+  if(terminal==='EXTERNAL_WAIT'){
+    uiJobLedger.reconcileAuthoritativeTerminal(workerId,active.jobId,'EXTERNAL_WAIT',{
+      evidenceRef,
+      nextAction:'External wait; preserve current assignment without continue spam',
+      blocker:null,
+      result:'GitHub authoritative terminal marker is EXTERNAL_WAIT',
+    });
+    log('APP_CHROME_SELF_RUN_EXTERNAL_WAIT',{workerId,jobId:active.jobId,issueNumber,claimId:claimId||null});
     persistEvidence();
     return true;
   }
-  if(active.stage!=='WAITING_EVIDENCE'&&active.stage!=='VERIFY')return false;
-  const comments=await fetchIssueComments({issueNumber,owner:selfRunGithubOwner,repo:selfRunGithubRepo,token:selfRunGithubToken});
-  const claim=selfRunClaims.find(issueNumber,workerId)??activeAppChromeClaims(comments).find((x)=>x.workerId===workerId&&x.issueNumber===issueNumber);
-  if(!claim)return false;
-  const terminal=terminalMarkerFromComments(comments,claim.claimId);
-  if(!terminal)return false;
-  const released=await releaseSelfRunClaimRecord(claim,terminal);
-  if(!released)return false;
-  if(terminal==='DONE'){
-    await closeGithubIssueCompleted({issueNumber,owner:selfRunGithubOwner,repo:selfRunGithubRepo,token:selfRunGithubToken});
-    completeSelfRunJob(workerId,active.jobId,evidenceRef,`GitHub terminal marker ${terminal} verified for current claim and issue closed.`);
-    log('APP_CHROME_SELF_RUN_DONE',{workerId,jobId:active.jobId,issueNumber,terminal,claimId:claim.claimId});
-  }else{
-    uiJobLedger.transition(workerId,active.jobId,'BLOCKED',{evidenceRef,blocker:terminal,nextAction:null,result:`GitHub worker reported ${terminal} for current claim`});
-    log('APP_CHROME_SELF_RUN_RELEASED',{workerId,jobId:active.jobId,issueNumber,terminal,claimId:claim.claimId});
+
+  if(claim){
+    if(historical?.released===true){
+      selfRunClaims.release(claim.claimId);
+      log('APP_CHROME_SELF_RUN_CLAIM_RELEASE_ALREADY_COMMITTED',{workerId,issueNumber,claimId:claim.claimId,state:terminal});
+    }else{
+      if(!selfRunGithubToken){
+        log('APP_CHROME_SELF_RUN_CLAIM_RELEASE_DEFERRED',{workerId,issueNumber,claimId:claim.claimId,state:terminal,error:'APP_CHROME_GITHUB_TOKEN_REQUIRED'});
+        return false;
+      }
+      const released=await releaseSelfRunClaimRecord(claim,terminal);
+      if(!released)return false;
+    }
   }
+
+  if(terminal==='DONE'&&issue.state!=='closed'){
+    if(!selfRunGithubToken)return false;
+    await closeGithubIssueCompleted({issueNumber,owner:selfRunGithubOwner,repo:selfRunGithubRepo,token:selfRunGithubToken});
+  }
+  uiJobLedger.reconcileAuthoritativeTerminal(workerId,active.jobId,terminal,{
+    evidenceRef,
+    blocker:terminal==='BLOCKED'
+      ?(issue.state==='closed'?`SOURCE_ISSUE_CLOSED_${String(issue.state_reason||'UNKNOWN').toUpperCase()}`:'BLOCKED')
+      :null,
+    result:terminal==='DONE'
+      ?`GitHub authoritative terminal state DONE for issue #${issueNumber}; self-run assignment cleared.`
+      :(issue.state==='closed'
+        ?`GitHub issue #${issueNumber} closed without completed state.`
+        :'GitHub authoritative terminal evidence is BLOCKED.'),
+  });
+  log('APP_CHROME_SELF_RUN_TERMINAL_RECONCILED',{workerId,jobId:active.jobId,issueNumber,terminal,claimId:claimId||null,stateReason:issue.state_reason??null});
   persistEvidence();
   return true;
 }
@@ -663,32 +682,36 @@ async function reconcileGithubTerminalUiJobs(){
       const jobId=active.jobId;
       try{
         const issue=await fetchGithubIssue({issueNumber,owner:selfRunGithubOwner,repo:selfRunGithubRepo,token:selfRunGithubToken});
-        if(issue.state!=='closed')continue;
+        const comments=issue.state==='closed'
+          ?[]
+          :await fetchIssueComments({issueNumber,owner:selfRunGithubOwner,repo:selfRunGithubRepo,token:selfRunGithubToken});
+        const terminal=authoritativeUiTerminalFromGithub(issue,comments);
+        if(!terminal)continue;
+
         active=uiJobLedger.active(workerId);
         if(!active||active.jobId!==jobId||isTerminalUiJobStage(active.stage))continue;
         const evidenceRef=issue.html_url;
-        const completed=String(issue.state_reason||'')==='completed';
-        if(completed){
-          if(active.stage==='SUBMITTED'||active.stage==='WORKING'){
-            uiJobLedger.transition(workerId,jobId,'WAITING_EVIDENCE',{evidenceRef,nextAction:'Verify authoritative GitHub completion'});
-            active=uiJobLedger.active(workerId);
-          }
-          if(active?.jobId===jobId&&active.stage==='WAITING_EVIDENCE'){
-            uiJobLedger.transition(workerId,jobId,'VERIFY',{evidenceRef,nextAction:'Verify authoritative GitHub completion'});
-            active=uiJobLedger.active(workerId);
-          }
-          if(active?.jobId===jobId&&active.stage==='VERIFY'){
-            uiJobLedger.transition(workerId,jobId,'DONE',{evidenceRef,result:`GitHub issue #${issueNumber} closed completed; terminal state reconciled.`});
-            log('UI_JOB_GITHUB_TERMINAL_RECONCILED',{workerId,jobId,issueNumber,terminal:'DONE',evidenceRef});
-          }
-        }else{
-          uiJobLedger.transition(workerId,jobId,'BLOCKED',{
+        if(terminal==='EXTERNAL_WAIT'){
+          uiJobLedger.reconcileAuthoritativeTerminal(workerId,jobId,'EXTERNAL_WAIT',{
             evidenceRef,
-            blocker:`SOURCE_ISSUE_CLOSED_${String(issue.state_reason||'UNKNOWN').toUpperCase()}`,
-            nextAction:null,
-            result:`GitHub issue #${issueNumber} closed without completed state.`,
+            nextAction:'External wait; preserve current assignment without continue spam',
+            blocker:null,
+            result:'GitHub authoritative terminal marker is EXTERNAL_WAIT',
           });
-          log('UI_JOB_GITHUB_TERMINAL_RECONCILED',{workerId,jobId,issueNumber,terminal:'BLOCKED',evidenceRef,stateReason:issue.state_reason??null});
+          log('UI_JOB_GITHUB_EXTERNAL_WAIT_RECONCILED',{workerId,jobId,issueNumber,evidenceRef});
+        }else{
+          uiJobLedger.reconcileAuthoritativeTerminal(workerId,jobId,terminal,{
+            evidenceRef,
+            blocker:terminal==='BLOCKED'
+              ?(issue.state==='closed'?`SOURCE_ISSUE_CLOSED_${String(issue.state_reason||'UNKNOWN').toUpperCase()}`:'BLOCKED')
+              :null,
+            result:terminal==='DONE'
+              ?`GitHub authoritative terminal state DONE for issue #${issueNumber}; terminal state reconciled.`
+              :(issue.state==='closed'
+                ?`GitHub issue #${issueNumber} closed without completed state.`
+                :'GitHub authoritative terminal evidence is BLOCKED.'),
+          });
+          log('UI_JOB_GITHUB_TERMINAL_RECONCILED',{workerId,jobId,issueNumber,terminal,evidenceRef,stateReason:issue.state_reason??null});
         }
         persistEvidence();
       }catch(error){
@@ -1063,6 +1086,7 @@ async function recoveryTick(){
   if(recoveryTicking||startupRecoveryInFlight||paused||killed||!startupReady)return;
   recoveryTicking=true;
   try{
+    await reconcileGithubTerminalUiJobs();
     for(const id of WORKER_IDS){
       const state=states.get(id)!;
       if(state.enabled&&!state.blocked&&workerNeeded(id)&&!recentHeartbeat(id))void recoverWorker(id);
