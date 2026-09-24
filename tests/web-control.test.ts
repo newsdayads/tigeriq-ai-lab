@@ -32,8 +32,8 @@ describe('TigerIQ Web Control owner dashboard', () => {
     expect(web).toContain('setInterval(refresh,2000)');
   });
 
-  it('uses the approved Segoe UI and monospace stacks', () => {
-    expect(unifiedCss).toContain('--tq-font:"Segoe UI",Roboto,Helvetica,Arial,sans-serif');
+  it('uses the approved Roboto Flex UI stack and monospace stack for code only', () => {
+    expect(unifiedCss).toContain('--tq-font:"Roboto Flex","Segoe UI Variable Text","Segoe UI",Arial,sans-serif');
     expect(unifiedCss).toContain('font-size:14px!important;line-height:1.5!important');
     expect(unifiedCss).toContain('-webkit-font-smoothing:antialiased');
     expect(unifiedCss).toContain('-moz-osx-font-smoothing:grayscale');
