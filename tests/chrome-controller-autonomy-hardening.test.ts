@@ -232,10 +232,12 @@ describe('isolated NV02 WORKING/F5 safety scope',()=>{
     const hotLoop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
     const working=hotLoop.slice(hotLoop.indexOf("if(phase==='WORKING')"),hotLoop.indexOf('const chatLoadRecoveryHandled=await maybeRecoverChatLoadError'));
     expect(working).not.toContain('reloadTarget');
+    expect(hotLoop).toContain("if(phase!=='WORKING'&&now>=Number(state.nextRefreshAt||0))");
+    expect(hotLoop).toContain("if(phase!=='WORKING'&&currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0))");
     expect(working).not.toContain('reopenWorker(');
     expect(working).not.toContain('dispatchNaturalContinue');
-    expect(working).toContain('stopStalledWorking');
-    expect(working).toContain("'WORKING_STUCK_STOP'");
+    expect(working).toContain("'WORKING_LONG_RUNNING_NO_MUTATION'");
+    expect(working).toContain('return;');
     expect(working).toContain("return;");
   });
 
@@ -418,8 +420,8 @@ describe('GitHub terminal UI-job reconciliation #1843',()=>{
 });
 
 
-describe('NV04 assignment-bound Gemini transport',()=>{
-  it('requires an explicit review/research contract and refuses unassigned continuation',()=>{
+describe('NV04 assignment override plus always-on Gemini role loop',()=>{
+  it('requires a contract for explicit assignments but allows READY_UNASSIGNED role-loop continuation',()=>{
     const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
     expect(server).toContain('function validateNv04AssignmentContract(text:string)');
     expect(server).toContain("['DEEP_RESEARCH','INDEPENDENT_REVIEW'].includes(role)");
@@ -435,7 +437,7 @@ describe('NV04 assignment-bound Gemini transport',()=>{
     expect(nv04Dispatch).toContain("source:'NV04_ASSIGNMENT'");
 
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
-    expect(bridge).toContain('function nv04AssignmentStatus(controller)');
+    expect(bridge).toContain('function workerAssignmentStatus(controller,workerId)');
     expect(bridge).toContain("return{status:'READY_UNASSIGNED',job:null}");
     expect(bridge).toContain("job?.source!=='NV04_ASSIGNMENT'");
     expect(bridge).toContain("stage==='WORKING'");
@@ -443,7 +445,8 @@ describe('NV04 assignment-bound Gemini transport',()=>{
     const generic=bridge.slice(bridge.indexOf('async function maybeWorkerContinuity'),bridge.indexOf('\nfunction log('));
     expect(generic).toContain("if(w.id==='NV03'||w.id==='NV04')");
     expect(generic).toContain("currentWorkerAssignmentStatus(w.id)");
-    expect(generic).toContain("assignment.status!=='CONTINUABLE'");
+    expect(generic).toContain("assignment.status==='READY_UNASSIGNED'||assignment.status==='CONTINUABLE'");
+    expect(generic).toContain('if(!roleLoopAllowed)');
     expect(generic).toContain("genericWorkerEvent(w.id,assignment.status");
     const command=bridge.slice(bridge.indexOf('async function handleCommand'),bridge.indexOf('async function postWorkerHeartbeat'));
     expect(command).toContain("if(w.id==='NV03'||w.id==='NV04')");
@@ -497,9 +500,10 @@ describe('NV02 reboot F5 consolidation #1739',()=>{
     expect(bridge).toContain("if(w.id==='NV02')await noteNv02CommandDispatch()");
     const loop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
     const fresh=loop.indexOf("bootFreshContextPending.has('NV02')");
-    const f5=loop.indexOf("if(currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0))");
+    const f5=loop.indexOf("if(phase!=='WORKING'&&currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0))");
     expect(fresh).toBeGreaterThan(-1);
-    expect(f5).toBeGreaterThan(fresh);
+    expect(f5).toBeGreaterThan(-1);
+    expect(loop).toContain("if(phase!=='WORKING'&&now>=Number(state.nextRefreshAt||0))");
     expect(loop).not.toContain('state.resumeChatUrl');
     const f5Block=loop.slice(f5,loop.indexOf('const modelCheckRequired='));
     expect(f5Block).toContain('reloadTarget(target)');

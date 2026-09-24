@@ -1162,6 +1162,13 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
     });
     return true;
   }
+  if(url.pathname==='/api/continuity/control-state'&&req.method==='GET'){
+    const jobs=uiJobLedger.snapshot()
+      .filter((job)=>!job.completedAt)
+      .map((job)=>({jobId:job.jobId,workerId:job.workerId,issueRef:job.issueRef,source:job.source,stage:job.stage,completedAt:job.completedAt}));
+    json(res,200,{paused,killed,ownerInteractionMode:paused?'READ_ONLY':'AUTOMATION',utilityPausedWorkers:[...utilityPausedWorkers],jobs});
+    return true;
+  }
   if(url.pathname==='/api/evidence'&&req.method==='GET'){json(res,200,persistEvidence());return true;}
   if(url.pathname==='/api/autopilot/state'&&req.method==='GET'){json(res,200,{state:autopilotState,snapshot:latestSnapshot??null});return true;}
   if(url.pathname==='/api/autopilot/snapshot'&&req.method==='POST'){

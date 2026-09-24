@@ -44,11 +44,15 @@ describe('App Chrome chat lifecycle',()=>{
     expect(bridge).toContain("ensureNv02LocalReadyLocked(target,raw,{forceFresh:false})");
   });
 
-  it('wires real stuck-WORKING recovery and view-follow for generic workers',()=>{
+  it('keeps generic WORKING non-mutating while preserving recovery and view-follow',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
-    expect(bridge).toContain("stopStalledWorking(target)");
-    expect(bridge).toContain("'WORKING_STUCK_STOP'");
-    expect(bridge).toContain("chatLoadRecoveryStage:resolved?3");
+    const generic=bridge.slice(bridge.indexOf('async function maybeWorkerContinuity'),bridge.indexOf('\nfunction log('));
+    const working=generic.slice(generic.indexOf("if(phase==='WORKING')"),generic.indexOf("if(phase==='READY')"));
+    expect(working).toContain("'WORKING_LONG_RUNNING_NO_MUTATION'");
+    expect(working).not.toContain('stopStalledWorking');
+    expect(working).not.toContain('reloadTarget');
+    expect(working).not.toContain('reopenWorker');
+    expect(bridge).toContain("chatLoadRecoveryStage:Number(raw.chatLoadRecoveryStage)||0");
     expect(bridge).toContain("genericWorkerEvent(w.id,deferred?'VIEW_FOLLOW_BOTTOM_DEFERRED':'VIEW_FOLLOW_BOTTOM'");
     expect(bridge).toContain("nextViewFollowAt:Number(raw.nextViewFollowAt)");
     expect(bridge).toContain("nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)");

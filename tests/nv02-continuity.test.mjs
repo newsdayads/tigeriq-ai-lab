@@ -192,7 +192,8 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("withNv02Mutation(()=>ensureNv02ModelProfile(target),'MODEL_PROFILE_RECOVERY')");
     expect(source).toContain("modelName==='GPT-5.6 Sol'");
     expect(source).toContain("const NV02_F5_MAX_MS=20*60*1000");
-    expect(source).toContain("const UI_STABILITY_PACING_MIN_MS=1200");
+    expect(source).toContain("const UI_STABILITY_PACING_MIN_MS=3000");
+    expect(source).toContain("const UI_STABILITY_PACING_MAX_MS=8000");
     expect(source).toContain("VIEW_FOLLOW_BOTTOM");
     expect(source).toContain("nextViewFollowAt");
     expect(source).toContain("await scrollToBottom(target).catch");
@@ -213,7 +214,8 @@ describe('NV02 continuity policy', () => {
     expect(continuityLoop).not.toContain('checkpointNv02(');
     expect(source).toContain("nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS");
     expect(source).toContain("unchanged>=MAX_WORKING_UNCHANGED_CHECKS");
-    expect(continuityLoop.indexOf("if(phase==='WORKING')")).toBeLessThan(continuityLoop.indexOf("if(currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0))"));
+    expect(continuityLoop).toContain("if(phase!=='WORKING'&&currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0))");
+    expect(continuityLoop).toContain("if(phase!=='WORKING'&&now>=Number(state.nextRefreshAt||0))");
     expect(continuityLoop.indexOf("if(phase==='WORKING')")).toBeLessThan(continuityLoop.indexOf("if(now<Number(state.nextContinueAt||0))return"));
     expect(source).toContain("const NV02_F5_MIN_MS=5*60*1000");
     expect(source).toContain("const NV02_F5_MAX_MS=20*60*1000");
@@ -229,14 +231,16 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("async function ensureNv02LocalReadyLocked(target,initialUi=null,{forceFresh=false}={})");
     expect(source).toContain("ensureNv02LocalReadyLocked(target,ui,{forceFresh:true})");
     expect(source).toContain("ensureNv02LocalReadyLocked(target,raw,{forceFresh:false})");
-    expect(source).toContain("'BOOT_LOCAL_CONTINUE_SUBMITTED'");
+    expect(source).toContain("'BOOT_FRESH_LOCAL_COMPLETE'");
+    expect(source).toContain("'BOOT_FRESH_LOCAL_READY'");
+    expect(source).toContain("'BOOT_FRESH_LOCAL_READY_NO_CONTINUE'");
     const handleCommandSource=source.slice(source.indexOf('async function handleCommand'),source.indexOf('async function postWorkerHeartbeat'));
     const localRunCommand=handleCommandSource.slice(handleCommandSource.indexOf("if(action==='LOCAL_CONTINUE_NOW')"),handleCommandSource.indexOf("if(action==='DISPATCH')"));
     expect(localRunCommand).toContain("ensureNv02LocalReadyLocked(target,raw,{forceFresh:false})");
     expect(localRunCommand).not.toContain("withNv02Mutation(");
     expect(localRunCommand).not.toContain("workerRunGraceUntil.delete('NV02')");
     expect(source).toContain("const workerRunGraceUntil=new Map()");
-    expect(source).toContain("workerRunGraceUntil.set(workerId,nextContinueAt)");
+    expect(source).toContain("workerRunGraceUntil.set(workerId,now+LOCAL_RUN_GRACE_MS)");
     expect(source).toContain("'LOCAL_RUN_BACKGROUND_SUPPRESSED'");
     expect(source).toContain("async function waitForNv02Composer(target,timeoutMs=30000)");
     expect(source).toContain("if(forceFresh||!inProject())");
@@ -248,7 +252,7 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("const NV02_STALLED_RELOAD_CHECKS=10");
     expect(source).toContain("const NV02_STALLED_RESET_CHECKS=14");
     expect(source).toContain("const LOCAL_RUN_GRACE_MS=15000");
-    expect(source).toContain("'LOCAL_RUN_COMMAND_GRACE'");
+    expect(source).toContain("'LOCAL_RUN_SUBMISSION_GRACE_REARMED'");
     expect(source).not.toContain("'LOCAL_RUN_KICKED'");
     expect(source).toContain("stalledChecks:Math.min(NV02_STALLED_RESET_CHECKS,state.stalledChecks+1)");
     expect(source).toContain("if(state.stalledChecks===NV02_STALLED_RELOAD_CHECKS)");
@@ -257,7 +261,7 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("verifiedChatUrl:String(raw.verifiedChatUrl||'')");
     expect(source).toContain("function applyNv02DurableVerifiedModelProfile(ui)");
     expect(source).toContain("ui.modelControlPresent!==true||ui.reasoningEffort!=='High'");
-    expect(source).toContain("!sameNv02Chat(state.verifiedChatUrl,ui.url)");
+    expect(source).toContain("!sameNv02Chat(state.verifiedChatUrl,ui?.url)");
     expect(source).toContain("return applyNv02DurableVerifiedModelProfile(applyNv02VerifiedModelProfile(raw))");
     const tickWorker=source.slice(source.indexOf('async function tickWorker'),source.indexOf('async function tick()'));
     expect(tickWorker).toContain('const rawUi=await uiState(target)');
@@ -272,12 +276,11 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("const modelCheckRequired=now>=Number(state.modelCheckBlockedUntil||0)&&(ui?.modelExact!==true||!state.verifiedChatUrl||!sameNv02Chat(state.verifiedChatUrl,ui?.url))");
     expect(source).toContain("phase==='STALLED'&&ui?.modelExact!==true&&modelCheckRequired");
     const bootFreshGate=continuityLoop.indexOf("bootFreshContextPending.has('NV02')");
-    const periodicF5Gate=continuityLoop.indexOf("if(currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0))");
+    const periodicF5Gate=continuityLoop.indexOf("if(phase!=='WORKING'&&currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0))");
     const modelRecoveryGate=continuityLoop.indexOf("if(phase==='STALLED'&&ui?.modelExact!==true&&modelCheckRequired&&");
     expect(bootFreshGate).toBeGreaterThan(-1);
-    expect(periodicF5Gate).toBeGreaterThan(bootFreshGate);
-    expect(periodicF5Gate).toBeLessThan(modelRecoveryGate);
-    expect(modelRecoveryGate).toBeGreaterThan(-1);
+    expect(periodicF5Gate).toBeGreaterThan(-1);
+    expect(modelRecoveryGate).toBeGreaterThan(bootFreshGate);
 
     expect(source).not.toContain("state.verifiedChatUrl===ui?.url");
     expect(source).toContain("const currentUrl=String(profile.url||'')");
@@ -291,7 +294,7 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("pages.find(t=>sameWorkerLocation(t.url,preferredUrl))");
 
 
-    const f5Block=source.slice(source.indexOf("if(currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0))"),source.indexOf("const modelCheckRequired="));
+    const f5Block=source.slice(source.indexOf("if(phase!=='WORKING'&&currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0))"),source.indexOf("const modelCheckRequired="));
     expect(f5Block).toContain("reloadTarget(target)");
     expect(f5Block).not.toContain("ensureNv02ModelProfile");
     expect(f5Block).not.toContain("checkpointNv02");
@@ -351,7 +354,7 @@ describe('NV02 continuity policy', () => {
     expect(source).not.toContain('rotateNv02Chat');
     expect(source).not.toContain('externalAutopilotOwnsNextNv02Job');
     const local=source.slice(source.indexOf('async function dispatchNaturalContinueLocked'),source.indexOf('async function dispatchNaturalContinue(target'));
-    expect(local).toContain('pickContinuePrompt(state.lastPrompt)');
+    expect(local).toContain("pickWorkerContinuePrompt('NV02',state.lastPrompt)");
     expect(local).toContain("continuityEvent('LOCAL_CONTINUE_DISPATCHED'");
     expect(local).not.toContain('getControllerState');
   });

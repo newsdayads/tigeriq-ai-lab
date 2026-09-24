@@ -66,6 +66,17 @@ export function pickContinuePrompt(previous='',random=Math.random){
   return candidates[Math.min(candidates.length-1,Math.floor(random()*candidates.length))];
 }
 
+export function pickWorkerContinuePrompt(workerId,previous='',random=Math.random){
+  const id=String(workerId||'').toUpperCase();
+  if(id==='NV02')return '02 - Kiểm tra việc hiện tại; còn hiệu lực thì làm tiếp. Nếu đã DONE hoặc không còn việc hiện tại, audit Source of Truth và lấy việc hợp lệ ưu tiên cao nhất chưa ai xử lý.';
+  if(id==='NV03')return '03 - Tiếp tục review code hiện tại; nếu đã xong, audit Source of Truth và lấy review code độc lập hợp lệ tiếp theo. Chỉ review, không sửa code.';
+  if(id==='NV04')return '04 - Tiếp tục DEEP_RESEARCH hoặc INDEPENDENT_REVIEW hiện tại; nếu đã xong, audit Source of Truth và lấy việc research/review phù hợp tiếp theo. Không code hoặc mutation.';
+  const base=pickContinuePrompt(String(previous||'').replace(/^\d{2}\s*-\s*/,''),random);
+  const digits=(String(workerId||'').match(/\d+/)||[])[0]||'';
+  const code=digits?digits.padStart(2,'0'):'';
+  return code?code+' - '+base:base;
+}
+
 export function deriveWorkerPhase(ui,{heartbeatStale=false,workerId='NV02'}={}){
   if(ui?.securityBlock)return 'BLOCKED';
   if(heartbeatStale)return 'STALLED';
