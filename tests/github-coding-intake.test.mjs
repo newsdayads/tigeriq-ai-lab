@@ -395,8 +395,9 @@ describe('GitHub coding continuity supervisor',()=>{
       {type:'GITHUB_CODING_RETRY_DISPATCHED',data:{issueNumber:809,codingObjectiveId:'obj-809-r2',retryAttempt:2}},
       {type:'GITHUB_CODING_BLOCKED_FINAL',data:{issueNumber:809,codingObjectiveId:'obj-809-r2',status:'blocked',reason:'RETRY_BUDGET_EXHAUSTED',terminalReason:'OUTPUT_CONTRACT_EXHAUSTED',mainSha:'same-main',sourceRevision:'old-revision'}}
     );
-    const current=issue(SAFE,{number:809,title:'Canonical source'});
+    const current=issue(SAFE,{number:809,title:'Canonical source',comments:329});
     const ownerDirective={id:500,user:{login:'newsdayads'},body:'[OWNER_REARM] continue canonical issue'};
+    const commentPages=[];
     const sourceRevision=codingSourceTruthRevision(current,[ownerDirective]);
     const sourceKey=sourceRevision.replace(/[^0-9A-Za-z]/g,'').slice(-20)||'no-source';
     expect(shouldRearmRecoverableFinal(pool.events.at(-1).data,'same-main',[],sourceRevision)).toBe(true);
@@ -409,7 +410,7 @@ describe('GitHub coding continuity supervisor',()=>{
         ...(recoveryObjective?[recoveryObjective]:[])
       ],jobs:[]});
       if(url.includes('/git/ref/heads/main'))return response({object:{sha:'same-main'}});
-      if(url.includes('/issues/809/comments'))return response([ownerDirective]);
+      if(url.includes('/issues/809/comments')){commentPages.push(url);return response(url.includes('page=4')?[ownerDirective]:[]);}
       if(url.includes('/api/objectives')){
         posted++;
         const body=JSON.parse(init.body);
@@ -425,6 +426,8 @@ describe('GitHub coding continuity supervisor',()=>{
     await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
     await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
     expect(posted).toBe(1);
+    expect(commentPages.some(url=>url.includes('per_page=100&page=4'))).toBe(true);
+    expect(commentPages.some(url=>url.includes('page=1'))).toBe(false);
     const rearms=pool.events.filter(e=>e.type==='GITHUB_CODING_RECOVERY_REARMED');
     expect(rearms).toHaveLength(1);
     expect(rearms[0].data).toMatchObject({mainSha:'same-main',sourceRevision,priorObjectiveId:'obj-809-r2',codingObjectiveId:'obj-809-recovery'});
