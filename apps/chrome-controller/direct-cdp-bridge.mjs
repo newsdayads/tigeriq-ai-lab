@@ -39,6 +39,9 @@ let nv02BootF5ScheduleInitialized=false;
 const APP_CHROME_LOCAL_UI_ONLY=true;
 const NV02_F5_MIN_MS=5*60*1000;
 const NV02_F5_MAX_MS=20*60*1000;
+const NV02_STALLED_RELOAD_CHECKS=10;
+const NV02_STALLED_RESET_CHECKS=14;
+const LOCAL_RUN_GRACE_MS=15000;
 const UI_STABILITY_PACING_MIN_MS=1200;
 const UI_STABILITY_PACING_MAX_MS=4000;
 const VIEW_FOLLOW_MIN_MS=30*1000;
@@ -176,10 +179,10 @@ async function workerAutomationPaused(workerId){
     const previous=workerPauseObserved.get(workerId);
     workerPauseObserved.set(workerId,pausedNow);
     if(previous===true&&pausedNow===false){
-      const now=Date.now();
-      if(workerId==='NV02')saveNv02Continuity({...loadNv02Continuity(),nextContinueAt:now,stalledChecks:0});
-      else saveWorkerContinuity(workerId,{...loadWorkerContinuity(workerId),nextContinueAt:now,stalledChecks:0});
-      log('LOCAL_RUN_KICKED',{workerId});
+      const now=Date.now(),nextContinueAt=now+LOCAL_RUN_GRACE_MS;
+      if(workerId==='NV02')saveNv02Continuity({...loadNv02Continuity(),nextContinueAt,stalledChecks:0});
+      else saveWorkerContinuity(workerId,{...loadWorkerContinuity(workerId),nextContinueAt,stalledChecks:0});
+      log('LOCAL_RUN_COMMAND_GRACE',{workerId,nextContinueAt});
     }
     return pausedNow;
   }catch(error){
@@ -1054,7 +1057,7 @@ async function waitForPostReloadNv02Ui(target,timeoutMs=12000){
   }
   return last;
 }
-async function waitForNv02Composer(target,timeoutMs=20000){
+async function waitForNv02Composer(target,timeoutMs=30000){
   const deadline=Date.now()+timeoutMs;let last=null;
   while(Date.now()<deadline){
     last=await uiState(target).catch(()=>null);
@@ -1072,16 +1075,16 @@ async function ensureNv02LocalReadyLocked(target,initialUi=null,{forceFresh=fals
   if(forceFresh||!inProject()){
     await navigate(target,NV02_HOME_URL);
     await sleep(1200);
-    ui=await waitForNv02Composer(target,20000)||await uiState(target);
+    ui=await waitForNv02Composer(target,30000)||await uiState(target);
   }else if(ui?.composerReady!==true){
-    ui=await waitForNv02Composer(target,20000)||ui;
+    ui=await waitForNv02Composer(target,30000)||ui;
   }
   if(ui?.securityBlock)throw new Error(ui.securityBlock);
   if(ui?.uiBusy===true||ui?.uiPhase==='WORKING')return ui;
   if(ui?.composerReady!==true){
     const recovered=await recoverNv02ProjectContext(target);
     if(!recovered?.ok)throw new Error(recovered?.status||'NV02_LOCAL_PROJECT_RECOVERY_FAILED');
-    ui=await waitForNv02Composer(target,15000)||await uiState(target);
+    ui=await waitForNv02Composer(target,20000)||await uiState(target);
   }
   if(ui?.composerReady!==true)throw new Error('NV02_LOCAL_COMPOSER_NOT_READY');
   const verified=await ensureNv02ModelProfile(target);
@@ -1249,7 +1252,7 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
     return;
   }
   const modelCheckRequired=now>=Number(state.modelCheckBlockedUntil||0)&&(ui?.modelExact!==true||!state.verifiedChatUrl||!sameNv02Chat(state.verifiedChatUrl,ui?.url));
-  if(phase==='STALLED'&&ui?.modelExact!==true&&modelCheckRequired){
+  if(phase==='STALLED'&&ui?.modelExact!==true&&modelCheckRequired&&(ui?.composerReady===true||ui?.modelControlPresent===true)){
     try{
       const corrected=await withNv02Mutation(()=>ensureNv02ModelProfile(target),'MODEL_PROFILE_RECOVERY');
       if(corrected?.status==='MUTATION_LEASE_BUSY')return;
@@ -1273,13 +1276,13 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
     }
     return;
   }
-  state={...state,stalledChecks:Math.min(MAX_STALLED_CHECKS,state.stalledChecks+1),nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
+  state={...state,stalledChecks:Math.min(NV02_STALLED_RESET_CHECKS,state.stalledChecks+1),nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
   saveNv02Continuity(state);
-  await continuityEvent('STALLED_CHECK',{stalledChecks:state.stalledChecks,nextContinueAt:state.nextContinueAt});
-  if(state.stalledChecks===2){
+  await continuityEvent('STALLED_CHECK',{stalledChecks:state.stalledChecks,nextContinueAt:state.nextContinueAt,reloadAt:NV02_STALLED_RELOAD_CHECKS});
+  if(state.stalledChecks===NV02_STALLED_RELOAD_CHECKS){
     const result=await withNv02Mutation(()=>reloadTarget(target),'STALLED_RECOVERY');
-    await continuityEvent('STALLED_RELOAD',{status:result?.status||null});
-  }else if(state.stalledChecks>=MAX_STALLED_CHECKS){
+    await continuityEvent('STALLED_RELOAD',{status:result?.status||null,stalledChecks:state.stalledChecks});
+  }else if(state.stalledChecks>=NV02_STALLED_RESET_CHECKS){
     await continuityEvent('STALLED_HOT_LOOP_NO_CHECKPOINT',{stalledChecks:state.stalledChecks});
     const clean={...state,stalledChecks:0,workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:0,nextContinueAt:now};
     saveNv02Continuity(clean);
