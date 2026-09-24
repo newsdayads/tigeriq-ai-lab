@@ -987,14 +987,9 @@ async function recoveryTick(){
   }finally{recoveryTicking=false;}
 }
 async function waitForStartupRuntime(){
-  const url=config.recovery.startupReadyUrl;
-  if(!url)return true;
-  const deadline=Date.now()+config.recovery.startupReadyTimeoutMs;
-  while(Date.now()<deadline){
-    try{const response=await fetch(url,{signal:AbortSignal.timeout(3000)});if(response.ok)return true;}catch{}
-    await delay(3000);
-  }
-  return false;
+  // App Chrome is intentionally isolated from Core/queue/runtime services.
+  // Local Chrome/CDP readiness is the only startup prerequisite.
+  return true;
 }
 async function waitForStartupAttach(workerId:WorkerId){
   const deadline=Date.now()+config.recovery.startupAttachGraceMs;
@@ -1011,7 +1006,7 @@ async function startupRecovery(){
       persistEvidence();
       return;
     }
-    log('STARTUP_RUNTIME_READY',{url:config.recovery.startupReadyUrl??null,interactiveSession:isInteractiveDesktopSession(),sessionName:process.env.SESSIONNAME??null});
+    log('STARTUP_LOCAL_RUNTIME_READY',{interactiveSession:isInteractiveDesktopSession(),sessionName:process.env.SESSIONNAME??null,externalWorkAutopilotEnabled:false});
     if(paused){
       log('STARTUP_OWNER_INTERACTION_READ_ONLY');
       persistEvidence();
