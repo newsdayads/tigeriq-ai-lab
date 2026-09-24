@@ -454,17 +454,19 @@ function loadNv02Continuity(){
     nextPeriodicF5At=nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS);
     if(workingRecheckAt)workingRecheckAt=nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS);
   }
+  let persistBootSchedule=false;
   if(!nv02BootF5ScheduleInitialized){
     nv02BootF5ScheduleInitialized=true;
     const previousNextPeriodicF5At=nextPeriodicF5At;
     const previousWorkingRecheckAt=workingRecheckAt;
     if(nextPeriodicF5At<=now)nextPeriodicF5At=nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS);
     if(workingRecheckAt&&workingRecheckAt<=now)workingRecheckAt=nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS);
+    persistBootSchedule=Number(raw.f5WindowVersion)!==f5WindowVersion||previousNextPeriodicF5At!==nextPeriodicF5At||previousWorkingRecheckAt!==workingRecheckAt;
     if(previousNextPeriodicF5At!==nextPeriodicF5At||previousWorkingRecheckAt!==workingRecheckAt){
       log('NV02_F5_TIMERS_REBASED_AFTER_RESTART',{previousNextPeriodicF5At,nextPeriodicF5At,previousWorkingRecheckAt,workingRecheckAt});
     }
   }
-  return {
+  const state={
     nextContinueAt:Number(raw.nextContinueAt)||nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),
     nextPeriodicF5At,
     f5WindowVersion,
@@ -488,6 +490,8 @@ function loadNv02Continuity(){
     chatLoadBlockedUntil:Number(raw.chatLoadBlockedUntil)||0,
     chatLoadClearCandidateAt:Number(raw.chatLoadClearCandidateAt)||0,
   };
+  if(persistBootSchedule)saveNv02Continuity(state);
+  return state;
 }
 function applyNv02DurableVerifiedModelProfile(ui){
   if(!ui||ui.modelExact===true)return ui;
@@ -1313,9 +1317,15 @@ async function rotateNv02Chat(target,state,now){
   },'CHAT_ROTATION',60000);
 }
 async function noteNv02CommandDispatch(){
+  const now=Date.now();
   const state=loadNv02Continuity();
   state.dispatchesInChat=Number(state.dispatchesInChat||0)+1;
+  state.nextPeriodicF5At=nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS);
+  state.workingRecheckAt=nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS);
+  state.nextProgressCheckAt=now+WORKING_PROGRESS_CHECK_MS;
+  state.stalledChecks=0;
   saveNv02Continuity(state);
+  await continuityEvent('DISPATCH_F5_GUARD_ARMED',{nextPeriodicF5At:state.nextPeriodicF5At,workingRecheckAt:state.workingRecheckAt});
 }
 async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
   const now=Date.now();let state=loadNv02Continuity();
@@ -1484,7 +1494,7 @@ async function handleCommand(w,target,command){
   if(action==='CLOSE_WINDOW') return closeWorker(w,target).then(()=>({status:'WINDOW_CLOSED'}));
   if(action==='NAVIGATE'){const u=new URL(String(payload.url||''));if(u.hostname!==expectedHost(w))throw new Error('BLOCKED_URL');await navigate(target,u.toString());return{status:'NAVIGATED'};}
   if(action==='MODEL_PREFLIGHT'){if(w.id!=='NV02')return{status:'MODEL_PREFLIGHT_NOT_REQUIRED'};return ensureNv02ModelProfile(target);}
-  if(action==='DISPATCH'){if(w.id==='NV02')await ensureNv02ModelProfile(target);const r=await dispatch(target,String(payload.text||''));if(!r?.ok)throw new Error(r?.status||'DISPATCH_FAILED');return r;}
+  if(action==='DISPATCH'){if(w.id==='NV02')await ensureNv02ModelProfile(target);const r=await dispatch(target,String(payload.text||''));if(!r?.ok)throw new Error(r?.status||'DISPATCH_FAILED');if(w.id==='NV02')await noteNv02CommandDispatch();return r;}
   if(action==='ARCHIVE_CHAT'){const r=await archiveChat(target);if(!r?.ok)throw new Error(r?.status||'ARCHIVE_FAILED');return r;}
   throw new Error(`UNKNOWN_ACTION:${action}`);
 }
