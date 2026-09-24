@@ -1,5 +1,5 @@
 import { describe,expect,it } from 'vitest';
-import { extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,formatResultComment,parseExecutableIssue } from './github-intake.mjs';
+import { extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,formatResultComment,githubDispatchLane,githubSpecBlockedByActive,isBoundedAppChromeRequestOnly,parseExecutableIssue } from './github-intake.mjs';
 
 describe('GitHub Core intake guardrails',()=>{
   const base={number:588,title:'safe test',state:'open',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/588',body:'TIGERIQ_EXECUTABLE=true\nPRIORITY=P2\nCAPABILITY=reasoning\nOWNER_POLICY=AUTO\nNO_CODE_CHANGE=true\nNO_PC01_SHELL=true\nRead #280 and #335 plus `docs/CURRENT_STATE.md`.'};
@@ -15,5 +15,45 @@ describe('GitHub Core intake guardrails',()=>{
     expect(parseExecutableIssue({...owner,body:owner.body.replace('OWNER_DIRECT=true\n','')})).toBeNull();
     expect(parseExecutableIssue({...owner,body:owner.body.replace('ASSIGNED_ACTION\ntigeriq_pc tcp_probe host=127.0.0.1 port=18789\nACCEPTANCE\nPASS','')})).toBeNull();
   });
+
+  it('allows only explicitly bounded App Chrome request-state work through protected-scope filtering',()=>{
+    const boundedBody=[
+      'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','OWNER_DIRECT=true','PRIORITY=P0','CAPABILITY=pc_operator',
+      'APP_CHROME_REQUEST_ONLY=true','RESOURCE_SCOPE=APP_CHROME_DEPLOY_REQUEST_STATE',
+      'NO_CODE_CHANGE=true','NO_PC01_SHELL=true',
+      'ASSIGNED_ACTION','Use tigeriq_pc file_write only:','path=D:\\TigerIQ\\State\\appchrome-install-request.json',
+      'Then use tigeriq_pc file_read on the same path.','ACCEPTANCE','PASS',
+    ].join('\n');
+    assert.equal(isBoundedAppChromeRequestOnly(boundedBody),true);
+    expect(parseExecutableIssue({...base,number:1881,title:'[P0][OPENCLAW] request only',body:boundedBody})).toMatchObject({
+      number:1881,capability:'pc_operator',dispatchLane:'PC_OPERATOR',resourceScope:'APP_CHROME_DEPLOY_REQUEST_STATE'
+    });
+    const mutation=boundedBody.replace('APP_CHROME_REQUEST_ONLY=true\n','').replace('ASSIGNED_ACTION\nUse tigeriq_pc file_write only:','ALLOW_PATH_PREFIX=apps/chrome-controller/\nASSIGNED_ACTION\nUse tigeriq_pc file_write only:');
+    expect(parseExecutableIssue({...base,number:1882,title:'[APP-CHROME] mutation',body:mutation})).toBeNull();
+  });
+
+  it('routes GitHub objectives by independent lanes instead of one global active lock',()=>{
+    const reasoning={capability:'reasoning',dispatchLane:githubDispatchLane('reasoning'),resourceScope:'SCOPE_A'};
+    const pc={capability:'pc_operator',dispatchLane:githubDispatchLane('pc_operator'),resourceScope:'PC_STATE'};
+    const review={capability:'review',dispatchLane:githubDispatchLane('review'),resourceScope:'REVIEW_A'};
+    const active=[{capability:'reasoning',dispatchLane:'CORE_REASONING',resourceScope:'OTHER'}];
+    expect(githubSpecBlockedByActive(reasoning,active)).toBe(true);
+    expect(githubSpecBlockedByActive(pc,active)).toBe(false);
+    expect(githubSpecBlockedByActive(review,active)).toBe(false);
+    expect(githubSpecBlockedByActive(pc,[{capability:'pc_operator',resourceScope:'OTHER_PC'}])).toBe(true);
+    expect(githubSpecBlockedByActive(pc,[{capability:'reasoning',resourceScope:'PC_STATE'}])).toBe(true);
+  });
+
+  it('leaves preferred NV03/NV04 reviews to the UI role lane and avoids generic Core duplication',()=>{
+    const reviewBody=[
+      'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','PRIORITY=P1','CAPABILITY=review',
+      'PREFERRED_REVIEWER=NV03','NO_CODE_CHANGE=true','NO_PC01_SHELL=true','RESOURCE_SCOPE=REVIEW_X'
+    ].join('\n');
+    expect(parseExecutableIssue({...base,number:1874,title:'review',body:reviewBody})).toBeNull();
+    expect(parseExecutableIssue({...base,number:1875,title:'generic review',body:reviewBody.replace('PREFERRED_REVIEWER=NV03\n','')})).toMatchObject({
+      capability:'review',dispatchLane:'CORE_REVIEW'
+    });
+  });
+
   it('formats a terminal result with objective evidence',()=>{expect(formatResultComment({id:'OBJ-GH-588',status:'completed',summary:'ok'})).toContain('[RESULT] TigerIQ Core completed OBJ-GH-588');});
 });
