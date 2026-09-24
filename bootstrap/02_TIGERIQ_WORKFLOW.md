@@ -203,8 +203,8 @@ Với thay đổi Loader/Bootstrap cốt lõi: bắt buộc regression tối thi
 
 ## 19. Regression test cho bare references
 
-- Thêm test **gate regression** trong pipeline để phát hiện bất kỳ tham chiếu nào không tuân định dạng trên.
-- Test sẽ quét toàn bộ markdown và code comment để xác nhận không có chuỗi dạng `#<số>` không có dấu `-` và tên việc.
+- Thêm test **gate regression** trong pipeline để thực hiện quét toàn bộ codebase (full codebase scan) phát hiện bất kỳ tham chiếu nào không tuân định dạng trên.
+- Test sẽ quét toàn bộ markdown và code comment trên toàn bộ mã nguồn/tài liệu repository để xác nhận không có chuỗi dạng `#<số>` không có dấu `-` và tên việc.
 - Nếu phát hiện, pipeline sẽ thất bại với thông báo `Owner-facing reference format violation`.
 Một task chỉ `HOÀN TẤT` khi outcome đã được thực hiện ở mức áp dụng, test/review cần thiết đạt, evidence có sẵn, state/docs được cập nhật và không còn blocker thật trong scope.
 
