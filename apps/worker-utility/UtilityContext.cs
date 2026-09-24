@@ -396,16 +396,16 @@ internal sealed class UtilityContext : ApplicationContext
             {
                 settings.Workers[id].Paused = false;
                 using var resumedController = await controller.ResumeAsync(id);
-                await Task.Delay(250);
                 var resumed = await controller.GetWorkerAsync(id);
-                if (resumed.State == WorkerUiState.Working || !string.IsNullOrWhiteSpace(resumed.JobId))
+                if (resumed.State == WorkerUiState.Working)
                 {
-                    popups[id].SetActionNotice($"✓ Đang chạy {resumed.JobId ?? ""}".Trim(), false);
+                    popups[id].SetActionNotice("✓ Đang chạy", false);
+                    store.Log(id, "RUN_LOCAL_ALREADY_WORKING");
                 }
                 else
                 {
-                    popups[id].SetActionNotice("✓ Sẵn sàng · chưa có việc được giao", false);
-                    store.Log(id, "RUN_READY_UNASSIGNED");
+                    popups[id].SetActionNotice("✓ Đã gửi lệnh chạy local", false);
+                    store.Log(id, "RUN_LOCAL_CONTINUE");
                 }
                 break;
             }
