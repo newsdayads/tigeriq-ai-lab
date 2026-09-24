@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import {CodingScopeViolationError,validateJobScope,validateSourceScope} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {CodingScopeViolationError,parseCompactEditJson,salvageCompactEditsJson,validateJobScope,validateSourceScope} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {extractCanonicalAllowedPaths} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 test('coding lane scope validation tests',async(t)=>{
@@ -14,6 +14,23 @@ test('coding lane scope validation tests',async(t)=>{
   await t.test('extracts inline bullet hard-scope contract',()=>{
     const objective='- Exact hard scope: apps/tigeriq-core/core.mjs; tests/rotating-idle-auditor.test.ts. If needed keep prose after it.\n- Do not broaden scope';
     assert.deepStrictEqual(extractCanonicalAllowedPaths(objective),['apps/tigeriq-core/core.mjs','tests/rotating-idle-auditor.test.ts']);
+  });
+
+
+  await t.test('salvages complete compact edits from a truncated JSON response',()=>{
+    const broken='{"summary":"partial","edits":[{"path":"apps/tigeriq-coding-lane/coding-lane.mjs","search":"old","replace":"new"},{"path":"tests/coding-lane-scope.test.mjs","search":"unterminated';
+    assert.deepStrictEqual(salvageCompactEditsJson(broken),{
+      summary:'salvaged complete compact edits from truncated model response',
+      edits:[{path:'apps/tigeriq-coding-lane/coding-lane.mjs',search:'old',replace:'new'}],
+    });
+    assert.deepStrictEqual(parseCompactEditJson(broken),{
+      summary:'salvaged complete compact edits from truncated model response',
+      edits:[{path:'apps/tigeriq-coding-lane/coding-lane.mjs',search:'old',replace:'new'}],
+    });
+  });
+
+  await t.test('does not salvage incomplete first edit',()=>{
+    assert.throws(()=>parseCompactEditJson('{"edits":[{"path":"x","search":"unterminated'),/JSON_OBJECT_/);
   });
 
   await t.test('allowed-only candidate passes',()=>{
