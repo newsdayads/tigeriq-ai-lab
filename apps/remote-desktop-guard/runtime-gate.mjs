@@ -1,6 +1,7 @@
-import { readFile, rename, writeFile } from 'node:fs/promises';
+import { readFile, realpath, rename, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import {
-  DEFAULT_LEASE_PATH, READ_ONLY_TOOLS, authorizeRemoteCall, classifyTool, validateLeaseEnvelope
+  DEFAULT_LEASE_PATH, OBSERVATION_DIRECTORIES, READ_ONLY_TOOLS, authorizeRemoteCall, classifyTool, validateLeaseEnvelope
 } from './policy.mjs';
 
 const OWNER_LOGIN='newsdayads';
@@ -78,11 +79,48 @@ export async function filterRemoteToolDefinitions(tools,{leasePath=DEFAULT_LEASE
   return tools.filter((tool)=>READ_ONLY_TOOLS.includes(tool.name) || (lease && tool.name===lease.tool));
 }
 
+
+function readTargets(tool,args={}) {
+  if (tool==='read_file') return args.isUrl===true ? [] : [args.path];
+  if (tool==='read_multiple_files') return Array.isArray(args.paths) ? args.paths : [];
+  if (tool==='list_directory' || tool==='start_search' || tool==='get_file_info') return [args.path];
+  return [];
+}
+
+function normalizeRealWindows(value) {
+  if (typeof value!=='string' || !path.win32.isAbsolute(value)) return null;
+  return path.win32.normalize(value).replace(/[\\/]+$/,'').toLowerCase();
+}
+
+function withinRealRoot(candidate,root) {
+  const c=normalizeRealWindows(candidate), r=normalizeRealWindows(root);
+  return Boolean(c&&r&&(c===r||c.startsWith(r+'\\')));
+}
+
+export async function verifyRealReadScope(tool,args={}, {realpathImpl=realpath}={}) {
+  const targets=readTargets(tool,args).filter(Boolean);
+  if (!targets.length) return {ok:true,reason:'READ_REALPATH_NOT_APPLICABLE'};
+  const settled=await Promise.allSettled(OBSERVATION_DIRECTORIES.map((root)=>realpathImpl(root)));
+  const roots=settled.filter((x)=>x.status==='fulfilled').map((x)=>x.value).filter(Boolean);
+  if (!roots.length) return denial('READ_REAL_ROOTS_UNAVAILABLE');
+  for (const target of targets) {
+    let resolved;
+    try { resolved=await realpathImpl(target); }
+    catch { return denial('READ_REALPATH_UNRESOLVED'); }
+    if (!roots.some((root)=>withinRealRoot(resolved,root))) return denial('READ_REPARSE_ESCAPE_DENIED');
+  }
+  return {ok:true,reason:'READ_REALPATH_SCOPE_PASS'};
+}
+
 export async function enforceRemoteToolCall({
   tool,args={},now=Date.now(),leasePath=DEFAULT_LEASE_PATH,fetchImpl=globalThis.fetch
 }={}) {
   const kind=classifyTool(tool);
-  if (kind==='READ_ONLY') return authorizeRemoteCall({tool,args,now});
+  if (kind==='READ_ONLY') {
+    const lexical=authorizeRemoteCall({tool,args,now});
+    if (!lexical.ok) return lexical;
+    return verifyRealReadScope(tool,args);
+  }
   if (kind==='UNKNOWN') return denial('UNKNOWN_TOOL_FAIL_CLOSED');
   if (tool==='set_config_value') return denial('REMOTE_CONFIG_MUTATION_FORBIDDEN');
 
