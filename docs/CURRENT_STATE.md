@@ -72,6 +72,15 @@ Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #
 
 ## Governance
 
+### Authorization boundary migration — #1967
+- Owner explicitly authorized the TigerIQ-wide authorization migration, including Remote Guard security-boundary changes.
+- Target model: **Remote Boundary, Local Autonomy**. Remote Desktop Guard protects only calls traversing Remote Desktop Commander/CMD into PC01; it is not a global employee permission system.
+- Every RDC mutation remains default-deny and uses the exact bounded one-shot Owner authorization contract from #1907. No employee/model identity bypass is allowed.
+- Native/local/API/GitHub execution is authorized by assignment + capability + RESOURCE_SCOPE with one active mutation owner per resource. Safe/reversible/zero-cost assigned work does not require repeated Owner approval.
+- Permanent static employee locks, including the App Chrome Owner+Vy-only mutation lock, are superseded for routine safe work by scoped one-writer ownership. App Chrome remains UI continuity/transport only; its behavior/spec is otherwise unchanged.
+- Hard gates remain Owner-controlled: security/Guard/permission changes, credentials/secrets, Production, paid/financial, destructive/irreversible.
+- Canonical design: docs/ADR/ADR-REMOTE-BOUNDARY-LOCAL-AUTONOMY.md. Migration is not complete until exact-head checks, independent review, merge and live canary verify both local/native continuity and the RDC deny boundary.
+
 ## Issue Updates
 - #1915: CLOSED/COMPLETED – final reconciliation of autonomous queue policy.
 - #1916: OPEN – pending review of version policy adjustments.
