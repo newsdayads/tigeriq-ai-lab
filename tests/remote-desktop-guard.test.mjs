@@ -45,6 +45,17 @@ function authFetchFor(lease,{login='newsdayads',ok=true,status=200,bodyOverride}
 afterEach(async()=>{ while(tempDirs.length) await rm(tempDirs.pop(),{recursive:true,force:true}); });
 
 describe('Remote Desktop Commander hard runtime guard',()=>{
+  it('does not grant a remote mutation bypass based on employee/model identity metadata',async()=>{
+    const leasePath=await tempLeasePath();
+    for (const principal of ['NV02','NV09','CODEX_LOCAL_PC01','VY']) {
+      const result=await enforceRemoteToolCall({
+        tool:'start_process',
+        args:{command:'echo remote-boundary',timeout_ms:1000,principal},
+        leasePath,now:NOW
+      });
+      expect(result).toEqual({ok:false,reason:'OWNER_AUTH_REQUIRED'});
+    }
+  });
   it('passes only approved observation paths for read/list/search/health',()=>{
     expect(authorizeRemoteCall({tool:'read_file',args:{path:'D:\\TigerIQ\\Evidence\\x.txt'},now:NOW}))
       .toEqual({ok:true,reason:'READ_ONLY_DEFAULT_PASS'});
