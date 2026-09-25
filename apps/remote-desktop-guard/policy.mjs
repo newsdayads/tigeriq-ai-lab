@@ -4,6 +4,9 @@ import path from 'node:path';
 export const MAX_OWNER_LEASE_MS = 5 * 60 * 1000;
 export const DEFAULT_LEASE_PATH = 'D:\\TigerIQ\\Runtime\\desktop-commander-remote\\guard\\owner-lease.json';
 export const AUTHORIZATION_TOOL = 'tigeriq_authorize_mutation';
+// SECURITY BOUNDARY: this policy is evaluated only for calls that traverse Remote Desktop Commander.
+// Employee/workforce authorization for native local, API, or GitHub execution belongs to the TigerIQ
+// assignment/capability/resource policy and MUST NOT be inferred from or gated by this module.
 
 export const READ_ONLY_TOOLS = Object.freeze([
   'get_config','read_file','read_multiple_files','list_directory','start_search',
@@ -99,6 +102,7 @@ export function validateOwnerLease({lease,tool,args={},now=Date.now()}={}) {
 }
 
 export function authorizeRemoteCall({tool,args={},lease,now=Date.now()}={}) {
+  // Deliberately actor-agnostic: no employee/model identity can bypass the remote-entry boundary.
   const kind=classifyTool(tool);
   if (kind === 'READ_ONLY') {
     return readScopeAllowed(tool,args)
