@@ -534,16 +534,18 @@ describe('APP Chrome UI-only continuity regression #1525',()=>{
     expect(recovery).not.toContain("if(after&&!after.chatLoadError)");
   });
 
-  // READY_UNASSIGNED is NV04-only; keep the NV02 regression guard scoped to its own loop.
-  it('keeps NV02 project-home continuity assignment-free while NV04 may be READY_UNASSIGNED',()=>{
+  // NV02 may be READY_UNASSIGNED only as an explicit no-work fail-closed state.
+  it('keeps NV02 idle without model mutation when no current assignment exists',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(bridge).toContain("return /\\/c\\//.test(current.pathname)");
     expect(bridge).toContain("isWorkerFreshContext");
     expect(bridge).toContain("BOOT_FRESH_CONTEXT_READY");
     expect(bridge).toContain("LOCAL_CONTINUE_DISPATCHED");
     const nv02Loop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
-    expect(nv02Loop).not.toContain("READY_UNASSIGNED");
-    expect(bridge).toContain("READY_UNASSIGNED");
+    expect(nv02Loop).toContain("const assignment=await currentWorkerAssignmentStatus('NV02')");
+    expect(nv02Loop).toContain("READY_UNASSIGNED");
+    expect(nv02Loop).toContain("autoModelRecoverySuppressed:true");
+    expect(nv02Loop.indexOf("if(assignment.status!=='CONTINUABLE')")).toBeLessThan(nv02Loop.indexOf("const modelCheckRequired="));
   });
 });
 
