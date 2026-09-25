@@ -33,7 +33,7 @@ function Read-RequestFile(){
 function Discover-AuthorizedRequest(){
   $issues=(& gh api ('repos/'+$Repo+'/issues?state=open&per_page=100&sort=updated&direction=desc') 2>$null|Out-String)|ConvertFrom-Json -ErrorAction Stop
   foreach($issue in @($issues)){
-    if($issue.pull_request){continue}
+    if($issue.PSObject.Properties.Name -contains 'pull_request'){continue}
     $body=[string]$issue.body
     if(-not(Exact-Line $body 'OWNER_DIRECT' 'true')){continue}
     if(-not(Exact-Line $body 'APP_CHROME_DEPLOY_AUTHORIZED' 'true')){continue}
