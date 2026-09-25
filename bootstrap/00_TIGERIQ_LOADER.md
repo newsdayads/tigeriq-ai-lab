@@ -1,8 +1,8 @@
 # TIGERIQ — UNIFIED SOURCE LOADER
-Version: 1.2
+Version: 1.3
 Status: Bootstrap Entry Point
 Priority: P0
-Updated: 2026-09-15
+Updated: 2026-09-25
 
 ## Mục tiêu
 Đây là entry point duy nhất để ChatGPT Plus, ChatGPT Go và Gemini Pro nạp TigerIQ theo cùng một Nguồn Sự Thật. Mỗi tài khoản chỉ cần giữ hoặc trỏ tới Loader này; không duy trì bản sao riêng của 5 file Bootstrap.
@@ -46,6 +46,14 @@ Loader page: `https://github.com/newsdayads/tigeriq-ai-lab/blob/main/bootstrap/0
 - ChatGPT Go: dùng cùng Loader + GitHub connector; không tạo Bootstrap riêng.
 - Gemini Pro: dùng mirror `00_TIGERIQ_GEMINI_SOURCE` khi giao diện bắt buộc, nhưng mirror phải được đồng bộ từ cùng GitHub canonical.
 - Khi source thay đổi trên GitHub `main`, 3 tài khoản phải quy về cùng canonical content; khác nhau chỉ ở adapter truy cập của từng nền tảng.
+
+## Lệnh bootstrap đặc biệt
+- `AC` (không phân biệt hoa/thường) = `APP_CHROME_OWNER_MODE`. Khi tin nhắn đầu tiên hoặc tin nhắn độc lập chỉ chứa `AC`/`Ac`/`ac`, KHÔNG trả lời như lời chào và KHÔNG hỏi Owner giao việc.
+- Phải lập tức nạp context App Chrome: checkpoint mới nhất `/TigerIQ/TIGERIQ_CHAT_CHECKPOINT_*.md` và `/TigerIQ/APP_CHROME_OWNER_MODE_AC.md` nếu Library khả dụng; sau đó đọc CENTRAL #280, Registry #335, Interaction #504, #1888, #1900 và toàn bộ Work Order/PR APP-CHROME đang OPEN.
+- Sau audit, chỉ tiếp tục việc App Chrome chưa DONE ưu tiên cao nhất. Không chuyển sang backlog toàn dự án.
+- Trong AC mode, mutation App Chrome chỉ Owner↔Vy được phép; actor khác read/observe only theo canonical SOT.
+- `1` vẫn giữ nghĩa `RESUME_TOP_UNFINISHED` của toàn dự án và KHÔNG đồng nghĩa `AC`.
+- AC mode chỉ nhả khi Owner nói rõ `thoát AC`, `mở khóa App Chrome` hoặc tương đương.
 
 ## Hành vi bắt buộc khi bắt đầu phiên
 1. Xác định adapter nguồn khả dụng của tài khoản hiện tại.
