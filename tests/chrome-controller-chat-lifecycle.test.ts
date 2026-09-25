@@ -36,8 +36,9 @@ describe('App Chrome chat lifecycle',()=>{
     expect(bridge).not.toContain("WORKER_RESUME_URL_RESTORED");
     expect(bridge).not.toContain("CURRENT_WORK_NEW_CHAT_RESTORED");
     const nv02Loop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
-    expect(nv02Loop).not.toContain("READY_UNASSIGNED");
-    expect(bridge).toContain("READY_UNASSIGNED");
+    expect(nv02Loop).toContain("const assignment=await currentWorkerAssignmentStatus('NV02')");
+    expect(nv02Loop).toContain("READY_UNASSIGNED");
+    expect(nv02Loop).toContain("autoModelRecoverySuppressed:true");
     expect(bridge).toContain("BOOT_FRESH_LOCAL_COMPLETE");
     expect(bridge).toContain("LOCAL_CONTINUE_DISPATCHED");
     expect(bridge).toContain("ensureNv02LocalReadyLocked(target,ui,{forceFresh:true})");
