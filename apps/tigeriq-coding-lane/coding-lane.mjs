@@ -231,9 +231,12 @@ const GEMINI_MIN_INTERVAL_MS=Math.max(4500,Number(process.env.TIGERIQ_GEMINI_MIN
 const GEMINI_BACKOFF_BASE_MS=Math.max(4500,Number(process.env.TIGERIQ_GEMINI_BACKOFF_BASE_MS||4500));
 const GEMINI_MAX_ATTEMPTS=Math.max(1,Number(process.env.TIGERIQ_GEMINI_MAX_ATTEMPTS||4));
 const geminiRateController=createGeminiRateController({minIntervalMs:GEMINI_MIN_INTERVAL_MS,backoffBaseMs:GEMINI_BACKOFF_BASE_MS,maxAttempts:GEMINI_MAX_ATTEMPTS});
+const OLLAMA_BASE_URL=normalizeLocalOllamaBaseUrl(process.env.TIGERIQ_OLLAMA_URL||'http://127.0.0.1:11434');
+const OLLAMA_TIMEOUT_MS=Math.max(15000,Math.min(180000,Number(process.env.TIGERIQ_CODING_OLLAMA_TIMEOUT_MS||120000)));
 
 const R=(id,provider,model,ready)=>({id,provider,model,ready});
 const resources=[
+  R('NV09','ollama',process.env.TIGERIQ_NV09_MODEL||'qwen3-coder:30b',()=>true),
   R('NV11','groq',process.env.TIGERIQ_GROQ_MODEL||'openai/gpt-oss-120b',()=>process.env.GROQ_API_KEY&&process.env.TIGERIQ_GROQ_FREE_TIER_VERIFIED==='true'),
   R('NV12','gemini',process.env.TIGERIQ_GEMINI_MODEL||'gemini-3.5-flash-lite',()=>process.env.GEMINI_API_KEY&&process.env.TIGERIQ_GEMINI_FREE_TIER_VERIFIED==='true'),
   R('NV13','openrouter','openrouter/free',()=>process.env.OPENROUTER_API_KEY),
@@ -301,6 +304,12 @@ function selectableResources(exclude=[]){
 function pickResource(exclude=[]){const available=selectableResources(exclude);if(!available.length)return null;const r=available[rr%available.length];rr++;return r;}
 
 async function fetchJson(url,init={},timeout=90000){const c=new AbortController(),t=setTimeout(()=>c.abort(),timeout);try{const res=await fetch(url,{...init,signal:c.signal});const text=await res.text();let body={};try{body=text?JSON.parse(text):{};}catch{body={text};}if(!res.ok){const e=new Error(`HTTP_${res.status}:${String(body?.message||body?.error||text).slice(0,300)}`);e.status=res.status;throw e;}return body;}finally{clearTimeout(t)}}
+export function normalizeLocalOllamaBaseUrl(value='http://127.0.0.1:11434'){
+  const url=new URL(String(value||'').trim());
+  if(url.protocol!=='http:'||!['127.0.0.1','localhost','::1','[::1]'].includes(url.hostname))throw new Error('OLLAMA_LOOPBACK_ONLY');
+  return url.origin;
+}
+export function configuredCodingResourceIds(){return resources.map(x=>x.id)}
 export function codingOutputTokenLimit(prompt,defaultMax=8000){
   const p=String(prompt||'');
   if(p.includes('"edits":[{"path"'))return 2200;
@@ -308,8 +317,29 @@ export function codingOutputTokenLimit(prompt,defaultMax=8000){
   return Math.max(1,Number(defaultMax)||8000);
 }
 async function openAi(endpoint,key,model,prompt,maxTokens=codingOutputTokenLimit(prompt)){const b=await fetchJson(endpoint,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${key}`},body:JSON.stringify({model,messages:[{role:'user',content:prompt}],temperature:0,max_tokens:maxTokens,stream:false})});const text=b?.choices?.[0]?.message?.content;if(!String(text||'').trim())throw new Error('EMPTY_RESPONSE');return String(text)}
+export async function invokeOllamaChat(model,prompt,{fetchImpl=fetch,baseUrl=OLLAMA_BASE_URL,timeoutMs=OLLAMA_TIMEOUT_MS,maxTokens=codingOutputTokenLimit(prompt)}={}){
+  const origin=normalizeLocalOllamaBaseUrl(baseUrl);
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),Math.max(1000,Number(timeoutMs)||OLLAMA_TIMEOUT_MS));
+  try{
+    const response=await fetchImpl(`${origin}/v1/chat/completions`,{
+      method:'POST',
+      headers:{'content-type':'application/json'},
+      body:JSON.stringify({model,messages:[{role:'user',content:prompt}],temperature:0,max_tokens:Math.max(1,Number(maxTokens)||1),stream:false}),
+      signal:controller.signal,
+    });
+    const raw=await response.text();
+    let data={};
+    try{data=raw?JSON.parse(raw):{}}catch{data={text:raw}}
+    if(!response.ok){const error=new Error(`HTTP_${response.status}:${String(data?.message||data?.error||raw).slice(0,300)}`);error.status=response.status;throw error}
+    const text=data?.choices?.[0]?.message?.content;
+    if(!String(text||'').trim())throw new Error('EMPTY_RESPONSE');
+    return String(text);
+  }finally{clearTimeout(timer)}
+}
 async function invoke(r,prompt){
   const outputTokens=codingOutputTokenLimit(prompt);
+  if(r.provider==='ollama')return invokeOllamaChat(r.model,prompt,{maxTokens:outputTokens});
   if(r.provider==='groq')return openAi('https://api.groq.com/openai/v1/chat/completions',process.env.GROQ_API_KEY,r.model,prompt,outputTokens);
   if(r.provider==='openrouter')return openAi('https://openrouter.ai/api/v1/chat/completions',process.env.OPENROUTER_API_KEY,r.model,prompt,outputTokens);
   if(r.provider==='mistral')return openAi('https://api.mistral.ai/v1/chat/completions',process.env.MISTRAL_API_KEY,r.model,prompt,outputTokens);
