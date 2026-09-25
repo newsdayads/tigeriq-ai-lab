@@ -241,12 +241,15 @@ describe('isolated NV02 WORKING/F5 safety scope',()=>{
     expect(working).toContain("return;");
   });
 
-  it('dispatches locally when READY without Core assignment', () => {
+  it('fails closed when READY without Core assignment', () => {
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     const hotLoop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
+    expect(hotLoop).toContain("const assignment=await currentWorkerAssignmentStatus('NV02')");
+    expect(hotLoop).toContain("if(assignment.status!=='CONTINUABLE')");
+    expect(hotLoop).toContain('READY_UNASSIGNED');
     expect(hotLoop).toContain("if(phase==='READY')");
     expect(hotLoop).toContain('dispatchNaturalContinue(target,state,now)');
-    expect(hotLoop).not.toContain('READY_UNASSIGNED');
+    expect(hotLoop.indexOf("if(assignment.status!=='CONTINUABLE')")).toBeLessThan(hotLoop.indexOf("if(phase==='READY')"));
     expect(hotLoop).not.toContain('CURRENT_WORK_NEW_CHAT_RESTORE');
   });
 });
