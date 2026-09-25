@@ -22,6 +22,8 @@ $coreTask='TigerIQ Core 24x7'
 $webTask='TigerIQ Web Control 24x7'
 $codingTask='TigerIQ Coding Lane 24x7'
 $openclawTask='TigerIQ OpenClaw Gateway'
+$remoteDesktopTask='TigerIQ Desktop Commander Remote'
+$remoteDesktopGuardInstaller=(Join-Path $runtimeRepo 'apps\remote-desktop-guard\install-runtime.mjs')
 $updaterTask='TigerIQ Core Runtime Updater'
 $legacyAutonomySupervisorTask='TigerIQ Autonomy Supervisor V2'
 $bootstrapWatchdogTask='TigerIQ Bootstrap Watchdog'
@@ -227,6 +229,38 @@ function Invoke-AppChromeZeroTouchHelper(){
   }catch{return @{action='blocked';reason=('helper_exception_'+$_.Exception.GetType().Name)}}
 }
 function Task-Exists([string]$name){return [bool](Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue)}
+function Reconcile-RemoteDesktopGuard(){
+  if(-not(Test-Path -LiteralPath $remoteDesktopGuardInstaller)){return @{action='skip';reason='installer_missing'}}
+  if(-not(Task-Exists $remoteDesktopTask)){return @{action='blocked';reason='task_missing';task=$remoteDesktopTask}}
+  try{
+    $raw=(& node $remoteDesktopGuardInstaller 2>&1|Out-String).Trim()
+    $exitCode=$LASTEXITCODE
+    if($exitCode -ne 0){
+      return @{action='blocked';reason=('installer_exit_'+$exitCode);detail=([string]$raw).Substring(0,[Math]::Min(500,[string]$raw.Length))}
+    }
+    $last=@($raw -split "`r?`n"|Where-Object{$_ -and $_.Trim()}|Select-Object -Last 1)
+    if(-not $last){return @{action='blocked';reason='installer_no_output'}}
+    $result=(($last|Out-String).Trim()|ConvertFrom-Json -ErrorAction Stop)
+    if(-not [bool]$result.ok){return @{action='blocked';reason='installer_not_ok';detail=$result}}
+    if(-not [bool]$result.changed){
+      return @{action='verified';reason='guard_current';version=[string]$result.version;authorizer=[string]$result.authorizer;changes=@()}
+    }
+    Stop-ScheduledTask -TaskName $remoteDesktopTask -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 2
+    Start-ScheduledTask -TaskName $remoteDesktopTask -ErrorAction Stop
+    $deadline=(Get-Date).AddSeconds(30)
+    do{
+      Start-Sleep -Milliseconds 500
+      $task=Get-ScheduledTask -TaskName $remoteDesktopTask -ErrorAction SilentlyContinue
+      if($task -and [string]$task.State -eq 'Running'){
+        return @{action='restarted';reason='guard_updated';task=$remoteDesktopTask;taskState='Running';version=[string]$result.version;authorizer=[string]$result.authorizer;changes=@($result.changes)}
+      }
+    }while((Get-Date)-lt$deadline)
+    return @{action='blocked';reason='rdc_task_not_running_after_restart';task=$remoteDesktopTask;version=[string]$result.version;changes=@($result.changes)}
+  }catch{
+    return @{action='blocked';reason=('RDC_GUARD_'+$_.Exception.GetType().Name);detail=[string]$_.Exception.Message}
+  }
+}
 function Invoke-LiveStatusBridgeReconcile(){
   try {
     if(-not (Task-Exists $liveStatusBridgeTask)) {
@@ -529,7 +563,7 @@ while($true){
         $preOpenclawCanary=@{action='blocked';result='BLOCKED';reason='OPENCLAW_DEGRADED_NONBLOCKING'}
       }
     }
-    if($runtimeExists -and $local -eq $remote){Save-State @{result='NO_CHANGE';installedSha=$local;runtimeSource=$runtimeRepo;bootstrapWatchdog=$bootstrapWatchdog;appChromeInstall=$appChromeInstall;appChromeRecovery=$appChromeRecovery;legacyLifecycleRetire=$legacyLifecycleRetire;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;openclawReconcile=$openclawReconcile;openclawCanary=$preOpenclawCanary;watchdog=$watchdog};Start-Sleep -Seconds $IntervalSeconds;continue}
+    if($runtimeExists -and $local -eq $remote){$remoteDesktopGuard=Reconcile-RemoteDesktopGuard;Save-State @{result='NO_CHANGE';installedSha=$local;runtimeSource=$runtimeRepo;bootstrapWatchdog=$bootstrapWatchdog;appChromeInstall=$appChromeInstall;appChromeRecovery=$appChromeRecovery;legacyLifecycleRetire=$legacyLifecycleRetire;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;openclawReconcile=$openclawReconcile;openclawCanary=$preOpenclawCanary;remoteDesktopGuard=$remoteDesktopGuard;watchdog=$watchdog};Start-Sleep -Seconds $IntervalSeconds;continue}
     $gateSha=Resolve-GateSha $remote
     if(-not $gateSha){Save-State @{result='WAIT_GATES';candidateSha=$remote;runtimeSource=$runtimeRepo;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;watchdog=$watchdog};continue}
     [string[]]$changed=if($runtimeExists){@(git -C $controlRepo diff --name-only $local $remote)}else{@('apps/tigeriq-core/','apps/tigeriq-coding-lane/','scripts/tigeriq-core/')}
@@ -538,6 +572,7 @@ while($true){
     $previousRuntimeSha=$local
     Ensure-RuntimeSource $remote
     Ensure-NodeModules $runtimeRepo
+    $remoteDesktopGuard=Reconcile-RemoteDesktopGuard
     Save-RuntimeSourceState $remote $previousRuntimeSha $gateSha
     Sync-Launchers
     $bootstrapWatchdog=Ensure-BootstrapWatchdogTask
@@ -577,7 +612,7 @@ while($true){
     }
     $newCore=HealthInfo 'http://100.97.23.87:8795/health'
     if($impact.openclaw -and $null -eq $openclawCanary){$openclawCanary=Invoke-OpenClawCanary $remote (OpenClaw-TreeSha)}
-    Save-State @{result='UPDATED';liveStatusBridgeReconcile=$liveStatusBridgeReconcile;appChromeInstall=$appChromeInstall;installedSha=$remote;gateSha=$gateSha;previousSha=$previousRuntimeSha;runtimeSource=$runtimeRepo;appChromeRecovery=$appChromeRecovery;legacyLifecycleRetire=$legacyLifecycleRetire;changedPaths=$changed;impact=$impact;updaterTaskTarget=$updaterTaskTarget;openclawReconcile=$openclawReconcile;openclawCanary=$openclawCanary;corePid=if($newCore){[int]$newCore.pid}else{$null};previousCorePid=$oldPid;coreRestarted=$impact.core;webRestarted=$impact.web;codingRestarted=$impact.coding;openclawRestarted=$impact.openclaw;openclawPortHealthy=if($openclawHealth){[bool]$openclawHealth.healthy}else{$null};webPid=if($webHealth){$webHealth.pid}else{$null};codingPid=if($codingHealth){$codingHealth.pid}else{$null};watchdog=$watchdog}
+    Save-State @{result='UPDATED';liveStatusBridgeReconcile=$liveStatusBridgeReconcile;appChromeInstall=$appChromeInstall;installedSha=$remote;gateSha=$gateSha;previousSha=$previousRuntimeSha;runtimeSource=$runtimeRepo;appChromeRecovery=$appChromeRecovery;legacyLifecycleRetire=$legacyLifecycleRetire;changedPaths=$changed;impact=$impact;updaterTaskTarget=$updaterTaskTarget;openclawReconcile=$openclawReconcile;openclawCanary=$openclawCanary;corePid=if($newCore){[int]$newCore.pid}else{$null};previousCorePid=$oldPid;coreRestarted=$impact.core;webRestarted=$impact.web;codingRestarted=$impact.coding;openclawRestarted=$impact.openclaw;openclawPortHealthy=if($openclawHealth){[bool]$openclawHealth.healthy}else{$null};remoteDesktopGuard=$remoteDesktopGuard;webPid=if($webHealth){$webHealth.pid}else{$null};codingPid=if($codingHealth){$codingHealth.pid}else{$null};watchdog=$watchdog}
     if($impact.updater){Restart-UpdaterAfterExit;exit 75}
   }catch{Save-State @{result='FAILED';error=$_.Exception.Message;watchdog=$watchdog}}
   finally{Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue;if($locked){$mutex.ReleaseMutex()|Out-Null}}
