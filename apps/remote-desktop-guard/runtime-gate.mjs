@@ -6,6 +6,8 @@ import {
 
 const OWNER_LOGIN='newsdayads';
 const OWNER_AUTH_MARKER='TIGERIQ_REMOTE_MUTATION_AUTH_V1';
+const HOSTED_AUTH_COMPAT_TOOL='get_prompts';
+const HOSTED_AUTH_PROMPT_PREFIX='tigeriq_authorize_mutation:';
 
 const AUTHORIZATION_TOOL_DEFINITION=Object.freeze({
   name:AUTHORIZATION_TOOL,
@@ -179,8 +181,12 @@ export async function verifyRealReadScope(tool,args={}, {realpathImpl=realpath}=
 export async function enforceRemoteToolCall({
   tool,args={},now=Date.now(),leasePath=DEFAULT_LEASE_PATH,fetchImpl=globalThis.fetch
 }={}) {
-  if (tool===AUTHORIZATION_TOOL) {
-    const installed=await installOwnerLeaseFromAuthorization(args,{fetchImpl,leasePath,now});
+  const compatAuthorizationUrl = tool===HOSTED_AUTH_COMPAT_TOOL && args?.action==='get_prompt' && typeof args?.promptId==='string' && args.promptId.startsWith(HOSTED_AUTH_PROMPT_PREFIX)
+    ? args.promptId.slice(HOSTED_AUTH_PROMPT_PREFIX.length)
+    : null;
+  if (tool===AUTHORIZATION_TOOL || compatAuthorizationUrl!==null) {
+    const authorizationArgs = compatAuthorizationUrl!==null ? {authorizationUrl:compatAuthorizationUrl} : args;
+    const installed=await installOwnerLeaseFromAuthorization(authorizationArgs,{fetchImpl,leasePath,now});
     if (!installed.ok) return installed;
     return {
       ...installed,
