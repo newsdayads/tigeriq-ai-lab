@@ -26,7 +26,16 @@ button{font:inherit}
 .sum{border:1px solid var(--line);background:linear-gradient(180deg,#102139,#0b1727);border-radius:14px;padding:10px 8px;min-width:0}
 .sum span{display:block;font-size:10px;color:var(--muted);white-space:nowrap}
 .sum b{display:block;font-size:22px;line-height:1;margin-top:6px}
-.sum.work b{color:var(--green)}.sum.wait b{color:var(--amber)}.sum.block b{color:var(--red)}.sum.idle b{color:#aebdcc}
+.sum.work b{color:var(--green)}.sum.review b{color:var(--amber)}.sum.block b{color:var(--red)}.sum.queue b{color:var(--blue)}
+.priority-zone{margin:0 0 11px}
+.priority-zone .work-zone-head h2{color:#c5a6ff}
+.priority-card{border-color:#3a5271;background:linear-gradient(180deg,#122540,#0b1829)}
+.priority-card .work-title{font-size:13px}
+.staff-strip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;border:1px solid var(--line);background:var(--line);border-radius:12px;overflow:hidden;margin:0 0 9px}
+.staff-stat{background:#0a1727;padding:7px 5px;text-align:center;min-width:0}
+.staff-stat b{display:block;font-size:13px;line-height:1.1}
+.staff-stat span{display:block;margin-top:3px;color:var(--muted);font-size:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.staff-stat.work b{color:var(--green)}.staff-stat.wait b{color:var(--amber)}.staff-stat.block b{color:var(--red)}.staff-stat.idle b{color:#aebdcc}
 .filters{display:flex;gap:7px;overflow:auto;padding:1px 1px 10px;scrollbar-width:none}
 .filters::-webkit-scrollbar{display:none}
 .filter{border:1px solid var(--line);background:#0a1727;color:#aabbd0;border-radius:999px;padding:7px 10px;font-size:11px;white-space:nowrap}
@@ -84,7 +93,8 @@ button{font:inherit}
 .page-foot{padding:14px 2px 0;color:#6d8097;font-size:9px;line-height:1.5;text-align:center}
 @media(max-width:600px){
   .list{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
-  .summary{gap:5px}.sum{padding:9px 6px}.sum span{font-size:9px}.sum b{font-size:20px}.brand h1{font-size:20px}
+  .summary{gap:5px}.sum{padding:9px 6px}.sum span{font-size:9px;white-space:normal;line-height:1.15;min-height:21px}.sum b{font-size:20px}.brand h1{font-size:20px}
+  .priority-card .work-title{font-size:12px}.staff-stat{padding:6px 3px}.staff-stat span{font-size:7px}
   .work-card{padding:9px 10px}.work-title{font-size:11px}
   .worker{padding:10px;border-radius:14px;min-width:0}
   .head{display:block}.identity b{font-size:12px}.identity small{font-size:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -99,15 +109,19 @@ button{font:inherit}
 <body>
 <main class="wrap">
 <header class="top">
-  <div class="brand"><h1>TigerIQ Live</h1><p>Trạng thái nhân sự · chỉ xem</p></div>
+  <div class="brand"><h1>TigerIQ Live</h1><p>Tổng quan công việc · chỉ xem</p></div>
   <div class="live"><span class="live-dot"></span><span id="liveLabel">ĐANG CẬP NHẬT</span></div>
 </header>
 <div id="err" class="err"></div>
-<section class="summary">
-  <div class="sum work"><span>Đang làm</span><b id="sumWork">0</b></div>
-  <div class="sum wait"><span>Chờ</span><b id="sumWait">0</b></div>
+<section class="summary" aria-label="Tổng quan trạng thái công việc">
+  <div class="sum work"><span>Đang xử lý</span><b id="sumWork">0</b></div>
+  <div class="sum review"><span>Đang rà soát</span><b id="sumReview">0</b></div>
   <div class="sum block"><span>Bị chặn</span><b id="sumBlock">0</b></div>
-  <div class="sum idle"><span>Rảnh</span><b id="sumIdle">0</b></div>
+  <div class="sum queue"><span>Hàng đợi</span><b id="sumQueue">0</b></div>
+</section>
+<section class="work-zone priority-zone" aria-labelledby="priorityWorkHeading">
+  <div class="work-zone-head"><h2 id="priorityWorkHeading"><svg class="zone-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3 9.5 8.2 4 9l4 4-.9 5.7L12 16l4.9 2.7L16 13l4-4-5.5-.8L12 3z"/></svg>ƯU TIÊN HIỆN TẠI</h2><span id="priorityWorkMeta">—</span></div>
+  <div id="priorityWork" class="work-list"></div>
 </section>
 <section class="work-zone active-zone" aria-labelledby="activeWorkHeading">
   <div class="work-zone-head"><h2 id="activeWorkHeading"><svg class="zone-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m10 8 6 4-6 4z"/></svg>CÔNG VIỆC ĐANG THỰC HIỆN</h2><span id="activeWorkCount">—</span></div>
@@ -121,8 +135,14 @@ button{font:inherit}
   <div class="work-zone-head"><h2 id="recentWorkHeading"><svg class="zone-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></svg>NHỮNG VIỆC GẦN ĐÂY</h2><span id="recentWorkCount">—</span></div>
   <div id="recentWork" class="work-list"></div>
 </section>
-<section class="work-zone workforce-zone" aria-labelledby="workforceHeading">
+<section class="work-zone workforce-zone" aria-labelledby="workforceHeading" aria-label="Trạng thái nhân sự">
   <div class="work-zone-head"><h2 id="workforceHeading"><svg class="zone-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg><span id="workforceHeadingText">NHÂN SỰ ĐANG LÀM</span></h2><span id="workerCount">—</span></div>
+  <div class="staff-strip" aria-label="Tổng quan trạng thái nhân sự">
+    <div class="staff-stat work"><b id="staffWork">0</b><span>Đang làm</span></div>
+    <div class="staff-stat wait"><b id="staffWait">0</b><span>Chờ</span></div>
+    <div class="staff-stat block"><b id="staffBlock">0</b><span>Bị chặn</span></div>
+    <div class="staff-stat idle"><b id="staffIdle">0</b><span>Rảnh</span></div>
+  </div>
   <nav class="filters" aria-label="Bộ lọc trạng thái">
     <button class="filter" data-filter="all">Tất cả</button>
     <button class="filter active" data-filter="working">Đang làm</button>
@@ -263,12 +283,54 @@ function statusIcon(value){
   };
   return '<svg class="state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(paths[key]||paths.unknown)+'</svg>';
 }
+function priorityValue(value){
+  const match=String(value||'').toUpperCase().match(/^P([0-9])$/);
+  return match?Number(match[1]):9;
+}
+function selectPriorityWork(active,queue){
+  const activeRows=active.map(w=>({...w,prioritySource:'ĐANG THỰC HIỆN',activePriority:true}));
+  const queueRows=queue.map(w=>({...w,prioritySource:'HÀNG ĐỢI',activePriority:false}));
+  const stateRank={WORKING:0,REVIEW:1,BLOCKED:2,WAITING:3,QUEUED:4};
+  return activeRows.concat(queueRows).sort((a,b)=>{
+    const owner=Number(Boolean(b.ownerDirect))-Number(Boolean(a.ownerDirect));
+    if(owner)return owner;
+    const priority=priorityValue(a.priority)-priorityValue(b.priority);
+    if(priority)return priority;
+    const activeFirst=Number(Boolean(b.activePriority))-Number(Boolean(a.activePriority));
+    if(activeFirst)return activeFirst;
+    const state=(stateRank[String(a.status||'').toUpperCase()]??9)-(stateRank[String(b.status||'').toUpperCase()]??9);
+    if(state)return state;
+    return Number(a.number||0)-Number(b.number||0);
+  })[0]||null;
+}
+function renderWorkSummaryAndPriority(active,queue,queueTotal){
+  const statuses=active.map(w=>String(w.status||'').toUpperCase());
+  $('sumWork').textContent=statuses.filter(s=>s==='WORKING'||s==='WAITING').length;
+  $('sumReview').textContent=statuses.filter(s=>s==='REVIEW').length;
+  $('sumBlock').textContent=statuses.filter(s=>s==='BLOCKED').length;
+  $('sumQueue').textContent=queueTotal;
+  const item=selectPriorityWork(active,queue);
+  const box=$('priorityWork');box.innerHTML='';
+  if(!item){
+    $('priorityWorkMeta').textContent='Không có việc';
+    box.innerHTML='<div class="work-empty">Không có Work Order ưu tiên đủ điều kiện.</div>';
+    return;
+  }
+  $('priorityWorkMeta').textContent=item.prioritySource;
+  const el=document.createElement(item.url?'a':'article');el.className='work-card priority-card';
+  if(item.url){el.href=item.url;el.target='_blank';el.rel='noopener'}
+  const owner=item.ownerDirect?'OWNER_DIRECT · ':'';
+  const step=item.currentStep||item.waitReason||(item.activePriority?'Đang theo dõi trạng thái thực thi':'Đang chờ tới lượt xử lý');
+  el.innerHTML='<div class="work-title">'+esc('#'+item.number+' - '+item.title)+'</div><div class="work-meta"><b>'+esc(owner+(item.priority||'—'))+'</b><span>'+esc(item.employeeId||item.prioritySource)+'</span><span class="work-state '+esc(workStateClass(item.status))+'">'+statusIcon(item.status)+esc(workStateText(item.status))+'</span></div><div class="work-step">'+esc(step)+'</div>';
+  box.append(el);
+}
 function renderWorkSections(){
   const projection=snapshot?.workProjection||{};
   const active=Array.isArray(snapshot?.activeWork)?snapshot.activeWork:[];
   const queue=Array.isArray(snapshot?.nextQueue)?snapshot.nextQueue:[];
   const recent=Array.isArray(snapshot?.recentWork)?snapshot.recentWork:[];
   const queueTotal=Number.isFinite(snapshot?.nextQueueTotal)?snapshot.nextQueueTotal:queue.length;
+  renderWorkSummaryAndPriority(active,queue,queueTotal);
   const staleMark=projection.stale?' · CŨ '+age(projection.staleAt||projection.verifiedAt):'';
   $('activeWorkCount').textContent=active.length+' việc'+staleMark;
   $('nextQueueCount').textContent=(queueTotal>queue.length?queue.length+'/'+queueTotal:queueTotal)+' việc'+staleMark;
@@ -315,7 +377,7 @@ function render(){
   if(!snapshot)return;
   renderWorkSections();
   const s=snapshot.summary||{};
-  $('sumWork').textContent=s.working||0;$('sumWait').textContent=s.waiting||0;$('sumBlock').textContent=s.blocked||0;$('sumIdle').textContent=s.idle||0;
+  $('staffWork').textContent=s.working||0;$('staffWait').textContent=s.waiting||0;$('staffBlock').textContent=s.blocked||0;$('staffIdle').textContent=s.idle||0;
   const all=snapshot.workers||[],rows=activeFilter==='all'?all:all.filter(x=>x.state===activeFilter);
   $('workforceHeadingText').textContent=workforceHeadingLabel[activeFilter]||'NHÂN SỰ';
   $('workerCount').textContent=rows.length+'/'+all.length+' nhân sự';
