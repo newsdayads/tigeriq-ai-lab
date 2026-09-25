@@ -15,13 +15,14 @@ export default defineToolPlugin({
     tool({
       name: 'tigeriq_runtime',
       label: 'TigerIQ Runtime',
-      description: 'Read TigerIQ runtime truth, invoke allowlisted Chrome Controller actions, or submit a Core objective.',
+      description: 'Read TigerIQ runtime truth, invoke allowlisted Chrome Controller actions, submit a Core objective, or run the bounded NV09 canary.',
       parameters: Type.Object({
         action: Type.Union([
           Type.Literal('core_status'),
           Type.Literal('chrome_snapshot'),
           Type.Literal('chrome_action'),
           Type.Literal('submit_objective'),
+          Type.Literal('nv09_canary'),
         ]),
         command: Type.Optional(Type.Union([
           Type.Literal('start'),
@@ -41,6 +42,7 @@ export default defineToolPlugin({
           Type.Literal('NV04'),
         ])),
         objective: Type.Optional(Type.String({ minLength: 8, maxLength: 6000 })),
+        prompt: Type.Optional(Type.String({ minLength: 1, maxLength: 500 })),
         priority: Type.Optional(Type.Union([
           Type.Literal('P0'),
           Type.Literal('P1'),
