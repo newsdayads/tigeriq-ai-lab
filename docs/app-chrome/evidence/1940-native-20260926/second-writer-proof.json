@@ -1,0 +1,35 @@
+{
+  "at": "2026-09-25T21:41:32.0188880Z",
+  "staleRequest": {
+    "schema": "TIGERIQ_APP_CHROME_INSTALL_REQUEST_V1",
+    "exactHead": "ede7348d6d21cbad9d8b2afc92e8cd776c78fbdf",
+    "artifactId": 10847117847,
+    "artifactName": "TigerIQ-Chrome-Controller-V1-1910",
+    "issueNumber": 1888
+  },
+  "zeroTouchRollbackManifest": {
+    "schemaVersion": "tigeriq.appchrome.active-deploy.v2",
+    "exactHead": "ede7348d6d21cbad9d8b2afc92e8cd776c78fbdf",
+    "deploy": "D:\\TigerIQ\\Apps\\ChromeController\\LIVE\\ede7348d6d21-recovered-20260925T213258590Z",
+    "treeSha256": "e3f24e67c9da774a38ab46bbd8e03824f3ec44c6da16dfff15fd08651337ab80",
+    "bridgeSha256": "1c449dc9630dd9037c3b8c7a1509f32288ebb3ed729f7caf82fed41e4e6bcb1f",
+    "previousDeploy": "D:\\TigerIQ\\Apps\\ChromeController\\Deploy-final-ede7348",
+    "backupDir": "D:\\TigerIQ\\Apps\\ChromeController\\BACKUP\\pre-native-recovery-20260925T213258590Z",
+    "installedAt": "2026-09-25T21:33:07.9580066Z",
+    "activation": "BASELINE_RECOVERY_PENDING",
+    "recoveredFromInvalidActiveRoot": "D:\\TigerIQ\\Apps\\ChromeController\\Deploy-final-ede7348",
+    "referenceWorkflowRun": 36096417126,
+    "referenceArtifact": 10847117847
+  },
+  "observedInstallerPrevious": {
+    "schemaVersion": "tigeriq.appchrome.active-deploy.v1",
+    "exactHead": "ede7348d6d21cbad9d8b2afc92e8cd776c78fbdf",
+    "deploy": "D:\\TigerIQ\\Apps\\ChromeController\\Deploy-final-ede7348",
+    "bridgeSha256": "1c449dc9630dd9037c3b8c7a1509f32288ebb3ed729f7caf82fed41e4e6bcb1f",
+    "installedAt": "2026-09-25T21:33:36.9566763Z",
+    "activation": "SUPERVISOR_PENDING"
+  },
+  "authority": "Current user handoff + #1940/#1967",
+  "result": "ONE_WRITER_VIOLATED",
+  "controlPlaneChanged": false
+}

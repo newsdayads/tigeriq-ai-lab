@@ -1,0 +1,35 @@
+{
+  "at": "2026-09-25T21:37:22.3408895Z",
+  "result": "LIVE_ACCEPTANCE_FAIL_ROLLBACK_INITIATED",
+  "candidateHead": "eea70521a9bedac701db218b0780ab0e7b3042c7",
+  "reason": "NV02 MODEL_CONTROL_NOT_EXACT_OR_UNIQUE / model profile not verified",
+  "restoredHead": "ede7348d6d21cbad9d8b2afc92e8cd776c78fbdf",
+  "restoredDeploy": "D:\\TigerIQ\\Apps\\ChromeController\\LIVE\\ede7348d6d21-recovered-20260925T213258590Z",
+  "restoredTree": "e3f24e67c9da774a38ab46bbd8e03824f3ec44c6da16dfff15fd08651337ab80",
+  "rollbackProof": "baseline-health.json",
+  "unexpectedManifestDrift": {
+    "ourVerifiedBaseline": {
+      "schemaVersion": "tigeriq.appchrome.active-deploy.v2",
+      "exactHead": "ede7348d6d21cbad9d8b2afc92e8cd776c78fbdf",
+      "deploy": "D:\\TigerIQ\\Apps\\ChromeController\\LIVE\\ede7348d6d21-recovered-20260925T213258590Z",
+      "treeSha256": "e3f24e67c9da774a38ab46bbd8e03824f3ec44c6da16dfff15fd08651337ab80",
+      "bridgeSha256": "1c449dc9630dd9037c3b8c7a1509f32288ebb3ed729f7caf82fed41e4e6bcb1f",
+      "previousDeploy": "D:\\TigerIQ\\Apps\\ChromeController\\Deploy-final-ede7348",
+      "backupDir": "D:\\TigerIQ\\Apps\\ChromeController\\BACKUP\\pre-native-recovery-20260925T213258590Z",
+      "installedAt": "2026-09-25T21:33:07.9580066Z",
+      "activation": "LIVE_VERIFIED",
+      "recoveredFromInvalidActiveRoot": "D:\\TigerIQ\\Apps\\ChromeController\\Deploy-final-ede7348",
+      "referenceWorkflowRun": 36096417126,
+      "referenceArtifact": 10847117847
+    },
+    "note": "Active pointer changed to a v1 original-root manifest at 21:33:36Z after independently verified recovered baseline at 21:33:28Z. This change was not made by this execution.",
+    "observedInstallerPrevious": {
+      "schemaVersion": "tigeriq.appchrome.active-deploy.v1",
+      "exactHead": "ede7348d6d21cbad9d8b2afc92e8cd776c78fbdf",
+      "deploy": "D:\\TigerIQ\\Apps\\ChromeController\\Deploy-final-ede7348",
+      "bridgeSha256": "1c449dc9630dd9037c3b8c7a1509f32288ebb3ed729f7caf82fed41e4e6bcb1f",
+      "installedAt": "2026-09-25T21:33:36.9566763Z",
+      "activation": "SUPERVISOR_PENDING"
+    }
+  }
+}

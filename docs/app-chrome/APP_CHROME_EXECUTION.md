@@ -43,3 +43,11 @@ None.
 - READY => one short local prompt;
 - WORKING => no send;
 - anti-spam/recovery/model bounded/watchdog fixes preserved.
+
+## Native PC01 checkpoint — 2026-09-26 (superseding)
+
+Authority: current Owner handoff on #1940; RESOURCE_SCOPE=APP_CHROME_RECOVERY_V1; MUTATION_OWNER=CODEX_LOCAL_PC01; ONE_WRITER=true; REMOTE_GUARD_HASH_DEBUG=STOP.
+
+STAGING exact 72-file verification, PS5.1/Node syntax checks and injected rollback fixture passed. Candidate eea70521a9bedac701db218b0780ab0e7b3042c7 was installed through the approved local installer and all three services verified its provenance. NV02 live model acceptance failed. Local rollback to independently CI-verified baseline ede7348d6d21cbad9d8b2afc92e8cd776c78fbdf passed; baseline remains paused.
+
+A concurrent Core zero-touch/#1888 installer replaced the baseline pointer during the transaction, violating the current one-writer handoff. Status: REAL BLOCKER; shared Core/control-plane repair was not performed. Candidate three-worker/lifecycle acceptance is incomplete. Native runtime/repository checkpoint and exact evidence are in APP_CHROME_WORK_STATE.json and APP_CHROME_NATIVE_EXECUTION_2026-09-26.md. No RDC/Guard work and no completion claim.

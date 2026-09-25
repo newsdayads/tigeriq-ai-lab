@@ -1,0 +1,28 @@
+{
+  "at": "2026-09-25T21:37:58.4893888Z",
+  "rollbackHealthPass": true,
+  "controller": {
+    "runtimeProvenance": {
+      "approvedHead": "ede7348d6d21cbad9d8b2afc92e8cd776c78fbdf",
+      "deployRoot": "D:\\TigerIQ\\Apps\\ChromeController\\LIVE\\ede7348d6d21-recovered-20260925T213258590Z",
+      "pid": 35856
+    },
+    "paused": true,
+    "killed": false,
+    "startupReady": true
+  },
+  "bridge": {
+    "ok": true,
+    "approvedHead": "ede7348d6d21cbad9d8b2afc92e8cd776c78fbdf",
+    "deployRoot": "D:\\TigerIQ\\Apps\\ChromeController\\LIVE\\ede7348d6d21-recovered-20260925T213258590Z",
+    "sourceSha256": "1c449dc9630dd9037c3b8c7a1509f32288ebb3ed729f7caf82fed41e4e6bcb1f",
+    "provenanceVerified": true
+  },
+  "broker": {
+    "ok": true,
+    "service": "chrome-launch-broker",
+    "port": 8800,
+    "approvedHead": "ede7348d6d21cbad9d8b2afc92e8cd776c78fbdf",
+    "deployRoot": "D:\\TigerIQ\\Apps\\ChromeController\\LIVE\\ede7348d6d21-recovered-20260925T213258590Z"
+  }
+}
