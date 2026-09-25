@@ -1474,6 +1474,33 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
     await continuityEvent(deferred?'VIEW_FOLLOW_BOTTOM_DEFERRED':'VIEW_FOLLOW_BOTTOM',{status:followed?.status||null,pacingMs:followed?.pacingMs||null,nextViewFollowAt:state.nextViewFollowAt});
   }
   if(phase==='BLOCKED'){await continuityEvent('BLOCKED',{securityBlock:ui?.securityBlock||null});return;}
+  if(phase!=='WORKING'){
+    const assignment=await currentWorkerAssignmentStatus('NV02');
+    if(assignment.status!=='CONTINUABLE'){
+      bootFreshContextPending.delete('NV02');
+      const idle=assignment.status==='READY_UNASSIGNED';
+      state={...state,
+        coreJobId:'',
+        lastPhase:idle?'READY':'STALLED',
+        pendingContinue:false,
+        awaitingWorkStart:false,
+        awaitingWorkStartSince:0,
+        stalledChecks:0,
+        workingSignature:'',
+        workingUnchangedChecks:0,
+        nextProgressCheckAt:0,
+        modelCheckBlockedUntil:now+5*60_000,
+      };
+      saveNv02Continuity(state);
+      await continuityEvent(idle?'READY_UNASSIGNED':'NV02_ASSIGNMENT_STATE_UNAVAILABLE',{
+        assignmentStatus:assignment.status,
+        jobId:assignment.job?.jobId||null,
+        stage:assignment.job?.stage||null,
+        autoModelRecoverySuppressed:true,
+      });
+      return;
+    }
+  }
   if(phase!=='WORKING'&&now>=Number(state.nextRefreshAt||0)){
     let prepared;
     let uiDeadFallbackStatus='';
