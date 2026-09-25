@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 // @ts-ignore legacy JS module
 import { safeRepoPath } from '../apps/tigeriq-coding-lane/policy.mjs';
 // @ts-ignore legacy JS module
@@ -28,4 +29,10 @@ describe('App Chrome Owner-chat-only maintenance lock',()=>{
     };
     expect(isSelfRunSafe(issue)).toBe(false);
   });
+  it('keeps zero-touch discovery safe under PowerShell StrictMode when issue lacks pull_request',()=>{
+    const script=readFileSync('scripts/tigeriq-core/appchrome-zero-touch.ps1','utf8');
+    expect(script).toContain("$issue.PSObject.Properties.Name -contains 'pull_request'");
+    expect(script).not.toContain('if($issue.pull_request){continue}');
+  });
+
 });
