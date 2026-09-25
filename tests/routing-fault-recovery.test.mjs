@@ -1,3 +1,4 @@
+import {readFileSync} from 'node:fs';
 import {describe,expect,it} from 'vitest';
 import {detectIdleWithBacklog,routingFault} from '../apps/tigeriq-core/github-backlog-policy.mjs';
 
@@ -14,5 +15,10 @@ describe('Core routing fault recovery policy',()=>{
   it('does not report idle backlog for ineligible queued residue',()=>{
     expect(detectIdleWithBacklog(0,0)).toBe(false);
     expect(detectIdleWithBacklog(0,1)).toBe(true);
+  });
+  it('keeps idle worker detection capability-scoped in Core',()=>{
+    const source=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+    expect(source).toContain("j.capability=any(r.capabilities)");
+    expect(source).toContain("count(distinct r.resource_id)::int as count");
   });
 });
