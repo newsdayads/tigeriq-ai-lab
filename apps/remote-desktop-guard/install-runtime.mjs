@@ -48,7 +48,9 @@ function checkJsSyntax(file) {
 }
 
 async function stageAndCheck(target, content) {
-  const tmp = target + '.tigeriq-stage-' + process.pid + '-' + Date.now();
+  const ext = path.extname(target) || '.mjs';
+  const base = target.slice(0, target.length - ext.length);
+  const tmp = base + '.tigeriq-stage-' + process.pid + '-' + Date.now() + ext;
   await fs.mkdir(path.dirname(target), { recursive: true });
   await fs.writeFile(tmp, content, 'utf8');
   try {
