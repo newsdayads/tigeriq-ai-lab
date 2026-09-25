@@ -12,7 +12,7 @@ import { normalizeCampaignPhases, currentCampaignGoal, campaignTransition, makeP
 import { normalizeTerminalWorkItems, handoffGenerationKey, evaluateChildObjectiveStates, isCodingHandoff } from './work-handoff.mjs';
 import { ROUTING_PROFILE_LABELS, createResourceId, deriveRoutingProfile, failurePolicy, normalizeQuota, rankCandidates, rateLimitFailureState } from './smart-router.mjs';
 import { runExecutionPreflight } from './execution-preflight.mjs';
-import { detectIdleWithBacklog } from './github-backlog-policy.mjs';
+import { detectIdleWithBacklog, routingFault } from './github-backlog-policy.mjs';
 import { API_DOCTOR_CAPABILITY, apiDoctorAction, apiDoctorExistingHandoffAction, apiDoctorRepairSignature, buildApiDoctorPrompt, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
 import { buildCoreUiAssignmentSnapshot } from './core-ui-assignment.mjs';
 import { refreshRegistryWorkforce, normalizeRuntimeResources } from './workforce-registry.mjs';
@@ -1295,9 +1295,48 @@ async function loop(){
       while(active.size < currentMaxParallel){
         const j = await claimJob();
         if(!j) {
-          const pendingCount = (await pool.query("select count(*)::int as count from tigeriq_jobs where status='queued'")).rows[0]?.count || 0;
-          if (detectIdleWithBacklog(active.size, pendingCount)) {
-            console.log(JSON.stringify({ event: 'IDLE_WITH_BACKLOG', timestamp: new Date().toISOString(), pendingQueueCount: pendingCount }));
+          const eligiblePendingCount=(await pool.query(`select count(*)::int as count
+            from tigeriq_jobs j
+            join tigeriq_objectives o on o.id=j.objective_id
+            where (j.status='queued' or (j.status='waiting_resource' and coalesce(j.next_attempt_at,now())<=now()))
+              and j.attempts<j.max_attempts
+              and o.status='active'`)).rows[0]?.count||0;
+          const eligibleIdleWorkers=(await pool.query(`select count(*)::int as count
+            from tigeriq_ai_resources
+            where enabled=true
+              and credential_state in ('LOCAL','READY')
+              and health_state in ('READY','ONLINE')
+              and current_job_id is null
+              and (cooldown_until is null or cooldown_until<=now())`)).rows[0]?.count||0;
+          const fault=routingFault({
+            eligibleBacklogCount:eligiblePendingCount,
+            activeWorkCount:active.size,
+            eligibleIdleWorkers,
+          });
+          if(detectIdleWithBacklog(active.size,eligiblePendingCount)){
+            console.log(JSON.stringify({
+              event:fault.fault?'ROUTING_FAULT':'IDLE_WITH_ELIGIBLE_BACKLOG',
+              timestamp:new Date().toISOString(),
+              eligiblePendingCount,
+              eligibleIdleWorkers,
+              activeWorkCount:active.size,
+            }));
+          }
+          if(fault.fault){
+            await event('ROUTING_FAULT',{
+              eligibleBacklogCount:eligiblePendingCount,
+              eligibleIdleWorkers,
+              activeWorkCount:active.size,
+              recovery:'BOUNDED_RECLAIM',
+            });
+            await sleep(100);
+            const recovered=await claimJob();
+            if(recovered){
+              await event('ROUTING_FAULT_RECOVERED',{jobId:recovered.id,objectiveId:recovered.objective_id});
+              active.add(recovered.id);
+              void runJob(recovered).finally(()=>active.delete(recovered.id));
+              continue;
+            }
           }
           break;
         }
