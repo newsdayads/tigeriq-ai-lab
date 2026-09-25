@@ -1301,13 +1301,22 @@ async function loop(){
             where (j.status='queued' or (j.status='waiting_resource' and coalesce(j.next_attempt_at,now())<=now()))
               and j.attempts<j.max_attempts
               and o.status='active'`)).rows[0]?.count||0;
-          const eligibleIdleWorkers=(await pool.query(`select count(*)::int as count
-            from tigeriq_ai_resources
-            where enabled=true
-              and credential_state in ('LOCAL','READY')
-              and health_state in ('READY','ONLINE')
-              and current_job_id is null
-              and (cooldown_until is null or cooldown_until<=now())`)).rows[0]?.count||0;
+          const eligibleIdleWorkers=(await pool.query(`select count(distinct r.resource_id)::int as count
+            from tigeriq_ai_resources r
+            where r.enabled=true
+              and r.credential_state in ('LOCAL','READY')
+              and r.health_state in ('READY','ONLINE')
+              and r.current_job_id is null
+              and (r.cooldown_until is null or r.cooldown_until<=now())
+              and exists (
+                select 1
+                from tigeriq_jobs j
+                join tigeriq_objectives o on o.id=j.objective_id
+                where (j.status='queued' or (j.status='waiting_resource' and coalesce(j.next_attempt_at,now())<=now()))
+                  and j.attempts<j.max_attempts
+                  and o.status='active'
+                  and j.capability=any(r.capabilities)
+              )`)).rows[0]?.count||0;
           const fault=routingFault({
             eligibleBacklogCount:eligiblePendingCount,
             activeWorkCount:active.size,
