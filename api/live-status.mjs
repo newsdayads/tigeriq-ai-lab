@@ -449,7 +449,9 @@ export function compareQueueRows(a, b) {
   const bEligible = queueRowEligibleNow(b);
   if (aEligible !== bEligible) return aEligible ? -1 : 1;
   const rank = { P0: 0, P1: 1, P2: 2, P3: 3, P4: 4, P5: 5 };
-  const delta = (rank[queuePriority(a)] ?? rank.P3) - (rank[queuePriority(b)] ?? rank.P3);
+  const aPriorityRank = !aEligible && queuePriority(a) === 'P0' ? 6 : (rank[queuePriority(a)] ?? rank.P3);
+  const bPriorityRank = !bEligible && queuePriority(b) === 'P0' ? 6 : (rank[queuePriority(b)] ?? rank.P3);
+  const delta = aPriorityRank - bPriorityRank;
   if (delta) return delta;
   if (aEligible && bEligible && Boolean(a?.ownerDirect) !== Boolean(b?.ownerDirect)) return a?.ownerDirect ? -1 : 1;
   const waitRank = { WAITING: 0, BLOCKED: 1, QUEUED: 2 };
