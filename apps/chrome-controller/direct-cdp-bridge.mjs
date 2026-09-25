@@ -725,11 +725,13 @@ const UI_EXPR=`(()=>{
   if(!securityBlock) for(const [n,s] of checks){if(txt.includes(n)){securityBlock=s;break;}}
   const pageText=String(document.body?.innerText||'').replace(/\s+/g,' ').trim();
   const chatRetry=[...document.querySelectorAll('button,[role="button"]')].find(e=>vis(e)&&/^(retry|thử lại)$/i.test((e.innerText||e.textContent||e.getAttribute('aria-label')||'').trim()))||null;
-  const retryContext=(()=>{let e=chatRetry;const parts=[];for(let i=0;i<6&&e;i+=1,e=e.parentElement){const text=String(e.innerText||e.textContent||'').replace(/\s+/g,' ').trim();if(text&&text.length<=800&&!parts.includes(text))parts.push(text);}return parts.join(' | ')})();
+  const responseInterrupted=location.hostname==='chatgpt.com'&&/(luồng phản hồi bị gián đoạn|response stream (?:was )?interrupted|stream interrupted|response interrupted|error (?:while )?generating (?:a )?response|lỗi khi tạo phản hồi)/i.test(pageText);
+  const responseContinue=responseInterrupted?[...document.querySelectorAll('button,[role="button"]')].find(e=>vis(e)&&/^(continue generating|continue response|continue|tiếp tục tạo|tiếp tục phản hồi|tiếp tục)$/i.test((e.innerText||e.textContent||e.getAttribute('aria-label')||'').trim()))||null:null;
+  const retryContext=(()=>{let e=chatRetry||responseContinue;const parts=[];for(let i=0;i<6&&e;i+=1,e=e.parentElement){const text=String(e.innerText||e.textContent||'').replace(/\s+/g,' ').trim();if(text&&text.length<=800&&!parts.includes(text))parts.push(text);}return parts.join(' | ')})();
   const conversationLoadError=/(không thể tải cuộc hội thoại chatgpt này|unable to load (?:this )?(?:chatgpt )?conversation|failed to load (?:this )?(?:chatgpt )?conversation)/i.test(pageText);
   const requestTimeoutError=Boolean(chatRetry)&&/(yêu cầu (?:đã )?hết thời gian chờ|đã hết thời gian chờ gửi tin nhắn|request (?:has )?timed out|request timeout|timed out (?:while )?sending)/i.test(retryContext+' | '+pageText);
   const connectionPending=location.hostname==='chatgpt.com'&&/(^|\\s)(đang kết nối\\.\\.\\.|connecting\\.\\.\\.)(\\s|$)/i.test(pageText);
-  const chatLoadError=location.hostname==='chatgpt.com'&&Boolean(conversationLoadError||requestTimeoutError);
+  const chatLoadError=location.hostname==='chatgpt.com'&&Boolean(conversationLoadError||requestTimeoutError||responseInterrupted);
   const reasoningControls=location.hostname==='chatgpt.com'?[...document.querySelectorAll('button.__composer-pill')].filter(e=>vis(e)&&/^(?:cao|high)$/i.test(String((e.innerText||e.textContent||'')).replace(/\s+/g,' ').trim())):[];
   const reasoningControl=reasoningControls.length===1?reasoningControls[0]:null;
   const latestModelNode=location.hostname==='chatgpt.com'?[...document.querySelectorAll('[data-message-author-role="assistant"][data-message-model-slug]')].filter(vis).at(-1):null;
@@ -756,7 +758,7 @@ const UI_EXPR=`(()=>{
   const uiPhase=securityBlock?'BLOCKED':(chatLoadError||connectionPending)?'STALLED':uiBusy?'WORKING':uiReady&&modelReady?'READY':'STALLED';
   return {
     uiReady,uiPhase,composerReady:Boolean(composer),sendReady:Boolean(send),stopVisible:Boolean(stop),activityBusyVisible:Boolean(activityBusy),
-    scrollToBottomVisible:Boolean(scroll),authRequired,uiBusy,securityBlock,chatLoadError,connectionPending,chatRetryReady:Boolean(chatRetry),
+    scrollToBottomVisible:Boolean(scroll),authRequired,uiBusy,securityBlock,chatLoadError,connectionPending,chatRetryReady:Boolean(chatRetry),responseInterrupted,responseContinueReady:Boolean(responseContinue),
     modelControlPresent:Boolean(modelControl),modelProfileStatus,modelName,reasoningEffort,modelReady,modelExact,verifiedAt,blockedReason,activitySignature,projectDraftReady,
     title:document.title,url:location.href,readyState:document.readyState,bodyChildren:document.body?.children?.length||0
   };
@@ -777,7 +779,7 @@ async function evalPage(target,expression){
   finally{p.close();}
 }
 function chatLoadRetryExpr(){
-  return `(()=>{const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};const b=[...document.querySelectorAll('button,[role="button"]')].find(e=>vis(e)&&/^(retry|thử lại)$/i.test((e.innerText||e.textContent||e.getAttribute('aria-label')||'').trim()));if(!b)return{ok:false,status:'CHAT_LOAD_RETRY_NOT_FOUND'};b.click();return{ok:true,status:'CHAT_LOAD_RETRY_CLICKED'}})()`;
+  return `(()=>{const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};const pageText=String(document.body?.innerText||'').replace(/\\s+/g,' ').trim();const interrupted=/(luồng phản hồi bị gián đoạn|response stream (?:was )?interrupted|stream interrupted|response interrupted|error (?:while )?generating (?:a )?response|lỗi khi tạo phản hồi)/i.test(pageText);const pattern=interrupted?/^(retry|thử lại|continue generating|continue response|continue|tiếp tục tạo|tiếp tục phản hồi|tiếp tục)$/i:/^(retry|thử lại)$/i;const b=[...document.querySelectorAll('button,[role="button"]')].find(e=>vis(e)&&pattern.test((e.innerText||e.textContent||e.getAttribute('aria-label')||'').trim()));if(!b)return{ok:false,status:interrupted?'CHAT_INTERRUPTED_CONTINUE_NOT_FOUND':'CHAT_LOAD_RETRY_NOT_FOUND'};b.click();return{ok:true,status:interrupted?'CHAT_INTERRUPTED_CONTINUE_CLICKED':'CHAT_LOAD_RETRY_CLICKED'}})()`;
 }
 function loadContinuityFor(w){return w.id==='NV02'?loadNv02Continuity():loadWorkerContinuity(w.id);}
 function saveContinuityFor(w,state){if(w.id==='NV02')saveNv02Continuity(state);else saveWorkerContinuity(w.id,state);}
@@ -845,6 +847,13 @@ async function maybeRecoverChatLoadError(w,target,ui,now=Date.now()){
     return true;
   }
   const stage=Number(state.chatLoadRecoveryStage||0);
+  if(ui?.responseInterrupted){
+    const assignment=await currentWorkerAssignmentStatus(w.id);
+    if(assignment.status!=='CONTINUABLE'){
+      await continuityEventFor(w,'CHAT_INTERRUPTED_CONTINUE_SUPPRESSED',{url:ui?.url||null,assignmentStatus:assignment.status,jobId:assignment.job?.jobId||null});
+      return true;
+    }
+  }
   if(stage===0){
     const result=await withWorkerUiMutation(w,()=>evalPage(target,chatLoadRetryExpr()),'CHAT_LOAD_RETRY',15000);
     await sleep(2200);

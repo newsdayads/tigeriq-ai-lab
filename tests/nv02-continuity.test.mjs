@@ -406,6 +406,23 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("CHAT_LOAD_REOPEN");
   });
 
+  it('detects interrupted ChatGPT response streams and only continues assigned work', () => {
+    const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    const ui=source.slice(source.indexOf('const UI_EXPR='),source.indexOf('async function uiStateRaw'));
+    expect(ui).toContain('responseInterrupted');
+    expect(ui).toContain('luồng phản hồi bị gián đoạn');
+    expect(ui).toContain('response stream (?:was )?interrupted');
+    expect(ui).toContain('responseContinueReady:Boolean(responseContinue)');
+    const retry=source.slice(source.indexOf('function chatLoadRetryExpr()'),source.indexOf('function loadContinuityFor'));
+    expect(retry).toContain('CHAT_INTERRUPTED_CONTINUE_CLICKED');
+    expect(retry).toContain('continue generating');
+    expect(retry).toContain('tiếp tục phản hồi');
+    const recovery=source.slice(source.indexOf('async function maybeRecoverChatLoadError'),source.indexOf('const MODEL_SELECTOR_POINT_EXPR'));
+    expect(recovery).toContain("if(ui?.responseInterrupted)");
+    expect(recovery).toContain("assignment.status!=='CONTINUABLE'");
+    expect(recovery).toContain("'CHAT_INTERRUPTED_CONTINUE_SUPPRESSED'");
+  });
+
   it('ships one-shot NV02 continuity installer with exact-head deploy and rollback',()=>{
     const installer=readFileSync('apps/chrome-controller/runtime/Install-NV02-Continuity.ps1','utf8');
     expect(installer).toContain('[Parameter(Mandatory=$true)][string]$ExpectedHead');
