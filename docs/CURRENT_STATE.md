@@ -1,6 +1,6 @@
 # TigerIQ — Current State
 
-Date: 2026-09-24
+Date: 2026-09-25
 Status: CURRENT — GitHub state reconciled on 2026-09-24; historical runtime facts remain explicitly dated and fresh live facts are tied to 2026-09-24 evidence
 Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #335 > this snapshot > runtime/evidence
 
@@ -71,6 +71,14 @@ Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #
 - #1811/#993 closeout evidence is assembled for final parent reconciliation; terminal parent state remains authoritative in the GitHub issues rather than this snapshot.
 
 ## Governance
+
+## Issue Updates
+- #1915: CLOSED/COMPLETED – final reconciliation of autonomous queue policy.
+- #1916: OPEN – pending review of version policy adjustments.
+- #1935: CLOSED – verification of runtime isolation compliance.
+- #1945: OPEN – awaiting evidence for Chrome controller health.
+- #1806: CLOSED – completed scheduler‑starvation fix verification.
+- #1946: CLOSED – registry version bump to 53 confirmed.
 - Interaction #504 remains the generic command policy; explicit Owner instructions can supersede delegation for a scoped Work Order.
 - Production/runtime, paid, credential/security and destructive/irreversible actions remain separate authorization gates.
 - #802 closeout does not reopen NV02 mutation ownership; any new Worker Utility mutation requires a new Work Order/handoff.
