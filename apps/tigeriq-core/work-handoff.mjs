@@ -82,3 +82,46 @@ export function normalizeWorkItemLifecycle(item = {}) {
     nextAction: String(meta.nextAction || meta.next_action || meta.next || '').trim()
   };
 }
+
+export function evaluateWorkRoutingPolicy({ backlog = [], workers = [], activeLeases = new Map(), retryCounts = new Map() } = {}) {
+  const dispatches = [];
+  const releasedLeases = [];
+  const faults = [];
+  const maxRetries = 3;
+
+  for (const [jobId, lease] of activeLeases.entries()) {
+    if (lease && lease.faulty || lease && lease.error === 'ROUTING_FAULT') {
+      const retries = (retryCounts.get(jobId) || 0) + 1;
+      retryCounts.set(jobId, retries);
+      if (retries > maxRetries) {
+        faults.push({ jobId, error: 'ROUTING_FAULT', status: 'permanently_failed' });
+        releasedLeases.push(jobId);
+        activeLeases.delete(jobId);
+      } else {
+        faults.push({ jobId, error: 'ROUTING_FAULT', status: 'recovered', attempt: retries });
+        releasedLeases.push(jobId);
+        activeLeases.delete(jobId);
+      }
+    }
+  }
+
+  const availableWorkers = workers.filter(w => (w.status === 'ready' || w.status === 'idle') && w.employee_id !== 'P0');
+  const unassignedBacklog = backlog.filter(job => !activeLeases.has(job.id));
+
+  for (const job of unassignedBacklog) {
+    if (availableWorkers.length === 0) break;
+    const capability = job.capability || 'general';
+    const workerIdx = availableWorkers.findIndex(w => !w.currentJob && (!w.capabilities || w.capabilities.includes(capability)));
+    if (workerIdx !== -1) {
+      const worker = availableWorkers.splice(workerIdx, 1)[0];
+      if (worker.employee_id === 'P0') {
+        faults.push({ jobId: job.id, error: 'ROUTING_FAULT', reason: 'P0 cannot auto take work' });
+        continue;
+      }
+      activeLeases.set(job.id, { workerId: worker.employee_id, leasedAt: Date.now() });
+      dispatches.push({ jobId: job.id, workerId: worker.employee_id, capability });
+    }
+  }
+
+  return { dispatches, releasedLeases, faults, activeLeases, retryCounts };
+}
