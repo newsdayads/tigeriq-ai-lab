@@ -86,6 +86,23 @@ describe('OpenClaw TigerIQ bounded runtime bridge', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
+  it('runs NV09 canary through bounded Core HTTP without shell', async () => {
+    const fetchImpl = vi.fn(async (_url, init) => {
+      expect(JSON.parse(init.body)).toEqual({ prompt: 'Return exactly NV09_CORE_DIRECT_OK' });
+      return response({ ok: true, employeeId: 'NV09', provider: 'ollama', model: 'qwen3-coder:30b', text: 'NV09_CORE_DIRECT_OK' });
+    });
+    const result = await executeRuntimeAction(
+      { action: 'nv09_canary', prompt: 'Return exactly NV09_CORE_DIRECT_OK' },
+      { fetchImpl },
+    );
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'http://100.97.23.87:8795/api/nv09/canary',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(result.data).toEqual(expect.objectContaining({ ok: true, employeeId: 'NV09', provider: 'ollama', model: 'qwen3-coder:30b' }));
+    expect(result.evidence.shell).toBe(false);
+  });
+
   it('does not expose arbitrary shell or file mutation in the plugin source', async () => {
     const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/dist/index.js', import.meta.url), 'utf8');
     const bridge = await readFile(new URL('../apps/openclaw-tigeriq-runtime/bridge.mjs', import.meta.url), 'utf8');
