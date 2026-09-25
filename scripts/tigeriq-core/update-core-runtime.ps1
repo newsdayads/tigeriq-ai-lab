@@ -99,12 +99,14 @@ function Ensure-UpdaterTaskRuntimeTarget(){
   $expectedArgs="-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$updaterRuntime`" -IntervalSeconds $IntervalSeconds"
   $currentExe=[string]$action.Execute
   $currentArgs=[string]$action.Arguments
-  if($currentExe -ieq $expectedExe -and $currentArgs -match [regex]::Escape($updaterRuntime)){
-    return @{action='none';target=$updaterRuntime}
-  }
+  $multiple=[string]$task.Settings.MultipleInstances
+  $actionOk=($currentExe -ieq $expectedExe -and $currentArgs -match [regex]::Escape($updaterRuntime))
+  $settingsOk=($multiple -eq 'StopExisting')
+  if($actionOk -and $settingsOk){return @{action='none';target=$updaterRuntime;multipleInstances=$multiple}}
   $newAction=New-ScheduledTaskAction -Execute $expectedExe -Argument $expectedArgs
-  Set-ScheduledTask -TaskName $updaterTask -Action $newAction|Out-Null
-  return @{action='retargeted';target=$updaterRuntime;previousExecute=$currentExe;previousArguments=$currentArgs}
+  $newSettings=New-ScheduledTaskSettingsSet -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero) -StartWhenAvailable -MultipleInstances StopExisting
+  Set-ScheduledTask -TaskName $updaterTask -Action $newAction -Settings $newSettings|Out-Null
+  return @{action='retargeted';target=$updaterRuntime;previousExecute=$currentExe;previousArguments=$currentArgs;previousMultipleInstances=$multiple;multipleInstances='StopExisting'}
 }
 function Ensure-BootstrapWatchdogTask(){
   try{
