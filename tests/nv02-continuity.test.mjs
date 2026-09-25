@@ -384,6 +384,10 @@ describe('NV02 continuity policy', () => {
   it('supports the current ChatGPT Cao/High composer model selector with exact visible verification', () => {
     const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(source).toContain("button.__composer-pill[aria-haspopup=\"menu\"]");
+    const ui=source.slice(source.indexOf('const UI_EXPR='),source.indexOf('async function uiStateRaw'));
+    expect(ui).toContain("document.querySelectorAll('button,[role=\\\"button\\\"]')");
+    expect(ui).toContain('chọn mô hình chatgpt|choose.*model|model selector');
+    expect(ui).toContain("e.hasAttribute('data-selected-reasoning-effort')");
     expect(source).toContain("Cao|High|Tiêu chuẩn|Standard|Nhanh|Fast|Tự động|Auto");
     expect(source).toContain("const MODEL_SELECTOR_POINT_EXPR=");
     expect(source).toContain("async function openNv02ModelSelector(target)");
