@@ -1,7 +1,7 @@
 import {readFileSync} from 'node:fs';
 import {describe,expect,it} from 'vitest';
 import {compactCurrentFilesForModel,compactPromptForChanges,compactPromptForEdits,currentFilesFromPrompt,expandCompactChanges,extractModelText,firstBalancedJsonObject,isAiUrl,looksLikeJsonObject,matchesExpectedSchema,parseModelJson,prepareAiJsonRequest,installAiJsonTransport,salvageTruncatedCompactEdits} from '../apps/tigeriq-coding-lane/ai-json-transport.mjs';
-import {buildRepairGenerationPrompt,classifyAiFailure,invokeJsonWithFailover,managerBlockKind,parseCompactEditJson} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {assertIndependentReviewApproval,buildRepairGenerationPrompt,classifyAiFailure,formatIndependentReviewArtifact,invokeJsonWithFailover,managerBlockKind,parseCompactEditJson} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 describe('coding lane AI JSON transport',()=>{
@@ -90,6 +90,34 @@ describe('coding lane AI JSON transport',()=>{
     expect(looksLikeJsonObject('\n{"ok":true}\n')).toBe(true);
     expect(looksLikeJsonObject('{bad json}')).toBe(false);
   });
+  it('formats durable independent review evidence bound to exact head',()=>{
+    const artifact=formatIndependentReviewArtifact({implementerId:'NV12',reviewerId:'NV17',targetHead:'abc123',review:{decision:'approve',summary:'safe',issues:[]}});
+    expect(artifact).toContain('[TIGERIQ_INDEPENDENT_REVIEW_V1]');
+    expect(artifact).toContain('IMPLEMENTER=NV12');
+    expect(artifact).toContain('REVIEWER=NV17');
+    expect(artifact).toContain('TARGET_HEAD=abc123');
+    expect(artifact).toContain('DECISION=approve');
+    expect(()=>formatIndependentReviewArtifact({implementerId:'NV12',reviewerId:'NV12',targetHead:'abc123',review:{decision:'approve',summary:'x',issues:[]}})).toThrow('REVIEWER_IMPLEMENTER_COLLISION');
+  });
+
+  it('rejects stale or non-independent approval before merge',()=>{
+    expect(assertIndependentReviewApproval({implementerId:'NV12',reviewerId:'NV17',targetHead:'abc',expectedHead:'abc',decision:'approve'})).toBe(true);
+    expect(()=>assertIndependentReviewApproval({implementerId:'NV12',reviewerId:'NV17',targetHead:'abc',expectedHead:'def',decision:'approve'})).toThrow('REVIEW_HEAD_STALE');
+    expect(()=>assertIndependentReviewApproval({implementerId:'NV12',reviewerId:'NV12',targetHead:'abc',expectedHead:'abc',decision:'approve'})).toThrow('REVIEWER_IMPLEMENTER_COLLISION');
+    expect(()=>assertIndependentReviewApproval({implementerId:'NV12',reviewerId:'NV17',targetHead:'abc',expectedHead:'abc',decision:'changes_requested'})).toThrow('REVIEW_NOT_APPROVED');
+  });
+
+  it('persists durable review artifact before exact-head merge path',()=>{
+    const src=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
+    const persistAt=src.indexOf('await persistIndependentReviewArtifact(pr.number');
+    const approvalAt=src.indexOf('assertIndependentReviewApproval({implementerId:approvedImplementer');
+    const mergeAt=src.indexOf('mergePr(pr.number,approvedHead,j.title)');
+    expect(persistAt).toBeGreaterThan(-1);
+    expect(approvalAt).toBeGreaterThan(persistAt);
+    expect(mergeAt).toBeGreaterThan(approvalAt);
+    expect(src).toContain('expectedHead:finalSha');
+  });
+
   it('rejects schema-invalid review JSON so transport retries',()=>{
     const prompt='Return ONLY JSON {"decision":"approve|changes_requested","summary":"short","issues":["specific issue"]}.';
     expect(matchesExpectedSchema(prompt,'{"decision":"maybe","summary":"x","issues":[]}')).toBe(false);

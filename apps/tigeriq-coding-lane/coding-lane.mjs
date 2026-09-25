@@ -454,6 +454,31 @@ async function headSha(branch){return (await gh(`/git/ref/heads/${encodeURICompo
 async function waitGates(branch,prNumber,timeoutMs=20*60*1000){const deadline=Date.now()+timeoutMs;while(Date.now()<deadline){assertPrOpenState(await gh(`/pulls/${prNumber}`));const sha=await headSha(branch);const x=await gh(`/commits/${sha}/check-runs?per_page=100`);const g=checkGateState(x.check_runs||[]);if(g.state==='passed')return {sha,...g};if(g.state==='failed'){const e=Object.assign(new Error('CI_GATES_FAILED'),{code:'CI_GATES_FAILED',detail:g});throw e}await sleep(15000)}const e=new Error('CI_GATES_TIMEOUT');e.code='CI_GATES_TIMEOUT';throw e}
 async function mergePr(number,sha,title=''){return gh(`/pulls/${number}/merge`,{method:'PUT',body:JSON.stringify({sha,merge_method:'squash',commit_title:codingMergeCommitTitle(number,title)})})}
 
+function reviewLine(value,max=1000){return String(value??'').replace(/[\r\n]+/g,' ').trim().slice(0,max)}
+export function formatIndependentReviewArtifact({implementerId,reviewerId,targetHead,review={}}={}){
+  const implementer=reviewLine(implementerId,80),reviewer=reviewLine(reviewerId,80),head=reviewLine(targetHead,80);
+  const decision=reviewLine(review?.decision,40);
+  if(!implementer||!reviewer||!head||!['approve','changes_requested'].includes(decision))throw new Error('REVIEW_ARTIFACT_INVALID');
+  if(implementer===reviewer)throw new Error('REVIEWER_IMPLEMENTER_COLLISION');
+  const summary=reviewLine(review?.summary,1000);
+  const issues=(Array.isArray(review?.issues)?review.issues:[]).slice(0,8).map(x=>reviewLine(x,500));
+  return ['[TIGERIQ_INDEPENDENT_REVIEW_V1]',`IMPLEMENTER=${implementer}`,`REVIEWER=${reviewer}`,`TARGET_HEAD=${head}`,`DECISION=${decision}`,`SUMMARY=${summary}`,`ISSUES=${JSON.stringify(issues)}`].join('\n');
+}
+export function assertIndependentReviewApproval({implementerId,reviewerId,targetHead,expectedHead,decision}={}){
+  const implementer=String(implementerId||'').trim(),reviewer=String(reviewerId||'').trim();
+  const approved=String(targetHead||'').trim(),current=String(expectedHead||'').trim();
+  if(!implementer||!reviewer||implementer===reviewer)throw new Error('REVIEWER_IMPLEMENTER_COLLISION');
+  if(decision!=='approve')throw new Error('REVIEW_NOT_APPROVED');
+  if(!approved||!current||approved!==current)throw new Error('REVIEW_HEAD_STALE');
+  return true;
+}
+async function persistIndependentReviewArtifact(prNumber,data){
+  const body=formatIndependentReviewArtifact(data);
+  const out=await gh(`/issues/${prNumber}/comments`,{method:'POST',body:JSON.stringify({body})});
+  if(!out?.id)throw new Error('DURABLE_REVIEW_ARTIFACT_WRITE_UNVERIFIED');
+  return {id:out.id,body};
+}
+
 async function initDb(){if(!pool)return;await pool.query(`
 create table if not exists tigeriq_coding_objectives(id text primary key,objective text not null,priority text not null default 'P1',status text not null default 'active',summary text,manager_employee_id text,created_at timestamptz not null default now(),updated_at timestamptz not null default now());
 alter table tigeriq_coding_objectives add column if not exists next_attempt_at timestamptz;
@@ -741,7 +766,7 @@ async function runJob(j){
     pr=await openPr(branch,`[${worker.id}] ${j.title}`,`Automated TigerIQ Coding Lane job \`${j.id}\`.\n\nImplementer: ${worker.id}\nIndependent reviewer: ${reviewer.id}\nDirect writes to main are forbidden. Merge is attempted only after CI gates and reviewer approval.`);
     await pool.query("update tigeriq_coding_jobs set pr_number=$2,status='waiting_ci' where id=$1",[j.id,pr.number]);
   }
-  let review=null,gates=null;
+  let review=null,gates=null,approvedHead='',approvedReviewer='',approvedImplementer='';
   for(let reviewCycle=0;reviewCycle<3;reviewCycle++){
     gates=await runGateWithRepair({
       waitFn:()=>waitGates(branch,pr.number),
@@ -761,7 +786,8 @@ async function runJob(j){
     const reviewed=await reviewPr(reviewer,j,diff,worker.id,cooldownExcludes);reviewer=reviewed.resource;review=reviewed.review;
     if(reviewer.id===worker.id)throw new Error('REVIEWER_IMPLEMENTER_COLLISION');
     await pool.query("update tigeriq_coding_jobs set reviewer_employee_id=$2 where id=$1",[j.id,reviewer.id]);
-    if(review.decision==='approve')break;
+    await persistIndependentReviewArtifact(pr.number,{implementerId:worker.id,reviewerId:reviewer.id,targetHead:gates.sha,review});
+    if(review.decision==='approve'){approvedHead=gates.sha;approvedReviewer=reviewer.id;approvedImplementer=worker.id;break;}
     if(reviewCycle===2)throw Object.assign(new Error('REVIEW_CHANGES_UNRESOLVED'),{detail:review});
     const repaired=await generateAndWriteRepair(worker,j,branch,review.issues,[reviewer.id,...cooldownExcludes],mutationAuth);worker=repaired.worker;gen=repaired.payload;
     if(reviewer.id===worker.id){reviewer=pickResource([worker.id,...cooldownExcludes]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE')}
@@ -769,8 +795,10 @@ async function runJob(j){
   }
   if(review?.decision!=='approve')throw new Error('REVIEW_NOT_APPROVED');
   assertPrOpenState(await gh(`/pulls/${pr.number}`));
-  const finalSha=await headSha(branch);let merge={merged:false,message:'AUTO_MERGE_DISABLED'};
-  if(AUTO_MERGE){try{merge=await mergePr(pr.number,finalSha,j.title)}catch(e){merge={merged:false,message:String(e.message||e)}}}
+  const finalSha=await headSha(branch);
+  assertIndependentReviewApproval({implementerId:approvedImplementer,reviewerId:approvedReviewer,targetHead:approvedHead,expectedHead:finalSha,decision:review?.decision});
+  let merge={merged:false,message:'AUTO_MERGE_DISABLED'};
+  if(AUTO_MERGE){try{merge=await mergePr(pr.number,approvedHead,j.title)}catch(e){merge={merged:false,message:String(e.message||e)}}}
   const status=merge?.merged?'done':'blocked';
   await pool.query("update tigeriq_coding_jobs set status=$2,head_sha=$3,result=$4,completed_at=now(),next_attempt_at=null,resource_retry_count=0,resource_retry_started_at=null where id=$1",[j.id,status,finalSha,JSON.stringify({summary:gen.summary,prNumber:pr.number,branch,gates,review,merge})]);
   await pool.query("update tigeriq_coding_objectives set status=$2,summary=$3,updated_at=now() where id=$1",[j.objective_id,merge?.merged?'completed':'blocked',merge?.merged?`Merged PR #${pr.number}`:`PR #${pr.number} ready but merge blocked: ${String(merge?.message||'unknown').slice(0,500)}`]);
