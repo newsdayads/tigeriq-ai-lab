@@ -8,7 +8,13 @@ const DEFAULT_CODING_URL='http://100.97.23.87:8797';
 
 export function normalizeFailure(failure){
   if(typeof failure==='string')return failure;
-  return `${String(failure?.code||'UNKNOWN')}@${String(failure?.viewport||'cycle')}`;
+  const code=String(failure?.code||'UNKNOWN');
+  const viewport=String(failure?.viewport||'cycle');
+  // Special handling for WEB_CONTROL_PAGE_OPEN_FAILED@cycle defect
+  if(code==='WEB_CONTROL_PAGE_OPEN_FAILED'&&viewport==='cycle'){
+    return 'WEB_CONTROL_PAGE_OPEN_FAILED@cycle';
+  }
+  return `${code}@${viewport}`;
 }
 
 export function failureIdentity(targetUrl,auditResult){
