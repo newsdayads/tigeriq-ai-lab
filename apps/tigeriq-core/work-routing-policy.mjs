@@ -53,15 +53,48 @@ export function classifyWorkOrder(body){
   return {...priority,capability:cap||'reasoning',surface,assignedExecutor:'',preferredEmployee:preferred,route:'CORE_REASONING',workerId:preferred||null,autonomous:true};
 }
 
-export function roleCanPull(workerId,classification){
+export function roleCanPull(workerId,classification,activeLease=null){
   const id=employee(workerId);
   const spec=classification||{};
+  if(spec.priority==='P0')return false;
+  if(activeLease && activeLease.workerId && activeLease.workerId !== id) return false;
   if(!['P1','P2','P3','P4','P5'].includes(String(spec.priority||'')))return false;
   if(spec.route==='HOLD_OWNER'||spec.route==='CODING'||spec.route==='OPENCLAW')return false;
   if(id==='NV02')return spec.workerId==='NV02'||spec.route==='CORE_REASONING';
   if(id==='NV03')return spec.workerId==='NV03'||spec.route==='CORE_REVIEW';
   if(id==='NV04')return spec.workerId==='NV04';
   return false;
+}
+
+export function evaluateAutoDispatch(backlogItems=[], workerLeases={}, faultTracker={}){
+  const dispatches=[];
+  const faults=[];
+  const items = Array.isArray(backlogItems)?backlogItems:[];
+  
+  for(const item of items){
+    const spec = classifyWorkOrder(item.body || item);
+    if(spec.priority === 'P0'){
+      continue;
+    }
+    const assignedWorker = spec.workerId || spec.preferredEmployee || 'NV02';
+    const lease = workerLeases[assignedWorker];
+    const now = Date.now();
+    const hasActiveLease = lease && lease.leaseUntilMs > now;
+    
+    if(hasActiveLease){
+      const faultKey = `${assignedWorker}:${item.id || spec.route}`;
+      const count = (faultTracker[faultKey] || 0) + 1;
+      faults.push({type: 'ROUTING_FAULT', workerId: assignedWorker, itemId: item.id || null, count, message: 'Worker has active lease, preventing duplicate assignment'});
+      if(count <= 3){
+        continue;
+      }
+    }
+    
+    if(roleCanPull(assignedWorker, spec, lease)){
+      dispatches.push({workerId: assignedWorker, classification: spec, item});
+    }
+  }
+  return {dispatches, faults};
 }
 
 function claimFields(body){
