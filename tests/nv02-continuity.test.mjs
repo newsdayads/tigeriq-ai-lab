@@ -153,9 +153,11 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain('APP_CHROME_LOCAL_UI_ONLY');
     expect(source).toContain("const currentTrackedWork=currentChat");
     const nv02Loop=source.slice(source.indexOf('async function maybeNv02Continuity'),source.indexOf('async function handleCommand'));
-    expect(nv02Loop).toContain("const assignment=await currentWorkerAssignmentStatus('NV02')");
-    expect(nv02Loop).toContain("READY_UNASSIGNED");
-    expect(nv02Loop).toContain("autoModelRecoverySuppressed:true");
+    expect(nv02Loop).not.toContain("currentWorkerAssignmentStatus('NV02')");
+    expect(nv02Loop).not.toContain("READY_UNASSIGNED");
+    expect(nv02Loop).not.toContain("autoModelRecoverySuppressed:true");
+    expect(nv02Loop).toContain("if(phase==='READY')");
+    expect(nv02Loop).toContain("dispatchNaturalContinue(target,state,now)");
     expect(source).not.toContain("CURRENT_WORK_NEW_CHAT_RESTORED");
     expect(source).toContain("LOCAL_CONTINUE_DISPATCHED");
     expect(source).not.toContain("await navigate(target,state.resumeChatUrl)");
@@ -344,8 +346,9 @@ describe('NV02 continuity policy', () => {
     expect(continuity).not.toContain('externalAutopilotOwnsNextNv02Job');
   });
 
-  it('uses App Chrome as transport: Core assignment first, role fallback when Core has none/unavailable', () => {
+  it('uses App Chrome strictly as local UI transport with short prompts', () => {
     const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    const continuitySource=readFileSync('apps/chrome-controller/extension/continuity.js','utf8');
     expect(source).not.toContain('function buildCurrentWorkRestorePrompt');
     expect(source).not.toContain('CURRENT_CHECKPOINT=');
     expect(source).not.toContain('DURABLE_SAVE_RECEIPT=');
@@ -353,17 +356,18 @@ describe('NV02 continuity policy', () => {
     expect(source).not.toContain('checkpointNv02');
     expect(source).not.toContain('rotateNv02Chat');
     expect(source).not.toContain('externalAutopilotOwnsNextNv02Job');
-    expect(source).toContain("const CORE_UI_ASSIGNMENT='http://127.0.0.1:8795/api/ui-assignment'");
-    expect(source).toContain('async function coreRolePrompt(workerId,state={})');
-    expect(source).toContain("source:'CORE_ASSIGNMENT'");
-    expect(source).toContain("source:'CORE_CONTINUE'");
-    expect(source).toContain("source:'ROLE_FALLBACK'");
-    expect(source).toContain("source:'ROLE_FALLBACK_CORE_UNAVAILABLE'");
-    expect(source).toContain('async function chooseWorkerRolePrompt(workerId,state={})');
+    expect(source).not.toContain('CORE_UI_ASSIGNMENT');
+    expect(source).not.toContain('coreRolePrompt');
+    expect(source).not.toContain('ROLE_FALLBACK');
+    expect(source).not.toContain('currentWorkerAssignmentStatus');
+    expect(source).not.toContain('READY_UNASSIGNED');
+    expect(continuitySource).not.toContain('audit GitHub Source of Truth');
+    expect(continuitySource).not.toContain('TIGERIQ_ROLE_CLAIM_V1');
+    expect(continuitySource).toContain('pickWorkerContinuePrompt');
     const local=source.slice(source.indexOf('async function dispatchNaturalContinueLocked'),source.indexOf('async function dispatchNaturalContinue(target'));
-    expect(local).toContain("chooseWorkerRolePrompt('NV02',state)");
+    expect(local).toContain("chooseLocalContinuePrompt('NV02',state)");
     expect(local).toContain("continuityEvent('LOCAL_CONTINUE_DISPATCHED'");
-    expect(local).toContain('coreJobId:selected.jobId');
+    expect(local).toContain("coreJobId:''");
     expect(local).not.toContain('getControllerState');
   });
 
@@ -408,38 +412,35 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("CHAT_LOAD_REOPEN");
   });
 
-  it('suppresses NV02 model recovery and fallback loop when no current assignment exists', () => {
+  it('keeps NV02 READY continuity independent from assignment while model recovery stays bounded', () => {
     const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     const continuity=source.slice(source.indexOf('async function maybeNv02Continuity'),source.indexOf('async function handleCommand'));
-    expect(continuity).toContain("const assignment=await currentWorkerAssignmentStatus('NV02')");
-    expect(continuity).toContain("if(assignment.status!=='CONTINUABLE')");
-    expect(continuity).toContain("bootFreshContextPending.delete('NV02')");
-    expect(continuity).toContain("pendingContinue:false");
-    expect(continuity).toContain("awaitingWorkStart:false");
-    expect(continuity).toContain("autoModelRecoverySuppressed:true");
-    const guardIndex=continuity.indexOf("if(assignment.status!=='CONTINUABLE')");
-    const bootIndex=continuity.indexOf("if(bootFreshContextPending.has('NV02')");
-    const modelIndex=continuity.indexOf("const modelCheckRequired=");
-    expect(guardIndex).toBeGreaterThanOrEqual(0);
-    expect(guardIndex).toBeLessThan(bootIndex);
-    expect(guardIndex).toBeLessThan(modelIndex);
+    expect(continuity).not.toContain('currentWorkerAssignmentStatus');
+    expect(continuity).not.toContain('READY_UNASSIGNED');
+    expect(continuity).not.toContain('autoModelRecoverySuppressed:true');
+    expect(continuity).toContain("const modelCheckRequired=");
+    expect(continuity).toContain("if(phase==='READY')");
+    expect(continuity).toContain('dispatchNaturalContinue(target,state,now)');
+    expect(continuity).toContain('awaitingWorkStart');
   });
 
-  it('detects interrupted ChatGPT response streams and only continues assigned work', () => {
+  it('detects interrupted ChatGPT response streams and recovers locally without assignment gating', () => {
     const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     const ui=source.slice(source.indexOf('const UI_EXPR='),source.indexOf('async function uiStateRaw'));
     expect(ui).toContain('responseInterrupted');
     expect(ui).toContain('luồng phản hồi bị gián đoạn');
     expect(ui).toContain('response stream (?:was )?interrupted');
     expect(ui).toContain('responseContinueReady:Boolean(responseContinue)');
+    expect(ui).toContain('Boolean(conversationLoadError||requestTimeoutError||responseInterrupted)');
     const retry=source.slice(source.indexOf('function chatLoadRetryExpr()'),source.indexOf('function loadContinuityFor'));
     expect(retry).toContain('CHAT_INTERRUPTED_CONTINUE_CLICKED');
     expect(retry).toContain('continue generating');
     expect(retry).toContain('tiếp tục phản hồi');
     const recovery=source.slice(source.indexOf('async function maybeRecoverChatLoadError'),source.indexOf('const MODEL_SELECTOR_POINT_EXPR'));
-    expect(recovery).toContain("if(ui?.responseInterrupted)");
-    expect(recovery).toContain("assignment.status!=='CONTINUABLE'");
-    expect(recovery).toContain("'CHAT_INTERRUPTED_CONTINUE_SUPPRESSED'");
+    expect(recovery).toContain("if(stage===0)");
+    expect(recovery).toContain("CHAT_LOAD_RETRY");
+    expect(recovery).not.toContain('currentWorkerAssignmentStatus');
+    expect(recovery).not.toContain('CHAT_INTERRUPTED_CONTINUE_SUPPRESSED');
   });
 
   it('ships one-shot NV02 continuity installer with exact-head deploy and rollback',()=>{

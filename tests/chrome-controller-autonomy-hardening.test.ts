@@ -241,15 +241,14 @@ describe('isolated NV02 WORKING/F5 safety scope',()=>{
     expect(working).toContain("return;");
   });
 
-  it('fails closed when READY without Core assignment', () => {
+  it('continues locally when READY without any Core assignment gate', () => {
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     const hotLoop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
-    expect(hotLoop).toContain("const assignment=await currentWorkerAssignmentStatus('NV02')");
-    expect(hotLoop).toContain("if(assignment.status!=='CONTINUABLE')");
-    expect(hotLoop).toContain('READY_UNASSIGNED');
+    expect(hotLoop).not.toContain("currentWorkerAssignmentStatus('NV02')");
+    expect(hotLoop).not.toContain('READY_UNASSIGNED');
     expect(hotLoop).toContain("if(phase==='READY')");
     expect(hotLoop).toContain('dispatchNaturalContinue(target,state,now)');
-    expect(hotLoop.indexOf("if(assignment.status!=='CONTINUABLE')")).toBeLessThan(hotLoop.indexOf("if(phase==='READY')"));
+    expect(hotLoop).toContain('awaitingWorkStart');
     expect(hotLoop).not.toContain('CURRENT_WORK_NEW_CHAT_RESTORE');
   });
 });
@@ -423,8 +422,8 @@ describe('GitHub terminal UI-job reconciliation #1843',()=>{
 });
 
 
-describe('NV04 assignment override plus always-on Gemini role loop',()=>{
-  it('requires a contract for explicit assignments but allows READY_UNASSIGNED role-loop continuation',()=>{
+describe('NV04 explicit dispatch contract plus local-only continuity',()=>{
+  it('keeps the explicit NV04 contract while continuity ignores assignment state',()=>{
     const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
     expect(server).toContain('function validateNv04AssignmentContract(text:string)');
     expect(server).toContain("['DEEP_RESEARCH','INDEPENDENT_REVIEW'].includes(role)");
@@ -435,28 +434,18 @@ describe('NV04 assignment override plus always-on Gemini role loop',()=>{
     expect(server).toContain("'NV04_OUTPUT_REQUIRED'");
     expect(server).toContain("'NV04_EVIDENCE_DESTINATION_REQUIRED'");
     expect(server).toContain("'NV04_MUTATION_ASSIGNMENT_FORBIDDEN'");
-    const nv04Dispatch=server.slice(server.indexOf("if(workerId==='NV04'){"),server.indexOf("const requestedJobId="));
-    expect(nv04Dispatch).toContain('navigate=true');
-    expect(nv04Dispatch).toContain("source:'NV04_ASSIGNMENT'");
 
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
-    expect(bridge).toContain('function workerAssignmentStatus(controller,workerId)');
-    expect(bridge).toContain("return{status:'READY_UNASSIGNED',job:null}");
-    expect(bridge).toContain("job?.source!=='NV04_ASSIGNMENT'");
-    expect(bridge).toContain("stage==='WORKING'");
-    expect(bridge).toContain("stage==='WAITING_EVIDENCE'||stage==='VERIFY'");
     const generic=bridge.slice(bridge.indexOf('async function maybeWorkerContinuity'),bridge.indexOf('\nfunction log('));
-    expect(generic).toContain("if(w.id==='NV03'||w.id==='NV04')");
-    expect(generic).toContain("currentWorkerAssignmentStatus(w.id)");
-    expect(generic).toContain("assignment.status==='READY_UNASSIGNED'||assignment.status==='CONTINUABLE'");
-    expect(generic).toContain('if(!roleLoopAllowed)');
-    expect(generic).toContain("genericWorkerEvent(w.id,assignment.status");
     const command=bridge.slice(bridge.indexOf('async function handleCommand'),bridge.indexOf('async function postWorkerHeartbeat'));
-    expect(command).toContain("if(w.id==='NV03'||w.id==='NV04')");
-    expect(command).toContain("return{status:assignment.status,jobId:assignment.job?.jobId||null}");
+    expect(bridge).not.toContain('function workerAssignmentStatus(controller,workerId)');
+    expect(bridge).not.toContain('currentWorkerAssignmentStatus(');
+    expect(bridge).not.toContain('READY_UNASSIGNED');
+    expect(generic).toContain('chooseLocalContinuePrompt(w.id,state)');
+    expect(generic).not.toContain('assignment.status');
+    expect(command).not.toContain('assignment.status');
   });
 });
-
 
 describe('NV02 current-chat continuity lease guard',()=>{
   it('allows conflict-free current-chat or exact claimed self-run continuation',()=>{
@@ -537,18 +526,18 @@ describe('APP Chrome UI-only continuity regression #1525',()=>{
     expect(recovery).not.toContain("if(after&&!after.chatLoadError)");
   });
 
-  // NV02 may be READY_UNASSIGNED only as an explicit no-work fail-closed state.
-  it('keeps NV02 idle without model mutation when no current assignment exists',()=>{
+  it('keeps NV02 continuity UI-local while model recovery remains bounded',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(bridge).toContain("return /\\/c\\//.test(current.pathname)");
     expect(bridge).toContain("isWorkerFreshContext");
     expect(bridge).toContain("BOOT_FRESH_CONTEXT_READY");
     expect(bridge).toContain("LOCAL_CONTINUE_DISPATCHED");
     const nv02Loop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
-    expect(nv02Loop).toContain("const assignment=await currentWorkerAssignmentStatus('NV02')");
-    expect(nv02Loop).toContain("READY_UNASSIGNED");
-    expect(nv02Loop).toContain("autoModelRecoverySuppressed:true");
-    expect(nv02Loop.indexOf("if(assignment.status!=='CONTINUABLE')")).toBeLessThan(nv02Loop.indexOf("const modelCheckRequired="));
+    expect(nv02Loop).not.toContain('currentWorkerAssignmentStatus');
+    expect(nv02Loop).not.toContain('READY_UNASSIGNED');
+    expect(nv02Loop).not.toContain('autoModelRecoverySuppressed:true');
+    expect(nv02Loop).toContain("const modelCheckRequired=");
+    expect(nv02Loop).toContain("if(phase==='READY')");
   });
 });
 

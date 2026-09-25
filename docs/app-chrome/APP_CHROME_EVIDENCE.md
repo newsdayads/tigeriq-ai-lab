@@ -30,3 +30,29 @@ Relevant current source confirms:
 - interrupted-response path suppresses continue when assignment is not CONTINUABLE.
 
 This is the starting root-cause evidence for STEP 3.
+
+## E3 — STEP 3 audit delta
+Canonical source audit confirmed the drift:
+- `direct-cdp-bridge.mjs` gated NV02 non-WORKING continuity on `currentWorkerAssignmentStatus('NV02')`.
+- NV03/NV04 also used assignment status gates.
+- Core `/api/ui-assignment` fed Core/role prompts into local continuity.
+- `pickWorkerContinuePrompt` special-cased NV02/NV03/NV04 to long Core/GitHub self-claim prompts.
+- tickWorker READY was partly derived from assignment state.
+- interrupted response recovery and manual LOCAL_CONTINUE_NOW contained assignment gating.
+- several regression tests explicitly enforced this wrong architecture.
+
+Keep set:
+CDP/window transport; 21 local prompts; awaitingWorkStart; WORKING no-send; 3–8s pacing; F5 5–20m; bounded restart/recovery; UTF-8/model bounded checks/watchdog/self-start.
+
+## E4 — STEP 4 candidate
+Branch: `fix/1940-app-chrome-local-continuity-v1`
+Candidate source/test head before execution-doc updates: `a684bb5208d0742284e6bb75c194a0bae37835aa`.
+
+Candidate changes:
+- no `CORE_UI_ASSIGNMENT`, `currentWorkerAssignmentStatus`, `READY_UNASSIGNED`, `ROLE_FALLBACK`, `CORE_ASSIGNMENT`, or `CORE_CONTINUE` in Direct CDP bridge;
+- `pickWorkerContinuePrompt` returns `<02|03|04> - <local short prompt>`;
+- local UI composer/project/error state derives READY;
+- anti-spam/lifecycle guards retained;
+- new `chrome-controller-local-continuity-lock.test.ts` statically locks the Owner-approved architecture.
+
+State: IMPLEMENTED_OFF_MAIN / NOT_YET_CI_VERIFIED / NOT_DEPLOYED.

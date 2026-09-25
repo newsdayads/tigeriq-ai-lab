@@ -15,7 +15,6 @@ const LOG='D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\direct-cdp-bridge.jsonl
 const SEND_BUTTON_WAIT_MS=10000;
 const NV02_CONTINUITY_STATE='D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\nv02-continuity-state.json';
 const CONTROLLER='http://127.0.0.1:8798';
-const CORE_UI_ASSIGNMENT='http://127.0.0.1:8795/api/ui-assignment';
 const BINDING='2';
 const NV02_TOKEN=String(process.env.TIGERIQ_NV02_WORKER_TOKEN||'').trim();
 const APPROVED_HEAD=String(process.env.TIGERIQ_APPROVED_HEAD||'').trim();
@@ -314,16 +313,6 @@ async function maybeWorkerContinuity(w,target,ui){
     await genericWorkerEvent(w.id,'WRONG_WORKER_CONTEXT',{url:ui?.url||null,expectedHost:expectedHost(w)});
     return;
   }
-  if(w.id==='NV03'||w.id==='NV04'){
-    const assignment=await currentWorkerAssignmentStatus(w.id);
-    const roleLoopAllowed=assignment.status==='READY_UNASSIGNED'||assignment.status==='CONTINUABLE';
-    if(!roleLoopAllowed){
-      state={...state,lastPhase:'READY',pendingContinue:false,awaitingWorkStart:false,awaitingWorkStartSince:0,stalledChecks:0,recoveryAttempts:0,recoveryBlockedUntil:0};
-      saveWorkerContinuity(w.id,state);
-      await genericWorkerEvent(w.id,assignment.status,{jobId:assignment.job?.jobId||null,stage:assignment.job?.stage||null});
-      return;
-    }
-  }
   if(bootFreshContextPending.has(w.id)&&phase!=='WORKING'){
     bootFreshContextPending.delete(w.id);
     state={...state,resumeUrl:'',pendingContinue:true,awaitingWorkStart:false,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),stalledChecks:0};
@@ -443,15 +432,6 @@ async function maybeWorkerContinuity(w,target,ui){
   }
 
   if(phase==='READY'){
-    if(w.id==='NV03'||w.id==='NV04'){
-      const assignment=await currentWorkerAssignmentStatus(w.id);
-      if(!['READY_UNASSIGNED','CONTINUABLE'].includes(assignment.status)){
-        state={...state,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),stalledChecks:0,pendingContinue:false,awaitingWorkStart:false};
-        saveWorkerContinuity(w.id,state);
-        await genericWorkerEvent(w.id,assignment.status,{jobId:assignment.job?.jobId||null,stage:assignment.job?.stage||null});
-        return;
-      }
-    }
     if(state.stalledChecks||state.recoveryAttempts||state.recoveryBlockedUntil){
       state={...state,stalledChecks:0,recoveryAttempts:0,recoveryBlockedUntil:0};
       saveWorkerContinuity(w.id,state);
@@ -473,7 +453,7 @@ async function maybeWorkerContinuity(w,target,ui){
     }
     if(state.pendingContinue!==true)return;
     if(now<Number(state.nextContinueAt||0))return;
-    const selected=await chooseWorkerRolePrompt(w.id,state);
+    const selected=await chooseLocalContinuePrompt(w.id,state);
     const prompt=selected.prompt;
     const sent=await withWorkerMutation(w.id,()=>dispatch(target,prompt),'LOCAL_CONTINUITY_CONTINUE',30000);
     if(sent?.status==='MUTATION_LEASE_BUSY'){
@@ -481,9 +461,9 @@ async function maybeWorkerContinuity(w,target,ui){
       return;
     }
     if(!sent?.ok)throw new Error(sent?.status||'LOCAL_CONTINUE_DISPATCH_FAILED');
-    const next={...state,coreJobId:selected.jobId||'',pendingContinue:false,awaitingWorkStart:true,awaitingWorkStartSince:now,lastPrompt:prompt,lastPhase:'WORKING',stalledChecks:0,recoveryAttempts:0,resumeUrl:'',workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
+    const next={...state,coreJobId:'',pendingContinue:false,awaitingWorkStart:true,awaitingWorkStartSince:now,lastPrompt:prompt,lastPhase:'WORKING',stalledChecks:0,recoveryAttempts:0,resumeUrl:'',workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
     saveWorkerContinuity(w.id,next);
-    await genericWorkerEvent(w.id,'LOCAL_CONTINUE_DISPATCHED',{prompt,promptSource:selected.source,coreJobId:selected.jobId||null,issueRef:selected.issueRef||null,nextContinueAt:next.nextContinueAt,trigger:'START_OR_POST_F5'});
+    await genericWorkerEvent(w.id,'LOCAL_CONTINUE_DISPATCHED',{prompt,promptSource:selected.source,nextContinueAt:next.nextContinueAt,trigger:'START_OR_POST_F5'});
     return;
   }
 
@@ -847,13 +827,6 @@ async function maybeRecoverChatLoadError(w,target,ui,now=Date.now()){
     return true;
   }
   const stage=Number(state.chatLoadRecoveryStage||0);
-  if(ui?.responseInterrupted){
-    const assignment=await currentWorkerAssignmentStatus(w.id);
-    if(assignment.status!=='CONTINUABLE'){
-      await continuityEventFor(w,'CHAT_INTERRUPTED_CONTINUE_SUPPRESSED',{url:ui?.url||null,assignmentStatus:assignment.status,jobId:assignment.job?.jobId||null});
-      return true;
-    }
-  }
   if(stage===0){
     const result=await withWorkerUiMutation(w,()=>evalPage(target,chatLoadRetryExpr()),'CHAT_LOAD_RETRY',15000);
     await sleep(2200);
@@ -1032,51 +1005,16 @@ async function getControllerState(){
   try{return await controllerStateFetch;}
   finally{controllerStateFetch=null;}
 }
-function workerAssignmentStatus(controller,workerId){
-  const jobs=(controller?.jobs||[]).filter((job)=>job?.workerId===workerId&&!job?.completedAt);
-  if(!jobs.length)return{status:'READY_UNASSIGNED',job:null};
-  const job=jobs.at(-1);
-  if(workerId==='NV04'&&job?.source!=='NV04_ASSIGNMENT')return{status:'NV04_ASSIGNMENT_INVALID_SOURCE',job};
-  const stage=String(job?.stage||'');
-  if(stage==='SUBMITTED'||stage==='WORKING'||stage==='WAITING_EVIDENCE'||stage==='VERIFY')return{status:'CONTINUABLE',job};
-  if(stage==='DISPATCHING'||stage==='QUEUED')return{status:workerId==='NV04'?'NV04_ASSIGNMENT_PENDING':'NV03_ASSIGNMENT_PENDING',job};
-  return{status:'READY_UNASSIGNED',job:null};
-}
-async function currentWorkerAssignmentStatus(workerId){
-  try{return workerAssignmentStatus(await getControllerState(),workerId);}
-  catch(error){
-    log('WORKER_ASSIGNMENT_STATE_UNAVAILABLE',{workerId,error:String(error?.message||error)});
-    return{status:'WORKER_ASSIGNMENT_STATE_UNAVAILABLE',job:null};
-  }
-}
-async function coreRolePrompt(workerId,state={}){
-  try{
-    const u=new URL(CORE_UI_ASSIGNMENT);
-    if(state?.coreJobId)u.searchParams.set('previousJobId',String(state.coreJobId));
-    const r=await fetch(u.toString(),{signal:AbortSignal.timeout(3500)});
-    if(!r.ok)throw new Error(`HTTP_${r.status}:core-ui-assignment`);
-    const snapshot=await r.json();
-    const jobs=Array.isArray(snapshot?.nextJobs)?snapshot.nextJobs:(snapshot?.nextJob?[snapshot.nextJob]:[]);
-    const next=jobs.find((job)=>String(job?.workerId||'').toUpperCase()===String(workerId).toUpperCase()&&job?.executable!==false);
-    if(next?.prompt){
-      return {source:'CORE_ASSIGNMENT',prompt:String(next.prompt),jobId:String(next.jobId||''),issueRef:next.issueRef||null,priority:next.priority||null};
-    }
-    const previous=snapshot?.previousJob;
-    if(previous&&String(previous?.workerId||'').toUpperCase()===String(workerId).toUpperCase()&&String(previous?.status||'').toUpperCase()==='RUNNING'){
-      const ref=String(previous.issueRef||'').trim();
-      return {source:'CORE_CONTINUE',prompt:`${workerId} — Tiếp tục đúng Core CURRENT_WORK_ORDER${ref?' '+ref:''}. Không đổi việc. Làm tới DONE có evidence / BLOCKED / EXTERNAL_WAIT / Owner gate; khi terminal cập nhật GitHub và nhả role lease nếu có.`,jobId:String(previous.jobId||state?.coreJobId||''),issueRef:ref||null,priority:previous.priority||null};
-    }
-    return {source:'ROLE_FALLBACK',prompt:null,jobId:'',assignmentState:String(snapshot?.assignmentState||'READY_UNASSIGNED')};
-  }catch(error){
-    return {source:'ROLE_FALLBACK_CORE_UNAVAILABLE',prompt:null,jobId:String(state?.coreJobId||''),error:String(error?.message||error)};
-  }
+async function chooseLocalContinuePrompt(workerId,state={}){
+  return {
+    source:'LOCAL_CONTINUE',
+    prompt:pickWorkerContinuePrompt(workerId,state?.lastPrompt),
+    jobId:'',
+    issueRef:null,
+    priority:null,
+  };
 }
 
-async function chooseWorkerRolePrompt(workerId,state={}){
-  const core=await coreRolePrompt(workerId,state);
-  if(core.prompt)return core;
-  return {...core,prompt:pickWorkerContinuePrompt(workerId,state?.lastPrompt)};
-}
 async function continuityEvent(event,data={}){
   try{await post('/api/continuity/event','NV02',{workerId:'NV02',event,...data});}
   catch(error){log('NV02_CONTINUITY_EVENT_POST_FAILED',{event,error:String(error?.message||error)});}
@@ -1422,13 +1360,13 @@ async function withNv02Mutation(fn,purpose='NORMAL',ttlMs=30000){
 }
 async function dispatchNaturalContinueLocked(target,state,now){
   await scrollToBottom(target).catch(()=>{});
-  const selected=await chooseWorkerRolePrompt('NV02',state);
+  const selected=await chooseLocalContinuePrompt('NV02',state);
   const prompt=selected.prompt;
   const result=await dispatch(target,prompt);
   if(!result?.ok)throw new Error(result?.status||'LOCAL_CONTINUE_DISPATCH_FAILED');
-  const next={...state,coreJobId:selected.jobId||'',pendingContinue:false,awaitingWorkStart:true,awaitingWorkStartSince:now,lastPrompt:prompt,dispatchesInChat:Number(state.dispatchesInChat||0)+1,stalledChecks:0,lastPhase:'WORKING',workingSignature:'',workingUnchangedChecks:0,workingRecheckAt:nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS),nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
+  const next={...state,coreJobId:'',pendingContinue:false,awaitingWorkStart:true,awaitingWorkStartSince:now,lastPrompt:prompt,dispatchesInChat:Number(state.dispatchesInChat||0)+1,stalledChecks:0,lastPhase:'WORKING',workingSignature:'',workingUnchangedChecks:0,workingRecheckAt:nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS),nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
   saveNv02Continuity(next);
-  await continuityEvent('LOCAL_CONTINUE_DISPATCHED',{prompt,promptSource:selected.source,coreJobId:selected.jobId||null,issueRef:selected.issueRef||null,evidence:result.evidence||null,nextContinueAt:next.nextContinueAt,dispatchesInChat:next.dispatchesInChat});
+  await continuityEvent('LOCAL_CONTINUE_DISPATCHED',{prompt,promptSource:selected.source,evidence:result.evidence||null,nextContinueAt:next.nextContinueAt,dispatchesInChat:next.dispatchesInChat});
   return next;
 }
 async function dispatchNaturalContinue(target,state,now){
@@ -1474,33 +1412,6 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
     await continuityEvent(deferred?'VIEW_FOLLOW_BOTTOM_DEFERRED':'VIEW_FOLLOW_BOTTOM',{status:followed?.status||null,pacingMs:followed?.pacingMs||null,nextViewFollowAt:state.nextViewFollowAt});
   }
   if(phase==='BLOCKED'){await continuityEvent('BLOCKED',{securityBlock:ui?.securityBlock||null});return;}
-  if(phase!=='WORKING'){
-    const assignment=await currentWorkerAssignmentStatus('NV02');
-    if(assignment.status!=='CONTINUABLE'){
-      bootFreshContextPending.delete('NV02');
-      const idle=assignment.status==='READY_UNASSIGNED';
-      state={...state,
-        coreJobId:'',
-        lastPhase:idle?'READY':'STALLED',
-        pendingContinue:false,
-        awaitingWorkStart:false,
-        awaitingWorkStartSince:0,
-        stalledChecks:0,
-        workingSignature:'',
-        workingUnchangedChecks:0,
-        nextProgressCheckAt:0,
-        modelCheckBlockedUntil:now+5*60_000,
-      };
-      saveNv02Continuity(state);
-      await continuityEvent(idle?'READY_UNASSIGNED':'NV02_ASSIGNMENT_STATE_UNAVAILABLE',{
-        assignmentStatus:assignment.status,
-        jobId:assignment.job?.jobId||null,
-        stage:assignment.job?.stage||null,
-        autoModelRecoverySuppressed:true,
-      });
-      return;
-    }
-  }
   if(phase!=='WORKING'&&now>=Number(state.nextRefreshAt||0)){
     let prepared;
     let uiDeadFallbackStatus='';
@@ -1656,10 +1567,6 @@ async function handleCommand(w,target,command){
   if(action==='NAVIGATE'){const u=new URL(String(payload.url||''));if(u.hostname!==expectedHost(w))throw new Error('BLOCKED_URL');await navigate(target,u.toString());return{status:'NAVIGATED'};}
   if(action==='MODEL_PREFLIGHT'){if(w.id!=='NV02')return{status:'MODEL_PREFLIGHT_NOT_REQUIRED'};return ensureNv02ModelProfile(target);}
   if(action==='LOCAL_CONTINUE_NOW'){
-    if(w.id==='NV03'||w.id==='NV04'){
-      const assignment=await currentWorkerAssignmentStatus(w.id);
-      if(!['READY_UNASSIGNED','CONTINUABLE'].includes(assignment.status))return{status:assignment.status,jobId:assignment.job?.jobId||null};
-    }
     if(bootFreshContextPending.has(w.id))return{status:'LOCAL_CONTINUE_DEFERRED_BOOT'};
     const stateBefore=w.id==='NV02'?loadNv02Continuity():loadWorkerContinuity(w.id);
     if(stateBefore.awaitingWorkStart===true)return{status:'LOCAL_CONTINUE_ALREADY_DISPATCHED'};
@@ -1679,10 +1586,10 @@ async function handleCommand(w,target,command){
       return{status:'LOCAL_CONTINUE_SUBMITTED',prompt:next.lastPrompt};
     }
     if(phase!=='READY')return{status:'LOCAL_CONTINUE_NOT_READY',phase};
-    const state=loadWorkerContinuity(w.id),selected=await chooseWorkerRolePrompt(w.id,state),prompt=selected.prompt;
+    const state=loadWorkerContinuity(w.id),selected=await chooseLocalContinuePrompt(w.id,state),prompt=selected.prompt;
     const r=await dispatch(target,prompt);
     if(!r?.ok)throw new Error(r?.status||'LOCAL_CONTINUE_DISPATCH_FAILED');
-    saveWorkerContinuity(w.id,{...state,coreJobId:selected.jobId||'',pendingContinue:false,awaitingWorkStart:true,awaitingWorkStartSince:Date.now(),lastPrompt:prompt,lastPhase:'WORKING',stalledChecks:0,workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:Date.now()+WORKING_PROGRESS_CHECK_MS,nextContinueAt:nextRandomAt(Date.now(),CONTINUE_MIN_MS,CONTINUE_MAX_MS)});
+    saveWorkerContinuity(w.id,{...state,coreJobId:'',pendingContinue:false,awaitingWorkStart:true,awaitingWorkStartSince:Date.now(),lastPrompt:prompt,lastPhase:'WORKING',stalledChecks:0,workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:Date.now()+WORKING_PROGRESS_CHECK_MS,nextContinueAt:nextRandomAt(Date.now(),CONTINUE_MIN_MS,CONTINUE_MAX_MS)});
     await genericWorkerEvent(w.id,'LOCAL_CONTINUE_DISPATCHED',{prompt});
     return{status:'LOCAL_CONTINUE_SUBMITTED',prompt};
   }
@@ -1710,9 +1617,8 @@ async function tickWorker(w){
     const target=await pruneDuplicates(w,list);if(!target)return;
     const rawUi=await uiState(target);
     const projectContextReady=w.id!=='NV02'||isNv02ProjectContext(rawUi.url)||rawUi.projectDraftReady===true;
-    const assignmentSnapshot=await currentWorkerAssignmentStatus(w.id);
-    const idleReady=assignmentSnapshot.status==='READY_UNASSIGNED'&&projectContextReady&&rawUi?.composerReady===true&&!rawUi?.securityBlock&&!rawUi?.authRequired&&!rawUi?.chatLoadError&&!rawUi?.connectionPending;
-    const ui=projectContextReady?(idleReady?{...rawUi,uiReady:true,uiPhase:'READY'}:rawUi):{...rawUi,uiReady:false,uiPhase:'STALLED',modelReady:false};
+    const localReady=projectContextReady&&rawUi?.composerReady===true&&!rawUi?.securityBlock&&!rawUi?.authRequired&&!rawUi?.chatLoadError&&!rawUi?.connectionPending;
+    const ui=projectContextReady?(localReady?{...rawUi,uiReady:true,uiPhase:'READY'}:rawUi):{...rawUi,uiReady:false,uiPhase:'STALLED',modelReady:false};
     await postWorkerHeartbeat(w,target,ui,projectContextReady).catch(error=>log('CONTROLLER_TELEMETRY_UNAVAILABLE',{error:String(error?.message||error)}));
     if(await workerAutomationPaused(w.id)){
       if(w.id==='NV02')await continuityEvent('AUTO_ACTION_PAUSED',{phase:String(ui?.uiPhase||'STALLED')});
