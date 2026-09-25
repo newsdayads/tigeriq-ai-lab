@@ -28,9 +28,9 @@ export function backlogAssignedExecutor(body){
 export function backlogOwnerControlled(body){
   const text=String(body||'');
   return exactBodyFlag(text,'OWNER_CONTROLLED','true')
+    || exactBodyFlag(text,'OWNER_HOLD','true')
     || exactBodyFlag(text,'OWNER_GATE','true')
-    || exactBodyFlag(text,'OWNER_APPROVAL_REQUIRED','true')
-    || Boolean(backlogAssignedExecutor(text));
+    || exactBodyFlag(text,'OWNER_APPROVAL_REQUIRED','true');
 }
 
 export function effectiveBacklogPriority(body,fallback='P3'){
