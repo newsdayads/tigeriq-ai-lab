@@ -406,6 +406,23 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("CHAT_LOAD_REOPEN");
   });
 
+  it('suppresses NV02 model recovery and fallback loop when no current assignment exists', () => {
+    const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    const continuity=source.slice(source.indexOf('async function maybeNv02Continuity'),source.indexOf('async function handleCommand'));
+    expect(continuity).toContain("const assignment=await currentWorkerAssignmentStatus('NV02')");
+    expect(continuity).toContain("if(assignment.status!=='CONTINUABLE')");
+    expect(continuity).toContain("bootFreshContextPending.delete('NV02')");
+    expect(continuity).toContain("pendingContinue:false");
+    expect(continuity).toContain("awaitingWorkStart:false");
+    expect(continuity).toContain("autoModelRecoverySuppressed:true");
+    const guardIndex=continuity.indexOf("if(assignment.status!=='CONTINUABLE')");
+    const bootIndex=continuity.indexOf("if(bootFreshContextPending.has('NV02')");
+    const modelIndex=continuity.indexOf("const modelCheckRequired=");
+    expect(guardIndex).toBeGreaterThanOrEqual(0);
+    expect(guardIndex).toBeLessThan(bootIndex);
+    expect(guardIndex).toBeLessThan(modelIndex);
+  });
+
   it('detects interrupted ChatGPT response streams and only continues assigned work', () => {
     const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     const ui=source.slice(source.indexOf('const UI_EXPR='),source.indexOf('async function uiStateRaw'));
