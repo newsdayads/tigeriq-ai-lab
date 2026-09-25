@@ -67,11 +67,6 @@ export function pickContinuePrompt(previous='',random=Math.random){
 }
 
 export function pickWorkerContinuePrompt(workerId,previous='',random=Math.random){
-  const id=String(workerId||'').toUpperCase();
-  const common=' Core assignment còn hiệu lực thì ưu tiên làm assignment đó. Nếu không có assignment hoặc Core stale/unavailable: audit GitHub Source of Truth và tự claim đúng 01 việc P1-P5 hợp lệ trong vai trò; legacy P0 không có OWNER_CONTROLLED=true, OWNER_GATE=true hoặc ASSIGNED_EXECUTOR=NVxx được coi là P1 autonomous. Tuyệt đối không tự lấy P0 Owner-controlled và không sửa App Chrome. Trước khi fallback phải post [TIGERIQ_ROLE_CLAIM_V1] gồm WORKER, RESOURCE_SCOPE, LEASE_UNTIL tối đa 30 phút; renew nếu còn làm; khi DONE/BLOCKED/WAIT/HANDOFF post [TIGERIQ_ROLE_RELEASE_V1]. Không đụng việc đã có owner/lease hoặc scope đang bận. ';
-  if(id==='NV02')return '02 — MAIN EXECUTOR.'+common+'NV02 lấy general/reasoning/execution cao nhất còn trống; không giành coding chuyên biệt, review độc lập, research chuyên sâu hoặc pc_operator. Làm liên tục tới DONE evidence / BLOCKED / EXTERNAL_WAIT / Owner gate.';
-  if(id==='NV03')return '03 — INDEPENDENT REVIEW/QA.'+common+'NV03 chỉ lấy review/QA/PR verification độc lập chưa có reviewer; không sửa code đang review. Trả PASS hoặc CHANGES_REQUIRED có evidence, rồi nhả lease.';
-  if(id==='NV04')return '04 — DEEP RESEARCH / SECOND OPINION.'+common+'NV04 chỉ lấy research, deep analysis, investigation hoặc second-opinion/cross-check phù hợp; không code hoặc mutation. Trả evidence rồi nhả lease.';
   const base=pickContinuePrompt(String(previous||'').replace(/^\d{2}\s*-\s*/,''),random);
   const digits=(String(workerId||'').match(/\d+/)||[])[0]||'';
   const code=digits?digits.padStart(2,'0'):'';
