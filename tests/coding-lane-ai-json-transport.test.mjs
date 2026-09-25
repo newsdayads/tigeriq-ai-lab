@@ -1,7 +1,7 @@
 import {readFileSync} from 'node:fs';
 import {describe,expect,it} from 'vitest';
 import {compactCurrentFilesForModel,compactPromptForChanges,compactPromptForEdits,currentFilesFromPrompt,expandCompactChanges,extractModelText,firstBalancedJsonObject,isAiUrl,looksLikeJsonObject,matchesExpectedSchema,parseModelJson,prepareAiJsonRequest,installAiJsonTransport,salvageTruncatedCompactEdits} from '../apps/tigeriq-coding-lane/ai-json-transport.mjs';
-import {assertIndependentReviewApproval,buildRepairGenerationPrompt,classifyAiFailure,formatIndependentReviewArtifact,invokeJsonWithFailover,managerBlockKind,parseCompactEditJson} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {assertIndependentReviewApproval,buildRepairGenerationPrompt,canonicalWorkContext,classifyAiFailure,formatIndependentReviewArtifact,invokeJsonWithFailover,managerBlockKind,parseCompactEditJson} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 describe('coding lane AI JSON transport',()=>{
@@ -90,6 +90,28 @@ describe('coding lane AI JSON transport',()=>{
     expect(looksLikeJsonObject('\n{"ok":true}\n')).toBe(true);
     expect(looksLikeJsonObject('{bad json}')).toBe(false);
   });
+  it('preserves canonical Work Order separately from manager instruction',()=>{
+    const job={instruction:'manager-short-task',paths:['apps/example.mjs']};
+    const canonical='CANONICAL_ACCEPTANCE_SENTINEL: must add regression coverage';
+    const contract=canonicalWorkContext(job,canonical);
+    expect(contract).toContain('CANONICAL_WORK_ORDER:');
+    expect(contract).toContain(canonical);
+    expect(contract).toContain('MANAGER_JOB_INSTRUCTION:');
+    expect(contract).toContain('manager-short-task');
+    const repair=buildRepairGenerationPrompt({id:'NV12'},job,'FILE apps/example.mjs\nold',[],canonical);
+    expect(repair).toContain('CANONICAL_ACCEPTANCE_SENTINEL');
+    const compact=compactPromptForChanges(repair,{maxContextChars:2000,maxOutputChars:1200});
+    expect(compact).toContain('CANONICAL_ACCEPTANCE_SENTINEL');
+  });
+
+  it('threads canonical objective through generation repair and review calls',()=>{
+    const src=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
+    expect(src).toContain("generateChanges(worker,j,'main',[],cooldownExcludes,canonicalObjective)");
+    expect(src).toContain('mutationAuth,canonicalObjective)');
+    expect(src).toContain('reviewPr(reviewer,j,diff,worker.id,cooldownExcludes,canonicalObjective)');
+    expect(src).toContain('canonical Work Order is authoritative');
+  });
+
   it('formats durable independent review evidence bound to exact head',()=>{
     const artifact=formatIndependentReviewArtifact({implementerId:'NV12',reviewerId:'NV17',targetHead:'abc123',review:{decision:'approve',summary:'safe',issues:[]}});
     expect(artifact).toContain('[TIGERIQ_INDEPENDENT_REVIEW_V1]');
