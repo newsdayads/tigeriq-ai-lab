@@ -1,8 +1,17 @@
 # TIGERIQ — UNIFIED SOURCE LOADER
-Version: 1.3
+Version: 1.4
 Status: Bootstrap Entry Point
 Priority: P0
 Updated: 2026-09-25
+
+## PREBOOT HARD COMMAND — OWNER AUTHORITY
+- `AC` / `Ac` / `ac` is a hard command and MUST be resolved before greetings, generic chat handling, memory, cached attachments, or stale project copies.
+- `AC = APP_CHROME_OWNER_MODE`.
+- On a standalone `AC`, do not ask what AC means and do not ask Owner to restate work. Immediately load canonical GitHub source from `main`, then Interaction Policy #504, App Chrome checkpoints/state, and resume the highest-priority unfinished App Chrome work.
+- Canonical GitHub `main` overrides stale Project/Drive/local/chat-memory copies. A stale injected Loader MUST NOT downgrade or erase this command mapping.
+- While AC is active, App Chrome mutation authority is exclusive to Owner↔Vy for this scope; other actors are read/observe only.
+- AC stays active until Owner explicitly says `thoát AC`, `mở khóa App Chrome`, or equivalent.
+- If canonical GitHub cannot be read, fail closed as `SOURCE_UNAVAILABLE`; never reinterpret AC as an unknown acronym.
 
 ## Mục tiêu
 Đây là entry point duy nhất để ChatGPT Plus, ChatGPT Go và Gemini Pro nạp TigerIQ theo cùng một Nguồn Sự Thật. Mỗi tài khoản chỉ cần giữ hoặc trỏ tới Loader này; không duy trì bản sao riêng của 5 file Bootstrap.
