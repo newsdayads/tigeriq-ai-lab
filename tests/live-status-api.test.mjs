@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   compareQueueRows,
   fetchPc01Live,
+  rankQueueRows,
   normalizeRuntimeWorkerActivity,
   parseIssueNumber,
   parseQueueIssue,
@@ -88,15 +89,38 @@ describe('TigerIQ Live Work Order projection', () => {
     });
   });
 
-  it('orders OWNER_DIRECT before P0, then P1/P2/P3 and issue number', () => {
+  it('ranks only executable P1-P5 rows and keeps waiting/blocked work unnumbered', () => {
+    const rows = rankQueueRows([
+      { number: 1921, priority: 'P1', effectivePriority: 'P1', ownerDirect: true, status: 'WAITING', waitReason: 'OWNER_HOLD' },
+      { number: 1922, priority: 'P1', effectivePriority: 'P1', ownerDirect: true, status: 'WAITING', waitReason: 'Chờ #1915' },
+      { number: 1947, priority: 'P1', effectivePriority: 'P1', ownerDirect: false, status: 'QUEUED' },
+      { number: 1945, priority: 'P2', effectivePriority: 'P2', ownerDirect: false, status: 'QUEUED' },
+      { number: 1888, priority: 'P0', effectivePriority: 'P0', ownerDirect: true, status: 'QUEUED' },
+    ]);
+    expect(rows.map((row) => row.number)).toEqual([1947, 1945, 1921, 1922, 1888]);
+    expect(rows.slice(0, 2).map((row) => row.dispatchRank)).toEqual([1, 2]);
+    expect(rows.slice(2).every((row) => row.dispatchRank === null && row.eligibleNow === false)).toBe(true);
+    expect(rows.at(-1)).toMatchObject({ number: 1888, status: 'WAITING', waitReason: 'P0 chờ Owner/assignment' });
+  });
+
+  it('uses OWNER_DIRECT only as a same-priority tie-break among executable rows', () => {
     const rows = [
-      { number: 30, priority: 'P0', ownerDirect: false },
-      { number: 20, priority: 'P1', ownerDirect: true },
-      { number: 10, priority: 'P0', ownerDirect: true },
-      { number: 40, priority: 'P1', ownerDirect: false },
-      { number: 50, priority: 'P3', ownerDirect: false },
+      { number: 30, priority: 'P2', effectivePriority: 'P2', ownerDirect: true, status: 'QUEUED' },
+      { number: 20, priority: 'P1', effectivePriority: 'P1', ownerDirect: false, status: 'QUEUED' },
+      { number: 10, priority: 'P2', effectivePriority: 'P2', ownerDirect: false, status: 'QUEUED' },
+      { number: 40, priority: 'P1', effectivePriority: 'P1', ownerDirect: true, status: 'QUEUED' },
+      { number: 50, priority: 'P5', effectivePriority: 'P5', ownerDirect: false, status: 'QUEUED' },
     ].sort(compareQueueRows);
-    expect(rows.map((row) => row.number)).toEqual([10, 20, 30, 40, 50]);
+    expect(rows.map((row) => row.number)).toEqual([40, 20, 30, 10, 50]);
+  });
+
+  it('preserves canonical effective priority through queue projection', () => {
+    const row = parseQueueIssue(issue(2010, '[P4][CORE] Lower urgency', [
+      ...coreQueueFlags(),
+      'AUTO_QUEUE=INCLUDED',
+      'PRIORITY=P4',
+    ].join('\n')));
+    expect(row).toMatchObject({ priority: 'P4', effectivePriority: 'P4', sourcePriority: 'P4', status: 'QUEUED' });
   });
 
   it('rejects GitHub items that are not eligible in existing Core/Coding schedulers', () => {

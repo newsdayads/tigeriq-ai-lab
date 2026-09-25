@@ -336,8 +336,8 @@ function bodyFlag(body, key, value = 'true') {
 
 function issuePriority(issue) {
   const body = String(issue?.body || '');
-  return bodyValue(body, 'PRIORITY').match(/^P[0-3]$/i)?.[0]?.toUpperCase()
-    || String(issue?.title || '').match(/^\[(P[0-3])\]/i)?.[1]?.toUpperCase()
+  return bodyValue(body, 'PRIORITY').match(/^P[0-5]$/i)?.[0]?.toUpperCase()
+    || String(issue?.title || '').match(/^\[(P[0-5])\]/i)?.[1]?.toUpperCase()
     || null;
 }
 
@@ -416,11 +416,18 @@ export function parseQueueIssue(issue) {
   const codingSpec = parseCodingIssue(issue);
   if (!coreSpec && !codingSpec) return null;
   const holdReason = queueWaitReason(issue);
+  const effectivePriority = codingSpec?.priority || coreSpec?.priority || issuePriority(issue) || 'P3';
+  const sourcePriority = codingSpec?.sourcePriority || coreSpec?.sourcePriority || issuePriority(issue) || effectivePriority;
   return {
     number: Number(issue.number),
     title: String(issue.title || ''),
-    priority: codingSpec?.sourcePriority || coreSpec?.priority || issuePriority(issue) || 'P2',
+    priority: effectivePriority,
+    effectivePriority,
+    sourcePriority,
+    ownerControlled: Boolean(codingSpec?.ownerControlled ?? coreSpec?.ownerControlled ?? false),
     ownerDirect: Boolean(codingSpec?.ownerDirect ?? coreSpec?.ownerDirect ?? bodyFlag(issue?.body || '', 'OWNER_DIRECT')),
+    route: codingSpec ? 'CODING' : (coreSpec?.route || coreSpec?.dispatchLane || null),
+    resourceScope: codingSpec?.scopeLease?.resourceScope || coreSpec?.resourceScope || bodyValue(issue?.body || '', 'RESOURCE_SCOPE') || null,
     status: holdReason && /BLOCKED/.test(holdReason) ? 'BLOCKED' : holdReason ? 'WAITING' : 'QUEUED',
     waitReason: holdReason,
     dependencies: codingSpec?.dependsOn || queueDependencies(issue),
@@ -429,11 +436,47 @@ export function parseQueueIssue(issue) {
   };
 }
 
+function queuePriority(row) {
+  return String(row?.effectivePriority || row?.priority || 'P3').toUpperCase();
+}
+
+export function queueRowEligibleNow(row) {
+  return String(row?.status || '').toUpperCase() === 'QUEUED' && /^P[1-5]$/.test(queuePriority(row));
+}
+
 export function compareQueueRows(a, b) {
-  if (Boolean(a?.ownerDirect) !== Boolean(b?.ownerDirect)) return a?.ownerDirect ? -1 : 1;
-  const rank = { P0: 0, P1: 1, P2: 2, P3: 3 };
-  const delta = (rank[a?.priority] ?? 2) - (rank[b?.priority] ?? 2);
-  return delta || Number(a?.number || 0) - Number(b?.number || 0);
+  const aEligible = queueRowEligibleNow(a);
+  const bEligible = queueRowEligibleNow(b);
+  if (aEligible !== bEligible) return aEligible ? -1 : 1;
+  const rank = { P0: 0, P1: 1, P2: 2, P3: 3, P4: 4, P5: 5 };
+  const aPriorityRank = !aEligible && queuePriority(a) === 'P0' ? 6 : (rank[queuePriority(a)] ?? rank.P3);
+  const bPriorityRank = !bEligible && queuePriority(b) === 'P0' ? 6 : (rank[queuePriority(b)] ?? rank.P3);
+  const delta = aPriorityRank - bPriorityRank;
+  if (delta) return delta;
+  if (aEligible && bEligible && Boolean(a?.ownerDirect) !== Boolean(b?.ownerDirect)) return a?.ownerDirect ? -1 : 1;
+  const waitRank = { WAITING: 0, BLOCKED: 1, QUEUED: 2 };
+  const waitDelta = (waitRank[String(a?.status || '').toUpperCase()] ?? 3) - (waitRank[String(b?.status || '').toUpperCase()] ?? 3);
+  if (waitDelta) return waitDelta;
+  return Number(a?.number || 0) - Number(b?.number || 0);
+}
+
+export function rankQueueRows(rows = []) {
+  let dispatchRank = 0;
+  return (Array.isArray(rows) ? rows : []).map((row) => {
+    const priority = queuePriority(row);
+    const p0Waiting = String(row?.status || '').toUpperCase() === 'QUEUED' && priority === 'P0';
+    const normalized = p0Waiting
+      ? { ...row, status: 'WAITING', waitReason: row.waitReason || 'P0 chờ Owner/assignment' }
+      : row;
+    return normalized;
+  }).sort(compareQueueRows).map((row) => {
+    const eligibleNow = queueRowEligibleNow(row);
+    return {
+      ...row,
+      eligibleNow,
+      dispatchRank: eligibleNow ? ++dispatchRank : null,
+    };
+  });
 }
 
 function runtimeState(state) {
@@ -693,10 +736,9 @@ async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
     }
 
     const recentWork = await recentCompletedWork(owner, repo, fetchImpl);
-    const specs = openIssues.map(parseQueueIssue).filter(Boolean).filter((row) => !activeNumbers.has(row.number)).sort(compareQueueRows);
-    const queueCandidates = specs.slice(0, Math.max(QUEUE_LIMIT * 2, 12));
-    const depStates = await dependencyStates(queueCandidates, owner, repo, fetchImpl);
-    const nextQueue = queueCandidates.map((row) => {
+    const specs = openIssues.map(parseQueueIssue).filter(Boolean).filter((row) => !activeNumbers.has(row.number));
+    const depStates = await dependencyStates(specs, owner, repo, fetchImpl);
+    const resolvedQueue = specs.map((row) => {
       if (row.status !== 'QUEUED') return row;
       const waiting = (row.dependencies || []).filter((number) => {
         const dep = depStates.get(number);
@@ -711,7 +753,10 @@ async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
           ? 'Chưa xác minh dependency ' + unknown.map((n) => '#' + n).join(', ')
           : 'Chờ ' + waiting.map((n) => '#' + n).join(', '),
       };
-    }).slice(0, QUEUE_LIMIT);
+    });
+    const rankedQueue = rankQueueRows(resolvedQueue);
+    const nextQueue = rankedQueue.slice(0, QUEUE_LIMIT);
+    const nextExecutable = rankedQueue.find((row) => row.eligibleNow) || null;
 
     return {
       ...base,
@@ -720,16 +765,18 @@ async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
         { ownerDirect: false, priority: b.priority || 'P2', number: b.number },
       )),
       nextQueue,
-      nextQueueTotal: specs.length,
+      nextQueueTotal: rankedQueue.length,
+      nextExecutable,
       recentWork,
       workProjection: {
         mode: projectionStale ? 'stale-cache' : (base.liveConnected ? 'pc01-live+github' : 'github-fallback'),
-        queuePolicy: 'OWNER_DIRECT>P0>P1>P2>P3',
-        source: projectionStale ? 'GitHub snapshot xác minh gần nhất' : 'PC01 runtime when available + GitHub canonical',
+        queuePolicy: 'ELIGIBLE_P1>P2>P3>P4>P5;OWNER_DIRECT_TIEBREAK;WAITING_UNRANKED',
+        source: projectionStale ? 'GitHub snapshot xác minh gần nhất' : 'PC01 runtime when available + GitHub canonical parsers',
         verifiedAt: githubProjectionCache.verifiedAt,
         stale: projectionStale,
         reason: projectionReason,
         queueLimit: QUEUE_LIMIT,
+        nextExecutableIssue: nextExecutable?.number || null,
       },
     };
   } catch (error) {
@@ -741,7 +788,7 @@ async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
       recentWork: [],
       workProjection: {
         mode: 'unavailable',
-        queuePolicy: 'OWNER_DIRECT>P0>P1>P2>P3',
+        queuePolicy: 'ELIGIBLE_P1>P2>P3>P4>P5;OWNER_DIRECT_TIEBREAK;WAITING_UNRANKED',
         source: 'GitHub unavailable',
         reason: String(error instanceof Error ? error.message : error).slice(0, 120),
         queueLimit: QUEUE_LIMIT,
@@ -924,7 +971,7 @@ export default async function handler(req, res) {
       recentWork: [],
       workProjection: {
         mode: 'unavailable',
-        queuePolicy: 'OWNER_DIRECT>P0>P1>P2>P3',
+        queuePolicy: 'ELIGIBLE_P1>P2>P3>P4>P5;OWNER_DIRECT_TIEBREAK;WAITING_UNRANKED',
         source: 'Không có nguồn xác minh',
       },
     });
