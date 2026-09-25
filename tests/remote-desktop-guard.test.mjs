@@ -108,13 +108,20 @@ describe('Remote Desktop Commander hard runtime guard',()=>{
     }
   });
 
-  it('opens exactly one owner-authorized call then remains closed after restart/retry',async()=>{
+  it('verifies Owner once at lease install, opens exactly one call, then remains closed after replay',async()=>{
     const leasePath=await tempLeasePath();
     const args={path:'D:\\TigerIQ\\Evidence\\guard-canary.txt',content:'ok',mode:'rewrite'};
     const lease=leaseFor('write_file',args);
-    await putLease(leasePath,lease);
-    expect(await enforceRemoteToolCall({tool:'write_file',args,leasePath,now:NOW,fetchImpl:authFetchFor(lease)}))
-      .toMatchObject({ok:true,reason:'OWNER_LEASE_VALID_SINGLE_USE',leaseId:'OWNER-TEST-1'});
+    let fetchCalls=0;
+    const installFetch=async()=>{ fetchCalls+=1; return authFetchFor(lease)(); };
+    expect(await installOwnerLeaseFromAuthorization({authorizationUrl:lease.authorizationUrl},{leasePath,now:NOW,fetchImpl:installFetch}))
+      .toMatchObject({ok:true,reason:'OWNER_LEASE_INSTALLED',leaseId:'OWNER-TEST-1'});
+    expect(fetchCalls).toBe(1);
+    expect(await enforceRemoteToolCall({
+      tool:'write_file',args,leasePath,now:NOW,
+      fetchImpl:async()=>{ throw new Error('mutation must not refetch owner auth'); }
+    })).toMatchObject({ok:true,reason:'OWNER_LEASE_VALID_SINGLE_USE',leaseId:'OWNER-TEST-1'});
+    expect(fetchCalls).toBe(1);
     await expect(readFile(leasePath,'utf8')).rejects.toMatchObject({code:'ENOENT'});
     const claim=(await readdir(join(leasePath,'..'))).find((name)=>name.startsWith('owner-lease.json.claim-'));
     const receipt=JSON.parse(await readFile(join(join(leasePath,'..'),claim),'utf8'));
@@ -147,29 +154,26 @@ describe('Remote Desktop Commander hard runtime guard',()=>{
       .toMatchObject({ok:false,reason:'LEASE_ARGUMENT_SCOPE_MISMATCH'});
   });
 
-  it('rejects forged/mismatched Owner authorization records fail closed',async()=>{
-    const leasePath=await tempLeasePath();
+  it('rejects forged/mismatched Owner authorization records before lease installation',async()=>{
     const args={path:'D:\\TigerIQ\\Evidence\\forged.txt',content:'x',mode:'rewrite'};
+    const lease=leaseFor('write_file',args);
     for (const fetchImpl of [
-      authFetchFor(leaseFor('write_file',args),{login:'attacker'}),
-      authFetchFor(leaseFor('write_file',args),{bodyOverride:'TIGERIQ_REMOTE_MUTATION_AUTH_V1\nOWNER_AUTHORIZED=true\nLEASE_ID=WRONG'})
+      authFetchFor(lease,{login:'attacker'}),
+      authFetchFor(lease,{bodyOverride:'TIGERIQ_REMOTE_MUTATION_AUTH_V1\nOWNER_AUTHORIZED=true\nLEASE_ID=WRONG'})
     ]) {
-      const lease=leaseFor('write_file',args);
-      await putLease(leasePath,lease);
-      const result=await enforceRemoteToolCall({tool:'write_file',args,leasePath,now:NOW,fetchImpl});
+      const leasePath=await tempLeasePath();
+      const result=await installOwnerLeaseFromAuthorization({authorizationUrl:lease.authorizationUrl},{leasePath,now:NOW,fetchImpl});
       expect(result.ok).toBe(false);
       await expect(readFile(leasePath,'utf8')).rejects.toMatchObject({code:'ENOENT'});
     }
   });
 
-  it('fails closed when Owner authorization verification is unavailable',async()=>{
+  it('fails closed when Owner authorization verification is unavailable at lease installation',async()=>{
     const leasePath=await tempLeasePath();
     const args={path:'D:\\TigerIQ\\Evidence\\offline.txt',content:'x',mode:'rewrite'};
     const lease=leaseFor('write_file',args);
-    await putLease(leasePath,lease);
-    const result=await enforceRemoteToolCall({
-      tool:'write_file',args,leasePath,now:NOW,
-      fetchImpl:async()=>{ throw new Error('offline'); }
+    const result=await installOwnerLeaseFromAuthorization({authorizationUrl:lease.authorizationUrl},{
+      leasePath,now:NOW,fetchImpl:async()=>{ throw new Error('offline'); }
     });
     expect(result).toMatchObject({ok:false,reason:'OWNER_AUTH_VERIFY_FAILED'});
     await expect(readFile(leasePath,'utf8')).rejects.toMatchObject({code:'ENOENT'});
