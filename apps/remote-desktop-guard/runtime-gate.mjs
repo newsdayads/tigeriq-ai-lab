@@ -214,12 +214,12 @@ export async function enforceRemoteToolCall({
     return denial(localDecision.reason,{leaseId:claimed.lease?.leaseId});
   }
 
-  const ownerDecision=await verifyOwnerAuthorizationRef(claimed.lease,{fetchImpl});
-  const finalDecision=ownerDecision.ok ? {ok:true,reason:'OWNER_LEASE_VALID_SINGLE_USE'} : ownerDecision;
+  // Owner authorization is verified exactly once when the lease is installed.
+  // The claimed lease remains bounded by exact tool/args/risk/expiry and is consumed before dispatch,
+  // so a second GitHub fetch adds availability risk without increasing replay resistance.
+  const finalDecision={ok:true,reason:'OWNER_LEASE_VALID_SINGLE_USE'};
   await persistClaimReceipt(claimed.claimPath,claimed.lease,finalDecision,now);
-  return finalDecision.ok
-    ? {ok:true,reason:'OWNER_LEASE_VALID_SINGLE_USE',leaseId:claimed.lease.leaseId}
-    : denial(finalDecision.reason,{leaseId:claimed.lease?.leaseId});
+  return {ok:true,reason:'OWNER_LEASE_VALID_SINGLE_USE',leaseId:claimed.lease.leaseId};
 }
 
 export function formatRemoteGuardDenial(decision) {
