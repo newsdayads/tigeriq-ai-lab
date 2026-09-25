@@ -142,18 +142,16 @@ describe('independent worker recovery flows in direct-cdp-bridge',()=>{
     expect(source).toContain("computeWorkerStaggerDelay");
   });
 
-  it('keeps NV03/NV04 in an always-on role loop without turning App Chrome into a dispatcher',()=>{
+  it('keeps NV03/NV04 in an always-on local UI loop without assignment dispatching',()=>{
     expect(source).not.toContain('findContinuableWorkerWorkForUi(controllerState,w.id)');
     expect(source).toContain('LOCAL_CONTINUE_DISPATCHED');
     expect(source).toContain('pickWorkerContinuePrompt');
     const genericLoop=source.slice(source.indexOf('async function maybeWorkerContinuity'),source.indexOf('\nfunction log('));
-    expect(genericLoop).toContain("if(w.id==='NV03'||w.id==='NV04')");
-    expect(genericLoop).toContain("currentWorkerAssignmentStatus(w.id)");
-    expect(genericLoop).toContain("assignment.status==='READY_UNASSIGNED'||assignment.status==='CONTINUABLE'");
-    expect(genericLoop).toContain('if(!roleLoopAllowed)');
-    expect(genericLoop).not.toContain("assignment.status!=='CONTINUABLE'");
-    expect(genericLoop).toContain("!['READY_UNASSIGNED','CONTINUABLE'].includes(assignment.status)");
-    expect(source).toContain("return{status:'READY_UNASSIGNED',job:null}");
+    expect(genericLoop).toContain('chooseLocalContinuePrompt(w.id,state)');
+    expect(genericLoop).not.toContain('currentWorkerAssignmentStatus');
+    expect(genericLoop).not.toContain('READY_UNASSIGNED');
+    expect(genericLoop).not.toContain('assignment.status');
+    expect(genericLoop).toContain('awaitingWorkStart');
   });
 
   it('rechecks WORKING inside F5/restart mutation boundaries and never stops active work for maintenance',()=>{
