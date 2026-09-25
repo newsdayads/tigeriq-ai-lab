@@ -385,7 +385,7 @@ describe('NV02 continuity policy', () => {
     const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(source).toContain("button.__composer-pill[aria-haspopup=\"menu\"]");
     const ui=source.slice(source.indexOf('const UI_EXPR='),source.indexOf('async function uiStateRaw'));
-    expect(ui).toContain("document.querySelectorAll('button,[role=\\\"button\\\"]')");
+    expect(ui).toContain(`document.querySelectorAll('button,[role="button"]')`);
     expect(ui).toContain('chọn mô hình chatgpt|choose.*model|model selector');
     expect(ui).toContain("e.hasAttribute('data-selected-reasoning-effort')");
     expect(source).toContain("Cao|High|Tiêu chuẩn|Standard|Nhanh|Fast|Tự động|Auto");
