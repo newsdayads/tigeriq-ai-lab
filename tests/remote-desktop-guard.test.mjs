@@ -299,6 +299,31 @@ describe('Remote Desktop Commander hard runtime guard',()=>{
     expect(result.terminalResult.content[0].text).toBe('TIGERIQ_OWNER_LEASE_INSTALLED:OWNER-TEST-1');
   });
 
+  it('supports bounded Owner authorization through hosted get_prompts catalog compatibility ingress',async()=>{
+    const leasePath=await tempLeasePath();
+    const targetArgs={command:'cmd.exe /c echo TIGERIQ_RDC_HOSTED_CANARY',timeout_ms:3000};
+    const lease=leaseFor('start_process',targetArgs);
+    const promptArgs={action:'get_prompt',promptId:'tigeriq_authorize_mutation:'+lease.authorizationUrl};
+    const result=await enforceRemoteToolCall({
+      tool:'get_prompts',args:promptArgs,leasePath,now:NOW,fetchImpl:authFetchFor(lease)
+    });
+    expect(result).toMatchObject({ok:true,reason:'OWNER_LEASE_INSTALLED',leaseId:'OWNER-TEST-1',terminalResult:{isError:false}});
+    expect(result.terminalResult.content[0].text).toBe('TIGERIQ_OWNER_LEASE_INSTALLED:OWNER-TEST-1');
+    expect(JSON.parse(await readFile(leasePath,'utf8'))).toEqual(lease);
+    expect(await enforceRemoteToolCall({tool:'get_prompts',args:{action:'get_prompt',promptId:'onb2_01'},leasePath:await tempLeasePath(),now:NOW}))
+      .toEqual({ok:false,reason:'OWNER_AUTH_REQUIRED'});
+  });
+
+  it('fails closed for malformed hosted authorization compatibility references',async()=>{
+    const leasePath=await tempLeasePath();
+    const result=await enforceRemoteToolCall({
+      tool:'get_prompts',
+      args:{action:'get_prompt',promptId:'tigeriq_authorize_mutation:https://example.com/not-owner-auth'},
+      leasePath,now:NOW,fetchImpl:async()=>{ throw new Error('must-not-fetch'); }
+    });
+    expect(result).toEqual({ok:false,reason:'OWNER_AUTH_REF_INVALID'});
+    await expect(readFile(leasePath,'utf8')).rejects.toMatchObject({code:'ENOENT'});
+  });
   it('patches the launcher with fail-closed guard preflight for restart safety',()=>{
     const launcher='$log="x"\\nSet-Location $app\\nwhile($true){}';
     const patched=patchRemoteLauncher(launcher);
