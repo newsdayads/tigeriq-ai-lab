@@ -712,7 +712,7 @@ const UI_EXPR=`(()=>{
   const requestTimeoutError=Boolean(chatRetry)&&/(yêu cầu (?:đã )?hết thời gian chờ|đã hết thời gian chờ gửi tin nhắn|request (?:has )?timed out|request timeout|timed out (?:while )?sending)/i.test(retryContext+' | '+pageText);
   const connectionPending=location.hostname==='chatgpt.com'&&/(^|\\s)(đang kết nối\\.\\.\\.|connecting\\.\\.\\.)(\\s|$)/i.test(pageText);
   const chatLoadError=location.hostname==='chatgpt.com'&&Boolean(conversationLoadError||requestTimeoutError||responseInterrupted);
-  const reasoningControls=location.hostname==='chatgpt.com'?[...document.querySelectorAll('button.__composer-pill')].filter(e=>vis(e)&&/^(?:cao|high)$/i.test(String((e.innerText||e.textContent||'')).replace(/\s+/g,' ').trim())):[];
+  const reasoningControls=location.hostname==='chatgpt.com'?[...document.querySelectorAll('button,[role="button"]')].filter(e=>{if(!vis(e))return false;const label=String((e.innerText||e.textContent||'')).replace(/\\s+/g,' ').trim();if(!/^(?:cao|high)$/i.test(label))return false;const hint=String((e.getAttribute('aria-label')||'')+' '+(e.getAttribute('title')||''));return e.matches('button.__composer-pill')||e.hasAttribute('data-selected-reasoning-effort')||/chọn mô hình chatgpt|choose.*model|model selector/i.test(hint)}):[];
   const reasoningControl=reasoningControls.length===1?reasoningControls[0]:null;
   const latestModelNode=location.hostname==='chatgpt.com'?[...document.querySelectorAll('[data-message-author-role="assistant"][data-message-model-slug]')].filter(vis).at(-1):null;
   const modelSlug=String(latestModelNode?.getAttribute('data-message-model-slug')||'').trim();
