@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "updatedAt": "2026-09-25T21:41:32.0188880Z",
+  "updatedAt": "2026-09-25T21:44:44.7368864Z",
   "workOrder": 1940,
   "resourceScope": "APP_CHROME_RECOVERY_V1",
   "mutationOwner": "CODEX_LOCAL_PC01",
@@ -16,7 +16,7 @@
   "checks": {
     "nodeSyntax": "PASS_25_FILES",
     "liveCandidate": "INSTALLED_EXACT_HEAD_THEN_ROLLED_BACK_AFTER_NV02_MODEL_FAILURE",
-    "githubSync": "BLOCKER_EVIDENCE_SYNC_PENDING; POST_PASS_RUNNING_SOURCE_SYNC_NOT_ELIGIBLE",
+    "githubSync": "BLOCKER_EVIDENCE_AND_CHECKPOINT_DRAFT_PR_1971; ACCEPTED_RUNNING_SOURCE_SYNC_NOT_ELIGIBLE",
     "staging": "PASS_72_FILES",
     "liveWorkers": "NV02_FAIL_MODEL_CONTROL_NOT_EXACT_OR_UNIQUE; NV03_NV04_NOT_ACCEPTED",
     "baselineRecovery": "PASS_CI_ARTIFACT_10847117847_AND_THREE_SERVICE_PROVENANCE",
@@ -73,5 +73,12 @@
     "rollbackFixture": "PASS",
     "liveRollback": "PASS",
     "done": false
+  },
+  "github": {
+    "evidenceBranch": "docs/1940-native-recovery-evidence-20260926",
+    "mainMerged": false,
+    "evidencePr": "https://github.com/newsdayads/tigeriq-ai-lab/pull/1971",
+    "evidenceSnapshotCommit": "54f8aff5ddd705e768825725a4b8e33ccec3a811",
+    "sourceCandidatePublishedAsAccepted": false
   }
 }
