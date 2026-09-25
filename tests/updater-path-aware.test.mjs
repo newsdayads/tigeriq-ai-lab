@@ -6,6 +6,7 @@ const script=readFileSync(new URL('../scripts/tigeriq-core/update-core-runtime.p
 const canary=readFileSync(new URL('../apps/openclaw-tigeriq-runtime/canary.mjs',import.meta.url),'utf8');
 const zeroTouch=readFileSync(new URL('../scripts/tigeriq-core/appchrome-zero-touch.ps1',import.meta.url),'utf8');
 const psVerify=readFileSync(new URL('../scripts/verify-powershell.ps1',import.meta.url),'utf8');
+const bootstrapWatchdog=readFileSync(new URL('../scripts/tigeriq-core/bootstrap-watchdog.ps1',import.meta.url),'utf8');
 
 test('updater never relies on Nullable HasValue/Value',()=>{
   assert.doesNotMatch(script,/\.HasValue\b|\.Value\b/);
@@ -94,7 +95,7 @@ test('updater restores owner-resumed APP Chrome before OpenClaw acceptance gatin
   assert.match(script,/TIGERIQ_APP_CHROME_RUNTIME_RECOVERY_V1/);
   assert.match(script,/NV02_RUNTIME_RESUMED/);
   const recovery=script.indexOf('$appChromeRecovery=Invoke-AppChromeOwnerResume');
-  const reconcile=script.indexOf('$openclawReconcile=if($runtimeExists)');
+  const reconcile=script.indexOf("$openclawReconcile=@{action='skip';reason='runtime_missing'}");
   assert.ok(recovery>=0 && reconcile>recovery,'APP Chrome recovery must run before OpenClaw reconcile/canary gating');
 });
 
@@ -128,7 +129,7 @@ test('updater retires the stale Supervisor V2 OpenClaw lifecycle owner before re
   assert.match(script,/Stop-ScheduledTask -TaskName \$legacyAutonomySupervisorTask/);
   assert.match(script,/Disable-ScheduledTask -TaskName \$legacyAutonomySupervisorTask/);
   const retire=script.indexOf('$legacyLifecycleRetire=Retire-LegacyOpenClawLifecycleOwner');
-  const reconcile=script.indexOf('$openclawReconcile=if($runtimeExists)');
+  const reconcile=script.indexOf("$openclawReconcile=@{action='skip';reason='runtime_missing'}");
   assert.ok(retire>=0 && reconcile>retire,'legacy lifecycle owner must be retired before OpenClaw reconcile');
   assert.match(script,/legacyLifecycleRetire=\$legacyLifecycleRetire/);
 });
@@ -240,4 +241,44 @@ test('modular App Chrome zero-touch activation is idempotent and RDC-free',()=>{
   assert.match(zeroTouch,/already_installed/);
   assert.match(zeroTouch,/RDC_USED=false/);
   assert.doesNotMatch(zeroTouch,/Remote_Desktop_Commander|mcp\.desktopcommander|execute_command/);
+});
+
+
+test('OpenClaw degradation never blocks unrelated updater/Core/App Chrome rollout',()=>{
+  assert.doesNotMatch(script,/if\(\$impact\.updater -or \$impact\.openclaw\)/);
+  assert.match(script,/if\(\$impact\.openclaw\)\{/);
+  assert.match(script,/OPENCLAW_DEGRADED_NONBLOCKING/);
+  const pre=script.slice(script.indexOf("$openclawReconcile=@{action='skip';reason='runtime_missing'}"),script.indexOf("if($runtimeExists -and $local -eq $remote)"));
+  assert.doesNotMatch(pre,/OPENCLAW_CANARY_BLOCKED[^\n]+continue/);
+  const update=script.slice(script.indexOf('$coreHealth=$oldCore'),script.indexOf("$newCore=HealthInfo"));
+  assert.match(update,/if\(\$impact\.openclaw\)\{/);
+  assert.match(update,/OPENCLAW_FUNCTIONAL_CANARY_FAILED/);
+});
+
+test('bootstrap watchdog independently self-heals updater OpenClaw and App Chrome with bounded recovery',()=>{
+  assert.match(script,/\$bootstrapWatchdogTask='TigerIQ Bootstrap Watchdog'/);
+  assert.match(script,/function Ensure-BootstrapWatchdogTask/);
+  assert.match(script,/Register-ScheduledTask -TaskName \$bootstrapWatchdogTask/);
+  assert.match(script,/RestartCount 999/);
+  assert.match(script,/bootstrapWatchdog=\$bootstrapWatchdog/);
+  assert.match(bootstrapWatchdog,/TigerIQ Core Runtime Updater/);
+  assert.match(bootstrapWatchdog,/TigerIQ OpenClaw Gateway/);
+  assert.match(bootstrapWatchdog,/TigerIQ APP Chrome Unified/);
+  assert.match(bootstrapWatchdog,/FailureThreshold=2/);
+  assert.match(bootstrapWatchdog,/CooldownSeconds=300/);
+  assert.match(bootstrapWatchdog,/Test-Tcp \(\[int\]\$p\)/);
+  assert.match(bootstrapWatchdog,/Start-ScheduledTask -TaskName \$t\.task/);
+  assert.match(bootstrapWatchdog,/BOUNDED_SELF_HEAL/);
+  assert.doesNotMatch(bootstrapWatchdog,/git\s|gh\s|credential|Vercel|Production|browser\.chatgpt|WORKER=/i);
+});
+
+test('runtime watchdog includes OpenClaw and App Chrome transport but does not make them global update gates',()=>{
+  assert.match(script,/function Ensure-OpenClawHealth/);
+  assert.match(script,/function Ensure-AppChromeTransportHealth/);
+  const watchdog=script.slice(script.indexOf('function Runtime-Watchdog'),script.indexOf('function Get-Impact'));
+  assert.match(watchdog,/Ensure-OpenClawHealth/);
+  assert.match(watchdog,/Ensure-AppChromeTransportHealth/);
+  assert.match(watchdog,/8798/);
+  assert.match(watchdog,/8799/);
+  assert.match(watchdog,/18789/);
 });
