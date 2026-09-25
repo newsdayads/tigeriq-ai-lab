@@ -272,6 +272,29 @@ test('bootstrap watchdog independently self-heals updater OpenClaw and App Chrom
   assert.doesNotMatch(bootstrapWatchdog,/git\s|gh\s|credential|Vercel|Production|browser\.chatgpt|WORKER=/i);
 });
 
+test('bootstrap watchdog detects a running-but-stale updater and only cleans exact updater processes',()=>{
+  assert.match(bootstrapWatchdog,/TIGERIQ_BOOTSTRAP_WATCHDOG_V2/);
+  assert.match(bootstrapWatchdog,/core-runtime-updater\.json/);
+  assert.match(bootstrapWatchdog,/UpdaterStaleSeconds=240/);
+  assert.match(bootstrapWatchdog,/UPDATER_HEARTBEAT_STALE/);
+  assert.match(bootstrapWatchdog,/function Stop-ExactUpdaterProcesses/);
+  assert.match(bootstrapWatchdog,/Get-CimInstance Win32_Process/);
+  assert.match(bootstrapWatchdog,/\[regex\]::Escape\(\$updaterRuntime\)/);
+  assert.match(bootstrapWatchdog,/Stop-Process -Id \(\[int\]\$p\.ProcessId\) -Force/);
+  assert.match(bootstrapWatchdog,/STALE_UPDATER_SELF_HEAL/);
+  assert.match(bootstrapWatchdog,/heartbeatAgeSec=\$heartbeat\.ageSec/);
+  assert.doesNotMatch(bootstrapWatchdog,/Stop-Process[^\n]+Where-Object[^\n]*powershell/i);
+});
+
+test('updater task uses StopExisting so a stale scheduled instance cannot block a fresh start',()=>{
+  const installer=readFileSync(new URL('../scripts/tigeriq-core/install-core-updater.ps1',import.meta.url),'utf8');
+  assert.match(installer,/MultipleInstances StopExisting/);
+  const target=script.slice(script.indexOf('function Ensure-UpdaterTaskRuntimeTarget'),script.indexOf('function Ensure-BootstrapWatchdogTask'));
+  assert.match(target,/MultipleInstances StopExisting/);
+  assert.match(target,/Settings\.MultipleInstances/);
+  assert.match(target,/previousMultipleInstances=\$multiple/);
+});
+
 test('runtime watchdog includes OpenClaw and App Chrome transport but does not make them global update gates',()=>{
   assert.match(script,/function Ensure-OpenClawHealth/);
   assert.match(script,/function Ensure-AppChromeTransportHealth/);
