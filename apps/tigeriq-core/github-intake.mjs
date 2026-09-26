@@ -297,7 +297,7 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
         await pool.query("update tigeriq_objectives set status='completed',summary=$2,updated_at=now() where id=$1",[row.id,row.summary]);
       }else if(job?.status==='failed'){
         row.status='blocked';
-        row.summary=`bounded pc_operator failed; job=${job.id}; failure=${String(job.failure?.message||job.failure?.kind||'terminal_failure').slice(0,300)}`;
+        row.summary=`bounded pc_operator failed; job=${job.id}; failure=${String(job.failure?.kind||'terminal_failure').slice(0,120)}`;
         await pool.query("update tigeriq_objectives set status='blocked',summary=$2,updated_at=now() where id=$1",[row.id,row.summary]);
       }
     }
