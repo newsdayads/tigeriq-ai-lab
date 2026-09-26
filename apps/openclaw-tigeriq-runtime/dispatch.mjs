@@ -252,6 +252,24 @@ export function compactOpenClawCliResult(parsed,exitCode,stderr=''){
   };
 }
 
+export function openClawTerminalDecision(result,{timedOut=false,parsedPresent=true}={}){
+  const agentStatus=String(result?.agentResult?.status||'').toLowerCase();
+  const successAgentStatuses=new Set(['pass','passed','ok','success','completed','done']);
+  const agentStructured=Boolean(result?.agentResult&&typeof result.agentResult==='object');
+  const agentSuccess=agentStructured&&successAgentStatuses.has(agentStatus);
+  const wrapperStatus=String(result?.status||'').toLowerCase();
+  const wrapperClean=Number(result?.exitCode)===0&&Boolean(parsedPresent)&&!['timeout','failed','error','aborted'].includes(wrapperStatus);
+  const trustedToolReceipt=(Array.isArray(result?.successfulToolNames)?result.successfulToolNames:[])
+    .some(name=>/^tigeriq_(?:pc|runtime)(?:[.:/]|$)/i.test(String(name||'')));
+  const success=!timedOut&&Boolean(parsedPresent)&&agentSuccess&&(wrapperClean||trustedToolReceipt);
+  const invalidTerminal=!timedOut&&Boolean(parsedPresent)&&!success&&(
+    !agentStructured
+    || !successAgentStatuses.has(agentStatus)
+    || (agentSuccess&&!wrapperClean&&!trustedToolReceipt)
+  );
+  return {success,invalidTerminal,agentStatus,agentStructured,agentSuccess,wrapperClean,trustedToolReceipt};
+}
+
 export async function runDispatchWorkerRecord(recordPath,options={}){
   const record=await readOpenClawDispatchRecord(recordPath);
   if(!record?.envelope)throw new Error('OPENCLAW_DISPATCH_RECORD_INVALID');
@@ -283,14 +301,12 @@ export async function runDispatchWorkerRecord(recordPath,options={}){
     if(first>=0&&last>first)parsed=JSON.parse(stdout.slice(first,last+1));
   }catch{}
   const result=compactOpenClawCliResult(parsed,exitCode,stderr);
-  const agentStatus=String(result.agentResult?.status||'').toLowerCase();
-  const successAgentStatuses=new Set(['pass','passed','ok','success','completed','done']);
-  const success=!timedOut&&exitCode===0&&parsed&&!['timeout','failed','error','aborted'].includes(String(result.status||'').toLowerCase())&&result.agentResult&&successAgentStatuses.has(agentStatus);
-  const invalidTerminal=!timedOut&&exitCode===0&&parsed&&(!result.agentResult||!successAgentStatuses.has(agentStatus));
+  const terminal=openClawTerminalDecision(result,{timedOut,parsedPresent:Boolean(parsed)});
+  const success=terminal.success;
   const finalState=success?'completed':'failed';
   const failureText=String(result.agentResult?.blocker||result.text||result.stderr||'');
   const rateLimited=/\b(?:rate\s*limit|too\s+many\s+requests|http\s*429|status\s*429|429)\b/i.test(failureText);
-  const failureKind=timedOut?'worker_timeout':(rateLimited?'rate_limit':(invalidTerminal?'agent_terminal_invalid':(agentStatus||result.status||'openclaw_failure')));
+  const failureKind=timedOut?'worker_timeout':(rateLimited?'rate_limit':(terminal.invalidTerminal?'agent_terminal_invalid':(terminal.agentStatus||result.status||'openclaw_failure')));
   const final={...running,state:finalState,result,updatedAt:new Date().toISOString(),completedAt:new Date().toISOString(),
     ...(success?{}:{failure:{kind:failureKind,message:String(result.agentResult?.blocker||result.text||result.stderr||'OPENCLAW_DISPATCH_FAILED').slice(0,2000)}})};
   await atomicWrite(recordPath,final);
