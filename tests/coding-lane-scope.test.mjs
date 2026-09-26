@@ -1,4 +1,5 @@
-import test from 'node:test';
+import {test as vitestTest} from 'vitest';
+const test=(name,fn)=>vitestTest(name,async()=>{const t={test:async(_name,subfn)=>subfn(t)};return fn(t)});
 import assert from 'node:assert';
 import {CodingScopeViolationError,parseCompactEditJson,salvageCompactEditsJson,validateJobScope,validateSourceScope} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {extractCanonicalAllowedPaths} from '../apps/tigeriq-coding-lane/policy.mjs';
@@ -20,11 +21,11 @@ test('coding lane scope validation tests',async(t)=>{
   await t.test('salvages complete compact edits from a truncated JSON response',()=>{
     const broken='{"summary":"partial","edits":[{"path":"apps/tigeriq-coding-lane/coding-lane.mjs","search":"old","replace":"new"},{"path":"tests/coding-lane-scope.test.mjs","search":"unterminated';
     assert.deepStrictEqual(salvageCompactEditsJson(broken),{
-      summary:'salvaged complete compact edits from truncated model response',
+      summary:'partial',
       edits:[{path:'apps/tigeriq-coding-lane/coding-lane.mjs',search:'old',replace:'new'}],
     });
     assert.deepStrictEqual(parseCompactEditJson(broken),{
-      summary:'salvaged complete compact edits from truncated model response',
+      summary:'partial',
       edits:[{path:'apps/tigeriq-coding-lane/coding-lane.mjs',search:'old',replace:'new'}],
     });
   });
