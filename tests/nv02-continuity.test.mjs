@@ -290,6 +290,7 @@ describe('NV02 continuity policy', () => {
     expect(periodicF5Gate).toBeGreaterThan(-1);
     expect(modelRecoveryGate).toBeGreaterThan(bootFreshGate);
     expect(modelRecoveryGate).toBeLessThan(continuityLoop.indexOf("if(phase==='READY')"));
+    expect(continuityLoop).not.toContain("if(phase==='WORKING'&&ui?.modelExact!==true&&modelCheckRequired");
 
     expect(source).not.toContain("state.verifiedChatUrl===ui?.url");
     expect(source).toContain("const currentUrl=String(profile.url||'')");
