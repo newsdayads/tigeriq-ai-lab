@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe,expect,it } from 'vitest';
-import { extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,formatResultComment,githubDispatchLane,githubSpecBlockedByActive,isBoundedAppChromeRequestOnly,parseExecutableIssue } from './github-intake.mjs';
+import { extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,formatResultComment,githubDispatchLane,githubPcOperatorJobId,githubSpecBlockedByActive,isBoundedAppChromeRequestOnly,parseExecutableIssue } from './github-intake.mjs';
 
 describe('GitHub Core intake guardrails',()=>{
 
@@ -41,6 +41,12 @@ describe('GitHub Core intake guardrails',()=>{
     });
     const mutation=boundedBody.replace('APP_CHROME_REQUEST_ONLY=true\n','').replace('ASSIGNED_ACTION\nUse tigeriq_pc file_write only:','ALLOW_PATH_PREFIX=apps/chrome-controller/\nASSIGNED_ACTION\nUse tigeriq_pc file_write only:');
     expect(parseExecutableIssue({...base,number:1882,title:'[APP-CHROME] mutation',body:mutation})).toBeNull();
+  });
+
+  it('uses a stable initial pc_operator job id and a unique id for source rearm',()=>{
+    const spec={number:1935,sourceRevision:'abc123def456',updatedAt:'2026-09-26T03:20:00Z'};
+    expect(githubPcOperatorJobId(spec,null)).toBe('JOB-GH-1935-PC');
+    expect(githubPcOperatorJobId(spec,{id:'OBJ-GH-1935'})).toBe('JOB-GH-1935-PC-Rabc123def456-20260926032000');
   });
 
   it('active objectives block only the same RESOURCE_SCOPE, not an entire lane',()=>{
