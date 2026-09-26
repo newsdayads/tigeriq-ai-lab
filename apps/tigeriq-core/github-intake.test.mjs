@@ -19,11 +19,13 @@ describe('GitHub Core intake guardrails',()=>{
   it('fails closed if shell/code guardrails are missing',()=>{expect(parseExecutableIssue({...base,body:'TIGERIQ_EXECUTABLE=true\nOWNER_POLICY=AUTO'})).toBeNull();});
   it('does not treat CENTRAL prose/backticks as an executable marker',()=>{expect(parseExecutableIssue({...base,body:'Rule: `TIGERIQ_EXECUTABLE=true`; OWNER_POLICY=AUTO'})).toBeNull();});
   it('extracts bounded issue refs and safe repository paths',()=>{expect(extractIssueRefs(base.body,588)).toEqual([280,335]);expect(extractRepoPaths(base.body)).toEqual(['docs/CURRENT_STATE.md']);});
-  it('legacy P0 pc_operator becomes autonomous P1; explicit Owner-assigned P0 stays P0',()=>{
+  it('legacy and assigned P0 pc_operator become autonomous P1 unless an explicit Owner marker exists',()=>{
     const legacy={...base,number:1528,body:'TIGERIQ_EXECUTABLE=true\nOWNER_POLICY=AUTO\nOWNER_DIRECT=true\nPRIORITY=P0\nCAPABILITY=pc_operator\nNO_CODE_CHANGE=true\nNO_PC01_SHELL=true\nRESOURCE_SCOPE=OPENCLAW_TEST\nASSIGNED_ACTION\ntigeriq_pc tcp_probe host=127.0.0.1 port=18789\nACCEPTANCE\nPASS'};
-    expect(parseExecutableIssue(legacy)).toMatchObject({number:1528,priority:'P1',sourcePriority:'P0',legacyP0Autonomous:true,capability:'pc_operator'});
+    expect(parseExecutableIssue(legacy)).toMatchObject({number:1528,priority:'P1',sourcePriority:'P0',legacyP0Autonomous:true,ownerControlled:false,capability:'pc_operator'});
     const assigned={...legacy,body:legacy.body.replace('CAPABILITY=pc_operator','CAPABILITY=pc_operator\nASSIGNED_EXECUTOR=NV06')};
-    expect(parseExecutableIssue(assigned)).toMatchObject({priority:'P0',ownerControlled:true,targetWorker:'NV06'});
+    expect(parseExecutableIssue(assigned)).toMatchObject({priority:'P1',sourcePriority:'P0',legacyP0Autonomous:true,ownerControlled:false,targetWorker:'NV06'});
+    const ownerHeld={...assigned,body:assigned.body+'\nOWNER_HOLD=true'};
+    expect(parseExecutableIssue(ownerHeld)).toMatchObject({priority:'P0',sourcePriority:'P0',legacyP0Autonomous:false,ownerControlled:true,targetWorker:'NV06',route:'OPENCLAW'});
     expect(extractPcOperatorInstruction(legacy.body)).toContain('tcp_probe');
   });
 
