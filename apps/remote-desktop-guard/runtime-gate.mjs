@@ -8,6 +8,7 @@ const OWNER_LOGIN='newsdayads';
 const OWNER_AUTH_MARKER='TIGERIQ_REMOTE_MUTATION_AUTH_V1';
 const HOSTED_AUTH_COMPAT_TOOL='get_prompts';
 const HOSTED_AUTH_PROMPT_PREFIX='tigeriq_authorize_mutation:';
+const DEFAULT_OWNER_GITHUB_TOKEN_PATH='D:\\TigerIQ\\Secrets\\github-command-center.token';
 
 const AUTHORIZATION_TOOL_DEFINITION=Object.freeze({
   name:AUTHORIZATION_TOOL,
@@ -50,13 +51,27 @@ function leaseFromAuthorizationRecord(record,authorizationUrl) {
   };
 }
 
-async function fetchOwnerAuthorizationRecord(authorizationUrl,{fetchImpl=globalThis.fetch}={}) {
+async function githubRequestHeaders({
+  tokenPath=DEFAULT_OWNER_GITHUB_TOKEN_PATH,readFileImpl=readFile
+}={}) {
+  const headers={Accept:'application/vnd.github+json','User-Agent':'TigerIQ-Remote-Guard/1'};
+  let token=String(process.env.GH_TOKEN||'').trim();
+  if (!token && typeof readFileImpl==='function') {
+    try { token=String(await readFileImpl(tokenPath,'utf8')).trim(); } catch { token=''; }
+  }
+  if (token) headers.Authorization='Bearer '+token;
+  return headers;
+}
+
+async function fetchOwnerAuthorizationRecord(authorizationUrl,{
+  fetchImpl=globalThis.fetch,tokenPath=DEFAULT_OWNER_GITHUB_TOKEN_PATH,readFileImpl=readFile
+}={}) {
   if (typeof authorizationUrl!=='string' || !/^https:\/\/api\.github\.com\/repos\/newsdayads\/tigeriq-ai-lab\/issues\/comments\/\d+$/.test(authorizationUrl)) return denial('OWNER_AUTH_REF_INVALID');
   if (typeof fetchImpl!=='function') return denial('OWNER_AUTH_VERIFY_UNAVAILABLE');
   try {
     const response=await fetchImpl(authorizationUrl,{
       method:'GET',
-      headers:{Accept:'application/vnd.github+json','User-Agent':'TigerIQ-Remote-Guard/1'}
+      headers:await githubRequestHeaders({tokenPath,readFileImpl})
     });
     if (!response?.ok) return denial('OWNER_AUTH_VERIFY_HTTP_'+String(response?.status??'ERR'));
     const data=await response.json();
@@ -70,9 +85,10 @@ async function fetchOwnerAuthorizationRecord(authorizationUrl,{fetchImpl=globalT
 }
 
 export async function installOwnerLeaseFromAuthorization({authorizationUrl}={},{
-  fetchImpl=globalThis.fetch,leasePath=DEFAULT_LEASE_PATH,now=Date.now()
+  fetchImpl=globalThis.fetch,leasePath=DEFAULT_LEASE_PATH,now=Date.now(),
+  tokenPath=DEFAULT_OWNER_GITHUB_TOKEN_PATH,readFileImpl=readFile
 }={}) {
-  const verified=await fetchOwnerAuthorizationRecord(authorizationUrl,{fetchImpl});
+  const verified=await fetchOwnerAuthorizationRecord(authorizationUrl,{fetchImpl,tokenPath,readFileImpl});
   if (!verified.ok) return verified;
   const lease=leaseFromAuthorizationRecord(verified.record,authorizationUrl);
   const envelope=validateLeaseEnvelope(lease,{now});
@@ -97,8 +113,10 @@ export async function installOwnerLeaseFromAuthorization({authorizationUrl}={},{
   return {ok:true,reason:'OWNER_LEASE_INSTALLED',leaseId:lease.leaseId,tool:lease.tool,expiresAt:lease.expiresAt};
 }
 
-export async function verifyOwnerAuthorizationRef(lease,{fetchImpl=globalThis.fetch}={}) {
-  const verified=await fetchOwnerAuthorizationRecord(lease?.authorizationUrl,{fetchImpl});
+export async function verifyOwnerAuthorizationRef(lease,{
+  fetchImpl=globalThis.fetch,tokenPath=DEFAULT_OWNER_GITHUB_TOKEN_PATH,readFileImpl=readFile
+}={}) {
+  const verified=await fetchOwnerAuthorizationRecord(lease?.authorizationUrl,{fetchImpl,tokenPath,readFileImpl});
   if (!verified.ok) return verified;
   const record=verified.record;
   if (record.LEASE_ID !== lease.leaseId) return denial('OWNER_AUTH_LEASE_MISMATCH');
@@ -179,14 +197,15 @@ export async function verifyRealReadScope(tool,args={}, {realpathImpl=realpath}=
 }
 
 export async function enforceRemoteToolCall({
-  tool,args={},now=Date.now(),leasePath=DEFAULT_LEASE_PATH,fetchImpl=globalThis.fetch
+  tool,args={},now=Date.now(),leasePath=DEFAULT_LEASE_PATH,fetchImpl=globalThis.fetch,
+  tokenPath=DEFAULT_OWNER_GITHUB_TOKEN_PATH,readFileImpl=readFile
 }={}) {
   const compatAuthorizationUrl = tool===HOSTED_AUTH_COMPAT_TOOL && args?.action==='get_prompt' && typeof args?.promptId==='string' && args.promptId.startsWith(HOSTED_AUTH_PROMPT_PREFIX)
     ? args.promptId.slice(HOSTED_AUTH_PROMPT_PREFIX.length)
     : null;
   if (tool===AUTHORIZATION_TOOL || compatAuthorizationUrl!==null) {
     const authorizationArgs = compatAuthorizationUrl!==null ? {authorizationUrl:compatAuthorizationUrl} : args;
-    const installed=await installOwnerLeaseFromAuthorization(authorizationArgs,{fetchImpl,leasePath,now});
+    const installed=await installOwnerLeaseFromAuthorization(authorizationArgs,{fetchImpl,leasePath,now,tokenPath,readFileImpl});
     if (!installed.ok) return installed;
     return {
       ...installed,
