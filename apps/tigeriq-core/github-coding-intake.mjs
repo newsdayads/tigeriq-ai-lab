@@ -136,7 +136,7 @@ async function reopenedCompletionKey(fetchImpl,owner,repo,token,issue){
   const reopenIdentity=String(latest?.id||latest?.created_at||'reopened').replace(/[^0-9A-Za-z]/g,'').slice(-32)||'reopened';
   return `${sourceRevision}:reopen-${reopenIdentity}`;
 }
-async function hasEffectiveBlockedFinal(pool,n,fallbackSummary='',currentObjectiveId=null,currentMainSha='',currentSourceRevision=''){
+async function hasEffectiveBlockedFinal(pool,n,fallbackSummary='',currentObjectiveId=null,currentMainSha='',currentSourceRevision='',relevantMainChanged=false){
   const finals=await eventData(pool,'GITHUB_CODING_BLOCKED_FINAL',n);
   if(!finals.length)return false;
   const latest=finals[0]||{};
@@ -150,7 +150,7 @@ async function hasEffectiveBlockedFinal(pool,n,fallbackSummary='',currentObjecti
     return false;
   }
   const rearms=await eventData(pool,'GITHUB_CODING_RECOVERY_REARMED',n);
-  if(shouldRearmRecoverableFinal({...latest,terminalReason:terminalSummary},currentMainSha,rearms,currentSourceRevision))return false;
+  if(shouldRearmRecoverableFinal({...latest,terminalReason:terminalSummary},currentMainSha,rearms,currentSourceRevision,relevantMainChanged))return false;
   return true;
 }
 export function classifyCodingBlocker(summary){
@@ -163,22 +163,52 @@ export function classifyCodingBlocker(summary){
   if(recoverable)return {kind:'RECOVERABLE',transient,reason:raw||'RECOVERABLE_BLOCK'};
   return {kind:'RECOVERABLE',transient:false,reason:raw||'UNCLASSIFIED_RECOVERABLE'};
 }
-export function shouldRearmRecoverableFinal(final,currentMainSha,rearms=[],currentSourceRevision=''){
+export function shouldRearmRecoverableFinal(final,currentMainSha,rearms=[],currentSourceRevision='',relevantMainChanged=false){
   const mainSha=String(currentMainSha||'').trim();
   const sourceRevision=String(currentSourceRevision||'').trim();
   const finalReason=String(final?.reason||'').toUpperCase();
   if(!mainSha||!['RETRY_BUDGET_EXHAUSTED','HARD_BLOCKER','ISSUE_CLOSED_OR_SUPERSEDED'].includes(finalReason))return false;
   const terminalReason=String(final?.terminalReason||'');
   if(classifyCodingBlocker(terminalReason).kind!=='RECOVERABLE')return false;
-  const mainChanged=String(final?.mainSha||'').trim()!==mainSha;
   const sourceChanged=Boolean(sourceRevision)&&String(final?.sourceRevision||'').trim()!==sourceRevision;
-  if(!mainChanged&&!sourceChanged)return false;
+  if(!sourceChanged&&!relevantMainChanged)return false;
   const priorObjectiveId=String(final?.codingObjectiveId||'');
   return !(rearms||[]).some(x=>
     String(x?.mainSha||'').trim()===mainSha&&
     String(x?.sourceRevision||'').trim()===sourceRevision&&
     String(x?.priorObjectiveId||'')===priorObjectiveId
   );
+}
+
+export async function relevantRecoveryMainChangeEvidence(fetchImpl,owner,repo,token,fromSha,toSha,scopeLease,compareCache=null){
+  const from=String(fromSha||'').trim(),to=String(toSha||'').trim();
+  const paths=[...new Set((scopeLease?.paths||[]).map(x=>String(x||'').trim().replace(/^\.\//,'').replace(/\/+$/,'')).filter(Boolean))];
+  const none={relevantMainChanged:false,relevantChangedPaths:[],compareAvailable:false};
+  if(!from||!to||from===to||!paths.length)return none;
+  const key=`${from}...${to}`;
+  let compare=compareCache?.get?.(key);
+  if(!compare){
+    try{
+      compare=await gh(fetchImpl,owner,repo,`/compare/${from}...${to}?per_page=100`,token);
+      compareCache?.set?.(key,compare);
+    }catch{
+      compareCache?.set?.(key,{__compareUnavailable:true});
+      return none;
+    }
+  }
+  if(compare?.__compareUnavailable||!Array.isArray(compare?.files)||compare.files.length>=300)return none;
+  const changed=[];
+  for(const file of compare.files){
+    const filename=String(file?.filename||'').trim();
+    if(!filename)return none;
+    changed.push(filename);
+  }
+  const relevant=[...new Set(changed.filter(file=>paths.some(scope=>file===scope||file.startsWith(`${scope}/`))))].slice(0,32);
+  return {relevantMainChanged:relevant.length>0,relevantChangedPaths:relevant,compareAvailable:true};
+}
+
+export async function relevantRecoveryMainChange(fetchImpl,owner,repo,token,fromSha,toSha,scopeLease,compareCache=null){
+  return (await relevantRecoveryMainChangeEvidence(fetchImpl,owner,repo,token,fromSha,toSha,scopeLease,compareCache)).relevantMainChanged;
 }
 function issueSuperseded(issue){
   if(!issue||issue.state!=='open')return true;
@@ -347,6 +377,7 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
   try{currentMainSha=String((await gh(fetchImpl,owner,repo,'/git/ref/heads/main',token))?.object?.sha||'').trim()}catch(error){if(githubRateLimitCooldownMs(error)>0)throw error}
   let progress=0,results=0;
   const seenIssues=new Set();
+  const recoveryCompareCache=new Map();
   let retryCreatedThisTick=false;
   for(const row of rows){
     const n=Number(row.data?.issueNumber),id=String(row.data?.codingObjectiveId||'');
@@ -363,7 +394,13 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
       continue;
     }
     const currentSourceRevision=await codingSourceRevision(fetchImpl,owner,repo,token,currentIssue);
-    if(await hasEffectiveBlockedFinal(pool,n,objective?.summary,id,currentMainSha,currentSourceRevision))continue;
+    const recoverySpec=parseCodingIssue(currentIssue);
+    const recoveryFinal=(await eventData(pool,'GITHUB_CODING_BLOCKED_FINAL',n))[0]||null;
+    const recoveryEvidence=recoverySpec&&recoveryFinal&&String(recoveryFinal?.mainSha||'').trim()!==currentMainSha&&String(recoveryFinal?.sourceRevision||'').trim()===String(currentSourceRevision||'').trim()
+      ?await relevantRecoveryMainChangeEvidence(fetchImpl,owner,repo,token,recoveryFinal.mainSha,currentMainSha,recoverySpec.scopeLease,recoveryCompareCache)
+      :{relevantMainChanged:false,relevantChangedPaths:[],compareAvailable:false};
+    const relevantMainChanged=recoveryEvidence.relevantMainChanged;
+    if(await hasEffectiveBlockedFinal(pool,n,objective?.summary,id,currentMainSha,currentSourceRevision,relevantMainChanged))continue;
     const job=(status.jobs||[]).find(x=>x.objective_id===id);
     if(job&&!(await markerExists(pool,'GITHUB_CODING_PROGRESS_REPORTED',n))){
       const pr=job.pr_number?` PR #${job.pr_number}.`:'';
@@ -421,7 +458,7 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
     }
 
     const finalize=async(reason,evidence={})=>{
-      if(await hasEffectiveBlockedFinal(pool,n,objective.summary,id,currentMainSha,currentSourceRevision))return false;
+      if(await hasEffectiveBlockedFinal(pool,n,objective.summary,id,currentMainSha,currentSourceRevision,relevantMainChanged))return false;
       await mark(pool,'GITHUB_CODING_BLOCKED_FINAL',{issueNumber:n,codingObjectiveId:id,status:'blocked',reason,mainSha:currentMainSha||null,sourceRevision:currentSourceRevision||null,...evidence});
       await comment(fetchImpl,owner,repo,n,token,`[BLOCKED_FINAL] ${id} reason=${reason}. ${String(objective.summary||'').slice(0,2000)}`);
       results++;
@@ -454,7 +491,7 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
       const finals=await eventData(pool,'GITHUB_CODING_BLOCKED_FINAL',n);
       const latestFinal=finals[0]||{issueNumber:n,codingObjectiveId:id,reason:'RETRY_BUDGET_EXHAUSTED',terminalReason:classification.reason,mainSha:currentMainSha};
       const rearms=await eventData(pool,'GITHUB_CODING_RECOVERY_REARMED',n);
-      if(shouldRearmRecoverableFinal(latestFinal,currentMainSha,rearms,currentSourceRevision)){
+      if(shouldRearmRecoverableFinal(latestFinal,currentMainSha,rearms,currentSourceRevision,relevantMainChanged)){
         if(retryCreatedThisTick)continue;
         const blockedByActiveOwner=await activeCodingOwnerBlocksRetry({pool,status,fetchImpl,owner,repo,token,excludeObjectiveIds:[id],targetScope:spec.scopeLease});
         if(blockedByActiveOwner)continue;
@@ -467,7 +504,8 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
           if(!out?.id)throw new Error('CODING_RECOVERY_OBJECTIVE_ID_MISSING');
           recoveryObjective={id:out.id,objective:objectiveText,status:'queued'};
         }
-        await mark(pool,'GITHUB_CODING_RECOVERY_REARMED',{issueNumber:n,priorObjectiveId:id,codingObjectiveId:recoveryObjective.id,mainSha:currentMainSha,sourceRevision:currentSourceRevision||null,recoveryKey,reason:classification.reason});
+        const sourceChanged=Boolean(currentSourceRevision)&&String(latestFinal?.sourceRevision||'').trim()!==String(currentSourceRevision||'').trim();
+        await mark(pool,'GITHUB_CODING_RECOVERY_REARMED',{issueNumber:n,priorObjectiveId:id,codingObjectiveId:recoveryObjective.id,mainSha:currentMainSha,priorMainSha:String(latestFinal?.mainSha||'').trim()||null,currentMainSha:currentMainSha||null,sourceRevision:currentSourceRevision||null,sourceChanged,relevantChangedPaths:recoveryEvidence.relevantChangedPaths.slice(0,32),recoveryKey,reason:classification.reason});
         const dispatchReason=spec.ownerDirect?`OWNER_DIRECT>${spec.sourcePriority}`:`PRIORITY_${spec.sourcePriority}`;
         await mark(pool,'GITHUB_CODING_DISPATCHED',{issueNumber:n,issueUrl:spec.url,codingObjectiveId:recoveryObjective.id,ownerDirect:spec.ownerDirect,sourcePriority:spec.sourcePriority,dispatchPriority:spec.priority,dispatchReason,recoveryKey,sourceRevision:currentSourceRevision||null,priorObjectiveId:id,scopeLease:spec.scopeLease});
         await comment(fetchImpl,owner,repo,n,token,`[RECOVERY_REARMED] ${recoveryObjective.id} source=${currentMainSha.slice(0,12)} prior=${id} reason=${classification.reason.slice(0,500)}`);
