@@ -1,5 +1,5 @@
 import {readFileSync} from 'node:fs';
-import {test} from 'node:test';
+import {test} from 'vitest';
 import assert from 'node:assert/strict';
 import {branchName,changedPathImpact,checkGateState,extractCanonicalAllowedPaths,safeRepoPath,validateChanges} from '../apps/tigeriq-coding-lane/policy.mjs';
 
@@ -44,7 +44,7 @@ test('coding lane cannot target protected or unsafe paths',()=>{
 });
 
 test('canonical MUST NOT EXPAND header is an enforceable source scope',()=>{
-  const objective='CANONICAL ALLOWED PATHS (MUST NOT EXPAND):\\ntests/coding-lane-ai-json-transport.test.mjs\\n\\nGoal: test-only canary';
+  const objective='CANONICAL ALLOWED PATHS (MUST NOT EXPAND):\ntests/coding-lane-ai-json-transport.test.mjs\n\nGoal: test-only canary';
   assert.deepEqual(extractCanonicalAllowedPaths(objective),['tests/coding-lane-ai-json-transport.test.mjs']);
 });
 
@@ -68,7 +68,7 @@ test('runtime impact isolates Web Control and Coding Lane from Core restart',()=
 });
 
 test('service enforces independent reviewer and gate-before-merge',()=>{
-  assert.match(service,/pickResource\(\[worker\.id\]\)/);
+  assert.match(service,/pickResource\(\[worker\.id,\.\.\.cooldownExcludes\]\)/);
   assert.match(service,/waitGates\(branch\)/);
   assert.match(service,/review\.decision==='approve'/);
   assert.match(service,/mergePr\(pr\.number,finalSha\)/);
