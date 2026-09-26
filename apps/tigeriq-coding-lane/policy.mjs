@@ -46,12 +46,35 @@ function pathTokens(text){
   return raw.map(x=>x.replace(/[.,;:!?)}]+$/g,'')).filter(safeRepoPath);
 }
 
+function canonicalAllowPathPrefixToken(value){
+  let token=String(value||'').trim().replace(/^`|`$/g,'').replace(/^\.\//,'');
+  const directory=token.endsWith('/');
+  token=token.replace(/\/+$/,'');
+  if(!token||!safeRepoPath(token)){
+    const error=new Error(`CODING_CANONICAL_SCOPE_INVALID:${String(value||'').trim()||'EMPTY'}`);
+    error.code='CODING_CANONICAL_SCOPE_INVALID';
+    throw error;
+  }
+  return directory?`${token}/`:token;
+}
+
 export function extractCanonicalAllowedPaths(text){
   const lines=String(text||'').split(/\r?\n/);
   const out=[];
   let active=false;
   for(const raw of lines){
     const line=raw.trim();
+    const allowPrefix=line.match(/^ALLOW_PATH_PREFIX=(.*)$/i);
+    if(allowPrefix){
+      const values=allowPrefix[1].split(',').map(x=>x.trim()).filter(Boolean);
+      if(!values.length){
+        const error=new Error('CODING_CANONICAL_SCOPE_INVALID:EMPTY');
+        error.code='CODING_CANONICAL_SCOPE_INVALID';
+        throw error;
+      }
+      for(const value of values)out.push(canonicalAllowPathPrefixToken(value));
+      continue;
+    }
     const header=line.match(/^(?:[-*]\s*)?(?:#{1,6}\s*)?(?:exact\s+hard\s+scope|allowed\s+paths\s+only|canonical\s+allowed\s+paths(?:\s*\(\s*must\s+not\s+expand\s*\))?)\s*:?(.*)$/i);
     if(header){
       active=true;
