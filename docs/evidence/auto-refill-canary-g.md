@@ -1,0 +1,1 @@
+AUTO_REFILL_CANARY_G=PASS and issue #1065

@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tigeriq.local/schemas/workforce-result.schema.json",
+  "title": "TigerIQ Workforce Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["taskId", "employeeId", "status", "conclusion", "confidence", "artifacts", "risks", "completedAt"],
+  "properties": {
+    "taskId": { "type": "string", "minLength": 1 },
+    "employeeId": { "type": "string", "minLength": 1 },
+    "status": { "enum": ["completed", "failed"] },
+    "conclusion": { "type": "string" },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "verdict": { "enum": ["pass", "fail", "needs-work"] },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "ref"],
+        "properties": {
+          "kind": { "enum": ["text", "json", "screenshot", "log", "commit", "url"] },
+          "ref": { "type": "string", "minLength": 1 },
+          "summary": { "type": "string" },
+          "sha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" }
+        }
+      }
+    },
+    "risks": { "type": "array", "items": { "type": "string" } },
+    "completedAt": { "type": "string", "format": "date-time" },
+    "failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message", "retriable"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "message": { "type": "string" },
+        "retriable": { "type": "boolean" }
+      }
+    }
+  }
+}

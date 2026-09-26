@@ -1,0 +1,146 @@
+import {readFileSync} from 'node:fs';
+import {describe,expect,it} from 'vitest';
+import {
+  API_DOCTOR_CAPABILITY,
+  apiDoctorAction,
+  apiDoctorExistingHandoffAction,
+  apiDoctorRepairSignature,
+  buildApiDoctorPrompt,
+  classifyApiDoctorFailure,
+  parseApiDoctorDecision,
+} from '../apps/tigeriq-core/api-doctor.mjs';
+import {deriveRoutingProfile,rankCandidates} from '../apps/tigeriq-core/smart-router.mjs';
+
+describe('#1255 NV10 API Doctor policy',()=>{
+  it('classifies quota/payment/contract failures without calling them credential failures',()=>{
+    expect(classifyApiDoctorFailure({kind:'rate_limit',message:'HTTP_429'})).toBe('rate_limit');
+    expect(classifyApiDoctorFailure({kind:'configuration',message:'HTTP_402'})).toBe('external_blocked');
+    expect(classifyApiDoctorFailure({kind:'invalid_response',message:'EMPTY_RESPONSE'})).toBe('source_contract');
+    expect(classifyApiDoctorFailure({kind:'auth',message:'HTTP_401'})).toBe('auth');
+    expect(classifyApiDoctorFailure({kind:'security',message:'credential change required'})).toBe('hard_blocked');
+    expect(classifyApiDoctorFailure({kind:'outage',message:'Production browser-auth action required'})).toBe('hard_blocked');
+  });
+
+  it('waits through a live cooldown and probes exactly when it is due',()=>{
+    const now=Date.parse('2026-09-21T05:00:00Z');
+    expect(apiDoctorAction({
+      healthState:'RATE_LIMITED',credentialState:'READY',
+      cooldownUntil:'2026-09-21T05:10:00Z',
+      latestFailure:{kind:'rate_limit',message:'HTTP_429'},nowMs:now,
+    })).toMatchObject({action:'wait',failureClass:'rate_limit'});
+    expect(apiDoctorAction({
+      healthState:'RATE_LIMITED',credentialState:'READY',
+      cooldownUntil:'2026-09-21T04:59:59Z',
+      latestFailure:{kind:'rate_limit',message:'HTTP_429'},nowMs:now,
+    })).toMatchObject({action:'probe',failureClass:'rate_limit'});
+  });
+
+  it('fails closed on HTTP 402 and escalates repeated work-contract failures only after a live probe',()=>{
+    expect(apiDoctorAction({
+      healthState:'ERROR',credentialState:'READY',
+      latestFailure:{kind:'configuration',message:'HTTP_402'},
+    })).toMatchObject({action:'external_blocked',failureClass:'external_blocked'});
+    expect(apiDoctorAction({
+      healthState:'ERROR',credentialState:'READY',
+      latestFailure:{kind:'security',message:'Production browser-auth action required'},
+    })).toMatchObject({action:'external_blocked',failureClass:'hard_blocked'});
+
+    expect(apiDoctorAction({
+      healthState:'ERROR',credentialState:'READY',
+      latestFailure:{kind:'invalid_response',message:'EMPTY_RESPONSE'},
+      repeatedWorkFailures:2,
+    })).toMatchObject({action:'probe_then_handoff',failureClass:'source_contract'});
+  });
+
+  it('bounds post-repair validation and respects cooldown before probing again',()=>{
+    const now=Date.parse('2026-09-21T07:00:00Z');
+    expect(apiDoctorExistingHandoffAction({
+      existingHandoff:true,successAfterHandoff:false,cooldownUntil:'2026-09-21T07:10:00Z',validationAttempts:0,nowMs:now,
+    })).toEqual({action:'wait_repair',reason:'repair_handoff_cooldown_active'});
+    expect(apiDoctorExistingHandoffAction({
+      existingHandoff:true,successAfterHandoff:false,cooldownUntil:'2026-09-21T06:59:00Z',validationAttempts:0,nowMs:now,
+    })).toEqual({action:'validate_repair',reason:'post_repair_validation_due'});
+    expect(apiDoctorExistingHandoffAction({
+      existingHandoff:true,successAfterHandoff:false,cooldownUntil:null,validationAttempts:2,nowMs:now,
+    })).toEqual({action:'wait_repair',reason:'post_repair_validation_budget_exhausted'});
+    expect(apiDoctorExistingHandoffAction({existingHandoff:true,successAfterHandoff:true,nowMs:now})).toEqual({
+      action:'recovered',reason:'live_work_success_after_handoff',
+    });
+    expect(apiDoctorExistingHandoffAction({existingHandoff:false,successAfterHandoff:false,nowMs:now})).toEqual({action:'proceed'});
+  });
+
+  it('uses a stable dedupe signature for the same provider/failure class',()=>{
+    const a=apiDoctorRepairSignature({employeeId:'NV18',provider:'watsonx',failureClass:'source_contract',message:'EMPTY_RESPONSE attempt 12'});
+    const b=apiDoctorRepairSignature({employeeId:'NV18',provider:'watsonx',failureClass:'source_contract',message:'EMPTY_RESPONSE attempt 77'});
+    expect(a).toBe(b);
+  });
+
+  it('builds a compact strict NV10 prompt and parses the bounded response',()=>{
+    const prompt=buildApiDoctorPrompt([{employeeId:'NV18',provider:'watsonx',health:'ERROR',failureClass:'source_contract',action:'probe_then_handoff'}]);
+    expect(prompt).toContain('NV10');
+    expect(prompt).toContain('Return ONLY one compact JSON object');
+    expect(prompt).toContain('Do not suggest paid upgrades');
+    expect(parseApiDoctorDecision('{"summary":"x","attention":["NV18"],"sourceRepair":["NV18"]}')).toEqual({
+      summary:'x',attention:['NV18'],sourceRepair:['NV18'],
+    });
+  });
+});
+
+describe('#1255 routing/runtime integration',()=>{
+  it('routes api_doctor exclusively to an explicitly-capable local NV10 resource',()=>{
+    const resources=[
+      {employeeId:'NV10',resourceId:'res:ollama:qwen3',provider:'ollama',model:'qwen3:4b',enabled:true,healthState:'ONLINE',zeroOutOfPocket:true,costTier:'LOCAL',capabilities:['general','reasoning','review',API_DOCTOR_CAPABILITY],rank:90},
+      {employeeId:'NV11',resourceId:'res:groq:x',provider:'groq',model:'x',enabled:true,healthState:'ONLINE',zeroOutOfPocket:true,costTier:'FREE',capabilities:['general','reasoning','review'],rank:1},
+    ];
+    expect(deriveRoutingProfile({capability:'api_doctor',taskKind:'api_doctor'})).toBe('LOCAL');
+    const decision=rankCandidates(resources,{capability:'api_doctor',taskKind:'api_doctor'});
+    expect(decision.chosen?.employeeId).toBe('NV10');
+    expect(decision.candidates.find(x=>x.employeeId==='NV11')?.eligible).toBe(false);
+  });
+
+  it('wires the autonomous scan, low-token think=false NV10 job, durable handoff and telemetry',()=>{
+    const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+    expect(core).toContain("nv10Resource.capabilities = ['general','reasoning','review',API_DOCTOR_CAPABILITY]");
+    expect(core).toContain('async function runApiDoctorScan()');
+    expect(core).toContain("const CODING_LANE_HOST = process.env.TIGERIQ_CODING_HOST?.trim() || HOST;");
+    expect(core).toContain("think:false");
+    expect(core).toContain('num_predict:160');
+    expect(core).toContain("API_DOCTOR_REPAIR_HANDOFF");
+    expect(core).toContain("API_DOCTOR_EXTERNAL_BLOCKED");
+    expect(core).toContain("API_DOCTOR_RECOVERED");
+    expect(core).toContain("row.action='wait_repair'");
+    expect(core).toContain("apiDoctorLatestResourceHandoff(resourceId)");
+    expect(core).toContain("apiDoctorLatestUnresolvedResourceHandoff(resource.resource_id)");
+    expect(core).toContain("type='API_DOCTOR_RECOVERED' and resource_id=$1 and ts>$2");
+    expect(core).toContain("return recovered?null:handoff");
+    expect(core).toContain("apiDoctorLatestUnresolvedSignatureHandoff(resource.resource_id,signature)");
+    expect(core).toContain("type='API_DOCTOR_REPAIR_HANDOFF' and resource_id=$1 and data->>'signature'=$2");
+    expect(core).toContain("type='API_DOCTOR_RECOVERED' and resource_id=$1 and ts>$2 and data->>'signature'=$3");
+    expect(core).not.toContain("apiDoctorEventBySignature('API_DOCTOR_REPAIR_HANDOFF',signature)");
+
+    expect(core.indexOf("apiDoctorLatestUnresolvedResourceHandoff(resource.resource_id)")).toBeLessThan(core.indexOf("if(plan.action==='wait'||plan.action==='idle')"));
+    expect(core).toContain("coalesce(task_kind,'')<>'api_doctor'");
+    expect(core).toContain("kind,'api_doctor_validation'");
+    expect(core).toContain("API_DOCTOR_POST_REPAIR_VALIDATION");
+    expect(core).toContain("maxValidationAttempts:2");
+    expect(core).toContain("post_repair_live_validation_job");
+    expect(core).toContain("API_DOCTOR_VALIDATION_POLICY_VERSION = 'nonempty-v2'");
+    expect(core).toContain("data->>'policyVersion'=$3");
+    expect(core).toContain("Provide one short useful sentence confirming this provider can complete a normal TigerIQ Core reasoning request.");
+    expect(core).toContain("API_DOCTOR_VALIDATION_EMPTY_RESPONSE");
+    expect(core).not.toContain("API_DOCTOR_VALIDATION_UNEXPECTED_RESPONSE");
+    expect(core).toContain('apiDoctor:await apiDoctorTelemetry()');
+    expect(core).toContain("failure=jsonb_build_object('message','RESTART_RECONCILIATION_FAIL_CLOSED')");
+    expect(core).toContain("legacy_nv10_unavailable_reclassified");
+    expect(core).toContain("e.type='API_DOCTOR_ANALYSIS_SKIPPED' and e.data->>'reason'='nv10_unavailable'");
+    expect(core).not.toContain("error_message='RESTART_RECONCILIATION_FAIL_CLOSED'");
+    expect(core).toContain("API_DOCTOR_STALE_JOB_RECOVERED");
+    expect(core).toContain("kind='api_doctor' and started_at < now()-interval '2 minutes'");
+    expect(core).toContain("data->>'reason'='nv10_unavailable'");
+    expect(core).toContain("skipped:'deduped_nv10_unavailable'");
+    expect(core).toContain("status='done',result=$2,lease_until=null,completed_at=now()");
+    expect(core).toContain("now()+interval '2 minutes',0,1");
+    expect(core).toContain("set employee_id=$2,resource_id=$3,provider=$4,routing_profile='LOCAL',lease_until=now()+interval '2 minutes'");
+    expect(core).not.toContain("retryDue=['READY','ERROR','RATE_LIMITED','OFFLINE']");
+  });
+});

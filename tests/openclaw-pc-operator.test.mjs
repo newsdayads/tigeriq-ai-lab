@@ -1,0 +1,112 @@
+import { describe, expect, it } from 'vitest';
+import { readFile } from 'node:fs/promises';
+import {
+  assertShellCommandAllowed,
+  assertTigerIQTaskName,
+  assertWritePathAllowed,
+  resolveOperatorPath,
+} from '../apps/openclaw-tigeriq-runtime/operator.mjs';
+import { PAD_UI_ACTIONS, assertPadUiRequest, parsePadBrokerJson } from '../apps/openclaw-tigeriq-runtime/pad-ui.mjs';
+
+describe('OpenClaw PC01 guarded local operator', () => {
+  it('allows TigerIQ/OpenClaw work roots', () => {
+    expect(resolveOperatorPath('D:\\TigerIQ\\Evidence\\x.json')).toBe('D:\\TigerIQ\\Evidence\\x.json');
+    expect(resolveOperatorPath('D:\\OpenClaw\\npm-global')).toBe('D:\\OpenClaw\\npm-global');
+    expect(resolveOperatorPath('D:\\TigerIQ-OpenClaw\\state')).toBe('D:\\TigerIQ-OpenClaw\\state');
+  });
+
+  it('blocks paths outside operator roots and sensitive stores', () => {
+    expect(() => resolveOperatorPath('C:\\Windows\\System32')).toThrow('TIGERIQ_PC_PATH_NOT_ALLOWED');
+    expect(() => resolveOperatorPath('D:\\TigerIQ\\Secrets\\x.txt')).toThrow('TIGERIQ_PC_SENSITIVE_PATH_BLOCKED');
+  });
+
+  it('blocks direct source/runtime-source writes while allowing state/evidence writes', () => {
+    expect(() => assertWritePathAllowed('D:\\TigerIQ\\Workspace\\tigeriq-ai-lab\\x.txt')).toThrow('TIGERIQ_PC_WRITE_PATH_NOT_ALLOWED');
+    expect(() => assertWritePathAllowed('D:\\TigerIQ\\Runtime\\CoreSource\\x.txt')).toThrow('TIGERIQ_PC_WRITE_PATH_NOT_ALLOWED');
+    expect(() => assertWritePathAllowed('D:\\OpenClaw\\npm-global\\openclaw.cmd')).toThrow('TIGERIQ_PC_WRITE_PATH_NOT_ALLOWED');
+    expect(() => assertWritePathAllowed('D:\\TigerIQ\\State\\x.json')).not.toThrow();
+    expect(() => assertWritePathAllowed('D:\\TigerIQ\\Evidence\\x.json')).not.toThrow();
+  });
+
+  it('allows only a narrow diagnostic shell command set', () => {
+    expect(assertShellCommandAllowed('git status')).toBe('git status');
+    expect(assertShellCommandAllowed('ollama ps')).toBe('ollama ps');
+    expect(assertShellCommandAllowed('openclaw plugins inspect tigeriq-runtime --json')).toContain('tigeriq-runtime');
+    for (const command of [
+      'Get-Process | Select-Object -First 5',
+      'Get-ChildItem C:\\',
+      'echo $env:GH_TOKEN',
+      'cmd /c whoami',
+      'shutdown /s /t 0',
+      'Remove-Item D:\\TigerIQ\\Workspace -Recurse -Force',
+      'git push origin main',
+      'vercel deploy --prod',
+      'gh pr merge 123',
+      'type D:\\TigerIQ\\Secrets\\github-command-center.token',
+    ]) {
+      expect(() => assertShellCommandAllowed(command)).toThrow('TIGERIQ_PC_COMMAND_NOT_ALLOWLISTED');
+    }
+  });
+
+  it('limits scheduled-task actions to TigerIQ task names', () => {
+    expect(assertTigerIQTaskName('TigerIQ OpenClaw Gateway')).toBe('TigerIQ OpenClaw Gateway');
+    expect(() => assertTigerIQTaskName('Microsoft\\Windows\\Defrag\\ScheduledDefrag')).toThrow('TIGERIQ_PC_TASK_NOT_ALLOWED');
+  });
+});
+
+
+describe('Power Automate Desktop guarded UI contract', () => {
+  it('accepts Windows PowerShell UTF-8 BOM on broker JSON files', () => {
+    expect(parsePadBrokerJson('\uFEFF{"available":true}')).toEqual({ available: true });
+  });
+
+  it('exposes only the bounded PAD action set', () => {
+    expect(PAD_UI_ACTIONS).toEqual([
+      'pad_health', 'pad_launch', 'pad_windows', 'pad_tree',
+      'pad_invoke', 'pad_set_value', 'pad_click', 'pad_keys',
+    ]);
+  });
+
+  it('requires selectors for PAD element mutations and bounds values', () => {
+    expect(assertPadUiRequest({ action: 'pad_invoke', name: 'New flow' })).toMatchObject({ action: 'pad_invoke', name: 'New flow' });
+    expect(assertPadUiRequest({ action: 'pad_set_value', automationId: 'NameBox', value: 'TigerIQ_CANARY_NOTEPAD' })).toMatchObject({ value: 'TigerIQ_CANARY_NOTEPAD' });
+    expect(() => assertPadUiRequest({ action: 'pad_click' })).toThrow('TIGERIQ_PAD_SELECTOR_REQUIRED');
+    expect(() => assertPadUiRequest({ action: 'pad_set_value', name: 'x' })).toThrow('TIGERIQ_PAD_VALUE_REQUIRED');
+    expect(() => assertPadUiRequest({ action: 'pad_keys', key: 'ALT+F4' })).toThrow('TIGERIQ_PAD_KEY_NOT_ALLOWED');
+  });
+
+  it('does not accept coordinate-style fields through the typed PAD request', () => {
+    const normalized = assertPadUiRequest({ action: 'pad_windows', x: 10, y: 20 });
+    expect(normalized).toEqual({ action: 'pad_windows' });
+  });
+
+  it('dispatches PAD keys with native nonblocking key events', async () => {
+    const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/pad-ui-broker.ps1', import.meta.url), 'utf8');
+    expect(source).toContain('keybd_event');
+    expect(source).toContain("Method='NativeKeyEvent'");
+    expect(source).not.toContain('[System.Windows.Forms.SendKeys]::Send(');
+    expect(source).not.toContain('[System.Windows.Forms.SendKeys]::SendWait(');
+  });
+
+  it('avoids unavailable LegacyIAccessiblePattern on PC01 UIAutomation runtime', async () => {
+    const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/pad-ui-broker.ps1', import.meta.url), 'utf8');
+    expect(source).not.toContain('LegacyIAccessiblePattern');
+  });
+
+  it('resolves only owned modal UI when a verified PAD designer is disabled', async () => {
+    const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/pad-ui-broker.ps1', import.meta.url), 'utf8');
+    expect(source).toContain('Get-PadOwnedModalWindow');
+    expect(source).toContain('[TigerIQPadNative]::GetWindow($probe, 4)');
+    expect(source).toContain("TIGERIQ_PAD_UI_OWNED_MODAL_AMBIGUOUS");
+    expect(source).toContain("if (-not $window.Current.IsEnabled)");
+  });
+
+  it('sanitizes non-finite UIAutomation rectangle values before JSON serialization', async () => {
+    const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/pad-ui-broker.ps1', import.meta.url), 'utf8');
+    expect(source).toContain('Convert-FiniteUiNumber');
+    expect(source).toContain('[double]::IsInfinity($n)');
+    expect(source).toContain('[double]::IsNaN($n)');
+    expect(source).not.toContain('[math]::Round($r.');
+    expect((source.match(/Convert-FiniteUiNumber \\$r\\./g) ?? []).length).toBe(8);
+  });
+});

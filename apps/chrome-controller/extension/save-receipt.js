@@ -1,0 +1,46 @@
+const SAVE_RECEIPT_SERVICE='http://127.0.0.1:8794';
+const SAVE_LEDGER_ISSUE=788;
+export const SAVE_RECEIPT_POLL_DELAYS_MS=[0,5000,10000,15000,30000];
+
+export function buildDurableSavePrompt({saveToken,workerId,dispatchedAt}){
+  return [
+    'lưu',
+    '',
+    'Đây là lệnh CHỐT PHIÊN BỀN VỮNG cho đúng CÔNG VIỆC HIỆN TẠI của NV02 trước khi APP Chrome archive/refresh. Chỉ rà chat hiện tại và cập nhật đúng issue/Work Order/state GitHub đang liên quan tới công việc hiện tại. KHÔNG tìm việc mới, KHÔNG chọn P0, KHÔNG đọc backlog để tự giao việc, KHÔNG đổi sang nhiệm vụ khác.',
+    'Đối với checkpoint UI này, KHÔNG kiểm tra hoặc phụ thuộc Core, PC01 runtime hay port 8795. Tiêu chí DURABLE chỉ là: ghi trạng thái thật của công việc hiện tại lên GitHub và đọc lại GitHub để xác minh ghi thành công. Nếu Core/8795 không khả dụng nhưng GitHub write + readback thành công thì vẫn tạo biên nhận DURABLE.',
+    'Sau khi GitHub write + readback thành công, thêm đúng 01 comment biên nhận vào GitHub Issue #'+SAVE_LEDGER_ISSUE+' với đầy đủ các dòng máy đọc được bên dưới. Repository là công khai: tuyệt đối không ghi secret/credential/password/token đăng nhập, dữ liệu sức khỏe/gia đình riêng tư, định danh không cần thiết hoặc nội dung kinh doanh mật; phải REDACT và chỉ tham chiếu nguồn private/authorized khi cần. Thay toàn bộ phần <...> bằng giá trị thật; không để placeholder. Nếu GitHub không ghi hoặc không đọc lại xác minh được, KHÔNG tạo biên nhận DURABLE và báo BỊ CHẶN / SAVE_NOT_DURABLE.',
+    '',
+    'TIGERIQ_SAVE_RECEIPT_V1',
+    `TIGERIQ_SAVE_TOKEN=${saveToken}`,
+    `TIGERIQ_SAVE_WORKER=${workerId}`,
+    `TIGERIQ_SAVE_DISPATCHED_AT=${dispatchedAt}`,
+    'TIGERIQ_SAVE_STATUS=DURABLE',
+    'TIGERIQ_SAVE_REF=<URL GitHub của issue/Work Order/state đã cập nhật; nếu checkpoint nằm ngay ledger thì dùng https://github.com/newsdayads/tigeriq-ai-lab/issues/788>',
+    'TIGERIQ_SAVE_STATE=<trạng thái thật>',
+    'TIGERIQ_SAVE_FOCUS=<trọng tâm hiện tại>',
+    'TIGERIQ_SAVE_DECISIONS=<quyết định mới hoặc NONE>',
+    'TIGERIQ_SAVE_DONE=<việc đã hoàn tất hoặc NONE>',
+    'TIGERIQ_SAVE_PENDING=<việc còn dở hoặc NONE>',
+    'TIGERIQ_SAVE_BLOCKERS=<blocker/chờ/quyền cần thiết hoặc NONE>',
+    'TIGERIQ_SAVE_NEXT=<bước tiếp theo>',
+    'TIGERIQ_SAVE_EVIDENCE=<evidence/ref quan trọng>',
+  ].join('\n');
+}
+
+async function readReceipt(saveToken,workerId,dispatchedAt){
+  const query=new URLSearchParams({token:saveToken,workerId,after:dispatchedAt});
+  const response=await fetch(`${SAVE_RECEIPT_SERVICE}/api/ui-autopilot/save-receipt?${query.toString()}`,{cache:'no-store'});
+  if(!response.ok)throw new Error(`SAVE_RECEIPT_HTTP_${response.status}`);
+  return response.json();
+}
+
+export async function waitForDurableSaveReceipt(saveToken,workerId,dispatchedAt,{sleep=(ms)=>new Promise((resolve)=>setTimeout(resolve,ms)),read=readReceipt}={}){
+  let lastStatus='SAVE_NOT_DURABLE';
+  for(const delayMs of SAVE_RECEIPT_POLL_DELAYS_MS){
+    if(delayMs)await sleep(delayMs);
+    const value=await read(saveToken,workerId,dispatchedAt);
+    if(value?.ok===true&&value?.status==='DURABLE'&&value?.receiptRef&&value?.checkpointRef&&value?.verifiedAt)return value;
+    lastStatus=String(value?.status||lastStatus);
+  }
+  throw new Error(lastStatus==='DURABLE'?'SAVE_RECEIPT_INCOMPLETE':'SAVE_NOT_DURABLE');
+}
