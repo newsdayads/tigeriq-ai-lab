@@ -7,6 +7,7 @@ $runtimeSourceState='D:\TigerIQ\State\core-runtime-source.json'
 $updaterRuntime='D:\TigerIQ\Runtime\CoreUpdater\update-core-runtime.ps1'
 $launcherRuntime='D:\TigerIQ\Runtime\CoreLaunchers'
 $state='D:\TigerIQ\State\core-runtime-updater.json'
+$remoteDesktopGuardEvidence='D:\TigerIQ\Evidence\rdc-recovery\remote-guard-reconcile.json'
 $openclawState='D:\TigerIQ\State\openclaw-runtime-applied.json'
 $openclawCanaryState='D:\TigerIQ\State\openclaw-runtime-canary.json'
 $openclawCanaryScript=(Join-Path $runtimeRepo 'apps\openclaw-tigeriq-runtime\canary.mjs')
@@ -41,6 +42,27 @@ $lastHeal=@{core=[DateTime]::MinValue;web=[DateTime]::MinValue;coding=[DateTime]
 $healCooldownSec=300
 $watchdog=$null
 function Save-State([hashtable]$d){$d.updatedAt=(Get-Date).ToUniversalTime().ToString('o');$tmp="$state.tmp";[IO.File]::WriteAllText($tmp,($d|ConvertTo-Json -Depth 10),(New-Object Text.UTF8Encoding($false)));Move-Item -Force $tmp $state}
+function Save-RemoteDesktopGuardEvidence([hashtable]$guard,[string]$installedSha,[string]$phase){
+  try{
+    New-Item -ItemType Directory -Path (Split-Path -Parent $remoteDesktopGuardEvidence) -Force|Out-Null
+    $safe=[ordered]@{
+      schema='TIGERIQ_RDC_RECONCILE_EVIDENCE_V1'
+      updatedAt=(Get-Date).ToUniversalTime().ToString('o')
+      installedSha=$installedSha
+      phase=$phase
+      action=[string]$guard.action
+      reason=[string]$guard.reason
+      version=[string]$guard.version
+      authorizer=[string]$guard.authorizer
+      task=[string]$guard.task
+      taskState=[string]$guard.taskState
+      changes=@($guard.changes|ForEach-Object{[string]$_})
+    }
+    $tmp=$remoteDesktopGuardEvidence+'.tmp'
+    [IO.File]::WriteAllText($tmp,($safe|ConvertTo-Json -Depth 5),(New-Object Text.UTF8Encoding($false)))
+    Move-Item -Force $tmp $remoteDesktopGuardEvidence
+  }catch{}
+}
 function Head([string]$repoPath,[string]$ref){(& git -C $repoPath rev-parse $ref 2>$null|Out-String).Trim()}
 function Save-RuntimeSourceState([string]$currentSha,[string]$previousSha,[string]$gateSha){
   $d=[ordered]@{schema='TIGERIQ_RUNTIME_SOURCE_V1';sourcePath=$runtimeRepo;currentSha=$currentSha;previousSha=$previousSha;gateSha=$gateSha;updatedAt=(Get-Date).ToUniversalTime().ToString('o')}
@@ -572,7 +594,7 @@ while($true){
         $preOpenclawCanary=@{action='blocked';result='BLOCKED';reason='OPENCLAW_DEGRADED_NONBLOCKING'}
       }
     }
-    if($runtimeExists -and $local -eq $remote){$remoteDesktopGuard=Reconcile-RemoteDesktopGuard;Save-State @{result='NO_CHANGE';installedSha=$local;runtimeSource=$runtimeRepo;bootstrapWatchdog=$bootstrapWatchdog;appChromeInstall=$appChromeInstall;appChromeRecovery=$appChromeRecovery;legacyLifecycleRetire=$legacyLifecycleRetire;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;openclawReconcile=$openclawReconcile;openclawCanary=$preOpenclawCanary;remoteDesktopGuard=$remoteDesktopGuard;updaterTaskTarget=$updaterTaskTarget;watchdog=$watchdog};Start-Sleep -Seconds $IntervalSeconds;continue}
+    if($runtimeExists -and $local -eq $remote){$remoteDesktopGuard=Reconcile-RemoteDesktopGuard;Save-RemoteDesktopGuardEvidence $remoteDesktopGuard $local 'NO_CHANGE';Save-State @{result='NO_CHANGE';installedSha=$local;runtimeSource=$runtimeRepo;bootstrapWatchdog=$bootstrapWatchdog;appChromeInstall=$appChromeInstall;appChromeRecovery=$appChromeRecovery;legacyLifecycleRetire=$legacyLifecycleRetire;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;openclawReconcile=$openclawReconcile;openclawCanary=$preOpenclawCanary;remoteDesktopGuard=$remoteDesktopGuard;updaterTaskTarget=$updaterTaskTarget;watchdog=$watchdog};Start-Sleep -Seconds $IntervalSeconds;continue}
     $gateSha=Resolve-GateSha $remote
     if(-not $gateSha){Save-State @{result='WAIT_GATES';candidateSha=$remote;runtimeSource=$runtimeRepo;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;watchdog=$watchdog};continue}
     [string[]]$changed=if($runtimeExists){@(git -C $controlRepo diff --name-only $local $remote)}else{@('apps/tigeriq-core/','apps/tigeriq-coding-lane/','scripts/tigeriq-core/')}
@@ -582,6 +604,7 @@ while($true){
     Ensure-RuntimeSource $remote
     Ensure-NodeModules $runtimeRepo
     $remoteDesktopGuard=Reconcile-RemoteDesktopGuard
+    Save-RemoteDesktopGuardEvidence $remoteDesktopGuard $remote 'UPDATED'
     Save-RuntimeSourceState $remote $previousRuntimeSha $gateSha
     Sync-Launchers
     $bootstrapWatchdog=Ensure-BootstrapWatchdogTask
