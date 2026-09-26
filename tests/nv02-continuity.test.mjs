@@ -187,7 +187,8 @@ describe('NV02 continuity policy', () => {
       source.indexOf('async function dispatchNaturalContinueLocked'),
       source.indexOf('async function dispatchNaturalContinue(target'),
     );
-    expect(continueDispatch).not.toContain('ensureNv02ModelProfile');
+    expect(continueDispatch).toContain('ensureNv02ModelProfile');
+    expect(continueDispatch).toContain("MODEL_PROFILE_BLOCKED");
     expect(continueDispatch).not.toContain('getControllerState()');
     expect(continueDispatch).not.toContain('hasContinuableNv02Work(controllerState)');
     expect(continueDispatch).not.toContain('findContinuableNv02Work(controllerState)');
