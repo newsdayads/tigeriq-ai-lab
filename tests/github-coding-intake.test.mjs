@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {classifyCodingBlocker,codingScopesOverlap,codingSourceRevision,codingSourceTruthRevision,extractCodingDependencies,materializeGithubCodingIssues,parseCodingIssue,shouldRearmRecoverableFinal,syncGithubCodingOutcomes} from '../apps/tigeriq-core/github-coding-intake.mjs';
+import {classifyCodingBlocker,codingScopesOverlap,codingSourceRevision,codingSourceTruthRevision,extractCodingDependencies,materializeGithubCodingIssues,parseCodingIssue,relevantRecoveryMainChange,relevantRecoveryMainChangeEvidence,shouldRearmRecoverableFinal,syncGithubCodingOutcomes} from '../apps/tigeriq-core/github-coding-intake.mjs';
 
 function issue(body,extra={}){
   return {number:777,title:'Safe autonomous coding task',body,state:'open',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/777',...extra};
@@ -345,24 +345,27 @@ describe('GitHub coding continuity supervisor',()=>{
     expect(pool.events.filter(e=>e.type==='GITHUB_CODING_BLOCKED_FINAL')[0]?.data.reason).toBe('HARD_BLOCKER');
   });
 
-  it('re-arms a recoverable exhausted issue once after main changes',async()=>{
+  it('re-arms a recoverable exhausted issue once after a relevant main change',async()=>{
     const pool=fakePool();let posted=0;
+    const current=issue(SAFE+'\nRESOURCE_SCOPE=REV_RECOVERY\nALLOW_PATH_PREFIX=tests/github-coding-intake.test.mjs',{number:804});
+    const revision=codingSourceTruthRevision(current,[]);
     pool.events.push(
       {type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:804,codingObjectiveId:'obj-804-r2'}},
       {type:'GITHUB_CODING_RETRY_DISPATCHED',data:{issueNumber:804,codingObjectiveId:'obj-804-r1',retryAttempt:1}},
       {type:'GITHUB_CODING_RETRY_DISPATCHED',data:{issueNumber:804,codingObjectiveId:'obj-804-r2',retryAttempt:2}},
-      {type:'GITHUB_CODING_BLOCKED_FINAL',data:{issueNumber:804,codingObjectiveId:'obj-804-r2',status:'blocked',reason:'RETRY_BUDGET_EXHAUSTED',terminalReason:'OUTPUT_CONTRACT_EXHAUSTED',mainSha:'old-main'}}
+      {type:'GITHUB_CODING_BLOCKED_FINAL',data:{issueNumber:804,codingObjectiveId:'obj-804-r2',status:'blocked',reason:'RETRY_BUDGET_EXHAUSTED',terminalReason:'OUTPUT_CONTRACT_EXHAUSTED',mainSha:'old-main',sourceRevision:revision}}
     );
-    expect(shouldRearmRecoverableFinal(pool.events.at(-1).data,'new-main',[])).toBe(true);
-    expect(shouldRearmRecoverableFinal({issueNumber:804,codingObjectiveId:'legacy',reason:'HARD_BLOCKER',terminalReason:'reason for blocking',mainSha:'old-main'},'new-main',[])).toBe(true);
-    expect(shouldRearmRecoverableFinal({issueNumber:804,codingObjectiveId:'legacy',reason:'HARD_BLOCKER',terminalReason:'SECURITY POLICY_BLOCK requires human',mainSha:'old-main'},'new-main',[])).toBe(false);
+    expect(shouldRearmRecoverableFinal(pool.events.at(-1).data,'new-main',[])).toBe(false);
+    expect(shouldRearmRecoverableFinal(pool.events.at(-1).data,'new-main',[],'',true)).toBe(true);
+    expect(shouldRearmRecoverableFinal({issueNumber:804,codingObjectiveId:'legacy',reason:'HARD_BLOCKER',terminalReason:'reason for blocking',mainSha:'old-main'},'new-main',[])).toBe(false);
+    expect(shouldRearmRecoverableFinal({issueNumber:804,codingObjectiveId:'legacy',reason:'HARD_BLOCKER',terminalReason:'SECURITY POLICY_BLOCK requires human',mainSha:'old-main'},'new-main',[],'',true)).toBe(false);
     expect(shouldRearmRecoverableFinal({issueNumber:804,codingObjectiveId:'legacy',reason:'ISSUE_CLOSED_OR_SUPERSEDED',mainSha:'old-main',sourceRevision:'old-revision'},'new-main',[],'new-revision')).toBe(true);
     expect(shouldRearmRecoverableFinal({issueNumber:804,codingObjectiveId:'legacy',reason:'ISSUE_CLOSED_OR_SUPERSEDED',mainSha:'new-main',sourceRevision:'new-revision'},'new-main',[],'new-revision')).toBe(false);
 
-    const current=issue(SAFE,{number:804});
     const fetchImpl=async(url,init={})=>{
       if(url.includes('/api/status'))return response({objectives:[{id:'obj-804-r2',status:'blocked',summary:'OUTPUT_CONTRACT_EXHAUSTED'}],jobs:[]});
       if(url.includes('/git/ref/heads/main'))return response({object:{sha:'new-main'}});
+      if(url.includes('/compare/old-main...new-main'))return response({files:[{filename:'tests/github-coding-intake.test.mjs'}]});
       if(url.includes('/api/objectives')){posted++;const body=JSON.parse(init.body);expect(body.objective).toContain('RECOVERY_KEY=GITHUB-ISSUE-804-RECOVERY-new-main');return response({id:'obj-804-recovery'});}
       if(url.includes('/issues/804'))return response(current);
       if(url.includes('/comments'))return response({});
@@ -371,8 +374,36 @@ describe('GitHub coding continuity supervisor',()=>{
     await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
     expect(posted).toBe(1);
     expect(pool.events.filter(e=>e.type==='GITHUB_CODING_RECOVERY_REARMED')).toHaveLength(1);
+    expect(pool.events.find(e=>e.type==='GITHUB_CODING_RECOVERY_REARMED')?.data).toMatchObject({
+      priorMainSha:'old-main',
+      currentMainSha:'new-main',
+      sourceChanged:false,
+      relevantChangedPaths:['tests/github-coding-intake.test.mjs']
+    });
     expect(pool.events.filter(e=>e.type==='GITHUB_CODING_DISPATCHED').at(-1)?.data.codingObjectiveId).toBe('obj-804-recovery');
     expect(pool.events.filter(e=>e.type==='GITHUB_CODING_BLOCKED_FINAL')).toHaveLength(1);
+  });
+
+  it('recovery compare ignores unrelated changes, caches by base/head, and fails closed on ambiguity',async()=>{
+    const scope={paths:['apps/tigeriq-core/github-coding-intake.mjs','tests/']};
+    const unrelatedFetch=async()=>response({files:[{filename:'apps/chrome-controller/controller.mjs'}]});
+    await expect(relevantRecoveryMainChange(unrelatedFetch,'newsdayads','tigeriq-ai-lab','fake','aaa','bbb',scope)).resolves.toBe(false);
+
+    let calls=0;
+    const cache=new Map();
+    const relevantFetch=async()=>{calls++;return response({files:[{filename:'tests/github-coding-intake.test.mjs'}]})};
+    const first=await relevantRecoveryMainChangeEvidence(relevantFetch,'newsdayads','tigeriq-ai-lab','fake','aaa','bbb',scope,cache);
+    const second=await relevantRecoveryMainChangeEvidence(relevantFetch,'newsdayads','tigeriq-ai-lab','fake','aaa','bbb',scope,cache);
+    expect(first).toMatchObject({relevantMainChanged:true,relevantChangedPaths:['tests/github-coding-intake.test.mjs'],compareAvailable:true});
+    expect(second).toEqual(first);
+    expect(calls).toBe(1);
+
+    const unavailable=async()=>{throw new Error('compare unavailable')};
+    await expect(relevantRecoveryMainChange(unavailable,'newsdayads','tigeriq-ai-lab','fake','aaa','bbb',scope)).resolves.toBe(false);
+    const truncated=async()=>response({files:Array.from({length:300},(_,i)=>({filename:`tests/file-${i}.mjs`}))});
+    await expect(relevantRecoveryMainChange(truncated,'newsdayads','tigeriq-ai-lab','fake','aaa','bbb',scope)).resolves.toBe(false);
+    const ambiguous=async()=>response({files:[{}]});
+    await expect(relevantRecoveryMainChange(ambiguous,'newsdayads','tigeriq-ai-lab','fake','aaa','bbb',scope)).resolves.toBe(false);
   });
 
   it('uses stable issue body + owner directive evidence for Source-of-Truth revision',()=>{
@@ -919,6 +950,7 @@ describe('GitHub coding source revision completion guard',()=>{
     const fetchImpl=async(url,init={})=>{
       if(url.includes('/api/status'))return response({objectives:[{id:'obj-824-r2',status:'blocked',summary:'OUTPUT_CONTRACT_EXHAUSTED'}],jobs:[]});
       if(url.includes('/git/ref/heads/main'))return response({object:{sha:'new-main'}});
+      if(url.includes('/compare/old-main...new-main'))return response({files:[{filename:'docs/evidence/rev-dep.md'}]});
       if(url.includes('/issues/824/comments'))return response([]);
       if(url.includes('/issues/900'))return response({number:900,state:depState});
       if(url.includes('/issues/824'))return response(current);
@@ -1071,6 +1103,7 @@ describe('GitHub coding source revision completion guard',()=>{
         ...(recoveryObjective?[recoveryObjective]:[])
       ],jobs:[]});
       if(url.includes('/git/ref/heads/main'))return response({object:{sha:'new-main'}});
+      if(url.includes('/compare/old-main...new-main'))return response({files:[{filename:'tests/github-coding-intake.test.mjs'}]});
       if(url.includes('/issues/1605/comments'))return response([]);
       if(url.includes('/issues/1935'))return response({number:1935,state:dependencyClosed?'closed':'open'});
       if(url.includes('/issues/1605'))return response(current);
