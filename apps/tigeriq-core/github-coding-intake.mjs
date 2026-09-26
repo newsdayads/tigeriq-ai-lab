@@ -159,7 +159,7 @@ export function classifyCodingBlocker(summary){
   const hard=/(SECURITY|CREDENTIAL|PAID|DESTRUCTIVE|PRODUCTION|BROWSER_AUTH|AUTHORIZATION_REQUIRED|HUMAN_POLICY|SCOPE_VIOLATION|OUT_OF_SCOPE|POLICY_BLOCK|POLICY_REJECT|REVIEW_(?:REJECTED|CHANGES).*HUMAN)/.test(text);
   if(hard)return {kind:'HARD',transient:false,reason:raw||'HARD_POLICY_BLOCK'};
   const transient=/(HTTP[_ -]?429|RATE[_ -]?LIMIT|PROVIDER|TIMEOUT|TRANSIENT|NETWORK|RESOURCE_EXHAUSTED|WAITING_RESOURCE|AI_RESOURCES_UNAVAILABLE|MANAGER[_ ]DECISION[_ ]EXHAUSTED)/.test(text);
-  const recoverable=transient||/(MANAGER_SOFT_BLOCK|CODING_COMPACT_EDIT_INVALID|CODING_COMPACT_REPAIR(?:_MULTI_FILE)?_INVALID|COMPACT_(?:EDIT|REPAIR)|OUTPUT_CONTRACT|OUTPUT_SCHEMA|SCHEMA_INVALID|CI_GATE_REPAIR_EXHAUSTED|CI_REPAIR_EXHAUSTED)/.test(text);
+  const recoverable=transient||/(MANAGER_SOFT_BLOCK|CODING_ALL_BATCHES_NOOP|CODING_COMPACT_EDIT_INVALID|CODING_COMPACT_REPAIR(?:_MULTI_FILE)?_INVALID|COMPACT_(?:EDIT|REPAIR)|OUTPUT_CONTRACT|OUTPUT_SCHEMA|SCHEMA_INVALID|CI_GATE_REPAIR_EXHAUSTED|CI_REPAIR_EXHAUSTED)/.test(text);
   if(recoverable)return {kind:'RECOVERABLE',transient,reason:raw||'RECOVERABLE_BLOCK'};
   return {kind:'RECOVERABLE',transient:false,reason:raw||'UNCLASSIFIED_RECOVERABLE'};
 }
@@ -167,7 +167,7 @@ export function shouldRearmRecoverableFinal(final,currentMainSha,rearms=[],curre
   const mainSha=String(currentMainSha||'').trim();
   const sourceRevision=String(currentSourceRevision||'').trim();
   const finalReason=String(final?.reason||'').toUpperCase();
-  if(!mainSha||!['RETRY_BUDGET_EXHAUSTED','HARD_BLOCKER','ISSUE_CLOSED_OR_SUPERSEDED'].includes(finalReason))return false;
+  if(!mainSha||!['RETRY_BUDGET_EXHAUSTED','HARD_BLOCKER','ISSUE_CLOSED_OR_SUPERSEDED','ALL_BATCHES_NOOP'].includes(finalReason))return false;
   const terminalReason=String(final?.terminalReason||'');
   if(classifyCodingBlocker(terminalReason).kind!=='RECOVERABLE')return false;
   const mainChanged=String(final?.mainSha||'').trim()!==mainSha;
@@ -440,6 +440,10 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
     const classification=classifyCodingBlocker(objective.summary);
     if(classification.kind==='HARD'){
       await finalize('HARD_BLOCKER',{terminalReason:classification.reason});
+      continue;
+    }
+    if(/CODING_ALL_BATCHES_NOOP/i.test(classification.reason)){
+      await finalize('ALL_BATCHES_NOOP',{terminalReason:classification.reason});
       continue;
     }
     const rearmGate=await dependencyGate(fetchImpl,owner,repo,token,spec.dependsOn);
