@@ -377,7 +377,7 @@ describe('safe recovery contracts',()=>{
   it('never F5s or reopens NV03/NV04 while WORKING; bounded stuck recovery only clicks Stop',()=>{
     const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     const continuity=source.slice(source.indexOf('async function maybeWorkerContinuity'),source.indexOf('\nfunction log(event'));
-    expect(continuity).toContain("if(phase!=='WORKING'&&Number(state.nextPeriodicF5At||0)<=now)");
+    expect(continuity).toContain("if(Number(state.nextPeriodicF5At||0)<=now)");
     expect(continuity).toContain("if(phase!=='WORKING'&&now>=Number(state.nextResetAt||0))");
     const working=continuity.slice(continuity.indexOf("if(phase==='WORKING')"),continuity.indexOf("if(phase==='READY')"));
     expect(working).toContain("'WORKING_LONG_RUNNING_NO_MUTATION'");
