@@ -199,6 +199,28 @@ export function githubPcOperatorJobId(objectiveId,issueNumber){
   return `JOB-GH-${number}-PC-${suffix}`;
 }
 
+export function buildGithubPcOperatorPrompt(assignedAction,publicEvidenceKeys=[]){
+  const assigned=String(assignedAction||'').trim();
+  const keys=[...new Set((Array.isArray(publicEvidenceKeys)?publicEvidenceKeys:[]).map(String).filter(Boolean))];
+  const lines=[
+    'Execute ONLY this bounded PC action through NV06/OpenClaw. Do not choose backlog, P0, or new work. Use approved tigeriq_pc/tigeriq_runtime tools only.',
+    '',
+    'ASSIGNED ACTION:',
+    assigned,
+  ];
+  if(keys.length){
+    lines.push(
+      '',
+      'PUBLIC EVIDENCE CONTRACT:',
+      `REQUESTED_PUBLIC_EVIDENCE_KEYS=${keys.join(',')}`,
+      'If the assigned tool returns JSON/file content, parse it and copy ONLY the requested keys that are actually present into the final structured evidence object.',
+      'Do not echo raw file content, contentSnippet/content_snippet, stdout/stderr, environment, secrets, credentials, tokens, passwords, API keys, cookies, sessions, or unrequested fields.',
+      'If a requested key is absent, omit it; never invent a value.',
+    );
+  }
+  return lines.join('\n');
+}
+
 async function readActiveExternalRoleClaim(fetchImpl,owner,repo,token,spec){
   if(Number(spec?.commentCount||0)<=0)return null;
   try{
@@ -243,7 +265,7 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
     if(spec.capability==='pc_operator'){
       const assigned=extractPcOperatorInstruction(spec.body);
       const jobId=githubPcOperatorJobId(id,spec.number);
-      const prompt=`Execute ONLY this bounded PC action through NV06/OpenClaw. Do not choose backlog, P0, or new work. Use approved tigeriq_pc/tigeriq_runtime tools only.\n\nASSIGNED ACTION:\n${assigned}`;
+      const prompt=buildGithubPcOperatorPrompt(assigned,spec.publicEvidenceKeys);
       await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,max_attempts) values($1,$2,$3,$4,'pc_operator','pc_operator','queued',2) on conflict(id) do nothing",[jobId,id,`GitHub #${spec.number} bounded PC operator`,prompt]);
       await pool.query("insert into tigeriq_events(type,objective_id,job_id,task_kind,data) values('GITHUB_PC_OPERATOR_JOB_MATERIALIZED',$1,$2,'pc_operator',$3)",[id,jobId,JSON.stringify({issueNumber:spec.number,executionSurface:'CORE_OPENCLAW_BOUNDED'})]);
     }
