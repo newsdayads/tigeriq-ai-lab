@@ -809,3 +809,130 @@ describe('GitHub coding scope-aware pool refill',()=>{
   });
 
 });
+
+
+describe('GitHub coding source revision completion guard',()=>{
+  it('stores source revision at initial dispatch and carries it into the Coding objective',async()=>{
+    const pool=fakePool();const current=issue(SAFE+'\nRESOURCE_SCOPE=REV_INIT\nALLOW_PATH_PREFIX=docs/evidence/rev-init.md',{number:820,title:'Revision init'});
+    let posted='';
+    const fetchImpl=async(url,init={})=>{
+      if(url.includes('/issues?'))return response([current]);
+      if(url.includes('/issues/820/comments'))return response([]);
+      if(url.includes('/api/status'))return response({objectives:[],jobs:[]});
+      if(url.includes('/api/objectives')){posted=JSON.parse(init.body).objective;return response({id:'obj-820'});}
+      if(url.includes('/comments'))return response({});
+      return response({});
+    };
+    const out=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake'});
+    const rev=codingSourceTruthRevision({...current,repository_owner:'newsdayads'},[]);
+    expect(out.created).toBe(1);
+    expect(posted).toContain(`SOURCE_REVISION=${rev}`);
+    expect(pool.events.find(e=>e.type==='GITHUB_CODING_DISPATCHED')?.data.sourceRevision).toBe(rev);
+  });
+
+  it('closes a completed Work Order only when dispatch and current source revisions match',async()=>{
+    const pool=fakePool();const current=issue(SAFE+'\nRESOURCE_SCOPE=REV_SAME\nALLOW_PATH_PREFIX=docs/evidence/rev-same.md',{number:821,title:'Revision same'});
+    const rev=codingSourceTruthRevision({...current,repository_owner:'newsdayads'},[]);
+    pool.events.push({type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:821,codingObjectiveId:'obj-821',sourceRevision:rev,scopeLease:{resourceScope:'REV_SAME',paths:['docs/evidence/rev-same.md'],ambiguous:false}}});
+    let closed=false;
+    const fetchImpl=async(url,init={})=>{
+      if(url.includes('/api/status'))return response({objectives:[{id:'obj-821',status:'completed',summary:'Merged PR'}],jobs:[]});
+      if(url.includes('/git/ref/heads/main'))return response({object:{sha:'same-main'}});
+      if(url.includes('/issues/821/comments'))return response([]);
+      if(url.includes('/issues/821')){
+        if(init.method==='PATCH'){closed=true;return response({...current,state:'closed'});}
+        return response(current);
+      }
+      if(url.includes('/comments'))return response({});
+      return response({});
+    };
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+    expect(closed).toBe(true);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_RESULT_REPORTED')).toHaveLength(1);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_STALE_RESULT_REJECTED')).toHaveLength(0);
+  });
+
+  it('rejects a completed stale body revision, keeps the issue open, and rearms only once',async()=>{
+    const pool=fakePool();
+    const oldIssue=issue(SAFE+'\nRESOURCE_SCOPE=REV_STALE\nALLOW_PATH_PREFIX=docs/evidence/rev-stale.md',{number:822,title:'Revision stale'});
+    const current={...oldIssue,body:oldIssue.body+'\n\n## ACCEPTANCE\nCurrent source changed'};
+    const oldRev=codingSourceTruthRevision({...oldIssue,repository_owner:'newsdayads'},[]);
+    pool.events.push({type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:822,codingObjectiveId:'obj-822',sourceRevision:oldRev,scopeLease:{resourceScope:'REV_STALE',paths:['docs/evidence/rev-stale.md'],ambiguous:false}}});
+    let posted=0,closed=false;
+    const fetchImpl=async(url,init={})=>{
+      if(url.includes('/api/status'))return response({objectives:[{id:'obj-822',status:'completed',summary:'Old result'}],jobs:[]});
+      if(url.includes('/git/ref/heads/main'))return response({object:{sha:'same-main'}});
+      if(url.includes('/issues/822/comments'))return response([]);
+      if(url.includes('/issues/822')){
+        if(init.method==='PATCH'){closed=true;return response({...current,state:'closed'});}
+        return response(current);
+      }
+      if(url.includes('/api/objectives')){posted++;return response({id:'obj-822-current'});}
+      if(url.includes('/comments'))return response({});
+      return response({});
+    };
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+    expect(closed).toBe(false);
+    expect(posted).toBe(1);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_STALE_RESULT_REJECTED')).toHaveLength(1);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_STALE_RESULT_REARMED')).toHaveLength(1);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_RESULT_REPORTED')).toHaveLength(0);
+  });
+
+  it('treats an authoritative Owner directive change as a source revision change',async()=>{
+    const pool=fakePool();
+    const current=issue(SAFE+'\nRESOURCE_SCOPE=REV_OWNER\nALLOW_PATH_PREFIX=docs/evidence/rev-owner.md',{number:823,title:'Revision owner',comments:1});
+    const oldRev=codingSourceTruthRevision({...current,repository_owner:'newsdayads'},[]);
+    pool.events.push({type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:823,codingObjectiveId:'obj-823',sourceRevision:oldRev,scopeLease:{resourceScope:'REV_OWNER',paths:['docs/evidence/rev-owner.md'],ambiguous:false}}});
+    let posted=0,closed=false;
+    const directive={id:9901,user:{login:'newsdayads'},body:'[OWNER_DIRECTIVE] acceptance changed'};
+    const fetchImpl=async(url,init={})=>{
+      if(url.includes('/api/status'))return response({objectives:[{id:'obj-823',status:'completed',summary:'Old result'}],jobs:[]});
+      if(url.includes('/git/ref/heads/main'))return response({object:{sha:'same-main'}});
+      if(url.includes('/issues/823/comments'))return response([directive]);
+      if(url.includes('/issues/823')){
+        if(init.method==='PATCH'){closed=true;return response({...current,state:'closed'});}
+        return response(current);
+      }
+      if(url.includes('/api/objectives')){posted++;return response({id:'obj-823-owner-current'});}
+      if(url.includes('/comments'))return response({});
+      return response({});
+    };
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+    expect(closed).toBe(false);
+    expect(posted).toBe(1);
+    expect(pool.events.find(e=>e.type==='GITHUB_CODING_STALE_RESULT_REJECTED')?.data.currentSourceRevision).toContain(':owner-9901');
+  });
+
+  it('rechecks DEPENDS_ON before recovery rearm and proceeds only after dependency closes',async()=>{
+    const pool=fakePool();
+    const current=issue(SAFE+'\nDEPENDS_ON=#900\nRESOURCE_SCOPE=REV_DEP\nALLOW_PATH_PREFIX=docs/evidence/rev-dep.md',{number:824,title:'Revision dependency'});
+    const rev=codingSourceTruthRevision({...current,repository_owner:'newsdayads'},[]);
+    pool.events.push(
+      {type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:824,codingObjectiveId:'obj-824-r2',sourceRevision:rev,scopeLease:{resourceScope:'REV_DEP',paths:['docs/evidence/rev-dep.md'],ambiguous:false}}},
+      {type:'GITHUB_CODING_RETRY_DISPATCHED',data:{issueNumber:824,codingObjectiveId:'obj-824-r1',retryAttempt:1}},
+      {type:'GITHUB_CODING_RETRY_DISPATCHED',data:{issueNumber:824,codingObjectiveId:'obj-824-r2',retryAttempt:2}},
+      {type:'GITHUB_CODING_BLOCKED_FINAL',data:{issueNumber:824,codingObjectiveId:'obj-824-r2',status:'blocked',reason:'RETRY_BUDGET_EXHAUSTED',terminalReason:'OUTPUT_CONTRACT_EXHAUSTED',mainSha:'old-main',sourceRevision:rev}}
+    );
+    let depState='open',posted=0;
+    const fetchImpl=async(url,init={})=>{
+      if(url.includes('/api/status'))return response({objectives:[{id:'obj-824-r2',status:'blocked',summary:'OUTPUT_CONTRACT_EXHAUSTED'}],jobs:[]});
+      if(url.includes('/git/ref/heads/main'))return response({object:{sha:'new-main'}});
+      if(url.includes('/issues/824/comments'))return response([]);
+      if(url.includes('/issues/900'))return response({number:900,state:depState});
+      if(url.includes('/issues/824'))return response(current);
+      if(url.includes('/api/objectives')){posted++;return response({id:'obj-824-recovery'});}
+      if(url.includes('/comments'))return response({});
+      return response({});
+    };
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+    expect(posted).toBe(0);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_DEPENDENCY_WAIT')).toHaveLength(1);
+    depState='closed';
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+    expect(posted).toBe(1);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_RECOVERY_REARMED')).toHaveLength(1);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_DISPATCHED').at(-1)?.data.sourceRevision).toBe(rev);
+  });
+});
