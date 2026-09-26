@@ -85,4 +85,17 @@ describe('runtime updater squash merge gate resolution',()=>{
     expect(src).toContain('if($impact.openclaw -and $null -eq $openclawCanary){$openclawCanary=Invoke-OpenClawCanary $remote (OpenClaw-TreeSha)}');
   });
 
+  it('recreates a missing Core Runtime Updater from the active runtime repo',()=>{
+    const launcher=readFileSync('scripts/tigeriq-core/run-core.ps1','utf8');
+    const installer=readFileSync('scripts/tigeriq-core/install-core-updater.ps1','utf8');
+    expect(launcher).toContain('function Ensure-CoreRuntimeUpdater');
+    expect(launcher).toContain("Get-ScheduledTask -TaskName $updaterTask");
+    expect(launcher).toContain("-File $installer -Repo $repo");
+    expect(launcher).toContain("CORE_RUNTIME_UPDATER_TASK_RECREATE_FAILED");
+    expect(installer).toContain("param([string]$Repo='D:\\TigerIQ\\Workspace\\tigeriq-ai-lab')");
+    expect(installer).toContain("$sourceScript=Join-Path $Repo 'scripts\\tigeriq-core\\update-core-runtime.ps1'");
+    expect(installer).toContain('Register-ScheduledTask -TaskName $taskName');
+    expect(installer).toContain('Start-ScheduledTask -TaskName $taskName');
+  });
+
 });

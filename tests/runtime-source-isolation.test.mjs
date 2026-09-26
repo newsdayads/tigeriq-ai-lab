@@ -55,4 +55,18 @@ describe('runtime source isolation',()=>{
     expect(installSrc).toContain('isolationMode');
     expect(installSrc).toContain('e2eCloseoutVerified');
   });
+  it('recreates the Core Runtime Updater task from the active runtime source when it is missing',()=>{
+    const launcher=readFileSync('scripts/tigeriq-core/run-core.ps1','utf8');
+    const installer=readFileSync('scripts/tigeriq-core/install-core-updater.ps1','utf8');
+    expect(launcher).toContain("function Ensure-CoreRuntimeUpdater");
+    expect(launcher).toContain("Get-ScheduledTask -TaskName $updaterTask");
+    expect(launcher).toContain("Join-Path $repo 'scripts\\tigeriq-core\\install-core-updater.ps1'");
+    expect(launcher).toContain("-File $installer -Repo $repo");
+    expect(launcher).toContain("CORE_RUNTIME_UPDATER_TASK_RECREATE_FAILED");
+    expect(installer).toContain("param([string]$Repo=");
+    expect(installer).toContain("$sourceScript=Join-Path $Repo 'scripts\\tigeriq-core\\update-core-runtime.ps1'");
+    expect(installer).toContain("Register-ScheduledTask -TaskName $taskName");
+    expect(installer).toContain("Start-ScheduledTask -TaskName $taskName");
+  });
+
 });
