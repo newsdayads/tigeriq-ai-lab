@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe,expect,it } from 'vitest';
-import { contextIssueRefs,extractExplicitContextIssues,extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,formatResultComment,githubDispatchLane,githubPcOperatorJobId,githubSpecBlockedByActive,hydrateContext,isBoundedAppChromeRequestOnly,parseExecutableIssue } from './github-intake.mjs';
+import { contextIssueRefs,extractExplicitContextIssues,extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,formatResultComment,githubDispatchLane,githubPcOperatorJobId,githubRateLimitCooldownMs,githubSpecBlockedByActive,hydrateContext,indexOpenGithubIssues,isBoundedAppChromeRequestOnly,parseExecutableIssue,resolveGithubSourceIssue } from './github-intake.mjs';
 import { appendPublicEvidenceToSummary,extractPublicEvidence,formatPublicEvidenceBlock,parsePublicEvidenceKeys,sanitizePublicEvidenceValue } from './public-evidence.mjs';
 import { openClawTerminalDecision } from '../openclaw-tigeriq-runtime/dispatch.mjs';
 
@@ -102,6 +102,53 @@ describe('GitHub Core intake guardrails',()=>{
     expect(source).toContain("status='active'");
     expect(source).toContain("githubResultReported");
     expect(source).toContain("order by case when status='active' then 0 else 1 end, updated_at desc, created_at desc");
+  });
+
+  it('reuses one open-issue snapshot for active source reconciliation instead of per-objective GitHub GETs',async()=>{
+    const rows=Array.from({length:6},(_,i)=>({number:700+i,state:'open',title:'Issue '+(700+i)}));
+    const index=indexOpenGithubIssues(rows);
+    let fetchCalls=0;
+    const fetchImpl=async()=>{fetchCalls++;return new Response(JSON.stringify({number:999,state:'closed'}),{status:200,headers:{'content-type':'application/json'}})};
+    for(const row of rows){
+      const resolved=await resolveGithubSourceIssue(fetchImpl,'newsdayads','tigeriq-ai-lab','',row.number,index);
+      expect(resolved.number).toBe(row.number);
+    }
+    expect(fetchCalls).toBe(0);
+    const missing=await resolveGithubSourceIssue(fetchImpl,'newsdayads','tigeriq-ai-lab','',999,index);
+    expect(missing).toMatchObject({number:999,state:'closed'});
+    expect(fetchCalls).toBe(1);
+  });
+
+  it('derives bounded GitHub rate-limit cooldown from Retry-After/reset and ignores unrelated 403s',()=>{
+    const retryAfter=Object.assign(new Error('API rate limit exceeded'),{status:403,retryAfter:'2',rateLimitRemaining:'0'});
+    expect(githubRateLimitCooldownMs(retryAfter,1000)).toBe(2000);
+    const reset=Object.assign(new Error('API rate limit exceeded'),{status:403,rateLimitReset:'10',rateLimitRemaining:'0'});
+    expect(githubRateLimitCooldownMs(reset,1000)).toBe(10000);
+    const fallback=Object.assign(new Error('API rate limit exceeded'),{status:403,rateLimitRemaining:'0'});
+    expect(githubRateLimitCooldownMs(fallback,1000)).toBe(60000);
+    const unrelated=Object.assign(new Error('Forbidden'),{status:403,rateLimitRemaining:'42'});
+    expect(githubRateLimitCooldownMs(unrelated,1000)).toBe(0);
+  });
+
+  it('dedupes unchanged Work Orders before loading role-claim comments on the 5s hot path',()=>{
+    const core=readFileSync(new URL('./github-intake.mjs',import.meta.url),'utf8');
+    const priorIndex=core.indexOf("const prior=(await pool.query");
+    const claimIndex=core.indexOf("const externalClaim=await readActiveExternalRoleClaim");
+    expect(priorIndex).toBeGreaterThan(-1);
+    expect(claimIndex).toBeGreaterThan(priorIndex);
+  });
+
+  it('wires shared fast-tick snapshot and rate-limit cooldown into Core and Coding intake schedulers',()=>{
+    const core=readFileSync(new URL('./github-intake.mjs',import.meta.url),'utf8');
+    const coding=readFileSync(new URL('./github-coding-intake.mjs',import.meta.url),'utf8');
+    expect(core).toContain('const openIssues=await ghJson');
+    expect(core).toContain('syncGithubOutcomes({pool,fetchImpl,owner,repo,token,openIssues})');
+    expect(core).toContain('materializeGithubIssues({pool,fetchImpl,owner,repo,token,openIssues})');
+    expect(core).toContain("event:'GITHUB_RATE_LIMIT_COOLDOWN'");
+    expect(core).toContain('if(githubCooldownUntil>Date.now())return');
+    expect(coding).toContain("event:'GITHUB_CODING_RATE_LIMIT_COOLDOWN'");
+    expect(coding).toContain('if(githubCooldownUntil>Date.now())return');
+    expect(coding).toContain('if(githubRateLimitCooldownMs(error)>0)throw error');
   });
 
   it('uses legacy pc_operator job id for the initial objective and unique deterministic ids for rearms',()=>{

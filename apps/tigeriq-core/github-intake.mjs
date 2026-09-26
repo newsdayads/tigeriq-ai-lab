@@ -10,6 +10,33 @@ const DEFAULT_INTERVAL_MS=Number(process.env.TIGERIQ_GITHUB_INTAKE_MS||5000);
 const DEFAULT_INITIAL_DELAY_MS=15000;
 const MAX_CONTEXT_CHARS=50000;
 const SAFE_PATH_RE=/^[A-Za-z0-9._/-]+\.(?:md|mjs|js|ts|json|ya?ml)$/i;
+const GITHUB_RATE_LIMIT_FALLBACK_MS=60000;
+const GITHUB_RATE_LIMIT_MAX_MS=60*60*1000;
+
+export function githubRateLimitCooldownMs(error,nowMs=Date.now(),fallbackMs=GITHUB_RATE_LIMIT_FALLBACK_MS,maxMs=GITHUB_RATE_LIMIT_MAX_MS){
+  const status=Number(error?.status||0);
+  const remaining=String(error?.rateLimitRemaining??'');
+  const message=String(error?.message||'');
+  const limited=status===429||(status===403&&(remaining==='0'||/rate limit/i.test(message)));
+  if(!limited)return 0;
+  const retryAfter=Number(error?.retryAfter);
+  if(Number.isFinite(retryAfter)&&retryAfter>0)return Math.max(1000,Math.min(maxMs,retryAfter*1000));
+  const resetSeconds=Number(error?.rateLimitReset);
+  if(Number.isFinite(resetSeconds)&&resetSeconds>0){
+    const delay=Math.max(1000,resetSeconds*1000-Number(nowMs||Date.now())+1000);
+    return Math.min(maxMs,delay);
+  }
+  return Math.max(1000,Math.min(maxMs,Number(fallbackMs)||GITHUB_RATE_LIMIT_FALLBACK_MS));
+}
+
+export function indexOpenGithubIssues(rows=[]){
+  const out=new Map();
+  for(const issue of Array.isArray(rows)?rows:[]){
+    const n=Number(issue?.number);
+    if(n)out.set(n,issue);
+  }
+  return out;
+}
 
 export function hasExactFlag(body,key,value='true'){
   return new RegExp(`^${key.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}=${value.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}$`,'m').test(String(body||''));
@@ -138,9 +165,25 @@ async function ghJson(fetchImpl,url,token='',init={}){
   const headers={'accept':'application/vnd.github+json','user-agent':'TigerIQ-Core-GitHub-Intake/1.1','x-github-api-version':'2022-11-28',...(init.headers||{})};
   if(token) headers.authorization=`Bearer ${token}`;
   const r=await fetchImpl(url,{...init,headers,signal:AbortSignal.timeout(12000)});
-  if(!r.ok){const e=new Error(`GITHUB_HTTP_${r.status}`);e.status=r.status;throw e;}
-  if(r.status===204) return {};
-  return r.json();
+  const raw=r.status===204?'':await r.text();
+  let body={};
+  if(raw){try{body=JSON.parse(raw)}catch{body={text:raw}}}
+  if(!r.ok){
+    const e=new Error(`GITHUB_HTTP_${r.status}:${String(body?.message||raw||'').slice(0,300)}`);
+    e.status=r.status;
+    e.retryAfter=r.headers?.get?.('retry-after')||'';
+    e.rateLimitRemaining=r.headers?.get?.('x-ratelimit-remaining')||'';
+    e.rateLimitReset=r.headers?.get?.('x-ratelimit-reset')||'';
+    throw e;
+  }
+  if(r.status===204)return {};
+  return body;
+}
+
+export async function resolveGithubSourceIssue(fetchImpl,owner,repo,token,issueNumber,openIssueIndex=null){
+  const n=Number(issueNumber);
+  if(openIssueIndex instanceof Map&&openIssueIndex.has(n))return openIssueIndex.get(n);
+  return ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/${n}`,token);
 }
 
 export async function hydrateContext(fetchImpl,owner,repo,spec,token){
@@ -151,6 +194,7 @@ export async function hydrateContext(fetchImpl,owner,repo,spec,token){
       const x=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/${n}`,token);
       chunks.push(`REFERENCED ISSUE #${n}: ${x.title||''}\n${x.body||''}`);
     }catch(error){
+      if(githubRateLimitCooldownMs(error)>0)throw error;
       if(contextRefs.explicit)chunks.push(`REFERENCED ISSUE #${n}: UNAVAILABLE\nERROR: ${String(error?.message||error).slice(0,160)}`);
     }
   }
@@ -158,7 +202,9 @@ export async function hydrateContext(fetchImpl,owner,repo,spec,token){
     try{
       const x=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/contents/${path.split('/').map(encodeURIComponent).join('/')}?ref=main`,token);
       if(x?.encoding==='base64'&&x?.content){chunks.push(`REPOSITORY FILE ${path}:\n${Buffer.from(x.content,'base64').toString('utf8')}`);}
-    }catch{}
+    }catch(error){
+      if(githubRateLimitCooldownMs(error)>0)throw error;
+    }
   }
   return chunks.join('\n\n---\n\n').slice(0,MAX_CONTEXT_CHARS);
 }
@@ -204,28 +250,31 @@ async function readActiveExternalRoleClaim(fetchImpl,owner,repo,token,spec){
   try{
     const comments=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/${spec.number}/comments?per_page=100`,token);
     return activeRoleClaim(comments);
-  }catch{return null;}
+  }catch(error){
+    if(githubRateLimitCooldownMs(error)>0)throw error;
+    return null;
+  }
 }
 
 async function recordRoutingFault(pool,data){
   await pool.query("insert into tigeriq_events(type,data) values('ROUTING_FAULT',$1)",[JSON.stringify(data)]).catch(()=>{});
 }
-export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token=''}){
+export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token='',openIssues=null}){
   const cleanup=await cleanupTerminalObjectiveJobs({pool});
-  const rows=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues?state=open&per_page=100&sort=updated&direction=desc`,token);
+  const rows=Array.isArray(openIssues)?openIssues:await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues?state=open&per_page=100&sort=updated&direction=desc`,token);
   const specs=sortBacklogSpecs(rows.map(parseExecutableIssue).filter(Boolean));
   const activeRows=(await pool.query("select metadata from tigeriq_objectives where metadata->>'source'='github' and status='active'")).rows||[];
   const activeMetadata=activeRows.map((row)=>row?.metadata||{});
   let skipped=0,externalClaims=0;
   for(const spec of specs){
     if(githubSpecBlockedByActive(spec,activeMetadata)){skipped++;continue;}
-    const externalClaim=await readActiveExternalRoleClaim(fetchImpl,owner,repo,token,spec);
-    if(externalClaim){externalClaims++;skipped++;continue;}
     const prior=(await pool.query("select id,status,metadata from tigeriq_objectives where metadata->>'source'='github' and metadata->>'issueNumber'=$1 order by created_at desc limit 1",[String(spec.number)])).rows[0]||null;
     if(prior?.status==='active'){skipped++;continue;}
     const sourceChanged=Boolean(prior&&String(prior.metadata?.sourceRevision||'')!==spec.sourceRevision);
     const reopenedAfterCompletion=Boolean(prior?.metadata?.githubClosed===true);
     if(prior&&!sourceChanged&&!reopenedAfterCompletion){skipped++;continue;}
+    const externalClaim=await readActiveExternalRoleClaim(fetchImpl,owner,repo,token,spec);
+    if(externalClaim){externalClaims++;skipped++;continue;}
     const id=prior?`OBJ-GH-${spec.number}-R${rearmKey(spec)}`:`OBJ-GH-${spec.number}`;
     const exists=(await pool.query('select 1 from tigeriq_objectives where id=$1',[id])).rowCount>0;
     if(exists){skipped++;continue;}
@@ -257,8 +306,9 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
   return {created:0,skipped,externalClaims,active:activeMetadata.length,considered:specs.length,cleanedOrphans:cleanup.cleaned,routingFault:fault.fault};
 }
 
-export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token=''}){
+export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token='',openIssues=null}){
   if(!token) return {claims:0,results:0};
+  const openIssueIndex=Array.isArray(openIssues)?indexOpenGithubIssues(openIssues):null;
   const rows=(await pool.query(`select id,status,summary,metadata from tigeriq_objectives
     where metadata->>'source'='github'
       and (
@@ -273,7 +323,7 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
     const number=Number(row.metadata?.issueNumber); if(!number) continue;
     if(row.status==='active'){
       try{
-        const sourceIssue=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/${number}`,token);
+        const sourceIssue=await resolveGithubSourceIssue(fetchImpl,owner,repo,token,number,openIssueIndex);
         if(sourceIssue?.state==='closed'){
           const sourceReason=String(sourceIssue.state_reason||'closed');
           const terminalStatus=sourceReason==='completed'?'completed':'blocked';
@@ -286,6 +336,7 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
           row.metadata={...row.metadata,githubSourceState:'closed',githubSourceStateReason:sourceReason,githubSourceClosedAt:String(sourceIssue.closed_at||'')};
         }
       }catch(error){
+        if(githubRateLimitCooldownMs(error)>0)throw error;
         console.error(JSON.stringify({event:'GITHUB_SOURCE_STATE_RECONCILE_ERROR',objectiveId:row.id,issueNumber:number,error:String(error?.message||error)}));
       }
     }
@@ -316,10 +367,29 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
   return {claims,results};
 }
 
-export function startGithubIntake({databaseUrl=process.env.DATABASE_URL,fetchImpl=fetch,owner=process.env.TIGERIQ_GITHUB_OWNER||DEFAULT_OWNER,repo=process.env.TIGERIQ_GITHUB_REPO||DEFAULT_REPO,token=process.env.TIGERIQ_GITHUB_TOKEN||process.env.GITHUB_TOKEN||'',intervalMs=Number(process.env.TIGERIQ_GITHUB_INTAKE_MS||5000),initialDelayMs=1000}={}){ 
-  if(!databaseUrl) return {enabled:false,stop(){}};
-  const pool=new Pool({connectionString:databaseUrl,max:1}); let stopped=false,busy=false,timer=null,interval=null;
-  const tick=async()=>{if(stopped||busy)return;busy=true;try{const b=await syncGithubOutcomes({pool,fetchImpl,owner,repo,token});const a=await materializeGithubIssues({pool,fetchImpl,owner,repo,token});if(a.created||b.claims||b.results)console.log(JSON.stringify({event:'GITHUB_INTAKE_SYNC',created:a.created,claims:b.claims,results:b.results,active:a.active||0,issueNumber:a.issueNumber||null}));}catch(e){console.error(JSON.stringify({event:'GITHUB_INTAKE_ERROR',error:String(e?.message||e)}));}finally{busy=false;}};
+export function startGithubIntake({databaseUrl=process.env.DATABASE_URL,fetchImpl=fetch,owner=process.env.TIGERIQ_GITHUB_OWNER||DEFAULT_OWNER,repo=process.env.TIGERIQ_GITHUB_REPO||DEFAULT_REPO,token=process.env.TIGERIQ_GITHUB_TOKEN||process.env.GITHUB_TOKEN||'',intervalMs=Number(process.env.TIGERIQ_GITHUB_INTAKE_MS||5000),initialDelayMs=1000}={}){
+  if(!databaseUrl)return {enabled:false,stop(){}};
+  const pool=new Pool({connectionString:databaseUrl,max:1});
+  let stopped=false,busy=false,timer=null,interval=null,githubCooldownUntil=0;
+  const tick=async()=>{
+    if(stopped||busy)return;
+    if(githubCooldownUntil>Date.now())return;
+    busy=true;
+    try{
+      const openIssues=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues?state=open&per_page=100&sort=updated&direction=desc`,token);
+      const b=await syncGithubOutcomes({pool,fetchImpl,owner,repo,token,openIssues});
+      const a=await materializeGithubIssues({pool,fetchImpl,owner,repo,token,openIssues});
+      if(a.created||b.claims||b.results)console.log(JSON.stringify({event:'GITHUB_INTAKE_SYNC',created:a.created,claims:b.claims,results:b.results,active:a.active||0,issueNumber:a.issueNumber||null}));
+    }catch(e){
+      const delayMs=githubRateLimitCooldownMs(e,Date.now());
+      if(delayMs>0){
+        githubCooldownUntil=Date.now()+delayMs;
+        console.warn(JSON.stringify({event:'GITHUB_RATE_LIMIT_COOLDOWN',delayMs,until:new Date(githubCooldownUntil).toISOString(),error:String(e?.message||e)}));
+      }else{
+        console.error(JSON.stringify({event:'GITHUB_INTAKE_ERROR',error:String(e?.message||e)}));
+      }
+    }finally{busy=false;}
+  };
   timer=setTimeout(()=>{void tick();interval=setInterval(()=>void tick(),Math.max(1000,intervalMs));interval.unref?.();},Math.max(1000,initialDelayMs)); timer.unref?.();
   return {enabled:true,async stop(){stopped=true;if(timer)clearTimeout(timer);if(interval)clearInterval(interval);await pool.end();}};
 }
