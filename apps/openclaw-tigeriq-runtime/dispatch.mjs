@@ -3,6 +3,7 @@ import {promises as fs} from 'node:fs';
 import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
+import {PC_OPERATOR_ROOTS} from './operator.mjs';
 
 export const OPENCLAW_EMPLOYEE_ID='NV06';
 export const OPENCLAW_PROVIDER='openclaw';
@@ -252,6 +253,19 @@ export function compactOpenClawCliResult(parsed,exitCode,stderr=''){
   };
 }
 
+export function trustedStructuredFileReadReceipt(agentResult){
+  const evidence=agentResult?.evidence;
+  if(!evidence||typeof evidence!=='object'||Array.isArray(evidence))return false;
+  if(String(evidence.action||'').toLowerCase()!=='file_read'||evidence.ok!==true)return false;
+  if(agentResult?.blocker)return false;
+  const candidate=path.win32.resolve(String(evidence.path||'').replaceAll('/','\\')).toLowerCase();
+  if(!candidate)return false;
+  return PC_OPERATOR_ROOTS.some(root=>{
+    const base=path.win32.resolve(String(root)).toLowerCase();
+    return candidate===base||candidate.startsWith(base+'\\');
+  });
+}
+
 export function openClawTerminalDecision(result,{timedOut=false,parsedPresent=true}={}){
   const agentStatus=String(result?.agentResult?.status||'').toLowerCase();
   const successAgentStatuses=new Set(['pass','passed','ok','success','completed','done']);
@@ -259,26 +273,17 @@ export function openClawTerminalDecision(result,{timedOut=false,parsedPresent=tr
   const agentSuccess=agentStructured&&successAgentStatuses.has(agentStatus);
   const wrapperStatus=String(result?.status||'').toLowerCase();
   const wrapperClean=Number(result?.exitCode)===0&&Boolean(parsedPresent)&&!['timeout','failed','error','aborted'].includes(wrapperStatus);
-  const trustedToolReceipt=(Array.isArray(result?.successfulToolNames)?result.successfulToolNames:[])
+  const terminalReceiptTool=(Array.isArray(result?.successfulToolNames)?result.successfulToolNames:[])
     .some(name=>/^tigeriq_(?:pc|runtime)(?:[.:/]|$)/i.test(String(name||'')));
-  const evidence=result?.agentResult?.evidence;
-  const evidenceAction=String(evidence?.action||'').toLowerCase();
-  const safeReadActions=new Set(['file_read','file_stat','file_list','task_status','process_list','tcp_probe','pad_health','pad_windows','pad_tree']);
-  const structuredReadEvidence=Boolean(
-    agentSuccess
-    && evidence
-    && typeof evidence==='object'
-    && evidence?.ok===true
-    && safeReadActions.has(evidenceAction)
-    && !String(result?.agentResult?.blocker||'').trim()
-  );
-  const success=!timedOut&&Boolean(parsedPresent)&&agentSuccess&&(wrapperClean||trustedToolReceipt||structuredReadEvidence);
+  const embeddedFileReadReceipt=trustedStructuredFileReadReceipt(result?.agentResult);
+  const trustedToolReceipt=terminalReceiptTool||embeddedFileReadReceipt;
+  const success=!timedOut&&Boolean(parsedPresent)&&agentSuccess&&(wrapperClean||trustedToolReceipt);
   const invalidTerminal=!timedOut&&Boolean(parsedPresent)&&!success&&(
     !agentStructured
     || !successAgentStatuses.has(agentStatus)
-    || (agentSuccess&&!wrapperClean&&!trustedToolReceipt&&!structuredReadEvidence)
+    || (agentSuccess&&!wrapperClean&&!trustedToolReceipt)
   );
-  return {success,invalidTerminal,agentStatus,agentStructured,agentSuccess,wrapperClean,trustedToolReceipt,structuredReadEvidence,evidenceAction};
+  return {success,invalidTerminal,agentStatus,agentStructured,agentSuccess,wrapperClean,trustedToolReceipt,terminalReceiptTool,embeddedFileReadReceipt};
 }
 
 export async function runDispatchWorkerRecord(recordPath,options={}){
