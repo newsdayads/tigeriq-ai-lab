@@ -1,7 +1,7 @@
 import {createServer} from 'node:http';
 import {createHash,randomUUID} from 'node:crypto';
 import {Pool} from 'pg';
-import {branchName,checkGateState,extractCanonicalAllowedPaths,isRetryableAiError,parseJsonObject,safeRepoPath,validateChanges} from './policy.mjs';
+import {branchName,canonicalScopeAllowsPath,checkGateState,extractCanonicalAllowedPaths,isRetryableAiError,parseJsonObject,safeRepoPath,validateChanges} from './policy.mjs';
 import {assertSafeFileChange} from './safety-guard.mjs';
 import {compactPromptForChanges,currentFilesFromPrompt,expandCompactChanges,installAiJsonTransport,parseModelJson} from './ai-json-transport.mjs';
 import { createGeminiRateController } from '../shared/gemini-rate-control.mjs';
@@ -24,9 +24,9 @@ export function validateJobScope(jobPaths,changes){
 }
 
 export function validateSourceScope(proposedPaths,canonicalPaths){
-  const canonical=new Set((canonicalPaths||[]).map(String));
-  if(!canonical.size)return true;
-  const offending=(proposedPaths||[]).map(String).filter(p=>!canonical.has(p));
+  const canonical=(canonicalPaths||[]).map(String).filter(Boolean);
+  if(!canonical.length)return true;
+  const offending=(proposedPaths||[]).map(String).filter(p=>!canonicalScopeAllowsPath(p,canonical));
   if(offending.length)throw new CodingScopeViolationError(offending);
   return true;
 }
@@ -39,7 +39,7 @@ export function validateManagerJobPaths(decision,canonicalPaths=[],mutationAuth=
   }
   assertExecutionPlaneMutationPaths(raw,mutationAuth);
   try{validateSourceScope(raw,canonicalPaths)}catch(error){
-    const offending=Array.isArray(error?.offending)?error.offending:raw.filter(p=>!(canonicalPaths||[]).includes(p));
+    const offending=Array.isArray(error?.offending)?error.offending:raw.filter(p=>!canonicalScopeAllowsPath(p,canonicalPaths));
     const e=new Error('MANAGER_SCOPE_MISMATCH:'+offending.join(', '));e.code='MANAGER_SCOPE_MISMATCH';e.detail={offending};throw e;
   }
   return raw;
