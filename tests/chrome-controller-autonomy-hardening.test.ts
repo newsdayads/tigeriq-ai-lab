@@ -233,7 +233,15 @@ describe('isolated NV02 WORKING/F5 safety scope',()=>{
     const working=hotLoop.slice(hotLoop.indexOf("if(phase==='WORKING')"),hotLoop.indexOf('const chatLoadRecoveryHandled=await maybeRecoverChatLoadError'));
     expect(working).not.toContain('reloadTarget');
     expect(hotLoop).toContain("if(phase!=='WORKING'&&now>=Number(state.nextRefreshAt||0))");
-    expect(hotLoop).toContain("if(now>=Number(state.nextPeriodicF5At||0))");
+    const workingF5Guard=hotLoop.indexOf("if(phase==='WORKING'&&now>=Number(state.nextPeriodicF5At||0))");
+    const dueF5=hotLoop.indexOf("if(now>=Number(state.nextPeriodicF5At||0))");
+    expect(workingF5Guard).toBeGreaterThan(-1);
+    expect(dueF5).toBeGreaterThan(workingF5Guard);
+    expect(hotLoop).toContain("PERIODIC_F5_DEFERRED_WORKING");
+    expect(hotLoop).toContain("PERIODIC_F5_DEFERRED_WORKING_FRESH");
+    const f5Mutation=hotLoop.slice(dueF5,hotLoop.indexOf("if(phase==='WORKING')",dueF5));
+    expect(f5Mutation.indexOf("PERIODIC_F5_DEFERRED_WORKING_FRESH")).toBeGreaterThan(-1);
+    expect(f5Mutation.indexOf("PERIODIC_F5_DEFERRED_WORKING_FRESH")).toBeLessThan(f5Mutation.indexOf("reloadTarget(target)"));
     expect(working).not.toContain('reopenWorker(');
     expect(working).not.toContain('dispatchNaturalContinue');
     expect(working).toContain("'WORKING_LONG_RUNNING_NO_MUTATION'");
