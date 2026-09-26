@@ -566,6 +566,51 @@ async function persistIndependentReviewArtifact(prNumber,data){
   return {id:out.id,body};
 }
 
+export function sourceWorkOrderNumber(objective=''){
+  const text=String(objective||'');
+  const patterns=[
+    /\bGitHub autonomous coding\s+issue\s+#(\d+)\b/i,
+    /\bGitHub autonomous coding\s+(?:recovery|retry|repair)(?:\s+for)?\s+issue\s+#(\d+)\b/i,
+  ];
+  for(const pattern of patterns){
+    const match=text.match(pattern);
+    const number=Number(match?.[1]||0);
+    if(Number.isInteger(number)&&number>0)return number;
+  }
+  return null;
+}
+
+export function assertSourceWorkOrderExecutable(issue,issueNumber=null){
+  const body=String(issue?.body||'');
+  const state=String(issue?.state||'').trim().toLowerCase();
+  const executableFalse=/^\s*TIGERIQ_EXECUTABLE\s*=\s*false\s*$/im.test(body);
+  const terminalState=/^\s*STATE\s*=\s*(?:SUPERSEDED|CANCELLED)\s*$/im.test(body);
+  const supersededBy=/^\s*SUPERSEDED_BY\s*=\s*\S+/im.test(body);
+  if(state!=='open'||executableFalse||terminalState||supersededBy){
+    const error=new Error('SOURCE_WORK_ORDER_NO_LONGER_EXECUTABLE');
+    error.code='SOURCE_WORK_ORDER_NO_LONGER_EXECUTABLE';
+    error.detail={issueNumber:Number(issueNumber)||Number(issue?.number)||null,state:state||null,executableFalse,terminalState,supersededBy};
+    throw error;
+  }
+  return true;
+}
+
+export async function assertCanonicalSourceWorkOrderExecutable(objective,{fetchIssue}={}){
+  const issueNumber=sourceWorkOrderNumber(objective);
+  if(!issueNumber)return {checked:false,issueNumber:null};
+  const loader=fetchIssue||((number)=>gh(`/issues/${number}`));
+  let issue;
+  try{issue=await loader(issueNumber)}
+  catch(cause){
+    const error=new Error('SOURCE_WORK_ORDER_LOOKUP_FAILED');
+    error.code='SOURCE_WORK_ORDER_LOOKUP_FAILED';
+    error.detail={issueNumber,message:String(cause?.message||cause).slice(0,300)};
+    throw error;
+  }
+  assertSourceWorkOrderExecutable(issue,issueNumber);
+  return {checked:true,issueNumber};
+}
+
 async function initDb(){if(!pool)return;await pool.query(`
 create table if not exists tigeriq_coding_objectives(id text primary key,objective text not null,priority text not null default 'P1',status text not null default 'active',summary text,manager_employee_id text,created_at timestamptz not null default now(),updated_at timestamptz not null default now());
 alter table tigeriq_coding_objectives add column if not exists next_attempt_at timestamptz;
@@ -874,9 +919,11 @@ async function runJob(j){
       j.live_github_context=generatedGithubContext;j.live_github_context_fingerprint=generatedGithubContext.fingerprint;
     }
     reviewer=pickResource([worker.id,...cooldownExcludes]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE');
+    await assertCanonicalSourceWorkOrderExecutable(canonicalObjective);
     const base=await mainSha();branch=branchName(worker.id,j.id);await createBranch(branch,base);
     await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,branch=$4,next_attempt_at=null where id=$1",[j.id,worker.id,reviewer.id,branch]);
     for(const ch of gen.changes)await writeFile(branch,ch,mutationAuth);
+    await assertCanonicalSourceWorkOrderExecutable(canonicalObjective);
     pr=await openPr(branch,`[${worker.id}] ${j.title}`,`Automated TigerIQ Coding Lane job \`${j.id}\`.\n\nImplementer: ${worker.id}\nIndependent reviewer: ${reviewer.id}\nDirect writes to main are forbidden. Merge is attempted only after CI gates and reviewer approval.`);
     await pool.query("update tigeriq_coding_jobs set pr_number=$2,status='waiting_ci' where id=$1",[j.id,pr.number]);
   }
@@ -887,6 +934,7 @@ async function runJob(j){
       onWaiting:async()=>{await pool.query("update tigeriq_coding_jobs set status='waiting_ci' where id=$1",[j.id])},
       repairFn:async({evidence})=>{
         const freshContext=await loadAuthoritativeGithubContext(canonicalObjective);assertLiveGithubContextFresh(generatedGithubContext,freshContext);j.liveGithubContext=freshContext;
+        await assertCanonicalSourceWorkOrderExecutable(canonicalObjective);
         const repaired=await generateAndWriteRepair(worker,j,branch,[`CI gate failure on same PR #${pr.number}`,...evidence],[reviewer.id,...cooldownExcludes],mutationAuth,canonicalObjective,freshContext);
         worker=repaired.worker;gen=repaired.payload;
         if(reviewer?.id===worker.id){reviewer=pickResource([worker.id,...cooldownExcludes]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE')}
@@ -906,6 +954,7 @@ async function runJob(j){
     if(review.decision==='approve'){approvedHead=gates.sha;approvedReviewer=reviewer.id;approvedImplementer=worker.id;break;}
     if(reviewCycle===2)throw Object.assign(new Error('REVIEW_CHANGES_UNRESOLVED'),{detail:review});
     const repairGithubContext=await loadAuthoritativeGithubContext(canonicalObjective);assertLiveGithubContextFresh(generatedGithubContext,repairGithubContext);j.liveGithubContext=repairGithubContext;
+    await assertCanonicalSourceWorkOrderExecutable(canonicalObjective);
     const repaired=await generateAndWriteRepair(worker,j,branch,review.issues,[reviewer.id,...cooldownExcludes],mutationAuth,canonicalObjective,repairGithubContext);worker=repaired.worker;gen=repaired.payload;
     if(reviewer.id===worker.id){reviewer=pickResource([worker.id,...cooldownExcludes]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE')}
     await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,status='waiting_ci' where id=$1",[j.id,worker.id,reviewer.id]);
@@ -916,7 +965,7 @@ async function runJob(j){
   const finalSha=await headSha(branch);
   assertIndependentReviewApproval({implementerId:approvedImplementer,reviewerId:approvedReviewer,targetHead:approvedHead,expectedHead:finalSha,decision:review?.decision});
   let merge={merged:false,message:'AUTO_MERGE_DISABLED'};
-  if(AUTO_MERGE){try{merge=await mergePr(pr.number,approvedHead,j.title)}catch(e){merge={merged:false,message:String(e.message||e)}}}
+  if(AUTO_MERGE){try{await assertCanonicalSourceWorkOrderExecutable(canonicalObjective);merge=await mergePr(pr.number,approvedHead,j.title)}catch(e){merge={merged:false,message:String(e.message||e)}}}
   const status=merge?.merged?'done':'blocked';
   await pool.query("update tigeriq_coding_jobs set status=$2,head_sha=$3,result=$4,completed_at=now(),next_attempt_at=null,resource_retry_count=0,resource_retry_started_at=null where id=$1",[j.id,status,finalSha,JSON.stringify({summary:gen.summary,prNumber:pr.number,branch,gates,review,merge})]);
   await pool.query("update tigeriq_coding_objectives set status=$2,summary=$3,updated_at=now() where id=$1",[j.objective_id,merge?.merged?'completed':'blocked',merge?.merged?`Merged PR #${pr.number}`:`PR #${pr.number} ready but merge blocked: ${String(merge?.message||'unknown').slice(0,500)}`]);
