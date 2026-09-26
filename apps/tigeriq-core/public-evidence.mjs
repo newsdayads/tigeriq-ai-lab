@@ -8,6 +8,8 @@ const SUPPORTED_PUBLIC_EVIDENCE_KEYS=Object.freeze([
 
 const SUPPORTED_SET=new Set(SUPPORTED_PUBLIC_EVIDENCE_KEYS);
 const SENSITIVE_KEY_RE=/(?:secret|token|password|passwd|credential|authorization|cookie|session|api[_-]?key|private[_-]?key|env(?:ironment)?)/i;
+const RAW_OUTPUT_KEY_RE=/^(?:content|contentSnippet|content_snippet|text|stdout|stderr|raw|rawText|raw_text|payload|body)$/i;
+const blockedPublicKey=(key)=>SENSITIVE_KEY_RE.test(String(key))||RAW_OUTPUT_KEY_RE.test(String(key));
 const MAX_DEPTH=4;
 const MAX_ARRAY=16;
 const MAX_OBJECT_KEYS=24;
@@ -41,7 +43,7 @@ export function sanitizePublicEvidenceValue(value,depth=0){
   const out={};let count=0;
   for(const [key,val] of Object.entries(value)){
     if(count>=MAX_OBJECT_KEYS)break;
-    if(SENSITIVE_KEY_RE.test(key))continue;
+    if(blockedPublicKey(key))continue;
     out[key]=sanitizePublicEvidenceValue(val,depth+1);
     count++;
   }
@@ -54,21 +56,48 @@ function findRequestedValue(node,target,depth=0,seen=new Set()){
   if(!Array.isArray(node)&&Object.prototype.hasOwnProperty.call(node,target))return node[target];
   const entries=Array.isArray(node)?node.entries():Object.entries(node);
   for(const [key,val] of entries){
-    if(!Array.isArray(node)&&SENSITIVE_KEY_RE.test(String(key)))continue;
+    if(!Array.isArray(node)&&blockedPublicKey(key))continue;
     const found=findRequestedValue(val,target,depth+1,seen);
     if(found!==undefined)return found;
   }
   return undefined;
 }
 
+function structuredBridgeEvidenceSources(bridgeCalls){
+  const calls=Array.isArray(bridgeCalls)?bridgeCalls:[bridgeCalls];
+  const sources=[];
+  for(const call of calls){
+    if(!call||typeof call!=='object')continue;
+    const result=call.result;
+    if(result&&typeof result==='object'){
+      if(result.data&&typeof result.data==='object')sources.push(result.data);
+      else if(result.evidence&&typeof result.evidence==='object')sources.push(result.evidence);
+      else sources.push(result);
+      continue;
+    }
+    if(call.data&&typeof call.data==='object')sources.push(call.data);
+    else if(call.evidence&&typeof call.evidence==='object')sources.push(call.evidence);
+  }
+  return sources;
+}
+
 export function extractPublicEvidence(jobResult,requestedKeys=[]){
   const requested=[...new Set((requestedKeys||[]).filter(key=>SUPPORTED_SET.has(String(key))).map(String))];
   if(!requested.length)return {};
-  const source=jobResult?.evidence?.agentResult?.evidence;
-  if(source==null||typeof source!=='object')return {};
+  const primary=jobResult?.evidence?.agentResult?.evidence;
+  const bridgeCalls=jobResult?.evidence?.bridgeCalls;
+  const sources=[
+    ...(primary&&typeof primary==='object'?[primary]:[]),
+    ...structuredBridgeEvidenceSources(bridgeCalls),
+  ];
+  if(!sources.length)return {};
   const out={};
   for(const key of requested){
-    const raw=findRequestedValue(source,key);
+    let raw;
+    for(const source of sources){
+      raw=findRequestedValue(source,key);
+      if(raw!==undefined)break;
+    }
     if(raw===undefined)continue;
     out[key]=sanitizePublicEvidenceValue(raw);
   }
