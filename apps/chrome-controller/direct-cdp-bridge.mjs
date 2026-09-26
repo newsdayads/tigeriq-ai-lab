@@ -1673,7 +1673,7 @@ async function tickWorker(w){
     else if(CONTINUITY_WORKERS.includes(w.id))await maybeWorkerContinuity(w,target,ui);
   }catch(error){
     const msg=String(error?.message||error);
-    const connectivityFailure=/fetch failed|ECONNREFUSED|ECONNRESET|CDP_LIST|CDP_OPEN|AbortError|TimeoutError|UND_ERR_CONNECT_TIMEOUT/i.test(msg);
+    const connectivityFailure=/fetch failed|ECONNREFUSED|ECONNRESET|CDP_LIST|CDP_OPEN|CDP_TIMEOUT|AbortError|TimeoutError|UND_ERR_CONNECT_TIMEOUT/i.test(msg);
     if(connectivityFailure){
       const prior=workerConnectivityBackoff.get(w.id);
       const maxAttempts=Number(prior?.maxAttempts)||Math.floor(2+Math.random()*4);

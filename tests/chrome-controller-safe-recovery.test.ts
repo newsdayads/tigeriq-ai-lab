@@ -463,6 +463,13 @@ describe('safe recovery contracts',()=>{
     expect(continuity).toContain("'STALLED_RELOAD'");
   });
 
+  it('treats CDP evaluation timeouts as bounded connectivity recovery',()=>{
+    const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    expect(source).toContain('CDP_TIMEOUT|AbortError');
+    expect(source).toContain("'WORKER_CONNECTIVITY_RETRY_SCHEDULED'");
+    expect(source).toContain("'WORKER_CONNECTIVITY_CHROME_RESTART_REQUESTED'");
+  });
+
   it('keeps generic worker F5 failures bounded instead of escalating into tick errors',()=>{
     const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     const continuity=source.slice(source.indexOf('async function maybeWorkerContinuity'),source.indexOf('\nfunction log(event'));
