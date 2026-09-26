@@ -417,8 +417,8 @@ export function parseTigerIqLifecycleComment(comment = {}) {
   const body = String(comment?.body || '').trim();
   let state = null;
   if (/^\[RESULT\]\s+TigerIQ Core completed\b/i.test(body)) state = 'COMPLETED';
-  else if (/^\[RESULT\]\s+TigerIQ Core blocked\b/i.test(body) || /^\[BLOCKED_FINAL\]\b/i.test(body)) state = 'BLOCKED';
-  else if (/^\[(?:CLAIM|PROGRESS|RETRY_SCHEDULED|RETRY_DISPATCHED|RECOVERY_REARMED|STALE_RESULT_REARMED)\]\b/i.test(body)) state = 'ACTIVE';
+  else if (/^\[RESULT\]\s+TigerIQ Core blocked\b/i.test(body) || /^\[BLOCKED_FINAL\](?:\s|$)/i.test(body)) state = 'BLOCKED';
+  else if (/^\[(?:CLAIM|PROGRESS|RETRY_SCHEDULED|RETRY_DISPATCHED|RECOVERY_REARMED|STALE_RESULT_REARMED)\](?:\s|$)/i.test(body)) state = 'ACTIVE';
   if (!state) return null;
   return {
     issueNumber,
