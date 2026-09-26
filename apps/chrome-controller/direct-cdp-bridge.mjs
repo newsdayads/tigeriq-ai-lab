@@ -327,23 +327,11 @@ async function maybeWorkerContinuity(w,target,ui){
       bootFreshContextPending.add(w.id);
       return;
     }
-    if(expectedHost(w)==='chatgpt.com'&&state.modelCheckAttempted!==true){
-      try{
-        const model=await withWorkerMutation(w.id,()=>ensureChatGptModelProfile(target),'BOOT_MODEL_PROFILE_ONCE',60000);
-        if(model?.status==='MUTATION_LEASE_BUSY'){
-          bootFreshContextPending.add(w.id);
-          return;
-        }
-        state={...loadWorkerContinuity(w.id),modelCheckAttempted:true};
-        saveWorkerContinuity(w.id,state);
-        await genericWorkerEvent(w.id,'BOOT_MODEL_PROFILE_VERIFIED',{modelName:model?.modelName||null,reasoningEffort:model?.reasoningEffort||null});
-      }catch(error){
-        state={...loadWorkerContinuity(w.id),modelCheckAttempted:true};
-        saveWorkerContinuity(w.id,state);
-        await genericWorkerEvent(w.id,'BOOT_MODEL_PROFILE_CHECK_ONCE_UNVERIFIED',{error:String(error?.message||error)});
-      }
-    }
-    await genericWorkerEvent(w.id,'BOOT_FRESH_CONTEXT_READY',{homeUrl:w.homeUrl,modelCheckAttempted:state.modelCheckAttempted===true});
+    if(w.id!=='NV02'&&state.modelCheckAttempted!==true){
+      state={...state,modelCheckAttempted:true};
+      saveWorkerContinuity(w.id,state);
+      await genericWorkerEvent(w.id,'BOOT_MODEL_PROFILE_PRESERVED',{modelName:ui?.modelName||null,reasoningEffort:ui?.reasoningEffort||null,modelProfileStatus:ui?.modelProfileStatus||null});
+    }    await genericWorkerEvent(w.id,'BOOT_FRESH_CONTEXT_READY',{homeUrl:w.homeUrl,modelCheckAttempted:state.modelCheckAttempted===true});
   }
   if(ui?.scrollToBottomVisible===true&&now>=Number(state.nextViewFollowAt||0)){
     const locallyBusy=workerMutationBusy.has(w.id);

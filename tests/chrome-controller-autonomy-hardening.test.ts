@@ -644,3 +644,12 @@ describe('APP Chrome unified runtime supervisor #1525',()=>{
     expect(installer).not.toContain('RunLevel Highest');
   });
 });
+
+describe('NV03/NV04 canonical model preservation #1940',()=>{
+  it('never applies NV02 model selection to generic workers',()=>{
+    const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    expect(bridge).toContain("if(w.id!=='NV02'&&state.modelCheckAttempted!==true)");
+    expect(bridge).toContain("BOOT_MODEL_PROFILE_PRESERVED");
+    expect(bridge).not.toContain("if(expectedHost(w)==='chatgpt.com'&&state.modelCheckAttempted!==true)");
+  });
+});
