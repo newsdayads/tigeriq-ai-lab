@@ -1,9 +1,9 @@
-param([string]$Repo='D:\\TigerIQ\\Workspace\\tigeriq-ai-lab')
+param([string]$Repo='D:\TigerIQ\Workspace\tigeriq-ai-lab')
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 $taskName='TigerIQ Core Runtime Updater'
 $legacyAutonomySupervisorTask='TigerIQ Autonomy Supervisor V2'
-$sourceScript='D:\TigerIQ\Workspace\tigeriq-ai-lab\scripts\tigeriq-core\update-core-runtime.ps1'
+$sourceScript=Join-Path $Repo 'scripts\tigeriq-core\update-core-runtime.ps1'
 $legacyTask=Get-ScheduledTask -TaskName $legacyAutonomySupervisorTask -ErrorAction SilentlyContinue
 if($legacyTask){
   if([string]$legacyTask.State -eq 'Running'){Stop-ScheduledTask -TaskName $legacyAutonomySupervisorTask -ErrorAction SilentlyContinue}
