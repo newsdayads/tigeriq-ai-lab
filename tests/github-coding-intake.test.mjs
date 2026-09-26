@@ -347,7 +347,7 @@ describe('GitHub coding continuity supervisor',()=>{
 
   it('re-arms a recoverable exhausted issue only after relevant main or source changes',async()=>{
     const pool=fakePool();let posted=0;
-    const current=issue(`${SAFE}\nALLOW_PATH_PREFIX=apps/tigeriq-core/github-coding-intake.mjs`,{number:804});
+    const current=issue(`${SAFE}\nALLOW_PATH_PREFIX=tests/github-coding-intake.test.mjs`,{number:804});
     const currentRevision=codingSourceTruthRevision(current,[]);
     pool.events.push(
       {type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:804,codingObjectiveId:'obj-804-r2'}},
@@ -366,7 +366,7 @@ describe('GitHub coding continuity supervisor',()=>{
     const fetchImpl=async(url,init={})=>{
       if(url.includes('/api/status'))return response({objectives:[{id:'obj-804-r2',status:'blocked',summary:'OUTPUT_CONTRACT_EXHAUSTED'}],jobs:[]});
       if(url.includes('/git/ref/heads/main'))return response({object:{sha:'new-main'}});
-      if(url.includes('/compare/'))return response({files:[{filename:'apps/tigeriq-core/github-coding-intake.mjs'}]});
+      if(url.includes('/compare/'))return response({files:[{filename:'tests/github-coding-intake.test.mjs'}]});
       if(url.includes('/api/objectives')){posted++;const body=JSON.parse(init.body);expect(body.objective).toContain('RECOVERY_KEY=GITHUB-ISSUE-804-RECOVERY-new-main');return response({id:'obj-804-recovery'});}
       if(url.includes('/issues/804'))return response(current);
       if(url.includes('/comments'))return response({});
@@ -947,6 +947,7 @@ describe('GitHub coding source revision completion guard',()=>{
     const fetchImpl=async(url,init={})=>{
       if(url.includes('/api/status'))return response({objectives:[{id:'obj-824-r2',status:'blocked',summary:'OUTPUT_CONTRACT_EXHAUSTED'}],jobs:[]});
       if(url.includes('/git/ref/heads/main'))return response({object:{sha:'new-main'}});
+      if(url.includes('/compare/'))return response({files:[{filename:'docs/evidence/rev-dep.md'}]});
       if(url.includes('/issues/824/comments'))return response([]);
       if(url.includes('/issues/900'))return response({number:900,state:depState});
       if(url.includes('/issues/824'))return response(current);
@@ -1099,6 +1100,7 @@ describe('GitHub coding source revision completion guard',()=>{
         ...(recoveryObjective?[recoveryObjective]:[])
       ],jobs:[]});
       if(url.includes('/git/ref/heads/main'))return response({object:{sha:'new-main'}});
+      if(url.includes('/compare/'))return response({files:[{filename:'tests/github-coding-intake.test.mjs'}]});
       if(url.includes('/issues/1605/comments'))return response([]);
       if(url.includes('/issues/1935'))return response({number:1935,state:dependencyClosed?'closed':'open'});
       if(url.includes('/issues/1605'))return response(current);
