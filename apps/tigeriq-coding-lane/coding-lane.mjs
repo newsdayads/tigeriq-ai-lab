@@ -575,6 +575,8 @@ create table if not exists tigeriq_coding_jobs(id text primary key,objective_id 
 alter table tigeriq_coding_jobs add column if not exists next_attempt_at timestamptz;
 alter table tigeriq_coding_jobs add column if not exists resource_retry_count int not null default 0;
 alter table tigeriq_coding_jobs add column if not exists resource_retry_started_at timestamptz;
+alter table tigeriq_coding_jobs add column if not exists live_github_context jsonb;
+alter table tigeriq_coding_jobs add column if not exists live_github_context_fingerprint text;
 create index if not exists tigeriq_coding_jobs_status_idx on tigeriq_coding_jobs(status,created_at);
 `)}
 
@@ -590,7 +592,12 @@ async function managerTick(){
   let manager=pickResource();if(!manager)return
   const canonical=extractCanonicalAllowedPaths(o.objective);
   const mutationAuth={...controlPlaneRepairIntent(o.objective),executorClass:'CODING_LANE_MANAGER'};
-  const liveGithubContext=await loadAuthoritativeGithubContext(o.objective);
+  let liveGithubContext=null;
+  try{liveGithubContext=await loadAuthoritativeGithubContext(o.objective)}
+  catch(error){
+    await pool.query("update tigeriq_coding_objectives set status='blocked',summary=$2,manager_employee_id=$3,next_attempt_at=null,updated_at=now() where id=$1",[o.id,String(error?.message||error).slice(0,1000),manager.id]);
+    return;
+  }
   const liveGithubContextBlock=formatAuthoritativeGithubContext(liveGithubContext);
   const tree=await repoTree();
   const scopeText=canonical.length?`\nCANONICAL ALLOWED PATHS (MUST NOT EXPAND):\n${canonical.join('\n')}\n`:'';
@@ -841,6 +848,10 @@ async function runJob(j){
   const canonicalObjective=String(objectiveRow?.objective||j.instruction||'').slice(0,24000);
   const mutationAuth={...controlPlaneRepairIntent(canonicalObjective),executorClass:'CODING_LANE'};
   const generatedGithubContext=await loadAuthoritativeGithubContext(canonicalObjective);
+  const storedGithubContext=j.live_github_context&&typeof j.live_github_context==='object'?j.live_github_context:null;
+  if(requiresLiveGithubContext(canonicalObjective)&&shouldResumeExistingPr(j)&&!storedGithubContext)
+    throw Object.assign(new Error('LIVE_GITHUB_CONTEXT_UNAVAILABLE:GENERATION_BASELINE_MISSING'),{code:'LIVE_GITHUB_CONTEXT_UNAVAILABLE'});
+  if(storedGithubContext)assertLiveGithubContextFresh(storedGithubContext,generatedGithubContext);
   assertExecutionPlaneMutationPaths(j.paths,mutationAuth);
   const cooldownExcludes=activeProviderCooldownIds(j.failure);
   let worker=selectableResources(cooldownExcludes).find(r=>r.id===j.employee_id)||pickResource(cooldownExcludes);if(!worker)throw new Error('NO_IMPLEMENTER_AVAILABLE');
@@ -857,6 +868,10 @@ async function runJob(j){
   }else{
     generated=await generateChanges(worker,j,'main',[],cooldownExcludes,canonicalObjective,generatedGithubContext);worker=generated.resource;gen=generated.payload;
     validateJobScope(j.paths,gen.changes);
+    if(generatedGithubContext){
+      await pool.query("update tigeriq_coding_jobs set live_github_context=$2,live_github_context_fingerprint=$3 where id=$1",[j.id,JSON.stringify(generatedGithubContext),generatedGithubContext.fingerprint]);
+      j.live_github_context=generatedGithubContext;j.live_github_context_fingerprint=generatedGithubContext.fingerprint;
+    }
     reviewer=pickResource([worker.id,...cooldownExcludes]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE');
     const base=await mainSha();branch=branchName(worker.id,j.id);await createBranch(branch,base);
     await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,branch=$4,next_attempt_at=null where id=$1",[j.id,worker.id,reviewer.id,branch]);
