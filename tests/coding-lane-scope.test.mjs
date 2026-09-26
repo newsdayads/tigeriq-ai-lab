@@ -25,7 +25,7 @@ test('coding lane scope validation tests',async(t)=>{
       edits:[{path:'apps/tigeriq-coding-lane/coding-lane.mjs',search:'old',replace:'new'}],
     });
     assert.deepStrictEqual(parseCompactEditJson(broken),{
-      summary:'partial',
+      summary:'salvaged complete compact edits from truncated model response',
       edits:[{path:'apps/tigeriq-coding-lane/coding-lane.mjs',search:'old',replace:'new'}],
     });
   });
