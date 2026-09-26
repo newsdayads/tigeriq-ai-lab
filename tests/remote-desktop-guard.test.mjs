@@ -228,6 +228,32 @@ describe('Remote Desktop Commander hard runtime guard',()=>{
       .toEqual({ok:false,reason:'OWNER_AUTH_REQUIRED'});
   });
 
+  it('upgrades a legacy V3 dispatcher patch so hosted Owner auth returns terminal success instead of vendor prompt lookup',()=>{
+    const legacy=[
+      "import path from 'path';",
+      "import { enforceRemoteToolCall, filterRemoteToolDefinitions, formatRemoteGuardDenial } from './tigeriq-remote-guard/runtime-gate.mjs'; // TIGERIQ_REMOTE_GUARD_IMPORT_V3",
+      "async function handleCallToolRequest(request) {",
+      "    const { name, arguments: args } = request.params;",
+      "    const isRemoteCall = true;",
+      "        const tigerIqClientTools = allTools.filter(tool => shouldIncludeTool(tool.name));",
+      "        const filteredTools = await filterRemoteToolDefinitions(tigerIqClientTools); // TIGERIQ_REMOTE_GUARD_LIST_V3",
+      "        setCurrentCallIsRemote(isRemoteCall);",
+      "        const tigerIqRemoteGuard = await enforceRemoteToolCall({ tool: name, args }); // TIGERIQ_REMOTE_GUARD_CALL_V3",
+      "        if (!tigerIqRemoteGuard.ok) {",
+      "            return {",
+      "                content: [{ type: \"text\", text: formatRemoteGuardDenial(tigerIqRemoteGuard) }],",
+      "                isError: true,",
+      "            };",
+      "        }",
+      "}"
+    ].join('\n');
+    const upgraded=patchDesktopCommanderServer(legacy);
+    expect(upgraded).toContain('TIGERIQ_REMOTE_GUARD_TERMINAL_V1');
+    expect(upgraded).toContain('if (tigerIqRemoteGuard.terminalResult) return tigerIqRemoteGuard.terminalResult;');
+    expect(verifyDesktopCommanderServerPatched(upgraded)).toBe(true);
+    expect(patchDesktopCommanderServer(upgraded)).toBe(upgraded);
+  });
+
   it('patches Desktop Commander dispatcher idempotently and rejects anchor drift',()=>{
     const fixture=[
       "import path from 'path';",
