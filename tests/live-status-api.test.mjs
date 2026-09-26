@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyQueueLifecycle,
+  buildLiveStatus,
   compareQueueRows,
   fetchPc01Live,
+  lifecycleIndexFromComments,
+  parseTigerIqLifecycleComment,
+  queueRowEligibleNow,
   rankQueueRows,
   normalizeRuntimeWorkerActivity,
   parseIssueNumber,
@@ -38,6 +43,40 @@ describe('TigerIQ Live Work Order projection', () => {
     expect(parseIssueNumber('MGR-OBJ-GH-1812')).toBe(1812);
     expect(parseIssueNumber('https://github.com/newsdayads/tigeriq-ai-lab/issues/1819')).toBe(1819);
     expect(parseIssueNumber('NV12 model 429')).toBe(null);
+  });
+
+  it('parses only TigerIQ machine lifecycle comments', () => {
+    expect(parseTigerIqLifecycleComment({
+      id: 1,
+      issue_url: 'https://api.github.com/repos/newsdayads/tigeriq-ai-lab/issues/2014',
+      created_at: '2026-09-26T08:00:00Z',
+      body: '[RESULT] TigerIQ Core blocked OBJ-GH-2014.\n\nbounded pc_operator failed',
+    })).toMatchObject({ issueNumber: 2014, state: 'BLOCKED' });
+    expect(parseTigerIqLifecycleComment({
+      id: 2,
+      issue_url: 'https://api.github.com/repos/newsdayads/tigeriq-ai-lab/issues/2014',
+      created_at: '2026-09-26T08:01:00Z',
+      body: 'Owner note: blocked for now',
+    })).toBe(null);
+  });
+
+  it('lets a later machine rearm/claim supersede an older terminal result', () => {
+    const index = lifecycleIndexFromComments([
+      { id: 10, issue_url: 'https://api.github.com/repos/newsdayads/tigeriq-ai-lab/issues/2037', created_at: '2026-09-26T08:00:00Z', body: '[BLOCKED_FINAL] CODEOBJ-old reason=OUTPUT_CONTRACT_EXHAUSTED' },
+      { id: 11, issue_url: 'https://api.github.com/repos/newsdayads/tigeriq-ai-lab/issues/2037', created_at: '2026-09-26T08:01:00Z', body: '[RETRY_DISPATCHED] CODEOBJ-new prior=CODEOBJ-old attempt=1/2' },
+    ]);
+    expect(index.get(2037)).toMatchObject({ state: 'ACTIVE', commentId: 11 });
+  });
+
+  it('projects terminal lifecycle state out of executable queue ranking', () => {
+    const row = { number: 2014, priority: 'P1', effectivePriority: 'P1', status: 'QUEUED' };
+    const blocked = applyQueueLifecycle(row, { state: 'BLOCKED' });
+    expect(blocked).toMatchObject({ status: 'BLOCKED', waitReason: 'TigerIQ terminal BLOCKED' });
+    expect(queueRowEligibleNow(blocked)).toBe(false);
+    expect(applyQueueLifecycle(row, { state: 'COMPLETED' })).toBe(null);
+    const active = applyQueueLifecycle(row, { state: 'ACTIVE' });
+    expect(active).toMatchObject({ status: 'WAITING', waitReason: 'TigerIQ đang xử lý' });
+    expect(queueRowEligibleNow(active)).toBe(false);
   });
 
   it('preserves canonical GitHub title and AUTO queue policy', () => {
@@ -180,6 +219,7 @@ describe('TigerIQ Live Work Order projection', () => {
         }), { status: 200 });
       }
       if (value.includes('/issues?state=open')) return new Response(JSON.stringify([]), { status: 200 });
+      if (value.includes('/issues/comments?')) return new Response(JSON.stringify([]), { status: 200 });
       if (value.includes('/pulls?state=open')) return new Response(JSON.stringify([]), { status: 200 });
       if (value.includes('/actions/runs?per_page=100')) return new Response(JSON.stringify({ workflow_runs: [] }), { status: 200 });
       throw new Error('unexpected_url:' + value);
@@ -189,6 +229,22 @@ describe('TigerIQ Live Work Order projection', () => {
     expect(result).toMatchObject({ ok: true, liveConnected: true });
   });
 
+
+  it('uses one repository-wide lifecycle comment request instead of per-issue comment requests', async () => {
+    let lifecycleCalls = 0;
+    const fetchImpl = async (url) => {
+      const value = String(url);
+      if (value.includes('/issues/335')) return new Response(JSON.stringify({ body: '', updated_at: '2026-09-26T08:00:00Z' }), { status: 200 });
+      if (value.includes('/actions/runs?per_page=100')) return new Response(JSON.stringify({ workflow_runs: [] }), { status: 200 });
+      if (value.includes('/pulls?state=open')) return new Response(JSON.stringify([]), { status: 200 });
+      if (value.includes('/issues?state=open')) return new Response(JSON.stringify([]), { status: 200 });
+      if (value.includes('/issues/comments?')) { lifecycleCalls += 1; return new Response(JSON.stringify([]), { status: 200 }); }
+      if (value.includes('/issues?state=closed')) return new Response(JSON.stringify([]), { status: 200 });
+      throw new Error('unexpected_url:' + value);
+    };
+    await buildLiveStatus(fetchImpl);
+    expect(lifecycleCalls).toBe(1);
+  });
 
   it('requires a current job and heartbeat no older than 60 seconds before showing ĐANG LÀM', () => {
     const now = Date.parse('2026-09-25T00:01:00Z');
