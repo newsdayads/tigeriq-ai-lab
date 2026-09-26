@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe,expect,it } from 'vitest';
 import { contextIssueRefs,extractExplicitContextIssues,extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,formatResultComment,githubDispatchLane,githubPcOperatorJobId,githubSpecBlockedByActive,hydrateContext,isBoundedAppChromeRequestOnly,parseExecutableIssue } from './github-intake.mjs';
 import { appendPublicEvidenceToSummary,extractPublicEvidence,formatPublicEvidenceBlock,parsePublicEvidenceKeys,sanitizePublicEvidenceValue } from './public-evidence.mjs';
+import { openClawTerminalDecision } from '../openclaw-tigeriq-runtime/dispatch.mjs';
 
 describe('GitHub Core intake guardrails',()=>{
 
@@ -169,6 +170,22 @@ describe('GitHub Core intake guardrails',()=>{
     expect(intake).toContain('appendPublicEvidenceToSummary(`bounded pc_operator completed');
     expect(core).toContain('o.metadata as objective_metadata');
     expect(core).toContain('appendPublicEvidenceToSummary(`bounded pc_operator completed');
+  });
+
+  it('accepts receipt-backed structured OpenClaw success even when outer wrapper reports error',()=>{
+    const result={exitCode:1,status:'error',agentResult:{status:'SUCCESS',evidence:{fileRead:{path:'D:\\TigerIQ\\State\\x.json'}}},successfulToolNames:['tigeriq_pc']};
+    expect(openClawTerminalDecision(result,{timedOut:false,parsedPresent:true})).toMatchObject({success:true,trustedToolReceipt:true,agentSuccess:true});
+  });
+
+  it('rejects contradictory structured success without a trusted TigerIQ tool receipt',()=>{
+    const result={exitCode:1,status:'error',agentResult:{status:'SUCCESS',evidence:{marker:'model-only'}},successfulToolNames:[]};
+    expect(openClawTerminalDecision(result,{timedOut:false,parsedPresent:true})).toMatchObject({success:false,invalidTerminal:true,trustedToolReceipt:false});
+  });
+
+  it('keeps clean wrapper success and rejects prose-only or timed-out terminals',()=>{
+    expect(openClawTerminalDecision({exitCode:0,status:'ok',agentResult:{status:'PASS'},successfulToolNames:[]},{timedOut:false,parsedPresent:true})).toMatchObject({success:true,wrapperClean:true});
+    expect(openClawTerminalDecision({exitCode:0,status:'ok',agentResult:null,successfulToolNames:['tigeriq_pc']},{timedOut:false,parsedPresent:true})).toMatchObject({success:false,invalidTerminal:true});
+    expect(openClawTerminalDecision({exitCode:0,status:'ok',agentResult:{status:'PASS'},successfulToolNames:['tigeriq_pc']},{timedOut:true,parsedPresent:true})).toMatchObject({success:false});
   });
 
   it('formats a terminal result with objective evidence',()=>{expect(formatResultComment({id:'OBJ-GH-588',status:'completed',summary:'ok'})).toContain('[RESULT] TigerIQ Core completed OBJ-GH-588');});
