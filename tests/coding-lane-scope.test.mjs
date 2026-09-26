@@ -21,7 +21,7 @@ test('coding lane scope validation tests',async(t)=>{
   await t.test('salvages complete compact edits from a truncated JSON response',()=>{
     const broken='{"summary":"partial","edits":[{"path":"apps/tigeriq-coding-lane/coding-lane.mjs","search":"old","replace":"new"},{"path":"tests/coding-lane-scope.test.mjs","search":"unterminated';
     assert.deepStrictEqual(salvageCompactEditsJson(broken),{
-      summary:'partial',
+      summary:'salvaged complete compact edits from truncated model response',
       edits:[{path:'apps/tigeriq-coding-lane/coding-lane.mjs',search:'old',replace:'new'}],
     });
     assert.deepStrictEqual(parseCompactEditJson(broken),{
