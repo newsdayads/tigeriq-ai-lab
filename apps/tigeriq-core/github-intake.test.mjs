@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe,expect,it } from 'vitest';
-import { extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,formatResultComment,githubDispatchLane,githubPcOperatorJobId,githubSpecBlockedByActive,isBoundedAppChromeRequestOnly,parseExecutableIssue } from './github-intake.mjs';
+import { contextIssueRefs,extractExplicitContextIssues,extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,formatResultComment,githubDispatchLane,githubPcOperatorJobId,githubSpecBlockedByActive,hydrateContext,isBoundedAppChromeRequestOnly,parseExecutableIssue } from './github-intake.mjs';
 
 describe('GitHub Core intake guardrails',()=>{
 
@@ -19,6 +19,33 @@ describe('GitHub Core intake guardrails',()=>{
   it('fails closed if shell/code guardrails are missing',()=>{expect(parseExecutableIssue({...base,body:'TIGERIQ_EXECUTABLE=true\nOWNER_POLICY=AUTO'})).toBeNull();});
   it('does not treat CENTRAL prose/backticks as an executable marker',()=>{expect(parseExecutableIssue({...base,body:'Rule: `TIGERIQ_EXECUTABLE=true`; OWNER_POLICY=AUTO'})).toBeNull();});
   it('extracts bounded issue refs and safe repository paths',()=>{expect(extractIssueRefs(base.body,588)).toEqual([280,335]);expect(extractRepoPaths(base.body)).toEqual(['docs/CURRENT_STATE.md']);});
+  it('uses explicit CONTEXT_ISSUES deterministically up to sixteen and excludes self/duplicates/invalid tokens',()=>{
+    const body='CONTEXT_ISSUES=#101,#102,garbage,#588,#101,0,#103,#104,#105,#106,#107,#108,#109,#110,#111,#112,#113,#114,#115,#116,#117,#118,#119';
+    expect(extractExplicitContextIssues(body,588)).toEqual([101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116]);
+    expect(contextIssueRefs(body,588)).toEqual({explicit:true,refs:[101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116]});
+  });
+
+  it('preserves legacy five-ref extraction when CONTEXT_ISSUES is absent',()=>{
+    const body='Refs #101 #102 #103 #104 #105 #106 #107';
+    expect(contextIssueRefs(body,588)).toEqual({explicit:false,refs:[101,102,103,104,105]});
+  });
+
+  it('hydrates all explicit refs in order and records unavailable refs instead of silently omitting them',async()=>{
+    const spec={...base,number:588,title:'context test',url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/588',body:'CONTEXT_ISSUES=#101,#102,#103,#104,#105,#106,#107,#108'};
+    const seen=[];
+    const fetchImpl=async url=>{
+      const n=Number(String(url).match(/\/issues\/(\d+)$/)?.[1]||0);
+      seen.push(n);
+      if(n===104)return new Response(JSON.stringify({message:'not found'}),{status:404});
+      return new Response(JSON.stringify({number:n,title:'Issue '+n,body:'Body '+n}),{status:200,headers:{'content-type':'application/json'}});
+    };
+    const hydrated=await hydrateContext(fetchImpl,'newsdayads','tigeriq-ai-lab',spec,'');
+    expect(seen).toEqual([101,102,103,104,105,106,107,108]);
+    for(const n of [101,102,103,105,106,107,108])expect(hydrated).toContain('REFERENCED ISSUE #'+n+': Issue '+n);
+    expect(hydrated).toContain('REFERENCED ISSUE #104: UNAVAILABLE');
+    expect(hydrated).toContain('ERROR: GITHUB_HTTP_404');
+  });
+
   it('legacy and assigned P0 pc_operator become autonomous P1 unless an explicit Owner marker exists',()=>{
     const legacy={...base,number:1528,body:'TIGERIQ_EXECUTABLE=true\nOWNER_POLICY=AUTO\nOWNER_DIRECT=true\nPRIORITY=P0\nCAPABILITY=pc_operator\nNO_CODE_CHANGE=true\nNO_PC01_SHELL=true\nRESOURCE_SCOPE=OPENCLAW_TEST\nASSIGNED_ACTION\ntigeriq_pc tcp_probe host=127.0.0.1 port=18789\nACCEPTANCE\nPASS'};
     expect(parseExecutableIssue(legacy)).toMatchObject({number:1528,priority:'P1',sourcePriority:'P0',legacyP0Autonomous:true,ownerControlled:false,capability:'pc_operator'});

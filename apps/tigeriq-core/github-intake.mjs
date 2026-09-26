@@ -97,6 +97,29 @@ export function extractIssueRefs(body,currentNumber){
   return out;
 }
 
+export function extractExplicitContextIssues(body,currentNumber,maxRefs=16){
+  const line=String(body||'').match(/^CONTEXT_ISSUES=(.+)$/mi)?.[1];
+  if(line==null)return null;
+  const limit=Math.max(1,Math.min(16,Number(maxRefs)||16));
+  const out=[]; const seen=new Set([Number(currentNumber)]);
+  for(const token of String(line).split(',')){
+    const match=token.trim().match(/^#?(\d{1,6})$/);
+    if(!match)continue;
+    const n=Number(match[1]);
+    if(!n||seen.has(n))continue;
+    seen.add(n); out.push(n);
+    if(out.length>=limit)break;
+  }
+  return out;
+}
+
+export function contextIssueRefs(body,currentNumber){
+  const explicit=extractExplicitContextIssues(body,currentNumber,16);
+  return explicit===null
+    ? {explicit:false,refs:extractIssueRefs(body,currentNumber)}
+    : {explicit:true,refs:explicit};
+}
+
 export function extractRepoPaths(body){
   const out=[]; const seen=new Set();
   for(const m of String(body||'').matchAll(/`([^`]+)`/g)){
@@ -119,10 +142,16 @@ async function ghJson(fetchImpl,url,token='',init={}){
   return r.json();
 }
 
-async function hydrateContext(fetchImpl,owner,repo,spec,token){
+export async function hydrateContext(fetchImpl,owner,repo,spec,token){
   const chunks=[`SOURCE ISSUE #${spec.number}: ${spec.title}\nURL: ${spec.url}\n\n${spec.body}`];
-  for(const n of extractIssueRefs(spec.body,spec.number)){
-    try{const x=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/${n}`,token);chunks.push(`REFERENCED ISSUE #${n}: ${x.title||''}\n${x.body||''}`);}catch{}
+  const contextRefs=contextIssueRefs(spec.body,spec.number);
+  for(const n of contextRefs.refs){
+    try{
+      const x=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/${n}`,token);
+      chunks.push(`REFERENCED ISSUE #${n}: ${x.title||''}\n${x.body||''}`);
+    }catch(error){
+      if(contextRefs.explicit)chunks.push(`REFERENCED ISSUE #${n}: UNAVAILABLE\nERROR: ${String(error?.message||error).slice(0,160)}`);
+    }
   }
   for(const path of extractRepoPaths(spec.body)){
     try{
