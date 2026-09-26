@@ -1,7 +1,7 @@
 import {readFileSync} from 'node:fs';
 import {test} from 'vitest';
 import assert from 'node:assert/strict';
-import {branchName,changedPathImpact,checkGateState,extractCanonicalAllowedPaths,safeRepoPath,validateChanges} from '../apps/tigeriq-coding-lane/policy.mjs';
+import {branchName,changedPathImpact,checkGateState,extractCanonicalAllowedPathPrefixes,extractCanonicalAllowedPaths,safeRepoPath,validateChanges} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 const service=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
 const updater=readFileSync(new URL('../scripts/tigeriq-core/update-core-runtime.ps1',import.meta.url),'utf8');
@@ -46,6 +46,12 @@ test('coding lane cannot target protected or unsafe paths',()=>{
 test('canonical MUST NOT EXPAND header is an enforceable source scope',()=>{
   const objective='CANONICAL ALLOWED PATHS (MUST NOT EXPAND):\ntests/coding-lane-ai-json-transport.test.mjs\n\nGoal: test-only canary';
   assert.deepEqual(extractCanonicalAllowedPaths(objective),['tests/coding-lane-ai-json-transport.test.mjs']);
+});
+
+test('ALLOW_PATH_PREFIX is promoted into canonical scope prefixes',()=>{
+  const objective='ALLOW_PATH_PREFIX=apps/tigeriq-core/github-intake.mjs,tests/';
+  assert.deepEqual(extractCanonicalAllowedPathPrefixes(objective),['apps/tigeriq-core/github-intake.mjs','tests']);
+  assert.deepEqual(extractCanonicalAllowedPaths(objective),['apps/tigeriq-core/github-intake.mjs','tests']);
 });
 
 test('every coding job receives a non-main isolated branch',()=>{
