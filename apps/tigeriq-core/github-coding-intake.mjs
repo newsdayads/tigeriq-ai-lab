@@ -3,6 +3,7 @@ import {Pool} from 'pg';
 import {backlogOwnerDirect,effectiveBacklogPriority,isActiveExecutionSpec,sortBacklogSpecs} from './github-backlog-policy.mjs';
 import {classifyWorkOrder} from './work-routing-policy.mjs';
 import {controlPlaneRepairIntent,isProtectedControlPlanePath} from '../shared/control-plane-lock.mjs';
+import {githubRateLimitCooldownMs} from './github-intake.mjs';
 const DEFAULT_OWNER='newsdayads';
 const DEFAULT_REPO='tigeriq-ai-lab';
 const DEFAULT_CODING_URL='http://100.97.23.87:8797';
@@ -43,7 +44,8 @@ export async function codingSourceRevision(fetchImpl,owner,repo,token,issue){
       );
       if(hasOwnerDirective)break;
     }
-  }catch{
+  }catch(error){
+    if(githubRateLimitCooldownMs(error)>0)throw error;
     // Body still gives a stable fail-closed Source-of-Truth revision when comment lookup is unavailable.
   }
   return codingSourceTruthRevision({...issue,repository_owner:owner},comments);
@@ -90,7 +92,19 @@ export function parseCodingIssue(issue){
   return {number:Number(issue.number),title:String(issue.title||''),body,comments:Math.max(0,Number(issue.comments||0)),priority,sourcePriority,legacyP0Autonomous,ownerControlled,assignedExecutor,url:String(issue.html_url||''),dependsOn:extractCodingDependencies(body),ownerDirect:backlogOwnerDirect(body),scopeLease,controlRepair};
 }
 
-async function jsonFetch(fetchImpl,url,init={}){const res=await fetchImpl(url,{...init,signal:AbortSignal.timeout(12000)});const text=await res.text();let body={};try{body=text?JSON.parse(text):{}}catch{body={text}}if(!res.ok)throw new Error(`HTTP_${res.status}:${String(body?.error||body?.message||text).slice(0,300)}`);return body}
+async function jsonFetch(fetchImpl,url,init={}){
+  const res=await fetchImpl(url,{...init,signal:AbortSignal.timeout(12000)});
+  const text=await res.text();let body={};try{body=text?JSON.parse(text):{}}catch{body={text}}
+  if(!res.ok){
+    const error=new Error(`HTTP_${res.status}:${String(body?.error||body?.message||text).slice(0,300)}`);
+    error.status=res.status;
+    error.retryAfter=res.headers?.get?.('retry-after')||'';
+    error.rateLimitRemaining=res.headers?.get?.('x-ratelimit-remaining')||'';
+    error.rateLimitReset=res.headers?.get?.('x-ratelimit-reset')||'';
+    throw error;
+  }
+  return body;
+}
 async function gh(fetchImpl,owner,repo,path,token,init={}){const headers={accept:'application/vnd.github+json','content-type':'application/json','user-agent':'TigerIQ-Coding-Intake/1.0','x-github-api-version':'2022-11-28',...(init.headers||{})};if(token)headers.authorization=`Bearer ${token}`;return jsonFetch(fetchImpl,`https://api.github.com/repos/${owner}/${repo}${path}`,{...init,headers})}
 async function comment(fetchImpl,owner,repo,n,token,body){if(token)await gh(fetchImpl,owner,repo,`/issues/${n}/comments`,token,{method:'POST',body:JSON.stringify({body})})}
 async function close(fetchImpl,owner,repo,n,token){if(token)await gh(fetchImpl,owner,repo,`/issues/${n}`,token,{method:'PATCH',body:JSON.stringify({state:'closed',state_reason:'completed'})})}
@@ -110,7 +124,7 @@ async function reopenedCompletionKey(fetchImpl,owner,repo,token,issue){
   if(!issue||issue.state!=='open')return '';
   const n=Number(issue.number);if(!n)return '';
   let timeline;
-  try{timeline=await gh(fetchImpl,owner,repo,`/issues/${n}/timeline?per_page=100`,token)}catch{return ''}
+  try{timeline=await gh(fetchImpl,owner,repo,`/issues/${n}/timeline?per_page=100`,token)}catch(error){if(githubRateLimitCooldownMs(error)>0)throw error;return ''}
   const transitions=(Array.isArray(timeline)?timeline:[])
     .filter(x=>['closed','reopened'].includes(String(x?.event||'')))
     .sort((a,b)=>String(a?.created_at||'').localeCompare(String(b?.created_at||''))||Number(a?.id||0)-Number(b?.id||0));
@@ -181,7 +195,7 @@ async function activeCodingOwnerBlocksRetry({pool,status,fetchImpl,owner,repo,to
     const sourceIssueNumber=objectiveIssueNumber(active);
     if(!sourceIssueNumber)return true;
     let sourceIssue;
-    try{sourceIssue=await gh(fetchImpl,owner,repo,`/issues/${sourceIssueNumber}`,token)}catch{return true}
+    try{sourceIssue=await gh(fetchImpl,owner,repo,`/issues/${sourceIssueNumber}`,token)}catch(error){if(githubRateLimitCooldownMs(error)>0)throw error;return true}
     if(sourceIssue?.state==='open'&&!sourceIssue?.pull_request){
       const activeScope=parseCodingScope(sourceIssue.body);
       if(codingScopesOverlap(targetScope,activeScope))return true;
@@ -218,7 +232,8 @@ async function activeCodingDispatches(pool,laneStatus,{fetchImpl=fetch,owner=DEF
         }
         continue;
       }
-    }catch{
+    }catch(error){
+      if(githubRateLimitCooldownMs(error)>0)throw error;
       // Fail closed: if source truth cannot be verified, keep the lease active.
     }
     active.push({issueNumber:n,codingObjectiveId:objectiveId,scopeLease:data.scopeLease||{resourceScope:'',paths:[],ambiguous:true}});
@@ -229,7 +244,7 @@ async function activeCodingDispatches(pool,laneStatus,{fetchImpl=fetch,owner=DEF
 async function dependencyGate(fetchImpl,owner,repo,token,dependsOn){
   for(const depNum of dependsOn){
     let depIssue;
-    try{depIssue=await gh(fetchImpl,owner,repo,`/issues/${depNum}`,token)}catch(error){return {ok:false,reason:'DEPENDENCY_LOOKUP_FAILED',dependency:depNum,error:String(error?.message||error)}}
+    try{depIssue=await gh(fetchImpl,owner,repo,`/issues/${depNum}`,token)}catch(error){if(githubRateLimitCooldownMs(error)>0)throw error;return {ok:false,reason:'DEPENDENCY_LOOKUP_FAILED',dependency:depNum,error:String(error?.message||error)}}
     if(!depIssue||depIssue.pull_request||depIssue.state!=='closed')return {ok:false,reason:'DEPENDENCY_OPEN',dependency:depNum,state:String(depIssue?.state||'unknown')};
   }
   return {ok:true};
@@ -329,7 +344,7 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
   if(!rows.length)return {progress:0,results:0};
   const status=await jsonFetch(fetchImpl,`${codingLaneUrl.replace(/\/$/,'')}/api/status`);
   let currentMainSha='';
-  try{currentMainSha=String((await gh(fetchImpl,owner,repo,'/git/ref/heads/main',token))?.object?.sha||'').trim()}catch{}
+  try{currentMainSha=String((await gh(fetchImpl,owner,repo,'/git/ref/heads/main',token))?.object?.sha||'').trim()}catch(error){if(githubRateLimitCooldownMs(error)>0)throw error}
   let progress=0,results=0;
   const seenIssues=new Set();
   let retryCreatedThisTick=false;
@@ -343,6 +358,7 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
     let currentIssue;
     try{currentIssue=await gh(fetchImpl,owner,repo,`/issues/${n}`,token)}
     catch(error){
+      if(githubRateLimitCooldownMs(error)>0)throw error;
       console.warn(JSON.stringify({event:'GITHUB_CODING_SOURCE_RECONCILE_WAIT',issueNumber:n,codingObjectiveId:id,error:String(error?.message||error)}));
       continue;
     }
@@ -506,5 +522,27 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
 }
 
 export function startGithubCodingIntake({databaseUrl=process.env.DATABASE_URL,fetchImpl=fetch,owner=process.env.TIGERIQ_GITHUB_OWNER||DEFAULT_OWNER,repo=process.env.TIGERIQ_GITHUB_REPO||DEFAULT_REPO,token=process.env.TIGERIQ_GITHUB_TOKEN||process.env.GITHUB_TOKEN||'',codingLaneUrl=process.env.TIGERIQ_CODING_LANE_URL||DEFAULT_CODING_URL,intervalMs=Number(process.env.TIGERIQ_GITHUB_INTAKE_MS||DEFAULT_INTERVAL_MS),initialDelayMs=20000}={}){
-  if(!databaseUrl)return {enabled:false,stop(){}};const pool=new Pool({connectionString:databaseUrl,max:1});let stopped=false,busy=false,timer=null,interval=null;const tick=async()=>{if(stopped||busy)return;busy=true;try{const b=await syncGithubCodingOutcomes({pool,fetchImpl,owner,repo,token,codingLaneUrl});const a=await materializeGithubCodingIssues({pool,fetchImpl,owner,repo,token,codingLaneUrl});console.log(JSON.stringify({event:'GITHUB_CODING_INTAKE_SYNC',created:a.created,recovered:a.recovered||0,progress:b.progress,results:b.results,openIssues:a.openIssues||0,codingEligible:a.codingEligible||0,dependencyBlocked:a.dependencyBlocked||0,scopeBlocked:a.scopeBlocked||0,terminalOrDispatched:a.terminalOrDispatched||0,activeSlots:a.activeSlots||0,freeSlots:a.freeSlots||0,skipReason:a.skipReason||null,skipReasons:a.skipReasons||[]}))}catch(e){console.error(JSON.stringify({event:'GITHUB_CODING_INTAKE_ERROR',error:String(e?.message||e)}))}finally{busy=false}};timer=setTimeout(()=>{void tick();interval=setInterval(()=>void tick(),Math.max(60000,intervalMs));interval.unref?.()},Math.max(1000,initialDelayMs));timer.unref?.();return {enabled:true,async stop(){stopped=true;if(timer)clearTimeout(timer);if(interval)clearInterval(interval);await pool.end()}};
+  if(!databaseUrl)return {enabled:false,stop(){}};
+  const pool=new Pool({connectionString:databaseUrl,max:1});
+  let stopped=false,busy=false,timer=null,interval=null,githubCooldownUntil=0;
+  const tick=async()=>{
+    if(stopped||busy)return;
+    if(githubCooldownUntil>Date.now())return;
+    busy=true;
+    try{
+      const b=await syncGithubCodingOutcomes({pool,fetchImpl,owner,repo,token,codingLaneUrl});
+      const a=await materializeGithubCodingIssues({pool,fetchImpl,owner,repo,token,codingLaneUrl});
+      console.log(JSON.stringify({event:'GITHUB_CODING_INTAKE_SYNC',created:a.created,recovered:a.recovered||0,progress:b.progress,results:b.results,openIssues:a.openIssues||0,codingEligible:a.codingEligible||0,dependencyBlocked:a.dependencyBlocked||0,scopeBlocked:a.scopeBlocked||0,terminalOrDispatched:a.terminalOrDispatched||0,activeSlots:a.activeSlots||0,freeSlots:a.freeSlots||0,skipReason:a.skipReason||null,skipReasons:a.skipReasons||[]}));
+    }catch(e){
+      const delayMs=githubRateLimitCooldownMs(e,Date.now());
+      if(delayMs>0){
+        githubCooldownUntil=Date.now()+delayMs;
+        console.warn(JSON.stringify({event:'GITHUB_CODING_RATE_LIMIT_COOLDOWN',delayMs,until:new Date(githubCooldownUntil).toISOString(),error:String(e?.message||e)}));
+      }else{
+        console.error(JSON.stringify({event:'GITHUB_CODING_INTAKE_ERROR',error:String(e?.message||e)}));
+      }
+    }finally{busy=false}
+  };
+  timer=setTimeout(()=>{void tick();interval=setInterval(()=>void tick(),Math.max(60000,intervalMs));interval.unref?.()},Math.max(1000,initialDelayMs));timer.unref?.();
+  return {enabled:true,async stop(){stopped=true;if(timer)clearTimeout(timer);if(interval)clearInterval(interval);await pool.end()}};
 }
