@@ -9,7 +9,7 @@ function loadResourceWaitHelpers(){
   const end=source.indexOf('\nasync function busyCapableResourceCount',start);
   assert.ok(start>=0&&end>start,'resource wait helpers must exist in production source');
   const code=source.slice(start,end).replace(/export function /g,'function ');
-  return new Function(`${code}; return {resourceWaitPlan,shouldWaitForBusyResource};`)();
+  return new Function(`${code}; return {resourceWaitPlan,shouldWaitForBusyResource,shouldWaitForTargetedReviewResource};`)();
 }
 
 test('temporary busy contention waits without consuming terminal failure budget',()=>{
@@ -22,6 +22,16 @@ test('temporary busy contention waits without consuming terminal failure budget'
   assert.equal(first.count,1);
   assert.equal(first.delayMs,30000);
   assert.ok(Date.parse(first.nextAttemptAt)>Date.parse('2026-09-21T00:00:01Z'));
+});
+
+test('targeted GitHub review waits for its exact reviewer without enabling generic fallback',()=>{
+  const {shouldWaitForTargetedReviewResource}=loadResourceWaitHelpers();
+  const job={kind:'github_review',objective_metadata:{targetWorker:'NV17'}};
+  assert.equal(shouldWaitForTargetedReviewResource({job,message:'NO_AI_RESOURCE_AVAILABLE',failures:[]}),true);
+  assert.equal(shouldWaitForTargetedReviewResource({job:{kind:'general',objective_metadata:{targetWorker:'NV17'}},message:'NO_AI_RESOURCE_AVAILABLE',failures:[]}),false);
+  assert.equal(shouldWaitForTargetedReviewResource({job:{kind:'github_review',objective_metadata:{}},message:'NO_AI_RESOURCE_AVAILABLE',failures:[]}),false);
+  assert.equal(shouldWaitForTargetedReviewResource({job,message:'NO_AI_RESOURCE_AVAILABLE',failures:[{kind:'rate_limit'}]}),false);
+  assert.equal(shouldWaitForTargetedReviewResource({job,message:'POLICY_DENIED',failures:[]}),false);
 });
 
 test('resource wait is bounded',()=>{
@@ -38,5 +48,7 @@ test('durable DB state and claim eligibility are wired to production loop',()=>{
   assert.match(source,/RESOURCE_WAIT_QUEUED/);
   assert.match(source,/RESOURCE_WAIT_RELEASED/);
   assert.match(source,/busyCapableResourceCount\(j\.capability\)/);
+  assert.match(source,/shouldWaitForTargetedReviewResource\(\{job:j,message,failures\}\)/);
+  assert.match(source,/TARGET_REVIEWER_UNAVAILABLE/);
   assert.doesNotMatch(source,/while\s*\(true\)\s*\{\s*try\s*\{\s*await runJob\(j\)/);
 });
