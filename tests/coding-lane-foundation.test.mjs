@@ -1,7 +1,8 @@
+import {readFileSync} from 'node:fs';
 import {test as vitestTest} from 'vitest';
 const test=(name,fn)=>vitestTest(name,async()=>{const t={test:async(_name,subfn)=>subfn(t)};return fn(t)});
 import assert from 'node:assert';
-import {activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertPrOpenState,buildLocalFileContext,canonicalCodingJobTitle,canonicalWorkTitleFromObjective,classifyAiFailure,codingMergeCommitTitle,codingOutputTokenLimit,codingPathsOverlap,cooldownWaitFailure,coreResourceStateEligible,gateFailureIssues,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,isVietnameseWorkTitle,managerResourceFailurePlan,partitionGenerationFiles,preserveGenerationPrompt,providerCooldownPollPlan,recoverAfterCodingRestart,resourceWaitPlan,restartRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,validateCompactEdits,validateManagerJobPaths,validateManagerJobTitle} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertLiveGithubContextFresh,assertPrOpenState,buildLocalFileContext,canonicalCodingJobTitle,canonicalWorkTitleFromObjective,classifyAiFailure,codingMergeCommitTitle,codingOutputTokenLimit,codingPathsOverlap,cooldownWaitFailure,coreResourceStateEligible,extractLiveGithubContextRefs,formatAuthoritativeGithubContext,gateFailureIssues,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,isVietnameseWorkTitle,loadAuthoritativeGithubContext,managerResourceFailurePlan,partitionGenerationFiles,preserveGenerationPrompt,providerCooldownPollPlan,recoverAfterCodingRestart,requiresLiveGithubContext,resourceWaitPlan,restartRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,sourceIssueNumberFromObjective,validateCompactEdits,validateManagerJobPaths,validateManagerJobTitle} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError,parseJsonObject} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 const nv11={id:'NV11',provider:'fake',model:'a'};
@@ -523,4 +524,89 @@ test('Gemini internal 429 exhaustion still fails over to next provider',async()=
   const out=await invokeJsonWithFailover(gemini,'x',{resourcePool:[gemini,backup],invokeFn,maxResources:2});
   assert.strictEqual(out.resource.id,'NV13');
   assert.deepStrictEqual(calls,['NV12','NV13']);
+});
+
+
+test('runJob wires authoritative GitHub context into generation, review, and repairs',()=>{
+  const src=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
+  const run=src.slice(src.indexOf('async function runJob'),src.indexOf('async function failJob'));
+  assert.ok(run.includes("generateChanges(worker,j,'main',[],cooldownExcludes,canonicalObjective,generatedGithubContext)"));
+  assert.ok(run.includes("generateAndWriteRepair(worker,j,branch,[\`CI gate failure on same PR #\${pr.number}\`,...evidence],[reviewer.id,...cooldownExcludes],mutationAuth,canonicalObjective,freshContext)"));
+  assert.ok(run.includes("reviewPr(reviewer,j,diff,worker.id,cooldownExcludes,canonicalObjective,reviewGithubContext)"));
+  assert.ok(run.includes("generateAndWriteRepair(worker,j,branch,review.issues,[reviewer.id,...cooldownExcludes],mutationAuth,canonicalObjective,repairGithubContext)"));
+});
+
+test('bounded authoritative GitHub context is opt-in and fail-closed',async t=>{
+  const objective=[
+    'GitHub autonomous coding issue #1954: [P1][CODING-LANE] Live GitHub context',
+    'REQUIRES_LIVE_GITHUB_CONTEXT=true',
+    'PARENT=#1947',
+    'DEPENDS_ON=#1959',
+    'Review PR #1964 before merge.',
+  ].join('\n');
+
+  await t.test('marker parses bounded refs, excludes source issue, and materializes issue/PR facts',async()=>{
+    assert.strictEqual(requiresLiveGithubContext(objective),true);
+    assert.strictEqual(sourceIssueNumberFromObjective(objective),1954);
+    assert.deepStrictEqual(extractLiveGithubContextRefs(objective),[1947,1959,1964]);
+    const calls=[];
+    const issues={
+      1947:{number:1947,title:'Parent',state:'open',state_reason:null,updated_at:'2026-09-26T01:00:00Z'},
+      1959:{number:1959,title:'Dependency',state:'closed',state_reason:'completed',updated_at:'2026-09-26T02:00:00Z'},
+      1964:{number:1964,title:'PR issue facade',state:'closed',state_reason:null,updated_at:'2026-09-26T03:00:00Z',pull_request:{url:'x'}},
+    };
+    const context=await loadAuthoritativeGithubContext(objective,{
+      fetchIssue:async number=>{calls.push(`issue:${number}`);return issues[number]},
+      fetchPr:async number=>{calls.push(`pr:${number}`);return {number,head:{sha:'abc123'}}},
+    });
+    assert.deepStrictEqual(calls,['issue:1947','issue:1959','issue:1964','pr:1964']);
+    assert.strictEqual(context.entries.length,3);
+    assert.deepStrictEqual(context.entries[2],{
+      number:1964,kind:'pr',title:'PR issue facade',state:'closed',state_reason:null,
+      updated_at:'2026-09-26T03:00:00Z',head_sha:'abc123',
+    });
+    assert.match(context.fingerprint,/^[0-9a-f]{64}$/);
+    const block=formatAuthoritativeGithubContext(context);
+    assert.ok(block.includes('AUTHORITATIVE_GITHUB_CONTEXT'));
+    assert.ok(block.includes('FINGERPRINT='));
+    assert.ok(block.includes('"number":1964'));
+  });
+
+  await t.test('missing required ref fails closed before any mutation path can use it',async()=>{
+    await assert.rejects(
+      ()=>loadAuthoritativeGithubContext(objective,{
+        fetchIssue:async number=>number===1959?null:{number,title:'x',state:'open',updated_at:'x'},
+        fetchPr:async number=>({number,head:{sha:'abc'}}),
+      }),
+      error=>error?.code==='LIVE_GITHUB_CONTEXT_UNAVAILABLE',
+    );
+  });
+
+  await t.test('state change invalidates generation-time context',async()=>{
+    const base={entries:[{number:1947,kind:'issue',title:'Parent',state:'open',state_reason:null,updated_at:'2026-09-26T01:00:00Z',head_sha:null}]};
+    const changed={entries:[{number:1947,kind:'issue',title:'Parent',state:'closed',state_reason:'completed',updated_at:'2026-09-26T02:00:00Z',head_sha:null}]};
+    assert.strictEqual(assertLiveGithubContextFresh(base,base),true);
+    assert.throws(()=>assertLiveGithubContextFresh(base,changed),/LIVE_GITHUB_CONTEXT_STALE/);
+  });
+
+  await t.test('no marker preserves legacy behavior and performs zero GitHub fetches',async()=>{
+    let calls=0;
+    const legacy='GitHub autonomous coding issue #2000: legacy task\nPARENT=#1947';
+    assert.strictEqual(requiresLiveGithubContext(legacy),false);
+    assert.deepStrictEqual(extractLiveGithubContextRefs(legacy),[]);
+    const context=await loadAuthoritativeGithubContext(legacy,{
+      fetchIssue:async()=>{calls++;throw new Error('must not call')},
+      fetchPr:async()=>{calls++;throw new Error('must not call')},
+    });
+    assert.strictEqual(context,null);
+    assert.strictEqual(calls,0);
+  });
+
+  await t.test('reference extraction is deterministic and capped at sixteen',()=>{
+    const refs=Array.from({length:20},(_,i)=>`#${3000+i}`).join(' ');
+    const many=`GitHub autonomous coding issue #2999: cap test\nREQUIRES_LIVE_GITHUB_CONTEXT=true\n${refs}`;
+    const out=extractLiveGithubContextRefs(many);
+    assert.strictEqual(out.length,16);
+    assert.deepStrictEqual(out,[3000,3001,3002,3003,3004,3005,3006,3007,3008,3009,3010,3011,3012,3013,3014,3015]);
+  });
 });

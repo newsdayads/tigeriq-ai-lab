@@ -106,9 +106,10 @@ describe('coding lane AI JSON transport',()=>{
 
   it('threads canonical objective through generation repair and review calls',()=>{
     const src=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
-    expect(src).toContain("generateChanges(worker,j,'main',[],cooldownExcludes,canonicalObjective)");
-    expect(src).toContain('mutationAuth,canonicalObjective)');
-    expect(src).toContain('reviewPr(reviewer,j,diff,worker.id,cooldownExcludes,canonicalObjective)');
+    expect(src).toContain("generateChanges(worker,j,'main',[],cooldownExcludes,canonicalObjective,generatedGithubContext)");
+    expect(src).toContain('mutationAuth,canonicalObjective,freshContext)');
+    expect(src).toContain('mutationAuth,canonicalObjective,repairGithubContext)');
+    expect(src).toContain('reviewPr(reviewer,j,diff,worker.id,cooldownExcludes,canonicalObjective,reviewGithubContext)');
     expect(src).toContain('canonical Work Order is authoritative');
   });
 
