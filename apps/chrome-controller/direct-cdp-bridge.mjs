@@ -1348,6 +1348,12 @@ async function withNv02Mutation(fn,purpose='NORMAL',ttlMs=30000){
 }
 async function dispatchNaturalContinueLocked(target,state,now){
   await scrollToBottom(target).catch(()=>{});
+  // A continuity resume is a real dispatch: require the exact NV02 model
+  // profile before sending, otherwise a fresh chat can run the wrong model.
+  const profile=await ensureNv02ModelProfile(target);
+  if(profile?.modelExact!==true||profile?.modelName!=='GPT-5.6 Sol'||profile?.reasoningEffort!=='High'){
+    throw new Error(`MODEL_PROFILE_BLOCKED:${profile?.blockedReason||'UNVERIFIED'}`);
+  }
   const selected=await chooseLocalContinuePrompt('NV02',state);
   const prompt=selected.prompt;
   const result=await dispatch(target,prompt);
