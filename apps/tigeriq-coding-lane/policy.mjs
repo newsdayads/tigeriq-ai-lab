@@ -46,9 +46,19 @@ function pathTokens(text){
   return raw.map(x=>x.replace(/[.,;:!?)}]+$/g,'')).filter(safeRepoPath);
 }
 
+function normalizeCanonicalScopePath(value){
+  const normalized=String(value||'').trim().replace(/^\.\//,'').replace(/\/+$/,'');
+  return safeRepoPath(normalized)?normalized:'';
+}
+
+export function extractCanonicalAllowedPathPrefixes(text){
+  const raw=String(text||'').match(/^ALLOW_PATH_PREFIX=(.+)$/m)?.[1]||'';
+  return [...new Set(raw.split(',').map(normalizeCanonicalScopePath).filter(Boolean))].sort();
+}
+
 export function extractCanonicalAllowedPaths(text){
   const lines=String(text||'').split(/\r?\n/);
-  const out=[];
+  const out=[...extractCanonicalAllowedPathPrefixes(text)];
   let active=false;
   for(const raw of lines){
     const line=raw.trim();
