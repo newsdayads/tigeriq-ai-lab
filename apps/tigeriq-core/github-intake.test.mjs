@@ -154,6 +154,38 @@ describe('GitHub Core intake guardrails',()=>{
     expect(block).not.toContain('arbitraryText');
   });
 
+  it('falls back to structured bridgeCalls for requested allowlisted fields without leaking raw content',()=>{
+    const jobResult={evidence:{
+      agentResult:{evidence:{installedSha:'primary-wins'}},
+      bridgeCalls:[
+        {tool:'tigeriq_pc',result:{
+          data:{
+            installedSha:'bridge-sha',
+            result:'PASS',
+            remoteDesktopGuard:'DENY',
+            changedPaths:['a','b'],
+            updaterTaskTarget:'D:\\TigerIQ\\Core',
+            token:'never-publish',
+            content:'raw file body must stay private',
+            nested:{password:'secret',ok:true}
+          }
+        }}
+      ]
+    }};
+    const out=extractPublicEvidence(jobResult,['installedSha','result','remoteDesktopGuard','changedPaths','updaterTaskTarget']);
+    expect(out).toEqual({
+      installedSha:'primary-wins',
+      result:'PASS',
+      remoteDesktopGuard:'DENY',
+      changedPaths:['a','b'],
+      updaterTaskTarget:'D:\\TigerIQ\\Core',
+    });
+    const block=formatPublicEvidenceBlock(out);
+    expect(block).not.toContain('raw file body');
+    expect(block).not.toContain('never-publish');
+    expect(block).not.toContain('password');
+  });
+
   it('caps public evidence depth, arrays, and summary publication while leaving unmarked outcomes unchanged',()=>{
     const deep={a:{b:{c:{d:{e:'too-deep'}}}}};
     expect(JSON.stringify(sanitizePublicEvidenceValue(deep))).toContain('[TRUNCATED_DEPTH]');
