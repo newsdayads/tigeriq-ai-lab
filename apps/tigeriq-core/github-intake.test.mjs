@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe,expect,it } from 'vitest';
 import { contextIssueRefs,extractExplicitContextIssues,extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,formatResultComment,githubDispatchLane,githubPcOperatorJobId,githubSpecBlockedByActive,hydrateContext,isBoundedAppChromeRequestOnly,parseExecutableIssue } from './github-intake.mjs';
+import { appendPublicEvidenceToSummary,extractPublicEvidence,formatPublicEvidenceBlock,parsePublicEvidenceKeys,sanitizePublicEvidenceValue } from './public-evidence.mjs';
 
 describe('GitHub Core intake guardrails',()=>{
 
@@ -110,6 +111,64 @@ describe('GitHub Core intake guardrails',()=>{
     expect(githubPcOperatorJobId(rearmA,588)).toBe(githubPcOperatorJobId(rearmA,588));
     expect(githubPcOperatorJobId(rearmA,588)).not.toBe(initial);
     expect(githubPcOperatorJobId(rearmA,588)).not.toBe(githubPcOperatorJobId(rearmB,588));
+  });
+
+  it('parses only supported PUBLIC_EVIDENCE_KEYS and preserves marker-absent behavior',()=>{
+    expect(parsePublicEvidenceKeys('PUBLIC_EVIDENCE_KEYS=installedSha,result,token,changedPaths,installedSha,foo')).toEqual(['installedSha','result','changedPaths']);
+    expect(parsePublicEvidenceKeys('NO_PUBLIC_EVIDENCE=true')).toEqual([]);
+    const parsed=parseExecutableIssue({...base,body:[
+      'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','PRIORITY=P1','CAPABILITY=pc_operator',
+      'NO_CODE_CHANGE=true','NO_PC01_SHELL=true','RESOURCE_SCOPE=READBACK_X',
+      'PUBLIC_EVIDENCE_KEYS=installedSha,result,remoteDesktopGuard,changedPaths,updaterTaskTarget,token',
+      'ASSIGNED_ACTION','tigeriq_pc file_read path="D:\\TigerIQ\\State\\core-runtime-updater.json"',
+      'ACCEPTANCE','PASS'
+    ].join('\n')});
+    expect(parsed.publicEvidenceKeys).toEqual(['installedSha','result','remoteDesktopGuard','changedPaths','updaterTaskTarget']);
+  });
+
+  it('extracts requested fields only from structured agent evidence and redacts sensitive nested keys',()=>{
+    const jobResult={evidence:{agentResult:{evidence:{
+      wrapper:{
+        installedSha:'abc123',
+        result:{status:'PASS',token:'must-not-leak',nested:{password:'no',ok:'yes'}},
+        remoteDesktopGuard:'PASS',
+        changedPaths:['a','b'],
+        updaterTaskTarget:'D:\\TigerIQ\\Core',
+        secret:{installedSha:'evil'}
+      },
+      arbitraryText:'do not publish'
+    }}}};
+    const out=extractPublicEvidence(jobResult,['installedSha','result','remoteDesktopGuard','changedPaths','updaterTaskTarget','token']);
+    expect(out).toEqual({
+      installedSha:'abc123',
+      result:{status:'PASS',nested:{ok:'yes'}},
+      remoteDesktopGuard:'PASS',
+      changedPaths:['a','b'],
+      updaterTaskTarget:'D:\\TigerIQ\\Core',
+    });
+    const block=formatPublicEvidenceBlock(out);
+    expect(block).toContain('PUBLIC_EVIDENCE_JSON=');
+    expect(block).not.toContain('must-not-leak');
+    expect(block).not.toContain('password');
+    expect(block).not.toContain('arbitraryText');
+  });
+
+  it('caps public evidence depth, arrays, and summary publication while leaving unmarked outcomes unchanged',()=>{
+    const deep={a:{b:{c:{d:{e:'too-deep'}}}}};
+    expect(JSON.stringify(sanitizePublicEvidenceValue(deep))).toContain('[TRUNCATED_DEPTH]');
+    const noMarker=appendPublicEvidenceToSummary('base',{evidence:{agentResult:{evidence:{result:'PASS'}}}},[]);
+    expect(noMarker).toBe('base');
+    const marked=appendPublicEvidenceToSummary('base',{evidence:{agentResult:{evidence:{result:'PASS'}}}},['result']);
+    expect(marked).toBe('base\nPUBLIC_EVIDENCE_JSON={"result":"PASS"}');
+  });
+
+  it('wires public evidence metadata and both bounded pc_operator reconciliation paths',()=>{
+    const intake=readFileSync(new URL('./github-intake.mjs',import.meta.url),'utf8');
+    const core=readFileSync(new URL('./core.mjs',import.meta.url),'utf8');
+    expect(intake).toContain('publicEvidenceKeys:spec.publicEvidenceKeys||[]');
+    expect(intake).toContain('appendPublicEvidenceToSummary(`bounded pc_operator completed');
+    expect(core).toContain('o.metadata as objective_metadata');
+    expect(core).toContain('appendPublicEvidenceToSummary(`bounded pc_operator completed');
   });
 
   it('formats a terminal result with objective evidence',()=>{expect(formatResultComment({id:'OBJ-GH-588',status:'completed',summary:'ok'})).toContain('[RESULT] TigerIQ Core completed OBJ-GH-588');});
