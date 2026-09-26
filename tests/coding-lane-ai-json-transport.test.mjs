@@ -1,7 +1,7 @@
 import {readFileSync} from 'node:fs';
 import {describe,expect,it} from 'vitest';
 import {compactCurrentFilesForModel,compactPromptForChanges,compactPromptForEdits,currentFilesFromPrompt,expandCompactChanges,extractModelText,firstBalancedJsonObject,isAiUrl,looksLikeJsonObject,matchesExpectedSchema,parseModelJson,prepareAiJsonRequest,installAiJsonTransport,salvageTruncatedCompactEdits} from '../apps/tigeriq-coding-lane/ai-json-transport.mjs';
-import {assertIndependentReviewApproval,buildRepairGenerationPrompt,canonicalWorkContext,classifyAiFailure,formatIndependentReviewArtifact,invokeJsonWithFailover,managerBlockKind,parseCompactEditJson} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {assertCanonicalSourceWorkOrderExecutable,assertIndependentReviewApproval,assertSourceWorkOrderExecutable,buildRepairGenerationPrompt,canonicalWorkContext,classifyAiFailure,formatIndependentReviewArtifact,invokeJsonWithFailover,managerBlockKind,parseCompactEditJson,sourceWorkOrderNumber} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 describe('coding lane AI JSON transport',()=>{
@@ -127,6 +127,42 @@ describe('coding lane AI JSON transport',()=>{
     expect(()=>assertIndependentReviewApproval({implementerId:'NV12',reviewerId:'NV17',targetHead:'abc',expectedHead:'def',decision:'approve'})).toThrow('REVIEW_HEAD_STALE');
     expect(()=>assertIndependentReviewApproval({implementerId:'NV12',reviewerId:'NV12',targetHead:'abc',expectedHead:'abc',decision:'approve'})).toThrow('REVIEWER_IMPLEMENTER_COLLISION');
     expect(()=>assertIndependentReviewApproval({implementerId:'NV12',reviewerId:'NV17',targetHead:'abc',expectedHead:'abc',decision:'changes_requested'})).toThrow('REVIEW_NOT_APPROVED');
+  });
+
+  it('parses canonical and recovery source Work Order identities',()=>{
+    expect(sourceWorkOrderNumber('GitHub autonomous coding issue #1961: test')).toBe(1961);
+    expect(sourceWorkOrderNumber('GitHub autonomous coding recovery issue #1953: retry')).toBe(1953);
+    expect(sourceWorkOrderNumber('GitHub autonomous coding recovery for issue #1953: retry')).toBe(1953);
+    expect(sourceWorkOrderNumber('manual maintenance objective')).toBe(null);
+  });
+
+  it('fails closed for paused, superseded, cancelled, or closed source Work Orders',()=>{
+    expect(assertSourceWorkOrderExecutable({state:'open',body:'TIGERIQ_EXECUTABLE=true'},1961)).toBe(true);
+    expect(()=>assertSourceWorkOrderExecutable({state:'open',body:'TIGERIQ_EXECUTABLE=false'},1961)).toThrow('SOURCE_WORK_ORDER_NO_LONGER_EXECUTABLE');
+    expect(()=>assertSourceWorkOrderExecutable({state:'open',body:'STATE=SUPERSEDED'},1961)).toThrow('SOURCE_WORK_ORDER_NO_LONGER_EXECUTABLE');
+    expect(()=>assertSourceWorkOrderExecutable({state:'open',body:'STATE=CANCELLED'},1961)).toThrow('SOURCE_WORK_ORDER_NO_LONGER_EXECUTABLE');
+    expect(()=>assertSourceWorkOrderExecutable({state:'open',body:'SUPERSEDED_BY=#2000'},1961)).toThrow('SOURCE_WORK_ORDER_NO_LONGER_EXECUTABLE');
+    expect(()=>assertSourceWorkOrderExecutable({state:'closed',body:'TIGERIQ_EXECUTABLE=true'},1961)).toThrow('SOURCE_WORK_ORDER_NO_LONGER_EXECUTABLE');
+  });
+
+  it('fails closed when canonical source lookup is unavailable',async()=>{
+    await expect(assertCanonicalSourceWorkOrderExecutable('GitHub autonomous coding issue #1961: test',{fetchIssue:async()=>{throw new Error('network')}})).rejects.toThrow('SOURCE_WORK_ORDER_LOOKUP_FAILED');
+    await expect(assertCanonicalSourceWorkOrderExecutable('GitHub autonomous coding issue #1961: test',{fetchIssue:async()=>({state:'open',body:'TIGERIQ_EXECUTABLE=false'})})).rejects.toThrow('SOURCE_WORK_ORDER_NO_LONGER_EXECUTABLE');
+    await expect(assertCanonicalSourceWorkOrderExecutable('GitHub autonomous coding issue #1961: test',{fetchIssue:async()=>({state:'open',body:'TIGERIQ_EXECUTABLE=true'})})).resolves.toEqual({checked:true,issueNumber:1961});
+    await expect(assertCanonicalSourceWorkOrderExecutable('manual maintenance objective',{fetchIssue:async()=>{throw new Error('must not fetch')}})).resolves.toEqual({checked:false,issueNumber:null});
+  });
+
+  it('checks canonical source before first branch write, PR creation, repair writes, and merge',()=>{
+    const src=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
+    const run=src.slice(src.indexOf('async function runJob'),src.indexOf('async function failJob'));
+    const firstGuard=run.indexOf('await assertCanonicalSourceWorkOrderExecutable(canonicalObjective)');
+    expect(firstGuard).toBeGreaterThan(-1);
+    expect(firstGuard).toBeLessThan(run.indexOf('await createBranch(branch,base)'));
+    const openPrAt=run.indexOf('pr=await openPr(branch');
+    expect(run.lastIndexOf('await assertCanonicalSourceWorkOrderExecutable(canonicalObjective)',openPrAt)).toBeGreaterThan(run.indexOf('for(const ch of gen.changes)await writeFile'));
+    const mergeAt=run.indexOf('merge=await mergePr(pr.number,approvedHead,j.title)');
+    expect(run.lastIndexOf('await assertCanonicalSourceWorkOrderExecutable(canonicalObjective)',mergeAt)).toBeGreaterThan(run.indexOf('assertIndependentReviewApproval({implementerId:approvedImplementer'));
+    expect((run.match(/await assertCanonicalSourceWorkOrderExecutable\(canonicalObjective\)/g)||[]).length).toBeGreaterThanOrEqual(5);
   });
 
   it('persists durable review artifact before exact-head merge path',()=>{
