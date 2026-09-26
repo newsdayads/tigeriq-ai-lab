@@ -808,13 +808,18 @@ function pcOperatorJobId(objectiveId,phaseIndex,ordinal){
 const OPENCLAW_RETRYABLE_JOB_KINDS=new Set(['outage','timeout','openclaw_failure','worker_timeout','spawn_error','agent_terminal_invalid','busy','rate_limit']);
 function openClawEnvelopeForJob(j){
   const objectiveId=String(j.objective_id||j.id);
+  const publicEvidenceKeys=(Array.isArray(j?.objective_metadata?.publicEvidenceKeys)?j.objective_metadata.publicEvidenceKeys:[])
+    .map(String).filter(key=>/^[A-Za-z][A-Za-z0-9]{0,63}$/.test(key)).slice(0,5);
+  const publicEvidenceInstruction=publicEvidenceKeys.length
+    ? `\n\nPUBLIC_EVIDENCE_KEYS=${publicEvidenceKeys.join(',')}\nAfter the assigned TigerIQ tool call succeeds, copy ONLY exact values for these keys from the returned tool data into the final JSON evidence object using the same key names. Omit keys that are absent. Never infer values and never include raw file contents, snippets, stdout, stderr, environment data, secrets, credentials, tokens, or cookies.`
+    : '';
   return normalizeOpenClawDispatchEnvelope({
     jobId:String(j.id),
     workOrderId:objectiveId,
     resourceScope:`core/objective/${objectiveId}`,
     idempotencyKey:`core:${objectiveId}:${j.id}`,
-    instruction:String(j.prompt||''),
-    acceptance:'Perform only the assigned bounded PC01 runtime action, verify the resulting state with TigerIQ tools, and return evidence. Do not choose other work.',
+    instruction:String(j.prompt||'')+publicEvidenceInstruction,
+    acceptance:'Perform only the assigned bounded PC01 runtime action, verify the resulting state with TigerIQ tools, and return evidence. Do not choose other work.'+publicEvidenceInstruction,
     authority:{production:false,paid:false,credentialSecurity:false,destructiveIrreversible:false,sourceMutation:false,arbitraryShell:false},
   });
 }
@@ -1108,7 +1113,7 @@ async function reconcileCoreOpenClawBoundedObjectives(){
   let reconciled=0;
   for(const row of rows){
     const done=row.status==='done';
-    const reason=done?'job_done':String(row.failure?.kind||row.failure?.message||'terminal_failure').slice(0,300);
+    const reason=done?'job_done':String(row.failure?.kind||'terminal_failure').slice(0,120);
     const summary=done
       ? appendPublicEvidenceToSummary(`bounded pc_operator completed via ${row.employee_id||'NV06'}/${row.provider||'openclaw'}; job=${row.job_id}`,row.result,row.objective_metadata?.publicEvidenceKeys||[])
       : `bounded pc_operator failed; job=${row.job_id}; failure=${reason}`;

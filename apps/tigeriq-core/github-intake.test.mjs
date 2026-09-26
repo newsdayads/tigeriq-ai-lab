@@ -188,5 +188,17 @@ describe('GitHub Core intake guardrails',()=>{
     expect(openClawTerminalDecision({exitCode:0,status:'ok',agentResult:{status:'PASS'},successfulToolNames:['tigeriq_pc']},{timedOut:true,parsedPresent:true})).toMatchObject({success:false});
   });
 
+  it('requests exact public evidence keys and redacts blocked pc_operator summaries',()=>{
+    const core=readFileSync(new URL('./core.mjs',import.meta.url),'utf8');
+    const intake=readFileSync(new URL('./github-intake.mjs',import.meta.url),'utf8');
+    expect(core).toContain('PUBLIC_EVIDENCE_KEYS=');
+    expect(core).toContain('copy ONLY exact values for these keys from the returned tool data');
+    expect(core).toContain('never include raw file contents');
+    expect(core).toContain("String(row.failure?.kind||'terminal_failure')");
+    expect(core).not.toContain("row.failure?.kind||row.failure?.message||'terminal_failure'");
+    expect(intake).toContain("String(job.failure?.kind||'terminal_failure')");
+    expect(intake).not.toContain("job.failure?.message||job.failure?.kind||'terminal_failure'");
+  });
+
   it('formats a terminal result with objective evidence',()=>{expect(formatResultComment({id:'OBJ-GH-588',status:'completed',summary:'ok'})).toContain('[RESULT] TigerIQ Core completed OBJ-GH-588');});
 });
