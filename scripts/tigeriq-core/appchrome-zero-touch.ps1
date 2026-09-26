@@ -58,6 +58,9 @@ function Assert-Authorization($req){
   $issue=(& gh issue view ([int]$req.issueNumber) --repo $Repo --json state,body 2>$null|Out-String)|ConvertFrom-Json -ErrorAction Stop
   if([string]$issue.state -ne 'OPEN'){throw 'APPCHROME_OWNER_ISSUE_NOT_OPEN'}
   $body=[string]$issue.body
+  $stateMarker=Body-Value $body 'STATE';$resultMarker=Body-Value $body 'RESULT';$statusMarker=Body-Value $body 'STATUS'
+  if(@($stateMarker,$resultMarker,$statusMarker)|Where-Object{$_ -match '^(CLOSED|REVOKED|SUPERSEDED|CANCELLED|CANCELED)$'}){throw 'APPCHROME_OWNER_AUTH_SUPERSEDED'}
+  foreach($key in @('APP_CHROME_DEPLOY_REVOKED','ZERO_TOUCH_REVOKED','DEPLOY_REVOKED','AUTH_REVOKED')){if((Body-Value $body $key) -eq 'true'){throw 'APPCHROME_OWNER_AUTH_REVOKED'}}
   if(-not(Exact-Line $body 'OWNER_DIRECT' 'true')){throw 'APPCHROME_OWNER_DIRECT_MISSING'}
   if(-not(Exact-Line $body 'APP_CHROME_DEPLOY_AUTHORIZED' 'true')){throw 'APPCHROME_DEPLOY_AUTH_MISSING'}
   if(-not(Exact-Line $body 'MUTATION_OWNER' 'VY_OWNER_AUTHORIZED')){throw 'APPCHROME_MUTATION_OWNER_INVALID'}
@@ -128,6 +131,18 @@ function Wait-ExactHead([string]$head,[int]$timeoutSec=150){
 }
 function Restore-File([string]$backup,[string]$target){if(Test-Path -LiteralPath $backup){Copy-Item -LiteralPath $backup -Destination $target -Force}}
 
+function Request-Fingerprint($req){
+  return @([string]$req.schema,[string]$req.exactHead.ToLowerInvariant(),[string][long]$req.artifactId,[string]$req.artifactName,[string][int]$req.issueNumber) -join '|'
+}
+function Revalidate-After-SafeBoundary($req,[string]$fingerprint,[long]$verifiedRunId){
+  $fresh=Resolve-Request
+  if($null -eq $fresh){throw 'APPCHROME_ZERO_TOUCH_AUTH_REVOKED_DURING_WAIT'}
+  if((Request-Fingerprint $fresh) -ne $fingerprint){throw 'APPCHROME_ZERO_TOUCH_REQUEST_CHANGED_DURING_WAIT'}
+  Assert-Authorization $fresh
+  $freshVerified=Verify-Artifact $fresh
+  if([long]$freshVerified.runId -ne $verifiedRunId){throw 'APPCHROME_ZERO_TOUCH_ARTIFACT_CHANGED_DURING_WAIT'}
+  return [pscustomobject]@{request=$fresh;verified=$freshVerified}
+}
 $req=$null;$paused=$false;$rollback=$null
 try{
   New-Item -ItemType Directory -Path $StateRoot -Force|Out-Null
@@ -140,6 +155,7 @@ try{
   if($prior -and [string]$prior.result -eq 'PASS' -and [string]$prior.exactHead -eq [string]$req.exactHead -and [long]$prior.artifactId -eq [long]$req.artifactId){[pscustomobject]@{action='none';reason='already_installed';exactHead=[string]$req.exactHead;artifactId=[long]$req.artifactId}|ConvertTo-Json -Compress;exit 0}
   Assert-Authorization $req
   $verified=Verify-Artifact $req
+  $requestFingerprint=Request-Fingerprint $req
   $stage=Join-Path $stageRoot (([string]$req.exactHead).Substring(0,7)+'-'+[string]$req.artifactId)
   $rollback=Join-Path $stage 'rollback'
   if(Test-Path -LiteralPath $stage){Remove-Item -Recurse -Force -LiteralPath $stage}
@@ -155,6 +171,8 @@ try{
   $installer=Join-Path $artifactRoot 'apps\chrome-controller\runtime\Install-ApprovedArtifact.ps1';if(-not(Test-Path -LiteralPath $installer)){throw 'APPCHROME_CANONICAL_INSTALLER_MISSING'}
   $runtime=Join-Path $InstallRoot 'Runtime';$active=Join-Path $runtime 'active-deploy.json';$launcher=Join-Path $runtime 'Start-Unified-AppChrome.ps1';$legacy=Join-Path $runtime 'Start-Unified-AppChrome-1372.ps1'
   Wait-SafeBoundary|Out-Null;$paused=$true
+  $revalidated=Revalidate-After-SafeBoundary $req $requestFingerprint ([long]$verified.runId)
+  $req=$revalidated.request;$verified=$revalidated.verified
   New-Item -ItemType Directory -Force -Path $rollback|Out-Null
   if(Test-Path -LiteralPath $active){Copy-Item $active (Join-Path $rollback 'active-deploy.json') -Force}
   if(Test-Path -LiteralPath $launcher){Copy-Item $launcher (Join-Path $rollback 'Start-Unified-AppChrome.ps1') -Force}
