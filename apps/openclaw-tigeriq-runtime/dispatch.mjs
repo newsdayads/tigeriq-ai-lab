@@ -261,13 +261,24 @@ export function openClawTerminalDecision(result,{timedOut=false,parsedPresent=tr
   const wrapperClean=Number(result?.exitCode)===0&&Boolean(parsedPresent)&&!['timeout','failed','error','aborted'].includes(wrapperStatus);
   const trustedToolReceipt=(Array.isArray(result?.successfulToolNames)?result.successfulToolNames:[])
     .some(name=>/^tigeriq_(?:pc|runtime)(?:[.:/]|$)/i.test(String(name||'')));
-  const success=!timedOut&&Boolean(parsedPresent)&&agentSuccess&&(wrapperClean||trustedToolReceipt);
+  const evidence=result?.agentResult?.evidence;
+  const evidenceAction=String(evidence?.action||'').toLowerCase();
+  const safeReadActions=new Set(['file_read','file_stat','file_list','task_status','process_list','tcp_probe','pad_health','pad_windows','pad_tree']);
+  const structuredReadEvidence=Boolean(
+    agentSuccess
+    && evidence
+    && typeof evidence==='object'
+    && evidence?.ok===true
+    && safeReadActions.has(evidenceAction)
+    && !String(result?.agentResult?.blocker||'').trim()
+  );
+  const success=!timedOut&&Boolean(parsedPresent)&&agentSuccess&&(wrapperClean||trustedToolReceipt||structuredReadEvidence);
   const invalidTerminal=!timedOut&&Boolean(parsedPresent)&&!success&&(
     !agentStructured
     || !successAgentStatuses.has(agentStatus)
-    || (agentSuccess&&!wrapperClean&&!trustedToolReceipt)
+    || (agentSuccess&&!wrapperClean&&!trustedToolReceipt&&!structuredReadEvidence)
   );
-  return {success,invalidTerminal,agentStatus,agentStructured,agentSuccess,wrapperClean,trustedToolReceipt};
+  return {success,invalidTerminal,agentStatus,agentStructured,agentSuccess,wrapperClean,trustedToolReceipt,structuredReadEvidence,evidenceAction};
 }
 
 export async function runDispatchWorkerRecord(recordPath,options={}){
