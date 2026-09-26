@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { Pool } from 'pg';
 import { backlogOwnerDirect, bodyValue as policyBodyValue, routingFault, sortBacklogSpecs } from './github-backlog-policy.mjs';
 import { activeRoleClaim, classifyWorkOrder } from './work-routing-policy.mjs';
+import { parsePublicEvidenceKeys } from './public-evidence.mjs';
 
 const DEFAULT_OWNER='newsdayads';
 const DEFAULT_REPO='tigeriq-ai-lab';
@@ -86,6 +87,7 @@ export function parseExecutableIssue(issue){
     capability,dispatchLane,resourceScope,preferredWorker:classification.preferredEmployee||'',targetWorker:classification.workerId||null,
     url:String(issue.html_url||''),ownerDirect:backlogOwnerDirect(body),sourceRevision,updatedAt:String(issue.updated_at||''),
     commentCount:Math.max(0,Number(issue.comments||0)),route:classification.route,
+    publicEvidenceKeys:parsePublicEvidenceKeys(body),
   };
 }
 
@@ -207,6 +209,7 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
       source:'github',issueNumber:spec.number,issueUrl:spec.url,capability:spec.capability,dispatchLane:spec.dispatchLane,resourceScope:spec.resourceScope||null,
       ownerDirect:spec.ownerDirect,ownerControlled:spec.ownerControlled,sourcePriority:spec.sourcePriority,legacyP0Autonomous:spec.legacyP0Autonomous,
       targetWorker:spec.targetWorker||null,sourceRevision:spec.sourceRevision,sourceUpdatedAt:spec.updatedAt,rearmedFromObjectiveId:prior?.id||null,
+      publicEvidenceKeys:Array.isArray(spec.publicEvidenceKeys)?spec.publicEvidenceKeys:[],
       dispatchReason:`PRIORITY_${spec.priority}`,executionSurface:spec.capability==='pc_operator'?'CORE_OPENCLAW_BOUNDED':'READ_ONLY'
     };
     await pool.query('insert into tigeriq_objectives(id,objective,priority,metadata) values($1,$2,$3,$4) on conflict(id) do nothing',[id,objective,spec.priority,JSON.stringify(metadata)]);
