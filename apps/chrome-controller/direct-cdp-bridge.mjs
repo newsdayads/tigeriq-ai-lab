@@ -1446,6 +1446,12 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
     await continuityEvent('PERIODIC_RESTART_COMPLETED',{nextRefreshAt:state.nextRefreshAt,uiDeadFallback:Boolean(uiDeadFallbackStatus)});
     return;
   }
+  if(phase==='WORKING'&&now>=Number(state.nextPeriodicF5At||0)){
+    state={...state,nextPeriodicF5At:nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS)};
+    saveNv02Continuity(state);
+    await continuityEvent('PERIODIC_F5_DEFERRED_WORKING',{nextPeriodicF5At:state.nextPeriodicF5At});
+    return;
+  }
   if(now>=Number(state.nextPeriodicF5At||0)){
     let refreshed;
     try{
@@ -1454,6 +1460,9 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
         const freshPhase=deriveNv02Phase(fresh||{});
         const beforeUrl=fresh?.url||ui?.url||null;
         const beforePhase=freshPhase||phase;
+        if(freshPhase==='WORKING'||fresh?.uiBusy===true||fresh?.stopVisible===true){
+          return {ok:false,status:'PERIODIC_F5_DEFERRED_WORKING_FRESH',beforeUrl,beforePhase};
+        }
         const result=await reloadTarget(target);
         await sleep(1800);
         const after=await uiState(target).catch(()=>null);
@@ -1469,6 +1478,12 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
     if(refreshed?.status==='MUTATION_LEASE_BUSY'){
       state={...state,nextPeriodicF5At:now+5000};saveNv02Continuity(state);
       await continuityEvent('PERIODIC_F5_RETRY_LEASE_BUSY',{nextPeriodicF5At:state.nextPeriodicF5At});
+      return;
+    }
+    if(refreshed?.status==='PERIODIC_F5_DEFERRED_WORKING_FRESH'){
+      state={...state,nextPeriodicF5At:nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS)};
+      saveNv02Continuity(state);
+      await continuityEvent('PERIODIC_F5_DEFERRED_WORKING_FRESH',{beforeUrl:refreshed?.beforeUrl||ui?.url||null,beforePhase:refreshed?.beforePhase||phase,nextPeriodicF5At:state.nextPeriodicF5At});
       return;
     }
     const awaitingBeforeF5=state.awaitingWorkStart===true;
