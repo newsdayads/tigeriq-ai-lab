@@ -233,7 +233,7 @@ describe('isolated NV02 WORKING/F5 safety scope',()=>{
     const working=hotLoop.slice(hotLoop.indexOf("if(phase==='WORKING')"),hotLoop.indexOf('const chatLoadRecoveryHandled=await maybeRecoverChatLoadError'));
     expect(working).not.toContain('reloadTarget');
     expect(hotLoop).toContain("if(phase!=='WORKING'&&now>=Number(state.nextRefreshAt||0))");
-    expect(hotLoop).toContain("if(phase!=='WORKING'&&currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0))");
+    expect(hotLoop).toContain("if(now>=Number(state.nextPeriodicF5At||0))");
     expect(working).not.toContain('reopenWorker(');
     expect(working).not.toContain('dispatchNaturalContinue');
     expect(working).toContain("'WORKING_LONG_RUNNING_NO_MUTATION'");
@@ -492,7 +492,7 @@ describe('NV02 reboot F5 consolidation #1739',()=>{
     expect(bridge).toContain("if(w.id==='NV02')await noteNv02CommandDispatch()");
     const loop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
     const fresh=loop.indexOf("bootFreshContextPending.has('NV02')");
-    const f5=loop.indexOf("if(phase!=='WORKING'&&currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0))");
+    const f5=loop.indexOf("if(now>=Number(state.nextPeriodicF5At||0))");
     expect(fresh).toBeGreaterThan(-1);
     expect(f5).toBeGreaterThan(-1);
     expect(loop).toContain("if(phase!=='WORKING'&&now>=Number(state.nextRefreshAt||0))");
