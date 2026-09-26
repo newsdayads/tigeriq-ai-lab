@@ -93,7 +93,7 @@ Loader page: `https://github.com/newsdayads/tigeriq-ai-lab/blob/main/bootstrap/0
 1. Xác định adapter nguồn khả dụng của tài khoản hiện tại.
 2. Nếu có GitHub connector, đọc Loader theo repo/branch/path; không dùng raw URL làm điều kiện thành công duy nhất.
 3. Nếu là lệnh `LÀM APP CHROME` hoặc alias hỗ trợ: dùng AC FAST-LOAD V4; không đọc đủ 5 Bootstrap trừ khi có trigger bắt buộc.
-4. Nếu KHÔNG phải `AC`: đọc đủ 5 Bootstrap canonical theo danh sách trên.
+4. Nếu KHÔNG phải command APP CHROME hoặc alias hỗ trợ: đọc đủ 5 Bootstrap canonical theo danh sách trên.
 5. Nếu câu hỏi phụ thuộc trạng thái hiện hành, đọc CURRENT_STATE + CENTRAL/Registry/Interaction + tài liệu liên quan.
 6. Chỉ sau khi hoàn tất đường nạp tương ứng mới kết luận hoặc thực thi.
 
