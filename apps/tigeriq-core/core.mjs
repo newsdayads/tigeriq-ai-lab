@@ -19,6 +19,8 @@ import { buildCoreUiAssignmentSnapshot } from './core-ui-assignment.mjs';
 import { appendPublicEvidenceToSummary } from './public-evidence.mjs';
 import { refreshRegistryWorkforce, normalizeRuntimeResources } from './workforce-registry.mjs';
 import { OPENCLAW_EMPLOYEE_ID, OPENCLAW_MODEL, OPENCLAW_PROVIDER, OPENCLAW_RESOURCE_ID, normalizeOpenClawDispatchEnvelope, waitOpenClawDispatch } from '../openclaw-tigeriq-runtime/dispatch.mjs';
+import { executePcAction } from '../openclaw-tigeriq-runtime/operator.mjs';
+import { parseTypedPcOperatorAction } from './typed-pc-operator.mjs';
 
 const DATABASE_URL = process.env.DATABASE_URL?.trim();
 if (!DATABASE_URL) throw new Error('DATABASE_URL_MISSING');
@@ -818,7 +820,33 @@ function openClawEnvelopeForJob(j){
     authority:{production:false,paid:false,credentialSecurity:false,destructiveIrreversible:false,sourceMutation:false,arbitraryShell:false},
   });
 }
+async function runTypedPcOperatorJob(j,typed){
+  const prior=(await pool.query("select type,data from tigeriq_events where job_id=$1 and type in ('PC_OPERATOR_TYPED_STARTED','PC_OPERATOR_TYPED_COMPLETED') order by id",[j.id])).rows||[];
+  const completed=[...prior].reverse().find(x=>x.type==='PC_OPERATOR_TYPED_COMPLETED');
+  if(completed?.data?.result){
+    const result=completed.data.result;
+    await pool.query("update tigeriq_jobs set status='done',employee_id=$2,resource_id=$3,provider=$4,routing_profile='PC_OPERATOR_TYPED',result=$5,lease_until=null,completed_at=coalesce(completed_at,now()),next_attempt_at=null,resource_wait_count=0,resource_wait_started_at=null where id=$1",[j.id,OPENCLAW_EMPLOYEE_ID,OPENCLAW_RESOURCE_ID,'native_typed',JSON.stringify(result)]);
+    await event('PC_OPERATOR_TYPED_RECONCILED',{jobId:j.id,objectiveId:j.objective_id,employeeId:OPENCLAW_EMPLOYEE_ID,resourceId:OPENCLAW_RESOURCE_ID,provider:'native_typed',taskKind:'pc_operator',action:typed.action,taskName:typed.taskName});
+    await hotPathStage(j,'DONE',{provider:'native_typed',reconciled:true});
+    return true;
+  }
+  if(prior.some(x=>x.type==='PC_OPERATOR_TYPED_STARTED')){
+    throw Object.assign(new Error('PC_OPERATOR_TYPED_PRIOR_ATTEMPT_AMBIGUOUS'),{kind:'typed_pc_operator_ambiguous'});
+  }
+  const started=Date.now();
+  await event('PC_OPERATOR_TYPED_STARTED',{jobId:j.id,objectiveId:j.objective_id,employeeId:OPENCLAW_EMPLOYEE_ID,resourceId:OPENCLAW_RESOURCE_ID,provider:'native_typed',taskKind:'pc_operator',action:typed.action,taskName:typed.taskName});
+  const receipt=await executePcAction({action:typed.action,taskName:typed.taskName});
+  const result={ok:true,employeeId:OPENCLAW_EMPLOYEE_ID,resourceId:OPENCLAW_RESOURCE_ID,provider:'native_typed',latencyMs:Date.now()-started,typedAction:typed,evidence:receipt};
+  await event('PC_OPERATOR_TYPED_COMPLETED',{jobId:j.id,objectiveId:j.objective_id,employeeId:OPENCLAW_EMPLOYEE_ID,resourceId:OPENCLAW_RESOURCE_ID,provider:'native_typed',taskKind:'pc_operator',action:typed.action,taskName:typed.taskName,result});
+  await hotPathStage(j,'EVIDENCE',{employeeId:OPENCLAW_EMPLOYEE_ID,resourceId:OPENCLAW_RESOURCE_ID,provider:'native_typed',latencyMs:result.latencyMs,action:typed.action,taskName:typed.taskName});
+  await pool.query("update tigeriq_jobs set status='done',employee_id=$2,resource_id=$3,provider=$4,routing_profile='PC_OPERATOR_TYPED',routing_decision=$5,result=$6,lease_until=null,completed_at=now(),next_attempt_at=null,resource_wait_count=0,resource_wait_started_at=null where id=$1",[j.id,OPENCLAW_EMPLOYEE_ID,OPENCLAW_RESOURCE_ID,'native_typed',JSON.stringify({profile:'PC_OPERATOR_TYPED',capability:'pc_operator',chosen:{employeeId:OPENCLAW_EMPLOYEE_ID,resourceId:OPENCLAW_RESOURCE_ID,provider:'native_typed'},action:typed.action,taskName:typed.taskName}),JSON.stringify(result)]);
+  await event('JOB_DONE',{jobId:j.id,objectiveId:j.objective_id,employeeId:OPENCLAW_EMPLOYEE_ID,resourceId:OPENCLAW_RESOURCE_ID,provider:'native_typed',taskKind:'pc_operator'});
+  await hotPathStage(j,'DONE',{provider:'native_typed'});
+  return true;
+}
 async function runOpenClawOperatorJob(j){
+  const typed=parseTypedPcOperatorAction(j.prompt,j.objective_metadata);
+  if(typed){await runTypedPcOperatorJob(j,typed);return;}
   const envelope=openClawEnvelopeForJob(j);
   const gateway=await probeOpenClawGateway();
   if(!gateway.ok){
