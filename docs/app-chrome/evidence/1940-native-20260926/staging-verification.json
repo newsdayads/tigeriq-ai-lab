@@ -1,0 +1,33 @@
+{
+  "at": "2026-09-25T21:26:57.4437801Z",
+  "scope": "APP_CHROME_RECOVERY_V1",
+  "mutationOwner": "CODEX_LOCAL_PC01",
+  "entryPath": "NATIVE_LOCAL_POWERSHELL",
+  "source": {
+    "root": "D:\\TigerIQ\\Workspace\\appchrome-local-first-handoff\\artifact\\AppChrome-localfirst-eea70521a9be",
+    "files": 72,
+    "head": "eea70521a9bedac701db218b0780ab0e7b3042c7",
+    "treeSha256": "fdfdffe9b859886c5a62d201e45cb3828e13ffd355c76675636c7ee40e119233",
+    "bridgeSha256": "113a3945b6c118a091b3844596de856b1977fa711a531e9a791ffcd92ab478c1",
+    "requiredFiles": "PASS"
+  },
+  "partialVerified": {
+    "root": "D:\\TigerIQ\\Apps\\ChromeController\\STAGING\\AppChrome-localfirst-eea70521a9be-20260925T212655918Z.partial",
+    "files": 72,
+    "head": "eea70521a9bedac701db218b0780ab0e7b3042c7",
+    "treeSha256": "fdfdffe9b859886c5a62d201e45cb3828e13ffd355c76675636c7ee40e119233",
+    "bridgeSha256": "113a3945b6c118a091b3844596de856b1977fa711a531e9a791ffcd92ab478c1",
+    "requiredFiles": "PASS"
+  },
+  "final": {
+    "root": "D:\\TigerIQ\\Apps\\ChromeController\\STAGING\\AppChrome-localfirst-eea70521a9be-20260925T212655918Z",
+    "files": 72,
+    "head": "eea70521a9bedac701db218b0780ab0e7b3042c7",
+    "treeSha256": "fdfdffe9b859886c5a62d201e45cb3828e13ffd355c76675636c7ee40e119233",
+    "bridgeSha256": "113a3945b6c118a091b3844596de856b1977fa711a531e9a791ffcd92ab478c1",
+    "requiredFiles": "PASS"
+  },
+  "atomicFinalize": "PASS",
+  "previousPartial": "PRESERVED_IN_PLACE:AppChrome-localfirst-2722cb7dc326.partial",
+  "evidenceRoot": "D:\\TigerIQ\\Apps\\ChromeController\\STAGING\\evidence-1940-native-20260925T212655918Z"
+}

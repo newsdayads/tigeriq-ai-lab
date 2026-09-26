@@ -1,0 +1,97 @@
+{
+  "at": "2026-09-25T21:35:31.4189260Z",
+  "controller": {
+    "runtimeProvenance": {
+      "approvedHead": "eea70521a9bedac701db218b0780ab0e7b3042c7",
+      "deployRoot": "D:\\TigerIQ\\Apps\\ChromeController\\LIVE\\eea70521a9be-20260925T213423108Z",
+      "pid": 50032
+    },
+    "paused": false,
+    "killed": false,
+    "startupReady": true,
+    "utilityPausedWorkers": [],
+    "externalWorkAutopilotEnabled": false
+  },
+  "bridge": {
+    "ok": true,
+    "mode": "APP_CHROME_LOCAL_UI_ONLY",
+    "pid": 49012,
+    "approvedHead": "eea70521a9bedac701db218b0780ab0e7b3042c7",
+    "deployRoot": "D:\\TigerIQ\\Apps\\ChromeController\\LIVE\\eea70521a9be-20260925T213423108Z",
+    "sourceSha256": "113a3945b6c118a091b3844596de856b1977fa711a531e9a791ffcd92ab478c1",
+    "provenanceVerified": true,
+    "continuity": {
+      "nextContinueAt": 1790372455025,
+      "nextPeriodicF5At": 1790372317959,
+      "f5WindowVersion": 2,
+      "nextViewFollowAt": 1790372106005,
+      "nextRefreshAt": 1790379588705,
+      "stalledChecks": 3,
+      "lastPrompt": "02 - Tiếp tục việc đang làm",
+      "pendingContinue": true,
+      "awaitingWorkStart": false,
+      "awaitingWorkStartSince": 0,
+      "dispatchesInChat": 98,
+      "chatStartedAt": 1790185563930,
+      "lastPhase": "STALLED",
+      "workingSignature": "",
+      "workingUnchangedChecks": 0,
+      "workingRecheckAt": 1790372394152,
+      "nextProgressCheckAt": 0,
+      "verifiedChatUrl": "",
+      "resumeChatUrl": "",
+      "modelVerifiedAt": "",
+      "modelCheckBlockedUntil": 1790372357404,
+      "rotationRetryAt": 1790195795132,
+      "chatLoadRecoveryStage": 0,
+      "chatLoadBlockedUntil": 0,
+      "chatLoadClearCandidateAt": 0,
+      "chatConnectingSince": 0
+    }
+  },
+  "broker": {
+    "ok": true,
+    "service": "chrome-launch-broker",
+    "port": 8800,
+    "approvedHead": "eea70521a9bedac701db218b0780ab0e7b3042c7",
+    "deployRoot": "D:\\TigerIQ\\Apps\\ChromeController\\LIVE\\eea70521a9be-20260925T213423108Z"
+  },
+  "workers": [
+    {
+      "id": "NV02",
+      "status": "READY",
+      "heartbeat": "2026-09-25T21:35:24.261Z",
+      "uiPhase": "READY",
+      "busy": false,
+      "model": "MODEL_PROFILE_BLOCKED",
+      "reason": "MODEL_SLUG_NOT_GPT_5_6_SOL",
+      "modelReady": false,
+      "modelName": null,
+      "reasoningEffort": "High"
+    },
+    {
+      "id": "NV03",
+      "status": "READY",
+      "heartbeat": "2026-09-25T21:35:24.247Z",
+      "uiPhase": "READY",
+      "busy": false,
+      "model": "MODEL_PROFILE_BLOCKED",
+      "reason": "REASONING_CONTROL_NOT_EXACT_OR_UNIQUE",
+      "modelReady": false,
+      "modelName": null,
+      "reasoningEffort": null
+    },
+    {
+      "id": "NV04",
+      "status": "READY",
+      "heartbeat": "2026-09-25T21:35:20.59Z",
+      "uiPhase": "READY",
+      "busy": false,
+      "model": "MODEL_PROFILE_VERIFIED",
+      "reason": null,
+      "modelReady": true,
+      "modelName": null,
+      "reasoningEffort": null
+    }
+  ]
+}

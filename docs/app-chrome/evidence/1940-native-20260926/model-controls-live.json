@@ -1,0 +1,27 @@
+{
+  "at": "2026-09-25T21:38:36.898Z",
+  "workers": [
+    {
+      "worker": "NV02",
+      "controls": [
+        {
+          "text": "Cao",
+          "aria": "Chọn mô hình ChatGPT",
+          "testid": null,
+          "selected": null,
+          "modelSlug": null,
+          "reasoning": "high",
+          "hasPopup": "menu"
+        }
+      ],
+      "composer": false,
+      "working": false
+    },
+    {
+      "worker": "NV03",
+      "controls": [],
+      "composer": true,
+      "working": false
+    }
+  ]
+}
