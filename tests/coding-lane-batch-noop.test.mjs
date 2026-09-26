@@ -1,7 +1,8 @@
 import {describe,it,expect} from 'vitest';
 import {readFileSync} from 'node:fs';
 import {compactPromptForChanges,expandCompactChanges,matchesExpectedSchema} from '../apps/tigeriq-coding-lane/ai-json-transport.mjs';
-import {validateChanges} from '../apps/tigeriq-coding-lane/policy.mjs';
+import {validateAggregatedGenerationChanges} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {isRetryableAiError,validateChanges} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 const generationPrompt=(path,content)=>`TASK: update only when needed
 ALLOWED PATHS FOR THIS BATCH: ${path}
@@ -41,19 +42,37 @@ describe('Coding Lane bounded batch no-op',()=>{
     }));
     const combined=[...a.changes,...b.changes];
     expect(combined).toEqual([{path:'tests/b.test.mjs',content:'const b=2;'}]);
-    expect(validateChanges(combined,['apps/a.mjs','tests/b.test.mjs'])).toBe(true);
+    expect(validateAggregatedGenerationChanges(combined,['apps/a.mjs','tests/b.test.mjs'],2)).toBe(true);
   });
 
-  it('still rejects an all-noop job before branch creation',()=>{
+  it('terminalizes all explicit-noop batches with CODING_ALL_BATCHES_NOOP',()=>{
     const a=expandCompactChanges(generationPrompt('apps/a.mjs','const a=1;'),JSON.stringify({summary:'no change',noop:true,edits:[]}));
     const b=expandCompactChanges(generationPrompt('tests/b.test.mjs','const b=1;'),JSON.stringify({summary:'no change',noop:true,edits:[]}));
-    expect(()=>validateChanges([...a.changes,...b.changes],['apps/a.mjs','tests/b.test.mjs'])).toThrow('CODING_CHANGES_COUNT_INVALID');
+    const combined=[...a.changes,...b.changes];
+    expect(()=>validateChanges(combined,['apps/a.mjs','tests/b.test.mjs'])).toThrow('CODING_CHANGES_COUNT_INVALID');
+    try{validateAggregatedGenerationChanges(combined,['apps/a.mjs','tests/b.test.mjs'],2)}
+    catch(error){
+      expect(error.code).toBe('CODING_ALL_BATCHES_NOOP');
+      expect(error.message).toBe('CODING_ALL_BATCHES_NOOP');
+    }
   });
 
-  it('wires batch no-op into both generation paths and keeps the job-level non-empty gate',()=>{
+  it('preserves normal non-noop behavior',()=>{
+    expect(validateAggregatedGenerationChanges([
+      {path:'apps/a.mjs',content:'const a=2;'},
+      {path:'tests/b.test.mjs',content:'const b=2;'},
+    ],['apps/a.mjs','tests/b.test.mjs'],2)).toBe(true);
+  });
+
+  it('wires terminal aggregation into both initial and repair generation paths',()=>{
     const src=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
     expect((src.match(/BATCH_NOOP_ALLOWED=true/g)||[]).length).toBeGreaterThanOrEqual(2);
-    expect((src.match(/validateChanges\(changes,j\.paths\);/g)||[]).length).toBeGreaterThanOrEqual(2);
+    expect((src.match(/validateAggregatedGenerationChanges\(changes,j\.paths,batches\.length\);/g)||[]).length).toBe(2);
     expect(src).toContain("throw new Error('CODING_BATCH_NOOP_INVALID')");
+  });
+
+  it('does not classify the terminal all-noop outcome as retryable AI failure',()=>{
+    const error=Object.assign(new Error('CODING_ALL_BATCHES_NOOP'),{code:'CODING_ALL_BATCHES_NOOP'});
+    expect(isRetryableAiError(error)).toBe(false);
   });
 });
