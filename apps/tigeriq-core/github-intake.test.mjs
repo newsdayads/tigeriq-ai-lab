@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
-import { describe,expect,it } from 'vitest';
-import { extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,formatResultComment,githubDispatchLane,githubPcOperatorJobId,githubSpecBlockedByActive,isBoundedAppChromeRequestOnly,parseExecutableIssue } from './github-intake.mjs';
+import { describe,expect,it,vi } from 'vitest';
+import { extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,formatResultComment,githubDispatchLane,githubPcOperatorJobId,githubSpecBlockedByActive,isBoundedAppChromeRequestOnly,parseExecutableIssue,repairMissingActivePcOperatorJob } from './github-intake.mjs';
 
 describe('GitHub Core intake guardrails',()=>{
 
@@ -81,6 +81,36 @@ describe('GitHub Core intake guardrails',()=>{
     expect(githubPcOperatorJobId(rearmA,588)).toBe(githubPcOperatorJobId(rearmA,588));
     expect(githubPcOperatorJobId(rearmA,588)).not.toBe(initial);
     expect(githubPcOperatorJobId(rearmA,588)).not.toBe(githubPcOperatorJobId(rearmB,588));
+  });
+
+  it('repairs an active pc_operator objective that has no job',async()=>{
+    const spec=parseExecutableIssue({...base,number:1935,updated_at:'2026-09-26T03:29:51Z',body:[
+      'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','PRIORITY=P1','CAPABILITY=pc_operator',
+      'ASSIGNED_EXECUTOR=NV06','NO_CODE_CHANGE=true','NO_PC01_SHELL=true',
+      'RESOURCE_SCOPE=RDC_RECOVERY_STATE_READBACK',
+      'ASSIGNED_ACTION','Use exactly tigeriq_pc action=file_read path="D:\\TigerIQ\\State\\core-runtime-updater.json".',
+      'ACCEPTANCE','PASS'
+    ].join('\n')});
+    const prior={id:'OBJ-GH-1935-Rabc123-20260926032951',status:'active'};
+    const calls=[];
+    const pool={query:vi.fn(async(sql,args=[])=>{
+      calls.push({sql,args});
+      if(String(sql).startsWith('select id,status from tigeriq_jobs'))return {rows:[]};
+      if(String(sql).startsWith('insert into tigeriq_jobs'))return {rowCount:1,rows:[{id:args[0]}]};
+      if(String(sql).includes('GITHUB_PC_OPERATOR_JOB_REPAIRED'))return {rowCount:1,rows:[]};
+      throw new Error('unexpected query: '+String(sql));
+    })};
+    const repaired=await repairMissingActivePcOperatorJob({pool,spec,prior});
+    expect(repaired).toMatchObject({repaired:true,reason:'ACTIVE_OBJECTIVE_MISSING_JOB'});
+    expect(repaired.jobId).toBe(githubPcOperatorJobId(prior.id,1935));
+    expect(calls.filter(x=>String(x.sql).startsWith('insert into tigeriq_jobs'))).toHaveLength(1);
+  });
+
+  it('checks active same-issue repair before generic RESOURCE_SCOPE blocking',()=>{
+    const source=readFileSync(new URL('./github-intake.mjs',import.meta.url),'utf8');
+    const loop=source.slice(source.indexOf('for(const spec of specs){'),source.indexOf('let idleWorkers=0;'));
+    expect(loop.indexOf('repairMissingActivePcOperatorJob')).toBeGreaterThanOrEqual(0);
+    expect(loop.indexOf('repairMissingActivePcOperatorJob')).toBeLessThan(loop.indexOf('githubSpecBlockedByActive'));
   });
 
   it('formats a terminal result with objective evidence',()=>{expect(formatResultComment({id:'OBJ-GH-588',status:'completed',summary:'ok'})).toContain('[RESULT] TigerIQ Core completed OBJ-GH-588');});
