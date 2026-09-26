@@ -161,6 +161,11 @@ function rearmKey(spec){
   return `${spec.sourceRevision}-${stamp}`;
 }
 
+export function githubPcOperatorJobId(spec,prior=null){
+  const base=`JOB-GH-${spec.number}-PC`;
+  return prior?`${base}-R${rearmKey(spec)}`:base;
+}
+
 async function readActiveExternalRoleClaim(fetchImpl,owner,repo,token,spec){
   if(Number(spec?.commentCount||0)<=0)return null;
   try{
@@ -204,7 +209,7 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
     await pool.query('insert into tigeriq_objectives(id,objective,priority,metadata) values($1,$2,$3,$4) on conflict(id) do nothing',[id,objective,spec.priority,JSON.stringify(metadata)]);
     if(spec.capability==='pc_operator'){
       const assigned=extractPcOperatorInstruction(spec.body);
-      const jobId=`JOB-GH-${spec.number}-PC`;
+      const jobId=githubPcOperatorJobId(spec,prior);
       const prompt=`Execute ONLY this bounded PC action through NV06/OpenClaw. Do not choose backlog, P0, or new work. Use approved tigeriq_pc/tigeriq_runtime tools only.\n\nASSIGNED ACTION:\n${assigned}`;
       await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,max_attempts) values($1,$2,$3,$4,'pc_operator','pc_operator','queued',2) on conflict(id) do nothing",[jobId,id,`GitHub #${spec.number} bounded PC operator`,prompt]);
       await pool.query("insert into tigeriq_events(type,objective_id,job_id,task_kind,data) values('GITHUB_PC_OPERATOR_JOB_MATERIALIZED',$1,$2,'pc_operator',$3)",[id,jobId,JSON.stringify({issueNumber:spec.number,executionSurface:'CORE_OPENCLAW_BOUNDED'})]);
