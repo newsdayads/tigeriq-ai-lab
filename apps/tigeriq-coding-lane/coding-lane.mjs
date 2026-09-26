@@ -24,9 +24,21 @@ export function validateJobScope(jobPaths,changes){
 }
 
 export function validateSourceScope(proposedPaths,canonicalPaths){
-  const canonical=new Set((canonicalPaths||[]).map(String));
-  if(!canonical.size)return true;
-  const offending=(proposedPaths||[]).map(String).filter(p=>!canonical.has(p));
+  const canonical=(canonicalPaths||[]).map(value=>String(value||'').trim()).filter(Boolean);
+  if(!canonical.length)return true;
+  const rules=canonical.map(value=>{
+    const directory=value.endsWith('/');
+    const path=value.replace(/\/+$/,'');
+    if(!path||!safeRepoPath(path)){
+      const error=new Error(`CODING_CANONICAL_SCOPE_INVALID:${value}`);
+      error.code='CODING_CANONICAL_SCOPE_INVALID';
+      throw error;
+    }
+    return {path,directory};
+  });
+  const offending=(proposedPaths||[]).map(String).filter(path=>
+    !safeRepoPath(path)||!rules.some(rule=>rule.directory?path.startsWith(`${rule.path}/`):path===rule.path)
+  );
   if(offending.length)throw new CodingScopeViolationError(offending);
   return true;
 }
