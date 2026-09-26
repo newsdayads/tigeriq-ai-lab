@@ -89,6 +89,10 @@ export function continuityResumeIdentityMatches(
   if(!job||job.workerId!=='NV02'||job.completedAt)return false;
   if(!['SUBMITTED','WORKING','WAITING_EVIDENCE','VERIFY'].includes(job.stage))return false;
   if(autopilot.pendingJobId||autopilot.uncertainJobId)return false;
+  // The authoritative UI ledger is the anti-duplicate boundary. If the
+  // external snapshot is stale or already terminal, resume this exact active
+  // job instead of looping on CONTINUITY_SAME_JOB_IDENTITY_REQUIRED.
+  if(!previous||previous.status==='DONE')return true;
   if(!previous||previous.workerId!=='NV02'||!['QUEUED','READY','RUNNING'].includes(String(previous.status||'')))return false;
   return previous.jobId===job.jobId&&autopilot.lastDispatchedJobId===job.jobId;
 }
