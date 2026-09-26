@@ -180,10 +180,9 @@ describe('independent worker recovery flows in direct-cdp-bridge',()=>{
     expect(source).not.toContain("CONTROLLER+'/api/state'");
   });
 
-  it('rearms a READY role loop if submit acknowledgement never transitions to WORKING',()=>{
+  it('suppresses a READY resend until WORKING is observed',()=>{
     expect(source).not.toContain('const WORK_START_ACK_TIMEOUT_MS=90*1000');
     expect(source).toContain('awaitingWorkStartSince:Number(raw.awaitingWorkStartSince)||0');
-    expect(source).toContain("'A READY observation alone is not an acknowledgement'");
     expect(source).toContain('A READY observation alone is not an acknowledgement');
     expect(source).toContain('awaitingWorkStartSince:now');
     expect(source).toContain('awaitingWorkStartSince:Date.now()');
