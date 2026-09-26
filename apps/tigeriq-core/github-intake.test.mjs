@@ -184,6 +184,8 @@ describe('GitHub Core intake guardrails',()=>{
     expect(block).not.toContain('raw file body');
     expect(block).not.toContain('never-publish');
     expect(block).not.toContain('password');
+    expect(block).not.toContain('raw file body');
+    expect(block).not.toContain('"content"');
     expect(block).not.toContain('"data"');
   });
 
@@ -191,9 +193,10 @@ describe('GitHub Core intake guardrails',()=>{
     const out=extractPublicEvidence({evidence:{bridgeCalls:[{
       result:{data:{result:{status:'PASS',content:'private'},installedSha:'abc'},transport:'local'}
     }] }},['result','installedSha']);
-    expect(out).toEqual({result:{status:'PASS',content:'private'},installedSha:'abc'});
+    expect(out).toEqual({result:{status:'PASS'},installedSha:'abc'});
     const block=formatPublicEvidenceBlock(out);
     expect(block).toContain('"status":"PASS"');
+    expect(block).not.toContain('"content"');
     expect(block).not.toContain('"transport"');
   });
 
