@@ -387,15 +387,24 @@ async function maybeWorkerContinuity(w,target,ui){
   }
 
   if(Number(state.nextPeriodicF5At||0)<=now){
-    const refreshed=await withWorkerMutation(w.id,async()=>{
-      const fresh=await uiStateRaw(target).catch(()=>null);
-      const freshPhase=deriveWorkerPhase(fresh||{},{workerId:w.id});
-      const beforeUrl=fresh?.url||ui?.url||null,beforePhase=freshPhase||phase;
-      const result=await reloadTarget(target);
-      await sleep(1600);
-      const after=await uiStateRaw(target).catch(()=>null);
-      return {ok:true,status:result?.status||'RELOADED',beforeUrl,beforePhase,afterUrl:after?.url||null,afterPhase:deriveWorkerPhase(after||{},{workerId:w.id})};
-    },'PERIODIC_F5_REFRESH',15000);
+    let refreshed;
+    try{
+      refreshed=await withWorkerMutation(w.id,async()=>{
+        const fresh=await uiStateRaw(target).catch(()=>null);
+        const freshPhase=deriveWorkerPhase(fresh||{},{workerId:w.id});
+        const beforeUrl=fresh?.url||ui?.url||null,beforePhase=freshPhase||phase;
+        const result=await reloadTarget(target);
+        await sleep(1600);
+        const after=await uiStateRaw(target).catch(()=>null);
+        return {ok:true,status:result?.status||'RELOADED',beforeUrl,beforePhase,afterUrl:after?.url||null,afterPhase:deriveWorkerPhase(after||{},{workerId:w.id})};
+      },'PERIODIC_F5_REFRESH',15000);
+    }catch(error){
+      const status=String(error?.message||error);
+      const failed={...state,nextPeriodicF5At:now+5000,recoveryBlockedUntil:now+30000};
+      saveWorkerContinuity(w.id,failed);
+      await genericWorkerEvent(w.id,'PERIODIC_F5_FAILED',{status,nextPeriodicF5At:failed.nextPeriodicF5At});
+      return;
+    }
     const awaitingBeforeF5=state.awaitingWorkStart===true;
     const next={...state,
       nextPeriodicF5At:refreshed?.status==='MUTATION_LEASE_BUSY'?now+5000:nextRandomAt(now,WORKER_F5_MIN_MS,WORKER_F5_MAX_MS),

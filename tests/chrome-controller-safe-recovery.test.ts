@@ -463,6 +463,14 @@ describe('safe recovery contracts',()=>{
     expect(continuity).toContain("'STALLED_RELOAD'");
   });
 
+  it('keeps generic worker F5 failures bounded instead of escalating into tick errors',()=>{
+    const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    const continuity=source.slice(source.indexOf('async function maybeWorkerContinuity'),source.indexOf('\nfunction log(event'));
+    expect(continuity).toContain("'PERIODIC_F5_REFRESH'");
+    expect(continuity).toContain("'PERIODIC_F5_FAILED'");
+    expect(continuity).toContain('recoveryBlockedUntil:now+30000');
+  });
+
   it('keeps paused workers out of unattended start/autopilot paths',()=>{
     expect(server).toContain('START_ALL_SKIPPED_UTILITY_PAUSED');
     expect(server).toContain("if(utilityPausedWorkers.has(workerId)){setAutopilotPhase('IDLE')");
