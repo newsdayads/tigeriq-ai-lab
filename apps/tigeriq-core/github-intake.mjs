@@ -229,7 +229,15 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
 
 export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token=''}){
   if(!token) return {claims:0,results:0};
-  const rows=(await pool.query("select id,status,summary,metadata from tigeriq_objectives where metadata->>'source'='github' order by created_at asc limit 100")).rows;
+  const rows=(await pool.query(`select id,status,summary,metadata from tigeriq_objectives
+    where metadata->>'source'='github'
+      and (
+        status='active'
+        or coalesce(metadata->>'githubClaimReported','false')<>'true'
+        or (status in ('completed','blocked') and coalesce(metadata->>'githubResultReported','false')<>'true')
+      )
+    order by case when status='active' then 0 else 1 end, updated_at desc, created_at desc
+    limit 100`)).rows;
   let claims=0,results=0;
   for(const row of rows){
     const number=Number(row.metadata?.issueNumber); if(!number) continue;
