@@ -58,6 +58,12 @@ describe('TigerIQ Live Work Order projection', () => {
       created_at: '2026-09-26T08:01:00Z',
       body: 'Owner note: blocked for now',
     })).toBe(null);
+    expect(parseTigerIqLifecycleComment({
+      id: 3,
+      issue_url: 'https://api.github.com/repos/newsdayads/tigeriq-ai-lab/issues/2037',
+      created_at: '2026-09-26T08:02:00Z',
+      body: '[BLOCKED_FINAL] CODEOBJ-x reason=OUTPUT_CONTRACT_EXHAUSTED',
+    })).toMatchObject({ issueNumber: 2037, state: 'BLOCKED' });
   });
 
   it('lets a later machine rearm/claim supersede an older terminal result', () => {
