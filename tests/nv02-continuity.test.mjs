@@ -307,6 +307,7 @@ describe('NV02 continuity policy', () => {
 
     const f5Block=source.slice(source.indexOf("if(now>=Number(state.nextPeriodicF5At||0))"),source.indexOf("const modelCheckRequired="));
     expect(f5Block).toContain("reloadTarget(target)");
+    expect(f5Block).toContain("PERIODIC_F5_FAILED");
     expect(f5Block).not.toContain("ensureNv02ModelProfile");
     expect(f5Block).not.toContain("checkpointNv02");
     expect(f5Block).not.toContain("rotateNv02Chat");
