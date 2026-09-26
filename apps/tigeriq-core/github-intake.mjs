@@ -268,13 +268,13 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
   let skipped=0,externalClaims=0;
   for(const spec of specs){
     if(githubSpecBlockedByActive(spec,activeMetadata)){skipped++;continue;}
-    const externalClaim=await readActiveExternalRoleClaim(fetchImpl,owner,repo,token,spec);
-    if(externalClaim){externalClaims++;skipped++;continue;}
     const prior=(await pool.query("select id,status,metadata from tigeriq_objectives where metadata->>'source'='github' and metadata->>'issueNumber'=$1 order by created_at desc limit 1",[String(spec.number)])).rows[0]||null;
     if(prior?.status==='active'){skipped++;continue;}
     const sourceChanged=Boolean(prior&&String(prior.metadata?.sourceRevision||'')!==spec.sourceRevision);
     const reopenedAfterCompletion=Boolean(prior?.metadata?.githubClosed===true);
     if(prior&&!sourceChanged&&!reopenedAfterCompletion){skipped++;continue;}
+    const externalClaim=await readActiveExternalRoleClaim(fetchImpl,owner,repo,token,spec);
+    if(externalClaim){externalClaims++;skipped++;continue;}
     const id=prior?`OBJ-GH-${spec.number}-R${rearmKey(spec)}`:`OBJ-GH-${spec.number}`;
     const exists=(await pool.query('select 1 from tigeriq_objectives where id=$1',[id])).rowCount>0;
     if(exists){skipped++;continue;}
