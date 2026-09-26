@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { Pool } from 'pg';
 import { backlogOwnerDirect, bodyValue as policyBodyValue, routingFault, sortBacklogSpecs } from './github-backlog-policy.mjs';
 import { activeRoleClaim, classifyWorkOrder } from './work-routing-policy.mjs';
+import { appendPublicEvidenceToSummary, parsePublicEvidenceKeys } from './public-evidence.mjs';
 
 const DEFAULT_OWNER='newsdayads';
 const DEFAULT_REPO='tigeriq-ai-lab';
@@ -85,7 +86,7 @@ export function parseExecutableIssue(issue){
     legacyP0Autonomous:classification.legacyP0Autonomous,ownerControlled:classification.ownerControlled,
     capability,dispatchLane,resourceScope,preferredWorker:classification.preferredEmployee||'',targetWorker:classification.workerId||null,
     url:String(issue.html_url||''),ownerDirect:backlogOwnerDirect(body),sourceRevision,updatedAt:String(issue.updated_at||''),
-    commentCount:Math.max(0,Number(issue.comments||0)),route:classification.route,
+    commentCount:Math.max(0,Number(issue.comments||0)),route:classification.route,publicEvidenceKeys:parsePublicEvidenceKeys(body),
   };
 }
 
@@ -236,7 +237,7 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
       source:'github',issueNumber:spec.number,issueUrl:spec.url,capability:spec.capability,dispatchLane:spec.dispatchLane,resourceScope:spec.resourceScope||null,
       ownerDirect:spec.ownerDirect,ownerControlled:spec.ownerControlled,sourcePriority:spec.sourcePriority,legacyP0Autonomous:spec.legacyP0Autonomous,
       targetWorker:spec.targetWorker||null,sourceRevision:spec.sourceRevision,sourceUpdatedAt:spec.updatedAt,rearmedFromObjectiveId:prior?.id||null,
-      dispatchReason:`PRIORITY_${spec.priority}`,executionSurface:spec.capability==='pc_operator'?'CORE_OPENCLAW_BOUNDED':'READ_ONLY'
+      dispatchReason:`PRIORITY_${spec.priority}`,executionSurface:spec.capability==='pc_operator'?'CORE_OPENCLAW_BOUNDED':'READ_ONLY',publicEvidenceKeys:spec.publicEvidenceKeys||[]
     };
     await pool.query('insert into tigeriq_objectives(id,objective,priority,metadata) values($1,$2,$3,$4) on conflict(id) do nothing',[id,objective,spec.priority,JSON.stringify(metadata)]);
     if(spec.capability==='pc_operator'){
@@ -292,7 +293,7 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
       const job=(await pool.query("select id,status,employee_id,resource_id,provider,result,failure,completed_at from tigeriq_jobs where objective_id=$1 and capability='pc_operator' order by created_at desc limit 1",[row.id])).rows[0];
       if(job?.status==='done'){
         row.status='completed';
-        row.summary=`bounded pc_operator completed via ${job.employee_id||'NV06'}/${job.provider||'openclaw'}; job=${job.id}`;
+        row.summary=appendPublicEvidenceToSummary(`bounded pc_operator completed via ${job.employee_id||'NV06'}/${job.provider||'openclaw'}; job=${job.id}`,job.result,row.metadata?.publicEvidenceKeys||[]);
         await pool.query("update tigeriq_objectives set status='completed',summary=$2,updated_at=now() where id=$1",[row.id,row.summary]);
       }else if(job?.status==='failed'){
         row.status='blocked';
