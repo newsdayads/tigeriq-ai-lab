@@ -844,6 +844,18 @@ async function invokeCompactGeneration(worker,prompt,allowedPaths,exclude=[]){
   const invoked=await invokeJsonWithFailover(worker,modelPrompt,{exclude,validateData,parseData:parseCompactEditJson,shrinkPrompt:preserveGenerationPrompt});
   return {payload:expand(invoked.data),resource:invoked.resource};
 }
+export function validateAggregatedGenerationChanges(changes,allowedPaths,batchCount=0){
+  const list=Array.isArray(changes)?changes:[];
+  if(Number(batchCount)>0&&list.length===0){
+    const error=new Error('CODING_ALL_BATCHES_NOOP');
+    error.code='CODING_ALL_BATCHES_NOOP';
+    throw error;
+  }
+  validateChanges(list,allowedPaths);
+  validateJobScope(allowedPaths,list);
+  return true;
+}
+
 async function generateRepairChanges(worker,j,ref='main',issues=[],exclude=[],canonicalObjective='',liveGithubContext=null){
   const batches=await generationContextsFor(j.paths,ref);
   let selected=worker;const changes=[];const summaries=[];
@@ -855,8 +867,7 @@ async function generateRepairChanges(worker,j,ref='main',issues=[],exclude=[],ca
     summaries.push(String(invoked.payload.summary||'').slice(0,300));
     changes.push(...invoked.payload.changes);
   }
-  validateChanges(changes,j.paths);
-  validateJobScope(j.paths,changes);
+  validateAggregatedGenerationChanges(changes,j.paths,batches.length);
   return {payload:{summary:summaries.filter(Boolean).join('; ').slice(0,1000)||'staged repair',changes},resource:selected};
 }
 async function writeRepairChanges(branch,changes,mutationAuth={}){
@@ -892,8 +903,7 @@ async function generateChanges(worker,j,ref='main',reviewIssues=[],exclude=[],ca
     summaries.push(String(invoked.payload.summary||'').slice(0,300));
     changes.push(...invoked.payload.changes);
   }
-  validateChanges(changes,j.paths);
-  validateJobScope(j.paths,changes);
+  validateAggregatedGenerationChanges(changes,j.paths,batches.length);
   return {payload:{summary:summaries.filter(Boolean).join('; ').slice(0,1000)||'staged implementation',changes},resource:selected};
 }
 async function reviewPr(reviewer,j,diff,implementerId,extraExclude=[],canonicalObjective='',liveGithubContext=null){const prompt=`You are ${reviewer.id}, independent TigerIQ code reviewer. Review against the canonical Work Order, manager instruction, and safety boundaries.\n${canonicalWorkContext(j,canonicalObjective,liveGithubContext)}\nDIFF:\n${diff.slice(0,180000)}\nReturn ONLY JSON {"decision":"approve|changes_requested","summary":"short","issues":["specific issue"]}. The canonical Work Order is authoritative if the manager instruction omits or conflicts with acceptance. Reject unsafe, untested, incomplete, out-of-scope, credential/security/production changes.`;const invoked=await invokeJsonWithFailover(reviewer,prompt,{exclude:[implementerId,...extraExclude]});const d=invoked.data;if(!['approve','changes_requested'].includes(d.decision)){const e=new Error('REVIEW_DECISION_INVALID');e.code='REVIEW_SCHEMA_INVALID';throw e}d.issues=Array.isArray(d.issues)?d.issues.slice(0,8):[];return {review:d,resource:invoked.resource}}
