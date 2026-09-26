@@ -34,6 +34,8 @@ function Read-ValidatedActive{
   $deploy=[string]$active.deploy
   $head=[string]$active.exactHead
   $bridgeHash=[string]$active.bridgeSha256
+  $nv02Only=$false
+  if($active.PSObject.Properties.Name -contains 'nv02Only'){$nv02Only=[bool]$active.nv02Only}
   if([string]::IsNullOrWhiteSpace($deploy)-or-not(Test-Path -LiteralPath $deploy)){throw "ACTIVE_DEPLOY_INVALID:$deploy"}
   if([string]::IsNullOrWhiteSpace($head)){throw 'ACTIVE_HEAD_MISSING'}
   if([string]::IsNullOrWhiteSpace($bridgeHash)){throw 'ACTIVE_BRIDGE_HASH_MISSING'}
@@ -45,7 +47,7 @@ function Read-ValidatedActive{
   if(-not(Test-Path -LiteralPath $bridge)){throw "ACTIVE_BRIDGE_MISSING:$bridge"}
   $actualBridgeHash=(Get-FileHash -LiteralPath $bridge -Algorithm SHA256).Hash.ToLowerInvariant()
   if($actualBridgeHash-ne$bridgeHash.ToLowerInvariant()){throw 'ACTIVE_BRIDGE_HASH_MISMATCH'}
-  [pscustomobject]@{deploy=$deploy;head=$head;bridgeHash=$bridgeHash;bridge=$bridge}
+  [pscustomobject]@{deploy=$deploy;head=$head;bridgeHash=$bridgeHash;bridge=$bridge;nv02Only=$nv02Only}
 }
 
 function Set-RuntimeEnvironment($Active){
@@ -174,6 +176,29 @@ function Wait-LiveVerified($Active,[int]$Seconds=30){
   throw "APPCHROME_LIVE_VERIFY_TIMEOUT:$last"
 }
 
+function Ensure-UtilityPaused([string]$WorkerId){
+  $healthUri=("http://127.0.0.1:8798/api/utility/workers/{0}/health" -f $WorkerId)
+  $pauseUri=("http://127.0.0.1:8798/api/utility/workers/{0}/pause" -f $WorkerId)
+  $health=Invoke-RestMethod -Uri $healthUri -TimeoutSec 4
+  if($health.utilityPaused -eq $true){return $false}
+  Invoke-RestMethod -Method Post -Uri $pauseUri -TimeoutSec 5|Out-Null
+  $after=Invoke-RestMethod -Uri $healthUri -TimeoutSec 4
+  if($after.utilityPaused -ne $true){throw "NV02_ONLY_PAUSE_VERIFY_FAILED:$WorkerId"}
+  return $true
+}
+
+function Ensure-WorkerScope($Active){
+  if(-not[bool]$Active.nv02Only){return $false}
+  $changed=$false
+  foreach($id in @('NV03','NV04')){
+    if((Ensure-UtilityPaused $id)){$changed=$true}
+  }
+  if($changed){
+    Write-SupervisorEvent 'NV02_ONLY_SIDE_WRITERS_PAUSED' @{head=$Active.head;pausedWorkers='NV03,NV04'}
+  }
+  return $changed
+}
+
 function Ensure-AppChrome{
   $active=Read-ValidatedActive
   Set-RuntimeEnvironment $active
@@ -186,14 +211,15 @@ function Ensure-AppChrome{
   $g=Start-Component 8799 $active.bridge @($active.bridge) 'bridge' $active
 
   $live=Wait-LiveVerified $active
-  $changed=$headChanged-or$b.started-or$c.started-or$g.started-or$b.staleStopped-or$c.staleStopped-or$g.staleStopped
+  $scopeChanged=Ensure-WorkerScope $active
+  $changed=$headChanged-or$b.started-or$c.started-or$g.started-or$b.staleStopped-or$c.staleStopped-or$g.staleStopped-or$scopeChanged
   if($changed){
     if(Owner-AutomationAllowed){
       try{Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:8798/api/resume' -TimeoutSec 5|Out-Null}catch{}
     }else{
       Write-SupervisorEvent 'OWNER_PAUSE_PRESERVED' @{head=$active.head}
     }
-    Write-SupervisorEvent 'LIVE_VERIFIED' @{head=$active.head;deploy=$active.deploy;externalWorkAutopilotEnabled=[bool]$live.controller.externalWorkAutopilotEnabled}
+    Write-SupervisorEvent 'LIVE_VERIFIED' @{head=$active.head;deploy=$active.deploy;externalWorkAutopilotEnabled=[bool]$live.controller.externalWorkAutopilotEnabled;nv02Only=[bool]$active.nv02Only}
   }
   $script:lastHead=$active.head
 }
