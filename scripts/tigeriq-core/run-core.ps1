@@ -7,6 +7,18 @@ $repo=$defaultRepo
 if(Test-Path -LiteralPath $runtimeSourceState){
   try{$meta=Get-Content -Raw -LiteralPath $runtimeSourceState|ConvertFrom-Json;if($meta.sourcePath -and (Test-Path -LiteralPath ([string]$meta.sourcePath))){$repo=[string]$meta.sourcePath}}catch{}
 }
+$updaterTask='TigerIQ Core Runtime Updater'
+function Ensure-CoreRuntimeUpdater {
+  $existing=Get-ScheduledTask -TaskName $updaterTask -ErrorAction SilentlyContinue
+  if($existing){return}
+  $installer=Join-Path $repo 'scripts\tigeriq-core\install-core-updater.ps1'
+  if(-not(Test-Path -LiteralPath $installer)){throw 'CORE_RUNTIME_UPDATER_INSTALLER_MISSING'}
+  & 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $installer -Repo $repo
+  if($LASTEXITCODE -ne 0){throw ('CORE_RUNTIME_UPDATER_INSTALL_FAILED:'+ $LASTEXITCODE)}
+  $created=Get-ScheduledTask -TaskName $updaterTask -ErrorAction SilentlyContinue
+  if(-not $created){throw 'CORE_RUNTIME_UPDATER_TASK_RECREATE_FAILED'}
+}
+Ensure-CoreRuntimeUpdater
 $core=Join-Path $repo 'apps\tigeriq-core\core-entry.mjs'
 $coreMatch=$core.ToLowerInvariant()
 $logDir='D:\TigerIQ\Logs\Core24x7'
