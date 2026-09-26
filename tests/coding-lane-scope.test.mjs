@@ -17,6 +17,20 @@ test('coding lane scope validation tests',async(t)=>{
     assert.deepStrictEqual(extractCanonicalAllowedPaths(objective),['apps/tigeriq-core/core.mjs','tests/rotating-idle-auditor.test.ts']);
   });
 
+  await t.test('parses ALLOW_PATH_PREFIX and preserves exact-vs-directory semantics',()=>{
+    const objective='ALLOW_PATH_PREFIX=apps/x/file.mjs,tests/\n\n## GOAL\nScoped change';
+    const canonical=extractCanonicalAllowedPaths(objective);
+    assert.deepStrictEqual(canonical,['apps/x/file.mjs','tests/']);
+    assert.strictEqual(validateSourceScope(['apps/x/file.mjs'],canonical),true);
+    assert.throws(()=>validateSourceScope(['apps/x/file.mjs/evil.js'],canonical),e=>e instanceof CodingScopeViolationError&&e.offending[0]==='apps/x/file.mjs/evil.js');
+    assert.strictEqual(validateSourceScope(['tests/example.test.mjs'],canonical),true);
+    assert.throws(()=>validateSourceScope(['src/unrelated.mjs'],canonical),e=>e instanceof CodingScopeViolationError&&e.offending[0]==='src/unrelated.mjs');
+  });
+
+  await t.test('rejects unsafe or wildcard ALLOW_PATH_PREFIX widening',()=>{
+    assert.deepStrictEqual(extractCanonicalAllowedPaths('ALLOW_PATH_PREFIX=../escape,tests/*,tests/'),['tests/']);
+  });
+
 
   await t.test('salvages complete compact edits from a truncated JSON response',()=>{
     const broken='{"summary":"partial","edits":[{"path":"apps/tigeriq-coding-lane/coding-lane.mjs","search":"old","replace":"new"},{"path":"tests/coding-lane-scope.test.mjs","search":"unterminated';
