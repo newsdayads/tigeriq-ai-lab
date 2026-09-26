@@ -1,1 +1,0 @@
-Activation guard: do not merge or activate changes that would restart TigerIQ Core/API Health during WO-061 rollout. Coding Lane and updater activation must be performed as isolated runtime operations with Core PID verified unchanged.
