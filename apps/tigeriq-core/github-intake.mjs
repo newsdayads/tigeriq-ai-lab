@@ -169,6 +169,26 @@ export function githubPcOperatorJobId(objectiveId,issueNumber){
   return `JOB-GH-${number}-PC-${suffix}`;
 }
 
+function pcOperatorJobPayload(spec,objectiveId){
+  const assigned=extractPcOperatorInstruction(spec.body);
+  return {
+    jobId:githubPcOperatorJobId(objectiveId,spec.number),
+    title:`GitHub #${spec.number} bounded PC operator`,
+    prompt:`Execute ONLY this bounded PC action through NV06/OpenClaw. Do not choose backlog, P0, or new work. Use approved tigeriq_pc/tigeriq_runtime tools only.\n\nASSIGNED ACTION:\n${assigned}`,
+  };
+}
+
+export async function repairMissingActivePcOperatorJob({pool,spec,prior}={}){
+  if(!pool||prior?.status!=='active'||spec?.capability!=='pc_operator')return {repaired:false,reason:'NOT_APPLICABLE'};
+  const existing=(await pool.query("select id,status from tigeriq_jobs where objective_id=$1 and capability='pc_operator' order by created_at desc limit 1",[prior.id])).rows[0]||null;
+  if(existing)return {repaired:false,reason:'JOB_EXISTS',jobId:existing.id,status:existing.status};
+  const payload=pcOperatorJobPayload(spec,prior.id);
+  const inserted=await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,max_attempts) values($1,$2,$3,$4,'pc_operator','pc_operator','queued',2) on conflict(id) do nothing returning id",[payload.jobId,prior.id,payload.title,payload.prompt]);
+  if(inserted.rowCount!==1)return {repaired:false,reason:'JOB_ID_CONFLICT',jobId:payload.jobId};
+  await pool.query("insert into tigeriq_events(type,objective_id,job_id,task_kind,data) values('GITHUB_PC_OPERATOR_JOB_REPAIRED',$1,$2,'pc_operator',$3)",[prior.id,payload.jobId,JSON.stringify({issueNumber:spec.number,reason:'ACTIVE_OBJECTIVE_MISSING_JOB',executionSurface:'CORE_OPENCLAW_BOUNDED'})]);
+  return {repaired:true,reason:'ACTIVE_OBJECTIVE_MISSING_JOB',jobId:payload.jobId};
+}
+
 async function readActiveExternalRoleClaim(fetchImpl,owner,repo,token,spec){
   if(Number(spec?.commentCount||0)<=0)return null;
   try{
@@ -188,11 +208,15 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
   const activeMetadata=activeRows.map((row)=>row?.metadata||{});
   let skipped=0,externalClaims=0;
   for(const spec of specs){
+    const prior=(await pool.query("select id,status,metadata from tigeriq_objectives where metadata->>'source'='github' and metadata->>'issueNumber'=$1 order by created_at desc limit 1",[String(spec.number)])).rows[0]||null;
+    if(prior?.status==='active'){
+      const repair=await repairMissingActivePcOperatorJob({pool,spec,prior});
+      if(repair.repaired)return {created:1,repaired:1,skipped,externalClaims,active:activeMetadata.length,considered:specs.length,issueNumber:spec.number,objectiveId:prior.id,jobId:repair.jobId,dispatchLane:spec.dispatchLane,cleanedOrphans:cleanup.cleaned};
+      skipped++;continue;
+    }
     if(githubSpecBlockedByActive(spec,activeMetadata)){skipped++;continue;}
     const externalClaim=await readActiveExternalRoleClaim(fetchImpl,owner,repo,token,spec);
     if(externalClaim){externalClaims++;skipped++;continue;}
-    const prior=(await pool.query("select id,status,metadata from tigeriq_objectives where metadata->>'source'='github' and metadata->>'issueNumber'=$1 order by created_at desc limit 1",[String(spec.number)])).rows[0]||null;
-    if(prior?.status==='active'){skipped++;continue;}
     const sourceChanged=Boolean(prior&&String(prior.metadata?.sourceRevision||'')!==spec.sourceRevision);
     const reopenedAfterCompletion=Boolean(prior?.metadata?.githubClosed===true);
     if(prior&&!sourceChanged&&!reopenedAfterCompletion){skipped++;continue;}
@@ -211,11 +235,9 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
     };
     await pool.query('insert into tigeriq_objectives(id,objective,priority,metadata) values($1,$2,$3,$4) on conflict(id) do nothing',[id,objective,spec.priority,JSON.stringify(metadata)]);
     if(spec.capability==='pc_operator'){
-      const assigned=extractPcOperatorInstruction(spec.body);
-      const jobId=githubPcOperatorJobId(id,spec.number);
-      const prompt=`Execute ONLY this bounded PC action through NV06/OpenClaw. Do not choose backlog, P0, or new work. Use approved tigeriq_pc/tigeriq_runtime tools only.\n\nASSIGNED ACTION:\n${assigned}`;
-      await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,max_attempts) values($1,$2,$3,$4,'pc_operator','pc_operator','queued',2) on conflict(id) do nothing",[jobId,id,`GitHub #${spec.number} bounded PC operator`,prompt]);
-      await pool.query("insert into tigeriq_events(type,objective_id,job_id,task_kind,data) values('GITHUB_PC_OPERATOR_JOB_MATERIALIZED',$1,$2,'pc_operator',$3)",[id,jobId,JSON.stringify({issueNumber:spec.number,executionSurface:'CORE_OPENCLAW_BOUNDED'})]);
+      const payload=pcOperatorJobPayload(spec,id);
+      await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,max_attempts) values($1,$2,$3,$4,'pc_operator','pc_operator','queued',2) on conflict(id) do nothing",[payload.jobId,id,payload.title,payload.prompt]);
+      await pool.query("insert into tigeriq_events(type,objective_id,job_id,task_kind,data) values('GITHUB_PC_OPERATOR_JOB_MATERIALIZED',$1,$2,'pc_operator',$3)",[id,payload.jobId,JSON.stringify({issueNumber:spec.number,executionSurface:'CORE_OPENCLAW_BOUNDED'})]);
     }
     await pool.query("insert into tigeriq_events(type,objective_id,data) values('GITHUB_OBJECTIVE_MATERIALIZED',$1,$2)",[id,JSON.stringify({issueNumber:spec.number,issueUrl:spec.url,priority:spec.priority,sourcePriority:spec.sourcePriority,dispatchLane:spec.dispatchLane})]);
     return {created:1,skipped,externalClaims,active:activeMetadata.length,considered:specs.length,issueNumber:spec.number,objectiveId:id,dispatchLane:spec.dispatchLane,cleanedOrphans:cleanup.cleaned};
