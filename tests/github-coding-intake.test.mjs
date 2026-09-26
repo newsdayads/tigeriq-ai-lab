@@ -403,6 +403,30 @@ describe('GitHub coding continuity supervisor',()=>{
     expect(pool.events.filter(e=>e.type==='GITHUB_CODING_RECOVERY_REARMED')).toHaveLength(0);
   });
 
+  it('fails closed when relevant-main compare is unavailable',async()=>{
+    const pool=fakePool();let posted=0;
+    const current=issue(`${SAFE}\nALLOW_PATH_PREFIX=tests/github-coding-intake.test.mjs`,{number:806});
+    const currentRevision=codingSourceTruthRevision(current,[]);
+    pool.events.push(
+      {type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:806,codingObjectiveId:'obj-806-r2'}},
+      {type:'GITHUB_CODING_RETRY_DISPATCHED',data:{issueNumber:806,codingObjectiveId:'obj-806-r1',retryAttempt:1}},
+      {type:'GITHUB_CODING_RETRY_DISPATCHED',data:{issueNumber:806,codingObjectiveId:'obj-806-r2',retryAttempt:2}},
+      {type:'GITHUB_CODING_BLOCKED_FINAL',data:{issueNumber:806,codingObjectiveId:'obj-806-r2',status:'blocked',reason:'RETRY_BUDGET_EXHAUSTED',terminalReason:'OUTPUT_CONTRACT_EXHAUSTED',mainSha:'old-main',sourceRevision:currentRevision}}
+    );
+    const fetchImpl=async(url)=>{
+      if(url.includes('/api/status'))return response({objectives:[{id:'obj-806-r2',status:'blocked',summary:'OUTPUT_CONTRACT_EXHAUSTED'}],jobs:[]});
+      if(url.includes('/git/ref/heads/main'))return response({object:{sha:'new-main'}});
+      if(url.includes('/compare/'))return response({message:'rate limited'},false,503);
+      if(url.includes('/api/objectives')){posted++;return response({id:'unexpected'});}
+      if(url.includes('/issues/806'))return response(current);
+      if(url.includes('/comments'))return response({});
+      return response({});
+    };
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+    expect(posted).toBe(0);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_RECOVERY_REARMED')).toHaveLength(0);
+  });
+
   it('uses stable issue body + owner directive evidence for Source-of-Truth revision',()=>{
     const current=issue(SAFE,{number:809,title:'Stable source'});
     const base=codingSourceTruthRevision(current,[]);
