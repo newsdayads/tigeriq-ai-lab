@@ -156,7 +156,7 @@ describe('independent worker recovery flows in direct-cdp-bridge',()=>{
 
   it('rechecks WORKING inside F5/restart mutation boundaries and never stops active work for maintenance',()=>{
     expect(source).toContain("MAINTENANCE_DEFERRED_WORKING");
-    expect(source).not.toContain("PERIODIC_F5_DEFERRED_WORKING");
+    expect(source).toContain("PERIODIC_F5_DEFERRED_WORKING");
     const prep=source.slice(source.indexOf('async function prepareWorkerForPlannedRestart'),source.indexOf('function archiveMenuPointExpr'));
     expect(prep).not.toContain('stopStalledWorking(target)');
     const generic=source.slice(source.indexOf('async function maybeWorkerContinuity'),source.indexOf('\nfunction log('));
@@ -164,7 +164,7 @@ describe('independent worker recovery flows in direct-cdp-bridge',()=>{
     expect(generic).not.toContain("freshPhase==='WORKING'||fresh?.uiBusy===true||fresh?.stopVisible===true");
     const nv02=source.slice(source.indexOf('async function maybeNv02Continuity'),source.indexOf('async function handleCommand'));
     expect(nv02).toContain('const fresh=applyNv02DurableVerifiedModelProfile(await uiState(target).catch(()=>null))');
-    expect(nv02).not.toContain("freshPhase==='WORKING'||fresh?.uiBusy===true||fresh?.stopVisible===true");
+    expect(nv02).toContain("freshPhase==='WORKING'||fresh?.uiBusy===true||fresh?.stopVisible===true");
   });
 
   it('uses a lightweight cached control-state endpoint instead of polling full controller state per worker',()=>{
