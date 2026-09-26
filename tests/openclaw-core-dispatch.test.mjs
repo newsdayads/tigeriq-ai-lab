@@ -10,6 +10,8 @@ import {
   normalizeOpenClawDispatchEnvelope,
   hasHardGateTextIntent,
   parseOpenClawAgentResult,
+  openClawTerminalDecision,
+  trustedStructuredFileReadReceipt,
   readOpenClawDispatchRecord,
   writeOpenClawDispatchRecord,
 } from '../apps/openclaw-tigeriq-runtime/dispatch.mjs';
@@ -111,6 +113,24 @@ describe('Core -> OpenClaw bounded dispatch #1528', () => {
       result:{payloads:[{text:'plain prose without terminal json'}],meta:{agentMeta:{}}},
     },0,'');
     expect(bad.agentResult).toBeNull();
+  });
+
+  it('accepts only strict in-root flat file_read evidence as embedded trusted receipt', () => {
+    const agentResult={status:'OK',evidence:{action:'file_read',ok:true,path:'D:\\TigerIQ\\State\\core-runtime-updater.json',size:3946},blocker:null};
+    expect(trustedStructuredFileReadReceipt(agentResult)).toBe(true);
+    expect(openClawTerminalDecision({
+      exitCode:1,status:'error',agentResult,successfulToolNames:[],
+    },{timedOut:false,parsedPresent:true})).toMatchObject({
+      success:true,trustedToolReceipt:true,terminalReceiptTool:false,embeddedFileReadReceipt:true,
+    });
+
+    expect(trustedStructuredFileReadReceipt({...agentResult,evidence:{...agentResult.evidence,path:'C:\\Windows\\temp.txt'}})).toBe(false);
+    expect(trustedStructuredFileReadReceipt({...agentResult,evidence:{...agentResult.evidence,ok:false}})).toBe(false);
+    expect(trustedStructuredFileReadReceipt({...agentResult,evidence:{...agentResult.evidence,action:'file_write'}})).toBe(false);
+    expect(trustedStructuredFileReadReceipt({...agentResult,blocker:'blocked'})).toBe(false);
+    expect(openClawTerminalDecision({
+      exitCode:1,status:'error',agentResult:null,successfulToolNames:[],
+    },{timedOut:false,parsedPresent:true}).success).toBe(false);
   });
 
   it('retries one failed durable dispatch with the same idempotency record and then stops', async () => {
