@@ -61,15 +61,33 @@ function findRequestedValue(node,target,depth=0,seen=new Set()){
   return undefined;
 }
 
+function structuredBridgeEvidenceSources(bridgeCalls){
+  const calls=Array.isArray(bridgeCalls)?bridgeCalls:[bridgeCalls];
+  const sources=[];
+  for(const call of calls){
+    if(!call||typeof call!=='object')continue;
+    const result=call.result;
+    if(result&&typeof result==='object'){
+      if(result.data&&typeof result.data==='object')sources.push(result.data);
+      else if(result.evidence&&typeof result.evidence==='object')sources.push(result.evidence);
+      else sources.push(result);
+      continue;
+    }
+    if(call.data&&typeof call.data==='object')sources.push(call.data);
+    else if(call.evidence&&typeof call.evidence==='object')sources.push(call.evidence);
+  }
+  return sources;
+}
+
 export function extractPublicEvidence(jobResult,requestedKeys=[]){
   const requested=[...new Set((requestedKeys||[]).filter(key=>SUPPORTED_SET.has(String(key))).map(String))];
   if(!requested.length)return {};
   const primary=jobResult?.evidence?.agentResult?.evidence;
   const bridgeCalls=jobResult?.evidence?.bridgeCalls;
   const sources=[
-    primary&&typeof primary==='object'?primary:null,
-    bridgeCalls&&typeof bridgeCalls==='object'?bridgeCalls:null,
-  ].filter(Boolean);
+    ...(primary&&typeof primary==='object'?[primary]:[]),
+    ...structuredBridgeEvidenceSources(bridgeCalls),
+  ];
   if(!sources.length)return {};
   const out={};
   for(const key of requested){
