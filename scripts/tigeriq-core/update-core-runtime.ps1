@@ -99,24 +99,24 @@ function Ensure-UpdaterTaskRuntimeTarget(){
   $expectedExe='C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
   $expectedArgs="-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$updaterRuntime`" -IntervalSeconds $IntervalSeconds"
   $newAction=New-ScheduledTaskAction -Execute $expectedExe -Argument $expectedArgs
-  $newSettings=New-ScheduledTaskSettingsSet -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero) -StartWhenAvailable -MultipleInstances StopExisting
+  $newSettings=New-ScheduledTaskSettingsSet -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero) -StartWhenAvailable -MultipleInstances IgnoreNew
   $principal=New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
   $task=Get-ScheduledTask -TaskName $updaterTask -ErrorAction SilentlyContinue
   if(-not $task){
     if(-not(Test-Path -LiteralPath $updaterRuntime)){return @{action='blocked';reason='UPDATER_RUNTIME_MISSING';target=$updaterRuntime}}
     $trigger=New-ScheduledTaskTrigger -AtStartup
     Register-ScheduledTask -TaskName $updaterTask -Action $newAction -Trigger $trigger -Settings $newSettings -Principal $principal -Force|Out-Null
-    return @{action='installed';target=$updaterRuntime;multipleInstances='StopExisting';runAs='SYSTEM';trigger='AtStartup'}
+    return @{action='installed';target=$updaterRuntime;multipleInstances='IgnoreNew';runAs='SYSTEM';trigger='AtStartup'}
   }
   $action=@($task.Actions|Select-Object -First 1)
   $currentExe=[string]$action.Execute
   $currentArgs=[string]$action.Arguments
   $multiple=[string]$task.Settings.MultipleInstances
   $actionOk=($currentExe -ieq $expectedExe -and $currentArgs -match [regex]::Escape($updaterRuntime))
-  $settingsOk=($multiple -eq 'StopExisting')
+  $settingsOk=($multiple -eq 'IgnoreNew')
   if($actionOk -and $settingsOk){return @{action='none';target=$updaterRuntime;multipleInstances=$multiple}}
   Set-ScheduledTask -TaskName $updaterTask -Action $newAction -Settings $newSettings -Principal $principal|Out-Null
-  return @{action='retargeted';target=$updaterRuntime;previousExecute=$currentExe;previousArguments=$currentArgs;previousMultipleInstances=$multiple;multipleInstances='StopExisting'}
+  return @{action='retargeted';target=$updaterRuntime;previousExecute=$currentExe;previousArguments=$currentArgs;previousMultipleInstances=$multiple;multipleInstances='IgnoreNew'}
 }
 function Ensure-BootstrapWatchdogTask(){
   try{
