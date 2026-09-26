@@ -35,7 +35,7 @@ describe('GitHub Core intake guardrails',()=>{
       'ASSIGNED_ACTION','Use tigeriq_pc file_write only:','path=D:\\TigerIQ\\State\\appchrome-install-request.json',
       'Then use tigeriq_pc file_read on the same path.','ACCEPTANCE','PASS',
     ].join('\n');
-    assert.equal(isBoundedAppChromeRequestOnly(boundedBody),true);
+    expect(isBoundedAppChromeRequestOnly(boundedBody)).toBe(true);
     expect(parseExecutableIssue({...base,number:1881,title:'[P0][OPENCLAW] request only',body:boundedBody})).toMatchObject({
       number:1881,priority:'P1',sourcePriority:'P0',capability:'pc_operator',dispatchLane:'PC_OPERATOR',resourceScope:'APP_CHROME_DEPLOY_REQUEST_STATE'
     });
