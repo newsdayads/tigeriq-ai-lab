@@ -347,11 +347,13 @@ describe('GitHub coding continuity supervisor',()=>{
 
   it('re-arms a recoverable exhausted issue only after relevant main or source changes',async()=>{
     const pool=fakePool();let posted=0;
+    const current=issue(`${SAFE}\nALLOW_PATH_PREFIX=apps/tigeriq-core/github-coding-intake.mjs`,{number:804});
+    const currentRevision=codingSourceTruthRevision(current,[]);
     pool.events.push(
       {type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:804,codingObjectiveId:'obj-804-r2'}},
       {type:'GITHUB_CODING_RETRY_DISPATCHED',data:{issueNumber:804,codingObjectiveId:'obj-804-r1',retryAttempt:1}},
       {type:'GITHUB_CODING_RETRY_DISPATCHED',data:{issueNumber:804,codingObjectiveId:'obj-804-r2',retryAttempt:2}},
-      {type:'GITHUB_CODING_BLOCKED_FINAL',data:{issueNumber:804,codingObjectiveId:'obj-804-r2',status:'blocked',reason:'RETRY_BUDGET_EXHAUSTED',terminalReason:'OUTPUT_CONTRACT_EXHAUSTED',mainSha:'old-main'}}
+      {type:'GITHUB_CODING_BLOCKED_FINAL',data:{issueNumber:804,codingObjectiveId:'obj-804-r2',status:'blocked',reason:'RETRY_BUDGET_EXHAUSTED',terminalReason:'OUTPUT_CONTRACT_EXHAUSTED',mainSha:'old-main',sourceRevision:currentRevision}}
     );
     expect(shouldRearmRecoverableFinal(pool.events.at(-1).data,'new-main',[])).toBe(false);
     expect(shouldRearmRecoverableFinal(pool.events.at(-1).data,'new-main',[],'',true)).toBe(true);
@@ -361,7 +363,6 @@ describe('GitHub coding continuity supervisor',()=>{
     expect(shouldRearmRecoverableFinal({issueNumber:804,codingObjectiveId:'legacy',reason:'ISSUE_CLOSED_OR_SUPERSEDED',mainSha:'old-main',sourceRevision:'old-revision'},'new-main',[],'new-revision')).toBe(true);
     expect(shouldRearmRecoverableFinal({issueNumber:804,codingObjectiveId:'legacy',reason:'ISSUE_CLOSED_OR_SUPERSEDED',mainSha:'new-main',sourceRevision:'new-revision'},'new-main',[],'new-revision')).toBe(false);
 
-    const current=issue(`${SAFE}\nALLOW_PATH_PREFIX=apps/tigeriq-core/github-coding-intake.mjs`,{number:804});
     const fetchImpl=async(url,init={})=>{
       if(url.includes('/api/status'))return response({objectives:[{id:'obj-804-r2',status:'blocked',summary:'OUTPUT_CONTRACT_EXHAUSTED'}],jobs:[]});
       if(url.includes('/git/ref/heads/main'))return response({object:{sha:'new-main'}});
@@ -380,13 +381,14 @@ describe('GitHub coding continuity supervisor',()=>{
 
   it('does not rearm exhausted coding work for an unrelated main commit',async()=>{
     const pool=fakePool();let posted=0;
+    const current=issue(`${SAFE}\nALLOW_PATH_PREFIX=apps/tigeriq-core/github-coding-intake.mjs`,{number:805});
+    const currentRevision=codingSourceTruthRevision(current,[]);
     pool.events.push(
       {type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:805,codingObjectiveId:'obj-805-r2'}},
       {type:'GITHUB_CODING_RETRY_DISPATCHED',data:{issueNumber:805,codingObjectiveId:'obj-805-r1',retryAttempt:1}},
       {type:'GITHUB_CODING_RETRY_DISPATCHED',data:{issueNumber:805,codingObjectiveId:'obj-805-r2',retryAttempt:2}},
-      {type:'GITHUB_CODING_BLOCKED_FINAL',data:{issueNumber:805,codingObjectiveId:'obj-805-r2',status:'blocked',reason:'RETRY_BUDGET_EXHAUSTED',terminalReason:'OUTPUT_CONTRACT_EXHAUSTED',mainSha:'old-main',sourceRevision:'same-revision'}}
+      {type:'GITHUB_CODING_BLOCKED_FINAL',data:{issueNumber:805,codingObjectiveId:'obj-805-r2',status:'blocked',reason:'RETRY_BUDGET_EXHAUSTED',terminalReason:'OUTPUT_CONTRACT_EXHAUSTED',mainSha:'old-main',sourceRevision:currentRevision}}
     );
-    const current=issue(`${SAFE}\nALLOW_PATH_PREFIX=apps/tigeriq-core/github-coding-intake.mjs`,{number:805});
     const fetchImpl=async(url)=>{
       if(url.includes('/api/status'))return response({objectives:[{id:'obj-805-r2',status:'blocked',summary:'OUTPUT_CONTRACT_EXHAUSTED'}],jobs:[]});
       if(url.includes('/git/ref/heads/main'))return response({object:{sha:'new-main'}});
