@@ -1195,7 +1195,7 @@ async function runFailureLearningScan(){
   return {eventsIn:rows.length,candidatesCreated:candidates.length};
 }
 
-let stop=false, lastRefresh=0, lastRecover=0, lastOpenClawObjectiveReconcile=0, lastManager=0, lastProbe=0, lastFailureLearning=0, lastApiDoctor=0, apiDoctorScanRunning=false; const active=new Set();
+let stop=false, lastRefresh=0, lastRecover=0, lastOpenClawObjectiveReconcile=0, lastManager=0, lastProbe=0, lastFailureLearning=0, lastApiDoctor=0, apiDoctorScanRunning=false, managerTickRunning=false; const active=new Set();
 function getDynamicMaxParallel() {
   const resList = typeof resources !== 'undefined' ? resources : [];
   const healthyCount = Array.isArray(resList) ? resList.filter(r => r && (r.status === 'ready' || r.status === 'healthy' || r.healthy || r.health_state === 'READY' || r.health_state === 'ONLINE' || r.credential_state === 'LOCAL')).length : 0;
@@ -1285,7 +1285,7 @@ async function loop(){
       if(t-lastRefresh>15000){await refreshResources();lastRefresh=t;}
       if(t-lastRecover>10000){await recoverStale();lastRecover=t;}
       if(t-lastOpenClawObjectiveReconcile>3000){await reconcileCoreOpenClawBoundedObjectives();lastOpenClawObjectiveReconcile=t;}
-      if(t-lastManager>MANAGER_IDLE_MS){await managerTick();lastManager=t;}
+      if(!managerTickRunning&&t-lastManager>MANAGER_IDLE_MS){lastManager=t;managerTickRunning=true;void managerTick().catch(error=>console.error(JSON.stringify({event:'MANAGER_TICK_ERROR',error:String(error?.message||error)}))).finally(()=>{managerTickRunning=false;});}
       if(t-lastProbe>60000){await probeReadyResources();lastProbe=t;}
       if(!apiDoctorScanRunning&&t-lastApiDoctor>API_DOCTOR_INTERVAL_MS){lastApiDoctor=t;apiDoctorScanRunning=true;void runApiDoctorScan().catch(error=>console.error(JSON.stringify({event:'API_DOCTOR_SCAN_ERROR',error:String(error?.message||error)}))).finally(()=>{apiDoctorScanRunning=false;});}
       if(t-lastFailureLearning>FAILURE_LEARNING_INTERVAL_MS){lastFailureLearning=t;await runFailureLearningScan();}
