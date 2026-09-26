@@ -46,8 +46,32 @@ function pathTokens(text){
   return raw.map(x=>x.replace(/[.,;:!?)}]+$/g,'')).filter(safeRepoPath);
 }
 
+function normalizeCanonicalScopeToken(raw){
+  let token=String(raw||'').trim().replace(/^`|`$/g,'').replace(/^\.\//,'');
+  if(!token)return '';
+  const directory=token.endsWith('/');
+  token=token.replace(/\/+$/,'');
+  if(!safeRepoPath(token))return '';
+  return directory?`${token}/`:token;
+}
+
+export function canonicalScopeAllowsPath(path,canonicalPaths=[]){
+  const proposed=String(path||'').trim().replace(/^\.\//,'');
+  if(!safeRepoPath(proposed))return false;
+  return (canonicalPaths||[]).some(raw=>{
+    const scope=normalizeCanonicalScopeToken(raw);
+    if(!scope)return false;
+    return scope.endsWith('/')?proposed.startsWith(scope):proposed===scope;
+  });
+}
+
 export function extractCanonicalAllowedPaths(text){
   const lines=String(text||'').split(/\r?\n/);
+  const allowLine=lines.find(raw=>/^ALLOW_PATH_PREFIX=/i.test(raw.trim()));
+  if(allowLine){
+    const raw=allowLine.trim().replace(/^ALLOW_PATH_PREFIX=/i,'');
+    return [...new Set(raw.split(',').map(normalizeCanonicalScopeToken).filter(Boolean))];
+  }
   const out=[];
   let active=false;
   for(const raw of lines){
