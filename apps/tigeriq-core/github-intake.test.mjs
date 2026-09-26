@@ -184,7 +184,6 @@ describe('GitHub Core intake guardrails',()=>{
     expect(block).not.toContain('raw file body');
     expect(block).not.toContain('never-publish');
     expect(block).not.toContain('password');
-    expect(block).not.toContain('raw file body');
     expect(block).not.toContain('"content"');
     expect(block).not.toContain('"data"');
   });
