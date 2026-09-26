@@ -1,4 +1,4 @@
-import test from 'node:test';
+import {test} from 'vitest';
 import assert from 'node:assert/strict';
 import {effectiveBacklogPriority} from '../apps/tigeriq-core/github-backlog-policy.mjs';
 import {activeRoleClaim,classifyWorkOrder,roleCanPull} from '../apps/tigeriq-core/work-routing-policy.mjs';
