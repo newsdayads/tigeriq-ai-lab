@@ -18,6 +18,21 @@ test('coding lane scope validation tests',async(t)=>{
   });
 
 
+  await t.test('parses ALLOW_PATH_PREFIX preserving exact file vs directory semantics',()=>{
+    const objective='ALLOW_PATH_PREFIX=apps/x/file.mjs,tests/';
+    assert.deepStrictEqual(extractCanonicalAllowedPaths(objective),['apps/x/file.mjs','tests/']);
+    assert.throws(()=>extractCanonicalAllowedPaths('ALLOW_PATH_PREFIX=../escape,tests/'),/CODING_CANONICAL_SCOPE_INVALID/);
+    assert.throws(()=>extractCanonicalAllowedPaths('ALLOW_PATH_PREFIX=apps/*,tests/'),/CODING_CANONICAL_SCOPE_INVALID/);
+  });
+
+  await t.test('exact file does not authorize descendants while directory prefix does',()=>{
+    const canonical=['apps/x/file.mjs','tests/'];
+    assert.strictEqual(validateSourceScope(['apps/x/file.mjs','tests/example.test.mjs'],canonical),true);
+    assert.throws(()=>validateSourceScope(['apps/x/file.mjs/evil.js'],canonical),e=>e instanceof CodingScopeViolationError&&e.offending[0]==='apps/x/file.mjs/evil.js');
+    assert.throws(()=>validateSourceScope(['unrelated/safe.mjs'],canonical),e=>e instanceof CodingScopeViolationError&&e.offending[0]==='unrelated/safe.mjs');
+  });
+
+
   await t.test('salvages complete compact edits from a truncated JSON response',()=>{
     const broken='{"summary":"partial","edits":[{"path":"apps/tigeriq-coding-lane/coding-lane.mjs","search":"old","replace":"new"},{"path":"tests/coding-lane-scope.test.mjs","search":"unterminated';
     assert.deepStrictEqual(salvageCompactEditsJson(broken),{
