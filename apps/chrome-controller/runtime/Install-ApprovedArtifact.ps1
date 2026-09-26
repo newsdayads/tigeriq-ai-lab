@@ -1,6 +1,7 @@
 param(
   [Parameter(Mandatory=$true)][string]$ExpectedHead,
   [Parameter(Mandatory=$true)][string]$ArtifactRoot,
+  [switch]$Nv02Only,
   [string]$InstallRoot='D:\TigerIQ\Apps\ChromeController'
 )
 
@@ -55,6 +56,7 @@ try{
   $active=[ordered]@{
     schemaVersion='tigeriq.appchrome.active-deploy.v1'
     exactHead=$ExpectedHead
+    nv02Only=[bool]$Nv02Only
     deploy=$deploy
     bridgeSha256=$bridgeHash
     installedAt=(Get-Date).ToUniversalTime().ToString('o')
@@ -68,6 +70,7 @@ try{
   $manifest=[ordered]@{
     ok=$true
     exactHead=$ExpectedHead
+    nv02Only=[bool]$Nv02Only
     deploy=$deploy
     bridgeSha256=$bridgeHash
     activeDeploy=$activePath
