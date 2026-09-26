@@ -1,7 +1,7 @@
 import {readFileSync} from 'node:fs';
-import {test} from 'node:test';
+import {test} from 'vitest';
 import assert from 'node:assert/strict';
-import {branchName,checkGateState,extractCanonicalAllowedPaths,validateChanges} from '../apps/tigeriq-coding-lane/policy.mjs';
+import {branchName,changedPathImpact,checkGateState,extractCanonicalAllowedPaths,safeRepoPath,validateChanges} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 const service=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
 const updater=readFileSync(new URL('../scripts/tigeriq-core/update-core-runtime.ps1',import.meta.url),'utf8');
@@ -44,7 +44,7 @@ test('coding lane cannot target protected or unsafe paths',()=>{
 });
 
 test('canonical MUST NOT EXPAND header is an enforceable source scope',()=>{
-  const objective='CANONICAL ALLOWED PATHS (MUST NOT EXPAND):\\ntests/coding-lane-ai-json-transport.test.mjs\\n\\nGoal: test-only canary';
+  const objective='CANONICAL ALLOWED PATHS (MUST NOT EXPAND):\ntests/coding-lane-ai-json-transport.test.mjs\n\nGoal: test-only canary';
   assert.deepEqual(extractCanonicalAllowedPaths(objective),['tests/coding-lane-ai-json-transport.test.mjs']);
 });
 
@@ -68,10 +68,10 @@ test('runtime impact isolates Web Control and Coding Lane from Core restart',()=
 });
 
 test('service enforces independent reviewer and gate-before-merge',()=>{
-  assert.match(service,/pickResource\(\[worker\.id\]\)/);
-  assert.match(service,/waitGates\(branch\)/);
+  assert.match(service,/pickResource\(\[worker\.id,\.\.\.cooldownExcludes\]\)/);
+  assert.match(service,/waitGates\(branch,pr\.number\)/);
   assert.match(service,/review\.decision==='approve'/);
-  assert.match(service,/mergePr\(pr\.number,finalSha\)/);
+  assert.match(service,/mergePr\(pr\.number,approvedHead,j\.title\)/);
   assert.doesNotMatch(service,/refs\/heads\/main.*method:'PATCH'/s);
 });
 
@@ -107,10 +107,19 @@ test('PowerShell updater is path-aware and leaves Core alone for non-Core change
   assert.match(updater,/codingRestarted=\$impact\.coding/);
 });
 
-test('owner-facing references require invariant format #<number> - <Name> across codebase and workflow',()=>{
-  const workflowDoc = readFileSync(new URL('../bootstrap/02_TIGERIQ_WORKstr = readFileSync(new URL('../bootstrap/02_TIGERIQ_WORKFLOW.md', import.meta.url), 'utf8');
-  assert.match(workflowDoc, /#\d+\s+-\s+[\p{L}\p{N}\s]+/u);
-  const bareRefRegex = /(?:\b(?:task|issue|ticket|item)\s*#?\d+)|(?:\b#\d+\b(?!\s*-\s*[\p{L}\p{N}]))/gi;
-  const matches = [...workflowDoc.matchAll(bareRefRegex)];
-  assert.equal(matches.length, 0, 'Found bare owner-facing references without name invariant');
+test('owner-facing references require invariant format #<number> - <Name> and bare refs are detectable',()=>{
+  const workflowDoc=readFileSync(new URL('../bootstrap/02_TIGERIQ_WORKFLOW.md',import.meta.url),'utf8');
+  assert.match(workflowDoc,/## 18\. Invariant cho Owner[^\n]*facing references/u);
+  assert.match(workflowDoc,/#<số>\s*-\s*<Tên việc>/u);
+  assert.match(workflowDoc,/## 19\. Regression test cho bare references/u);
+
+  const bareRefRegex=/(?:^|[\s(])#\d+\b(?!\s*-\s*\S)/g;
+  for(const invalid of ['#1947','issue #1947','( #12 )','Work Order #1916.']){
+    assert.ok(bareRefRegex.test(invalid),`Expected bare reference violation: ${invalid}`);
+    bareRefRegex.lastIndex=0;
+  }
+  for(const valid of ['#1947 - Audit hệ thống','issue #1916 - Sửa Core tự phân việc']){
+    assert.equal(bareRefRegex.test(valid),false,`Valid owner-facing reference rejected: ${valid}`);
+    bareRefRegex.lastIndex=0;
+  }
 });

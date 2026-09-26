@@ -73,14 +73,15 @@ describe('Runtime updater watchdog wiring',()=>{
   it('kills surviving child node processes and verifies a new PID',()=>{
     expect(src).toContain('function Stop-NodeProcessesByMatch');
     expect(src).toContain('function Get-NodePidByMatch');
-    expect(src).toContain("$codingPath=(Join-Path $repo 'apps\\tigeriq-coding-lane\\coding-entry.mjs')");
+    expect(src).toContain("$codingPath=(Join-Path $runtimeRepo 'apps\\tigeriq-coding-lane\\coding-entry.mjs').ToLowerInvariant()");
     expect(src).toContain("$webPath=(Join-Path $webRuntime 'web-control-server.mjs')");
     expect(src).toContain('([int]$newPid-ne[int]$oldPid)');
     expect(src).toContain('CODING_LANE_HEALTH_OR_PID_FAILED');
     expect(src).toContain('WEB_CONTROL_HEALTH_OR_PID_FAILED');
   });
   it('launches Coding Lane from a canonical resolved path',()=>{
-    expect(codingLauncher).toContain("$app=(Resolve-Path -LiteralPath (Join-Path $root '..\\..\\apps\\tigeriq-coding-lane\\coding-entry.mjs')).Path");
+    expect(codingLauncher).toContain("$runtimeSourceState='D:\\TigerIQ\\State\\core-runtime-source.json'");
+    expect(codingLauncher).toContain("$app=(Resolve-Path -LiteralPath (Join-Path $repo 'apps\\tigeriq-coding-lane\\coding-entry.mjs')).Path");
   });
   it('self-restarts updater after updater source changes',()=>{
     expect(src).toContain('Restart-UpdaterAfterExit');
