@@ -373,6 +373,22 @@ describe('safe recovery contracts',()=>{
     expect(launcher).not.toContain("foreach($id in @('NV02','NV03','NV04'))");
   });
 
+  it('persists NV02-only deploy scope and idempotently pauses only side workers',()=>{
+    const installer=readFileSync('apps/chrome-controller/runtime/Install-ApprovedArtifact.ps1','utf8');
+    const launcher=readFileSync('apps/chrome-controller/runtime/Start-Unified-AppChrome.ps1','utf8');
+    expect(installer).toContain('[switch]$Nv02Only');
+    expect(installer).toContain('nv02Only=[bool]$Nv02Only');
+    expect(launcher).toContain("if($active.PSObject.Properties.Name -contains 'nv02Only')");
+    expect(launcher).toContain('Ensure-WorkerScope $active');
+    expect(launcher).toContain("foreach($id in @('NV03','NV04'))");
+    expect(launcher).toContain('/api/utility/workers/{0}/health');
+    expect(launcher).toContain('/api/utility/workers/{0}/pause');
+    expect(launcher).toContain('if($health.utilityPaused -eq $true){return $false}');
+    expect(launcher).toContain('NV02_ONLY_PAUSE_VERIFY_FAILED');
+    expect(launcher).toContain('NV02_ONLY_SIDE_WRITERS_PAUSED');
+    expect(launcher).not.toContain("foreach($id in @('NV02','NV03','NV04'))");
+  });
+
   it('never F5s or reopens NV03/NV04 while WORKING; bounded stuck recovery only clicks Stop',()=>{
     const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     const continuity=source.slice(source.indexOf('async function maybeWorkerContinuity'),source.indexOf('\nfunction log(event'));
