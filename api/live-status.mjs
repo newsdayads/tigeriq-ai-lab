@@ -410,6 +410,46 @@ function queueDependencies(issue) {
   return [...new Set((raw.match(/#?\d+/g) || []).map((value) => Number(value.replace('#', ''))).filter(Boolean))].slice(0, 16);
 }
 
+export function parseTigerIqLifecycleComment(comment = {}) {
+  const issueMatch = String(comment?.issue_url || '').match(/\/issues\/(\d+)(?:$|[?#])/i);
+  const issueNumber = Number(issueMatch?.[1] || 0);
+  if (!issueNumber) return null;
+  const body = String(comment?.body || '').trim();
+  let state = null;
+  if (/^\[RESULT\]\s+TigerIQ Core completed\b/i.test(body)) state = 'COMPLETED';
+  else if (/^\[RESULT\]\s+TigerIQ Core blocked\b/i.test(body) || /^\[BLOCKED_FINAL\]\b/i.test(body)) state = 'BLOCKED';
+  else if (/^\[(?:CLAIM|PROGRESS|RETRY_SCHEDULED|RETRY_DISPATCHED|RECOVERY_REARMED|STALE_RESULT_REARMED)\]\b/i.test(body)) state = 'ACTIVE';
+  if (!state) return null;
+  return {
+    issueNumber,
+    state,
+    createdAt: typeof comment?.created_at === 'string' ? comment.created_at : null,
+    commentId: Number(comment?.id || 0) || null,
+  };
+}
+
+export function lifecycleIndexFromComments(comments = []) {
+  const index = new Map();
+  const ordered = (Array.isArray(comments) ? comments : []).slice().sort((a, b) => {
+    const at = Date.parse(a?.created_at || '') || 0;
+    const bt = Date.parse(b?.created_at || '') || 0;
+    return at - bt || Number(a?.id || 0) - Number(b?.id || 0);
+  });
+  for (const comment of ordered) {
+    const event = parseTigerIqLifecycleComment(comment);
+    if (event) index.set(event.issueNumber, event);
+  }
+  return index;
+}
+
+export function applyQueueLifecycle(row, lifecycleEvent) {
+  if (!row || !lifecycleEvent) return row;
+  if (lifecycleEvent.state === 'COMPLETED') return null;
+  if (lifecycleEvent.state === 'BLOCKED') return { ...row, status: 'BLOCKED', waitReason: 'TigerIQ terminal BLOCKED' };
+  if (lifecycleEvent.state === 'ACTIVE') return { ...row, status: 'WAITING', waitReason: 'TigerIQ đang xử lý' };
+  return row;
+}
+
 export function parseQueueIssue(issue) {
   if (issueIsTerminalOrExcluded(issue)) return null;
   const coreSpec = parseExecutableIssue(issue);
@@ -595,31 +635,34 @@ async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
   let issues;
   let pulls;
   let runPayload;
+  let issueComments;
   try {
     const now = Date.now();
     const cached = githubProjectionCache.data && now - githubProjectionCache.at < GITHUB_PROJECTION_CACHE_MS;
     if (cached) {
-      ({ issues, pulls, runPayload } = githubProjectionCache.data);
+      ({ issues, pulls, runPayload, issueComments } = githubProjectionCache.data);
     } else {
       try {
-        [issues, pulls, runPayload] = await Promise.all([
+        [issues, pulls, runPayload, issueComments] = await Promise.all([
           gh('/repos/' + owner + '/' + repo + '/issues?state=open&per_page=100&sort=updated&direction=desc', fetchImpl),
           known.pulls ? Promise.resolve(known.pulls) : gh('/repos/' + owner + '/' + repo + '/pulls?state=open&sort=updated&direction=desc&per_page=100', fetchImpl),
           known.runs ? Promise.resolve({ workflow_runs: known.runs }) : gh('/repos/' + owner + '/' + repo + '/actions/runs?per_page=100', fetchImpl),
+          gh('/repos/' + owner + '/' + repo + '/issues/comments?per_page=100&sort=created&direction=desc', fetchImpl),
         ]);
         githubProjectionCache = {
           at: now,
           verifiedAt: new Date().toISOString(),
-          data: { issues, pulls, runPayload },
+          data: { issues, pulls, runPayload, issueComments },
         };
       } catch (error) {
         if (!githubProjectionCache.data) throw error;
-        ({ issues, pulls, runPayload } = githubProjectionCache.data);
+        ({ issues, pulls, runPayload, issueComments } = githubProjectionCache.data);
         projectionStale = true;
         projectionReason = String(error instanceof Error ? error.message : error).slice(0, 120);
       }
     }
     const openIssues = (Array.isArray(issues) ? issues : []).filter((issue) => !issue?.pull_request);
+    const lifecycleIndex = lifecycleIndexFromComments(issueComments);
     const openPulls = Array.isArray(pulls) ? pulls : [];
     const runs = Array.isArray(runPayload?.workflow_runs) ? runPayload.workflow_runs : [];
     const issueMap = new Map(openIssues.map((issue) => [Number(issue.number), issue]));
@@ -736,7 +779,12 @@ async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
     }
 
     const recentWork = await recentCompletedWork(owner, repo, fetchImpl);
-    const specs = openIssues.map(parseQueueIssue).filter(Boolean).filter((row) => !activeNumbers.has(row.number));
+    const specs = openIssues
+      .map(parseQueueIssue)
+      .filter(Boolean)
+      .filter((row) => !activeNumbers.has(row.number))
+      .map((row) => applyQueueLifecycle(row, lifecycleIndex.get(row.number)))
+      .filter(Boolean);
     const depStates = await dependencyStates(specs, owner, repo, fetchImpl);
     const resolvedQueue = specs.map((row) => {
       if (row.status !== 'QUEUED') return row;
