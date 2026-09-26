@@ -209,9 +209,18 @@ describe('GitHub coding continuity supervisor',()=>{
     expect(classifyCodingBlocker('HTTP_429 provider rate limit')).toMatchObject({kind:'RECOVERABLE',transient:true});
     expect(classifyCodingBlocker('AI_RESOURCES_UNAVAILABLE')).toMatchObject({kind:'RECOVERABLE',transient:true});
     expect(classifyCodingBlocker('manager decision exhausted after bounded retry/failover')).toMatchObject({kind:'RECOVERABLE',transient:true});
+    expect(classifyCodingBlocker('CODING_ALL_BATCHES_NOOP')).toMatchObject({kind:'RECOVERABLE',transient:false});
     expect(classifyCodingBlocker('reason for blocking')).toMatchObject({kind:'RECOVERABLE',transient:false});
     expect(classifyCodingBlocker('unclassified manager response')).toMatchObject({kind:'RECOVERABLE',transient:false});
     expect(classifyCodingBlocker('SECURITY POLICY_BLOCK requires human')).toMatchObject({kind:'HARD',transient:false});
+  });
+
+  it('allows all-noop final recovery only after a real main or source revision change',()=>{
+    const final={reason:'ALL_BATCHES_NOOP',terminalReason:'CODING_ALL_BATCHES_NOOP',mainSha:'old-main',sourceRevision:'old-source',codingObjectiveId:'obj-old'};
+    expect(shouldRearmRecoverableFinal(final,'old-main',[],'old-source')).toBe(false);
+    expect(shouldRearmRecoverableFinal(final,'new-main',[],'old-source')).toBe(true);
+    expect(shouldRearmRecoverableFinal(final,'old-main',[],'new-source')).toBe(true);
+    expect(shouldRearmRecoverableFinal(final,'new-main',[{mainSha:'new-main',sourceRevision:'old-source',priorObjectiveId:'obj-old'}],'old-source')).toBe(false);
   });
 
   it('reclassifies a legacy HARD_BLOCKER final when its terminal reason is now recoverable',async()=>{
