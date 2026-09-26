@@ -1,5 +1,5 @@
 # TIGERIQ — UNIFIED SOURCE LOADER
-Version: 1.5
+Version: 1.6
 Status: Bootstrap Entry Point
 Priority: P0
 Updated: 2026-09-26
@@ -24,6 +24,20 @@ Updated: 2026-09-26
 - Hard gates remain unchanged: Production, paid/financial, credential/secret, security/permission boundary, destructive/irreversible.
 STATE=AC_AUTONOMOUS_EXECUTION_V3_CANONICAL
 
+## AC FAST-LOAD CONTRACT V4 — TOKEN-EFFICIENT
+GENERAL_NEW_CHAT_BOOTSTRAP=READ_5_CANONICAL
+AC_FAST_PATH=LOADER>#280>#335>#504>#1940>#1888>#1900>OPEN_APP_CHROME_WO_PR>LATEST_CHECKPOINT_RUNTIME
+AC_SKIP_FULL_5_BOOTSTRAP_BY_DEFAULT=true
+AC_FULL_BOOTSTRAP_TRIGGERS=BOOTSTRAP_VERSION_CHANGED|GOVERNANCE_OR_ARCHITECTURE_TASK|SOURCE_CONFLICT|SOT_POINTER_CHANGED|OWNER_EXPLICIT
+AC_NO_DUPLICATE_READS_WITHIN_VALID_SESSION=true
+
+- Phiên thông thường vẫn đọc đủ 5 Bootstrap canonical theo thứ tự chuẩn; không cắt bỏ bộ nền của hệ thống.
+- Riêng lệnh `AC` dùng đường nạp nhanh: Loader → #280 → #335 → #504 → #1940 → #1888/#1900 → Work Order/PR APP-CHROME đang mở liên quan → checkpoint/runtime mới nhất.
+- Với AC, không đọc lại đủ 5 Bootstrap chỉ để khởi động nếu không có trigger. Chỉ nạp đủ 5 khi version Bootstrap thay đổi, task chạm governance/architecture, có xung đột nguồn, pointer SOT thay đổi, hoặc Owner yêu cầu.
+- Trong cùng phiên hợp lệ, không đọc lặp lại nguồn đã xác minh nếu version/checkpoint/pointer chưa đổi; chỉ refresh nguồn động cần thiết trước kết luận/mutation.
+- AC fast-path không hạ precedence hay hard gate; chỉ tối ưu lượng đọc/token.
+STATE=AC_FAST_LOAD_V4_CANONICAL
+
 ## Mục tiêu
 Đây là entry point duy nhất để ChatGPT Plus, ChatGPT Go và Gemini Pro nạp TigerIQ theo cùng một Nguồn Sự Thật. Mỗi tài khoản chỉ cần giữ hoặc trỏ tới Loader này; không duy trì bản sao riêng của 5 file Bootstrap.
 
@@ -33,7 +47,7 @@ Branch chuẩn: `main`
 Loader path: `bootstrap/00_TIGERIQ_LOADER.md`
 Loader page: `https://github.com/newsdayads/tigeriq-ai-lab/blob/main/bootstrap/00_TIGERIQ_LOADER.md`
 
-## Bootstrap bắt buộc — đọc theo thứ tự
+## Bootstrap bắt buộc cho phiên thông thường — đọc theo thứ tự
 1. `bootstrap/01_TIGERIQ_COMPANY_CONSTITUTION.md`
 2. `bootstrap/02_TIGERIQ_WORKFLOW.md`
 3. `bootstrap/03_TIGERIQ_AI_EMPLOYEE_MODEL.md`
@@ -78,9 +92,10 @@ Loader page: `https://github.com/newsdayads/tigeriq-ai-lab/blob/main/bootstrap/0
 ## Hành vi bắt buộc khi bắt đầu phiên
 1. Xác định adapter nguồn khả dụng của tài khoản hiện tại.
 2. Nếu có GitHub connector, đọc Loader theo repo/branch/path; không dùng raw URL làm điều kiện thành công duy nhất.
-3. Đọc 5 Bootstrap canonical theo danh sách trên.
-4. Nếu câu hỏi phụ thuộc trạng thái hiện hành, đọc CURRENT_STATE + CENTRAL/Registry/Interaction + tài liệu liên quan.
-5. Chỉ sau khi hoàn tất bước nạp nguồn mới kết luận hoặc thực thi.
+3. Nếu là lệnh `AC`: dùng AC FAST-LOAD V4; không đọc đủ 5 Bootstrap trừ khi có trigger bắt buộc.
+4. Nếu KHÔNG phải `AC`: đọc đủ 5 Bootstrap canonical theo danh sách trên.
+5. Nếu câu hỏi phụ thuộc trạng thái hiện hành, đọc CURRENT_STATE + CENTRAL/Registry/Interaction + tài liệu liên quan.
+6. Chỉ sau khi hoàn tất đường nạp tương ứng mới kết luận hoặc thực thi.
 
 ## Fail-safe
 Nếu GitHub connector đã được kết nối nhưng một raw URL trả 404, phải thử lại bằng GitHub connector theo repo/branch/path trước khi kết luận SOURCE_UNAVAILABLE. Chỉ khi canonical path vẫn không đọc được mới fail closed; không fallback sang bản `(1)/(2)`, timestamped copy, file cũ trong Drive hay memory.
