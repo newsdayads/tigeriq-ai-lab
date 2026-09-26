@@ -1,4 +1,5 @@
-import test from 'node:test';
+import {test as vitestTest} from 'vitest';
+const test=(name,fn)=>vitestTest(name,async()=>{const t={test:async(_name,subfn)=>subfn(t)};return fn(t)});
 import assert from 'node:assert';
 import {activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertPrOpenState,buildLocalFileContext,canonicalCodingJobTitle,canonicalWorkTitleFromObjective,classifyAiFailure,codingMergeCommitTitle,codingOutputTokenLimit,codingPathsOverlap,cooldownWaitFailure,coreResourceStateEligible,gateFailureIssues,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,isVietnameseWorkTitle,managerResourceFailurePlan,partitionGenerationFiles,preserveGenerationPrompt,providerCooldownPollPlan,recoverAfterCodingRestart,resourceWaitPlan,restartRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,validateCompactEdits,validateManagerJobPaths,validateManagerJobTitle} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError,parseJsonObject} from '../apps/tigeriq-coding-lane/policy.mjs';
@@ -89,7 +90,7 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
     const calls=[];
     const invokeFn=async r=>{
       calls.push(r.id);
-      if(r.id==='NV11')return '{"status":"continue","summary":"bad scope","job":{"title":"x","instruction":"x","paths":["apps/tigeriq-core/core.mjs"]}}';
+      if(r.id==='NV11')return '{"status":"continue","summary":"bad scope","job":{"title":"x","instruction":"x","paths":["tests/other-critical.test.mjs"]}}';
       return '{"status":"continue","summary":"ok","job":{"title":"x","instruction":"x","paths":["tests/coding-lane-ai-json-transport.test.mjs"]}}';
     };
     const out=await invokeJsonWithFailover(nv11,'manager',{resourcePool:[nv11,nv19],maxResources:2,invokeFn,validateData:d=>validateManagerJobPaths(d,canonical)});
@@ -386,7 +387,7 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
     const src=require('node:fs').readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
     assert.ok(src.includes("providerCooldownPollPlan(current.failure)"));
     assert.ok(src.includes("WAITING_RESOURCE_COOLDOWN retry"));
-    assert.ok(src.includes("preservedRetryCount:preservedCount"));
+    assert.ok(src.includes("preservedRetryCount:Math.max(0,Number(preservedCount)||0)"));
   });
 
   await t.test('cooldown wait persists valid rate-limit evidence across repeated polls',()=>{
