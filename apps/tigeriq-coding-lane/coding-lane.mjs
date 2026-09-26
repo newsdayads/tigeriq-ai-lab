@@ -1,7 +1,7 @@
 import {createServer} from 'node:http';
 import {createHash,randomUUID} from 'node:crypto';
 import {Pool} from 'pg';
-import {branchName,checkGateState,extractCanonicalAllowedPaths,isRetryableAiError,parseJsonObject,safeRepoPath,validateChanges} from './policy.mjs';
+import {branchName,checkGateState,extractCanonicalAllowedPathPrefixes,extractCanonicalAllowedPaths,isRetryableAiError,parseJsonObject,safeRepoPath,validateChanges} from './policy.mjs';
 import {assertSafeFileChange} from './safety-guard.mjs';
 import {compactPromptForChanges,currentFilesFromPrompt,expandCompactChanges,installAiJsonTransport,parseModelJson} from './ai-json-transport.mjs';
 import { createGeminiRateController } from '../shared/gemini-rate-control.mjs';
@@ -23,23 +23,34 @@ export function validateJobScope(jobPaths,changes){
   return true;
 }
 
-export function validateSourceScope(proposedPaths,canonicalPaths){
+export function validateGeneratedChanges(changes,allowedPaths=[]){
+  if(!Array.isArray(changes)||changes.length===0){
+    const error=new Error('CODING_ALL_BATCHES_NOOP');
+    error.code='CODING_ALL_BATCHES_NOOP';
+    throw error;
+  }
+  return validateChanges(changes,allowedPaths);
+}
+
+export function validateSourceScope(proposedPaths,canonicalPaths,canonicalPrefixes=[]){
   const canonical=new Set((canonicalPaths||[]).map(String));
-  if(!canonical.size)return true;
-  const offending=(proposedPaths||[]).map(String).filter(p=>!canonical.has(p));
+  const prefixes=[...new Set((canonicalPrefixes||[]).map(String).filter(Boolean))];
+  if(!canonical.size&&!prefixes.length)return true;
+  const allowed=(path)=>canonical.has(path)||prefixes.some(prefix=>path===prefix||path.startsWith(prefix+'/'));
+  const offending=(proposedPaths||[]).map(String).filter(path=>!allowed(path));
   if(offending.length)throw new CodingScopeViolationError(offending);
   return true;
 }
 
-export function validateManagerJobPaths(decision,canonicalPaths=[],mutationAuth={}){
+export function validateManagerJobPaths(decision,canonicalPaths=[],mutationAuth={},canonicalPrefixes=[]){
   if(decision?.status!=='continue')return [];
   const raw=[...new Set((decision?.job?.paths||[]).map(String))];
   if(!decision?.job||raw.length<1||raw.length>8||raw.some(p=>!safeRepoPath(p))){
     const e=new Error('MANAGER_PATHS_INVALID');e.code='MANAGER_PATHS_INVALID';throw e;
   }
   assertExecutionPlaneMutationPaths(raw,mutationAuth);
-  try{validateSourceScope(raw,canonicalPaths)}catch(error){
-    const offending=Array.isArray(error?.offending)?error.offending:raw.filter(p=>!(canonicalPaths||[]).includes(p));
+  try{validateSourceScope(raw,canonicalPaths,canonicalPrefixes)}catch(error){
+    const offending=Array.isArray(error?.offending)?error.offending:raw;
     const e=new Error('MANAGER_SCOPE_MISMATCH:'+offending.join(', '));e.code='MANAGER_SCOPE_MISMATCH';e.detail={offending};throw e;
   }
   return raw;
@@ -636,6 +647,7 @@ async function managerTick(){
   const o=q.rows[0];if(!o)return;
   let manager=pickResource();if(!manager)return
   const canonical=extractCanonicalAllowedPaths(o.objective);
+  const canonicalPrefixes=extractCanonicalAllowedPathPrefixes(o.objective);
   const mutationAuth={...controlPlaneRepairIntent(o.objective),executorClass:'CODING_LANE_MANAGER'};
   let liveGithubContext=null;
   try{liveGithubContext=await loadAuthoritativeGithubContext(o.objective)}
@@ -656,11 +668,11 @@ async function managerTick(){
         throw e;
       }
       validateManagerJobTitle(d,o.objective);
-      validateManagerJobPaths(d,canonical,mutationAuth);
+      validateManagerJobPaths(d,canonical,mutationAuth,canonicalPrefixes);
     };
     const invoked=await invokeJsonWithFailover(manager,prompt,{validateData:validateManagerDecision});manager=invoked.resource;const d=invoked.data;
     if(d.status!=='continue'||!d.job){await pool.query("update tigeriq_coding_objectives set status='blocked',summary=$2,manager_employee_id=$3,next_attempt_at=null,resource_retry_count=0,resource_retry_started_at=null,updated_at=now() where id=$1",[o.id,String(d.summary||'manager blocked').slice(0,1000),manager.id]);return}
-    const paths=validateManagerJobPaths(d,canonical,mutationAuth);
+    const paths=validateManagerJobPaths(d,canonical,mutationAuth,canonicalPrefixes);
     const id=`CODE-${randomUUID()}`;
     await pool.query('insert into tigeriq_coding_jobs(id,objective_id,title,instruction,paths) values($1,$2,$3,$4,$5)',[id,o.id,canonicalCodingJobTitle(o.objective,d.job.title),String(d.job.instruction||o.objective).slice(0,12000),JSON.stringify(paths)]);
     await pool.query("update tigeriq_coding_objectives set manager_employee_id=$2,summary=$3,next_attempt_at=null,resource_retry_count=0,resource_retry_started_at=null,updated_at=now() where id=$1",[o.id,manager.id,String(d.summary||'coding job created').slice(0,1000)]);
@@ -843,7 +855,7 @@ async function generateRepairChanges(worker,j,ref='main',issues=[],exclude=[],ca
     summaries.push(String(invoked.payload.summary||'').slice(0,300));
     changes.push(...invoked.payload.changes);
   }
-  validateChanges(changes,j.paths);
+  validateGeneratedChanges(changes,j.paths);
   validateJobScope(j.paths,changes);
   return {payload:{summary:summaries.filter(Boolean).join('; ').slice(0,1000)||'staged repair',changes},resource:selected};
 }
@@ -880,7 +892,7 @@ async function generateChanges(worker,j,ref='main',reviewIssues=[],exclude=[],ca
     summaries.push(String(invoked.payload.summary||'').slice(0,300));
     changes.push(...invoked.payload.changes);
   }
-  validateChanges(changes,j.paths);
+  validateGeneratedChanges(changes,j.paths);
   validateJobScope(j.paths,changes);
   return {payload:{summary:summaries.filter(Boolean).join('; ').slice(0,1000)||'staged implementation',changes},resource:selected};
 }
