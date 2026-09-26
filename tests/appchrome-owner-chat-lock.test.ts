@@ -35,4 +35,31 @@ describe('App Chrome Owner-chat-only maintenance lock',()=>{
     expect(script).not.toContain('if($issue.pull_request){continue}');
   });
 
+  it('revalidates exact authorization/request/artifact after Wait-SafeBoundary',()=>{
+    const script=readFileSync('scripts/tigeriq-core/appchrome-zero-touch.ps1','utf8');
+    expect(script).toContain('function Request-Fingerprint');
+    expect(script).toContain('function Revalidate-After-SafeBoundary');
+    const wait=script.indexOf('Wait-SafeBoundary|Out-Null;$paused=$true');
+    const revalidate=script.indexOf('$revalidated=Revalidate-After-SafeBoundary');
+    const rollback=script.indexOf('New-Item -ItemType Directory -Force -Path $rollback');
+    const installer=script.indexOf('& powershell.exe');
+    expect(revalidate).toBeGreaterThan(wait);
+    expect(revalidate).toBeLessThan(rollback);
+    expect(revalidate).toBeLessThan(installer);
+  });
+
+  it('fails closed for cancellation/revocation during the safe-boundary wait',()=>{
+    const script=readFileSync('scripts/tigeriq-core/appchrome-zero-touch.ps1','utf8');
+    expect(script).toContain('APPCHROME_ZERO_TOUCH_AUTH_REVOKED_DURING_WAIT');
+    expect(script).toContain('APPCHROME_OWNER_AUTH_REVOKED');
+    expect(script).toContain('APPCHROME_OWNER_ISSUE_NOT_OPEN');
+  });
+
+  it('fails closed for supersede or target/artifact changes during the safe-boundary wait',()=>{
+    const script=readFileSync('scripts/tigeriq-core/appchrome-zero-touch.ps1','utf8');
+    expect(script).toContain('APPCHROME_OWNER_AUTH_SUPERSEDED');
+    expect(script).toContain('APPCHROME_ZERO_TOUCH_REQUEST_CHANGED_DURING_WAIT');
+    expect(script).toContain('APPCHROME_ZERO_TOUCH_ARTIFACT_CHANGED_DURING_WAIT');
+    expect(script).toContain('Request-Fingerprint $fresh');
+  });
 });
