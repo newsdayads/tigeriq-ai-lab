@@ -130,6 +130,14 @@ describe('GitHub Core intake guardrails',()=>{
     expect(githubRateLimitCooldownMs(unrelated,1000)).toBe(0);
   });
 
+  it('dedupes unchanged Work Orders before loading role-claim comments on the 5s hot path',()=>{
+    const core=readFileSync(new URL('./github-intake.mjs',import.meta.url),'utf8');
+    const priorIndex=core.indexOf("const prior=(await pool.query");
+    const claimIndex=core.indexOf("const externalClaim=await readActiveExternalRoleClaim");
+    expect(priorIndex).toBeGreaterThan(-1);
+    expect(claimIndex).toBeGreaterThan(priorIndex);
+  });
+
   it('wires shared fast-tick snapshot and rate-limit cooldown into Core and Coding intake schedulers',()=>{
     const core=readFileSync(new URL('./github-intake.mjs',import.meta.url),'utf8');
     const coding=readFileSync(new URL('./github-coding-intake.mjs',import.meta.url),'utf8');
