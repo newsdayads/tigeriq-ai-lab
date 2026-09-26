@@ -46,8 +46,8 @@ const LOCAL_RUN_GRACE_MS=15000;
 const WORK_START_ACK_TIMEOUT_MS=90*1000;
 const UI_STABILITY_PACING_MIN_MS=3000;
 const UI_STABILITY_PACING_MAX_MS=8000;
-const VIEW_FOLLOW_MIN_MS=5*1000;
-const VIEW_FOLLOW_MAX_MS=10*1000;
+const VIEW_FOLLOW_MIN_MS=3*1000;
+const VIEW_FOLLOW_MAX_MS=8*1000;
 function applyNv02VerifiedModelProfile(ui){
   const sameUrl=Boolean(nv02VerifiedModelProfile&&ui?.url&&nv02VerifiedModelProfile.url===ui.url);
   const reasoningHigh=ui?.reasoningEffort==='High';
@@ -394,11 +394,10 @@ async function maybeWorkerContinuity(w,target,ui){
     return;
   }
 
-  if(phase!=='WORKING'&&Number(state.nextPeriodicF5At||0)<=now){
+  if(Number(state.nextPeriodicF5At||0)<=now){
     const refreshed=await withWorkerMutation(w.id,async()=>{
       const fresh=await uiStateRaw(target).catch(()=>null);
       const freshPhase=deriveWorkerPhase(fresh||{},{workerId:w.id});
-      if(freshPhase==='WORKING'||fresh?.uiBusy===true||fresh?.stopVisible===true)return{ok:false,status:'PERIODIC_F5_DEFERRED_WORKING'};
       const beforeUrl=fresh?.url||ui?.url||null,beforePhase=freshPhase||phase;
       const result=await reloadTarget(target);
       await sleep(1600);
@@ -1443,11 +1442,10 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
     await continuityEvent('PERIODIC_RESTART_COMPLETED',{nextRefreshAt:state.nextRefreshAt,uiDeadFallback:Boolean(uiDeadFallbackStatus)});
     return;
   }
-  if(phase!=='WORKING'&&currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0)){
+  if(now>=Number(state.nextPeriodicF5At||0)){
     const refreshed=await withNv02Mutation(async()=>{
       const fresh=applyNv02DurableVerifiedModelProfile(await uiState(target).catch(()=>null));
       const freshPhase=deriveNv02Phase(fresh||{});
-      if(freshPhase==='WORKING'||fresh?.uiBusy===true||fresh?.stopVisible===true)return{ok:false,status:'PERIODIC_F5_DEFERRED_WORKING'};
       const beforeUrl=fresh?.url||ui?.url||null;
       const beforePhase=freshPhase||phase;
       const result=await reloadTarget(target);

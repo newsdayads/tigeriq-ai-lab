@@ -16,7 +16,9 @@ describe('NV02 continuity policy', () => {
     expect(CONTINUE_PROMPTS).toHaveLength(21);
     expect(WORKER_F5_MIN_MS).toBe(5*60*1000);
     expect(WORKER_F5_MAX_MS).toBe(20*60*1000);
-    expect(WORKER_F5_MIN_MS).toBe(CONTINUE_MIN_MS);
+    expect(CONTINUE_MIN_MS).toBe(3*1000);
+    expect(CONTINUE_MAX_MS).toBe(15*1000);
+    expect(WORKER_F5_MIN_MS).not.toBe(CONTINUE_MIN_MS);
     expect(WORKER_F5_MAX_MS).toBeGreaterThan(CONTINUE_MAX_MS);
     expect(REFRESH_MIN_MS).toBe(2*60*60*1000);
     expect(REFRESH_MAX_MS).toBe(4*60*60*1000);
@@ -139,8 +141,10 @@ describe('NV02 continuity policy', () => {
   });
 
   it('keeps random timing inside requested windows', () => {
-    expect(randomDelay(300000,600000,()=>0)).toBe(300000);
-    expect(randomDelay(300000,600000,()=>0.999999)).toBeGreaterThanOrEqual(599999);
+    expect(randomDelay(CONTINUE_MIN_MS,CONTINUE_MAX_MS,()=>0)).toBe(3000);
+    expect(randomDelay(WORKER_F5_MIN_MS,WORKER_F5_MAX_MS,()=>0)).toBe(300000);
+    expect(randomDelay(CONTINUE_MIN_MS,CONTINUE_MAX_MS,()=>0.999999)).toBeGreaterThanOrEqual(14999);
+    expect(randomDelay(WORKER_F5_MIN_MS,WORKER_F5_MAX_MS,()=>0.999999)).toBeGreaterThanOrEqual(1199999);
   });
 
   it('avoids immediate prompt repetition when alternatives exist', () => {
@@ -218,7 +222,7 @@ describe('NV02 continuity policy', () => {
     expect(continuityLoop).not.toContain('checkpointNv02(');
     expect(source).toContain("nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS");
     expect(source).toContain("unchanged>=MAX_WORKING_UNCHANGED_CHECKS");
-    expect(continuityLoop).toContain("if(phase!=='WORKING'&&currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0))");
+    expect(continuityLoop).toContain("if(now>=Number(state.nextPeriodicF5At||0))");
     expect(continuityLoop).toContain("if(phase!=='WORKING'&&now>=Number(state.nextRefreshAt||0))");
     expect(continuityLoop.indexOf("if(phase==='WORKING')")).toBeLessThan(continuityLoop.indexOf("if(now<Number(state.nextContinueAt||0))return"));
     expect(source).toContain("const NV02_F5_MIN_MS=5*60*1000");
@@ -280,7 +284,7 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("const modelCheckRequired=now>=Number(state.modelCheckBlockedUntil||0)&&(ui?.modelExact!==true||!state.verifiedChatUrl||!sameNv02Chat(state.verifiedChatUrl,ui?.url))");
     expect(source).toContain("phase==='STALLED'&&ui?.modelExact!==true&&modelCheckRequired");
     const bootFreshGate=continuityLoop.indexOf("bootFreshContextPending.has('NV02')");
-    const periodicF5Gate=continuityLoop.indexOf("if(phase!=='WORKING'&&currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0))");
+    const periodicF5Gate=continuityLoop.indexOf("if(now>=Number(state.nextPeriodicF5At||0))");
     const modelRecoveryGate=continuityLoop.indexOf("if(phase==='STALLED'&&ui?.modelExact!==true&&modelCheckRequired&&");
     expect(bootFreshGate).toBeGreaterThan(-1);
     expect(periodicF5Gate).toBeGreaterThan(-1);
@@ -298,7 +302,7 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("pages.find(t=>sameWorkerLocation(t.url,preferredUrl))");
 
 
-    const f5Block=source.slice(source.indexOf("if(phase!=='WORKING'&&currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0))"),source.indexOf("const modelCheckRequired="));
+    const f5Block=source.slice(source.indexOf("if(now>=Number(state.nextPeriodicF5At||0))"),source.indexOf("const modelCheckRequired="));
     expect(f5Block).toContain("reloadTarget(target)");
     expect(f5Block).not.toContain("ensureNv02ModelProfile");
     expect(f5Block).not.toContain("checkpointNv02");

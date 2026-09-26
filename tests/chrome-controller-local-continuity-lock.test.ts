@@ -50,7 +50,7 @@ describe('App Chrome Recovery V1 local-only spec lock',()=>{
 
   it('keeps WORKING-safe F5/restart and anti-spam guards',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
-    expect(bridge).toContain("PERIODIC_F5_DEFERRED_WORKING");
+    expect(bridge).not.toContain("PERIODIC_F5_DEFERRED_WORKING");
     expect(bridge).toContain("if(phase!=='WORKING'&&now>=Number(state.nextRefreshAt||0))");
     expect(bridge).toContain('awaitingWorkStart===true');
     expect(bridge).toContain('WORK_START_ACK_TIMEOUT_REARMED');

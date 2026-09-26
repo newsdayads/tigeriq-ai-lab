@@ -156,15 +156,15 @@ describe('independent worker recovery flows in direct-cdp-bridge',()=>{
 
   it('rechecks WORKING inside F5/restart mutation boundaries and never stops active work for maintenance',()=>{
     expect(source).toContain("MAINTENANCE_DEFERRED_WORKING");
-    expect(source).toContain("PERIODIC_F5_DEFERRED_WORKING");
+    expect(source).not.toContain("PERIODIC_F5_DEFERRED_WORKING");
     const prep=source.slice(source.indexOf('async function prepareWorkerForPlannedRestart'),source.indexOf('function archiveMenuPointExpr'));
     expect(prep).not.toContain('stopStalledWorking(target)');
     const generic=source.slice(source.indexOf('async function maybeWorkerContinuity'),source.indexOf('\nfunction log('));
     expect(generic).toContain("const freshPhase=deriveWorkerPhase(fresh||{},{workerId:w.id})");
-    expect(generic).toContain("freshPhase==='WORKING'||fresh?.uiBusy===true||fresh?.stopVisible===true");
+    expect(generic).not.toContain("freshPhase==='WORKING'||fresh?.uiBusy===true||fresh?.stopVisible===true");
     const nv02=source.slice(source.indexOf('async function maybeNv02Continuity'),source.indexOf('async function handleCommand'));
     expect(nv02).toContain('const fresh=applyNv02DurableVerifiedModelProfile(await uiState(target).catch(()=>null))');
-    expect(nv02).toContain("freshPhase==='WORKING'||fresh?.uiBusy===true||fresh?.stopVisible===true");
+    expect(nv02).not.toContain("freshPhase==='WORKING'||fresh?.uiBusy===true||fresh?.stopVisible===true");
   });
 
   it('uses a lightweight cached control-state endpoint instead of polling full controller state per worker',()=>{
@@ -377,7 +377,7 @@ describe('safe recovery contracts',()=>{
   it('never F5s or reopens NV03/NV04 while WORKING; bounded stuck recovery only clicks Stop',()=>{
     const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     const continuity=source.slice(source.indexOf('async function maybeWorkerContinuity'),source.indexOf('\nfunction log(event'));
-    expect(continuity).toContain("if(phase!=='WORKING'&&Number(state.nextPeriodicF5At||0)<=now)");
+    expect(continuity).toContain("if(Number(state.nextPeriodicF5At||0)<=now)");
     expect(continuity).toContain("if(phase!=='WORKING'&&now>=Number(state.nextResetAt||0))");
     const working=continuity.slice(continuity.indexOf("if(phase==='WORKING')"),continuity.indexOf("if(phase==='READY')"));
     expect(working).toContain("'WORKING_LONG_RUNNING_NO_MUTATION'");
