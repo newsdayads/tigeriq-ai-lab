@@ -1,0 +1,3 @@
+AUTO_REFILL_CANARY_D=PASS
+
+Reference: Issue #1056

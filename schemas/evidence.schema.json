@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tigeriq.dev/schemas/evidence.schema.json",
+  "title": "TigerIQ Evidence Record",
+  "type": "object",
+  "required": ["id", "workOrderId", "gate", "commitSha", "command", "exitCode", "status", "timestamp"],
+  "properties": {
+    "id": {"type": "string", "minLength": 1},
+    "workOrderId": {"type": "string", "minLength": 1},
+    "gate": {"type": "string", "minLength": 1},
+    "commitSha": {"type": "string", "minLength": 7},
+    "command": {"type": "string", "minLength": 1},
+    "exitCode": {"type": "integer"},
+    "status": {"enum": ["pass", "fail", "error"]},
+    "artifactUris": {"type": "array", "items": {"type": "string"}},
+    "logDigest": {"type": "string"},
+    "timestamp": {"type": "string", "format": "date-time"}
+  },
+  "additionalProperties": false
+}

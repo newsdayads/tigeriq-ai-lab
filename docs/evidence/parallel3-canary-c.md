@@ -1,0 +1,3 @@
+PARALLEL3_CANARY_C=PASS
+
+Related to issue #1082

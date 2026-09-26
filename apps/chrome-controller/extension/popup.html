@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>TigerIQ Chrome Controller</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <main class="popup">
+    <header class="header">
+      <div>
+        <h1>TigerIQ Controller</h1>
+        <p>Trạng thái Profile</p>
+      </div>
+      <span id="controllerStatus" class="status status-offline">OFFLINE</span>
+    </header>
+
+    <section class="card">
+      <div class="label">Worker đã gắn</div>
+      <div id="profileWorkers" class="worker-list" aria-live="polite">Đang đọc cấu hình…</div>
+    </section>
+
+    <section class="card">
+      <div class="label">Controller</div>
+      <div id="controllerDetail" class="detail">Đang kiểm tra kết nối…</div>
+    </section>
+
+    <section class="card">
+      <div class="label">Trạng thái Worker</div>
+      <div id="workerStates" class="state-list" aria-live="polite">Đang tải…</div>
+    </section>
+
+    <section class="card">
+      <div class="label">Dọn chat an toàn</div>
+      <select id="archiveWorker" aria-label="Worker cần lưu trữ">
+        <option value="NV02">NV02 · ChatGPT Plus</option>
+        <option value="NV03">NV03 · ChatGPT Go</option>
+      </select>
+      <button id="saveArchive" class="options-button" type="button">Lưu &amp; Lưu trữ</button>
+      <label class="detail"><input id="archiveAfterDone" type="checkbox" /> Tự lưu trữ sau DONE</label>
+      <div class="detail">Mặc định TẮT. Chỉ chạy khi có DONE + bằng chứng GitHub/Core; Gemini Pro chưa tự lưu trữ.</div>
+    </section>
+
+    <button id="options" class="options-button" type="button">Mở Options</button>
+    <p id="error" class="error" role="alert" hidden></p>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>

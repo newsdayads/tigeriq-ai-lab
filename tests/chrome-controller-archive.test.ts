@@ -1,0 +1,47 @@
+import { readFileSync } from 'node:fs';
+import { describe, expect, it } from 'vitest';
+
+describe('Chrome Controller safe save-and-archive',()=>{
+  it('fails closed unless the current ChatGPT conversation archive target is unique',()=>{
+    const content=readFileSync('apps/chrome-controller/extension/content.js','utf8');
+    expect(content).toContain('ARCHIVE_REQUIRES_CONVERSATION_URL');
+    expect(content).toContain('ARCHIVE_MENU_BUTTON_NOT_UNIQUE');
+    expect(content).toContain('ARCHIVE_MENU_ITEM_NOT_UNIQUE');
+    expect(content).toContain("['archive', 'lưu trữ']");
+    expect(content).toContain('ARCHIVE_NOT_CONFIRMED');
+    expect(content).toContain("message?.type === 'TIGERIQ_ARCHIVE_CONVERSATION'");
+  });
+
+  it('requires terminal external evidence and a fresh durable receipt for direct archive',()=>{
+    const background=readFileSync('apps/chrome-controller/extension/background.js','utf8');
+    const archiveCommand=readFileSync('apps/chrome-controller/extension/archive-command.js','utf8');
+    const receipt=readFileSync('apps/chrome-controller/extension/save-receipt.js','utf8');
+    expect(background).toContain("const ARCHIVE_SUPPORTED_WORKERS = new Set(['NV02','NV03'])");
+    expect(background).toContain('ARCHIVE_ACTIVE_JOB_FORBIDDEN');
+    expect(background).toContain('ARCHIVE_EXTERNAL_DONE_EVIDENCE_REQUIRED');
+    expect(background).toContain('SAVE_RESPONSE_NOT_OBSERVED');
+    expect(background).toContain('crypto.randomUUID()');
+    expect(background).toContain('await waitForDurableSaveReceipt(saveToken,workerId,dispatchedAt)');
+    expect(background.indexOf('await waitForDurableSaveReceipt(saveToken,workerId,dispatchedAt)')).toBeLessThan(background.indexOf("type:'TIGERIQ_ARCHIVE_CONVERSATION'"));
+    expect(background).toContain("if(action==='ARCHIVE_CHAT')");
+    expect(background).toContain('return runArchiveCommand(workerId,payload,{');
+    expect(archiveCommand).toContain('const result=await saveAndArchive(workerId,{requireDone:true});');
+    expect(archiveCommand).toContain('ARCHIVE_FRESH_DURABLE_RECEIPT_REQUIRED');
+    expect(receipt).toContain('TIGERIQ_SAVE_RECEIPT_V1');
+    expect(receipt).toContain('/api/ui-autopilot/save-receipt');
+    expect(receipt).toContain('SAVE_NOT_DURABLE');
+  });
+
+  it('exposes manual action and keeps auto archive default off',()=>{
+    const html=readFileSync('apps/chrome-controller/extension/popup.html','utf8');
+    const script=readFileSync('apps/chrome-controller/extension/popup.js','utf8');
+    const manifest=JSON.parse(readFileSync('apps/chrome-controller/extension/manifest.json','utf8'));
+    expect(html).toContain('id="saveArchive"');
+    expect(html).toContain('Lưu &amp; Lưu trữ');
+    expect(html).toContain('id="archiveAfterDone" type="checkbox"');
+    expect(html).not.toContain('id="archiveAfterDone" type="checkbox" checked');
+    expect(script).toContain("type:'TIGERIQ_SAVE_AND_ARCHIVE'");
+    expect(manifest.version).toBe('1.1.6');
+    expect(manifest.host_permissions).toContain('http://127.0.0.1:8794/*');
+  });
+});

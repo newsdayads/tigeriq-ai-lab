@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tigeriq.dev/schemas/audit-log.schema.json",
+  "title": "TigerIQ Audit Log Entry",
+  "type": "object",
+  "required": ["id", "actor", "action", "target", "timestamp"],
+  "properties": {
+    "id": {"type": "string", "minLength": 1},
+    "actor": {"type": "string", "minLength": 1},
+    "role": {"type": "string"},
+    "action": {"type": "string", "minLength": 1},
+    "target": {"type": "string", "minLength": 1},
+    "workOrderId": {"type": "string"},
+    "commitSha": {"type": "string"},
+    "metadata": {"type": "object"},
+    "timestamp": {"type": "string", "format": "date-time"}
+  },
+  "additionalProperties": false
+}
