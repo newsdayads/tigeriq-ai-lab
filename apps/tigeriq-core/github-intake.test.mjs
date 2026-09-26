@@ -25,7 +25,7 @@ describe('GitHub Core intake guardrails',()=>{
     const assigned={...legacy,body:legacy.body.replace('CAPABILITY=pc_operator','CAPABILITY=pc_operator\nASSIGNED_EXECUTOR=NV06')};
     expect(parseExecutableIssue(assigned)).toMatchObject({priority:'P1',sourcePriority:'P0',legacyP0Autonomous:true,ownerControlled:false,targetWorker:'NV06'});
     const ownerHeld={...assigned,body:assigned.body+'\nOWNER_HOLD=true'};
-    expect(parseExecutableIssue(ownerHeld)).toBeNull();
+    expect(parseExecutableIssue(ownerHeld)).toMatchObject({priority:'P0',sourcePriority:'P0',legacyP0Autonomous:false,ownerControlled:true,targetWorker:'NV06',route:'OPENCLAW'});
     expect(extractPcOperatorInstruction(legacy.body)).toContain('tcp_probe');
   });
 
