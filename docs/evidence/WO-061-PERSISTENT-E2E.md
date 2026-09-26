@@ -1,3 +1,0 @@
-# WO-061 Persistent Coding Lane E2E
-
-Marker: CODING_LANE_PERSISTENT_E2E_20260912

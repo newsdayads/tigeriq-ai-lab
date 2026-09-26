@@ -1496,7 +1496,7 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
     return;
   }
   const modelCheckRequired=now>=Number(state.modelCheckBlockedUntil||0)&&(ui?.modelExact!==true||!state.verifiedChatUrl||!sameNv02Chat(state.verifiedChatUrl,ui?.url));
-  if(phase==='STALLED'&&ui?.modelExact!==true&&modelCheckRequired&&(ui?.composerReady===true||ui?.modelControlPresent===true)){
+  if((phase==='READY'||phase==='STALLED')&&ui?.modelExact!==true&&modelCheckRequired&&(ui?.composerReady===true||ui?.modelControlPresent===true)){
     try{
       const corrected=await withNv02Mutation(()=>ensureNv02ModelProfile(target),'MODEL_PROFILE_RECOVERY');
       if(corrected?.status==='MUTATION_LEASE_BUSY')return;

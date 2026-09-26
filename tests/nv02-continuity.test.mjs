@@ -196,7 +196,7 @@ describe('NV02 continuity policy', () => {
     expect(continueDispatch).not.toContain('CONTINUE_CURRENT_WORK_VERIFIED');
     expect(continueDispatch).not.toContain('CONTINUE_SKIPPED_NO_CURRENT_WORK');
     expect(continueDispatch).not.toContain('CONTINUE_SKIPPED_CURRENT_WORK_UNVERIFIED');
-    expect(source).toContain("if(phase==='STALLED'&&ui?.modelExact!==true&&modelCheckRequired&&(ui?.composerReady===true||ui?.modelControlPresent===true))");
+    expect(source).toContain("if((phase==='READY'||phase==='STALLED')&&ui?.modelExact!==true&&modelCheckRequired&&(ui?.composerReady===true||ui?.modelControlPresent===true))");
     expect(source).toContain("withNv02Mutation(()=>ensureNv02ModelProfile(target),'MODEL_PROFILE_RECOVERY')");
     expect(source).toContain("modelName==='GPT-5.6 Sol'");
     expect(source).toContain("const NV02_F5_MAX_MS=20*60*1000");
@@ -282,13 +282,15 @@ describe('NV02 continuity policy', () => {
 
     expect(source).toContain("sameNv02Chat(state.verifiedChatUrl,ui?.url)");
     expect(source).toContain("const modelCheckRequired=now>=Number(state.modelCheckBlockedUntil||0)&&(ui?.modelExact!==true||!state.verifiedChatUrl||!sameNv02Chat(state.verifiedChatUrl,ui?.url))");
-    expect(source).toContain("phase==='STALLED'&&ui?.modelExact!==true&&modelCheckRequired");
+    expect(source).toContain("(phase==='READY'||phase==='STALLED')&&ui?.modelExact!==true&&modelCheckRequired");
     const bootFreshGate=continuityLoop.indexOf("bootFreshContextPending.has('NV02')");
     const periodicF5Gate=continuityLoop.indexOf("if(now>=Number(state.nextPeriodicF5At||0))");
-    const modelRecoveryGate=continuityLoop.indexOf("if(phase==='STALLED'&&ui?.modelExact!==true&&modelCheckRequired&&");
+    const modelRecoveryGate=continuityLoop.indexOf("if((phase==='READY'||phase==='STALLED')&&ui?.modelExact!==true&&modelCheckRequired&&");
     expect(bootFreshGate).toBeGreaterThan(-1);
     expect(periodicF5Gate).toBeGreaterThan(-1);
     expect(modelRecoveryGate).toBeGreaterThan(bootFreshGate);
+    expect(modelRecoveryGate).toBeLessThan(continuityLoop.indexOf("if(phase==='READY')"));
+    expect(continuityLoop).not.toContain("if(phase==='WORKING'&&ui?.modelExact!==true&&modelCheckRequired");
 
     expect(source).not.toContain("state.verifiedChatUrl===ui?.url");
     expect(source).toContain("const currentUrl=String(profile.url||'')");
