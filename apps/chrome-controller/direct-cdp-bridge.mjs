@@ -309,9 +309,13 @@ async function maybeWorkerContinuity(w,target,ui){
     await genericWorkerEvent(w.id,'BLOCKED',{securityBlock:ui?.securityBlock||null});
     return;
   }
-  if(!validWorkerUrl(w,ui?.url)){
+  const wrongWorkerContext=!validWorkerUrl(w,ui?.url);
+  if(wrongWorkerContext&&phase!=='STALLED'){
     await genericWorkerEvent(w.id,'WRONG_WORKER_CONTEXT',{url:ui?.url||null,expectedHost:expectedHost(w)});
     return;
+  }
+  if(wrongWorkerContext){
+    await genericWorkerEvent(w.id,'WRONG_WORKER_CONTEXT_STALLED_RECOVERY',{url:ui?.url||null,expectedHost:expectedHost(w)});
   }
   if(bootFreshContextPending.has(w.id)&&phase!=='WORKING'){
     bootFreshContextPending.delete(w.id);

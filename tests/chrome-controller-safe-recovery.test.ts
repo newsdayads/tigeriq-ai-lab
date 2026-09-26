@@ -470,3 +470,14 @@ describe('safe recovery contracts',()=>{
     expect(server).toContain("state.status='PAUSED'");
   });
 });
+
+describe('App Chrome wrong-context stalled recovery #1940',()=>{
+  it('routes a chrome error page through bounded stalled recovery rather than an unbounded wrong-context loop',()=>{
+    const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    expect(bridge).toContain("const wrongWorkerContext=!validWorkerUrl(w,ui?.url);");
+    expect(bridge).toContain("if(wrongWorkerContext&&phase!=='STALLED')");
+    expect(bridge).toContain("WRONG_WORKER_CONTEXT_STALLED_RECOVERY");
+    expect(bridge).toContain("else if(stalledChecks>=MAX_STALLED_CHECKS)");
+    expect(bridge).toContain("'STALLED_3_CHECKS'");
+  });
+});
