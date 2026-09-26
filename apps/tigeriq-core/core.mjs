@@ -874,9 +874,10 @@ async function claimJob() {
     }
     const reviewerResourceIds=await reviewerResourceIdsForJob(j);
     const routed=await invokeRouted(j.prompt,j.capability,j.id,j.max_attempts-j.attempts,{taskKind:j.kind||'ai',profile:j.routing_profile||'AUTO',reviewerResourceIds,preferredEmployeeId:j.objective_metadata?.targetWorker||null});
+    const reviewEvidence=j.kind==='github_review'?parseGithubCoreReviewEvidence(routed.text,j.prompt):null;
     await hotPathStage(j,'EVIDENCE',{providerLatencyMs:routed.latencyMs,employeeId:routed.resource.id,resourceId:routed.resource.resourceId});
     const hadResourceWait=Number(j.resource_wait_count||0)>0;
-    await pool.query("update tigeriq_jobs set status='done',employee_id=$2,resource_id=$3,provider=$4,routing_profile=$5,routing_decision=$6,result=$7,lease_until=null,completed_at=now(),next_attempt_at=null,resource_wait_count=0,resource_wait_started_at=null where id=$1",[j.id,routed.resource.id,routed.resource.resourceId,routed.resource.provider,routed.routingProfile,JSON.stringify(routed.routingDecision),JSON.stringify({text:routed.text,latencyMs:routed.latencyMs,failures:routed.failures,resourceId:routed.resource.resourceId,routingProfile:routed.routingProfile,routingDecision:routed.routingDecision})]);
+    await pool.query("update tigeriq_jobs set status='done',employee_id=$2,resource_id=$3,provider=$4,routing_profile=$5,routing_decision=$6,result=$7,lease_until=null,completed_at=now(),next_attempt_at=null,resource_wait_count=0,resource_wait_started_at=null where id=$1",[j.id,routed.resource.id,routed.resource.resourceId,routed.resource.provider,routed.routingProfile,JSON.stringify(routed.routingDecision),JSON.stringify({text:routed.text,reviewEvidence,latencyMs:routed.latencyMs,failures:routed.failures,resourceId:routed.resource.resourceId,routingProfile:routed.routingProfile,routingDecision:routed.routingDecision})]);
     if(hadResourceWait)await event('RESOURCE_WAIT_RELEASED',{jobId:j.id,objectiveId:j.objective_id,employeeId:routed.resource.id,resourceId:routed.resource.resourceId,provider:routed.resource.provider,taskKind:j.kind||'ai'});
     await event('JOB_DONE',{jobId:j.id,objectiveId:j.objective_id,employeeId:routed.resource.id,resourceId:routed.resource.resourceId,provider:routed.resource.provider,taskKind:j.kind||'ai',profile:routed.routingProfile});
     await hotPathStage(j,'DONE');
@@ -1002,6 +1003,82 @@ async function persistTerminalHandoff(o,decision,currentPhase){
   }catch(error){await client.query('rollback');throw error;}finally{client.release();}
 }
 
+export function githubCoreReviewJobId(objectiveId=''){
+  const normalized=String(objectiveId||'').trim().replace(/[^A-Za-z0-9._-]+/g,'-').slice(0,160);
+  if(!normalized)throw new Error('CORE_REVIEW_OBJECTIVE_ID_REQUIRED');
+  return `JOB-${normalized}-REVIEW`;
+}
+
+export function githubCoreReviewDisposition(job){
+  if(!job)return {action:'queue',status:null};
+  const status=String(job.status||'').toLowerCase();
+  if(status==='done')return {action:'complete',status};
+  if(status==='failed')return {action:'block',status};
+  if(['queued','running','waiting_resource'].includes(status))return {action:'wait',status};
+  return {action:'block',status:status||'unknown'};
+}
+
+export function parseGithubCoreReviewEvidence(text,prompt=''){
+  const raw=String(text||'').trim();
+  const expected=String(prompt||'').match(/^TARGET_HEAD=([a-f0-9]{7,64})$/mi)?.[1]?.toLowerCase()||'';
+  const decision=raw.match(/^REVIEW=(PASS|CHANGES_REQUIRED)$/mi)?.[1]?.toUpperCase()||'';
+  const targetHead=raw.match(/^TARGET_HEAD=([a-f0-9]{7,64})$/mi)?.[1]?.toLowerCase()||'';
+  const summary=raw.match(/^SUMMARY=(.+)$/mi)?.[1]?.trim().slice(0,600)||'';
+  const findings=raw.match(/^FINDINGS=(.+)$/mi)?.[1]?.trim().slice(0,1800)||'';
+  const valid=raw.includes('[TIGERIQ_INDEPENDENT_REVIEW_V1]')&&Boolean(expected)&&Boolean(decision)&&Boolean(targetHead)&&targetHead===expected&&Boolean(summary)&&Boolean(findings);
+  if(!valid){
+    const error=new Error('CORE_REVIEW_EVIDENCE_INVALID');
+    error.kind='invalid_response';
+    error.detail={expectedHead:expected||null,targetHead:targetHead||null,decision:decision||null};
+    throw error;
+  }
+  return {schema:'TIGERIQ_INDEPENDENT_REVIEW_V1',decision,targetHead,summary,findings};
+}
+
+async function reconcileGithubCoreReviewObjective(o){
+  if(o?.metadata?.source!=='github'||o?.metadata?.dispatchLane!=='CORE_REVIEW')return false;
+  const jobId=githubCoreReviewJobId(o.id);
+  const job=(await pool.query("select id,status,employee_id,resource_id,provider,result,failure from tigeriq_jobs where id=$1",[jobId])).rows[0]||null;
+  const plan=githubCoreReviewDisposition(job);
+  if(plan.action==='queue'){
+    const prompt=[
+      String(o.objective||''),
+      '',
+      'You are the explicitly assigned independent TigerIQ reviewer. Review ONLY the supplied GitHub evidence; do not invent missing evidence or perform source mutation.',
+      'Return concise durable evidence containing exactly these fields on separate lines:',
+      '[TIGERIQ_INDEPENDENT_REVIEW_V1]',
+      'REVIEW=PASS|CHANGES_REQUIRED',
+      'TARGET_HEAD=<exact reviewed head from supplied evidence>',
+      'SUMMARY=<short finding>',
+      'FINDINGS=<specific findings or NONE>',
+      'If exact-head diff/check evidence is missing or inconsistent, REVIEW=CHANGES_REQUIRED and state the missing evidence.',
+    ].join('\n');
+    await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,max_attempts) values($1,$2,$3,$4,'review','github_review','queued',2) on conflict(id) do nothing",[jobId,o.id,`GitHub independent review ${o.metadata?.issueNumber||o.id}`,prompt]);
+    await pool.query("update tigeriq_objectives set summary=$2,next_check_at=now()+interval '5 seconds',updated_at=now() where id=$1",[o.id,`direct CORE_REVIEW queued: ${jobId}`]);
+    await event('GITHUB_CORE_REVIEW_JOB_MATERIALIZED',{objectiveId:o.id,jobId,issueNumber:o.metadata?.issueNumber||null,targetWorker:o.metadata?.targetWorker||null});
+    return true;
+  }
+  if(plan.action==='wait'){
+    await pool.query("update tigeriq_objectives set summary=$2,next_check_at=now()+interval '5 seconds',updated_at=now() where id=$1",[o.id,`direct CORE_REVIEW ${plan.status}: ${jobId}`]);
+    return true;
+  }
+  if(plan.action==='complete'){
+    const reviewer=String(job.employee_id||'UNKNOWN');
+    const resource=String(job.resource_id||'UNKNOWN');
+    const provider=String(job.provider||'UNKNOWN');
+    const reviewEvidence=job.result?.reviewEvidence||null;
+    const evidence=reviewEvidence?JSON.stringify(reviewEvidence):String(job.result?.text||'').trim().slice(0,4200);
+    const summary=`CORE_REVIEW completed by ${reviewer}/${provider}; resource=${resource}; job=${jobId}; evidence=${evidence||'EMPTY_REVIEW_EVIDENCE'}`.slice(0,5000);
+    await pool.query("update tigeriq_objectives set status='completed',summary=$2,updated_at=now() where id=$1 and status='active'",[o.id,summary]);
+    await event('GITHUB_CORE_REVIEW_COMPLETED',{objectiveId:o.id,jobId,employeeId:reviewer,resourceId:resource,provider,evidence:evidence.slice(0,1800)});
+    return true;
+  }
+  const failure=String(job?.failure?.message||job?.failure?.kind||`unexpected_status_${plan.status}`).slice(0,600);
+  await pool.query("update tigeriq_objectives set status='blocked',summary=$2,updated_at=now() where id=$1 and status='active'",[o.id,`CORE_REVIEW blocked; job=${jobId}; failure=${failure}`]);
+  await event('GITHUB_CORE_REVIEW_BLOCKED',{objectiveId:o.id,jobId,status:plan.status||null,failure});
+  return true;
+}
+
 async function reconcileCoreOpenClawBoundedObjectives(){
   const rows=(await pool.query(`select o.id as objective_id,j.id as job_id,j.status,j.employee_id,j.resource_id,j.provider,j.failure,j.result
     from tigeriq_objectives o
@@ -1044,6 +1121,7 @@ async function managerTick() {
     order by case o.priority when 'P0' then 0 when 'P1' then 1 when 'P2' then 2 when 'P3' then 3 when 'P4' then 4 when 'P5' then 5 else 6 end,case when o.metadata#>>'{handoff,state}'='waiting_children' then 1 else 0 end,o.created_at limit 1`);
   const o=q.rows[0]; if(!o) return;
   if(await reconcileAutonomousHandoff(o)) return;
+  if(await reconcileGithubCoreReviewObjective(o)) return;
   const campaign=o.metadata?.campaign||null;
   const phases=Array.isArray(campaign?.phases)?campaign.phases:[];
   const currentPhase=Math.min(Math.max(Number(campaign?.currentPhase)||0,0),Math.max(0,phases.length-1));

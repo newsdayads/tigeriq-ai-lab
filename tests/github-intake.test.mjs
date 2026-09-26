@@ -255,3 +255,59 @@ test('closed source issue terminalizes stale active GitHub objective and release
   assert.strictEqual(out.issueNumber,60);
   assert.strictEqual(pool.objectives.at(-1).metadata.issueNumber,60);
 });
+
+test('CORE_REVIEW GitHub objectives bypass generic manager and queue one direct review job',()=>{
+  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+  const helperAt=core.indexOf('async function reconcileGithubCoreReviewObjective(o)');
+  const managerAt=core.indexOf('async function managerTick()');
+  const managerSlice=core.slice(managerAt,managerAt+4000);
+  assert.ok(helperAt>0&&helperAt<managerAt);
+  assert.match(core,/dispatchLane!=='CORE_REVIEW'/);
+  assert.match(core,/values\(\$1,\$2,\$3,\$4,'review','github_review','queued',2\)/);
+  assert.match(core,/\[TIGERIQ_INDEPENDENT_REVIEW_V1\]/);
+  assert.match(core,/REVIEW=PASS\|CHANGES_REQUIRED/);
+  assert.match(managerSlice,/if\(await reconcileGithubCoreReviewObjective\(o\)\) return;/);
+  assert.ok(managerSlice.indexOf('reconcileGithubCoreReviewObjective(o)')<managerSlice.indexOf('callManagerDecision('));
+});
+
+test('CORE_REVIEW direct path preserves strict targetWorker routing and terminal evidence',()=>{
+  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+  assert.match(core,/preferredEmployeeId:j\.objective_metadata\?\.targetWorker\|\|null/);
+  assert.match(core,/CORE_REVIEW completed by \$\{reviewer\}\/\$\{provider\}/);
+  assert.match(core,/GITHUB_CORE_REVIEW_COMPLETED/);
+  assert.match(core,/GITHUB_CORE_REVIEW_BLOCKED/);
+});
+
+
+test('CORE_REVIEW evidence parser enforces exact reviewed head and structured decision',()=>{
+  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+  const start=core.indexOf('export function parseGithubCoreReviewEvidence');
+  const end=core.indexOf('\n}\n\nasync function reconcileGithubCoreReviewObjective',start)+2;
+  assert.ok(start>0&&end>start);
+  const source=core.slice(start,end).replace(/^export\s+/,'');
+  const parse=(new Function(`${source}; return parseGithubCoreReviewEvidence;`))();
+  const prompt='TARGET_HEAD=abcdef1234567890\nReview this exact head.';
+  const valid=[
+    '[TIGERIQ_INDEPENDENT_REVIEW_V1]',
+    'REVIEW=PASS',
+    'TARGET_HEAD=abcdef1234567890',
+    'SUMMARY=checks and diff match',
+    'FINDINGS=NONE',
+  ].join('\n');
+  assert.deepStrictEqual(parse(valid,prompt),{
+    schema:'TIGERIQ_INDEPENDENT_REVIEW_V1',
+    decision:'PASS',
+    targetHead:'abcdef1234567890',
+    summary:'checks and diff match',
+    findings:'NONE',
+  });
+  assert.throws(()=>parse(valid.replace('abcdef1234567890','deadbeef'),prompt),/CORE_REVIEW_EVIDENCE_INVALID/);
+  assert.throws(()=>parse(valid.replace('REVIEW=PASS','REVIEW=MAYBE'),prompt),/CORE_REVIEW_EVIDENCE_INVALID/);
+});
+
+test('github_review job validates reviewer evidence before terminal done write',()=>{
+  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+  const run=core.slice(core.indexOf('async function claimJob()'),core.indexOf('async function callManagerDecision'));
+  assert.match(run,/j\.kind==='github_review'\?parseGithubCoreReviewEvidence\(routed\.text,j\.prompt\):null/);
+  assert.match(run,/reviewEvidence/);
+});
