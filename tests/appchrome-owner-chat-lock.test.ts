@@ -72,6 +72,23 @@ describe('App Chrome Owner-chat-only maintenance lock',()=>{
     expect(invoke).toBeGreaterThan(args);
   });
 
+  it('pre-quiesces only NV03/NV04 for NV02-only rollout before the safe boundary',()=>{
+    const script=readFileSync('scripts/tigeriq-core/appchrome-zero-touch.ps1','utf8');
+    expect(script).toContain('function Pause-Nv02OnlySideWriters');
+    expect(script).toContain('if(-not(Request-Nv02Only $req)){return @()}');
+    expect(script).toContain("foreach($id in @('NV03','NV04'))");
+    expect(script).toContain("$healthUri=$controller+'/api/utility/workers/'+$id+'/health'");
+    expect(script).toContain("$pauseUri=$controller+'/api/utility/workers/'+$id+'/pause'");
+    expect(script).toContain('if(-not [bool]$health.utilityPaused)');
+    expect(script).toContain('APPCHROME_NV02_ONLY_SIDE_WRITER_PAUSE_FAILED');
+    expect(script).not.toContain("foreach($id in @('NV02','NV03','NV04'))");
+    expect(script).not.toContain("$controller+'/api/utility/workers/'+$id+'/resume'");
+    const pre=script.indexOf('$preQuiescedWorkers=@(Pause-Nv02OnlySideWriters $req)');
+    const wait=script.indexOf('Wait-SafeBoundary|Out-Null;$paused=$true');
+    expect(pre).toBeGreaterThan(-1);
+    expect(wait).toBeGreaterThan(pre);
+  });
+
   it('fails closed for supersede or target/artifact changes during the safe-boundary wait',()=>{
     const script=readFileSync('scripts/tigeriq-core/appchrome-zero-touch.ps1','utf8');
     expect(script).toContain('APPCHROME_OWNER_AUTH_SUPERSEDED');
