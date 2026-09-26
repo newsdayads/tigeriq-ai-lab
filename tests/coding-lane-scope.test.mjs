@@ -2,7 +2,7 @@ import {test as vitestTest} from 'vitest';
 const test=(name,fn)=>vitestTest(name,async()=>{const t={test:async(_name,subfn)=>subfn(t)};return fn(t)});
 import assert from 'node:assert';
 import {CodingScopeViolationError,parseCompactEditJson,salvageCompactEditsJson,validateJobScope,validateSourceScope} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
-import {extractCanonicalAllowedPaths} from '../apps/tigeriq-coding-lane/policy.mjs';
+import {extractCanonicalAllowedPathPrefixes,extractCanonicalAllowedPaths} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 test('coding lane scope validation tests',async(t)=>{
   const allowedPaths=['apps/tigeriq-coding-lane/coding-lane.mjs','apps/tigeriq-coding-lane/policy.mjs','tests/coding-lane-scope.test.mjs','tests/coding-lane-foundation.test.mjs'];
@@ -41,6 +41,15 @@ test('coding lane scope validation tests',async(t)=>{
 
   await t.test('source manager scope expansion fails closed',()=>{
     assert.throws(()=>validateSourceScope(['apps/tigeriq-coding-lane/policy.mjs','unauthorized/extra.mjs'],allowedPaths),e=>e instanceof CodingScopeViolationError&&e.code==='CODING_SCOPE_VIOLATION'&&e.offending[0]==='unauthorized/extra.mjs');
+  });
+
+  await t.test('ALLOW_PATH_PREFIX enforces exact files plus directory descendants',()=>{
+    const objective='ALLOW_PATH_PREFIX=apps/tigeriq-core/github-intake.mjs,tests/';
+    const canonical=extractCanonicalAllowedPaths(objective);
+    const prefixes=extractCanonicalAllowedPathPrefixes(objective);
+    assert.strictEqual(validateSourceScope(['apps/tigeriq-core/github-intake.mjs'],canonical,prefixes),true);
+    assert.strictEqual(validateSourceScope(['tests/example.test.mjs'],canonical,prefixes),true);
+    assert.throws(()=>validateSourceScope(['apps/unrelated/file.mjs'],canonical,prefixes),e=>e instanceof CodingScopeViolationError&&e.code==='CODING_SCOPE_VIOLATION');
   });
 
   await t.test('generated extra path fails closed',()=>{
