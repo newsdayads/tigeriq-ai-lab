@@ -758,9 +758,16 @@ async function uiStateRaw(target){
   try{return (await p.call('Runtime.evaluate',{expression:UI_EXPR,returnByValue:true})).result.value;}
   finally{p.close();}
 }
-async function uiState(target){
+async function uiState(target,workerId='NV02'){
   const raw=await uiStateRaw(target);
-  return applyNv02DurableVerifiedModelProfile(applyNv02VerifiedModelProfile(raw));
+  const normalized=applyNv02DurableVerifiedModelProfile(applyNv02VerifiedModelProfile(raw));
+  // ChatGPT Go (NV03) has no selectable model/reasoning control by design.
+  // Its runtime gate is the authenticated composer/UI readiness, not NV02's
+  // GPT-5.6 Sol + High profile.
+  if(workerId==='NV03'&&new URL(String(normalized?.url||'')).hostname==='chatgpt.com'){
+    return {...normalized,modelProfileStatus:'MODEL_PROFILE_VERIFIED',modelReady:true,modelExact:true,verifiedAt:normalized.verifiedAt||new Date().toISOString(),blockedReason:null,uiPhase:normalized.uiBusy?'WORKING':(normalized.uiReady?'READY':'STALLED')};
+  }
+  return normalized;
 }
 async function evalPage(target,expression){
   const p=await pageRpc(target);
@@ -1605,7 +1612,7 @@ async function handleCommand(w,target,command){
     if(bootFreshContextPending.has(w.id))return{status:'LOCAL_CONTINUE_DEFERRED_BOOT'};
     const stateBefore=w.id==='NV02'?loadNv02Continuity():loadWorkerContinuity(w.id);
     if(stateBefore.awaitingWorkStart===true)return{status:'LOCAL_CONTINUE_ALREADY_DISPATCHED'};
-    const raw=await uiState(target);
+    const raw=await uiState(target,w.id);
     const phase=w.id==='NV02'?deriveNv02Phase(raw||{}):deriveWorkerPhase(raw||{},{workerId:w.id});
     if(phase==='BLOCKED')throw new Error(raw?.securityBlock||'LOCAL_CONTINUE_BLOCKED');
     if(phase==='WORKING')return{status:'ALREADY_WORKING'};
@@ -1650,7 +1657,7 @@ async function tickWorker(w){
       log('WORKER_CONNECTIVITY_RECOVERED',{workerId:w.id,attempt:Number(backoff.attempt||0)});
     }
     const target=await pruneDuplicates(w,list);if(!target)return;
-    const rawUi=await uiState(target);
+    const rawUi=await uiState(target,w.id);
     const projectContextReady=w.id!=='NV02'||isNv02ProjectContext(rawUi.url)||rawUi.projectDraftReady===true;
     const localReady=projectContextReady&&rawUi?.composerReady===true&&!rawUi?.securityBlock&&!rawUi?.authRequired&&!rawUi?.chatLoadError&&!rawUi?.connectionPending;
     const ui=projectContextReady?(localReady?{...rawUi,uiReady:true,uiPhase:'READY'}:rawUi):{...rawUi,uiReady:false,uiPhase:'STALLED',modelReady:false};
