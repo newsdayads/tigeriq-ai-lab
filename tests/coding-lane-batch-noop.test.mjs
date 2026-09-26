@@ -2,6 +2,7 @@ import {describe,it,expect} from 'vitest';
 import {readFileSync} from 'node:fs';
 import {compactPromptForChanges,expandCompactChanges,matchesExpectedSchema} from '../apps/tigeriq-coding-lane/ai-json-transport.mjs';
 import {validateChanges} from '../apps/tigeriq-coding-lane/policy.mjs';
+import {validateGeneratedChanges} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 
 const generationPrompt=(path,content)=>`TASK: update only when needed
 ALLOWED PATHS FOR THIS BATCH: ${path}
@@ -44,16 +45,17 @@ describe('Coding Lane bounded batch no-op',()=>{
     expect(validateChanges(combined,['apps/a.mjs','tests/b.test.mjs'])).toBe(true);
   });
 
-  it('still rejects an all-noop job before branch creation',()=>{
+  it('classifies an all-noop job explicitly before branch creation',()=>{
     const a=expandCompactChanges(generationPrompt('apps/a.mjs','const a=1;'),JSON.stringify({summary:'no change',noop:true,edits:[]}));
     const b=expandCompactChanges(generationPrompt('tests/b.test.mjs','const b=1;'),JSON.stringify({summary:'no change',noop:true,edits:[]}));
-    expect(()=>validateChanges([...a.changes,...b.changes],['apps/a.mjs','tests/b.test.mjs'])).toThrow('CODING_CHANGES_COUNT_INVALID');
+    expect(()=>validateGeneratedChanges([...a.changes,...b.changes],['apps/a.mjs','tests/b.test.mjs'])).toThrow('CODING_ALL_BATCHES_NOOP');
   });
 
-  it('wires batch no-op into both generation paths and keeps the job-level non-empty gate',()=>{
+  it('wires the explicit all-noop gate into both generation paths',()=>{
     const src=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
     expect((src.match(/BATCH_NOOP_ALLOWED=true/g)||[]).length).toBeGreaterThanOrEqual(2);
-    expect((src.match(/validateChanges\(changes,j\.paths\);/g)||[]).length).toBeGreaterThanOrEqual(2);
+    expect((src.match(/validateGeneratedChanges\(changes,j\.paths\);/g)||[]).length).toBeGreaterThanOrEqual(2);
     expect(src).toContain("throw new Error('CODING_BATCH_NOOP_INVALID')");
+    expect(src).toContain("new Error('CODING_ALL_BATCHES_NOOP')");
   });
 });
