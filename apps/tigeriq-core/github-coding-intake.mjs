@@ -106,6 +106,18 @@ async function jsonFetch(fetchImpl,url,init={}){
   return body;
 }
 async function gh(fetchImpl,owner,repo,path,token,init={}){const headers={accept:'application/vnd.github+json','content-type':'application/json','user-agent':'TigerIQ-Coding-Intake/1.0','x-github-api-version':'2022-11-28',...(init.headers||{})};if(token)headers.authorization=`Bearer ${token}`;return jsonFetch(fetchImpl,`https://api.github.com/repos/${owner}/${repo}${path}`,{...init,headers})}
+async function relevantMainChangeForScope(fetchImpl,owner,repo,token,fromSha,toSha,scopeLease){
+  const from=String(fromSha||'').trim(),to=String(toSha||'').trim();
+  const paths=[...new Set((scopeLease?.paths||[]).map(x=>String(x||'').trim().replace(/^\.\//,'').replace(/\/+$/,'')).filter(Boolean))];
+  if(!from||!to||from===to||scopeLease?.ambiguous||!paths.length)return false;
+  try{
+    const comparison=await gh(fetchImpl,owner,repo,`/compare/${encodeURIComponent(from)}...${encodeURIComponent(to)}?per_page=100`,token);
+    const changed=(Array.isArray(comparison?.files)?comparison.files:[]).map(x=>String(x?.filename||'').trim()).filter(Boolean);
+    return changed.some(file=>paths.some(path=>file===path||file.startsWith(`${path}/`)));
+  }catch{
+    return false;
+  }
+}
 async function comment(fetchImpl,owner,repo,n,token,body){if(token)await gh(fetchImpl,owner,repo,`/issues/${n}/comments`,token,{method:'POST',body:JSON.stringify({body})})}
 async function close(fetchImpl,owner,repo,n,token){if(token)await gh(fetchImpl,owner,repo,`/issues/${n}`,token,{method:'PATCH',body:JSON.stringify({state:'closed',state_reason:'completed'})})}
 async function markerExists(pool,type,n){const q=await pool.query("select 1 from tigeriq_events where type=$1 and data->>'issueNumber'=$2 limit 1",[type,String(n)]);return q.rowCount>0}
@@ -136,7 +148,7 @@ async function reopenedCompletionKey(fetchImpl,owner,repo,token,issue){
   const reopenIdentity=String(latest?.id||latest?.created_at||'reopened').replace(/[^0-9A-Za-z]/g,'').slice(-32)||'reopened';
   return `${sourceRevision}:reopen-${reopenIdentity}`;
 }
-async function hasEffectiveBlockedFinal(pool,n,fallbackSummary='',currentObjectiveId=null,currentMainSha='',currentSourceRevision=''){
+async function hasEffectiveBlockedFinal(pool,n,fallbackSummary='',currentObjectiveId=null,currentMainSha='',currentSourceRevision='',rearmContext=null){
   const finals=await eventData(pool,'GITHUB_CODING_BLOCKED_FINAL',n);
   if(!finals.length)return false;
   const latest=finals[0]||{};
@@ -150,7 +162,17 @@ async function hasEffectiveBlockedFinal(pool,n,fallbackSummary='',currentObjecti
     return false;
   }
   const rearms=await eventData(pool,'GITHUB_CODING_RECOVERY_REARMED',n);
-  if(shouldRearmRecoverableFinal({...latest,terminalReason:terminalSummary},currentMainSha,rearms,currentSourceRevision))return false;
+  const sourceChanged=Boolean(String(currentSourceRevision||'').trim())&&String(latest?.sourceRevision||'').trim()!==String(currentSourceRevision||'').trim();
+  const relevantMainChanged=sourceChanged?false:await relevantMainChangeForScope(
+    rearmContext?.fetchImpl||fetch,
+    rearmContext?.owner||DEFAULT_OWNER,
+    rearmContext?.repo||DEFAULT_REPO,
+    rearmContext?.token||'',
+    latest?.mainSha,
+    currentMainSha,
+    rearmContext?.scopeLease,
+  );
+  if(shouldRearmRecoverableFinal({...latest,terminalReason:terminalSummary},currentMainSha,rearms,currentSourceRevision,relevantMainChanged))return false;
   return true;
 }
 export function classifyCodingBlocker(summary){
@@ -163,16 +185,15 @@ export function classifyCodingBlocker(summary){
   if(recoverable)return {kind:'RECOVERABLE',transient,reason:raw||'RECOVERABLE_BLOCK'};
   return {kind:'RECOVERABLE',transient:false,reason:raw||'UNCLASSIFIED_RECOVERABLE'};
 }
-export function shouldRearmRecoverableFinal(final,currentMainSha,rearms=[],currentSourceRevision=''){
+export function shouldRearmRecoverableFinal(final,currentMainSha,rearms=[],currentSourceRevision='',relevantMainChanged=false){
   const mainSha=String(currentMainSha||'').trim();
   const sourceRevision=String(currentSourceRevision||'').trim();
   const finalReason=String(final?.reason||'').toUpperCase();
   if(!mainSha||!['RETRY_BUDGET_EXHAUSTED','HARD_BLOCKER','ISSUE_CLOSED_OR_SUPERSEDED'].includes(finalReason))return false;
   const terminalReason=String(final?.terminalReason||'');
   if(classifyCodingBlocker(terminalReason).kind!=='RECOVERABLE')return false;
-  const mainChanged=String(final?.mainSha||'').trim()!==mainSha;
   const sourceChanged=Boolean(sourceRevision)&&String(final?.sourceRevision||'').trim()!==sourceRevision;
-  if(!mainChanged&&!sourceChanged)return false;
+  if(!sourceChanged&&!relevantMainChanged)return false;
   const priorObjectiveId=String(final?.codingObjectiveId||'');
   return !(rearms||[]).some(x=>
     String(x?.mainSha||'').trim()===mainSha&&
@@ -363,7 +384,7 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
       continue;
     }
     const currentSourceRevision=await codingSourceRevision(fetchImpl,owner,repo,token,currentIssue);
-    if(await hasEffectiveBlockedFinal(pool,n,objective?.summary,id,currentMainSha,currentSourceRevision))continue;
+    if(await hasEffectiveBlockedFinal(pool,n,objective?.summary,id,currentMainSha,currentSourceRevision,{fetchImpl,owner,repo,token,scopeLease:parseCodingScope(currentIssue?.body)}))continue;
     const job=(status.jobs||[]).find(x=>x.objective_id===id);
     if(job&&!(await markerExists(pool,'GITHUB_CODING_PROGRESS_REPORTED',n))){
       const pr=job.pr_number?` PR #${job.pr_number}.`:'';
@@ -454,7 +475,9 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
       const finals=await eventData(pool,'GITHUB_CODING_BLOCKED_FINAL',n);
       const latestFinal=finals[0]||{issueNumber:n,codingObjectiveId:id,reason:'RETRY_BUDGET_EXHAUSTED',terminalReason:classification.reason,mainSha:currentMainSha};
       const rearms=await eventData(pool,'GITHUB_CODING_RECOVERY_REARMED',n);
-      if(shouldRearmRecoverableFinal(latestFinal,currentMainSha,rearms,currentSourceRevision)){
+      const sourceChanged=Boolean(String(currentSourceRevision||'').trim())&&String(latestFinal?.sourceRevision||'').trim()!==String(currentSourceRevision||'').trim();
+      const relevantMainChanged=sourceChanged?false:await relevantMainChangeForScope(fetchImpl,owner,repo,token,latestFinal?.mainSha,currentMainSha,spec.scopeLease);
+      if(shouldRearmRecoverableFinal(latestFinal,currentMainSha,rearms,currentSourceRevision,relevantMainChanged)){
         if(retryCreatedThisTick)continue;
         const blockedByActiveOwner=await activeCodingOwnerBlocksRetry({pool,status,fetchImpl,owner,repo,token,excludeObjectiveIds:[id],targetScope:spec.scopeLease});
         if(blockedByActiveOwner)continue;
