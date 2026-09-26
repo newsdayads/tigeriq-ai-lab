@@ -1,7 +1,7 @@
 version: 1
 owner_issue: 859
 parent_issue: 822
-updated: 2026-09-18
+updated: 2026-09-23
 
 source_catalog:
   batch_id: owner-video-lessons-2026-09-18
@@ -135,3 +135,63 @@ skills:
     target: ui-verification
     triggers: visual screenshot playwright layout geometry clipping accessibility responsive ui giao diện verify kiểm tra
     summary: Verify rendered UI against approved design evidence using existing browser and visual-regression mechanisms without auto-blessing baselines.
+
+  - id: isolated-parallel-execution
+    title: Isolated Parallel Execution
+    state: CANDIDATE
+    version: 1.0.0
+    provenance_batch: owner-agent-review-document-research-2026-09-23
+    source_log: learning-log/2026-09-23-agent-review-document-research.md
+    target: orchestration
+    triggers: parallel worktree isolated branch resource scope agent merge
+    summary: Run independent work in isolated worktrees/branches/resource scopes and merge only after explicit comparison and review.
+
+  - id: automated-code-review-gate
+    title: Automated Code Review Gate
+    state: CANDIDATE
+    version: 1.0.0
+    provenance_batch: owner-agent-review-document-research-2026-09-23
+    source_log: learning-log/2026-09-23-agent-review-document-research.md
+    target: engineering-review
+    triggers: code review diff repository reviewer merge gate security logic
+    summary: Add repository-aware automated review as an independent pre-merge gate without allowing executor self-approval.
+
+  - id: document-normalization-ingest
+    title: Document Normalization Ingest
+    state: CANDIDATE
+    version: 1.0.0
+    provenance_batch: owner-agent-review-document-research-2026-09-23
+    source_log: learning-log/2026-09-23-agent-review-document-research.md
+    target: knowledge-ingest
+    triggers: pdf word excel powerpoint document markdown ingest normalize extract
+    summary: Normalize supported documents into structured LLM-friendly text with narrow I/O privileges before retrieval or reasoning.
+
+  - id: source-grounded-knowledge-retrieval
+    title: Source-Grounded Knowledge Retrieval
+    state: CANDIDATE
+    version: 1.0.0
+    provenance_batch: owner-agent-review-document-research-2026-09-23
+    source_log: learning-log/2026-09-23-agent-review-document-research.md
+    target: knowledge-system
+    triggers: rag retrieval knowledge index wiki document citation source grounded
+    summary: Retrieve from indexed document collections with durable source references while preserving GitHub/TigerIQ as authoritative operational state.
+
+  - id: external-research-capability-routing
+    title: External Research Capability Routing
+    state: CANDIDATE
+    version: 1.0.0
+    provenance_batch: owner-agent-review-document-research-2026-09-23
+    source_log: learning-log/2026-09-23-agent-review-document-research.md
+    target: research
+    triggers: research web social youtube reddit github external network capability
+    summary: Route bounded external research tools only when needed, with explicit network/cookie/credential scope and source-backed results.
+
+  - id: domain-skill-packaging
+    title: Domain Skill Packaging
+    state: CANDIDATE
+    version: 1.0.0
+    provenance_batch: owner-agent-review-document-research-2026-09-23
+    source_log: learning-log/2026-09-23-agent-review-document-research.md
+    target: skill-system
+    triggers: marketing sales research department domain skill pack capability
+    summary: Package department-specific reusable skills under the existing Skill Registry, ownership, security and review contracts without expanding Core authority.
