@@ -40,10 +40,11 @@ function Discover-AuthorizedRequest(){
     if(-not(Exact-Line $body 'MUTATION_OWNER' 'VY_OWNER_AUTHORIZED')){continue}
     if(-not(Exact-Line $body 'ZERO_TOUCH_DEPLOY' 'true')){continue}
     $head=Body-Value $body 'TARGET_HEAD';$artifactId=Body-Value $body 'PACKAGE_ARTIFACT_ID';$artifactName=Body-Value $body 'PACKAGE_ARTIFACT_NAME'
+    $nv02Only=(Exact-Line $body 'LIVE_ACCEPTANCE_SCOPE' 'NV02_ONLY') -or (Exact-Line $body 'NV02_ONLY' 'true')
     if($head -notmatch '^[0-9a-f]{40}$'){continue}
     if($artifactId -notmatch '^\d+$'){continue}
     if([string]::IsNullOrWhiteSpace($artifactName)){continue}
-    return [pscustomobject]@{schema='TIGERIQ_APP_CHROME_INSTALL_REQUEST_V1';exactHead=$head;artifactId=[long]$artifactId;artifactName=$artifactName;issueNumber=[int]$issue.number;source='GITHUB_OWNER_AUTH'}
+    return [pscustomobject]@{schema='TIGERIQ_APP_CHROME_INSTALL_REQUEST_V1';exactHead=$head;artifactId=[long]$artifactId;artifactName=$artifactName;issueNumber=[int]$issue.number;source='GITHUB_OWNER_AUTH';nv02Only=[bool]$nv02Only}
   }
   return $null
 }
@@ -53,6 +54,11 @@ function Resolve-Request(){
   $ownerReq=Discover-AuthorizedRequest
   if($ownerReq){return $ownerReq}
   return Read-RequestFile
+}
+function Request-Nv02Only($req){
+  if($null -eq $req){return $false}
+  if($req.PSObject.Properties.Name -contains 'nv02Only'){return [bool]$req.nv02Only}
+  return $false
 }
 function Assert-Authorization($req){
   $issue=(& gh issue view ([int]$req.issueNumber) --repo $Repo --json state,body 2>$null|Out-String)|ConvertFrom-Json -ErrorAction Stop
@@ -67,6 +73,7 @@ function Assert-Authorization($req){
   if((Body-Value $body 'TARGET_HEAD') -ne [string]$req.exactHead){throw 'APPCHROME_AUTH_HEAD_MISMATCH'}
   if((Body-Value $body 'PACKAGE_ARTIFACT_ID') -ne [string]$req.artifactId){throw 'APPCHROME_AUTH_ARTIFACT_ID_MISMATCH'}
   $authName=Body-Value $body 'PACKAGE_ARTIFACT_NAME';if($authName -and $authName -ne [string]$req.artifactName){throw 'APPCHROME_AUTH_ARTIFACT_NAME_MISMATCH'}
+  if((Request-Nv02Only $req) -and -not((Exact-Line $body 'LIVE_ACCEPTANCE_SCOPE' 'NV02_ONLY') -or (Exact-Line $body 'NV02_ONLY' 'true'))){throw 'APPCHROME_NV02_ONLY_AUTH_MISSING'}
 }
 function Gates-Pass([string]$sha){
   $runs=(& gh api ('repos/'+$Repo+'/actions/runs?head_sha='+$sha+'&status=completed&per_page=50') 2>$null|Out-String)|ConvertFrom-Json -ErrorAction Stop
@@ -132,7 +139,7 @@ function Wait-ExactHead([string]$head,[int]$timeoutSec=150){
 function Restore-File([string]$backup,[string]$target){if(Test-Path -LiteralPath $backup){Copy-Item -LiteralPath $backup -Destination $target -Force}}
 
 function Request-Fingerprint($req){
-  return @([string]$req.schema,[string]$req.exactHead.ToLowerInvariant(),[string][long]$req.artifactId,[string]$req.artifactName,[string][int]$req.issueNumber) -join '|'
+  return @([string]$req.schema,[string]$req.exactHead.ToLowerInvariant(),[string][long]$req.artifactId,[string]$req.artifactName,[string][int]$req.issueNumber,('NV02_ONLY='+[string][bool](Request-Nv02Only $req))) -join '|'
 }
 function Revalidate-After-SafeBoundary($req,[string]$fingerprint,[long]$verifiedRunId){
   $fresh=Resolve-Request
@@ -177,7 +184,9 @@ try{
   if(Test-Path -LiteralPath $active){Copy-Item $active (Join-Path $rollback 'active-deploy.json') -Force}
   if(Test-Path -LiteralPath $launcher){Copy-Item $launcher (Join-Path $rollback 'Start-Unified-AppChrome.ps1') -Force}
   if(Test-Path -LiteralPath $legacy){Copy-Item $legacy (Join-Path $rollback 'Start-Unified-AppChrome-1372.ps1') -Force}
-  & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $installer -ExpectedHead ([string]$req.exactHead) -ArtifactRoot $artifactRoot
+  $installerArgs=@('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$installer,'-ExpectedHead',([string]$req.exactHead),'-ArtifactRoot',$artifactRoot)
+  if(Request-Nv02Only $req){$installerArgs+='-Nv02Only'}
+  & powershell.exe @installerArgs
   if($LASTEXITCODE -ne 0){throw 'APPCHROME_CANONICAL_INSTALLER_FAILED'}
   $live=Wait-ExactHead ([string]$req.exactHead)
   try{Invoke-RestMethod -Method Post -Uri ($controller+'/api/resume') -TimeoutSec 5|Out-Null}catch{};$paused=$false

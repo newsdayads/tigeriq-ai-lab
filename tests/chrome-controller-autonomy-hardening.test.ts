@@ -653,6 +653,15 @@ describe('APP Chrome unified runtime supervisor #1525',()=>{
   });
 });
 
+describe('NV02-only zero-touch propagation #2113',()=>{
+  it('passes the durable NV02-only marker through canonical zero-touch install',()=>{
+    const script=readFileSync('scripts/tigeriq-core/appchrome-zero-touch.ps1','utf8');
+    expect(script).toContain("LIVE_ACCEPTANCE_SCOPE' 'NV02_ONLY'");
+    expect(script).toContain('APPCHROME_NV02_ONLY_AUTH_MISSING');
+    expect(script).toContain("$installerArgs+='-Nv02Only'");
+  });
+});
+
 describe('NV03/NV04 canonical model preservation #1940',()=>{
   it('never applies NV02 model selection to generic workers',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
