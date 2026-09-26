@@ -161,6 +161,14 @@ function rearmKey(spec){
   return `${spec.sourceRevision}-${stamp}`;
 }
 
+export function githubPcOperatorJobId(objectiveId,issueNumber){
+  const number=Number(issueNumber);
+  const base=`OBJ-GH-${number}`;
+  if(String(objectiveId)===base)return `JOB-GH-${number}-PC`;
+  const suffix=createHash('sha256').update(String(objectiveId)).digest('hex').slice(0,12);
+  return `JOB-GH-${number}-PC-${suffix}`;
+}
+
 async function readActiveExternalRoleClaim(fetchImpl,owner,repo,token,spec){
   if(Number(spec?.commentCount||0)<=0)return null;
   try{
@@ -204,7 +212,7 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
     await pool.query('insert into tigeriq_objectives(id,objective,priority,metadata) values($1,$2,$3,$4) on conflict(id) do nothing',[id,objective,spec.priority,JSON.stringify(metadata)]);
     if(spec.capability==='pc_operator'){
       const assigned=extractPcOperatorInstruction(spec.body);
-      const jobId=`JOB-GH-${spec.number}-PC`;
+      const jobId=githubPcOperatorJobId(id,spec.number);
       const prompt=`Execute ONLY this bounded PC action through NV06/OpenClaw. Do not choose backlog, P0, or new work. Use approved tigeriq_pc/tigeriq_runtime tools only.\n\nASSIGNED ACTION:\n${assigned}`;
       await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,max_attempts) values($1,$2,$3,$4,'pc_operator','pc_operator','queued',2) on conflict(id) do nothing",[jobId,id,`GitHub #${spec.number} bounded PC operator`,prompt]);
       await pool.query("insert into tigeriq_events(type,objective_id,job_id,task_kind,data) values('GITHUB_PC_OPERATOR_JOB_MATERIALIZED',$1,$2,'pc_operator',$3)",[id,jobId,JSON.stringify({issueNumber:spec.number,executionSurface:'CORE_OPENCLAW_BOUNDED'})]);
@@ -221,7 +229,15 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
 
 export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token=''}){
   if(!token) return {claims:0,results:0};
-  const rows=(await pool.query("select id,status,summary,metadata from tigeriq_objectives where metadata->>'source'='github' order by created_at asc limit 100")).rows;
+  const rows=(await pool.query(`select id,status,summary,metadata from tigeriq_objectives
+    where metadata->>'source'='github'
+      and (
+        status='active'
+        or coalesce(metadata->>'githubClaimReported','false')<>'true'
+        or (status in ('completed','blocked') and coalesce(metadata->>'githubResultReported','false')<>'true')
+      )
+    order by case when status='active' then 0 else 1 end, updated_at desc, created_at desc
+    limit 100`)).rows;
   let claims=0,results=0;
   for(const row of rows){
     const number=Number(row.metadata?.issueNumber); if(!number) continue;

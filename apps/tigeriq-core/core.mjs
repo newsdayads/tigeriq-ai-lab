@@ -13,6 +13,7 @@ import { normalizeTerminalWorkItems, handoffGenerationKey, evaluateChildObjectiv
 import { ROUTING_PROFILE_LABELS, createResourceId, deriveRoutingProfile, failurePolicy, normalizeQuota, rankCandidates, rateLimitFailureState } from './smart-router.mjs';
 import { runExecutionPreflight } from './execution-preflight.mjs';
 import { detectIdleWithBacklog, routingFault } from './github-backlog-policy.mjs';
+import { staleLeaseRecoveryPlan } from './job-recovery-policy.mjs';
 import { API_DOCTOR_CAPABILITY, apiDoctorAction, apiDoctorExistingHandoffAction, apiDoctorRepairSignature, buildApiDoctorPrompt, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
 import { buildCoreUiAssignmentSnapshot } from './core-ui-assignment.mjs';
 import { refreshRegistryWorkforce, normalizeRuntimeResources } from './workforce-registry.mjs';
@@ -430,7 +431,22 @@ async function recoverAfterCoreRestart() {
   const q=await pool.query("select id,employee_id,resource_id from tigeriq_jobs where status='running' and kind='ai'");
   for(const j of q.rows){await pool.query("update tigeriq_jobs set status='queued',employee_id=null,resource_id=null,provider=null,lease_until=null where id=$1",[j.id]);if(j.resource_id)await pool.query("update tigeriq_ai_resources set current_job_id=null,work_state='IDLE',health_state=case when credential_state in ('WAIT_KEY','BLOCKED') then 'OFFLINE' else 'READY' end,updated_at=now() where resource_id=$1",[j.resource_id]);if(j.employee_id)await pool.query("update tigeriq_resources set current_job_id=null,work_state='IDLE',health_state=case when credential_state in ('WAIT_KEY','BLOCKED') then 'OFFLINE' else 'READY' end,updated_at=now() where employee_id=$1",[j.employee_id]);await event('JOB_RECOVERED_AFTER_CORE_RESTART',{jobId:j.id,employeeId:j.employee_id,resourceId:j.resource_id});}
 }
+async function reconcileExhaustedQueuedJobs(){
+  const reason={kind:'RETRY_BUDGET_EXHAUSTED',message:'Queued job exhausted retry budget and is not claimable.'};
+  const q=await pool.query(`update tigeriq_jobs j
+    set status='failed',lease_until=null,next_attempt_at=null,completed_at=coalesce(completed_at,now()),failure=coalesce(failure,'{}'::jsonb)||$1::jsonb
+    where j.status in ('queued','waiting_resource') and j.attempts>=j.max_attempts
+      and exists(select 1 from tigeriq_objectives o where o.id=j.objective_id and o.status='active')
+    returning j.id,j.objective_id,j.employee_id,j.resource_id,j.attempts,j.max_attempts`,[JSON.stringify(reason)]);
+  for(const j of q.rows){
+    await pool.query("update tigeriq_ai_resources set current_job_id=null,work_state=case when health_state='ONLINE' then 'IDLE' else health_state end,updated_at=now() where current_job_id=$1",[j.id]);
+    await pool.query("update tigeriq_resources set current_job_id=null,work_state=case when health_state='ONLINE' then 'IDLE' else health_state end,updated_at=now() where current_job_id=$1",[j.id]);
+    await event('JOB_EXHAUSTED_QUEUE_RECONCILED',{jobId:j.id,objectiveId:j.objective_id,employeeId:j.employee_id,resourceId:j.resource_id,attempts:Number(j.attempts)||0,maxAttempts:Number(j.max_attempts)||0});
+  }
+  return q.rowCount||0;
+}
 async function recoverStale() {
+  await reconcileExhaustedQueuedJobs();
   const staleDoctor=await pool.query("select id,employee_id,resource_id from tigeriq_jobs where status='running' and kind='api_doctor' and started_at < now()-interval '2 minutes' and (lease_until is null or lease_until < now())");
   for(const j of staleDoctor.rows){
     await pool.query("update tigeriq_jobs set status='done',result=jsonb_build_object('skipped','stale_recovered'),lease_until=null,completed_at=now() where id=$1",[j.id]);
@@ -438,8 +454,22 @@ async function recoverStale() {
     await pool.query("update tigeriq_resources set current_job_id=null,work_state=case when health_state='ONLINE' then 'IDLE' else health_state end,updated_at=now() where current_job_id=$1",[j.id]);
     await event('API_DOCTOR_STALE_JOB_RECOVERED',{jobId:j.id,employeeId:j.employee_id,resourceId:j.resource_id});
   }
-  const stale=await pool.query("select id,employee_id,resource_id from tigeriq_jobs where status='running' and kind<>'api_doctor' and lease_until < now()");
-  for(const j of stale.rows){await pool.query("update tigeriq_jobs set status='queued',employee_id=null,resource_id=null,provider=null,lease_until=null,attempts=attempts+1 where id=$1",[j.id]);if(j.resource_id)await pool.query("update tigeriq_ai_resources set current_job_id=null,work_state='IDLE',health_state='READY',updated_at=now() where resource_id=$1",[j.resource_id]);if(j.employee_id)await pool.query("update tigeriq_resources set current_job_id=null,work_state='IDLE',health_state='READY',updated_at=now() where employee_id=$1",[j.employee_id]);await event('JOB_LEASE_RECOVERED',{jobId:j.id,employeeId:j.employee_id,resourceId:j.resource_id});}
+  const stale=await pool.query("select id,objective_id,employee_id,resource_id,attempts,max_attempts from tigeriq_jobs where status='running' and kind<>'api_doctor' and lease_until < now()");
+  for(const j of stale.rows){
+    const plan=staleLeaseRecoveryPlan({attempts:j.attempts,maxAttempts:j.max_attempts});
+    if(plan.exhausted){
+      const failure={kind:'RETRY_BUDGET_EXHAUSTED_AFTER_LEASE_RECOVERY',message:'Stale lease recovery reached the retry budget.',attempts:plan.nextAttempts,maxAttempts:plan.maxAttempts};
+      await pool.query("update tigeriq_jobs set status='failed',employee_id=null,resource_id=null,provider=null,lease_until=null,next_attempt_at=null,attempts=$2,failure=$3,completed_at=now() where id=$1",[j.id,plan.nextAttempts,JSON.stringify(failure)]);
+      if(j.resource_id)await pool.query("update tigeriq_ai_resources set current_job_id=null,work_state='IDLE',health_state='READY',updated_at=now() where resource_id=$1",[j.resource_id]);
+      if(j.employee_id)await pool.query("update tigeriq_resources set current_job_id=null,work_state='IDLE',health_state='READY',updated_at=now() where employee_id=$1",[j.employee_id]);
+      await event('JOB_LEASE_RECOVERY_EXHAUSTED',{jobId:j.id,objectiveId:j.objective_id,employeeId:j.employee_id,resourceId:j.resource_id,attempts:plan.nextAttempts,maxAttempts:plan.maxAttempts});
+      continue;
+    }
+    await pool.query("update tigeriq_jobs set status='queued',employee_id=null,resource_id=null,provider=null,lease_until=null,attempts=$2 where id=$1",[j.id,plan.nextAttempts]);
+    if(j.resource_id)await pool.query("update tigeriq_ai_resources set current_job_id=null,work_state='IDLE',health_state='READY',updated_at=now() where resource_id=$1",[j.resource_id]);
+    if(j.employee_id)await pool.query("update tigeriq_resources set current_job_id=null,work_state='IDLE',health_state='READY',updated_at=now() where employee_id=$1",[j.employee_id]);
+    await event('JOB_LEASE_RECOVERED',{jobId:j.id,objectiveId:j.objective_id,employeeId:j.employee_id,resourceId:j.resource_id,attempts:plan.nextAttempts,maxAttempts:plan.maxAttempts});
+  }
 }
 async function taskPerformance(taskKind='general'){
   const q=await pool.query(`select resource_id,count(*) filter(where type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK'))::int as success,count(*) filter(where type in ('RESOURCE_FAILURE','RESOURCE_PROBE_FAIL'))::int as failure,count(*) filter(where type='ROUTING_RETRY')::int as retry,count(*) filter(where type='ROUTING_FAILOVER')::int as failover,round(avg((data->>'latencyMs')::numeric) filter(where data ? 'latencyMs'))::int as avg_latency_ms from tigeriq_events where resource_id is not null and ts>=now()-interval '7 days' and (task_kind=$1 or task_kind is null or $1='general') group by resource_id`,[taskKind]);
@@ -1195,7 +1225,7 @@ async function runFailureLearningScan(){
   return {eventsIn:rows.length,candidatesCreated:candidates.length};
 }
 
-let stop=false, lastRefresh=0, lastRecover=0, lastOpenClawObjectiveReconcile=0, lastManager=0, lastProbe=0, lastFailureLearning=0, lastApiDoctor=0, apiDoctorScanRunning=false; const active=new Set();
+let stop=false, lastRefresh=0, lastRecover=0, lastOpenClawObjectiveReconcile=0, lastManager=0, lastProbe=0, lastFailureLearning=0, lastApiDoctor=0, apiDoctorScanRunning=false, managerTickRunning=false; const active=new Set();
 function getDynamicMaxParallel() {
   const resList = typeof resources !== 'undefined' ? resources : [];
   const healthyCount = Array.isArray(resList) ? resList.filter(r => r && (r.status === 'ready' || r.status === 'healthy' || r.healthy || r.health_state === 'READY' || r.health_state === 'ONLINE' || r.credential_state === 'LOCAL')).length : 0;
@@ -1285,7 +1315,7 @@ async function loop(){
       if(t-lastRefresh>15000){await refreshResources();lastRefresh=t;}
       if(t-lastRecover>10000){await recoverStale();lastRecover=t;}
       if(t-lastOpenClawObjectiveReconcile>3000){await reconcileCoreOpenClawBoundedObjectives();lastOpenClawObjectiveReconcile=t;}
-      if(t-lastManager>MANAGER_IDLE_MS){await managerTick();lastManager=t;}
+      if(!managerTickRunning&&t-lastManager>MANAGER_IDLE_MS){lastManager=t;managerTickRunning=true;void managerTick().catch(error=>console.error(JSON.stringify({event:'MANAGER_TICK_ERROR',error:String(error?.message||error)}))).finally(()=>{managerTickRunning=false;});}
       if(t-lastProbe>60000){await probeReadyResources();lastProbe=t;}
       if(!apiDoctorScanRunning&&t-lastApiDoctor>API_DOCTOR_INTERVAL_MS){lastApiDoctor=t;apiDoctorScanRunning=true;void runApiDoctorScan().catch(error=>console.error(JSON.stringify({event:'API_DOCTOR_SCAN_ERROR',error:String(error?.message||error)}))).finally(()=>{apiDoctorScanRunning=false;});}
       if(t-lastFailureLearning>FAILURE_LEARNING_INTERVAL_MS){lastFailureLearning=t;await runFailureLearningScan();}

@@ -3,10 +3,14 @@ import assert from 'node:assert/strict';
 import {effectiveBacklogPriority} from '../apps/tigeriq-core/github-backlog-policy.mjs';
 import {activeRoleClaim,classifyWorkOrder,roleCanPull} from '../apps/tigeriq-core/work-routing-policy.mjs';
 
-test('P0 is Owner-controlled only; legacy high-priority P0 becomes autonomous P1',()=>{
-  assert.deepEqual(effectiveBacklogPriority('PRIORITY=P0\nOWNER_CONTROLLED=true'),{sourcePriority:'P0',priority:'P0',ownerControlled:true,assignedExecutor:'',legacyP0Autonomous:false});
+test('P0 is Owner-controlled only by explicit Owner markers',()=>{
+  for(const marker of ['OWNER_CONTROLLED','OWNER_HOLD','OWNER_GATE','OWNER_APPROVAL_REQUIRED']){
+    assert.deepEqual(effectiveBacklogPriority('PRIORITY=P0\n'+marker+'=true'),{sourcePriority:'P0',priority:'P0',ownerControlled:true,assignedExecutor:'',legacyP0Autonomous:false});
+    assert.equal(classifyWorkOrder('PRIORITY=P0\n'+marker+'=true\nCAPABILITY=general').route,'HOLD_OWNER');
+  }
   assert.deepEqual(effectiveBacklogPriority('PRIORITY=P0\nOWNER_DIRECT=true'),{sourcePriority:'P0',priority:'P1',ownerControlled:false,assignedExecutor:'',legacyP0Autonomous:true});
-  assert.equal(classifyWorkOrder('PRIORITY=P0\nOWNER_CONTROLLED=true\nCAPABILITY=general').route,'HOLD_OWNER');
+  assert.deepEqual(effectiveBacklogPriority('PRIORITY=P0\nASSIGNED_EXECUTOR=NV03'),{sourcePriority:'P0',priority:'P1',ownerControlled:false,assignedExecutor:'NV03',legacyP0Autonomous:true});
+  assert.deepEqual(effectiveBacklogPriority('PRIORITY=P0\nPRIMARY_EMPLOYEE=NV06'),{sourcePriority:'P0',priority:'P1',ownerControlled:false,assignedExecutor:'NV06',legacyP0Autonomous:true});
   const legacy=classifyWorkOrder('PRIORITY=P0\nOWNER_DIRECT=true\nCAPABILITY=general');
   assert.equal(legacy.priority,'P1');assert.equal(legacy.workerId,'NV02');assert.equal(legacy.route,'UI');
 });
@@ -33,9 +37,9 @@ test('preferred UI reviewer wins even with stale CORE_READ_ONLY surface; API rev
   assert.equal(s.route,'CORE_REVIEW');assert.equal(s.workerId,'NV17');
 });
 
-test('explicit P0 assigned executor routes only to that worker',()=>{
-  let s=classifyWorkOrder('PRIORITY=P0\nASSIGNED_EXECUTOR=NV03\nCAPABILITY=review');assert.equal(s.priority,'P0');assert.equal(s.route,'UI');assert.equal(s.workerId,'NV03');
-  s=classifyWorkOrder('PRIORITY=P0\nASSIGNED_EXECUTOR=NV06\nCAPABILITY=pc_operator');assert.equal(s.route,'OPENCLAW');assert.equal(s.workerId,'NV06');
+test('assigned P0 keeps worker binding without creating an Owner-controlled hold',()=>{
+  let s=classifyWorkOrder('PRIORITY=P0\nASSIGNED_EXECUTOR=NV03\nCAPABILITY=review');assert.equal(s.priority,'P1');assert.equal(s.ownerControlled,false);assert.equal(s.route,'UI');assert.equal(s.workerId,'NV03');
+  s=classifyWorkOrder('PRIORITY=P0\nASSIGNED_EXECUTOR=NV06\nCAPABILITY=pc_operator');assert.equal(s.priority,'P1');assert.equal(s.ownerControlled,false);assert.equal(s.route,'OPENCLAW');assert.equal(s.workerId,'NV06');
 });
 
 test('fallback role pull is P1-P5 only and role-bounded',()=>{

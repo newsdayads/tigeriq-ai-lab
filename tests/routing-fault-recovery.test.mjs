@@ -1,4 +1,5 @@
 import {describe,expect,it} from 'vitest';
+import {readFileSync} from 'node:fs';
 import {detectIdleWithBacklog,routingFault} from '../apps/tigeriq-core/github-backlog-policy.mjs';
 
 describe('Core routing fault recovery policy',()=>{
@@ -14,5 +15,12 @@ describe('Core routing fault recovery policy',()=>{
   it('does not report idle backlog for ineligible queued residue',()=>{
     expect(detectIdleWithBacklog(0,0)).toBe(false);
     expect(detectIdleWithBacklog(0,1)).toBe(true);
+  });
+
+  it('does not let manager evaluation block queued-job dispatch',()=>{
+    const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+    expect(core).toContain('managerTickRunning=false');
+    expect(core).toMatch(/void managerTick\(\)\.catch\(/);
+    expect(core).not.toMatch(/await managerTick\(\)/);
   });
 });
