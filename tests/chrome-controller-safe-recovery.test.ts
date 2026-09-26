@@ -161,10 +161,10 @@ describe('independent worker recovery flows in direct-cdp-bridge',()=>{
     expect(prep).not.toContain('stopStalledWorking(target)');
     const generic=source.slice(source.indexOf('async function maybeWorkerContinuity'),source.indexOf('\nfunction log('));
     expect(generic).toContain("const freshPhase=deriveWorkerPhase(fresh||{},{workerId:w.id})");
-    expect(generic).toContain("freshPhase==='WORKING'||fresh?.uiBusy===true||fresh?.stopVisible===true");
+    expect(generic).not.toContain("freshPhase==='WORKING'||fresh?.uiBusy===true||fresh?.stopVisible===true");
     const nv02=source.slice(source.indexOf('async function maybeNv02Continuity'),source.indexOf('async function handleCommand'));
     expect(nv02).toContain('const fresh=applyNv02DurableVerifiedModelProfile(await uiState(target).catch(()=>null))');
-    expect(nv02).toContain("freshPhase==='WORKING'||fresh?.uiBusy===true||fresh?.stopVisible===true");
+    expect(nv02).not.toContain("freshPhase==='WORKING'||fresh?.uiBusy===true||fresh?.stopVisible===true");
   });
 
   it('uses a lightweight cached control-state endpoint instead of polling full controller state per worker',()=>{
