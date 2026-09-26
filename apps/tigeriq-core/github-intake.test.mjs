@@ -184,6 +184,17 @@ describe('GitHub Core intake guardrails',()=>{
     expect(block).not.toContain('raw file body');
     expect(block).not.toContain('never-publish');
     expect(block).not.toContain('password');
+    expect(block).not.toContain('"data"');
+  });
+
+  it('does not mistake the bridge call wrapper result object for the requested result field',()=>{
+    const out=extractPublicEvidence({evidence:{bridgeCalls:[{
+      result:{data:{result:{status:'PASS',content:'private'},installedSha:'abc'},transport:'local'}
+    }] }},['result','installedSha']);
+    expect(out).toEqual({result:{status:'PASS',content:'private'},installedSha:'abc'});
+    const block=formatPublicEvidenceBlock(out);
+    expect(block).toContain('"status":"PASS"');
+    expect(block).not.toContain('"transport"');
   });
 
   it('caps public evidence depth, arrays, and summary publication while leaving unmarked outcomes unchanged',()=>{
