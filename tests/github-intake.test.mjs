@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { processGitHubIssue, classifyRisk, isZeroCost } from '../apps/tigeriq-coding-lane/github-intake.mjs';
-import { cleanupTerminalObjectiveJobs, materializeGithubIssues, syncGithubOutcomes } from '../apps/tigeriq-core/github-intake.mjs';
+import { buildGithubPcOperatorPrompt, cleanupTerminalObjectiveJobs, materializeGithubIssues, syncGithubOutcomes } from '../apps/tigeriq-core/github-intake.mjs';
 
 test('isZeroCost checks label correctly', () => {
   assert.strictEqual(isZeroCost([{ name: 'zero-cost-reversible' }]), true);
@@ -103,6 +103,18 @@ NO_CODE_CHANGE=true
 NO_PC01_SHELL=true
 CAPABILITY=reasoning`;
 
+test('pc_operator public evidence prompt is opt-in, allowlisted upstream, and forbids raw content',()=>{
+  const assigned='Use exactly tigeriq_pc action=file_read path="D:\\TigerIQ\\State\\core-runtime-updater.json".';
+  const plain=buildGithubPcOperatorPrompt(assigned,[]);
+  assert.match(plain,/ASSIGNED ACTION:/);
+  assert.doesNotMatch(plain,/PUBLIC EVIDENCE CONTRACT/);
+  const prompt=buildGithubPcOperatorPrompt(assigned,['installedSha','result','remoteDesktopGuard','changedPaths','updaterTaskTarget']);
+  assert.match(prompt,/REQUESTED_PUBLIC_EVIDENCE_KEYS=installedSha,result,remoteDesktopGuard,changedPaths,updaterTaskTarget/);
+  assert.match(prompt,/copy ONLY the requested keys/);
+  assert.match(prompt,/Do not echo raw file content/);
+  assert.match(prompt,/never invent a value/);
+});
+
 test('owner-direct pc_operator GitHub intake materializes bounded OpenClaw objective',async()=>{
   const pool=coreBacklogPool();
   const body=`TIGERIQ_EXECUTABLE=true
@@ -113,6 +125,7 @@ CAPABILITY=pc_operator
 NO_CODE_CHANGE=true
 NO_PC01_SHELL=true
 RESOURCE_SCOPE=OPENCLAW_TEST_SCOPE
+PUBLIC_EVIDENCE_KEYS=installedSha,result
 ASSIGNED_ACTION
 1. tigeriq_pc tcp_probe host=127.0.0.1 port=18789
 2. tigeriq_pc file_write path=D:\\TigerIQ\\State\\canary.txt content=PASS
@@ -130,6 +143,8 @@ Return structured PASS evidence.`;
   assert.strictEqual(pool.jobs[0].id,'JOB-GH-1608-PC');
   assert.strictEqual(pool.jobs[0].capability,'pc_operator');
   assert.match(pool.jobs[0].prompt,/tcp_probe host=127.0.0.1 port=18789/);
+  assert.match(pool.jobs[0].prompt,/REQUESTED_PUBLIC_EVIDENCE_KEYS=installedSha,result/);
+  assert.match(pool.jobs[0].prompt,/Do not echo raw file content/);
   assert.doesNotMatch(pool.jobs[0].prompt,/Production\/main/);
 });
 
