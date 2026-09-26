@@ -762,6 +762,15 @@ export function shouldWaitForBusyResource({message='',failures=[],busyCapableCou
   return String(message)==='NO_AI_RESOURCE_AVAILABLE'&&Array.isArray(failures)&&failures.length===0&&Number(busyCapableCount)>0;
 }
 
+export function shouldWaitForTargetedReviewResource({job,message='',failures=[]}={}){
+  const targetWorker=String(job?.objective_metadata?.targetWorker||'').trim().toUpperCase();
+  return job?.kind==='github_review'
+    && /^NV\d{2}$/.test(targetWorker)
+    && String(message)==='NO_AI_RESOURCE_AVAILABLE'
+    && Array.isArray(failures)
+    && failures.length===0;
+}
+
 async function busyCapableResourceCount(capability){
   const q=await pool.query(`select count(*)::int as count from tigeriq_ai_resources
     where enabled=true and credential_state in ('LOCAL','READY')
@@ -899,14 +908,16 @@ async function claimJob() {
       }
     }
     const busyCount=message==='NO_AI_RESOURCE_AVAILABLE'&&failures.length===0?await busyCapableResourceCount(j.capability):0;
-    if(shouldWaitForBusyResource({message,failures,busyCapableCount:busyCount})){
+    const targetedReviewWait=shouldWaitForTargetedReviewResource({job:j,message,failures});
+    if(shouldWaitForBusyResource({message,failures,busyCapableCount:busyCount})||targetedReviewWait){
       const current=(await pool.query('select resource_wait_count,resource_wait_started_at from tigeriq_jobs where id=$1',[j.id])).rows[0]||{};
       const plan=resourceWaitPlan({waitCount:current.resource_wait_count,startedAt:current.resource_wait_started_at});
       if(plan.wait){
-        const failure={code:'TEMPORARY_RESOURCE_BUSY',message,failures,resourceWait:{count:plan.count,delayMs:plan.delayMs,nextAttemptAt:plan.nextAttemptAt}};
+        const waitCode=targetedReviewWait?'TARGET_REVIEWER_UNAVAILABLE':'TEMPORARY_RESOURCE_BUSY';
+        const failure={code:waitCode,message,failures,resourceWait:{count:plan.count,delayMs:plan.delayMs,nextAttemptAt:plan.nextAttemptAt}};
         await pool.query("update tigeriq_jobs set status='waiting_resource',failure=$2,lease_until=null,completed_at=null,next_attempt_at=$3,resource_wait_count=$4,resource_wait_started_at=coalesce(resource_wait_started_at,now()) where id=$1",[j.id,JSON.stringify(failure),plan.nextAttemptAt,plan.count]);
-        await event('RESOURCE_WAIT_QUEUED',{jobId:j.id,objectiveId:j.objective_id,taskKind:j.kind||'ai',busyCapableCount:busyCount,retryCount:plan.count,delayMs:plan.delayMs,nextAttemptAt:plan.nextAttemptAt});
-        await hotPathStage(j,'WAITING_RESOURCE',{reason:'TEMPORARY_RESOURCE_BUSY',retryCount:plan.count,nextAttemptAt:plan.nextAttemptAt});
+        await event('RESOURCE_WAIT_QUEUED',{jobId:j.id,objectiveId:j.objective_id,taskKind:j.kind||'ai',reason:waitCode,targetWorker:j.objective_metadata?.targetWorker||null,busyCapableCount:busyCount,retryCount:plan.count,delayMs:plan.delayMs,nextAttemptAt:plan.nextAttemptAt});
+        await hotPathStage(j,'WAITING_RESOURCE',{reason:waitCode,retryCount:plan.count,nextAttemptAt:plan.nextAttemptAt});
         return;
       }
     }
