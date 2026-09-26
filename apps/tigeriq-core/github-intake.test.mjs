@@ -188,6 +188,44 @@ describe('GitHub Core intake guardrails',()=>{
     expect(block).not.toContain('"data"');
   });
 
+  it('extracts allowlisted fields from JSON inside a trusted pc01-local file_read receipt without publishing raw content',()=>{
+    const fileJson=JSON.stringify({
+      installedSha:'deadbeef',
+      result:'SUCCESS',
+      remoteDesktopGuard:'DENY',
+      changedPaths:['apps/tigeriq-core/core.mjs'],
+      updaterTaskTarget:'D:\\TigerIQ\\Core',
+      password:'must-not-leak',
+      nested:{token:'also-secret'}
+    });
+    const jobResult={evidence:{bridgeCalls:[{
+      tool:'tigeriq_pc',
+      result:{ok:true,action:'file_read',target:'pc01-local',data:{
+        path:'D:\\TigerIQ\\State\\core-runtime-updater.json',
+        size:fileJson.length,
+        content:fileJson
+      }}
+    }]}};
+    const out=extractPublicEvidence(jobResult,['installedSha','result','remoteDesktopGuard','changedPaths','updaterTaskTarget']);
+    expect(out).toEqual({
+      installedSha:'deadbeef',
+      result:'SUCCESS',
+      remoteDesktopGuard:'DENY',
+      changedPaths:['apps/tigeriq-core/core.mjs'],
+      updaterTaskTarget:'D:\\TigerIQ\\Core',
+    });
+    const block=formatPublicEvidenceBlock(out);
+    expect(block).toContain('PUBLIC_EVIDENCE_JSON=');
+    expect(block).not.toContain('must-not-leak');
+    expect(block).not.toContain('also-secret');
+    expect(block).not.toContain('"content"');
+
+    const wrongAction={evidence:{bridgeCalls:[{result:{ok:true,action:'file_write',target:'pc01-local',data:{content:fileJson}}}]}};
+    expect(extractPublicEvidence(wrongAction,['installedSha'])).toEqual({});
+    const invalidJson={evidence:{bridgeCalls:[{result:{ok:true,action:'file_read',target:'pc01-local',data:{content:'not-json'}}}]}};
+    expect(extractPublicEvidence(invalidJson,['installedSha'])).toEqual({});
+  });
+
   it('does not mistake the bridge call wrapper result object for the requested result field',()=>{
     const out=extractPublicEvidence({evidence:{bridgeCalls:[{
       result:{data:{result:{status:'PASS',content:'private'},installedSha:'abc'},transport:'local'}
