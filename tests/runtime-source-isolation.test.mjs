@@ -55,6 +55,17 @@ describe('runtime source isolation',()=>{
     expect(installSrc).toContain('isolationMode');
     expect(installSrc).toContain('e2eCloseoutVerified');
   });
+  it('uses the PC01-compatible IgnoreNew multiple-instance policy for updater tasks',()=>{
+    const updater=readFileSync('scripts/tigeriq-core/update-core-runtime.ps1','utf8');
+    const installer=readFileSync('scripts/tigeriq-core/install-core-updater.ps1','utf8');
+    expect(updater).toContain('-MultipleInstances IgnoreNew');
+    expect(installer).toContain('-MultipleInstances IgnoreNew');
+    expect(updater).not.toContain('StopExisting');
+    expect(installer).not.toContain('StopExisting');
+    expect(updater).toContain("$settingsOk=($multiple -eq 'IgnoreNew')");
+    expect(updater).toContain("multipleInstances='IgnoreNew'");
+  });
+
   it('recreates the Core Runtime Updater task from the active runtime source when it is missing',()=>{
     const launcher=readFileSync('scripts/tigeriq-core/run-core.ps1','utf8');
     const installer=readFileSync('scripts/tigeriq-core/install-core-updater.ps1','utf8');
