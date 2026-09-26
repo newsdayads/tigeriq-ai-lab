@@ -53,6 +53,6 @@ describe('App Chrome Recovery V1 local-only spec lock',()=>{
     expect(bridge).not.toContain("PERIODIC_F5_DEFERRED_WORKING");
     expect(bridge).toContain("if(phase!=='WORKING'&&now>=Number(state.nextRefreshAt||0))");
     expect(bridge).toContain('awaitingWorkStart===true');
-    expect(bridge).toContain('WORK_START_ACK_TIMEOUT_REARMED');
+    expect(bridge).not.toContain('WORK_START_ACK_TIMEOUT_REARMED');
   });
 });

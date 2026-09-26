@@ -43,7 +43,7 @@ const NV02_F5_MAX_MS=20*60*1000;
 const NV02_STALLED_RELOAD_CHECKS=10;
 const NV02_STALLED_RESET_CHECKS=14;
 const LOCAL_RUN_GRACE_MS=15000;
-const WORK_START_ACK_TIMEOUT_MS=90*1000;
+
 const UI_STABILITY_PACING_MIN_MS=3000;
 const UI_STABILITY_PACING_MAX_MS=8000;
 const VIEW_FOLLOW_MIN_MS=3*1000;
@@ -429,11 +429,8 @@ async function maybeWorkerContinuity(w,target,ui){
       await genericWorkerEvent(w.id,'READY_RECOVERY_STATE_CLEARED');
     }
     if(state.awaitingWorkStart===true){
-      const since=Number(state.awaitingWorkStartSince||0);
-      if(since>0&&now-since<WORK_START_ACK_TIMEOUT_MS)return;
-      state={...state,awaitingWorkStart:false,awaitingWorkStartSince:0,pendingContinue:true,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
-      saveWorkerContinuity(w.id,state);
-      await genericWorkerEvent(w.id,'WORK_START_ACK_TIMEOUT_REARMED',{previousSince:since,nextContinueAt:state.nextContinueAt});
+      // A READY observation alone is not an acknowledgement: do not resend until
+      // WORKING has been observed, or a bounded recovery has opened a new chat.
       return;
     }
     if(state.pendingContinue!==true){
@@ -1516,11 +1513,8 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
   }
   if(phase==='READY'){
     if(state.awaitingWorkStart===true){
-      const since=Number(state.awaitingWorkStartSince||0);
-      if(since>0&&now-since<WORK_START_ACK_TIMEOUT_MS)return;
-      state={...state,awaitingWorkStart:false,awaitingWorkStartSince:0,pendingContinue:true,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
-      saveNv02Continuity(state);
-      await continuityEvent('WORK_START_ACK_TIMEOUT_REARMED',{previousSince:since,nextContinueAt:state.nextContinueAt});
+      // A READY observation alone is not an acknowledgement: do not resend until
+      // WORKING has been observed, or a bounded recovery has opened a new chat.
       return;
     }
     if(state.pendingContinue!==true){
