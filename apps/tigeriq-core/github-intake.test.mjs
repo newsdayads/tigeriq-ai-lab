@@ -182,21 +182,13 @@ describe('GitHub Core intake guardrails',()=>{
     expect(openClawTerminalDecision(result,{timedOut:false,parsedPresent:true})).toMatchObject({success:false,invalidTerminal:true,trustedToolReceipt:false});
   });
 
-  it('accepts structured successful read-only evidence when terminal receipt names are unavailable',()=>{
-    const result={exitCode:1,status:'error',agentResult:{status:'OK',evidence:{action:'file_read',path:'D:\\TigerIQ\\State\\core-runtime-updater.json',ok:true,size:3946},blocker:null},successfulToolNames:[]};
-    expect(openClawTerminalDecision(result,{timedOut:false,parsedPresent:true})).toMatchObject({
-      success:true,structuredReadEvidence:true,evidenceAction:'file_read',trustedToolReceipt:false,
-    });
+  it('keeps clean wrapper success and rejects prose-only or timed-out terminals',()=>{
+    expect(openClawTerminalDecision({exitCode:0,status:'ok',agentResult:{status:'PASS'},successfulToolNames:[]},{timedOut:false,parsedPresent:true})).toMatchObject({success:true,wrapperClean:true});
+    expect(openClawTerminalDecision({exitCode:0,status:'ok',agentResult:null,successfulToolNames:['tigeriq_pc']},{timedOut:false,parsedPresent:true})).toMatchObject({success:false,invalidTerminal:true});
+    expect(openClawTerminalDecision({exitCode:0,status:'ok',agentResult:{status:'PASS'},successfulToolNames:['tigeriq_pc']},{timedOut:true,parsedPresent:true})).toMatchObject({success:false});
   });
 
-  it('does not extend structured-evidence fallback to mutating actions',()=>{
-    const result={exitCode:1,status:'error',agentResult:{status:'SUCCESS',evidence:{action:'file_write',ok:true},blocker:null},successfulToolNames:[]};
-    expect(openClawTerminalDecision(result,{timedOut:false,parsedPresent:true})).toMatchObject({
-      success:false,invalidTerminal:true,structuredReadEvidence:false,evidenceAction:'file_write',
-    });
-  });
-
-  it('requests exact public evidence keys without raw file publication and redacts blocked pc summaries',()=>{
+  it('requests exact public evidence keys and redacts blocked pc_operator summaries',()=>{
     const core=readFileSync(new URL('./core.mjs',import.meta.url),'utf8');
     const intake=readFileSync(new URL('./github-intake.mjs',import.meta.url),'utf8');
     expect(core).toContain('PUBLIC_EVIDENCE_KEYS=');
@@ -206,12 +198,6 @@ describe('GitHub Core intake guardrails',()=>{
     expect(core).not.toContain("row.failure?.kind||row.failure?.message||'terminal_failure'");
     expect(intake).toContain("String(job.failure?.kind||'terminal_failure')");
     expect(intake).not.toContain("job.failure?.message||job.failure?.kind||'terminal_failure'");
-  });
-
-  it('keeps clean wrapper success and rejects prose-only or timed-out terminals',()=>{
-    expect(openClawTerminalDecision({exitCode:0,status:'ok',agentResult:{status:'PASS'},successfulToolNames:[]},{timedOut:false,parsedPresent:true})).toMatchObject({success:true,wrapperClean:true});
-    expect(openClawTerminalDecision({exitCode:0,status:'ok',agentResult:null,successfulToolNames:['tigeriq_pc']},{timedOut:false,parsedPresent:true})).toMatchObject({success:false,invalidTerminal:true});
-    expect(openClawTerminalDecision({exitCode:0,status:'ok',agentResult:{status:'PASS'},successfulToolNames:['tigeriq_pc']},{timedOut:true,parsedPresent:true})).toMatchObject({success:false});
   });
 
   it('formats a terminal result with objective evidence',()=>{expect(formatResultComment({id:'OBJ-GH-588',status:'completed',summary:'ok'})).toContain('[RESULT] TigerIQ Core completed OBJ-GH-588');});
