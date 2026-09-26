@@ -1,5 +1,5 @@
 # TIGERIQ — SOURCE INDEX
-Version: 3.1
+Version: 3.2
 Status: Source Architecture
 Updated: 2026-09-26
 
@@ -54,13 +54,18 @@ Nếu nguồn thấp hơn xung đột nguồn cao hơn, nguồn thấp hơn khô
 ## 6. NEW CHAT loading contract
 1. Đọc `bootstrap/00_TIGERIQ_LOADER.md` từ GitHub `main`.
 2. Resolve PREBOOT HARD COMMAND trước generic bootstrap.
-3. Nếu message độc lập là `AC`/`Ac`/`ac`: dùng AC FAST-LOAD V4 = Loader → #280 → #335 → #504 → #1940 → #1888/#1900 → Work Order/PR APP-CHROME đang mở liên quan → checkpoint/runtime mới nhất; mặc định KHÔNG đọc đủ 5 Bootstrap.
+3. Nếu message độc lập khớp `LÀM APP CHROME` (primary) hoặc alias `APP CHROME` / `APPCHROME` / legacy `AC`: dùng AC FAST-LOAD V4 = Loader → #280 → #335 → #504 → #1940 → #1888/#1900 → Work Order/PR APP-CHROME đang mở liên quan → checkpoint/runtime mới nhất; mặc định KHÔNG đọc đủ 5 Bootstrap.
 4. AC chỉ nạp đủ 5 Bootstrap khi có một trong các trigger: version Bootstrap thay đổi; task governance/architecture; source conflict; SOT pointer thay đổi; Owner yêu cầu.
 5. Nếu không phải AC: đọc đủ 5 Bootstrap canonical theo Loader.
 6. Nếu message chỉ là số nguyên `N`, đọc CENTRAL #280 → registry hiện hành → resolve command trước khi làm.
 7. Nếu task phụ thuộc trạng thái hiện hành, đọc `docs/CURRENT_STATE.md`, queue/P0/Work Order và evidence liên quan.
 8. Trong cùng phiên hợp lệ, không đọc lặp nguồn tĩnh đã xác minh nếu version/pointer chưa đổi; refresh nguồn động cần thiết trước mutation/kết luận.
 9. Nếu GitHub hoặc registry không truy cập được: fail closed; không dùng bản Drive/file upload cũ để suy diễn trạng thái.
+
+### APP Chrome command policy
+`APP_CHROME_PRIMARY_COMMAND=LÀM APP CHROME`
+`APP_CHROME_ALIASES=APP CHROME|APPCHROME|AC`
+`LEGACY_AC=SUPPORTED_BUT_NOT_RECOMMENDED`
 
 ### AC fast-load policy
 `AC_FAST_LOAD_V4=true`
@@ -127,4 +132,4 @@ Tối thiểu trên mỗi nền tảng/tài khoản có thể kiểm tra:
 5. Command đã đăng ký resolve đúng registry.
 6. Command không đăng ký/disabled fail closed.
 7. Câu hỏi trạng thái trả đúng `CURRENT_STATE.md` hiện hành.
-8. `AC` resolve trước generic bootstrap và dùng AC FAST-LOAD V4; 5 Bootstrap chỉ nạp khi trigger bắt buộc xuất hiện.
+8. `LÀM APP CHROME` là command chuẩn, resolve trước generic bootstrap và dùng AC FAST-LOAD V4; alias `APP CHROME`/`APPCHROME`/legacy `AC` tương thích; 5 Bootstrap chỉ nạp khi trigger bắt buộc xuất hiện.
