@@ -64,11 +64,20 @@ function findRequestedValue(node,target,depth=0,seen=new Set()){
 export function extractPublicEvidence(jobResult,requestedKeys=[]){
   const requested=[...new Set((requestedKeys||[]).filter(key=>SUPPORTED_SET.has(String(key))).map(String))];
   if(!requested.length)return {};
-  const source=jobResult?.evidence?.agentResult?.evidence;
-  if(source==null||typeof source!=='object')return {};
+  const primary=jobResult?.evidence?.agentResult?.evidence;
+  const bridgeCalls=jobResult?.evidence?.bridgeCalls;
+  const sources=[
+    primary&&typeof primary==='object'?primary:null,
+    bridgeCalls&&typeof bridgeCalls==='object'?bridgeCalls:null,
+  ].filter(Boolean);
+  if(!sources.length)return {};
   const out={};
   for(const key of requested){
-    const raw=findRequestedValue(source,key);
+    let raw;
+    for(const source of sources){
+      raw=findRequestedValue(source,key);
+      if(raw!==undefined)break;
+    }
     if(raw===undefined)continue;
     out[key]=sanitizePublicEvidenceValue(raw);
   }
