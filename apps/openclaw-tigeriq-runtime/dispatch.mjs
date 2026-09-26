@@ -266,6 +266,42 @@ export function trustedStructuredFileReadReceipt(agentResult){
   });
 }
 
+function pathInsidePcOperatorRoots(value){
+  const raw=String(value||'').trim();
+  if(!raw)return false;
+  const candidate=path.win32.resolve(raw.replaceAll('/','\\')).toLowerCase();
+  return PC_OPERATOR_ROOTS.some(root=>{
+    const base=path.win32.resolve(String(root)).toLowerCase();
+    return candidate===base||candidate.startsWith(base+'\\');
+  });
+}
+
+function findTrustedBridgeFileReadReceipt(node,depth=0,seen=new Set()){
+  if(depth>8||node==null||typeof node!=='object'||seen.has(node))return false;
+  seen.add(node);
+  if(!Array.isArray(node)
+    && node.ok===true
+    && String(node.action||'').toLowerCase()==='file_read'
+    && String(node.target||'').toLowerCase()==='pc01-local'
+    && node.data&&typeof node.data==='object'
+    && pathInsidePcOperatorRoots(node.data.path||node.path)
+  )return true;
+  const values=Array.isArray(node)?node:Object.values(node);
+  return values.some(value=>findTrustedBridgeFileReadReceipt(value,depth+1,seen));
+}
+
+export function trustedBridgeFileReadReceipt(bridgeCalls){
+  return findTrustedBridgeFileReadReceipt(bridgeCalls);
+}
+
+export function safeOpenClawFailureMessage({timedOut=false,rateLimited=false,terminal=null,result=null}={}){
+  if(timedOut)return 'OPENCLAW_WORKER_TIMEOUT';
+  if(rateLimited)return 'OPENCLAW_RATE_LIMIT';
+  const status=String(terminal?.agentStatus||result?.status||'unknown').replace(/[^a-z0-9_.:-]/gi,'').slice(0,64)||'unknown';
+  if(terminal?.invalidTerminal)return `OPENCLAW_AGENT_TERMINAL_INVALID:status=${status}`;
+  return `OPENCLAW_DISPATCH_FAILED:status=${status}`;
+}
+
 export function openClawTerminalDecision(result,{timedOut=false,parsedPresent=true}={}){
   const agentStatus=String(result?.agentResult?.status||'').toLowerCase();
   const successAgentStatuses=new Set(['pass','passed','ok','success','completed','done']);
@@ -276,14 +312,15 @@ export function openClawTerminalDecision(result,{timedOut=false,parsedPresent=tr
   const terminalReceiptTool=(Array.isArray(result?.successfulToolNames)?result.successfulToolNames:[])
     .some(name=>/^tigeriq_(?:pc|runtime)(?:[.:/]|$)/i.test(String(name||'')));
   const embeddedFileReadReceipt=trustedStructuredFileReadReceipt(result?.agentResult);
-  const trustedToolReceipt=terminalReceiptTool||embeddedFileReadReceipt;
+  const bridgeFileReadReceipt=trustedBridgeFileReadReceipt(result?.bridgeCalls);
+  const trustedToolReceipt=terminalReceiptTool||embeddedFileReadReceipt||bridgeFileReadReceipt;
   const success=!timedOut&&Boolean(parsedPresent)&&agentSuccess&&(wrapperClean||trustedToolReceipt);
   const invalidTerminal=!timedOut&&Boolean(parsedPresent)&&!success&&(
     !agentStructured
     || !successAgentStatuses.has(agentStatus)
     || (agentSuccess&&!wrapperClean&&!trustedToolReceipt)
   );
-  return {success,invalidTerminal,agentStatus,agentStructured,agentSuccess,wrapperClean,trustedToolReceipt,terminalReceiptTool,embeddedFileReadReceipt};
+  return {success,invalidTerminal,agentStatus,agentStructured,agentSuccess,wrapperClean,trustedToolReceipt,terminalReceiptTool,embeddedFileReadReceipt,bridgeFileReadReceipt};
 }
 
 export async function runDispatchWorkerRecord(recordPath,options={}){
@@ -323,8 +360,9 @@ export async function runDispatchWorkerRecord(recordPath,options={}){
   const failureText=String(result.agentResult?.blocker||result.text||result.stderr||'');
   const rateLimited=/\b(?:rate\s*limit|too\s+many\s+requests|http\s*429|status\s*429|429)\b/i.test(failureText);
   const failureKind=timedOut?'worker_timeout':(rateLimited?'rate_limit':(terminal.invalidTerminal?'agent_terminal_invalid':(terminal.agentStatus||result.status||'openclaw_failure')));
+  const failureMessage=safeOpenClawFailureMessage({timedOut,rateLimited,terminal,result});
   const final={...running,state:finalState,result,updatedAt:new Date().toISOString(),completedAt:new Date().toISOString(),
-    ...(success?{}:{failure:{kind:failureKind,message:String(result.agentResult?.blocker||result.text||result.stderr||'OPENCLAW_DISPATCH_FAILED').slice(0,2000)}})};
+    ...(success?{}:{failure:{kind:failureKind,message:failureMessage}})};
   await atomicWrite(recordPath,final);
   return final;
 }

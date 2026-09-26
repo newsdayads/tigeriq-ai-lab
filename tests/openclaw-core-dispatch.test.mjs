@@ -11,6 +11,8 @@ import {
   hasHardGateTextIntent,
   parseOpenClawAgentResult,
   openClawTerminalDecision,
+  safeOpenClawFailureMessage,
+  trustedBridgeFileReadReceipt,
   trustedStructuredFileReadReceipt,
   readOpenClawDispatchRecord,
   writeOpenClawDispatchRecord,
@@ -131,6 +133,38 @@ describe('Core -> OpenClaw bounded dispatch #1528', () => {
     expect(openClawTerminalDecision({
       exitCode:1,status:'error',agentResult:null,successfulToolNames:[],
     },{timedOut:false,parsedPresent:true}).success).toBe(false);
+  });
+
+  it('trusts only a bounded structured tigeriq_pc file_read receipt from bridgeCalls', () => {
+    const bridgeCalls=[{tool:'tigeriq_pc',result:{ok:true,action:'file_read',target:'pc01-local',data:{path:'D:\\TigerIQ\\State\\core-runtime-updater.json',size:42,content:'private'}}}];
+    expect(trustedBridgeFileReadReceipt(bridgeCalls)).toBe(true);
+    const terminal=openClawTerminalDecision({
+      exitCode:1,
+      status:'error',
+      agentResult:{status:'SUCCESS',evidence:{content:'model summary is not itself trusted'}},
+      successfulToolNames:[],
+      bridgeCalls,
+    },{timedOut:false,parsedPresent:true});
+    expect(terminal).toMatchObject({success:true,trustedToolReceipt:true,bridgeFileReadReceipt:true});
+
+    expect(trustedBridgeFileReadReceipt([{result:{ok:true,action:'file_write',target:'pc01-local',data:{path:'D:\\TigerIQ\\State\\x.json'}}}])).toBe(false);
+    expect(trustedBridgeFileReadReceipt([{result:{ok:true,action:'file_read',target:'pc01-local',data:{path:'C:\\Windows\\x.txt'}}}])).toBe(false);
+    expect(trustedBridgeFileReadReceipt([{result:{ok:true,action:'file_read',target:'other',data:{path:'D:\\TigerIQ\\State\\x.json'}}}])).toBe(false);
+    expect(openClawTerminalDecision({
+      exitCode:1,status:'error',
+      agentResult:{status:'SUCCESS',evidence:{content:'not trusted'}},
+      successfulToolNames:[],bridgeCalls:null,
+    },{timedOut:false,parsedPresent:true}).success).toBe(false);
+  });
+
+  it('uses classification-only public failure messages and never raw agent text or stderr', () => {
+    const raw='TOP SECRET FILE CONTENT';
+    expect(safeOpenClawFailureMessage({
+      terminal:{invalidTerminal:true,agentStatus:'success'},
+      result:{status:'error',text:raw,stderr:raw},
+    })).toBe('OPENCLAW_AGENT_TERMINAL_INVALID:status=success');
+    expect(safeOpenClawFailureMessage({rateLimited:true,result:{text:raw}})).toBe('OPENCLAW_RATE_LIMIT');
+    expect(safeOpenClawFailureMessage({timedOut:true,result:{text:raw}})).toBe('OPENCLAW_WORKER_TIMEOUT');
   });
 
   it('retries one failed durable dispatch with the same idempotency record and then stops', async () => {
