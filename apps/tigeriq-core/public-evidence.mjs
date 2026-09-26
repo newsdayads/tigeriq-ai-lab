@@ -63,6 +63,28 @@ function findRequestedValue(node,target,depth=0,seen=new Set()){
   return undefined;
 }
 
+function parseTrustedFileReadJsonReceipt(node){
+  if(!node||typeof node!=='object'||Array.isArray(node))return null;
+  if(node.ok!==true||String(node.action||'').toLowerCase()!=='file_read'||String(node.target||'').toLowerCase()!=='pc01-local')return null;
+  const data=node.data;
+  const content=typeof data?.content==='string'?data.content:'';
+  if(!content||content.length>256*1024)return null;
+  try{
+    const parsed=JSON.parse(content);
+    return parsed&&typeof parsed==='object'&&!Array.isArray(parsed)?parsed:null;
+  }catch{return null;}
+}
+
+function collectTrustedFileReadJsonSources(node,depth=0,seen=new Set(),out=[]){
+  if(depth>8||node==null||typeof node!=='object'||seen.has(node))return out;
+  seen.add(node);
+  const parsed=parseTrustedFileReadJsonReceipt(node);
+  if(parsed)out.push(parsed);
+  const values=Array.isArray(node)?node:Object.values(node);
+  for(const value of values)collectTrustedFileReadJsonSources(value,depth+1,seen,out);
+  return out;
+}
+
 function structuredBridgeEvidenceSources(bridgeCalls){
   const calls=Array.isArray(bridgeCalls)?bridgeCalls:[bridgeCalls];
   const sources=[];
@@ -73,12 +95,10 @@ function structuredBridgeEvidenceSources(bridgeCalls){
       if(result.data&&typeof result.data==='object')sources.push(result.data);
       else if(result.evidence&&typeof result.evidence==='object')sources.push(result.evidence);
       else sources.push(result);
-      continue;
-    }
-    if(call.data&&typeof call.data==='object')sources.push(call.data);
+    }else if(call.data&&typeof call.data==='object')sources.push(call.data);
     else if(call.evidence&&typeof call.evidence==='object')sources.push(call.evidence);
   }
-  return sources;
+  return [...sources,...collectTrustedFileReadJsonSources(bridgeCalls)];
 }
 
 export function extractPublicEvidence(jobResult,requestedKeys=[]){
