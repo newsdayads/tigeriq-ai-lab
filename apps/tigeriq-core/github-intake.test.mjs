@@ -65,6 +65,14 @@ describe('GitHub Core intake guardrails',()=>{
     });
   });
 
+  it('sync prioritizes active and unreported GitHub objectives instead of the oldest 100 rows',()=>{
+    const source=readFileSync(new URL('./github-intake.mjs',import.meta.url),'utf8');
+    expect(source).not.toContain("order by created_at asc limit 100");
+    expect(source).toContain("status='active'");
+    expect(source).toContain("githubResultReported");
+    expect(source).toContain("order by case when status='active' then 0 else 1 end, updated_at desc, created_at desc");
+  });
+
   it('uses legacy pc_operator job id for the initial objective and unique deterministic ids for rearms',()=>{
     const initial=githubPcOperatorJobId('OBJ-GH-588',588);
     const rearmA='OBJ-GH-588-Rabc123-20260926032117';
