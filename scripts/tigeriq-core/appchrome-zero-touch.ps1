@@ -60,6 +60,22 @@ function Request-Nv02Only($req){
   if($req.PSObject.Properties.Name -contains 'nv02Only'){return [bool]$req.nv02Only}
   return $false
 }
+function Pause-Nv02OnlySideWriters($req){
+  if(-not(Request-Nv02Only $req)){return @()}
+  $pausedWorkers=@()
+  foreach($id in @('NV03','NV04')){
+    $healthUri=$controller+'/api/utility/workers/'+$id+'/health'
+    $pauseUri=$controller+'/api/utility/workers/'+$id+'/pause'
+    $health=Invoke-RestMethod -Uri $healthUri -TimeoutSec 5
+    if(-not [bool]$health.utilityPaused){
+      Invoke-RestMethod -Method Post -Uri $pauseUri -TimeoutSec 5|Out-Null
+    }
+    $after=Invoke-RestMethod -Uri $healthUri -TimeoutSec 5
+    if(-not [bool]$after.utilityPaused){throw ('APPCHROME_NV02_ONLY_SIDE_WRITER_PAUSE_FAILED:'+ $id)}
+    $pausedWorkers+=$id
+  }
+  return @($pausedWorkers)
+}
 function Assert-Authorization($req){
   $issue=(& gh issue view ([int]$req.issueNumber) --repo $Repo --json state,body 2>$null|Out-String)|ConvertFrom-Json -ErrorAction Stop
   if([string]$issue.state -ne 'OPEN'){throw 'APPCHROME_OWNER_ISSUE_NOT_OPEN'}
@@ -177,6 +193,7 @@ try{
   if((Get-Content -Raw -LiteralPath $version).Trim() -ne [string]$req.exactHead){throw 'APPCHROME_DOWNLOADED_HEAD_MISMATCH'}
   $installer=Join-Path $artifactRoot 'apps\chrome-controller\runtime\Install-ApprovedArtifact.ps1';if(-not(Test-Path -LiteralPath $installer)){throw 'APPCHROME_CANONICAL_INSTALLER_MISSING'}
   $runtime=Join-Path $InstallRoot 'Runtime';$active=Join-Path $runtime 'active-deploy.json';$launcher=Join-Path $runtime 'Start-Unified-AppChrome.ps1';$legacy=Join-Path $runtime 'Start-Unified-AppChrome-1372.ps1'
+  $preQuiescedWorkers=@(Pause-Nv02OnlySideWriters $req)
   Wait-SafeBoundary|Out-Null;$paused=$true
   $revalidated=Revalidate-After-SafeBoundary $req $requestFingerprint ([long]$verified.runId)
   $req=$revalidated.request;$verified=$revalidated.verified
@@ -190,7 +207,7 @@ try{
   if($LASTEXITCODE -ne 0){throw 'APPCHROME_CANONICAL_INSTALLER_FAILED'}
   $live=Wait-ExactHead ([string]$req.exactHead)
   try{Invoke-RestMethod -Method Post -Uri ($controller+'/api/resume') -TimeoutSec 5|Out-Null}catch{};$paused=$false
-  $details=[ordered]@{runId=[long]$verified.runId;deploy=[string]$live.state.runtimeProvenance.deployRoot;bridgeSha256=[string]$live.bridge.sourceSha256;provenanceVerified=[bool]$live.bridge.provenanceVerified;requestSource=if($req.PSObject.Properties.Name -contains 'source'){$req.source}else{'STATE_FILE'}}
+  $details=[ordered]@{runId=[long]$verified.runId;deploy=[string]$live.state.runtimeProvenance.deployRoot;bridgeSha256=[string]$live.bridge.sourceSha256;provenanceVerified=[bool]$live.bridge.provenanceVerified;preQuiescedWorkers=@($preQuiescedWorkers);requestSource=if($req.PSObject.Properties.Name -contains 'source'){$req.source}else{'STATE_FILE'}}
   Save-Result 'PASS' 'APPCHROME_EXACT_HEAD_LIVE' $req $details
   $comment=@('APP_CHROME_ZERO_TOUCH_INSTALL=PASS',('TARGET_HEAD='+[string]$req.exactHead),('ARTIFACT_ID='+[string]$req.artifactId),('RUN_ID='+[string]$verified.runId),('PROVENANCE_VERIFIED='+[string][bool]$live.bridge.provenanceVerified),('DEPLOY_ROOT='+[string]$live.state.runtimeProvenance.deployRoot),'RDC_USED=false') -join [Environment]::NewLine
   & gh issue comment ([int]$req.issueNumber) --repo $Repo --body $comment 2>$null|Out-Null
