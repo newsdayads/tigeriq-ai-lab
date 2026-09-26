@@ -1,7 +1,7 @@
+import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import {
   applyQueueLifecycle,
-  buildLiveStatus,
   compareQueueRows,
   fetchPc01Live,
   lifecycleIndexFromComments,
@@ -236,20 +236,11 @@ describe('TigerIQ Live Work Order projection', () => {
   });
 
 
-  it('uses one repository-wide lifecycle comment request instead of per-issue comment requests', async () => {
-    let lifecycleCalls = 0;
-    const fetchImpl = async (url) => {
-      const value = String(url);
-      if (value.includes('/issues/335')) return new Response(JSON.stringify({ body: '', updated_at: '2026-09-26T08:00:00Z' }), { status: 200 });
-      if (value.includes('/actions/runs?per_page=100')) return new Response(JSON.stringify({ workflow_runs: [] }), { status: 200 });
-      if (value.includes('/pulls?state=open')) return new Response(JSON.stringify([]), { status: 200 });
-      if (value.includes('/issues?state=open')) return new Response(JSON.stringify([]), { status: 200 });
-      if (value.includes('/issues/comments?')) { lifecycleCalls += 1; return new Response(JSON.stringify([]), { status: 200 }); }
-      if (value.includes('/issues?state=closed')) return new Response(JSON.stringify([]), { status: 200 });
-      throw new Error('unexpected_url:' + value);
-    };
-    await buildLiveStatus(fetchImpl);
-    expect(lifecycleCalls).toBe(1);
+  it('uses one repository-wide lifecycle comment endpoint and no per-issue lifecycle hydration', async () => {
+    const source = await readFile(new URL('../api/live-status.mjs', import.meta.url), 'utf8');
+    const repoWide = source.match(/\/issues\/comments\?per_page=100&sort=created&direction=desc/g) || [];
+    expect(repoWide).toHaveLength(1);
+    expect(source).not.toMatch(/\/issues\/['"]?\s*\+\s*[^\n]+\/comments\?per_page=100/);
   });
 
   it('requires a current job and heartbeat no older than 60 seconds before showing ĐANG LÀM', () => {
