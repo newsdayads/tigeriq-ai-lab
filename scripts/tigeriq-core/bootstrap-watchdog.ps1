@@ -4,9 +4,10 @@ Set-StrictMode -Version Latest
 $statePath='D:\TigerIQ\State\bootstrap-watchdog.json'
 $updaterStatePath='D:\TigerIQ\State\core-runtime-updater.json'
 $updaterRuntime='D:\TigerIQ\Runtime\CoreUpdater\update-core-runtime.ps1'
+$updaterTask='TigerIQ Core Runtime Updater'
 $watchdogStartedAt=Get-Date
 $targets=@(
-  @{key='updater';task='TigerIQ Core Runtime Updater';ports=@()},
+  @{key='updater';task=$updaterTask;ports=@()},
   @{key='openclaw';task='TigerIQ OpenClaw Gateway';ports=@(18789)},
   @{key='appchrome';task='TigerIQ APP Chrome Unified';ports=@(8798,8799)}
 )
@@ -55,23 +56,46 @@ function Save-State($rows){
   $d=[ordered]@{schema='TIGERIQ_BOOTSTRAP_WATCHDOG_V2';updatedAt=(Get-Date).ToUniversalTime().ToString('o');services=$rows}
   $tmp=$statePath+'.tmp';[IO.File]::WriteAllText($tmp,($d|ConvertTo-Json -Depth 8),(New-Object Text.UTF8Encoding($false)));Move-Item -Force $tmp $statePath
 }
+function Ensure-UpdaterTask(){
+  # TIGERIQ_UPDATER_TASK_SELF_HEAL_V1: outer recovery removes the post-reboot deadlock where
+  # Remote Guard needs the updater but the updater task itself is absent.
+  if(-not(Test-Path -LiteralPath $updaterRuntime)){return @{action='blocked';reason='UPDATER_RUNTIME_MISSING'}}
+  try{
+    $task=Get-ScheduledTask -TaskName $updaterTask -ErrorAction SilentlyContinue
+    if($task){return @{action='none';reason='TASK_PRESENT'}}
+    $ps='C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
+    $args="-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$updaterRuntime`" -IntervalSeconds 120"
+    $action=New-ScheduledTaskAction -Execute $ps -Argument $args
+    $trigger=New-ScheduledTaskTrigger -AtStartup
+    $settings=New-ScheduledTaskSettingsSet -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero) -StartWhenAvailable -MultipleInstances StopExisting
+    $principal=New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+    Register-ScheduledTask -TaskName $updaterTask -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force|Out-Null
+    Start-ScheduledTask -TaskName $updaterTask -ErrorAction Stop
+    return @{action='installed';reason='UPDATER_TASK_RECREATED'}
+  }catch{return @{action='blocked';reason=('UPDATER_TASK_RECREATE_'+$_.Exception.GetType().Name)}}
+}
 while($true){
   $rows=@()
   foreach($t in $targets){
     $task=Get-ScheduledTask -TaskName $t.task -ErrorAction SilentlyContinue
+    $bootstrapRepair=@{action='none';reason='NOT_APPLICABLE'}
+    if($t.key -eq 'updater' -and -not $task){
+      $bootstrapRepair=Ensure-UpdaterTask
+      $task=Get-ScheduledTask -TaskName $t.task -ErrorAction SilentlyContinue
+    }
     $taskRunning=[bool]($task -and [string]$task.State -eq 'Running')
     $portsHealthy=$true
     foreach($p in @($t.ports)){if(-not(Test-Tcp ([int]$p))){$portsHealthy=$false;break}}
     $heartbeat=if($t.key -eq 'updater'){Get-UpdaterHeartbeat}else{@{fresh=$true;ageSec=$null;reason='NOT_APPLICABLE'}}
     $healthy=$taskRunning -and $portsHealthy -and [bool]$heartbeat.fresh
-    $action='none'
-    $reason=if($healthy){'HEALTHY'}elseif(-not $task){'TASK_MISSING'}elseif(-not $taskRunning){'TASK_NOT_RUNNING'}elseif(-not [bool]$heartbeat.fresh){[string]$heartbeat.reason}else{'PORT_UNHEALTHY'}
+    $action=if([string]$bootstrapRepair.action -eq 'installed'){'install'}elseif([string]$bootstrapRepair.action -eq 'blocked'){'blocked'}else{'none'}
+    $reason=if([string]$bootstrapRepair.action -eq 'installed'){'UPDATER_TASK_RECREATED'}elseif([string]$bootstrapRepair.action -eq 'blocked'){[string]$bootstrapRepair.reason}elseif($healthy){'HEALTHY'}elseif(-not $task){'TASK_MISSING'}elseif(-not $taskRunning){'TASK_NOT_RUNNING'}elseif(-not [bool]$heartbeat.fresh){[string]$heartbeat.reason}else{'PORT_UNHEALTHY'}
     $stoppedPids=@()
     if($healthy){$failures[$t.key]=0}
     else{
       $failures[$t.key]=[int]$failures[$t.key]+1
       $since=((Get-Date)-[DateTime]$lastHeal[$t.key]).TotalSeconds
-      if($task -and $failures[$t.key] -ge $FailureThreshold -and $since -ge $CooldownSeconds){
+      if([string]$bootstrapRepair.action -ne 'blocked' -and $task -and $failures[$t.key] -ge $FailureThreshold -and $since -ge $CooldownSeconds){
         try{
           if($taskRunning -and ($t.key -eq 'updater' -or @($t.ports).Count)){Stop-ScheduledTask -TaskName $t.task -ErrorAction SilentlyContinue;Start-Sleep -Seconds 2}
           if($t.key -eq 'updater'){$stoppedPids=@(Stop-ExactUpdaterProcesses)}

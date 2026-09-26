@@ -94,20 +94,28 @@ function Sync-UpdaterRuntime(){
   $tmp=$updaterRuntime+'.tmp';Copy-Item -LiteralPath $source -Destination $tmp -Force;Move-Item -LiteralPath $tmp -Destination $updaterRuntime -Force
 }
 function Ensure-UpdaterTaskRuntimeTarget(){
-  $task=Get-ScheduledTask -TaskName $updaterTask -ErrorAction SilentlyContinue
-  if(-not $task){return @{action='missing';reason='UPDATER_TASK_MISSING'}}
-  $action=@($task.Actions|Select-Object -First 1)
+  # TIGERIQ_UPDATER_TASK_SELF_HEAL_V1: the updater must be able to recreate its own AtStartup task
+  # when launched manually/native after a reboot. Bootstrap Watchdog provides the outer recovery path.
   $expectedExe='C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
   $expectedArgs="-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$updaterRuntime`" -IntervalSeconds $IntervalSeconds"
+  $newAction=New-ScheduledTaskAction -Execute $expectedExe -Argument $expectedArgs
+  $newSettings=New-ScheduledTaskSettingsSet -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero) -StartWhenAvailable -MultipleInstances StopExisting
+  $principal=New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+  $task=Get-ScheduledTask -TaskName $updaterTask -ErrorAction SilentlyContinue
+  if(-not $task){
+    if(-not(Test-Path -LiteralPath $updaterRuntime)){return @{action='blocked';reason='UPDATER_RUNTIME_MISSING';target=$updaterRuntime}}
+    $trigger=New-ScheduledTaskTrigger -AtStartup
+    Register-ScheduledTask -TaskName $updaterTask -Action $newAction -Trigger $trigger -Settings $newSettings -Principal $principal -Force|Out-Null
+    return @{action='installed';target=$updaterRuntime;multipleInstances='StopExisting';runAs='SYSTEM';trigger='AtStartup'}
+  }
+  $action=@($task.Actions|Select-Object -First 1)
   $currentExe=[string]$action.Execute
   $currentArgs=[string]$action.Arguments
   $multiple=[string]$task.Settings.MultipleInstances
   $actionOk=($currentExe -ieq $expectedExe -and $currentArgs -match [regex]::Escape($updaterRuntime))
   $settingsOk=($multiple -eq 'StopExisting')
   if($actionOk -and $settingsOk){return @{action='none';target=$updaterRuntime;multipleInstances=$multiple}}
-  $newAction=New-ScheduledTaskAction -Execute $expectedExe -Argument $expectedArgs
-  $newSettings=New-ScheduledTaskSettingsSet -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero) -StartWhenAvailable -MultipleInstances StopExisting
-  Set-ScheduledTask -TaskName $updaterTask -Action $newAction -Settings $newSettings|Out-Null
+  Set-ScheduledTask -TaskName $updaterTask -Action $newAction -Settings $newSettings -Principal $principal|Out-Null
   return @{action='retargeted';target=$updaterRuntime;previousExecute=$currentExe;previousArguments=$currentArgs;previousMultipleInstances=$multiple;multipleInstances='StopExisting'}
 }
 function Ensure-BootstrapWatchdogTask(){
@@ -550,6 +558,7 @@ while($true){
     $remote=Head $controlRepo 'origin/main';if(-not $remote){throw 'REMOTE_MAIN_MISSING'}
     $runtimeExists=Test-Path -LiteralPath $runtimeRepo
     if($runtimeExists -and (Runtime-Source-Dirty)){Save-State @{result='BLOCKED_DIRTY_RUNTIME';runtimeSource=$runtimeRepo;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;watchdog=$watchdog};continue}
+    $updaterTaskTarget=if($runtimeExists){Ensure-UpdaterTaskRuntimeTarget}else{@{action='skip';reason='runtime_missing';target=$updaterRuntime}}
     $local=if($runtimeExists){Head $runtimeRepo 'HEAD'}else{$null}
     $openclawReconcile=@{action='skip';reason='runtime_missing'}
     $preOpenclawCanary=@{action='skip';reason='runtime_missing'}
@@ -563,7 +572,7 @@ while($true){
         $preOpenclawCanary=@{action='blocked';result='BLOCKED';reason='OPENCLAW_DEGRADED_NONBLOCKING'}
       }
     }
-    if($runtimeExists -and $local -eq $remote){$remoteDesktopGuard=Reconcile-RemoteDesktopGuard;Save-State @{result='NO_CHANGE';installedSha=$local;runtimeSource=$runtimeRepo;bootstrapWatchdog=$bootstrapWatchdog;appChromeInstall=$appChromeInstall;appChromeRecovery=$appChromeRecovery;legacyLifecycleRetire=$legacyLifecycleRetire;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;openclawReconcile=$openclawReconcile;openclawCanary=$preOpenclawCanary;remoteDesktopGuard=$remoteDesktopGuard;watchdog=$watchdog};Start-Sleep -Seconds $IntervalSeconds;continue}
+    if($runtimeExists -and $local -eq $remote){$remoteDesktopGuard=Reconcile-RemoteDesktopGuard;Save-State @{result='NO_CHANGE';installedSha=$local;runtimeSource=$runtimeRepo;bootstrapWatchdog=$bootstrapWatchdog;appChromeInstall=$appChromeInstall;appChromeRecovery=$appChromeRecovery;legacyLifecycleRetire=$legacyLifecycleRetire;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;openclawReconcile=$openclawReconcile;openclawCanary=$preOpenclawCanary;remoteDesktopGuard=$remoteDesktopGuard;updaterTaskTarget=$updaterTaskTarget;watchdog=$watchdog};Start-Sleep -Seconds $IntervalSeconds;continue}
     $gateSha=Resolve-GateSha $remote
     if(-not $gateSha){Save-State @{result='WAIT_GATES';candidateSha=$remote;runtimeSource=$runtimeRepo;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;watchdog=$watchdog};continue}
     [string[]]$changed=if($runtimeExists){@(git -C $controlRepo diff --name-only $local $remote)}else{@('apps/tigeriq-core/','apps/tigeriq-coding-lane/','scripts/tigeriq-core/')}
@@ -576,7 +585,6 @@ while($true){
     Save-RuntimeSourceState $remote $previousRuntimeSha $gateSha
     Sync-Launchers
     $bootstrapWatchdog=Ensure-BootstrapWatchdogTask
-    $updaterTaskTarget=@{action='none';target=$updaterRuntime}
     if($impact.updater){Sync-UpdaterRuntime;$updaterTaskTarget=Ensure-UpdaterTaskRuntimeTarget}
     $coreHealth=$oldCore;$webHealth=$null;$codingHealth=$null;$openclawHealth=$null;$openclawCanary=$null
     try{

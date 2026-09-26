@@ -190,6 +190,26 @@ describe('Remote Desktop Commander hard runtime guard',()=>{
     await expect(readFile(leasePath,'utf8')).rejects.toMatchObject({code:'ENOENT'});
   });
 
+  it('uses the existing local GitHub token to verify Owner authorization in a private repository without exposing it',async()=>{
+    const leasePath=await tempLeasePath();
+    const args={command:'cmd.exe /c echo private-repo-auth',timeout_ms:1000};
+    const lease=leaseFor('start_process',args);
+    const secret='test-private-token';
+    let seenAuth='';
+    const fetchImpl=async(_url,options={})=>{
+      seenAuth=String(options?.headers?.Authorization||'');
+      return authFetchFor(lease)();
+    };
+    const result=await installOwnerLeaseFromAuthorization({authorizationUrl:lease.authorizationUrl},{
+      leasePath,now:NOW,fetchImpl,tokenPath:'D:\\TigerIQ\\Secrets\\test-token',
+      readFileImpl:async()=>secret+'\n'
+    });
+    expect(result).toMatchObject({ok:true,reason:'OWNER_LEASE_INSTALLED',leaseId:'OWNER-TEST-1'});
+    expect(seenAuth).toBe('Bearer '+secret);
+    expect(JSON.stringify(result)).not.toContain(secret);
+    expect(await readFile(leasePath,'utf8')).not.toContain(secret);
+  });
+
   it('forbids remote security config mutation even when a lease file exists',async()=>{
     const leasePath=await tempLeasePath();
     const args={key:'blockedCommands',value:['x']};
