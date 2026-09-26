@@ -16,6 +16,7 @@ import { detectIdleWithBacklog, routingFault } from './github-backlog-policy.mjs
 import { staleLeaseRecoveryPlan } from './job-recovery-policy.mjs';
 import { API_DOCTOR_CAPABILITY, apiDoctorAction, apiDoctorExistingHandoffAction, apiDoctorRepairSignature, buildApiDoctorPrompt, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
 import { buildCoreUiAssignmentSnapshot } from './core-ui-assignment.mjs';
+import { appendPublicEvidenceToSummary } from './public-evidence.mjs';
 import { refreshRegistryWorkforce, normalizeRuntimeResources } from './workforce-registry.mjs';
 import { OPENCLAW_EMPLOYEE_ID, OPENCLAW_MODEL, OPENCLAW_PROVIDER, OPENCLAW_RESOURCE_ID, normalizeOpenClawDispatchEnvelope, waitOpenClawDispatch } from '../openclaw-tigeriq-runtime/dispatch.mjs';
 
@@ -1080,7 +1081,7 @@ async function reconcileGithubCoreReviewObjective(o){
 }
 
 async function reconcileCoreOpenClawBoundedObjectives(){
-  const rows=(await pool.query(`select o.id as objective_id,j.id as job_id,j.status,j.employee_id,j.resource_id,j.provider,j.failure,j.result
+  const rows=(await pool.query(`select o.id as objective_id,o.metadata as objective_metadata,j.id as job_id,j.status,j.employee_id,j.resource_id,j.provider,j.failure,j.result
     from tigeriq_objectives o
     join lateral (
       select id,status,employee_id,resource_id,provider,failure,result
@@ -1098,7 +1099,7 @@ async function reconcileCoreOpenClawBoundedObjectives(){
     const done=row.status==='done';
     const reason=done?'job_done':String(row.failure?.kind||row.failure?.message||'terminal_failure').slice(0,300);
     const summary=done
-      ? `bounded pc_operator completed via ${row.employee_id||'NV06'}/${row.provider||'openclaw'}; job=${row.job_id}`
+      ? appendPublicEvidenceToSummary(`bounded pc_operator completed via ${row.employee_id||'NV06'}/${row.provider||'openclaw'}; job=${row.job_id}`,row.result,row.objective_metadata?.publicEvidenceKeys||[])
       : `bounded pc_operator failed; job=${row.job_id}; failure=${reason}`;
     const updated=await pool.query("update tigeriq_objectives set status=$2,summary=$3,updated_at=now() where id=$1 and status='active'",[row.objective_id,done?'completed':'blocked',summary]);
     if(updated.rowCount!==1)continue;
