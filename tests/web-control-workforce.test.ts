@@ -35,12 +35,14 @@ describe('Web Control workforce projection',()=>{
 
   it('renders all workforce slots even when no runtime/API resource exists',()=>{
     expect(workforceJs).toContain('Array.from({length:20}');
-    expect(workforceJs).toContain("MANUAL:'THỦ CÔNG'");
+    expect(workforceJs).toContain("MANUAL:'THEO NHU CẦU'");
     expect(workforceJs).toContain("PAUSED:'TẠM DỪNG'");
     expect(workforceJs).toContain("NO_API:'KHÔNG CÓ API'");
     expect(workforceJs).toContain("RETIRED:'ĐÃ NGỪNG'");
     expect(workforceJs).toContain("UNASSIGNED:'CHƯA CẤP'");
     expect(workforceJs).toContain("Runtime/API: không có");
+    expect(workforceJs).toContain('STATUS_ORDER');
+    expect(workforceJs).toContain("state==='working'");
   });
 
   it('locks the employee strip to exactly two fixed rows with horizontal scrolling',()=>{

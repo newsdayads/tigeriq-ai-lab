@@ -110,10 +110,11 @@ renderObjectives = function renderObjectivesTruth(d) {
 };
 
 renderJobs = function renderJobsTruth(d) {
-  const lane = codingTruth(d);
-  const jobs = lane?.jobs?.length ? lane.jobs : (d.jobs || []);
-  const rows = jobs.map(j => `<tr><td>${esc(j.id)}</td><td>${esc(j.title)}</td><td>${esc(j.objective_id || '—')}</td><td>${esc(j.employee_id || '—')}</td><td>${esc(j.reviewer_employee_id || j.provider || '—')}</td><td class="${j.status === 'failed' || j.status === 'blocked' ? 'red' : j.status === 'done' ? 'green' : ['running','review'].includes(j.status) ? 'blue' : 'amber'}">${esc(j.status)}</td><td>${esc(duration(j.started_at, j.completed_at))}</td></tr>`).join('');
-  document.getElementById('jobsTable').innerHTML = rows || '<tr><td colspan="7">Chưa có công việc.</td></tr>';
+  const priorityRank={P0:0,P1:1,P2:2,P3:3};
+  const workOrders=[...(d?.workOrders||[])].sort((a,b)=>(priorityRank[a.priority]??9)-(priorityRank[b.priority]??9)||String(b.updated_at||'').localeCompare(String(a.updated_at||'')));
+  const stateClass=state=>state==='BỊ CHẶN'?'red':state==='ĐANG LÀM'?'blue':state==='CHỜ'?'amber':'green';
+  const rows=workOrders.map(w => `<tr><td>#${esc(w.issue_number)}</td><td>${esc(w.title||'—')}</td><td><b>${esc(w.priority||'—')}</b></td><td class="${stateClass(w.state)}">${esc(w.state||'MỞ')}</td><td>${esc(w.owner||'—')}</td><td>${esc(ago(w.updated_at))}</td></tr>`).join('');
+  document.getElementById('jobsTable').innerHTML = rows || '<tr><td colspan="6">Không có Work Order GitHub đang mở.</td></tr>';
 };
 
 function applyPeopleFullFilter() {
@@ -125,7 +126,7 @@ function applyPeopleFullFilter() {
     const status = el.dataset.status;
     const text = el.textContent.toLowerCase();
     const gp = p === 'all' || (p === 'local' && provider === 'ollama') || (p === 'cloud' && provider !== 'ollama');
-    const gs = s === 'all' || (s === 'active' && ['BUSY','IDLE','READY'].includes(status)) || (s === 'problem' && ['ERROR','OFFLINE','RATE_LIMITED','WAIT_KEY'].includes(status));
+    const gs = s === 'all' || (s === 'working' && status === 'BUSY') || (s === 'active' && ['BUSY','IDLE','READY'].includes(status)) || (s === 'problem' && ['ERROR','OFFLINE','RATE_LIMITED','WAIT_KEY'].includes(status));
     el.style.display = gp && gs && (!q || text.includes(q)) ? '' : 'none';
   });
 }
@@ -171,7 +172,7 @@ async function pollWebHealth() {
     latestWebHealth = null;
     latestWebHealthError = `Health lỗi: ${error?.message || error}`;
   }
-  if (S.data) { renderMetrics(S.data); syncHealthLabels(S.data); }
+  if (S.data) { renderMetrics(S.data); syncHealthLabels(S.data); if(typeof window.__tigerIqApplyOwnerHealth==='function') window.__tigerIqApplyOwnerHealth(S.data); }
 }
 pollWebHealth();
 const _webHealthInterval = setInterval(pollWebHealth, 2000);

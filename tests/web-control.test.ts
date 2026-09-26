@@ -24,7 +24,13 @@ describe('TigerIQ Web Control owner dashboard', () => {
   });
 
   it('ports API Health live UI affordances into Web Control', () => {
-    for (const label of ['API/NV online','NV đang bận','Cảnh báo','Chờ cấu hình key','Jobs đang chạy','Tỷ lệ thành công','Độ trễ trung bình','Uptime','Hiệu suất API','Công việc gần nhất','Cloud API','Có vấn đề']) expect(unified).toContain(label);
+    for (const label of ['NV đang làm','NV sẵn sàng','Công việc đang mở','Jobs đang chạy','Cảnh báo','Hết hạn mức','Tỷ lệ thành công','Độ trễ TB','Hiệu suất API','Hoạt động Core gần nhất','Đang làm','Cloud API','Có vấn đề']) expect(unified).toContain(label);
+    expect(server).toContain('githubWorkOrders');
+    expect(server).toContain('workOrdersMeta');
+    expect(truth).toContain('d?.workOrders');
+    expect(truth).toContain("s === 'working' && status === 'BUSY'");
+    expect(unified).toContain('__tigerIqApplyOwnerHealth');
+    expect(unified).toContain("latestWebHealth?.ok!==true");
     expect(unified).toContain('PROVIDER_MARK');
     expect(unified).toContain('tq-logo');
     expect(unified).toContain('tq-spark');
@@ -62,7 +68,7 @@ describe('TigerIQ Web Control owner dashboard', () => {
     expect(truth).toContain("['Intake'");
     expect(truth).toContain("['Review'");
     expect(truth).toContain("['CI'");
-    expect(truth).toContain('reviewer_employee_id');
+    expect(unified).toContain('reviewer_employee_id');
     expect(truth).toContain('Không bịa %');
     expect(unified).toContain('calls_success_24h');
     expect(unified).toContain('last_latency_ms');

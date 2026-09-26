@@ -6,15 +6,18 @@
   const LABEL = {
     IDLE:'RẢNH', BUSY:'ĐANG LÀM', READY:'SẴN SÀNG', WAIT_KEY:'CHỜ KEY',
     RATE_LIMITED:'HẾT HẠN MỨC', OFFLINE:'NGOẠI TUYẾN', ERROR:'LỖI',
-    MANUAL:'THỦ CÔNG', PAUSED:'TẠM DỪNG', NO_API:'KHÔNG CÓ API',
+    MANUAL:'THEO NHU CẦU', PAUSED:'TẠM DỪNG', NO_API:'KHÔNG CÓ API', DISABLED:'TẮT',
     RETIRED:'ĐÃ NGỪNG', UNASSIGNED:'CHƯA CẤP'
   };
   const safe = value => String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const slots = () => Array.from({length:20},(_,i)=>`NV${String(i+1).padStart(2,'0')}`);
+  const STATUS_ORDER = {BUSY:0,READY:1,IDLE:1,MANUAL:2,NO_API:2,RATE_LIMITED:3,WAIT_KEY:4,ERROR:5,OFFLINE:6,DISABLED:7,PAUSED:7,RETIRED:7,UNASSIGNED:8};
+  const employeeNumber = id => Number(String(id||'').replace(/\D/g,'')) || 999;
 
   function manualStatus(person) {
     const admin=String(person.admin_state||'').toUpperCase();
     if(person.retired || admin.includes('RETIRED')) return 'RETIRED';
+    if(admin.includes('OWNER_STOPPED') || admin.includes('DISABLED') || admin.includes('DO_NOT_ROUTE')) return 'DISABLED';
     if(!person.assigned || admin.includes('UNASSIGNED')) return 'UNASSIGNED';
     if(admin.includes('PAUSED')) return 'PAUSED';
     if(admin.includes('MANUAL') || admin.includes('PRIMARY_UI') || admin.includes('SUPPORT_UI') || admin.includes('DEEP_RESEARCH')) return 'MANUAL';
@@ -43,7 +46,7 @@
       const person=rosterMap.get(id)||{employee_id:id,name:'Chưa cấp',admin_state:'UNASSIGNED',assigned:false,retired:false};
       const runtime=runtimeMap.get(id)||null;
       return {...person,runtime,status:runtime?.status||manualStatus(person),role:shortRole(person,runtime)};
-    });
+    }).sort((a,b)=>(STATUS_ORDER[a.status]??99)-(STATUS_ORDER[b.status]??99)||employeeNumber(a.employee_id)-employeeNumber(b.employee_id));
   }
 
   function techTitle(person) {
@@ -76,8 +79,9 @@
     if(provider==='local' && p!=='ollama') return false;
     if(provider==='cloud' && (!p || p==='ollama')) return false;
     if(provider!=='all' && !['local','cloud'].includes(provider) && p!==provider.toLowerCase()) return false;
+    if(state==='working' && status!=='BUSY') return false;
     if(state==='problem' && !isProblem) return false;
-    if(state!=='all' && state!=='problem' && status!==state) return false;
+    if(!['all','problem','working'].includes(state) && status!==state) return false;
     if(search && !`${person.employee_id} ${person.name} ${person.role} ${p}`.toLowerCase().includes(search)) return false;
     return true;
   }

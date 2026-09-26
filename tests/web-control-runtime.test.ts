@@ -5,8 +5,10 @@ import { spawn, type ChildProcess } from 'node:child_process';
 const CORE_PORT = 18895;
 const WEB_PORT = 18896;
 const CODING_PORT = 18897;
+const GITHUB_PORT = 18898;
 let fakeCore: Server;
 let fakeCoding: Server;
+let fakeGitHub: Server;
 let web: ChildProcess;
 
 const statusPayload = {
@@ -58,6 +60,16 @@ beforeAll(async () => {
     }
     res.writeHead(404); res.end('not_found');
   });
+  fakeGitHub = createServer((req, res) => {
+    if (req.url?.startsWith('/repos/newsdayads/tigeriq-ai-lab/issues?')) {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      return res.end(JSON.stringify([
+        {number:1806,title:'[P0][API HEALTH] Tối ưu màn hình giám sát',body:'TIGERIQ_EXECUTABLE=true\nPRIORITY=P0\nACTIVE_EXECUTION=true\nMUTATION_OWNER=NV02_CURRENT_CHAT\nCURRENT_STATE=WORKING',updated_at:'2026-09-25T00:00:00Z',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/1806'},
+        {number:1456,title:'[P0][QUẢN TRỊ] Hợp đồng thực thi',body:'TIGERIQ_EXECUTABLE=false\nPRIORITY=P0',updated_at:'2026-09-24T00:00:00Z',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/1456'}
+      ]));
+    }
+    res.writeHead(404); res.end('not_found');
+  });
   fakeCoding = createServer((req, res) => {
     if (req.url === '/health') {
       res.writeHead(200, { 'content-type': 'application/json' });
@@ -71,7 +83,8 @@ beforeAll(async () => {
   });
   await Promise.all([
     new Promise<void>((resolve, reject) => { fakeCore.once('error', reject); fakeCore.listen(CORE_PORT, '127.0.0.1', resolve); }),
-    new Promise<void>((resolve, reject) => { fakeCoding.once('error', reject); fakeCoding.listen(CODING_PORT, '127.0.0.1', resolve); })
+    new Promise<void>((resolve, reject) => { fakeCoding.once('error', reject); fakeCoding.listen(CODING_PORT, '127.0.0.1', resolve); }),
+    new Promise<void>((resolve, reject) => { fakeGitHub.once('error', reject); fakeGitHub.listen(GITHUB_PORT, '127.0.0.1', resolve); })
   ]);
 
   web = spawn(process.execPath, ['apps/tigeriq-core/web-control-server.mjs'], {
@@ -81,7 +94,8 @@ beforeAll(async () => {
       TIGERIQ_WEB_CONTROL_HOST: '127.0.0.1',
       TIGERIQ_WEB_CONTROL_PORT: String(WEB_PORT),
       TIGERIQ_CORE_URL: `http://127.0.0.1:${CORE_PORT}`,
-      TIGERIQ_CODING_LANE_URL: `http://127.0.0.1:${CODING_PORT}`
+      TIGERIQ_CODING_LANE_URL: `http://127.0.0.1:${CODING_PORT}`,
+      TIGERIQ_GITHUB_API_BASE: `http://127.0.0.1:${GITHUB_PORT}`
     },
     stdio: ['ignore', 'pipe', 'pipe']
   });
@@ -92,7 +106,8 @@ afterAll(async () => {
   web?.kill('SIGTERM');
   await Promise.all([
     new Promise<void>(resolve => fakeCore?.close(() => resolve())),
-    new Promise<void>(resolve => fakeCoding?.close(() => resolve()))
+    new Promise<void>(resolve => fakeCoding?.close(() => resolve())),
+    new Promise<void>(resolve => fakeGitHub?.close(() => resolve()))
   ]);
 });
 
@@ -119,9 +134,9 @@ describe('Web Control runtime', () => {
     const truthJs = await truth.text(); const unifiedJs = await unified.text(); const unifiedStyle = await css.text(); const mobileStyle = await mobile.text();
     expect(truthJs).toContain('Không bịa %');
     expect(truthJs).toContain("['Review'");
-    expect(truthJs).toContain('reviewer_employee_id');
+    expect(unifiedJs).toContain('reviewer_employee_id');
     expect(unifiedJs).toContain('Hiệu suất API');
-    expect(unifiedJs).toContain('Công việc gần nhất');
+    expect(unifiedJs).toContain('Hoạt động Core gần nhất');
     expect(unifiedJs).toContain('telemetry');
     expect(unifiedJs).toContain('LIVE · 2s');
     expect(unifiedStyle).toContain('"Roboto Flex","Segoe UI Variable Text","Segoe UI",Arial,sans-serif');
@@ -140,6 +155,9 @@ describe('Web Control runtime', () => {
     expect(body.telemetry).toEqual(statusPayload.telemetry);
     expect(body.resources[0].last_latency_ms).toBe(210);
     expect(body.codingLane).toEqual(codingPayload);
+    expect(body.workOrders).toHaveLength(1);
+    expect(body.workOrders[0]).toMatchObject({ issue_number:1806, priority:'P0', state:'ĐANG LÀM', owner:'NV02_CURRENT_CHAT' });
+    expect(body.workOrdersMeta).toMatchObject({ ok:true, source:'github', stale:false });
   });
 
   it('reports combined health without mutating Core', async () => {
