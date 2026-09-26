@@ -1,3 +1,4 @@
+param([string]$Repo='D:\\TigerIQ\\Workspace\\tigeriq-ai-lab')
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 $taskName='TigerIQ Core Runtime Updater'
