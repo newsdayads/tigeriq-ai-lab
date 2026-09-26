@@ -55,6 +55,23 @@ describe('App Chrome Owner-chat-only maintenance lock',()=>{
     expect(script).toContain('APPCHROME_OWNER_ISSUE_NOT_OPEN');
   });
 
+  it('propagates NV02-only scope through zero-touch request, revalidation, and installer',()=>{
+    const script=readFileSync('scripts/tigeriq-core/appchrome-zero-touch.ps1','utf8');
+    expect(script).toContain("Exact-Line $body 'LIVE_ACCEPTANCE_SCOPE' 'NV02_ONLY'");
+    expect(script).toContain("Exact-Line $body 'NV02_ONLY' 'true'");
+    expect(script).toContain('function Request-Nv02Only');
+    expect(script).toContain('APPCHROME_NV02_ONLY_AUTH_MISSING');
+    expect(script).toContain("('NV02_ONLY='+[string][bool](Request-Nv02Only $req))");
+    expect(script).toContain("$installerArgs+='-Nv02Only'");
+    const wait=script.indexOf('Wait-SafeBoundary|Out-Null;$paused=$true');
+    const revalidate=script.indexOf('$revalidated=Revalidate-After-SafeBoundary');
+    const args=script.indexOf("$installerArgs=@(");
+    const invoke=script.indexOf('& powershell.exe @installerArgs');
+    expect(revalidate).toBeGreaterThan(wait);
+    expect(args).toBeGreaterThan(revalidate);
+    expect(invoke).toBeGreaterThan(args);
+  });
+
   it('fails closed for supersede or target/artifact changes during the safe-boundary wait',()=>{
     const script=readFileSync('scripts/tigeriq-core/appchrome-zero-touch.ps1','utf8');
     expect(script).toContain('APPCHROME_OWNER_AUTH_SUPERSEDED');
