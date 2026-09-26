@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 
 import {
   buildOpenClawPrompt,
@@ -52,6 +53,8 @@ describe('Core -> OpenClaw bounded dispatch #1528', () => {
     expect(hasHardGateTextIntent('Do not use paid action, Production release, reboot or shutdown.')).toBe(false);
     expect(hasHardGateTextIntent('Never reboot or shutdown this PC.')).toBe(false);
     expect(hasHardGateTextIntent('No paid action.')).toBe(false);
+    expect(hasHardGateTextIntent('reboot now')).toBe(true);
+    expect(hasHardGateTextIntent('shutdown now')).toBe(true);
     expect(hasHardGateTextIntent('Perform a production deploy now.')).toBe(true);
     expect(hasHardGateTextIntent('Deploy this change to Production now.')).toBe(true);
     expect(hasHardGateTextIntent('Push this commit directly to main now.')).toBe(true);
@@ -63,11 +66,21 @@ describe('Core -> OpenClaw bounded dispatch #1528', () => {
     }))).not.toThrow();
   });
 
+  it('matches hard gates under a fresh native Node runtime, not only the test transformer', () => {
+    const moduleUrl=new URL('../apps/openclaw-tigeriq-runtime/dispatch.mjs',import.meta.url).href;
+    const script=`import {hasHardGateTextIntent} from ${JSON.stringify(moduleUrl)}; const rows=['reboot now','Deploy this change to Production now.','Push this commit directly to main now.'].map(s=>hasHardGateTextIntent(s)); if(rows.some(v=>v!==true)) process.exit(7); process.stdout.write(JSON.stringify(rows));`;
+    const out=execFileSync(process.execPath,['--input-type=module','-e',script],{encoding:'utf8'}).trim();
+    expect(JSON.parse(out)).toEqual([true,true,true]);
+  });
+
   it('never asks OpenClaw to select backlog and makes retry behavior idempotency-aware', () => {
     const prompt=buildOpenClawPrompt(envelope());
     expect(prompt).toContain('FORBIDDEN=backlog selection; P0 selection; new task selection');
     expect(prompt).toContain('On retry/recovery, inspect current state first');
     expect(prompt).toContain('do not repeat the mutation');
+    expect(prompt).toContain('action=tcp_probe');
+    expect(prompt).toContain('file_write then file_read');
+    expect(prompt).toContain('Never invent action names such as tcp_connect');
   });
 
   it('durably admits once, dedupes a live worker, and bounds orphan recovery', async () => {
