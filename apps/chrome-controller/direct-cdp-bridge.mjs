@@ -357,7 +357,7 @@ async function maybeWorkerContinuity(w,target,ui){
   if(phase!=='WORKING'&&now>=Number(state.nextResetAt||0)){
     let prepared;
     try{
-      prepared=await withWorkerMutation(w.id,()=>prepareWorkerForPlannedRestart(w,target,ui),'PERIODIC_PREPARE_RESTART',240000);
+      prepared=await withWorkerMutation(w.id,()=>prepareWorkerForPlannedRestart(w,target,ui),'PERIODIC_PREPARE_RESTART',120000);
     }catch(error){
       const status=String(error?.message||error);
       if(!plannedRestartUiDeadStatus(status))throw error;
@@ -386,6 +386,12 @@ async function maybeWorkerContinuity(w,target,ui){
     return;
   }
 
+  if(phase==='WORKING'&&Number(state.nextPeriodicF5At||0)<=now){
+    const deferred={...state,nextPeriodicF5At:nextRandomAt(now,WORKER_F5_MIN_MS,WORKER_F5_MAX_MS)};
+    saveWorkerContinuity(w.id,deferred);
+    await genericWorkerEvent(w.id,'PERIODIC_F5_DEFERRED_WORKING',{nextPeriodicF5At:deferred.nextPeriodicF5At});
+    return;
+  }
   if(Number(state.nextPeriodicF5At||0)<=now){
     let refreshed;
     try{
@@ -400,6 +406,12 @@ async function maybeWorkerContinuity(w,target,ui){
       },'PERIODIC_F5_REFRESH',15000);
     }catch(error){
       const status=String(error?.message||error);
+      if(/WORKER_UI_BUSY_OR_UNKNOWN|WORKER_ACTIVE_JOB|BROWSER_MUTATION_LEASE_BUSY/.test(status)){
+        const deferred={...state,nextPeriodicF5At:now+30000};
+        saveWorkerContinuity(w.id,deferred);
+        await genericWorkerEvent(w.id,'PERIODIC_F5_DEFERRED_SAFE_BOUNDARY',{status,nextPeriodicF5At:deferred.nextPeriodicF5At});
+        return;
+      }
       const failed={...state,nextPeriodicF5At:now+5000,recoveryBlockedUntil:now+30000};
       saveWorkerContinuity(w.id,failed);
       await genericWorkerEvent(w.id,'PERIODIC_F5_FAILED',{status,nextPeriodicF5At:failed.nextPeriodicF5At});

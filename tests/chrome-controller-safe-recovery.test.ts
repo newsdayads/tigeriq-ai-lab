@@ -479,6 +479,13 @@ describe('safe recovery contracts',()=>{
     expect(continuity).toContain("'STALLED_RELOAD'");
   });
 
+  it('uses a valid lease TTL and defers generic F5 at a safe boundary',()=>{
+    const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    expect(source).toContain("'PERIODIC_PREPARE_RESTART',120000");
+    expect(source).toContain("'PERIODIC_F5_DEFERRED_SAFE_BOUNDARY'");
+    expect(source).toContain("WORKER_UI_BUSY_OR_UNKNOWN|WORKER_ACTIVE_JOB|BROWSER_MUTATION_LEASE_BUSY");
+  });
+
   it('treats CDP evaluation timeouts as bounded connectivity recovery',()=>{
     const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(source).toContain('CDP_TIMEOUT|AbortError');
