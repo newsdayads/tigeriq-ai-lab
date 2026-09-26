@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe,expect,it } from 'vitest';
-import { extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,formatResultComment,githubDispatchLane,githubSpecBlockedByActive,isBoundedAppChromeRequestOnly,parseExecutableIssue } from './github-intake.mjs';
+import { extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,formatResultComment,githubDispatchLane,githubPcOperatorJobId,githubSpecBlockedByActive,isBoundedAppChromeRequestOnly,parseExecutableIssue } from './github-intake.mjs';
 
 describe('GitHub Core intake guardrails',()=>{
 
@@ -63,6 +63,16 @@ describe('GitHub Core intake guardrails',()=>{
     expect(parseExecutableIssue({...base,number:1876,title:'API review',body:reviewBody.replace('PREFERRED_REVIEWER=NV03','PREFERRED_REVIEWER=NV17')})).toMatchObject({
       capability:'review',dispatchLane:'CORE_REVIEW',targetWorker:'NV17'
     });
+  });
+
+  it('uses legacy pc_operator job id for the initial objective and unique deterministic ids for rearms',()=>{
+    const initial=githubPcOperatorJobId('OBJ-GH-588',588);
+    const rearmA='OBJ-GH-588-Rabc123-20260926032117';
+    const rearmB='OBJ-GH-588-Rdef456-20260926032350';
+    expect(initial).toBe('JOB-GH-588-PC');
+    expect(githubPcOperatorJobId(rearmA,588)).toBe(githubPcOperatorJobId(rearmA,588));
+    expect(githubPcOperatorJobId(rearmA,588)).not.toBe(initial);
+    expect(githubPcOperatorJobId(rearmA,588)).not.toBe(githubPcOperatorJobId(rearmB,588));
   });
 
   it('formats a terminal result with objective evidence',()=>{expect(formatResultComment({id:'OBJ-GH-588',status:'completed',summary:'ok'})).toContain('[RESULT] TigerIQ Core completed OBJ-GH-588');});
