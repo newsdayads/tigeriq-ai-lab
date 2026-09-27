@@ -84,6 +84,37 @@ export function extractPcOperatorInstruction(body){
   return String(match?.[1]||'').trim();
 }
 
+const PC_OPERATOR_DIRECT_READ_ONLY_ACTIONS=new Set(['task_status','process_list','tcp_probe','file_read','file_list','file_stat']);
+const PC_OPERATOR_DIRECT_MUTATING_ACTIONS=new Set(['task_start','task_stop']);
+
+export function parsePcOperatorDirectAction(body,ownerDirect=false){
+  const text=String(body||'');
+  const raw=text.match(/^PC_OPERATOR_DIRECT_ACTION_JSON=(\{.*\})$/m)?.[1];
+  if(raw==null)return {present:false,valid:true,action:null};
+  let parsed;
+  try{parsed=JSON.parse(raw)}catch{return {present:true,valid:false,action:null,reason:'JSON_INVALID'}}
+  if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))return {present:true,valid:false,action:null,reason:'OBJECT_REQUIRED'};
+  const action=String(parsed.action||'');
+  if(action==='shell_exec'||action==='file_write'||action.startsWith('pad_'))return {present:true,valid:false,action:null,reason:'ACTION_FORBIDDEN'};
+  const readOnly=PC_OPERATOR_DIRECT_READ_ONLY_ACTIONS.has(action);
+  const mutating=PC_OPERATOR_DIRECT_MUTATING_ACTIONS.has(action);
+  if(!readOnly&&!mutating)return {present:true,valid:false,action:null,reason:'ACTION_NOT_ALLOWLISTED'};
+  if(mutating&&!ownerDirect)return {present:true,valid:false,action:null,reason:'OWNER_DIRECT_REQUIRED'};
+  let normalized;
+  if(action.startsWith('task_')){
+    const taskName=String(parsed.taskName||'').trim();
+    if(!/^TigerIQ [A-Za-z0-9 ._()#-]{1,100}$/.test(taskName))return {present:true,valid:false,action:null,reason:'TASK_NOT_ALLOWLISTED'};
+    normalized={action,taskName};
+  }else if(action==='tcp_probe'){
+    normalized={action,host:String(parsed.host||'127.0.0.1'),port:Number(parsed.port)};
+  }else if(action.startsWith('file_')){
+    normalized={action,path:String(parsed.path||'')};
+  }else{
+    normalized={action};
+  }
+  return {present:true,valid:true,action:normalized,mutating};
+}
+
 export function isManualOnlyAppChromeMaintenance(title,body){
   const t=String(title||'');
   const b=String(body||'');
@@ -109,12 +140,15 @@ export function parseExecutableIssue(issue){
   if(classification.route==='OPENCLAW'&&(!resourceScope||!extractPcOperatorInstruction(body)))return null;
   const sourceRevision=createHash('sha256').update(title).update('\n').update(body).update('\n').update(String(issue.state_reason||'')).digest('hex').slice(0,12);
   const dispatchLane=classification.route==='OPENCLAW'?'PC_OPERATOR':classification.route;
+  const directAction=parsePcOperatorDirectAction(body,backlogOwnerDirect(body));
+  if(directAction.present&&!directAction.valid)return null;
   return {
     number:Number(issue.number),title,body,priority:classification.priority,sourcePriority:classification.sourcePriority,
     legacyP0Autonomous:classification.legacyP0Autonomous,ownerControlled:classification.ownerControlled,
     capability,dispatchLane,resourceScope,preferredWorker:classification.preferredEmployee||'',targetWorker:classification.workerId||null,
     url:String(issue.html_url||''),ownerDirect:backlogOwnerDirect(body),sourceRevision,updatedAt:String(issue.updated_at||''),
     commentCount:Math.max(0,Number(issue.comments||0)),route:classification.route,publicEvidenceKeys:parsePublicEvidenceKeys(body),publicEvidenceDiagnostic:hasExactFlag(body,'PUBLIC_EVIDENCE_DIAGNOSTIC'),
+    pcOperatorDirectAction:directAction.action||null,
   };
 }
 
@@ -281,19 +315,24 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
     if(exists){skipped++;continue;}
     const context=await hydrateContext(fetchImpl,owner,repo,spec,token);
     const objective=spec.capability==='pc_operator'
-      ? `GitHub bounded PC operator work item #${spec.number}. Core must dispatch only the assigned pc_operator action through NV06/OpenClaw. Use approved bounded TigerIQ/OpenClaw tools; NO arbitrary PC01 shell, repository source edit, Production/main mutation, paid action, credential/security change, reboot/shutdown, or destructive action. Return structured verified evidence and complete only when the assigned bounded action is satisfied.\n\n${context}`
+      ? (spec.pcOperatorDirectAction
+          ? `GitHub bounded PC operator work item #${spec.number}. Core must execute only the pre-admitted typed local action from PC_OPERATOR_DIRECT_ACTION_JSON. Do not invoke model reasoning or infer any different action. NO arbitrary shell, repository source edit, Production/main mutation, paid action, credential/security change, reboot/shutdown, or destructive action. Return structured verified evidence and complete only when that exact action is satisfied.\n\n${context}`
+          : `GitHub bounded PC operator work item #${spec.number}. Core must dispatch only the assigned pc_operator action through NV06/OpenClaw. Use approved bounded TigerIQ/OpenClaw tools; NO arbitrary PC01 shell, repository source edit, Production/main mutation, paid action, credential/security change, reboot/shutdown, or destructive action. Return structured verified evidence and complete only when the assigned bounded action is satisfied.\n\n${context}`)
       : `GitHub autonomous ${spec.dispatchLane} work item #${spec.number}. Execute only the read-only task below. Do not edit repository source, use PC01 shell, deploy, change credentials/security, spend money, reboot, or perform destructive actions. Ground conclusions only in supplied GitHub context.\n\n${context}`;
     const metadata={
       source:'github',issueNumber:spec.number,issueUrl:spec.url,capability:spec.capability,dispatchLane:spec.dispatchLane,resourceScope:spec.resourceScope||null,
       ownerDirect:spec.ownerDirect,ownerControlled:spec.ownerControlled,sourcePriority:spec.sourcePriority,legacyP0Autonomous:spec.legacyP0Autonomous,
       targetWorker:spec.targetWorker||null,sourceRevision:spec.sourceRevision,sourceUpdatedAt:spec.updatedAt,rearmedFromObjectiveId:prior?.id||null,
-      dispatchReason:`PRIORITY_${spec.priority}`,executionSurface:spec.capability==='pc_operator'?'CORE_OPENCLAW_BOUNDED':'READ_ONLY',publicEvidenceKeys:spec.publicEvidenceKeys||[],publicEvidenceDiagnostic:spec.publicEvidenceDiagnostic===true
+      dispatchReason:`PRIORITY_${spec.priority}`,executionSurface:spec.capability==='pc_operator'?(spec.pcOperatorDirectAction?'PC_OPERATOR_DIRECT_LOCAL':'CORE_OPENCLAW_BOUNDED'):'READ_ONLY',publicEvidenceKeys:spec.publicEvidenceKeys||[],publicEvidenceDiagnostic:spec.publicEvidenceDiagnostic===true,
+      pcOperatorDirectAction:spec.pcOperatorDirectAction||null
     };
     await pool.query('insert into tigeriq_objectives(id,objective,priority,metadata) values($1,$2,$3,$4) on conflict(id) do nothing',[id,objective,spec.priority,JSON.stringify(metadata)]);
     if(spec.capability==='pc_operator'){
       const assigned=extractPcOperatorInstruction(spec.body);
       const jobId=githubPcOperatorJobId(id,spec.number);
-      const prompt=`Execute ONLY this bounded PC action through NV06/OpenClaw. Do not choose backlog, P0, or new work. Use approved tigeriq_pc/tigeriq_runtime tools only.\n\nASSIGNED ACTION:\n${assigned}`;
+      const prompt=spec.pcOperatorDirectAction
+        ? `Execute ONLY the pre-admitted typed local PC action. Do not invoke model reasoning, select backlog/P0/new work, or infer a different action.\n\nASSIGNED ACTION:\n${assigned}`
+        : `Execute ONLY this bounded PC action through NV06/OpenClaw. Do not choose backlog, P0, or new work. Use approved tigeriq_pc/tigeriq_runtime tools only.\n\nASSIGNED ACTION:\n${assigned}`;
       await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,max_attempts) values($1,$2,$3,$4,'pc_operator','pc_operator','queued',2) on conflict(id) do nothing",[jobId,id,`GitHub #${spec.number} bounded PC operator`,prompt]);
       await pool.query("insert into tigeriq_events(type,objective_id,job_id,task_kind,data) values('GITHUB_PC_OPERATOR_JOB_MATERIALIZED',$1,$2,'pc_operator',$3)",[id,jobId,JSON.stringify({issueNumber:spec.number,executionSurface:'CORE_OPENCLAW_BOUNDED'})]);
     }
@@ -341,11 +380,12 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
         console.error(JSON.stringify({event:'GITHUB_SOURCE_STATE_RECONCILE_ERROR',objectiveId:row.id,issueNumber:number,error:String(error?.message||error)}));
       }
     }
-    if(row.status==='active'&&row.metadata?.executionSurface==='CORE_OPENCLAW_BOUNDED'){
+    if(row.status==='active'&&['CORE_OPENCLAW_BOUNDED','PC_OPERATOR_DIRECT_LOCAL'].includes(row.metadata?.executionSurface)){
       const job=(await pool.query("select id,status,employee_id,resource_id,provider,result,failure,completed_at from tigeriq_jobs where objective_id=$1 and capability='pc_operator' order by created_at desc limit 1",[row.id])).rows[0];
       if(job?.status==='done'){
         row.status='completed';
-        row.summary=appendPublicEvidenceToSummary(`bounded pc_operator completed via ${job.employee_id||'NV06'}/${job.provider||'openclaw'}; job=${job.id}`,job.result,row.metadata?.publicEvidenceKeys||[],{diagnostic:row.metadata?.publicEvidenceDiagnostic===true,metadataPublicEvidenceKeysPresent:Object.prototype.hasOwnProperty.call(row.metadata||{},'publicEvidenceKeys'),metadataPublicEvidenceKeyCount:Array.isArray(row.metadata?.publicEvidenceKeys)?row.metadata.publicEvidenceKeys.length:0});
+        const transport=job.provider==='local-direct'?'local-direct':`${job.employee_id||'NV06'}/${job.provider||'openclaw'}`;
+        row.summary=appendPublicEvidenceToSummary(`bounded pc_operator completed via ${transport}; job=${job.id}`,job.result,row.metadata?.publicEvidenceKeys||[],{diagnostic:row.metadata?.publicEvidenceDiagnostic===true,metadataPublicEvidenceKeysPresent:Object.prototype.hasOwnProperty.call(row.metadata||{},'publicEvidenceKeys'),metadataPublicEvidenceKeyCount:Array.isArray(row.metadata?.publicEvidenceKeys)?row.metadata.publicEvidenceKeys.length:0});
         await pool.query("update tigeriq_objectives set status='completed',summary=$2,updated_at=now() where id=$1",[row.id,row.summary]);
       }else if(job?.status==='failed'){
         row.status='blocked';

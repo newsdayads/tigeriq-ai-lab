@@ -19,6 +19,7 @@ import { buildCoreUiAssignmentSnapshot } from './core-ui-assignment.mjs';
 import { appendPublicEvidenceToSummary } from './public-evidence.mjs';
 import { refreshRegistryWorkforce, normalizeRuntimeResources } from './workforce-registry.mjs';
 import { OPENCLAW_EMPLOYEE_ID, OPENCLAW_MODEL, OPENCLAW_PROVIDER, OPENCLAW_RESOURCE_ID, normalizeOpenClawDispatchEnvelope, waitOpenClawDispatch } from '../openclaw-tigeriq-runtime/dispatch.mjs';
+import { executePcAction } from '../openclaw-tigeriq-runtime/operator.mjs';
 
 const DATABASE_URL = process.env.DATABASE_URL?.trim();
 if (!DATABASE_URL) throw new Error('DATABASE_URL_MISSING');
@@ -419,12 +420,18 @@ async function recoverAfterCoreRestart() {
     await pool.query("update tigeriq_ai_resources r set current_job_id=null,work_state=case when health_state='ONLINE' then 'IDLE' else health_state end,updated_at=now() where current_job_id is not null and not exists(select 1 from tigeriq_jobs j where j.id=r.current_job_id and j.status in ('dispatching','running'))");
     await pool.query("update tigeriq_resources r set current_job_id=null,work_state=case when health_state='ONLINE' then 'IDLE' else health_state end,updated_at=now() where current_job_id is not null and not exists(select 1 from tigeriq_jobs j where j.id=r.current_job_id and j.status in ('dispatching','running'))");
     await pool.query("update tigeriq_jobs j set status='done',result=coalesce(result,'{}'::jsonb)||jsonb_build_object('skipped','legacy_nv10_unavailable_reclassified'),failure=null,lease_until=null,completed_at=coalesce(completed_at,now()) where j.kind='api_doctor' and j.status='failed' and j.employee_id is null and j.resource_id is null and j.provider is null and exists(select 1 from tigeriq_events e where e.job_id=j.id and e.type='API_DOCTOR_ANALYSIS_SKIPPED' and e.data->>'reason'='nv10_unavailable')");
-    const openclawJobs=(await pool.query("select id,employee_id,resource_id from tigeriq_jobs where status in ('dispatching','running') and capability='pc_operator'")).rows;
+    const openclawJobs=(await pool.query("select j.id,j.objective_id,j.employee_id,j.resource_id,o.metadata as objective_metadata from tigeriq_jobs j join tigeriq_objectives o on o.id=j.objective_id where j.status in ('dispatching','running') and j.capability='pc_operator'")).rows;
     for(const j of openclawJobs){
-      await pool.query("update tigeriq_jobs set status='queued',employee_id=null,resource_id=null,provider=null,lease_until=null,completed_at=null where id=$1",[j.id]);
+      if(directPcOperatorAction(j)){
+        const failure={kind:'PC_OPERATOR_DIRECT_OUTCOME_UNKNOWN_AFTER_RESTART',message:'Direct local action may have crossed the process boundary; fail closed instead of repeating a possible side effect.'};
+        await pool.query("update tigeriq_jobs set status='failed',failure=$2,employee_id=null,resource_id=null,lease_until=null,next_attempt_at=null,completed_at=now() where id=$1",[j.id,JSON.stringify(failure)]);
+        await event('PC_OPERATOR_DIRECT_RECOVERY_FAIL_CLOSED',{jobId:j.id,objectiveId:j.objective_id,reason:failure.kind});
+      }else{
+        await pool.query("update tigeriq_jobs set status='queued',employee_id=null,resource_id=null,provider=null,lease_until=null,completed_at=null where id=$1",[j.id]);
+        await event('OPENCLAW_JOB_RECOVERED_AFTER_CORE_RESTART',{jobId:j.id,employeeId:j.employee_id,resourceId:j.resource_id});
+      }
       if(j.resource_id)await pool.query("update tigeriq_ai_resources set current_job_id=null,work_state=case when health_state='ONLINE' then 'IDLE' else health_state end,updated_at=now() where resource_id=$1",[j.resource_id]);
       if(j.employee_id)await pool.query("update tigeriq_resources set current_job_id=null,work_state=case when health_state='ONLINE' then 'IDLE' else health_state end,updated_at=now() where employee_id=$1",[j.employee_id]);
-      await event('OPENCLAW_JOB_RECOVERED_AFTER_CORE_RESTART',{jobId:j.id,employeeId:j.employee_id,resourceId:j.resource_id});
     }
   } catch (e) {
     console.error(JSON.stringify({ event: 'RECOVERY_RECONCILIATION_ERROR', error: String(e?.message || e) }));
@@ -455,8 +462,14 @@ async function recoverStale() {
     await pool.query("update tigeriq_resources set current_job_id=null,work_state=case when health_state='ONLINE' then 'IDLE' else health_state end,updated_at=now() where current_job_id=$1",[j.id]);
     await event('API_DOCTOR_STALE_JOB_RECOVERED',{jobId:j.id,employeeId:j.employee_id,resourceId:j.resource_id});
   }
-  const stale=await pool.query("select id,objective_id,employee_id,resource_id,attempts,max_attempts from tigeriq_jobs where status='running' and kind<>'api_doctor' and lease_until < now()");
+  const stale=await pool.query("select j.id,j.objective_id,j.employee_id,j.resource_id,j.attempts,j.max_attempts,o.metadata as objective_metadata from tigeriq_jobs j join tigeriq_objectives o on o.id=j.objective_id where j.status='running' and j.kind<>'api_doctor' and j.lease_until < now()");
   for(const j of stale.rows){
+    if(directPcOperatorAction(j)){
+      const failure={kind:'PC_OPERATOR_DIRECT_OUTCOME_UNKNOWN_AFTER_LEASE_EXPIRY',message:'Direct local action lease expired with unknown side-effect state; fail closed instead of retrying.'};
+      await pool.query("update tigeriq_jobs set status='failed',failure=$2,employee_id=null,resource_id=null,lease_until=null,next_attempt_at=null,completed_at=now() where id=$1",[j.id,JSON.stringify(failure)]);
+      await event('PC_OPERATOR_DIRECT_RECOVERY_FAIL_CLOSED',{jobId:j.id,objectiveId:j.objective_id,reason:failure.kind});
+      continue;
+    }
     const plan=staleLeaseRecoveryPlan({attempts:j.attempts,maxAttempts:j.max_attempts});
     if(plan.exhausted){
       const failure={kind:'RETRY_BUDGET_EXHAUSTED_AFTER_LEASE_RECOVERY',message:'Stale lease recovery reached the retry budget.',attempts:plan.nextAttempts,maxAttempts:plan.maxAttempts};
@@ -806,6 +819,30 @@ function pcOperatorJobId(objectiveId,phaseIndex,ordinal){
   return `JOB-OC-${createHash('sha256').update(key).digest('hex').slice(0,24)}`;
 }
 const OPENCLAW_RETRYABLE_JOB_KINDS=new Set(['outage','timeout','openclaw_failure','worker_timeout','spawn_error','agent_terminal_invalid','busy','rate_limit']);
+const PC_OPERATOR_DIRECT_MUTATING_ACTIONS=new Set(['task_start','task_stop']);
+
+export function directPcOperatorAction(job){
+  const raw=job?.objective_metadata?.pcOperatorDirectAction;
+  if(!raw||typeof raw!=='object'||Array.isArray(raw))return null;
+  const action=String(raw.action||'');
+  if(action==='shell_exec'||action==='file_write'||action.startsWith('pad_'))return null;
+  if(PC_OPERATOR_DIRECT_MUTATING_ACTIONS.has(action)&&job?.objective_metadata?.ownerDirect!==true)return null;
+  return raw;
+}
+
+async function runDirectPcOperatorJob(j){
+  const action=directPcOperatorAction(j);
+  if(!action)throw Object.assign(new Error('PC_OPERATOR_DIRECT_ACTION_NOT_ADMITTED'),{kind:'direct_action_invalid'});
+  const idempotencyKey=`pc-direct:${String(j.objective_id)}:${String(j.id)}:${createHash('sha256').update(JSON.stringify(action)).digest('hex').slice(0,16)}`;
+  await pool.query("update tigeriq_jobs set attempts=attempts+1,provider='local-direct',routing_profile='PC_OPERATOR_DIRECT',routing_decision=$2 where id=$1",[j.id,JSON.stringify({profile:'PC_OPERATOR_DIRECT',executionSurface:'PC_OPERATOR_DIRECT_LOCAL',idempotencyKey,action:action.action})]);
+  await event('PC_OPERATOR_DIRECT_ADMITTED',{jobId:j.id,objectiveId:j.objective_id,taskKind:'pc_operator',idempotencyKey,action:action.action});
+  const receipt=await executePcAction(action);
+  const result={ok:true,provider:'local-direct',executionSurface:'PC_OPERATOR_DIRECT_LOCAL',idempotencyKey,evidence:{bridgeCalls:[{tool:'tigeriq_pc',result:receipt}]}};
+  await hotPathStage(j,'EVIDENCE',{provider:'local-direct',executionSurface:'PC_OPERATOR_DIRECT_LOCAL',idempotencyKey});
+  await pool.query("update tigeriq_jobs set status='done',employee_id=null,resource_id=null,provider='local-direct',routing_profile='PC_OPERATOR_DIRECT',result=$2,lease_until=null,completed_at=now(),next_attempt_at=null,resource_wait_count=0,resource_wait_started_at=null where id=$1",[j.id,JSON.stringify(result)]);
+  await event('PC_OPERATOR_DIRECT_COMPLETED',{jobId:j.id,objectiveId:j.objective_id,taskKind:'pc_operator',idempotencyKey,action:action.action});
+  await hotPathStage(j,'DONE',{provider:'local-direct',executionSurface:'PC_OPERATOR_DIRECT_LOCAL'});
+}
 function openClawEnvelopeForJob(j){
   const objectiveId=String(j.objective_id||j.id);
   return normalizeOpenClawDispatchEnvelope({
@@ -871,7 +908,7 @@ async function claimJob() {
 }async function runJob(j) {
   try {
     await hotPathStage(j,'WORKING');
-    if(j.capability==='pc_operator'){await runOpenClawOperatorJob(j);return;}
+    if(j.capability==='pc_operator'){if(directPcOperatorAction(j))await runDirectPcOperatorJob(j);else await runOpenClawOperatorJob(j);return;}
     if(j.kind==='readonly'){
       const readStarted=Date.now();
       const read=(await pool.query('select now() as db_time')).rows[0];
