@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {classifyCodingBlocker,codingScopesOverlap,codingSourceRevision,codingSourceTruthRevision,extractCodingDependencies,materializeGithubCodingIssues,parseCodingIssue,relevantRecoveryMainChange,relevantRecoveryMainChangeEvidence,shouldRearmRecoverableFinal,syncGithubCodingOutcomes} from '../apps/tigeriq-core/github-coding-intake.mjs';
+import {classifyCodingBlocker,codingScopesOverlap,codingSourceRevision,codingSourceTruthRevision,extractCodingDependencies,materializeGithubCodingIssues,parseCodingIssue,parseCodingRouteMetadata,relevantRecoveryMainChange,relevantRecoveryMainChangeEvidence,shouldRearmRecoverableFinal,syncGithubCodingOutcomes} from '../apps/tigeriq-core/github-coding-intake.mjs';
 import {TERMINAL_BLOCKED_LABEL,addTerminalBlockedLabel,clearTerminalBlockedLabel,hasTerminalBlockedLabel} from '../apps/tigeriq-core/github-lifecycle-label.mjs';
 import {parseQueueIssue,rankQueueRows} from '../api/live-status.mjs';
 
@@ -128,6 +128,25 @@ describe('GitHub coding intake guard',()=>{
   it('ignores pull requests and closed issues',()=>{
     expect(parseCodingIssue(issue(SAFE,{pull_request:{}}))).toBeNull();
     expect(parseCodingIssue(issue(SAFE,{state:'closed'}))).toBeNull();
+  });
+
+  it('parses explicit target employee and existing PR resume metadata only when valid',()=>{
+    const head='9b31b1885e8c31a97519ddaecf0dfa3a5917269b';
+    expect(parseCodingRouteMetadata(`TARGET_EMPLOYEE=NV09\nCURRENT_PR=#1870\nTARGET_HEAD=${head}`)).toEqual({
+      valid:true,reason:null,targetEmployee:'NV09',currentPr:1870,targetHead:head
+    });
+    expect(parseCodingIssue(issue(`${SAFE}\nTARGET_EMPLOYEE=NV09\nCURRENT_PR=#1870\nTARGET_HEAD=${head}`))?.routing).toMatchObject({
+      targetEmployee:'NV09',currentPr:1870,targetHead:head
+    });
+  });
+
+  it('fails closed on malformed or incomplete explicit routing metadata',()=>{
+    const head='9b31b1885e8c31a97519ddaecf0dfa3a5917269b';
+    expect(parseCodingRouteMetadata('TARGET_EMPLOYEE=OTHER')).toMatchObject({valid:false,reason:'TARGET_EMPLOYEE_INVALID'});
+    expect(parseCodingRouteMetadata('CURRENT_PR=#1870')).toMatchObject({valid:false,reason:'CURRENT_PR_TARGET_HEAD_PAIR_REQUIRED'});
+    expect(parseCodingRouteMetadata(`CURRENT_PR=#1870\nTARGET_HEAD=bad`)).toMatchObject({valid:false,reason:'TARGET_HEAD_INVALID'});
+    expect(parseCodingIssue(issue(`${SAFE}\nCURRENT_PR=#1870`))).toBeNull();
+    expect(parseCodingIssue(issue(`${SAFE}\nCURRENT_PR=#1870\nTARGET_HEAD=${head}`))?.routing.currentPr).toBe(1870);
   });
 });
 
