@@ -109,7 +109,7 @@ async function jsonFetch(fetchImpl,url,init={}){
   }
   return body;
 }
-async function gh(fetchImpl,owner,repo,path,token,init={}){return githubRequestJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}${path}`,token,init)}
+async function gh(fetchImpl,owner,repo,path,token,init={}){const opts=String(init.method||'GET').toUpperCase()==='GET'&&init.freshMs==null?{...init,freshMs:0}:init;return githubRequestJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}${path}`,token,opts)}
 async function comment(fetchImpl,owner,repo,n,token,body){if(token)await gh(fetchImpl,owner,repo,`/issues/${n}/comments`,token,{method:'POST',body:JSON.stringify({body})})}
 async function close(fetchImpl,owner,repo,n,token){if(token)await gh(fetchImpl,owner,repo,`/issues/${n}`,token,{method:'PATCH',body:JSON.stringify({state:'closed',state_reason:'completed'})})}
 async function markerExists(pool,type,n){const q=await pool.query("select 1 from tigeriq_events where type=$1 and data->>'issueNumber'=$2 limit 1",[type,String(n)]);return q.rowCount>0}
