@@ -171,7 +171,7 @@ describe('GitHub Core intake guardrails',()=>{
     const fetchImpl=async(url,init={})=>{
       if(url.endsWith('/issues/841/comments')&&init.method==='POST'){calls.push('result-comment');return new Response(JSON.stringify({}),{status:201,headers:{'content-type':'application/json'}});}
       if(url.endsWith('/issues/841')&&init.method==='PATCH'){calls.push('close-issue');return new Response(JSON.stringify({state:'closed'}),{status:200,headers:{'content-type':'application/json'}});}
-      if(url.includes('/issues/841/labels/')&&init.method==='DELETE'){calls.push('clear-label');return new Response('',{status:204});}
+      if(url.includes('/issues/841/labels/')&&init.method==='DELETE'){calls.push('clear-label');return new Response(null,{status:204});}
       return new Response(JSON.stringify({}),{status:200,headers:{'content-type':'application/json'}});
     };
     await syncGithubOutcomes({pool,fetchImpl,token:'fake'});
