@@ -33,7 +33,7 @@ describe('GitHub Core intake guardrails',()=>{
     expect(calls).toHaveLength(0);
 
     const released=[];
-    const releaseFetch=async(url,init={})=>{released.push([url,init.method||'GET']);return new Response('',{status:204})};
+    const releaseFetch=async(url,init={})=>{released.push([url,init.method||'GET']);return new Response(null,{status:204})};
     await expect(syncExternalRoleClaimLabels({fetchImpl:releaseFetch,owner:'o',repo:'r',token:'x',issue:already,active:false})).resolves.toMatchObject({changed:true,active:false});
     expect(released.map(([url,method])=>[url,method])).toEqual([
       ['https://api.github.com/repos/o/r/issues/588/labels/tigeriq%3Arole-claimed','DELETE'],
