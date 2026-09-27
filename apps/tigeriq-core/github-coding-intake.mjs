@@ -110,6 +110,7 @@ async function gh(fetchImpl,owner,repo,path,token,init={}){const headers={accept
 async function comment(fetchImpl,owner,repo,n,token,body){if(token)await gh(fetchImpl,owner,repo,`/issues/${n}/comments`,token,{method:'POST',body:JSON.stringify({body})})}
 async function close(fetchImpl,owner,repo,n,token){if(token)await gh(fetchImpl,owner,repo,`/issues/${n}`,token,{method:'PATCH',body:JSON.stringify({state:'closed',state_reason:'completed'})})}
 async function markerExists(pool,type,n){const q=await pool.query("select 1 from tigeriq_events where type=$1 and data->>'issueNumber'=$2 limit 1",[type,String(n)]);return q.rowCount>0}
+async function objectiveMarkerExists(pool,type,n,codingObjectiveId){const q=await pool.query("select 1 from tigeriq_events where type=$1 and data->>'issueNumber'=$2 and data->>'codingObjectiveId'=$3 limit 1",[type,String(n),String(codingObjectiveId||'')]);return q.rowCount>0}
 async function eventData(pool,type,n){const q=await pool.query("select data from tigeriq_events where type=$1 and data->>'issueNumber'=$2 order by seq desc limit 100",[type,String(n)]);return q.rows.map(row=>row.data||{})}
 async function mark(pool,type,data){await pool.query('insert into tigeriq_events(type,data) values($1,$2)',[type,JSON.stringify(data)])}
 async function hasCompletedCodingResult(pool,n){
@@ -403,7 +404,7 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
     const relevantMainChanged=recoveryEvidence.relevantMainChanged;
     if(await hasEffectiveBlockedFinal(pool,n,objective?.summary,id,currentMainSha,currentSourceRevision,relevantMainChanged))continue;
     const job=(status.jobs||[]).find(x=>x.objective_id===id);
-    if(job&&!(await markerExists(pool,'GITHUB_CODING_PROGRESS_REPORTED',n))){
+    if(job&&!(await objectiveMarkerExists(pool,'GITHUB_CODING_PROGRESS_REPORTED',n,id))){
       const pr=job.pr_number?` PR #${job.pr_number}.`:'';
       await comment(fetchImpl,owner,repo,n,token,`[PROGRESS] ${id} is ${job.status}. Implementer: ${job.employee_id||'pending'}; reviewer: ${job.reviewer_employee_id||'pending'}.${pr}`);
       await mark(pool,'GITHUB_CODING_PROGRESS_REPORTED',{issueNumber:n,codingObjectiveId:id,jobId:job.id,prNumber:job.pr_number||null});
