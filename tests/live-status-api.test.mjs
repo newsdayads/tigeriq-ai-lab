@@ -6,6 +6,7 @@ import {
   normalizeRuntimeWorkerActivity,
   parseIssueNumber,
   parseQueueIssue,
+  classifyOpenIssue,
   parseOpenWorkIssue,
   progressForIssue,
   parseRecentCompletedIssue,
@@ -247,11 +248,27 @@ describe('TigerIQ Live Work Order projection', () => {
       'TARGET_EMPLOYEE=NV09',
     ].join('\n')));
     expect(blocked).toMatchObject({
-      number: 3001, priority: 'P2', employeeId: 'NV09', status: 'BLOCKED',
+      number: 3001, priority: 'P2', employeeId: 'NV09', status: 'OWNER_GATE', ownerGate: true, workKind: 'WORK',
     });
 
     const meta = parseOpenWorkIssue(issue(3002, '[TÀI NGUYÊN] Nguồn lực', 'STATE=OPEN'));
-    expect(meta).toMatchObject({ number: 3002, priority: null, status: 'OPEN', meta: true });
+    expect(meta).toMatchObject({ number: 3002, priority: null, status: 'SYSTEM', workKind: 'SYSTEM', progressPercent: null, meta: true });
+  });
+
+  it('separates policy/reference, owner gates, goals and live acceptance without treating P0 as approval', () => {
+    expect(classifyOpenIssue(issue(3200, '[P0][QUẢN TRỊ] Policy', 'STATE=CANONICAL'))).toEqual({ workKind: 'SYSTEM', ownerGate: false });
+    expect(parseOpenWorkIssue(issue(3201, '[P2][CODING] Owner gate', 'CURRENT_STATE=BLOCKED_OWNER_MAINTENANCE_AUTH'))).toMatchObject({
+      status: 'OWNER_GATE', ownerGate: true, workKind: 'WORK',
+    });
+    expect(parseOpenWorkIssue(issue(3202, '[P0][OWNER] Objective', 'TIGERIQ_EXECUTABLE=false\nOWNER_CONTROLLED=true'))).toMatchObject({
+      status: 'GOAL', ownerGate: false, workKind: 'GOAL',
+    });
+    expect(parseOpenWorkIssue(issue(3203, '[P0][APP-CHROME][EVIDENCE] Acceptance', 'CURRENT_STATE=READY_LIVE_ACCEPTANCE\nTIGERIQ_EXECUTABLE=false'))).toMatchObject({
+      status: 'VERIFY', ownerGate: false, workKind: 'WORK',
+    });
+    expect(parseOpenWorkIssue(issue(3204, '[P0][APP-CHROME] Working', 'STATE=WORKING\nTIGERIQ_EXECUTABLE=false'))).toMatchObject({
+      status: 'WORKING', ownerGate: false, workKind: 'WORK',
+    });
   });
 
   it('computes progress only from explicit percent, checklist, or canonical lifecycle evidence', () => {
