@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 export const NV02_LOCAL_GITHUB_SELF_PULL = 'P1_P5_ONLY';
 export const NV02_READY_NO_ELIGIBLE_WORK = 'READY_NO_ELIGIBLE_WORK';
 export const NV02_LEASE_MARKER = '[TIGERIQ_NV02_LEASE_V1]';
@@ -8,6 +10,7 @@ export const NV02_PRIMARY_CAPABILITIES = new Set(['general', 'reasoning', 'ui'])
 export const NV02_FALLBACK_CAPABILITIES = new Set(['analysis', 'research', 'documentation', 'evidence', 'read_only', 'coding', 'knowledge', 'audit', 'maintenance', 'review']);
 const HARD_GATE_MARKERS = /(?:production|paid|credential|security|destructive|device[._-]?bound|pc[._-]?operator|app[._-]?chrome)/i;
 const LOCKED_WORKER_FIELDS = ['TARGET_EMPLOYEE', 'ASSIGNED_EXECUTOR', 'EXECUTOR', 'PRIMARY_EMPLOYEE'];
+const localClaimLocks = new Set();
 
 function fields(body) {
   return Object.fromEntries(String(body || '').split(/\r?\n/).flatMap((line) => {
@@ -137,28 +140,37 @@ export function activeNv02Lease(comments = [], nowMs = Date.now()) {
 }
 
 export async function claimNv02WorkOrder({ issue, comments = [], postComment, ttlMs = 2 * 60 * 60 * 1000, claimSettleMs = 250, nowMs = Date.now() }) {
-  if (activeNv02Lease(comments, nowMs)) return null;
+  const lockKey = `${issue.number}:${nv02WorkOrderMeta(issue).RESOURCE_SCOPE}`;
+  if (localClaimLocks.has(lockKey) || activeNv02Lease(comments, nowMs)) return null;
+  localClaimLocks.add(lockKey);
   const resourceScope = nv02WorkOrderMeta(issue).RESOURCE_SCOPE;
-  const lease = { leaseId: `NV02-${issue.number}-${nowMs}`, resourceScope, expiresAt: new Date(nowMs + ttlMs).toISOString() };
-  await postComment(issue.number, `${NV02_LEASE_MARKER}\nLEASE_ID=${lease.leaseId}\nWORKER=NV02\nRESOURCE_SCOPE=${resourceScope}\nEXPIRES_AT=${lease.expiresAt}`);
-  // GitHub comment creation is not a transaction. Let concurrent claim posts
-  // become visible, then elect the earliest still-live lease before dispatch.
-  await new Promise((resolve) => setTimeout(resolve, claimSettleMs));
-  const after = await postComment(issue.number, null);
-  const live = new Map();
-  for (const comment of [...after].sort((a, b) => Number(a.id) - Number(b.id))) {
-    const body = String(comment?.body || '');
-    if (body.includes(NV02_LEASE_MARKER)) {
-      const meta = leaseFields(body, NV02_LEASE_MARKER);
-      if (meta?.LEASE_ID && Date.parse(meta.EXPIRES_AT) > nowMs) live.set(meta.LEASE_ID, meta);
-    } else if (body.includes(NV02_RELEASE_MARKER)) {
-      const meta = leaseFields(body, NV02_RELEASE_MARKER);
-      if (meta?.LEASE_ID) live.delete(meta.LEASE_ID);
+  try {
+    const lease = { leaseId: `NV02-${issue.number}-${randomUUID()}`, resourceScope, expiresAt: new Date(nowMs + ttlMs).toISOString() };
+    await postComment(issue.number, `${NV02_LEASE_MARKER}\nLEASE_ID=${lease.leaseId}\nWORKER=NV02\nRESOURCE_SCOPE=${resourceScope}\nEXPIRES_AT=${lease.expiresAt}`);
+    // GitHub comment creation is not a transaction. Let concurrent claim posts
+    // become visible, then elect the earliest still-live lease before dispatch.
+    await new Promise((resolve) => setTimeout(resolve, claimSettleMs));
+    const after = await postComment(issue.number, null);
+    const live = new Map();
+    for (const comment of [...after].sort((a, b) => Number(a.id) - Number(b.id))) {
+      const body = String(comment?.body || '');
+      if (body.includes(NV02_LEASE_MARKER)) {
+        const meta = leaseFields(body, NV02_LEASE_MARKER);
+        if (meta?.LEASE_ID && Date.parse(meta.EXPIRES_AT) > nowMs) live.set(meta.LEASE_ID, meta);
+      } else if (body.includes(NV02_RELEASE_MARKER)) {
+        const meta = leaseFields(body, NV02_RELEASE_MARKER);
+        if (meta?.LEASE_ID) live.delete(meta.LEASE_ID);
+      }
     }
+    const winner = [...live.values()][0];
+    if (winner?.LEASE_ID !== lease.leaseId) { localClaimLocks.delete(lockKey); return null; }
+    return lease;
+  } catch (error) {
+    localClaimLocks.delete(lockKey);
+    throw error;
   }
-  const winner = [...live.values()][0];
-  return winner?.LEASE_ID === lease.leaseId ? lease : null;
 }
 export function releaseNv02WorkOrder({ issueNumber, leaseId, state, postComment }) {
+  for (const key of localClaimLocks) if (key.startsWith(`${issueNumber}:`)) localClaimLocks.delete(key);
   return postComment(issueNumber, `${NV02_RELEASE_MARKER}\nLEASE_ID=${leaseId}\nWORKER=NV02\nSTATE=${state}\nRELEASED_AT=${new Date().toISOString()}`);
 }
