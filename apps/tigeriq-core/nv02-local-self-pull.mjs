@@ -47,8 +47,8 @@ async function releaseLocalClaimLock(lockKey) {
 
 function fields(body) {
   return Object.fromEntries(String(body || '').split(/\r?\n/).flatMap((line) => {
-    const m = line.trim().match(/^([A-Z][A-Z0-9_]{1,80})\s*=\s*(.+)$/);
-    return m ? [[m[1], m[2].trim()]] : [];
+    const m = line.trim().match(/^([A-Z][A-Z0-9_]{1,80})\s*=\s*(.+)$/i);
+    return m ? [[m[1].toUpperCase(), m[2].trim()]] : [];
   }));
 }
 
@@ -146,7 +146,7 @@ export function activeResourceClaims(comments = [], nowMs = Date.now()) {
     const release = body.match(/\[(?:TIGERIQ_NV02_RELEASE_V1|TIGERIQ_NV02_LEASE_RELEASE_V1|TIGERIQ_ROLE_RELEASE_V1|APP_CHROME_RELEASE)\]/i);
     const marker = claim || release;
     if (!marker) continue;
-    const meta = fields(body.slice(marker.index).toUpperCase());
+    const meta = fields(body.slice(marker.index));
     const resourceScope = String(meta.RESOURCE_SCOPE || meta.SCOPE || '').trim();
     const worker = String(meta.WORKER || '').trim().toUpperCase();
     const identity = String(meta.LEASE_ID || meta.CLAIM_ID || '').trim();
