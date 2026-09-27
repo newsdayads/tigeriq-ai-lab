@@ -1067,18 +1067,6 @@ export default async function handler(req, res) {
     return json(res, 200, value);
   } catch (error) {
     liveError = String(error instanceof Error ? error.message : error).slice(0, 120);
-    if (cache.value && now - cache.at < STALE_RESPONSE_MS) {
-      const value = {
-        ...cache.value,
-        liveConnected: false,
-        mode: 'stale-cache',
-        authority: 'Dữ liệu xác minh gần nhất',
-        staleAll: true,
-        staleAt: cache.value.generatedAt || null,
-        liveReason: liveError,
-      };
-      return json(res, 200, value);
-    }
   }
 
   try {
@@ -1088,9 +1076,22 @@ export default async function handler(req, res) {
     value.authority = 'GitHub/Registry fallback';
     value.refreshSeconds = 5;
     value.liveReason = liveError;
+    value.staleAll = false;
     cache = { at: now, value };
     return json(res, 200, value);
   } catch (error) {
+    if (cache.value && now - cache.at < STALE_RESPONSE_MS) {
+      const value = {
+        ...cache.value,
+        liveConnected: false,
+        mode: 'stale-cache',
+        authority: 'Dữ liệu xác minh gần nhất',
+        staleAll: true,
+        staleAt: cache.value.generatedAt || null,
+        liveReason: liveError || String(error instanceof Error ? error.message : error).slice(0, 120),
+      };
+      return json(res, 200, value);
+    }
     return json(res, 200, {
       ok: false,
       liveConnected: false,
