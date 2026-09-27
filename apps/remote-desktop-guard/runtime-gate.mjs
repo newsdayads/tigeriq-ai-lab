@@ -1,7 +1,7 @@
 import { mkdir, readFile, realpath, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import {
-  AUTHORIZATION_TOOL, DEFAULT_LEASE_PATH, OBSERVATION_DIRECTORIES, READ_ONLY_TOOLS, authorizeRemoteCall, classifyTool, validateLeaseEnvelope
+  AUTHORIZATION_TOOL, DEFAULT_LEASE_PATH, OBSERVATION_DIRECTORIES, READ_ONLY_TOOLS, SAFE_TIGERIQ_OPERATION_TOOLS, authorizeRemoteCall, classifyTool, validateLeaseEnvelope
 } from './policy.mjs';
 
 const OWNER_LOGIN='newsdayads';
@@ -159,7 +159,7 @@ export async function inspectActiveLease({leasePath=DEFAULT_LEASE_PATH,now=Date.
 
 export async function filterRemoteToolDefinitions(tools,{leasePath=DEFAULT_LEASE_PATH,now=Date.now()}={}) {
   const lease=await inspectActiveLease({leasePath,now});
-  const visible=tools.filter((tool)=>READ_ONLY_TOOLS.includes(tool.name) || (lease && tool.name===lease.tool));
+  const visible=tools.filter((tool)=>READ_ONLY_TOOLS.includes(tool.name) || SAFE_TIGERIQ_OPERATION_TOOLS.includes(tool.name) || (lease && tool.name===lease.tool));
   return [...visible,AUTHORIZATION_TOOL_DEFINITION];
 }
 
@@ -178,7 +178,10 @@ function normalizeRealWindows(value) {
 
 function withinRealRoot(candidate,root) {
   const c=normalizeRealWindows(candidate), r=normalizeRealWindows(root);
-  return Boolean(c&&r&&(c===r||c.startsWith(r+'\\')));
+  const secrets=normalizeRealWindows('D:\\TigerIQ\\Secrets');
+  if (!c || !r || !secrets) return false;
+  if (c===secrets || c.startsWith(secrets+'\\')) return false;
+  return c===r || c.startsWith(r+'\\');
 }
 
 export async function verifyRealReadScope(tool,args={}, {realpathImpl=realpath}={}) {
@@ -223,6 +226,10 @@ export async function enforceRemoteToolCall({
   }
   if (kind==='UNKNOWN') return denial('UNKNOWN_TOOL_FAIL_CLOSED');
   if (tool==='set_config_value') return denial('REMOTE_CONFIG_MUTATION_FORBIDDEN');
+
+  const immediate=authorizeRemoteCall({tool,args,now});
+  if (immediate.ok) return immediate;
+  if (immediate.reason!=='OWNER_AUTH_REQUIRED') return denial(immediate.reason);
 
   const claimed=await claimLease(leasePath,now);
   if (!claimed.ok) return denial(claimed.reason);

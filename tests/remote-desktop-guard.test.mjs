@@ -69,10 +69,11 @@ describe('Remote Desktop Commander hard runtime guard',()=>{
       .toEqual({ok:true,reason:'READ_ONLY_DEFAULT_PASS'});
   });
 
-  it('blocks Secrets, broad TigerIQ roots, relative paths and URL reads',()=>{
+  it('allows the TigerIQ root but blocks Secrets, relative paths and URL reads',()=>{
+    expect(authorizeRemoteCall({tool:'read_file',args:{path:'D:\\TigerIQ'},now:NOW}))
+      .toEqual({ok:true,reason:'READ_ONLY_DEFAULT_PASS'});
     for (const args of [
       {path:'D:\\TigerIQ\\Secrets\\token.txt'},
-      {path:'D:\\TigerIQ'},
       {path:'..\\Secrets\\token.txt'},
       {path:'https://127.0.0.1:8795/health',isUrl:true}
     ]) expect(authorizeRemoteCall({tool:'read_file',args,now:NOW})).toEqual({ok:false,reason:'READ_SCOPE_DENIED'});
@@ -121,7 +122,7 @@ describe('Remote Desktop Commander hard runtime guard',()=>{
 
   it('verifies Owner once at lease install, opens exactly one call, then remains closed after replay',async()=>{
     const leasePath=await tempLeasePath();
-    const args={path:'D:\\TigerIQ\\Evidence\\guard-canary.txt',content:'ok',mode:'rewrite'};
+    const args={path:'C:\\Temp\\guard-canary.txt',content:'ok',mode:'rewrite'};
     const lease=leaseFor('write_file',args);
     let fetchCalls=0;
     const installFetch=async()=>{ fetchCalls+=1; return authFetchFor(lease)(); };
@@ -285,11 +286,11 @@ describe('Remote Desktop Commander hard runtime guard',()=>{
     const leasePath=await tempLeasePath();
     const tools=[{name:'read_file'},{name:'list_processes'},{name:'start_process'},{name:'write_file'},{name:'set_config_value'}];
     const hidden=await filterRemoteToolDefinitions(tools,{leasePath,now:NOW});
-    expect(hidden.map((x)=>x.name)).toEqual(['read_file','list_processes',AUTHORIZATION_TOOL]);
+    expect(hidden.map((x)=>x.name)).toEqual(['read_file','list_processes','start_process','write_file',AUTHORIZATION_TOOL]);
     const args={command:'echo bounded',timeout_ms:1000};
     await putLease(leasePath,leaseFor('start_process',args));
     const opened=await filterRemoteToolDefinitions(tools,{leasePath,now:NOW});
-    expect(opened.map((x)=>x.name)).toEqual(['read_file','list_processes','start_process',AUTHORIZATION_TOOL]);
+    expect(opened.map((x)=>x.name)).toEqual(['read_file','list_processes','start_process','write_file',AUTHORIZATION_TOOL]);
   });
 
   it('installs a lease only through the dedicated Owner authorization tool and never executes the target mutation',async()=>{
@@ -392,6 +393,31 @@ describe('Remote Desktop Commander hard runtime guard',()=>{
     expect(patched).toMatch(/exit 86/);
     expect(verifyRemoteLauncherPatched(patched)).toBe(true);
     expect(patchRemoteLauncher(patched)).toBe(patched);
+  });
+
+
+  it('allows safe TigerIQ operations without a lease but keeps dangerous classes owner-gated',()=>{
+    expect(authorizeRemoteCall({
+      tool:'start_process',
+      args:{shell:'powershell.exe',command:"Get-Process | Where-Object {$_.Path -like 'D:\\TigerIQ*'}",timeout_ms:5000},
+      now:NOW
+    })).toEqual({ok:true,reason:'SAFE_TIGERIQ_OPERATION_PASS'});
+    expect(authorizeRemoteCall({
+      tool:'write_file',
+      args:{path:'D:\\TigerIQ\\Checkpoints\\ops-safe.txt',content:'ok',mode:'rewrite'},
+      now:NOW
+    })).toEqual({ok:true,reason:'SAFE_TIGERIQ_OPERATION_PASS'});
+    for (const command of [
+      "Get-Content D:\\TigerIQ\\Secrets\\api-key.txt",
+      "Set-Acl D:\\TigerIQ\\Logs",
+      "vercel deploy --prod",
+      "stripe payment create",
+      "Remove-Item D:\\TigerIQ\\Logs\\x.txt"
+    ]) {
+      expect(authorizeRemoteCall({
+        tool:'start_process',args:{command,timeout_ms:5000},now:NOW
+      })).toEqual({ok:false,reason:'OWNER_AUTH_REQUIRED'});
+    }
   });
 
   it('keeps the observation allowlist narrow and excludes Secrets',()=>{

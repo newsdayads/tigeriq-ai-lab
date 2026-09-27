@@ -21,10 +21,11 @@ export const MUTATION_TOOLS = Object.freeze([
 ]);
 
 export const OBSERVATION_DIRECTORIES = Object.freeze([
-  'D:\\TigerIQ\\Apps\\ChromeController\\Runtime',
-  'D:\\TigerIQ\\Evidence',
-  'D:\\TigerIQ\\Logs',
-  'D:\\TigerIQ\\Checkpoints'
+  'D:\\TigerIQ'
+]);
+
+export const SAFE_TIGERIQ_OPERATION_TOOLS = Object.freeze([
+  'write_file','create_directory','move_file','edit_block','start_process'
 ]);
 
 function canonical(value) {
@@ -50,13 +51,21 @@ function normalizeWindowsPath(value) {
   return path.win32.normalize(value).replace(/[\\/]+$/,'').toLowerCase();
 }
 
+const TIGERIQ_ROOT = normalizeWindowsPath('D:\\TigerIQ');
+const TIGERIQ_SECRETS_ROOT = normalizeWindowsPath('D:\\TigerIQ\\Secrets');
+
+export function isSensitiveTigerIqPath(value) {
+  const candidate = normalizeWindowsPath(value);
+  return Boolean(candidate && (
+    candidate === TIGERIQ_SECRETS_ROOT ||
+    candidate.startsWith(TIGERIQ_SECRETS_ROOT + '\\')
+  ));
+}
+
 export function isObservationPathAllowed(value) {
   const candidate = normalizeWindowsPath(value);
-  if (!candidate) return false;
-  return OBSERVATION_DIRECTORIES.some((root) => {
-    const normalizedRoot = normalizeWindowsPath(root);
-    return candidate === normalizedRoot || candidate.startsWith(normalizedRoot + '\\');
-  });
+  if (!candidate || isSensitiveTigerIqPath(candidate)) return false;
+  return candidate === TIGERIQ_ROOT || candidate.startsWith(TIGERIQ_ROOT + '\\');
 }
 
 export function readScopeAllowed(tool,args = {}) {
@@ -68,11 +77,31 @@ export function readScopeAllowed(tool,args = {}) {
 
 export function requiredRiskClass(tool,args = {}) {
   const text = canonical(args).toLowerCase();
-  if (/vercel[^\n]{0,160}(--prod|deploy\s+--prod|remove)|\bproduction\b/.test(text)) return 'PRODUCTION';
   if (/credential|password|secret|token|api[-_ ]?key|gh\s+auth|vercel\s+env/.test(text)) return 'CREDENTIAL';
-  if (/git\s+(push|commit|reset|clean|checkout|switch|merge|rebase|tag)|\.git[\\/]/.test(text)) return 'SOURCE_MUTATION';
+  if (/firewall|permission|\bacl\b|set-acl|icacls|takeown|netsh|executionpolicy|defender|security|remote-desktop-guard/.test(text)) return 'SECURITY_PERMISSION';
+  if (/vercel[^\n]{0,160}(--prod|deploy\s+--prod|remove)|\bproduction\b/.test(text)) return 'PRODUCTION';
+  if (/billing|payment|purchase|checkout|invoice|credit.?card|stripe|paypal|\bpayg\b/.test(text)) return 'PAID_FINANCIAL';
   if (/\b(del|erase|rm|rmdir|remove-item|format|diskpart|shutdown|reboot|taskkill)\b|--force/.test(text)) return 'DESTRUCTIVE';
+  if (/git\s+(push|commit|reset|clean|checkout|switch|merge|rebase|tag)|\.git[\\/]/.test(text)) return 'SOURCE_MUTATION';
   return 'STANDARD';
+}
+
+function mutationPaths(tool,args={}) {
+  if (['write_file','edit_block','create_directory'].includes(tool)) return [args.path].filter(Boolean);
+  if (tool === 'move_file') return [args.source,args.destination,args.source_path,args.destination_path].filter(Boolean);
+  return [];
+}
+
+export function isSafeTigerIqOperation(tool,args={}) {
+  if (!SAFE_TIGERIQ_OPERATION_TOOLS.includes(tool)) return false;
+  if (requiredRiskClass(tool,args) !== 'STANDARD') return false;
+  if (tool === 'start_process') {
+    const text = canonical(args).toLowerCase();
+    if (!text.includes('tigeriq')) return false;
+    return /(get-process|get-service|get-nettcpconnection|get-childitem|test-path|schtasks\s+\/(query|run|end)|start-service|restart-service|start-process|\bnode(?:\.exe)?\b|\bnpm(?:\.cmd)?\b)/.test(text);
+  }
+  const paths = mutationPaths(tool,args);
+  return paths.length > 0 && paths.every(isObservationPathAllowed);
 }
 
 export function validateLeaseEnvelope(lease,{now=Date.now()}={}) {
@@ -87,7 +116,7 @@ export function validateLeaseEnvelope(lease,{now=Date.now()}={}) {
   if (expiresAt <= issuedAt || expiresAt-issuedAt > MAX_OWNER_LEASE_MS) return {ok:false,reason:'LEASE_BOUNDS_INVALID'};
   if (now < issuedAt || now >= expiresAt) return {ok:false,reason:'LEASE_EXPIRED_OR_NOT_ACTIVE'};
   if (classifyTool(lease.tool) !== 'MUTATION' || lease.tool === 'set_config_value') return {ok:false,reason:'LEASE_TOOL_NOT_ALLOWED'};
-  if (!['STANDARD','PRODUCTION','CREDENTIAL','SOURCE_MUTATION','DESTRUCTIVE'].includes(lease.riskClass)) return {ok:false,reason:'LEASE_RISK_CLASS_INVALID'};
+  if (!['STANDARD','PRODUCTION','CREDENTIAL','SECURITY_PERMISSION','PAID_FINANCIAL','SOURCE_MUTATION','DESTRUCTIVE'].includes(lease.riskClass)) return {ok:false,reason:'LEASE_RISK_CLASS_INVALID'};
   if (!/^[a-f0-9]{64}$/.test(String(lease.argsSha256||''))) return {ok:false,reason:'LEASE_ARGS_HASH_INVALID'};
   return {ok:true,reason:'LEASE_ENVELOPE_VALID'};
 }
@@ -111,5 +140,6 @@ export function authorizeRemoteCall({tool,args={},lease,now=Date.now()}={}) {
   }
   if (kind !== 'MUTATION') return {ok:false,reason:'UNKNOWN_TOOL_FAIL_CLOSED'};
   if (tool === 'set_config_value') return {ok:false,reason:'REMOTE_CONFIG_MUTATION_FORBIDDEN'};
+  if (isSafeTigerIqOperation(tool,args)) return {ok:true,reason:'SAFE_TIGERIQ_OPERATION_PASS'};
   return validateOwnerLease({lease,tool,args,now});
 }
