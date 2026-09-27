@@ -207,9 +207,9 @@ describe('App Chrome self-run wiring',()=>{
     expect(supervisor).not.toContain("APPCHROME_GITHUB_CREDENTIAL_UNAVAILABLE");
   });
 
-  it('does not load or mutate GitHub credentials in local-only mode',()=>{
-    expect(supervisor).not.toContain("Get-Command gh.exe");
-    expect(supervisor).not.toContain("auth token");
+  it('loads only the bounded Owner-authorized GitHub token for self-run',()=>{
+    expect(supervisor).toContain("Get-Command gh.exe");
+    expect(supervisor).toContain("auth token");
     expect(supervisor).toContain("github-command-center.token");
     expect(supervisor).not.toContain("Remove-Item Env:TIGERIQ_GITHUB_TOKEN");
     expect(supervisor).toContain("$env:TIGERIQ_APP_CHROME_LOCAL_ONLY='1'");

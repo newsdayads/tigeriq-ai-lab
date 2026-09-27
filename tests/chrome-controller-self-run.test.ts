@@ -38,6 +38,11 @@ describe('App Chrome GitHub self-run queue',()=>{
     expect(isSelfRunSafe(issue(4,'excluded',SAFE+'\nAUTO_QUEUE=EXCLUDED'))).toBe(false);
   });
 
+  it('allows NV02 safe fallback without legacy executable metadata',()=>{
+    const fallback=issue(6,'[P2][KNOWLEDGE] audit', 'PRIORITY=P2\nCAPABILITY=knowledge\nRESOURCE_SCOPE=KNOWLEDGE_AUDIT');
+    expect(workerEligibleForIssue('NV02',fallback)).toBe(true);
+  });
+
   it('uses capability as NV02 priority only and keeps hard-gated work out',()=>{
     const general=issue(10,'general',SAFE+'\nRESOURCE_SCOPE=GENERAL_READ');
     const review=issue(11,'[REVIEW] verify',SAFE+'\nCAPABILITY=review\nREVIEW_ONLY=true\nRESOURCE_SCOPE=VERIFY');
