@@ -601,6 +601,51 @@ function issueDisplayOwner(issue) {
   return null;
 }
 
+export function classifyOpenIssue(issue) {
+  const title = String(issue?.title || '');
+  const body = String(issue?.body || '');
+  const phase = issueCanonicalState(issue);
+
+  const systemReference = /\[(?:QUẢN TRỊ|REGISTRY|STATE|CENTRAL|TÀI NGUYÊN|POLICY|SOT)\]/i.test(title)
+    || bodyFlag(body, 'CANONICAL_POLICY')
+    || bodyFlag(body, 'REFERENCE_ONLY');
+
+  const ownerGate = /(?:^|_)(?:BLOCKED_OWNER|WAIT_OWNER|OWNER_APPROVAL_REQUIRED|OWNER_GATE)(?:_|$)/.test(phase)
+    || bodyFlag(body, 'OWNER_APPROVAL_REQUIRED')
+    || bodyFlag(body, 'OWNER_GATE')
+    || bodyFlag(body, 'OWNER_HOLD');
+
+  const objective = /\[OWNER\]/i.test(title) && bodyFlag(body, 'TIGERIQ_EXECUTABLE', 'false') && !ownerGate;
+
+  return {
+    workKind: systemReference ? 'SYSTEM' : objective ? 'GOAL' : 'WORK',
+    ownerGate,
+  };
+}
+
+function actionableStatus(issue, overlays = {}) {
+  const body = String(issue?.body || '');
+  const phase = issueCanonicalState(issue);
+  const classification = classifyOpenIssue(issue);
+
+  if (classification.workKind === 'SYSTEM') return 'SYSTEM';
+  if (classification.ownerGate) return 'OWNER_GATE';
+
+  const active = overlays.active || null;
+  const queued = overlays.queued || null;
+  if (active?.status) return String(active.status).toUpperCase();
+  if (queued?.status) return String(queued.status).toUpperCase();
+
+  if (classification.workKind === 'GOAL') return 'GOAL';
+  if (/(?:READY_(?:LIVE_)?ACCEPTANCE|READY_VERIFY|WAIT_VERIFY|LIVE_ACCEPTANCE)/.test(phase)) return 'VERIFY';
+  if (/BLOCKED/.test(phase)) return 'BLOCKED';
+  if (/(?:WAIT|PENDING|HOLD)/.test(phase)) return 'WAITING';
+  if (/(?:REVIEW|VERIFY)/.test(phase)) return 'REVIEW';
+  if (/(?:WORKING|RUNNING|IN_PROGRESS|IMPLEMENT)/.test(phase)) return 'WORKING';
+  if (/(?:READY|QUEUED)/.test(phase) && bodyFlag(body, 'TIGERIQ_EXECUTABLE', 'true')) return 'QUEUED';
+  return 'OPEN';
+}
+
 export function progressForIssue(issue, status = 'OPEN', checks = null, hasPull = false) {
   const body = String(issue?.body || '');
   const explicitRaw = bodyValue(body, 'PROGRESS_PERCENT');
@@ -637,20 +682,14 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
   const queued = overlays.queued || null;
   const body = String(issue.body || '');
   const phase = issueCanonicalState(issue);
-  let status = active?.status || queued?.status || null;
-
-  if (!status) {
-    if (/BLOCKED/.test(phase)) status = 'BLOCKED';
-    else if (/(?:WAIT|PENDING|HOLD)/.test(phase)) status = 'WAITING';
-    else if (/(?:REVIEW|VERIFY)/.test(phase)) status = 'REVIEW';
-    else if (/(?:WORKING|RUNNING|IN_PROGRESS|IMPLEMENT)/.test(phase)) status = 'WORKING';
-    else if (/(?:READY|QUEUED)/.test(phase) && bodyFlag(body, 'TIGERIQ_EXECUTABLE', 'true')) status = 'QUEUED';
-    else status = 'OPEN';
-  }
+  const classification = classifyOpenIssue(issue);
+  const status = actionableStatus(issue, overlays);
 
   const checks = active?.checks || null;
   const hasPull = Boolean(active?.prNumber || overlays.hasPull);
-  const progress = progressForIssue(issue, status, checks, hasPull);
+  const progress = classification.workKind === 'SYSTEM'
+    ? { percent: null, source: 'none', detail: null }
+    : progressForIssue(issue, status, checks, hasPull);
   const priority = issuePriority(issue);
 
   return {
@@ -661,8 +700,14 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
     sourcePriority: priority,
     employeeId: active?.employeeId || queued?.targetWorker || issueDisplayOwner(issue),
     status,
+    workKind: classification.workKind,
+    ownerGate: classification.ownerGate,
     currentState: phase || null,
-    currentStep: active?.currentStep || queued?.waitReason || bodyValue(body, 'CURRENT_STEP') || bodyValue(body, 'NEXT_ACTION') || null,
+    currentStep: active?.currentStep
+      || queued?.waitReason
+      || bodyValue(body, 'CURRENT_STEP')
+      || bodyValue(body, 'NEXT_ACTION')
+      || (classification.ownerGate ? 'Cần Owner authorization' : null),
     progressPercent: progress.percent,
     progressSource: progress.source,
     progressDetail: progress.detail,
@@ -869,21 +914,37 @@ async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
       queued: queueMap.get(Number(issue.number)) || null,
       hasPull: openPulls.some((pull) => pullMentionsIssue(pull, Number(issue.number))),
     })).filter(Boolean).sort((a, b) => {
+      const actionRank = {
+        OWNER_GATE: 0,
+        WORKING: 1,
+        REVIEW: 2,
+        VERIFY: 3,
+        QUEUED: 4,
+        BLOCKED: 5,
+        WAITING: 6,
+        OPEN: 7,
+        GOAL: 8,
+        SYSTEM: 9,
+      };
+      const sa = actionRank[a.status] ?? 8;
+      const sb = actionRank[b.status] ?? 8;
+      if (sa !== sb) return sa - sb;
       const priorityRank = { P0: 0, P1: 1, P2: 2, P3: 3, P4: 4, P5: 5 };
       const pa = priorityRank[a.priority] ?? 9;
       const pb = priorityRank[b.priority] ?? 9;
       if (pa !== pb) return pa - pb;
-      const statusRank = { WORKING: 0, REVIEW: 1, QUEUED: 2, WAITING: 3, BLOCKED: 4, OPEN: 5 };
-      const sa = statusRank[a.status] ?? 9;
-      const sb = statusRank[b.status] ?? 9;
-      if (sa !== sb) return sa - sb;
       return Date.parse(b.updatedAt || 0) - Date.parse(a.updatedAt || 0) || b.number - a.number;
     });
 
+    const actionable = openWork.filter((row) => row.workKind !== 'SYSTEM');
     const openSummary = {
       open: openWork.length,
-      running: openWork.filter((row) => ['WORKING','REVIEW'].includes(row.status)).length,
-      waiting: openWork.filter((row) => ['QUEUED','WAITING','BLOCKED'].includes(row.status)).length,
+      actionable: actionable.length,
+      owner: actionable.filter((row) => row.status === 'OWNER_GATE').length,
+      running: actionable.filter((row) => row.status === 'WORKING').length,
+      review: actionable.filter((row) => ['REVIEW','VERIFY'].includes(row.status)).length,
+      waiting: actionable.filter((row) => ['QUEUED','WAITING','BLOCKED'].includes(row.status)).length,
+      system: openWork.filter((row) => row.workKind === 'SYSTEM').length,
       done: recentWork.length,
     };
 
