@@ -7,7 +7,7 @@
 <meta name="color-scheme" content="dark">
 <title>TigerIQ Live · Công việc</title>
 <style>
-:root{font-family:"Google Sans Flex","Google Sans","Helvetica Neue",sans-serif;--bg:#07111f;--panel:#0b1829;--line:#203953;--text:#f2f7fd;--muted:#91a4ba;--green:#46d48f;--amber:#efb85c;--red:#ff747e;--blue:#58a6ff;--violet:#c5a6ff}
+:root{font-family:"Google Sans Flex","Google Sans","Helvetica Neue",sans-serif;--bg:#07111f;--panel:#0b1829;--line:#203953;--text:#f2f7fd;--muted:#91a4ba;--green:#46d48f;--amber:#efb85c;--red:#ff747e;--blue:#58a6ff;--violet:#c5a6ff;--cyan:#65d7e8;--teal:#58d8c6;--slate:#8fa3b8}
 *{box-sizing:border-box}
 html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text)}
 body{font-family:inherit;background:radial-gradient(circle at 90% -12%,#173b6e 0,transparent 36%),linear-gradient(180deg,#081322,#060d17);overflow-x:hidden}
@@ -27,29 +27,53 @@ a{color:inherit;text-decoration:none}
 .list-head span{font-size:10px;color:var(--muted);text-align:right}
 .filters{display:flex;gap:6px;overflow-x:auto;padding:0 0 9px;scrollbar-width:none}
 .filters::-webkit-scrollbar{display:none}
-.filter{border:1px solid #294661;background:#0b1829;color:#91a4ba;border-radius:999px;padding:6px 9px;font:800 9px/1 inherit;white-space:nowrap}
-.filter.active{border-color:#477fb6;background:#132f4e;color:#d9ecff}
+.filter{border:1px solid #294661;background:#0b1829;color:#91a4ba;border-radius:999px;padding:6px 9px;font:800 9px/1 inherit;white-space:nowrap;transition:.18s ease}
+.filter.active{box-shadow:0 0 0 1px rgba(255,255,255,.03) inset}
+.filter[data-filter="open"].active{border-color:#6676a8;background:#20294b;color:#ddd7ff}
+.filter[data-filter="running"].active{border-color:#2f7757;background:#113928;color:#9ef0bd}
+.filter[data-filter="waiting"].active{border-color:#7a5a28;background:#3a2b17;color:#ffd38d}
+.filter[data-filter="done"].active{border-color:#246c64;background:#0e3733;color:#91eee0}
 .filter b{font-weight:900;color:inherit;margin-left:3px}
 .work-list{display:grid;gap:7px}
-.work-row{display:block;border:1px solid var(--line);background:linear-gradient(180deg,#102139,#0b1829);border-radius:13px;padding:9px 10px;min-width:0}
+.work-row{display:block;border:1px solid var(--line);background:linear-gradient(180deg,#102139,#0b1829);border-radius:13px;padding:9px 10px;min-width:0;box-shadow:0 8px 24px rgba(0,0,0,.12);position:relative;overflow:hidden}
+.work-row::before{content:"";position:absolute;inset:0 auto 0 0;width:3px;background:#314b67;opacity:.9}
+.work-row.status-working::before{background:var(--green)}
+.work-row.status-review::before,.work-row.status-waiting::before{background:var(--amber)}
+.work-row.status-queued::before{background:var(--blue)}
+.work-row.status-blocked::before{background:var(--red)}
+.work-row.status-done::before{background:var(--teal)}
+.work-row.status-open::before{background:#71849a}
 .work-main{min-width:0}
 .work-top{display:flex;align-items:center;gap:6px;min-width:0;flex-wrap:wrap}
 .rank{width:18px;height:18px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;background:#17375a;color:#cfe7ff;font-size:9px;font-weight:900;flex:none}
 .work-id{font-size:11px;font-weight:900;color:#dbeaff}
-.priority{font-size:8px;font-weight:850;color:#9fc7f4;border:1px solid #315b8a;background:#102947;border-radius:999px;padding:2px 5px}
+.priority{font-size:8px;font-weight:850;border:1px solid #3a506b;background:#142337;color:#aebed0;border-radius:999px;padding:2px 5px}
+.priority.p0{border-color:#8a3e78;background:#35182f;color:#ffb7df}
+.priority.p1{border-color:#6b50a4;background:#251b43;color:#d3bdff}
+.priority.p2{border-color:#315f92;background:#102b4a;color:#a9d6ff}
+.priority.p3{border-color:#2e7181;background:#0f3038;color:#93e7f4}
+.priority.p4{border-color:#7c6330;background:#392f18;color:#f4d491}
+.priority.p5{border-color:#4a5969;background:#1a2430;color:#b5c1cd}
+.priority.meta{border-color:#3d4b59;background:#18212b;color:#9aa8b6}
 .work-nv{font-size:9px;color:#9fb1c5;font-weight:750}
 .work-title{font-size:11px;font-weight:760;line-height:1.35;margin-top:6px;overflow-wrap:anywhere;color:#edf4fc}
 .state{display:inline-flex;align-items:center;border:1px solid #3a4d63;border-radius:999px;padding:4px 6px;font-weight:850;font-size:8px;white-space:nowrap;margin-left:auto}
-.state.working{border-color:#24533f;background:#103526;color:#8de7b1}
-.state.review,.state.waiting{border-color:#6a4d26;background:#392b17;color:#ffd18b}
-.state.queued{border-color:#315b8a;background:#102947;color:#a9d4ff}
-.state.blocked{border-color:#6b3039;background:#3b1d23;color:#ffb0b6}
-.state.done{border-color:#245c57;background:#0e302d;color:#82e0d3}
-.state.open{border-color:#3b526c;background:#111f31;color:#a9bbcf}
-.progress{display:flex;align-items:center;gap:7px;margin-top:7px}
+.state.working{border-color:#2b7655;background:#113b2a;color:#9af0bc}
+.state.review,.state.waiting{border-color:#7a5b2a;background:#3b2d18;color:#ffd58f}
+.state.queued{border-color:#37699f;background:#112f50;color:#b5dcff}
+.state.blocked{border-color:#81404a;background:#401f26;color:#ffb8bf}
+.state.done{border-color:#27736a;background:#0f3a35;color:#94ecdf}
+.state.open{border-color:#455d76;background:#132234;color:#b0c1d3}
+.progress{display:flex;align-items:center;gap:7px;margin-top:7px;color:#7f95ac}
 .progress-track{height:4px;flex:1;min-width:60px;background:#16283b;border-radius:999px;overflow:hidden}
 .progress-fill{height:100%;background:currentColor;border-radius:999px}
-.progress-text{font-size:8px;font-weight:850;color:#87a2bf;white-space:nowrap}
+.progress-text{font-size:8px;font-weight:850;color:currentColor;white-space:nowrap}
+.work-row.status-working .progress{color:var(--green)}
+.work-row.status-review .progress,.work-row.status-waiting .progress{color:var(--amber)}
+.work-row.status-queued .progress{color:var(--blue)}
+.work-row.status-blocked .progress{color:var(--red)}
+.work-row.status-done .progress{color:var(--teal)}
+.work-row.status-open .progress{color:#7e93a9}
 .empty{border:1px dashed #2a425d;border-radius:16px;padding:22px 14px;text-align:center;color:var(--muted);font-size:12px}
 .page-foot{padding:14px 2px 0;color:#6d8097;font-size:9px;line-height:1.5;text-align:center}
 @media(max-width:520px){
@@ -77,7 +101,7 @@ a{color:inherit;text-decoration:none}
   </nav>
   <div id="workList" class="work-list"></div>
 </section>
-<footer class="page-foot">STT · Work Order · Tên việc · NV · Trạng thái · tự cập nhật 30 giây</footer>
+<footer class="page-foot">STT · Work Order · Tên việc · NV · Trạng thái · tự cập nhật 10 giây</footer>
 </main>
 <script>
 const $=id=>document.getElementById(id);
@@ -144,16 +168,18 @@ function render(){
   const box=$('workList');box.innerHTML='';
   if(!rows.length){box.innerHTML='<div class="empty">Không có Work Order trong nhóm này.</div>';return}
   rows.forEach((row,index)=>{
-    const el=document.createElement(row.url?'a':'article');el.className='work-row';
-    if(row.url){el.href=row.url;el.target='_blank';el.rel='noopener'}
+    const el=document.createElement(row.url?'a':'article');
     const status=workStatus(row),label=stateLabel[status]||status;
+    const priority=workPriority(row),priorityClass=String(priority).toLowerCase().replace(/[^a-z0-9]/g,'')||'meta';
+    el.className='work-row status-'+status.toLowerCase()+' priority-'+priorityClass;
+    if(row.url){el.href=row.url;el.target='_blank';el.rel='noopener'}
     const title=displayTitle(row.title);
     const rank=String(index+1).padStart(2,'0');
     const pct=Number(row?.progressPercent);
     const progress=Number.isFinite(pct)&&pct>=0&&pct<=100
       ?'<div class="progress" title="'+esc(row.progressDetail||'Tiến độ gate')+'"><div class="progress-track"><div class="progress-fill" style="width:'+pct+'%"></div></div><span class="progress-text">'+pct+'%</span></div>'
       :'';
-    el.innerHTML='<div class="work-main"><div class="work-top"><span class="rank">'+esc(rank)+'</span><span class="work-id">#'+esc(row.number)+'</span><span class="priority">'+esc(workPriority(row))+'</span><span class="work-nv">'+esc(workerFrom(row))+'</span><span class="state '+esc(status.toLowerCase())+'">'+esc(label)+'</span></div><div class="work-title">'+esc(title)+'</div>'+progress+'</div>';
+    el.innerHTML='<div class="work-main"><div class="work-top"><span class="rank">'+esc(rank)+'</span><span class="work-id">#'+esc(row.number)+'</span><span class="priority '+esc(priorityClass)+'">'+esc(priority)+'</span><span class="work-nv">'+esc(workerFrom(row))+'</span><span class="state '+esc(status.toLowerCase())+'">'+esc(label)+'</span></div><div class="work-title">'+esc(title)+'</div>'+progress+'</div>';
     box.append(el);
   });
 }
@@ -188,7 +214,7 @@ document.querySelectorAll('.filter').forEach(button=>button.addEventListener('cl
 }));
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)load()});
 load();
-setInterval(()=>{if(!document.hidden)load()},30000);
+setInterval(()=>{if(!document.hidden)load()},10000);
 </script>
 </body>
 </html>
