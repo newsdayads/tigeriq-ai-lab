@@ -143,6 +143,7 @@ function loadWorkerContinuity(workerId){
     chatLoadBlockedUntil:Number(raw.chatLoadBlockedUntil)||0,
     chatLoadClearCandidateAt:Number(raw.chatLoadClearCandidateAt)||0,
     chatConnectingSince:Number(raw.chatConnectingSince)||0,
+    idleState:String(raw.idleState||''),
   };
 }
 function saveWorkerContinuity(workerId,state){
@@ -1615,6 +1616,7 @@ async function handleCommand(w,target,command){
   if(action==='LOCAL_CONTINUE_NOW'){
     if(bootFreshContextPending.has(w.id))return{status:'LOCAL_CONTINUE_DEFERRED_BOOT'};
     const stateBefore=w.id==='NV02'?loadNv02Continuity():loadWorkerContinuity(w.id);
+    if(w.id==='NV02'&&stateBefore.idleState==='READY_NO_ELIGIBLE_WORK'&&stateBefore.awaitingWorkStart!==true)return{status:'READY_NO_ELIGIBLE_WORK_IDLE'};
     if(stateBefore.awaitingWorkStart===true)return{status:'LOCAL_CONTINUE_ALREADY_DISPATCHED'};
     const raw=await uiState(target);
     const phase=w.id==='NV02'?deriveNv02Phase(raw||{}):deriveWorkerPhase(raw||{},{workerId:w.id});
@@ -1639,7 +1641,8 @@ async function handleCommand(w,target,command){
     await genericWorkerEvent(w.id,'LOCAL_CONTINUE_DISPATCHED',{prompt});
     return{status:'LOCAL_CONTINUE_SUBMITTED',prompt};
   }
-  if(action==='DISPATCH'){if(w.id==='NV02')await ensureNv02ModelProfile(target);const r=await dispatch(target,String(payload.text||''));if(!r?.ok)throw new Error(r?.status||'DISPATCH_FAILED');if(w.id==='NV02')await noteNv02CommandDispatch();return r;}
+  if(action==='NV02_IDLE'){if(w.id!=='NV02')return{status:'NV02_IDLE_ONLY'};saveNv02Continuity({...loadNv02Continuity(),idleState:'READY_NO_ELIGIBLE_WORK',pendingContinue:false,awaitingWorkStart:false,nextContinueAt:0});await continuityEvent('READY_NO_ELIGIBLE_WORK',{durable:true});return{status:'READY_NO_ELIGIBLE_WORK_IDLE'};}
+  if(action==='DISPATCH'){if(w.id==='NV02')await ensureNv02ModelProfile(target);const r=await dispatch(target,String(payload.text||''));if(!r?.ok)throw new Error(r?.status||'DISPATCH_FAILED');if(w.id==='NV02')saveNv02Continuity({...loadNv02Continuity(),idleState:'',pendingContinue:false,awaitingWorkStart:true,awaitingWorkStartSince:Date.now()});if(w.id==='NV02')await noteNv02CommandDispatch();return r;}
   if(action==='ARCHIVE_CHAT'){const r=await archiveChat(target);if(!r?.ok)throw new Error(r?.status||'ARCHIVE_FAILED');return r;}
   throw new Error(`UNKNOWN_ACTION:${action}`);
 }

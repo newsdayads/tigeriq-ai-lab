@@ -1581,6 +1581,11 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
         }
         json(res,200,{ok:true,status:result?.status??'LOCAL_CONTINUE_DEFERRED'});return true;
       }
+      if(action==='idle'){
+        if(workerId!=='NV02')throw new Error('NV02_IDLE_ONLY');
+        const result=await sendCommand(workerId,'NV02_IDLE');
+        json(res,200,{ok:true,status:(result as any)?.status??'READY_NO_ELIGIBLE_WORK_IDLE'});return true;
+      }
       assertWorkerEnabled(workerId);
       if(action==='open-canonical'){await uiQueue.enqueue(()=>sendCommand(workerId,'NAVIGATE',{url:worker.homeUrl}));json(res,200,{ok:true});return true;}
       if(action==='plan-refresh'){
