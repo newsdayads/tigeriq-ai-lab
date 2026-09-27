@@ -7,6 +7,8 @@ describe('NV02 idle self-pull continuity', () => {
     expect(bridge).toContain("stateBefore.idleState==='READY_NO_ELIGIBLE_WORK'");
     expect(bridge).toContain("status:'READY_NO_ELIGIBLE_WORK_IDLE'");
     expect(bridge).toContain("action==='NV02_IDLE'");
+    expect(bridge).toContain('NV02_IDLE_MARKER');
+    expect(bridge).toContain("fs.existsSync(NV02_IDLE_MARKER)");
   });
   it('keeps backlog selection outside App Chrome', () => {
     const server = readFileSync('apps/chrome-controller/src/server.ts', 'utf8');
