@@ -58,12 +58,12 @@ describe('GitHub terminal lifecycle label',()=>{
     expect(live).toContain('hasTerminalBlockedLabel');
   });
 
-  it('clears terminal projection before durable Coding dispatch/rearm markers',()=>{
+  it('orders Coding lifecycle as objective exists, label clears, then durable transition markers',()=>{
     const coding=readFileSync(new URL('../apps/tigeriq-core/github-coding-intake.mjs',import.meta.url),'utf8');
-    expect(coding).toMatch(/clearTerminalBlockedLabel\(\{fetchImpl,owner,repo,issueNumber:spec\.number,token\}\);[\s\S]*?GITHUB_CODING_COMPLETED_REARMED[\s\S]*?GITHUB_CODING_DISPATCHED/);
-    expect(coding).toMatch(/blockedByActiveOwner\)continue;\n        await clearTerminalBlockedLabel\(\{fetchImpl,owner,repo,issueNumber:n,token\}\);[\s\S]*?STALE_REARM_KEY=[\s\S]*?GITHUB_CODING_STALE_RESULT_REARMED[\s\S]*?GITHUB_CODING_DISPATCHED/);
-    expect(coding).toMatch(/shouldRearmRecoverableFinal[\s\S]*?blockedByActiveOwner\)continue;\n        await clearTerminalBlockedLabel\(\{fetchImpl,owner,repo,issueNumber:n,token\}\);[\s\S]*?GITHUB_CODING_RECOVERY_REARMED[\s\S]*?GITHUB_CODING_DISPATCHED/);
-    expect(coding).toMatch(/nextAtMs[\s\S]*?await clearTerminalBlockedLabel\(\{fetchImpl,owner,repo,issueNumber:n,token\}\);[\s\S]*?GITHUB_CODING_RETRY_DISPATCHED[\s\S]*?GITHUB_CODING_DISPATCHED/);
+    expect(coding).toMatch(/CODING_OBJECTIVE_ID_MISSING[\s\S]*?clearTerminalBlockedLabel\(\{fetchImpl,owner,repo,issueNumber:spec\.number,token\}\);[\s\S]*?GITHUB_CODING_COMPLETED_REARMED[\s\S]*?GITHUB_CODING_DISPATCHED/);
+    expect(coding).toMatch(/CODING_STALE_REARM_OBJECTIVE_ID_MISSING[\s\S]*?clearTerminalBlockedLabel\(\{fetchImpl,owner,repo,issueNumber:n,token\}\);[\s\S]*?GITHUB_CODING_STALE_RESULT_REARMED[\s\S]*?GITHUB_CODING_DISPATCHED/);
+    expect(coding).toMatch(/CODING_RECOVERY_OBJECTIVE_ID_MISSING[\s\S]*?clearTerminalBlockedLabel\(\{fetchImpl,owner,repo,issueNumber:n,token\}\);[\s\S]*?GITHUB_CODING_RECOVERY_REARMED[\s\S]*?GITHUB_CODING_DISPATCHED/);
+    expect(coding).toMatch(/CODING_RETRY_OBJECTIVE_ID_MISSING[\s\S]*?alreadyDispatched[\s\S]*?clearTerminalBlockedLabel\(\{fetchImpl,owner,repo,issueNumber:n,token\}\);[\s\S]*?GITHUB_CODING_RETRY_DISPATCHED[\s\S]*?GITHUB_CODING_DISPATCHED/);
   });
 
 
