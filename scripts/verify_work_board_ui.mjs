@@ -14,7 +14,7 @@ assert.equal(deployedView, publicView, 'Vercel public command-center must match 
 assert.match(publicView, /TigerIQ Live/);
 assert.match(publicView, /DANH SÁCH CÔNG VIỆC/);
 assert.match(publicView, /STT · Work Order · Tên việc · NV · Trạng thái/);
-assert.match(publicView, /width:18px;height:18px/);
+assert.match(publicView, /width:19px;height:19px/);
 assert.match(publicView, /padStart\(2,'0'\)/);
 assert.match(publicView, /function displayTitle/);
 assert.match(publicView, /api\/live-status/);
@@ -38,6 +38,15 @@ assert.match(publicView, /priority\.p1/);
 assert.match(publicView, /filter\[data-filter="running"\]\.active/);
 assert.match(publicView, /work-row\.status-working::before/);
 assert.match(publicView, /work-row\.status-blocked::before/);
+assert.match(publicView, /font-size:13\.5px/);
+assert.match(publicView, /font-size:11\.75px/);
+assert.match(publicView, /height:8px/);
+assert.match(publicView, /progress-shimmer/);
+assert.match(publicView, /live-pulse/);
+assert.match(publicView, /card-flash/);
+assert.match(publicView, /prefers-reduced-motion:reduce/);
+assert.match(publicView, /lastVisualState/);
+assert.match(publicView, /currentStep/);
 
 for (const removed of [
   'KẾ TIẾP CÓ THỂ CHẠY',
