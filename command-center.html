@@ -30,9 +30,12 @@ a{color:inherit;text-decoration:none}
 .filters::-webkit-scrollbar{display:none}
 .filter{border:1px solid #294661;background:#0b1829;color:#91a4ba;border-radius:999px;padding:6px 9px;font:800 9px/1 inherit;white-space:nowrap;transition:.18s ease}
 .filter.active{box-shadow:0 0 0 1px rgba(255,255,255,.03) inset}
-.filter[data-filter="open"].active{border-color:#6676a8;background:#20294b;color:#ddd7ff}
+.filter[data-filter="action"].active{border-color:#6676a8;background:#20294b;color:#ddd7ff}
+.filter[data-filter="owner"].active{border-color:#9a4550;background:#451f27;color:#ffc0c6}
 .filter[data-filter="running"].active{border-color:#2f7757;background:#113928;color:#9ef0bd}
-.filter[data-filter="waiting"].active{border-color:#7a5a28;background:#3a2b17;color:#ffd38d}
+.filter[data-filter="review"].active{border-color:#7a5a28;background:#3a2b17;color:#ffd38d}
+.filter[data-filter="waiting"].active{border-color:#35628d;background:#112b45;color:#b9dcff}
+.filter[data-filter="system"].active{border-color:#556273;background:#1c2631;color:#c1ccd7}
 .filter[data-filter="done"].active{border-color:#246c64;background:#0e3733;color:#91eee0}
 .filter b{font-weight:900;color:inherit;margin-left:3px}
 .work-list{display:grid;gap:7px}
@@ -44,6 +47,10 @@ a{color:inherit;text-decoration:none}
 .work-row.status-blocked::before{background:var(--red)}
 .work-row.status-done::before{background:var(--teal)}
 .work-row.status-open::before{background:#71849a}
+.work-row.status-owner_gate::before{background:var(--red)}
+.work-row.status-verify::before{background:#d9a84f}
+.work-row.status-goal::before{background:var(--violet)}
+.work-row.status-system::before{background:#6c7987}
 .work-main{min-width:0}
 .work-top{display:flex;align-items:center;gap:6px;min-width:0;flex-wrap:wrap}
 .rank{width:19px;height:19px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;background:#17375a;color:#cfe7ff;font-size:10px;font-weight:900;flex:none}
@@ -66,6 +73,10 @@ a{color:inherit;text-decoration:none}
 .state.blocked{border-color:#81404a;background:#401f26;color:#ffb8bf}
 .state.done{border-color:#27736a;background:#0f3a35;color:#94ecdf}
 .state.open{border-color:#455d76;background:#132234;color:#b0c1d3}
+.state.owner_gate{border-color:#914652;background:#421f27;color:#ffc0c7}
+.state.verify{border-color:#816126;background:#3b2d18;color:#ffda92}
+.state.goal{border-color:#68529a;background:#281f42;color:#d9c9ff}
+.state.system{border-color:#4b5968;background:#19242f;color:#bdc8d3}
 .progress{display:flex;align-items:center;gap:8px;margin-top:9px;color:#7f95ac}
 .progress-track{height:8px;flex:1;min-width:60px;background:#16283b;border-radius:999px;overflow:hidden;box-shadow:inset 0 1px 2px rgba(0,0,0,.35)}
 .progress-fill{height:100%;background:currentColor;border-radius:999px;position:relative;overflow:hidden;transition:width .45s ease}
@@ -76,6 +87,9 @@ a{color:inherit;text-decoration:none}
 .work-row.status-blocked .progress{color:var(--red)}
 .work-row.status-done .progress{color:var(--teal)}
 .work-row.status-open .progress{color:#7e93a9}
+.work-row.status-owner_gate .progress{color:var(--red)}
+.work-row.status-verify .progress{color:var(--amber)}
+.work-row.status-goal .progress{color:var(--violet)}
 .work-row.status-working .progress-fill{box-shadow:0 0 10px color-mix(in srgb,currentColor 38%,transparent)}
 .work-row.status-working .progress-fill::after{content:"";position:absolute;inset:0;width:38%;transform:translateX(-140%) skewX(-18deg);background:linear-gradient(90deg,transparent,rgba(255,255,255,.32),transparent);animation:progress-shimmer 2.3s ease-in-out infinite}
 .state.review,.state.waiting{animation:review-breathe 3.4s ease-in-out infinite}
@@ -108,9 +122,12 @@ a{color:inherit;text-decoration:none}
 <section aria-labelledby="workListHeading">
   <div class="list-head"><h2 id="workListHeading">DANH SÁCH CÔNG VIỆC</h2><span id="workMeta">—</span></div>
   <nav class="filters" aria-label="Lọc công việc">
-    <button class="filter active" data-filter="open">ĐANG MỞ <b id="openCount">0</b></button>
-    <button class="filter" data-filter="running">ĐANG CHẠY <b id="runningCount">0</b></button>
+    <button class="filter active" data-filter="action">CẦN XỬ LÝ <b id="actionCount">0</b></button>
+    <button class="filter" data-filter="owner">CHỜ ANH SƠN <b id="ownerCount">0</b></button>
+    <button class="filter" data-filter="running">ĐANG LÀM <b id="runningCount">0</b></button>
+    <button class="filter" data-filter="review">RÀ SOÁT <b id="reviewCount">0</b></button>
     <button class="filter" data-filter="waiting">CHỜ/BLOCKED <b id="waitingCount">0</b></button>
+    <button class="filter" data-filter="system">HỆ THỐNG <b id="systemCount">0</b></button>
     <button class="filter" data-filter="done">HOÀN TẤT <b id="doneCount">0</b></button>
   </nav>
   <div id="workList" class="work-list"></div>
@@ -122,9 +139,9 @@ const $=id=>document.getElementById(id);
 const LAST_GOOD_KEY='tigeriq-live-open-progress-v2';
 const LAST_GOOD_MAX_MS=30*60*1000;
 let snapshot=null;
-let currentFilter='open';
+let currentFilter='action';
 const lastVisualState=new Map();
-const stateLabel={OPEN:'MỞ',WORKING:'ĐANG LÀM',REVIEW:'ĐANG RÀ SOÁT',QUEUED:'CHỜ GIAO',WAITING:'CHỜ',BLOCKED:'BỊ CHẶN',DONE:'HOÀN TẤT'};
+const stateLabel={OPEN:'CHƯA LÀM',OWNER_GATE:'CHỜ ANH SƠN',WORKING:'ĐANG LÀM',REVIEW:'ĐANG RÀ SOÁT',VERIFY:'CHỜ XÁC MINH',QUEUED:'SẴN SÀNG',WAITING:'CHỜ',BLOCKED:'BỊ CHẶN',GOAL:'MỤC TIÊU',SYSTEM:'HỆ THỐNG',DONE:'HOÀN TẤT'};
 function esc(v){const d=document.createElement('div');d.textContent=String(v??'');return d.innerHTML}
 function priorityRank(v){const m=String(v||'').toUpperCase().match(/^P([0-5])$/);return m?Number(m[1]):9}
 function statusRank(v){return ({WORKING:0,REVIEW:1,QUEUED:2,WAITING:3,BLOCKED:4,DONE:9})[String(v||'').toUpperCase()]??8}
@@ -154,9 +171,12 @@ function normalizeRows(value){
   };
   const openRows=Array.isArray(value?.openWork)?value.openWork:fallbackOpen();
   if(currentFilter==='done') return (Array.isArray(value?.recentWork)?value.recentWork:[]).map(x=>({...x,status:'DONE'}));
-  if(currentFilter==='running') return openRows.filter(x=>['WORKING','REVIEW'].includes(workStatus(x)));
+  if(currentFilter==='owner') return openRows.filter(x=>workStatus(x)==='OWNER_GATE');
+  if(currentFilter==='running') return openRows.filter(x=>workStatus(x)==='WORKING');
+  if(currentFilter==='review') return openRows.filter(x=>['REVIEW','VERIFY'].includes(workStatus(x)));
   if(currentFilter==='waiting') return openRows.filter(x=>['QUEUED','WAITING','BLOCKED'].includes(workStatus(x)));
-  return openRows;
+  if(currentFilter==='system') return openRows.filter(x=>x?.workKind==='SYSTEM'||workStatus(x)==='SYSTEM');
+  return openRows.filter(x=>x?.workKind!=='SYSTEM'&&workStatus(x)!=='SYSTEM');
 }
 function readLastGood(){try{const x=JSON.parse(localStorage.getItem(LAST_GOOD_KEY)||'null');return x?.value&&Date.now()-x.savedAt<=LAST_GOOD_MAX_MS?x.value:null}catch{return null}}
 function writeLastGood(v){try{localStorage.setItem(LAST_GOOD_KEY,JSON.stringify({savedAt:Date.now(),value:v}))}catch{}}
@@ -169,16 +189,20 @@ function hydrate(raw){
 function updateCounts(){
   const s=snapshot?.openSummary||{};
   const openRows=Array.isArray(snapshot?.openWork)?snapshot.openWork:[...(snapshot?.activeWork||[]),...(snapshot?.nextQueue||[])];
-  $('openCount').textContent=Number.isFinite(Number(s.open))?s.open:openRows.length;
-  $('runningCount').textContent=Number.isFinite(Number(s.running))?s.running:openRows.filter(x=>['WORKING','REVIEW'].includes(workStatus(x))).length;
-  $('waitingCount').textContent=Number.isFinite(Number(s.waiting))?s.waiting:openRows.filter(x=>['QUEUED','WAITING','BLOCKED'].includes(workStatus(x))).length;
+  const actionable=openRows.filter(x=>x?.workKind!=='SYSTEM'&&workStatus(x)!=='SYSTEM');
+  $('actionCount').textContent=Number.isFinite(Number(s.actionable))?s.actionable:actionable.length;
+  $('ownerCount').textContent=Number.isFinite(Number(s.owner))?s.owner:actionable.filter(x=>workStatus(x)==='OWNER_GATE').length;
+  $('runningCount').textContent=Number.isFinite(Number(s.running))?s.running:actionable.filter(x=>workStatus(x)==='WORKING').length;
+  $('reviewCount').textContent=Number.isFinite(Number(s.review))?s.review:actionable.filter(x=>['REVIEW','VERIFY'].includes(workStatus(x))).length;
+  $('waitingCount').textContent=Number.isFinite(Number(s.waiting))?s.waiting:actionable.filter(x=>['QUEUED','WAITING','BLOCKED'].includes(workStatus(x))).length;
+  $('systemCount').textContent=Number.isFinite(Number(s.system))?s.system:openRows.filter(x=>x?.workKind==='SYSTEM'||workStatus(x)==='SYSTEM').length;
   $('doneCount').textContent=Number.isFinite(Number(s.done))?s.done:(snapshot?.recentWork||[]).length;
 }
 function render(){
   if(!snapshot)return;
   updateCounts();
   const rows=normalizeRows(snapshot);
-  const labels={open:'Đang mở',running:'Đang chạy',waiting:'Chờ / Blocked',done:'Hoàn tất'};
+  const labels={action:'Cần xử lý',owner:'Chờ anh Sơn',running:'Đang làm',review:'Rà soát / Xác minh',waiting:'Chờ / Blocked',system:'Hệ thống / Chính sách',done:'Hoàn tất'};
   $('workMeta').textContent=labels[currentFilter]+' · '+rows.length+' việc';
   const box=$('workList');box.innerHTML='';
   if(!rows.length){box.innerHTML='<div class="empty">Không có Work Order trong nhóm này.</div>';return}
@@ -194,7 +218,7 @@ function render(){
     const progress=Number.isFinite(pct)&&pct>=0&&pct<=100
       ?'<div class="progress" title="'+esc(row.progressDetail||'Tiến độ gate')+'"><div class="progress-track"><div class="progress-fill" style="width:'+pct+'%"></div></div><span class="progress-text">'+pct+'%</span></div>'
       :'';
-    const summaryText=String(row?.currentStep||'').trim();
+    const summaryText=String(row?.currentStep||(row?.workKind==='SYSTEM'?'Policy/SOT/reference — không phải việc thực thi':row?.workKind==='GOAL'?'Mục tiêu cấp hệ thống — không đồng nghĩa đang chạy':'')).trim();
     const summary=summaryText?'<div class="work-summary">'+esc(summaryText)+'</div>':'';
     const signature=status+'|'+(Number.isFinite(pct)?pct:'')+'|'+summaryText;
     const previous=lastVisualState.get(Number(row.number));
@@ -230,7 +254,7 @@ async function load(){
   }
 }
 document.querySelectorAll('.filter').forEach(button=>button.addEventListener('click',()=>{
-  currentFilter=button.dataset.filter||'open';
+  currentFilter=button.dataset.filter||'action';
   document.querySelectorAll('.filter').forEach(x=>x.classList.toggle('active',x===button));
   render();
 }));
