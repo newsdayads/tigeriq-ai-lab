@@ -200,7 +200,8 @@ export function formatResultComment(row){
 }
 
 async function ghJson(fetchImpl,url,token='',init={}){
-  return githubRequestJson(fetchImpl,url,token,init);
+  const opts=String(init.method||'GET').toUpperCase()==='GET'&&init.freshMs==null?{...init,freshMs:0}:init;
+  return githubRequestJson(fetchImpl,url,token,opts);
 }
 
 export async function resolveGithubSourceIssue(fetchImpl,owner,repo,token,issueNumber,openIssueIndex=null){
