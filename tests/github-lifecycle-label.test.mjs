@@ -1,10 +1,15 @@
 import {describe,expect,it} from 'vitest';
 import {readFileSync} from 'node:fs';
 import {
+  EXTERNAL_ROLE_CLAIMED_LABEL,
   TERMINAL_BLOCKED_LABEL,
+  addRoleClaimedLabel,
   addTerminalBlockedLabel,
+  clearRoleClaimedLabel,
   clearTerminalBlockedLabel,
+  hasRoleClaimedLabel,
   hasTerminalBlockedLabel,
+  roleClaimedWorkerId,
 } from '../apps/tigeriq-core/github-lifecycle-label.mjs';
 
 function response(data,status=200){
@@ -17,6 +22,30 @@ describe('GitHub terminal lifecycle label',()=>{
     expect(hasTerminalBlockedLabel({labels:['x','tigeriq:terminal-blocked']})).toBe(true);
     expect(hasTerminalBlockedLabel({labels:[{name:'TIGERIQ:TERMINAL-BLOCKED'}]})).toBe(true);
     expect(hasTerminalBlockedLabel({labels:[]})).toBe(false);
+  });
+
+  it('recognizes durable external role claim and worker labels',()=>{
+    const issue={labels:['tigeriq:role-claimed',{name:'tigeriq:role-worker-nv02'}]};
+    expect(EXTERNAL_ROLE_CLAIMED_LABEL).toBe('tigeriq:role-claimed');
+    expect(hasRoleClaimedLabel(issue)).toBe(true);
+    expect(roleClaimedWorkerId(issue)).toBe('NV02');
+    expect(roleClaimedWorkerId({labels:[]})).toBe(null);
+  });
+
+  it('adds and clears external role claim labels without touching issue body',async()=>{
+    const calls=[];
+    const fetchImpl=async(url,init)=>{calls.push([url,init.method,init.body||'']);return response([])};
+    await addRoleClaimedLabel({fetchImpl,owner:'o',repo:'r',issueNumber:7,token:'x',workerId:'NV02'});
+    expect(calls.filter(([url,method])=>url.endsWith('/issues/7/labels')&&method==='POST')).toHaveLength(2);
+    calls.length=0;
+    await clearRoleClaimedLabel({
+      fetchImpl,owner:'o',repo:'r',issueNumber:7,token:'x',
+      issue:{labels:['tigeriq:role-claimed','tigeriq:role-worker-nv02']}
+    });
+    expect(calls.map(([url,method])=>[url,method])).toEqual([
+      ['https://api.github.com/repos/o/r/issues/7/labels/tigeriq%3Arole-claimed','DELETE'],
+      ['https://api.github.com/repos/o/r/issues/7/labels/tigeriq%3Arole-worker-nv02','DELETE'],
+    ]);
   });
 
   it('adds existing label without repository mutation',async()=>{
@@ -91,6 +120,10 @@ describe('GitHub terminal lifecycle label',()=>{
     expect(coding).toContain('addTerminalBlockedLabel');
     expect(coding).toContain('clearTerminalBlockedLabel');
     expect(live).toContain('hasTerminalBlockedLabel');
+    expect(core).toContain('addRoleClaimedLabel');
+    expect(core).toContain('clearRoleClaimedLabel');
+    expect(live).toContain('hasRoleClaimedLabel');
+    expect(live).toContain('projectExternalRoleClaims');
   });
 
   it('orders Coding lifecycle as objective exists, label clears, then durable transition markers',()=>{
