@@ -38,19 +38,20 @@ describe('App Chrome GitHub self-run queue',()=>{
     expect(isSelfRunSafe(issue(4,'excluded',SAFE+'\nAUTO_QUEUE=EXCLUDED'))).toBe(false);
   });
 
-  it('routes by worker role and never routes coding mutation into App Chrome self-run',()=>{
+  it('uses capability as NV02 priority only and keeps hard-gated work out',()=>{
     const general=issue(10,'general',SAFE+'\nRESOURCE_SCOPE=GENERAL_READ');
     const review=issue(11,'[REVIEW] verify',SAFE+'\nCAPABILITY=review\nREVIEW_ONLY=true\nRESOURCE_SCOPE=VERIFY');
     const research=issue(12,'[RESEARCH] cross-check',SAFE+'\nCAPABILITY=research\nRESEARCH_ONLY=true\nRESOURCE_SCOPE=RESEARCH');
     const coding=issue(13,'code',SAFE+'\nCAPABILITY=code\nAUTONOMOUS_CODE=true\nALLOW_PATH_PREFIX=apps/foo/\nRESOURCE_SCOPE=CODE');
     expect(workerEligibleForIssue('NV02',general)).toBe(true);
-    expect(workerEligibleForIssue('NV02',review)).toBe(false);
+    expect(workerEligibleForIssue('NV02',review)).toBe(true);
     expect(workerEligibleForIssue('NV03',review)).toBe(true);
     expect(workerEligibleForIssue('NV04',review)).toBe(true);
     expect(workerEligibleForIssue('NV04',research)).toBe(true);
-    expect(workerEligibleForIssue('NV02',coding)).toBe(false);
+    expect(workerEligibleForIssue('NV02',coding)).toBe(true);
     expect(workerEligibleForIssue('NV03',coding)).toBe(false);
     expect(workerEligibleForIssue('NV04',coding)).toBe(false);
+    expect(workerEligibleForIssue('NV02',issue(14,'security',SAFE+'\nCAPABILITY=coding\nRESOURCE_SCOPE=SECURITY'))).toBe(false);
   });
 
   it('honors external resource-scope collisions and priority order',()=>{
