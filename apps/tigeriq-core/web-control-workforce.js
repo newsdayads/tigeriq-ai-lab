@@ -6,13 +6,40 @@
   const LABEL = {
     IDLE:'RẢNH', BUSY:'ĐANG LÀM', READY:'SẴN SÀNG', WAIT_KEY:'CHỜ KEY',
     RATE_LIMITED:'HẾT HẠN MỨC', OFFLINE:'NGOẠI TUYẾN', ERROR:'LỖI',
+    AUTH_ERROR:'LỖI AUTH', CONFIG_ERROR:'LỖI CẤU HÌNH', CONTRACT_ERROR:'LỖI RESPONSE', STALE_ERROR:'LỖI CŨ',
     MANUAL:'THEO NHU CẦU', PAUSED:'TẠM DỪNG', NO_API:'KHÔNG CÓ API', DISABLED:'TẮT',
     RETIRED:'ĐÃ NGỪNG', UNASSIGNED:'CHƯA CẤP'
   };
   const safe = value => String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const slots = () => Array.from({length:20},(_,i)=>`NV${String(i+1).padStart(2,'0')}`);
-  const STATUS_ORDER = {BUSY:0,READY:1,IDLE:1,MANUAL:2,NO_API:2,RATE_LIMITED:3,WAIT_KEY:4,ERROR:5,OFFLINE:6,DISABLED:7,PAUSED:7,RETIRED:7,UNASSIGNED:8};
+  const STATUS_ORDER = {BUSY:0,READY:1,IDLE:1,MANUAL:2,NO_API:2,RATE_LIMITED:3,WAIT_KEY:4,AUTH_ERROR:5,CONFIG_ERROR:5,CONTRACT_ERROR:5,ERROR:5,OFFLINE:6,STALE_ERROR:7,DISABLED:8,PAUSED:8,RETIRED:8,UNASSIGNED:9};
+  const HEALTH_FRESH_MS=30*60*1000;
   const employeeNumber = id => Number(String(id||'').replace(/\D/g,'')) || 999;
+  const ageMs=(value,now=Date.now())=>{const ts=Date.parse(String(value||''));return Number.isFinite(ts)?Math.max(0,now-ts):Infinity;};
+  const quotaText=r=>{const q=r?.quota_state;if(!q||typeof q!=='object')return 'Quota: chưa có dữ liệu provider';if(q.remaining!=null)return `Quota còn: ${q.remaining}${q.reset_at?` · reset ${q.reset_at}`:''}`;if(q.known===false)return 'Quota: provider chưa trả số dư';return `Quota: ${q.usable===false?'không khả dụng':'có thể sử dụng'}`;};
+
+  function runtimeTruth(r,now=Date.now()){
+    const raw=String(r?.status||'').toUpperCase();
+    const error=String(r?.last_error||'').toLowerCase();
+    const seenAge=ageMs(r?.last_seen_at,now);
+    const fresh=seenAge<=HEALTH_FRESH_MS;
+    const cooldown=Date.parse(String(r?.cooldown_until||''));
+    const cooling=Number.isFinite(cooldown)&&cooldown>now;
+    if(['BUSY','IDLE','READY'].includes(raw)){
+      return {status:raw,current:true,historical:Boolean(error),detail:error?`Lỗi trước đó: ${error} · ${Math.round(seenAge/60000)}p trước`:'Đang khỏe'};
+    }
+    if(raw==='RATE_LIMITED'){
+      if(cooling||(fresh&&/rate|429|quota/.test(error)))return {status:'RATE_LIMITED',current:true,historical:false,detail:cooling?`Rate limit hiện hành · thử lại ${Math.max(1,Math.ceil((cooldown-now)/60000))}p`:'Rate limit vừa ghi nhận'};
+      return {status:'STALE_ERROR',current:false,historical:true,detail:`Rate limit cũ · telemetry ${Math.round(seenAge/60000)}p trước`};
+    }
+    if(raw==='ERROR'){
+      if(!fresh)return {status:'STALE_ERROR',current:false,historical:true,detail:`Lỗi cũ: ${error||'unknown'} · telemetry ${Math.round(seenAge/60000)}p trước`};
+      if(/auth|401|403/.test(error))return {status:'AUTH_ERROR',current:true,historical:false,detail:'Lỗi xác thực hiện hành'};
+      if(/config|configuration/.test(error))return {status:'CONFIG_ERROR',current:true,historical:false,detail:'Lỗi cấu hình hiện hành'};
+      if(/invalid_response|schema|empty_response|unexpected_response/.test(error))return {status:'CONTRACT_ERROR',current:true,historical:false,detail:'Lỗi response/contract hiện hành'};
+    }
+    return {status:raw||'OFFLINE',current:true,historical:false,detail:error?`Lỗi hiện tại: ${error}`:raw||'OFFLINE'};
+  }
 
   function manualStatus(person) {
     const admin=String(person.admin_state||'').toUpperCase();
@@ -45,7 +72,8 @@
     return slots().map(id=>{
       const person=rosterMap.get(id)||{employee_id:id,name:'Chưa cấp',admin_state:'UNASSIGNED',assigned:false,retired:false};
       const runtime=runtimeMap.get(id)||null;
-      return {...person,runtime,status:runtime?.status||manualStatus(person),role:shortRole(person,runtime)};
+      const truth=runtime?runtimeTruth(runtime):null;
+      return {...person,runtime,status:truth?.status||manualStatus(person),healthTruth:truth,role:shortRole(person,runtime)};
     }).sort((a,b)=>(STATUS_ORDER[a.status]??99)-(STATUS_ORDER[b.status]??99)||employeeNumber(a.employee_id)-employeeNumber(b.employee_id));
   }
 
@@ -54,8 +82,10 @@
     const lines=[`${person.employee_id} — ${person.name}`,`Vai trò: ${person.role}`,`Quản trị: ${person.admin_state||'—'}`];
     if(r){
       const ok=Number(r.calls_success_24h||0),fail=Number(r.calls_failure_24h||0),total=ok+fail;
+      const allOk=Number(r.success_count||0),allFail=Number(r.failure_count||0);
       const rate=total?`${Math.round(ok*100/total)}%`:'—';
-      lines.push(`Provider: ${r.provider||'—'}`,`Model: ${r.model||'—'}`,`Độ trễ: ${Number.isFinite(Number(r.last_latency_ms))?`${Math.round(Number(r.last_latency_ms))} ms`:'—'}`,`Thành công 24h: ${rate} (${ok}/${fail})`,`Lỗi cuối: ${r.last_error||'—'}`,`Cooldown: ${r.cooldown_until||'—'}`,`Lần cuối: ${r.last_seen_at||'—'}`);
+      const truth=person.healthTruth||runtimeTruth(r);
+      lines.push(`Provider: ${r.provider||'—'}`,`Model: ${r.model||'—'}`,`Trạng thái thật: ${LABEL[truth.status]||truth.status}`,truth.detail,`Độ trễ: ${Number.isFinite(Number(r.last_latency_ms))?`${Math.round(Number(r.last_latency_ms))} ms`:'—'}`,`Usage 24h: ${rate} · ${ok} thành công / ${fail} lỗi`,`Tổng lịch sử: ${allOk} thành công / ${allFail} lỗi`,quotaText(r),`Cooldown: ${r.cooldown_until||'—'}`,`Lần cuối: ${r.last_seen_at||'—'}`);
       if(r.runtime_source_employee_id) lines.push(`Runtime legacy: ${r.runtime_source_employee_id} → ${person.employee_id}`);
     } else lines.push('Runtime/API: không có');
     return lines.join('\n');
@@ -65,7 +95,8 @@
     if(['IDLE','READY','MANUAL'].includes(status)) return 'green';
     if(['BUSY'].includes(status)) return 'blue';
     if(['WAIT_KEY','RATE_LIMITED','PAUSED'].includes(status)) return 'amber';
-    if(['ERROR','OFFLINE'].includes(status)) return 'red';
+    if(['AUTH_ERROR','CONFIG_ERROR','CONTRACT_ERROR','ERROR','OFFLINE'].includes(status)) return 'red';
+    if(status==='STALE_ERROR') return 'gray';
     return 'gray';
   }
 
@@ -75,7 +106,7 @@
     const search=(document.querySelector('.board-controls input')?.value||'').trim().toLowerCase();
     const status=person.status;
     const p=String(person.runtime?.provider||'').toLowerCase();
-    const isProblem=['ERROR','OFFLINE','RATE_LIMITED','WAIT_KEY'].includes(status);
+    const isProblem=['AUTH_ERROR','CONFIG_ERROR','CONTRACT_ERROR','ERROR','OFFLINE','RATE_LIMITED','WAIT_KEY'].includes(status);
     if(provider==='local' && p!=='ollama') return false;
     if(provider==='cloud' && (!p || p==='ollama')) return false;
     if(provider!=='all' && !['local','cloud'].includes(provider) && p!==provider.toLowerCase()) return false;
