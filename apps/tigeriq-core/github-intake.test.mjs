@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe,expect,it } from 'vitest';
-import { contextIssueRefs,extractExplicitContextIssues,extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,formatResultComment,githubDispatchLane,githubPcOperatorJobId,githubRateLimitCooldownMs,githubSpecBlockedByActive,hydrateContext,indexOpenGithubIssues,isBoundedAppChromeRequestOnly,parseExecutableIssue,parsePcOperatorDirectAction,resolveGithubSourceIssue,syncGithubOutcomes } from './github-intake.mjs';
+import { contextIssueRefs,extractExplicitContextIssues,extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,formatResultComment,githubDispatchLane,githubPcOperatorJobId,githubRateLimitCooldownMs,githubSpecBlockedByActive,hydrateContext,indexOpenGithubIssues,isBoundedAppChromeRequestOnly,parseExecutableIssue,parsePcOperatorDirectAction,resolveGithubSourceIssue,syncExternalRoleClaimLabels,syncGithubOutcomes } from './github-intake.mjs';
 import { appendPublicEvidenceToSummary,buildPublicEvidenceDiagnostic,extractPublicEvidence,formatPublicEvidenceBlock,formatPublicEvidenceDiagnosticBlock,parsePublicEvidenceKeys,sanitizePublicEvidenceValue } from './public-evidence.mjs';
 import { openClawTerminalDecision } from '../openclaw-tigeriq-runtime/dispatch.mjs';
 
@@ -17,6 +17,29 @@ describe('GitHub Core intake guardrails',()=>{
 
   const base={number:588,title:'safe test',state:'open',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/588',body:'TIGERIQ_EXECUTABLE=true\nPRIORITY=P2\nCAPABILITY=reasoning\nOWNER_POLICY=AUTO\nNO_CODE_CHANGE=true\nNO_PC01_SHELL=true\nRead #280 and #335 plus `docs/CURRENT_STATE.md`.'};
   it('accepts an explicitly safe autonomous issue',()=>{expect(parseExecutableIssue(base)).toMatchObject({number:588,priority:'P2',capability:'reasoning'});});
+
+  it('keeps labels outside sourceRevision while carrying them for lifecycle projection',()=>{
+    const a=parseExecutableIssue({...base,labels:[]});
+    const b=parseExecutableIssue({...base,labels:[{name:'tigeriq:role-claimed'},{name:'tigeriq:role-worker-nv02'}]});
+    expect(b.labels).toHaveLength(2);
+    expect(b.sourceRevision).toBe(a.sourceRevision);
+  });
+
+  it('syncs external role claim labels only on lifecycle transitions',async()=>{
+    const already={number:588,labels:[{name:'tigeriq:role-claimed'},{name:'tigeriq:role-worker-nv02'}]};
+    const calls=[];
+    const fetchImpl=async(url,init={})=>{calls.push([url,init.method||'GET']);return new Response(JSON.stringify({}),{status:200,headers:{'content-type':'application/json'}})};
+    await expect(syncExternalRoleClaimLabels({fetchImpl,owner:'o',repo:'r',token:'x',issue:already,workerId:'NV02',active:true})).resolves.toMatchObject({changed:false,active:true,workerId:'NV02'});
+    expect(calls).toHaveLength(0);
+
+    const released=[];
+    const releaseFetch=async(url,init={})=>{released.push([url,init.method||'GET']);return new Response(null,{status:204})};
+    await expect(syncExternalRoleClaimLabels({fetchImpl:releaseFetch,owner:'o',repo:'r',token:'x',issue:already,active:false})).resolves.toMatchObject({changed:true,active:false});
+    expect(released.map(([url,method])=>[url,method])).toEqual([
+      ['https://api.github.com/repos/o/r/issues/588/labels/tigeriq%3Arole-claimed','DELETE'],
+      ['https://api.github.com/repos/o/r/issues/588/labels/tigeriq%3Arole-worker-nv02','DELETE'],
+    ]);
+  });
   it('admits only explicit typed local pc_operator actions and never shell/file-write/PAD mutation',()=>{
     expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"task_status","taskName":"TigerIQ Core Runtime Updater"}',false)).toMatchObject({
       present:true,valid:true,action:{action:'task_status',taskName:'TigerIQ Core Runtime Updater'},mutating:false

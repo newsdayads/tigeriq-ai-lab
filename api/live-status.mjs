@@ -3,6 +3,26 @@ import { parseCodingIssue } from '../apps/tigeriq-core/github-coding-intake.mjs'
 import { hasTerminalBlockedLabel } from '../apps/tigeriq-core/github-lifecycle-label.mjs';
 import { loadSkillPromotionState } from '../apps/tigeriq-core/skill-promotion.mjs';
 
+const EXTERNAL_ROLE_CLAIMED_LABEL='tigeriq:role-claimed';
+
+function issueLabelNames(issue){
+  return (Array.isArray(issue?.labels)?issue.labels:[])
+    .map((label)=>typeof label==='string'?label:String(label?.name||''))
+    .filter(Boolean);
+}
+
+export function hasRoleClaimedLabel(issue){
+  return issueLabelNames(issue).some((name)=>name.toLowerCase()===EXTERNAL_ROLE_CLAIMED_LABEL);
+}
+
+export function roleClaimedWorkerId(issue){
+  for(const name of issueLabelNames(issue)){
+    const match=String(name).toLowerCase().match(/^tigeriq:role-worker-(nv\d{2})$/);
+    if(match)return match[1].toUpperCase();
+  }
+  return null;
+}
+
 const REPO = process.env.TIGERIQ_REPO || 'newsdayads/tigeriq-ai-lab';
 const REGISTRY_ISSUE = 335;
 const FETCH_TIMEOUT_MS = 5000;
@@ -434,7 +454,8 @@ export function parseQueueIssue(issue) {
   const codingSpec = parseCodingIssue(issue);
   if (!coreSpec && !codingSpec) return null;
   const terminalBlocked = hasTerminalBlockedLabel(issue);
-  const holdReason = terminalBlocked ? 'TigerIQ terminal BLOCKED' : queueWaitReason(issue);
+  const roleClaimed = hasRoleClaimedLabel(issue);
+  const holdReason = terminalBlocked ? 'TigerIQ terminal BLOCKED' : roleClaimed ? 'External role claim' : queueWaitReason(issue);
   const effectivePriority = codingSpec?.priority || coreSpec?.priority || issuePriority(issue) || 'P3';
   const sourcePriority = codingSpec?.sourcePriority || coreSpec?.sourcePriority || issuePriority(issue) || effectivePriority;
   return {
@@ -510,6 +531,46 @@ function normalizedRuntimeTitle(value = '') {
     .replace(/\s+\[(?:sửa lần|repair|retry)\s+\d+\]\s*$/iu, '')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+export function projectExternalRoleClaims(base = {}, issues = []) {
+  const claims = new Map();
+  for (const issue of (Array.isArray(issues) ? issues : [])) {
+    if (!issue || issue.pull_request || issue.state !== 'open' || !hasRoleClaimedLabel(issue)) continue;
+    const workerId = roleClaimedWorkerId(issue);
+    if (!/^NV(?:02|03|04)$/.test(String(workerId || ''))) continue;
+    const previous = claims.get(workerId);
+    const currentAt = Date.parse(issue.updated_at || '') || 0;
+    const previousAt = Date.parse(previous?.updated_at || '') || 0;
+    if (!previous || currentAt >= previousAt) claims.set(workerId, issue);
+  }
+  if (!claims.size) return base;
+
+  const workers = (Array.isArray(base?.workers) ? base.workers : []).map((worker) => {
+    const issue = claims.get(String(worker?.employeeId || '').toUpperCase());
+    if (!issue) return worker;
+    return {
+      ...worker,
+      state: 'working',
+      status: 'ĐANG LÀM',
+      job: `#${issue.number} - ${String(issue.title || '')}`,
+      detail: 'External role claim · GitHub canonical label',
+      currentJobId: `GH-${issue.number}`,
+      updatedAt: issue.updated_at || worker?.updatedAt || null,
+      source: 'GitHub external role claim',
+    };
+  });
+  const summary = {
+    ...(base?.summary || {}),
+    working: workers.filter((w) => w?.state === 'working').length,
+    waiting: workers.filter((w) => w?.state === 'waiting').length,
+    blocked: workers.filter((w) => w?.state === 'blocked').length,
+    idle: workers.filter((w) => w?.state === 'idle').length,
+    unknown: workers.filter((w) => w?.state === 'unknown').length,
+    paused: workers.filter((w) => w?.state === 'paused').length,
+    total: workers.length,
+  };
+  return { ...base, workers, summary };
 }
 
 export function runtimeWorkRows(workers = [], issues = []) {
@@ -797,6 +858,7 @@ async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
       }
     }
     const openIssues = (Array.isArray(issues) ? issues : []).filter((issue) => !issue?.pull_request);
+    base = projectExternalRoleClaims(base, openIssues);
     const openPulls = Array.isArray(pulls) ? pulls : [];
     const runs = Array.isArray(runPayload?.workflow_runs) ? runPayload.workflow_runs : [];
     const issueMap = new Map(openIssues.map((issue) => [Number(issue.number), issue]));
