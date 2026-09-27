@@ -13,8 +13,7 @@ const POINTER_CACHE_MS = 10 * 60 * 1000;
 const GITHUB_PROJECTION_CACHE_MS = 30 * 1000;
 const DEPENDENCY_CACHE_MS = 60 * 1000;
 const QUEUE_LIMIT = 20;
-const RECENT_WORK_LIMIT = 5;
-const RECENT_WORK_WINDOW_MS = 24 * 60 * 60 * 1000;
+const RECENT_WORK_LIMIT = 50;
 const RECENT_WORK_CACHE_MS = 5 * 60 * 1000;
 const WORKING_HEARTBEAT_MAX_MS = 60 * 1000;
 let pointerCache = { at: 0, url: null };
@@ -342,6 +341,15 @@ function issuePriority(issue) {
     || null;
 }
 
+function issueEmployeeId(issue) {
+  const body = String(issue?.body || '');
+  for (const key of ['TARGET_EMPLOYEE','ASSIGNED_EXECUTOR','EXECUTOR','PREFERRED_REVIEWER','PRIMARY_EMPLOYEE','IMPLEMENTER','REVIEWER']) {
+    const id = workerIdFromText(bodyValue(body, key));
+    if (id) return id;
+  }
+  return workerIdFromText(issue?.title || '');
+}
+
 function issueIsTerminal(issue) {
   if (!issue || issue.pull_request || issue.state !== 'open') return true;
   const body = String(issue.body || '');
@@ -367,10 +375,15 @@ export function parseRecentCompletedIssue(issue, now = Date.now()) {
   if (/^SUPERSEDED(?:_BY)?=/mi.test(body)) return null;
   const completedAt = issue.closed_at || issue.updated_at || null;
   const completedMs = Date.parse(completedAt || '');
-  if (!Number.isFinite(completedMs) || completedMs > now || now - completedMs > RECENT_WORK_WINDOW_MS) return null;
+  if (!Number.isFinite(completedMs) || completedMs > now) return null;
+  const priority = issuePriority(issue);
   return {
     number: Number(issue.number),
     title: String(issue.title || ''),
+    priority,
+    effectivePriority: priority,
+    sourcePriority: priority,
+    employeeId: issueEmployeeId(issue),
     status: 'DONE',
     completedAt,
     updatedAt: completedAt,
@@ -384,7 +397,7 @@ async function recentCompletedWork(owner, repo, fetchImpl = fetch) {
     return recentWorkCache.data;
   }
   try {
-    const issues = await gh('/repos/' + owner + '/' + repo + '/issues?state=closed&per_page=30&sort=updated&direction=desc', fetchImpl);
+    const issues = await gh('/repos/' + owner + '/' + repo + '/issues?state=closed&per_page=100&sort=updated&direction=desc', fetchImpl);
     const rows = (Array.isArray(issues) ? issues : [])
       .map((issue) => parseRecentCompletedIssue(issue, now))
       .filter(Boolean)

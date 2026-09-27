@@ -205,28 +205,31 @@ describe('TigerIQ Live Work Order projection', () => {
     expect(normalizeRuntimeWorkerActivity({ ...base, heartbeatAt: '2026-09-24T23:59:59Z' }, now)).toMatchObject({ state: 'unknown', status: 'CHƯA RÕ' });
   });
 
-  it('shows only completed issues from the last 24 hours in recent work', () => {
+  it('keeps completed history beyond 24 hours and exposes priority + NV metadata', () => {
     const now = Date.parse('2026-09-25T00:00:00Z');
     const recent = parseRecentCompletedIssue({
       number: 1861,
-      title: '[P0][VERCEL] Việc đã xong',
-      body: 'STATE=DONE',
+      title: '[P0][VERCEL][NV12] Việc đã xong',
+      body: 'STATE=DONE\nPRIORITY=P1\nASSIGNED_EXECUTOR=NV19',
       state: 'closed',
       state_reason: 'completed',
       closed_at: '2026-09-24T23:30:00Z',
       html_url: 'https://github.com/newsdayads/tigeriq-ai-lab/issues/1861',
     }, now);
-    expect(recent).toMatchObject({ number: 1861, status: 'DONE' });
-    expect(parseRecentCompletedIssue({
+    expect(recent).toMatchObject({ number: 1861, status: 'DONE', priority: 'P1', effectivePriority: 'P1', employeeId: 'NV19' });
+
+    const older = parseRecentCompletedIssue({
       number: 1800,
-      title: 'Việc cũ',
+      title: '[P2][NV12] Việc cũ',
       body: 'STATE=DONE',
       state: 'closed',
-      closed_at: '2026-09-23T00:00:00Z',
-    }, now)).toBe(null);
+      closed_at: '2026-08-01T00:00:00Z',
+    }, now);
+    expect(older).toMatchObject({ number: 1800, priority: 'P2', employeeId: 'NV12', status: 'DONE' });
+
     expect(parseRecentCompletedIssue({
       number: 1801,
-      title: 'Không làm',
+      title: '[P3] Không làm',
       body: 'STATE=CANCELLED',
       state: 'closed',
       closed_at: '2026-09-24T23:30:00Z',
@@ -256,7 +259,6 @@ describe('TigerIQ Live Work Order projection', () => {
     ]);
     expect(result.nextQueue).toEqual([]);
   });
-
   it('keeps terminal-blocked lifecycle label out of executable ranking', () => {
     const blocked = parseQueueIssue(issue(2011, '[P1][CORE] Terminal blocked', [
       ...coreQueueFlags(),
