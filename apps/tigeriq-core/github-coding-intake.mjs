@@ -463,9 +463,11 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
         continue;
       }
       if(!(await hasCompletedCodingResult(pool,n))){
-        await clearTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:n,token});
+        // Keep a stale terminal-blocked projection fail-closed until GitHub close succeeds.
+        // Once closed, the issue disappears from the open queue before the label is cleared.
         await comment(fetchImpl,owner,repo,n,token,`[RESULT] ${id} completed. ${String(objective.summary||'').slice(0,3000)}`);
         await close(fetchImpl,owner,repo,n,token);
+        await clearTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:n,token});
         await mark(pool,'GITHUB_CODING_RESULT_REPORTED',{issueNumber:n,codingObjectiveId:id,status:'completed',sourceRevision:currentSourceRevision||null});
         results++;
       }
