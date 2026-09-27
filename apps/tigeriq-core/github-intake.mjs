@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { Pool } from 'pg';
-import { backlogOwnerDirect, bodyValue as policyBodyValue, isOwnerOnlyP0, routingFault, sortBacklogSpecs } from './github-backlog-policy.mjs';
+import { applyChatMutationOwnerHandoff, backlogOwnerDirect, bodyValue as policyBodyValue, chatMutationOwnerPlan, isOwnerOnlyP0, routingFault, sortBacklogSpecs } from './github-backlog-policy.mjs';
 import { activeRoleClaim, classifyWorkOrder } from './work-routing-policy.mjs';
 import { appendPublicEvidenceToSummary, parsePublicEvidenceKeys } from './public-evidence.mjs';
 import { addTerminalBlockedLabel, clearTerminalBlockedLabel } from './github-lifecycle-label.mjs';
@@ -133,6 +133,7 @@ export function parseExecutableIssue(issue){
   if(!issue||issue.pull_request||issue.state!=='open')return null;
   const body=String(issue.body||'');
   const title=String(issue.title||'');
+  if(chatMutationOwnerPlan(body,title).owner==='VY')return null;
   if(isOwnerOnlyP0(body,title))return null;
   if(!hasExactFlag(body,'TIGERIQ_EXECUTABLE')||!hasExactFlag(body,'OWNER_POLICY','AUTO'))return null;
   if(!hasExactFlag(body,'NO_CODE_CHANGE')||!hasExactFlag(body,'NO_PC01_SHELL'))return null;
@@ -245,6 +246,20 @@ async function closeIssue(fetchImpl,owner,repo,issueNumber,token){
   await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}`,token,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({state:'closed',state_reason:'completed'})});
   return true;
 }
+
+export async function reconcileStaleChatMutationOwner({fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token='',issue,nowMs=Date.now()}={}){
+  if(!issue||issue.pull_request||issue.state!=='open')return {changed:false,reason:'NOT_OPEN_ISSUE',issue};
+  const applied=applyChatMutationOwnerHandoff(issue.body||'',issue.title||'',nowMs);
+  if(!applied.changed)return {changed:false,reason:applied.plan.reason,issue};
+  if(!token)return {changed:false,reason:'TOKEN_REQUIRED',issue};
+  const updated=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/${Number(issue.number)}`,token,{
+    method:'PATCH',
+    headers:{'content-type':'application/json'},
+    body:JSON.stringify({body:applied.body})
+  });
+  return {changed:true,reason:applied.plan.reason,issue:{...issue,...updated,body:applied.body}};
+}
+
 
 export async function cleanupTerminalObjectiveJobs({pool}={}){
   if(!pool)throw new Error('CORE_GITHUB_POOL_REQUIRED');
@@ -436,8 +451,13 @@ export function startGithubIntake({databaseUrl=process.env.DATABASE_URL,fetchImp
     if(!issue)return;
     busy=true;
     try{
-      const issues=[issue];
       const n=Number(issue.number);
+      const handoff=await reconcileStaleChatMutationOwner({fetchImpl,owner,repo,token,issue});
+      if(handoff.changed){
+        console.log(JSON.stringify({event:'GITHUB_CHAT_OWNER_AUTO_HANDOFF',deliveryId:event.deliveryId,issueNumber:n,reason:handoff.reason}));
+        return;
+      }
+      const issues=[issue];
       const b=await syncGithubOutcomes({pool,fetchImpl,owner,repo,token,openIssues:issues,issueNumbers:[n]});
       const a=await materializeGithubIssues({pool,fetchImpl,owner,repo,token,openIssues:issues});
       console.log(JSON.stringify({event:'GITHUB_EVENT_INTAKE_SYNC',deliveryId:event.deliveryId,eventName:event.eventName,issueNumber:n,created:a.created,claims:b.claims,results:b.results}));
@@ -460,8 +480,16 @@ export function startGithubIntake({databaseUrl=process.env.DATABASE_URL,fetchImp
     busy=true;
     try{
       const openIssues=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues?state=open&per_page=100&sort=updated&direction=desc`,token,{freshMs:30000});
-      const b=await syncGithubOutcomes({pool,fetchImpl,owner,repo,token,openIssues});
-      const a=await materializeGithubIssues({pool,fetchImpl,owner,repo,token,openIssues});
+      const handedOff=new Set();
+      for(const issue of openIssues){
+        if(handedOff.size>=5)break;
+        const handoff=await reconcileStaleChatMutationOwner({fetchImpl,owner,repo,token,issue});
+        if(handoff.changed)handedOff.add(Number(issue.number));
+      }
+      const stableIssues=openIssues.filter(issue=>!handedOff.has(Number(issue.number)));
+      const b=await syncGithubOutcomes({pool,fetchImpl,owner,repo,token,openIssues:stableIssues});
+      const a=await materializeGithubIssues({pool,fetchImpl,owner,repo,token,openIssues:stableIssues});
+      if(handedOff.size)console.log(JSON.stringify({event:'GITHUB_CHAT_OWNER_FALLBACK_HANDOFF',count:handedOff.size,issueNumbers:[...handedOff]}));
       if(a.created||b.claims||b.results)console.log(JSON.stringify({event:'GITHUB_INTAKE_SYNC',created:a.created,claims:b.claims,results:b.results,active:a.active||0,issueNumber:a.issueNumber||null}));
     }catch(e){applyError(e,'fallback')}
     finally{

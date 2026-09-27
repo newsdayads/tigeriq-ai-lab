@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto';
 import {Pool} from 'pg';
-import {backlogOwnerDirect,effectiveBacklogPriority,isActiveExecutionSpec,isOwnerOnlyP0,sortBacklogSpecs} from './github-backlog-policy.mjs';
+import {backlogOwnerDirect,chatMutationOwnerPlan,effectiveBacklogPriority,isActiveExecutionSpec,isOwnerOnlyP0,sortBacklogSpecs} from './github-backlog-policy.mjs';
 import {classifyWorkOrder} from './work-routing-policy.mjs';
 import {controlPlaneRepairIntent,isProtectedControlPlanePath} from '../shared/control-plane-lock.mjs';
 import {githubRateLimitCooldownMs} from './github-intake.mjs';
@@ -112,6 +112,7 @@ export function codingScopesOverlap(a,b){
 export function parseCodingIssue(issue){
   if(!issue||issue.pull_request||issue.state!=='open')return null;
   const body=String(issue.body||'');
+  if(chatMutationOwnerPlan(body,issue.title).owner==='VY')return null;
   if(isOwnerOnlyP0(body,issue.title))return null;
   const required=[['TIGERIQ_EXECUTABLE','true'],['OWNER_POLICY','AUTO'],['AUTONOMOUS_CODE','true'],['ZERO_COST','true'],['NO_PC01_SHELL','true'],['NO_PAID_COST','true'],['NO_CREDENTIAL_CHANGE','true'],['NO_DESTRUCTIVE','true'],['NO_PRODUCTION_RELEASE','true'],['NO_BROWSER_AUTH','true'],['NO_DIRECT_MAIN','true']];
   if(required.some(([k,v])=>!exactFlag(body,k,v)))return null;
