@@ -82,6 +82,7 @@ test('GitHub Work Order workflow is event-driven with OIDC and no persistent dis
   assert.match(workflow,/id-token: write/);
   assert.match(workflow,/audience=tigeriq-core/);
   assert.match(workflow,/X-TigerIQ-Delivery/);
+  assert.match(workflow,/body\.splitlines\(\)/);
   assert.doesNotMatch(workflow,/WEBHOOK_SECRET|TIGERIQ_CORE_TOKEN/);
   assert.doesNotMatch(workflow,/run_attempt/);
 });
