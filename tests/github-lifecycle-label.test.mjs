@@ -58,6 +58,16 @@ describe('GitHub terminal lifecycle label',()=>{
     expect(caught).toMatchObject({status:429,retryAfter:'2',rateLimitRemaining:'0',rateLimitReset:'123'});
   });
 
+
+  it('keeps terminal label writes transition-only while backfilling unsynced historical finals',()=>{
+    const core=readFileSync(new URL('../apps/tigeriq-core/github-intake.mjs',import.meta.url),'utf8');
+    const coding=readFileSync(new URL('../apps/tigeriq-core/github-coding-intake.mjs',import.meta.url),'utf8');
+    expect(core).toContain("status='blocked' and coalesce(metadata->>'githubTerminalLabelSynced','false')<>'true'");
+    expect(core).toContain('githubTerminalLabelSynced:true');
+    expect(coding).toContain("'GITHUB_CODING_TERMINAL_LABEL_SYNCED'");
+    expect(coding).toMatch(/hasEffectiveBlockedFinal[\s\S]*?objectiveMarkerExists\(pool,'GITHUB_CODING_TERMINAL_LABEL_SYNCED',n,id\)[\s\S]*?addTerminalBlockedLabel[\s\S]*?GITHUB_CODING_TERMINAL_LABEL_SYNCED/);
+  });
+
   it('wires Core, Coding and Live projection to the shared lifecycle label',()=>{
     const core=readFileSync(new URL('../apps/tigeriq-core/github-intake.mjs',import.meta.url),'utf8');
     const coding=readFileSync(new URL('../apps/tigeriq-core/github-coding-intake.mjs',import.meta.url),'utf8');
