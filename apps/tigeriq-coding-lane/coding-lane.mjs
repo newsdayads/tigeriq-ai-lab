@@ -205,9 +205,9 @@ export function cooldownWaitFailure(errorFailure,priorFailure,cooldownPlan,prese
 }
 
 export function isResourceTransientError(error){
-  if(['AI_RESOURCES_UNAVAILABLE','AI_RESOURCES_BUSY'].includes(error?.code))return true;
+  if(['AI_RESOURCES_UNAVAILABLE','AI_RESOURCES_BUSY','NO_TARGET_EMPLOYEE_AVAILABLE'].includes(error?.code))return true;
   const msg=String(error?.message||error||'');
-  return /NO_(?:IMPLEMENTER_AVAILABLE|INDEPENDENT_REVIEWER_AVAILABLE|FREE_API_CODING_RESOURCE)|AI_RETRY_BUDGET_EXHAUSTED/i.test(msg);
+  return /NO_(?:IMPLEMENTER_AVAILABLE|TARGET_EMPLOYEE_AVAILABLE|INDEPENDENT_REVIEWER_AVAILABLE|FREE_API_CODING_RESOURCE)|AI_RETRY_BUDGET_EXHAUSTED/i.test(msg);
 }
 
 export function resourceWaitPlan({retryCount=0,startedAt=null,nowMs=Date.now(),maxRetries=RESOURCE_WAIT_MAX_RETRIES,maxWindowMs=RESOURCE_WAIT_MAX_WINDOW_MS}={}){
@@ -225,6 +225,54 @@ export function managerResourceFailurePlan(error,objective={},nowMs=Date.now()){
 
 export function shouldResumeExistingPr(job){
   return Boolean(String(job?.branch||'').trim()&&Number(job?.pr_number)>0);
+}
+
+export function validateObjectiveRoutingInput({targetEmployee=null,currentPr=null,targetHead=null}={}){
+  const employee=String(targetEmployee||'').trim().toUpperCase();
+  if(employee&&!/^NV\d{2,3}$/.test(employee)){
+    const e=new Error('CODING_TARGET_EMPLOYEE_INVALID');e.code='CODING_TARGET_EMPLOYEE_INVALID';throw e;
+  }
+  const hasPr=currentPr!==null&&currentPr!==undefined&&String(currentPr).trim()!=='';
+  const head=String(targetHead||'').trim().toLowerCase();
+  if(hasPr!==Boolean(head)){
+    const e=new Error('CODING_CURRENT_PR_TARGET_HEAD_PAIR_REQUIRED');e.code='CODING_CURRENT_PR_TARGET_HEAD_PAIR_REQUIRED';throw e;
+  }
+  let pr=null;
+  if(hasPr){
+    pr=Number(currentPr);
+    if(!Number.isInteger(pr)||pr<=0){const e=new Error('CODING_CURRENT_PR_INVALID');e.code='CODING_CURRENT_PR_INVALID';throw e}
+    if(!/^[0-9a-f]{40}$/.test(head)){const e=new Error('CODING_TARGET_HEAD_INVALID');e.code='CODING_TARGET_HEAD_INVALID';throw e}
+  }
+  return {targetEmployee:employee||null,currentPr:pr,targetHead:head||null};
+}
+
+export function selectCodingWorker(available=[],targetEmployee='',fallback=()=>null){
+  const target=String(targetEmployee||'').trim().toUpperCase();
+  if(target)return (available||[]).find(resource=>String(resource?.id||'').toUpperCase()===target)||null;
+  return typeof fallback==='function'?fallback():null;
+}
+
+export function validateExistingPrResume(pr,{number=null,targetHead=null,repoFullName=''}={}){
+  const expectedNumber=Number(number||0);
+  if(!pr||Number(pr.number)!==expectedNumber){const e=new Error('EXISTING_PR_NUMBER_MISMATCH');e.code='EXISTING_PR_NUMBER_MISMATCH';throw e}
+  if(pr.merged===true||pr.merged_at){const e=new Error('EXISTING_PR_ALREADY_MERGED');e.code='EXISTING_PR_ALREADY_MERGED';throw e}
+  if(String(pr.state||'').toLowerCase()!=='open'){const e=new Error('EXISTING_PR_NOT_OPEN');e.code='EXISTING_PR_NOT_OPEN';throw e}
+  const repo=String(repoFullName||'').toLowerCase();
+  const baseRepo=String(pr?.base?.repo?.full_name||'').toLowerCase();
+  const headRepo=String(pr?.head?.repo?.full_name||'').toLowerCase();
+  if(repo&&baseRepo!==repo){const e=new Error('EXISTING_PR_BASE_REPO_MISMATCH');e.code='EXISTING_PR_BASE_REPO_MISMATCH';throw e}
+  if(repo&&headRepo!==repo){const e=new Error('EXISTING_PR_HEAD_REPO_MISMATCH');e.code='EXISTING_PR_HEAD_REPO_MISMATCH';throw e}
+  const headSha=String(pr?.head?.sha||'').trim().toLowerCase();
+  const expectedHead=String(targetHead||'').trim().toLowerCase();
+  if(expectedHead&&headSha!==expectedHead){const e=new Error('EXISTING_PR_TARGET_HEAD_MISMATCH');e.code='EXISTING_PR_TARGET_HEAD_MISMATCH';e.detail={expectedHead,headSha};throw e}
+  const branch=String(pr?.head?.ref||'').trim();
+  if(!branch||!headSha){const e=new Error('EXISTING_PR_RESUME_IDENTITY_INCOMPLETE');e.code='EXISTING_PR_RESUME_IDENTITY_INCOMPLETE';throw e}
+  return {number:expectedNumber,branch,headSha};
+}
+
+export function existingPrNeedsBaseUpdate(compare){
+  const status=String(compare?.status||'').toLowerCase();
+  return Number(compare?.behind_by||0)>0||status==='behind'||status==='diverged';
 }
 const DATABASE_URL=process.env.DATABASE_URL?.trim(); if(!DATABASE_URL&&process.env.NODE_ENV!=='test')throw new Error('DATABASE_URL_MISSING');
 const GH_TOKEN=(process.env.TIGERIQ_GITHUB_TOKEN||process.env.GITHUB_TOKEN||'').trim(); if(!GH_TOKEN&&process.env.NODE_ENV!=='test')throw new Error('GITHUB_TOKEN_MISSING');
@@ -543,6 +591,25 @@ export async function loadAuthoritativeGithubContext(objective='',{
 
 async function ghText(path,accept){const res=await fetch(`https://api.github.com/repos/${OWNER}/${REPO}${path}`,{headers:{accept,authorization:`Bearer ${GH_TOKEN}`,'user-agent':'TigerIQ-Coding-Lane/1.0'},signal:AbortSignal.timeout(30000)});const text=await res.text();if(!res.ok)throw new Error(`GITHUB_HTTP_${res.status}:${text.slice(0,250)}`);return text}
 async function mainSha(){return (await gh('/git/ref/heads/main')).object.sha}
+async function reconcileExistingPrBranch(pr,expectedHeadSha){
+  const identity=validateExistingPrResume(pr,{number:pr?.number,targetHead:expectedHeadSha,repoFullName:`${OWNER}/${REPO}`});
+  const baseSha=await mainSha();
+  const compare=await gh(`/compare/${baseSha}...${identity.headSha}`);
+  if(!existingPrNeedsBaseUpdate(compare))return identity;
+  try{
+    await gh(`/pulls/${identity.number}/update-branch`,{method:'PUT',body:JSON.stringify({expected_head_sha:identity.headSha})});
+  }catch(error){
+    const e=new Error(`EXISTING_PR_RECONCILE_FAILED:${String(error?.message||error).slice(0,300)}`);e.code='EXISTING_PR_RECONCILE_FAILED';throw e;
+  }
+  for(let attempt=0;attempt<20;attempt++){
+    const updated=await gh(`/pulls/${identity.number}`);
+    const current=validateExistingPrResume(updated,{number:identity.number,repoFullName:`${OWNER}/${REPO}`});
+    const nextCompare=await gh(`/compare/${baseSha}...${current.headSha}`);
+    if(!existingPrNeedsBaseUpdate(nextCompare))return current;
+    await sleep(1000);
+  }
+  const e=new Error('EXISTING_PR_RECONCILE_TIMEOUT');e.code='EXISTING_PR_RECONCILE_TIMEOUT';throw e;
+}
 async function repoTree(){const sha=await mainSha();const t=await gh(`/git/trees/${sha}?recursive=1`);return (t.tree||[]).filter(x=>x.type==='blob').map(x=>x.path).filter(safeRepoPath).slice(0,3000)}
 async function readRepoFile(path,ref='main'){try{const x=await gh(`/contents/${path.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(ref)}`);return {path,sha:x.sha,content:Buffer.from(x.content||'','base64').toString('utf8')};}catch(e){if(e.status===404)return {path,sha:null,content:''};throw e}}
 async function createBranch(name,sha){
@@ -635,7 +702,11 @@ create table if not exists tigeriq_coding_objectives(id text primary key,objecti
 alter table tigeriq_coding_objectives add column if not exists next_attempt_at timestamptz;
 alter table tigeriq_coding_objectives add column if not exists resource_retry_count int not null default 0;
 alter table tigeriq_coding_objectives add column if not exists resource_retry_started_at timestamptz;
+alter table tigeriq_coding_objectives add column if not exists target_employee text;
+alter table tigeriq_coding_objectives add column if not exists current_pr int;
+alter table tigeriq_coding_objectives add column if not exists target_head text;
 create table if not exists tigeriq_coding_jobs(id text primary key,objective_id text references tigeriq_coding_objectives(id),title text not null,instruction text not null,paths jsonb not null default '[]'::jsonb,status text not null default 'queued',employee_id text,reviewer_employee_id text,branch text,pr_number int,head_sha text,result jsonb,failure jsonb,attempts int not null default 0,created_at timestamptz not null default now(),started_at timestamptz,completed_at timestamptz);
+alter table tigeriq_coding_jobs add column if not exists target_employee_id text;
 alter table tigeriq_coding_jobs add column if not exists next_attempt_at timestamptz;
 alter table tigeriq_coding_jobs add column if not exists resource_retry_count int not null default 0;
 alter table tigeriq_coding_jobs add column if not exists resource_retry_started_at timestamptz;
@@ -681,8 +752,17 @@ async function managerTick(){
     const invoked=await invokeJsonWithFailover(manager,prompt,{validateData:validateManagerDecision});manager=invoked.resource;const d=invoked.data;
     if(d.status!=='continue'||!d.job){await pool.query("update tigeriq_coding_objectives set status='blocked',summary=$2,manager_employee_id=$3,next_attempt_at=null,resource_retry_count=0,resource_retry_started_at=null,updated_at=now() where id=$1",[o.id,String(d.summary||'manager blocked').slice(0,1000),manager.id]);return}
     const paths=validateManagerJobPaths(d,canonical,mutationAuth);
+    let resumeBranch=null,resumePr=null,resumeHead=null;
+    if(o.current_pr){
+      const livePr=await gh(`/pulls/${Number(o.current_pr)}`);
+      const resume=validateExistingPrResume(livePr,{number:o.current_pr,targetHead:o.target_head,repoFullName:`${OWNER}/${REPO}`});
+      resumeBranch=resume.branch;resumePr=resume.number;resumeHead=resume.headSha;
+    }
     const id=`CODE-${randomUUID()}`;
-    await pool.query('insert into tigeriq_coding_jobs(id,objective_id,title,instruction,paths) values($1,$2,$3,$4,$5)',[id,o.id,canonicalCodingJobTitle(o.objective,d.job.title),String(d.job.instruction||o.objective).slice(0,12000),JSON.stringify(paths)]);
+    await pool.query(
+      'insert into tigeriq_coding_jobs(id,objective_id,title,instruction,paths,target_employee_id,branch,pr_number,head_sha) values($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+      [id,o.id,canonicalCodingJobTitle(o.objective,d.job.title),String(d.job.instruction||o.objective).slice(0,12000),JSON.stringify(paths),o.target_employee||null,resumeBranch,resumePr,resumeHead]
+    );
     await pool.query("update tigeriq_coding_objectives set manager_employee_id=$2,summary=$3,next_attempt_at=null,resource_retry_count=0,resource_retry_started_at=null,updated_at=now() where id=$1",[o.id,manager.id,String(d.summary||'coding job created').slice(0,1000)]);
   }catch(e){
     const plan=managerResourceFailurePlan(e,o);
@@ -1089,13 +1169,24 @@ async function runJob(j){
   if(storedGithubContext)assertLiveGithubContextFresh(storedGithubContext,generatedGithubContext);
   assertExecutionPlaneMutationPaths(j.paths,mutationAuth);
   const cooldownExcludes=activeProviderCooldownIds(j.failure);
-  let worker=selectableResources(cooldownExcludes).find(r=>r.id===j.employee_id)||pickResource(cooldownExcludes);if(!worker)throw new Error('NO_IMPLEMENTER_AVAILABLE');
+  const requiredEmployee=String(j.target_employee_id||'').trim().toUpperCase();
+  const available=selectableResources(cooldownExcludes);
+  let worker=selectCodingWorker(available,requiredEmployee,()=>available.find(r=>r.id===j.employee_id)||pickResource(cooldownExcludes));
+  if(!worker){
+    const e=new Error(requiredEmployee?`NO_TARGET_EMPLOYEE_AVAILABLE:${requiredEmployee}`:'NO_IMPLEMENTER_AVAILABLE');
+    e.code=requiredEmployee?'NO_TARGET_EMPLOYEE_AVAILABLE':'NO_IMPLEMENTER_AVAILABLE';
+    throw e;
+  }
   await pool.query("update tigeriq_coding_jobs set employee_id=$2,status='running' where id=$1",[j.id,worker.id]);
   j.employee_id=worker.id;
   let context=null,generated=null,gen={summary:'resumed existing PR'},reviewer=null;
   let branch=j.branch||null,pr=j.pr_number?{number:Number(j.pr_number)}:null;
   if(shouldResumeExistingPr(j)){
-    assertPrOpenState(await gh(`/pulls/${pr.number}`));
+    const livePr=await gh(`/pulls/${pr.number}`);
+    const reconciled=await reconcileExistingPrBranch(livePr,j.head_sha);
+    branch=reconciled.branch;
+    j.head_sha=reconciled.headSha;
+    await pool.query("update tigeriq_coding_jobs set branch=$2,pr_number=$3,head_sha=$4 where id=$1",[j.id,branch,reconciled.number,reconciled.headSha]);
     context=await contextFor(j.paths,branch);
     reviewer=selectableResources([worker.id,...cooldownExcludes]).find(r=>r.id===j.reviewer_employee_id)||pickResource([worker.id,...cooldownExcludes]);
     if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE');
@@ -1186,7 +1277,7 @@ async function failJob(j,e){
 
 async function snapshot(){const objectives=(await pool.query('select * from tigeriq_coding_objectives order by created_at desc limit 20')).rows;const jobs=(await pool.query('select * from tigeriq_coding_jobs order by created_at desc limit 30')).rows;const nowMs=Date.now();return {ok:true,service:'tigeriq-coding-lane',host:HOST,port:PORT,pid:process.pid,maxParallel:MAX_PARALLEL,coreHealthFresh:Boolean(coreResourceHealth.fetchedAt&&nowMs-coreResourceHealth.fetchedAt<=CORE_RESOURCE_HEALTH_TTL_MS),activeAiResources:[...busyAiResources],freeAiResources:selectableResources([]).map(x=>x.id),resources:resources.map(x=>({id:x.id,provider:x.provider,model:x.model,busy:busyAiResources.has(x.id),coreEligible:coreResourceEligible(x,nowMs)})),objectives,jobs}}
 async function body(req){let s='';for await(const c of req){s+=c;if(s.length>65536)throw new Error('BODY_TOO_LARGE')}return s?JSON.parse(s):{}}
-const server=createServer(async(req,res)=>{const u=new URL(req.url||'/','http://localhost');try{if(req.method==='GET'&&u.pathname==='/health'){res.writeHead(200,{'content-type':'application/json'});return res.end(JSON.stringify({ok:true,service:'tigeriq-coding-lane',pid:process.pid,resources:resources.length}))}if(req.method==='GET'&&u.pathname==='/api/status'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await snapshot()))}if(req.method==='POST'&&u.pathname==='/api/objectives'){const b=await body(req);if(!String(b.objective||'').trim()){res.writeHead(400);return res.end('objective_required')}const id=`CODEOBJ-${randomUUID()}`;const priority=['P0','P1','P2'].includes(b.priority)?b.priority:'P1';await pool.query('insert into tigeriq_coding_objectives(id,objective,priority) values($1,$2,$3)',[id,String(b.objective).slice(0,12000),priority]);res.writeHead(201,{'content-type':'application/json'});return res.end(JSON.stringify({ok:true,id}))}res.writeHead(404);res.end('not_found')}catch(e){res.writeHead(500,{'content-type':'application/json'});res.end(JSON.stringify({ok:false,error:String(e?.message||e)}))}});
+const server=createServer(async(req,res)=>{const u=new URL(req.url||'/','http://localhost');try{if(req.method==='GET'&&u.pathname==='/health'){res.writeHead(200,{'content-type':'application/json'});return res.end(JSON.stringify({ok:true,service:'tigeriq-coding-lane',pid:process.pid,resources:resources.length}))}if(req.method==='GET'&&u.pathname==='/api/status'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await snapshot()))}if(req.method==='POST'&&u.pathname==='/api/objectives'){const b=await body(req);if(!String(b.objective||'').trim()){res.writeHead(400);return res.end('objective_required')}const routing=validateObjectiveRoutingInput(b);const id=`CODEOBJ-${randomUUID()}`;const priority=['P0','P1','P2'].includes(b.priority)?b.priority:'P1';await pool.query('insert into tigeriq_coding_objectives(id,objective,priority,target_employee,current_pr,target_head) values($1,$2,$3,$4,$5,$6)',[id,String(b.objective).slice(0,12000),priority,routing.targetEmployee,routing.currentPr,routing.targetHead]);res.writeHead(201,{'content-type':'application/json'});return res.end(JSON.stringify({ok:true,id}))}res.writeHead(404);res.end('not_found')}catch(e){res.writeHead(500,{'content-type':'application/json'});res.end(JSON.stringify({ok:false,error:String(e?.message||e)}))}});
 
 if(process.env.NODE_ENV!=='test'){
   installAiJsonTransport({maxAttempts:1,baseDelayMs:350,attemptTimeoutMs:45000});
