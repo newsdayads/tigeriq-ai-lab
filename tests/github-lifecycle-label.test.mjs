@@ -57,4 +57,14 @@ describe('GitHub terminal lifecycle label',()=>{
     expect(coding).toContain('clearTerminalBlockedLabel');
     expect(live).toContain('hasTerminalBlockedLabel');
   });
+
+  it('clears terminal projection before durable Coding dispatch/rearm markers',()=>{
+    const coding=readFileSync(new URL('../apps/tigeriq-core/github-coding-intake.mjs',import.meta.url),'utf8');
+    expect(coding).toMatch(/clearTerminalBlockedLabel\(\{fetchImpl,owner,repo,issueNumber:spec\.number,token\}\);[\s\S]*?GITHUB_CODING_COMPLETED_REARMED[\s\S]*?GITHUB_CODING_DISPATCHED/);
+    expect(coding).toMatch(/blockedByActiveOwner\)continue;\n        await clearTerminalBlockedLabel\(\{fetchImpl,owner,repo,issueNumber:n,token\}\);[\s\S]*?STALE_REARM_KEY=[\s\S]*?GITHUB_CODING_STALE_RESULT_REARMED[\s\S]*?GITHUB_CODING_DISPATCHED/);
+    expect(coding).toMatch(/shouldRearmRecoverableFinal[\s\S]*?blockedByActiveOwner\)continue;\n        await clearTerminalBlockedLabel\(\{fetchImpl,owner,repo,issueNumber:n,token\}\);[\s\S]*?GITHUB_CODING_RECOVERY_REARMED[\s\S]*?GITHUB_CODING_DISPATCHED/);
+    expect(coding).toMatch(/nextAtMs[\s\S]*?await clearTerminalBlockedLabel\(\{fetchImpl,owner,repo,issueNumber:n,token\}\);[\s\S]*?GITHUB_CODING_RETRY_DISPATCHED[\s\S]*?GITHUB_CODING_DISPATCHED/);
+  });
+
+
 });
