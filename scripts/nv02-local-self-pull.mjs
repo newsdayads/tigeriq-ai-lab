@@ -19,16 +19,12 @@ const POLL_MS = 15_000;
 const TIMEOUT_MS = 30 * 60 * 1000;
 
 function gh(args) {
-  return JSON.parse(execFileSync('gh', ['api', ...args], { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 }));
+  return JSON.parse(execFileSync('gh', ['api', ...args], { encoding: 'utf8', maxBuffer: 128 * 1024 * 1024 }));
 }
 function issueComments(number) { return gh([`repos/${OWNER}/${REPO}/issues/${number}/comments?per_page=100`]); }
 function activeIssueComments() {
-  const numbers = new Set();
-  for (const marker of ['TIGERIQ_NV02_LEASE_V1', 'TIGERIQ_ROLE_CLAIM_V1', 'APP_CHROME_CLAIM']) {
-    const pages = gh([`search/issues?q=repo:${OWNER}/${REPO}+%5B${marker}%5D&per_page=100`, '--paginate', '--slurp']);
-    for (const issue of pages.flat()) numbers.add(Number(issue.number));
-  }
-  return [...numbers].flatMap((number) => issueComments(number));
+  const pages = gh([`repos/${OWNER}/${REPO}/issues/comments?per_page=100`, '--paginate', '--slurp']);
+  return pages.flat();
 }
 function postComment(number, body) {
   if (body === null) return issueComments(number);
