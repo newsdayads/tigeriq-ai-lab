@@ -38,6 +38,15 @@ assert.match(publicView, /priority\.p1/);
 assert.match(publicView, /filter\[data-filter="running"\]\.active/);
 assert.match(publicView, /work-row\.status-working::before/);
 assert.match(publicView, /work-row\.status-blocked::before/);
+assert.match(publicView, /font-size:13\.5px/);
+assert.match(publicView, /font-size:11\.75px/);
+assert.match(publicView, /height:8px/);
+assert.match(publicView, /progress-shimmer/);
+assert.match(publicView, /live-pulse/);
+assert.match(publicView, /card-flash/);
+assert.match(publicView, /prefers-reduced-motion:reduce/);
+assert.match(publicView, /lastVisualState/);
+assert.match(publicView, /currentStep/);
 
 for (const removed of [
   'KẾ TIẾP CÓ THỂ CHẠY',
