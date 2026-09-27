@@ -1,0 +1,51 @@
+name: TigerIQ GitHub Event Relay
+
+on:
+  issues:
+    types: [opened, edited, reopened, closed, labeled, unlabeled, assigned, unassigned]
+  issue_comment:
+    types: [created, edited, deleted]
+  pull_request:
+    types: [opened, edited, reopened, synchronize, closed, ready_for_review, converted_to_draft, review_requested]
+  pull_request_review:
+    types: [submitted, edited, dismissed]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: read
+  id-token: write
+
+concurrency:
+  group: tigeriq-github-event-${{ github.event_name }}-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  relay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Resolve live bridge and relay event
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_ACTION: ${{ github.event.action || 'none' }}
+          ISSUE_NUMBER: ${{ github.event.issue.number || 0 }}
+          PR_NUMBER: ${{ github.event.pull_request.number || 0 }}
+          DELIVERY_ID: ${{ github.run_id }}:${{ github.event_name }}
+          SOURCE_SHA: ${{ github.sha }}
+          SOURCE_REF: ${{ github.ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          body="$(gh api "repos/${GITHUB_REPOSITORY}/issues/1402" --jq '.body')"
+          bridge="$(printf '%s
+' "$body" | sed -n 's/^LIVE_STATUS_BRIDGE_URL=//p' | head -n1)"
+          test -n "$bridge"
+          oidc_json="$(curl -fsS -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=tigeriq-core-github-event-v1")"
+          oidc_token="$(printf '%s' "$oidc_json" | jq -r '.value')"
+          test -n "$oidc_token"
+          payload="$(jq -cn             --arg deliveryId "$DELIVERY_ID"             --arg eventName "$EVENT_NAME"             --arg action "$EVENT_ACTION"             --arg repository "$GITHUB_REPOSITORY"             --arg ref "$SOURCE_REF"             --arg sha "$SOURCE_SHA"             --argjson issueNumber "$ISSUE_NUMBER"             --argjson pullRequestNumber "$PR_NUMBER"             '{deliveryId:$deliveryId,eventName:$eventName,action:$action,repository:$repository,ref:$ref,sha:$sha,issueNumber:$issueNumber,pullRequestNumber:$pullRequestNumber}')"
+          curl -fsS --retry 2 --retry-delay 2             -H "Authorization: Bearer $oidc_token"             -H "Content-Type: application/json"             --data "$payload"             "$bridge/github-event"
