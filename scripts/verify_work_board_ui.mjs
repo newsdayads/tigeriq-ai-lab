@@ -14,6 +14,10 @@ assert.equal(deployedView, publicView, 'Vercel public command-center must match 
 assert.match(publicView, /TigerIQ Live/);
 assert.match(publicView, /DANH SÁCH CÔNG VIỆC/);
 assert.match(publicView, /STT · Work Order · Tên việc · NV · Trạng thái/);
+assert.match(publicView, /width:18px;height:18px/);
+assert.match(publicView, /padStart\(2,'0'\)/);
+assert.match(publicView, /function displayTitle/);
+assert.match(publicView, /if\(ad&&bd\)/);
 assert.match(publicView, /api\/live-status/);
 assert.match(publicView, /ĐANG LÀM/);
 assert.match(publicView, /ĐANG RÀ SOÁT/);
@@ -41,5 +45,9 @@ assert.match(liveApi, /REGISTRY_ISSUE = 335/);
 assert.match(liveApi, /RUNTIME_POINTER_ISSUE = 1402/);
 assert.match(liveApi, /mode: 'pc01-live'/);
 assert.match(liveApi, /cache = \{ at: 0, value: null \}/);
+assert.match(liveApi, /RECENT_WORK_LIMIT = 50/);
+assert.doesNotMatch(liveApi, /RECENT_WORK_WINDOW_MS/);
+assert.match(liveApi, /employeeId: issueEmployeeId\(issue\)/);
+assert.match(liveApi, /per_page=100&sort=updated&direction=desc/);
 
 console.log('TIGERIQ_LIVE_UNIFIED_WORK_LIST_PASS');
