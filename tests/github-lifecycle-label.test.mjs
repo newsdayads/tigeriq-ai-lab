@@ -69,6 +69,12 @@ describe('GitHub terminal lifecycle label',()=>{
   });
 
 
+
+  it('backfills an unsynced historical Coding final even after the lane objective is gone',()=>{
+    const coding=readFileSync(new URL('../apps/tigeriq-core/github-coding-intake.mjs',import.meta.url),'utf8');
+    expect(coding).toMatch(/if\(!objective\)\{[\s\S]*?GITHUB_CODING_BLOCKED_FINAL[\s\S]*?GITHUB_CODING_TERMINAL_LABEL_SYNCED[\s\S]*?GITHUB_CODING_HISTORICAL_LABEL_SYNC_WAIT[\s\S]*?hasEffectiveBlockedFinal[\s\S]*?addTerminalBlockedLabel[\s\S]*?historical:true/);
+  });
+
   it('closes completed GitHub issues before clearing stale terminal projection',()=>{
     const core=readFileSync(new URL('../apps/tigeriq-core/github-intake.mjs',import.meta.url),'utf8');
     const coding=readFileSync(new URL('../apps/tigeriq-core/github-coding-intake.mjs',import.meta.url),'utf8');
