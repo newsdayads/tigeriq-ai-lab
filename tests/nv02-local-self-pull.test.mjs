@@ -58,6 +58,15 @@ describe('NV02 local GitHub self-pull contract', () => {
     expect(comments[0]).toContain('[DEPENDENCY_REARM]');
   });
 
+  it('records terminal dependency but does not rearm non-executable scope-held #2004', async () => {
+    const issue2004 = issue(2004, '[P2] stale pc operator', 'CURRENT_STATE=WAIT_SCOPE_RELEASE_1806_AFTER_2049_DONE\nDEPENDS_ON=#2049\nTIGERIQ_EXECUTABLE=false\nAUTO_QUEUE=EXCLUDED\nCAPABILITY=pc_operator\nRESOURCE_SCOPE=CORE_PC_OPERATOR_PUBLIC_EVIDENCE_PROMPT_V2');
+    const comments = [];
+    const result = await reconcileStaleDependency({ issue: issue2004, dependencies: new Map([[2049, { state: 'closed', state_reason: 'completed' }]]), comment: async (_n, body) => comments.push(body) });
+    expect(result.action).toBe('DEPENDENCY_CLOSED_SCOPE_HELD');
+    expect(comments[0]).toContain('TERMINAL=true');
+    expect(comments[0]).toContain('REARM=false');
+  });
+
   it('implements command 02 active resume, terminal self-pull, and no-work state', () => {
     expect(resolveNv02Command02State({ currentWorkOrder: '#10', currentCheckpoint: 'cp' })).toMatchObject({ state: 'ACTIVE_RESUME' });
     expect(resolveNv02Command02State({ currentWorkOrder: null })).toMatchObject({ state: 'SELF_PULL', policy: NV02_LOCAL_GITHUB_SELF_PULL });

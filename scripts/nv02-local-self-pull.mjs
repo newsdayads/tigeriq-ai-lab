@@ -43,8 +43,10 @@ async function reconcile(issue) {
   const refs = String(issue.body || '').match(/^DEPENDS_ON\s*=\s*(.+)$/mi)?.[1]?.split(/[ ,]+/).map((x) => Number(x.replace(/^#/, ''))).filter(Boolean) || [];
   if (!refs.length) return issue;
   const dependencies = new Map(refs.map((ref) => { const dep = gh([`repos/${OWNER}/${REPO}/issues/${ref}`]); return [ref, dep]; }));
+  const existingComments = issueComments(issue.number);
   await reconcileStaleDependency({
     issue, dependencies,
+    alreadyReconciled: existingComments.some((x) => String(x.body || '').includes('[DEPENDENCY_RECONCILE]')),
     comment: postComment,
     updateBody: (number, body) => gh([`repos/${OWNER}/${REPO}/issues/${number}`, '-X', 'PATCH', '-f', `body=${body}`]),
     closeIssue: (number) => gh([`repos/${OWNER}/${REPO}/issues/${number}`, '-X', 'PATCH', '-f', 'state=closed']),
