@@ -19,6 +19,7 @@ export default defineConfig({
       'tests/coding-lane-policy.test.mjs',
       'tests/coding-lane-scope.test.mjs',
       'tests/work-routing-policy.test.mjs',
+      'tests/nv02-local-self-pull.test.mjs',
       'tests/control-plane-mutation-guard.test.mjs',
       'tests/coding-autonomy-supervisor.test.mjs',
       'tests/autonomy-supervisor.test.mjs',
