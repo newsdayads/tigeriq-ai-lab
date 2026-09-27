@@ -3,7 +3,7 @@ import { Pool } from 'pg';
 import { applyChatMutationOwnerHandoff, backlogOwnerDirect, bodyValue as policyBodyValue, chatMutationOwnerPlan, isOwnerOnlyP0, routingFault, sortBacklogSpecs } from './github-backlog-policy.mjs';
 import { activeRoleClaim, classifyWorkOrder } from './work-routing-policy.mjs';
 import { appendPublicEvidenceToSummary, parsePublicEvidenceKeys } from './public-evidence.mjs';
-import { addRoleClaimedLabel, addTerminalBlockedLabel, clearRoleClaimedLabel, clearTerminalBlockedLabel, hasRoleClaimedLabel, roleClaimedWorkerId } from './github-lifecycle-label.mjs';
+import { addTerminalBlockedLabel, clearTerminalBlockedLabel } from './github-lifecycle-label.mjs';
 import { githubRequestJson } from './github-shared-client.mjs';
 import { githubEventIssue, subscribeGithubEvents } from './github-event-bus.mjs';
 
@@ -201,6 +201,96 @@ export function formatResultComment(row){
   return `[RESULT] TigerIQ Core ${row?.status==='completed'?'completed':'blocked'} ${row?.id}.\n\n${summary}\n\nEvidence: Core objective \`${row?.id}\`, status \`${row?.status}\`.`;
 }
 
+export const EXTERNAL_ROLE_CLAIMED_LABEL='tigeriq:role-claimed';
+const EXTERNAL_ROLE_WORKER_PREFIX='tigeriq:role-worker-';
+
+function issueLabelNames(issue){
+  return (Array.isArray(issue?.labels)?issue.labels:[])
+    .map((label)=>typeof label==='string'?label:String(label?.name||''))
+    .filter(Boolean);
+}
+
+export function hasExternalRoleClaimLabel(issue){
+  return issueLabelNames(issue).some((name)=>name.toLowerCase()===EXTERNAL_ROLE_CLAIMED_LABEL);
+}
+
+export function externalRoleClaimedWorkerId(issue){
+  for(const name of issueLabelNames(issue)){
+    const match=String(name).toLowerCase().match(/^tigeriq:role-worker-(nv\d{2})$/);
+    if(match)return match[1].toUpperCase();
+  }
+  return null;
+}
+
+function externalRoleWorkerLabel(workerId){
+  const id=String(workerId||'').trim().toLowerCase();
+  return /^nv\d{2}$/.test(id)?EXTERNAL_ROLE_WORKER_PREFIX+id:'';
+}
+
+async function ensureExternalRoleLabel(fetchImpl,owner,repo,token,label,color,description){
+  if(!token)return false;
+  try{
+    await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/labels`,token,{
+      method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({name:label,color,description})
+    });
+  }catch(error){
+    const text=JSON.stringify(error?.body||{})+' '+String(error?.message||'');
+    if(Number(error?.status)!==422||!/(already_exists|already exists|validation failed)/i.test(text))throw error;
+  }
+  return true;
+}
+
+async function addExternalRoleLabel(fetchImpl,owner,repo,issueNumber,token,label,color,description){
+  await ensureExternalRoleLabel(fetchImpl,owner,repo,token,label,color,description);
+  await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/${Number(issueNumber)}/labels`,token,{
+    method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({labels:[label]})
+  });
+}
+
+async function clearExternalRoleLabel(fetchImpl,owner,repo,issueNumber,token,label){
+  try{
+    await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/${Number(issueNumber)}/labels/${encodeURIComponent(label)}`,token,{method:'DELETE'});
+  }catch(error){
+    if(Number(error?.status)!==404)throw error;
+  }
+}
+
+export async function syncExternalRoleClaimLabels({fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token='',issue,workerId=null,active=false}={}){
+  if(!issue||!token)return {changed:false};
+  const number=Number(issue.number);
+  const labels=issueLabelNames(issue);
+  const hasClaim=hasExternalRoleClaimLabel(issue);
+  const currentWorker=externalRoleClaimedWorkerId(issue);
+  const desiredWorker=externalRoleWorkerLabel(workerId);
+  let changed=false;
+
+  if(active){
+    if(!hasClaim){
+      await addExternalRoleLabel(fetchImpl,owner,repo,number,token,EXTERNAL_ROLE_CLAIMED_LABEL,'1d76db','TigerIQ external role claim is active; queue projection must not dispatch this Work Order.');
+      changed=true;
+    }
+    if(desiredWorker&&currentWorker!==String(workerId||'').toUpperCase()){
+      for(const label of labels.filter((name)=>/^tigeriq:role-worker-nv\d{2}$/i.test(name))){
+        await clearExternalRoleLabel(fetchImpl,owner,repo,number,token,label);
+      }
+      await addExternalRoleLabel(fetchImpl,owner,repo,number,token,desiredWorker,'5319e7','TigerIQ external role claim worker identity for Live projection.');
+      changed=true;
+    }
+    return {changed,active:true,workerId:String(workerId||'').toUpperCase()||null};
+  }
+
+  if(hasClaim){
+    await clearExternalRoleLabel(fetchImpl,owner,repo,number,token,EXTERNAL_ROLE_CLAIMED_LABEL);
+    changed=true;
+  }
+  for(const label of labels.filter((name)=>/^tigeriq:role-worker-nv\d{2}$/i.test(name))){
+    await clearExternalRoleLabel(fetchImpl,owner,repo,number,token,label);
+    changed=true;
+  }
+  return {changed,active:false,workerId:null};
+}
+
 async function ghJson(fetchImpl,url,token='',init={}){
   const opts=String(init.method||'GET').toUpperCase()==='GET'&&init.freshMs==null?{...init,freshMs:0}:init;
   return githubRequestJson(fetchImpl,url,token,opts);
@@ -309,10 +399,10 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
   for(const spec of specs){
     if(githubSpecBlockedByActive(spec,activeMetadata)){skipped++;continue;}
     const prior=(await pool.query("select id,status,metadata from tigeriq_objectives where metadata->>'source'='github' and metadata->>'issueNumber'=$1 order by created_at desc limit 1",[String(spec.number)])).rows[0]||null;
-    const roleClaimLabeled=hasRoleClaimedLabel(spec);
-    const labeledWorker=roleClaimedWorkerId(spec);
+    const roleClaimLabeled=hasExternalRoleClaimLabel(spec);
+    const labeledWorker=externalRoleClaimedWorkerId(spec);
     if(prior?.status==='active'){
-      if(roleClaimLabeled)await clearRoleClaimedLabel({fetchImpl,owner,repo,issueNumber:spec.number,token,issue:spec});
+      if(roleClaimLabeled)await syncExternalRoleClaimLabels({fetchImpl,owner,repo,token,issue:spec,active:false});
       skipped++;continue;
     }
     const sourceChanged=Boolean(prior&&String(prior.metadata?.sourceRevision||'')!==spec.sourceRevision);
@@ -321,12 +411,12 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
     const externalClaim=await readActiveExternalRoleClaim(fetchImpl,owner,repo,token,spec);
     if(externalClaim){
       if(!roleClaimLabeled||labeledWorker!==externalClaim.workerId){
-        if(roleClaimLabeled)await clearRoleClaimedLabel({fetchImpl,owner,repo,issueNumber:spec.number,token,issue:spec});
-        await addRoleClaimedLabel({fetchImpl,owner,repo,issueNumber:spec.number,token,workerId:externalClaim.workerId});
+        if(roleClaimLabeled)await syncExternalRoleClaimLabels({fetchImpl,owner,repo,token,issue:spec,active:false});
+        await syncExternalRoleClaimLabels({fetchImpl,owner,repo,token,issue:spec,workerId:externalClaim.workerId,active:true});
       }
       externalClaims++;skipped++;continue;
     }
-    if(roleClaimLabeled)await clearRoleClaimedLabel({fetchImpl,owner,repo,issueNumber:spec.number,token,issue:spec});
+    if(roleClaimLabeled)await syncExternalRoleClaimLabels({fetchImpl,owner,repo,token,issue:spec,active:false});
     const id=prior?`OBJ-GH-${spec.number}-R${rearmKey(spec)}`:`OBJ-GH-${spec.number}`;
     const exists=(await pool.query('select 1 from tigeriq_objectives where id=$1',[id])).rowCount>0;
     if(exists){skipped++;continue;}
