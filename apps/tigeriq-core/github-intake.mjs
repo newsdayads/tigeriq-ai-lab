@@ -3,7 +3,7 @@ import { Pool } from 'pg';
 import { applyChatMutationOwnerHandoff, backlogOwnerDirect, bodyValue as policyBodyValue, chatMutationOwnerPlan, isOwnerOnlyP0, routingFault, sortBacklogSpecs } from './github-backlog-policy.mjs';
 import { activeRoleClaim, classifyWorkOrder } from './work-routing-policy.mjs';
 import { appendPublicEvidenceToSummary, parsePublicEvidenceKeys } from './public-evidence.mjs';
-import { addTerminalBlockedLabel, clearTerminalBlockedLabel } from './github-lifecycle-label.mjs';
+import { addRoleClaimedLabel, addTerminalBlockedLabel, clearRoleClaimedLabel, clearTerminalBlockedLabel, hasRoleClaimedLabel, roleClaimedWorkerId } from './github-lifecycle-label.mjs';
 import { githubRequestJson } from './github-shared-client.mjs';
 import { githubEventIssue, subscribeGithubEvents } from './github-event-bus.mjs';
 
@@ -152,7 +152,7 @@ export function parseExecutableIssue(issue){
     legacyP0Autonomous:classification.legacyP0Autonomous,ownerControlled:classification.ownerControlled,
     capability,dispatchLane,resourceScope,preferredWorker:classification.preferredEmployee||'',targetWorker:classification.workerId||null,
     url:String(issue.html_url||''),ownerDirect:backlogOwnerDirect(body),sourceRevision,updatedAt:String(issue.updated_at||''),
-    commentCount:Math.max(0,Number(issue.comments||0)),route:classification.route,publicEvidenceKeys:parsePublicEvidenceKeys(body),publicEvidenceDiagnostic:hasExactFlag(body,'PUBLIC_EVIDENCE_DIAGNOSTIC'),
+    commentCount:Math.max(0,Number(issue.comments||0)),labels:Array.isArray(issue.labels)?issue.labels:[],route:classification.route,publicEvidenceKeys:parsePublicEvidenceKeys(body),publicEvidenceDiagnostic:hasExactFlag(body,'PUBLIC_EVIDENCE_DIAGNOSTIC'),
     pcOperatorDirectAction:directAction.action||null,
   };
 }
@@ -309,12 +309,24 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
   for(const spec of specs){
     if(githubSpecBlockedByActive(spec,activeMetadata)){skipped++;continue;}
     const prior=(await pool.query("select id,status,metadata from tigeriq_objectives where metadata->>'source'='github' and metadata->>'issueNumber'=$1 order by created_at desc limit 1",[String(spec.number)])).rows[0]||null;
-    if(prior?.status==='active'){skipped++;continue;}
+    const roleClaimLabeled=hasRoleClaimedLabel(spec);
+    const labeledWorker=roleClaimedWorkerId(spec);
+    if(prior?.status==='active'){
+      if(roleClaimLabeled)await clearRoleClaimedLabel({fetchImpl,owner,repo,issueNumber:spec.number,token,issue:spec});
+      skipped++;continue;
+    }
     const sourceChanged=Boolean(prior&&String(prior.metadata?.sourceRevision||'')!==spec.sourceRevision);
     const reopenedAfterCompletion=Boolean(prior?.metadata?.githubClosed===true);
     if(prior&&!sourceChanged&&!reopenedAfterCompletion){skipped++;continue;}
     const externalClaim=await readActiveExternalRoleClaim(fetchImpl,owner,repo,token,spec);
-    if(externalClaim){externalClaims++;skipped++;continue;}
+    if(externalClaim){
+      if(!roleClaimLabeled||labeledWorker!==externalClaim.workerId){
+        if(roleClaimLabeled)await clearRoleClaimedLabel({fetchImpl,owner,repo,issueNumber:spec.number,token,issue:spec});
+        await addRoleClaimedLabel({fetchImpl,owner,repo,issueNumber:spec.number,token,workerId:externalClaim.workerId});
+      }
+      externalClaims++;skipped++;continue;
+    }
+    if(roleClaimLabeled)await clearRoleClaimedLabel({fetchImpl,owner,repo,issueNumber:spec.number,token,issue:spec});
     const id=prior?`OBJ-GH-${spec.number}-R${rearmKey(spec)}`:`OBJ-GH-${spec.number}`;
     const exists=(await pool.query('select 1 from tigeriq_objectives where id=$1',[id])).rowCount>0;
     if(exists){skipped++;continue;}
