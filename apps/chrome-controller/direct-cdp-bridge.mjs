@@ -1421,6 +1421,7 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
   const phase=deriveNv02Phase(ui||{});
   const currentChat=hasCurrentNv02Chat(ui?.url);
   const currentTrackedWork=currentChat;
+  if(state.idleState==='READY_NO_ELIGIBLE_WORK'&&phase!=='WORKING'&&!currentTrackedWork)return;
   state={...state,lastPhase:phase,resumeChatUrl:''};saveNv02Continuity(state);
   if(phase!=='BLOCKED'&&ui?.scrollToBottomVisible===true&&now>=Number(state.nextViewFollowAt||0)){
     const locallyBusy=nv02MutationBusy||workerMutationBusy.has('NV02');
