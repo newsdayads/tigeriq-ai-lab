@@ -58,5 +58,9 @@ assert.match(liveApi, /export function parseOpenWorkIssue/);
 assert.match(liveApi, /export function progressForIssue/);
 assert.match(liveApi, /openWork/);
 assert.match(liveApi, /openSummary/);
+const liveCatch = liveApi.indexOf("liveError = String(error instanceof Error ? error.message : error).slice(0, 120);");
+const githubFallback = liveApi.indexOf("const value = await buildLiveStatus();", liveCatch);
+const staleFallback = liveApi.indexOf("if (cache.value && now - cache.at < STALE_RESPONSE_MS)", githubFallback);
+assert.ok(liveCatch >= 0 && githubFallback > liveCatch && staleFallback > githubFallback, 'fresh GitHub fallback must run before stale response cache');
 
 console.log('TIGERIQ_LIVE_UNIFIED_WORK_LIST_PASS');
