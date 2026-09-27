@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   NV02_LOCAL_GITHUB_SELF_PULL,
+  activeResourceClaims,
   activeResourceScopes,
   activeNv02Lease,
   buildNv02LocalSelfPullPrompt,
   claimNv02WorkOrder,
   noEligibleNv02Work,
   resolveNv02Command02State,
+  resourceOwnershipConflict,
   selectNv02WorkOrder,
 } from '../apps/tigeriq-core/nv02-local-self-pull.mjs';
 import { reconcileStaleDependency } from '../apps/tigeriq-core/dependency-reconcile.mjs';
@@ -55,8 +57,10 @@ describe('NV02 local GitHub self-pull contract', () => {
     const issue2004 = issue(2004, '[P2] stale dependent', 'TIGERIQ_EXECUTABLE=true\nSTATE=WAIT_DEPENDENCY\nDEPENDS_ON=#2049\nMUTATION_OWNER=VY\nRESOURCE_SCOPE=STALE_2004\nGOAL=goal\nACTIVE_INTENT=intent');
     const comments = [];
     let updated = '';
-    const result = await reconcileStaleDependency({ issue: issue2004, dependencies: new Map([[2049, { state: 'closed', state_reason: 'completed' }]]), updateBody: async (_n, body) => { updated = body; }, comment: async (_n, body) => comments.push(body) });
+    const guards = [];
+    const result = await reconcileStaleDependency({ issue: issue2004, dependencies: new Map([[2049, { state: 'closed', state_reason: 'completed' }]]), assertWriteOwnership: async (action) => guards.push(action), updateBody: async (_n, body) => { updated = body; }, comment: async (_n, body) => comments.push(body) });
     expect(result.action).toBe('REARMED');
+    expect(guards).toEqual(['DEPENDENCY_REARM_BODY', 'DEPENDENCY_REARM_COMMENT']);
     expect(updated).toContain('STATE=READY');
     expect(updated).toContain('MUTATION_OWNER=');
     expect(comments[0]).toContain('[DEPENDENCY_REARM]');
@@ -65,8 +69,10 @@ describe('NV02 local GitHub self-pull contract', () => {
   it('records terminal dependency but does not rearm non-executable scope-held #2004', async () => {
     const issue2004 = issue(2004, '[P2] stale pc operator', 'CURRENT_STATE=WAIT_SCOPE_RELEASE_1806_AFTER_2049_DONE\nDEPENDS_ON=#2049\nTIGERIQ_EXECUTABLE=false\nAUTO_QUEUE=EXCLUDED\nCAPABILITY=pc_operator\nRESOURCE_SCOPE=CORE_PC_OPERATOR_PUBLIC_EVIDENCE_PROMPT_V2');
     const comments = [];
-    const result = await reconcileStaleDependency({ issue: issue2004, dependencies: new Map([[2049, { state: 'closed', state_reason: 'completed' }]]), comment: async (_n, body) => comments.push(body) });
+    const guards = [];
+    const result = await reconcileStaleDependency({ issue: issue2004, dependencies: new Map([[2049, { state: 'closed', state_reason: 'completed' }]]), assertWriteOwnership: async (action) => guards.push(action), comment: async (_n, body) => comments.push(body) });
     expect(result.action).toBe('DEPENDENCY_CLOSED_SCOPE_HELD');
+    expect(guards).toEqual(['DEPENDENCY_RECONCILE_COMMENT']);
     expect(comments[0]).toContain('TERMINAL=true');
     expect(comments[0]).toContain('REARM=false');
   });
@@ -90,9 +96,97 @@ describe('NV02 local GitHub self-pull contract', () => {
     expect(await claimNv02WorkOrder({ issue: work, comments, postComment, claimSettleMs: 0, nowMs: Date.parse('2026-09-27T00:01:00Z') })).toBeNull();
     expect(activeNv02Lease(comments, Date.parse('2026-09-27T00:01:00Z')).LEASE_ID).toBe(first.leaseId);
     await postComment(work.number, `EVIDENCE\nSTATE=DONE\nLEASE_ID=${first.leaseId}`);
-    await (await import('../apps/tigeriq-core/nv02-local-self-pull.mjs')).releaseNv02WorkOrder({ issueNumber: work.number, leaseId: first.leaseId, state: 'DONE', postComment });
+    await (await import('../apps/tigeriq-core/nv02-local-self-pull.mjs')).releaseNv02WorkOrder({ issueNumber: work.number, leaseId: first.leaseId, resourceScope: first.resourceScope, state: 'DONE', postComment });
     expect(activeNv02Lease(comments, Date.parse('2026-09-27T00:01:00Z'))).toBeNull();
     expect(buildNv02LocalSelfPullPrompt(work, first)).toContain('Core không assign/route NV02');
+  });
+
+  it('parses App Chrome lowercase scope and release-by-identity correctly', () => {
+    const now = Date.parse('2026-09-27T00:00:00Z');
+    const claim = { id: 1, body: '[APP_CHROME_CLAIM]\nclaim_id=APP-1\nworker=NV02\nscope=APP_SCOPE\nexpires_at=2026-09-27T01:00:00Z' };
+    expect(activeResourceScopes([claim], now)).toEqual(new Set(['APP_SCOPE']));
+    expect(activeResourceClaims([claim], now)[0]).toMatchObject({ resourceScope: 'APP_SCOPE', identity: 'APP-1' });
+    const release = { id: 2, body: '[APP_CHROME_RELEASE]\nclaim_id=APP-1\nworker=NV02' };
+    expect(activeResourceScopes([claim, release], now)).toEqual(new Set());
+  });
+
+  it('fails closed before claim when another issue owns the same resource scope', async () => {
+    const now = Date.parse('2026-09-27T00:00:00Z');
+    const work = issue(50, '[P1] guarded', safe('PRIORITY=P1\nRESOURCE_SCOPE=SHARED_SCOPE'));
+    const globalComments = [{
+      id: 10,
+      body: '[TIGERIQ_ROLE_CLAIM_V1]\nCLAIM_ID=NV09-SHARED\nWORKER=NV09\nRESOURCE_SCOPE=SHARED_SCOPE\nLEASE_UNTIL=2026-09-27T01:00:00Z',
+    }];
+    const writes = [];
+    const conflict = resourceOwnershipConflict(work, globalComments, { nowMs: now });
+    expect(conflict).toMatchObject({ reason: 'RESOURCE_SCOPE_HELD', resourceScope: 'SHARED_SCOPE' });
+    const lease = await claimNv02WorkOrder({
+      issue: work,
+      comments: [],
+      allComments: globalComments,
+      refreshAllComments: async () => globalComments,
+      postComment: async (_number, body) => { if (body) writes.push(body); return []; },
+      claimSettleMs: 0,
+      nowMs: now,
+    });
+    expect(lease).toBeNull();
+    expect(writes).toEqual([]);
+  });
+
+  it('uses RESOURCE_SCOPE as the local mutex across different issues', async () => {
+    const now = Date.parse('2026-09-27T00:00:00Z');
+    const firstComments = [];
+    const secondComments = [];
+    const firstPost = async (_number, body) => {
+      if (body === null) return firstComments;
+      firstComments.push({ id: firstComments.length + 1, body });
+      return firstComments;
+    };
+    const secondPost = async (_number, body) => {
+      if (body === null) return secondComments;
+      secondComments.push({ id: secondComments.length + 1, body });
+      return secondComments;
+    };
+    const firstIssue = issue(60, '[P1] first', safe('PRIORITY=P1\nRESOURCE_SCOPE=SAME_SCOPE'));
+    const secondIssue = issue(61, '[P1] second', safe('PRIORITY=P1\nRESOURCE_SCOPE=SAME_SCOPE'));
+    const first = await claimNv02WorkOrder({ issue: firstIssue, comments: firstComments, postComment: firstPost, claimSettleMs: 0, nowMs: now });
+    expect(first).toBeTruthy();
+    expect(await claimNv02WorkOrder({ issue: secondIssue, comments: secondComments, postComment: secondPost, claimSettleMs: 0, nowMs: now })).toBeNull();
+    expect(secondComments).toEqual([]);
+    await (await import('../apps/tigeriq-core/nv02-local-self-pull.mjs')).releaseNv02WorkOrder({
+      issueNumber: firstIssue.number, leaseId: first.leaseId, resourceScope: first.resourceScope, state: 'DONE', postComment: firstPost,
+    });
+  });
+
+  it('elects the earliest global same-scope claim and releases a losing race', async () => {
+    const now = Date.parse('2026-09-27T00:00:00Z');
+    const work = issue(70, '[P1] race', safe('PRIORITY=P1\nRESOURCE_SCOPE=RACE_SCOPE'));
+    const own = [];
+    let refreshCount = 0;
+    const competitor = {
+      id: 1,
+      body: '[TIGERIQ_ROLE_CLAIM_V1]\nCLAIM_ID=NV09-RACE\nWORKER=NV09\nRESOURCE_SCOPE=RACE_SCOPE\nLEASE_UNTIL=2026-09-27T01:00:00Z',
+    };
+    const postComment = async (_number, body) => {
+      if (body === null) return own;
+      own.push({ id: own.length + 2, body });
+      return own;
+    };
+    const refreshAllComments = async () => {
+      refreshCount += 1;
+      return refreshCount < 3 ? [] : [competitor, ...own];
+    };
+    const lease = await claimNv02WorkOrder({
+      issue: work,
+      comments: own,
+      allComments: [],
+      refreshAllComments,
+      postComment,
+      claimSettleMs: 0,
+      nowMs: now,
+    });
+    expect(lease).toBeNull();
+    expect(own.some((comment) => comment.body.includes('STATE=CLAIM_LOST'))).toBe(true);
   });
 
   it('blocks only live leases and lets released/stale coding work fall back to NV02', () => {
