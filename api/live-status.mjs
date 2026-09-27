@@ -384,6 +384,9 @@ export function parseRecentCompletedIssue(issue, now = Date.now()) {
     sourcePriority: priority,
     employeeId: issueEmployeeId(issue),
     status: 'DONE',
+    progressPercent: 100,
+    progressSource: 'terminal',
+    progressDetail: '5/5 gate',
     completedAt,
     updatedAt: completedAt,
     url: issue.html_url || null,
@@ -600,9 +603,10 @@ function issueDisplayOwner(issue) {
 
 export function progressForIssue(issue, status = 'OPEN', checks = null, hasPull = false) {
   const body = String(issue?.body || '');
-  const explicit = Number(bodyValue(body, 'PROGRESS_PERCENT'));
-  if (Number.isFinite(explicit) && explicit >= 0 && explicit <= 100) {
-    return { percent: Math.round(explicit), source: 'explicit', detail: 'PROGRESS_PERCENT' };
+  const explicitRaw = bodyValue(body, 'PROGRESS_PERCENT');
+  if (/^\d{1,3}$/.test(explicitRaw)) {
+    const explicit = Number(explicitRaw);
+    if (explicit >= 0 && explicit <= 100) return { percent: explicit, source: 'explicit', detail: 'PROGRESS_PERCENT' };
   }
 
   const boxes = [...body.matchAll(/^\s*[-*]\s+\[([ xX])\]/gm)];
