@@ -47,13 +47,13 @@ test('assigned P0 remains Owner-only and never binds an employee',()=>{
   }
 });
 
-test('employees never self-pull; P1-P5 require system assignment',()=>{
-  for(const [worker,body] of [
-    ['NV02','PRIORITY=P2\nCAPABILITY=general'],
-    ['NV03','PRIORITY=P2\nCAPABILITY=review'],
-    ['NV04','PRIORITY=P2\nCAPABILITY=research'],
-    ['NV02','PRIORITY=P0\nASSIGNED_EXECUTOR=NV02\nCAPABILITY=general'],
-  ])assert.equal(roleCanPull(worker,classifyWorkOrder(body)),false);
+test('employees self-pull only eligible P1-P5 work for their role; P0 stays forbidden',()=>{
+  assert.equal(roleCanPull('NV02',classifyWorkOrder('PRIORITY=P2\nCAPABILITY=general')),true);
+  assert.equal(roleCanPull('NV02',classifyWorkOrder('PRIORITY=P3\nCAPABILITY=reasoning')),true);
+  assert.equal(roleCanPull('NV03',classifyWorkOrder('PRIORITY=P2\nCAPABILITY=review')),true);
+  assert.equal(roleCanPull('NV04',classifyWorkOrder('PRIORITY=P2\nCAPABILITY=research')),true);
+  assert.equal(roleCanPull('NV02',classifyWorkOrder('PRIORITY=P0\nASSIGNED_EXECUTOR=NV02\nCAPABILITY=general')),false);
+  assert.equal(roleCanPull('NV02',classifyWorkOrder('PRIORITY=P2\nCAPABILITY=review')),false);
 });
 
 test('external role claim lease expires and release clears it',()=>{
