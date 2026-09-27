@@ -61,6 +61,21 @@ describe('TigerIQ Live Work Order projection', () => {
     ].join('\n')))).toBe(null);
   });
 
+  it('projects durable tigeriq:terminal-blocked labels as BLOCKED and never dispatch-ranks them', () => {
+    const row = parseQueueIssue(issue(2055, '[P1][LIVE] Terminal blocked', [
+      ...coreQueueFlags(),
+      'AUTO_QUEUE=INCLUDED',
+      'PRIORITY=P1',
+    ].join('\n'), { labels: [{ name: 'tigeriq:terminal-blocked' }] }));
+    expect(row).toMatchObject({
+      number: 2055,
+      status: 'BLOCKED',
+      waitReason: 'TigerIQ terminal BLOCKED',
+    });
+    const ranked = rankQueueRows([row]);
+    expect(ranked[0]).toMatchObject({ eligibleNow: false, dispatchRank: null });
+  });
+
   it('keeps explicit dependency-wait state out of QUEUED', () => {
     const row = parseQueueIssue(issue(2005, '[P0] Chờ dependency', [
       ...coreQueueFlags(),
