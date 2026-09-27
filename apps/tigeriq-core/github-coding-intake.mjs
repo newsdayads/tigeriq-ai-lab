@@ -73,14 +73,15 @@ export function parseCodingRouteMetadata(body){
     targetEmployee=targetRaw.toUpperCase();
   }
 
-  const hasPr=Boolean(currentPrRaw),hasHead=Boolean(targetHeadRaw);
-  if(hasPr!==hasHead)return {valid:false,reason:'CURRENT_PR_TARGET_HEAD_PAIR_REQUIRED',targetEmployee,currentPr:null,targetHead:null};
+  const currentPrDisabled=/^(?:NONE|NULL)$/i.test(currentPrRaw);
+  const hasPr=Boolean(currentPrRaw)&&!currentPrDisabled;
 
   let currentPr=null,targetHead=null;
   if(hasPr){
     const match=currentPrRaw.match(/^#?(\d+)$/);
     const value=Number(match?.[1]||0);
     if(!match||!Number.isInteger(value)||value<=0)return {valid:false,reason:'CURRENT_PR_INVALID',targetEmployee,currentPr:null,targetHead:null};
+    if(!targetHeadRaw)return {valid:false,reason:'CURRENT_PR_TARGET_HEAD_PAIR_REQUIRED',targetEmployee,currentPr:null,targetHead:null};
     if(!/^[0-9a-f]{40}$/i.test(targetHeadRaw))return {valid:false,reason:'TARGET_HEAD_INVALID',targetEmployee,currentPr:null,targetHead:null};
     currentPr=value;
     targetHead=targetHeadRaw.toLowerCase();
