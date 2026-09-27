@@ -19,10 +19,10 @@ const POLL_MS = 15_000;
 const TIMEOUT_MS = 30 * 60 * 1000;
 
 function gh(args) {
-  return JSON.parse(execFileSync('gh', ['api', ...args], { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 }));
+  return JSON.parse(execFileSync('gh', ['api', ...args], { encoding: 'utf8', maxBuffer: 128 * 1024 * 1024 }));
 }
 function issueComments(number) { return gh([`repos/${OWNER}/${REPO}/issues/${number}/comments?per_page=100`]); }
-function allIssueComments() {
+function activeIssueComments() {
   const pages = gh([`repos/${OWNER}/${REPO}/issues/comments?per_page=100`, '--paginate', '--slurp']);
   return pages.flat();
 }
@@ -101,7 +101,7 @@ const reconciledCandidates = await Promise.all(candidateIssues);
 const candidateDependencies = new Map();
 for (const candidate of reconciledCandidates) for (const [id, ready] of dependencyMap(candidate)) candidateDependencies.set(id, ready);
 const candidateHeldScopes = new Set();
-for (const scope of activeResourceScopes(allIssueComments())) candidateHeldScopes.add(scope);
+for (const scope of activeResourceScopes(activeIssueComments())) candidateHeldScopes.add(scope);
 const selected = selectNv02WorkOrder(reconciledCandidates
   .filter((issue) => !hasTerminalEvidence(issue)), { dependencies: candidateDependencies, heldScopes: candidateHeldScopes });
 if (!selected) { await setIdle(); console.log(JSON.stringify({ event: 'NV02_READY_NO_ELIGIBLE_WORK', ...noEligibleNv02Work(), idle: 'DURABLE' })); process.exit(0); }
@@ -134,7 +134,7 @@ const reconciledNext = await Promise.all(nextIssues);
 const nextDependencies = new Map();
 for (const candidate of reconciledNext) for (const [id, ready] of dependencyMap(candidate)) nextDependencies.set(id, ready);
 const nextHeldScopes = new Set();
-for (const scope of activeResourceScopes(allIssueComments())) nextHeldScopes.add(scope);
+for (const scope of activeResourceScopes(activeIssueComments())) nextHeldScopes.add(scope);
 const next = selectNv02WorkOrder(reconciledNext.filter((candidate) => !hasTerminalEvidence(candidate)), { dependencies: nextDependencies, heldScopes: nextHeldScopes });
 console.log(JSON.stringify(next
   ? { event: 'NV02_NEXT_WORK_ORDER_READY', issue: next.issue.number, priority: next.result.priority, resourceScope: next.result.resourceScope }
