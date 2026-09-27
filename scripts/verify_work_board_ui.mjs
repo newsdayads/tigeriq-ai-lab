@@ -23,7 +23,7 @@ assert.match(publicView, /ĐANG RÀ SOÁT/);
 assert.match(publicView, /CHỜ GIAO/);
 assert.match(publicView, /BỊ CHẶN/);
 assert.match(publicView, /HOÀN TẤT/);
-assert.match(publicView, /setInterval\(.*30000/);
+assert.match(publicView, /setInterval\(.*10000/);
 assert.match(publicView, /PC01 LIVE/);
 assert.match(publicView, /DỮ LIỆU CŨ/);
 assert.match(publicView, /ĐANG MỞ/);
@@ -32,6 +32,12 @@ assert.match(publicView, /CHỜ\/BLOCKED/);
 assert.match(publicView, /data-filter="done"/);
 assert.match(publicView, /progressPercent/);
 assert.match(publicView, /tigeriq-live-open-progress-v2/);
+assert.match(publicView, /tự cập nhật 10 giây/);
+assert.match(publicView, /priority\.p0/);
+assert.match(publicView, /priority\.p1/);
+assert.match(publicView, /filter\[data-filter="running"\]\.active/);
+assert.match(publicView, /work-row\.status-working::before/);
+assert.match(publicView, /work-row\.status-blocked::before/);
 
 for (const removed of [
   'KẾ TIẾP CÓ THỂ CHẠY',
