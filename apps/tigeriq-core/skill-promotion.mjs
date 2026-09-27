@@ -13,6 +13,7 @@ export const PROMOTION_STATES = Object.freeze([
   'VALIDATED_WAITING_CANARY',
   'CANARY_READY',
   'CANARY_RUNNING',
+  'PROMOTION_READY',
   'ACTIVE',
   'VALIDATED_BLOCKED_EVIDENCE',
 ]);
@@ -182,9 +183,9 @@ export function recordCanaryResult(queue, skillId, result = {}) {
       }
       return {
         ...entry,
-        status: 'ACTIVE',
+        status: 'PROMOTION_READY',
         blocker: null,
-        nextCondition: null,
+        nextCondition: 'promote_registry_via_branch_pr_review',
         nextEligibleAt: null,
         promotionEligible: true,
         evidence: [...entry.evidence, {
@@ -235,7 +236,7 @@ export function summarizePromotionQueue(registry, queue) {
     validatedBlocked: parsed.entries.filter((entry) => entry.status === 'VALIDATED_BLOCKED_EVIDENCE').length,
     canaryReady: parsed.entries.filter((entry) => entry.status === 'CANARY_READY').length,
     canaryRunning: parsed.entries.filter((entry) => entry.status === 'CANARY_RUNNING').length,
-    promotionEligible: parsed.entries.filter((entry) => entry.status === 'ACTIVE' && entry.promotionEligible).length,
+    promotionEligible: parsed.entries.filter((entry) => entry.status === 'PROMOTION_READY' && entry.promotionEligible).length,
     tracked: parsed.entries.length,
   };
 }
