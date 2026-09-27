@@ -202,13 +202,24 @@ test('bounded App Chrome deploy-request State work is not treated as protected A
   assert.strictEqual(pool.objectives.at(-1).metadata.dispatchLane,'PC_OPERATOR');
 });
 
-test('preferred NV03 review is excluded from generic Core intake to avoid duplicate review',async()=>{
+test('preferred NV03 review remains external to Core intake',async()=>{
   const pool=coreBacklogPool();
   const body=['TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','NO_CODE_CHANGE=true','NO_PC01_SHELL=true','CAPABILITY=review','PRIORITY=P1','PREFERRED_REVIEWER=NV03','EXECUTION_SURFACE=CORE_READ_ONLY','RESOURCE_SCOPE=REVIEW_PR_X'].join('\n');
   const issues=[{number:1874,state:'open',title:'preferred UI review',body,html_url:'https://example/1874'}];
   const fetchImpl=async(url)=>url.includes('/issues?')?response(issues):response({});
   const out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
   assert.strictEqual(out.created,0);assert.strictEqual(pool.objectives.length,0);
+});
+
+test('unassigned review is materialized for Core API review, not NV03',async()=>{
+  const pool=coreBacklogPool();
+  const body=['TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','NO_CODE_CHANGE=true','NO_PC01_SHELL=true','CAPABILITY=review','PRIORITY=P1','EXECUTION_SURFACE=CORE_READ_ONLY','RESOURCE_SCOPE=REVIEW_API_X'].join('\n');
+  const issues=[{number:1875,state:'open',title:'default API review',body,html_url:'https://example/1875'}];
+  const fetchImpl=async(url)=>url.includes('/issues?')?response(issues):response({});
+  const out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
+  assert.strictEqual(out.created,1);
+  assert.strictEqual(pool.objectives.at(-1).metadata.dispatchLane,'CORE_REVIEW');
+  assert.notStrictEqual(pool.objectives.at(-1).metadata.targetWorker,'NV03');
 });
 test('terminal objective orphan queued and waiting_resource jobs are failed closed',async()=>{
   const pool=coreBacklogPool();
