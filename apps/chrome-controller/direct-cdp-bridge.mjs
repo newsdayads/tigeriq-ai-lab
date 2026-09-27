@@ -569,6 +569,7 @@ function loadNv02Continuity(){
     chatLoadBlockedUntil:Number(raw.chatLoadBlockedUntil)||0,
     chatLoadClearCandidateAt:Number(raw.chatLoadClearCandidateAt)||0,
     chatConnectingSince:Number(raw.chatConnectingSince)||0,
+    idleState:fs.existsSync(NV02_IDLE_MARKER)?'READY_NO_ELIGIBLE_WORK':String(raw.idleState||''),
   };
   if(persistBootSchedule)saveNv02Continuity(state);
   return state;
