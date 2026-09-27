@@ -149,7 +149,8 @@ export function activeResourceClaims(comments = [], nowMs = Date.now()) {
     const meta = fields(body.slice(marker.index));
     const resourceScope = String(meta.RESOURCE_SCOPE || meta.SCOPE || '').trim();
     const worker = String(meta.WORKER || '').trim().toUpperCase();
-    const identity = String(meta.LEASE_ID || meta.CLAIM_ID || '').trim();
+    const explicitIdentity = String(meta.LEASE_ID || meta.CLAIM_ID || '').trim();
+    const identity = explicitIdentity || (claim && worker && resourceScope ? `WORKER:${worker}:${resourceScope}` : '');
     if (claim) {
       const expiry = Date.parse(meta.EXPIRES_AT || meta.LEASE_UNTIL || '');
       if (resourceScope && identity && expiry > nowMs) {
@@ -157,8 +158,8 @@ export function activeResourceClaims(comments = [], nowMs = Date.now()) {
       }
       continue;
     }
-    if (identity) {
-      active.delete(identity);
+    if (explicitIdentity) {
+      active.delete(explicitIdentity);
       continue;
     }
     if (resourceScope) {
