@@ -387,6 +387,8 @@ describe('GitHub Core intake guardrails',()=>{
     const intake=readFileSync(new URL('./github-intake.mjs',import.meta.url),'utf8');
     const core=readFileSync(new URL('./core.mjs',import.meta.url),'utf8');
     expect(intake).toContain('publicEvidenceKeys:spec.publicEvidenceKeys||[]');
+    expect(intake).toContain("PC_OPERATOR_DIRECT_LOCAL");
+    expect(intake).toContain("job.provider==='local-direct'?'local-direct'");
     expect(intake).toContain('appendPublicEvidenceToSummary(`bounded pc_operator completed');
     expect(core).toContain('o.metadata as objective_metadata');
     expect(core).toContain('appendPublicEvidenceToSummary(`bounded pc_operator completed');
