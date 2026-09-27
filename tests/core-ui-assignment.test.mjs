@@ -35,7 +35,7 @@ test('UI classifier uses P0 Owner semantics and ignores stale execution surface'
   x=parseCoreUiIssue(issue(201,safe(['CAPABILITY=review','PREFERRED_REVIEWER=NV03','EXECUTION_SURFACE=CORE_READ_ONLY'])));assert.equal(x.workerId,'NV03');
   x=parseCoreUiIssue(issue(202,safe(['CAPABILITY=research'])));assert.equal(x.workerId,'NV04');
   assert.equal(parseCoreUiIssue(issue(203,safe(['CAPABILITY=general']).replace('PRIORITY=P2','PRIORITY=P0\nOWNER_CONTROLLED=true'))),null);
-  x=parseCoreUiIssue(issue(204,safe(['CAPABILITY=review','ASSIGNED_EXECUTOR=NV03']).replace('PRIORITY=P2','PRIORITY=P0')));assert.equal(x.priority,'P0');assert.equal(x.workerId,'NV03');
+  assert.equal(parseCoreUiIssue(issue(204,safe(['CAPABILITY=review','ASSIGNED_EXECUTOR=NV03']).replace('PRIORITY=P2','PRIORITY=P0'))),null);
   assert.equal(selectCoreUiWorker('general'),'NV02');assert.equal(selectCoreUiWorker('review'),'NV03');assert.equal(selectCoreUiWorker('research'),'NV04');
 });
 

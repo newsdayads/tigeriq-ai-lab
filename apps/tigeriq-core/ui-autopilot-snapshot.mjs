@@ -60,7 +60,7 @@ export function parseAutoUiIssue(issue,{allowClosed=false,releaseSatisfied=false
   const workerId=exactValue(body,'PRIMARY_EMPLOYEE');
   if(!SUPPORTED_WORKERS.has(workerId))return null;
   const priority=exactValue(body,'PRIORITY');
-  if(!['P0','P1'].includes(priority))return null;
+  if(!['P1','P2','P3','P4','P5'].includes(priority))return null;
   const number=Number(issue.number);
   if(!Number.isInteger(number)||number<=0)return null;
   const autoReleaseAfter=extractAutoReleaseDependencies(body);

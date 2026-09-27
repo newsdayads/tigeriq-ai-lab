@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import subprocess
 import time
 import urllib.request
@@ -57,9 +58,14 @@ def comment(number, body):
 def close_issue(number):
     gh('issue', 'close', str(number), '--repo', REPO)
 
+def is_owner_only_p0(job):
+    title = str(job.get('title') or '')
+    body = str(job.get('body') or '')
+    return bool(re.search(r'(^|\s)\[P0\](\s|\[|$)', title, re.I) or re.search(r'^PRIORITY=P0$', body, re.M) or re.search(r'^##\s*Priority\s*\r?\n\s*P0\s*$', body, re.M | re.I))
+
 def list_jobs():
     raw = gh('issue', 'list', '--repo', REPO, '--state', 'open', '--limit', '100', '--json', 'number,title,body,url')
-    return [x for x in json.loads(raw or '[]') if MARKER in (x.get('body') or '')]
+    return [x for x in json.loads(raw or '[]') if MARKER in (x.get('body') or '') and not is_owner_only_p0(x)]
 
 def instruction_from(body):
     if '## Instruction' in body:
