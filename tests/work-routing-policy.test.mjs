@@ -25,19 +25,19 @@ test('P1-P5 remain autonomous and keep their priority',()=>{
   }
 });
 
-test('specialist routing table is deterministic',()=>{
-  let s=classifyWorkOrder('PRIORITY=P2\nCAPABILITY=general');assert.equal(s.route,'UI');assert.equal(s.workerId,'NV02');
-  s=classifyWorkOrder('PRIORITY=P2\nCAPABILITY=review');assert.equal(s.route,'UI');assert.equal(s.workerId,'NV03');
-  s=classifyWorkOrder('PRIORITY=P2\nCAPABILITY=research');assert.equal(s.route,'UI');assert.equal(s.workerId,'NV04');
+test('specialist routing keeps UI workers outside Core and routes autonomous work to specialist lanes',()=>{
+  let s=classifyWorkOrder('PRIORITY=P2\nCAPABILITY=general');assert.equal(s.route,'CORE_REASONING');assert.equal(s.workerId,null);
+  s=classifyWorkOrder('PRIORITY=P2\nCAPABILITY=review');assert.equal(s.route,'CORE_REVIEW');assert.equal(s.workerId,null);
+  s=classifyWorkOrder('PRIORITY=P2\nCAPABILITY=research');assert.equal(s.route,'CORE_REASONING');assert.equal(s.workerId,null);
   s=classifyWorkOrder('PRIORITY=P2\nCAPABILITY=pc_operator');assert.equal(s.route,'OPENCLAW');assert.equal(s.workerId,'NV06');
   s=classifyWorkOrder('PRIORITY=P2\nEXECUTION_SURFACE=CODING\nAUTONOMOUS_CODE=true');assert.equal(s.route,'CODING');
 });
 
-test('preferred UI reviewer wins even with stale CORE_READ_ONLY surface; API reviewer stays Core',()=>{
+test('explicit UI preference stays external while API reviewer stays Core',()=>{
   let s=classifyWorkOrder('PRIORITY=P1\nCAPABILITY=review\nPREFERRED_REVIEWER=NV03\nEXECUTION_SURFACE=CORE_READ_ONLY');
-  assert.equal(s.route,'UI');assert.equal(s.workerId,'NV03');
+  assert.equal(s.route,'UI');assert.equal(s.workerId,'NV03');assert.equal(s.autonomous,false);
   s=classifyWorkOrder('PRIORITY=P1\nCAPABILITY=review\nPREFERRED_REVIEWER=NV17\nEXECUTION_SURFACE=CORE_READ_ONLY');
-  assert.equal(s.route,'CORE_REVIEW');assert.equal(s.workerId,'NV17');
+  assert.equal(s.route,'CORE_REVIEW');assert.equal(s.workerId,'NV17');assert.equal(s.autonomous,true);
 });
 
 test('assigned P0 remains Owner-only and never binds an employee',()=>{
@@ -47,13 +47,19 @@ test('assigned P0 remains Owner-only and never binds an employee',()=>{
   }
 });
 
-test('employees self-pull only eligible P1-P5 work for their role; P0 stays forbidden',()=>{
-  assert.equal(roleCanPull('NV02',classifyWorkOrder('PRIORITY=P2\nCAPABILITY=general')),true);
-  assert.equal(roleCanPull('NV02',classifyWorkOrder('PRIORITY=P3\nCAPABILITY=reasoning')),true);
-  assert.equal(roleCanPull('NV03',classifyWorkOrder('PRIORITY=P2\nCAPABILITY=review')),true);
-  assert.equal(roleCanPull('NV04',classifyWorkOrder('PRIORITY=P2\nCAPABILITY=research')),true);
-  assert.equal(roleCanPull('NV02',classifyWorkOrder('PRIORITY=P0\nASSIGNED_EXECUTOR=NV02\nCAPABILITY=general')),false);
-  assert.equal(roleCanPull('NV02',classifyWorkOrder('PRIORITY=P2\nCAPABILITY=review')),false);
+test('NV02 NV03 NV04 never self-pull through Core routing',()=>{
+  for(const worker of ['NV02','NV03','NV04']){
+    for(const body of ['PRIORITY=P1\nCAPABILITY=general','PRIORITY=P2\nCAPABILITY=review','PRIORITY=P3\nCAPABILITY=research','PRIORITY=P0\nCAPABILITY=general']){
+      assert.equal(roleCanPull(worker,classifyWorkOrder(body)),false);
+    }
+  }
+});
+
+test('explicit Core assignment cannot delegate a P1-P5 item to UI workers',()=>{
+  for(const worker of ['NV02','NV03','NV04']){
+    const s=classifyWorkOrder('PRIORITY=P2\nASSIGNED_EXECUTOR='+worker+'\nCAPABILITY=general');
+    assert.equal(s.route,'UI');assert.equal(s.workerId,worker);assert.equal(s.autonomous,false);
+  }
 });
 
 test('external role claim lease expires and release clears it',()=>{
