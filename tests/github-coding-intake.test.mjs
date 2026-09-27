@@ -84,7 +84,10 @@ function fakePool(){
       const rows=[...events].reverse().filter(e=>e.type===params[0]&&String(e.data.issueNumber)===String(params[1])).slice(0,100).map(e=>({data:e.data}));
       return {rowCount:rows.length,rows};
     }
-    if(q.includes('select 1 from tigeriq_events'))return {rowCount:events.some(e=>e.type===params[0]&&String(e.data.issueNumber)===String(params[1]))?1:0,rows:[]};
+    if(q.includes('select 1 from tigeriq_events')){
+      const match=events.some(e=>e.type===params[0]&&String(e.data.issueNumber)===String(params[1])&&(!q.includes("codingObjectiveId")||String(e.data.codingObjectiveId||'')===String(params[2]||'')));
+      return {rowCount:match?1:0,rows:[]};
+    }
     if(q.includes('insert into tigeriq_events')){events.push({type:params[0],data:JSON.parse(params[1])});return {rowCount:1,rows:[]};}
     return {rowCount:0,rows:[]};
   }};
@@ -479,6 +482,35 @@ describe('GitHub coding continuity supervisor',()=>{
     expect(rearms).toHaveLength(1);
     expect(rearms[0].data).toMatchObject({mainSha:'same-main',sourceRevision,priorObjectiveId:'obj-809-r2',codingObjectiveId:'obj-809-recovery'});
     expect(pool.events.filter(e=>e.type==='GITHUB_CODING_DISPATCHED'&&e.data.issueNumber===809)).toHaveLength(2);
+  });
+
+  it('correlates PROGRESS marker to codingObjectiveId and ignores legacy or older objective markers',async()=>{
+    const pool=fakePool();let progressComments=0;
+    pool.events.push(
+      {type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:811,codingObjectiveId:'obj-811-a',sourceRevision:'rev-a'}},
+      {type:'GITHUB_CODING_PROGRESS_REPORTED',data:{issueNumber:811,codingObjectiveId:'obj-811-a',jobId:'job-a',prNumber:null}},
+      {type:'GITHUB_CODING_PROGRESS_REPORTED',data:{issueNumber:811,jobId:'legacy-job',prNumber:null}},
+      {type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:811,codingObjectiveId:'obj-811-b',sourceRevision:'rev-b'}}
+    );
+    const current=issue(SAFE,{number:811,title:'Progress objective correlation',comments:0});
+    const currentRevision=codingSourceTruthRevision(current,[]);
+    pool.events.at(-1).data.sourceRevision=currentRevision;
+    const fetchImpl=async(url,init={})=>{
+      if(url.includes('/api/status'))return response({
+        objectives:[{id:'obj-811-b',status:'active',summary:'working'}],
+        jobs:[{id:'job-b',objective_id:'obj-811-b',status:'running',employee_id:'NV09',reviewer_employee_id:null,pr_number:2133}]
+      });
+      if(url.includes('/git/ref/heads/main'))return response({object:{sha:'main-811'}});
+      if(url.includes('/issues/811/comments')&&String(init.method||'GET').toUpperCase()==='POST'){progressComments++;return response({});}
+      if(url.includes('/issues/811'))return response(current);
+      return response({});
+    };
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+    expect(progressComments).toBe(1);
+    const markers=pool.events.filter(e=>e.type==='GITHUB_CODING_PROGRESS_REPORTED'&&e.data.codingObjectiveId==='obj-811-b');
+    expect(markers).toHaveLength(1);
+    expect(markers[0].data).toMatchObject({issueNumber:811,codingObjectiveId:'obj-811-b',jobId:'job-b',prNumber:2133});
   });
 
   it('emits BLOCKED_FINAL after the retry budget is exhausted',async()=>{
