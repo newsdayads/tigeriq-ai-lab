@@ -8,6 +8,7 @@ import {
   resolveNv02Command02State,
   selectNv02WorkOrder,
 } from '../apps/tigeriq-core/nv02-local-self-pull.mjs';
+import { reconcileStaleDependency } from '../apps/tigeriq-core/dependency-reconcile.mjs';
 
 const safe = (extra = '') => [
   'TIGERIQ_EXECUTABLE=true', 'AUTO_QUEUE=INCLUDED', 'CAPABILITY=general', 'RESOURCE_SCOPE=NV02_TEST', extra,
@@ -32,6 +33,29 @@ describe('NV02 local GitHub self-pull contract', () => {
     expect(selectNv02WorkOrder([base(3, 'DEPENDS_ON=#99')])).toBeNull();
     expect(selectNv02WorkOrder([base(4, 'CAPABILITY=review')])).toBeNull();
     expect(selectNv02WorkOrder([base(5, '')], { heldScopes: new Set(['S5']) })).toBeNull();
+    expect(selectNv02WorkOrder([base(6, 'CAPABILITY=analysis')])[0]).toBeUndefined();
+    expect(selectNv02WorkOrder([base(6, 'CAPABILITY=analysis')]).result.mode).toBe('SAFE_FALLBACK');
+    expect(selectNv02WorkOrder([base(7, 'CAPABILITY=analysis\nTARGET_EMPLOYEE=CODING')])).toBeNull();
+    expect(selectNv02WorkOrder([base(8, 'CAPABILITY=analysis\nREVIEW_INDEPENDENT=true')])).toBeNull();
+  });
+
+  it('prefers primary role over safe fallback and rejects active duplicate owner', () => {
+    const fallback = issue(30, '[P1] fallback', safe('PRIORITY=P1\nCAPABILITY=research\nRESOURCE_SCOPE=F30'));
+    const primary = issue(31, '[P2] primary', safe('PRIORITY=P2\nCAPABILITY=general\nRESOURCE_SCOPE=F31'));
+    expect(selectNv02WorkOrder([fallback, primary]).issue.number).toBe(31);
+    expect(selectNv02WorkOrder([fallback], { activeOwners: new Set(['CODING']) })).not.toBeNull();
+    expect(selectNv02WorkOrder([issue(32, '[P1] duplicate', safe('PRIORITY=P1\nCAPABILITY=research\nMUTATION_OWNER=CODING\nRESOURCE_SCOPE=F32'))], { activeOwners: new Set(['CODING']) })).toBeNull();
+  });
+
+  it('rearms stale dependency state after dependency #2049 closes', async () => {
+    const issue2004 = issue(2004, '[P2] stale dependent', 'TIGERIQ_EXECUTABLE=true\nSTATE=WAIT_DEPENDENCY\nDEPENDS_ON=#2049\nMUTATION_OWNER=VY\nRESOURCE_SCOPE=STALE_2004\nGOAL=goal\nACTIVE_INTENT=intent');
+    const comments = [];
+    let updated = '';
+    const result = await reconcileStaleDependency({ issue: issue2004, dependencies: new Map([[2049, { state: 'closed', state_reason: 'completed' }]]), updateBody: async (_n, body) => { updated = body; }, comment: async (_n, body) => comments.push(body) });
+    expect(result.action).toBe('REARMED');
+    expect(updated).toContain('STATE=READY');
+    expect(updated).toContain('MUTATION_OWNER=');
+    expect(comments[0]).toContain('[DEPENDENCY_REARM]');
   });
 
   it('implements command 02 active resume, terminal self-pull, and no-work state', () => {

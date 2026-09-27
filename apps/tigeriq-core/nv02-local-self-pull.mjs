@@ -4,7 +4,9 @@ export const NV02_LEASE_MARKER = '[TIGERIQ_NV02_LEASE_V1]';
 export const NV02_RELEASE_MARKER = '[TIGERIQ_NV02_RELEASE_V1]';
 
 const PRIORITIES = new Set(['P1', 'P2', 'P3', 'P4', 'P5']);
-const CAPABILITIES = new Set(['general', 'reasoning', 'ui']);
+export const NV02_PRIMARY_CAPABILITIES = new Set(['general', 'reasoning', 'ui']);
+export const NV02_FALLBACK_CAPABILITIES = new Set(['analysis', 'research', 'documentation', 'evidence', 'read_only']);
+const FORBIDDEN_MARKERS = /(?:^|[_\s=-])(review|reviewer|pc_operator|device.bound|security|credential|production|app.chrome|coding|api|core|nv09|nv12|nv17)(?:$|[_\s=-])/i;
 
 function fields(body) {
   return Object.fromEntries(String(body || '').split(/\r?\n/).flatMap((line) => {
@@ -27,7 +29,7 @@ function dependenciesReady(meta, dependencies = new Map()) {
   });
 }
 
-export function nv02EligibleWorkOrder(issue, { heldScopes = new Set(), dependencies = new Map() } = {}) {
+export function nv02EligibleWorkOrder(issue, { heldScopes = new Set(), dependencies = new Map(), activeOwners = new Set(), allowFallback = true } = {}) {
   const meta = nv02WorkOrderMeta(issue);
   const priority = nv02PrioritySummary(issue) || String(meta.PRIORITY || '').toUpperCase();
   if (!PRIORITIES.has(priority)) return { eligible: false, reason: priority === 'P0' ? 'P0_FORBIDDEN' : 'PRIORITY_OUT_OF_RANGE' };
@@ -36,20 +38,27 @@ export function nv02EligibleWorkOrder(issue, { heldScopes = new Set(), dependenc
   if (meta.OWNER_HOLD === 'true') return { eligible: false, reason: 'OWNER_HOLD' };
   if (!dependenciesReady(meta, dependencies)) return { eligible: false, reason: 'DEPENDENCY_NOT_READY' };
   const capability = String(meta.CAPABILITY || 'general').toLowerCase();
-  if (!CAPABILITIES.has(capability)) return { eligible: false, reason: 'CAPABILITY_MISMATCH' };
+  const primary = NV02_PRIMARY_CAPABILITIES.has(capability);
+  const fallback = NV02_FALLBACK_CAPABILITIES.has(capability);
+  if (!primary && !(allowFallback && fallback)) return { eligible: false, reason: 'CAPABILITY_MISMATCH' };
+  const routingText = [meta.TARGET_EMPLOYEE, meta.ASSIGNED_EXECUTOR, meta.PRIMARY_EMPLOYEE, meta.DISPATCH_LANE, meta.EXECUTION_LANE, meta.ACCEPTANCE_CAPABILITY, meta.SCOPE].filter(Boolean).join(' ');
+  if (FORBIDDEN_MARKERS.test(routingText) || meta.REVIEW_INDEPENDENT === 'true' || meta.DEVICE_BOUND === 'true') return { eligible: false, reason: 'OUTSIDE_NV02_SAFE_FALLBACK' };
+  if (meta.TARGET_EMPLOYEE && !/^NV02$/i.test(meta.TARGET_EMPLOYEE.trim())) return { eligible: false, reason: 'TARGET_EMPLOYEE_LOCKED' };
+  if ([...activeOwners].some((owner) => String(owner).toLowerCase() === String(meta.MUTATION_OWNER || '').toLowerCase())) return { eligible: false, reason: 'ACTIVE_OWNER_HELD' };
   const resourceScope = String(meta.RESOURCE_SCOPE || '').trim();
   if (!resourceScope) return { eligible: false, reason: 'RESOURCE_SCOPE_REQUIRED' };
   if (heldScopes.has(resourceScope) || (meta.MUTATION_OWNER && meta.MUTATION_OWNER !== 'NV02')) return { eligible: false, reason: 'RESOURCE_SCOPE_HELD' };
-  return { eligible: true, priority, capability, resourceScope };
+  return { eligible: true, priority, capability, resourceScope, mode: primary ? 'PRIMARY_ROLE' : 'SAFE_FALLBACK' };
 }
 
 export function selectNv02WorkOrder(issues, options = {}) {
-  return (Array.isArray(issues) ? issues : [])
+  const eligible = (Array.isArray(issues) ? issues : [])
     // Reject P0 from summary metadata before any detail fetch or claim callback.
     .filter((issue) => nv02PrioritySummary(issue) !== 'P0')
     .map((issue) => ({ issue, result: nv02EligibleWorkOrder(issue, options) }))
-    .filter(({ result }) => result.eligible)
-    .sort((a, b) => a.result.priority.localeCompare(b.result.priority) || Number(a.issue.number) - Number(b.issue.number))[0] || null;
+    .filter(({ result }) => result.eligible);
+  return eligible.filter(({ result }) => result.mode === 'PRIMARY_ROLE').concat(eligible.filter(({ result }) => result.mode === 'SAFE_FALLBACK'))
+    .sort((a, b) => (a.result.mode === b.result.mode ? 0 : a.result.mode === 'PRIMARY_ROLE' ? -1 : 1) || a.result.priority.localeCompare(b.result.priority) || Number(a.issue.number) - Number(b.issue.number))[0] || null;
 }
 
 export function resolveNv02Command02State({ currentWorkOrder, currentCheckpoint, active = true } = {}) {

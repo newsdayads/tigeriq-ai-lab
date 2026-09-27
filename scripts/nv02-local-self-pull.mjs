@@ -8,6 +8,7 @@ import {
   releaseNv02WorkOrder,
   nv02PrioritySummary,
 } from '../apps/tigeriq-core/nv02-local-self-pull.mjs';
+import { reconcileStaleDependency } from '../apps/tigeriq-core/dependency-reconcile.mjs';
 
 const OWNER = 'newsdayads';
 const REPO = 'tigeriq-ai-lab';
@@ -38,6 +39,18 @@ function dependencyMap(issue) {
   }
   return map;
 }
+async function reconcile(issue) {
+  const refs = String(issue.body || '').match(/^DEPENDS_ON\s*=\s*(.+)$/mi)?.[1]?.split(/[ ,]+/).map((x) => Number(x.replace(/^#/, ''))).filter(Boolean) || [];
+  if (!refs.length) return issue;
+  const dependencies = new Map(refs.map((ref) => { const dep = gh([`repos/${OWNER}/${REPO}/issues/${ref}`]); return [ref, dep]; }));
+  await reconcileStaleDependency({
+    issue, dependencies,
+    comment: postComment,
+    updateBody: (number, body) => gh([`repos/${OWNER}/${REPO}/issues/${number}`, '-X', 'PATCH', '-f', `body=${body}`]),
+    closeIssue: (number) => gh([`repos/${OWNER}/${REPO}/issues/${number}`, '-X', 'PATCH', '-f', 'state=closed']),
+  });
+  return issue;
+}
 async function controllerDispatch(issue, lease) {
   const response = await fetch(`${CONTROLLER}/api/workers/NV02/dispatch`, {
     method: 'POST', headers: { 'content-type': 'application/json' },
@@ -58,13 +71,25 @@ function hasTerminalEvidence(issue) {
   return terminal(issue, issueComments(issue.number)) !== null;
 }
 
+async function setIdle() {
+  const response = await fetch(`${CONTROLLER}/api/utility/workers/NV02/idle`, { method: 'POST' });
+  if (!response.ok) throw new Error(`NV02_IDLE_HTTP_${response.status}:${await response.text()}`);
+  return response.json();
+}
+
 console.log(JSON.stringify({ event: 'NV02_COMMAND_02', mode: 'SELF_PULL', policy: NV02_LOCAL_GITHUB_SELF_PULL }));
 const candidateIssues = summaries()
   .filter((summary) => nv02PrioritySummary(summary) !== 'P0')
   .map((summary) => details(summary))
-  .filter((issue) => !hasTerminalEvidence(issue));
-const selected = selectNv02WorkOrder(candidateIssues, { dependencies: new Map() });
-if (!selected) { console.log(JSON.stringify({ event: 'NV02_READY_NO_ELIGIBLE_WORK', ...noEligibleNv02Work() })); process.exit(0); }
+  .map((issue) => reconcile(issue))
+  .map(async (promise) => promise)
+  ;
+const reconciledCandidates = await Promise.all(candidateIssues);
+const candidateDependencies = new Map();
+for (const candidate of reconciledCandidates) for (const [id, ready] of dependencyMap(candidate)) candidateDependencies.set(id, ready);
+const selected = selectNv02WorkOrder(reconciledCandidates
+  .filter((issue) => !hasTerminalEvidence(issue)), { dependencies: candidateDependencies });
+if (!selected) { await setIdle(); console.log(JSON.stringify({ event: 'NV02_READY_NO_ELIGIBLE_WORK', ...noEligibleNv02Work(), idle: 'DURABLE' })); process.exit(0); }
 const issue = selected.issue;
 const lease = await claimNv02WorkOrder({ issue, comments: issueComments(issue.number), postComment });
 if (!lease) throw new Error(`NV02_LEASE_BUSY_OR_LOST:${issue.number}`);
@@ -89,9 +114,13 @@ console.log(JSON.stringify({ event: 'TIGERIQ_NV02_LEASE_RELEASED', issue: issue.
 const nextIssues = summaries()
   .filter((summary) => nv02PrioritySummary(summary) !== 'P0' && Number(summary.number) !== Number(issue.number))
   .map((summary) => details(summary))
-  .filter((candidate) => !hasTerminalEvidence(candidate));
-const next = selectNv02WorkOrder(nextIssues, { dependencies: new Map() });
+  .map((issue) => reconcile(issue));
+const reconciledNext = await Promise.all(nextIssues);
+const nextDependencies = new Map();
+for (const candidate of reconciledNext) for (const [id, ready] of dependencyMap(candidate)) nextDependencies.set(id, ready);
+const next = selectNv02WorkOrder(reconciledNext.filter((candidate) => !hasTerminalEvidence(candidate)), { dependencies: nextDependencies });
 console.log(JSON.stringify(next
   ? { event: 'NV02_NEXT_WORK_ORDER_READY', issue: next.issue.number, priority: next.result.priority, resourceScope: next.result.resourceScope }
-  : { event: 'NV02_READY_NO_ELIGIBLE_WORK', ...noEligibleNv02Work() }));
+  : { event: 'NV02_READY_NO_ELIGIBLE_WORK', ...noEligibleNv02Work(), idle: 'DURABLE' }));
+if (!next) await setIdle();
 if (result !== 'DONE') process.exitCode = 2;
