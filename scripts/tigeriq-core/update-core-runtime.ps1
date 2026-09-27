@@ -18,6 +18,9 @@ $appChromeController='http://127.0.0.1:8798'
 $appChromeResumeState='D:\TigerIQ\State\app-chrome-runtime-recovery.json'
 $appChromeZeroTouchScript=(Join-Path $runtimeRepo 'scripts\tigeriq-core\appchrome-zero-touch.ps1')
 $liveStatusBridgeTask='TigerIQ Live Status Bridge'
+$liveStatusBridgeRuntime='D:\TigerIQ\Runtime\LiveStatusBridge'
+$liveStatusBridgeSource=(Join-Path $runtimeRepo 'apps\tigeriq-live-bridge\server.mjs')
+$liveStatusBridgeRuntimeSource=(Join-Path $liveStatusBridgeRuntime 'server.mjs')
 $coreTask='TigerIQ Core 24x7'
 $webTask='TigerIQ Web Control 24x7'
 $codingTask='TigerIQ Coding Lane 24x7'
@@ -301,19 +304,42 @@ function Reconcile-RemoteDesktopGuard(){
 }
 function Invoke-LiveStatusBridgeReconcile(){
   try {
+    $sourceExists=Test-Path -LiteralPath $liveStatusBridgeSource
+    $runtimeExists=Test-Path -LiteralPath $liveStatusBridgeRuntimeSource
+    $needsSync=$false
+    if($sourceExists){
+      if(-not $runtimeExists){$needsSync=$true}
+      else{
+        $sourceHash=(Get-FileHash -LiteralPath $liveStatusBridgeSource -Algorithm SHA256).Hash
+        $runtimeHash=(Get-FileHash -LiteralPath $liveStatusBridgeRuntimeSource -Algorithm SHA256).Hash
+        $needsSync=($sourceHash -ne $runtimeHash)
+      }
+    }
+    if($needsSync){
+      New-Item -ItemType Directory -Path $liveStatusBridgeRuntime -Force|Out-Null
+      $tmp=$liveStatusBridgeRuntimeSource+'.tmp'
+      Copy-Item -LiteralPath $liveStatusBridgeSource -Destination $tmp -Force
+      Move-Item -LiteralPath $tmp -Destination $liveStatusBridgeRuntimeSource -Force
+      $listener=Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort 8801 -State Listen -ErrorAction SilentlyContinue|Select-Object -First 1
+      if($listener -and $listener.OwningProcess){Stop-Process -Id ([int]$listener.OwningProcess) -Force -ErrorAction SilentlyContinue;Start-Sleep -Milliseconds 500}
+      $node='C:\Program Files\nodejs\node.exe'
+      Start-Process -FilePath $node -ArgumentList @($liveStatusBridgeRuntimeSource) -WindowStyle Hidden -RedirectStandardOutput (Join-Path $liveStatusBridgeRuntime 'bridge.log') -RedirectStandardError (Join-Path $liveStatusBridgeRuntime 'bridge.err.log')
+      $deadline=(Get-Date).AddSeconds(20)
+      do{Start-Sleep -Milliseconds 500;$healthy=Test-TcpPort '127.0.0.1' 8801}while(-not $healthy -and (Get-Date)-lt$deadline)
+      if(-not $healthy){return [ordered]@{status='BLOCKED';reason='CANONICAL_BRIDGE_RESTART_FAILED';action='SYNC_RESTART'}}
+      return [ordered]@{status='RECONCILED';reason='CANONICAL_SOURCE_UPDATED';action='SYNC_RESTART'}
+    }
+    if(Test-TcpPort '127.0.0.1' 8801){
+      return [ordered]@{status='HEALTHY';reason='LOCAL_PORT_HEALTHY';action='NONE'}
+    }
     if(-not (Task-Exists $liveStatusBridgeTask)) {
       return [ordered]@{status='BLOCKED';reason='TASK_ABSENT';action='NONE'}
     }
-    $st=(Get-ScheduledTask -TaskName $liveStatusBridgeTask -ErrorAction SilentlyContinue)
-    $stateName = if ($st -and $st.PSObject.Properties['State']) { [string]$st.State } else { '' }
-    if(-not $st) {
-      return [ordered]@{status='BLOCKED';reason='TASK_NOT_FOUND';action='NONE'}
-    }
-    if($stateName -ne 'Running') {
-      Start-ScheduledTask -TaskName $liveStatusBridgeTask -ErrorAction Stop
-      return [ordered]@{status='RECONCILED';reason='STARTED_ONCE';action='START'}
-    }
-    return [ordered]@{status='HEALTHY';reason='ALREADY_RUNNING';action='NONE'}
+    Start-ScheduledTask -TaskName $liveStatusBridgeTask -ErrorAction Stop
+    $deadline=(Get-Date).AddSeconds(30)
+    do{Start-Sleep -Milliseconds 500;$healthy=Test-TcpPort '127.0.0.1' 8801}while(-not $healthy -and (Get-Date)-lt$deadline)
+    if($healthy){return [ordered]@{status='RECONCILED';reason='LOCAL_PORT_RECOVERED';action='START'}}
+    return [ordered]@{status='BLOCKED';reason='LOCAL_PORT_NOT_HEALTHY_AFTER_START';action='START'}
   } catch {
     return [ordered]@{status='BLOCKED';reason=$_.Exception.Message;action='NONE'}
   }
