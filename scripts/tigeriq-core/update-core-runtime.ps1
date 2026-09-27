@@ -251,7 +251,8 @@ function Reconcile-RemoteDesktopGuard(){
     $result=(($last|Out-String).Trim()|ConvertFrom-Json -ErrorAction Stop)
     if(-not [bool]$result.ok){return @{action='blocked';reason='installer_not_ok';detail=$result}}
     if(-not [bool]$result.changed){
-      return @{action='verified';reason='guard_current';version=[string]$result.version;authorizer=[string]$result.authorizer;changes=@()}
+      $authorizer=if($result.PSObject.Properties.Name -contains 'authorizer'){[string]$result.authorizer}else{'tigeriq_authorize_mutation'}
+      return @{action='verified';reason='guard_current';version=[string]$result.version;authorizer=$authorizer;changes=@()}
     }
     Stop-ScheduledTask -TaskName $remoteDesktopTask -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 2
