@@ -23,7 +23,8 @@ export function nv02PrioritySummary(issue) {
 export function nv02WorkOrderMeta(issue) { return fields(issue?.body); }
 
 function explicitTarget(meta) {
-  return LOCKED_WORKER_FIELDS.map((key) => String(meta[key] || '').trim()).find(Boolean) || '';
+  const targets = LOCKED_WORKER_FIELDS.map((key) => String(meta[key] || '').trim()).filter(Boolean);
+  return targets.find((target) => !/^NV02$/i.test(target)) || targets[0] || '';
 }
 
 function hardGate(meta) {
@@ -111,11 +112,13 @@ export function activeResourceScopes(comments = [], nowMs = Date.now()) {
       const meta = fields(body.slice(claim.index).toUpperCase());
       const scope = String(meta.RESOURCE_SCOPE || meta.scope || '').trim();
       const expiry = Date.parse(meta.EXPIRES_AT || meta.LEASE_UNTIL || meta.expires_at || '');
-      if (scope && expiry > nowMs) active.set(scope, meta);
+      if (scope && expiry > nowMs) active.set(scope, { meta, identity: String(meta.LEASE_ID || meta.CLAIM_ID || meta.WORKER || '') });
     } else if (release) {
       const meta = fields(body.slice(release.index).toUpperCase());
       const scope = String(meta.RESOURCE_SCOPE || meta.scope || '').trim();
-      if (scope) active.delete(scope);
+      const current = active.get(scope);
+      const identity = String(meta.LEASE_ID || meta.CLAIM_ID || meta.WORKER || '');
+      if (scope && current && (!identity || identity === current.identity)) active.delete(scope);
     }
   }
   return new Set(active.keys());

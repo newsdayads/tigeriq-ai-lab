@@ -39,6 +39,7 @@ describe('NV02 local GitHub self-pull contract', () => {
     expect(selectNv02WorkOrder([base(8, 'CAPABILITY=analysis\nREVIEW_INDEPENDENT=true')])).toBeNull();
     expect(selectNv02WorkOrder([base(9, 'CAPABILITY=coding\nMUTATION_OWNER=CODING')])).not.toBeNull();
     expect(selectNv02WorkOrder([base(10, 'CAPABILITY=security')])).toBeNull();
+    expect(selectNv02WorkOrder([base(11, 'TARGET_EMPLOYEE=NV02\nASSIGNED_EXECUTOR=NV09')])).toBeNull();
   });
 
   it('prefers primary role over safe fallback and rejects active duplicate owner', () => {
@@ -104,5 +105,9 @@ describe('NV02 local GitHub self-pull contract', () => {
     const released = issue(40, '[P2] coding retry', safe('PRIORITY=P2\nCAPABILITY=coding\nMUTATION_OWNER=NV09\nRESOURCE_SCOPE=CODING_RETRY'));
     expect(selectNv02WorkOrder([released], { heldScopes: activeResourceScopes(comments, now) })).not.toBeNull();
     expect(activeResourceScopes([{ id: 1, body: '[TIGERIQ_ROLE_CLAIM_V1]\nWORKER=NV09\nRESOURCE_SCOPE=CODING_RETRY\nLEASE_UNTIL=2026-09-27T01:00:00Z' }], now)).toEqual(new Set(['CODING_RETRY']));
+    expect(activeResourceScopes([
+      { id: 1, body: '[TIGERIQ_ROLE_CLAIM_V1]\nWORKER=NV09\nRESOURCE_SCOPE=CODING_RETRY\nLEASE_UNTIL=2026-09-27T01:00:00Z' },
+      { id: 2, body: '[TIGERIQ_ROLE_RELEASE_V1]\nWORKER=NV12\nRESOURCE_SCOPE=CODING_RETRY' },
+    ], now)).toEqual(new Set(['CODING_RETRY']));
   });
 });
