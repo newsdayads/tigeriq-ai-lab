@@ -85,9 +85,9 @@ describe('NV02 local GitHub self-pull contract', () => {
       comments.push({ id: comments.length + 1, body });
       return comments;
     };
-    const first = await claimNv02WorkOrder({ issue: work, comments, postComment, nowMs: Date.parse('2026-09-27T00:00:00Z') });
+    const first = await claimNv02WorkOrder({ issue: work, comments, postComment, claimSettleMs: 0, nowMs: Date.parse('2026-09-27T00:00:00Z') });
     expect(first).toBeTruthy();
-    expect(await claimNv02WorkOrder({ issue: work, comments, postComment, nowMs: Date.parse('2026-09-27T00:01:00Z') })).toBeNull();
+    expect(await claimNv02WorkOrder({ issue: work, comments, postComment, claimSettleMs: 0, nowMs: Date.parse('2026-09-27T00:01:00Z') })).toBeNull();
     expect(activeNv02Lease(comments, Date.parse('2026-09-27T00:01:00Z')).LEASE_ID).toBe(first.leaseId);
     await postComment(work.number, `EVIDENCE\nSTATE=DONE\nLEASE_ID=${first.leaseId}`);
     await (await import('../apps/tigeriq-core/nv02-local-self-pull.mjs')).releaseNv02WorkOrder({ issueNumber: work.number, leaseId: first.leaseId, state: 'DONE', postComment });

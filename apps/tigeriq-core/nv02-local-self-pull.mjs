@@ -136,13 +136,28 @@ export function activeNv02Lease(comments = [], nowMs = Date.now()) {
   return active;
 }
 
-export async function claimNv02WorkOrder({ issue, comments = [], postComment, ttlMs = 2 * 60 * 60 * 1000, nowMs = Date.now() }) {
+export async function claimNv02WorkOrder({ issue, comments = [], postComment, ttlMs = 2 * 60 * 60 * 1000, claimSettleMs = 250, nowMs = Date.now() }) {
   if (activeNv02Lease(comments, nowMs)) return null;
   const resourceScope = nv02WorkOrderMeta(issue).RESOURCE_SCOPE;
   const lease = { leaseId: `NV02-${issue.number}-${nowMs}`, resourceScope, expiresAt: new Date(nowMs + ttlMs).toISOString() };
   await postComment(issue.number, `${NV02_LEASE_MARKER}\nLEASE_ID=${lease.leaseId}\nWORKER=NV02\nRESOURCE_SCOPE=${resourceScope}\nEXPIRES_AT=${lease.expiresAt}`);
+  // GitHub comment creation is not a transaction. Let concurrent claim posts
+  // become visible, then elect the earliest still-live lease before dispatch.
+  await new Promise((resolve) => setTimeout(resolve, claimSettleMs));
   const after = await postComment(issue.number, null);
-  return activeNv02Lease(after, nowMs)?.LEASE_ID === lease.leaseId ? lease : null;
+  const live = new Map();
+  for (const comment of [...after].sort((a, b) => Number(a.id) - Number(b.id))) {
+    const body = String(comment?.body || '');
+    if (body.includes(NV02_LEASE_MARKER)) {
+      const meta = leaseFields(body, NV02_LEASE_MARKER);
+      if (meta?.LEASE_ID && Date.parse(meta.EXPIRES_AT) > nowMs) live.set(meta.LEASE_ID, meta);
+    } else if (body.includes(NV02_RELEASE_MARKER)) {
+      const meta = leaseFields(body, NV02_RELEASE_MARKER);
+      if (meta?.LEASE_ID) live.delete(meta.LEASE_ID);
+    }
+  }
+  const winner = [...live.values()][0];
+  return winner?.LEASE_ID === lease.leaseId ? lease : null;
 }
 export function releaseNv02WorkOrder({ issueNumber, leaseId, state, postComment }) {
   return postComment(issueNumber, `${NV02_RELEASE_MARKER}\nLEASE_ID=${leaseId}\nWORKER=NV02\nSTATE=${state}\nRELEASED_AT=${new Date().toISOString()}`);
