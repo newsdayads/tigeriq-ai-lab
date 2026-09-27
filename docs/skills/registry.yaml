@@ -1,7 +1,7 @@
 version: 1
 owner_issue: 859
 parent_issue: 822
-updated: 2026-09-23
+updated: 2026-09-27
 source_catalog:
   batch_id: owner-video-lessons-2026-09-18
   source_type: chatgpt_attachment
@@ -137,7 +137,7 @@ skills:
 
   - id: isolated-parallel-execution
     title: Isolated Parallel Execution
-    state: CANDIDATE
+    state: VALIDATED
     version: 1.0.0
     provenance_batch: owner-agent-review-document-research-2026-09-23
     source_log: learning-log/2026-09-23-agent-review-document-research.md
@@ -147,7 +147,7 @@ skills:
 
   - id: automated-code-review-gate
     title: Automated Code Review Gate
-    state: CANDIDATE
+    state: VALIDATED
     version: 1.0.0
     provenance_batch: owner-agent-review-document-research-2026-09-23
     source_log: learning-log/2026-09-23-agent-review-document-research.md
@@ -157,7 +157,7 @@ skills:
 
   - id: document-normalization-ingest
     title: Document Normalization Ingest
-    state: CANDIDATE
+    state: VALIDATED
     version: 1.0.0
     provenance_batch: owner-agent-review-document-research-2026-09-23
     source_log: learning-log/2026-09-23-agent-review-document-research.md
@@ -167,7 +167,7 @@ skills:
 
   - id: source-grounded-knowledge-retrieval
     title: Source-Grounded Knowledge Retrieval
-    state: CANDIDATE
+    state: VALIDATED
     version: 1.0.0
     provenance_batch: owner-agent-review-document-research-2026-09-23
     source_log: learning-log/2026-09-23-agent-review-document-research.md
@@ -177,7 +177,7 @@ skills:
 
   - id: external-research-capability-routing
     title: External Research Capability Routing
-    state: CANDIDATE
+    state: VALIDATED
     version: 1.0.0
     provenance_batch: owner-agent-review-document-research-2026-09-23
     source_log: learning-log/2026-09-23-agent-review-document-research.md
@@ -187,7 +187,7 @@ skills:
 
   - id: domain-skill-packaging
     title: Domain Skill Packaging
-    state: CANDIDATE
+    state: VALIDATED
     version: 1.0.0
     provenance_batch: owner-agent-review-document-research-2026-09-23
     source_log: learning-log/2026-09-23-agent-review-document-research.md

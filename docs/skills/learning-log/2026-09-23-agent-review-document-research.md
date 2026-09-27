@@ -84,3 +84,29 @@ Verified public repositories used to validate the visible claims:
 - `domain-skill-packaging`
 
 All six remain CANDIDATE. This batch installs no external package and activates no runtime behavior.
+
+## VALIDATION — 2026-09-27
+
+Scope: architecture/safety/duplication validation only. This phase does not install external packages, activate runtime behavior, or promote any skill to ACTIVE.
+
+### Result
+All six candidates are promoted from CANDIDATE to VALIDATED because each is distinct from current ACTIVE skills and is compatible with the current TigerIQ control boundaries when used only as reference material:
+
+- `isolated-parallel-execution`: VALIDATED. Distinct from role-separated execution because its primary concern is branch/worktree/resource-scope isolation and one-writer protection.
+- `automated-code-review-gate`: VALIDATED. Distinct from role separation because it defines a repository-aware automated review gate; independent reviewer separation remains mandatory.
+- `document-normalization-ingest`: VALIDATED. Bounded document-to-structured-text normalization is compatible with the knowledge pipeline when I/O privileges remain narrow.
+- `source-grounded-knowledge-retrieval`: VALIDATED. Retrieval/indexing may assist knowledge access but must preserve GitHub/TigerIQ as operational Source of Truth and retain durable source references.
+- `external-research-capability-routing`: VALIDATED. External research remains capability-routed and bounded by network/cookie/credential scope; no new credential or broad permission is authorized.
+- `domain-skill-packaging`: VALIDATED. Department/domain packs may reuse the existing Skill Registry and security/review contracts without creating a second orchestration authority.
+
+### Promotion boundary
+- ACTIVE promotion: NOT GRANTED in this phase.
+- Reason: the Skill Registry contract requires measurable acceptance/evidence when execution behavior changes, and no new runtime/package execution evidence is being created here.
+- No third-party installer/package is introduced.
+- No Production, credential, security-boundary, App Chrome, or runtime mutation is included.
+
+### Durable evidence
+- Source batch / acceptance: #1566.
+- Independent exact-head review of the ingest/rebase phase: #1874.
+- Registry lifecycle and promotion contract: #859 / docs/skills/README.md.
+- Architecture baseline: #822.
