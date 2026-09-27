@@ -407,9 +407,12 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
       row.metadata={...row.metadata,githubTerminalLabelSynced:true};
     }
     if(['completed','blocked'].includes(row.status)&&!row.metadata?.githubResultReported){
-      if(row.status==='completed') await clearTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:number,token});
       await commentIssue(fetchImpl,owner,repo,number,formatResultComment(row),token);
-      if(row.status==='completed') await closeIssue(fetchImpl,owner,repo,number,token);
+      if(row.status==='completed'){
+        // Close first so a failed clear cannot expose a completed OPEN issue as QUEUED.
+        await closeIssue(fetchImpl,owner,repo,number,token);
+        await clearTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:number,token});
+      }
       await pool.query("update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1",[row.id,JSON.stringify({githubResultReported:true,githubClosed:row.status==='completed'})]);
       results++;
     }
