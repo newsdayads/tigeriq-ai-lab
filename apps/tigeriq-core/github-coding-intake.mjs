@@ -392,7 +392,30 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
     seenIssues.add(n);
     const objective=(status.objectives||[]).find(x=>x.id===id);
     if(await hasCompletedCodingResult(pool,n))continue;
-    if(!objective)continue;
+    if(!objective){
+      // Historical terminal Coding objectives may already be garbage-collected from lane status.
+      // Only fetch GitHub for an unsynced blocked-final event; normal historical dispatch rows stay request-free.
+      const historicalFinal=(await eventData(pool,'GITHUB_CODING_BLOCKED_FINAL',n))[0]||null;
+      const historicalObjectiveId=String(historicalFinal?.codingObjectiveId||id);
+      if(!historicalFinal||await objectiveMarkerExists(pool,'GITHUB_CODING_TERMINAL_LABEL_SYNCED',n,historicalObjectiveId))continue;
+      let historicalIssue;
+      try{historicalIssue=await gh(fetchImpl,owner,repo,`/issues/${n}`,token)}
+      catch(error){
+        if(githubRateLimitCooldownMs(error)>0)throw error;
+        console.warn(JSON.stringify({event:'GITHUB_CODING_HISTORICAL_LABEL_SYNC_WAIT',issueNumber:n,codingObjectiveId:historicalObjectiveId,error:String(error?.message||error)}));
+        continue;
+      }
+      const historicalSourceRevision=await codingSourceRevision(fetchImpl,owner,repo,token,historicalIssue);
+      const historicalSpec=parseCodingIssue(historicalIssue);
+      const historicalEvidence=historicalSpec&&String(historicalFinal?.mainSha||'').trim()!==currentMainSha&&String(historicalFinal?.sourceRevision||'').trim()===String(historicalSourceRevision||'').trim()
+        ?await relevantRecoveryMainChangeEvidence(fetchImpl,owner,repo,token,historicalFinal.mainSha,currentMainSha,historicalSpec.scopeLease,recoveryCompareCache)
+        :{relevantMainChanged:false};
+      if(await hasEffectiveBlockedFinal(pool,n,'',historicalObjectiveId,currentMainSha,historicalSourceRevision,historicalEvidence.relevantMainChanged)){
+        await addTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:n,token});
+        await mark(pool,'GITHUB_CODING_TERMINAL_LABEL_SYNCED',{issueNumber:n,codingObjectiveId:historicalObjectiveId,historical:true});
+      }
+      continue;
+    }
     let currentIssue;
     try{currentIssue=await gh(fetchImpl,owner,repo,`/issues/${n}`,token)}
     catch(error){
