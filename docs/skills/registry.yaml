@@ -28,6 +28,14 @@ states:
   - DEPRECATED
   - REJECTED
 
+promotion_queue: promotion-queue.json
+promotion_lifecycle_states:
+  - VALIDATED_WAITING_CANARY
+  - CANARY_READY
+  - CANARY_RUNNING
+  - ACTIVE
+  - VALIDATED_BLOCKED_EVIDENCE
+
 skills:
   - id: contextual-skill-loading
     title: Contextual Skill Loading
