@@ -28,4 +28,10 @@ describe('RDC updater post-reboot self-heal', () => {
     expect(source).toContain("-MultipleInstances StopExisting");
     expect(source).toContain("UPDATER_TASK_RECREATED");
   });
+  it('tolerates an idempotent RDC installer result without an authorizer property', async () => {
+    const source = await readFile(updaterUrl, 'utf8');
+    expect(source).toContain("$result.PSObject.Properties.Name -contains 'authorizer'");
+    expect(source).toContain("'tigeriq_authorize_mutation'");
+  });
+
 });
