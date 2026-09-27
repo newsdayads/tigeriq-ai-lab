@@ -31,12 +31,12 @@ jobs:
           set -euo pipefail
           pointer="$(curl --fail-with-body --silent --show-error             -H "Authorization: Bearer $GH_TOKEN"             -H "Accept: application/vnd.github+json"             -H "X-GitHub-Api-Version: 2022-11-28"             "$API_URL/repos/$REPOSITORY/issues/1402")"
           bridge="$(POINTER="$pointer" python3 - <<'PY'
-          import json, os, re
+          import json, os
           body=json.loads(os.environ["POINTER"]).get("body") or ""
-          m=re.search(r"(?mi)^LIVE_STATUS_BRIDGE_URL=(https://[^\s]+)$",body)
-          if not m: raise SystemExit("bridge pointer missing")
-          url=m.group(1).rstrip("/")
-          if not (url.endswith(".trycloudflare.com") or url.endswith(".ts.net")):
+          prefix="LIVE_STATUS_BRIDGE_URL="
+          url=next((line[len(prefix):].strip().rstrip("/") for line in body.splitlines() if line.startswith(prefix)), "")
+          if not url: raise SystemExit("bridge pointer missing")
+          if not (url.startswith("https://") and (url.endswith(".trycloudflare.com") or url.endswith(".ts.net"))):
               raise SystemExit("bridge host invalid")
           print(url)
           PY

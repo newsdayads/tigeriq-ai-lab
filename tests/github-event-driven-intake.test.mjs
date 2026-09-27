@@ -84,6 +84,8 @@ test('GitHub Work Order workflow is event-driven with OIDC and no persistent dis
   assert.match(workflow,/X-TigerIQ-Delivery/);
   assert.doesNotMatch(workflow,/WEBHOOK_SECRET|TIGERIQ_CORE_TOKEN/);
   assert.doesNotMatch(workflow,/run_attempt/);
+  assert.match(workflow,/body\.splitlines\(\)/);
+  assert.match(workflow,/line\.startswith\(prefix\)/);
 });
 
 test('canonical bridge relays signed events while preserving read-only status API',()=>{
