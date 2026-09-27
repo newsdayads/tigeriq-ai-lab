@@ -408,7 +408,10 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
       :{relevantMainChanged:false,relevantChangedPaths:[],compareAvailable:false};
     const relevantMainChanged=recoveryEvidence.relevantMainChanged;
     if(await hasEffectiveBlockedFinal(pool,n,objective?.summary,id,currentMainSha,currentSourceRevision,relevantMainChanged)){
-      await addTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:n,token});
+      if(!(await objectiveMarkerExists(pool,'GITHUB_CODING_TERMINAL_LABEL_SYNCED',n,id))){
+        await addTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:n,token});
+        await mark(pool,'GITHUB_CODING_TERMINAL_LABEL_SYNCED',{issueNumber:n,codingObjectiveId:id});
+      }
       continue;
     }
     const job=(status.jobs||[]).find(x=>x.objective_id===id);
@@ -473,6 +476,7 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
       if(await hasEffectiveBlockedFinal(pool,n,objective.summary,id,currentMainSha,currentSourceRevision,relevantMainChanged))return false;
       await mark(pool,'GITHUB_CODING_BLOCKED_FINAL',{issueNumber:n,codingObjectiveId:id,status:'blocked',reason,mainSha:currentMainSha||null,sourceRevision:currentSourceRevision||null,...evidence});
       await addTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:n,token});
+      await mark(pool,'GITHUB_CODING_TERMINAL_LABEL_SYNCED',{issueNumber:n,codingObjectiveId:id});
       await comment(fetchImpl,owner,repo,n,token,`[BLOCKED_FINAL] ${id} reason=${reason}. ${String(objective.summary||'').slice(0,2000)}`);
       results++;
       return true;
