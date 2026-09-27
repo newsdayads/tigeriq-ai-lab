@@ -56,6 +56,7 @@ function Load-CoreEnvironment {
   $env:TIGERIQ_CORE_PORT='8795'
   $env:TIGERIQ_OLLAMA_MODEL='qwen3:4b'
   $env:TIGERIQ_ALLOW_PAID_AI='false'
+  $env:TIGERIQ_GITHUB_INTAKE_MS='300000'
   $env:TIGERIQ_GEMINI_MODEL='gemini-3.5-flash-lite'
   $env:TIGERIQ_GEMINI_MIN_INTERVAL_MS='4500'
   $env:TIGERIQ_GEMINI_BACKOFF_BASE_MS='4500'
