@@ -1,7 +1,27 @@
 import { parseExecutableIssue } from '../apps/tigeriq-core/github-intake.mjs';
 import { parseCodingIssue } from '../apps/tigeriq-core/github-coding-intake.mjs';
-import { hasRoleClaimedLabel, hasTerminalBlockedLabel, roleClaimedWorkerId } from '../apps/tigeriq-core/github-lifecycle-label.mjs';
+import { hasTerminalBlockedLabel } from '../apps/tigeriq-core/github-lifecycle-label.mjs';
 import { loadSkillPromotionState } from '../apps/tigeriq-core/skill-promotion.mjs';
+
+const EXTERNAL_ROLE_CLAIMED_LABEL='tigeriq:role-claimed';
+
+function issueLabelNames(issue){
+  return (Array.isArray(issue?.labels)?issue.labels:[])
+    .map((label)=>typeof label==='string'?label:String(label?.name||''))
+    .filter(Boolean);
+}
+
+export function hasRoleClaimedLabel(issue){
+  return issueLabelNames(issue).some((name)=>name.toLowerCase()===EXTERNAL_ROLE_CLAIMED_LABEL);
+}
+
+export function roleClaimedWorkerId(issue){
+  for(const name of issueLabelNames(issue)){
+    const match=String(name).toLowerCase().match(/^tigeriq:role-worker-(nv\d{2})$/);
+    if(match)return match[1].toUpperCase();
+  }
+  return null;
+}
 
 const REPO = process.env.TIGERIQ_REPO || 'newsdayads/tigeriq-ai-lab';
 const REGISTRY_ISSUE = 335;
