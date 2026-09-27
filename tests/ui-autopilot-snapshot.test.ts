@@ -76,7 +76,7 @@ describe('UI autopilot snapshot',()=>{
     expect(defaultCoreAssignmentUrl({})).toBe('http://127.0.0.1:8795/api/ui-assignment');
   });
   it('projects selected jobs as Core authority and reads only trusted Core assignment URLs',async()=>{
-    const github=await buildUiAutopilotSnapshot({fetchImpl:async()=>response([issue(60,{body:body('P0','NV03')})]),token:''});
+    const github=await buildUiAutopilotSnapshot({fetchImpl:async()=>response([issue(60,{body:body('P1','NV03')})]),token:''});
     const core=projectCoreOwnedUiSnapshot(github);
     expect(core).toMatchObject({source:'CORE',authority:'CORE',nextJob:{jobId:'GH-60',workerId:'NV03',coreSelected:true,workItemId:'GH-60'}});
     const read=await readCoreUiAssignment({fetchImpl:async()=>response(core),coreAssignmentUrl:'http://100.97.23.87:8795/api/ui-assignment',previousJobId:'GH-59'});
