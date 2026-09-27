@@ -14,7 +14,7 @@ assert.equal(deployedView, publicView, 'Vercel public command-center must match 
 assert.match(publicView, /TigerIQ Live/);
 assert.match(publicView, /DANH SÁCH CÔNG VIỆC/);
 assert.match(publicView, /STT · Work Order · Tên việc · NV · Trạng thái/);
-assert.match(publicView, /width:18px;height:18px/);
+assert.match(publicView, /width:19px;height:19px/);
 assert.match(publicView, /padStart\(2,'0'\)/);
 assert.match(publicView, /function displayTitle/);
 assert.match(publicView, /api\/live-status/);
