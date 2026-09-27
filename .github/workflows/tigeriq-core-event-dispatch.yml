@@ -33,9 +33,9 @@ jobs:
           bridge="$(POINTER="$pointer" python3 - <<'PY'
           import json, os, re
           body=json.loads(os.environ["POINTER"]).get("body") or ""
-          m=re.search(r"(?mi)^LIVE_STATUS_BRIDGE_URL=(https://[^\s]+)$",body)
-          if not m: raise SystemExit("bridge pointer missing")
-          url=m.group(1).rstrip("/")
+          line=next((line for line in body.splitlines() if line.startswith("LIVE_STATUS_BRIDGE_URL=")), "")
+          if not line: raise SystemExit("bridge pointer missing")
+          url=line.split("=",1)[1].strip().rstrip("/")
           if not (url.endswith(".trycloudflare.com") or url.endswith(".ts.net")):
               raise SystemExit("bridge host invalid")
           print(url)
