@@ -4,6 +4,7 @@ import {backlogOwnerDirect,effectiveBacklogPriority,isActiveExecutionSpec,isOwne
 import {classifyWorkOrder} from './work-routing-policy.mjs';
 import {controlPlaneRepairIntent,isProtectedControlPlanePath} from '../shared/control-plane-lock.mjs';
 import {githubRateLimitCooldownMs} from './github-intake.mjs';
+import {clearTerminalBlockedLabel,setTerminalBlockedLabel} from './github-lifecycle-label.mjs';
 const DEFAULT_OWNER='newsdayads';
 const DEFAULT_REPO='tigeriq-ai-lab';
 const DEFAULT_CODING_URL='http://100.97.23.87:8797';
@@ -107,6 +108,9 @@ async function jsonFetch(fetchImpl,url,init={}){
   return body;
 }
 async function gh(fetchImpl,owner,repo,path,token,init={}){const headers={accept:'application/vnd.github+json','content-type':'application/json','user-agent':'TigerIQ-Coding-Intake/1.0','x-github-api-version':'2022-11-28',...(init.headers||{})};if(token)headers.authorization=`Bearer ${token}`;return jsonFetch(fetchImpl,`https://api.github.com/repos/${owner}/${repo}${path}`,{...init,headers})}
+function lifecycleLabelRequest(fetchImpl,owner,repo,token){return (path,init={})=>gh(fetchImpl,owner,repo,path,token,init)}
+async function clearTerminalBlockedLifecycle(fetchImpl,owner,repo,n,token){if(!token)return false;return clearTerminalBlockedLabel({issueNumber:n,request:lifecycleLabelRequest(fetchImpl,owner,repo,token)})}
+async function setTerminalBlockedLifecycle(fetchImpl,owner,repo,n,token){if(!token)return false;return setTerminalBlockedLabel({issueNumber:n,request:lifecycleLabelRequest(fetchImpl,owner,repo,token)})}
 async function comment(fetchImpl,owner,repo,n,token,body){if(token)await gh(fetchImpl,owner,repo,`/issues/${n}/comments`,token,{method:'POST',body:JSON.stringify({body})})}
 async function close(fetchImpl,owner,repo,n,token){if(token)await gh(fetchImpl,owner,repo,`/issues/${n}`,token,{method:'PATCH',body:JSON.stringify({state:'closed',state_reason:'completed'})})}
 async function markerExists(pool,type,n){const q=await pool.query("select 1 from tigeriq_events where type=$1 and data->>'issueNumber'=$2 limit 1",[type,String(n)]);return q.rowCount>0}
@@ -361,6 +365,7 @@ export async function materializeGithubCodingIssues({pool,fetchImpl=fetch,owner=
       const priorDispatchObjectiveId=String((await eventData(pool,'GITHUB_CODING_DISPATCHED',spec.number))[0]?.codingObjectiveId||'');
       await mark(pool,'GITHUB_CODING_COMPLETED_REARMED',{issueNumber:spec.number,priorObjectiveId:priorResultObjectiveId||priorDispatchObjectiveId,codingObjectiveId:out.id,reopenKey:completedReopenKey,dispatchKey});
     }
+    await clearTerminalBlockedLifecycle(fetchImpl,owner,repo,typeof spec!=='undefined'&&spec?.number?spec.number:n,token);
     await mark(pool,'GITHUB_CODING_DISPATCHED',{issueNumber:spec.number,issueUrl:spec.url,codingObjectiveId:out.id,ownerDirect:spec.ownerDirect,sourcePriority:spec.sourcePriority,dispatchPriority:spec.priority,dispatchReason,scopeLease:spec.scopeLease,dispatchKey,sourceRevision,recoveredExisting,reopenKey:completedReopenKey||null});
     await comment(fetchImpl,owner,repo,spec.number,token,completedReopenKey?`[REOPEN_REARMED] TigerIQ Coding Lane rearmed this reopened Work Order as ${out.id}. Dispatch: ${dispatchReason}.`:recoveredExisting?`[CLAIM_RECOVERED] TigerIQ Coding Lane already had this issue as ${out.id}; durable dispatch state was restored. Dispatch: ${dispatchReason}.`:`[CLAIM] TigerIQ Coding Lane accepted this issue as ${out.id}. Automatic coding pipeline is active. Dispatch: ${dispatchReason}.`);
     activeScopes.push(spec.scopeLease);
@@ -444,13 +449,15 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
         }
         await mark(pool,'GITHUB_CODING_STALE_RESULT_REARMED',{issueNumber:n,priorObjectiveId:id,codingObjectiveId:rearmObjective.id,dispatchSourceRevision:dispatchSourceRevision||null,sourceRevision:currentSourceRevision||null,staleKey});
         const dispatchReason=spec.ownerDirect?`OWNER_DIRECT>${spec.sourcePriority}`:`PRIORITY_${spec.sourcePriority}`;
-        await mark(pool,'GITHUB_CODING_DISPATCHED',{issueNumber:n,issueUrl:spec.url,codingObjectiveId:rearmObjective.id,ownerDirect:spec.ownerDirect,sourcePriority:spec.sourcePriority,dispatchPriority:spec.priority,dispatchReason,sourceRevision:currentSourceRevision||null,staleKey,priorObjectiveId:id,scopeLease:spec.scopeLease});
+        await clearTerminalBlockedLifecycle(fetchImpl,owner,repo,typeof spec!=='undefined'&&spec?.number?spec.number:n,token);
+    await mark(pool,'GITHUB_CODING_DISPATCHED',{issueNumber:n,issueUrl:spec.url,codingObjectiveId:rearmObjective.id,ownerDirect:spec.ownerDirect,sourcePriority:spec.sourcePriority,dispatchPriority:spec.priority,dispatchReason,sourceRevision:currentSourceRevision||null,staleKey,priorObjectiveId:id,scopeLease:spec.scopeLease});
         await comment(fetchImpl,owner,repo,n,token,`[STALE_RESULT_REARMED] ${rearmObjective.id} currentSourceRevision=${currentSourceRevision||'unknown'} prior=${id}`);
         retryCreatedThisTick=true;
         results++;
         continue;
       }
       if(!(await hasCompletedCodingResult(pool,n))){
+        await clearTerminalBlockedLifecycle(fetchImpl,owner,repo,n,token);
         await comment(fetchImpl,owner,repo,n,token,`[RESULT] ${id} completed. ${String(objective.summary||'').slice(0,3000)}`);
         await close(fetchImpl,owner,repo,n,token);
         await mark(pool,'GITHUB_CODING_RESULT_REPORTED',{issueNumber:n,codingObjectiveId:id,status:'completed',sourceRevision:currentSourceRevision||null});
@@ -462,6 +469,7 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
     const finalize=async(reason,evidence={})=>{
       if(await hasEffectiveBlockedFinal(pool,n,objective.summary,id,currentMainSha,currentSourceRevision,relevantMainChanged))return false;
       await mark(pool,'GITHUB_CODING_BLOCKED_FINAL',{issueNumber:n,codingObjectiveId:id,status:'blocked',reason,mainSha:currentMainSha||null,sourceRevision:currentSourceRevision||null,...evidence});
+      await setTerminalBlockedLifecycle(fetchImpl,owner,repo,n,token);
       await comment(fetchImpl,owner,repo,n,token,`[BLOCKED_FINAL] ${id} reason=${reason}. ${String(objective.summary||'').slice(0,2000)}`);
       results++;
       return true;
@@ -509,7 +517,8 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
         const sourceChanged=Boolean(currentSourceRevision)&&String(latestFinal?.sourceRevision||'').trim()!==String(currentSourceRevision||'').trim();
         await mark(pool,'GITHUB_CODING_RECOVERY_REARMED',{issueNumber:n,priorObjectiveId:id,codingObjectiveId:recoveryObjective.id,mainSha:currentMainSha,priorMainSha:String(latestFinal?.mainSha||'').trim()||null,currentMainSha:currentMainSha||null,sourceRevision:currentSourceRevision||null,sourceChanged,relevantChangedPaths:recoveryEvidence.relevantChangedPaths.slice(0,32),recoveryKey,reason:classification.reason});
         const dispatchReason=spec.ownerDirect?`OWNER_DIRECT>${spec.sourcePriority}`:`PRIORITY_${spec.sourcePriority}`;
-        await mark(pool,'GITHUB_CODING_DISPATCHED',{issueNumber:n,issueUrl:spec.url,codingObjectiveId:recoveryObjective.id,ownerDirect:spec.ownerDirect,sourcePriority:spec.sourcePriority,dispatchPriority:spec.priority,dispatchReason,recoveryKey,sourceRevision:currentSourceRevision||null,priorObjectiveId:id,scopeLease:spec.scopeLease});
+        await clearTerminalBlockedLifecycle(fetchImpl,owner,repo,typeof spec!=='undefined'&&spec?.number?spec.number:n,token);
+    await mark(pool,'GITHUB_CODING_DISPATCHED',{issueNumber:n,issueUrl:spec.url,codingObjectiveId:recoveryObjective.id,ownerDirect:spec.ownerDirect,sourcePriority:spec.sourcePriority,dispatchPriority:spec.priority,dispatchReason,recoveryKey,sourceRevision:currentSourceRevision||null,priorObjectiveId:id,scopeLease:spec.scopeLease});
         await comment(fetchImpl,owner,repo,n,token,`[RECOVERY_REARMED] ${recoveryObjective.id} source=${currentMainSha.slice(0,12)} prior=${id} reason=${classification.reason.slice(0,500)}`);
         retryCreatedThisTick=true;
         results++;
@@ -553,7 +562,8 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
     if(!alreadyDispatched){
       const dispatchReason=spec.ownerDirect?`OWNER_DIRECT>${spec.sourcePriority}`:`PRIORITY_${spec.sourcePriority}`;
       await mark(pool,'GITHUB_CODING_RETRY_DISPATCHED',{issueNumber:n,codingObjectiveId:retryObjective.id,priorObjectiveId:id,retryAttempt,retryKey,reason:classification.reason,sourceRevision:currentSourceRevision||null});
-      await mark(pool,'GITHUB_CODING_DISPATCHED',{issueNumber:n,issueUrl:spec.url,codingObjectiveId:retryObjective.id,ownerDirect:spec.ownerDirect,sourcePriority:spec.sourcePriority,dispatchPriority:spec.priority,dispatchReason,retryAttempt,retryKey,sourceRevision:currentSourceRevision||null,priorObjectiveId:id,scopeLease:spec.scopeLease});
+      await clearTerminalBlockedLifecycle(fetchImpl,owner,repo,typeof spec!=='undefined'&&spec?.number?spec.number:n,token);
+    await mark(pool,'GITHUB_CODING_DISPATCHED',{issueNumber:n,issueUrl:spec.url,codingObjectiveId:retryObjective.id,ownerDirect:spec.ownerDirect,sourcePriority:spec.sourcePriority,dispatchPriority:spec.priority,dispatchReason,retryAttempt,retryKey,sourceRevision:currentSourceRevision||null,priorObjectiveId:id,scopeLease:spec.scopeLease});
       await comment(fetchImpl,owner,repo,n,token,`[RETRY_DISPATCHED] ${retryObjective.id} prior=${id} attempt=${retryAttempt}/${MAX_AUTO_RETRIES} reason=${classification.reason.slice(0,500)}`);
       results++;
     }
