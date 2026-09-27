@@ -1570,9 +1570,14 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
   }
   if(phase==='READY'){
     if(state.awaitingWorkStart===true){
-      // A READY observation alone is not an acknowledgement: do not resend until
-      // WORKING has been observed, or a bounded recovery has opened a new chat.
-      return;
+      if(!shouldRearmAwaitingWorkStart({phase,awaitingWorkStart:state.awaitingWorkStart,awaitingWorkStartSince:state.awaitingWorkStartSince,now})){
+        // A READY observation alone is not an acknowledgement: do not resend until
+        // WORKING has been observed, or the bounded acknowledgement window expires.
+        return;
+      }
+      state=rearmAwaitingWorkStart(state,now);
+      saveNv02Continuity(state);
+      await continuityEvent('READY_AWAITING_WORK_START_TIMEOUT_REARMED',{awaitingWorkStartSince:state.awaitingWorkStartSince,timeoutMs:AWAITING_WORK_START_TIMEOUT_MS});
     }
     if(state.pendingContinue!==true){
       state={...state,pendingContinue:true,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
