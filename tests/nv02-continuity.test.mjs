@@ -8,9 +8,23 @@ import {
   CONTINUITY_WORKERS, deriveNv02Phase, deriveWorkerPhase, hasActiveNv02Work, hasActiveWorkerWork,
   hasWaitingEvidenceNv02Work, hasWaitingEvidenceWorkerWork, hasContinuableNv02Work, hasContinuableWorkerWork,
   pickContinuePrompt, randomDelay, shouldRotateNv02Chat, computeWorkerStaggerDelay, rearmWorkerRunGrace,
+  AWAITING_WORK_START_TIMEOUT_MS, shouldRearmAwaitingWorkStart, rearmAwaitingWorkStart,
 } from '../apps/chrome-controller/extension/continuity.js';
 
 describe('NV02 continuity policy', () => {
+  it('recovers READY awaitingWorkStart after one bounded acknowledgement window',()=>{
+    expect(shouldRearmAwaitingWorkStart({phase:'READY',awaitingWorkStart:true,awaitingWorkStartSince:1000,now:1000+AWAITING_WORK_START_TIMEOUT_MS-1})).toBe(false);
+    expect(shouldRearmAwaitingWorkStart({phase:'READY',awaitingWorkStart:true,awaitingWorkStartSince:1000,now:1000+AWAITING_WORK_START_TIMEOUT_MS})).toBe(true);
+    expect(rearmAwaitingWorkStart({awaitingWorkStart:true,awaitingWorkStartSince:1000,pendingContinue:false},31000)).toMatchObject({awaitingWorkStart:false,awaitingWorkStartSince:0,pendingContinue:true,nextContinueAt:31000});
+  });
+
+  it('preserves anti-spam before timeout, suppresses WORKING, and isolates workers',()=>{
+    expect(shouldRearmAwaitingWorkStart({phase:'READY',awaitingWorkStart:true,awaitingWorkStartSince:1000,now:1000+AWAITING_WORK_START_TIMEOUT_MS-1})).toBe(false);
+    expect(shouldRearmAwaitingWorkStart({phase:'WORKING',awaitingWorkStart:true,awaitingWorkStartSince:1000,now:1000+AWAITING_WORK_START_TIMEOUT_MS+1})).toBe(false);
+    expect(shouldRearmAwaitingWorkStart({phase:'READY',awaitingWorkStart:true,awaitingWorkStartSince:0,now:AWAITING_WORK_START_TIMEOUT_MS})).toBe(true);
+    expect(shouldRearmAwaitingWorkStart({phase:'READY',awaitingWorkStart:true,awaitingWorkStartSince:0,now:AWAITING_WORK_START_TIMEOUT_MS-1})).toBe(false);
+  });
+
   it('exposes isolated worker-generic continuity primitives for NV02/NV03/NV04', () => {
     expect(CONTINUITY_WORKERS).toEqual(['NV02','NV03','NV04']);
     expect(CONTINUE_PROMPTS).toHaveLength(21);

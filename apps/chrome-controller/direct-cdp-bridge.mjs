@@ -5,9 +5,10 @@ import { join } from 'node:path';
 import {
   CONTINUE_MIN_MS, CONTINUE_MAX_MS, REFRESH_MIN_MS, REFRESH_MAX_MS,
   WORKER_F5_MIN_MS, WORKER_F5_MAX_MS, CONTINUITY_WORKERS,
-  MAX_STALLED_CHECKS, WORKING_PROGRESS_CHECK_MS, MAX_WORKING_UNCHANGED_CHECKS,
+  MAX_STALLED_CHECKS, WORKING_PROGRESS_CHECK_MS, MAX_WORKING_UNCHANGED_CHECKS, AWAITING_WORK_START_TIMEOUT_MS,
   deriveNv02Phase, deriveWorkerPhase,
   nextRandomAt, randomDelay, pickContinuePrompt, pickWorkerContinuePrompt, computeWorkerStaggerDelay, rearmWorkerRunGrace,
+  shouldRearmAwaitingWorkStart, rearmAwaitingWorkStart,
 } from './extension/continuity.js';
 
 const CONFIG='D:\\TigerIQ\\Apps\\ChromeController\\Config\\chrome-controller.json';
@@ -450,9 +451,14 @@ async function maybeWorkerContinuity(w,target,ui){
       await genericWorkerEvent(w.id,'READY_RECOVERY_STATE_CLEARED');
     }
     if(state.awaitingWorkStart===true){
-      // A READY observation alone is not an acknowledgement: do not resend until
-      // WORKING has been observed, or a bounded recovery has opened a new chat.
-      return;
+      if(!shouldRearmAwaitingWorkStart({phase,awaitingWorkStart:state.awaitingWorkStart,awaitingWorkStartSince:state.awaitingWorkStartSince,now})){
+        // A READY observation alone is not an acknowledgement: do not resend until
+        // WORKING has been observed, or the bounded acknowledgement window expires.
+        return;
+      }
+      state=rearmAwaitingWorkStart(state,now);
+      saveWorkerContinuity(w.id,state);
+      await genericWorkerEvent(w.id,'READY_AWAITING_WORK_START_TIMEOUT_REARMED',{awaitingWorkStartSince:state.awaitingWorkStartSince,timeoutMs:AWAITING_WORK_START_TIMEOUT_MS});
     }
     if(state.pendingContinue!==true){
       state={...state,pendingContinue:true,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS)};
