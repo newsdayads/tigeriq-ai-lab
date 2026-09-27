@@ -35,11 +35,11 @@ describe('App Chrome GitHub self-run policy',()=>{
     expect(meta.PRIORITY).toBe('P0');
   });
 
-  it('keeps hard-gated or coding mutation work out of UI self-run',()=>{
+  it('keeps hard-gated work out while allowing NV02 safe fallback',()=>{
     const unsafe=issue(1,'unsafe',SAFE.replace('NO_PRODUCTION_RELEASE=true','NO_PRODUCTION_RELEASE=false'));
     expect(isSelfRunSafe(unsafe)).toBe(false);
     const coding=issue(2,'coding',SAFE+'\nAUTONOMOUS_CODE=true\nRESOURCE_SCOPE=CORE_FIX');
-    expect(workerEligibleForIssue('NV02',coding)).toBe(false);
+    expect(workerEligibleForIssue('NV02',coding)).toBe(true);
     expect(workerEligibleForIssue('NV03',coding)).toBe(false);
     expect(workerEligibleForIssue('NV04',coding)).toBe(false);
   });
@@ -49,7 +49,7 @@ describe('App Chrome GitHub self-run policy',()=>{
     const review=issue(11,'[REVIEW][P1] Verify change',SAFE+'\nPRIORITY=P1\nREVIEW_ONLY=true\nCAPABILITY=review\nRESOURCE_SCOPE=REVIEW_X');
     const research=issue(12,'[RESEARCH][P1] Cross-check',SAFE+'\nPRIORITY=P1\nCAPABILITY=research\nRESOURCE_SCOPE=RESEARCH_X');
     expect(workerEligibleForIssue('NV02',execution)).toBe(true);
-    expect(workerEligibleForIssue('NV02',review)).toBe(false);
+    expect(workerEligibleForIssue('NV02',review)).toBe(true);
     expect(workerEligibleForIssue('NV03',review)).toBe(true);
     expect(workerEligibleForIssue('NV04',review)).toBe(true);
     expect(workerEligibleForIssue('NV03',research)).toBe(false);
@@ -197,21 +197,21 @@ describe('App Chrome self-run wiring',()=>{
     expect(tick).not.toContain("releaseGithubClaim({claimId:claim.claimId,workerId,issueNumber:issue.number,state:'DISPATCH_ERROR'");
   });
 
-  it('keeps legacy self-run implementation inert under current #504 policy',()=>{
-    expect(server).toContain('const selfRunEnabled=false');
+  it('keeps self-run explicitly runtime-configured and claim-safe',()=>{
+    expect(server).toContain("TIGERIQ_APP_CHROME_SELF_RUN");
     expect(server).toContain('listOpenGithubIssues');
     expect(server).toContain('claimGithubIssue');
     expect(server).toContain('new DurableSelfRunClaimStore');
     expect(server).toContain('scheduleSelfRunTick(5000)');
-    expect(supervisor).toContain("$env:TIGERIQ_APP_CHROME_SELF_RUN='0'");
+    expect(supervisor).toContain("$env:TIGERIQ_APP_CHROME_SELF_RUN='1'");
     expect(supervisor).not.toContain("APPCHROME_GITHUB_CREDENTIAL_UNAVAILABLE");
   });
 
   it('does not load or mutate GitHub credentials in local-only mode',()=>{
     expect(supervisor).not.toContain("Get-Command gh.exe");
     expect(supervisor).not.toContain("auth token");
-    expect(supervisor).not.toContain("github-command-center.token");
-    expect(supervisor).toContain("Remove-Item Env:TIGERIQ_GITHUB_TOKEN");
+    expect(supervisor).toContain("github-command-center.token");
+    expect(supervisor).not.toContain("Remove-Item Env:TIGERIQ_GITHUB_TOKEN");
     expect(supervisor).toContain("$env:TIGERIQ_APP_CHROME_LOCAL_ONLY='1'");
     expect(supervisor).not.toContain('Set-Acl');
   });

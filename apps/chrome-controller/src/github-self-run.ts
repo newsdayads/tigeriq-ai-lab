@@ -60,7 +60,7 @@ export function selfRunContinuityClaimMatches(
   return job.jobId===expectedJobId;
 }
 
-const PRIORITY:Record<string,number>={P0:0,P1:1,P2:2,P3:3};
+const PRIORITY:Record<string,number>={P0:0,P1:1,P2:2,P3:3,P4:4,P5:5};
 const TERMINAL_OR_HOLD_STATE_RE=/(DONE|COMPLETED|SUPERSEDED|CANCELLED|CANCELED|MANUAL_HOLD|FROZEN|WAIT_DEPENDENCY|EXTERNAL_WAIT|BLOCKED)/i;
 const SAFE_FALSE_KEYS=['NO_DIRECT_MAIN','NO_PRODUCTION_RELEASE','NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_DESTRUCTIVE'];
 const CLAIM_HEADER='[APP_CHROME_CLAIM]';
@@ -118,6 +118,14 @@ function isCodingMutation(meta:Record<string,string>){
 export function workerEligibleForIssue(workerId:WorkerId,issue:GithubIssue):boolean{
   if(!isSelfRunSafe(issue))return false;
   const meta=parseWorkOrderMetadata(issue.body);
+  if(workerId==='NV02'){
+    const hardGate=/production|paid|credential|security|destructive|device[-_ ]bound|pc_operator|app[_ -]?chrome/i;
+    const target=[meta.TARGET_EMPLOYEE,meta.ASSIGNED_EXECUTOR,meta.EXECUTOR,meta.PRIMARY_EMPLOYEE].filter(Boolean);
+    if(target.some((value)=>value&&value!=='NV02'))return false;
+    const positiveMetadata=Object.entries(meta).filter(([key])=>!key.startsWith('NO_')).map(([key,value])=>`${key}=${value}`).join('\n');
+    if(hardGate.test(`${issue.title}\n${positiveMetadata}`))return false;
+    return true;
+  }
   const review=isReview(issue,meta);
   const research=isResearch(issue,meta);
   const coding=isCodingMutation(meta);
