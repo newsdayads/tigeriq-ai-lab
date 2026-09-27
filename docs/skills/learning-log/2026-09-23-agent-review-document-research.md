@@ -110,3 +110,21 @@ All six candidates are promoted from CANDIDATE to VALIDATED because each is dist
 - Independent exact-head review of the ingest/rebase phase: #1874.
 - Registry lifecycle and promotion contract: #859 / docs/skills/README.md.
 - Architecture baseline: #822.
+
+## PROMOTION AUDIT — 2026-09-27
+
+Promotion gate source: `docs/skills/README.md`.
+
+### ACTIVE
+- `isolated-parallel-execution` → ACTIVE. Existing TigerIQ governance already enforces one active writer per RESOURCE_SCOPE and uses isolated branch/PR reconciliation. Durable current evidence includes #280/#504/#335 and the #1566/#2193 execution chain.
+- `automated-code-review-gate` → ACTIVE. Exact-head independent review is already a repeatedly exercised engineering gate. Durable evidence includes #1874 for PR #1568 and #2194 for PR #2193.
+
+Both ACTIVE skills receive explicit `SKILL.md` trigger/rules/output/boundary contracts. No runtime package or external tool is installed.
+
+### Remain VALIDATED
+- `document-normalization-ingest`: no measured TigerIQ document-normalization execution/effectiveness evidence yet.
+- `source-grounded-knowledge-retrieval`: related code-map/index work exists, but no measured document/retrieval acceptance proving this exact skill yet.
+- `external-research-capability-routing`: research capability routing exists, but bounded external network/cookie/credential execution evidence for this exact skill is insufficient.
+- `domain-skill-packaging`: no deployed department/domain pack with measurable acceptance yet.
+
+These four remain reference-only VALIDATED and are not eligible for automatic worker/runtime loading.
