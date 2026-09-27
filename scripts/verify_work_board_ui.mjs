@@ -17,7 +17,6 @@ assert.match(publicView, /STT · Work Order · Tên việc · NV · Trạng thá
 assert.match(publicView, /width:18px;height:18px/);
 assert.match(publicView, /padStart\(2,'0'\)/);
 assert.match(publicView, /function displayTitle/);
-assert.match(publicView, /if\(ad&&bd\)/);
 assert.match(publicView, /api\/live-status/);
 assert.match(publicView, /ĐANG LÀM/);
 assert.match(publicView, /ĐANG RÀ SOÁT/);
@@ -27,6 +26,12 @@ assert.match(publicView, /HOÀN TẤT/);
 assert.match(publicView, /setInterval\(.*30000/);
 assert.match(publicView, /PC01 LIVE/);
 assert.match(publicView, /DỮ LIỆU CŨ/);
+assert.match(publicView, /ĐANG MỞ/);
+assert.match(publicView, /ĐANG CHẠY/);
+assert.match(publicView, /CHỜ\/BLOCKED/);
+assert.match(publicView, /data-filter="done"/);
+assert.match(publicView, /progressPercent/);
+assert.match(publicView, /tigeriq-live-open-progress-v2/);
 
 for (const removed of [
   'KẾ TIẾP CÓ THỂ CHẠY',
@@ -49,5 +54,9 @@ assert.match(liveApi, /RECENT_WORK_LIMIT = 50/);
 assert.doesNotMatch(liveApi, /RECENT_WORK_WINDOW_MS/);
 assert.match(liveApi, /employeeId: issueEmployeeId\(issue\)/);
 assert.match(liveApi, /per_page=100&sort=updated&direction=desc/);
+assert.match(liveApi, /export function parseOpenWorkIssue/);
+assert.match(liveApi, /export function progressForIssue/);
+assert.match(liveApi, /openWork/);
+assert.match(liveApi, /openSummary/);
 
 console.log('TIGERIQ_LIVE_UNIFIED_WORK_LIST_PASS');
