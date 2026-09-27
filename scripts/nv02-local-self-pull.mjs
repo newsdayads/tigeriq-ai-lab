@@ -7,6 +7,7 @@ import {
   selectNv02WorkOrder,
   releaseNv02WorkOrder,
   nv02PrioritySummary,
+  activeResourceScopes,
 } from '../apps/tigeriq-core/nv02-local-self-pull.mjs';
 import { reconcileStaleDependency } from '../apps/tigeriq-core/dependency-reconcile.mjs';
 
@@ -21,12 +22,17 @@ function gh(args) {
   return JSON.parse(execFileSync('gh', ['api', ...args], { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 }));
 }
 function issueComments(number) { return gh([`repos/${OWNER}/${REPO}/issues/${number}/comments?per_page=100`]); }
+function allIssueComments() {
+  const pages = gh([`repos/${OWNER}/${REPO}/issues/comments?per_page=100`, '--paginate', '--slurp']);
+  return pages.flat();
+}
 function postComment(number, body) {
   if (body === null) return issueComments(number);
   return gh([`repos/${OWNER}/${REPO}/issues/${number}/comments`, '-X', 'POST', '-f', `body=${body}`]);
 }
 function summaries() {
-  return gh([`repos/${OWNER}/${REPO}/issues?state=open&per_page=100&sort=updated&direction=desc`, '--jq', '[.[] | select(.pull_request|not) | {number,title,html_url,state,updated_at}]']);
+  const pages = gh([`repos/${OWNER}/${REPO}/issues?state=open&per_page=100&sort=updated&direction=desc`, '--paginate', '--slurp']);
+  return pages.flat().filter((issue) => !issue.pull_request).map(({ number, title, html_url, state, updated_at }) => ({ number, title, html_url, state, updated_at }));
 }
 function details(summary) { return gh([`repos/${OWNER}/${REPO}/issues/${summary.number}`]); }
 function dependencyMap(issue) {
@@ -70,7 +76,12 @@ function terminal(issue, comments) {
   return null;
 }
 function hasTerminalEvidence(issue) {
-  return terminal(issue, issueComments(issue.number)) !== null;
+  const comments = issueComments(issue.number);
+  const nv02Comments = comments.filter((comment) => {
+    const body = String(comment.body || '');
+    return body.includes('[TIGERIQ_NV02_LEASE_V1]') || body.includes('[TIGERIQ_NV02_RELEASE_V1]') || /WORKER=NV02/i.test(body);
+  });
+  return terminal(issue, nv02Comments) !== null;
 }
 
 async function setIdle() {
@@ -89,8 +100,10 @@ const candidateIssues = summaries()
 const reconciledCandidates = await Promise.all(candidateIssues);
 const candidateDependencies = new Map();
 for (const candidate of reconciledCandidates) for (const [id, ready] of dependencyMap(candidate)) candidateDependencies.set(id, ready);
+const candidateHeldScopes = new Set();
+for (const scope of activeResourceScopes(allIssueComments())) candidateHeldScopes.add(scope);
 const selected = selectNv02WorkOrder(reconciledCandidates
-  .filter((issue) => !hasTerminalEvidence(issue)), { dependencies: candidateDependencies });
+  .filter((issue) => !hasTerminalEvidence(issue)), { dependencies: candidateDependencies, heldScopes: candidateHeldScopes });
 if (!selected) { await setIdle(); console.log(JSON.stringify({ event: 'NV02_READY_NO_ELIGIBLE_WORK', ...noEligibleNv02Work(), idle: 'DURABLE' })); process.exit(0); }
 const issue = selected.issue;
 const lease = await claimNv02WorkOrder({ issue, comments: issueComments(issue.number), postComment });
@@ -120,7 +133,9 @@ const nextIssues = summaries()
 const reconciledNext = await Promise.all(nextIssues);
 const nextDependencies = new Map();
 for (const candidate of reconciledNext) for (const [id, ready] of dependencyMap(candidate)) nextDependencies.set(id, ready);
-const next = selectNv02WorkOrder(reconciledNext.filter((candidate) => !hasTerminalEvidence(candidate)), { dependencies: nextDependencies });
+const nextHeldScopes = new Set();
+for (const scope of activeResourceScopes(allIssueComments())) nextHeldScopes.add(scope);
+const next = selectNv02WorkOrder(reconciledNext.filter((candidate) => !hasTerminalEvidence(candidate)), { dependencies: nextDependencies, heldScopes: nextHeldScopes });
 console.log(JSON.stringify(next
   ? { event: 'NV02_NEXT_WORK_ORDER_READY', issue: next.issue.number, priority: next.result.priority, resourceScope: next.result.resourceScope }
   : { event: 'NV02_READY_NO_ELIGIBLE_WORK', ...noEligibleNv02Work(), idle: 'DURABLE' }));

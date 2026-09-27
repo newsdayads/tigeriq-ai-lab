@@ -234,7 +234,7 @@ Với thay đổi Loader/Bootstrap cốt lõi: bắt buộc regression tối thi
 ## 20. Ranh giới Core ↔ NV02/NV03/NV04
 - `NV02`, `NV03`, `NV04` là các UI/subscription worker nằm **ngoài quyền phân việc của Core**.
 - Core KHÔNG được assign, dispatch, route, claim hộ, revoke, reassign, heartbeat-gate, tạo `READY_UNASSIGNED` như một quyền điều khiển, hoặc chọn backlog cho ba worker này.
-- Ba worker này KHÔNG dùng Core role-fallback để tự scan/self-pull GitHub backlog.
+- Ba worker này KHÔNG dùng Core role-fallback để tự scan/self-pull GitHub backlog; Owner-authorized NV02 local self-pull is a separate bounded lane.
 - Core tiếp tục tự động điều phối P1–P5 cho các resource chuyên dụng thuộc Core: API workers/Coding Lane, `NV06/OpenClaw`, và các resource khác đúng capability/health.
 - App Chrome là continuity transport cục bộ riêng cho `NV02/NV03/NV04`; không được dùng Core assignment hoặc GitHub backlog scan làm điều kiện gửi continue.
 - P0 Owner-only, one-resource-one-writer và các hard gate khác giữ nguyên.

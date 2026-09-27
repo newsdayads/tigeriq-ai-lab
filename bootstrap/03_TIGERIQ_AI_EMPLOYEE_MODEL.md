@@ -64,6 +64,6 @@ Turns repeatable work into SOPs, automations, schedules, measurable processes, r
 
 ## UI/subscription workers outside Core routing
 - Theo Dynamic Registry hiện hành, `NV02/NV03/NV04` là UI/subscription workers và không thuộc Core assignment plane.
-- Core không được giao/chuyển/thu hồi việc, tạo role-fallback, hoặc điều khiển trạng thái làm việc của các worker này.
+- Core không được giao/chuyển/thu hồi việc, tạo role-fallback, hoặc điều khiển trạng thái làm việc của các worker này; NV02 local self-pull remains an Owner-authorized separate lane.
 - Core-managed autonomy áp dụng cho specialist/API resources, Coding Lane, NV06/OpenClaw và các resource tương thích capability khác.
 - App Chrome chỉ duy trì continuity/UI local theo Owner policy; không biến thành dispatcher và không dùng Core/GitHub backlog để phân việc cho `NV02/NV03/NV04`.
