@@ -45,8 +45,8 @@ describe('App Chrome GitHub self-run policy',()=>{
   });
 
   it('routes execution to NV02, review to NV03/NV04, research to NV04',()=>{
-    const execution=issue(10,'[P0] Read-only integration',SAFE+'\nOWNER_DIRECT=true\nPRIORITY=P0\nRESOURCE_SCOPE=READ_ONLY_INTEGRATION');
-    const review=issue(11,'[REVIEW][P0] Verify change',SAFE+'\nPRIORITY=P0\nREVIEW_ONLY=true\nCAPABILITY=review\nRESOURCE_SCOPE=REVIEW_X');
+    const execution=issue(10,'[P1] Read-only integration',SAFE+'\nOWNER_DIRECT=true\nPRIORITY=P1\nRESOURCE_SCOPE=READ_ONLY_INTEGRATION');
+    const review=issue(11,'[REVIEW][P1] Verify change',SAFE+'\nPRIORITY=P1\nREVIEW_ONLY=true\nCAPABILITY=review\nRESOURCE_SCOPE=REVIEW_X');
     const research=issue(12,'[RESEARCH][P1] Cross-check',SAFE+'\nPRIORITY=P1\nCAPABILITY=research\nRESOURCE_SCOPE=RESEARCH_X');
     expect(workerEligibleForIssue('NV02',execution)).toBe(true);
     expect(workerEligibleForIssue('NV02',review)).toBe(false);
@@ -56,14 +56,14 @@ describe('App Chrome GitHub self-run policy',()=>{
     expect(workerEligibleForIssue('NV04',research)).toBe(true);
   });
 
-  it('respects scope collision and Owner/P0 priority',()=>{
+  it('excludes P0 before scope and priority selection',()=>{
     const issues=[
       issue(21,'P1',SAFE+'\nPRIORITY=P1\nRESOURCE_SCOPE=A'),
       issue(22,'Owner P0',SAFE+'\nOWNER_DIRECT=true\nPRIORITY=P0\nRESOURCE_SCOPE=B'),
-      issue(23,'Blocked scope',SAFE+'\nOWNER_DIRECT=true\nPRIORITY=P0\nRESOURCE_SCOPE=BUSY'),
+      issue(23,'P2',SAFE+'\nPRIORITY=P2\nRESOURCE_SCOPE=C'),
     ];
-    const out=eligibleIssuesForWorker('NV02',issues,new Set(['BUSY']));
-    expect(out.map(x=>x.number)).toEqual([22,21]);
+    const out=eligibleIssuesForWorker('NV02',issues,new Set());
+    expect(out.map(x=>x.number)).toEqual([21,23]);
   });
 
   it('arbitrates competing App workers locally before either may post a GitHub claim',()=>{

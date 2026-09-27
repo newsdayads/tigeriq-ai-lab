@@ -2,7 +2,7 @@
 import { describe,expect,it } from 'vitest';
 import { buildPrompt,buildUiAutopilotSnapshot,defaultCoreAssignmentUrl,extractAutoReleaseDependencies,findDurableSaveReceipt,parseAutoUiIssue,projectCoreOwnedUiSnapshot,readCoreUiAssignment,readDurableSaveReceipt,readPreviousJobIdFromController } from '../apps/tigeriq-core/ui-autopilot-snapshot.mjs';
 
-const body=(priority='P0',worker='NV02')=>[
+const body=(priority='P1',worker='NV02')=>[
   'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO_UI',`PRIORITY=${priority}`,`PRIMARY_EMPLOYEE=${worker}`,
   'NO_DIRECT_MAIN=true','NO_PAID_COST=true','NO_CREDENTIAL_CHANGE=true','NO_DESTRUCTIVE=true','NO_PRODUCTION_RELEASE=true',
 ].join('\n');
@@ -10,26 +10,27 @@ const issue=(number,overrides={})=>({number,title:`Job ${number}`,state:'open',s
 function response(value,status=200){return{ok:status>=200&&status<300,status,json:async()=>value};}
 
 describe('UI autopilot issue contract',()=>{
-  it('accepts explicit AUTO_UI NV02/NV03/NV04 P0/P1 issues',()=>{
-    expect(parseAutoUiIssue(issue(10))).toMatchObject({number:10,jobId:'GH-10',workerId:'NV02',priority:'P0'});
-    expect(parseAutoUiIssue(issue(11,{body:body('P1','NV03')}))).toMatchObject({workerId:'NV03',priority:'P1'});
-    expect(parseAutoUiIssue(issue(12,{body:body('P0','NV04')}))).toMatchObject({workerId:'NV04'});
-    expect(parseAutoUiIssue(issue(13,{body:body('P2')}))).toBeNull();
+  it('accepts explicit system-assigned P1-P5 and rejects P0',()=>{
+    expect(parseAutoUiIssue(issue(10))).toMatchObject({number:10,jobId:'GH-10',workerId:'NV02',priority:'P1'});
+    expect(parseAutoUiIssue(issue(11,{body:body('P2','NV03')}))).toMatchObject({workerId:'NV03',priority:'P2'});
+    expect(parseAutoUiIssue(issue(12,{body:body('P5','NV04')}))).toMatchObject({workerId:'NV04',priority:'P5'});
+    expect(parseAutoUiIssue(issue(13,{body:body('P0')}))).toBeNull();
+    expect(parseAutoUiIssue(issue(131,{title:'[P0] title-only',body:body('P1')}))).toBeNull();
     expect(parseAutoUiIssue(issue(14,{body:body().replace('OWNER_POLICY=AUTO_UI','OWNER_POLICY=AUTO')}))).toBeNull();
   });
-  it('fails closed when a required safety flag or employee is wrong',()=>{expect(parseAutoUiIssue(issue(15,{body:body().replace('NO_DESTRUCTIVE=true','NO_DESTRUCTIVE=false')}))).toBeNull();expect(parseAutoUiIssue(issue(16,{body:body('P0','NV05')}))).toBeNull();});
+  it('fails closed when a required safety flag or employee is wrong',()=>{expect(parseAutoUiIssue(issue(15,{body:body().replace('NO_DESTRUCTIVE=true','NO_DESTRUCTIVE=false')}))).toBeNull();expect(parseAutoUiIssue(issue(16,{body:body('P1','NV05')}))).toBeNull();});
   it('keeps staged AUTO_UI ineligible until dependency release is explicitly satisfied',()=>{
     const staged=issue(17,{body:`${body().replace('TIGERIQ_EXECUTABLE=true','TIGERIQ_EXECUTABLE=false')}\nAUTO_RELEASE_AFTER=#1330,#1333`});
     expect(extractAutoReleaseDependencies(staged.body)).toEqual([1330,1333]);
     expect(parseAutoUiIssue(staged)).toBeNull();
-    expect(parseAutoUiIssue(staged,{releaseSatisfied:true})).toMatchObject({jobId:'GH-17',workerId:'NV02',priority:'P0',autoReleased:true,autoReleaseAfter:[1330,1333]});
+    expect(parseAutoUiIssue(staged,{releaseSatisfied:true})).toMatchObject({jobId:'GH-17',workerId:'NV02',priority:'P1',autoReleased:true,autoReleaseAfter:[1330,1333]});
   });
   it('ignores pull requests',()=>{expect(parseAutoUiIssue(issue(18,{pull_request:{url:'x'}}))).toBeNull();});
   it('builds deterministic prompt without copying issue body',()=>{const spec=parseAutoUiIssue(issue(19,{title:'  Fix   safe UI\nflow '}));const prompt=buildPrompt(spec);expect(prompt).toContain('#19 - Fix safe UI flow');expect(prompt).not.toContain('OWNER_POLICY');});
 });
 
 describe('UI autopilot snapshot',()=>{
-  it('supports public read-only GitHub without a token and selects P0 first',async()=>{const rows=[issue(21,{body:body('P1')}),issue(23),issue(22)];const fetchImpl=async()=>response(rows);const s=await buildUiAutopilotSnapshot({fetchImpl,token:''});expect(s.nextJob).toMatchObject({jobId:'GH-22',workerId:'NV02',status:'READY',priority:'P0',issueRef:'https://github.com/newsdayads/tigeriq-ai-lab/issues/22'});expect(s.revision).toContain('GH-22');});
+  it('filters P0 and selects the highest system-assigned P1-P5 item',async()=>{const rows=[issue(21,{body:body('P1')}),issue(23,{body:body('P0')}),issue(22,{body:body('P2')})];const fetchImpl=async()=>response(rows);const s=await buildUiAutopilotSnapshot({fetchImpl,token:''});expect(s.nextJob).toMatchObject({jobId:'GH-21',workerId:'NV02',status:'READY',priority:'P1',issueRef:'https://github.com/newsdayads/tigeriq-ai-lab/issues/21'});expect(s.revision).toContain('GH-21');});
   it('auto-releases staged AUTO_UI only after every dependency is closed/completed, preserving assignment and priority',async()=>{
     const staged=issue(27,{body:`${body('P1','NV03').replace('TIGERIQ_EXECUTABLE=true','TIGERIQ_EXECUTABLE=false')}\nAUTO_RELEASE_AFTER=#1330,#1333`});
     let dep1333='open';
@@ -76,7 +77,7 @@ describe('UI autopilot snapshot',()=>{
     expect(defaultCoreAssignmentUrl({})).toBe('http://127.0.0.1:8795/api/ui-assignment');
   });
   it('projects selected jobs as Core authority and reads only trusted Core assignment URLs',async()=>{
-    const github=await buildUiAutopilotSnapshot({fetchImpl:async()=>response([issue(60,{body:body('P0','NV03')})]),token:''});
+    const github=await buildUiAutopilotSnapshot({fetchImpl:async()=>response([issue(60,{body:body('P1','NV03')})]),token:''});
     const core=projectCoreOwnedUiSnapshot(github);
     expect(core).toMatchObject({source:'CORE',authority:'CORE',nextJob:{jobId:'GH-60',workerId:'NV03',coreSelected:true,workItemId:'GH-60'}});
     const read=await readCoreUiAssignment({fetchImpl:async()=>response(core),coreAssignmentUrl:'http://100.97.23.87:8795/api/ui-assignment',previousJobId:'GH-59'});

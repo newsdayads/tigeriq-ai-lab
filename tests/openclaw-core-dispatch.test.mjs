@@ -10,6 +10,10 @@ import {
   normalizeOpenClawDispatchEnvelope,
   hasHardGateTextIntent,
   parseOpenClawAgentResult,
+  openClawTerminalDecision,
+  safeOpenClawFailureMessage,
+  trustedBridgeFileReadReceipt,
+  trustedStructuredFileReadReceipt,
   readOpenClawDispatchRecord,
   writeOpenClawDispatchRecord,
 } from '../apps/openclaw-tigeriq-runtime/dispatch.mjs';
@@ -113,6 +117,56 @@ describe('Core -> OpenClaw bounded dispatch #1528', () => {
     expect(bad.agentResult).toBeNull();
   });
 
+  it('accepts only strict in-root flat file_read evidence as embedded trusted receipt', () => {
+    const agentResult={status:'OK',evidence:{action:'file_read',ok:true,path:'D:\\TigerIQ\\State\\core-runtime-updater.json',size:3946},blocker:null};
+    expect(trustedStructuredFileReadReceipt(agentResult)).toBe(true);
+    expect(openClawTerminalDecision({
+      exitCode:1,status:'error',agentResult,successfulToolNames:[],
+    },{timedOut:false,parsedPresent:true})).toMatchObject({
+      success:true,trustedToolReceipt:true,terminalReceiptTool:false,embeddedFileReadReceipt:true,
+    });
+
+    expect(trustedStructuredFileReadReceipt({...agentResult,evidence:{...agentResult.evidence,path:'C:\\Windows\\temp.txt'}})).toBe(false);
+    expect(trustedStructuredFileReadReceipt({...agentResult,evidence:{...agentResult.evidence,ok:false}})).toBe(false);
+    expect(trustedStructuredFileReadReceipt({...agentResult,evidence:{...agentResult.evidence,action:'file_write'}})).toBe(false);
+    expect(trustedStructuredFileReadReceipt({...agentResult,blocker:'blocked'})).toBe(false);
+    expect(openClawTerminalDecision({
+      exitCode:1,status:'error',agentResult:null,successfulToolNames:[],
+    },{timedOut:false,parsedPresent:true}).success).toBe(false);
+  });
+
+  it('trusts only a bounded structured tigeriq_pc file_read receipt from bridgeCalls', () => {
+    const bridgeCalls=[{tool:'tigeriq_pc',result:{ok:true,action:'file_read',target:'pc01-local',data:{path:'D:\\TigerIQ\\State\\core-runtime-updater.json',size:42,content:'private'}}}];
+    expect(trustedBridgeFileReadReceipt(bridgeCalls)).toBe(true);
+    const terminal=openClawTerminalDecision({
+      exitCode:1,
+      status:'error',
+      agentResult:{status:'SUCCESS',evidence:{content:'model summary is not itself trusted'}},
+      successfulToolNames:[],
+      bridgeCalls,
+    },{timedOut:false,parsedPresent:true});
+    expect(terminal).toMatchObject({success:true,trustedToolReceipt:true,bridgeFileReadReceipt:true});
+
+    expect(trustedBridgeFileReadReceipt([{result:{ok:true,action:'file_write',target:'pc01-local',data:{path:'D:\\TigerIQ\\State\\x.json'}}}])).toBe(false);
+    expect(trustedBridgeFileReadReceipt([{result:{ok:true,action:'file_read',target:'pc01-local',data:{path:'C:\\Windows\\x.txt'}}}])).toBe(false);
+    expect(trustedBridgeFileReadReceipt([{result:{ok:true,action:'file_read',target:'other',data:{path:'D:\\TigerIQ\\State\\x.json'}}}])).toBe(false);
+    expect(openClawTerminalDecision({
+      exitCode:1,status:'error',
+      agentResult:{status:'SUCCESS',evidence:{content:'not trusted'}},
+      successfulToolNames:[],bridgeCalls:null,
+    },{timedOut:false,parsedPresent:true}).success).toBe(false);
+  });
+
+  it('uses classification-only public failure messages and never raw agent text or stderr', () => {
+    const raw='TOP SECRET FILE CONTENT';
+    expect(safeOpenClawFailureMessage({
+      terminal:{invalidTerminal:true,agentStatus:'success'},
+      result:{status:'error',text:raw,stderr:raw},
+    })).toBe('OPENCLAW_AGENT_TERMINAL_INVALID:status=success');
+    expect(safeOpenClawFailureMessage({rateLimited:true,result:{text:raw}})).toBe('OPENCLAW_RATE_LIMIT');
+    expect(safeOpenClawFailureMessage({timedOut:true,result:{text:raw}})).toBe('OPENCLAW_WORKER_TIMEOUT');
+  });
+
   it('retries one failed durable dispatch with the same idempotency record and then stops', async () => {
     const root=await mkdtemp(path.join(tmpdir(),'tigeriq-oc-1528-retry-'));
     try{
@@ -186,7 +240,11 @@ describe('Core -> OpenClaw bounded dispatch #1528', () => {
   it('Core source routes pc_operator through OpenClaw without exposing it as a normal provider call', async () => {
     const source=await readFile(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
     expect(source).toContain("capabilities:['pc_operator']");
-    expect(source).toContain("if(j.capability==='pc_operator'){await runOpenClawOperatorJob(j);return;}");
+    expect(source).toContain("if(j.capability==='pc_operator'){if(directPcOperatorAction(j))await runDirectPcOperatorJob(j);else await runOpenClawOperatorJob(j);return;}");
+    expect(source).toContain("PC_OPERATOR_DIRECT_ACTION_NOT_ADMITTED");
+    expect(source).toContain("PC_OPERATOR_DIRECT_RECOVERY_FAIL_CLOSED");
+    expect(source).toContain("executionSurface:'PC_OPERATOR_DIRECT_LOCAL'");
+    expect(source).toContain("action==='shell_exec'||action==='file_write'||action.startsWith('pad_')");
     expect(source).toContain("OPENCLAW_DISPATCH_ADMITTED");
     expect(source).toContain("OPENCLAW_JOB_RECOVERED_AFTER_CORE_RESTART");
     expect(source).toContain("update tigeriq_ai_resources set enabled=$2");

@@ -1,5 +1,6 @@
 import { parseExecutableIssue } from '../apps/tigeriq-core/github-intake.mjs';
 import { parseCodingIssue } from '../apps/tigeriq-core/github-coding-intake.mjs';
+import { hasTerminalBlockedLabel } from '../apps/tigeriq-core/github-lifecycle-label.mjs';
 
 const REPO = process.env.TIGERIQ_REPO || 'newsdayads/tigeriq-ai-lab';
 const REGISTRY_ISSUE = 335;
@@ -12,8 +13,7 @@ const POINTER_CACHE_MS = 10 * 60 * 1000;
 const GITHUB_PROJECTION_CACHE_MS = 30 * 1000;
 const DEPENDENCY_CACHE_MS = 60 * 1000;
 const QUEUE_LIMIT = 20;
-const RECENT_WORK_LIMIT = 5;
-const RECENT_WORK_WINDOW_MS = 24 * 60 * 60 * 1000;
+const RECENT_WORK_LIMIT = 50;
 const RECENT_WORK_CACHE_MS = 5 * 60 * 1000;
 const WORKING_HEARTBEAT_MAX_MS = 60 * 1000;
 let pointerCache = { at: 0, url: null };
@@ -336,9 +336,18 @@ function bodyFlag(body, key, value = 'true') {
 
 function issuePriority(issue) {
   const body = String(issue?.body || '');
-  return bodyValue(body, 'PRIORITY').match(/^P[0-3]$/i)?.[0]?.toUpperCase()
-    || String(issue?.title || '').match(/^\[(P[0-3])\]/i)?.[1]?.toUpperCase()
+  return bodyValue(body, 'PRIORITY').match(/^P[0-5]$/i)?.[0]?.toUpperCase()
+    || String(issue?.title || '').match(/^\[(P[0-5])\]/i)?.[1]?.toUpperCase()
     || null;
+}
+
+function issueEmployeeId(issue) {
+  const body = String(issue?.body || '');
+  for (const key of ['TARGET_EMPLOYEE','ASSIGNED_EXECUTOR','EXECUTOR','PREFERRED_REVIEWER','PRIMARY_EMPLOYEE','IMPLEMENTER','REVIEWER']) {
+    const id = workerIdFromText(bodyValue(body, key));
+    if (id) return id;
+  }
+  return workerIdFromText(issue?.title || '');
 }
 
 function issueIsTerminal(issue) {
@@ -366,11 +375,19 @@ export function parseRecentCompletedIssue(issue, now = Date.now()) {
   if (/^SUPERSEDED(?:_BY)?=/mi.test(body)) return null;
   const completedAt = issue.closed_at || issue.updated_at || null;
   const completedMs = Date.parse(completedAt || '');
-  if (!Number.isFinite(completedMs) || completedMs > now || now - completedMs > RECENT_WORK_WINDOW_MS) return null;
+  if (!Number.isFinite(completedMs) || completedMs > now) return null;
+  const priority = issuePriority(issue);
   return {
     number: Number(issue.number),
     title: String(issue.title || ''),
+    priority,
+    effectivePriority: priority,
+    sourcePriority: priority,
+    employeeId: issueEmployeeId(issue),
     status: 'DONE',
+    progressPercent: 100,
+    progressSource: 'terminal',
+    progressDetail: '5/5 gate',
     completedAt,
     updatedAt: completedAt,
     url: issue.html_url || null,
@@ -383,7 +400,7 @@ async function recentCompletedWork(owner, repo, fetchImpl = fetch) {
     return recentWorkCache.data;
   }
   try {
-    const issues = await gh('/repos/' + owner + '/' + repo + '/issues?state=closed&per_page=30&sort=updated&direction=desc', fetchImpl);
+    const issues = await gh('/repos/' + owner + '/' + repo + '/issues?state=closed&per_page=100&sort=updated&direction=desc', fetchImpl);
     const rows = (Array.isArray(issues) ? issues : [])
       .map((issue) => parseRecentCompletedIssue(issue, now))
       .filter(Boolean)
@@ -415,13 +432,21 @@ export function parseQueueIssue(issue) {
   const coreSpec = parseExecutableIssue(issue);
   const codingSpec = parseCodingIssue(issue);
   if (!coreSpec && !codingSpec) return null;
-  const holdReason = queueWaitReason(issue);
+  const terminalBlocked = hasTerminalBlockedLabel(issue);
+  const holdReason = terminalBlocked ? 'TigerIQ terminal BLOCKED' : queueWaitReason(issue);
+  const effectivePriority = codingSpec?.priority || coreSpec?.priority || issuePriority(issue) || 'P3';
+  const sourcePriority = codingSpec?.sourcePriority || coreSpec?.sourcePriority || issuePriority(issue) || effectivePriority;
   return {
     number: Number(issue.number),
     title: String(issue.title || ''),
-    priority: codingSpec?.sourcePriority || coreSpec?.priority || issuePriority(issue) || 'P2',
+    priority: effectivePriority,
+    effectivePriority,
+    sourcePriority,
+    ownerControlled: Boolean(codingSpec?.ownerControlled ?? coreSpec?.ownerControlled ?? false),
     ownerDirect: Boolean(codingSpec?.ownerDirect ?? coreSpec?.ownerDirect ?? bodyFlag(issue?.body || '', 'OWNER_DIRECT')),
-    status: holdReason && /BLOCKED/.test(holdReason) ? 'BLOCKED' : holdReason ? 'WAITING' : 'QUEUED',
+    route: codingSpec ? 'CODING' : (coreSpec?.route || coreSpec?.dispatchLane || null),
+    resourceScope: codingSpec?.scopeLease?.resourceScope || coreSpec?.resourceScope || bodyValue(issue?.body || '', 'RESOURCE_SCOPE') || null,
+    status: terminalBlocked || (holdReason && /BLOCKED/.test(holdReason)) ? 'BLOCKED' : holdReason ? 'WAITING' : 'QUEUED',
     waitReason: holdReason,
     dependencies: codingSpec?.dependsOn || queueDependencies(issue),
     updatedAt: issue.updated_at || null,
@@ -429,11 +454,47 @@ export function parseQueueIssue(issue) {
   };
 }
 
+function queuePriority(row) {
+  return String(row?.effectivePriority || row?.priority || 'P3').toUpperCase();
+}
+
+export function queueRowEligibleNow(row) {
+  return String(row?.status || '').toUpperCase() === 'QUEUED' && /^P[1-5]$/.test(queuePriority(row));
+}
+
 export function compareQueueRows(a, b) {
-  if (Boolean(a?.ownerDirect) !== Boolean(b?.ownerDirect)) return a?.ownerDirect ? -1 : 1;
-  const rank = { P0: 0, P1: 1, P2: 2, P3: 3 };
-  const delta = (rank[a?.priority] ?? 2) - (rank[b?.priority] ?? 2);
-  return delta || Number(a?.number || 0) - Number(b?.number || 0);
+  const aEligible = queueRowEligibleNow(a);
+  const bEligible = queueRowEligibleNow(b);
+  if (aEligible !== bEligible) return aEligible ? -1 : 1;
+  const rank = { P0: 0, P1: 1, P2: 2, P3: 3, P4: 4, P5: 5 };
+  const aPriorityRank = !aEligible && queuePriority(a) === 'P0' ? 6 : (rank[queuePriority(a)] ?? rank.P3);
+  const bPriorityRank = !bEligible && queuePriority(b) === 'P0' ? 6 : (rank[queuePriority(b)] ?? rank.P3);
+  const delta = aPriorityRank - bPriorityRank;
+  if (delta) return delta;
+  if (aEligible && bEligible && Boolean(a?.ownerDirect) !== Boolean(b?.ownerDirect)) return a?.ownerDirect ? -1 : 1;
+  const waitRank = { WAITING: 0, BLOCKED: 1, QUEUED: 2 };
+  const waitDelta = (waitRank[String(a?.status || '').toUpperCase()] ?? 3) - (waitRank[String(b?.status || '').toUpperCase()] ?? 3);
+  if (waitDelta) return waitDelta;
+  return Number(a?.number || 0) - Number(b?.number || 0);
+}
+
+export function rankQueueRows(rows = []) {
+  let dispatchRank = 0;
+  return (Array.isArray(rows) ? rows : []).map((row) => {
+    const priority = queuePriority(row);
+    const p0Waiting = String(row?.status || '').toUpperCase() === 'QUEUED' && priority === 'P0';
+    const normalized = p0Waiting
+      ? { ...row, status: 'WAITING', waitReason: row.waitReason || 'P0 chờ Owner/assignment' }
+      : row;
+    return normalized;
+  }).sort(compareQueueRows).map((row) => {
+    const eligibleNow = queueRowEligibleNow(row);
+    return {
+      ...row,
+      eligibleNow,
+      dispatchRank: eligibleNow ? ++dispatchRank : null,
+    };
+  });
 }
 
 function runtimeState(state) {
@@ -526,6 +587,139 @@ async function dependencyStates(rows, owner, repo, fetchImpl) {
     }
   }));
   return results;
+}
+
+function issueCanonicalState(issue) {
+  const body = String(issue?.body || '');
+  return (bodyValue(body, 'CURRENT_STATE') || bodyValue(body, 'STATE') || '').toUpperCase();
+}
+
+function issueDisplayOwner(issue) {
+  const body = String(issue?.body || '');
+  const employee = issueEmployeeId(issue);
+  if (employee) return employee;
+  const owner = bodyValue(body, 'MUTATION_OWNER') || bodyValue(body, 'ACTIVE_OWNER');
+  if (/^(?:NV\d{2}|VY|CODEX|AUTO)$/i.test(owner)) return owner.toUpperCase();
+  return null;
+}
+
+export function classifyOpenIssue(issue) {
+  const title = String(issue?.title || '');
+  const body = String(issue?.body || '');
+  const phase = issueCanonicalState(issue);
+
+  const systemReference = /\[(?:QUẢN TRỊ|REGISTRY|STATE|CENTRAL|TÀI NGUYÊN|POLICY|SOT)\]/i.test(title)
+    || bodyFlag(body, 'CANONICAL_POLICY')
+    || bodyFlag(body, 'REFERENCE_ONLY');
+
+  const ownerGate = /(?:^|_)(?:BLOCKED_OWNER|WAIT_OWNER|OWNER_APPROVAL_REQUIRED|OWNER_GATE)(?:_|$)/.test(phase)
+    || bodyFlag(body, 'OWNER_APPROVAL_REQUIRED')
+    || bodyFlag(body, 'OWNER_GATE')
+    || bodyFlag(body, 'OWNER_HOLD');
+
+  const objective = /\[OWNER\]/i.test(title) && bodyFlag(body, 'TIGERIQ_EXECUTABLE', 'false') && !ownerGate;
+
+  return {
+    workKind: systemReference ? 'SYSTEM' : objective ? 'GOAL' : 'WORK',
+    ownerGate,
+  };
+}
+
+function actionableStatus(issue, overlays = {}) {
+  const body = String(issue?.body || '');
+  const phase = issueCanonicalState(issue);
+  const classification = classifyOpenIssue(issue);
+
+  if (classification.workKind === 'SYSTEM') return 'SYSTEM';
+  if (classification.ownerGate) return 'OWNER_GATE';
+
+  const active = overlays.active || null;
+  const queued = overlays.queued || null;
+  if (active?.status) return String(active.status).toUpperCase();
+  if (queued?.status) return String(queued.status).toUpperCase();
+
+  if (classification.workKind === 'GOAL') return 'GOAL';
+  if (/(?:READY_(?:LIVE_)?ACCEPTANCE|READY_VERIFY|WAIT_VERIFY|LIVE_ACCEPTANCE)/.test(phase)) return 'VERIFY';
+  if (/BLOCKED/.test(phase)) return 'BLOCKED';
+  if (/(?:WAIT|PENDING|HOLD)/.test(phase)) return 'WAITING';
+  if (/(?:REVIEW|VERIFY)/.test(phase)) return 'REVIEW';
+  if (/(?:WORKING|RUNNING|IN_PROGRESS|IMPLEMENT)/.test(phase)) return 'WORKING';
+  if (/(?:READY|QUEUED)/.test(phase) && bodyFlag(body, 'TIGERIQ_EXECUTABLE', 'true')) return 'QUEUED';
+  return 'OPEN';
+}
+
+export function progressForIssue(issue, status = 'OPEN', checks = null, hasPull = false) {
+  const body = String(issue?.body || '');
+  const explicitRaw = bodyValue(body, 'PROGRESS_PERCENT');
+  if (/^\d{1,3}$/.test(explicitRaw)) {
+    const explicit = Number(explicitRaw);
+    if (explicit >= 0 && explicit <= 100) return { percent: explicit, source: 'explicit', detail: 'PROGRESS_PERCENT' };
+  }
+
+  const boxes = [...body.matchAll(/^\s*[-*]\s+\[([ xX])\]/gm)];
+  if (boxes.length >= 2) {
+    const done = boxes.filter((match) => /x/i.test(match[1])).length;
+    return { percent: Math.round((done / boxes.length) * 100), source: 'checklist', detail: done + '/' + boxes.length + ' checklist' };
+  }
+
+  const phase = issueCanonicalState(issue);
+  const normalized = String(status || 'OPEN').toUpperCase();
+  let gates = null;
+  if (issue?.state === 'closed' || /(?:^|_)(?:DONE|COMPLETED)(?:_|$)/.test(phase)) gates = 5;
+  else if (/(?:DEPLOY|RUNTIME_VERIFY|LIVE_VERIFY|MERGED)/.test(phase)) gates = 4;
+  else if (normalized === 'REVIEW' || /(?:REVIEW|VERIFY)/.test(phase)) gates = checks?.state === 'ĐẠT' ? 4 : 3;
+  else if (hasPull || /(?:PR_OPEN|IMPLEMENTED|IMPLEMENTING|CODE_COMPLETE)/.test(phase)) gates = checks?.state === 'ĐẠT' ? 3 : 2;
+  else if (normalized === 'WORKING' || /(?:WORKING|RUNNING|IN_PROGRESS|IMPLEMENTING|CLAIMED)/.test(phase)) gates = 1;
+  else if (normalized === 'QUEUED' || /(?:READY|QUEUED)/.test(phase)) gates = 0;
+
+  if (gates === null) return { percent: null, source: 'none', detail: null };
+  return { percent: gates * 20, source: 'lifecycle', detail: gates + '/5 gate' };
+}
+
+export function parseOpenWorkIssue(issue, overlays = {}) {
+  if (!issue || issue.pull_request || issue.state !== 'open') return null;
+  const number = Number(issue.number);
+  if (!number) return null;
+  const active = overlays.active || null;
+  const queued = overlays.queued || null;
+  const body = String(issue.body || '');
+  const phase = issueCanonicalState(issue);
+  const classification = classifyOpenIssue(issue);
+  const status = actionableStatus(issue, overlays);
+
+  const checks = active?.checks || null;
+  const hasPull = Boolean(active?.prNumber || overlays.hasPull);
+  const progress = classification.workKind === 'SYSTEM'
+    ? { percent: null, source: 'none', detail: null }
+    : progressForIssue(issue, status, checks, hasPull);
+  const priority = issuePriority(issue);
+
+  return {
+    number,
+    title: String(issue.title || ''),
+    priority,
+    effectivePriority: priority,
+    sourcePriority: priority,
+    employeeId: active?.employeeId || queued?.targetWorker || issueDisplayOwner(issue),
+    status,
+    workKind: classification.workKind,
+    ownerGate: classification.ownerGate,
+    currentState: phase || null,
+    currentStep: active?.currentStep
+      || queued?.waitReason
+      || bodyValue(body, 'CURRENT_STEP')
+      || bodyValue(body, 'NEXT_ACTION')
+      || (classification.ownerGate ? 'Cần Owner authorization' : null),
+    progressPercent: progress.percent,
+    progressSource: progress.source,
+    progressDetail: progress.detail,
+    prNumber: active?.prNumber || null,
+    prUrl: active?.prUrl || null,
+    checks,
+    updatedAt: active?.updatedAt || queued?.updatedAt || issue.updated_at || null,
+    url: issue.html_url || null,
+    meta: !priority,
+  };
 }
 
 function githubActiveState(issue) {
@@ -693,10 +887,9 @@ async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
     }
 
     const recentWork = await recentCompletedWork(owner, repo, fetchImpl);
-    const specs = openIssues.map(parseQueueIssue).filter(Boolean).filter((row) => !activeNumbers.has(row.number)).sort(compareQueueRows);
-    const queueCandidates = specs.slice(0, Math.max(QUEUE_LIMIT * 2, 12));
-    const depStates = await dependencyStates(queueCandidates, owner, repo, fetchImpl);
-    const nextQueue = queueCandidates.map((row) => {
+    const specs = openIssues.map(parseQueueIssue).filter(Boolean).filter((row) => !activeNumbers.has(row.number));
+    const depStates = await dependencyStates(specs, owner, repo, fetchImpl);
+    const resolvedQueue = specs.map((row) => {
       if (row.status !== 'QUEUED') return row;
       const waiting = (row.dependencies || []).filter((number) => {
         const dep = depStates.get(number);
@@ -711,37 +904,87 @@ async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
           ? 'Chưa xác minh dependency ' + unknown.map((n) => '#' + n).join(', ')
           : 'Chờ ' + waiting.map((n) => '#' + n).join(', '),
       };
-    }).slice(0, QUEUE_LIMIT);
+    });
+    const rankedQueue = rankQueueRows(resolvedQueue);
+    const nextQueue = rankedQueue.slice(0, QUEUE_LIMIT);
+    const nextExecutable = rankedQueue.find((row) => row.eligibleNow) || null;
+
+    const activeMap = new Map(activeRows.map((row) => [Number(row.number), row]));
+    const queueMap = new Map(rankedQueue.map((row) => [Number(row.number), row]));
+    const openWork = openIssues.map((issue) => parseOpenWorkIssue(issue, {
+      active: activeMap.get(Number(issue.number)) || null,
+      queued: queueMap.get(Number(issue.number)) || null,
+      hasPull: openPulls.some((pull) => pullMentionsIssue(pull, Number(issue.number))),
+    })).filter(Boolean).sort((a, b) => {
+      const actionRank = {
+        OWNER_GATE: 0,
+        WORKING: 1,
+        REVIEW: 2,
+        VERIFY: 3,
+        QUEUED: 4,
+        BLOCKED: 5,
+        WAITING: 6,
+        OPEN: 7,
+        GOAL: 8,
+        SYSTEM: 9,
+      };
+      const sa = actionRank[a.status] ?? 8;
+      const sb = actionRank[b.status] ?? 8;
+      if (sa !== sb) return sa - sb;
+      const priorityRank = { P0: 0, P1: 1, P2: 2, P3: 3, P4: 4, P5: 5 };
+      const pa = priorityRank[a.priority] ?? 9;
+      const pb = priorityRank[b.priority] ?? 9;
+      if (pa !== pb) return pa - pb;
+      return Date.parse(b.updatedAt || 0) - Date.parse(a.updatedAt || 0) || b.number - a.number;
+    });
+
+    const actionable = openWork.filter((row) => row.workKind !== 'SYSTEM');
+    const openSummary = {
+      open: openWork.length,
+      actionable: actionable.length,
+      owner: actionable.filter((row) => row.status === 'OWNER_GATE').length,
+      running: actionable.filter((row) => row.status === 'WORKING').length,
+      review: actionable.filter((row) => ['REVIEW','VERIFY'].includes(row.status)).length,
+      waiting: actionable.filter((row) => ['QUEUED','WAITING','BLOCKED'].includes(row.status)).length,
+      system: openWork.filter((row) => row.workKind === 'SYSTEM').length,
+      done: recentWork.length,
+    };
 
     return {
       ...base,
+      openWork,
+      openSummary,
       activeWork: activeRows.sort((a, b) => compareQueueRows(
         { ownerDirect: false, priority: a.priority || 'P2', number: a.number },
         { ownerDirect: false, priority: b.priority || 'P2', number: b.number },
       )),
       nextQueue,
-      nextQueueTotal: specs.length,
+      nextQueueTotal: rankedQueue.length,
+      nextExecutable,
       recentWork,
       workProjection: {
         mode: projectionStale ? 'stale-cache' : (base.liveConnected ? 'pc01-live+github' : 'github-fallback'),
-        queuePolicy: 'OWNER_DIRECT>P0>P1>P2>P3',
-        source: projectionStale ? 'GitHub snapshot xác minh gần nhất' : 'PC01 runtime when available + GitHub canonical',
+        queuePolicy: 'ELIGIBLE_P1>P2>P3>P4>P5;OWNER_DIRECT_TIEBREAK;WAITING_UNRANKED',
+        source: projectionStale ? 'GitHub snapshot xác minh gần nhất' : 'PC01 runtime when available + GitHub canonical parsers',
         verifiedAt: githubProjectionCache.verifiedAt,
         stale: projectionStale,
         reason: projectionReason,
         queueLimit: QUEUE_LIMIT,
+        nextExecutableIssue: nextExecutable?.number || null,
       },
     };
   } catch (error) {
     return {
       ...base,
+      openWork: [],
+      openSummary: { open: 0, running: 0, waiting: 0, done: 0 },
       activeWork: [],
       nextQueue: [],
       nextQueueTotal: 0,
       recentWork: [],
       workProjection: {
         mode: 'unavailable',
-        queuePolicy: 'OWNER_DIRECT>P0>P1>P2>P3',
+        queuePolicy: 'ELIGIBLE_P1>P2>P3>P4>P5;OWNER_DIRECT_TIEBREAK;WAITING_UNRANKED',
         source: 'GitHub unavailable',
         reason: String(error instanceof Error ? error.message : error).slice(0, 120),
         queueLimit: QUEUE_LIMIT,
@@ -885,18 +1128,6 @@ export default async function handler(req, res) {
     return json(res, 200, value);
   } catch (error) {
     liveError = String(error instanceof Error ? error.message : error).slice(0, 120);
-    if (cache.value && now - cache.at < STALE_RESPONSE_MS) {
-      const value = {
-        ...cache.value,
-        liveConnected: false,
-        mode: 'stale-cache',
-        authority: 'Dữ liệu xác minh gần nhất',
-        staleAll: true,
-        staleAt: cache.value.generatedAt || null,
-        liveReason: liveError,
-      };
-      return json(res, 200, value);
-    }
   }
 
   try {
@@ -906,9 +1137,22 @@ export default async function handler(req, res) {
     value.authority = 'GitHub/Registry fallback';
     value.refreshSeconds = 5;
     value.liveReason = liveError;
+    value.staleAll = false;
     cache = { at: now, value };
     return json(res, 200, value);
   } catch (error) {
+    if (cache.value && now - cache.at < STALE_RESPONSE_MS) {
+      const value = {
+        ...cache.value,
+        liveConnected: false,
+        mode: 'stale-cache',
+        authority: 'Dữ liệu xác minh gần nhất',
+        staleAll: true,
+        staleAt: cache.value.generatedAt || null,
+        liveReason: liveError || String(error instanceof Error ? error.message : error).slice(0, 120),
+      };
+      return json(res, 200, value);
+    }
     return json(res, 200, {
       ok: false,
       liveConnected: false,
@@ -924,7 +1168,7 @@ export default async function handler(req, res) {
       recentWork: [],
       workProjection: {
         mode: 'unavailable',
-        queuePolicy: 'OWNER_DIRECT>P0>P1>P2>P3',
+        queuePolicy: 'ELIGIBLE_P1>P2>P3>P4>P5;OWNER_DIRECT_TIEBREAK;WAITING_UNRANKED',
         source: 'Không có nguồn xác minh',
       },
     });

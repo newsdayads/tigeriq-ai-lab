@@ -142,14 +142,50 @@ describe('independent worker recovery flows in direct-cdp-bridge',()=>{
     expect(source).toContain("computeWorkerStaggerDelay");
   });
 
-  it('keeps NV03/NV04 local transport assignment-bound without Core discovery',()=>{
+  it('keeps NV03/NV04 in an always-on local UI loop without assignment dispatching',()=>{
     expect(source).not.toContain('findContinuableWorkerWorkForUi(controllerState,w.id)');
     expect(source).toContain('LOCAL_CONTINUE_DISPATCHED');
+    expect(source).toContain('pickWorkerContinuePrompt');
     const genericLoop=source.slice(source.indexOf('async function maybeWorkerContinuity'),source.indexOf('\nfunction log('));
-    expect(genericLoop).toContain("if(w.id==='NV03'||w.id==='NV04')");
-    expect(genericLoop).toContain("currentWorkerAssignmentStatus(w.id)");
-    expect(genericLoop).toContain("assignment.status!=='CONTINUABLE'");
-    expect(source).toContain("return{status:'READY_UNASSIGNED',job:null}");
+    expect(genericLoop).toContain('chooseLocalContinuePrompt(w.id,state)');
+    expect(genericLoop).not.toContain('currentWorkerAssignmentStatus');
+    expect(genericLoop).not.toContain('READY_UNASSIGNED');
+    expect(genericLoop).not.toContain('assignment.status');
+    expect(genericLoop).toContain('awaitingWorkStart');
+  });
+
+  it('rechecks WORKING inside F5/restart mutation boundaries and never stops active work for maintenance',()=>{
+    expect(source).toContain("MAINTENANCE_DEFERRED_WORKING");
+    expect(source).toContain("PERIODIC_F5_DEFERRED_WORKING");
+    const prep=source.slice(source.indexOf('async function prepareWorkerForPlannedRestart'),source.indexOf('function archiveMenuPointExpr'));
+    expect(prep).not.toContain('stopStalledWorking(target)');
+    const generic=source.slice(source.indexOf('async function maybeWorkerContinuity'),source.indexOf('\nfunction log('));
+    expect(generic).toContain("const freshPhase=deriveWorkerPhase(fresh||{},{workerId:w.id})");
+    expect(generic).not.toContain("freshPhase==='WORKING'||fresh?.uiBusy===true||fresh?.stopVisible===true");
+    const nv02=source.slice(source.indexOf('async function maybeNv02Continuity'),source.indexOf('async function handleCommand'));
+    expect(nv02).toContain('const fresh=applyNv02DurableVerifiedModelProfile(await uiState(target).catch(()=>null))');
+    expect(nv02).toContain("freshPhase==='WORKING'||fresh?.uiBusy===true||fresh?.stopVisible===true");
+  });
+
+  it('uses a lightweight cached control-state endpoint instead of polling full controller state per worker',()=>{
+    const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
+    expect(server).toContain("'/api/continuity/control-state'");
+    expect(server).toContain('.filter((job)=>!job.completedAt)');
+    expect(server).toContain("ownerInteractionMode:paused?'READ_ONLY':'AUTOMATION'");
+    expect(server).toContain('utilityPausedWorkers:[...utilityPausedWorkers]');
+    expect(source).toContain('const CONTROLLER_STATE_CACHE_MS=2000');
+    expect(source).toContain('if(controllerStateFetch)return controllerStateFetch');
+    expect(source).toContain("CONTROLLER+'/api/continuity/control-state'");
+    expect(source).toContain('AbortSignal.timeout(3000)');
+    expect(source).not.toContain("CONTROLLER+'/api/state'");
+  });
+
+  it('suppresses a READY resend until WORKING is observed',()=>{
+    expect(source).not.toContain('const WORK_START_ACK_TIMEOUT_MS=90*1000');
+    expect(source).toContain('awaitingWorkStartSince:Number(raw.awaitingWorkStartSince)||0');
+    expect(source).toContain('A READY observation alone is not an acknowledgement');
+    expect(source).toContain('awaitingWorkStartSince:now');
+    expect(source).toContain('awaitingWorkStartSince:Date.now()');
   });
 
   it('rebases only an already-expired deep-reset timer once after bridge restart',()=>{
@@ -262,13 +298,18 @@ describe('safe recovery contracts',()=>{
     expect(pruner).toContain("if(w.id!=='NV03'||!keep||ui?.uiBusy===true)return");
   });
 
-  it('backs off NV03/NV04 CDP connectivity failures instead of retrying every 3 seconds',()=>{
+  it('backs off worker CDP failures with bounded randomized retries before recovery',()=>{
     const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(source).toContain('const workerConnectivityBackoff=new Map()');
     expect(source).toContain("if(backoff&&Date.now()<Number(backoff.until||0))return");
-    expect(source).toContain("w.id!=='NV02'&&connectivityFailure");
-    expect(source).toContain("Math.min(20_000,5_000*(2**(attempt-1)))");
-    expect(source).toContain("'WORKER_CONNECTIVITY_BACKOFF'");
+    expect(source).toContain('if(connectivityFailure){');
+    expect(source).toContain('const maxAttempts=Number(prior?.maxAttempts)||Math.floor(2+Math.random()*4)');
+    expect(source).toContain('const delayMs=randomDelay(15_000,60_000)');
+    expect(source).toContain("'WORKER_CONNECTIVITY_RETRY_SCHEDULED'");
+    expect(source).toContain("'WORKER_CONNECTIVITY_RETRIES_EXHAUSTED'");
+    expect(source).toContain("reason:'CONNECTIVITY_RETRIES_EXHAUSTED'");
+    expect(source).toContain("'WORKER_CONNECTIVITY_CHROME_RESTART_REQUESTED'");
+    expect(source).toContain("'WORKER_CONNECTIVITY_RECOVERY_DEFERRED'");
     expect(source).toContain("'WORKER_CONNECTIVITY_RECOVERED'");
   });
 
@@ -332,14 +373,31 @@ describe('safe recovery contracts',()=>{
     expect(launcher).not.toContain("foreach($id in @('NV02','NV03','NV04'))");
   });
 
+  it('persists NV02-only deploy scope and idempotently pauses only side workers',()=>{
+    const installer=readFileSync('apps/chrome-controller/runtime/Install-ApprovedArtifact.ps1','utf8');
+    const launcher=readFileSync('apps/chrome-controller/runtime/Start-Unified-AppChrome.ps1','utf8');
+    expect(installer).toContain('[switch]$Nv02Only');
+    expect(installer).toContain('nv02Only=[bool]$Nv02Only');
+    expect(launcher).toContain("if($active.PSObject.Properties.Name -contains 'nv02Only')");
+    expect(launcher).toContain('Ensure-WorkerScope $active');
+    expect(launcher).toContain("foreach($id in @('NV03','NV04'))");
+    expect(launcher).toContain('/api/utility/workers/{0}/health');
+    expect(launcher).toContain('/api/utility/workers/{0}/pause');
+    expect(launcher).toContain('if($health.utilityPaused -eq $true){return $false}');
+    expect(launcher).toContain('NV02_ONLY_PAUSE_VERIFY_FAILED');
+    expect(launcher).toContain('NV02_ONLY_SIDE_WRITERS_PAUSED');
+    expect(launcher).not.toContain("foreach($id in @('NV02','NV03','NV04'))");
+  });
+
   it('never F5s or reopens NV03/NV04 while WORKING; bounded stuck recovery only clicks Stop',()=>{
     const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     const continuity=source.slice(source.indexOf('async function maybeWorkerContinuity'),source.indexOf('\nfunction log(event'));
-    expect(continuity).toContain("if(phase!=='WORKING'&&Number(state.nextPeriodicF5At||0)<=now)");
+    expect(continuity).toContain("if(Number(state.nextPeriodicF5At||0)<=now)");
+    expect(continuity).toContain("if(phase!=='WORKING'&&now>=Number(state.nextResetAt||0))");
     const working=continuity.slice(continuity.indexOf("if(phase==='WORKING')"),continuity.indexOf("if(phase==='READY')"));
     expect(working).toContain("'WORKING_LONG_RUNNING_NO_MUTATION'");
-    expect(working).toContain('stopStalledWorking');
-    expect(working).toContain("'WORKING_STUCK_STOP'");
+    expect(working).toContain("'WORKING_LONG_RUNNING_NO_MUTATION'");
+    expect(working).toContain('return;');
     expect(working).not.toContain('reopenWorker(');
     expect(working).not.toContain('reloadTarget(');
     expect(working).not.toContain('WORKING_NO_PROGRESS_3_CHECKS');
@@ -421,9 +479,42 @@ describe('safe recovery contracts',()=>{
     expect(continuity).toContain("'STALLED_RELOAD'");
   });
 
+  it('uses a valid lease TTL and defers generic F5 at a safe boundary',()=>{
+    const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    expect(source).toContain("'PERIODIC_PREPARE_RESTART',120000");
+    expect(source).toContain("'PERIODIC_F5_DEFERRED_SAFE_BOUNDARY'");
+    expect(source).toContain("WORKER_UI_BUSY_OR_UNKNOWN|WORKER_ACTIVE_JOB|BROWSER_MUTATION_LEASE_BUSY");
+  });
+
+  it('treats CDP evaluation timeouts as bounded connectivity recovery',()=>{
+    const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    expect(source).toContain('CDP_TIMEOUT|AbortError');
+    expect(source).toContain("'WORKER_CONNECTIVITY_RETRY_SCHEDULED'");
+    expect(source).toContain("'WORKER_CONNECTIVITY_CHROME_RESTART_REQUESTED'");
+  });
+
+  it('keeps generic worker F5 failures bounded instead of escalating into tick errors',()=>{
+    const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    const continuity=source.slice(source.indexOf('async function maybeWorkerContinuity'),source.indexOf('\nfunction log(event'));
+    expect(continuity).toContain("'PERIODIC_F5_REFRESH'");
+    expect(continuity).toContain("'PERIODIC_F5_FAILED'");
+    expect(continuity).toContain('recoveryBlockedUntil:now+30000');
+  });
+
   it('keeps paused workers out of unattended start/autopilot paths',()=>{
     expect(server).toContain('START_ALL_SKIPPED_UTILITY_PAUSED');
     expect(server).toContain("if(utilityPausedWorkers.has(workerId)){setAutopilotPhase('IDLE')");
     expect(server).toContain("state.status='PAUSED'");
+  });
+});
+
+describe('App Chrome wrong-context stalled recovery #1940',()=>{
+  it('routes a chrome error page through bounded stalled recovery rather than an unbounded wrong-context loop',()=>{
+    const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    expect(bridge).toContain("const wrongWorkerContext=!validWorkerUrl(w,ui?.url);");
+    expect(bridge).toContain("if(wrongWorkerContext&&phase!=='STALLED')");
+    expect(bridge).toContain("WRONG_WORKER_CONTEXT_STALLED_RECOVERY");
+    expect(bridge).toContain("else if(stalledChecks>=MAX_STALLED_CHECKS)");
+    expect(bridge).toContain("'STALLED_3_CHECKS'");
   });
 });

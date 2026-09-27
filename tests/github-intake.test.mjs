@@ -54,8 +54,8 @@ function coreBacklogPool(){
   const objectives=[]; const events=[]; const jobs=[];
   return {objectives,events,jobs,async query(q,params=[]){
     if(q.includes("metadata->>'source'='github' and status='active'")){
-      const active=objectives.some(o=>o.metadata?.source==='github'&&o.status==='active');
-      return {rowCount:active?1:0,rows:active?[{id:'active'}]:[]};
+      const active=objectives.filter(o=>o.metadata?.source==='github'&&o.status==='active');
+      return {rowCount:active.length,rows:active.map(o=>({metadata:o.metadata}))};
     }
     if(q.includes("select id,status,summary,metadata from tigeriq_objectives where metadata->>'source'='github'")){
       const rows=objectives.filter(o=>o.metadata?.source==='github').map(o=>({id:o.id,status:o.status,summary:o.summary||'',metadata:o.metadata}));
@@ -101,14 +101,14 @@ const READ_ONLY_BASE=`TIGERIQ_EXECUTABLE=true
 OWNER_POLICY=AUTO
 NO_CODE_CHANGE=true
 NO_PC01_SHELL=true
-CAPABILITY=review`;
+CAPABILITY=reasoning`;
 
 test('owner-direct pc_operator GitHub intake materializes bounded OpenClaw objective',async()=>{
   const pool=coreBacklogPool();
   const body=`TIGERIQ_EXECUTABLE=true
 OWNER_POLICY=AUTO
 OWNER_DIRECT=true
-PRIORITY=P0
+PRIORITY=P1
 CAPABILITY=pc_operator
 NO_CODE_CHANGE=true
 NO_PC01_SHELL=true
@@ -124,7 +124,7 @@ Return structured PASS evidence.`;
   assert.strictEqual(out.issueNumber,1608);
   assert.strictEqual(pool.objectives[0].metadata.capability,'pc_operator');
   assert.strictEqual(pool.objectives[0].metadata.executionSurface,'CORE_OPENCLAW_BOUNDED');
-  assert.match(pool.objectives[0].objective,/Core must create only the assigned pc_operator work/);
+  assert.match(pool.objectives[0].objective,/Core must dispatch only the assigned pc_operator action/);
   assert.match(pool.objectives[0].objective,/NO arbitrary PC01 shell/);
   assert.strictEqual(pool.jobs.length,1);
   assert.strictEqual(pool.jobs[0].id,'JOB-GH-1608-PC');
@@ -138,36 +138,26 @@ test('Core manager excludes deterministic CORE_OPENCLAW_BOUNDED objectives',()=>
   assert.match(core,/executionSurface',''\)<>'CORE_OPENCLAW_BOUNDED'/);
 });
 
-test('read-only GitHub backlog runs one-at-a-time and chains by OWNER_DIRECT then priority',async()=>{
+test('P0 is excluded while system-routed P1-P5 materialize in priority order',async()=>{
   const pool=coreBacklogPool();
   const issues=[
-    {number:30,state:'open',title:'non-owner P0',body:`${READ_ONLY_BASE}\nPRIORITY=P0`,html_url:'https://example/30'},
-    {number:20,state:'open',title:'owner P2',body:`${READ_ONLY_BASE}\nOWNER_DIRECT=true\nPRIORITY=P2`,html_url:'https://example/20'},
-    {number:10,state:'open',title:'owner P1',body:`${READ_ONLY_BASE}\nOWNER_DIRECT=true\nPRIORITY=P1`,html_url:'https://example/10'},
+    {number:30,state:'open',title:'Owner-only P0',body:`${READ_ONLY_BASE}\nPRIORITY=P0\nRESOURCE_SCOPE=S30`,html_url:'https://example/30'},
+    {number:20,state:'open',title:'P2',body:`${READ_ONLY_BASE}\nOWNER_DIRECT=true\nPRIORITY=P2\nRESOURCE_SCOPE=S20`,html_url:'https://example/20'},
+    {number:10,state:'open',title:'P1',body:`${READ_ONLY_BASE}\nOWNER_DIRECT=true\nPRIORITY=P1\nRESOURCE_SCOPE=S10`,html_url:'https://example/10'},
   ];
   const fetchImpl=async(url)=>url.includes('/issues?')?response(issues):response({});
   let out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
-  assert.strictEqual(out.issueNumber,10);
-  assert.strictEqual(pool.objectives.at(-1).metadata.dispatchReason,'OWNER_DIRECT>P1');
-
+  assert.strictEqual(out.issueNumber,10);assert.strictEqual(pool.objectives.at(-1).priority,'P1');
+  out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
+  assert.strictEqual(out.issueNumber,20);assert.strictEqual(pool.objectives.at(-1).priority,'P2');
   out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
   assert.strictEqual(out.created,0);
-  assert.strictEqual(out.active,1);
-
-  pool.objectives.at(-1).status='completed';
-  out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
-  assert.strictEqual(out.issueNumber,20);
-
-  pool.objectives.at(-1).status='completed';
-  out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
-  assert.strictEqual(out.issueNumber,30);
-  assert.deepStrictEqual(pool.objectives.map(o=>o.metadata.issueNumber),[10,20,30]);
+  assert.strictEqual(pool.objectives.filter(o=>o.status==='active').length,2);
 });
-
 
 test('reopened completed GitHub Work Order rearms instead of being skipped forever',async()=>{
   const pool=coreBacklogPool();
-  let issues=[{number:50,state:'open',state_reason:null,updated_at:'2026-09-23T01:00:00Z',title:'Rearm me',body:`${READ_ONLY_BASE}\nOWNER_DIRECT=true\nPRIORITY=P0`,html_url:'https://example/50'}];
+  let issues=[{number:50,state:'open',state_reason:null,updated_at:'2026-09-23T01:00:00Z',title:'Rearm me',body:`${READ_ONLY_BASE}\nOWNER_DIRECT=true\nPRIORITY=P1`,html_url:'https://example/50'}];
   const fetchImpl=async(url)=>url.includes('/issues?')?response(issues):response({});
   let out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
   assert.strictEqual(out.issueNumber,50);
@@ -182,24 +172,55 @@ test('reopened completed GitHub Work Order rearms instead of being skipped forev
   assert.strictEqual(pool.objectives[1].metadata.rearmedFromObjectiveId,'OBJ-GH-50');
 });
 
-test('fast hybrid change detection and dispatch routing validation', async () => {
-  const pool = coreBacklogPool();
-  const issues = [{
-    number: 99,
-    state: 'open',
-    updated_at: '2026-09-23T12:00:00Z',
-    title: 'Hybrid change detection',
-    body: `${READ_ONLY_BASE}\nOWNER_DIRECT=true\nPRIORITY=P1\nEXECUTION_SURFACE=CORE_OPENCLAW_BOUNDED`,
-    html_url: 'https://example/99'
-  }];
-  const fetchImpl = async (url) => url.includes('/issues?') ? response(issues) : response({});
-  const out = await materializeGithubIssues({ pool, fetchImpl, token: 'fake' });
-  assert.strictEqual(out.issueNumber, 99);
-  const obj = pool.objectives.at(-1);
-  assert.strictEqual(obj.metadata.executionSurface, 'CORE_OPENCLAW_BOUNDED');
-  assert.strictEqual(obj.metadata.dispatchRouting, 'NV06_OPENCLAW');
+test('different GitHub dispatch lanes do not starve each other',async()=>{
+  const pool=coreBacklogPool();
+  const reasoningBody=['TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','OWNER_DIRECT=true','PRIORITY=P1','CAPABILITY=reasoning','NO_CODE_CHANGE=true','NO_PC01_SHELL=true','RESOURCE_SCOPE=REASONING_ACTIVE'].join('\n');
+  const pcBody=['TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','OWNER_DIRECT=true','PRIORITY=P1','CAPABILITY=pc_operator','NO_CODE_CHANGE=true','NO_PC01_SHELL=true','RESOURCE_SCOPE=PC_STATE','ASSIGNED_ACTION','tigeriq_pc file_write path=D:\\TigerIQ\\State\\lane-canary.txt content=PASS','ACCEPTANCE','PASS'].join('\n');
+  let issues=[{number:91,state:'open',title:'reasoning active',body:reasoningBody,html_url:'https://example/91'}];
+  const fetchImpl=async(url)=>url.includes('/issues?')?response(issues):response({});
+  let out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
+  assert.strictEqual(out.issueNumber,91);
+  assert.strictEqual(pool.objectives.at(-1).metadata.dispatchLane,'CORE_REASONING');
+  issues=[
+    {number:92,state:'open',title:'pc operator P0',body:pcBody,html_url:'https://example/92'},
+    {number:91,state:'open',title:'reasoning active',body:reasoningBody,html_url:'https://example/91'},
+  ];
+  out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
+  assert.strictEqual(out.issueNumber,92);
+  assert.strictEqual(pool.objectives.at(-1).metadata.dispatchLane,'PC_OPERATOR');
+  assert.strictEqual(pool.objectives.filter(o=>o.status==='active').length,2);
 });
 
+test('bounded App Chrome deploy-request State work is not treated as protected App Chrome mutation',async()=>{
+  const pool=coreBacklogPool();
+  const body=['TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','OWNER_DIRECT=true','PRIORITY=P1','CAPABILITY=pc_operator','APP_CHROME_REQUEST_ONLY=true','NO_CODE_CHANGE=true','NO_PC01_SHELL=true','RESOURCE_SCOPE=APP_CHROME_DEPLOY_REQUEST_STATE','ASSIGNED_ACTION','Use tigeriq_pc file_write only:','path=D:\\TigerIQ\\State\\appchrome-install-request.json','Then use tigeriq_pc file_read on the same path.','ACCEPTANCE','PASS'].join('\n');
+  const issues=[{number:1881,state:'open',title:'[P0][OPENCLAW] request state',body,html_url:'https://example/1881'}];
+  const fetchImpl=async(url)=>url.includes('/issues?')?response(issues):response({});
+  const out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
+  assert.strictEqual(out.issueNumber,1881);
+  assert.strictEqual(pool.objectives.at(-1).metadata.executionSurface,'CORE_OPENCLAW_BOUNDED');
+  assert.strictEqual(pool.objectives.at(-1).metadata.dispatchLane,'PC_OPERATOR');
+});
+
+test('preferred NV03 review remains external to Core intake',async()=>{
+  const pool=coreBacklogPool();
+  const body=['TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','NO_CODE_CHANGE=true','NO_PC01_SHELL=true','CAPABILITY=review','PRIORITY=P1','PREFERRED_REVIEWER=NV03','EXECUTION_SURFACE=CORE_READ_ONLY','RESOURCE_SCOPE=REVIEW_PR_X'].join('\n');
+  const issues=[{number:1874,state:'open',title:'preferred UI review',body,html_url:'https://example/1874'}];
+  const fetchImpl=async(url)=>url.includes('/issues?')?response(issues):response({});
+  const out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
+  assert.strictEqual(out.created,0);assert.strictEqual(pool.objectives.length,0);
+});
+
+test('unassigned review is materialized for Core API review, not NV03',async()=>{
+  const pool=coreBacklogPool();
+  const body=['TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','NO_CODE_CHANGE=true','NO_PC01_SHELL=true','CAPABILITY=review','PRIORITY=P1','EXECUTION_SURFACE=CORE_READ_ONLY','RESOURCE_SCOPE=REVIEW_API_X'].join('\n');
+  const issues=[{number:1875,state:'open',title:'default API review',body,html_url:'https://example/1875'}];
+  const fetchImpl=async(url)=>url.includes('/issues?')?response(issues):response({});
+  const out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
+  assert.strictEqual(out.created,1);
+  assert.strictEqual(pool.objectives.at(-1).metadata.dispatchLane,'CORE_REVIEW');
+  assert.notStrictEqual(pool.objectives.at(-1).metadata.targetWorker,'NV03');
+});
 test('terminal objective orphan queued and waiting_resource jobs are failed closed',async()=>{
   const pool=coreBacklogPool();
   pool.objectives.push({id:'OBJ-OLD',status:'blocked',metadata:{source:'api'}});
@@ -244,4 +265,60 @@ test('closed source issue terminalizes stale active GitHub objective and release
   assert.strictEqual(out.created,1);
   assert.strictEqual(out.issueNumber,60);
   assert.strictEqual(pool.objectives.at(-1).metadata.issueNumber,60);
+});
+
+test('CORE_REVIEW GitHub objectives bypass generic manager and queue one direct review job',()=>{
+  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+  const helperAt=core.indexOf('async function reconcileGithubCoreReviewObjective(o)');
+  const managerAt=core.indexOf('async function managerTick()');
+  const managerSlice=core.slice(managerAt,managerAt+4000);
+  assert.ok(helperAt>0&&helperAt<managerAt);
+  assert.match(core,/dispatchLane!=='CORE_REVIEW'/);
+  assert.match(core,/values\(\$1,\$2,\$3,\$4,'review','github_review','queued',2\)/);
+  assert.match(core,/\[TIGERIQ_INDEPENDENT_REVIEW_V1\]/);
+  assert.match(core,/REVIEW=PASS\|CHANGES_REQUIRED/);
+  assert.match(managerSlice,/if\(await reconcileGithubCoreReviewObjective\(o\)\) return;/);
+  assert.ok(managerSlice.indexOf('reconcileGithubCoreReviewObjective(o)')<managerSlice.indexOf('callManagerDecision('));
+});
+
+test('CORE_REVIEW direct path preserves strict targetWorker routing and terminal evidence',()=>{
+  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+  assert.match(core,/preferredEmployeeId:j\.objective_metadata\?\.targetWorker\|\|null/);
+  assert.match(core,/CORE_REVIEW completed by \$\{reviewer\}\/\$\{provider\}/);
+  assert.match(core,/GITHUB_CORE_REVIEW_COMPLETED/);
+  assert.match(core,/GITHUB_CORE_REVIEW_BLOCKED/);
+});
+
+
+test('CORE_REVIEW evidence parser enforces exact reviewed head and structured decision',()=>{
+  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+  const start=core.indexOf('export function parseGithubCoreReviewEvidence');
+  const end=core.indexOf('\n}\n\nasync function reconcileGithubCoreReviewObjective',start)+2;
+  assert.ok(start>0&&end>start);
+  const source=core.slice(start,end).replace(/^export\s+/,'');
+  const parse=(new Function(`${source}; return parseGithubCoreReviewEvidence;`))();
+  const prompt='TARGET_HEAD=abcdef1234567890\nReview this exact head.';
+  const valid=[
+    '[TIGERIQ_INDEPENDENT_REVIEW_V1]',
+    'REVIEW=PASS',
+    'TARGET_HEAD=abcdef1234567890',
+    'SUMMARY=checks and diff match',
+    'FINDINGS=NONE',
+  ].join('\n');
+  assert.deepStrictEqual(parse(valid,prompt),{
+    schema:'TIGERIQ_INDEPENDENT_REVIEW_V1',
+    decision:'PASS',
+    targetHead:'abcdef1234567890',
+    summary:'checks and diff match',
+    findings:'NONE',
+  });
+  assert.throws(()=>parse(valid.replace('abcdef1234567890','deadbeef'),prompt),/CORE_REVIEW_EVIDENCE_INVALID/);
+  assert.throws(()=>parse(valid.replace('REVIEW=PASS','REVIEW=MAYBE'),prompt),/CORE_REVIEW_EVIDENCE_INVALID/);
+});
+
+test('github_review job validates reviewer evidence before terminal done write',()=>{
+  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+  const run=core.slice(core.indexOf('async function claimJob()'),core.indexOf('async function callManagerDecision'));
+  assert.match(run,/j\.kind==='github_review'\?parseGithubCoreReviewEvidence\(routed\.text,j\.prompt\):null/);
+  assert.match(run,/reviewEvidence/);
 });

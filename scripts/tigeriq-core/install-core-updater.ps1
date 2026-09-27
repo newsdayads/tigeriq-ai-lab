@@ -1,8 +1,9 @@
+param([string]$Repo='D:\TigerIQ\Workspace\tigeriq-ai-lab')
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 $taskName='TigerIQ Core Runtime Updater'
 $legacyAutonomySupervisorTask='TigerIQ Autonomy Supervisor V2'
-$sourceScript='D:\TigerIQ\Workspace\tigeriq-ai-lab\scripts\tigeriq-core\update-core-runtime.ps1'
+$sourceScript=Join-Path $Repo 'scripts\tigeriq-core\update-core-runtime.ps1'
 $legacyTask=Get-ScheduledTask -TaskName $legacyAutonomySupervisorTask -ErrorAction SilentlyContinue
 if($legacyTask){
   if([string]$legacyTask.State -eq 'Running'){Stop-ScheduledTask -TaskName $legacyAutonomySupervisorTask -ErrorAction SilentlyContinue}
@@ -19,7 +20,7 @@ Start-Sleep -Seconds 1
 $ps='C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
 $action=New-ScheduledTaskAction -Execute $ps -Argument "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$runtimeScript`" -IntervalSeconds 120"
 $trigger=New-ScheduledTaskTrigger -AtStartup
-$settings=New-ScheduledTaskSettingsSet -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero) -StartWhenAvailable
+$settings=New-ScheduledTaskSettingsSet -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero) -StartWhenAvailable -MultipleInstances IgnoreNew
 $principal=New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
 Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force | Out-Null
 Start-ScheduledTask -TaskName $taskName

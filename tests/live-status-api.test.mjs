@@ -2,9 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
   compareQueueRows,
   fetchPc01Live,
+  rankQueueRows,
   normalizeRuntimeWorkerActivity,
   parseIssueNumber,
   parseQueueIssue,
+  classifyOpenIssue,
+  parseOpenWorkIssue,
+  progressForIssue,
   parseRecentCompletedIssue,
   runtimeWorkRows,
   sanitizeRuntimePayload,
@@ -88,15 +92,38 @@ describe('TigerIQ Live Work Order projection', () => {
     });
   });
 
-  it('orders OWNER_DIRECT before P0, then P1/P2/P3 and issue number', () => {
+  it('ranks only executable P1-P5 rows and keeps waiting/blocked work unnumbered', () => {
+    const rows = rankQueueRows([
+      { number: 1921, priority: 'P1', effectivePriority: 'P1', ownerDirect: true, status: 'WAITING', waitReason: 'OWNER_HOLD' },
+      { number: 1922, priority: 'P1', effectivePriority: 'P1', ownerDirect: true, status: 'WAITING', waitReason: 'Chờ #1915' },
+      { number: 1947, priority: 'P1', effectivePriority: 'P1', ownerDirect: false, status: 'QUEUED' },
+      { number: 1945, priority: 'P2', effectivePriority: 'P2', ownerDirect: false, status: 'QUEUED' },
+      { number: 1888, priority: 'P0', effectivePriority: 'P0', ownerDirect: true, status: 'QUEUED' },
+    ]);
+    expect(rows.map((row) => row.number)).toEqual([1947, 1945, 1921, 1922, 1888]);
+    expect(rows.slice(0, 2).map((row) => row.dispatchRank)).toEqual([1, 2]);
+    expect(rows.slice(2).every((row) => row.dispatchRank === null && row.eligibleNow === false)).toBe(true);
+    expect(rows.at(-1)).toMatchObject({ number: 1888, status: 'WAITING', waitReason: 'P0 chờ Owner/assignment' });
+  });
+
+  it('uses OWNER_DIRECT only as a same-priority tie-break among executable rows', () => {
     const rows = [
-      { number: 30, priority: 'P0', ownerDirect: false },
-      { number: 20, priority: 'P1', ownerDirect: true },
-      { number: 10, priority: 'P0', ownerDirect: true },
-      { number: 40, priority: 'P1', ownerDirect: false },
-      { number: 50, priority: 'P3', ownerDirect: false },
+      { number: 30, priority: 'P2', effectivePriority: 'P2', ownerDirect: true, status: 'QUEUED' },
+      { number: 20, priority: 'P1', effectivePriority: 'P1', ownerDirect: false, status: 'QUEUED' },
+      { number: 10, priority: 'P2', effectivePriority: 'P2', ownerDirect: false, status: 'QUEUED' },
+      { number: 40, priority: 'P1', effectivePriority: 'P1', ownerDirect: true, status: 'QUEUED' },
+      { number: 50, priority: 'P5', effectivePriority: 'P5', ownerDirect: false, status: 'QUEUED' },
     ].sort(compareQueueRows);
-    expect(rows.map((row) => row.number)).toEqual([10, 20, 30, 40, 50]);
+    expect(rows.map((row) => row.number)).toEqual([40, 20, 30, 10, 50]);
+  });
+
+  it('preserves canonical effective priority through queue projection', () => {
+    const row = parseQueueIssue(issue(2010, '[P4][CORE] Lower urgency', [
+      ...coreQueueFlags(),
+      'AUTO_QUEUE=INCLUDED',
+      'PRIORITY=P4',
+    ].join('\n')));
+    expect(row).toMatchObject({ priority: 'P4', effectivePriority: 'P4', sourcePriority: 'P4', status: 'QUEUED' });
   });
 
   it('rejects GitHub items that are not eligible in existing Core/Coding schedulers', () => {
@@ -181,32 +208,85 @@ describe('TigerIQ Live Work Order projection', () => {
     expect(normalizeRuntimeWorkerActivity({ ...base, heartbeatAt: '2026-09-24T23:59:59Z' }, now)).toMatchObject({ state: 'unknown', status: 'CHƯA RÕ' });
   });
 
-  it('shows only completed issues from the last 24 hours in recent work', () => {
+  it('keeps completed history beyond 24 hours and exposes priority + NV metadata', () => {
     const now = Date.parse('2026-09-25T00:00:00Z');
     const recent = parseRecentCompletedIssue({
       number: 1861,
-      title: '[P0][VERCEL] Việc đã xong',
-      body: 'STATE=DONE',
+      title: '[P0][VERCEL][NV12] Việc đã xong',
+      body: 'STATE=DONE\nPRIORITY=P1\nASSIGNED_EXECUTOR=NV19',
       state: 'closed',
       state_reason: 'completed',
       closed_at: '2026-09-24T23:30:00Z',
       html_url: 'https://github.com/newsdayads/tigeriq-ai-lab/issues/1861',
     }, now);
-    expect(recent).toMatchObject({ number: 1861, status: 'DONE' });
-    expect(parseRecentCompletedIssue({
+    expect(recent).toMatchObject({ number: 1861, status: 'DONE', priority: 'P1', effectivePriority: 'P1', employeeId: 'NV19' });
+
+    const older = parseRecentCompletedIssue({
       number: 1800,
-      title: 'Việc cũ',
+      title: '[P2][NV12] Việc cũ',
       body: 'STATE=DONE',
       state: 'closed',
-      closed_at: '2026-09-23T00:00:00Z',
-    }, now)).toBe(null);
+      closed_at: '2026-08-01T00:00:00Z',
+    }, now);
+    expect(older).toMatchObject({ number: 1800, priority: 'P2', employeeId: 'NV12', status: 'DONE' });
+
     expect(parseRecentCompletedIssue({
       number: 1801,
-      title: 'Không làm',
+      title: '[P3] Không làm',
       body: 'STATE=CANCELLED',
       state: 'closed',
       closed_at: '2026-09-24T23:30:00Z',
     }, now)).toBe(null);
+  });
+
+  it('projects all open work even when it is excluded from scheduler queue', () => {
+    const blocked = parseOpenWorkIssue(issue(3001, '[P2][CODING] Bị chặn', [
+      'PRIORITY=P2',
+      'TIGERIQ_EXECUTABLE=false',
+      'AUTO_QUEUE=EXCLUDED',
+      'CURRENT_STATE=BLOCKED_OWNER_MAINTENANCE_AUTH',
+      'TARGET_EMPLOYEE=NV09',
+    ].join('\n')));
+    expect(blocked).toMatchObject({
+      number: 3001, priority: 'P2', employeeId: 'NV09', status: 'OWNER_GATE', ownerGate: true, workKind: 'WORK',
+    });
+
+    const meta = parseOpenWorkIssue(issue(3002, '[TÀI NGUYÊN] Nguồn lực', 'STATE=OPEN'));
+    expect(meta).toMatchObject({ number: 3002, priority: null, status: 'SYSTEM', workKind: 'SYSTEM', progressPercent: null, meta: true });
+  });
+
+  it('separates policy/reference, owner gates, goals and live acceptance without treating P0 as approval', () => {
+    expect(classifyOpenIssue(issue(3200, '[P0][QUẢN TRỊ] Policy', 'STATE=CANONICAL'))).toEqual({ workKind: 'SYSTEM', ownerGate: false });
+    expect(parseOpenWorkIssue(issue(3201, '[P2][CODING] Owner gate', 'CURRENT_STATE=BLOCKED_OWNER_MAINTENANCE_AUTH'))).toMatchObject({
+      status: 'OWNER_GATE', ownerGate: true, workKind: 'WORK',
+    });
+    expect(parseOpenWorkIssue(issue(3202, '[P0][OWNER] Objective', 'TIGERIQ_EXECUTABLE=false\nOWNER_CONTROLLED=true'))).toMatchObject({
+      status: 'GOAL', ownerGate: false, workKind: 'GOAL',
+    });
+    expect(parseOpenWorkIssue(issue(3203, '[P0][APP-CHROME][EVIDENCE] Acceptance', 'CURRENT_STATE=READY_LIVE_ACCEPTANCE\nTIGERIQ_EXECUTABLE=false'))).toMatchObject({
+      status: 'VERIFY', ownerGate: false, workKind: 'WORK',
+    });
+    expect(parseOpenWorkIssue(issue(3204, '[P0][APP-CHROME] Working', 'STATE=WORKING\nTIGERIQ_EXECUTABLE=false'))).toMatchObject({
+      status: 'WORKING', ownerGate: false, workKind: 'WORK',
+    });
+  });
+
+  it('computes progress only from explicit percent, checklist, or canonical lifecycle evidence', () => {
+    expect(progressForIssue(issue(3100, '[P1] Explicit', 'PROGRESS_PERCENT=73'), 'OPEN')).toMatchObject({ percent: 73, source: 'explicit' });
+    expect(progressForIssue(issue(3101, '[P1] Checklist', '- [x] A\n- [x] B\n- [ ] C\n- [ ] D'), 'OPEN')).toMatchObject({ percent: 50, source: 'checklist' });
+    expect(progressForIssue(issue(3102, '[P1] Review', 'CURRENT_STATE=WAIT_INDEPENDENT_REVIEW'), 'REVIEW')).toMatchObject({ percent: 60, source: 'lifecycle' });
+    expect(progressForIssue(issue(3103, '[P1] Unknown', 'STATE=OPEN'), 'OPEN')).toMatchObject({ percent: null, source: 'none' });
+  });
+
+  it('marks completed history as 100 percent', () => {
+    const row = parseRecentCompletedIssue({
+      number: 3104,
+      title: '[P1] Done',
+      body: 'STATE=DONE',
+      state: 'closed',
+      closed_at: '2026-09-24T23:30:00Z',
+    }, Date.parse('2026-09-25T00:00:00Z'));
+    expect(row).toMatchObject({ status: 'DONE', progressPercent: 100, progressDetail: '5/5 gate' });
   });
 
   it('keeps the existing workforce payload while adding read-only work projection fields', () => {
@@ -232,4 +312,16 @@ describe('TigerIQ Live Work Order projection', () => {
     ]);
     expect(result.nextQueue).toEqual([]);
   });
+  it('keeps terminal-blocked lifecycle label out of executable ranking', () => {
+    const blocked = parseQueueIssue(issue(2011, '[P1][CORE] Terminal blocked', [
+      ...coreQueueFlags(),
+      'AUTO_QUEUE=INCLUDED',
+      'PRIORITY=P1',
+    ].join('\n'), { labels: [{ name: 'tigeriq:terminal-blocked' }] }));
+    expect(blocked).toMatchObject({ status: 'BLOCKED', waitReason: 'TigerIQ terminal BLOCKED' });
+    const ranked = rankQueueRows([blocked]);
+    expect(ranked[0]).toMatchObject({ eligibleNow: false, dispatchRank: null });
+  });
+
+
 });

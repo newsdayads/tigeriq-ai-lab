@@ -1,8 +1,8 @@
 # TIGERIQ — WORKFLOW
-Version: 3.6
+Version: 3.7
 Status: Source of Truth
 Priority: P0
-Updated: 2026-09-24
+Updated: 2026-09-27
 
 ## 1. Ngôn ngữ và cách xưng hô
 - Mọi nội dung hiển thị trực tiếp cho anh Sơn phải dùng **TIẾNG VIỆT**.
@@ -229,3 +229,12 @@ Với thay đổi Loader/Bootstrap cốt lõi: bắt buộc regression tối thi
 - NEW CHAT command số đã đăng ký → resolve từ Dynamic Registry.
 - Command không đăng ký/disabled → fail closed.
 - Xác minh Loader đọc được 5 Bootstrap canonical và nguồn động hiện hành.
+
+
+## 20. Ranh giới Core ↔ NV02/NV03/NV04
+- `NV02`, `NV03`, `NV04` là các UI/subscription worker nằm **ngoài quyền phân việc của Core**.
+- Core KHÔNG được assign, dispatch, route, claim hộ, revoke, reassign, heartbeat-gate, tạo `READY_UNASSIGNED` như một quyền điều khiển, hoặc chọn backlog cho ba worker này.
+- Ba worker này KHÔNG dùng Core role-fallback để tự scan/self-pull GitHub backlog.
+- Core tiếp tục tự động điều phối P1–P5 cho các resource chuyên dụng thuộc Core: API workers/Coding Lane, `NV06/OpenClaw`, và các resource khác đúng capability/health.
+- App Chrome là continuity transport cục bộ riêng cho `NV02/NV03/NV04`; không được dùng Core assignment hoặc GitHub backlog scan làm điều kiện gửi continue.
+- P0 Owner-only, one-resource-one-writer và các hard gate khác giữ nguyên.

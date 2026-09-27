@@ -1,8 +1,32 @@
 # TigerIQ — Current State
 
-Date: 2026-09-24
-Status: CURRENT — GitHub state reconciled on 2026-09-24; historical runtime facts remain explicitly dated and fresh live facts are tied to 2026-09-24 evidence
-Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #335 > this snapshot > runtime/evidence
+Date: 2026-09-26
+Status: CURRENT — GitHub canonical state reconciled at 2026-09-26T03:57Z; live runtime facts below are explicitly timestamped and historical sections remain provenance only
+Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 + Registry #335 + Interaction Policy #504 > this snapshot. Runtime assertions require separately timestamped live evidence.
+
+## Canonical reconciliation — 2026-09-26
+
+Source snapshot:
+- GitHub `main` audited at `f486b6f39f5afe5ee82908c204c6bd3261de9ae8` after #1954 merged.
+- CENTRAL #280, Registry #335 and Interaction Policy #504 were re-read on 2026-09-26. Current authority includes Remote Boundary / Local Autonomy, Workforce Routing V2, and the VY execution router. App Chrome-specific AC rules remain canonical only inside App Chrome scope and are OUT OF SCOPE for this reconciliation.
+- Registry #335 root is `REGISTRY_ROOT_VERSION=53`; older v52 wording below is historical.
+- Engineering remains branch → PR → exact-head checks → review/authorized waiver → merge; direct `main` mutation is forbidden.
+
+Autonomy / routing closeout:
+- #1959, #1955, #1935, #1915, #1916 and #1945 are CLOSED/COMPLETED.
+- #1951, #1961, #1958 and #1954 are CLOSED/COMPLETED after their scoped fixes merged.
+- #1916 runtime E2E PASS: eligible #1935 was materialized and auto-routed to NV06/OpenClaw, completed, released its lease/resource, then dependent #1922 was auto-claimed and completed by NV09 with `NV09_CORE_DIRECT_OK`. #1915 then closed DONE.
+- #1935 has durable Core objective/job completion evidence through NV06/OpenClaw. The current GitHub outcome formatter does not echo the raw updater file payload fields; those individual field values are therefore not asserted here.
+- #1948 remains OPEN until this docs reconciliation itself passes exact-head gates and merges. Parent #1947 remains OPEN until its final reconciliation is recorded.
+- #1806 is OPEN with `CURRENT_STATE=NEEDS_REBASE_BEFORE_REVIEW`; the older claim below that #1806 was CLOSED is stale and historical.
+
+Live runtime snapshot:
+- PC01 live-status generated at `2026-09-26T03:57:06.462Z` reported Core=true, Coding=true, UI Autopilot=true.
+- At that instant NV09 was WORKING on `qwen3-coder:30b`; NV06 and NV10 were IDLE; API resources had mixed live health/rate-limit states. These are point-in-time runtime facts, not durable identity changes.
+- No App Chrome source/runtime/config/controller/Worker Utility mutation was performed by the #1947/#1948 work described here.
+
+Historical provenance notice:
+- Sections below that carry 2026-09-18 / 2026-09-20 / 2026-09-24 runtime dates remain historical evidence. They must not be interpreted as current heartbeat/liveness assertions unless independently reverified.
 
 ## Canonical source / runtime
 - GitHub `main` remains canonical. Engineering changes go `branch → PR → required checks → merge`; no direct `main`.
@@ -45,7 +69,7 @@ Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #
 - Final live screenshot confirms the branded popup renders normally with no pre-handle exception dialog.
 
 ## Workforce / identity
-- Workforce authority is GitHub Issue #335, with live registry version 52 recorded by Core.
+- Workforce authority is GitHub Issue #335. Current canonical registry root is version 53; the prior live v52 observation is historical.
 - `NV02 = ChatGPT Plus`; `NV03 = ChatGPT Go`; `NV04 = Gemini Pro`; `NV10 = Ollama`.
 - `GPT-6 Astra` remains an on-demand high-tier resource of NV02, not a separate employee.
 
@@ -71,13 +95,37 @@ Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 > Registry #
 - #1811/#993 closeout evidence is assembled for final parent reconciliation; terminal parent state remains authoritative in the GitHub issues rather than this snapshot.
 
 ## Governance
-- Interaction #504 remains the generic command policy; explicit Owner instructions can supersede delegation for a scoped Work Order.
-- Production/runtime, paid, credential/security and destructive/irreversible actions remain separate authorization gates.
-- #802 closeout does not reopen NV02 mutation ownership; any new Worker Utility mutation requires a new Work Order/handoff.
+
+### Authorization boundary migration — #1967
+- Owner explicitly authorized the TigerIQ-wide authorization migration, including Remote Guard security-boundary changes.
+- Target model: **Remote Boundary, Local Autonomy**. Remote Desktop Guard protects only calls traversing Remote Desktop Commander/CMD into PC01; it is not a global employee permission system.
+- Every RDC mutation remains default-deny and uses the exact bounded one-shot Owner authorization contract from #1907. No employee/model identity bypass is allowed.
+- Native/local/API/GitHub execution is authorized by assignment + capability + RESOURCE_SCOPE with one active mutation owner per resource. Safe/reversible/zero-cost assigned work does not require repeated Owner approval.
+- Permanent static employee locks, including the App Chrome Owner+Vy-only mutation lock, are superseded for routine safe work by scoped one-writer ownership. App Chrome remains UI continuity/transport only; its behavior/spec is otherwise unchanged.
+- Hard gates remain Owner-controlled: security/Guard/permission changes, credentials/secrets, Production, paid/financial, destructive/irreversible.
+- Canonical design: docs/ADR/ADR-REMOTE-BOUNDARY-LOCAL-AUTONOMY.md. Migration is not complete until exact-head checks, independent review, merge and live canary verify both local/native continuity and the RDC deny boundary.
+
+## Issue Updates — reconciled 2026-09-26
+- #1915: CLOSED/COMPLETED — NV09 Coding Lane activation and live canary acceptance satisfied.
+- #1916: CLOSED/COMPLETED — Core backlog auto-dispatch/runtime recovery E2E verified.
+- #1935: CLOSED/COMPLETED — bounded Core → NV06/OpenClaw pc_operator execution completed.
+- #1945: CLOSED/COMPLETED — Core auto-route OpenClaw → tigeriq_pc canary completed.
+- #1951: CLOSED/COMPLETED — P0 Owner marker semantics corrected.
+- #1954: CLOSED/COMPLETED — bounded live GitHub context added to Coding Lane with stale-context fail-closed behavior.
+- #1955: CLOSED/COMPLETED — stale Coding result/source revision guard.
+- #1958: CLOSED/COMPLETED — bounded explicit `CONTEXT_ISSUES` hydration added.
+- #1959: CLOSED/COMPLETED — critical autonomy regression tests are discovered by CI.
+- #1960: CLOSED/COMPLETED — durable exact-head review gate V2.
+- #1961: CLOSED/COMPLETED — Coding Lane rechecks canonical source Work Order before mutation/merge.
+- #1806: OPEN — `CURRENT_STATE=NEEDS_REBASE_BEFORE_REVIEW`; prior CLOSED wording was stale.
+- #1946: CLOSED — registry version bump to 53 remains historical provenance.
+- Interaction #504 remains canonical interaction policy alongside current Owner overrides; scoped Owner instructions may supersede lower-priority delegation wording without bypassing hard gates.
+- Production, paid/financial, credential/secret, security/permission-boundary and destructive/irreversible actions remain separate hard gates.
+- App Chrome is OUT OF SCOPE for this #1948 reconciliation; historical App Chrome/Worker Utility evidence below is not changed.
 
 ## #1003 Runtime Source Isolation Closeout
 - Implemented dedicated clean source checkout mechanisms for runtime isolation under `scripts/tigeriq-core/` and `apps/tigeriq-core/` satisfying 3x E2E closeout requirements.
 - Verified full isolation compliance across all 3x E2E verification cycles.
 
-STATE: `CURRENT_20260924_UNIFIED_CONTROL_PLANE_CLOSEOUT_EVIDENCE_RECONCILED`
+STATE: `CURRENT_20260926_AUTONOMY_ROUTING_RECONCILED`
 UI_STATE: `CORE_UI_GH1766_DONE_READY_UNASSIGNED_20260924`

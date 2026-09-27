@@ -12,11 +12,17 @@ import { normalizeCampaignPhases, currentCampaignGoal, campaignTransition, makeP
 import { normalizeTerminalWorkItems, handoffGenerationKey, evaluateChildObjectiveStates, isCodingHandoff } from './work-handoff.mjs';
 import { ROUTING_PROFILE_LABELS, createResourceId, deriveRoutingProfile, failurePolicy, normalizeQuota, rankCandidates, rateLimitFailureState } from './smart-router.mjs';
 import { runExecutionPreflight } from './execution-preflight.mjs';
-import { detectIdleWithBacklog } from './github-backlog-policy.mjs';
+import { detectIdleWithBacklog, routingFault } from './github-backlog-policy.mjs';
+import { staleLeaseRecoveryPlan } from './job-recovery-policy.mjs';
 import { API_DOCTOR_CAPABILITY, apiDoctorAction, apiDoctorExistingHandoffAction, apiDoctorRepairSignature, buildApiDoctorPrompt, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
 import { buildCoreUiAssignmentSnapshot } from './core-ui-assignment.mjs';
+import { appendPublicEvidenceToSummary } from './public-evidence.mjs';
+import { verifyGithubActionsOidc } from './github-actions-oidc.mjs';
+import { publishGithubEvent } from './github-event-bus.mjs';
+import { githubTransportSnapshot } from './github-shared-client.mjs';
 import { refreshRegistryWorkforce, normalizeRuntimeResources } from './workforce-registry.mjs';
 import { OPENCLAW_EMPLOYEE_ID, OPENCLAW_MODEL, OPENCLAW_PROVIDER, OPENCLAW_RESOURCE_ID, normalizeOpenClawDispatchEnvelope, waitOpenClawDispatch } from '../openclaw-tigeriq-runtime/dispatch.mjs';
+import { executePcAction } from '../openclaw-tigeriq-runtime/operator.mjs';
 
 const DATABASE_URL = process.env.DATABASE_URL?.trim();
 if (!DATABASE_URL) throw new Error('DATABASE_URL_MISSING');
@@ -417,12 +423,18 @@ async function recoverAfterCoreRestart() {
     await pool.query("update tigeriq_ai_resources r set current_job_id=null,work_state=case when health_state='ONLINE' then 'IDLE' else health_state end,updated_at=now() where current_job_id is not null and not exists(select 1 from tigeriq_jobs j where j.id=r.current_job_id and j.status in ('dispatching','running'))");
     await pool.query("update tigeriq_resources r set current_job_id=null,work_state=case when health_state='ONLINE' then 'IDLE' else health_state end,updated_at=now() where current_job_id is not null and not exists(select 1 from tigeriq_jobs j where j.id=r.current_job_id and j.status in ('dispatching','running'))");
     await pool.query("update tigeriq_jobs j set status='done',result=coalesce(result,'{}'::jsonb)||jsonb_build_object('skipped','legacy_nv10_unavailable_reclassified'),failure=null,lease_until=null,completed_at=coalesce(completed_at,now()) where j.kind='api_doctor' and j.status='failed' and j.employee_id is null and j.resource_id is null and j.provider is null and exists(select 1 from tigeriq_events e where e.job_id=j.id and e.type='API_DOCTOR_ANALYSIS_SKIPPED' and e.data->>'reason'='nv10_unavailable')");
-    const openclawJobs=(await pool.query("select id,employee_id,resource_id from tigeriq_jobs where status in ('dispatching','running') and capability='pc_operator'")).rows;
+    const openclawJobs=(await pool.query("select j.id,j.objective_id,j.employee_id,j.resource_id,o.metadata as objective_metadata from tigeriq_jobs j join tigeriq_objectives o on o.id=j.objective_id where j.status in ('dispatching','running') and j.capability='pc_operator'")).rows;
     for(const j of openclawJobs){
-      await pool.query("update tigeriq_jobs set status='queued',employee_id=null,resource_id=null,provider=null,lease_until=null,completed_at=null where id=$1",[j.id]);
+      if(directPcOperatorAction(j)){
+        const failure={kind:'PC_OPERATOR_DIRECT_OUTCOME_UNKNOWN_AFTER_RESTART',message:'Direct local action may have crossed the process boundary; fail closed instead of repeating a possible side effect.'};
+        await pool.query("update tigeriq_jobs set status='failed',failure=$2,employee_id=null,resource_id=null,lease_until=null,next_attempt_at=null,completed_at=now() where id=$1",[j.id,JSON.stringify(failure)]);
+        await event('PC_OPERATOR_DIRECT_RECOVERY_FAIL_CLOSED',{jobId:j.id,objectiveId:j.objective_id,reason:failure.kind});
+      }else{
+        await pool.query("update tigeriq_jobs set status='queued',employee_id=null,resource_id=null,provider=null,lease_until=null,completed_at=null where id=$1",[j.id]);
+        await event('OPENCLAW_JOB_RECOVERED_AFTER_CORE_RESTART',{jobId:j.id,employeeId:j.employee_id,resourceId:j.resource_id});
+      }
       if(j.resource_id)await pool.query("update tigeriq_ai_resources set current_job_id=null,work_state=case when health_state='ONLINE' then 'IDLE' else health_state end,updated_at=now() where resource_id=$1",[j.resource_id]);
       if(j.employee_id)await pool.query("update tigeriq_resources set current_job_id=null,work_state=case when health_state='ONLINE' then 'IDLE' else health_state end,updated_at=now() where employee_id=$1",[j.employee_id]);
-      await event('OPENCLAW_JOB_RECOVERED_AFTER_CORE_RESTART',{jobId:j.id,employeeId:j.employee_id,resourceId:j.resource_id});
     }
   } catch (e) {
     console.error(JSON.stringify({ event: 'RECOVERY_RECONCILIATION_ERROR', error: String(e?.message || e) }));
@@ -430,7 +442,22 @@ async function recoverAfterCoreRestart() {
   const q=await pool.query("select id,employee_id,resource_id from tigeriq_jobs where status='running' and kind='ai'");
   for(const j of q.rows){await pool.query("update tigeriq_jobs set status='queued',employee_id=null,resource_id=null,provider=null,lease_until=null where id=$1",[j.id]);if(j.resource_id)await pool.query("update tigeriq_ai_resources set current_job_id=null,work_state='IDLE',health_state=case when credential_state in ('WAIT_KEY','BLOCKED') then 'OFFLINE' else 'READY' end,updated_at=now() where resource_id=$1",[j.resource_id]);if(j.employee_id)await pool.query("update tigeriq_resources set current_job_id=null,work_state='IDLE',health_state=case when credential_state in ('WAIT_KEY','BLOCKED') then 'OFFLINE' else 'READY' end,updated_at=now() where employee_id=$1",[j.employee_id]);await event('JOB_RECOVERED_AFTER_CORE_RESTART',{jobId:j.id,employeeId:j.employee_id,resourceId:j.resource_id});}
 }
+async function reconcileExhaustedQueuedJobs(){
+  const reason={kind:'RETRY_BUDGET_EXHAUSTED',message:'Queued job exhausted retry budget and is not claimable.'};
+  const q=await pool.query(`update tigeriq_jobs j
+    set status='failed',lease_until=null,next_attempt_at=null,completed_at=coalesce(completed_at,now()),failure=coalesce(failure,'{}'::jsonb)||$1::jsonb
+    where j.status in ('queued','waiting_resource') and j.attempts>=j.max_attempts
+      and exists(select 1 from tigeriq_objectives o where o.id=j.objective_id and o.status='active')
+    returning j.id,j.objective_id,j.employee_id,j.resource_id,j.attempts,j.max_attempts`,[JSON.stringify(reason)]);
+  for(const j of q.rows){
+    await pool.query("update tigeriq_ai_resources set current_job_id=null,work_state=case when health_state='ONLINE' then 'IDLE' else health_state end,updated_at=now() where current_job_id=$1",[j.id]);
+    await pool.query("update tigeriq_resources set current_job_id=null,work_state=case when health_state='ONLINE' then 'IDLE' else health_state end,updated_at=now() where current_job_id=$1",[j.id]);
+    await event('JOB_EXHAUSTED_QUEUE_RECONCILED',{jobId:j.id,objectiveId:j.objective_id,employeeId:j.employee_id,resourceId:j.resource_id,attempts:Number(j.attempts)||0,maxAttempts:Number(j.max_attempts)||0});
+  }
+  return q.rowCount||0;
+}
 async function recoverStale() {
+  await reconcileExhaustedQueuedJobs();
   const staleDoctor=await pool.query("select id,employee_id,resource_id from tigeriq_jobs where status='running' and kind='api_doctor' and started_at < now()-interval '2 minutes' and (lease_until is null or lease_until < now())");
   for(const j of staleDoctor.rows){
     await pool.query("update tigeriq_jobs set status='done',result=jsonb_build_object('skipped','stale_recovered'),lease_until=null,completed_at=now() where id=$1",[j.id]);
@@ -438,8 +465,28 @@ async function recoverStale() {
     await pool.query("update tigeriq_resources set current_job_id=null,work_state=case when health_state='ONLINE' then 'IDLE' else health_state end,updated_at=now() where current_job_id=$1",[j.id]);
     await event('API_DOCTOR_STALE_JOB_RECOVERED',{jobId:j.id,employeeId:j.employee_id,resourceId:j.resource_id});
   }
-  const stale=await pool.query("select id,employee_id,resource_id from tigeriq_jobs where status='running' and kind<>'api_doctor' and lease_until < now()");
-  for(const j of stale.rows){await pool.query("update tigeriq_jobs set status='queued',employee_id=null,resource_id=null,provider=null,lease_until=null,attempts=attempts+1 where id=$1",[j.id]);if(j.resource_id)await pool.query("update tigeriq_ai_resources set current_job_id=null,work_state='IDLE',health_state='READY',updated_at=now() where resource_id=$1",[j.resource_id]);if(j.employee_id)await pool.query("update tigeriq_resources set current_job_id=null,work_state='IDLE',health_state='READY',updated_at=now() where employee_id=$1",[j.employee_id]);await event('JOB_LEASE_RECOVERED',{jobId:j.id,employeeId:j.employee_id,resourceId:j.resource_id});}
+  const stale=await pool.query("select j.id,j.objective_id,j.employee_id,j.resource_id,j.attempts,j.max_attempts,o.metadata as objective_metadata from tigeriq_jobs j join tigeriq_objectives o on o.id=j.objective_id where j.status='running' and j.kind<>'api_doctor' and j.lease_until < now()");
+  for(const j of stale.rows){
+    if(directPcOperatorAction(j)){
+      const failure={kind:'PC_OPERATOR_DIRECT_OUTCOME_UNKNOWN_AFTER_LEASE_EXPIRY',message:'Direct local action lease expired with unknown side-effect state; fail closed instead of retrying.'};
+      await pool.query("update tigeriq_jobs set status='failed',failure=$2,employee_id=null,resource_id=null,lease_until=null,next_attempt_at=null,completed_at=now() where id=$1",[j.id,JSON.stringify(failure)]);
+      await event('PC_OPERATOR_DIRECT_RECOVERY_FAIL_CLOSED',{jobId:j.id,objectiveId:j.objective_id,reason:failure.kind});
+      continue;
+    }
+    const plan=staleLeaseRecoveryPlan({attempts:j.attempts,maxAttempts:j.max_attempts});
+    if(plan.exhausted){
+      const failure={kind:'RETRY_BUDGET_EXHAUSTED_AFTER_LEASE_RECOVERY',message:'Stale lease recovery reached the retry budget.',attempts:plan.nextAttempts,maxAttempts:plan.maxAttempts};
+      await pool.query("update tigeriq_jobs set status='failed',employee_id=null,resource_id=null,provider=null,lease_until=null,next_attempt_at=null,attempts=$2,failure=$3,completed_at=now() where id=$1",[j.id,plan.nextAttempts,JSON.stringify(failure)]);
+      if(j.resource_id)await pool.query("update tigeriq_ai_resources set current_job_id=null,work_state='IDLE',health_state='READY',updated_at=now() where resource_id=$1",[j.resource_id]);
+      if(j.employee_id)await pool.query("update tigeriq_resources set current_job_id=null,work_state='IDLE',health_state='READY',updated_at=now() where employee_id=$1",[j.employee_id]);
+      await event('JOB_LEASE_RECOVERY_EXHAUSTED',{jobId:j.id,objectiveId:j.objective_id,employeeId:j.employee_id,resourceId:j.resource_id,attempts:plan.nextAttempts,maxAttempts:plan.maxAttempts});
+      continue;
+    }
+    await pool.query("update tigeriq_jobs set status='queued',employee_id=null,resource_id=null,provider=null,lease_until=null,attempts=$2 where id=$1",[j.id,plan.nextAttempts]);
+    if(j.resource_id)await pool.query("update tigeriq_ai_resources set current_job_id=null,work_state='IDLE',health_state='READY',updated_at=now() where resource_id=$1",[j.resource_id]);
+    if(j.employee_id)await pool.query("update tigeriq_resources set current_job_id=null,work_state='IDLE',health_state='READY',updated_at=now() where employee_id=$1",[j.employee_id]);
+    await event('JOB_LEASE_RECOVERED',{jobId:j.id,objectiveId:j.objective_id,employeeId:j.employee_id,resourceId:j.resource_id,attempts:plan.nextAttempts,maxAttempts:plan.maxAttempts});
+  }
 }
 async function taskPerformance(taskKind='general'){
   const q=await pool.query(`select resource_id,count(*) filter(where type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK'))::int as success,count(*) filter(where type in ('RESOURCE_FAILURE','RESOURCE_PROBE_FAIL'))::int as failure,count(*) filter(where type='ROUTING_RETRY')::int as retry,count(*) filter(where type='ROUTING_FAILOVER')::int as failover,round(avg((data->>'latencyMs')::numeric) filter(where data ? 'latencyMs'))::int as avg_latency_ms from tigeriq_events where resource_id is not null and ts>=now()-interval '7 days' and (task_kind=$1 or task_kind is null or $1='general') group by resource_id`,[taskKind]);
@@ -449,8 +496,29 @@ async function candidates(capability='general',options={}){
   const q=await pool.query(`select * from tigeriq_ai_resources where enabled=true and credential_state in ('LOCAL','READY') and health_state in ('READY','ONLINE') and current_job_id is null`);const taskKind=String(options.taskKind||'general');const stats=await taskPerformance(taskKind);const rows=q.rows.map(x=>({...x,taskStats:{[taskKind]:stats.get(x.resource_id)||{}}}));return rankCandidates(rows,{profile:deriveRoutingProfile({requested:options.profile,taskKind,capability}),capability,taskKind,reviewerResourceId:options.reviewerResourceId||null,reviewerResourceIds:options.reviewerResourceIds||[]});
 }
 async function claimResource(capability,jobId,excluded=[],options={}){
-  const taskKind=String(options.taskKind||'general'),profile=deriveRoutingProfile({requested:options.profile,taskKind,capability});const q=await pool.query(`select * from tigeriq_ai_resources where enabled=true and credential_state in ('LOCAL','READY') and health_state in ('READY','ONLINE') and current_job_id is null`);const stats=await taskPerformance(taskKind);const rows=q.rows.filter(x=>!excluded.includes(x.resource_id)).map(x=>({...x,taskStats:{[taskKind]:stats.get(x.resource_id)||{}}}));const decision=rankCandidates(rows,{profile,capability,taskKind,reviewerResourceId:options.reviewerResourceId||null,reviewerResourceIds:options.reviewerResourceIds||[]});if(!decision.chosen)return null;const c=await pool.connect();try{await c.query('begin');const locked=await c.query(`select * from tigeriq_ai_resources where resource_id=$1 and enabled=true and credential_state in ('LOCAL','READY') and health_state in ('READY','ONLINE') and current_job_id is null and (cooldown_until is null or cooldown_until<=now()) for update skip locked`,[decision.chosen.resourceId]);const r=locked.rows[0];if(!r){await c.query('commit');return null;}await c.query("update tigeriq_ai_resources set current_job_id=$2,work_state='BUSY',updated_at=now() where resource_id=$1",[r.resource_id,jobId]);await c.query('commit');const evidence={profile,taskKind,capability,candidates:decision.candidates,chosen:decision.chosen};await pool.query("update tigeriq_jobs set routing_profile=$2,routing_decision=$3 where id=$1",[jobId,profile,JSON.stringify(evidence)]).catch(()=>{});await event('ROUTING_DECISION',{jobId,employeeId:r.employee_id,resourceId:r.resource_id,provider:r.provider,taskKind,profile,decision:evidence});return {...r,routingProfile:profile,routingDecision:evidence};}catch(e){await c.query('rollback');throw e;}finally{c.release();}
+  const taskKind=String(options.taskKind||'general'),profile=deriveRoutingProfile({requested:options.profile,taskKind,capability});
+  const q=await pool.query(`select * from tigeriq_ai_resources where enabled=true and credential_state in ('LOCAL','READY') and health_state in ('READY','ONLINE') and current_job_id is null`);
+  const stats=await taskPerformance(taskKind);
+  const preferredEmployeeId=String(options.preferredEmployeeId||'').trim().toUpperCase();
+  let candidates=q.rows.filter(x=>!excluded.includes(x.resource_id));
+  if(preferredEmployeeId)candidates=candidates.filter(x=>String(x.employee_id||'').toUpperCase()===preferredEmployeeId);
+  const rows=candidates.map(x=>({...x,taskStats:{[taskKind]:stats.get(x.resource_id)||{}}}));
+  const decision=rankCandidates(rows,{profile,capability,taskKind,reviewerResourceId:options.reviewerResourceId||null,reviewerResourceIds:options.reviewerResourceIds||[]});
+  if(!decision.chosen)return null;
+  const client=await pool.connect();
+  try{
+    await client.query('begin');
+    const locked=await client.query(`select * from tigeriq_ai_resources where resource_id=$1 and enabled=true and credential_state in ('LOCAL','READY') and health_state in ('READY','ONLINE') and current_job_id is null and (cooldown_until is null or cooldown_until<=now()) for update skip locked`,[decision.chosen.resourceId]);
+    const r=locked.rows[0];if(!r){await client.query('commit');return null;}
+    await client.query("update tigeriq_ai_resources set current_job_id=$2,work_state='BUSY',updated_at=now() where resource_id=$1",[r.resource_id,jobId]);
+    await client.query('commit');
+    const evidence={profile,taskKind,capability,preferredEmployeeId:preferredEmployeeId||null,candidates:decision.candidates,chosen:decision.chosen};
+    await pool.query("update tigeriq_jobs set routing_profile=$2,routing_decision=$3 where id=$1",[jobId,profile,JSON.stringify(evidence)]).catch(()=>{});
+    await event('ROUTING_DECISION',{jobId,employeeId:r.employee_id,resourceId:r.resource_id,provider:r.provider,taskKind,profile,decision:evidence});
+    return {...r,routingProfile:profile,routingDecision:evidence};
+  }catch(e){await client.query('rollback');throw e;}finally{client.release();}
 }
+
 async function invokeRouted(prompt,capability,jobId,maxAttempts=3,options={}){
   if(capability==='coding'){const e=new Error('LOCAL_CODING_DISABLED_GITHUB_ONLY');e.kind='configuration';throw e;}const taskKind=String(options.taskKind||'general'),profile=deriveRoutingProfile({requested:options.profile,taskKind,capability});const failures=[],excluded=[];for(let i=0;i<maxAttempts;i++){const row=await claimResource(capability,jobId,excluded,{...options,profile,taskKind});if(!row)break;excluded.push(row.resource_id);const r=resources.find(x=>x.resourceId===row.resource_id);if(!r)continue;await pool.query("update tigeriq_jobs set employee_id=$2,resource_id=$3,provider=$4,routing_profile=$5,routing_decision=$6,attempts=attempts+1,lease_until=now()+interval '5 minutes' where id=$1",[jobId,r.id,r.resourceId,r.provider,profile,JSON.stringify(row.routingDecision)]);const started=Date.now();try{const text=await invokeProvider(r,prompt),latency=Date.now()-started;await markResourceSuccess(r,jobId,latency,'RESOURCE_SUCCESS',true,{taskKind,profile});return{text,resource:r,latencyMs:latency,failures,routingProfile:profile,routingDecision:row.routingDecision};}catch(error){let finalError=error,policy=failurePolicy(error?.kind||'outage');if(policy.retrySameResource){await event('ROUTING_RETRY',{jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind,profile,kind:policy.kind});try{const retryStarted=Date.now(),text=await invokeProvider(r,prompt),latency=Date.now()-retryStarted;await markResourceSuccess(r,jobId,latency,'RESOURCE_SUCCESS',true,{taskKind,profile});return{text,resource:r,latencyMs:latency,failures,routingProfile:profile,routingDecision:row.routingDecision};}catch(retryError){finalError=retryError;policy=failurePolicy(retryError?.kind||policy.kind);}}const kind=finalError?.kind||'outage';failures.push({employeeId:r.id,resourceId:r.resourceId,provider:r.provider,kind,message:String(finalError?.message||finalError)});await markResourceFailure(r,jobId,finalError,'RESOURCE_FAILURE',true,{taskKind,profile});if(policy.failover)await event('ROUTING_FAILOVER',{jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind,profile,kind});if(policy.stop)break;}}const e=new Error('NO_AI_RESOURCE_AVAILABLE');e.failures=failures;throw e;
 }
@@ -710,6 +778,15 @@ export function shouldWaitForBusyResource({message='',failures=[],busyCapableCou
   return String(message)==='NO_AI_RESOURCE_AVAILABLE'&&Array.isArray(failures)&&failures.length===0&&Number(busyCapableCount)>0;
 }
 
+export function shouldWaitForTargetedReviewResource({job,message='',failures=[]}={}){
+  const targetWorker=String(job?.objective_metadata?.targetWorker||'').trim().toUpperCase();
+  return job?.kind==='github_review'
+    && /^NV\d{2}$/.test(targetWorker)
+    && String(message)==='NO_AI_RESOURCE_AVAILABLE'
+    && Array.isArray(failures)
+    && failures.length===0;
+}
+
 async function busyCapableResourceCount(capability){
   const q=await pool.query(`select count(*)::int as count from tigeriq_ai_resources
     where enabled=true and credential_state in ('LOCAL','READY')
@@ -745,6 +822,30 @@ function pcOperatorJobId(objectiveId,phaseIndex,ordinal){
   return `JOB-OC-${createHash('sha256').update(key).digest('hex').slice(0,24)}`;
 }
 const OPENCLAW_RETRYABLE_JOB_KINDS=new Set(['outage','timeout','openclaw_failure','worker_timeout','spawn_error','agent_terminal_invalid','busy','rate_limit']);
+const PC_OPERATOR_DIRECT_MUTATING_ACTIONS=new Set(['task_start','task_stop']);
+
+export function directPcOperatorAction(job){
+  const raw=job?.objective_metadata?.pcOperatorDirectAction;
+  if(!raw||typeof raw!=='object'||Array.isArray(raw))return null;
+  const action=String(raw.action||'');
+  if(action==='shell_exec'||action==='file_write'||action.startsWith('pad_'))return null;
+  if(PC_OPERATOR_DIRECT_MUTATING_ACTIONS.has(action)&&job?.objective_metadata?.ownerDirect!==true)return null;
+  return raw;
+}
+
+async function runDirectPcOperatorJob(j){
+  const action=directPcOperatorAction(j);
+  if(!action)throw Object.assign(new Error('PC_OPERATOR_DIRECT_ACTION_NOT_ADMITTED'),{kind:'direct_action_invalid'});
+  const idempotencyKey=`pc-direct:${String(j.objective_id)}:${String(j.id)}:${createHash('sha256').update(JSON.stringify(action)).digest('hex').slice(0,16)}`;
+  await pool.query("update tigeriq_jobs set attempts=attempts+1,provider='local-direct',routing_profile='PC_OPERATOR_DIRECT',routing_decision=$2 where id=$1",[j.id,JSON.stringify({profile:'PC_OPERATOR_DIRECT',executionSurface:'PC_OPERATOR_DIRECT_LOCAL',idempotencyKey,action:action.action})]);
+  await event('PC_OPERATOR_DIRECT_ADMITTED',{jobId:j.id,objectiveId:j.objective_id,taskKind:'pc_operator',idempotencyKey,action:action.action});
+  const receipt=await executePcAction(action);
+  const result={ok:true,provider:'local-direct',executionSurface:'PC_OPERATOR_DIRECT_LOCAL',idempotencyKey,evidence:{bridgeCalls:[{tool:'tigeriq_pc',result:receipt}]}};
+  await hotPathStage(j,'EVIDENCE',{provider:'local-direct',executionSurface:'PC_OPERATOR_DIRECT_LOCAL',idempotencyKey});
+  await pool.query("update tigeriq_jobs set status='done',employee_id=null,resource_id=null,provider='local-direct',routing_profile='PC_OPERATOR_DIRECT',result=$2,lease_until=null,completed_at=now(),next_attempt_at=null,resource_wait_count=0,resource_wait_started_at=null where id=$1",[j.id,JSON.stringify(result)]);
+  await event('PC_OPERATOR_DIRECT_COMPLETED',{jobId:j.id,objectiveId:j.objective_id,taskKind:'pc_operator',idempotencyKey,action:action.action});
+  await hotPathStage(j,'DONE',{provider:'local-direct',executionSurface:'PC_OPERATOR_DIRECT_LOCAL'});
+}
 function openClawEnvelopeForJob(j){
   const objectiveId=String(j.objective_id||j.id);
   return normalizeOpenClawDispatchEnvelope({
@@ -794,11 +895,11 @@ async function reviewerResourceIdsForJob(j){
 async function claimJob() {
   const c=await pool.connect();
   try { await c.query('begin');
-    const q=await c.query(`select j.* from tigeriq_jobs j join tigeriq_objectives o on o.id=j.objective_id
+    const q=await c.query(`select j.*,o.metadata as objective_metadata from tigeriq_jobs j join tigeriq_objectives o on o.id=j.objective_id
       where (j.status='queued' or (j.status='waiting_resource' and coalesce(j.next_attempt_at,now())<=now()))
         and j.attempts<j.max_attempts and o.status='active'
       order by case when j.status='waiting_resource' then 0 else 1 end,
-        case o.priority when 'P0' then 0 when 'P1' then 1 when 'P2' then 2 else 3 end,j.created_at
+        case o.priority when 'P0' then 0 when 'P1' then 1 when 'P2' then 2 when 'P3' then 3 when 'P4' then 4 when 'P5' then 5 else 6 end,j.created_at
       for update skip locked limit 1`);
     if(!q.rows[0]){await c.query('commit');return null;} const j=q.rows[0];
     await c.query("update tigeriq_jobs set status='running',started_at=coalesce(started_at,now()),lease_until=now()+interval '5 minutes' where id=$1",[j.id]);
@@ -810,7 +911,7 @@ async function claimJob() {
 }async function runJob(j) {
   try {
     await hotPathStage(j,'WORKING');
-    if(j.capability==='pc_operator'){await runOpenClawOperatorJob(j);return;}
+    if(j.capability==='pc_operator'){if(directPcOperatorAction(j))await runDirectPcOperatorJob(j);else await runOpenClawOperatorJob(j);return;}
     if(j.kind==='readonly'){
       const readStarted=Date.now();
       const read=(await pool.query('select now() as db_time')).rows[0];
@@ -822,10 +923,11 @@ async function claimJob() {
       return;
     }
     const reviewerResourceIds=await reviewerResourceIdsForJob(j);
-    const routed=await invokeRouted(j.prompt,j.capability,j.id,j.max_attempts-j.attempts,{taskKind:j.kind||'ai',profile:j.routing_profile||'AUTO',reviewerResourceIds});
+    const routed=await invokeRouted(j.prompt,j.capability,j.id,j.max_attempts-j.attempts,{taskKind:j.kind||'ai',profile:j.routing_profile||'AUTO',reviewerResourceIds,preferredEmployeeId:j.objective_metadata?.targetWorker||null});
+    const reviewEvidence=j.kind==='github_review'?parseGithubCoreReviewEvidence(routed.text,j.prompt):null;
     await hotPathStage(j,'EVIDENCE',{providerLatencyMs:routed.latencyMs,employeeId:routed.resource.id,resourceId:routed.resource.resourceId});
     const hadResourceWait=Number(j.resource_wait_count||0)>0;
-    await pool.query("update tigeriq_jobs set status='done',employee_id=$2,resource_id=$3,provider=$4,routing_profile=$5,routing_decision=$6,result=$7,lease_until=null,completed_at=now(),next_attempt_at=null,resource_wait_count=0,resource_wait_started_at=null where id=$1",[j.id,routed.resource.id,routed.resource.resourceId,routed.resource.provider,routed.routingProfile,JSON.stringify(routed.routingDecision),JSON.stringify({text:routed.text,latencyMs:routed.latencyMs,failures:routed.failures,resourceId:routed.resource.resourceId,routingProfile:routed.routingProfile,routingDecision:routed.routingDecision})]);
+    await pool.query("update tigeriq_jobs set status='done',employee_id=$2,resource_id=$3,provider=$4,routing_profile=$5,routing_decision=$6,result=$7,lease_until=null,completed_at=now(),next_attempt_at=null,resource_wait_count=0,resource_wait_started_at=null where id=$1",[j.id,routed.resource.id,routed.resource.resourceId,routed.resource.provider,routed.routingProfile,JSON.stringify(routed.routingDecision),JSON.stringify({text:routed.text,reviewEvidence,latencyMs:routed.latencyMs,failures:routed.failures,resourceId:routed.resource.resourceId,routingProfile:routed.routingProfile,routingDecision:routed.routingDecision})]);
     if(hadResourceWait)await event('RESOURCE_WAIT_RELEASED',{jobId:j.id,objectiveId:j.objective_id,employeeId:routed.resource.id,resourceId:routed.resource.resourceId,provider:routed.resource.provider,taskKind:j.kind||'ai'});
     await event('JOB_DONE',{jobId:j.id,objectiveId:j.objective_id,employeeId:routed.resource.id,resourceId:routed.resource.resourceId,provider:routed.resource.provider,taskKind:j.kind||'ai',profile:routed.routingProfile});
     await hotPathStage(j,'DONE');
@@ -846,14 +948,16 @@ async function claimJob() {
       }
     }
     const busyCount=message==='NO_AI_RESOURCE_AVAILABLE'&&failures.length===0?await busyCapableResourceCount(j.capability):0;
-    if(shouldWaitForBusyResource({message,failures,busyCapableCount:busyCount})){
+    const targetedReviewWait=shouldWaitForTargetedReviewResource({job:j,message,failures});
+    if(shouldWaitForBusyResource({message,failures,busyCapableCount:busyCount})||targetedReviewWait){
       const current=(await pool.query('select resource_wait_count,resource_wait_started_at from tigeriq_jobs where id=$1',[j.id])).rows[0]||{};
       const plan=resourceWaitPlan({waitCount:current.resource_wait_count,startedAt:current.resource_wait_started_at});
       if(plan.wait){
-        const failure={code:'TEMPORARY_RESOURCE_BUSY',message,failures,resourceWait:{count:plan.count,delayMs:plan.delayMs,nextAttemptAt:plan.nextAttemptAt}};
+        const waitCode=targetedReviewWait?'TARGET_REVIEWER_UNAVAILABLE':'TEMPORARY_RESOURCE_BUSY';
+        const failure={code:waitCode,message,failures,resourceWait:{count:plan.count,delayMs:plan.delayMs,nextAttemptAt:plan.nextAttemptAt}};
         await pool.query("update tigeriq_jobs set status='waiting_resource',failure=$2,lease_until=null,completed_at=null,next_attempt_at=$3,resource_wait_count=$4,resource_wait_started_at=coalesce(resource_wait_started_at,now()) where id=$1",[j.id,JSON.stringify(failure),plan.nextAttemptAt,plan.count]);
-        await event('RESOURCE_WAIT_QUEUED',{jobId:j.id,objectiveId:j.objective_id,taskKind:j.kind||'ai',busyCapableCount:busyCount,retryCount:plan.count,delayMs:plan.delayMs,nextAttemptAt:plan.nextAttemptAt});
-        await hotPathStage(j,'WAITING_RESOURCE',{reason:'TEMPORARY_RESOURCE_BUSY',retryCount:plan.count,nextAttemptAt:plan.nextAttemptAt});
+        await event('RESOURCE_WAIT_QUEUED',{jobId:j.id,objectiveId:j.objective_id,taskKind:j.kind||'ai',reason:waitCode,targetWorker:j.objective_metadata?.targetWorker||null,busyCapableCount:busyCount,retryCount:plan.count,delayMs:plan.delayMs,nextAttemptAt:plan.nextAttemptAt});
+        await hotPathStage(j,'WAITING_RESOURCE',{reason:waitCode,retryCount:plan.count,nextAttemptAt:plan.nextAttemptAt});
         return;
       }
     }
@@ -951,8 +1055,84 @@ async function persistTerminalHandoff(o,decision,currentPhase){
   }catch(error){await client.query('rollback');throw error;}finally{client.release();}
 }
 
+export function githubCoreReviewJobId(objectiveId=''){
+  const normalized=String(objectiveId||'').trim().replace(/[^A-Za-z0-9._-]+/g,'-').slice(0,160);
+  if(!normalized)throw new Error('CORE_REVIEW_OBJECTIVE_ID_REQUIRED');
+  return `JOB-${normalized}-REVIEW`;
+}
+
+export function githubCoreReviewDisposition(job){
+  if(!job)return {action:'queue',status:null};
+  const status=String(job.status||'').toLowerCase();
+  if(status==='done')return {action:'complete',status};
+  if(status==='failed')return {action:'block',status};
+  if(['queued','running','waiting_resource'].includes(status))return {action:'wait',status};
+  return {action:'block',status:status||'unknown'};
+}
+
+export function parseGithubCoreReviewEvidence(text,prompt=''){
+  const raw=String(text||'').trim();
+  const expected=String(prompt||'').match(/^TARGET_HEAD=([a-f0-9]{7,64})$/mi)?.[1]?.toLowerCase()||'';
+  const decision=raw.match(/^REVIEW=(PASS|CHANGES_REQUIRED)$/mi)?.[1]?.toUpperCase()||'';
+  const targetHead=raw.match(/^TARGET_HEAD=([a-f0-9]{7,64})$/mi)?.[1]?.toLowerCase()||'';
+  const summary=raw.match(/^SUMMARY=(.+)$/mi)?.[1]?.trim().slice(0,600)||'';
+  const findings=raw.match(/^FINDINGS=(.+)$/mi)?.[1]?.trim().slice(0,1800)||'';
+  const valid=raw.includes('[TIGERIQ_INDEPENDENT_REVIEW_V1]')&&Boolean(expected)&&Boolean(decision)&&Boolean(targetHead)&&targetHead===expected&&Boolean(summary)&&Boolean(findings);
+  if(!valid){
+    const error=new Error('CORE_REVIEW_EVIDENCE_INVALID');
+    error.kind='invalid_response';
+    error.detail={expectedHead:expected||null,targetHead:targetHead||null,decision:decision||null};
+    throw error;
+  }
+  return {schema:'TIGERIQ_INDEPENDENT_REVIEW_V1',decision,targetHead,summary,findings};
+}
+
+async function reconcileGithubCoreReviewObjective(o){
+  if(o?.metadata?.source!=='github'||o?.metadata?.dispatchLane!=='CORE_REVIEW')return false;
+  const jobId=githubCoreReviewJobId(o.id);
+  const job=(await pool.query("select id,status,employee_id,resource_id,provider,result,failure from tigeriq_jobs where id=$1",[jobId])).rows[0]||null;
+  const plan=githubCoreReviewDisposition(job);
+  if(plan.action==='queue'){
+    const prompt=[
+      String(o.objective||''),
+      '',
+      'You are the explicitly assigned independent TigerIQ reviewer. Review ONLY the supplied GitHub evidence; do not invent missing evidence or perform source mutation.',
+      'Return concise durable evidence containing exactly these fields on separate lines:',
+      '[TIGERIQ_INDEPENDENT_REVIEW_V1]',
+      'REVIEW=PASS|CHANGES_REQUIRED',
+      'TARGET_HEAD=<exact reviewed head from supplied evidence>',
+      'SUMMARY=<short finding>',
+      'FINDINGS=<specific findings or NONE>',
+      'If exact-head diff/check evidence is missing or inconsistent, REVIEW=CHANGES_REQUIRED and state the missing evidence.',
+    ].join('\n');
+    await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,max_attempts) values($1,$2,$3,$4,'review','github_review','queued',2) on conflict(id) do nothing",[jobId,o.id,`GitHub independent review ${o.metadata?.issueNumber||o.id}`,prompt]);
+    await pool.query("update tigeriq_objectives set summary=$2,next_check_at=now()+interval '5 seconds',updated_at=now() where id=$1",[o.id,`direct CORE_REVIEW queued: ${jobId}`]);
+    await event('GITHUB_CORE_REVIEW_JOB_MATERIALIZED',{objectiveId:o.id,jobId,issueNumber:o.metadata?.issueNumber||null,targetWorker:o.metadata?.targetWorker||null});
+    return true;
+  }
+  if(plan.action==='wait'){
+    await pool.query("update tigeriq_objectives set summary=$2,next_check_at=now()+interval '5 seconds',updated_at=now() where id=$1",[o.id,`direct CORE_REVIEW ${plan.status}: ${jobId}`]);
+    return true;
+  }
+  if(plan.action==='complete'){
+    const reviewer=String(job.employee_id||'UNKNOWN');
+    const resource=String(job.resource_id||'UNKNOWN');
+    const provider=String(job.provider||'UNKNOWN');
+    const reviewEvidence=job.result?.reviewEvidence||null;
+    const evidence=reviewEvidence?JSON.stringify(reviewEvidence):String(job.result?.text||'').trim().slice(0,4200);
+    const summary=`CORE_REVIEW completed by ${reviewer}/${provider}; resource=${resource}; job=${jobId}; evidence=${evidence||'EMPTY_REVIEW_EVIDENCE'}`.slice(0,5000);
+    await pool.query("update tigeriq_objectives set status='completed',summary=$2,updated_at=now() where id=$1 and status='active'",[o.id,summary]);
+    await event('GITHUB_CORE_REVIEW_COMPLETED',{objectiveId:o.id,jobId,employeeId:reviewer,resourceId:resource,provider,evidence:evidence.slice(0,1800)});
+    return true;
+  }
+  const failure=String(job?.failure?.message||job?.failure?.kind||`unexpected_status_${plan.status}`).slice(0,600);
+  await pool.query("update tigeriq_objectives set status='blocked',summary=$2,updated_at=now() where id=$1 and status='active'",[o.id,`CORE_REVIEW blocked; job=${jobId}; failure=${failure}`]);
+  await event('GITHUB_CORE_REVIEW_BLOCKED',{objectiveId:o.id,jobId,status:plan.status||null,failure});
+  return true;
+}
+
 async function reconcileCoreOpenClawBoundedObjectives(){
-  const rows=(await pool.query(`select o.id as objective_id,j.id as job_id,j.status,j.employee_id,j.resource_id,j.provider,j.failure,j.result
+  const rows=(await pool.query(`select o.id as objective_id,o.metadata as objective_metadata,j.id as job_id,j.status,j.employee_id,j.resource_id,j.provider,j.failure,j.result
     from tigeriq_objectives o
     join lateral (
       select id,status,employee_id,resource_id,provider,failure,result
@@ -970,7 +1150,7 @@ async function reconcileCoreOpenClawBoundedObjectives(){
     const done=row.status==='done';
     const reason=done?'job_done':String(row.failure?.kind||row.failure?.message||'terminal_failure').slice(0,300);
     const summary=done
-      ? `bounded pc_operator completed via ${row.employee_id||'NV06'}/${row.provider||'openclaw'}; job=${row.job_id}`
+      ? appendPublicEvidenceToSummary(`bounded pc_operator completed via ${row.employee_id||'NV06'}/${row.provider||'openclaw'}; job=${row.job_id}`,row.result,row.objective_metadata?.publicEvidenceKeys||[])
       : `bounded pc_operator failed; job=${row.job_id}; failure=${reason}`;
     const updated=await pool.query("update tigeriq_objectives set status=$2,summary=$3,updated_at=now() where id=$1 and status='active'",[row.objective_id,done?'completed':'blocked',summary]);
     if(updated.rowCount!==1)continue;
@@ -990,9 +1170,10 @@ async function managerTick() {
   const q=await pool.query(`select o.* from tigeriq_objectives o where o.status='active' and o.next_check_at<=now()
     and coalesce(o.metadata->>'executionSurface','') not in ('CORE_OPENCLAW_BOUNDED','CORE_UI')
     and not exists(select 1 from tigeriq_jobs j where j.objective_id=o.id and j.status in ('queued','running','ui_assigned','ui_running'))
-    order by case o.priority when 'P0' then 0 when 'P1' then 1 else 2 end,case when o.metadata#>>'{handoff,state}'='waiting_children' then 1 else 0 end,o.created_at limit 1`);
+    order by case o.priority when 'P0' then 0 when 'P1' then 1 when 'P2' then 2 when 'P3' then 3 when 'P4' then 4 when 'P5' then 5 else 6 end,case when o.metadata#>>'{handoff,state}'='waiting_children' then 1 else 0 end,o.created_at limit 1`);
   const o=q.rows[0]; if(!o) return;
   if(await reconcileAutonomousHandoff(o)) return;
+  if(await reconcileGithubCoreReviewObjective(o)) return;
   const campaign=o.metadata?.campaign||null;
   const phases=Array.isArray(campaign?.phases)?campaign.phases:[];
   const currentPhase=Math.min(Math.max(Number(campaign?.currentPhase)||0,0),Math.max(0,phases.length-1));
@@ -1097,17 +1278,49 @@ async function managerTick() {
 }
 async function snapshot(){
   const {workforce,workforceMeta}=await refreshRegistryWorkforce();
-  const base=(await pool.query('select * from tigeriq_ai_resources where enabled=true order by employee_id nulls last,resource_id')).rows;const failures=(await pool.query(`select distinct on(resource_id) resource_id,ts,type,data from tigeriq_events where resource_id is not null and type in ('RESOURCE_FAILURE','RESOURCE_PROBE_FAIL') order by resource_id,seq desc`)).rows,failureMap=new Map(failures.map(x=>[x.resource_id,x]));const callStats=(await pool.query(`select resource_id,count(*) filter(where type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK'))::int as ok,count(*) filter(where type in ('RESOURCE_FAILURE','RESOURCE_PROBE_FAIL'))::int as fail from tigeriq_events where resource_id is not null and ts>=now()-interval '24 hours' and type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK','RESOURCE_FAILURE','RESOURCE_PROBE_FAIL') group by resource_id`)).rows,statMap=new Map(callStats.map(x=>[x.resource_id,x]));const rr=normalizeRuntimeResources(base,workforce).map(x=>{const f=failureMap.get(x.resource_id),st=statMap.get(x.resource_id)||{ok:0,fail:0};return{...x,quota_state:normalizeQuota(x.quota_state||{}),status:publicStatus(x),last_error:f?.data?.kind||f?.data?.message||null,last_error_at:f?.ts||null,calls_success_24h:Number(st.ok||0),calls_failure_24h:Number(st.fail||0)}});const objectives=(await pool.query("select id,objective,priority,status,summary,manager_cycles,metadata,updated_at from tigeriq_objectives order by created_at desc limit 20")).rows;const jobs=(await pool.query("select id,objective_id,title,capability,kind,status,employee_id,resource_id,provider,routing_profile,routing_decision,phase_index,attempts,created_at,started_at,completed_at from tigeriq_jobs order by created_at desc limit 40")).rows;const events=(await pool.query("select seq,ts,type,objective_id,job_id,employee_id,resource_id,task_kind,data from tigeriq_events order by seq desc limit 80")).rows;const telemetry=(await pool.query(`select ts,employee_id,resource_id,task_kind,type,(data->>'latencyMs')::int as latency_ms from tigeriq_events where ts>=now()-interval '24 hours' and type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK') and data ? 'latencyMs' order by ts asc limit 500`)).rows;const performanceByTask=(await pool.query(`select resource_id,coalesce(task_kind,'general') as task_kind,count(*) filter(where type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK'))::int as success,count(*) filter(where type in ('RESOURCE_FAILURE','RESOURCE_PROBE_FAIL'))::int as failure,count(*) filter(where type='ROUTING_RETRY')::int as retries,count(*) filter(where type='ROUTING_FAILOVER')::int as failovers,round(avg((data->>'latencyMs')::numeric) filter(where data ? 'latencyMs'))::int as avg_latency_ms from tigeriq_events where resource_id is not null and ts>=now()-interval '7 days' group by resource_id,coalesce(task_kind,'general') order by resource_id,task_kind`)).rows;const routingDecisions=(await pool.query("select seq,ts,job_id,employee_id,resource_id,task_kind,data from tigeriq_events where type='ROUTING_DECISION' order by seq desc limit 20")).rows;return {ok:true,core:{host:HOST,port:PORT,pid:process.pid,uptimeSec:Math.floor(process.uptime()),time:nowIso()},integrations:{surfsense:await surfSenseHealth(),openclaw:{...(await probeOpenClawGateway()),workerActivated:openClawResourceActivated()}},resources:rr,workforce,workforceMeta,objectives,jobs,events,telemetry,apiDoctor:await apiDoctorTelemetry(),routing:{profiles:ROUTING_PROFILE_LABELS,routingDecisions,performanceByTask}};
+  const base=(await pool.query('select * from tigeriq_ai_resources where enabled=true order by employee_id nulls last,resource_id')).rows;const failures=(await pool.query(`select distinct on(resource_id) resource_id,ts,type,data from tigeriq_events where resource_id is not null and type in ('RESOURCE_FAILURE','RESOURCE_PROBE_FAIL') order by resource_id,seq desc`)).rows,failureMap=new Map(failures.map(x=>[x.resource_id,x]));const callStats=(await pool.query(`select resource_id,count(*) filter(where type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK'))::int as ok,count(*) filter(where type in ('RESOURCE_FAILURE','RESOURCE_PROBE_FAIL'))::int as fail from tigeriq_events where resource_id is not null and ts>=now()-interval '24 hours' and type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK','RESOURCE_FAILURE','RESOURCE_PROBE_FAIL') group by resource_id`)).rows,statMap=new Map(callStats.map(x=>[x.resource_id,x]));const rr=normalizeRuntimeResources(base,workforce).map(x=>{const f=failureMap.get(x.resource_id),st=statMap.get(x.resource_id)||{ok:0,fail:0};return{...x,quota_state:normalizeQuota(x.quota_state||{}),status:publicStatus(x),last_error:f?.data?.kind||f?.data?.message||null,last_error_at:f?.ts||null,calls_success_24h:Number(st.ok||0),calls_failure_24h:Number(st.fail||0)}});const objectives=(await pool.query("select id,objective,priority,status,summary,manager_cycles,metadata,updated_at from tigeriq_objectives order by created_at desc limit 20")).rows;const jobs=(await pool.query("select id,objective_id,title,capability,kind,status,employee_id,resource_id,provider,routing_profile,routing_decision,phase_index,attempts,created_at,started_at,completed_at from tigeriq_jobs order by created_at desc limit 40")).rows;const events=(await pool.query("select seq,ts,type,objective_id,job_id,employee_id,resource_id,task_kind,data from tigeriq_events order by seq desc limit 80")).rows;const telemetry=(await pool.query(`select ts,employee_id,resource_id,task_kind,type,(data->>'latencyMs')::int as latency_ms from tigeriq_events where ts>=now()-interval '24 hours' and type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK') and data ? 'latencyMs' order by ts asc limit 500`)).rows;const performanceByTask=(await pool.query(`select resource_id,coalesce(task_kind,'general') as task_kind,count(*) filter(where type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK'))::int as success,count(*) filter(where type in ('RESOURCE_FAILURE','RESOURCE_PROBE_FAIL'))::int as failure,count(*) filter(where type='ROUTING_RETRY')::int as retries,count(*) filter(where type='ROUTING_FAILOVER')::int as failovers,round(avg((data->>'latencyMs')::numeric) filter(where data ? 'latencyMs'))::int as avg_latency_ms from tigeriq_events where resource_id is not null and ts>=now()-interval '7 days' group by resource_id,coalesce(task_kind,'general') order by resource_id,task_kind`)).rows;const routingDecisions=(await pool.query("select seq,ts,job_id,employee_id,resource_id,task_kind,data from tigeriq_events where type='ROUTING_DECISION' order by seq desc limit 20")).rows;return {ok:true,core:{host:HOST,port:PORT,pid:process.pid,uptimeSec:Math.floor(process.uptime()),time:nowIso()},integrations:{surfsense:await surfSenseHealth(),openclaw:{...(await probeOpenClawGateway()),workerActivated:openClawResourceActivated()},github:githubTransportSnapshot()},resources:rr,workforce,workforceMeta,objectives,jobs,events,telemetry,apiDoctor:await apiDoctorTelemetry(),routing:{profiles:ROUTING_PROFILE_LABELS,routingDecisions,performanceByTask}};
 }
 function auth(req){return TOKEN && req.headers.authorization===`Bearer ${TOKEN}`;}
 function localSelf(req){const a=String(req.socket.remoteAddress||'').replace('::ffff:','');return a==='127.0.0.1'||a==='::1'||a===HOST;}
-async function readBody(req){let raw='';for await(const c of req){raw+=c;if(raw.length>65536)throw new Error('BODY_TOO_LARGE');}return raw?JSON.parse(raw):{};}
+async function readRawBody(req,maxBytes=65536){let raw='';for await(const c of req){raw+=c;if(Buffer.byteLength(raw,'utf8')>maxBytes)throw new Error('BODY_TOO_LARGE');}return raw;}
+async function readBody(req){const raw=await readRawBody(req,65536);return raw?JSON.parse(raw):{};}
 const labels={IDLE:'RẢNH',BUSY:'ĐANG LÀM',READY:'SẴN SÀNG',WAIT_KEY:'CHỜ KEY',RATE_LIMITED:'HẾT HẠN MỨC',OFFLINE:'OFFLINE',ERROR:'LỖI',DISABLED:'TẮT'};
 function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta.url),'utf8');}const server=createServer(async(req,res)=>{
   const url=new URL(req.url||'/','http://localhost');
   try{
     if(req.method==='GET'&&url.pathname==='/health'){res.writeHead(200,{'content-type':'application/json'});return res.end(JSON.stringify({ok:true,pid:process.pid,uptimeSec:Math.floor(process.uptime())}));}
     if(req.method==='GET'&&url.pathname==='/api/status'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await snapshot()));}
+    if(req.method==='POST'&&url.pathname==='/api/github-event'){
+      const authorization=String(req.headers.authorization||'');
+      const match=authorization.match(/^Bearer\s+(.+)$/i);
+      if(!match){res.writeHead(401,{'content-type':'application/json'});return res.end(JSON.stringify({ok:false,error:'github_oidc_required'}));}
+      const eventName=String(req.headers['x-github-event']||'').trim();
+      const deliveryId=String(req.headers['x-tigeriq-delivery']||'').trim();
+      if(!/^[a-z_]{2,64}$/.test(eventName)||!/^[A-Za-z0-9:._-]{3,128}$/.test(deliveryId)){res.writeHead(400,{'content-type':'application/json'});return res.end(JSON.stringify({ok:false,error:'github_event_headers_invalid'}));}
+      let identity;
+      try{identity=await verifyGithubActionsOidc(match[1]);}
+      catch(error){res.writeHead(401,{'content-type':'application/json'});return res.end(JSON.stringify({ok:false,error:String(error?.message||error).slice(0,120)}));}
+      const raw=await readRawBody(req,512*1024);
+      let payload;try{payload=raw?JSON.parse(raw):{}}catch{res.writeHead(400,{'content-type':'application/json'});return res.end(JSON.stringify({ok:false,error:'github_event_json_invalid'}));}
+      if(String(payload?.repository?.full_name||'')!=='newsdayads/tigeriq-ai-lab'){res.writeHead(403,{'content-type':'application/json'});return res.end(JSON.stringify({ok:false,error:'github_event_repository_invalid'}));}
+      const client=await pool.connect();
+      let duplicate=false;
+      try{
+        await client.query('begin');
+        await client.query('select pg_advisory_xact_lock(hashtext($1))',[deliveryId]);
+        duplicate=(await client.query("select 1 from tigeriq_events where type='GITHUB_EVENT_RECEIVED' and data->>'deliveryId'=$1 limit 1",[deliveryId])).rowCount>0;
+        if(!duplicate){
+          const issueNumber=Number(payload?.issue?.number||payload?.pull_request?.number||0)||null;
+          await client.query("insert into tigeriq_events(type,data) values('GITHUB_EVENT_RECEIVED',$1)",[JSON.stringify({deliveryId,eventName,issueNumber,repository:'newsdayads/tigeriq-ai-lab',runId:identity.runId||null,receivedAt:new Date().toISOString()})]);
+        }
+        await client.query('commit');
+      }catch(error){try{await client.query('rollback')}catch{};throw error}
+      finally{client.release()}
+      if(duplicate){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify({ok:true,duplicate:true,deliveryId}));}
+      const published=publishGithubEvent({eventName,deliveryId,payload,receivedAt:new Date().toISOString()});
+      res.writeHead(202,{'content-type':'application/json','cache-control':'no-store'});
+      return res.end(JSON.stringify({ok:true,accepted:true,deliveryId,eventName,issueNumber:published.issueNumber,subscribers:published.subscribers}));
+    }
     if(req.method==='GET'&&url.pathname==='/api/ui-assignment'){
       if(!auth(req)&&!localSelf(req)){res.writeHead(401);return res.end('unauthorized');}
       const previousJobId=url.searchParams.get('previousJobId')||undefined;
@@ -1174,7 +1387,7 @@ async function runFailureLearningScan(){
   return {eventsIn:rows.length,candidatesCreated:candidates.length};
 }
 
-let stop=false, lastRefresh=0, lastRecover=0, lastOpenClawObjectiveReconcile=0, lastManager=0, lastProbe=0, lastFailureLearning=0, lastApiDoctor=0, apiDoctorScanRunning=false; const active=new Set();
+let stop=false, lastRefresh=0, lastRecover=0, lastOpenClawObjectiveReconcile=0, lastManager=0, lastProbe=0, lastFailureLearning=0, lastApiDoctor=0, apiDoctorScanRunning=false, managerTickRunning=false; const active=new Set();
 function getDynamicMaxParallel() {
   const resList = typeof resources !== 'undefined' ? resources : [];
   const healthyCount = Array.isArray(resList) ? resList.filter(r => r && (r.status === 'ready' || r.status === 'healthy' || r.healthy || r.health_state === 'READY' || r.health_state === 'ONLINE' || r.credential_state === 'LOCAL')).length : 0;
@@ -1264,7 +1477,7 @@ async function loop(){
       if(t-lastRefresh>15000){await refreshResources();lastRefresh=t;}
       if(t-lastRecover>10000){await recoverStale();lastRecover=t;}
       if(t-lastOpenClawObjectiveReconcile>3000){await reconcileCoreOpenClawBoundedObjectives();lastOpenClawObjectiveReconcile=t;}
-      if(t-lastManager>MANAGER_IDLE_MS){await managerTick();lastManager=t;}
+      if(!managerTickRunning&&t-lastManager>MANAGER_IDLE_MS){lastManager=t;managerTickRunning=true;void managerTick().catch(error=>console.error(JSON.stringify({event:'MANAGER_TICK_ERROR',error:String(error?.message||error)}))).finally(()=>{managerTickRunning=false;});}
       if(t-lastProbe>60000){await probeReadyResources();lastProbe=t;}
       if(!apiDoctorScanRunning&&t-lastApiDoctor>API_DOCTOR_INTERVAL_MS){lastApiDoctor=t;apiDoctorScanRunning=true;void runApiDoctorScan().catch(error=>console.error(JSON.stringify({event:'API_DOCTOR_SCAN_ERROR',error:String(error?.message||error)}))).finally(()=>{apiDoctorScanRunning=false;});}
       if(t-lastFailureLearning>FAILURE_LEARNING_INTERVAL_MS){lastFailureLearning=t;await runFailureLearningScan();}
@@ -1274,9 +1487,48 @@ async function loop(){
       while(active.size < currentMaxParallel){
         const j = await claimJob();
         if(!j) {
-          const pendingCount = (await pool.query("select count(*)::int as count from tigeriq_jobs where status='queued'")).rows[0]?.count || 0;
-          if (detectIdleWithBacklog(active.size, pendingCount)) {
-            console.log(JSON.stringify({ event: 'IDLE_WITH_BACKLOG', timestamp: new Date().toISOString(), pendingQueueCount: pendingCount }));
+          const eligiblePendingCount=(await pool.query(`select count(*)::int as count
+            from tigeriq_jobs j
+            join tigeriq_objectives o on o.id=j.objective_id
+            where (j.status='queued' or (j.status='waiting_resource' and coalesce(j.next_attempt_at,now())<=now()))
+              and j.attempts<j.max_attempts
+              and o.status='active'`)).rows[0]?.count||0;
+          const eligibleIdleWorkers=(await pool.query(`select count(*)::int as count
+            from tigeriq_ai_resources
+            where enabled=true
+              and credential_state in ('LOCAL','READY')
+              and health_state in ('READY','ONLINE')
+              and current_job_id is null
+              and (cooldown_until is null or cooldown_until<=now())`)).rows[0]?.count||0;
+          const fault=routingFault({
+            eligibleBacklogCount:eligiblePendingCount,
+            activeWorkCount:active.size,
+            eligibleIdleWorkers,
+          });
+          if(detectIdleWithBacklog(active.size,eligiblePendingCount)){
+            console.log(JSON.stringify({
+              event:fault.fault?'ROUTING_FAULT':'IDLE_WITH_ELIGIBLE_BACKLOG',
+              timestamp:new Date().toISOString(),
+              eligiblePendingCount,
+              eligibleIdleWorkers,
+              activeWorkCount:active.size,
+            }));
+          }
+          if(fault.fault){
+            await event('ROUTING_FAULT',{
+              eligibleBacklogCount:eligiblePendingCount,
+              eligibleIdleWorkers,
+              activeWorkCount:active.size,
+              recovery:'BOUNDED_RECLAIM',
+            });
+            await sleep(100);
+            const recovered=await claimJob();
+            if(recovered){
+              await event('ROUTING_FAULT_RECOVERED',{jobId:recovered.id,objectiveId:recovered.objective_id});
+              active.add(recovered.id);
+              void runJob(recovered).finally(()=>active.delete(recovered.id));
+              continue;
+            }
           }
           break;
         }

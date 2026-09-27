@@ -22,8 +22,8 @@ export const CONTINUE_PROMPTS = Object.freeze([
   'Làm tiếp, không đổi việc',
 ]);
 
-export const CONTINUE_MIN_MS = 5 * 60 * 1000;
-export const CONTINUE_MAX_MS = 10 * 60 * 1000;
+export const CONTINUE_MIN_MS = 3 * 1000;
+export const CONTINUE_MAX_MS = 15 * 1000;
 export const REFRESH_MIN_MS = 2 * 60 * 60 * 1000;
 export const REFRESH_MAX_MS = 4 * 60 * 60 * 1000;
 export const WORKER_REFRESH_MIN_MS = REFRESH_MIN_MS;
@@ -33,6 +33,7 @@ export const WORKER_F5_MAX_MS = 20 * 60 * 1000;
 export const MAX_STALLED_CHECKS = 3;
 export const WORKING_PROGRESS_CHECK_MS = 60 * 1000;
 export const MAX_WORKING_UNCHANGED_CHECKS = 3;
+export const AWAITING_WORK_START_TIMEOUT_MS = 30 * 1000;
 export const CHAT_ROTATE_AFTER_DISPATCHES = 30;
 export const CONTINUITY_WORKERS = Object.freeze(['NV02','NV03','NV04']);
 
@@ -66,6 +67,13 @@ export function pickContinuePrompt(previous='',random=Math.random){
   return candidates[Math.min(candidates.length-1,Math.floor(random()*candidates.length))];
 }
 
+export function pickWorkerContinuePrompt(workerId,previous='',random=Math.random){
+  const base=pickContinuePrompt(String(previous||'').replace(/^\d{2}\s*-\s*/,''),random);
+  const digits=(String(workerId||'').match(/\d+/)||[])[0]||'';
+  const code=digits?digits.padStart(2,'0'):'';
+  return code?code+' - '+base:base;
+}
+
 export function deriveWorkerPhase(ui,{heartbeatStale=false,workerId='NV02'}={}){
   if(ui?.securityBlock)return 'BLOCKED';
   if(heartbeatStale)return 'STALLED';
@@ -81,6 +89,18 @@ export function deriveWorkerPhase(ui,{heartbeatStale=false,workerId='NV02'}={}){
   return 'STALLED';
 }
 export function deriveNv02Phase(ui,opts){return deriveWorkerPhase(ui,opts);}
+
+export function shouldRearmAwaitingWorkStart({phase,awaitingWorkStart,awaitingWorkStartSince,now,timeoutMs=AWAITING_WORK_START_TIMEOUT_MS}={}){
+  if(String(phase||'').toUpperCase()!=='READY')return false;
+  if(awaitingWorkStart!==true)return false;
+  const since=Number(awaitingWorkStartSince),current=Number(now),timeout=Number(timeoutMs);
+  if(!Number.isFinite(since)||!Number.isFinite(current)||!Number.isFinite(timeout)||timeout<0)return false;
+  return current-since>=timeout;
+}
+
+export function rearmAwaitingWorkStart(state,now){
+  return {...state,awaitingWorkStart:false,awaitingWorkStartSince:0,pendingContinue:true,nextContinueAt:Number(now)};
+}
 
 function workerAutopilot(controller,workerId){
   const direct=controller?.autopilotByWorker?.[workerId]||controller?.workerAutopilot?.[workerId];

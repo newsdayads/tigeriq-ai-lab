@@ -173,10 +173,12 @@ export function issueStage(issue, comments = []) {
 
 export function issuePriority(issue) {
   const body = String(issue?.body || '');
-  const field = body.match(/(?:^|\n)## Priority\s*\n\s*(P[012])\s*(?:\n|$)/i);
+  const flat = body.match(/(?:^|\n)PRIORITY=(P[0-5])\s*(?:\n|$)/i);
+  if (flat) return flat[1].toUpperCase();
+  const field = body.match(/(?:^|\n)## Priority\s*\n\s*(P[0-5])\s*(?:\n|$)/i);
   if (field) return field[1].toUpperCase();
   const title = String(issue?.title || '');
-  const titleMatch = title.match(/(?:^|[^A-Z0-9])(P[012])(?:[^A-Z0-9]|$)/i);
+  const titleMatch = title.match(/(?:^|[^A-Z0-9])(P[0-5])(?:[^A-Z0-9]|$)/i);
   return titleMatch ? titleMatch[1].toUpperCase() : null;
 }
 

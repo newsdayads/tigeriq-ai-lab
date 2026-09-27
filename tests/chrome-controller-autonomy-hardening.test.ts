@@ -232,19 +232,31 @@ describe('isolated NV02 WORKING/F5 safety scope',()=>{
     const hotLoop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
     const working=hotLoop.slice(hotLoop.indexOf("if(phase==='WORKING')"),hotLoop.indexOf('const chatLoadRecoveryHandled=await maybeRecoverChatLoadError'));
     expect(working).not.toContain('reloadTarget');
+    expect(hotLoop).toContain("if(phase!=='WORKING'&&now>=Number(state.nextRefreshAt||0))");
+    const workingF5Guard=hotLoop.indexOf("if(phase==='WORKING'&&now>=Number(state.nextPeriodicF5At||0))");
+    const dueF5=hotLoop.indexOf("if(now>=Number(state.nextPeriodicF5At||0))");
+    expect(workingF5Guard).toBeGreaterThan(-1);
+    expect(dueF5).toBeGreaterThan(workingF5Guard);
+    expect(hotLoop).toContain("PERIODIC_F5_DEFERRED_WORKING");
+    expect(hotLoop).toContain("PERIODIC_F5_DEFERRED_WORKING_FRESH");
+    const f5Mutation=hotLoop.slice(dueF5,hotLoop.indexOf("if(phase==='WORKING')",dueF5));
+    expect(f5Mutation.indexOf("PERIODIC_F5_DEFERRED_WORKING_FRESH")).toBeGreaterThan(-1);
+    expect(f5Mutation.indexOf("PERIODIC_F5_DEFERRED_WORKING_FRESH")).toBeLessThan(f5Mutation.indexOf("reloadTarget(target)"));
     expect(working).not.toContain('reopenWorker(');
     expect(working).not.toContain('dispatchNaturalContinue');
-    expect(working).toContain('stopStalledWorking');
-    expect(working).toContain("'WORKING_STUCK_STOP'");
+    expect(working).toContain("'WORKING_LONG_RUNNING_NO_MUTATION'");
+    expect(working).toContain('return;');
     expect(working).toContain("return;");
   });
 
-  it('dispatches locally when READY without Core assignment', () => {
+  it('continues locally when READY without any Core assignment gate', () => {
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     const hotLoop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
+    expect(hotLoop).not.toContain("currentWorkerAssignmentStatus('NV02')");
+    expect(hotLoop).not.toContain('READY_UNASSIGNED');
     expect(hotLoop).toContain("if(phase==='READY')");
     expect(hotLoop).toContain('dispatchNaturalContinue(target,state,now)');
-    expect(hotLoop).not.toContain('READY_UNASSIGNED');
+    expect(hotLoop).toContain('awaitingWorkStart');
     expect(hotLoop).not.toContain('CURRENT_WORK_NEW_CHAT_RESTORE');
   });
 });
@@ -418,8 +430,8 @@ describe('GitHub terminal UI-job reconciliation #1843',()=>{
 });
 
 
-describe('NV04 assignment-bound Gemini transport',()=>{
-  it('requires an explicit review/research contract and refuses unassigned continuation',()=>{
+describe('NV04 explicit dispatch contract plus local-only continuity',()=>{
+  it('keeps the explicit NV04 contract while continuity ignores assignment state',()=>{
     const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
     expect(server).toContain('function validateNv04AssignmentContract(text:string)');
     expect(server).toContain("['DEEP_RESEARCH','INDEPENDENT_REVIEW'].includes(role)");
@@ -430,27 +442,18 @@ describe('NV04 assignment-bound Gemini transport',()=>{
     expect(server).toContain("'NV04_OUTPUT_REQUIRED'");
     expect(server).toContain("'NV04_EVIDENCE_DESTINATION_REQUIRED'");
     expect(server).toContain("'NV04_MUTATION_ASSIGNMENT_FORBIDDEN'");
-    const nv04Dispatch=server.slice(server.indexOf("if(workerId==='NV04'){"),server.indexOf("const requestedJobId="));
-    expect(nv04Dispatch).toContain('navigate=true');
-    expect(nv04Dispatch).toContain("source:'NV04_ASSIGNMENT'");
 
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
-    expect(bridge).toContain('function nv04AssignmentStatus(controller)');
-    expect(bridge).toContain("return{status:'READY_UNASSIGNED',job:null}");
-    expect(bridge).toContain("job?.source!=='NV04_ASSIGNMENT'");
-    expect(bridge).toContain("stage==='WORKING'");
-    expect(bridge).toContain("stage==='WAITING_EVIDENCE'||stage==='VERIFY'");
     const generic=bridge.slice(bridge.indexOf('async function maybeWorkerContinuity'),bridge.indexOf('\nfunction log('));
-    expect(generic).toContain("if(w.id==='NV03'||w.id==='NV04')");
-    expect(generic).toContain("currentWorkerAssignmentStatus(w.id)");
-    expect(generic).toContain("assignment.status!=='CONTINUABLE'");
-    expect(generic).toContain("genericWorkerEvent(w.id,assignment.status");
     const command=bridge.slice(bridge.indexOf('async function handleCommand'),bridge.indexOf('async function postWorkerHeartbeat'));
-    expect(command).toContain("if(w.id==='NV03'||w.id==='NV04')");
-    expect(command).toContain("return{status:assignment.status,jobId:assignment.job?.jobId||null}");
+    expect(bridge).not.toContain('function workerAssignmentStatus(controller,workerId)');
+    expect(bridge).not.toContain('currentWorkerAssignmentStatus(');
+    expect(bridge).not.toContain('READY_UNASSIGNED');
+    expect(generic).toContain('chooseLocalContinuePrompt(w.id,state)');
+    expect(generic).not.toContain('assignment.status');
+    expect(command).not.toContain('assignment.status');
   });
 });
-
 
 describe('NV02 current-chat continuity lease guard',()=>{
   it('allows conflict-free current-chat or exact claimed self-run continuation',()=>{
@@ -497,9 +500,10 @@ describe('NV02 reboot F5 consolidation #1739',()=>{
     expect(bridge).toContain("if(w.id==='NV02')await noteNv02CommandDispatch()");
     const loop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
     const fresh=loop.indexOf("bootFreshContextPending.has('NV02')");
-    const f5=loop.indexOf("if(currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0))");
+    const f5=loop.indexOf("if(now>=Number(state.nextPeriodicF5At||0))");
     expect(fresh).toBeGreaterThan(-1);
-    expect(f5).toBeGreaterThan(fresh);
+    expect(f5).toBeGreaterThan(-1);
+    expect(loop).toContain("if(phase!=='WORKING'&&now>=Number(state.nextRefreshAt||0))");
     expect(loop).not.toContain('state.resumeChatUrl');
     const f5Block=loop.slice(f5,loop.indexOf('const modelCheckRequired='));
     expect(f5Block).toContain('reloadTarget(target)');
@@ -530,16 +534,18 @@ describe('APP Chrome UI-only continuity regression #1525',()=>{
     expect(recovery).not.toContain("if(after&&!after.chatLoadError)");
   });
 
-  // READY_UNASSIGNED is NV04-only; keep the NV02 regression guard scoped to its own loop.
-  it('keeps NV02 project-home continuity assignment-free while NV04 may be READY_UNASSIGNED',()=>{
+  it('keeps NV02 continuity UI-local while model recovery remains bounded',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(bridge).toContain("return /\\/c\\//.test(current.pathname)");
     expect(bridge).toContain("isWorkerFreshContext");
     expect(bridge).toContain("BOOT_FRESH_CONTEXT_READY");
     expect(bridge).toContain("LOCAL_CONTINUE_DISPATCHED");
     const nv02Loop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
-    expect(nv02Loop).not.toContain("READY_UNASSIGNED");
-    expect(bridge).toContain("READY_UNASSIGNED");
+    expect(nv02Loop).not.toContain('currentWorkerAssignmentStatus');
+    expect(nv02Loop).not.toContain('READY_UNASSIGNED');
+    expect(nv02Loop).not.toContain('autoModelRecoverySuppressed:true');
+    expect(nv02Loop).toContain("const modelCheckRequired=");
+    expect(nv02Loop).toContain("if(phase==='READY')");
   });
 });
 
@@ -644,5 +650,23 @@ describe('APP Chrome unified runtime supervisor #1525',()=>{
     expect(installer).not.toContain('New-ScheduledTaskPrincipal');
     expect(installer).not.toContain('Set-ScheduledTask -TaskName $taskName');
     expect(installer).not.toContain('RunLevel Highest');
+  });
+});
+
+describe('NV02-only zero-touch propagation #2113',()=>{
+  it('passes the durable NV02-only marker through canonical zero-touch install',()=>{
+    const script=readFileSync('scripts/tigeriq-core/appchrome-zero-touch.ps1','utf8');
+    expect(script).toContain("LIVE_ACCEPTANCE_SCOPE' 'NV02_ONLY'");
+    expect(script).toContain('APPCHROME_NV02_ONLY_AUTH_MISSING');
+    expect(script).toContain("$installerArgs+='-Nv02Only'");
+  });
+});
+
+describe('NV03/NV04 canonical model preservation #1940',()=>{
+  it('never applies NV02 model selection to generic workers',()=>{
+    const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    expect(bridge).toContain("if(w.id!=='NV02'&&state.modelCheckAttempted!==true)");
+    expect(bridge).toContain("BOOT_MODEL_PROFILE_PRESERVED");
+    expect(bridge).not.toContain("if(expectedHost(w)==='chatgpt.com'&&state.modelCheckAttempted!==true)");
   });
 });

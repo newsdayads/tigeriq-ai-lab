@@ -191,6 +191,19 @@ export async function executeRuntimeAction(input, options = {}) {
       timeoutMs: 10000,
       allowCoreHost: true,
     });
+  } else if (action === 'nv09_canary') {
+    target = 'core';
+    const prompt = String(input?.prompt || 'Return exactly NV09_CORE_DIRECT_OK').trim();
+    if (!prompt || prompt.length > 500) throw new Error('TIGERIQ_RUNTIME_NV09_PROMPT_INVALID');
+    data = await requestJson('/api/nv09/canary', {
+      ...common,
+      baseUrl: coreBaseUrl,
+      expectedPort: 8795,
+      method: 'POST',
+      payload: { prompt },
+      timeoutMs: 240000,
+      allowCoreHost: true,
+    });
   } else {
     throw new Error('TIGERIQ_RUNTIME_ACTION_NOT_ALLOWED');
   }

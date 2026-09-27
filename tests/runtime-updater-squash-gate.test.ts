@@ -73,16 +73,29 @@ describe('runtime updater squash merge gate resolution',()=>{
     expect(launcher).toContain('Copy-Item -LiteralPath $asset.FullName -Destination $tmp -Force');
     expect(launcher).toContain('Move-Item -LiteralPath $tmp -Destination $target -Force');
   });
-  it('gates OpenClaw apply on functional canary, rolls updater/plugin changes back on failure, and avoids reconcile restart loops',()=>{
+  it('gates only OpenClaw changes on functional canary and keeps unrelated updater changes moving',()=>{
     const src=readFileSync('scripts/tigeriq-core/update-core-runtime.ps1','utf8');
     expect(src).toContain('function Reconcile-OpenClawRuntime([string]$installedSha)');
     expect(src).toContain("reason='terminal_canary_blocked'");
-    expect(src).toContain("if([string]$openclawReconcile.action -eq 'restarted')");
-    expect(src).toContain("if([string]$preOpenclawCanary.result -eq 'PASS'){Save-OpenClawAppliedState (OpenClaw-TreeSha)}");
-    expect(src).toContain('if($impact.updater -or $impact.openclaw)');
+    expect(src).toContain("OPENCLAW_DEGRADED_NONBLOCKING");
+    expect(src).toContain('if($impact.openclaw){');
+    expect(src).not.toContain('if($impact.updater -or $impact.openclaw)');
     expect(src).toContain("throw ('OPENCLAW_FUNCTIONAL_CANARY_FAILED:'+ $why)");
     expect(src).toContain('if($impact.openclaw){Save-OpenClawAppliedState $tree}');
-    expect(src).toContain('if($null -eq $openclawCanary){$openclawCanary=Invoke-OpenClawCanary $remote (OpenClaw-TreeSha)}');
+    expect(src).toContain('if($impact.openclaw -and $null -eq $openclawCanary){$openclawCanary=Invoke-OpenClawCanary $remote (OpenClaw-TreeSha)}');
+  });
+
+  it('recreates a missing Core Runtime Updater from the active runtime repo',()=>{
+    const launcher=readFileSync('scripts/tigeriq-core/run-core.ps1','utf8');
+    const installer=readFileSync('scripts/tigeriq-core/install-core-updater.ps1','utf8');
+    expect(launcher).toContain('function Ensure-CoreRuntimeUpdater');
+    expect(launcher).toContain("Get-ScheduledTask -TaskName $updaterTask");
+    expect(launcher).toContain("-File $installer -Repo $repo");
+    expect(launcher).toContain("CORE_RUNTIME_UPDATER_TASK_RECREATE_FAILED");
+    expect(installer).toContain("param([string]$Repo='D:\\TigerIQ\\Workspace\\tigeriq-ai-lab')");
+    expect(installer).toContain("$sourceScript=Join-Path $Repo 'scripts\\tigeriq-core\\update-core-runtime.ps1'");
+    expect(installer).toContain('Register-ScheduledTask -TaskName $taskName');
+    expect(installer).toContain('Start-ScheduledTask -TaskName $taskName');
   });
 
 });

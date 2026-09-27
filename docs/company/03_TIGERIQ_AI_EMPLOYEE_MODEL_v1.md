@@ -25,6 +25,9 @@ Turns repeatable work into SOPs, automations, schedules, and measurable processe
 
 ## Shared AI rules
 - Every agent has a bounded role and explicit authority.
+- P0 is Owner-only and invisible/non-executable to AI employees; stale assignment markers cannot delegate it.
+- P1-P5 autonomous routing applies to Core-managed specialist resources such as API workers, Coding Lane and NV06/OpenClaw.
+- `NV02`, `NV03`, `NV04` are outside Core assignment and Core self-pull. Their UI continuity is governed separately by Owner/App Chrome policy; Core cannot delegate work to them.
 - Agents record important decisions/evidence.
 - Agents may propose; they do not exceed delegated authority.
 - Independent review is required for high-impact technical changes.

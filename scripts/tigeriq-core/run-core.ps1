@@ -7,6 +7,18 @@ $repo=$defaultRepo
 if(Test-Path -LiteralPath $runtimeSourceState){
   try{$meta=Get-Content -Raw -LiteralPath $runtimeSourceState|ConvertFrom-Json;if($meta.sourcePath -and (Test-Path -LiteralPath ([string]$meta.sourcePath))){$repo=[string]$meta.sourcePath}}catch{}
 }
+$updaterTask='TigerIQ Core Runtime Updater'
+function Ensure-CoreRuntimeUpdater {
+  $existing=Get-ScheduledTask -TaskName $updaterTask -ErrorAction SilentlyContinue
+  if($existing){return}
+  $installer=Join-Path $repo 'scripts\tigeriq-core\install-core-updater.ps1'
+  if(-not(Test-Path -LiteralPath $installer)){throw 'CORE_RUNTIME_UPDATER_INSTALLER_MISSING'}
+  & 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $installer -Repo $repo
+  if($LASTEXITCODE -ne 0){throw ('CORE_RUNTIME_UPDATER_INSTALL_FAILED:'+ $LASTEXITCODE)}
+  $created=Get-ScheduledTask -TaskName $updaterTask -ErrorAction SilentlyContinue
+  if(-not $created){throw 'CORE_RUNTIME_UPDATER_TASK_RECREATE_FAILED'}
+}
+Ensure-CoreRuntimeUpdater
 $core=Join-Path $repo 'apps\tigeriq-core\core-entry.mjs'
 $coreMatch=$core.ToLowerInvariant()
 $logDir='D:\TigerIQ\Logs\Core24x7'
@@ -24,7 +36,7 @@ function Set-SecretEnv([string]$EnvName,[string]$SecretName,[string]$Entropy){
   if(-not[string]::IsNullOrWhiteSpace($value)){[Environment]::SetEnvironmentVariable($EnvName,$value,'Process')}
 }
 function Clear-CoreEnvironment {
-  $names=@('DATABASE_URL','PGPASSWORD','TIGERIQ_CORE_TOKEN','TIGERIQ_GITHUB_TOKEN','GROQ_API_KEY','GEMINI_API_KEY','OPENROUTER_API_KEY','MISTRAL_API_KEY','CLOUDFLARE_AUTH_TOKEN','HF_TOKEN','INCEPTION_API_KEY','WATSONX_API_KEY','COHERE_API_KEY','NVIDIA_API_KEY','CLOUDFLARE_ACCOUNT_ID','WATSONX_PROJECT_ID','WATSONX_MODEL_ID','TIGERIQ_GROQ_FREE_TIER_VERIFIED','TIGERIQ_GEMINI_FREE_TIER_VERIFIED','TIGERIQ_INCEPTION_FREE_TIER_VERIFIED','TIGERIQ_INCEPTION_MODEL','TIGERIQ_WATSONX_LITE_CONFIRMED','TIGERIQ_COHERE_TRIAL_CONFIRMED','TIGERIQ_NVIDIA_FREE_DEV_CONFIRMED','TIGERIQ_GEMINI_MODEL','TIGERIQ_GEMINI_MIN_INTERVAL_MS','TIGERIQ_GEMINI_BACKOFF_BASE_MS','TIGERIQ_GEMINI_MAX_ATTEMPTS')
+  $names=@('DATABASE_URL','PGPASSWORD','TIGERIQ_CORE_TOKEN','TIGERIQ_GITHUB_TOKEN','GROQ_API_KEY','GEMINI_API_KEY','OPENROUTER_API_KEY','MISTRAL_API_KEY','CLOUDFLARE_AUTH_TOKEN','HF_TOKEN','INCEPTION_API_KEY','WATSONX_API_KEY','COHERE_API_KEY','NVIDIA_API_KEY','CLOUDFLARE_ACCOUNT_ID','WATSONX_PROJECT_ID','WATSONX_MODEL_ID','TIGERIQ_GROQ_FREE_TIER_VERIFIED','TIGERIQ_GEMINI_FREE_TIER_VERIFIED','TIGERIQ_INCEPTION_FREE_TIER_VERIFIED','TIGERIQ_INCEPTION_MODEL','TIGERIQ_WATSONX_LITE_CONFIRMED','TIGERIQ_COHERE_TRIAL_CONFIRMED','TIGERIQ_NVIDIA_FREE_DEV_CONFIRMED','TIGERIQ_GEMINI_MODEL','TIGERIQ_GEMINI_MIN_INTERVAL_MS','TIGERIQ_GEMINI_BACKOFF_BASE_MS','TIGERIQ_GEMINI_MAX_ATTEMPTS','TIGERIQ_GITHUB_RECONCILE_MS')
   foreach($name in $names){[Environment]::SetEnvironmentVariable($name,$null,'Process')}
 }
 function Get-SecretStamp {
@@ -44,6 +56,7 @@ function Load-CoreEnvironment {
   $env:TIGERIQ_CORE_PORT='8795'
   $env:TIGERIQ_OLLAMA_MODEL='qwen3:4b'
   $env:TIGERIQ_ALLOW_PAID_AI='false'
+  $env:TIGERIQ_GITHUB_RECONCILE_MS='300000'
   $env:TIGERIQ_GEMINI_MODEL='gemini-3.5-flash-lite'
   $env:TIGERIQ_GEMINI_MIN_INTERVAL_MS='4500'
   $env:TIGERIQ_GEMINI_BACKOFF_BASE_MS='4500'

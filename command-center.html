@@ -5,393 +5,262 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#07111f">
 <meta name="color-scheme" content="dark">
-<title>TigerIQ Live · Trạng thái NV</title>
+<title>TigerIQ Live · Công việc</title>
 <style>
-:root{font-family:"Google Sans Flex","Google Sans","Helvetica Neue",sans-serif;--bg:#07111f;--panel:#0e1b2b;--panel2:#102239;--line:#203953;--text:#f2f7fd;--muted:#91a4ba;--blue:#58a6ff;--green:#46d48f;--amber:#efb85c;--red:#ff747e;--gray:#77899e}
+:root{font-family:"Google Sans Flex","Google Sans","Helvetica Neue",sans-serif;--bg:#07111f;--panel:#0b1829;--line:#203953;--text:#f2f7fd;--muted:#91a4ba;--green:#46d48f;--amber:#efb85c;--red:#ff747e;--blue:#58a6ff;--violet:#c5a6ff;--cyan:#65d7e8;--teal:#58d8c6;--slate:#8fa3b8}
 *{box-sizing:border-box}
 html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text)}
-body{font-family:"Google Sans Flex","Google Sans","Helvetica Neue",sans-serif;background:radial-gradient(circle at 90% -12%,#173b6e 0,transparent 36%),linear-gradient(180deg,#081322,#060d17);overflow-x:hidden}
+body{font-family:inherit;background:radial-gradient(circle at 90% -12%,#173b6e 0,transparent 36%),linear-gradient(180deg,#081322,#060d17);overflow-x:hidden}
 a{color:inherit;text-decoration:none}
-button{font:inherit}
 .wrap{width:min(760px,100%);margin:auto;padding:max(14px,env(safe-area-inset-top)) 12px max(28px,env(safe-area-inset-bottom))}
 .top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:4px 2px 14px}
 .brand h1{font-size:22px;line-height:1.1;margin:0}
 .brand p{font-size:12px;color:var(--muted);margin:5px 0 0}
 .live{display:flex;align-items:center;gap:7px;border:1px solid #23513e;background:#0b241b;border-radius:999px;padding:7px 10px;font-size:11px;color:#9aebbd;white-space:nowrap}
-.live-dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 0 0 rgba(70,212,143,.5);animation:pulse 1.8s infinite}
-@keyframes pulse{70%{box-shadow:0 0 0 7px rgba(70,212,143,0)}100%{box-shadow:0 0 0 0 rgba(70,212,143,0)}}
-.err{display:none;border:1px solid #6d3038;background:#31191e;color:#ffb7bd;border-radius:14px;padding:11px 12px;margin-bottom:10px;font-size:12px}
+.live.warn{border-color:#705322;background:#332714;color:#ffd187}
+.live-dot{width:8px;height:8px;border-radius:50%;background:var(--green)}
+.live:not(.warn) .live-dot{animation:live-pulse 2.4s ease-out infinite}
+.live.warn .live-dot{background:var(--amber)}
+.err{display:none;border:1px solid #6d3038;background:#31191e;color:#ffb7bd;border-radius:14px;padding:11px 12px;margin-bottom:10px;font-size:12px;line-height:1.4}
 .err.stale{border-color:#705322;background:#332714;color:#ffd187}
-.summary{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:10px}
-.sum{border:1px solid var(--line);background:linear-gradient(180deg,#102139,#0b1727);border-radius:14px;padding:10px 8px;min-width:0}
-.sum span{display:block;font-size:10px;color:var(--muted);white-space:nowrap}
-.sum b{display:block;font-size:22px;line-height:1;margin-top:6px}
-.sum.work b{color:var(--green)}.sum.wait b{color:var(--amber)}.sum.block b{color:var(--red)}.sum.idle b{color:#aebdcc}
-.filters{display:flex;gap:7px;overflow:auto;padding:1px 1px 10px;scrollbar-width:none}
+.list-head{display:flex;align-items:end;justify-content:space-between;gap:10px;padding:1px 2px 8px}
+.list-head h2{font-size:13px;line-height:1.2;margin:0;color:var(--violet);font-weight:850;letter-spacing:.02em;text-transform:uppercase}
+.list-head span{font-size:10px;color:var(--muted);text-align:right}
+.filters{display:flex;gap:6px;overflow-x:auto;padding:0 0 9px;scrollbar-width:none}
 .filters::-webkit-scrollbar{display:none}
-.filter{border:1px solid var(--line);background:#0a1727;color:#aabbd0;border-radius:999px;padding:7px 10px;font-size:11px;white-space:nowrap}
-.filter.active{border-color:#3f78b7;background:#112b49;color:#d9ebff}
-.meta-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:2px 2px 9px;color:var(--muted);font-size:10px}
-.list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
-.worker{display:block;border:1px solid var(--line);background:linear-gradient(180deg,rgba(16,34,57,.98),rgba(10,23,39,.98));border-radius:17px;padding:13px;box-shadow:0 8px 24px #0002}
-.worker:active{transform:scale(.997)}
-.head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
-.identity{min-width:0}
-.identity b{display:block;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.identity small{display:block;color:var(--muted);font-size:10px;margin-top:3px}
-.badge{display:inline-flex;align-items:center;gap:4px;flex:none;border-radius:999px;padding:6px 8px;font-size:10px;font-weight:850;letter-spacing:.01em}
-.badge.working{background:#103526;color:#8de7b1;border:1px solid #24533f}
-.badge.waiting{background:#392b17;color:#ffd18b;border:1px solid #6a4d26}
-.badge.blocked{background:#3b1d23;color:#ffb0b6;border:1px solid #6b3039}
-.badge.idle{background:#1a2736;color:#b7c5d5;border:1px solid #34495f}
-.badge.paused{background:#222a34;color:#98a7b7;border:1px solid #394756}
-.badge.unknown{background:#242b39;color:#bac7d5;border:1px solid #465568}
-.live.warn{border-color:#705322;background:#332714;color:#ffd187}.live.warn .live-dot{background:var(--amber);animation:none}
-.job{font-size:14px;font-weight:750;line-height:1.35;margin-top:12px}
-.detail{font-size:11px;color:var(--muted);line-height:1.4;margin-top:5px}
-.progress{margin-top:10px;height:5px;background:#172b43;border-radius:999px;overflow:hidden}
-.progress>i{display:block;height:100%;background:linear-gradient(90deg,#3b91e8,#60d9a0);border-radius:999px}
-.foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px;padding-top:9px;border-top:1px solid #183047;font-size:10px;color:#8296ad}
-.source{color:#86bfff;white-space:nowrap}
-.empty{border:1px dashed #2a425d;border-radius:16px;padding:24px 14px;text-align:center;color:var(--muted);font-size:12px}
-.work-zone{margin:0 0 11px}
-.work-zone+.work-zone{margin-top:2px}
-.work-zone-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:1px 2px 7px}
-.work-zone-head h2{display:flex;align-items:center;gap:7px;font-size:13px;line-height:1.2;margin:0;font-weight:900;letter-spacing:.055em;text-transform:uppercase}
-.work-zone-head>span{font-size:10px;color:var(--muted)}
-.zone-icon{width:16px;height:16px;flex:none;stroke:currentColor}
-.active-zone .work-zone-head h2{color:#72e0a5}
-.queue-zone .work-zone-head h2{color:#ffc56b}
-.recent-zone .work-zone-head h2{color:#79bfff}
-.workforce-zone .work-zone-head h2{color:#c5a6ff}
-.worker-rule{margin:-1px 2px 8px;color:#8296ad;font-size:9px;line-height:1.35}
+.filter{border:1px solid #294661;background:#0b1829;color:#91a4ba;border-radius:999px;padding:6px 9px;font:800 9px/1 inherit;white-space:nowrap;transition:.18s ease}
+.filter.active{box-shadow:0 0 0 1px rgba(255,255,255,.03) inset}
+.filter[data-filter="action"].active{border-color:#6676a8;background:#20294b;color:#ddd7ff}
+.filter[data-filter="owner"].active{border-color:#9a4550;background:#451f27;color:#ffc0c6}
+.filter[data-filter="running"].active{border-color:#2f7757;background:#113928;color:#9ef0bd}
+.filter[data-filter="review"].active{border-color:#7a5a28;background:#3a2b17;color:#ffd38d}
+.filter[data-filter="waiting"].active{border-color:#35628d;background:#112b45;color:#b9dcff}
+.filter[data-filter="system"].active{border-color:#556273;background:#1c2631;color:#c1ccd7}
+.filter[data-filter="done"].active{border-color:#246c64;background:#0e3733;color:#91eee0}
+.filter b{font-weight:900;color:inherit;margin-left:3px}
 .work-list{display:grid;gap:7px}
-.work-card{display:block;border:1px solid var(--line);background:#0b1829;border-radius:14px;padding:10px 11px;min-width:0}
-.work-title{font-size:12px;font-weight:800;line-height:1.35;overflow-wrap:anywhere}
-.work-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:7px;font-size:10px;color:var(--muted)}
-.work-meta b{color:#cfe3fa}
-.work-state{display:inline-flex;align-items:center;gap:4px;border:1px solid #3a4d63;border-radius:999px;padding:3px 6px;font-weight:850;font-size:9px}
-.work-state.working{border-color:#24533f;background:#103526;color:#8de7b1}
-.work-state.review,.work-state.waiting{border-color:#6a4d26;background:#392b17;color:#ffd18b}
-.work-state.blocked{border-color:#6b3039;background:#3b1d23;color:#ffb0b6}
-.work-state.queued{border-color:#315b8a;background:#102947;color:#a9d4ff}
-.work-state.done{border-color:#245c57;background:#0e302d;color:#82e0d3}
-.state-icon{width:11px;height:11px;flex:none;stroke:currentColor}
-.work-step{margin-top:6px;font-size:10px;line-height:1.4;color:#b5c5d7;overflow-wrap:anywhere}
-.work-proof{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:7px;padding-top:7px;border-top:1px solid #183047;font-size:9px;color:#8296ad}
-.work-proof span:last-child{text-align:right}
-.work-empty{border:1px dashed #253e58;border-radius:13px;padding:11px;color:var(--muted);font-size:10px}
-.page-foot{padding:14px 2px 0;color:#6d8097;font-size:9px;line-height:1.5;text-align:center}
-@media(max-width:600px){
-  .list{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
-  .summary{gap:5px}.sum{padding:9px 6px}.sum span{font-size:9px}.sum b{font-size:20px}.brand h1{font-size:20px}
-  .work-card{padding:9px 10px}.work-title{font-size:11px}
-  .worker{padding:10px;border-radius:14px;min-width:0}
-  .head{display:block}.identity b{font-size:12px}.identity small{font-size:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .badge{display:inline-block;margin-top:7px;padding:4px 6px;font-size:8px}
-  .job{font-size:11px;line-height:1.3;margin-top:8px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
-  .detail{font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .foot{display:block;font-size:8px}.foot .source{display:block;margin-top:4px;overflow:hidden;text-overflow:ellipsis}
+.work-row{display:block;border:1px solid var(--line);background:linear-gradient(180deg,#102139,#0b1829);border-radius:13px;padding:9px 10px;min-width:0;box-shadow:0 8px 24px rgba(0,0,0,.12);position:relative;overflow:hidden}
+.work-row::before{content:"";position:absolute;inset:0 auto 0 0;width:3px;background:#314b67;opacity:.9}
+.work-row.status-working::before{background:var(--green)}
+.work-row.status-review::before,.work-row.status-waiting::before{background:var(--amber)}
+.work-row.status-queued::before{background:var(--blue)}
+.work-row.status-blocked::before{background:var(--red)}
+.work-row.status-done::before{background:var(--teal)}
+.work-row.status-open::before{background:#71849a}
+.work-row.status-owner_gate::before{background:var(--red)}
+.work-row.status-verify::before{background:#d9a84f}
+.work-row.status-goal::before{background:var(--violet)}
+.work-row.status-system::before{background:#6c7987}
+.work-main{min-width:0}
+.work-top{display:flex;align-items:center;gap:6px;min-width:0;flex-wrap:wrap}
+.rank{width:19px;height:19px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;background:#17375a;color:#cfe7ff;font-size:10px;font-weight:900;flex:none}
+.work-id{font-size:12px;font-weight:900;color:#dbeaff}
+.priority{font-size:9px;font-weight:850;border:1px solid #3a506b;background:#142337;color:#aebed0;border-radius:999px;padding:2px 6px}
+.priority.p0{border-color:#8a3e78;background:#35182f;color:#ffb7df}
+.priority.p1{border-color:#6b50a4;background:#251b43;color:#d3bdff}
+.priority.p2{border-color:#315f92;background:#102b4a;color:#a9d6ff}
+.priority.p3{border-color:#2e7181;background:#0f3038;color:#93e7f4}
+.priority.p4{border-color:#7c6330;background:#392f18;color:#f4d491}
+.priority.p5{border-color:#4a5969;background:#1a2430;color:#b5c1cd}
+.priority.meta{border-color:#3d4b59;background:#18212b;color:#9aa8b6}
+.work-nv{font-size:10px;color:#a7b8cb;font-weight:780}
+.work-title{font-size:13.5px;font-weight:780;line-height:1.38;margin-top:7px;overflow-wrap:anywhere;color:#f3f7fc;letter-spacing:.002em}
+.work-summary{font-size:11.75px;line-height:1.42;color:#a9bbce;margin-top:5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.state{display:inline-flex;align-items:center;border:1px solid #3a4d63;border-radius:999px;padding:4px 7px;font-weight:850;font-size:9px;white-space:nowrap;margin-left:auto}
+.state.working{border-color:#2b7655;background:#113b2a;color:#9af0bc}
+.state.review,.state.waiting{border-color:#7a5b2a;background:#3b2d18;color:#ffd58f}
+.state.queued{border-color:#37699f;background:#112f50;color:#b5dcff}
+.state.blocked{border-color:#81404a;background:#401f26;color:#ffb8bf}
+.state.done{border-color:#27736a;background:#0f3a35;color:#94ecdf}
+.state.open{border-color:#455d76;background:#132234;color:#b0c1d3}
+.state.owner_gate{border-color:#914652;background:#421f27;color:#ffc0c7}
+.state.verify{border-color:#816126;background:#3b2d18;color:#ffda92}
+.state.goal{border-color:#68529a;background:#281f42;color:#d9c9ff}
+.state.system{border-color:#4b5968;background:#19242f;color:#bdc8d3}
+.progress{display:flex;align-items:center;gap:8px;margin-top:9px;color:#7f95ac}
+.progress-track{height:8px;flex:1;min-width:60px;background:#16283b;border-radius:999px;overflow:hidden;box-shadow:inset 0 1px 2px rgba(0,0,0,.35)}
+.progress-fill{height:100%;background:currentColor;border-radius:999px;position:relative;overflow:hidden;transition:width .45s ease}
+.progress-text{font-size:10px;font-weight:900;color:currentColor;white-space:nowrap;min-width:31px;text-align:right}
+.work-row.status-working .progress{color:var(--green)}
+.work-row.status-review .progress,.work-row.status-waiting .progress{color:var(--amber)}
+.work-row.status-queued .progress{color:var(--blue)}
+.work-row.status-blocked .progress{color:var(--red)}
+.work-row.status-done .progress{color:var(--teal)}
+.work-row.status-open .progress{color:#7e93a9}
+.work-row.status-owner_gate .progress{color:var(--red)}
+.work-row.status-verify .progress{color:var(--amber)}
+.work-row.status-goal .progress{color:var(--violet)}
+.work-row.status-working .progress-fill{box-shadow:0 0 10px color-mix(in srgb,currentColor 38%,transparent)}
+.work-row.status-working .progress-fill::after{content:"";position:absolute;inset:0;width:38%;transform:translateX(-140%) skewX(-18deg);background:linear-gradient(90deg,transparent,rgba(255,255,255,.32),transparent);animation:progress-shimmer 2.3s ease-in-out infinite}
+.state.review,.state.waiting{animation:review-breathe 3.4s ease-in-out infinite}
+.work-row.recently-updated{animation:card-flash .8s ease-out}
+@keyframes live-pulse{0%{box-shadow:0 0 0 0 rgba(70,212,143,.44)}70%{box-shadow:0 0 0 7px rgba(70,212,143,0)}100%{box-shadow:0 0 0 0 rgba(70,212,143,0)}}
+@keyframes progress-shimmer{0%,28%{transform:translateX(-140%) skewX(-18deg)}70%,100%{transform:translateX(360%) skewX(-18deg)}}
+@keyframes review-breathe{0%,100%{box-shadow:0 0 0 0 rgba(239,184,92,0)}50%{box-shadow:0 0 0 3px rgba(239,184,92,.10)}}
+@keyframes card-flash{0%{box-shadow:0 0 0 1px rgba(88,166,255,.5),0 0 18px rgba(88,166,255,.18)}100%{box-shadow:0 8px 24px rgba(0,0,0,.12)}}
+@media(prefers-reduced-motion:reduce){
+  .live-dot,.state,.progress-fill::after,.work-row.recently-updated{animation:none!important}
+  .progress-fill{transition:none!important}
 }
-@media(max-width:340px){.list{grid-template-columns:1fr}}
+.empty{border:1px dashed #2a425d;border-radius:16px;padding:22px 14px;text-align:center;color:var(--muted);font-size:12px}
+.page-foot{padding:14px 2px 0;color:#6d8097;font-size:9px;line-height:1.5;text-align:center}
+@media(max-width:520px){
+  .brand h1{font-size:20px}
+  .work-row{padding:9px 10px}
+  .work-top{gap:5px}
+  .state{margin-left:auto}
+}
 </style>
 </head>
 <body>
 <main class="wrap">
 <header class="top">
-  <div class="brand"><h1>TigerIQ Live</h1><p>Trạng thái nhân sự · chỉ xem</p></div>
+  <div class="brand"><h1>TigerIQ Live</h1><p>Danh sách công việc · chỉ xem</p></div>
   <div class="live"><span class="live-dot"></span><span id="liveLabel">ĐANG CẬP NHẬT</span></div>
 </header>
 <div id="err" class="err"></div>
-<section class="summary">
-  <div class="sum work"><span>Đang làm</span><b id="sumWork">0</b></div>
-  <div class="sum wait"><span>Chờ</span><b id="sumWait">0</b></div>
-  <div class="sum block"><span>Bị chặn</span><b id="sumBlock">0</b></div>
-  <div class="sum idle"><span>Rảnh</span><b id="sumIdle">0</b></div>
-</section>
-<section class="work-zone active-zone" aria-labelledby="activeWorkHeading">
-  <div class="work-zone-head"><h2 id="activeWorkHeading"><svg class="zone-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m10 8 6 4-6 4z"/></svg>CÔNG VIỆC ĐANG THỰC HIỆN</h2><span id="activeWorkCount">—</span></div>
-  <div id="activeWork" class="work-list"></div>
-</section>
-<section class="work-zone queue-zone" aria-labelledby="nextQueueHeading">
-  <div class="work-zone-head"><h2 id="nextQueueHeading"><svg class="zone-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg>HÀNG ĐỢI TIẾP THEO</h2><span id="nextQueueCount">—</span></div>
-  <div id="nextQueue" class="work-list"></div>
-</section>
-<section class="work-zone recent-zone" aria-labelledby="recentWorkHeading">
-  <div class="work-zone-head"><h2 id="recentWorkHeading"><svg class="zone-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></svg>NHỮNG VIỆC GẦN ĐÂY</h2><span id="recentWorkCount">—</span></div>
-  <div id="recentWork" class="work-list"></div>
-</section>
-<section class="work-zone workforce-zone" aria-labelledby="workforceHeading">
-  <div class="work-zone-head"><h2 id="workforceHeading"><svg class="zone-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg><span id="workforceHeadingText">NHÂN SỰ ĐANG LÀM</span></h2><span id="workerCount">—</span></div>
-  <nav class="filters" aria-label="Bộ lọc trạng thái">
-    <button class="filter" data-filter="all">Tất cả</button>
-    <button class="filter active" data-filter="working">Đang làm</button>
-    <button class="filter" data-filter="waiting">Chờ</button>
-    <button class="filter" data-filter="blocked">Bị chặn</button>
-    <button class="filter" data-filter="idle">Rảnh</button>
-    <button class="filter" data-filter="unknown">Chưa rõ</button>
-    <button class="filter" data-filter="paused">Tạm ngưng</button>
+<section aria-labelledby="workListHeading">
+  <div class="list-head"><h2 id="workListHeading">DANH SÁCH CÔNG VIỆC</h2><span id="workMeta">—</span></div>
+  <nav class="filters" aria-label="Lọc công việc">
+    <button class="filter active" data-filter="action">CẦN XỬ LÝ <b id="actionCount">0</b></button>
+    <button class="filter" data-filter="owner">CHỜ ANH SƠN <b id="ownerCount">0</b></button>
+    <button class="filter" data-filter="running">ĐANG LÀM <b id="runningCount">0</b></button>
+    <button class="filter" data-filter="review">RÀ SOÁT <b id="reviewCount">0</b></button>
+    <button class="filter" data-filter="waiting">CHỜ/BLOCKED <b id="waitingCount">0</b></button>
+    <button class="filter" data-filter="system">HỆ THỐNG <b id="systemCount">0</b></button>
+    <button class="filter" data-filter="done">HOÀN TẤT <b id="doneCount">0</b></button>
   </nav>
-  <div class="worker-rule">ĐANG LÀM = runtime báo working + có mã việc + heartbeat ≤ 60 giây.</div>
-  <div class="meta-row"><span id="workerAuthority">Nguồn: PC01 live runtime</span><span id="updated">Chưa cập nhật</span></div>
-  <section id="workers" class="list"></section>
+  <div id="workList" class="work-list"></div>
 </section>
-<footer class="page-foot">Nguồn chính: PC01 Core + Coding Lane · Nhân sự 5 giây · Công việc 30 giây · Hàng đợi 60 giây · Gần đây 5 phút · chỉ xem</footer>
+<footer class="page-foot">STT · Work Order · Tên việc · NV · Trạng thái · tự cập nhật 10 giây</footer>
 </main>
 <script>
 const $=id=>document.getElementById(id);
-let snapshot=null,activeFilter='working';
-const ACTIVE_WORK_REFRESH_MS=30*1000;
-const NEXT_QUEUE_REFRESH_MS=60*1000;
-const RECENT_WORK_REFRESH_MS=5*60*1000;
-let activeWorkView={at:0,items:null};
-let nextQueueView={at:0,items:null,total:0};
-let recentWorkView={at:0,items:null};
-function applyWorkCadence(value){
-  const now=Date.now();
-  if(!activeWorkView.at||now-activeWorkView.at>=ACTIVE_WORK_REFRESH_MS){
-    activeWorkView={at:now,items:Array.isArray(value?.activeWork)?value.activeWork:[]};
-  }
-  if(!nextQueueView.at||now-nextQueueView.at>=NEXT_QUEUE_REFRESH_MS){
-    const items=Array.isArray(value?.nextQueue)?value.nextQueue:[];
-    nextQueueView={at:now,items,total:Number.isFinite(value?.nextQueueTotal)?value.nextQueueTotal:items.length};
-  }
-  if(!recentWorkView.at||now-recentWorkView.at>=RECENT_WORK_REFRESH_MS){
-    recentWorkView={at:now,items:Array.isArray(value?.recentWork)?value.recentWork:[]};
-  }
-  return {
-    ...value,
-    activeWork:activeWorkView.items||[],
-    nextQueue:nextQueueView.items||[],
-    nextQueueTotal:nextQueueView.total,
-    recentWork:recentWorkView.items||[],
-    uiRefreshSeconds:{work:30,queue:60,recent:300,workforce:5},
-  };
-}
-const LAST_GOOD_KEY='tigeriq-live-last-good-v3';
-const LEGACY_LAST_GOOD_KEY='tigeriq-live-last-good-v2';
+const LAST_GOOD_KEY='tigeriq-live-open-progress-v2';
 const LAST_GOOD_MAX_MS=30*60*1000;
-const stateLabel={working:'ĐANG LÀM',waiting:'CHỜ',blocked:'BỊ CHẶN',idle:'RẢNH',unknown:'CHƯA RÕ',paused:'TẠM NGƯNG'};
-const workStateLabel={WORKING:'ĐANG LÀM',REVIEW:'ĐANG RÀ SOÁT',WAITING:'CHỜ',BLOCKED:'BỊ CHẶN',QUEUED:'XẾP HÀNG',DONE:'HOÀN TẤT'};
-const workforceHeadingLabel={all:'NHÂN SỰ · TẤT CẢ',working:'NHÂN SỰ ĐANG LÀM',waiting:'NHÂN SỰ ĐANG CHỜ',blocked:'NHÂN SỰ BỊ CHẶN',idle:'NHÂN SỰ ĐANG RẢNH',unknown:'NHÂN SỰ CHƯA RÕ',paused:'NHÂN SỰ TẠM NGƯNG'};
-function readLastGood(){
-  try{
-    const raw=JSON.parse(localStorage.getItem(LAST_GOOD_KEY)||'null');
-    if(raw?.value&&Number.isFinite(raw.savedAt)&&Date.now()-raw.savedAt<=LAST_GOOD_MAX_MS)return raw.value;
-    const legacy=JSON.parse(localStorage.getItem(LEGACY_LAST_GOOD_KEY)||'null');
-    const legacyAt=Date.parse(legacy?.workProjection?.verifiedAt||legacy?.generatedAt||0);
-    if(legacy&&legacyAt&&Date.now()-legacyAt<=LAST_GOOD_MAX_MS)return legacy;
-    return null;
-  }catch{return null}
+let snapshot=null;
+let currentFilter='action';
+const lastVisualState=new Map();
+const stateLabel={OPEN:'CHƯA LÀM',OWNER_GATE:'CHỜ ANH SƠN',WORKING:'ĐANG LÀM',REVIEW:'ĐANG RÀ SOÁT',VERIFY:'CHỜ XÁC MINH',QUEUED:'SẴN SÀNG',WAITING:'CHỜ',BLOCKED:'BỊ CHẶN',GOAL:'MỤC TIÊU',SYSTEM:'HỆ THỐNG',DONE:'HOÀN TẤT'};
+function esc(v){const d=document.createElement('div');d.textContent=String(v??'');return d.innerHTML}
+function priorityRank(v){const m=String(v||'').toUpperCase().match(/^P([0-5])$/);return m?Number(m[1]):9}
+function statusRank(v){return ({WORKING:0,REVIEW:1,QUEUED:2,WAITING:3,BLOCKED:4,DONE:9})[String(v||'').toUpperCase()]??8}
+function workStatus(row){return String(row?.status||'WAITING').toUpperCase()}
+function workPriority(row){
+  const direct=String(row?.effectivePriority||row?.priority||'').toUpperCase();
+  if(/^P[0-5]$/.test(direct))return direct;
+  return String(row?.title||'').toUpperCase().match(/^\[(P[0-5])\]/)?.[1]||'META';
 }
-function writeLastGood(value){
-  try{localStorage.setItem(LAST_GOOD_KEY,JSON.stringify({savedAt:Date.now(),value}))}catch{}
+function workerFrom(row){
+  const direct=String(row?.employeeId||row?.targetWorker||'').toUpperCase();
+  if(/^(?:NV\d{2}|VY|CODEX|AUTO)$/.test(direct))return direct;
+  const match=String(row?.title||'').toUpperCase().match(/(?:^|[^A-Z0-9])(NV\d{2})(?=$|[^A-Z0-9])/);
+  return match?.[1]||'—';
 }
-function hydrateLastGood(value){
-  const cached=readLastGood();
-  const projection=value?.workProjection||{};
-  if(value?.ok&&projection.mode!=='unavailable'&&!projection.stale){
-    writeLastGood(value);
-    return value;
-  }
-  if(!cached)return value;
-  const staleAt=cached?.workProjection?.verifiedAt||cached?.generatedAt||null;
-  if(value?.ok){
-    return {
-      ...value,
-      activeWork:Array.isArray(cached.activeWork)?cached.activeWork:[],
-      nextQueue:Array.isArray(cached.nextQueue)?cached.nextQueue:[],
-      nextQueueTotal:Number.isFinite(cached.nextQueueTotal)?cached.nextQueueTotal:(cached.nextQueue||[]).length,
-      recentWork:Array.isArray(cached.recentWork)?cached.recentWork:[],
-      workProjection:{
-        ...(cached.workProjection||{}),
-        mode:'client-stale-cache',
-        stale:true,
-        staleAt,
-        reason:projection.reason||value.reason||'Nguồn GitHub tạm thời không sẵn sàng',
-      },
-    };
-  }
-  return {
-    ...cached,
-    ok:true,
-    liveConnected:false,
-    mode:'stale-cache',
-    authority:'Dữ liệu xác minh gần nhất',
-    staleAll:true,
-    staleAt,
-    reason:value?.reason||'Nguồn live tạm thời không sẵn sàng',
-    workProjection:{
-      ...(cached.workProjection||{}),
-      mode:'client-stale-cache',
-      stale:true,
-      staleAt,
-      reason:value?.reason||'Nguồn live tạm thời không sẵn sàng',
-    },
+function displayTitle(value){
+  let title=String(value||'Chưa có tên việc').replace(/^\s*#?\d+\s*[-–—:]?\s*/,'').trim();
+  const metadata=/^\[(?:P[0-5]|NV\d{2}|REVIEW|CODING|KNOWLEDGE|FAILOVER|CORE|ROUTING|VERCEL|APP-CHROME|OWNER(?:_DIRECT|→CODEX)?)\]\s*/i;
+  while(metadata.test(title)) title=title.replace(metadata,'');
+  return title||String(value||'Chưa có tên việc');
+}
+function normalizeRows(value){
+  const fallbackOpen=()=>{
+    const map=new Map();
+    for(const row of [...(value?.activeWork||[]),...(value?.nextQueue||[])]) if(Number(row?.number)) map.set(Number(row.number),row);
+    return [...map.values()];
   };
+  const openRows=Array.isArray(value?.openWork)?value.openWork:fallbackOpen();
+  if(currentFilter==='done') return (Array.isArray(value?.recentWork)?value.recentWork:[]).map(x=>({...x,status:'DONE'}));
+  if(currentFilter==='owner') return openRows.filter(x=>workStatus(x)==='OWNER_GATE');
+  if(currentFilter==='running') return openRows.filter(x=>workStatus(x)==='WORKING');
+  if(currentFilter==='review') return openRows.filter(x=>['REVIEW','VERIFY'].includes(workStatus(x)));
+  if(currentFilter==='waiting') return openRows.filter(x=>['QUEUED','WAITING','BLOCKED'].includes(workStatus(x)));
+  if(currentFilter==='system') return openRows.filter(x=>x?.workKind==='SYSTEM'||workStatus(x)==='SYSTEM');
+  return openRows.filter(x=>x?.workKind!=='SYSTEM'&&workStatus(x)!=='SYSTEM');
 }
-function age(iso){
-  if(!iso)return 'chưa có mốc';
-  const s=Math.max(0,Math.floor((Date.now()-Date.parse(iso))/1000));
-  if(s<60)return s+' giây trước';
-  const m=Math.floor(s/60);if(m<60)return m+' phút trước';
-  const h=Math.floor(m/60);if(h<24)return h+' giờ trước';
-  return Math.floor(h/24)+' ngày trước';
+function readLastGood(){try{const x=JSON.parse(localStorage.getItem(LAST_GOOD_KEY)||'null');return x?.value&&Date.now()-x.savedAt<=LAST_GOOD_MAX_MS?x.value:null}catch{return null}}
+function writeLastGood(v){try{localStorage.setItem(LAST_GOOD_KEY,JSON.stringify({savedAt:Date.now(),value:v}))}catch{}}
+function hydrate(raw){
+  const projection=raw?.workProjection||{};
+  if(raw?.ok&&projection.mode!=='unavailable'&&!projection.stale){writeLastGood(raw);return raw}
+  const cached=readLastGood();if(!cached)return raw;
+  return {...cached,ok:true,liveConnected:false,staleAll:true,staleAt:cached?.workProjection?.verifiedAt||cached?.generatedAt||null,liveReason:raw?.reason||projection.reason||'fetch failed',workProjection:{...(cached.workProjection||{}),stale:true,reason:raw?.reason||projection.reason||'fetch failed'}};
 }
-function sourceLabel(s){
-  if(!s)return '';
-  if(typeof s==='string')return s;
-  if(s.type==='PR'&&s.number)return 'PR #'+s.number;
-  if(s.type==='Workflow'&&s.number)return 'Luồng #'+s.number;
-  return s.type||'Nguồn';
-}
-function esc(t){const d=document.createElement('div');d.textContent=String(t??'');return d.innerHTML}
-function workStateClass(value){return String(value||'').toLowerCase()}
-function workStateText(value){const key=String(value||'').toUpperCase();return workStateLabel[key]||value||'CHỜ'}
-function statusIcon(value){
-  const key=String(value||'').toLowerCase();
-  const paths={
-    working:'<circle cx="12" cy="12" r="9"/><path d="m10 8 6 4-6 4z"/>',
-    review:'<path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12"/><circle cx="12" cy="12" r="2.5"/>',
-    waiting:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
-    blocked:'<path d="M12 3 2.5 20h19L12 3z"/><path d="M12 9v5M12 17h.01"/>',
-    queued:'<path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>',
-    done:'<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>',
-    idle:'<circle cx="12" cy="12" r="9"/>',
-    unknown:'<circle cx="12" cy="12" r="9"/><path d="M9.8 9a2.4 2.4 0 1 1 3.7 2c-1 .6-1.5 1.1-1.5 2M12 17h.01"/>',
-    paused:'<circle cx="12" cy="12" r="9"/><path d="M10 9v6M14 9v6"/>'
-  };
-  return '<svg class="state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(paths[key]||paths.unknown)+'</svg>';
-}
-function renderWorkSections(){
-  const projection=snapshot?.workProjection||{};
-  const active=Array.isArray(snapshot?.activeWork)?snapshot.activeWork:[];
-  const queue=Array.isArray(snapshot?.nextQueue)?snapshot.nextQueue:[];
-  const recent=Array.isArray(snapshot?.recentWork)?snapshot.recentWork:[];
-  const queueTotal=Number.isFinite(snapshot?.nextQueueTotal)?snapshot.nextQueueTotal:queue.length;
-  const staleMark=projection.stale?' · CŨ '+age(projection.staleAt||projection.verifiedAt):'';
-  $('activeWorkCount').textContent=active.length+' việc'+staleMark;
-  $('nextQueueCount').textContent=(queueTotal>queue.length?queue.length+'/'+queueTotal:queueTotal)+' việc'+staleMark;
-  $('recentWorkCount').textContent=recent.length+' việc'+staleMark;
-  const activeBox=$('activeWork'),queueBox=$('nextQueue'),recentBox=$('recentWork');
-  activeBox.innerHTML='';queueBox.innerHTML='';recentBox.innerHTML='';
-  if(!active.length){
-    activeBox.innerHTML='<div class="work-empty">'+(projection.mode==='unavailable'?'Chưa xác minh được Work Order; không suy đoán.':'Không có Work Order đang chạy được xác minh.')+'</div>';
-  }else{
-    active.forEach(w=>{
-      const el=document.createElement(w.url?'a':'article');el.className='work-card';
-      if(w.url){el.href=w.url;el.target='_blank';el.rel='noopener'}
-      const proof=[];
-      if(w.prNumber)proof.push('PR #'+w.prNumber);
-      if(w.checks)proof.push('kiểm tra '+w.checks.state+(Number.isFinite(w.checks.passed)&&Number.isFinite(w.checks.total)?' '+w.checks.passed+'/'+w.checks.total:''));
-      const meta=[w.priority||'—',w.employeeId||'NV chưa xác minh'];
-      el.innerHTML='<div class="work-title">'+esc('#'+w.number+' - '+w.title)+'</div><div class="work-meta"><b>'+esc(meta[0])+'</b><span>'+esc(meta[1])+'</span><span class="work-state '+esc(workStateClass(w.status))+'">'+statusIcon(w.status)+esc(workStateText(w.status))+'</span></div><div class="work-step">'+esc(w.currentStep||'Chưa có bước hiện tại được xác minh')+'</div><div class="work-proof"><span>'+esc(proof.join(' · ')||'Chưa có PR/check')+'</span><span>'+esc('Cập nhật '+age(w.updatedAt))+'</span></div>';
-      activeBox.append(el);
-    });
-  }
-  if(!queue.length){
-    queueBox.innerHTML='<div class="work-empty">'+(projection.mode==='unavailable'?'Chưa xác minh được hàng đợi GitHub.':'Không có việc kế tiếp đủ điều kiện.')+'</div>';
-  }else{
-    queue.forEach(w=>{
-      const el=document.createElement(w.url?'a':'article');el.className='work-card';
-      if(w.url){el.href=w.url;el.target='_blank';el.rel='noopener'}
-      const priority=(w.ownerDirect?'OWNER_DIRECT · ':'')+(w.priority||'—');
-      el.innerHTML='<div class="work-title">'+esc('#'+w.number+' - '+w.title)+'</div><div class="work-meta"><b>'+esc(priority)+'</b><span class="work-state '+esc(workStateClass(w.status))+'">'+statusIcon(w.status)+esc(workStateText(w.status))+'</span></div>'+(w.waitReason?'<div class="work-step">'+esc(w.waitReason)+'</div>':'');
-      queueBox.append(el);
-    });
-  }
-  if(!recent.length){
-    recentBox.innerHTML='<div class="work-empty">Chưa có việc HOÀN TẤT trong 24 giờ gần nhất.</div>';
-  }else{
-    recent.forEach(w=>{
-      const el=document.createElement(w.url?'a':'article');el.className='work-card';
-      if(w.url){el.href=w.url;el.target='_blank';el.rel='noopener'}
-      el.innerHTML='<div class="work-title">'+esc('#'+w.number+' - '+w.title)+'</div><div class="work-meta"><span class="work-state done">'+statusIcon('done')+'HOÀN TẤT</span><span>'+esc('Hoàn tất '+age(w.completedAt||w.updatedAt))+'</span></div>';
-      recentBox.append(el);
-    });
-  }
+function updateCounts(){
+  const s=snapshot?.openSummary||{};
+  const openRows=Array.isArray(snapshot?.openWork)?snapshot.openWork:[...(snapshot?.activeWork||[]),...(snapshot?.nextQueue||[])];
+  const actionable=openRows.filter(x=>x?.workKind!=='SYSTEM'&&workStatus(x)!=='SYSTEM');
+  $('actionCount').textContent=Number.isFinite(Number(s.actionable))?s.actionable:actionable.length;
+  $('ownerCount').textContent=Number.isFinite(Number(s.owner))?s.owner:actionable.filter(x=>workStatus(x)==='OWNER_GATE').length;
+  $('runningCount').textContent=Number.isFinite(Number(s.running))?s.running:actionable.filter(x=>workStatus(x)==='WORKING').length;
+  $('reviewCount').textContent=Number.isFinite(Number(s.review))?s.review:actionable.filter(x=>['REVIEW','VERIFY'].includes(workStatus(x))).length;
+  $('waitingCount').textContent=Number.isFinite(Number(s.waiting))?s.waiting:actionable.filter(x=>['QUEUED','WAITING','BLOCKED'].includes(workStatus(x))).length;
+  $('systemCount').textContent=Number.isFinite(Number(s.system))?s.system:openRows.filter(x=>x?.workKind==='SYSTEM'||workStatus(x)==='SYSTEM').length;
+  $('doneCount').textContent=Number.isFinite(Number(s.done))?s.done:(snapshot?.recentWork||[]).length;
 }
 function render(){
   if(!snapshot)return;
-  renderWorkSections();
-  const s=snapshot.summary||{};
-  $('sumWork').textContent=s.working||0;$('sumWait').textContent=s.waiting||0;$('sumBlock').textContent=s.blocked||0;$('sumIdle').textContent=s.idle||0;
-  const all=snapshot.workers||[],rows=activeFilter==='all'?all:all.filter(x=>x.state===activeFilter);
-  $('workforceHeadingText').textContent=workforceHeadingLabel[activeFilter]||'NHÂN SỰ';
-  $('workerCount').textContent=rows.length+'/'+all.length+' nhân sự';
-  $('workerAuthority').textContent='Nguồn: '+String(snapshot.authority||'chưa xác minh');
-  $('updated').textContent='Cập nhật '+new Date(snapshot.generatedAt||Date.now()).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
-  const box=$('workers');box.innerHTML='';
-  if(!rows.length){box.innerHTML='<div class="empty">Không có nhân sự ở trạng thái này.</div>';return}
-  rows.forEach(w=>{
-    const sourceUrl=(w.source&&typeof w.source==='object')?w.source.url:null;
-    const el=document.createElement(sourceUrl?'a':'article');el.className='worker';
-    if(sourceUrl){el.href=sourceUrl;el.target='_blank';el.rel='noopener'}
-    const pct=w.progress?.percent;
-    const meta=w.kind?((w.kind==='api'?'API':'UI')+' · '+sourceLabel(w.source)):(w.command?'Lệnh '+w.command+' · '+(w.adminState||'Registry'):(w.adminState||'Registry'));
-    const stamp=w.heartbeatAt?('Heartbeat '+age(w.heartbeatAt)):('Cập nhật '+age(w.updatedAt));
-    el.innerHTML='<div class="head"><div class="identity"><b>'+esc(w.employeeId+' · '+w.label)+'</b><small>'+esc(meta)+'</small></div><span class="badge '+esc(w.state)+'">'+statusIcon(w.state)+esc(stateLabel[w.state]||w.status||'—')+'</span></div><div class="job">'+esc(w.job||'Không có dữ liệu việc hiện tại')+'</div><div class="detail">'+esc(w.detail||'—')+'</div>'+(pct==null?'':'<div class="progress"><i style="width:'+Math.max(0,Math.min(100,pct))+'%"></i></div>')+'<div class="foot"><span>'+esc(stamp)+'</span><span class="source">'+esc(w.prNumber?'PR #'+w.prNumber:sourceLabel(w.source))+(sourceUrl?' ↗':'')+'</span></div>';
+  updateCounts();
+  const rows=normalizeRows(snapshot);
+  const labels={action:'Cần xử lý',owner:'Chờ anh Sơn',running:'Đang làm',review:'Rà soát / Xác minh',waiting:'Chờ / Blocked',system:'Hệ thống / Chính sách',done:'Hoàn tất'};
+  $('workMeta').textContent=labels[currentFilter]+' · '+rows.length+' việc';
+  const box=$('workList');box.innerHTML='';
+  if(!rows.length){box.innerHTML='<div class="empty">Không có Work Order trong nhóm này.</div>';return}
+  rows.forEach((row,index)=>{
+    const el=document.createElement(row.url?'a':'article');
+    const status=workStatus(row),label=stateLabel[status]||status;
+    const priority=workPriority(row),priorityClass=String(priority).toLowerCase().replace(/[^a-z0-9]/g,'')||'meta';
+    el.className='work-row status-'+status.toLowerCase()+' priority-'+priorityClass;
+    if(row.url){el.href=row.url;el.target='_blank';el.rel='noopener'}
+    const title=displayTitle(row.title);
+    const rank=String(index+1).padStart(2,'0');
+    const pct=Number(row?.progressPercent);
+    const progress=Number.isFinite(pct)&&pct>=0&&pct<=100
+      ?'<div class="progress" title="'+esc(row.progressDetail||'Tiến độ gate')+'"><div class="progress-track"><div class="progress-fill" style="width:'+pct+'%"></div></div><span class="progress-text">'+pct+'%</span></div>'
+      :'';
+    const summaryText=String(row?.currentStep||(row?.workKind==='SYSTEM'?'Policy/SOT/reference — không phải việc thực thi':row?.workKind==='GOAL'?'Mục tiêu cấp hệ thống — không đồng nghĩa đang chạy':'')).trim();
+    const summary=summaryText?'<div class="work-summary">'+esc(summaryText)+'</div>':'';
+    const signature=status+'|'+(Number.isFinite(pct)?pct:'')+'|'+summaryText;
+    const previous=lastVisualState.get(Number(row.number));
+    if(previous&&previous!==signature)el.classList.add('recently-updated');
+    lastVisualState.set(Number(row.number),signature);
+    el.innerHTML='<div class="work-main"><div class="work-top"><span class="rank">'+esc(rank)+'</span><span class="work-id">#'+esc(row.number)+'</span><span class="priority '+esc(priorityClass)+'">'+esc(priority)+'</span><span class="work-nv">'+esc(workerFrom(row))+'</span><span class="state '+esc(status.toLowerCase())+'">'+esc(label)+'</span></div><div class="work-title">'+esc(title)+'</div>'+summary+progress+'</div>';
     box.append(el);
+    if(el.classList.contains('recently-updated'))setTimeout(()=>el.classList.remove('recently-updated'),850);
   });
 }
-function showSnapshot(d){
-  const projection=d.workProjection||{};
-  const stale=Boolean(d.staleAll||projection.stale);
-  const live=$('liveLabel').parentElement;
-  live.classList.toggle('warn',!d.liveConnected||stale);
-  $('liveLabel').textContent=stale?'DỮ LIỆU CŨ':(d.liveConnected?'PC01 LIVE':'DỰ PHÒNG');
+function show(value){
+  snapshot=value;
+  const projection=value?.workProjection||{};
+  const stale=Boolean(value?.staleAll||projection.stale);
+  const live=$('liveLabel').parentElement;live.classList.toggle('warn',!value?.liveConnected||stale);
+  $('liveLabel').textContent=stale?'DỮ LIỆU CŨ':(value?.liveConnected?'PC01 LIVE':'DỰ PHÒNG');
   if(stale){
-    const stamp=projection.staleAt||projection.verifiedAt||d.staleAt||d.generatedAt;
-    const reason=projection.reason||d.reason||d.liveReason||'unavailable';
-    const source=/^runtime_bridge_/i.test(reason)?'Cầu nối PC01':/^github_/i.test(reason)?'GitHub':'Nguồn dữ liệu';
     $('err').classList.add('stale');
-    $('err').textContent=source+' tạm lỗi ('+reason+'). Đang giữ danh sách xác minh gần nhất từ '+(stamp?new Date(stamp).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'mốc trước')+'; không xóa về 0.';
+    $('err').textContent='Nguồn dữ liệu tạm lỗi. Đang giữ danh sách xác minh gần nhất; không xóa về 0.';
     $('err').style.display='block';
-  }else{
-    $('err').classList.remove('stale');
-    $('err').style.display='none';
-  }
+  }else{$('err').classList.remove('stale');$('err').style.display='none'}
   render();
 }
-async function loadFull(){
+async function load(){
   try{
-    const r=await fetch('/api/live-status',{cache:'no-store'}),raw=await r.json(),d=applyWorkCadence(hydrateLastGood(raw));
-    if(!d?.ok)throw new Error(d?.reason||'Nguồn trạng thái chưa sẵn sàng');
-    snapshot=d;
-    showSnapshot(d);
+    const r=await fetch('/api/live-status',{cache:'no-store'}),raw=await r.json(),value=hydrate(raw);
+    if(!value?.ok)throw new Error(value?.reason||'Nguồn trạng thái chưa sẵn sàng');
+    show(value);
   }catch(e){
-    $('liveLabel').textContent='MẤT DỮ LIỆU';$('err').classList.remove('stale');$('err').textContent='Không có snapshot xác minh để hiển thị: '+String(e?.message||e);$('err').style.display='block';
+    const cached=readLastGood();
+    if(cached){show({...cached,liveConnected:false,staleAll:true,liveReason:String(e?.message||e)});return}
+    $('liveLabel').textContent='MẤT DỮ LIỆU';$('err').textContent='Không có snapshot xác minh để hiển thị.';$('err').style.display='block';
   }
 }
-async function loadWorkforce(){
-  try{
-    const r=await fetch('/api/live-status?scope=workforce',{cache:'no-store'}),raw=await r.json();
-    if(!raw?.ok)throw new Error(raw?.reason||'Nguồn nhân sự chưa sẵn sàng');
-    if(!snapshot)return;
-    snapshot={
-      ...snapshot,
-      ...raw,
-      activeWork:snapshot.activeWork,
-      nextQueue:snapshot.nextQueue,
-      nextQueueTotal:snapshot.nextQueueTotal,
-      recentWork:snapshot.recentWork,
-      workProjection:snapshot.workProjection,
-      staleAll:Boolean(raw.staleAll),
-    };
-    showSnapshot(snapshot);
-  }catch(e){
-    if(!snapshot)return;
-    snapshot={...snapshot,liveConnected:false,staleAll:true,staleAt:snapshot.generatedAt||null,liveReason:String(e?.message||e)};
-    showSnapshot(snapshot);
-  }
-}
-document.querySelectorAll('.filter').forEach(btn=>btn.addEventListener('click',()=>{
-  document.querySelectorAll('.filter').forEach(x=>x.classList.remove('active'));btn.classList.add('active');activeFilter=btn.dataset.filter;render();
+document.querySelectorAll('.filter').forEach(button=>button.addEventListener('click',()=>{
+  currentFilter=button.dataset.filter||'action';
+  document.querySelectorAll('.filter').forEach(x=>x.classList.toggle('active',x===button));
+  render();
 }));
-document.addEventListener('visibilitychange',()=>{if(!document.hidden){loadFull();loadWorkforce()}});
-loadFull();
-setInterval(()=>{if(!document.hidden)loadWorkforce()},5000);
-setInterval(()=>{if(!document.hidden)loadFull()},30000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)load()});
+load();
+setInterval(()=>{if(!document.hidden)load()},10000);
 </script>
 </body>
 </html>

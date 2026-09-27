@@ -14,7 +14,7 @@ NO_DESTRUCTIVE=true
 NO_PRODUCTION_RELEASE=true
 NO_BROWSER_AUTH=true
 NO_DIRECT_MAIN=true
-PRIORITY=P0`;
+PRIORITY=P1`;
 
 function issue(body){
   return {number:1330,title:'guard probe',body,state:'open',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/1330'};
@@ -38,7 +38,7 @@ describe('Control Plane independent repair guard v34',()=>{
 
   it('still fails closed for ordinary protected mutations',()=>{
     expect(()=>assertExecutionPlaneMutationPaths(['apps/tigeriq-core/core.mjs'])).toThrow(/DENY_CONTROL_PLANE_MUTATION/);
-    expect(()=>validateManagerJobPaths({status:'continue',job:{paths:['apps/chrome-controller/src/server.ts']}},[])).toThrow(/DENY_CONTROL_PLANE_MUTATION/);
+    expect(()=>validateManagerJobPaths({status:'continue',job:{paths:['apps/tigeriq-core/core.mjs']}},[])).toThrow(/DENY_CONTROL_PLANE_MUTATION/);
     expect(validateManagerJobPaths({status:'continue',job:{paths:['apps/dashboard/server.ts']}},[])).toEqual(['apps/dashboard/server.ts']);
   });
 

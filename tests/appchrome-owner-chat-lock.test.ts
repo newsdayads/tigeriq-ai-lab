@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 // @ts-ignore legacy JS module
 import { safeRepoPath } from '../apps/tigeriq-coding-lane/policy.mjs';
 // @ts-ignore legacy JS module
@@ -27,5 +28,72 @@ describe('App Chrome Owner-chat-only maintenance lock',()=>{
       body:'TIGERIQ_EXECUTABLE=true\nAUTO_QUEUE=INCLUDED\nSTATE=READY\nPRIORITY=P0\nZERO_COST=true\nNO_DIRECT_MAIN=true\nNO_PRODUCTION_RELEASE=true\nNO_PAID_COST=true\nNO_CREDENTIAL_CHANGE=true\nNO_DESTRUCTIVE=true\nRESOURCE_SCOPE=APP_CHROME_REVIEW_ONLY'
     };
     expect(isSelfRunSafe(issue)).toBe(false);
+  });
+  it('keeps zero-touch discovery safe under PowerShell StrictMode when issue lacks pull_request',()=>{
+    const script=readFileSync('scripts/tigeriq-core/appchrome-zero-touch.ps1','utf8');
+    expect(script).toContain("$issue.PSObject.Properties.Name -contains 'pull_request'");
+    expect(script).not.toContain('if($issue.pull_request){continue}');
+  });
+
+  it('revalidates exact authorization/request/artifact after Wait-SafeBoundary',()=>{
+    const script=readFileSync('scripts/tigeriq-core/appchrome-zero-touch.ps1','utf8');
+    expect(script).toContain('function Request-Fingerprint');
+    expect(script).toContain('function Revalidate-After-SafeBoundary');
+    const wait=script.indexOf('Wait-SafeBoundary|Out-Null;$paused=$true');
+    const revalidate=script.indexOf('$revalidated=Revalidate-After-SafeBoundary');
+    const rollback=script.indexOf('New-Item -ItemType Directory -Force -Path $rollback');
+    const installer=script.indexOf('& powershell.exe');
+    expect(revalidate).toBeGreaterThan(wait);
+    expect(revalidate).toBeLessThan(rollback);
+    expect(revalidate).toBeLessThan(installer);
+  });
+
+  it('fails closed for cancellation/revocation during the safe-boundary wait',()=>{
+    const script=readFileSync('scripts/tigeriq-core/appchrome-zero-touch.ps1','utf8');
+    expect(script).toContain('APPCHROME_ZERO_TOUCH_AUTH_REVOKED_DURING_WAIT');
+    expect(script).toContain('APPCHROME_OWNER_AUTH_REVOKED');
+    expect(script).toContain('APPCHROME_OWNER_ISSUE_NOT_OPEN');
+  });
+
+  it('propagates NV02-only scope through zero-touch request, revalidation, and installer',()=>{
+    const script=readFileSync('scripts/tigeriq-core/appchrome-zero-touch.ps1','utf8');
+    expect(script).toContain("Exact-Line $body 'LIVE_ACCEPTANCE_SCOPE' 'NV02_ONLY'");
+    expect(script).toContain("Exact-Line $body 'NV02_ONLY' 'true'");
+    expect(script).toContain('function Request-Nv02Only');
+    expect(script).toContain('APPCHROME_NV02_ONLY_AUTH_MISSING');
+    expect(script).toContain("('NV02_ONLY='+[string][bool](Request-Nv02Only $req))");
+    expect(script).toContain("$installerArgs+='-Nv02Only'");
+    const wait=script.indexOf('Wait-SafeBoundary|Out-Null;$paused=$true');
+    const revalidate=script.indexOf('$revalidated=Revalidate-After-SafeBoundary');
+    const args=script.indexOf("$installerArgs=@(");
+    const invoke=script.indexOf('& powershell.exe @installerArgs');
+    expect(revalidate).toBeGreaterThan(wait);
+    expect(args).toBeGreaterThan(revalidate);
+    expect(invoke).toBeGreaterThan(args);
+  });
+
+  it('pre-quiesces only NV03/NV04 for NV02-only rollout before the safe boundary',()=>{
+    const script=readFileSync('scripts/tigeriq-core/appchrome-zero-touch.ps1','utf8');
+    expect(script).toContain('function Pause-Nv02OnlySideWriters');
+    expect(script).toContain('if(-not(Request-Nv02Only $req)){return @()}');
+    expect(script).toContain("foreach($id in @('NV03','NV04'))");
+    expect(script).toContain("$healthUri=$controller+'/api/utility/workers/'+$id+'/health'");
+    expect(script).toContain("$pauseUri=$controller+'/api/utility/workers/'+$id+'/pause'");
+    expect(script).toContain('if(-not [bool]$health.utilityPaused)');
+    expect(script).toContain('APPCHROME_NV02_ONLY_SIDE_WRITER_PAUSE_FAILED');
+    expect(script).not.toContain("foreach($id in @('NV02','NV03','NV04'))");
+    expect(script).not.toContain("$controller+'/api/utility/workers/'+$id+'/resume'");
+    const pre=script.indexOf('$preQuiescedWorkers=@(Pause-Nv02OnlySideWriters $req)');
+    const wait=script.indexOf('Wait-SafeBoundary|Out-Null;$paused=$true');
+    expect(pre).toBeGreaterThan(-1);
+    expect(wait).toBeGreaterThan(pre);
+  });
+
+  it('fails closed for supersede or target/artifact changes during the safe-boundary wait',()=>{
+    const script=readFileSync('scripts/tigeriq-core/appchrome-zero-touch.ps1','utf8');
+    expect(script).toContain('APPCHROME_OWNER_AUTH_SUPERSEDED');
+    expect(script).toContain('APPCHROME_ZERO_TOUCH_REQUEST_CHANGED_DURING_WAIT');
+    expect(script).toContain('APPCHROME_ZERO_TOUCH_ARTIFACT_CHANGED_DURING_WAIT');
+    expect(script).toContain('Request-Fingerprint $fresh');
   });
 });

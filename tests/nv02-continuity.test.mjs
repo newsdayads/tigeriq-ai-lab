@@ -8,15 +8,41 @@ import {
   CONTINUITY_WORKERS, deriveNv02Phase, deriveWorkerPhase, hasActiveNv02Work, hasActiveWorkerWork,
   hasWaitingEvidenceNv02Work, hasWaitingEvidenceWorkerWork, hasContinuableNv02Work, hasContinuableWorkerWork,
   pickContinuePrompt, randomDelay, shouldRotateNv02Chat, computeWorkerStaggerDelay, rearmWorkerRunGrace,
+  AWAITING_WORK_START_TIMEOUT_MS, shouldRearmAwaitingWorkStart, rearmAwaitingWorkStart,
 } from '../apps/chrome-controller/extension/continuity.js';
 
 describe('NV02 continuity policy', () => {
+  it('recovers READY awaitingWorkStart after one bounded acknowledgement window',()=>{
+    expect(shouldRearmAwaitingWorkStart({phase:'READY',awaitingWorkStart:true,awaitingWorkStartSince:1000,now:1000+AWAITING_WORK_START_TIMEOUT_MS-1})).toBe(false);
+    expect(shouldRearmAwaitingWorkStart({phase:'READY',awaitingWorkStart:true,awaitingWorkStartSince:1000,now:1000+AWAITING_WORK_START_TIMEOUT_MS})).toBe(true);
+    expect(rearmAwaitingWorkStart({awaitingWorkStart:true,awaitingWorkStartSince:1000,pendingContinue:false},31000)).toMatchObject({awaitingWorkStart:false,awaitingWorkStartSince:0,pendingContinue:true,nextContinueAt:31000});
+  });
+
+  it('preserves anti-spam before timeout, suppresses WORKING, and isolates workers',()=>{
+    expect(shouldRearmAwaitingWorkStart({phase:'READY',awaitingWorkStart:true,awaitingWorkStartSince:1000,now:1000+AWAITING_WORK_START_TIMEOUT_MS-1})).toBe(false);
+    expect(shouldRearmAwaitingWorkStart({phase:'WORKING',awaitingWorkStart:true,awaitingWorkStartSince:1000,now:1000+AWAITING_WORK_START_TIMEOUT_MS+1})).toBe(false);
+    expect(shouldRearmAwaitingWorkStart({phase:'READY',awaitingWorkStart:true,awaitingWorkStartSince:0,now:AWAITING_WORK_START_TIMEOUT_MS})).toBe(true);
+    expect(shouldRearmAwaitingWorkStart({phase:'READY',awaitingWorkStart:true,awaitingWorkStartSince:0,now:AWAITING_WORK_START_TIMEOUT_MS-1})).toBe(false);
+  });
+
+  it('rearms exactly once after timeout and leaves the next dispatch under the normal latch',()=>{
+    const initial={awaitingWorkStart:true,awaitingWorkStartSince:1000,pendingContinue:false};
+    expect(shouldRearmAwaitingWorkStart({phase:'READY',...initial,now:1000+AWAITING_WORK_START_TIMEOUT_MS-1})).toBe(false);
+    const rearmed=rearmAwaitingWorkStart(initial,1000+AWAITING_WORK_START_TIMEOUT_MS);
+    expect(rearmed).toMatchObject({awaitingWorkStart:false,awaitingWorkStartSince:0,pendingContinue:true});
+    expect(shouldRearmAwaitingWorkStart({phase:'READY',...rearmed,now:1000+AWAITING_WORK_START_TIMEOUT_MS+1})).toBe(false);
+    const dispatched={...rearmed,awaitingWorkStart:true,awaitingWorkStartSince:1000+AWAITING_WORK_START_TIMEOUT_MS};
+    expect(shouldRearmAwaitingWorkStart({phase:'READY',...dispatched,now:dispatched.awaitingWorkStartSince+AWAITING_WORK_START_TIMEOUT_MS-1})).toBe(false);
+  });
+
   it('exposes isolated worker-generic continuity primitives for NV02/NV03/NV04', () => {
     expect(CONTINUITY_WORKERS).toEqual(['NV02','NV03','NV04']);
     expect(CONTINUE_PROMPTS).toHaveLength(21);
     expect(WORKER_F5_MIN_MS).toBe(5*60*1000);
     expect(WORKER_F5_MAX_MS).toBe(20*60*1000);
-    expect(WORKER_F5_MIN_MS).toBe(CONTINUE_MIN_MS);
+    expect(CONTINUE_MIN_MS).toBe(3*1000);
+    expect(CONTINUE_MAX_MS).toBe(15*1000);
+    expect(WORKER_F5_MIN_MS).not.toBe(CONTINUE_MIN_MS);
     expect(WORKER_F5_MAX_MS).toBeGreaterThan(CONTINUE_MAX_MS);
     expect(REFRESH_MIN_MS).toBe(2*60*60*1000);
     expect(REFRESH_MAX_MS).toBe(4*60*60*1000);
@@ -139,8 +165,10 @@ describe('NV02 continuity policy', () => {
   });
 
   it('keeps random timing inside requested windows', () => {
-    expect(randomDelay(300000,600000,()=>0)).toBe(300000);
-    expect(randomDelay(300000,600000,()=>0.999999)).toBeGreaterThanOrEqual(599999);
+    expect(randomDelay(CONTINUE_MIN_MS,CONTINUE_MAX_MS,()=>0)).toBe(3000);
+    expect(randomDelay(WORKER_F5_MIN_MS,WORKER_F5_MAX_MS,()=>0)).toBe(300000);
+    expect(randomDelay(CONTINUE_MIN_MS,CONTINUE_MAX_MS,()=>0.999999)).toBeGreaterThanOrEqual(14999);
+    expect(randomDelay(WORKER_F5_MIN_MS,WORKER_F5_MAX_MS,()=>0.999999)).toBeGreaterThanOrEqual(1199999);
   });
 
   it('avoids immediate prompt repetition when alternatives exist', () => {
@@ -153,7 +181,11 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain('APP_CHROME_LOCAL_UI_ONLY');
     expect(source).toContain("const currentTrackedWork=currentChat");
     const nv02Loop=source.slice(source.indexOf('async function maybeNv02Continuity'),source.indexOf('async function handleCommand'));
+    expect(nv02Loop).not.toContain("currentWorkerAssignmentStatus('NV02')");
     expect(nv02Loop).not.toContain("READY_UNASSIGNED");
+    expect(nv02Loop).not.toContain("autoModelRecoverySuppressed:true");
+    expect(nv02Loop).toContain("if(phase==='READY')");
+    expect(nv02Loop).toContain("dispatchNaturalContinue(target,state,now)");
     expect(source).not.toContain("CURRENT_WORK_NEW_CHAT_RESTORED");
     expect(source).toContain("LOCAL_CONTINUE_DISPATCHED");
     expect(source).not.toContain("await navigate(target,state.resumeChatUrl)");
@@ -179,7 +211,8 @@ describe('NV02 continuity policy', () => {
       source.indexOf('async function dispatchNaturalContinueLocked'),
       source.indexOf('async function dispatchNaturalContinue(target'),
     );
-    expect(continueDispatch).not.toContain('ensureNv02ModelProfile');
+    expect(continueDispatch).toContain('ensureNv02ModelProfile');
+    expect(continueDispatch).toContain("MODEL_PROFILE_BLOCKED");
     expect(continueDispatch).not.toContain('getControllerState()');
     expect(continueDispatch).not.toContain('hasContinuableNv02Work(controllerState)');
     expect(continueDispatch).not.toContain('findContinuableNv02Work(controllerState)');
@@ -188,11 +221,12 @@ describe('NV02 continuity policy', () => {
     expect(continueDispatch).not.toContain('CONTINUE_CURRENT_WORK_VERIFIED');
     expect(continueDispatch).not.toContain('CONTINUE_SKIPPED_NO_CURRENT_WORK');
     expect(continueDispatch).not.toContain('CONTINUE_SKIPPED_CURRENT_WORK_UNVERIFIED');
-    expect(source).toContain("if(phase==='STALLED'&&ui?.modelExact!==true&&modelCheckRequired&&(ui?.composerReady===true||ui?.modelControlPresent===true))");
+    expect(source).toContain("if((phase==='READY'||phase==='STALLED')&&ui?.modelExact!==true&&modelCheckRequired&&(ui?.composerReady===true||ui?.modelControlPresent===true))");
     expect(source).toContain("withNv02Mutation(()=>ensureNv02ModelProfile(target),'MODEL_PROFILE_RECOVERY')");
     expect(source).toContain("modelName==='GPT-5.6 Sol'");
     expect(source).toContain("const NV02_F5_MAX_MS=20*60*1000");
-    expect(source).toContain("const UI_STABILITY_PACING_MIN_MS=1200");
+    expect(source).toContain("const UI_STABILITY_PACING_MIN_MS=3000");
+    expect(source).toContain("const UI_STABILITY_PACING_MAX_MS=8000");
     expect(source).toContain("VIEW_FOLLOW_BOTTOM");
     expect(source).toContain("nextViewFollowAt");
     expect(source).toContain("await scrollToBottom(target).catch");
@@ -213,7 +247,8 @@ describe('NV02 continuity policy', () => {
     expect(continuityLoop).not.toContain('checkpointNv02(');
     expect(source).toContain("nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS");
     expect(source).toContain("unchanged>=MAX_WORKING_UNCHANGED_CHECKS");
-    expect(continuityLoop.indexOf("if(phase==='WORKING')")).toBeLessThan(continuityLoop.indexOf("if(currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0))"));
+    expect(continuityLoop).toContain("if(now>=Number(state.nextPeriodicF5At||0))");
+    expect(continuityLoop).toContain("if(phase!=='WORKING'&&now>=Number(state.nextRefreshAt||0))");
     expect(continuityLoop.indexOf("if(phase==='WORKING')")).toBeLessThan(continuityLoop.indexOf("if(now<Number(state.nextContinueAt||0))return"));
     expect(source).toContain("const NV02_F5_MIN_MS=5*60*1000");
     expect(source).toContain("const NV02_F5_MAX_MS=20*60*1000");
@@ -229,14 +264,16 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("async function ensureNv02LocalReadyLocked(target,initialUi=null,{forceFresh=false}={})");
     expect(source).toContain("ensureNv02LocalReadyLocked(target,ui,{forceFresh:true})");
     expect(source).toContain("ensureNv02LocalReadyLocked(target,raw,{forceFresh:false})");
-    expect(source).toContain("'BOOT_LOCAL_CONTINUE_SUBMITTED'");
+    expect(source).toContain("'BOOT_FRESH_LOCAL_COMPLETE'");
+    expect(source).toContain("'BOOT_FRESH_LOCAL_READY'");
+    expect(source).toContain("'BOOT_FRESH_LOCAL_READY_NO_CONTINUE'");
     const handleCommandSource=source.slice(source.indexOf('async function handleCommand'),source.indexOf('async function postWorkerHeartbeat'));
     const localRunCommand=handleCommandSource.slice(handleCommandSource.indexOf("if(action==='LOCAL_CONTINUE_NOW')"),handleCommandSource.indexOf("if(action==='DISPATCH')"));
     expect(localRunCommand).toContain("ensureNv02LocalReadyLocked(target,raw,{forceFresh:false})");
     expect(localRunCommand).not.toContain("withNv02Mutation(");
     expect(localRunCommand).not.toContain("workerRunGraceUntil.delete('NV02')");
     expect(source).toContain("const workerRunGraceUntil=new Map()");
-    expect(source).toContain("workerRunGraceUntil.set(workerId,nextContinueAt)");
+    expect(source).toContain("workerRunGraceUntil.set(workerId,now+LOCAL_RUN_GRACE_MS)");
     expect(source).toContain("'LOCAL_RUN_BACKGROUND_SUPPRESSED'");
     expect(source).toContain("async function waitForNv02Composer(target,timeoutMs=30000)");
     expect(source).toContain("if(forceFresh||!inProject())");
@@ -248,7 +285,7 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("const NV02_STALLED_RELOAD_CHECKS=10");
     expect(source).toContain("const NV02_STALLED_RESET_CHECKS=14");
     expect(source).toContain("const LOCAL_RUN_GRACE_MS=15000");
-    expect(source).toContain("'LOCAL_RUN_COMMAND_GRACE'");
+    expect(source).toContain("'LOCAL_RUN_SUBMISSION_GRACE_REARMED'");
     expect(source).not.toContain("'LOCAL_RUN_KICKED'");
     expect(source).toContain("stalledChecks:Math.min(NV02_STALLED_RESET_CHECKS,state.stalledChecks+1)");
     expect(source).toContain("if(state.stalledChecks===NV02_STALLED_RELOAD_CHECKS)");
@@ -257,7 +294,7 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("verifiedChatUrl:String(raw.verifiedChatUrl||'')");
     expect(source).toContain("function applyNv02DurableVerifiedModelProfile(ui)");
     expect(source).toContain("ui.modelControlPresent!==true||ui.reasoningEffort!=='High'");
-    expect(source).toContain("!sameNv02Chat(state.verifiedChatUrl,ui.url)");
+    expect(source).toContain("!sameNv02Chat(state.verifiedChatUrl,ui?.url)");
     expect(source).toContain("return applyNv02DurableVerifiedModelProfile(applyNv02VerifiedModelProfile(raw))");
     const tickWorker=source.slice(source.indexOf('async function tickWorker'),source.indexOf('async function tick()'));
     expect(tickWorker).toContain('const rawUi=await uiState(target)');
@@ -270,14 +307,15 @@ describe('NV02 continuity policy', () => {
 
     expect(source).toContain("sameNv02Chat(state.verifiedChatUrl,ui?.url)");
     expect(source).toContain("const modelCheckRequired=now>=Number(state.modelCheckBlockedUntil||0)&&(ui?.modelExact!==true||!state.verifiedChatUrl||!sameNv02Chat(state.verifiedChatUrl,ui?.url))");
-    expect(source).toContain("phase==='STALLED'&&ui?.modelExact!==true&&modelCheckRequired");
+    expect(source).toContain("(phase==='READY'||phase==='STALLED')&&ui?.modelExact!==true&&modelCheckRequired");
     const bootFreshGate=continuityLoop.indexOf("bootFreshContextPending.has('NV02')");
-    const periodicF5Gate=continuityLoop.indexOf("if(currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0))");
-    const modelRecoveryGate=continuityLoop.indexOf("if(phase==='STALLED'&&ui?.modelExact!==true&&modelCheckRequired&&");
+    const periodicF5Gate=continuityLoop.indexOf("if(now>=Number(state.nextPeriodicF5At||0))");
+    const modelRecoveryGate=continuityLoop.indexOf("if((phase==='READY'||phase==='STALLED')&&ui?.modelExact!==true&&modelCheckRequired&&");
     expect(bootFreshGate).toBeGreaterThan(-1);
-    expect(periodicF5Gate).toBeGreaterThan(bootFreshGate);
-    expect(periodicF5Gate).toBeLessThan(modelRecoveryGate);
-    expect(modelRecoveryGate).toBeGreaterThan(-1);
+    expect(periodicF5Gate).toBeGreaterThan(-1);
+    expect(modelRecoveryGate).toBeGreaterThan(bootFreshGate);
+    expect(modelRecoveryGate).toBeLessThan(continuityLoop.indexOf("if(phase==='READY')"));
+    expect(continuityLoop).not.toContain("if(phase==='WORKING'&&ui?.modelExact!==true&&modelCheckRequired");
 
     expect(source).not.toContain("state.verifiedChatUrl===ui?.url");
     expect(source).toContain("const currentUrl=String(profile.url||'')");
@@ -291,8 +329,9 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("pages.find(t=>sameWorkerLocation(t.url,preferredUrl))");
 
 
-    const f5Block=source.slice(source.indexOf("if(currentTrackedWork&&now>=Number(state.nextPeriodicF5At||0))"),source.indexOf("const modelCheckRequired="));
+    const f5Block=source.slice(source.indexOf("if(now>=Number(state.nextPeriodicF5At||0))"),source.indexOf("const modelCheckRequired="));
     expect(f5Block).toContain("reloadTarget(target)");
+    expect(f5Block).toContain("PERIODIC_F5_FAILED");
     expect(f5Block).not.toContain("ensureNv02ModelProfile");
     expect(f5Block).not.toContain("checkpointNv02");
     expect(f5Block).not.toContain("rotateNv02Chat");
@@ -339,20 +378,28 @@ describe('NV02 continuity policy', () => {
     expect(continuity).not.toContain('externalAutopilotOwnsNextNv02Job');
   });
 
-  it('has no Core/GitHub Work Order coupling in the local App Chrome bridge', () => {
+  it('uses App Chrome strictly as local UI transport with short prompts', () => {
     const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    const continuitySource=readFileSync('apps/chrome-controller/extension/continuity.js','utf8');
     expect(source).not.toContain('function buildCurrentWorkRestorePrompt');
-    expect(source).not.toContain('CURRENT_WORK_ORDER=');
     expect(source).not.toContain('CURRENT_CHECKPOINT=');
     expect(source).not.toContain('DURABLE_SAVE_RECEIPT=');
-    expect(source).not.toContain('CURRENT_WORK_RESTORE_DISPATCHED');
     expect(source).not.toContain('findContinuableNv02Work');
     expect(source).not.toContain('checkpointNv02');
     expect(source).not.toContain('rotateNv02Chat');
     expect(source).not.toContain('externalAutopilotOwnsNextNv02Job');
+    expect(source).not.toContain('CORE_UI_ASSIGNMENT');
+    expect(source).not.toContain('coreRolePrompt');
+    expect(source).not.toContain('ROLE_FALLBACK');
+    expect(source).not.toContain('currentWorkerAssignmentStatus');
+    expect(source).not.toContain('READY_UNASSIGNED');
+    expect(continuitySource).not.toContain('audit GitHub Source of Truth');
+    expect(continuitySource).not.toContain('TIGERIQ_ROLE_CLAIM_V1');
+    expect(continuitySource).toContain('pickWorkerContinuePrompt');
     const local=source.slice(source.indexOf('async function dispatchNaturalContinueLocked'),source.indexOf('async function dispatchNaturalContinue(target'));
-    expect(local).toContain('pickContinuePrompt(state.lastPrompt)');
+    expect(local).toContain("chooseLocalContinuePrompt('NV02',state)");
     expect(local).toContain("continuityEvent('LOCAL_CONTINUE_DISPATCHED'");
+    expect(local).toContain("coreJobId:''");
     expect(local).not.toContain('getControllerState');
   });
 
@@ -369,6 +416,10 @@ describe('NV02 continuity policy', () => {
   it('supports the current ChatGPT Cao/High composer model selector with exact visible verification', () => {
     const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(source).toContain("button.__composer-pill[aria-haspopup=\"menu\"]");
+    const ui=source.slice(source.indexOf('const UI_EXPR='),source.indexOf('async function uiStateRaw'));
+    expect(ui).toContain(`document.querySelectorAll('button,[role="button"]')`);
+    expect(ui).toContain('chọn mô hình chatgpt|choose.*model|model selector');
+    expect(ui).toContain("e.hasAttribute('data-selected-reasoning-effort')");
     expect(source).toContain("Cao|High|Tiêu chuẩn|Standard|Nhanh|Fast|Tự động|Auto");
     expect(source).toContain("const MODEL_SELECTOR_POINT_EXPR=");
     expect(source).toContain("async function openNv02ModelSelector(target)");
@@ -395,6 +446,39 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("CHAT_LOAD_RETRY");
     expect(source).toContain("CHAT_LOAD_F5");
     expect(source).toContain("CHAT_LOAD_REOPEN");
+  });
+
+  it('keeps NV02 READY continuity independent from assignment while model recovery stays bounded', () => {
+    const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    const continuity=source.slice(source.indexOf('async function maybeNv02Continuity'),source.indexOf('async function handleCommand'));
+    expect(continuity).not.toContain('currentWorkerAssignmentStatus');
+    expect(continuity).not.toContain('READY_UNASSIGNED');
+    expect(continuity).not.toContain('autoModelRecoverySuppressed:true');
+    expect(continuity).toContain("const modelCheckRequired=");
+    expect(continuity).toContain("if(phase==='READY')");
+    expect(continuity).toContain('dispatchNaturalContinue(target,state,now)');
+    expect(continuity).toContain('awaitingWorkStart');
+    expect(continuity).toContain('shouldRearmAwaitingWorkStart');
+    expect(continuity).toContain('READY_AWAITING_WORK_START_TIMEOUT_REARMED');
+  });
+
+  it('detects interrupted ChatGPT response streams and recovers locally without assignment gating', () => {
+    const source=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    const ui=source.slice(source.indexOf('const UI_EXPR='),source.indexOf('async function uiStateRaw'));
+    expect(ui).toContain('responseInterrupted');
+    expect(ui).toContain('luồng phản hồi bị gián đoạn');
+    expect(ui).toContain('response stream (?:was )?interrupted');
+    expect(ui).toContain('responseContinueReady:Boolean(responseContinue)');
+    expect(ui).toContain('Boolean(conversationLoadError||requestTimeoutError||responseInterrupted)');
+    const retry=source.slice(source.indexOf('function chatLoadRetryExpr()'),source.indexOf('function loadContinuityFor'));
+    expect(retry).toContain('CHAT_INTERRUPTED_CONTINUE_CLICKED');
+    expect(retry).toContain('continue generating');
+    expect(retry).toContain('tiếp tục phản hồi');
+    const recovery=source.slice(source.indexOf('async function maybeRecoverChatLoadError'),source.indexOf('const MODEL_SELECTOR_POINT_EXPR'));
+    expect(recovery).toContain("if(stage===0)");
+    expect(recovery).toContain("CHAT_LOAD_RETRY");
+    expect(recovery).not.toContain('currentWorkerAssignmentStatus');
+    expect(recovery).not.toContain('CHAT_INTERRUPTED_CONTINUE_SUPPRESSED');
   });
 
   it('ships one-shot NV02 continuity installer with exact-head deploy and rollback',()=>{

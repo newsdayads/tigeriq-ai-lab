@@ -1,6 +1,7 @@
-import test from 'node:test';
+import {test as vitestTest} from 'vitest';
+const test=(name,fn)=>vitestTest(name,async()=>{const t={test:async(_name,subfn)=>subfn(t)};return fn(t)});
 import assert from 'node:assert';
-import {CodingScopeViolationError,parseCompactEditJson,salvageCompactEditsJson,validateJobScope,validateSourceScope} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {CodingScopeViolationError,existingPrNeedsBaseUpdate,parseCompactEditJson,salvageCompactEditsJson,selectCodingWorker,validateExistingPrResume,validateJobScope,validateObjectiveRoutingInput,validateSourceScope} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {extractCanonicalAllowedPaths} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 test('coding lane scope validation tests',async(t)=>{
@@ -17,6 +18,21 @@ test('coding lane scope validation tests',async(t)=>{
   });
 
 
+  await t.test('parses ALLOW_PATH_PREFIX preserving exact file vs directory semantics',()=>{
+    const objective='ALLOW_PATH_PREFIX=apps/x/file.mjs,tests/';
+    assert.deepStrictEqual(extractCanonicalAllowedPaths(objective),['apps/x/file.mjs','tests/']);
+    assert.throws(()=>extractCanonicalAllowedPaths('ALLOW_PATH_PREFIX=../escape,tests/'),/CODING_CANONICAL_SCOPE_INVALID/);
+    assert.throws(()=>extractCanonicalAllowedPaths('ALLOW_PATH_PREFIX=apps/*,tests/'),/CODING_CANONICAL_SCOPE_INVALID/);
+  });
+
+  await t.test('exact file does not authorize descendants while directory prefix does',()=>{
+    const canonical=['apps/x/file.mjs','tests/'];
+    assert.strictEqual(validateSourceScope(['apps/x/file.mjs','tests/example.test.mjs'],canonical),true);
+    assert.throws(()=>validateSourceScope(['apps/x/file.mjs/evil.js'],canonical),e=>e instanceof CodingScopeViolationError&&e.offending[0]==='apps/x/file.mjs/evil.js');
+    assert.throws(()=>validateSourceScope(['unrelated/safe.mjs'],canonical),e=>e instanceof CodingScopeViolationError&&e.offending[0]==='unrelated/safe.mjs');
+  });
+
+
   await t.test('salvages complete compact edits from a truncated JSON response',()=>{
     const broken='{"summary":"partial","edits":[{"path":"apps/tigeriq-coding-lane/coding-lane.mjs","search":"old","replace":"new"},{"path":"tests/coding-lane-scope.test.mjs","search":"unterminated';
     assert.deepStrictEqual(salvageCompactEditsJson(broken),{
@@ -24,7 +40,7 @@ test('coding lane scope validation tests',async(t)=>{
       edits:[{path:'apps/tigeriq-coding-lane/coding-lane.mjs',search:'old',replace:'new'}],
     });
     assert.deepStrictEqual(parseCompactEditJson(broken),{
-      summary:'salvaged complete compact edits from truncated model response',
+      summary:'partial',
       edits:[{path:'apps/tigeriq-coding-lane/coding-lane.mjs',search:'old',replace:'new'}],
     });
   });
@@ -56,5 +72,39 @@ test('coding lane scope validation tests',async(t)=>{
     }catch(e){assert.ok(e instanceof CodingScopeViolationError)}
     assert.strictEqual(writeCalled,false);
     assert.strictEqual(prCreated,false);
+  });
+
+  await t.test('locks exact TARGET_EMPLOYEE without silent failover',()=>{
+    const resources=[{id:'NV09'},{id:'NV12'}];
+    assert.strictEqual(selectCodingWorker(resources,'NV09',()=>resources[1]).id,'NV09');
+    assert.strictEqual(selectCodingWorker([{id:'NV12'}],'NV09',()=>resources[1]),null);
+    assert.strictEqual(selectCodingWorker(resources,'',()=>resources[1]).id,'NV12');
+  });
+
+  await t.test('validates objective routing input as an exact target/PR-head pair',()=>{
+    const head='9b31b1885e8c31a97519ddaecf0dfa3a5917269b';
+    assert.deepStrictEqual(validateObjectiveRoutingInput({targetEmployee:'nv09',currentPr:1870,targetHead:head}),{
+      targetEmployee:'NV09',currentPr:1870,targetHead:head
+    });
+    assert.throws(()=>validateObjectiveRoutingInput({targetEmployee:'OTHER'}),/CODING_TARGET_EMPLOYEE_INVALID/);
+    assert.throws(()=>validateObjectiveRoutingInput({currentPr:1870}),/CODING_CURRENT_PR_TARGET_HEAD_PAIR_REQUIRED/);
+  });
+
+  await t.test('accepts only the exact open same-repo existing PR identity',()=>{
+    const head='9b31b1885e8c31a97519ddaecf0dfa3a5917269b';
+    const pr={number:1870,state:'open',merged:false,head:{sha:head,ref:'feature-1870',repo:{full_name:'newsdayads/tigeriq-ai-lab'}},base:{repo:{full_name:'newsdayads/tigeriq-ai-lab'}}};
+    assert.deepStrictEqual(validateExistingPrResume(pr,{number:1870,targetHead:head,repoFullName:'newsdayads/tigeriq-ai-lab'}),{
+      number:1870,branch:'feature-1870',headSha:head
+    });
+    assert.throws(()=>validateExistingPrResume({...pr,state:'closed'},{number:1870,targetHead:head,repoFullName:'newsdayads/tigeriq-ai-lab'}),/EXISTING_PR_NOT_OPEN/);
+    assert.throws(()=>validateExistingPrResume({...pr,merged:true},{number:1870,targetHead:head,repoFullName:'newsdayads/tigeriq-ai-lab'}),/EXISTING_PR_ALREADY_MERGED/);
+    assert.throws(()=>validateExistingPrResume({...pr,head:{...pr.head,sha:'a'.repeat(40)}},{number:1870,targetHead:head,repoFullName:'newsdayads/tigeriq-ai-lab'}),/EXISTING_PR_TARGET_HEAD_MISMATCH/);
+    assert.throws(()=>validateExistingPrResume({...pr,head:{...pr.head,repo:{full_name:'other/repo'}}},{number:1870,targetHead:head,repoFullName:'newsdayads/tigeriq-ai-lab'}),/EXISTING_PR_HEAD_REPO_MISMATCH/);
+  });
+
+  await t.test('marks behind or diverged existing PRs for three-way base update',()=>{
+    assert.strictEqual(existingPrNeedsBaseUpdate({status:'diverged',behind_by:3}),true);
+    assert.strictEqual(existingPrNeedsBaseUpdate({status:'behind',behind_by:2}),true);
+    assert.strictEqual(existingPrNeedsBaseUpdate({status:'ahead',behind_by:0}),false);
   });
 });

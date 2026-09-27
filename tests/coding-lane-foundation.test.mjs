@@ -1,6 +1,8 @@
-import test from 'node:test';
+import {readFileSync} from 'node:fs';
+import {test as vitestTest} from 'vitest';
+const test=(name,fn)=>vitestTest(name,async()=>{const t={test:async(_name,subfn)=>subfn(t)};return fn(t)});
 import assert from 'node:assert';
-import {activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertPrOpenState,buildLocalFileContext,canonicalCodingJobTitle,canonicalWorkTitleFromObjective,classifyAiFailure,codingMergeCommitTitle,codingOutputTokenLimit,codingPathsOverlap,cooldownWaitFailure,coreResourceStateEligible,gateFailureIssues,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,isVietnameseWorkTitle,managerResourceFailurePlan,partitionGenerationFiles,preserveGenerationPrompt,providerCooldownPollPlan,recoverAfterCodingRestart,resourceWaitPlan,restartRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,validateCompactEdits,validateManagerJobPaths,validateManagerJobTitle} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertLiveGithubContextFresh,assertPrOpenState,buildLocalFileContext,canonicalCodingJobTitle,canonicalWorkTitleFromObjective,classifyAiFailure,codingMergeCommitTitle,codingOutputTokenLimit,codingPathsOverlap,cooldownWaitFailure,coreResourceStateEligible,extractLiveGithubContextRefs,formatAuthoritativeGithubContext,gateFailureIssues,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,isVietnameseWorkTitle,loadAuthoritativeGithubContext,managerResourceFailurePlan,partitionGenerationFiles,preserveGenerationPrompt,providerCooldownPollPlan,recoverAfterCodingRestart,recoverStaleRunningJobs,armStaleRunningRuntimeCanary,settleStaleRunningRuntimeCanary,cleanupStaleRunningRuntimeCanary,requiresLiveGithubContext,resourceWaitPlan,restartRecoveryDecision,staleRunningRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,sourceIssueNumberFromObjective,validateCompactEdits,validateManagerJobPaths,validateManagerJobTitle} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError,parseJsonObject} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 const nv11={id:'NV11',provider:'fake',model:'a'};
@@ -89,7 +91,7 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
     const calls=[];
     const invokeFn=async r=>{
       calls.push(r.id);
-      if(r.id==='NV11')return '{"status":"continue","summary":"bad scope","job":{"title":"x","instruction":"x","paths":["apps/tigeriq-core/core.mjs"]}}';
+      if(r.id==='NV11')return '{"status":"continue","summary":"bad scope","job":{"title":"x","instruction":"x","paths":["tests/other-critical.test.mjs"]}}';
       return '{"status":"continue","summary":"ok","job":{"title":"x","instruction":"x","paths":["tests/coding-lane-ai-json-transport.test.mjs"]}}';
     };
     const out=await invokeJsonWithFailover(nv11,'manager',{resourcePool:[nv11,nv19],maxResources:2,invokeFn,validateData:d=>validateManagerJobPaths(d,canonical)});
@@ -386,7 +388,7 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
     const src=require('node:fs').readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
     assert.ok(src.includes("providerCooldownPollPlan(current.failure)"));
     assert.ok(src.includes("WAITING_RESOURCE_COOLDOWN retry"));
-    assert.ok(src.includes("preservedRetryCount:preservedCount"));
+    assert.ok(src.includes("preservedRetryCount:Math.max(0,Number(preservedCount)||0)"));
   });
 
   await t.test('cooldown wait persists valid rate-limit evidence across repeated polls',()=>{
@@ -510,6 +512,109 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
     assert.ok(issues.includes('CI Verify: failure (completed)'));
   });
 });
+test('in-process stale-running watchdog is bounded and fail-closed',async t=>{
+  const stale={id:'CODE-stale',status:'running',started_at:'2026-09-27T00:00:00.000Z',branch:null,pr_number:null,stale_recovery_count:0};
+  const now=Date.parse('2026-09-27T00:20:00.000Z');
+
+  await t.test('stale pre-branch + executable source requeues exactly once',()=>{
+    assert.deepStrictEqual(
+      staleRunningRecoveryDecision(stale,{nowMs:now,staleMs:60000,maxRequeues:1,sourceExecutable:true}),
+      {action:'queue',code:'CODING_STALE_REQUEUE_PRE_BRANCH',ageMs:1200000},
+    );
+    assert.deepStrictEqual(
+      staleRunningRecoveryDecision({...stale,stale_recovery_count:1},{nowMs:now,staleMs:60000,maxRequeues:1,sourceExecutable:true}),
+      {action:'fail',code:'CODING_STALE_RUNNING_RETRY_EXHAUSTED',ageMs:1200000},
+    );
+  });
+
+  await t.test('stale pre-branch + non-executable source terminalizes',()=>{
+    assert.deepStrictEqual(
+      staleRunningRecoveryDecision(stale,{nowMs:now,staleMs:60000,maxRequeues:1,sourceExecutable:false}),
+      {action:'fail',code:'SOURCE_WORK_ORDER_NO_LONGER_EXECUTABLE',ageMs:1200000},
+    );
+  });
+
+  await t.test('healthy, non-running, and active lease are never reclaimed',()=>{
+    assert.strictEqual(staleRunningRecoveryDecision({...stale,started_at:'2026-09-27T00:19:30.000Z'},{nowMs:now,staleMs:60000}).action,'ignore');
+    assert.strictEqual(staleRunningRecoveryDecision({...stale,status:'waiting_ci'},{nowMs:now,staleMs:60000}).code,'CODING_STALE_NOT_RUNNING');
+    assert.strictEqual(staleRunningRecoveryDecision(stale,{nowMs:now,staleMs:60000,active:true}).code,'CODING_STALE_ACTIVE_LEASE');
+  });
+
+  await t.test('existing PR delegates to restart recovery identity rules',()=>{
+    const job={...stale,branch:'tigeriq/nv09/job',pr_number:42};
+    const decision=staleRunningRecoveryDecision(job,{nowMs:now,staleMs:60000,pr:{state:'open',merged:false}});
+    assert.strictEqual(decision.action,'queue');
+    assert.strictEqual(decision.code,'CODING_RESTART_RESUME_PR_OPEN');
+    assert.strictEqual(decision.prNumber,42);
+  });
+
+  await t.test('DB recovery uses CAS and never reclaims active in-memory lease',async()=>{
+    const queries=[];
+    const row={...stale,objective_id:'OBJ-1',objective:'GitHub autonomous coding issue #2068: test'};
+    const db={query:async(sql,args=[])=>{
+      queries.push({sql,args});
+      if(sql.startsWith('select j.*'))return{rows:[row]};
+      return{rowCount:1,rows:[]};
+    }};
+    const activeOut=await recoverStaleRunningJobs({db,activeIds:new Set([row.id]),nowMs:now,staleMs:60000,fetchIssue:async()=>({state:'open',body:'TIGERIQ_EXECUTABLE=true'})});
+    assert.strictEqual(activeOut.requeued,0);
+    assert.strictEqual(activeOut.ignored,1);
+    assert.strictEqual(queries.some(q=>q.sql.startsWith("update tigeriq_coding_jobs set status='queued'")),false);
+
+    queries.length=0;
+    const recovered=await recoverStaleRunningJobs({db,activeIds:new Set(),nowMs:now,staleMs:60000,maxRequeues:1,fetchIssue:async()=>({state:'open',body:'TIGERIQ_EXECUTABLE=true'})});
+    assert.strictEqual(recovered.requeued,1);
+    const update=queries.find(q=>q.sql.startsWith("update tigeriq_coding_jobs set status='queued'"));
+    assert.ok(update);
+    assert.ok(update.sql.includes("status='running' and started_at=$2 and stale_recovery_count=$3"));
+  });
+
+  await t.test('runtime A8 canary is namespaced, same-process, and self-cleaning',async()=>{
+    const queries=[];
+    const emitted=[];
+    const db={query:async(sql,args=[])=>{
+      queries.push({sql,args});
+      if(sql.startsWith('select id,status,failure from tigeriq_coding_jobs')){
+        return{rows:[{id:'CODE-CANARY-A8-2068',status:'failed',failure:{code:'SOURCE_WORK_ORDER_NO_LONGER_EXECUTABLE'}}]};
+      }
+      return{rowCount:1,rows:[]};
+    }};
+    const armed=await armStaleRunningRuntimeCanary({db,nowMs:now,staleMs:60000});
+    assert.strictEqual(armed.armed,true);
+    assert.strictEqual(armed.sourceIssue,2068);
+    assert.strictEqual(armed.jobId,'CODE-CANARY-A8-2068');
+    assert.ok(Date.parse(armed.startedAt)<=now-65000);
+    assert.ok(queries.some(q=>q.sql.startsWith('insert into tigeriq_coding_objectives')));
+    assert.ok(queries.some(q=>q.sql.startsWith('insert into tigeriq_coding_jobs')));
+
+    const settled=await settleStaleRunningRuntimeCanary({db,pid:4242,emit:(entry)=>emitted.push(entry)});
+    assert.strictEqual(settled.pass,true);
+    assert.strictEqual(settled.evidence.pid,4242);
+    assert.strictEqual(settled.evidence.priorState,'running');
+    assert.strictEqual(settled.evidence.terminalState,'failed');
+    assert.strictEqual(settled.evidence.reason,'SOURCE_WORK_ORDER_NO_LONGER_EXECUTABLE');
+    assert.strictEqual(emitted[0].event,'CODING_STALE_RUNNING_CANARY_PASS');
+    assert.ok(queries.filter(q=>q.sql.startsWith('delete from tigeriq_coding_jobs')).length>=2);
+    assert.ok(queries.filter(q=>q.sql.startsWith('delete from tigeriq_coding_objectives')).length>=2);
+
+    const cleaned=await cleanupStaleRunningRuntimeCanary({db});
+    assert.strictEqual(cleaned.cleaned,true);
+  });
+
+  await t.test('production loop wires bounded watchdog and A8 canary before claiming more work',()=>{
+    const src=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
+    const recoverAt=src.indexOf('recoverStaleRunningJobs({activeIds:active,nowMs})');
+    const settleAt=src.indexOf('settleStaleRunningRuntimeCanary()');
+    const managerAt=src.indexOf('await managerTick()');
+    const claimAt=src.indexOf('const j=await claimJob()');
+    assert.ok(src.includes('armStaleRunningRuntimeCanary({nowMs:staleRuntimeCanaryStartedAt})'));
+    assert.ok(recoverAt>=0&&settleAt>recoverAt&&managerAt>settleAt&&claimAt>managerAt);
+    assert.ok(src.includes("event:'CODING_STALE_RUNNING_CANARY_PASS'"));
+    assert.ok(src.includes("event:'CODING_STALE_RUNNING_CANARY_FAIL'"));
+    assert.ok(src.includes("started_at=now(),attempts=attempts+1"));
+  });
+});
+
 test('Gemini internal 429 exhaustion still fails over to next provider',async()=>{
   const gemini={id:'NV12',provider:'gemini',model:'gemini-test'};
   const backup={id:'NV13',provider:'fake',model:'backup'};
@@ -522,4 +627,89 @@ test('Gemini internal 429 exhaustion still fails over to next provider',async()=
   const out=await invokeJsonWithFailover(gemini,'x',{resourcePool:[gemini,backup],invokeFn,maxResources:2});
   assert.strictEqual(out.resource.id,'NV13');
   assert.deepStrictEqual(calls,['NV12','NV13']);
+});
+
+
+test('runJob wires authoritative GitHub context into generation, review, and repairs',()=>{
+  const src=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
+  const run=src.slice(src.indexOf('async function runJob'),src.indexOf('async function failJob'));
+  assert.ok(run.includes("generateChanges(worker,j,'main',[],cooldownExcludes,canonicalObjective,generatedGithubContext)"));
+  assert.ok(run.includes("generateAndWriteRepair(worker,j,branch,[\`CI gate failure on same PR #\${pr.number}\`,...evidence],[reviewer.id,...cooldownExcludes],mutationAuth,canonicalObjective,freshContext)"));
+  assert.ok(run.includes("reviewPr(reviewer,j,diff,worker.id,cooldownExcludes,canonicalObjective,reviewGithubContext)"));
+  assert.ok(run.includes("generateAndWriteRepair(worker,j,branch,review.issues,[reviewer.id,...cooldownExcludes],mutationAuth,canonicalObjective,repairGithubContext)"));
+});
+
+test('bounded authoritative GitHub context is opt-in and fail-closed',async t=>{
+  const objective=[
+    'GitHub autonomous coding issue #1954: [P1][CODING-LANE] Live GitHub context',
+    'REQUIRES_LIVE_GITHUB_CONTEXT=true',
+    'PARENT=#1947',
+    'DEPENDS_ON=#1959',
+    'Review PR #1964 before merge.',
+  ].join('\n');
+
+  await t.test('marker parses bounded refs, excludes source issue, and materializes issue/PR facts',async()=>{
+    assert.strictEqual(requiresLiveGithubContext(objective),true);
+    assert.strictEqual(sourceIssueNumberFromObjective(objective),1954);
+    assert.deepStrictEqual(extractLiveGithubContextRefs(objective),[1947,1959,1964]);
+    const calls=[];
+    const issues={
+      1947:{number:1947,title:'Parent',state:'open',state_reason:null,updated_at:'2026-09-26T01:00:00Z'},
+      1959:{number:1959,title:'Dependency',state:'closed',state_reason:'completed',updated_at:'2026-09-26T02:00:00Z'},
+      1964:{number:1964,title:'PR issue facade',state:'closed',state_reason:null,updated_at:'2026-09-26T03:00:00Z',pull_request:{url:'x'}},
+    };
+    const context=await loadAuthoritativeGithubContext(objective,{
+      fetchIssue:async number=>{calls.push(`issue:${number}`);return issues[number]},
+      fetchPr:async number=>{calls.push(`pr:${number}`);return {number,head:{sha:'abc123'}}},
+    });
+    assert.deepStrictEqual(calls,['issue:1947','issue:1959','issue:1964','pr:1964']);
+    assert.strictEqual(context.entries.length,3);
+    assert.deepStrictEqual(context.entries[2],{
+      number:1964,kind:'pr',title:'PR issue facade',state:'closed',state_reason:null,
+      updated_at:'2026-09-26T03:00:00Z',head_sha:'abc123',
+    });
+    assert.match(context.fingerprint,/^[0-9a-f]{64}$/);
+    const block=formatAuthoritativeGithubContext(context);
+    assert.ok(block.includes('AUTHORITATIVE_GITHUB_CONTEXT'));
+    assert.ok(block.includes('FINGERPRINT='));
+    assert.ok(block.includes('"number":1964'));
+  });
+
+  await t.test('missing required ref fails closed before any mutation path can use it',async()=>{
+    await assert.rejects(
+      ()=>loadAuthoritativeGithubContext(objective,{
+        fetchIssue:async number=>number===1959?null:{number,title:'x',state:'open',updated_at:'x'},
+        fetchPr:async number=>({number,head:{sha:'abc'}}),
+      }),
+      error=>error?.code==='LIVE_GITHUB_CONTEXT_UNAVAILABLE',
+    );
+  });
+
+  await t.test('state change invalidates generation-time context',async()=>{
+    const base={entries:[{number:1947,kind:'issue',title:'Parent',state:'open',state_reason:null,updated_at:'2026-09-26T01:00:00Z',head_sha:null}]};
+    const changed={entries:[{number:1947,kind:'issue',title:'Parent',state:'closed',state_reason:'completed',updated_at:'2026-09-26T02:00:00Z',head_sha:null}]};
+    assert.strictEqual(assertLiveGithubContextFresh(base,base),true);
+    assert.throws(()=>assertLiveGithubContextFresh(base,changed),/LIVE_GITHUB_CONTEXT_STALE/);
+  });
+
+  await t.test('no marker preserves legacy behavior and performs zero GitHub fetches',async()=>{
+    let calls=0;
+    const legacy='GitHub autonomous coding issue #2000: legacy task\nPARENT=#1947';
+    assert.strictEqual(requiresLiveGithubContext(legacy),false);
+    assert.deepStrictEqual(extractLiveGithubContextRefs(legacy),[]);
+    const context=await loadAuthoritativeGithubContext(legacy,{
+      fetchIssue:async()=>{calls++;throw new Error('must not call')},
+      fetchPr:async()=>{calls++;throw new Error('must not call')},
+    });
+    assert.strictEqual(context,null);
+    assert.strictEqual(calls,0);
+  });
+
+  await t.test('reference extraction is deterministic and capped at sixteen',()=>{
+    const refs=Array.from({length:20},(_,i)=>`#${3000+i}`).join(' ');
+    const many=`GitHub autonomous coding issue #2999: cap test\nREQUIRES_LIVE_GITHUB_CONTEXT=true\n${refs}`;
+    const out=extractLiveGithubContextRefs(many);
+    assert.strictEqual(out.length,16);
+    assert.deepStrictEqual(out,[3000,3001,3002,3003,3004,3005,3006,3007,3008,3009,3010,3011,3012,3013,3014,3015]);
+  });
 });

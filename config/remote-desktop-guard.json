@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 5,
+  "remoteMutationDefault": "SAFE_TIGERIQ_PASS_DANGEROUS_OWNER_GATED",
+  "readOnlyDefault": "PASS_TIGERIQ_EXCEPT_SECRETS",
+  "ownerAuthRequired": true,
+  "authScopeBound": true,
+  "authExpiryBound": true,
+  "leaseMode": "ATOMIC_SINGLE_USE_EXACT_ARGS",
+  "maxLeaseMs": 300000,
+  "restartSafe": true,
+  "failClosed": true,
+  "runtimeGuardRequired": true,
+  "toolSurfaceDefault": "READ_ONLY_PLUS_SAFE_TIGERIQ_OPS_PLUS_OWNER_AUTHORIZER",
+  "pluginPermissionDesired": "ask_before_writes",
+  "pluginPermissionIsAuthority": false,
+  "defaultLeasePath": "D:\\TigerIQ\\Runtime\\desktop-commander-remote\\guard\\owner-lease.json",
+  "allowedObservationDirectories": [
+    "D:\\TigerIQ"
+  ],
+  "forbiddenDirectoryPatterns": [
+    "\\\\Secrets(?:\\\\|$)"
+  ],
+  "desktopCommanderVersionPinnedForPatch": "0.2.51",
+  "launcherPreflightRequired": true,
+  "noDirectMain": true,
+  "noProductionRelease": true,
+  "ownerLeaseInstaller": "tigeriq_authorize_mutation",
+  "ownerLeaseInstallerExecutesTargetMutation": false,
+  "ownerAuthUnavailableBehavior": "FAIL_CLOSED"
+}

@@ -43,3 +43,11 @@ DONE requires:
 - documentation/current state updated;
 - release/deployment performed only when authorized;
 - no unresolved real blocker within the agreed scope.
+## Priority authority and assignment
+- P0 is Owner-only. It is a reserved authorization/work class, not an employee queue priority.
+- No AI employee, role fallback, local worker, coding lane, UI worker, or autonomous scanner may read, claim, receive, select, or execute P0 work.
+- Stale `ASSIGNED_EXECUTOR`, `PRIMARY_EMPLOYEE`, `OWNER_POLICY=AUTO`, `TIGERIQ_EXECUTABLE=true`, or equivalent markers never delegate P0.
+- Only the Owner, or Codex acting under the Owner's explicit current instruction, may handle P0.
+- P1-P5 remain normal autonomous priorities for Core-managed specialist lanes such as API resources, Coding Lane and NV06/OpenClaw.
+- `NV02`, `NV03`, `NV04` are external UI/subscription workers: Core must not assign, route, claim, revoke, reassign, heartbeat-gate, or self-pull GitHub work for them.
+- App Chrome remains a separate local continuity transport for `NV02/NV03/NV04`; it does not use Core assignment or GitHub backlog selection to decide whether to continue a worker.

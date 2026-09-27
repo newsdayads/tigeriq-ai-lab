@@ -92,6 +92,8 @@ describe('durable UI worker job ledger',()=>{
     expect(continuityResumeIdentityMatches(same,prior,autopilot)).toBe(true);
     expect(continuityResumeIdentityMatches({...same,jobId:'GH-OTHER'},prior,autopilot)).toBe(false);
     expect(continuityResumeIdentityMatches(same,{...prior,jobId:'GH-OTHER'},autopilot)).toBe(false);
+    expect(continuityResumeIdentityMatches(same,{...prior,status:'DONE',jobId:'GH-OLD'},autopilot)).toBe(true);
+    expect(continuityResumeIdentityMatches(same,undefined,autopilot)).toBe(true);
     expect(continuityResumeIdentityMatches(same,prior,{...autopilot,lastDispatchedJobId:'GH-OTHER'})).toBe(false);
     expect(continuityResumeIdentityMatches(same,prior,{...autopilot,pendingJobId:'GH-NEW'})).toBe(false);
     expect(continuityResumeIdentityMatches({...same,stage:'DONE',completedAt:'2026-09-21T00:00:00Z'},prior,autopilot)).toBe(false);
