@@ -356,6 +356,7 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
         status='active'
         or coalesce(metadata->>'githubClaimReported','false')<>'true'
         or (status in ('completed','blocked') and coalesce(metadata->>'githubResultReported','false')<>'true')
+        or (status='blocked' and coalesce(metadata->>'githubTerminalLabelSynced','false')<>'true')
       )
     order by case when status='active' then 0 else 1 end, updated_at desc, created_at desc
     limit 100`)).rows;
@@ -400,9 +401,13 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
       await pool.query("update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1",[row.id,JSON.stringify({githubClaimReported:true})]);
       row.metadata={...row.metadata,githubClaimReported:true}; claims++;
     }
+    if(row.status==='blocked'&&row.metadata?.githubTerminalLabelSynced!==true){
+      await addTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:number,token});
+      await pool.query("update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1",[row.id,JSON.stringify({githubTerminalLabelSynced:true})]);
+      row.metadata={...row.metadata,githubTerminalLabelSynced:true};
+    }
     if(['completed','blocked'].includes(row.status)&&!row.metadata?.githubResultReported){
-      if(row.status==='blocked') await addTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:number,token});
-      else await clearTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:number,token});
+      if(row.status==='completed') await clearTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:number,token});
       await commentIssue(fetchImpl,owner,repo,number,formatResultComment(row),token);
       if(row.status==='completed') await closeIssue(fetchImpl,owner,repo,number,token);
       await pool.query("update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1",[row.id,JSON.stringify({githubResultReported:true,githubClosed:row.status==='completed'})]);
