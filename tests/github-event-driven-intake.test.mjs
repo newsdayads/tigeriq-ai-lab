@@ -101,8 +101,8 @@ test('runtime updater reconciles bridge by health, not scheduled-task Running st
   const start=updater.indexOf('function Invoke-LiveStatusBridgeReconcile');
   const end=updater.indexOf('function Test-TcpPort',start);
   const block=updater.slice(start,end);
-  assert.match(block,/CANONICAL_SOURCE_UPDATED/);
-  assert.match(block,/Test-TcpPort '127\.0\.0\.1' 8801/);
-  assert.match(block,/LOCAL_PORT_HEALTHY/);
-  assert.ok(block.indexOf("LOCAL_PORT_HEALTHY")<block.indexOf('Start-ScheduledTask'));
+  assert.match(updater,/apps\\tigeriq-live-bridge\\server\.mjs/);
+  assert.match(block,/Test-LiveStatusBridgeHealth/);
+  assert.match(block,/LOCAL_AND_PUBLIC_OK/);
+  assert.ok(block.indexOf('Test-LiveStatusBridgeHealth')<block.indexOf('Start-ScheduledTask'));
 });
