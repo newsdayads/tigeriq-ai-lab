@@ -6,6 +6,8 @@ import {
   normalizeRuntimeWorkerActivity,
   parseIssueNumber,
   parseQueueIssue,
+  parseOpenWorkIssue,
+  progressForIssue,
   parseRecentCompletedIssue,
   runtimeWorkRows,
   sanitizeRuntimePayload,
@@ -234,6 +236,40 @@ describe('TigerIQ Live Work Order projection', () => {
       state: 'closed',
       closed_at: '2026-09-24T23:30:00Z',
     }, now)).toBe(null);
+  });
+
+  it('projects all open work even when it is excluded from scheduler queue', () => {
+    const blocked = parseOpenWorkIssue(issue(3001, '[P2][CODING] Bị chặn', [
+      'PRIORITY=P2',
+      'TIGERIQ_EXECUTABLE=false',
+      'AUTO_QUEUE=EXCLUDED',
+      'CURRENT_STATE=BLOCKED_OWNER_MAINTENANCE_AUTH',
+      'TARGET_EMPLOYEE=NV09',
+    ].join('\n')));
+    expect(blocked).toMatchObject({
+      number: 3001, priority: 'P2', employeeId: 'NV09', status: 'BLOCKED',
+    });
+
+    const meta = parseOpenWorkIssue(issue(3002, '[TÀI NGUYÊN] Nguồn lực', 'STATE=OPEN'));
+    expect(meta).toMatchObject({ number: 3002, priority: null, status: 'OPEN', meta: true });
+  });
+
+  it('computes progress only from explicit percent, checklist, or canonical lifecycle evidence', () => {
+    expect(progressForIssue(issue(3100, '[P1] Explicit', 'PROGRESS_PERCENT=73'), 'OPEN')).toMatchObject({ percent: 73, source: 'explicit' });
+    expect(progressForIssue(issue(3101, '[P1] Checklist', '- [x] A\n- [x] B\n- [ ] C\n- [ ] D'), 'OPEN')).toMatchObject({ percent: 50, source: 'checklist' });
+    expect(progressForIssue(issue(3102, '[P1] Review', 'CURRENT_STATE=WAIT_INDEPENDENT_REVIEW'), 'REVIEW')).toMatchObject({ percent: 60, source: 'lifecycle' });
+    expect(progressForIssue(issue(3103, '[P1] Unknown', 'STATE=OPEN'), 'OPEN')).toMatchObject({ percent: null, source: 'none' });
+  });
+
+  it('marks completed history as 100 percent', () => {
+    const row = parseRecentCompletedIssue({
+      number: 3104,
+      title: '[P1] Done',
+      body: 'STATE=DONE',
+      state: 'closed',
+      closed_at: '2026-09-24T23:30:00Z',
+    }, Date.parse('2026-09-25T00:00:00Z'));
+    expect(row).toMatchObject({ status: 'DONE', progressPercent: 100, progressDetail: '5/5 gate' });
   });
 
   it('keeps the existing workforce payload while adding read-only work projection fields', () => {

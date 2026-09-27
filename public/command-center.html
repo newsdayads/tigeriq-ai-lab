@@ -25,6 +25,11 @@ a{color:inherit;text-decoration:none}
 .list-head{display:flex;align-items:end;justify-content:space-between;gap:10px;padding:1px 2px 8px}
 .list-head h2{font-size:13px;line-height:1.2;margin:0;color:var(--violet);font-weight:850;letter-spacing:.02em;text-transform:uppercase}
 .list-head span{font-size:10px;color:var(--muted);text-align:right}
+.filters{display:flex;gap:6px;overflow-x:auto;padding:0 0 9px;scrollbar-width:none}
+.filters::-webkit-scrollbar{display:none}
+.filter{border:1px solid #294661;background:#0b1829;color:#91a4ba;border-radius:999px;padding:6px 9px;font:800 9px/1 inherit;white-space:nowrap}
+.filter.active{border-color:#477fb6;background:#132f4e;color:#d9ecff}
+.filter b{font-weight:900;color:inherit;margin-left:3px}
 .work-list{display:grid;gap:7px}
 .work-row{display:block;border:1px solid var(--line);background:linear-gradient(180deg,#102139,#0b1829);border-radius:13px;padding:9px 10px;min-width:0}
 .work-main{min-width:0}
@@ -40,6 +45,11 @@ a{color:inherit;text-decoration:none}
 .state.queued{border-color:#315b8a;background:#102947;color:#a9d4ff}
 .state.blocked{border-color:#6b3039;background:#3b1d23;color:#ffb0b6}
 .state.done{border-color:#245c57;background:#0e302d;color:#82e0d3}
+.state.open{border-color:#3b526c;background:#111f31;color:#a9bbcf}
+.progress{display:flex;align-items:center;gap:7px;margin-top:7px}
+.progress-track{height:4px;flex:1;min-width:60px;background:#16283b;border-radius:999px;overflow:hidden}
+.progress-fill{height:100%;background:currentColor;border-radius:999px}
+.progress-text{font-size:8px;font-weight:850;color:#87a2bf;white-space:nowrap}
 .empty{border:1px dashed #2a425d;border-radius:16px;padding:22px 14px;text-align:center;color:var(--muted);font-size:12px}
 .page-foot{padding:14px 2px 0;color:#6d8097;font-size:9px;line-height:1.5;text-align:center}
 @media(max-width:520px){
@@ -59,16 +69,23 @@ a{color:inherit;text-decoration:none}
 <div id="err" class="err"></div>
 <section aria-labelledby="workListHeading">
   <div class="list-head"><h2 id="workListHeading">DANH SÁCH CÔNG VIỆC</h2><span id="workMeta">—</span></div>
+  <nav class="filters" aria-label="Lọc công việc">
+    <button class="filter active" data-filter="open">ĐANG MỞ <b id="openCount">0</b></button>
+    <button class="filter" data-filter="running">ĐANG CHẠY <b id="runningCount">0</b></button>
+    <button class="filter" data-filter="waiting">CHỜ/BLOCKED <b id="waitingCount">0</b></button>
+    <button class="filter" data-filter="done">HOÀN TẤT <b id="doneCount">0</b></button>
+  </nav>
   <div id="workList" class="work-list"></div>
 </section>
 <footer class="page-foot">STT · Work Order · Tên việc · NV · Trạng thái · tự cập nhật 30 giây</footer>
 </main>
 <script>
 const $=id=>document.getElementById(id);
-const LAST_GOOD_KEY='tigeriq-live-unified-list-v1';
+const LAST_GOOD_KEY='tigeriq-live-open-progress-v2';
 const LAST_GOOD_MAX_MS=30*60*1000;
 let snapshot=null;
-const stateLabel={WORKING:'ĐANG LÀM',REVIEW:'ĐANG RÀ SOÁT',QUEUED:'CHỜ GIAO',WAITING:'CHỜ',BLOCKED:'BỊ CHẶN',DONE:'HOÀN TẤT'};
+let currentFilter='open';
+const stateLabel={OPEN:'MỞ',WORKING:'ĐANG LÀM',REVIEW:'ĐANG RÀ SOÁT',QUEUED:'CHỜ GIAO',WAITING:'CHỜ',BLOCKED:'BỊ CHẶN',DONE:'HOÀN TẤT'};
 function esc(v){const d=document.createElement('div');d.textContent=String(v??'');return d.innerHTML}
 function priorityRank(v){const m=String(v||'').toUpperCase().match(/^P([0-5])$/);return m?Number(m[1]):9}
 function statusRank(v){return ({WORKING:0,REVIEW:1,QUEUED:2,WAITING:3,BLOCKED:4,DONE:9})[String(v||'').toUpperCase()]??8}
@@ -76,11 +93,11 @@ function workStatus(row){return String(row?.status||'WAITING').toUpperCase()}
 function workPriority(row){
   const direct=String(row?.effectivePriority||row?.priority||'').toUpperCase();
   if(/^P[0-5]$/.test(direct))return direct;
-  return String(row?.title||'').toUpperCase().match(/^\[(P[0-5])\]/)?.[1]||'—';
+  return String(row?.title||'').toUpperCase().match(/^\[(P[0-5])\]/)?.[1]||'META';
 }
 function workerFrom(row){
   const direct=String(row?.employeeId||row?.targetWorker||'').toUpperCase();
-  if(/^NV\d{2}$/.test(direct))return direct;
+  if(/^(?:NV\d{2}|VY|CODEX|AUTO)$/.test(direct))return direct;
   const match=String(row?.title||'').toUpperCase().match(/(?:^|[^A-Z0-9])(NV\d{2})(?=$|[^A-Z0-9])/);
   return match?.[1]||'—';
 }
@@ -91,31 +108,16 @@ function displayTitle(value){
   return title||String(value||'Chưa có tên việc');
 }
 function normalizeRows(value){
-  const map=new Map();
-  const add=(row,kind)=>{
-    const n=Number(row?.number);
-    if(!Number.isInteger(n)||n<=0)return;
-    const normalized={...row,number:n,status:kind==='done'?'DONE':workStatus(row),kind};
-    const prior=map.get(n);
-    if(!prior||prior.kind==='done'||kind==='active')map.set(n,normalized);
+  const fallbackOpen=()=>{
+    const map=new Map();
+    for(const row of [...(value?.activeWork||[]),...(value?.nextQueue||[])]) if(Number(row?.number)) map.set(Number(row.number),row);
+    return [...map.values()];
   };
-  (Array.isArray(value?.activeWork)?value.activeWork:[]).forEach(x=>add(x,'active'));
-  (Array.isArray(value?.nextQueue)?value.nextQueue:[]).forEach(x=>add(x,'queue'));
-  (Array.isArray(value?.recentWork)?value.recentWork:[]).forEach(x=>add(x,'done'));
-  return [...map.values()].sort((a,b)=>{
-    const ad=workStatus(a)==='DONE',bd=workStatus(b)==='DONE';
-    if(ad!==bd)return ad?1:-1;
-    if(ad&&bd){
-      const at=Date.parse(a.completedAt||a.updatedAt||0)||0,bt=Date.parse(b.completedAt||b.updatedAt||0)||0;
-      return bt-at||b.number-a.number;
-    }
-    const p=priorityRank(workPriority(a))-priorityRank(workPriority(b));if(p)return p;
-    const s=statusRank(workStatus(a))-statusRank(workStatus(b));if(s)return s;
-    const da=Number.isFinite(Number(a.dispatchRank))?Number(a.dispatchRank):9999;
-    const db=Number.isFinite(Number(b.dispatchRank))?Number(b.dispatchRank):9999;
-    if(da!==db)return da-db;
-    return a.number-b.number;
-  });
+  const openRows=Array.isArray(value?.openWork)?value.openWork:fallbackOpen();
+  if(currentFilter==='done') return (Array.isArray(value?.recentWork)?value.recentWork:[]).map(x=>({...x,status:'DONE'}));
+  if(currentFilter==='running') return openRows.filter(x=>['WORKING','REVIEW'].includes(workStatus(x)));
+  if(currentFilter==='waiting') return openRows.filter(x=>['QUEUED','WAITING','BLOCKED'].includes(workStatus(x)));
+  return openRows;
 }
 function readLastGood(){try{const x=JSON.parse(localStorage.getItem(LAST_GOOD_KEY)||'null');return x?.value&&Date.now()-x.savedAt<=LAST_GOOD_MAX_MS?x.value:null}catch{return null}}
 function writeLastGood(v){try{localStorage.setItem(LAST_GOOD_KEY,JSON.stringify({savedAt:Date.now(),value:v}))}catch{}}
@@ -125,19 +127,33 @@ function hydrate(raw){
   const cached=readLastGood();if(!cached)return raw;
   return {...cached,ok:true,liveConnected:false,staleAll:true,staleAt:cached?.workProjection?.verifiedAt||cached?.generatedAt||null,liveReason:raw?.reason||projection.reason||'fetch failed',workProjection:{...(cached.workProjection||{}),stale:true,reason:raw?.reason||projection.reason||'fetch failed'}};
 }
+function updateCounts(){
+  const s=snapshot?.openSummary||{};
+  const openRows=Array.isArray(snapshot?.openWork)?snapshot.openWork:[...(snapshot?.activeWork||[]),...(snapshot?.nextQueue||[])];
+  $('openCount').textContent=Number.isFinite(Number(s.open))?s.open:openRows.length;
+  $('runningCount').textContent=Number.isFinite(Number(s.running))?s.running:openRows.filter(x=>['WORKING','REVIEW'].includes(workStatus(x))).length;
+  $('waitingCount').textContent=Number.isFinite(Number(s.waiting))?s.waiting:openRows.filter(x=>['QUEUED','WAITING','BLOCKED'].includes(workStatus(x))).length;
+  $('doneCount').textContent=Number.isFinite(Number(s.done))?s.done:(snapshot?.recentWork||[]).length;
+}
 function render(){
   if(!snapshot)return;
+  updateCounts();
   const rows=normalizeRows(snapshot);
-  $('workMeta').textContent=rows.length+' việc';
+  const labels={open:'Đang mở',running:'Đang chạy',waiting:'Chờ / Blocked',done:'Hoàn tất'};
+  $('workMeta').textContent=labels[currentFilter]+' · '+rows.length+' việc';
   const box=$('workList');box.innerHTML='';
-  if(!rows.length){box.innerHTML='<div class="empty">Không có Work Order để hiển thị.</div>';return}
+  if(!rows.length){box.innerHTML='<div class="empty">Không có Work Order trong nhóm này.</div>';return}
   rows.forEach((row,index)=>{
     const el=document.createElement(row.url?'a':'article');el.className='work-row';
     if(row.url){el.href=row.url;el.target='_blank';el.rel='noopener'}
     const status=workStatus(row),label=stateLabel[status]||status;
     const title=displayTitle(row.title);
     const rank=String(index+1).padStart(2,'0');
-    el.innerHTML='<div class="work-main"><div class="work-top"><span class="rank">'+esc(rank)+'</span><span class="work-id">#'+esc(row.number)+'</span><span class="priority">'+esc(workPriority(row))+'</span><span class="work-nv">'+esc(workerFrom(row))+'</span><span class="state '+esc(status.toLowerCase())+'">'+esc(label)+'</span></div><div class="work-title">'+esc(title)+'</div></div>';
+    const pct=Number(row?.progressPercent);
+    const progress=Number.isFinite(pct)&&pct>=0&&pct<=100
+      ?'<div class="progress" title="'+esc(row.progressDetail||'Tiến độ gate')+'"><div class="progress-track"><div class="progress-fill" style="width:'+pct+'%"></div></div><span class="progress-text">'+pct+'%</span></div>'
+      :'';
+    el.innerHTML='<div class="work-main"><div class="work-top"><span class="rank">'+esc(rank)+'</span><span class="work-id">#'+esc(row.number)+'</span><span class="priority">'+esc(workPriority(row))+'</span><span class="work-nv">'+esc(workerFrom(row))+'</span><span class="state '+esc(status.toLowerCase())+'">'+esc(label)+'</span></div><div class="work-title">'+esc(title)+'</div>'+progress+'</div>';
     box.append(el);
   });
 }
@@ -165,6 +181,11 @@ async function load(){
     $('liveLabel').textContent='MẤT DỮ LIỆU';$('err').textContent='Không có snapshot xác minh để hiển thị.';$('err').style.display='block';
   }
 }
+document.querySelectorAll('.filter').forEach(button=>button.addEventListener('click',()=>{
+  currentFilter=button.dataset.filter||'open';
+  document.querySelectorAll('.filter').forEach(x=>x.classList.toggle('active',x===button));
+  render();
+}));
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)load()});
 load();
 setInterval(()=>{if(!document.hidden)load()},30000);
