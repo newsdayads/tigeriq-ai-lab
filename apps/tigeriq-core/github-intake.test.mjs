@@ -111,13 +111,15 @@ describe('GitHub Core intake guardrails',()=>{
     expect(githubSpecBlockedByActive(pc,[{capability:'pc_operator',resourceScope:'PC_STATE'}])).toBe(true);
   });
 
-  it('leaves preferred NV03/NV04 reviews to the UI role lane and avoids generic Core duplication',()=>{
+  it('keeps explicit UI reviewer preference external while default/API review stays in Core API lane',()=>{
     const reviewBody=[
       'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','PRIORITY=P1','CAPABILITY=review',
       'PREFERRED_REVIEWER=NV03','NO_CODE_CHANGE=true','NO_PC01_SHELL=true','RESOURCE_SCOPE=REVIEW_X'
     ].join('\n');
     expect(parseExecutableIssue({...base,number:1874,title:'review',body:reviewBody})).toBeNull();
-    expect(parseExecutableIssue({...base,number:1875,title:'default review',body:reviewBody.replace('PREFERRED_REVIEWER=NV03\n','')})).toBeNull();
+    expect(parseExecutableIssue({...base,number:1875,title:'default review',body:reviewBody.replace('PREFERRED_REVIEWER=NV03\n','')})).toMatchObject({
+      capability:'review',dispatchLane:'CORE_REVIEW',targetWorker:null
+    });
     expect(parseExecutableIssue({...base,number:1876,title:'API review',body:reviewBody.replace('PREFERRED_REVIEWER=NV03','PREFERRED_REVIEWER=NV17')})).toMatchObject({
       capability:'review',dispatchLane:'CORE_REVIEW',targetWorker:'NV17'
     });
