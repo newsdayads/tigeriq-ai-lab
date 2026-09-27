@@ -145,6 +145,8 @@ describe('GitHub coding intake guard',()=>{
     expect(parseCodingRouteMetadata('TARGET_EMPLOYEE=OTHER')).toMatchObject({valid:false,reason:'TARGET_EMPLOYEE_INVALID'});
     expect(parseCodingRouteMetadata('CURRENT_PR=#1870')).toMatchObject({valid:false,reason:'CURRENT_PR_TARGET_HEAD_PAIR_REQUIRED'});
     expect(parseCodingRouteMetadata(`CURRENT_PR=#1870\nTARGET_HEAD=bad`)).toMatchObject({valid:false,reason:'TARGET_HEAD_INVALID'});
+    expect(parseCodingRouteMetadata(`TARGET_HEAD=${head}`)).toMatchObject({valid:true,currentPr:null,targetHead:null});
+    expect(parseCodingRouteMetadata(`CURRENT_PR=NONE\nTARGET_HEAD=${head}`)).toMatchObject({valid:true,currentPr:null,targetHead:null});
     expect(parseCodingIssue(issue(`${SAFE}\nCURRENT_PR=#1870`))).toBeNull();
     expect(parseCodingIssue(issue(`${SAFE}\nCURRENT_PR=#1870\nTARGET_HEAD=${head}`))?.routing.currentPr).toBe(1870);
   });
