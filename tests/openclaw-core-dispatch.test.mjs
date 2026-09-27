@@ -240,7 +240,11 @@ describe('Core -> OpenClaw bounded dispatch #1528', () => {
   it('Core source routes pc_operator through OpenClaw without exposing it as a normal provider call', async () => {
     const source=await readFile(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
     expect(source).toContain("capabilities:['pc_operator']");
-    expect(source).toContain("if(j.capability==='pc_operator'){await runOpenClawOperatorJob(j);return;}");
+    expect(source).toContain("if(j.capability==='pc_operator'){if(directPcOperatorAction(j))await runDirectPcOperatorJob(j);else await runOpenClawOperatorJob(j);return;}");
+    expect(source).toContain("PC_OPERATOR_DIRECT_ACTION_NOT_ADMITTED");
+    expect(source).toContain("PC_OPERATOR_DIRECT_RECOVERY_FAIL_CLOSED");
+    expect(source).toContain("executionSurface:'PC_OPERATOR_DIRECT_LOCAL'");
+    expect(source).toContain("action==='shell_exec'||action==='file_write'||action.startsWith('pad_')");
     expect(source).toContain("OPENCLAW_DISPATCH_ADMITTED");
     expect(source).toContain("OPENCLAW_JOB_RECOVERED_AFTER_CORE_RESTART");
     expect(source).toContain("update tigeriq_ai_resources set enabled=$2");
