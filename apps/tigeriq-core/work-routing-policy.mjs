@@ -62,8 +62,8 @@ export function buildRoleFallbackPrompt(workerId){
   return [
     id+' — UI_WORKER_EXTERNAL_TO_CORE=true.',
     'Core must not assign, route, claim, revoke, reassign, or select backlog for this worker.',
-    'Do not scan or self-claim GitHub work through Core role fallback.',
-    'Continue only work already present in the current Owner/UI conversation under the separate local continuity policy.',
+    'Command 02: active CURRENT_WORK_ORDER plus checkpoint means resume; terminal/no-current means local GitHub self-pull exactly one eligible P1-P5 item for NV02.',
+    'Use NV02_LOCAL_GITHUB_SELF_PULL=P1_P5_ONLY with lease, evidence, release, then continue to the next eligible item.',
     'P0 remains Owner-only and App Chrome remains a separate Owner-controlled scope.',
   ].join(' ');
 }
