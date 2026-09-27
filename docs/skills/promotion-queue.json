@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "updated": "2026-09-28",
+  "entries": [
+    {
+      "skillId": "document-normalization-ingest",
+      "status": "VALIDATED_WAITING_CANARY",
+      "attempts": 0,
+      "maxAttempts": 3,
+      "blocker": "NO_CANARY_FIXTURE",
+      "nextCondition": "fixture_or_real_task_with_measurable_use_measure_evidence",
+      "nextEligibleAt": null,
+      "fixtureRef": null,
+      "provenanceRef": "learning-log/2026-09-23-agent-review-document-research.md",
+      "promotionEligible": false,
+      "evidence": []
+    },
+    {
+      "skillId": "source-grounded-knowledge-retrieval",
+      "status": "VALIDATED_WAITING_CANARY",
+      "attempts": 0,
+      "maxAttempts": 3,
+      "blocker": "NO_CANARY_FIXTURE",
+      "nextCondition": "fixture_or_real_task_with_measurable_use_measure_evidence",
+      "nextEligibleAt": null,
+      "fixtureRef": null,
+      "provenanceRef": "learning-log/2026-09-23-agent-review-document-research.md",
+      "promotionEligible": false,
+      "evidence": []
+    },
+    {
+      "skillId": "external-research-capability-routing",
+      "status": "VALIDATED_WAITING_CANARY",
+      "attempts": 0,
+      "maxAttempts": 3,
+      "blocker": "NO_CANARY_FIXTURE",
+      "nextCondition": "fixture_or_real_task_with_measurable_use_measure_evidence",
+      "nextEligibleAt": null,
+      "fixtureRef": null,
+      "provenanceRef": "learning-log/2026-09-23-agent-review-document-research.md",
+      "promotionEligible": false,
+      "evidence": []
+    },
+    {
+      "skillId": "domain-skill-packaging",
+      "status": "VALIDATED_WAITING_CANARY",
+      "attempts": 0,
+      "maxAttempts": 3,
+      "blocker": "NO_CANARY_FIXTURE",
+      "nextCondition": "fixture_or_real_task_with_measurable_use_measure_evidence",
+      "nextEligibleAt": null,
+      "fixtureRef": null,
+      "provenanceRef": "learning-log/2026-09-23-agent-review-document-research.md",
+      "promotionEligible": false,
+      "evidence": []
+    }
+  ]
+}

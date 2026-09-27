@@ -48,3 +48,19 @@ Popularity/stars/downloads are discovery signals, not trust evidence.
 
 ## Resume rule
 NEW CHAT or a different worker resumes from Source of Truth + registry + learning log/checkpoint references. Chat memory is not the durable store.
+
+
+## Promotion queue
+VALIDATED skills are tracked by `promotion-queue.json`. The queue is a durable promotion/canary ledger, not a second work scheduler.
+
+Promotion lifecycle:
+`VALIDATED_WAITING_CANARY → CANARY_READY → CANARY_RUNNING → PROMOTION_READY → ACTIVE`
+or `VALIDATED_BLOCKED_EVIDENCE` when evidence/fixture/dependency is missing.
+
+Rules:
+- every VALIDATED registry entry is reconciled into the queue automatically when promotion status is read;
+- a canary needs an explicit fixture or real task plus provenance before it can run;
+- retries are bounded and blocked entries keep an explicit blocker + next condition;
+- PASS requires measurable USE/MEASURE evidence before becoming PROMOTION_READY; ACTIVE only after the registry change passes branch → PR → independent review → merge;
+- runtime loading remains fail-closed: only registry `state: ACTIVE` is loadable;
+- external packages are never installed by this queue and remain subject to the external skill security gate.
