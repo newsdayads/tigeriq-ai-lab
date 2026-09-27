@@ -62,16 +62,21 @@ const issue = selected.issue;
 const lease = await claimNv02WorkOrder({ issue, comments: issueComments(issue.number), postComment });
 if (!lease) throw new Error(`NV02_LEASE_BUSY_OR_LOST:${issue.number}`);
 console.log(JSON.stringify({ event: 'TIGERIQ_NV02_LEASE_ACQUIRED', issue: issue.number, resourceScope: lease.resourceScope, leaseId: lease.leaseId }));
-await controllerDispatch(issue, lease);
-const started = Date.now();
 let result = null;
-while (Date.now() - started < TIMEOUT_MS) {
-  const fresh = details(issue);
-  result = terminal(fresh, issueComments(issue.number));
-  if (result) break;
-  await new Promise((resolve) => setTimeout(resolve, POLL_MS));
+try {
+  await controllerDispatch(issue, lease);
+  const started = Date.now();
+  while (Date.now() - started < TIMEOUT_MS) {
+    const fresh = details(issue);
+    result = terminal(fresh, issueComments(issue.number));
+    if (result) break;
+    await new Promise((resolve) => setTimeout(resolve, POLL_MS));
+  }
+  if (!result) result = 'BLOCKED';
+} catch (error) {
+  result = 'DISPATCH_BLOCKED';
+  console.error(JSON.stringify({ event: 'NV02_DISPATCH_BLOCKED', issue: issue.number, error: String(error) }));
 }
-if (!result) result = 'BLOCKED';
 await releaseNv02WorkOrder({ issueNumber: issue.number, leaseId: lease.leaseId, state: result, postComment });
 console.log(JSON.stringify({ event: 'TIGERIQ_NV02_LEASE_RELEASED', issue: issue.number, resourceScope: lease.resourceScope, leaseId: lease.leaseId, state: result }));
 if (result !== 'DONE') process.exitCode = 2;
