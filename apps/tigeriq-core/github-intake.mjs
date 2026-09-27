@@ -315,7 +315,9 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
     if(exists){skipped++;continue;}
     const context=await hydrateContext(fetchImpl,owner,repo,spec,token);
     const objective=spec.capability==='pc_operator'
-      ? `GitHub bounded PC operator work item #${spec.number}. Core must dispatch only the assigned pc_operator action through NV06/OpenClaw. Use approved bounded TigerIQ/OpenClaw tools; NO arbitrary PC01 shell, repository source edit, Production/main mutation, paid action, credential/security change, reboot/shutdown, or destructive action. Return structured verified evidence and complete only when the assigned bounded action is satisfied.\n\n${context}`
+      ? (spec.pcOperatorDirectAction
+          ? `GitHub bounded PC operator work item #${spec.number}. Core must execute only the pre-admitted typed local action from PC_OPERATOR_DIRECT_ACTION_JSON. Do not invoke model reasoning or infer any different action. NO arbitrary shell, repository source edit, Production/main mutation, paid action, credential/security change, reboot/shutdown, or destructive action. Return structured verified evidence and complete only when that exact action is satisfied.\n\n${context}`
+          : `GitHub bounded PC operator work item #${spec.number}. Core must dispatch only the assigned pc_operator action through NV06/OpenClaw. Use approved bounded TigerIQ/OpenClaw tools; NO arbitrary PC01 shell, repository source edit, Production/main mutation, paid action, credential/security change, reboot/shutdown, or destructive action. Return structured verified evidence and complete only when the assigned bounded action is satisfied.\n\n${context}`)
       : `GitHub autonomous ${spec.dispatchLane} work item #${spec.number}. Execute only the read-only task below. Do not edit repository source, use PC01 shell, deploy, change credentials/security, spend money, reboot, or perform destructive actions. Ground conclusions only in supplied GitHub context.\n\n${context}`;
     const metadata={
       source:'github',issueNumber:spec.number,issueUrl:spec.url,capability:spec.capability,dispatchLane:spec.dispatchLane,resourceScope:spec.resourceScope||null,
@@ -328,7 +330,9 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
     if(spec.capability==='pc_operator'){
       const assigned=extractPcOperatorInstruction(spec.body);
       const jobId=githubPcOperatorJobId(id,spec.number);
-      const prompt=`Execute ONLY this bounded PC action through NV06/OpenClaw. Do not choose backlog, P0, or new work. Use approved tigeriq_pc/tigeriq_runtime tools only.\n\nASSIGNED ACTION:\n${assigned}`;
+      const prompt=spec.pcOperatorDirectAction
+        ? `Execute ONLY the pre-admitted typed local PC action. Do not invoke model reasoning, select backlog/P0/new work, or infer a different action.\n\nASSIGNED ACTION:\n${assigned}`
+        : `Execute ONLY this bounded PC action through NV06/OpenClaw. Do not choose backlog, P0, or new work. Use approved tigeriq_pc/tigeriq_runtime tools only.\n\nASSIGNED ACTION:\n${assigned}`;
       await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,max_attempts) values($1,$2,$3,$4,'pc_operator','pc_operator','queued',2) on conflict(id) do nothing",[jobId,id,`GitHub #${spec.number} bounded PC operator`,prompt]);
       await pool.query("insert into tigeriq_events(type,objective_id,job_id,task_kind,data) values('GITHUB_PC_OPERATOR_JOB_MATERIALIZED',$1,$2,'pc_operator',$3)",[id,jobId,JSON.stringify({issueNumber:spec.number,executionSurface:'CORE_OPENCLAW_BOUNDED'})]);
     }
@@ -376,11 +380,12 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
         console.error(JSON.stringify({event:'GITHUB_SOURCE_STATE_RECONCILE_ERROR',objectiveId:row.id,issueNumber:number,error:String(error?.message||error)}));
       }
     }
-    if(row.status==='active'&&row.metadata?.executionSurface==='CORE_OPENCLAW_BOUNDED'){
+    if(row.status==='active'&&['CORE_OPENCLAW_BOUNDED','PC_OPERATOR_DIRECT_LOCAL'].includes(row.metadata?.executionSurface)){
       const job=(await pool.query("select id,status,employee_id,resource_id,provider,result,failure,completed_at from tigeriq_jobs where objective_id=$1 and capability='pc_operator' order by created_at desc limit 1",[row.id])).rows[0];
       if(job?.status==='done'){
         row.status='completed';
-        row.summary=appendPublicEvidenceToSummary(`bounded pc_operator completed via ${job.employee_id||'NV06'}/${job.provider||'openclaw'}; job=${job.id}`,job.result,row.metadata?.publicEvidenceKeys||[],{diagnostic:row.metadata?.publicEvidenceDiagnostic===true,metadataPublicEvidenceKeysPresent:Object.prototype.hasOwnProperty.call(row.metadata||{},'publicEvidenceKeys'),metadataPublicEvidenceKeyCount:Array.isArray(row.metadata?.publicEvidenceKeys)?row.metadata.publicEvidenceKeys.length:0});
+        const transport=job.provider==='local-direct'?'local-direct':`${job.employee_id||'NV06'}/${job.provider||'openclaw'}`;
+        row.summary=appendPublicEvidenceToSummary(`bounded pc_operator completed via ${transport}; job=${job.id}`,job.result,row.metadata?.publicEvidenceKeys||[],{diagnostic:row.metadata?.publicEvidenceDiagnostic===true,metadataPublicEvidenceKeysPresent:Object.prototype.hasOwnProperty.call(row.metadata||{},'publicEvidenceKeys'),metadataPublicEvidenceKeyCount:Array.isArray(row.metadata?.publicEvidenceKeys)?row.metadata.publicEvidenceKeys.length:0});
         await pool.query("update tigeriq_objectives set status='completed',summary=$2,updated_at=now() where id=$1",[row.id,row.summary]);
       }else if(job?.status==='failed'){
         row.status='blocked';
