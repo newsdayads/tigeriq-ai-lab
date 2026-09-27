@@ -73,8 +73,9 @@ test('bounded canary PASS records USE/MEASURE evidence and becomes promotion-eli
     evidenceRef: 'github://evidence/123',
   });
   const entry = queue.entries[0];
-  assert.equal(entry.status, 'ACTIVE');
+  assert.equal(entry.status, 'PROMOTION_READY');
   assert.equal(entry.promotionEligible, true);
+  assert.equal(entry.nextCondition, 'promote_registry_via_branch_pr_review');
   assert.equal(entry.evidence.at(-1).type, 'USE_MEASURE');
   assert.equal(entry.evidence.at(-1).useCount, 2);
 });
