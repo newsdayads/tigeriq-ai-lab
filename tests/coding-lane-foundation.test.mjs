@@ -2,7 +2,7 @@ import {readFileSync} from 'node:fs';
 import {test as vitestTest} from 'vitest';
 const test=(name,fn)=>vitestTest(name,async()=>{const t={test:async(_name,subfn)=>subfn(t)};return fn(t)});
 import assert from 'node:assert';
-import {activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertLiveGithubContextFresh,assertPrOpenState,buildLocalFileContext,canonicalCodingJobTitle,canonicalWorkTitleFromObjective,classifyAiFailure,codingMergeCommitTitle,codingOutputTokenLimit,codingPathsOverlap,cooldownWaitFailure,coreResourceStateEligible,extractLiveGithubContextRefs,formatAuthoritativeGithubContext,gateFailureIssues,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,isVietnameseWorkTitle,loadAuthoritativeGithubContext,managerResourceFailurePlan,partitionGenerationFiles,preserveGenerationPrompt,providerCooldownPollPlan,recoverAfterCodingRestart,recoverStaleRunningJobs,requiresLiveGithubContext,resourceWaitPlan,restartRecoveryDecision,staleRunningRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,sourceIssueNumberFromObjective,validateCompactEdits,validateManagerJobPaths,validateManagerJobTitle} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertLiveGithubContextFresh,assertPrOpenState,buildLocalFileContext,canonicalCodingJobTitle,canonicalWorkTitleFromObjective,classifyAiFailure,codingMergeCommitTitle,codingOutputTokenLimit,codingPathsOverlap,cooldownWaitFailure,coreResourceStateEligible,extractLiveGithubContextRefs,formatAuthoritativeGithubContext,gateFailureIssues,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,isVietnameseWorkTitle,loadAuthoritativeGithubContext,managerResourceFailurePlan,partitionGenerationFiles,preserveGenerationPrompt,providerCooldownPollPlan,recoverAfterCodingRestart,recoverStaleRunningJobs,armStaleRunningRuntimeCanary,settleStaleRunningRuntimeCanary,cleanupStaleRunningRuntimeCanary,requiresLiveGithubContext,resourceWaitPlan,restartRecoveryDecision,staleRunningRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,sourceIssueNumberFromObjective,validateCompactEdits,validateManagerJobPaths,validateManagerJobTitle} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError,parseJsonObject} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 const nv11={id:'NV11',provider:'fake',model:'a'};
@@ -569,10 +569,48 @@ test('in-process stale-running watchdog is bounded and fail-closed',async t=>{
     assert.ok(update.sql.includes("status='running' and started_at=$2 and stale_recovery_count=$3"));
   });
 
-  await t.test('production loop wires bounded watchdog before claiming more work',()=>{
+  await t.test('runtime A8 canary is namespaced, same-process, and self-cleaning',async()=>{
+    const queries=[];
+    const emitted=[];
+    const db={query:async(sql,args=[])=>{
+      queries.push({sql,args});
+      if(sql.startsWith('select id,status,failure from tigeriq_coding_jobs')){
+        return{rows:[{id:'CODE-CANARY-A8-2068',status:'failed',failure:{code:'SOURCE_WORK_ORDER_NO_LONGER_EXECUTABLE'}}]};
+      }
+      return{rowCount:1,rows:[]};
+    }};
+    const armed=await armStaleRunningRuntimeCanary({db,nowMs:now,staleMs:60000});
+    assert.strictEqual(armed.armed,true);
+    assert.strictEqual(armed.sourceIssue,2068);
+    assert.strictEqual(armed.jobId,'CODE-CANARY-A8-2068');
+    assert.ok(Date.parse(armed.startedAt)<=now-65000);
+    assert.ok(queries.some(q=>q.sql.startsWith('insert into tigeriq_coding_objectives')));
+    assert.ok(queries.some(q=>q.sql.startsWith('insert into tigeriq_coding_jobs')));
+
+    const settled=await settleStaleRunningRuntimeCanary({db,pid:4242,emit:(entry)=>emitted.push(entry)});
+    assert.strictEqual(settled.pass,true);
+    assert.strictEqual(settled.evidence.pid,4242);
+    assert.strictEqual(settled.evidence.priorState,'running');
+    assert.strictEqual(settled.evidence.terminalState,'failed');
+    assert.strictEqual(settled.evidence.reason,'SOURCE_WORK_ORDER_NO_LONGER_EXECUTABLE');
+    assert.strictEqual(emitted[0].event,'CODING_STALE_RUNNING_CANARY_PASS');
+    assert.ok(queries.filter(q=>q.sql.startsWith('delete from tigeriq_coding_jobs')).length>=2);
+    assert.ok(queries.filter(q=>q.sql.startsWith('delete from tigeriq_coding_objectives')).length>=2);
+
+    const cleaned=await cleanupStaleRunningRuntimeCanary({db});
+    assert.strictEqual(cleaned.cleaned,true);
+  });
+
+  await t.test('production loop wires bounded watchdog and A8 canary before claiming more work',()=>{
     const src=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
-    assert.ok(src.includes('recoverStaleRunningJobs({activeIds:active,nowMs})'));
-    assert.ok(src.indexOf('recoverStaleRunningJobs({activeIds:active,nowMs})')<src.indexOf('const j=await claimJob()'));
+    const recoverAt=src.indexOf('recoverStaleRunningJobs({activeIds:active,nowMs})');
+    const settleAt=src.indexOf('settleStaleRunningRuntimeCanary()');
+    const managerAt=src.indexOf('await managerTick()');
+    const claimAt=src.indexOf('const j=await claimJob()');
+    assert.ok(src.includes('armStaleRunningRuntimeCanary({nowMs:staleRuntimeCanaryStartedAt})'));
+    assert.ok(recoverAt>=0&&settleAt>recoverAt&&managerAt>settleAt&&claimAt>managerAt);
+    assert.ok(src.includes("event:'CODING_STALE_RUNNING_CANARY_PASS'"));
+    assert.ok(src.includes("event:'CODING_STALE_RUNNING_CANARY_FAIL'"));
     assert.ok(src.includes("started_at=now(),attempts=attempts+1"));
   });
 });
