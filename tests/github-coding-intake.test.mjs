@@ -1,5 +1,7 @@
 import {describe,expect,it} from 'vitest';
 import {classifyCodingBlocker,codingScopesOverlap,codingSourceRevision,codingSourceTruthRevision,extractCodingDependencies,materializeGithubCodingIssues,parseCodingIssue,relevantRecoveryMainChange,relevantRecoveryMainChangeEvidence,shouldRearmRecoverableFinal,syncGithubCodingOutcomes} from '../apps/tigeriq-core/github-coding-intake.mjs';
+import {TERMINAL_BLOCKED_LABEL,addTerminalBlockedLabel,clearTerminalBlockedLabel,hasTerminalBlockedLabel} from '../apps/tigeriq-core/github-lifecycle-label.mjs';
+import {parseQueueIssue,rankQueueRows} from '../api/live-status.mjs';
 
 function issue(body,extra={}){
   return {number:777,title:'Safe autonomous coding task',body,state:'open',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/777',...extra};
@@ -1195,5 +1197,70 @@ describe('GitHub coding source revision completion guard',()=>{
     expect(posted).toBe(1);
     expect(pool.events.filter(e=>e.type==='GITHUB_CODING_RECOVERY_REARMED')).toHaveLength(1);
     expect(pool.events.filter(e=>e.type==='GITHUB_CODING_DISPATCHED').at(-1)?.data.sourceRevision).toBe(revision);
+  });
+});
+
+
+describe('terminal lifecycle label regression in CI discovery',()=>{
+  it('recognizes durable terminal label shapes and projects them out of executable ranking',()=>{
+    expect(TERMINAL_BLOCKED_LABEL).toBe('tigeriq:terminal-blocked');
+    expect(hasTerminalBlockedLabel({labels:['x','tigeriq:terminal-blocked']})).toBe(true);
+    expect(hasTerminalBlockedLabel({labels:[{name:'TIGERIQ:TERMINAL-BLOCKED'}]})).toBe(true);
+    const row=parseQueueIssue({
+      number:2011,
+      title:'[P1][CORE] Terminal blocked',
+      body:['TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','NO_CODE_CHANGE=true','NO_PC01_SHELL=true','AUTO_QUEUE=INCLUDED','PRIORITY=P1'].join('\n'),
+      state:'open',
+      html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/2011',
+      updated_at:'2026-09-27T00:00:00Z',
+      labels:[{name:'tigeriq:terminal-blocked'}],
+    });
+    expect(row).toMatchObject({status:'BLOCKED',waitReason:'TigerIQ terminal BLOCKED'});
+    expect(rankQueueRows([row])[0]).toMatchObject({eligibleNow:false,dispatchRank:null});
+  });
+
+  it('adds an existing terminal label without repository-label mutation',async()=>{
+    const calls=[];
+    const fetchImpl=async(url,init={})=>{
+      calls.push([url,init.method]);
+      return new Response(JSON.stringify([]),{status:200,headers:{'content-type':'application/json'}});
+    };
+    await addTerminalBlockedLabel({fetchImpl,owner:'o',repo:'r',issueNumber:7,token:'x'});
+    expect(calls).toEqual([['https://api.github.com/repos/o/r/issues/7/labels','POST']]);
+  });
+
+  it('provisions a missing repository label then retries issue assignment',async()=>{
+    const calls=[];let issueAdd=0;
+    const fetchImpl=async(url,init={})=>{
+      calls.push([url,init.method]);
+      if(url.endsWith('/issues/7/labels')&&++issueAdd===1){
+        return new Response(JSON.stringify({message:'Validation Failed',errors:[{code:'missing',field:'labels'}]}),{status:422,headers:{'content-type':'application/json'}});
+      }
+      if(url.endsWith('/labels')&&init.method==='POST'){
+        return new Response(JSON.stringify({name:'tigeriq:terminal-blocked'}),{status:201,headers:{'content-type':'application/json'}});
+      }
+      return new Response(JSON.stringify([]),{status:200,headers:{'content-type':'application/json'}});
+    };
+    await addTerminalBlockedLabel({fetchImpl,owner:'o',repo:'r',issueNumber:7,token:'x'});
+    expect(calls.map(x=>x[0])).toEqual([
+      'https://api.github.com/repos/o/r/issues/7/labels',
+      'https://api.github.com/repos/o/r/labels',
+      'https://api.github.com/repos/o/r/issues/7/labels',
+    ]);
+  });
+
+  it('treats an absent terminal label clear as idempotent success',async()=>{
+    const fetchImpl=async()=>new Response(JSON.stringify({message:'Not Found'}),{status:404,headers:{'content-type':'application/json'}});
+    await expect(clearTerminalBlockedLabel({fetchImpl,owner:'o',repo:'r',issueNumber:7,token:'x'})).resolves.toBe(true);
+  });
+
+  it('preserves rate-limit metadata for bounded GitHub cooldown handling',async()=>{
+    const fetchImpl=async()=>new Response(JSON.stringify({message:'API rate limit exceeded'}),{
+      status:429,
+      headers:{'content-type':'application/json','retry-after':'2','x-ratelimit-remaining':'0','x-ratelimit-reset':'123'},
+    });
+    let caught;
+    try{await addTerminalBlockedLabel({fetchImpl,owner:'o',repo:'r',issueNumber:7,token:'x'});}catch(error){caught=error;}
+    expect(caught).toMatchObject({status:429,retryAfter:'2',rateLimitRemaining:'0',rateLimitReset:'123'});
   });
 });
