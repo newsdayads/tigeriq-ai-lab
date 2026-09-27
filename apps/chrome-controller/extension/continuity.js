@@ -33,6 +33,7 @@ export const WORKER_F5_MAX_MS = 20 * 60 * 1000;
 export const MAX_STALLED_CHECKS = 3;
 export const WORKING_PROGRESS_CHECK_MS = 60 * 1000;
 export const MAX_WORKING_UNCHANGED_CHECKS = 3;
+export const AWAITING_WORK_START_TIMEOUT_MS = 30 * 1000;
 export const CHAT_ROTATE_AFTER_DISPATCHES = 30;
 export const CONTINUITY_WORKERS = Object.freeze(['NV02','NV03','NV04']);
 
@@ -88,6 +89,18 @@ export function deriveWorkerPhase(ui,{heartbeatStale=false,workerId='NV02'}={}){
   return 'STALLED';
 }
 export function deriveNv02Phase(ui,opts){return deriveWorkerPhase(ui,opts);}
+
+export function shouldRearmAwaitingWorkStart({phase,awaitingWorkStart,awaitingWorkStartSince,now,timeoutMs=AWAITING_WORK_START_TIMEOUT_MS}={}){
+  if(String(phase||'').toUpperCase()!=='READY')return false;
+  if(awaitingWorkStart!==true)return false;
+  const since=Number(awaitingWorkStartSince),current=Number(now),timeout=Number(timeoutMs);
+  if(!Number.isFinite(since)||!Number.isFinite(current)||!Number.isFinite(timeout)||timeout<0)return false;
+  return current-since>=timeout;
+}
+
+export function rearmAwaitingWorkStart(state,now){
+  return {...state,awaitingWorkStart:false,awaitingWorkStartSince:0,pendingContinue:true,nextContinueAt:Number(now)};
+}
 
 function workerAutopilot(controller,workerId){
   const direct=controller?.autopilotByWorker?.[workerId]||controller?.workerAutopilot?.[workerId];
