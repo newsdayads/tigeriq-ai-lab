@@ -235,6 +235,9 @@ const PORT=Number(process.env.TIGERIQ_CODING_PORT||8797);
 const CORE_STATUS_URL=process.env.TIGERIQ_CORE_STATUS_URL?.trim()||`http://${process.env.TIGERIQ_CORE_HOST?.trim()||HOST}:${Number(process.env.TIGERIQ_CORE_PORT||8795)}/api/status`;
 const CORE_RESOURCE_HEALTH_TTL_MS=Math.max(5000,Number(process.env.TIGERIQ_CODING_CORE_HEALTH_TTL_MS||10000));
 const AUTO_MERGE=String(process.env.TIGERIQ_CODING_AUTO_MERGE||'true').toLowerCase()==='true';
+const STALE_RUNNING_TIMEOUT_MS=Math.max(60000,Number(process.env.TIGERIQ_CODING_STALE_RUNNING_TIMEOUT_MS||15*60*1000));
+const STALE_RUNNING_SCAN_INTERVAL_MS=Math.max(5000,Number(process.env.TIGERIQ_CODING_STALE_RUNNING_SCAN_INTERVAL_MS||15000));
+const STALE_RUNNING_MAX_REQUEUES=Math.max(0,Math.min(3,Number(process.env.TIGERIQ_CODING_STALE_RUNNING_MAX_REQUEUES||1)));
 export function normalizeCodingParallelLimit(value=6){const n=Number(value);return Math.max(1,Math.min(6,Number.isFinite(n)?Math.floor(n):6))}
 const MAX_PARALLEL=normalizeCodingParallelLimit(process.env.TIGERIQ_CODING_MAX_PARALLEL||6);
 const pool=DATABASE_URL?new Pool({connectionString:DATABASE_URL,max:8}):null;
@@ -632,6 +635,7 @@ create table if not exists tigeriq_coding_jobs(id text primary key,objective_id 
 alter table tigeriq_coding_jobs add column if not exists next_attempt_at timestamptz;
 alter table tigeriq_coding_jobs add column if not exists resource_retry_count int not null default 0;
 alter table tigeriq_coding_jobs add column if not exists resource_retry_started_at timestamptz;
+alter table tigeriq_coding_jobs add column if not exists stale_recovery_count int not null default 0;
 alter table tigeriq_coding_jobs add column if not exists live_github_context jsonb;
 alter table tigeriq_coding_jobs add column if not exists live_github_context_fingerprint text;
 create index if not exists tigeriq_coding_jobs_status_idx on tigeriq_coding_jobs(status,created_at);
@@ -724,7 +728,7 @@ export async function recoverAfterCodingRestart({db=pool,fetchPr=async(number)=>
     if(decision.action==='ignore')continue;
     if(decision.action==='defer'){out.deferred++;continue}
     if(decision.action==='queue'){
-      const changed=await db.query("update tigeriq_coding_jobs set status='queued',completed_at=null,next_attempt_at=null where id=$1 and status=$2",[job.id,job.status]);
+      const changed=await db.query("update tigeriq_coding_jobs set status='queued',started_at=null,completed_at=null,next_attempt_at=null where id=$1 and status=$2",[job.id,job.status]);
       if(changed.rowCount){
         const summary=decision.code==='CODING_RESTART_REQUEUE_PRE_BRANCH'
           ?'Restart recovery safely requeued pre-branch generation.'
@@ -754,6 +758,125 @@ export async function recoverAfterCodingRestart({db=pool,fetchPr=async(number)=>
   return out;
 }
 
+export function staleRunningRecoveryDecision(job,{nowMs=Date.now(),active=false,staleMs=STALE_RUNNING_TIMEOUT_MS,maxRequeues=STALE_RUNNING_MAX_REQUEUES,sourceExecutable=true,pr=null}={}){
+  const status=String(job?.status||'').toLowerCase();
+  if(status!=='running')return{action:'ignore',code:'CODING_STALE_NOT_RUNNING'};
+  if(active)return{action:'ignore',code:'CODING_STALE_ACTIVE_LEASE'};
+  const startedMs=Date.parse(String(job?.started_at||''));
+  if(!Number.isFinite(startedMs))return{action:'ignore',code:'CODING_STALE_STARTED_AT_MISSING'};
+  const ageMs=Math.max(0,Number(nowMs)-startedMs);
+  if(ageMs<Math.max(1000,Number(staleMs)||0))return{action:'ignore',code:'CODING_STALE_WITHIN_DEADLINE',ageMs};
+
+  const branch=String(job?.branch||'').trim();
+  const prNumber=Number(job?.pr_number||0);
+  const preBranch=!branch&&(!Number.isInteger(prNumber)||prNumber<=0);
+  if(preBranch){
+    if(sourceExecutable===false)return{action:'fail',code:'SOURCE_WORK_ORDER_NO_LONGER_EXECUTABLE',ageMs};
+    if(Math.max(0,Number(job?.stale_recovery_count)||0)>=Math.max(0,Number(maxRequeues)||0))
+      return{action:'fail',code:'CODING_STALE_RUNNING_RETRY_EXHAUSTED',ageMs};
+    return{action:'queue',code:'CODING_STALE_REQUEUE_PRE_BRANCH',ageMs};
+  }
+
+  const restart=restartRecoveryDecision(job,pr);
+  return{...restart,ageMs};
+}
+
+export async function recoverStaleRunningJobs({
+  db=pool,
+  activeIds=new Set(),
+  fetchIssue=async(number)=>gh(`/issues/${number}`),
+  fetchPr=async(number)=>gh(`/pulls/${number}`),
+  nowMs=Date.now(),
+  staleMs=STALE_RUNNING_TIMEOUT_MS,
+  maxRequeues=STALE_RUNNING_MAX_REQUEUES,
+}={}){
+  if(!db)return{scanned:0,requeued:0,failed:0,deferred:0,ignored:0};
+  const cutoff=new Date(Number(nowMs)-Math.max(1000,Number(staleMs)||0)).toISOString();
+  const rows=(await db.query(
+    "select j.*,o.objective from tigeriq_coding_jobs j join tigeriq_coding_objectives o on o.id=j.objective_id where j.status='running' and j.started_at is not null and j.started_at<=$1 order by j.started_at",
+    [cutoff],
+  )).rows||[];
+  const out={scanned:rows.length,requeued:0,failed:0,deferred:0,ignored:0};
+
+  for(const job of rows){
+    const active=activeIds instanceof Set?activeIds.has(job.id):Array.isArray(activeIds)?activeIds.includes(job.id):false;
+    let sourceExecutable=true;
+    let pr=null;
+    const branch=String(job?.branch||'').trim();
+    const prNumber=Number(job?.pr_number||0);
+    const preBranch=!branch&&(!Number.isInteger(prNumber)||prNumber<=0);
+
+    if(preBranch){
+      try{await assertCanonicalSourceWorkOrderExecutable(job.objective,{fetchIssue})}
+      catch(error){
+        if(error?.code==='SOURCE_WORK_ORDER_NO_LONGER_EXECUTABLE')sourceExecutable=false;
+        else{
+          out.deferred++;
+          console.warn(JSON.stringify({event:'CODING_STALE_RUNNING_DEFERRED',jobId:job.id,reason:String(error?.code||error?.message||error).slice(0,160)}));
+          continue;
+        }
+      }
+    }else if(Number.isInteger(prNumber)&&prNumber>0){
+      try{pr=await fetchPr(prNumber)}
+      catch(error){
+        out.deferred++;
+        console.warn(JSON.stringify({event:'CODING_STALE_RUNNING_DEFERRED',jobId:job.id,prNumber,reason:'PR_LOOKUP_FAILED'}));
+        continue;
+      }
+    }
+
+    const decision=staleRunningRecoveryDecision(job,{nowMs,active,staleMs,maxRequeues,sourceExecutable,pr});
+    if(decision.action==='ignore'){out.ignored++;continue}
+    const evidence={code:decision.code,priorState:'running',action:decision.action,ageMs:decision.ageMs??null,recoveredAt:new Date(Number(nowMs)).toISOString()};
+
+    if(decision.action==='queue'){
+      const increment=decision.code==='CODING_STALE_REQUEUE_PRE_BRANCH'?1:0;
+      const changed=await db.query(
+        "update tigeriq_coding_jobs set status='queued',started_at=null,completed_at=null,next_attempt_at=null,stale_recovery_count=stale_recovery_count+$4,failure=$5 where id=$1 and status='running' and started_at=$2 and stale_recovery_count=$3",
+        [job.id,job.started_at,Math.max(0,Number(job.stale_recovery_count)||0),increment,JSON.stringify({staleRecovery:evidence})],
+      );
+      if(changed.rowCount){
+        const summary=decision.code==='CODING_STALE_REQUEUE_PRE_BRANCH'
+          ?'In-process stale-running watchdog safely requeued one orphaned pre-branch generation.'
+          :decision.code==='CODING_RESTART_RESUME_PR_OPEN'
+            ?`In-process stale-running watchdog resumed existing PR #${decision.prNumber}.`
+            :`In-process stale-running watchdog recovered job: ${decision.code}`;
+        await db.query("update tigeriq_coding_objectives set status='active',summary=$2,updated_at=now() where id=$1",[job.objective_id,summary]);
+        out.requeued++;
+        console.warn(JSON.stringify({event:'CODING_STALE_RUNNING_RECOVERED',jobId:job.id,action:'requeue',reason:decision.code,ageMs:decision.ageMs??null}));
+      }else out.deferred++;
+      continue;
+    }
+
+    if(decision.action==='done'){
+      const result={recoveredByWatchdog:true,prNumber:decision.prNumber,merge:{merged:true,message:'PR already merged before in-process stale reconciliation'}};
+      const changed=await db.query("update tigeriq_coding_jobs set status='done',result=$2,failure=null,completed_at=coalesce(completed_at,now()),next_attempt_at=null where id=$1 and status='running' and started_at=$3",[job.id,JSON.stringify(result),job.started_at]);
+      if(changed.rowCount){
+        await db.query("update tigeriq_coding_objectives set status='completed',summary=$2,updated_at=now() where id=$1",[job.objective_id,`In-process stale-running watchdog observed merged PR #${decision.prNumber}`]);
+        console.warn(JSON.stringify({event:'CODING_STALE_RUNNING_RECOVERED',jobId:job.id,action:'done',reason:decision.code,ageMs:decision.ageMs??null}));
+      }else out.deferred++;
+      continue;
+    }
+
+    if(decision.action==='defer'){out.deferred++;continue}
+    const message=decision.code==='SOURCE_WORK_ORDER_NO_LONGER_EXECUTABLE'
+      ?'Source Work Order is no longer executable; stale pre-branch coding job terminalized without requeue.'
+      :decision.code==='CODING_STALE_RUNNING_RETRY_EXHAUSTED'
+        ?'In-process stale-running recovery budget exhausted; coding job terminalized.'
+        :decision.code==='CODING_RESTART_PR_CLOSED'
+          ?`PR #${decision.prNumber} is closed and unmerged; stale coding job terminalized.`
+          :'In-process stale-running watchdog cannot safely resume this orphaned coding job.';
+    const failure={code:decision.code,message,staleRecovery:evidence};
+    const changed=await db.query("update tigeriq_coding_jobs set status='failed',failure=$2,completed_at=now(),next_attempt_at=null where id=$1 and status='running' and started_at=$3",[job.id,JSON.stringify(failure),job.started_at]);
+    if(changed.rowCount){
+      await db.query("update tigeriq_coding_objectives set status='blocked',summary=$2,updated_at=now() where id=$1",[job.objective_id,message]);
+      out.failed++;
+      console.warn(JSON.stringify({event:'CODING_STALE_RUNNING_RECOVERED',jobId:job.id,action:'fail',reason:decision.code,ageMs:decision.ageMs??null}));
+    }else out.deferred++;
+  }
+  return out;
+}
+
 export function codingPathsOverlap(left=[],right=[]){
   const a=(Array.isArray(left)?left:[]).map(String),b=(Array.isArray(right)?right:[]).map(String);
   return a.some(x=>b.some(y=>x===y||x.startsWith(y.endsWith('/')?y:y+'/')||y.startsWith(x.endsWith('/')?x:x+'/')));
@@ -766,7 +889,7 @@ async function claimJob(){
     const candidates=(await c.query("select * from tigeriq_coding_jobs where status='queued' or (status='waiting_resource' and coalesce(next_attempt_at,now())<=now()) order by case when status='waiting_resource' then 0 else 1 end,created_at for update skip locked limit 20")).rows||[];
     const j=candidates.find(candidate=>!activeRows.some(active=>codingPathsOverlap(candidate.paths,active.paths)));
     if(!j){await c.query('commit');return null}
-    await c.query("update tigeriq_coding_jobs set status='running',started_at=coalesce(started_at,now()),attempts=attempts+1,completed_at=null where id=$1",[j.id]);
+    await c.query("update tigeriq_coding_jobs set status='running',started_at=now(),attempts=attempts+1,completed_at=null where id=$1",[j.id]);
     await c.query('commit');return j;
   }catch(e){await c.query('rollback');throw e}finally{c.release()}
 }
@@ -1029,11 +1152,17 @@ if(process.env.NODE_ENV!=='test'){
   console.log(JSON.stringify({event:'TIGERIQ_CODING_LANE_STARTED',host:HOST,port:PORT,pid:process.pid,resources:resources.map(x=>x.id),autoMerge:AUTO_MERGE}));
   let stop=false;
   const active=new Set();
+  let lastStaleRecoveryScanAt=0;
   process.on('SIGINT',()=>{stop=true;server.close()});
   process.on('SIGTERM',()=>{stop=true;server.close()});
   while(!stop){
     try{
       await refreshCoreResourceHealth();
+      const nowMs=Date.now();
+      if(nowMs-lastStaleRecoveryScanAt>=STALE_RUNNING_SCAN_INTERVAL_MS){
+        await recoverStaleRunningJobs({activeIds:active,nowMs});
+        lastStaleRecoveryScanAt=nowMs;
+      }
       await managerTick();
       while(active.size<MAX_PARALLEL){
         const j=await claimJob();

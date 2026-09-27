@@ -2,7 +2,7 @@ import {readFileSync} from 'node:fs';
 import {test as vitestTest} from 'vitest';
 const test=(name,fn)=>vitestTest(name,async()=>{const t={test:async(_name,subfn)=>subfn(t)};return fn(t)});
 import assert from 'node:assert';
-import {activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertLiveGithubContextFresh,assertPrOpenState,buildLocalFileContext,canonicalCodingJobTitle,canonicalWorkTitleFromObjective,classifyAiFailure,codingMergeCommitTitle,codingOutputTokenLimit,codingPathsOverlap,cooldownWaitFailure,coreResourceStateEligible,extractLiveGithubContextRefs,formatAuthoritativeGithubContext,gateFailureIssues,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,isVietnameseWorkTitle,loadAuthoritativeGithubContext,managerResourceFailurePlan,partitionGenerationFiles,preserveGenerationPrompt,providerCooldownPollPlan,recoverAfterCodingRestart,requiresLiveGithubContext,resourceWaitPlan,restartRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,sourceIssueNumberFromObjective,validateCompactEdits,validateManagerJobPaths,validateManagerJobTitle} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertLiveGithubContextFresh,assertPrOpenState,buildLocalFileContext,canonicalCodingJobTitle,canonicalWorkTitleFromObjective,classifyAiFailure,codingMergeCommitTitle,codingOutputTokenLimit,codingPathsOverlap,cooldownWaitFailure,coreResourceStateEligible,extractLiveGithubContextRefs,formatAuthoritativeGithubContext,gateFailureIssues,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,isVietnameseWorkTitle,loadAuthoritativeGithubContext,managerResourceFailurePlan,partitionGenerationFiles,preserveGenerationPrompt,providerCooldownPollPlan,recoverAfterCodingRestart,recoverStaleRunningJobs,requiresLiveGithubContext,resourceWaitPlan,restartRecoveryDecision,staleRunningRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,sourceIssueNumberFromObjective,validateCompactEdits,validateManagerJobPaths,validateManagerJobTitle} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError,parseJsonObject} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 const nv11={id:'NV11',provider:'fake',model:'a'};
@@ -512,6 +512,71 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
     assert.ok(issues.includes('CI Verify: failure (completed)'));
   });
 });
+test('in-process stale-running watchdog is bounded and fail-closed',async t=>{
+  const stale={id:'CODE-stale',status:'running',started_at:'2026-09-27T00:00:00.000Z',branch:null,pr_number:null,stale_recovery_count:0};
+  const now=Date.parse('2026-09-27T00:20:00.000Z');
+
+  await t.test('stale pre-branch + executable source requeues exactly once',()=>{
+    assert.deepStrictEqual(
+      staleRunningRecoveryDecision(stale,{nowMs:now,staleMs:60000,maxRequeues:1,sourceExecutable:true}),
+      {action:'queue',code:'CODING_STALE_REQUEUE_PRE_BRANCH',ageMs:1200000},
+    );
+    assert.deepStrictEqual(
+      staleRunningRecoveryDecision({...stale,stale_recovery_count:1},{nowMs:now,staleMs:60000,maxRequeues:1,sourceExecutable:true}),
+      {action:'fail',code:'CODING_STALE_RUNNING_RETRY_EXHAUSTED',ageMs:1200000},
+    );
+  });
+
+  await t.test('stale pre-branch + non-executable source terminalizes',()=>{
+    assert.deepStrictEqual(
+      staleRunningRecoveryDecision(stale,{nowMs:now,staleMs:60000,maxRequeues:1,sourceExecutable:false}),
+      {action:'fail',code:'SOURCE_WORK_ORDER_NO_LONGER_EXECUTABLE',ageMs:1200000},
+    );
+  });
+
+  await t.test('healthy, non-running, and active lease are never reclaimed',()=>{
+    assert.strictEqual(staleRunningRecoveryDecision({...stale,started_at:'2026-09-27T00:19:30.000Z'},{nowMs:now,staleMs:60000}).action,'ignore');
+    assert.strictEqual(staleRunningRecoveryDecision({...stale,status:'waiting_ci'},{nowMs:now,staleMs:60000}).code,'CODING_STALE_NOT_RUNNING');
+    assert.strictEqual(staleRunningRecoveryDecision(stale,{nowMs:now,staleMs:60000,active:true}).code,'CODING_STALE_ACTIVE_LEASE');
+  });
+
+  await t.test('existing PR delegates to restart recovery identity rules',()=>{
+    const job={...stale,branch:'tigeriq/nv09/job',pr_number:42};
+    const decision=staleRunningRecoveryDecision(job,{nowMs:now,staleMs:60000,pr:{state:'open',merged:false}});
+    assert.strictEqual(decision.action,'queue');
+    assert.strictEqual(decision.code,'CODING_RESTART_RESUME_PR_OPEN');
+    assert.strictEqual(decision.prNumber,42);
+  });
+
+  await t.test('DB recovery uses CAS and never reclaims active in-memory lease',async()=>{
+    const queries=[];
+    const row={...stale,objective_id:'OBJ-1',objective:'GitHub autonomous coding issue #2068: test'};
+    const db={query:async(sql,args=[])=>{
+      queries.push({sql,args});
+      if(sql.startsWith('select j.*'))return{rows:[row]};
+      return{rowCount:1,rows:[]};
+    }};
+    const activeOut=await recoverStaleRunningJobs({db,activeIds:new Set([row.id]),nowMs:now,staleMs:60000,fetchIssue:async()=>({state:'open',body:'TIGERIQ_EXECUTABLE=true'})});
+    assert.strictEqual(activeOut.requeued,0);
+    assert.strictEqual(activeOut.ignored,1);
+    assert.strictEqual(queries.some(q=>q.sql.startsWith("update tigeriq_coding_jobs set status='queued'")),false);
+
+    queries.length=0;
+    const recovered=await recoverStaleRunningJobs({db,activeIds:new Set(),nowMs:now,staleMs:60000,maxRequeues:1,fetchIssue:async()=>({state:'open',body:'TIGERIQ_EXECUTABLE=true'})});
+    assert.strictEqual(recovered.requeued,1);
+    const update=queries.find(q=>q.sql.startsWith("update tigeriq_coding_jobs set status='queued'"));
+    assert.ok(update);
+    assert.ok(update.sql.includes("status='running' and started_at=$2 and stale_recovery_count=$3"));
+  });
+
+  await t.test('production loop wires bounded watchdog before claiming more work',()=>{
+    const src=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
+    assert.ok(src.includes('recoverStaleRunningJobs({activeIds:active,nowMs})'));
+    assert.ok(src.indexOf('recoverStaleRunningJobs({activeIds:active,nowMs})')<src.indexOf('const j=await claimJob()'));
+    assert.ok(src.includes("started_at=now(),attempts=attempts+1"));
+  });
+});
+
 test('Gemini internal 429 exhaustion still fails over to next provider',async()=>{
   const gemini={id:'NV12',provider:'gemini',model:'gemini-test'};
   const backup={id:'NV13',provider:'fake',model:'backup'};
