@@ -11,7 +11,7 @@ export function normalizeFailure(failure){
   const code=String(failure?.code||'UNKNOWN');
   const viewport=String(failure?.viewport||'cycle');
   // Special handling for WEB_CONTROL_PAGE_OPEN_FAILED@cycle defect
-  if(code==='WEB_CONTROL_PAGE_OPEN_FAILED'&&viewport==='cycle'){
+  if((code==='WEB_CONTROL_PAGE_OPEN_FAILED'||code==='PAGE_OPEN_FAILED')&&viewport==='cycle'){
     return 'WEB_CONTROL_PAGE_OPEN_FAILED@cycle';
   }
   return `${code}@${viewport}`;
