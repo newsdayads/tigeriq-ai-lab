@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe,expect,it } from 'vitest';
-import { contextIssueRefs,extractExplicitContextIssues,extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,formatResultComment,githubDispatchLane,githubPcOperatorJobId,githubRateLimitCooldownMs,githubSpecBlockedByActive,hydrateContext,indexOpenGithubIssues,isBoundedAppChromeRequestOnly,parseExecutableIssue,resolveGithubSourceIssue } from './github-intake.mjs';
+import { contextIssueRefs,extractExplicitContextIssues,extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,formatResultComment,githubDispatchLane,githubPcOperatorJobId,githubRateLimitCooldownMs,githubSpecBlockedByActive,hydrateContext,indexOpenGithubIssues,isBoundedAppChromeRequestOnly,parseExecutableIssue,parsePcOperatorDirectAction,resolveGithubSourceIssue } from './github-intake.mjs';
 import { appendPublicEvidenceToSummary,buildPublicEvidenceDiagnostic,extractPublicEvidence,formatPublicEvidenceBlock,formatPublicEvidenceDiagnosticBlock,parsePublicEvidenceKeys,sanitizePublicEvidenceValue } from './public-evidence.mjs';
 import { openClawTerminalDecision } from '../openclaw-tigeriq-runtime/dispatch.mjs';
 
@@ -17,6 +17,33 @@ describe('GitHub Core intake guardrails',()=>{
 
   const base={number:588,title:'safe test',state:'open',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/588',body:'TIGERIQ_EXECUTABLE=true\nPRIORITY=P2\nCAPABILITY=reasoning\nOWNER_POLICY=AUTO\nNO_CODE_CHANGE=true\nNO_PC01_SHELL=true\nRead #280 and #335 plus `docs/CURRENT_STATE.md`.'};
   it('accepts an explicitly safe autonomous issue',()=>{expect(parseExecutableIssue(base)).toMatchObject({number:588,priority:'P2',capability:'reasoning'});});
+  it('admits only explicit typed local pc_operator actions and never shell/file-write/PAD mutation',()=>{
+    expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"task_status","taskName":"TigerIQ Core Runtime Updater"}',false)).toMatchObject({
+      present:true,valid:true,action:{action:'task_status',taskName:'TigerIQ Core Runtime Updater'},mutating:false
+    });
+    expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"task_start","taskName":"TigerIQ Core Runtime Updater"}',true)).toMatchObject({
+      present:true,valid:true,action:{action:'task_start',taskName:'TigerIQ Core Runtime Updater'},mutating:true
+    });
+    expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"task_start","taskName":"TigerIQ Core Runtime Updater"}',false)).toMatchObject({present:true,valid:false,reason:'OWNER_DIRECT_REQUIRED'});
+    for(const action of ['shell_exec','file_write','pad_click']){
+      expect(parsePcOperatorDirectAction(`PC_OPERATOR_DIRECT_ACTION_JSON={"action":"${action}"}`,true)).toMatchObject({present:true,valid:false});
+    }
+    expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={bad json}',true)).toMatchObject({present:true,valid:false,reason:'JSON_INVALID'});
+  });
+
+  it('fails closed on an invalid direct-action marker and preserves OpenClaw path when marker is absent',()=>{
+    const basePc=[
+      'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','PRIORITY=P1','CAPABILITY=pc_operator','OWNER_DIRECT=true',
+      'NO_CODE_CHANGE=true','NO_PC01_SHELL=true','RESOURCE_SCOPE=READBACK_X',
+      'ASSIGNED_ACTION','tigeriq_pc task_status taskName="TigerIQ Core Runtime Updater"','ACCEPTANCE','PASS'
+    ];
+    const legacy=parseExecutableIssue({...base,body:basePc.join('\n')});
+    expect(legacy).toMatchObject({capability:'pc_operator',pcOperatorDirectAction:null});
+    expect(parseExecutableIssue({...base,body:[...basePc,'PC_OPERATOR_DIRECT_ACTION_JSON={"action":"shell_exec"}'].join('\n')})).toBeNull();
+    const direct=parseExecutableIssue({...base,body:[...basePc,'PC_OPERATOR_DIRECT_ACTION_JSON={"action":"task_status","taskName":"TigerIQ Core Runtime Updater"}'].join('\n')});
+    expect(direct.pcOperatorDirectAction).toEqual({action:'task_status',taskName:'TigerIQ Core Runtime Updater'});
+  });
+
   it('accepts bounded NV06/OpenClaw pc_operator work with required safety flags',()=>{const parsed=parseExecutableIssue({...base,body:'TIGERIQ_EXECUTABLE=true\nPRIORITY=P1\nCAPABILITY=pc_operator\nOWNER_POLICY=AUTO\nOWNER_DIRECT=true\nNO_CODE_CHANGE=true\nNO_PC01_SHELL=true\nRESOURCE_SCOPE=OPENCLAW_FAST_TEST\nASSIGNED_ACTION\ntigeriq_pc status\nACCEPTANCE\nPASS'});expect(parsed).toMatchObject({number:588,priority:'P1',capability:'pc_operator',dispatchLane:'PC_OPERATOR',resourceScope:'OPENCLAW_FAST_TEST'});});
   it('fails closed if shell/code guardrails are missing',()=>{expect(parseExecutableIssue({...base,body:'TIGERIQ_EXECUTABLE=true\nOWNER_POLICY=AUTO'})).toBeNull();});
   it('does not treat CENTRAL prose/backticks as an executable marker',()=>{expect(parseExecutableIssue({...base,body:'Rule: `TIGERIQ_EXECUTABLE=true`; OWNER_POLICY=AUTO'})).toBeNull();});
