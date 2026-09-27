@@ -19,7 +19,7 @@ $appChromeResumeState='D:\TigerIQ\State\app-chrome-runtime-recovery.json'
 $appChromeZeroTouchScript=(Join-Path $runtimeRepo 'scripts\tigeriq-core\appchrome-zero-touch.ps1')
 $liveStatusBridgeTask='TigerIQ Live Status Bridge'
 $liveStatusBridgeDir='D:\TigerIQ\Runtime\LiveStatusBridge'
-$liveStatusBridgeSource=(Join-Path $runtimeRepo 'apps\tigeriq-live-status-bridge\server.mjs')
+$liveStatusBridgeSource=(Join-Path $runtimeRepo 'apps\tigeriq-live-bridge\server.mjs')
 $liveStatusBridgeRuntime=(Join-Path $liveStatusBridgeDir 'server.mjs')
 $liveStatusBridgeState=(Join-Path $liveStatusBridgeDir 'state.json')
 $coreTask='TigerIQ Core 24x7'
@@ -597,7 +597,7 @@ function Get-Impact([string[]]$paths){
   $core=[bool](@($paths|Where-Object{($_ -match '^apps/tigeriq-core/' -and $_ -notmatch '^apps/tigeriq-core/web-control(?:\.|-)') -or $_ -match '^scripts/tigeriq-core/(?:run-core|install-core-task)\.ps1$'}).Count)
   $openclaw=[bool](@($paths|Where-Object{$_ -match '^apps/openclaw-tigeriq-runtime/'}).Count)
   $updater=[bool](@($paths|Where-Object{$_ -eq 'scripts/tigeriq-core/update-core-runtime.ps1'}).Count)
-  $liveBridge=[bool](@($paths|Where-Object{$_ -match '^apps/tigeriq-live-status-bridge/'}).Count)
+  $liveBridge=[bool](@($paths|Where-Object{$_ -match '^apps/tigeriq-live-bridge/'}).Count)
   return @{core=$core;web=$web;coding=$coding;openclaw=$openclaw;updater=$updater;liveBridge=$liveBridge}
 }
 function Restart-UpdaterAfterExit(){
