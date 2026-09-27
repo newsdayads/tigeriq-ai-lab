@@ -84,6 +84,37 @@ export function extractPcOperatorInstruction(body){
   return String(match?.[1]||'').trim();
 }
 
+const PC_OPERATOR_DIRECT_READ_ONLY_ACTIONS=new Set(['task_status','process_list','tcp_probe','file_read','file_list','file_stat']);
+const PC_OPERATOR_DIRECT_MUTATING_ACTIONS=new Set(['task_start','task_stop']);
+
+export function parsePcOperatorDirectAction(body,ownerDirect=false){
+  const text=String(body||'');
+  const raw=text.match(/^PC_OPERATOR_DIRECT_ACTION_JSON=(\{.*\})$/m)?.[1];
+  if(raw==null)return {present:false,valid:true,action:null};
+  let parsed;
+  try{parsed=JSON.parse(raw)}catch{return {present:true,valid:false,action:null,reason:'JSON_INVALID'}}
+  if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))return {present:true,valid:false,action:null,reason:'OBJECT_REQUIRED'};
+  const action=String(parsed.action||'');
+  if(action==='shell_exec'||action==='file_write'||action.startsWith('pad_'))return {present:true,valid:false,action:null,reason:'ACTION_FORBIDDEN'};
+  const readOnly=PC_OPERATOR_DIRECT_READ_ONLY_ACTIONS.has(action);
+  const mutating=PC_OPERATOR_DIRECT_MUTATING_ACTIONS.has(action);
+  if(!readOnly&&!mutating)return {present:true,valid:false,action:null,reason:'ACTION_NOT_ALLOWLISTED'};
+  if(mutating&&!ownerDirect)return {present:true,valid:false,action:null,reason:'OWNER_DIRECT_REQUIRED'};
+  let normalized;
+  if(action.startsWith('task_')){
+    const taskName=String(parsed.taskName||'').trim();
+    if(!/^TigerIQ [A-Za-z0-9 ._()#-]{1,100}$/.test(taskName))return {present:true,valid:false,action:null,reason:'TASK_NOT_ALLOWLISTED'};
+    normalized={action,taskName};
+  }else if(action==='tcp_probe'){
+    normalized={action,host:String(parsed.host||'127.0.0.1'),port:Number(parsed.port)};
+  }else if(action.startsWith('file_')){
+    normalized={action,path:String(parsed.path||'')};
+  }else{
+    normalized={action};
+  }
+  return {present:true,valid:true,action:normalized,mutating};
+}
+
 export function isManualOnlyAppChromeMaintenance(title,body){
   const t=String(title||'');
   const b=String(body||'');
@@ -109,12 +140,15 @@ export function parseExecutableIssue(issue){
   if(classification.route==='OPENCLAW'&&(!resourceScope||!extractPcOperatorInstruction(body)))return null;
   const sourceRevision=createHash('sha256').update(title).update('\n').update(body).update('\n').update(String(issue.state_reason||'')).digest('hex').slice(0,12);
   const dispatchLane=classification.route==='OPENCLAW'?'PC_OPERATOR':classification.route;
+  const directAction=parsePcOperatorDirectAction(body,backlogOwnerDirect(body));
+  if(directAction.present&&!directAction.valid)return null;
   return {
     number:Number(issue.number),title,body,priority:classification.priority,sourcePriority:classification.sourcePriority,
     legacyP0Autonomous:classification.legacyP0Autonomous,ownerControlled:classification.ownerControlled,
     capability,dispatchLane,resourceScope,preferredWorker:classification.preferredEmployee||'',targetWorker:classification.workerId||null,
     url:String(issue.html_url||''),ownerDirect:backlogOwnerDirect(body),sourceRevision,updatedAt:String(issue.updated_at||''),
     commentCount:Math.max(0,Number(issue.comments||0)),route:classification.route,publicEvidenceKeys:parsePublicEvidenceKeys(body),publicEvidenceDiagnostic:hasExactFlag(body,'PUBLIC_EVIDENCE_DIAGNOSTIC'),
+    pcOperatorDirectAction:directAction.action||null,
   };
 }
 
@@ -287,7 +321,8 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
       source:'github',issueNumber:spec.number,issueUrl:spec.url,capability:spec.capability,dispatchLane:spec.dispatchLane,resourceScope:spec.resourceScope||null,
       ownerDirect:spec.ownerDirect,ownerControlled:spec.ownerControlled,sourcePriority:spec.sourcePriority,legacyP0Autonomous:spec.legacyP0Autonomous,
       targetWorker:spec.targetWorker||null,sourceRevision:spec.sourceRevision,sourceUpdatedAt:spec.updatedAt,rearmedFromObjectiveId:prior?.id||null,
-      dispatchReason:`PRIORITY_${spec.priority}`,executionSurface:spec.capability==='pc_operator'?'CORE_OPENCLAW_BOUNDED':'READ_ONLY',publicEvidenceKeys:spec.publicEvidenceKeys||[],publicEvidenceDiagnostic:spec.publicEvidenceDiagnostic===true
+      dispatchReason:`PRIORITY_${spec.priority}`,executionSurface:spec.capability==='pc_operator'?(spec.pcOperatorDirectAction?'PC_OPERATOR_DIRECT_LOCAL':'CORE_OPENCLAW_BOUNDED'):'READ_ONLY',publicEvidenceKeys:spec.publicEvidenceKeys||[],publicEvidenceDiagnostic:spec.publicEvidenceDiagnostic===true,
+      pcOperatorDirectAction:spec.pcOperatorDirectAction||null
     };
     await pool.query('insert into tigeriq_objectives(id,objective,priority,metadata) values($1,$2,$3,$4) on conflict(id) do nothing',[id,objective,spec.priority,JSON.stringify(metadata)]);
     if(spec.capability==='pc_operator'){
