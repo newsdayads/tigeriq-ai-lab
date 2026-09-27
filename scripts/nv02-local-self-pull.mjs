@@ -54,9 +54,16 @@ function terminal(issue, comments) {
   if (/STATE=BLOCKED/i.test(text)) return 'BLOCKED';
   return null;
 }
+function hasTerminalEvidence(issue) {
+  return terminal(issue, issueComments(issue.number)) !== null;
+}
 
 console.log(JSON.stringify({ event: 'NV02_COMMAND_02', mode: 'SELF_PULL', policy: NV02_LOCAL_GITHUB_SELF_PULL }));
-const selected = selectNv02WorkOrder(summaries().filter((summary) => nv02PrioritySummary(summary) !== 'P0').map((summary) => details(summary)), { dependencies: new Map() });
+const candidateIssues = summaries()
+  .filter((summary) => nv02PrioritySummary(summary) !== 'P0')
+  .map((summary) => details(summary))
+  .filter((issue) => !hasTerminalEvidence(issue));
+const selected = selectNv02WorkOrder(candidateIssues, { dependencies: new Map() });
 if (!selected) { console.log(JSON.stringify({ event: 'NV02_READY_NO_ELIGIBLE_WORK', ...noEligibleNv02Work() })); process.exit(0); }
 const issue = selected.issue;
 const lease = await claimNv02WorkOrder({ issue, comments: issueComments(issue.number), postComment });
@@ -79,4 +86,12 @@ try {
 }
 await releaseNv02WorkOrder({ issueNumber: issue.number, leaseId: lease.leaseId, state: result, postComment });
 console.log(JSON.stringify({ event: 'TIGERIQ_NV02_LEASE_RELEASED', issue: issue.number, resourceScope: lease.resourceScope, leaseId: lease.leaseId, state: result }));
+const nextIssues = summaries()
+  .filter((summary) => nv02PrioritySummary(summary) !== 'P0' && Number(summary.number) !== Number(issue.number))
+  .map((summary) => details(summary))
+  .filter((candidate) => !hasTerminalEvidence(candidate));
+const next = selectNv02WorkOrder(nextIssues, { dependencies: new Map() });
+console.log(JSON.stringify(next
+  ? { event: 'NV02_NEXT_WORK_ORDER_READY', issue: next.issue.number, priority: next.result.priority, resourceScope: next.result.resourceScope }
+  : { event: 'NV02_READY_NO_ELIGIBLE_WORK', ...noEligibleNv02Work() }));
 if (result !== 'DONE') process.exitCode = 2;
