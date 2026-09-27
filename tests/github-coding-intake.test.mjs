@@ -243,7 +243,7 @@ describe('GitHub coding continuity supervisor',()=>{
     const pool=fakePool();
     pool.events.push({type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:705,codingObjectiveId:'obj-705'}});
     pool.events.push({type:'GITHUB_CODING_DEPENDENCY_WAIT',data:{issueNumber:706,dependsOn:[705],reason:'DEPENDENCY_OPEN'}});
-    const parent=issue(SAFE.replace('PRIORITY=P1','PRIORITY=P0'),{number:705,title:'Parent continuity fix'});
+    const parent=issue(SAFE,{number:705,title:'Parent continuity fix'});
     const child=issue(`${SAFE}\nDEPENDS_ON=#705`,{number:706,title:'Dependent follow-up'});
     let phase=0,closed=false;
     const posts=[];
@@ -616,9 +616,9 @@ it('coding backlog uses effective P1-P5 priority; OWNER_DIRECT does not outrank 
   expect(out.created).toBe(1);expect(posted[0]).toContain('#10');
   out=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake'});expect(out.created).toBe(0);
   pool.events.push({type:'GITHUB_CODING_RESULT_REPORTED',data:{issueNumber:10,status:'completed'}});
-  out=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake'});expect(out.created).toBe(1);expect(posted[1]).toContain('#30');
-  pool.events.push({type:'GITHUB_CODING_RESULT_REPORTED',data:{issueNumber:30,status:'completed'}});
-  out=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake'});expect(out.created).toBe(1);expect(posted[2]).toContain('#20');
+  out=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake'});expect(out.created).toBe(1);expect(posted[1]).toContain('#20');
+  pool.events.push({type:'GITHUB_CODING_RESULT_REPORTED',data:{issueNumber:20,status:'completed'}});
+  out=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake'});expect(out.created).toBe(0);expect(posted).toHaveLength(2);
 });
 
 

@@ -16,6 +16,10 @@ export function backlogPriority(body,fallback='P3'){
   return String(body||'').match(/^PRIORITY=(P[0-5])$/m)?.[1]||fallbackPriority;
 }
 
+export function isOwnerOnlyP0(body,title=''){
+  return backlogPriority(body,'P3')==='P0'||/\[P0\]/i.test(String(title||''));
+}
+
 export function backlogAssignedExecutor(body){
   const text=String(body||'');
   for(const key of ['ASSIGNED_EXECUTOR','PRIMARY_EMPLOYEE']){
@@ -35,14 +39,15 @@ export function backlogOwnerControlled(body){
 
 export function effectiveBacklogPriority(body,fallback='P3'){
   const sourcePriority=backlogPriority(body,fallback);
-  const ownerControlled=backlogOwnerControlled(body);
-  const legacyP0Autonomous=sourcePriority==='P0'&&!ownerControlled;
+  // P0 is an Owner-reserved authority class, never an employee execution priority.
+  // Stale assignment/auto markers cannot downgrade or delegate it.
+  const ownerControlled=sourcePriority==='P0'||backlogOwnerControlled(body);
   return {
     sourcePriority,
-    priority:legacyP0Autonomous?'P1':sourcePriority,
+    priority:sourcePriority,
     ownerControlled,
     assignedExecutor:backlogAssignedExecutor(body),
-    legacyP0Autonomous,
+    legacyP0Autonomous:false,
   };
 }
 

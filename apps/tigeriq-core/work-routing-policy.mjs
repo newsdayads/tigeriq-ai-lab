@@ -22,7 +22,7 @@ export function classifyWorkOrder(body){
   const surface=String(bodyValue(text,'EXECUTION_SURFACE')||'').trim().toUpperCase();
   const assigned=backlogAssignedExecutor(text);
   const preferred=preferredEmployee(text);
-  if(priority.sourcePriority==='P0'&&priority.ownerControlled&&!assigned){
+  if(priority.sourcePriority==='P0'){
     return {...priority,capability:cap,surface,assignedExecutor:'',preferredEmployee:preferred,route:'HOLD_OWNER',workerId:null,autonomous:false};
   }
   if(assigned){
@@ -53,14 +53,8 @@ export function classifyWorkOrder(body){
   return {...priority,capability:cap||'reasoning',surface,assignedExecutor:'',preferredEmployee:preferred,route:'CORE_REASONING',workerId:preferred||null,autonomous:true};
 }
 
-export function roleCanPull(workerId,classification){
-  const id=employee(workerId);
-  const spec=classification||{};
-  if(!['P1','P2','P3','P4','P5'].includes(String(spec.priority||'')))return false;
-  if(spec.route==='HOLD_OWNER'||spec.route==='CODING'||spec.route==='OPENCLAW')return false;
-  if(id==='NV02')return spec.workerId==='NV02'||spec.route==='CORE_REASONING';
-  if(id==='NV03')return spec.workerId==='NV03'||spec.route==='CORE_REVIEW';
-  if(id==='NV04')return spec.workerId==='NV04';
+export function roleCanPull(_workerId,_classification){
+  // Employees execute explicit system assignments only; they never self-pull GitHub work.
   return false;
 }
 
@@ -98,11 +92,11 @@ export function buildRoleFallbackPrompt(workerId){
   const role=id==='NV02'?'MAIN_EXECUTOR':id==='NV03'?'INDEPENDENT_REVIEWER':id==='NV04'?'DEEP_RESEARCH_SECOND_OPINION':'UNKNOWN';
   return [
     id+' — ROLE_LOOP='+role+'.',
-    'Core assignment has priority. Continue any valid current assignment first.',
-    'If there is no valid Core assignment or Core is stale/unavailable, audit canonical GitHub Source of Truth and pull exactly ONE eligible P1-P5 item for this role.',
-    'Never auto-pull P0. Never touch App Chrome mutation scope. Never take work already owned/leased or with overlapping RESOURCE_SCOPE.',
-    'Before fallback work, post [TIGERIQ_ROLE_CLAIM_V1] with WORKER='+id+', RESOURCE_SCOPE=<scope>, LEASE_UNTIL=<ISO within 30 minutes>; renew if still working. On handoff/wait/terminal, post [TIGERIQ_ROLE_RELEASE_V1].',
-    'NV02 may take general/reasoning execution; NV03 review/QA only; NV04 research/deep-analysis/second-opinion only.',
-    'Work continuously until DONE with evidence, BLOCKED, EXTERNAL_WAIT, or mandatory Owner gate.',
+    'Continue only a valid explicit system assignment for this worker.',
+    'If no valid system assignment exists, remain READY_UNASSIGNED and wait. Do not scan, read, claim, or select GitHub work.',
+    'P0 is Owner-only: employees must not read, receive, claim, or execute it. P1-P5 are executable only after explicit system assignment.',
+    'Never touch App Chrome mutation scope or work owned by another actor/resource lease.',
+    'NV02 executes assigned general/reasoning work; NV03 assigned review/QA only; NV04 assigned research/deep-analysis/second-opinion only.',
+    'For assigned work, continue until DONE with evidence, BLOCKED, EXTERNAL_WAIT, or mandatory Owner gate.',
   ].join(' ');
 }

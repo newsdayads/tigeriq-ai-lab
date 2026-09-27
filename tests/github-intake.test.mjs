@@ -108,7 +108,7 @@ test('owner-direct pc_operator GitHub intake materializes bounded OpenClaw objec
   const body=`TIGERIQ_EXECUTABLE=true
 OWNER_POLICY=AUTO
 OWNER_DIRECT=true
-PRIORITY=P0
+PRIORITY=P1
 CAPABILITY=pc_operator
 NO_CODE_CHANGE=true
 NO_PC01_SHELL=true
@@ -138,10 +138,10 @@ test('Core manager excludes deterministic CORE_OPENCLAW_BOUNDED objectives',()=>
   assert.match(core,/executionSurface',''\)<>'CORE_OPENCLAW_BOUNDED'/);
 });
 
-test('autonomous priority is P1-P5 and independent scopes can materialize in parallel',async()=>{
+test('P0 is excluded while system-routed P1-P5 materialize in priority order',async()=>{
   const pool=coreBacklogPool();
   const issues=[
-    {number:30,state:'open',title:'legacy P0',body:`${READ_ONLY_BASE}\nPRIORITY=P0\nRESOURCE_SCOPE=S30`,html_url:'https://example/30'},
+    {number:30,state:'open',title:'Owner-only P0',body:`${READ_ONLY_BASE}\nPRIORITY=P0\nRESOURCE_SCOPE=S30`,html_url:'https://example/30'},
     {number:20,state:'open',title:'P2',body:`${READ_ONLY_BASE}\nOWNER_DIRECT=true\nPRIORITY=P2\nRESOURCE_SCOPE=S20`,html_url:'https://example/20'},
     {number:10,state:'open',title:'P1',body:`${READ_ONLY_BASE}\nOWNER_DIRECT=true\nPRIORITY=P1\nRESOURCE_SCOPE=S10`,html_url:'https://example/10'},
   ];
@@ -149,15 +149,15 @@ test('autonomous priority is P1-P5 and independent scopes can materialize in par
   let out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
   assert.strictEqual(out.issueNumber,10);assert.strictEqual(pool.objectives.at(-1).priority,'P1');
   out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
-  assert.strictEqual(out.issueNumber,30);assert.strictEqual(pool.objectives.at(-1).priority,'P1');assert.strictEqual(pool.objectives.at(-1).metadata.legacyP0Autonomous,true);
-  out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
   assert.strictEqual(out.issueNumber,20);assert.strictEqual(pool.objectives.at(-1).priority,'P2');
-  assert.strictEqual(pool.objectives.filter(o=>o.status==='active').length,3);
+  out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
+  assert.strictEqual(out.created,0);
+  assert.strictEqual(pool.objectives.filter(o=>o.status==='active').length,2);
 });
 
 test('reopened completed GitHub Work Order rearms instead of being skipped forever',async()=>{
   const pool=coreBacklogPool();
-  let issues=[{number:50,state:'open',state_reason:null,updated_at:'2026-09-23T01:00:00Z',title:'Rearm me',body:`${READ_ONLY_BASE}\nOWNER_DIRECT=true\nPRIORITY=P0`,html_url:'https://example/50'}];
+  let issues=[{number:50,state:'open',state_reason:null,updated_at:'2026-09-23T01:00:00Z',title:'Rearm me',body:`${READ_ONLY_BASE}\nOWNER_DIRECT=true\nPRIORITY=P1`,html_url:'https://example/50'}];
   const fetchImpl=async(url)=>url.includes('/issues?')?response(issues):response({});
   let out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
   assert.strictEqual(out.issueNumber,50);
@@ -175,7 +175,7 @@ test('reopened completed GitHub Work Order rearms instead of being skipped forev
 test('different GitHub dispatch lanes do not starve each other',async()=>{
   const pool=coreBacklogPool();
   const reasoningBody=['TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','OWNER_DIRECT=true','PRIORITY=P1','CAPABILITY=reasoning','NO_CODE_CHANGE=true','NO_PC01_SHELL=true','RESOURCE_SCOPE=REASONING_ACTIVE'].join('\n');
-  const pcBody=['TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','OWNER_DIRECT=true','PRIORITY=P0','CAPABILITY=pc_operator','NO_CODE_CHANGE=true','NO_PC01_SHELL=true','RESOURCE_SCOPE=PC_STATE','ASSIGNED_ACTION','tigeriq_pc file_write path=D:\\TigerIQ\\State\\lane-canary.txt content=PASS','ACCEPTANCE','PASS'].join('\n');
+  const pcBody=['TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','OWNER_DIRECT=true','PRIORITY=P1','CAPABILITY=pc_operator','NO_CODE_CHANGE=true','NO_PC01_SHELL=true','RESOURCE_SCOPE=PC_STATE','ASSIGNED_ACTION','tigeriq_pc file_write path=D:\\TigerIQ\\State\\lane-canary.txt content=PASS','ACCEPTANCE','PASS'].join('\n');
   let issues=[{number:91,state:'open',title:'reasoning active',body:reasoningBody,html_url:'https://example/91'}];
   const fetchImpl=async(url)=>url.includes('/issues?')?response(issues):response({});
   let out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
@@ -193,7 +193,7 @@ test('different GitHub dispatch lanes do not starve each other',async()=>{
 
 test('bounded App Chrome deploy-request State work is not treated as protected App Chrome mutation',async()=>{
   const pool=coreBacklogPool();
-  const body=['TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','OWNER_DIRECT=true','PRIORITY=P0','CAPABILITY=pc_operator','APP_CHROME_REQUEST_ONLY=true','NO_CODE_CHANGE=true','NO_PC01_SHELL=true','RESOURCE_SCOPE=APP_CHROME_DEPLOY_REQUEST_STATE','ASSIGNED_ACTION','Use tigeriq_pc file_write only:','path=D:\\TigerIQ\\State\\appchrome-install-request.json','Then use tigeriq_pc file_read on the same path.','ACCEPTANCE','PASS'].join('\n');
+  const body=['TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','OWNER_DIRECT=true','PRIORITY=P1','CAPABILITY=pc_operator','APP_CHROME_REQUEST_ONLY=true','NO_CODE_CHANGE=true','NO_PC01_SHELL=true','RESOURCE_SCOPE=APP_CHROME_DEPLOY_REQUEST_STATE','ASSIGNED_ACTION','Use tigeriq_pc file_write only:','path=D:\\TigerIQ\\State\\appchrome-install-request.json','Then use tigeriq_pc file_read on the same path.','ACCEPTANCE','PASS'].join('\n');
   const issues=[{number:1881,state:'open',title:'[P0][OPENCLAW] request state',body,html_url:'https://example/1881'}];
   const fetchImpl=async(url)=>url.includes('/issues?')?response(issues):response({});
   const out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});

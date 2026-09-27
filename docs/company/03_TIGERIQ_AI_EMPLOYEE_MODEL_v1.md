@@ -25,6 +25,8 @@ Turns repeatable work into SOPs, automations, schedules, and measurable processe
 
 ## Shared AI rules
 - Every agent has a bounded role and explicit authority.
+- P0 is Owner-only and invisible/non-executable to AI employees; stale assignment markers cannot delegate it.
+- P1-P5 work is executed only after explicit system assignment. Employees must not scan or self-claim GitHub work when unassigned.
 - Agents record important decisions/evidence.
 - Agents may propose; they do not exceed delegated authority.
 - Independent review is required for high-impact technical changes.

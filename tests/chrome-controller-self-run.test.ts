@@ -28,10 +28,11 @@ const SAFE=[
 
 describe('App Chrome GitHub self-run queue',()=>{
   it('accepts only explicit safe executable work',()=>{
-    const ok=issue(1,'safe',SAFE+'\nPRIORITY=P0\nRESOURCE_SCOPE=SAFE_READ');
+    const ok=issue(1,'safe',SAFE+'\nPRIORITY=P1\nRESOURCE_SCOPE=SAFE_READ');
     expect(isSelfRunSafe(ok)).toBe(true);
     expect(resourceScopeOf(ok)).toBe('SAFE_READ');
-    expect(priorityOf(ok)).toBe(0);
+    expect(priorityOf(ok)).toBe(1);
+    expect(isSelfRunSafe(issue(5,'owner only',SAFE+'\nPRIORITY=P0\nRESOURCE_SCOPE=OWNER_ONLY'))).toBe(false);
     expect(isSelfRunSafe(issue(2,'unsafe','TIGERIQ_EXECUTABLE=true'))).toBe(false);
     expect(isSelfRunSafe(issue(3,'hold',SAFE+'\nSTATE=MANUAL_HOLD'))).toBe(false);
     expect(isSelfRunSafe(issue(4,'excluded',SAFE+'\nAUTO_QUEUE=EXCLUDED'))).toBe(false);

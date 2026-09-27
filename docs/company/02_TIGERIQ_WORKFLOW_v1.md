@@ -43,3 +43,10 @@ DONE requires:
 - documentation/current state updated;
 - release/deployment performed only when authorized;
 - no unresolved real blocker within the agreed scope.
+## Priority authority and assignment
+- P0 is Owner-only. It is a reserved authorization/work class, not an employee queue priority.
+- No AI employee, role fallback, local worker, coding lane, UI worker, or autonomous scanner may read, claim, receive, select, or execute P0 work.
+- Stale `ASSIGNED_EXECUTOR`, `PRIMARY_EMPLOYEE`, `OWNER_POLICY=AUTO`, `TIGERIQ_EXECUTABLE=true`, or equivalent markers never delegate P0.
+- Only the Owner, or Codex acting under the Owner's explicit current instruction, may handle P0.
+- P1-P5 are normal execution priorities, but employees execute them only after explicit system assignment. Employees do not self-scan or self-claim GitHub work.
+- Missing or unavailable assignment means `READY_UNASSIGNED`/wait, not GitHub fallback selection.

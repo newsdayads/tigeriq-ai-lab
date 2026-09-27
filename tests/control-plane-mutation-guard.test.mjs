@@ -14,7 +14,7 @@ NO_DESTRUCTIVE=true
 NO_PRODUCTION_RELEASE=true
 NO_BROWSER_AUTH=true
 NO_DIRECT_MAIN=true
-PRIORITY=P0`;
+PRIORITY=P1`;
 
 function issue(body){
   return {number:1330,title:'guard probe',body,state:'open',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/1330'};
