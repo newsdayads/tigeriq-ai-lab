@@ -3,6 +3,7 @@ import { Pool } from 'pg';
 import { backlogOwnerDirect, bodyValue as policyBodyValue, isOwnerOnlyP0, routingFault, sortBacklogSpecs } from './github-backlog-policy.mjs';
 import { activeRoleClaim, classifyWorkOrder } from './work-routing-policy.mjs';
 import { appendPublicEvidenceToSummary, parsePublicEvidenceKeys } from './public-evidence.mjs';
+import { addTerminalBlockedLabel, clearTerminalBlockedLabel } from './github-lifecycle-label.mjs';
 
 const DEFAULT_OWNER='newsdayads';
 const DEFAULT_REPO='tigeriq-ai-lab';
@@ -394,11 +395,14 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
       }
     }
     if(!row.metadata?.githubClaimReported){
+      await clearTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:number,token});
       await commentIssue(fetchImpl,owner,repo,number,`[CLAIM] TigerIQ Core accepted this issue as ${row.id}. Automatic processing is active.`,token);
       await pool.query("update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1",[row.id,JSON.stringify({githubClaimReported:true})]);
       row.metadata={...row.metadata,githubClaimReported:true}; claims++;
     }
     if(['completed','blocked'].includes(row.status)&&!row.metadata?.githubResultReported){
+      if(row.status==='blocked') await addTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:number,token});
+      else await clearTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:number,token});
       await commentIssue(fetchImpl,owner,repo,number,formatResultComment(row),token);
       if(row.status==='completed') await closeIssue(fetchImpl,owner,repo,number,token);
       await pool.query("update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1",[row.id,JSON.stringify({githubResultReported:true,githubClosed:row.status==='completed'})]);
