@@ -3,10 +3,13 @@ import { Pool } from 'pg';
 import { backlogOwnerDirect, bodyValue as policyBodyValue, isOwnerOnlyP0, routingFault, sortBacklogSpecs } from './github-backlog-policy.mjs';
 import { activeRoleClaim, classifyWorkOrder } from './work-routing-policy.mjs';
 import { appendPublicEvidenceToSummary, parsePublicEvidenceKeys } from './public-evidence.mjs';
+import { githubRequestJson } from './github-shared-client.mjs';
+import { githubEventIssue, subscribeGithubEvents } from './github-event-bus.mjs';
 
 const DEFAULT_OWNER='newsdayads';
 const DEFAULT_REPO='tigeriq-ai-lab';
-const DEFAULT_INTERVAL_MS=Number(process.env.TIGERIQ_GITHUB_INTAKE_MS||5000);
+export const GITHUB_RECONCILE_INTERVAL_MS=300000;
+const DEFAULT_INTERVAL_MS=Number(process.env.TIGERIQ_GITHUB_RECONCILE_MS||GITHUB_RECONCILE_INTERVAL_MS);
 const DEFAULT_INITIAL_DELAY_MS=15000;
 const MAX_CONTEXT_CHARS=50000;
 const SAFE_PATH_RE=/^[A-Za-z0-9._/-]+\.(?:md|mjs|js|ts|json|ya?ml)$/i;
@@ -197,22 +200,8 @@ export function formatResultComment(row){
 }
 
 async function ghJson(fetchImpl,url,token='',init={}){
-  const headers={'accept':'application/vnd.github+json','user-agent':'TigerIQ-Core-GitHub-Intake/1.1','x-github-api-version':'2022-11-28',...(init.headers||{})};
-  if(token) headers.authorization=`Bearer ${token}`;
-  const r=await fetchImpl(url,{...init,headers,signal:AbortSignal.timeout(12000)});
-  const raw=r.status===204?'':await r.text();
-  let body={};
-  if(raw){try{body=JSON.parse(raw)}catch{body={text:raw}}}
-  if(!r.ok){
-    const e=new Error(`GITHUB_HTTP_${r.status}:${String(body?.message||raw||'').slice(0,300)}`);
-    e.status=r.status;
-    e.retryAfter=r.headers?.get?.('retry-after')||'';
-    e.rateLimitRemaining=r.headers?.get?.('x-ratelimit-remaining')||'';
-    e.rateLimitReset=r.headers?.get?.('x-ratelimit-reset')||'';
-    throw e;
-  }
-  if(r.status===204)return {};
-  return body;
+  const opts=String(init.method||'GET').toUpperCase()==='GET'&&init.freshMs==null?{...init,freshMs:0}:init;
+  return githubRequestJson(fetchImpl,url,token,opts);
 }
 
 export async function resolveGithubSourceIssue(fetchImpl,owner,repo,token,issueNumber,openIssueIndex=null){
@@ -346,7 +335,7 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
   return {created:0,skipped,externalClaims,active:activeMetadata.length,considered:specs.length,cleanedOrphans:cleanup.cleaned,routingFault:fault.fault};
 }
 
-export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token='',openIssues=null}){
+export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token='',openIssues=null,issueNumbers=null}){
   if(!token) return {claims:0,results:0};
   const openIssueIndex=Array.isArray(openIssues)?indexOpenGithubIssues(openIssues):null;
   const rows=(await pool.query(`select id,status,summary,metadata from tigeriq_objectives
@@ -358,9 +347,11 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
       )
     order by case when status='active' then 0 else 1 end, updated_at desc, created_at desc
     limit 100`)).rows;
+  const issueFilter=Array.isArray(issueNumbers)&&issueNumbers.length?new Set(issueNumbers.map(Number)):null;
   let claims=0,results=0;
   for(const row of rows){
     const number=Number(row.metadata?.issueNumber); if(!number) continue;
+    if(issueFilter&&!issueFilter.has(number))continue;
     if(row.status==='active'){
       try{
         const sourceIssue=await resolveGithubSourceIssue(fetchImpl,owner,repo,token,number,openIssueIndex);
@@ -408,29 +399,64 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
   return {claims,results};
 }
 
-export function startGithubIntake({databaseUrl=process.env.DATABASE_URL,fetchImpl=fetch,owner=process.env.TIGERIQ_GITHUB_OWNER||DEFAULT_OWNER,repo=process.env.TIGERIQ_GITHUB_REPO||DEFAULT_REPO,token=process.env.TIGERIQ_GITHUB_TOKEN||process.env.GITHUB_TOKEN||'',intervalMs=Number(process.env.TIGERIQ_GITHUB_INTAKE_MS||5000),initialDelayMs=1000}={}){
+export function startGithubIntake({databaseUrl=process.env.DATABASE_URL,fetchImpl=fetch,owner=process.env.TIGERIQ_GITHUB_OWNER||DEFAULT_OWNER,repo=process.env.TIGERIQ_GITHUB_REPO||DEFAULT_REPO,token=process.env.TIGERIQ_GITHUB_TOKEN||process.env.GITHUB_TOKEN||'',intervalMs=Number(process.env.TIGERIQ_GITHUB_RECONCILE_MS||DEFAULT_INTERVAL_MS),initialDelayMs=1000}={}){
   if(!databaseUrl)return {enabled:false,stop(){}};
   const pool=new Pool({connectionString:databaseUrl,max:1});
+  const reconcileMs=Math.max(GITHUB_RECONCILE_INTERVAL_MS,Number(intervalMs)||GITHUB_RECONCILE_INTERVAL_MS);
   let stopped=false,busy=false,timer=null,interval=null,githubCooldownUntil=0;
+  const pendingEvents=[];
+
+  const applyError=(e,kind)=>{
+    const delayMs=githubRateLimitCooldownMs(e,Date.now());
+    if(delayMs>0){
+      githubCooldownUntil=Date.now()+delayMs;
+      if(kind==='event')console.warn(JSON.stringify({event:'GITHUB_EVENT_RATE_LIMIT_COOLDOWN',delayMs,until:new Date(githubCooldownUntil).toISOString(),error:String(e?.message||e)}));
+      else console.warn(JSON.stringify({event:'GITHUB_RATE_LIMIT_COOLDOWN',delayMs,until:new Date(githubCooldownUntil).toISOString(),error:String(e?.message||e)}));
+    }else{
+      console.error(JSON.stringify({event:kind==='event'?'GITHUB_EVENT_INTAKE_ERROR':'GITHUB_INTAKE_ERROR',error:String(e?.message||e)}));
+    }
+  };
+
+  const processEvent=async(event)=>{
+    if(stopped)return;
+    if(busy||githubCooldownUntil>Date.now()){pendingEvents.push(event);return}
+    const issue=githubEventIssue(event?.payload);
+    if(!issue)return;
+    busy=true;
+    try{
+      const issues=[issue];
+      const n=Number(issue.number);
+      const b=await syncGithubOutcomes({pool,fetchImpl,owner,repo,token,openIssues:issues,issueNumbers:[n]});
+      const a=await materializeGithubIssues({pool,fetchImpl,owner,repo,token,openIssues:issues});
+      console.log(JSON.stringify({event:'GITHUB_EVENT_INTAKE_SYNC',deliveryId:event.deliveryId,eventName:event.eventName,issueNumber:n,created:a.created,claims:b.claims,results:b.results}));
+    }catch(e){applyError(e,'event')}
+    finally{
+      busy=false;
+      if(pendingEvents.length&&githubCooldownUntil<=Date.now())queueMicrotask(()=>void processEvent(pendingEvents.shift()));
+    }
+  };
+
+  const unsubscribe=subscribeGithubEvents(event=>{
+    const fullName=String(event?.payload?.repository?.full_name||'');
+    if(fullName&&fullName!==owner+'/'+repo)return;
+    if(githubEventIssue(event?.payload))void processEvent(event);
+  });
+
   const tick=async()=>{
     if(stopped||busy)return;
     if(githubCooldownUntil>Date.now())return;
     busy=true;
     try{
-      const openIssues=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues?state=open&per_page=100&sort=updated&direction=desc`,token);
+      const openIssues=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues?state=open&per_page=100&sort=updated&direction=desc`,token,{freshMs:30000});
       const b=await syncGithubOutcomes({pool,fetchImpl,owner,repo,token,openIssues});
       const a=await materializeGithubIssues({pool,fetchImpl,owner,repo,token,openIssues});
       if(a.created||b.claims||b.results)console.log(JSON.stringify({event:'GITHUB_INTAKE_SYNC',created:a.created,claims:b.claims,results:b.results,active:a.active||0,issueNumber:a.issueNumber||null}));
-    }catch(e){
-      const delayMs=githubRateLimitCooldownMs(e,Date.now());
-      if(delayMs>0){
-        githubCooldownUntil=Date.now()+delayMs;
-        console.warn(JSON.stringify({event:'GITHUB_RATE_LIMIT_COOLDOWN',delayMs,until:new Date(githubCooldownUntil).toISOString(),error:String(e?.message||e)}));
-      }else{
-        console.error(JSON.stringify({event:'GITHUB_INTAKE_ERROR',error:String(e?.message||e)}));
-      }
-    }finally{busy=false;}
+    }catch(e){applyError(e,'fallback')}
+    finally{
+      busy=false;
+      if(pendingEvents.length&&githubCooldownUntil<=Date.now())queueMicrotask(()=>void processEvent(pendingEvents.shift()));
+    }
   };
-  timer=setTimeout(()=>{void tick();interval=setInterval(()=>void tick(),Math.max(1000,intervalMs));interval.unref?.();},Math.max(1000,initialDelayMs)); timer.unref?.();
-  return {enabled:true,async stop(){stopped=true;if(timer)clearTimeout(timer);if(interval)clearInterval(interval);await pool.end();}};
+  timer=setTimeout(()=>{void tick();interval=setInterval(()=>void tick(),reconcileMs);interval.unref?.();},Math.max(1000,initialDelayMs)); timer.unref?.();
+  return {enabled:true,reconcileMs,async stop(){stopped=true;unsubscribe();if(timer)clearTimeout(timer);if(interval)clearInterval(interval);await pool.end();}};
 }
