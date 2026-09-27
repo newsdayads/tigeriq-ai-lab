@@ -313,10 +313,11 @@ describe('GitHub coding continuity supervisor',()=>{
     const pool=fakePool();
     pool.events.push({type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:800,codingObjectiveId:'obj-800'}});
     const current=issue(SAFE,{number:800});
-    let nowMs=1000000,posted=0;
+    let nowMs=1000000,posted=0,labelClears=0;
     const fetchImpl=async(url,init={})=>{
       if(url.includes('/api/status'))return response({objectives:[{id:'obj-800',status:'blocked',summary:'HTTP_429 provider rate limit'}],jobs:[]});
       if(url.includes('/api/objectives')){posted++;return response({id:'obj-800-retry'});}
+      if(url.includes('/issues/800/labels/')&&init.method==='DELETE'){labelClears++;return response({});}
       if(url.includes('/issues/800'))return response(current);
       if(url.includes('/comments'))return response({});
       return response({});
@@ -328,24 +329,29 @@ describe('GitHub coding continuity supervisor',()=>{
     nowMs+=60000;
     await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake',now:()=>nowMs});
     expect(posted).toBe(1);
+    expect(labelClears).toBe(1);
     expect(pool.events.filter(e=>e.type==='GITHUB_CODING_RETRY_DISPATCHED')).toHaveLength(1);
   });
 
-  it('fails closed for hard blockers without retry',async()=>{
+  it('fails closed for hard blockers without retry and syncs terminal label only once',async()=>{
     const pool=fakePool();
     pool.events.push({type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:801,codingObjectiveId:'obj-801'}});
     const current=issue(SAFE,{number:801});
-    let posted=0;
-    const fetchImpl=async(url)=>{
+    let posted=0,labelAdds=0;
+    const fetchImpl=async(url,init={})=>{
       if(url.includes('/api/status'))return response({objectives:[{id:'obj-801',status:'blocked',summary:'SECURITY POLICY_BLOCK requires human decision'}],jobs:[]});
       if(url.includes('/api/objectives')){posted++;return response({id:'unexpected'});}
+      if(url.includes('/issues/801/labels')&&init.method==='POST'){labelAdds++;return response([]);}
       if(url.includes('/issues/801'))return response(current);
       if(url.includes('/comments'))return response({});
       return response({});
     };
     await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
     expect(posted).toBe(0);
+    expect(labelAdds).toBe(1);
     expect(pool.events.filter(e=>e.type==='GITHUB_CODING_BLOCKED_FINAL')[0]?.data.reason).toBe('HARD_BLOCKER');
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_TERMINAL_LABEL_SYNCED')).toHaveLength(1);
   });
 
   it('re-arms a recoverable exhausted issue once after a relevant main change',async()=>{
@@ -893,17 +899,45 @@ describe('GitHub coding source revision completion guard',()=>{
     expect(pool.events.find(e=>e.type==='GITHUB_CODING_DISPATCHED')?.data.sourceRevision).toBe(rev);
   });
 
+
+  it('backfills a historical Coding terminal label after the lane objective is garbage-collected',async()=>{
+    const pool=fakePool();
+    const current=issue(SAFE,{number:831,title:'Historical blocked'});
+    const revision=codingSourceTruthRevision({...current,repository_owner:'newsdayads'},[]);
+    pool.events.push(
+      {type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:831,codingObjectiveId:'obj-831',sourceRevision:revision}},
+      {type:'GITHUB_CODING_BLOCKED_FINAL',data:{issueNumber:831,codingObjectiveId:'obj-831',status:'blocked',reason:'HARD_BLOCKER',terminalReason:'SECURITY POLICY_BLOCK requires human',mainSha:'same-main',sourceRevision:revision}}
+    );
+    let labelAdds=0;
+    const fetchImpl=async(url,init={})=>{
+      if(url.includes('/api/status'))return response({objectives:[],jobs:[]});
+      if(url.includes('/git/ref/heads/main'))return response({object:{sha:'same-main'}});
+      if(url.includes('/issues/831/comments'))return response([]);
+      if(url.includes('/issues/831/labels')&&init.method==='POST'){labelAdds++;return response([]);}
+      if(url.includes('/issues/831'))return response(current);
+      return response({});
+    };
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+    expect(labelAdds).toBe(1);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_TERMINAL_LABEL_SYNCED')).toHaveLength(1);
+    expect(pool.events.find(e=>e.type==='GITHUB_CODING_TERMINAL_LABEL_SYNCED')?.data).toMatchObject({codingObjectiveId:'obj-831',historical:true});
+  });
+
   it('closes a completed Work Order only when dispatch and current source revisions match',async()=>{
     const pool=fakePool();const current=issue(SAFE+'\nRESOURCE_SCOPE=REV_SAME\nALLOW_PATH_PREFIX=docs/evidence/rev-same.md',{number:821,title:'Revision same'});
     const rev=codingSourceTruthRevision({...current,repository_owner:'newsdayads'},[]);
     pool.events.push({type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:821,codingObjectiveId:'obj-821',sourceRevision:rev,scopeLease:{resourceScope:'REV_SAME',paths:['docs/evidence/rev-same.md'],ambiguous:false}}});
     let closed=false;
+    const lifecycleCalls=[];
     const fetchImpl=async(url,init={})=>{
       if(url.includes('/api/status'))return response({objectives:[{id:'obj-821',status:'completed',summary:'Merged PR'}],jobs:[]});
       if(url.includes('/git/ref/heads/main'))return response({object:{sha:'same-main'}});
+      if(url.includes('/issues/821/comments')&&init.method==='POST'){lifecycleCalls.push('result-comment');return response({});}
       if(url.includes('/issues/821/comments'))return response([]);
+      if(url.includes('/issues/821/labels/')&&init.method==='DELETE'){lifecycleCalls.push('clear-label');return response({});}
       if(url.includes('/issues/821')){
-        if(init.method==='PATCH'){closed=true;return response({...current,state:'closed'});}
+        if(init.method==='PATCH'){closed=true;lifecycleCalls.push('close-issue');return response({...current,state:'closed'});}
         return response(current);
       }
       if(url.includes('/comments'))return response({});
@@ -911,6 +945,7 @@ describe('GitHub coding source revision completion guard',()=>{
     };
     await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
     expect(closed).toBe(true);
+    expect(lifecycleCalls).toEqual(['result-comment','close-issue','clear-label']);
     expect(pool.events.filter(e=>e.type==='GITHUB_CODING_RESULT_REPORTED')).toHaveLength(1);
     expect(pool.events.filter(e=>e.type==='GITHUB_CODING_STALE_RESULT_REJECTED')).toHaveLength(0);
   });
