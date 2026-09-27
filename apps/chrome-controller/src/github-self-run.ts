@@ -95,7 +95,7 @@ export function isSelfRunSafe(issue:GithubIssue):boolean{
   if(issue.pull_request||issue.state!=='open')return false;
   if(isManualOnlyAppChromeMaintenance(issue))return false;
   const meta=parseWorkOrderMetadata(issue.body);
-  if(String(meta.PRIORITY||'').toUpperCase()==='P0')return false;
+  if(String(meta.PRIORITY||'').toUpperCase()==='P0'||/\[P0\]/i.test(String(issue.title||'')))return false;
   if(meta.TIGERIQ_EXECUTABLE!=='true')return false;
   if(meta.AUTO_QUEUE==='EXCLUDED')return false;
   if(meta.STATE&&TERMINAL_OR_HOLD_STATE_RE.test(meta.STATE))return false;

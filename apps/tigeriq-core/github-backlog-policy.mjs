@@ -16,6 +16,10 @@ export function backlogPriority(body,fallback='P3'){
   return String(body||'').match(/^PRIORITY=(P[0-5])$/m)?.[1]||fallbackPriority;
 }
 
+export function isOwnerOnlyP0(body,title=''){
+  return backlogPriority(body,'P3')==='P0'||/\[P0\]/i.test(String(title||''));
+}
+
 export function backlogAssignedExecutor(body){
   const text=String(body||'');
   for(const key of ['ASSIGNED_EXECUTOR','PRIMARY_EMPLOYEE']){

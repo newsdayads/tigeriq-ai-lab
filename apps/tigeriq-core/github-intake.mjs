@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { Pool } from 'pg';
-import { backlogOwnerDirect, bodyValue as policyBodyValue, routingFault, sortBacklogSpecs } from './github-backlog-policy.mjs';
+import { backlogOwnerDirect, bodyValue as policyBodyValue, isOwnerOnlyP0, routingFault, sortBacklogSpecs } from './github-backlog-policy.mjs';
 import { activeRoleClaim, classifyWorkOrder } from './work-routing-policy.mjs';
 import { appendPublicEvidenceToSummary, parsePublicEvidenceKeys } from './public-evidence.mjs';
 
@@ -97,6 +97,8 @@ export function isManualOnlyAppChromeMaintenance(title,body){
 export function parseExecutableIssue(issue){
   if(!issue||issue.pull_request||issue.state!=='open')return null;
   const body=String(issue.body||'');
+  const title=String(issue.title||'');
+  if(isOwnerOnlyP0(body,title))return null;
   if(!hasExactFlag(body,'TIGERIQ_EXECUTABLE')||!hasExactFlag(body,'OWNER_POLICY','AUTO'))return null;
   if(!hasExactFlag(body,'NO_CODE_CHANGE')||!hasExactFlag(body,'NO_PC01_SHELL'))return null;
   if(isManualOnlyAppChromeMaintenance(issue.title,body))return null;
@@ -105,7 +107,6 @@ export function parseExecutableIssue(issue){
   const capability=classification.route==='OPENCLAW'?'pc_operator':classification.capability;
   const resourceScope=bodyValue(body,'RESOURCE_SCOPE');
   if(classification.route==='OPENCLAW'&&(!resourceScope||!extractPcOperatorInstruction(body)))return null;
-  const title=String(issue.title||'');
   const sourceRevision=createHash('sha256').update(title).update('\n').update(body).update('\n').update(String(issue.state_reason||'')).digest('hex').slice(0,12);
   const dispatchLane=classification.route==='OPENCLAW'?'PC_OPERATOR':classification.route;
   return {

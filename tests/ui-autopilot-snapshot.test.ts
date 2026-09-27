@@ -15,6 +15,7 @@ describe('UI autopilot issue contract',()=>{
     expect(parseAutoUiIssue(issue(11,{body:body('P2','NV03')}))).toMatchObject({workerId:'NV03',priority:'P2'});
     expect(parseAutoUiIssue(issue(12,{body:body('P5','NV04')}))).toMatchObject({workerId:'NV04',priority:'P5'});
     expect(parseAutoUiIssue(issue(13,{body:body('P0')}))).toBeNull();
+    expect(parseAutoUiIssue(issue(131,{title:'[P0] title-only',body:body('P1')}))).toBeNull();
     expect(parseAutoUiIssue(issue(14,{body:body().replace('OWNER_POLICY=AUTO_UI','OWNER_POLICY=AUTO')}))).toBeNull();
   });
   it('fails closed when a required safety flag or employee is wrong',()=>{expect(parseAutoUiIssue(issue(15,{body:body().replace('NO_DESTRUCTIVE=true','NO_DESTRUCTIVE=false')}))).toBeNull();expect(parseAutoUiIssue(issue(16,{body:body('P1','NV05')}))).toBeNull();});

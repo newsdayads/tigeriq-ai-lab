@@ -57,6 +57,7 @@ export function parseAutoUiIssue(issue,{allowClosed=false,releaseSatisfied=false
   const closed=issue.state==='closed';
   if(!allowClosed&&issue.state!=='open')return null;
   const body=String(issue.body||'');
+  if(/\[P0\]/i.test(String(issue.title||'')))return null;
   const workerId=exactValue(body,'PRIMARY_EMPLOYEE');
   if(!SUPPORTED_WORKERS.has(workerId))return null;
   const priority=exactValue(body,'PRIORITY');

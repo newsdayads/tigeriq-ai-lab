@@ -48,27 +48,27 @@ describe('GitHub Core intake guardrails',()=>{
     expect(hydrated).toContain('ERROR: GITHUB_HTTP_404');
   });
 
-  it('legacy and assigned P0 pc_operator become autonomous P1 unless an explicit Owner marker exists',()=>{
+  it('excludes P0 from employee intake even when stale assignment or AUTO markers exist',()=>{
     const legacy={...base,number:1528,body:'TIGERIQ_EXECUTABLE=true\nOWNER_POLICY=AUTO\nOWNER_DIRECT=true\nPRIORITY=P0\nCAPABILITY=pc_operator\nNO_CODE_CHANGE=true\nNO_PC01_SHELL=true\nRESOURCE_SCOPE=OPENCLAW_TEST\nASSIGNED_ACTION\ntigeriq_pc tcp_probe host=127.0.0.1 port=18789\nACCEPTANCE\nPASS'};
-    expect(parseExecutableIssue(legacy)).toMatchObject({number:1528,priority:'P1',sourcePriority:'P0',legacyP0Autonomous:true,ownerControlled:false,capability:'pc_operator'});
+    expect(parseExecutableIssue(legacy)).toBeNull();
     const assigned={...legacy,body:legacy.body.replace('CAPABILITY=pc_operator','CAPABILITY=pc_operator\nASSIGNED_EXECUTOR=NV06')};
-    expect(parseExecutableIssue(assigned)).toMatchObject({priority:'P1',sourcePriority:'P0',legacyP0Autonomous:true,ownerControlled:false,targetWorker:'NV06'});
+    expect(parseExecutableIssue(assigned)).toBeNull();
     const ownerHeld={...assigned,body:assigned.body+'\nOWNER_HOLD=true'};
-    expect(parseExecutableIssue(ownerHeld)).toMatchObject({priority:'P0',sourcePriority:'P0',legacyP0Autonomous:false,ownerControlled:true,targetWorker:'NV06',route:'OPENCLAW'});
-    expect(extractPcOperatorInstruction(legacy.body)).toContain('tcp_probe');
+    expect(parseExecutableIssue(ownerHeld)).toBeNull();
+    expect(parseExecutableIssue({...legacy,title:'[P0] title-only marker',body:legacy.body.replace('PRIORITY=P0','PRIORITY=P1')})).toBeNull();
   });
 
   it('allows only explicitly bounded App Chrome request-state work through protected-scope filtering',()=>{
     const boundedBody=[
-      'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','OWNER_DIRECT=true','PRIORITY=P0','CAPABILITY=pc_operator',
+      'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','OWNER_DIRECT=true','PRIORITY=P1','CAPABILITY=pc_operator',
       'APP_CHROME_REQUEST_ONLY=true','RESOURCE_SCOPE=APP_CHROME_DEPLOY_REQUEST_STATE',
       'NO_CODE_CHANGE=true','NO_PC01_SHELL=true',
       'ASSIGNED_ACTION','Use tigeriq_pc file_write only:','path=D:\\TigerIQ\\State\\appchrome-install-request.json',
       'Then use tigeriq_pc file_read on the same path.','ACCEPTANCE','PASS',
     ].join('\n');
     expect(isBoundedAppChromeRequestOnly(boundedBody)).toBe(true);
-    expect(parseExecutableIssue({...base,number:1881,title:'[P0][OPENCLAW] request only',body:boundedBody})).toMatchObject({
-      number:1881,priority:'P1',sourcePriority:'P0',capability:'pc_operator',dispatchLane:'PC_OPERATOR',resourceScope:'APP_CHROME_DEPLOY_REQUEST_STATE'
+    expect(parseExecutableIssue({...base,number:1881,title:'[P1][OPENCLAW] request only',body:boundedBody})).toMatchObject({
+      number:1881,priority:'P1',sourcePriority:'P1',capability:'pc_operator',dispatchLane:'PC_OPERATOR',resourceScope:'APP_CHROME_DEPLOY_REQUEST_STATE'
     });
     const mutation=boundedBody.replace('APP_CHROME_REQUEST_ONLY=true\n','').replace('ASSIGNED_ACTION\nUse tigeriq_pc file_write only:','ALLOW_PATH_PREFIX=apps/chrome-controller/\nASSIGNED_ACTION\nUse tigeriq_pc file_write only:');
     expect(parseExecutableIssue({...base,number:1882,title:'[APP-CHROME] mutation',body:mutation})).toBeNull();
