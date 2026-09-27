@@ -8,6 +8,8 @@ import {
   releaseNv02WorkOrder,
   nv02PrioritySummary,
   activeResourceScopes,
+  activeNv02Lease,
+  resourceOwnershipConflict,
 } from '../apps/tigeriq-core/nv02-local-self-pull.mjs';
 import { reconcileStaleDependency } from '../apps/tigeriq-core/dependency-reconcile.mjs';
 
@@ -21,7 +23,10 @@ const TIMEOUT_MS = 30 * 60 * 1000;
 function gh(args) {
   return JSON.parse(execFileSync('gh', ['api', ...args], { encoding: 'utf8', maxBuffer: 128 * 1024 * 1024 }));
 }
-function issueComments(number) { return gh([`repos/${OWNER}/${REPO}/issues/${number}/comments?per_page=100`]); }
+function issueComments(number) {
+  const pages = gh([`repos/${OWNER}/${REPO}/issues/${number}/comments?per_page=100`, '--paginate', '--slurp']);
+  return pages.flat();
+}
 function activeIssueComments() {
   const pages = gh([`repos/${OWNER}/${REPO}/issues/comments?per_page=100`, '--paginate', '--slurp']);
   return pages.flat();
@@ -45,19 +50,26 @@ function dependencyMap(issue) {
   }
   return map;
 }
-async function reconcile(issue) {
+function assertLeaseOwnership(issue, lease) {
+  const own = activeNv02Lease(issueComments(issue.number));
+  if (!own || own.LEASE_ID !== lease.leaseId) throw new Error(`NV02_WRITE_GUARD_LEASE_LOST:${issue.number}`);
+  const conflict = resourceOwnershipConflict(issue, activeIssueComments(), { leaseId: lease.leaseId });
+  if (conflict) throw new Error(`NV02_WRITE_GUARD_SCOPE_HELD:${issue.number}:${conflict.resourceScope}`);
+  return true;
+}
+async function reconcile(issue, lease) {
   const refs = String(issue.body || '').match(/^DEPENDS_ON\s*=\s*(.+)$/mi)?.[1]?.split(/[ ,]+/).map((x) => Number(x.replace(/^#/, ''))).filter(Boolean) || [];
-  if (!refs.length) return issue;
+  if (!refs.length) return { action: 'NOOP' };
   const dependencies = new Map(refs.map((ref) => { const dep = gh([`repos/${OWNER}/${REPO}/issues/${ref}`]); return [ref, dep]; }));
   const existingComments = issueComments(issue.number);
-  await reconcileStaleDependency({
+  return reconcileStaleDependency({
     issue, dependencies,
     alreadyReconciled: existingComments.some((x) => String(x.body || '').includes('[DEPENDENCY_RECONCILE]')),
+    assertWriteOwnership: () => assertLeaseOwnership(issue, lease),
     comment: postComment,
     updateBody: (number, body) => gh([`repos/${OWNER}/${REPO}/issues/${number}`, '-X', 'PATCH', '-f', `body=${body}`]),
     closeIssue: (number) => gh([`repos/${OWNER}/${REPO}/issues/${number}`, '-X', 'PATCH', '-f', 'state=closed']),
   });
-  return issue;
 }
 async function controllerDispatch(issue, lease) {
   const response = await fetch(`${CONTROLLER}/api/workers/NV02/dispatch`, {
@@ -93,49 +105,55 @@ async function setIdle() {
 console.log(JSON.stringify({ event: 'NV02_COMMAND_02', mode: 'SELF_PULL', policy: NV02_LOCAL_GITHUB_SELF_PULL }));
 const candidateIssues = summaries()
   .filter((summary) => nv02PrioritySummary(summary) !== 'P0')
-  .map((summary) => details(summary))
-  .map((issue) => reconcile(issue))
-  .map(async (promise) => promise)
-  ;
-const reconciledCandidates = await Promise.all(candidateIssues);
+  .map((summary) => details(summary));
 const candidateDependencies = new Map();
-for (const candidate of reconciledCandidates) for (const [id, ready] of dependencyMap(candidate)) candidateDependencies.set(id, ready);
+for (const candidate of candidateIssues) for (const [id, ready] of dependencyMap(candidate)) candidateDependencies.set(id, ready);
 const candidateHeldScopes = new Set();
 for (const scope of activeResourceScopes(activeIssueComments())) candidateHeldScopes.add(scope);
-const selected = selectNv02WorkOrder(reconciledCandidates
+const selected = selectNv02WorkOrder(candidateIssues
   .filter((issue) => !hasTerminalEvidence(issue)), { dependencies: candidateDependencies, heldScopes: candidateHeldScopes });
 if (!selected) { await setIdle(); console.log(JSON.stringify({ event: 'NV02_READY_NO_ELIGIBLE_WORK', ...noEligibleNv02Work(), idle: 'DURABLE' })); process.exit(0); }
 const issue = selected.issue;
-const lease = await claimNv02WorkOrder({ issue, comments: issueComments(issue.number), postComment });
+const lease = await claimNv02WorkOrder({
+  issue,
+  comments: issueComments(issue.number),
+  allComments: activeIssueComments(),
+  refreshAllComments: async () => activeIssueComments(),
+  postComment,
+});
 if (!lease) throw new Error(`NV02_LEASE_BUSY_OR_LOST:${issue.number}`);
 console.log(JSON.stringify({ event: 'TIGERIQ_NV02_LEASE_ACQUIRED', issue: issue.number, resourceScope: lease.resourceScope, leaseId: lease.leaseId }));
 let result = null;
 try {
-  await controllerDispatch(issue, lease);
-  const started = Date.now();
-  while (Date.now() - started < TIMEOUT_MS) {
-    const fresh = details(issue);
-    result = terminal(fresh, issueComments(issue.number));
-    if (result) break;
-    await new Promise((resolve) => setTimeout(resolve, POLL_MS));
+  const reconcileResult = await reconcile(issue, lease);
+  if (reconcileResult?.action === 'CLOSED_TERMINAL') {
+    result = 'DONE';
+  } else {
+    assertLeaseOwnership(issue, lease);
+    await controllerDispatch(issue, lease);
+    const started = Date.now();
+    while (Date.now() - started < TIMEOUT_MS) {
+      const fresh = details(issue);
+      result = terminal(fresh, issueComments(issue.number));
+      if (result) break;
+      await new Promise((resolve) => setTimeout(resolve, POLL_MS));
+    }
+    if (!result) result = 'BLOCKED';
   }
-  if (!result) result = 'BLOCKED';
 } catch (error) {
   result = 'DISPATCH_BLOCKED';
   console.error(JSON.stringify({ event: 'NV02_DISPATCH_BLOCKED', issue: issue.number, error: String(error) }));
 }
-await releaseNv02WorkOrder({ issueNumber: issue.number, leaseId: lease.leaseId, state: result, postComment });
+await releaseNv02WorkOrder({ issueNumber: issue.number, leaseId: lease.leaseId, resourceScope: lease.resourceScope, state: result, postComment });
 console.log(JSON.stringify({ event: 'TIGERIQ_NV02_LEASE_RELEASED', issue: issue.number, resourceScope: lease.resourceScope, leaseId: lease.leaseId, state: result }));
 const nextIssues = summaries()
   .filter((summary) => nv02PrioritySummary(summary) !== 'P0' && Number(summary.number) !== Number(issue.number))
-  .map((summary) => details(summary))
-  .map((issue) => reconcile(issue));
-const reconciledNext = await Promise.all(nextIssues);
+  .map((summary) => details(summary));
 const nextDependencies = new Map();
-for (const candidate of reconciledNext) for (const [id, ready] of dependencyMap(candidate)) nextDependencies.set(id, ready);
+for (const candidate of nextIssues) for (const [id, ready] of dependencyMap(candidate)) nextDependencies.set(id, ready);
 const nextHeldScopes = new Set();
 for (const scope of activeResourceScopes(activeIssueComments())) nextHeldScopes.add(scope);
-const next = selectNv02WorkOrder(reconciledNext.filter((candidate) => !hasTerminalEvidence(candidate)), { dependencies: nextDependencies, heldScopes: nextHeldScopes });
+const next = selectNv02WorkOrder(nextIssues.filter((candidate) => !hasTerminalEvidence(candidate)), { dependencies: nextDependencies, heldScopes: nextHeldScopes });
 console.log(JSON.stringify(next
   ? { event: 'NV02_NEXT_WORK_ORDER_READY', issue: next.issue.number, priority: next.result.priority, resourceScope: next.result.resourceScope }
   : { event: 'NV02_READY_NO_ELIGIBLE_WORK', ...noEligibleNv02Work(), idle: 'DURABLE' }));
