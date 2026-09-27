@@ -26,7 +26,7 @@ function postComment(number, body) {
   return gh([`repos/${OWNER}/${REPO}/issues/${number}/comments`, '-X', 'POST', '-f', `body=${body}`]);
 }
 function summaries() {
-  return gh([`repos/${OWNER}/${REPO}/issues?state=open&per_page=100&sort=updated&direction=asc`, '--jq', '[.[] | select(.pull_request|not) | {number,title,html_url,state,updated_at}]']);
+  return gh([`repos/${OWNER}/${REPO}/issues?state=open&per_page=100&sort=updated&direction=desc`, '--jq', '[.[] | select(.pull_request|not) | {number,title,html_url,state,updated_at}]']);
 }
 function details(summary) { return gh([`repos/${OWNER}/${REPO}/issues/${summary.number}`]); }
 function dependencyMap(issue) {
