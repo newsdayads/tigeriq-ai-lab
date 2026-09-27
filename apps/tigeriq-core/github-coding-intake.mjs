@@ -61,6 +61,33 @@ export function extractCodingDependencies(body){
   return [...new Set(values)].slice(0,16);
 }
 
+export function parseCodingRouteMetadata(body){
+  const text=String(body||'');
+  const targetRaw=String(text.match(/^TARGET_EMPLOYEE=(.+)$/m)?.[1]||'').trim();
+  const currentPrRaw=String(text.match(/^CURRENT_PR=(.+)$/m)?.[1]||'').trim();
+  const targetHeadRaw=String(text.match(/^TARGET_HEAD=(.+)$/m)?.[1]||'').trim();
+
+  let targetEmployee=null;
+  if(targetRaw){
+    if(!/^NV\d{2,3}$/i.test(targetRaw))return {valid:false,reason:'TARGET_EMPLOYEE_INVALID',targetEmployee:null,currentPr:null,targetHead:null};
+    targetEmployee=targetRaw.toUpperCase();
+  }
+
+  const hasPr=Boolean(currentPrRaw),hasHead=Boolean(targetHeadRaw);
+  if(hasPr!==hasHead)return {valid:false,reason:'CURRENT_PR_TARGET_HEAD_PAIR_REQUIRED',targetEmployee,currentPr:null,targetHead:null};
+
+  let currentPr=null,targetHead=null;
+  if(hasPr){
+    const match=currentPrRaw.match(/^#?(\d+)$/);
+    const value=Number(match?.[1]||0);
+    if(!match||!Number.isInteger(value)||value<=0)return {valid:false,reason:'CURRENT_PR_INVALID',targetEmployee,currentPr:null,targetHead:null};
+    if(!/^[0-9a-f]{40}$/i.test(targetHeadRaw))return {valid:false,reason:'TARGET_HEAD_INVALID',targetEmployee,currentPr:null,targetHead:null};
+    currentPr=value;
+    targetHead=targetHeadRaw.toLowerCase();
+  }
+  return {valid:true,reason:null,targetEmployee,currentPr,targetHead};
+}
+
 export function parseCodingScope(body){
   const text=String(body||'');
   const resourceScope=String(text.match(/^RESOURCE_SCOPE=(.+)$/m)?.[1]||'').trim();
@@ -94,7 +121,9 @@ export function parseCodingIssue(issue){
   const scopeLease=parseCodingScope(body);
   const controlRepair=controlPlaneRepairIntent(body);
   if(scopeLease.paths.some(isProtectedControlPlanePath)&&!controlRepair.delegated)return null;
-  return {number:Number(issue.number),title:String(issue.title||''),body,comments:Math.max(0,Number(issue.comments||0)),priority,sourcePriority,legacyP0Autonomous,ownerControlled,assignedExecutor,url:String(issue.html_url||''),dependsOn:extractCodingDependencies(body),ownerDirect:backlogOwnerDirect(body),scopeLease,controlRepair};
+  const routing=parseCodingRouteMetadata(body);
+  if(!routing.valid)return null;
+  return {number:Number(issue.number),title:String(issue.title||''),body,comments:Math.max(0,Number(issue.comments||0)),priority,sourcePriority,legacyP0Autonomous,ownerControlled,assignedExecutor,url:String(issue.html_url||''),dependsOn:extractCodingDependencies(body),ownerDirect:backlogOwnerDirect(body),scopeLease,controlRepair,routing};
 }
 
 async function jsonFetch(fetchImpl,url,init={}){
@@ -355,7 +384,13 @@ export async function materializeGithubCodingIssues({pool,fetchImpl=fetch,owner=
     let recoveredExisting=false;
     if(out?.id){recoveredExisting=true}
     else{
-      out=await jsonFetch(fetchImpl,`${codingLaneUrl.replace(/\/$/,'')}/api/objectives`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({objective,priority:spec.priority})});
+      out=await jsonFetch(fetchImpl,`${codingLaneUrl.replace(/\/$/,'')}/api/objectives`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({
+        objective,
+        priority:spec.priority,
+        targetEmployee:spec.routing?.targetEmployee||null,
+        currentPr:spec.routing?.currentPr||null,
+        targetHead:spec.routing?.targetHead||null,
+      })});
       if(!out?.id)throw new Error('CODING_OBJECTIVE_ID_MISSING');
       laneStatus={...(laneStatus||{}),objectives:[...(laneStatus?.objectives||[]),{id:out.id,objective,status:'queued'}]};
     }
@@ -369,7 +404,7 @@ export async function materializeGithubCodingIssues({pool,fetchImpl=fetch,owner=
       const priorDispatchObjectiveId=String((await eventData(pool,'GITHUB_CODING_DISPATCHED',spec.number))[0]?.codingObjectiveId||'');
       await mark(pool,'GITHUB_CODING_COMPLETED_REARMED',{issueNumber:spec.number,priorObjectiveId:priorResultObjectiveId||priorDispatchObjectiveId,codingObjectiveId:out.id,reopenKey:completedReopenKey,dispatchKey});
     }
-    await mark(pool,'GITHUB_CODING_DISPATCHED',{issueNumber:spec.number,issueUrl:spec.url,codingObjectiveId:out.id,ownerDirect:spec.ownerDirect,sourcePriority:spec.sourcePriority,dispatchPriority:spec.priority,dispatchReason,scopeLease:spec.scopeLease,dispatchKey,sourceRevision,recoveredExisting,reopenKey:completedReopenKey||null});
+    await mark(pool,'GITHUB_CODING_DISPATCHED',{issueNumber:spec.number,issueUrl:spec.url,codingObjectiveId:out.id,ownerDirect:spec.ownerDirect,sourcePriority:spec.sourcePriority,dispatchPriority:spec.priority,dispatchReason,scopeLease:spec.scopeLease,dispatchKey,sourceRevision,recoveredExisting,reopenKey:completedReopenKey||null,routing:spec.routing||null});
     await comment(fetchImpl,owner,repo,spec.number,token,completedReopenKey?`[REOPEN_REARMED] TigerIQ Coding Lane rearmed this reopened Work Order as ${out.id}. Dispatch: ${dispatchReason}.`:recoveredExisting?`[CLAIM_RECOVERED] TigerIQ Coding Lane already had this issue as ${out.id}; durable dispatch state was restored. Dispatch: ${dispatchReason}.`:`[CLAIM] TigerIQ Coding Lane accepted this issue as ${out.id}. Automatic coding pipeline is active. Dispatch: ${dispatchReason}.`);
     activeScopes.push(spec.scopeLease);
     if(recoveredExisting)recovered++;else created++;
