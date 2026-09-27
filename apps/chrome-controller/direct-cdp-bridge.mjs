@@ -15,6 +15,7 @@ const CONFIG='D:\\TigerIQ\\Apps\\ChromeController\\Config\\chrome-controller.jso
 const LOG='D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\direct-cdp-bridge.jsonl';
 const SEND_BUTTON_WAIT_MS=10000;
 const NV02_CONTINUITY_STATE='D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\nv02-continuity-state.json';
+const NV02_IDLE_MARKER='D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\nv02-ready-no-eligible-work.marker';
 const CONTROLLER='http://127.0.0.1:8798';
 const BINDING='2';
 const NV02_TOKEN=String(process.env.TIGERIQ_NV02_WORKER_TOKEN||'').trim();
@@ -143,7 +144,7 @@ function loadWorkerContinuity(workerId){
     chatLoadBlockedUntil:Number(raw.chatLoadBlockedUntil)||0,
     chatLoadClearCandidateAt:Number(raw.chatLoadClearCandidateAt)||0,
     chatConnectingSince:Number(raw.chatConnectingSince)||0,
-    idleState:String(raw.idleState||''),
+    idleState:fs.existsSync(NV02_IDLE_MARKER)?'READY_NO_ELIGIBLE_WORK':String(raw.idleState||''),
   };
 }
 function saveWorkerContinuity(workerId,state){
@@ -1642,8 +1643,8 @@ async function handleCommand(w,target,command){
     await genericWorkerEvent(w.id,'LOCAL_CONTINUE_DISPATCHED',{prompt});
     return{status:'LOCAL_CONTINUE_SUBMITTED',prompt};
   }
-  if(action==='NV02_IDLE'){if(w.id!=='NV02')return{status:'NV02_IDLE_ONLY'};saveNv02Continuity({...loadNv02Continuity(),idleState:'READY_NO_ELIGIBLE_WORK',pendingContinue:false,awaitingWorkStart:false,nextContinueAt:0});await continuityEvent('READY_NO_ELIGIBLE_WORK',{durable:true});return{status:'READY_NO_ELIGIBLE_WORK_IDLE'};}
-  if(action==='DISPATCH'){if(w.id==='NV02')await ensureNv02ModelProfile(target);const r=await dispatch(target,String(payload.text||''));if(!r?.ok)throw new Error(r?.status||'DISPATCH_FAILED');if(w.id==='NV02')saveNv02Continuity({...loadNv02Continuity(),idleState:'',pendingContinue:false,awaitingWorkStart:true,awaitingWorkStartSince:Date.now()});if(w.id==='NV02')await noteNv02CommandDispatch();return r;}
+  if(action==='NV02_IDLE'){if(w.id!=='NV02')return{status:'NV02_IDLE_ONLY'};fs.writeFileSync(NV02_IDLE_MARKER,`${new Date().toISOString()} READY_NO_ELIGIBLE_WORK\n`);saveNv02Continuity({...loadNv02Continuity(),idleState:'READY_NO_ELIGIBLE_WORK',pendingContinue:false,awaitingWorkStart:false,nextContinueAt:0});await continuityEvent('READY_NO_ELIGIBLE_WORK',{durable:true});return{status:'READY_NO_ELIGIBLE_WORK_IDLE'};}
+  if(action==='DISPATCH'){if(w.id==='NV02')await ensureNv02ModelProfile(target);const r=await dispatch(target,String(payload.text||''));if(!r?.ok)throw new Error(r?.status||'DISPATCH_FAILED');if(w.id==='NV02'){try{fs.unlinkSync(NV02_IDLE_MARKER);}catch{}saveNv02Continuity({...loadNv02Continuity(),idleState:'',pendingContinue:false,awaitingWorkStart:true,awaitingWorkStartSince:Date.now()});}if(w.id==='NV02')await noteNv02CommandDispatch();return r;}
   if(action==='ARCHIVE_CHAT'){const r=await archiveChat(target);if(!r?.ok)throw new Error(r?.status||'ARCHIVE_FAILED');return r;}
   throw new Error(`UNKNOWN_ACTION:${action}`);
 }
