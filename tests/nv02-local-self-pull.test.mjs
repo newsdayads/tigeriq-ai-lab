@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   NV02_LOCAL_GITHUB_SELF_PULL,
+  activeResourceScopes,
   activeNv02Lease,
   buildNv02LocalSelfPullPrompt,
   claimNv02WorkOrder,
@@ -26,23 +27,25 @@ describe('NV02 local GitHub self-pull contract', () => {
     expect(selectNv02WorkOrder([issue(4, '[P0] forbidden', safe('PRIORITY=P0'))])).toBeNull();
   });
 
-  it('skips excluded, owner-held, dependency-blocked, and non-NV02 capabilities', () => {
+  it('skips hard gates but treats capability and role as soft priority only', () => {
     const base = (n, extra) => issue(n, `[P1] ${n}`, safe(`PRIORITY=P1\nRESOURCE_SCOPE=S${n}\n${extra}`));
     expect(selectNv02WorkOrder([base(1, 'AUTO_QUEUE=EXCLUDED')])).toBeNull();
     expect(selectNv02WorkOrder([base(2, 'OWNER_HOLD=true')])).toBeNull();
     expect(selectNv02WorkOrder([base(3, 'DEPENDS_ON=#99')])).toBeNull();
-    expect(selectNv02WorkOrder([base(4, 'CAPABILITY=review')])).toBeNull();
+    expect(selectNv02WorkOrder([base(4, 'CAPABILITY=review')])).not.toBeNull();
     expect(selectNv02WorkOrder([base(5, '')], { heldScopes: new Set(['S5']) })).toBeNull();
-    expect(selectNv02WorkOrder([base(6, 'CAPABILITY=analysis')])[0]).toBeUndefined();
     expect(selectNv02WorkOrder([base(6, 'CAPABILITY=analysis')]).result.mode).toBe('SAFE_FALLBACK');
     expect(selectNv02WorkOrder([base(7, 'CAPABILITY=analysis\nTARGET_EMPLOYEE=CODING')])).toBeNull();
     expect(selectNv02WorkOrder([base(8, 'CAPABILITY=analysis\nREVIEW_INDEPENDENT=true')])).toBeNull();
+    expect(selectNv02WorkOrder([base(9, 'CAPABILITY=coding\nMUTATION_OWNER=CODING')])).not.toBeNull();
+    expect(selectNv02WorkOrder([base(10, 'CAPABILITY=security')])).toBeNull();
   });
 
   it('prefers primary role over safe fallback and rejects active duplicate owner', () => {
     const fallback = issue(30, '[P1] fallback', safe('PRIORITY=P1\nCAPABILITY=research\nRESOURCE_SCOPE=F30'));
     const primary = issue(31, '[P2] primary', safe('PRIORITY=P2\nCAPABILITY=general\nRESOURCE_SCOPE=F31'));
     expect(selectNv02WorkOrder([fallback, primary]).issue.number).toBe(31);
+    expect(selectNv02WorkOrder([fallback, primary, issue(32, '[P3] explicit', safe('PRIORITY=P3\nTARGET_EMPLOYEE=NV02\nCAPABILITY=maintenance\nRESOURCE_SCOPE=F32'))]).issue.number).toBe(32);
     expect(selectNv02WorkOrder([fallback], { activeOwners: new Set(['CODING']) })).not.toBeNull();
     expect(selectNv02WorkOrder([issue(32, '[P1] duplicate', safe('PRIORITY=P1\nCAPABILITY=research\nMUTATION_OWNER=CODING\nRESOURCE_SCOPE=F32'))], { activeOwners: new Set(['CODING']) })).toBeNull();
   });
@@ -89,5 +92,17 @@ describe('NV02 local GitHub self-pull contract', () => {
     await (await import('../apps/tigeriq-core/nv02-local-self-pull.mjs')).releaseNv02WorkOrder({ issueNumber: work.number, leaseId: first.leaseId, state: 'DONE', postComment });
     expect(activeNv02Lease(comments, Date.parse('2026-09-27T00:01:00Z'))).toBeNull();
     expect(buildNv02LocalSelfPullPrompt(work, first)).toContain('Core không assign/route NV02');
+  });
+
+  it('blocks only live leases and lets released/stale coding work fall back to NV02', () => {
+    const now = Date.parse('2026-09-27T00:00:00Z');
+    const comments = [
+      { id: 1, body: '[TIGERIQ_ROLE_CLAIM_V1]\nWORKER=NV09\nRESOURCE_SCOPE=CODING_RETRY\nLEASE_UNTIL=2026-09-27T01:00:00Z' },
+      { id: 2, body: '[TIGERIQ_ROLE_RELEASE_V1]\nWORKER=NV09\nRESOURCE_SCOPE=CODING_RETRY' },
+    ];
+    expect(activeResourceScopes(comments, now)).toEqual(new Set());
+    const released = issue(40, '[P2] coding retry', safe('PRIORITY=P2\nCAPABILITY=coding\nMUTATION_OWNER=NV09\nRESOURCE_SCOPE=CODING_RETRY'));
+    expect(selectNv02WorkOrder([released], { heldScopes: activeResourceScopes(comments, now) })).not.toBeNull();
+    expect(activeResourceScopes([{ id: 1, body: '[TIGERIQ_ROLE_CLAIM_V1]\nWORKER=NV09\nRESOURCE_SCOPE=CODING_RETRY\nLEASE_UNTIL=2026-09-27T01:00:00Z' }], now)).toEqual(new Set(['CODING_RETRY']));
   });
 });
