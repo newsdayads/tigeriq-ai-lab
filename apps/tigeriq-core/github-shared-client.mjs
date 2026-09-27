@@ -1,5 +1,8 @@
 const cache=new Map();
 const inflight=new Map();
+const fetchIds=new WeakMap();
+let nextFetchId=1;
+function fetchIdentity(fetchImpl){if((typeof fetchImpl!=='function'&&typeof fetchImpl!=='object')||fetchImpl===null)return 'default';if(!fetchIds.has(fetchImpl))fetchIds.set(fetchImpl,nextFetchId++);return String(fetchIds.get(fetchImpl))}
 const DEFAULT_FRESH_MS=Number(process.env.TIGERIQ_GITHUB_SHARED_CACHE_MS||10000);
 const stats={requests:0,network:0,memoryHits:0,notModified:0,writes:0,lastRemaining:null,lastReset:null,lastRequestAt:null};
 
@@ -40,7 +43,7 @@ export async function githubRequestJson(fetchImpl,url,token='',init={}){
     return response.status===204?{}:body;
   }
 
-  const key=String(url);
+  const key=fetchIdentity(fetchImpl)+':'+String(url);
   const now=Date.now();
   const prior=cache.get(key);
   const freshMs=Math.max(0,Number(init.freshMs??DEFAULT_FRESH_MS));
