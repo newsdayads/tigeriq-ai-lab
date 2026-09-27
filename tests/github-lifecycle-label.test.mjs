@@ -68,6 +68,14 @@ describe('GitHub terminal lifecycle label',()=>{
     expect(coding).toMatch(/hasEffectiveBlockedFinal[\s\S]*?objectiveMarkerExists\(pool,'GITHUB_CODING_TERMINAL_LABEL_SYNCED',n,id\)[\s\S]*?addTerminalBlockedLabel[\s\S]*?GITHUB_CODING_TERMINAL_LABEL_SYNCED/);
   });
 
+
+  it('closes completed GitHub issues before clearing stale terminal projection',()=>{
+    const core=readFileSync(new URL('../apps/tigeriq-core/github-intake.mjs',import.meta.url),'utf8');
+    const coding=readFileSync(new URL('../apps/tigeriq-core/github-coding-intake.mjs',import.meta.url),'utf8');
+    expect(core).toMatch(/commentIssue\(fetchImpl,owner,repo,number,formatResultComment\(row\),token\);[\s\S]*?closeIssue\(fetchImpl,owner,repo,number,token\);[\s\S]*?clearTerminalBlockedLabel\(\{fetchImpl,owner,repo,issueNumber:number,token\}\)/);
+    expect(coding).toMatch(/\[RESULT\][\s\S]*?await close\(fetchImpl,owner,repo,n,token\);[\s\S]*?clearTerminalBlockedLabel\(\{fetchImpl,owner,repo,issueNumber:n,token\}\);[\s\S]*?GITHUB_CODING_RESULT_REPORTED/);
+  });
+
   it('wires Core, Coding and Live projection to the shared lifecycle label',()=>{
     const core=readFileSync(new URL('../apps/tigeriq-core/github-intake.mjs',import.meta.url),'utf8');
     const coding=readFileSync(new URL('../apps/tigeriq-core/github-coding-intake.mjs',import.meta.url),'utf8');
