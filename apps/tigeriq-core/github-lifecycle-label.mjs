@@ -23,6 +23,9 @@ async function requestJson(fetchImpl,url,token,init={}){
     const error=new Error(`GITHUB_HTTP_${response.status}:${String(body?.message||raw||'').slice(0,300)}`);
     error.status=response.status;
     error.body=body;
+    error.retryAfter=response.headers?.get?.('retry-after')||'';
+    error.rateLimitRemaining=response.headers?.get?.('x-ratelimit-remaining')||'';
+    error.rateLimitReset=response.headers?.get?.('x-ratelimit-reset')||'';
     throw error;
   }
   return body;
