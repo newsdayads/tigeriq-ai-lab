@@ -68,12 +68,16 @@ export function buildNv02LocalSelfPullPrompt(issue, lease) {
   ].join('\n');
 }
 
-function leaseFields(body) { return fields(String(body || '').slice(String(body || '').indexOf(NV02_LEASE_MARKER))); }
+function leaseFields(body, marker) {
+  const text = String(body || '');
+  return fields(text.slice(text.indexOf(marker)));
+}
 export function activeNv02Lease(comments = [], nowMs = Date.now()) {
   let active = null;
   for (const comment of [...comments].sort((a, b) => Number(a.id) - Number(b.id))) {
     const body = String(comment?.body || '');
-    const meta = body.includes(NV02_LEASE_MARKER) || body.includes(NV02_RELEASE_MARKER) ? leaseFields(body) : null;
+    const marker = body.includes(NV02_LEASE_MARKER) ? NV02_LEASE_MARKER : body.includes(NV02_RELEASE_MARKER) ? NV02_RELEASE_MARKER : '';
+    const meta = marker ? leaseFields(body, marker) : null;
     if (body.includes(NV02_LEASE_MARKER) && meta?.LEASE_ID && Date.parse(meta.EXPIRES_AT) > nowMs) active = meta;
     if (body.includes(NV02_RELEASE_MARKER) && meta?.LEASE_ID === active?.LEASE_ID) active = null;
   }
