@@ -43,6 +43,11 @@ describe('Web Control workforce projection',()=>{
     expect(workforceJs).toContain("Runtime/API: không có");
     expect(workforceJs).toContain('STATUS_ORDER');
     expect(workforceJs).toContain("state==='working'");
+    expect(workforceJs).toContain("STALE_ERROR:'LỖI CŨ'");
+    expect(workforceJs).toContain('HEALTH_FRESH_MS=30*60*1000');
+    expect(workforceJs).toContain('runtimeTruth');
+    expect(workforceJs).toContain('Usage 24h');
+    expect(workforceJs).toContain('Quota: provider chưa trả số dư');
   });
 
   it('locks the employee strip to exactly two fixed rows with horizontal scrolling',()=>{

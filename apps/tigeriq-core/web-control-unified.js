@@ -3,13 +3,40 @@
   if (window.__tigerIqUnifiedWebControlV2) return;
   window.__tigerIqUnifiedWebControlV2 = true;
 
-  const STATUS = {IDLE:'RẢNH',BUSY:'ĐANG LÀM',READY:'SẴN SÀNG',WAIT_KEY:'CHỜ KEY',RATE_LIMITED:'HẾT HẠN MỨC',OFFLINE:'NGOẠI TUYẾN',ERROR:'LỖI',DISABLED:'TẮT',ONLINE:'ONLINE'};
+  const STATUS = {IDLE:'RẢNH',BUSY:'ĐANG LÀM',READY:'SẴN SÀNG',WAIT_KEY:'CHỜ KEY',RATE_LIMITED:'HẾT HẠN MỨC',OFFLINE:'NGOẠI TUYẾN',ERROR:'LỖI',AUTH_ERROR:'LỖI AUTH',CONFIG_ERROR:'LỖI CẤU HÌNH',CONTRACT_ERROR:'LỖI RESPONSE',STALE_ERROR:'LỖI CŨ',DISABLED:'TẮT',ONLINE:'ONLINE'};
   const PROVIDER_MARK = {ollama:'🦙',groq:'⚡',gemini:'✦',openrouter:'⬡',mistral:'M',cloudflare:'☁',huggingface:'🤗',vercel:'▲',watsonx:'◉',cohere:'C',nvidia:'N'};
   const PROVIDER_COLOR = {ollama:'#fff',groq:'#ff5533',gemini:'#8e75b2',openrouter:'#dbeafe',mistral:'#fa520f',cloudflare:'#f38020',huggingface:'#ffd21e',vercel:'#fff',watsonx:'#4da3ff',cohere:'#7bdcb5',nvidia:'#76b900'};
   const safe = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const fmt = value => value ? new Date(value).toLocaleTimeString('vi-VN',{hour12:false}) : '—';
   const rel = value => { if(!value)return '—'; const sec=Math.max(0,Math.floor((Date.now()-new Date(value))/1000)); if(sec<60)return `${sec}s`; if(sec<3600)return `${Math.floor(sec/60)}p`; if(sec<86400)return `${Math.floor(sec/3600)}h`; return `${Math.floor(sec/86400)}d`; };
   const healthJobs = d => d?.jobs || [];
+  const HEALTH_FRESH_MS=30*60*1000;
+  const timestampAge=(value,now=Date.now())=>{const ts=Date.parse(String(value||''));return Number.isFinite(ts)?Math.max(0,now-ts):Infinity;};
+  const quotaSummary=r=>{const q=r?.quota_state;if(!q||typeof q!=='object')return 'Quota chưa có dữ liệu';if(q.remaining!=null)return `Quota còn ${q.remaining}${q.reset_at?` · reset ${q.reset_at}`:''}`;if(q.known===false)return 'Quota provider chưa trả số dư';return q.usable===false?'Quota không khả dụng':'Quota có thể sử dụng';};
+
+  function resourceHealthTruth(r,now=Date.now()){
+    const raw=String(r?.status||'').toUpperCase();
+    const error=String(r?.last_error||'').toLowerCase();
+    const age=timestampAge(r?.last_seen_at,now);
+    const fresh=age<=HEALTH_FRESH_MS;
+    const cooldownAt=Date.parse(String(r?.cooldown_until||''));
+    const cooling=Number.isFinite(cooldownAt)&&cooldownAt>now;
+    if(['BUSY','IDLE','READY'].includes(raw)){
+      return {status:raw,current:true,historical:Boolean(error),detail:error?`Lỗi trước đó: ${error} · ${Math.round(age/60000)}p trước`:'Đang khỏe',cooling:false};
+    }
+    if(raw==='RATE_LIMITED'){
+      if(cooling||(fresh&&/rate|429|quota/.test(error)))return {status:'RATE_LIMITED',current:true,historical:false,detail:cooling?`Rate limit hiện hành · thử lại ~${Math.max(1,Math.ceil((cooldownAt-now)/60000))}p`:'Rate limit vừa ghi nhận',cooling};
+      return {status:'STALE_ERROR',current:false,historical:true,detail:`Rate limit cũ · telemetry ${Math.round(age/60000)}p trước`,cooling:false};
+    }
+    if(raw==='ERROR'){
+      if(!fresh)return {status:'STALE_ERROR',current:false,historical:true,detail:`Lỗi cũ: ${error||'unknown'} · telemetry ${Math.round(age/60000)}p trước`,cooling:false};
+      if(/auth|401|403/.test(error))return {status:'AUTH_ERROR',current:true,historical:false,detail:'Lỗi xác thực hiện hành',cooling:false};
+      if(/config|configuration/.test(error))return {status:'CONFIG_ERROR',current:true,historical:false,detail:'Lỗi cấu hình hiện hành',cooling:false};
+      if(/invalid_response|schema|empty_response|unexpected_response/.test(error))return {status:'CONTRACT_ERROR',current:true,historical:false,detail:'Lỗi response/contract hiện hành',cooling:false};
+    }
+    return {status:raw||'OFFLINE',current:true,historical:false,detail:error?`Lỗi hiện tại: ${error}`:raw||'OFFLINE',cooling:false};
+  }
+
 
   function installLiveBar(){
     const topbar=document.querySelector('.topbar');
@@ -63,22 +90,27 @@
   }
 
   function richWorkerCard(r){
-    const ok=Number(r.calls_success_24h??r.success_count??0), fail=Number(r.calls_failure_24h??r.failure_count??0), total=ok+fail, rate=total?Math.round(ok*100/total):null;
+    const ok=Number(r.calls_success_24h||0), fail=Number(r.calls_failure_24h||0), total=ok+fail, rate=total?Math.round(ok*100/total):null;
+    const allOk=Number(r.success_count||0),allFail=Number(r.failure_count||0);
     const latency=Number.isFinite(Number(r.last_latency_ms))?`${(Number(r.last_latency_ms)/1000).toFixed(1)}s`:'—';
-    const cooldown=r.cooldown_until&&new Date(r.cooldown_until)>new Date()?Math.max(1,Math.ceil((new Date(r.cooldown_until)-Date.now())/60000)):null;
-    const extra=cooldown?`Thử lại ~${cooldown}p`:r.last_error?`Lỗi cuối: ${safe(r.last_error)}`:'';
+    const truth=resourceHealthTruth(r);
     const provider=String(r.provider||'').toLowerCase(), mark=PROVIDER_MARK[provider]||String(r.name||'?').slice(0,1).toUpperCase(), brand=PROVIDER_COLOR[provider]||'#fff';
-    return `<article class="worker" data-provider="${safe(provider)}" data-status="${safe(r.status)}"><div class="tq-worker-head"><div class="tq-worker-id">${safe(r.employee_id)}</div><div class="tq-statusline ${safe(r.status)}"><span class="dot ${r.status==='BUSY'?'pulse':''}"></span><span class="tq-spark"><i></i><i></i><i></i><i></i><i></i></span></div></div><div class="tq-provider-row"><div class="tq-logo" style="--brand:${safe(brand)}">${safe(mark)}</div><div class="tq-provider-copy"><div class="tq-u-provider">${safe(r.name)}</div><div class="tq-u-model">${safe(r.provider)} • ${safe(r.model||'—')}</div></div></div><span class="status ${CLASS?.[r.status]||'gray'}">${safe(STATUS[r.status]||r.status)}</span><div class="kv"><span>Job hiện tại</span><b>${r.current_job_id?safe(String(r.current_job_id).slice(0,14)):'—'}</b></div><div class="kv"><span>Lần cuối</span><b>${safe(fmt(r.last_seen_at))}</b></div><div class="kv"><span>Độ trễ TB</span><b>${safe(latency)}</b></div>${extra?`<div class="kv"><span>Trạng thái</span><b title="${safe(extra)}">${safe(extra)}</b></div>`:''}<div class="tq-u-success"><span>Tỷ lệ thành công</span><b>${rate==null?'Chưa đủ dữ liệu':`${rate}% · ${ok}✓/${fail}✕`}</b></div>${rate==null?'':`<div class="tq-u-bar"><i style="width:${Math.max(0,Math.min(100,rate))}%"></i></div>`}</article>`;
+    const cssClass=truth.status==='BUSY'?'blue':['READY','IDLE'].includes(truth.status)?'green':['RATE_LIMITED','WAIT_KEY'].includes(truth.status)?'amber':['AUTH_ERROR','CONFIG_ERROR','CONTRACT_ERROR','ERROR','OFFLINE'].includes(truth.status)?'red':'gray';
+    const usage=rate==null?'Chưa có usage 24h':`${rate}% · ${ok}✓/${fail}✕`;
+    const totals=(allOk||allFail)?`Tổng ${allOk}✓/${allFail}✕`:'Tổng lịch sử: —';
+    return `<article class="worker" data-provider="${safe(provider)}" data-status="${safe(truth.status)}"><div class="tq-worker-head"><div class="tq-worker-id">${safe(r.employee_id)}</div><div class="tq-statusline ${safe(truth.status)}"><span class="dot ${truth.status==='BUSY'?'pulse':''}"></span><span class="tq-spark"><i></i><i></i><i></i><i></i><i></i></span></div></div><div class="tq-provider-row"><div class="tq-logo" style="--brand:${safe(brand)}">${safe(mark)}</div><div class="tq-provider-copy"><div class="tq-u-provider">${safe(r.name)}</div><div class="tq-u-model">${safe(r.provider)} • ${safe(r.model||'—')}</div></div></div><span class="status ${cssClass}">${safe(STATUS[truth.status]||truth.status)}</span><div class="kv"><span>Job hiện tại</span><b>${r.current_job_id?safe(String(r.current_job_id).slice(0,14)):'—'}</b></div><div class="kv"><span>Lần cuối</span><b>${safe(fmt(r.last_seen_at))} · ${safe(rel(r.last_seen_at))}</b></div><div class="kv"><span>Độ trễ</span><b>${safe(latency)}</b></div><div class="kv"><span>Chẩn đoán</span><b title="${safe(truth.detail)}">${safe(truth.detail)}</b></div><div class="kv"><span>Quota</span><b>${safe(quotaSummary(r))}</b></div><div class="tq-u-success"><span>Usage 24h</span><b>${safe(usage)}</b></div><div class="kv"><span>Lịch sử</span><b>${safe(totals)}</b></div>${rate==null?'':`<div class="tq-u-bar"><i style="width:${Math.max(0,Math.min(100,rate))}%"></i></div>`}</article>`;
   }
 
   function renderUnifiedMetrics(d){
     const rs=d?.resources||[], js=healthJobs(d), workOrders=d?.workOrders||[];
-    const busy=rs.filter(x=>x.status==='BUSY').length;
-    const available=rs.filter(x=>['READY','IDLE','MANUAL'].includes(x.status)).length;
-    const rateLimited=rs.filter(x=>x.status==='RATE_LIMITED').length;
+    const truth=rs.map(resourceHealthTruth);
+    const busy=truth.filter(x=>x.status==='BUSY').length;
+    const available=truth.filter(x=>['READY','IDLE'].includes(x.status)).length;
+    const rateLimited=truth.filter(x=>x.status==='RATE_LIMITED').length;
+    const staleErrors=truth.filter(x=>x.status==='STALE_ERROR').length;
     const webCritical=typeof latestWebHealth!=='undefined' && latestWebHealth!==null && latestWebHealth?.ok!==true ? 1 : 0;
-    const critical=rs.filter(x=>['ERROR','OFFLINE'].includes(x.status)).length + (d?.codingLane && d.codingLane.ok!==true ? 1 : 0) + webCritical;
-    const warnings=rateLimited + rs.filter(x=>x.status==='WAIT_KEY').length;
+    const critical=truth.filter(x=>['AUTH_ERROR','CONFIG_ERROR','CONTRACT_ERROR','ERROR','OFFLINE'].includes(x.status)).length + (d?.codingLane && d.codingLane.ok!==true ? 1 : 0) + webCritical;
+    const warnings=rateLimited + truth.filter(x=>x.status==='WAIT_KEY').length;
     const alerts=critical+warnings;
     const running=js.filter(x=>x.status==='running').length;
     const ok=rs.reduce((n,x)=>n+Number(x.calls_success_24h||0),0), fail=rs.reduce((n,x)=>n+Number(x.calls_failure_24h||0),0), total=ok+fail;
@@ -89,8 +121,8 @@
       ['NV sẵn sàng',available,`${available}/${rs.length} tài nguyên`,''],
       ['Công việc đang mở',workOrders.length,d?.workOrdersMeta?.stale?'GitHub đang dùng cache':'GitHub Work Order',''],
       ['Jobs đang chạy',running,`${js.filter(x=>x.status==='queued').length} đang chờ`,''],
-      ['Cảnh báo',alerts,critical?'Cần xử lý':warnings?'Cần chú ý':'Không có cảnh báo',critical?'bad':warnings?'warn':''],
-      ['Hết hạn mức',rateLimited,rateLimited?'Có tài nguyên cần cooldown':'Không có',''],
+      ['Cảnh báo',alerts,critical?'Cần xử lý':warnings?'Cần chú ý':staleErrors?`${staleErrors} lỗi cũ · không tính cảnh báo`:'Không có cảnh báo',critical?'bad':warnings?'warn':''],
+      ['Hết hạn mức',rateLimited,rateLimited?'Chỉ tính rate-limit hiện hành':'Không có',''],
       ['Tỷ lệ thành công',success,total?`${ok} đạt · ${fail} lỗi`:'Chưa đủ dữ liệu',''],
       ['Độ trễ TB',avg,lats.length?'Theo telemetry tài nguyên':'Chưa đủ dữ liệu','']
     ];
@@ -98,10 +130,10 @@
   }
 
   function renderOwnerHealth(d){
-    const rs=d?.resources||[];
+    const rs=d?.resources||[],truth=rs.map(resourceHealthTruth);
     const webCritical=typeof latestWebHealth!=='undefined' && latestWebHealth!==null && latestWebHealth?.ok!==true ? 1 : 0;
-    const critical=rs.filter(x=>['ERROR','OFFLINE'].includes(x.status)).length + (d?.codingLane && d.codingLane.ok!==true ? 1 : 0) + webCritical;
-    const warnings=rs.filter(x=>['RATE_LIMITED','WAIT_KEY'].includes(x.status)).length;
+    const critical=truth.filter(x=>['AUTH_ERROR','CONFIG_ERROR','CONTRACT_ERROR','ERROR','OFFLINE'].includes(x.status)).length + (d?.codingLane && d.codingLane.ok!==true ? 1 : 0) + webCritical;
+    const warnings=truth.filter(x=>['RATE_LIMITED','WAIT_KEY'].includes(x.status)).length;
     const h=document.getElementById('topHealth');
     if(h){
       const label=critical?'CẦN XỬ LÝ':warnings?'CÓ CẢNH BÁO':'ỔN ĐỊNH';
