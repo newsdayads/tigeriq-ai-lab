@@ -137,7 +137,7 @@ skills:
 
   - id: isolated-parallel-execution
     title: Isolated Parallel Execution
-    state: VALIDATED
+    state: ACTIVE
     version: 1.0.0
     provenance_batch: owner-agent-review-document-research-2026-09-23
     source_log: learning-log/2026-09-23-agent-review-document-research.md
@@ -147,7 +147,7 @@ skills:
 
   - id: automated-code-review-gate
     title: Automated Code Review Gate
-    state: VALIDATED
+    state: ACTIVE
     version: 1.0.0
     provenance_batch: owner-agent-review-document-research-2026-09-23
     source_log: learning-log/2026-09-23-agent-review-document-research.md
