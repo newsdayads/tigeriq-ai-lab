@@ -62,20 +62,67 @@
     oldGrid.remove();
   }
 
+  const HEALTHY_STATUS = new Set(['IDLE','READY','BUSY','ON_DEMAND']);
+  function currentRateLimit(r,now=Date.now()){
+    if(String(r?.status||'')!=='RATE_LIMITED')return false;
+    const q=r?.quota_state&&typeof r.quota_state==='object'?r.quota_state:{};
+    const untilRaw=r?.cooldown_until||q.cooldownUntil||q.resetAt||null;
+    const until=untilRaw?Date.parse(String(untilRaw)):NaN;
+    if(Number.isFinite(until))return until>now;
+    return q.known===true&&q.usable===false;
+  }
+  function errorSubtype(r){
+    const kind=String(r?.last_error||'').toLowerCase();
+    if(/auth|401|403/.test(kind))return 'AUTH';
+    if(/config|credential|wait_key/.test(kind))return 'CẤU HÌNH';
+    if(/invalid_response|schema|contract|empty_response|unexpected_response/.test(kind))return 'CONTRACT';
+    if(/timeout/.test(kind))return 'TIMEOUT';
+    if(/outage|500|502|503|504/.test(kind))return 'OUTAGE';
+    return 'LỖI';
+  }
+  function displayStatus(r){
+    if(String(r?.status||'')==='RATE_LIMITED'&&!currentRateLimit(r))return 'CHỜ KIỂM TRA';
+    if(String(r?.status||'')==='ERROR')return errorSubtype(r);
+    return STATUS[r?.status]||r?.status||'—';
+  }
+  function quotaText(r){
+    const q=r?.quota_state&&typeof r.quota_state==='object'?r.quota_state:{};
+    if(q.known!==true)return '';
+    const parts=[];
+    if(Number.isFinite(Number(q.requestRemaining))&&Number.isFinite(Number(q.requestLimit)))parts.push(`Req ${q.requestRemaining}/${q.requestLimit}`);
+    if(Number.isFinite(Number(q.tokenRemaining))&&Number.isFinite(Number(q.tokenLimit)))parts.push(`Token ${q.tokenRemaining}/${q.tokenLimit}`);
+    if(q.resetAt){const age=Date.parse(q.resetAt)-Date.now();if(Number.isFinite(age)&&age>0)parts.push(`reset ~${Math.max(1,Math.ceil(age/60000))}p`);}
+    return parts.join(' · ');
+  }
+  function statusDetail(r){
+    const status=String(r?.status||'');
+    const healthy=HEALTHY_STATUS.has(status);
+    const error=String(r?.last_error||'').trim();
+    const errorAge=r?.last_error_at?rel(r.last_error_at):'';
+    if(currentRateLimit(r)){
+      const until=r?.cooldown_until||r?.quota_state?.cooldownUntil||r?.quota_state?.resetAt;
+      const mins=until&&Date.parse(until)>Date.now()?Math.max(1,Math.ceil((Date.parse(until)-Date.now())/60000)):null;
+      return `Rate-limit hiện hành${mins?` · thử lại ~${mins}p`:''}`;
+    }
+    if(status==='RATE_LIMITED')return 'Rate-limit cũ · đang chờ kiểm tra lại';
+    if(status==='ERROR'&&error)return `${errorSubtype(r)} hiện hành · ${error}`;
+    if(healthy&&error)return `Lỗi trước đó · ${error}${errorAge&&errorAge!=='—'?` · ${errorAge} trước`:''}`;
+    return '';
+  }
+
   function richWorkerCard(r){
     const ok=Number(r.calls_success_24h??r.success_count??0), fail=Number(r.calls_failure_24h??r.failure_count??0), total=ok+fail, rate=total?Math.round(ok*100/total):null;
     const latency=Number.isFinite(Number(r.last_latency_ms))?`${(Number(r.last_latency_ms)/1000).toFixed(1)}s`:'—';
-    const cooldown=r.cooldown_until&&new Date(r.cooldown_until)>new Date()?Math.max(1,Math.ceil((new Date(r.cooldown_until)-Date.now())/60000)):null;
-    const extra=cooldown?`Thử lại ~${cooldown}p`:r.last_error?`Lỗi cuối: ${safe(r.last_error)}`:'';
+    const extra=statusDetail(r), quota=quotaText(r);
     const provider=String(r.provider||'').toLowerCase(), mark=PROVIDER_MARK[provider]||String(r.name||'?').slice(0,1).toUpperCase(), brand=PROVIDER_COLOR[provider]||'#fff';
-    return `<article class="worker" data-provider="${safe(provider)}" data-status="${safe(r.status)}"><div class="tq-worker-head"><div class="tq-worker-id">${safe(r.employee_id)}</div><div class="tq-statusline ${safe(r.status)}"><span class="dot ${r.status==='BUSY'?'pulse':''}"></span><span class="tq-spark"><i></i><i></i><i></i><i></i><i></i></span></div></div><div class="tq-provider-row"><div class="tq-logo" style="--brand:${safe(brand)}">${safe(mark)}</div><div class="tq-provider-copy"><div class="tq-u-provider">${safe(r.name)}</div><div class="tq-u-model">${safe(r.provider)} • ${safe(r.model||'—')}</div></div></div><span class="status ${CLASS?.[r.status]||'gray'}">${safe(STATUS[r.status]||r.status)}</span><div class="kv"><span>Job hiện tại</span><b>${r.current_job_id?safe(String(r.current_job_id).slice(0,14)):'—'}</b></div><div class="kv"><span>Lần cuối</span><b>${safe(fmt(r.last_seen_at))}</b></div><div class="kv"><span>Độ trễ TB</span><b>${safe(latency)}</b></div>${extra?`<div class="kv"><span>Trạng thái</span><b title="${safe(extra)}">${safe(extra)}</b></div>`:''}<div class="tq-u-success"><span>Tỷ lệ thành công</span><b>${rate==null?'Chưa đủ dữ liệu':`${rate}% · ${ok}✓/${fail}✕`}</b></div>${rate==null?'':`<div class="tq-u-bar"><i style="width:${Math.max(0,Math.min(100,rate))}%"></i></div>`}</article>`;
+    return `<article class="worker" data-provider="${safe(provider)}" data-status="${safe(r.status)}"><div class="tq-worker-head"><div class="tq-worker-id">${safe(r.employee_id)}</div><div class="tq-statusline ${safe(r.status)}"><span class="dot ${r.status==='BUSY'?'pulse':''}"></span><span class="tq-spark"><i></i><i></i><i></i><i></i><i></i></span></div></div><div class="tq-provider-row"><div class="tq-logo" style="--brand:${safe(brand)}">${safe(mark)}</div><div class="tq-provider-copy"><div class="tq-u-provider">${safe(r.name)}</div><div class="tq-u-model">${safe(r.provider)} • ${safe(r.model||'—')}</div></div></div><span class="status ${CLASS?.[r.status]||'gray'}">${safe(displayStatus(r))}</span><div class="kv"><span>Job hiện tại</span><b>${r.current_job_id?safe(String(r.current_job_id).slice(0,14)):'—'}</b></div><div class="kv"><span>Lần cuối</span><b>${safe(fmt(r.last_seen_at))}</b></div><div class="kv"><span>Độ trễ TB</span><b>${safe(latency)}</b></div>${extra?`<div class="kv"><span>Trạng thái</span><b title="${safe(extra)}">${safe(extra)}</b></div>`:''}${quota?`<div class="kv"><span>Quota</span><b title="${safe(quota)}">${safe(quota)}</b></div>`:''}<div class="tq-u-success"><span>Tỷ lệ thành công</span><b>${rate==null?'Chưa đủ dữ liệu':`${rate}% · ${ok}✓/${fail}✕`}</b></div>${rate==null?'':`<div class="tq-u-bar"><i style="width:${Math.max(0,Math.min(100,rate))}%"></i></div>`}</article>`;
   }
 
   function renderUnifiedMetrics(d){
     const rs=d?.resources||[], js=healthJobs(d), workOrders=d?.workOrders||[];
     const busy=rs.filter(x=>x.status==='BUSY').length;
     const available=rs.filter(x=>['READY','IDLE','MANUAL'].includes(x.status)).length;
-    const rateLimited=rs.filter(x=>x.status==='RATE_LIMITED').length;
+    const rateLimited=rs.filter(x=>currentRateLimit(x)).length;
     const webCritical=typeof latestWebHealth!=='undefined' && latestWebHealth!==null && latestWebHealth?.ok!==true ? 1 : 0;
     const critical=rs.filter(x=>['ERROR','OFFLINE'].includes(x.status)).length + (d?.codingLane && d.codingLane.ok!==true ? 1 : 0) + webCritical;
     const warnings=rateLimited + rs.filter(x=>x.status==='WAIT_KEY').length;
@@ -101,7 +148,7 @@
     const rs=d?.resources||[];
     const webCritical=typeof latestWebHealth!=='undefined' && latestWebHealth!==null && latestWebHealth?.ok!==true ? 1 : 0;
     const critical=rs.filter(x=>['ERROR','OFFLINE'].includes(x.status)).length + (d?.codingLane && d.codingLane.ok!==true ? 1 : 0) + webCritical;
-    const warnings=rs.filter(x=>['RATE_LIMITED','WAIT_KEY'].includes(x.status)).length;
+    const warnings=rs.filter(x=>x.status==='WAIT_KEY'||currentRateLimit(x)).length;
     const h=document.getElementById('topHealth');
     if(h){
       const label=critical?'CẦN XỬ LÝ':warnings?'CÓ CẢNH BÁO':'ỔN ĐỊNH';
