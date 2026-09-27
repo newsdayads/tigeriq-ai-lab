@@ -256,4 +256,17 @@ describe('TigerIQ Live Work Order projection', () => {
     ]);
     expect(result.nextQueue).toEqual([]);
   });
+
+  it('keeps terminal-blocked lifecycle label out of executable ranking', () => {
+    const blocked = parseQueueIssue(issue(2011, '[P1][CORE] Terminal blocked', [
+      ...coreQueueFlags(),
+      'AUTO_QUEUE=INCLUDED',
+      'PRIORITY=P1',
+    ].join('\n'), { labels: [{ name: 'tigeriq:terminal-blocked' }] }));
+    expect(blocked).toMatchObject({ status: 'BLOCKED', waitReason: 'TigerIQ terminal BLOCKED' });
+    const ranked = rankQueueRows([blocked]);
+    expect(ranked[0]).toMatchObject({ eligibleNow: false, dispatchRank: null });
+  });
+
+
 });
