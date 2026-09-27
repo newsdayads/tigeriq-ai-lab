@@ -118,6 +118,35 @@ function Ensure-UpdaterTaskRuntimeTarget(){
   Set-ScheduledTask -TaskName $updaterTask -Action $newAction -Settings $newSettings -Principal $principal|Out-Null
   return @{action='retargeted';target=$updaterRuntime;previousExecute=$currentExe;previousArguments=$currentArgs;previousMultipleInstances=$multiple;multipleInstances='IgnoreNew'}
 }
+function Ensure-WebTaskRuntimeTarget(){
+  try{
+    $launcher=Join-Path $webRuntime 'run-web-control-bundle.ps1'
+    if(-not(Test-Path -LiteralPath $launcher)){return @{action='blocked';reason='WEB_LAUNCHER_MISSING';target=$launcher}}
+    $ps='C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
+    $args="-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$launcher`""
+    $action=New-ScheduledTaskAction -Execute $ps -Argument $args
+    $settings=New-ScheduledTaskSettingsSet -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero) -StartWhenAvailable -MultipleInstances IgnoreNew -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+    $principal=New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+    $task=Get-ScheduledTask -TaskName $webTask -ErrorAction SilentlyContinue
+    if(-not $task){
+      $trigger=New-ScheduledTaskTrigger -AtStartup
+      Register-ScheduledTask -TaskName $webTask -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force|Out-Null
+      Start-ScheduledTask -TaskName $webTask
+      return @{action='installed_started';task=$webTask;target=$launcher}
+    }
+    $first=@($task.Actions|Select-Object -First 1)
+    $currentExe=[string]$first.Execute
+    $currentArgs=[string]$first.Arguments
+    $multiple=[string]$task.Settings.MultipleInstances
+    $actionOk=($currentExe -ieq $ps -and $currentArgs -match [regex]::Escape($launcher))
+    $settingsOk=($multiple -eq 'IgnoreNew' -and [bool]$task.Settings.StartWhenAvailable -and -not [bool]$task.Settings.DisallowStartIfOnBatteries -and -not [bool]$task.Settings.StopIfGoingOnBatteries)
+    $retarget=(-not $actionOk -or -not $settingsOk)
+    if($retarget){Set-ScheduledTask -TaskName $webTask -Action $action -Settings $settings -Principal $principal|Out-Null}
+    $fresh=Get-ScheduledTask -TaskName $webTask -ErrorAction SilentlyContinue
+    if($fresh -and [string]$fresh.State -ne 'Running'){Start-ScheduledTask -TaskName $webTask}
+    return @{action=if($retarget){'retargeted_started'}else{'verified_started'};task=$webTask;target=$launcher}
+  }catch{return @{action='blocked';reason=('WEB_TASK_'+$_.Exception.GetType().Name);detail=[string]$_.Exception.Message}}
+}
 function Ensure-BootstrapWatchdogTask(){
   try{
     $source=Join-Path $runtimeRepo 'scripts\tigeriq-core\bootstrap-watchdog.ps1'
@@ -546,6 +575,7 @@ while($true){
   $locked=$false
   try{
     $locked=$mutex.WaitOne(0);if(-not $locked){Start-Sleep -Seconds $IntervalSeconds;continue}
+    $webTaskTarget=Ensure-WebTaskRuntimeTarget
     $watchdog=Runtime-Watchdog
     $legacyLifecycleRetire=Retire-LegacyOpenClawLifecycleOwner
     $liveStatusBridgeReconcile=Invoke-LiveStatusBridgeReconcile
@@ -573,7 +603,7 @@ while($true){
         $preOpenclawCanary=@{action='blocked';result='BLOCKED';reason='OPENCLAW_DEGRADED_NONBLOCKING'}
       }
     }
-    if($runtimeExists -and $local -eq $remote){$remoteDesktopGuard=Reconcile-RemoteDesktopGuard;Save-State @{result='NO_CHANGE';installedSha=$local;runtimeSource=$runtimeRepo;bootstrapWatchdog=$bootstrapWatchdog;appChromeInstall=$appChromeInstall;appChromeRecovery=$appChromeRecovery;legacyLifecycleRetire=$legacyLifecycleRetire;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;openclawReconcile=$openclawReconcile;openclawCanary=$preOpenclawCanary;remoteDesktopGuard=$remoteDesktopGuard;updaterTaskTarget=$updaterTaskTarget;watchdog=$watchdog};Start-Sleep -Seconds $IntervalSeconds;continue}
+    if($runtimeExists -and $local -eq $remote){$remoteDesktopGuard=Reconcile-RemoteDesktopGuard;Save-State @{result='NO_CHANGE';installedSha=$local;runtimeSource=$runtimeRepo;bootstrapWatchdog=$bootstrapWatchdog;appChromeInstall=$appChromeInstall;appChromeRecovery=$appChromeRecovery;legacyLifecycleRetire=$legacyLifecycleRetire;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;openclawReconcile=$openclawReconcile;openclawCanary=$preOpenclawCanary;remoteDesktopGuard=$remoteDesktopGuard;updaterTaskTarget=$updaterTaskTarget;webTaskTarget=$webTaskTarget;watchdog=$watchdog};Start-Sleep -Seconds $IntervalSeconds;continue}
     $gateSha=Resolve-GateSha $remote
     if(-not $gateSha){Save-State @{result='WAIT_GATES';candidateSha=$remote;runtimeSource=$runtimeRepo;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;watchdog=$watchdog};continue}
     [string[]]$changed=if($runtimeExists){@(git -C $controlRepo diff --name-only $local $remote)}else{@('apps/tigeriq-core/','apps/tigeriq-coding-lane/','scripts/tigeriq-core/')}

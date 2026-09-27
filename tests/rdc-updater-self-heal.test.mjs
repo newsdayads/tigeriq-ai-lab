@@ -34,4 +34,15 @@ describe('RDC updater post-reboot self-heal', () => {
     expect(source).toContain("'tigeriq_authorize_mutation'");
   });
 
+  it('self-heals the Web Control scheduled task before the runtime watchdog', async () => {
+    const source = await readFile(updaterUrl, 'utf8');
+    expect(source).toContain('function Ensure-WebTaskRuntimeTarget()');
+    expect(source).toContain("Join-Path $webRuntime 'run-web-control-bundle.ps1'");
+    expect(source).toContain("New-ScheduledTaskPrincipal -UserId 'SYSTEM'");
+    expect(source).toContain('-AllowStartIfOnBatteries');
+    expect(source).toContain('-DontStopIfGoingOnBatteries');
+    expect(source).toContain('$webTaskTarget=Ensure-WebTaskRuntimeTarget');
+    expect(source.indexOf('$webTaskTarget=Ensure-WebTaskRuntimeTarget')).toBeLessThan(source.indexOf('$watchdog=Runtime-Watchdog'));
+  });
+
 });
