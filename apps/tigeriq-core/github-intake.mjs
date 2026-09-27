@@ -409,7 +409,8 @@ export function startGithubIntake({databaseUrl=process.env.DATABASE_URL,fetchImp
     const delayMs=githubRateLimitCooldownMs(e,Date.now());
     if(delayMs>0){
       githubCooldownUntil=Date.now()+delayMs;
-      console.warn(JSON.stringify({event:kind==='event'?'GITHUB_EVENT_RATE_LIMIT_COOLDOWN':'GITHUB_RATE_LIMIT_COOLDOWN',delayMs,until:new Date(githubCooldownUntil).toISOString(),error:String(e?.message||e)}));
+      if(kind==='event')console.warn(JSON.stringify({event:'GITHUB_EVENT_RATE_LIMIT_COOLDOWN',delayMs,until:new Date(githubCooldownUntil).toISOString(),error:String(e?.message||e)}));
+      else console.warn(JSON.stringify({event:'GITHUB_RATE_LIMIT_COOLDOWN',delayMs,until:new Date(githubCooldownUntil).toISOString(),error:String(e?.message||e)}));
     }else{
       console.error(JSON.stringify({event:kind==='event'?'GITHUB_EVENT_INTAKE_ERROR':'GITHUB_INTAKE_ERROR',error:String(e?.message||e)}));
     }
