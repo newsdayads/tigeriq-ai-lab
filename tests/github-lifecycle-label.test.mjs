@@ -47,6 +47,17 @@ describe('GitHub terminal lifecycle label',()=>{
     await expect(clearTerminalBlockedLabel({fetchImpl,owner:'o',repo:'r',issueNumber:7,token:'x'})).resolves.toBe(true);
   });
 
+
+  it('preserves GitHub rate-limit metadata for the existing bounded cooldown path',async()=>{
+    const fetchImpl=async()=>new Response(JSON.stringify({message:'API rate limit exceeded'}),{
+      status:429,
+      headers:{'content-type':'application/json','retry-after':'2','x-ratelimit-remaining':'0','x-ratelimit-reset':'123'}
+    });
+    let caught;
+    try{await addTerminalBlockedLabel({fetchImpl,owner:'o',repo:'r',issueNumber:7,token:'x'});}catch(error){caught=error;}
+    expect(caught).toMatchObject({status:429,retryAfter:'2',rateLimitRemaining:'0',rateLimitReset:'123'});
+  });
+
   it('wires Core, Coding and Live projection to the shared lifecycle label',()=>{
     const core=readFileSync(new URL('../apps/tigeriq-core/github-intake.mjs',import.meta.url),'utf8');
     const coding=readFileSync(new URL('../apps/tigeriq-core/github-coding-intake.mjs',import.meta.url),'utf8');
