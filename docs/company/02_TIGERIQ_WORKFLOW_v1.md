@@ -48,5 +48,5 @@ DONE requires:
 - No AI employee, role fallback, local worker, coding lane, UI worker, or autonomous scanner may read, claim, receive, select, or execute P0 work.
 - Stale `ASSIGNED_EXECUTOR`, `PRIMARY_EMPLOYEE`, `OWNER_POLICY=AUTO`, `TIGERIQ_EXECUTABLE=true`, or equivalent markers never delegate P0.
 - Only the Owner, or Codex acting under the Owner's explicit current instruction, may handle P0.
-- P1-P5 are normal execution priorities, but employees execute them only after explicit system assignment. Employees do not self-scan or self-claim GitHub work.
-- Missing or unavailable assignment means `READY_UNASSIGNED`/wait, not GitHub fallback selection.
+- P1-P5 are normal execution priorities. Explicit system assignments take precedence, but an eligible idle employee may self-scan canonical GitHub Source of Truth and claim exactly one P1-P5 item allowed for its role.
+- Self-pull must respect role fit, `RESOURCE_SCOPE`/lease ownership, dependency/hold states, and `AUTO_QUEUE`/execution eligibility. P0 remains excluded unconditionally.
