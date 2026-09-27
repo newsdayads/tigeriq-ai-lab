@@ -3,6 +3,7 @@ import { Pool } from 'pg';
 import { backlogOwnerDirect, bodyValue as policyBodyValue, isOwnerOnlyP0, routingFault, sortBacklogSpecs } from './github-backlog-policy.mjs';
 import { activeRoleClaim, classifyWorkOrder } from './work-routing-policy.mjs';
 import { appendPublicEvidenceToSummary, parsePublicEvidenceKeys } from './public-evidence.mjs';
+import { clearTerminalBlockedLabel, setTerminalBlockedLabel } from './github-lifecycle-label.mjs';
 
 const DEFAULT_OWNER='newsdayads';
 const DEFAULT_REPO='tigeriq-ai-lab';
@@ -256,6 +257,20 @@ async function closeIssue(fetchImpl,owner,repo,issueNumber,token){
   return true;
 }
 
+function lifecycleLabelRequest(fetchImpl,owner,repo,token){
+  return (path,init={})=>ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}${path}`,token,init);
+}
+
+async function clearTerminalBlockedLifecycle(fetchImpl,owner,repo,issueNumber,token){
+  if(!token)return false;
+  return clearTerminalBlockedLabel({issueNumber,request:lifecycleLabelRequest(fetchImpl,owner,repo,token)});
+}
+
+async function setTerminalBlockedLifecycle(fetchImpl,owner,repo,issueNumber,token){
+  if(!token)return false;
+  return setTerminalBlockedLabel({issueNumber,request:lifecycleLabelRequest(fetchImpl,owner,repo,token)});
+}
+
 export async function cleanupTerminalObjectiveJobs({pool}={}){
   if(!pool)throw new Error('CORE_GITHUB_POOL_REQUIRED');
   const reason={kind:'ORPHANED_BY_TERMINAL_OBJECTIVE',message:'Parent objective is terminal; queued/waiting_resource job cannot remain claimable.'};
@@ -313,6 +328,7 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
     const id=prior?`OBJ-GH-${spec.number}-R${rearmKey(spec)}`:`OBJ-GH-${spec.number}`;
     const exists=(await pool.query('select 1 from tigeriq_objectives where id=$1',[id])).rowCount>0;
     if(exists){skipped++;continue;}
+    await clearTerminalBlockedLifecycle(fetchImpl,owner,repo,spec.number,token);
     const context=await hydrateContext(fetchImpl,owner,repo,spec,token);
     const objective=spec.capability==='pc_operator'
       ? (spec.pcOperatorDirectAction
@@ -399,6 +415,8 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
       row.metadata={...row.metadata,githubClaimReported:true}; claims++;
     }
     if(['completed','blocked'].includes(row.status)&&!row.metadata?.githubResultReported){
+      if(row.status==='blocked')await setTerminalBlockedLifecycle(fetchImpl,owner,repo,number,token);
+      else await clearTerminalBlockedLifecycle(fetchImpl,owner,repo,number,token);
       await commentIssue(fetchImpl,owner,repo,number,formatResultComment(row),token);
       if(row.status==='completed') await closeIssue(fetchImpl,owner,repo,number,token);
       await pool.query("update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1",[row.id,JSON.stringify({githubResultReported:true,githubClosed:row.status==='completed'})]);
