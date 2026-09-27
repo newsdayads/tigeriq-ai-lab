@@ -74,6 +74,12 @@ describe('TigerIQ Web Control owner dashboard', () => {
     expect(unified).toContain('last_latency_ms');
     expect(unified).toContain('last_error');
     expect(unified).toContain('cooldown_until');
+    expect(unified).toContain('Lỗi trước đó');
+    expect(unified).toContain('Rate-limit hiện hành');
+    expect(unified).toContain('CHỜ KIỂM TRA');
+    expect(unified).toContain('currentRateLimit');
+    expect(unified).toContain('quotaText');
+    expect(unified).toContain('last_error_at');
   });
 
   it('keeps desktop/tablet/mobile layouts bounded', () => {
