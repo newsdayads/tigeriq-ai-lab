@@ -9,6 +9,7 @@ import {
   classifyOpenIssue,
   parseOpenWorkIssue,
   progressForIssue,
+  projectExternalRoleClaims,
   parseRecentCompletedIssue,
   runtimeWorkRows,
   sanitizeRuntimePayload,
@@ -321,6 +322,39 @@ describe('TigerIQ Live Work Order projection', () => {
     expect(blocked).toMatchObject({ status: 'BLOCKED', waitReason: 'TigerIQ terminal BLOCKED' });
     const ranked = rankQueueRows([blocked]);
     expect(ranked[0]).toMatchObject({ eligibleNow: false, dispatchRank: null });
+  });
+
+  it('keeps externally role-claimed work out of executable ranking', () => {
+    const claimed = parseQueueIssue(issue(2012, '[P1][CORE] Externally claimed', [
+      ...coreQueueFlags(),
+      'AUTO_QUEUE=INCLUDED',
+      'PRIORITY=P1',
+    ].join('\n'), { labels: [{ name: 'tigeriq:role-claimed' }, { name: 'tigeriq:role-worker-nv02' }] }));
+    expect(claimed).toMatchObject({ status: 'WAITING', waitReason: 'External role claim' });
+    const ranked = rankQueueRows([claimed]);
+    expect(ranked[0]).toMatchObject({ eligibleNow: false, dispatchRank: null });
+  });
+
+  it('projects canonical external claim over stale NV02 runtime job and falls back when label clears', () => {
+    const base = {
+      workers: [{
+        employeeId: 'NV02', state: 'working', status: 'ĐANG LÀM',
+        job: '#1766 - stale UI residue', detail: 'READY',
+        currentJobId: 'GH-1766', updatedAt: '2026-09-26T00:00:00Z',
+      }],
+      summary: { working: 1, waiting: 0, blocked: 0, idle: 0, unknown: 0, paused: 0, total: 1 },
+    };
+    const claimedIssue = issue(1947, '[P1] Active external claim', 'TIGERIQ_EXECUTABLE=true', {
+      labels: [{ name: 'tigeriq:role-claimed' }, { name: 'tigeriq:role-worker-nv02' }],
+      updated_at: '2026-09-27T10:00:00Z',
+    });
+    const projected = projectExternalRoleClaims(base, [claimedIssue]);
+    expect(projected.workers[0]).toMatchObject({
+      employeeId: 'NV02', state: 'working', currentJobId: 'GH-1947',
+      job: '#1947 - [P1] Active external claim',
+    });
+    const fallback = projectExternalRoleClaims(base, [{ ...claimedIssue, labels: [] }]);
+    expect(fallback.workers[0].currentJobId).toBe('GH-1766');
   });
 
 
