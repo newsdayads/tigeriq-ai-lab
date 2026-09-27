@@ -217,8 +217,10 @@ describe('GitHub Core intake guardrails',()=>{
     const core=readFileSync(new URL('./github-intake.mjs',import.meta.url),'utf8');
     const coding=readFileSync(new URL('./github-coding-intake.mjs',import.meta.url),'utf8');
     expect(core).toContain('const openIssues=await ghJson');
-    expect(core).toContain('syncGithubOutcomes({pool,fetchImpl,owner,repo,token,openIssues})');
-    expect(core).toContain('materializeGithubIssues({pool,fetchImpl,owner,repo,token,openIssues})');
+    expect(core).toContain('const stableIssues=openIssues.filter');
+    expect(core).toContain('syncGithubOutcomes({pool,fetchImpl,owner,repo,token,openIssues:stableIssues})');
+    expect(core).toContain('materializeGithubIssues({pool,fetchImpl,owner,repo,token,openIssues:stableIssues})');
+    expect(core).toContain("event:'GITHUB_CHAT_OWNER_FALLBACK_HANDOFF'");
     expect(core).toContain("event:'GITHUB_RATE_LIMIT_COOLDOWN'");
     expect(core).toContain('if(githubCooldownUntil>Date.now())return');
     expect(coding).toContain("event:'GITHUB_CODING_RATE_LIMIT_COOLDOWN'");
