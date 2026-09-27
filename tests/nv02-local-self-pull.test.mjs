@@ -54,7 +54,7 @@ describe('NV02 local GitHub self-pull contract', () => {
     expect(activeNv02Lease(comments, Date.parse('2026-09-27T00:01:00Z')).LEASE_ID).toBe(first.leaseId);
     await postComment(work.number, `EVIDENCE\nSTATE=DONE\nLEASE_ID=${first.leaseId}`);
     await (await import('../apps/tigeriq-core/nv02-local-self-pull.mjs')).releaseNv02WorkOrder({ issueNumber: work.number, leaseId: first.leaseId, state: 'DONE', postComment });
-    expect(activeNv02Lease(comments)).toBeNull();
+    expect(activeNv02Lease(comments, Date.parse('2026-09-27T00:01:00Z'))).toBeNull();
     expect(buildNv02LocalSelfPullPrompt(work, first)).toContain('Core không assign/route NV02');
   });
 });
