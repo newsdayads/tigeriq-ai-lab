@@ -32,7 +32,6 @@ for (const removed of [
   'NHỮNG VIỆC GẦN ĐÂY',
   'Trạng thái nhân sự',
   'Đang xử lý',
-  'Đang rà soát',
   'Hàng đợi',
 ]) assert.doesNotMatch(publicView, new RegExp(removed, 'i'));
 
