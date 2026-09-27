@@ -25,6 +25,16 @@ describe('NV02 continuity policy', () => {
     expect(shouldRearmAwaitingWorkStart({phase:'READY',awaitingWorkStart:true,awaitingWorkStartSince:0,now:AWAITING_WORK_START_TIMEOUT_MS-1})).toBe(false);
   });
 
+  it('rearms exactly once after timeout and leaves the next dispatch under the normal latch',()=>{
+    const initial={awaitingWorkStart:true,awaitingWorkStartSince:1000,pendingContinue:false};
+    expect(shouldRearmAwaitingWorkStart({phase:'READY',...initial,now:1000+AWAITING_WORK_START_TIMEOUT_MS-1})).toBe(false);
+    const rearmed=rearmAwaitingWorkStart(initial,1000+AWAITING_WORK_START_TIMEOUT_MS);
+    expect(rearmed).toMatchObject({awaitingWorkStart:false,awaitingWorkStartSince:0,pendingContinue:true});
+    expect(shouldRearmAwaitingWorkStart({phase:'READY',...rearmed,now:1000+AWAITING_WORK_START_TIMEOUT_MS+1})).toBe(false);
+    const dispatched={...rearmed,awaitingWorkStart:true,awaitingWorkStartSince:1000+AWAITING_WORK_START_TIMEOUT_MS};
+    expect(shouldRearmAwaitingWorkStart({phase:'READY',...dispatched,now:dispatched.awaitingWorkStartSince+AWAITING_WORK_START_TIMEOUT_MS-1})).toBe(false);
+  });
+
   it('exposes isolated worker-generic continuity primitives for NV02/NV03/NV04', () => {
     expect(CONTINUITY_WORKERS).toEqual(['NV02','NV03','NV04']);
     expect(CONTINUE_PROMPTS).toHaveLength(21);
@@ -448,6 +458,8 @@ describe('NV02 continuity policy', () => {
     expect(continuity).toContain("if(phase==='READY')");
     expect(continuity).toContain('dispatchNaturalContinue(target,state,now)');
     expect(continuity).toContain('awaitingWorkStart');
+    expect(continuity).toContain('shouldRearmAwaitingWorkStart');
+    expect(continuity).toContain('READY_AWAITING_WORK_START_TIMEOUT_REARMED');
   });
 
   it('detects interrupted ChatGPT response streams and recovers locally without assignment gating', () => {
