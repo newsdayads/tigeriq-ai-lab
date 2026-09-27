@@ -74,6 +74,13 @@ describe('TigerIQ Web Control owner dashboard', () => {
     expect(unified).toContain('last_latency_ms');
     expect(unified).toContain('last_error');
     expect(unified).toContain('cooldown_until');
+    expect(unified).toContain('resourceHealthTruth');
+    expect(unified).toContain("STALE_ERROR:'LỖI CŨ'");
+    expect(unified).toContain('Lỗi trước đó:');
+    expect(unified).toContain('Chỉ tính rate-limit hiện hành');
+    expect(unified).toContain('lỗi cũ · không tính cảnh báo');
+    expect(unified).toContain('Usage 24h');
+    expect(unified).toContain('Quota provider chưa trả số dư');
   });
 
   it('keeps desktop/tablet/mobile layouts bounded', () => {
