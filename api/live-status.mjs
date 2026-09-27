@@ -1,5 +1,6 @@
 import { parseExecutableIssue } from '../apps/tigeriq-core/github-intake.mjs';
 import { parseCodingIssue } from '../apps/tigeriq-core/github-coding-intake.mjs';
+import { hasTerminalBlockedLabel } from '../apps/tigeriq-core/github-lifecycle-label.mjs';
 
 const REPO = process.env.TIGERIQ_REPO || 'newsdayads/tigeriq-ai-lab';
 const REGISTRY_ISSUE = 335;
@@ -415,7 +416,8 @@ export function parseQueueIssue(issue) {
   const coreSpec = parseExecutableIssue(issue);
   const codingSpec = parseCodingIssue(issue);
   if (!coreSpec && !codingSpec) return null;
-  const holdReason = queueWaitReason(issue);
+  const terminalBlocked = hasTerminalBlockedLabel(issue);
+  const holdReason = terminalBlocked ? 'TigerIQ terminal BLOCKED' : queueWaitReason(issue);
   const effectivePriority = codingSpec?.priority || coreSpec?.priority || issuePriority(issue) || 'P3';
   const sourcePriority = codingSpec?.sourcePriority || coreSpec?.sourcePriority || issuePriority(issue) || effectivePriority;
   return {
@@ -428,7 +430,7 @@ export function parseQueueIssue(issue) {
     ownerDirect: Boolean(codingSpec?.ownerDirect ?? coreSpec?.ownerDirect ?? bodyFlag(issue?.body || '', 'OWNER_DIRECT')),
     route: codingSpec ? 'CODING' : (coreSpec?.route || coreSpec?.dispatchLane || null),
     resourceScope: codingSpec?.scopeLease?.resourceScope || coreSpec?.resourceScope || bodyValue(issue?.body || '', 'RESOURCE_SCOPE') || null,
-    status: holdReason && /BLOCKED/.test(holdReason) ? 'BLOCKED' : holdReason ? 'WAITING' : 'QUEUED',
+    status: terminalBlocked ? 'BLOCKED' : holdReason && /BLOCKED/.test(holdReason) ? 'BLOCKED' : holdReason ? 'WAITING' : 'QUEUED',
     waitReason: holdReason,
     dependencies: codingSpec?.dependsOn || queueDependencies(issue),
     updatedAt: issue.updated_at || null,
