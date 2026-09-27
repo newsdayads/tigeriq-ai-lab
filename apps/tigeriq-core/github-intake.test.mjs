@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe,expect,it } from 'vitest';
-import { contextIssueRefs,extractExplicitContextIssues,extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,formatResultComment,githubDispatchLane,githubPcOperatorJobId,githubRateLimitCooldownMs,githubSpecBlockedByActive,hydrateContext,indexOpenGithubIssues,isBoundedAppChromeRequestOnly,parseExecutableIssue,parsePcOperatorDirectAction,resolveGithubSourceIssue } from './github-intake.mjs';
+import { contextIssueRefs,extractExplicitContextIssues,extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,formatResultComment,githubDispatchLane,githubPcOperatorJobId,githubRateLimitCooldownMs,githubSpecBlockedByActive,hydrateContext,indexOpenGithubIssues,isBoundedAppChromeRequestOnly,parseExecutableIssue,parsePcOperatorDirectAction,resolveGithubSourceIssue,syncGithubOutcomes } from './github-intake.mjs';
 import { appendPublicEvidenceToSummary,buildPublicEvidenceDiagnostic,extractPublicEvidence,formatPublicEvidenceBlock,formatPublicEvidenceDiagnosticBlock,parsePublicEvidenceKeys,sanitizePublicEvidenceValue } from './public-evidence.mjs';
 import { openClawTerminalDecision } from '../openclaw-tigeriq-runtime/dispatch.mjs';
 
@@ -131,6 +131,52 @@ describe('GitHub Core intake guardrails',()=>{
     expect(source).toContain("status='active'");
     expect(source).toContain("githubResultReported");
     expect(source).toContain("order by case when status='active' then 0 else 1 end, updated_at desc, created_at desc");
+  });
+
+
+  it('syncs a blocked Core lifecycle label once before durable result reporting',async()=>{
+    const row={id:'OBJ-GH-840',status:'blocked',summary:'terminal failure',metadata:{source:'github',issueNumber:840,githubClaimReported:true,githubResultReported:false}};
+    const pool={async query(q,params=[]){
+      if(q.includes('select id,status,summary,metadata from tigeriq_objectives'))return {rowCount:1,rows:[row]};
+      if(q.includes('update tigeriq_objectives set metadata=metadata||$2::jsonb')){
+        Object.assign(row.metadata,JSON.parse(params[1]));
+        return {rowCount:1,rows:[]};
+      }
+      return {rowCount:0,rows:[]};
+    }};
+    let labelAdds=0,resultComments=0;
+    const fetchImpl=async(url,init={})=>{
+      if(url.endsWith('/issues/840/labels')&&init.method==='POST'){labelAdds++;return new Response(JSON.stringify([]),{status:200,headers:{'content-type':'application/json'}});}
+      if(url.endsWith('/issues/840/comments')&&init.method==='POST'){resultComments++;return new Response(JSON.stringify({}),{status:201,headers:{'content-type':'application/json'}});}
+      return new Response(JSON.stringify({}),{status:200,headers:{'content-type':'application/json'}});
+    };
+    await syncGithubOutcomes({pool,fetchImpl,token:'fake'});
+    await syncGithubOutcomes({pool,fetchImpl,token:'fake'});
+    expect(labelAdds).toBe(1);
+    expect(resultComments).toBe(1);
+    expect(row.metadata).toMatchObject({githubTerminalLabelSynced:true,githubResultReported:true});
+  });
+
+  it('closes completed Core issues before clearing a stale terminal label',async()=>{
+    const row={id:'OBJ-GH-841',status:'completed',summary:'done',metadata:{source:'github',issueNumber:841,githubClaimReported:true,githubResultReported:false}};
+    const pool={async query(q,params=[]){
+      if(q.includes('select id,status,summary,metadata from tigeriq_objectives'))return {rowCount:1,rows:[row]};
+      if(q.includes('update tigeriq_objectives set metadata=metadata||$2::jsonb')){
+        Object.assign(row.metadata,JSON.parse(params[1]));
+        return {rowCount:1,rows:[]};
+      }
+      return {rowCount:0,rows:[]};
+    }};
+    const calls=[];
+    const fetchImpl=async(url,init={})=>{
+      if(url.endsWith('/issues/841/comments')&&init.method==='POST'){calls.push('result-comment');return new Response(JSON.stringify({}),{status:201,headers:{'content-type':'application/json'}});}
+      if(url.endsWith('/issues/841')&&init.method==='PATCH'){calls.push('close-issue');return new Response(JSON.stringify({state:'closed'}),{status:200,headers:{'content-type':'application/json'}});}
+      if(url.includes('/issues/841/labels/')&&init.method==='DELETE'){calls.push('clear-label');return new Response(null,{status:204});}
+      return new Response(JSON.stringify({}),{status:200,headers:{'content-type':'application/json'}});
+    };
+    await syncGithubOutcomes({pool,fetchImpl,token:'fake'});
+    expect(calls).toEqual(['result-comment','close-issue','clear-label']);
+    expect(row.metadata).toMatchObject({githubResultReported:true,githubClosed:true});
   });
 
   it('reuses one open-issue snapshot for active source reconciliation instead of per-objective GitHub GETs',async()=>{

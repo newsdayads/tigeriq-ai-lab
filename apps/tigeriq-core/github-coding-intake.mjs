@@ -4,6 +4,7 @@ import {backlogOwnerDirect,effectiveBacklogPriority,isActiveExecutionSpec,isOwne
 import {classifyWorkOrder} from './work-routing-policy.mjs';
 import {controlPlaneRepairIntent,isProtectedControlPlanePath} from '../shared/control-plane-lock.mjs';
 import {githubRateLimitCooldownMs} from './github-intake.mjs';
+import {addTerminalBlockedLabel,clearTerminalBlockedLabel} from './github-lifecycle-label.mjs';
 import {githubRequestJson} from './github-shared-client.mjs';
 import {githubEventIssue,subscribeGithubEvents} from './github-event-bus.mjs';
 const DEFAULT_OWNER='newsdayads';
@@ -358,6 +359,10 @@ export async function materializeGithubCodingIssues({pool,fetchImpl=fetch,owner=
       if(!out?.id)throw new Error('CODING_OBJECTIVE_ID_MISSING');
       laneStatus={...(laneStatus||{}),objectives:[...(laneStatus?.objectives||[]),{id:out.id,objective,status:'queued'}]};
     }
+    // The Coding objective must exist before the old terminal projection is cleared.
+    // The durable GitHub dispatch/rearm markers are written only after clear succeeds.
+    // This makes both objective-creation failure and label-mutation failure retry-safe.
+    await clearTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:spec.number,token});
     const dispatchReason=spec.ownerDirect?`OWNER_DIRECT>${spec.sourcePriority}`:`PRIORITY_${spec.sourcePriority}`;
     if(completedReopenKey){
       const priorResultObjectiveId=String((await eventData(pool,'GITHUB_CODING_RESULT_REPORTED',spec.number))[0]?.codingObjectiveId||'');
@@ -390,7 +395,30 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
     seenIssues.add(n);
     const objective=(status.objectives||[]).find(x=>x.id===id);
     if(await hasCompletedCodingResult(pool,n))continue;
-    if(!objective)continue;
+    if(!objective){
+      // Historical terminal Coding objectives may already be garbage-collected from lane status.
+      // Only fetch GitHub for an unsynced blocked-final event; normal historical dispatch rows stay request-free.
+      const historicalFinal=(await eventData(pool,'GITHUB_CODING_BLOCKED_FINAL',n))[0]||null;
+      const historicalObjectiveId=String(historicalFinal?.codingObjectiveId||id);
+      if(!historicalFinal||await objectiveMarkerExists(pool,'GITHUB_CODING_TERMINAL_LABEL_SYNCED',n,historicalObjectiveId))continue;
+      let historicalIssue;
+      try{historicalIssue=await gh(fetchImpl,owner,repo,`/issues/${n}`,token)}
+      catch(error){
+        if(githubRateLimitCooldownMs(error)>0)throw error;
+        console.warn(JSON.stringify({event:'GITHUB_CODING_HISTORICAL_LABEL_SYNC_WAIT',issueNumber:n,codingObjectiveId:historicalObjectiveId,error:String(error?.message||error)}));
+        continue;
+      }
+      const historicalSourceRevision=await codingSourceRevision(fetchImpl,owner,repo,token,historicalIssue);
+      const historicalSpec=parseCodingIssue(historicalIssue);
+      const historicalEvidence=historicalSpec&&String(historicalFinal?.mainSha||'').trim()!==currentMainSha&&String(historicalFinal?.sourceRevision||'').trim()===String(historicalSourceRevision||'').trim()
+        ?await relevantRecoveryMainChangeEvidence(fetchImpl,owner,repo,token,historicalFinal.mainSha,currentMainSha,historicalSpec.scopeLease,recoveryCompareCache)
+        :{relevantMainChanged:false};
+      if(await hasEffectiveBlockedFinal(pool,n,'',historicalObjectiveId,currentMainSha,historicalSourceRevision,historicalEvidence.relevantMainChanged)){
+        await addTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:n,token});
+        await mark(pool,'GITHUB_CODING_TERMINAL_LABEL_SYNCED',{issueNumber:n,codingObjectiveId:historicalObjectiveId,historical:true});
+      }
+      continue;
+    }
     let currentIssue;
     try{currentIssue=await gh(fetchImpl,owner,repo,`/issues/${n}`,token)}
     catch(error){
@@ -405,7 +433,13 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
       ?await relevantRecoveryMainChangeEvidence(fetchImpl,owner,repo,token,recoveryFinal.mainSha,currentMainSha,recoverySpec.scopeLease,recoveryCompareCache)
       :{relevantMainChanged:false,relevantChangedPaths:[],compareAvailable:false};
     const relevantMainChanged=recoveryEvidence.relevantMainChanged;
-    if(await hasEffectiveBlockedFinal(pool,n,objective?.summary,id,currentMainSha,currentSourceRevision,relevantMainChanged))continue;
+    if(await hasEffectiveBlockedFinal(pool,n,objective?.summary,id,currentMainSha,currentSourceRevision,relevantMainChanged)){
+      if(!(await objectiveMarkerExists(pool,'GITHUB_CODING_TERMINAL_LABEL_SYNCED',n,id))){
+        await addTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:n,token});
+        await mark(pool,'GITHUB_CODING_TERMINAL_LABEL_SYNCED',{issueNumber:n,codingObjectiveId:id});
+      }
+      continue;
+    }
     const job=(status.jobs||[]).find(x=>x.objective_id===id);
     if(job&&!(await objectiveMarkerExists(pool,'GITHUB_CODING_PROGRESS_REPORTED',n,id))){
       const pr=job.pr_number?` PR #${job.pr_number}.`:'';
@@ -445,6 +479,7 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
           if(!out?.id)throw new Error('CODING_STALE_REARM_OBJECTIVE_ID_MISSING');
           rearmObjective={id:out.id,objective:objectiveText,status:'queued'};
         }
+        await clearTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:n,token});
         await mark(pool,'GITHUB_CODING_STALE_RESULT_REARMED',{issueNumber:n,priorObjectiveId:id,codingObjectiveId:rearmObjective.id,dispatchSourceRevision:dispatchSourceRevision||null,sourceRevision:currentSourceRevision||null,staleKey});
         const dispatchReason=spec.ownerDirect?`OWNER_DIRECT>${spec.sourcePriority}`:`PRIORITY_${spec.sourcePriority}`;
         await mark(pool,'GITHUB_CODING_DISPATCHED',{issueNumber:n,issueUrl:spec.url,codingObjectiveId:rearmObjective.id,ownerDirect:spec.ownerDirect,sourcePriority:spec.sourcePriority,dispatchPriority:spec.priority,dispatchReason,sourceRevision:currentSourceRevision||null,staleKey,priorObjectiveId:id,scopeLease:spec.scopeLease});
@@ -456,6 +491,7 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
       if(!(await hasCompletedCodingResult(pool,n))){
         await comment(fetchImpl,owner,repo,n,token,`[RESULT] ${id} completed. ${String(objective.summary||'').slice(0,3000)}`);
         await close(fetchImpl,owner,repo,n,token);
+        await clearTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:n,token});
         await mark(pool,'GITHUB_CODING_RESULT_REPORTED',{issueNumber:n,codingObjectiveId:id,status:'completed',sourceRevision:currentSourceRevision||null});
         results++;
       }
@@ -465,6 +501,8 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
     const finalize=async(reason,evidence={})=>{
       if(await hasEffectiveBlockedFinal(pool,n,objective.summary,id,currentMainSha,currentSourceRevision,relevantMainChanged))return false;
       await mark(pool,'GITHUB_CODING_BLOCKED_FINAL',{issueNumber:n,codingObjectiveId:id,status:'blocked',reason,mainSha:currentMainSha||null,sourceRevision:currentSourceRevision||null,...evidence});
+      await addTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:n,token});
+      await mark(pool,'GITHUB_CODING_TERMINAL_LABEL_SYNCED',{issueNumber:n,codingObjectiveId:id});
       await comment(fetchImpl,owner,repo,n,token,`[BLOCKED_FINAL] ${id} reason=${reason}. ${String(objective.summary||'').slice(0,2000)}`);
       results++;
       return true;
@@ -509,6 +547,7 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
           if(!out?.id)throw new Error('CODING_RECOVERY_OBJECTIVE_ID_MISSING');
           recoveryObjective={id:out.id,objective:objectiveText,status:'queued'};
         }
+        await clearTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:n,token});
         const sourceChanged=Boolean(currentSourceRevision)&&String(latestFinal?.sourceRevision||'').trim()!==String(currentSourceRevision||'').trim();
         await mark(pool,'GITHUB_CODING_RECOVERY_REARMED',{issueNumber:n,priorObjectiveId:id,codingObjectiveId:recoveryObjective.id,mainSha:currentMainSha,priorMainSha:String(latestFinal?.mainSha||'').trim()||null,currentMainSha:currentMainSha||null,sourceRevision:currentSourceRevision||null,sourceChanged,relevantChangedPaths:recoveryEvidence.relevantChangedPaths.slice(0,32),recoveryKey,reason:classification.reason});
         const dispatchReason=spec.ownerDirect?`OWNER_DIRECT>${spec.sourcePriority}`:`PRIORITY_${spec.sourcePriority}`;
@@ -554,6 +593,7 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
 
     const alreadyDispatched=(await eventData(pool,'GITHUB_CODING_RETRY_DISPATCHED',n)).some(x=>Number(x.retryAttempt)===retryAttempt);
     if(!alreadyDispatched){
+      await clearTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:n,token});
       const dispatchReason=spec.ownerDirect?`OWNER_DIRECT>${spec.sourcePriority}`:`PRIORITY_${spec.sourcePriority}`;
       await mark(pool,'GITHUB_CODING_RETRY_DISPATCHED',{issueNumber:n,codingObjectiveId:retryObjective.id,priorObjectiveId:id,retryAttempt,retryKey,reason:classification.reason,sourceRevision:currentSourceRevision||null});
       await mark(pool,'GITHUB_CODING_DISPATCHED',{issueNumber:n,issueUrl:spec.url,codingObjectiveId:retryObjective.id,ownerDirect:spec.ownerDirect,sourcePriority:spec.sourcePriority,dispatchPriority:spec.priority,dispatchReason,retryAttempt,retryKey,sourceRevision:currentSourceRevision||null,priorObjectiveId:id,scopeLease:spec.scopeLease});
