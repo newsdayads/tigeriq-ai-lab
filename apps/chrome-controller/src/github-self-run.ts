@@ -116,16 +116,20 @@ function isCodingMutation(meta:Record<string,string>){
   return meta.AUTONOMOUS_CODE==='true'||String(meta.CAPABILITY||'').toLowerCase()==='code'||Boolean(meta.ALLOW_PATH_PREFIX);
 }
 export function workerEligibleForIssue(workerId:WorkerId,issue:GithubIssue):boolean{
-  if(!isSelfRunSafe(issue))return false;
   const meta=parseWorkOrderMetadata(issue.body);
   if(workerId==='NV02'){
+    if(issue.pull_request||issue.state!=='open')return false;
+    if(String(meta.PRIORITY||'').toUpperCase()==='P0'||/\[P0\]/i.test(String(issue.title||'')))return false;
+    if(meta.AUTO_QUEUE==='EXCLUDED'||meta.OWNER_HOLD==='true')return false;
     const hardGate=/production|paid|credential|security|destructive|device[-_ ]bound|pc_operator|app[_ -]?chrome/i;
     const target=[meta.TARGET_EMPLOYEE,meta.ASSIGNED_EXECUTOR,meta.EXECUTOR,meta.PRIMARY_EMPLOYEE].filter(Boolean);
     if(target.some((value)=>value&&value!=='NV02'))return false;
     const positiveMetadata=Object.entries(meta).filter(([key])=>!key.startsWith('NO_')).map(([key,value])=>`${key}=${value}`).join('\n');
     if(hardGate.test(`${issue.title}\n${positiveMetadata}`))return false;
+    if(!String(meta.RESOURCE_SCOPE||'').trim())return false;
     return true;
   }
+  if(!isSelfRunSafe(issue))return false;
   const review=isReview(issue,meta);
   const research=isResearch(issue,meta);
   const coding=isCodingMutation(meta);
