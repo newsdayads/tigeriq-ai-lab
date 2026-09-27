@@ -15,22 +15,39 @@ export function staleDependencyState(issue, dependencies) {
   const state = `${value(issue?.body, 'STATE')} ${value(issue?.body, 'CURRENT_STATE')}`;
   return { dependencyIds, allTerminal, stale: allTerminal && /WAIT_DEPENDENCY|WAIT_SCOPE_RELEASE|WAIT_SCOPE/i.test(state), key: dependencyReconcileKey(issue) };
 }
-export async function reconcileStaleDependency({ issue, dependencies, comment, updateBody, closeIssue, alreadyReconciled = false } = {}) {
+async function assertBeforeWrite(assertWriteOwnership, action) {
+  if (typeof assertWriteOwnership !== 'function') throw new Error(`WRITE_OWNERSHIP_GUARD_REQUIRED:${action}`);
+  await assertWriteOwnership(action);
+}
+
+export async function reconcileStaleDependency({ issue, dependencies, comment, updateBody, closeIssue, alreadyReconciled = false, assertWriteOwnership } = {}) {
   const result = staleDependencyState(issue, dependencies);
   if (!result.stale) return { ...result, action: 'NOOP' };
   const body = String(issue?.body || '');
   if (alreadyReconciled) return { ...result, action: 'ALREADY_RECONCILED' };
   if (/TIGERIQ_EXECUTABLE\s*=\s*false|AUTO_QUEUE\s*=\s*EXCLUDED|pc_operator|DEVICE_BOUND/i.test(body)) {
-    await comment?.(issue.number, `[DEPENDENCY_RECONCILE] key=${result.key} dependencies=${result.dependencyIds.map((x) => `#${x}`).join(',')} TERMINAL=true REARM=false REASON=NON_EXECUTABLE_OR_SCOPE_HELD`);
+    if (comment) {
+      await assertBeforeWrite(assertWriteOwnership, 'DEPENDENCY_RECONCILE_COMMENT');
+      await comment(issue.number, `[DEPENDENCY_RECONCILE] key=${result.key} dependencies=${result.dependencyIds.map((x) => `#${x}`).join(',')} TERMINAL=true REARM=false REASON=NON_EXECUTABLE_OR_SCOPE_HELD`);
+    }
     return { ...result, action: 'DEPENDENCY_CLOSED_SCOPE_HELD' };
   }
   if (/^(DONE|COMPLETED|CANCELLED|CANCELED|SUPERSEDED)$/i.test(value(issue?.body, 'STATE'))) {
-    await closeIssue?.(issue.number);
+    if (closeIssue) {
+      await assertBeforeWrite(assertWriteOwnership, 'DEPENDENCY_CLOSE_ISSUE');
+      await closeIssue(issue.number);
+    }
     return { ...result, action: 'CLOSED_TERMINAL' };
   }
   const rearmedBody = body.replace(/^STATE\s*=\s*WAIT_DEPENDENCY.*$/im, 'STATE=READY').replace(/^CURRENT_STATE\s*=.*$/im, 'CURRENT_STATE=READY').replace(/^MUTATION_OWNER\s*=.*$/im, 'MUTATION_OWNER=')
     .replace(/^LEASE_ID\s*=.*$/im, 'LEASE_ID=');
-  await updateBody?.(issue.number, rearmedBody);
-  await comment?.(issue.number, `[DEPENDENCY_REARM] key=${result.key} dependencies=${result.dependencyIds.map((x) => `#${x}`).join(',')} STATE=READY MUTATION_OWNER= CLEARED_STALE_WAIT=true`);
+  if (updateBody) {
+    await assertBeforeWrite(assertWriteOwnership, 'DEPENDENCY_REARM_BODY');
+    await updateBody(issue.number, rearmedBody);
+  }
+  if (comment) {
+    await assertBeforeWrite(assertWriteOwnership, 'DEPENDENCY_REARM_COMMENT');
+    await comment(issue.number, `[DEPENDENCY_REARM] key=${result.key} dependencies=${result.dependencyIds.map((x) => `#${x}`).join(',')} STATE=READY MUTATION_OWNER= CLEARED_STALE_WAIT=true`);
+  }
   return { ...result, action: 'REARMED' };
 }
