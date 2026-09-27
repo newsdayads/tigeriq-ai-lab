@@ -96,18 +96,3 @@ export function activeRoleClaim(comments=[],nowMs=Date.now()){
   }
   return active&&active.leaseUntilMs>nowMs?active:null;
 }
-
-export function buildRoleFallbackPrompt(workerId){
-  const id=employee(workerId);
-  const role=id==='NV02'?'MAIN_EXECUTOR':id==='NV03'?'INDEPENDENT_REVIEWER':id==='NV04'?'DEEP_RESEARCH_SECOND_OPINION':'UNKNOWN';
-  return [
-    id+' — ROLE_LOOP='+role+'.',
-    'Core assignment has priority. Continue any valid current assignment first.',
-    'If there is no valid Core assignment or Core is stale/unavailable, audit canonical GitHub Source of Truth and pull exactly ONE eligible P1-P5 item for this role.',
-    'P0 is Owner-only: never read, claim, receive, select, or execute P0 work.',
-    'Never touch App Chrome mutation scope. Never take work already owned/leased or with overlapping RESOURCE_SCOPE.',
-    'Before fallback work, post [TIGERIQ_ROLE_CLAIM_V1] with WORKER='+id+', RESOURCE_SCOPE=<scope>, LEASE_UNTIL=<ISO within 30 minutes>; renew if still working. On handoff/wait/terminal, post [TIGERIQ_ROLE_RELEASE_V1].',
-    'NV02 may take general/reasoning execution; NV03 review/QA only; NV04 research/deep-analysis/second-opinion only.',
-    'Work continuously until DONE with evidence, BLOCKED, EXTERNAL_WAIT, or mandatory Owner gate.',
-  ].join(' ');
-}
