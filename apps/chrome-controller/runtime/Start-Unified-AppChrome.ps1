@@ -63,7 +63,15 @@ function Set-RuntimeEnvironment($Active){
   if(Test-Path -LiteralPath $tokenFile){$env:TIGERIQ_NV02_WORKER_TOKEN=(Get-Content -LiteralPath $tokenFile -Raw).Trim()}
   # Owner-authorized local self-pull: GitHub is used only for bounded P1-P5
   # self-claim/evidence; Core/queue assignment remains disabled.
-  if(Test-Path -LiteralPath $githubTokenFile){$env:TIGERIQ_GITHUB_TOKEN=(Get-Content -LiteralPath $githubTokenFile -Raw).Trim()}
+  try{
+    if(Test-Path -LiteralPath $githubTokenFile){$env:TIGERIQ_GITHUB_TOKEN=(Get-Content -LiteralPath $githubTokenFile -Raw).Trim()}
+  }catch{}
+  if([string]::IsNullOrWhiteSpace($env:TIGERIQ_GITHUB_TOKEN)){
+    try{
+      $gh=Get-Command gh.exe -ErrorAction Stop
+      $env:TIGERIQ_GITHUB_TOKEN=(& $gh.Source auth token 2>$null | Out-String).Trim()
+    }catch{}
+  }
   $env:TIGERIQ_APP_CHROME_SELF_RUN='1'
   $env:TIGERIQ_APP_CHROME_LOCAL_ONLY='1'
 }
