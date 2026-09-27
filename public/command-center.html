@@ -7,7 +7,7 @@
 <meta name="color-scheme" content="dark">
 <title>TigerIQ Live · Công việc</title>
 <style>
-:root{font-family:"Google Sans Flex","Google Sans","Helvetica Neue",sans-serif;--bg:#07111f;--panel:#0b1829;--line:#203953;--text:#f2f7fd;--muted:#91a4ba;--green:#46d48f;--amber:#efb85c;--red:#ff747e;--blue:#58a6ff;--violet:#c5a6ff}
+:root{font-family:"Google Sans Flex","Google Sans","Helvetica Neue",sans-serif;--bg:#07111f;--panel:#0b1829;--line:#203953;--text:#f2f7fd;--muted:#91a4ba;--green:#46d48f;--amber:#efb85c;--red:#ff747e;--blue:#58a6ff;--violet:#c5a6ff;--cyan:#65d7e8;--teal:#58d8c6;--slate:#8fa3b8}
 *{box-sizing:border-box}
 html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text)}
 body{font-family:inherit;background:radial-gradient(circle at 90% -12%,#173b6e 0,transparent 36%),linear-gradient(180deg,#081322,#060d17);overflow-x:hidden}
@@ -19,6 +19,7 @@ a{color:inherit;text-decoration:none}
 .live{display:flex;align-items:center;gap:7px;border:1px solid #23513e;background:#0b241b;border-radius:999px;padding:7px 10px;font-size:11px;color:#9aebbd;white-space:nowrap}
 .live.warn{border-color:#705322;background:#332714;color:#ffd187}
 .live-dot{width:8px;height:8px;border-radius:50%;background:var(--green)}
+.live:not(.warn) .live-dot{animation:live-pulse 2.4s ease-out infinite}
 .live.warn .live-dot{background:var(--amber)}
 .err{display:none;border:1px solid #6d3038;background:#31191e;color:#ffb7bd;border-radius:14px;padding:11px 12px;margin-bottom:10px;font-size:12px;line-height:1.4}
 .err.stale{border-color:#705322;background:#332714;color:#ffd187}
@@ -27,29 +28,80 @@ a{color:inherit;text-decoration:none}
 .list-head span{font-size:10px;color:var(--muted);text-align:right}
 .filters{display:flex;gap:6px;overflow-x:auto;padding:0 0 9px;scrollbar-width:none}
 .filters::-webkit-scrollbar{display:none}
-.filter{border:1px solid #294661;background:#0b1829;color:#91a4ba;border-radius:999px;padding:6px 9px;font:800 9px/1 inherit;white-space:nowrap}
-.filter.active{border-color:#477fb6;background:#132f4e;color:#d9ecff}
+.filter{border:1px solid #294661;background:#0b1829;color:#91a4ba;border-radius:999px;padding:6px 9px;font:800 9px/1 inherit;white-space:nowrap;transition:.18s ease}
+.filter.active{box-shadow:0 0 0 1px rgba(255,255,255,.03) inset}
+.filter[data-filter="action"].active{border-color:#6676a8;background:#20294b;color:#ddd7ff}
+.filter[data-filter="owner"].active{border-color:#9a4550;background:#451f27;color:#ffc0c6}
+.filter[data-filter="running"].active{border-color:#2f7757;background:#113928;color:#9ef0bd}
+.filter[data-filter="review"].active{border-color:#7a5a28;background:#3a2b17;color:#ffd38d}
+.filter[data-filter="waiting"].active{border-color:#35628d;background:#112b45;color:#b9dcff}
+.filter[data-filter="system"].active{border-color:#556273;background:#1c2631;color:#c1ccd7}
+.filter[data-filter="done"].active{border-color:#246c64;background:#0e3733;color:#91eee0}
 .filter b{font-weight:900;color:inherit;margin-left:3px}
 .work-list{display:grid;gap:7px}
-.work-row{display:block;border:1px solid var(--line);background:linear-gradient(180deg,#102139,#0b1829);border-radius:13px;padding:9px 10px;min-width:0}
+.work-row{display:block;border:1px solid var(--line);background:linear-gradient(180deg,#102139,#0b1829);border-radius:13px;padding:9px 10px;min-width:0;box-shadow:0 8px 24px rgba(0,0,0,.12);position:relative;overflow:hidden}
+.work-row::before{content:"";position:absolute;inset:0 auto 0 0;width:3px;background:#314b67;opacity:.9}
+.work-row.status-working::before{background:var(--green)}
+.work-row.status-review::before,.work-row.status-waiting::before{background:var(--amber)}
+.work-row.status-queued::before{background:var(--blue)}
+.work-row.status-blocked::before{background:var(--red)}
+.work-row.status-done::before{background:var(--teal)}
+.work-row.status-open::before{background:#71849a}
+.work-row.status-owner_gate::before{background:var(--red)}
+.work-row.status-verify::before{background:#d9a84f}
+.work-row.status-goal::before{background:var(--violet)}
+.work-row.status-system::before{background:#6c7987}
 .work-main{min-width:0}
 .work-top{display:flex;align-items:center;gap:6px;min-width:0;flex-wrap:wrap}
-.rank{width:18px;height:18px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;background:#17375a;color:#cfe7ff;font-size:9px;font-weight:900;flex:none}
-.work-id{font-size:11px;font-weight:900;color:#dbeaff}
-.priority{font-size:8px;font-weight:850;color:#9fc7f4;border:1px solid #315b8a;background:#102947;border-radius:999px;padding:2px 5px}
-.work-nv{font-size:9px;color:#9fb1c5;font-weight:750}
-.work-title{font-size:11px;font-weight:760;line-height:1.35;margin-top:6px;overflow-wrap:anywhere;color:#edf4fc}
-.state{display:inline-flex;align-items:center;border:1px solid #3a4d63;border-radius:999px;padding:4px 6px;font-weight:850;font-size:8px;white-space:nowrap;margin-left:auto}
-.state.working{border-color:#24533f;background:#103526;color:#8de7b1}
-.state.review,.state.waiting{border-color:#6a4d26;background:#392b17;color:#ffd18b}
-.state.queued{border-color:#315b8a;background:#102947;color:#a9d4ff}
-.state.blocked{border-color:#6b3039;background:#3b1d23;color:#ffb0b6}
-.state.done{border-color:#245c57;background:#0e302d;color:#82e0d3}
-.state.open{border-color:#3b526c;background:#111f31;color:#a9bbcf}
-.progress{display:flex;align-items:center;gap:7px;margin-top:7px}
-.progress-track{height:4px;flex:1;min-width:60px;background:#16283b;border-radius:999px;overflow:hidden}
-.progress-fill{height:100%;background:currentColor;border-radius:999px}
-.progress-text{font-size:8px;font-weight:850;color:#87a2bf;white-space:nowrap}
+.rank{width:19px;height:19px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;background:#17375a;color:#cfe7ff;font-size:10px;font-weight:900;flex:none}
+.work-id{font-size:12px;font-weight:900;color:#dbeaff}
+.priority{font-size:9px;font-weight:850;border:1px solid #3a506b;background:#142337;color:#aebed0;border-radius:999px;padding:2px 6px}
+.priority.p0{border-color:#8a3e78;background:#35182f;color:#ffb7df}
+.priority.p1{border-color:#6b50a4;background:#251b43;color:#d3bdff}
+.priority.p2{border-color:#315f92;background:#102b4a;color:#a9d6ff}
+.priority.p3{border-color:#2e7181;background:#0f3038;color:#93e7f4}
+.priority.p4{border-color:#7c6330;background:#392f18;color:#f4d491}
+.priority.p5{border-color:#4a5969;background:#1a2430;color:#b5c1cd}
+.priority.meta{border-color:#3d4b59;background:#18212b;color:#9aa8b6}
+.work-nv{font-size:10px;color:#a7b8cb;font-weight:780}
+.work-title{font-size:13.5px;font-weight:780;line-height:1.38;margin-top:7px;overflow-wrap:anywhere;color:#f3f7fc;letter-spacing:.002em}
+.work-summary{font-size:11.75px;line-height:1.42;color:#a9bbce;margin-top:5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.state{display:inline-flex;align-items:center;border:1px solid #3a4d63;border-radius:999px;padding:4px 7px;font-weight:850;font-size:9px;white-space:nowrap;margin-left:auto}
+.state.working{border-color:#2b7655;background:#113b2a;color:#9af0bc}
+.state.review,.state.waiting{border-color:#7a5b2a;background:#3b2d18;color:#ffd58f}
+.state.queued{border-color:#37699f;background:#112f50;color:#b5dcff}
+.state.blocked{border-color:#81404a;background:#401f26;color:#ffb8bf}
+.state.done{border-color:#27736a;background:#0f3a35;color:#94ecdf}
+.state.open{border-color:#455d76;background:#132234;color:#b0c1d3}
+.state.owner_gate{border-color:#914652;background:#421f27;color:#ffc0c7}
+.state.verify{border-color:#816126;background:#3b2d18;color:#ffda92}
+.state.goal{border-color:#68529a;background:#281f42;color:#d9c9ff}
+.state.system{border-color:#4b5968;background:#19242f;color:#bdc8d3}
+.progress{display:flex;align-items:center;gap:8px;margin-top:9px;color:#7f95ac}
+.progress-track{height:8px;flex:1;min-width:60px;background:#16283b;border-radius:999px;overflow:hidden;box-shadow:inset 0 1px 2px rgba(0,0,0,.35)}
+.progress-fill{height:100%;background:currentColor;border-radius:999px;position:relative;overflow:hidden;transition:width .45s ease}
+.progress-text{font-size:10px;font-weight:900;color:currentColor;white-space:nowrap;min-width:31px;text-align:right}
+.work-row.status-working .progress{color:var(--green)}
+.work-row.status-review .progress,.work-row.status-waiting .progress{color:var(--amber)}
+.work-row.status-queued .progress{color:var(--blue)}
+.work-row.status-blocked .progress{color:var(--red)}
+.work-row.status-done .progress{color:var(--teal)}
+.work-row.status-open .progress{color:#7e93a9}
+.work-row.status-owner_gate .progress{color:var(--red)}
+.work-row.status-verify .progress{color:var(--amber)}
+.work-row.status-goal .progress{color:var(--violet)}
+.work-row.status-working .progress-fill{box-shadow:0 0 10px color-mix(in srgb,currentColor 38%,transparent)}
+.work-row.status-working .progress-fill::after{content:"";position:absolute;inset:0;width:38%;transform:translateX(-140%) skewX(-18deg);background:linear-gradient(90deg,transparent,rgba(255,255,255,.32),transparent);animation:progress-shimmer 2.3s ease-in-out infinite}
+.state.review,.state.waiting{animation:review-breathe 3.4s ease-in-out infinite}
+.work-row.recently-updated{animation:card-flash .8s ease-out}
+@keyframes live-pulse{0%{box-shadow:0 0 0 0 rgba(70,212,143,.44)}70%{box-shadow:0 0 0 7px rgba(70,212,143,0)}100%{box-shadow:0 0 0 0 rgba(70,212,143,0)}}
+@keyframes progress-shimmer{0%,28%{transform:translateX(-140%) skewX(-18deg)}70%,100%{transform:translateX(360%) skewX(-18deg)}}
+@keyframes review-breathe{0%,100%{box-shadow:0 0 0 0 rgba(239,184,92,0)}50%{box-shadow:0 0 0 3px rgba(239,184,92,.10)}}
+@keyframes card-flash{0%{box-shadow:0 0 0 1px rgba(88,166,255,.5),0 0 18px rgba(88,166,255,.18)}100%{box-shadow:0 8px 24px rgba(0,0,0,.12)}}
+@media(prefers-reduced-motion:reduce){
+  .live-dot,.state,.progress-fill::after,.work-row.recently-updated{animation:none!important}
+  .progress-fill{transition:none!important}
+}
 .empty{border:1px dashed #2a425d;border-radius:16px;padding:22px 14px;text-align:center;color:var(--muted);font-size:12px}
 .page-foot{padding:14px 2px 0;color:#6d8097;font-size:9px;line-height:1.5;text-align:center}
 @media(max-width:520px){
@@ -70,22 +122,26 @@ a{color:inherit;text-decoration:none}
 <section aria-labelledby="workListHeading">
   <div class="list-head"><h2 id="workListHeading">DANH SÁCH CÔNG VIỆC</h2><span id="workMeta">—</span></div>
   <nav class="filters" aria-label="Lọc công việc">
-    <button class="filter active" data-filter="open">ĐANG MỞ <b id="openCount">0</b></button>
-    <button class="filter" data-filter="running">ĐANG CHẠY <b id="runningCount">0</b></button>
+    <button class="filter active" data-filter="action">CẦN XỬ LÝ <b id="actionCount">0</b></button>
+    <button class="filter" data-filter="owner">CHỜ ANH SƠN <b id="ownerCount">0</b></button>
+    <button class="filter" data-filter="running">ĐANG LÀM <b id="runningCount">0</b></button>
+    <button class="filter" data-filter="review">RÀ SOÁT <b id="reviewCount">0</b></button>
     <button class="filter" data-filter="waiting">CHỜ/BLOCKED <b id="waitingCount">0</b></button>
+    <button class="filter" data-filter="system">HỆ THỐNG <b id="systemCount">0</b></button>
     <button class="filter" data-filter="done">HOÀN TẤT <b id="doneCount">0</b></button>
   </nav>
   <div id="workList" class="work-list"></div>
 </section>
-<footer class="page-foot">STT · Work Order · Tên việc · NV · Trạng thái · tự cập nhật 30 giây</footer>
+<footer class="page-foot">STT · Work Order · Tên việc · NV · Trạng thái · tự cập nhật 10 giây</footer>
 </main>
 <script>
 const $=id=>document.getElementById(id);
 const LAST_GOOD_KEY='tigeriq-live-open-progress-v2';
 const LAST_GOOD_MAX_MS=30*60*1000;
 let snapshot=null;
-let currentFilter='open';
-const stateLabel={OPEN:'MỞ',WORKING:'ĐANG LÀM',REVIEW:'ĐANG RÀ SOÁT',QUEUED:'CHỜ GIAO',WAITING:'CHỜ',BLOCKED:'BỊ CHẶN',DONE:'HOÀN TẤT'};
+let currentFilter='action';
+const lastVisualState=new Map();
+const stateLabel={OPEN:'CHƯA LÀM',OWNER_GATE:'CHỜ ANH SƠN',WORKING:'ĐANG LÀM',REVIEW:'ĐANG RÀ SOÁT',VERIFY:'CHỜ XÁC MINH',QUEUED:'SẴN SÀNG',WAITING:'CHỜ',BLOCKED:'BỊ CHẶN',GOAL:'MỤC TIÊU',SYSTEM:'HỆ THỐNG',DONE:'HOÀN TẤT'};
 function esc(v){const d=document.createElement('div');d.textContent=String(v??'');return d.innerHTML}
 function priorityRank(v){const m=String(v||'').toUpperCase().match(/^P([0-5])$/);return m?Number(m[1]):9}
 function statusRank(v){return ({WORKING:0,REVIEW:1,QUEUED:2,WAITING:3,BLOCKED:4,DONE:9})[String(v||'').toUpperCase()]??8}
@@ -115,9 +171,12 @@ function normalizeRows(value){
   };
   const openRows=Array.isArray(value?.openWork)?value.openWork:fallbackOpen();
   if(currentFilter==='done') return (Array.isArray(value?.recentWork)?value.recentWork:[]).map(x=>({...x,status:'DONE'}));
-  if(currentFilter==='running') return openRows.filter(x=>['WORKING','REVIEW'].includes(workStatus(x)));
+  if(currentFilter==='owner') return openRows.filter(x=>workStatus(x)==='OWNER_GATE');
+  if(currentFilter==='running') return openRows.filter(x=>workStatus(x)==='WORKING');
+  if(currentFilter==='review') return openRows.filter(x=>['REVIEW','VERIFY'].includes(workStatus(x)));
   if(currentFilter==='waiting') return openRows.filter(x=>['QUEUED','WAITING','BLOCKED'].includes(workStatus(x)));
-  return openRows;
+  if(currentFilter==='system') return openRows.filter(x=>x?.workKind==='SYSTEM'||workStatus(x)==='SYSTEM');
+  return openRows.filter(x=>x?.workKind!=='SYSTEM'&&workStatus(x)!=='SYSTEM');
 }
 function readLastGood(){try{const x=JSON.parse(localStorage.getItem(LAST_GOOD_KEY)||'null');return x?.value&&Date.now()-x.savedAt<=LAST_GOOD_MAX_MS?x.value:null}catch{return null}}
 function writeLastGood(v){try{localStorage.setItem(LAST_GOOD_KEY,JSON.stringify({savedAt:Date.now(),value:v}))}catch{}}
@@ -130,31 +189,44 @@ function hydrate(raw){
 function updateCounts(){
   const s=snapshot?.openSummary||{};
   const openRows=Array.isArray(snapshot?.openWork)?snapshot.openWork:[...(snapshot?.activeWork||[]),...(snapshot?.nextQueue||[])];
-  $('openCount').textContent=Number.isFinite(Number(s.open))?s.open:openRows.length;
-  $('runningCount').textContent=Number.isFinite(Number(s.running))?s.running:openRows.filter(x=>['WORKING','REVIEW'].includes(workStatus(x))).length;
-  $('waitingCount').textContent=Number.isFinite(Number(s.waiting))?s.waiting:openRows.filter(x=>['QUEUED','WAITING','BLOCKED'].includes(workStatus(x))).length;
+  const actionable=openRows.filter(x=>x?.workKind!=='SYSTEM'&&workStatus(x)!=='SYSTEM');
+  $('actionCount').textContent=Number.isFinite(Number(s.actionable))?s.actionable:actionable.length;
+  $('ownerCount').textContent=Number.isFinite(Number(s.owner))?s.owner:actionable.filter(x=>workStatus(x)==='OWNER_GATE').length;
+  $('runningCount').textContent=Number.isFinite(Number(s.running))?s.running:actionable.filter(x=>workStatus(x)==='WORKING').length;
+  $('reviewCount').textContent=Number.isFinite(Number(s.review))?s.review:actionable.filter(x=>['REVIEW','VERIFY'].includes(workStatus(x))).length;
+  $('waitingCount').textContent=Number.isFinite(Number(s.waiting))?s.waiting:actionable.filter(x=>['QUEUED','WAITING','BLOCKED'].includes(workStatus(x))).length;
+  $('systemCount').textContent=Number.isFinite(Number(s.system))?s.system:openRows.filter(x=>x?.workKind==='SYSTEM'||workStatus(x)==='SYSTEM').length;
   $('doneCount').textContent=Number.isFinite(Number(s.done))?s.done:(snapshot?.recentWork||[]).length;
 }
 function render(){
   if(!snapshot)return;
   updateCounts();
   const rows=normalizeRows(snapshot);
-  const labels={open:'Đang mở',running:'Đang chạy',waiting:'Chờ / Blocked',done:'Hoàn tất'};
+  const labels={action:'Cần xử lý',owner:'Chờ anh Sơn',running:'Đang làm',review:'Rà soát / Xác minh',waiting:'Chờ / Blocked',system:'Hệ thống / Chính sách',done:'Hoàn tất'};
   $('workMeta').textContent=labels[currentFilter]+' · '+rows.length+' việc';
   const box=$('workList');box.innerHTML='';
   if(!rows.length){box.innerHTML='<div class="empty">Không có Work Order trong nhóm này.</div>';return}
   rows.forEach((row,index)=>{
-    const el=document.createElement(row.url?'a':'article');el.className='work-row';
-    if(row.url){el.href=row.url;el.target='_blank';el.rel='noopener'}
+    const el=document.createElement(row.url?'a':'article');
     const status=workStatus(row),label=stateLabel[status]||status;
+    const priority=workPriority(row),priorityClass=String(priority).toLowerCase().replace(/[^a-z0-9]/g,'')||'meta';
+    el.className='work-row status-'+status.toLowerCase()+' priority-'+priorityClass;
+    if(row.url){el.href=row.url;el.target='_blank';el.rel='noopener'}
     const title=displayTitle(row.title);
     const rank=String(index+1).padStart(2,'0');
     const pct=Number(row?.progressPercent);
     const progress=Number.isFinite(pct)&&pct>=0&&pct<=100
       ?'<div class="progress" title="'+esc(row.progressDetail||'Tiến độ gate')+'"><div class="progress-track"><div class="progress-fill" style="width:'+pct+'%"></div></div><span class="progress-text">'+pct+'%</span></div>'
       :'';
-    el.innerHTML='<div class="work-main"><div class="work-top"><span class="rank">'+esc(rank)+'</span><span class="work-id">#'+esc(row.number)+'</span><span class="priority">'+esc(workPriority(row))+'</span><span class="work-nv">'+esc(workerFrom(row))+'</span><span class="state '+esc(status.toLowerCase())+'">'+esc(label)+'</span></div><div class="work-title">'+esc(title)+'</div>'+progress+'</div>';
+    const summaryText=String(row?.currentStep||(row?.workKind==='SYSTEM'?'Policy/SOT/reference — không phải việc thực thi':row?.workKind==='GOAL'?'Mục tiêu cấp hệ thống — không đồng nghĩa đang chạy':'')).trim();
+    const summary=summaryText?'<div class="work-summary">'+esc(summaryText)+'</div>':'';
+    const signature=status+'|'+(Number.isFinite(pct)?pct:'')+'|'+summaryText;
+    const previous=lastVisualState.get(Number(row.number));
+    if(previous&&previous!==signature)el.classList.add('recently-updated');
+    lastVisualState.set(Number(row.number),signature);
+    el.innerHTML='<div class="work-main"><div class="work-top"><span class="rank">'+esc(rank)+'</span><span class="work-id">#'+esc(row.number)+'</span><span class="priority '+esc(priorityClass)+'">'+esc(priority)+'</span><span class="work-nv">'+esc(workerFrom(row))+'</span><span class="state '+esc(status.toLowerCase())+'">'+esc(label)+'</span></div><div class="work-title">'+esc(title)+'</div>'+summary+progress+'</div>';
     box.append(el);
+    if(el.classList.contains('recently-updated'))setTimeout(()=>el.classList.remove('recently-updated'),850);
   });
 }
 function show(value){
@@ -182,13 +254,13 @@ async function load(){
   }
 }
 document.querySelectorAll('.filter').forEach(button=>button.addEventListener('click',()=>{
-  currentFilter=button.dataset.filter||'open';
+  currentFilter=button.dataset.filter||'action';
   document.querySelectorAll('.filter').forEach(x=>x.classList.toggle('active',x===button));
   render();
 }));
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)load()});
 load();
-setInterval(()=>{if(!document.hidden)load()},30000);
+setInterval(()=>{if(!document.hidden)load()},10000);
 </script>
 </body>
 </html>
