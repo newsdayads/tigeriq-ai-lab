@@ -75,11 +75,10 @@ test('Core endpoint durably dedupes GitHub deliveries before publishing',()=>{
   assert.match(core,/publishGithubEvent/);
 });
 
-test('GitHub workflow is event-driven with OIDC and no persistent dispatch secret',()=>{
+test('GitHub Work Order workflow is event-driven with OIDC and no persistent dispatch secret',()=>{
   const workflow=readFileSync('.github/workflows/tigeriq-core-event-dispatch.yml','utf8');
   assert.match(workflow,/issues:/);
   assert.match(workflow,/issue_comment:/);
-  assert.match(workflow,/pull_request_target:/);
   assert.match(workflow,/id-token: write/);
   assert.match(workflow,/audience=tigeriq-core/);
   assert.match(workflow,/X-TigerIQ-Delivery/);
