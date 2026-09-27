@@ -103,10 +103,10 @@ describe('NV02 local GitHub self-pull contract', () => {
 
   it('parses App Chrome lowercase scope and release-by-identity correctly', () => {
     const now = Date.parse('2026-09-27T00:00:00Z');
-    const claim = { id: 1, body: '[APP_CHROME_CLAIM]\nclaim_id=APP-1\nworker=NV02\nscope=APP_SCOPE\nexpires_at=2026-09-27T01:00:00Z' };
+    const claim = { id: 1, body: '[APP_CHROME_CLAIM]\nclaim_id=App-a1b2\nworker=NV02\nscope=APP_SCOPE\nexpires_at=2026-09-27T01:00:00Z' };
     expect(activeResourceScopes([claim], now)).toEqual(new Set(['APP_SCOPE']));
-    expect(activeResourceClaims([claim], now)[0]).toMatchObject({ resourceScope: 'APP_SCOPE', identity: 'APP-1' });
-    const release = { id: 2, body: '[APP_CHROME_RELEASE]\nclaim_id=APP-1\nworker=NV02' };
+    expect(activeResourceClaims([claim], now)[0]).toMatchObject({ resourceScope: 'APP_SCOPE', identity: 'App-a1b2' });
+    const release = { id: 2, body: '[APP_CHROME_RELEASE]\nclaim_id=App-a1b2\nworker=NV02' };
     expect(activeResourceScopes([claim, release], now)).toEqual(new Set());
   });
 
