@@ -1,6 +1,7 @@
 import { parseExecutableIssue } from '../apps/tigeriq-core/github-intake.mjs';
 import { parseCodingIssue } from '../apps/tigeriq-core/github-coding-intake.mjs';
 import { hasTerminalBlockedLabel } from '../apps/tigeriq-core/github-lifecycle-label.mjs';
+import { loadSkillPromotionState } from '../apps/tigeriq-core/skill-promotion.mjs';
 
 const REPO = process.env.TIGERIQ_REPO || 'newsdayads/tigeriq-ai-lab';
 const REGISTRY_ISSUE = 335;
@@ -739,6 +740,31 @@ async function githubIssue(owner, repo, number, issueMap, fetchImpl) {
   try { return await gh('/repos/' + owner + '/' + repo + '/issues/' + number, fetchImpl); } catch { return null; }
 }
 
+function skillPromotionSnapshot() {
+  try {
+    const state = loadSkillPromotionState();
+    return {
+      state: 'AVAILABLE',
+      summary: state.summary,
+      entries: state.queue.entries.map((entry) => ({
+        skillId: entry.skillId,
+        status: entry.status,
+        blocker: entry.blocker,
+        nextCondition: entry.nextCondition,
+        nextEligibleAt: entry.nextEligibleAt,
+        promotionEligible: entry.promotionEligible,
+      })),
+    };
+  } catch (error) {
+    return {
+      state: 'UNAVAILABLE',
+      summary: { active: 0, validatedWaiting: 0, validatedBlocked: 0, canaryReady: 0, canaryRunning: 0, promotionEligible: 0, tracked: 0 },
+      entries: [],
+      reason: String(error instanceof Error ? error.message : error).slice(0, 120),
+    };
+  }
+}
+
 async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
   const { owner, repo } = repoParts();
   let projectionStale = false;
@@ -952,6 +978,7 @@ async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
 
     return {
       ...base,
+      skillPromotion: skillPromotionSnapshot(),
       openWork,
       openSummary,
       activeWork: activeRows.sort((a, b) => compareQueueRows(
@@ -976,6 +1003,7 @@ async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
   } catch (error) {
     return {
       ...base,
+      skillPromotion: skillPromotionSnapshot(),
       openWork: [],
       openSummary: { open: 0, running: 0, waiting: 0, done: 0 },
       activeWork: [],
