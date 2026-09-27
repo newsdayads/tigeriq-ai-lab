@@ -384,6 +384,9 @@ export function parseRecentCompletedIssue(issue, now = Date.now()) {
     sourcePriority: priority,
     employeeId: issueEmployeeId(issue),
     status: 'DONE',
+    progressPercent: 100,
+    progressSource: 'terminal',
+    progressDetail: '5/5 gate',
     completedAt,
     updatedAt: completedAt,
     url: issue.html_url || null,
@@ -584,6 +587,94 @@ async function dependencyStates(rows, owner, repo, fetchImpl) {
   return results;
 }
 
+function issueCanonicalState(issue) {
+  const body = String(issue?.body || '');
+  return (bodyValue(body, 'CURRENT_STATE') || bodyValue(body, 'STATE') || '').toUpperCase();
+}
+
+function issueDisplayOwner(issue) {
+  const body = String(issue?.body || '');
+  const employee = issueEmployeeId(issue);
+  if (employee) return employee;
+  const owner = bodyValue(body, 'MUTATION_OWNER') || bodyValue(body, 'ACTIVE_OWNER');
+  if (/^(?:NV\d{2}|VY|CODEX|AUTO)$/i.test(owner)) return owner.toUpperCase();
+  return null;
+}
+
+export function progressForIssue(issue, status = 'OPEN', checks = null, hasPull = false) {
+  const body = String(issue?.body || '');
+  const explicitRaw = bodyValue(body, 'PROGRESS_PERCENT');
+  if (/^\d{1,3}$/.test(explicitRaw)) {
+    const explicit = Number(explicitRaw);
+    if (explicit >= 0 && explicit <= 100) return { percent: explicit, source: 'explicit', detail: 'PROGRESS_PERCENT' };
+  }
+
+  const boxes = [...body.matchAll(/^\s*[-*]\s+\[([ xX])\]/gm)];
+  if (boxes.length >= 2) {
+    const done = boxes.filter((match) => /x/i.test(match[1])).length;
+    return { percent: Math.round((done / boxes.length) * 100), source: 'checklist', detail: done + '/' + boxes.length + ' checklist' };
+  }
+
+  const phase = issueCanonicalState(issue);
+  const normalized = String(status || 'OPEN').toUpperCase();
+  let gates = null;
+  if (issue?.state === 'closed' || /(?:^|_)(?:DONE|COMPLETED)(?:_|$)/.test(phase)) gates = 5;
+  else if (/(?:DEPLOY|RUNTIME_VERIFY|LIVE_VERIFY|MERGED)/.test(phase)) gates = 4;
+  else if (normalized === 'REVIEW' || /(?:REVIEW|VERIFY)/.test(phase)) gates = checks?.state === 'ĐẠT' ? 4 : 3;
+  else if (hasPull || /(?:PR_OPEN|IMPLEMENTED|IMPLEMENTING|CODE_COMPLETE)/.test(phase)) gates = checks?.state === 'ĐẠT' ? 3 : 2;
+  else if (normalized === 'WORKING' || /(?:WORKING|RUNNING|IN_PROGRESS|IMPLEMENTING|CLAIMED)/.test(phase)) gates = 1;
+  else if (normalized === 'QUEUED' || /(?:READY|QUEUED)/.test(phase)) gates = 0;
+
+  if (gates === null) return { percent: null, source: 'none', detail: null };
+  return { percent: gates * 20, source: 'lifecycle', detail: gates + '/5 gate' };
+}
+
+export function parseOpenWorkIssue(issue, overlays = {}) {
+  if (!issue || issue.pull_request || issue.state !== 'open') return null;
+  const number = Number(issue.number);
+  if (!number) return null;
+  const active = overlays.active || null;
+  const queued = overlays.queued || null;
+  const body = String(issue.body || '');
+  const phase = issueCanonicalState(issue);
+  let status = active?.status || queued?.status || null;
+
+  if (!status) {
+    if (/BLOCKED/.test(phase)) status = 'BLOCKED';
+    else if (/(?:WAIT|PENDING|HOLD)/.test(phase)) status = 'WAITING';
+    else if (/(?:REVIEW|VERIFY)/.test(phase)) status = 'REVIEW';
+    else if (/(?:WORKING|RUNNING|IN_PROGRESS|IMPLEMENT)/.test(phase)) status = 'WORKING';
+    else if (/(?:READY|QUEUED)/.test(phase) && bodyFlag(body, 'TIGERIQ_EXECUTABLE', 'true')) status = 'QUEUED';
+    else status = 'OPEN';
+  }
+
+  const checks = active?.checks || null;
+  const hasPull = Boolean(active?.prNumber || overlays.hasPull);
+  const progress = progressForIssue(issue, status, checks, hasPull);
+  const priority = issuePriority(issue);
+
+  return {
+    number,
+    title: String(issue.title || ''),
+    priority,
+    effectivePriority: priority,
+    sourcePriority: priority,
+    employeeId: active?.employeeId || queued?.targetWorker || issueDisplayOwner(issue),
+    status,
+    currentState: phase || null,
+    currentStep: active?.currentStep || queued?.waitReason || bodyValue(body, 'CURRENT_STEP') || bodyValue(body, 'NEXT_ACTION') || null,
+    progressPercent: progress.percent,
+    progressSource: progress.source,
+    progressDetail: progress.detail,
+    prNumber: active?.prNumber || null,
+    prUrl: active?.prUrl || null,
+    checks,
+    updatedAt: active?.updatedAt || queued?.updatedAt || issue.updated_at || null,
+    url: issue.html_url || null,
+    meta: !priority,
+  };
+}
+
 function githubActiveState(issue) {
   const body = String(issue?.body || '');
   const state = bodyValue(body, 'STATE').toUpperCase();
@@ -771,8 +862,35 @@ async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
     const nextQueue = rankedQueue.slice(0, QUEUE_LIMIT);
     const nextExecutable = rankedQueue.find((row) => row.eligibleNow) || null;
 
+    const activeMap = new Map(activeRows.map((row) => [Number(row.number), row]));
+    const queueMap = new Map(rankedQueue.map((row) => [Number(row.number), row]));
+    const openWork = openIssues.map((issue) => parseOpenWorkIssue(issue, {
+      active: activeMap.get(Number(issue.number)) || null,
+      queued: queueMap.get(Number(issue.number)) || null,
+      hasPull: openPulls.some((pull) => pullMentionsIssue(pull, Number(issue.number))),
+    })).filter(Boolean).sort((a, b) => {
+      const priorityRank = { P0: 0, P1: 1, P2: 2, P3: 3, P4: 4, P5: 5 };
+      const pa = priorityRank[a.priority] ?? 9;
+      const pb = priorityRank[b.priority] ?? 9;
+      if (pa !== pb) return pa - pb;
+      const statusRank = { WORKING: 0, REVIEW: 1, QUEUED: 2, WAITING: 3, BLOCKED: 4, OPEN: 5 };
+      const sa = statusRank[a.status] ?? 9;
+      const sb = statusRank[b.status] ?? 9;
+      if (sa !== sb) return sa - sb;
+      return Date.parse(b.updatedAt || 0) - Date.parse(a.updatedAt || 0) || b.number - a.number;
+    });
+
+    const openSummary = {
+      open: openWork.length,
+      running: openWork.filter((row) => ['WORKING','REVIEW'].includes(row.status)).length,
+      waiting: openWork.filter((row) => ['QUEUED','WAITING','BLOCKED'].includes(row.status)).length,
+      done: recentWork.length,
+    };
+
     return {
       ...base,
+      openWork,
+      openSummary,
       activeWork: activeRows.sort((a, b) => compareQueueRows(
         { ownerDirect: false, priority: a.priority || 'P2', number: a.number },
         { ownerDirect: false, priority: b.priority || 'P2', number: b.number },
@@ -795,6 +913,8 @@ async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
   } catch (error) {
     return {
       ...base,
+      openWork: [],
+      openSummary: { open: 0, running: 0, waiting: 0, done: 0 },
       activeWork: [],
       nextQueue: [],
       nextQueueTotal: 0,
