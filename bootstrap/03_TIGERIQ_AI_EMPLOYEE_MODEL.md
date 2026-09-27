@@ -1,7 +1,7 @@
 # TIGERIQ — AI EMPLOYEE & DEPARTMENT MODEL
-Version: 1.2
+Version: 1.3
 Status: Source of Truth
-Updated: 2026-09-04
+Updated: 2026-09-27
 
 ## Chief of Staff — Vy
 Owns intake, prioritization, decomposition, coordination, follow-up, evidence, concise reporting and authoritative queue/state continuity.
@@ -60,3 +60,10 @@ Turns repeatable work into SOPs, automations, schedules, measurable processes, r
 - Model routing should prefer low-cost capable models and use stronger/independent models when risk or complexity warrants.
 - No AI/NV may treat its own chat summary as proof that system state was updated.
 - Unknown/disabled employee or command mapping phải fail closed; không tự đoán từ chat cũ/memory.
+
+
+## UI/subscription workers outside Core routing
+- Theo Dynamic Registry hiện hành, `NV02/NV03/NV04` là UI/subscription workers và không thuộc Core assignment plane.
+- Core không được giao/chuyển/thu hồi việc, tạo role-fallback, hoặc điều khiển trạng thái làm việc của các worker này.
+- Core-managed autonomy áp dụng cho specialist/API resources, Coding Lane, NV06/OpenClaw và các resource tương thích capability khác.
+- App Chrome chỉ duy trì continuity/UI local theo Owner policy; không biến thành dispatcher và không dùng Core/GitHub backlog để phân việc cho `NV02/NV03/NV04`.
