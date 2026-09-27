@@ -5,11 +5,6 @@ on:
     types: [opened, edited, reopened, closed, labeled, unlabeled, assigned, unassigned]
   issue_comment:
     types: [created, edited, deleted]
-  pull_request_target:
-    types: [opened, edited, synchronize, reopened, closed, ready_for_review, converted_to_draft]
-  workflow_run:
-    workflows: ["CI", "WO-014 Queue Hygiene", "WO-012/013 Vercel Online Verify"]
-    types: [completed]
 
 permissions:
   contents: read
