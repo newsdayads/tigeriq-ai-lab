@@ -147,8 +147,78 @@ export function formatPublicEvidenceBlock(evidence={}){
   return `PUBLIC_EVIDENCE_JSON=${json}`;
 }
 
-export function appendPublicEvidenceToSummary(baseSummary,jobResult,requestedKeys=[]){
+function diagnosticValueType(value){
+  if(value===null||value===undefined)return 'null';
+  if(Array.isArray(value))return 'array';
+  if(typeof value==='object')return 'object';
+  return 'scalar';
+}
+
+function diagnosticKeys(value){
+  if(!value||typeof value!=='object'||Array.isArray(value))return [];
+  return Object.keys(value).filter(key=>!blockedPublicKey(key)).slice(0,MAX_OBJECT_KEYS);
+}
+
+function trustedFileReadDiagnostic(node,depth=0,seen=new Set(),state={present:false,parseable:false}){
+  if(depth>8||node==null||typeof node!=='object'||seen.has(node))return state;
+  seen.add(node);
+  if(!Array.isArray(node)&&node.ok===true&&String(node.action||'').toLowerCase()==='file_read'&&String(node.target||'').toLowerCase()==='pc01-local'){
+    const content=typeof node.data?.content==='string'?node.data.content:'';
+    if(content){
+      state.present=true;
+      if(content.length<=256*1024){
+        try{
+          const parsed=JSON.parse(content);
+          if(parsed&&typeof parsed==='object'&&!Array.isArray(parsed))state.parseable=true;
+        }catch{}
+      }
+    }
+  }
+  const values=Array.isArray(node)?node:Object.entries(node).filter(([key])=>!blockedPublicKey(key)).map(([,value])=>value);
+  for(const value of values)trustedFileReadDiagnostic(value,depth+1,seen,state);
+  return state;
+}
+
+export function buildPublicEvidenceDiagnostic(jobResult,requestedKeys=[],options={}){
+  const requested=[...new Set((requestedKeys||[]).filter(key=>SUPPORTED_SET.has(String(key))).map(String))];
+  const extracted=extractPublicEvidence(jobResult,requested);
+  const evidence=jobResult?.evidence;
+  const agentResult=evidence?.agentResult;
+  const agentEvidence=agentResult?.evidence;
+  const bridgeCalls=evidence?.bridgeCalls;
+  const trusted=trustedFileReadDiagnostic(bridgeCalls);
+  const metadataPresent=Boolean(options?.metadataPublicEvidenceKeysPresent);
+  const metadataCount=metadataPresent?Math.max(0,Number(options?.metadataPublicEvidenceKeyCount)||0):0;
+  return {
+    requestedKeys:requested,
+    metadataPublicEvidenceKeysPresent:metadataPresent,
+    metadataPublicEvidenceKeyCount:metadataCount,
+    jobResultType:diagnosticValueType(jobResult),
+    jobResultKeys:diagnosticKeys(jobResult),
+    evidenceType:diagnosticValueType(evidence),
+    evidenceKeys:diagnosticKeys(evidence),
+    agentResultType:diagnosticValueType(agentResult),
+    agentResultKeys:diagnosticKeys(agentResult),
+    agentEvidenceType:diagnosticValueType(agentEvidence),
+    agentEvidenceKeys:diagnosticKeys(agentEvidence),
+    bridgeCallsType:diagnosticValueType(bridgeCalls),
+    bridgeCallsCount:Array.isArray(bridgeCalls)?bridgeCalls.length:(bridgeCalls&&typeof bridgeCalls==='object'?1:0),
+    trustedFileReadReceiptPresent:trusted.present,
+    trustedFileReadJsonParseable:trusted.parseable,
+    extractedKeys:Object.keys(extracted).filter(key=>SUPPORTED_SET.has(key)),
+  };
+}
+
+export function formatPublicEvidenceDiagnosticBlock(diagnostic={}){
+  return `PUBLIC_EVIDENCE_DIAGNOSTIC_JSON=${JSON.stringify(diagnostic)}`;
+}
+
+export function appendPublicEvidenceToSummary(baseSummary,jobResult,requestedKeys=[],options={}){
   const base=String(baseSummary||'').slice(0,3000);
-  const block=formatPublicEvidenceBlock(extractPublicEvidence(jobResult,requestedKeys));
-  return block?`${base}\n${block}`:base;
+  const evidence=extractPublicEvidence(jobResult,requestedKeys);
+  const block=formatPublicEvidenceBlock(evidence);
+  if(block)return `${base}\n${block}`;
+  if(options?.diagnostic!==true||!(requestedKeys||[]).length)return base;
+  const diagnostic=buildPublicEvidenceDiagnostic(jobResult,requestedKeys,options);
+  return `${base}\n${formatPublicEvidenceDiagnosticBlock(diagnostic)}`;
 }

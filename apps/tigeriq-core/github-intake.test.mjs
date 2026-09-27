@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe,expect,it } from 'vitest';
 import { contextIssueRefs,extractExplicitContextIssues,extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,formatResultComment,githubDispatchLane,githubPcOperatorJobId,githubRateLimitCooldownMs,githubSpecBlockedByActive,hydrateContext,indexOpenGithubIssues,isBoundedAppChromeRequestOnly,parseExecutableIssue,resolveGithubSourceIssue } from './github-intake.mjs';
-import { appendPublicEvidenceToSummary,extractPublicEvidence,formatPublicEvidenceBlock,parsePublicEvidenceKeys,sanitizePublicEvidenceValue } from './public-evidence.mjs';
+import { appendPublicEvidenceToSummary,buildPublicEvidenceDiagnostic,extractPublicEvidence,formatPublicEvidenceBlock,formatPublicEvidenceDiagnosticBlock,parsePublicEvidenceKeys,sanitizePublicEvidenceValue } from './public-evidence.mjs';
 import { openClawTerminalDecision } from '../openclaw-tigeriq-runtime/dispatch.mjs';
 
 describe('GitHub Core intake guardrails',()=>{
@@ -172,6 +172,13 @@ describe('GitHub Core intake guardrails',()=>{
       'ACCEPTANCE','PASS'
     ].join('\n')});
     expect(parsed.publicEvidenceKeys).toEqual(['installedSha','result','remoteDesktopGuard','changedPaths','updaterTaskTarget']);
+    const diagnostic=parseExecutableIssue({...base,body:[
+      'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','PRIORITY=P1','CAPABILITY=pc_operator',
+      'NO_CODE_CHANGE=true','NO_PC01_SHELL=true','RESOURCE_SCOPE=READBACK_X',
+      'PUBLIC_EVIDENCE_KEYS=installedSha,result','PUBLIC_EVIDENCE_DIAGNOSTIC=true',
+      'ASSIGNED_ACTION','tigeriq_pc file_read path="D:\\TigerIQ\\State\\core-runtime-updater.json"','ACCEPTANCE','PASS'
+    ].join('\n')});
+    expect(diagnostic.publicEvidenceDiagnostic).toBe(true);
   });
 
   it('extracts requested fields only from structured agent evidence and redacts sensitive nested keys',()=>{
@@ -291,6 +298,62 @@ describe('GitHub Core intake guardrails',()=>{
     expect(noMarker).toBe('base');
     const marked=appendPublicEvidenceToSummary('base',{evidence:{agentResult:{evidence:{result:'PASS'}}}},['result']);
     expect(marked).toBe('base\nPUBLIC_EVIDENCE_JSON={"result":"PASS"}');
+  });
+
+  it('emits structure-only diagnostic only when opt-in marker is active and normal extraction is empty',()=>{
+    const secretValue='SUPER_SECRET_VALUE_987';
+    const fileContent=JSON.stringify({other:'value',password:secretValue});
+    const jobResult={
+      token:secretValue,
+      evidence:{
+        content:secretValue,
+        agentResult:{status:'SUCCESS',evidence:{wrapper:{other:'not-requested'},token:secretValue}},
+        bridgeCalls:[{tool:'tigeriq_pc',result:{ok:true,action:'file_read',target:'pc01-local',data:{path:'D:\\Secret\\state.json',content:fileContent}}}],
+      },
+    };
+    const baseSummary='base';
+    expect(appendPublicEvidenceToSummary(baseSummary,jobResult,['installedSha'],{})).toBe(baseSummary);
+    const summary=appendPublicEvidenceToSummary(baseSummary,jobResult,['installedSha'],{
+      diagnostic:true,
+      metadataPublicEvidenceKeysPresent:true,
+      metadataPublicEvidenceKeyCount:1,
+    });
+    expect(summary).toContain('PUBLIC_EVIDENCE_DIAGNOSTIC_JSON=');
+    expect(summary).not.toContain(secretValue);
+    expect(summary).not.toContain('D:\\Secret\\state.json');
+    expect(summary).not.toContain('"token"');
+    expect(summary).not.toContain('"content"');
+    const raw=summary.split('PUBLIC_EVIDENCE_DIAGNOSTIC_JSON=')[1];
+    const diagnostic=JSON.parse(raw);
+    expect(diagnostic.requestedKeys).toEqual(['installedSha']);
+    expect(diagnostic.metadataPublicEvidenceKeysPresent).toBe(true);
+    expect(diagnostic.metadataPublicEvidenceKeyCount).toBe(1);
+    expect(diagnostic.jobResultType).toBe('object');
+    expect(diagnostic.jobResultKeys).toEqual(['evidence']);
+    expect(diagnostic.evidenceKeys).toEqual(['agentResult','bridgeCalls']);
+    expect(diagnostic.agentResultKeys).toEqual(['status','evidence']);
+    expect(diagnostic.agentEvidenceKeys).toEqual(['wrapper']);
+    expect(diagnostic.bridgeCallsType).toBe('array');
+    expect(diagnostic.bridgeCallsCount).toBe(1);
+    expect(diagnostic.trustedFileReadReceiptPresent).toBe(true);
+    expect(diagnostic.trustedFileReadJsonParseable).toBe(true);
+    expect(diagnostic.extractedKeys).toEqual([]);
+  });
+
+  it('normal public evidence wins over diagnostic and bridge shapes stay structure-only',()=>{
+    const success=appendPublicEvidenceToSummary('base',{evidence:{agentResult:{evidence:{result:'PASS'}}}},['result'],{diagnostic:true,metadataPublicEvidenceKeysPresent:true,metadataPublicEvidenceKeyCount:1});
+    expect(success).toBe('base\nPUBLIC_EVIDENCE_JSON={"result":"PASS"}');
+    expect(success).not.toContain('PUBLIC_EVIDENCE_DIAGNOSTIC_JSON=');
+
+    const objectShape=buildPublicEvidenceDiagnostic({evidence:{bridgeCalls:{result:{ok:false}}}},['installedSha'],{});
+    expect(objectShape.bridgeCallsType).toBe('object');
+    expect(objectShape.bridgeCallsCount).toBe(1);
+    expect(objectShape.trustedFileReadReceiptPresent).toBe(false);
+
+    const nullShape=buildPublicEvidenceDiagnostic({evidence:{bridgeCalls:null}},['installedSha'],{});
+    expect(nullShape.bridgeCallsType).toBe('null');
+    expect(nullShape.bridgeCallsCount).toBe(0);
+    expect(formatPublicEvidenceDiagnosticBlock(nullShape)).toContain('PUBLIC_EVIDENCE_DIAGNOSTIC_JSON=');
   });
 
   it('wires public evidence metadata and both bounded pc_operator reconciliation paths',()=>{
