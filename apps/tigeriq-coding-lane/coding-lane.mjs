@@ -238,6 +238,10 @@ const AUTO_MERGE=String(process.env.TIGERIQ_CODING_AUTO_MERGE||'true').toLowerCa
 const STALE_RUNNING_TIMEOUT_MS=Math.max(60000,Number(process.env.TIGERIQ_CODING_STALE_RUNNING_TIMEOUT_MS||15*60*1000));
 const STALE_RUNNING_SCAN_INTERVAL_MS=Math.max(5000,Number(process.env.TIGERIQ_CODING_STALE_RUNNING_SCAN_INTERVAL_MS||15000));
 const STALE_RUNNING_MAX_REQUEUES=Math.max(0,Math.min(3,Number(process.env.TIGERIQ_CODING_STALE_RUNNING_MAX_REQUEUES||1)));
+const STALE_RUNNING_RUNTIME_CANARY_OBJECTIVE_ID='CODEOBJ-CANARY-A8-2068';
+const STALE_RUNNING_RUNTIME_CANARY_JOB_ID='CODE-CANARY-A8-2068';
+const STALE_RUNNING_RUNTIME_CANARY_SOURCE_ISSUE=2068;
+const STALE_RUNNING_RUNTIME_CANARY_TIMEOUT_MS=Math.max(45000,STALE_RUNNING_SCAN_INTERVAL_MS*3);
 export function normalizeCodingParallelLimit(value=6){const n=Number(value);return Math.max(1,Math.min(6,Number.isFinite(n)?Math.floor(n):6))}
 const MAX_PARALLEL=normalizeCodingParallelLimit(process.env.TIGERIQ_CODING_MAX_PARALLEL||6);
 const pool=DATABASE_URL?new Pool({connectionString:DATABASE_URL,max:8}):null;
@@ -877,6 +881,46 @@ export async function recoverStaleRunningJobs({
   return out;
 }
 
+export async function cleanupStaleRunningRuntimeCanary({db=pool}={}){
+  if(!db)return{cleaned:false,reason:'DB_UNAVAILABLE'};
+  await db.query("delete from tigeriq_coding_jobs where id=$1",[STALE_RUNNING_RUNTIME_CANARY_JOB_ID]);
+  await db.query("delete from tigeriq_coding_objectives where id=$1",[STALE_RUNNING_RUNTIME_CANARY_OBJECTIVE_ID]);
+  return{cleaned:true};
+}
+
+export async function armStaleRunningRuntimeCanary({db=pool,nowMs=Date.now(),staleMs=STALE_RUNNING_TIMEOUT_MS}={}){
+  if(!db)return{armed:false,reason:'DB_UNAVAILABLE'};
+  await cleanupStaleRunningRuntimeCanary({db});
+  const ageMs=Math.max(1000,Number(staleMs)||0)+5000;
+  const startedAt=new Date(Number(nowMs)-ageMs).toISOString();
+  const objective=`GitHub autonomous coding issue #${STALE_RUNNING_RUNTIME_CANARY_SOURCE_ISSUE}: bounded stale-running runtime canary`;
+  await db.query(
+    "insert into tigeriq_coding_objectives(id,objective,priority,status,summary) values($1,$2,'P1','active',$3)",
+    [STALE_RUNNING_RUNTIME_CANARY_OBJECTIVE_ID,objective,'Runtime A8 stale-running canary armed.'],
+  );
+  await db.query(
+    "insert into tigeriq_coding_jobs(id,objective_id,title,instruction,paths,status,started_at,stale_recovery_count) values($1,$2,$3,$4,'[]'::jsonb,'running',$5,0)",
+    [STALE_RUNNING_RUNTIME_CANARY_JOB_ID,STALE_RUNNING_RUNTIME_CANARY_OBJECTIVE_ID,'Canary A8 stale-running watchdog','Synthetic bounded canary; never execute generation.',startedAt],
+  );
+  return{armed:true,objectiveId:STALE_RUNNING_RUNTIME_CANARY_OBJECTIVE_ID,jobId:STALE_RUNNING_RUNTIME_CANARY_JOB_ID,startedAt,sourceIssue:STALE_RUNNING_RUNTIME_CANARY_SOURCE_ISSUE};
+}
+
+export async function settleStaleRunningRuntimeCanary({db=pool,pid=process.pid,emit=(entry)=>console.warn(JSON.stringify(entry))}={}){
+  if(!db)return{done:false,pass:false,reason:'DB_UNAVAILABLE'};
+  const row=(await db.query("select id,status,failure from tigeriq_coding_jobs where id=$1",[STALE_RUNNING_RUNTIME_CANARY_JOB_ID])).rows?.[0];
+  if(!row)return{done:false,pass:false,reason:'CANARY_JOB_MISSING'};
+  let failure=row.failure;
+  if(typeof failure==='string'){try{failure=JSON.parse(failure)}catch{failure={code:null}}}
+  const reason=String(failure?.code||failure?.staleRecovery?.code||'');
+  if(String(row.status||'').toLowerCase()!=='failed'||reason!=='SOURCE_WORK_ORDER_NO_LONGER_EXECUTABLE'){
+    return{done:false,pass:false,status:String(row.status||''),reason:reason||null};
+  }
+  const evidence={event:'CODING_STALE_RUNNING_CANARY_PASS',canaryId:'A8-2068',jobId:STALE_RUNNING_RUNTIME_CANARY_JOB_ID,priorState:'running',terminalState:'failed',reason,pid:Number(pid)};
+  emit(evidence);
+  await cleanupStaleRunningRuntimeCanary({db});
+  return{done:true,pass:true,evidence};
+}
+
 export function codingPathsOverlap(left=[],right=[]){
   const a=(Array.isArray(left)?left:[]).map(String),b=(Array.isArray(right)?right:[]).map(String);
   return a.some(x=>b.some(y=>x===y||x.startsWith(y.endsWith('/')?y:y+'/')||y.startsWith(x.endsWith('/')?x:x+'/')));
@@ -1153,6 +1197,22 @@ if(process.env.NODE_ENV!=='test'){
   let stop=false;
   const active=new Set();
   let lastStaleRecoveryScanAt=0;
+  let staleRuntimeCanaryDone=false;
+  const staleRuntimeCanaryStartedAt=Date.now();
+  const staleRuntimeCanaryDeadline=staleRuntimeCanaryStartedAt+STALE_RUNNING_RUNTIME_CANARY_TIMEOUT_MS;
+  try{
+    const armed=await armStaleRunningRuntimeCanary({nowMs:staleRuntimeCanaryStartedAt});
+    if(!armed.armed){
+      staleRuntimeCanaryDone=true;
+      console.warn(JSON.stringify({event:'CODING_STALE_RUNNING_CANARY_FAIL',reason:armed.reason||'NOT_ARMED',pid:process.pid}));
+    }else{
+      console.warn(JSON.stringify({event:'CODING_STALE_RUNNING_CANARY_ARMED',canaryId:'A8-2068',jobId:armed.jobId,pid:process.pid}));
+    }
+  }catch(error){
+    staleRuntimeCanaryDone=true;
+    await cleanupStaleRunningRuntimeCanary().catch(()=>{});
+    console.warn(JSON.stringify({event:'CODING_STALE_RUNNING_CANARY_FAIL',reason:String(error?.code||error?.message||error).slice(0,160),pid:process.pid}));
+  }
   process.on('SIGINT',()=>{stop=true;server.close()});
   process.on('SIGTERM',()=>{stop=true;server.close()});
   while(!stop){
@@ -1162,6 +1222,15 @@ if(process.env.NODE_ENV!=='test'){
       if(nowMs-lastStaleRecoveryScanAt>=STALE_RUNNING_SCAN_INTERVAL_MS){
         await recoverStaleRunningJobs({activeIds:active,nowMs});
         lastStaleRecoveryScanAt=nowMs;
+      }
+      if(!staleRuntimeCanaryDone){
+        const canary=await settleStaleRunningRuntimeCanary();
+        if(canary.pass)staleRuntimeCanaryDone=true;
+        else if(nowMs>=staleRuntimeCanaryDeadline){
+          staleRuntimeCanaryDone=true;
+          await cleanupStaleRunningRuntimeCanary();
+          console.warn(JSON.stringify({event:'CODING_STALE_RUNNING_CANARY_FAIL',reason:'TIMEOUT',status:canary.status||null,detail:canary.reason||null,pid:process.pid}));
+        }
       }
       await managerTick();
       while(active.size<MAX_PARALLEL){
