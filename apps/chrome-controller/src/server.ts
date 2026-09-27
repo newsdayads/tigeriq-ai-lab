@@ -1545,7 +1545,7 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
     }catch(error){json(res,409,{ok:false,error:String(error)});}
     return true;
   }
-  const utilityMatch=url.pathname.match(/^\/api\/utility\/workers\/(NV02|NV03|NV04)\/(health|pause|resume|open-canonical|archive|safe-recover|plan-refresh)$/);
+  const utilityMatch=url.pathname.match(/^\/api\/utility\/workers\/(NV02|NV03|NV04)\/(health|pause|resume|idle|open-canonical|archive|safe-recover|plan-refresh)$/);
   if(utilityMatch){
     const workerId=utilityMatch[1] as WorkerId; const action=utilityMatch[2]; const state=states.get(workerId)!; const worker=getWorker(workerId)!;
     try{
