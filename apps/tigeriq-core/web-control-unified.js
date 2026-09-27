@@ -25,13 +25,14 @@
     const controls=document.querySelector('.board-controls');
     if(!controls||document.getElementById('tqQuickFilters'))return;
     const quick=document.createElement('div'); quick.id='tqQuickFilters'; quick.className='tq-quick-filters';
-    quick.innerHTML='<button class="tq-filter on" data-q="all">Tất cả</button><button class="tq-filter" data-q="local">Local</button><button class="tq-filter" data-q="cloud">Cloud API</button><button class="tq-filter" data-q="problem">Có vấn đề</button>';
+    quick.innerHTML='<button class="tq-filter on" data-q="all">Tất cả</button><button class="tq-filter" data-q="working">Đang làm</button><button class="tq-filter" data-q="local">Local</button><button class="tq-filter" data-q="cloud">Cloud API</button><button class="tq-filter" data-q="problem">Có vấn đề</button>';
     controls.prepend(quick);
     quick.addEventListener('click',e=>{
       const btn=e.target.closest('.tq-filter'); if(!btn)return;
       quick.querySelectorAll('.tq-filter').forEach(x=>x.classList.remove('on')); btn.classList.add('on');
       const provider=document.getElementById('providerFilter'), state=document.getElementById('stateFilter');
       if(btn.dataset.q==='all'){provider.value='all';state.value='all';}
+      if(btn.dataset.q==='working'){provider.value='all';state.value='working';}
       if(btn.dataset.q==='local'){provider.value='local';state.value='all';}
       if(btn.dataset.q==='cloud'){provider.value='cloud';state.value='all';}
       if(btn.dataset.q==='problem'){provider.value='all';state.value='problem';}
@@ -53,7 +54,7 @@
     const activity=document.createElement('section'); activity.className='tq-u-panel';
     activity.innerHTML='<div class="tq-u-ph"><div><h2>⚡ Đang chạy / Vừa hoàn tất</h2><small>Hoạt động thật của campaign và NV API từ TigerIQ Core</small></div><span id="tqUActivityState" class="tq-u-sync">—</span></div><div id="tqUActivityBody" class="body"></div>';
     const recent=document.createElement('section'); recent.className='tq-u-panel';
-    recent.innerHTML='<div class="tq-u-ph"><div><h2>▤ Công việc gần nhất</h2><small>Công việc thật từ hàng đợi TigerIQ Core</small></div><span id="tqUJobCount" class="tq-u-sync">—</span></div><div class="table-wrap"><table class="tq-u-jobs"><thead><tr><th>Job</th><th>Công việc</th><th>NV</th><th>Nhà cung cấp</th><th>Trạng thái</th><th>Thời gian</th></tr></thead><tbody id="tqURecentJobs"></tbody></table></div>';
+    recent.innerHTML='<div class="tq-u-ph"><div><h2>▤ Hoạt động Core gần nhất</h2><small>Job kỹ thuật nội bộ Core · không phải Work Order Owner</small></div><span id="tqUJobCount" class="tq-u-sync">—</span></div><div class="table-wrap"><table class="tq-u-jobs"><thead><tr><th>Job</th><th>Hoạt động</th><th>NV</th><th>Nhà cung cấp</th><th>Trạng thái</th><th>Thời gian</th></tr></thead><tbody id="tqURecentJobs"></tbody></table></div>';
     const perf=document.createElement('section'); perf.className='tq-u-panel';
     perf.innerHTML='<div class="tq-u-ph"><div><h2>⌁ Hiệu suất API</h2><small>Độ trễ thật trong 24 giờ gần nhất</small></div><span id="tqUChartCount" class="tq-u-sync">—</span></div><div class="body"><div id="tqUChart" class="tq-u-chart"><div class="tq-u-chart-empty">Đang tải telemetry…</div></div><div id="tqULegend" class="tq-u-legend"></div></div>';
     main.append(activity,board,recent); side.append(perf,pipeline,objective,events); grid.append(main,side); metrics.insertAdjacentElement('afterend',grid);
@@ -71,13 +72,49 @@
   }
 
   function renderUnifiedMetrics(d){
-    const rs=d?.resources||[], js=healthJobs(d);
-    const healthy=rs.filter(x=>['IDLE','BUSY'].includes(x.status)).length, ready=rs.filter(x=>x.status==='READY').length, busy=rs.filter(x=>x.status==='BUSY').length;
-    const alerts=rs.filter(x=>['RATE_LIMITED','ERROR','OFFLINE'].includes(x.status)).length, wait=rs.filter(x=>x.status==='WAIT_KEY').length;
-    const running=js.filter(x=>x.status==='running').length, done=js.filter(x=>x.status==='done').length, failed=js.filter(x=>x.status==='failed').length, total=done+failed;
-    const success=total?`${Math.round(done*1000/total)/10}%`:'—'; const lats=rs.map(x=>Number(x.last_latency_ms)).filter(Number.isFinite); const avg=lats.length?`${(lats.reduce((a,b)=>a+b,0)/lats.length/1000).toFixed(1)}s`:'—';
-    const rows=[['API/NV online',`${healthy}/${rs.length}`,`${ready} sẵn sàng · ${wait} chờ key`,''],['NV đang bận',busy,`${busy} công việc trực tiếp`,''],['Cảnh báo',alerts,alerts?'Cần chú ý':'Không có',alerts?'bad':''],['Chờ cấu hình key',wait,wait?'Cần thiết lập':'Đã đủ',wait?'warn':''],['Jobs đang chạy',running,`${js.filter(x=>x.status==='queued').length} đang chờ`,''],['Tỷ lệ thành công',success,total?'Theo dữ liệu job':'Chưa đủ dữ liệu',''],['Độ trễ trung bình',avg,lats.length?'Tài nguyên đã đo':'Chưa đủ dữ liệu',''],['Uptime',`${((d?.core?.uptimeSec||0)/3600).toFixed(1)}h`,`PID ${d?.core?.pid??'—'}`,'']];
+    const rs=d?.resources||[], js=healthJobs(d), workOrders=d?.workOrders||[];
+    const busy=rs.filter(x=>x.status==='BUSY').length;
+    const available=rs.filter(x=>['READY','IDLE','MANUAL'].includes(x.status)).length;
+    const rateLimited=rs.filter(x=>x.status==='RATE_LIMITED').length;
+    const webCritical=typeof latestWebHealth!=='undefined' && latestWebHealth!==null && latestWebHealth?.ok!==true ? 1 : 0;
+    const critical=rs.filter(x=>['ERROR','OFFLINE'].includes(x.status)).length + (d?.codingLane && d.codingLane.ok!==true ? 1 : 0) + webCritical;
+    const warnings=rateLimited + rs.filter(x=>x.status==='WAIT_KEY').length;
+    const alerts=critical+warnings;
+    const running=js.filter(x=>x.status==='running').length;
+    const ok=rs.reduce((n,x)=>n+Number(x.calls_success_24h||0),0), fail=rs.reduce((n,x)=>n+Number(x.calls_failure_24h||0),0), total=ok+fail;
+    const success=total?`${Math.round(ok*1000/total)/10}%`:'—';
+    const lats=rs.map(x=>Number(x.last_latency_ms)).filter(Number.isFinite), avg=lats.length?`${Math.round(lats.reduce((a,b)=>a+b,0)/lats.length)} ms`:'—';
+    const rows=[
+      ['NV đang làm',busy,busy?'Đang xử lý':'Không có việc',''],
+      ['NV sẵn sàng',available,`${available}/${rs.length} tài nguyên`,''],
+      ['Công việc đang mở',workOrders.length,d?.workOrdersMeta?.stale?'GitHub đang dùng cache':'GitHub Work Order',''],
+      ['Jobs đang chạy',running,`${js.filter(x=>x.status==='queued').length} đang chờ`,''],
+      ['Cảnh báo',alerts,critical?'Cần xử lý':warnings?'Cần chú ý':'Không có cảnh báo',critical?'bad':warnings?'warn':''],
+      ['Hết hạn mức',rateLimited,rateLimited?'Có tài nguyên cần cooldown':'Không có',''],
+      ['Tỷ lệ thành công',success,total?`${ok} đạt · ${fail} lỗi`:'Chưa đủ dữ liệu',''],
+      ['Độ trễ TB',avg,lats.length?'Theo telemetry tài nguyên':'Chưa đủ dữ liệu','']
+    ];
     const el=document.getElementById('metrics'); if(el)el.innerHTML=rows.map(x=>`<div class="metric ${x[3]}"><div class="k">${safe(x[0])}</div><div class="v">${safe(x[1])}</div><div class="s">${safe(x[2])}</div></div>`).join('');
+  }
+
+  function renderOwnerHealth(d){
+    const rs=d?.resources||[];
+    const webCritical=typeof latestWebHealth!=='undefined' && latestWebHealth!==null && latestWebHealth?.ok!==true ? 1 : 0;
+    const critical=rs.filter(x=>['ERROR','OFFLINE'].includes(x.status)).length + (d?.codingLane && d.codingLane.ok!==true ? 1 : 0) + webCritical;
+    const warnings=rs.filter(x=>['RATE_LIMITED','WAIT_KEY'].includes(x.status)).length;
+    const h=document.getElementById('topHealth');
+    if(h){
+      const label=critical?'CẦN XỬ LÝ':warnings?'CÓ CẢNH BÁO':'ỔN ĐỊNH';
+      h.innerHTML=`<span class="dot"></span><span>${label}</span>`;
+      h.style.color=critical?'#ff9aa4':warnings?'#ffbc42':'#66e9a9';
+      h.style.borderColor=critical?'#a6414c':warnings?'#8a671c':'#147b55';
+      h.style.background=critical?'#35131a':warnings?'#30240d':'#082b22';
+    }
+    const foot=document.getElementById('foot');
+    if(foot){
+      const uptime=Math.max(0,Number(d?.core?.uptimeSec||0));
+      foot.textContent=`Uptime ${(uptime/3600).toFixed(1)}h · Cập nhật ${new Date().toLocaleTimeString('vi-VN',{hour12:false})}`;
+    }
   }
 
   function renderPerformance(d){
@@ -109,7 +146,7 @@
 
   function renderRecentJobs(d){
     const body=document.getElementById('tqURecentJobs'),count=document.getElementById('tqUJobCount'); if(!body||!count)return; const js=healthJobs(d).slice(0,12); count.textContent=`${js.length} bản ghi gần nhất`;
-    body.innerHTML=js.map(j=>`<tr><td>${safe(String(j.id||'').slice(0,18))}</td><td class="tq-u-job-title" title="${safe(j.title)}">${safe(j.title||'—')}</td><td>${safe(j.employee_id||'—')}</td><td>${safe(j.provider||'—')}</td><td class="tq-u-state ${safe(j.status)}">${safe(j.status==='done'?'HOÀN THÀNH':j.status==='failed'?'THẤT BẠI':j.status==='running'?'ĐANG CHẠY':j.status==='queued'?'CHỜ':j.status||'—')}</td><td>${safe(fmt(j.completed_at||j.started_at||j.created_at))}</td></tr>`).join('')||'<tr><td colspan="6" class="tq-u-empty">Chưa có công việc.</td></tr>';
+    body.innerHTML=js.map(j=>`<tr><td>${safe(String(j.id||'').slice(0,18))}</td><td class="tq-u-job-title" title="${safe(j.title)}">${safe(j.title||'—')}</td><td>${safe(j.employee_id||'—')}</td><td>${safe(j.reviewer_employee_id||j.provider||'—')}</td><td class="tq-u-state ${safe(j.status)}">${safe(j.status==='done'?'HOÀN THÀNH':j.status==='failed'?'THẤT BẠI':j.status==='running'?'ĐANG CHẠY':j.status==='queued'?'CHỜ':j.status||'—')}</td><td>${safe(fmt(j.completed_at||j.started_at||j.created_at))}</td></tr>`).join('')||'<tr><td colspan="6" class="tq-u-empty">Chưa có công việc.</td></tr>';
   }
 
   const eventLabel=t=>({RESOURCE_PROBE_FAIL:'Kiểm tra API thất bại',RESOURCE_PROBE_OK:'API hoạt động trở lại',RESOURCE_FAILURE:'API xử lý lỗi',RESOURCE_SUCCESS:'API xử lý thành công',JOB_DONE:'Công việc hoàn tất',JOB_FAILED:'Công việc thất bại',JOB_CREATED:'Đã tạo công việc',MANAGER_ERROR:'AI Manager gặp lỗi',OBJECTIVE_CREATED:'Đã tạo mục tiêu',OBJECTIVE_COMPLETE:'Mục tiêu hoàn tất',OBJECTIVE_BLOCKED:'Mục tiêu bị chặn'}[t]||String(t||'').replaceAll('_',' '));
@@ -157,12 +194,13 @@
       container.innerHTML = items || '<div style="color:#64748b;font-size:12px;">No active Coding Lane items.</div>';
     }
   }
+  window.__tigerIqApplyOwnerHealth=renderOwnerHealth;
   mountUnifiedOverview();
   renderCodingLaneWorkItems(window.S?.data);
   if(typeof workerCard==='function')workerCard=richWorkerCard;
   if(typeof renderMetrics==='function')renderMetrics=renderUnifiedMetrics;
   const priorRender=typeof render==='function'?render:null;
-  if(priorRender){render=function renderUnified(d){priorRender(d);mountUnifiedOverview();renderUnifiedMetrics(d);renderPerformance(d);renderActivity(d);renderRecentJobs(d);compactEvents(d);updateLiveSync();};}
-  if(window.S?.data){if(typeof renderWorkers==='function')renderWorkers(S.data);renderUnifiedMetrics(S.data);renderPerformance(S.data);renderActivity(S.data);renderRecentJobs(S.data);compactEvents(S.data);}
+  if(priorRender){render=function renderUnified(d){priorRender(d);mountUnifiedOverview();renderUnifiedMetrics(d);renderOwnerHealth(d);renderPerformance(d);renderActivity(d);renderRecentJobs(d);compactEvents(d);updateLiveSync();};}
+  if(window.S?.data){if(typeof renderWorkers==='function')renderWorkers(S.data);renderUnifiedMetrics(S.data);renderOwnerHealth(S.data);renderPerformance(S.data);renderActivity(S.data);renderRecentJobs(S.data);compactEvents(S.data);}
   setInterval(updateLiveSync,1000);
 })();
