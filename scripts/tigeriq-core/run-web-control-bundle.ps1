@@ -28,12 +28,31 @@ foreach($asset in $assets){
   Move-Item -LiteralPath $tmp -Destination $target -Force
 }
 
+function Wait-TailscaleIPv4([int]$TimeoutSeconds=90){
+  $tailscale=(Get-Command tailscale.exe -ErrorAction SilentlyContinue)
+  if(-not $tailscale){$tailscale=(Get-Command tailscale -ErrorAction SilentlyContinue)}
+  if(-not $tailscale){throw 'TAILSCALE_CLI_MISSING'}
+  $deadline=(Get-Date).AddSeconds($TimeoutSeconds)
+  do{
+    $candidate=(& $tailscale.Source ip -4 2>$null | Select-Object -First 1)
+    if($candidate){
+      $candidate=[string]$candidate
+      $assigned=Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+        Where-Object {$_.IPAddress -eq $candidate -and [string]$_.AddressState -ne 'Invalid'} |
+        Select-Object -First 1
+      if($assigned){return $candidate}
+    }
+    Start-Sleep -Milliseconds 500
+  }while((Get-Date)-lt $deadline)
+  throw 'TAILSCALE_IPV4_NOT_READY'
+}
+
 $app=Join-Path $root 'web-control-server.mjs'
 if(-not(Test-Path -LiteralPath $app)){throw 'WEB_CONTROL_SERVER_MISSING'}
-$tail=(tailscale ip -4 2>$null | Select-Object -First 1)
-$hostIp=if($tail){[string]$tail}else{'127.0.0.1'}
+$hostIp=Wait-TailscaleIPv4 90
 $env:TIGERIQ_WEB_CONTROL_HOST=$hostIp
 $env:TIGERIQ_WEB_CONTROL_PORT='8796'
-$env:TIGERIQ_CORE_URL=('http://'+$hostIp+':8795')
+$env:TIGERIQ_CORE_URL='http://127.0.0.1:8795'
+$env:TIGERIQ_CODING_LANE_URL='http://127.0.0.1:8797'
 & 'C:\Program Files\nodejs\node.exe' $app
 exit $LASTEXITCODE
