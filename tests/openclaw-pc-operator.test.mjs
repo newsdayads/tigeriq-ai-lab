@@ -205,12 +205,14 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     const broker = await readFile(new URL('../apps/openclaw-tigeriq-runtime/paperclip-wsl-broker.ps1', import.meta.url), 'utf8');
     const installer = await readFile(new URL('../apps/openclaw-tigeriq-runtime/Install-PaperclipWslBroker.ps1', import.meta.url), 'utf8');
     expect(broker).toContain("$Distro = 'Ubuntu'");
-    expect(broker).toContain("$BrokerVersion = '1.1-progress-aware-restart'");
+    expect(broker).toContain("$BrokerVersion = '1.2-heartbeat-during-op'");
     expect(broker).toContain("$LabRoot = 'D:\\TigerIQ-Paperclip-Lab'");
     expect(broker).toContain("'pull_pinned_image'");
     expect(broker).toContain("TimeoutSec=1200; IdleTimeoutSec=300");
     expect(broker).toContain("$timeoutKind = 'idle'");
     expect(broker).toContain("$timeoutKind = 'total'");
+    expect(broker).toContain('function Write-BrokerHeartbeat');
+    expect((broker.match(/Write-BrokerHeartbeat/g) ?? []).length).toBeGreaterThanOrEqual(3);
     expect(broker).toContain("'inspect_revision'");
     expect(broker).toContain("'inspect_repo_digests'");
     expect(broker).toContain("'compose_up'");
@@ -220,7 +222,7 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(broker).not.toMatch(/OPENAI_API_KEY|ANTHROPIC_API_KEY|TIGERIQ_GITHUB_TOKEN|DATABASE_URL/);
     expect(installer).toContain("New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited");
     expect(installer).toContain("$TaskName='TigerIQ Paperclip WSL Broker'");
-    expect(installer).toContain("$ExpectedBrokerVersion='1.1-progress-aware-restart'");
+    expect(installer).toContain("$ExpectedBrokerVersion='1.2-heartbeat-during-op'");
     expect(installer).toContain('Stop-ScheduledTask -TaskName $TaskName');
     expect(installer).toContain('Remove-Item -LiteralPath $Heartbeat -Force');
     expect(installer).toContain("[string]$h.version -eq $ExpectedBrokerVersion");
@@ -280,7 +282,7 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(source).toContain("wsl.exe");
     expect(source).toContain("'--distribution', PAPERCLIP_LAB_WSL_DISTRO, '--exec', 'docker'");
     expect(source).toContain('wsl-ubuntu-interactive-broker');
-    expect(source).toContain("BROKER_EXPECTED_VERSION = '1.1-progress-aware-restart'");
+    expect(source).toContain("BROKER_EXPECTED_VERSION = '1.2-heartbeat-during-op'");
     expect(source).toContain("String(heartbeat?.version || '') === BROKER_EXPECTED_VERSION");
     expect(source).toContain("paperclip_lab_broker_install");
     expect(source).toContain("TIGERIQ_PAPERCLIP_LAB_WSL_BROKER_SOURCE_INVALID");
