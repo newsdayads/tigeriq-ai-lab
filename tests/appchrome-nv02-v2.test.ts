@@ -77,6 +77,17 @@ describe('NV02 V2 reviewed race hardening', () => {
     expect(resetBlock).toContain('state=loadNv02Continuity();');
   });
 
+  it('backs off NV02 reopen failures instead of re-entering the overdue reset loop', () => {
+    const resetGate=bridge.indexOf("if(phase!=='WORKING'&&now>=Number(state.nextRefreshAt||0))");
+    const f5Gate=bridge.indexOf("if(phase==='WORKING'&&now>=Number(state.nextPeriodicF5At||0))");
+    const resetBlock=bridge.slice(resetGate,f5Gate);
+    expect(resetBlock).toContain("PERIODIC_RESTART_REOPEN_BACKOFF");
+    expect(resetBlock).toContain("nextRefreshAt:now+5*60*1000");
+    expect(resetBlock).toContain("const stillUsable=await uiState(target).then(()=>true).catch(()=>false)");
+    expect(resetBlock).toContain("if(!stillUsable)return");
+    expect(resetBlock).toContain("skipPeriodicReset=true");
+  });
+
   it('keeps reviewed idle/F5 fixes in the exact head', () => {
     expect(bridge).toContain('const f5WindowVersion=3;');
     expect(bridge).toContain("lastIdleMarkerSignature:'',idleWakeBaselineSignature:String(ui?.assistantSignature||'')");
