@@ -10,6 +10,7 @@ import {
   activeResourceScopes,
   activeNv02Lease,
   resourceOwnershipConflict,
+  nv02LeaseAuthority,
 } from '../apps/tigeriq-core/nv02-local-self-pull.mjs';
 import { reconcileStaleDependency } from '../apps/tigeriq-core/dependency-reconcile.mjs';
 
@@ -51,8 +52,11 @@ function dependencyMap(issue) {
   return map;
 }
 function assertLeaseOwnership(issue, lease) {
+  const assigned = nv02LeaseAuthority(issue, lease);
+  if (!assigned.valid) throw new Error(`NV02_WRITE_GUARD_AUTHORITY_INVALID:${issue.number}:${assigned.reason}`);
   const own = activeNv02Lease(issueComments(issue.number));
-  if (!own || own.LEASE_ID !== lease.leaseId) throw new Error(`NV02_WRITE_GUARD_LEASE_LOST:${issue.number}`);
+  const live = nv02LeaseAuthority(issue, own || {});
+  if (!own || own.LEASE_ID !== lease.leaseId || !live.valid) throw new Error(`NV02_WRITE_GUARD_LEASE_LOST:${issue.number}:${live.reason}`);
   const conflict = resourceOwnershipConflict(issue, activeIssueComments(), { leaseId: lease.leaseId });
   if (conflict) throw new Error(`NV02_WRITE_GUARD_SCOPE_HELD:${issue.number}:${conflict.resourceScope}`);
   return true;
@@ -72,6 +76,7 @@ async function reconcile(issue, lease) {
   });
 }
 async function controllerDispatch(issue, lease) {
+  assertLeaseOwnership(issue, lease);
   const response = await fetch(`${CONTROLLER}/api/workers/NV02/dispatch`, {
     method: 'POST', headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ text: buildNv02LocalSelfPullPrompt(issue, lease), navigate: false,
@@ -144,7 +149,7 @@ try {
   result = 'DISPATCH_BLOCKED';
   console.error(JSON.stringify({ event: 'NV02_DISPATCH_BLOCKED', issue: issue.number, error: String(error) }));
 }
-await releaseNv02WorkOrder({ issueNumber: issue.number, leaseId: lease.leaseId, resourceScope: lease.resourceScope, state: result, postComment });
+await releaseNv02WorkOrder({ issue, issueNumber: issue.number, leaseId: lease.leaseId, resourceScope: lease.resourceScope, state: result, postComment });
 console.log(JSON.stringify({ event: 'TIGERIQ_NV02_LEASE_RELEASED', issue: issue.number, resourceScope: lease.resourceScope, leaseId: lease.leaseId, state: result }));
 const nextIssues = summaries()
   .filter((summary) => nv02PrioritySummary(summary) !== 'P0' && Number(summary.number) !== Number(issue.number))

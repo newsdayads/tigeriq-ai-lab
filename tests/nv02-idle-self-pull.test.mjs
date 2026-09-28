@@ -25,5 +25,9 @@ describe('NV02 idle self-pull continuity', () => {
     expect(runner).not.toContain('.map((issue) => reconcile(issue))');
     expect(runner).toContain('refreshAllComments: async () => activeIssueComments()');
     expect(runner).toContain('assertWriteOwnership: () => assertLeaseOwnership(issue, lease)');
+    expect(runner).toContain('nv02LeaseAuthority(issue, lease)');
+    expect(runner).toContain('nv02LeaseAuthority(issue, own || {})');
+    const dispatchFn = runner.slice(runner.indexOf('async function controllerDispatch'), runner.indexOf('function terminal'));
+    expect(dispatchFn).toContain('assertLeaseOwnership(issue, lease);');
   });
 });
