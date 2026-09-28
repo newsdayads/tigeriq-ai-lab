@@ -463,7 +463,7 @@ async function routingFaultOwnerVisibleRecorded(pool,issueNumber,reason,sourceRe
 }
 
 async function routingFaultTerminalRecorded(pool,issueNumber,reason,sourceRevision=''){
-  const result=await pool.query("select 1 from tigeriq_events where type='ROUTING_FAULT' and data->>'issueNumber'=$1 and data->>'reason'=$2 and ($3='' or data->>'sourceRevision'=$3) and data->>'terminalBlocked'='true' limit 1",[String(issueNumber),String(reason),String(sourceRevision||'')]).catch(()=>({rowCount:0}));
+  const result=await pool.query("select 1 from tigeriq_events where type='ROUTING_FAULT' and data->>'issueNumber'=$1 and data->>'reason'=$2 and ($3='' or data->>'sourceRevision'=$3) and data->>'terminalBlocked'='true' limit 1",[String(issueNumber),String(reason),String(sourceRevision||'')]);
   return Number(result?.rowCount||0)>0;
 }
 export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token='',openIssues=null}){
