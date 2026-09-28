@@ -607,7 +607,14 @@ export function paperclipContainerLogClass(value = '') {
   if (!text.trim()) return 'NO_LOGS';
   if (/permission denied|operation not permitted|\beacces\b|\beperm\b|read-only file system/.test(text)) return 'PERMISSION';
   if (/better_auth_secret|tool_action_signing_secret|required env|must be set|invalid configuration|configuration error/.test(text)) return 'CONFIG';
-  if (/database|sqlite|migration|drizzle|postgres|\bsql\b/.test(text)) return 'DATABASE';
+  if (/could not create shared memory segment|shared memory.*(?:failed|error|could not)/.test(text)) return 'DB_SHARED_MEMORY';
+  if (/data directory belongs to another instance|expected embedded data directory|refusing to reuse postgresql/.test(text)) return 'DB_DATA_DIR_MISMATCH';
+  if (/failed to initialize embedded postgresql|failed to initialise embedded postgresql|\binitdb\b|initiali[sz]e.*postgres/.test(text)) return 'DB_INIT';
+  if (/failed to start embedded postgresql|embedded postgresql.*(?:failed|exited)|postmaster\.pid|stale embedded postgresql lock file/.test(text)) return 'DB_START';
+  if (/pending migrations|stale schema|migration.*(?:failed|error)|(?:failed|error).*migration|drizzle/.test(text)) return 'DB_MIGRATION';
+  if (/connection refused|could not connect|econnrefused|database system is starting up|database connection.*(?:failed|error)/.test(text)) return 'DB_CONNECTION';
+  if (/corrupt|invalid page|checksum.*(?:failed|error)|wal.*(?:corrupt|invalid)/.test(text)) return 'DB_CORRUPT';
+  if (/database|sqlite|migration|postgres|\bsql\b/.test(text)) return 'DATABASE';
   if (/address already in use|\beaddrinuse\b|port .*in use/.test(text)) return 'PORT_CONFLICT';
   if (/out of memory|heap out of memory|\boom\b|killed process/.test(text)) return 'OOM';
   if (/no such file|cannot find module|module not found|\benoent\b|exec format/.test(text)) return 'ENTRYPOINT_OR_FILE';
