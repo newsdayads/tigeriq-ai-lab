@@ -115,6 +115,33 @@ test('pc_operator public evidence prompt is opt-in, allowlisted, and forbids raw
   assert.match(prompt,/copy ONLY the requested keys/);
   assert.match(prompt,/Do not echo raw file content/);
   assert.match(prompt,/never invent a value/);
+  const nearLimit='x'.repeat(5700);
+  assert.ok(buildGithubPcOperatorPrompt(nearLimit,[]).length<=6000);
+  assert.throws(()=>buildGithubPcOperatorPrompt(nearLimit,['installedSha']),/OPENCLAW_INSTRUCTION_INVALID/);
+});
+
+test('oversized pc_operator public evidence prompt is rejected before objective/job materialization',async()=>{
+  const pool=coreBacklogPool();
+  const assigned='x'.repeat(5700);
+  const body=`TIGERIQ_EXECUTABLE=true
+OWNER_POLICY=AUTO
+OWNER_DIRECT=true
+PRIORITY=P1
+CAPABILITY=pc_operator
+NO_CODE_CHANGE=true
+NO_PC01_SHELL=true
+RESOURCE_SCOPE=OPENCLAW_OVERSIZE_TEST
+PUBLIC_EVIDENCE_KEYS=installedSha
+ASSIGNED_ACTION
+${assigned}
+ACCEPTANCE
+Return requested public evidence only.`;
+  const issues=[{number:1609,state:'open',title:'oversized OpenClaw canary',body,html_url:'https://example/1609'}];
+  const fetchImpl=async(url)=>url.includes('/issues?')?response(issues):response({});
+  const out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
+  assert.strictEqual(out.created,0);
+  assert.strictEqual(pool.objectives.length,0);
+  assert.strictEqual(pool.jobs.length,0);
 });
 
 test('owner-direct pc_operator GitHub intake materializes bounded OpenClaw objective',async()=>{
