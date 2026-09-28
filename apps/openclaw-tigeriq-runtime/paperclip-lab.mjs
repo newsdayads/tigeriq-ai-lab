@@ -241,6 +241,15 @@ async function preflight() {
   };
 }
 
+async function waitForHealth(attempts = 20) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const state = await health();
+    if (state.ok) return state;
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+  }
+  return await health();
+}
+
 async function install() {
   const before = await preflight();
   if (!before.docker.ok) throw new Error('TIGERIQ_PAPERCLIP_LAB_DOCKER_UNAVAILABLE');
@@ -254,19 +263,18 @@ async function install() {
   if (pull.exitCode !== 0 || pull.timedOut) throw new Error('TIGERIQ_PAPERCLIP_LAB_PULL_FAILED');
   const up = await runFixed('docker.exe', composeArgs(['up', '-d']), { cwd: CONFIG_DIR, timeoutMs: 120000 });
   if (up.exitCode !== 0 || up.timedOut) throw new Error('TIGERIQ_PAPERCLIP_LAB_START_FAILED');
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    const state = await health();
-    if (state.ok) return { installed: true, pull: { exitCode: pull.exitCode }, start: { exitCode: up.exitCode }, health: state };
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-  }
-  throw new Error('TIGERIQ_PAPERCLIP_LAB_HEALTH_TIMEOUT');
+  const state = await waitForHealth();
+  if (!state.ok) throw new Error('TIGERIQ_PAPERCLIP_LAB_HEALTH_TIMEOUT');
+  return { installed: true, pull: { exitCode: pull.exitCode }, start: { exitCode: up.exitCode }, health: state };
 }
 
 async function start() {
   await ensureConfig();
   const up = await runFixed('docker.exe', composeArgs(['up', '-d']), { cwd: CONFIG_DIR, timeoutMs: 120000 });
   if (up.exitCode !== 0 || up.timedOut) throw new Error('TIGERIQ_PAPERCLIP_LAB_START_FAILED');
-  return { started: true, health: await health() };
+  const state = await waitForHealth();
+  if (!state.ok) throw new Error('TIGERIQ_PAPERCLIP_LAB_HEALTH_TIMEOUT');
+  return { started: true, health: state };
 }
 
 async function stop() {
