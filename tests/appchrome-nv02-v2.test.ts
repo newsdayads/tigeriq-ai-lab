@@ -60,42 +60,69 @@ describe('App Chrome NV02 V2 boundary', () => {
   });
 });
 
-describe('NV02 V2 reviewed race hardening', () => {
+describe('NV02 independent F5/reset contract', () => {
   const bridge = readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
 
-  it('keeps periodic reset lease valid and does not starve Auto wake on reset backoff', () => {
-    const resetGate=bridge.indexOf("if(phase!=='WORKING'&&now>=Number(state.nextRefreshAt||0))");
-    const f5Gate=bridge.indexOf("if(phase==='WORKING'&&now>=Number(state.nextPeriodicF5At||0))");
+  it('preserves F5 and reset timers across Auto/dispatch', () => {
+    const start=bridge.indexOf('async function noteNv02CommandDispatch()');
+    const end=bridge.indexOf('async function maybeNv02Continuity',start);
+    const block=bridge.slice(start,end);
+    expect(block).toContain('const preservedPeriodicF5At=state.nextPeriodicF5At');
+    expect(block).toContain('const preservedRefreshAt=state.nextRefreshAt');
+    expect(block).toContain("DISPATCH_TIMERS_PRESERVED");
+    expect(block).not.toContain('state.nextPeriodicF5At=nextRandomAt');
+    expect(block).not.toContain('state.nextRefreshAt=');
+  });
+
+  it('runs periodic F5 while WORKING and does not alter reset timer', () => {
+    const resetGate=bridge.indexOf('if(now>=Number(state.nextRefreshAt||0))');
+    const f5Gate=bridge.indexOf('if(now>=Number(state.nextPeriodicF5At||0))',resetGate);
+    const workingGate=bridge.indexOf("if(phase==='WORKING')",f5Gate);
     expect(resetGate).toBeGreaterThan(-1);
     expect(f5Gate).toBeGreaterThan(resetGate);
+    const f5Block=bridge.slice(f5Gate,workingGate);
+    expect(f5Block).toContain('const result=await reloadTarget(target)');
+    expect(f5Block).toContain("PERIODIC_F5_REFRESH");
+    expect(f5Block).not.toContain('PERIODIC_F5_DEFERRED_WORKING');
+    expect(f5Block).not.toContain("freshPhase==='WORKING'");
+    expect(f5Block).not.toContain('nextRefreshAt');
+  });
+
+  it('runs 2-4h reset while WORKING and preserves the F5 timestamp through reopen', () => {
+    const resetGate=bridge.indexOf('if(now>=Number(state.nextRefreshAt||0))');
+    const f5Gate=bridge.indexOf('if(now>=Number(state.nextPeriodicF5At||0))',resetGate);
     const resetBlock=bridge.slice(resetGate,f5Gate);
+    expect(resetGate).toBeGreaterThan(-1);
     expect(resetBlock).toContain("'PERIODIC_PREPARE_RESTART',120000");
-    expect(resetBlock).not.toContain("'PERIODIC_PREPARE_RESTART',240000");
+    expect(resetBlock).toContain("PERIODIC_2_4H_RESET");
+    expect(resetBlock).toContain('nextRefreshAt:nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS)');
+    expect(resetBlock).not.toContain("phase!=='WORKING'");
+    expect(resetBlock).not.toContain('nextPeriodicF5At');
+    expect(bridge).toContain("nextPeriodicF5At:w.id==='NV02'?Number(state.nextPeriodicF5At||0):nextRandomAt(now,WORKER_F5_MIN_MS,WORKER_F5_MAX_MS)");
+  });
+
+  it('checkpoints WORKING NV02 and requires durable #788 receipt before Archive', () => {
+    const start=bridge.indexOf('async function prepareWorkerForPlannedRestart');
+    const end=bridge.indexOf('function archiveMenuPointExpr',start);
+    const block=bridge.slice(start,end);
+    expect(block).toContain("if(w.id!=='NV02')return{ok:false,status:'MAINTENANCE_DEFERRED_WORKING'}");
+    expect(block).toContain('const stopped=await stopStalledWorking(target)');
+    expect(block).toContain('TIGERIQ_SAVE_TOKEN=');
+    expect(block).toContain('verifyNv02SaveReceipt(token,dispatchedAt)');
+    expect(block).toContain("if(!saveReceipt?.ok)return{ok:false,status:'SAVE_NOT_DURABLE',token}");
+    expect(block.indexOf('verifyNv02SaveReceipt(token,dispatchedAt)')).toBeLessThan(block.indexOf('const archived=await archiveChat(target)'));
+  });
+
+  it('keeps previous reset backoff + idle self-pull hardening', () => {
+    const resetGate=bridge.indexOf('if(now>=Number(state.nextRefreshAt||0))');
+    const f5Gate=bridge.indexOf('if(now>=Number(state.nextPeriodicF5At||0))',resetGate);
+    const resetBlock=bridge.slice(resetGate,f5Gate);
     expect(resetBlock).toContain('PERIODIC_RESTART_PREPARE_BACKOFF');
     expect(resetBlock).toContain('PERIODIC_RESTART_LEASE_BUSY_BACKOFF');
+    expect(resetBlock).toContain('PERIODIC_RESTART_REOPEN_BACKOFF');
+    expect(resetBlock).toContain('nextRefreshAt:now+5*60*1000');
     expect(resetBlock).toContain('skipPeriodicReset=true');
-    expect(resetBlock).toContain('state=loadNv02Continuity();');
-  });
-
-  it('backs off NV02 reopen failures instead of re-entering the overdue reset loop', () => {
-    const resetGate=bridge.indexOf("if(phase!=='WORKING'&&now>=Number(state.nextRefreshAt||0))");
-    const f5Gate=bridge.indexOf("if(phase==='WORKING'&&now>=Number(state.nextPeriodicF5At||0))");
-    const resetBlock=bridge.slice(resetGate,f5Gate);
-    expect(resetBlock).toContain("PERIODIC_RESTART_REOPEN_BACKOFF");
-    expect(resetBlock).toContain("nextRefreshAt:now+5*60*1000");
-    expect(resetBlock).toContain("const stillUsable=await uiState(target).then(()=>true).catch(()=>false)");
-    expect(resetBlock).toContain("if(!stillUsable)return");
-    expect(resetBlock).toContain("skipPeriodicReset=true");
-  });
-
-  it('keeps reviewed idle/F5 fixes in the exact head', () => {
     expect(bridge).toContain('const f5WindowVersion=3;');
-    expect(bridge).toContain("lastIdleMarkerSignature:'',idleWakeBaselineSignature:String(ui?.assistantSignature||'')");
     expect(bridge).toContain("NV02_IDLE_SELF_PULL_WAKE_UNCERTAIN");
-    expect(bridge).toContain('nextIdleWakeAt:now+60_000');
-    const f5Gate=bridge.indexOf("if(now>=Number(state.nextPeriodicF5At||0))");
-    const idleGate=bridge.indexOf("if(state.idleState==='READY_NO_ELIGIBLE_WORK'&&state.awaitingWorkStart!==true)");
-    expect(f5Gate).toBeGreaterThan(-1);
-    expect(idleGate).toBeGreaterThan(f5Gate);
   });
 });
