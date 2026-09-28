@@ -8,9 +8,11 @@ const future=(minutes:number)=>new Date(NOW+minutes*60_000).toISOString();
 
 describe('Web Control live health model',()=>{
   it('keeps recovered/healthy resources healthy while retaining old error as history',()=>{
-    const truth=model.resourceHealthTruth({status:'IDLE',last_error:'timeout',last_seen_at:ago(2)},NOW);
+    const truth=model.resourceHealthTruth({status:'IDLE',last_error:'timeout',last_error_at:ago(180),last_seen_at:ago(2)},NOW);
     expect(truth).toMatchObject({status:'IDLE',current:true,historical:true});
     expect(truth.detail).toContain('Lỗi trước đó');
+    expect(truth.detail).toContain('180p trước');
+    expect(truth.detail).not.toContain('2p trước');
   });
 
   it('expires stale rate limits and preserves only current 429/cooldown as RATE_LIMITED',()=>{
@@ -33,6 +35,23 @@ describe('Web Control live health model',()=>{
     const order=model.STATUS_ORDER;
     expect([order.BUSY,order.READY,order.MANUAL,order.RATE_LIMITED,order.CONTRACT_ERROR,order.WAIT_KEY,order.STALE_ERROR,order.OFFLINE,order.DISABLED])
       .toEqual([...new Set([order.BUSY,order.READY,order.MANUAL,order.RATE_LIMITED,order.CONTRACT_ERROR,order.WAIT_KEY,order.STALE_ERROR,order.OFFLINE,order.DISABLED])].sort((a,b)=>a-b));
+  });
+
+  it('renders canonical Core quota telemetry without inventing missing values',()=>{
+    expect(model.quotaSummary({
+      quota_state:{
+        known:true,
+        usable:true,
+        requestRemaining:80,
+        requestLimit:100,
+        tokenRemaining:4000,
+        tokenLimit:10000,
+        remainingRatio:0.4,
+        resetAt:'2026-09-29T01:00:00.000Z'
+      }
+    })).toBe('Request 80/100 · Token 4000/10000 · Còn 40% · reset 2026-09-29T01:00:00.000Z');
+    expect(model.quotaSummary({quota_state:{known:false,usable:true}})).toBe('Quota provider chưa trả số dư');
+    expect(model.quotaSummary({})).toBe('Quota chưa có dữ liệu');
   });
 
   it('builds 24h provider rows from real counters without inventing missing usage',()=>{
