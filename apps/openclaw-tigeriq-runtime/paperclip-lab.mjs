@@ -377,11 +377,11 @@ async function readReleasePin() {
 
 async function resolvePulledImagePin(signal = null) {
   throwIfAborted(signal);
-  const revision = await runFixed('docker.exe', ['image','inspect',PAPERCLIP_LAB_IMAGE,'--format','{{ index .Config.Labels "org.opencontainers.image.revision" }}'], { timeoutMs: 15000, signal });
+  const revision = await runDocker(['image','inspect',PAPERCLIP_LAB_IMAGE,'--format','{{ index .Config.Labels "org.opencontainers.image.revision" }}'], { timeoutMs: 15000, signal });
   if (revision.exitCode !== 0 || revision.timedOut || revision.stdout.trim() !== PAPERCLIP_LAB_RELEASE_SHA) {
     throw new Error('TIGERIQ_PAPERCLIP_LAB_IMAGE_REVISION_MISMATCH');
   }
-  const digests = await runFixed('docker.exe', ['image','inspect',PAPERCLIP_LAB_IMAGE,'--format','{{json .RepoDigests}}'], { timeoutMs: 15000, signal });
+  const digests = await runDocker(['image','inspect',PAPERCLIP_LAB_IMAGE,'--format','{{json .RepoDigests}}'], { timeoutMs: 15000, signal });
   if (digests.exitCode !== 0 || digests.timedOut) throw new Error('TIGERIQ_PAPERCLIP_LAB_IMAGE_DIGEST_MISSING');
   let values = [];
   try { values = JSON.parse(digests.stdout.trim()); } catch {}
@@ -439,7 +439,7 @@ async function preflight(signal = null) {
   throwIfAborted(signal);
   await ensureRootIntegrity();
   const [docker, port] = await Promise.all([
-    runFixed('docker.exe', ['version', '--format', '{{.Server.Version}}'], { timeoutMs: 15000, signal }).catch((error) => ({ exitCode: -1, timedOut: false, stdout: '', stderr: String(error?.message || error) })),
+    runDocker(['version', '--format', '{{.Server.Version}}'], { timeoutMs: 15000, signal }).catch((error) => ({ exitCode: -1, timedOut: false, stdout: '', stderr: String(error?.message || error) })),
     probePort(),
   ]);
   let disk = null;
@@ -469,7 +469,7 @@ async function waitForHealth(attempts = 20, signal = null) {
 
 async function rollbackContainer() {
   try {
-    await runFixed('docker.exe', ['stop', PAPERCLIP_LAB_CONTAINER], { timeoutMs: 30000 });
+    await runDocker(['stop', PAPERCLIP_LAB_CONTAINER], { timeoutMs: 30000 });
   } catch {}
 }
 
@@ -482,12 +482,12 @@ async function install(signal = null) {
     throw new Error('TIGERIQ_PAPERCLIP_LAB_PORT_3210_OCCUPIED');
   }
   await ensureConfig();
-  const pull = await runFixed('docker.exe', ['pull', PAPERCLIP_LAB_IMAGE], { timeoutMs: 180000, signal });
+  const pull = await runDocker(['pull', PAPERCLIP_LAB_IMAGE], { timeoutMs: 180000, signal });
   if (pull.exitCode !== 0 || pull.timedOut) throw new Error('TIGERIQ_PAPERCLIP_LAB_PULL_FAILED');
   const pin = await resolvePulledImagePin(signal);
   await ensureConfig(pin);
   try {
-    const up = await runFixed('docker.exe', composeArgs(['up', '-d']), { cwd: CONFIG_DIR, timeoutMs: 120000, signal });
+    const up = await runDocker(composeArgs(['up', '-d']), { cwd: CONFIG_DIR, timeoutMs: 120000, signal });
     if (up.exitCode !== 0 || up.timedOut) throw new Error('TIGERIQ_PAPERCLIP_LAB_START_FAILED');
     const state = await waitForHealth(20, signal);
     if (!state.ok) throw new Error('TIGERIQ_PAPERCLIP_LAB_HEALTH_TIMEOUT');
@@ -501,7 +501,7 @@ async function start(signal = null) {
   const pin = await readReleasePin();
   await ensureConfig(pin);
   try {
-    const up = await runFixed('docker.exe', composeArgs(['up', '-d']), { cwd: CONFIG_DIR, timeoutMs: 120000, signal });
+    const up = await runDocker(composeArgs(['up', '-d']), { cwd: CONFIG_DIR, timeoutMs: 120000, signal });
     if (up.exitCode !== 0 || up.timedOut) throw new Error('TIGERIQ_PAPERCLIP_LAB_START_FAILED');
     const state = await waitForHealth(20, signal);
     if (!state.ok) throw new Error('TIGERIQ_PAPERCLIP_LAB_HEALTH_TIMEOUT');
@@ -514,7 +514,7 @@ async function start(signal = null) {
 async function stop(signal = null) {
   const pin = await readReleasePin();
   throwIfAborted(signal);
-  const down = await runFixed('docker.exe', ['stop', PAPERCLIP_LAB_CONTAINER], { timeoutMs: 60000, signal });
+  const down = await runDocker(['stop', PAPERCLIP_LAB_CONTAINER], { timeoutMs: 60000, signal });
   if (down.exitCode !== 0 || down.timedOut) throw new Error('TIGERIQ_PAPERCLIP_LAB_STOP_FAILED');
   return { stopped: true, imageDigest: pin.imageDigest, port3210: await probePort() };
 }
@@ -537,7 +537,7 @@ async function health(signal = null) {
   const [port, http, inspect] = await Promise.all([
     probePort(),
     httpHealth(signal),
-    runFixed('docker.exe', ['inspect', PAPERCLIP_LAB_CONTAINER, '--format', '{{json .}}'], { timeoutMs: 15000, signal }).catch(() => null),
+    runDocker(['inspect', PAPERCLIP_LAB_CONTAINER, '--format', '{{json .}}'], { timeoutMs: 15000, signal }).catch(() => null),
   ]);
 
   let info = null;
