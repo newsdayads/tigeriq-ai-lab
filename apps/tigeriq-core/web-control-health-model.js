@@ -38,7 +38,8 @@
       const success=Math.max(0,Number(r?.calls_success_24h)||0);
       const errors=Math.max(0,Number(r?.calls_failure_24h)||0);
       const total=success+errors;
-      const latencyMs=Number.isFinite(Number(r?.last_latency_ms))?Math.max(0,Number(r.last_latency_ms)):null;
+      const rawLatency=r?.last_latency_ms;
+      const latencyMs=rawLatency===null||rawLatency===undefined||String(rawLatency).trim()===''?null:(Number.isFinite(Number(rawLatency))?Math.max(0,Number(rawLatency)):null);
       return {
         employeeId:String(r?.employee_id||''),
         provider:String(r?.provider||''),
@@ -51,9 +52,9 @@
     });
   }
 
-  function currentAlertRows(resources=[]){
+  function currentAlertRows(resources=[],now=Date.now()){
     const alertStates=new Set(['RATE_LIMITED','WAIT_KEY','AUTH_ERROR','CONFIG_ERROR','CONTRACT_ERROR','ERROR','OFFLINE']);
-    return (Array.isArray(resources)?resources:[]).map(r=>({resource:r,truth:resourceHealthTruth(r)})).filter(x=>x.truth.current&&alertStates.has(x.truth.status));
+    return (Array.isArray(resources)?resources:[]).map(r=>({resource:r,truth:resourceHealthTruth(r,now)})).filter(x=>x.truth.current&&alertStates.has(x.truth.status));
   }
 
   globalThis.TigerIqHealthModel={HEALTH_FRESH_MS,STATUS_ORDER,timestampAge,resourceHealthTruth,performanceRows24h,currentAlertRows};
