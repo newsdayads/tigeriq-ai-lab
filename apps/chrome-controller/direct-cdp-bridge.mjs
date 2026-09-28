@@ -1694,6 +1694,7 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
     }
   }
   if(bootFreshContextPending.has('NV02')&&phase!=='WORKING'){
+    if(now<Number(state.modelCheckBlockedUntil||0))return;
     bootFreshContextPending.delete('NV02');
     const preserveCurrentChat=hasCurrentNv02Chat(ui?.url);
     const restoreVerifiedChatUrl=!preserveCurrentChat
@@ -1736,6 +1737,7 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
         if(settled?.ok!==true){
           const deferred={...loadNv02Continuity(),pendingContinue:true,modelCheckBlockedUntil:Date.now()+30000};
           saveNv02Continuity(deferred);
+          bootFreshContextPending.add('NV02');
           await continuityEvent('BOOT_VERIFIED_CHAT_SETTLE_DEFERRED',{url:expectedChatUrl,status:settled?.status||'PRESERVED_CHAT_UI_NOT_SETTLED',modelCheckBlockedUntil:deferred.modelCheckBlockedUntil});
           return{ok:true,status:'BOOT_VERIFIED_CHAT_SETTLE_DEFERRED'};
         }
@@ -1747,6 +1749,7 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
           if(!nv02BootModelCheckTransient(error))throw error;
           const deferred={...loadNv02Continuity(),pendingContinue:true,modelCheckBlockedUntil:Date.now()+30000};
           saveNv02Continuity(deferred);
+          bootFreshContextPending.add('NV02');
           await continuityEvent('BOOT_VERIFIED_CHAT_MODEL_VERIFY_DEFERRED',{url:expectedChatUrl,error:String(error?.message||error),modelCheckBlockedUntil:deferred.modelCheckBlockedUntil});
           return{ok:true,status:'BOOT_VERIFIED_CHAT_MODEL_VERIFY_DEFERRED'};
         }
