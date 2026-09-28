@@ -219,7 +219,8 @@ function parseBrokerJson(text) {
 
 async function brokerStatus() {
   try {
-    const heartbeat = parseBrokerJson(await fs.readFile(BROKER_HEARTBEAT_FILE, 'utf8'));
+    const safeHeartbeat = await assertSafeFileTarget(BROKER_HEARTBEAT_FILE);
+    const heartbeat = parseBrokerJson(await fs.readFile(safeHeartbeat, 'utf8'));
     const atMs = Date.parse(String(heartbeat?.at || ''));
     const ageMs = Number.isFinite(atMs) ? Math.max(0, Date.now() - atMs) : Number.POSITIVE_INFINITY;
     const ready = heartbeat?.schema === 'TIGERIQ_PAPERCLIP_WSL_HEARTBEAT_V1'
