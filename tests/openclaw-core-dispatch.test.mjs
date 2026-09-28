@@ -245,7 +245,7 @@ describe('Core -> OpenClaw bounded dispatch #1528', () => {
     expect(source).toContain("PC_OPERATOR_DIRECT_RECOVERY_FAIL_CLOSED");
     expect(source).toContain("executionSurface:'PC_OPERATOR_DIRECT_LOCAL'");
     expect(source).toContain("action==='shell_exec'||action==='file_write'||action.startsWith('pad_')");
-    expect(source).toContain("'paperclip_lab_install','paperclip_lab_start','paperclip_lab_stop'");
+    expect(source).toContain("'paperclip_lab_broker_install','paperclip_lab_install','paperclip_lab_start','paperclip_lab_stop'");
     expect(source).toContain("OPENCLAW_DISPATCH_ADMITTED");
     expect(source).toContain("OPENCLAW_JOB_RECOVERED_AFTER_CORE_RESTART");
     expect(source).toContain("update tigeriq_ai_resources set enabled=$2");
