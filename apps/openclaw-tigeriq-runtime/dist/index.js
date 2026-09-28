@@ -97,6 +97,11 @@ export default defineToolPlugin({
           Type.Literal('pad_set_value'),
           Type.Literal('pad_click'),
           Type.Literal('pad_keys'),
+          Type.Literal('paperclip_lab_preflight'),
+          Type.Literal('paperclip_lab_install'),
+          Type.Literal('paperclip_lab_start'),
+          Type.Literal('paperclip_lab_stop'),
+          Type.Literal('paperclip_lab_health'),
         ]),
         command: Type.Optional(Type.String({ minLength: 1, maxLength: 8000 })),
         shell: Type.Optional(Type.Union([Type.Literal('powershell'), Type.Literal('cmd')])),
@@ -130,7 +135,7 @@ export default defineToolPlugin({
       }, { additionalProperties: false }),
       async execute(params, _config, context) {
         context?.signal?.throwIfAborted?.();
-        return executePcAction(params);
+        return executePcAction(params, { signal: context?.signal });
       },
     }),
   ],

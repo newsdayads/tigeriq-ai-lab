@@ -7,6 +7,18 @@ import {
   resolveOperatorPath,
 } from '../apps/openclaw-tigeriq-runtime/operator.mjs';
 import { PAD_UI_ACTIONS, assertPadUiRequest, parsePadBrokerJson } from '../apps/openclaw-tigeriq-runtime/pad-ui.mjs';
+import {
+  PAPERCLIP_LAB_ACTIONS,
+  PAPERCLIP_LAB_IMAGE,
+  PAPERCLIP_LAB_PORT,
+  PAPERCLIP_LAB_RELEASE,
+  PAPERCLIP_LAB_RELEASE_SHA,
+  PAPERCLIP_LAB_ROOT,
+  assertPaperclipLabRequest,
+  paperclipLabComposeYaml,
+  resolvePaperclipLabPath,
+  validatePaperclipLabEnvText,
+} from '../apps/openclaw-tigeriq-runtime/paperclip-lab.mjs';
 
 describe('OpenClaw PC01 guarded local operator', () => {
   it('allows TigerIQ/OpenClaw work roots', () => {
@@ -108,5 +120,82 @@ describe('Power Automate Desktop guarded UI contract', () => {
     expect(source).toContain('[double]::IsNaN($n)');
     expect(source).not.toContain('[math]::Round($r.');
     expect((source.match(/Convert-FiniteUiNumber \\$r\\./g) ?? []).length).toBe(8);
+  });
+});
+
+
+describe('Paperclip Lab bounded PC01 capability', () => {
+  it('pins the exact approved release and loopback-only port', () => {
+    expect(PAPERCLIP_LAB_ROOT).toBe('D:\\TigerIQ-Paperclip-Lab');
+    expect(PAPERCLIP_LAB_PORT).toBe(3210);
+    expect(PAPERCLIP_LAB_RELEASE).toBe('v2026.916.1');
+    expect(PAPERCLIP_LAB_RELEASE_SHA).toBe('d554c4789ed3930f8a53ac9fdf6503b3187097da');
+    expect(PAPERCLIP_LAB_IMAGE).toBe('ghcr.io/paperclipai/paperclip:2026.916.1');
+    const compose = paperclipLabComposeYaml();
+    expect(compose).toContain('127.0.0.1:3210:3100');
+    expect(compose).toContain('ghcr.io/paperclipai/paperclip:2026.916.1');
+    expect(compose).not.toMatch(/:latest\b/);
+    expect(compose).not.toContain('0.0.0.0:3210');
+  });
+
+  it('allows only the Paperclip Lab root and exact typed actions', () => {
+    expect(resolvePaperclipLabPath('D:\\TigerIQ-Paperclip-Lab\\data')).toBe('D:\\TigerIQ-Paperclip-Lab\\data');
+    expect(() => resolvePaperclipLabPath('D:\\TigerIQ\\State')).toThrow('TIGERIQ_PAPERCLIP_LAB_PATH_NOT_ALLOWED');
+    expect(PAPERCLIP_LAB_ACTIONS).toEqual([
+      'paperclip_lab_preflight',
+      'paperclip_lab_install',
+      'paperclip_lab_start',
+      'paperclip_lab_stop',
+      'paperclip_lab_health',
+    ]);
+    expect(assertPaperclipLabRequest({ action: 'paperclip_lab_health' })).toEqual({ action: 'paperclip_lab_health' });
+    expect(() => assertPaperclipLabRequest({ action: 'paperclip_lab_health', port: 8795 })).toThrow('TIGERIQ_PAPERCLIP_LAB_ARGUMENT_NOT_ALLOWED');
+    expect(() => assertPaperclipLabRequest({ action: 'shell_exec' })).toThrow('TIGERIQ_PAPERCLIP_LAB_ACTION_NOT_ALLOWED');
+  });
+
+  it('pins immutable image refs and rejects mutable/foreign refs', () => {
+    const digest = 'ghcr.io/paperclipai/paperclip@sha256:' + 'a'.repeat(64);
+    expect(paperclipLabComposeYaml(digest)).toContain(`image: ${digest}`);
+    expect(() => paperclipLabComposeYaml('ghcr.io/paperclipai/paperclip:latest')).toThrow('TIGERIQ_PAPERCLIP_LAB_IMAGE_REF_INVALID');
+    expect(() => paperclipLabComposeYaml('ghcr.io/example/other@sha256:' + 'a'.repeat(64))).toThrow('TIGERIQ_PAPERCLIP_LAB_IMAGE_REF_INVALID');
+  });
+
+  it('rejects stale or credential-bearing Paperclip env files', () => {
+    const safe = [
+      'HOST=0.0.0.0',
+      'PAPERCLIP_HOME=/paperclip',
+      'PAPERCLIP_DEPLOYMENT_MODE=authenticated',
+      'PAPERCLIP_DEPLOYMENT_EXPOSURE=private',
+      'PAPERCLIP_PUBLIC_URL=http://localhost:3210',
+      'PAPERCLIP_ALLOWED_HOSTNAMES=localhost,127.0.0.1',
+      'BETTER_AUTH_SECRET=' + 'a'.repeat(64),
+      'PAPERCLIP_TOOL_ACTION_SIGNING_SECRET=' + 'b'.repeat(64),
+      'OPENAI_API_KEY=',
+      'ANTHROPIC_API_KEY=',
+      '',
+    ].join('\n');
+    expect(validatePaperclipLabEnvText(safe)).toBe(true);
+    expect(() => validatePaperclipLabEnvText(safe.replace('OPENAI_API_KEY=', 'OPENAI_API_KEY=not-allowed'))).toThrow('TIGERIQ_PAPERCLIP_LAB_ENV_UNSAFE');
+    expect(() => validatePaperclipLabEnvText(safe + 'TIGERIQ_TOKEN=x\n')).toThrow('TIGERIQ_PAPERCLIP_LAB_ENV_NOT_ALLOWLISTED');
+  });
+
+  it('ships the Paperclip module in the packaged OpenClaw plugin', async () => {
+    const pkg = JSON.parse(await readFile(new URL('../apps/openclaw-tigeriq-runtime/package.json', import.meta.url), 'utf8'));
+    expect(pkg.files).toContain('paperclip-lab.mjs');
+  });
+
+  it('keeps the implementation fail-closed against shell/path escapes and false health', async () => {
+    const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/paperclip-lab.mjs', import.meta.url), 'utf8');
+    expect(source).toContain('TIGERIQ_PAPERCLIP_LAB_SYMLINK_BLOCKED');
+    expect(source).toContain('TIGERIQ_PAPERCLIP_LAB_REALPATH_ESCAPE_BLOCKED');
+    expect(source).toContain('TIGERIQ_PAPERCLIP_LAB_IMAGE_REVISION_MISMATCH');
+    expect(source).toContain('imageDigest');
+    expect(source).toContain('/api/health');
+    expect(source).toContain('identityOk');
+    expect(source).toContain('portBindingOk');
+    expect(source).toContain('dataMountOk');
+    expect(source).toContain('rollbackContainer');
+    expect(source).toContain('TIGERIQ_PAPERCLIP_LAB_ABORTED');
+    expect(source).not.toMatch(/shell_exec|powershell|cmd\.exe/i);
   });
 });
