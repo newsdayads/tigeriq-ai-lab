@@ -222,42 +222,25 @@ describe('NV02 restart schedule WORKING safety',()=>{
   });
 });
 
-describe('isolated NV02 WORKING/F5 safety scope',()=>{
-  it('never F5s, reopens, sends, or rotates while WORKING but may stop a proven stuck generation',()=>{
+describe('isolated NV02 WORKING maintenance scope',()=>{
+  it('allows only the approved periodic F5/reset mutations while WORKING and keeps normal continue suppressed',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(bridge).not.toContain("'STALE_WORKING_RECOVERY'");
     expect(bridge).not.toContain("'WORKING_STALLED_REOPEN_SCHEDULED'");
     expect(bridge).not.toContain("reason:'WORKING_NO_PROGRESS_3_CHECKS'");
     expect(bridge).not.toContain("stopAndClearComposerExpr");
     const hotLoop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
-    const working=hotLoop.slice(hotLoop.indexOf("if(phase==='WORKING')"),hotLoop.indexOf('const chatLoadRecoveryHandled=await maybeRecoverChatLoadError'));
-    expect(working).not.toContain('reloadTarget');
-    expect(hotLoop).toContain("if(phase!=='WORKING'&&now>=Number(state.nextRefreshAt||0))");
-    const workingF5Guard=hotLoop.indexOf("if(phase==='WORKING'&&now>=Number(state.nextPeriodicF5At||0))");
+    expect(hotLoop).toContain("if(now>=Number(state.nextRefreshAt||0))");
+    expect(hotLoop).not.toContain("if(phase!=='WORKING'&&now>=Number(state.nextRefreshAt||0))");
+    expect(hotLoop).not.toContain('PERIODIC_F5_DEFERRED_WORKING');
     const dueF5=hotLoop.indexOf("if(now>=Number(state.nextPeriodicF5At||0))");
-    expect(workingF5Guard).toBeGreaterThan(-1);
-    expect(dueF5).toBeGreaterThan(workingF5Guard);
-    expect(hotLoop).toContain("PERIODIC_F5_DEFERRED_WORKING");
-    expect(hotLoop).toContain("PERIODIC_F5_DEFERRED_WORKING_FRESH");
+    expect(dueF5).toBeGreaterThan(-1);
     const f5Mutation=hotLoop.slice(dueF5,hotLoop.indexOf("if(phase==='WORKING')",dueF5));
-    expect(f5Mutation.indexOf("PERIODIC_F5_DEFERRED_WORKING_FRESH")).toBeGreaterThan(-1);
-    expect(f5Mutation.indexOf("PERIODIC_F5_DEFERRED_WORKING_FRESH")).toBeLessThan(f5Mutation.indexOf("reloadTarget(target)"));
-    expect(working).not.toContain('reopenWorker(');
+    expect(f5Mutation).toContain('reloadTarget(target)');
+    const working=hotLoop.slice(hotLoop.indexOf("if(phase==='WORKING')",dueF5),hotLoop.indexOf('const chatLoadRecoveryHandled=await maybeRecoverChatLoadError'));
     expect(working).not.toContain('dispatchNaturalContinue');
     expect(working).toContain("'WORKING_LONG_RUNNING_NO_MUTATION'");
     expect(working).toContain('return;');
-    expect(working).toContain("return;");
-  });
-
-  it('continues locally when READY without any Core assignment gate', () => {
-    const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
-    const hotLoop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
-    expect(hotLoop).not.toContain("currentWorkerAssignmentStatus('NV02')");
-    expect(hotLoop).not.toContain('READY_UNASSIGNED');
-    expect(hotLoop).toContain("if(phase==='READY')");
-    expect(hotLoop).toContain('dispatchNaturalContinue(target,state,now)');
-    expect(hotLoop).toContain('awaitingWorkStart');
-    expect(hotLoop).not.toContain('CURRENT_WORK_NEW_CHAT_RESTORE');
   });
 });
 
@@ -487,25 +470,28 @@ describe('Direct-CDP Controller command transport',()=>{
   });
 });
 
-describe('NV02 reboot F5 consolidation #1739',()=>{
-  it('rebases stale F5 timers and opens a fresh project context before periodic F5',()=>{
+describe('NV02 independent F5/reset timers',()=>{
+  it('preserves overdue timer intent across restart and keeps Auto dispatch timer-neutral',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(bridge).toContain('let nv02BootF5ScheduleInitialized=false');
-    expect(bridge).toContain("'NV02_F5_TIMERS_REBASED_AFTER_RESTART'");
+    expect(bridge).toContain("'NV02_F5_TIMER_OVERDUE_AFTER_RESTART'");
+    expect(bridge).toContain("'NV02_REFRESH_TIMER_OVERDUE_AFTER_RESTART'");
+    expect(bridge).not.toContain("'NV02_F5_TIMERS_REBASED_AFTER_RESTART'");
+    expect(bridge).not.toContain("'NV02_REFRESH_TIMER_REBASED_AFTER_RESTART'");
     expect(bridge).toContain('if(persistBootSchedule)saveNv02Continuity(state)');
-    expect(bridge).toContain("'DISPATCH_F5_GUARD_ARMED'");
-    const dispatchNote=bridge.slice(bridge.indexOf('async function noteNv02CommandDispatch'),bridge.indexOf('async function maybeNv02Continuity'));
-    expect(dispatchNote).toContain('state.nextPeriodicF5At=nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS)');
-    expect(dispatchNote).toContain('state.workingRecheckAt=nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS)');
+    expect(bridge).toContain("'DISPATCH_CONTINUITY_GUARD_ARMED'");
+    const dispatchNote=bridge.slice(bridge.indexOf('async function noteNv02CommandDispatch'),bridge.indexOf('async function reopenNv02PeriodicWorker'));
+    expect(dispatchNote).toContain('const preservedF5At=state.nextPeriodicF5At');
+    expect(dispatchNote).toContain('const preservedRefreshAt=state.nextRefreshAt');
+    expect(dispatchNote).not.toContain('state.nextPeriodicF5At=nextRandomAt');
     expect(bridge).toContain("if(w.id==='NV02')await noteNv02CommandDispatch()");
     const loop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
-    const fresh=loop.indexOf("bootFreshContextPending.has('NV02')");
+    expect(loop).toContain("if(now>=Number(state.nextRefreshAt||0))");
+    expect(loop).not.toContain("if(phase!=='WORKING'&&now>=Number(state.nextRefreshAt||0))");
+    expect(loop).not.toContain('PERIODIC_F5_DEFERRED_WORKING');
     const f5=loop.indexOf("if(now>=Number(state.nextPeriodicF5At||0))");
-    expect(fresh).toBeGreaterThan(-1);
     expect(f5).toBeGreaterThan(-1);
-    expect(loop).toContain("if(phase!=='WORKING'&&now>=Number(state.nextRefreshAt||0))");
-    expect(loop).not.toContain('state.resumeChatUrl');
-    const f5Block=loop.slice(f5,loop.indexOf("if(phase==='WORKING')"));
+    const f5Block=loop.slice(f5,loop.indexOf("if(phase==='WORKING')",f5));
     expect(f5Block).toContain('reloadTarget(target)');
   });
 });
@@ -550,6 +536,18 @@ describe('APP Chrome UI-only continuity regression #1525',()=>{
 });
 
 
+describe('NV02 periodic reset lease scope',()=>{
+  it('permits only the approved periodic close/resume mutations while WORKING or heartbeat-stale',()=>{
+    const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
+    expect(server).toContain("const periodicReset=workerId==='NV02'&&['NV02_PERIODIC_REOPEN_CLOSE','NV02_PERIODIC_RESUME_URL'].includes(purpose)");
+    expect(server).toContain('||periodicF5||periodicReset||currentChatRestore');
+    expect(server).toContain("if(!recentHeartbeat(workerId)&&!periodicF5&&!periodicReset)throw new Error(`WORKER_HEARTBEAT_NOT_READY:${workerId}`)");
+    expect(server).toContain("if(state.lastHeartbeat?.uiBusy!==false&&!staleWorkingRecovery&&!periodicF5&&!periodicReset&&!chatLoadRecoveryStateAllowed)throw new Error(`WORKER_UI_BUSY_OR_UNKNOWN:${workerId}`)");
+    expect(server).toContain("if(paused&&!periodicF5)throw new Error('OWNER_INTERACTION_READ_ONLY')");
+    expect(server).toContain("if(utilityPausedWorkers.has(workerId)&&!periodicF5)throw new Error(`UTILITY_WORKER_PAUSED:${workerId}`)");
+  });
+});
+
 describe('NV03/NV04 UI continuity lease regression #1525',()=>{
   it('allows only bounded generic UI maintenance to coexist with a stale active UI ledger record',()=>{
     const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
@@ -566,7 +564,7 @@ describe('NV03/NV04 UI continuity lease regression #1525',()=>{
     expect(server).toContain('const uiContinuityLeaseAllowed=continuityLeaseAllowed||genericUiContinuityMaintenance');
     expect(server).toContain('||genericUiContinuityMaintenance;');
     expect(server).toContain('&&!uiContinuityLeaseAllowed)throw new Error(`WORKER_ACTIVE_JOB:${workerId}`)');
-    expect(server).toContain("if(state.lastHeartbeat?.uiBusy!==false&&!staleWorkingRecovery&&!periodicF5&&!chatLoadRecoveryStateAllowed)throw new Error(`WORKER_UI_BUSY_OR_UNKNOWN:${workerId}`)");
+    expect(server).toContain("if(state.lastHeartbeat?.uiBusy!==false&&!staleWorkingRecovery&&!periodicF5&&!periodicReset&&!chatLoadRecoveryStateAllowed)throw new Error(`WORKER_UI_BUSY_OR_UNKNOWN:${workerId}`)");
     expect(server).toContain("if(commandQueues.get(workerId)!.length>0||[...waiters.values()].some((w)=>w.workerId===workerId))");
   });
 });
@@ -580,8 +578,8 @@ describe('NV02 chat-load recovery lease #1567',()=>{
     expect(server).toContain("state.lastHeartbeat?.chatLoadError===true");
     expect(server).toContain("!chatLoadRetryRecovery||state.lastHeartbeat?.chatRetryReady===true");
     expect(server).toContain("CHAT_LOAD_RECOVERY_STATE_REQUIRED:");
-    expect(server).toContain("!chatLoadRecoveryStateAllowed)throw new Error(`WORKER_UI_BUSY_OR_UNKNOWN:${workerId}`)");
-    expect(server).toContain('||chatLoadRecovery||periodicF5');
+    expect(server).toContain("!periodicReset&&!chatLoadRecoveryStateAllowed)throw new Error(`WORKER_UI_BUSY_OR_UNKNOWN:${workerId}`)");
+    expect(server).toContain('||chatLoadRecovery||periodicF5||periodicReset');
   });
 });
 

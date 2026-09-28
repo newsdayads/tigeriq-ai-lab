@@ -22,8 +22,9 @@ Resource scope: APP_CHROME_NV02_V2
 - No active work: App Chrome may send one generic bounded idle wake every 5-10 minutes. The wake never identifies or selects an issue; NV02 evaluates the full P1-P5 set, then applies dependency/HOLD/owner/resource-scope/hard-gate checks and chooses direct execution versus specialist handoff.
 - `READY_NO_ELIGIBLE_WORK` is valid only when no P1-P5 Work Order can be directly executed or validly coordinated/handoff by NV02.
 - READY_NO_ELIGIBLE_WORK arms durable idle state and suppresses normal continue prompts until the next bounded wake.
-- F5 is independently randomized between 5 and 10 minutes and never selects work.
-- Planned reset remains randomized between 2 and 4 hours and must checkpoint/save before archive or restart.
+- F5 is independently randomized between 5 and 10 minutes, never selects work, executes when due even during WORKING, and is not rescheduled by Auto/dispatch.
+- Planned Chrome reset is independently randomized between 2 and 4 hours, executes when due even during WORKING, checkpoints local continuity, reopens Chrome, and returns to the same NV02 project/chat URL when valid so the same job resumes. Periodic reset does not archive the chat.
+- Chrome/App restart preserves overdue F5/reset intent instead of silently rebasing an overdue timer into a fresh future window.
 - Recovery is bounded and must fail closed on security, authentication, ambiguous delivery, lease conflict, or stale identity.
 
 ## Runtime security
