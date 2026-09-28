@@ -45,6 +45,34 @@ let nv02BootRefreshScheduleInitialized=false;
 const APP_CHROME_LOCAL_UI_ONLY=true;
 const NV02_F5_MIN_MS=5*60*1000;
 const NV02_F5_MAX_MS=10*60*1000;
+const NV02_CONTINUE_PROMPTS=Object.freeze([
+  'Tiếp tục',
+  'Làm tiếp',
+  'Tiếp đi',
+  'Xử lý tiếp',
+  'Thực hiện tiếp',
+  'Tiếp tục công việc hiện tại',
+  'Làm tiếp công việc hiện tại',
+  'Tiếp tục việc đang làm',
+  'Làm tiếp phần đang dở',
+  'Tiếp tục từ chỗ hiện tại',
+  'Tiếp tục đúng việc này',
+  'Xử lý tiếp việc hiện tại',
+  'Thực hiện tiếp việc đang làm',
+  'Tiếp tục phần còn dở',
+  'Tiếp tục từ trạng thái hiện tại',
+  'Tiếp tục xử lý việc đang dở',
+  'Tiếp tục công việc đang dang dở',
+  'Thực thi tiếp việc hiện tại',
+  'Làm tiếp nhiệm vụ đang thực hiện',
+  'Tiếp tục đúng việc đang được giao',
+  'Làm tiếp, không đổi việc',
+]);
+function pickNv02ContinuePrompt(previous='',random=Math.random){
+  const prior=String(previous||'').replace(/^02\s*-\s*/,'');
+  const candidates=NV02_CONTINUE_PROMPTS.filter((text)=>text!==prior);
+  return candidates[Math.min(candidates.length-1,Math.floor(random()*candidates.length))];
+}
 const NV02_STALLED_RELOAD_CHECKS=10;
 const NV02_STALLED_RESET_CHECKS=14;
 const LOCAL_RUN_GRACE_MS=15000;
@@ -1037,7 +1065,7 @@ async function getControllerState(){
 async function chooseLocalContinuePrompt(workerId,state={}){
   return {
     source:'LOCAL_CONTINUE',
-    prompt:pickWorkerContinuePrompt(workerId,state?.lastPrompt),
+    prompt:workerId==='NV02'?pickNv02ContinuePrompt(state?.lastPrompt):pickWorkerContinuePrompt(workerId,state?.lastPrompt),
     jobId:'',
     issueRef:null,
     priority:null,
