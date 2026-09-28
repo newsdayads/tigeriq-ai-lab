@@ -181,7 +181,14 @@ describe('Paperclip Lab bounded PC01 capability', () => {
   it('classifies bounded container logs without exposing raw log text', () => {
     expect(paperclipContainerLogClass('Error: EACCES permission denied /paperclip')).toBe('PERMISSION');
     expect(paperclipContainerLogClass('BETTER_AUTH_SECRET must be set')).toBe('CONFIG');
-    expect(paperclipContainerLogClass('database migration failed')).toBe('DATABASE');
+    expect(paperclipContainerLogClass('could not create shared memory segment')).toBe('DB_SHARED_MEMORY');
+    expect(paperclipContainerLogClass('data directory belongs to another instance')).toBe('DB_DATA_DIR_MISMATCH');
+    expect(paperclipContainerLogClass('Failed to initialize embedded PostgreSQL cluster')).toBe('DB_INIT');
+    expect(paperclipContainerLogClass('Failed to start embedded PostgreSQL on port 54329')).toBe('DB_START');
+    expect(paperclipContainerLogClass('Embedded PostgreSQL has pending migrations; refusing stale schema')).toBe('DB_MIGRATION');
+    expect(paperclipContainerLogClass('database connection refused')).toBe('DB_CONNECTION');
+    expect(paperclipContainerLogClass('database checksum failed: corrupt page')).toBe('DB_CORRUPT');
+    expect(paperclipContainerLogClass('database startup failed')).toBe('DATABASE');
     expect(paperclipContainerLogClass('EADDRINUSE address already in use')).toBe('PORT_CONFLICT');
     expect(paperclipContainerLogClass('heap out of memory')).toBe('OOM');
     expect(paperclipContainerLogClass('Cannot find module x')).toBe('ENTRYPOINT_OR_FILE');
