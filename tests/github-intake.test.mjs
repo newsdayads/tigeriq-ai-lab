@@ -48,13 +48,15 @@ test('persistence verification through injected evidence sink', () => {
 });
 
 
-function response(data,ok=true,status=200){
+function response(data,ok=true,status=200,headerValues={}){
   const raw=status===204?'':JSON.stringify(data);
-  return {ok,status,headers:{get:()=>null},json:async()=>data,text:async()=>raw};
+  const normalized=Object.fromEntries(Object.entries(headerValues||{}).map(([key,value])=>[String(key).toLowerCase(),String(value)]));
+  return {ok,status,headers:{get:(name)=>normalized[String(name||'').toLowerCase()]||null},json:async()=>data,text:async()=>raw};
 }
 
-function coreBacklogPool(){
+function coreBacklogPool(options={}){
   const objectives=[]; const events=[]; const jobs=[];
+  let routingFaultInsertFailures=Math.max(0,Number(options.routingFaultInsertFailures||0));
   return {objectives,events,jobs,async query(q,params=[]){
     if(q.includes("metadata->>'source'='github' and status='active'")){
       const active=objectives.filter(o=>o.metadata?.source==='github'&&o.status==='active');
@@ -106,6 +108,10 @@ function coreBacklogPool(){
     }
     if(q.includes("insert into tigeriq_events")){
       if(q.includes("'ROUTING_FAULT'")){
+        if(routingFaultInsertFailures>0){
+          routingFaultInsertFailures--;
+          throw new Error('SIMULATED_ROUTING_FAULT_INSERT_FAILURE');
+        }
         events.push({type:'ROUTING_FAULT',data:JSON.parse(params[0])});
       }else{
         events.push({type:q.includes('GITHUB_PC_OPERATOR_JOB_MATERIALIZED')?'GITHUB_PC_OPERATOR_JOB_MATERIALIZED':'GITHUB_OBJECTIVE_MATERIALIZED',objectiveId:params[0],jobId:params[1]||null});
@@ -242,6 +248,123 @@ test('oversized pc_operator notification retries after transient comment failure
   out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
   assert.strictEqual(comments.length,1);
   assert.strictEqual(pool.events.filter((e)=>e.type==='ROUTING_FAULT'&&e.data?.terminalBlocked===true).length,1);
+});
+
+test('oversized pc_operator retries terminal label sync without reposting blocked comment',async()=>{
+  const pool=coreBacklogPool();
+  const assigned='x'.repeat(5700);
+  const body=[
+    'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','OWNER_DIRECT=true','PRIORITY=P1',
+    'CAPABILITY=pc_operator','NO_CODE_CHANGE=true','NO_PC01_SHELL=true',
+    'RESOURCE_SCOPE=OPENCLAW_LABEL_RETRY','PUBLIC_EVIDENCE_KEYS=installedSha',
+    'ASSIGNED_ACTION',assigned,'ACCEPTANCE','Return requested public evidence only.',
+  ].join('\n');
+  const issues=[{number:1612,state:'open',title:'oversized label retry',body,html_url:'https://example/1612'}];
+  const comments=[];
+  let labelAttempts=0;
+  const fetchImpl=async(url,init={})=>{
+    if(url.includes('/issues?'))return response(issues);
+    const method=String(init.method||'GET').toUpperCase();
+    if(method==='POST'&&url.endsWith('/issues/1612/comments')){
+      comments.push(JSON.parse(init.body).body);
+      issues[0].comments=comments.length;
+      return response({id:comments.length});
+    }
+    if(method==='POST'&&url.endsWith('/issues/1612/labels')){
+      labelAttempts++;
+      if(labelAttempts===1)return response({message:'temporary'},false,503);
+      return response([]);
+    }
+    if(method==='GET'&&url.includes('/issues/1612/comments?')){
+      return response(comments.map((body,index)=>({id:index+1,body})));
+    }
+    return response({});
+  };
+  let out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
+  assert.strictEqual(out.created,0);
+  assert.strictEqual(comments.length,1);
+  assert.strictEqual(labelAttempts,1);
+  assert.strictEqual(pool.events.filter((e)=>e.type==='ROUTING_FAULT'&&e.data?.ownerVisible===true).length,1);
+  assert.strictEqual(pool.events.filter((e)=>e.type==='ROUTING_FAULT'&&e.data?.terminalBlocked===true).length,0);
+
+  out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
+  assert.strictEqual(out.created,0);
+  assert.strictEqual(comments.length,1);
+  assert.strictEqual(labelAttempts,2);
+  assert.strictEqual(pool.events.filter((e)=>e.type==='ROUTING_FAULT'&&e.data?.terminalBlocked===true).length,1);
+
+  out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
+  assert.strictEqual(comments.length,1);
+  assert.strictEqual(labelAttempts,2);
+});
+
+test('oversized pc_operator blocked notice propagates GitHub rate limit to scheduler',async()=>{
+  const pool=coreBacklogPool();
+  const assigned='x'.repeat(5700);
+  const body=[
+    'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','OWNER_DIRECT=true','PRIORITY=P1',
+    'CAPABILITY=pc_operator','NO_CODE_CHANGE=true','NO_PC01_SHELL=true',
+    'RESOURCE_SCOPE=OPENCLAW_RATE_LIMIT','PUBLIC_EVIDENCE_KEYS=installedSha',
+    'ASSIGNED_ACTION',assigned,'ACCEPTANCE','Return requested public evidence only.',
+  ].join('\n');
+  const issues=[{number:1613,state:'open',title:'oversized rate limited',body,html_url:'https://example/1613'}];
+  const fetchImpl=async(url,init={})=>{
+    if(url.includes('/issues?'))return response(issues);
+    if(String(init.method||'GET').toUpperCase()==='POST'&&url.endsWith('/issues/1613/comments')){
+      return response({message:'rate limit'},false,429,{'retry-after':'1'});
+    }
+    return response({});
+  };
+  await assert.rejects(()=>materializeGithubIssues({pool,fetchImpl,token:'fake'}),/GITHUB_HTTP_429/);
+  assert.strictEqual(pool.objectives.length,0);
+  assert.strictEqual(pool.jobs.length,0);
+  assert.strictEqual(pool.events.filter((e)=>e.type==='ROUTING_FAULT').length,0);
+});
+
+test('oversized pc_operator recovers blocked-comment idempotency after routing marker insert failure',async()=>{
+  const pool=coreBacklogPool({routingFaultInsertFailures:2});
+  const assigned='x'.repeat(5700);
+  const body=[
+    'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','OWNER_DIRECT=true','PRIORITY=P1',
+    'CAPABILITY=pc_operator','NO_CODE_CHANGE=true','NO_PC01_SHELL=true',
+    'RESOURCE_SCOPE=OPENCLAW_MARKER_RECOVERY','PUBLIC_EVIDENCE_KEYS=installedSha',
+    'ASSIGNED_ACTION',assigned,'ACCEPTANCE','Return requested public evidence only.',
+  ].join('\n');
+  const issues=[{number:1614,state:'open',title:'oversized marker recovery',body,comments:0,html_url:'https://example/1614'}];
+  const comments=[];
+  let labelAdds=0;
+  const fetchImpl=async(url,init={})=>{
+    if(url.includes('/issues?'))return response(issues);
+    const method=String(init.method||'GET').toUpperCase();
+    if(method==='GET'&&url.includes('/issues/1614/comments?')){
+      return response(comments.map((body,index)=>({id:index+1,body})));
+    }
+    if(method==='POST'&&url.endsWith('/issues/1614/comments')){
+      comments.push(JSON.parse(init.body).body);
+      issues[0].comments=comments.length;
+      return response({id:comments.length});
+    }
+    if(method==='POST'&&url.endsWith('/issues/1614/labels')){
+      labelAdds++;
+      return response([]);
+    }
+    return response({});
+  };
+
+  let out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
+  assert.strictEqual(out.created,0);
+  assert.strictEqual(comments.length,1);
+  assert.strictEqual(pool.events.filter((e)=>e.type==='ROUTING_FAULT').length,0);
+
+  out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
+  assert.strictEqual(out.created,0);
+  assert.strictEqual(comments.length,1);
+  assert.ok(labelAdds>=2);
+  assert.strictEqual(pool.events.filter((e)=>e.type==='ROUTING_FAULT'&&e.data?.ownerVisible===true).length>=1,true);
+  assert.strictEqual(pool.events.filter((e)=>e.type==='ROUTING_FAULT'&&e.data?.terminalBlocked===true).length,1);
+
+  out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
+  assert.strictEqual(comments.length,1);
 });
 
 test('owner-direct pc_operator GitHub intake materializes bounded OpenClaw objective',async()=>{
