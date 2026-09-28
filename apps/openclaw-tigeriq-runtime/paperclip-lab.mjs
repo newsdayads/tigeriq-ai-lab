@@ -586,7 +586,9 @@ export async function executePaperclipLabAction(input = {}, options = {}) {
   const { action } = assertPaperclipLabRequest(input);
   const started = Date.now();
   let data;
-  if (action === 'paperclip_lab_preflight') data = await preflight(signal);
+  if (action === 'paperclip_lab_docker_status') data = await dockerStatus(signal);
+  else if (action === 'paperclip_lab_docker_start') data = await dockerStart(signal);
+  else if (action === 'paperclip_lab_preflight') data = await preflight(signal);
   else if (action === 'paperclip_lab_install') data = await install(signal);
   else if (action === 'paperclip_lab_start') data = await start(signal);
   else if (action === 'paperclip_lab_stop') data = await stop(signal);
