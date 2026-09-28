@@ -1131,6 +1131,40 @@ async function reconcileGithubCoreReviewObjective(o){
   return true;
 }
 
+async function reconcileCoreDirectPcOperatorObjectives(){
+  const rows=(await pool.query(`select o.id as objective_id,o.metadata as objective_metadata,j.id as job_id,j.status,j.failure,j.result
+    from tigeriq_objectives o
+    join lateral (
+      select id,status,failure,result
+      from tigeriq_jobs
+      where objective_id=o.id and capability='pc_operator'
+      order by created_at desc
+      limit 1
+    ) j on true
+    where o.status='active' and o.metadata->>'executionSurface'='PC_OPERATOR_DIRECT_LOCAL'
+      and j.status in ('done','failed')
+    order by o.created_at
+    limit 20`)).rows;
+  let reconciled=0;
+  for(const row of rows){
+    const done=row.status==='done';
+    const reason=done?'job_done':String(row.failure?.kind||row.failure?.message||'terminal_failure').slice(0,300);
+    const summary=done
+      ? appendPublicEvidenceToSummary(`direct pc_operator completed locally; job=${row.job_id}`,row.result,row.objective_metadata?.publicEvidenceKeys||[])
+      : `direct pc_operator failed; job=${row.job_id}; failure=${reason}`;
+    const updated=await pool.query("update tigeriq_objectives set status=$2,summary=$3,updated_at=now() where id=$1 and status='active'",[row.objective_id,done?'completed':'blocked',summary]);
+    if(updated.rowCount!==1)continue;
+    reconciled++;
+    await event(done?'OBJECTIVE_COMPLETE':'OBJECTIVE_BLOCKED',{
+      objectiveId:row.objective_id,jobId:row.job_id,executionSurface:'PC_OPERATOR_DIRECT_LOCAL',reason
+    });
+    await event('PC_OPERATOR_DIRECT_OBJECTIVE_RECONCILED',{
+      objectiveId:row.objective_id,jobId:row.job_id,terminalStatus:done?'completed':'blocked',reason
+    });
+  }
+  return reconciled;
+}
+
 async function reconcileCoreOpenClawBoundedObjectives(){
   const rows=(await pool.query(`select o.id as objective_id,o.metadata as objective_metadata,j.id as job_id,j.status,j.employee_id,j.resource_id,j.provider,j.failure,j.result
     from tigeriq_objectives o
@@ -1168,7 +1202,7 @@ async function reconcileCoreOpenClawBoundedObjectives(){
 
 async function managerTick() {
   const q=await pool.query(`select o.* from tigeriq_objectives o where o.status='active' and o.next_check_at<=now()
-    and coalesce(o.metadata->>'executionSurface','') not in ('CORE_OPENCLAW_BOUNDED','CORE_UI')
+    and coalesce(o.metadata->>'executionSurface','') not in ('CORE_OPENCLAW_BOUNDED','PC_OPERATOR_DIRECT_LOCAL','CORE_UI')
     and not exists(select 1 from tigeriq_jobs j where j.objective_id=o.id and j.status in ('queued','running','ui_assigned','ui_running'))
     order by case o.priority when 'P0' then 0 when 'P1' then 1 when 'P2' then 2 when 'P3' then 3 when 'P4' then 4 when 'P5' then 5 else 6 end,case when o.metadata#>>'{handoff,state}'='waiting_children' then 1 else 0 end,o.created_at limit 1`);
   const o=q.rows[0]; if(!o) return;
@@ -1476,7 +1510,7 @@ async function loop(){
       }
       if(t-lastRefresh>15000){await refreshResources();lastRefresh=t;}
       if(t-lastRecover>10000){await recoverStale();lastRecover=t;}
-      if(t-lastOpenClawObjectiveReconcile>3000){await reconcileCoreOpenClawBoundedObjectives();lastOpenClawObjectiveReconcile=t;}
+      if(t-lastOpenClawObjectiveReconcile>3000){await reconcileCoreDirectPcOperatorObjectives();await reconcileCoreOpenClawBoundedObjectives();lastOpenClawObjectiveReconcile=t;}
       if(!managerTickRunning&&t-lastManager>MANAGER_IDLE_MS){lastManager=t;managerTickRunning=true;void managerTick().catch(error=>console.error(JSON.stringify({event:'MANAGER_TICK_ERROR',error:String(error?.message||error)}))).finally(()=>{managerTickRunning=false;});}
       if(t-lastProbe>60000){await probeReadyResources();lastProbe=t;}
       if(!apiDoctorScanRunning&&t-lastApiDoctor>API_DOCTOR_INTERVAL_MS){lastApiDoctor=t;apiDoctorScanRunning=true;void runApiDoctorScan().catch(error=>console.error(JSON.stringify({event:'API_DOCTOR_SCAN_ERROR',error:String(error?.message||error)}))).finally(()=>{apiDoctorScanRunning=false;});}
