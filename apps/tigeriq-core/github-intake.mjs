@@ -420,7 +420,36 @@ async function readActiveExternalRoleClaim(fetchImpl,owner,repo,token,spec){
 }
 
 async function recordRoutingFault(pool,data){
-  await pool.query("insert into tigeriq_events(type,data) values('ROUTING_FAULT',$1)",[JSON.stringify(data)]).catch(()=>{});
+  try{
+    await pool.query("insert into tigeriq_events(type,data) values('ROUTING_FAULT',$1)",[JSON.stringify(data)]);
+    return true;
+  }catch{
+    return false;
+  }
+}
+
+async function githubMutationRetryable(task){
+  try{return await task();}
+  catch(error){
+    if(githubRateLimitCooldownMs(error)>0)throw error;
+    return false;
+  }
+}
+
+function blockedNoticeMarker(reason,sourceRevision=''){
+  return `[TIGERIQ_BLOCKED_V1:${String(reason)}:${String(sourceRevision||'')}]`;
+}
+
+async function blockedNoticeAlreadyPosted(fetchImpl,owner,repo,token,issueNumber,commentCount,marker){
+  if(!token||Number(commentCount||0)<=0)return false;
+  const lastPage=Math.max(1,Math.ceil(Number(commentCount||0)/100));
+  try{
+    const comments=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/${Number(issueNumber)}/comments?per_page=100&page=${lastPage}`,token);
+    return (Array.isArray(comments)?comments:[]).some((comment)=>String(comment?.body||'').includes(marker));
+  }catch(error){
+    if(githubRateLimitCooldownMs(error)>0)throw error;
+    return false;
+  }
 }
 
 async function routingFaultRecorded(pool,issueNumber,reason,sourceRevision=''){
@@ -450,7 +479,7 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
       const terminalCurrent=await routingFaultTerminalRecorded(pool,spec.number,reason,spec.sourceRevision);
       if(terminalCurrent){skipped++;continue;}
       if(await routingFaultTerminalRecorded(pool,spec.number,reason)){
-        await clearTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:spec.number,token}).catch(()=>false);
+        await githubMutationRetryable(()=>clearTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:spec.number,token}));
       }
     }
     if(githubSpecBlockedByActive(spec,activeMetadata)){skipped++;continue;}
@@ -488,14 +517,27 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
         if(String(error?.message||'')==='OPENCLAW_INSTRUCTION_INVALID'){
           const reason='OPENCLAW_INSTRUCTION_INVALID';
           const sourceRevision=String(spec.sourceRevision||'');
-          const ownerVisibleAlready=await routingFaultOwnerVisibleRecorded(pool,spec.number,reason,sourceRevision);
+          const marker=blockedNoticeMarker(reason,sourceRevision);
+          let ownerVisibleAlready=await routingFaultOwnerVisibleRecorded(pool,spec.number,reason,sourceRevision);
           if(!ownerVisibleAlready){
-            const ownerVisible=await commentIssue(fetchImpl,owner,repo,spec.number,`[BLOCKED] TigerIQ Core rejected this Work Order before objective/job materialization because the fully built OpenClaw pc_operator instruction exceeds the 6000-character limit. Shorten ASSIGNED_ACTION/public-evidence instructions, then update the issue to rearm. Reason: ${reason}.`,token).catch(()=>false);
+            ownerVisibleAlready=await blockedNoticeAlreadyPosted(fetchImpl,owner,repo,token,spec.number,spec.commentCount,marker);
+            if(ownerVisibleAlready){
+              await recordRoutingFault(pool,{source:'github-intake',issueNumber:spec.number,resourceScope:spec.resourceScope||null,reason,sourceRevision,ownerVisible:true,terminalBlocked:false});
+            }
+          }
+          if(!ownerVisibleAlready){
+            const ownerVisible=await githubMutationRetryable(()=>commentIssue(fetchImpl,owner,repo,spec.number,`${marker}\n[BLOCKED] TigerIQ Core rejected this Work Order before objective/job materialization because the fully built OpenClaw pc_operator instruction exceeds the 6000-character limit. Shorten ASSIGNED_ACTION/public-evidence instructions, then update the issue to rearm. Reason: ${reason}.`,token));
             if(ownerVisible){
-              await addTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:spec.number,token}).catch(()=>false);
-              await recordRoutingFault(pool,{source:'github-intake',issueNumber:spec.number,resourceScope:spec.resourceScope||null,reason,sourceRevision,ownerVisible:true,terminalBlocked:true});
+              ownerVisibleAlready=true;
+              await recordRoutingFault(pool,{source:'github-intake',issueNumber:spec.number,resourceScope:spec.resourceScope||null,reason,sourceRevision,ownerVisible:true,terminalBlocked:false});
             }else if(!(await routingFaultRecorded(pool,spec.number,reason,sourceRevision))){
               await recordRoutingFault(pool,{source:'github-intake',issueNumber:spec.number,resourceScope:spec.resourceScope||null,reason,sourceRevision,ownerVisible:false,terminalBlocked:false});
+            }
+          }
+          if(ownerVisibleAlready){
+            const labelSynced=await githubMutationRetryable(()=>addTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:spec.number,token}));
+            if(labelSynced){
+              await recordRoutingFault(pool,{source:'github-intake',issueNumber:spec.number,resourceScope:spec.resourceScope||null,reason,sourceRevision,ownerVisible:true,terminalBlocked:true});
             }
           }
           skipped++;
