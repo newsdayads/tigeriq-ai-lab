@@ -423,13 +423,18 @@ async function recordRoutingFault(pool,data){
   await pool.query("insert into tigeriq_events(type,data) values('ROUTING_FAULT',$1)",[JSON.stringify(data)]).catch(()=>{});
 }
 
-async function routingFaultRecorded(pool,issueNumber,reason){
-  const result=await pool.query("select 1 from tigeriq_events where type='ROUTING_FAULT' and data->>'issueNumber'=$1 and data->>'reason'=$2 limit 1",[String(issueNumber),String(reason)]).catch(()=>({rowCount:0}));
+async function routingFaultRecorded(pool,issueNumber,reason,sourceRevision=''){
+  const result=await pool.query("select 1 from tigeriq_events where type='ROUTING_FAULT' and data->>'issueNumber'=$1 and data->>'reason'=$2 and ($3='' or data->>'sourceRevision'=$3) limit 1",[String(issueNumber),String(reason),String(sourceRevision||'')]).catch(()=>({rowCount:0}));
   return Number(result?.rowCount||0)>0;
 }
 
-async function routingFaultOwnerVisibleRecorded(pool,issueNumber,reason){
-  const result=await pool.query("select 1 from tigeriq_events where type='ROUTING_FAULT' and data->>'issueNumber'=$1 and data->>'reason'=$2 and data->>'ownerVisible'='true' limit 1",[String(issueNumber),String(reason)]).catch(()=>({rowCount:0}));
+async function routingFaultOwnerVisibleRecorded(pool,issueNumber,reason,sourceRevision=''){
+  const result=await pool.query("select 1 from tigeriq_events where type='ROUTING_FAULT' and data->>'issueNumber'=$1 and data->>'reason'=$2 and ($3='' or data->>'sourceRevision'=$3) and data->>'ownerVisible'='true' limit 1",[String(issueNumber),String(reason),String(sourceRevision||'')]).catch(()=>({rowCount:0}));
+  return Number(result?.rowCount||0)>0;
+}
+
+async function routingFaultTerminalRecorded(pool,issueNumber,reason,sourceRevision=''){
+  const result=await pool.query("select 1 from tigeriq_events where type='ROUTING_FAULT' and data->>'issueNumber'=$1 and data->>'reason'=$2 and ($3='' or data->>'sourceRevision'=$3) and data->>'terminalBlocked'='true' limit 1",[String(issueNumber),String(reason),String(sourceRevision||'')]).catch(()=>({rowCount:0}));
   return Number(result?.rowCount||0)>0;
 }
 export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token='',openIssues=null}){
@@ -440,6 +445,14 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
   const activeMetadata=activeRows.map((row)=>row?.metadata||{});
   let skipped=0,externalClaims=0;
   for(const spec of specs){
+    if(spec.capability==='pc_operator'){
+      const reason='OPENCLAW_INSTRUCTION_INVALID';
+      const terminalCurrent=await routingFaultTerminalRecorded(pool,spec.number,reason,spec.sourceRevision);
+      if(terminalCurrent){skipped++;continue;}
+      if(await routingFaultTerminalRecorded(pool,spec.number,reason)){
+        await clearTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:spec.number,token}).catch(()=>false);
+      }
+    }
     if(githubSpecBlockedByActive(spec,activeMetadata)){skipped++;continue;}
     const prior=(await pool.query("select id,status,metadata from tigeriq_objectives where metadata->>'source'='github' and metadata->>'issueNumber'=$1 order by created_at desc limit 1",[String(spec.number)])).rows[0]||null;
     const roleClaimLabeled=hasExternalRoleClaimLabel(spec);
@@ -474,13 +487,15 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
       }catch(error){
         if(String(error?.message||'')==='OPENCLAW_INSTRUCTION_INVALID'){
           const reason='OPENCLAW_INSTRUCTION_INVALID';
-          const ownerVisibleAlready=await routingFaultOwnerVisibleRecorded(pool,spec.number,reason);
+          const sourceRevision=String(spec.sourceRevision||'');
+          const ownerVisibleAlready=await routingFaultOwnerVisibleRecorded(pool,spec.number,reason,sourceRevision);
           if(!ownerVisibleAlready){
             const ownerVisible=await commentIssue(fetchImpl,owner,repo,spec.number,`[BLOCKED] TigerIQ Core rejected this Work Order before objective/job materialization because the fully built OpenClaw pc_operator instruction exceeds the 6000-character limit. Shorten ASSIGNED_ACTION/public-evidence instructions, then update the issue to rearm. Reason: ${reason}.`,token).catch(()=>false);
             if(ownerVisible){
-              await recordRoutingFault(pool,{source:'github-intake',issueNumber:spec.number,resourceScope:spec.resourceScope||null,reason,ownerVisible:true});
-            }else if(!(await routingFaultRecorded(pool,spec.number,reason))){
-              await recordRoutingFault(pool,{source:'github-intake',issueNumber:spec.number,resourceScope:spec.resourceScope||null,reason,ownerVisible:false});
+              await addTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:spec.number,token}).catch(()=>false);
+              await recordRoutingFault(pool,{source:'github-intake',issueNumber:spec.number,resourceScope:spec.resourceScope||null,reason,sourceRevision,ownerVisible:true,terminalBlocked:true});
+            }else if(!(await routingFaultRecorded(pool,spec.number,reason,sourceRevision))){
+              await recordRoutingFault(pool,{source:'github-intake',issueNumber:spec.number,resourceScope:spec.resourceScope||null,reason,sourceRevision,ownerVisible:false,terminalBlocked:false});
             }
           }
           skipped++;
