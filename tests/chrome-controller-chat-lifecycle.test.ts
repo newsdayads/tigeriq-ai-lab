@@ -48,9 +48,15 @@ describe('App Chrome chat lifecycle',()=>{
     expect(bridge).toContain("Boolean(state.modelVerifiedAt)");
     expect(bridge).toContain("hasCurrentNv02Chat(state.verifiedChatUrl)");
     expect(bridge).toContain("await navigate(target,restoreVerifiedChatUrl)");
-    expect(bridge).toContain("sameNv02Chat(bootUi?.url,restoreVerifiedChatUrl)");
+    expect(bridge).toContain("const expectedChatUrl=restoreVerifiedChatUrl||String(ui?.url||'')");
+    expect(bridge).toContain("waitForNv02PreservedChatSettled(target,expectedChatUrl,30000)");
+    expect(bridge).toContain("sameNv02Chat(bootUi?.url,expectedChatUrl)");
     expect(bridge).toContain("'BOOT_VERIFIED_CHAT_RESTORED'");
-    expect(bridge).toContain("ensureNv02LocalReadyLocked(target,bootUi,{forceFresh:!keepChat})");
+    expect(bridge).toContain("'BOOT_VERIFIED_CHAT_SETTLE_DEFERRED'");
+    expect(bridge).toContain("'BOOT_VERIFIED_CHAT_MODEL_VERIFY_DEFERRED'");
+    expect(bridge).toContain("chatLoadBlockedUntil:preserveVerifiedProfile?0:state.chatLoadBlockedUntil");
+    expect(bridge).toContain("ensureNv02LocalReadyLocked(target,bootUi,{forceFresh:true})");
+    expect(bridge).not.toContain("ensureNv02LocalReadyLocked(target,bootUi,{forceFresh:!keepChat})");
     expect(bridge).toContain("'BOOT_VERIFIED_CHAT_READY'");
     expect(bridge).not.toContain("await navigate(target,state.resumeChatUrl)");
     expect(bridge).not.toContain("ensureNv02LocalReadyLocked(target,ui,{forceFresh:true})");
