@@ -9,7 +9,9 @@ export const PAPERCLIP_LAB_ROOT = 'D:\\TigerIQ-Paperclip-Lab';
 export const PAPERCLIP_LAB_PORT = 3210;
 export const PAPERCLIP_LAB_RELEASE = 'v2026.916.1';
 export const PAPERCLIP_LAB_RELEASE_SHA = 'd554c4789ed3930f8a53ac9fdf6503b3187097da';
+export const PAPERCLIP_LAB_IMAGE_REPOSITORY = 'ghcr.io/paperclipai/paperclip';
 export const PAPERCLIP_LAB_IMAGE = 'ghcr.io/paperclipai/paperclip:2026.916.1';
+const PAPERCLIP_LAB_IMAGE_DIGEST_RE = /^ghcr\.io\/paperclipai\/paperclip@sha256:[a-f0-9]{64}$/;
 export const PAPERCLIP_LAB_CONTAINER = 'tigeriq-paperclip-lab';
 export const PAPERCLIP_LAB_ACTIONS = Object.freeze([
   'paperclip_lab_preflight',
@@ -215,12 +217,15 @@ async function assertSafeFileTarget(value) {
   return candidate;
 }
 
-export function paperclipLabComposeYaml() {
+export function paperclipLabComposeYaml(imageRef = PAPERCLIP_LAB_IMAGE) {
+  if (imageRef !== PAPERCLIP_LAB_IMAGE && !PAPERCLIP_LAB_IMAGE_DIGEST_RE.test(imageRef)) {
+    throw new Error('TIGERIQ_PAPERCLIP_LAB_IMAGE_REF_INVALID');
+  }
   return [
     'name: tigeriq-paperclip-lab',
     'services:',
     '  paperclip:',
-    `    image: ${PAPERCLIP_LAB_IMAGE}`,
+    `    image: ${imageRef}`,
     `    container_name: ${PAPERCLIP_LAB_CONTAINER}`,
     '    pids_limit: 2048',
     '    restart: "no"',
