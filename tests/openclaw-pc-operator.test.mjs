@@ -14,8 +14,12 @@ import {
   PAPERCLIP_LAB_RELEASE,
   PAPERCLIP_LAB_RELEASE_SHA,
   PAPERCLIP_LAB_ROOT,
+  PAPERCLIP_LAB_WSL_DISTRO,
+  PAPERCLIP_LAB_WSL_ROOT,
   assertPaperclipLabRequest,
   paperclipLabComposeYaml,
+  paperclipLabWslDockerArgs,
+  paperclipLabWslPath,
   resolvePaperclipLabPath,
   validatePaperclipLabEnvText,
 } from '../apps/openclaw-tigeriq-runtime/paperclip-lab.mjs';
@@ -153,6 +157,33 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(() => assertPaperclipLabRequest({ action: 'shell_exec' })).toThrow('TIGERIQ_PAPERCLIP_LAB_ACTION_NOT_ALLOWED');
   });
 
+  it('uses only the fixed Ubuntu WSL Docker transport and lab-root path translation', () => {
+    expect(PAPERCLIP_LAB_WSL_DISTRO).toBe('Ubuntu');
+    expect(PAPERCLIP_LAB_WSL_ROOT).toBe('/mnt/d/TigerIQ-Paperclip-Lab');
+    expect(paperclipLabWslPath('D:\\TigerIQ-Paperclip-Lab\\config\\docker-compose.lab.yml'))
+      .toBe('/mnt/d/TigerIQ-Paperclip-Lab/config/docker-compose.lab.yml');
+    expect(paperclipLabWslDockerArgs([
+      'compose',
+      '-f',
+      'D:\\TigerIQ-Paperclip-Lab\\config\\docker-compose.lab.yml',
+      'up',
+      '-d',
+    ])).toEqual([
+      '--distribution',
+      'Ubuntu',
+      '--exec',
+      'docker',
+      'compose',
+      '-f',
+      '/mnt/d/TigerIQ-Paperclip-Lab/config/docker-compose.lab.yml',
+      'up',
+      '-d',
+    ]);
+    expect(() => paperclipLabWslPath('D:\\TigerIQ\\State')).toThrow('TIGERIQ_PAPERCLIP_LAB_PATH_NOT_ALLOWED');
+    expect(() => paperclipLabWslDockerArgs(['compose', '-f', 'C:\\Temp\\evil.yml', 'up']))
+      .toThrow('TIGERIQ_PAPERCLIP_LAB_DOCKER_PATH_NOT_ALLOWED');
+  });
+
   it('pins immutable image refs and rejects mutable/foreign refs', () => {
     const digest = 'ghcr.io/paperclipai/paperclip@sha256:' + 'a'.repeat(64);
     expect(paperclipLabComposeYaml(digest)).toContain(`image: ${digest}`);
@@ -189,6 +220,9 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(source).toContain('TIGERIQ_PAPERCLIP_LAB_SYMLINK_BLOCKED');
     expect(source).toContain('TIGERIQ_PAPERCLIP_LAB_REALPATH_ESCAPE_BLOCKED');
     expect(source).toContain('TIGERIQ_PAPERCLIP_LAB_IMAGE_REVISION_MISMATCH');
+    expect(source).toContain("wsl.exe");
+    expect(source).toContain("'--distribution', PAPERCLIP_LAB_WSL_DISTRO, '--exec', 'docker'");
+    expect(source).toContain('TIGERIQ_PAPERCLIP_LAB_DOCKER_PATH_NOT_ALLOWED');
     expect(source).toContain('imageDigest');
     expect(source).toContain('/api/health');
     expect(source).toContain('identityOk');
