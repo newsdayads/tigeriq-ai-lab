@@ -30,7 +30,7 @@ describe('App Chrome NV02 V2 boundary', () => {
     expect(bridge).toContain('App Chrome self-maintenance');
     expect(bridge).toContain('owner/lease/resource-scope conflict');
     expect(bridge).toContain('không còn P1-P5 nào NV02 có thể trực tiếp xử lý hoặc điều phối/handoff hợp lệ');
-    expect(bridge).toContain('P0 tuyệt đối không đọc hoặc claim');
+    expect(bridge).toContain('Loại P0/hard-gate');
     expect(bridge).toContain('NV02_IDLE_SELF_PULL_WAKE_DISPATCHED');
     expect(bridge).toContain("assistantTerminal=assistantText.includes('READY_NO_ELIGIBLE_WORK')");
     expect(bridge).toContain('lastIdleMarkerSignature');
