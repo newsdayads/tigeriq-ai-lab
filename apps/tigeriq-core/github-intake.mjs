@@ -154,6 +154,7 @@ export function parseExecutableIssue(issue){
     url:String(issue.html_url||''),ownerDirect:backlogOwnerDirect(body),sourceRevision,updatedAt:String(issue.updated_at||''),
     commentCount:Math.max(0,Number(issue.comments||0)),labels:Array.isArray(issue.labels)?issue.labels:[],route:classification.route,publicEvidenceKeys:parsePublicEvidenceKeys(body),publicEvidenceDiagnostic:hasExactFlag(body,'PUBLIC_EVIDENCE_DIAGNOSTIC'),
     pcOperatorDirectAction:directAction.action||null,
+    keepOpenOnStepComplete:hasExactFlag(body,'KEEP_OPEN_ON_STEP_COMPLETE'),
   };
 }
 
@@ -431,7 +432,8 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
       ownerDirect:spec.ownerDirect,ownerControlled:spec.ownerControlled,sourcePriority:spec.sourcePriority,legacyP0Autonomous:spec.legacyP0Autonomous,
       targetWorker:spec.targetWorker||null,sourceRevision:spec.sourceRevision,sourceUpdatedAt:spec.updatedAt,rearmedFromObjectiveId:prior?.id||null,
       dispatchReason:`PRIORITY_${spec.priority}`,executionSurface:spec.capability==='pc_operator'?(spec.pcOperatorDirectAction?'PC_OPERATOR_DIRECT_LOCAL':'CORE_OPENCLAW_BOUNDED'):'READ_ONLY',publicEvidenceKeys:spec.publicEvidenceKeys||[],publicEvidenceDiagnostic:spec.publicEvidenceDiagnostic===true,
-      pcOperatorDirectAction:spec.pcOperatorDirectAction||null
+      pcOperatorDirectAction:spec.pcOperatorDirectAction||null,
+      keepOpenOnStepComplete:spec.keepOpenOnStepComplete===true
     };
     await pool.query('insert into tigeriq_objectives(id,objective,priority,metadata) values($1,$2,$3,$4) on conflict(id) do nothing',[id,objective,spec.priority,JSON.stringify(metadata)]);
     if(spec.capability==='pc_operator'){
@@ -517,11 +519,15 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
     if(['completed','blocked'].includes(row.status)&&!row.metadata?.githubResultReported){
       await commentIssue(fetchImpl,owner,repo,number,formatResultComment(row),token);
       if(row.status==='completed'){
-        // Close first so a failed clear cannot expose a completed OPEN issue as QUEUED.
-        await closeIssue(fetchImpl,owner,repo,number,token);
-        await clearTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:number,token});
+        if(row.metadata?.keepOpenOnStepComplete===true){
+          await clearTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:number,token});
+        }else{
+          // Close first so a failed clear cannot expose a completed OPEN issue as QUEUED.
+          await closeIssue(fetchImpl,owner,repo,number,token);
+          await clearTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:number,token});
+        }
       }
-      await pool.query("update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1",[row.id,JSON.stringify({githubResultReported:true,githubClosed:row.status==='completed'})]);
+      await pool.query("update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1",[row.id,JSON.stringify({githubResultReported:true,githubClosed:row.status==='completed'&&row.metadata?.keepOpenOnStepComplete!==true})]);
       results++;
     }
   }

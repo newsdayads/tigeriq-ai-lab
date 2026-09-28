@@ -17,6 +17,12 @@ describe('GitHub Core intake guardrails',()=>{
 
   const base={number:588,title:'safe test',state:'open',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/588',body:'TIGERIQ_EXECUTABLE=true\nPRIORITY=P2\nCAPABILITY=reasoning\nOWNER_POLICY=AUTO\nNO_CODE_CHANGE=true\nNO_PC01_SHELL=true\nRead #280 and #335 plus `docs/CURRENT_STATE.md`.'};
   it('accepts an explicitly safe autonomous issue',()=>{expect(parseExecutableIssue(base)).toMatchObject({number:588,priority:'P2',capability:'reasoning'});});
+  it('parses multi-phase keep-open lifecycle marker',()=>{
+    const parsed=parseExecutableIssue({...base,body:base.body+'\nKEEP_OPEN_ON_STEP_COMPLETE=true'});
+    expect(parsed).toMatchObject({keepOpenOnStepComplete:true});
+    expect(parseExecutableIssue(base).keepOpenOnStepComplete).toBe(false);
+  });
+
 
   it('keeps labels outside sourceRevision while carrying them for lifecycle projection',()=>{
     const a=parseExecutableIssue({...base,labels:[]});
@@ -188,6 +194,28 @@ describe('GitHub Core intake guardrails',()=>{
     expect(labelAdds).toBe(1);
     expect(resultComments).toBe(1);
     expect(row.metadata).toMatchObject({githubTerminalLabelSynced:true,githubResultReported:true});
+  });
+
+  it('keeps completed multi-phase Core issue open while reporting the step result',async()=>{
+    const row={id:'OBJ-GH-842',status:'completed',summary:'phase done',metadata:{source:'github',issueNumber:842,githubClaimReported:true,githubResultReported:false,keepOpenOnStepComplete:true}};
+    const pool={async query(q,params=[]){
+      if(q.includes('select id,status,summary,metadata from tigeriq_objectives'))return {rowCount:1,rows:[row]};
+      if(q.includes('update tigeriq_objectives set metadata=metadata||$2::jsonb')){
+        Object.assign(row.metadata,JSON.parse(params[1]));
+        return {rowCount:1,rows:[]};
+      }
+      return {rowCount:0,rows:[]};
+    }};
+    const calls=[];
+    const fetchImpl=async(url,init={})=>{
+      if(url.endsWith('/issues/842/comments')&&init.method==='POST'){calls.push('result-comment');return new Response(JSON.stringify({}),{status:201,headers:{'content-type':'application/json'}});}
+      if(url.endsWith('/issues/842')&&init.method==='PATCH'){calls.push('close-issue');return new Response(JSON.stringify({state:'closed'}),{status:200,headers:{'content-type':'application/json'}});}
+      if(url.includes('/issues/842/labels/')&&init.method==='DELETE'){calls.push('clear-label');return new Response(null,{status:204});}
+      return new Response(JSON.stringify({}),{status:200,headers:{'content-type':'application/json'}});
+    };
+    await syncGithubOutcomes({pool,fetchImpl,token:'fake'});
+    expect(calls).toEqual(['result-comment','clear-label']);
+    expect(row.metadata).toMatchObject({githubResultReported:true,githubClosed:false});
   });
 
   it('closes completed Core issues before clearing a stale terminal label',async()=>{
