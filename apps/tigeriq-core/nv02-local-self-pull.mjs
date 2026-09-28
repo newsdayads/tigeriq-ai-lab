@@ -47,8 +47,8 @@ async function releaseLocalClaimLock(lockKey) {
 
 function fields(body) {
   return Object.fromEntries(String(body || '').split(/\r?\n/).flatMap((line) => {
-    const m = line.trim().match(/^([A-Z][A-Z0-9_]{1,80})\s*=\s*(.+)$/);
-    return m ? [[m[1], m[2].trim()]] : [];
+    const m = line.trim().match(/^([A-Z][A-Z0-9_]{1,80})\s*=\s*(.+)$/i);
+    return m ? [[m[1].toUpperCase(), m[2].trim()]] : [];
   }));
 }
 
@@ -138,26 +138,49 @@ function leaseFields(body, marker) {
   return fields(text.slice(text.indexOf(marker)));
 }
 
-export function activeResourceScopes(comments = [], nowMs = Date.now()) {
+export function activeResourceClaims(comments = [], nowMs = Date.now()) {
   const active = new Map();
   for (const comment of [...comments].sort((a, b) => Number(a.id) - Number(b.id))) {
     const body = String(comment?.body || '');
     const claim = body.match(/\[(?:TIGERIQ_NV02_LEASE_V1|TIGERIQ_ROLE_CLAIM_V1|APP_CHROME_CLAIM)\]/i);
-    const release = body.match(/\[(?:TIGERIQ_NV02_RELEASE_V1|TIGERIQ_ROLE_RELEASE_V1|APP_CHROME_RELEASE)\]/i);
+    const release = body.match(/\[(?:TIGERIQ_NV02_RELEASE_V1|TIGERIQ_NV02_LEASE_RELEASE_V1|TIGERIQ_ROLE_RELEASE_V1|APP_CHROME_RELEASE)\]/i);
+    const marker = claim || release;
+    if (!marker) continue;
+    const meta = fields(body.slice(marker.index));
+    const resourceScope = String(meta.RESOURCE_SCOPE || meta.SCOPE || '').trim();
+    const worker = String(meta.WORKER || '').trim().toUpperCase();
+    const explicitIdentity = String(meta.LEASE_ID || meta.CLAIM_ID || '').trim();
+    const identity = explicitIdentity || (claim && worker && resourceScope ? `WORKER:${worker}:${resourceScope}` : '');
     if (claim) {
-      const meta = fields(body.slice(claim.index).toUpperCase());
-      const scope = String(meta.RESOURCE_SCOPE || meta.scope || '').trim();
-      const expiry = Date.parse(meta.EXPIRES_AT || meta.LEASE_UNTIL || meta.expires_at || '');
-      if (scope && expiry > nowMs) active.set(scope, { meta, identity: String(meta.LEASE_ID || meta.CLAIM_ID || meta.WORKER || '') });
-    } else if (release) {
-      const meta = fields(body.slice(release.index).toUpperCase());
-      const scope = String(meta.RESOURCE_SCOPE || meta.scope || '').trim();
-      const current = active.get(scope);
-      const identity = String(meta.LEASE_ID || meta.CLAIM_ID || meta.WORKER || '');
-      if (scope && current && (!identity || identity === current.identity)) active.delete(scope);
+      const expiry = Date.parse(meta.EXPIRES_AT || meta.LEASE_UNTIL || '');
+      if (resourceScope && identity && expiry > nowMs) {
+        active.set(identity, { resourceScope, worker, identity, expiry, commentId: Number(comment.id) || 0, meta });
+      }
+      continue;
+    }
+    if (explicitIdentity) {
+      active.delete(explicitIdentity);
+      continue;
+    }
+    if (resourceScope) {
+      for (const [id, current] of active) {
+        if (current.resourceScope === resourceScope && (!worker || !current.worker || current.worker === worker)) active.delete(id);
+      }
     }
   }
-  return new Set(active.keys());
+  return [...active.values()].sort((a, b) => a.commentId - b.commentId);
+}
+
+export function activeResourceScopes(comments = [], nowMs = Date.now()) {
+  return new Set(activeResourceClaims(comments, nowMs).map((claim) => claim.resourceScope));
+}
+
+export function resourceOwnershipConflict(issue, comments = [], { leaseId = '', nowMs = Date.now() } = {}) {
+  const resourceScope = String(nv02WorkOrderMeta(issue).RESOURCE_SCOPE || '').trim();
+  if (!resourceScope) return { reason: 'RESOURCE_SCOPE_REQUIRED', resourceScope: '' };
+  const conflict = activeResourceClaims(comments, nowMs)
+    .find((claim) => claim.resourceScope === resourceScope && claim.identity !== leaseId);
+  return conflict ? { reason: 'RESOURCE_SCOPE_HELD', resourceScope, claim: conflict } : null;
 }
 
 export function activeNv02Lease(comments = [], nowMs = Date.now()) {
@@ -172,40 +195,50 @@ export function activeNv02Lease(comments = [], nowMs = Date.now()) {
   return active;
 }
 
-export async function claimNv02WorkOrder({ issue, comments = [], postComment, ttlMs = 2 * 60 * 60 * 1000, claimSettleMs = 250, nowMs = Date.now() }) {
-  const lockKey = `${issue.number}:${nv02WorkOrderMeta(issue).RESOURCE_SCOPE}`;
-  if (localClaimLocks.has(lockKey) || !(await acquireLocalClaimLock(lockKey, ttlMs)) || activeNv02Lease(comments, nowMs)) {
+export async function claimNv02WorkOrder({
+  issue,
+  comments = [],
+  allComments = comments,
+  refreshAllComments,
+  postComment,
+  ttlMs = 2 * 60 * 60 * 1000,
+  claimSettleMs = 250,
+  nowMs = Date.now(),
+}) {
+  const resourceScope = String(nv02WorkOrderMeta(issue).RESOURCE_SCOPE || '').trim();
+  const lockKey = resourceScope;
+  const before = refreshAllComments ? await refreshAllComments() : allComments;
+  if (!resourceScope || resourceOwnershipConflict(issue, before, { nowMs }) || localClaimLocks.has(lockKey)
+      || !(await acquireLocalClaimLock(lockKey, ttlMs)) || activeNv02Lease(comments, nowMs)) {
     await releaseLocalClaimLock(lockKey);
     return null;
   }
-  const resourceScope = nv02WorkOrderMeta(issue).RESOURCE_SCOPE;
   try {
+    const refreshedBeforeWrite = refreshAllComments ? await refreshAllComments() : before;
+    if (resourceOwnershipConflict(issue, refreshedBeforeWrite, { nowMs })) {
+      await releaseLocalClaimLock(lockKey);
+      return null;
+    }
     const lease = { leaseId: `NV02-${issue.number}-${randomUUID()}`, resourceScope, expiresAt: new Date(nowMs + ttlMs).toISOString() };
     await postComment(issue.number, `${NV02_LEASE_MARKER}\nLEASE_ID=${lease.leaseId}\nWORKER=NV02\nRESOURCE_SCOPE=${resourceScope}\nEXPIRES_AT=${lease.expiresAt}`);
-    // GitHub comment creation is not a transaction. Let concurrent claim posts
-    // become visible, then elect the earliest still-live lease before dispatch.
+    // GitHub comment creation is not a transaction. Let concurrent cross-issue
+    // claims become visible, then elect the earliest still-live lease per scope.
     await new Promise((resolve) => setTimeout(resolve, claimSettleMs));
-    const after = await postComment(issue.number, null);
-    const live = new Map();
-    for (const comment of [...after].sort((a, b) => Number(a.id) - Number(b.id))) {
-      const body = String(comment?.body || '');
-      if (body.includes(NV02_LEASE_MARKER)) {
-        const meta = leaseFields(body, NV02_LEASE_MARKER);
-        if (meta?.LEASE_ID && Date.parse(meta.EXPIRES_AT) > nowMs) live.set(meta.LEASE_ID, meta);
-      } else if (body.includes(NV02_RELEASE_MARKER)) {
-        const meta = leaseFields(body, NV02_RELEASE_MARKER);
-        if (meta?.LEASE_ID) live.delete(meta.LEASE_ID);
-      }
+    const afterGlobal = refreshAllComments ? await refreshAllComments() : await postComment(issue.number, null);
+    const winner = activeResourceClaims(afterGlobal, nowMs).find((claim) => claim.resourceScope === resourceScope);
+    if (winner?.identity !== lease.leaseId) {
+      await postComment(issue.number, `${NV02_RELEASE_MARKER}\nLEASE_ID=${lease.leaseId}\nWORKER=NV02\nRESOURCE_SCOPE=${resourceScope}\nSTATE=CLAIM_LOST\nRELEASED_AT=${new Date().toISOString()}`);
+      await releaseLocalClaimLock(lockKey);
+      return null;
     }
-    const winner = [...live.values()][0];
-    if (winner?.LEASE_ID !== lease.leaseId) { await releaseLocalClaimLock(lockKey); return null; }
     return lease;
   } catch (error) {
     await releaseLocalClaimLock(lockKey);
     throw error;
   }
 }
-export async function releaseNv02WorkOrder({ issueNumber, leaseId, state, postComment }) {
-  for (const key of [...localClaimLocks]) if (key.startsWith(`${issueNumber}:`)) await releaseLocalClaimLock(key);
-  return postComment(issueNumber, `${NV02_RELEASE_MARKER}\nLEASE_ID=${leaseId}\nWORKER=NV02\nSTATE=${state}\nRELEASED_AT=${new Date().toISOString()}`);
+export async function releaseNv02WorkOrder({ issueNumber, leaseId, resourceScope = '', state, postComment }) {
+  if (resourceScope) await releaseLocalClaimLock(resourceScope);
+  else for (const key of [...localClaimLocks]) await releaseLocalClaimLock(key);
+  return postComment(issueNumber, `${NV02_RELEASE_MARKER}\nLEASE_ID=${leaseId}\nWORKER=NV02${resourceScope ? `\nRESOURCE_SCOPE=${resourceScope}` : ''}\nSTATE=${state}\nRELEASED_AT=${new Date().toISOString()}`);
 }

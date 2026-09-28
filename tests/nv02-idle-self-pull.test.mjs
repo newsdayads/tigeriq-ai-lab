@@ -16,4 +16,14 @@ describe('NV02 idle self-pull continuity', () => {
     expect(server).not.toContain('github/issues');
     expect(readFileSync('apps/tigeriq-core/work-routing-policy.mjs', 'utf8')).toContain('Core không assign/route NV02');
   });
+  it('claims resource ownership before any dependency reconcile write', () => {
+    const runner = readFileSync('scripts/nv02-local-self-pull.mjs', 'utf8');
+    const claimIndex = runner.indexOf('const lease = await claimNv02WorkOrder');
+    const reconcileIndex = runner.indexOf('const reconcileResult = await reconcile(issue, lease)');
+    expect(claimIndex).toBeGreaterThan(-1);
+    expect(reconcileIndex).toBeGreaterThan(claimIndex);
+    expect(runner).not.toContain('.map((issue) => reconcile(issue))');
+    expect(runner).toContain('refreshAllComments: async () => activeIssueComments()');
+    expect(runner).toContain('assertWriteOwnership: () => assertLeaseOwnership(issue, lease)');
+  });
 });
