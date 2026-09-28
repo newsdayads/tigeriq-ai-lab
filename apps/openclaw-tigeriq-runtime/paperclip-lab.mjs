@@ -3,6 +3,7 @@ import { promises as fs } from 'node:fs';
 import { spawn } from 'node:child_process';
 import net from 'node:net';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const win = path.win32;
 export const PAPERCLIP_LAB_ROOT = 'D:\\TigerIQ-Paperclip-Lab';
@@ -15,6 +16,7 @@ const PAPERCLIP_LAB_IMAGE_DIGEST_RE = /^ghcr\.io\/paperclipai\/paperclip@sha256:
 export const PAPERCLIP_LAB_CONTAINER = 'tigeriq-paperclip-lab';
 export const PAPERCLIP_LAB_ACTIONS = Object.freeze([
   'paperclip_lab_preflight',
+  'paperclip_lab_broker_install',
   'paperclip_lab_install',
   'paperclip_lab_start',
   'paperclip_lab_stop',
@@ -39,6 +41,10 @@ const BROKER_DIR = win.join(PAPERCLIP_LAB_ROOT, 'broker');
 const BROKER_REQUESTS_DIR = win.join(BROKER_DIR, 'requests');
 const BROKER_RESPONSES_DIR = win.join(BROKER_DIR, 'responses');
 const BROKER_HEARTBEAT_FILE = win.join(BROKER_DIR, 'heartbeat.json');
+const BROKER_SCRIPT_FILE = win.join(BROKER_DIR, 'paperclip-wsl-broker.ps1');
+const BROKER_INSTALLER_FILE = win.join(BROKER_DIR, 'Install-PaperclipWslBroker.ps1');
+const BROKER_SOURCE_SCRIPT = fileURLToPath(new URL('./paperclip-wsl-broker.ps1', import.meta.url));
+const BROKER_SOURCE_INSTALLER = fileURLToPath(new URL('./Install-PaperclipWslBroker.ps1', import.meta.url));
 
 function normalizeWinPath(value) {
   return win.resolve(String(value || PAPERCLIP_LAB_ROOT).replaceAll('/', '\\'));
@@ -239,6 +245,49 @@ export function paperclipLabBrokerOperationForDockerArgs(args = []) {
     { operation: 'inspect_container', args: ['inspect', PAPERCLIP_LAB_CONTAINER, '--format', '{{json .}}'] },
   ];
   return allowed.find((item) => JSON.stringify(item.args) === actual)?.operation || null;
+}
+
+async function installInteractiveWslBroker(signal = null) {
+  throwIfAborted(signal);
+  await ensureLayout();
+  await ensureContainedDirectory(BROKER_DIR);
+  await ensureContainedDirectory(BROKER_REQUESTS_DIR);
+  await ensureContainedDirectory(BROKER_RESPONSES_DIR);
+  const [brokerSource, installerSource] = await Promise.all([
+    fs.readFile(BROKER_SOURCE_SCRIPT, 'utf8'),
+    fs.readFile(BROKER_SOURCE_INSTALLER, 'utf8'),
+  ]);
+  if (!brokerSource.includes("$Distro = 'Ubuntu'")
+    || !brokerSource.includes("$LabRoot = 'D:\\TigerIQ-Paperclip-Lab'")
+    || !installerSource.includes("$TaskName='TigerIQ Paperclip WSL Broker'")
+    || !installerSource.includes("New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited")) {
+    throw new Error('TIGERIQ_PAPERCLIP_LAB_WSL_BROKER_SOURCE_INVALID');
+  }
+  const safeBroker = await assertSafeFileTarget(BROKER_SCRIPT_FILE);
+  const safeInstaller = await assertSafeFileTarget(BROKER_INSTALLER_FILE);
+  await fs.writeFile(safeBroker, brokerSource, 'utf8');
+  await fs.writeFile(safeInstaller, installerSource, 'utf8');
+  const result = await runFixed(
+    'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+    ['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',safeInstaller],
+    { cwd: BROKER_DIR, timeoutMs: 30000, signal },
+  );
+  if (result.exitCode !== 0 || result.timedOut) {
+    throw new Error('TIGERIQ_PAPERCLIP_LAB_WSL_BROKER_INSTALL_FAILED');
+  }
+  const status = await brokerStatus();
+  if (!status.ready) throw new Error('TIGERIQ_PAPERCLIP_LAB_WSL_BROKER_HEARTBEAT_TIMEOUT');
+  const probe = await runDockerViaBroker(['version', '--format', '{{.Server.Version}}'], { timeoutMs: 20000, signal });
+  if (probe.exitCode !== 0 || probe.timedOut || !probe.stdout.trim()) {
+    throw new Error('TIGERIQ_PAPERCLIP_LAB_WSL_BROKER_DOCKER_UNAVAILABLE');
+  }
+  return {
+    installed: true,
+    task: 'TigerIQ Paperclip WSL Broker',
+    user: status.user,
+    sessionId: status.sessionId,
+    dockerVersion: probe.stdout.trim(),
+  };
 }
 
 async function runDockerViaBroker(args, { timeoutMs = 120000, signal = null } = {}) {
@@ -664,6 +713,7 @@ export async function executePaperclipLabAction(input = {}, options = {}) {
   const started = Date.now();
   let data;
   if (action === 'paperclip_lab_preflight') data = await preflight(signal);
+  else if (action === 'paperclip_lab_broker_install') data = await installInteractiveWslBroker(signal);
   else if (action === 'paperclip_lab_install') data = await install(signal);
   else if (action === 'paperclip_lab_start') data = await start(signal);
   else if (action === 'paperclip_lab_stop') data = await stop(signal);
