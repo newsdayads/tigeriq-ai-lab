@@ -69,6 +69,8 @@ beforeAll(async () => {
         {number:1807,state:'open',title:'[P1] Chờ owner',body:'TIGERIQ_EXECUTABLE=true\nPRIORITY=P1\nCURRENT_STATE=OWNER_GATE',updated_at:'2026-09-25T04:00:00Z',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/1807'},
         {number:1808,state:'open',title:'[P1][REVIEW] Exact head',body:'TIGERIQ_EXECUTABLE=true\nPRIORITY=P1\nCAPABILITY=review\nCURRENT_STATE=READY_REVIEW',updated_at:'2026-09-25T03:00:00Z',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/1808'},
         {number:1809,state:'open',title:'[P1] Blocked',body:'TIGERIQ_EXECUTABLE=true\nPRIORITY=P1\nCURRENT_STATE=BLOCKED_EXTERNAL',updated_at:'2026-09-25T02:00:00Z',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/1809'},
+        {number:2048,state:'open',title:'[P1][LAB] Blocked non executable',body:'TIGERIQ_EXECUTABLE=false\nPRIORITY=P1\nCURRENT_STATE=BLOCKED_RUNTIME',updated_at:'2026-09-25T01:30:00Z',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/2048'},
+        {number:1900,state:'open',title:'[P0][OWNER] System goal',body:'TIGERIQ_EXECUTABLE=false\nOWNER_CONTROLLED=true\nMUTATION_OWNER=VY\nPRIORITY=P0',updated_at:'2026-09-25T01:15:00Z',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/1900'},
         {number:1456,state:'open',title:'[P0][QUẢN TRỊ] Hợp đồng thực thi',body:'TIGERIQ_EXECUTABLE=false\nPRIORITY=P0\nRESOURCE_SCOPE=SYSTEM_POLICY',updated_at:'2026-09-25T01:00:00Z',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/1456'},
         {number:1700,state:'closed',title:'[P2] Hoàn tất gần đây',body:'TIGERIQ_EXECUTABLE=false\nPRIORITY=P2\nCURRENT_STATE=TERMINAL_DONE',updated_at:'2026-09-25T00:00:00Z',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/1700'}
       ]));
@@ -166,12 +168,14 @@ describe('Web Control runtime', () => {
     expect(body.telemetry).toEqual(statusPayload.telemetry);
     expect(body.resources[0].last_latency_ms).toBe(210);
     expect(body.codingLane).toEqual(codingPayload);
-    expect(body.workOrders).toHaveLength(6);
+    expect(body.workOrders).toHaveLength(8);
     expect(body.workOrders.find((x:any)=>x.issue_number===1805)).toMatchObject({ bucket:'CẦN XỬ LÝ' });
     expect(body.workOrders.find((x:any)=>x.issue_number===1806)).toMatchObject({ priority:'P0', state:'ĐANG LÀM', bucket:'ĐANG LÀM', owner:'NV02_CURRENT_CHAT' });
     expect(body.workOrders.find((x:any)=>x.issue_number===1807)).toMatchObject({ bucket:'CHỜ ANH SƠN' });
     expect(body.workOrders.find((x:any)=>x.issue_number===1808)).toMatchObject({ bucket:'RÀ SOÁT' });
     expect(body.workOrders.find((x:any)=>x.issue_number===1809)).toMatchObject({ bucket:'BLOCKED' });
+    expect(body.workOrders.find((x:any)=>x.issue_number===2048)).toMatchObject({ bucket:'BLOCKED', state:'BỊ CHẶN' });
+    expect(body.workOrders.find((x:any)=>x.issue_number===1900)).toMatchObject({ bucket:'HỆ THỐNG' });
     expect(body.workOrders.find((x:any)=>x.issue_number===1456)).toMatchObject({ bucket:'HỆ THỐNG' });
     expect(body.workOrdersRecent).toHaveLength(1);
     expect(body.workOrdersRecent[0]).toMatchObject({ issue_number:1700, bucket:'HOÀN THÀNH', closed:true });
