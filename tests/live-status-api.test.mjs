@@ -8,6 +8,7 @@ import {
   parseQueueIssue,
   classifyOpenIssue,
   parseOpenWorkIssue,
+  parseClearedBlockerLifecycleComment,
   progressForIssue,
   projectExternalRoleClaims,
   parseRecentCompletedIssue,
@@ -254,6 +255,45 @@ describe('TigerIQ Live Work Order projection', () => {
 
     const meta = parseOpenWorkIssue(issue(3002, '[TÀI NGUYÊN] Nguồn lực', 'STATE=OPEN'));
     expect(meta).toMatchObject({ number: 3002, priority: null, status: 'SYSTEM', workKind: 'SYSTEM', progressPercent: null, meta: true });
+  });
+
+  it('does not expose VY mutation ownership as the executor of a non-executable Owner goal', () => {
+    const row = parseOpenWorkIssue(issue(3199, '[P0][OWNER] Final bootstrap', [
+      'TIGERIQ_EXECUTABLE=false',
+      'OWNER_CONTROLLED=true',
+      'MUTATION_OWNER=VY',
+      'PRIORITY=P0',
+    ].join('\n')));
+    expect(row).toMatchObject({ status: 'GOAL', workKind: 'GOAL', employeeId: null });
+  });
+
+  it('lets a newer blocker-cleared lifecycle checkpoint supersede a stale blocked body for display truth', () => {
+    const lifecycle = parseClearedBlockerLifecycleComment({
+      body: [
+        'PHASE | WINDOWS_PREREQUISITE',
+        'STATE | WINDOWS_22H2_INSTALL_PASS_REBOOT_NEXT',
+        'NEXT | Owner-authorized reboot PC01',
+        'BLOCKER | none before reboot',
+      ].join('\n'),
+      created_at: '2026-09-28T17:30:00Z',
+    });
+    expect(lifecycle).toMatchObject({
+      state: 'WINDOWS_22H2_INSTALL_PASS_REBOOT_NEXT',
+      blockerCleared: true,
+      step: 'Owner-authorized reboot PC01',
+    });
+
+    const row = parseOpenWorkIssue(issue(2048, '[P1][LAB] Paperclip', [
+      'CURRENT_STATE=BLOCKED_WINDOWS_BUILD_19044_DOCKER_DESKTOP_MIN_19045',
+      'TIGERIQ_EXECUTABLE=false',
+      'PRIORITY=P1',
+    ].join('\n')), { lifecycle });
+    expect(row).toMatchObject({
+      status: 'WAITING',
+      currentState: 'WINDOWS_22H2_INSTALL_PASS_REBOOT_NEXT',
+      currentStep: 'Owner-authorized reboot PC01',
+      updatedAt: '2026-09-28T17:30:00Z',
+    });
   });
 
   it('separates policy/reference, owner gates, goals and live acceptance without treating P0 as approval', () => {
