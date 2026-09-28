@@ -628,9 +628,11 @@ test('typed direct pc_operator action remains executable when explanatory prompt
   assert.ok(pool.jobs[0].prompt.length>6000);
 });
 
-test('Core manager excludes deterministic CORE_OPENCLAW_BOUNDED objectives',()=>{
+test('Core manager excludes deterministic pc_operator execution surfaces',()=>{
   const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
-  assert.match(core,/executionSurface',''\)<>'CORE_OPENCLAW_BOUNDED'/);
+  assert.match(core,/not in \('CORE_OPENCLAW_BOUNDED','PC_OPERATOR_DIRECT_LOCAL','CORE_UI'\)/);
+  assert.match(core,/reconcileCoreDirectPcOperatorObjectives/);
+  assert.match(core,/PC_OPERATOR_DIRECT_OBJECTIVE_RECONCILED/);
 });
 
 test('P0 is excluded while system-routed P1-P5 materialize in priority order',async()=>{
