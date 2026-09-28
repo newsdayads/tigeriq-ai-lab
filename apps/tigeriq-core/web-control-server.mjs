@@ -12,8 +12,9 @@ const GITHUB_API_BASE = (process.env.TIGERIQ_GITHUB_API_BASE?.trim() || 'https:/
 const GITHUB_TOKEN = process.env.TIGERIQ_GITHUB_TOKEN?.trim() || process.env.GITHUB_TOKEN?.trim() || '';
 const GITHUB_WORK_ORDERS_DISABLED = process.env.TIGERIQ_GITHUB_WORK_ORDERS_DISABLE === '1';
 const WORK_ORDER_CACHE_MS = 30000;
-let workOrderCache = { at: 0, workOrders: [], meta: { ok: false, source: 'github', stale: true } };
+let workOrderCache = { at: 0, workOrders: [], workOrdersRecent: [], meta: { ok: false, source: 'github', stale: true } };
 const baseHtml = readFileSync(new URL('./web-control.html', import.meta.url), 'utf8');
+const healthModelJs = readFileSync(new URL('./web-control-health-model.js', import.meta.url), 'utf8');
 const truthJs = readFileSync(new URL('./web-control-truth.js', import.meta.url), 'utf8');
 const unifiedJs = readFileSync(new URL('./web-control-unified.js', import.meta.url), 'utf8');
 const workforceJs = readFileSync(new URL('./web-control-workforce.js', import.meta.url), 'utf8');
@@ -24,7 +25,7 @@ const workforceCss = readFileSync(new URL('./web-control-workforce.css', import.
 const routingCss = readFileSync(new URL('./web-control-routing.css', import.meta.url), 'utf8');
 const html = baseHtml
   .replace('</head>', '<link rel="stylesheet" href="/web-control-unified.css"><link rel="stylesheet" href="/web-control-mobile.css"><link rel="stylesheet" href="/web-control-workforce.css"><link rel="stylesheet" href="/web-control-routing.css"></head>')
-  .replace('</body>', '<script src="/web-control-truth.js"></script><script src="/web-control-unified.js"></script><script src="/web-control-workforce.js"></script><script src="/web-control-routing.js"></script></body>');
+  .replace('</body>', '<script src="/web-control-health-model.js"></script><script src="/web-control-truth.js"></script><script src="/web-control-unified.js"></script><script src="/web-control-workforce.js"></script><script src="/web-control-routing.js"></script></body>');
 
 const securityHeaders = {
   'cache-control': 'no-store, max-age=0',
@@ -56,20 +57,44 @@ function machineValue(body,key) {
   return match?.[1]?.trim() || '';
 }
 
+function systemWorkOrder(issue,body='') {
+  const title=String(issue?.title||'').toUpperCase();
+  const scope=machineValue(body,'RESOURCE_SCOPE').toUpperCase();
+  return /\[(CENTRAL|REGISTRY|STATE|POLICY|SYSTEM|QUẢN TRỊ)\]/.test(title) || /(?:^|_)(CENTRAL|REGISTRY|POLICY|SYSTEM)(?:_|$)/.test(scope);
+}
+
 function projectWorkOrder(issue) {
   const body=String(issue?.body||'');
-  const priority=machineValue(body,'PRIORITY') || (String(issue?.title||'').match(/\[(P[0-3])\]/)?.[1] || 'P2');
+  const priority=machineValue(body,'PRIORITY') || (String(issue?.title||'').match(/\[(P[0-5])\]/)?.[1] || 'P2');
   const marker=(machineValue(body,'CURRENT_STATE')+' '+machineValue(body,'STATE')).toUpperCase();
-  let state='MỞ';
-  if(/BLOCK/.test(marker)) state='BỊ CHẶN';
-  else if(/WAIT|PENDING/.test(marker)) state='CHỜ';
-  else if(machineValue(body,'ACTIVE_EXECUTION').toLowerCase()==='true' || /CLAIM|WORKING|ACTIVE/.test(marker)) state='ĐANG LÀM';
+  const capability=machineValue(body,'CAPABILITY').toUpperCase();
   const owner=machineValue(body,'MUTATION_OWNER') || machineValue(body,'TARGET_EMPLOYEE') || machineValue(body,'OWNER_PROXY') || issue?.assignee?.login || '—';
-  return { issue_number:issue.number,title:issue.title,priority,state,owner,updated_at:issue.updated_at,url:issue.html_url };
+  const closed=String(issue?.state||'').toLowerCase()==='closed';
+  const isSystem=systemWorkOrder(issue,body);
+  const ownerGate=/OWNER_GATE|WAIT(?:ING)?_OWNER|WAIT_ANH_SON|CHỜ_ANH_SƠN/.test(marker);
+  const review=/REVIEW|VERIFY|RÀ_SOÁT/.test(marker)||capability==='REVIEW';
+  const blocked=/BLOCK/.test(marker);
+  const working=machineValue(body,'ACTIVE_EXECUTION').toLowerCase()==='true'||/CLAIM|WORKING|ACTIVE_EXECUTION|IMPLEMENTING|RUNNING/.test(marker);
+  let bucket='CẦN XỬ LÝ';
+  if(closed) bucket='HOÀN THÀNH';
+  else if(isSystem) bucket='HỆ THỐNG';
+  else if(ownerGate) bucket='CHỜ ANH SƠN';
+  else if(review) bucket='RÀ SOÁT';
+  else if(blocked) bucket='BLOCKED';
+  else if(working) bucket='ĐANG LÀM';
+  let state='MỞ';
+  if(bucket==='HOÀN THÀNH') state='HOÀN THÀNH';
+  else if(bucket==='BLOCKED') state='BỊ CHẶN';
+  else if(bucket==='ĐANG LÀM') state='ĐANG LÀM';
+  else if(bucket==='RÀ SOÁT') state='RÀ SOÁT';
+  else if(bucket==='CHỜ ANH SƠN') state='CHỜ ANH SƠN';
+  else if(bucket==='HỆ THỐNG') state='HỆ THỐNG';
+  else if(/WAIT|PENDING/.test(marker)) state='CHỜ';
+  return { issue_number:issue.number,title:issue.title,priority,state,bucket,owner,closed,updated_at:issue.updated_at,url:issue.html_url };
 }
 
 async function githubWorkOrders() {
-  if (GITHUB_WORK_ORDERS_DISABLED) return { workOrders: [], meta: { ok: true, source: 'github', disabled: true, stale: false } };
+  if (GITHUB_WORK_ORDERS_DISABLED) return { workOrders: [], workOrdersRecent: [], meta: { ok: true, source: 'github', disabled: true, stale: false } };
   const now=Date.now();
   if (now-workOrderCache.at < WORK_ORDER_CACHE_MS) return workOrderCache;
   const controller=new AbortController();
@@ -77,14 +102,20 @@ async function githubWorkOrders() {
   try {
     const headers={Accept:'application/vnd.github+json','User-Agent':'TigerIQ-Web-Control/1'};
     if(GITHUB_TOKEN) headers.Authorization='Bearer '+GITHUB_TOKEN;
-    const response=await fetch(`${GITHUB_API_BASE}/repos/${GITHUB_OWNER}/${GITHUB_REPO}/issues?state=open&per_page=100&sort=updated&direction=desc`,{headers,signal:controller.signal,cache:'no-store'});
+    const response=await fetch(`${GITHUB_API_BASE}/repos/${GITHUB_OWNER}/${GITHUB_REPO}/issues?state=all&per_page=100&sort=updated&direction=desc`,{headers,signal:controller.signal,cache:'no-store'});
     if(!response.ok) throw new Error('GITHUB_HTTP_'+response.status);
     const rows=await response.json();
-    const workOrders=(Array.isArray(rows)?rows:[])
-      .filter(issue=>!issue.pull_request && /(?:^|\n)TIGERIQ_EXECUTABLE=true(?:\r?\n|$)/.test(String(issue.body||'')))
-      .map(projectWorkOrder)
-      .sort((a,b)=>({P0:0,P1:1,P2:2,P3:3}[a.priority]??9)-({P0:0,P1:1,P2:2,P3:3}[b.priority]??9) || String(b.updated_at).localeCompare(String(a.updated_at)));
-    workOrderCache={at:now,workOrders,meta:{ok:true,source:'github',stale:false,refreshed_at:new Date(now).toISOString()}};
+    const candidates=(Array.isArray(rows)?rows:[]).filter(issue=>{
+      if(issue.pull_request)return false;
+      const body=String(issue.body||'');
+      const executable=/(?:^|\n)TIGERIQ_EXECUTABLE=(?:true|false)(?:\r?\n|$)/.test(body);
+      return executable||systemWorkOrder(issue,body);
+    }).map(projectWorkOrder);
+    const rank={P0:0,P1:1,P2:2,P3:3,P4:4,P5:5};
+    const workOrders=candidates.filter(x=>!x.closed && (x.bucket==='HỆ THỐNG'||/(?:^|\n)TIGERIQ_EXECUTABLE=true(?:\r?\n|$)/.test(String((Array.isArray(rows)?rows:[]).find(i=>i.number===x.issue_number)?.body||''))))
+      .sort((a,b)=>(rank[a.priority]??9)-(rank[b.priority]??9)||String(b.updated_at).localeCompare(String(a.updated_at)));
+    const workOrdersRecent=candidates.filter(x=>x.closed).sort((a,b)=>String(b.updated_at).localeCompare(String(a.updated_at))).slice(0,30);
+    workOrderCache={at:now,workOrders,workOrdersRecent,meta:{ok:true,source:'github',stale:false,refreshed_at:new Date(now).toISOString()}};
   } catch(error) {
     workOrderCache={...workOrderCache,at:now,meta:{ok:false,source:'github',stale:true,error:String(error?.name==='AbortError'?'GITHUB_TIMEOUT':error?.message||error),refreshed_at:new Date(now).toISOString()}};
   } finally { clearTimeout(timer); }
@@ -117,6 +148,10 @@ const server = createServer(async (req, res) => {
     if (req.method === 'GET' && url.pathname === '/favicon.ico') {
       res.writeHead(204, { 'cache-control': 'public, max-age=86400' });
       return res.end();
+    }
+    if (req.method === 'GET' && url.pathname === '/web-control-health-model.js') {
+      res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8' });
+      return res.end(healthModelJs);
     }
     if (req.method === 'GET' && url.pathname === '/web-control-truth.js') {
       res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8' });
@@ -165,7 +200,7 @@ const server = createServer(async (req, res) => {
       const resources=normalizeRuntimeResources(core.resources,workforce);
       const [codingLane,workOrderSnapshot] = await Promise.all([codingStatus(),githubWorkOrders()]);
       res.writeHead(200, { 'content-type': 'application/json' });
-      return res.end(JSON.stringify({ ...core, resources, workforce, workforceMeta, codingLane, workOrders: workOrderSnapshot.workOrders, workOrdersMeta: workOrderSnapshot.meta }));
+      return res.end(JSON.stringify({ ...core, resources, workforce, workforceMeta, codingLane, workOrders: workOrderSnapshot.workOrders, workOrdersRecent: workOrderSnapshot.workOrdersRecent, workOrdersMeta: workOrderSnapshot.meta }));
     }
     if (req.method === 'GET' && url.pathname === '/health') {
       let core = { ok: false };
