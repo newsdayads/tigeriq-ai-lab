@@ -213,6 +213,63 @@ Return requested public evidence only.`;
   assert.strictEqual(terminalFaults.length,2);
   assert.notStrictEqual(terminalFaults[1].data.sourceRevision,firstRevision);
 });
+
+test('pc_operator rearm fails closed until stale terminal label clears',async()=>{
+  const pool=coreBacklogPool();
+  const assigned='x'.repeat(5700);
+  const baseBody=[
+    'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','OWNER_DIRECT=true','PRIORITY=P1',
+    'CAPABILITY=pc_operator','NO_CODE_CHANGE=true','NO_PC01_SHELL=true',
+    'RESOURCE_SCOPE=OPENCLAW_REARM_CLEAR','PUBLIC_EVIDENCE_KEYS=installedSha',
+    'ASSIGNED_ACTION',assigned,'ACCEPTANCE','Return requested public evidence only.',
+  ].join('\n');
+  let issues=[{number:1610,state:'open',title:'oversized rearm clear',body:baseBody,html_url:'https://example/1610'}];
+  const comments=[];
+  let labelAdds=0,labelClears=0,failNextClear=true;
+  const fetchImpl=async(url,init={})=>{
+    if(url.includes('/issues?'))return response(issues);
+    const method=String(init.method||'GET').toUpperCase();
+    if(method==='POST'&&url.endsWith('/issues/1610/comments')){
+      comments.push(JSON.parse(init.body).body);
+      return response({id:comments.length});
+    }
+    if(method==='POST'&&url.endsWith('/issues/1610/labels')){
+      labelAdds++;
+      return response([]);
+    }
+    if(method==='DELETE'&&url.includes('/issues/1610/labels/')){
+      labelClears++;
+      if(failNextClear){
+        failNextClear=false;
+        return response({message:'temporary'},false,503);
+      }
+      return response({},true,204);
+    }
+    return response({});
+  };
+
+  let out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
+  assert.strictEqual(out.created,0);
+  assert.strictEqual(comments.length,1);
+  assert.strictEqual(labelAdds,1);
+  assert.strictEqual(pool.events.filter((e)=>e.type==='ROUTING_FAULT'&&e.data?.terminalBlocked===true).length,1);
+
+  issues=[{...issues[0],body:baseBody+'\nREARM_GENERATION=2'}];
+  out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
+  assert.strictEqual(out.created,0);
+  assert.strictEqual(comments.length,1);
+  assert.strictEqual(labelAdds,1);
+  assert.strictEqual(labelClears,1);
+  assert.strictEqual(pool.events.filter((e)=>e.type==='ROUTING_FAULT'&&e.data?.terminalBlocked===true).length,1);
+
+  out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
+  assert.strictEqual(out.created,0);
+  assert.strictEqual(labelClears,2);
+  assert.strictEqual(comments.length,2);
+  assert.strictEqual(labelAdds,2);
+  assert.strictEqual(pool.events.filter((e)=>e.type==='ROUTING_FAULT'&&e.data?.terminalBlocked===true).length,2);
+});
+
 test('oversized pc_operator notification retries after transient comment failure and ignores legacy unreported faults',async()=>{
   const pool=coreBacklogPool();
   pool.events.push({type:'ROUTING_FAULT',data:{issueNumber:1611,reason:'OPENCLAW_INSTRUCTION_INVALID'}});
