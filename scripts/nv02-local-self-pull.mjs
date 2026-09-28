@@ -149,7 +149,7 @@ try {
   result = 'DISPATCH_BLOCKED';
   console.error(JSON.stringify({ event: 'NV02_DISPATCH_BLOCKED', issue: issue.number, error: String(error) }));
 }
-await releaseNv02WorkOrder({ issueNumber: issue.number, leaseId: lease.leaseId, resourceScope: lease.resourceScope, state: result, postComment });
+await releaseNv02WorkOrder({ issue, issueNumber: issue.number, leaseId: lease.leaseId, resourceScope: lease.resourceScope, state: result, postComment });
 console.log(JSON.stringify({ event: 'TIGERIQ_NV02_LEASE_RELEASED', issue: issue.number, resourceScope: lease.resourceScope, leaseId: lease.leaseId, state: result }));
 const nextIssues = summaries()
   .filter((summary) => nv02PrioritySummary(summary) !== 'P0' && Number(summary.number) !== Number(issue.number))
