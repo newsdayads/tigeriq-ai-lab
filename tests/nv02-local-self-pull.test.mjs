@@ -10,6 +10,8 @@ import {
   resolveNv02Command02State,
   resourceOwnershipConflict,
   selectNv02WorkOrder,
+  nv02LeaseAuthority,
+  releaseNv02WorkOrder,
 } from '../apps/tigeriq-core/nv02-local-self-pull.mjs';
 import { reconcileStaleDependency } from '../apps/tigeriq-core/dependency-reconcile.mjs';
 
@@ -92,13 +94,17 @@ describe('NV02 local GitHub self-pull contract', () => {
       return comments;
     };
     const first = await claimNv02WorkOrder({ issue: work, comments, postComment, claimSettleMs: 0, nowMs: Date.parse('2026-09-27T00:00:00Z') });
-    expect(first).toBeTruthy();
+    expect(first).toMatchObject({ workOrder: '#20', resourceScope: 'NV02_TEST' });
+    expect(comments[0].body).toContain('WORK_ORDER=#20');
     expect(await claimNv02WorkOrder({ issue: work, comments, postComment, claimSettleMs: 0, nowMs: Date.parse('2026-09-27T00:01:00Z') })).toBeNull();
     expect(activeNv02Lease(comments, Date.parse('2026-09-27T00:01:00Z')).LEASE_ID).toBe(first.leaseId);
     await postComment(work.number, `EVIDENCE\nSTATE=DONE\nLEASE_ID=${first.leaseId}`);
-    await (await import('../apps/tigeriq-core/nv02-local-self-pull.mjs')).releaseNv02WorkOrder({ issueNumber: work.number, leaseId: first.leaseId, resourceScope: first.resourceScope, state: 'DONE', postComment });
+    await releaseNv02WorkOrder({ issueNumber: work.number, leaseId: first.leaseId, resourceScope: first.resourceScope, state: 'DONE', postComment });
     expect(activeNv02Lease(comments, Date.parse('2026-09-27T00:01:00Z'))).toBeNull();
-    expect(buildNv02LocalSelfPullPrompt(work, first)).toContain('Core không assign/route NV02');
+    expect(comments.at(-1).body).toContain('WORK_ORDER=#20');
+    const prompt = buildNv02LocalSelfPullPrompt(work, first);
+    expect(prompt).toContain('Core không assign/route NV02');
+    expect(prompt).toContain('Không tự tạo, mở rộng, claim hoặc allocate scope/resource ngoài Work Order này.');
   });
 
   it('parses App Chrome lowercase scope and release-by-identity correctly', () => {
@@ -153,7 +159,7 @@ describe('NV02 local GitHub self-pull contract', () => {
     expect(first).toBeTruthy();
     expect(await claimNv02WorkOrder({ issue: secondIssue, comments: secondComments, postComment: secondPost, claimSettleMs: 0, nowMs: now })).toBeNull();
     expect(secondComments).toEqual([]);
-    await (await import('../apps/tigeriq-core/nv02-local-self-pull.mjs')).releaseNv02WorkOrder({
+    await releaseNv02WorkOrder({
       issueNumber: firstIssue.number, leaseId: first.leaseId, resourceScope: first.resourceScope, state: 'DONE', postComment: firstPost,
     });
   });
@@ -187,6 +193,29 @@ describe('NV02 local GitHub self-pull contract', () => {
     });
     expect(lease).toBeNull();
     expect(own.some((comment) => comment.body.includes('STATE=CLAIM_LOST'))).toBe(true);
+  });
+
+  it('fails closed when Work Order authority is missing or drifts', async () => {
+    const noScope = issue(80, '[P1] no scope', 'TIGERIQ_EXECUTABLE=true\nAUTO_QUEUE=INCLUDED\nCAPABILITY=general\nPRIORITY=P1');
+    const writes = [];
+    const lease = await claimNv02WorkOrder({
+      issue: noScope,
+      comments: [],
+      postComment: async (_number, body) => { if (body) writes.push(body); return []; },
+      claimSettleMs: 0,
+      nowMs: Date.parse('2026-09-27T00:00:00Z'),
+    });
+    expect(lease).toBeNull();
+    expect(writes).toEqual([]);
+
+    const work = issue(81, '[P1] bound', safe('PRIORITY=P1\nRESOURCE_SCOPE=BOUND_SCOPE'));
+    expect(nv02LeaseAuthority(work, { workOrder: '#999', resourceScope: 'BOUND_SCOPE' })).toMatchObject({ valid: false, reason: 'WORK_ORDER_MISMATCH' });
+    expect(nv02LeaseAuthority(work, { workOrder: '#81', resourceScope: 'OTHER_SCOPE' })).toMatchObject({ valid: false, reason: 'RESOURCE_SCOPE_MISMATCH' });
+    expect(nv02LeaseAuthority(work, { workOrder: '#81', resourceScope: 'BOUND_SCOPE' })).toMatchObject({ valid: true });
+
+    await expect(releaseNv02WorkOrder({
+      issueNumber: 81, leaseId: 'L81', resourceScope: '', state: 'DONE', postComment: async () => null,
+    })).rejects.toThrow('NV02_RELEASE_RESOURCE_SCOPE_REQUIRED');
   });
 
   it('blocks only live leases and lets released/stale coding work fall back to NV02', () => {
