@@ -359,10 +359,11 @@ async function httpHealth(signal = null) {
   }
 }
 
-async function preflight() {
+async function preflight(signal = null) {
+  throwIfAborted(signal);
   await ensureRootIntegrity();
   const [docker, port] = await Promise.all([
-    runFixed('docker.exe', ['version', '--format', '{{.Server.Version}}'], { timeoutMs: 15000 }).catch((error) => ({ exitCode: -1, timedOut: false, stdout: '', stderr: String(error?.message || error) })),
+    runFixed('docker.exe', ['version', '--format', '{{.Server.Version}}'], { timeoutMs: 15000, signal }).catch((error) => ({ exitCode: -1, timedOut: false, stdout: '', stderr: String(error?.message || error) })),
     probePort(),
   ]);
   let disk = null;
