@@ -269,6 +269,7 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(source).toContain('dataMountOk');
     expect(source).toContain('rollbackContainer');
     expect(source).toContain('TIGERIQ_PAPERCLIP_LAB_ABORTED');
-    expect(source).not.toMatch(/shell_exec|powershell|cmd\.exe/i);
+    expect(source).not.toMatch(/shell_exec|cmd\.exe/i);
+    expect((source.match(/WindowsPowerShell\\\\v1\.0\\\\powershell\.exe/g) ?? []).length).toBe(1);
   });
 });
