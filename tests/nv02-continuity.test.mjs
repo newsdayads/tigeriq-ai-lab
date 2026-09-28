@@ -253,7 +253,10 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("const NV02_F5_MIN_MS=5*60*1000");
     expect(source).toContain("const NV02_F5_MAX_MS=10*60*1000");
     expect(source).toContain("'PERIODIC_F5_REFRESH'");
-    expect(source).toContain("const nextPeriodicF5At=Number(raw.nextPeriodicF5At)||nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS)");
+    expect(source).toContain("const rawNextPeriodicF5At=Number(raw.nextPeriodicF5At)||nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS)");
+    expect(source).toContain("const rawNextRefreshAt=Number(raw.nextRefreshAt)||nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS)");
+    expect(source).toContain("const nextPeriodicF5At=Math.max(rawNextPeriodicF5At,Number(durableTimers.nextPeriodicF5At)||0)");
+    expect(source).toContain("const nextRefreshAt=Math.max(rawNextRefreshAt,Number(durableTimers.nextRefreshAt)||0)");
     expect(source).toContain("const workingRecheckAt=Number(raw.workingRecheckAt)||0");
     expect(source).toContain("'NV02_F5_TIMER_OVERDUE_AFTER_RESTART'");
     expect(source).toContain("'NV02_REFRESH_TIMER_OVERDUE_AFTER_RESTART'");
