@@ -7,7 +7,7 @@ $Responses = Join-Path $BrokerRoot 'responses'
 $Heartbeat = Join-Path $BrokerRoot 'heartbeat.json'
 $Wsl = Join-Path $env:SystemRoot 'System32\wsl.exe'
 $Distro = 'Ubuntu'
-$BrokerVersion = '1.1-progress-aware-restart'
+$BrokerVersion = '1.2-heartbeat-during-op'
 $Image = 'ghcr.io/paperclipai/paperclip:2026.916.1'
 $Container = 'tigeriq-paperclip-lab'
 $Compose = '/mnt/d/TigerIQ-Paperclip-Lab/config/docker-compose.lab.yml'
@@ -21,6 +21,18 @@ function Write-JsonAtomic([string]$Path, $Value) {
   $tmp = "$Path.tmp-$PID"
   $Value | ConvertTo-Json -Depth 8 -Compress | Set-Content -LiteralPath $tmp -Encoding UTF8
   Move-Item -LiteralPath $tmp -Destination $Path -Force
+}
+
+function Write-BrokerHeartbeat {
+  Write-JsonAtomic $Heartbeat ([pscustomobject]@{
+    schema='TIGERIQ_PAPERCLIP_WSL_HEARTBEAT_V1'
+    version=$BrokerVersion
+    at=(Get-Date).ToUniversalTime().ToString('o')
+    sessionId=(Get-Process -Id $PID).SessionId
+    user=[Environment]::UserName
+    pid=$PID
+    distro=$Distro
+  })
 }
 
 function Quote-FixedArg([string]$Value) {
@@ -66,50 +78,41 @@ function Invoke-FixedWslDocker([string]$RequestId, [string]$Operation) {
   $timedOut = $false
   $timeoutKind = $null
   $idleTimeoutSec = if ($spec.PSObject.Properties.Name -contains 'IdleTimeoutSec') { [int]$spec.IdleTimeoutSec } else { 0 }
-  if ($idleTimeoutSec -gt 0) {
-    $startedAt = Get-Date
-    $lastProgressAt = $startedAt
-    [long]$lastBytes = -1
-    while (-not $proc.HasExited) {
-      Start-Sleep -Milliseconds 1000
-      $proc.Refresh()
-      [long]$bytes = 0
-      foreach ($candidate in @($stdoutPath,$stderrPath)) {
-        if (Test-Path -LiteralPath $candidate) {
-          try { $bytes += [long](Get-Item -LiteralPath $candidate).Length } catch {}
-        }
-      }
-      $now = Get-Date
-      if ($bytes -gt $lastBytes) {
-        $lastBytes = $bytes
-        $lastProgressAt = $now
-      }
-      if ((($now - $startedAt).TotalSeconds) -ge [int]$spec.TimeoutSec) {
-        $timedOut = $true
-        $timeoutKind = 'total'
-        break
-      }
-      if ((($now - $lastProgressAt).TotalSeconds) -ge $idleTimeoutSec) {
-        $timedOut = $true
-        $timeoutKind = 'idle'
-        break
+  $startedAt = Get-Date
+  $lastProgressAt = $startedAt
+  [long]$lastBytes = -1
+  while (-not $proc.HasExited) {
+    Start-Sleep -Milliseconds 1000
+    $proc.Refresh()
+    Write-BrokerHeartbeat
+    [long]$bytes = 0
+    foreach ($candidate in @($stdoutPath,$stderrPath)) {
+      if (Test-Path -LiteralPath $candidate) {
+        try { $bytes += [long](Get-Item -LiteralPath $candidate).Length } catch {}
       }
     }
-    if ($timedOut) {
-      Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-      Wait-Process -Id $proc.Id -Timeout 5 -ErrorAction SilentlyContinue
+    $now = Get-Date
+    if ($bytes -gt $lastBytes) {
+      $lastBytes = $bytes
+      $lastProgressAt = $now
     }
-  } else {
-    try {
-      Wait-Process -Id $proc.Id -Timeout ([int]$spec.TimeoutSec) -ErrorAction Stop
-    } catch {
+    if ((($now - $startedAt).TotalSeconds) -ge [int]$spec.TimeoutSec) {
       $timedOut = $true
       $timeoutKind = 'total'
-      Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-      Wait-Process -Id $proc.Id -Timeout 5 -ErrorAction SilentlyContinue
+      break
+    }
+    if ($idleTimeoutSec -gt 0 -and (($now - $lastProgressAt).TotalSeconds) -ge $idleTimeoutSec) {
+      $timedOut = $true
+      $timeoutKind = 'idle'
+      break
     }
   }
+  if ($timedOut) {
+    Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+    Wait-Process -Id $proc.Id -Timeout 5 -ErrorAction SilentlyContinue
+  }
   $proc.Refresh()
+  Write-BrokerHeartbeat
   $stdout = if (Test-Path -LiteralPath $stdoutPath) { Get-Content -Raw -LiteralPath $stdoutPath } else { '' }
   $stderr = if (Test-Path -LiteralPath $stderrPath) { Get-Content -Raw -LiteralPath $stderrPath } else { '' }
   Remove-Item -LiteralPath $stdoutPath,$stderrPath -Force -ErrorAction SilentlyContinue
@@ -136,15 +139,7 @@ $lastHeartbeat = [DateTime]::MinValue
 try {
   while ($true) {
     if (((Get-Date) - $lastHeartbeat).TotalSeconds -ge 2) {
-      Write-JsonAtomic $Heartbeat ([pscustomobject]@{
-        schema='TIGERIQ_PAPERCLIP_WSL_HEARTBEAT_V1'
-        version=$BrokerVersion
-        at=(Get-Date).ToUniversalTime().ToString('o')
-        sessionId=(Get-Process -Id $PID).SessionId
-        user=[Environment]::UserName
-        pid=$PID
-        distro=$Distro
-      })
+      Write-BrokerHeartbeat
       $lastHeartbeat = Get-Date
     }
 
