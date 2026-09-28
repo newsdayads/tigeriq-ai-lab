@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import { spawn } from 'node:child_process';
 import net from 'node:net';
@@ -34,6 +34,11 @@ export const PAPERCLIP_LAB_WSL_DISTRO = 'Ubuntu';
 export const PAPERCLIP_LAB_WSL_ROOT = '/mnt/d/TigerIQ-Paperclip-Lab';
 const DOCKER_TRANSPORT_WINDOWS = 'windows';
 const DOCKER_TRANSPORT_WSL = 'wsl-ubuntu';
+const DOCKER_TRANSPORT_BROKER = 'wsl-ubuntu-interactive-broker';
+const BROKER_DIR = win.join(PAPERCLIP_LAB_ROOT, 'broker');
+const BROKER_REQUESTS_DIR = win.join(BROKER_DIR, 'requests');
+const BROKER_RESPONSES_DIR = win.join(BROKER_DIR, 'responses');
+const BROKER_HEARTBEAT_FILE = win.join(BROKER_DIR, 'heartbeat.json');
 
 function normalizeWinPath(value) {
   return win.resolve(String(value || PAPERCLIP_LAB_ROOT).replaceAll('/', '\\'));
@@ -202,9 +207,83 @@ async function runFixed(exe, args, { cwd = PAPERCLIP_LAB_ROOT, timeoutMs = 12000
   });
 }
 
+function parseBrokerJson(text) {
+  return JSON.parse(String(text || '').replace(/^\uFEFF/, ''));
+}
+
+async function brokerStatus() {
+  try {
+    const heartbeat = parseBrokerJson(await fs.readFile(BROKER_HEARTBEAT_FILE, 'utf8'));
+    const atMs = Date.parse(String(heartbeat?.at || ''));
+    const ageMs = Number.isFinite(atMs) ? Math.max(0, Date.now() - atMs) : Number.POSITIVE_INFINITY;
+    const ready = heartbeat?.schema === 'TIGERIQ_PAPERCLIP_WSL_HEARTBEAT_V1'
+      && String(heartbeat?.distro || '') === PAPERCLIP_LAB_WSL_DISTRO
+      && Number(heartbeat?.sessionId || 0) > 0
+      && Boolean(String(heartbeat?.user || '').trim())
+      && ageMs <= 15000;
+    return { ready, user: ready ? String(heartbeat.user) : null, sessionId: ready ? Number(heartbeat.sessionId) : null, ageMs: Number.isFinite(ageMs) ? ageMs : null };
+  } catch (error) {
+    return { ready: false, user: null, sessionId: null, ageMs: null, reason: String(error?.code || error?.message || 'BROKER_NOT_READY') };
+  }
+}
+
+export function paperclipLabBrokerOperationForDockerArgs(args = []) {
+  const actual = JSON.stringify((Array.isArray(args) ? args : []).map(String));
+  const allowed = [
+    { operation: 'version', args: ['version', '--format', '{{.Server.Version}}'] },
+    { operation: 'pull_pinned_image', args: ['pull', PAPERCLIP_LAB_IMAGE] },
+    { operation: 'inspect_revision', args: ['image','inspect',PAPERCLIP_LAB_IMAGE,'--format','{{ index .Config.Labels "org.opencontainers.image.revision" }}'] },
+    { operation: 'inspect_repo_digests', args: ['image','inspect',PAPERCLIP_LAB_IMAGE,'--format','{{json .RepoDigests}}'] },
+    { operation: 'compose_up', args: ['compose','-f',COMPOSE_FILE,'up','-d'] },
+    { operation: 'stop_container', args: ['stop', PAPERCLIP_LAB_CONTAINER] },
+    { operation: 'inspect_container', args: ['inspect', PAPERCLIP_LAB_CONTAINER, '--format', '{{json .}}'] },
+  ];
+  return allowed.find((item) => JSON.stringify(item.args) === actual)?.operation || null;
+}
+
+async function runDockerViaBroker(args, { timeoutMs = 120000, signal = null } = {}) {
+  throwIfAborted(signal);
+  const operation = paperclipLabBrokerOperationForDockerArgs(args);
+  if (!operation) throw new Error('TIGERIQ_PAPERCLIP_LAB_BROKER_DOCKER_ARGS_NOT_ALLOWED');
+  const status = await brokerStatus();
+  if (!status.ready) throw new Error('TIGERIQ_PAPERCLIP_LAB_WSL_BROKER_UNAVAILABLE');
+  await ensureContainedDirectory(BROKER_REQUESTS_DIR);
+  await ensureContainedDirectory(BROKER_RESPONSES_DIR);
+  const id = randomUUID();
+  const requestFile = await assertSafeFileTarget(win.join(BROKER_REQUESTS_DIR, `request-${id}.json`));
+  const responseFile = await assertSafeFileTarget(win.join(BROKER_RESPONSES_DIR, `response-${id}.json`));
+  await fs.writeFile(requestFile, JSON.stringify({ schema: 'TIGERIQ_PAPERCLIP_WSL_REQUEST_V1', id, operation }), { encoding: 'utf8', flag: 'wx' });
+  const deadline = Date.now() + Math.max(5000, Math.min(190000, Number(timeoutMs) + 10000));
+  try {
+    while (Date.now() < deadline) {
+      throwIfAborted(signal);
+      try {
+        const response = parseBrokerJson(await fs.readFile(responseFile, 'utf8'));
+        if (response?.schema !== 'TIGERIQ_PAPERCLIP_WSL_RESPONSE_V1' || response?.id !== id) {
+          throw new Error('TIGERIQ_PAPERCLIP_LAB_WSL_BROKER_RESPONSE_INVALID');
+        }
+        await fs.rm(responseFile, { force: true });
+        return {
+          exitCode: Number(response?.exitCode ?? -1),
+          timedOut: response?.timedOut === true,
+          stdout: clipped(response?.stdout || ''),
+          stderr: clipped(response?.ok === true ? (response?.stderr || '') : (response?.stderr || 'TIGERIQ_PAPERCLIP_LAB_WSL_BROKER_FAILED')),
+        };
+      } catch (error) {
+        if (error?.code !== 'ENOENT') throw error;
+      }
+      await sleepWithSignal(200, signal);
+    }
+    return { exitCode: -1, timedOut: true, stdout: '', stderr: 'TIGERIQ_PAPERCLIP_LAB_WSL_BROKER_TIMEOUT' };
+  } finally {
+    await fs.rm(requestFile, { force: true }).catch(() => {});
+  }
+}
+
 async function runDocker(transport, args, options = {}) {
   if (transport === DOCKER_TRANSPORT_WINDOWS) return await runFixed('docker.exe', args, options);
   if (transport === DOCKER_TRANSPORT_WSL) return await runFixed('wsl.exe', paperclipLabWslDockerArgs(args), options);
+  if (transport === DOCKER_TRANSPORT_BROKER) return await runDockerViaBroker(args, options);
   throw new Error('TIGERIQ_PAPERCLIP_LAB_DOCKER_TRANSPORT_INVALID');
 }
 
@@ -219,10 +298,20 @@ async function resolveDockerTransport(signal = null) {
   if (wsl.exitCode === 0 && !wsl.timedOut && wsl.stdout.trim()) {
     return { kind: DOCKER_TRANSPORT_WSL, version: wsl.stdout.trim(), error: null };
   }
+  const broker = await brokerStatus();
+  if (broker.ready) {
+    const bridged = await runDockerViaBroker(['version', '--format', '{{.Server.Version}}'], { timeoutMs: 20000, signal })
+      .catch((error) => ({ exitCode: -1, timedOut: false, stdout: '', stderr: String(error?.message || error) }));
+    if (bridged.exitCode === 0 && !bridged.timedOut && bridged.stdout.trim()) {
+      return { kind: DOCKER_TRANSPORT_BROKER, version: bridged.stdout.trim(), error: null, broker };
+    }
+    return { kind: null, version: null, error: clipped([windows.stderr, wsl.stderr, bridged.stderr].filter(Boolean).join('\n')), broker };
+  }
   return {
     kind: null,
     version: null,
-    error: clipped([windows.stderr, wsl.stderr].filter(Boolean).join('\n')),
+    error: clipped([windows.stderr, wsl.stderr, broker.reason].filter(Boolean).join('\n')),
+    broker,
   };
 }
 
@@ -427,7 +516,7 @@ async function preflight(signal = null) {
     disk = { freeBytes: Number(stat.bavail) * Number(stat.bsize), totalBytes: Number(stat.blocks) * Number(stat.bsize) };
   } catch {}
   return {
-    docker: { ok: Boolean(docker.kind), transport: docker.kind, version: docker.version, error: docker.error },
+    docker: { ok: Boolean(docker.kind), transport: docker.kind, version: docker.version, error: docker.error, broker: docker.broker || await brokerStatus() },
     port3210: port,
     root: PAPERCLIP_LAB_ROOT,
     disk,
@@ -583,7 +672,7 @@ export async function executePaperclipLabAction(input = {}, options = {}) {
   return {
     data,
     evidence: {
-      capability: 'paperclip-lab-v1',
+      capability: 'paperclip-lab-v2',
       root: PAPERCLIP_LAB_ROOT,
       port: PAPERCLIP_LAB_PORT,
       loopbackOnly: true,
