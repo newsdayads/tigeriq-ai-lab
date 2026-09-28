@@ -54,6 +54,8 @@ describe('App Chrome chat lifecycle',()=>{
     expect(bridge).toContain("'BOOT_VERIFIED_CHAT_RESTORED'");
     expect(bridge).toContain("'BOOT_VERIFIED_CHAT_SETTLE_DEFERRED'");
     expect(bridge).toContain("'BOOT_VERIFIED_CHAT_MODEL_VERIFY_DEFERRED'");
+    expect(bridge).toContain("if(now<Number(state.modelCheckBlockedUntil||0))return");
+    expect(bridge).toContain("bootFreshContextPending.add('NV02')");
     expect(bridge).toContain("chatLoadBlockedUntil:preserveVerifiedProfile?0:state.chatLoadBlockedUntil");
     expect(bridge).toContain("ensureNv02LocalReadyLocked(target,bootUi,{forceFresh:true})");
     expect(bridge).not.toContain("ensureNv02LocalReadyLocked(target,bootUi,{forceFresh:!keepChat})");
