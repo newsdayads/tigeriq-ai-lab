@@ -1509,12 +1509,22 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
     }
     if(!skipPeriodicReset){
       if(uiDeadFallbackStatus)await continuityEvent('PERIODIC_RESTART_UI_DEAD_FALLBACK',{status:uiDeadFallbackStatus});
-      await reopenWorker(w,target,state,now,uiDeadFallbackStatus?'PERIODIC_2_4H_RESET_UI_DEAD':'PERIODIC_2_4H_RESET');
-      state={...loadNv02Continuity(),nextRefreshAt:nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS),verifiedChatUrl:'',modelVerifiedAt:'',resumeChatUrl:'',nextContinueAt:now};
-      saveNv02Continuity(state);
-      bootFreshContextPending.add('NV02');
-      await continuityEvent('PERIODIC_RESTART_COMPLETED',{nextRefreshAt:state.nextRefreshAt,uiDeadFallback:Boolean(uiDeadFallbackStatus)});
-      return;
+      try{
+        await reopenWorker(w,target,state,now,uiDeadFallbackStatus?'PERIODIC_2_4H_RESET_UI_DEAD':'PERIODIC_2_4H_RESET');
+        state={...loadNv02Continuity(),nextRefreshAt:nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS),verifiedChatUrl:'',modelVerifiedAt:'',resumeChatUrl:'',nextContinueAt:now};
+        saveNv02Continuity(state);
+        bootFreshContextPending.add('NV02');
+        await continuityEvent('PERIODIC_RESTART_COMPLETED',{nextRefreshAt:state.nextRefreshAt,uiDeadFallback:Boolean(uiDeadFallbackStatus)});
+        return;
+      }catch(error){
+        const status=String(error?.message||error);
+        state={...loadNv02Continuity(),nextRefreshAt:now+5*60*1000};
+        saveNv02Continuity(state);
+        await continuityEvent('PERIODIC_RESTART_REOPEN_BACKOFF',{status,nextRefreshAt:state.nextRefreshAt});
+        const stillUsable=await uiState(target).then(()=>true).catch(()=>false);
+        if(!stillUsable)return;
+        skipPeriodicReset=true;
+      }
     }
     state=loadNv02Continuity();
   }
