@@ -528,7 +528,8 @@ export async function executePaperclipLabAction(input = {}, options = {}) {
       arbitraryPort: false,
       pinnedRelease: PAPERCLIP_LAB_RELEASE,
       pinnedSourceCommit: PAPERCLIP_LAB_RELEASE_SHA,
-      pinnedImage: PAPERCLIP_LAB_IMAGE,
+      pinnedImageTag: PAPERCLIP_LAB_IMAGE,
+      pinnedImageDigest: data?.imageDigest || data?.health?.pinned?.imageDigest || data?.pinned?.imageDigest || null,
       elapsedMs: Date.now() - started,
     },
   };
