@@ -82,7 +82,7 @@
     const activity=document.createElement('section'); activity.className='tq-u-panel';
     activity.innerHTML='<div class="tq-u-ph"><div><h2>⚡ Đang chạy / Vừa hoàn tất</h2><small>Hoạt động thật của campaign và NV API từ TigerIQ Core</small></div><span id="tqUActivityState" class="tq-u-sync">—</span></div><div id="tqUActivityBody" class="body"></div>';
     const recent=document.createElement('section'); recent.className='tq-u-panel';
-    recent.innerHTML='<div class="tq-u-ph"><div><h2>▤ Hoạt động Core gần nhất</h2><small>Job kỹ thuật nội bộ Core · không phải Work Order Owner</small></div><span id="tqUJobCount" class="tq-u-sync">—</span></div><div class="table-wrap"><table class="tq-u-jobs"><thead><tr><th>Job</th><th>Hoạt động</th><th>NV</th><th>Nhà cung cấp</th><th>Trạng thái</th><th>Thời gian</th></tr></thead><tbody id="tqURecentJobs"></tbody></table></div>';
+    recent.innerHTML='<div class="tq-u-ph"><div><h2>▤ Hoạt động Core gần nhất</h2><small>Job kỹ thuật nội bộ Core · hiển thị Work Order khi biết</small></div><span id="tqUJobCount" class="tq-u-sync">—</span></div><div class="table-wrap"><table class="tq-u-jobs"><thead><tr><th>Thời gian</th><th>NV</th><th>Loại / Hoạt động</th><th>Work Order</th><th>Kết quả</th><th>Thời lượng</th></tr></thead><tbody id="tqURecentJobs"></tbody></table></div>';
     const perf=document.createElement('section'); perf.className='tq-u-panel';
     perf.innerHTML='<div class="tq-u-ph"><div><h2>⌁ Hiệu suất API 24 giờ</h2><small>Success rate · số lỗi · độ trễ theo từng NV/provider; không bịa quota/usage</small></div><span id="tqUChartCount" class="tq-u-sync">—</span></div><div class="body"><div id="tqUChart" class="tq-u-chart"><div class="tq-u-chart-empty">Đang tải telemetry…</div></div><div id="tqULegend" class="tq-u-legend"></div></div>';
     const eventTitle=events.querySelector('h2'); if(eventTitle)eventTitle.textContent='⚠ Cảnh báo hiện tại';
@@ -189,8 +189,12 @@
   }
 
   function renderRecentJobs(d){
-    const body=document.getElementById('tqURecentJobs'),count=document.getElementById('tqUJobCount'); if(!body||!count)return; const js=healthJobs(d).slice(0,12); count.textContent=`${js.length} bản ghi gần nhất`;
-    body.innerHTML=js.map(j=>`<tr><td>${safe(String(j.id||'').slice(0,18))}</td><td class="tq-u-job-title" title="${safe(j.title)}">${safe(j.title||'—')}</td><td>${safe(j.employee_id||'—')}</td><td>${safe(j.reviewer_employee_id||j.provider||'—')}</td><td class="tq-u-state ${safe(j.status)}">${safe(j.status==='done'?'HOÀN THÀNH':j.status==='failed'?'THẤT BẠI':j.status==='running'?'ĐANG CHẠY':j.status==='queued'?'CHỜ':j.status||'—')}</td><td>${safe(fmt(j.completed_at||j.started_at||j.created_at))}</td></tr>`).join('')||'<tr><td colspan="6" class="tq-u-empty">Chưa có công việc.</td></tr>';
+    const body=document.getElementById('tqURecentJobs'),count=document.getElementById('tqUJobCount'); if(!body||!count)return;
+    const js=healthJobs(d).slice(0,12), objectives=new Map((d?.objectives||[]).map(o=>[o.id,o]));
+    const duration=j=>{const a=Date.parse(j.started_at||j.created_at||''),b=Date.parse(j.completed_at||'');if(!Number.isFinite(a))return '—';const ms=Math.max(0,(Number.isFinite(b)?b:Date.now())-a);return ms<60000?`${Math.round(ms/1000)}s`:ms<3600000?`${Math.round(ms/60000)}p`:`${(ms/3600000).toFixed(1)}h`;};
+    const workOrder=j=>{const o=objectives.get(j.objective_id),m=o?.metadata||{};const n=Number(m.githubIssue||m.issueNumber||m.sourceIssueNumber||m.workOrder||m.work_order||0);return n?`#${n}`:'—';};
+    count.textContent=`${js.length} bản ghi gần nhất`;
+    body.innerHTML=js.map(j=>`<tr><td>${safe(fmt(j.completed_at||j.started_at||j.created_at))}</td><td>${safe(j.employee_id||'—')}</td><td class="tq-u-job-title" title="${safe(j.title)}">${safe(j.kind||j.capability||'job')} · ${safe(j.title||'—')}</td><td>${safe(workOrder(j))}</td><td class="tq-u-state ${safe(j.status)}">${safe(j.status==='done'?'HOÀN THÀNH':j.status==='failed'?'THẤT BẠI':j.status==='running'?'ĐANG CHẠY':j.status==='queued'?'CHỜ':j.status||'—')}</td><td>${safe(duration(j))}</td></tr>`).join('')||'<tr><td colspan="6" class="tq-u-empty">Chưa có công việc.</td></tr>';
   }
 
   const eventLabel=t=>({RESOURCE_PROBE_FAIL:'Kiểm tra API thất bại',RESOURCE_PROBE_OK:'API hoạt động trở lại',RESOURCE_FAILURE:'API xử lý lỗi',RESOURCE_SUCCESS:'API xử lý thành công',JOB_DONE:'Công việc hoàn tất',JOB_FAILED:'Công việc thất bại',JOB_CREATED:'Đã tạo công việc',MANAGER_ERROR:'AI Manager gặp lỗi',OBJECTIVE_CREATED:'Đã tạo mục tiêu',OBJECTIVE_COMPLETE:'Mục tiêu hoàn tất',OBJECTIVE_BLOCKED:'Mục tiêu bị chặn'}[t]||String(t||'').replaceAll('_',' '));
