@@ -109,12 +109,29 @@ renderObjectives = function renderObjectivesTruth(d) {
   document.getElementById('objectivesFull').innerHTML = os.map(objectiveRow).join('') || '<div class="placeholder">Không có dữ liệu.</div>';
 };
 
+let selectedWorkBucket='CẦN XỬ LÝ';
+const WORK_BUCKETS=['CẦN XỬ LÝ','CHỜ ANH SƠN','ĐANG LÀM','RÀ SOÁT','BLOCKED','HỆ THỐNG','HOÀN THÀNH'];
+
 renderJobs = function renderJobsTruth(d) {
-  const priorityRank={P0:0,P1:1,P2:2,P3:3};
-  const workOrders=[...(d?.workOrders||[])].sort((a,b)=>(priorityRank[a.priority]??9)-(priorityRank[b.priority]??9)||String(b.updated_at||'').localeCompare(String(a.updated_at||'')));
-  const stateClass=state=>state==='BỊ CHẶN'?'red':state==='ĐANG LÀM'?'blue':state==='CHỜ'?'amber':'green';
-  const rows=workOrders.map(w => `<tr><td>#${esc(w.issue_number)}</td><td>${esc(w.title||'—')}</td><td><b>${esc(w.priority||'—')}</b></td><td class="${stateClass(w.state)}">${esc(w.state||'MỞ')}</td><td>${esc(w.owner||'—')}</td><td>${esc(ago(w.updated_at))}</td></tr>`).join('');
-  document.getElementById('jobsTable').innerHTML = rows || '<tr><td colspan="6">Không có Work Order GitHub đang mở.</td></tr>';
+  const priorityRank={P0:0,P1:1,P2:2,P3:3,P4:4,P5:5};
+  const all=[...(d?.workOrders||[]),...(d?.workOrdersRecent||[])];
+  const counts=Object.fromEntries(WORK_BUCKETS.map(bucket=>[bucket,all.filter(w=>w.bucket===bucket).length]));
+  let controls=document.getElementById('workOrderBuckets');
+  if(!controls){
+    controls=document.createElement('div');controls.id='workOrderBuckets';controls.className='filters';
+    const table=document.getElementById('jobsTable')?.closest('.table-wrap');
+    table?.parentElement?.insertBefore(controls,table);
+    controls.addEventListener('click',event=>{
+      const button=event.target.closest('button[data-work-bucket]');if(!button)return;
+      selectedWorkBucket=button.dataset.workBucket;
+      renderJobs(S.data);
+    });
+  }
+  controls.innerHTML=WORK_BUCKETS.map(bucket=>`<button class="tq-filter ${selectedWorkBucket===bucket?'on':''}" data-work-bucket="${esc(bucket)}">${esc(bucket)} <b>${counts[bucket]||0}</b></button>`).join('');
+  const workOrders=all.filter(w=>w.bucket===selectedWorkBucket).sort((a,b)=>(priorityRank[a.priority]??9)-(priorityRank[b.priority]??9)||String(b.updated_at||'').localeCompare(String(a.updated_at||'')));
+  const stateClass=state=>state==='BỊ CHẶN'?'red':state==='ĐANG LÀM'?'blue':/CHỜ|RÀ SOÁT/.test(state)?'amber':'green';
+  const rows=workOrders.map(w => `<tr><td>#${esc(w.issue_number)}</td><td>${esc(w.title||'—')}</td><td><b>${esc(w.priority||'—')}</b></td><td class="${stateClass(w.state)}">${esc(w.state||w.bucket||'MỞ')}</td><td>${esc(w.owner||'—')}</td><td>${esc(ago(w.updated_at))}</td></tr>`).join('');
+  document.getElementById('jobsTable').innerHTML = rows || `<tr><td colspan="6">Không có Work Order trong nhóm ${esc(selectedWorkBucket)}.</td></tr>`;
 };
 
 function applyPeopleFullFilter() {
@@ -126,7 +143,7 @@ function applyPeopleFullFilter() {
     const status = el.dataset.status;
     const text = el.textContent.toLowerCase();
     const gp = p === 'all' || (p === 'local' && provider === 'ollama') || (p === 'cloud' && provider !== 'ollama');
-    const gs = s === 'all' || (s === 'working' && status === 'BUSY') || (s === 'active' && ['BUSY','IDLE','READY'].includes(status)) || (s === 'problem' && ['ERROR','OFFLINE','RATE_LIMITED','WAIT_KEY'].includes(status));
+    const gs = s === 'all' || (s === 'working' && status === 'BUSY') || (s === 'active' && ['BUSY','IDLE','READY','ONLINE'].includes(status)) || (s === 'problem' && ['AUTH_ERROR','CONFIG_ERROR','CONTRACT_ERROR','ERROR','OFFLINE','RATE_LIMITED','WAIT_KEY'].includes(status));
     el.style.display = gp && gs && (!q || text.includes(q)) ? '' : 'none';
   });
 }
