@@ -248,7 +248,7 @@ describe('safe recovery contracts',()=>{
     expect(server).toContain('applyWorkerSafetySnapshot(persisted.state)');
     expect(server).toContain('WORKER_SAFETY_STATE_PERSIST_FAIL_CLOSED');
     expect(server).toContain("purpose==='CURRENT_CHAT_RESTORE'");
-    expect(server).toContain("periodicF5||currentChatRestore");
+    expect(server).toContain("periodicF5||periodicPrepareRestart||currentChatRestore");
 
   });
 
