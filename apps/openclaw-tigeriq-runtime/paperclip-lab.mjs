@@ -67,10 +67,11 @@ function baseEnv() {
 
 async function runFixed(exe, args, { cwd = PAPERCLIP_LAB_ROOT, timeoutMs = 120000 } = {}) {
   const safeCwd = resolvePaperclipLabPath(cwd);
-  await fs.mkdir(safeCwd, { recursive: true });
+  await ensureRootIntegrity();
+  const realCwd = await ensureContainedDirectory(safeCwd);
   return await new Promise((resolve, reject) => {
     const child = spawn(exe, args, {
-      cwd: safeCwd,
+      cwd: realCwd,
       windowsHide: true,
       env: baseEnv(),
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -119,6 +120,21 @@ async function ensureLayout() {
   for (const dir of [CONFIG_DIR, DATA_DIR, EVIDENCE_DIR, RESEARCH_DIR, BACKUP_DIR]) await ensureContainedDirectory(dir);
 }
 
+async function assertSafeFileTarget(value) {
+  const candidate = resolvePaperclipLabPath(value);
+  await ensureContainedDirectory(win.dirname(candidate));
+  try {
+    const stat = await fs.lstat(candidate);
+    if (stat.isSymbolicLink()) throw new Error('TIGERIQ_PAPERCLIP_LAB_SYMLINK_BLOCKED');
+    const real = normalizeWinPath(await fs.realpath(candidate));
+    if (!pathInsideLab(real)) throw new Error('TIGERIQ_PAPERCLIP_LAB_REALPATH_ESCAPE_BLOCKED');
+    if (!stat.isFile()) throw new Error('TIGERIQ_PAPERCLIP_LAB_FILE_REQUIRED');
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
+  return candidate;
+}
+
 export function paperclipLabComposeYaml() {
   return [
     'name: tigeriq-paperclip-lab',
@@ -140,8 +156,9 @@ export function paperclipLabComposeYaml() {
 
 async function ensureConfig() {
   await ensureLayout();
+  const safeEnvFile = await assertSafeFileTarget(ENV_FILE);
   try {
-    await fs.access(ENV_FILE);
+    await fs.access(safeEnvFile);
   } catch {
     const authSecret = randomBytes(32).toString('hex');
     const signingSecret = randomBytes(32).toString('hex');
@@ -158,10 +175,12 @@ async function ensureConfig() {
       'ANTHROPIC_API_KEY=',
       '',
     ].join('\n');
-    await fs.writeFile(ENV_FILE, envText, { encoding: 'utf8', flag: 'wx' });
+    await fs.writeFile(safeEnvFile, envText, { encoding: 'utf8', flag: 'wx' });
   }
-  await fs.writeFile(COMPOSE_FILE, paperclipLabComposeYaml(), 'utf8');
-  await fs.writeFile(RELEASE_FILE, JSON.stringify({
+  const safeComposeFile = await assertSafeFileTarget(COMPOSE_FILE);
+  const safeReleaseFile = await assertSafeFileTarget(RELEASE_FILE);
+  await fs.writeFile(safeComposeFile, paperclipLabComposeYaml(), 'utf8');
+  await fs.writeFile(safeReleaseFile, JSON.stringify({
     release: PAPERCLIP_LAB_RELEASE,
     sourceCommit: PAPERCLIP_LAB_RELEASE_SHA,
     image: PAPERCLIP_LAB_IMAGE,
