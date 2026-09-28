@@ -17,6 +17,7 @@ import {
   PAPERCLIP_LAB_WSL_DISTRO,
   PAPERCLIP_LAB_WSL_ROOT,
   assertPaperclipLabRequest,
+  paperclipLabBrokerOperationForDockerArgs,
   paperclipLabComposeYaml,
   paperclipLabWslDockerArgs,
   paperclipLabWslPath,
@@ -184,6 +185,35 @@ describe('Paperclip Lab bounded PC01 capability', () => {
       .toThrow('TIGERIQ_PAPERCLIP_LAB_DOCKER_PATH_NOT_ALLOWED');
   });
 
+  it('maps broker requests only from exact fixed Paperclip Docker argv', () => {
+    expect(paperclipLabBrokerOperationForDockerArgs(['version', '--format', '{{.Server.Version}}'])).toBe('version');
+    expect(paperclipLabBrokerOperationForDockerArgs(['pull', PAPERCLIP_LAB_IMAGE])).toBe('pull_pinned_image');
+    expect(paperclipLabBrokerOperationForDockerArgs([
+      'compose', '-f', 'D:\\TigerIQ-Paperclip-Lab\\config\\docker-compose.lab.yml', 'up', '-d',
+    ])).toBe('compose_up');
+    expect(paperclipLabBrokerOperationForDockerArgs(['stop', 'tigeriq-paperclip-lab'])).toBe('stop_container');
+    expect(paperclipLabBrokerOperationForDockerArgs(['ps'])).toBeNull();
+    expect(paperclipLabBrokerOperationForDockerArgs(['compose', '-f', 'C:\\Temp\\evil.yml', 'up', '-d'])).toBeNull();
+  });
+
+  it('keeps the interactive WSL broker fixed to Ubuntu and exact operation allowlist', async () => {
+    const broker = await readFile(new URL('../apps/openclaw-tigeriq-runtime/paperclip-wsl-broker.ps1', import.meta.url), 'utf8');
+    const installer = await readFile(new URL('../apps/openclaw-tigeriq-runtime/Install-PaperclipWslBroker.ps1', import.meta.url), 'utf8');
+    expect(broker).toContain("$Distro = 'Ubuntu'");
+    expect(broker).toContain("$LabRoot = 'D:\\TigerIQ-Paperclip-Lab'");
+    expect(broker).toContain("'pull_pinned_image'");
+    expect(broker).toContain("'inspect_revision'");
+    expect(broker).toContain("'inspect_repo_digests'");
+    expect(broker).toContain("'compose_up'");
+    expect(broker).toContain("'stop_container'");
+    expect(broker).toContain("'inspect_container'");
+    expect(broker).not.toContain('$Request.args');
+    expect(broker).not.toMatch(/OPENAI_API_KEY|ANTHROPIC_API_KEY|TIGERIQ_GITHUB_TOKEN|DATABASE_URL/);
+    expect(installer).toContain("New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited");
+    expect(installer).toContain("$TaskName='TigerIQ Paperclip WSL Broker'");
+    expect(installer).not.toMatch(/Password|Credential|RunLevel Highest/);
+  });
+
   it('pins immutable image refs and rejects mutable/foreign refs', () => {
     const digest = 'ghcr.io/paperclipai/paperclip@sha256:' + 'a'.repeat(64);
     expect(paperclipLabComposeYaml(digest)).toContain(`image: ${digest}`);
@@ -222,6 +252,8 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(source).toContain('TIGERIQ_PAPERCLIP_LAB_IMAGE_REVISION_MISMATCH');
     expect(source).toContain("wsl.exe");
     expect(source).toContain("'--distribution', PAPERCLIP_LAB_WSL_DISTRO, '--exec', 'docker'");
+    expect(source).toContain('wsl-ubuntu-interactive-broker');
+    expect(source).toContain('TIGERIQ_PAPERCLIP_LAB_BROKER_DOCKER_ARGS_NOT_ALLOWED');
     expect(source).toContain('TIGERIQ_PAPERCLIP_LAB_DOCKER_PATH_NOT_ALLOWED');
     expect(source).toContain('imageDigest');
     expect(source).toContain('/api/health');
