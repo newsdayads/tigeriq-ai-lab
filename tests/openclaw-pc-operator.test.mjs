@@ -142,6 +142,8 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(resolvePaperclipLabPath('D:\\TigerIQ-Paperclip-Lab\\data')).toBe('D:\\TigerIQ-Paperclip-Lab\\data');
     expect(() => resolvePaperclipLabPath('D:\\TigerIQ\\State')).toThrow('TIGERIQ_PAPERCLIP_LAB_PATH_NOT_ALLOWED');
     expect(PAPERCLIP_LAB_ACTIONS).toEqual([
+      'paperclip_lab_docker_status',
+      'paperclip_lab_docker_start',
       'paperclip_lab_preflight',
       'paperclip_lab_install',
       'paperclip_lab_start',
@@ -189,6 +191,8 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(source).toContain('TIGERIQ_PAPERCLIP_LAB_SYMLINK_BLOCKED');
     expect(source).toContain('TIGERIQ_PAPERCLIP_LAB_REALPATH_ESCAPE_BLOCKED');
     expect(source).toContain('TIGERIQ_PAPERCLIP_LAB_IMAGE_REVISION_MISMATCH');
+    expect(source).toContain('TIGERIQ_PAPERCLIP_LAB_DOCKER_DESKTOP_NOT_INSTALLED');
+    expect(source).toContain('Docker Desktop.exe');
     expect(source).toContain('imageDigest');
     expect(source).toContain('/api/health');
     expect(source).toContain('identityOk');
