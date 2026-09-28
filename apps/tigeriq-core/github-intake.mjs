@@ -403,7 +403,9 @@ export function buildGithubPcOperatorPrompt(assignedAction,publicEvidenceKeys=[]
       'If a requested key is absent, omit it; never invent a value.',
     );
   }
-  return lines.join('\n');
+  const prompt=lines.join('\n');
+  if(prompt.length>6000)throw new Error('OPENCLAW_INSTRUCTION_INVALID');
+  return prompt;
 }
 
 async function readActiveExternalRoleClaim(fetchImpl,owner,repo,token,spec){
@@ -451,6 +453,23 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
     const id=prior?`OBJ-GH-${spec.number}-R${rearmKey(spec)}`:`OBJ-GH-${spec.number}`;
     const exists=(await pool.query('select 1 from tigeriq_objectives where id=$1',[id])).rowCount>0;
     if(exists){skipped++;continue;}
+    let pcOperatorPrompt=null;
+    if(spec.capability==='pc_operator'){
+      try{
+        pcOperatorPrompt=buildGithubPcOperatorPrompt(
+          extractPcOperatorInstruction(spec.body),
+          spec.publicEvidenceKeys,
+          {directAction:Boolean(spec.pcOperatorDirectAction)},
+        );
+      }catch(error){
+        if(String(error?.message||'')==='OPENCLAW_INSTRUCTION_INVALID'){
+          await recordRoutingFault(pool,{source:'github-intake',issueNumber:spec.number,resourceScope:spec.resourceScope||null,reason:'OPENCLAW_INSTRUCTION_INVALID'});
+          skipped++;
+          continue;
+        }
+        throw error;
+      }
+    }
     const context=await hydrateContext(fetchImpl,owner,repo,spec,token);
     const objective=spec.capability==='pc_operator'
       ? (spec.pcOperatorDirectAction
@@ -467,13 +486,8 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
     };
     await pool.query('insert into tigeriq_objectives(id,objective,priority,metadata) values($1,$2,$3,$4) on conflict(id) do nothing',[id,objective,spec.priority,JSON.stringify(metadata)]);
     if(spec.capability==='pc_operator'){
-      const assigned=extractPcOperatorInstruction(spec.body);
       const jobId=githubPcOperatorJobId(id,spec.number);
-      const prompt=buildGithubPcOperatorPrompt(
-        assigned,
-        spec.publicEvidenceKeys,
-        {directAction:Boolean(spec.pcOperatorDirectAction)},
-      );
+      const prompt=pcOperatorPrompt;
       await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,max_attempts) values($1,$2,$3,$4,'pc_operator','pc_operator','queued',2) on conflict(id) do nothing",[jobId,id,`GitHub #${spec.number} bounded PC operator`,prompt]);
       await pool.query("insert into tigeriq_events(type,objective_id,job_id,task_kind,data) values('GITHUB_PC_OPERATOR_JOB_MATERIALIZED',$1,$2,'pc_operator',$3)",[id,jobId,JSON.stringify({issueNumber:spec.number,executionSurface:'CORE_OPENCLAW_BOUNDED'})]);
     }
