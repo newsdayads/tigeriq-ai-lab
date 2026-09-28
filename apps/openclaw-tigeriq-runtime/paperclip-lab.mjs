@@ -191,12 +191,15 @@ export function paperclipLabComposeYaml() {
 async function ensureConfig() {
   await ensureLayout();
   const safeEnvFile = await assertSafeFileTarget(ENV_FILE);
+  let envText;
   try {
-    await fs.access(safeEnvFile);
-  } catch {
+    envText = await fs.readFile(safeEnvFile, 'utf8');
+    validatePaperclipLabEnvText(envText);
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
     const authSecret = randomBytes(32).toString('hex');
     const signingSecret = randomBytes(32).toString('hex');
-    const envText = [
+    envText = [
       'HOST=0.0.0.0',
       'PAPERCLIP_HOME=/paperclip',
       'PAPERCLIP_DEPLOYMENT_MODE=authenticated',
@@ -209,6 +212,7 @@ async function ensureConfig() {
       'ANTHROPIC_API_KEY=',
       '',
     ].join('\n');
+    validatePaperclipLabEnvText(envText);
     await fs.writeFile(safeEnvFile, envText, { encoding: 'utf8', flag: 'wx' });
   }
   const safeComposeFile = await assertSafeFileTarget(COMPOSE_FILE);
