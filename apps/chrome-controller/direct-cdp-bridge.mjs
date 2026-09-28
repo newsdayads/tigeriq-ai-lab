@@ -15,6 +15,7 @@ const CONFIG='D:\\TigerIQ\\Apps\\ChromeController\\Config\\chrome-controller.jso
 const LOG='D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\direct-cdp-bridge.jsonl';
 const SEND_BUTTON_WAIT_MS=10000;
 const NV02_CONTINUITY_STATE='D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\nv02-continuity-state.json';
+const NV02_MAINTENANCE_TIMER_STATE='D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\nv02-maintenance-timers.json';
 const NV02_IDLE_MARKER='D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\nv02-ready-no-eligible-work.marker';
 const NV02_IDLE_WAKE_MIN_MS=5*60*1000;
 const NV02_IDLE_WAKE_MAX_MS=10*60*1000;
@@ -42,6 +43,7 @@ let nv02VerifiedModelProfile=null;
 let nv02MutationBusy=false;
 let nv02BootF5ScheduleInitialized=false;
 let nv02BootRefreshScheduleInitialized=false;
+let nv02MaintenanceTimerFloorInitialized=false;
 const APP_CHROME_LOCAL_UI_ONLY=true;
 const NV02_F5_MIN_MS=5*60*1000;
 const NV02_F5_MAX_MS=10*60*1000;
@@ -543,15 +545,51 @@ async function stabilityPace(random=Math.random){
   await sleep(delayMs);
   return delayMs;
 }
+function loadNv02MaintenanceTimerFloor(){
+  let raw={};
+  try{raw=JSON.parse(fs.readFileSync(NV02_MAINTENANCE_TIMER_STATE,'utf8'));}catch{}
+  return{
+    nextPeriodicF5At:Number(raw.nextPeriodicF5At)||0,
+    nextRefreshAt:Number(raw.nextRefreshAt)||0
+  };
+}
+function saveNv02MaintenanceTimerFloor(nextPeriodicF5At,nextRefreshAt){
+  const prior=loadNv02MaintenanceTimerFloor();
+  const durable={
+    schemaVersion:'tigeriq.nv02.maintenance-timers.v1',
+    nextPeriodicF5At:Math.max(Number(prior.nextPeriodicF5At)||0,Number(nextPeriodicF5At)||0),
+    nextRefreshAt:Math.max(Number(prior.nextRefreshAt)||0,Number(nextRefreshAt)||0),
+    updatedAt:new Date().toISOString()
+  };
+  const tmp=NV02_MAINTENANCE_TIMER_STATE+'.tmp';
+  fs.writeFileSync(tmp,JSON.stringify(durable,null,2));
+  fs.renameSync(tmp,NV02_MAINTENANCE_TIMER_STATE);
+  return durable;
+}
 function loadNv02Continuity(){
   const now=Date.now();
   let raw={};
   try{raw=JSON.parse(fs.readFileSync(NV02_CONTINUITY_STATE,'utf8'));}catch{}
   const f5WindowVersion=4;
-  const nextPeriodicF5At=Number(raw.nextPeriodicF5At)||nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS);
-  const nextRefreshAt=Number(raw.nextRefreshAt)||nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS);
+  const durableTimers=loadNv02MaintenanceTimerFloor();
+  const rawNextPeriodicF5At=Number(raw.nextPeriodicF5At)||nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS);
+  const rawNextRefreshAt=Number(raw.nextRefreshAt)||nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS);
+  const nextPeriodicF5At=Math.max(rawNextPeriodicF5At,Number(durableTimers.nextPeriodicF5At)||0);
+  const nextRefreshAt=Math.max(rawNextRefreshAt,Number(durableTimers.nextRefreshAt)||0);
+  const f5TimerRegressed=Boolean(durableTimers.nextPeriodicF5At&&rawNextPeriodicF5At<durableTimers.nextPeriodicF5At);
+  const refreshTimerRegressed=Boolean(durableTimers.nextRefreshAt&&rawNextRefreshAt<durableTimers.nextRefreshAt);
+  if(f5TimerRegressed||refreshTimerRegressed){
+    log('NV02_MAINTENANCE_TIMER_REGRESSION_BLOCKED',{
+      rawNextPeriodicF5At,guardedNextPeriodicF5At:nextPeriodicF5At,
+      rawNextRefreshAt,guardedNextRefreshAt:nextRefreshAt
+    });
+  }
+  if(!nv02MaintenanceTimerFloorInitialized){
+    nv02MaintenanceTimerFloorInitialized=true;
+    saveNv02MaintenanceTimerFloor(nextPeriodicF5At,nextRefreshAt);
+  }
   const workingRecheckAt=Number(raw.workingRecheckAt)||0;
-  let persistBootSchedule=Number(raw.f5WindowVersion)!==f5WindowVersion;
+  let persistBootSchedule=Number(raw.f5WindowVersion)!==f5WindowVersion||f5TimerRegressed||refreshTimerRegressed;
   if(!nv02BootF5ScheduleInitialized){
     nv02BootF5ScheduleInitialized=true;
     if(nextPeriodicF5At<=now)log('NV02_F5_TIMER_OVERDUE_AFTER_RESTART',{nextPeriodicF5At});
@@ -606,8 +644,15 @@ function applyNv02DurableVerifiedModelProfile(ui){
   return exact;
 }
 function saveNv02Continuity(state){
+  const durableTimers=saveNv02MaintenanceTimerFloor(state.nextPeriodicF5At,state.nextRefreshAt);
+  const guardedState={
+    ...state,
+    nextPeriodicF5At:Math.max(Number(state.nextPeriodicF5At)||0,durableTimers.nextPeriodicF5At),
+    nextRefreshAt:Math.max(Number(state.nextRefreshAt)||0,durableTimers.nextRefreshAt),
+    updatedAt:new Date().toISOString()
+  };
   const tmp=NV02_CONTINUITY_STATE+'.tmp';
-  fs.writeFileSync(tmp,JSON.stringify({...state,updatedAt:new Date().toISOString()},null,2));
+  fs.writeFileSync(tmp,JSON.stringify(guardedState,null,2));
   fs.renameSync(tmp,NV02_CONTINUITY_STATE);
 }
 

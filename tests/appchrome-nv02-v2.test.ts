@@ -111,6 +111,24 @@ describe('NV02 V2 independent maintenance timers', () => {
     expect(bridge).not.toContain('NV02_REFRESH_TIMER_REBASED_AFTER_RESTART');
   });
 
+  it('keeps NV02 maintenance timers monotonic across stale continuity-state writers', () => {
+    expect(bridge).toContain("const NV02_MAINTENANCE_TIMER_STATE='D:\\\\TigerIQ\\\\Apps\\\\ChromeController\\\\Runtime\\\\nv02-maintenance-timers.json'");
+    expect(bridge).toContain('function loadNv02MaintenanceTimerFloor()');
+    expect(bridge).toContain('function saveNv02MaintenanceTimerFloor(nextPeriodicF5At,nextRefreshAt)');
+    expect(bridge).toContain('nextPeriodicF5At:Math.max(Number(prior.nextPeriodicF5At)||0,Number(nextPeriodicF5At)||0)');
+    expect(bridge).toContain('nextRefreshAt:Math.max(Number(prior.nextRefreshAt)||0,Number(nextRefreshAt)||0)');
+    expect(bridge).toContain('const nextPeriodicF5At=Math.max(rawNextPeriodicF5At,Number(durableTimers.nextPeriodicF5At)||0)');
+    expect(bridge).toContain('const nextRefreshAt=Math.max(rawNextRefreshAt,Number(durableTimers.nextRefreshAt)||0)');
+    expect(bridge).toContain('NV02_MAINTENANCE_TIMER_REGRESSION_BLOCKED');
+    const saveStart=bridge.indexOf('function saveNv02Continuity(state)');
+    const saveEnd=bridge.indexOf('\n\nfunction auth(',saveStart);
+    const saveBlock=bridge.slice(saveStart,saveEnd);
+    expect(saveBlock).toContain('saveNv02MaintenanceTimerFloor(state.nextPeriodicF5At,state.nextRefreshAt)');
+    expect(saveBlock).toContain('nextPeriodicF5At:Math.max');
+    expect(saveBlock).toContain('nextRefreshAt:Math.max');
+  });
+
+
   it('keeps reviewed self-pull and idle behavior in the exact head', () => {
     expect(bridge).toContain('NV02_IDLE_SELF_PULL_WAKE_UNCERTAIN');
     expect(bridge).toContain('nextIdleWakeAt:now+60_000');
