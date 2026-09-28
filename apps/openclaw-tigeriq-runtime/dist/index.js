@@ -97,6 +97,8 @@ export default defineToolPlugin({
           Type.Literal('pad_set_value'),
           Type.Literal('pad_click'),
           Type.Literal('pad_keys'),
+          Type.Literal('paperclip_lab_docker_status'),
+          Type.Literal('paperclip_lab_docker_start'),
           Type.Literal('paperclip_lab_preflight'),
           Type.Literal('paperclip_lab_install'),
           Type.Literal('paperclip_lab_start'),
