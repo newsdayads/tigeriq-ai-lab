@@ -247,7 +247,8 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS");
     expect(source).toContain("unchanged>=MAX_WORKING_UNCHANGED_CHECKS");
     expect(continuityLoop).toContain("if(now>=Number(state.nextPeriodicF5At||0))");
-    expect(continuityLoop).toContain("if(phase!=='WORKING'&&now>=Number(state.nextRefreshAt||0))");
+    expect(continuityLoop).toContain("if(now>=Number(state.nextRefreshAt||0))");
+    expect(continuityLoop).not.toContain("if(phase!=='WORKING'&&now>=Number(state.nextRefreshAt||0))");
     expect(continuityLoop.indexOf("if(phase==='WORKING')")).toBeLessThan(continuityLoop.indexOf("if(now<Number(state.nextContinueAt||0))return"));
     expect(source).toContain("const NV02_F5_MIN_MS=5*60*1000");
     expect(source).toContain("const NV02_F5_MAX_MS=10*60*1000");
@@ -255,7 +256,7 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("let nextPeriodicF5At=Number(raw.nextPeriodicF5At)||nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS)");
     expect(source).toContain("let workingRecheckAt=Number(raw.workingRecheckAt)||0");
     expect(source).toContain("'NV02_F5_TIMERS_REBASED_AFTER_RESTART'");
-    expect(source).toContain("nextPeriodicF5At:nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS)");
+    expect(source).toContain("nextPeriodicF5At:w.id==='NV02'?Number(state.nextPeriodicF5At||0):nextRandomAt(now,WORKER_F5_MIN_MS,WORKER_F5_MAX_MS)");
     expect(source).toContain("modelCheckBlockedUntil:now+30000");
     expect(source).not.toContain("modelCheckBlockedUntil:now+60_000");
     expect(source).not.toContain("MODEL_PROFILE_RECOVERY_FAILED");
