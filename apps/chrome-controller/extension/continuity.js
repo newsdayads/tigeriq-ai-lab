@@ -1,25 +1,25 @@
 export const CONTINUE_PROMPTS = Object.freeze([
-  'Tiếp tục',
-  'Làm tiếp',
-  'Tiếp đi',
-  'Xử lý tiếp',
-  'Thực hiện tiếp',
-  'Tiếp tục công việc hiện tại',
-  'Làm tiếp công việc hiện tại',
-  'Tiếp tục việc đang làm',
-  'Làm tiếp phần đang dở',
-  'Tiếp tục từ chỗ hiện tại',
-  'Tiếp tục đúng việc này',
-  'Xử lý tiếp việc hiện tại',
-  'Thực hiện tiếp việc đang làm',
-  'Tiếp tục phần còn dở',
-  'Tiếp tục từ trạng thái hiện tại',
-  'Tiếp tục xử lý việc đang dở',
-  'Tiếp tục công việc đang dang dở',
-  'Thực thi tiếp việc hiện tại',
-  'Làm tiếp nhiệm vụ đang thực hiện',
-  'Tiếp tục đúng việc đang được giao',
-  'Làm tiếp, không đổi việc',
+  'Kiểm tra trạng thái việc hiện tại và làm bước kế tiếp.',
+  'Tiếp tục đúng Work Order đang active, không đổi việc.',
+  'Làm bước nhỏ tiếp theo có thể kiểm chứng.',
+  'Hoàn tất phần đang dở rồi ghi evidence.',
+  'Kiểm tra kết quả bước vừa làm.',
+  'Nếu có lỗi, xác định root cause và sửa trong phạm vi Work Order.',
+  'Chạy test hoặc verification cần thiết cho bước hiện tại.',
+  'Đọc lại acceptance criteria và đối chiếu kết quả.',
+  'Kiểm tra dependency trước khi tiếp tục.',
+  'Nếu dependency chưa đủ, ghi blocker cụ thể và dừng an toàn.',
+  'Tiếp tục xử lý phần còn thiếu của Work Order.',
+  'Không tự chuyển sang issue hoặc nhiệm vụ khác.',
+  'Không tự tạo scope, claim hoặc resource mới ngoài Work Order.',
+  'Kiểm tra evidence đã đủ và đúng định dạng chưa.',
+  'Nếu đã đạt yêu cầu, ghi terminal evidence.',
+  'Nếu bị chặn thật, ghi blocker và không lặp vô hạn.',
+  'Nếu cần retry, retry đúng bước lỗi với giới hạn an toàn.',
+  'Kiểm tra lease và resource ownership trước khi ghi.',
+  'Hoàn tất, release lease và cập nhật trạng thái cuối.',
+  'Nếu không còn active work, không tự bịa việc và chờ controller.',
+  'Báo trạng thái ngắn gọn: DONE, BLOCKED, EXTERNAL_WAIT hoặc READY.',
 ]);
 
 export const CONTINUE_MIN_MS = 3 * 1000;
@@ -29,7 +29,7 @@ export const REFRESH_MAX_MS = 4 * 60 * 60 * 1000;
 export const WORKER_REFRESH_MIN_MS = REFRESH_MIN_MS;
 export const WORKER_REFRESH_MAX_MS = REFRESH_MAX_MS;
 export const WORKER_F5_MIN_MS = 5 * 60 * 1000;
-export const WORKER_F5_MAX_MS = 10 * 60 * 1000;
+export const WORKER_F5_MAX_MS = 20 * 60 * 1000;
 export const MAX_STALLED_CHECKS = 3;
 export const WORKING_PROGRESS_CHECK_MS = 60 * 1000;
 export const MAX_WORKING_UNCHANGED_CHECKS = 3;
