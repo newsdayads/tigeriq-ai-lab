@@ -54,6 +54,9 @@ describe('GitHub Core intake guardrails',()=>{
       present:true,valid:true,action:{action:'task_start',taskName:'TigerIQ Core Runtime Updater'},mutating:true
     });
     expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"task_start","taskName":"TigerIQ Core Runtime Updater"}',false)).toMatchObject({present:true,valid:false,reason:'OWNER_DIRECT_REQUIRED'});
+    expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"paperclip_lab_docker_status"}',false)).toMatchObject({present:true,valid:true,action:{action:'paperclip_lab_docker_status'},mutating:false});
+    expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"paperclip_lab_docker_start"}',true)).toMatchObject({present:true,valid:true,action:{action:'paperclip_lab_docker_start'},mutating:true});
+    expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"paperclip_lab_docker_start"}',false)).toMatchObject({present:true,valid:false,reason:'OWNER_DIRECT_REQUIRED'});
     expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"paperclip_lab_preflight"}',false)).toMatchObject({
       present:true,valid:true,action:{action:'paperclip_lab_preflight'},mutating:false
     });
