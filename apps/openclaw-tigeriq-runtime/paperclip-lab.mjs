@@ -397,24 +397,30 @@ async function rollbackContainer() {
   } catch {}
 }
 
-async function install() {
-  const before = await preflight();
+async function install(signal = null) {
+  const before = await preflight(signal);
   if (!before.docker.ok) throw new Error('TIGERIQ_PAPERCLIP_LAB_DOCKER_UNAVAILABLE');
   if (before.port3210.reachable) {
-    const existing = await health();
+    const existing = await health(signal);
     if (existing.ok) return { alreadyInstalled: true, preflight: before, health: existing };
     throw new Error('TIGERIQ_PAPERCLIP_LAB_PORT_3210_OCCUPIED');
   }
   await ensureConfig();
-  const pull = await runFixed('docker.exe', ['pull', PAPERCLIP_LAB_IMAGE], { timeoutMs: 180000 });
+  const pull = await runFixed('docker.exe', ['pull', PAPERCLIP_LAB_IMAGE], { timeoutMs: 180000, signal });
   if (pull.exitCode !== 0 || pull.timedOut) throw new Error('TIGERIQ_PAPERCLIP_LAB_PULL_FAILED');
-  const up = await runFixed('docker.exe', composeArgs(['up', '-d']), { cwd: CONFIG_DIR, timeoutMs: 120000 });
-  if (up.exitCode !== 0 || up.timedOut) throw new Error('TIGERIQ_PAPERCLIP_LAB_START_FAILED');
-  const state = await waitForHealth();
-  if (!state.ok) throw new Error('TIGERIQ_PAPERCLIP_LAB_HEALTH_TIMEOUT');
-  return { installed: true, pull: { exitCode: pull.exitCode }, start: { exitCode: up.exitCode }, health: state };
+  const pin = await resolvePulledImagePin(signal);
+  await ensureConfig(pin);
+  try {
+    const up = await runFixed('docker.exe', composeArgs(['up', '-d']), { cwd: CONFIG_DIR, timeoutMs: 120000, signal });
+    if (up.exitCode !== 0 || up.timedOut) throw new Error('TIGERIQ_PAPERCLIP_LAB_START_FAILED');
+    const state = await waitForHealth(20, signal);
+    if (!state.ok) throw new Error('TIGERIQ_PAPERCLIP_LAB_HEALTH_TIMEOUT');
+    return { installed: true, imageDigest: pin.imageDigest, pull: { exitCode: pull.exitCode }, start: { exitCode: up.exitCode }, health: state };
+  } catch (error) {
+    await rollbackContainer();
+    throw error;
+  }
 }
-
 async function start() {
   await ensureConfig();
   const up = await runFixed('docker.exe', composeArgs(['up', '-d']), { cwd: CONFIG_DIR, timeoutMs: 120000 });
