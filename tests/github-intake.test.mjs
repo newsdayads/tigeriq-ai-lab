@@ -48,7 +48,10 @@ test('persistence verification through injected evidence sink', () => {
 });
 
 
-function response(data,ok=true,status=200){return {ok,status,json:async()=>data};}
+function response(data,ok=true,status=200){
+  const raw=status===204?'':JSON.stringify(data);
+  return {ok,status,headers:{get:()=>null},json:async()=>data,text:async()=>raw};
+}
 
 function coreBacklogPool(){
   const objectives=[]; const events=[]; const jobs=[];
@@ -89,8 +92,16 @@ function coreBacklogPool(){
       jobs.push({id:params[0],objective_id:params[1],title:params[2],prompt:params[3],capability:'pc_operator',kind:'pc_operator',status:'queued',max_attempts:2});
       return {rowCount:1,rows:[]};
     }
+    if(q.includes("from tigeriq_events where type='ROUTING_FAULT'")){
+      const found=events.some((e)=>e.type==='ROUTING_FAULT'&&String(e.data?.issueNumber)===String(params[0])&&String(e.data?.reason)===String(params[1]));
+      return {rowCount:found?1:0,rows:found?[{ok:1}]:[]};
+    }
     if(q.includes("insert into tigeriq_events")){
-      events.push({type:q.includes('GITHUB_PC_OPERATOR_JOB_MATERIALIZED')?'GITHUB_PC_OPERATOR_JOB_MATERIALIZED':'GITHUB_OBJECTIVE_MATERIALIZED',objectiveId:params[0],jobId:params[1]||null});
+      if(q.includes("'ROUTING_FAULT'")){
+        events.push({type:'ROUTING_FAULT',data:JSON.parse(params[0])});
+      }else{
+        events.push({type:q.includes('GITHUB_PC_OPERATOR_JOB_MATERIALIZED')?'GITHUB_PC_OPERATOR_JOB_MATERIALIZED':'GITHUB_OBJECTIVE_MATERIALIZED',objectiveId:params[0],jobId:params[1]||null});
+      }
       return {rowCount:1,rows:[]};
     }
     return {rowCount:0,rows:[]};
@@ -118,6 +129,7 @@ test('pc_operator public evidence prompt is opt-in, allowlisted, and forbids raw
   const nearLimit='x'.repeat(5700);
   assert.ok(buildGithubPcOperatorPrompt(nearLimit,[]).length<=6000);
   assert.throws(()=>buildGithubPcOperatorPrompt(nearLimit,['installedSha']),/OPENCLAW_INSTRUCTION_INVALID/);
+  assert.ok(buildGithubPcOperatorPrompt(nearLimit,['installedSha'],{directAction:true}).length>6000);
 });
 
 test('oversized pc_operator public evidence prompt is rejected before objective/job materialization',async()=>{
@@ -137,11 +149,26 @@ ${assigned}
 ACCEPTANCE
 Return requested public evidence only.`;
   const issues=[{number:1609,state:'open',title:'oversized OpenClaw canary',body,html_url:'https://example/1609'}];
-  const fetchImpl=async(url)=>url.includes('/issues?')?response(issues):response({});
-  const out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
+  const comments=[];
+  const fetchImpl=async(url,init={})=>{
+    if(url.includes('/issues?'))return response(issues);
+    if(String(init.method||'GET').toUpperCase()==='POST'&&url.endsWith('/issues/1609/comments')){
+      comments.push(JSON.parse(init.body).body);
+      return response({id:1});
+    }
+    return response({});
+  };
+  let out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
   assert.strictEqual(out.created,0);
   assert.strictEqual(pool.objectives.length,0);
   assert.strictEqual(pool.jobs.length,0);
+  assert.strictEqual(comments.length,1);
+  assert.match(comments[0],/OPENCLAW_INSTRUCTION_INVALID/);
+  assert.match(comments[0],/before objective\/job materialization/);
+  out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
+  assert.strictEqual(out.created,0);
+  assert.strictEqual(comments.length,1);
+  assert.strictEqual(pool.events.filter((e)=>e.type==='ROUTING_FAULT').length,1);
 });
 
 test('owner-direct pc_operator GitHub intake materializes bounded OpenClaw objective',async()=>{
@@ -202,6 +229,34 @@ test('typed direct pc_operator action keeps direct prompt and public evidence co
   assert.match(pool.jobs[0].prompt,/pre-admitted typed local PC action/);
   assert.match(pool.jobs[0].prompt,/REQUESTED_PUBLIC_EVIDENCE_KEYS=installedSha,result/);
   assert.match(pool.jobs[0].prompt,/Do not echo raw file content/);
+});
+
+test('typed direct pc_operator action remains executable when explanatory prompt exceeds OpenClaw limit',async()=>{
+  const pool=coreBacklogPool();
+  const assigned='x'.repeat(6500);
+  const body=[
+    'TIGERIQ_EXECUTABLE=true',
+    'OWNER_POLICY=AUTO',
+    'OWNER_DIRECT=true',
+    'PRIORITY=P1',
+    'CAPABILITY=pc_operator',
+    'NO_CODE_CHANGE=true',
+    'NO_PC01_SHELL=true',
+    'RESOURCE_SCOPE=DIRECT_OVERSIZE_TEST',
+    'PUBLIC_EVIDENCE_KEYS=installedSha',
+    'PC_OPERATOR_DIRECT_ACTION_JSON={"action":"file_read","path":"D:\\\\TigerIQ\\\\State\\\\core-runtime-updater.json"}',
+    'ASSIGNED_ACTION',
+    assigned,
+    'ACCEPTANCE',
+    'Return requested public evidence only.',
+  ].join('\n');
+  const issues=[{number:1610,state:'open',title:'direct oversized explanation',body,html_url:'https://example/1610'}];
+  const out=await materializeGithubIssues({pool,openIssues:issues,token:'fake'});
+  assert.strictEqual(out.created,1);
+  assert.strictEqual(out.issueNumber,1610);
+  assert.strictEqual(pool.objectives[0].metadata.executionSurface,'PC_OPERATOR_DIRECT_LOCAL');
+  assert.strictEqual(pool.jobs.length,1);
+  assert.ok(pool.jobs[0].prompt.length>6000);
 });
 
 test('Core manager excludes deterministic CORE_OPENCLAW_BOUNDED objectives',()=>{
