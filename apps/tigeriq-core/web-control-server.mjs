@@ -70,7 +70,8 @@ function projectWorkOrder(issue) {
   const capability=machineValue(body,'CAPABILITY').toUpperCase();
   const executable=machineValue(body,'TIGERIQ_EXECUTABLE').toLowerCase()==='true';
   const ownerControlled=machineValue(body,'OWNER_CONTROLLED').toLowerCase()==='true';
-  const owner=machineValue(body,'MUTATION_OWNER') || machineValue(body,'TARGET_EMPLOYEE') || machineValue(body,'OWNER_PROXY') || issue?.assignee?.login || '—';
+  const rawOwner=machineValue(body,'MUTATION_OWNER') || machineValue(body,'TARGET_EMPLOYEE') || machineValue(body,'OWNER_PROXY') || issue?.assignee?.login || '—';
+  const owner=ownerControlled&&!executable?'OWNER':rawOwner;
   const closed=String(issue?.state||'').toLowerCase()==='closed';
   const isSystem=systemWorkOrder(issue,body);
   const ownerGate=/OWNER_GATE|WAIT(?:ING)?_OWNER|WAIT_ANH_SON|CHỜ_ANH_SƠN/.test(marker);
