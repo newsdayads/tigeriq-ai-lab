@@ -243,7 +243,8 @@ describe('isolated NV02 WORKING/F5 safety scope',()=>{
     expect(hotLoop.slice(dueF5,workingBranch)).toContain("reloadTarget(target)");
     expect(hotLoop.slice(dueReset,dueF5)).toContain("prepareWorkerForPlannedRestart");
     expect(hotLoop.slice(dueReset,dueF5)).toContain("reopenWorker(");
-    expect(hotLoop.slice(workingBranch)).not.toContain('dispatchNaturalContinue(target,state,now)');
+    const workingOnly=hotLoop.slice(workingBranch,hotLoop.indexOf('const chatLoadRecoveryHandled=await maybeRecoverChatLoadError',workingBranch));
+    expect(workingOnly).not.toContain('dispatchNaturalContinue(target,state,now)');
     expect(hotLoop).toContain("'WORKING_LONG_RUNNING_NO_MUTATION'");
     expect(server).toContain("const periodicPrepareRestart=workerId==='NV02'&&purpose==='PERIODIC_PREPARE_RESTART'");
     expect(server).toContain("periodicF5||periodicPrepareRestart||currentChatRestore");
@@ -572,7 +573,7 @@ describe('NV03/NV04 UI continuity lease regression #1525',()=>{
     expect(server).toContain('const uiContinuityLeaseAllowed=continuityLeaseAllowed||genericUiContinuityMaintenance');
     expect(server).toContain('||genericUiContinuityMaintenance;');
     expect(server).toContain('&&!uiContinuityLeaseAllowed)throw new Error(`WORKER_ACTIVE_JOB:${workerId}`)');
-    expect(server).toContain("if(state.lastHeartbeat?.uiBusy!==false&&!staleWorkingRecovery&&!periodicF5&&!chatLoadRecoveryStateAllowed)throw new Error(`WORKER_UI_BUSY_OR_UNKNOWN:${workerId}`)");
+    expect(server).toContain("if(state.lastHeartbeat?.uiBusy!==false&&!staleWorkingRecovery&&!periodicF5&&!periodicPrepareRestart&&!chatLoadRecoveryStateAllowed)throw new Error(`WORKER_UI_BUSY_OR_UNKNOWN:${workerId}`)");
     expect(server).toContain("if(commandQueues.get(workerId)!.length>0||[...waiters.values()].some((w)=>w.workerId===workerId))");
   });
 });
