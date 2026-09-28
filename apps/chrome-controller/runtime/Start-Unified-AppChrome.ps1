@@ -63,6 +63,7 @@ function Set-RuntimeEnvironment($Active){
   # NV02 V2: controller is UI/continuity only. It must never receive a GitHub
   # credential or select/claim/dispatch backlog work.
   Remove-Item Env:TIGERIQ_GITHUB_TOKEN -ErrorAction SilentlyContinue
+  Remove-Item Env:GITHUB_TOKEN -ErrorAction SilentlyContinue
   $env:TIGERIQ_APP_CHROME_SELF_RUN='0'
   $env:TIGERIQ_APP_CHROME_LOCAL_ONLY='1'
 }
