@@ -277,10 +277,11 @@ async function statPath(targetPath) {
   };
 }
 
-export async function executePcAction(input) {
+export async function executePcAction(input, options = {}) {
   const started = Date.now();
   const action = String(input?.action || '');
   let data;
+  let capabilityEvidence = null;
   if (action === 'shell_exec') {
     data = await runShell(input || {});
   } else if (['task_status', 'task_start', 'task_stop', 'task_restart'].includes(action)) {
@@ -298,8 +299,9 @@ export async function executePcAction(input) {
   } else if (action === 'file_stat') {
     data = await statPath(input?.path);
   } else if (PAPERCLIP_LAB_ACTIONS.includes(action)) {
-    const result = await executePaperclipLabAction(input || {});
+    const result = await executePaperclipLabAction(input || {}, { signal: options?.signal });
     data = result.data;
+    capabilityEvidence = result.evidence;
   } else if (PAD_UI_ACTIONS.includes(action)) {
     data = await executePadUiAction(input || {});
   } else {
@@ -327,6 +329,7 @@ export async function executePcAction(input) {
       interactiveUiScope: PAD_UI_ACTIONS.includes(action) ? 'Power Automate Desktop only' : 'none',
       paperclipLabCapability: PAPERCLIP_LAB_ACTIONS.includes(action),
       paperclipLabScope: PAPERCLIP_LAB_ACTIONS.includes(action) ? 'D:\\TigerIQ-Paperclip-Lab + 127.0.0.1:3210 only' : 'none',
+      ...(capabilityEvidence ? { paperclipLab: capabilityEvidence } : {}),
       arbitraryCoordinates: false,
     },
   };
