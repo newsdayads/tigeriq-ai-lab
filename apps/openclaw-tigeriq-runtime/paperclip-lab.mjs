@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 const win = path.win32;
 export const PAPERCLIP_LAB_ROOT = 'D:\\TigerIQ-Paperclip-Lab';
 export const PAPERCLIP_LAB_PORT = 3210;
+export const PAPERCLIP_LAB_RUNTIME_REVISION = '20260929_PULL_CLASS_RCA_1';
 export const PAPERCLIP_LAB_RELEASE = 'v2026.916.1';
 export const PAPERCLIP_LAB_RELEASE_SHA = 'd554c4789ed3930f8a53ac9fdf6503b3187097da';
 export const PAPERCLIP_LAB_IMAGE_REPOSITORY = 'ghcr.io/paperclipai/paperclip';
@@ -739,6 +740,7 @@ export async function executePaperclipLabAction(input = {}, options = {}) {
     data,
     evidence: {
       capability: 'paperclip-lab-v2',
+      runtimeRevision: PAPERCLIP_LAB_RUNTIME_REVISION,
       root: PAPERCLIP_LAB_ROOT,
       port: PAPERCLIP_LAB_PORT,
       loopbackOnly: true,
