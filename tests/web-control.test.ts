@@ -73,7 +73,8 @@ describe('TigerIQ Web Control owner dashboard', () => {
     expect(truth).toContain("['Intake'");
     expect(truth).toContain("['Review'");
     expect(truth).toContain("['CI'");
-    expect(unified).toContain('Work Order');\n    expect(unified).toContain('Thời lượng');
+    expect(unified).toContain('Work Order');
+    expect(unified).toContain('Thời lượng');
     expect(truth).toContain('Không bịa %');
     expect(unified).toContain('calls_success_24h');
     expect(unified).toContain('last_latency_ms');
