@@ -33,7 +33,7 @@ function Get-OperationSpec([string]$Operation) {
       return [pscustomobject]@{ TimeoutSec=20; Args=@('--distribution',$Distro,'--exec','docker','version','--format','{{.Server.Version}}') }
     }
     'pull_pinned_image' {
-      return [pscustomobject]@{ TimeoutSec=600; Args=@('--distribution',$Distro,'--exec','docker','pull',$Image) }
+      return [pscustomobject]@{ TimeoutSec=1200; IdleTimeoutSec=300; Args=@('--distribution',$Distro,'--exec','docker','pull',$Image) }
     }
     'inspect_revision' {
       return [pscustomobject]@{ TimeoutSec=30; Args=@('--distribution',$Distro,'--exec','docker','image','inspect',$Image,'--format','{{ index .Config.Labels "org.opencontainers.image.revision" }}') }
@@ -63,12 +63,50 @@ function Invoke-FixedWslDocker([string]$RequestId, [string]$Operation) {
   $argLine = (($spec.Args | ForEach-Object { Quote-FixedArg ([string]$_) }) -join ' ')
   $proc = Start-Process -FilePath $Wsl -ArgumentList $argLine -PassThru -WindowStyle Hidden -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
   $timedOut = $false
-  try {
-    Wait-Process -Id $proc.Id -Timeout ([int]$spec.TimeoutSec) -ErrorAction Stop
-  } catch {
-    $timedOut = $true
-    Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-    Wait-Process -Id $proc.Id -Timeout 5 -ErrorAction SilentlyContinue
+  $timeoutKind = $null
+  $idleTimeoutSec = if ($spec.PSObject.Properties.Name -contains 'IdleTimeoutSec') { [int]$spec.IdleTimeoutSec } else { 0 }
+  if ($idleTimeoutSec -gt 0) {
+    $startedAt = Get-Date
+    $lastProgressAt = $startedAt
+    [long]$lastBytes = -1
+    while (-not $proc.HasExited) {
+      Start-Sleep -Milliseconds 1000
+      $proc.Refresh()
+      [long]$bytes = 0
+      foreach ($candidate in @($stdoutPath,$stderrPath)) {
+        if (Test-Path -LiteralPath $candidate) {
+          try { $bytes += [long](Get-Item -LiteralPath $candidate).Length } catch {}
+        }
+      }
+      $now = Get-Date
+      if ($bytes -gt $lastBytes) {
+        $lastBytes = $bytes
+        $lastProgressAt = $now
+      }
+      if ((($now - $startedAt).TotalSeconds) -ge [int]$spec.TimeoutSec) {
+        $timedOut = $true
+        $timeoutKind = 'total'
+        break
+      }
+      if ((($now - $lastProgressAt).TotalSeconds) -ge $idleTimeoutSec) {
+        $timedOut = $true
+        $timeoutKind = 'idle'
+        break
+      }
+    }
+    if ($timedOut) {
+      Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+      Wait-Process -Id $proc.Id -Timeout 5 -ErrorAction SilentlyContinue
+    }
+  } else {
+    try {
+      Wait-Process -Id $proc.Id -Timeout ([int]$spec.TimeoutSec) -ErrorAction Stop
+    } catch {
+      $timedOut = $true
+      $timeoutKind = 'total'
+      Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+      Wait-Process -Id $proc.Id -Timeout 5 -ErrorAction SilentlyContinue
+    }
   }
   $proc.Refresh()
   $stdout = if (Test-Path -LiteralPath $stdoutPath) { Get-Content -Raw -LiteralPath $stdoutPath } else { '' }
@@ -77,6 +115,7 @@ function Invoke-FixedWslDocker([string]$RequestId, [string]$Operation) {
   return [pscustomobject]@{
     exitCode = if ($timedOut) { -1 } elseif ($proc.HasExited) { [int]$proc.ExitCode } else { -1 }
     timedOut = $timedOut
+    timeoutKind = $timeoutKind
     stdout = [string]$stdout
     stderr = [string]$stderr
   }
@@ -121,6 +160,7 @@ try {
           ok=$true
           exitCode=[int]$result.exitCode
           timedOut=[bool]$result.timedOut
+          timeoutKind=if ($result.timeoutKind) { [string]$result.timeoutKind } else { $null }
           stdout=[string]$result.stdout
           stderr=[string]$result.stderr
           completedAt=(Get-Date).ToUniversalTime().ToString('o')
@@ -133,6 +173,7 @@ try {
           ok=$false
           exitCode=-1
           timedOut=$false
+          timeoutKind=$null
           stdout=''
           stderr=[string]$_.Exception.Message
           completedAt=(Get-Date).ToUniversalTime().ToString('o')

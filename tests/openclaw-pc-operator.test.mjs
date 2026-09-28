@@ -207,7 +207,9 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(broker).toContain("$Distro = 'Ubuntu'");
     expect(broker).toContain("$LabRoot = 'D:\\TigerIQ-Paperclip-Lab'");
     expect(broker).toContain("'pull_pinned_image'");
-    expect(broker).toContain("TimeoutSec=600");
+    expect(broker).toContain("TimeoutSec=1200; IdleTimeoutSec=300");
+    expect(broker).toContain("$timeoutKind = 'idle'");
+    expect(broker).toContain("$timeoutKind = 'total'");
     expect(broker).toContain("'inspect_revision'");
     expect(broker).toContain("'inspect_repo_digests'");
     expect(broker).toContain("'compose_up'");
@@ -221,6 +223,8 @@ describe('Paperclip Lab bounded PC01 capability', () => {
   });
 
   it('classifies Docker pull failures without exposing raw registry output', () => {
+    expect(paperclipDockerFailureClass({ timedOut: true, timeoutKind: 'idle', exitCode: -1, stderr: 'secret detail' })).toBe('IDLE_TIMEOUT');
+    expect(paperclipDockerFailureClass({ timedOut: true, timeoutKind: 'total', exitCode: -1, stderr: 'secret detail' })).toBe('TOTAL_TIMEOUT');
     expect(paperclipDockerFailureClass({ timedOut: true, exitCode: -1, stderr: 'secret detail' })).toBe('TIMEOUT');
     expect(paperclipDockerFailureClass({ exitCode: 1, stderr: 'unauthorized: authentication required' })).toBe('AUTH');
     expect(paperclipDockerFailureClass({ exitCode: 1, stderr: 'manifest unknown: manifest not found' })).toBe('IMAGE_NOT_FOUND');
@@ -276,9 +280,10 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(source).toContain('TIGERIQ_PAPERCLIP_LAB_BROKER_DOCKER_ARGS_NOT_ALLOWED');
     expect(source).toContain('TIGERIQ_PAPERCLIP_LAB_DOCKER_PATH_NOT_ALLOWED');
     expect(source).toContain('TIGERIQ_PAPERCLIP_LAB_PULL_FAILED_${paperclipDockerFailureClass(pull)}');
-    expect(source).toContain('PAPERCLIP_LAB_PULL_TIMEOUT_MS = 600000');
-    expect(source).toContain('PAPERCLIP_LAB_BROKER_MAX_WAIT_MS = 610000');
+    expect(source).toContain('PAPERCLIP_LAB_PULL_TIMEOUT_MS = 1200000');
+    expect(source).toContain('PAPERCLIP_LAB_BROKER_MAX_WAIT_MS = 1210000');
     expect(source).toContain("timeoutMs: PAPERCLIP_LAB_PULL_TIMEOUT_MS");
+    expect(source).toContain('timeoutKind: response?.timeoutKind || null');
     expect(source).toContain('imageDigest');
     expect(source).toContain('/api/health');
     expect(source).toContain('identityOk');
