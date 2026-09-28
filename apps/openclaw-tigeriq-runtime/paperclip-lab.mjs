@@ -608,7 +608,12 @@ export function paperclipContainerLogClass(value = '') {
   if (/permission denied|operation not permitted|\beacces\b|\beperm\b|read-only file system/.test(text)) return 'PERMISSION';
   if (/better_auth_secret|tool_action_signing_secret|required env|must be set|invalid configuration|configuration error/.test(text)) return 'CONFIG';
   if (/could not create shared memory segment|shared memory.*(?:failed|error|could not)/.test(text)) return 'DB_SHARED_MEMORY';
+  if (/invalid permissions|permissions should be|wrong ownership|must be owned by|not owned by.*postgres/.test(text)) return 'DB_DATA_PERMISSIONS';
   if (/data directory belongs to another instance|expected embedded data directory|refusing to reuse postgresql/.test(text)) return 'DB_DATA_DIR_MISMATCH';
+  if (/database files are incompatible|not compatible with this version|pg_control version|initialized by postgresql version/.test(text)) return 'DB_VERSION_MISMATCH';
+  if (/no space left on device|disk full|could not write.*(?:file|data)|input\/output error|\bi\/o error\b/.test(text)) return 'DB_STORAGE';
+  if (/invalid locale|locale.*(?:not found|failed|error)|collation.*(?:failed|error)|encoding.*(?:failed|error)/.test(text)) return 'DB_LOCALE';
+  if (/password authentication failed|authentication failed for user|role .* does not exist/.test(text)) return 'DB_AUTH';
   if (/failed to initialize embedded postgresql|failed to initialise embedded postgresql|\binitdb\b|initiali[sz]e.*postgres/.test(text)) return 'DB_INIT';
   if (/failed to start embedded postgresql|embedded postgresql.*(?:failed|exited)|postmaster\.pid|stale embedded postgresql lock file/.test(text)) return 'DB_START';
   if (/pending migrations|stale schema|migration.*(?:failed|error)|(?:failed|error).*migration|drizzle/.test(text)) return 'DB_MIGRATION';
