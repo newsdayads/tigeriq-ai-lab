@@ -18,13 +18,14 @@
     const errorAge=timestampAge(errorAt,now);
     const rateAge=timestampAge(rateAt,now);
     const fresh=age<=HEALTH_FRESH_MS;
+    const rateFresh=rateAt?rateAge<=HEALTH_FRESH_MS:fresh;
     const cooldownAt=Date.parse(String(r?.cooldown_until||r?.cooldownUntil||''));
     const cooling=Number.isFinite(cooldownAt)&&cooldownAt>now;
     if(['BUSY','IDLE','READY','ONLINE'].includes(raw)){
       return {status:raw,current:true,historical:Boolean(error),detail:error?`Lỗi trước đó: ${error} · ${Number.isFinite(errorAge)?Math.round(errorAge/60000)+'p trước':'không rõ thời điểm'}`:'Đang khỏe',cooling:false};
     }
     if(raw==='RATE_LIMITED'){
-      if(cooling||(fresh&&/rate|429|quota/.test(error)))return {status:'RATE_LIMITED',current:true,historical:false,detail:cooling?`Rate limit hiện hành · thử lại ~${Math.max(1,Math.ceil((cooldownAt-now)/60000))}p`:'Rate limit vừa ghi nhận',cooling};
+      if(cooling||(rateFresh&&/rate|429|quota/.test(error)))return {status:'RATE_LIMITED',current:true,historical:false,detail:cooling?`Rate limit hiện hành · thử lại ~${Math.max(1,Math.ceil((cooldownAt-now)/60000))}p`:'Rate limit vừa ghi nhận',cooling};
       return {status:'STALE_ERROR',current:false,historical:true,detail:`Rate limit cũ · ${Number.isFinite(rateAge)?Math.round(rateAge/60000)+'p trước':Number.isFinite(age)?'telemetry '+Math.round(age/60000)+'p trước':'không rõ thời điểm'}`,cooling:false};
     }
     if(raw==='ERROR'){
