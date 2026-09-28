@@ -269,6 +269,7 @@ export function paperclipLabBrokerOperationForDockerArgs(args = []) {
     { operation: 'compose_up', args: ['compose','-f',COMPOSE_FILE,'up','-d'] },
     { operation: 'stop_container', args: ['stop', PAPERCLIP_LAB_CONTAINER] },
     { operation: 'inspect_container', args: ['inspect', PAPERCLIP_LAB_CONTAINER, '--format', '{{json .}}'] },
+    { operation: 'container_logs_tail', args: ['logs', '--tail', '160', PAPERCLIP_LAB_CONTAINER] },
   ];
   return allowed.find((item) => JSON.stringify(item.args) === actual)?.operation || null;
 }
@@ -601,12 +602,41 @@ async function preflight(signal = null) {
   };
 }
 
+export function paperclipContainerLogClass(value = '') {
+  const text = String(value || '').toLowerCase();
+  if (!text.trim()) return 'NO_LOGS';
+  if (/permission denied|operation not permitted|\beacces\b|\beperm\b|read-only file system/.test(text)) return 'PERMISSION';
+  if (/better_auth_secret|tool_action_signing_secret|required env|must be set|invalid configuration|configuration error/.test(text)) return 'CONFIG';
+  if (/database|sqlite|migration|drizzle|postgres|\bsql\b/.test(text)) return 'DATABASE';
+  if (/address already in use|\beaddrinuse\b|port .*in use/.test(text)) return 'PORT_CONFLICT';
+  if (/out of memory|heap out of memory|\boom\b|killed process/.test(text)) return 'OOM';
+  if (/no such file|cannot find module|module not found|\benoent\b|exec format/.test(text)) return 'ENTRYPOINT_OR_FILE';
+  if (/fatal|uncaught|exception|\berror\b|failed/.test(text)) return 'APP_ERROR';
+  return 'UNCLASSIFIED';
+}
+
+function paperclipContainerStateErrorClass(value = '') {
+  const text = String(value || '').toLowerCase();
+  if (!text.trim()) return 'NONE';
+  if (/permission denied|operation not permitted|access denied/.test(text)) return 'PERMISSION';
+  if (/mount|bind/.test(text)) return 'MOUNT';
+  if (/no such file|exec format|executable file not found/.test(text)) return 'ENTRYPOINT_OR_FILE';
+  if (/address already in use|port .*in use/.test(text)) return 'PORT_CONFLICT';
+  return 'PRESENT';
+}
+
 export function paperclipHealthFailureClass(state = {}) {
   if (state?.ok === true) return 'OK';
   const reason = String(state?.reason || '').toUpperCase();
   if (reason === 'PIN_NOT_READY') return 'PIN_NOT_READY';
   if (reason === 'DOCKER_UNAVAILABLE') return 'DOCKER_UNAVAILABLE';
-  if (state?.container?.running !== true) return 'CONTAINER_NOT_RUNNING';
+  if (state?.container?.running !== true) {
+    const logClass = String(state?.container?.logClass || '');
+    const stateErrorClass = String(state?.container?.stateErrorClass || '');
+    if (logClass && logClass !== 'NO_LOGS' && logClass !== 'UNCLASSIFIED') return `CONTAINER_NOT_RUNNING_${logClass}`;
+    if (stateErrorClass && stateErrorClass !== 'NONE') return `CONTAINER_NOT_RUNNING_STATE_${stateErrorClass}`;
+    return 'CONTAINER_NOT_RUNNING';
+  }
   if (state?.container?.portBindingOk !== true) return 'PORT_BINDING_MISMATCH';
   if (state?.container?.dataMountOk !== true) return 'DATA_MOUNT_MISMATCH';
   if (state?.port?.reachable !== true) return 'PORT_UNREACHABLE';
@@ -656,7 +686,10 @@ async function install(signal = null) {
     const up = await runDocker(transport, composeArgs(['up', '-d']), { cwd: CONFIG_DIR, timeoutMs: 120000, signal });
     if (up.exitCode !== 0 || up.timedOut) throw new Error('TIGERIQ_PAPERCLIP_LAB_START_FAILED');
     const state = await waitForHealth(signal, transport);
-    if (!state.ok) throw new Error(`TIGERIQ_PAPERCLIP_LAB_HEALTH_TIMEOUT_${paperclipHealthFailureClass(state)}`);
+    if (!state.ok) {
+      const diagnostic = await health(signal, transport, { diagnostics: true }).catch(() => state);
+      throw new Error(`TIGERIQ_PAPERCLIP_LAB_HEALTH_TIMEOUT_${paperclipHealthFailureClass(diagnostic)}`);
+    }
     return { installed: true, dockerTransport: transport, imageDigest: pin.imageDigest, pull: { exitCode: pull.exitCode }, start: { exitCode: up.exitCode }, health: state };
   } catch (error) {
     await rollbackContainer(transport);
@@ -672,7 +705,10 @@ async function start(signal = null) {
     const up = await runDocker(docker.kind, composeArgs(['up', '-d']), { cwd: CONFIG_DIR, timeoutMs: 120000, signal });
     if (up.exitCode !== 0 || up.timedOut) throw new Error('TIGERIQ_PAPERCLIP_LAB_START_FAILED');
     const state = await waitForHealth(signal, docker.kind);
-    if (!state.ok) throw new Error(`TIGERIQ_PAPERCLIP_LAB_HEALTH_TIMEOUT_${paperclipHealthFailureClass(state)}`);
+    if (!state.ok) {
+      const diagnostic = await health(signal, docker.kind, { diagnostics: true }).catch(() => state);
+      throw new Error(`TIGERIQ_PAPERCLIP_LAB_HEALTH_TIMEOUT_${paperclipHealthFailureClass(diagnostic)}`);
+    }
     return { started: true, dockerTransport: docker.kind, imageDigest: pin.imageDigest, health: state };
   } catch (error) {
     await rollbackContainer(docker.kind);
@@ -698,7 +734,7 @@ function mountSourceMatchesLabData(source) {
   ].includes(value);
 }
 
-async function health(signal = null, transport = null) {
+async function health(signal = null, transport = null, options = {}) {
   throwIfAborted(signal);
   let pin;
   try { pin = await readReleasePin(); }
@@ -737,7 +773,26 @@ async function health(signal = null, transport = null) {
     && dataMountOk
   );
 
-  return {
+  let logClass = null;
+  if (options?.diagnostics === true && info && info?.State?.Running !== true) {
+    const logs = await runDocker(
+      docker.kind,
+      ['logs', '--tail', '160', PAPERCLIP_LAB_CONTAINER],
+      { timeoutMs: 20000, signal },
+    ).catch(() => null);
+    logClass = logs?.exitCode === 0
+      ? paperclipContainerLogClass(`${logs.stdout || ''}\n${logs.stderr || ''}`)
+      : 'LOGS_UNAVAILABLE';
+  }
+  const containerDiagnostic = {
+    status: typeof info?.State?.Status === 'string' ? info.State.Status : null,
+    exitCode: Number.isInteger(Number(info?.State?.ExitCode)) ? Number(info.State.ExitCode) : null,
+    oomKilled: info?.State?.OOMKilled === true,
+    stateErrorClass: paperclipContainerStateErrorClass(info?.State?.Error),
+    logClass,
+  };
+
+  const state = {
     ok: port.reachable && http.appOk === true && identityOk,
     url: `http://127.0.0.1:${PAPERCLIP_LAB_PORT}`,
     port,
@@ -748,10 +803,30 @@ async function health(signal = null, transport = null) {
       portBindingOk,
       dataMountOk,
       imageDigest: info?.Config?.Image || null,
+      ...containerDiagnostic,
     },
     docker: { transport: docker.kind, version: docker.version || null },
     pinned: { release: PAPERCLIP_LAB_RELEASE, sourceCommit: PAPERCLIP_LAB_RELEASE_SHA, imageDigest: pin.imageDigest },
   };
+  state.result = {
+    healthFailureClass: paperclipHealthFailureClass(state),
+    portReachable: state.port?.reachable === true,
+    httpReachable: state.http?.reachable === true,
+    httpStatus: state.http?.status ?? null,
+    httpAppOk: state.http?.appOk === true,
+    container: {
+      running: state.container?.running === true,
+      status: state.container?.status || null,
+      exitCode: state.container?.exitCode ?? null,
+      oomKilled: state.container?.oomKilled === true,
+      stateErrorClass: state.container?.stateErrorClass || null,
+      logClass: state.container?.logClass || null,
+      portBindingOk: state.container?.portBindingOk === true,
+      dataMountOk: state.container?.dataMountOk === true,
+      identityOk: state.container?.identityOk === true,
+    },
+  };
+  return state;
 }
 export async function executePaperclipLabAction(input = {}, options = {}) {
   const signal = options?.signal || null;
@@ -764,7 +839,7 @@ export async function executePaperclipLabAction(input = {}, options = {}) {
   else if (action === 'paperclip_lab_install') data = await install(signal);
   else if (action === 'paperclip_lab_start') data = await start(signal);
   else if (action === 'paperclip_lab_stop') data = await stop(signal);
-  else if (action === 'paperclip_lab_health') data = await health(signal);
+  else if (action === 'paperclip_lab_health') data = await health(signal, null, { diagnostics: true });
   else throw new Error('TIGERIQ_PAPERCLIP_LAB_ACTION_NOT_ALLOWED');
   return {
     data,
