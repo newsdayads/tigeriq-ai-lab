@@ -510,11 +510,11 @@ export async function executePaperclipLabAction(input = {}, options = {}) {
   const { action } = assertPaperclipLabRequest(input);
   const started = Date.now();
   let data;
-  if (action === 'paperclip_lab_preflight') data = await preflight();
-  else if (action === 'paperclip_lab_install') data = await install();
-  else if (action === 'paperclip_lab_start') data = await start();
-  else if (action === 'paperclip_lab_stop') data = await stop();
-  else if (action === 'paperclip_lab_health') data = await health();
+  if (action === 'paperclip_lab_preflight') data = await preflight(signal);
+  else if (action === 'paperclip_lab_install') data = await install(signal);
+  else if (action === 'paperclip_lab_start') data = await start(signal);
+  else if (action === 'paperclip_lab_stop') data = await stop(signal);
+  else if (action === 'paperclip_lab_health') data = await health(signal);
   else throw new Error('TIGERIQ_PAPERCLIP_LAB_ACTION_NOT_ALLOWED');
   return {
     data,
