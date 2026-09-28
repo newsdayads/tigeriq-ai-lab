@@ -68,6 +68,8 @@ function projectWorkOrder(issue) {
   const priority=machineValue(body,'PRIORITY') || (String(issue?.title||'').match(/\[(P[0-5])\]/)?.[1] || 'P2');
   const marker=(machineValue(body,'CURRENT_STATE')+' '+machineValue(body,'STATE')).toUpperCase();
   const capability=machineValue(body,'CAPABILITY').toUpperCase();
+  const executable=machineValue(body,'TIGERIQ_EXECUTABLE').toLowerCase()==='true';
+  const ownerControlled=machineValue(body,'OWNER_CONTROLLED').toLowerCase()==='true';
   const owner=machineValue(body,'MUTATION_OWNER') || machineValue(body,'TARGET_EMPLOYEE') || machineValue(body,'OWNER_PROXY') || issue?.assignee?.login || '—';
   const closed=String(issue?.state||'').toLowerCase()==='closed';
   const isSystem=systemWorkOrder(issue,body);
@@ -77,11 +79,11 @@ function projectWorkOrder(issue) {
   const working=machineValue(body,'ACTIVE_EXECUTION').toLowerCase()==='true'||/CLAIM|WORKING|ACTIVE_EXECUTION|IMPLEMENTING|RUNNING/.test(marker);
   let bucket='CẦN XỬ LÝ';
   if(closed) bucket='HOÀN THÀNH';
-  else if(isSystem) bucket='HỆ THỐNG';
   else if(ownerGate) bucket='CHỜ ANH SƠN';
   else if(review) bucket='RÀ SOÁT';
   else if(blocked) bucket='BLOCKED';
-  else if(working) bucket='ĐANG LÀM';
+  else if(working&&executable) bucket='ĐANG LÀM';
+  else if(isSystem||ownerControlled||!executable) bucket='HỆ THỐNG';
   let state='MỞ';
   if(bucket==='HOÀN THÀNH') state='HOÀN THÀNH';
   else if(bucket==='BLOCKED') state='BỊ CHẶN';
@@ -112,7 +114,7 @@ async function githubWorkOrders() {
       return executable||systemWorkOrder(issue,body);
     }).map(projectWorkOrder);
     const rank={P0:0,P1:1,P2:2,P3:3,P4:4,P5:5};
-    const workOrders=candidates.filter(x=>!x.closed && (x.bucket==='HỆ THỐNG'||/(?:^|\n)TIGERIQ_EXECUTABLE=true(?:\r?\n|$)/.test(String((Array.isArray(rows)?rows:[]).find(i=>i.number===x.issue_number)?.body||''))))
+    const workOrders=candidates.filter(x=>!x.closed)
       .sort((a,b)=>(rank[a.priority]??9)-(rank[b.priority]??9)||String(b.updated_at).localeCompare(String(a.updated_at)));
     const workOrdersRecent=candidates.filter(x=>x.closed).sort((a,b)=>String(b.updated_at).localeCompare(String(a.updated_at))).slice(0,30);
     workOrderCache={at:now,workOrders,workOrdersRecent,meta:{ok:true,source:'github',stale:false,refreshed_at:new Date(now).toISOString()}};
