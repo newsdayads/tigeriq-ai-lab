@@ -49,7 +49,7 @@ describe('Web Control live health model',()=>{
       {employee_id:'NV10',status:'IDLE',last_error:'timeout',last_seen_at:ago(1)},
       {employee_id:'NV13',status:'RATE_LIMITED',last_error:'rate_limit',last_seen_at:ago(1),cooldown_until:future(5)},
       {employee_id:'NV15',status:'ERROR',last_error:'invalid_response',last_seen_at:ago(180)}
-    ]);
+    ],NOW);
     expect(alerts.map((x:any)=>x.resource.employee_id)).toEqual(['NV13']);
   });
 });
