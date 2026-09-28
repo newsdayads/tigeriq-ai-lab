@@ -19,6 +19,7 @@ import {
   PAPERCLIP_LAB_WSL_ROOT,
   assertPaperclipLabRequest,
   paperclipDockerFailureClass,
+  paperclipHealthFailureClass,
   paperclipLabBrokerOperationForDockerArgs,
   paperclipLabComposeYaml,
   paperclipLabWslDockerArgs,
@@ -161,6 +162,17 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(assertPaperclipLabRequest({ action: 'paperclip_lab_broker_install' })).toEqual({ action: 'paperclip_lab_broker_install' });
     expect(() => assertPaperclipLabRequest({ action: 'paperclip_lab_health', port: 8795 })).toThrow('TIGERIQ_PAPERCLIP_LAB_ARGUMENT_NOT_ALLOWED');
     expect(() => assertPaperclipLabRequest({ action: 'shell_exec' })).toThrow('TIGERIQ_PAPERCLIP_LAB_ACTION_NOT_ALLOWED');
+  });
+
+  it('classifies health timeout causes before rollback', () => {
+    expect(paperclipHealthFailureClass({ reason: 'PIN_NOT_READY' })).toBe('PIN_NOT_READY');
+    expect(paperclipHealthFailureClass({ container: { running: false } })).toBe('CONTAINER_NOT_RUNNING');
+    expect(paperclipHealthFailureClass({ container: { running: true, portBindingOk: false } })).toBe('PORT_BINDING_MISMATCH');
+    expect(paperclipHealthFailureClass({ container: { running: true, portBindingOk: true, dataMountOk: false } })).toBe('DATA_MOUNT_MISMATCH');
+    expect(paperclipHealthFailureClass({ container: { running: true, portBindingOk: true, dataMountOk: true }, port: { reachable: false } })).toBe('PORT_UNREACHABLE');
+    expect(paperclipHealthFailureClass({ container: { running: true, portBindingOk: true, dataMountOk: true }, port: { reachable: true }, http: { reachable: false } })).toBe('HTTP_UNREACHABLE');
+    expect(paperclipHealthFailureClass({ container: { running: true, portBindingOk: true, dataMountOk: true }, port: { reachable: true }, http: { reachable: true, status: 503, appOk: false } })).toBe('HTTP_503');
+    expect(paperclipHealthFailureClass({ container: { running: true, portBindingOk: true, dataMountOk: true, identityOk: true }, port: { reachable: true }, http: { reachable: true, status: 200, appOk: false } })).toBe('HTTP_STATUS_NOT_OK');
   });
 
   it('uses only the fixed Ubuntu WSL Docker transport and lab-root path translation', () => {
