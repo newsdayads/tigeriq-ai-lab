@@ -148,12 +148,14 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(() => resolvePaperclipLabPath('D:\\TigerIQ\\State')).toThrow('TIGERIQ_PAPERCLIP_LAB_PATH_NOT_ALLOWED');
     expect(PAPERCLIP_LAB_ACTIONS).toEqual([
       'paperclip_lab_preflight',
+      'paperclip_lab_broker_install',
       'paperclip_lab_install',
       'paperclip_lab_start',
       'paperclip_lab_stop',
       'paperclip_lab_health',
     ]);
     expect(assertPaperclipLabRequest({ action: 'paperclip_lab_health' })).toEqual({ action: 'paperclip_lab_health' });
+    expect(assertPaperclipLabRequest({ action: 'paperclip_lab_broker_install' })).toEqual({ action: 'paperclip_lab_broker_install' });
     expect(() => assertPaperclipLabRequest({ action: 'paperclip_lab_health', port: 8795 })).toThrow('TIGERIQ_PAPERCLIP_LAB_ARGUMENT_NOT_ALLOWED');
     expect(() => assertPaperclipLabRequest({ action: 'shell_exec' })).toThrow('TIGERIQ_PAPERCLIP_LAB_ACTION_NOT_ALLOWED');
   });
@@ -243,6 +245,8 @@ describe('Paperclip Lab bounded PC01 capability', () => {
   it('ships the Paperclip module in the packaged OpenClaw plugin', async () => {
     const pkg = JSON.parse(await readFile(new URL('../apps/openclaw-tigeriq-runtime/package.json', import.meta.url), 'utf8'));
     expect(pkg.files).toContain('paperclip-lab.mjs');
+    expect(pkg.files).toContain('paperclip-wsl-broker.ps1');
+    expect(pkg.files).toContain('Install-PaperclipWslBroker.ps1');
   });
 
   it('keeps the implementation fail-closed against shell/path escapes and false health', async () => {
@@ -253,6 +257,9 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(source).toContain("wsl.exe");
     expect(source).toContain("'--distribution', PAPERCLIP_LAB_WSL_DISTRO, '--exec', 'docker'");
     expect(source).toContain('wsl-ubuntu-interactive-broker');
+    expect(source).toContain("paperclip_lab_broker_install");
+    expect(source).toContain("TIGERIQ_PAPERCLIP_LAB_WSL_BROKER_SOURCE_INVALID");
+    expect(source).toContain("C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe");
     expect(source).toContain('TIGERIQ_PAPERCLIP_LAB_BROKER_DOCKER_ARGS_NOT_ALLOWED');
     expect(source).toContain('TIGERIQ_PAPERCLIP_LAB_DOCKER_PATH_NOT_ALLOWED');
     expect(source).toContain('imageDigest');
