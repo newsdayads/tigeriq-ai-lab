@@ -102,6 +102,72 @@ function baseEnv() {
   return env;
 }
 
+async function firstExistingFile(candidates) {
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    try {
+      const stat = await fs.stat(candidate);
+      if (stat.isFile()) return candidate;
+    } catch {}
+  }
+  return null;
+}
+
+async function resolveDockerCli() {
+  const fixed = await firstExistingFile(DOCKER_CLI_CANDIDATES);
+  return fixed || 'docker.exe';
+}
+
+async function runDocker(args, options = {}) {
+  const exe = await resolveDockerCli();
+  return await runFixed(exe, args, options);
+}
+
+async function dockerStatus(signal = null) {
+  throwIfAborted(signal);
+  await ensureRootIntegrity();
+  const fixedCli = await firstExistingFile(DOCKER_CLI_CANDIDATES);
+  const desktopExe = await firstExistingFile(DOCKER_DESKTOP_CANDIDATES);
+  const client = await runDocker(['--version'], { timeoutMs: 10000, signal })
+    .catch((error) => ({ exitCode: -1, timedOut: false, stdout: '', stderr: String(error?.code || error?.message || error) }));
+  const server = client.exitCode === 0
+    ? await runDocker(['version', '--format', '{{.Server.Version}}'], { timeoutMs: 15000, signal })
+        .catch((error) => ({ exitCode: -1, timedOut: false, stdout: '', stderr: String(error?.code || error?.message || error) }))
+    : { exitCode: -1, timedOut: false, stdout: '', stderr: 'DOCKER_CLI_UNAVAILABLE' };
+  return {
+    cliInstalled: client.exitCode === 0,
+    cliPath: fixedCli || (client.exitCode === 0 ? 'PATH:docker.exe' : null),
+    clientVersion: client.exitCode === 0 ? client.stdout.trim() : null,
+    engineReady: server.exitCode === 0 && !server.timedOut && Boolean(server.stdout.trim()),
+    serverVersion: server.exitCode === 0 ? server.stdout.trim() : null,
+    desktopInstalled: Boolean(desktopExe),
+    desktopPath: desktopExe,
+    diagnostic: server.exitCode === 0 ? null : clipped(server.stderr || client.stderr).slice(0, 2000),
+  };
+}
+
+async function dockerStart(signal = null) {
+  const before = await dockerStatus(signal);
+  if (before.engineReady) return { alreadyReady: true, before, after: before };
+  if (!before.desktopInstalled || !before.desktopPath) {
+    throw new Error(before.cliInstalled ? 'TIGERIQ_PAPERCLIP_LAB_DOCKER_ENGINE_UNAVAILABLE' : 'TIGERIQ_PAPERCLIP_LAB_DOCKER_DESKTOP_NOT_INSTALLED');
+  }
+  throwIfAborted(signal);
+  const child = spawn(before.desktopPath, [], {
+    detached: true,
+    windowsHide: false,
+    env: baseEnv(),
+    stdio: 'ignore',
+  });
+  child.unref();
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    await sleepWithSignal(2000, signal);
+    const current = await dockerStatus(signal);
+    if (current.engineReady) return { started: true, before, after: current };
+  }
+  throw new Error('TIGERIQ_PAPERCLIP_LAB_DOCKER_START_TIMEOUT');
+}
+
 const LAB_ENV_FIXED = Object.freeze({
   HOST: '0.0.0.0',
   PAPERCLIP_HOME: '/paperclip',
