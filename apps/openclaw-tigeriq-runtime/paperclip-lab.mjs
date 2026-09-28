@@ -421,15 +421,20 @@ async function install(signal = null) {
     throw error;
   }
 }
-async function start() {
-  await ensureConfig();
-  const up = await runFixed('docker.exe', composeArgs(['up', '-d']), { cwd: CONFIG_DIR, timeoutMs: 120000 });
-  if (up.exitCode !== 0 || up.timedOut) throw new Error('TIGERIQ_PAPERCLIP_LAB_START_FAILED');
-  const state = await waitForHealth();
-  if (!state.ok) throw new Error('TIGERIQ_PAPERCLIP_LAB_HEALTH_TIMEOUT');
-  return { started: true, health: state };
+async function start(signal = null) {
+  const pin = await readReleasePin();
+  await ensureConfig(pin);
+  try {
+    const up = await runFixed('docker.exe', composeArgs(['up', '-d']), { cwd: CONFIG_DIR, timeoutMs: 120000, signal });
+    if (up.exitCode !== 0 || up.timedOut) throw new Error('TIGERIQ_PAPERCLIP_LAB_START_FAILED');
+    const state = await waitForHealth(20, signal);
+    if (!state.ok) throw new Error('TIGERIQ_PAPERCLIP_LAB_HEALTH_TIMEOUT');
+    return { started: true, imageDigest: pin.imageDigest, health: state };
+  } catch (error) {
+    await rollbackContainer();
+    throw error;
+  }
 }
-
 async function stop() {
   await ensureConfig();
   const down = await runFixed('docker.exe', composeArgs(['stop']), { cwd: CONFIG_DIR, timeoutMs: 60000 });
