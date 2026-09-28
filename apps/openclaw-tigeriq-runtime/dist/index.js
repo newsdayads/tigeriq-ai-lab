@@ -135,7 +135,7 @@ export default defineToolPlugin({
       }, { additionalProperties: false }),
       async execute(params, _config, context) {
         context?.signal?.throwIfAborted?.();
-        return executePcAction(params);
+        return executePcAction(params, { signal: context?.signal });
       },
     }),
   ],
