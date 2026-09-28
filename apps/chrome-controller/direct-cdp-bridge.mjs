@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import http from 'node:http';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import {
   CONTINUE_MIN_MS, CONTINUE_MAX_MS, REFRESH_MIN_MS, REFRESH_MAX_MS,
@@ -45,6 +45,12 @@ let nv02BootRefreshScheduleInitialized=false;
 const APP_CHROME_LOCAL_UI_ONLY=true;
 const NV02_F5_MIN_MS=5*60*1000;
 const NV02_F5_MAX_MS=10*60*1000;
+const NV02_SAVE_LEDGER_COMMENTS_URL='https://api.github.com/repos/newsdayads/tigeriq-ai-lab/issues/788/comments?per_page=100&since=';
+const NV02_SAVE_RECEIPT_REQUIRED_KEYS=Object.freeze([
+  'TIGERIQ_SAVE_TOKEN','TIGERIQ_SAVE_WORKER','TIGERIQ_SAVE_DISPATCHED_AT','TIGERIQ_SAVE_STATUS',
+  'TIGERIQ_SAVE_REF','TIGERIQ_SAVE_STATE','TIGERIQ_SAVE_FOCUS','TIGERIQ_SAVE_DECISIONS',
+  'TIGERIQ_SAVE_DONE','TIGERIQ_SAVE_PENDING','TIGERIQ_SAVE_BLOCKERS','TIGERIQ_SAVE_NEXT','TIGERIQ_SAVE_EVIDENCE'
+]);
 const NV02_CONTINUE_PROMPTS=Object.freeze([
   'Tiếp tục',
   'Làm tiếp',
@@ -319,7 +325,7 @@ async function reopenWorker(w,target,state,now,reason){
     }
   }
   if(!reopened)throw lastError||new Error('WORKER_REOPEN_FAILED');
-  const recovered={...checkpointed,recoveryAttempts:0,recoveryBlockedUntil:0,stalledChecks:0,workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:0,pendingContinue:true,awaitingWorkStart:false,modelCheckAttempted:false,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),nextPeriodicF5At:nextRandomAt(now,WORKER_F5_MIN_MS,WORKER_F5_MAX_MS),nextResetAt:nextWorkerResetAt(w.id,now),lastPhase:'STALLED'};
+  const recovered={...checkpointed,recoveryAttempts:0,recoveryBlockedUntil:0,stalledChecks:0,workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:0,pendingContinue:true,awaitingWorkStart:false,modelCheckAttempted:false,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),nextPeriodicF5At:w.id==='NV02'?Number(state.nextPeriodicF5At||0):nextRandomAt(now,WORKER_F5_MIN_MS,WORKER_F5_MAX_MS),nextResetAt:nextWorkerResetAt(w.id,now),lastPhase:'STALLED'};
   saveWorkerContinuity(w.id,recovered);
   await genericWorkerEvent(w.id,'WORKER_REOPENED',{reason,freshUrl,nextResetAt:recovered.nextResetAt});
   return recovered;
@@ -1226,23 +1232,76 @@ function plannedRestartUiDeadStatus(status){
     ||value==='WORKING_STALLED_STOP_TIMEOUT'
     ||/(?:CDP_TIMEOUT|CDP_LIST|TARGET_CLOSED|ECONNREFUSED|fetch failed)/i.test(value);
 }
+function saveReceiptField(body,key){
+  for(const line of String(body||'').split(/\r?\n/)){
+    if(line.startsWith(key+'='))return line.slice(key.length+1).trim();
+  }
+  return'';
+}
+function validNv02SaveReceipt(comment,{token,dispatchedAt}){
+  const body=String(comment?.body||'');
+  if(!body.split(/\r?\n/).some((line)=>line.trim()==='TIGERIQ_SAVE_RECEIPT_V1'))return false;
+  for(const key of NV02_SAVE_RECEIPT_REQUIRED_KEYS){
+    if(!saveReceiptField(body,key))return false;
+  }
+  if(saveReceiptField(body,'TIGERIQ_SAVE_TOKEN')!==token)return false;
+  if(saveReceiptField(body,'TIGERIQ_SAVE_WORKER')!=='NV02')return false;
+  if(saveReceiptField(body,'TIGERIQ_SAVE_STATUS')!=='DURABLE')return false;
+  const dispatchMs=Date.parse(dispatchedAt);
+  const receiptDispatchMs=Date.parse(saveReceiptField(body,'TIGERIQ_SAVE_DISPATCHED_AT'));
+  const createdMs=Date.parse(String(comment?.created_at||''));
+  if(!Number.isFinite(dispatchMs)||!Number.isFinite(receiptDispatchMs)||!Number.isFinite(createdMs))return false;
+  if(createdMs<dispatchMs||receiptDispatchMs<dispatchMs-5000||receiptDispatchMs>createdMs+5000)return false;
+  return true;
+}
+async function verifyNv02SaveReceipt(token,dispatchedAt){
+  const url=NV02_SAVE_LEDGER_COMMENTS_URL+encodeURIComponent(dispatchedAt);
+  for(let attempt=1;attempt<=3;attempt+=1){
+    try{
+      const response=await fetch(url,{headers:{accept:'application/vnd.github+json','user-agent':'TigerIQ-AppChrome-NV02'}});
+      if(response.ok){
+        const comments=await response.json();
+        const receipt=Array.isArray(comments)?comments.find((comment)=>validNv02SaveReceipt(comment,{token,dispatchedAt})):null;
+        if(receipt)return{ok:true,status:'SAVE_DURABLE',receiptUrl:receipt.html_url||null,createdAt:receipt.created_at||null};
+      }
+    }catch{}
+    if(attempt<3)await sleep(5000);
+  }
+  return{ok:false,status:'SAVE_NOT_DURABLE'};
+}
 async function prepareWorkerForPlannedRestart(w,target,initialUi){
   let ui=initialUi||await uiStateRaw(target).catch(()=>null);
   if(!ui)return{ok:false,status:'MAINTENANCE_UI_UNAVAILABLE'};
   if(ui.securityBlock)return{ok:false,status:ui.securityBlock};
-  if(ui.uiBusy===true||ui.stopVisible===true)return{ok:false,status:'MAINTENANCE_DEFERRED_WORKING'};
+  if(ui.uiBusy===true||ui.stopVisible===true){
+    if(w.id!=='NV02')return{ok:false,status:'MAINTENANCE_DEFERRED_WORKING'};
+    const stopped=await stopStalledWorking(target);
+    if(!stopped?.ok)return{ok:false,status:stopped?.status||'MAINTENANCE_WORKING_STOP_FAILED'};
+    ui=await uiStateRaw(target).catch(()=>null);
+    if(!ui)return{ok:false,status:'MAINTENANCE_UI_UNAVAILABLE_AFTER_STOP'};
+  }
   let ready=await waitWorkerReadyForMaintenance(target);
   if(!ready?.ok)return ready;
-  const saved=await dispatch(target,'Lưu');
+  const token=randomUUID();
+  const dispatchedAt=new Date().toISOString();
+  const savePrompt=w.id==='NV02'
+    ? 'Lưu\nTIGERIQ_SAVE_TOKEN='+token+'\nTIGERIQ_SAVE_WORKER=NV02\nTIGERIQ_SAVE_DISPATCHED_AT='+dispatchedAt
+    : 'Lưu';
+  const saved=await dispatch(target,savePrompt);
   if(!saved?.ok)return{ok:false,status:saved?.status||'MAINTENANCE_SAVE_FAILED'};
   ready=await waitWorkerReadyForMaintenance(target,180000);
   if(!ready?.ok)return ready;
+  let saveReceipt=null;
+  if(w.id==='NV02'){
+    saveReceipt=await verifyNv02SaveReceipt(token,dispatchedAt);
+    if(!saveReceipt?.ok)return{ok:false,status:'SAVE_NOT_DURABLE',token};
+  }
   const currentUrl=String(ready.ui?.url||'');
   if(expectedHost(w)==='chatgpt.com'&&/\/c\//.test(currentUrl)){
     const archived=await archiveChat(target);
     if(!archived?.ok)return{ok:false,status:archived?.status||'MAINTENANCE_ARCHIVE_FAILED'};
   }
-  return{ok:true,status:'PLANNED_RESTART_PREPARED',url:currentUrl};
+  return{ok:true,status:'PLANNED_RESTART_PREPARED',url:currentUrl,saveReceiptUrl:saveReceipt?.receiptUrl||null};
 }
 
 function archiveMenuPointExpr(){return `(async()=>{const sleep=ms=>new Promise(r=>setTimeout(r,ms));const vis=e=>{const r=e?.getBoundingClientRect(),s=e&&getComputedStyle(e);return !!e&&r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};if(!/\\/c\\//.test(location.pathname))return{ok:false,status:'ARCHIVE_REQUIRES_CONVERSATION_URL'};const before=location.href,title=document.title.trim(),conversationId=(location.pathname.match(/\\/c\\/([^/?#]+)/)||[])[1]||'';const header=[...document.querySelectorAll('button[data-testid="conversation-options-button"]')].filter(vis);if(header.length===1){const r=header[0].getBoundingClientRect();return{ok:true,status:'ARCHIVE_MENU_POINT',source:'HEADER_CONVERSATION_OPTIONS',before,title,conversationId,x:r.left+r.width/2,y:r.top+r.height/2}}const open=[...document.querySelectorAll('button,[role="button"]')].find(e=>vis(e)&&/mở sidebar|hiện thanh bên|open sidebar/i.test((e.getAttribute('aria-label')||e.innerText||'').trim()));if(open){open.click();await sleep(450)}const rows=[...document.querySelectorAll('[role="listitem"]')].filter(vis);const matchesConversation=row=>Boolean(conversationId)&&(row.getAttribute('data-pinned-content-tab-drop-key')===('chatgpt:conversation:'+conversationId)||row.querySelector('[data-pinned-content-tab-drop-key="chatgpt:conversation:'+conversationId+'"]')||row.querySelector('a[href*="/c/'+conversationId+'"]')||row.querySelector('[data-app-action-sidebar-thread-id="'+conversationId+'"]'));const identityRows=conversationId?rows.filter(matchesConversation):[];const candidates=identityRows.length?identityRows:rows.filter(row=>String(row.innerText||'').trim()===title);const exact=candidates.filter(row=>[...row.querySelectorAll('button')].some(b=>/hành động trong trò chuyện|conversation actions|chat actions/i.test(b.getAttribute('aria-label')||'')));if(exact.length!==1)return{ok:false,status:'ARCHIVE_CURRENT_ROW_COUNT_'+exact.length,title,conversationId,identityMatches:identityRows.length};const menu=[...exact[0].querySelectorAll('button')].filter(b=>vis(b)&&/hành động trong trò chuyện|conversation actions|chat actions/i.test(b.getAttribute('aria-label')||''));if(menu.length!==1)return{ok:false,status:'ARCHIVE_MENU_BUTTON_COUNT_'+menu.length,title};const r=menu[0].getBoundingClientRect();return{ok:true,status:'ARCHIVE_MENU_POINT',source:'SIDEBAR_ROW_FALLBACK',before,title,conversationId,x:r.left+r.width/2,y:r.top+r.height/2}})()`; }
@@ -1433,8 +1492,9 @@ async function dispatchNaturalContinue(target,state,now){
 async function noteNv02CommandDispatch(){
   const now=Date.now();
   const state=loadNv02Continuity();
+  const preservedPeriodicF5At=state.nextPeriodicF5At;
+  const preservedRefreshAt=state.nextRefreshAt;
   state.dispatchesInChat=Number(state.dispatchesInChat||0)+1;
-  state.nextPeriodicF5At=nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS);
   state.workingRecheckAt=nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS);
   state.nextProgressCheckAt=now+WORKING_PROGRESS_CHECK_MS;
   state.stalledChecks=0;
@@ -1442,7 +1502,7 @@ async function noteNv02CommandDispatch(){
   state.awaitingWorkStart=true;
   state.awaitingWorkStartSince=now;
   saveNv02Continuity(state);
-  await continuityEvent('DISPATCH_F5_GUARD_ARMED',{nextPeriodicF5At:state.nextPeriodicF5At,workingRecheckAt:state.workingRecheckAt});
+  await continuityEvent('DISPATCH_TIMERS_PRESERVED',{nextPeriodicF5At:preservedPeriodicF5At,nextRefreshAt:preservedRefreshAt,workingRecheckAt:state.workingRecheckAt});
 }
 async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
   const now=Date.now();let state=loadNv02Continuity();
@@ -1478,7 +1538,7 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
     await continuityEvent(deferred?'VIEW_FOLLOW_BOTTOM_DEFERRED':'VIEW_FOLLOW_BOTTOM',{status:followed?.status||null,pacingMs:followed?.pacingMs||null,nextViewFollowAt:state.nextViewFollowAt});
   }
   if(phase==='BLOCKED'){await continuityEvent('BLOCKED',{securityBlock:ui?.securityBlock||null});return;}
-  if(phase!=='WORKING'&&now>=Number(state.nextRefreshAt||0)){
+  if(now>=Number(state.nextRefreshAt||0)){
     let prepared;
     let uiDeadFallbackStatus='';
     let skipPeriodicReset=false;
@@ -1528,12 +1588,6 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
     }
     state=loadNv02Continuity();
   }
-  if(phase==='WORKING'&&now>=Number(state.nextPeriodicF5At||0)){
-    state={...state,nextPeriodicF5At:nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS)};
-    saveNv02Continuity(state);
-    await continuityEvent('PERIODIC_F5_DEFERRED_WORKING',{nextPeriodicF5At:state.nextPeriodicF5At});
-    return;
-  }
   if(now>=Number(state.nextPeriodicF5At||0)){
     let refreshed;
     try{
@@ -1542,9 +1596,6 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
         const freshPhase=deriveNv02Phase(fresh||{});
         const beforeUrl=fresh?.url||ui?.url||null;
         const beforePhase=freshPhase||phase;
-        if(freshPhase==='WORKING'||fresh?.uiBusy===true||fresh?.stopVisible===true){
-          return {ok:false,status:'PERIODIC_F5_DEFERRED_WORKING_FRESH',beforeUrl,beforePhase};
-        }
         const result=await reloadTarget(target);
         await sleep(1800);
         const after=await uiState(target).catch(()=>null);
@@ -1560,12 +1611,6 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
     if(refreshed?.status==='MUTATION_LEASE_BUSY'){
       state={...state,nextPeriodicF5At:now+5000};saveNv02Continuity(state);
       await continuityEvent('PERIODIC_F5_RETRY_LEASE_BUSY',{nextPeriodicF5At:state.nextPeriodicF5At});
-      return;
-    }
-    if(refreshed?.status==='PERIODIC_F5_DEFERRED_WORKING_FRESH'){
-      state={...state,nextPeriodicF5At:nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS)};
-      saveNv02Continuity(state);
-      await continuityEvent('PERIODIC_F5_DEFERRED_WORKING_FRESH',{beforeUrl:refreshed?.beforeUrl||ui?.url||null,beforePhase:refreshed?.beforePhase||phase,nextPeriodicF5At:state.nextPeriodicF5At});
       return;
     }
     const awaitingBeforeF5=state.awaitingWorkStart===true;
