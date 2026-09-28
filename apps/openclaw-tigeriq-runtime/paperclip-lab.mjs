@@ -9,7 +9,8 @@ export const PAPERCLIP_LAB_ROOT = 'D:\\TigerIQ-Paperclip-Lab';
 export const PAPERCLIP_LAB_PORT = 3210;
 export const PAPERCLIP_LAB_RELEASE = 'v2026.916.1';
 export const PAPERCLIP_LAB_RELEASE_SHA = 'd554c4789ed3930f8a53ac9fdf6503b3187097da';
-export const PAPERCLIP_LAB_IMAGE = 'ghcr.io/paperclipai/paperclip:2026.916.1';
+export const PAPERCLIP_LAB_IMAGE_REPOSITORY = 'ghcr.io/paperclipai/paperclip';
+export const PAPERCLIP_LAB_IMAGE = `${PAPERCLIP_LAB_IMAGE_REPOSITORY}:2026.916.1`;
 export const PAPERCLIP_LAB_CONTAINER = 'tigeriq-paperclip-lab';
 export const PAPERCLIP_LAB_ACTIONS = Object.freeze([
   'paperclip_lab_preflight',
@@ -215,12 +216,231 @@ async function assertSafeFileTarget(value) {
   return candidate;
 }
 
-export function paperclipLabComposeYaml() {
+export function paperclipLabComposeYaml(imageRef = PAPERCLIP_LAB_IMAGE) {
+  if (!new RegExp(`^${PAPERCLIP_LAB_IMAGE_REPOSITORY.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\export function paperclipLabComposeYaml() {')}@sha256:[a-f0-9]{64}import { randomBytes } from 'node:crypto';
+import { promises as fs } from 'node:fs';
+import { spawn } from 'node:child_process';
+import net from 'node:net';
+import path from 'node:path';
+
+const win = path.win32;
+export const PAPERCLIP_LAB_ROOT = 'D:\\TigerIQ-Paperclip-Lab';
+export const PAPERCLIP_LAB_PORT = 3210;
+export const PAPERCLIP_LAB_RELEASE = 'v2026.916.1';
+export const PAPERCLIP_LAB_RELEASE_SHA = 'd554c4789ed3930f8a53ac9fdf6503b3187097da';
+export const PAPERCLIP_LAB_IMAGE_REPOSITORY = 'ghcr.io/paperclipai/paperclip';
+export const PAPERCLIP_LAB_IMAGE = `${PAPERCLIP_LAB_IMAGE_REPOSITORY}:2026.916.1`;
+export const PAPERCLIP_LAB_CONTAINER = 'tigeriq-paperclip-lab';
+export const PAPERCLIP_LAB_ACTIONS = Object.freeze([
+  'paperclip_lab_preflight',
+  'paperclip_lab_install',
+  'paperclip_lab_start',
+  'paperclip_lab_stop',
+  'paperclip_lab_health',
+]);
+
+const CONFIG_DIR = win.join(PAPERCLIP_LAB_ROOT, 'config');
+const DATA_DIR = win.join(PAPERCLIP_LAB_ROOT, 'data');
+const EVIDENCE_DIR = win.join(PAPERCLIP_LAB_ROOT, 'evidence');
+const RESEARCH_DIR = win.join(PAPERCLIP_LAB_ROOT, 'research');
+const BACKUP_DIR = win.join(PAPERCLIP_LAB_ROOT, 'backup');
+const ENV_FILE = win.join(CONFIG_DIR, 'paperclip.env');
+const COMPOSE_FILE = win.join(CONFIG_DIR, 'docker-compose.lab.yml');
+const RELEASE_FILE = win.join(CONFIG_DIR, 'release.json');
+const MAX_OUTPUT_CHARS = 32000;
+
+function normalizeWinPath(value) {
+  return win.resolve(String(value || PAPERCLIP_LAB_ROOT).replaceAll('/', '\\'));
+}
+
+export function resolvePaperclipLabPath(value = PAPERCLIP_LAB_ROOT) {
+  const candidate = normalizeWinPath(value);
+  const base = normalizeWinPath(PAPERCLIP_LAB_ROOT).toLowerCase();
+  const lower = candidate.toLowerCase();
+  if (lower !== base && !lower.startsWith(base + '\\')) {
+    throw new Error('TIGERIQ_PAPERCLIP_LAB_PATH_NOT_ALLOWED');
+  }
+  return candidate;
+}
+
+export function assertPaperclipLabRequest(input = {}) {
+  const action = String(input?.action || '');
+  if (!PAPERCLIP_LAB_ACTIONS.includes(action)) throw new Error('TIGERIQ_PAPERCLIP_LAB_ACTION_NOT_ALLOWED');
+  const extras = Object.keys(input).filter((key) => key !== 'action' && input[key] !== undefined);
+  if (extras.length) throw new Error('TIGERIQ_PAPERCLIP_LAB_ARGUMENT_NOT_ALLOWED');
+  return { action };
+}
+
+function clipped(value) {
+  const text = String(value || '');
+  return text.length <= MAX_OUTPUT_CHARS ? text : text.slice(-MAX_OUTPUT_CHARS) + '\n[TRUNCATED]';
+}
+
+function paperclipAbortError() {
+  const error = new Error('TIGERIQ_PAPERCLIP_LAB_ABORTED');
+  error.name = 'AbortError';
+  return error;
+}
+
+function throwIfAborted(signal) {
+  if (signal?.aborted) throw paperclipAbortError();
+}
+
+async function sleepWithSignal(ms, signal = null) {
+  throwIfAborted(signal);
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener?.('abort', onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(paperclipAbortError());
+    };
+    signal?.addEventListener?.('abort', onAbort, { once: true });
+  });
+}
+
+function baseEnv() {
+  const env = {};
+  for (const key of ['SystemRoot','WINDIR','ComSpec','PATH','PATHEXT','TEMP','TMP','USERPROFILE','APPDATA','LOCALAPPDATA']) {
+    if (process.env[key]) env[key] = process.env[key];
+  }
+  env.DOCKER_CLI_HINTS = 'false';
+  return env;
+}
+
+const LAB_ENV_FIXED = Object.freeze({
+  HOST: '0.0.0.0',
+  PAPERCLIP_HOME: '/paperclip',
+  PAPERCLIP_DEPLOYMENT_MODE: 'authenticated',
+  PAPERCLIP_DEPLOYMENT_EXPOSURE: 'private',
+  PAPERCLIP_PUBLIC_URL: `http://localhost:${PAPERCLIP_LAB_PORT}`,
+  PAPERCLIP_ALLOWED_HOSTNAMES: 'localhost,127.0.0.1',
+  OPENAI_API_KEY: '',
+  ANTHROPIC_API_KEY: '',
+});
+const LAB_ENV_SECRET_KEYS = new Set(['BETTER_AUTH_SECRET','PAPERCLIP_TOOL_ACTION_SIGNING_SECRET']);
+const LAB_ENV_KEYS = new Set([...Object.keys(LAB_ENV_FIXED), ...LAB_ENV_SECRET_KEYS]);
+
+export function validatePaperclipLabEnvText(text) {
+  const values = new Map();
+  for (const raw of String(text || '').split(/\r?\n/)) {
+    if (!raw) continue;
+    const index = raw.indexOf('=');
+    if (index <= 0) throw new Error('TIGERIQ_PAPERCLIP_LAB_ENV_INVALID');
+    const key = raw.slice(0, index);
+    const value = raw.slice(index + 1);
+    if (!LAB_ENV_KEYS.has(key) || values.has(key)) throw new Error('TIGERIQ_PAPERCLIP_LAB_ENV_NOT_ALLOWLISTED');
+    values.set(key, value);
+  }
+  if (values.size !== LAB_ENV_KEYS.size) throw new Error('TIGERIQ_PAPERCLIP_LAB_ENV_INCOMPLETE');
+  for (const [key, expected] of Object.entries(LAB_ENV_FIXED)) {
+    if (values.get(key) !== expected) throw new Error('TIGERIQ_PAPERCLIP_LAB_ENV_UNSAFE');
+  }
+  for (const key of LAB_ENV_SECRET_KEYS) {
+    if (!/^[a-f0-9]{64}$/.test(values.get(key) || '')) throw new Error('TIGERIQ_PAPERCLIP_LAB_ENV_SECRET_INVALID');
+  }
+  return true;
+}
+
+async function runFixed(exe, args, { cwd = PAPERCLIP_LAB_ROOT, timeoutMs = 120000, signal = null } = {}) {
+  throwIfAborted(signal);
+  const safeCwd = resolvePaperclipLabPath(cwd);
+  await ensureRootIntegrity();
+  const realCwd = await ensureContainedDirectory(safeCwd);
+  return await new Promise((resolve, reject) => {
+    const child = spawn(exe, args, {
+      cwd: realCwd,
+      windowsHide: true,
+      env: baseEnv(),
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let stdout = '', stderr = '', timedOut = false, aborted = false, settled = false;
+    child.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
+    child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+    const cleanup = () => signal?.removeEventListener?.('abort', onAbort);
+    const finishReject = (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      cleanup();
+      reject(error);
+    };
+    const onAbort = () => {
+      aborted = true;
+      child.kill();
+    };
+    signal?.addEventListener?.('abort', onAbort, { once: true });
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill();
+    }, timeoutMs);
+    child.once('error', finishReject);
+    child.once('close', (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      cleanup();
+      if (aborted || signal?.aborted) return reject(paperclipAbortError());
+      resolve({ exitCode: typeof code === 'number' ? code : -1, timedOut, stdout: clipped(stdout), stderr: clipped(stderr) });
+    });
+  });
+}
+
+function pathInsideLab(value) {
+  const candidate = normalizeWinPath(value).toLowerCase();
+  const base = normalizeWinPath(PAPERCLIP_LAB_ROOT).toLowerCase();
+  return candidate === base || candidate.startsWith(base + '\\');
+}
+
+async function ensureRootIntegrity() {
+  await fs.mkdir(PAPERCLIP_LAB_ROOT, { recursive: true });
+  const stat = await fs.lstat(PAPERCLIP_LAB_ROOT);
+  if (stat.isSymbolicLink()) throw new Error('TIGERIQ_PAPERCLIP_LAB_ROOT_SYMLINK_BLOCKED');
+  const real = normalizeWinPath(await fs.realpath(PAPERCLIP_LAB_ROOT));
+  if (real.toLowerCase() !== normalizeWinPath(PAPERCLIP_LAB_ROOT).toLowerCase()) {
+    throw new Error('TIGERIQ_PAPERCLIP_LAB_REALPATH_ESCAPE_BLOCKED');
+  }
+  return real;
+}
+
+async function ensureContainedDirectory(value) {
+  const candidate = resolvePaperclipLabPath(value);
+  await fs.mkdir(candidate, { recursive: true });
+  const stat = await fs.lstat(candidate);
+  if (stat.isSymbolicLink()) throw new Error('TIGERIQ_PAPERCLIP_LAB_SYMLINK_BLOCKED');
+  const real = normalizeWinPath(await fs.realpath(candidate));
+  if (!pathInsideLab(real)) throw new Error('TIGERIQ_PAPERCLIP_LAB_REALPATH_ESCAPE_BLOCKED');
+  return real;
+}
+
+async function ensureLayout() {
+  await ensureRootIntegrity();
+  for (const dir of [CONFIG_DIR, DATA_DIR, EVIDENCE_DIR, RESEARCH_DIR, BACKUP_DIR]) await ensureContainedDirectory(dir);
+}
+
+async function assertSafeFileTarget(value) {
+  const candidate = resolvePaperclipLabPath(value);
+  await ensureContainedDirectory(win.dirname(candidate));
+  try {
+    const stat = await fs.lstat(candidate);
+    if (stat.isSymbolicLink()) throw new Error('TIGERIQ_PAPERCLIP_LAB_SYMLINK_BLOCKED');
+    const real = normalizeWinPath(await fs.realpath(candidate));
+    if (!pathInsideLab(real)) throw new Error('TIGERIQ_PAPERCLIP_LAB_REALPATH_ESCAPE_BLOCKED');
+    if (!stat.isFile()) throw new Error('TIGERIQ_PAPERCLIP_LAB_FILE_REQUIRED');
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
+  return candidate;
+}
+
+).test(imageRef) && imageRef !== PAPERCLIP_LAB_IMAGE) throw new Error('TIGERIQ_PAPERCLIP_LAB_IMAGE_REF_INVALID');
   return [
     'name: tigeriq-paperclip-lab',
     'services:',
     '  paperclip:',
-    `    image: ${PAPERCLIP_LAB_IMAGE}`,
+    `    image: ${imageRef}`,
     `    container_name: ${PAPERCLIP_LAB_CONTAINER}`,
     '    pids_limit: 2048',
     '    restart: "no"',
