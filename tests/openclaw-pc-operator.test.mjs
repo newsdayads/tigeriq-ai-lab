@@ -188,7 +188,15 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/paperclip-lab.mjs', import.meta.url), 'utf8');
     expect(source).toContain('TIGERIQ_PAPERCLIP_LAB_SYMLINK_BLOCKED');
     expect(source).toContain('TIGERIQ_PAPERCLIP_LAB_REALPATH_ESCAPE_BLOCKED');
+    expect(source).toContain('TIGERIQ_PAPERCLIP_LAB_IMAGE_REVISION_MISMATCH');
+    expect(source).toContain('imageDigest');
+    expect(source).toContain("'/api/health'").toBe(false);
+    expect(source).toContain('/api/health');
     expect(source).toContain('identityOk');
+    expect(source).toContain('portBindingOk');
+    expect(source).toContain('dataMountOk');
+    expect(source).toContain('rollbackContainer');
+    expect(source).toContain('TIGERIQ_PAPERCLIP_LAB_ABORTED');
     expect(source).not.toMatch(/shell_exec|powershell|cmd\.exe/i);
   });
 });
