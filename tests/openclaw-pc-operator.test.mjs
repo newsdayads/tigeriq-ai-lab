@@ -17,6 +17,7 @@ import {
   PAPERCLIP_LAB_WSL_DISTRO,
   PAPERCLIP_LAB_WSL_ROOT,
   assertPaperclipLabRequest,
+  paperclipDockerFailureClass,
   paperclipLabBrokerOperationForDockerArgs,
   paperclipLabComposeYaml,
   paperclipLabWslDockerArgs,
@@ -216,6 +217,14 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(installer).not.toMatch(/Password|Credential|RunLevel Highest/);
   });
 
+  it('classifies Docker pull failures without exposing raw registry output', () => {
+    expect(paperclipDockerFailureClass({ timedOut: true, exitCode: -1, stderr: 'secret detail' })).toBe('TIMEOUT');
+    expect(paperclipDockerFailureClass({ exitCode: 1, stderr: 'unauthorized: authentication required' })).toBe('AUTH');
+    expect(paperclipDockerFailureClass({ exitCode: 1, stderr: 'manifest unknown: manifest not found' })).toBe('IMAGE_NOT_FOUND');
+    expect(paperclipDockerFailureClass({ exitCode: 1, stderr: 'dial tcp: network is unreachable' })).toBe('NETWORK');
+    expect(paperclipDockerFailureClass({ exitCode: 125, stderr: 'opaque provider text' })).toBe('EXIT_125');
+  });
+
   it('pins immutable image refs and rejects mutable/foreign refs', () => {
     const digest = 'ghcr.io/paperclipai/paperclip@sha256:' + 'a'.repeat(64);
     expect(paperclipLabComposeYaml(digest)).toContain(`image: ${digest}`);
@@ -262,6 +271,7 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(source).toContain("C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe");
     expect(source).toContain('TIGERIQ_PAPERCLIP_LAB_BROKER_DOCKER_ARGS_NOT_ALLOWED');
     expect(source).toContain('TIGERIQ_PAPERCLIP_LAB_DOCKER_PATH_NOT_ALLOWED');
+    expect(source).toContain('TIGERIQ_PAPERCLIP_LAB_PULL_FAILED_${paperclipDockerFailureClass(pull)}');
     expect(source).toContain('imageDigest');
     expect(source).toContain('/api/health');
     expect(source).toContain('identityOk');

@@ -101,6 +101,19 @@ function clipped(value) {
   return text.length <= MAX_OUTPUT_CHARS ? text : text.slice(-MAX_OUTPUT_CHARS) + '\n[TRUNCATED]';
 }
 
+export function paperclipDockerFailureClass(result = {}) {
+  if (result?.timedOut === true) return 'TIMEOUT';
+  const text = `${String(result?.stderr || '')}\n${String(result?.stdout || '')}`.toLowerCase();
+  if (/unauthorized|authentication required|access denied|requested access.*denied|forbidden|\b401\b|\b403\b/.test(text)) return 'AUTH';
+  if (/manifest unknown|manifest.*not found|name unknown|repository does not exist|\b404\b/.test(text)) return 'IMAGE_NOT_FOUND';
+  if (/x509|certificate|tls handshake|ssl/.test(text)) return 'TLS';
+  if (/i\/o timeout|context deadline|timed out|timeout awaiting|client\.timeout/.test(text)) return 'NETWORK_TIMEOUT';
+  if (/connection refused|network is unreachable|no such host|temporary failure|dial tcp|proxyconnect|connection reset/.test(text)) return 'NETWORK';
+  if (/no space left|disk full|insufficient space/.test(text)) return 'DISK';
+  const code = Number(result?.exitCode);
+  return Number.isInteger(code) && code >= 0 ? `EXIT_${code}` : 'UNKNOWN';
+}
+
 function paperclipAbortError() {
   const error = new Error('TIGERIQ_PAPERCLIP_LAB_ABORTED');
   error.name = 'AbortError';
@@ -603,7 +616,9 @@ async function install(signal = null) {
   }
   await ensureConfig();
   const pull = await runDocker(transport, ['pull', PAPERCLIP_LAB_IMAGE], { timeoutMs: 180000, signal });
-  if (pull.exitCode !== 0 || pull.timedOut) throw new Error('TIGERIQ_PAPERCLIP_LAB_PULL_FAILED');
+  if (pull.exitCode !== 0 || pull.timedOut) {
+    throw new Error(`TIGERIQ_PAPERCLIP_LAB_PULL_FAILED_${paperclipDockerFailureClass(pull)}`);
+  }
   const pin = await resolvePulledImagePin(signal, transport);
   await ensureConfig(pin);
   try {
