@@ -379,13 +379,14 @@ async function preflight() {
   };
 }
 
-async function waitForHealth(attempts = 20) {
+async function waitForHealth(attempts = 20, signal = null) {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
-    const state = await health();
+    throwIfAborted(signal);
+    const state = await health(signal);
     if (state.ok) return state;
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await sleepWithSignal(1500, signal);
   }
-  return await health();
+  return await health(signal);
 }
 
 async function install() {
