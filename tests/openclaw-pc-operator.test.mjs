@@ -182,7 +182,12 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(paperclipContainerLogClass('Error: EACCES permission denied /paperclip')).toBe('PERMISSION');
     expect(paperclipContainerLogClass('BETTER_AUTH_SECRET must be set')).toBe('CONFIG');
     expect(paperclipContainerLogClass('could not create shared memory segment')).toBe('DB_SHARED_MEMORY');
+    expect(paperclipContainerLogClass('data directory has invalid permissions; Permissions should be u=rwx (0700)')).toBe('DB_DATA_PERMISSIONS');
     expect(paperclipContainerLogClass('data directory belongs to another instance')).toBe('DB_DATA_DIR_MISMATCH');
+    expect(paperclipContainerLogClass('database files are incompatible with server; initialized by PostgreSQL version 17')).toBe('DB_VERSION_MISMATCH');
+    expect(paperclipContainerLogClass('could not write file: No space left on device')).toBe('DB_STORAGE');
+    expect(paperclipContainerLogClass('invalid locale setting; collation failed')).toBe('DB_LOCALE');
+    expect(paperclipContainerLogClass('password authentication failed for user paperclip')).toBe('DB_AUTH');
     expect(paperclipContainerLogClass('Failed to initialize embedded PostgreSQL cluster')).toBe('DB_INIT');
     expect(paperclipContainerLogClass('Failed to start embedded PostgreSQL on port 54329')).toBe('DB_START');
     expect(paperclipContainerLogClass('Embedded PostgreSQL has pending migrations; refusing stale schema')).toBe('DB_MIGRATION');
