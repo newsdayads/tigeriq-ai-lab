@@ -390,6 +390,13 @@ async function waitForHealth(attempts = 20, signal = null) {
   return await health(signal);
 }
 
+
+async function rollbackContainer() {
+  try {
+    await runFixed('docker.exe', ['stop', PAPERCLIP_LAB_CONTAINER], { timeoutMs: 30000 });
+  } catch {}
+}
+
 async function install() {
   const before = await preflight();
   if (!before.docker.ok) throw new Error('TIGERIQ_PAPERCLIP_LAB_DOCKER_UNAVAILABLE');
