@@ -1480,6 +1480,7 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
           ||purpose.startsWith('WORKER_REOPEN_CLOSE:')
         );
         const periodicF5=workerId==='NV02'&&['PERIODIC_F5_REFRESH','WORKING_UNCHANGED_F5_RECHECK'].includes(purpose);
+        const periodicReset=workerId==='NV02'&&['NV02_PERIODIC_REOPEN_CLOSE','NV02_PERIODIC_RESUME_URL'].includes(purpose);
         const currentChatRestore=workerId==='NV02'&&purpose==='CURRENT_CHAT_RESTORE';
         const activeNv02Job=uiJobLedger.active('NV02');
         const continuitySameJob=continuityContinue&&continuityResumeIdentityMatches(
@@ -1504,18 +1505,18 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
           && !(nv02NextJob?.workerId==='NV02'&&['QUEUED','READY','RUNNING'].includes(String(nv02NextJob.status||'')));
         const continuityLeaseAllowed=continuitySameJob||continuitySelfRunJob||continuityCurrentChatOnly;
         const uiContinuityLeaseAllowed=continuityLeaseAllowed||genericUiContinuityMaintenance;
-        const boundedRecovery=staleWorkingRecovery||stalledRecovery||modelProfileRecovery||checkpointRecovery||chatRotation||chatLoadRecovery||periodicF5||currentChatRestore||genericUiContinuityMaintenance;
+        const boundedRecovery=staleWorkingRecovery||stalledRecovery||modelProfileRecovery||checkpointRecovery||chatRotation||chatLoadRecovery||periodicF5||periodicReset||currentChatRestore||genericUiContinuityMaintenance;
         const chatLoadRecoveryStateAllowed=chatLoadRecovery
           && state.lastHeartbeat?.chatLoadError===true
           && (!chatLoadRetryRecovery||state.lastHeartbeat?.chatRetryReady===true);
         if(paused&&!periodicF5)throw new Error('OWNER_INTERACTION_READ_ONLY');
         if(utilityPausedWorkers.has(workerId)&&!periodicF5)throw new Error(`UTILITY_WORKER_PAUSED:${workerId}`);
         if(state.blocked&&!periodicF5)throw new Error(`WORKER_BLOCKED:${workerId}`);
-        if(!recentHeartbeat(workerId)&&!periodicF5)throw new Error(`WORKER_HEARTBEAT_NOT_READY:${workerId}`);
+        if(!recentHeartbeat(workerId)&&!periodicF5&&!periodicReset)throw new Error(`WORKER_HEARTBEAT_NOT_READY:${workerId}`);
         const security=heartbeatStopReason(state.lastHeartbeat);
         if(security)throw new Error(security);
         if(chatLoadRecovery&&!chatLoadRecoveryStateAllowed)throw new Error(`CHAT_LOAD_RECOVERY_STATE_REQUIRED:${workerId}`);
-        if(state.lastHeartbeat?.uiBusy!==false&&!staleWorkingRecovery&&!periodicF5&&!chatLoadRecoveryStateAllowed)throw new Error(`WORKER_UI_BUSY_OR_UNKNOWN:${workerId}`);
+        if(state.lastHeartbeat?.uiBusy!==false&&!staleWorkingRecovery&&!periodicF5&&!periodicReset&&!chatLoadRecoveryStateAllowed)throw new Error(`WORKER_UI_BUSY_OR_UNKNOWN:${workerId}`);
         if(staleWorkingRecovery&&state.lastHeartbeat?.uiBusy!==true)throw new Error(`STALE_WORKING_RECOVERY_REQUIRES_BUSY:${workerId}`);
         if(continuityContinue&&!continuityLeaseAllowed)throw new Error('CONTINUITY_SAME_JOB_IDENTITY_REQUIRED:NV02');
         if(workerHasActiveJob(workerId,{allowWaitingEvidence:continuityContinue,allowContinuable:continuityContinue})&&!boundedRecovery&&!uiContinuityLeaseAllowed)throw new Error(`WORKER_ACTIVE_JOB:${workerId}`);
